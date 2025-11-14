@@ -199,7 +199,11 @@ C:\src\gocluster\
 
 ### Prerequisites
 
+<<<<<<< HEAD
 - Go 1.25.4 or later
+=======
+- Go 1.23 or later
+>>>>>>> e5f95b3d993ac5b13ebbb0d1f2353ab6fc2cff6c
 - Windows (development) or Ubuntu (production deployment)
 
 ### Installation
@@ -324,4 +328,8 @@ Development Start: November 2024
 ---
 
 **Current Development Session:** Milestone 5 complete - Real-time spot broadcasting working
+<<<<<<< HEAD
 **Next Session:** Start Milestone 6 - Command processor implementation
+=======
+**Next Session:** Start Milestone 6 - Command processor implementation
+>>>>>>> e5f95b3d993ac5b13ebbb0d1f2353ab6fc2cff6c
