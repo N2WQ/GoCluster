@@ -9,6 +9,12 @@ telnet:
   max_connections: 500
   welcome_message: "Welcome to My DX Cluster\nPlease login with your callsign\n"
 
+rbn:
+  enabled: true
+  host: "telnet.reversebeacon.net"
+  port: 7000
+  callsign: "N2WQ"  # Change this to your callsign!
+
 admin:
   http_port: 8080
   bind_address: "127.0.0.1"

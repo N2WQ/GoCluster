@@ -8,6 +8,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"dxcluster/commands"
+	"dxcluster/filter"
+	"dxcluster/spot"
 )
 
 // Server represents a telnet server
@@ -19,6 +23,8 @@ type Server struct {
 	clients        map[string]*Client
 	clientsMutex   sync.RWMutex
 	shutdown       chan struct{}
+	broadcast      chan *spot.Spot
+	processor      *commands.Processor
 }
 
 // Client represents a connected telnet client
@@ -29,6 +35,8 @@ type Client struct {
 	callsign  string
 	connected time.Time
 	address   string
+	spotChan  chan *spot.Spot
+	filter    *filter.Filter
 }
 
 // Telnet protocol constants
@@ -41,13 +49,15 @@ const (
 )
 
 // NewServer creates a new telnet server
-func NewServer(port int, welcomeMessage string, maxConnections int) *Server {
+func NewServer(port int, welcomeMessage string, maxConnections int, processor *commands.Processor) *Server {
 	return &Server{
 		port:           port,
 		welcomeMessage: welcomeMessage,
 		maxConnections: maxConnections,
 		clients:        make(map[string]*Client),
 		shutdown:       make(chan struct{}),
+		broadcast:      make(chan *spot.Spot, 100),
+		processor:      processor,
 	}
 }
 
@@ -62,10 +72,54 @@ func (s *Server) Start() error {
 	s.listener = listener
 	log.Printf("Telnet server listening on port %d", s.port)
 
+	// Start broadcast handler
+	go s.handleBroadcasts()
+
 	// Accept connections in a goroutine
 	go s.acceptConnections()
 
 	return nil
+}
+
+// handleBroadcasts sends spots to all connected clients
+func (s *Server) handleBroadcasts() {
+	for {
+		select {
+		case <-s.shutdown:
+			return
+		case spot := <-s.broadcast:
+			s.broadcastSpot(spot)
+		}
+	}
+}
+
+// BroadcastSpot sends a spot to all connected clients
+func (s *Server) BroadcastSpot(spot *spot.Spot) {
+	select {
+	case s.broadcast <- spot:
+	default:
+		log.Println("Broadcast channel full, dropping spot")
+	}
+}
+
+// broadcastSpot sends a spot to all clients (internal)
+func (s *Server) broadcastSpot(spot *spot.Spot) {
+	s.clientsMutex.RLock()
+	defer s.clientsMutex.RUnlock()
+
+	for _, client := range s.clients {
+		// Check if spot passes client's filter
+		if !client.filter.Matches(spot) {
+			continue
+		}
+
+		select {
+		case client.spotChan <- spot:
+		default:
+			// Client's channel is full, skip
+			log.Printf("Client %s spot channel full, dropping spot", client.callsign)
+		}
+	}
 }
 
 // acceptConnections handles incoming connections
@@ -102,6 +156,8 @@ func (s *Server) handleClient(conn net.Conn) {
 		writer:    bufio.NewWriter(conn),
 		connected: time.Now(),
 		address:   address,
+		spotChan:  make(chan *spot.Spot, 50),
+		filter:    filter.NewFilter(), // Start with no filters (accept all)
 	}
 
 	// Send telnet options to suppress advanced features
@@ -130,7 +186,10 @@ func (s *Server) handleClient(conn net.Conn) {
 
 	// Send login confirmation
 	client.Send(fmt.Sprintf("Hello %s, you are now connected.\n", client.callsign))
-	client.Send("Type 'bye' to disconnect.\n")
+	client.Send("Type HELP for available commands.\n")
+
+	// Start spot sender goroutine
+	go client.spotSender()
 
 	// Read commands from client
 	for {
@@ -140,23 +199,110 @@ func (s *Server) handleClient(conn net.Conn) {
 			return
 		}
 
-		// Normalize command (trim and lowercase)
-		cmd := strings.ToLower(strings.TrimSpace(line))
-
 		// Skip empty lines
-		if cmd == "" {
+		if strings.TrimSpace(line) == "" {
 			continue
 		}
 
-		// Handle simple commands
-		if cmd == "bye" || cmd == "quit" || cmd == "exit" {
+		// Check for filter commands first
+		if strings.HasPrefix(strings.ToLower(line), "set/filter") ||
+			strings.HasPrefix(strings.ToLower(line), "unset/filter") ||
+			strings.HasPrefix(strings.ToLower(line), "show/filter") {
+			response := client.handleFilterCommand(line)
+			client.Send(response)
+			continue
+		}
+
+		// Process other commands
+		response := s.processor.Process(line)
+
+		// Check for disconnect signal
+		if response == "BYE" {
 			client.Send("73!\n")
 			log.Printf("Client %s logged out", client.callsign)
 			return
 		}
 
-		// Unknown command
-		client.Send(fmt.Sprintf("Unknown command: %s\n", line))
+		// Send response
+		if response != "" {
+			client.Send(response)
+		}
+	}
+}
+
+// handleFilterCommand processes filter-related commands
+func (c *Client) handleFilterCommand(cmd string) string {
+	parts := strings.Fields(cmd)
+	if len(parts) == 0 {
+		return "Invalid filter command\n"
+	}
+
+	command := strings.ToLower(parts[0])
+
+	switch command {
+	case "show/filter", "sh/filter":
+		return fmt.Sprintf("Current filters: %s\n", c.filter.String())
+
+	case "set/filter":
+		if len(parts) < 3 {
+			return "Usage: SET/FILTER BAND <band> | SET/FILTER MODE <mode> | SET/FILTER CALL <pattern>\n"
+		}
+
+		filterType := strings.ToUpper(parts[1])
+		value := strings.ToUpper(parts[2])
+
+		switch filterType {
+		case "BAND":
+			c.filter.SetBand(value, true)
+			return fmt.Sprintf("Filter set: Band %s\n", value)
+		case "MODE":
+			c.filter.SetMode(value, true)
+			return fmt.Sprintf("Filter set: Mode %s\n", value)
+		case "CALL":
+			c.filter.AddCallsignPattern(value)
+			return fmt.Sprintf("Filter set: Callsign %s\n", value)
+		default:
+			return "Unknown filter type. Use: BAND, MODE, or CALL\n"
+		}
+
+	case "unset/filter":
+		if len(parts) < 2 {
+			return "Usage: UNSET/FILTER ALL | UNSET/FILTER BAND | UNSET/FILTER MODE | UNSET/FILTER CALL\n"
+		}
+
+		filterType := strings.ToUpper(parts[1])
+
+		switch filterType {
+		case "ALL":
+			c.filter.Reset()
+			return "All filters cleared\n"
+		case "BAND":
+			c.filter.ResetBands()
+			return "Band filters cleared\n"
+		case "MODE":
+			c.filter.ResetModes()
+			return "Mode filters cleared\n"
+		case "CALL":
+			c.filter.ClearCallsignPatterns()
+			return "Callsign filters cleared\n"
+		default:
+			return "Unknown filter type. Use: ALL, BAND, MODE, or CALL\n"
+		}
+
+	default:
+		return "Unknown filter command\n"
+	}
+}
+
+// spotSender sends spots to the client from the spot channel
+func (c *Client) spotSender() {
+	for spot := range c.spotChan {
+		formatted := spot.FormatDXCluster() + "\n"
+		err := c.Send(formatted)
+		if err != nil {
+			log.Printf("Error sending spot to %s: %v", c.callsign, err)
+			return
+		}
 	}
 }
 
@@ -173,6 +319,7 @@ func (s *Server) unregisterClient(client *Client) {
 	s.clientsMutex.Lock()
 	defer s.clientsMutex.Unlock()
 	delete(s.clients, client.callsign)
+	close(client.spotChan)
 	log.Printf("Unregistered client: %s (total: %d)", client.callsign, len(s.clients))
 }
 
