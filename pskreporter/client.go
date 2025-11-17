@@ -126,8 +126,8 @@ func (c *Client) messageHandler(client mqtt.Client, msg mqtt.Message) {
 	// Send to spot channel (non-blocking)
 	select {
 	case c.spotChan <- s:
-		log.Printf("Parsed PSKReporter spot: %s spotted by %s on %.1f kHz (%s, %s)",
-			s.DXCall, s.DECall, s.Frequency, s.Mode, pskrMsg.Band)
+		log.Printf("Parsed PSKReporter spot: %s spotted by %s on %.1f kHz (%s, %+d dB, %s)",
+			s.DXCall, s.DECall, s.Frequency, s.Mode, s.Report, pskrMsg.Band)
 	default:
 		log.Println("PSKReporter: Spot channel full, dropping spot")
 	}
@@ -151,9 +151,11 @@ func (c *Client) convertToSpot(msg *PSKRMessage) *spot.Spot {
 	// Set timestamp from message
 	s.Time = time.Unix(msg.Timestamp, 0)
 
-	// Build comment with SNR and locators
-	s.Comment = fmt.Sprintf("%+d dB  %s>%s",
-		msg.Report,
+	// Set report (SNR in dB)
+	s.Report = msg.Report
+
+	// Build comment with locators
+	s.Comment = fmt.Sprintf("%s>%s",
 		msg.SenderLocator,
 		msg.ReceiverLocator)
 

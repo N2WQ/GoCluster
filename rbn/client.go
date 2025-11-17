@@ -112,38 +112,30 @@ func (c *Client) readLoop() {
 	}
 }
 
-// normalizeRBNCallsign removes numeric SSID from RBN callsigns
-// Example: N2WQ-1-# -> N2WQ-#, N2WQ-73-# -> N2WQ-#, K3LR-2-# -> K3LR-#
-func normalizeRBNCallsign(callsign string) string {
-	// Pattern: CALL-NUMBER-# where NUMBER can be 1-3 digits
-	// We want to keep CALL-# but remove the numeric SSID
-
-	// Check if it ends with -#
-	if !strings.HasSuffix(callsign, "-#") {
-		return callsign // Not an RBN skimmer callsign
+// normalizeRBNCallsign removes SSID from RBN skimmer callsigns
+// Example: "W3LPL-1-#" becomes "W3LPL-#"
+func normalizeRBNCallsign(call string) string {
+	// Check if it ends with -# (RBN skimmer indicator)
+	if !strings.HasSuffix(call, "-#") {
+		return call
 	}
 
-	// Remove the trailing -#
-	withoutHash := strings.TrimSuffix(callsign, "-#")
+	// Remove the -# suffix temporarily
+	withoutHash := strings.TrimSuffix(call, "-#")
 
-	// Split by hyphen
+	// Split by hyphen to find SSID
 	parts := strings.Split(withoutHash, "-")
 
-	if len(parts) < 2 {
-		return callsign // No SSID to remove
+	// If there are multiple hyphens, remove the last one (the SSID)
+	// W3LPL-1 becomes W3LPL
+	if len(parts) > 1 {
+		// Take all parts except the last (which is the SSID)
+		basecall := strings.Join(parts[:len(parts)-1], "-")
+		return basecall + "-#"
 	}
 
-	// Check if the last part is numeric (the SSID we want to remove)
-	lastPart := parts[len(parts)-1]
-	if _, err := strconv.Atoi(lastPart); err == nil {
-		// Last part is numeric, remove it
-		// Rejoin everything except the last part, then add back -#
-		baseParts := parts[:len(parts)-1]
-		return strings.Join(baseParts, "-") + "-#"
-	}
-
-	// Last part is not numeric, keep as-is
-	return callsign
+	// If no SSID, return as-is with -# back
+	return call
 }
 
 // parseSpot parses an RBN spot line into a Spot object
@@ -193,15 +185,24 @@ func (c *Client) parseSpot(line string) {
 		return
 	}
 
+	// Parse signal report (dB)
+	signalDB, err := strconv.Atoi(dbStr)
+	if err != nil {
+		log.Printf("Failed to parse signal dB '%s': %v", dbStr, err)
+		signalDB = 0 // Default to 0 if parse fails
+	}
+
 	// Create spot
 	s := spot.NewSpot(dxCall, deCall, freq, mode)
-	s.Comment = fmt.Sprintf("%s dB %s WPM %s", dbStr, wpmStr, comment)
+	s.Report = signalDB // Set signal report in dB
+	s.Comment = fmt.Sprintf("%s WPM %s", wpmStr, comment)
 	s.SourceType = spot.SourceRBN
 
 	// Send to spot channel
 	select {
 	case c.spotChan <- s:
-		log.Printf("Parsed RBN spot: %s spotted by %s on %.1f kHz", dxCall, deCall, freq)
+		log.Printf("Parsed RBN spot: %s spotted by %s on %.1f kHz (%s, %+d dB)",
+			dxCall, deCall, freq, mode, signalDB)
 	default:
 		log.Println("RBN spot channel full, dropping spot")
 	}

@@ -28,6 +28,7 @@ type Spot struct {
 	Frequency  float64    // Frequency in kHz (e.g., 14074.5)
 	Band       string     // Band (e.g., "20m")
 	Mode       string     // Mode (e.g., "CW", "SSB", "FT8")
+	Report     int        // Signal report in dB (SNR for digital modes, signal strength for CW)
 	Time       time.Time  // When the spot was created
 	Comment    string     // User comment or additional info
 	SourceType SourceType // Where this spot came from
@@ -48,6 +49,7 @@ func NewSpot(dxCall, deCall string, freq float64, mode string) *Spot {
 		SourceType: SourceManual,
 		TTL:        5, // Default hop count
 		Tags:       make([]string, 0),
+		Report:     0, // 0 means no report available
 	}
 }
 
@@ -70,19 +72,50 @@ func (s *Spot) Hash32() uint32 {
 	return h.Sum32()
 }
 
-// FormatDXCluster formats the spot in DX cluster format
-// Format: DX de <spotter>: <frequency> <spotted> <mode> <time>
-// Example: DX de W1ABC: 14074.5 LZ5VV FT8 2359Z
+// FormatDXCluster formats the spot in standard DX cluster format with fixed column positions
+// Format follows the traditional layout used by DXSpider and other clusters:
+//
+//	Columns 0-5:   "DX de "
+//	Columns 6-13:  Spotter callsign with colon (e.g., "K0RC:")
+//	Columns 14-21: Frequency right-aligned (8 chars wide, includes decimal)
+//	Columns 22-23: Two spaces
+//	Columns 24-36: DX callsign left-aligned (13 chars wide)
+//	Columns 37+:   Mode, report, comment, and time
+//
+// Example: "DX de K0RC:       7218.0  NG7X         FT8 -5 0259Z"
 func (s *Spot) FormatDXCluster() string {
 	// Format time as HHMMZ UTC
 	timeStr := s.Time.UTC().Format("1504Z")
 
-	// Format: DX de W1ABC: 14074.5 LZ5VV FT8 2359Z
-	return fmt.Sprintf("DX de %s: %.1f %s %s %s",
-		s.DECall,
-		s.Frequency,
-		s.DXCall,
-		s.Mode,
+	// Build the spotter field: "DX de CALLSIGN:"
+	// The spotter callsign + colon should be left-aligned in an 8-character field
+	spotterField := fmt.Sprintf("%-8s", s.DECall+":")
+
+	// Build the frequency field: right-aligned, 8 characters wide
+	// Format: "  7218.0" or " 14074.0"
+	freqField := fmt.Sprintf("%8.1f", s.Frequency)
+
+	// Build the DX callsign field: left-aligned, 13 characters wide
+	// Format: "NG7X         " or "5V7RU        "
+	dxCallField := fmt.Sprintf("%-13s", s.DXCall)
+
+	// Build the info part: mode and optional report
+	var info string
+	if s.Report != 0 {
+		// Include report with sign: "FT8 -5" or "CW +23"
+		info = fmt.Sprintf("%s %+d", s.Mode, s.Report)
+	} else {
+		// No report available, just mode
+		info = s.Mode
+	}
+
+	// Assemble the complete spot line
+	// Format: DX de <spotter> <freq>  <dxcall> <mode> <report> <time>
+	return fmt.Sprintf("DX de %s%s  %s %s %s",
+		spotterField,
+		freqField,
+		dxCallField,
+		info,
 		timeStr)
 }
 
