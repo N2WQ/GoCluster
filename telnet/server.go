@@ -1,3 +1,32 @@
+// Package telnet implements the multi-client telnet server for the DX Cluster.
+//
+// The telnet server is the primary user interface, handling:
+//   - Client connections and authentication (callsign-based login)
+//   - Real-time spot broadcasting to all connected clients
+//   - Per-client filtering (band, mode, callsign patterns)
+//   - User command processing (HELP, SHOW/DX, SHOW/STATION, BYE)
+//   - Telnet protocol handling (IAC sequences, line ending conversion)
+//
+// Architecture:
+//   - One goroutine per connected client (handleClient)
+//   - Broadcast goroutine for distributing spots to all clients
+//   - Non-blocking spot delivery (full channels don't block the system)
+//   - Each client has their own Filter instance for personalized feeds
+//
+// Client Session Flow:
+//  1. Client connects → Welcome message sent
+//  2. Prompt for callsign → Client enters callsign
+//  3. Login complete → Client receives greeting and help
+//  4. Command loop → Process commands and broadcast spots
+//  5. Client types BYE or disconnects → Session ends
+//
+// Concurrency Design:
+//   - clientsMu protects the clients map (add/remove operations)
+//   - Each client goroutine operates independently
+//   - Broadcast uses non-blocking sends to avoid slow client blocking
+//   - Graceful degradation: Full spot channels result in dropped spots for that client
+//
+// Maximum concurrent connections: Configurable (typically 500)
 package telnet
 
 import (
@@ -14,38 +43,73 @@ import (
 	"dxcluster/spot"
 )
 
-// Server represents a telnet server
+// Server represents a multi-client telnet server for DX Cluster connections.
+//
+// The server maintains a map of connected clients and broadcasts spots to all clients
+// in real-time. Each client has its own goroutine for handling commands and receiving spots.
+//
+// Fields:
+//   - port: TCP port to listen on (typically 7300)
+//   - welcomeMessage: Initial message sent to connecting clients
+//   - maxConnections: Maximum concurrent client connections (typically 500)
+//   - listener: TCP listener for accepting new connections
+//   - clients: Map of callsign → Client for all connected clients
+//   - clientsMutex: Read-write mutex protecting the clients map
+//   - shutdown: Channel for coordinating graceful shutdown
+//   - broadcast: Buffered channel for spot broadcasting (capacity 100)
+//   - processor: Command processor for handling user commands
+//
+// Thread Safety:
+//   - Start() and Stop() can be called from any goroutine
+//   - BroadcastSpot() is thread-safe (uses mutex)
+//   - Each client goroutine operates independently
 type Server struct {
-	port           int
-	welcomeMessage string
-	maxConnections int
-	listener       net.Listener
-	clients        map[string]*Client
-	clientsMutex   sync.RWMutex
-	shutdown       chan struct{}
-	broadcast      chan *spot.Spot
-	processor      *commands.Processor
+	port           int                   // TCP port to listen on
+	welcomeMessage string                // Welcome message for new connections
+	maxConnections int                   // Maximum concurrent client connections
+	listener       net.Listener          // TCP listener
+	clients        map[string]*Client    // Map of callsign → Client
+	clientsMutex   sync.RWMutex          // Protects clients map
+	shutdown       chan struct{}         // Shutdown coordination channel
+	broadcast      chan *spot.Spot       // Broadcast channel for spots (buffered 100)
+	processor      *commands.Processor   // Command processor for user commands
 }
 
-// Client represents a connected telnet client
+// Client represents a connected telnet client session.
+//
+// Each client has:
+//   - Dedicated goroutine for handling commands and receiving spots
+//   - Personal Filter for customizing which spots they receive
+//   - Buffered spot channel for non-blocking spot delivery
+//   - Telnet protocol handling (IAC sequence processing)
+//
+// The client remains active until they type BYE or their connection drops.
 type Client struct {
-	conn      net.Conn
-	reader    *bufio.Reader
-	writer    *bufio.Writer
-	callsign  string
-	connected time.Time
-	address   string
-	spotChan  chan *spot.Spot
-	filter    *filter.Filter
+	conn      net.Conn        // TCP connection to client
+	reader    *bufio.Reader   // Buffered reader for client input
+	writer    *bufio.Writer   // Buffered writer for client output
+	callsign  string          // Client's amateur radio callsign
+	connected time.Time       // Timestamp when client connected
+	address   string          // Client's IP address
+	spotChan  chan *spot.Spot // Buffered channel for spot delivery (capacity 10)
+	filter    *filter.Filter  // Personal spot filter (band, mode, callsign)
 }
 
-// Telnet protocol constants
+// Telnet protocol IAC (Interpret As Command) constants.
+//
+// These constants are used for telnet protocol negotiation:
+//   - IAC: Introduces a telnet command sequence
+//   - DO/DONT: Request client to enable/disable an option
+//   - WILL/WONT: Client agrees/refuses to enable an option
+//
+// The server sends these sequences to negotiate terminal settings
+// and handle special characters properly.
 const (
-	IAC  = 255 // Interpret As Command
-	DONT = 254
-	DO   = 253
-	WONT = 252
-	WILL = 251
+	IAC  = 255 // Interpret As Command - starts telnet command sequence
+	DONT = 254 // Request client to disable an option
+	DO   = 253 // Request client to enable an option
+	WONT = 252 // Client refuses to enable an option
+	WILL = 251 // Client agrees to enable an option
 )
 
 // NewServer creates a new telnet server

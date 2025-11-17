@@ -1,3 +1,26 @@
+// Package pskreporter implements a client for the PSKReporter MQTT service.
+//
+// PSKReporter provides real-time digital mode spots (FT8, FT4, WSPR, etc.) via MQTT.
+// This client connects to the PSKReporter MQTT broker, subscribes to filtered topics,
+// and converts JSON messages into the canonical Spot format.
+//
+// MQTT Topic Structure:
+//   pskr/filter/v2/{band}/{mode}/# - Filtered by band and mode
+//   Example: pskr/filter/v2/20m/FT8/# for all 20m FT8 spots
+//
+// Message Format:
+//   JSON with fields: frequency (Hz), mode, sender/receiver callsigns,
+//   locators, SNR report, timestamp, ADIF country codes, band
+//
+// Features:
+//   - MQTT auto-reconnect with 1-minute max interval
+//   - JSON message parsing with validation
+//   - Frequency conversion (Hz → kHz)
+//   - Comment formatting with SNR and grid locators
+//   - Buffered spot channel (1000 spots)
+//   - Connection state callbacks (onConnect, onConnectionLost)
+//
+// The client feeds spots into the deduplicator's input channel in the unified architecture.
 package pskreporter
 
 import (
@@ -11,30 +34,54 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
-// Client represents a PSKReporter MQTT client
+// Client represents a PSKReporter MQTT client.
+//
+// The client maintains a persistent MQTT connection to the PSKReporter broker,
+// subscribes to configured topics, and continuously processes JSON spot messages.
+//
+// Fields:
+//   - broker, port: MQTT broker address (typically mqtt.pskreporter.info:1883)
+//   - topic: MQTT topic filter (e.g., "pskr/filter/v2/+/FT8/#" for all FT8)
+//   - client: Paho MQTT client instance
+//   - spotChan: Buffered channel for outputting parsed spots (capacity 1000)
+//   - shutdown: Channel for coordinating graceful shutdown
+//
+// Thread Safety:
+//   - MQTT client library handles message callbacks in separate goroutines
+//   - spotChan is buffered and uses non-blocking sends
+//   - Auto-reconnect is handled automatically by MQTT library
 type Client struct {
-	broker   string
-	port     int
-	topic    string
-	client   mqtt.Client
-	spotChan chan *spot.Spot
-	shutdown chan struct{}
+	broker   string          // MQTT broker hostname
+	port     int             // MQTT broker port (typically 1883)
+	topic    string          // MQTT topic filter subscription
+	client   mqtt.Client     // Paho MQTT client instance
+	spotChan chan *spot.Spot // Output channel for parsed spots (buffered 1000)
+	shutdown chan struct{}   // Shutdown coordination channel
 }
 
-// PSKRMessage represents a PSKReporter MQTT message
+// PSKRMessage represents a PSKReporter MQTT message in JSON format.
+//
+// PSKReporter sends compact JSON messages with abbreviated field names
+// to reduce bandwidth. This struct maps the JSON fields to Go types.
+//
+// Data Flow:
+//   Sender (DX station) → Receiver (spotter)
+//   In our model: Sender = DXCall, Receiver = DECall
+//
+// All fields use abbreviated JSON tags for compact serialization.
 type PSKRMessage struct {
-	SequenceNumber  uint64 `json:"sq"` // Sequence number
-	Frequency       int64  `json:"f"`  // Frequency in Hz
-	Mode            string `json:"md"` // Mode (FT8, FT4, etc.)
-	Report          int    `json:"rp"` // SNR report in dB
-	Timestamp       int64  `json:"t"`  // Unix timestamp
-	SenderCall      string `json:"sc"` // Sender (DX) callsign
-	SenderLocator   string `json:"sl"` // Sender grid locator
+	SequenceNumber  uint64 `json:"sq"` // Sequence number for message ordering
+	Frequency       int64  `json:"f"`  // Frequency in Hz (will be converted to kHz)
+	Mode            string `json:"md"` // Operating mode (FT8, FT4, WSPR, etc.)
+	Report          int    `json:"rp"` // SNR report in dB (positive or negative)
+	Timestamp       int64  `json:"t"`  // Unix timestamp (seconds since epoch)
+	SenderCall      string `json:"sc"` // Sender (DX station) callsign
+	SenderLocator   string `json:"sl"` // Sender Maidenhead grid locator
 	ReceiverCall    string `json:"rc"` // Receiver (spotter) callsign
-	ReceiverLocator string `json:"rl"` // Receiver grid locator
+	ReceiverLocator string `json:"rl"` // Receiver Maidenhead grid locator
 	SenderCountry   int    `json:"sa"` // Sender ADIF country code
 	ReceiverCountry int    `json:"ra"` // Receiver ADIF country code
-	Band            string `json:"b"`  // Band (e.g., "20m", "15m")
+	Band            string `json:"b"`  // Amateur radio band (e.g., "20m", "15m")
 }
 
 // NewClient creates a new PSKReporter MQTT client
