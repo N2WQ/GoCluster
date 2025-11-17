@@ -26,7 +26,7 @@ pskreporter:
   #   "pskr/filter/v2/20m/#" - only 20m
   #   "pskr/filter/v2/+/FT8/#" - only FT8 on all bands
   #   "pskr/filter/v2/20m/FT8/#" - only 20m FT8
-  topic: "pskr/filter/v2/+/FT4/#"  # Start with all bands FT4
+  topic: "pskr/filter/v2/+/CW/#"  # Start with all bands and CW mode
 
 # Deduplication settings
 dedup:
