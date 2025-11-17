@@ -33,11 +33,64 @@ Each `spot.Spot` stores:
 
 ## Commands
 
-Telnet clients can issue:
-- `HELP` – list available commands
-- `SHOW/DX [N]` – display the most recent `N` spots (default 10)
-- `SHOW/STATION <CALL>` – show spots for a specific DX station
-- `BYE` – disconnect cleanly
+Telnet clients can issue commands via the prompt once logged in. The processor, located in `commands/processor.go`, supports the following general commands:
+
+- `HELP` / `H` – display the help text that includes short summaries and valid bands/modes at the bottom of the message.
+- `SHOW DX [N]` / `SHOW/DX [N]` – stream the most recent `N` spots directly from the shared ring buffer (`N` ranges from 1–100, default 10). The command accepts the alias `SH DX` as well.
+- `BYE`, `QUIT`, `EXIT` – request a graceful logout; the server replies with `73!` and closes the connection.
+
+Filter management commands are implemented directly in `telnet/server.go` and operate on each client’s `filter.Filter`. They can be used at any time and fall into `SET`, `UNSET`, and `SHOW` groups:
+
+- `SHOW/FILTER` – prints the current filter state for bands, modes, and callsigns.
+- `SHOW/FILTER MODES` – lists every supported mode along with whether it is currently enabled for the session.
+- `SHOW/FILTER BANDS` – lists all supported bands that can be enabled.
+- `SET/FILTER BAND <band>` – enables filtering for `<band>` (normalized via `spot.NormalizeBand`); use the band names from `spot.SupportedBandNames()`.
+- `SET/FILTER MODE <mode>[,<mode>...]` – enables one or more modes (comma-separated) that must exist in `filter.SupportedModes`.
+- `SET/FILTER CALL <pattern>` – begins delivering only spots matching the supplied callsign pattern.
+- `UNSET/FILTER ALL` – resets every filter back to the default (no filtering).
+- `UNSET/FILTER BAND` – clears all currently enabled band filters.
+- `UNSET/FILTER MODE [<mode>[,<mode>...]]` – clears every mode filter if no arguments are provided, or just the comma-separated list of modes if one is supplied.
+- `UNSET/FILTER CALL` – removes all callsign patterns.
+
+Errors during filter commands return a usage message (e.g., invalid bands or modes refer to the supported lists) and the `SHOW/FILTER` commands help confirm the active settings.
+
+### Sample Session
+
+Below is a hypothetical telnet session showing the documented commands in action (server replies are shown after each input):
+
+```
+telnet localhost 7300
+Experimental DX Cluster
+Please login with your callsign
+
+Enter your callsign:
+N1ABC
+Hello N1ABC, you are now connected.
+Type HELP for available commands.
+HELP
+Available commands:
+... (supported modes/bands summary)
+SHOW/DX 5
+DX1 14.074 FT8 599 N1ABC>W1XYZ
+DX2 14.070 FT4 26 N1ABC>W2ABC
+...
+SET/FILTER BAND 20M
+Filter set: Band 20M
+SET/FILTER MODE FT8,FT4
+Filter set: Modes FT8, FT4
+SHOW/FILTER MODES
+Supported modes: FT8=ENABLED, FT4=ENABLED, CW=DISABLED, ...
+SHOW/FILTER
+Current filters: Bands=[20M]; Modes=[FT8, FT4]; Callsigns=[]
+UNSET/FILTER MODE FT4
+Mode filters disabled: FT4
+UNSET/FILTER ALL
+All filters cleared
+BYE
+73!
+```
+
+Use these commands interactively to tailor the spot stream to your operating preferences.
 
 ## Project Structure
 
