@@ -70,18 +70,19 @@ func (s *Spot) Hash32() uint32 {
 	return h.Sum32()
 }
 
-// FormatDXCluster formats the spot in standard DX cluster format
-// Format: DX de CALL:     FREQ DX-CALL   comment                      HHMM
+// FormatDXCluster formats the spot in DX cluster format
+// Format: DX de <spotter>: <frequency> <spotted> <mode> <time>
+// Example: DX de W1ABC: 14074.5 LZ5VV FT8 2359Z
 func (s *Spot) FormatDXCluster() string {
-	// Format time as HHMM UTC
+	// Format time as HHMMZ UTC
 	timeStr := s.Time.UTC().Format("1504Z")
 
-	// Format: DX de W1ABC:     14074.5  LZ5VV        FT8 signal                   2359Z
-	return fmt.Sprintf("DX de %-9s %8.1f  %-13s %-25s %s",
-		s.DECall+":",
+	// Format: DX de W1ABC: 14074.5 LZ5VV FT8 2359Z
+	return fmt.Sprintf("DX de %s: %.1f %s %s %s",
+		s.DECall,
 		s.Frequency,
 		s.DXCall,
-		s.Comment,
+		s.Mode,
 		timeStr)
 }
 
