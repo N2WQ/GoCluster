@@ -1,22 +1,3 @@
-// Package rbn implements a client for the Reverse Beacon Network (RBN) telnet service.
-//
-// RBN provides automated CW and RTTY spot reports from skimmer stations worldwide.
-// This client connects to RBN's telnet server, logs in, and parses spot messages
-// into the canonical Spot format.
-//
-// RBN Spot Format:
-//   DX de N2WQ-1-#:   14024.0  LZ5VV   CW    22 dB  28 WPM  CQ      1928Z
-//   Components: spotter, frequency, callsign, mode, signal, speed, comment, time
-//
-// Features:
-//   - Automatic login with configured callsign
-//   - Real-time spot parsing with regex-based whitespace normalization
-//   - Callsign normalization (removes numeric SSID: N2WQ-1-# → N2WQ-#)
-//   - 5-minute read timeout for connection monitoring
-//   - Buffered spot channel (100 spots)
-//   - Graceful shutdown support
-//
-// The client feeds spots into the deduplicator's input channel in the unified architecture.
 package rbn
 
 import (
@@ -32,34 +13,17 @@ import (
 	"dxcluster/spot"
 )
 
-// Client represents a Reverse Beacon Network (RBN) telnet client.
-//
-// The client maintains a persistent telnet connection to the RBN server,
-// logs in with the configured callsign, and continuously reads and parses
-// spot messages.
-//
-// Fields:
-//   - host, port: RBN server address (typically telnet.reversebeacon.net:7000)
-//   - callsign: Amateur radio callsign for authentication
-//   - conn, reader, writer: Telnet connection and I/O buffers
-//   - connected: Connection state flag
-//   - shutdown: Channel for coordinating graceful shutdown
-//   - spotChan: Buffered channel for outputting parsed spots (capacity 100)
-//
-// Thread Safety:
-//   - readLoop runs in its own goroutine
-//   - spotChan is buffered and uses non-blocking sends
-//   - shutdown channel coordinates clean termination
+// Client represents an RBN telnet client
 type Client struct {
-	host      string          // RBN server hostname
-	port      int             // RBN server port (typically 7000)
-	callsign  string          // Callsign for RBN authentication
-	conn      net.Conn        // Telnet TCP connection
-	reader    *bufio.Reader   // Buffered reader for telnet protocol
-	writer    *bufio.Writer   // Buffered writer for sending commands
-	connected bool            // Connection state flag
-	shutdown  chan struct{}   // Shutdown coordination channel
-	spotChan  chan *spot.Spot // Output channel for parsed spots (buffered 100)
+	host      string
+	port      int
+	callsign  string
+	conn      net.Conn
+	reader    *bufio.Reader
+	writer    *bufio.Writer
+	connected bool
+	shutdown  chan struct{}
+	spotChan  chan *spot.Spot
 }
 
 // NewClient creates a new RBN client
