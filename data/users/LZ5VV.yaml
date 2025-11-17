@@ -1,0 +1,8 @@
+bands: {}
+modes:
+    CW: true
+    RTTY: true
+    SSB: true
+callsigns: []
+allbands: true
+allmodes: false

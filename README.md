@@ -109,6 +109,7 @@ telnet:
   tls_enabled: false
   max_connections: 500
   welcome_message: "Welcome to My DX Cluster\nPlease login with your callsign\n"
+  broadcast_workers: 0  # Optional; set >0 to fix worker count, 0 uses half the CPU cores (minimum 2).
 
 rbn:
   enabled: true
@@ -123,9 +124,34 @@ admin:
 logging:
   level: "info"
   file: "cluster.log"
+
+filter:
+  # Default modes that new clients will automatically enable.
+  # This replaces the built-in CW/SSB/RTTY subset when you list other modes.
+  default_modes:
+    - CW
+    - SSB
+    - RTTY
+
+pskreporter:
+  # Worker goroutines dedicated to handling incoming PSKReporter payloads.
+  # Set to 0 (default) to match half the number of CPU cores (minimum 1 worker).
+  workers: 0
 ```
 
 **IMPORTANT:** Change `callsign: "YOUR_CALLSIGN_HERE"` to your actual amateur radio callsign!
+
+### Filter Defaults
+
+New connections inherit the `filter.default_modes` list specified above. Those modes are automatically enabled while band filtering stays wide open, so clients immediately see CW, SSB, and RTTY spots without each person needing to configure their filters. If you remove the `filter` block entirely, the server falls back to CW, SSB, and RTTY by default. To give clients a broader or narrower default set, edit `default_modes` and restart.
+
+### Supported Bands & Commands
+
+The server now exposes the full HF/VHF/UHF band catalog defined in `spot/bands.go`. You can see the list directly from any telnet session with `SHOW/FILTER BANDS`, and `SET/FILTER BAND <band>` now validates and canonicalizes any of the supported names before enabling the filter. Bands currently handled include 2200m, 630m, 160m, 80m, 60m, 40m, 30m, 20m, 17m, 15m, 12m, 10m, 6m, 2m, 1.25m, 70cm, 33cm, 23cm, and 13cm.
+
+### Broadcast Worker Configuration
+
+Set `telnet.broadcast_workers` to the number of worker goroutines you want dedicated to fan-out. Leave it at `0` (the default) to automatically use half of `runtime.NumCPU()` workers (minimum 2), or raise it if you see drop counters building under heavy load.
 
 ### Connect to Your Cluster
 ```bash

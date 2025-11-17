@@ -1,35 +1,49 @@
 # DX Cluster Configuration
 server:
-  name: "My DX Cluster"
-  node_id: "W1ABC"
+  name: "Experimental DX Cluster"
+  node_id: "N2WQ-22"
   
 telnet:
   port: 7300
   tls_enabled: false
-  max_connections: 500
+  max_connections: 5000
   welcome_message: "Welcome to My DX Cluster\nPlease login with your callsign\n"
+  broadcast_workers: 0  # 0 means automatic (half of the CPU cores, minimum 2)
 
+# RBN CW/RTTY feed (port 7000)
 rbn:
   enabled: true
+  name: "RBN-CW-RTTY"
   host: "telnet.reversebeacon.net"
   port: 7000
-  callsign: "N0CALL"  # Change this to your callsign!
+  callsign: "N0CW"  # Change this to your callsign!
+
+# RBN Digital modes feed (port 7001) - FT4/FT8
+rbn_digital:
+  enabled: true
+  name: "RBN-FT4-FT8"
+  host: "telnet.reversebeacon.net"
+  port: 7001
+  callsign: "N0FT"  # Change this to your callsign!
 
 # PSKReporter MQTT feed
 pskreporter:
   enabled: true
+  name: "PSKReporter"
   broker: "mqtt.pskreporter.info"
   port: 1883
-  # Topic to subscribe to - use wildcards to filter
-  # Examples:
-  #   "pskr/filter/v2/#" - all spots (high volume!)
-  #   "pskr/filter/v2/20m/#" - only 20m
-  #   "pskr/filter/v2/+/FT8/#" - only FT8 on all bands
-  #   "pskr/filter/v2/20m/FT8/#" - only 20m FT8
-  topic: "pskr/filter/v2/+/CW/#"  # Start with all bands and CW mode
+  topic: "pskr/filter/v2/+/+/#"  # All bands and CW mode
+  workers: 0 # 0 means automatic (half of the CPU cores, minimum 1)
+
+filter:
+  default_modes:
+    - CW
+    - SSB
+    - RTTY
 
 # Deduplication settings
 dedup:
+  enabled: true  # CRITICAL: Must be true to enable deduplication!
   # Cluster-level dedup window (prevents network loops and immediate duplicates)
   # Default: 120 seconds
   cluster_window_seconds: 120

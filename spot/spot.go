@@ -72,83 +72,113 @@ func (s *Spot) Hash32() uint32 {
 	return h.Sum32()
 }
 
-// FormatDXCluster formats the spot in standard DX cluster format with fixed column positions
-// Format follows the traditional layout used by DXSpider and other clusters:
+// FormatDXCluster formats the spot in standard DX cluster format with exact column positions
 //
-//	Columns 0-5:   "DX de "
-//	Columns 6-13:  Spotter callsign with colon (e.g., "K0RC:")
-//	Columns 14-21: Frequency right-aligned (8 chars wide, includes decimal)
-//	Columns 22-23: Two spaces
-//	Columns 24-36: DX callsign left-aligned (13 chars wide)
-//	Columns 37+:   Mode, report, comment, and time
+// Column positions (0-indexed):
 //
-// Example: "DX de K0RC:       7218.0  NG7X         FT8 -5 0259Z"
+//	0-5:    "DX de " (6 characters)
+//	6-?:    Spotter callsign with colon (variable length)
+//	?-24:   Spaces and frequency (frequency right-aligned, ENDS at position 24)
+//	25-26:  Two spaces
+//	27-34:  DX callsign (8 characters, left-aligned)
+//	35-39:  Five spaces
+//	40+:    Mode + signal report + comment
+//	75-79:  Time in HHMMZ format (exactly 5 characters)
+//
+// Signal report formatting:
+//
+//	CW, RTTY: No sign (e.g., "CW 23")
+//	FT8, FT4: With sign (e.g., "FT8 -5" or "FT8 +12")
+//
+// Example output:
+//
+//	"DX de RN4WA:      14022.1  HF300LOS     CW 35 22 WPM CQ                0612Z"
+//	"DX de W3LPL:       7009.5  K1ABC        FT8 -5 JO93fn42>HM68jp36       0615Z"
 func (s *Spot) FormatDXCluster() string {
-	// Format time as HHMMZ UTC
+	// Format time as HHMMZ UTC (exactly 5 characters)
 	timeStr := s.Time.UTC().Format("1504Z")
 
-	// Build the spotter field: "DX de CALLSIGN:"
-	// The spotter callsign + colon should be left-aligned in an 8-character field
-	spotterField := fmt.Sprintf("%-8s", s.DECall+":")
-
-	// Build the frequency field: right-aligned, 8 characters wide
-	// Format: "  7218.0" or " 14074.0"
-	freqField := fmt.Sprintf("%8.1f", s.Frequency)
-
-	// Build the DX callsign field: left-aligned, 13 characters wide
-	// Format: "NG7X         " or "5V7RU        "
-	dxCallField := fmt.Sprintf("%-13s", s.DXCall)
-
-	// Build the info part: mode and optional report
-	var info string
+	// Build comment section: mode + signal report + comment
+	var commentSection string
 	if s.Report != 0 {
-		// Include report with sign: "FT8 -5" or "CW +23"
-		info = fmt.Sprintf("%s %+d", s.Mode, s.Report)
+		// Format signal report based on mode
+		var reportStr string
+		mode := strings.ToUpper(s.Mode)
+
+		// For CW and RTTY: no sign (signal strength is always positive)
+		// For FT8, FT4 and other digital modes: include sign (SNR can be negative)
+		if mode == "CW" || mode == "RTTY" {
+			reportStr = fmt.Sprintf("%d", s.Report) // No sign for CW/RTTY
+		} else {
+			// FT8, FT4, and other digital modes use SNR with sign
+			reportStr = fmt.Sprintf("%+d", s.Report) // Always show sign for digital modes
+		}
+
+		// Mode with signal report and comment
+		if s.Comment != "" {
+			commentSection = fmt.Sprintf("%s %s %s", s.Mode, reportStr, s.Comment)
+		} else {
+			commentSection = fmt.Sprintf("%s %s", s.Mode, reportStr)
+		}
 	} else {
-		// No report available, just mode
-		info = s.Mode
+		// No report available, just mode and comment
+		if s.Comment != "" {
+			commentSection = fmt.Sprintf("%s %s", s.Mode, s.Comment)
+		} else {
+			commentSection = s.Mode
+		}
 	}
 
-	// Assemble the complete spot line
-	// Format: DX de <spotter> <freq>  <dxcall> <mode> <report> <time>
-	return fmt.Sprintf("DX de %s%s  %s %s %s",
-		spotterField,
-		freqField,
-		dxCallField,
-		info,
-		timeStr)
+	// CRITICAL: Build the line so frequency ALWAYS ends at position 24
+	// 1. Start with "DX de " + spotter + ":"
+	prefix := "DX de " + s.DECall + ":"
+
+	// 2. Format the frequency as a string
+	freqStr := fmt.Sprintf("%.1f", s.Frequency)
+
+	// 3. Calculate how many spaces we need between spotter and frequency
+	// Frequency must end at position 24, so total width to position 25 is 25 characters
+	// We need: len(prefix) + spaces + len(freqStr) = 25
+	totalWidthToFreqEnd := 25
+	spacesNeeded := totalWidthToFreqEnd - len(prefix) - len(freqStr)
+	if spacesNeeded < 1 {
+		spacesNeeded = 1 // Minimum 1 space
+	}
+
+	// 4. Build the left part:
+	//    - Prefix (DX de CALL:)
+	//    - Variable spaces
+	//    - Frequency (ends at position 24)
+	//    - Two spaces (positions 25-26)
+	//    - DX callsign (8 chars, positions 27-34)
+	//    - Five spaces (positions 35-39)
+	//    - Comment section starts at position 40
+	leftPart := fmt.Sprintf("%s%s%s  %-8s     %s",
+		prefix,                            // "DX de CALL:"
+		strings.Repeat(" ", spacesNeeded), // Variable spaces to align frequency
+		freqStr,                           // Frequency (ends at position 24)
+		s.DXCall,                          // DX callsign, 8 chars left-aligned (positions 27-34)
+		commentSection)                    // Mode + report + comment starting at position 40
+
+	// Pad the left part to exactly 75 characters so time starts at column 75
+	// If leftPart is already >= 75 chars, truncate it to 75
+	if len(leftPart) > 75 {
+		leftPart = leftPart[:75]
+	}
+	paddedLeft := fmt.Sprintf("%-75s", leftPart)
+
+	// Add time at columns 75-79
+	return paddedLeft + timeStr
 }
 
 // FreqToBand converts a frequency in kHz to a band string
 func FreqToBand(freq float64) string {
-	switch {
-	case freq >= 1800 && freq <= 2000:
-		return "160m"
-	case freq >= 3500 && freq <= 4000:
-		return "80m"
-	case freq >= 5330 && freq <= 5405:
-		return "60m"
-	case freq >= 7000 && freq <= 7300:
-		return "40m"
-	case freq >= 10100 && freq <= 10150:
-		return "30m"
-	case freq >= 14000 && freq <= 14350:
-		return "20m"
-	case freq >= 18068 && freq <= 18168:
-		return "17m"
-	case freq >= 21000 && freq <= 21450:
-		return "15m"
-	case freq >= 24890 && freq <= 24990:
-		return "12m"
-	case freq >= 28000 && freq <= 29700:
-		return "10m"
-	case freq >= 50000 && freq <= 54000:
-		return "6m"
-	case freq >= 144000 && freq <= 148000:
-		return "2m"
-	default:
-		return "???"
+	for _, band := range bandTable {
+		if freq >= band.Min && freq <= band.Max {
+			return band.Name
+		}
 	}
+	return "???"
 }
 
 // IsValid performs basic validation on the spot
@@ -158,8 +188,9 @@ func (s *Spot) IsValid() bool {
 		return false
 	}
 
-	// Frequency must be reasonable (1.8 MHz to 148 MHz)
-	if s.Frequency < 1800 || s.Frequency > 148000 {
+	// Frequency must be within a supported band range
+	minFreq, maxFreq := FrequencyBounds()
+	if s.Frequency < minFreq || s.Frequency > maxFreq {
 		return false
 	}
 

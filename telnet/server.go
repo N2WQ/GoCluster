@@ -31,11 +31,15 @@ package telnet
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"dxcluster/commands"
@@ -64,15 +68,18 @@ import (
 //   - BroadcastSpot() is thread-safe (uses mutex)
 //   - Each client goroutine operates independently
 type Server struct {
-	port           int                   // TCP port to listen on
-	welcomeMessage string                // Welcome message for new connections
-	maxConnections int                   // Maximum concurrent client connections
-	listener       net.Listener          // TCP listener
-	clients        map[string]*Client    // Map of callsign → Client
-	clientsMutex   sync.RWMutex          // Protects clients map
-	shutdown       chan struct{}         // Shutdown coordination channel
-	broadcast      chan *spot.Spot       // Broadcast channel for spots (buffered 100)
-	processor      *commands.Processor   // Command processor for user commands
+	port             int                  // TCP port to listen on
+	welcomeMessage   string               // Welcome message for new connections
+	maxConnections   int                  // Maximum concurrent client connections
+	listener         net.Listener         // TCP listener
+	clients          map[string]*Client   // Map of callsign → Client
+	clientsMutex     sync.RWMutex         // Protects clients map
+	shutdown         chan struct{}        // Shutdown coordination channel
+	broadcast        chan *spot.Spot      // Broadcast channel for spots (buffered 100)
+	broadcastWorkers int                  // Number of goroutines delivering spots
+	workerQueues     []chan *broadcastJob // Per-worker job queues
+	metrics          broadcastMetrics     // Broadcast metrics counters
+	processor        *commands.Processor  // Command processor for user commands
 }
 
 // Client represents a connected telnet client session.
@@ -95,6 +102,22 @@ type Client struct {
 	filter    *filter.Filter  // Personal spot filter (band, mode, callsign)
 }
 
+type broadcastJob struct {
+	spot    *spot.Spot
+	clients []*Client
+}
+
+type broadcastMetrics struct {
+	queueDrops  uint64
+	clientDrops uint64
+}
+
+func (m *broadcastMetrics) snapshot() (queueDrops, clientDrops uint64) {
+	queueDrops = atomic.LoadUint64(&m.queueDrops)
+	clientDrops = atomic.LoadUint64(&m.clientDrops)
+	return
+}
+
 // Telnet protocol IAC (Interpret As Command) constants.
 //
 // These constants are used for telnet protocol negotiation:
@@ -112,16 +135,23 @@ const (
 	WILL = 251 // Client agrees to enable an option
 )
 
+const broadcastWorkerQueueSize = 32
+
 // NewServer creates a new telnet server
-func NewServer(port int, welcomeMessage string, maxConnections int, processor *commands.Processor) *Server {
+func NewServer(port int, welcomeMessage string, maxConnections int, broadcastWorkers int, processor *commands.Processor) *Server {
+	workers := broadcastWorkers
+	if workers <= 0 {
+		workers = defaultBroadcastWorkers()
+	}
 	return &Server{
-		port:           port,
-		welcomeMessage: welcomeMessage,
-		maxConnections: maxConnections,
-		clients:        make(map[string]*Client),
-		shutdown:       make(chan struct{}),
-		broadcast:      make(chan *spot.Spot, 100),
-		processor:      processor,
+		port:             port,
+		welcomeMessage:   welcomeMessage,
+		maxConnections:   maxConnections,
+		clients:          make(map[string]*Client),
+		shutdown:         make(chan struct{}),
+		broadcast:        make(chan *spot.Spot, 100),
+		broadcastWorkers: workers,
+		processor:        processor,
 	}
 }
 
@@ -135,6 +165,9 @@ func (s *Server) Start() error {
 
 	s.listener = listener
 	log.Printf("Telnet server listening on port %d", s.port)
+
+	// Prepare worker pool before handling spots
+	s.startWorkerPool()
 
 	// Start broadcast handler
 	go s.handleBroadcasts()
@@ -166,24 +199,105 @@ func (s *Server) BroadcastSpot(spot *spot.Spot) {
 	}
 }
 
-// broadcastSpot sends a spot to all clients (internal)
+// broadcastSpot segments clients into shards and enqueues jobs for workers
 func (s *Server) broadcastSpot(spot *spot.Spot) {
-	s.clientsMutex.RLock()
-	defer s.clientsMutex.RUnlock()
+	shards := s.snapshotClientShards()
+	s.dispatchSpotToWorkers(spot, shards)
+}
 
-	for _, client := range s.clients {
-		// Check if spot passes client's filter
-		if !client.filter.Matches(spot) {
+func (s *Server) startWorkerPool() {
+	if s.broadcastWorkers <= 0 {
+		s.broadcastWorkers = defaultBroadcastWorkers()
+	}
+	if len(s.workerQueues) != 0 {
+		return
+	}
+	s.workerQueues = make([]chan *broadcastJob, s.broadcastWorkers)
+	for i := 0; i < s.broadcastWorkers; i++ {
+		s.workerQueues[i] = make(chan *broadcastJob, broadcastWorkerQueueSize)
+		go s.broadcastWorker(i, s.workerQueues[i])
+	}
+}
+
+func (s *Server) dispatchSpotToWorkers(spot *spot.Spot, shards [][]*Client) {
+	for i, clients := range shards {
+		if len(clients) == 0 {
 			continue
 		}
-
+		job := &broadcastJob{spot: spot, clients: clients}
 		select {
-		case client.spotChan <- spot:
+		case s.workerQueues[i] <- job:
 		default:
-			// Client's channel is full, skip
-			log.Printf("Client %s spot channel full, dropping spot", client.callsign)
+			drops := atomic.AddUint64(&s.metrics.queueDrops, 1)
+			log.Printf("Worker %d queue full, dropping %d-client shard (total queue drops=%d)", i, len(clients), drops)
 		}
 	}
+}
+
+func (s *Server) snapshotClientShards() [][]*Client {
+	workers := s.broadcastWorkers
+	if workers <= 0 {
+		workers = 1
+	}
+	shards := make([][]*Client, workers)
+	s.clientsMutex.RLock()
+	defer s.clientsMutex.RUnlock()
+	idx := 0
+	for _, client := range s.clients {
+		shard := idx % workers
+		shards[shard] = append(shards[shard], client)
+		idx++
+	}
+	return shards
+}
+
+func (s *Server) broadcastWorker(id int, jobs <-chan *broadcastJob) {
+	for {
+		select {
+		case <-s.shutdown:
+			return
+		case job := <-jobs:
+			if job == nil {
+				continue
+			}
+			s.deliverJob(job)
+		}
+	}
+}
+
+func (s *Server) deliverJob(job *broadcastJob) {
+	for _, client := range job.clients {
+		if !client.filter.Matches(job.spot) {
+			continue
+		}
+		select {
+		case client.spotChan <- job.spot:
+		default:
+			drops := atomic.AddUint64(&s.metrics.clientDrops, 1)
+			log.Printf("Client %s spot channel full, dropping spot (total client drops=%d)", client.callsign, drops)
+		}
+	}
+}
+
+// WorkerCount returns the number of broadcast workers currently configured.
+func (s *Server) WorkerCount() int {
+	workers := s.broadcastWorkers
+	if workers <= 0 {
+		workers = defaultBroadcastWorkers()
+	}
+	return workers
+}
+
+func (s *Server) BroadcastMetricSnapshot() (queueDrops, clientDrops uint64) {
+	return s.metrics.snapshot()
+}
+
+func defaultBroadcastWorkers() int {
+	workers := runtime.NumCPU() / 2
+	if workers < 2 {
+		workers = 2
+	}
+	return workers
 }
 
 // acceptConnections handles incoming connections
@@ -241,8 +355,43 @@ func (s *Server) handleClient(conn net.Conn) {
 		return
 	}
 
-	client.callsign = strings.ToUpper(strings.TrimSpace(callsign))
+	callsign = strings.ToUpper(strings.TrimSpace(callsign))
+	if callsign == "" {
+		client.Send("Invalid callsign, disconnecting.\n")
+		log.Printf("Client %s provided empty callsign", address)
+		return
+	}
+	client.callsign = callsign
 	log.Printf("Client %s logged in as %s", address, client.callsign)
+
+	// Attempt to load saved filter for this callsign; fallback to new Filter
+	if f, err := filter.LoadUserFilter(client.callsign); err == nil {
+		client.filter = f
+		log.Printf("Loaded saved filter for %s", client.callsign)
+	} else {
+		client.filter = filter.NewFilter()
+		if errors.Is(err, os.ErrNotExist) {
+			if saveErr := filter.SaveUserFilter(client.callsign, client.filter); saveErr != nil {
+				log.Printf("Warning: failed to save default filter for %s: %v", client.callsign, saveErr)
+			} else {
+				log.Printf("Created default filter for %s", client.callsign)
+			}
+		} else {
+			// Non-critical load error; log it.
+			log.Printf("Warning: failed to load filter for %s: %v", client.callsign, err)
+		}
+	}
+
+	// Ensure we save the filter on disconnect / exit
+	defer func() {
+		if client.callsign != "" && client.filter != nil {
+			if err := filter.SaveUserFilter(client.callsign, client.filter); err != nil {
+				log.Printf("Warning: failed to save filter for %s: %v", client.callsign, err)
+			} else {
+				log.Printf("Saved filter for %s", client.callsign)
+			}
+		}
+	}()
 
 	// Register client
 	s.registerClient(client)
@@ -278,7 +427,7 @@ func (s *Server) handleClient(conn net.Conn) {
 		}
 
 		// Process other commands
-		response := s.processor.Process(line)
+		response := s.processor.ProcessCommand(line)
 
 		// Check for disconnect signal
 		if response == "BYE" {
@@ -305,6 +454,28 @@ func (c *Client) handleFilterCommand(cmd string) string {
 
 	switch command {
 	case "show/filter", "sh/filter":
+		// If user asked for modes specifically, show supported modes and enabled state
+		if len(parts) > 1 {
+			arg := strings.ToLower(parts[1])
+			switch arg {
+			case "modes":
+				var b strings.Builder
+				for i, mode := range filter.SupportedModes {
+					enabled := "DISABLED"
+					if c.filter.AllModes || c.filter.Modes[mode] {
+						enabled = "ENABLED"
+					}
+					b.WriteString(fmt.Sprintf("%s=%s", mode, enabled))
+					if i < len(filter.SupportedModes)-1 {
+						b.WriteString(", ")
+					}
+				}
+				return fmt.Sprintf("Supported modes: %s\n", b.String())
+			case "bands":
+				return fmt.Sprintf("Supported bands: %s\n", strings.Join(spot.SupportedBandNames(), ", "))
+			}
+		}
+
 		return fmt.Sprintf("Current filters: %s\n", c.filter.String())
 
 	case "set/filter":
@@ -313,16 +484,34 @@ func (c *Client) handleFilterCommand(cmd string) string {
 		}
 
 		filterType := strings.ToUpper(parts[1])
-		value := strings.ToUpper(parts[2])
-
 		switch filterType {
 		case "BAND":
-			c.filter.SetBand(value, true)
-			return fmt.Sprintf("Filter set: Band %s\n", value)
+			value := strings.TrimSpace(strings.Join(parts[2:], " "))
+			if value == "" {
+				return "Usage: SET/FILTER BAND <band> | SET/FILTER MODE <mode> | SET/FILTER CALL <pattern>\n"
+			}
+			normalized := spot.NormalizeBand(value)
+			if normalized == "" || !spot.IsValidBand(normalized) {
+				return fmt.Sprintf("Unknown band: %s\nSupported bands: %s\n", value, strings.Join(spot.SupportedBandNames(), ", "))
+			}
+			c.filter.SetBand(normalized, true)
+			return fmt.Sprintf("Filter set: Band %s\n", normalized)
 		case "MODE":
-			c.filter.SetMode(value, true)
-			return fmt.Sprintf("Filter set: Mode %s\n", value)
+			modeArgs := strings.Join(parts[2:], " ")
+			modes := parseModeList(modeArgs)
+			if len(modes) == 0 {
+				return "Usage: SET/FILTER MODE <mode>[,<mode>...]\n"
+			}
+			invalid := collectInvalidModes(modes)
+			if len(invalid) > 0 {
+				return fmt.Sprintf("Unknown mode: %s\nSupported modes: %s\n", strings.Join(invalid, ", "), strings.Join(filter.SupportedModes, ", "))
+			}
+			for _, mode := range modes {
+				c.filter.SetMode(mode, true)
+			}
+			return fmt.Sprintf("Filter set: Modes %s\n", strings.Join(modes, ", "))
 		case "CALL":
+			value := strings.ToUpper(parts[2])
 			c.filter.AddCallsignPattern(value)
 			return fmt.Sprintf("Filter set: Callsign %s\n", value)
 		default:
@@ -344,8 +533,23 @@ func (c *Client) handleFilterCommand(cmd string) string {
 			c.filter.ResetBands()
 			return "Band filters cleared\n"
 		case "MODE":
-			c.filter.ResetModes()
-			return "Mode filters cleared\n"
+			modeArgs := strings.Join(parts[2:], " ")
+			if strings.TrimSpace(modeArgs) == "" {
+				c.filter.ResetModes()
+				return "Mode filters cleared\n"
+			}
+			modes := parseModeList(modeArgs)
+			if len(modes) == 0 {
+				return "Usage: UNSET/FILTER MODE <mode>[,<mode>...]\n"
+			}
+			invalid := collectInvalidModes(modes)
+			if len(invalid) > 0 {
+				return fmt.Sprintf("Unknown mode: %s\nSupported modes: %s\n", strings.Join(invalid, ", "), strings.Join(filter.SupportedModes, ", "))
+			}
+			for _, mode := range modes {
+				c.filter.SetMode(mode, false)
+			}
+			return fmt.Sprintf("Mode filters disabled: %s\n", strings.Join(modes, ", "))
 		case "CALL":
 			c.filter.ClearCallsignPatterns()
 			return "Callsign filters cleared\n"
@@ -356,6 +560,32 @@ func (c *Client) handleFilterCommand(cmd string) string {
 	default:
 		return "Unknown filter command\n"
 	}
+}
+
+func parseModeList(arg string) []string {
+	arg = strings.TrimSpace(arg)
+	if arg == "" {
+		return nil
+	}
+	parts := strings.Split(arg, ",")
+	modes := make([]string, 0, len(parts))
+	for _, part := range parts {
+		mode := strings.ToUpper(strings.TrimSpace(part))
+		if mode != "" {
+			modes = append(modes, mode)
+		}
+	}
+	return modes
+}
+
+func collectInvalidModes(modes []string) []string {
+	invalid := make([]string, 0)
+	for _, mode := range modes {
+		if !filter.IsSupportedMode(mode) {
+			invalid = append(invalid, mode)
+		}
+	}
+	return invalid
 }
 
 // spotSender sends spots to the client from the spot channel

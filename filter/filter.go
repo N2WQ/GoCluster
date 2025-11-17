@@ -16,10 +16,109 @@
 package filter
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 
 	"dxcluster/spot"
 )
+
+// SupportedModes lists the commonly used modes that users can enable/disable
+// via the SET/FILTER MODE command. Exported so UI/commands can display them.
+var SupportedModes = []string{
+	"SSB", "HELL", "CW", "WSPR", "RTTY", "FREEDV",
+	"FT8", "FT4", "JS8", "VARAC", "JT65", "FSQ",
+	"PI4", "MSK144", "PSK31", "FST4W", "SSTV", "Q65", "OPERA",
+}
+
+// defaultModeSelection controls which modes are enabled when a new filter is created.
+// The initial values match the curated CW/SSB/RTTY set, but can be overridden.
+var defaultModeSelection = []string{"CW", "SSB", "RTTY"}
+
+var supportedModeSet = func() map[string]bool {
+	m := make(map[string]bool)
+	for _, s := range SupportedModes {
+		m[strings.ToUpper(strings.TrimSpace(s))] = true
+	}
+	return m
+}()
+
+// IsSupportedMode returns true if the given mode is in the supported list.
+func IsSupportedMode(mode string) bool {
+	mode = strings.ToUpper(strings.TrimSpace(mode))
+	return supportedModeSet[mode]
+}
+
+// SetDefaultModeSelection replaces the modes that brand-new filters enable by default.
+// Passing an empty slice resets to the built-in CW/SSB/RTTY set.
+func SetDefaultModeSelection(modes []string) {
+	if len(modes) == 0 {
+		defaultModeSelection = []string{"CW", "SSB", "RTTY"}
+		return
+	}
+	normalized := make([]string, 0, len(modes))
+	for _, mode := range modes {
+		candidate := strings.ToUpper(strings.TrimSpace(mode))
+		if candidate == "" {
+			continue
+		}
+		normalized = append(normalized, candidate)
+	}
+	if len(normalized) == 0 {
+		defaultModeSelection = []string{"CW", "SSB", "RTTY"}
+		return
+	}
+	defaultModeSelection = normalized
+}
+
+// User data directory (relative to working dir)
+const UserDataDir = "data/users"
+
+// SaveUserFilter persists a user's Filter to data/users/<CALLSIGN>.yaml.
+// Callsign is uppercased for filename stability.
+func SaveUserFilter(callsign string, f *Filter) error {
+	callsign = strings.TrimSpace(callsign)
+	if callsign == "" {
+		return errors.New("empty callsign")
+	}
+	if err := os.MkdirAll(UserDataDir, 0o755); err != nil {
+		return err
+	}
+	bs, err := yaml.Marshal(f)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(UserDataDir, strings.ToUpper(callsign)+".yaml")
+	return os.WriteFile(path, bs, 0o644)
+}
+
+// LoadUserFilter loads a saved Filter for a given callsign.
+// Returns os.ErrNotExist if no saved file is found.
+func LoadUserFilter(callsign string) (*Filter, error) {
+	callsign = strings.TrimSpace(callsign)
+	if callsign == "" {
+		return nil, errors.New("empty callsign")
+	}
+	path := filepath.Join(UserDataDir, strings.ToUpper(callsign)+".yaml")
+	bs, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var f Filter
+	if err := yaml.Unmarshal(bs, &f); err != nil {
+		return nil, err
+	}
+	return &f, nil
+}
+
+// EnsureUserDataDir makes sure the directory for saved filters exists.
+func EnsureUserDataDir() error {
+	return os.MkdirAll(UserDataDir, 0o755)
+}
 
 // Filter represents a user's spot filtering preferences.
 //
@@ -29,8 +128,8 @@ import (
 //  3. Callsign patterns: Which callsigns to accept (W1*, LZ5VV, etc.)
 //
 // Default Behavior:
-//   - AllBands=true, AllModes=true: Accept everything (no filtering)
-//   - Setting specific band/mode: Disables "all" flag, only accepts specified values
+//   - AllBands=true: accept every band
+//   - AllModes=false with the curated default mode list pre-enabled
 //   - Callsign patterns: Only applied if non-empty (no impact on band/mode filters)
 //
 // Filter Matching:
@@ -49,50 +148,26 @@ type Filter struct {
 	AllModes  bool            // If true, accept all modes (Modes map ignored)
 }
 
-// NewFilter creates a new filter with all bands and modes enabled (no filtering).
+// NewFilter creates a new filter with every band enabled and the curated default modes.
 //
 // Returns:
-//   - *Filter: Initialized filter accepting all spots
-//
-// The default state allows all spots through until the user sets specific filters.
+//   - *Filter: Initialized filter accepting all bands and the default mode subset
 //
 // Example:
-//   filter := filter.NewFilter()
-//   // All spots pass through initially
+//
+//	filter := filter.NewFilter()
 func NewFilter() *Filter {
-	return &Filter{
+	f := &Filter{
 		Bands:     make(map[string]bool),
 		Modes:     make(map[string]bool),
 		Callsigns: make([]string, 0),
-		AllBands:  true, // Start with everything enabled (no filtering)
-		AllModes:  true,
+		AllBands:  true,  // Start with all bands enabled
+		AllModes:  false, // Default to the curated mode subset below
 	}
-}
-
-// normalizeBand normalizes band names for consistent matching.
-//
-// Normalization rules:
-//   - Convert to lowercase
-//   - Trim whitespace
-//   - Ensure 'm' suffix (20 → 20m, 20M → 20m)
-//
-// Parameters:
-//   - band: Band string in any format (e.g., "20M", "20m", "20", " 40M ")
-//
-// Returns:
-//   - string: Normalized band (e.g., "20m")
-//
-// Examples:
-//   normalizeBand("20M")   → "20m"
-//   normalizeBand("40")    → "40m"
-//   normalizeBand(" 20m ") → "20m"
-func normalizeBand(band string) string {
-	band = strings.ToLower(strings.TrimSpace(band))
-	// If it doesn't end with 'm', add it
-	if !strings.HasSuffix(band, "m") {
-		band = band + "m"
+	for _, mode := range defaultModeSelection {
+		f.Modes[mode] = true
 	}
-	return band
+	return f
 }
 
 // SetBand enables or disables filtering for a specific band.
@@ -107,16 +182,20 @@ func normalizeBand(band string) string {
 //   - Disabling a band removes it from the filter
 //
 // Examples:
-//   filter.SetBand("20M", true)  // Only accept 20m (disables all other bands)
-//   filter.SetBand("40m", true)  // Now accept 20m OR 40m
-//   filter.SetBand("20M", false) // Only accept 40m now
+//
+//	filter.SetBand("20M", true)  // Only accept 20m (disables all other bands)
+//	filter.SetBand("40m", true)  // Now accept 20m OR 40m
+//	filter.SetBand("20M", false) // Only accept 40m now
 func (f *Filter) SetBand(band string, enabled bool) {
-	band = normalizeBand(band)
+	normalized := spot.NormalizeBand(band)
+	if normalized == "" || !spot.IsValidBand(normalized) {
+		return
+	}
 	if enabled {
-		f.Bands[band] = true
+		f.Bands[normalized] = true
 		f.AllBands = false // Once we set specific bands, we're not accepting all
 	} else {
-		delete(f.Bands, band)
+		delete(f.Bands, normalized)
 	}
 }
 
@@ -132,9 +211,10 @@ func (f *Filter) SetBand(band string, enabled bool) {
 //   - Disabling a mode removes it from the filter
 //
 // Examples:
-//   filter.SetMode("CW", true)   // Only accept CW (disables all other modes)
-//   filter.SetMode("FT8", true)  // Now accept CW OR FT8
-//   filter.SetMode("CW", false)  // Only accept FT8 now
+//
+//	filter.SetMode("CW", true)   // Only accept CW (disables all other modes)
+//	filter.SetMode("FT8", true)  // Now accept CW OR FT8
+//	filter.SetMode("CW", false)  // Only accept FT8 now
 func (f *Filter) SetMode(mode string, enabled bool) {
 	mode = strings.ToUpper(mode)
 	if enabled {
@@ -160,9 +240,10 @@ func (f *Filter) SetMode(mode string, enabled bool) {
 //   - Patterns are case-insensitive (normalized to uppercase)
 //
 // Examples:
-//   filter.AddCallsignPattern("W1*")    // Accept all W1 callsigns
-//   filter.AddCallsignPattern("LZ5VV")  // Also accept LZ5VV
-//   // Now accepts: W1ABC, W1XYZ, LZ5VV, etc.
+//
+//	filter.AddCallsignPattern("W1*")    // Accept all W1 callsigns
+//	filter.AddCallsignPattern("LZ5VV")  // Also accept LZ5VV
+//	// Now accepts: W1ABC, W1XYZ, LZ5VV, etc.
 func (f *Filter) AddCallsignPattern(pattern string) {
 	pattern = strings.ToUpper(pattern)
 	f.Callsigns = append(f.Callsigns, pattern)
@@ -174,8 +255,9 @@ func (f *Filter) AddCallsignPattern(pattern string) {
 // (subject to band/mode filters).
 //
 // Example:
-//   filter.ClearCallsignPatterns()
-//   // All callsigns now pass through
+//
+//	filter.ClearCallsignPatterns()
+//	// All callsigns now pass through
 func (f *Filter) ClearCallsignPatterns() {
 	f.Callsigns = make([]string, 0)
 }
@@ -188,8 +270,9 @@ func (f *Filter) ClearCallsignPatterns() {
 //   - Spots from any band will pass (subject to mode/callsign filters)
 //
 // Example:
-//   filter.ResetBands()
-//   // All bands now pass through
+//
+//	filter.ResetBands()
+//	// All bands now pass through
 func (f *Filter) ResetBands() {
 	f.Bands = make(map[string]bool)
 	f.AllBands = true
@@ -203,8 +286,9 @@ func (f *Filter) ResetBands() {
 //   - Spots from any mode will pass (subject to band/callsign filters)
 //
 // Example:
-//   filter.ResetModes()
-//   // All modes now pass through
+//
+//	filter.ResetModes()
+//	// All modes now pass through
 func (f *Filter) ResetModes() {
 	f.Modes = make(map[string]bool)
 	f.AllModes = true
@@ -220,8 +304,9 @@ func (f *Filter) ResetModes() {
 // After reset, all spots pass through the filter.
 //
 // Example:
-//   filter.Reset()
-//   // Filter is now in default state (all spots pass)
+//
+//	filter.Reset()
+//	// Filter is now in default state (all spots pass)
 func (f *Filter) Reset() {
 	f.ResetBands()
 	f.ResetModes()
@@ -242,16 +327,17 @@ func (f *Filter) Reset() {
 //  3. Callsign filter: If patterns exist, spot.DXCall must match at least one
 //
 // Examples:
-//   filter.SetBand("20m", true)
-//   filter.SetMode("CW", true)
-//   filter.Matches(spot_20m_CW)   → true
-//   filter.Matches(spot_40m_CW)   → false (wrong band)
-//   filter.Matches(spot_20m_SSB)  → false (wrong mode)
+//
+//	filter.SetBand("20m", true)
+//	filter.SetMode("CW", true)
+//	filter.Matches(spot_20m_CW)   → true
+//	filter.Matches(spot_40m_CW)   → false (wrong band)
+//	filter.Matches(spot_20m_SSB)  → false (wrong mode)
 func (f *Filter) Matches(s *spot.Spot) bool {
 	// Check band filter
 	if !f.AllBands {
-		spotBand := normalizeBand(s.Band)
-		if !f.Bands[spotBand] {
+		spotBand := spot.NormalizeBand(s.Band)
+		if spotBand == "" || !f.Bands[spotBand] {
 			return false // Band not in enabled list
 		}
 	}
@@ -296,9 +382,10 @@ func (f *Filter) Matches(s *spot.Spot) bool {
 //   - Case-insensitive: "w1abc" matches "W1ABC"
 //
 // Examples:
-//   matchesCallsignPattern("W1ABC", "W1*")   → true
-//   matchesCallsignPattern("W1ABC", "*ABC")  → true
-//   matchesCallsignPattern("W1ABC", "LZ5VV") → false
+//
+//	matchesCallsignPattern("W1ABC", "W1*")   → true
+//	matchesCallsignPattern("W1ABC", "*ABC")  → true
+//	matchesCallsignPattern("W1ABC", "LZ5VV") → false
 func matchesCallsignPattern(callsign, pattern string) bool {
 	// Normalize both to uppercase for case-insensitive matching
 	callsign = strings.ToUpper(callsign)
@@ -340,11 +427,12 @@ func matchesCallsignPattern(callsign, pattern string) bool {
 // This is used for the SHOW/FILTER command to display current filter state.
 //
 // Examples:
-//   filter.String() → "No active filters"
-//   (after SetBand("20m", true))
-//   filter.String() → "Bands: 20m | Modes: ALL"
-//   (after SetMode("CW", true))
-//   filter.String() → "Bands: 20m | Modes: CW"
+//
+//	filter.String() → "No active filters"
+//	(after SetBand("20m", true))
+//	filter.String() → "Bands: 20m | Modes: ALL"
+//	(after SetMode("CW", true))
+//	filter.String() → "Bands: 20m | Modes: CW"
 func (f *Filter) String() string {
 	var parts []string
 
@@ -356,6 +444,7 @@ func (f *Filter) String() string {
 		for band := range f.Bands {
 			bands = append(bands, band)
 		}
+		sort.Strings(bands)
 		if len(bands) > 0 {
 			parts = append(parts, "Bands: "+strings.Join(bands, ", "))
 		} else {
@@ -371,6 +460,7 @@ func (f *Filter) String() string {
 		for mode := range f.Modes {
 			modes = append(modes, mode)
 		}
+		sort.Strings(modes)
 		if len(modes) > 0 {
 			parts = append(parts, "Modes: "+strings.Join(modes, ", "))
 		} else {

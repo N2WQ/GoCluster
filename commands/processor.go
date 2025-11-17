@@ -1,267 +1,118 @@
-// Package commands implements user command processing for the DX Cluster telnet interface.
-//
-// The command processor handles various user commands entered via telnet:
-//   - HELP/?     : Display help text
-//   - SHOW/DX    : Display recent spots from ring buffer
-//   - SHOW/STATION : Filter spots by callsign
-//   - BYE/QUIT   : Disconnect from cluster
-//
-// Commands follow standard DX Cluster syntax (COMMAND/OPTION arguments).
-// All commands are case-insensitive and whitespace-tolerant.
-//
-// The processor integrates with the ring buffer to provide historical spot queries.
 package commands
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"dxcluster/buffer"
+	"dxcluster/filter"
 	"dxcluster/spot"
 )
 
-// Processor handles parsing and execution of user commands.
-//
-// The processor requires access to the spot buffer for historical queries
-// (SHOW/DX, SHOW/STATION commands). It's created once at server startup
-// and shared across all telnet client sessions.
-//
-// Thread Safety: The processor itself is stateless and thread-safe.
-// Buffer access is protected by the ring buffer's internal mutex.
+// Processor handles command processing
 type Processor struct {
-	spotBuffer *buffer.RingBuffer // Reference to shared ring buffer for spot queries
+	spotBuffer *buffer.RingBuffer
 }
 
-// NewProcessor creates a new command processor.
-//
-// Parameters:
-//   - spotBuffer: Ring buffer containing recent spots for historical queries
-//
-// Returns:
-//   - *Processor: Initialized command processor ready for use
-//
-// The processor is stateless and can be safely shared across multiple
-// concurrent telnet client sessions.
-//
-// Example:
-//   processor := commands.NewProcessor(spotBuffer)
-func NewProcessor(spotBuffer *buffer.RingBuffer) *Processor {
+// NewProcessor creates a new command processor
+func NewProcessor(buf *buffer.RingBuffer) *Processor {
 	return &Processor{
-		spotBuffer: spotBuffer,
+		spotBuffer: buf,
 	}
 }
 
-// Process executes a user command and returns the response text.
-//
-// Parameters:
-//   - cmd: Raw command string from telnet client (e.g., "SHOW/DX 20")
-//
-// Returns:
-//   - string: Response text to send back to client
-//            Returns "BYE" as a special signal for disconnect commands
-//
-// Command parsing:
-//  1. Trims whitespace
-//  2. Splits into command and arguments
-//  3. Normalizes command to lowercase
-//  4. Routes to appropriate handler
-//
-// Supported commands:
-//   - HELP, ?           : handleHelp()
-//   - SHOW/DX, SH/DX, DX : handleShowDX()
-//   - SHOW/STATION, SH/STA : handleShowStation()
-//   - BYE, QUIT, EXIT    : Returns "BYE" (signals disconnect)
-//
-// Unknown commands return error message suggesting HELP.
-//
-// Example:
-//   response := processor.Process("SHOW/DX 10")
-//   // Returns: "Last 10 spots:\nDX de W1ABC: ..."
-func (p *Processor) Process(cmd string) string {
-	// Normalize: trim whitespace and check for empty command
+// ProcessCommand processes a command from a client
+func (p *Processor) ProcessCommand(cmd string) string {
 	cmd = strings.TrimSpace(cmd)
+
+	// Empty command
 	if cmd == "" {
 		return ""
 	}
 
-	// Split into command and arguments (whitespace-separated)
-	parts := strings.Fields(cmd)
-	command := strings.ToLower(parts[0])
+	// Split into parts
+	parts := strings.Fields(strings.ToUpper(cmd))
+	command := parts[0]
 
-	// Route to appropriate command handler
 	switch command {
-	case "help", "?":
+	case "HELP", "H":
 		return p.handleHelp()
-
-	case "show/dx", "sh/dx", "dx":
-		return p.handleShowDX(parts[1:])
-
-	case "show/station", "sh/sta":
-		return p.handleShowStation(parts[1:])
-
-	case "bye", "quit", "exit":
-		return "BYE" // Special signal to telnet server to disconnect client
-
+	case "SH", "SHOW":
+		if len(parts) < 2 {
+			return "Usage: SHOW/DX [count]\n"
+		}
+		return p.handleShow(parts[1:])
+	case "BYE", "QUIT", "EXIT":
+		return "BYE"
 	default:
-		return fmt.Sprintf("Unknown command: %s (try HELP)\n", parts[0])
+		return fmt.Sprintf("Unknown command: %s\nType HELP for available commands.\n", command)
 	}
 }
 
-// handleHelp returns formatted help text describing available commands.
-//
-// Returns:
-//   - string: Multi-line help text with command syntax and examples
-//
-// The help text includes:
-//   - Spot query commands (SHOW/DX, SHOW/STATION)
-//   - Filter commands (SET/FILTER, UNSET/FILTER, SHOW/FILTER)
-//   - Connection commands (BYE, QUIT)
-//   - Usage examples
-//
-// Note: Filter commands are documented but not yet implemented in this processor.
-// They are handled by the telnet server's filter integration.
+// handleHelp returns help text
 func (p *Processor) handleHelp() string {
-	return `Available commands:
+	return fmt.Sprintf(`Available commands:
+HELP                 - Show this help
+SHOW/DX [count]      - Show last N DX spots (default: 10)
+BYE                  - Disconnect
 
-Spot Commands:
-  HELP or ?              - Show this help
-  SHOW/DX [n]            - Show last n spots (default 10)
-  SHOW/STATION <call>    - Show spots for a specific station
+Filter commands (use from telnet session):
+	SET/FILTER BAND <band>   - Enable a band filter (valid bands below)
+	SET/FILTER MODE <mode>   - Enable a mode filter (valid modes listed below)
+	UNSET/FILTER MODE <mode> - Disable a mode filter
+	SHOW/FILTER BANDS        - List supported bands
+	SHOW/FILTER MODES        - Show supported modes and enabled state
 
-Filter Commands:
-  SET/FILTER BAND <band> - Filter by band (20M, 40M, etc.)
-  SET/FILTER MODE <mode> - Filter by mode (CW, SSB, FT8, etc.)
-  SET/FILTER CALL <call> - Filter by callsign pattern (W1*, LZ5VV, etc.)
-  SHOW/FILTER            - Show current filters
-  UNSET/FILTER ALL       - Clear all filters
-  UNSET/FILTER BAND      - Clear band filters
-  UNSET/FILTER MODE      - Clear mode filters
-  UNSET/FILTER CALL      - Clear callsign filters
-
-Other:
-  BYE or QUIT            - Disconnect from cluster
+Supported modes: %s
+Supported bands: %s
 
 Examples:
-  SHOW/DX 20             - Show last 20 spots
-  SHOW/STATION LZ5VV     - Show all spots for LZ5VV
-  SET/FILTER BAND 20M    - Only show 20 meter spots
-  SET/FILTER MODE CW     - Only show CW spots
-  SET/FILTER CALL W1*    - Only show W1 callsigns
-  UNSET/FILTER ALL       - Remove all filters
-`
+	SHOW/DX            - Show last 10 spots
+	SET/FILTER MODE FT8
+`, strings.Join(filter.SupportedModes, ", "), strings.Join(spot.SupportedBandNames(), ", "))
 }
 
-// handleShowDX returns the N most recent spots from the ring buffer.
-//
-// Parameters:
-//   - args: Command arguments (optional: number of spots to show)
-//
-// Returns:
-//   - string: Formatted list of recent spots in DX Cluster format
-//
-// Behavior:
-//   - Default: Shows last 10 spots
-//   - With argument: Shows last N spots (max 100)
-//   - Invalid argument: Falls back to 10 spots
-//   - No spots available: Returns "No spots available."
-//
-// Output format:
-//   Last N spots:
-//   DX de W1ABC:     14074.5 LZ5VV FT8 2359Z
-//   DX de K3XYZ:     7074.0  DL1ABC FT8 2358Z
-//   ...
-//
-// Examples:
-//   handleShowDX([])      → Shows last 10 spots
-//   handleShowDX(["20"])  → Shows last 20 spots
-//   handleShowDX(["200"]) → Shows last 100 spots (capped at 100)
-func (p *Processor) handleShowDX(args []string) string {
-	// Default to 10 spots
-	count := 10
+// handleShow handles the SHOW command
+func (p *Processor) handleShow(args []string) string {
+	if len(args) == 0 {
+		return "Usage: SHOW/DX [count]\n"
+	}
 
-	// Parse count argument if provided
+	subCmd := args[0]
+
+	switch subCmd {
+	case "DX":
+		return p.handleShowDX(args[1:])
+	default:
+		return fmt.Sprintf("Unknown SHOW subcommand: %s\n", subCmd)
+	}
+}
+
+// handleShowDX shows recent DX spots
+func (p *Processor) handleShowDX(args []string) string {
+	count := 10 // Default count
+
+	// Parse count if provided
 	if len(args) > 0 {
-		if n, err := strconv.Atoi(args[0]); err == nil && n > 0 {
-			count = n
-			if count > 100 {
-				count = 100 // Cap at 100 spots to avoid overwhelming client
-			}
+		var err error
+		_, err = fmt.Sscanf(args[0], "%d", &count)
+		if err != nil || count < 1 || count > 100 {
+			return "Invalid count. Use 1-100.\n"
 		}
 	}
 
-	// Get recent spots from ring buffer (thread-safe)
+	// Get recent spots
 	spots := p.spotBuffer.GetRecent(count)
 
 	if len(spots) == 0 {
 		return "No spots available.\n"
 	}
 
-	// Build response with formatted spots
+	// Build response
 	var result strings.Builder
-	result.WriteString(fmt.Sprintf("Last %d spots:\n", len(spots)))
-	for _, s := range spots {
-		// Use DX Cluster format: "DX de W1ABC:     14074.5 LZ5VV FT8 2359Z"
-		result.WriteString(s.FormatDXCluster())
-		result.WriteString("\n")
-	}
-
-	return result.String()
-}
-
-// handleShowStation returns all spots for a specific callsign.
-//
-// Parameters:
-//   - args: Command arguments (required: callsign to search for)
-//
-// Returns:
-//   - string: Formatted list of spots for the specified callsign
-//
-// Behavior:
-//   - Searches entire ring buffer for matching callsign
-//   - Matches on DXCall (spotted station), not DECall (spotter)
-//   - Case-insensitive callsign matching
-//   - Returns all matching spots in chronological order
-//
-// Output format:
-//   Spots for LZ5VV:
-//   DX de W1ABC:     14074.5 LZ5VV FT8 2359Z
-//   DX de K3XYZ:     7074.0  LZ5VV FT8 2358Z
-//   ...
-//
-// Examples:
-//   handleShowStation(["LZ5VV"])   → Shows all spots for LZ5VV
-//   handleShowStation([])          → Returns usage message
-//   handleShowStation(["NOTHERE"]) → Returns "No spots found for NOTHERE"
-func (p *Processor) handleShowStation(args []string) string {
-	if len(args) == 0 {
-		return "Usage: SHOW/STATION <callsign>\n"
-	}
-
-	// Normalize callsign to uppercase for matching
-	callsign := strings.ToUpper(args[0])
-
-	// Get all spots from buffer and filter by callsign
-	allSpots := p.spotBuffer.GetAll()
-	var filtered []*spot.Spot
-
-	for _, s := range allSpots {
-		// Match on DXCall (spotted station)
-		if s.DXCall == callsign {
-			filtered = append(filtered, s)
-		}
-	}
-
-	if len(filtered) == 0 {
-		return fmt.Sprintf("No spots found for %s\n", callsign)
-	}
-
-	// Build response with formatted spots
-	var result strings.Builder
-	result.WriteString(fmt.Sprintf("Spots for %s:\n", callsign))
-	for _, s := range filtered {
-		result.WriteString(s.FormatDXCluster())
-		result.WriteString("\n")
+	for _, spot := range spots {
+		result.WriteString(spot.FormatDXCluster())
+		result.WriteString("\r\n")
 	}
 
 	return result.String()
