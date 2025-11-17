@@ -252,6 +252,7 @@ func (s *Server) snapshotClientShards() [][]*Client {
 }
 
 func (s *Server) broadcastWorker(id int, jobs <-chan *broadcastJob) {
+	log.Printf("Broadcast worker %d started", id)
 	for {
 		select {
 		case <-s.shutdown:

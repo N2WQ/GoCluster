@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"dxcluster/cty"
 	"dxcluster/spot"
 )
 
@@ -25,10 +26,11 @@ type Client struct {
 	connected bool
 	shutdown  chan struct{}
 	spotChan  chan *spot.Spot
+	lookup    *cty.CTYDatabase
 }
 
 // NewClient creates a new RBN client
-func NewClient(host string, port int, callsign string, name string) *Client {
+func NewClient(host string, port int, callsign string, name string, lookup *cty.CTYDatabase) *Client {
 	return &Client{
 		host:     host,
 		port:     port,
@@ -36,6 +38,7 @@ func NewClient(host string, port int, callsign string, name string) *Client {
 		name:     name,
 		shutdown: make(chan struct{}),
 		spotChan: make(chan *spot.Spot, 100),
+		lookup:   lookup,
 	}
 }
 
@@ -282,8 +285,19 @@ func (c *Client) parseSpot(line string) {
 		signalDB = 0 // Default to 0 if parse fails
 	}
 
+	dxInfo, ok := c.fetchCallsignInfo(dxCall, "DX", line)
+	if !ok {
+		return
+	}
+	deInfo, ok := c.fetchCallsignInfo(deCall, "DE", line)
+	if !ok {
+		return
+	}
+
 	// Create spot
 	s := spot.NewSpot(dxCall, deCall, freq, mode)
+	s.DXMetadata = metadataFromPrefix(dxInfo)
+	s.DEMetadata = metadataFromPrefix(deInfo)
 
 	// CRITICAL: Set the time from the RBN spot, not current time
 	// This ensures identical spots generate identical hashes for deduplication
@@ -308,11 +322,12 @@ func (c *Client) parseSpot(line string) {
 
 	// Determine source type for all modes: FT8/FT4 are digital, others are RBN (CW/RTTY)
 	modeUpper := strings.ToUpper(mode)
-	if modeUpper == "FT8" {
+	switch modeUpper {
+	case "FT8":
 		s.SourceType = spot.SourceFT8
-	} else if modeUpper == "FT4" {
+	case "FT4":
 		s.SourceType = spot.SourceFT4
-	} else {
+	default:
 		s.SourceType = spot.SourceRBN
 	}
 
@@ -330,6 +345,29 @@ func (c *Client) parseSpot(line string) {
 		// Spot sent successfully (logging handled by stats tracker)
 	default:
 		log.Println("RBN: Spot channel full, dropping spot")
+	}
+}
+
+func (c *Client) fetchCallsignInfo(call string, role string, line string) (*cty.PrefixInfo, bool) {
+	if c.lookup == nil {
+		return nil, true
+	}
+	info, ok := c.lookup.LookupCallsign(call)
+	if !ok {
+		log.Printf("RBN: unknown %s call %s in line: %s", role, call, line)
+	}
+	return info, ok
+}
+
+func metadataFromPrefix(info *cty.PrefixInfo) spot.CallMetadata {
+	if info == nil {
+		return spot.CallMetadata{}
+	}
+	return spot.CallMetadata{
+		Continent: info.Continent,
+		Country:   info.Country,
+		CQZone:    info.CQZone,
+		ITUZone:   info.ITUZone,
 	}
 }
 

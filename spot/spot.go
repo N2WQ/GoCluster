@@ -21,20 +21,29 @@ const (
 
 // Spot represents a DX spot in canonical form
 type Spot struct {
-	ID         uint64     // Unique spot ID (monotonic counter)
-	DXCall     string     // Station being spotted (e.g., "LZ5VV")
-	DECall     string     // Station reporting the spot (e.g., "W1ABC")
-	DELocation string     // Location of reporting station (e.g., "FN42")
-	Frequency  float64    // Frequency in kHz (e.g., 14074.5)
-	Band       string     // Band (e.g., "20m")
-	Mode       string     // Mode (e.g., "CW", "SSB", "FT8")
-	Report     int        // Signal report in dB (SNR for digital modes, signal strength for CW)
-	Time       time.Time  // When the spot was created
-	Comment    string     // User comment or additional info
-	SourceType SourceType // Where this spot came from
-	SourceNode string     // Originating node/cluster
-	TTL        uint8      // Time-to-live for loop prevention
-	Tags       []string   // Additional metadata tags
+	ID         uint64       // Unique spot ID (monotonic counter)
+	DXCall     string       // Station being spotted (e.g., "LZ5VV")
+	DECall     string       // Station reporting the spot (e.g., "W1ABC")
+	Frequency  float64      // Frequency in kHz (e.g., 14074.5)
+	Band       string       // Band (e.g., "20m")
+	Mode       string       // Mode (e.g., "CW", "SSB", "FT8")
+	Report     int          // Signal report in dB (SNR for digital modes, signal strength for CW)
+	Time       time.Time    // When the spot was created
+	Comment    string       // User comment or additional info
+	SourceType SourceType   // Where this spot came from
+	SourceNode string       // Originating node/cluster
+	TTL        uint8        // Time-to-live for loop prevention
+	DXMetadata CallMetadata // Metadata for the DX station
+	DEMetadata CallMetadata // Metadata for the spotter station
+}
+
+// CallMetadata stores geographic metadata for a callsign
+type CallMetadata struct {
+	Continent string
+	Country   string
+	CQZone    int
+	Grid      string
+	ITUZone   int
 }
 
 // NewSpot creates a new spot with sensible defaults
@@ -48,7 +57,6 @@ func NewSpot(dxCall, deCall string, freq float64, mode string) *Spot {
 		Time:       time.Now().UTC(),
 		SourceType: SourceManual,
 		TTL:        5, // Default hop count
-		Tags:       make([]string, 0),
 		Report:     0, // 0 means no report available
 	}
 }
@@ -108,7 +116,7 @@ func (s *Spot) FormatDXCluster() string {
 		// For CW and RTTY: no sign (signal strength is always positive)
 		// For FT8, FT4 and other digital modes: include sign (SNR can be negative)
 		if mode == "CW" || mode == "RTTY" {
-			reportStr = fmt.Sprintf("%d", s.Report) // No sign for CW/RTTY
+			reportStr = fmt.Sprintf("%d dB", s.Report)
 		} else {
 			// FT8, FT4, and other digital modes use SNR with sign
 			reportStr = fmt.Sprintf("%+d", s.Report) // Always show sign for digital modes
@@ -145,20 +153,21 @@ func (s *Spot) FormatDXCluster() string {
 		spacesNeeded = 1 // Minimum 1 space
 	}
 
-	// 4. Build the left part:
-	//    - Prefix (DX de CALL:)
-	//    - Variable spaces
-	//    - Frequency (ends at position 24)
-	//    - Two spaces (positions 25-26)
-	//    - DX callsign (8 chars, positions 27-34)
-	//    - Five spaces (positions 35-39)
-	//    - Comment section starts at position 40
-	leftPart := fmt.Sprintf("%s%s%s  %-8s     %s",
+	// 4. Build the left part up through the DX callsign field
+	leftPart := fmt.Sprintf("%s%s%s  %-8s",
 		prefix,                            // "DX de CALL:"
 		strings.Repeat(" ", spacesNeeded), // Variable spaces to align frequency
 		freqStr,                           // Frequency (ends at position 24)
 		s.DXCall,                          // DX callsign, 8 chars left-aligned (positions 27-34)
-		commentSection)                    // Mode + report + comment starting at position 40
+	)
+
+	// 5. Insert enough spaces so the comment starts at column 40
+	spacesToComment := 40 - len(leftPart)
+	if spacesToComment < 1 {
+		spacesToComment = 1
+	}
+	leftPart += strings.Repeat(" ", spacesToComment)
+	leftPart += commentSection
 
 	// Pad the left part to exactly 75 characters so time starts at column 75
 	// If leftPart is already >= 75 chars, truncate it to 75

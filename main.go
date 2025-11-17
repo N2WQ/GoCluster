@@ -12,6 +12,7 @@ import (
 	"dxcluster/buffer"
 	"dxcluster/commands"
 	"dxcluster/config"
+	"dxcluster/cty"
 	"dxcluster/dedup"
 	"dxcluster/filter"
 	"dxcluster/pskreporter"
@@ -38,6 +39,12 @@ func main() {
 
 	// Print the configuration
 	cfg.Print()
+
+	// Load CTY database for callsign validation
+	ctyDB, err := cty.LoadCTYDatabase("data/cty/cty.plist")
+	if err != nil {
+		log.Printf("Warning: failed to load CTY database: %v", err)
+	}
 
 	// Create stats tracker
 	statsTracker := stats.NewTracker()
@@ -88,7 +95,7 @@ func main() {
 	// RBN spots go INTO the deduplicator input channel
 	var rbnClient *rbn.Client
 	if cfg.RBN.Enabled {
-		rbnClient = rbn.NewClient(cfg.RBN.Host, cfg.RBN.Port, cfg.RBN.Callsign, cfg.RBN.Name)
+		rbnClient = rbn.NewClient(cfg.RBN.Host, cfg.RBN.Port, cfg.RBN.Callsign, cfg.RBN.Name, ctyDB)
 		err = rbnClient.Connect()
 		if err != nil {
 			log.Printf("Warning: Failed to connect to RBN CW/RTTY: %v", err)
@@ -108,7 +115,7 @@ func main() {
 	// RBN Digital spots go INTO the deduplicator input channel
 	var rbnDigitalClient *rbn.Client
 	if cfg.RBNDigital.Enabled {
-		rbnDigitalClient = rbn.NewClient(cfg.RBNDigital.Host, cfg.RBNDigital.Port, cfg.RBNDigital.Callsign, cfg.RBNDigital.Name)
+		rbnDigitalClient = rbn.NewClient(cfg.RBNDigital.Host, cfg.RBNDigital.Port, cfg.RBNDigital.Callsign, cfg.RBNDigital.Name, ctyDB)
 		err = rbnDigitalClient.Connect()
 		if err != nil {
 			log.Printf("Warning: Failed to connect to RBN Digital: %v", err)
@@ -128,7 +135,7 @@ func main() {
 	// PSKReporter spots go INTO the deduplicator input channel
 	var pskrClient *pskreporter.Client
 	if cfg.PSKReporter.Enabled {
-		pskrClient = pskreporter.NewClient(cfg.PSKReporter.Broker, cfg.PSKReporter.Port, cfg.PSKReporter.Topic, cfg.PSKReporter.Name, cfg.PSKReporter.Workers)
+		pskrClient = pskreporter.NewClient(cfg.PSKReporter.Broker, cfg.PSKReporter.Port, cfg.PSKReporter.Topic, cfg.PSKReporter.Name, cfg.PSKReporter.Workers, ctyDB)
 		err = pskrClient.Connect()
 		if err != nil {
 			log.Printf("Warning: Failed to connect to PSKReporter: %v", err)

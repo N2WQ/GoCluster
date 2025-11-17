@@ -1,13 +1,13 @@
 # DX Cluster Configuration
 server:
-  name: "Experimental DX Cluster"
+  name: "Go Cluster beta 1"
   node_id: "N2WQ-22"
   
 telnet:
   port: 7300
   tls_enabled: false
   max_connections: 5000
-  welcome_message: "Welcome to My DX Cluster\nPlease login with your callsign\n"
+  welcome_message: "Experimental DX Cluster\nPlease login with your callsign\n"
   broadcast_workers: 0  # 0 means automatic (half of the CPU cores, minimum 2)
 
 # RBN CW/RTTY feed (port 7000)

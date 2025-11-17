@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"dxcluster/cty"
 	"dxcluster/spot"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -24,6 +25,7 @@ type Client struct {
 	spotChan   chan *spot.Spot
 	shutdown   chan struct{}
 	workers    int
+	lookup     *cty.CTYDatabase
 	processing chan []byte
 	workerWg   sync.WaitGroup
 	queueDrops uint64
@@ -50,7 +52,7 @@ const (
 )
 
 // NewClient creates a new PSKReporter MQTT client
-func NewClient(broker string, port int, topic string, name string, workers int) *Client {
+func NewClient(broker string, port int, topic string, name string, workers int, lookup *cty.CTYDatabase) *Client {
 	return &Client{
 		broker:   broker,
 		port:     port,
@@ -59,6 +61,7 @@ func NewClient(broker string, port int, topic string, name string, workers int) 
 		spotChan: make(chan *spot.Spot, 1000), // Buffer 1000 spots
 		shutdown: make(chan struct{}),
 		workers:  workers,
+		lookup:   lookup,
 	}
 }
 
@@ -161,6 +164,7 @@ func (c *Client) startWorkerPool() {
 }
 
 func (c *Client) workerLoop(id int) {
+	log.Printf("PSKReporter worker %d started", id)
 	defer c.workerWg.Done()
 	for {
 		select {
@@ -248,7 +252,35 @@ func (c *Client) convertToSpot(msg *PSKRMessage) *spot.Spot {
 	s.SourceType = spot.SourcePSKReporter
 	s.SourceNode = "PSKREPORTER"
 
+	c.applyMetadata(s, msg)
+
 	return s
+}
+
+func (c *Client) applyMetadata(s *spot.Spot, msg *PSKRMessage) {
+	if c.lookup == nil {
+		return
+	}
+	if dxInfo, ok := c.lookup.LookupCallsign(s.DXCall); ok {
+		s.DXMetadata = metadataFromPrefix(dxInfo)
+	}
+	if deInfo, ok := c.lookup.LookupCallsign(s.DECall); ok {
+		s.DEMetadata = metadataFromPrefix(deInfo)
+	}
+	s.DXMetadata.Grid = msg.SenderLocator
+	s.DEMetadata.Grid = msg.ReceiverLocator
+}
+
+func metadataFromPrefix(info *cty.PrefixInfo) spot.CallMetadata {
+	if info == nil {
+		return spot.CallMetadata{}
+	}
+	return spot.CallMetadata{
+		Continent: info.Continent,
+		Country:   info.Country,
+		CQZone:    info.CQZone,
+		ITUZone:   info.ITUZone,
+	}
 }
 
 func (c *Client) stopWorkerPool() {
