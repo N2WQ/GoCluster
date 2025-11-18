@@ -6,6 +6,8 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"howett.net/plist"
 )
@@ -28,6 +30,28 @@ type PrefixInfo struct {
 type CTYDatabase struct {
 	Data map[string]PrefixInfo
 	Keys []string
+	// cache stores normalized callsign lookups (hits and misses).
+	cache sync.Map
+	// metrics track lookup/caching behavior for stats reporting.
+	totalLookups       atomic.Uint64
+	cacheHits          atomic.Uint64
+	cacheEntries       atomic.Uint64
+	validated          atomic.Uint64
+	validatedFromCache atomic.Uint64
+}
+
+type cacheEntry struct {
+	info *PrefixInfo
+	ok   bool
+}
+
+// LookupMetrics summarizes callsign lookup behavior.
+type LookupMetrics struct {
+	TotalLookups       uint64
+	CacheHits          uint64
+	CacheEntries       uint64
+	Validated          uint64
+	ValidatedFromCache uint64
 }
 
 // LoadCTYDatabase loads cty.plist into a lookup database.
@@ -88,8 +112,35 @@ func normalizeCallsign(cs string) string {
 // LookupCallsign returns metadata for the callsign or false if unknown.
 func (db *CTYDatabase) LookupCallsign(cs string) (*PrefixInfo, bool) {
 	cs = normalizeCallsign(cs)
+	db.totalLookups.Add(1)
+	if cached, ok := db.cache.Load(cs); ok {
+		db.cacheHits.Add(1)
+		entry := cached.(cacheEntry)
+		if entry.ok {
+			db.validated.Add(1)
+			db.validatedFromCache.Add(1)
+		}
+		return entry.info, entry.ok
+	}
+
+	info, ok := db.lookupCallsignNoCache(cs)
+	if ok {
+		db.validated.Add(1)
+	}
+
+	entry := cacheEntry{info: info, ok: ok}
+	actual, loaded := db.cache.LoadOrStore(cs, entry)
+	if loaded {
+		entry = actual.(cacheEntry)
+	} else {
+		db.cacheEntries.Add(1)
+	}
+	return entry.info, entry.ok
+}
+
+func (db *CTYDatabase) lookupCallsignNoCache(cs string) (*PrefixInfo, bool) {
 	if info, ok := db.Data[cs]; ok {
-		return &info, true
+		return clonePrefix(info), true
 	}
 
 	for _, key := range db.Keys {
@@ -98,7 +149,7 @@ func (db *CTYDatabase) LookupCallsign(cs string) (*PrefixInfo, bool) {
 		}
 		if strings.HasPrefix(cs, key) {
 			info := db.Data[key]
-			return &info, true
+			return clonePrefix(info), true
 		}
 	}
 	return nil, false
@@ -114,4 +165,23 @@ func (db *CTYDatabase) KeysWithPrefix(pref string) []string {
 		}
 	}
 	return matches
+}
+
+func clonePrefix(info PrefixInfo) *PrefixInfo {
+	copy := info
+	return &copy
+}
+
+// Metrics returns snapshot of lookup/cache counters.
+func (db *CTYDatabase) Metrics() LookupMetrics {
+	if db == nil {
+		return LookupMetrics{}
+	}
+	return LookupMetrics{
+		TotalLookups:       db.totalLookups.Load(),
+		CacheHits:          db.cacheHits.Load(),
+		CacheEntries:       db.cacheEntries.Load(),
+		Validated:          db.validated.Load(),
+		ValidatedFromCache: db.validatedFromCache.Load(),
+	}
 }

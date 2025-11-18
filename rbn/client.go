@@ -289,19 +289,19 @@ func (c *Client) parseSpot(line string) {
 	}
 
 	if !spot.IsValidCallsign(dxCall) {
-		log.Printf("RBN: invalid DX call %s", dxCall)
+		// log.Printf("RBN: invalid DX call %s", dxCall) // noisy: caller requested silence
 		return
 	}
 	if !spot.IsValidCallsign(deCall) {
-		log.Printf("RBN: invalid DE call %s", deCall)
+		// log.Printf("RBN: invalid DE call %s", deCall) // noisy: caller requested silence
 		return
 	}
 
-	dxInfo, ok := c.fetchCallsignInfo(dxCall, "DX", line)
+	dxInfo, ok := c.fetchCallsignInfo(dxCall)
 	if !ok {
 		return
 	}
-	deInfo, ok := c.fetchCallsignInfo(deCall, "DE", line)
+	deInfo, ok := c.fetchCallsignInfo(deCall)
 	if !ok {
 		return
 	}
@@ -361,14 +361,14 @@ func (c *Client) parseSpot(line string) {
 	}
 }
 
-func (c *Client) fetchCallsignInfo(call string, role string, line string) (*cty.PrefixInfo, bool) {
+func (c *Client) fetchCallsignInfo(call string) (*cty.PrefixInfo, bool) {
 	if c.lookup == nil {
 		return nil, true
 	}
 	info, ok := c.lookup.LookupCallsign(call)
-	if !ok {
-		log.Printf("RBN: unknown %s call %s in line: %s", role, call, line)
-	}
+	// if !ok {
+	// 	log.Printf("RBN: unknown call %s", call)
+	// }
 	return info, ok
 }
 

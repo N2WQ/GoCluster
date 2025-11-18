@@ -10,15 +10,18 @@ import (
 
 // Config represents the complete cluster configuration
 type Config struct {
-	Server      ServerConfig      `yaml:"server"`
-	Telnet      TelnetConfig      `yaml:"telnet"`
-	RBN         RBNConfig         `yaml:"rbn"`
-	RBNDigital  RBNConfig         `yaml:"rbn_digital"`
-	PSKReporter PSKReporterConfig `yaml:"pskreporter"`
-	Dedup       DedupConfig       `yaml:"dedup"`
-	Filter      FilterConfig      `yaml:"filter"`
-	Admin       AdminConfig       `yaml:"admin"`
-	Logging     LoggingConfig     `yaml:"logging"`
+	Server         ServerConfig         `yaml:"server"`
+	Telnet         TelnetConfig         `yaml:"telnet"`
+	RBN            RBNConfig            `yaml:"rbn"`
+	RBNDigital     RBNConfig            `yaml:"rbn_digital"`
+	PSKReporter    PSKReporterConfig    `yaml:"pskreporter"`
+	Dedup          DedupConfig          `yaml:"dedup"`
+	Filter         FilterConfig         `yaml:"filter"`
+	Admin          AdminConfig          `yaml:"admin"`
+	Logging        LoggingConfig        `yaml:"logging"`
+	Stats          StatsConfig          `yaml:"stats"`
+	CallCorrection CallCorrectionConfig `yaml:"call_correction"`
+	Harmonics      HarmonicConfig       `yaml:"harmonics"`
 }
 
 // ServerConfig contains general server settings
@@ -102,6 +105,44 @@ type FilterConfig struct {
 	DefaultModes []string `yaml:"default_modes"`
 }
 
+// StatsConfig controls periodic runtime reporting.
+type StatsConfig struct {
+	DisplayIntervalSeconds int `yaml:"display_interval_seconds"`
+}
+
+// CallCorrectionConfig controls consensus-based DX call corrections.
+type CallCorrectionConfig struct {
+	Enabled bool `yaml:"enabled"`
+	// MinConsensusReports defines how many other unique spotters
+	// must agree on an alternate callsign before we consider correcting it.
+	MinConsensusReports int `yaml:"min_consensus_reports"`
+	// MinAdvantage defines how many more corroborators the alternate call
+	// must have compared to the original before a correction can happen.
+	MinAdvantage int `yaml:"min_advantage"`
+	// MinConfidencePercent defines the minimum percentage (0-100) of total
+	// unique spotters on that frequency that must agree with the alternate call.
+	MinConfidencePercent int `yaml:"min_confidence_percent"`
+	// RecencySeconds defines how old the supporting spots can be.
+	RecencySeconds int `yaml:"recency_seconds"`
+	// MaxEditDistance bounds how different the alternate call can be from the
+	// original (Levenshtein distance). Prevents wildly different corrections.
+	MaxEditDistance int `yaml:"max_edit_distance"`
+	// InvalidAction controls what to do when consensus suggests a callsign that
+	// fails CTY validation. Supported values:
+	//   - "broadcast": keep the original spot (default)
+	//   - "suppress": drop the spot entirely
+	InvalidAction string `yaml:"invalid_action"`
+}
+
+// HarmonicConfig controls detection and suppression of harmonic spots.
+type HarmonicConfig struct {
+	Enabled              bool    `yaml:"enabled"`
+	RecencySeconds       int     `yaml:"recency_seconds"`
+	MaxHarmonicMultiple  int     `yaml:"max_harmonic_multiple"`
+	FrequencyToleranceHz float64 `yaml:"frequency_tolerance_hz"`
+	MinReportDelta       int     `yaml:"min_report_delta"`
+}
+
 // Load loads configuration from a YAML file
 func Load(filename string) (*Config, error) {
 	data, err := os.ReadFile(filename)
@@ -114,6 +155,40 @@ func Load(filename string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
+	if cfg.Stats.DisplayIntervalSeconds <= 0 {
+		cfg.Stats.DisplayIntervalSeconds = 30
+	}
+	if cfg.CallCorrection.MinConsensusReports <= 0 {
+		cfg.CallCorrection.MinConsensusReports = 4
+	}
+	if cfg.CallCorrection.MinAdvantage <= 0 {
+		cfg.CallCorrection.MinAdvantage = 1
+	}
+	if cfg.CallCorrection.MinConfidencePercent <= 0 {
+		cfg.CallCorrection.MinConfidencePercent = 70
+	}
+	if cfg.CallCorrection.MaxEditDistance <= 0 {
+		cfg.CallCorrection.MaxEditDistance = 2
+	}
+	if cfg.CallCorrection.RecencySeconds <= 0 {
+		cfg.CallCorrection.RecencySeconds = 45
+	}
+	if cfg.CallCorrection.InvalidAction == "" {
+		cfg.CallCorrection.InvalidAction = "broadcast"
+	}
+
+	if cfg.Harmonics.RecencySeconds <= 0 {
+		cfg.Harmonics.RecencySeconds = 120
+	}
+	if cfg.Harmonics.MaxHarmonicMultiple < 2 {
+		cfg.Harmonics.MaxHarmonicMultiple = 4
+	}
+	if cfg.Harmonics.FrequencyToleranceHz <= 0 {
+		cfg.Harmonics.FrequencyToleranceHz = 20
+	}
+	if cfg.Harmonics.MinReportDelta <= 0 {
+		cfg.Harmonics.MinReportDelta = 6
+	}
 	return &cfg, nil
 }
 
@@ -140,4 +215,28 @@ func (c *Config) Print() {
 	if len(c.Filter.DefaultModes) > 0 {
 		fmt.Printf("Default modes: %s\n", strings.Join(c.Filter.DefaultModes, ", "))
 	}
+	fmt.Printf("Stats interval: %ds\n", c.Stats.DisplayIntervalSeconds)
+	status := "disabled"
+	if c.CallCorrection.Enabled {
+		status = "enabled"
+	}
+	fmt.Printf("Call correction: %s (min_reports=%d advantage>%d confidence>=%d%% recency=%ds max_edit=%d invalid_action=%s)\n",
+		status,
+		c.CallCorrection.MinConsensusReports,
+		c.CallCorrection.MinAdvantage,
+		c.CallCorrection.MinConfidencePercent,
+		c.CallCorrection.RecencySeconds,
+		c.CallCorrection.MaxEditDistance,
+		c.CallCorrection.InvalidAction)
+
+	harmonicStatus := "disabled"
+	if c.Harmonics.Enabled {
+		harmonicStatus = "enabled"
+	}
+	fmt.Printf("Harmonics: %s (recency=%ds max_multiple=%d tolerance=%.1fHz min_report_delta=%ddB)\n",
+		harmonicStatus,
+		c.Harmonics.RecencySeconds,
+		c.Harmonics.MaxHarmonicMultiple,
+		c.Harmonics.FrequencyToleranceHz,
+		c.Harmonics.MinReportDelta)
 }

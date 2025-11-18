@@ -216,11 +216,11 @@ func (c *Client) convertToSpot(msg *PSKRMessage) *spot.Spot {
 	dxCall := spot.NormalizeCallsign(msg.SenderCall)
 	deCall := spot.NormalizeCallsign(msg.ReceiverCall)
 	if !spot.IsValidCallsign(dxCall) {
-		log.Printf("PSKReporter: invalid DX call %s", msg.SenderCall)
+		// log.Printf("PSKReporter: invalid DX call %s", msg.SenderCall) // noisy: caller requested silence
 		return nil
 	}
 	if !spot.IsValidCallsign(deCall) {
-		log.Printf("PSKReporter: invalid DE call %s", msg.ReceiverCall)
+		// log.Printf("PSKReporter: invalid DE call %s", msg.ReceiverCall) // noisy: caller requested silence
 		return nil
 	}
 
@@ -246,11 +246,11 @@ func (c *Client) convertToSpot(msg *PSKRMessage) *spot.Spot {
 	// Convert frequency from Hz to kHz
 	freqKHz := float64(msg.Frequency) / 1000.0
 
-	dxInfo, ok := c.fetchCallsignInfo(dxCall, "DX")
+	dxInfo, ok := c.fetchCallsignInfo(dxCall)
 	if !ok {
 		return nil
 	}
-	deInfo, ok := c.fetchCallsignInfo(deCall, "DE")
+	deInfo, ok := c.fetchCallsignInfo(deCall)
 	if !ok {
 		return nil
 	}
@@ -299,13 +299,13 @@ func metadataFromPrefix(info *cty.PrefixInfo) spot.CallMetadata {
 	}
 }
 
-func (c *Client) fetchCallsignInfo(call string, role string) (*cty.PrefixInfo, bool) {
+func (c *Client) fetchCallsignInfo(call string) (*cty.PrefixInfo, bool) {
 	if c.lookup == nil {
 		return nil, true
 	}
 	info, ok := c.lookup.LookupCallsign(call)
 	if !ok {
-		log.Printf("PSKReporter: unknown %s call %s", role, call)
+		// log.Printf("PSKReporter: unknown call %s", call) // suppressed per user request
 	}
 	return info, ok
 }

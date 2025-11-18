@@ -90,3 +90,76 @@ func TestLongerPrefixFallback(t *testing.T) {
 		t.Fatalf("expected Zed, got %q", info.Country)
 	}
 }
+
+func TestLookupCachesHits(t *testing.T) {
+	db := loadSampleDatabase(t)
+	call := "K1XYZ"
+	info, ok := db.LookupCallsign(call)
+	if !ok {
+		t.Fatalf("expected prefix match for %s", call)
+	}
+	cachedRaw, ok := db.cache.Load(normalizeCallsign(call))
+	if !ok {
+		t.Fatalf("expected cache entry for %s", call)
+	}
+	entry := cachedRaw.(cacheEntry)
+	if !entry.ok || entry.info == nil {
+		t.Fatalf("expected cached hit with info")
+	}
+	if entry.info.Prefix != info.Prefix {
+		t.Fatalf("cache info mismatch: want %s got %s", info.Prefix, entry.info.Prefix)
+	}
+	again, ok := db.LookupCallsign(call)
+	if !ok || again != entry.info {
+		t.Fatalf("expected cached pointer to be reused")
+	}
+}
+
+func TestLookupCachesMisses(t *testing.T) {
+	db := loadSampleDatabase(t)
+	call := "ZZ9ZZA"
+	if _, ok := db.LookupCallsign(call); ok {
+		t.Fatalf("expected %s to miss", call)
+	}
+	norm := normalizeCallsign(call)
+	cachedRaw, ok := db.cache.Load(norm)
+	if !ok {
+		t.Fatalf("expected cache miss entry for %s", call)
+	}
+	entry := cachedRaw.(cacheEntry)
+	if entry.ok || entry.info != nil {
+		t.Fatalf("expected cached miss entry to record failure")
+	}
+	if _, ok := db.LookupCallsign(call); ok {
+		t.Fatalf("expected cached miss to stay false")
+	}
+}
+
+func TestLookupMetrics(t *testing.T) {
+	db := loadSampleDatabase(t)
+	if _, ok := db.LookupCallsign("K1XYZ"); !ok {
+		t.Fatalf("expected K1XYZ to resolve")
+	}
+	if _, ok := db.LookupCallsign("K1XYZ"); !ok {
+		t.Fatalf("expected K1XYZ cache hit to resolve")
+	}
+	db.LookupCallsign("ZZ9ZZA") // miss uncached
+	db.LookupCallsign("ZZ9ZZA") // miss from cache
+
+	metrics := db.Metrics()
+	if metrics.TotalLookups != 4 {
+		t.Fatalf("unexpected total lookups: %d", metrics.TotalLookups)
+	}
+	if metrics.CacheHits != 2 {
+		t.Fatalf("unexpected cache hits: %d", metrics.CacheHits)
+	}
+	if metrics.CacheEntries != 2 {
+		t.Fatalf("unexpected cache entries: %d", metrics.CacheEntries)
+	}
+	if metrics.Validated != 2 {
+		t.Fatalf("unexpected validated count: %d", metrics.Validated)
+	}
+	if metrics.ValidatedFromCache != 1 {
+		t.Fatalf("unexpected validated-from-cache count: %d", metrics.ValidatedFromCache)
+	}
+}

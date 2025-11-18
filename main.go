@@ -17,6 +17,7 @@ import (
 	"dxcluster/filter"
 	"dxcluster/pskreporter"
 	"dxcluster/rbn"
+	"dxcluster/spot"
 	"dxcluster/stats"
 	"dxcluster/telnet"
 )
@@ -54,6 +55,22 @@ func main() {
 	spotBuffer := buffer.NewRingBuffer(300000)
 	log.Println("Ring buffer created (capacity: 300000)")
 
+	var correctionIndex *spot.CorrectionIndex
+	if cfg.CallCorrection.Enabled {
+		correctionIndex = spot.NewCorrectionIndex()
+	}
+
+	var harmonicDetector *spot.HarmonicDetector
+	if cfg.Harmonics.Enabled {
+		harmonicDetector = spot.NewHarmonicDetector(spot.HarmonicSettings{
+			Enabled:              true,
+			RecencyWindow:        time.Duration(cfg.Harmonics.RecencySeconds) * time.Second,
+			MaxHarmonicMultiple:  cfg.Harmonics.MaxHarmonicMultiple,
+			FrequencyToleranceHz: cfg.Harmonics.FrequencyToleranceHz,
+			MinReportDelta:       cfg.Harmonics.MinReportDelta,
+		})
+	}
+
 	// Create deduplicator if enabled
 	// THIS IS THE UNIFIED DEDUP ENGINE - ALL SOURCES FEED INTO IT
 	var deduplicator *dedup.Deduplicator
@@ -65,7 +82,7 @@ func main() {
 
 		// Wire up dedup output to ring buffer and telnet broadcast
 		// Deduplicated spots → Ring Buffer → Broadcast to clients
-		go processOutputSpots(deduplicator, spotBuffer, nil, statsTracker) // We'll pass telnet server later
+		go processOutputSpots(deduplicator, spotBuffer, nil, statsTracker, nil, cfg.CallCorrection, ctyDB, harmonicDetector, cfg.Harmonics) // We'll pass telnet server later
 	}
 
 	// Create command processor
@@ -88,7 +105,7 @@ func main() {
 	// Now wire up the telnet server to the output processor
 	if cfg.Dedup.Enabled {
 		// Restart the output processor with telnet server
-		go processOutputSpots(deduplicator, spotBuffer, telnetServer, statsTracker)
+		go processOutputSpots(deduplicator, spotBuffer, telnetServer, statsTracker, correctionIndex, cfg.CallCorrection, ctyDB, harmonicDetector, cfg.Harmonics)
 	}
 
 	// Connect to RBN CW/RTTY feed if enabled (port 7000)
@@ -156,7 +173,8 @@ func main() {
 	}
 
 	// Start stats display goroutine
-	go displayStats(statsTracker, deduplicator, spotBuffer, telnetServer, pskrClient)
+	statsInterval := time.Duration(cfg.Stats.DisplayIntervalSeconds) * time.Second
+	go displayStats(statsInterval, statsTracker, deduplicator, spotBuffer, telnetServer, pskrClient, ctyDB)
 
 	// Set up signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
@@ -181,7 +199,7 @@ func main() {
 		fmt.Printf("Unified deduplication active: %d second window\n", cfg.Dedup.ClusterWindowSeconds)
 		fmt.Println("Architecture: ALL sources → Dedup Engine → Ring Buffer → Clients")
 	}
-	fmt.Println("\nStatistics will be displayed every 30 seconds...")
+	fmt.Printf("\nStatistics will be displayed every %d seconds...\n", cfg.Stats.DisplayIntervalSeconds)
 	fmt.Println("---")
 
 	// Wait for shutdown signal
@@ -215,9 +233,12 @@ func main() {
 	log.Println("Cluster stopped")
 }
 
-// displayStats prints statistics every 30 seconds
-func displayStats(tracker *stats.Tracker, dedup *dedup.Deduplicator, buf *buffer.RingBuffer, telnetServer *telnet.Server, pskr *pskreporter.Client) {
-	ticker := time.NewTicker(30 * time.Second)
+// displayStats prints statistics at the configured interval
+func displayStats(interval time.Duration, tracker *stats.Tracker, dedup *dedup.Deduplicator, buf *buffer.RingBuffer, telnetServer *telnet.Server, pskr *pskreporter.Client, ctyDB *cty.CTYDatabase) {
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -243,6 +264,20 @@ func displayStats(tracker *stats.Tracker, dedup *dedup.Deduplicator, buf *buffer
 		if pskr != nil {
 			workers, queueLen, drops := pskr.WorkerStats()
 			fmt.Printf("PSKReporter stats: workers=%d, queue_len=%d, drops=%d\n", workers, queueLen, drops)
+		}
+
+		if ctyDB != nil {
+			metrics := ctyDB.Metrics()
+			cacheHitPercent := 0.0
+			if metrics.TotalLookups > 0 {
+				cacheHitPercent = float64(metrics.CacheHits) / float64(metrics.TotalLookups) * 100
+			}
+			cacheValidatedPercent := 0.0
+			if metrics.Validated > 0 {
+				cacheValidatedPercent = float64(metrics.ValidatedFromCache) / float64(metrics.Validated) * 100
+			}
+			fmt.Printf("CTY lookup stats: total=%d, cache_hits=%d (%.1f%%), cache_entries=%d, validated=%d, cache_validated=%d (%.1f%%)\n",
+				metrics.TotalLookups, metrics.CacheHits, cacheHitPercent, metrics.CacheEntries, metrics.Validated, metrics.ValidatedFromCache, cacheValidatedPercent)
 		}
 
 		// Print ring buffer position and approximate memory usage
@@ -283,28 +318,48 @@ func processPSKRSpots(client *pskreporter.Client, deduplicator *dedup.Deduplicat
 }
 
 // processOutputSpots receives deduplicated spots and distributes them
-// Deduplicator Output → Ring Buffer → Broadcast to Clients
-func processOutputSpots(deduplicator *dedup.Deduplicator, buf *buffer.RingBuffer, telnet *telnet.Server, tracker *stats.Tracker) {
+// Deduplicator Output  Ring Buffer  Broadcast to Clients
+func processOutputSpots(
+	deduplicator *dedup.Deduplicator,
+	buf *buffer.RingBuffer,
+	telnet *telnet.Server,
+	tracker *stats.Tracker,
+	correctionIdx *spot.CorrectionIndex,
+	correctionCfg config.CallCorrectionConfig,
+	ctyDB *cty.CTYDatabase,
+	harmonicDetector *spot.HarmonicDetector,
+	harmonicCfg config.HarmonicConfig,
+) {
 	outputChan := deduplicator.GetOutputChannel()
 
 	for spot := range outputChan {
-		// Track spot by mode (FT8/FT4/CW/MANUAL/etc.) using the spot's Mode
 		modeKey := strings.ToUpper(strings.TrimSpace(spot.Mode))
 		if modeKey == "" {
 			modeKey = string(spot.SourceType)
 		}
 		tracker.IncrementMode(modeKey)
 
-		// Also track spot by higher-level source node (RBN, RBN-DIGITAL, PSKREPORTER, etc.).
-		// Avoid double-counting when the mode key equals the source node (e.g., SourceType=="RBN" and SourceNode=="RBN").
 		if spot.SourceNode != "" && spot.SourceNode != modeKey {
 			tracker.IncrementSource(spot.SourceNode)
 		}
 
-		// Add to ring buffer
+		var suppress bool
+		if telnet != nil {
+			suppress = maybeApplyCallCorrection(spot, correctionIdx, correctionCfg, ctyDB)
+			if suppress {
+				continue
+			}
+		}
+
+		if harmonicDetector != nil && harmonicCfg.Enabled {
+			if drop, fundamental := harmonicDetector.ShouldDrop(spot, time.Now().UTC()); drop {
+				log.Printf("Harmonic suppressed: %s fundamental=%.1fkHz harmonic=%.1fkHz", spot.DXCall, fundamental, spot.Frequency)
+				continue
+			}
+		}
+
 		buf.Add(spot)
 
-		// Broadcast to all connected telnet clients
 		if telnet != nil {
 			telnet.BroadcastSpot(spot)
 		}
@@ -357,4 +412,53 @@ func processPSKRSpotsNoDedupe(client *pskreporter.Client, buf *buffer.RingBuffer
 		buf.Add(spot)
 		telnet.BroadcastSpot(spot)
 	}
+}
+
+func maybeApplyCallCorrection(spotEntry *spot.Spot, idx *spot.CorrectionIndex, cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase) bool {
+	if idx == nil || !cfg.Enabled || spotEntry == nil {
+		return false
+	}
+	if !spot.IsCallCorrectionCandidate(spotEntry.Mode) {
+		return false
+	}
+
+	window := callCorrectionWindow(cfg)
+	now := time.Now().UTC()
+	defer idx.Add(spotEntry, now, window)
+
+	settings := spot.CorrectionSettings{
+		MinConsensusReports:  cfg.MinConsensusReports,
+		MinAdvantage:         cfg.MinAdvantage,
+		MinConfidencePercent: cfg.MinConfidencePercent,
+		MaxEditDistance:      cfg.MaxEditDistance,
+		RecencyWindow:        window,
+	}
+	others := idx.Candidates(spotEntry, now, window)
+	corrected, supporters, confidence, ok := spot.SuggestCallCorrection(spotEntry, others, settings, now)
+
+	if ok && ctyDB != nil {
+		if _, valid := ctyDB.LookupCallsign(corrected); valid {
+			log.Printf("Call correction applied: %s -> %s at %.1f kHz (%d corroborators, %d%% confidence)",
+				spotEntry.DXCall, corrected, spotEntry.Frequency, supporters, confidence)
+			spotEntry.DXCall = corrected
+		} else {
+			log.Printf("Call correction rejected (CTY miss): suggested %s at %.1f kHz", corrected, spotEntry.Frequency)
+			if strings.EqualFold(cfg.InvalidAction, "suppress") {
+				log.Printf("Call correction suppression engaged: dropping spot from %s at %.1f kHz", spotEntry.DXCall, spotEntry.Frequency)
+				return true
+			}
+		}
+	} else if ok && ctyDB == nil {
+		log.Printf("Call correction suggestion ignored (no CTY database): %s -> %s (%d corroborators, %d%% confidence)",
+			spotEntry.DXCall, corrected, supporters, confidence)
+	}
+
+	return false
+}
+
+func callCorrectionWindow(cfg config.CallCorrectionConfig) time.Duration {
+	if cfg.RecencySeconds <= 0 {
+		return 45 * time.Second
+	}
+	return time.Duration(cfg.RecencySeconds) * time.Second
 }

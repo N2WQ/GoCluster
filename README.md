@@ -173,12 +173,15 @@ C:\src\gocluster\
 ## Getting Started
 
 1. Update `config.yaml` with your preferred callsigns for the `rbn`, `rbn_digital`, and optional `pskreporter` sections. Optionally list `pskreporter.modes` (e.g., [`FT8`, `FT4`]) to subscribe to just those MQTT feeds simultaneously.
-2. Install dependencies and run:
+2. Optionally enable/tune `call_correction` (master `enabled` switch, minimum corroborating spotters, required advantage, confidence percent, recency window, max edit distance, and `invalid_action` failover).
+3. Optionally enable/tune `harmonics` to drop harmonic CW/SSB/RTTY spots (master `enabled`, recency window, maximum harmonic multiple, frequency tolerance, and minimum report delta).
+4. Adjust `stats.display_interval_seconds` in `config.yaml` to control how frequently runtime statistics print to the console (defaults to 30 seconds).
+5. Install dependencies and run:
 	 ```pwsh
 	 go mod tidy
 	 go run main.go
 	 ```
-3. Connect via `telnet localhost 7300`, enter your callsign, and the server will immediately stream real-time spots.
+6. Connect via `telnet localhost 7300`, enter your callsign, and the server will immediately stream real-time spots.
 
 ## Testing & Tooling
 

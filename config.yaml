@@ -59,3 +59,25 @@ admin:
 logging:
   level: "info"
   file: "cluster.log"
+
+# Consensus thresholds for automated call corrections (only CW/RTTY/SSB considered)
+call_correction:
+  enabled: true                # Master switch (set true to enable)
+  min_consensus_reports: 5     # Minimum number of corroborating spotters
+  min_advantage: 2             # Candidate must exceed the original by this many spotters
+  min_confidence_percent: 70   # Candidate supporters must represent at least this percent of unique spotters
+  recency_seconds: 61          # Supporting spots must be this recent
+  max_edit_distance: 2         # Max allowed Levenshtein distance between original and replacement
+  invalid_action: "broadcast"  # "broadcast" original if correction fails CTY, or "suppress" to drop spot
+
+# Harmonic suppression for CW/SSB/RTTY signals
+harmonics:
+  enabled: false                # Suppress harmonics when true
+  recency_seconds: 120          # Look-back window for fundamental spots
+  max_harmonic_multiple: 4      # Highest harmonic multiple to consider (2 = second harmonic, etc.)
+  frequency_tolerance_hz: 800   # Allowed deviation between expected and observed harmonic
+  min_report_delta: 6           # Harmonics must be at least this many dB weaker to drop
+
+# Runtime statistics output interval
+stats:
+  display_interval_seconds: 300  # How often to print stats to stdout
