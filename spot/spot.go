@@ -33,6 +33,7 @@ type Spot struct {
 	SourceType SourceType   // Where this spot came from
 	SourceNode string       // Originating node/cluster
 	TTL        uint8        // Time-to-live for loop prevention
+	IsHuman    bool         // Whether the spot originated from a human operator
 	DXMetadata CallMetadata // Metadata for the DX station
 	DEMetadata CallMetadata // Metadata for the spotter station
 }
@@ -58,6 +59,7 @@ func NewSpot(dxCall, deCall string, freq float64, mode string) *Spot {
 		SourceType: SourceManual,
 		TTL:        5, // Default hop count
 		Report:     0, // 0 means no report available
+		IsHuman:    true,
 	}
 }
 

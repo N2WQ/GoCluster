@@ -206,6 +206,17 @@ func (c *Client) convertToSpot(msg *PSKRMessage) *spot.Spot {
 		return nil
 	}
 
+	dxCall := spot.NormalizeCallsign(msg.SenderCall)
+	deCall := spot.NormalizeCallsign(msg.ReceiverCall)
+	if !spot.IsValidCallsign(dxCall) {
+		log.Printf("PSKReporter: invalid DX call %s", msg.SenderCall)
+		return nil
+	}
+	if !spot.IsValidCallsign(deCall) {
+		log.Printf("PSKReporter: invalid DE call %s", msg.ReceiverCall)
+		return nil
+	}
+
 	// Validate timestamp is reasonable (not zero, not too far in past/future)
 	// PSKReporter timestamps are Unix timestamps in seconds
 	if msg.Timestamp == 0 {
@@ -228,10 +239,20 @@ func (c *Client) convertToSpot(msg *PSKRMessage) *spot.Spot {
 	// Convert frequency from Hz to kHz
 	freqKHz := float64(msg.Frequency) / 1000.0
 
+	dxInfo, ok := c.fetchCallsignInfo(dxCall, "DX")
+	if !ok {
+		return nil
+	}
+	deInfo, ok := c.fetchCallsignInfo(deCall, "DE")
+	if !ok {
+		return nil
+	}
+
 	// Create spot
 	// In PSKReporter: sender = DX station, receiver = spotter
 	// In our model: DXCall = sender, DECall = receiver
-	s := spot.NewSpot(msg.SenderCall, msg.ReceiverCall, freqKHz, msg.Mode)
+	s := spot.NewSpot(dxCall, deCall, freqKHz, msg.Mode)
+	s.IsHuman = false
 
 	// CRITICAL: Set the actual observation timestamp from PSKReporter
 	// This overwrites the time.Now() that was set in NewSpot()
@@ -252,25 +273,13 @@ func (c *Client) convertToSpot(msg *PSKRMessage) *spot.Spot {
 	s.SourceType = spot.SourcePSKReporter
 	s.SourceNode = "PSKREPORTER"
 
-	c.applyMetadata(s, msg)
+	s.DXMetadata = metadataFromPrefix(dxInfo)
+	s.DEMetadata = metadataFromPrefix(deInfo)
+	s.DXMetadata.Grid = msg.SenderLocator
+	s.DEMetadata.Grid = msg.ReceiverLocator
 
 	return s
 }
-
-func (c *Client) applyMetadata(s *spot.Spot, msg *PSKRMessage) {
-	if c.lookup == nil {
-		return
-	}
-	if dxInfo, ok := c.lookup.LookupCallsign(s.DXCall); ok {
-		s.DXMetadata = metadataFromPrefix(dxInfo)
-	}
-	if deInfo, ok := c.lookup.LookupCallsign(s.DECall); ok {
-		s.DEMetadata = metadataFromPrefix(deInfo)
-	}
-	s.DXMetadata.Grid = msg.SenderLocator
-	s.DEMetadata.Grid = msg.ReceiverLocator
-}
-
 func metadataFromPrefix(info *cty.PrefixInfo) spot.CallMetadata {
 	if info == nil {
 		return spot.CallMetadata{}
@@ -281,6 +290,17 @@ func metadataFromPrefix(info *cty.PrefixInfo) spot.CallMetadata {
 		CQZone:    info.CQZone,
 		ITUZone:   info.ITUZone,
 	}
+}
+
+func (c *Client) fetchCallsignInfo(call string, role string) (*cty.PrefixInfo, bool) {
+	if c.lookup == nil {
+		return nil, true
+	}
+	info, ok := c.lookup.LookupCallsign(call)
+	if !ok {
+		log.Printf("PSKReporter: unknown %s call %s", role, call)
+	}
+	return info, ok
 }
 
 func (c *Client) stopWorkerPool() {

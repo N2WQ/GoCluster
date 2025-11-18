@@ -134,7 +134,7 @@ func (c *Client) readLoop() {
 func normalizeRBNCallsign(call string) string {
 	// Check if it ends with -# (RBN skimmer indicator)
 	if !strings.HasSuffix(call, "-#") {
-		return call
+		return spot.NormalizeCallsign(call)
 	}
 
 	// Remove the -# suffix temporarily
@@ -226,7 +226,7 @@ func (c *Client) parseSpot(line string) {
 	deCall = normalizeRBNCallsign(deCall)       // Normalize RBN callsign
 
 	freqStr := parts[3]
-	dxCall := parts[4]
+	dxCall := spot.NormalizeCallsign(parts[4])
 	mode := parts[5]
 	dbStr := parts[6]
 	// parts[7] is "dB"
@@ -285,6 +285,15 @@ func (c *Client) parseSpot(line string) {
 		signalDB = 0 // Default to 0 if parse fails
 	}
 
+	if !spot.IsValidCallsign(dxCall) {
+		log.Printf("RBN: invalid DX call %s", dxCall)
+		return
+	}
+	if !spot.IsValidCallsign(deCall) {
+		log.Printf("RBN: invalid DE call %s", deCall)
+		return
+	}
+
 	dxInfo, ok := c.fetchCallsignInfo(dxCall, "DX", line)
 	if !ok {
 		return
@@ -296,6 +305,7 @@ func (c *Client) parseSpot(line string) {
 
 	// Create spot
 	s := spot.NewSpot(dxCall, deCall, freq, mode)
+	s.IsHuman = false
 	s.DXMetadata = metadataFromPrefix(dxInfo)
 	s.DEMetadata = metadataFromPrefix(deInfo)
 

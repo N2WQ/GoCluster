@@ -24,12 +24,15 @@ Each `spot.Spot` stores:
 - **Comment** – parsed message or `Locator>Locator`
 - **SourceType / SourceNode** – origin tags (`RBN`, `RBN-DIGITAL`, `PSKREPORTER`, etc.)
 - **TTL** – hop count preventing loops
+- **IsHuman** – whether the spot was reported by a human operator (automated feeds set this to false)
 - **DXMetadata / DEMetadata** – structured `CallMetadata` each containing:
 	- `Continent`
 	- `Country`
 	- `CQZone`
 	- `ITUZone`
 	- `Grid`
+
+Both the RBN (standard and digital) and PSKReporter feeds run the same normalization + CTY lookup validation before putting a spot into the ring buffer. Callsigns containing `.` suffixes (e.g., `JA1CTC.P` or `W6.UT5UF`) now have their periods converted to `/` so the full call-plus-suffix reaches CTY lookup rather than being truncated to the base call, and validation now requires at least one digit to avoid non-amateur identifiers before malformed or unknown calls are filtered out prior to hashing or deduplication. Automated feeds mark the `IsHuman` flag as `false` so downstream processors can tell which spots originated from telescopic inputs versus human operator submissions.
 
 ## Commands
 
