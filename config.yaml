@@ -32,7 +32,7 @@ pskreporter:
   name: "PSKReporter"
   broker: "mqtt.pskreporter.info"
   port: 1883
-  topic: "pskr/filter/v2/+/+/#"  # All bands and CW mode
+  modes: ["FT8", "FT4", "CW", "RTTY"]  # List of MQTT modes to subscribe to simultaneously
   workers: 0 # 0 means automatic (half of the CPU cores, minimum 1)
 
 filter:

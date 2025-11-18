@@ -1,7 +1,6 @@
 package buffer
 
 import (
-	"sync"
 	"sync/atomic"
 	"unsafe"
 
@@ -10,51 +9,41 @@ import (
 
 // RingBuffer is a thread-safe circular buffer for storing recent spots
 type RingBuffer struct {
-	mu       sync.RWMutex
-	spots    []*spot.Spot
+	// Each slot is an atomic pointer so writers can publish a fully built spot in one step.
+	// Combined with the monotonic ID counter, this removes the need for a global mutex.
+	slots    []atomic.Pointer[spot.Spot]
 	capacity int
-	writePos int
 	total    atomic.Uint64 // Total spots added (may exceed capacity)
 }
 
 // NewRingBuffer creates a new ring buffer with the specified capacity
 func NewRingBuffer(capacity int) *RingBuffer {
 	return &RingBuffer{
-		spots:    make([]*spot.Spot, capacity),
+		slots:    make([]atomic.Pointer[spot.Spot], capacity),
 		capacity: capacity,
-		writePos: 0,
 	}
 }
 
 // Add adds a spot to the buffer
 func (rb *RingBuffer) Add(s *spot.Spot) {
-	rb.mu.Lock()
-	defer rb.mu.Unlock()
-
 	// Assign monotonic ID using atomic counter
 	newID := rb.total.Add(1)
 	s.ID = newID
 
-	// Write to current position
-	rb.spots[rb.writePos] = s
-
-	// Advance write position (wrap around)
-	rb.writePos = (rb.writePos + 1) % rb.capacity
-
-	// total already incremented via atomic.Add
+	idx := (newID - 1) % uint64(rb.capacity)
+	// Publishing via atomic.Store ensures readers either see the previous spot or this one, never partial state
+	rb.slots[idx].Store(s)
 }
 
 // GetRecent returns the N most recent spots
 func (rb *RingBuffer) GetRecent(n int) []*spot.Spot {
-	rb.mu.RLock()
-	defer rb.mu.RUnlock()
-
 	if n <= 0 {
 		return []*spot.Spot{}
 	}
 
 	// Limit to available spots
-	available := int(rb.total.Load())
+	total := rb.total.Load()
+	available := int(total)
 	if available > rb.capacity {
 		available = rb.capacity
 	}
@@ -64,21 +53,16 @@ func (rb *RingBuffer) GetRecent(n int) []*spot.Spot {
 	}
 
 	result := make([]*spot.Spot, 0, n)
-
-	// Read backwards from write position
-	pos := rb.writePos - 1
-	if pos < 0 {
-		pos = rb.capacity - 1
+	if total == 0 {
+		return result
 	}
-
-	for i := 0; i < n; i++ {
-		if rb.spots[pos] != nil {
-			result = append(result, rb.spots[pos])
-		}
-
-		pos--
-		if pos < 0 {
-			pos = rb.capacity - 1
+	minIndex := total - uint64(available)
+	for idx := total; idx > minIndex && len(result) < n; {
+		idx--
+		slot := idx % uint64(rb.capacity)
+		// ID check skips over slots that have been overwritten after wraparound
+		if sp := rb.slots[slot].Load(); sp != nil && sp.ID == idx+1 {
+			result = append(result, sp)
 		}
 	}
 
@@ -87,9 +71,8 @@ func (rb *RingBuffer) GetRecent(n int) []*spot.Spot {
 
 // GetPosition returns the current write position in the ring buffer
 func (rb *RingBuffer) GetPosition() int {
-	rb.mu.RLock()
-	defer rb.mu.RUnlock()
-	return rb.writePos
+	total := rb.total.Load()
+	return int(total % uint64(rb.capacity))
 }
 
 // GetCount returns the total number of spots added (may be > capacity)

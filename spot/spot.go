@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -36,6 +37,8 @@ type Spot struct {
 	IsHuman    bool         // Whether the spot originated from a human operator
 	DXMetadata CallMetadata // Metadata for the DX station
 	DEMetadata CallMetadata // Metadata for the spotter station
+	formatted  string
+	formatOnce sync.Once // ensures FormatDXCluster builds expensive string only once per spot
 }
 
 // CallMetadata stores geographic metadata for a callsign
@@ -105,81 +108,85 @@ func (s *Spot) Hash32() uint32 {
 //	"DX de RN4WA:      14022.1  HF300LOS     CW 35 22 WPM CQ                0612Z"
 //	"DX de W3LPL:       7009.5  K1ABC        FT8 -5 JO93fn42>HM68jp36       0615Z"
 func (s *Spot) FormatDXCluster() string {
-	// Format time as HHMMZ UTC (exactly 5 characters)
-	timeStr := s.Time.UTC().Format("1504Z")
+	s.formatOnce.Do(func() {
+		// Format time as HHMMZ UTC (exactly 5 characters)
+		timeStr := s.Time.UTC().Format("1504Z")
 
-	// Build comment section: mode + signal report + comment
-	var commentSection string
-	if s.Report != 0 {
-		// Format signal report based on mode
-		var reportStr string
-		mode := strings.ToUpper(s.Mode)
+		// Build comment section: mode + signal report + comment
+		var commentSection string
+		if s.Report != 0 {
+			// Format signal report based on mode
+			var reportStr string
+			mode := strings.ToUpper(s.Mode)
 
-		// For CW and RTTY: no sign (signal strength is always positive)
-		// For FT8, FT4 and other digital modes: include sign (SNR can be negative)
-		if mode == "CW" || mode == "RTTY" {
-			reportStr = fmt.Sprintf("%d dB", s.Report)
+			// For CW and RTTY: no sign (signal strength is always positive)
+			// For FT8, FT4 and other digital modes: include sign (SNR can be negative)
+			if mode == "CW" || mode == "RTTY" {
+				reportStr = fmt.Sprintf("%d dB", s.Report)
+			} else {
+				// FT8, FT4, and other digital modes use SNR with sign
+				reportStr = fmt.Sprintf("%+d", s.Report) // Always show sign for digital modes
+			}
+
+			// Mode with signal report and comment
+			if s.Comment != "" {
+				commentSection = fmt.Sprintf("%s %s %s", s.Mode, reportStr, s.Comment)
+			} else {
+				commentSection = fmt.Sprintf("%s %s", s.Mode, reportStr)
+			}
 		} else {
-			// FT8, FT4, and other digital modes use SNR with sign
-			reportStr = fmt.Sprintf("%+d", s.Report) // Always show sign for digital modes
+			// No report available, just mode and comment
+			if s.Comment != "" {
+				commentSection = fmt.Sprintf("%s %s", s.Mode, s.Comment)
+			} else {
+				commentSection = s.Mode
+			}
 		}
 
-		// Mode with signal report and comment
-		if s.Comment != "" {
-			commentSection = fmt.Sprintf("%s %s %s", s.Mode, reportStr, s.Comment)
-		} else {
-			commentSection = fmt.Sprintf("%s %s", s.Mode, reportStr)
+		// CRITICAL: Build the line so frequency ALWAYS ends at position 24
+		// 1. Start with "DX de " + spotter + ":"
+		prefix := "DX de " + s.DECall + ":"
+
+		// 2. Format the frequency as a string
+		freqStr := fmt.Sprintf("%.1f", s.Frequency)
+
+		// 3. Calculate how many spaces we need between spotter and frequency
+		// Frequency must end at position 24, so total width to position 25 is 25 characters
+		// We need: len(prefix) + spaces + len(freqStr) = 25
+		totalWidthToFreqEnd := 25
+		spacesNeeded := totalWidthToFreqEnd - len(prefix) - len(freqStr)
+		if spacesNeeded < 1 {
+			spacesNeeded = 1 // Minimum 1 space
 		}
-	} else {
-		// No report available, just mode and comment
-		if s.Comment != "" {
-			commentSection = fmt.Sprintf("%s %s", s.Mode, s.Comment)
-		} else {
-			commentSection = s.Mode
+
+		// 4. Build the left part up through the DX callsign field
+		leftPart := fmt.Sprintf("%s%s%s  %-8s",
+			prefix,                            // "DX de CALL:"
+			strings.Repeat(" ", spacesNeeded), // Variable spaces to align frequency
+			freqStr,                           // Frequency (ends at position 24)
+			s.DXCall,                          // DX callsign, 8 chars left-aligned (positions 27-34)
+		)
+
+		// 5. Insert enough spaces so the comment starts at column 40
+		spacesToComment := 40 - len(leftPart)
+		if spacesToComment < 1 {
+			spacesToComment = 1
 		}
-	}
+		leftPart += strings.Repeat(" ", spacesToComment)
+		leftPart += commentSection
 
-	// CRITICAL: Build the line so frequency ALWAYS ends at position 24
-	// 1. Start with "DX de " + spotter + ":"
-	prefix := "DX de " + s.DECall + ":"
+		// Pad the left part to exactly 75 characters so time starts at column 75
+		// If leftPart is already >= 75 chars, truncate it to 75
+		if len(leftPart) > 75 {
+			leftPart = leftPart[:75]
+		}
+		paddedLeft := fmt.Sprintf("%-75s", leftPart)
 
-	// 2. Format the frequency as a string
-	freqStr := fmt.Sprintf("%.1f", s.Frequency)
+		// Add time at columns 75-79
+		s.formatted = paddedLeft + timeStr
+	})
 
-	// 3. Calculate how many spaces we need between spotter and frequency
-	// Frequency must end at position 24, so total width to position 25 is 25 characters
-	// We need: len(prefix) + spaces + len(freqStr) = 25
-	totalWidthToFreqEnd := 25
-	spacesNeeded := totalWidthToFreqEnd - len(prefix) - len(freqStr)
-	if spacesNeeded < 1 {
-		spacesNeeded = 1 // Minimum 1 space
-	}
-
-	// 4. Build the left part up through the DX callsign field
-	leftPart := fmt.Sprintf("%s%s%s  %-8s",
-		prefix,                            // "DX de CALL:"
-		strings.Repeat(" ", spacesNeeded), // Variable spaces to align frequency
-		freqStr,                           // Frequency (ends at position 24)
-		s.DXCall,                          // DX callsign, 8 chars left-aligned (positions 27-34)
-	)
-
-	// 5. Insert enough spaces so the comment starts at column 40
-	spacesToComment := 40 - len(leftPart)
-	if spacesToComment < 1 {
-		spacesToComment = 1
-	}
-	leftPart += strings.Repeat(" ", spacesToComment)
-	leftPart += commentSection
-
-	// Pad the left part to exactly 75 characters so time starts at column 75
-	// If leftPart is already >= 75 chars, truncate it to 75
-	if len(leftPart) > 75 {
-		leftPart = leftPart[:75]
-	}
-	paddedLeft := fmt.Sprintf("%-75s", leftPart)
-
-	// Add time at columns 75-79
-	return paddedLeft + timeStr
+	return s.formatted
 }
 
 // FreqToBand converts a frequency in kHz to a band string

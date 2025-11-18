@@ -133,9 +133,13 @@ func main() {
 
 	// Connect to PSKReporter if enabled
 	// PSKReporter spots go INTO the deduplicator input channel
-	var pskrClient *pskreporter.Client
+	var (
+		pskrClient *pskreporter.Client
+		pskrTopics []string
+	)
 	if cfg.PSKReporter.Enabled {
-		pskrClient = pskreporter.NewClient(cfg.PSKReporter.Broker, cfg.PSKReporter.Port, cfg.PSKReporter.Topic, cfg.PSKReporter.Name, cfg.PSKReporter.Workers, ctyDB)
+		pskrTopics = cfg.PSKReporter.SubscriptionTopics()
+		pskrClient = pskreporter.NewClient(cfg.PSKReporter.Broker, cfg.PSKReporter.Port, pskrTopics, cfg.PSKReporter.Name, cfg.PSKReporter.Workers, ctyDB)
 		err = pskrClient.Connect()
 		if err != nil {
 			log.Printf("Warning: Failed to connect to PSKReporter: %v", err)
@@ -167,7 +171,11 @@ func main() {
 		fmt.Println("Receiving FT4/FT8 spots from RBN Digital (port 7001)...")
 	}
 	if cfg.PSKReporter.Enabled {
-		fmt.Printf("Receiving digital mode spots from PSKReporter (topic: %s)...\n", cfg.PSKReporter.Topic)
+		topicList := strings.Join(pskrTopics, ", ")
+		if topicList == "" {
+			topicList = "<none>"
+		}
+		fmt.Printf("Receiving digital mode spots from PSKReporter (topics: %s)...\n", topicList)
 	}
 	if cfg.Dedup.Enabled {
 		fmt.Printf("Unified deduplication active: %d second window\n", cfg.Dedup.ClusterWindowSeconds)

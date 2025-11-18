@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,7 +20,7 @@ import (
 type Client struct {
 	broker     string
 	port       int
-	topic      string
+	topics     []string
 	name       string
 	client     mqtt.Client
 	spotChan   chan *spot.Spot
@@ -52,11 +53,11 @@ const (
 )
 
 // NewClient creates a new PSKReporter MQTT client
-func NewClient(broker string, port int, topic string, name string, workers int, lookup *cty.CTYDatabase) *Client {
+func NewClient(broker string, port int, topics []string, name string, workers int, lookup *cty.CTYDatabase) *Client {
 	return &Client{
 		broker:   broker,
 		port:     port,
-		topic:    topic,
+		topics:   append([]string{}, topics...),
 		name:     name,
 		spotChan: make(chan *spot.Spot, 1000), // Buffer 1000 spots
 		shutdown: make(chan struct{}),
@@ -81,6 +82,7 @@ func (c *Client) Connect() error {
 	opts.SetKeepAlive(60 * time.Second)
 	opts.SetPingTimeout(10 * time.Second)
 	opts.SetConnectTimeout(10 * time.Second)
+	opts.SetCleanSession(true)
 
 	// Set auto-reconnect
 	opts.SetAutoReconnect(true)
@@ -93,10 +95,14 @@ func (c *Client) Connect() error {
 	// Create MQTT client
 	c.client = mqtt.NewClient(opts)
 
+	topicDesc := strings.Join(c.topics, ",")
+	if topicDesc == "" {
+		topicDesc = "<none>"
+	}
 	if c.name != "" {
-		log.Printf("Connecting to %s MQTT broker at %s...", c.name, brokerURL)
+		log.Printf("Connecting to %s MQTT broker at %s (topics=%s)...", c.name, brokerURL, topicDesc)
 	} else {
-		log.Printf("Connecting to PSKReporter MQTT broker at %s...", brokerURL)
+		log.Printf("Connecting to PSKReporter MQTT broker at %s (topics=%s)...", brokerURL, topicDesc)
 	}
 
 	// Connect to broker
@@ -112,13 +118,14 @@ func (c *Client) Connect() error {
 
 // onConnect is called when connection is established
 func (c *Client) onConnect(client mqtt.Client) {
-	log.Printf("PSKReporter: Connected, subscribing to topic: %s", c.topic)
-
-	// Subscribe to topic
-	token := client.Subscribe(c.topic, 0, c.messageHandler)
-	if token.Wait() && token.Error() != nil {
-		log.Printf("PSKReporter: Failed to subscribe: %v", token.Error())
-		return
+	log.Printf("PSKReporter: Connected, subscribing to %d topic(s)", len(c.topics))
+	for _, topic := range c.topics {
+		token := client.Subscribe(topic, 0, c.messageHandler)
+		if token.Wait() && token.Error() != nil {
+			log.Printf("PSKReporter: Failed to subscribe to %s: %v", topic, token.Error())
+			return
+		}
+		log.Printf("PSKReporter: Subscribed to %s", topic)
 	}
 
 	log.Println("PSKReporter: Successfully subscribed, receiving spots...")
@@ -346,7 +353,9 @@ func (c *Client) Stop() {
 
 	if c.client != nil && c.client.IsConnected() {
 		// Unsubscribe
-		c.client.Unsubscribe(c.topic)
+		if len(c.topics) > 0 {
+			c.client.Unsubscribe(c.topics...)
+		}
 
 		// Disconnect (wait up to 250ms for clean disconnect)
 		c.client.Disconnect(250)

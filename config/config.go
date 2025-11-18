@@ -47,12 +47,35 @@ type RBNConfig struct {
 
 // PSKReporterConfig contains PSKReporter MQTT settings
 type PSKReporterConfig struct {
-	Enabled bool   `yaml:"enabled"`
-	Broker  string `yaml:"broker"`
-	Port    int    `yaml:"port"`
-	Topic   string `yaml:"topic"`
-	Name    string `yaml:"name"`
-	Workers int    `yaml:"workers"`
+	Enabled bool     `yaml:"enabled"`
+	Broker  string   `yaml:"broker"`
+	Port    int      `yaml:"port"`
+	Topic   string   `yaml:"topic"`
+	Name    string   `yaml:"name"`
+	Workers int      `yaml:"workers"`
+	Modes   []string `yaml:"modes"`
+}
+
+const defaultPSKReporterTopic = "pskr/filter/v2/+/+/#"
+
+// SubscriptionTopics returns the MQTT topics to subscribe to based on the configured modes.
+// If no modes are specified, it falls back to `Topic` or the default `pskr/filter/v2/+/+/#`.
+func (c *PSKReporterConfig) SubscriptionTopics() []string {
+	topics := make([]string, 0, len(c.Modes))
+	for _, mode := range c.Modes {
+		mode = strings.TrimSpace(strings.ToUpper(mode))
+		if mode == "" {
+			continue
+		}
+		topics = append(topics, fmt.Sprintf("pskr/filter/v2/+/%s/#", mode))
+	}
+	if len(topics) == 0 {
+		if c.Topic != "" {
+			return []string{c.Topic}
+		}
+		return []string{defaultPSKReporterTopic}
+	}
+	return topics
 }
 
 // DedupConfig contains deduplication settings

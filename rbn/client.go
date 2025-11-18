@@ -14,6 +14,9 @@ import (
 	"dxcluster/spot"
 )
 
+// precompiled regex avoids the per-line allocation/compile cost when normalizing RBN lines
+var whitespaceRE = regexp.MustCompile(`\s+`)
+
 // Client represents an RBN telnet client
 type Client struct {
 	host      string
@@ -208,7 +211,7 @@ func parseTimeFromRBN(timeStr string) time.Time {
 //	FT8/FT4: DX de CALL: FREQ DXCALL MODE DB dB COMMENT TIME
 func (c *Client) parseSpot(line string) {
 	// Normalize whitespace - replace multiple spaces with single space
-	normalized := regexp.MustCompile(`\s+`).ReplaceAllString(line, " ")
+	normalized := whitespaceRE.ReplaceAllString(line, " ")
 
 	// Split by spaces
 	parts := strings.Fields(normalized)
