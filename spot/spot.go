@@ -97,7 +97,7 @@ func (s *Spot) Hash32() uint32 {
 //	27-34:  DX callsign (8 characters, left-aligned)
 //	35-39:  Five spaces
 //	40+:    Mode + signal report + comment
-//	75-79:  Time in HHMMZ format (exactly 5 characters)
+//	69-73:  Time in HHMMZ format (exactly 5 characters)
 //
 // Signal report formatting:
 //
@@ -177,36 +177,44 @@ func (s *Spot) FormatDXCluster() string {
 		leftPart += commentSection
 
 		confLabel := strings.TrimSpace(s.Confidence)
+		const (
+			timeColumn     = 69 // position where the timestamp begins
+			minGapToSymbol = 2  // minimum spaces between comment and confidence symbol
+		)
 
 		if confLabel == "" {
-			// Original layout: pad to 75 chars so time starts at column 75.
-			if len(leftPart) > 75 {
-				leftPart = leftPart[:75]
+			// Pad/truncate so the time begins exactly at column timeColumn.
+			if len(leftPart) > timeColumn {
+				leftPart = leftPart[:timeColumn]
+			} else if len(leftPart) < timeColumn {
+				leftPart += strings.Repeat(" ", timeColumn-len(leftPart))
 			}
-			paddedLeft := fmt.Sprintf("%-75s", leftPart)
-			s.formatted = paddedLeft + timeStr
+			s.formatted = leftPart + timeStr
 			return
 		}
 
-		// With confidence: reserve space so the confidence ends two characters
-		// before the time stamp (leaving " <conf> <time>").
 		confWidth := len(confLabel)
-		if confWidth > 73 {
-			confWidth = 73
+		maxConfWidth := timeColumn - minGapToSymbol
+		if maxConfWidth < 1 {
+			maxConfWidth = 1
+		}
+		if confWidth > maxConfWidth {
+			confWidth = maxConfWidth
 			confLabel = confLabel[:confWidth]
 		}
-		allowedLeft := 73 - confWidth
-		if allowedLeft < 0 {
-			allowedLeft = 0
+		maxCommentLen := timeColumn - minGapToSymbol - confWidth
+		if maxCommentLen < 0 {
+			maxCommentLen = 0
+		}
+		if len(leftPart) > maxCommentLen {
+			leftPart = leftPart[:maxCommentLen]
+		}
+		gapLen := timeColumn - confWidth - len(leftPart)
+		if gapLen < minGapToSymbol {
+			gapLen = minGapToSymbol
 		}
 
-		if len(leftPart) > allowedLeft {
-			leftPart = leftPart[:allowedLeft]
-		} else if len(leftPart) < allowedLeft {
-			leftPart += strings.Repeat(" ", allowedLeft-len(leftPart))
-		}
-
-		s.formatted = leftPart + " " + confLabel + " " + timeStr
+		s.formatted = leftPart + strings.Repeat(" ", gapLen) + confLabel + " " + timeStr
 	})
 
 	return s.formatted

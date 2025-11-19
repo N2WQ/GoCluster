@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -21,13 +22,36 @@ import (
 	"dxcluster/spot"
 	"dxcluster/stats"
 	"dxcluster/telnet"
+	"golang.org/x/term"
+)
+
+var consoleUI *consoleLayout
+
+const (
+	dedupeEntryBytes    = 32
+	ctyCacheEntryBytes  = 96
+	knownCallEntryBytes = 24
+	sourceModeDelimiter = "|"
 )
 
 // Version will be set at build time
 var Version = "dev"
 
 func main() {
-	fmt.Printf("DX Cluster Server v%s starting...\n", Version)
+	stdoutFD := int(os.Stdout.Fd())
+	ansiEnabled := enableVirtualTerminal()
+	stdoutTTY := term.IsTerminal(stdoutFD)
+	consoleUI = newConsoleLayout(os.Stdout, ansiEnabled && stdoutTTY, stdoutFD)
+	if consoleUI != nil {
+		defer consoleUI.Close()
+		log.SetOutput(consoleUI.LogWriter())
+		consoleUI.Render([]string{"Stats initializing..."})
+		consoleUI.MoveCursorToLogStart()
+	} else {
+		log.SetOutput(os.Stdout)
+	}
+
+	log.Printf("DX Cluster Server v%s starting...", Version)
 
 	// Load configuration
 	cfg, err := config.Load("config.yaml")
@@ -51,10 +75,13 @@ func main() {
 	// Create stats tracker
 	statsTracker := stats.NewTracker()
 
+	capacity := cfg.Buffer.Capacity
+	if capacity <= 0 {
+		capacity = 300000
+	}
 	// Create spot buffer (ring buffer for storing recent spots)
-	// Size tuned for ~15 minutes at ~20k spots/min => 300,000 entries
-	spotBuffer := buffer.NewRingBuffer(300000)
-	log.Println("Ring buffer created (capacity: 300000)")
+	spotBuffer := buffer.NewRingBuffer(capacity)
+	log.Printf("Ring buffer created (capacity: %d)", capacity)
 
 	var correctionIndex *spot.CorrectionIndex
 	if cfg.CallCorrection.Enabled {
@@ -186,14 +213,14 @@ func main() {
 
 	// Start stats display goroutine
 	statsInterval := time.Duration(cfg.Stats.DisplayIntervalSeconds) * time.Second
-	go displayStats(statsInterval, statsTracker, deduplicator, spotBuffer, telnetServer, pskrClient, ctyDB)
+	go displayStats(statsInterval, statsTracker, deduplicator, spotBuffer, ctyDB, knownCalls)
 
 	// Set up signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	fmt.Println("\nCluster is running. Press Ctrl+C to stop.")
-	fmt.Printf("Connect via: telnet localhost %d\n", cfg.Telnet.Port)
+	log.Printf("Connect via: telnet localhost %d", cfg.Telnet.Port)
 	if cfg.RBN.Enabled {
 		fmt.Println("Receiving CW/RTTY spots from RBN (port 7000)...")
 	}
@@ -205,18 +232,18 @@ func main() {
 		if topicList == "" {
 			topicList = "<none>"
 		}
-		fmt.Printf("Receiving digital mode spots from PSKReporter (topics: %s)...\n", topicList)
+		log.Printf("Receiving digital mode spots from PSKReporter (topics: %s)...", topicList)
 	}
 	if cfg.Dedup.Enabled {
-		fmt.Printf("Unified deduplication active: %d second window\n", cfg.Dedup.ClusterWindowSeconds)
+		log.Printf("Unified deduplication active: %d second window", cfg.Dedup.ClusterWindowSeconds)
 		fmt.Println("Architecture: ALL sources → Dedup Engine → Ring Buffer → Clients")
 	}
-	fmt.Printf("\nStatistics will be displayed every %d seconds...\n", cfg.Stats.DisplayIntervalSeconds)
+	log.Printf("Statistics will be displayed every %d seconds...", cfg.Stats.DisplayIntervalSeconds)
 	fmt.Println("---")
 
 	// Wait for shutdown signal
 	sig := <-sigChan
-	fmt.Printf("\nReceived signal: %v\n", sig)
+	log.Printf("Received signal: %v", sig)
 	fmt.Println("Shutting down gracefully...")
 
 	// Stop deduplicator
@@ -246,59 +273,56 @@ func main() {
 }
 
 // displayStats prints statistics at the configured interval
-func displayStats(interval time.Duration, tracker *stats.Tracker, dedup *dedup.Deduplicator, buf *buffer.RingBuffer, telnetServer *telnet.Server, pskr *pskreporter.Client, ctyDB *cty.CTYDatabase) {
+func displayStats(interval time.Duration, tracker *stats.Tracker, dedup *dedup.Deduplicator, buf *buffer.RingBuffer, ctyDB *cty.CTYDatabase, known *spot.KnownCallsigns) {
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
+	prevSourceCounts := make(map[string]uint64)
+	prevSourceModeCounts := make(map[string]uint64)
+
 	for range ticker.C {
-		// Print spot counts by source
-		tracker.Print()
+		lines := make([]string, 0, 6)
+		lines = append(lines, formatUptimeLine(tracker.GetUptime()))
+		lines = append(lines, formatMemoryLine(buf, dedup, ctyDB, known))
 
-		// Print dedup stats
-		if dedup != nil {
-			processed, duplicates, cacheSize := dedup.GetStats()
-			dupRate := 0.0
-			if processed > 0 {
-				dupRate = float64(duplicates) / float64(processed) * 100
+		sourceTotals := tracker.GetSourceCounts()
+		sourceModeTotals := tracker.GetSourceModeCounts()
+
+		rbnTotal := diffCounter(sourceTotals, prevSourceCounts, "RBN")
+		rbnCW := diffSourceMode(sourceModeTotals, prevSourceModeCounts, "RBN", "CW")
+		rbnRTTY := diffSourceMode(sourceModeTotals, prevSourceModeCounts, "RBN", "RTTY")
+		lines = append(lines, fmt.Sprintf("RBN: %d / %d / %d", rbnTotal, rbnCW, rbnRTTY))
+
+		rbnFTTotal := diffCounter(sourceTotals, prevSourceCounts, "RBN-DIGITAL")
+		rbnFT8 := diffSourceMode(sourceModeTotals, prevSourceModeCounts, "RBN-DIGITAL", "FT8")
+		rbnFT4 := diffSourceMode(sourceModeTotals, prevSourceModeCounts, "RBN-DIGITAL", "FT4")
+		lines = append(lines, fmt.Sprintf("RBN FT: %d / %d / %d", rbnFTTotal, rbnFT8, rbnFT4))
+
+		pskTotal := diffCounter(sourceTotals, prevSourceCounts, "PSKREPORTER")
+		pskCW := diffSourceMode(sourceModeTotals, prevSourceModeCounts, "PSKREPORTER", "CW")
+		pskRTTY := diffSourceMode(sourceModeTotals, prevSourceModeCounts, "PSKREPORTER", "RTTY")
+		pskFT8 := diffSourceMode(sourceModeTotals, prevSourceModeCounts, "PSKREPORTER", "FT8")
+		pskFT4 := diffSourceMode(sourceModeTotals, prevSourceModeCounts, "PSKREPORTER", "FT4")
+		lines = append(lines, fmt.Sprintf("PSKReporter: %d / %d / %d / %d / %d", pskTotal, pskCW, pskRTTY, pskFT8, pskFT4))
+
+		totalCorrections := tracker.CallCorrections()
+		totalFreqCorrections := tracker.FrequencyCorrections()
+		lines = append(lines, fmt.Sprintf("Corrected calls: %d / %d", totalCorrections, totalFreqCorrections))
+		lines = append(lines, fmt.Sprintf("Harmonics suppressed: %d", tracker.HarmonicSuppressions()))
+
+		prevSourceCounts = sourceTotals
+		prevSourceModeCounts = sourceModeTotals
+
+		if consoleUI != nil {
+			consoleUI.Render(lines)
+		} else {
+			for _, line := range lines {
+				log.Print(line)
 			}
-			fmt.Printf("Dedup stats: processed=%d, duplicates=%d (%.1f%%), cache_size=%d\n",
-				processed, duplicates, dupRate, cacheSize)
 		}
-
-		if telnetServer != nil {
-			queueDrops, clientDrops := telnetServer.BroadcastMetricSnapshot()
-			fmt.Printf("Telnet broadcast stats: workers=%d, queue_drops=%d, client_drops=%d\n", telnetServer.WorkerCount(), queueDrops, clientDrops)
-		}
-
-		if pskr != nil {
-			workers, queueLen, drops := pskr.WorkerStats()
-			fmt.Printf("PSKReporter stats: workers=%d, queue_len=%d, drops=%d\n", workers, queueLen, drops)
-		}
-
-		if ctyDB != nil {
-			metrics := ctyDB.Metrics()
-			cacheHitPercent := 0.0
-			if metrics.TotalLookups > 0 {
-				cacheHitPercent = float64(metrics.CacheHits) / float64(metrics.TotalLookups) * 100
-			}
-			cacheValidatedPercent := 0.0
-			if metrics.Validated > 0 {
-				cacheValidatedPercent = float64(metrics.ValidatedFromCache) / float64(metrics.Validated) * 100
-			}
-			fmt.Printf("CTY lookup stats: total=%d, cache_hits=%d (%.1f%%), cache_entries=%d, validated=%d, cache_validated=%d (%.1f%%)\n",
-				metrics.TotalLookups, metrics.CacheHits, cacheHitPercent, metrics.CacheEntries, metrics.Validated, metrics.ValidatedFromCache, cacheValidatedPercent)
-		}
-
-		// Print ring buffer position and approximate memory usage
-		position := buf.GetPosition()
-		count := buf.GetCount()
-		sizeKB := buf.GetSizeKB()
-		sizeMB := float64(sizeKB) / 1024.0
-		fmt.Printf("Ring buffer: position=%d, total_added=%d, size_mb=%.1fMB\n", position, count, sizeMB)
-		fmt.Println("---")
 	}
 }
 
@@ -354,20 +378,22 @@ func processOutputSpots(
 		}
 		tracker.IncrementMode(modeKey)
 
-		if spot.SourceNode != "" && spot.SourceNode != modeKey {
-			tracker.IncrementSource(spot.SourceNode)
+		sourceName := strings.ToUpper(strings.TrimSpace(spot.SourceNode))
+		if sourceName != "" {
+			tracker.IncrementSource(sourceName)
+			tracker.IncrementSourceMode(sourceName, modeKey)
 		}
 
 		if spotPolicy.MaxAgeSeconds > 0 {
 			if time.Since(spot.Time) > time.Duration(spotPolicy.MaxAgeSeconds)*time.Second {
-				log.Printf("Spot dropped (stale): %s at %.1fkHz (age=%ds)", spot.DXCall, spot.Frequency, int(time.Since(spot.Time).Seconds()))
+				// log.Printf("Spot dropped (stale): %s at %.1fkHz (age=%ds)", spot.DXCall, spot.Frequency, int(time.Since(spot.Time).Seconds()))
 				continue
 			}
 		}
 
 		var suppress bool
 		if telnet != nil {
-			suppress = maybeApplyCallCorrection(spot, correctionIdx, correctionCfg, ctyDB, knownCalls)
+			suppress = maybeApplyCallCorrection(spot, correctionIdx, correctionCfg, ctyDB, knownCalls, tracker)
 			if suppress {
 				continue
 			}
@@ -376,6 +402,9 @@ func processOutputSpots(
 		if harmonicDetector != nil && harmonicCfg.Enabled {
 			if drop, fundamental := harmonicDetector.ShouldDrop(spot, time.Now().UTC()); drop {
 				log.Printf("Harmonic suppressed: %s fundamental=%.1fkHz harmonic=%.1fkHz", spot.DXCall, fundamental, spot.Frequency)
+				if tracker != nil {
+					tracker.IncrementHarmonicSuppressions()
+				}
 				continue
 			}
 		}
@@ -388,6 +417,9 @@ func processOutputSpots(
 			if reports >= spotPolicy.FrequencyAveragingMinReports && math.Abs(rounded-spot.Frequency) >= tolerance {
 				log.Printf("Frequency averaged: %s %.3f -> %.3f kHz (%d reports)", spot.DXCall, spot.Frequency, rounded, reports)
 				spot.Frequency = rounded
+				if tracker != nil {
+					tracker.IncrementFrequencyCorrections()
+				}
 			}
 		}
 
@@ -413,8 +445,10 @@ func processRBNSpotsNoDedupe(client *rbn.Client, buf *buffer.RingBuffer, telnet 
 		tracker.IncrementMode(modeKey)
 
 		// Track spot by source node
-		if spot.SourceNode != "" {
-			tracker.IncrementSource(spot.SourceNode)
+		sourceName := strings.ToUpper(strings.TrimSpace(spot.SourceNode))
+		if sourceName != "" {
+			tracker.IncrementSource(sourceName)
+			tracker.IncrementSourceMode(sourceName, modeKey)
 		}
 
 		// Add directly to buffer (no dedup)
@@ -438,8 +472,10 @@ func processPSKRSpotsNoDedupe(client *pskreporter.Client, buf *buffer.RingBuffer
 		tracker.IncrementMode(modeKey)
 
 		// Track spot by source node
-		if spot.SourceNode != "" {
-			tracker.IncrementSource(spot.SourceNode)
+		sourceName := strings.ToUpper(strings.TrimSpace(spot.SourceNode))
+		if sourceName != "" {
+			tracker.IncrementSource(sourceName)
+			tracker.IncrementSourceMode(sourceName, modeKey)
 		}
 
 		buf.Add(spot)
@@ -447,7 +483,7 @@ func processPSKRSpotsNoDedupe(client *pskreporter.Client, buf *buffer.RingBuffer
 	}
 }
 
-func maybeApplyCallCorrection(spotEntry *spot.Spot, idx *spot.CorrectionIndex, cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase, known *spot.KnownCallsigns) bool {
+func maybeApplyCallCorrection(spotEntry *spot.Spot, idx *spot.CorrectionIndex, cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase, known *spot.KnownCallsigns, tracker *stats.Tracker) bool {
 	if spotEntry == nil {
 		return false
 	}
@@ -475,7 +511,13 @@ func maybeApplyCallCorrection(spotEntry *spot.Spot, idx *spot.CorrectionIndex, c
 	corrected, supporters, correctedConfidence, subjectConfidence, totalReporters, ok := spot.SuggestCallCorrection(spotEntry, others, settings, now)
 
 	knownCall := known != nil && known.Contains(spotEntry.DXCall)
-	spotEntry.Confidence = formatConfidence(subjectConfidence, totalReporters, knownCall)
+	ctyMatch := false
+	if ctyDB != nil {
+		if _, ok := ctyDB.LookupCallsign(spotEntry.DXCall); ok {
+			ctyMatch = true
+		}
+	}
+	spotEntry.Confidence = formatConfidence(subjectConfidence, totalReporters, knownCall, ctyMatch)
 
 	if ok && ctyDB != nil {
 		if _, valid := ctyDB.LookupCallsign(corrected); valid {
@@ -483,18 +525,26 @@ func maybeApplyCallCorrection(spotEntry *spot.Spot, idx *spot.CorrectionIndex, c
 				spotEntry.DXCall, corrected, spotEntry.Frequency, supporters, correctedConfidence)
 			spotEntry.DXCall = corrected
 			spotEntry.Confidence = "C"
+			if tracker != nil {
+				tracker.IncrementCallCorrections()
+			}
 		} else {
 			log.Printf("Call correction rejected (CTY miss): suggested %s at %.1f kHz", corrected, spotEntry.Frequency)
 			if strings.EqualFold(cfg.InvalidAction, "suppress") {
 				log.Printf("Call correction suppression engaged: dropping spot from %s at %.1f kHz", spotEntry.DXCall, spotEntry.Frequency)
 				return true
 			}
-			spotEntry.Confidence = "B"
+			if !knownCall {
+				spotEntry.Confidence = "B"
+			}
 		}
 	} else if ok && ctyDB == nil {
 		log.Printf("Call correction suggestion ignored (no CTY database): %s -> %s (%d corroborators, %d%% confidence)",
 			spotEntry.DXCall, corrected, supporters, correctedConfidence)
 		spotEntry.Confidence = "C"
+		if tracker != nil {
+			tracker.IncrementCallCorrections()
+		}
 	}
 
 	return false
@@ -523,9 +573,9 @@ func frequencyAverageTolerance(policy config.SpotPolicy) float64 {
 	return toleranceHz / 1000.0
 }
 
-func formatConfidence(percent int, totalReporters int, known bool) string {
+func formatConfidence(percent int, totalReporters int, known bool, ctyMatch bool) string {
 	if totalReporters <= 1 {
-		if known {
+		if ctyMatch || known {
 			return "S"
 		}
 		return "?"
@@ -541,9 +591,6 @@ func formatConfidence(percent int, totalReporters int, known bool) string {
 
 	switch {
 	case value <= 25:
-		if known {
-			return "S"
-		}
 		return "?"
 	case value <= 75:
 		return "P"
@@ -555,4 +602,74 @@ func formatConfidence(percent int, totalReporters int, known bool) string {
 func shouldAverageFrequency(s *spot.Spot) bool {
 	mode := strings.ToUpper(strings.TrimSpace(s.Mode))
 	return mode == "CW" || mode == "RTTY"
+}
+
+func formatMemoryLine(buf *buffer.RingBuffer, dedup *dedup.Deduplicator, ctyDB *cty.CTYDatabase, known *spot.KnownCallsigns) string {
+	var mem runtime.MemStats
+	runtime.ReadMemStats(&mem)
+	execMB := bytesToMB(mem.Alloc)
+
+	ringMB := 0.0
+	if buf != nil {
+		ringMB = float64(buf.GetSizeKB()) / 1024.0
+	}
+
+	dedupeMB := 0.0
+	if dedup != nil {
+		_, _, cacheSize := dedup.GetStats()
+		dedupeMB = bytesToMB(uint64(cacheSize * dedupeEntryBytes))
+	}
+
+	ctyMB := 0.0
+	if ctyDB != nil {
+		metrics := ctyDB.Metrics()
+		ctyMB = bytesToMB(uint64(metrics.CacheEntries * ctyCacheEntryBytes))
+	}
+
+	knownMB := 0.0
+	if known != nil {
+		knownMB = bytesToMB(uint64(known.Count() * knownCallEntryBytes))
+	}
+
+	return fmt.Sprintf("Memory MB: %.1f / %.1f / %.1f / %.1f / %.1f", execMB, ringMB, dedupeMB, ctyMB, knownMB)
+}
+
+func formatUptimeLine(uptime time.Duration) string {
+	hours := int(uptime.Hours())
+	minutes := int(uptime.Minutes()) % 60
+	return fmt.Sprintf("Uptime: %02d:%02d", hours, minutes)
+}
+
+func diffCounter(current, previous map[string]uint64, key string) uint64 {
+	if current == nil {
+		current = map[string]uint64{}
+	}
+	if previous == nil {
+		previous = map[string]uint64{}
+	}
+	key = strings.ToUpper(strings.TrimSpace(key))
+	cur := current[key]
+	prev := previous[key]
+	if cur >= prev {
+		return cur - prev
+	}
+	return cur
+}
+
+func diffSourceMode(current, previous map[string]uint64, source, mode string) uint64 {
+	key := sourceModeKey(source, mode)
+	return diffCounter(current, previous, key)
+}
+
+func sourceModeKey(source, mode string) string {
+	source = strings.ToUpper(strings.TrimSpace(source))
+	mode = strings.ToUpper(strings.TrimSpace(mode))
+	if source == "" || mode == "" {
+		return ""
+	}
+	return source + sourceModeDelimiter + mode
+}
+
+func bytesToMB(b uint64) float64 {
+	return float64(b) / (1024.0 * 1024.0)
 }

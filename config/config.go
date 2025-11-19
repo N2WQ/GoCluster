@@ -25,6 +25,7 @@ type Config struct {
 	SpotPolicy     SpotPolicy           `yaml:"spot_policy"`
 	Confidence     ConfidenceConfig     `yaml:"confidence"`
 	CTY            CTYConfig            `yaml:"cty"`
+	Buffer         BufferConfig         `yaml:"buffer"`
 }
 
 // ServerConfig contains general server settings
@@ -160,6 +161,11 @@ type SpotPolicy struct {
 	FrequencyAveragingMinReports int `yaml:"frequency_averaging_min_reports"`
 }
 
+// BufferConfig controls the ring buffer that holds recent spots.
+type BufferConfig struct {
+	Capacity int `yaml:"capacity"`
+}
+
 // ConfidenceConfig controls external data for adjusting confidence.
 type ConfidenceConfig struct {
 	KnownCallsignsFile string `yaml:"known_callsigns_file"`
@@ -232,6 +238,9 @@ func Load(filename string) (*Config, error) {
 	if strings.TrimSpace(cfg.CTY.File) == "" {
 		cfg.CTY.File = "data/cty/cty.plist"
 	}
+	if cfg.Buffer.Capacity <= 0 {
+		cfg.Buffer.Capacity = 300000
+	}
 	return &cfg, nil
 }
 
@@ -290,4 +299,5 @@ func (c *Config) Print() {
 	if c.Confidence.KnownCallsignsFile != "" {
 		fmt.Printf("Confidence: known_calls=%s\n", c.Confidence.KnownCallsignsFile)
 	}
+	fmt.Printf("Ring buffer capacity: %d spots\n", c.Buffer.Capacity)
 }

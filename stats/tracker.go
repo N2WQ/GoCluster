@@ -11,9 +11,13 @@ import (
 // Tracker tracks spot statistics by source
 type Tracker struct {
 	// counters live in sync.Map + atomic.Uint64 so per-spot increments don't fight over a mutex
-	modeCounts   sync.Map // string -> *atomic.Uint64
-	sourceCounts sync.Map // string -> *atomic.Uint64
-	start        atomic.Int64
+	modeCounts           sync.Map // string -> *atomic.Uint64
+	sourceCounts         sync.Map // string -> *atomic.Uint64
+	sourceModeCounts     sync.Map // "source|mode" -> *atomic.Uint64
+	start                atomic.Int64
+	callCorrections      atomic.Uint64
+	frequencyCorrections atomic.Uint64
+	harmonicSuppressions atomic.Uint64
 }
 
 // NewTracker creates a new stats tracker
@@ -33,6 +37,17 @@ func (t *Tracker) IncrementSource(source string) {
 	incrementCounter(&t.sourceCounts, source)
 }
 
+// IncrementSourceMode increases the count for a specific source/mode combination.
+func (t *Tracker) IncrementSourceMode(source, mode string) {
+	source = strings.ToUpper(strings.TrimSpace(source))
+	mode = strings.ToUpper(strings.TrimSpace(mode))
+	if source == "" || mode == "" {
+		return
+	}
+	key := source + "|" + mode
+	incrementCounter(&t.sourceModeCounts, key)
+}
+
 // GetCounts returns a copy of all counts
 // GetModeCounts returns a copy of mode counts
 func (t *Tracker) GetModeCounts() map[string]uint64 {
@@ -48,6 +63,16 @@ func (t *Tracker) GetModeCounts() map[string]uint64 {
 func (t *Tracker) GetSourceCounts() map[string]uint64 {
 	counts := make(map[string]uint64)
 	t.sourceCounts.Range(func(key, value any) bool {
+		counts[key.(string)] = value.(*atomic.Uint64).Load()
+		return true
+	})
+	return counts
+}
+
+// GetSourceModeCounts returns a copy of source/mode combination counts.
+func (t *Tracker) GetSourceModeCounts() map[string]uint64 {
+	counts := make(map[string]uint64)
+	t.sourceModeCounts.Range(func(key, value any) bool {
 		counts[key.(string)] = value.(*atomic.Uint64).Load()
 		return true
 	})
@@ -81,46 +106,68 @@ func (t *Tracker) Reset() {
 		t.sourceCounts.Delete(key)
 		return true
 	})
+	t.sourceModeCounts.Range(func(key, _ any) bool {
+		t.sourceModeCounts.Delete(key)
+		return true
+	})
 	t.start.Store(time.Now().UnixNano())
 }
 
-// Print displays the current statistics
-func (t *Tracker) Print() {
-	// Print source counts (higher-level sources)
-	fmt.Printf("Spots by source: ")
-	first := true
-	t.sourceCounts.Range(func(key, value any) bool {
-		source := key.(string)
-		count := value.(*atomic.Uint64).Load()
-		if !first {
-			fmt.Printf(", ")
-		}
-		fmt.Printf("%s=%d", source, count)
-		first = false
-		return true
-	})
-	if first {
-		fmt.Printf("(none)")
-	}
-	fmt.Println()
+// SnapshotLines returns human-readable stats ready for console display.
+func (t *Tracker) SnapshotLines() []string {
+	lines := make([]string, 0, 2)
+	lines = append(lines, formatMapCounts("Spots by source", &t.sourceCounts))
+	lines = append(lines, formatMapCounts("Spots by mode", &t.modeCounts))
+	return lines
+}
 
-	// Print mode counts separately
-	fmt.Printf("Spots by mode: ")
-	first = true
-	t.modeCounts.Range(func(key, value any) bool {
-		mode := key.(string)
-		count := value.(*atomic.Uint64).Load()
+// IncrementCallCorrections increments the number of applied call corrections.
+func (t *Tracker) IncrementCallCorrections() {
+	t.callCorrections.Add(1)
+}
+
+// IncrementFrequencyCorrections increments the number of frequency corrections.
+func (t *Tracker) IncrementFrequencyCorrections() {
+	t.frequencyCorrections.Add(1)
+}
+
+// IncrementHarmonicSuppressions increments the number of spots dropped as harmonics.
+func (t *Tracker) IncrementHarmonicSuppressions() {
+	t.harmonicSuppressions.Add(1)
+}
+
+// CallCorrections returns the cumulative number of applied call corrections.
+func (t *Tracker) CallCorrections() uint64 {
+	return t.callCorrections.Load()
+}
+
+// FrequencyCorrections returns the cumulative number of frequency corrections.
+func (t *Tracker) FrequencyCorrections() uint64 {
+	return t.frequencyCorrections.Load()
+}
+
+// HarmonicSuppressions returns the cumulative number of dropped harmonics.
+func (t *Tracker) HarmonicSuppressions() uint64 {
+	return t.harmonicSuppressions.Load()
+}
+
+func formatMapCounts(label string, counts *sync.Map) string {
+	var builder strings.Builder
+	builder.WriteString(label)
+	builder.WriteString(": ")
+	first := true
+	counts.Range(func(key, value any) bool {
 		if !first {
-			fmt.Printf(", ")
+			builder.WriteString(", ")
 		}
-		fmt.Printf("%s=%d", mode, count)
+		fmt.Fprintf(&builder, "%s=%d", key.(string), value.(*atomic.Uint64).Load())
 		first = false
 		return true
 	})
 	if first {
-		fmt.Printf("(none)")
+		builder.WriteString("(none)")
 	}
-	fmt.Println()
+	return builder.String()
 }
 
 func incrementCounter(m *sync.Map, key string) {

@@ -33,7 +33,7 @@ pskreporter:
   broker: "mqtt.pskreporter.info"
   port: 1883
   modes: ["FT8", "FT4", "CW", "RTTY"]  # List of MQTT modes to subscribe to simultaneously
-  workers: 0 # 0 means automatic (half of the CPU cores, minimum 1)
+  workers: 0                           # 0 means automatic (half of the CPU cores, minimum 1)
 
 filter:
   default_modes:
@@ -43,14 +43,9 @@ filter:
 
 # Deduplication settings
 dedup:
-  enabled: true  # CRITICAL: Must be true to enable deduplication!
-  # Cluster-level dedup window (prevents network loops and immediate duplicates)
-  # Default: 120 seconds
-  cluster_window_seconds: 120
-  
-  # User-level dedup window (per-user configurable preference)
-  # Default: 300 seconds (5 minutes)
-  user_window_seconds: 300
+  enabled: true               # CRITICAL: Must be true to enable deduplication!
+  cluster_window_seconds: 120 # Cluster-level dedup window (prevents network loops and immediate duplicates)
+  user_window_seconds: 300    # User-level dedup window (per-user configurable preference)
 
 admin:
   http_port: 8080
@@ -65,31 +60,34 @@ call_correction:
   enabled: true                # Master switch (set true to enable)
   min_consensus_reports: 5     # Minimum number of corroborating spotters
   min_advantage: 2             # Candidate must exceed the original by this many spotters
-  min_confidence_percent: 70   # Candidate supporters must represent at least this percent of unique spotters
-  recency_seconds: 61          # Supporting spots must be this recent
+  min_confidence_percent: 75   # Candidate supporters must represent at least this percent of unique spotters
+  recency_seconds: 120         # Supporting spots must be this recent
   max_edit_distance: 2         # Max allowed Levenshtein distance between original and replacement
   invalid_action: "broadcast"  # "broadcast" original if correction fails CTY, or "suppress" to drop spot
 
 # Harmonic suppression for CW/SSB/RTTY signals
 harmonics:
   enabled: true                # Suppress harmonics when true
-  recency_seconds: 61          # Look-back window for fundamental spots
-  max_harmonic_multiple: 4      # Highest harmonic multiple to consider (2 = second harmonic, etc.)
-  frequency_tolerance_hz: 400    # Allowed deviation between expected and observed harmonic
-  min_report_delta: 6           # Harmonics must be at least this many dB weaker to drop
+  recency_seconds: 120         # Look-back window for fundamental spots
+  max_harmonic_multiple: 4     # Highest harmonic multiple to consider (2 = second harmonic, etc.)
+  frequency_tolerance_hz: 400  # Allowed deviation between expected and observed harmonic
+  min_report_delta: 6          # Harmonics must be at least this many dB weaker to drop
 
 spot_policy:
-  max_age_seconds: 600          # Drop spots older than this many seconds (based on spot timestamp)
-  frequency_averaging_seconds: 61  # Look-back window for CW/RTTY frequency averaging
+  max_age_seconds: 600                   # Drop spots older than this many seconds (based on spot timestamp)
+  frequency_averaging_seconds: 120       # Look-back window for CW/RTTY frequency averaging
   frequency_averaging_tolerance_hz: 350  # Max deviation between reports when averaging
-  frequency_averaging_min_reports: 3  # Minimum corroborating reports needed to adjust frequency
+  frequency_averaging_min_reports: 3     # Minimum corroborating reports needed to adjust frequency
 
 confidence:
-  known_callsigns_file: "data/scp/MASTER.SCP"       # Optional path to newline-delimited list of known calls
+  known_callsigns_file: "data/scp/MASTER.SCP"      # Optional path to newline-delimited list of known calls
 
 cty:
   file: "data/cty/cty.plist"                       # Path to the CTY prefix database (cty.plist)
 
+buffer:
+  capacity: 500000                                 # Number of spots held in the in-memory ring buffer
+
 # Runtime statistics output interval
 stats:
-  display_interval_seconds: 300  # How often to print stats to stdout
+  display_interval_seconds: 30  # How often to print stats to stdout

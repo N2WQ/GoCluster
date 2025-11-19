@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"dxcluster/cty"
@@ -30,33 +31,44 @@ type Client struct {
 	shutdown  chan struct{}
 	spotChan  chan *spot.Spot
 	lookup    *cty.CTYDatabase
+	reconnect chan struct{}
+	stopOnce  sync.Once
 }
 
 // NewClient creates a new RBN client
 func NewClient(host string, port int, callsign string, name string, lookup *cty.CTYDatabase) *Client {
 	return &Client{
-		host:     host,
-		port:     port,
-		callsign: callsign,
-		name:     name,
-		shutdown: make(chan struct{}),
-		spotChan: make(chan *spot.Spot, 100),
-		lookup:   lookup,
+		host:      host,
+		port:      port,
+		callsign:  callsign,
+		name:      name,
+		shutdown:  make(chan struct{}),
+		spotChan:  make(chan *spot.Spot, 100),
+		lookup:    lookup,
+		reconnect: make(chan struct{}, 1),
 	}
 }
 
-// Connect establishes connection to RBN
+// Connect establishes the initial RBN connection and starts the supervision loop.
+// The first dial runs synchronously so failures are reported to the caller; any
+// subsequent disconnects are handled via the background reconnect loop.
 func (c *Client) Connect() error {
-	addr := net.JoinHostPort(c.host, fmt.Sprintf("%d", c.port))
-	if c.name != "" {
-		log.Printf("Connecting to %s at %s...", c.name, addr)
-	} else {
-		log.Printf("Connecting to RBN at %s...", addr)
+	if err := c.establishConnection(); err != nil {
+		return err
 	}
+	go c.connectionSupervisor()
+	return nil
+}
+
+// establishConnection dials the remote RBN feed and spins up the login and read
+// goroutines. It is used for the initial connection and each subsequent reconnect.
+func (c *Client) establishConnection() error {
+	addr := net.JoinHostPort(c.host, fmt.Sprintf("%d", c.port))
+	log.Printf("%s: connecting to %s...", c.displayName(), addr)
 
 	conn, err := net.DialTimeout("tcp", addr, 30*time.Second)
 	if err != nil {
-		return fmt.Errorf("failed to connect to RBN: %w", err)
+		return fmt.Errorf("failed to connect to %s: %w", c.displayName(), err)
 	}
 
 	c.conn = conn
@@ -64,19 +76,56 @@ func (c *Client) Connect() error {
 	c.writer = bufio.NewWriter(conn)
 	c.connected = true
 
-	if c.name != "" {
-		log.Printf("Connected to %s", c.name)
-	} else {
-		log.Println("Connected to RBN")
-	}
+	log.Printf("%s: connection established", c.displayName())
 
-	// Start login sequence
+	// Start login sequence and stream reader for this connection.
 	go c.handleLogin()
-
-	// Start reading spots
 	go c.readLoop()
-
 	return nil
+}
+
+// connectionSupervisor waits for disconnect notifications and orchestrates the
+// exponential backoff / reconnect attempts while honoring shutdown signals.
+func (c *Client) connectionSupervisor() {
+	const (
+		initialDelay = 5 * time.Second
+		maxDelay     = 60 * time.Second
+	)
+
+	for {
+		select {
+		case <-c.shutdown:
+			return
+		case <-c.reconnect:
+			if c.isShutdown() {
+				return
+			}
+			delay := initialDelay
+
+			for {
+				if c.isShutdown() {
+					return
+				}
+				log.Printf("%s: attempting reconnect...", c.displayName())
+				if err := c.establishConnection(); err != nil {
+					log.Printf("%s: reconnect failed: %v (retry in %s)", c.displayName(), err, delay)
+					timer := time.NewTimer(delay)
+					select {
+					case <-timer.C:
+					case <-c.shutdown:
+						timer.Stop()
+						return
+					}
+					delay *= 2
+					if delay > maxDelay {
+						delay = maxDelay
+					}
+					continue
+				}
+				break
+			}
+		}
+	}
 }
 
 // handleLogin performs the RBN login sequence
@@ -113,7 +162,11 @@ func (c *Client) readLoop() {
 
 			line, err := c.reader.ReadString('\n')
 			if err != nil {
-				log.Printf("RBN read error: %v", err)
+				if c.isShutdown() {
+					return
+				}
+				log.Printf("%s: read error: %v", c.displayName(), err)
+				c.requestReconnect(err)
 				return
 			}
 
@@ -396,9 +449,43 @@ func (c *Client) IsConnected() bool {
 
 // Stop closes the RBN connection
 func (c *Client) Stop() {
-	log.Println("Stopping RBN client...")
-	close(c.shutdown)
+	log.Printf("Stopping %s client...", c.displayName())
+	c.stopOnce.Do(func() {
+		close(c.shutdown)
+	})
 	if c.conn != nil {
 		c.conn.Close()
 	}
+}
+
+func (c *Client) isShutdown() bool {
+	select {
+	case <-c.shutdown:
+		return true
+	default:
+		return false
+	}
+}
+
+func (c *Client) requestReconnect(reason error) {
+	if c.isShutdown() {
+		return
+	}
+	if reason != nil {
+		log.Printf("%s: scheduling reconnect after error: %v", c.displayName(), reason)
+	}
+	select {
+	case c.reconnect <- struct{}{}:
+	default:
+	}
+}
+
+func (c *Client) displayName() string {
+	if c.name != "" {
+		return c.name
+	}
+	if c.port == 7001 {
+		return "RBN Digital"
+	}
+	return "RBN"
 }
