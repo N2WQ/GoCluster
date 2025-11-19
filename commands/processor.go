@@ -57,11 +57,13 @@ SHOW/DX [count]      - Show last N DX spots (default: 10)
 BYE                  - Disconnect
 
 Filter commands (use from telnet session):
-	SET/FILTER BAND <band>   - Enable a band filter (valid bands below)
-	SET/FILTER MODE <mode>   - Enable a mode filter (valid modes listed below)
-	UNSET/FILTER MODE <mode> - Disable a mode filter
-	SHOW/FILTER BANDS        - List supported bands
-	SHOW/FILTER MODES        - Show supported modes and enabled state
+	SET/FILTER BAND <band>        - Enable a band filter (valid bands below)
+	SET/FILTER MODE <mode>        - Enable a mode filter (valid modes listed below)
+	SET/FILTER CONFIDENCE <0-100> - Require a minimum consensus confidence
+	UNSET/FILTER MODE <mode>      - Disable a mode filter
+	UNSET/FILTER CONFIDENCE       - Remove the confidence requirement
+	SHOW/FILTER BANDS             - List supported bands
+	SHOW/FILTER MODES             - Show supported modes and enabled state
 
 Supported modes: %s
 Supported bands: %s

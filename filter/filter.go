@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -122,30 +123,28 @@ func EnsureUserDataDir() error {
 
 // Filter represents a user's spot filtering preferences.
 //
-// The filter maintains three types of criteria that can be combined:
-//  1. Band filters: Which amateur radio bands to accept (20m, 40m, etc.)
+// The filter maintains four types of criteria that can be combined:
+//  1. Band filters: Which amateur radio bands to accept (20m, 40m, 160m)
 //  2. Mode filters: Which operating modes to accept (CW, SSB, FT8, etc.)
 //  3. Callsign patterns: Which callsigns to accept (W1*, LZ5VV, etc.)
+//  4. Confidence threshold: Minimum consensus confidence required.
 //
 // Default Behavior:
 //   - AllBands=true: accept every band
 //   - AllModes=false with the curated default mode list pre-enabled
 //   - Callsign patterns: Only applied if non-empty (no impact on band/mode filters)
-//
-// Filter Matching:
-//   - All active filters must match (AND logic)
-//   - Example: Band=20m + Mode=CW → Only 20m CW spots pass
-//   - Example: Band=20m + Call=W1* → Only 20m spots from W1 callsigns pass
+//   - MinConfidence=0: confidence filtering disabled
 //
 // Thread Safety:
 //   - Each client has their own Filter instance (no sharing)
 //   - No internal locking needed (single-threaded per client)
 type Filter struct {
-	Bands     map[string]bool // Enabled bands (e.g., "20m" → true, "40m" → true)
-	Modes     map[string]bool // Enabled modes (e.g., "CW" → true, "FT8" → true)
-	Callsigns []string        // Callsign patterns (e.g., ["W1*", "LZ5VV"])
-	AllBands  bool            // If true, accept all bands (Bands map ignored)
-	AllModes  bool            // If true, accept all modes (Modes map ignored)
+	Bands         map[string]bool // Enabled bands (e.g., "20m" = true, "40m" = true)
+	Modes         map[string]bool // Enabled modes (e.g., "CW" = true, "FT8" = true)
+	Callsigns     []string        // Callsign patterns (e.g., ["W1*", "LZ5VV"])
+	AllBands      bool            // If true, accept all bands (Bands map ignored)
+	AllModes      bool            // If true, accept all modes (Modes map ignored)
+	MinConfidence int             // Minimum consensus confidence percentage (0 disables the check)
 }
 
 // NewFilter creates a new filter with every band enabled and the curated default modes.
@@ -262,6 +261,23 @@ func (f *Filter) ClearCallsignPatterns() {
 	f.Callsigns = make([]string, 0)
 }
 
+// SetMinConfidence configures the minimum confidence percentage a spot must have
+// before it passes through this filter. Values outside 0-100 are clamped.
+func (f *Filter) SetMinConfidence(min int) {
+	if min < 0 {
+		min = 0
+	}
+	if min > 100 {
+		min = 100
+	}
+	f.MinConfidence = min
+}
+
+// ResetConfidence disables confidence-based filtering.
+func (f *Filter) ResetConfidence() {
+	f.MinConfidence = 0
+}
+
 // ResetBands clears all band filters and accepts all bands.
 //
 // Behavior:
@@ -311,6 +327,7 @@ func (f *Filter) Reset() {
 	f.ResetBands()
 	f.ResetModes()
 	f.ClearCallsignPatterns()
+	f.ResetConfidence()
 }
 
 // Matches returns true if the spot passes all active filters.
@@ -363,7 +380,46 @@ func (f *Filter) Matches(s *spot.Spot) bool {
 		}
 	}
 
+	if f.MinConfidence > 0 {
+		confidence := parseConfidenceValue(s.Confidence)
+		if confidence < f.MinConfidence {
+			return false
+		}
+	}
+
 	return true // Passed all filters
+}
+
+func parseConfidenceValue(label string) int {
+	label = strings.TrimSpace(label)
+	switch label {
+	case "":
+		return 0
+	case "?":
+		return 0
+	case "C":
+		return 100
+	case "B":
+		return 10
+	case "S":
+		return 25
+	case "P":
+		return 50
+	case "V":
+		return 100
+	default:
+		value, err := strconv.Atoi(label)
+		if err != nil {
+			return 0
+		}
+		if value < 0 {
+			return 0
+		}
+		if value > 100 {
+			return 100
+		}
+		return value
+	}
 }
 
 // matchesCallsignPattern checks if a callsign matches a pattern with wildcards.
@@ -471,6 +527,9 @@ func (f *Filter) String() string {
 	// Describe callsign patterns (if any)
 	if len(f.Callsigns) > 0 {
 		parts = append(parts, "Callsigns: "+strings.Join(f.Callsigns, ", "))
+	}
+	if f.MinConfidence > 0 {
+		parts = append(parts, "Confidence>="+strconv.Itoa(f.MinConfidence))
 	}
 
 	if len(parts) == 0 {

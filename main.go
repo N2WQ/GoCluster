@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"os/signal"
 	"strings"
@@ -42,7 +43,7 @@ func main() {
 	cfg.Print()
 
 	// Load CTY database for callsign validation
-	ctyDB, err := cty.LoadCTYDatabase("data/cty/cty.plist")
+	ctyDB, err := cty.LoadCTYDatabase(cfg.CTY.File)
 	if err != nil {
 		log.Printf("Warning: failed to load CTY database: %v", err)
 	}
@@ -60,6 +61,17 @@ func main() {
 		correctionIndex = spot.NewCorrectionIndex()
 	}
 
+	var knownCalls *spot.KnownCallsigns
+	if cfg.Confidence.KnownCallsignsFile != "" {
+		knownCalls, err = spot.LoadKnownCallsigns(cfg.Confidence.KnownCallsignsFile)
+		if err != nil {
+			log.Printf("Warning: failed to load known callsigns: %v", err)
+		} else {
+			log.Printf("Loaded %d known callsigns from %s", knownCalls.Count(), cfg.Confidence.KnownCallsignsFile)
+		}
+	}
+
+	freqAverager := spot.NewFrequencyAverager()
 	var harmonicDetector *spot.HarmonicDetector
 	if cfg.Harmonics.Enabled {
 		harmonicDetector = spot.NewHarmonicDetector(spot.HarmonicSettings{
@@ -82,7 +94,7 @@ func main() {
 
 		// Wire up dedup output to ring buffer and telnet broadcast
 		// Deduplicated spots → Ring Buffer → Broadcast to clients
-		go processOutputSpots(deduplicator, spotBuffer, nil, statsTracker, nil, cfg.CallCorrection, ctyDB, harmonicDetector, cfg.Harmonics) // We'll pass telnet server later
+		go processOutputSpots(deduplicator, spotBuffer, nil, statsTracker, nil, cfg.CallCorrection, ctyDB, harmonicDetector, cfg.Harmonics, knownCalls, freqAverager, cfg.SpotPolicy) // We'll pass telnet server later
 	}
 
 	// Create command processor
@@ -105,7 +117,7 @@ func main() {
 	// Now wire up the telnet server to the output processor
 	if cfg.Dedup.Enabled {
 		// Restart the output processor with telnet server
-		go processOutputSpots(deduplicator, spotBuffer, telnetServer, statsTracker, correctionIndex, cfg.CallCorrection, ctyDB, harmonicDetector, cfg.Harmonics)
+		go processOutputSpots(deduplicator, spotBuffer, telnetServer, statsTracker, correctionIndex, cfg.CallCorrection, ctyDB, harmonicDetector, cfg.Harmonics, knownCalls, freqAverager, cfg.SpotPolicy)
 	}
 
 	// Connect to RBN CW/RTTY feed if enabled (port 7000)
@@ -329,6 +341,9 @@ func processOutputSpots(
 	ctyDB *cty.CTYDatabase,
 	harmonicDetector *spot.HarmonicDetector,
 	harmonicCfg config.HarmonicConfig,
+	knownCalls *spot.KnownCallsigns,
+	freqAvg *spot.FrequencyAverager,
+	spotPolicy config.SpotPolicy,
 ) {
 	outputChan := deduplicator.GetOutputChannel()
 
@@ -343,9 +358,16 @@ func processOutputSpots(
 			tracker.IncrementSource(spot.SourceNode)
 		}
 
+		if spotPolicy.MaxAgeSeconds > 0 {
+			if time.Since(spot.Time) > time.Duration(spotPolicy.MaxAgeSeconds)*time.Second {
+				log.Printf("Spot dropped (stale): %s at %.1fkHz (age=%ds)", spot.DXCall, spot.Frequency, int(time.Since(spot.Time).Seconds()))
+				continue
+			}
+		}
+
 		var suppress bool
 		if telnet != nil {
-			suppress = maybeApplyCallCorrection(spot, correctionIdx, correctionCfg, ctyDB)
+			suppress = maybeApplyCallCorrection(spot, correctionIdx, correctionCfg, ctyDB, knownCalls)
 			if suppress {
 				continue
 			}
@@ -355,6 +377,17 @@ func processOutputSpots(
 			if drop, fundamental := harmonicDetector.ShouldDrop(spot, time.Now().UTC()); drop {
 				log.Printf("Harmonic suppressed: %s fundamental=%.1fkHz harmonic=%.1fkHz", spot.DXCall, fundamental, spot.Frequency)
 				continue
+			}
+		}
+
+		if freqAvg != nil && shouldAverageFrequency(spot) {
+			window := frequencyAverageWindow(spotPolicy)
+			tolerance := frequencyAverageTolerance(spotPolicy)
+			avg, reports := freqAvg.Average(spot.DXCall, spot.Frequency, time.Now().UTC(), window, tolerance)
+			rounded := math.Round(avg*10) / 10
+			if reports >= spotPolicy.FrequencyAveragingMinReports && math.Abs(rounded-spot.Frequency) >= tolerance {
+				log.Printf("Frequency averaged: %s %.3f -> %.3f kHz (%d reports)", spot.DXCall, spot.Frequency, rounded, reports)
+				spot.Frequency = rounded
 			}
 		}
 
@@ -414,11 +447,16 @@ func processPSKRSpotsNoDedupe(client *pskreporter.Client, buf *buffer.RingBuffer
 	}
 }
 
-func maybeApplyCallCorrection(spotEntry *spot.Spot, idx *spot.CorrectionIndex, cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase) bool {
-	if idx == nil || !cfg.Enabled || spotEntry == nil {
+func maybeApplyCallCorrection(spotEntry *spot.Spot, idx *spot.CorrectionIndex, cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase, known *spot.KnownCallsigns) bool {
+	if spotEntry == nil {
 		return false
 	}
 	if !spot.IsCallCorrectionCandidate(spotEntry.Mode) {
+		spotEntry.Confidence = ""
+		return false
+	}
+	if idx == nil || !cfg.Enabled {
+		spotEntry.Confidence = "?"
 		return false
 	}
 
@@ -434,23 +472,29 @@ func maybeApplyCallCorrection(spotEntry *spot.Spot, idx *spot.CorrectionIndex, c
 		RecencyWindow:        window,
 	}
 	others := idx.Candidates(spotEntry, now, window)
-	corrected, supporters, confidence, ok := spot.SuggestCallCorrection(spotEntry, others, settings, now)
+	corrected, supporters, correctedConfidence, subjectConfidence, totalReporters, ok := spot.SuggestCallCorrection(spotEntry, others, settings, now)
+
+	knownCall := known != nil && known.Contains(spotEntry.DXCall)
+	spotEntry.Confidence = formatConfidence(subjectConfidence, totalReporters, knownCall)
 
 	if ok && ctyDB != nil {
 		if _, valid := ctyDB.LookupCallsign(corrected); valid {
 			log.Printf("Call correction applied: %s -> %s at %.1f kHz (%d corroborators, %d%% confidence)",
-				spotEntry.DXCall, corrected, spotEntry.Frequency, supporters, confidence)
+				spotEntry.DXCall, corrected, spotEntry.Frequency, supporters, correctedConfidence)
 			spotEntry.DXCall = corrected
+			spotEntry.Confidence = "C"
 		} else {
 			log.Printf("Call correction rejected (CTY miss): suggested %s at %.1f kHz", corrected, spotEntry.Frequency)
 			if strings.EqualFold(cfg.InvalidAction, "suppress") {
 				log.Printf("Call correction suppression engaged: dropping spot from %s at %.1f kHz", spotEntry.DXCall, spotEntry.Frequency)
 				return true
 			}
+			spotEntry.Confidence = "B"
 		}
 	} else if ok && ctyDB == nil {
 		log.Printf("Call correction suggestion ignored (no CTY database): %s -> %s (%d corroborators, %d%% confidence)",
-			spotEntry.DXCall, corrected, supporters, confidence)
+			spotEntry.DXCall, corrected, supporters, correctedConfidence)
+		spotEntry.Confidence = "C"
 	}
 
 	return false
@@ -461,4 +505,54 @@ func callCorrectionWindow(cfg config.CallCorrectionConfig) time.Duration {
 		return 45 * time.Second
 	}
 	return time.Duration(cfg.RecencySeconds) * time.Second
+}
+
+func frequencyAverageWindow(policy config.SpotPolicy) time.Duration {
+	seconds := policy.FrequencyAveragingSeconds
+	if seconds <= 0 {
+		seconds = 45
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+func frequencyAverageTolerance(policy config.SpotPolicy) float64 {
+	toleranceHz := policy.FrequencyAveragingToleranceHz
+	if toleranceHz <= 0 {
+		toleranceHz = 300
+	}
+	return toleranceHz / 1000.0
+}
+
+func formatConfidence(percent int, totalReporters int, known bool) string {
+	if totalReporters <= 1 {
+		if known {
+			return "S"
+		}
+		return "?"
+	}
+
+	value := percent
+	if value < 0 {
+		value = 0
+	}
+	if value > 100 {
+		value = 100
+	}
+
+	switch {
+	case value <= 25:
+		if known {
+			return "S"
+		}
+		return "?"
+	case value <= 75:
+		return "P"
+	default:
+		return "V"
+	}
+}
+
+func shouldAverageFrequency(s *spot.Spot) bool {
+	mode := strings.ToUpper(strings.TrimSpace(s.Mode))
+	return mode == "CW" || mode == "RTTY"
 }

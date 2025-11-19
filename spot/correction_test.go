@@ -15,7 +15,7 @@ func TestSuggestCallCorrectionRequiresConsensus(t *testing.T) {
 		{DXCall: "K1A8C", DECall: "W4DDD", Frequency: 14074.0, Time: now.Add(-10 * time.Second)},
 	}
 
-	call, supporters, confidence, ok := SuggestCallCorrection(subject, others, CorrectionSettings{
+	call, supporters, confidence, subjectConfidence, total, ok := SuggestCallCorrection(subject, others, CorrectionSettings{
 		MinConsensusReports:  3,
 		MinAdvantage:         1,
 		MinConfidencePercent: 50,
@@ -34,6 +34,9 @@ func TestSuggestCallCorrectionRequiresConsensus(t *testing.T) {
 	if confidence <= 0 {
 		t.Fatalf("expected positive confidence, got %d", confidence)
 	}
+	if subjectConfidence <= 0 || total == 0 {
+		t.Fatalf("expected subject confidence data")
+	}
 }
 
 func TestSuggestCallCorrectionRespectsRecency(t *testing.T) {
@@ -45,7 +48,7 @@ func TestSuggestCallCorrectionRespectsRecency(t *testing.T) {
 		{DXCall: "K1A8C", DECall: "W3CCC", Frequency: 14074.0, Time: stale},
 		{DXCall: "K1A8C", DECall: "W4DDD", Frequency: 14074.0, Time: stale},
 	}
-	if call, _, _, ok := SuggestCallCorrection(subject, others, CorrectionSettings{
+	if call, _, _, _, _, ok := SuggestCallCorrection(subject, others, CorrectionSettings{
 		MinConsensusReports:  3,
 		MinAdvantage:         1,
 		MinConfidencePercent: 60,
@@ -64,7 +67,7 @@ func TestSuggestCallCorrectionRequiresUniqueSpotters(t *testing.T) {
 		{DXCall: "K1XYZ", DECall: "W2BBB", Frequency: 14074.0, Time: now}, // duplicate reporter
 		{DXCall: "K1XYZ", DECall: "W2BBB", Frequency: 14074.0, Time: now},
 	}
-	if call, _, _, ok := SuggestCallCorrection(subject, others, CorrectionSettings{
+	if call, _, _, _, _, ok := SuggestCallCorrection(subject, others, CorrectionSettings{
 		MinConsensusReports:  3,
 		MinAdvantage:         1,
 		MinConfidencePercent: 60,
@@ -83,7 +86,7 @@ func TestSuggestCallCorrectionSkipsSameCall(t *testing.T) {
 		{DXCall: "K1ABC", DECall: "W3CCC", Frequency: 14074.0, Time: now},
 		{DXCall: "K1ABC", DECall: "W4DDD", Frequency: 14074.0, Time: now},
 	}
-	if call, _, _, ok := SuggestCallCorrection(subject, others, CorrectionSettings{
+	if call, _, _, _, _, ok := SuggestCallCorrection(subject, others, CorrectionSettings{
 		MinConsensusReports:  3,
 		MinAdvantage:         1,
 		MinConfidencePercent: 60,
@@ -102,7 +105,7 @@ func TestSuggestCallCorrectionRequiresAdvantage(t *testing.T) {
 		{DXCall: "K1XYZ", DECall: "W3CCC", Frequency: 14074.0, Time: now},
 		{DXCall: "K1XYZ", DECall: "W4DDD", Frequency: 14074.0, Time: now},
 	}
-	if call, _, _, ok := SuggestCallCorrection(subject, others, CorrectionSettings{
+	if call, _, _, _, _, ok := SuggestCallCorrection(subject, others, CorrectionSettings{
 		MinConsensusReports:  2,
 		MinAdvantage:         1,
 		MinConfidencePercent: 60,
@@ -121,7 +124,7 @@ func TestSuggestCallCorrectionRequiresConfidence(t *testing.T) {
 		{DXCall: "K1XYZ", DECall: "W3CCC", Frequency: 14074.0, Time: now},
 		{DXCall: "K1XYZ", DECall: "W4DDD", Frequency: 14074.0, Time: now},
 	}
-	if call, _, _, ok := SuggestCallCorrection(subject, others, CorrectionSettings{
+	if call, _, _, _, _, ok := SuggestCallCorrection(subject, others, CorrectionSettings{
 		MinConsensusReports:  2,
 		MinAdvantage:         1,
 		MinConfidencePercent: 70,
@@ -140,7 +143,7 @@ func TestSuggestCallCorrectionRequiresEditDistance(t *testing.T) {
 		{DXCall: "ZZ9ZZA", DECall: "W3CCC", Frequency: 14074.0, Time: now},
 		{DXCall: "ZZ9ZZA", DECall: "W4DDD", Frequency: 14074.0, Time: now},
 	}
-	if call, _, _, ok := SuggestCallCorrection(subject, others, CorrectionSettings{
+	if call, _, _, _, _, ok := SuggestCallCorrection(subject, others, CorrectionSettings{
 		MinConsensusReports:  3,
 		MinAdvantage:         1,
 		MinConfidencePercent: 60,

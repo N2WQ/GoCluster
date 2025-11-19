@@ -22,6 +22,9 @@ type Config struct {
 	Stats          StatsConfig          `yaml:"stats"`
 	CallCorrection CallCorrectionConfig `yaml:"call_correction"`
 	Harmonics      HarmonicConfig       `yaml:"harmonics"`
+	SpotPolicy     SpotPolicy           `yaml:"spot_policy"`
+	Confidence     ConfidenceConfig     `yaml:"confidence"`
+	CTY            CTYConfig            `yaml:"cty"`
 }
 
 // ServerConfig contains general server settings
@@ -143,6 +146,30 @@ type HarmonicConfig struct {
 	MinReportDelta       int     `yaml:"min_report_delta"`
 }
 
+// SpotPolicy controls generic spot handling rules.
+type SpotPolicy struct {
+	MaxAgeSeconds int `yaml:"max_age_seconds"`
+	// FrequencyAveragingSeconds controls the look-back window for CW/RTTY
+	// frequency averaging.
+	FrequencyAveragingSeconds int `yaml:"frequency_averaging_seconds"`
+	// FrequencyAveragingToleranceHz is the maximum deviation allowed between
+	// reports when averaging (in Hz).
+	FrequencyAveragingToleranceHz float64 `yaml:"frequency_averaging_tolerance_hz"`
+	// FrequencyAveragingMinReports is the minimum number of corroborating
+	// reports required before applying an averaged frequency.
+	FrequencyAveragingMinReports int `yaml:"frequency_averaging_min_reports"`
+}
+
+// ConfidenceConfig controls external data for adjusting confidence.
+type ConfidenceConfig struct {
+	KnownCallsignsFile string `yaml:"known_callsigns_file"`
+}
+
+// CTYConfig allows overriding the CTY prefix database path.
+type CTYConfig struct {
+	File string `yaml:"file"`
+}
+
 // Load loads configuration from a YAML file
 func Load(filename string) (*Config, error) {
 	data, err := os.ReadFile(filename)
@@ -188,6 +215,22 @@ func Load(filename string) (*Config, error) {
 	}
 	if cfg.Harmonics.MinReportDelta <= 0 {
 		cfg.Harmonics.MinReportDelta = 6
+	}
+
+	if cfg.SpotPolicy.MaxAgeSeconds <= 0 {
+		cfg.SpotPolicy.MaxAgeSeconds = 120
+	}
+	if cfg.SpotPolicy.FrequencyAveragingSeconds <= 0 {
+		cfg.SpotPolicy.FrequencyAveragingSeconds = 45
+	}
+	if cfg.SpotPolicy.FrequencyAveragingToleranceHz <= 0 {
+		cfg.SpotPolicy.FrequencyAveragingToleranceHz = 300
+	}
+	if cfg.SpotPolicy.FrequencyAveragingMinReports <= 0 {
+		cfg.SpotPolicy.FrequencyAveragingMinReports = 4
+	}
+	if strings.TrimSpace(cfg.CTY.File) == "" {
+		cfg.CTY.File = "data/cty/cty.plist"
 	}
 	return &cfg, nil
 }
@@ -239,4 +282,12 @@ func (c *Config) Print() {
 		c.Harmonics.MaxHarmonicMultiple,
 		c.Harmonics.FrequencyToleranceHz,
 		c.Harmonics.MinReportDelta)
+
+	fmt.Printf("Spot policy: max_age=%ds\n", c.SpotPolicy.MaxAgeSeconds)
+	if c.CTY.File != "" {
+		fmt.Printf("CTY database: %s\n", c.CTY.File)
+	}
+	if c.Confidence.KnownCallsignsFile != "" {
+		fmt.Printf("Confidence: known_calls=%s\n", c.Confidence.KnownCallsignsFile)
+	}
 }

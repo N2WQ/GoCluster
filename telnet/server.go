@@ -37,6 +37,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -100,6 +101,21 @@ type Client struct {
 	address   string          // Client's IP address
 	spotChan  chan *spot.Spot // Buffered channel for spot delivery (capacity 10)
 	filter    *filter.Filter  // Personal spot filter (band, mode, callsign)
+}
+
+func (c *Client) saveFilter() error {
+	if c == nil || c.filter == nil {
+		return nil
+	}
+	callsign := strings.TrimSpace(c.callsign)
+	if callsign == "" {
+		return nil
+	}
+	if err := filter.SaveUserFilter(callsign, c.filter); err != nil {
+		log.Printf("Warning: failed to save filter for %s: %v", callsign, err)
+		return err
+	}
+	return nil
 }
 
 type broadcastJob struct {
@@ -372,11 +388,8 @@ func (s *Server) handleClient(conn net.Conn) {
 	} else {
 		client.filter = filter.NewFilter()
 		if errors.Is(err, os.ErrNotExist) {
-			if saveErr := filter.SaveUserFilter(client.callsign, client.filter); saveErr != nil {
-				log.Printf("Warning: failed to save default filter for %s: %v", client.callsign, saveErr)
-			} else {
-				log.Printf("Created default filter for %s", client.callsign)
-			}
+			client.saveFilter()
+			log.Printf("Created default filter for %s", client.callsign)
 		} else {
 			// Non-critical load error; log it.
 			log.Printf("Warning: failed to load filter for %s: %v", client.callsign, err)
@@ -481,7 +494,7 @@ func (c *Client) handleFilterCommand(cmd string) string {
 
 	case "set/filter":
 		if len(parts) < 3 {
-			return "Usage: SET/FILTER BAND <band> | SET/FILTER MODE <mode> | SET/FILTER CALL <pattern>\n"
+			return "Usage: SET/FILTER BAND <band> | SET/FILTER MODE <mode> | SET/FILTER CALL <pattern> | SET/FILTER CONFIDENCE <0-100>\n"
 		}
 
 		filterType := strings.ToUpper(parts[1])
@@ -489,13 +502,14 @@ func (c *Client) handleFilterCommand(cmd string) string {
 		case "BAND":
 			value := strings.TrimSpace(strings.Join(parts[2:], " "))
 			if value == "" {
-				return "Usage: SET/FILTER BAND <band> | SET/FILTER MODE <mode> | SET/FILTER CALL <pattern>\n"
+				return "Usage: SET/FILTER BAND <band> | SET/FILTER MODE <mode> | SET/FILTER CALL <pattern> | SET/FILTER CONFIDENCE <0-100>\n"
 			}
 			normalized := spot.NormalizeBand(value)
 			if normalized == "" || !spot.IsValidBand(normalized) {
 				return fmt.Sprintf("Unknown band: %s\nSupported bands: %s\n", value, strings.Join(spot.SupportedBandNames(), ", "))
 			}
 			c.filter.SetBand(normalized, true)
+			c.saveFilter()
 			return fmt.Sprintf("Filter set: Band %s\n", normalized)
 		case "MODE":
 			modeArgs := strings.Join(parts[2:], " ")
@@ -510,18 +524,35 @@ func (c *Client) handleFilterCommand(cmd string) string {
 			for _, mode := range modes {
 				c.filter.SetMode(mode, true)
 			}
+			c.saveFilter()
 			return fmt.Sprintf("Filter set: Modes %s\n", strings.Join(modes, ", "))
 		case "CALL":
 			value := strings.ToUpper(parts[2])
 			c.filter.AddCallsignPattern(value)
+			c.saveFilter()
 			return fmt.Sprintf("Filter set: Callsign %s\n", value)
+		case "CONFIDENCE":
+			value := strings.TrimSpace(strings.Join(parts[2:], " "))
+			if value == "" {
+				return "Usage: SET/FILTER CONFIDENCE <0-100>\n"
+			}
+			percent, err := strconv.Atoi(value)
+			if err != nil || percent < 0 || percent > 100 {
+				return "Invalid confidence percentage. Use 0-100.\n"
+			}
+			c.filter.SetMinConfidence(percent)
+			c.saveFilter()
+			if percent == 0 {
+				return "Confidence filter disabled\n"
+			}
+			return fmt.Sprintf("Confidence filter set: >=%d\n", percent)
 		default:
-			return "Unknown filter type. Use: BAND, MODE, or CALL\n"
+			return "Unknown filter type. Use: BAND, MODE, CALL, or CONFIDENCE\n"
 		}
 
 	case "unset/filter":
 		if len(parts) < 2 {
-			return "Usage: UNSET/FILTER ALL | UNSET/FILTER BAND | UNSET/FILTER MODE | UNSET/FILTER CALL\n"
+			return "Usage: UNSET/FILTER ALL | UNSET/FILTER BAND | UNSET/FILTER MODE | UNSET/FILTER CALL | UNSET/FILTER CONFIDENCE\n"
 		}
 
 		filterType := strings.ToUpper(parts[1])
@@ -529,14 +560,17 @@ func (c *Client) handleFilterCommand(cmd string) string {
 		switch filterType {
 		case "ALL":
 			c.filter.Reset()
+			c.saveFilter()
 			return "All filters cleared\n"
 		case "BAND":
 			c.filter.ResetBands()
+			c.saveFilter()
 			return "Band filters cleared\n"
 		case "MODE":
 			modeArgs := strings.Join(parts[2:], " ")
 			if strings.TrimSpace(modeArgs) == "" {
 				c.filter.ResetModes()
+				c.saveFilter()
 				return "Mode filters cleared\n"
 			}
 			modes := parseModeList(modeArgs)
@@ -550,12 +584,18 @@ func (c *Client) handleFilterCommand(cmd string) string {
 			for _, mode := range modes {
 				c.filter.SetMode(mode, false)
 			}
+			c.saveFilter()
 			return fmt.Sprintf("Mode filters disabled: %s\n", strings.Join(modes, ", "))
 		case "CALL":
 			c.filter.ClearCallsignPatterns()
+			c.saveFilter()
 			return "Callsign filters cleared\n"
+		case "CONFIDENCE":
+			c.filter.ResetConfidence()
+			c.saveFilter()
+			return "Confidence filter cleared\n"
 		default:
-			return "Unknown filter type. Use: ALL, BAND, MODE, or CALL\n"
+			return "Unknown filter type. Use: ALL, BAND, MODE, CALL, or CONFIDENCE\n"
 		}
 
 	default:

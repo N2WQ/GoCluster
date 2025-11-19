@@ -9,6 +9,7 @@ A modern Go-based DX cluster that aggregates amateur radio spots, enriches them 
 3. **PSKReporter MQTT** (`pskreporter/client.go`) subscribes to `pskr/filter/v2/+/+/#` (or one or more `pskr/filter/v2/+/<MODE>/#` topics when `pskreporter.modes` is configured), converts JSON payloads into canonical spots, and applies locator-based metadata.
 4. **CTY Database** (`cty/parser.go` + `data/cty/cty.plist`) performs longest-prefix lookups so both spotters and spotted stations carry continent/country/CQ/ITU/grid metadata.
 5. **Dedup Engine** (`dedup/deduplicator.go`) optionally filters duplicate spots before they reach the ring buffer and telnet clients.
+6. **Frequency Averager** (`spot/frequency_averager.go`) merges CW/RTTY skimmer reports by averaging/rounding them to the nearest 100 Hz to smooth out one-off deviations.
 
 ## Data Flow and Spot Record Format
 
@@ -89,10 +90,21 @@ Filter management commands are implemented directly in `telnet/server.go` and op
 - `SET/FILTER BAND <band>` – enables filtering for `<band>` (normalized via `spot.NormalizeBand`); use the band names from `spot.SupportedBandNames()`.
 - `SET/FILTER MODE <mode>[,<mode>...]` – enables one or more modes (comma-separated) that must exist in `filter.SupportedModes`.
 - `SET/FILTER CALL <pattern>` – begins delivering only spots matching the supplied callsign pattern.
+- `SET/FILTER CONFIDENCE <percent>` – only deliver spots whose consensus confidence is at least `<percent` (0-100, 0 disables).
 - `UNSET/FILTER ALL` – resets every filter back to the default (no filtering).
 - `UNSET/FILTER BAND` – clears all currently enabled band filters.
 - `UNSET/FILTER MODE [<mode>[,<mode>...]]` – clears every mode filter if no arguments are provided, or just the comma-separated list of modes if one is supplied.
 - `UNSET/FILTER CALL` – removes all callsign patterns.
+- `UNSET/FILTER CONFIDENCE` – removes any confidence threshold and allows all spots again.
+
+Confidence indicator legend in telnet output:
+
+- `?` – 25% consensus or less
+- `S` – 25% or less but spotted callsign is in `MASTER.SCP`
+- `B` – consensus suggested a correction but CTY validation failed (busted call retained)
+- `P` – 25–75% consensus
+- `V` – more than 75% consensus
+- `C` – callsign was corrected by consensus
 
 Errors during filter commands return a usage message (e.g., invalid bands or modes refer to the supported lists) and the `SHOW/FILTER` commands help confirm the active settings.
 
@@ -120,10 +132,12 @@ SET/FILTER BAND 20M
 Filter set: Band 20M
 SET/FILTER MODE FT8,FT4
 Filter set: Modes FT8, FT4
+SET/FILTER CONFIDENCE 80
+Confidence filter set: >=80
 SHOW/FILTER MODES
 Supported modes: FT8=ENABLED, FT4=ENABLED, CW=DISABLED, ...
 SHOW/FILTER
-Current filters: Bands=[20M]; Modes=[FT8, FT4]; Callsigns=[]
+Current filters: Bands=[20M]; Modes=[FT8, FT4]; Callsigns=[] | Confidence>=80
 UNSET/FILTER MODE FT4
 Mode filters disabled: FT4
 UNSET/FILTER ALL
@@ -175,13 +189,15 @@ C:\src\gocluster\
 1. Update `config.yaml` with your preferred callsigns for the `rbn`, `rbn_digital`, and optional `pskreporter` sections. Optionally list `pskreporter.modes` (e.g., [`FT8`, `FT4`]) to subscribe to just those MQTT feeds simultaneously.
 2. Optionally enable/tune `call_correction` (master `enabled` switch, minimum corroborating spotters, required advantage, confidence percent, recency window, max edit distance, and `invalid_action` failover).
 3. Optionally enable/tune `harmonics` to drop harmonic CW/SSB/RTTY spots (master `enabled`, recency window, maximum harmonic multiple, frequency tolerance, and minimum report delta).
-4. Adjust `stats.display_interval_seconds` in `config.yaml` to control how frequently runtime statistics print to the console (defaults to 30 seconds).
-5. Install dependencies and run:
+4. Set `spot_policy.max_age_seconds` to drop stale spots before they're processed further. For CW/RTTY frequency smoothing, tune `spot_policy.frequency_averaging_seconds` (window), `spot_policy.frequency_averaging_tolerance_hz` (allowed deviation), and `spot_policy.frequency_averaging_min_reports` (minimum corroborating reports).
+5. If you maintain a historical callsign list, set `confidence.known_callsigns_file` so familiar calls pick up a confidence boost even when unique.
+6. Adjust `stats.display_interval_seconds` in `config.yaml` to control how frequently runtime statistics print to the console (defaults to 30 seconds).
+7. Install dependencies and run:
 	 ```pwsh
 	 go mod tidy
 	 go run main.go
 	 ```
-6. Connect via `telnet localhost 7300`, enter your callsign, and the server will immediately stream real-time spots.
+8. Connect via `telnet localhost 7300`, enter your callsign, and the server will immediately stream real-time spots.
 
 ## Testing & Tooling
 

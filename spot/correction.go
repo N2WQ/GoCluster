@@ -67,15 +67,15 @@ const frequencyToleranceKHz = 0.5
 //   - correctedCall: the most likely callsign if consensus is met.
 //   - supporters: how many unique spotters contributed to the correction.
 //   - ok: true if a correction is recommended, false otherwise.
-func SuggestCallCorrection(subject *Spot, others []*Spot, settings CorrectionSettings, now time.Time) (correctedCall string, supporters int, confidencePercent int, ok bool) {
+func SuggestCallCorrection(subject *Spot, others []*Spot, settings CorrectionSettings, now time.Time) (correctedCall string, supporters int, correctedConfidence int, subjectConfidence int, totalReporters int, ok bool) {
 	if subject == nil {
-		return "", 0, 0, false
+		return "", 0, 0, 0, 0, false
 	}
 
 	cfg := normalizeCorrectionSettings(settings)
 	subjectCall := strings.ToUpper(strings.TrimSpace(subject.DXCall))
 	if subjectCall == "" {
-		return "", 0, 0, false
+		return "", 0, 0, 0, 0, false
 	}
 	subjectReporter := strings.ToUpper(strings.TrimSpace(subject.DECall))
 	subjectVotes := map[string]struct{}{}
@@ -146,10 +146,11 @@ func SuggestCallCorrection(subject *Spot, others []*Spot, settings CorrectionSet
 		bestConfidence int
 	)
 	subjectCount := len(subjectVotes)
-	totalReporters := len(allReporters)
+	totalReporters = len(allReporters)
 	if totalReporters == 0 {
-		return "", 0, 0, false
+		return "", 0, 0, 0, 0, false
 	}
+	subjectConfidence = len(subjectVotes) * 100 / totalReporters
 
 	for call, stats := range candidates {
 		count := len(stats.reporters)
@@ -179,9 +180,9 @@ func SuggestCallCorrection(subject *Spot, others []*Spot, settings CorrectionSet
 	}
 
 	if bestCall == "" {
-		return "", 0, 0, false
+		return "", 0, 0, subjectConfidence, totalReporters, false
 	}
-	return bestCall, bestCount, bestConfidence, true
+	return bestCall, bestCount, bestConfidence, subjectConfidence, totalReporters, true
 }
 
 // normalizeCorrectionSettings fills in safe defaults so callers can omit config

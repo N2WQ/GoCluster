@@ -72,11 +72,23 @@ call_correction:
 
 # Harmonic suppression for CW/SSB/RTTY signals
 harmonics:
-  enabled: false                # Suppress harmonics when true
-  recency_seconds: 120          # Look-back window for fundamental spots
+  enabled: true                # Suppress harmonics when true
+  recency_seconds: 61          # Look-back window for fundamental spots
   max_harmonic_multiple: 4      # Highest harmonic multiple to consider (2 = second harmonic, etc.)
-  frequency_tolerance_hz: 800   # Allowed deviation between expected and observed harmonic
+  frequency_tolerance_hz: 400    # Allowed deviation between expected and observed harmonic
   min_report_delta: 6           # Harmonics must be at least this many dB weaker to drop
+
+spot_policy:
+  max_age_seconds: 600          # Drop spots older than this many seconds (based on spot timestamp)
+  frequency_averaging_seconds: 61  # Look-back window for CW/RTTY frequency averaging
+  frequency_averaging_tolerance_hz: 350  # Max deviation between reports when averaging
+  frequency_averaging_min_reports: 3  # Minimum corroborating reports needed to adjust frequency
+
+confidence:
+  known_callsigns_file: "data/scp/MASTER.SCP"       # Optional path to newline-delimited list of known calls
+
+cty:
+  file: "data/cty/cty.plist"                       # Path to the CTY prefix database (cty.plist)
 
 # Runtime statistics output interval
 stats:

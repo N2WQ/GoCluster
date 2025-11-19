@@ -37,6 +37,7 @@ type Spot struct {
 	IsHuman    bool         // Whether the spot originated from a human operator
 	DXMetadata CallMetadata // Metadata for the DX station
 	DEMetadata CallMetadata // Metadata for the spotter station
+	Confidence string       // Consensus confidence label (e.g., "75%" or "?")
 	formatted  string
 	formatOnce sync.Once // ensures FormatDXCluster builds expensive string only once per spot
 }
@@ -175,15 +176,37 @@ func (s *Spot) FormatDXCluster() string {
 		leftPart += strings.Repeat(" ", spacesToComment)
 		leftPart += commentSection
 
-		// Pad the left part to exactly 75 characters so time starts at column 75
-		// If leftPart is already >= 75 chars, truncate it to 75
-		if len(leftPart) > 75 {
-			leftPart = leftPart[:75]
-		}
-		paddedLeft := fmt.Sprintf("%-75s", leftPart)
+		confLabel := strings.TrimSpace(s.Confidence)
 
-		// Add time at columns 75-79
-		s.formatted = paddedLeft + timeStr
+		if confLabel == "" {
+			// Original layout: pad to 75 chars so time starts at column 75.
+			if len(leftPart) > 75 {
+				leftPart = leftPart[:75]
+			}
+			paddedLeft := fmt.Sprintf("%-75s", leftPart)
+			s.formatted = paddedLeft + timeStr
+			return
+		}
+
+		// With confidence: reserve space so the confidence ends two characters
+		// before the time stamp (leaving " <conf> <time>").
+		confWidth := len(confLabel)
+		if confWidth > 73 {
+			confWidth = 73
+			confLabel = confLabel[:confWidth]
+		}
+		allowedLeft := 73 - confWidth
+		if allowedLeft < 0 {
+			allowedLeft = 0
+		}
+
+		if len(leftPart) > allowedLeft {
+			leftPart = leftPart[:allowedLeft]
+		} else if len(leftPart) < allowedLeft {
+			leftPart += strings.Repeat(" ", allowedLeft-len(leftPart))
+		}
+
+		s.formatted = leftPart + " " + confLabel + " " + timeStr
 	})
 
 	return s.formatted
