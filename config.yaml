@@ -48,6 +48,7 @@ filter:
 dedup:
   cluster_window_seconds: 120 # Dedup window in seconds (0 disables dedup without changing the pipeline)
   user_window_seconds: 300    # User-level dedup window (per-user configurable preference)
+  prefer_stronger_snr: true   # When duplicates collide, keep the strongest SNR version
 
 admin:
   http_port: 8080

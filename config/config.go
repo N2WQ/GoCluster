@@ -92,9 +92,13 @@ func (c *PSKReporterConfig) SubscriptionTopics() []string {
 // aggressively we suppress duplicates:
 //   - A positive window enables deduplication for that many seconds.
 //   - A zero or negative window effectively disables dedup (spots pass through immediately).
+//
+// The SNR policy governs how we handle duplicates from the same DX/spotter/frequency
+// bucket—when enabled we keep the strongest SNR representative.
 type DedupConfig struct {
-	ClusterWindowSeconds int `yaml:"cluster_window_seconds"` // <=0 disables dedup
-	UserWindowSeconds    int `yaml:"user_window_seconds"`
+	ClusterWindowSeconds int  `yaml:"cluster_window_seconds"` // <=0 disables dedup
+	UserWindowSeconds    int  `yaml:"user_window_seconds"`
+	PreferStrongerSNR    bool `yaml:"prefer_stronger_snr"` // keep max SNR when dropping duplicates
 }
 
 // AdminConfig contains admin interface settings

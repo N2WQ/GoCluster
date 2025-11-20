@@ -13,6 +13,7 @@ import (
 // intact (the component simply never flags duplicates).
 type Deduplicator struct {
 	window          time.Duration
+	preferStronger  bool
 	shards          []cacheShard
 	inputChan       chan *spot.Spot
 	outputChan      chan *spot.Spot
@@ -24,9 +25,16 @@ type Deduplicator struct {
 // Sharding the map eliminates the single global mutex on the hot path.
 type cacheShard struct {
 	mu             sync.Mutex
-	cache          map[uint32]time.Time
+	cache          map[uint32]cachedEntry
 	processedCount uint64
 	duplicateCount uint64
+}
+
+// cachedEntry tracks when we last saw a hash and the associated SNR so we can
+// optionally choose the strongest representative when duplicates collide.
+type cachedEntry struct {
+	when time.Time
+	snr  int
 }
 
 // shardCount must remain a power of two so we can use bit masking for fast shard selection.
@@ -34,13 +42,14 @@ const shardCount = 64
 
 // NewDeduplicator creates a new deduplicator with the specified window. Passing
 // a zero window disables suppression but still allows metrics/visibility.
-func NewDeduplicator(window time.Duration) *Deduplicator {
+func NewDeduplicator(window time.Duration, preferStronger bool) *Deduplicator {
 	shards := make([]cacheShard, shardCount)
 	for i := range shards {
-		shards[i].cache = make(map[uint32]time.Time)
+		shards[i].cache = make(map[uint32]cachedEntry)
 	}
 	return &Deduplicator{
 		window:          window,
+		preferStronger:  preferStronger,
 		shards:          shards,
 		inputChan:       make(chan *spot.Spot, 1000),
 		outputChan:      make(chan *spot.Spot, 1000),
@@ -90,15 +99,23 @@ func (d *Deduplicator) process() {
 			shard.mu.Lock()
 			shard.processedCount++
 
-			if isDuplicateLocked(shard.cache, hash, s.Time, d.window) {
-				shard.duplicateCount++
+			dup, lastSeen := isDuplicateLocked(shard.cache, hash, s.Time, d.window)
+			if dup {
+				// Optionally favor the stronger SNR when a duplicate collides within the window.
+				if d.preferStronger && s.Report > lastSeen.snr {
+					// Replace the cached timestamp/SNR with the stronger spot and forward it.
+					shard.cache[hash] = cachedEntry{when: s.Time, snr: s.Report}
+					shard.mu.Unlock()
+				} else {
+					shard.duplicateCount++
+					shard.mu.Unlock()
+					continue // Skip duplicate (logging handled by stats display)
+				}
+			} else {
+				// Add to cache
+				shard.cache[hash] = cachedEntry{when: s.Time, snr: s.Report}
 				shard.mu.Unlock()
-				continue // Skip duplicate (logging handled by stats display)
 			}
-
-			// Add to cache
-			shard.cache[hash] = s.Time
-			shard.mu.Unlock()
 
 			// Send to output channel
 			select {
@@ -114,19 +131,19 @@ func (d *Deduplicator) process() {
 // isDuplicateLocked checks if a spot is a duplicate within a shard.
 // Caller must hold the shard mutex. When the window is zero the function always
 // returns false, effectively bypassing deduplication.
-func isDuplicateLocked(cache map[uint32]time.Time, hash uint32, spotTime time.Time, window time.Duration) bool {
+func isDuplicateLocked(cache map[uint32]cachedEntry, hash uint32, spotTime time.Time, window time.Duration) (bool, cachedEntry) {
 	lastSeen, exists := cache[hash]
 	if !exists {
-		return false
+		return false, cachedEntry{}
 	}
 
 	// Check if within dedup window
-	age := spotTime.Sub(lastSeen)
+	age := spotTime.Sub(lastSeen.when)
 	if age < 0 {
 		age = -age // Handle out-of-order spots
 	}
 
-	return age < window
+	return age < window, lastSeen
 }
 
 // cleanupLoop periodically removes expired entries from the cache
@@ -153,7 +170,7 @@ func (d *Deduplicator) cleanup() {
 		shard := &d.shards[i]
 		shard.mu.Lock()
 		for hash, lastSeen := range shard.cache {
-			age := now.Sub(lastSeen)
+			age := now.Sub(lastSeen.when)
 			if age > d.window {
 				delete(shard.cache, hash)
 				removed++
