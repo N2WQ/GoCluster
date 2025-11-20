@@ -89,6 +89,12 @@ cty:
 buffer:
   capacity: 500000                                 # Number of spots held in the in-memory ring buffer
 
+# RBN skew correction table
+skew:
+  enabled: true
+  url: "https://sm7iun.se/rbnskew.csv"
+  file: "data/skm_correction/rbnskew.json"
+
 # Runtime statistics output interval
 stats:
   display_interval_seconds: 30  # How often to print stats to stdout

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"regexp"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"dxcluster/cty"
+	"dxcluster/skew"
 	"dxcluster/spot"
 )
 
@@ -31,12 +33,13 @@ type Client struct {
 	shutdown  chan struct{}
 	spotChan  chan *spot.Spot
 	lookup    *cty.CTYDatabase
+	skewStore *skew.Store
 	reconnect chan struct{}
 	stopOnce  sync.Once
 }
 
 // NewClient creates a new RBN client
-func NewClient(host string, port int, callsign string, name string, lookup *cty.CTYDatabase) *Client {
+func NewClient(host string, port int, callsign string, name string, lookup *cty.CTYDatabase, skewStore *skew.Store) *Client {
 	return &Client{
 		host:      host,
 		port:      port,
@@ -45,6 +48,7 @@ func NewClient(host string, port int, callsign string, name string, lookup *cty.
 		shutdown:  make(chan struct{}),
 		spotChan:  make(chan *spot.Spot, 100),
 		lookup:    lookup,
+		skewStore: skewStore,
 		reconnect: make(chan struct{}, 1),
 	}
 }
@@ -278,8 +282,8 @@ func (c *Client) parseSpot(line string) {
 	}
 
 	// Extract common fields
-	deCall := strings.TrimSuffix(parts[2], ":") // Remove trailing colon
-	deCall = normalizeRBNCallsign(deCall)       // Normalize RBN callsign
+	deCallRaw := strings.TrimSuffix(parts[2], ":") // Remove trailing colon
+	deCall := normalizeRBNCallsign(deCallRaw)      // Normalize RBN callsign
 
 	freqStr := parts[3]
 	dxCall := spot.NormalizeCallsign(parts[4])
@@ -333,6 +337,7 @@ func (c *Client) parseSpot(line string) {
 		log.Printf("Failed to parse frequency '%s': %v", freqStr, err)
 		return
 	}
+	freq = c.applySkew(deCallRaw, freq)
 
 	// Parse signal report (dB)
 	signalDB, err := strconv.Atoi(dbStr)
@@ -412,6 +417,18 @@ func (c *Client) parseSpot(line string) {
 	default:
 		log.Println("RBN: Spot channel full, dropping spot")
 	}
+}
+
+func (c *Client) applySkew(rawCall string, freq float64) float64 {
+	if c == nil || c.skewStore == nil {
+		return freq
+	}
+	factor, ok := c.skewStore.Lookup(rawCall)
+	if !ok || factor <= 0 {
+		return freq
+	}
+	corrected := freq * factor
+	return math.Round(corrected*10) / 10
 }
 
 func (c *Client) fetchCallsignInfo(call string) (*cty.PrefixInfo, bool) {

@@ -11,6 +11,7 @@ A modern Go-based DX cluster that aggregates amateur radio spots, enriches them 
 5. **Dedup Engine** (`dedup/deduplicator.go`) optionally filters duplicate spots before they reach the ring buffer and telnet clients.
 6. **Frequency Averager** (`spot/frequency_averager.go`) merges CW/RTTY skimmer reports by averaging corroborating reports within a tolerance and rounding to 0.1 kHz once the minimum corroborators is met.
 7. **Call/Harmonic Guards** (`spot/correction.go`, `spot/harmonics.go`, `main.go`) apply consensus-based call corrections and suppress harmonics; the pipeline logs/dashboards both the correction and the suppressed harmonic frequency.
+8. **Skimmer Frequency Corrections** (`cmd/rbnskewfetch`, `skew/`, `rbn/client.go`) download SM7IUN’s skew list, convert it to JSON, and apply per-spotter multiplicative factors before any callsign normalization.
 
 ## Data Flow and Spot Record Format
 
@@ -109,6 +110,24 @@ Confidence indicator legend in telnet output:
 
 Errors during filter commands return a usage message (e.g., invalid bands or modes refer to the supported lists) and the `SHOW/FILTER` commands help confirm the active settings.
 
+## RBN Skew Corrections
+
+1. Enable the `skew` block in `config.yaml` (the server writes to `skew.file` after each refresh):
+
+```yaml
+skew:
+  enabled: true
+  url: "https://sm7iun.se/rbnskew.csv"
+  file: "data/skm_correction/rbnskew.json"
+```
+
+2. (Optional) Run `go run ./cmd/rbnskewfetch -out data/skm_correction/rbnskew.json` once to pre-seed the JSON file before enabling the feature.
+3. Restart the cluster. At startup, it loads the JSON file (if present) and then fetches the CSV at the next 00:30 UTC boundary. The built-in scheduler automatically refreshes the list every day at 00:30 UTC and rewrites `skew.file`, so no external cron job is required.
+
+Each RBN spot uses the *raw* spotter string (SSID intact, before any normalization) to look up the correction. If found, the original frequency is multiplied by the factor before any dedup, CTY validation, call correction, or harmonic detection runs. This keeps SSID-specific skew data aligned with the broadcast nodes.
+
+To match the 100 Hz accuracy of the underlying skimmers, the corrected frequency is rounded to the nearest 0.1 kHz before it continues through the pipeline.
+
 ## Runtime Logs and Corrections
 
 - **Call corrections**: `2025/11/19 18:50:45 Call corrected: VE3N -> VE3NE at 7011.1 kHz (8 corroborators, 88% confidence)`
@@ -197,19 +216,21 @@ C:\src\gocluster\
 2. Optionally enable/tune `call_correction` (master `enabled` switch, minimum corroborating spotters, required advantage, confidence percent, recency window, max edit distance, and `invalid_action` failover).
 3. Optionally enable/tune `harmonics` to drop harmonic CW/SSB/RTTY spots (master `enabled`, recency window, maximum harmonic multiple, frequency tolerance, and minimum report delta).
 4. Set `spot_policy.max_age_seconds` to drop stale spots before they're processed further. For CW/RTTY frequency smoothing, tune `spot_policy.frequency_averaging_seconds` (window), `spot_policy.frequency_averaging_tolerance_hz` (allowed deviation), and `spot_policy.frequency_averaging_min_reports` (minimum corroborating reports).
-5. If you maintain a historical callsign list, set `confidence.known_callsigns_file` so familiar calls pick up a confidence boost even when unique.
-6. Adjust `stats.display_interval_seconds` in `config.yaml` to control how frequently runtime statistics print to the console (defaults to 30 seconds).
-7. Install dependencies and run:
+5. (Optional) Enable `skew.enabled` after generating `skew.file` via `go run ./cmd/rbnskewfetch` (or let the server fetch it at the next 00:30 UTC window). The server applies each skimmer’s multiplicative correction before normalization so SSIDs stay unique.
+6. If you maintain a historical callsign list, set `confidence.known_callsigns_file` so familiar calls pick up a confidence boost even when unique.
+7. Adjust `stats.display_interval_seconds` in `config.yaml` to control how frequently runtime statistics print to the console (defaults to 30 seconds).
+8. Install dependencies and run:
 	 ```pwsh
 	 go mod tidy
 	 go run main.go
 	 ```
-8. Connect via `telnet localhost 7300`, enter your callsign, and the server will immediately stream real-time spots.
+9. Connect via `telnet localhost 7300`, enter your callsign, and the server will immediately stream real-time spots.
 
 ## Testing & Tooling
 
 - `go test ./...` validates packages (not all directories contain tests yet).
 - `gofmt -w ./...` keeps formatting consistent.
 - `go run cmd/ctylookup -data data/cty/cty.plist` lets you interactively inspect CTY entries used for validation.
+- `go run cmd/rbnskewfetch -out data/skm_correction/rbnskew.json` forces an immediate skew-table refresh (the server still performs automatic downloads at 00:30 UTC daily).
 
 Let me know if you want diagrams, sample logs, or scripted deployment steps added next.

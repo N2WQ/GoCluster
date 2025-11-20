@@ -26,6 +26,7 @@ type Config struct {
 	Confidence     ConfidenceConfig     `yaml:"confidence"`
 	CTY            CTYConfig            `yaml:"cty"`
 	Buffer         BufferConfig         `yaml:"buffer"`
+	Skew           SkewConfig           `yaml:"skew"`
 }
 
 // ServerConfig contains general server settings
@@ -169,6 +170,13 @@ type BufferConfig struct {
 	Capacity int `yaml:"capacity"`
 }
 
+// SkewConfig controls how the RBN skew table is fetched and applied.
+type SkewConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	URL     string `yaml:"url"`
+	File    string `yaml:"file"`
+}
+
 // ConfidenceConfig controls external data for adjusting confidence.
 type ConfidenceConfig struct {
 	KnownCallsignsFile string `yaml:"known_callsigns_file"`
@@ -246,6 +254,12 @@ func Load(filename string) (*Config, error) {
 	}
 	if cfg.Buffer.Capacity <= 0 {
 		cfg.Buffer.Capacity = 300000
+	}
+	if strings.TrimSpace(cfg.Skew.URL) == "" {
+		cfg.Skew.URL = "https://sm7iun.se/rbnskew.csv"
+	}
+	if strings.TrimSpace(cfg.Skew.File) == "" {
+		cfg.Skew.File = "data/skm_correction/rbnskew.json"
 	}
 	return &cfg, nil
 }

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -19,6 +21,7 @@ import (
 	"dxcluster/filter"
 	"dxcluster/pskreporter"
 	"dxcluster/rbn"
+	"dxcluster/skew"
 	"dxcluster/spot"
 	"dxcluster/stats"
 	"dxcluster/telnet"
@@ -98,6 +101,30 @@ func main() {
 		}
 	}
 
+	var skewStore *skew.Store
+	if cfg.Skew.Enabled {
+		skewStore = skew.NewStore()
+		if table, loadErr := skew.LoadFile(cfg.Skew.File); loadErr == nil {
+			skewStore.Set(table)
+			log.Printf("Loaded %d RBN skew corrections from %s", table.Count(), cfg.Skew.File)
+		} else {
+			log.Printf("Warning: failed to load RBN skew table (%s): %v", cfg.Skew.File, loadErr)
+		}
+		if skewStore.Count() == 0 {
+			if count, err := refreshSkewTable(cfg.Skew, skewStore); err != nil {
+				log.Printf("Warning: initial RBN skew download failed: %v", err)
+			} else {
+				log.Printf("Downloaded %d RBN skew corrections from %s", count, cfg.Skew.URL)
+			}
+		}
+		if skewStore.Count() > 0 {
+			startSkewScheduler(cfg.Skew, skewStore)
+		} else {
+			log.Printf("Warning: RBN skew scheduler disabled (no initial data); ensure %s is reachable", cfg.Skew.URL)
+			skewStore = nil
+		}
+	}
+
 	freqAverager := spot.NewFrequencyAverager()
 	var harmonicDetector *spot.HarmonicDetector
 	if cfg.Harmonics.Enabled {
@@ -151,7 +178,7 @@ func main() {
 	// RBN spots go INTO the deduplicator input channel
 	var rbnClient *rbn.Client
 	if cfg.RBN.Enabled {
-		rbnClient = rbn.NewClient(cfg.RBN.Host, cfg.RBN.Port, cfg.RBN.Callsign, cfg.RBN.Name, ctyDB)
+		rbnClient = rbn.NewClient(cfg.RBN.Host, cfg.RBN.Port, cfg.RBN.Callsign, cfg.RBN.Name, ctyDB, skewStore)
 		err = rbnClient.Connect()
 		if err != nil {
 			log.Printf("Warning: Failed to connect to RBN CW/RTTY: %v", err)
@@ -171,7 +198,7 @@ func main() {
 	// RBN Digital spots go INTO the deduplicator input channel
 	var rbnDigitalClient *rbn.Client
 	if cfg.RBNDigital.Enabled {
-		rbnDigitalClient = rbn.NewClient(cfg.RBNDigital.Host, cfg.RBNDigital.Port, cfg.RBNDigital.Callsign, cfg.RBNDigital.Name, ctyDB)
+		rbnDigitalClient = rbn.NewClient(cfg.RBNDigital.Host, cfg.RBNDigital.Port, cfg.RBNDigital.Callsign, cfg.RBNDigital.Name, ctyDB, skewStore)
 		err = rbnDigitalClient.Connect()
 		if err != nil {
 			log.Printf("Warning: Failed to connect to RBN Digital: %v", err)
@@ -403,15 +430,12 @@ func processOutputSpots(
 		if harmonicDetector != nil && harmonicCfg.Enabled {
 			if drop, fundamental := harmonicDetector.ShouldDrop(spot, time.Now().UTC()); drop {
 				harmonicMsg := fmt.Sprintf("Harmonic suppressed: %s %.1f -> %.1f kHz", spot.DXCall, spot.Frequency, fundamental)
-				freqMsg := fmt.Sprintf("Frequency corrected: %s %.1f -> %.1f kHz (harmonic suppressed)", spot.DXCall, spot.Frequency, fundamental)
 				if tracker != nil {
 					tracker.IncrementHarmonicSuppressions()
 				}
 				if dash != nil {
-					dash.AppendFrequency(freqMsg)
 					dash.AppendHarmonic(harmonicMsg)
 				} else {
-					log.Println(freqMsg)
 					log.Println(harmonicMsg)
 				}
 				continue
@@ -635,6 +659,54 @@ func formatConfidence(percent int, totalReporters int, known bool, ctyMatch bool
 func shouldAverageFrequency(s *spot.Spot) bool {
 	mode := strings.ToUpper(strings.TrimSpace(s.Mode))
 	return mode == "CW" || mode == "RTTY"
+}
+
+func refreshSkewTable(cfg config.SkewConfig, store *skew.Store) (int, error) {
+	if store == nil {
+		return 0, errors.New("skew: store is nil")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+	defer cancel()
+
+	entries, err := skew.Fetch(ctx, cfg.URL)
+	if err != nil {
+		return 0, fmt.Errorf("skew: fetch failed: %w", err)
+	}
+	table, err := skew.NewTable(entries)
+	if err != nil {
+		return 0, fmt.Errorf("skew: build table: %w", err)
+	}
+	store.Set(table)
+	if err := skew.WriteJSON(entries, cfg.File); err != nil {
+		return 0, fmt.Errorf("skew: write json: %w", err)
+	}
+	return table.Count(), nil
+}
+
+func startSkewScheduler(cfg config.SkewConfig, store *skew.Store) {
+	if store == nil {
+		return
+	}
+	go func() {
+		for {
+			delay := nextSkewRefreshDelay(time.Now().UTC())
+			timer := time.NewTimer(delay)
+			<-timer.C
+			if count, err := refreshSkewTable(cfg, store); err != nil {
+				log.Printf("Warning: scheduled RBN skew download failed: %v", err)
+			} else {
+				log.Printf("Scheduled RBN skew download complete (%d entries)", count)
+			}
+		}
+	}()
+}
+
+func nextSkewRefreshDelay(now time.Time) time.Duration {
+	target := time.Date(now.Year(), now.Month(), now.Day(), 0, 30, 0, 0, time.UTC)
+	if !target.After(now) {
+		target = target.Add(24 * time.Hour)
+	}
+	return target.Sub(now)
 }
 
 func formatMemoryLine(buf *buffer.RingBuffer, dedup *dedup.Deduplicator, ctyDB *cty.CTYDatabase, known *spot.KnownCallsigns) string {
