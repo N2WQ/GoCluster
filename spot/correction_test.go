@@ -153,3 +153,26 @@ func TestSuggestCallCorrectionRequiresEditDistance(t *testing.T) {
 		t.Fatalf("expected no correction due to distance, got %s", call)
 	}
 }
+
+func TestCallDistanceToggle(t *testing.T) {
+	plain := callDistance("E1A", "H1A", "CW", "plain", "plain")
+	morse := callDistance("E1A", "H1A", "CW", "morse", "plain")
+	if morse <= plain {
+		t.Fatalf("expected morse distance (%d) to exceed plain (%d)", morse, plain)
+	}
+}
+
+func TestCallDistanceNonCWStaysPlain(t *testing.T) {
+	dist := callDistance("K1ABC", "K1A8C", "SSB", "morse", "baudot")
+	if dist != 1 {
+		t.Fatalf("expected non-CW to use plain distance, got %d", dist)
+	}
+}
+
+func TestCallDistanceRTTYUsesBaudot(t *testing.T) {
+	plain := callDistance("K1AB6C", "K1A86C", "RTTY", "plain", "plain")
+	baudot := callDistance("K1AB6C", "K1A86C", "RTTY", "plain", "baudot")
+	if baudot <= plain {
+		t.Fatalf("expected baudot distance (%d) to exceed plain (%d)", baudot, plain)
+	}
+}

@@ -33,6 +33,14 @@ type CorrectionSettings struct {
 	// only need CW/RTTY thresholds.
 	MinSNRCW   int
 	MinSNRRTTY int
+
+	// DistanceModelCW/DistanceModelRTTY control mode-specific distance behavior.
+	// Supported values:
+	//   - "plain": rune-based Levenshtein
+	//   - "morse": Morse-aware (CW only)
+	//   - "baudot": Baudot-aware (RTTY only)
+	DistanceModelCW   string
+	DistanceModelRTTY string
 }
 
 var correctionEligibleModes = map[string]struct{}{
@@ -178,7 +186,7 @@ func SuggestCallCorrection(subject *Spot, others []*Spot, settings CorrectionSet
 			continue
 		}
 		if cfg.MaxEditDistance >= 0 {
-			if distance := levenshtein(subjectCall, call); distance > cfg.MaxEditDistance {
+			if distance := callDistance(subjectCall, call, subject.Mode, cfg.DistanceModelCW, cfg.DistanceModelRTTY); distance > cfg.MaxEditDistance {
 				continue
 			}
 		}
@@ -227,6 +235,8 @@ func normalizeCorrectionSettings(settings CorrectionSettings) CorrectionSettings
 	if cfg.MinSNRRTTY < 0 {
 		cfg.MinSNRRTTY = 0
 	}
+	cfg.DistanceModelCW = normalizeCWDistanceModel(cfg.DistanceModelCW)
+	cfg.DistanceModelRTTY = normalizeRTTYDistanceModel(cfg.DistanceModelRTTY)
 	return cfg
 }
 
@@ -389,4 +399,232 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+const (
+	distanceModelPlain  = "plain"
+	distanceModelMorse  = "morse"
+	distanceModelBaudot = "baudot"
+)
+
+func normalizeCWDistanceModel(model string) string {
+	switch strings.ToLower(strings.TrimSpace(model)) {
+	case distanceModelMorse:
+		return distanceModelMorse
+	default:
+		return distanceModelPlain
+	}
+}
+
+func normalizeRTTYDistanceModel(model string) string {
+	switch strings.ToLower(strings.TrimSpace(model)) {
+	case distanceModelBaudot:
+		return distanceModelBaudot
+	default:
+		return distanceModelPlain
+	}
+}
+
+// callDistance picks the distance function based on mode/model.
+func callDistance(subject, candidate, mode, cwModel, rttyModel string) int {
+	modeKey := strings.ToUpper(strings.TrimSpace(mode))
+	switch modeKey {
+	case "CW":
+		if normalizeCWDistanceModel(cwModel) == distanceModelMorse {
+			return cwCallDistance(subject, candidate)
+		}
+	case "RTTY":
+		if normalizeRTTYDistanceModel(rttyModel) == distanceModelBaudot {
+			return rttyCallDistance(subject, candidate)
+		}
+	}
+	return levenshtein(subject, candidate)
+}
+
+// cwCallDistance computes Levenshtein at the callsign level but uses Morse-aware
+// substitution costs so CW confusability is reflected in the distance.
+func cwCallDistance(a, b string) int {
+	ra := []rune(strings.ToUpper(a))
+	rb := []rune(strings.ToUpper(b))
+	la := len(ra)
+	lb := len(rb)
+
+	if la == 0 {
+		return lb
+	}
+	if lb == 0 {
+		return la
+	}
+
+	prev := make([]int, lb+1)
+	cur := make([]int, lb+1)
+
+	for j := 0; j <= lb; j++ {
+		prev[j] = j // j inserts
+	}
+
+	for i := 1; i <= la; i++ {
+		cur[0] = i // i deletes
+		for j := 1; j <= lb; j++ {
+			insert := cur[j-1] + 1
+			delete := prev[j] + 1
+			replace := prev[j-1] + morseCharDist(ra[i-1], rb[j-1])
+			cur[j] = min3(insert, delete, replace)
+		}
+		prev, cur = cur, prev
+	}
+
+	return prev[lb]
+}
+
+func morseCharDist(a, b rune) int {
+	if a == b {
+		return 0
+	}
+	sa, okA := morseCodes[a]
+	sb, okB := morseCodes[b]
+	if !okA || !okB {
+		return 2
+	}
+	return levenshtein(sa, sb)
+}
+
+// rttyCallDistance mirrors cwCallDistance but uses Baudot/ITA2-aware costs.
+func rttyCallDistance(a, b string) int {
+	ra := []rune(strings.ToUpper(a))
+	rb := []rune(strings.ToUpper(b))
+	la := len(ra)
+	lb := len(rb)
+
+	if la == 0 {
+		return lb
+	}
+	if lb == 0 {
+		return la
+	}
+
+	prev := make([]int, lb+1)
+	cur := make([]int, lb+1)
+
+	for j := 0; j <= lb; j++ {
+		prev[j] = j
+	}
+
+	for i := 1; i <= la; i++ {
+		cur[0] = i
+		for j := 1; j <= lb; j++ {
+			insert := cur[j-1] + 1
+			delete := prev[j] + 1
+			replace := prev[j-1] + baudotCharDist(ra[i-1], rb[j-1])
+			cur[j] = min3(insert, delete, replace)
+		}
+		prev, cur = cur, prev
+	}
+
+	return prev[lb]
+}
+
+func baudotCharDist(a, b rune) int {
+	if a == b {
+		return 0
+	}
+	sa, okA := baudotCodes[a]
+	sb, okB := baudotCodes[b]
+	if !okA || !okB {
+		return 2
+	}
+	return levenshtein(sa, sb)
+}
+
+func min3(a, b, c int) int {
+	if a < b {
+		if a < c {
+			return a
+		}
+		return c
+	}
+	if b < c {
+		return b
+	}
+	return c
+}
+
+var morseCodes = map[rune]string{
+	'A': ".-",
+	'B': "-...",
+	'C': "-.-.",
+	'D': "-..",
+	'E': ".",
+	'F': "..-.",
+	'G': "--.",
+	'H': "....",
+	'I': "..",
+	'J': ".---",
+	'K': "-.-",
+	'L': ".-..",
+	'M': "--",
+	'N': "-.",
+	'O': "---",
+	'P': ".--.",
+	'Q': "--.-",
+	'R': ".-.",
+	'S': "...",
+	'T': "-",
+	'U': "..-",
+	'V': "...-",
+	'W': ".--",
+	'X': "-..-",
+	'Y': "-.--",
+	'Z': "--..",
+	'0': "-----",
+	'1': ".----",
+	'2': "..---",
+	'3': "...--",
+	'4': "....-",
+	'5': ".....",
+	'6': "-....",
+	'7': "--...",
+	'8': "---..",
+	'9': "----.",
+	'/': "-..-.",
+}
+
+var baudotCodes = map[rune]string{
+	'A': "L00011",
+	'B': "L11001",
+	'C': "L01110",
+	'D': "L01001",
+	'E': "L00001",
+	'F': "L01101",
+	'G': "L11010",
+	'H': "L10100",
+	'I': "L00110",
+	'J': "L01011",
+	'K': "L01111",
+	'L': "L10010",
+	'M': "L11100",
+	'N': "L01100",
+	'O': "L11000",
+	'P': "L10110",
+	'Q': "L10111",
+	'R': "L01010",
+	'S': "L00101",
+	'T': "L10000",
+	'U': "L00111",
+	'V': "L11110",
+	'W': "L10011",
+	'X': "L11101",
+	'Y': "L10101",
+	'Z': "L10001",
+	'0': "F10110",
+	'1': "F10111",
+	'2': "F10011",
+	'3': "F00001",
+	'4': "F01010",
+	'5': "F10000",
+	'6': "F10101",
+	'7': "F00111",
+	'8': "F00110",
+	'9': "F11000",
+	'/': "F11101",
 }

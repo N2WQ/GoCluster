@@ -63,16 +63,18 @@ logging:
 
 # Consensus thresholds for automated call corrections (only CW/RTTY/USB/LSB considered)
 call_correction:
-  enabled: true                # Master switch (set true to enable)
-  min_consensus_reports: 6     # Minimum number of corroborating spotters
-  min_advantage: 3             # Candidate must exceed the original by this many spotters
-  min_confidence_percent: 76   # Candidate supporters must represent at least this percent of unique spotters
-  recency_seconds: 180         # Supporting spots must be this recent
-  max_edit_distance: 2         # Max allowed Levenshtein distance between original and replacement
-  frequency_tolerance_hz: 300  # Spots within this frequency window are considered the same signal
-  invalid_action: "broadcast"  # "broadcast" original if correction fails CTY, or "suppress" to drop spot
-  min_snr_cw: 6                # Ignore CW corroborators weaker than this many dB
-  min_snr_rtty: 3              # Ignore RTTY corroborators weaker than this many dB
+  enabled: true                 # Master switch (set true to enable)
+  min_consensus_reports: 6      # Minimum number of corroborating spotters
+  min_advantage: 3              # Candidate must exceed the original by this many spotters
+  min_confidence_percent: 75    # Candidate supporters must represent at least this percent of unique spotters
+  recency_seconds: 180          # Supporting spots must be this recent
+  max_edit_distance: 2          # Max allowed Levenshtein distance between original and replacement
+  frequency_tolerance_hz: 300   # Spots within this frequency window are considered the same signal
+  distance_model_cw: "morse"    # "plain" = standard Levenshtein, "morse" = Morse-aware (CW only)
+  distance_model_rtty: "baudot" # "plain" = standard Levenshtein, "baudot" = Baudot-aware (RTTY only)
+  invalid_action: "broadcast"   # "broadcast" original if correction fails CTY, or "suppress" to drop spot
+  min_snr_cw: 6                 # Ignore CW corroborators weaker than this many dB
+  min_snr_rtty: 4               # Ignore RTTY corroborators weaker than this many dB
 
 # Harmonic suppression for CW/USB/LSB/RTTY signals
 harmonics:
@@ -95,6 +97,11 @@ known_calls:
   url: "https://www.supercheckpartial.com/MASTER.SCP"
   file: "data/scp/MASTER.SCP"
   refresh_utc: "00:30"                             # Daily download time in HH:MM UTC
+
+# Combined database for known calls + grids
+grid_db: "data/grids/calls.db"
+grid_flush_seconds: 60                             # Batch DB writes at most once per this many seconds
+grid_cache_size: 100000                            # Max in-memory grid cache entries (lazy LRU; falls back to SQLite on miss)
 
 cty:
   file: "data/cty/cty.plist"                       # Path to the CTY prefix database (cty.plist)

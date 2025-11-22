@@ -1,7 +1,9 @@
 package main
 
 import (
+	"container/list"
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -23,6 +26,7 @@ import (
 	"dxcluster/cty"
 	"dxcluster/dedup"
 	"dxcluster/filter"
+	"dxcluster/gridstore"
 	"dxcluster/pskreporter"
 	"dxcluster/rbn"
 	"dxcluster/skew"
@@ -40,6 +44,96 @@ const (
 
 // Version will be set at build time
 var Version = "dev"
+
+type gridMetrics struct {
+	learnedTotal atomic.Uint64
+}
+
+type gridCache struct {
+	mu       sync.Mutex
+	capacity int
+	lru      *list.List
+	entries  map[string]*list.Element
+}
+
+type gridEntry struct {
+	call string
+	grid string
+}
+
+func newGridCache(capacity int) *gridCache {
+	if capacity <= 0 {
+		capacity = 100000
+	}
+	return &gridCache{
+		capacity: capacity,
+		lru:      list.New(),
+		entries:  make(map[string]*list.Element),
+	}
+}
+
+// shouldUpdate returns true when the provided grid differs from what is stored
+// in the cache (or DB), and updates the cache with the new value. On cache miss
+// it consults SQLite to avoid duplicate writes when the database already holds
+// the same grid.
+func (c *gridCache) shouldUpdate(call, grid string, store *gridstore.Store) bool {
+	if call == "" || grid == "" {
+		return false
+	}
+
+	// Fast path: cache present
+	c.mu.Lock()
+	if elem, ok := c.entries[call]; ok {
+		entry := elem.Value.(*gridEntry)
+		if entry.grid == grid {
+			c.mu.Unlock()
+			return false
+		}
+		entry.grid = grid
+		c.lru.MoveToFront(elem)
+		c.mu.Unlock()
+		return true
+	}
+	c.mu.Unlock()
+
+	// Miss: check DB to avoid redundant writes
+	if store != nil {
+		if rec, err := store.Get(call); err == nil && rec != nil && rec.Grid.Valid {
+			existing := strings.ToUpper(strings.TrimSpace(rec.Grid.String))
+			if existing == grid {
+				c.add(call, grid)
+				return false
+			}
+		}
+	}
+
+	c.add(call, grid)
+	return true
+}
+
+func (c *gridCache) add(call, grid string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if elem, ok := c.entries[call]; ok {
+		entry := elem.Value.(*gridEntry)
+		entry.grid = grid
+		c.lru.MoveToFront(elem)
+		return
+	}
+
+	elem := c.lru.PushFront(&gridEntry{call: call, grid: grid})
+	c.entries[call] = elem
+	if c.capacity > 0 && len(c.entries) > c.capacity {
+		// Evict least-recently-used
+		if tail := c.lru.Back(); tail != nil {
+			c.lru.Remove(tail)
+			if e, ok := tail.Value.(*gridEntry); ok {
+				delete(c.entries, e.call)
+			}
+		}
+	}
+}
 
 func main() {
 	disableTUI := os.Getenv("DXC_NO_TUI") == "1"
@@ -120,9 +214,27 @@ func main() {
 			}
 		}
 	}
+	gridStore, err := gridstore.Open(cfg.GridDBPath)
+	if err != nil {
+		log.Fatalf("Failed to open grid database: %v", err)
+	}
+	defer gridStore.Close()
+	if known := knownCalls.Load(); known != nil {
+		if err := seedKnownCalls(gridStore, known); err != nil {
+			log.Printf("Warning: failed to seed known calls into grid database: %v", err)
+		}
+	}
+	cache := newGridCache(cfg.GridCacheSize)
+	gridUpdater, gridUpdateState, stopGridWriter := startGridWriter(gridStore, time.Duration(cfg.GridFlushSec)*time.Second, cache)
+	defer func() {
+		if stopGridWriter != nil {
+			stopGridWriter()
+		}
+	}()
+
 	if cfg.KnownCalls.Enabled && knownCallsURL != "" && knownCallsPath != "" {
 		if knownCalls.Load() != nil {
-			startKnownCallScheduler(cfg.KnownCalls, &knownCalls)
+			startKnownCallScheduler(cfg.KnownCalls, &knownCalls, gridStore)
 		} else {
 			log.Printf("Warning: known calls scheduler disabled (no initial data); ensure %s is reachable", cfg.KnownCalls.URL)
 		}
@@ -199,7 +311,7 @@ func main() {
 	}
 
 	// Start the unified output processor once the telnet server is ready
-	go processOutputSpots(deduplicator, spotBuffer, telnetServer, statsTracker, correctionIndex, cfg.CallCorrection, ctyDB, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, ui)
+	go processOutputSpots(deduplicator, spotBuffer, telnetServer, statsTracker, correctionIndex, cfg.CallCorrection, ctyDB, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, ui, gridUpdater)
 
 	// Connect to RBN CW/RTTY feed if enabled (port 7000)
 	// RBN spots go INTO the deduplicator input channel
@@ -249,7 +361,7 @@ func main() {
 
 	// Start stats display goroutine
 	statsInterval := time.Duration(cfg.Stats.DisplayIntervalSeconds) * time.Second
-	go displayStats(statsInterval, statsTracker, deduplicator, spotBuffer, ctyDB, &knownCalls, telnetServer, ui)
+	go displayStats(statsInterval, statsTracker, deduplicator, spotBuffer, ctyDB, &knownCalls, telnetServer, ui, gridUpdateState, gridStore)
 
 	// Set up signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
@@ -311,7 +423,7 @@ func main() {
 }
 
 // displayStats prints statistics at the configured interval
-func displayStats(interval time.Duration, tracker *stats.Tracker, dedup *dedup.Deduplicator, buf *buffer.RingBuffer, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns], telnetSrv *telnet.Server, dash *dashboard) {
+func displayStats(interval time.Duration, tracker *stats.Tracker, dedup *dedup.Deduplicator, buf *buffer.RingBuffer, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns], telnetSrv *telnet.Server, dash *dashboard, gridStats *gridMetrics, gridDB *gridstore.Store) {
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
@@ -325,6 +437,9 @@ func displayStats(interval time.Duration, tracker *stats.Tracker, dedup *dedup.D
 		lines := make([]string, 0, 6)
 		lines = append(lines, formatUptimeLine(tracker.GetUptime()))
 		lines = append(lines, formatMemoryLine(buf, dedup, ctyDB, knownPtr))
+		if gridStats != nil {
+			lines = append(lines, formatGridLine(gridStats, gridDB))
+		}
 
 		sourceTotals := tracker.GetSourceCounts()
 		sourceModeTotals := tracker.GetSourceModeCounts()
@@ -412,6 +527,7 @@ func processOutputSpots(
 	freqAvg *spot.FrequencyAverager,
 	spotPolicy config.SpotPolicy,
 	dash *dashboard,
+	gridUpdate func(call, grid string),
 ) {
 	outputChan := deduplicator.GetOutputChannel()
 
@@ -490,6 +606,15 @@ func processOutputSpots(
 			}
 		}
 
+		if gridUpdate != nil {
+			if dxGrid := strings.TrimSpace(s.DXMetadata.Grid); dxGrid != "" {
+				gridUpdate(s.DXCall, dxGrid)
+			}
+			if deGrid := strings.TrimSpace(s.DEMetadata.Grid); deGrid != "" {
+				gridUpdate(s.DECall, deGrid)
+			}
+		}
+
 		buf.Add(s)
 
 		if telnet != nil {
@@ -523,6 +648,8 @@ func maybeApplyCallCorrection(spotEntry *spot.Spot, idx *spot.CorrectionIndex, c
 		RecencyWindow:        window,
 		MinSNRCW:             cfg.MinSNRCW,
 		MinSNRRTTY:           cfg.MinSNRRTTY,
+		DistanceModelCW:      cfg.DistanceModelCW,
+		DistanceModelRTTY:    cfg.DistanceModelRTTY,
 	}
 	others := idx.Candidates(spotEntry, now, window)
 	corrected, supporters, correctedConfidence, subjectConfidence, totalReporters, ok := spot.SuggestCallCorrection(spotEntry, others, settings, now)
@@ -707,7 +834,7 @@ func skewRefreshHourMinute(cfg config.SkewConfig) (int, int) {
 
 // startKnownCallScheduler downloads the known-calls file at the configured UTC
 // time every day and updates the in-memory cache pointer after each refresh.
-func startKnownCallScheduler(cfg config.KnownCallsConfig, knownPtr *atomic.Pointer[spot.KnownCallsigns]) {
+func startKnownCallScheduler(cfg config.KnownCallsConfig, knownPtr *atomic.Pointer[spot.KnownCallsigns], store *gridstore.Store) {
 	if knownPtr == nil {
 		return
 	}
@@ -721,6 +848,11 @@ func startKnownCallScheduler(cfg config.KnownCallsConfig, knownPtr *atomic.Point
 			} else {
 				knownPtr.Store(fresh)
 				log.Printf("Scheduled known calls download complete (%d entries)", fresh.Count())
+				if store != nil {
+					if err := seedKnownCalls(store, fresh); err != nil {
+						log.Printf("Warning: failed to reseed known calls into grid database: %v", err)
+					}
+				}
 			}
 		}
 	}()
@@ -813,6 +945,137 @@ func knownCallRefreshHourMinute(cfg config.KnownCallsConfig) (int, int) {
 		return parsed.Hour(), parsed.Minute()
 	}
 	return 1, 0
+}
+
+func formatGridLine(metrics *gridMetrics, store *gridstore.Store) string {
+	updatesSinceStart := metrics.learnedTotal.Load()
+
+	dbTotal := int64(-1)
+	if store != nil {
+		if count, err := store.Count(); err == nil {
+			dbTotal = count
+		} else {
+			log.Printf("Warning: gridstore count failed: %v", err)
+		}
+	}
+	if dbTotal >= 0 {
+		return fmt.Sprintf("Grid database: %d (UPDATED) / %d (TOTAL DB)", updatesSinceStart, dbTotal)
+	}
+	return fmt.Sprintf("Grid database: %d (UPDATED)", updatesSinceStart)
+}
+
+func seedKnownCalls(store *gridstore.Store, known *spot.KnownCallsigns) error {
+	if store == nil || known == nil {
+		return nil
+	}
+	calls := known.List()
+	if len(calls) == 0 {
+		return nil
+	}
+	records := make([]gridstore.Record, 0, len(calls))
+	now := time.Now().UTC()
+	for _, call := range calls {
+		records = append(records, gridstore.Record{
+			Call:         call,
+			IsKnown:      true,
+			Observations: 0,
+			FirstSeen:    now,
+			UpdatedAt:    now,
+		})
+	}
+	return store.UpsertBatch(records)
+}
+
+func startGridWriter(store *gridstore.Store, flushInterval time.Duration, cache *gridCache) (func(call, grid string), *gridMetrics, func()) {
+	if store == nil {
+		return nil, nil, nil
+	}
+	if flushInterval <= 0 {
+		flushInterval = 60 * time.Second
+	}
+	metrics := &gridMetrics{}
+	type update struct {
+		call string
+		grid string
+	}
+	updates := make(chan update, 8192)
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(flushInterval)
+		defer ticker.Stop()
+
+		pending := make(map[string]update)
+		flush := func() {
+			if len(pending) == 0 {
+				return
+			}
+			batch := make([]gridstore.Record, 0, len(pending))
+			now := time.Now().UTC()
+			for _, u := range pending {
+				rec := gridstore.Record{
+					Call:         u.call,
+					Grid:         sqlNullString(u.grid),
+					Observations: 1,
+					FirstSeen:    now,
+					UpdatedAt:    now,
+				}
+				batch = append(batch, rec)
+			}
+			if err := store.UpsertBatch(batch); err != nil {
+				log.Printf("Warning: gridstore batch upsert failed: %v", err)
+			}
+			metrics.learnedTotal.Add(uint64(len(batch)))
+			clear(pending)
+		}
+
+		for {
+			select {
+			case u, ok := <-updates:
+				if !ok {
+					flush()
+					return
+				}
+				pending[u.call] = u
+				if len(pending) >= 500 {
+					flush()
+				}
+			case <-ticker.C:
+				flush()
+			}
+		}
+	}()
+
+	updateFn := func(call, grid string) {
+		call = strings.TrimSpace(strings.ToUpper(call))
+		grid = strings.TrimSpace(strings.ToUpper(grid))
+		if call == "" || len(grid) < 4 {
+			return
+		}
+		if cache != nil && !cache.shouldUpdate(call, grid, store) {
+			return
+		}
+		select {
+		case updates <- update{call: call, grid: grid}:
+		default:
+			// Drop silently to avoid backpressure on the spot pipeline.
+		}
+	}
+
+	stopFn := func() {
+		close(updates)
+		<-done
+	}
+
+	return updateFn, metrics, stopFn
+}
+
+func sqlNullString(v string) sql.NullString {
+	if v == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: v, Valid: true}
 }
 
 func formatMemoryLine(buf *buffer.RingBuffer, dedup *dedup.Deduplicator, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns]) string {

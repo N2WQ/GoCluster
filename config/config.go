@@ -28,6 +28,9 @@ type Config struct {
 	Buffer         BufferConfig         `yaml:"buffer"`
 	Skew           SkewConfig           `yaml:"skew"`
 	KnownCalls     KnownCallsConfig     `yaml:"known_calls"`
+	GridDBPath     string               `yaml:"grid_db"`
+	GridFlushSec   int                  `yaml:"grid_flush_seconds"`
+	GridCacheSize  int                  `yaml:"grid_cache_size"`
 }
 
 // ServerConfig contains general server settings
@@ -149,6 +152,15 @@ type CallCorrectionConfig struct {
 	// MinSNRCW/RTTY allow discarding marginal decodes from the corroborator set.
 	MinSNRCW   int `yaml:"min_snr_cw"`
 	MinSNRRTTY int `yaml:"min_snr_rtty"`
+	// DistanceModel controls how string distance is measured. Supported values:
+	//   - Deprecated: "distance_model" applies to both CW/RTTY when per-mode toggles unset
+	//   - "distance_model_cw"/"distance_model_rtty" override per mode:
+	//       * "plain" (default) uses rune-based Levenshtein
+	//       * "morse" (CW only) switches to Morse-aware distance
+	//       * "baudot" (RTTY only) switches to Baudot/ITA2-aware distance
+	DistanceModel     string `yaml:"distance_model"`
+	DistanceModelCW   string `yaml:"distance_model_cw"`
+	DistanceModelRTTY string `yaml:"distance_model_rtty"`
 	// InvalidAction controls what to do when consensus suggests a callsign that
 	// fails CTY validation. Supported values:
 	//   - "broadcast": keep the original spot (default)
@@ -243,6 +255,22 @@ func Load(filename string) (*Config, error) {
 	if cfg.CallCorrection.InvalidAction == "" {
 		cfg.CallCorrection.InvalidAction = "broadcast"
 	}
+	defaultDistance := strings.TrimSpace(cfg.CallCorrection.DistanceModel)
+	if defaultDistance == "" {
+		defaultDistance = "plain"
+	}
+	if strings.TrimSpace(cfg.CallCorrection.DistanceModelCW) == "" {
+		cfg.CallCorrection.DistanceModelCW = defaultDistance
+	}
+	if strings.TrimSpace(cfg.CallCorrection.DistanceModelRTTY) == "" {
+		cfg.CallCorrection.DistanceModelRTTY = defaultDistance
+	}
+	if strings.TrimSpace(cfg.CallCorrection.DistanceModelCW) == "" {
+		cfg.CallCorrection.DistanceModelCW = "plain"
+	}
+	if strings.TrimSpace(cfg.CallCorrection.DistanceModelRTTY) == "" {
+		cfg.CallCorrection.DistanceModelRTTY = "plain"
+	}
 	if cfg.CallCorrection.MinSNRCW < 0 {
 		cfg.CallCorrection.MinSNRCW = 0
 	}
@@ -293,6 +321,15 @@ func Load(filename string) (*Config, error) {
 	}
 	if cfg.KnownCalls.RefreshUTC == "" {
 		cfg.KnownCalls.RefreshUTC = "01:00"
+	}
+	if strings.TrimSpace(cfg.GridDBPath) == "" {
+		cfg.GridDBPath = "data/grids/calls.db"
+	}
+	if cfg.GridFlushSec <= 0 {
+		cfg.GridFlushSec = 60
+	}
+	if cfg.GridCacheSize <= 0 {
+		cfg.GridCacheSize = 100000
 	}
 
 	// Normalize dedup settings so the window drives behavior.
@@ -359,7 +396,7 @@ func (c *Config) Print() {
 	if c.CallCorrection.Enabled {
 		status = "enabled"
 	}
-	fmt.Printf("Call correction: %s (min_reports=%d advantage>%d confidence>=%d%% recency=%ds max_edit=%d tol=%.1fHz invalid_action=%s)\n",
+	fmt.Printf("Call correction: %s (min_reports=%d advantage>%d confidence>=%d%% recency=%ds max_edit=%d tol=%.1fHz distance_cw=%s distance_rtty=%s invalid_action=%s)\n",
 		status,
 		c.CallCorrection.MinConsensusReports,
 		c.CallCorrection.MinAdvantage,
@@ -367,6 +404,8 @@ func (c *Config) Print() {
 		c.CallCorrection.RecencySeconds,
 		c.CallCorrection.MaxEditDistance,
 		c.CallCorrection.FrequencyToleranceHz,
+		c.CallCorrection.DistanceModelCW,
+		c.CallCorrection.DistanceModelRTTY,
 		c.CallCorrection.InvalidAction)
 
 	harmonicStatus := "disabled"
@@ -386,6 +425,9 @@ func (c *Config) Print() {
 	}
 	if c.KnownCalls.Enabled && c.KnownCalls.URL != "" {
 		fmt.Printf("Known calls refresh: %s UTC (source=%s)\n", c.KnownCalls.RefreshUTC, c.KnownCalls.URL)
+	}
+	if strings.TrimSpace(c.GridDBPath) != "" {
+		fmt.Printf("Grid/known DB: %s (flush=%ds cache=%d)\n", c.GridDBPath, c.GridFlushSec, c.GridCacheSize)
 	}
 	if c.Skew.Enabled {
 		fmt.Printf("Skew: refresh %s UTC (min_spots=%d source=%s)\n", c.Skew.RefreshUTC, c.Skew.MinSpots, c.Skew.URL)

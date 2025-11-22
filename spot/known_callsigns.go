@@ -71,3 +71,15 @@ func (k *KnownCallsigns) Stats() (lookups uint64, hits uint64) {
 	}
 	return k.lookups.Load(), k.hits.Load()
 }
+
+// List returns a snapshot of all known callsigns.
+func (k *KnownCallsigns) List() []string {
+	if k == nil {
+		return nil
+	}
+	calls := make([]string, 0, len(k.entries))
+	for call := range k.entries {
+		calls = append(calls, call)
+	}
+	return calls
+}

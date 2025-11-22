@@ -155,6 +155,13 @@ known_calls:
 
 You can disable the scheduler by setting `known_calls.enabled: false`. In that mode the server will still load whatever file already exists (and will fetch it once at startup if an URL is provided), but it will not refresh it automatically.
 
+## Grid Persistence and Caching
+
+- Grids and known-call flags are stored in SQLite at `grid_db` (default `data/grids/calls.db`). The DB uses WAL mode with `synchronous=NORMAL` for fast, durable batching.
+- Writes are batched by `grid_flush_seconds` (default `60s`); a final flush runs during shutdown.
+- The in-memory grid cache is a bounded LRU of size `grid_cache_size` (default `100000`). Cache misses fall back to SQLite, keeping startup O(1) even as the database grows.
+- The stats line `Grids: +X / Y since start / Z in DB` counts accepted grid changes (not repeated identical reports); `Z` is the current row count from SQLite.
+
 ## Runtime Logs and Corrections
 
 - **Call corrections**: `2025/11/19 18:50:45 Call corrected: VE3N -> VE3NE at 7011.1 kHz (8 / 88%)`
@@ -253,18 +260,19 @@ C:\src\gocluster\
 ## Getting Started
 
 1. Update `config.yaml` with your preferred callsigns for the `rbn`, `rbn_digital`, and optional `pskreporter` sections. Optionally list `pskreporter.modes` (e.g., [`FT8`, `FT4`]) to subscribe to just those MQTT feeds simultaneously.
-2. Optionally enable/tune `call_correction` (master `enabled` switch, minimum corroborating spotters, required advantage, confidence percent, recency window, max edit distance, and `invalid_action` failover).
+2. Optionally enable/tune `call_correction` (master `enabled` switch, minimum corroborating spotters, required advantage, confidence percent, recency window, max edit distance, per-mode distance models, and `invalid_action` failover). `distance_model_cw` switches CW between the baseline rune-based Levenshtein (`plain`) and a Morse-aware cost function (`morse`), `distance_model_rtty` toggles RTTY between `plain` and a Baudot/ITA2-aware scorer (`baudot`), while SSB/voice modes always stay on `plain` because those reports are typed by humans.
 3. Optionally enable/tune `harmonics` to drop harmonic CW/USB/LSB/RTTY spots (master `enabled`, recency window, maximum harmonic multiple, frequency tolerance, and minimum report delta).
 4. Set `spot_policy.max_age_seconds` to drop stale spots before they're processed further. For CW/RTTY frequency smoothing, tune `spot_policy.frequency_averaging_seconds` (window), `spot_policy.frequency_averaging_tolerance_hz` (allowed deviation), and `spot_policy.frequency_averaging_min_reports` (minimum corroborating reports).
 5. (Optional) Enable `skew.enabled` after generating `skew.file` via `go run ./cmd/rbnskewfetch` (or let the server fetch it at the next 00:30 UTC window). The server applies each skimmer's multiplicative correction before normalization so SSIDs stay unique.
 6. If you maintain a historical callsign list, set `known_calls.file` plus `known_calls.url` (leave `enabled: true` to keep it refreshed). On first launch the server downloads the file if missing, loads it into memory, and then refreshes it daily at `known_calls.refresh_utc`.
-7. Adjust `stats.display_interval_seconds` in `config.yaml` to control how frequently runtime statistics print to the console (defaults to 30 seconds).
-8. Install dependencies and run:
+7. Grids/known calls are persisted in SQLite (`grid_db`, default `data/grids/calls.db`). Tune `grid_flush_seconds` for batch cadence and `grid_cache_size` to bound the in-memory LRU used for grid comparisons.
+8. Adjust `stats.display_interval_seconds` in `config.yaml` to control how frequently runtime statistics print to the console (defaults to 30 seconds).
+9. Install dependencies and run:
 	 ```pwsh
 	 go mod tidy
 	 go run main.go
 	 ```
-9. Connect via `telnet localhost 7300`, enter your callsign, and the server will immediately stream real-time spots.
+10. Connect via `telnet localhost 7300`, enter your callsign, and the server will immediately stream real-time spots.
 
 ## Testing & Tooling
 
