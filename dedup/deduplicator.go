@@ -179,9 +179,6 @@ func (d *Deduplicator) cleanup() {
 		shard.mu.Unlock()
 	}
 
-	if removed > 0 {
-		log.Printf("Deduplicator: Cleaned %d expired entries from cache", removed)
-	}
 }
 
 // GetStats returns current deduplication statistics

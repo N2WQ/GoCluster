@@ -110,8 +110,8 @@ known_calls:
 # Combined database for known calls + grids
 grid_db: "data/grids/calls.db"
 grid_flush_seconds: 60                    # Batch DB writes at most once per this many seconds
-grid_cache_size: 5000                     # Max in-memory grid cache entries (lazy LRU; falls back to SQLite on miss)
-grid_cache_ttl_seconds:                   # >0 expires cache entries after this many seconds (0=never expires)
+grid_cache_size: 4000                     # Max in-memory grid cache entries (lazy LRU; falls back to SQLite on miss)
+grid_cache_ttl_seconds: 3600              # >0 expires cache entries after this many seconds (0=never expires)
 grid_ttl_days: 90                         # >0 prunes grid records older than this many days (0=keep forever)
 
 # RBN skew correction table

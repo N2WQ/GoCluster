@@ -7,7 +7,6 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"dxcluster/cty"
@@ -30,7 +29,6 @@ type Client struct {
 	lookup     *cty.CTYDatabase
 	processing chan []byte
 	workerWg   sync.WaitGroup
-	queueDrops uint64
 	skewStore  *skew.Store
 	appendSSID bool
 }
@@ -152,8 +150,7 @@ func (c *Client) messageHandler(client mqtt.Client, msg mqtt.Message) {
 	case c.processing <- payload:
 		// payload enqueued for workers
 	default:
-		drops := atomic.AddUint64(&c.queueDrops, 1)
-		log.Printf("PSKReporter: Processing queue full, dropping payload (drops=%d)", drops)
+		log.Printf("PSKReporter: Processing queue full, dropping payload")
 	}
 }
 
@@ -346,20 +343,6 @@ func (c *Client) fetchCallsignInfo(call string) (*cty.PrefixInfo, bool) {
 func (c *Client) stopWorkerPool() {
 	c.workerWg.Wait()
 	c.processing = nil
-}
-
-func (c *Client) WorkerStats() (workers int, queueLen int, queueDrops uint64) {
-	workers = c.workers
-	if workers == 0 {
-		workers = defaultPSKReporterWorkers()
-	}
-	if c.processing != nil {
-		queueLen = len(c.processing)
-	} else {
-		queueLen = 0
-	}
-	queueDrops = atomic.LoadUint64(&c.queueDrops)
-	return
 }
 
 func defaultPSKReporterWorkers() int {
