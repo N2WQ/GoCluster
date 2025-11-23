@@ -19,6 +19,11 @@ import (
 // precompiled regex avoids the per-line allocation/compile cost when normalizing RBN lines
 var whitespaceRE = regexp.MustCompile(`\s+`)
 
+const (
+	minRBNDialFrequencyKHz = 100.0
+	maxRBNDialFrequencyKHz = 3000000.0
+)
+
 // Client represents an RBN telnet client
 type Client struct {
 	host      string
@@ -225,6 +230,55 @@ func (c *Client) normalizeSpotter(raw string) string {
 	return normalizeRBNCallsign(raw)
 }
 
+// splitSpotterToken separates the "DX de CALL:freq" token into its callsign and any
+// frequency fragment that may have been glued to the colon without whitespace. When a
+// frequency fragment is found, it is inserted back into the token slice immediately
+// after the spotter entry so downstream parsing sees the expected field layout.
+func splitSpotterToken(parts []string) (string, []string) {
+	if len(parts) < 3 {
+		return "", parts
+	}
+
+	token := parts[2]
+	colonIdx := strings.Index(token, ":")
+	if colonIdx == -1 {
+		return token, parts
+	}
+
+	call := token[:colonIdx]
+	remainder := token[colonIdx+1:]
+
+	if remainder == "" {
+		return call, parts
+	}
+
+	// Insert the remainder as a new token after the spotter entry.
+	newParts := make([]string, 0, len(parts)+1)
+	newParts = append(newParts, parts[:3]...)
+	newParts = append(newParts, remainder)
+	newParts = append(newParts, parts[3:]...)
+	return call, newParts
+}
+
+// findFrequencyField scans the tokenized RBN line for the first numeric value that
+// looks like a dial frequency. Some telnet feeds occasionally inject the spotter
+// callsign twice (once before and once after the colon), which shifts the columns.
+// Rather than assume a fixed index, we look for the first value in a realistic HF/VHF
+// range and return both the index and parsed float value.
+func findFrequencyField(parts []string) (int, float64, bool) {
+	for i := 3; i < len(parts); i++ {
+		candidate := strings.Trim(parts[i], ",:")
+		freq, err := strconv.ParseFloat(candidate, 64)
+		if err != nil {
+			continue
+		}
+		if freq >= minRBNDialFrequencyKHz && freq <= maxRBNDialFrequencyKHz {
+			return i, freq, true
+		}
+	}
+	return -1, 0, false
+}
+
 // parseTimeFromRBN parses the HHMMZ format from RBN and creates a proper timestamp
 // RBN only provides HH:MM in UTC, so we need to combine it with today's date
 // This ensures spots with the same RBN timestamp generate the same hash for deduplication
@@ -292,32 +346,44 @@ func (c *Client) parseSpot(line string) {
 	}
 
 	// Extract common fields
-	deCallRaw := strings.TrimSuffix(parts[2], ":") // Remove trailing colon
-	deCall := c.normalizeSpotter(deCallRaw)        // Normalize RBN callsign
+	deCallRaw, parts := splitSpotterToken(parts)
+	if deCallRaw == "" {
+		log.Printf("RBN spot missing spotter callsign: %s", line)
+		return
+	}
+	deCall := c.normalizeSpotter(deCallRaw) // Normalize RBN callsign
 
-	freqStr := parts[3]
-	dxCall := spot.NormalizeCallsign(parts[4])
-	mode := parts[5]
-	dbStr := parts[6]
-	// parts[7] is "dB"
+	freqIdx, freq, ok := findFrequencyField(parts)
+	if !ok {
+		log.Printf("RBN spot missing numeric frequency: %s", line)
+		return
+	}
+	if freqIdx+4 >= len(parts) {
+		log.Printf("RBN spot truncated after frequency: %s", line)
+		return
+	}
 
-	// Detect format by checking if parts[9] is "WPM"
-	hasCWFormat := len(parts) >= 10 && parts[9] == "WPM"
+	dxCall := spot.NormalizeCallsign(parts[freqIdx+1])
+	mode := parts[freqIdx+2]
+	dbStr := parts[freqIdx+3]
 
-	var wpmStr string
-	var comment string
-	var timeStr string
-	var commentStartIdx int
+	hasCWFormat := freqIdx+6 < len(parts) && strings.EqualFold(parts[freqIdx+6], "WPM")
+
+	var (
+		wpmStr          string
+		comment         string
+		timeStr         string
+		commentStartIdx int
+	)
 
 	if hasCWFormat {
-		// CW/RTTY format: has WPM field
-		wpmStr = parts[8]
-		// parts[9] is "WPM"
-		commentStartIdx = 10
+		// CW/RTTY format: has WPM field immediately after the "dB" token
+		wpmStr = parts[freqIdx+5]
+		commentStartIdx = freqIdx + 7
 	} else {
 		// FT8/FT4 format: no WPM field
 		wpmStr = ""
-		commentStartIdx = 8
+		commentStartIdx = freqIdx + 5
 	}
 
 	// Find the time (4 digits followed by Z) and extract everything between start and time as comment
@@ -341,12 +407,7 @@ func (c *Client) parseSpot(line string) {
 		}
 	}
 
-	// Parse frequency
-	freq, err := strconv.ParseFloat(freqStr, 64)
-	if err != nil {
-		log.Printf("Failed to parse frequency '%s': %v", freqStr, err)
-		return
-	}
+	// Apply per-skimmer correction to the numeric dial frequency we found earlier
 	freq = skew.ApplyCorrection(c.skewStore, deCallRaw, freq)
 
 	// Parse signal report (dB)

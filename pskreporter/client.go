@@ -32,6 +32,7 @@ type Client struct {
 	workerWg   sync.WaitGroup
 	queueDrops uint64
 	skewStore  *skew.Store
+	appendSSID bool
 }
 
 // PSKRMessage represents a PSKReporter MQTT message
@@ -55,17 +56,18 @@ const (
 )
 
 // NewClient creates a new PSKReporter MQTT client
-func NewClient(broker string, port int, topics []string, name string, workers int, lookup *cty.CTYDatabase, skewStore *skew.Store) *Client {
+func NewClient(broker string, port int, topics []string, name string, workers int, lookup *cty.CTYDatabase, skewStore *skew.Store, appendSSID bool) *Client {
 	return &Client{
-		broker:    broker,
-		port:      port,
-		topics:    append([]string{}, topics...),
-		name:      name,
-		spotChan:  make(chan *spot.Spot, 1000), // Buffer 1000 spots
-		shutdown:  make(chan struct{}),
-		workers:   workers,
-		lookup:    lookup,
-		skewStore: skewStore,
+		broker:     broker,
+		port:       port,
+		topics:     append([]string{}, topics...),
+		name:       name,
+		spotChan:   make(chan *spot.Spot, 1000), // Buffer 1000 spots
+		shutdown:   make(chan struct{}),
+		workers:    workers,
+		lookup:     lookup,
+		skewStore:  skewStore,
+		appendSSID: appendSSID,
 	}
 }
 
@@ -217,7 +219,7 @@ func (c *Client) convertToSpot(msg *PSKRMessage) *spot.Spot {
 	}
 
 	dxCall := spot.NormalizeCallsign(msg.SenderCall)
-	deCall := spot.NormalizeCallsign(msg.ReceiverCall)
+	deCall := c.decorateSpotterCall(msg.ReceiverCall)
 	if !spot.IsValidCallsign(dxCall) {
 		// log.Printf("PSKReporter: invalid DX call %s", msg.SenderCall) // noisy: caller requested silence
 		return nil
@@ -310,6 +312,24 @@ func metadataFromPrefix(info *cty.PrefixInfo) spot.CallMetadata {
 func isCWorRTTY(mode string) bool {
 	mode = strings.ToUpper(strings.TrimSpace(mode))
 	return mode == "CW" || mode == "RTTY"
+}
+
+func (c *Client) decorateSpotterCall(raw string) string {
+	normalized := spot.NormalizeCallsign(raw)
+	if !c.appendSSID {
+		return normalized
+	}
+	if normalized == "" {
+		return normalized
+	}
+	if strings.Contains(normalized, "-") {
+		return normalized
+	}
+	// Appending "-#" increases length by 2. Skip if it would violate validation limits.
+	if len(normalized)+2 > 10 {
+		return normalized
+	}
+	return normalized + "-#"
 }
 
 func (c *Client) fetchCallsignInfo(call string) (*cty.PrefixInfo, bool) {

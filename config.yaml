@@ -20,8 +20,8 @@ rbn:
   name: "RBN-CW-RTTY"
   host: "telnet.reversebeacon.net"
   port: 7000
-  callsign: "N0CW"        # Change this to your callsign!
-  keep_ssid_suffix: true  # false collapses VE3EID-1/-2 into VE3EID-#
+  callsign: "N0CW"           # Change this to your callsign!
+  keep_ssid_suffix: true     # false collapses VE3EID-1/-2 into VE3EID-#
 
 # RBN Digital modes feed (port 7001) - FT4/FT8
 rbn_digital:
@@ -29,8 +29,8 @@ rbn_digital:
   name: "RBN-FT4-FT8"
   host: "telnet.reversebeacon.net"
   port: 7001
-  callsign: "N0FT"       # Change this to your callsign!
-  keep_ssid_suffix: true # false collapses VE3EID-1/-2 into VE3EID-#
+  callsign: "N0FT"           # Change this to your callsign!
+  keep_ssid_suffix: true     # false collapses VE3EID-1/-2 into VE3EID-#
 
 # PSKReporter MQTT feed
 pskreporter:
@@ -97,23 +97,23 @@ known_calls:
   enabled: true
   url: "https://www.supercheckpartial.com/MASTER.SCP"
   file: "data/scp/MASTER.SCP"
-  refresh_utc: "00:30"                             # Daily download time in HH:MM UTC
+  refresh_utc: "00:30"                    # Daily download time in HH:MM UTC
 
 # Combined database for known calls + grids
 grid_db: "data/grids/calls.db"
-grid_flush_seconds: 60                             # Batch DB writes at most once per this many seconds
-grid_cache_size: 100000                            # Max in-memory grid cache entries (lazy LRU; falls back to SQLite on miss)
-grid_ttl_days: 0                                   # >0 prunes grid records older than this many days (0=keep forever)
+grid_flush_seconds: 60                     # Batch DB writes at most once per this many seconds
+grid_cache_size: 100000                    # Max in-memory grid cache entries (lazy LRU; falls back to SQLite on miss)
+grid_ttl_days: 90                          # >0 prunes grid records older than this many days (0=keep forever)
 
 cty:
-  file: "data/cty/cty.plist"                       # Path to the CTY prefix database (cty.plist)
+  file: "data/cty/cty.plist"               # Path to the CTY prefix database (cty.plist)
 
 buffer:
-  capacity: 300000                                 # Number of spots held in the in-memory ring buffer
+  capacity: 300000                         # Number of spots held in the in-memory ring buffer
 
 # Spot recorder (captures first N spots per mode into SQLite for offline analysis)
 recorder:
-  enabled: true
+  enabled: false
   db_path: "data/records/spots.db"
   per_mode_limit: 100
 

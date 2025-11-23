@@ -1,6 +1,10 @@
 package spot
 
-import "testing"
+import (
+	"strings"
+	"testing"
+	"time"
+)
 
 func TestNewSpotIsHumanByDefault(t *testing.T) {
 	dx := "W1ABC"
@@ -42,5 +46,54 @@ func TestRefreshBeaconFlagUsesComment(t *testing.T) {
 	s.RefreshBeaconFlag()
 	if s.IsBeacon {
 		t.Fatalf("RefreshBeaconFlag should clear IsBeacon when no indicators remain")
+	}
+}
+
+func TestFormatDXClusterUsesZoneAndGrid(t *testing.T) {
+	s := &Spot{
+		DXCall:     "KE0UI",
+		DECall:     "W2NAF-#",
+		Frequency:  7014.0,
+		Mode:       "CW",
+		Report:     27,
+		Time:       time.Date(2025, time.November, 22, 4, 54, 0, 0, time.UTC),
+		Confidence: "V",
+		DXMetadata: CallMetadata{
+			CQZone: 4,
+			Grid:   "fn20",
+		},
+	}
+
+	got := s.FormatDXCluster()
+	if !strings.Contains(got, "CW 27 dB CQ 04 FN20") {
+		t.Fatalf("expected CQ zone/grid annotation, got %q", got)
+	}
+	if !strings.HasSuffix(strings.TrimRight(got, " "), "V 0454Z") {
+		t.Fatalf("unexpected suffix: %q", got)
+	}
+}
+
+func TestFormatZoneGridFallbacks(t *testing.T) {
+	s := &Spot{
+		DXCall:    "N0CALL",
+		DECall:    "W1ABC",
+		Frequency: 14074.0,
+		Mode:      "FT8",
+		Time:      time.Date(2025, time.November, 22, 6, 15, 0, 0, time.UTC),
+	}
+	if got := s.formatZoneGridComment(); got != "CQ ?? ????" {
+		t.Fatalf("expected fallback CQ ?? ????, got %q", got)
+	}
+}
+
+func TestFormatGridLabelTruncates(t *testing.T) {
+	s := &Spot{
+		DXMetadata: CallMetadata{
+			CQZone: 5,
+			Grid:   "FN20AA",
+		},
+	}
+	if got := s.formatZoneGridComment(); got != "CQ 05 FN20" {
+		t.Fatalf("expected truncated grid, got %q", got)
 	}
 }

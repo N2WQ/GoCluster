@@ -116,6 +116,7 @@ func (s *Spot) FormatDXCluster() string {
 		// Format time as HHMMZ UTC (exactly 5 characters)
 		timeStr := s.Time.UTC().Format("1504Z")
 
+		commentPayload := s.formatZoneGridComment()
 		// Build comment section: mode + signal report + comment
 		var commentSection string
 		if s.Report != 0 {
@@ -132,19 +133,11 @@ func (s *Spot) FormatDXCluster() string {
 				reportStr = fmt.Sprintf("%+d", s.Report) // Always show sign for digital modes
 			}
 
-			// Mode with signal report and comment
-			if s.Comment != "" {
-				commentSection = fmt.Sprintf("%s %s %s", s.Mode, reportStr, s.Comment)
-			} else {
-				commentSection = fmt.Sprintf("%s %s", s.Mode, reportStr)
-			}
+			// Mode with signal report and CQ zone/grid annotation
+			commentSection = fmt.Sprintf("%s %s %s", s.Mode, reportStr, commentPayload)
 		} else {
-			// No report available, just mode and comment
-			if s.Comment != "" {
-				commentSection = fmt.Sprintf("%s %s", s.Mode, s.Comment)
-			} else {
-				commentSection = s.Mode
-			}
+			// No report available, just mode and CQ zone/grid annotation
+			commentSection = fmt.Sprintf("%s %s", s.Mode, commentPayload)
 		}
 
 		// CRITICAL: Build the line so frequency ALWAYS ends at position 24
@@ -264,4 +257,28 @@ func (s *Spot) String() string {
 		s.Band,
 		s.Mode,
 		s.Comment)
+}
+
+func (s *Spot) formatZoneGridComment() string {
+	return fmt.Sprintf("CQ %s %s",
+		formatCQZoneLabel(s.DXMetadata.CQZone),
+		formatGridLabel(s.DXMetadata.Grid))
+}
+
+func formatCQZoneLabel(zone int) string {
+	if zone <= 0 {
+		return "??"
+	}
+	return fmt.Sprintf("%02d", zone)
+}
+
+func formatGridLabel(grid string) string {
+	grid = strings.TrimSpace(strings.ToUpper(grid))
+	if grid == "" {
+		return "????"
+	}
+	if len(grid) > 4 {
+		grid = grid[:4]
+	}
+	return grid
 }
