@@ -108,6 +108,8 @@ func (r *Recorder) Record(s *spot.Spot) {
 }
 
 func (r *Recorder) insert(mode string, s *spot.Spot) {
+	dxGrid := sanitizeGrid(s.DXMetadata.Grid)
+	deGrid := sanitizeGrid(s.DEMetadata.Grid)
 	_, err := r.db.Exec(`
 INSERT INTO spot_records (
     mode, dx_call, de_call, frequency, band, report, observed_at, comment,
@@ -130,12 +132,12 @@ INSERT INTO spot_records (
 		s.DXMetadata.Country,
 		s.DXMetadata.CQZone,
 		s.DXMetadata.ITUZone,
-		s.DXMetadata.Grid,
+		dxGrid,
 		s.DEMetadata.Continent,
 		s.DEMetadata.Country,
 		s.DEMetadata.CQZone,
 		s.DEMetadata.ITUZone,
-		s.DEMetadata.Grid,
+		deGrid,
 	)
 	if err != nil {
 		fmt.Printf("Recorder: failed to insert spot: %v\n", err)
@@ -147,4 +149,14 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// sanitizeGrid trims and uppercases the locator, limiting it to 6 characters
+// so oversized PSKReporter grids don't overflow the database expectations.
+func sanitizeGrid(grid string) string {
+	grid = strings.TrimSpace(strings.ToUpper(grid))
+	if len(grid) > 6 {
+		grid = grid[:6]
+	}
+	return grid
 }

@@ -1,47 +1,34 @@
 # DX Cluster Configuration
+
 server:
   name: "Go Cluster beta 1"
   node_id: "N2WQ-22"
-  
+
+logging:
+  level: "info"
+  file: "cluster.log"
+
+admin:
+  http_port: 8080
+  bind_address: "127.0.0.1"
+
+stats:
+  display_interval_seconds: 30  # How often to print stats to stdout
+
+# Telnet server (user-facing interface)
 telnet:
   port: 7300
   tls_enabled: false
   max_connections: 1000
   welcome_message: "Experimental DX Cluster\nPlease login with your callsign\n"
+  duplicate_login_message: "Another login for your callsign connected. This session is being closed (multiple logins are not allowed)."
   broadcast_workers: 0        # 0 means automatic (half of the CPU cores, minimum 2)
   broadcast_queue_size: 2048  # Buffer depth for the global telnet broadcast queue
   worker_queue_size: 128      # Jobs queued per broadcast worker before dropping
   client_buffer_size: 128     # Per-client spot backlog before a slow session drops spots
   skip_handshake: true        # Set true to disable Telnet option negotiation (raw TCP clients)
 
-# RBN CW/RTTY feed (port 7000)
-rbn:
-  enabled: true
-  name: "RBN-CW-RTTY"
-  host: "telnet.reversebeacon.net"
-  port: 7000
-  callsign: "N0CW"           # Change this to your callsign!
-  keep_ssid_suffix: true     # false collapses VE3EID-1/-2 into VE3EID-#
-
-# RBN Digital modes feed (port 7001) - FT4/FT8
-rbn_digital:
-  enabled: true
-  name: "RBN-FT4-FT8"
-  host: "telnet.reversebeacon.net"
-  port: 7001
-  callsign: "N0FT"           # Change this to your callsign!
-  keep_ssid_suffix: true     # false collapses VE3EID-1/-2 into VE3EID-#
-
-# PSKReporter MQTT feed
-pskreporter:
-  enabled: true
-  name: "PSKReporter"
-  broker: "mqtt.pskreporter.info"
-  port: 1883
-  modes: ["FT8", "FT4", "CW", "RTTY"]  # List of MQTT modes to subscribe to
-  workers: 0                           # 0 means automatic (half of the CPU cores, minimum 1)
-  append_spotter_ssid: true            # Append "-#" to receiver calls lacking an SSID for dedup
-
+# Default filters applied to new users
 filter:
   default_modes:
     - CW
@@ -49,18 +36,10 @@ filter:
     - USB
     - RTTY
 
-# Deduplication settings
+# Core processing / protections
 dedup:
   cluster_window_seconds: 120 # Dedup window in seconds (0 disables dedup without changing the pipeline)
   prefer_stronger_snr: true   # When duplicates collide, keep the strongest SNR version
-
-admin:
-  http_port: 8080
-  bind_address: "127.0.0.1"
-  
-logging:
-  level: "info"
-  file: "cluster.log"
 
 # Consensus thresholds for automated call corrections (only CW/RTTY/USB/LSB considered)
 call_correction:
@@ -68,7 +47,7 @@ call_correction:
   min_consensus_reports: 6      # Minimum number of corroborating spotters
   min_advantage: 3              # Candidate must exceed the original by this many spotters
   min_confidence_percent: 75    # Candidate supporters must represent at least this percent of unique spotters
-  recency_seconds: 180          # Supporting spots must be this recent
+  recency_seconds: 120          # Supporting spots must be this recent
   max_edit_distance: 2          # Max allowed Levenshtein distance between original and replacement
   frequency_tolerance_hz: 500   # Spots within this frequency window are considered the same signal
   distance_model_cw: "morse"    # "plain" = standard Levenshtein, "morse" = Morse-aware (CW only)
@@ -92,7 +71,36 @@ spot_policy:
   frequency_averaging_tolerance_hz: 500  # Max deviation between reports when averaging
   frequency_averaging_min_reports: 4     # Minimum corroborating reports needed to adjust frequency
 
-# Known calls list auto-refresh (downloads at startup if file missing, then daily at refresh_utc)
+# Spot sources
+rbn:
+  enabled: true
+  name: "RBN-CW-RTTY"
+  host: "telnet.reversebeacon.net"
+  port: 7000
+  callsign: "N0CW"           # Change this to your callsign!
+  keep_ssid_suffix: true     # false collapses VE3EID-1/-2 into VE3EID-#
+
+rbn_digital:
+  enabled: true
+  name: "RBN-FT4-FT8"
+  host: "telnet.reversebeacon.net"
+  port: 7001
+  callsign: "N0FT"           # Change this to your callsign!
+  keep_ssid_suffix: true     # false collapses VE3EID-1/-2 into VE3EID-#
+
+pskreporter:
+  enabled: true
+  name: "PSKReporter"
+  broker: "mqtt.pskreporter.info"
+  port: 1883
+  modes: ["FT8", "FT4", "CW", "RTTY"]  # List of MQTT modes to subscribe to
+  workers: 0                           # 0 means automatic (half of the CPU cores, minimum 1)
+  append_spotter_ssid: true            # Append "-#" to receiver calls lacking an SSID for dedup
+
+# Reference data and persistence
+cty:
+  file: "data/cty/cty.plist"               # Path to the CTY prefix database (cty.plist)
+
 known_calls:
   enabled: true
   url: "https://www.supercheckpartial.com/MASTER.SCP"
@@ -101,21 +109,10 @@ known_calls:
 
 # Combined database for known calls + grids
 grid_db: "data/grids/calls.db"
-grid_flush_seconds: 60                     # Batch DB writes at most once per this many seconds
-grid_cache_size: 100000                    # Max in-memory grid cache entries (lazy LRU; falls back to SQLite on miss)
-grid_ttl_days: 90                          # >0 prunes grid records older than this many days (0=keep forever)
-
-cty:
-  file: "data/cty/cty.plist"               # Path to the CTY prefix database (cty.plist)
-
-buffer:
-  capacity: 300000                         # Number of spots held in the in-memory ring buffer
-
-# Spot recorder (captures first N spots per mode into SQLite for offline analysis)
-recorder:
-  enabled: false
-  db_path: "data/records/spots.db"
-  per_mode_limit: 100
+grid_flush_seconds: 60                    # Batch DB writes at most once per this many seconds
+grid_cache_size: 5000                     # Max in-memory grid cache entries (lazy LRU; falls back to SQLite on miss)
+grid_cache_ttl_seconds:                   # >0 expires cache entries after this many seconds (0=never expires)
+grid_ttl_days: 90                         # >0 prunes grid records older than this many days (0=keep forever)
 
 # RBN skew correction table
 skew:
@@ -125,6 +122,11 @@ skew:
   min_spots: 500                                   # Require this many spots before trusting a skimmer's correction
   refresh_utc: "00:30"                             # Daily download time in HH:MM UTC
 
-# Runtime statistics output interval
-stats:
-  display_interval_seconds: 30  # How often to print stats to stdout
+buffer:
+  capacity: 300000                         # Number of spots held in the in-memory ring buffer
+
+# Spot recorder (captures first N spots per mode into SQLite for offline analysis)
+recorder:
+  enabled: false
+  db_path: "data/records/spots.db"
+  per_mode_limit: 100

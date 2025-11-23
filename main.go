@@ -48,26 +48,31 @@ var Version = "dev"
 
 type gridMetrics struct {
 	learnedTotal atomic.Uint64
+	cacheLookups atomic.Uint64
+	cacheHits    atomic.Uint64
 }
 
 type gridCache struct {
 	mu       sync.Mutex
 	capacity int
+	ttl      time.Duration
 	lru      *list.List
 	entries  map[string]*list.Element
 }
 
 type gridEntry struct {
-	call string
-	grid string
+	call      string
+	grid      string
+	updatedAt time.Time
 }
 
-func newGridCache(capacity int) *gridCache {
+func newGridCache(capacity int, ttl time.Duration) *gridCache {
 	if capacity <= 0 {
 		capacity = 100000
 	}
 	return &gridCache{
 		capacity: capacity,
+		ttl:      ttl,
 		lru:      list.New(),
 		entries:  make(map[string]*list.Element),
 	}
@@ -81,16 +86,22 @@ func (c *gridCache) shouldUpdate(call, grid string, store *gridstore.Store) bool
 	if call == "" || grid == "" {
 		return false
 	}
+	now := time.Now()
 
 	// Fast path: cache present
 	c.mu.Lock()
 	if elem, ok := c.entries[call]; ok {
 		entry := elem.Value.(*gridEntry)
-		if entry.grid == grid {
+		if c.ttl > 0 && now.Sub(entry.updatedAt) > c.ttl {
+			// stale entry; evict and treat as miss
+			c.lru.Remove(elem)
+			delete(c.entries, call)
+		} else if entry.grid == grid {
 			c.mu.Unlock()
 			return false
 		}
 		entry.grid = grid
+		entry.updatedAt = now
 		c.lru.MoveToFront(elem)
 		c.mu.Unlock()
 		return true
@@ -119,11 +130,12 @@ func (c *gridCache) add(call, grid string) {
 	if elem, ok := c.entries[call]; ok {
 		entry := elem.Value.(*gridEntry)
 		entry.grid = grid
+		entry.updatedAt = time.Now()
 		c.lru.MoveToFront(elem)
 		return
 	}
 
-	elem := c.lru.PushFront(&gridEntry{call: call, grid: grid})
+	elem := c.lru.PushFront(&gridEntry{call: call, grid: grid, updatedAt: time.Now()})
 	c.entries[call] = elem
 	if c.capacity > 0 && len(c.entries) > c.capacity {
 		// Evict least-recently-used
@@ -137,14 +149,33 @@ func (c *gridCache) add(call, grid string) {
 }
 
 func (c *gridCache) get(call string) (string, bool) {
+	if call == "" {
+		return "", false
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if elem, ok := c.entries[call]; ok {
 		c.lru.MoveToFront(elem)
 		entry := elem.Value.(*gridEntry)
+		if c.ttl > 0 && time.Since(entry.updatedAt) > c.ttl {
+			c.lru.Remove(elem)
+			delete(c.entries, call)
+			return "", false
+		}
 		return entry.grid, entry.grid != ""
 	}
 	return "", false
+}
+
+func (c *gridCache) lookupWithMetrics(call string, metrics *gridMetrics) (string, bool) {
+	if metrics != nil {
+		metrics.cacheLookups.Add(1)
+	}
+	grid, ok := c.get(call)
+	if ok && metrics != nil {
+		metrics.cacheHits.Add(1)
+	}
+	return grid, ok
 }
 
 func main() {
@@ -236,7 +267,7 @@ func main() {
 			log.Printf("Warning: failed to seed known calls into grid database: %v", err)
 		}
 	}
-	cache := newGridCache(cfg.GridCacheSize)
+	cache := newGridCache(cfg.GridCacheSize, time.Duration(cfg.GridCacheTTLSec)*time.Second)
 	gridTTL := time.Duration(cfg.GridTTLDays) * 24 * time.Hour
 	gridUpdater, gridUpdateState, stopGridWriter, gridLookup := startGridWriter(gridStore, time.Duration(cfg.GridFlushSec)*time.Second, cache, gridTTL)
 	defer func() {
@@ -319,14 +350,15 @@ func main() {
 
 	// Create and start telnet server
 	telnetServer := telnet.NewServer(telnet.ServerOptions{
-		Port:             cfg.Telnet.Port,
-		WelcomeMessage:   cfg.Telnet.WelcomeMessage,
-		MaxConnections:   cfg.Telnet.MaxConnections,
-		BroadcastWorkers: cfg.Telnet.BroadcastWorkers,
-		BroadcastQueue:   cfg.Telnet.BroadcastQueue,
-		WorkerQueue:      cfg.Telnet.WorkerQueue,
-		ClientBuffer:     cfg.Telnet.ClientBuffer,
-		SkipHandshake:    cfg.Telnet.SkipHandshake,
+		Port:              cfg.Telnet.Port,
+		WelcomeMessage:    cfg.Telnet.WelcomeMessage,
+		DuplicateLoginMsg: cfg.Telnet.DuplicateLoginMsg,
+		MaxConnections:    cfg.Telnet.MaxConnections,
+		BroadcastWorkers:  cfg.Telnet.BroadcastWorkers,
+		BroadcastQueue:    cfg.Telnet.BroadcastQueue,
+		WorkerQueue:       cfg.Telnet.WorkerQueue,
+		ClientBuffer:      cfg.Telnet.ClientBuffer,
+		SkipHandshake:     cfg.Telnet.SkipHandshake,
 	}, processor)
 
 	err = telnetServer.Start()
@@ -994,6 +1026,8 @@ func knownCallRefreshHourMinute(cfg config.KnownCallsConfig) (int, int) {
 
 func formatGridLine(metrics *gridMetrics, store *gridstore.Store) string {
 	updatesSinceStart := metrics.learnedTotal.Load()
+	cacheLookups := metrics.cacheLookups.Load()
+	cacheHits := metrics.cacheHits.Load()
 
 	dbTotal := int64(-1)
 	if store != nil {
@@ -1003,10 +1037,15 @@ func formatGridLine(metrics *gridMetrics, store *gridstore.Store) string {
 			log.Printf("Warning: gridstore count failed: %v", err)
 		}
 	}
-	if dbTotal >= 0 {
-		return fmt.Sprintf("Grid database: %d (UPDATED) / %d (TOTAL DB)", updatesSinceStart, dbTotal)
+	hitRate := 0.0
+	if cacheLookups > 0 {
+		hitRate = float64(cacheHits) * 100 / float64(cacheLookups)
 	}
-	return fmt.Sprintf("Grid database: %d (UPDATED)", updatesSinceStart)
+
+	if dbTotal >= 0 {
+		return fmt.Sprintf("Grid database: %d (UPDATED) / %d (TOTAL DB) / cache hits: %.1f%%", updatesSinceStart, dbTotal, hitRate)
+	}
+	return fmt.Sprintf("Grid database: %d (UPDATED) / cache hits: %.1f%%", updatesSinceStart, hitRate)
 }
 
 func seedKnownCalls(store *gridstore.Store, known *spot.KnownCallsigns) error {
@@ -1136,7 +1175,7 @@ func startGridWriter(store *gridstore.Store, flushInterval time.Duration, cache 
 			return "", false
 		}
 		if cache != nil {
-			if grid, ok := cache.get(call); ok {
+			if grid, ok := cache.lookupWithMetrics(call, metrics); ok {
 				return grid, true
 			}
 		}

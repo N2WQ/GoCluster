@@ -11,28 +11,29 @@ import (
 
 // Config represents the complete cluster configuration
 type Config struct {
-	Server         ServerConfig         `yaml:"server"`
-	Telnet         TelnetConfig         `yaml:"telnet"`
-	RBN            RBNConfig            `yaml:"rbn"`
-	RBNDigital     RBNConfig            `yaml:"rbn_digital"`
-	PSKReporter    PSKReporterConfig    `yaml:"pskreporter"`
-	Dedup          DedupConfig          `yaml:"dedup"`
-	Filter         FilterConfig         `yaml:"filter"`
-	Admin          AdminConfig          `yaml:"admin"`
-	Logging        LoggingConfig        `yaml:"logging"`
-	Stats          StatsConfig          `yaml:"stats"`
-	CallCorrection CallCorrectionConfig `yaml:"call_correction"`
-	Harmonics      HarmonicConfig       `yaml:"harmonics"`
-	SpotPolicy     SpotPolicy           `yaml:"spot_policy"`
-	CTY            CTYConfig            `yaml:"cty"`
-	Buffer         BufferConfig         `yaml:"buffer"`
-	Skew           SkewConfig           `yaml:"skew"`
-	KnownCalls     KnownCallsConfig     `yaml:"known_calls"`
-	GridDBPath     string               `yaml:"grid_db"`
-	GridFlushSec   int                  `yaml:"grid_flush_seconds"`
-	GridCacheSize  int                  `yaml:"grid_cache_size"`
-	GridTTLDays    int                  `yaml:"grid_ttl_days"`
-	Recorder       RecorderConfig       `yaml:"recorder"`
+	Server          ServerConfig         `yaml:"server"`
+	Telnet          TelnetConfig         `yaml:"telnet"`
+	RBN             RBNConfig            `yaml:"rbn"`
+	RBNDigital      RBNConfig            `yaml:"rbn_digital"`
+	PSKReporter     PSKReporterConfig    `yaml:"pskreporter"`
+	Dedup           DedupConfig          `yaml:"dedup"`
+	Filter          FilterConfig         `yaml:"filter"`
+	Admin           AdminConfig          `yaml:"admin"`
+	Logging         LoggingConfig        `yaml:"logging"`
+	Stats           StatsConfig          `yaml:"stats"`
+	CallCorrection  CallCorrectionConfig `yaml:"call_correction"`
+	Harmonics       HarmonicConfig       `yaml:"harmonics"`
+	SpotPolicy      SpotPolicy           `yaml:"spot_policy"`
+	CTY             CTYConfig            `yaml:"cty"`
+	Buffer          BufferConfig         `yaml:"buffer"`
+	Skew            SkewConfig           `yaml:"skew"`
+	KnownCalls      KnownCallsConfig     `yaml:"known_calls"`
+	GridDBPath      string               `yaml:"grid_db"`
+	GridFlushSec    int                  `yaml:"grid_flush_seconds"`
+	GridCacheSize   int                  `yaml:"grid_cache_size"`
+	GridCacheTTLSec int                  `yaml:"grid_cache_ttl_seconds"`
+	GridTTLDays     int                  `yaml:"grid_ttl_days"`
+	Recorder        RecorderConfig       `yaml:"recorder"`
 }
 
 // ServerConfig contains general server settings
@@ -43,15 +44,16 @@ type ServerConfig struct {
 
 // TelnetConfig contains telnet server settings
 type TelnetConfig struct {
-	Port             int    `yaml:"port"`
-	TLSEnabled       bool   `yaml:"tls_enabled"`
-	MaxConnections   int    `yaml:"max_connections"`
-	WelcomeMessage   string `yaml:"welcome_message"`
-	BroadcastWorkers int    `yaml:"broadcast_workers"`
-	BroadcastQueue   int    `yaml:"broadcast_queue_size"`
-	WorkerQueue      int    `yaml:"worker_queue_size"`
-	ClientBuffer     int    `yaml:"client_buffer_size"`
-	SkipHandshake    bool   `yaml:"skip_handshake"`
+	Port              int    `yaml:"port"`
+	TLSEnabled        bool   `yaml:"tls_enabled"`
+	MaxConnections    int    `yaml:"max_connections"`
+	WelcomeMessage    string `yaml:"welcome_message"`
+	DuplicateLoginMsg string `yaml:"duplicate_login_message"`
+	BroadcastWorkers  int    `yaml:"broadcast_workers"`
+	BroadcastQueue    int    `yaml:"broadcast_queue_size"`
+	WorkerQueue       int    `yaml:"worker_queue_size"`
+	ClientBuffer      int    `yaml:"client_buffer_size"`
+	SkipHandshake     bool   `yaml:"skip_handshake"`
 }
 
 // RBNConfig contains Reverse Beacon Network settings
@@ -298,6 +300,9 @@ func Load(filename string) (*Config, error) {
 	if cfg.Telnet.ClientBuffer <= 0 {
 		cfg.Telnet.ClientBuffer = 128
 	}
+	if strings.TrimSpace(cfg.Telnet.DuplicateLoginMsg) == "" {
+		cfg.Telnet.DuplicateLoginMsg = "Another login for your callsign connected. This session is being closed (multiple logins are not allowed)."
+	}
 
 	if cfg.Harmonics.RecencySeconds <= 0 {
 		cfg.Harmonics.RecencySeconds = 120
@@ -342,6 +347,9 @@ func Load(filename string) (*Config, error) {
 	}
 	if cfg.GridCacheSize <= 0 {
 		cfg.GridCacheSize = 100000
+	}
+	if cfg.GridCacheTTLSec < 0 {
+		cfg.GridCacheTTLSec = 0
 	}
 	if cfg.GridTTLDays < 0 {
 		cfg.GridTTLDays = 0

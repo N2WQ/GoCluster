@@ -68,21 +68,22 @@ import (
 //   - BroadcastSpot() is thread-safe (uses mutex)
 //   - Each client goroutine operates independently
 type Server struct {
-	port             int                  // TCP port to listen on
-	welcomeMessage   string               // Welcome message for new connections
-	maxConnections   int                  // Maximum concurrent client connections
-	listener         net.Listener         // TCP listener
-	clients          map[string]*Client   // Map of callsign → Client
-	clientsMutex     sync.RWMutex         // Protects clients map
-	shutdown         chan struct{}        // Shutdown coordination channel
-	broadcast        chan *spot.Spot      // Broadcast channel for spots (buffered, configurable)
-	broadcastWorkers int                  // Number of goroutines delivering spots
-	workerQueues     []chan *broadcastJob // Per-worker job queues
-	workerQueueSize  int                  // Capacity of each worker's queue
-	metrics          broadcastMetrics     // Broadcast metrics counters
-	processor        *commands.Processor  // Command processor for user commands
-	skipHandshake    bool                 // When true, omit Telnet IAC negotiation
-	clientBufferSize int                  // Per-client spot channel capacity
+	port              int                  // TCP port to listen on
+	welcomeMessage    string               // Welcome message for new connections
+	maxConnections    int                  // Maximum concurrent client connections
+	duplicateLoginMsg string               // Message sent to evicted duplicate session
+	listener          net.Listener         // TCP listener
+	clients           map[string]*Client   // Map of callsign → Client
+	clientsMutex      sync.RWMutex         // Protects clients map
+	shutdown          chan struct{}        // Shutdown coordination channel
+	broadcast         chan *spot.Spot      // Broadcast channel for spots (buffered, configurable)
+	broadcastWorkers  int                  // Number of goroutines delivering spots
+	workerQueues      []chan *broadcastJob // Per-worker job queues
+	workerQueueSize   int                  // Capacity of each worker's queue
+	metrics           broadcastMetrics     // Broadcast metrics counters
+	processor         *commands.Processor  // Command processor for user commands
+	skipHandshake     bool                 // When true, omit Telnet IAC negotiation
+	clientBufferSize  int                  // Per-client spot channel capacity
 }
 
 // Client represents a connected telnet client session.
@@ -159,9 +160,10 @@ const (
 )
 
 const (
-	defaultBroadcastQueueSize = 2048
-	defaultClientBufferSize   = 128
-	defaultWorkerQueueSize    = 128
+	defaultBroadcastQueueSize    = 2048
+	defaultClientBufferSize      = 128
+	defaultWorkerQueueSize       = 128
+	defaultDuplicateLoginMessage = "Another login for your callsign connected. This session is being closed (multiple logins are not allowed)."
 )
 
 const (
@@ -171,31 +173,33 @@ const (
 
 // ServerOptions configures the telnet server instance.
 type ServerOptions struct {
-	Port             int
-	WelcomeMessage   string
-	MaxConnections   int
-	BroadcastWorkers int
-	BroadcastQueue   int
-	WorkerQueue      int
-	ClientBuffer     int
-	SkipHandshake    bool
+	Port              int
+	WelcomeMessage    string
+	DuplicateLoginMsg string
+	MaxConnections    int
+	BroadcastWorkers  int
+	BroadcastQueue    int
+	WorkerQueue       int
+	ClientBuffer      int
+	SkipHandshake     bool
 }
 
 // NewServer creates a new telnet server
 func NewServer(opts ServerOptions, processor *commands.Processor) *Server {
 	config := normalizeServerOptions(opts)
 	return &Server{
-		port:             config.Port,
-		welcomeMessage:   config.WelcomeMessage,
-		maxConnections:   config.MaxConnections,
-		clients:          make(map[string]*Client),
-		shutdown:         make(chan struct{}),
-		broadcast:        make(chan *spot.Spot, config.BroadcastQueue),
-		broadcastWorkers: config.BroadcastWorkers,
-		workerQueueSize:  config.WorkerQueue,
-		clientBufferSize: config.ClientBuffer,
-		skipHandshake:    config.SkipHandshake,
-		processor:        processor,
+		port:              config.Port,
+		welcomeMessage:    config.WelcomeMessage,
+		maxConnections:    config.MaxConnections,
+		duplicateLoginMsg: config.DuplicateLoginMsg,
+		clients:           make(map[string]*Client),
+		shutdown:          make(chan struct{}),
+		broadcast:         make(chan *spot.Spot, config.BroadcastQueue),
+		broadcastWorkers:  config.BroadcastWorkers,
+		workerQueueSize:   config.WorkerQueue,
+		clientBufferSize:  config.ClientBuffer,
+		skipHandshake:     config.SkipHandshake,
+		processor:         processor,
 	}
 }
 
@@ -212,6 +216,9 @@ func normalizeServerOptions(opts ServerOptions) ServerOptions {
 	}
 	if config.ClientBuffer <= 0 {
 		config.ClientBuffer = defaultClientBufferSize
+	}
+	if strings.TrimSpace(config.DuplicateLoginMsg) == "" {
+		config.DuplicateLoginMsg = defaultDuplicateLoginMessage
 	}
 	return config
 }
@@ -874,20 +881,44 @@ func (c *Client) spotSender() {
 
 // registerClient adds a client to the active clients list
 func (s *Server) registerClient(client *Client) {
+	var evicted *Client
 	s.clientsMutex.Lock()
-	defer s.clientsMutex.Unlock()
+	if existing, ok := s.clients[client.callsign]; ok {
+		evicted = existing
+		delete(s.clients, client.callsign)
+	}
 	s.clients[client.callsign] = client
-	log.Printf("Registered client: %s (total: %d)", client.callsign, len(s.clients))
+	total := len(s.clients)
+	s.clientsMutex.Unlock()
+
+	if evicted != nil {
+		msg := strings.TrimSpace(s.duplicateLoginMsg)
+		if msg == "" {
+			msg = defaultDuplicateLoginMessage
+		}
+		if !strings.HasSuffix(msg, "\n") {
+			msg += "\n"
+		}
+		_ = evicted.Send(msg)
+		evicted.conn.Close()
+		log.Printf("Evicted existing session for %s due to duplicate login", client.callsign)
+	}
+	log.Printf("Registered client: %s (total: %d)", client.callsign, total)
 }
 
 // unregisterClient removes a client from the active clients list
 func (s *Server) unregisterClient(client *Client) {
 	s.clientsMutex.Lock()
-	defer s.clientsMutex.Unlock()
-	delete(s.clients, client.callsign)
+	current, ok := s.clients[client.callsign]
+	if ok && current == client {
+		delete(s.clients, client.callsign)
+	}
+	total := len(s.clients)
+	s.clientsMutex.Unlock()
+
 	client.saveFilter()
 	close(client.spotChan)
-	log.Printf("Unregistered client: %s (total: %d)", client.callsign, len(s.clients))
+	log.Printf("Unregistered client: %s (total: %d)", client.callsign, total)
 }
 
 // GetClientCount returns the number of connected clients
