@@ -9,10 +9,14 @@ import (
 )
 
 // KnownCallsigns holds a set of normalized callsigns used for confidence boosts.
+// Counters track total lookups and DX-only lookups (the latter is what the
+// pipeline uses to compute the status hit rate).
 type KnownCallsigns struct {
-	entries map[string]struct{}
-	lookups atomic.Uint64
-	hits    atomic.Uint64
+	entries   map[string]struct{}
+	lookups   atomic.Uint64
+	hits      atomic.Uint64
+	dxLookups atomic.Uint64
+	dxHits    atomic.Uint64
 }
 
 // LoadKnownCallsigns loads a newline-delimited file of callsigns.
@@ -49,9 +53,11 @@ func (k *KnownCallsigns) Contains(call string) bool {
 		return false
 	}
 	k.lookups.Add(1)
+	k.dxLookups.Add(1)
 	_, ok := k.entries[call]
 	if ok {
 		k.hits.Add(1)
+		k.dxHits.Add(1)
 	}
 	return ok
 }
@@ -70,6 +76,14 @@ func (k *KnownCallsigns) Stats() (lookups uint64, hits uint64) {
 		return 0, 0
 	}
 	return k.lookups.Load(), k.hits.Load()
+}
+
+// StatsDX returns lookup and hit counters specifically for DX calls.
+func (k *KnownCallsigns) StatsDX() (lookups uint64, hits uint64) {
+	if k == nil {
+		return 0, 0
+	}
+	return k.dxLookups.Load(), k.dxHits.Load()
 }
 
 // List returns a snapshot of all known callsigns.

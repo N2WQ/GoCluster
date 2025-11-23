@@ -81,8 +81,8 @@ func TestFormatZoneGridFallbacks(t *testing.T) {
 		Mode:      "FT8",
 		Time:      time.Date(2025, time.November, 22, 6, 15, 0, 0, time.UTC),
 	}
-	if got := s.formatZoneGridComment(); got != "CQ ?? ????" {
-		t.Fatalf("expected fallback CQ ?? ????, got %q", got)
+	if got := s.formatZoneGridComment(); got != "CQ ??" {
+		t.Fatalf("expected fallback CQ ??, got %q", got)
 	}
 }
 

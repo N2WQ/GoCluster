@@ -174,23 +174,23 @@ func (s *Spot) FormatDXCluster() string {
 
 		confLabel := strings.TrimSpace(s.Confidence)
 		const (
-			timeColumn     = 69 // position where the timestamp begins
-			minGapToSymbol = 2  // minimum spaces between comment and confidence symbol
+			timeColumnStart = 71 // 0-based column where the timestamp should start
+			minGapToSymbol  = 2  // minimum spaces between comment and confidence symbol
 		)
 
 		if confLabel == "" {
 			// Pad/truncate so the time begins exactly at column timeColumn.
-			if len(leftPart) > timeColumn {
-				leftPart = leftPart[:timeColumn]
-			} else if len(leftPart) < timeColumn {
-				leftPart += strings.Repeat(" ", timeColumn-len(leftPart))
+			if len(leftPart) > timeColumnStart {
+				leftPart = leftPart[:timeColumnStart]
+			} else if len(leftPart) < timeColumnStart {
+				leftPart += strings.Repeat(" ", timeColumnStart-len(leftPart))
 			}
 			s.formatted = leftPart + timeStr
 			return
 		}
 
 		confWidth := len(confLabel)
-		maxConfWidth := timeColumn - minGapToSymbol
+		maxConfWidth := timeColumnStart - minGapToSymbol
 		if maxConfWidth < 1 {
 			maxConfWidth = 1
 		}
@@ -198,14 +198,15 @@ func (s *Spot) FormatDXCluster() string {
 			confWidth = maxConfWidth
 			confLabel = confLabel[:confWidth]
 		}
-		maxCommentLen := timeColumn - minGapToSymbol - confWidth
+		maxCommentLen := timeColumnStart - minGapToSymbol - confWidth
 		if maxCommentLen < 0 {
 			maxCommentLen = 0
 		}
 		if len(leftPart) > maxCommentLen {
 			leftPart = leftPart[:maxCommentLen]
 		}
-		gapLen := timeColumn - confWidth - len(leftPart)
+		// Ensure the timestamp begins exactly at timeColumnStart: leftPart + gap + conf + space
+		gapLen := timeColumnStart - confWidth - 1 - len(leftPart)
 		if gapLen < minGapToSymbol {
 			gapLen = minGapToSymbol
 		}
@@ -260,9 +261,12 @@ func (s *Spot) String() string {
 }
 
 func (s *Spot) formatZoneGridComment() string {
-	return fmt.Sprintf("CQ %s %s",
-		formatCQZoneLabel(s.DXMetadata.CQZone),
-		formatGridLabel(s.DXMetadata.Grid))
+	zone := formatCQZoneLabel(s.DXMetadata.CQZone)
+	grid := formatGridLabel(s.DXMetadata.Grid)
+	if grid == "" {
+		return fmt.Sprintf("CQ %s", zone)
+	}
+	return fmt.Sprintf("CQ %s %s", zone, grid)
 }
 
 func formatCQZoneLabel(zone int) string {
@@ -275,7 +279,7 @@ func formatCQZoneLabel(zone int) string {
 func formatGridLabel(grid string) string {
 	grid = strings.TrimSpace(strings.ToUpper(grid))
 	if grid == "" {
-		return "????"
+		return ""
 	}
 	if len(grid) > 4 {
 		grid = grid[:4]

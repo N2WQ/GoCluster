@@ -105,7 +105,9 @@ Filter management commands are implemented directly in `telnet/server.go` and op
 - `UNSET/FILTER CONFIDENCE <symbol>[,<symbol>...]` - disables only the comma- or space-separated list of glyphs provided (use `ALL` to clear the whitelist).
 - `UNSET/FILTER BEACON` - drop beacon spots entirely (they remain tagged internally for future processing).
 - `SHOW/FILTER BEACON` - display the current beacon-filter state.
-- `SHOW/FILTER CONFIDENCE` – lists each glyph alongside whether it is currently enabled.
+- `SHOW/FILTER CONFIDENCE` - lists each glyph alongside whether it is currently enabled.
+
+Confidence glyphs are only emitted for modes that run consensus-based correction (CW/RTTY/SSB). FT8/FT4 spots carry no confidence glyphs, so confidence filters do not affect them.
 
 Band, mode, and confidence commands share identical semantics: they accept comma- or space-separated lists, ignore duplicates/case, and treat the literal `ALL` as a shorthand to reset that filter back to "allow every band/mode/confidence glyph."
 

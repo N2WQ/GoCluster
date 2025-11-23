@@ -41,6 +41,13 @@ type CorrectionSettings struct {
 	//   - "baudot": Baudot-aware (RTTY only)
 	DistanceModelCW   string
 	DistanceModelRTTY string
+
+	// Distance3Extra* tighten consensus requirements when the candidate callsign
+	// is at edit distance 3 from the subject. They are additive to the base
+	// thresholds above. Set them to zero to disable the stricter bar.
+	Distance3ExtraReports    int
+	Distance3ExtraAdvantage  int
+	Distance3ExtraConfidence int
 }
 
 var correctionEligibleModes = map[string]struct{}{
@@ -185,13 +192,28 @@ func SuggestCallCorrection(subject *Spot, others []*Spot, settings CorrectionSet
 		if count < subjectCount+cfg.MinAdvantage {
 			continue
 		}
-		if cfg.MaxEditDistance >= 0 {
-			if distance := callDistance(subjectCall, call, subject.Mode, cfg.DistanceModelCW, cfg.DistanceModelRTTY); distance > cfg.MaxEditDistance {
-				continue
-			}
+		distance := callDistance(subjectCall, call, subject.Mode, cfg.DistanceModelCW, cfg.DistanceModelRTTY)
+		if cfg.MaxEditDistance >= 0 && distance > cfg.MaxEditDistance {
+			continue
+		}
+		// Apply stricter consensus requirements for more distant corrections so we
+		// don't accept a larger edit with the same evidence as a near edit.
+		minReports := cfg.MinConsensusReports
+		minAdvantage := cfg.MinAdvantage
+		minConf := cfg.MinConfidencePercent
+		if distance >= 3 {
+			minReports += cfg.Distance3ExtraReports     // require more unique supporters
+			minAdvantage += cfg.Distance3ExtraAdvantage // require a larger lead over the subject call
+			minConf += cfg.Distance3ExtraConfidence     // require a higher share of total reporters
+		}
+		if count < minReports {
+			continue
+		}
+		if count < subjectCount+minAdvantage {
+			continue
 		}
 		confidence := count * 100 / totalReporters
-		if confidence < cfg.MinConfidencePercent {
+		if confidence < minConf {
 			continue
 		}
 		// Prefer the candidate with the most unique spotters. In a tie, take the
@@ -234,6 +256,15 @@ func normalizeCorrectionSettings(settings CorrectionSettings) CorrectionSettings
 	}
 	if cfg.MinSNRRTTY < 0 {
 		cfg.MinSNRRTTY = 0
+	}
+	if cfg.Distance3ExtraReports < 0 {
+		cfg.Distance3ExtraReports = 0
+	}
+	if cfg.Distance3ExtraAdvantage < 0 {
+		cfg.Distance3ExtraAdvantage = 0
+	}
+	if cfg.Distance3ExtraConfidence < 0 {
+		cfg.Distance3ExtraConfidence = 0
 	}
 	cfg.DistanceModelCW = normalizeCWDistanceModel(cfg.DistanceModelCW)
 	cfg.DistanceModelRTTY = normalizeRTTYDistanceModel(cfg.DistanceModelRTTY)

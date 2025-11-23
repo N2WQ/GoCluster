@@ -59,7 +59,7 @@ BYE                  - Disconnect
 Filter commands (use from telnet session):
 	SET/FILTER BAND <band>[,<band>...] - Enable specific bands (comma/space separated, or ALL)
 	SET/FILTER MODE <mode>[,<mode>...] - Enable modes (comma or space separated, or ALL)
-	SET/FILTER CONFIDENCE <symbol>[,<symbol>...] - Enable consensus glyphs (?,S,C,P,V,B or ALL)
+	SET/FILTER CONFIDENCE <symbol>[,<symbol>...] - Enable consensus glyphs (?,S,C,P,V,B or ALL). FT8/FT4 spots do not carry confidence glyphs and ignore this filter.
 	SET/FILTER BEACON - Deliver DX beacons (calls ending in /B)
 	UNSET/FILTER BAND <band>[,<band>...]      - Disable listed bands (use ALL to clear)
 	UNSET/FILTER MODE <mode>[,<mode>...]      - Disable listed modes (use ALL to clear)

@@ -445,6 +445,8 @@ func (f *Filter) Matches(s *spot.Spot) bool {
 		return false
 	}
 
+	modeUpper := strings.ToUpper(strings.TrimSpace(s.Mode))
+
 	// Check band filter
 	if !f.AllBands {
 		spotBand := spot.NormalizeBand(s.Band)
@@ -474,7 +476,7 @@ func (f *Filter) Matches(s *spot.Spot) bool {
 		}
 	}
 
-	if !f.AllConfidence && len(f.Confidence) > 0 {
+	if !f.AllConfidence && len(f.Confidence) > 0 && !isConfidenceExemptMode(modeUpper) {
 		symbol := normalizeConfidenceSymbol(s.Confidence)
 		if symbol == "" || !f.Confidence[symbol] {
 			return false
@@ -528,6 +530,17 @@ func matchesCallsignPattern(callsign, pattern string) bool {
 
 	// No match
 	return false
+}
+
+// isConfidenceExemptMode reports whether confidence filtering should be skipped
+// because the pipeline never assigns consensus/confidence glyphs to that mode.
+func isConfidenceExemptMode(mode string) bool {
+	switch strings.ToUpper(strings.TrimSpace(mode)) {
+	case "FT8", "FT4":
+		return true
+	default:
+		return false
+	}
 }
 
 // String returns a human-readable description of the active filters.

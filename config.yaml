@@ -22,11 +22,11 @@ telnet:
   max_connections: 1000
   welcome_message: "Experimental DX Cluster\nPlease login with your callsign\n"
   duplicate_login_message: "Another login for your callsign connected. This session is being closed (multiple logins are not allowed)."
-  broadcast_workers: 0        # 0 means automatic (half of the CPU cores, minimum 2)
-  broadcast_queue_size: 2048  # Buffer depth for the global telnet broadcast queue
-  worker_queue_size: 128      # Jobs queued per broadcast worker before dropping
-  client_buffer_size: 128     # Per-client spot backlog before a slow session drops spots
-  skip_handshake: true        # Set true to disable Telnet option negotiation (raw TCP clients)
+  broadcast_workers: 0            # 0 means automatic (half of the CPU cores, minimum 2)
+  broadcast_queue_size: 2048      # Buffer depth for the global telnet broadcast queue
+  worker_queue_size: 128          # Jobs queued per broadcast worker before dropping
+  client_buffer_size: 128         # Per-client spot backlog before a slow session drops spots
+  skip_handshake: true            # Set true to disable Telnet option negotiation (raw TCP clients)
 
 # Default filters applied to new users
 filter:
@@ -38,38 +38,41 @@ filter:
 
 # Core processing / protections
 dedup:
-  cluster_window_seconds: 120 # Dedup window in seconds (0 disables dedup without changing the pipeline)
-  prefer_stronger_snr: true   # When duplicates collide, keep the strongest SNR version
+  cluster_window_seconds: 120     # Dedup window in seconds (0 disables dedup without changing the pipeline)
+  prefer_stronger_snr: true       # When duplicates collide, keep the strongest SNR version
 
 # Consensus thresholds for automated call corrections (only CW/RTTY/USB/LSB considered)
 call_correction:
-  enabled: true                 # Master switch (set true to enable)
-  min_consensus_reports: 6      # Minimum number of corroborating spotters
-  min_advantage: 3              # Candidate must exceed the original by this many spotters
-  min_confidence_percent: 75    # Candidate supporters must represent at least this percent of unique spotters
-  recency_seconds: 120          # Supporting spots must be this recent
-  max_edit_distance: 2          # Max allowed Levenshtein distance between original and replacement
-  frequency_tolerance_hz: 500   # Spots within this frequency window are considered the same signal
-  distance_model_cw: "morse"    # "plain" = standard Levenshtein, "morse" = Morse-aware (CW only)
-  distance_model_rtty: "baudot" # "plain" = standard Levenshtein, "baudot" = Baudot-aware (RTTY only)
-  invalid_action: "broadcast"   # "broadcast" original if correction fails CTY, or "suppress" to drop spot
-  min_snr_cw: 6                 # Ignore CW corroborators weaker than this many dB
-  min_snr_rtty: 4               # Ignore RTTY corroborators weaker than this many dB
+  enabled: true                   # Master switch (set true to enable)
+  min_consensus_reports: 7        # Minimum number of corroborating spotters
+  min_advantage: 4                # Candidate must exceed the original by this many spotters
+  min_confidence_percent: 75      # Candidate supporters must represent at least this percent of unique spotters
+  recency_seconds: 120            # Supporting spots must be this recent
+  max_edit_distance: 4            # Max allowed Levenshtein distance between original and replacement
+  frequency_tolerance_hz: 500     # Spots within this frequency window are considered the same signal
+  distance_model_cw: "morse"      # "plain" = standard Levenshtein, "morse" = Morse-aware (CW only)
+  distance_model_rtty: "baudot"   # "plain" = standard Levenshtein, "baudot" = Baudot-aware (RTTY only)
+  invalid_action: "broadcast"     # "broadcast" original if correction fails CTY, or "suppress" to drop spot
+  min_snr_cw: 6                   # Ignore CW corroborators weaker than this many dB
+  min_snr_rtty: 4                 # Ignore RTTY corroborators weaker than this many dB
+  distance3_extra_reports: 4      # Extra unique supporters required when suggested call is distance 3
+  distance3_extra_advantage: 2    # Extra advantage over the subject required when distance 3
+  distance3_extra_confidence: 10  # Extra confidence percentage points required when distance 3
 
 # Harmonic suppression for CW/USB/LSB/RTTY signals
 harmonics:
-  enabled: true                # Suppress harmonics when true
-  recency_seconds: 120         # Look-back window for fundamental spots
-  max_harmonic_multiple: 3     # Highest harmonic multiple to consider (2 = second harmonic, etc.)
-  frequency_tolerance_hz: 500  # Allowed deviation between expected and observed harmonic
-  min_report_delta: 6          # Harmonics must be at least this many dB weaker to drop
-  min_report_delta_step: 3.5   # Additional dB required per harmonic order above the second
+  enabled: true                   # Suppress harmonics when true
+  recency_seconds: 120            # Look-back window for fundamental spots
+  max_harmonic_multiple: 3        # Highest harmonic multiple to consider (2 = second harmonic, etc.)
+  frequency_tolerance_hz: 500     # Allowed deviation between expected and observed harmonic
+  min_report_delta: 6             # Harmonics must be at least this many dB weaker to drop
+  min_report_delta_step: 3.5      # Additional dB required per harmonic order above the second
 
 spot_policy:
   max_age_seconds: 300                   # Drop spots older than this many seconds (based on spot timestamp)
   frequency_averaging_seconds: 180       # Look-back window for CW/RTTY frequency averaging
   frequency_averaging_tolerance_hz: 500  # Max deviation between reports when averaging
-  frequency_averaging_min_reports: 4     # Minimum corroborating reports needed to adjust frequency
+  frequency_averaging_min_reports: 7     # Minimum corroborating reports needed to adjust frequency
 
 # Spot sources
 rbn:
@@ -77,16 +80,16 @@ rbn:
   name: "RBN-CW-RTTY"
   host: "telnet.reversebeacon.net"
   port: 7000
-  callsign: "N0CW"           # Change this to your callsign!
-  keep_ssid_suffix: true     # false collapses VE3EID-1/-2 into VE3EID-#
+  callsign: "N0CW"               # Change this to your callsign!
+  keep_ssid_suffix: true         # false collapses VE3EID-1/-2 into VE3EID-#
 
 rbn_digital:
   enabled: true
   name: "RBN-FT4-FT8"
   host: "telnet.reversebeacon.net"
   port: 7001
-  callsign: "N0FT"           # Change this to your callsign!
-  keep_ssid_suffix: true     # false collapses VE3EID-1/-2 into VE3EID-#
+  callsign: "N0FT"              # Change this to your callsign!
+  keep_ssid_suffix: true        # false collapses VE3EID-1/-2 into VE3EID-#
 
 pskreporter:
   enabled: true
@@ -99,7 +102,7 @@ pskreporter:
 
 # Reference data and persistence
 cty:
-  file: "data/cty/cty.plist"               # Path to the CTY prefix database (cty.plist)
+  file: "data/cty/cty.plist"           # Path to the CTY prefix database (cty.plist)
 
 known_calls:
   enabled: true
@@ -109,21 +112,21 @@ known_calls:
 
 # Combined database for known calls + grids
 grid_db: "data/grids/calls.db"
-grid_flush_seconds: 60                    # Batch DB writes at most once per this many seconds
-grid_cache_size: 4000                     # Max in-memory grid cache entries (lazy LRU; falls back to SQLite on miss)
-grid_cache_ttl_seconds: 3600              # >0 expires cache entries after this many seconds (0=never expires)
-grid_ttl_days: 90                         # >0 prunes grid records older than this many days (0=keep forever)
+grid_flush_seconds: 60                 # Batch DB writes at most once per this many seconds
+grid_cache_size: 3000                  # Max in-memory grid cache entries (lazy LRU; falls back to SQLite on miss)
+grid_cache_ttl_seconds: 3600           # >0 expires cache entries after this many seconds (0=never expires)
+grid_ttl_days: 90                      # >0 prunes grid records older than this many days (0=keep forever)
 
 # RBN skew correction table
 skew:
   enabled: true
   url: "https://sm7iun.se/rbnskew.csv"
   file: "data/skm_correction/rbnskew.json"
-  min_spots: 500                                   # Require this many spots before trusting a skimmer's correction
-  refresh_utc: "00:30"                             # Daily download time in HH:MM UTC
+  min_spots: 500                       # Require this many spots before trusting a skimmer's correction
+  refresh_utc: "00:30"                 # Daily download time in HH:MM UTC
 
 buffer:
-  capacity: 300000                         # Number of spots held in the in-memory ring buffer
+  capacity: 300000                     # Number of spots held in the in-memory ring buffer
 
 # Spot recorder (captures first N spots per mode into SQLite for offline analysis)
 recorder:

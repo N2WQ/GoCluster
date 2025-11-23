@@ -173,6 +173,12 @@ type CallCorrectionConfig struct {
 	//   - "broadcast": keep the original spot (default)
 	//   - "suppress": drop the spot entirely
 	InvalidAction string `yaml:"invalid_action"`
+	// Distance3Extra* tighten consensus requirements for distance-3 edits (compared
+	// to the subject call). These are additive to the base thresholds above. Set to
+	// zero to disable extra requirements for distance-3 corrections.
+	Distance3ExtraReports    int `yaml:"distance3_extra_reports"`    // additional unique reporters required
+	Distance3ExtraAdvantage  int `yaml:"distance3_extra_advantage"`  // additional advantage over subject required
+	Distance3ExtraConfidence int `yaml:"distance3_extra_confidence"` // additional confidence percentage points required
 }
 
 // HarmonicConfig controls detection and suppression of harmonic spots.
@@ -290,6 +296,15 @@ func Load(filename string) (*Config, error) {
 	}
 	if cfg.CallCorrection.MinSNRRTTY < 0 {
 		cfg.CallCorrection.MinSNRRTTY = 0
+	}
+	if cfg.CallCorrection.Distance3ExtraReports < 0 {
+		cfg.CallCorrection.Distance3ExtraReports = 0
+	}
+	if cfg.CallCorrection.Distance3ExtraAdvantage < 0 {
+		cfg.CallCorrection.Distance3ExtraAdvantage = 0
+	}
+	if cfg.CallCorrection.Distance3ExtraConfidence < 0 {
+		cfg.CallCorrection.Distance3ExtraConfidence = 0
 	}
 	if cfg.Telnet.BroadcastQueue <= 0 {
 		cfg.Telnet.BroadcastQueue = 2048
@@ -425,7 +440,7 @@ func (c *Config) Print() {
 	if c.CallCorrection.Enabled {
 		status = "enabled"
 	}
-	fmt.Printf("Call correction: %s (min_reports=%d advantage>%d confidence>=%d%% recency=%ds max_edit=%d tol=%.1fHz distance_cw=%s distance_rtty=%s invalid_action=%s)\n",
+	fmt.Printf("Call correction: %s (min_reports=%d advantage>%d confidence>=%d%% recency=%ds max_edit=%d tol=%.1fHz distance_cw=%s distance_rtty=%s invalid_action=%s d3_extra:+%d/+%d/+%d%%)\n",
 		status,
 		c.CallCorrection.MinConsensusReports,
 		c.CallCorrection.MinAdvantage,
@@ -435,7 +450,10 @@ func (c *Config) Print() {
 		c.CallCorrection.FrequencyToleranceHz,
 		c.CallCorrection.DistanceModelCW,
 		c.CallCorrection.DistanceModelRTTY,
-		c.CallCorrection.InvalidAction)
+		c.CallCorrection.InvalidAction,
+		c.CallCorrection.Distance3ExtraReports,
+		c.CallCorrection.Distance3ExtraAdvantage,
+		c.CallCorrection.Distance3ExtraConfidence)
 
 	harmonicStatus := "disabled"
 	if c.Harmonics.Enabled {

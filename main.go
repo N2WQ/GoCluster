@@ -718,15 +718,18 @@ func maybeApplyCallCorrection(spotEntry *spot.Spot, idx *spot.CorrectionIndex, c
 	defer idx.Add(spotEntry, now, window)
 
 	settings := spot.CorrectionSettings{
-		MinConsensusReports:  cfg.MinConsensusReports,
-		MinAdvantage:         cfg.MinAdvantage,
-		MinConfidencePercent: cfg.MinConfidencePercent,
-		MaxEditDistance:      cfg.MaxEditDistance,
-		RecencyWindow:        window,
-		MinSNRCW:             cfg.MinSNRCW,
-		MinSNRRTTY:           cfg.MinSNRRTTY,
-		DistanceModelCW:      cfg.DistanceModelCW,
-		DistanceModelRTTY:    cfg.DistanceModelRTTY,
+		MinConsensusReports:      cfg.MinConsensusReports,
+		MinAdvantage:             cfg.MinAdvantage,
+		MinConfidencePercent:     cfg.MinConfidencePercent,
+		MaxEditDistance:          cfg.MaxEditDistance,
+		RecencyWindow:            window,
+		MinSNRCW:                 cfg.MinSNRCW,
+		MinSNRRTTY:               cfg.MinSNRRTTY,
+		DistanceModelCW:          cfg.DistanceModelCW,
+		DistanceModelRTTY:        cfg.DistanceModelRTTY,
+		Distance3ExtraReports:    cfg.Distance3ExtraReports,
+		Distance3ExtraAdvantage:  cfg.Distance3ExtraAdvantage,
+		Distance3ExtraConfidence: cfg.Distance3ExtraConfidence,
 	}
 	others := idx.Candidates(spotEntry, now, window)
 	corrected, supporters, correctedConfidence, subjectConfidence, totalReporters, ok := spot.SuggestCallCorrection(spotEntry, others, settings, now)
@@ -1244,7 +1247,7 @@ func formatMemoryLine(buf *buffer.RingBuffer, dedup *dedup.Deduplicator, ctyDB *
 	}
 	if known != nil {
 		knownMB = bytesToMB(uint64(known.Count() * knownCallEntryBytes))
-		lookups, hits := known.Stats()
+		lookups, hits := known.StatsDX()
 		if lookups > 0 {
 			knownRatio = float64(hits) / float64(lookups) * 100
 		}
