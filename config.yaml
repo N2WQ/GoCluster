@@ -74,7 +74,7 @@ spot_policy:
   max_age_seconds: 300                   # Drop spots older than this many seconds (based on spot timestamp)
   frequency_averaging_seconds: 120       # Look-back window for CW/RTTY frequency averaging
   frequency_averaging_tolerance_hz: 500  # Max deviation between reports when averaging
-  frequency_averaging_min_reports: 6     # Minimum corroborating reports needed to adjust frequency
+  frequency_averaging_min_reports: 8     # Minimum corroborating reports needed to adjust frequency
 
 # Spot sources
 rbn:

@@ -27,6 +27,8 @@ type metadata struct {
 	ETag         string    `json:"etag,omitempty"`
 	DownloadedAt time.Time `json:"downloaded_at"`
 	SizeBytes    int64     `json:"size_bytes"`
+	CheckedAt    time.Time `json:"checked_at,omitempty"`
+	UpToDate     bool      `json:"up_to_date,omitempty"`
 }
 
 // StartBackground kicks off an immediate refresh (non-blocking) followed by
@@ -182,6 +184,20 @@ func downloadArchive(url, destination string, force bool) (bool, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotModified {
+		// Record that we checked and nothing changed so operators can see the scheduler ran.
+		now := time.Now().UTC()
+		meta := metadata{
+			LastModified: prevMeta.LastModified,
+			ETag:         prevMeta.ETag,
+			DownloadedAt: prevMeta.DownloadedAt,
+			SizeBytes:    prevMeta.SizeBytes,
+			CheckedAt:    now,
+			UpToDate:     true,
+		}
+		if err := writeMetadata(metaPath, meta); err != nil {
+			log.Printf("Warning: unable to write FCC ULS metadata: %v", err)
+		}
+		cleanupLegacyMeta(metaSource, metaPath, legacyMetaPath)
 		return false, nil
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
@@ -223,6 +239,8 @@ func downloadArchive(url, destination string, force bool) (bool, error) {
 		ETag:         resp.Header.Get("ETag"),
 		DownloadedAt: time.Now().UTC(),
 		SizeBytes:    bytesWritten,
+		CheckedAt:    time.Now().UTC(),
+		UpToDate:     true,
 	}
 	if meta.LastModified == "" && prevMeta != nil {
 		meta.LastModified = prevMeta.LastModified
