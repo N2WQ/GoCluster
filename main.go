@@ -656,11 +656,15 @@ func processOutputSpots(
 		if !s.IsBeacon && harmonicDetector != nil && harmonicCfg.Enabled {
 			if drop, fundamental, corroborators, deltaDB := harmonicDetector.ShouldDrop(s, time.Now().UTC()); drop {
 				harmonicMsg := fmt.Sprintf("Harmonic suppressed: %s %.1f -> %.1f kHz (%d / %d dB)", s.DXCall, s.Frequency, fundamental, corroborators, deltaDB)
+				harmonicMsgDash := harmonicMsg
+				if dash != nil {
+					harmonicMsgDash = fmt.Sprintf("Harmonic suppressed: %s [red]%.1f[-] -> [green]%.1f[-] kHz (%d / %d dB)", s.DXCall, s.Frequency, fundamental, corroborators, deltaDB)
+				}
 				if tracker != nil {
 					tracker.IncrementHarmonicSuppressions()
 				}
 				if dash != nil {
-					dash.AppendHarmonic(harmonicMsg)
+					dash.AppendHarmonic(harmonicMsgDash)
 				} else {
 					log.Println(harmonicMsg)
 				}
@@ -677,7 +681,12 @@ func processOutputSpots(
 			if totalReports > 0 {
 				confidence = corroborators * 100 / totalReports
 			}
-			if corroborators >= spotPolicy.FrequencyAveragingMinReports && math.Abs(rounded-s.Frequency) >= tolerance {
+			// Apply the averaged frequency when we have enough corroborators and the rounded
+			// value actually differs from the reported frequency. We deliberately decouple
+			// this apply threshold from the inclusion tolerance so sub-500 Hz shifts are
+			// preserved instead of being discarded by the same 0.5 kHz gate.
+			delta := math.Abs(rounded - s.Frequency)
+			if corroborators >= spotPolicy.FrequencyAveragingMinReports && delta >= 0.05 {
 				message := fmt.Sprintf("Frequency corrected: %s %.1f -> %.1f kHz (%d / %d%%)", s.DXCall, s.Frequency, rounded, corroborators, confidence)
 				messageDash := message
 				if dash != nil {

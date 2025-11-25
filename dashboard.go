@@ -23,6 +23,10 @@ type dashboard struct {
 	systemView    *tview.TextView
 	statsMu       sync.Mutex
 	ready         chan struct{}
+	callHasText   bool
+	freqHasText   bool
+	harmHasText   bool
+	sysHasText    bool
 }
 
 func newDashboard(enable bool) *dashboard {
@@ -113,28 +117,34 @@ func (d *dashboard) SetStats(lines []string) {
 }
 
 func (d *dashboard) AppendCall(line string) {
-	d.appendLine(d.callView, line)
+	d.appendLine(d.callView, &d.callHasText, line)
 }
 
 func (d *dashboard) AppendFrequency(line string) {
-	d.appendLine(d.frequencyView, line)
+	d.appendLine(d.frequencyView, &d.freqHasText, line)
 }
 
 func (d *dashboard) AppendHarmonic(line string) {
-	d.appendLine(d.harmonicView, line)
+	d.appendLine(d.harmonicView, &d.harmHasText, line)
 }
 
 func (d *dashboard) AppendSystem(line string) {
-	d.appendLine(d.systemView, line)
+	d.appendLine(d.systemView, &d.sysHasText, line)
 }
 
-func (d *dashboard) appendLine(view *tview.TextView, line string) {
+func (d *dashboard) appendLine(view *tview.TextView, hasText *bool, line string) {
 	if d == nil || view == nil {
 		return
 	}
 	ts := time.Now().Format("2006/01/02 15:04:05 ")
 	d.app.QueueUpdateDraw(func() {
-		fmt.Fprintln(view, ts+line)
+		if hasText != nil && *hasText {
+			fmt.Fprint(view, "\n")
+		}
+		fmt.Fprint(view, ts+line)
+		if hasText != nil {
+			*hasText = true
+		}
 	})
 }
 
