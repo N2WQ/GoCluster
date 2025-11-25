@@ -20,7 +20,7 @@ telnet:
   port: 7300
   tls_enabled: false
   max_connections: 100
-  welcome_message: "Experimental DX Cluster\nPlease login with your callsign\n"
+  welcome_message: "Experimental DX Cluster\n"
   duplicate_login_message: "Another login for your callsign connected. This session is being closed (multiple logins are not allowed)."
   broadcast_workers: 0            # 0 means automatic (half of the CPU cores, minimum 2)
   broadcast_queue_size: 4096      # Buffer depth for the global telnet broadcast queue
