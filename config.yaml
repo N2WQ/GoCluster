@@ -23,8 +23,8 @@ telnet:
   welcome_message: "Experimental DX Cluster\n"
   duplicate_login_message: "Another login for your callsign connected. This session is being closed (multiple logins are not allowed)."
   broadcast_workers: 0            # 0 means automatic (half of the CPU cores, minimum 2)
-  broadcast_queue_size: 4096      # Buffer depth for the global telnet broadcast queue
-  worker_queue_size: 256          # Jobs queued per broadcast worker before dropping
+  broadcast_queue_size: 8192      # Buffer depth for the global telnet broadcast queue
+  worker_queue_size: 512          # Jobs queued per broadcast worker before dropping
   client_buffer_size: 256         # Per-client spot backlog before a slow session drops spots
   skip_handshake: true            # Set true to disable Telnet option negotiation (raw TCP clients)
 
