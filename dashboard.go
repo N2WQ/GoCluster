@@ -152,25 +152,42 @@ func (d *dashboard) SystemWriter() *paneWriter {
 	if d == nil {
 		return nil
 	}
-	return &paneWriter{view: d.systemView, app: d.app}
+	return &paneWriter{view: d.systemView, app: d.app, hasText: &d.sysHasText}
 }
 
 type paneWriter struct {
 	view *tview.TextView
 	app  *tview.Application
+	// hasText tracks whether we've already written at least one line so we can
+	// avoid leading/trailing blank rows when appending log messages.
+	hasText *bool
 }
 
 func (w *paneWriter) Write(p []byte) (int, error) {
 	if w == nil || w.view == nil {
 		return len(p), nil
 	}
-	text := string(p)
-	if w.app == nil {
-		fmt.Fprint(w.view, text)
+	// Trim trailing newlines so the TextView doesn't keep an empty row at the end.
+	text := strings.TrimRight(string(p), "\n")
+	if text == "" {
 		return len(p), nil
 	}
-	w.app.QueueUpdateDraw(func() {
-		fmt.Fprint(w.view, text)
-	})
+	lines := strings.Split(text, "\n")
+	appendLines := func() {
+		for _, line := range lines {
+			if w.hasText != nil && *w.hasText {
+				fmt.Fprint(w.view, "\n")
+			}
+			fmt.Fprint(w.view, line)
+			if w.hasText != nil {
+				*w.hasText = true
+			}
+		}
+	}
+	if w.app == nil {
+		appendLines()
+		return len(p), nil
+	}
+	w.app.QueueUpdateDraw(appendLines)
 	return len(p), nil
 }
