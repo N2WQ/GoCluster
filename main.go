@@ -243,14 +243,18 @@ func main() {
 	knownCallsURL := strings.TrimSpace(cfg.KnownCalls.URL)
 	if knownCallsPath != "" {
 		if _, err := os.Stat(knownCallsPath); err != nil {
-			if errors.Is(err, os.ErrNotExist) && knownCallsURL != "" {
-				if fresh, refreshErr := refreshKnownCallsigns(cfg.KnownCalls); refreshErr != nil {
-					log.Printf("Warning: known calls download failed: %v", refreshErr)
+			if errors.Is(err, os.ErrNotExist) {
+				if knownCallsURL != "" {
+					if fresh, refreshErr := refreshKnownCallsigns(cfg.KnownCalls); refreshErr != nil {
+						log.Printf("Warning: known calls download failed: %v", refreshErr)
+					} else {
+						knownCalls.Store(fresh)
+						log.Printf("Downloaded %d known callsigns from %s", fresh.Count(), knownCallsURL)
+					}
 				} else {
-					knownCalls.Store(fresh)
-					log.Printf("Downloaded %d known callsigns from %s", fresh.Count(), knownCallsURL)
+					log.Printf("Warning: known calls file %s missing and no download URL configured", knownCallsPath)
 				}
-			} else if err != nil {
+			} else {
 				log.Printf("Warning: unable to access known calls file %s: %v", knownCallsPath, err)
 			}
 		}
@@ -487,10 +491,6 @@ func main() {
 }
 
 // displayStats prints statistics at the configured interval
-func displayStats(interval time.Duration, tracker *stats.Tracker, dedup *dedup.Deduplicator, buf *buffer.RingBuffer, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns], telnetSrv *telnet.Server, dash *dashboard, gridStats *gridMetrics, gridDB *gridstore.Store) {
-	displayStatsWithFCC(interval, tracker, dedup, buf, ctyDB, knownPtr, telnetSrv, dash, gridStats, gridDB, nil)
-}
-
 func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, dedup *dedup.Deduplicator, buf *buffer.RingBuffer, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns], telnetSrv *telnet.Server, dash *dashboard, gridStats *gridMetrics, gridDB *gridstore.Store, fcc *fccSnapshot) {
 	if interval <= 0 {
 		interval = 30 * time.Second
