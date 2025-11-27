@@ -70,6 +70,8 @@ Filter commands (use from telnet session):
 	SET/FILTER DECONT <cont>[,<cont>...] - Enable spotter continents (AF, AN, AS, EU, NA, OC, SA or ALL)
 	SET/FILTER DXZONE <zone>[,<zone>...] - Enable DX CQ zones (1-40 or ALL)
 	SET/FILTER DEZONE <zone>[,<zone>...] - Enable spotter CQ zones (1-40 or ALL)
+	SET/FILTER DXGRID2 <grid>[,<grid>...] - Enable 2-character DX grids (truncates longer tokens; use ALL to reset)
+	SET/FILTER DEGRID2 <grid>[,<grid>...] - Enable 2-character DE grids (truncates longer tokens; use ALL to reset)
 	SET/FILTER CONFIDENCE <symbol>[,<symbol>...] - Enable consensus glyphs (?,S,C,P,V,B or ALL). FT8/FT4 spots do not carry confidence glyphs and ignore this filter.
 	SET/FILTER BEACON - Deliver DX beacons (calls ending in /B)
 	UNSET/FILTER BAND <band>[,<band>...]      - Disable listed bands (use ALL to clear)
@@ -78,6 +80,8 @@ Filter commands (use from telnet session):
 	UNSET/FILTER DECONT <cont>[,<cont>...]    - Disable spotter continents (use ALL to clear)
 	UNSET/FILTER DXZONE <zone>[,<zone>...]    - Disable DX CQ zones (use ALL to clear)
 	UNSET/FILTER DEZONE <zone>[,<zone>...]    - Disable spotter CQ zones (use ALL to clear)
+	UNSET/FILTER DXGRID2 <grid>[,<grid>...]    - Disable listed 2-character DX grids (use ALL to clear)
+	UNSET/FILTER DEGRID2 <grid>[,<grid>...]    - Disable listed 2-character DE grids (use ALL to clear)
 	UNSET/FILTER CONFIDENCE <symbol>[,<symbol>...] - Disable listed glyphs (use ALL to clear)
 	UNSET/FILTER BEACON - Suppress DX beacons
 	SHOW/FILTER BANDS             - List supported bands
@@ -86,6 +90,8 @@ Filter commands (use from telnet session):
 	SHOW/FILTER DECONT            - Show supported DE continents and enabled state
 	SHOW/FILTER DXZONE            - Show supported DX CQ zones and enabled state
 	SHOW/FILTER DEZONE            - Show supported DE CQ zones and enabled state
+	SHOW/FILTER DXGRID2           - Show DX 2-character grid filter state
+	SHOW/FILTER DEGRID2           - Show DE 2-character grid filter state
 	SHOW/FILTER CONFIDENCE        - Show supported confidence glyphs and enabled state
 	SHOW/FILTER BEACON            - Show whether beacon spots are enabled
 

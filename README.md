@@ -95,10 +95,13 @@ Filter management commands are implemented directly in `telnet/server.go` and op
 - `SHOW/FILTER BANDS` - lists all supported bands that can be enabled.
 - `SHOW/FILTER DXCONT` / `DECONT` - list supported DX/spotter continents and enabled state.
 - `SHOW/FILTER DXZONE` / `DEZONE` - list CQ zones (1-40) and enabled state for DX/spotter.
+- `SHOW/FILTER DXGRID2` / `DEGRID2` - list enabled 2-character DX/DE grid prefixes or `ALL`.
 - `SET/FILTER BAND <band>[,<band>...]` - enables filtering for the comma- or space-separated list (each item normalized via `spot.NormalizeBand`), or specify `ALL` to accept every band; use the band names from `spot.SupportedBandNames()`.
 - `SET/FILTER MODE <mode>[,<mode>...]` - enables one or more modes (comma- or space-separated) that must exist in `filter.SupportedModes`, or specify `ALL` to accept every mode.
 - `SET/FILTER DXCONT <cont>[,<cont>...]` / `DECONT <cont>[,<cont>...]` - enable only the listed DX/spotter continents (AF, AN, AS, EU, NA, OC, SA), or `ALL`.
 - `SET/FILTER DXZONE <zone>[,<zone>...]` / `DEZONE <zone>[,<zone>...]` - enable only the listed DX/spotter CQ zones (1-40), or `ALL`.
+- `SET/FILTER DXGRID2 <grid>[,<grid>...]` - enable only the listed 2-character DX grid prefixes. Tokens longer than two characters are truncated (e.g., `FN05` -> `FN`); `ALL` resets to accept every DX 2-character grid.
+- `SET/FILTER DEGRID2 <grid>[,<grid>...]` - enable only the listed 2-character DE grid prefixes (same parsing/truncation as DXGRID2); `ALL` resets to accept every DE 2-character grid.
 - `SET/FILTER CALL <pattern>` - begins delivering only spots matching the supplied callsign pattern.
 - `SET/FILTER CONFIDENCE <symbol>[,<symbol>...]` - enables the comma- or space-separated list of consensus glyphs (valid symbols: `?`, `S`, `C`, `P`, `V`, `B`; use `ALL` to accept every glyph).
 - `SET/FILTER BEACON` - explicitly enable delivery of beacon spots (DX calls ending `/B`; enabled by default).
@@ -106,6 +109,8 @@ Filter management commands are implemented directly in `telnet/server.go` and op
 - `UNSET/FILTER BAND <band>[,<band>...]` - disables only the comma- or space-separated list of bands provided (use `ALL` to clear every band filter).
 - `UNSET/FILTER MODE <mode>[,<mode>...]` - disables only the comma- or space-separated list of modes provided (specify `ALL` to clear every mode filter).
 - `UNSET/FILTER DXCONT` / `DECONT` / `DXZONE` / `DEZONE` - clear continent/zone filters (use `ALL` to reset).
+- `UNSET/FILTER DXGRID2 <grid>[,<grid>...]` - remove specific 2-character DX grid prefixes (tokens truncated to two characters); `ALL` clears the whitelist and accepts all DX 2-character grids again.
+- `UNSET/FILTER DEGRID2 <grid>[,<grid>...]` - remove specific 2-character DE grid prefixes (tokens truncated to two characters); `ALL` clears the whitelist and accepts all DE 2-character grids again.
 - `UNSET/FILTER CALL` - removes all callsign patterns.
 - `UNSET/FILTER CONFIDENCE <symbol>[,<symbol>...]` - disables only the comma- or space-separated list of glyphs provided (use `ALL` to clear the whitelist).
 - `UNSET/FILTER BEACON` - drop beacon spots entirely (they remain tagged internally for future processing).
@@ -114,7 +119,7 @@ Filter management commands are implemented directly in `telnet/server.go` and op
 
 Confidence glyphs are only emitted for modes that run consensus-based correction (CW/RTTY/SSB). FT8/FT4 spots carry no confidence glyphs, so confidence filters do not affect them.
 
-Band, mode, and confidence commands share identical semantics: they accept comma- or space-separated lists, ignore duplicates/case, and treat the literal `ALL` as a shorthand to reset that filter back to "allow every band/mode/confidence glyph."
+Band, mode, confidence, and DXGRID2/DEGRID2 commands share identical semantics: they accept comma- or space-separated lists, ignore duplicates/case, and treat the literal `ALL` as a shorthand to reset that filter back to "allow every band/mode/confidence glyph/2-character grid." DXGRID2 applies only to the DX grid when it is exactly two characters long; DEGRID2 applies only to the DE grid when it is exactly two characters long. 4/6-character or empty grids are unaffected, and longer tokens provided by the user are truncated to their first two characters before validation.
 
 Confidence indicator legend in telnet output:
 

@@ -204,22 +204,26 @@ func EnsureUserDataDir() error {
 //   - Each client has their own Filter instance (no sharing)
 //   - No internal locking needed (single-threaded per client)
 type Filter struct {
-	Bands          map[string]bool // Enabled bands (e.g., "20m" = true, "40m" = true)
-	Modes          map[string]bool // Enabled modes (e.g., "CW" = true, "FT8" = true)
-	Callsigns      []string        // Callsign patterns (e.g., ["W1*", "LZ5VV"])
-	AllBands       bool            // If true, accept all bands (Bands map ignored)
-	AllModes       bool            // If true, accept all modes (Modes map ignored)
-	Confidence     map[string]bool // Enabled confidence glyphs (e.g., {"P": true, "V": true})
-	AllConfidence  bool            // If true, accept all confidence glyphs (Confidence map ignored)
-	IncludeBeacons *bool           `yaml:"include_beacons,omitempty"` // nil/true delivers beacons; false suppresses
-	DXContinents   map[string]bool // Enabled DX continents (e.g., "EU" = true)
-	DEContinents   map[string]bool // Enabled spotter continents
-	AllDXContinents bool           // If true, accept all DX continents
-	AllDEContinents bool           // If true, accept all DE continents
-	DXZones         map[int]bool   // Enabled DX CQ zones (1-40)
-	DEZones         map[int]bool   // Enabled DE CQ zones (1-40)
-	AllDXZones      bool           // If true, accept all DX CQ zones
-	AllDEZones      bool           // If true, accept all DE CQ zones
+	Bands           map[string]bool // Enabled bands (e.g., "20m" = true, "40m" = true)
+	Modes           map[string]bool // Enabled modes (e.g., "CW" = true, "FT8" = true)
+	Callsigns       []string        // Callsign patterns (e.g., ["W1*", "LZ5VV"])
+	AllBands        bool            // If true, accept all bands (Bands map ignored)
+	AllModes        bool            // If true, accept all modes (Modes map ignored)
+	Confidence      map[string]bool // Enabled confidence glyphs (e.g., {"P": true, "V": true})
+	AllConfidence   bool            // If true, accept all confidence glyphs (Confidence map ignored)
+	IncludeBeacons  *bool           `yaml:"include_beacons,omitempty"` // nil/true delivers beacons; false suppresses
+	DXContinents    map[string]bool // Enabled DX continents (e.g., "EU" = true)
+	DEContinents    map[string]bool // Enabled spotter continents
+	AllDXContinents bool            // If true, accept all DX continents
+	AllDEContinents bool            // If true, accept all DE continents
+	DXZones         map[int]bool    // Enabled DX CQ zones (1-40)
+	DEZones         map[int]bool    // Enabled DE CQ zones (1-40)
+	AllDXZones      bool            // If true, accept all DX CQ zones
+	AllDEZones      bool            // If true, accept all DE CQ zones
+	DXGrid2Prefixes map[string]bool // Enabled 2-character DX grids (whitelist when AllDXGrid2=false)
+	DEGrid2Prefixes map[string]bool // Enabled 2-character DE grids (whitelist when AllDEGrid2=false)
+	AllDXGrid2      bool            // If true, accept all DX 2-character grids
+	AllDEGrid2      bool            // If true, accept all DE 2-character grids
 
 	// LegacyMinConfidence captures the old percentage-based filter persisted to
 	// YAML so we can migrate user data to the new glyph-based approach.
@@ -244,6 +248,8 @@ func NewFilter() *Filter {
 		DEContinents:    make(map[string]bool),
 		DXZones:         make(map[int]bool),
 		DEZones:         make(map[int]bool),
+		DXGrid2Prefixes: make(map[string]bool),
+		DEGrid2Prefixes: make(map[string]bool),
 		AllBands:        true,  // Start with all bands enabled
 		AllModes:        false, // Default to the curated mode subset below
 		AllConfidence:   true,  // Accept every confidence glyph until user sets one
@@ -251,6 +257,8 @@ func NewFilter() *Filter {
 		AllDEContinents: true,
 		AllDXZones:      true,
 		AllDEZones:      true,
+		AllDXGrid2:      true,
+		AllDEGrid2:      true,
 	}
 	for _, mode := range defaultModeSelection {
 		f.Modes[mode] = true
@@ -535,6 +543,8 @@ func (f *Filter) Reset() {
 	f.ResetDEContinents()
 	f.ResetDXZones()
 	f.ResetDEZones()
+	f.ResetDXGrid2()
+	f.ResetDEGrid2()
 	f.SetBeaconEnabled(true)
 }
 
@@ -626,6 +636,23 @@ func (f *Filter) Matches(s *spot.Spot) bool {
 	}
 	if !f.AllDEZones {
 		if s.DEMetadata.CQZone < minCQZone || s.DEMetadata.CQZone > maxCQZone || !f.DEZones[s.DEMetadata.CQZone] {
+			return false
+		}
+	}
+
+	// Check 2-character grid whitelists. Each applies only to its respective
+	// DX/DE grid when that grid is exactly two characters long; longer grids
+	// are ignored by this filter.
+	if !f.AllDXGrid2 && len(f.DXGrid2Prefixes) > 0 {
+		dxPrefix := grid2Prefix(s.DXMetadata.Grid)
+		// If grid is missing or not whitelisted, drop the spot.
+		if dxPrefix == "" || !f.DXGrid2Prefixes[dxPrefix] {
+			return false
+		}
+	}
+	if !f.AllDEGrid2 && len(f.DEGrid2Prefixes) > 0 {
+		dePrefix := grid2Prefix(s.DEMetadata.Grid)
+		if dePrefix == "" || !f.DEGrid2Prefixes[dePrefix] {
 			return false
 		}
 	}
@@ -814,6 +841,17 @@ func (f *Filter) String() string {
 		parts = append(parts, "Beacons: OFF")
 	}
 
+	if f.AllDXGrid2 {
+		parts = append(parts, "DXGrid2: ALL")
+	} else {
+		parts = append(parts, "DXGrid2: "+strings.Join(enabledGrid2(f.DXGrid2Prefixes), ", "))
+	}
+	if f.AllDEGrid2 {
+		parts = append(parts, "DEGrid2: ALL")
+	} else {
+		parts = append(parts, "DEGrid2: "+strings.Join(enabledGrid2(f.DEGrid2Prefixes), ", "))
+	}
+
 	if len(parts) == 0 {
 		return "No active filters"
 	}
@@ -882,6 +920,19 @@ func enabledZones(m map[int]bool) []string {
 		strs = append(strs, strconv.Itoa(z))
 	}
 	return strs
+}
+
+// enabledGrid2 returns sorted 2-character grid prefixes from the provided map.
+func enabledGrid2(m map[string]bool) []string {
+	if len(m) == 0 {
+		return []string{"NONE"}
+	}
+	out := make([]string, 0, len(m))
+	for grid := range m {
+		out = append(out, grid)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // IsSupportedConfidenceSymbol returns true if the glyph is one of the known consensus indicators.
@@ -985,6 +1036,12 @@ func (f *Filter) normalizeDefaults() {
 	if f.DEZones == nil {
 		f.DEZones = make(map[int]bool)
 	}
+	if f.DXGrid2Prefixes == nil {
+		f.DXGrid2Prefixes = make(map[string]bool)
+	}
+	if f.DEGrid2Prefixes == nil {
+		f.DEGrid2Prefixes = make(map[string]bool)
+	}
 
 	if len(f.Bands) == 0 && !f.AllBands {
 		f.AllBands = true
@@ -1007,4 +1064,82 @@ func (f *Filter) normalizeDefaults() {
 	if len(f.DEZones) == 0 && !f.AllDEZones {
 		f.AllDEZones = true
 	}
+	if len(f.DXGrid2Prefixes) == 0 && !f.AllDXGrid2 {
+		f.AllDXGrid2 = true
+	}
+	if len(f.DEGrid2Prefixes) == 0 && !f.AllDEGrid2 {
+		f.AllDEGrid2 = true
+	}
+}
+
+// SetGrid2Prefix enables or disables a specific 2-character grid prefix.
+// Tokens longer than two characters are truncated to the first two; invalid
+// tokens are ignored.
+func (f *Filter) SetDXGrid2Prefix(grid string, enabled bool) {
+	token := normalizeGrid2Token(grid)
+	if token == "" {
+		return
+	}
+	if enabled {
+		f.DXGrid2Prefixes[token] = true
+		f.AllDXGrid2 = false
+		return
+	}
+	delete(f.DXGrid2Prefixes, token)
+	if len(f.DXGrid2Prefixes) == 0 {
+		f.AllDXGrid2 = true
+	}
+}
+
+// SetDEGrid2Prefix enables or disables a specific 2-character DE grid prefix.
+func (f *Filter) SetDEGrid2Prefix(grid string, enabled bool) {
+	token := normalizeGrid2Token(grid)
+	if token == "" {
+		return
+	}
+	if enabled {
+		f.DEGrid2Prefixes[token] = true
+		f.AllDEGrid2 = false
+		return
+	}
+	delete(f.DEGrid2Prefixes, token)
+	if len(f.DEGrid2Prefixes) == 0 {
+		f.AllDEGrid2 = true
+	}
+}
+
+// ResetDXGrid2 clears the DX 2-character grid whitelist and accepts all.
+func (f *Filter) ResetDXGrid2() {
+	f.DXGrid2Prefixes = make(map[string]bool)
+	f.AllDXGrid2 = true
+}
+
+// ResetDEGrid2 clears the DE 2-character grid whitelist and accepts all.
+func (f *Filter) ResetDEGrid2() {
+	f.DEGrid2Prefixes = make(map[string]bool)
+	f.AllDEGrid2 = true
+}
+
+func normalizeGrid2Token(grid string) string {
+	grid = strings.ToUpper(strings.TrimSpace(grid))
+	if grid == "" {
+		return ""
+	}
+	if len(grid) > 2 {
+		grid = grid[:2]
+	}
+	if len(grid) != 2 {
+		return ""
+	}
+	return grid
+}
+
+// grid2Prefix returns the uppercased first two characters of a grid string,
+// or empty string when fewer than two characters are present.
+func grid2Prefix(grid string) string {
+	grid = strings.ToUpper(strings.TrimSpace(grid))
+	if len(grid) < 2 {
+		return ""
+	}
+	return grid[:2]
 }

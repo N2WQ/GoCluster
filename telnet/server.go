@@ -37,8 +37,8 @@ import (
 	"net"
 	"os"
 	"runtime"
-	"strconv"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -171,8 +171,8 @@ const (
 )
 
 const (
-	setFilterUsageMsg   = "Usage: SET/FILTER BAND <band>[,<band>...] | SET/FILTER MODE <mode>[,<mode>...] | SET/FILTER CALL <pattern> | SET/FILTER CONFIDENCE <symbol>[,<symbol>...] (symbols: ?,S,C,P,V,B or ALL) | SET/FILTER BEACON | SET/FILTER DXCONT <cont>[,<cont>...] | SET/FILTER DECONT <cont>[,<cont>...] | SET/FILTER DXZONE <zone>[,<zone>...] | SET/FILTER DEZONE <zone>[,<zone>...]\n"
-	unsetFilterUsageMsg = "Usage: UNSET/FILTER ALL | UNSET/FILTER BAND <band>[,<band>...] | UNSET/FILTER MODE <mode>[,<mode>...] | UNSET/FILTER CALL | UNSET/FILTER CONFIDENCE <symbol>[,<symbol>...] (symbols: ?,S,C,P,V,B or ALL) | UNSET/FILTER BEACON | UNSET/FILTER DXCONT <cont>[,<cont>...] | UNSET/FILTER DECONT <cont>[,<cont>...] | UNSET/FILTER DXZONE <zone>[,<zone>...] | UNSET/FILTER DEZONE <zone>[,<zone>...]\n"
+	setFilterUsageMsg   = "Usage: SET/FILTER BAND <band>[,<band>...] | SET/FILTER MODE <mode>[,<mode>...] | SET/FILTER CALL <pattern> | SET/FILTER CONFIDENCE <symbol>[,<symbol>...] (symbols: ?,S,C,P,V,B or ALL) | SET/FILTER BEACON | SET/FILTER DXGRID2 <grid>[,<grid>...] (two characters or ALL) | SET/FILTER DEGRID2 <grid>[,<grid>...] (two characters or ALL) | SET/FILTER DXCONT <cont>[,<cont>...] | SET/FILTER DECONT <cont>[,<cont>...] | SET/FILTER DXZONE <zone>[,<zone>...] | SET/FILTER DEZONE <zone>[,<zone>...]\n"
+	unsetFilterUsageMsg = "Usage: UNSET/FILTER ALL | UNSET/FILTER BAND <band>[,<band>...] | UNSET/FILTER MODE <mode>[,<mode>...] | UNSET/FILTER CALL | UNSET/FILTER CONFIDENCE <symbol>[,<symbol>...] (symbols: ?,S,C,P,V,B or ALL) | UNSET/FILTER BEACON | UNSET/FILTER DXGRID2 <grid>[,<grid>...] (two characters or ALL) | UNSET/FILTER DEGRID2 <grid>[,<grid>...] (two characters or ALL) | UNSET/FILTER DXCONT <cont>[,<cont>...] | UNSET/FILTER DECONT <cont>[,<cont>...] | UNSET/FILTER DXZONE <zone>[,<zone>...] | UNSET/FILTER DEZONE <zone>[,<zone>...]\n"
 )
 
 // ServerOptions configures the telnet server instance.
@@ -590,6 +590,10 @@ func (c *Client) handleFilterCommand(cmd string) string {
 				return fmt.Sprintf("DX zones: %s\n", formatZoneStates(c.filter.AllDXZones, c.filter.DXZones))
 			case "dezone":
 				return fmt.Sprintf("DE zones: %s\n", formatZoneStates(c.filter.AllDEZones, c.filter.DEZones))
+			case "dxgrid2":
+				return fmt.Sprintf("DX 2-character grids: %s\n", formatGrid2State(c.filter.AllDXGrid2, c.filter.DXGrid2Prefixes))
+			case "degrid2":
+				return fmt.Sprintf("DE 2-character grids: %s\n", formatGrid2State(c.filter.AllDEGrid2, c.filter.DEGrid2Prefixes))
 			}
 		}
 
@@ -787,8 +791,52 @@ func (c *Client) handleFilterCommand(cmd string) string {
 			}
 			c.saveFilter()
 			return fmt.Sprintf("Filter set: DE zones %s\n", joinZones(zones))
+		case "DXGRID2":
+			value := strings.TrimSpace(strings.Join(parts[2:], " "))
+			if value == "" {
+				return "Usage: SET/FILTER DXGRID2 <grid>[,<grid>...] (two characters, or ALL)\n"
+			}
+			if strings.EqualFold(value, "ALL") {
+				c.filter.ResetDXGrid2()
+				c.saveFilter()
+				return "All DX 2-character grids enabled\n"
+			}
+			gridList, invalidTokens := parseGrid2List(value)
+			if len(gridList) == 0 {
+				return "Usage: SET/FILTER DXGRID2 <grid>[,<grid>...] (two characters, or ALL)\n"
+			}
+			if len(invalidTokens) > 0 {
+				return fmt.Sprintf("Unknown 2-character grid: %s\n", strings.Join(invalidTokens, ", "))
+			}
+			for _, grid := range gridList {
+				c.filter.SetDXGrid2Prefix(grid, true)
+			}
+			c.saveFilter()
+			return fmt.Sprintf("Filter set: DX 2-character grids %s\n", strings.Join(gridList, ", "))
+		case "DEGRID2":
+			value := strings.TrimSpace(strings.Join(parts[2:], " "))
+			if value == "" {
+				return "Usage: SET/FILTER DEGRID2 <grid>[,<grid>...] (two characters, or ALL)\n"
+			}
+			if strings.EqualFold(value, "ALL") {
+				c.filter.ResetDEGrid2()
+				c.saveFilter()
+				return "All DE 2-character grids enabled\n"
+			}
+			gridList, invalidTokens := parseGrid2List(value)
+			if len(gridList) == 0 {
+				return "Usage: SET/FILTER DEGRID2 <grid>[,<grid>...] (two characters, or ALL)\n"
+			}
+			if len(invalidTokens) > 0 {
+				return fmt.Sprintf("Unknown 2-character grid: %s\n", strings.Join(invalidTokens, ", "))
+			}
+			for _, grid := range gridList {
+				c.filter.SetDEGrid2Prefix(grid, true)
+			}
+			c.saveFilter()
+			return fmt.Sprintf("Filter set: DE 2-character grids %s\n", strings.Join(gridList, ", "))
 		default:
-			return "Unknown filter type. Use: BAND, MODE, CALL, CONFIDENCE, BEACON, DXCONT, DECONT, DXZONE, or DEZONE\n"
+			return "Unknown filter type. Use: BAND, MODE, CALL, CONFIDENCE, BEACON, DXGRID2, DEGRID2, DXCONT, DECONT, DXZONE, or DEZONE\n"
 		}
 
 	case "unset/filter":
@@ -984,8 +1032,52 @@ func (c *Client) handleFilterCommand(cmd string) string {
 			}
 			c.saveFilter()
 			return fmt.Sprintf("DE zone filters disabled: %s\n", joinZones(zones))
+		case "DXGRID2":
+			value := strings.TrimSpace(strings.Join(parts[2:], " "))
+			if value == "" {
+				return "Usage: UNSET/FILTER DXGRID2 <grid>[,<grid>...] (comma or space separated, or ALL)\n"
+			}
+			if strings.EqualFold(value, "ALL") {
+				c.filter.ResetDXGrid2()
+				c.saveFilter()
+				return "DX 2-character grid filters cleared\n"
+			}
+			gridList, invalidTokens := parseGrid2List(value)
+			if len(gridList) == 0 {
+				return "Usage: UNSET/FILTER DXGRID2 <grid>[,<grid>...] (comma or space separated, or ALL)\n"
+			}
+			if len(invalidTokens) > 0 {
+				return fmt.Sprintf("Unknown 2-character grid: %s\n", strings.Join(invalidTokens, ", "))
+			}
+			for _, grid := range gridList {
+				c.filter.SetDXGrid2Prefix(grid, false)
+			}
+			c.saveFilter()
+			return fmt.Sprintf("DX 2-character grid filters disabled: %s\n", strings.Join(gridList, ", "))
+		case "DEGRID2":
+			value := strings.TrimSpace(strings.Join(parts[2:], " "))
+			if value == "" {
+				return "Usage: UNSET/FILTER DEGRID2 <grid>[,<grid>...] (comma or space separated, or ALL)\n"
+			}
+			if strings.EqualFold(value, "ALL") {
+				c.filter.ResetDEGrid2()
+				c.saveFilter()
+				return "DE 2-character grid filters cleared\n"
+			}
+			gridList, invalidTokens := parseGrid2List(value)
+			if len(gridList) == 0 {
+				return "Usage: UNSET/FILTER DEGRID2 <grid>[,<grid>...] (comma or space separated, or ALL)\n"
+			}
+			if len(invalidTokens) > 0 {
+				return fmt.Sprintf("Unknown 2-character grid: %s\n", strings.Join(invalidTokens, ", "))
+			}
+			for _, grid := range gridList {
+				c.filter.SetDEGrid2Prefix(grid, false)
+			}
+			c.saveFilter()
+			return fmt.Sprintf("DE 2-character grid filters disabled: %s\n", strings.Join(gridList, ", "))
 		default:
-			return "Unknown filter type. Use: ALL, BAND, MODE, CALL, CONFIDENCE, BEACON, DXCONT, DECONT, DXZONE, or DEZONE\n"
+			return "Unknown filter type. Use: ALL, BAND, MODE, CALL, CONFIDENCE, BEACON, DXGRID2, DEGRID2, DXCONT, DECONT, DXZONE, or DEZONE\n"
 		}
 
 	default:
@@ -1133,6 +1225,36 @@ func collectInvalidModes(modes []string) []string {
 	return invalid
 }
 
+func parseGrid2List(arg string) ([]string, []string) {
+	values := splitListValues(arg)
+	if len(values) == 0 {
+		return nil, nil
+	}
+	seen := make(map[string]bool)
+	grids := make([]string, 0, len(values))
+	invalid := make([]string, 0)
+	for _, value := range values {
+		raw := strings.ToUpper(strings.TrimSpace(value))
+		if raw == "" {
+			continue
+		}
+		if len(raw) > 2 {
+			raw = raw[:2]
+		}
+		if len(raw) != 2 {
+			invalid = append(invalid, value)
+			continue
+		}
+		grid := raw
+		if seen[grid] {
+			continue
+		}
+		grids = append(grids, grid)
+		seen[grid] = true
+	}
+	return grids, invalid
+}
+
 func formatContinentStates(all bool, enabled map[string]bool) string {
 	if all {
 		return "ALL"
@@ -1178,6 +1300,21 @@ func joinZones(zones []int) string {
 	parts := make([]string, 0, len(cp))
 	for _, z := range cp {
 		parts = append(parts, fmt.Sprintf("%d", z))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func formatGrid2State(all bool, enabled map[string]bool) string {
+	if all {
+		return "ALL"
+	}
+	parts := make([]string, 0, len(enabled))
+	for grid := range enabled {
+		parts = append(parts, grid)
+	}
+	sort.Strings(parts)
+	if len(parts) == 0 {
+		return "NONE"
 	}
 	return strings.Join(parts, ", ")
 }
