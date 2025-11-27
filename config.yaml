@@ -26,7 +26,7 @@ telnet:
   broadcast_workers: 0            # 0 means automatic (half of the CPU cores, minimum 2)
   broadcast_queue_size: 8192      # Buffer depth for the global telnet broadcast queue
   worker_queue_size: 512          # Jobs queued per broadcast worker before dropping
-  client_buffer_size: 256         # Per-client spot backlog before a slow session drops spots
+  client_buffer_size: 512         # Per-client spot backlog before a slow session drops spots
   skip_handshake: true            # Set true to disable Telnet option negotiation (raw TCP clients)
 
 # Default filters applied to new users
@@ -41,6 +41,7 @@ filter:
 dedup:
   cluster_window_seconds: 120     # Dedup window in seconds (0 disables dedup without changing the pipeline)
   prefer_stronger_snr: true       # When duplicates collide, keep the strongest SNR version
+  output_buffer_size: 1024        # Capacity of the dedup output channel (raise to reduce drops)
 
 # Consensus thresholds for automated call corrections (only CW/RTTY/USB/LSB considered)
 call_correction:

@@ -114,6 +114,7 @@ func (c *PSKReporterConfig) SubscriptionTopics() []string {
 type DedupConfig struct {
 	ClusterWindowSeconds int  `yaml:"cluster_window_seconds"` // <=0 disables dedup
 	PreferStrongerSNR    bool `yaml:"prefer_stronger_snr"`    // keep max SNR when dropping duplicates
+	OutputBufferSize     int  `yaml:"output_buffer_size"`     // channel capacity for dedup output
 }
 
 // AdminConfig contains admin interface settings
@@ -416,6 +417,9 @@ func Load(filename string) (*Config, error) {
 	// Normalize dedup settings so the window drives behavior.
 	if cfg.Dedup.ClusterWindowSeconds < 0 {
 		cfg.Dedup.ClusterWindowSeconds = 0
+	}
+	if cfg.Dedup.OutputBufferSize <= 0 {
+		cfg.Dedup.OutputBufferSize = 1000
 	}
 	if strings.TrimSpace(cfg.CTY.File) == "" {
 		cfg.CTY.File = "data/cty/cty.plist"

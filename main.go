@@ -349,7 +349,7 @@ func main() {
 	// Create the deduplicator (always active; a zero-second window behaves like "disabled").
 	// THIS IS THE UNIFIED DEDUP ENGINE - ALL SOURCES FEED INTO IT
 	dedupWindow := time.Duration(cfg.Dedup.ClusterWindowSeconds) * time.Second
-	deduplicator := dedup.NewDeduplicator(dedupWindow, cfg.Dedup.PreferStrongerSNR)
+	deduplicator := dedup.NewDeduplicator(dedupWindow, cfg.Dedup.PreferStrongerSNR, cfg.Dedup.OutputBufferSize)
 	deduplicator.Start()
 	if dedupWindow > 0 {
 		log.Printf("Deduplication active with %v window", dedupWindow)

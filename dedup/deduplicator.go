@@ -42,7 +42,10 @@ const shardCount = 64
 
 // NewDeduplicator creates a new deduplicator with the specified window. Passing
 // a zero window disables suppression but still allows metrics/visibility.
-func NewDeduplicator(window time.Duration, preferStronger bool) *Deduplicator {
+func NewDeduplicator(window time.Duration, preferStronger bool, outputBuffer int) *Deduplicator {
+	if outputBuffer <= 0 {
+		outputBuffer = 1000
+	}
 	shards := make([]cacheShard, shardCount)
 	for i := range shards {
 		shards[i].cache = make(map[uint32]cachedEntry)
@@ -52,7 +55,7 @@ func NewDeduplicator(window time.Duration, preferStronger bool) *Deduplicator {
 		preferStronger:  preferStronger,
 		shards:          shards,
 		inputChan:       make(chan *spot.Spot, 1000),
-		outputChan:      make(chan *spot.Spot, 1000),
+		outputChan:      make(chan *spot.Spot, outputBuffer),
 		shutdown:        make(chan struct{}),
 		cleanupInterval: 60 * time.Second, // Clean cache every 60 seconds
 	}
