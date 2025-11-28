@@ -849,7 +849,7 @@ func passesStringFilter(token string, allow map[string]bool, block map[string]bo
 	if blockAll {
 		return false
 	}
-	token = strings.ToUpper(strings.TrimSpace(token))
+	token = strings.TrimSpace(token)
 	if len(block) > 0 && block[token] {
 		return false
 	}
