@@ -63,30 +63,30 @@ HELP                 - Show this help
 SHOW/DX [count]      - Show last N DX spots (default: 10)
 BYE                  - Disconnect
 
-Filter commands (use from telnet session):
-	SET/FILTER BAND <band>[,<band>...] - Enable specific bands (comma/space separated, or ALL)
-	SET/FILTER MODE <mode>[,<mode>...] - Enable modes (comma or space separated, or ALL)
-	SET/FILTER DXCONT <cont>[,<cont>...] - Enable DX continents (AF, AN, AS, EU, NA, OC, SA or ALL)
-	SET/FILTER DECONT <cont>[,<cont>...] - Enable spotter continents (AF, AN, AS, EU, NA, OC, SA or ALL)
-	SET/FILTER DXZONE <zone>[,<zone>...] - Enable DX CQ zones (1-40 or ALL)
-	SET/FILTER DEZONE <zone>[,<zone>...] - Enable spotter CQ zones (1-40 or ALL)
-	SET/FILTER DXDXCC <code>[,<code>...] - Enable DX ADIF/DXCC codes (comma/space separated, or ALL)
-	SET/FILTER DEDXCC <code>[,<code>...] - Enable spotter ADIF/DXCC codes (comma/space separated, or ALL)
-	SET/FILTER DXGRID2 <grid>[,<grid>...] - Enable 2-character DX grids (truncates longer tokens; use ALL to reset)
-	SET/FILTER DEGRID2 <grid>[,<grid>...] - Enable 2-character DE grids (truncates longer tokens; use ALL to reset)
-	SET/FILTER CONFIDENCE <symbol>[,<symbol>...] - Enable consensus glyphs (?,S,C,P,V,B or ALL). FT8/FT4 spots do not carry confidence glyphs and ignore this filter.
-	SET/FILTER BEACON - Deliver DX beacons (calls ending in /B)
-	UNSET/FILTER BAND <band>[,<band>...]      - Disable listed bands (use ALL to clear)
-	UNSET/FILTER MODE <mode>[,<mode>...]      - Disable listed modes (use ALL to clear)
-	UNSET/FILTER DXCONT <cont>[,<cont>...]    - Disable DX continents (use ALL to clear)
-	UNSET/FILTER DECONT <cont>[,<cont>...]    - Disable spotter continents (use ALL to clear)
-	UNSET/FILTER DXZONE <zone>[,<zone>...]    - Disable DX CQ zones (use ALL to clear)
-	UNSET/FILTER DEZONE <zone>[,<zone>...]    - Disable spotter CQ zones (use ALL to clear)
-	UNSET/FILTER DXDXCC <code>[,<code>...]    - Disable DX ADIF/DXCC codes (use ALL to clear)
-	UNSET/FILTER DEDXCC <code>[,<code>...]    - Disable spotter ADIF/DXCC codes (use ALL to clear)
-	UNSET/FILTER DXGRID2 <grid>[,<grid>...]    - Disable listed 2-character DX grids (use ALL to clear)
-	UNSET/FILTER DEGRID2 <grid>[,<grid>...]    - Disable listed 2-character DE grids (use ALL to clear)
-	UNSET/FILTER CONFIDENCE <symbol>[,<symbol>...] - Disable listed glyphs (use ALL to clear)
+Filter commands (allow + block, deny wins):
+	SET/FILTER BAND <band>[,<band>...] - Allow specific bands (comma/space). ALL clears blocklist and allows all.
+	SET/FILTER MODE <mode>[,<mode>...] - Allow specific modes. ALL clears blocklist and allows all.
+	SET/FILTER DXCONT <cont>[,<cont>...] - Allow DX continents (AF, AN, AS, EU, NA, OC, SA). ALL clears blocklist.
+	SET/FILTER DECONT <cont>[,<cont>...] - Allow DE continents. ALL clears blocklist.
+	SET/FILTER DXZONE <zone>[,<zone>...] - Allow DX CQ zones (1-40). ALL clears blocklist.
+	SET/FILTER DEZONE <zone>[,<zone>...] - Allow DE CQ zones. ALL clears blocklist.
+	SET/FILTER DXDXCC <code>[,<code>...] - Allow DX ADIF/DXCC codes. ALL clears blocklist.
+	SET/FILTER DEDXCC <code>[,<code>...] - Allow DE ADIF/DXCC codes. ALL clears blocklist.
+	SET/FILTER DXGRID2 <grid>[,<grid>...] - Allow 2-char DX grids (truncates longer tokens); ALL clears blocklist.
+	SET/FILTER DEGRID2 <grid>[,<grid>...] - Allow 2-char DE grids; ALL clears blocklist.
+	SET/FILTER CONFIDENCE <symbol>[,<symbol>...] - Allow confidence glyphs (?,S,C,P,V,B or ALL). FT8/FT4 ignore confidence filtering.
+	SET/FILTER BEACON - Deliver DX beacons (/B)
+	UNSET/FILTER BAND <band>[,<band>...]      - Block listed bands; ALL blocks all bands.
+	UNSET/FILTER MODE <mode>[,<mode>...]      - Block listed modes; ALL blocks all modes.
+	UNSET/FILTER DXCONT <cont>[,<cont>...]    - Block DX continents; ALL blocks all DX continents.
+	UNSET/FILTER DECONT <cont>[,<cont>...]    - Block DE continents; ALL blocks all DE continents.
+	UNSET/FILTER DXZONE <zone>[,<zone>...]    - Block DX CQ zones; ALL blocks all DX zones.
+	UNSET/FILTER DEZONE <zone>[,<zone>...]    - Block DE CQ zones; ALL blocks all DE zones.
+	UNSET/FILTER DXDXCC <code>[,<code>...]    - Block DX ADIF/DXCC codes; ALL blocks all DX DXCCs.
+	UNSET/FILTER DEDXCC <code>[,<code>...]    - Block DE ADIF/DXCC codes; ALL blocks all DE DXCCs.
+	UNSET/FILTER DXGRID2 <grid>[,<grid>...]    - Block 2-char DX grids; ALL blocks all DX grids.
+	UNSET/FILTER DEGRID2 <grid>[,<grid>...]    - Block 2-char DE grids; ALL blocks all DE grids.
+	UNSET/FILTER CONFIDENCE <symbol>[,<symbol>...] - Block glyphs; ALL blocks all glyphs (non-exempt modes).
 	UNSET/FILTER BEACON - Suppress DX beacons
 	SHOW/FILTER BANDS             - List supported bands
 	SHOW/FILTER MODES             - Show supported modes and enabled state
