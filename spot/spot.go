@@ -54,6 +54,7 @@ type CallMetadata struct {
 	CQZone    int
 	Grid      string
 	ITUZone   int
+	ADIF      int // ADIF/DXCC country code from CTY lookup
 }
 
 // NewSpot creates a new spot with sensible defaults

@@ -171,8 +171,8 @@ const (
 )
 
 const (
-	setFilterUsageMsg   = "Usage: SET/FILTER BAND <band>[,<band>...] | SET/FILTER MODE <mode>[,<mode>...] | SET/FILTER CALL <pattern> | SET/FILTER CONFIDENCE <symbol>[,<symbol>...] (symbols: ?,S,C,P,V,B or ALL) | SET/FILTER BEACON | SET/FILTER DXGRID2 <grid>[,<grid>...] (two characters or ALL) | SET/FILTER DEGRID2 <grid>[,<grid>...] (two characters or ALL) | SET/FILTER DXCONT <cont>[,<cont>...] | SET/FILTER DECONT <cont>[,<cont>...] | SET/FILTER DXZONE <zone>[,<zone>...] | SET/FILTER DEZONE <zone>[,<zone>...]\n"
-	unsetFilterUsageMsg = "Usage: UNSET/FILTER ALL | UNSET/FILTER BAND <band>[,<band>...] | UNSET/FILTER MODE <mode>[,<mode>...] | UNSET/FILTER CALL | UNSET/FILTER CONFIDENCE <symbol>[,<symbol>...] (symbols: ?,S,C,P,V,B or ALL) | UNSET/FILTER BEACON | UNSET/FILTER DXGRID2 <grid>[,<grid>...] (two characters or ALL) | UNSET/FILTER DEGRID2 <grid>[,<grid>...] (two characters or ALL) | UNSET/FILTER DXCONT <cont>[,<cont>...] | UNSET/FILTER DECONT <cont>[,<cont>...] | UNSET/FILTER DXZONE <zone>[,<zone>...] | UNSET/FILTER DEZONE <zone>[,<zone>...]\n"
+	setFilterUsageMsg   = "Usage: SET/FILTER BAND <band>[,<band>...] | SET/FILTER MODE <mode>[,<mode>...] | SET/FILTER CALL <pattern> | SET/FILTER CONFIDENCE <symbol>[,<symbol>...] (symbols: ?,S,C,P,V,B or ALL) | SET/FILTER BEACON | SET/FILTER DXGRID2 <grid>[,<grid>...] (two characters or ALL) | SET/FILTER DEGRID2 <grid>[,<grid>...] (two characters or ALL) | SET/FILTER DXCONT <cont>[,<cont>...] | SET/FILTER DECONT <cont>[,<cont>...] | SET/FILTER DXZONE <zone>[,<zone>...] | SET/FILTER DEZONE <zone>[,<zone>...] | SET/FILTER DXDXCC <code>[,<code>...] | SET/FILTER DEDXCC <code>[,<code>...]\n"
+	unsetFilterUsageMsg = "Usage: UNSET/FILTER ALL | UNSET/FILTER BAND <band>[,<band>...] | UNSET/FILTER MODE <mode>[,<mode>...] | UNSET/FILTER CALL | UNSET/FILTER CONFIDENCE <symbol>[,<symbol>...] (symbols: ?,S,C,P,V,B or ALL) | UNSET/FILTER BEACON | UNSET/FILTER DXGRID2 <grid>[,<grid>...] (two characters or ALL) | UNSET/FILTER DEGRID2 <grid>[,<grid>...] (two characters or ALL) | UNSET/FILTER DXCONT <cont>[,<cont>...] | UNSET/FILTER DECONT <cont>[,<cont>...] | UNSET/FILTER DXZONE <zone>[,<zone>...] | UNSET/FILTER DEZONE <zone>[,<zone>...] | UNSET/FILTER DXDXCC <code>[,<code>...] | UNSET/FILTER DEDXCC <code>[,<code>...]\n"
 )
 
 // ServerOptions configures the telnet server instance.
@@ -594,6 +594,10 @@ func (c *Client) handleFilterCommand(cmd string) string {
 				return fmt.Sprintf("DX 2-character grids: %s\n", formatGrid2State(c.filter.AllDXGrid2, c.filter.DXGrid2Prefixes))
 			case "degrid2":
 				return fmt.Sprintf("DE 2-character grids: %s\n", formatGrid2State(c.filter.AllDEGrid2, c.filter.DEGrid2Prefixes))
+			case "dxdxcc":
+				return fmt.Sprintf("DX DXCC: %s\n", formatDXCCStates(c.filter.AllDXDXCC, c.filter.DXDXCC))
+			case "dedxcc":
+				return fmt.Sprintf("DE DXCC: %s\n", formatDXCCStates(c.filter.AllDEDXCC, c.filter.DEDXCC))
 			}
 		}
 
@@ -791,6 +795,50 @@ func (c *Client) handleFilterCommand(cmd string) string {
 			}
 			c.saveFilter()
 			return fmt.Sprintf("Filter set: DE zones %s\n", joinZones(zones))
+		case "DXDXCC":
+			value := strings.TrimSpace(strings.Join(parts[2:], " "))
+			if value == "" {
+				return "Usage: SET/FILTER DXDXCC <code>[,<code>...] (comma or space separated, or ALL)\n"
+			}
+			if strings.EqualFold(value, "ALL") {
+				c.filter.ResetDXDXCC()
+				c.saveFilter()
+				return "All DX DXCCs enabled\n"
+			}
+			codes, invalid := parseDXCCList(value)
+			if len(codes) == 0 {
+				return "Usage: SET/FILTER DXDXCC <code>[,<code>...] (comma or space separated, or ALL)\n"
+			}
+			if len(invalid) > 0 {
+				return fmt.Sprintf("Invalid DXCC code: %s\n", strings.Join(invalid, ", "))
+			}
+			for _, code := range codes {
+				c.filter.SetDXDXCC(code, true)
+			}
+			c.saveFilter()
+			return fmt.Sprintf("Filter set: DX DXCC %s\n", joinZones(codes))
+		case "DEDXCC":
+			value := strings.TrimSpace(strings.Join(parts[2:], " "))
+			if value == "" {
+				return "Usage: SET/FILTER DEDXCC <code>[,<code>...] (comma or space separated, or ALL)\n"
+			}
+			if strings.EqualFold(value, "ALL") {
+				c.filter.ResetDEDXCC()
+				c.saveFilter()
+				return "All DE DXCCs enabled\n"
+			}
+			codes, invalid := parseDXCCList(value)
+			if len(codes) == 0 {
+				return "Usage: SET/FILTER DEDXCC <code>[,<code>...] (comma or space separated, or ALL)\n"
+			}
+			if len(invalid) > 0 {
+				return fmt.Sprintf("Invalid DXCC code: %s\n", strings.Join(invalid, ", "))
+			}
+			for _, code := range codes {
+				c.filter.SetDEDXCC(code, true)
+			}
+			c.saveFilter()
+			return fmt.Sprintf("Filter set: DE DXCC %s\n", joinZones(codes))
 		case "DXGRID2":
 			value := strings.TrimSpace(strings.Join(parts[2:], " "))
 			if value == "" {
@@ -836,7 +884,7 @@ func (c *Client) handleFilterCommand(cmd string) string {
 			c.saveFilter()
 			return fmt.Sprintf("Filter set: DE 2-character grids %s\n", strings.Join(gridList, ", "))
 		default:
-			return "Unknown filter type. Use: BAND, MODE, CALL, CONFIDENCE, BEACON, DXGRID2, DEGRID2, DXCONT, DECONT, DXZONE, or DEZONE\n"
+			return "Unknown filter type. Use: BAND, MODE, CALL, CONFIDENCE, BEACON, DXGRID2, DEGRID2, DXCONT, DECONT, DXZONE, DEZONE, DXDXCC, or DEDXCC\n"
 		}
 
 	case "unset/filter":
@@ -1032,6 +1080,50 @@ func (c *Client) handleFilterCommand(cmd string) string {
 			}
 			c.saveFilter()
 			return fmt.Sprintf("DE zone filters disabled: %s\n", joinZones(zones))
+		case "DXDXCC":
+			value := strings.TrimSpace(strings.Join(parts[2:], " "))
+			if value == "" {
+				return "Usage: UNSET/FILTER DXDXCC <code>[,<code>...] (comma or space separated, or ALL)\n"
+			}
+			if strings.EqualFold(value, "ALL") {
+				c.filter.ResetDXDXCC()
+				c.saveFilter()
+				return "DX DXCC filters cleared\n"
+			}
+			codes, invalid := parseDXCCList(value)
+			if len(codes) == 0 {
+				return "Usage: UNSET/FILTER DXDXCC <code>[,<code>...] (comma or space separated, or ALL)\n"
+			}
+			if len(invalid) > 0 {
+				return fmt.Sprintf("Invalid DXCC code: %s\n", strings.Join(invalid, ", "))
+			}
+			for _, code := range codes {
+				c.filter.SetDXDXCC(code, false)
+			}
+			c.saveFilter()
+			return fmt.Sprintf("DX DXCC filters disabled: %s\n", joinZones(codes))
+		case "DEDXCC":
+			value := strings.TrimSpace(strings.Join(parts[2:], " "))
+			if value == "" {
+				return "Usage: UNSET/FILTER DEDXCC <code>[,<code>...] (comma or space separated, or ALL)\n"
+			}
+			if strings.EqualFold(value, "ALL") {
+				c.filter.ResetDEDXCC()
+				c.saveFilter()
+				return "DE DXCC filters cleared\n"
+			}
+			codes, invalid := parseDXCCList(value)
+			if len(codes) == 0 {
+				return "Usage: UNSET/FILTER DEDXCC <code>[,<code>...] (comma or space separated, or ALL)\n"
+			}
+			if len(invalid) > 0 {
+				return fmt.Sprintf("Invalid DXCC code: %s\n", strings.Join(invalid, ", "))
+			}
+			for _, code := range codes {
+				c.filter.SetDEDXCC(code, false)
+			}
+			c.saveFilter()
+			return fmt.Sprintf("DE DXCC filters disabled: %s\n", joinZones(codes))
 		case "DXGRID2":
 			value := strings.TrimSpace(strings.Join(parts[2:], " "))
 			if value == "" {
@@ -1077,7 +1169,7 @@ func (c *Client) handleFilterCommand(cmd string) string {
 			c.saveFilter()
 			return fmt.Sprintf("DE 2-character grid filters disabled: %s\n", strings.Join(gridList, ", "))
 		default:
-			return "Unknown filter type. Use: ALL, BAND, MODE, CALL, CONFIDENCE, BEACON, DXGRID2, DEGRID2, DXCONT, DECONT, DXZONE, or DEZONE\n"
+			return "Unknown filter type. Use: ALL, BAND, MODE, CALL, CONFIDENCE, BEACON, DXGRID2, DEGRID2, DXCONT, DECONT, DXZONE, DEZONE, DXDXCC, or DEDXCC\n"
 		}
 
 	default:
@@ -1168,6 +1260,33 @@ func parseZoneList(arg string) []int {
 		seen[zone] = true
 	}
 	return zones
+}
+
+func parseDXCCList(arg string) ([]int, []string) {
+	values := splitListValues(arg)
+	if len(values) == 0 {
+		return nil, nil
+	}
+	seen := make(map[int]bool)
+	codes := make([]int, 0, len(values))
+	invalid := make([]string, 0)
+	for _, value := range values {
+		v := strings.TrimSpace(value)
+		if v == "" {
+			continue
+		}
+		code, err := strconv.Atoi(v)
+		if err != nil || code <= 0 {
+			invalid = append(invalid, value)
+			continue
+		}
+		if seen[code] {
+			continue
+		}
+		codes = append(codes, code)
+		seen[code] = true
+	}
+	return codes, invalid
 }
 
 func collectInvalidConfidenceSymbols(symbols []string) []string {
@@ -1289,6 +1408,25 @@ func formatZoneStates(all bool, enabled map[int]bool) string {
 		}
 	}
 	return b.String()
+}
+
+func formatDXCCStates(all bool, enabled map[int]bool) string {
+	if all {
+		return "ALL"
+	}
+	if len(enabled) == 0 {
+		return "NONE"
+	}
+	codes := make([]int, 0, len(enabled))
+	for code := range enabled {
+		codes = append(codes, code)
+	}
+	sort.Ints(codes)
+	parts := make([]string, 0, len(codes))
+	for _, code := range codes {
+		parts = append(parts, fmt.Sprintf("%d", code))
+	}
+	return strings.Join(parts, ", ")
 }
 
 func joinZones(zones []int) string {

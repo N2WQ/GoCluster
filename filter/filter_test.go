@@ -131,6 +131,42 @@ func TestZoneFilters(t *testing.T) {
 	}
 }
 
+func TestDXCCFilters(t *testing.T) {
+	f := NewFilter()
+	f.SetDXDXCC(291, true)
+	f.SetDEDXCC(110, true)
+
+	pass := &spot.Spot{
+		Mode: "CW",
+		Band: "20m",
+		DXMetadata: spot.CallMetadata{
+			Continent: "NA",
+			CQZone:    5,
+			ADIF:      291,
+		},
+		DEMetadata: spot.CallMetadata{
+			Continent: "EU",
+			CQZone:    14,
+			ADIF:      110,
+		},
+	}
+	if !f.Matches(pass) {
+		t.Fatalf("expected matching DX/DE ADIF codes to pass")
+	}
+
+	failDX := *pass
+	failDX.DXMetadata.ADIF = 1
+	if f.Matches(&failDX) {
+		t.Fatalf("expected non-whitelisted DX ADIF to be rejected")
+	}
+
+	failDE := *pass
+	failDE.DEMetadata.ADIF = 2
+	if f.Matches(&failDE) {
+		t.Fatalf("expected non-whitelisted DE ADIF to be rejected")
+	}
+}
+
 func TestNormalizeDefaultsRestoresPermissiveFilters(t *testing.T) {
 	var f Filter
 	f.normalizeDefaults()

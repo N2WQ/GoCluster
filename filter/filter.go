@@ -224,6 +224,10 @@ type Filter struct {
 	DEGrid2Prefixes map[string]bool // Enabled 2-character DE grids (whitelist when AllDEGrid2=false)
 	AllDXGrid2      bool            // If true, accept all DX 2-character grids
 	AllDEGrid2      bool            // If true, accept all DE 2-character grids
+	DXDXCC          map[int]bool    // Enabled DX ADIF/DXCC codes (whitelist when AllDXDXCC=false)
+	DEDXCC          map[int]bool    // Enabled DE ADIF/DXCC codes (whitelist when AllDEDXCC=false)
+	AllDXDXCC       bool            // If true, accept all DX ADIF codes
+	AllDEDXCC       bool            // If true, accept all DE ADIF codes
 
 	// LegacyMinConfidence captures the old percentage-based filter persisted to
 	// YAML so we can migrate user data to the new glyph-based approach.
@@ -250,6 +254,8 @@ func NewFilter() *Filter {
 		DEZones:         make(map[int]bool),
 		DXGrid2Prefixes: make(map[string]bool),
 		DEGrid2Prefixes: make(map[string]bool),
+		DXDXCC:          make(map[int]bool),
+		DEDXCC:          make(map[int]bool),
 		AllBands:        true,  // Start with all bands enabled
 		AllModes:        false, // Default to the curated mode subset below
 		AllConfidence:   true,  // Accept every confidence glyph until user sets one
@@ -259,6 +265,8 @@ func NewFilter() *Filter {
 		AllDEZones:      true,
 		AllDXGrid2:      true,
 		AllDEGrid2:      true,
+		AllDXDXCC:       true,
+		AllDEDXCC:       true,
 	}
 	for _, mode := range defaultModeSelection {
 		f.Modes[mode] = true
@@ -410,6 +418,38 @@ func (f *Filter) SetDEZone(zone int, enabled bool) {
 	}
 }
 
+// SetDXDXCC enables or disables filtering for a specific DX ADIF/DXCC code.
+func (f *Filter) SetDXDXCC(code int, enabled bool) {
+	if code <= 0 {
+		return
+	}
+	if enabled {
+		f.DXDXCC[code] = true
+		f.AllDXDXCC = false
+		return
+	}
+	delete(f.DXDXCC, code)
+	if len(f.DXDXCC) == 0 {
+		f.AllDXDXCC = true
+	}
+}
+
+// SetDEDXCC enables or disables filtering for a specific DE ADIF/DXCC code.
+func (f *Filter) SetDEDXCC(code int, enabled bool) {
+	if code <= 0 {
+		return
+	}
+	if enabled {
+		f.DEDXCC[code] = true
+		f.AllDEDXCC = false
+		return
+	}
+	delete(f.DEDXCC, code)
+	if len(f.DEDXCC) == 0 {
+		f.AllDEDXCC = true
+	}
+}
+
 // ClearCallsignPatterns removes all callsign filters.
 //
 // After calling this, callsign filtering is disabled and all callsigns are accepted
@@ -545,6 +585,8 @@ func (f *Filter) Reset() {
 	f.ResetDEZones()
 	f.ResetDXGrid2()
 	f.ResetDEGrid2()
+	f.ResetDXDXCC()
+	f.ResetDEDXCC()
 	f.SetBeaconEnabled(true)
 }
 
@@ -570,6 +612,18 @@ func (f *Filter) ResetDXZones() {
 func (f *Filter) ResetDEZones() {
 	f.DEZones = make(map[int]bool)
 	f.AllDEZones = true
+}
+
+// ResetDXDXCC clears DX ADIF/DXCC filters and accepts all.
+func (f *Filter) ResetDXDXCC() {
+	f.DXDXCC = make(map[int]bool)
+	f.AllDXDXCC = true
+}
+
+// ResetDEDXCC clears DE ADIF/DXCC filters and accepts all.
+func (f *Filter) ResetDEDXCC() {
+	f.DEDXCC = make(map[int]bool)
+	f.AllDEDXCC = true
 }
 
 // Matches returns true if the spot passes all active filters.
@@ -636,6 +690,18 @@ func (f *Filter) Matches(s *spot.Spot) bool {
 	}
 	if !f.AllDEZones {
 		if s.DEMetadata.CQZone < minCQZone || s.DEMetadata.CQZone > maxCQZone || !f.DEZones[s.DEMetadata.CQZone] {
+			return false
+		}
+	}
+
+	// Check DX/DE ADIF (DXCC) filters.
+	if !f.AllDXDXCC && len(f.DXDXCC) > 0 {
+		if s.DXMetadata.ADIF <= 0 || !f.DXDXCC[s.DXMetadata.ADIF] {
+			return false
+		}
+	}
+	if !f.AllDEDXCC && len(f.DEDXCC) > 0 {
+		if s.DEMetadata.ADIF <= 0 || !f.DEDXCC[s.DEMetadata.ADIF] {
 			return false
 		}
 	}
@@ -851,6 +917,16 @@ func (f *Filter) String() string {
 	} else {
 		parts = append(parts, "DEGrid2: "+strings.Join(enabledGrid2(f.DEGrid2Prefixes), ", "))
 	}
+	if f.AllDXDXCC {
+		parts = append(parts, "DXDXCC: ALL")
+	} else {
+		parts = append(parts, "DXDXCC: "+strings.Join(enabledDXCC(f.DXDXCC), ", "))
+	}
+	if f.AllDEDXCC {
+		parts = append(parts, "DEDXCC: ALL")
+	} else {
+		parts = append(parts, "DEDXCC: "+strings.Join(enabledDXCC(f.DEDXCC), ", "))
+	}
 
 	if len(parts) == 0 {
 		return "No active filters"
@@ -933,6 +1009,23 @@ func enabledGrid2(m map[string]bool) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// enabledDXCC returns sorted ADIF/DXCC codes from the provided map.
+func enabledDXCC(m map[int]bool) []string {
+	if len(m) == 0 {
+		return []string{"NONE"}
+	}
+	out := make([]int, 0, len(m))
+	for code := range m {
+		out = append(out, code)
+	}
+	sort.Ints(out)
+	strs := make([]string, 0, len(out))
+	for _, code := range out {
+		strs = append(strs, strconv.Itoa(code))
+	}
+	return strs
 }
 
 // IsSupportedConfidenceSymbol returns true if the glyph is one of the known consensus indicators.
@@ -1042,6 +1135,12 @@ func (f *Filter) normalizeDefaults() {
 	if f.DEGrid2Prefixes == nil {
 		f.DEGrid2Prefixes = make(map[string]bool)
 	}
+	if f.DXDXCC == nil {
+		f.DXDXCC = make(map[int]bool)
+	}
+	if f.DEDXCC == nil {
+		f.DEDXCC = make(map[int]bool)
+	}
 
 	if len(f.Bands) == 0 && !f.AllBands {
 		f.AllBands = true
@@ -1069,6 +1168,12 @@ func (f *Filter) normalizeDefaults() {
 	}
 	if len(f.DEGrid2Prefixes) == 0 && !f.AllDEGrid2 {
 		f.AllDEGrid2 = true
+	}
+	if len(f.DXDXCC) == 0 && !f.AllDXDXCC {
+		f.AllDXDXCC = true
+	}
+	if len(f.DEDXCC) == 0 && !f.AllDEDXCC {
+		f.AllDEDXCC = true
 	}
 }
 

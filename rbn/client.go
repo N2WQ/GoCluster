@@ -515,6 +515,7 @@ func metadataFromPrefix(info *cty.PrefixInfo) spot.CallMetadata {
 		Country:   info.Country,
 		CQZone:    info.CQZone,
 		ITUZone:   info.ITUZone,
+		ADIF:      info.ADIF,
 	}
 }
 
