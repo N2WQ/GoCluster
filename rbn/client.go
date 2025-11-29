@@ -151,7 +151,8 @@ func (c *Client) handleLogin() {
 	} else {
 		log.Printf("Logging in to RBN as %s", c.callsign)
 	}
-	c.writer.WriteString(c.callsign + "\n")
+	// Use CRLF for telnet-style compatibility with RBN servers.
+	c.writer.WriteString(c.callsign + "\r\n")
 	c.writer.Flush()
 }
 

@@ -3,7 +3,6 @@
 package pskreporter
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"runtime"
@@ -16,6 +15,7 @@ import (
 	"dxcluster/spot"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	jsoniter "github.com/json-iterator/go"
 )
 
 // Client represents a PSKReporter MQTT client
@@ -34,6 +34,8 @@ type Client struct {
 	skewStore  *skew.Store
 	appendSSID bool
 }
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // PSKRMessage represents a PSKReporter MQTT message
 type PSKRMessage struct {
@@ -62,7 +64,7 @@ func NewClient(broker string, port int, topics []string, name string, workers in
 		port:       port,
 		topics:     append([]string{}, topics...),
 		name:       name,
-		spotChan:   make(chan *spot.Spot, 1000), // Buffer 1000 spots
+		spotChan:   make(chan *spot.Spot, 5000), // Buffered ingest to absorb bursts
 		shutdown:   make(chan struct{}),
 		workers:    workers,
 		lookup:     lookup,
@@ -349,7 +351,7 @@ func (c *Client) stopWorkerPool() {
 }
 
 func defaultPSKReporterWorkers() int {
-	workers := runtime.NumCPU() / 2
+	workers := runtime.NumCPU()
 	if workers < 1 {
 		workers = 1
 	}

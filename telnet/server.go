@@ -391,7 +391,7 @@ func (s *Server) BroadcastMetricSnapshot() (queueDrops, clientDrops uint64) {
 }
 
 func defaultBroadcastWorkers() int {
-	workers := runtime.NumCPU() / 2
+	workers := runtime.NumCPU()
 	if workers < 2 {
 		workers = 2
 	}

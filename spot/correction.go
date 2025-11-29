@@ -5,6 +5,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	lev "github.com/agnivade/levenshtein"
 )
 
 // CorrectionSettings captures the knobs that govern whether a consensus-based
@@ -494,7 +496,8 @@ func pruneAndAppend(spots []*Spot, s *Spot, now time.Time, window time.Duration)
 	return append(spots, s)
 }
 
-func levenshtein(a, b string) int {
+// legacyLevenshtein remains for Morse/Baudot helpers; general path uses agnivade/levenshtein.
+func legacyLevenshtein(a, b string) int {
 	if a == b {
 		return 0
 	}
@@ -602,7 +605,7 @@ func callDistanceCore(subject, candidate, mode, cwModel, rttyModel string) int {
 			return rttyCallDistance(subject, candidate)
 		}
 	}
-	return levenshtein(subject, candidate)
+	return lev.ComputeDistance(subject, candidate)
 }
 
 // callDistance is retained for tests; it routes to the core distance function
@@ -658,12 +661,12 @@ func morseCharDist(a, b rune) int {
 	if a == b {
 		return 0
 	}
-	sa, okA := morseCodes[a]
-	sb, okB := morseCodes[b]
-	if !okA || !okB {
-		return 2
+	if i, ok := morseRuneIndex[a]; ok {
+		if j, ok := morseRuneIndex[b]; ok {
+			return morseCostTable[i][j]
+		}
 	}
-	return levenshtein(sa, sb)
+	return 2
 }
 
 // rttyCallDistance mirrors cwCallDistance but uses Baudot/ITA2-aware costs.
@@ -705,12 +708,12 @@ func baudotCharDist(a, b rune) int {
 	if a == b {
 		return 0
 	}
-	sa, okA := baudotCodes[a]
-	sb, okB := baudotCodes[b]
-	if !okA || !okB {
-		return 2
+	if i, ok := baudotRuneIndex[a]; ok {
+		if j, ok := baudotRuneIndex[b]; ok {
+			return baudotCostTable[i][j]
+		}
 	}
-	return levenshtein(sa, sb)
+	return 2
 }
 
 func min3(a, b, c int) int {
@@ -766,6 +769,11 @@ var morseCodes = map[rune]string{
 	'/': "-..-.",
 }
 
+var (
+	morseRuneIndex map[rune]int
+	morseCostTable [][]int
+)
+
 var baudotCodes = map[rune]string{
 	'A': "L00011",
 	'B': "L11001",
@@ -804,4 +812,43 @@ var baudotCodes = map[rune]string{
 	'8': "F00110",
 	'9': "F11000",
 	'/': "F11101",
+}
+
+var (
+	baudotRuneIndex map[rune]int
+	baudotCostTable [][]int
+)
+
+func init() {
+	morseRuneIndex, morseCostTable = buildRuneCostTable(morseCodes)
+	baudotRuneIndex, baudotCostTable = buildRuneCostTable(baudotCodes)
+}
+
+// buildRuneCostTable creates a dense cost matrix for the provided codebook using
+// legacyLevenshtein on the code strings. The tables are tiny (tens of entries)
+// and avoid per-call dynamic programming when computing character distances.
+func buildRuneCostTable(codebook map[rune]string) (map[rune]int, [][]int) {
+	index := make(map[rune]int, len(codebook))
+	keys := make([]rune, 0, len(codebook))
+	for r := range codebook {
+		index[r] = len(keys)
+		keys = append(keys, r)
+	}
+	size := len(keys)
+	table := make([][]int, size)
+	for i := range table {
+		table[i] = make([]int, size)
+	}
+	for i, ra := range keys {
+		for j, rb := range keys {
+			if ra == rb {
+				table[i][j] = 0
+				continue
+			}
+			a := codebook[ra]
+			b := codebook[rb]
+			table[i][j] = legacyLevenshtein(a, b)
+		}
+	}
+	return index, table
 }

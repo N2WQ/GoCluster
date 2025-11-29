@@ -49,6 +49,12 @@ func NewDeduplicator(window time.Duration, preferStronger bool, outputBuffer int
 	if outputBuffer <= 0 {
 		outputBuffer = 1000
 	}
+	// Size the input channel generously to absorb upstream bursts; tie it to the
+	// output buffer so input can queue at least as much as we can emit.
+	inputBuffer := outputBuffer
+	if inputBuffer < 10000 {
+		inputBuffer = 10000
+	}
 	shards := make([]cacheShard, shardCount)
 	for i := range shards {
 		shards[i].cache = make(map[uint32]cachedEntry)
@@ -57,7 +63,7 @@ func NewDeduplicator(window time.Duration, preferStronger bool, outputBuffer int
 		window:          window,
 		preferStronger:  preferStronger,
 		shards:          shards,
-		inputChan:       make(chan *spot.Spot, 1000),
+		inputChan:       make(chan *spot.Spot, inputBuffer),
 		outputChan:      make(chan *spot.Spot, outputBuffer),
 		shutdown:        make(chan struct{}),
 		cleanupInterval: 60 * time.Second, // Clean cache every 60 seconds

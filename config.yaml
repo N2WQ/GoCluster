@@ -23,7 +23,7 @@ telnet:
   welcome_message: "Experimental DX Cluster\n"
   login_greeting: "<CALL> de <CLUSTER>>"
   duplicate_login_message: "Another login for your callsign connected. This session is being closed (multiple logins are not allowed)."
-  broadcast_workers: 0            # 0 means automatic (half of the CPU cores, minimum 2)
+  broadcast_workers: 0            # 0 means automatic (uses all CPU cores, minimum 2)
   broadcast_queue_size: 8192      # Buffer depth for the global telnet broadcast queue
   worker_queue_size: 512          # Jobs queued per broadcast worker before dropping
   client_buffer_size: 512         # Per-client spot backlog before a slow session drops spots
@@ -41,7 +41,7 @@ filter:
 dedup:
   cluster_window_seconds: 120     # Dedup window in seconds (0 disables dedup without changing the pipeline)
   prefer_stronger_snr: true       # When duplicates collide, keep the strongest SNR version
-  output_buffer_size: 8192        # Capacity of the dedup output channel (raise to reduce drops)
+  output_buffer_size: 20480       # Capacity of the dedup output channel (raise to reduce drops)
 
 # Consensus thresholds for automated call corrections (only CW/RTTY/USB/LSB considered)
 call_correction:
@@ -60,7 +60,7 @@ call_correction:
   distance3_extra_reports: 4      # Extra unique supporters required when suggested call is distance 3
   distance3_extra_advantage: 4    # Extra advantage over the subject required when distance 3
   distance3_extra_confidence: 10  # Extra confidence percentage points required when distance 3
-  distance_cache_size: 5000       # Memoize call distance calculations (entries)
+  distance_cache_size: 8192       # Memoize call distance calculations (entries)
   distance_cache_ttl_seconds: 120 # Expire cached distances after this many seconds (tie to recency window)
 
 # Harmonic suppression for CW/USB/LSB/RTTY signals
@@ -101,7 +101,7 @@ pskreporter:
   broker: "mqtt.pskreporter.info"
   port: 1883
   modes: ["FT8", "FT4", "CW", "RTTY"]  # List of MQTT modes to subscribe to
-  workers: 0                           # 0 means automatic (half of the CPU cores, minimum 1)
+  workers: 0                           # 0 means automatic (uses all CPU cores, minimum 1)
   append_spotter_ssid: true            # Append "-#" to receiver calls lacking an SSID for dedup
 
 # Reference data and persistence

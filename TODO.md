@@ -41,3 +41,6 @@ Remaining opportunities:
 Notes:
 - Memory headroom: current runtime uses <400 MB; the remaining caches (small LRUs/TTL maps) should add only a few MB.
 - Next best ROI: telnet filter fast-path/caching; grid negative cache if backend/DB misses show up in profiling.
+
+- PSKReporter JSON: consider a generated decoder (easyjson/ffjson) to eliminate reflection and further cut allocs/CPU on 25k+/min ingest.
+ - dgryski/go-farm-like variants: there are bit-parallel/optimized algorithms (e.g., Myers algorithm) for small alphabets and short strings; for callsigns (<=10 chars), bit-parallel implementations can be faster.

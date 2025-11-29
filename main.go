@@ -17,6 +17,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -543,10 +544,10 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, dedup *
 
 		combinedRBN := rbnTotal + rbnFTTotal
 		lines := []string{
-			fmt.Sprintf("%s   %s", formatUptimeLine(tracker.GetUptime()), formatMemoryLine(buf, dedup, ctyDB, knownPtr)), // 1
-			formatGridLineOrPlaceholder(gridStats, gridDB),                                                               // 2
-			formatFCCLineOrPlaceholder(fccSnap),                                                                          // 3
-			fmt.Sprintf("RBN: %d TOTAL / %d CW / %d RTTY / %d FT8 / %d FT4", combinedRBN, rbnCW, rbnRTTY, rbnFT8, rbnFT4),                              // 4
+			fmt.Sprintf("%s   %s", formatUptimeLine(tracker.GetUptime()), formatMemoryLine(buf, dedup, ctyDB, knownPtr)),  // 1
+			formatGridLineOrPlaceholder(gridStats, gridDB),                                                                // 2
+			formatFCCLineOrPlaceholder(fccSnap),                                                                           // 3
+			fmt.Sprintf("RBN: %d TOTAL / %d CW / %d RTTY / %d FT8 / %d FT4", combinedRBN, rbnCW, rbnRTTY, rbnFT8, rbnFT4), // 4
 			fmt.Sprintf("PSKReporter: %s TOTAL / %s CW / %s RTTY / %s FT8 / %s FT4",
 				humanize.Comma(int64(pskTotal)),
 				humanize.Comma(int64(pskCW)),
@@ -554,8 +555,8 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, dedup *
 				humanize.Comma(int64(pskFT8)),
 				humanize.Comma(int64(pskFT4)),
 			), // 5
-			fmt.Sprintf("Corrected calls: %d (C) / %d (F) / %d (H)", totalCorrections, totalFreqCorrections, totalHarmonics),                                      // 6
-			fmt.Sprintf("Telnet drops: %d (Q) / %d (C)", queueDrops, clientDrops),                                                                                 // 7
+			fmt.Sprintf("Corrected calls: %d (C) / %d (F) / %d (H)", totalCorrections, totalFreqCorrections, totalHarmonics), // 6
+			fmt.Sprintf("Telnet drops: %d (Q) / %d (C)", queueDrops, clientDrops),                                            // 7
 		}
 
 		prevSourceCounts = sourceTotals
@@ -578,11 +579,18 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, dedup *
 func processRBNSpots(client *rbn.Client, deduplicator *dedup.Deduplicator, source string) {
 	spotChan := client.GetSpotChannel()
 	dedupInput := deduplicator.GetInputChannel()
+	var drops atomic.Uint64
 
 	for spot := range spotChan {
-		// Send spot to deduplicator input channel
-		// All sources send here!
-		dedupInput <- spot
+		// Non-blocking send to avoid wedging ingest if dedup blocks.
+		select {
+		case dedupInput <- spot:
+		default:
+			count := drops.Add(1)
+			if count == 1 || count%100 == 0 {
+				log.Printf("%s: Dedup input full, dropping spot (total drops=%d)", source, count)
+			}
+		}
 	}
 	log.Printf("%s: Spot processing stopped", source)
 }
@@ -592,10 +600,18 @@ func processRBNSpots(client *rbn.Client, deduplicator *dedup.Deduplicator, sourc
 func processPSKRSpots(client *pskreporter.Client, deduplicator *dedup.Deduplicator) {
 	spotChan := client.GetSpotChannel()
 	dedupInput := deduplicator.GetInputChannel()
+	var drops atomic.Uint64
 
 	for spot := range spotChan {
-		// Send spot to deduplicator input channel
-		dedupInput <- spot
+		// Non-blocking send to avoid backing up the PSK worker pool when dedup is slow.
+		select {
+		case dedupInput <- spot:
+		default:
+			count := drops.Add(1)
+			if count == 1 || count%100 == 0 {
+				log.Printf("PSKReporter: Dedup input full, dropping spot (total drops=%d)", count)
+			}
+		}
 	}
 }
 
@@ -622,135 +638,143 @@ func processOutputSpots(
 	outputChan := deduplicator.GetOutputChannel()
 
 	for s := range outputChan {
-		if s == nil {
-			continue
-		}
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("processOutputSpots panic: %v\n%s", r, debug.Stack())
+				}
+			}()
 
-		s.RefreshBeaconFlag()
+			if s == nil {
+				return
+			}
 
-		if gridLookup != nil {
-			// Backfill missing grids from the persisted store so downstream consumers
-			// (recorder, clients) see metadata even when the upstream spot omitted it.
-			if strings.TrimSpace(s.DXMetadata.Grid) == "" {
-				if grid, ok := gridLookup(s.DXCall); ok {
-					s.DXMetadata.Grid = grid
+			s.RefreshBeaconFlag()
+
+			if gridLookup != nil {
+				// Backfill missing grids from the persisted store so downstream consumers
+				// (recorder, clients) see metadata even when the upstream spot omitted it.
+				if strings.TrimSpace(s.DXMetadata.Grid) == "" {
+					if grid, ok := gridLookup(s.DXCall); ok {
+						s.DXMetadata.Grid = grid
+					}
+				}
+				if strings.TrimSpace(s.DEMetadata.Grid) == "" {
+					if grid, ok := gridLookup(s.DECall); ok {
+						s.DEMetadata.Grid = grid
+					}
 				}
 			}
-			if strings.TrimSpace(s.DEMetadata.Grid) == "" {
-				if grid, ok := gridLookup(s.DECall); ok {
-					s.DEMetadata.Grid = grid
+			if s.IsBeacon {
+				// Beacons are tagged with a strong confidence so they still display a glyph.
+				s.Confidence = "V"
+			}
+
+			modeKey := strings.ToUpper(strings.TrimSpace(s.Mode))
+			if modeKey == "" {
+				modeKey = string(s.SourceType)
+			}
+			tracker.IncrementMode(modeKey)
+
+			sourceName := strings.ToUpper(strings.TrimSpace(s.SourceNode))
+			if sourceName != "" {
+				tracker.IncrementSource(sourceName)
+				tracker.IncrementSourceMode(sourceName, modeKey)
+			}
+
+			if spotPolicy.MaxAgeSeconds > 0 {
+				if time.Since(s.Time) > time.Duration(spotPolicy.MaxAgeSeconds)*time.Second {
+					// log.Printf("Spot dropped (stale): %s at %.1fkHz (age=%ds)", s.DXCall, s.Frequency, int(time.Since(s.Time).Seconds()))
+					return
 				}
 			}
-		}
-		if s.IsBeacon {
-			// Beacons are tagged with a strong confidence so they still display a glyph.
-			s.Confidence = "V"
-		}
 
-		modeKey := strings.ToUpper(strings.TrimSpace(s.Mode))
-		if modeKey == "" {
-			modeKey = string(s.SourceType)
-		}
-		tracker.IncrementMode(modeKey)
-
-		sourceName := strings.ToUpper(strings.TrimSpace(s.SourceNode))
-		if sourceName != "" {
-			tracker.IncrementSource(sourceName)
-			tracker.IncrementSourceMode(sourceName, modeKey)
-		}
-
-		if spotPolicy.MaxAgeSeconds > 0 {
-			if time.Since(s.Time) > time.Duration(spotPolicy.MaxAgeSeconds)*time.Second {
-				// log.Printf("Spot dropped (stale): %s at %.1fkHz (age=%ds)", s.DXCall, s.Frequency, int(time.Since(s.Time).Seconds()))
-				continue
-			}
-		}
-
-		var suppress bool
-		if telnet != nil && !s.IsBeacon {
-			suppress = maybeApplyCallCorrection(s, correctionIdx, correctionCfg, ctyDB, knownCalls, tracker, dash)
-			if suppress {
-				continue
-			}
-		}
-
-		if !s.IsBeacon && harmonicDetector != nil && harmonicCfg.Enabled {
-			if drop, fundamental, corroborators, deltaDB := harmonicDetector.ShouldDrop(s, time.Now().UTC()); drop {
-				harmonicMsg := fmt.Sprintf("Harmonic suppressed: %s %.1f -> %.1f kHz (%d / %d dB)", s.DXCall, s.Frequency, fundamental, corroborators, deltaDB)
-				harmonicMsgDash := harmonicMsg
-				if dash != nil {
-					harmonicMsgDash = fmt.Sprintf("Harmonic suppressed: %s [red]%.1f[-] -> [green]%.1f[-] kHz (%d / %d dB)", s.DXCall, s.Frequency, fundamental, corroborators, deltaDB)
-				}
-				if tracker != nil {
-					tracker.IncrementHarmonicSuppressions()
-				}
-				if dash != nil {
-					dash.AppendHarmonic(harmonicMsgDash)
-				} else {
-					log.Println(harmonicMsg)
-				}
-				continue
-			}
-		}
-
-		if !s.IsBeacon && freqAvg != nil && shouldAverageFrequency(s) {
-			window := frequencyAverageWindow(spotPolicy)
-			tolerance := frequencyAverageTolerance(spotPolicy)
-			avg, corroborators, totalReports := freqAvg.Average(s.DXCall, s.Frequency, time.Now().UTC(), window, tolerance)
-			rounded := math.Round(avg*10) / 10
-			confidence := 0
-			if totalReports > 0 {
-				confidence = corroborators * 100 / totalReports
-			}
-			// Apply the averaged frequency when we have enough corroborators and the rounded
-			// value actually differs from the reported frequency. We deliberately decouple
-			// this apply threshold from the inclusion tolerance so sub-500 Hz shifts are
-			// preserved instead of being discarded by the same 0.5 kHz gate.
-			delta := math.Abs(rounded - s.Frequency)
-			if corroborators >= spotPolicy.FrequencyAveragingMinReports && delta >= 0.05 {
-				message := fmt.Sprintf("Frequency corrected: %s %.1f -> %.1f kHz (%d / %d%%)", s.DXCall, s.Frequency, rounded, corroborators, confidence)
-				messageDash := message
-				if dash != nil {
-					messageDash = fmt.Sprintf("Frequency corrected: %s [red]%.1f[-] -> [green]%.1f[-] kHz (%d / %d%%)", s.DXCall, s.Frequency, rounded, corroborators, confidence)
-				}
-				s.Frequency = rounded
-				if tracker != nil {
-					tracker.IncrementFrequencyCorrections()
-				}
-				if dash != nil {
-					dash.AppendFrequency(messageDash)
-				} else {
-					log.Println(message)
+			var suppress bool
+			if telnet != nil && !s.IsBeacon {
+				suppress = maybeApplyCallCorrection(s, correctionIdx, correctionCfg, ctyDB, knownCalls, tracker, dash)
+				if suppress {
+					return
 				}
 			}
-		}
 
-		// Ensure CW/RTTY/SSB carry at least a placeholder confidence glyph when no correction applied.
-		if !s.IsBeacon {
-			modeUpper := strings.ToUpper(strings.TrimSpace(s.Mode))
-			if (modeUpper == "CW" || modeUpper == "RTTY" || modeUpper == "SSB") && strings.TrimSpace(s.Confidence) == "" {
-				s.Confidence = "?"
+			if !s.IsBeacon && harmonicDetector != nil && harmonicCfg.Enabled {
+				if drop, fundamental, corroborators, deltaDB := harmonicDetector.ShouldDrop(s, time.Now().UTC()); drop {
+					harmonicMsg := fmt.Sprintf("Harmonic suppressed: %s %.1f -> %.1f kHz (%d / %d dB)", s.DXCall, s.Frequency, fundamental, corroborators, deltaDB)
+					harmonicMsgDash := harmonicMsg
+					if dash != nil {
+						harmonicMsgDash = fmt.Sprintf("Harmonic suppressed: %s [red]%.1f[-] -> [green]%.1f[-] kHz (%d / %d dB)", s.DXCall, s.Frequency, fundamental, corroborators, deltaDB)
+					}
+					if tracker != nil {
+						tracker.IncrementHarmonicSuppressions()
+					}
+					if dash != nil {
+						dash.AppendHarmonic(harmonicMsgDash)
+					} else {
+						log.Println(harmonicMsg)
+					}
+					return
+				}
 			}
-		}
 
-		if gridUpdate != nil {
-			if dxGrid := strings.TrimSpace(s.DXMetadata.Grid); dxGrid != "" {
-				gridUpdate(s.DXCall, dxGrid)
+			if !s.IsBeacon && freqAvg != nil && shouldAverageFrequency(s) {
+				window := frequencyAverageWindow(spotPolicy)
+				tolerance := frequencyAverageTolerance(spotPolicy)
+				avg, corroborators, totalReports := freqAvg.Average(s.DXCall, s.Frequency, time.Now().UTC(), window, tolerance)
+				rounded := math.Round(avg*10) / 10
+				confidence := 0
+				if totalReports > 0 {
+					confidence = corroborators * 100 / totalReports
+				}
+				// Apply the averaged frequency when we have enough corroborators and the rounded
+				// value actually differs from the reported frequency. We deliberately decouple
+				// this apply threshold from the inclusion tolerance so sub-500 Hz shifts are
+				// preserved instead of being discarded by the same 0.5 kHz gate.
+				delta := math.Abs(rounded - s.Frequency)
+				if corroborators >= spotPolicy.FrequencyAveragingMinReports && delta >= 0.05 {
+					message := fmt.Sprintf("Frequency corrected: %s %.1f -> %.1f kHz (%d / %d%%)", s.DXCall, s.Frequency, rounded, corroborators, confidence)
+					messageDash := message
+					if dash != nil {
+						messageDash = fmt.Sprintf("Frequency corrected: %s [red]%.1f[-] -> [green]%.1f[-] kHz (%d / %d%%)", s.DXCall, s.Frequency, rounded, corroborators, confidence)
+					}
+					s.Frequency = rounded
+					if tracker != nil {
+						tracker.IncrementFrequencyCorrections()
+					}
+					if dash != nil {
+						dash.AppendFrequency(messageDash)
+					} else {
+						log.Println(message)
+					}
+				}
 			}
-			if deGrid := strings.TrimSpace(s.DEMetadata.Grid); deGrid != "" {
-				gridUpdate(s.DECall, deGrid)
+
+			// Ensure CW/RTTY/SSB carry at least a placeholder confidence glyph when no correction applied.
+			if !s.IsBeacon {
+				modeUpper := strings.ToUpper(strings.TrimSpace(s.Mode))
+				if (modeUpper == "CW" || modeUpper == "RTTY" || modeUpper == "SSB") && strings.TrimSpace(s.Confidence) == "" {
+					s.Confidence = "?"
+				}
 			}
-		}
 
-		if rec != nil {
-			rec.Record(s)
-		}
+			if gridUpdate != nil {
+				if dxGrid := strings.TrimSpace(s.DXMetadata.Grid); dxGrid != "" {
+					gridUpdate(s.DXCall, dxGrid)
+				}
+				if deGrid := strings.TrimSpace(s.DEMetadata.Grid); deGrid != "" {
+					gridUpdate(s.DECall, deGrid)
+				}
+			}
 
-		buf.Add(s)
+			if rec != nil {
+				rec.Record(s)
+			}
 
-		if telnet != nil {
-			telnet.BroadcastSpot(s)
-		}
+			buf.Add(s)
+
+			if telnet != nil {
+				telnet.BroadcastSpot(s)
+			}
+		}()
 	}
 }
 

@@ -7,6 +7,8 @@ require gopkg.in/yaml.v3 v3.0.1
 require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421 // indirect
+	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	golang.org/x/exp v0.0.0-20230315142452-642cacee5cc0 // indirect
@@ -18,9 +20,11 @@ require (
 )
 
 require (
+	github.com/agnivade/levenshtein v1.2.1
 	github.com/dustin/go-humanize v1.0.1
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/gdamore/tcell/v2 v2.8.1
+	github.com/json-iterator/go v1.1.12
 	howett.net/plist v1.0.1
 	modernc.org/sqlite v1.36.1
 )
