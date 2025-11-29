@@ -44,3 +44,12 @@ Notes:
 
 - PSKReporter JSON: consider a generated decoder (easyjson/ffjson) to eliminate reflection and further cut allocs/CPU on 25k+/min ingest.
  - dgryski/go-farm-like variants: there are bit-parallel/optimized algorithms (e.g., Myers algorithm) for small alphabets and short strings; for callsigns (<=10 chars), bit-parallel implementations can be faster.
+ - Frequency averaging: consider offloading to a bounded worker or raising min_reports/tightening tolerance to reduce hot-path work; minimize logging and allocations in the averager.
+- PSKReporter JSON hot path: add sync.Pool for PSKRMessage and payload buffers to cut allocs/GC even with jsoniter; consider a generated decoder to replace reflection entirely.
+- Telnet slow writers: add write deadlines/health checks and disconnect after sustained per-client drops to prevent stuck TCP sends from accumulating drops upstream.
+- Goroutine resilience: wrap long-lived loops (RBN read, PSK workerLoop, dedup.process, broadcast workers) with recover+log to avoid silent exits that back up channels.
+- Dedup scaling: consider multiple output consumers or a worker pool for processOutputSpots, or make expensive steps (call correction/harmonics/freq averaging) optional/async under load.
+- Grid lookups: add a small negative cache and/or move grid lookups off the hot path behind a bounded worker to avoid DB latency spikes per spot.
+- Callsign normalization: add a tiny LRU/sync.Pool for normalized calls (including "-#" decorations) to reduce repeated string munging for hot skimmers.
+- PSK ingest: if JSON remains hot, consider buffer reuse in MQTT handler to avoid copying payloads per message.
+- Telnet filters: add fast-path when filters are effectively "all" to bypass per-spot map lookups for broadcast.

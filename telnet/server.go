@@ -451,7 +451,7 @@ func (s *Server) handleClient(conn net.Conn) {
 
 	// Send welcome message
 	client.Send(s.welcomeMessage)
-	client.Send("Enter your callsign:\r\n")
+	client.Send("\r\nEnter your callsign:\r\n")
 
 	// Read callsign
 	callsign, err := client.ReadLine()
@@ -1637,7 +1637,9 @@ func (c *Client) SendRaw(data []byte) error {
 
 // Send writes a message to the client with proper line endings
 func (c *Client) Send(message string) error {
-	// Replace \n with \r\n for proper telnet line endings
+	// Normalize any existing CRLF to LF, then replace LF with CRLF so callers
+	// don't need to worry about line endings (and we avoid doubling CRs).
+	message = strings.ReplaceAll(message, "\r\n", "\n")
 	message = strings.ReplaceAll(message, "\n", "\r\n")
 	_, err := c.writer.WriteString(message)
 	if err != nil {

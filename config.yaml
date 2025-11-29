@@ -20,8 +20,8 @@ telnet:
   port: 7300
   tls_enabled: false
   max_connections: 100
-  welcome_message: "Experimental DX Cluster\n"
-  login_greeting: "<CALL> de <CLUSTER>>"
+  welcome_message: "\r\nExperimental DX Cluster\r\n"
+  login_greeting: "\r\n<CALL> de <CLUSTER>>\r\n"
   duplicate_login_message: "Another login for your callsign connected. This session is being closed (multiple logins are not allowed)."
   broadcast_workers: 0            # 0 means automatic (uses all CPU cores, minimum 2)
   broadcast_queue_size: 8192      # Buffer depth for the global telnet broadcast queue
@@ -46,18 +46,18 @@ dedup:
 # Consensus thresholds for automated call corrections (only CW/RTTY/USB/LSB considered)
 call_correction:
   enabled: true                   # Master switch (set true to enable)
-  min_consensus_reports: 10       # Minimum number of corroborating spotters
-  min_advantage: 4                # Candidate must exceed the original by this many spotters
+  min_consensus_reports: 8        # Minimum number of corroborating spotters
+  min_advantage: 3                # Candidate must exceed the original by this many spotters
   min_confidence_percent: 75      # Candidate supporters must represent at least this percent of unique spotters
   recency_seconds: 120            # Supporting spots must be this recent
   max_edit_distance: 3            # Max allowed Levenshtein distance between original and replacement
-  frequency_tolerance_hz: 400     # Spots within this frequency window are considered the same signal
+  frequency_tolerance_hz: 500     # Spots within this frequency window are considered the same signal
   distance_model_cw: "morse"      # "plain" = standard Levenshtein, "morse" = Morse-aware (CW only)
   distance_model_rtty: "baudot"   # "plain" = standard Levenshtein, "baudot" = Baudot-aware (RTTY only)
   invalid_action: "broadcast"     # "broadcast" original if correction fails CTY, or "suppress" to drop spot
   min_snr_cw: 6                   # Ignore CW corroborators weaker than this many dB
   min_snr_rtty: 4                 # Ignore RTTY corroborators weaker than this many dB
-  distance3_extra_reports: 4      # Extra unique supporters required when suggested call is distance 3
+  distance3_extra_reports: 6      # Extra unique supporters required when suggested call is distance 3
   distance3_extra_advantage: 4    # Extra advantage over the subject required when distance 3
   distance3_extra_confidence: 10  # Extra confidence percentage points required when distance 3
   distance_cache_size: 8192       # Memoize call distance calculations (entries)
