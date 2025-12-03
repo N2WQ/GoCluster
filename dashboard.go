@@ -14,21 +14,23 @@ import (
 )
 
 // dashboard renders the console layout when a compatible terminal is available.
-// It shows stats plus three scrolling panes (calls, frequency adjustments,
-// harmonic drops) and one system log pane.
+// It shows stats plus four scrolling panes (call corrections, unlicensed drops,
+// frequency adjustments, harmonic drops) and one system log pane.
 type dashboard struct {
-	app           *tview.Application
-	statsView     *tview.TextView
-	callView      *tview.TextView
-	frequencyView *tview.TextView
-	harmonicView  *tview.TextView
-	systemView    *tview.TextView
-	statsMu       sync.Mutex
-	ready         chan struct{}
-	callHasText   bool
-	freqHasText   bool
-	harmHasText   bool
-	sysHasText    bool
+	app               *tview.Application
+	statsView         *tview.TextView
+	callView          *tview.TextView
+	unlicensedView    *tview.TextView
+	frequencyView     *tview.TextView
+	harmonicView      *tview.TextView
+	systemView        *tview.TextView
+	statsMu           sync.Mutex
+	ready             chan struct{}
+	callHasText       bool
+	unlicensedHasText bool
+	freqHasText       bool
+	harmHasText       bool
+	sysHasText        bool
 }
 
 func newDashboard(enable bool) *dashboard {
@@ -51,6 +53,7 @@ func newDashboard(enable bool) *dashboard {
 
 	stats := tview.NewTextView().SetDynamicColors(true).SetWrap(false)
 	callPane := makePane("Corrected Calls")
+	unlicensedPane := makePane("Unlicensed US Calls")
 	freqPane := makePane("Corrected Frequencies")
 	harmonicPane := makePane("Harmonics")
 	systemPane := makePane("System")
@@ -59,6 +62,8 @@ func newDashboard(enable bool) *dashboard {
 		AddItem(stats, 7, 0, false).
 		AddItem(tview.NewBox(), 1, 0, false).
 		AddItem(callPane, 7, 0, false).
+		AddItem(tview.NewBox(), 1, 0, false).
+		AddItem(unlicensedPane, 7, 0, false).
 		AddItem(tview.NewBox(), 1, 0, false).
 		AddItem(freqPane, 7, 0, false).
 		AddItem(tview.NewBox(), 1, 0, false).
@@ -74,13 +79,14 @@ func newDashboard(enable bool) *dashboard {
 		return false
 	})
 	d := &dashboard{
-		app:           app,
-		statsView:     stats,
-		callView:      callPane,
-		frequencyView: freqPane,
-		harmonicView:  harmonicPane,
-		systemView:    systemPane,
-		ready:         ready,
+		app:            app,
+		statsView:      stats,
+		callView:       callPane,
+		unlicensedView: unlicensedPane,
+		frequencyView:  freqPane,
+		harmonicView:   harmonicPane,
+		systemView:     systemPane,
+		ready:          ready,
 	}
 
 	go func() {
@@ -120,6 +126,10 @@ func (d *dashboard) SetStats(lines []string) {
 
 func (d *dashboard) AppendCall(line string) {
 	d.appendLine(d.callView, &d.callHasText, line)
+}
+
+func (d *dashboard) AppendUnlicensed(line string) {
+	d.appendLine(d.unlicensedView, &d.unlicensedHasText, line)
 }
 
 func (d *dashboard) AppendFrequency(line string) {

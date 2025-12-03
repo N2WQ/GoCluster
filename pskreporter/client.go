@@ -13,7 +13,6 @@ import (
 	"dxcluster/cty"
 	"dxcluster/skew"
 	"dxcluster/spot"
-	"dxcluster/uls"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	jsoniter "github.com/json-iterator/go"
@@ -35,6 +34,9 @@ type Client struct {
 	skewStore    *skew.Store
 	appendSSID   bool
 	spotterCache *spot.CallCache
+
+	unlicensedReporter UnlicensedReporter
+	unlicensedQueue    chan unlicensedEvent
 }
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
@@ -64,6 +66,17 @@ var (
 	callCacheTTL  = 10 * time.Minute
 )
 
+// UnlicensedReporter receives drop notifications for US calls failing FCC license checks.
+type UnlicensedReporter func(source, role, call, mode string, freqKHz float64)
+
+type unlicensedEvent struct {
+	source string
+	role   string
+	call   string
+	mode   string
+	freq   float64
+}
+
 // ConfigureCallCache tunes the normalization cache used for PSKReporter spotters.
 func ConfigureCallCache(size int, ttl time.Duration) {
 	if size <= 0 {
@@ -74,6 +87,55 @@ func ConfigureCallCache(size int, ttl time.Duration) {
 	}
 	callCacheSize = size
 	callCacheTTL = ttl
+}
+
+// SetUnlicensedReporter installs a best-effort reporter for unlicensed US drops.
+// Reporting is fire-and-forget; when the queue is full we fallback to an async call.
+func (c *Client) SetUnlicensedReporter(rep UnlicensedReporter) {
+	c.unlicensedReporter = rep
+	if rep != nil && c.unlicensedQueue == nil {
+		c.unlicensedQueue = make(chan unlicensedEvent, 256)
+		go c.unlicensedLoop()
+	}
+}
+
+func (c *Client) unlicensedLoop() {
+	for {
+		select {
+		case evt := <-c.unlicensedQueue:
+			if evt.call == "" {
+				continue
+			}
+			if rep := c.unlicensedReporter; rep != nil {
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							log.Printf("pskreporter: unlicensed reporter panic: %v", r)
+						}
+					}()
+					rep(evt.source, evt.role, evt.call, evt.mode, evt.freq)
+				}()
+			}
+		case <-c.shutdown:
+			return
+		}
+	}
+}
+
+func (c *Client) dispatchUnlicensed(role, call, mode string, freq float64) {
+	rep := c.unlicensedReporter
+	if rep == nil {
+		return
+	}
+	if c.unlicensedQueue != nil {
+		select {
+		case c.unlicensedQueue <- unlicensedEvent{source: "PSKREPORTER", role: role, call: call, mode: mode, freq: freq}:
+			return
+		default:
+			// fall through to async direct call
+		}
+	}
+	go rep("PSKREPORTER", role, call, mode, freq)
 }
 
 // NewClient creates a new PSKReporter MQTT client
@@ -283,19 +345,6 @@ func (c *Client) convertToSpot(msg *PSKRMessage) *spot.Spot {
 	if !ok {
 		return nil
 	}
-	// US license check for DX/DE when ADIF indicates USA (291). Skip if DB unavailable.
-	// Dropping unlicensed US calls here keeps the downstream pipeline clean.
-	if dxInfo != nil && dxInfo.ADIF == 291 {
-		if !uls.IsLicensedUS(dxCall) {
-			return nil
-		}
-	}
-	if deInfo != nil && deInfo.ADIF == 291 {
-		if !uls.IsLicensedUS(deCall) {
-			return nil
-		}
-	}
-
 	// Create spot
 	// In PSKReporter: sender = DX station, receiver = spotter
 	// In our model: DXCall = sender, DECall = receiver

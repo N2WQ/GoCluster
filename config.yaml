@@ -4,14 +4,6 @@ server:
   name: "Go Cluster beta 1"
   node_id: "N2WQ-22"
 
-logging:
-  level: "info"
-  file: "cluster.log"
-
-admin:
-  http_port: 8080
-  bind_address: "127.0.0.1"
-
 stats:
   display_interval_seconds: 60  # How often to print stats to stdout
 
@@ -156,9 +148,3 @@ skew:
 
 buffer:
   capacity: 250000                     # Number of spots held in the in-memory ring buffer
-
-# Spot recorder (captures first N spots per mode into SQLite for offline analysis)
-recorder:
-  enabled: false
-  db_path: "data/records/spots.db"
-  per_mode_limit: 100

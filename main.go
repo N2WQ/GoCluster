@@ -1,6 +1,6 @@
 // Program gocluster wires together all ingest clients (RBN, PSKReporter),
 // protections (deduplication, call correction, harmonics), persistence layers
-// (ring buffer, grid store, optional recorder), and the telnet server UI.
+// (ring buffer, grid store), and the telnet server UI.
 package main
 
 import (
@@ -34,7 +34,6 @@ import (
 	"dxcluster/gridstore"
 	"dxcluster/pskreporter"
 	"dxcluster/rbn"
-	"dxcluster/recorder"
 	"dxcluster/skew"
 	"dxcluster/spot"
 	"dxcluster/stats"
@@ -255,6 +254,7 @@ func main() {
 
 	// Create stats tracker
 	statsTracker := stats.NewTracker()
+	unlicensedReporter := makeUnlicensedReporter(ui, statsTracker)
 
 	capacity := cfg.Buffer.Capacity
 	if capacity <= 0 {
@@ -365,17 +365,6 @@ func main() {
 		})
 	}
 
-	var spotRecorder *recorder.Recorder
-	if cfg.Recorder.Enabled {
-		rec, err := recorder.NewRecorder(cfg.Recorder.DBPath, cfg.Recorder.PerModeLimit)
-		if err != nil {
-			log.Printf("Warning: failed to start recorder: %v", err)
-		} else {
-			spotRecorder = rec
-			defer spotRecorder.Close()
-		}
-	}
-
 	// Create the deduplicator (always active; a zero-second window behaves like "disabled").
 	// THIS IS THE UNIFIED DEDUP ENGINE - ALL SOURCES FEED INTO IT
 	dedupWindow := time.Duration(cfg.Dedup.ClusterWindowSeconds) * time.Second
@@ -411,13 +400,14 @@ func main() {
 	}
 
 	// Start the unified output processor once the telnet server is ready
-	go processOutputSpots(deduplicator, spotBuffer, telnetServer, statsTracker, correctionIndex, cfg.CallCorrection, ctyDB, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, ui, gridUpdater, gridLookup, spotRecorder, corrDebugLogger)
+	go processOutputSpots(deduplicator, spotBuffer, telnetServer, statsTracker, correctionIndex, cfg.CallCorrection, ctyDB, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, ui, gridUpdater, gridLookup, unlicensedReporter, corrDebugLogger)
 
 	// Connect to RBN CW/RTTY feed if enabled (port 7000)
 	// RBN spots go INTO the deduplicator input channel
 	var rbnClient *rbn.Client
 	if cfg.RBN.Enabled {
 		rbnClient = rbn.NewClient(cfg.RBN.Host, cfg.RBN.Port, cfg.RBN.Callsign, cfg.RBN.Name, ctyDB, skewStore, cfg.RBN.KeepSSIDSuffix)
+		rbnClient.SetUnlicensedReporter(unlicensedReporter)
 		err = rbnClient.Connect()
 		if err != nil {
 			log.Printf("Warning: Failed to connect to RBN CW/RTTY: %v", err)
@@ -432,6 +422,7 @@ func main() {
 	var rbnDigitalClient *rbn.Client
 	if cfg.RBNDigital.Enabled {
 		rbnDigitalClient = rbn.NewClient(cfg.RBNDigital.Host, cfg.RBNDigital.Port, cfg.RBNDigital.Callsign, cfg.RBNDigital.Name, ctyDB, skewStore, cfg.RBNDigital.KeepSSIDSuffix)
+		rbnDigitalClient.SetUnlicensedReporter(unlicensedReporter)
 		err = rbnDigitalClient.Connect()
 		if err != nil {
 			log.Printf("Warning: Failed to connect to RBN Digital: %v", err)
@@ -450,6 +441,7 @@ func main() {
 	if cfg.PSKReporter.Enabled {
 		pskrTopics = cfg.PSKReporter.SubscriptionTopics()
 		pskrClient = pskreporter.NewClient(cfg.PSKReporter.Broker, cfg.PSKReporter.Port, pskrTopics, cfg.PSKReporter.Name, cfg.PSKReporter.Workers, ctyDB, skewStore, cfg.PSKReporter.AppendSpotterSSID)
+		pskrClient.SetUnlicensedReporter(unlicensedReporter)
 		err = pskrClient.Connect()
 		if err != nil {
 			log.Printf("Warning: Failed to connect to PSKReporter: %v", err)
@@ -526,6 +518,26 @@ func main() {
 	log.Println("Cluster stopped")
 }
 
+// makeUnlicensedReporter formats drop messages for the dashboard/logger and bumps stats.
+func makeUnlicensedReporter(dash *dashboard, tracker *stats.Tracker) func(source, role, call, mode string, freq float64) {
+	return func(source, role, call, mode string, freq float64) {
+		if tracker != nil {
+			tracker.IncrementUnlicensedDrops()
+		}
+		source = strings.ToUpper(strings.TrimSpace(source))
+		role = strings.ToUpper(strings.TrimSpace(role))
+		mode = strings.ToUpper(strings.TrimSpace(mode))
+		call = strings.TrimSpace(strings.ToUpper(call))
+
+		message := fmt.Sprintf("Unlicensed US %s %s dropped from %s %s @ %.1f kHz", role, call, source, mode, freq)
+		if dash != nil {
+			dash.AppendUnlicensed(message)
+		} else {
+			log.Println(message)
+		}
+	}
+}
+
 // displayStats prints statistics at the configured interval
 // displayStatsWithFCC prints statistics at the configured interval. FCC metadata is refreshed
 // from disk each tick so the dashboard reflects the latest download/build state.
@@ -562,6 +574,7 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, dedup *
 		pskFT4 := diffSourceMode(sourceModeTotals, prevSourceModeCounts, "PSKREPORTER", "FT4")
 
 		totalCorrections := tracker.CallCorrections()
+		totalUnlicensed := tracker.UnlicensedDrops()
 		totalFreqCorrections := tracker.FrequencyCorrections()
 		totalHarmonics := tracker.HarmonicSuppressions()
 
@@ -585,8 +598,8 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, dedup *
 				humanize.Comma(int64(pskFT8)),
 				humanize.Comma(int64(pskFT4)),
 			), // 5
-			fmt.Sprintf("Corrected calls: %d (C) / %d (F) / %d (H)", totalCorrections, totalFreqCorrections, totalHarmonics), // 6
-			fmt.Sprintf("Telnet: %d clients. Drops: %d (Q) / %d (C)", clientCount, queueDrops, clientDrops),                  // 7
+			fmt.Sprintf("Corrected calls: %d (C) / %d (U) / %d (F) / %d (H)", totalCorrections, totalUnlicensed, totalFreqCorrections, totalHarmonics), // 6
+			fmt.Sprintf("Telnet: %d clients. Drops: %d (Q) / %d (C)", clientCount, queueDrops, clientDrops),                                            // 7
 		}
 
 		prevSourceCounts = sourceTotals
@@ -663,7 +676,7 @@ func processOutputSpots(
 	dash *dashboard,
 	gridUpdate func(call, grid string),
 	gridLookup func(call string) (string, bool),
-	rec *recorder.Recorder,
+	unlicensedReporter func(source, role, call, mode string, freq float64),
 	corrDebugLogger *log.Logger,
 ) {
 	outputChan := deduplicator.GetOutputChannel()
@@ -684,7 +697,7 @@ func processOutputSpots(
 
 			if gridLookup != nil {
 				// Backfill missing grids from the persisted store so downstream consumers
-				// (recorder, clients) see metadata even when the upstream spot omitted it.
+				// see metadata even when the upstream spot omitted it.
 				if strings.TrimSpace(s.DXMetadata.Grid) == "" {
 					if grid, ok := gridLookup(s.DXCall); ok {
 						s.DXMetadata.Grid = grid
@@ -701,19 +714,7 @@ func processOutputSpots(
 				s.Confidence = "V"
 			}
 
-			modeKey := strings.ToUpper(strings.TrimSpace(s.Mode))
-			if modeKey == "" {
-				modeKey = string(s.SourceType)
-			}
-			tracker.IncrementMode(modeKey)
-
-			sourceName := strings.ToUpper(strings.TrimSpace(s.SourceNode))
-			if sourceName != "" {
-				tracker.IncrementSource(sourceName)
-				tracker.IncrementSourceMode(sourceName, modeKey)
-			}
-
-			if spotPolicy.MaxAgeSeconds > 0 {
+			if !s.IsBeacon && spotPolicy.MaxAgeSeconds > 0 {
 				if time.Since(s.Time) > time.Duration(spotPolicy.MaxAgeSeconds)*time.Second {
 					// log.Printf("Spot dropped (stale): %s at %.1fkHz (age=%ds)", s.DXCall, s.Frequency, int(time.Since(s.Time).Seconds()))
 					return
@@ -726,6 +727,8 @@ func processOutputSpots(
 				if suppress {
 					return
 				}
+				// Call correction can change the DX call; recompute beacon flag accordingly.
+				s.RefreshBeaconFlag()
 			}
 
 			if !s.IsBeacon && harmonicDetector != nil && harmonicCfg.Enabled {
@@ -787,6 +790,25 @@ func processOutputSpots(
 				}
 			}
 
+			// Final CTY/licensing gate runs after corrections so busted calls can be fixed first.
+			if applyLicenseGate(s, ctyDB, unlicensedReporter) {
+				return
+			}
+
+			if tracker != nil {
+				modeKey := strings.ToUpper(strings.TrimSpace(s.Mode))
+				if modeKey == "" {
+					modeKey = string(s.SourceType)
+				}
+				tracker.IncrementMode(modeKey)
+
+				sourceName := strings.ToUpper(strings.TrimSpace(s.SourceNode))
+				if sourceName != "" {
+					tracker.IncrementSource(sourceName)
+					tracker.IncrementSourceMode(sourceName, modeKey)
+				}
+			}
+
 			if gridUpdate != nil {
 				if dxGrid := strings.TrimSpace(s.DXMetadata.Grid); dxGrid != "" {
 					gridUpdate(s.DXCall, dxGrid)
@@ -796,16 +818,87 @@ func processOutputSpots(
 				}
 			}
 
-			if rec != nil {
-				rec.Record(s)
-			}
-
 			buf.Add(s)
 
 			if telnet != nil {
 				telnet.BroadcastSpot(s)
 			}
 		}()
+	}
+}
+
+// applyLicenseGate runs the FCC/CTY check after all corrections and returns true when the spot should be dropped.
+func applyLicenseGate(s *spot.Spot, ctyDB *cty.CTYDatabase, reporter func(source, role, call, mode string, freq float64)) bool {
+	if s == nil {
+		return false
+	}
+	if s.IsBeacon {
+		return false
+	}
+	if ctyDB == nil {
+		return false
+	}
+
+	dxInfo := effectivePrefixInfo(ctyDB, s.DXCall)
+	deInfo := effectivePrefixInfo(ctyDB, s.DECall)
+
+	// Refresh metadata from the final CTY match but preserve any grid data we already attached.
+	dxGrid := strings.TrimSpace(s.DXMetadata.Grid)
+	deGrid := strings.TrimSpace(s.DEMetadata.Grid)
+	s.DXMetadata = metadataFromPrefix(dxInfo)
+	s.DEMetadata = metadataFromPrefix(deInfo)
+	if dxGrid != "" {
+		s.DXMetadata.Grid = dxGrid
+	}
+	if deGrid != "" {
+		s.DEMetadata.Grid = deGrid
+	}
+
+	if dxInfo != nil && dxInfo.ADIF == 291 && !uls.IsLicensedUS(s.DXCall) {
+		if reporter != nil {
+			reporter(s.SourceNode, "DX", s.DXCall, s.Mode, s.Frequency)
+		}
+		return true
+	}
+	if deInfo != nil && deInfo.ADIF == 291 && !uls.IsLicensedUS(s.DECall) {
+		if reporter != nil {
+			reporter(s.SourceNode, "DE", s.DECall, s.Mode, s.Frequency)
+		}
+		return true
+	}
+	return false
+}
+
+func effectivePrefixInfo(ctyDB *cty.CTYDatabase, call string) *cty.PrefixInfo {
+	if ctyDB == nil {
+		return nil
+	}
+	if call == "" {
+		return nil
+	}
+	info, ok := ctyDB.LookupCallsign(call)
+	if !ok {
+		info = nil
+	}
+	base := uls.NormalizeForLicense(call)
+	if base != "" && base != call {
+		if baseInfo, ok := ctyDB.LookupCallsign(base); ok && baseInfo != nil {
+			info = baseInfo
+		}
+	}
+	return info
+}
+
+func metadataFromPrefix(info *cty.PrefixInfo) spot.CallMetadata {
+	if info == nil {
+		return spot.CallMetadata{}
+	}
+	return spot.CallMetadata{
+		Continent: info.Continent,
+		Country:   info.Country,
+		CQZone:    info.CQZone,
+		ITUZone:   info.ITUZone,
+		ADIF:      info.ADIF,
 	}
 }
 

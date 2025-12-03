@@ -23,8 +23,6 @@ type Config struct {
 	PSKReporter     PSKReporterConfig    `yaml:"pskreporter"`
 	Dedup           DedupConfig          `yaml:"dedup"`
 	Filter          FilterConfig         `yaml:"filter"`
-	Admin           AdminConfig          `yaml:"admin"`
-	Logging         LoggingConfig        `yaml:"logging"`
 	Stats           StatsConfig          `yaml:"stats"`
 	CallCorrection  CallCorrectionConfig `yaml:"call_correction"`
 	CallCache       CallCacheConfig      `yaml:"call_cache"`
@@ -40,7 +38,6 @@ type Config struct {
 	GridCacheSize   int                  `yaml:"grid_cache_size"`
 	GridCacheTTLSec int                  `yaml:"grid_cache_ttl_seconds"`
 	GridTTLDays     int                  `yaml:"grid_ttl_days"`
-	Recorder        RecorderConfig       `yaml:"recorder"`
 }
 
 // ServerConfig contains general server settings
@@ -121,18 +118,6 @@ type DedupConfig struct {
 	ClusterWindowSeconds int  `yaml:"cluster_window_seconds"` // <=0 disables dedup
 	PreferStrongerSNR    bool `yaml:"prefer_stronger_snr"`    // keep max SNR when dropping duplicates
 	OutputBufferSize     int  `yaml:"output_buffer_size"`     // channel capacity for dedup output
-}
-
-// AdminConfig contains admin interface settings
-type AdminConfig struct {
-	HTTPPort    int    `yaml:"http_port"`
-	BindAddress string `yaml:"bind_address"`
-}
-
-// LoggingConfig contains logging settings
-type LoggingConfig struct {
-	Level string `yaml:"level"`
-	File  string `yaml:"file"`
 }
 
 // FilterConfig holds default filter behavior for new users.
@@ -245,13 +230,6 @@ type SpotPolicy struct {
 // BufferConfig controls the ring buffer that holds recent spots.
 type BufferConfig struct {
 	Capacity int `yaml:"capacity"`
-}
-
-// RecorderConfig controls spot recording for offline analysis.
-type RecorderConfig struct {
-	Enabled      bool   `yaml:"enabled"`
-	DBPath       string `yaml:"db_path"`
-	PerModeLimit int    `yaml:"per_mode_limit"`
 }
 
 // SkewConfig controls how the RBN skew table is fetched and applied.
@@ -522,13 +500,6 @@ func Load(filename string) (*Config, error) {
 	if _, err := time.Parse("15:04", cfg.Skew.RefreshUTC); err != nil {
 		return nil, fmt.Errorf("invalid skew refresh time %q: %w", cfg.Skew.RefreshUTC, err)
 	}
-	// Recorder defaults prevent unbounded disk growth by capping per-mode inserts.
-	if strings.TrimSpace(cfg.Recorder.DBPath) == "" {
-		cfg.Recorder.DBPath = "data/records/spots.db"
-	}
-	if cfg.Recorder.PerModeLimit <= 0 {
-		cfg.Recorder.PerModeLimit = 100
-	}
 	return &cfg, nil
 }
 
@@ -610,9 +581,6 @@ func (c *Config) Print() {
 	}
 	if strings.TrimSpace(c.GridDBPath) != "" {
 		fmt.Printf("Grid/known DB: %s (flush=%ds cache=%d ttl=%dd)\n", c.GridDBPath, c.GridFlushSec, c.GridCacheSize, c.GridTTLDays)
-	}
-	if c.Recorder.Enabled {
-		fmt.Printf("Recorder: enabled (db=%s per_mode=%d)\n", c.Recorder.DBPath, c.Recorder.PerModeLimit)
 	}
 	if c.Skew.Enabled {
 		fmt.Printf("Skew: refresh %s UTC (min_spots=%d source=%s)\n", c.Skew.RefreshUTC, c.Skew.MinSpots, c.Skew.URL)

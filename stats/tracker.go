@@ -20,6 +20,7 @@ type Tracker struct {
 	callCorrections      atomic.Uint64
 	frequencyCorrections atomic.Uint64
 	harmonicSuppressions atomic.Uint64
+	unlicensedDrops      atomic.Uint64
 }
 
 // NewTracker creates a new stats tracker
@@ -138,6 +139,11 @@ func (t *Tracker) IncrementHarmonicSuppressions() {
 	t.harmonicSuppressions.Add(1)
 }
 
+// IncrementUnlicensedDrops increments the number of US spots dropped for missing licenses.
+func (t *Tracker) IncrementUnlicensedDrops() {
+	t.unlicensedDrops.Add(1)
+}
+
 // CallCorrections returns the cumulative number of applied call corrections.
 func (t *Tracker) CallCorrections() uint64 {
 	return t.callCorrections.Load()
@@ -151,6 +157,11 @@ func (t *Tracker) FrequencyCorrections() uint64 {
 // HarmonicSuppressions returns the cumulative number of dropped harmonics.
 func (t *Tracker) HarmonicSuppressions() uint64 {
 	return t.harmonicSuppressions.Load()
+}
+
+// UnlicensedDrops returns the cumulative number of US license failures.
+func (t *Tracker) UnlicensedDrops() uint64 {
+	return t.unlicensedDrops.Load()
 }
 
 func formatMapCounts(label string, counts *sync.Map) string {

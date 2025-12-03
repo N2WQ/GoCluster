@@ -17,7 +17,6 @@ import (
 	"dxcluster/cty"
 	"dxcluster/skew"
 	"dxcluster/spot"
-	"dxcluster/uls"
 )
 
 // precompiled regex avoids the per-line allocation/compile cost when normalizing RBN lines
@@ -33,6 +32,17 @@ var (
 	rbnCallCacheTTL   = 10 * time.Minute
 	rbnNormalizeCache = spot.NewCallCache(rbnCallCacheSize, rbnCallCacheTTL)
 )
+
+// UnlicensedReporter receives drop notifications for US calls failing FCC license checks.
+type UnlicensedReporter func(source, role, call, mode string, freqKHz float64)
+
+type unlicensedEvent struct {
+	source string
+	role   string
+	call   string
+	mode   string
+	freq   float64
+}
 
 // Client represents an RBN telnet client
 type Client struct {
@@ -51,6 +61,9 @@ type Client struct {
 	reconnect chan struct{}
 	stopOnce  sync.Once
 	keepSSID  bool
+
+	unlicensedReporter UnlicensedReporter
+	unlicensedQueue    chan unlicensedEvent
 }
 
 // ConfigureCallCache allows callers to tune the normalization cache used for RBN spotters.
@@ -82,6 +95,39 @@ func NewClient(host string, port int, callsign string, name string, lookup *cty.
 	}
 }
 
+// SetUnlicensedReporter installs a best-effort reporter for unlicensed US drops.
+// Reporting is fire-and-forget; when the queue is full we fallback to an async call.
+func (c *Client) SetUnlicensedReporter(rep UnlicensedReporter) {
+	c.unlicensedReporter = rep
+	if rep != nil && c.unlicensedQueue == nil {
+		c.unlicensedQueue = make(chan unlicensedEvent, 256)
+		go c.unlicensedLoop()
+	}
+}
+
+func (c *Client) unlicensedLoop() {
+	for {
+		select {
+		case evt := <-c.unlicensedQueue:
+			if evt.call == "" {
+				continue
+			}
+			if rep := c.unlicensedReporter; rep != nil {
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							log.Printf("rbn: unlicensed reporter panic: %v", r)
+						}
+					}()
+					rep(evt.source, evt.role, evt.call, evt.mode, evt.freq)
+				}()
+			}
+		case <-c.shutdown:
+			return
+		}
+	}
+}
+
 // Connect establishes the initial RBN connection and starts the supervision loop.
 // The first dial runs synchronously so failures are reported to the caller; any
 // subsequent disconnects are handled via the background reconnect loop.
@@ -91,6 +137,22 @@ func (c *Client) Connect() error {
 	}
 	go c.connectionSupervisor()
 	return nil
+}
+
+func (c *Client) dispatchUnlicensed(role, call, mode string, freq float64) {
+	rep := c.unlicensedReporter
+	if rep == nil {
+		return
+	}
+	if c.unlicensedQueue != nil {
+		select {
+		case c.unlicensedQueue <- unlicensedEvent{source: c.sourceKey(), role: role, call: call, mode: mode, freq: freq}:
+			return
+		default:
+			// fall through to async direct call
+		}
+	}
+	go rep(c.sourceKey(), role, call, mode, freq)
 }
 
 // establishConnection dials the remote RBN feed and spins up the login and read
@@ -466,19 +528,6 @@ func (c *Client) parseSpot(line string) {
 	if !ok {
 		return
 	}
-	// US license check for DX/DE when ADIF indicates USA (291). Skip if DB unavailable.
-	// This gate ensures unlicensed US calls are dropped as early as possible.
-	if dxInfo != nil && dxInfo.ADIF == 291 {
-		if !uls.IsLicensedUS(dxCall) {
-			return
-		}
-	}
-	if deInfo != nil && deInfo.ADIF == 291 {
-		if !uls.IsLicensedUS(deCall) {
-			return
-		}
-	}
-
 	// Create spot
 	s := spot.NewSpot(dxCall, deCall, freq, mode)
 	s.IsHuman = false
@@ -609,6 +658,13 @@ func (c *Client) displayName() string {
 	}
 	if c.port == 7001 {
 		return "RBN Digital"
+	}
+	return "RBN"
+}
+
+func (c *Client) sourceKey() string {
+	if c.port == 7001 {
+		return "RBN-DIGITAL"
 	}
 	return "RBN"
 }
