@@ -189,6 +189,33 @@ func SetFrequencyToleranceHz(hz float64) {
 	frequencyToleranceKHz = hz / 1000.0
 }
 
+// ConfigureMorseWeights allows callers to tune dot/dash edit costs. Non-positive
+// inputs fall back to defaults (ins=1, del=1, sub=2, scale=2).
+func ConfigureMorseWeights(insert, delete, sub, scale int) {
+	if insert > 0 {
+		morseInsertCost = insert
+	} else {
+		morseInsertCost = 1
+	}
+	if delete > 0 {
+		morseDeleteCost = delete
+	} else {
+		morseDeleteCost = 1
+	}
+	if sub > 0 {
+		morseSubCost = sub
+	} else {
+		morseSubCost = 2
+	}
+	if scale > 0 {
+		morseScale = scale
+	} else {
+		morseScale = 2
+	}
+	// Rebuild the Morse cost table with the new weights.
+	morseRuneIndex, morseCostTable = buildRuneCostTable(morseCodes, morsePatternCost)
+}
+
 // SuggestCallCorrection analyzes recent spots on the same frequency and determines
 // whether there is overwhelming evidence that the subject spot's DX call should
 // be corrected. IMPORTANT: This function only suggests a correction. The caller
@@ -864,8 +891,10 @@ func callDistance(subject, candidate, mode, cwModel, rttyModel string) int {
 	)
 }
 
-// cwCallDistance computes Levenshtein at the callsign level but uses Morse-aware
-// substitution costs so CW confusability is reflected in the distance.
+// cwCallDistance computes Levenshtein at the callsign level but uses
+// Morse-aware substitution costs so CW confusability is reflected in the
+// distance. Insert/delete of whole characters cost 1; substitution uses a
+// Morse distance table built from weighted/normalized dot/dash edits.
 func cwCallDistance(a, b string) int {
 	ra := []rune(strings.ToUpper(a))
 	rb := []rune(strings.ToUpper(b))
@@ -909,6 +938,7 @@ func morseCharDist(a, b rune) int {
 			return morseCostTable[i][j]
 		}
 	}
+	// Fallback cost when the rune is not in the Morse table.
 	return 2
 }
 
@@ -1015,6 +1045,11 @@ var morseCodes = map[rune]string{
 var (
 	morseRuneIndex map[rune]int
 	morseCostTable [][]int
+
+	morseInsertCost = 1
+	morseDeleteCost = 1
+	morseSubCost    = 2
+	morseScale      = 2
 )
 
 var baudotCodes = map[rune]string{
@@ -1063,14 +1098,15 @@ var (
 )
 
 func init() {
-	morseRuneIndex, morseCostTable = buildRuneCostTable(morseCodes)
-	baudotRuneIndex, baudotCostTable = buildRuneCostTable(baudotCodes)
+	morseRuneIndex, morseCostTable = buildRuneCostTable(morseCodes, morsePatternCost)
+	baudotRuneIndex, baudotCostTable = buildRuneCostTable(baudotCodes, legacyLevenshtein)
 }
 
 // buildRuneCostTable creates a dense cost matrix for the provided codebook using
-// legacyLevenshtein on the code strings. The tables are tiny (tens of entries)
-// and avoid per-call dynamic programming when computing character distances.
-func buildRuneCostTable(codebook map[rune]string) (map[rune]int, [][]int) {
+// the supplied cost function on the code strings. The tables are tiny (tens of
+// entries) and avoid per-call dynamic programming when computing character
+// distances.
+func buildRuneCostTable(codebook map[rune]string, cost func(a, b string) int) (map[rune]int, [][]int) {
 	index := make(map[rune]int, len(codebook))
 	keys := make([]rune, 0, len(codebook))
 	for r := range codebook {
@@ -1090,8 +1126,82 @@ func buildRuneCostTable(codebook map[rune]string) (map[rune]int, [][]int) {
 			}
 			a := codebook[ra]
 			b := codebook[rb]
-			table[i][j] = legacyLevenshtein(a, b)
+			table[i][j] = cost(a, b)
 		}
 	}
 	return index, table
+}
+
+// morsePatternCost computes a normalized, weighted edit distance between two
+// Morse code strings (dot/dash). Insert/delete cost 1, dot<->dash substitution
+// costs 2, then we normalize by (maxLen+1) to bound the result and scale into a
+// small integer range for use as a substitution cost in cwCallDistance.
+func morsePatternCost(a, b string) int {
+	cfg := getMorseWeights()
+	if a == b {
+		return 0
+	}
+	ra := []rune(a)
+	rb := []rune(b)
+	la := len(ra)
+	lb := len(rb)
+	if la == 0 {
+		return cfg.ins
+	}
+	if lb == 0 {
+		return cfg.ins
+	}
+	prev := make([]int, lb+1)
+	cur := make([]int, lb+1)
+
+	for j := 0; j <= lb; j++ {
+		prev[j] = j * cfg.ins // j inserts
+	}
+
+	for i := 1; i <= la; i++ {
+		cur[0] = i * cfg.del // i deletes
+		for j := 1; j <= lb; j++ {
+			subCost := 0
+			if ra[i-1] != rb[j-1] {
+				subCost = cfg.sub // dot<->dash heavier than insert/delete
+			}
+			insert := cur[j-1] + cfg.ins
+			delete := prev[j] + cfg.del
+			replace := prev[j-1] + subCost
+			cur[j] = min3(insert, delete, replace)
+		}
+		prev, cur = cur, prev
+	}
+
+	raw := prev[lb]
+	maxLen := la
+	if lb > maxLen {
+		maxLen = lb
+	}
+	normalized := float64(raw) / float64(maxLen+1)
+	scale := cfg.scale
+	if scale <= 0 {
+		scale = 2
+	}
+	scaled := int(math.Ceil(normalized * float64(scale)))
+	if scaled < 1 && raw > 0 {
+		scaled = 1
+	}
+	return scaled
+}
+
+type morseWeightSet struct {
+	ins   int
+	del   int
+	sub   int
+	scale int
+}
+
+func getMorseWeights() morseWeightSet {
+	return morseWeightSet{
+		ins:   morseInsertCost,
+		del:   morseDeleteCost,
+		sub:   morseSubCost,
+		scale: morseScale,
+	}
 }

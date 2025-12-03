@@ -201,6 +201,18 @@ type CallCorrectionConfig struct {
 	FreqGuardMinSeparationKHz float64 `yaml:"freq_guard_min_separation_khz"`
 	// Ratio (0-1): runner-up supporters must be at least this fraction of winner supporters to trigger the guard.
 	FreqGuardRunnerUpRatio float64 `yaml:"freq_guard_runnerup_ratio"`
+	// MorseWeights tunes the dot/dash edit weights for CW distance calculations.
+	MorseWeights MorseWeightConfig `yaml:"morse_weights"`
+}
+
+// MorseWeightConfig tunes the Morse-aware edit costs used for CW distance.
+// Insert/delete and substitution costs apply to dot/dash edits at the pattern
+// level; Scale multiplies the normalized score before rounding to an int.
+type MorseWeightConfig struct {
+	Insert int `yaml:"insert"`
+	Delete int `yaml:"delete"`
+	Sub    int `yaml:"sub"`
+	Scale  int `yaml:"scale"`
 }
 
 // HarmonicConfig controls detection and suppression of harmonic spots.
@@ -367,6 +379,18 @@ func Load(filename string) (*Config, error) {
 	}
 	if cfg.CallCorrection.DistanceCacheSize <= 0 {
 		cfg.CallCorrection.DistanceCacheSize = 5000
+	}
+	if cfg.CallCorrection.MorseWeights.Insert <= 0 {
+		cfg.CallCorrection.MorseWeights.Insert = 1
+	}
+	if cfg.CallCorrection.MorseWeights.Delete <= 0 {
+		cfg.CallCorrection.MorseWeights.Delete = 1
+	}
+	if cfg.CallCorrection.MorseWeights.Sub <= 0 {
+		cfg.CallCorrection.MorseWeights.Sub = 2
+	}
+	if cfg.CallCorrection.MorseWeights.Scale <= 0 {
+		cfg.CallCorrection.MorseWeights.Scale = 2
 	}
 	if cfg.CallCorrection.DistanceCacheTTLSeconds <= 0 {
 		cfg.CallCorrection.DistanceCacheTTLSeconds = cfg.CallCorrection.RecencySeconds

@@ -71,6 +71,11 @@ call_correction:
   distance3_extra_confidence: 5   # Extra confidence percentage points required when distance 3
   distance_cache_size: 8192       # Memoize call distance calculations (entries)
   distance_cache_ttl_seconds: 120 # Expire cached distances after this many seconds (tie to recency window)
+  morse_weights:
+    insert: 1                     # Cost to insert a dot/dash in Morse patterns
+    delete: 1                     # Cost to delete a dot/dash in Morse patterns
+    sub: 2                        # Cost to flip dot<->dash in Morse patterns
+    scale: 2                      # Multiplier for normalized Morse cost before rounding
 
 # Harmonic suppression for CW/USB/LSB/RTTY signals
 harmonics:
