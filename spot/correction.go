@@ -216,6 +216,32 @@ func ConfigureMorseWeights(insert, delete, sub, scale int) {
 	morseRuneIndex, morseCostTable = buildRuneCostTable(morseCodes, morsePatternCost)
 }
 
+// ConfigureBaudotWeights allows callers to tune ITA2 edit costs for RTTY distance.
+// Non-positive inputs fall back to defaults (ins=1, del=1, sub=2, scale=2).
+func ConfigureBaudotWeights(insert, delete, sub, scale int) {
+	if insert > 0 {
+		baudotInsertCost = insert
+	} else {
+		baudotInsertCost = 1
+	}
+	if delete > 0 {
+		baudotDeleteCost = delete
+	} else {
+		baudotDeleteCost = 1
+	}
+	if sub > 0 {
+		baudotSubCost = sub
+	} else {
+		baudotSubCost = 2
+	}
+	if scale > 0 {
+		baudotScale = scale
+	} else {
+		baudotScale = 2
+	}
+	baudotRuneIndex, baudotCostTable = buildRuneCostTable(baudotCodes, baudotPatternCost)
+}
+
 // SuggestCallCorrection analyzes recent spots on the same frequency and determines
 // whether there is overwhelming evidence that the subject spot's DX call should
 // be corrected. IMPORTANT: This function only suggests a correction. The caller
@@ -986,6 +1012,7 @@ func baudotCharDist(a, b rune) int {
 			return baudotCostTable[i][j]
 		}
 	}
+	// Fallback cost when the rune is not in the Baudot table.
 	return 2
 }
 
@@ -1050,6 +1077,11 @@ var (
 	morseDeleteCost = 1
 	morseSubCost    = 2
 	morseScale      = 2
+
+	baudotInsertCost = 1
+	baudotDeleteCost = 1
+	baudotSubCost    = 2
+	baudotScale      = 2
 )
 
 var baudotCodes = map[rune]string{
@@ -1099,7 +1131,7 @@ var (
 
 func init() {
 	morseRuneIndex, morseCostTable = buildRuneCostTable(morseCodes, morsePatternCost)
-	baudotRuneIndex, baudotCostTable = buildRuneCostTable(baudotCodes, legacyLevenshtein)
+	baudotRuneIndex, baudotCostTable = buildRuneCostTable(baudotCodes, baudotPatternCost)
 }
 
 // buildRuneCostTable creates a dense cost matrix for the provided codebook using
@@ -1204,4 +1236,60 @@ func getMorseWeights() morseWeightSet {
 		sub:   morseSubCost,
 		scale: morseScale,
 	}
+}
+
+// baudotPatternCost mirrors morsePatternCost but operates on ITA2 codes used
+// for RTTY. It uses weighted edit costs and normalization to keep substitution
+// costs small and comparable to character-level insert/delete.
+func baudotPatternCost(a, b string) int {
+	if a == b {
+		return 0
+	}
+	ra := []rune(a)
+	rb := []rune(b)
+	la := len(ra)
+	lb := len(rb)
+	if la == 0 {
+		return baudotInsertCost
+	}
+	if lb == 0 {
+		return baudotInsertCost
+	}
+	prev := make([]int, lb+1)
+	cur := make([]int, lb+1)
+
+	for j := 0; j <= lb; j++ {
+		prev[j] = j * baudotInsertCost
+	}
+
+	for i := 1; i <= la; i++ {
+		cur[0] = i * baudotDeleteCost
+		for j := 1; j <= lb; j++ {
+			subCost := 0
+			if ra[i-1] != rb[j-1] {
+				subCost = baudotSubCost
+			}
+			insert := cur[j-1] + baudotInsertCost
+			delete := prev[j] + baudotDeleteCost
+			replace := prev[j-1] + subCost
+			cur[j] = min3(insert, delete, replace)
+		}
+		prev, cur = cur, prev
+	}
+
+	raw := prev[lb]
+	maxLen := la
+	if lb > maxLen {
+		maxLen = lb
+	}
+	scale := baudotScale
+	if scale <= 0 {
+		scale = 2
+	}
+	normalized := float64(raw) / float64(maxLen+1)
+	scaled := int(math.Ceil(normalized * float64(scale)))
+	if scaled < 1 && raw > 0 {
+		scaled = 1
+	}
+	return scaled
 }

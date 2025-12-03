@@ -249,6 +249,7 @@ func main() {
 		log.Printf("Warning: failed to load CTY database: %v", err)
 	}
 	spot.ConfigureMorseWeights(cfg.CallCorrection.MorseWeights.Insert, cfg.CallCorrection.MorseWeights.Delete, cfg.CallCorrection.MorseWeights.Sub, cfg.CallCorrection.MorseWeights.Scale)
+	spot.ConfigureBaudotWeights(cfg.CallCorrection.BaudotWeights.Insert, cfg.CallCorrection.BaudotWeights.Delete, cfg.CallCorrection.BaudotWeights.Sub, cfg.CallCorrection.BaudotWeights.Scale)
 	if strings.TrimSpace(cfg.FCCULS.DBPath) != "" {
 		uls.SetLicenseDBPath(cfg.FCCULS.DBPath)
 	}

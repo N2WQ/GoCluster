@@ -203,12 +203,24 @@ type CallCorrectionConfig struct {
 	FreqGuardRunnerUpRatio float64 `yaml:"freq_guard_runnerup_ratio"`
 	// MorseWeights tunes the dot/dash edit weights for CW distance calculations.
 	MorseWeights MorseWeightConfig `yaml:"morse_weights"`
+	// BaudotWeights tunes the ITA2 edit weights for RTTY distance calculations.
+	BaudotWeights BaudotWeightConfig `yaml:"baudot_weights"`
 }
 
 // MorseWeightConfig tunes the Morse-aware edit costs used for CW distance.
 // Insert/delete and substitution costs apply to dot/dash edits at the pattern
 // level; Scale multiplies the normalized score before rounding to an int.
 type MorseWeightConfig struct {
+	Insert int `yaml:"insert"`
+	Delete int `yaml:"delete"`
+	Sub    int `yaml:"sub"`
+	Scale  int `yaml:"scale"`
+}
+
+// BaudotWeightConfig tunes the ITA2-aware edit costs used for RTTY distance.
+// Insert/delete and substitution costs apply to letter/figure bits; Scale
+// multiplies the normalized score before rounding to an int.
+type BaudotWeightConfig struct {
 	Insert int `yaml:"insert"`
 	Delete int `yaml:"delete"`
 	Sub    int `yaml:"sub"`
@@ -391,6 +403,18 @@ func Load(filename string) (*Config, error) {
 	}
 	if cfg.CallCorrection.MorseWeights.Scale <= 0 {
 		cfg.CallCorrection.MorseWeights.Scale = 2
+	}
+	if cfg.CallCorrection.BaudotWeights.Insert <= 0 {
+		cfg.CallCorrection.BaudotWeights.Insert = 1
+	}
+	if cfg.CallCorrection.BaudotWeights.Delete <= 0 {
+		cfg.CallCorrection.BaudotWeights.Delete = 1
+	}
+	if cfg.CallCorrection.BaudotWeights.Sub <= 0 {
+		cfg.CallCorrection.BaudotWeights.Sub = 2
+	}
+	if cfg.CallCorrection.BaudotWeights.Scale <= 0 {
+		cfg.CallCorrection.BaudotWeights.Scale = 2
 	}
 	if cfg.CallCorrection.DistanceCacheTTLSeconds <= 0 {
 		cfg.CallCorrection.DistanceCacheTTLSeconds = cfg.CallCorrection.RecencySeconds

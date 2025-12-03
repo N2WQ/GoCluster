@@ -13,8 +13,13 @@ A modern Go-based DX cluster that aggregates amateur radio spots, enriches them 
 4. **CTY Database** (`cty/parser.go` + `data/cty/cty.plist`) performs longest-prefix lookups so both spotters and spotted stations carry continent/country/CQ/ITU/grid metadata.
 5. **Dedup Engine** (`dedup/deduplicator.go`) filters duplicates before they reach the ring buffer. A zero-second window effectively disables dedup, but the pipeline stays unified.
 6. **Frequency Averager** (`spot/frequency_averager.go`) merges CW/RTTY skimmer reports by averaging corroborating reports within a tolerance and rounding to 0.1 kHz once the minimum corroborators is met.
-7. **Call/Harmonic Guards** (`spot/correction.go`, `spot/harmonics.go`, `main.go`) apply consensus-based call corrections and suppress harmonics; the pipeline logs/dashboards both the correction and the suppressed harmonic frequency. Harmonic suppression now supports a stepped minimum dB delta (configured via `harmonics.min_report_delta_step`) so higher-order harmonics must be progressively weaker. Call correction also honours `call_correction.min_snr_cw` / `min_snr_rtty` so marginal decodes can be ignored when counting corroborators. Calls ending in `/B` (standard beacon IDs) are auto-tagged and bypass these correction/harmonic steps.
-8. **Skimmer Frequency Corrections** (`cmd/rbnskewfetch`, `skew/`, `rbn/client.go`, `pskreporter/client.go`) download SM7IUN’s skew list, convert it to JSON, and apply per-spotter multiplicative factors before any callsign normalization for every CW/RTTY skimmer feed.
+7. **Call/Harmonic/License Guards** (`spot/correction.go`, `spot/harmonics.go`, `main.go`) apply consensus-based call corrections, suppress harmonics, and finally run CTY/FCC license gating right before broadcast/buffering. Harmonic suppression supports a stepped minimum dB delta (configured via `harmonics.min_report_delta_step`) so higher-order harmonics must be progressively weaker. Call correction honours `call_correction.min_snr_cw` / `min_snr_rtty` so marginal decodes can be ignored when counting corroborators. Calls ending in `/B` (standard beacon IDs) are auto-tagged and bypass correction/harmonic/license drops (only user filters can hide them). The license gate re-evaluates CTY on license-normalized calls (e.g., `W6/UT5UF` looks up `UT5UF`) and drops only unlicensed US calls after all corrections; these drops appear in the “Unlicensed US Calls” pane.
+8. **Skimmer Frequency Corrections** (`cmd/rbnskewfetch`, `skew/`, `rbn/client.go`, `pskreporter/client.go`) download SM7IUN's skew list, convert it to JSON, and apply per-spotter multiplicative factors before any callsign normalization for every CW/RTTY skimmer feed.
+
+### Call-Correction Distance Tuning
+- CW distance can be Morse-aware with weighted/normalized dot-dash costs (configurable via `call_correction.morse_weights`: `insert`, `delete`, `sub`, `scale`; defaults 1/1/2/2).
+- RTTY distance can be ITA2-aware with similar weights (configurable via `call_correction.baudot_weights`: `insert`, `delete`, `sub`, `scale`; defaults 1/1/2/2).
+- If you prefer plain rune-based Levenshtein, set `call_correction.distance_model_cw: plain` and/or `distance_model_rtty: plain`.
 
 ## Data Flow and Spot Record Format
 
@@ -79,7 +84,7 @@ Each `spot.Spot` stores:
 	- `ADIF` (DXCC/ADIF country code)
 	- `Grid`
 
-Both the RBN (standard and digital) and PSKReporter feeds run the same normalization + CTY lookup validation before putting a spot into the ring buffer. Callsigns containing `.` suffixes (e.g., `JA1CTC.P` or `W6.UT5UF`) now have their periods converted to `/` so the full call-plus-suffix reaches CTY lookup rather than being truncated to the base call, and validation now requires at least one digit to avoid non-amateur identifiers before malformed or unknown calls are filtered out prior to hashing or deduplication. Automated feeds mark the `IsHuman` flag as `false` so downstream processors can tell which spots originated from telescopic inputs versus human operator submissions.
+Both the RBN (standard and digital) and PSKReporter feeds run the same normalization + CTY lookup validation before putting a spot into the ring buffer. Callsigns containing `.` suffixes (e.g., `JA1CTC.P` or `W6.UT5UF`) now have their periods converted to `/` so the full call-plus-suffix reaches CTY lookup rather than being truncated to the base call, and validation now requires at least one digit to avoid non-amateur identifiers before malformed or unknown calls are filtered out prior to hashing or deduplication. Automated feeds mark the `IsHuman` flag as `false` so downstream processors can tell which spots originated from telescopic inputs versus human operator submissions. Final CTY/FCC checks run after call correction using a license-normalized base call (e.g., `W6/UT5UF` is evaluated as `UT5UF`); only unlicensed US calls are dropped, and beacons bypass this drop (user filters still apply).
 
 ## Commands
 

@@ -76,6 +76,11 @@ call_correction:
     delete: 1                     # Cost to delete a dot/dash in Morse patterns
     sub: 2                        # Cost to flip dot<->dash in Morse patterns
     scale: 2                      # Multiplier for normalized Morse cost before rounding
+  baudot_weights:
+    insert: 1                     # Cost to insert a bit in ITA2 patterns
+    delete: 1                     # Cost to delete a bit in ITA2 patterns
+    sub: 2                        # Cost to flip a bit in ITA2 patterns
+    scale: 2                      # Multiplier for normalized ITA2 cost before rounding
 
 # Harmonic suppression for CW/USB/LSB/RTTY signals
 harmonics:
