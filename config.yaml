@@ -47,8 +47,8 @@ call_correction:
                                   #   majority: most unique spotters on-frequency wins; distance is a safety cap
                                   #   center:   distance-based cluster center (median-like) then compare to subject
                                   #   classic:  legacy subject-vs-alternate with distance gating
-  debug_log: true                 # Emit per-subject correction decisions when true (for tuning/compare)
-  debug_log_file: "data/logs/callcorr_debug_modified.log"              # Optional file path to append correction debug lines (uses main log when empty)
+  debug_log: true                 # Enable SQLite decision logging for call correction (non-blocking writer)
+  debug_log_file: "data/logs/callcorr_debug_modified.log"              # Optional path/prefix for the daily decision DB (defaults to data/analysis/callcorr_YYYY-MM-DD.db)
   min_consensus_reports: 3        # Minimum number of corroborating spotters
   min_advantage: 1                # Candidate must exceed the original by this many spotters
   min_confidence_percent: 60      # Candidate supporters must represent at least this percent of unique spotters

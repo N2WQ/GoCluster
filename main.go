@@ -224,19 +224,16 @@ func main() {
 		log.Printf("Configuration loaded for %s (%s)", cfg.Server.Name, cfg.Server.NodeID)
 	}
 
-	// Optional dedicated call-correction debug logger
-	var corrDebugFile *os.File
-	var corrDebugLogger *log.Logger
+	// Optional call-correction decision logger (asynchronous SQLite writer).
+	var corrLogger spot.CorrectionTraceLogger
 	if cfg.CallCorrection.DebugLog {
-		path := strings.TrimSpace(cfg.CallCorrection.DebugLogFile)
-		if path != "" {
-			if f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err != nil {
-				log.Printf("Warning: unable to open call correction debug log file %s: %v", path, err)
-			} else {
-				corrDebugFile = f
-				corrDebugLogger = log.New(f, "", log.LstdFlags)
-				log.Printf("Call correction debug logging to %s", path)
-			}
+		logger, err := spot.NewDecisionLogger(cfg.CallCorrection.DebugLogFile, 0)
+		if err != nil {
+			log.Printf("Warning: unable to start call-correction decision logger: %v", err)
+		} else {
+			corrLogger = logger
+			path := spot.DecisionLogPath(cfg.CallCorrection.DebugLogFile, time.Now().UTC())
+			log.Printf("Call correction decision logging to %s (SQLite, non-blocking)", path)
 		}
 	}
 
@@ -407,7 +404,7 @@ func main() {
 	}
 
 	// Start the unified output processor once the telnet server is ready
-	go processOutputSpots(deduplicator, spotBuffer, telnetServer, statsTracker, correctionIndex, cfg.CallCorrection, ctyDB, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, ui, gridUpdater, gridLookup, unlicensedReporter, corrDebugLogger, activity)
+	go processOutputSpots(deduplicator, spotBuffer, telnetServer, statsTracker, correctionIndex, cfg.CallCorrection, ctyDB, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, ui, gridUpdater, gridLookup, unlicensedReporter, corrLogger, activity)
 
 	// Connect to RBN CW/RTTY feed if enabled (port 7000)
 	// RBN spots go INTO the deduplicator input channel
@@ -518,8 +515,14 @@ func main() {
 	// Stop the telnet server
 	telnetServer.Stop()
 
-	if corrDebugFile != nil {
-		corrDebugFile.Close()
+	if corrLogger != nil {
+		if err := corrLogger.Close(); err != nil {
+			log.Printf("Warning: call-correction decision logger close: %v", err)
+		}
+		dropped := corrLogger.Dropped()
+		if dropped > 0 {
+			log.Printf("Call-correction decision logger dropped %d entries under load", dropped)
+		}
 	}
 
 	log.Println("Cluster stopped")
@@ -685,7 +688,7 @@ func processOutputSpots(
 	gridUpdate func(call, grid string),
 	gridLookup func(call string) (string, bool),
 	unlicensedReporter func(source, role, call, mode string, freq float64),
-	corrDebugLogger *log.Logger,
+	corrLogger spot.CorrectionTraceLogger,
 	activity *activityMonitor,
 ) {
 	outputChan := deduplicator.GetOutputChannel()
@@ -737,7 +740,7 @@ func processOutputSpots(
 
 			var suppress bool
 			if telnet != nil && !s.IsBeacon {
-				suppress = maybeApplyCallCorrectionWithLogger(s, correctionIdx, correctionCfg, ctyDB, knownCalls, tracker, dash, corrDebugLogger)
+				suppress = maybeApplyCallCorrectionWithLogger(s, correctionIdx, correctionCfg, ctyDB, knownCalls, tracker, dash, corrLogger)
 				if suppress {
 					return
 				}
@@ -920,7 +923,7 @@ func maybeApplyCallCorrection(spotEntry *spot.Spot, idx *spot.CorrectionIndex, c
 	return maybeApplyCallCorrectionWithLogger(spotEntry, idx, cfg, ctyDB, knownPtr, tracker, dash, nil)
 }
 
-func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.CorrectionIndex, cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns], tracker *stats.Tracker, dash *dashboard, dbg *log.Logger) bool {
+func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.CorrectionIndex, cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns], tracker *stats.Tracker, dash *dashboard, traceLogger spot.CorrectionTraceLogger) bool {
 	if spotEntry == nil {
 		return false
 	}
@@ -954,7 +957,7 @@ func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.Correcti
 		DistanceCacheSize:        cfg.DistanceCacheSize,
 		DistanceCacheTTL:         time.Duration(cfg.DistanceCacheTTLSeconds) * time.Second,
 		DebugLog:                 cfg.DebugLog,
-		DebugLogger:              dbg,
+		TraceLogger:              traceLogger,
 		QualityBinHz:             cfg.QualityBinHz,
 		QualityGoodThreshold:     cfg.QualityGoodThreshold,
 		QualityNewCallIncrement:  cfg.QualityNewCallIncrement,

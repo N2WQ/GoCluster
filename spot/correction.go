@@ -2,8 +2,6 @@ package spot
 
 import (
 	"dxcluster/bandmap"
-	"encoding/json"
-	"log"
 	"math"
 	"strings"
 	"sync"
@@ -24,8 +22,8 @@ type CorrectionSettings struct {
 	Strategy string
 	// DebugLog enables per-subject diagnostic logging of decisions.
 	DebugLog bool
-	// DebugLogger writes debug lines; falls back to standard log when nil.
-	DebugLogger *log.Logger
+	// TraceLogger records decision traces asynchronously when DebugLog is true.
+	TraceLogger CorrectionTraceLogger
 	// Frequency guard to avoid merging nearby strong signals.
 	FreqGuardMinSeparationKHz float64
 	FreqGuardRunnerUpRatio    float64
@@ -410,7 +408,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 	if totalReporters == 0 {
 		trace.Decision = "rejected"
 		trace.Reason = "no_reporters"
-		logCorrectionTrace(cfg, trace)
+		logCorrectionTrace(cfg, trace, clusterSpots)
 		return "", 0, 0, 0, 0, false
 	}
 
@@ -483,7 +481,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 			trace.WinnerConfidence = anchorConfidence
 			trace.Distance = anchorDistance
 			trace.Decision = "applied"
-			logCorrectionTrace(cfg, trace)
+			logCorrectionTrace(cfg, trace, clusterSpots)
 			return anchor, anchorSupport, anchorConfidence, subjectConfidence, totalReporters, true
 		}
 	}
@@ -516,7 +514,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 	if bestCall == "" || bestCall == subjectCall {
 		trace.Decision = "rejected"
 		trace.Reason = "no_winner"
-		logCorrectionTrace(cfg, trace)
+		logCorrectionTrace(cfg, trace, clusterSpots)
 		return "", 0, 0, subjectConfidence, totalReporters, false
 	}
 
@@ -530,7 +528,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 	if cfg.MaxEditDistance >= 0 && centerDistance > cfg.MaxEditDistance {
 		trace.Decision = "rejected"
 		trace.Reason = "max_edit_distance"
-		logCorrectionTrace(cfg, trace)
+		logCorrectionTrace(cfg, trace, clusterSpots)
 		return "", 0, 0, subjectConfidence, totalReporters, false
 	}
 
@@ -547,21 +545,21 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		trace.Decision = "rejected"
 		trace.Reason = "min_reports"
 		trace.MinReports = minReports
-		logCorrectionTrace(cfg, trace)
+		logCorrectionTrace(cfg, trace, clusterSpots)
 		return "", 0, 0, subjectConfidence, totalReporters, false
 	}
 	if bestCount < subjectCount+minAdvantage {
 		trace.Decision = "rejected"
 		trace.Reason = "advantage"
 		trace.MinAdvantage = minAdvantage
-		logCorrectionTrace(cfg, trace)
+		logCorrectionTrace(cfg, trace, clusterSpots)
 		return "", 0, 0, subjectConfidence, totalReporters, false
 	}
 	if bestConfidence < minConf {
 		trace.Decision = "rejected"
 		trace.Reason = "confidence"
 		trace.MinConfidence = minConf
-		logCorrectionTrace(cfg, trace)
+		logCorrectionTrace(cfg, trace, clusterSpots)
 		return "", 0, 0, subjectConfidence, totalReporters, false
 	}
 
@@ -571,14 +569,14 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		if freqSeparation >= cfg.FreqGuardMinSeparationKHz && float64(runnerUp) >= cfg.FreqGuardRunnerUpRatio*float64(bestCount) {
 			trace.Decision = "rejected"
 			trace.Reason = "freq_guard"
-			logCorrectionTrace(cfg, trace)
+			logCorrectionTrace(cfg, trace, clusterSpots)
 			return "", 0, 0, subjectConfidence, totalReporters, false
 		}
 	}
 
 	updateCallQualityForCluster(bestCall, freqHz, &cfg, clusterSpots)
 	trace.Decision = "applied"
-	logCorrectionTrace(cfg, trace)
+	logCorrectionTrace(cfg, trace, clusterSpots)
 
 	return bestCall, bestCount, bestConfidence, subjectConfidence, totalReporters, true
 }
@@ -638,20 +636,14 @@ func updateCallQualityForCluster(winnerCall string, freqHz float64, cfg *Correct
 	}
 }
 
-func logCorrectionTrace(cfg CorrectionSettings, tr CorrectionTrace) {
-	if !cfg.DebugLog {
+func logCorrectionTrace(cfg CorrectionSettings, tr CorrectionTrace, votes []bandmap.SpotEntry) {
+	if !cfg.DebugLog || cfg.TraceLogger == nil {
 		return
 	}
-	logger := cfg.DebugLogger
-	if logger == nil {
-		logger = log.Default()
-	}
-	data, err := json.Marshal(tr)
-	if err != nil {
-		logger.Printf("callcorr trace marshal error: %v", err)
-		return
-	}
-	logger.Println(string(data))
+	cfg.TraceLogger.Enqueue(CorrectionLogEntry{
+		Trace: tr,
+		Votes: votes,
+	})
 }
 
 // normalizeCorrectionSettings fills in safe defaults so callers can omit config

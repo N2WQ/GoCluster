@@ -160,9 +160,10 @@ type CallCorrectionConfig struct {
 	// FrequencyToleranceHz defines how close two frequencies must be to be considered
 	// the same signal when running consensus.
 	FrequencyToleranceHz float64 `yaml:"frequency_tolerance_hz"`
-	// DebugLog, when true, emits a per-subject diagnostic line for call correction decisions.
+	// DebugLog, when true, records call-correction decisions to an asynchronous SQLite log.
 	DebugLog bool `yaml:"debug_log"`
-	// DebugLogFile, when set, writes debug lines to this file (appended).
+	// DebugLogFile optionally overrides the decision log location/prefix; when blank a daily
+	// callcorr_YYYY-MM-DD.db file is written under data/analysis.
 	DebugLogFile string `yaml:"debug_log_file"`
 	// Quality-based anchors: optional per-frequency-bin confidence store.
 	QualityBinHz            int `yaml:"quality_bin_hz"`
