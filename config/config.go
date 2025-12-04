@@ -69,6 +69,7 @@ type RBNConfig struct {
 	Callsign       string `yaml:"callsign"`
 	Name           string `yaml:"name"`
 	KeepSSIDSuffix bool   `yaml:"keep_ssid_suffix"` // when true, retain -# SSIDs for dedup/call-correction
+	SlotBuffer     int    `yaml:"slot_buffer"`      // size of ingest slot buffer between telnet reader and pipeline
 }
 
 // PSKReporterConfig contains PSKReporter MQTT settings
@@ -316,6 +317,15 @@ func Load(filename string) (*Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
+	}
+
+	// RBN ingest buffers should be sized to absorb decode bursts; fall back to
+	// generous defaults when omitted.
+	if cfg.RBN.SlotBuffer <= 0 {
+		cfg.RBN.SlotBuffer = 4000
+	}
+	if cfg.RBNDigital.SlotBuffer <= 0 {
+		cfg.RBNDigital.SlotBuffer = cfg.RBN.SlotBuffer
 	}
 
 	if cfg.Stats.DisplayIntervalSeconds <= 0 {
@@ -614,10 +624,10 @@ func (c *Config) Print() {
 		c.Telnet.ClientBuffer,
 		c.Telnet.SkipHandshake)
 	if c.RBN.Enabled {
-		fmt.Printf("RBN CW/RTTY: %s:%d (as %s)\n", c.RBN.Host, c.RBN.Port, c.RBN.Callsign)
+		fmt.Printf("RBN CW/RTTY: %s:%d (as %s, slot_buffer=%d)\n", c.RBN.Host, c.RBN.Port, c.RBN.Callsign, c.RBN.SlotBuffer)
 	}
 	if c.RBNDigital.Enabled {
-		fmt.Printf("RBN Digital (FT4/FT8): %s:%d (as %s)\n", c.RBNDigital.Host, c.RBNDigital.Port, c.RBNDigital.Callsign)
+		fmt.Printf("RBN Digital (FT4/FT8): %s:%d (as %s, slot_buffer=%d)\n", c.RBNDigital.Host, c.RBNDigital.Port, c.RBNDigital.Callsign, c.RBNDigital.SlotBuffer)
 	}
 	if c.PSKReporter.Enabled {
 		fmt.Printf("PSKReporter: %s:%d (topic: %s)\n", c.PSKReporter.Broker, c.PSKReporter.Port, c.PSKReporter.Topic)

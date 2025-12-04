@@ -1,0 +1,359 @@
+Loading logs...
+
+Found 4182 applied corrections in modified cluster
+Found 303 busted calls in reference cluster
+
+====================================================================================================
+ANALYSIS: Comparing Corrections with Reference Busted Calls
+====================================================================================================
+
+====================================================================================================
+SUMMARY STATISTICS
+====================================================================================================
+Total corrections applied by system:     4182
+Total busted calls in reference:         303
+Correct fixes (matched busted->correct): 356
+Wrong fixes (busted call, wrong answer): 4
+Possible false positives:                3822
+
+Correction Accuracy: 8.5%
+
+====================================================================================================
+EXAMPLES OF CORRECT FIXES (first 20)
+====================================================================================================
+
+1. CORRECT FIX:
+   Time: 2025-12-04T00:36:23 (modified) vs 04-Dec 0038Z (reference)
+   Freq: 7051.4 kHz vs 7051.4 kHz
+   Fixed: N2JP -> N2JPR
+   Reference: N2JP -> N2JPR
+   Confidence: 61% (11/18 spotters)
+   Distance: 1 (model: morse)
+
+2. CORRECT FIX:
+   Time: 2025-12-04T00:38:00 (modified) vs 04-Dec 0038Z (reference)
+   Freq: 7051.4 kHz vs 7051.4 kHz
+   Fixed: N2JP -> N2JPR
+   Reference: N2JP -> N2JPR
+   Confidence: 73% (11/15 spotters)
+   Distance: 1 (model: morse)
+
+3. CORRECT FIX:
+   Time: 2025-12-04T00:38:00 (modified) vs 04-Dec 0038Z (reference)
+   Freq: 7051.4 kHz vs 7051.4 kHz
+   Fixed: N2JP -> N2JPR
+   Reference: N2JP -> N2JPR
+   Confidence: 73% (11/15 spotters)
+   Distance: 1 (model: morse)
+
+4. CORRECT FIX:
+   Time: 2025-12-04T00:38:01 (modified) vs 04-Dec 0038Z (reference)
+   Freq: 7051.4 kHz vs 7051.4 kHz
+   Fixed: N2JP -> N2JPR
+   Reference: N2JP -> N2JPR
+   Confidence: 75% (12/16 spotters)
+   Distance: 1 (model: morse)
+
+5. CORRECT FIX:
+   Time: 2025-12-04T00:38:02 (modified) vs 04-Dec 0038Z (reference)
+   Freq: 7051.4 kHz vs 7051.4 kHz
+   Fixed: N2JP -> N2JPR
+   Reference: N2JP -> N2JPR
+   Confidence: 76% (13/17 spotters)
+   Distance: 1 (model: morse)
+
+6. CORRECT FIX:
+   Time: 2025-12-04T00:38:03 (modified) vs 04-Dec 0038Z (reference)
+   Freq: 7051.4 kHz vs 7051.4 kHz
+   Fixed: N2JP -> N2JPR
+   Reference: N2JP -> N2JPR
+   Confidence: 76% (13/17 spotters)
+   Distance: 1 (model: morse)
+
+7. CORRECT FIX:
+   Time: 2025-12-04T00:38:04 (modified) vs 04-Dec 0038Z (reference)
+   Freq: 7051.4 kHz vs 7051.4 kHz
+   Fixed: N2JP -> N2JPR
+   Reference: N2JP -> N2JPR
+   Confidence: 76% (13/17 spotters)
+   Distance: 1 (model: morse)
+
+8. CORRECT FIX:
+   Time: 2025-12-04T00:38:04 (modified) vs 04-Dec 0038Z (reference)
+   Freq: 7051.4 kHz vs 7051.4 kHz
+   Fixed: N2JP -> N2JPR
+   Reference: N2JP -> N2JPR
+   Confidence: 77% (14/18 spotters)
+   Distance: 1 (model: morse)
+
+9. CORRECT FIX:
+   Time: 2025-12-04T00:38:05 (modified) vs 04-Dec 0038Z (reference)
+   Freq: 7051.4 kHz vs 7051.4 kHz
+   Fixed: N2JP -> N2JPR
+   Reference: N2JP -> N2JPR
+   Confidence: 77% (14/18 spotters)
+   Distance: 1 (model: morse)
+
+10. CORRECT FIX:
+   Time: 2025-12-04T00:38:05 (modified) vs 04-Dec 0038Z (reference)
+   Freq: 7051.4 kHz vs 7051.4 kHz
+   Fixed: N2JP -> N2JPR
+   Reference: N2JP -> N2JPR
+   Confidence: 78% (15/19 spotters)
+   Distance: 1 (model: morse)
+
+11. CORRECT FIX:
+   Time: 2025-12-04T00:38:06 (modified) vs 04-Dec 0038Z (reference)
+   Freq: 7051.4 kHz vs 7051.4 kHz
+   Fixed: N2JP -> N2JPR
+   Reference: N2JP -> N2JPR
+   Confidence: 80% (16/20 spotters)
+   Distance: 1 (model: morse)
+
+12. CORRECT FIX:
+   Time: 2025-12-04T00:38:51 (modified) vs 04-Dec 0038Z (reference)
+   Freq: 7051.4 kHz vs 7051.4 kHz
+   Fixed: N2JP -> N2JPR
+   Reference: N2JP -> N2JPR
+   Confidence: 80% (16/20 spotters)
+   Distance: 1 (model: morse)
+
+13. CORRECT FIX:
+   Time: 2025-12-04T00:56:32 (modified) vs 04-Dec 0056Z (reference)
+   Freq: 10113.0 kHz vs 10113.0 kHz
+   Fixed: K4VSU -> K4VSV
+   Reference: K4VSU -> K4VSV
+   Confidence: 60% (3/5 spotters)
+   Distance: 1 (model: morse)
+
+14. CORRECT FIX:
+   Time: 2025-12-04T00:59:20 (modified) vs 04-Dec 0059Z (reference)
+   Freq: 14019.5 kHz vs 14019.5 kHz
+   Fixed: N6OV -> N6OVP
+   Reference: N6OV -> N6OVP
+   Confidence: 66% (8/12 spotters)
+   Distance: 1 (model: morse)
+
+15. CORRECT FIX:
+   Time: 2025-12-04T00:59:21 (modified) vs 04-Dec 0059Z (reference)
+   Freq: 14019.5 kHz vs 14019.5 kHz
+   Fixed: N6OV -> N6OVP
+   Reference: N6OV -> N6OVP
+   Confidence: 69% (9/13 spotters)
+   Distance: 1 (model: morse)
+
+16. CORRECT FIX:
+   Time: 2025-12-04T00:59:23 (modified) vs 04-Dec 0059Z (reference)
+   Freq: 14019.6 kHz vs 14019.5 kHz
+   Fixed: N6OV -> N6OVP
+   Reference: N6OV -> N6OVP
+   Confidence: 73% (11/15 spotters)
+   Distance: 1 (model: morse)
+
+17. CORRECT FIX:
+   Time: 2025-12-04T00:59:24 (modified) vs 04-Dec 0059Z (reference)
+   Freq: 14019.5 kHz vs 14019.5 kHz
+   Fixed: N6OV -> N6OVP
+   Reference: N6OV -> N6OVP
+   Confidence: 75% (12/16 spotters)
+   Distance: 1 (model: morse)
+
+18. CORRECT FIX:
+   Time: 2025-12-04T00:59:27 (modified) vs 04-Dec 0059Z (reference)
+   Freq: 14019.5 kHz vs 14019.5 kHz
+   Fixed: N6OV -> N6OVP
+   Reference: N6OV -> N6OVP
+   Confidence: 75% (12/16 spotters)
+   Distance: 1 (model: morse)
+
+19. CORRECT FIX:
+   Time: 2025-12-04T00:59:38 (modified) vs 04-Dec 0059Z (reference)
+   Freq: 14019.5 kHz vs 14019.5 kHz
+   Fixed: N6OV -> N6OVP
+   Reference: N6OV -> N6OVP
+   Confidence: 76% (13/17 spotters)
+   Distance: 1 (model: morse)
+
+20. CORRECT FIX:
+   Time: 2025-12-04T00:59:45 (modified) vs 04-Dec 0059Z (reference)
+   Freq: 14019.5 kHz vs 14019.5 kHz
+   Fixed: N6OV -> N6OVP
+   Reference: N6OV -> N6OVP
+   Confidence: 73% (14/19 spotters)
+   Distance: 1 (model: morse)
+
+====================================================================================================
+EXAMPLES OF WRONG FIXES
+====================================================================================================
+
+1. WRONG FIX:
+   Time: 2025-12-04T01:39:39 vs 04-Dec 0139Z
+   Freq: 7045.0 kHz vs 7045.0 kHz
+   Our fix: W1MN -> W1WC
+   Correct: W1MN -> W1MO
+   Confidence: 94%
+
+2. WRONG FIX:
+   Time: 2025-12-04T01:40:00 vs 04-Dec 0139Z
+   Freq: 7045.0 kHz vs 7045.0 kHz
+   Our fix: W1MN -> W1WC
+   Correct: W1MN -> W1MO
+   Confidence: 95%
+
+3. WRONG FIX:
+   Time: 2025-12-04T10:51:45 vs 04-Dec 1051Z
+   Freq: 18082.2 kHz vs 18082.2 kHz
+   Our fix: R4FT -> R4FD
+   Correct: R4FT -> R4FDH
+   Confidence: 97%
+
+4. WRONG FIX:
+   Time: 2025-12-04T11:22:46 vs 04-Dec 1122Z
+   Freq: 7017.0 kHz vs 7017.0 kHz
+   Our fix: RA0CD -> AU0CDZ
+   Correct: RA0CD -> RA0CDZ
+   Confidence: 50%
+
+====================================================================================================
+POSSIBLE FALSE POSITIVES (first 15) - corrections with no matching busted call
+====================================================================================================
+
+1. Time: 2025-12-04T00:32:59, Freq: 3558.0 kHz
+   Corrected: WD6VWD -> WD6V
+   Confidence: 80% (4/5 spotters)
+   Distance: 2
+
+2. Time: 2025-12-04T00:36:20, Freq: 7014.0 kHz
+   Corrected: W1HL -> W1HLP
+   Confidence: 88% (8/9 spotters)
+   Distance: 1
+
+3. Time: 2025-12-04T00:38:39, Freq: 7043.0 kHz
+   Corrected: KE4IC -> KE4SC
+   Confidence: 93% (15/16 spotters)
+   Distance: 1
+
+4. Time: 2025-12-04T00:39:08, Freq: 7043.0 kHz
+   Corrected: K4IC -> KE4SC
+   Confidence: 95% (19/20 spotters)
+   Distance: 2
+
+5. Time: 2025-12-04T00:41:52, Freq: 14004.9 kHz
+   Corrected: VE3NF -> VE3NFN
+   Confidence: 87% (14/16 spotters)
+   Distance: 1
+
+6. Time: 2025-12-04T00:42:03, Freq: 14004.3 kHz
+   Corrected: TK2B -> AK2B
+   Confidence: 95% (19/20 spotters)
+   Distance: 1
+
+7. Time: 2025-12-04T00:42:17, Freq: 7026.1 kHz
+   Corrected: K4U -> K4UX
+   Confidence: 98% (52/53 spotters)
+   Distance: 1
+
+8. Time: 2025-12-04T00:42:25, Freq: 7026.1 kHz
+   Corrected: K4U -> K4UX
+   Confidence: 98% (54/55 spotters)
+   Distance: 1
+
+9. Time: 2025-12-04T00:42:25, Freq: 7016.0 kHz
+   Corrected: TC3S -> NC3S
+   Confidence: 95% (22/23 spotters)
+   Distance: 1
+
+10. Time: 2025-12-04T00:42:27, Freq: 7026.1 kHz
+   Corrected: K4U -> K4UX
+   Confidence: 98% (54/55 spotters)
+   Distance: 1
+
+11. Time: 2025-12-04T00:42:29, Freq: 7026.1 kHz
+   Corrected: K4U -> K4UX
+   Confidence: 98% (55/56 spotters)
+   Distance: 1
+
+12. Time: 2025-12-04T00:42:30, Freq: 7026.1 kHz
+   Corrected: K4U -> K4UX
+   Confidence: 98% (55/56 spotters)
+   Distance: 1
+
+13. Time: 2025-12-04T00:42:31, Freq: 7026.1 kHz
+   Corrected: K4U -> K4UX
+   Confidence: 98% (55/56 spotters)
+   Distance: 1
+
+14. Time: 2025-12-04T00:42:33, Freq: 7026.1 kHz
+   Corrected: K4U -> K4UX
+   Confidence: 98% (55/56 spotters)
+   Distance: 1
+
+15. Time: 2025-12-04T00:42:34, Freq: 7026.1 kHz
+   Corrected: K4U -> K4UX
+   Confidence: 98% (56/57 spotters)
+   Distance: 1
+
+====================================================================================================
+MISSED CORRECTIONS (first 20) - busted calls we didn't fix
+====================================================================================================
+Total missed: 208
+
+1. Time: 04-Dec 0003Z, Freq: 14026.4 kHz
+   Busted: PY2HA -> Should be: PY2H
+
+2. Time: 04-Dec 0008Z, Freq: 7027.0 kHz
+   Busted: K4U -> Should be: K4UX
+
+3. Time: 04-Dec 0008Z, Freq: 7027.0 kHz
+   Busted: K4U -> Should be: K4UX
+
+4. Time: 04-Dec 0008Z, Freq: 7027.0 kHz
+   Busted: K4UX -> Should be: K4U
+
+5. Time: 04-Dec 0008Z, Freq: 7027.0 kHz
+   Busted: K4UX -> Should be: K4U
+
+6. Time: 04-Dec 0009Z, Freq: 14026.4 kHz
+   Busted: PY2HA -> Should be: PY2H
+
+7. Time: 04-Dec 0009Z, Freq: 14026.3 kHz
+   Busted: PY2HA -> Should be: PY2H
+
+8. Time: 04-Dec 0010Z, Freq: 1810.5 kHz
+   Busted: W4TLT -> Should be: W4NLT
+
+9. Time: 04-Dec 0014Z, Freq: 14025.5 kHz
+   Busted: TI5POA -> Should be: KI5POA
+
+10. Time: 04-Dec 0022Z, Freq: 7034.4 kHz
+   Busted: K3AAM -> Should be: K3AWT
+
+11. Time: 04-Dec 0022Z, Freq: 7034.4 kHz
+   Busted: K3AJ -> Should be: K3AWT
+
+12. Time: 04-Dec 0022Z, Freq: 7034.4 kHz
+   Busted: K3AJ -> Should be: K3AWT
+
+13. Time: 04-Dec 0029Z, Freq: 1810.5 kHz
+   Busted: W4NRT -> Should be: W4NLT
+
+14. Time: 04-Dec 0054Z, Freq: 14055.4 kHz
+   Busted: VE3SYO -> Should be: VE3S
+
+15. Time: 04-Dec 0056Z, Freq: 14055.5 kHz
+   Busted: VE3UYO -> Should be: VE3SYO
+
+16. Time: 04-Dec 0101Z, Freq: 14055.5 kHz
+   Busted: VE3SYO -> Should be: VE3S
+
+17. Time: 04-Dec 0102Z, Freq: 14055.5 kHz
+   Busted: VE3SYO -> Should be: VE3S
+
+18. Time: 04-Dec 0102Z, Freq: 14055.5 kHz
+   Busted: VE3SYO -> Should be: VE3S
+
+19. Time: 04-Dec 0106Z, Freq: 14038.6 kHz
+   Busted: KA3F -> Should be: KA3FAD
+
+20. Time: 04-Dec 0109Z, Freq: 7055.5 kHz
+   Busted: AM5XF -> Should be: KJ5XF

@@ -413,7 +413,7 @@ func main() {
 	// RBN spots go INTO the deduplicator input channel
 	var rbnClient *rbn.Client
 	if cfg.RBN.Enabled {
-		rbnClient = rbn.NewClient(cfg.RBN.Host, cfg.RBN.Port, cfg.RBN.Callsign, cfg.RBN.Name, ctyDB, skewStore, cfg.RBN.KeepSSIDSuffix)
+		rbnClient = rbn.NewClient(cfg.RBN.Host, cfg.RBN.Port, cfg.RBN.Callsign, cfg.RBN.Name, ctyDB, skewStore, cfg.RBN.KeepSSIDSuffix, cfg.RBN.SlotBuffer)
 		rbnClient.SetUnlicensedReporter(unlicensedReporter)
 		err = rbnClient.Connect()
 		if err != nil {
@@ -428,7 +428,7 @@ func main() {
 	// RBN Digital spots go INTO the deduplicator input channel
 	var rbnDigitalClient *rbn.Client
 	if cfg.RBNDigital.Enabled {
-		rbnDigitalClient = rbn.NewClient(cfg.RBNDigital.Host, cfg.RBNDigital.Port, cfg.RBNDigital.Callsign, cfg.RBNDigital.Name, ctyDB, skewStore, cfg.RBNDigital.KeepSSIDSuffix)
+		rbnDigitalClient = rbn.NewClient(cfg.RBNDigital.Host, cfg.RBNDigital.Port, cfg.RBNDigital.Callsign, cfg.RBNDigital.Name, ctyDB, skewStore, cfg.RBNDigital.KeepSSIDSuffix, cfg.RBNDigital.SlotBuffer)
 		rbnDigitalClient.SetUnlicensedReporter(unlicensedReporter)
 		err = rbnDigitalClient.Connect()
 		if err != nil {

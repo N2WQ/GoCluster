@@ -68,7 +68,7 @@ call_correction:
   invalid_action: "broadcast"     # "broadcast" original if correction fails CTY, or "suppress" to drop spot
   min_snr_cw: 4                   # Ignore CW corroborators weaker than this many dB
   min_snr_rtty: 3                 # Ignore RTTY corroborators weaker than this many dB
-  distance3_extra_reports: 1      # Extra unique supporters required when suggested call is distance 3
+  distance3_extra_reports: 0      # Extra unique supporters required when suggested call is distance 3
   distance3_extra_advantage: 1    # Extra advantage over the subject required when distance 3
   distance3_extra_confidence: 5   # Extra confidence percentage points required when distance 3
   distance_cache_size: 8192       # Memoize call distance calculations (entries)
@@ -115,6 +115,7 @@ rbn:
   host: "telnet.reversebeacon.net"
   port: 7000
   callsign: "N0CW"               # Change this to your callsign!
+  slot_buffer: 1000              # Buffer depth between telnet reader and pipeline (per-spot queue)
   keep_ssid_suffix: true         # false collapses VE3EID-1/-2 into VE3EID-#
 
 rbn_digital:
@@ -123,6 +124,7 @@ rbn_digital:
   host: "telnet.reversebeacon.net"
   port: 7001
   callsign: "N0FT"              # Change this to your callsign!
+  slot_buffer: 1000             # Buffer depth between telnet reader and pipeline (FT4/FT8 bursts are spiky)
   keep_ssid_suffix: true        # false collapses VE3EID-1/-2 into VE3EID-#
 
 pskreporter:

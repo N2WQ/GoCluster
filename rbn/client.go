@@ -62,6 +62,8 @@ type Client struct {
 	stopOnce  sync.Once
 	keepSSID  bool
 
+	bufferSize int
+
 	unlicensedReporter UnlicensedReporter
 	unlicensedQueue    chan unlicensedEvent
 }
@@ -79,19 +81,25 @@ func ConfigureCallCache(size int, ttl time.Duration) {
 	rbnNormalizeCache = spot.NewCallCache(rbnCallCacheSize, rbnCallCacheTTL)
 }
 
-// NewClient creates a new RBN client
-func NewClient(host string, port int, callsign string, name string, lookup *cty.CTYDatabase, skewStore *skew.Store, keepSSID bool) *Client {
+// NewClient creates a new RBN client. bufferSize controls how many parsed spots
+// can queue between the telnet reader and the downstream pipeline; it should be
+// sized to absorb RBN burstiness (especially FT8/FT4 decode cycles).
+func NewClient(host string, port int, callsign string, name string, lookup *cty.CTYDatabase, skewStore *skew.Store, keepSSID bool, bufferSize int) *Client {
+	if bufferSize <= 0 {
+		bufferSize = 100 // legacy default; callers should override via config
+	}
 	return &Client{
-		host:      host,
-		port:      port,
-		callsign:  callsign,
-		name:      name,
-		shutdown:  make(chan struct{}),
-		spotChan:  make(chan *spot.Spot, 100),
-		lookup:    lookup,
-		skewStore: skewStore,
-		reconnect: make(chan struct{}, 1),
-		keepSSID:  keepSSID,
+		host:       host,
+		port:       port,
+		callsign:   callsign,
+		name:       name,
+		shutdown:   make(chan struct{}),
+		spotChan:   make(chan *spot.Spot, bufferSize),
+		lookup:     lookup,
+		skewStore:  skewStore,
+		reconnect:  make(chan struct{}, 1),
+		keepSSID:   keepSSID,
+		bufferSize: bufferSize,
 	}
 }
 
@@ -581,7 +589,7 @@ func (c *Client) parseSpot(line string) {
 	case c.spotChan <- s:
 		// Spot sent successfully (logging handled by stats tracker)
 	default:
-		log.Println("RBN: Spot channel full, dropping spot")
+		log.Printf("%s: Spot channel full (capacity=%d), dropping spot", c.displayName(), cap(c.spotChan))
 	}
 }
 

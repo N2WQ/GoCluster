@@ -82,6 +82,12 @@ func (m *activityMonitor) Increment(now time.Time) {
 	defer m.mu.Unlock()
 	m.rotateBuckets(now)
 	idx := m.bucketIndex(now)
+	// When we land in a reused bucket, refresh its start to the current minute so
+	// the window math stays accurate as time advances.
+	if m.buckets[idx].start.IsZero() || now.Sub(m.buckets[idx].start) >= time.Minute {
+		m.buckets[idx].start = now.Truncate(time.Minute)
+		m.buckets[idx].count = 0
+	}
 	m.buckets[idx].count++
 }
 
