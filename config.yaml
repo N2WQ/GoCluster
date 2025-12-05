@@ -1,4 +1,4 @@
-# DX Cluster Configuration
+# DX Cluster Configuration (ordered by pipeline flow)
 
 server:
   name: "Go Cluster beta 1"
@@ -7,42 +7,48 @@ server:
 stats:
   display_interval_seconds: 60  # How often to print stats to stdout
 
-# Telnet server (user-facing interface)
-telnet:
-  port: 8300
-  tls_enabled: false
-  max_connections: 100
-  welcome_message: "\r\nExperimental DX Cluster\r\n"
-  login_greeting: "\r\n<CALL> de <CLUSTER>>\r\n"
-  duplicate_login_message: "Another login for your callsign connected. This session is being closed (multiple logins are not allowed)."
-  broadcast_workers: 0            # 0 means automatic (uses all CPU cores, minimum 2)
-  broadcast_queue_size: 20480     # Buffer depth for the global telnet broadcast queue
-  worker_queue_size: 512          # Jobs queued per broadcast worker before dropping
-  client_buffer_size: 512         # Per-client spot backlog before a slow session drops spots
-  skip_handshake: true            # Set true to disable Telnet option negotiation (raw TCP clients)
+# Spot sources (ingest)
+rbn:
+  enabled: true
+  name: "RBN-CW-RTTY"
+  host: "telnet.reversebeacon.net"
+  port: 7000
+  callsign: "N0CW"               # Change this to your callsign!
+  slot_buffer: 1000              # Buffer depth between telnet reader and pipeline (per-spot queue)
+  keep_ssid_suffix: false        # Broadcast: true preserves SSIDs; false collapses to base-# for display
 
-# Default filters applied to new users
-filter:
-  default_modes:
-    - CW
-    - LSB
-    - USB
-    - RTTY
+rbn_digital:
+  enabled: true
+  name: "RBN-FT4-FT8"
+  host: "telnet.reversebeacon.net"
+  port: 7001
+  callsign: "N0FT"              # Change this to your callsign!
+  slot_buffer: 1000             # Buffer depth between telnet reader and pipeline (FT4/FT8 bursts are spiky)
+  keep_ssid_suffix: true        # Broadcast: true preserves SSIDs; false collapses to base-#
 
-# Core processing / protections
-dedup:
-  cluster_window_seconds: 120     # Dedup window in seconds (0 disables dedup without changing the pipeline)
-  secondary_window_seconds: 60    # Secondary (broadcast-only) dedup window in seconds
-  prefer_stronger_snr: true       # When duplicates collide, keep the strongest SNR version
-  secondary_prefer_stronger_snr: false # Secondary dedupe: keep strongest SNR within country+zone bucket
-  output_buffer_size: 40960       # Capacity of the dedup output channel (raise to reduce drops)
+pskreporter:
+  enabled: false
+  name: "PSKReporter"
+  broker: "mqtt.pskreporter.info"
+  port: 1883
+  modes: ["FT8", "FT4", "CW", "RTTY"]  # List of MQTT modes to subscribe to
+  workers: 0                           # 0 means automatic (uses all CPU cores, minimum 1)
+  append_spotter_ssid: true            # Append "-#" to receiver calls lacking an SSID for dedup
 
-# Shared callsign normalization cache (spotters + DX calls)
+# Normalization/cache (shared across sources)
 call_cache:
   size: 4096                      # Max cached entries for normalized calls/spotters
   ttl_seconds: 600                # Expire cached entries after this many seconds (>0)
 
-# Consensus thresholds for automated call corrections (only CW/RTTY/USB/LSB considered)
+# Core protections (primary pipeline)
+dedup:
+  cluster_window_seconds: 120     # Primary dedup window (all sources before ring)
+  secondary_window_seconds: 60    # Secondary dedup window (broadcast-only, by DE DXCC+zone)
+  prefer_stronger_snr: true       # Primary: keep strongest SNR on duplicate collisions
+  secondary_prefer_stronger_snr: false # Secondary: keep strongest SNR within country+zone bucket
+  output_buffer_size: 40960       # Capacity of dedup output channel (raise to reduce drops)
+
+# Consensus-based call correction (CW/RTTY/SSB; FT8/FT4 are skipped)
 call_correction:
   enabled: true                   # Master switch (set true to enable)
   strategy: "majority"            # Strategy: majority | center | classic
@@ -138,7 +144,7 @@ call_correction:
         normal_min_reports: 3
         busy_min_reports: 4
 
-# Harmonic suppression for CW/USB/LSB/RTTY signals
+# Harmonic suppression (CW/USB/LSB/RTTY)
 harmonics:
   enabled: true                   # Suppress harmonics when true
   recency_seconds: 120            # Look-back window for fundamental spots
@@ -147,41 +153,14 @@ harmonics:
   min_report_delta: 6             # Harmonics must be at least this many dB weaker to drop
   min_report_delta_step: 3.5      # Additional dB required per harmonic order above the second
 
+# Generic spot policy (post-protections)
 spot_policy:
   max_age_seconds: 300                   # Drop spots older than this many seconds (based on spot timestamp)
   frequency_averaging_seconds: 120       # Look-back window for CW/RTTY frequency averaging
   frequency_averaging_tolerance_hz: 500  # Max deviation between reports when averaging
   frequency_averaging_min_reports: 5     # Minimum corroborating reports needed to adjust frequency
 
-# Spot sources
-rbn:
-  enabled: true
-  name: "RBN-CW-RTTY"
-  host: "telnet.reversebeacon.net"
-  port: 7000
-  callsign: "N0CW"               # Change this to your callsign!
-  slot_buffer: 1000              # Buffer depth between telnet reader and pipeline (per-spot queue)
-  keep_ssid_suffix: true         # false collapses VE3EID-1/-2 into VE3EID-#
-
-rbn_digital:
-  enabled: true
-  name: "RBN-FT4-FT8"
-  host: "telnet.reversebeacon.net"
-  port: 7001
-  callsign: "N0FT"              # Change this to your callsign!
-  slot_buffer: 1000             # Buffer depth between telnet reader and pipeline (FT4/FT8 bursts are spiky)
-  keep_ssid_suffix: true        # false collapses VE3EID-1/-2 into VE3EID-#
-
-pskreporter:
-  enabled: false
-  name: "PSKReporter"
-  broker: "mqtt.pskreporter.info"
-  port: 1883
-  modes: ["FT8", "FT4", "CW", "RTTY"]  # List of MQTT modes to subscribe to
-  workers: 0                           # 0 means automatic (uses all CPU cores, minimum 1)
-  append_spotter_ssid: true            # Append "-#" to receiver calls lacking an SSID for dedup
-
-# Reference data and persistence
+# Reference data (CTY/known/FCC/skew)
 cty:
   file: "data/cty/cty.plist"           # Path to the CTY prefix database (cty.plist)
 
@@ -214,5 +193,28 @@ skew:
   min_spots: 500                       # Require this many spots before trusting a skimmer's correction
   refresh_utc: "00:30"                 # Daily download time in HH:MM UTC
 
+# Persistence
 buffer:
-  capacity: 250000                     # Number of spots held in the in-memory ring buffer
+  capacity: 250000                     # Number of spots held in the in-memory ring buffer (post-primary dedup)
+
+# Telnet server (user-facing interface)
+telnet:
+  port: 8300
+  tls_enabled: false
+  max_connections: 100
+  welcome_message: "\r\nExperimental DX Cluster\r\n"
+  login_greeting: "\r\n<CALL> de <CLUSTER>>\r\n"
+  duplicate_login_message: "Another login for your callsign connected. This session is being closed (multiple logins are not allowed)."
+  broadcast_workers: 0            # 0 means automatic (uses all CPU cores, minimum 2)
+  broadcast_queue_size: 20480     # Buffer depth for the global telnet broadcast queue
+  worker_queue_size: 512          # Jobs queued per broadcast worker before dropping
+  client_buffer_size: 512         # Per-client spot backlog before a slow session drops spots
+  skip_handshake: true            # Set true to disable Telnet option negotiation (raw TCP clients)
+
+# Default filters applied to new users
+filter:
+  default_modes:
+    - CW
+    - LSB
+    - USB
+    - RTTY
