@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sqlite3:*)",
+      "Bash(go build:*)",
+      "Bash(./analyze1a.exe:*)",
+      "Bash(./investigate_reappearances.exe)",
+      "Bash(./simulate_threshold.exe:*)",
+      "Bash(./analyze_distance3.exe:*)",
+      "Bash(find:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

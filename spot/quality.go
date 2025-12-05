@@ -29,6 +29,9 @@ func freqBinHz(freqHz float64, binSizeHz int) int {
 	if binSizeHz <= 0 {
 		binSizeHz = 1000
 	}
+	if freqHz <= 0 {
+		return -1 // sentinel for global priors that apply to all bins
+	}
 	return int(freqHz) / binSizeHz
 }
 
@@ -41,10 +44,20 @@ func (s *CallQualityStore) Get(call string, freqHz float64, binSizeHz int) int {
 	if call == "" {
 		return 0
 	}
-	key := callFreqKey{Call: call, Bin: freqBinHz(freqHz, binSizeHz)}
+	bin := freqBinHz(freqHz, binSizeHz)
+	key := callFreqKey{Call: call, Bin: bin}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.data[key]
+	if v, ok := s.data[key]; ok {
+		return v
+	}
+	// Fallback to a global prior (bin -1) when present.
+	if bin != -1 {
+		if v, ok := s.data[callFreqKey{Call: call, Bin: -1}]; ok {
+			return v
+		}
+	}
+	return 0
 }
 
 // Add adjusts the quality score for a call/bin by delta.

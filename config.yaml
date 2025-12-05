@@ -51,7 +51,7 @@ call_correction:
   debug_log_file: "data/logs/callcorr_debug_modified.log"              # Optional path/prefix for the daily decision DB (defaults to data/analysis/callcorr_YYYY-MM-DD.db)
   min_consensus_reports: 3        # Minimum number of corroborating spotters
   min_advantage: 1                # Candidate must exceed the original by this many spotters
-  min_confidence_percent: 60      # Candidate supporters must represent at least this percent of unique spotters
+  min_confidence_percent: 55      # Candidate supporters must represent at least this percent of unique spotters
   recency_seconds: 360            # Supporting spots must be this recent (default for all modes)
   recency_seconds_cw: 0           # Optional override for CW (0 = inherit recency_seconds)
   recency_seconds_rtty: 0         # Optional override for RTTY (0 = inherit recency_seconds)
@@ -83,6 +83,9 @@ call_correction:
     delete: 1                     # Cost to delete a bit in ITA2 patterns
     sub: 2                        # Cost to flip a bit in ITA2 patterns
     scale: 2                      # Multiplier for normalized ITA2 cost before rounding
+  quality_priors_file: ""         # Optional path to seed call quality priors (CALL SCORE [FREQ_KHZ])
+  spotter_reliability_file: ""    # Optional path with spotter weights (SPOTTER WEIGHT 0-1)
+  min_spotter_reliability: 0.0    # Ignore reporters below this reliability weight
   adaptive_refresh:
     busy_threshold_per_min: 500   # Enter busy when the 10m average exceeds this rate
     quiet_threshold_per_min: 300  # Exit busy after two windows below this rate

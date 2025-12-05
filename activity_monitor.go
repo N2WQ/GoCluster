@@ -44,6 +44,10 @@ func newActivityMonitor(cfg config.AdaptiveRefreshConfig, logger *log.Logger) *a
 	}
 }
 
+// Start begins periodic evaluation of recent CW/RTTY spot rates using the
+// configured evaluation period. A nil monitor is a no-op so callers do not
+// need to guard it. Busy/quiet transitions are logged when thresholds are
+// crossed; the current state is kept in-memory for future refresh hooks.
 func (m *activityMonitor) Start() {
 	if m == nil {
 		return
@@ -73,7 +77,10 @@ func (m *activityMonitor) Stop() {
 	close(m.stopCh)
 }
 
-// Increment records a spot at the given time.
+// Increment records a single CW/RTTY spot observation at the provided time.
+// The call is safe to invoke from hot paths; it locks briefly to bump the
+// bucket for the current minute and resets stale buckets when the sliding
+// window advances.
 func (m *activityMonitor) Increment(now time.Time) {
 	if m == nil {
 		return
@@ -96,6 +103,8 @@ func (m *activityMonitor) bucketIndex(t time.Time) int {
 	return minutes
 }
 
+// rotateBuckets zeros out any buckets that have aged beyond the configured
+// window so rate calculations only consider recent activity.
 func (m *activityMonitor) rotateBuckets(now time.Time) {
 	for i := range m.buckets {
 		if now.Sub(m.buckets[i].start) >= time.Duration(len(m.buckets))*time.Minute {
@@ -105,6 +114,10 @@ func (m *activityMonitor) rotateBuckets(now time.Time) {
 	}
 }
 
+// evaluate recomputes the average rate over the sliding window and updates
+// the busy/quiet state machine, emitting logs when transitions occur. It
+// should be called on the monitor's ticker; callers pass the current time
+// to ease testing.
 func (m *activityMonitor) evaluate(now time.Time) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

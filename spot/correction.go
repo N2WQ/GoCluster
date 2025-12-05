@@ -73,6 +73,10 @@ type CorrectionSettings struct {
 	// bursts. Disable by setting size<=0 or ttl<=0.
 	DistanceCacheSize int
 	DistanceCacheTTL  time.Duration
+	// Spotter reliability weights (0..1). Reporters below MinSpotterReliability are ignored
+	// when counting corroborators.
+	SpotterReliability    SpotterReliability
+	MinSpotterReliability float64
 }
 
 var correctionEligibleModes = map[string]struct{}{
@@ -350,6 +354,10 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		return entry
 	}
 	addReporter := func(call, reporter string, seenAt time.Time, freqKHz float64) {
+		// Ignore reporters that fall below the configured reliability floor.
+		if reliabilityFor(cfg.SpotterReliability, reporter) < cfg.MinSpotterReliability {
+			return
+		}
 		entry := ensureCallEntry(call)
 		entry.reporters[reporter] = struct{}{}
 		if seenAt.After(entry.lastSeen) {
@@ -716,6 +724,9 @@ func normalizeCorrectionSettings(settings CorrectionSettings) CorrectionSettings
 		if cfg.DistanceCacheTTL <= 0 {
 			cfg.DistanceCacheTTL = 2 * time.Minute
 		}
+	}
+	if cfg.MinSpotterReliability < 0 {
+		cfg.MinSpotterReliability = 0
 	}
 	return cfg
 }

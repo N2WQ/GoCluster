@@ -212,6 +212,11 @@ type CallCorrectionConfig struct {
 	BaudotWeights BaudotWeightConfig `yaml:"baudot_weights"`
 	// AdaptiveRefresh tunes the activity-based refresh cadence for trust sets.
 	AdaptiveRefresh AdaptiveRefreshConfig `yaml:"adaptive_refresh"`
+	// Optional prior quality map loaded at startup to seed anchors before runtime learning.
+	QualityPriorsFile string `yaml:"quality_priors_file"`
+	// Optional spotter reliability weights (0-1). Reporters below MinSpotterReliability are ignored.
+	SpotterReliabilityFile string  `yaml:"spotter_reliability_file"`
+	MinSpotterReliability  float64 `yaml:"min_spotter_reliability"`
 }
 
 // MorseWeightConfig tunes the Morse-aware edit costs used for CW distance.
@@ -422,6 +427,9 @@ func Load(filename string) (*Config, error) {
 	}
 	if cfg.CallCorrection.Distance3ExtraConfidence < 0 {
 		cfg.CallCorrection.Distance3ExtraConfidence = 0
+	}
+	if cfg.CallCorrection.MinSpotterReliability < 0 {
+		cfg.CallCorrection.MinSpotterReliability = 0
 	}
 	if cfg.CallCorrection.DistanceCacheSize <= 0 {
 		cfg.CallCorrection.DistanceCacheSize = 5000

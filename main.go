@@ -247,6 +247,22 @@ func main() {
 	}
 	spot.ConfigureMorseWeights(cfg.CallCorrection.MorseWeights.Insert, cfg.CallCorrection.MorseWeights.Delete, cfg.CallCorrection.MorseWeights.Sub, cfg.CallCorrection.MorseWeights.Scale)
 	spot.ConfigureBaudotWeights(cfg.CallCorrection.BaudotWeights.Insert, cfg.CallCorrection.BaudotWeights.Delete, cfg.CallCorrection.BaudotWeights.Sub, cfg.CallCorrection.BaudotWeights.Scale)
+	if priors := strings.TrimSpace(cfg.CallCorrection.QualityPriorsFile); priors != "" {
+		if n, err := spot.LoadCallQualityPriors(priors, cfg.CallCorrection.QualityBinHz); err != nil {
+			log.Printf("Warning: failed to load quality priors from %s: %v", priors, err)
+		} else {
+			log.Printf("Loaded %d call quality priors from %s", n, priors)
+		}
+	}
+	var spotterReliability spot.SpotterReliability
+	if relPath := strings.TrimSpace(cfg.CallCorrection.SpotterReliabilityFile); relPath != "" {
+		if rel, n, err := spot.LoadSpotterReliability(relPath); err != nil {
+			log.Printf("Warning: failed to load spotter reliability from %s: %v", relPath, err)
+		} else {
+			spotterReliability = rel
+			log.Printf("Loaded %d spotter reliability weights from %s", n, relPath)
+		}
+	}
 	activity := newActivityMonitor(cfg.CallCorrection.AdaptiveRefresh, log.Default())
 	if activity != nil {
 		activity.Start()
@@ -404,7 +420,7 @@ func main() {
 	}
 
 	// Start the unified output processor once the telnet server is ready
-	go processOutputSpots(deduplicator, spotBuffer, telnetServer, statsTracker, correctionIndex, cfg.CallCorrection, ctyDB, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, ui, gridUpdater, gridLookup, unlicensedReporter, corrLogger, activity)
+	go processOutputSpots(deduplicator, spotBuffer, telnetServer, statsTracker, correctionIndex, cfg.CallCorrection, ctyDB, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, ui, gridUpdater, gridLookup, unlicensedReporter, corrLogger, activity, spotterReliability)
 
 	// Connect to RBN CW/RTTY feed if enabled (port 7000)
 	// RBN spots go INTO the deduplicator input channel
@@ -690,6 +706,7 @@ func processOutputSpots(
 	unlicensedReporter func(source, role, call, mode string, freq float64),
 	corrLogger spot.CorrectionTraceLogger,
 	activity *activityMonitor,
+	spotterReliability spot.SpotterReliability,
 ) {
 	outputChan := deduplicator.GetOutputChannel()
 
@@ -740,7 +757,7 @@ func processOutputSpots(
 
 			var suppress bool
 			if telnet != nil && !s.IsBeacon {
-				suppress = maybeApplyCallCorrectionWithLogger(s, correctionIdx, correctionCfg, ctyDB, knownCalls, tracker, dash, corrLogger)
+				suppress = maybeApplyCallCorrectionWithLogger(s, correctionIdx, correctionCfg, ctyDB, knownCalls, tracker, dash, corrLogger, spotterReliability)
 				if suppress {
 					return
 				}
@@ -919,11 +936,11 @@ func metadataFromPrefix(info *cty.PrefixInfo) spot.CallMetadata {
 	}
 }
 
-func maybeApplyCallCorrection(spotEntry *spot.Spot, idx *spot.CorrectionIndex, cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns], tracker *stats.Tracker, dash *dashboard) bool {
-	return maybeApplyCallCorrectionWithLogger(spotEntry, idx, cfg, ctyDB, knownPtr, tracker, dash, nil)
+func maybeApplyCallCorrection(spotEntry *spot.Spot, idx *spot.CorrectionIndex, cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns], tracker *stats.Tracker, dash *dashboard, spotterReliability spot.SpotterReliability) bool {
+	return maybeApplyCallCorrectionWithLogger(spotEntry, idx, cfg, ctyDB, knownPtr, tracker, dash, nil, spotterReliability)
 }
 
-func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.CorrectionIndex, cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns], tracker *stats.Tracker, dash *dashboard, traceLogger spot.CorrectionTraceLogger) bool {
+func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.CorrectionIndex, cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns], tracker *stats.Tracker, dash *dashboard, traceLogger spot.CorrectionTraceLogger, spotterReliability spot.SpotterReliability) bool {
 	if spotEntry == nil {
 		return false
 	}
@@ -962,6 +979,8 @@ func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.Correcti
 		QualityGoodThreshold:     cfg.QualityGoodThreshold,
 		QualityNewCallIncrement:  cfg.QualityNewCallIncrement,
 		QualityBustedDecrement:   cfg.QualityBustedDecrement,
+		SpotterReliability:       spotterReliability,
+		MinSpotterReliability:    cfg.MinSpotterReliability,
 	}
 	others := idx.Candidates(spotEntry, now, window)
 	entries := spotsToEntries(others)

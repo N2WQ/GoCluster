@@ -1,0 +1,49 @@
+Daily Spot Analysis Prompt
+--------------------------
+Purpose: Repeatable steps to compare the cluster corrections against the reference “Busted” log for the day.
+
+Inputs:
+- Cluster SQLite DB: data/logs/callcorr_debug_modified_YYYY-MM-DD.db
+- Reference log: data/logs/Busted-DD-MMM-YYYY.txt
+- sqlite3 in PATH (or use the bundled sqlite-tools temp folder we download).
+
+Prompt to run each day (adjust date filenames accordingly):
+
+1) Verify DB window
+   - sqlite3 data/logs/callcorr_debug_modified_YYYY-MM-DD.db "select datetime(min(ts),'unixepoch'), datetime(max(ts),'unixepoch'), count(*) from decisions;"
+
+2) Applied volume and unique pairs
+   - sqlite3 data/logs/callcorr_debug_modified_YYYY-MM-DD.db "select count(*) from decisions where decision='applied';"
+   - sqlite3 data/logs/callcorr_debug_modified_YYYY-MM-DD.db "select count(*) from (select distinct subject,winner from decisions where decision='applied');"
+
+3) Reference size
+   - (Get-Content data/logs/Busted-DD-MMM-YYYY.txt | Measure-Object -Line).Lines
+
+4) Pair-level overlap (recall vs reference)
+   - $applied = sqlite3 -separator '|' data/logs/callcorr_debug_modified_YYYY-MM-DD.db "select distinct subject||'|'||winner from decisions where decision='applied'"
+   - $busted = @{}; Get-Content data/logs/Busted-DD-MMM-YYYY.txt | % { if ($_ -match '^(\\s*\\d{2}-\\w{3})\\s+(\\d{4})Z\\s+(\\S+)\\s+[\\d\\.]+\\s+(\\S+)') { $busted[\"$($matches[3])|$($matches[5])\"]=$true } }
+   - $hits = $applied | ? { $busted.ContainsKey($_) }
+   - Write-Host "Applied pairs: $($applied.Count) Busted pairs: $($busted.Count) Matched pairs: $($hits.Count) Recall: $([math]::Round(100*$hits.Count/$busted.Count,1))%"
+
+5) Band recall for the overlapped window (uses busted freq bands)
+   - Define Get-Band(khz): <1600=LF; <2000=160m; <4000=80m; <8000=40m; <11000=30m; <15000=20m; <19000=17m; <22000=15m; <25000=12m; <30000=10m; else 6m+
+   - $appliedSet = @{}; $applied | % { $appliedSet[$_]=$true }
+   - $bustedRows = @(); Get-Content ...Busted... | % { if (regex match) { $freq=[double]$matches[4]; $bustedRows += [pscustomobject]@{Bad=$matches[3]; Corr=$matches[5]; Freq=$freq; Band=Get-Band $freq} } }
+   - Add Status per row: matched if key in appliedSet, else absent if subject not in (sqlite3 "select distinct subject from decisions"), else present_miss.
+   - Group by Band and emit Total/Matched/Recall/Absent/PresentMiss.
+
+6) Miss classification headline
+   - Overall missed rows = bustedRows not matched; report how many are subject_absent vs present_miss.
+
+7) Reason distribution for rejects
+   - sqlite3 ... "select reason, count(*) from decisions where decision='rejected' group by reason;"
+
+8) Distance-3 blockers
+   - sqlite3 ... "select reason, count(*) from decisions where decision='rejected' and distance=3 group by reason;"
+
+9) Confidence gating headroom
+   - sqlite3 -separator '|' ... "select subject,winner,winner_confidence,distance from decisions where decision='rejected' and reason='confidence'"
+   - Count how many have distance<=2 and conf in [55,59], and distance=3 with conf in [60,64] to estimate impact of lowering min_confidence or d3 extras.
+
+10) Summarize in plain language
+   - Coverage window, recall %, key bands with low recall, main rejection reasons, and recommended tuning (min_reports per band, min_confidence tweak, d3 extras, freq_guard).
