@@ -32,7 +32,9 @@ filter:
 # Core processing / protections
 dedup:
   cluster_window_seconds: 120     # Dedup window in seconds (0 disables dedup without changing the pipeline)
+  secondary_window_seconds: 60    # Secondary (broadcast-only) dedup window in seconds
   prefer_stronger_snr: true       # When duplicates collide, keep the strongest SNR version
+  secondary_prefer_stronger_snr: false # Secondary dedupe: keep strongest SNR within country+zone bucket
   output_buffer_size: 40960       # Capacity of the dedup output channel (raise to reduce drops)
 
 # Shared callsign normalization cache (spotters + DX calls)

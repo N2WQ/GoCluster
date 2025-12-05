@@ -399,6 +399,16 @@ func main() {
 		log.Println("Deduplication disabled (cluster window=0); spots pass through unfiltered")
 	}
 
+	secondaryWindow := time.Duration(cfg.Dedup.SecondaryWindowSeconds) * time.Second
+	var secondaryDeduper *dedup.SecondaryDeduper
+	if secondaryWindow > 0 {
+		secondaryDeduper = dedup.NewSecondaryDeduper(secondaryWindow, cfg.Dedup.SecondaryPreferStrong)
+		secondaryDeduper.Start()
+		log.Printf("Secondary deduplication active with %v window (broadcast-only)", secondaryWindow)
+	} else {
+		log.Println("Secondary deduplication disabled; all spots broadcast")
+	}
+
 	// Create command processor
 	processor := commands.NewProcessor(spotBuffer)
 
@@ -423,7 +433,7 @@ func main() {
 	}
 
 	// Start the unified output processor once the telnet server is ready
-	go processOutputSpots(deduplicator, spotBuffer, telnetServer, statsTracker, correctionIndex, cfg.CallCorrection, ctyDB, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, ui, gridUpdater, gridLookup, unlicensedReporter, corrLogger, adaptiveMinReports, refresher, spotterReliability)
+	go processOutputSpots(deduplicator, secondaryDeduper, spotBuffer, telnetServer, statsTracker, correctionIndex, cfg.CallCorrection, ctyDB, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, ui, gridUpdater, gridLookup, unlicensedReporter, corrLogger, adaptiveMinReports, refresher, spotterReliability)
 
 	// Connect to RBN CW/RTTY feed if enabled (port 7000)
 	// RBN spots go INTO the deduplicator input channel
@@ -476,7 +486,7 @@ func main() {
 
 	// Start stats display goroutine
 	statsInterval := time.Duration(cfg.Stats.DisplayIntervalSeconds) * time.Second
-	go displayStatsWithFCC(statsInterval, statsTracker, deduplicator, spotBuffer, ctyDB, &knownCalls, telnetServer, ui, gridUpdateState, gridStore, cfg.FCCULS.DBPath)
+	go displayStatsWithFCC(statsInterval, statsTracker, deduplicator, secondaryDeduper, spotBuffer, ctyDB, &knownCalls, telnetServer, ui, gridUpdateState, gridStore, cfg.FCCULS.DBPath)
 
 	// Set up signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
@@ -514,6 +524,9 @@ func main() {
 	// Stop deduplicator
 	if deduplicator != nil {
 		deduplicator.Stop()
+	}
+	if secondaryDeduper != nil {
+		secondaryDeduper.Stop()
 	}
 
 	// Stop RBN CW/RTTY client
@@ -571,7 +584,7 @@ func makeUnlicensedReporter(dash *dashboard, tracker *stats.Tracker) func(source
 // displayStats prints statistics at the configured interval
 // displayStatsWithFCC prints statistics at the configured interval. FCC metadata is refreshed
 // from disk each tick so the dashboard reflects the latest download/build state.
-func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, dedup *dedup.Deduplicator, buf *buffer.RingBuffer, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns], telnetSrv *telnet.Server, dash *dashboard, gridStats *gridMetrics, gridDB *gridstore.Store, fccDBPath string) {
+func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, dedup *dedup.Deduplicator, secondary *dedup.SecondaryDeduper, buf *buffer.RingBuffer, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns], telnetSrv *telnet.Server, dash *dashboard, gridStats *gridMetrics, gridDB *gridstore.Store, fccDBPath string) {
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
@@ -608,6 +621,14 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, dedup *
 		totalFreqCorrections := tracker.FrequencyCorrections()
 		totalHarmonics := tracker.HarmonicSuppressions()
 
+		var secondaryLine string
+		if secondary != nil {
+			secProcessed, secDupes, secCache := secondary.GetStats()
+			secondaryLine = fmt.Sprintf("Secondary dedup: %s seen / %s dup / cache=%s", humanize.Comma(int64(secProcessed)), humanize.Comma(int64(secDupes)), humanize.Comma(int64(secCache)))
+		} else {
+			secondaryLine = "Secondary dedup: disabled"
+		}
+
 		var queueDrops, clientDrops uint64
 		var clientCount int
 		if telnetSrv != nil {
@@ -617,9 +638,9 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, dedup *
 
 		combinedRBN := rbnTotal + rbnFTTotal
 		lines := []string{
-			fmt.Sprintf("%s   %s", formatUptimeLine(tracker.GetUptime()), formatMemoryLine(buf, dedup, ctyDB, knownPtr)),  // 1
-			formatGridLineOrPlaceholder(gridStats, gridDB),                                                                // 2
-			formatFCCLineOrPlaceholder(fccSnap),                                                                           // 3
+			fmt.Sprintf("%s   %s", formatUptimeLine(tracker.GetUptime()), formatMemoryLine(buf, dedup, secondary, ctyDB, knownPtr)), // 1
+			formatGridLineOrPlaceholder(gridStats, gridDB), // 2
+			formatFCCLineOrPlaceholder(fccSnap),            // 3
 			fmt.Sprintf("RBN: %d TOTAL / %d CW / %d RTTY / %d FT8 / %d FT4", combinedRBN, rbnCW, rbnRTTY, rbnFT8, rbnFT4), // 4
 			fmt.Sprintf("PSKReporter: %s TOTAL / %s CW / %s RTTY / %s FT8 / %s FT4",
 				humanize.Comma(int64(pskTotal)),
@@ -629,7 +650,8 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, dedup *
 				humanize.Comma(int64(pskFT4)),
 			), // 5
 			fmt.Sprintf("Corrected calls: %d (C) / %d (U) / %d (F) / %d (H)", totalCorrections, totalUnlicensed, totalFreqCorrections, totalHarmonics), // 6
-			fmt.Sprintf("Telnet: %d clients. Drops: %d (Q) / %d (C)", clientCount, queueDrops, clientDrops),                                            // 7
+			secondaryLine, // 7
+			fmt.Sprintf("Telnet: %d clients. Drops: %d (Q) / %d (C)", clientCount, queueDrops, clientDrops), // 8
 		}
 
 		prevSourceCounts = sourceTotals
@@ -692,6 +714,7 @@ func processPSKRSpots(client *pskreporter.Client, deduplicator *dedup.Deduplicat
 // Deduplicator Output  Ring Buffer  Broadcast to Clients
 func processOutputSpots(
 	deduplicator *dedup.Deduplicator,
+	secondary *dedup.SecondaryDeduper,
 	buf *buffer.RingBuffer,
 	telnet *telnet.Server,
 	tracker *stats.Tracker,
@@ -856,6 +879,24 @@ func processOutputSpots(
 			}
 
 			buf.Add(s)
+
+			// Ensure DE metadata is populated before secondary dedupe. Upstream CTY lookups
+			// can be bypassed when spotters carry SSID tokens or CTY is missing; refresh
+			// here so secondary dedupe has DXCC/zone available.
+			if secondary != nil && (s.DEMetadata.ADIF <= 0 || s.DEMetadata.CQZone <= 0) && ctyDB != nil {
+				if info := effectivePrefixInfo(ctyDB, s.DECall); info != nil {
+					deGrid := strings.TrimSpace(s.DEMetadata.Grid)
+					s.DEMetadata = metadataFromPrefix(info)
+					if deGrid != "" {
+						s.DEMetadata.Grid = deGrid
+					}
+				}
+			}
+
+			// Broadcast-only dedupe: ring/history already updated above.
+			if secondary != nil && !secondary.ShouldForward(s) {
+				return
+			}
 
 			if telnet != nil {
 				telnet.BroadcastSpot(s)
@@ -1585,7 +1626,9 @@ func sqlNullString(v string) sql.NullString {
 	return sql.NullString{String: v, Valid: true}
 }
 
-func formatMemoryLine(buf *buffer.RingBuffer, dedup *dedup.Deduplicator, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns]) string {
+// formatMemoryLine reports memory-ish metrics in order:
+// exec alloc / ring buffer / primary dedup (dup%) / secondary dedup / CTY cache (hit%) / known calls (hit%).
+func formatMemoryLine(buf *buffer.RingBuffer, dedup *dedup.Deduplicator, secondary *dedup.SecondaryDeduper, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns]) string {
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
 	execMB := bytesToMB(mem.Alloc)
@@ -1597,12 +1640,17 @@ func formatMemoryLine(buf *buffer.RingBuffer, dedup *dedup.Deduplicator, ctyDB *
 
 	dedupeMB := 0.0
 	dedupeRatio := 0.0
+	secondaryMB := 0.0
 	if dedup != nil {
 		processed, duplicates, cacheSize := dedup.GetStats()
 		dedupeMB = bytesToMB(uint64(cacheSize * dedupeEntryBytes))
 		if processed > 0 {
 			dedupeRatio = float64(duplicates) / float64(processed) * 100
 		}
+	}
+	if secondary != nil {
+		_, _, cacheSize := secondary.GetStats()
+		secondaryMB = bytesToMB(uint64(cacheSize * dedupeEntryBytes))
 	}
 
 	ctyMB := 0.0
@@ -1629,8 +1677,8 @@ func formatMemoryLine(buf *buffer.RingBuffer, dedup *dedup.Deduplicator, ctyDB *
 		}
 	}
 
-	return fmt.Sprintf("Memory MB: %.1f / %.1f / %.1f (%.1f%%) / %.1f (%.1f%%) / %.1f (%.1f%%)",
-		execMB, ringMB, dedupeMB, dedupeRatio, ctyMB, ctyRatio, knownMB, knownRatio)
+	return fmt.Sprintf("Memory MB: %.1f / %.1f / %.1f (%.1f%%) / %.1f / %.1f (%.1f%%) / %.1f (%.1f%%)",
+		execMB, ringMB, dedupeMB, dedupeRatio, secondaryMB, ctyMB, ctyRatio, knownMB, knownRatio)
 }
 
 func formatUptimeLine(uptime time.Duration) string {

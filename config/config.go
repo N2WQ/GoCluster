@@ -118,9 +118,11 @@ func (c *PSKReporterConfig) SubscriptionTopics() []string {
 // The SNR policy governs how we handle duplicates from the same DX/spotter/frequency
 // bucket—when enabled we keep the strongest SNR representative.
 type DedupConfig struct {
-	ClusterWindowSeconds int  `yaml:"cluster_window_seconds"` // <=0 disables dedup
-	PreferStrongerSNR    bool `yaml:"prefer_stronger_snr"`    // keep max SNR when dropping duplicates
-	OutputBufferSize     int  `yaml:"output_buffer_size"`     // channel capacity for dedup output
+	ClusterWindowSeconds   int  `yaml:"cluster_window_seconds"`        // <=0 disables primary dedup
+	SecondaryWindowSeconds int  `yaml:"secondary_window_seconds"`      // <=0 uses default (60s)
+	PreferStrongerSNR      bool `yaml:"prefer_stronger_snr"`           // keep max SNR when dropping duplicates
+	SecondaryPreferStrong  bool `yaml:"secondary_prefer_stronger_snr"` // keep max SNR in secondary dedupe buckets
+	OutputBufferSize       int  `yaml:"output_buffer_size"`            // channel capacity for dedup output
 }
 
 // FilterConfig holds default filter behavior for new users.
@@ -664,6 +666,16 @@ func Load(filename string) (*Config, error) {
 	if cfg.Dedup.ClusterWindowSeconds < 0 {
 		cfg.Dedup.ClusterWindowSeconds = 0
 	}
+	if cfg.Dedup.SecondaryWindowSeconds < 0 {
+		cfg.Dedup.SecondaryWindowSeconds = 0
+	}
+	if cfg.Dedup.SecondaryWindowSeconds == 0 {
+		cfg.Dedup.SecondaryWindowSeconds = 60
+	}
+	// Default secondary SNR preference to match primary unless specified.
+	if !cfg.Dedup.SecondaryPreferStrong {
+		cfg.Dedup.SecondaryPreferStrong = cfg.Dedup.PreferStrongerSNR
+	}
 	if cfg.Dedup.OutputBufferSize <= 0 {
 		cfg.Dedup.OutputBufferSize = 1000
 	}
@@ -729,7 +741,11 @@ func (c *Config) Print() {
 	if c.Dedup.ClusterWindowSeconds > 0 {
 		clusterWindow = fmt.Sprintf("%ds", c.Dedup.ClusterWindowSeconds)
 	}
-	fmt.Printf("Dedup: cluster=%s\n", clusterWindow)
+	secondaryWindow := "disabled"
+	if c.Dedup.SecondaryWindowSeconds > 0 {
+		secondaryWindow = fmt.Sprintf("%ds", c.Dedup.SecondaryWindowSeconds)
+	}
+	fmt.Printf("Dedup: cluster=%s (prefer_stronger=%t) secondary=%s (prefer_stronger=%t)\n", clusterWindow, c.Dedup.PreferStrongerSNR, secondaryWindow, c.Dedup.SecondaryPreferStrong)
 	if len(c.Filter.DefaultModes) > 0 {
 		fmt.Printf("Default modes: %s\n", strings.Join(c.Filter.DefaultModes, ", "))
 	}
