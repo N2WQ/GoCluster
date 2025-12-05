@@ -1,5 +1,13 @@
 # Comprehensive Daily Spot Analysis & Audit
 
+> **Key Improvements from Original DAILY_ANALYSIS:**
+> - ✅ Time-window filtering for reference log (prevents recall dilution from out-of-window data)
+> - ✅ Correct band boundaries (LF < 1800 kHz, aligns with actual amateur radio band edges)
+> - ✅ Integrated Method 1A (Temporal Stability) and Method 1C (Distance-Confidence Correlation)
+> - ✅ Threshold simulation tools for predicting impact before changes
+> - ✅ sqlite3 PATH verification in automation script
+> - ✅ Complete decision tree for threshold adjustments
+
 ## Purpose
 Daily validation of call correction system performance using multiple complementary methods:
 - **External Validation**: Compare against reference "Busted" log (ground truth)
@@ -12,7 +20,16 @@ Daily validation of call correction system performance using multiple complement
 
 - **Cluster SQLite DB**: `data/logs/callcorr_debug_modified_YYYY-MM-DD.db`
 - **Reference Log**: `data/logs/Busted-DD-MMM-YYYY.txt` (ground truth corrections)
-- **Tools**: sqlite3, Go compiler, PowerShell (Windows) or bash (Linux)
+- **Tools**:
+  - `sqlite3` command-line tool (must be in PATH or use temp sqlite-tools directory)
+  - Go compiler (for running analysis programs)
+  - PowerShell (Windows) or bash (Linux)
+
+**Note:** If `sqlite3` is not in your PATH, you can use the bundled sqlite-tools that gocluster downloads. Add it to PATH temporarily:
+```powershell
+# Windows PowerShell
+$env:PATH = "c:\path\to\sqlite-tools;$env:PATH"
+```
 
 ---
 
@@ -71,24 +88,39 @@ sqlite3 data/logs/callcorr_debug_modified_YYYY-MM-DD.db "select count(*) from (s
 #### 1.4 Pair-Level Recall (vs Reference Ground Truth)
 
 ```powershell
+# Get database time window first
+$dbWindow = sqlite3 data/logs/callcorr_debug_modified_YYYY-MM-DD.db "select min(ts), max(ts) from decisions;"
+$dbStart = [int]($dbWindow -split '\|')[0]
+$dbEnd = [int]($dbWindow -split '\|')[1]
+
 # Extract applied pairs
 $applied = sqlite3 -separator '|' data/logs/callcorr_debug_modified_YYYY-MM-DD.db "select distinct subject||'|'||winner from decisions where decision='applied'"
 
-# Parse reference busted log
+# Parse reference busted log (filter to DB time window)
 $busted = @{}
 Get-Content data/logs/Busted-DD-MMM-YYYY.txt | % {
     if ($_ -match '^(\s*\d{2}-\w{3})\s+(\d{4})Z\s+(\S+)\s+[\d\.]+\s+(\S+)') {
-        $busted["$($matches[3])|$($matches[4])"] = $true
+        # Parse timestamp: "04-Dec 1405Z" format
+        $dateStr = "$($matches[1])-2025"  # Adjust year as needed
+        $timeStr = $matches[2]
+        $ts = [int][DateTimeOffset]::Parse("$dateStr $($timeStr.Substring(0,2)):$($timeStr.Substring(2,2))Z").ToUnixTimeSeconds()
+
+        # Only include if within DB coverage window
+        if ($ts -ge $dbStart -and $ts -le $dbEnd) {
+            $busted["$($matches[3])|$($matches[4])"] = $true
+        }
     }
 }
 
 # Count matches
 $hits = $applied | ? { $busted.ContainsKey($_) }
 Write-Host "Applied pairs: $($applied.Count)"
-Write-Host "Busted pairs: $($busted.Count)"
+Write-Host "Busted pairs (within DB window): $($busted.Count)"
 Write-Host "Matched pairs: $($hits.Count)"
 Write-Host "Recall: $([math]::Round(100*$hits.Count/$busted.Count,1))%"
 ```
+
+**Note:** Reference log timestamps are filtered to match the database coverage window to ensure fair recall calculation.
 
 **Expected Output:**
 - Recall: 60-75% (December 4 baseline: 63.1%)
@@ -106,7 +138,7 @@ Write-Host "Recall: $([math]::Round(100*$hits.Count/$busted.Count,1))%"
 
 ```powershell
 function Get-Band($khz) {
-    if ($khz -lt 1600) { return "LF" }
+    if ($khz -lt 1800) { return "LF" }
     if ($khz -lt 2000) { return "160m" }
     if ($khz -lt 4000) { return "80m" }
     if ($khz -lt 8000) { return "40m" }
@@ -123,17 +155,25 @@ function Get-Band($khz) {
 $appliedSet = @{}
 $applied | % { $appliedSet[$_] = $true }
 
-# Parse busted rows with frequency
+# Parse busted rows with frequency (filter to DB time window)
 $bustedRows = @()
 Get-Content data/logs/Busted-DD-MMM-YYYY.txt | % {
     if ($_ -match '^(\s*\d{2}-\w{3})\s+(\d{4})Z\s+(\S+)\s+([\d\.]+)\s+(\S+)') {
-        $freq = [double]$matches[4]
-        $bustedRows += [pscustomobject]@{
-            Bad  = $matches[3]
-            Corr = $matches[5]
-            Freq = $freq
-            Band = Get-Band $freq
-            Key  = "$($matches[3])|$($matches[5])"
+        # Parse timestamp to filter to DB coverage window
+        $dateStr = "$($matches[1])-2025"  # Adjust year as needed
+        $timeStr = $matches[2]
+        $ts = [int][DateTimeOffset]::Parse("$dateStr $($timeStr.Substring(0,2)):$($timeStr.Substring(2,2))Z").ToUnixTimeSeconds()
+
+        # Only include if within DB coverage window
+        if ($ts -ge $dbStart -and $ts -le $dbEnd) {
+            $freq = [double]$matches[4]
+            $bustedRows += [pscustomobject]@{
+                Bad  = $matches[3]
+                Corr = $matches[5]
+                Freq = $freq
+                Band = Get-Band $freq
+                Key  = "$($matches[3])|$($matches[5])"
+            }
         }
     }
 }
@@ -607,6 +647,14 @@ Write-Host "DAILY CALL CORRECTION ANALYSIS - $Date"
 Write-Host "=========================================="
 Write-Host ""
 
+# Verify sqlite3 is available
+try {
+    $null = Get-Command sqlite3 -ErrorAction Stop
+} catch {
+    Write-Error "sqlite3 not found in PATH. Install it or add sqlite-tools to PATH."
+    exit 1
+}
+
 # Verify files exist
 if (-not (Test-Path $dbPath)) {
     Write-Error "Database not found: $dbPath"
@@ -615,6 +663,14 @@ if (-not (Test-Path $dbPath)) {
 if (-not (Test-Path $bustedPath)) {
     Write-Warning "Reference log not found: $bustedPath (external validation will be skipped)"
 }
+
+# Get database time window for filtering reference log
+Write-Host "Retrieving database time window..."
+$dbWindow = sqlite3 $dbPath "select min(ts), max(ts) from decisions;"
+$dbStart = [int]($dbWindow -split '\|')[0]
+$dbEnd = [int]($dbWindow -split '\|')[1]
+Write-Host "  Database covers: $(Get-Date -UnixTimeSeconds $dbStart -Format 'yyyy-MM-dd HH:mm:ss') to $(Get-Date -UnixTimeSeconds $dbEnd -Format 'yyyy-MM-dd HH:mm:ss')"
+Write-Host ""
 
 # Phase 1: Basic Metrics
 Write-Host "=== PHASE 1: BASIC METRICS ==="

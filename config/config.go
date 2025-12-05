@@ -74,13 +74,15 @@ type RBNConfig struct {
 
 // PSKReporterConfig contains PSKReporter MQTT settings
 type PSKReporterConfig struct {
-	Enabled bool     `yaml:"enabled"`
-	Broker  string   `yaml:"broker"`
-	Port    int      `yaml:"port"`
-	Topic   string   `yaml:"topic"`
-	Name    string   `yaml:"name"`
-	Workers int      `yaml:"workers"`
-	Modes   []string `yaml:"modes"`
+	Enabled bool   `yaml:"enabled"`
+	Broker  string `yaml:"broker"`
+	Port    int    `yaml:"port"`
+	Topic   string `yaml:"topic"`
+	Name    string `yaml:"name"`
+	Workers int    `yaml:"workers"`
+	// SpotChannelSize controls the buffered ingest channel between MQTT client and processing.
+	SpotChannelSize int      `yaml:"spot_channel_size"`
+	Modes           []string `yaml:"modes"`
 	// AppendSpotterSSID, when true, appends "-#" to receiver callsigns that
 	// lack an SSID so deduplication treats each PSK skimmer uniquely.
 	AppendSpotterSSID bool `yaml:"append_spotter_ssid"`
@@ -212,6 +214,10 @@ type CallCorrectionConfig struct {
 	BaudotWeights BaudotWeightConfig `yaml:"baudot_weights"`
 	// AdaptiveRefresh tunes the activity-based refresh cadence for trust sets.
 	AdaptiveRefresh AdaptiveRefreshConfig `yaml:"adaptive_refresh"`
+	// AdaptiveMinReports tunes min_reports dynamically by band group based on recent activity.
+	AdaptiveMinReports AdaptiveMinReportsConfig `yaml:"adaptive_min_reports"`
+	// AdaptiveRefreshByBand drives trust/quality refresh cadence from band activity.
+	AdaptiveRefreshByBand AdaptiveRefreshByBandConfig `yaml:"adaptive_refresh_by_band"`
 	// Optional prior quality map loaded at startup to seed anchors before runtime learning.
 	QualityPriorsFile string `yaml:"quality_priors_file"`
 	// Optional spotter reliability weights (0-1). Reporters below MinSpotterReliability are ignored.
@@ -249,6 +255,35 @@ type AdaptiveRefreshConfig struct {
 	MinSpotsSinceLastRefresh int `yaml:"min_spots_since_last_refresh"`
 	WindowMinutesForRate     int `yaml:"window_minutes_for_rate"`
 	EvaluationPeriodSeconds  int `yaml:"evaluation_period_seconds"`
+}
+
+// AdaptiveMinReportsConfig controls per-band-group min_reports thresholds driven by spot activity.
+type AdaptiveMinReportsConfig struct {
+	Enabled                 bool                      `yaml:"enabled"`
+	WindowMinutes           int                       `yaml:"window_minutes"`
+	EvaluationPeriodSeconds int                       `yaml:"evaluation_period_seconds"`
+	HysteresisWindows       int                       `yaml:"hysteresis_windows"`
+	Groups                  []AdaptiveMinReportsGroup `yaml:"groups"`
+}
+
+// AdaptiveRefreshByBandConfig defines refresh intervals keyed off adaptive band states.
+type AdaptiveRefreshByBandConfig struct {
+	Enabled                  bool `yaml:"enabled"`
+	QuietRefreshMinutes      int  `yaml:"quiet_refresh_minutes"`
+	NormalRefreshMinutes     int  `yaml:"normal_refresh_minutes"`
+	BusyRefreshMinutes       int  `yaml:"busy_refresh_minutes"`
+	MinSpotsSinceLastRefresh int  `yaml:"min_spots_since_last_refresh"`
+}
+
+// AdaptiveMinReportsGroup defines thresholds and min_reports values for a band group.
+type AdaptiveMinReportsGroup struct {
+	Name             string   `yaml:"name"`
+	Bands            []string `yaml:"bands"`
+	QuietBelow       int      `yaml:"quiet_below"`
+	BusyAbove        int      `yaml:"busy_above"`
+	QuietMinReports  int      `yaml:"quiet_min_reports"`
+	NormalMinReports int      `yaml:"normal_min_reports"`
+	BusyMinReports   int      `yaml:"busy_min_reports"`
 }
 
 // HarmonicConfig controls detection and suppression of harmonic spots.
@@ -332,6 +367,13 @@ func Load(filename string) (*Config, error) {
 	}
 	if cfg.RBNDigital.SlotBuffer <= 0 {
 		cfg.RBNDigital.SlotBuffer = cfg.RBN.SlotBuffer
+	}
+
+	if cfg.PSKReporter.Workers < 0 {
+		cfg.PSKReporter.Workers = 0
+	}
+	if cfg.PSKReporter.SpotChannelSize <= 0 {
+		cfg.PSKReporter.SpotChannelSize = 25000
 	}
 
 	if cfg.Stats.DisplayIntervalSeconds <= 0 {
@@ -469,6 +511,39 @@ func Load(filename string) (*Config, error) {
 	}
 	if cfg.CallCorrection.AdaptiveRefresh.MinSpotsSinceLastRefresh <= 0 {
 		cfg.CallCorrection.AdaptiveRefresh.MinSpotsSinceLastRefresh = 1000
+	}
+	// Adaptive min_reports defaults (per band-group activity)
+	if cfg.CallCorrection.AdaptiveMinReports.WindowMinutes <= 0 {
+		cfg.CallCorrection.AdaptiveMinReports.WindowMinutes = 10
+	}
+	if cfg.CallCorrection.AdaptiveMinReports.EvaluationPeriodSeconds <= 0 {
+		cfg.CallCorrection.AdaptiveMinReports.EvaluationPeriodSeconds = 60
+	}
+	if cfg.CallCorrection.AdaptiveMinReports.HysteresisWindows <= 0 {
+		cfg.CallCorrection.AdaptiveMinReports.HysteresisWindows = 2
+	}
+	if !cfg.CallCorrection.AdaptiveMinReports.Enabled {
+		cfg.CallCorrection.AdaptiveMinReports.Enabled = true
+	}
+	if len(cfg.CallCorrection.AdaptiveMinReports.Groups) == 0 {
+		cfg.CallCorrection.AdaptiveMinReports.Groups = []AdaptiveMinReportsGroup{
+			{Name: "lowbands", Bands: []string{"160m", "80m"}, QuietBelow: 30, BusyAbove: 75, QuietMinReports: 2, NormalMinReports: 3, BusyMinReports: 4},
+			{Name: "midbands", Bands: []string{"40m", "20m"}, QuietBelow: 80, BusyAbove: 130, QuietMinReports: 2, NormalMinReports: 3, BusyMinReports: 4},
+			{Name: "highbands", Bands: []string{"15m", "10m"}, QuietBelow: 35, BusyAbove: 85, QuietMinReports: 2, NormalMinReports: 3, BusyMinReports: 4},
+			{Name: "others", Bands: []string{"30m", "17m", "12m", "60m", "6m"}, QuietBelow: 20, BusyAbove: 55, QuietMinReports: 2, NormalMinReports: 3, BusyMinReports: 4},
+		}
+	}
+	if cfg.CallCorrection.AdaptiveRefreshByBand.QuietRefreshMinutes <= 0 {
+		cfg.CallCorrection.AdaptiveRefreshByBand.QuietRefreshMinutes = 30
+	}
+	if cfg.CallCorrection.AdaptiveRefreshByBand.NormalRefreshMinutes <= 0 {
+		cfg.CallCorrection.AdaptiveRefreshByBand.NormalRefreshMinutes = 20
+	}
+	if cfg.CallCorrection.AdaptiveRefreshByBand.BusyRefreshMinutes <= 0 {
+		cfg.CallCorrection.AdaptiveRefreshByBand.BusyRefreshMinutes = 10
+	}
+	if cfg.CallCorrection.AdaptiveRefreshByBand.MinSpotsSinceLastRefresh <= 0 {
+		cfg.CallCorrection.AdaptiveRefreshByBand.MinSpotsSinceLastRefresh = 500
 	}
 	if cfg.CallCorrection.BaudotWeights.Insert <= 0 {
 		cfg.CallCorrection.BaudotWeights.Insert = 1
@@ -639,7 +714,16 @@ func (c *Config) Print() {
 		fmt.Printf("RBN Digital (FT4/FT8): %s:%d (as %s, slot_buffer=%d)\n", c.RBNDigital.Host, c.RBNDigital.Port, c.RBNDigital.Callsign, c.RBNDigital.SlotBuffer)
 	}
 	if c.PSKReporter.Enabled {
-		fmt.Printf("PSKReporter: %s:%d (topic: %s)\n", c.PSKReporter.Broker, c.PSKReporter.Port, c.PSKReporter.Topic)
+		workerDesc := "auto"
+		if c.PSKReporter.Workers > 0 {
+			workerDesc = fmt.Sprintf("%d", c.PSKReporter.Workers)
+		}
+		fmt.Printf("PSKReporter: %s:%d (topic: %s buffer=%d workers=%s)\n",
+			c.PSKReporter.Broker,
+			c.PSKReporter.Port,
+			c.PSKReporter.Topic,
+			c.PSKReporter.SpotChannelSize,
+			workerDesc)
 	}
 	clusterWindow := "disabled"
 	if c.Dedup.ClusterWindowSeconds > 0 {

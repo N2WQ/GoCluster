@@ -263,10 +263,11 @@ func main() {
 			log.Printf("Loaded %d spotter reliability weights from %s", n, relPath)
 		}
 	}
-	activity := newActivityMonitor(cfg.CallCorrection.AdaptiveRefresh, log.Default())
-	if activity != nil {
-		activity.Start()
-		defer activity.Stop()
+	adaptiveMinReports := spot.NewAdaptiveMinReports(cfg.CallCorrection)
+	refresher := newAdaptiveRefresher(adaptiveMinReports, cfg.CallCorrection.AdaptiveRefreshByBand, noopRefresh)
+	if refresher != nil {
+		refresher.Start()
+		defer refresher.Stop()
 	}
 	if strings.TrimSpace(cfg.FCCULS.DBPath) != "" {
 		uls.SetLicenseDBPath(cfg.FCCULS.DBPath)
@@ -420,7 +421,7 @@ func main() {
 	}
 
 	// Start the unified output processor once the telnet server is ready
-	go processOutputSpots(deduplicator, spotBuffer, telnetServer, statsTracker, correctionIndex, cfg.CallCorrection, ctyDB, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, ui, gridUpdater, gridLookup, unlicensedReporter, corrLogger, activity, spotterReliability)
+	go processOutputSpots(deduplicator, spotBuffer, telnetServer, statsTracker, correctionIndex, cfg.CallCorrection, ctyDB, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, ui, gridUpdater, gridLookup, unlicensedReporter, corrLogger, adaptiveMinReports, refresher, spotterReliability)
 
 	// Connect to RBN CW/RTTY feed if enabled (port 7000)
 	// RBN spots go INTO the deduplicator input channel
@@ -460,7 +461,7 @@ func main() {
 	)
 	if cfg.PSKReporter.Enabled {
 		pskrTopics = cfg.PSKReporter.SubscriptionTopics()
-		pskrClient = pskreporter.NewClient(cfg.PSKReporter.Broker, cfg.PSKReporter.Port, pskrTopics, cfg.PSKReporter.Name, cfg.PSKReporter.Workers, ctyDB, skewStore, cfg.PSKReporter.AppendSpotterSSID)
+		pskrClient = pskreporter.NewClient(cfg.PSKReporter.Broker, cfg.PSKReporter.Port, pskrTopics, cfg.PSKReporter.Name, cfg.PSKReporter.Workers, ctyDB, skewStore, cfg.PSKReporter.AppendSpotterSSID, cfg.PSKReporter.SpotChannelSize)
 		pskrClient.SetUnlicensedReporter(unlicensedReporter)
 		err = pskrClient.Connect()
 		if err != nil {
@@ -705,7 +706,8 @@ func processOutputSpots(
 	gridLookup func(call string) (string, bool),
 	unlicensedReporter func(source, role, call, mode string, freq float64),
 	corrLogger spot.CorrectionTraceLogger,
-	activity *activityMonitor,
+	adaptiveMinReports *spot.AdaptiveMinReports,
+	refresher *adaptiveRefresher,
 	spotterReliability spot.SpotterReliability,
 ) {
 	outputChan := deduplicator.GetOutputChannel()
@@ -722,9 +724,8 @@ func processOutputSpots(
 				return
 			}
 			modeUpper := strings.ToUpper(strings.TrimSpace(s.Mode))
-
-			if activity != nil && (modeUpper == "CW" || modeUpper == "RTTY") {
-				activity.Increment(time.Now())
+			if refresher != nil {
+				refresher.IncrementSpots()
 			}
 
 			s.RefreshBeaconFlag()
@@ -757,7 +758,7 @@ func processOutputSpots(
 
 			var suppress bool
 			if telnet != nil && !s.IsBeacon {
-				suppress = maybeApplyCallCorrectionWithLogger(s, correctionIdx, correctionCfg, ctyDB, knownCalls, tracker, dash, corrLogger, spotterReliability)
+				suppress = maybeApplyCallCorrectionWithLogger(s, correctionIdx, correctionCfg, ctyDB, knownCalls, tracker, dash, corrLogger, adaptiveMinReports, spotterReliability)
 				if suppress {
 					return
 				}
@@ -936,11 +937,11 @@ func metadataFromPrefix(info *cty.PrefixInfo) spot.CallMetadata {
 	}
 }
 
-func maybeApplyCallCorrection(spotEntry *spot.Spot, idx *spot.CorrectionIndex, cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns], tracker *stats.Tracker, dash *dashboard, spotterReliability spot.SpotterReliability) bool {
-	return maybeApplyCallCorrectionWithLogger(spotEntry, idx, cfg, ctyDB, knownPtr, tracker, dash, nil, spotterReliability)
+func maybeApplyCallCorrection(spotEntry *spot.Spot, idx *spot.CorrectionIndex, cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns], tracker *stats.Tracker, dash *dashboard, adaptive *spot.AdaptiveMinReports, spotterReliability spot.SpotterReliability) bool {
+	return maybeApplyCallCorrectionWithLogger(spotEntry, idx, cfg, ctyDB, knownPtr, tracker, dash, nil, adaptive, spotterReliability)
 }
 
-func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.CorrectionIndex, cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns], tracker *stats.Tracker, dash *dashboard, traceLogger spot.CorrectionTraceLogger, spotterReliability spot.SpotterReliability) bool {
+func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.CorrectionIndex, cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns], tracker *stats.Tracker, dash *dashboard, traceLogger spot.CorrectionTraceLogger, adaptive *spot.AdaptiveMinReports, spotterReliability spot.SpotterReliability) bool {
 	if spotEntry == nil {
 		return false
 	}
@@ -953,12 +954,25 @@ func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.Correcti
 		return false
 	}
 
-	window := callCorrectionWindow(cfg)
 	now := time.Now().UTC()
+	window := callCorrectionWindow(cfg)
 	defer idx.Add(spotEntry, now, window)
 
+	modeUpper := strings.ToUpper(strings.TrimSpace(spotEntry.Mode))
+
+	if adaptive != nil && (modeUpper == "CW" || modeUpper == "RTTY") {
+		adaptive.Observe(spotEntry.Band, spotEntry.DECall, now)
+	}
+
+	minReports := cfg.MinConsensusReports
+	if adaptive != nil && (modeUpper == "CW" || modeUpper == "RTTY") {
+		if dyn := adaptive.MinReportsForBand(spotEntry.Band, now); dyn > 0 {
+			minReports = dyn
+		}
+	}
+
 	settings := spot.CorrectionSettings{
-		MinConsensusReports:      cfg.MinConsensusReports,
+		MinConsensusReports:      minReports,
 		MinAdvantage:             cfg.MinAdvantage,
 		MinConfidencePercent:     cfg.MinConfidencePercent,
 		MaxEditDistance:          cfg.MaxEditDistance,

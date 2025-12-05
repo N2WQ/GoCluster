@@ -413,6 +413,20 @@ func (s *Server) acceptConnections() {
 			}
 		}
 
+		// Enforce configured connection limit before spinning up a client goroutine.
+		if s.maxConnections > 0 {
+			addr := conn.RemoteAddr().String()
+			s.clientsMutex.RLock()
+			current := len(s.clients)
+			s.clientsMutex.RUnlock()
+			if current >= s.maxConnections {
+				_, _ = conn.Write([]byte("Server full. Try again later.\r\n"))
+				conn.Close()
+				log.Printf("Rejected connection from %s: max connections reached (%d)", addr, s.maxConnections)
+				continue
+			}
+		}
+
 		// Handle this client in a new goroutine
 		go s.handleClient(conn)
 	}

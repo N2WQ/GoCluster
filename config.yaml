@@ -49,9 +49,9 @@ call_correction:
                                   #   classic:  legacy subject-vs-alternate with distance gating
   debug_log: true                 # Enable SQLite decision logging for call correction (non-blocking writer)
   debug_log_file: "data/logs/callcorr_debug_modified.log"              # Optional path/prefix for the daily decision DB (defaults to data/analysis/callcorr_YYYY-MM-DD.db)
-  min_consensus_reports: 3        # Minimum number of corroborating spotters
+  min_consensus_reports: 2        # Minimum number of corroborating spotters
   min_advantage: 1                # Candidate must exceed the original by this many spotters
-  min_confidence_percent: 55      # Candidate supporters must represent at least this percent of unique spotters
+  min_confidence_percent: 60      # Candidate supporters must represent at least this percent of unique spotters
   recency_seconds: 360            # Supporting spots must be this recent (default for all modes)
   recency_seconds_cw: 0           # Optional override for CW (0 = inherit recency_seconds)
   recency_seconds_rtty: 0         # Optional override for RTTY (0 = inherit recency_seconds)
@@ -95,6 +95,46 @@ call_correction:
     min_spots_since_last_refresh: 1000 # Skip refresh when volume since last run is below this
     window_minutes_for_rate: 10   # Window size for computing average rate
     evaluation_period_seconds: 30 # How often to evaluate the rate/state machine
+  adaptive_refresh_by_band:
+    enabled: true
+    quiet_refresh_minutes: 30
+    normal_refresh_minutes: 20
+    busy_refresh_minutes: 10
+    min_spots_since_last_refresh: 500
+  adaptive_min_reports:
+    enabled: true
+    window_minutes: 10
+    evaluation_period_seconds: 60
+    hysteresis_windows: 2
+    groups:
+      - name: lowbands
+        bands: ["160m", "80m"]
+        quiet_below: 30
+        busy_above: 75
+        quiet_min_reports: 2
+        normal_min_reports: 3
+        busy_min_reports: 4
+      - name: midbands
+        bands: ["40m", "20m"]
+        quiet_below: 80
+        busy_above: 130
+        quiet_min_reports: 2
+        normal_min_reports: 3
+        busy_min_reports: 4
+      - name: highbands
+        bands: ["15m", "10m"]
+        quiet_below: 35
+        busy_above: 85
+        quiet_min_reports: 2
+        normal_min_reports: 3
+        busy_min_reports: 4
+      - name: others
+        bands: ["30m", "17m", "12m", "60m", "6m"]
+        quiet_below: 20
+        busy_above: 55
+        quiet_min_reports: 2
+        normal_min_reports: 3
+        busy_min_reports: 4
 
 # Harmonic suppression for CW/USB/LSB/RTTY signals
 harmonics:

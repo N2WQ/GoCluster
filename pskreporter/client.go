@@ -59,6 +59,7 @@ type PSKRMessage struct {
 
 const (
 	pskReporterQueuePerWorker = 256
+	defaultSpotBuffer         = 25000
 )
 
 var (
@@ -139,13 +140,16 @@ func (c *Client) dispatchUnlicensed(role, call, mode string, freq float64) {
 }
 
 // NewClient creates a new PSKReporter MQTT client
-func NewClient(broker string, port int, topics []string, name string, workers int, lookup *cty.CTYDatabase, skewStore *skew.Store, appendSSID bool) *Client {
+func NewClient(broker string, port int, topics []string, name string, workers int, lookup *cty.CTYDatabase, skewStore *skew.Store, appendSSID bool, spotBuffer int) *Client {
+	if spotBuffer <= 0 {
+		spotBuffer = defaultSpotBuffer
+	}
 	return &Client{
 		broker:       broker,
 		port:         port,
 		topics:       append([]string{}, topics...),
 		name:         name,
-		spotChan:     make(chan *spot.Spot, 5000), // Buffered ingest to absorb bursts
+		spotChan:     make(chan *spot.Spot, spotBuffer), // Buffered ingest to absorb bursts
 		shutdown:     make(chan struct{}),
 		workers:      workers,
 		lookup:       lookup,

@@ -138,7 +138,9 @@ func (m *activityMonitor) evaluate(now time.Time) {
 		if rate > float64(m.cfg.BusyThresholdPerMin) {
 			m.state = "busy"
 			m.quietStreak = 0
-			m.logger.Printf("activity: busy (rate=%.1f/min)", rate)
+			if m.logger != nil {
+				m.logger.Printf("activity: busy (rate=%.1f/min)", rate)
+			}
 		}
 	case "busy":
 		if rate < float64(m.cfg.QuietThresholdPerMin) {
@@ -146,7 +148,9 @@ func (m *activityMonitor) evaluate(now time.Time) {
 			if m.quietStreak >= m.cfg.QuietConsecutiveWindows {
 				m.state = "quiet"
 				m.quietStreak = 0
-				m.logger.Printf("activity: quiet (rate=%.1f/min)", rate)
+				if m.logger != nil {
+					m.logger.Printf("activity: quiet (rate=%.1f/min)", rate)
+				}
 			}
 		} else {
 			m.quietStreak = 0

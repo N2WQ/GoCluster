@@ -98,11 +98,10 @@ func TestLookupCachesHits(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected prefix match for %s", call)
 	}
-	cachedRaw, ok := db.cache.Load(normalizeCallsign(call))
+	entry, ok := db.cacheGet(normalizeCallsign(call))
 	if !ok {
 		t.Fatalf("expected cache entry for %s", call)
 	}
-	entry := cachedRaw.(cacheEntry)
 	if !entry.ok || entry.info == nil {
 		t.Fatalf("expected cached hit with info")
 	}
@@ -122,11 +121,10 @@ func TestLookupCachesMisses(t *testing.T) {
 		t.Fatalf("expected %s to miss", call)
 	}
 	norm := normalizeCallsign(call)
-	cachedRaw, ok := db.cache.Load(norm)
+	entry, ok := db.cacheGet(norm)
 	if !ok {
 		t.Fatalf("expected cache miss entry for %s", call)
 	}
-	entry := cachedRaw.(cacheEntry)
 	if entry.ok || entry.info != nil {
 		t.Fatalf("expected cached miss entry to record failure")
 	}

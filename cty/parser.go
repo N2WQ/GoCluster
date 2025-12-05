@@ -4,6 +4,7 @@
 package cty
 
 import (
+	"container/list"
 	"fmt"
 	"io"
 	"os"
@@ -33,8 +34,11 @@ type PrefixInfo struct {
 type CTYDatabase struct {
 	Data map[string]PrefixInfo
 	Keys []string
-	// cache stores normalized callsign lookups (hits and misses).
-	cache sync.Map
+	// cache stores normalized callsign lookups (hits and misses) with a bounded LRU.
+	cacheMu   sync.Mutex
+	cacheList *list.List
+	cacheMap  map[string]*list.Element
+	cacheCap  int
 	// metrics track lookup/caching behavior for stats reporting.
 	totalLookups       atomic.Uint64
 	cacheHits          atomic.Uint64
@@ -47,6 +51,13 @@ type cacheEntry struct {
 	info *PrefixInfo
 	ok   bool
 }
+
+type cacheItem struct {
+	key   string
+	entry cacheEntry
+}
+
+const defaultCacheCapacity = 50000
 
 // LookupMetrics summarizes callsign lookup behavior.
 type LookupMetrics struct {
@@ -85,7 +96,13 @@ func LoadCTYDatabaseFromReader(r io.ReadSeeker) (*CTYDatabase, error) {
 		}
 		return len(keys[i]) > len(keys[j])
 	})
-	return &CTYDatabase{Data: data, Keys: keys}, nil
+	return &CTYDatabase{
+		Data:      data,
+		Keys:      keys,
+		cacheCap:  defaultCacheCapacity,
+		cacheList: list.New(),
+		cacheMap:  make(map[string]*list.Element, defaultCacheCapacity),
+	}, nil
 }
 
 func decodeCTYData(r io.ReadSeeker) (map[string]PrefixInfo, error) {
@@ -119,9 +136,8 @@ func normalizeCallsign(cs string) string {
 func (db *CTYDatabase) LookupCallsign(cs string) (*PrefixInfo, bool) {
 	cs = normalizeCallsign(cs)
 	db.totalLookups.Add(1)
-	if cached, ok := db.cache.Load(cs); ok {
+	if entry, ok := db.cacheGet(cs); ok {
 		db.cacheHits.Add(1)
-		entry := cached.(cacheEntry)
 		if entry.ok {
 			db.validated.Add(1)
 			db.validatedFromCache.Add(1)
@@ -135,12 +151,7 @@ func (db *CTYDatabase) LookupCallsign(cs string) (*PrefixInfo, bool) {
 	}
 
 	entry := cacheEntry{info: info, ok: ok}
-	actual, loaded := db.cache.LoadOrStore(cs, entry)
-	if loaded {
-		entry = actual.(cacheEntry)
-	} else {
-		db.cacheEntries.Add(1)
-	}
+	db.cacheStore(cs, entry)
 	return entry.info, entry.ok
 }
 
@@ -176,6 +187,51 @@ func (db *CTYDatabase) KeysWithPrefix(pref string) []string {
 func clonePrefix(info PrefixInfo) *PrefixInfo {
 	copy := info
 	return &copy
+}
+
+func (db *CTYDatabase) cacheGet(cs string) (cacheEntry, bool) {
+	if db == nil || db.cacheCap <= 0 {
+		return cacheEntry{}, false
+	}
+	db.cacheMu.Lock()
+	defer db.cacheMu.Unlock()
+	elem, ok := db.cacheMap[cs]
+	if !ok {
+		return cacheEntry{}, false
+	}
+	db.cacheList.MoveToFront(elem)
+	item := elem.Value.(*cacheItem)
+	return item.entry, true
+}
+
+func (db *CTYDatabase) cacheStore(cs string, entry cacheEntry) {
+	if db == nil || db.cacheCap <= 0 {
+		return
+	}
+	db.cacheMu.Lock()
+	defer db.cacheMu.Unlock()
+
+	// Update in-place when present to avoid churn.
+	if elem, ok := db.cacheMap[cs]; ok {
+		elem.Value.(*cacheItem).entry = entry
+		db.cacheList.MoveToFront(elem)
+		db.cacheEntries.Store(uint64(len(db.cacheMap)))
+		return
+	}
+
+	elem := db.cacheList.PushFront(&cacheItem{key: cs, entry: entry})
+	db.cacheMap[cs] = elem
+
+	// Evict least-recently-used entries when capacity is exceeded.
+	if db.cacheCap > 0 && len(db.cacheMap) > db.cacheCap {
+		if tail := db.cacheList.Back(); tail != nil {
+			db.cacheList.Remove(tail)
+			if item, ok := tail.Value.(*cacheItem); ok {
+				delete(db.cacheMap, item.key)
+			}
+		}
+	}
+	db.cacheEntries.Store(uint64(len(db.cacheMap)))
 }
 
 // Metrics returns snapshot of lookup/cache counters.
