@@ -14,6 +14,45 @@ Daily validation of call correction system performance using multiple complement
 - **Internal Validation**: Analyze decision patterns, temporal stability, and confidence calibration
 - **Threshold Optimization**: Identify tuning opportunities based on data-driven insights
 
+## Defensible Method for Objectively Analyzing Call Correction
+
+Use this framework as the canonical checklist when building or running daily/weekly analyses. It combines internal consistency, signal metadata, public databases, and cautiously-weighted external references.
+
+### Core Challenge
+- Ground truth is unknown; rely on RBN feed + decision logs, with CTY/MASTER.SCP as validation signals and reference cluster data only after trust calibration.
+
+### Method 1: Internal Consistency (no external data)
+- **1A Temporal Consistency Score**: For each subject→winner correction, track repeated corrections and later uncorrected winner spots; stability = uncorrected_winner / (corrected + uncorrected). High (>80%) suggests correctness; low (<50%) suggests risk.
+- **1B Frequency Clustering Coherence**: Within ±1 kHz over a 6-minute window, flag cases where runner-up >0.5× winner and separation >0.1 kHz (competing signals merged).
+- **1C Distance–Confidence Correlation**: For edit distances 1/2/3, compare mean/median confidence, temporal stability, and rejection reasons. Distance-3 parity with distance-1 implies thresholds may be too strict.
+
+### Method 2: Mode-Specific Signal Analysis (RBN metadata)
+- **2A SNR-Weighted Consensus**: Weight support (Strong >10 dB CW/>8 dB RTTY; Medium 4–10/3–8; Weak otherwise). Compare weighted confidence vs decision confidence; correlate with Method 1A stability.
+- **2B Morse/Baudot Distance**: For CW/RTTY, compute Morse- or Baudot-aware distance vs plain Levenshtein; flag cases where keyed distance is lower and verify stability uplift.
+
+### Method 3: CTY / Known-Call Cross-Validation
+- **3A CTY Validity Signal**: Record subject/winner CTY validity; categorize valid→valid, invalid→valid (good), valid→invalid, invalid→invalid (risk). Tracks QualityBustedDecrement impact.
+- **3B MASTER.SCP Leverage**: Check `data/scp/MASTER.SCP` for subject/winner; unknown→known is a strong correctness signal, known→unknown is risky.
+
+### Method 4: Statistical Ensemble
+- **4A Bootstrapped Threshold Sensitivity**: Replay with varied `min_confidence`, `min_advantage`, `max_edit_distance`; measure applied volume, temporal stability, CTY validity; emit precision/recall heatmap.
+- **4B Rejection Reason Profiling**: Count rejects by reason (max_edit_distance, min_reports, advantage, confidence, freq_guard, no_reporters); sample cases per reason to estimate false-negative rate.
+
+### Method 5: Reference Cluster Calibration (cautious)
+- **5A Agreement-Weighted Trust**: Measure agreement within ±5 min/±1 kHz; assess stability of agreed corrections to derive a trust coefficient (0–1).
+- **5B Missed Correction Deep-Dive**: For reference-only corrections, query local log/trace to classify: not seen, threshold reject (which one), clustering error, consensus split.
+
+### Primary Metrics (no external data)
+- Temporal Stability (>80%), CTY Validity (>95%), Known-Call Hit Rate (>70%), Distance–Confidence coherence (correlation < -0.5), SNR-weighted precision (>95% for high-SNR).
+
+### Secondary Metrics (with reference data)
+- Precision/Recall/F1 vs reference, reported with trust coefficient from Method 5A.
+
+### Implementation Priorities
+1. Internal validation: Methods 1A, 3A/3B, 1C.
+2. Deep dive: 4B, 2A, 1B.
+3. Threshold optimization: 4A, 5A/5B (after trust calibration).
+
 ---
 
 ## Required Inputs

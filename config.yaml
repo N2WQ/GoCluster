@@ -59,7 +59,7 @@ call_correction:
   debug_log_file: "data/logs/callcorr_debug_modified.log"              # Optional path/prefix for the daily decision DB (defaults to data/analysis/callcorr_YYYY-MM-DD.db)
   min_consensus_reports: 2        # Minimum number of corroborating spotters
   min_advantage: 1                # Candidate must exceed the original by this many spotters
-  min_confidence_percent: 60      # Candidate supporters must represent at least this percent of unique spotters
+  min_confidence_percent: 55      # Candidate supporters must represent at least this percent of unique spotters
   recency_seconds: 360            # Supporting spots must be this recent (default for all modes)
   recency_seconds_cw: 0           # Optional override for CW (0 = inherit recency_seconds)
   recency_seconds_rtty: 0         # Optional override for RTTY (0 = inherit recency_seconds)
@@ -77,7 +77,7 @@ call_correction:
   min_snr_cw: 4                   # Ignore CW corroborators weaker than this many dB
   min_snr_rtty: 3                 # Ignore RTTY corroborators weaker than this many dB
   distance3_extra_reports: 0      # Extra unique supporters required when suggested call is distance 3
-  distance3_extra_advantage: 1    # Extra advantage over the subject required when distance 3
+  distance3_extra_advantage: 0    # Extra advantage over the subject required when distance 3
   distance3_extra_confidence: 5   # Extra confidence percentage points required when distance 3
   distance_cache_size: 8192       # Memoize call distance calculations (entries)
   distance_cache_ttl_seconds: 120 # Expire cached distances after this many seconds (tie to recency window)
@@ -99,14 +99,14 @@ call_correction:
     - name: lowbands
       bands: ["160m", "80m"]
       quiet:
-        quality_bin_hz: 500
-        frequency_tolerance_hz: 1000
+        quality_bin_hz: 400
+        frequency_tolerance_hz: 800
       normal:
         quality_bin_hz: 400
-        frequency_tolerance_hz: 900
+        frequency_tolerance_hz: 700
       busy:
         quality_bin_hz: 300
-        frequency_tolerance_hz: 800
+        frequency_tolerance_hz: 500
     - name: midbands
       bands: ["40m", "20m"]
       quiet:
