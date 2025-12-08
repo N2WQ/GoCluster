@@ -13,6 +13,8 @@ type FrequencyAverager struct {
 	entries  map[string][]freqSample
 	lastSeen map[string]time.Time
 	opCount  int
+
+	sweepQuit chan struct{}
 }
 
 type freqSample struct {
@@ -94,5 +96,51 @@ func (fa *FrequencyAverager) cleanup(now time.Time, window time.Duration) {
 			delete(fa.lastSeen, call)
 			delete(fa.entries, call)
 		}
+	}
+}
+
+// StartCleanup launches a periodic sweep to drop inactive calls even when
+// traffic is sparse, keeping memory bounded over long runtimes.
+func (fa *FrequencyAverager) StartCleanup(interval, window time.Duration) {
+	if fa == nil {
+		return
+	}
+	if interval <= 0 {
+		interval = time.Minute
+	}
+	fa.mu.Lock()
+	if fa.sweepQuit != nil {
+		fa.mu.Unlock()
+		return
+	}
+	fa.sweepQuit = make(chan struct{})
+	fa.mu.Unlock()
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				fa.mu.Lock()
+				fa.cleanup(time.Now(), window)
+				fa.mu.Unlock()
+			case <-fa.sweepQuit:
+				return
+			}
+		}
+	}()
+}
+
+// StopCleanup stops the periodic sweep goroutine.
+func (fa *FrequencyAverager) StopCleanup() {
+	if fa == nil {
+		return
+	}
+	fa.mu.Lock()
+	defer fa.mu.Unlock()
+	if fa.sweepQuit != nil {
+		close(fa.sweepQuit)
+		fa.sweepQuit = nil
 	}
 }

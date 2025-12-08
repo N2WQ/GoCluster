@@ -31,6 +31,8 @@ type HarmonicDetector struct {
 	mu       sync.Mutex
 	entries  map[string][]harmonicEntry
 	lastSeen map[string]time.Time
+
+	sweepQuit chan struct{}
 }
 
 // NewHarmonicDetector creates a detector with the provided settings.
@@ -165,5 +167,50 @@ func (hd *HarmonicDetector) cleanup(now time.Time) {
 			delete(hd.lastSeen, call)
 			delete(hd.entries, call)
 		}
+	}
+}
+
+// StartCleanup starts a periodic sweep to evict inactive calls even when new spots are sparse.
+func (hd *HarmonicDetector) StartCleanup(interval time.Duration) {
+	if hd == nil {
+		return
+	}
+	if interval <= 0 {
+		interval = time.Minute
+	}
+	hd.mu.Lock()
+	if hd.sweepQuit != nil {
+		hd.mu.Unlock()
+		return
+	}
+	hd.sweepQuit = make(chan struct{})
+	hd.mu.Unlock()
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				hd.mu.Lock()
+				hd.cleanup(time.Now().UTC())
+				hd.mu.Unlock()
+			case <-hd.sweepQuit:
+				return
+			}
+		}
+	}()
+}
+
+// StopCleanup stops the periodic cleanup goroutine.
+func (hd *HarmonicDetector) StopCleanup() {
+	if hd == nil {
+		return
+	}
+	hd.mu.Lock()
+	defer hd.mu.Unlock()
+	if hd.sweepQuit != nil {
+		close(hd.sweepQuit)
+		hd.sweepQuit = nil
 	}
 }

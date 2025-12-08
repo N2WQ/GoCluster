@@ -32,7 +32,7 @@ pskreporter:
   broker: "mqtt.pskreporter.info"
   port: 1883
   modes: ["FT8", "FT4", "CW", "RTTY"]  # List of MQTT modes to subscribe to
-  workers: 0                           # 0 means automatic (uses all CPU cores, minimum 1)
+  workers: 0                           # 0 means automatic (uses all CPU cores, minimum 4)
   append_spotter_ssid: true            # Append "-#" to receiver calls lacking an SSID for dedup
 
 # Normalization/cache (shared across sources)
@@ -46,7 +46,7 @@ dedup:
   secondary_window_seconds: 60    # Secondary dedup window (broadcast-only, by DE DXCC+zone)
   prefer_stronger_snr: true       # Primary: keep strongest SNR on duplicate collisions
   secondary_prefer_stronger_snr: false # Secondary: keep strongest SNR within country+zone bucket
-  output_buffer_size: 40960       # Capacity of dedup output channel (raise to reduce drops)
+  output_buffer_size: 16384       # Capacity of dedup output channel (raise to reduce drops)
 
 # Consensus-based call correction (CW/RTTY/SSB; FT8/FT4 are skipped)
 call_correction:
@@ -251,8 +251,8 @@ telnet:
   welcome_message: "\r\nExperimental DX Cluster\r\n"
   login_greeting: "\r\n<CALL> de <CLUSTER>>\r\n"
   duplicate_login_message: "Another login for your callsign connected. This session is being closed (multiple logins are not allowed)."
-  broadcast_workers: 0            # 0 means automatic (uses all CPU cores, minimum 2)
-  broadcast_queue_size: 20480     # Buffer depth for the global telnet broadcast queue
+  broadcast_workers: 0            # 0 means automatic (uses all CPU cores, minimum 4)
+  broadcast_queue_size: 8192      # Buffer depth for the global telnet broadcast queue
   worker_queue_size: 512          # Jobs queued per broadcast worker before dropping
   client_buffer_size: 512         # Per-client spot backlog before a slow session drops spots
   skip_handshake: true            # Set true to disable Telnet option negotiation (raw TCP clients)

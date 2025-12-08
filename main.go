@@ -290,6 +290,7 @@ func main() {
 	var correctionIndex *spot.CorrectionIndex
 	if cfg.CallCorrection.Enabled {
 		correctionIndex = spot.NewCorrectionIndex()
+		correctionIndex.StartCleanup(time.Minute, callCorrectionWindow(cfg.CallCorrection))
 	}
 
 	var knownCalls atomic.Pointer[spot.KnownCallsigns]
@@ -375,6 +376,7 @@ func main() {
 	}
 
 	freqAverager := spot.NewFrequencyAverager()
+	freqAverager.StartCleanup(time.Minute, frequencyAverageWindow(cfg.SpotPolicy))
 	var harmonicDetector *spot.HarmonicDetector
 	if cfg.Harmonics.Enabled {
 		harmonicDetector = spot.NewHarmonicDetector(spot.HarmonicSettings{
@@ -385,6 +387,7 @@ func main() {
 			MinReportDelta:       cfg.Harmonics.MinReportDelta,
 			MinReportDeltaStep:   cfg.Harmonics.MinReportDeltaStep,
 		})
+		harmonicDetector.StartCleanup(time.Minute)
 	}
 
 	// Create the deduplicator (always active; a zero-second window behaves like "disabled").
@@ -519,6 +522,17 @@ func main() {
 	sig := <-sigChan
 	log.Printf("Received signal: %v", sig)
 	log.Println("Shutting down gracefully...")
+
+	// Stop periodic cleanup loops
+	if freqAverager != nil {
+		freqAverager.StopCleanup()
+	}
+	if harmonicDetector != nil {
+		harmonicDetector.StopCleanup()
+	}
+	if correctionIndex != nil {
+		correctionIndex.StopCleanup()
+	}
 
 	// Stop deduplicator
 	if deduplicator != nil {

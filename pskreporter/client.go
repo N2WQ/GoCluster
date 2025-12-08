@@ -458,8 +458,9 @@ func (c *Client) stopWorkerPool() {
 
 func defaultPSKReporterWorkers() int {
 	workers := runtime.NumCPU()
-	if workers < 1 {
-		workers = 1
+	// PSKReporter bursts are high volume; keep a minimum of 4 workers even on small CPUs.
+	if workers < 4 {
+		workers = 4
 	}
 	return workers
 }

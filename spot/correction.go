@@ -814,6 +814,8 @@ type CorrectionIndex struct {
 	mu       sync.Mutex
 	buckets  map[int]*correctionBucket
 	lastSeen map[int]time.Time
+
+	sweepQuit chan struct{}
 }
 
 type correctionBucket struct {
@@ -934,6 +936,52 @@ func (ci *CorrectionIndex) cleanup(now time.Time, window time.Duration) {
 			delete(ci.lastSeen, key)
 			delete(ci.buckets, key)
 		}
+	}
+}
+
+// StartCleanup launches a periodic sweep to evict inactive buckets even when Candidates/Add
+// are not called frequently, keeping memory bounded.
+func (ci *CorrectionIndex) StartCleanup(interval, window time.Duration) {
+	if ci == nil {
+		return
+	}
+	if interval <= 0 {
+		interval = time.Minute
+	}
+	ci.mu.Lock()
+	if ci.sweepQuit != nil {
+		ci.mu.Unlock()
+		return
+	}
+	ci.sweepQuit = make(chan struct{})
+	ci.mu.Unlock()
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				ci.mu.Lock()
+				ci.cleanup(time.Now(), window)
+				ci.mu.Unlock()
+			case <-ci.sweepQuit:
+				return
+			}
+		}
+	}()
+}
+
+// StopCleanup stops the periodic cleanup goroutine.
+func (ci *CorrectionIndex) StopCleanup() {
+	if ci == nil {
+		return
+	}
+	ci.mu.Lock()
+	defer ci.mu.Unlock()
+	if ci.sweepQuit != nil {
+		close(ci.sweepQuit)
+		ci.sweepQuit = nil
 	}
 }
 
