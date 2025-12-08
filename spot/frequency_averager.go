@@ -9,8 +9,10 @@ import (
 // FrequencyAverager collects recent frequency reports per callsign and
 // returns the average within a sliding window.
 type FrequencyAverager struct {
-	mu      sync.Mutex
-	entries map[string][]freqSample
+	mu       sync.Mutex
+	entries  map[string][]freqSample
+	lastSeen map[string]time.Time
+	opCount  int
 }
 
 type freqSample struct {
@@ -21,7 +23,8 @@ type freqSample struct {
 // NewFrequencyAverager creates an empty averager.
 func NewFrequencyAverager() *FrequencyAverager {
 	return &FrequencyAverager{
-		entries: make(map[string][]freqSample),
+		entries:  make(map[string][]freqSample),
+		lastSeen: make(map[string]time.Time),
 	}
 }
 
@@ -39,6 +42,7 @@ func (fa *FrequencyAverager) Average(call string, freq float64, now time.Time, w
 
 	fa.mu.Lock()
 	defer fa.mu.Unlock()
+	fa.cleanup(now, window)
 
 	list := fa.entries[call]
 	pruned := list[:0]
@@ -61,6 +65,7 @@ func (fa *FrequencyAverager) Average(call string, freq float64, now time.Time, w
 	// Even if pruned is empty (should not happen after append), keep logic to clean map.
 	if len(pruned) == 0 {
 		delete(fa.entries, call)
+		delete(fa.lastSeen, call)
 	} else {
 		// Reclaim excess capacity when the slice has shrunk significantly.
 		if cap(pruned) > len(pruned)*2 {
@@ -69,8 +74,25 @@ func (fa *FrequencyAverager) Average(call string, freq float64, now time.Time, w
 			pruned = newSlice
 		}
 		fa.entries[call] = pruned
+		fa.lastSeen[call] = now
 	}
 
 	total := len(pruned)
 	return sum / float64(corroborators), corroborators, total
+}
+
+// cleanup drops inactive calls to prevent unbounded map growth as calls churn.
+// It runs cheaply on every call; for larger maps you could adjust the cadence.
+func (fa *FrequencyAverager) cleanup(now time.Time, window time.Duration) {
+	fa.opCount++
+	if fa.opCount%128 != 0 {
+		return
+	}
+	cutoff := now.Add(-window)
+	for call, last := range fa.lastSeen {
+		if last.Before(cutoff) {
+			delete(fa.lastSeen, call)
+			delete(fa.entries, call)
+		}
+	}
 }

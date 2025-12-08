@@ -30,6 +30,7 @@ type HarmonicDetector struct {
 	settings HarmonicSettings
 	mu       sync.Mutex
 	entries  map[string][]harmonicEntry
+	lastSeen map[string]time.Time
 }
 
 // NewHarmonicDetector creates a detector with the provided settings.
@@ -37,6 +38,7 @@ func NewHarmonicDetector(settings HarmonicSettings) *HarmonicDetector {
 	return &HarmonicDetector{
 		settings: settings,
 		entries:  make(map[string][]harmonicEntry),
+		lastSeen: make(map[string]time.Time),
 	}
 }
 
@@ -60,6 +62,7 @@ func (hd *HarmonicDetector) ShouldDrop(s *Spot, now time.Time) (bool, float64, i
 	hd.mu.Lock()
 	defer hd.mu.Unlock()
 
+	hd.cleanup(now)
 	hd.prune(call, now)
 	if fundamental, corroborators, delta := hd.detectHarmonic(call, s); fundamental > 0 {
 		return true, fundamental, corroborators, delta
@@ -70,9 +73,11 @@ func (hd *HarmonicDetector) ShouldDrop(s *Spot, now time.Time) (bool, float64, i
 		report:    s.Report,
 		at:        s.Time,
 	})
+	hd.lastSeen[call] = now
 	// Prevent map growth: if the slice is empty after pruning, drop the key.
 	if len(hd.entries[call]) == 0 {
 		delete(hd.entries, call)
+		delete(hd.lastSeen, call)
 	}
 	return false, 0, 0, 0
 }
@@ -142,7 +147,23 @@ func (hd *HarmonicDetector) prune(call string, now time.Time) {
 	}
 	if len(dst) == 0 {
 		delete(hd.entries, call)
+		delete(hd.lastSeen, call)
 		return
 	}
 	hd.entries[call] = dst
+	hd.lastSeen[call] = now
+}
+
+// cleanup drops inactive calls entirely when their last seen time is outside the recency window.
+func (hd *HarmonicDetector) cleanup(now time.Time) {
+	if len(hd.lastSeen) == 0 {
+		return
+	}
+	cutoff := now.Add(-hd.settings.RecencyWindow)
+	for call, last := range hd.lastSeen {
+		if last.Before(cutoff) {
+			delete(hd.lastSeen, call)
+			delete(hd.entries, call)
+		}
+	}
 }

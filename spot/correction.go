@@ -811,8 +811,9 @@ func passesSNREntry(e bandmap.SpotEntry, cfg CorrectionSettings) bool {
 // CorrectionIndex maintains a time-bounded, frequency-bucketed view of recent
 // spots so consensus checks can run without scanning the entire ring buffer.
 type CorrectionIndex struct {
-	mu      sync.Mutex
-	buckets map[int]*correctionBucket
+	mu       sync.Mutex
+	buckets  map[int]*correctionBucket
+	lastSeen map[int]time.Time
 }
 
 type correctionBucket struct {
@@ -822,7 +823,8 @@ type correctionBucket struct {
 // NewCorrectionIndex constructs an empty index.
 func NewCorrectionIndex() *CorrectionIndex {
 	return &CorrectionIndex{
-		buckets: make(map[int]*correctionBucket),
+		buckets:  make(map[int]*correctionBucket),
+		lastSeen: make(map[int]time.Time),
 	}
 }
 
@@ -840,6 +842,8 @@ func (ci *CorrectionIndex) Add(s *Spot, now time.Time, window time.Duration) {
 	ci.mu.Lock()
 	defer ci.mu.Unlock()
 
+	ci.cleanup(now, window)
+
 	bucket := ci.buckets[key]
 	if bucket == nil {
 		bucket = &correctionBucket{}
@@ -847,6 +851,12 @@ func (ci *CorrectionIndex) Add(s *Spot, now time.Time, window time.Duration) {
 	}
 
 	bucket.spots = pruneAndAppend(bucket.spots, s, now, window)
+	if len(bucket.spots) == 0 {
+		delete(ci.buckets, key)
+		delete(ci.lastSeen, key)
+	} else {
+		ci.lastSeen[key] = now
+	}
 }
 
 // Candidates retrieves nearby spots (within +/- 0.5 kHz) for the given subject.
@@ -875,8 +885,10 @@ func (ci *CorrectionIndex) Candidates(subject *Spot, now time.Time, window time.
 		if len(bucket.spots) == 0 {
 			// Drop empty buckets to prevent map growth as frequencies churn.
 			delete(ci.buckets, k)
+			delete(ci.lastSeen, k)
 			continue
 		}
+		ci.lastSeen[k] = now
 		results = append(results, bucket.spots...)
 	}
 	return results
@@ -908,6 +920,21 @@ func prune(spots []*Spot, now time.Time, window time.Duration) []*Spot {
 func pruneAndAppend(spots []*Spot, s *Spot, now time.Time, window time.Duration) []*Spot {
 	spots = prune(spots, now, window)
 	return append(spots, s)
+}
+
+// cleanup removes buckets that have been inactive longer than the window to keep
+// the map bounded even when frequencies churn across the spectrum.
+func (ci *CorrectionIndex) cleanup(now time.Time, window time.Duration) {
+	if len(ci.lastSeen) == 0 {
+		return
+	}
+	cutoff := now.Add(-window)
+	for key, last := range ci.lastSeen {
+		if last.Before(cutoff) {
+			delete(ci.lastSeen, key)
+			delete(ci.buckets, key)
+		}
+	}
 }
 
 const (
