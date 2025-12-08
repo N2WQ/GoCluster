@@ -382,11 +382,12 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		lastFreq  float64
 	}
 
-	callStats := make(map[string]*callAggregate)
+	// Pre-size call stats map to avoid resize churn; expect up to len(others)+1 unique calls.
+	callStats := make(map[string]*callAggregate, len(others)+1)
 	ensureCallEntry := func(call string) *callAggregate {
 		entry, ok := callStats[call]
 		if !ok {
-			entry = &callAggregate{reporters: make(map[string]struct{})}
+			entry = &callAggregate{reporters: make(map[string]struct{}, 4)}
 			callStats[call] = entry
 		}
 		return entry
@@ -474,9 +475,11 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 
 	// Majority-of-unique-spotters: pick the call with the most unique reporters
 	// on-frequency (within recency/SNR gates). Distance is only a safety cap.
-	callKeys := make([]string, 0, len(callStats))
+	callKeys := make([]string, len(callStats))
+	i := 0
 	for call := range callStats {
-		callKeys = append(callKeys, call)
+		callKeys[i] = call
+		i++
 	}
 	if len(callKeys) == 0 {
 		return "", 0, 0, 0, 0, false
@@ -1035,7 +1038,19 @@ func cachedCallDistance(subject, candidate, mode, cwModel, rttyModel string, cac
 }
 
 func distanceCacheKey(subject, candidate, mode, cwModel, rttyModel string) string {
-	return strings.ToUpper(subject) + "|" + strings.ToUpper(candidate) + "|" + mode + "|" + cwModel + "|" + rttyModel
+	var b strings.Builder
+	// Estimated capacity: calls (2x12) + 4 delimiters + modes/models (~4*5) + slack.
+	b.Grow(48)
+	b.WriteString(strings.ToUpper(subject))
+	b.WriteByte('|')
+	b.WriteString(strings.ToUpper(candidate))
+	b.WriteByte('|')
+	b.WriteString(mode)
+	b.WriteByte('|')
+	b.WriteString(cwModel)
+	b.WriteByte('|')
+	b.WriteString(rttyModel)
+	return b.String()
 }
 
 // callDistanceCore picks the distance function based on mode/model without caching.
@@ -1083,8 +1098,10 @@ func cwCallDistance(a, b string) int {
 		return la
 	}
 
-	prev := make([]int, lb+1)
-	cur := make([]int, lb+1)
+	prev, prevPool := borrowIntSlice(lb + 1)
+	cur, curPool := borrowIntSlice(lb + 1)
+	defer returnIntSlice(prev, prevPool)
+	defer returnIntSlice(cur, curPool)
 
 	for j := 0; j <= lb; j++ {
 		prev[j] = j // j inserts
@@ -1131,8 +1148,10 @@ func rttyCallDistance(a, b string) int {
 		return la
 	}
 
-	prev := make([]int, lb+1)
-	cur := make([]int, lb+1)
+	prev, prevPool := borrowIntSlice(lb + 1)
+	cur, curPool := borrowIntSlice(lb + 1)
+	defer returnIntSlice(prev, prevPool)
+	defer returnIntSlice(cur, curPool)
 
 	for j := 0; j <= lb; j++ {
 		prev[j] = j
@@ -1176,6 +1195,29 @@ func min3(a, b, c int) int {
 		return b
 	}
 	return c
+}
+
+// borrowIntSlice returns a slice of length n, reusing a pooled buffer when possible.
+// The second return value is true when the slice should be returned to the pool.
+func borrowIntSlice(n int) ([]int, bool) {
+	if n <= 0 {
+		return nil, false
+	}
+	if n <= 64 {
+		buf := levBufPool.Get().([]int)
+		return buf[:n], true
+	}
+	return make([]int, n), false
+}
+
+func returnIntSlice(buf []int, fromPool bool) {
+	if !fromPool || buf == nil {
+		return
+	}
+	// Keep pooled buffers bounded to the original cap.
+	if cap(buf) >= 64 {
+		levBufPool.Put(buf[:64])
+	}
 }
 
 var morseCodes = map[rune]string{
@@ -1231,6 +1273,13 @@ var (
 	baudotDeleteCost = 1
 	baudotSubCost    = 2
 	baudotScale      = 2
+
+	levBufPool = sync.Pool{
+		New: func() interface{} {
+			// Typical callsigns are short; a small buffer covers common cases.
+			return make([]int, 64)
+		},
+	}
 )
 
 var baudotCodes = map[rune]string{

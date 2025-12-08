@@ -2,7 +2,6 @@ package spot
 
 import (
 	"math"
-	"strings"
 	"sync"
 	"time"
 )
@@ -56,7 +55,8 @@ func (hd *HarmonicDetector) ShouldDrop(s *Spot, now time.Time) (bool, float64, i
 		return false, 0, 0, 0
 	}
 
-	call := strings.ToUpper(strings.TrimSpace(s.DXCall))
+	s.EnsureNormalized()
+	call := s.DXCallNorm
 	if call == "" {
 		return false, 0, 0, 0
 	}

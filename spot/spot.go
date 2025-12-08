@@ -48,6 +48,18 @@ type Spot struct {
 	Confidence string       // Consensus confidence label (e.g., "75%" or "?")
 	formatted  string
 	formatOnce sync.Once // ensures FormatDXCluster builds expensive string only once per spot
+
+	// Normalized/cache fields to avoid repeated string ops on hot paths.
+	ModeNorm        string
+	BandNorm        string
+	DXCallNorm      string
+	DECallNorm      string
+	DXContinentNorm string
+	DEContinentNorm string
+	DXGridNorm      string
+	DEGridNorm      string
+	DXGrid2         string
+	DEGrid2         string
 }
 
 // CallMetadata stores geographic metadata for a callsign
@@ -75,6 +87,7 @@ func NewSpot(dxCall, deCall string, freq float64, mode string) *Spot {
 		Report:     0, // 0 means no report available
 		IsHuman:    true,
 	}
+	spot.EnsureNormalized()
 	spot.RefreshBeaconFlag()
 	return spot
 }
@@ -93,6 +106,7 @@ func roundFrequencyTo100Hz(freqKHz float64) float64 {
 //
 // Little-endian encoding keeps the byte order deterministic across platforms.
 func (s *Spot) Hash32() uint32 {
+	s.EnsureNormalized()
 	var buf [36]byte
 	// Time (bytes 0-7): Unix seconds, truncated to the minute.
 	t := s.Time.Truncate(time.Minute).Unix()
@@ -101,23 +115,18 @@ func (s *Spot) Hash32() uint32 {
 	freq := uint32(s.Frequency)
 	binary.LittleEndian.PutUint32(buf[8:12], freq)
 	// DE and DX calls (bytes 12-23, 24-35).
-	writeFixedCall(buf[12:24], s.DECall)
-	writeFixedCall(buf[24:36], s.DXCall)
+	writeFixedNormalizedCall(buf[12:24], s.DECallNorm)
+	writeFixedNormalizedCall(buf[24:36], s.DXCallNorm)
 	// Use xxh3 for speed; fold to 32 bits for existing dedup map.
 	return uint32(xxh3.Hash(buf[:]))
 }
 
-// writeFixedCall uppercases, truncates/pads the input into a 12-byte slot.
-func writeFixedCall(dst []byte, call string) {
+// writeFixedNormalizedCall assumes call is already normalized/uppercased and fits into ASCII bytes.
+func writeFixedNormalizedCall(dst []byte, call string) {
 	const maxLen = 12
-	call = NormalizeCallsign(call)
 	n := 0
 	for i := 0; i < len(call) && n < maxLen; i++ {
-		ch := call[i]
-		if ch >= 'a' && ch <= 'z' {
-			ch = ch - ('a' - 'A')
-		}
-		dst[n] = ch
+		dst[n] = call[i]
 		n++
 	}
 	for n < maxLen {
@@ -157,6 +166,40 @@ func (sb *stringBuilder) AppendString(s string) {
 
 func (sb *stringBuilder) AppendByte(b byte) {
 	sb.buf = append(sb.buf, b)
+}
+
+// EnsureNormalized populates cached normalized fields to avoid repeated string operations on hot paths.
+func (s *Spot) EnsureNormalized() {
+	if s.ModeNorm == "" && s.Mode != "" {
+		s.ModeNorm = strings.ToUpper(strings.TrimSpace(s.Mode))
+	}
+	if s.BandNorm == "" && s.Band != "" {
+		s.BandNorm = strings.ToUpper(strings.TrimSpace(s.Band))
+	}
+	if s.DXCallNorm == "" && s.DXCall != "" {
+		s.DXCallNorm = NormalizeCallsign(s.DXCall)
+	}
+	if s.DECallNorm == "" && s.DECall != "" {
+		s.DECallNorm = NormalizeCallsign(s.DECall)
+	}
+	if s.DXContinentNorm == "" && s.DXMetadata.Continent != "" {
+		s.DXContinentNorm = strings.ToUpper(strings.TrimSpace(s.DXMetadata.Continent))
+	}
+	if s.DEContinentNorm == "" && s.DEMetadata.Continent != "" {
+		s.DEContinentNorm = strings.ToUpper(strings.TrimSpace(s.DEMetadata.Continent))
+	}
+	if s.DXGridNorm == "" && s.DXMetadata.Grid != "" {
+		s.DXGridNorm = strings.ToUpper(strings.TrimSpace(s.DXMetadata.Grid))
+	}
+	if s.DEGridNorm == "" && s.DEMetadata.Grid != "" {
+		s.DEGridNorm = strings.ToUpper(strings.TrimSpace(s.DEMetadata.Grid))
+	}
+	if s.DXGrid2 == "" && len(s.DXGridNorm) >= 2 {
+		s.DXGrid2 = s.DXGridNorm[:2]
+	}
+	if s.DEGrid2 == "" && len(s.DEGridNorm) >= 2 {
+		s.DEGrid2 = s.DEGridNorm[:2]
+	}
 }
 
 func (sb *stringBuilder) Len() int {

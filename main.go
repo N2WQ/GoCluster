@@ -13,11 +13,13 @@ import (
 	"log"
 	"math"
 	"net/http"
+	httppprof "net/http/pprof"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	pprof "runtime/pprof"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -49,6 +51,56 @@ const (
 	knownCallEntryBytes = 24
 	sourceModeDelimiter = "|"
 )
+
+var licCache = newLicenseCache(5 * time.Minute)
+
+// licenseCache caches FCC license checks to avoid repeated lookups on hot paths.
+type licenseCache struct {
+	mu      sync.Mutex
+	ttl     time.Duration
+	entries map[string]licenseEntry
+}
+
+type licenseEntry struct {
+	licensed bool
+	at       time.Time
+}
+
+func newLicenseCache(ttl time.Duration) *licenseCache {
+	if ttl <= 0 {
+		ttl = 5 * time.Minute
+	}
+	return &licenseCache{
+		ttl:     ttl,
+		entries: make(map[string]licenseEntry),
+	}
+}
+
+func (lc *licenseCache) get(call string, now time.Time) (bool, bool) {
+	if lc == nil || call == "" {
+		return false, false
+	}
+	lc.mu.Lock()
+	defer lc.mu.Unlock()
+	entry, ok := lc.entries[call]
+	if !ok {
+		return false, false
+	}
+	if lc.ttl > 0 && now.Sub(entry.at) > lc.ttl {
+		delete(lc.entries, call)
+		return false, false
+	}
+	return entry.licensed, true
+}
+
+func (lc *licenseCache) set(call string, licensed bool, now time.Time) {
+	if lc == nil || call == "" {
+		return
+	}
+	lc.mu.Lock()
+	lc.entries[call] = licenseEntry{licensed: licensed, at: now}
+	lc.mu.Unlock()
+}
 
 // Version will be set at build time
 var Version = "dev"
@@ -514,9 +566,11 @@ func main() {
 	} else {
 		log.Println("Unified deduplication bypassed (window=0); duplicates are not filtered")
 	}
-	log.Println("Architecture: ALL sources → Dedup Engine → Ring Buffer → Clients")
+	log.Println("Architecture: ALL sources -> Dedup Engine -> Ring Buffer -> Clients")
 	log.Printf("Statistics will be displayed every %d seconds...", cfg.Stats.DisplayIntervalSeconds)
 	log.Println("---")
+	maybeStartHeapLogger()
+	maybeStartDiagServer()
 
 	// Wait for shutdown signal
 	sig := <-sigChan
@@ -762,7 +816,8 @@ func processOutputSpots(
 			if s == nil {
 				return
 			}
-			modeUpper := strings.ToUpper(strings.TrimSpace(s.Mode))
+			s.EnsureNormalized()
+			modeUpper := s.ModeNorm
 			if refresher != nil {
 				refresher.IncrementSpots()
 			}
@@ -783,6 +838,8 @@ func processOutputSpots(
 					}
 				}
 			}
+			// Grids may have been backfilled; refresh normalized caches.
+			s.EnsureNormalized()
 			if s.IsBeacon {
 				// Beacons are tagged with a strong confidence so they still display a glyph.
 				s.Confidence = "V"
@@ -803,6 +860,7 @@ func processOutputSpots(
 				}
 				// Call correction can change the DX call; recompute beacon flag accordingly.
 				s.RefreshBeaconFlag()
+				s.EnsureNormalized()
 			}
 
 			if !s.IsBeacon && harmonicDetector != nil && harmonicCfg.Enabled {
@@ -846,7 +904,6 @@ func processOutputSpots(
 
 			// Ensure CW/RTTY/SSB carry at least a placeholder confidence glyph when no correction applied.
 			if !s.IsBeacon {
-				modeUpper := strings.ToUpper(strings.TrimSpace(s.Mode))
 				if (modeUpper == "CW" || modeUpper == "RTTY" || modeUpper == "SSB") && strings.TrimSpace(s.Confidence) == "" {
 					s.Confidence = "?"
 				}
@@ -959,6 +1016,7 @@ func applyLicenseGate(s *spot.Spot, ctyDB *cty.CTYDatabase, reporter func(source
 	if s == nil {
 		return false
 	}
+	s.EnsureNormalized()
 	if s.IsBeacon {
 		return false
 	}
@@ -980,18 +1038,44 @@ func applyLicenseGate(s *spot.Spot, ctyDB *cty.CTYDatabase, reporter func(source
 	if deGrid != "" {
 		s.DEMetadata.Grid = deGrid
 	}
+	s.EnsureNormalized()
 
-	if dxInfo != nil && dxInfo.ADIF == 291 && !uls.IsLicensedUS(s.DXCall) {
-		if reporter != nil {
-			reporter(s.SourceNode, "DX", s.DXCall, s.Mode, s.Frequency)
+	now := time.Now()
+	if dxInfo != nil && dxInfo.ADIF == 291 {
+		if licensed, ok := licCache.get(s.DXCallNorm, now); ok {
+			if !licensed {
+				if reporter != nil {
+					reporter(s.SourceNode, "DX", s.DXCallNorm, s.ModeNorm, s.Frequency)
+				}
+				return true
+			}
+		} else if !uls.IsLicensedUS(s.DXCallNorm) {
+			licCache.set(s.DXCallNorm, false, now)
+			if reporter != nil {
+				reporter(s.SourceNode, "DX", s.DXCallNorm, s.ModeNorm, s.Frequency)
+			}
+			return true
+		} else {
+			licCache.set(s.DXCallNorm, true, now)
 		}
-		return true
 	}
-	if deInfo != nil && deInfo.ADIF == 291 && !uls.IsLicensedUS(s.DECall) {
-		if reporter != nil {
-			reporter(s.SourceNode, "DE", s.DECall, s.Mode, s.Frequency)
+	if deInfo != nil && deInfo.ADIF == 291 {
+		if licensed, ok := licCache.get(s.DECallNorm, now); ok {
+			if !licensed {
+				if reporter != nil {
+					reporter(s.SourceNode, "DE", s.DECallNorm, s.ModeNorm, s.Frequency)
+				}
+				return true
+			}
+		} else if !uls.IsLicensedUS(s.DECallNorm) {
+			licCache.set(s.DECallNorm, false, now)
+			if reporter != nil {
+				reporter(s.SourceNode, "DE", s.DECallNorm, s.ModeNorm, s.Frequency)
+			}
+			return true
+		} else {
+			licCache.set(s.DECallNorm, true, now)
 		}
-		return true
 	}
 	return false
 }
@@ -1818,4 +1902,75 @@ func sourceModeKey(source, mode string) string {
 
 func bytesToMB(b uint64) float64 {
 	return float64(b) / (1024.0 * 1024.0)
+}
+
+// maybeStartHeapLogger starts periodic heap logging when DXC_HEAP_LOG_INTERVAL is set
+// (e.g., "60s"). Defaults to disabled when the variable is empty or invalid.
+func maybeStartHeapLogger() {
+	intervalStr := strings.TrimSpace(os.Getenv("DXC_HEAP_LOG_INTERVAL"))
+	if intervalStr == "" {
+		return
+	}
+	interval, err := time.ParseDuration(intervalStr)
+	if err != nil || interval <= 0 {
+		log.Printf("Heap logger disabled (invalid DXC_HEAP_LOG_INTERVAL=%q)", intervalStr)
+		return
+	}
+	ticker := time.NewTicker(interval)
+	go func() {
+		log.Printf("Heap logger enabled (every %s)", interval)
+		for range ticker.C {
+			var m runtime.MemStats
+			runtime.ReadMemStats(&m)
+			log.Printf("Heap: alloc=%.1f MB sys=%.1f MB objects=%d gc=%d next_gc=%.1f MB",
+				bytesToMB(m.HeapAlloc),
+				bytesToMB(m.Sys),
+				m.HeapObjects,
+				m.NumGC,
+				bytesToMB(m.NextGC))
+		}
+	}()
+}
+
+// maybeStartDiagServer exposes /debug/pprof/* and /debug/heapdump when DXC_PPROF_ADDR is set
+// (example: DXC_PPROF_ADDR=localhost:6061). Default is off.
+func maybeStartDiagServer() {
+	addr := strings.TrimSpace(os.Getenv("DXC_PPROF_ADDR"))
+	if addr == "" {
+		return
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/debug/heapdump", func(w http.ResponseWriter, r *http.Request) {
+		ts := time.Now().UTC().Format("2006-01-02T15-04-05Z")
+		dir := filepath.Join("data", "diagnostics")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			http.Error(w, fmt.Sprintf("mkdir diagnostics: %v", err), http.StatusInternalServerError)
+			return
+		}
+		path := filepath.Join(dir, fmt.Sprintf("heap-%s.pprof", ts))
+		f, err := os.Create(path)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("create heap dump: %v", err), http.StatusInternalServerError)
+			return
+		}
+		defer f.Close()
+		runtime.GC() // collect latest data
+		if err := pprof.WriteHeapProfile(f); err != nil {
+			http.Error(w, fmt.Sprintf("write heap profile: %v", err), http.StatusInternalServerError)
+			return
+		}
+		fmt.Fprintf(w, "heap profile written to %s\n", path)
+	})
+	mux.Handle("/debug/pprof/", http.HandlerFunc(httppprof.Index))
+	mux.Handle("/debug/pprof/cmdline", http.HandlerFunc(httppprof.Cmdline))
+	mux.Handle("/debug/pprof/profile", http.HandlerFunc(httppprof.Profile))
+	mux.Handle("/debug/pprof/symbol", http.HandlerFunc(httppprof.Symbol))
+	mux.Handle("/debug/pprof/trace", http.HandlerFunc(httppprof.Trace))
+
+	go func() {
+		log.Printf("Diagnostics server listening on %s (pprof + /debug/heapdump)", addr)
+		if err := http.ListenAndServe(addr, mux); err != nil {
+			log.Printf("Diagnostics server error: %v", err)
+		}
+	}()
 }

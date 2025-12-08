@@ -19,6 +19,17 @@ import (
 	jsoniter "github.com/json-iterator/go"
 )
 
+// normalizedPSK carries normalized tokens to avoid repeated string operations per message.
+// All string fields are uppercased and trimmed.
+type normalizedPSK struct {
+	modeUpper string
+	dxCall    string
+	deCall    string
+	dxGrid    string
+	deGrid    string
+	freqKHz   float64
+}
+
 // Client represents a PSKReporter MQTT client
 type Client struct {
 	broker       string
@@ -35,6 +46,10 @@ type Client struct {
 	skewStore    *skew.Store
 	appendSSID   bool
 	spotterCache *spot.CallCache
+
+	infoCache    map[string]infoCacheEntry
+	infoCacheMu  sync.Mutex
+	infoCacheTTL time.Duration
 
 	unlicensedReporter UnlicensedReporter
 	unlicensedQueue    chan unlicensedEvent
@@ -66,6 +81,7 @@ const (
 var (
 	callCacheSize = 4096
 	callCacheTTL  = 10 * time.Minute
+	infoCacheTTL  = 5 * time.Minute
 )
 
 // UnlicensedReporter receives drop notifications for US calls failing FCC license checks.
@@ -157,6 +173,8 @@ func NewClient(broker string, port int, topics []string, name string, workers in
 		skewStore:    skewStore,
 		appendSSID:   appendSSID,
 		spotterCache: spot.NewCallCache(callCacheSize, callCacheTTL),
+		infoCache:    make(map[string]infoCacheEntry),
+		infoCacheTTL: infoCacheTTL,
 	}
 }
 
@@ -306,8 +324,13 @@ func (c *Client) convertToSpot(msg *PSKRMessage) *spot.Spot {
 		return nil
 	}
 
-	dxCall := spot.NormalizeCallsign(msg.SenderCall)
-	deCall := c.decorateSpotterCall(msg.ReceiverCall)
+	norm := c.normalizeMessage(msg)
+	if norm == nil {
+		return nil
+	}
+
+	dxCall := norm.dxCall
+	deCall := norm.deCall
 	if !spot.IsValidCallsign(dxCall) {
 		// log.Printf("PSKReporter: invalid DX call %s", msg.SenderCall) // noisy: caller requested silence
 		return nil
@@ -337,9 +360,9 @@ func (c *Client) convertToSpot(msg *PSKRMessage) *spot.Spot {
 	}
 
 	// Convert frequency from Hz to kHz and apply skimmer correction for CW/RTTY
-	freqKHz := float64(msg.Frequency) / 1000.0
-	if isCWorRTTY(msg.Mode) {
-		freqKHz = skew.ApplyCorrection(c.skewStore, msg.ReceiverCall, freqKHz)
+	freqKHz := norm.freqKHz
+	if isCWorRTTY(norm.modeUpper) {
+		freqKHz = skew.ApplyCorrection(c.skewStore, norm.deCall, freqKHz)
 	}
 
 	dxInfo, ok := c.fetchCallsignInfo(dxCall)
@@ -352,13 +375,13 @@ func (c *Client) convertToSpot(msg *PSKRMessage) *spot.Spot {
 	}
 	// Prune US spotters lacking an active FCC license early to keep ingest lightweight.
 	if deInfo != nil && deInfo.ADIF == 291 && !uls.IsLicensedUS(deCall) {
-		c.dispatchUnlicensed("DE", deCall, strings.ToUpper(msg.Mode), freqKHz)
+		c.dispatchUnlicensed("DE", deCall, norm.modeUpper, freqKHz)
 		return nil
 	}
 	// Create spot
 	// In PSKReporter: sender = DX station, receiver = spotter
 	// In our model: DXCall = sender, DECall = receiver
-	s := spot.NewSpot(dxCall, deCall, freqKHz, msg.Mode)
+	s := spot.NewSpot(dxCall, deCall, freqKHz, norm.modeUpper)
 	s.IsHuman = false
 
 	// CRITICAL: Set the actual observation timestamp from PSKReporter
@@ -372,9 +395,7 @@ func (c *Client) convertToSpot(msg *PSKRMessage) *spot.Spot {
 	s.Report = msg.Report
 
 	// Build comment with locators
-	s.Comment = fmt.Sprintf("%s>%s",
-		msg.SenderLocator,
-		msg.ReceiverLocator)
+	s.Comment = fmt.Sprintf("%s>%s", norm.dxGrid, norm.deGrid)
 
 	// Set source type and node
 	s.SourceType = spot.SourcePSKReporter
@@ -382,8 +403,8 @@ func (c *Client) convertToSpot(msg *PSKRMessage) *spot.Spot {
 
 	s.DXMetadata = metadataFromPrefix(dxInfo)
 	s.DEMetadata = metadataFromPrefix(deInfo)
-	s.DXMetadata.Grid = msg.SenderLocator
-	s.DEMetadata.Grid = msg.ReceiverLocator
+	s.DXMetadata.Grid = norm.dxGrid
+	s.DEMetadata.Grid = norm.deGrid
 
 	s.RefreshBeaconFlag()
 
@@ -403,8 +424,34 @@ func metadataFromPrefix(info *cty.PrefixInfo) spot.CallMetadata {
 }
 
 func isCWorRTTY(mode string) bool {
-	mode = strings.ToUpper(strings.TrimSpace(mode))
+	// mode is expected to be uppercased/trimmed by normalizeMessage.
 	return mode == "CW" || mode == "RTTY"
+}
+
+func (c *Client) normalizeMessage(msg *PSKRMessage) *normalizedPSK {
+	if msg == nil {
+		return nil
+	}
+	modeUpper := strings.ToUpper(strings.TrimSpace(msg.Mode))
+	if modeUpper == "" || msg.SenderCall == "" || msg.ReceiverCall == "" {
+		return nil
+	}
+	freqKHz := float64(msg.Frequency) / 1000.0
+	if freqKHz <= 0 {
+		return nil
+	}
+	dxCall := spot.NormalizeCallsign(msg.SenderCall)
+	deCall := c.decorateSpotterCall(msg.ReceiverCall)
+	dxGrid := strings.ToUpper(strings.TrimSpace(msg.SenderLocator))
+	deGrid := strings.ToUpper(strings.TrimSpace(msg.ReceiverLocator))
+	return &normalizedPSK{
+		modeUpper: modeUpper,
+		dxCall:    dxCall,
+		deCall:    deCall,
+		dxGrid:    dxGrid,
+		deGrid:    deGrid,
+		freqKHz:   freqKHz,
+	}
 }
 
 func (c *Client) decorateSpotterCall(raw string) string {
@@ -444,11 +491,46 @@ func (c *Client) fetchCallsignInfo(call string) (*cty.PrefixInfo, bool) {
 	if c.lookup == nil {
 		return nil, true
 	}
+	now := time.Now()
+	if call == "" {
+		return nil, false
+	}
+	if info, ok := c.getInfoFromCache(call, now); ok {
+		return info, info != nil
+	}
+
 	info, ok := c.lookup.LookupCallsign(call)
+	c.setInfoCache(call, info, ok, now)
 	if !ok {
 		// log.Printf("PSKReporter: unknown call %s", call) // suppressed per user request
 	}
 	return info, ok
+}
+
+type infoCacheEntry struct {
+	info *cty.PrefixInfo
+	ok   bool
+	at   time.Time
+}
+
+func (c *Client) getInfoFromCache(call string, now time.Time) (*cty.PrefixInfo, bool) {
+	c.infoCacheMu.Lock()
+	defer c.infoCacheMu.Unlock()
+	entry, ok := c.infoCache[call]
+	if !ok {
+		return nil, false
+	}
+	if c.infoCacheTTL > 0 && now.Sub(entry.at) > c.infoCacheTTL {
+		delete(c.infoCache, call)
+		return nil, false
+	}
+	return entry.info, entry.ok
+}
+
+func (c *Client) setInfoCache(call string, info *cty.PrefixInfo, ok bool, now time.Time) {
+	c.infoCacheMu.Lock()
+	c.infoCache[call] = infoCacheEntry{info: info, ok: ok, at: now}
+	c.infoCacheMu.Unlock()
 }
 
 func (c *Client) stopWorkerPool() {

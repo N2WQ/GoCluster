@@ -184,15 +184,25 @@ func (d *Deduplicator) cleanup() {
 	removed := 0
 	for i := range d.shards {
 		shard := &d.shards[i]
+		// Phase 1: collect expired keys under a short lock.
 		shard.mu.Lock()
+		toDelete := make([]uint32, 0, len(shard.cache)/10)
 		for hash, lastSeen := range shard.cache {
-			age := now.Sub(lastSeen.when)
-			if age > d.window {
-				delete(shard.cache, hash)
-				removed++
+			if now.Sub(lastSeen.when) > d.window {
+				toDelete = append(toDelete, hash)
 			}
 		}
 		shard.mu.Unlock()
+
+		// Phase 2: delete under lock.
+		if len(toDelete) > 0 {
+			shard.mu.Lock()
+			for _, hash := range toDelete {
+				delete(shard.cache, hash)
+				removed++
+			}
+			shard.mu.Unlock()
+		}
 	}
 
 }

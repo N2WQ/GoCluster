@@ -774,14 +774,15 @@ func (f *Filter) ResetDEDXCC() {
 //	filter.Matches(spot_40m_CW)   → false (wrong band)
 //	filter.Matches(spot_20m_USB)  → false (wrong mode)
 func (f *Filter) Matches(s *spot.Spot) bool {
+	s.EnsureNormalized()
 	if s != nil && s.IsBeacon && !f.BeaconsEnabled() {
 		return false
 	}
 
-	modeUpper := strings.ToUpper(strings.TrimSpace(s.Mode))
+	modeUpper := s.ModeNorm
 
 	// Band and mode filters: blocklist wins, allowlist optional.
-	if !passesStringFilter(spot.NormalizeBand(s.Band), f.Bands, f.BlockBands, f.AllBands, f.BlockAllBands) {
+	if !passesStringFilter(spot.NormalizeBand(s.BandNorm), f.Bands, f.BlockBands, f.AllBands, f.BlockAllBands) {
 		return false
 	}
 	if !passesStringFilter(modeUpper, f.Modes, f.BlockModes, f.AllModes, f.BlockAllModes) {
@@ -789,10 +790,10 @@ func (f *Filter) Matches(s *spot.Spot) bool {
 	}
 
 	// DX/DE continent filters.
-	if !passesStringFilter(strings.ToUpper(strings.TrimSpace(s.DXMetadata.Continent)), f.DXContinents, f.BlockDXContinents, f.AllDXContinents, f.BlockAllDXContinents) {
+	if !passesStringFilter(s.DXContinentNorm, f.DXContinents, f.BlockDXContinents, f.AllDXContinents, f.BlockAllDXContinents) {
 		return false
 	}
-	if !passesStringFilter(strings.ToUpper(strings.TrimSpace(s.DEMetadata.Continent)), f.DEContinents, f.BlockDEContinents, f.AllDEContinents, f.BlockAllDEContinents) {
+	if !passesStringFilter(s.DEContinentNorm, f.DEContinents, f.BlockDEContinents, f.AllDEContinents, f.BlockAllDEContinents) {
 		return false
 	}
 
@@ -813,10 +814,10 @@ func (f *Filter) Matches(s *spot.Spot) bool {
 	}
 
 	// 2-character grid filters.
-	if !passesStringFilter(grid2Prefix(s.DXMetadata.Grid), f.DXGrid2Prefixes, f.BlockDXGrid2, f.AllDXGrid2, f.BlockAllDXGrid2) {
+	if !passesStringFilter(prefix2(s.DXGrid2), f.DXGrid2Prefixes, f.BlockDXGrid2, f.AllDXGrid2, f.BlockAllDXGrid2) {
 		return false
 	}
-	if !passesStringFilter(grid2Prefix(s.DEMetadata.Grid), f.DEGrid2Prefixes, f.BlockDEGrid2, f.AllDEGrid2, f.BlockAllDEGrid2) {
+	if !passesStringFilter(prefix2(s.DEGrid2), f.DEGrid2Prefixes, f.BlockDEGrid2, f.AllDEGrid2, f.BlockAllDEGrid2) {
 		return false
 	}
 
@@ -1435,12 +1436,10 @@ func normalizeGrid2Token(grid string) string {
 	return grid
 }
 
-// grid2Prefix returns the uppercased first two characters of a grid string,
-// or empty string when fewer than two characters are present.
-func grid2Prefix(grid string) string {
-	grid = strings.ToUpper(strings.TrimSpace(grid))
-	if len(grid) < 2 {
+// prefix2 returns the first two characters of an already-normalized grid prefix.
+func prefix2(grid2 string) string {
+	if len(grid2) < 2 {
 		return ""
 	}
-	return grid[:2]
+	return grid2[:2]
 }
