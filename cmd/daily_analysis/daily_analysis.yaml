@@ -73,9 +73,16 @@ openai:
   api_key: ""  # Leave blank to use OPENAI_API_KEY from env/.env; avoids committing secrets.
   model: "gpt-5-nano"
   endpoint: "https://api.openai.com/v1/chat/completions"
-  max_tokens: 5000             # Sent as max_completion_tokens in the API payload.
+  max_tokens: 10000             # Sent as max_completion_tokens in the API payload.
   temperature: 1              # Ignored for gpt-5 models; used for non-gpt-5 models if you switch.
-  system_prompt: "You are ham radio DX cluster data analyst. Use provided metrics and config snapshot to explain the cluster's spots processing behavior and recommend next parameter changes. Be concise and specific to the data. Produce parameter-change table with exact per-band deltas to apply. Do not invent fields."
+  system_prompt: |-
+    You are a ham radio DX cluster data analyst.
+    Use provided metrics and the config snapshot to explain the cluster's spots processing behavior
+    and recommend next parameter changes.
+    Goal is to improve pair recall, reduce present-but-missed, and stabilize follow-on detection, with minimal false corrections
+    Be specific to the data.
+    Produce a parameter-change table with exact per-band, per quiet/normal/busy period deltas to apply.
+    Do not invent fields.
   output_template: "data/reports/analysis-{DATE}.txt"      # LLM output is appended to the main report.
   include_config_snapshot: true
   cluster_config_path: "config.yaml"
