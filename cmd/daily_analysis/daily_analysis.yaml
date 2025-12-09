@@ -1,3 +1,4 @@
+<<<<<<< ours
 ##############################################################################
 # Daily Analysis Configuration
 #
@@ -86,3 +87,93 @@ openai:
   output_template: "data/reports/analysis-{DATE}.txt"      # LLM output is appended to the main report.
   include_config_snapshot: true
   cluster_config_path: "config.yaml"
+=======
+##############################################################################
+# Daily Analysis Configuration
+#
+# Purpose:
+#   Configure paths and behavior for the daily call-correction analysis runner
+#   (cmd/daily_analysis). The tool:
+#     - Loads the prior-day call-correction SQLite DB
+#     - Loads the reference Busted log
+#     - (Optionally) downloads and extracts the RBN CSV for that day
+#     - Produces a text report with recall, band recall, reject stats, stability,
+#       and optional LLM recommendations.
+#
+# How to run (examples):
+#   # Defaults to yesterday:
+#   daily-analysis.exe -config config/daily_analysis.yaml
+#
+#   # Explicit date (YYYY-MM-DD):
+#   daily-analysis.exe -config config/daily_analysis.yaml -date 2025-12-05
+#
+#   # Skip RBN download if CSV/zip already present:
+#   daily-analysis.exe -config config/daily_analysis.yaml -skip-download
+#
+# Template tokens (auto-substituted by date):
+#   {DATE}         -> YYYY-MM-DD
+#   {DATE_COMPACT} -> YYYYMMDD
+#   {DATE_BUSTED}  -> DD-MMM-YYYY
+##############################################################################
+
+# Base directory used to resolve relative template paths.
+data_dir: "."
+
+# Path to the call-correction SQLite DB for the analysis date.
+db_template: "data/logs/callcorr_debug_{DATE}.db"
+
+# Path to the reference Busted log for the analysis date.
+busted_template: "data/logs/Busted-{DATE_BUSTED}.txt"
+
+# Path where the extracted RBN CSV should live (used for info only).
+csv_template: "data/logs/{DATE_COMPACT}.csv"
+
+# Location of the RBN zip. Can be an HTTPS URL (default) or a local path.
+rbn_zip_template: "https://data.reversebeacon.net/rbn_history/{DATE_COMPACT}.zip"
+
+# Where to write the analysis report.
+report_template: "data/reports/analysis-{DATE}.txt"
+
+# If true, the tool will download the RBN zip when missing.
+download_rbn: true
+
+# If true, the tool will create the report directory automatically.
+create_report_dir: true
+
+# Optional: file listing contest dates (one YYYY-MM-DD per line, # for comments).
+# Example:
+#   2025-12-05
+#   2025-12-06
+contest_dates_file: ""
+
+# Temporal stability settings (uses RBN CSV for follow-on winner sightings).
+stability:
+  # Rolling bucket size for reporting stability (minutes).
+  bucket_minutes: 15
+  # Follow-on window after each correction (minutes) to look for uncorrected winner spots.
+  window_minutes: 15
+  # Minimum follow-on winner spots within the window to count as "stable".
+  min_follow_on: 5
+  # Frequency tolerance when matching winner sightings in RBN (Hz).
+  freq_tolerance_hz: 1000
+
+# OpenAI integration (optional). Set enabled: true and api_key to generate LLM recommendations.
+openai:
+  enabled: true
+  api_key: ""  # Leave blank to use OPENAI_API_KEY from env/.env; avoids committing secrets.
+  model: "gpt-5-nano"
+  endpoint: "https://api.openai.com/v1/chat/completions"
+  max_tokens: 10000             # Sent as max_completion_tokens in the API payload.
+  temperature: 1              # Ignored for gpt-5 models; used for non-gpt-5 models if you switch.
+  system_prompt: |-
+    You are a ham radio DX cluster data analyst.
+    Use provided metrics and the config snapshot to explain the cluster's spots processing behavior
+    and recommend next parameter changes.
+    Goal is to improve pair recall, reduce present-but-missed, and stabilize follow-on detection, with minimal false corrections
+    Be specific to the data.
+    Produce a parameter-change table with exact per-band, per quiet/normal/busy period deltas to apply.
+    Do not invent fields.
+  output_template: "data/reports/analysis-{DATE}.txt"      # LLM output is appended to the main report.
+  include_config_snapshot: true
+  cluster_config_path: "config.yaml"
+>>>>>>> theirs
