@@ -18,6 +18,7 @@ import (
 type Config struct {
 	Server          ServerConfig         `yaml:"server"`
 	Telnet          TelnetConfig         `yaml:"telnet"`
+	UI              UIConfig             `yaml:"ui"`
 	RBN             RBNConfig            `yaml:"rbn"`
 	RBNDigital      RBNConfig            `yaml:"rbn_digital"`
 	PSKReporter     PSKReporterConfig    `yaml:"pskreporter"`
@@ -61,6 +62,34 @@ type TelnetConfig struct {
 	SkipHandshake     bool   `yaml:"skip_handshake"`
 	// BroadcastBatchIntervalMS controls telnet broadcast micro-batching. 0 disables batching.
 	BroadcastBatchIntervalMS int `yaml:"broadcast_batch_interval_ms"`
+}
+
+// UIConfig controls the optional local console UI. The legacy TUI uses tview;
+// the lean ANSI mode uses fixed buffers and ANSI escape codes. Mode must be
+// one of ansi, tview, or headless (disables the local UI).
+type UIConfig struct {
+	// Mode selects the UI renderer: "ansi", "tview", or "headless".
+	Mode string `yaml:"mode"`
+	// RefreshMS controls the ANSI render cadence; ignored by tview. 0 disables
+	// periodic renders (events will still be buffered).
+	RefreshMS int `yaml:"refresh_ms"`
+	// Color enables simple ANSI coloring for marked-up lines; when false the
+	// markup tokens are stripped.
+	Color bool `yaml:"color"`
+	// ClearScreen toggles whether the ANSI renderer clears the screen each
+	// frame. When false, frames are appended (useful for terminals that scroll).
+	ClearScreen bool `yaml:"clear_screen"`
+	// PaneLines bounds the retained history per pane for the ANSI renderer.
+	PaneLines UIPaneLines `yaml:"pane_lines"`
+}
+
+// UIPaneLines bounds history depth for the ANSI renderer.
+type UIPaneLines struct {
+	Stats      int `yaml:"stats"`
+	Calls      int `yaml:"calls"`
+	Unlicensed int `yaml:"unlicensed"`
+	Harmonics  int `yaml:"harmonics"`
+	System     int `yaml:"system"`
 }
 
 // RBNConfig contains Reverse Beacon Network settings
@@ -389,6 +418,48 @@ func Load(filename string) (*Config, error) {
 
 	hasSecondaryPrefer := yamlKeyPresent(raw, "dedup", "secondary_prefer_stronger_snr")
 	hasAdaptiveMinReportsEnabled := yamlKeyPresent(raw, "call_correction", "adaptive_min_reports", "enabled")
+
+	// UI defaults favor the lightweight ANSI renderer unless overridden. Mode
+	// is normalized to a small, explicit set to keep startup behavior
+	// predictable and YAML-driven.
+	uiMode := strings.ToLower(strings.TrimSpace(cfg.UI.Mode))
+	if uiMode == "" {
+		uiMode = "ansi"
+	}
+	switch uiMode {
+	case "ansi", "tview", "headless":
+		cfg.UI.Mode = uiMode
+	case "none":
+		cfg.UI.Mode = "headless"
+	case "auto", "ansi_poc":
+		cfg.UI.Mode = "ansi"
+	default:
+		return nil, fmt.Errorf("invalid ui.mode %q: must be ansi, tview, or headless", cfg.UI.Mode)
+	}
+	if cfg.UI.RefreshMS <= 0 {
+		cfg.UI.RefreshMS = 250
+	}
+	if cfg.UI.PaneLines.Stats <= 0 {
+		cfg.UI.PaneLines.Stats = 8
+	}
+	if cfg.UI.PaneLines.Calls <= 0 {
+		cfg.UI.PaneLines.Calls = 20
+	}
+	if cfg.UI.PaneLines.Unlicensed <= 0 {
+		cfg.UI.PaneLines.Unlicensed = 20
+	}
+	if cfg.UI.PaneLines.Harmonics <= 0 {
+		cfg.UI.PaneLines.Harmonics = 20
+	}
+	if cfg.UI.PaneLines.System <= 0 {
+		cfg.UI.PaneLines.System = 40
+	}
+	if !yamlKeyPresent(raw, "ui", "color") {
+		cfg.UI.Color = true
+	}
+	if !yamlKeyPresent(raw, "ui", "clear_screen") {
+		cfg.UI.ClearScreen = true
+	}
 
 	// RBN ingest buffers should be sized to absorb decode bursts; fall back to
 	// generous defaults when omitted.
@@ -754,6 +825,16 @@ func (c *Config) Print() {
 		c.Telnet.WorkerQueue,
 		c.Telnet.ClientBuffer,
 		c.Telnet.SkipHandshake)
+	fmt.Printf("UI: mode=%s refresh=%dms color=%t clear_screen=%t panes(stats=%d calls=%d unlicensed=%d harm=%d system=%d)\n",
+		c.UI.Mode,
+		c.UI.RefreshMS,
+		c.UI.Color,
+		c.UI.ClearScreen,
+		c.UI.PaneLines.Stats,
+		c.UI.PaneLines.Calls,
+		c.UI.PaneLines.Unlicensed,
+		c.UI.PaneLines.Harmonics,
+		c.UI.PaneLines.System)
 	if c.RBN.Enabled {
 		fmt.Printf("RBN CW/RTTY: %s:%d (as %s, slot_buffer=%d)\n", c.RBN.Host, c.RBN.Port, c.RBN.Callsign, c.RBN.SlotBuffer)
 	}

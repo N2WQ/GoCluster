@@ -7,6 +7,19 @@ server:
 stats:
   display_interval_seconds: 60  # How often to print stats to stdout
 
+# Local console UI (applies only to the process console, not telnet clients)
+ui:
+  mode: "ansi"         # ansi | tview | headless
+  refresh_ms: 250      # ANSI redraw cadence; 0 disables redraws
+  color: true          # Enable simple ANSI colors for marked-up lines
+  clear_screen: true   # Clear the screen each frame (set false to append)
+  pane_lines:
+    stats: 10          # Lines retained in the stats block
+    calls: 10          # Corrected calls history
+    unlicensed: 10     # Unlicensed drops history
+    harmonics: 10      # Harmonic drops history
+    system: 10         # System log history
+
 # Spot sources (ingest)
 rbn:
   enabled: true

@@ -24,6 +24,26 @@ A modern Go-based DX cluster that aggregates amateur radio spots, enriches them 
 - You can seed call-quality anchors from your own data with `call_correction.quality_priors_file` (format: `CALL SCORE [FREQ_KHZ]`; omit/<=0 freq to apply globally). Higher scores make a call more likely to act as an anchor in that bin.
 - You can down-weight noisy reporters via `call_correction.spotter_reliability_file` (format: `SPOTTER WEIGHT 0-1`) and `call_correction.min_spotter_reliability` to ignore spotters below a floor. These weights apply only to call-correction consensus; other processing is unchanged.
 
+## UI Modes (local console)
+
+- `ui.mode: ansi` (default) draws the lightweight ANSI console in the server's terminal when stdout is a TTY. Telnet clients do **not** see this UI.
+- `ui.mode: tview` enables the framed tview dashboard (requires an interactive console).
+- `ui.mode: headless` disables the local console; logs continue to stdout/stderr.
+- Config block (excerpt):
+  ```yaml
+  ui:
+    mode: "ansi"       # ansi | tview | headless
+    refresh_ms: 250    # ANSI redraw cadence; 0 disables redraws
+    color: true        # ANSI coloring for marked-up lines
+    clear_screen: true # Clear the screen each frame; false appends instead
+    pane_lines:
+      stats: 8
+      calls: 20
+      unlicensed: 20
+      harmonics: 20
+      system: 40
+  ```
+
 ## Data Flow and Spot Record Format
 
 ```

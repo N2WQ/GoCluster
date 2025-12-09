@@ -240,16 +240,40 @@ func (c *gridCache) lookupWithMetrics(call string, metrics *gridMetrics) (string
 	return grid, ok
 }
 
+func isStdoutTTY() bool {
+	return term.IsTerminal(int(os.Stdout.Fd()))
+}
+
 func main() {
-	forceTUI := os.Getenv("DXC_FORCE_TUI") == "1"
-	disableTUI := os.Getenv("DXC_NO_TUI") == "1"
-	tty := term.IsTerminal(int(os.Stdout.Fd()))
-	enableDashboard := forceTUI || (!disableTUI && tty)
-	if !enableDashboard && !forceTUI {
-		log.Printf("Dashboard disabled (non-interactive console or DXC_NO_TUI set)")
+	// Load configuration
+	cfg, err := config.Load("config.yaml")
+	if err != nil {
+		log.Fatalf("Error loading config: %v", err)
 	}
 
-	ui := newDashboard(enableDashboard)
+	uiMode := strings.ToLower(strings.TrimSpace(cfg.UI.Mode))
+	renderAllowed := isStdoutTTY()
+
+	var ui uiSurface
+	switch uiMode {
+	case "headless":
+		log.Printf("UI disabled (mode=headless)")
+	case "tview":
+		if !renderAllowed {
+			log.Printf("UI disabled (tview requires an interactive console)")
+		} else {
+			ui = newDashboard(true)
+		}
+	case "ansi":
+		if !renderAllowed {
+			log.Printf("UI disabled (ansi renderer requires an interactive console)")
+		} else {
+			ui = newANSIConsole(cfg.UI, renderAllowed)
+		}
+	default:
+		log.Printf("UI mode %q not recognized; defaulting to headless", uiMode)
+	}
+
 	if ui != nil {
 		ui.WaitReady()
 		defer ui.Stop()
@@ -262,12 +286,6 @@ func main() {
 	}
 
 	log.Printf("DX Cluster Server v%s starting...", Version)
-
-	// Load configuration
-	cfg, err := config.Load("config.yaml")
-	if err != nil {
-		log.Fatalf("Error loading config: %v", err)
-	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	callCacheTTL := time.Duration(cfg.CallCache.TTLSeconds) * time.Second
@@ -637,7 +655,7 @@ func main() {
 }
 
 // makeUnlicensedReporter formats drop messages for the dashboard/logger and bumps stats.
-func makeUnlicensedReporter(dash *dashboard, tracker *stats.Tracker) func(source, role, call, mode string, freq float64) {
+func makeUnlicensedReporter(dash uiSurface, tracker *stats.Tracker) func(source, role, call, mode string, freq float64) {
 	return func(source, role, call, mode string, freq float64) {
 		if tracker != nil {
 			tracker.IncrementUnlicensedDrops()
@@ -660,7 +678,7 @@ func makeUnlicensedReporter(dash *dashboard, tracker *stats.Tracker) func(source
 // displayStats prints statistics at the configured interval
 // displayStatsWithFCC prints statistics at the configured interval. FCC metadata is refreshed
 // from disk each tick so the dashboard reflects the latest download/build state.
-func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, dedup *dedup.Deduplicator, secondary *dedup.SecondaryDeduper, buf *buffer.RingBuffer, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns], telnetSrv *telnet.Server, dash *dashboard, gridStats *gridMetrics, gridDB *gridstore.Store, fccDBPath string) {
+func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, dedup *dedup.Deduplicator, secondary *dedup.SecondaryDeduper, buf *buffer.RingBuffer, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns], telnetSrv *telnet.Server, dash uiSurface, gridStats *gridMetrics, gridDB *gridstore.Store, fccDBPath string) {
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
@@ -802,7 +820,7 @@ func processOutputSpots(
 	knownCalls *atomic.Pointer[spot.KnownCallsigns],
 	freqAvg *spot.FrequencyAverager,
 	spotPolicy config.SpotPolicy,
-	dash *dashboard,
+	dash uiSurface,
 	gridUpdate func(call, grid string),
 	gridLookup func(call string) (string, bool),
 	unlicensedReporter func(source, role, call, mode string, freq float64),
@@ -1136,7 +1154,7 @@ func metadataFromPrefix(info *cty.PrefixInfo) spot.CallMetadata {
 	}
 }
 
-func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.CorrectionIndex, cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns], tracker *stats.Tracker, dash *dashboard, traceLogger spot.CorrectionTraceLogger, adaptive *spot.AdaptiveMinReports, spotterReliability spot.SpotterReliability) bool {
+func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.CorrectionIndex, cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns], tracker *stats.Tracker, dash uiSurface, traceLogger spot.CorrectionTraceLogger, adaptive *spot.AdaptiveMinReports, spotterReliability spot.SpotterReliability) bool {
 	if spotEntry == nil {
 		return false
 	}

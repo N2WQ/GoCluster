@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -21,6 +22,18 @@ const (
 	batchFlushEvery = 100 * time.Millisecond
 	batchMaxLines   = 32
 )
+
+// uiSurface abstracts the dashboard/UI so alternative console renderers can plug in.
+type uiSurface interface {
+	WaitReady()
+	Stop()
+	SetStats(lines []string)
+	AppendCall(line string)
+	AppendUnlicensed(line string)
+	AppendHarmonic(line string)
+	AppendSystem(line string)
+	SystemWriter() io.Writer
+}
 
 // dashboard renders the console layout when a compatible terminal is available.
 // It shows stats plus four scrolling panes (call corrections, unlicensed drops,
@@ -184,7 +197,7 @@ func (d *dashboard) enqueue(batch *[]string, line string) {
 	}
 }
 
-func (d *dashboard) SystemWriter() *paneWriter {
+func (d *dashboard) SystemWriter() io.Writer {
 	if d == nil {
 		return nil
 	}
