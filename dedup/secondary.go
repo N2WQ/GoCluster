@@ -43,8 +43,9 @@ type secondaryShard struct {
 }
 
 type secondaryEntry struct {
-	when time.Time
-	snr  int
+	when      time.Time
+	snr       int
+	hasReport bool
 }
 
 // NewSecondaryDeduper builds a deduper. A non-positive window disables
@@ -96,9 +97,11 @@ func (d *SecondaryDeduper) ShouldForward(s *spot.Spot) bool {
 
 	dup, lastSeen := isSecondaryDuplicateLocked(shard.cache, hash, s.Time, d.window)
 	if dup {
-		if d.preferStronger && s.Report > lastSeen.snr {
-			// Track and forward the stronger representative.
-			shard.cache[hash] = secondaryEntry{when: s.Time, snr: s.Report}
+		upgradeToReported := s.HasReport && !lastSeen.hasReport
+		stronger := d.preferStronger && s.Report > lastSeen.snr
+		if upgradeToReported || stronger {
+			// Track and forward the stronger or newly reported representative.
+			shard.cache[hash] = secondaryEntry{when: s.Time, snr: s.Report, hasReport: s.HasReport}
 			shard.mu.Unlock()
 			return true
 		}
@@ -107,7 +110,7 @@ func (d *SecondaryDeduper) ShouldForward(s *spot.Spot) bool {
 		return false
 	}
 
-	shard.cache[hash] = secondaryEntry{when: s.Time, snr: s.Report}
+	shard.cache[hash] = secondaryEntry{when: s.Time, snr: s.Report, hasReport: s.HasReport}
 	shard.mu.Unlock()
 	return true
 }

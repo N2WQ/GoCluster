@@ -36,8 +36,9 @@ type cacheShard struct {
 // cachedEntry tracks when we last saw a hash and the associated SNR so we can
 // optionally choose the strongest representative when duplicates collide.
 type cachedEntry struct {
-	when time.Time
-	snr  int
+	when      time.Time
+	snr       int
+	hasReport bool
 }
 
 // shardCount must remain a power of two so we can use bit masking for fast shard selection.
@@ -116,10 +117,12 @@ func (d *Deduplicator) process() {
 
 			dup, lastSeen := isDuplicateLocked(shard.cache, hash, s.Time, d.window)
 			if dup {
+				upgradeToReported := s.HasReport && !lastSeen.hasReport
 				// Optionally favor the stronger SNR when a duplicate collides within the window.
-				if d.preferStronger && s.Report > lastSeen.snr {
-					// Replace the cached timestamp/SNR with the stronger spot and forward it.
-					shard.cache[hash] = cachedEntry{when: s.Time, snr: s.Report}
+				stronger := d.preferStronger && s.Report > lastSeen.snr
+				if upgradeToReported || stronger {
+					// Replace the cached timestamp/SNR with the stronger or newly reported spot and forward it.
+					shard.cache[hash] = cachedEntry{when: s.Time, snr: s.Report, hasReport: s.HasReport}
 					shard.mu.Unlock()
 				} else {
 					shard.duplicateCount++
@@ -128,7 +131,7 @@ func (d *Deduplicator) process() {
 				}
 			} else {
 				// Add to cache
-				shard.cache[hash] = cachedEntry{when: s.Time, snr: s.Report}
+				shard.cache[hash] = cachedEntry{when: s.Time, snr: s.Report, hasReport: s.HasReport}
 				shard.mu.Unlock()
 			}
 

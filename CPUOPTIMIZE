@@ -1,0 +1,520 @@
+# DXCluster CPU + Latency Optimization Notes (Full Findings)
+Date: 2025-12-14
+
+This file captures the full repo review, hot-path analysis, and prioritized recommendations so we do not need to redo the work later.
+
+---
+
+## 0) Scope, Environment, and Method
+
+### Scope
+- Repo: `c:\src\gocluster`
+- Goal: reduce *spot processing latency* (ingest→broadcast) and *overall CPU utilization*.
+- Constraint: no code changes in this work product; this is analysis + proposal only.
+
+### Environment observed during analysis
+- OS: Windows (PowerShell)
+- Go toolchain: `go version go1.25.4 windows/amd64`
+- Repo contains existing performance notes and pprof captures under `data/diagnostics/`.
+
+### Method
+1. Read repo docs (`README.md`, `OPTIMIZATION.md`, `CPU_MEMORY_OPTIMIZATION_ANALYSIS.md`, `PERFORMANCE_RELIABILITY_REVIEW.md`) to map architecture.
+2. Identify “hot path” candidates by code structure (per-spot loops, per-client fanout, cache/DB lookups).
+3. Use *existing* CPU profiles in `data/diagnostics/*.pprof` to ground the analysis in evidence:
+   - `data/diagnostics/cpu-20251208-112420.pprof` (baseline 120s)
+   - `data/diagnostics/cpu-pskopt-20251208-130954.pprof` (120s)
+   - `data/diagnostics/cpu-15m-20251208-135904.pprof` (900s)
+4. For each hotspot, perform a line-by-line review of the relevant function(s) and evaluate CPU efficiency, allocation behavior, lock contention risk, and blocking I/O risk.
+5. Produce a prioritized set of optimizations with estimated impact.
+
+Notes:
+- Profile build IDs indicate the exact `gocluster.exe` used for the capture. Source code line numbers can drift if the repo changed after the executable was built. This writeup therefore references both:
+  - Evidence from pprof listings (“this line was hot in the capture”), and
+  - The current source functions and their structure (“this is how it works now”).
+
+---
+
+## 1) Repo Architecture and Spot Dataflow (What the Code Does)
+
+### Topology (high level)
+1. **Ingest**
+   - RBN telnet feeds (CW/RTTY + digital) in `rbn/client.go`
+   - PSKReporter MQTT in `pskreporter/client.go`
+   - Optional human/upstream telnet feed in `rbn/client.go` with `minimalParse` support
+2. **Normalization + enrichment**
+   - Callsign normalization and validation: `spot/callsign.go`
+   - CTY prefix metadata lookup: `cty/parser.go` (cache-backed longest-prefix lookup)
+   - FCC ULS license gating: `uls/license_check.go` + final gate in `main.go` (`applyLicenseGate`)
+3. **Protections**
+   - Primary dedup: `dedup/deduplicator.go` (sharded cache keyed by `Spot.Hash32()`)
+   - Call correction (CW/RTTY/SSB): `spot/correction.go` + `main.go:maybeApplyCallCorrectionWithLogger`
+   - Harmonic suppression: `spot/harmonics.go`
+   - Frequency averaging (CW/RTTY): `spot/frequency_averager.go`
+   - Secondary broadcast-only dedup: `dedup/secondary.go`
+4. **Persistence**
+   - Ring buffer for recent spots: `buffer/ringbuffer.go` (atomic pointers)
+   - Grid/known calls DB (SQLite): `gridstore/store.go` with writer/cache in `main.go`
+5. **Output**
+   - Telnet server + broadcast worker pool: `telnet/server.go`
+   - Spot formatting for DX cluster lines: `spot/spot.go` (`Spot.FormatDXCluster`, cached via `sync.Once`)
+6. **Local UI / stats**
+   - Optional console UIs: ANSI or Tview (`main.go` + dashboard files)
+   - Stats printed periodically (`stats/` + `main.go` formatting helpers)
+
+### Key pipeline (runtime order)
+- Ingest clients parse payload/line → create `*spot.Spot` with metadata → send into `dedup.Deduplicator` input channel.
+- Deduplicator computes `Spot.Hash32()` → sharded map check → emits to output channel.
+- `main.processOutputSpots` reads output channel and runs:
+  - normalization (`EnsureNormalized`), grid backfill (optional), call correction (optional), harmonic suppression (optional), frequency averaging (optional), confidence glyph defaults, final CTY/license gate, stats accounting, grid persistence updates, ring buffer append, secondary dedupe, telnet broadcast.
+
+### `config/mode_allocations.yaml` (your active tab)
+- Loaded/used by `rbn/client.go` for “minimal/human” telnet parsing when a spot line lacks an explicit mode.
+- It provides coarse Region 1 CW vs voice splits by band. This is not on the CPU hot path in the profiled workloads; it matters for correctness of inferred mode, not throughput.
+
+---
+
+## 2) Evidence: Existing CPU Profiles (pprof) and What They Imply
+
+Below are the salient pprof outputs used to identify bottlenecks.
+
+### 2.1 Baseline 120s profile: `data/diagnostics/cpu-20251208-112420.pprof`
+
+Command used:
+- `go tool pprof -top -nodecount=30 .\\gocluster.exe .\\data\\diagnostics\\cpu-20251208-112420.pprof`
+
+Output (abridged):
+```
+Total samples = 19.15s (15.96%)
+Showing top 30 nodes out of 266
+      flat  flat%   sum%        cum   cum%
+     4.35s 22.72% 22.72%      4.35s 22.72%  memeqbody
+        3s 15.67% 38.38%      3.07s 16.03%  runtime.cgocall
+     1.16s  6.06% 44.44%      4.20s 21.93%  runtime.scanobject
+     0.83s  4.33% 48.77%      1.21s  6.32%  runtime.findObject
+     0.60s  3.13% 58.80%      5.35s 27.94%  dxcluster/cty.(*CTYDatabase).lookupCallsignNoCache
+     0.12s  0.63% 71.91%      4.74s 24.75%  strings.HasPrefix (inline)
+```
+
+Cumulative view:
+- `go tool pprof -top -cum -nodecount=30 ...`
+```
+      flat  flat%   sum%        cum   cum%
+      7.45s 38.90%  dxcluster/pskreporter.(*Client).workerLoop
+      7.39s 38.59%  dxcluster/pskreporter.(*Client).handlePayload
+      7.23s 37.75%  dxcluster/pskreporter.(*Client).convertToSpot
+      5.46s 28.51%  dxcluster/cty.(*CTYDatabase).LookupCallsign
+      5.35s 27.94%  dxcluster/cty.(*CTYDatabase).lookupCallsignNoCache
+      3.37s 17.60%  main.processOutputSpots
+      2.36s 12.32%  dxcluster/uls.IsLicensedUS
+      2.13s 11.12%  dxcluster/gridstore.(*Store).Get
+```
+
+Implications:
+- CTY lookups dominate CPU: `lookupCallsignNoCache` + `strings.HasPrefix` + `memeqbody`.
+- SQLite queries are meaningful: FCC ULS (`uls.IsLicensedUS`) + gridstore lookups.
+- Output stage (`processOutputSpots`) is a major cumulative hotspot (single goroutine doing many steps).
+- PSKReporter ingestion stack is heavy *cumulatively* (not necessarily flat CPU inside PSK; it calls into CTY/DB/etc).
+
+### 2.2 120s “pskopt” profile: `data/diagnostics/cpu-pskopt-20251208-130954.pprof`
+
+Command used:
+- `go tool pprof -top -cum -nodecount=60 -nodefraction=0 .\\gocluster.exe .\\data\\diagnostics\\cpu-pskopt-20251208-130954.pprof`
+
+Hot cumulative nodes (abridged):
+```
+8.37s 45.81%  dxcluster/pskreporter.(*Client).workerLoop
+8.31s 45.48%  dxcluster/pskreporter.(*Client).handlePayload
+8.13s 44.50%  dxcluster/pskreporter.(*Client).convertToSpot
+5.80s 31.75%  dxcluster/cty.(*CTYDatabase).LookupCallsign
+5.64s 30.87%  dxcluster/cty.(*CTYDatabase).lookupCallsignNoCache
+3.58s 19.59%  main.processOutputSpots
+2.79s 15.27%  dxcluster/uls.IsLicensedUS
+2.34s 12.81%  dxcluster/gridstore.(*Store).Get
+2.24s 12.26%  main.(*gridCache).shouldUpdate
+```
+
+Key line-level evidence from `pprof -list`:
+
+1) CTY scan loop:
+- `go tool pprof -list=lookupCallsignNoCache ...`
+```
+580ms flat, 5.64s cum (30.87% of Total)
+163: for _, key := range db.Keys {
+167: if strings.HasPrefix(cs, key) {   <-- 5.05s attributed here
+```
+
+2) Gridstore DB read:
+- `go tool pprof -list='\\(\\*Store\\)\\.Get' ...`
+```
+261: err := s.db.QueryRow(...).Scan(...)  <-- 1.90s QueryRow, 430ms Scan
+```
+
+3) FCC ULS DB query:
+- `go tool pprof -list=IsLicensedUS ...`
+```
+72: err := db.QueryRow("SELECT 1 FROM AM ...", canonical).Scan(&dummy)  <-- 2.77s
+```
+
+4) Grid cache “miss → DB read” policy:
+- `go tool pprof -list=shouldUpdate ...`
+```
+174: if store != nil { if rec, err := store.Get(call); ... }  <-- 2.19s
+```
+
+Implications:
+- CTY algorithmic cost is the clearest CPU lever.
+- SQLite point lookups (grid + ULS) are very expensive relative to in-memory operations and also add latency variability.
+- Grid persistence logic is unintentionally expensive on cache misses because it reads SQLite to avoid redundant writes.
+
+### 2.3 15-minute profile: `data/diagnostics/cpu-15m-20251208-135904.pprof`
+
+Command used:
+- `go tool pprof -top -nodecount=40 .\\gocluster.exe .\\data\\diagnostics\\cpu-15m-20251208-135904.pprof`
+
+Output (abridged):
+```
+Duration: 900.16s, Total samples = 276.98s (30.77%)
+flat 214.06s 77.28%  runtime.cgocall
+cum 109.10s 39.39%   github.com/gdamore/tcell/v2.(*cScreen).draw
+cum 103.14s 37.24%   syscall.WriteConsole
+```
+
+Implications:
+- If `ui.mode` is not `headless` (especially `tview`), console I/O can dominate CPU, masking all spot-pipeline optimizations.
+- For production CPU + latency evaluation, measure with `ui.mode: headless` (or at least no high-frequency redraw).
+
+---
+
+## 3) Hot Path Functions (Primary) and Line-by-Line CPU Review
+
+This section focuses on the functions implicated by pprof and/or obviously in the per-spot path.
+
+### 3.1 CTY lookup: `cty/parser.go` `(*CTYDatabase).lookupCallsignNoCache`
+
+Why hot:
+- pprof attributes ~30% cumulative CPU to this routine, and ~5s in a 120s sample directly to `strings.HasPrefix` inside the scan loop.
+
+Key code path (current structure):
+1. `if info, ok := db.Data[cs]; ok { return clonePrefix(info), true }`
+   - Map lookup is O(1) average (fast).
+   - `clonePrefix(info)` allocates a new `PrefixInfo` on the heap each hit (per lookup allocation).
+2. `for _, key := range db.Keys { ... if strings.HasPrefix(cs, key) { ... } }`
+   - `db.Keys` is sorted longest-first. That’s correct for longest-prefix match, but it’s still an O(#keys) scan on misses.
+   - `strings.HasPrefix` for each key results in repeated byte comparisons; pprof surfaces that as `memeqbody` and `HasPrefix` cumulative time.
+
+CPU efficiency assessment:
+- Algorithmically expensive for misses and for calls where the matching prefix is short (you scan many keys before finding a match).
+- Allocation-heavy even for hits due to `clonePrefix`.
+- Cache exists (`cacheGet`/`cacheStore`), but high-cardinality inputs (lots of unique calls) will still trigger the scan and/or allocate many cache entries.
+
+Latency impact:
+- This runs inside the per-spot path for multiple calls (DX + DE) and can run multiple times per spot across pipeline stages if not carefully de-duplicated.
+
+### 3.2 Output stage: `main.go` `processOutputSpots`
+
+Why hot:
+- ~18–20% cumulative in the 120s profiles.
+- It is single-threaded (one goroutine reading the dedup output channel).
+- It performs blocking operations (SQLite reads) in-line.
+
+CPU/latency relevant blocks:
+1. `s.EnsureNormalized()`
+   - Good: centralizes normalization to avoid repeated `ToUpper/TrimSpace`.
+2. Grid backfill:
+   - `if strings.TrimSpace(s.DXMetadata.Grid) == "" { gridLookup(s.DXCall) }`
+   - `gridLookup` can call SQLite on cache miss.
+   - This is a per-spot synchronous DB read on a missing optional field; high latency variability and can stall the entire output pipeline.
+3. Call correction / harmonic / averaging:
+   - Optional; can be CPU-heavy depending on config and traffic.
+4. Final CTY/license gate: `applyLicenseGate(s, ctyDB, unlicensedReporter)`
+   - Performs CTY lookups for DX and DE (and license-normalized variants), then may call FCC ULS DB.
+5. Stats + grid updates:
+   - Grid updates call `gridUpdate` which calls `gridCache.shouldUpdate`, which (on miss) calls SQLite (`store.Get`) synchronously.
+6. Telnet broadcast:
+   - `telnet.BroadcastSpot` is non-blocking and drops on queue full (good for backpressure).
+   - Optional “collapse SSID” clones the spot for broadcast (allocates).
+
+CPU efficiency assessment:
+- Structure is readable and correct but mixes:
+  - CPU-heavy steps,
+  - Blocking DB I/O,
+  - And fanout/broadcast orchestration
+  in one hot loop.
+- The biggest latency lever is removing blocking SQLite reads from this loop (or pushing them to async warmers / caches).
+
+### 3.3 Grid cache “shouldUpdate”: `main.go` `(*gridCache).shouldUpdate`
+
+Why hot:
+- ~12% cumulative in a 120s profile, mostly due to the DB read on cache miss.
+
+Key behavior:
+1. Lock cache mutex, check entry, update in-memory LRU.
+   - Fine; O(1) typical.
+2. On miss, it queries SQLite to avoid redundant writes:
+   - `store.Get(call)` dominates runtime.
+
+CPU efficiency assessment:
+- The DB “read to avoid write” is the wrong tradeoff if the read is expensive and the write is already batched.
+- Current cache size in `config.yaml` is small (`grid_cache_size: 3000`), which guarantees frequent misses under high-cardinality streams (e.g., PSKReporter).
+
+Latency impact:
+- This call happens in the hot output loop (grid updates), so each cache miss can stall spot processing.
+
+### 3.4 Gridstore “Get”: `gridstore/store.go` `(*Store).Get`
+
+Why hot:
+- ~11–13% cumulative in 120s profiles.
+- Called by:
+  - grid backfill (`gridLookup` inside `processOutputSpots`)
+  - grid cache miss DB check (`gridCache.shouldUpdate`)
+
+CPU efficiency assessment:
+- The SQL itself is simple; overhead is in `database/sql` + sqlite driver + I/O.
+- Avoiding the call (by increasing cache hit rate, removing the “read to avoid write”, and removing synchronous backfill) is better than micro-optimizing the SQL.
+
+### 3.5 FCC ULS license check: `uls/license_check.go` `IsLicensedUS`
+
+Why hot:
+- ~12–15% cumulative in 120s profiles, with the point query line dominating.
+
+Key behavior:
+1. Normalize call (`NormalizeForLicense`) – string ops; acceptable.
+2. Cache via `sync.Map` (process lifetime, unbounded growth).
+3. On cache miss: query SQLite:
+   - `SELECT 1 FROM AM WHERE call_sign = ? LIMIT 1;`
+   - Has retry loop for SQLITE_BUSY.
+
+CPU efficiency assessment:
+- SQLite query cost dominates and adds latency jitter.
+- Cache avoids repeated lookups for repeated calls; but for high-cardinality traffic the miss rate can still be significant.
+- Cache is unbounded; long-running processes may accumulate many unique calls.
+
+### 3.6 PSKReporter ingest: `pskreporter/client.go`
+
+Why hot (cumulative):
+- `workerLoop/handlePayload/convertToSpot` are ~39–46% cumulative in the 120s captures, largely because they drive CTY and license lookups and build spots.
+
+Notable CPU/alloc aspects:
+1. `messageHandler`: allocates and copies `msg.Payload()` into a new `[]byte` each message.
+   - This is pure allocation/copy overhead; good candidate for pooling if PSK volume is high.
+2. `handlePayload`: JSON unmarshal per message.
+   - Can be heavy under high message rate; but pprof evidence suggests CTY/DB dominate overall more than JSON itself in the sampled runs.
+3. `convertToSpot`: validates fields, normalizes, validates calls, CTY lookups for DX and DE, license check for DE (spotter).
+   - If invalid payloads are frequent and logged, logging can become significant (in a pprof listing, one invalid-timestamp log line was attributed multiple seconds in the sample).
+
+### 3.7 RBN ingest: `rbn/client.go` `(*Client).parseSpot` and helpers
+
+Not seen in the provided pprof hot list (likely because the profiled workload emphasized PSKReporter), but it is inherently a hot loop under RBN load.
+
+CPU/alloc review (current code structure):
+1. `whitespaceRE.ReplaceAllString(line, " ")` then `strings.Fields(normalized)`
+   - Regex replace is expensive relative to simple scanning; currently done unconditionally for every line.
+2. `splitSpotterToken` may allocate a new slice to insert frequency fragments.
+3. `findFrequencyField` scans tokens, parses float repeatedly until it finds plausible frequency.
+4. Uses `strings.Join` to build comment and `fmt.Sprintf` for CW WPM formatting.
+5. CTY lookups for DX and DE; license check for US DE; build spot; enqueue.
+
+CPU efficiency assessment:
+- Under RBN bursts, avoidable allocations (regex, joins, Sprintf) will matter.
+- However, based on existing pprof evidence, the *largest* shared CPU levers are still CTY and SQLite, not per-line string mechanics (unless you’re RBN-heavy and PSK-light).
+
+### 3.8 Telnet broadcasting: `telnet/server.go`
+
+Not currently dominating CPU in the headless profiles, but it can become a bottleneck if:
+- client count is high, or
+- per-client filtering is expensive, or
+- broadcast batching interval is too low (more syscalls).
+
+Key behaviors:
+- Non-blocking broadcast queue + per-worker queues + per-client channels. Drops are logged with rate-limiting.
+- Worker batching controlled by `telnet.broadcast_batch_interval_ms` (configurable; trades latency for CPU).
+
+---
+
+## 4) The “CPU Root Causes” and “Latency Root Causes” (From Evidence)
+
+### CPU root causes (highest confidence)
+1. CTY lookup algorithm: full scan of `db.Keys` with `strings.HasPrefix` for misses (`cty/parser.go`).
+2. SQLite point queries in the spot pipeline:
+   - FCC ULS license checks (`uls.IsLicensedUS`)
+   - Gridstore reads (`gridstore.Store.Get`), often triggered by cache miss policies (`gridCache.shouldUpdate`) and optional grid backfill (`processOutputSpots`).
+3. Console UI overhead when enabled (`ui.mode: tview`): can dominate CPU via syscalls.
+
+### Latency root causes (highest confidence)
+1. Blocking SQLite reads inside a single-threaded output pipeline (`processOutputSpots`):
+   - grid backfill lookups and “read-to-avoid-write” in grid updates.
+2. Broadcast micro-batching adds up to `broadcast_batch_interval_ms` of additional delay (plus queueing).
+3. When the output loop is slowed, it backlogs the dedup output channel; downstream latency increases and upstream drops may occur (by design).
+
+---
+
+## 5) Recommendations (Prioritized) With Estimated Impact
+
+Impact estimates are based on the observed share of CPU in pprof. “Overall CPU” estimates assume other costs remain roughly constant; real gains should be validated under controlled load.
+
+### P0 (highest ROI, lowest complexity / risk)
+
+#### P0.1 Run headless in production profiling and most deployments
+- Action: set `ui.mode: headless` (config-only).
+- Evidence: 15-minute profile dominated by console (`runtime.cgocall` ~77% flat).
+- Expected impact:
+  - If currently `tview`/ANSI redraw is active: **very large CPU reduction** (often tens of percent to >50% depending on refresh and traffic) and less jitter.
+  - If already headless: no change.
+- Latency: can improve due to fewer syscalls and less contention.
+
+#### P0.2 Replace CTY longest-prefix scan with an O(len(call)) lookup (prefix-chop or trie)
+- Where: `cty/parser.go` `lookupCallsignNoCache` (currently scan + `HasPrefix`).
+- Evidence: ~30–31% cumulative CPU with ~5s attributed to `strings.HasPrefix` line in a 120s sample.
+- Recommendation: implement one of:
+  - Prefix-chop: check exact match, then progressively shorten `cs` and probe `db.Data[prefix]`.
+  - Trie / radix structure built once at startup.
+- Expected impact:
+  - Reduce CTY CPU cost by **~80–95%** for misses.
+  - Overall CPU reduction: roughly `CTY_share * reduction`, i.e. **~15% to ~30%** overall CPU in headless profiles where CTY is ~30% cumulative.
+- Latency: materially reduces per-spot compute time and queue buildup.
+
+#### P0.3 Stop doing synchronous SQLite reads to “avoid redundant grid writes”
+- Where: `main.go` `gridCache.shouldUpdate` (the miss path calls `store.Get`).
+- Evidence: `gridCache.shouldUpdate` ~12% cumulative, with ~2.19s attributed to `store.Get(call)` in 120s sample.
+- Recommendation options:
+  1) Config-first: drastically increase `grid_cache_size` to reduce miss frequency (see P0.4).
+  2) Architectural: remove the DB read on cache miss; accept occasional redundant writes since writes are batched anyway.
+- Expected impact:
+  - If DB read is removed and cache remains moderate: **~5% to ~12% overall CPU** reduction (workload dependent) + reduced latency jitter.
+  - If only cache size is increased: the gain depends on achieved hit rate; can still be significant.
+
+#### P0.4 Increase `grid_cache_size` (config-only quick win)
+- Current config: `grid_cache_size: 3000` (very small for PSK-scale cardinality).
+- Expected impact: reduces calls to `gridstore.Get`, which is ~11–13% cumulative in headless pprof.
+- Suggested ranges:
+  - 50k–200k for PSK-heavy workloads (memory tradeoff).
+- Expected impact: **~5% to ~12% overall CPU** depending on miss rate; also improves output-stage latency.
+
+### P1 (high ROI, moderate complexity)
+
+#### P1.1 Remove synchronous grid backfill from the output hot loop (or make it cache-only)
+- Where: `main.go` `processOutputSpots` gridLookup for DX/DE grids when missing.
+- Evidence: output loop is hot; gridstore reads are expensive; grid backfill is optional metadata.
+- Expected impact: **up to ~5–10% overall CPU** (depends on how often grids are missing) + better tail latency.
+
+#### P1.2 Reduce redundant CTY lookups across stages (ingest vs final gate)
+- Where: `pskreporter/client.go` + `rbn/client.go` do CTY lookups; output `applyLicenseGate` does CTY again (and also on license-normalized variants).
+- Expected impact: **~5–15% overall CPU** in workloads where the same call is looked up multiple times per spot.
+- Latency: fewer CTY calls per spot reduces queueing.
+
+#### P1.3 Reduce SQLite overhead for license and grid queries (prepared statements + tuned pool)
+- Where:
+  - `uls/license_check.go` per-call point query
+  - `gridstore/store.go` Get query
+- Expected impact:
+  - Prepared statements + stable connection pool can reduce overhead by **~2–6% overall CPU** (depends on how much time is in prepare/open vs execution).
+  - More important: reduces tail latency and variability.
+
+### P2 (high upside but higher complexity / operational considerations)
+
+#### P2.1 Replace FCC ULS per-call SQLite checks with an in-memory membership structure
+- Where: `uls.IsLicensedUS`
+- Evidence: ~12–15% cumulative in headless 120s profiles.
+- Expected impact:
+  - If successful: eliminate most per-spot license DB queries → **~8–15% overall CPU** reduction + major latency improvement.
+- Tradeoffs:
+  - Memory footprint, startup time, and refresh strategy.
+  - Must preserve correctness; probabilistic filters (Bloom) are risky unless designed carefully (false positives would incorrectly allow unlicensed calls).
+
+#### P2.2 Parallelize/split the output pipeline (reduce queueing latency)
+- Where: `main.processOutputSpots` (single goroutine)
+- Goal: reduce end-to-end latency under load by avoiding one serial bottleneck; isolate blocking IO.
+- Expected impact:
+  - **Large tail-latency improvement** when CPU is saturated or DB stalls occur.
+  - CPU savings: not guaranteed; may increase due to overhead.
+- Risk: complexity, ordering semantics, and debugging complexity.
+
+#### P2.3 PSKReporter micro-optimizations (after CTY/DB fixes)
+- Pool `[]byte` payload buffers in `messageHandler` (remove alloc+copy per message).
+- Reduce JSON unmarshal cost by streaming/partial decoding.
+- Rate-limit noisy logs on invalid payloads (if observed).
+- Expected impact: **~2–10% overall CPU** depending on PSK message rate and remaining bottlenecks.
+
+### P3 (nice-to-have / conditional)
+- Shard or redesign callsign normalization cache if lock contention appears under concurrency (`spot/callsign.go` CallCache uses a single mutex).
+- Optimize RBN parsing string mechanics (regex bypass, fewer joins/Sprintf) if RBN ingestion dominates your traffic profile.
+
+---
+
+## 6) “Latency vs CPU” Tradeoffs (Explicit Knobs)
+
+These are the highest-leverage knobs that directly trade latency for CPU:
+
+1) Telnet broadcast batching (`telnet.broadcast_batch_interval_ms`)
+- Higher interval → fewer writes/syscalls → lower CPU, but adds latency (0..interval).
+- Lower/zero interval → lower latency, but higher CPU and more contention at high client counts.
+
+2) Output-stage synchronous lookups (grid backfill, grid cache DB checks, CTY/license gates)
+- Making them async/cache-only reduces latency variance but may reduce enrichment fidelity or increase DB writes.
+
+3) UI refresh (`ui.mode`, `ui.refresh_ms`)
+- Tview/ANSI redraw can dominate CPU; headless is best for throughput/latency evaluation.
+
+---
+
+## 7) Measurement / Validation Plan (So We Can Prove Improvements)
+
+### Built-in diagnostics server (already in code)
+`main.go` includes `maybeStartDiagServer()` which exposes:
+- `/debug/pprof/*`
+- `/debug/heapdump` (writes `data/diagnostics/heap-<ts>.pprof`)
+
+Enable via environment variables:
+- `DXC_PPROF_ADDR=localhost:6061` (starts HTTP server)
+- Optional: `DXC_HEAP_LOG_INTERVAL=60s` (periodic heap stats in logs)
+
+Collect profiles:
+- CPU: `curl "http://localhost:6061/debug/pprof/profile?seconds=120" -o data/diagnostics/cpu-<ts>.pprof`
+- Heap: `curl "http://localhost:6061/debug/pprof/heap" -o data/diagnostics/heap-<ts>.pprof`
+- Heap dump: `curl "http://localhost:6061/debug/heapdump"`
+
+Compare:
+- `go tool pprof -top/-cum -nodecount=50 gocluster.exe data/diagnostics/cpu-<ts>.pprof`
+
+Important note:
+- `cmd/run-with-diag.ps1` currently sets `HEAP_DIAG_ADDR`, but the code expects `DXC_PPROF_ADDR`. Update the script or use env vars manually when running diagnostics.
+
+### Profiling hygiene
+- Profile with `ui.mode: headless` to avoid UI dominating CPU.
+- Use controlled load where possible (repeatable traffic/rate) to reduce noise.
+- Record config knobs with each profile capture (especially: CTY cache cap, grid cache size, dedup windows, broadcast batching).
+
+---
+
+## 8) Actionable “Next Steps” Checklist (No-Code / Low-Code Order)
+
+If the goal is immediate improvement without changing Go code:
+1) Switch to `ui.mode: headless` for production and profiling.
+2) Increase `grid_cache_size` substantially (and monitor hit rate if available).
+3) Confirm `DXC_PPROF_ADDR` based diagnostics are enabled and capture a new controlled CPU profile.
+4) Decide on latency target vs CPU target:
+   - If latency target is strict: consider reducing `telnet.broadcast_batch_interval_ms`.
+   - If CPU target is strict: keep batching and focus on CTY/SQLite elimination.
+
+Then, for code work (future):
+5) Replace CTY scan algorithm (largest CPU ROI).
+6) Remove grid-cache DB reads on misses and/or make grid backfill cache-only.
+7) Reduce/avoid per-spot SQLite license queries (prepared statements and/or in-memory set).
+8) Consider splitting/parallelizing the output pipeline if tail latency remains high under load.
+
+---
+
+## 9) Key Files Referenced (for fast navigation)
+
+- Architecture: `README.md`
+- Existing perf notes: `OPTIMIZATION.md`, `CPU_MEMORY_OPTIMIZATION_ANALYSIS.md`, `PERFORMANCE_RELIABILITY_REVIEW.md`
+- CTY: `cty/parser.go`
+- Output pipeline: `main.go` (`processOutputSpots`, `applyLicenseGate`, `gridCache`, `startGridWriter`, diag server helpers)
+- Gridstore: `gridstore/store.go`
+- License checks: `uls/license_check.go`
+- PSKReporter: `pskreporter/client.go`
+- RBN: `rbn/client.go`
+- Dedup: `dedup/deduplicator.go`, `dedup/secondary.go`
+- Telnet broadcast: `telnet/server.go`
+- Spot model + formatting/hash: `spot/spot.go`, `spot/callsign.go`
+

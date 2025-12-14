@@ -9,7 +9,8 @@
       "Bash(./analyze_distance3.exe:*)",
       "Bash(find:*)",
       "Bash(go version:*)",
-      "Bash(go list:*)"
+      "Bash(go list:*)",
+      "Bash(go tool pprof:*)"
     ],
     "deny": [],
     "ask": []

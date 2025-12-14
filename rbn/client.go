@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"path/filepath"
 	"regexp"
 	"runtime/debug"
 	"strconv"
@@ -24,9 +25,6 @@ import (
 
 	"gopkg.in/yaml.v3"
 )
-
-// precompiled regex avoids the per-line allocation/compile cost when normalizing RBN lines
-var whitespaceRE = regexp.MustCompile(`\s+`)
 
 const (
 	minRBNDialFrequencyKHz = 100.0
@@ -96,36 +94,237 @@ var (
 
 const modeAllocPath = "config/mode_allocations.yaml"
 
-// detectModeFromTokens attempts to infer mode from free-form human comment tokens.
-// It stays conservative: only unambiguous mode tokens are used; otherwise the
-// caller falls back to the band-based allocation table.
-func detectModeFromTokens(tokens []string, freqKHz float64) string {
-	for _, tok := range tokens {
-		clean := strings.TrimSpace(strings.Trim(tok, ",.;!:"))
-		cleanUpper := strings.ToUpper(clean)
-		switch cleanUpper {
-		case "FT8", "FT-8":
-			return "FT8"
-		case "FT4", "FT-4":
-			return "FT4"
-		case "RTTY":
-			return "RTTY"
-		case "CWT", "CW":
-			return "CW"
-		case "MSK144", "MSK-144", "MSK":
-			return "MSK144"
-		case "USB":
-			return "USB"
-		case "LSB":
-			return "LSB"
-		case "SSB":
-			if freqKHz >= 10000 {
-				return "USB"
+type acTokenKind int
+
+const (
+	acTokenUnknown acTokenKind = iota
+	acTokenDX
+	acTokenDE
+	acTokenMode
+	acTokenDB
+	acTokenWPM
+)
+
+type acPattern struct {
+	word string
+	kind acTokenKind
+	mode string
+}
+
+type acMatch struct {
+	start   int
+	end     int
+	pattern acPattern
+}
+
+type acNode struct {
+	fail    int
+	next    map[byte]int
+	outputs []int
+}
+
+type acScanner struct {
+	patterns []acPattern
+	nodes    []acNode
+}
+
+func newACScanner(patterns []acPattern) *acScanner {
+	sc := &acScanner{
+		patterns: patterns,
+		nodes:    []acNode{{next: make(map[byte]int)}},
+	}
+	for idx, p := range patterns {
+		state := 0
+		for i := 0; i < len(p.word); i++ {
+			ch := p.word[i]
+			next, ok := sc.nodes[state].next[ch]
+			if !ok {
+				next = len(sc.nodes)
+				sc.nodes = append(sc.nodes, acNode{next: make(map[byte]int)})
+				sc.nodes[state].next[ch] = next
 			}
-			return "LSB"
+			state = next
+		}
+		sc.nodes[state].outputs = append(sc.nodes[state].outputs, idx)
+	}
+
+	// Build failure links (BFS).
+	queue := make([]int, 0, len(sc.nodes))
+	for _, next := range sc.nodes[0].next {
+		queue = append(queue, next)
+	}
+	for len(queue) > 0 {
+		state := queue[0]
+		queue = queue[1:]
+		for ch, next := range sc.nodes[state].next {
+			fail := sc.nodes[state].fail
+			for fail > 0 {
+				if target, ok := sc.nodes[fail].next[ch]; ok {
+					fail = target
+					break
+				}
+				fail = sc.nodes[fail].fail
+			}
+			sc.nodes[next].fail = fail
+			sc.nodes[next].outputs = append(sc.nodes[next].outputs, sc.nodes[fail].outputs...)
+			queue = append(queue, next)
 		}
 	}
-	return ""
+	return sc
+}
+
+func (sc *acScanner) FindAll(text string) []acMatch {
+	if sc == nil {
+		return nil
+	}
+	state := 0
+	matches := make([]acMatch, 0, 8)
+	for i := 0; i < len(text); i++ {
+		ch := text[i]
+		next, ok := sc.nodes[state].next[ch]
+		for !ok && state > 0 {
+			state = sc.nodes[state].fail
+			next, ok = sc.nodes[state].next[ch]
+		}
+		if ok {
+			state = next
+		}
+		if len(sc.nodes[state].outputs) == 0 {
+			continue
+		}
+		end := i + 1
+		for _, pid := range sc.nodes[state].outputs {
+			p := sc.patterns[pid]
+			start := end - len(p.word)
+			if start >= 0 {
+				matches = append(matches, acMatch{start: start, end: end, pattern: p})
+			}
+		}
+	}
+	return matches
+}
+
+func buildMatchIndex(matches []acMatch) map[int][]acMatch {
+	if len(matches) == 0 {
+		return nil
+	}
+	index := make(map[int][]acMatch, len(matches))
+	for _, m := range matches {
+		index[m.start] = append(index[m.start], m)
+	}
+	return index
+}
+
+func classifyToken(matchIndex map[int][]acMatch, trimStart, trimEnd int) (acPattern, bool) {
+	if len(matchIndex) == 0 {
+		return acPattern{}, false
+	}
+	for _, m := range matchIndex[trimStart] {
+		if m.end == trimEnd {
+			return m.pattern, true
+		}
+	}
+	return acPattern{}, false
+}
+
+func classifyTokenWithFallback(matchIndex map[int][]acMatch, tok spotToken) (acPattern, bool) {
+	if pat, ok := classifyToken(matchIndex, tok.trimStart, tok.trimEnd); ok {
+		return pat, true
+	}
+	// Fallback: scan the token itself to tolerate any positional drift from the
+	// global match index (e.g., doubled spaces or trimmed punctuation).
+	for _, m := range getKeywordScanner().FindAll(tok.upper) {
+		if m.start == 0 && m.end == len(tok.upper) {
+			return m.pattern, true
+		}
+	}
+	return acPattern{}, false
+}
+
+var keywordPatterns = []acPattern{
+	{word: "DX", kind: acTokenDX},
+	{word: "DE", kind: acTokenDE},
+	{word: "DB", kind: acTokenDB},
+	{word: "WPM", kind: acTokenWPM},
+	{word: "CW", kind: acTokenMode, mode: "CW"},
+	{word: "CWT", kind: acTokenMode, mode: "CW"},
+	{word: "RTTY", kind: acTokenMode, mode: "RTTY"},
+	{word: "FT8", kind: acTokenMode, mode: "FT8"},
+	{word: "FT-8", kind: acTokenMode, mode: "FT8"},
+	{word: "FT4", kind: acTokenMode, mode: "FT4"},
+	{word: "FT-4", kind: acTokenMode, mode: "FT4"},
+	{word: "MSK", kind: acTokenMode, mode: "MSK144"},
+	{word: "MSK144", kind: acTokenMode, mode: "MSK144"},
+	{word: "MSK-144", kind: acTokenMode, mode: "MSK144"},
+	{word: "USB", kind: acTokenMode, mode: "USB"},
+	{word: "LSB", kind: acTokenMode, mode: "LSB"},
+	{word: "SSB", kind: acTokenMode, mode: "SSB"},
+}
+
+var keywordScannerOnce sync.Once
+var keywordScanner *acScanner
+
+func getKeywordScanner() *acScanner {
+	keywordScannerOnce.Do(func() {
+		keywordScanner = newACScanner(keywordPatterns)
+	})
+	return keywordScanner
+}
+
+type spotToken struct {
+	raw       string
+	clean     string
+	upper     string
+	start     int
+	end       int
+	trimStart int
+	trimEnd   int
+}
+
+func tokenizeSpotLine(line string) []spotToken {
+	tokens := make([]spotToken, 0, 16)
+	i := 0
+	for i < len(line) {
+		for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
+			i++
+		}
+		if i >= len(line) {
+			break
+		}
+		start := i
+		for i < len(line) && line[i] != ' ' && line[i] != '\t' {
+			i++
+		}
+		end := i
+		raw := line[start:end]
+		trimStart := start
+		trimEnd := end
+		for trimStart < end {
+			if strings.ContainsRune(",;:!.", rune(line[trimStart])) {
+				trimStart++
+			} else {
+				break
+			}
+		}
+		for trimEnd > trimStart {
+			if strings.ContainsRune(",;:!.", rune(line[trimEnd-1])) {
+				trimEnd--
+			} else {
+				break
+			}
+		}
+		clean := line[trimStart:trimEnd]
+		tokens = append(tokens, spotToken{
+			raw:       raw,
+			clean:     clean,
+			upper:     strings.ToUpper(clean),
+			start:     start,
+			end:       end,
+			trimStart: trimStart,
+			trimEnd:   trimEnd,
+		})
+	}
+	return tokens
 }
 
 func isAllDigits(s string) bool {
@@ -138,60 +337,6 @@ func isAllDigits(s string) bool {
 		}
 	}
 	return true
-}
-
-func detectSNR(tokens []string, mode string) (int, bool) {
-	// Fast path: scan the whole comment with a tolerant regex (handles "-12dB" or "-12 dB").
-	if len(tokens) > 0 {
-		joined := strings.Join(tokens, " ")
-		if m := snrPattern.FindStringSubmatch(joined); len(m) == 2 {
-			if v, err := strconv.Atoi(m[1]); err == nil && v >= -200 && v <= 200 {
-				return v, true
-			}
-		}
-	}
-
-	for i, tok := range tokens {
-		clean := strings.TrimSpace(strings.Trim(tok, ",.;!:"))
-		if clean == "" {
-			continue
-		}
-		lower := strings.ToLower(clean)
-		if len(lower) >= 5 && strings.HasSuffix(lower, "z") && isAllDigits(lower[:4]) {
-			continue // skip time tokens
-		}
-		// Handle two-token pattern: "<num> dB"
-		if lower == "db" && i > 0 {
-			prev := strings.ToLower(strings.TrimSpace(strings.Trim(tokens[i-1], ",.;!:")))
-			if prev == "" || strings.Contains(prev, ".") {
-				continue
-			}
-			if snr, err := strconv.Atoi(prev); err == nil && snr >= -200 && snr <= 200 {
-				return snr, true
-			}
-			continue
-		}
-
-		hasDB := strings.HasSuffix(lower, "db")
-		numStr := strings.TrimSuffix(lower, "db")
-		if strings.Contains(numStr, ".") {
-			continue // skip floats (likely frequencies)
-		}
-		// Require an explicit dB marker either in this token or the next one.
-		if !hasDB {
-			if i+1 >= len(tokens) {
-				continue
-			}
-			next := strings.ToLower(strings.TrimSpace(strings.Trim(tokens[i+1], ",.;!:")))
-			if next != "db" {
-				continue
-			}
-		}
-		if snr, err := strconv.Atoi(numStr); err == nil && snr >= -200 && snr <= 200 {
-			return snr, true
-		}
-	}
-	return 0, false
 }
 
 // ConfigureCallCache allows callers to tune the normalization cache used for RBN spotters.
@@ -245,17 +390,21 @@ func (c *Client) UseMinimalParser() {
 
 func loadModeAllocations() {
 	modeAllocOnce.Do(func() {
-		data, err := os.ReadFile(modeAllocPath)
-		if err != nil {
-			log.Printf("Warning: unable to load mode allocations from %s: %v", modeAllocPath, err)
+		paths := []string{modeAllocPath, filepath.Join("..", modeAllocPath)}
+		for _, path := range paths {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				continue
+			}
+			var table modeAllocTable
+			if err := yaml.Unmarshal(data, &table); err != nil {
+				log.Printf("Warning: unable to parse mode allocations (%s): %v", path, err)
+				return
+			}
+			modeAlloc = table.Bands
 			return
 		}
-		var table modeAllocTable
-		if err := yaml.Unmarshal(data, &table); err != nil {
-			log.Printf("Warning: unable to parse mode allocations (%s): %v", modeAllocPath, err)
-			return
-		}
-		modeAlloc = table.Bands
+		log.Printf("Warning: unable to load mode allocations from %s (or parent): file not found", modeAllocPath)
 	})
 }
 
@@ -272,6 +421,102 @@ func guessModeFromAlloc(freqKHz float64) string {
 		}
 	}
 	return ""
+}
+
+func normalizeVoiceMode(mode string, freqKHz float64) string {
+	upper := strings.ToUpper(strings.TrimSpace(mode))
+	if upper == "SSB" {
+		if freqKHz >= 10000 {
+			return "USB"
+		}
+		return "LSB"
+	}
+	return upper
+}
+
+func parseFrequencyCandidate(tok string) (float64, bool) {
+	if tok == "" {
+		return 0, false
+	}
+	f, err := strconv.ParseFloat(tok, 64)
+	if err != nil {
+		return 0, false
+	}
+	if f < minRBNDialFrequencyKHz || f > maxRBNDialFrequencyKHz {
+		return 0, false
+	}
+	return f, true
+}
+
+func parseSignedInt(tok string) (int, bool) {
+	if tok == "" {
+		return 0, false
+	}
+	if strings.Contains(tok, ".") {
+		return 0, false
+	}
+	v, err := strconv.Atoi(tok)
+	if err != nil {
+		return 0, false
+	}
+	if v < -200 || v > 200 {
+		return 0, false
+	}
+	return v, true
+}
+
+func parseInlineSNR(tok string) (int, bool) {
+	lower := strings.ToLower(strings.TrimSpace(tok))
+	if !strings.HasSuffix(lower, "db") {
+		return 0, false
+	}
+	numStr := strings.TrimSuffix(lower, "db")
+	if strings.Contains(numStr, ".") || numStr == "" {
+		return 0, false
+	}
+	v, err := strconv.Atoi(numStr)
+	if err != nil || v < -200 || v > 200 {
+		return 0, false
+	}
+	return v, true
+}
+
+func peelTimePrefix(tok string) (string, string) {
+	if len(tok) < 5 {
+		return "", tok
+	}
+	prefix := tok[:5]
+	if isTimeToken(prefix) {
+		return prefix, strings.TrimSpace(tok[5:])
+	}
+	return "", tok
+}
+
+func isTimeToken(tok string) bool {
+	if len(tok) != 5 || tok[4] != 'Z' {
+		return false
+	}
+	for i := 0; i < 4; i++ {
+		if tok[i] < '0' || tok[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func extractCallAndFreq(tok spotToken) (string, float64, bool) {
+	if tok.clean == "" {
+		return "", 0, false
+	}
+	raw := tok.raw
+	colonIdx := strings.IndexByte(raw, ':')
+	if colonIdx == -1 {
+		return tok.clean, 0, false
+	}
+	callPart := strings.TrimSpace(raw[:colonIdx])
+	remainder := strings.TrimSpace(strings.Trim(raw[colonIdx+1:], ",;:"))
+	freq, ok := parseFrequencyCandidate(remainder)
+	return callPart, freq, ok
 }
 
 // SetUnlicensedReporter installs a best-effort reporter for unlicensed US drops.
@@ -508,55 +753,6 @@ func (c *Client) normalizeSpotter(raw string) string {
 	return spot.NormalizeCallsign(raw)
 }
 
-// splitSpotterToken separates the "DX de CALL:freq" token into its callsign and any
-// frequency fragment that may have been glued to the colon without whitespace. When a
-// frequency fragment is found, it is inserted back into the token slice immediately
-// after the spotter entry so downstream parsing sees the expected field layout.
-func splitSpotterToken(parts []string) (string, []string) {
-	if len(parts) < 3 {
-		return "", parts
-	}
-
-	token := parts[2]
-	colonIdx := strings.Index(token, ":")
-	if colonIdx == -1 {
-		return token, parts
-	}
-
-	call := token[:colonIdx]
-	remainder := token[colonIdx+1:]
-
-	if remainder == "" {
-		return call, parts
-	}
-
-	// Insert the remainder as a new token after the spotter entry.
-	newParts := make([]string, 0, len(parts)+1)
-	newParts = append(newParts, parts[:3]...)
-	newParts = append(newParts, remainder)
-	newParts = append(newParts, parts[3:]...)
-	return call, newParts
-}
-
-// findFrequencyField scans the tokenized RBN line for the first numeric value that
-// looks like a dial frequency. Some telnet feeds occasionally inject the spotter
-// callsign twice (once before and once after the colon), which shifts the columns.
-// Rather than assume a fixed index, we look for the first value in a realistic HF/VHF
-// range and return both the index and parsed float value.
-func findFrequencyField(parts []string) (int, float64, bool) {
-	for i := 3; i < len(parts); i++ {
-		candidate := strings.Trim(parts[i], ",:")
-		freq, err := strconv.ParseFloat(candidate, 64)
-		if err != nil {
-			continue
-		}
-		if freq >= minRBNDialFrequencyKHz && freq <= maxRBNDialFrequencyKHz {
-			return i, freq, true
-		}
-	}
-	return -1, 0, false
-}
-
 // parseTimeFromRBN parses the HHMMZ format from RBN and creates a proper timestamp
 // RBN only provides HH:MM in UTC, so we need to combine it with today's date
 // This ensures spots with the same RBN timestamp generate the same hash for deduplication
@@ -603,231 +799,28 @@ func parseTimeFromRBN(timeStr string) time.Time {
 	return spotTime
 }
 
-// parseMinimalSpot attempts a permissive parse for human/relay feeds.
-//
-// Expected tokens: at least two callsigns and one numeric frequency (kHz).
-// It is tolerant of additional noise and will:
-//   - Detect and remove a trailing HHMMZ token (so time never becomes "comment")
-//   - Detect and remove a mode token (FT8/FT4/CW/RTTY/USB/LSB/SSB/MSK144)
-//   - Detect and remove a report token only when it is explicitly marked as dB
-//     (e.g., "-12 dB" or "-12dB")
-//
-// Any remaining tokens are joined as the spot's free-form Comment.
-func (c *Client) parseMinimalSpot(parts []string, rawLine string) {
-	timeIdx := -1
-	timeToken := ""
-	// Detect trailing HHMMZ token so it does not leak into the comment.
-	if len(parts) > 0 {
-		last := strings.TrimSpace(parts[len(parts)-1])
-		if len(last) == 5 && strings.HasSuffix(last, "Z") {
-			digits := last[:4]
-			isDigits := true
-			for _, r := range digits {
-				if r < '0' || r > '9' {
-					isDigits = false
-					break
-				}
-			}
-			if isDigits {
-				timeIdx = len(parts) - 1
-				timeToken = last
-			}
-		}
+func finalizeMode(mode string, freq float64) string {
+	mode = normalizeVoiceMode(mode, freq)
+	if mode != "" {
+		return mode
 	}
+	alloc := guessModeFromAlloc(freq)
+	if alloc != "" {
+		return normalizeVoiceMode(alloc, freq)
+	}
+	if freq >= 10000 {
+		return "USB"
+	}
+	return "CW"
+}
 
-	var (
-		freqKHz float64
-		freqOK  bool
-		calls   []string
-		freqIdx = -1
-		callIdx []int
-	)
-	for i, p := range parts {
-		if i == timeIdx {
+func buildComment(tokens []spotToken, consumed []bool) string {
+	parts := make([]string, 0, len(tokens))
+	for i, tok := range tokens {
+		if consumed[i] {
 			continue
 		}
-		trimmed := strings.TrimSuffix(strings.TrimSpace(p), ":")
-		if trimmed == "" {
-			continue
-		}
-		if !freqOK {
-			if f, err := strconv.ParseFloat(trimmed, 64); err == nil && f > 0 {
-				freqKHz = f
-				freqOK = true
-				freqIdx = i
-				continue
-			}
-		}
-		if spot.IsValidCallsign(trimmed) {
-			normalized := normalizeRBNCallsign(trimmed)
-			if normalized != "" {
-				calls = append(calls, normalized)
-				callIdx = append(callIdx, i)
-			}
-		}
-	}
-	if !freqOK || len(calls) < 2 {
-		log.Printf("Minimal human spot rejected (needs DE, DX, freq): %s", rawLine)
-		return
-	}
-	deCall := c.normalizeSpotter(calls[0])
-	dxCall := calls[1]
-
-	used := make(map[int]bool)
-	if freqIdx >= 0 {
-		used[freqIdx] = true
-	}
-	if len(callIdx) > 0 {
-		used[callIdx[0]] = true
-		if len(callIdx) > 1 {
-			used[callIdx[1]] = true
-		}
-	}
-	if timeIdx >= 0 {
-		used[timeIdx] = true
-	}
-	commentTokens := make([]string, 0, len(parts))
-	for i, tok := range parts {
-		if used[i] {
-			continue
-		}
-		// Strip structural noise commonly seen in relayed lines.
-		if strings.EqualFold(tok, "DX") || strings.EqualFold(tok, "de") {
-			continue
-		}
-		commentTokens = append(commentTokens, tok)
-	}
-
-	// Optional CTY enrichment; allow missing info.
-	var dxMeta, deMeta spot.CallMetadata
-	if info, ok := c.fetchCallsignInfo(dxCall); ok {
-		dxMeta = metadataFromPrefix(info)
-	}
-	if info, ok := c.fetchCallsignInfo(deCall); ok {
-		deMeta = metadataFromPrefix(info)
-	}
-
-	// Find mode/SNR while also scrubbing those tokens from the comment.
-	mode := ""
-	modeIdx := -1
-	for i, tok := range commentTokens {
-		clean := strings.TrimSpace(strings.Trim(tok, ",.;!:"))
-		cleanUpper := strings.ToUpper(clean)
-		switch cleanUpper {
-		case "FT8", "FT-8":
-			mode = "FT8"
-			modeIdx = i
-		case "FT4", "FT-4":
-			mode = "FT4"
-			modeIdx = i
-		case "RTTY":
-			mode = "RTTY"
-			modeIdx = i
-		case "CWT", "CW":
-			mode = "CW"
-			modeIdx = i
-		case "MSK144", "MSK-144", "MSK":
-			mode = "MSK144"
-			modeIdx = i
-		case "USB":
-			mode = "USB"
-			modeIdx = i
-		case "LSB":
-			mode = "LSB"
-			modeIdx = i
-		case "SSB":
-			if freqKHz >= 10000 {
-				mode = "USB"
-			} else {
-				mode = "LSB"
-			}
-			modeIdx = i
-		}
-		if mode != "" {
-			break
-		}
-	}
-	if mode == "" {
-		mode = guessModeFromAlloc(freqKHz)
-	}
-	if mode == "" {
-		mode = "RTTY" // fallback when table missing or out of band
-	}
-
-	// Detect SNR and mark consumed tokens.
-	snr := 0
-	hasSNR := false
-	snrIdx := make(map[int]bool)
-	for i, tok := range commentTokens {
-		clean := strings.TrimSpace(strings.Trim(tok, ",.;!:"))
-		if clean == "" {
-			continue
-		}
-		lower := strings.ToLower(clean)
-		if len(lower) == 5 && strings.HasSuffix(lower, "z") {
-			continue // time token
-		}
-		if lower == "db" && i > 0 {
-			prev := strings.ToLower(strings.TrimSpace(strings.Trim(commentTokens[i-1], ",.;!")))
-			if prev == "" || strings.Contains(prev, ".") {
-				continue
-			}
-			if v, err := strconv.Atoi(prev); err == nil && v >= -200 && v <= 200 {
-				snr = v
-				hasSNR = true
-				snrIdx[i] = true
-				snrIdx[i-1] = true
-				break
-			}
-			continue
-		}
-		hasDB := strings.HasSuffix(lower, "db")
-		numStr := strings.TrimSuffix(lower, "db")
-		if strings.Contains(numStr, ".") {
-			continue
-		}
-		if !hasDB {
-			if i+1 >= len(commentTokens) {
-				continue
-			}
-			next := strings.ToLower(strings.TrimSpace(strings.Trim(commentTokens[i+1], ",.;!:")))
-			if next != "db" {
-				continue
-			}
-		}
-		if v, err := strconv.Atoi(numStr); err == nil && v >= -200 && v <= 200 {
-			snr = v
-			hasSNR = true
-			snrIdx[i] = true
-			if !hasDB && i+1 < len(commentTokens) {
-				snrIdx[i+1] = true
-			}
-			break
-		}
-	}
-
-	s := spot.NewSpot(dxCall, deCall, freqKHz, mode)
-	s.IsHuman = true
-	s.SourceType = spot.SourceUpstream
-	if strings.TrimSpace(c.name) != "" {
-		s.SourceNode = c.name
-	}
-	s.DXMetadata = dxMeta
-	s.DEMetadata = deMeta
-	if timeToken != "" {
-		s.Time = parseTimeFromRBN(timeToken)
-	}
-	if hasSNR {
-		s.Report = snr
-		s.HasReport = true
-	}
-	// Strip mode/SNR/time/DX/de from the comment payload.
-	cleaned := make([]string, 0, len(commentTokens))
-	for i, tok := range commentTokens {
-		if i == modeIdx || snrIdx[i] {
-			continue
-		}
-		clean := strings.TrimSpace(strings.Trim(tok, ",.;!:"))
+		clean := strings.TrimSpace(tok.clean)
 		if clean == "" {
 			continue
 		}
@@ -835,200 +828,259 @@ func (c *Client) parseMinimalSpot(parts []string, rawLine string) {
 		if upper == "DX" || upper == "DE" {
 			continue
 		}
-		if len(upper) >= 5 && strings.HasSuffix(upper, "Z") && isAllDigits(upper[:4]) {
+		if len(upper) == 5 && upper[4] == 'Z' && isAllDigits(upper[:4]) {
 			continue
 		}
-		cleaned = append(cleaned, clean)
+		parts = append(parts, clean)
 	}
-	if len(cleaned) > 0 {
-		s.Comment = strings.Join(cleaned, " ")
+	if len(parts) == 0 {
+		return ""
 	}
+	return strings.Join(parts, " ")
+}
+
+// parseSpot converts a DX cluster-style telnet line into a canonical Spot using
+// a single left-to-right pass paired with an Aho-Corasick keyword scan.
+// The AC automaton tags structural tokens (DX/DE, modes, dB, WPM) so we can
+// peel fields without multiple rescans or regex passes.
+func (c *Client) parseSpot(line string) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return
+	}
+	tokens := tokenizeSpotLine(line)
+	if len(tokens) < 3 {
+		return
+	}
+	if strings.ToUpper(tokens[0].clean) != "DX" || strings.ToUpper(tokens[1].clean) != "DE" {
+		return
+	}
+	matchIndex := buildMatchIndex(getKeywordScanner().FindAll(strings.ToUpper(line)))
+	consumed := make([]bool, len(tokens))
+	consumed[0], consumed[1] = true, true
+
+	deCallRaw, freqFromCall, freqOK := extractCallAndFreq(tokens[2])
+	if strings.TrimSpace(deCallRaw) == "" {
+		log.Printf("RBN spot missing spotter callsign: %s", line)
+		return
+	}
+	consumed[2] = true
+	deCall := c.normalizeSpotter(deCallRaw)
+
+	freq := freqFromCall
+	hasFreq := freqOK
+
+	var (
+		dxCall          string
+		mode            string
+		timeToken       string
+		wpmStr          string
+		report          int
+		hasReport       bool
+		pendingNumIdx   = -1
+		pendingNumValue int
+	)
+
+	for idx := 3; idx < len(tokens); idx++ {
+		tok := tokens[idx]
+		originalClean := tok.clean
+		clean := originalClean
+		if timeToken == "" {
+			if ts, remainder := peelTimePrefix(clean); ts != "" {
+				timeToken = ts
+				shift := len(originalClean) - len(remainder)
+				clean = remainder
+				tokens[idx].clean = remainder
+				tokens[idx].upper = strings.ToUpper(remainder)
+				tokens[idx].trimStart = tok.trimStart + shift
+				tokens[idx].trimEnd = tokens[idx].trimStart + len(remainder)
+				tok = tokens[idx]
+			}
+		}
+		if clean == "" {
+			consumed[idx] = true
+			continue
+		}
+		if timeToken == "" && isTimeToken(clean) {
+			timeToken = clean
+			consumed[idx] = true
+			pendingNumIdx = -1
+			continue
+		}
+		if !hasFreq {
+			if f, ok := parseFrequencyCandidate(clean); ok {
+				freq = f
+				hasFreq = true
+				consumed[idx] = true
+				continue
+			}
+		}
+
+		if pat, ok := classifyTokenWithFallback(matchIndex, tok); ok {
+			switch pat.kind {
+			case acTokenMode:
+				if mode == "" {
+					mode = normalizeVoiceMode(pat.mode, freq)
+					consumed[idx] = true
+					continue
+				}
+			case acTokenDB:
+				if !hasReport && pendingNumIdx >= 0 {
+					report = pendingNumValue
+					hasReport = true
+					consumed[idx] = true
+					consumed[pendingNumIdx] = true
+					pendingNumIdx = -1
+					continue
+				}
+				consumed[idx] = true
+				continue
+			case acTokenWPM:
+				if wpmStr == "" && pendingNumIdx >= 0 {
+					wpmStr = tokens[pendingNumIdx].clean
+					consumed[idx] = true
+					consumed[pendingNumIdx] = true
+					pendingNumIdx = -1
+					continue
+				}
+			case acTokenDX, acTokenDE:
+				consumed[idx] = true
+				continue
+			}
+		}
+
+		if !hasReport {
+			if v, ok := parseInlineSNR(clean); ok {
+				report = v
+				hasReport = true
+				consumed[idx] = true
+				continue
+			}
+		}
+
+		if hasFreq && dxCall == "" && spot.IsValidCallsign(clean) {
+			dxCall = normalizeRBNCallsign(clean)
+			consumed[idx] = true
+			continue
+		}
+
+		if pendingNumIdx == -1 {
+			if v, ok := parseSignedInt(clean); ok {
+				pendingNumIdx = idx
+				pendingNumValue = v
+				continue
+			}
+		}
+	}
+
+	if !hasFreq {
+		log.Printf("RBN spot missing numeric frequency: %s", line)
+		return
+	}
+	if dxCall == "" {
+		log.Printf("RBN spot missing DX callsign: %s", line)
+		return
+	}
+
+	mode = finalizeMode(mode, freq)
+	if !spot.IsValidCallsign(dxCall) || !spot.IsValidCallsign(deCall) {
+		return
+	}
+
+	var dxMeta, deMeta spot.CallMetadata
+	if c.minimalParse {
+		if info, ok := c.fetchCallsignInfo(dxCall); ok {
+			dxMeta = metadataFromPrefix(info)
+		}
+		if info, ok := c.fetchCallsignInfo(deCall); ok {
+			deMeta = metadataFromPrefix(info)
+		}
+	} else {
+		dxInfo, ok := c.fetchCallsignInfo(dxCall)
+		if !ok {
+			return
+		}
+		deInfo, ok := c.fetchCallsignInfo(deCall)
+		if !ok {
+			return
+		}
+		if deInfo != nil && deInfo.ADIF == 291 && !uls.IsLicensedUS(deCall) {
+			c.dispatchUnlicensed("DE", deCall, mode, freq)
+			return
+		}
+		dxMeta = metadataFromPrefix(dxInfo)
+		deMeta = metadataFromPrefix(deInfo)
+	}
+
+	comment := buildComment(tokens, consumed)
+	if !hasReport && comment != "" {
+		if m := snrPattern.FindStringSubmatch(comment); len(m) == 2 {
+			if v, err := strconv.Atoi(m[1]); err == nil {
+				report = v
+				hasReport = true
+			}
+		}
+	}
+	if !hasReport {
+		if m := snrPattern.FindStringSubmatch(line); len(m) == 2 {
+			if v, err := strconv.Atoi(m[1]); err == nil {
+				report = v
+				hasReport = true
+			}
+		}
+	}
+	if wpmStr != "" {
+		if comment != "" {
+			comment = fmt.Sprintf("%s WPM %s", wpmStr, comment)
+		} else {
+			comment = fmt.Sprintf("%s WPM", wpmStr)
+		}
+	}
+
+	if !c.minimalParse {
+		freq = skew.ApplyCorrection(c.skewStore, deCallRaw, freq)
+	}
+
+	s := spot.NewSpot(dxCall, deCall, freq, mode)
+	s.DXMetadata = dxMeta
+	s.DEMetadata = deMeta
+	if timeToken != "" {
+		s.Time = parseTimeFromRBN(timeToken)
+	}
+	if hasReport {
+		s.Report = report
+		s.HasReport = true
+	}
+	if comment != "" {
+		s.Comment = comment
+	}
+	s.IsHuman = c.minimalParse
+	if c.minimalParse {
+		s.SourceType = spot.SourceUpstream
+		if strings.TrimSpace(c.name) != "" {
+			s.SourceNode = c.name
+		}
+	} else {
+		switch s.Mode {
+		case "FT8":
+			s.SourceType = spot.SourceFT8
+		case "FT4":
+			s.SourceType = spot.SourceFT4
+		default:
+			s.SourceType = spot.SourceRBN
+		}
+		if c.port == 7001 {
+			s.SourceNode = "RBN-DIGITAL"
+		} else {
+			s.SourceNode = "RBN"
+		}
+	}
+
+	s.RefreshBeaconFlag()
 	s.EnsureNormalized()
 
 	select {
 	case c.spotChan <- s:
-	default:
-		log.Printf("%s: Spot channel full (capacity=%d), dropping minimal spot", c.displayName(), cap(c.spotChan))
-	}
-}
-
-// parseSpot parses an RBN spot line into a Spot object
-// Handles two formats:
-//
-//	CW/RTTY: DX de CALL: FREQ DXCALL MODE DB dB WPM WPM COMMENT TIME
-//	FT8/FT4: DX de CALL: FREQ DXCALL MODE DB dB COMMENT TIME
-func (c *Client) parseSpot(line string) {
-	// Normalize whitespace - replace multiple spaces with single space
-	normalized := whitespaceRE.ReplaceAllString(line, " ")
-
-	// Split by spaces
-	parts := strings.Fields(normalized)
-
-	// For minimal/human feeds, bypass strict RBN parsing and use the coarse parser.
-	if c.minimalParse {
-		c.parseMinimalSpot(parts, line)
-		return
-	}
-
-	// Minimum: DX de CALL: FREQ DXCALL MODE DB dB TIME
-	// Example CW: [DX de G4ZFE-#: 10111.0 LZ2PC CW 11 dB 22 WPM CQ 1928Z]
-	// Example FT8: [DX de W3LPL-#: 14074.0 K1ABC FT8 -5 dB 2359Z]
-	if len(parts) < 9 {
-		if c.minimalParse {
-			c.parseMinimalSpot(parts, line)
-			return
-		}
-		log.Printf("RBN spot too short: %s", line)
-		return
-	}
-
-	// Extract common fields
-	deCallRaw, parts := splitSpotterToken(parts)
-	if deCallRaw == "" {
-		log.Printf("RBN spot missing spotter callsign: %s", line)
-		return
-	}
-	deCall := c.normalizeSpotter(deCallRaw) // Normalize RBN callsign
-
-	freqIdx, freq, ok := findFrequencyField(parts)
-	if !ok {
-		log.Printf("RBN spot missing numeric frequency: %s", line)
-		return
-	}
-	if freqIdx+4 >= len(parts) {
-		log.Printf("RBN spot truncated after frequency: %s", line)
-		return
-	}
-
-	dxCall := normalizeRBNCallsign(parts[freqIdx+1])
-	mode := parts[freqIdx+2]
-	dbStr := parts[freqIdx+3]
-
-	hasCWFormat := freqIdx+6 < len(parts) && strings.EqualFold(parts[freqIdx+6], "WPM")
-
-	var (
-		wpmStr          string
-		comment         string
-		timeStr         string
-		commentStartIdx int
-	)
-
-	if hasCWFormat {
-		// CW/RTTY format: has WPM field immediately after the "dB" token
-		wpmStr = parts[freqIdx+5]
-		commentStartIdx = freqIdx + 7
-	} else {
-		// FT8/FT4 format: no WPM field
-		wpmStr = ""
-		commentStartIdx = freqIdx + 5
-	}
-
-	// Find the time (4 digits followed by Z) and extract everything between start and time as comment
-	for i := commentStartIdx; i < len(parts); i++ {
-		if len(parts[i]) == 5 && strings.HasSuffix(parts[i], "Z") {
-			// Found the time
-			timeStr = parts[i]
-			// Everything between comment start and time is comment
-			if i > commentStartIdx {
-				comment = strings.Join(parts[commentStartIdx:i], " ")
-			}
-			break
-		}
-	}
-
-	// If we didn't find a time, use the last element if it looks like a time
-	if timeStr == "" && len(parts) > 0 {
-		lastPart := parts[len(parts)-1]
-		if len(lastPart) == 5 && strings.HasSuffix(lastPart, "Z") {
-			timeStr = lastPart
-		}
-	}
-
-	// Apply per-skimmer correction to the numeric dial frequency we found earlier
-	freq = skew.ApplyCorrection(c.skewStore, deCallRaw, freq)
-
-	// Parse signal report (dB)
-	signalDB, err := strconv.Atoi(dbStr)
-	if err != nil {
-		log.Printf("Failed to parse signal dB '%s': %v", dbStr, err)
-		signalDB = 0 // Default to 0 if parse fails
-	}
-
-	if !spot.IsValidCallsign(dxCall) {
-		// log.Printf("RBN: invalid DX call %s", dxCall) // noisy: caller requested silence
-		return
-	}
-	if !spot.IsValidCallsign(deCall) {
-		// log.Printf("RBN: invalid DE call %s", deCall) // noisy: caller requested silence
-		return
-	}
-
-	dxInfo, ok := c.fetchCallsignInfo(dxCall)
-	if !ok {
-		return
-	}
-	deInfo, ok := c.fetchCallsignInfo(deCall)
-	if !ok {
-		return
-	}
-	// Drop US spotters without an active FCC license before building the spot to avoid downstream work.
-	if deInfo != nil && deInfo.ADIF == 291 && !uls.IsLicensedUS(deCall) {
-		c.dispatchUnlicensed("DE", deCall, strings.ToUpper(mode), freq)
-		return
-	}
-	// Create spot
-	s := spot.NewSpot(dxCall, deCall, freq, mode)
-	s.IsHuman = false
-	s.DXMetadata = metadataFromPrefix(dxInfo)
-	s.DEMetadata = metadataFromPrefix(deInfo)
-
-	// CRITICAL: Set the time from the RBN spot, not current time
-	// This ensures identical spots generate identical hashes for deduplication
-	if timeStr != "" {
-		s.Time = parseTimeFromRBN(timeStr)
-	}
-
-	s.Report = signalDB // Set signal report in dB
-	s.HasReport = true
-
-	// Build comment based on format
-	if hasCWFormat {
-		// CW/RTTY: include WPM
-		if comment != "" {
-			s.Comment = fmt.Sprintf("%s WPM %s", wpmStr, comment)
-		} else {
-			s.Comment = fmt.Sprintf("%s WPM", wpmStr)
-		}
-	} else {
-		// FT8/FT4: no WPM, just comment
-		s.Comment = comment
-	}
-
-	s.RefreshBeaconFlag()
-
-	// Determine source type for all modes: FT8/FT4 are digital, others are RBN (CW/RTTY)
-	modeUpper := strings.ToUpper(mode)
-	switch modeUpper {
-	case "FT8":
-		s.SourceType = spot.SourceFT8
-	case "FT4":
-		s.SourceType = spot.SourceFT4
-	default:
-		s.SourceType = spot.SourceRBN
-	}
-
-	// Set source node for higher-level stats grouping. Distinguish RBN digital feed (port 7001)
-	// from standard RBN (port 7000). If client was created for a different port, default to "RBN".
-	if c.port == 7001 {
-		s.SourceNode = "RBN-DIGITAL"
-	} else {
-		s.SourceNode = "RBN"
-	}
-
-	// Send to spot channel
-	select {
-	case c.spotChan <- s:
-		// Spot sent successfully (logging handled by stats tracker)
 	default:
 		log.Printf("%s: Spot channel full (capacity=%d), dropping spot", c.displayName(), cap(c.spotChan))
 	}

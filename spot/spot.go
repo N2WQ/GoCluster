@@ -341,7 +341,7 @@ func (s *Spot) FormatDXCluster() string {
 		}
 		writeSpaces(&b, spacesToComment)
 
-		// Build comment section: Mode + optional signal report + optional comment.
+		// Build comment section: Mode + signal report (when present) + optional comment.
 		b.AppendString(s.Mode)
 		if s.HasReport {
 			b.AppendByte(' ')
@@ -356,7 +356,9 @@ func (s *Spot) FormatDXCluster() string {
 			b.AppendString(" dB")
 		}
 		if trimmed := strings.TrimSpace(commentPayload); trimmed != "" {
-			remaining := tailStartIdx - b.Len()
+			// Reserve one column before the fixed tail so grid/confidence/time are
+			// always visually separated from the comment payload.
+			remaining := (tailStartIdx - 1) - b.Len()
 			if remaining > 1 {
 				b.AppendByte(' ')
 				remaining--
@@ -390,12 +392,15 @@ func (s *Spot) FormatDXCluster() string {
 			confLabel = trimmed[:1]
 		}
 
-		// Ensure comment ends exactly at gridStartCol.
-		if b.Len() > tailStartIdx {
-			b.Truncate(tailStartIdx)
-		} else if b.Len() < tailStartIdx {
-			writeSpaces(&b, tailStartIdx-b.Len())
+		// Ensure the last comment column (1-based col 66, 0-based idx 65) is a
+		// space separator before the fixed tail starts at column 67.
+		separatorIdx := tailStartIdx - 1
+		if b.Len() > separatorIdx {
+			b.Truncate(separatorIdx)
+		} else if b.Len() < separatorIdx {
+			writeSpaces(&b, separatorIdx-b.Len())
 		}
+		b.AppendByte(' ') // col 66
 
 		b.AppendString(gridLabel) // cols 67-70
 		b.AppendByte(' ')         // col 71
@@ -453,7 +458,7 @@ func (s *Spot) String() string {
 }
 
 func (s *Spot) formatZoneGridComment() string {
-	return strings.TrimSpace(s.Comment)
+	return sanitizeDXClusterComment(s.Comment)
 }
 
 func formatCQZoneLabel(zone int) string {
@@ -472,4 +477,64 @@ func formatGridLabel(grid string) string {
 		grid = grid[:4]
 	}
 	return grid
+}
+
+func sanitizeDXClusterComment(comment string) string {
+	comment = strings.TrimSpace(comment)
+	if comment == "" {
+		return ""
+	}
+
+	// Fast path: keep the common case allocation-free when the comment is already
+	// plain ASCII without control characters.
+	needsSanitize := false
+	for i := 0; i < len(comment); i++ {
+		b := comment[i]
+		if b >= 0x20 && b <= 0x7e {
+			continue
+		}
+		needsSanitize = true
+		break
+	}
+	if !needsSanitize {
+		return comment
+	}
+
+	// Telnet DX-cluster output is column-oriented and traditionally ASCII. Any
+	// control characters (including tabs/newlines) can break alignment by either
+	// expanding to multiple columns or moving the cursor. To keep the fixed tail
+	// (grid/confidence/time) stable, normalize to printable ASCII and collapse
+	// all whitespace runs to a single space.
+	var b strings.Builder
+	b.Grow(len(comment))
+	lastSpace := false
+	for _, r := range comment {
+		if r == '\t' || r == '\n' || r == '\r' || r == '\v' || r == '\f' {
+			if !lastSpace {
+				b.WriteByte(' ')
+				lastSpace = true
+			}
+			continue
+		}
+		if r == ' ' {
+			if !lastSpace {
+				b.WriteByte(' ')
+				lastSpace = true
+			}
+			continue
+		}
+		if r < 0x20 || r == 0x7f {
+			continue
+		}
+		if r <= 0x7e {
+			b.WriteByte(byte(r))
+			lastSpace = false
+			continue
+		}
+		// Replace any non-ASCII rune with '?' so the output remains fixed-width
+		// across telnet clients with different encodings.
+		b.WriteByte('?')
+		lastSpace = false
+	}
+	return strings.TrimSpace(b.String())
 }

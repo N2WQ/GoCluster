@@ -280,6 +280,7 @@ func TestFormatDXClusterTruncatesCommentAndKeepsTailFixed(t *testing.T) {
 		DECall:     "N0YY",
 		Frequency:  28014.2,
 		Mode:       "CW",
+		Report:     0,
 		HasReport:  false,
 		Time:       time.Date(2025, time.November, 22, 3, 4, 0, 0, time.UTC),
 		Confidence: "S",
@@ -319,6 +320,111 @@ func TestFormatDXClusterTruncatesCommentAndKeepsTailFixed(t *testing.T) {
 	timeIdx := strings.LastIndex(got, "0304Z")
 	if timeIdx != 73 {
 		t.Fatalf("expected time to start at 0-based index 73 (1-based column 74), got %d in %q", timeIdx, got)
+	}
+}
+
+func TestFormatDXClusterSanitizesTabsInComment(t *testing.T) {
+	s := &Spot{
+		DXCall:     "R4WD",
+		DECall:     "N0YY",
+		Frequency:  28014.2,
+		Mode:       "CW",
+		Report:     0,
+		HasReport:  false,
+		Time:       time.Date(2025, time.November, 22, 3, 4, 0, 0, time.UTC),
+		Confidence: "S",
+		Comment:    "ARRL\t10 Meter\tContest IO67\ttext",
+		DXMetadata: CallMetadata{
+			Grid: "EM96",
+		},
+	}
+
+	got := s.FormatDXCluster()
+	if len(got) != 78 {
+		t.Fatalf("expected FormatDXCluster to return 78 chars (CRLF added by telnet), got %d: %q", len(got), got)
+	}
+	if strings.Contains(got, "\t") {
+		t.Fatalf("expected tab characters to be sanitized from output, got %q", got)
+	}
+
+	gridIdx := strings.LastIndex(got, "EM96")
+	if gridIdx != 66 {
+		t.Fatalf("expected grid to start at 0-based index 66 (1-based column 67), got %d in %q", gridIdx, got)
+	}
+	confIdx := strings.LastIndex(got, "S")
+	if confIdx != 71 {
+		t.Fatalf("expected confidence to start at 0-based index 71 (1-based column 72), got %d in %q", confIdx, got)
+	}
+	timeIdx := strings.LastIndex(got, "0304Z")
+	if timeIdx != 73 {
+		t.Fatalf("expected time to start at 0-based index 73 (1-based column 74), got %d in %q", timeIdx, got)
+	}
+}
+
+func TestFormatDXClusterSanitizesNewlinesInComment(t *testing.T) {
+	s := &Spot{
+		DXCall:     "R4WD",
+		DECall:     "N0YY",
+		Frequency:  28014.2,
+		Mode:       "CW",
+		Report:     0,
+		HasReport:  false,
+		Time:       time.Date(2025, time.November, 22, 3, 4, 0, 0, time.UTC),
+		Confidence: "S",
+		Comment:    "ARRL 10 Meter\nContest\rIO67",
+		DXMetadata: CallMetadata{
+			Grid: "EM96",
+		},
+	}
+
+	got := s.FormatDXCluster()
+	if len(got) != 78 {
+		t.Fatalf("expected FormatDXCluster to return 78 chars (CRLF added by telnet), got %d: %q", len(got), got)
+	}
+	if strings.ContainsAny(got, "\r\n") {
+		t.Fatalf("expected newline characters to be sanitized from output, got %q", got)
+	}
+
+	gridIdx := strings.LastIndex(got, "EM96")
+	if gridIdx != 66 {
+		t.Fatalf("expected grid to start at 0-based index 66 (1-based column 67), got %d in %q", gridIdx, got)
+	}
+	confIdx := strings.LastIndex(got, "S")
+	if confIdx != 71 {
+		t.Fatalf("expected confidence to start at 0-based index 71 (1-based column 72), got %d in %q", confIdx, got)
+	}
+	timeIdx := strings.LastIndex(got, "0304Z")
+	if timeIdx != 73 {
+		t.Fatalf("expected time to start at 0-based index 73 (1-based column 74), got %d in %q", timeIdx, got)
+	}
+}
+
+func TestFormatDXClusterLeavesSpaceBeforeGrid(t *testing.T) {
+	s := &Spot{
+		DXCall:     "ON4WIY",
+		DECall:     "S50TA",
+		Frequency:  144336.0,
+		Mode:       "MSK144",
+		Report:     6,
+		HasReport:  true,
+		Time:       time.Date(2025, time.November, 22, 21, 40, 0, 0, time.UTC),
+		Confidence: "S",
+		Comment:    "ABCDEFGHIJKLMN", // chosen to exactly fill the comment area
+		DXMetadata: CallMetadata{
+			Grid: "DM04",
+		},
+	}
+
+	got := s.FormatDXCluster()
+	if len(got) != 78 {
+		t.Fatalf("expected FormatDXCluster to return 78 chars (CRLF added by telnet), got %d: %q", len(got), got)
+	}
+	gridIdx := strings.LastIndex(got, "DM04")
+	if gridIdx != 66 {
+		t.Fatalf("expected grid to start at 0-based index 66 (1-based column 67), got %d in %q", gridIdx, got)
+	}
+	if got[65] != ' ' {
+		t.Fatalf("expected at least one space between comment and grid (byte 65), got %q in %q", got[65], got)
 	}
 }
 

@@ -1091,6 +1091,7 @@ func cloneSpotForBroadcast(src *spot.Spot) *spot.Spot {
 		Band:       src.Band,
 		Mode:       src.Mode,
 		Report:     src.Report,
+		HasReport:  src.HasReport,
 		Time:       src.Time,
 		Comment:    src.Comment,
 		SourceType: src.SourceType,
