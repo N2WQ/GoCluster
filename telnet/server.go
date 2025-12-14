@@ -57,7 +57,7 @@ import (
 // in real-time. Each client has its own goroutine for handling commands and receiving spots.
 //
 // Fields:
-//   - port: TCP port to listen on (typically 7300)
+//   - port: TCP port to listen on (configured via `telnet.port` in `config.yaml`)
 //   - welcomeMessage: Initial message sent to connecting clients
 //   - maxConnections: Maximum concurrent client connections (typically 500)
 //   - listener: TCP listener for accepting new connections

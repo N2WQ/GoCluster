@@ -112,6 +112,7 @@ func makeSpot(seq uint64, baseFreq float64, modes []string, rng *rand.Rand) *spo
 
 	s := spot.NewSpot(dx, de, freq, mode)
 	s.Report = int(seq%30) - 10
+	s.HasReport = true
 	s.SourceType = spot.SourceManual
 	return s
 }

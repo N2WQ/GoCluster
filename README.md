@@ -2,6 +2,17 @@
 
 A modern Go-based DX cluster that aggregates amateur radio spots, enriches them with CTY metadata, and broadcasts them to telnet clients.
 
+## Quickstart
+
+1. Install Go `1.25+` (see `go.mod`).
+2. Edit `config.yaml` (at minimum: your callsigns and `telnet.port`).
+3. Run:
+   ```pwsh
+   go mod tidy
+   go run .
+   ```
+4. Connect: `telnet localhost 9300` (or whatever `telnet.port` is set to in `config.yaml`).
+
 ## Architecture and Spot Sources
 
 1. **Telnet Server** (`telnet/server.go`) handles client connections, commands, and spot broadcasting using worker goroutines.
@@ -89,13 +100,37 @@ A modern Go-based DX cluster that aggregates amateur radio spots, enriches them 
 			  Connected telnet clients + filters
 ```
 
+### Telnet Spot Line Format
+
+The telnet server broadcasts spots as fixed-width DX-cluster lines:
+
+- Exactly **78 characters**, followed by **CRLF** (line endings are normalized in `telnet.Client.Send`).
+- Column numbering below is **1-based** (column 1 is the `D` in `DX de `).
+- The left side is padded so **mode always starts at column 40**.
+- The right-side tail is fixed so clients can rely on it:
+  - Grid: columns 67-70 (4 chars; blank if unknown)
+  - Confidence: column 72 (1 char; blank if unknown)
+  - Time: columns 74-78 (`HHMMZ`)
+- Any free-form comment text is truncated so it can never push the grid/confidence/time tail.
+
+Report formatting:
+
+- If a report is present: `MODE <report> dB` (e.g., `FT8 -12 dB`, `CW 27 dB`, `MSK144 +7 dB`).
+- Human spots without SNR omit the report entirely and show only `MODE`.
+
+Example:
+
+```
+DX de W3LPL:       7009.5  K1ABC       FT8 -5 dB                          FN20 S 0615Z
+```
+
 Each `spot.Spot` stores:
-- **ID** – monotonic identifier
-- **DXCall / DECall** – uppercased callsigns
-- **Frequency** (kHz), **Band**, **Mode**, **Report** (dB/SNR)
-- **Time** – UTC timestamp from the source
-- **Comment** – parsed message or `Locator>Locator`
-- **SourceType / SourceNode** - origin tags (`RBN`, `RBN-DIGITAL`, `PSKREPORTER`, etc.)
+- **ID** - monotonic identifier
+- **DXCall / DECall** - uppercased callsigns
+- **Frequency** (kHz), **Band**, **Mode**, **Report** (dB/SNR), **HasReport** (distinguishes missing SNR from a real 0)
+- **Time** - UTC timestamp from the source
+- **Comment** - free-form message (human ingest strips mode/SNR/time tokens before storing)
+- **SourceType / SourceNode** - origin tags (`RBN`, `FT8`, `FT4`, `PSKREPORTER`, `UPSTREAM`, etc.)
 - **TTL** - hop count preventing loops
 - **IsHuman** - whether the spot was reported by a human operator (automated feeds set this to false)
 - **IsBeacon** - true when the DX call ends with `/B` or the comment mentions `NCDXF`/`BEACON` (used to suppress beacon corrections/filtering)
@@ -240,7 +275,7 @@ fcc_uls:
 Below is a hypothetical telnet session showing the documented commands in action (server replies are shown after each input):
 
 ```
-telnet localhost 7300
+telnet localhost 9300
 Experimental DX Cluster
 Please login with your callsign
 
@@ -327,6 +362,26 @@ C:\src\gocluster\
 └── README.md            # This documentation
 ```
 
+If the project tree above renders with odd characters on your terminal/editor (code page differences), use this simplified view instead:
+
+```
+.
+├─ main.go                 # Wires config, ingest, pipeline, telnet server
+├─ config.yaml             # Runtime configuration
+├─ buffer/                 # Ring buffer feeding SHOW/DX and broadcasts
+├─ commands/               # Telnet command processor (HELP, SHOW/DX, etc.)
+├─ config/                 # YAML loader + defaults for config.yaml
+├─ cty/                    # CTY prefix database parsing/lookup
+├─ dedup/                  # Primary + secondary dedup engines
+├─ filter/                 # Per-client filter rules
+├─ gridstore/              # Persistent calls/grid database (SQLite)
+├─ pskreporter/            # PSKReporter MQTT ingest
+├─ rbn/                    # RBN and human/relay telnet ingest
+├─ spot/                   # Canonical spot type + formatting + correction helpers
+├─ telnet/                 # Telnet server + broadcast fanout
+└─ docs/                   # Operational / analysis notes
+```
+
 ## Code Walkthrough
 
 - `main.go` glues together ingest clients (RBN/PSKReporter), protections (dedup, call correction, harmonics, frequency averaging), persistence (grid store), telnet server, dashboard, schedulers (FCC ULS, known calls, skew), and graceful shutdown. Helpers are commented so you can follow the pipeline without prior cluster context.
@@ -340,7 +395,7 @@ C:\src\gocluster\
 
 ## Getting Started
 
-1. Update `config.yaml` with your preferred callsigns for the `rbn`, `rbn_digital`, and optional `pskreporter` sections. Optionally list `pskreporter.modes` (e.g., [`FT8`, `FT4`]) to subscribe to just those MQTT feeds simultaneously.
+1. Update `config.yaml` with your preferred callsigns for the `rbn`, `rbn_digital`, optional `human_telnet`, and optional `pskreporter` sections. Optionally list `pskreporter.modes` (e.g., [`FT8`, `FT4`]) to subscribe to just those MQTT feeds simultaneously. If you enable `human_telnet`, review `config/mode_allocations.yaml` (used to infer CW vs LSB/USB when the incoming spot line does not include an explicit mode token).
 2. Optionally enable/tune `call_correction` (master `enabled` switch, minimum corroborating spotters, required advantage, confidence percent, recency window, max edit distance, per-mode distance models, and `invalid_action` failover). `distance_model_cw` switches CW between the baseline rune-based Levenshtein (`plain`) and a Morse-aware cost function (`morse`), `distance_model_rtty` toggles RTTY between `plain` and a Baudot/ITA2-aware scorer (`baudot`), while SSB/voice modes always stay on `plain` because those reports are typed by humans.
 3. Optionally enable/tune `harmonics` to drop harmonic CW/USB/LSB/RTTY spots (master `enabled`, recency window, maximum harmonic multiple, frequency tolerance, and minimum report delta).
 4. Set `spot_policy.max_age_seconds` to drop stale spots before they're processed further. For CW/RTTY frequency smoothing, tune `spot_policy.frequency_averaging_seconds` (window), `spot_policy.frequency_averaging_tolerance_hz` (allowed deviation), and `spot_policy.frequency_averaging_min_reports` (minimum corroborating reports).
@@ -351,9 +406,9 @@ C:\src\gocluster\
 9. Install dependencies and run:
 	 ```pwsh
 	 go mod tidy
-	 go run main.go
+	 go run .
 	 ```
-10. Connect via `telnet localhost 7300`, enter your callsign, and the server will immediately stream real-time spots.
+10. Connect via `telnet localhost 9300` (or your configured `telnet.port`), enter your callsign, and the server will immediately stream real-time spots.
 
 ## Configuration Loader Defaults
 
@@ -378,4 +433,3 @@ C:\src\gocluster\
 - `go run cmd/rbnskewfetch -out data/skm_correction/rbnskew.json` forces an immediate skew-table refresh (the server still performs automatic downloads at 00:30 UTC daily).
 
 Let me know if you want diagrams, sample logs, or scripted deployment steps added next.
-

@@ -43,6 +43,7 @@ type Spot struct {
 	TTL        uint8        // Time-to-live for loop prevention
 	IsHuman    bool         // Whether the spot originated from a human operator
 	IsBeacon   bool         // True when DX call ends with /B (beacon identifiers)
+	HasReport  bool         // Whether Report is present (distinguishes real 0 dB from "unknown")
 	DXMetadata CallMetadata // Metadata for the DX station
 	DEMetadata CallMetadata // Metadata for the spotter station
 	Confidence string       // Consensus confidence label (e.g., "75%" or "?")
@@ -84,7 +85,8 @@ func NewSpot(dxCall, deCall string, freq float64, mode string) *Spot {
 		Time:       time.Now().UTC(),
 		SourceType: SourceManual,
 		TTL:        5, // Default hop count
-		Report:     0, // 0 means no report available
+		Report:     0, // Meaningful only when HasReport is true
+		HasReport:  false,
 		IsHuman:    true,
 	}
 	spot.EnsureNormalized()
@@ -135,12 +137,23 @@ func writeFixedNormalizedCall(dst []byte, call string) {
 	}
 }
 
-// Fixed layout constants for DX cluster formatting. Column numbers are 0-based.
+// Fixed layout constants for DX cluster formatting.
+//
+// IMPORTANT:
+//   - All external documentation (README, user-facing specs) uses 1-based columns
+//     where column 1 is the 'D' in "DX de ".
+//   - The constants below are internal 0-based byte offsets (string indices).
+//
+// The layout is intentionally fixed-width so telnet clients can treat the line
+// as a stable "record":
+//   - `Spot.FormatDXCluster` returns exactly 78 characters (no CRLF).
+//   - The telnet layer appends '\n' and `telnet.Client.Send` normalizes it to
+//     CRLF so clients receive 80 bytes per spot line (78 chars + CRLF).
 const (
-	freqFieldWidthToEnd = 25 // frequency should end at column 24, so total width is 25
+	freqFieldWidthToEnd = 25 // frequency ends at internal index 24 (1-based column 25)
 	dxCallFieldWidth    = 8  // DX callsign is padded to at least 8 characters
-	commentColumn       = 40 // comment (mode + report + payload) starts at column 40
-	timeColumnStart     = 71 // timestamp begins at column 71
+	commentColumn       = 39 // mode starts at internal index 39 (1-based column 40)
+	timeColumnStart     = 73 // time starts at internal index 73 (1-based column 74)
 	minGapToSymbol      = 2  // minimum spaces before confidence symbol
 )
 
@@ -234,28 +247,30 @@ func writeSpaces(b *stringBuilder, count int) {
 	}
 }
 
-// FormatDXCluster formats the spot in standard DX cluster format with exact column positions
+// FormatDXCluster formats the spot as a fixed-width DX-cluster line.
 //
-// Column positions (0-indexed):
+// The returned string is always exactly 78 characters (no CRLF). Telnet output
+// appends '\n' and `telnet.Client.Send` normalizes to CRLF, so clients see 80
+// bytes on the wire (78 chars + CRLF).
 //
-//	0-5:    "DX de " (6 characters)
-//	6-?:    Spotter callsign with colon (variable length)
-//	?-24:   Spaces and frequency (frequency right-aligned, ENDS at position 24)
-//	25-26:  Two spaces
-//	27-34:  DX callsign (8 characters, left-aligned)
-//	35-39:  Five spaces
-//	40+:    Mode + signal report + comment
-//	69-73:  Time in HHMMZ format (exactly 5 characters)
+// Column numbering below is 1-based (column 1 is the 'D' in "DX de "):
 //
-// Signal report formatting:
+//	1-6:   "DX de "
+//	7-?:   Spotter callsign with ":" suffix
+//	25:    Frequency ends at column 25 (right-aligned within the left padding)
+//	28-?:  DX callsign (left-aligned; padded to 8 chars when shorter)
+//	40:    Mode starts at column 40
+//	67-70: DX grid (4 chars; blank if unknown)
+//	72:    Confidence glyph (1 char; blank if unknown)
+//	74-78: Time in HHMMZ (Z ends at column 78)
 //
-//	CW, RTTY: No sign (e.g., "CW 23")
-//	FT8, FT4: With sign (e.g., "FT8 -5" or "FT8 +12")
+// Anything between Mode and the fixed tail is treated as a free-form comment
+// and is truncated so it can never push the grid/confidence/time columns.
 //
-// Example output:
-//
-//	"DX de RN4WA:      14022.1  HF300LOS     CW 35 22 WPM CQ                0612Z"
-//	"DX de W3LPL:       7009.5  K1ABC        FT8 -5 JO93fn42>HM68jp36       0615Z"
+// Report formatting:
+//   - Only rendered when HasReport is true.
+//   - CW/RTTY: no '+' prefix (e.g., "CW 23 dB")
+//   - All other modes: '+' is shown for non-negative values (e.g., "FT8 +12 dB")
 func (s *Spot) FormatDXCluster() string {
 	s.formatOnce.Do(func() {
 		// Pre-size a buffer to avoid multiple allocations while preserving the
@@ -263,11 +278,30 @@ func (s *Spot) FormatDXCluster() string {
 		timeStr := s.Time.UTC().Format("1504Z")
 		freqStr := strconv.FormatFloat(s.Frequency, 'f', 1, 64)
 		commentPayload := s.formatZoneGridComment()
-		prefix := "DX de " + s.DECall + ":"
+
+		const (
+			// tailStartIdx is the internal byte index where the fixed right-side
+			// tail begins (1-based column 67).
+			tailStartIdx = 66
+			gridWidth    = 4
+		)
+
+		// Keep the left side stable by truncating overly-long spotter calls so
+		// frequency and subsequent fields stay aligned.
+		deCall := s.DECall
+		maxPrefixLen := freqFieldWidthToEnd - len(freqStr) // prefix + spacesToFreq
+		maxDELen := maxPrefixLen - len("DX de ") - len(":")
+		if maxDELen < 1 {
+			maxDELen = 1
+		}
+		if len(deCall) > maxDELen {
+			deCall = deCall[:maxDELen]
+		}
+		prefix := "DX de " + deCall + ":"
 
 		spacesToFreq := freqFieldWidthToEnd - len(prefix) - len(freqStr)
-		if spacesToFreq < 1 {
-			spacesToFreq = 1
+		if spacesToFreq < 0 {
+			spacesToFreq = 0
 		}
 
 		// Estimate final length to reduce builder growth.
@@ -285,38 +319,62 @@ func (s *Spot) FormatDXCluster() string {
 		writeSpaces(&b, spacesToFreq)
 		b.AppendString(freqStr)
 		b.AppendString("  ")
-		b.AppendString(s.DXCall)
-		if pad := dxCallFieldWidth - len(s.DXCall); pad > 0 {
+
+		// DX callsigns longer than the available space are truncated to keep the
+		// mode anchor fixed at column 40.
+		dxCall := s.DXCall
+		maxDXLen := commentColumn - b.Len()
+		if maxDXLen < 0 {
+			maxDXLen = 0
+		}
+		if len(dxCall) > maxDXLen {
+			dxCall = dxCall[:maxDXLen]
+		}
+		b.AppendString(dxCall)
+		if pad := dxCallFieldWidth - len(dxCall); pad > 0 {
 			writeSpaces(&b, pad)
 		}
 
 		spacesToComment := commentColumn - b.Len()
-		if spacesToComment < 1 {
-			spacesToComment = 1
+		if spacesToComment < 0 {
+			spacesToComment = 0
 		}
 		writeSpaces(&b, spacesToComment)
 
-		// Build comment section: Mode + signal report + CQ zone/grid annotation.
+		// Build comment section: Mode + optional signal report + optional comment.
 		b.AppendString(s.Mode)
-		b.AppendByte(' ')
-		if strings.EqualFold(s.Mode, "CW") || strings.EqualFold(s.Mode, "RTTY") {
-			b.AppendString(strconv.Itoa(s.Report))
-			b.AppendString(" dB")
-		} else {
-			if s.Report >= 0 {
-				b.AppendByte('+')
+		if s.HasReport {
+			b.AppendByte(' ')
+			if strings.EqualFold(s.Mode, "CW") || strings.EqualFold(s.Mode, "RTTY") {
+				b.AppendString(strconv.Itoa(s.Report))
+			} else {
+				if s.Report >= 0 {
+					b.AppendByte('+')
+				}
+				b.AppendString(strconv.Itoa(s.Report))
 			}
-			b.AppendString(strconv.Itoa(s.Report))
+			b.AppendString(" dB")
 		}
-		b.AppendByte(' ')
-		b.AppendString(commentPayload)
+		if trimmed := strings.TrimSpace(commentPayload); trimmed != "" {
+			remaining := tailStartIdx - b.Len()
+			if remaining > 1 {
+				b.AppendByte(' ')
+				remaining--
+				if remaining > 0 {
+					if len(trimmed) > remaining {
+						trimmed = trimmed[:remaining]
+					}
+					b.AppendString(trimmed)
+				}
+			}
+		}
 
-		// Fixed tail layout:
-		// comment (ends at <=63) | grid (cols 64-67) | space (68) | confidence (69) | space (70) | time (71-75)
-		const (
-			gridStartCol = 64
-			gridWidth    = 4
-		)
+		// Fixed tail layout uses the following 1-based columns:
+		// - Grid: 67-70
+		// - Space: 71
+		// - Confidence: 72
+		// - Space: 73
+		// - Time: 74-78 (HHMMZ; 'Z' at column 78)
 
 		gridLabel := formatGridLabel(s.DXMetadata.Grid)
 		if gridLabel == "" {
@@ -333,17 +391,17 @@ func (s *Spot) FormatDXCluster() string {
 		}
 
 		// Ensure comment ends exactly at gridStartCol.
-		if b.Len() > gridStartCol {
-			b.Truncate(gridStartCol)
-		} else if b.Len() < gridStartCol {
-			writeSpaces(&b, gridStartCol-b.Len())
+		if b.Len() > tailStartIdx {
+			b.Truncate(tailStartIdx)
+		} else if b.Len() < tailStartIdx {
+			writeSpaces(&b, tailStartIdx-b.Len())
 		}
 
-		b.AppendString(gridLabel) // cols 64-67
-		b.AppendByte(' ')         // col 68
-		b.AppendString(confLabel) // col 69 (or space)
-		b.AppendByte(' ')         // col 70
-		b.AppendString(timeStr)   // starts at col 71
+		b.AppendString(gridLabel) // cols 67-70
+		b.AppendByte(' ')         // col 71
+		b.AppendString(confLabel) // col 72 (or space)
+		b.AppendByte(' ')         // col 73
+		b.AppendString(timeStr)   // cols 74-78 (Z ends at 78)
 
 		s.formatted = b.String()
 	})
@@ -395,8 +453,7 @@ func (s *Spot) String() string {
 }
 
 func (s *Spot) formatZoneGridComment() string {
-	zone := formatCQZoneLabel(s.DXMetadata.CQZone)
-	return fmt.Sprintf("CQ %s", zone)
+	return strings.TrimSpace(s.Comment)
 }
 
 func formatCQZoneLabel(zone int) string {

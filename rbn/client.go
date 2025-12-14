@@ -37,6 +37,7 @@ var (
 	rbnCallCacheSize  = 4096
 	rbnCallCacheTTL   = 10 * time.Minute
 	rbnNormalizeCache = spot.NewCallCache(rbnCallCacheSize, rbnCallCacheTTL)
+	snrPattern        = regexp.MustCompile(`(?i)([-+]?\d{1,3})\s*dB`)
 )
 
 // UnlicensedReporter receives drop notifications for US calls failing FCC license checks.
@@ -95,10 +96,12 @@ var (
 
 const modeAllocPath = "config/mode_allocations.yaml"
 
-// detectModeFromTokens attempts to infer mode from comment tokens; returns empty when unknown.
+// detectModeFromTokens attempts to infer mode from free-form human comment tokens.
+// It stays conservative: only unambiguous mode tokens are used; otherwise the
+// caller falls back to the band-based allocation table.
 func detectModeFromTokens(tokens []string, freqKHz float64) string {
 	for _, tok := range tokens {
-		clean := strings.TrimSpace(strings.Trim(tok, ",.;!"))
+		clean := strings.TrimSpace(strings.Trim(tok, ",.;!:"))
 		cleanUpper := strings.ToUpper(clean)
 		switch cleanUpper {
 		case "FT8", "FT-8":
@@ -125,16 +128,41 @@ func detectModeFromTokens(tokens []string, freqKHz float64) string {
 	return ""
 }
 
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 func detectSNR(tokens []string, mode string) (int, bool) {
+	// Fast path: scan the whole comment with a tolerant regex (handles "-12dB" or "-12 dB").
+	if len(tokens) > 0 {
+		joined := strings.Join(tokens, " ")
+		if m := snrPattern.FindStringSubmatch(joined); len(m) == 2 {
+			if v, err := strconv.Atoi(m[1]); err == nil && v >= -200 && v <= 200 {
+				return v, true
+			}
+		}
+	}
+
 	for i, tok := range tokens {
-		clean := strings.TrimSpace(strings.Trim(tok, ",.;!"))
+		clean := strings.TrimSpace(strings.Trim(tok, ",.;!:"))
 		if clean == "" {
 			continue
 		}
 		lower := strings.ToLower(clean)
+		if len(lower) >= 5 && strings.HasSuffix(lower, "z") && isAllDigits(lower[:4]) {
+			continue // skip time tokens
+		}
 		// Handle two-token pattern: "<num> dB"
 		if lower == "db" && i > 0 {
-			prev := strings.ToLower(strings.TrimSpace(strings.Trim(tokens[i-1], ",.;!")))
+			prev := strings.ToLower(strings.TrimSpace(strings.Trim(tokens[i-1], ",.;!:")))
 			if prev == "" || strings.Contains(prev, ".") {
 				continue
 			}
@@ -154,7 +182,7 @@ func detectSNR(tokens []string, mode string) (int, bool) {
 			if i+1 >= len(tokens) {
 				continue
 			}
-			next := strings.ToLower(strings.TrimSpace(strings.Trim(tokens[i+1], ",.;!")))
+			next := strings.ToLower(strings.TrimSpace(strings.Trim(tokens[i+1], ",.;!:")))
 			if next != "db" {
 				continue
 			}
@@ -201,7 +229,14 @@ func NewClient(host string, port int, callsign string, name string, lookup *cty.
 	}
 }
 
-// UseMinimalParser relaxes parsing to accept simple "DE DX FREQ" lines without SNR/comment.
+// UseMinimalParser switches this client into a permissive parser intended for
+// human/upstream telnet feeds (not strict RBN formats).
+//
+// The minimal parser requires DE, DX, and a numeric frequency (kHz). It then
+// optionally extracts a mode token, an SNR/report token in the form "<num> dB"
+// (or "<num>dB"), and a trailing HHMMZ timestamp. Any remaining tokens are
+// treated as a free-form comment after removing structural/mode/report/time
+// tokens so the spot can still render cleanly in DX-cluster output.
 func (c *Client) UseMinimalParser() {
 	if c != nil {
 		c.minimalParse = true
@@ -568,9 +603,38 @@ func parseTimeFromRBN(timeStr string) time.Time {
 	return spotTime
 }
 
-// parseMinimalSpot attempts a permissive parse for human/relay feeds where only DE, DX, and frequency are present.
-// Expected tokens: at least two callsigns and one numeric frequency (kHz). Ignores SNR/comment/time.
+// parseMinimalSpot attempts a permissive parse for human/relay feeds.
+//
+// Expected tokens: at least two callsigns and one numeric frequency (kHz).
+// It is tolerant of additional noise and will:
+//   - Detect and remove a trailing HHMMZ token (so time never becomes "comment")
+//   - Detect and remove a mode token (FT8/FT4/CW/RTTY/USB/LSB/SSB/MSK144)
+//   - Detect and remove a report token only when it is explicitly marked as dB
+//     (e.g., "-12 dB" or "-12dB")
+//
+// Any remaining tokens are joined as the spot's free-form Comment.
 func (c *Client) parseMinimalSpot(parts []string, rawLine string) {
+	timeIdx := -1
+	timeToken := ""
+	// Detect trailing HHMMZ token so it does not leak into the comment.
+	if len(parts) > 0 {
+		last := strings.TrimSpace(parts[len(parts)-1])
+		if len(last) == 5 && strings.HasSuffix(last, "Z") {
+			digits := last[:4]
+			isDigits := true
+			for _, r := range digits {
+				if r < '0' || r > '9' {
+					isDigits = false
+					break
+				}
+			}
+			if isDigits {
+				timeIdx = len(parts) - 1
+				timeToken = last
+			}
+		}
+	}
+
 	var (
 		freqKHz float64
 		freqOK  bool
@@ -579,6 +643,9 @@ func (c *Client) parseMinimalSpot(parts []string, rawLine string) {
 		callIdx []int
 	)
 	for i, p := range parts {
+		if i == timeIdx {
+			continue
+		}
 		trimmed := strings.TrimSuffix(strings.TrimSpace(p), ":")
 		if trimmed == "" {
 			continue
@@ -616,9 +683,16 @@ func (c *Client) parseMinimalSpot(parts []string, rawLine string) {
 			used[callIdx[1]] = true
 		}
 	}
+	if timeIdx >= 0 {
+		used[timeIdx] = true
+	}
 	commentTokens := make([]string, 0, len(parts))
 	for i, tok := range parts {
 		if used[i] {
+			continue
+		}
+		// Strip structural noise commonly seen in relayed lines.
+		if strings.EqualFold(tok, "DX") || strings.EqualFold(tok, "de") {
 			continue
 		}
 		commentTokens = append(commentTokens, tok)
@@ -633,12 +707,103 @@ func (c *Client) parseMinimalSpot(parts []string, rawLine string) {
 		deMeta = metadataFromPrefix(info)
 	}
 
-	mode := detectModeFromTokens(commentTokens, freqKHz)
+	// Find mode/SNR while also scrubbing those tokens from the comment.
+	mode := ""
+	modeIdx := -1
+	for i, tok := range commentTokens {
+		clean := strings.TrimSpace(strings.Trim(tok, ",.;!:"))
+		cleanUpper := strings.ToUpper(clean)
+		switch cleanUpper {
+		case "FT8", "FT-8":
+			mode = "FT8"
+			modeIdx = i
+		case "FT4", "FT-4":
+			mode = "FT4"
+			modeIdx = i
+		case "RTTY":
+			mode = "RTTY"
+			modeIdx = i
+		case "CWT", "CW":
+			mode = "CW"
+			modeIdx = i
+		case "MSK144", "MSK-144", "MSK":
+			mode = "MSK144"
+			modeIdx = i
+		case "USB":
+			mode = "USB"
+			modeIdx = i
+		case "LSB":
+			mode = "LSB"
+			modeIdx = i
+		case "SSB":
+			if freqKHz >= 10000 {
+				mode = "USB"
+			} else {
+				mode = "LSB"
+			}
+			modeIdx = i
+		}
+		if mode != "" {
+			break
+		}
+	}
 	if mode == "" {
 		mode = guessModeFromAlloc(freqKHz)
 	}
 	if mode == "" {
 		mode = "RTTY" // fallback when table missing or out of band
+	}
+
+	// Detect SNR and mark consumed tokens.
+	snr := 0
+	hasSNR := false
+	snrIdx := make(map[int]bool)
+	for i, tok := range commentTokens {
+		clean := strings.TrimSpace(strings.Trim(tok, ",.;!:"))
+		if clean == "" {
+			continue
+		}
+		lower := strings.ToLower(clean)
+		if len(lower) == 5 && strings.HasSuffix(lower, "z") {
+			continue // time token
+		}
+		if lower == "db" && i > 0 {
+			prev := strings.ToLower(strings.TrimSpace(strings.Trim(commentTokens[i-1], ",.;!")))
+			if prev == "" || strings.Contains(prev, ".") {
+				continue
+			}
+			if v, err := strconv.Atoi(prev); err == nil && v >= -200 && v <= 200 {
+				snr = v
+				hasSNR = true
+				snrIdx[i] = true
+				snrIdx[i-1] = true
+				break
+			}
+			continue
+		}
+		hasDB := strings.HasSuffix(lower, "db")
+		numStr := strings.TrimSuffix(lower, "db")
+		if strings.Contains(numStr, ".") {
+			continue
+		}
+		if !hasDB {
+			if i+1 >= len(commentTokens) {
+				continue
+			}
+			next := strings.ToLower(strings.TrimSpace(strings.Trim(commentTokens[i+1], ",.;!:")))
+			if next != "db" {
+				continue
+			}
+		}
+		if v, err := strconv.Atoi(numStr); err == nil && v >= -200 && v <= 200 {
+			snr = v
+			hasSNR = true
+			snrIdx[i] = true
+			if !hasDB && i+1 < len(commentTokens) {
+				snrIdx[i+1] = true
+			}
+			break
+		}
 	}
 
 	s := spot.NewSpot(dxCall, deCall, freqKHz, mode)
@@ -649,11 +814,34 @@ func (c *Client) parseMinimalSpot(parts []string, rawLine string) {
 	}
 	s.DXMetadata = dxMeta
 	s.DEMetadata = deMeta
-	if snr, ok := detectSNR(commentTokens, mode); ok {
-		s.Report = snr
+	if timeToken != "" {
+		s.Time = parseTimeFromRBN(timeToken)
 	}
-	if len(commentTokens) > 0 {
-		s.Comment = strings.Join(commentTokens, " ")
+	if hasSNR {
+		s.Report = snr
+		s.HasReport = true
+	}
+	// Strip mode/SNR/time/DX/de from the comment payload.
+	cleaned := make([]string, 0, len(commentTokens))
+	for i, tok := range commentTokens {
+		if i == modeIdx || snrIdx[i] {
+			continue
+		}
+		clean := strings.TrimSpace(strings.Trim(tok, ",.;!:"))
+		if clean == "" {
+			continue
+		}
+		upper := strings.ToUpper(clean)
+		if upper == "DX" || upper == "DE" {
+			continue
+		}
+		if len(upper) >= 5 && strings.HasSuffix(upper, "Z") && isAllDigits(upper[:4]) {
+			continue
+		}
+		cleaned = append(cleaned, clean)
+	}
+	if len(cleaned) > 0 {
+		s.Comment = strings.Join(cleaned, " ")
 	}
 	s.EnsureNormalized()
 
@@ -801,6 +989,7 @@ func (c *Client) parseSpot(line string) {
 	}
 
 	s.Report = signalDB // Set signal report in dB
+	s.HasReport = true
 
 	// Build comment based on format
 	if hasCWFormat {

@@ -50,13 +50,14 @@ func TestRefreshBeaconFlagUsesComment(t *testing.T) {
 	}
 }
 
-func TestFormatDXClusterUsesZoneAndGrid(t *testing.T) {
+func TestFormatDXClusterUsesGridAndConfidence(t *testing.T) {
 	s := &Spot{
 		DXCall:     "KE0UI",
 		DECall:     "W2NAF-#",
 		Frequency:  7014.0,
 		Mode:       "CW",
 		Report:     27,
+		HasReport:  true,
 		Time:       time.Date(2025, time.November, 22, 4, 54, 0, 0, time.UTC),
 		Confidence: "V",
 		DXMetadata: CallMetadata{
@@ -66,36 +67,34 @@ func TestFormatDXClusterUsesZoneAndGrid(t *testing.T) {
 	}
 
 	got := s.FormatDXCluster()
-	if !strings.Contains(got, "CW 27 dB CQ 04") {
-		t.Fatalf("expected CQ zone annotation, got %q", got)
+	if !strings.Contains(got, "CW 27 dB") {
+		t.Fatalf("expected mode/report, got %q", got)
+	}
+	if strings.Contains(got, "CQ ") {
+		t.Fatalf("did not expect CQ/zone label in output, got %q", got)
 	}
 	if !strings.HasSuffix(strings.TrimRight(got, " "), "FN20 V 0454Z") {
 		t.Fatalf("unexpected suffix: %q", got)
 	}
 }
 
-func TestFormatZoneGridFallbacks(t *testing.T) {
+func TestFormatCommentTrimsWhitespace(t *testing.T) {
 	s := &Spot{
 		DXCall:    "N0CALL",
 		DECall:    "W1ABC",
 		Frequency: 14074.0,
 		Mode:      "FT8",
 		Time:      time.Date(2025, time.November, 22, 6, 15, 0, 0, time.UTC),
+		Comment:   "  hello world  ",
 	}
-	if got := s.formatZoneGridComment(); got != "CQ ??" {
-		t.Fatalf("expected fallback CQ ??, got %q", got)
+	if got := s.formatZoneGridComment(); got != "hello world" {
+		t.Fatalf("expected trimmed comment, got %q", got)
 	}
 }
 
 func TestFormatGridLabelTruncates(t *testing.T) {
-	s := &Spot{
-		DXMetadata: CallMetadata{
-			CQZone: 5,
-			Grid:   "FN20AA",
-		},
-	}
-	if got := s.formatZoneGridComment(); got != "CQ 05" {
-		t.Fatalf("expected CQ zone only, got %q", got)
+	if got := formatGridLabel("FN20AA"); got != "FN20" {
+		t.Fatalf("expected grid to truncate to FN20, got %q", got)
 	}
 }
 
@@ -106,11 +105,12 @@ func TestFormatDXClusterZeroReport(t *testing.T) {
 		Frequency: 14074.0,
 		Mode:      "FT8",
 		Report:    0,
+		HasReport: true,
 		Time:      time.Date(2025, time.November, 22, 6, 15, 0, 0, time.UTC),
 	}
 
 	got := s.FormatDXCluster()
-	if !strings.Contains(got, "FT8 +0") {
+	if !strings.Contains(got, "FT8 +0 dB") {
 		t.Fatalf("expected 0 dB report to render, got %q", got)
 	}
 }
@@ -124,10 +124,10 @@ func TestFormatDXClusterModeMatrix(t *testing.T) {
 	}{
 		{"CW positive", "CW", 23, "CW 23 dB"},
 		{"RTTY negative", "RTTY", -7, "RTTY -7 dB"},
-		{"FT8 positive", "FT8", 12, "FT8 +12"},
-		{"FT8 negative", "FT8", -5, "FT8 -5"},
-		{"SSB positive", "USB", 8, "USB +8"},
-		{"SSB negative", "LSB", -3, "LSB -3"},
+		{"FT8 positive", "FT8", 12, "FT8 +12 dB"},
+		{"FT8 negative", "FT8", -5, "FT8 -5 dB"},
+		{"SSB positive", "USB", 8, "USB +8 dB"},
+		{"SSB negative", "LSB", -3, "LSB -3 dB"},
 	}
 
 	for _, tc := range cases {
@@ -138,6 +138,7 @@ func TestFormatDXClusterModeMatrix(t *testing.T) {
 				Frequency: 7009.5,
 				Mode:      tc.mode,
 				Report:    tc.report,
+				HasReport: true,
 				Time:      time.Date(2025, time.November, 22, 6, 15, 0, 0, time.UTC),
 				DXMetadata: CallMetadata{
 					CQZone: 5,
@@ -163,6 +164,7 @@ func TestFormatDXClusterFormatOnce(t *testing.T) {
 		Frequency: 7009.5,
 		Mode:      "FT8",
 		Report:    -5,
+		HasReport: true,
 		Time:      time.Date(2025, time.November, 22, 6, 15, 0, 0, time.UTC),
 		DXMetadata: CallMetadata{
 			CQZone: 5,
@@ -186,6 +188,7 @@ func TestFormatDXClusterAlignmentNoConfidence(t *testing.T) {
 		Frequency: 7009.5,
 		Mode:      "FT8",
 		Report:    -5,
+		HasReport: true,
 		Time:      time.Date(2025, time.November, 22, 6, 15, 0, 0, time.UTC),
 		DXMetadata: CallMetadata{
 			CQZone: 5,
@@ -201,23 +204,23 @@ func TestFormatDXClusterAlignmentNoConfidence(t *testing.T) {
 		t.Fatalf("frequency string missing from output: %q", got)
 	}
 	if freqIdx+len(freqStr)-1 != 24 {
-		t.Fatalf("expected frequency to end at column 24, got %d in %q", freqIdx+len(freqStr)-1, got)
+		t.Fatalf("expected frequency to end at 0-based index 24 (1-based column 25), got %d in %q", freqIdx+len(freqStr)-1, got)
 	}
 
-	commentAnchor := "FT8 -5 CQ 05"
+	commentAnchor := "FT8 -5 dB"
 	commentIdx := strings.Index(got, commentAnchor)
-	if commentIdx != 40 {
-		t.Fatalf("expected comment to start at column 40, got %d in %q", commentIdx, got)
+	if commentIdx != 39 {
+		t.Fatalf("expected mode to start at 0-based index 39 (1-based column 40), got %d in %q", commentIdx, got)
 	}
 
 	timeIdx := strings.LastIndex(got, "0615Z")
-	if timeIdx != 71 {
-		t.Fatalf("expected time to start at column 71, got %d in %q", timeIdx, got)
+	if timeIdx != 73 {
+		t.Fatalf("expected time to start at 0-based index 73 (1-based column 74), got %d in %q", timeIdx, got)
 	}
 
 	gridIdx := strings.LastIndex(got, "FN20")
-	if gridIdx != 64 {
-		t.Fatalf("expected grid to start at column 64, got %d in %q", gridIdx, got)
+	if gridIdx != 66 {
+		t.Fatalf("expected grid to start at 0-based index 66 (1-based column 67), got %d in %q", gridIdx, got)
 	}
 }
 
@@ -228,6 +231,7 @@ func TestFormatDXClusterAlignmentWithConfidence(t *testing.T) {
 		Frequency:  7014.0,
 		Mode:       "CW",
 		Report:     27,
+		HasReport:  true,
 		Time:       time.Date(2025, time.November, 22, 4, 54, 0, 0, time.UTC),
 		Confidence: "V",
 		DXMetadata: CallMetadata{
@@ -244,29 +248,77 @@ func TestFormatDXClusterAlignmentWithConfidence(t *testing.T) {
 		t.Fatalf("frequency string missing from output: %q", got)
 	}
 	if freqIdx+len(freqStr)-1 != 24 {
-		t.Fatalf("expected frequency to end at column 24, got %d in %q", freqIdx+len(freqStr)-1, got)
+		t.Fatalf("expected frequency to end at 0-based index 24 (1-based column 25), got %d in %q", freqIdx+len(freqStr)-1, got)
 	}
 
-	commentAnchor := "CW 27 dB CQ 04"
+	commentAnchor := "CW 27 dB"
 	commentIdx := strings.Index(got, commentAnchor)
-	if commentIdx != 40 {
-		t.Fatalf("expected comment to start at column 40, got %d in %q", commentIdx, got)
+	if commentIdx != 39 {
+		t.Fatalf("expected mode to start at 0-based index 39 (1-based column 40), got %d in %q", commentIdx, got)
 	}
 
 	timeIdx := strings.LastIndex(got, "0454Z")
-	if timeIdx != 71 {
-		t.Fatalf("expected time to start at column 71, got %d in %q", timeIdx, got)
+	if timeIdx != 73 {
+		t.Fatalf("expected time to start at 0-based index 73 (1-based column 74), got %d in %q", timeIdx, got)
 	}
 
 	confIdx := strings.LastIndex(got, s.Confidence)
-	expectedConfIdx := 69
+	expectedConfIdx := 71
 	if confIdx != expectedConfIdx {
-		t.Fatalf("expected confidence to start at column %d, got %d in %q", expectedConfIdx, confIdx, got)
+		t.Fatalf("expected confidence to start at 0-based index %d (1-based column %d), got %d in %q", expectedConfIdx, expectedConfIdx+1, confIdx, got)
 	}
 
 	gridIdx := strings.LastIndex(got, "FN20")
-	if gridIdx != 64 {
-		t.Fatalf("expected grid to start at column 64, got %d in %q", gridIdx, got)
+	if gridIdx != 66 {
+		t.Fatalf("expected grid to start at 0-based index 66 (1-based column 67), got %d in %q", gridIdx, got)
+	}
+}
+
+func TestFormatDXClusterTruncatesCommentAndKeepsTailFixed(t *testing.T) {
+	s := &Spot{
+		DXCall:     "R4WD",
+		DECall:     "N0YY",
+		Frequency:  28014.2,
+		Mode:       "CW",
+		HasReport:  false,
+		Time:       time.Date(2025, time.November, 22, 3, 4, 0, 0, time.UTC),
+		Confidence: "S",
+		Comment:    "ARRL 10 Meter Contest IO67 some extra text that should be truncated before the tail",
+		DXMetadata: CallMetadata{
+			Grid: "EM96",
+		},
+	}
+
+	got := s.FormatDXCluster()
+	if len(got) != 78 {
+		t.Fatalf("expected FormatDXCluster to return 78 chars (CRLF added by telnet), got %d: %q", len(got), got)
+	}
+
+	modeIdx := strings.Index(got, "CW")
+	if modeIdx != 39 {
+		t.Fatalf("expected mode to start at 0-based index 39 (1-based column 40), got %d in %q", modeIdx, got)
+	}
+
+	if strings.Contains(got, " dB") {
+		t.Fatalf("did not expect a report to render when HasReport=false, got %q", got)
+	}
+	if !strings.Contains(got, "ARRL 10 Meter") {
+		t.Fatalf("expected comment to appear in output, got %q", got)
+	}
+
+	gridIdx := strings.LastIndex(got, "EM96")
+	if gridIdx != 66 {
+		t.Fatalf("expected grid to start at 0-based index 66 (1-based column 67), got %d in %q", gridIdx, got)
+	}
+
+	confIdx := strings.LastIndex(got, "S")
+	if confIdx != 71 {
+		t.Fatalf("expected confidence to start at 0-based index 71 (1-based column 72), got %d in %q", confIdx, got)
+	}
+
+	timeIdx := strings.LastIndex(got, "0304Z")
+	if timeIdx != 73 {
+		t.Fatalf("expected time to start at 0-based index 73 (1-based column 74), got %d in %q", timeIdx, got)
 	}
 }
 
@@ -277,6 +329,7 @@ func BenchmarkFormatDXCluster(b *testing.B) {
 		Frequency:  7014.0,
 		Mode:       "CW",
 		Report:     27,
+		HasReport:  true,
 		Time:       time.Date(2025, time.November, 22, 4, 54, 0, 0, time.UTC),
 		Confidence: "V",
 		DXMetadata: CallMetadata{

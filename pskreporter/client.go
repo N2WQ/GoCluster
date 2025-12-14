@@ -408,6 +408,7 @@ func (c *Client) convertToSpot(msg *PSKRMessage) *spot.Spot {
 
 	// Set report (SNR in dB)
 	s.Report = msg.Report
+	s.HasReport = true
 
 	// Build comment with locators
 	s.Comment = fmt.Sprintf("%s>%s", norm.dxGrid, norm.deGrid)
