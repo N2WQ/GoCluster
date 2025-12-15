@@ -172,7 +172,7 @@ Telnet clients can issue commands via the prompt once logged in. The processor, 
 
 Filter management commands are implemented directly in `telnet/server.go` and operate on each client's `filter.Filter`. They can be used at any time and fall into `PASS`, `REJECT`, and `SHOW FILTER` groups:
 
-- `SHOW FILTER` - prints the current filter state for bands, modes, continents, CQ zones, and callsigns.
+- `SHOW FILTER` - prints the current filter state for bands, modes, source category, continents, CQ zones, and callsigns.
 - `SHOW FILTER MODES` - lists every supported mode along with whether it is currently enabled for the session.
 - `SHOW FILTER BANDS` - lists all supported bands that can be enabled.
 - `SHOW FILTER DXCONT` / `DECONT` - list supported DX/spotter continents and enabled state.
@@ -180,6 +180,7 @@ Filter management commands are implemented directly in `telnet/server.go` and op
 - `SHOW FILTER DXGRID2` / `DEGRID2` - list enabled 2-character DX/DE grid prefixes or `ALL`.
 - `PASS BAND <band>[,<band>...]` - enables filtering for the comma- or space-separated list (each item normalized via `spot.NormalizeBand`), or specify `ALL` to accept every band; use the band names from `spot.SupportedBandNames()`.
 - `PASS MODE <mode>[,<mode>...]` - enables one or more modes (comma- or space-separated) that must exist in `filter.SupportedModes`, or specify `ALL` to accept every mode.
+- `PASS SOURCE <HUMAN|SKIMMER|ALL>` - filter by spot origin: `HUMAN` passes only spots with `IsHuman=true`, `SKIMMER` passes only spots with `IsHuman=false`, and `ALL` disables source filtering.
 - `PASS DXCONT <cont>[,<cont>...]` / `DECONT <cont>[,<cont>...]` - enable only the listed DX/spotter continents (AF, AN, AS, EU, NA, OC, SA), or `ALL`.
 - `PASS DXZONE <zone>[,<zone>...]` / `DEZONE <zone>[,<zone>...]` - enable only the listed DX/spotter CQ zones (1-40), or `ALL`.
 - `PASS DXGRID2 <grid>[,<grid>...]` - enable only the listed 2-character DX grid prefixes. Tokens longer than two characters are truncated (e.g., `FN05` -> `FN`); `ALL` resets to accept every DX 2-character grid.
@@ -191,6 +192,7 @@ Filter management commands are implemented directly in `telnet/server.go` and op
 - `REJECT ALL` - resets every filter back to the default (no filtering).
 - `REJECT BAND <band>[,<band>...]` - disables only the comma- or space-separated list of bands provided (use `ALL` to block every band).
 - `REJECT MODE <mode>[,<mode>...]` - disables only the comma- or space-separated list of modes provided (specify `ALL` to block every mode).
+- `REJECT SOURCE <HUMAN|SKIMMER>` - blocks one origin category (human/operator spots vs automated/skimmer spots).
 - `REJECT DXCONT` / `DECONT` / `DXZONE` / `DEZONE` - block continent/zone filters (use `ALL` to block all).
 - `REJECT DXGRID2 <grid>[,<grid>...]` - remove specific 2-character DX grid prefixes (tokens truncated to two characters); `ALL` blocks every DX 2-character grid.
 - `REJECT DEGRID2 <grid>[,<grid>...]` - remove specific 2-character DE grid prefixes (tokens truncated to two characters); `ALL` blocks every DE 2-character grid.
@@ -220,6 +222,13 @@ Use `REJECT BEACON` to suppress DX beacons when you only want live operator traf
 Errors during filter commands return a usage message (e.g., invalid bands or modes refer to the supported lists) and the `SHOW FILTER` commands help confirm the active settings.
 
 Continent and CQ-zone filters behave like the band/mode whitelists: start permissive, tighten with `PASS`, reset with `ALL`. When a continent/zone filter is active, spots missing that metadata are rejected so the whitelist cannot be bypassed by incomplete records.
+
+New-user filter defaults are configured in `config.yaml` under `filter:` and are only applied when a callsign has no saved filter file in `data/users/`:
+
+- `filter.default_modes`: initial mode selection for `PASS/REJECT MODE`.
+- `filter.default_sources`: initial SOURCE selection (`HUMAN` for `IsHuman=true`, `SKIMMER` for `IsHuman=false`). Omit the field or list both categories to disable SOURCE filtering (equivalent to `PASS SOURCE ALL`).
+
+Existing users keep whatever is stored in their `data/users/<CALL>.yaml` file; changing these defaults only affects newly created users.
 
 ## RBN Skew Corrections
 

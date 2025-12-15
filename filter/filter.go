@@ -4,6 +4,7 @@
 //   - Band (e.g., 20m, 40m, 160m)
 //   - Mode (e.g., CW, USB, FT8, RTTY)
 //   - Callsign patterns (e.g., W1*, LZ5VV, *ABC) for DX and DE calls
+//   - Source category (HUMAN vs SKIMMER/automated)
 //
 // Filter Logic:
 //   - Multiple filters use AND logic (all must match)
@@ -40,6 +41,12 @@ var SupportedModes = []string{
 	"MSK144",
 }
 
+// SupportedSources enumerates how telnet users can filter on Spot.IsHuman.
+//
+// HUMAN means the spot was marked as coming from a human operator (Spot.IsHuman=true).
+// SKIMMER represents everything else (Spot.IsHuman=false), including automated sources.
+var SupportedSources = []string{"HUMAN", "SKIMMER"}
+
 // SupportedContinents enumerates continent codes used in DX metadata.
 var SupportedContinents = []string{"AF", "AN", "AS", "EU", "NA", "OC", "SA"}
 
@@ -52,10 +59,28 @@ const (
 // The initial values match the curated CW/USB/LSB/RTTY set, but can be overridden.
 var defaultModeSelection = []string{"CW", "LSB", "USB", "RTTY"}
 
+// defaultSourceSelection controls which Spot.IsHuman categories a brand-new
+// filter allows by default.
+//
+// A nil or empty slice means "ALL" (disable SOURCE filtering).
+var defaultSourceSelection []string
+
 var supportedModeSet = func() map[string]bool {
 	m := make(map[string]bool)
 	for _, s := range SupportedModes {
 		m[strings.ToUpper(strings.TrimSpace(s))] = true
+	}
+	return m
+}()
+
+var supportedSourceSet = func() map[string]bool {
+	m := make(map[string]bool, len(SupportedSources))
+	for _, source := range SupportedSources {
+		s := strings.ToUpper(strings.TrimSpace(source))
+		if s == "" {
+			continue
+		}
+		m[s] = true
 	}
 	return m
 }()
@@ -93,6 +118,20 @@ var confidenceSymbolScores = map[string]int{
 func IsSupportedMode(mode string) bool {
 	mode = strings.ToUpper(strings.TrimSpace(mode))
 	return supportedModeSet[mode]
+}
+
+// IsSupportedSource reports whether the label is one of the supported SOURCE categories.
+func IsSupportedSource(source string) bool {
+	source = strings.ToUpper(strings.TrimSpace(source))
+	return supportedSourceSet[source]
+}
+
+func normalizeSource(source string) string {
+	source = strings.ToUpper(strings.TrimSpace(source))
+	if supportedSourceSet[source] {
+		return source
+	}
+	return ""
 }
 
 // IsSupportedContinent returns true if the continent code is known.
@@ -136,6 +175,46 @@ func SetDefaultModeSelection(modes []string) {
 		return
 	}
 	defaultModeSelection = normalized
+}
+
+// SetDefaultSourceSelection replaces the SOURCE categories that brand-new
+// filters allow by default.
+//
+// Supported categories are "HUMAN" and "SKIMMER". An empty slice (or any input
+// that normalizes to both categories) disables SOURCE filtering (equivalent to
+// allowing ALL sources).
+func SetDefaultSourceSelection(sources []string) {
+	if len(sources) == 0 {
+		defaultSourceSelection = nil
+		return
+	}
+	normalized := make([]string, 0, len(sources))
+	seen := make(map[string]bool, len(SupportedSources))
+	for _, source := range sources {
+		candidate := strings.ToUpper(strings.TrimSpace(source))
+		if candidate == "" {
+			continue
+		}
+		if candidate == "ALL" {
+			defaultSourceSelection = nil
+			return
+		}
+		if !supportedSourceSet[candidate] {
+			continue
+		}
+		if seen[candidate] {
+			continue
+		}
+		normalized = append(normalized, candidate)
+		seen[candidate] = true
+	}
+	// Treat "both categories" the same as "ALL" so default filters show the
+	// conventional "Source: ALL" state.
+	if len(normalized) == 0 || len(normalized) == len(SupportedSources) {
+		defaultSourceSelection = nil
+		return
+	}
+	defaultSourceSelection = normalized
 }
 
 // User data directory (relative to working dir)
@@ -187,12 +266,13 @@ func EnsureUserDataDir() error {
 
 // Filter represents a user's spot filtering preferences.
 //
-// The filter maintains five types of criteria that can be combined:
+// The filter maintains several types of criteria that can be combined:
 //  1. Band filters: Which amateur radio bands to accept (20m, 40m, 160m)
 //  2. Mode filters: Which operating modes to accept (CW, USB, FT8, etc.)
 //  3. Callsign patterns: Which DX/DE callsigns to accept (W1*, LZ5VV, etc.)
 //  4. Confidence glyphs: Which consensus indicators (?, S, C, P, V, B) to accept.
 //  5. Beacon inclusion: Whether DX calls ending in /B (beacons) should be delivered.
+//  6. Source category: Whether to deliver HUMAN spots, SKIMMER (automated) spots, or both.
 //
 // Default Behavior:
 //   - AllBands=true: accept every band
@@ -200,6 +280,7 @@ func EnsureUserDataDir() error {
 //   - Callsign patterns: Only applied if non-empty (no impact on band/mode filters)
 //   - AllConfidence=true: accept every consensus glyph until specific ones are enabled
 //   - IncludeBeacons=true: beacon spots are delivered unless explicitly disabled
+//   - AllSources=true: accept both HUMAN and SKIMMER spots (unless overridden for new users)
 //
 // Thread Safety:
 //   - Each client has their own Filter instance (no sharing)
@@ -209,12 +290,16 @@ type Filter struct {
 	BlockBands           map[string]bool // Blocked bands (deny wins over allow)
 	Modes                map[string]bool // Allowed modes
 	BlockModes           map[string]bool // Blocked modes
+	Sources              map[string]bool // Allowed source categories (HUMAN/SKIMMER)
+	BlockSources         map[string]bool // Blocked source categories
 	DXCallsigns          []string        `yaml:"callsigns,omitempty"`   // DX callsign patterns (e.g., ["W1*", "LZ5VV"])
 	DECallsigns          []string        `yaml:"decallsigns,omitempty"` // DE callsign patterns
 	AllBands             bool            // If true, accept all bands (except blocked)
 	BlockAllBands        bool            // If true, reject all bands
 	AllModes             bool            // If true, accept all modes (except blocked)
 	BlockAllModes        bool            // If true, reject all modes
+	AllSources           bool            // If true, accept all source categories (except blocked)
+	BlockAllSources      bool            // If true, reject all sources
 	Confidence           map[string]bool // Allowed confidence glyphs (whitelist when non-empty)
 	BlockConfidence      map[string]bool // Blocked confidence glyphs
 	AllConfidence        bool            // If true, accept all confidence glyphs (except blocked)
@@ -258,7 +343,8 @@ type Filter struct {
 	LegacyMinConfidence int `yaml:"minconfidence,omitempty"`
 }
 
-// NewFilter creates a new filter with every band enabled and the curated default modes.
+// NewFilter creates a new filter with every band enabled plus the configured
+// default mode and SOURCE selections.
 //
 // Returns:
 //   - *Filter: Initialized filter accepting all bands and the default mode subset
@@ -272,6 +358,8 @@ func NewFilter() *Filter {
 		BlockBands:           make(map[string]bool),
 		Modes:                make(map[string]bool),
 		BlockModes:           make(map[string]bool),
+		Sources:              make(map[string]bool),
+		BlockSources:         make(map[string]bool),
 		DXCallsigns:          make([]string, 0),
 		DECallsigns:          make([]string, 0),
 		Confidence:           make(map[string]bool),
@@ -296,6 +384,8 @@ func NewFilter() *Filter {
 		BlockAllBands:        false, // No band is globally blocked
 		AllModes:             false, // Default to the curated mode subset below
 		BlockAllModes:        false,
+		AllSources:           true, // Accept both HUMAN and SKIMMER spots unless narrowed
+		BlockAllSources:      false,
 		AllConfidence:        true, // Accept every confidence glyph until user sets one
 		BlockAllConfidence:   false,
 		AllDXContinents:      true,
@@ -317,6 +407,9 @@ func NewFilter() *Filter {
 	}
 	for _, mode := range defaultModeSelection {
 		f.Modes[mode] = true
+	}
+	for _, source := range defaultSourceSelection {
+		f.SetSource(source, true)
 	}
 	f.SetBeaconEnabled(true)
 	return f
@@ -396,6 +489,37 @@ func (f *Filter) SetMode(mode string, enabled bool) {
 	f.BlockModes[mode] = true
 	f.BlockAllModes = false
 	f.AllModes = len(f.Modes) == 0
+}
+
+// SetSource enables or disables filtering for the spot origin category.
+//
+// "HUMAN" refers to spots marked Spot.IsHuman=true, while "SKIMMER" refers to
+// everything else (Spot.IsHuman=false).
+func (f *Filter) SetSource(source string, enabled bool) {
+	if f == nil {
+		return
+	}
+	source = normalizeSource(source)
+	if source == "" {
+		return
+	}
+	if f.Sources == nil {
+		f.Sources = make(map[string]bool)
+	}
+	if f.BlockSources == nil {
+		f.BlockSources = make(map[string]bool)
+	}
+	if enabled {
+		f.Sources[source] = true
+		delete(f.BlockSources, source)
+		f.BlockAllSources = false
+		f.AllSources = len(f.Sources) == 0
+		return
+	}
+	delete(f.Sources, source)
+	f.BlockSources[source] = true
+	f.BlockAllSources = false
+	f.AllSources = len(f.Sources) == 0
 }
 
 // AddDXCallsignPattern adds a DX callsign pattern to the filter.
@@ -677,6 +801,14 @@ func (f *Filter) ResetModes() {
 	f.BlockAllModes = false
 }
 
+// ResetSources clears SOURCE filtering and allows both human and automated spots.
+func (f *Filter) ResetSources() {
+	f.Sources = make(map[string]bool)
+	f.AllSources = true
+	f.BlockSources = make(map[string]bool)
+	f.BlockAllSources = false
+}
+
 // Reset clears all filters and returns to default state (accept everything).
 //
 // Equivalent to calling:
@@ -693,6 +825,7 @@ func (f *Filter) ResetModes() {
 func (f *Filter) Reset() {
 	f.ResetBands()
 	f.ResetModes()
+	f.ResetSources()
 	f.ClearCallsignPatterns()
 	f.ResetConfidence()
 	f.ResetDXContinents()
@@ -813,6 +946,14 @@ func (f *Filter) Matches(s *spot.Spot) bool {
 		return false
 	}
 	if !passesStringFilter(modeUpper, f.Modes, f.BlockModes, f.AllModes, f.BlockAllModes) {
+		return false
+	}
+
+	sourceLabel := "SKIMMER"
+	if s.IsHuman {
+		sourceLabel = "HUMAN"
+	}
+	if !passesStringFilter(sourceLabel, f.Sources, f.BlockSources, f.AllSources, f.BlockAllSources) {
 		return false
 	}
 
@@ -1055,6 +1196,34 @@ func (f *Filter) String() string {
 		} else {
 			parts = append(parts, "Modes: NONE (no spots will pass)")
 		}
+	}
+
+	// Describe source filter.
+	{
+		label := "ALL"
+		if f.BlockAllSources || (f.BlockSources["HUMAN"] && f.BlockSources["SKIMMER"]) {
+			label = "NONE (no spots will pass)"
+		} else if !f.AllSources {
+			sources := make([]string, 0, len(f.Sources))
+			for source := range f.Sources {
+				sources = append(sources, source)
+			}
+			sort.Strings(sources)
+			if len(sources) > 0 {
+				label = strings.Join(sources, ", ")
+			} else {
+				label = "NONE (no spots will pass)"
+			}
+		} else {
+			// When allowing all sources, show the implicit selection if the user has
+			// blocked exactly one category.
+			if f.BlockSources["HUMAN"] && !f.BlockSources["SKIMMER"] {
+				label = "SKIMMER"
+			} else if f.BlockSources["SKIMMER"] && !f.BlockSources["HUMAN"] {
+				label = "HUMAN"
+			}
+		}
+		parts = append(parts, "Source: "+label)
 	}
 
 	// Describe callsign patterns (if any)
@@ -1320,6 +1489,12 @@ func (f *Filter) normalizeDefaults() {
 	if f.BlockModes == nil {
 		f.BlockModes = make(map[string]bool)
 	}
+	if f.Sources == nil {
+		f.Sources = make(map[string]bool)
+	}
+	if f.BlockSources == nil {
+		f.BlockSources = make(map[string]bool)
+	}
 	if f.Confidence == nil {
 		f.Confidence = make(map[string]bool)
 	}
@@ -1380,6 +1555,9 @@ func (f *Filter) normalizeDefaults() {
 	}
 	if len(f.Modes) == 0 {
 		f.AllModes = true
+	}
+	if len(f.Sources) == 0 {
+		f.AllSources = true
 	}
 	if len(f.Confidence) == 0 {
 		f.AllConfidence = true

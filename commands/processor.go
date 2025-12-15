@@ -66,6 +66,7 @@ BYE                  - Disconnect
 Filter commands (allow + block, deny wins):
 	PASS BAND <band>[,<band>...] - Allow specific bands (comma/space). ALL clears blocklist and allows all.
 	PASS MODE <mode>[,<mode>...] - Allow specific modes. ALL clears blocklist and allows all.
+	PASS SOURCE <HUMAN|SKIMMER|ALL> - Filter by spot origin: HUMAN=IsHuman true, SKIMMER=IsHuman false. ALL disables SOURCE filtering.
 	PASS DXCONT <cont>[,<cont>...] - Allow DX continents (AF, AN, AS, EU, NA, OC, SA). ALL clears blocklist.
 	PASS DECONT <cont>[,<cont>...] - Allow DE continents. ALL clears blocklist.
 	PASS DXZONE <zone>[,<zone>...] - Allow DX CQ zones (1-40). ALL clears blocklist.
@@ -80,6 +81,7 @@ Filter commands (allow + block, deny wins):
 	PASS BEACON - Deliver DX beacons (/B)
 	REJECT BAND <band>[,<band>...]      - Block listed bands; ALL blocks all bands.
 	REJECT MODE <mode>[,<mode>...]      - Block listed modes; ALL blocks all modes.
+	REJECT SOURCE <HUMAN|SKIMMER>       - Block human or automated spots.
 	REJECT DXCONT <cont>[,<cont>...]    - Block DX continents; ALL blocks all DX continents.
 	REJECT DECONT <cont>[,<cont>...]    - Block DE continents; ALL blocks all DE continents.
 	REJECT DXZONE <zone>[,<zone>...]    - Block DX CQ zones; ALL blocks all DX zones.

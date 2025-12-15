@@ -221,8 +221,8 @@ const (
 )
 
 const (
-	passFilterUsageMsg    = "Usage: PASS <type> ...\nPASS BAND <band>[,<band>...] | PASS MODE <mode>[,<mode>...] | PASS DXCALL <pattern> | PASS DECALL <pattern> | PASS CONFIDENCE <symbol>[,<symbol>...] (symbols: ?,S,C,P,V,B or ALL) | PASS BEACON | PASS DXGRID2 <grid>[,<grid>...] (two characters or ALL) | PASS DEGRID2 <grid>[,<grid>...] (two characters or ALL) | PASS DXCONT <cont>[,<cont>...] | PASS DECONT <cont>[,<cont>...] | PASS DXZONE <zone>[,<zone>...] | PASS DEZONE <zone>[,<zone>...] | PASS DXDXCC <code>[,<code>...] | PASS DEDXCC <code>[,<code>...] (PASS = allow list; clears block-all)\nType HELP for usage.\n"
-	rejectFilterUsageMsg  = "Usage: REJECT <type> ...\nREJECT ALL | REJECT BAND <band>[,<band>...] | REJECT MODE <mode>[,<mode>...] | REJECT DXCALL | REJECT DECALL | REJECT CONFIDENCE <symbol>[,<symbol>...] (symbols: ?,S,C,P,V,B or ALL) | REJECT BEACON | REJECT DXGRID2 <grid>[,<grid>...] (two characters or ALL) | REJECT DEGRID2 <grid>[,<grid>...] (two characters or ALL) | REJECT DXCONT <cont>[,<cont>...] | REJECT DECONT <cont>[,<cont>...] | REJECT DXZONE <zone>[,<zone>...] | REJECT DEZONE <zone>[,<zone>...] | REJECT DXDXCC <code>[,<code>...] | REJECT DEDXCC <code>[,<code>...] (REJECT = block list; ALL resets to defaults)\nType HELP for usage.\n"
+	passFilterUsageMsg    = "Usage: PASS <type> ...\nPASS BAND <band>[,<band>...] | PASS MODE <mode>[,<mode>...] | PASS SOURCE <HUMAN|SKIMMER|ALL> | PASS DXCALL <pattern> | PASS DECALL <pattern> | PASS CONFIDENCE <symbol>[,<symbol>...] (symbols: ?,S,C,P,V,B or ALL) | PASS BEACON | PASS DXGRID2 <grid>[,<grid>...] (two characters or ALL) | PASS DEGRID2 <grid>[,<grid>...] (two characters or ALL) | PASS DXCONT <cont>[,<cont>...] | PASS DECONT <cont>[,<cont>...] | PASS DXZONE <zone>[,<zone>...] | PASS DEZONE <zone>[,<zone>...] | PASS DXDXCC <code>[,<code>...] | PASS DEDXCC <code>[,<code>...] (PASS = allow list; clears block-all)\nType HELP for usage.\n"
+	rejectFilterUsageMsg  = "Usage: REJECT <type> ...\nREJECT ALL | REJECT BAND <band>[,<band>...] | REJECT MODE <mode>[,<mode>...] | REJECT SOURCE <HUMAN|SKIMMER> | REJECT DXCALL | REJECT DECALL | REJECT CONFIDENCE <symbol>[,<symbol>...] (symbols: ?,S,C,P,V,B or ALL) | REJECT BEACON | REJECT DXGRID2 <grid>[,<grid>...] (two characters or ALL) | REJECT DEGRID2 <grid>[,<grid>...] (two characters or ALL) | REJECT DXCONT <cont>[,<cont>...] | REJECT DECONT <cont>[,<cont>...] | REJECT DXZONE <zone>[,<zone>...] | REJECT DEZONE <zone>[,<zone>...] | REJECT DXDXCC <code>[,<code>...] | REJECT DEDXCC <code>[,<code>...] (REJECT = block list; ALL resets to defaults)\nType HELP for usage.\n"
 	legacyFilterSyntaxMsg = "Filter syntax changed: use PASS/REJECT/SHOW FILTER.\nType HELP for usage.\n"
 )
 
@@ -863,6 +863,22 @@ func (c *Client) handleFilterCommand(cmd string) string {
 			}
 			c.saveFilter()
 			return fmt.Sprintf("Filter set: Modes %s\n", strings.Join(modes, ", "))
+		case "SOURCE":
+			value := strings.ToUpper(strings.TrimSpace(strings.Join(parts[2:], " ")))
+			if value == "" {
+				return "Usage: PASS SOURCE <HUMAN|SKIMMER|ALL>\nType HELP for usage.\n"
+			}
+			if strings.EqualFold(value, "ALL") {
+				c.filter.ResetSources()
+				c.saveFilter()
+				return "Source filtering disabled\n"
+			}
+			if !filter.IsSupportedSource(value) {
+				return fmt.Sprintf("Unknown source: %s\nValid sources: %s\n", value, strings.Join(filter.SupportedSources, ", "))
+			}
+			c.filter.SetSource(value, true)
+			c.saveFilter()
+			return fmt.Sprintf("Filter set: Source %s\n", value)
 		case "DXCALL":
 			value := strings.ToUpper(parts[2])
 			c.filter.AddDXCallsignPattern(value)
@@ -1077,7 +1093,7 @@ func (c *Client) handleFilterCommand(cmd string) string {
 			c.saveFilter()
 			return fmt.Sprintf("Filter set: DE 2-character grids %s\n", strings.Join(gridList, ", "))
 		default:
-			return "Unknown filter type. Use: BAND, MODE, DXCALL, DECALL, CONFIDENCE, BEACON, DXGRID2, DEGRID2, DXCONT, DECONT, DXZONE, DEZONE, DXDXCC, or DEDXCC\nType HELP for usage.\n"
+			return "Unknown filter type. Use: BAND, MODE, SOURCE, DXCALL, DECALL, CONFIDENCE, BEACON, DXGRID2, DEGRID2, DXCONT, DECONT, DXZONE, DEZONE, DXDXCC, or DEDXCC\nType HELP for usage.\n"
 		}
 
 	case "reject":
@@ -1158,6 +1174,17 @@ func (c *Client) handleFilterCommand(cmd string) string {
 			}
 			c.saveFilter()
 			return fmt.Sprintf("Mode filters disabled: %s\n", strings.Join(modes, ", "))
+		case "SOURCE":
+			value := strings.ToUpper(strings.TrimSpace(strings.Join(parts[2:], " ")))
+			if value == "" {
+				return "Usage: REJECT SOURCE <HUMAN|SKIMMER>\nType HELP for usage.\n"
+			}
+			if !filter.IsSupportedSource(value) {
+				return fmt.Sprintf("Unknown source: %s\nValid sources: %s\n", value, strings.Join(filter.SupportedSources, ", "))
+			}
+			c.filter.SetSource(value, false)
+			c.saveFilter()
+			return fmt.Sprintf("Source filters disabled: %s\n", value)
 		case "DXCALL":
 			c.filter.ClearDXCallsignPatterns()
 			c.saveFilter()
@@ -1388,7 +1415,7 @@ func (c *Client) handleFilterCommand(cmd string) string {
 			c.saveFilter()
 			return fmt.Sprintf("DE 2-character grid filters disabled: %s\n", strings.Join(gridList, ", "))
 		default:
-			return "Unknown filter type. Use: ALL, BAND, MODE, DXCALL, DECALL, CONFIDENCE, BEACON, DXGRID2, DEGRID2, DXCONT, DECONT, DXZONE, DEZONE, DXDXCC, or DEDXCC\nType HELP for usage.\n"
+			return "Unknown filter type. Use: ALL, BAND, MODE, SOURCE, DXCALL, DECALL, CONFIDENCE, BEACON, DXGRID2, DEGRID2, DXCONT, DECONT, DXZONE, DEZONE, DXDXCC, or DEDXCC\nType HELP for usage.\n"
 		}
 
 	default:

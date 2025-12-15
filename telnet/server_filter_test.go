@@ -57,6 +57,34 @@ func TestPassCommands(t *testing.T) {
 			},
 		},
 		{
+			name: "pass source human",
+			cmd:  "PASS SOURCE HUMAN",
+			check: func(t *testing.T, f *filter.Filter) {
+				if !f.Sources["HUMAN"] {
+					t.Fatalf("expected HUMAN source to be enabled")
+				}
+				if f.AllSources {
+					t.Fatalf("AllSources should be false when a specific source is set")
+				}
+			},
+		},
+		{
+			name: "pass source all resets",
+			cmd:  "PASS SOURCE ALL",
+			setup: func(c *Client) {
+				c.filter.SetSource("HUMAN", true)
+				c.filter.SetSource("SKIMMER", false)
+			},
+			check: func(t *testing.T, f *filter.Filter) {
+				if !f.AllSources || f.BlockAllSources {
+					t.Fatalf("expected AllSources=true and BlockAllSources=false after PASS SOURCE ALL")
+				}
+				if len(f.Sources) != 0 || len(f.BlockSources) != 0 {
+					t.Fatalf("expected PASS SOURCE ALL to clear allow and block sets")
+				}
+			},
+		},
+		{
 			name: "pass dxcall pattern",
 			cmd:  "PASS DXCALL K1*",
 			check: func(t *testing.T, f *filter.Filter) {
@@ -177,6 +205,24 @@ func TestRejectCommands(t *testing.T) {
 			},
 		},
 		{
+			name: "reject source human",
+			cmd:  "REJECT SOURCE HUMAN",
+			check: func(t *testing.T, f *filter.Filter) {
+				if !f.BlockSources["HUMAN"] {
+					t.Fatalf("expected HUMAN source to be blocked")
+				}
+			},
+		},
+		{
+			name: "reject source skimmer",
+			cmd:  "REJECT SOURCE SKIMMER",
+			check: func(t *testing.T, f *filter.Filter) {
+				if !f.BlockSources["SKIMMER"] {
+					t.Fatalf("expected SKIMMER source to be blocked")
+				}
+			},
+		},
+		{
 			name: "reject confidence all",
 			cmd:  "REJECT CONFIDENCE ALL",
 			check: func(t *testing.T, f *filter.Filter) {
@@ -231,7 +277,7 @@ func TestRejectCommands(t *testing.T) {
 			name: "reject all resets filters",
 			cmd:  "REJECT ALL",
 			check: func(t *testing.T, f *filter.Filter) {
-				if !f.AllBands || !f.AllModes || !f.AllConfidence {
+				if !f.AllBands || !f.AllModes || !f.AllConfidence || !f.AllSources {
 					t.Fatalf("expected REJECT ALL to reset filter to defaults")
 				}
 			},

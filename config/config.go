@@ -166,6 +166,10 @@ type DedupConfig struct {
 // FilterConfig holds default filter behavior for new users.
 type FilterConfig struct {
 	DefaultModes []string `yaml:"default_modes"`
+	// DefaultSources controls the initial SOURCE filter (HUMAN/SKIMMER) applied
+	// when a callsign has no saved filter file under data/users/.
+	// When empty or omitted, new users accept both categories (SOURCE=ALL).
+	DefaultSources []string `yaml:"default_sources"`
 }
 
 // StatsConfig controls periodic runtime reporting.
@@ -883,6 +887,9 @@ func (c *Config) Print() {
 	fmt.Printf("Dedup: cluster=%s (prefer_stronger=%t) secondary=%s (prefer_stronger=%t)\n", clusterWindow, c.Dedup.PreferStrongerSNR, secondaryWindow, c.Dedup.SecondaryPreferStrong)
 	if len(c.Filter.DefaultModes) > 0 {
 		fmt.Printf("Default modes: %s\n", strings.Join(c.Filter.DefaultModes, ", "))
+	}
+	if len(c.Filter.DefaultSources) > 0 {
+		fmt.Printf("Default sources: %s\n", strings.Join(c.Filter.DefaultSources, ", "))
 	}
 	fmt.Printf("Stats interval: %ds\n", c.Stats.DisplayIntervalSeconds)
 	status := "disabled"

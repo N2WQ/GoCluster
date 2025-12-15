@@ -290,3 +290,5 @@ filter:
     - LSB
     - USB
     - RTTY
+  default_sources:
+    - HUMAN

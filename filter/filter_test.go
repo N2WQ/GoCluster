@@ -194,8 +194,89 @@ func TestDXCCFilters(t *testing.T) {
 func TestNormalizeDefaultsRestoresPermissiveFilters(t *testing.T) {
 	var f Filter
 	f.normalizeDefaults()
-	if !f.AllDXContinents || !f.AllDEContinents || !f.AllDXZones || !f.AllDEZones {
+	if !f.AllSources || !f.AllDXContinents || !f.AllDEContinents || !f.AllDXZones || !f.AllDEZones {
 		t.Fatalf("expected normalizeDefaults to restore permissive continent/zone flags")
+	}
+}
+
+func TestSourceFilters(t *testing.T) {
+	f := NewFilter()
+
+	human := &spot.Spot{
+		Mode:    "CW",
+		Band:    "20m",
+		IsHuman: true,
+	}
+	skimmer := &spot.Spot{
+		Mode:    "CW",
+		Band:    "20m",
+		IsHuman: false,
+	}
+
+	if !f.Matches(human) {
+		t.Fatalf("expected default filter to allow human spots")
+	}
+	if !f.Matches(skimmer) {
+		t.Fatalf("expected default filter to allow skimmer/automated spots")
+	}
+
+	f.SetSource("HUMAN", true)
+	if !f.Matches(human) {
+		t.Fatalf("expected human spot to pass when HUMAN is allowed")
+	}
+	if f.Matches(skimmer) {
+		t.Fatalf("expected skimmer spot to be rejected when only HUMAN is allowed")
+	}
+
+	f.ResetSources()
+	if !f.Matches(skimmer) {
+		t.Fatalf("expected ResetSources to allow skimmer spots")
+	}
+
+	f.SetSource("HUMAN", false)
+	if f.Matches(human) {
+		t.Fatalf("expected human spot to be rejected when HUMAN is blocked")
+	}
+	if !f.Matches(skimmer) {
+		t.Fatalf("expected skimmer spot to pass when HUMAN is blocked")
+	}
+}
+
+func TestSetDefaultSourceSelectionAffectsNewFilters(t *testing.T) {
+	t.Cleanup(func() {
+		SetDefaultSourceSelection(nil)
+	})
+
+	SetDefaultSourceSelection([]string{"HUMAN"})
+	f := NewFilter()
+	if f.AllSources {
+		t.Fatalf("expected AllSources=false when default source is HUMAN")
+	}
+	if !f.Sources["HUMAN"] || f.Sources["SKIMMER"] {
+		t.Fatalf("expected default sources to include only HUMAN, got: %#v", f.Sources)
+	}
+
+	SetDefaultSourceSelection([]string{"SKIMMER"})
+	f = NewFilter()
+	if f.AllSources {
+		t.Fatalf("expected AllSources=false when default source is SKIMMER")
+	}
+	if !f.Sources["SKIMMER"] || f.Sources["HUMAN"] {
+		t.Fatalf("expected default sources to include only SKIMMER, got: %#v", f.Sources)
+	}
+
+	// Both categories is equivalent to ALL (disable SOURCE filtering).
+	SetDefaultSourceSelection([]string{"HUMAN", "SKIMMER"})
+	f = NewFilter()
+	if !f.AllSources {
+		t.Fatalf("expected AllSources=true when default sources include both categories")
+	}
+
+	// Invalid config should fail open (allow all sources) rather than blocking everything.
+	SetDefaultSourceSelection([]string{"BOGUS"})
+	f = NewFilter()
+	if !f.AllSources {
+		t.Fatalf("expected invalid default sources to fail open (AllSources=true)")
 	}
 }
 

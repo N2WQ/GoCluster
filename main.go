@@ -293,6 +293,7 @@ func main() {
 	rbn.ConfigureCallCache(cfg.CallCache.Size, callCacheTTL)
 	pskreporter.ConfigureCallCache(cfg.CallCache.Size, callCacheTTL)
 	filter.SetDefaultModeSelection(cfg.Filter.DefaultModes)
+	filter.SetDefaultSourceSelection(cfg.Filter.DefaultSources)
 	if err := filter.EnsureUserDataDir(); err != nil {
 		log.Printf("Warning: unable to initialize filter directory: %v", err)
 	}
