@@ -296,6 +296,7 @@ fcc_uls:
 - **Call corrections**: `2025/11/19 18:50:45 Call corrected: VE3N -> VE3NE at 7011.1 kHz (8 / 88%)`
 - **Frequency averaging**: `2025/11/19 18:50:45 Frequency corrected: VE3NE 7011.3 -> 7011.1 kHz (8 / 88%)`
 - **Harmonic suppression**: `2025/11/19 18:50:45 Harmonic suppressed: VE3NE 14022.0 -> 7011.0 kHz (3 / 18 dB)` plus a paired frequency-corrected line indicating the fundamental retained.
+- **Stats ticker** (per `stats.display_interval_seconds`): `PSKReporter: <TOTAL> TOTAL / <CW> CW / <RTTY> RTTY / <FT8> FT8 / <FT4> FT4 / <MSK144> MSK144`
 
 ### Sample Session
 

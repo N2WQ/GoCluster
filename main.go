@@ -725,11 +725,13 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, dedup *
 		rbnFT8 := diffSourceMode(sourceModeTotals, prevSourceModeCounts, "RBN-DIGITAL", "FT8")
 		rbnFT4 := diffSourceMode(sourceModeTotals, prevSourceModeCounts, "RBN-DIGITAL", "FT4")
 
+		// PSKReporter includes a per-mode breakdown in the stats ticker.
 		pskTotal := diffCounter(sourceTotals, prevSourceCounts, "PSKREPORTER")
 		pskCW := diffSourceMode(sourceModeTotals, prevSourceModeCounts, "PSKREPORTER", "CW")
 		pskRTTY := diffSourceMode(sourceModeTotals, prevSourceModeCounts, "PSKREPORTER", "RTTY")
 		pskFT8 := diffSourceMode(sourceModeTotals, prevSourceModeCounts, "PSKREPORTER", "FT8")
 		pskFT4 := diffSourceMode(sourceModeTotals, prevSourceModeCounts, "PSKREPORTER", "FT4")
+		pskMSK144 := diffSourceMode(sourceModeTotals, prevSourceModeCounts, "PSKREPORTER", "MSK144")
 
 		totalCorrections := tracker.CallCorrections()
 		totalUnlicensed := tracker.UnlicensedDrops()
@@ -757,12 +759,13 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, dedup *
 			formatGridLineOrPlaceholder(gridStats, gridDB), // 2
 			formatFCCLineOrPlaceholder(fccSnap),            // 3
 			fmt.Sprintf("RBN: %d TOTAL / %d CW / %d RTTY / %d FT8 / %d FT4", combinedRBN, rbnCW, rbnRTTY, rbnFT8, rbnFT4), // 4
-			fmt.Sprintf("PSKReporter: %s TOTAL / %s CW / %s RTTY / %s FT8 / %s FT4",
+			fmt.Sprintf("PSKReporter: %s TOTAL / %s CW / %s RTTY / %s FT8 / %s FT4 / %s MSK144",
 				humanize.Comma(int64(pskTotal)),
 				humanize.Comma(int64(pskCW)),
 				humanize.Comma(int64(pskRTTY)),
 				humanize.Comma(int64(pskFT8)),
 				humanize.Comma(int64(pskFT4)),
+				humanize.Comma(int64(pskMSK144)),
 			), // 5
 			fmt.Sprintf("Corrected calls: %d (C) / %d (U) / %d (F) / %d (H)", totalCorrections, totalUnlicensed, totalFreqCorrections, totalHarmonics), // 6
 			secondaryLine, // 7
