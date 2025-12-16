@@ -1,7 +1,209 @@
 # DXCluster CPU + Latency Optimization Notes (Full Findings)
 Date: 2025-12-14
+Updated: 2025-12-15 (fresh headless 15m CPU/heap profiles + reprioritized remaining work)
 
 This file captures the full repo review, hot-path analysis, and prioritized recommendations so we do not need to redo the work later.
+
+---
+
+## Update (2025-12-15): Fresh CPU/Heap Profiles + Remaining Optimization Opportunities
+
+This update re-runs profiling against current code + current data and captures the full results under `data/diagnostics/`.
+It also answers the “is telemetry still wired?” and “do we have the right profiling setup?” questions with evidence.
+
+### Telemetry / profiling wiring (confirmed)
+- `main.go:maybeStartDiagServer` exposes `/debug/pprof/*` and `/debug/heapdump` when `DXC_PPROF_ADDR` is set.
+- `main.go:maybeStartHeapLogger` periodically prints heap stats when `DXC_HEAP_LOG_INTERVAL` is set.
+
+Note (Windows): in this run, the diag server bound on IPv4; `Invoke-WebRequest http://localhost:PORT/...` can fail if `localhost` resolves to IPv6 first. Use `127.0.0.1` in the capture URLs, or set `DXC_PPROF_ADDR=127.0.0.1:6061`.
+
+### Profiling run details (this update)
+- Build: `go build -o .\gocluster_profile.exe .`
+- Headless mode: `config.yaml` has `ui.mode: "headless"` (to avoid UI overhead during profiling).
+- Diag server enabled via env: `DXC_PPROF_ADDR=localhost:6061` (then profiled via `http://127.0.0.1:6061/...`).
+- Workload: all sources enabled (`rbn`, `rbn_digital`, `human_telnet`, `pskreporter`); **0 telnet clients** (fan-out not stressed).
+- Session ID: `20251215-195000` (used in filenames below).
+
+Captured artifacts:
+- CPU profile (15m): `data/diagnostics/cpu-15m-20251215-195000.pprof`
+- Heap (start/end, GC forced): `data/diagnostics/heap-start-20251215-195000.pprof`, `data/diagnostics/heap-end-20251215-195000.pprof`
+- Session metadata + logs: `data/diagnostics/profile-session-20251215-195000.json`, `data/diagnostics/run-20251215-195000.out.log`, `data/diagnostics/run-20251215-195000.err.log`
+- Derived pprof text outputs (saved so we don’t need to rerun commands):
+  - CPU: `data/diagnostics/pprof-cpu-top100-20251215-195000.txt`, `data/diagnostics/pprof-cpu-cum100-20251215-195000.txt`
+  - CPU line-level: `data/diagnostics/pprof-cpu-list-processOutputSpots-20251215-195000.txt`, `data/diagnostics/pprof-cpu-list-gridCache-shouldUpdate-20251215-195000.txt`, `data/diagnostics/pprof-cpu-list-gridstore-Get-20251215-195000.txt`
+  - Heap: `data/diagnostics/pprof-heap-inuse-20251215-195000.txt`, `data/diagnostics/pprof-heap-alloc-20251215-195000.txt`, `data/diagnostics/pprof-heap-alloc-cum-20251215-195000.txt`, `data/diagnostics/pprof-heap-diff-inuse-20251215-195000.txt`
+  - Alloc line-level (smoking gun): `data/diagnostics/pprof-alloc-list-distanceCache-configure-20251215-195000.txt`
+
+### Key results (2025-12-15 profiles)
+
+#### CPU (15m)
+- CPU total: `55.74s` samples over `900s` → average ~`0.062` cores (~`6.2%` of one core) for this workload.
+- Cumulative hotspots (application-level):
+  - `main.processOutputSpots` cum `~11.30s` (`data/diagnostics/pprof-cpu-cum100-20251215-195000.txt`)
+  - `dxcluster/gridstore.(*Store).Get` cum `~8.50s` (`data/diagnostics/pprof-cpu-list-gridstore-Get-20251215-195000.txt`)
+  - `main.(*gridCache).shouldUpdate` cum `~7.96s`, where the cache-miss DB check dominates (`store.Get` is `~7.69s` inside it; see `data/diagnostics/pprof-cpu-list-gridCache-shouldUpdate-20251215-195000.txt`)
+
+Inside the output loop (`data/diagnostics/pprof-cpu-list-processOutputSpots-20251215-195000.txt`), the biggest cumulative stalls are:
+- `gridUpdate(s.DXCall, dxGrid)` cum `~3.46s`
+- `gridUpdate(s.DECall, deGrid)` cum `~4.51s`
+- `applyLicenseGate(s, ...)` cum `~0.75s`
+- `maybeApplyCallCorrectionWithLogger(...)` cum `~0.66s`
+
+Interpretation:
+- The output pipeline’s biggest synchronous cost is **grid persistence/update**, specifically the **SQLite read on cache miss** inside `gridCache.shouldUpdate`.
+- GC work is visible in the CPU top (`runtime.scanobject`, `runtime.gcDrain`, etc.); heap alloc profiles show the cause (next section).
+
+#### Heap in-use (end)
+- End heap in-use: `~82.65MB` (`data/diagnostics/pprof-heap-inuse-20251215-195000.txt`).
+- Biggest live owners:
+  - `dxcluster/spot.NewSpot`: `~36MB` in-use (expected: ring buffer + downstream caches keep spots alive)
+  - Dedup + secondary dedup caches: a few MB
+  - CTY database structures: `~10.8MB` cumulative in loader path
+- Heap growth over the 15m window is modest (`data/diagnostics/pprof-heap-diff-inuse-20251215-195000.txt`), not consistent with a leak.
+
+#### Heap allocations (alloc_space): primary driver is call correction cache initialization
+- Total allocations since process start at capture time: `~8.0GB` (`data/diagnostics/pprof-heap-alloc-20251215-195000.txt`).
+- Largest allocation source by far:
+  - `dxcluster/spot.(*distanceCache).configure`: `~5.39GB` (**~69% of all allocations**)
+  - Root cause is a per-decision `make(map[string]distanceCacheEntry, max)` (line 162 in `spot/correction.go`; see `data/diagnostics/pprof-alloc-list-distanceCache-configure-20251215-195000.txt`).
+
+Second-tier allocation sources once the above is fixed:
+- MQTT route matching (`paho.mqtt`): `strings.Split` cum `~630MB` (~8% of allocations) (`data/diagnostics/pprof-heap-alloc-cum-20251215-195000.txt`).
+- Spot creation + broadcast cloning: `spot.NewSpot ~270MB`, `cloneSpotForBroadcast ~130MB`.
+
+### What appears improved vs the older 2025-12-08 profiles
+- CTY lookup is no longer a top CPU consumer in the new 15m profile (it shows up as small cache operations instead of dominating CPU).
+- FCC ULS checks are no longer prominent in CPU top/cum; caching in `uls/license_check.go` likely pushed this off the hot set for this workload.
+
+### Updated remaining recommendations (prioritized)
+
+#### P0: Fix call correction distance-cache allocation blowup (largest win; also lowers GC/latency jitter)
+Evidence:
+- `spot.(*distanceCache).configure` allocates ~`5.39GB` (~`69%`) of all allocation traffic (`data/diagnostics/pprof-heap-alloc-20251215-195000.txt`).
+- This is driven by preallocating a large map (`distance_cache_size: 8192`) for a cache that is currently **constructed per correction decision** (`spot/correction.go` creates `localCache := &distanceCache{}` and calls `configure(...)`).
+
+Recommendations:
+1. Immediate mitigation (config-only): reduce `call_correction.distance_cache_size` drastically (e.g., `256` or `512`) while keeping correctness. This should cut allocation traffic by an order of magnitude without breaking behavior (cache is per-decision; it does not need thousands of slots).
+2. Proper fix (code): avoid per-decision large-map preallocation:
+   - Lazy allocate (`entries=nil` until first `put`), or allocate with a small cap derived from `len(callStats)` instead of `max`, and/or
+   - Reuse cache storage via `sync.Pool` to avoid repeated `make(map, 8192)` churn.
+
+Estimated impact:
+- Allocation traffic reduction: up to **~65–70%** (based on the observed alloc profile share).
+- CPU: lower GC work (`runtime.scanobject`, `runtime.gcDrain`) → **material reduction in CPU and tail-latency variance** under real high-throughput workloads.
+
+#### P0: Reduce grid update stalls in the output pipeline (DB reads on cache miss)
+Evidence:
+- `gridUpdate(...)` calls account for `~8.0s` cumulative time inside `processOutputSpots` in this run (`data/diagnostics/pprof-cpu-list-processOutputSpots-20251215-195000.txt`).
+- `main.(*gridCache).shouldUpdate` spends `~7.69s` in `store.Get` on cache miss (`data/diagnostics/pprof-cpu-list-gridCache-shouldUpdate-20251215-195000.txt`).
+- `gridstore.(*Store).Get` itself is almost entirely `database/sql`/sqlite time (`data/diagnostics/pprof-cpu-list-gridstore-Get-20251215-195000.txt`).
+
+Recommendations:
+1. Immediate mitigation (config-only): raise `grid_cache_size` significantly (e.g., `100000`, or set it to `0` to use the code’s 100k default) to reduce cache-miss DB checks in `shouldUpdate`.
+2. Proper fix (code): do not synchronously query SQLite in the output goroutine just to avoid redundant writes. Options:
+   - Move the DB “already has same grid?” check into the async writer goroutine.
+   - Or accept redundant updates and rely on batching (and/or SQL conditional updates) to make writes cheap.
+   - Add explicit metrics: count `shouldUpdate` fast hits vs DB checks and time spent in DB, so this can be validated under real load.
+
+Estimated impact:
+- CPU: this is ~`14–15%` of CPU samples in this run; could be a **high-leverage win** under heavy spot volume.
+- Latency: removes a **synchronous DB stall** from the single-threaded output loop → improves tail latency and reduces pipeline backpressure risk.
+
+##### A/B validation (15m headless): `grid_db_check_on_miss` toggle (implemented)
+
+We implemented an A/B toggle to *skip the synchronous SQLite read on cache miss* inside `gridCache.shouldUpdate` (the “DB-check-on-miss” path), while keeping the original behavior available for quick rollback-by-restart.
+
+Implementation notes:
+- Config: `grid_db_check_on_miss` (default true); env override: `DXC_GRID_DB_CHECK_ON_MISS` (wins).
+- When disabled, `startGridWriter` passes `store=nil` into `cache.shouldUpdate(...)`, so the cache-miss path cannot call `store.Get`.
+- Goal: reduce spot pipeline tail latency by removing a blocking DB point read from the hot loop.
+- Tradeoff: more redundant grid upserts on cache miss (extra writes/CPU in the async writer).
+
+Artifacts (so we don’t need to re-run this analysis):
+- Binary: `gocluster_profile_ab.exe`
+- Run A (DB-check ON):
+  - Session: `ab-dbcheckon-20251215-222711`
+  - CPU: `data/diagnostics/cpu-15m-ab-dbcheckon-20251215-222711.pprof`
+  - Heap start/end (GC forced): `data/diagnostics/heap-start-ab-dbcheckon-20251215-222711.pprof`, `data/diagnostics/heap-end-ab-dbcheckon-20251215-222711.pprof`
+  - Logs: `data/diagnostics/run-ab-dbcheckon-20251215-222711.out.log`, `data/diagnostics/run-ab-dbcheckon-20251215-222711.err.log`
+  - Derived text: `data/diagnostics/pprof-cpu-top80-ab-dbcheckon-20251215-222711.txt`, `data/diagnostics/pprof-cpu-cum80-ab-dbcheckon-20251215-222711.txt`, `data/diagnostics/pprof-heap-inuse-ab-dbcheckon-20251215-222711.txt`, `data/diagnostics/pprof-heap-alloc-ab-dbcheckon-20251215-222711.txt`
+- Run B (DB-check OFF):
+  - Session: `ab-dbcheckoff-20251215-224317`
+  - CPU: `data/diagnostics/cpu-15m-ab-dbcheckoff-20251215-224317.pprof`
+  - Heap start/end (GC forced): `data/diagnostics/heap-start-ab-dbcheckoff-20251215-224317.pprof`, `data/diagnostics/heap-end-ab-dbcheckoff-20251215-224317.pprof`
+  - Logs: `data/diagnostics/run-ab-dbcheckoff-20251215-224317.out.log`, `data/diagnostics/run-ab-dbcheckoff-20251215-224317.err.log`
+  - Derived text: `data/diagnostics/pprof-cpu-top80-ab-dbcheckoff-20251215-224317.txt`, `data/diagnostics/pprof-cpu-cum80-ab-dbcheckoff-20251215-224317.txt`, `data/diagnostics/pprof-heap-inuse-ab-dbcheckoff-20251215-224317.txt`, `data/diagnostics/pprof-heap-alloc-ab-dbcheckoff-20251215-224317.txt`
+- CPU/heap deltas:
+  - CPU: `data/diagnostics/pprof-cpu-delta-top80-ab-dbcheckoff-20251215-224317--ab-dbcheckon-20251215-222711.txt`
+  - Heap: `data/diagnostics/pprof-heap-delta-inuse-ab-dbcheckoff-20251215-224317--ab-dbcheckon-20251215-222711.txt`, `data/diagnostics/pprof-heap-delta-alloc-ab-dbcheckoff-20251215-224317--ab-dbcheckon-20251215-222711.txt`
+
+Run configuration (kept consistent across A/B):
+- Headless: `ui.mode=headless`
+- `call_correction.distance_cache_size=256`
+- `grid_cache_size=10240`
+- Diag server: `DXC_PPROF_ADDR=127.0.0.1:6061`
+
+Workload at 15 minutes (from stdout logs; live feeds differ so normalize when comparing):
+- Run A totals @00:15: RBN `1086`, PSKReporter `21609` → `22695` spots
+- Run B totals @00:15: RBN `1112`, PSKReporter `17634` → `18746` spots
+
+CPU results (15m):
+- Total CPU samples:
+  - Run A: `37.64s` / `900s` → `4.18%` of one core
+  - Run B: `39.78s` / `900s` → `4.42%` of one core
+- Approx CPU per spot (rough normalization): `1.66ms` (A) → `2.12ms` (B), ~`+28%`
+- Grid miss-check hot-path impact (directly attributable to the toggle):
+  - `main.(*gridCache).shouldUpdate` cum: `0.75s` (A) → `0.12s` (B) (Δ `-0.63s`)
+  - `dxcluster/gridstore.(*Store).Get` cum: `1.03s` (A) → `0.48s` (B) (Δ `-0.55s`)
+    - In Run A, `~0.58s` of `store.Get` is called from `shouldUpdate`; the remaining `~0.45s` is `lookupFn` DB fallback and remains even when DB-check-on-miss is off.
+- Write amplification when DB-check-on-miss is disabled (work shifts to async writer):
+  - `dxcluster/gridstore.(*Store).UpsertBatch` cum: `0.09s` (A) → `1.37s` (B) (Δ `+1.28s`)
+  - SQLite exec core (`modernc.org/sqlite/lib._sqlite3VdbeExec`) cum: `2.35s` (A) → `2.71s` (B) (Δ `+0.36s`)
+
+Grid update behavior (from `Grid database:` line):
+- Cache hit rate: `85.9%` (A) vs `85.6%` (B) (similar)
+- Updates since start: `401` (A) vs `7,348` (B) (~`18×` more)
+  - Updates per spot: `1.77%` (A) vs `39.2%` (B)
+
+Heap results (GC forced heap profiles):
+- In-use heap total:
+  - Start: `32.10MB` (A) vs `31.03MB` (B)
+  - End: `59.45MB` (A) vs `74.04MB` (B)
+- End heap is `+14.6MB` higher with DB-check OFF, dominated by `dxcluster/spot.NewSpot` retention (traffic/occupancy differences). Grid-cache-related allocations are small by comparison.
+
+Interpretation:
+- The toggle does what we wanted: it removes the cache-miss SQLite read from `shouldUpdate` (hot path).
+- In this 15m A/B, overall CPU did **not** drop (and CPU/spot increased) because redundant grid writes increased dramatically; however, those writes are done by the async writer and are much less likely to add tail latency to `processOutputSpots` than synchronous reads.
+- If the objective is primarily tail-latency, keeping `grid_db_check_on_miss=false` can still be the right choice on SSDs, but it is a deliberate “more background work for less blocking” trade.
+
+Recommended rollout posture:
+- Keep A/B toggle and measure tail latency (separately from CPU). Use `grid_db_check_on_miss=false` only if the latency win is real and worth the write amplification.
+- If we keep DB-check OFF long-term, consider a follow-up optimization to reduce redundant writes without reintroducing a synchronous read (e.g., larger/cheaper cache, “insert-or-ignore” semantics for known rows, or a compact membership filter).
+
+#### P1: MQTT routing allocation overhead (next biggest allocator after call correction fix)
+Evidence:
+- `strings.Split` via `paho.mqtt` routing is `~630MB` (~8%) of allocations (`data/diagnostics/pprof-heap-alloc-cum-20251215-195000.txt`).
+
+Recommendations:
+- Reduce the number of topic subscriptions/routes if possible (fewer topic patterns → less route matching work).
+- If this remains hot after P0, consider a single wildcard subscription with custom dispatch or an MQTT client/router that avoids per-message `strings.Split` churn.
+
+Estimated impact:
+- Allocation reduction: **~5–10%** once the call correction allocator is fixed.
+
+#### P2: Broadcast clone allocations (minor, but easy win if behavior allows)
+Evidence:
+- `cloneSpotForBroadcast` allocates `~130MB` (~1.6%) (`data/diagnostics/pprof-heap-alloc-20251215-195000.txt`).
+
+Recommendations:
+- If acceptable, keep SSIDs on broadcast to avoid cloning.
+- Otherwise, optimize cloning/formatting to avoid allocating a full duplicate spot for SSID collapse (code change).
+
+Estimated impact:
+- Allocation reduction: **~1–2%** (small), but also reduces GC churn.
+
+#### Profiling setup gaps (optional future work)
+- `/debug/pprof/mutex` and `/debug/pprof/block` show `0` in this run (these require `runtime.SetMutexProfileFraction` / `runtime.SetBlockProfileRate` in code). If lock contention becomes a concern under load, add env-configurable toggles for these.
 
 ---
 
@@ -517,4 +719,3 @@ Then, for code work (future):
 - Dedup: `dedup/deduplicator.go`, `dedup/secondary.go`
 - Telnet broadcast: `telnet/server.go`
 - Spot model + formatting/hash: `spot/spot.go`, `spot/callsign.go`
-

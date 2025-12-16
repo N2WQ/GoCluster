@@ -9,7 +9,7 @@ stats:
 
 # Local console UI (applies only to the process console, not telnet clients)
 ui:
-  mode: "tview"        # ansi | tview | headless
+  mode: "headless"     # ansi | tview | headless
   refresh_ms: 250     # ANSI redraw cadence; 0 disables redraws
   color: true         # Enable simple ANSI colors for marked-up lines
   clear_screen: true  # Clear the screen each frame (set false to append)
@@ -45,7 +45,7 @@ human_telnet:
   name: "HUMAN-SPOTS"
   host: "dxs.n2wq.com"
   port: 7300
-  callsign: "N2WQ-2"          # Change this to your callsign or upstream ID
+  callsign: "N2WQ-22"          # Change this to your callsign or upstream ID
   slot_buffer: 1000            # Buffer depth between telnet reader and pipeline
   keep_ssid_suffix: true       # Set false to collapse SSIDs when broadcasting
 
@@ -79,7 +79,7 @@ call_correction:
                                   #   center:   distance-based cluster center (median-like) then compare to subject
                                   #   classic:  legacy subject-vs-alternate with distance gating
   debug_log: true                 # Enable SQLite decision logging for call correction (non-blocking writer)
-  debug_log_file: "data/logs/callcorr_debug_modified.log"              # Optional path/prefix for the daily decision DB (defaults to data/analysis/callcorr_YYYY-MM-DD.db)
+  debug_log_file: "data/logs/callcorr_debug.log"              # Optional path/prefix for the daily decision DB (defaults to data/analysis/callcorr_YYYY-MM-DD.db)
   min_consensus_reports: 2        # Minimum number of corroborating spotters
   min_advantage: 1                # Candidate must exceed the original by this many spotters
   min_confidence_percent: 55      # Candidate supporters must represent at least this percent of unique spotters
@@ -102,7 +102,7 @@ call_correction:
   distance3_extra_reports: 0      # Extra unique supporters required when suggested call is distance 3
   distance3_extra_advantage: 0    # Extra advantage over the subject required when distance 3
   distance3_extra_confidence: 5   # Extra confidence percentage points required when distance 3
-  distance_cache_size: 8192       # Memoize call distance calculations (entries)
+  distance_cache_size: 256        # Memoize call distance calculations (entries)
   distance_cache_ttl_seconds: 120 # Expire cached distances after this many seconds (tie to recency window)
   morse_weights:
     insert: 1                     # Cost to insert a dot/dash in Morse patterns
@@ -250,8 +250,9 @@ fcc_uls:
 # Combined database for known calls + grids
 grid_db: "data/grids/calls.db"
 grid_flush_seconds: 60                 # Batch DB writes at most once per this many seconds
-grid_cache_size: 3000                  # Max in-memory grid cache entries (lazy LRU; falls back to SQLite on miss)
+grid_cache_size: 10240                 # Max in-memory grid cache entries (lazy LRU; falls back to SQLite on miss)
 grid_cache_ttl_seconds: 3600           # >0 expires cache entries after this many seconds (0=never expires)
+grid_db_check_on_miss: true            # When true, consult SQLite on cache miss to avoid redundant writes (A/B via DXC_GRID_DB_CHECK_ON_MISS)
 grid_ttl_days: 90                      # >0 prunes grid records older than this many days (0=keep forever)
 
 # RBN skew correction table

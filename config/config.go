@@ -39,7 +39,11 @@ type Config struct {
 	GridFlushSec    int                  `yaml:"grid_flush_seconds"`
 	GridCacheSize   int                  `yaml:"grid_cache_size"`
 	GridCacheTTLSec int                  `yaml:"grid_cache_ttl_seconds"`
-	GridTTLDays     int                  `yaml:"grid_ttl_days"`
+	// GridDBCheckOnMiss controls whether grid updates consult SQLite on cache miss
+	// to avoid redundant writes. When nil, Load defaults it to true to preserve
+	// historical behavior.
+	GridDBCheckOnMiss *bool `yaml:"grid_db_check_on_miss"`
+	GridTTLDays       int   `yaml:"grid_ttl_days"`
 }
 
 // ServerConfig contains general server settings
@@ -785,6 +789,10 @@ func Load(filename string) (*Config, error) {
 	if cfg.GridCacheTTLSec < 0 {
 		cfg.GridCacheTTLSec = 0
 	}
+	if cfg.GridDBCheckOnMiss == nil {
+		v := true
+		cfg.GridDBCheckOnMiss = &v
+	}
 	if cfg.GridTTLDays < 0 {
 		cfg.GridTTLDays = 0
 	}
@@ -936,7 +944,17 @@ func (c *Config) Print() {
 		fmt.Printf("FCC ULS: refresh %s UTC (source=%s archive=%s db=%s)\n", c.FCCULS.RefreshUTC, c.FCCULS.URL, c.FCCULS.Archive, c.FCCULS.DBPath)
 	}
 	if strings.TrimSpace(c.GridDBPath) != "" {
-		fmt.Printf("Grid/known DB: %s (flush=%ds cache=%d ttl=%dd)\n", c.GridDBPath, c.GridFlushSec, c.GridCacheSize, c.GridTTLDays)
+		dbCheckOnMiss := true
+		if c.GridDBCheckOnMiss != nil {
+			dbCheckOnMiss = *c.GridDBCheckOnMiss
+		}
+		fmt.Printf("Grid/known DB: %s (flush=%ds cache=%d cache_ttl=%ds db_check_on_miss=%t ttl=%dd)\n",
+			c.GridDBPath,
+			c.GridFlushSec,
+			c.GridCacheSize,
+			c.GridCacheTTLSec,
+			dbCheckOnMiss,
+			c.GridTTLDays)
 	}
 	if c.Skew.Enabled {
 		fmt.Printf("Skew: refresh %s UTC (min_spots=%d source=%s)\n", c.Skew.RefreshUTC, c.Skew.MinSpots, c.Skew.URL)

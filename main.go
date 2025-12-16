@@ -20,6 +20,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	pprof "runtime/pprof"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -51,6 +52,12 @@ const (
 	ctyCacheEntryBytes  = 96
 	knownCallEntryBytes = 24
 	sourceModeDelimiter = "|"
+
+	// envGridDBCheckOnMiss overrides config.yaml's grid_db_check_on_miss at runtime.
+	// When true, grid updates may synchronously consult SQLite on cache miss to avoid
+	// redundant writes. When false, the hot path never blocks on that read and may
+	// perform extra batched writes instead.
+	envGridDBCheckOnMiss = "DXC_GRID_DB_CHECK_ON_MISS"
 )
 
 var licCache = newLicenseCache(5 * time.Minute)
@@ -142,8 +149,9 @@ func newGridCache(capacity int, ttl time.Duration) *gridCache {
 
 // shouldUpdate returns true when the provided grid differs from what is stored
 // in the cache (or DB), and updates the cache with the new value. On cache miss
-// it consults SQLite to avoid duplicate writes when the database already holds
-// the same grid.
+// it may consult SQLite (when store is non-nil) to avoid duplicate writes when
+// the database already holds the same grid. Passing store=nil disables the DB
+// read and treats cache misses as updates (useful for A/B testing CPU/latency).
 func (c *gridCache) shouldUpdate(call, grid string, store *gridstore.Store) bool {
 	if call == "" || grid == "" {
 		return false
@@ -242,6 +250,28 @@ func (c *gridCache) lookupWithMetrics(call string, metrics *gridMetrics) (string
 
 func isStdoutTTY() bool {
 	return term.IsTerminal(int(os.Stdout.Fd()))
+}
+
+func gridDBCheckOnMissEnabled(cfg *config.Config) (bool, string) {
+	enabled := true
+	source := "default"
+	if cfg != nil && cfg.GridDBCheckOnMiss != nil {
+		enabled = *cfg.GridDBCheckOnMiss
+		source = "config.yaml"
+	}
+
+	raw := strings.TrimSpace(os.Getenv(envGridDBCheckOnMiss))
+	if raw == "" {
+		return enabled, source
+	}
+
+	parsed, err := strconv.ParseBool(raw)
+	if err != nil {
+		log.Printf("Gridstore: ignoring invalid %s=%q; using %s value=%v", envGridDBCheckOnMiss, raw, source, enabled)
+		return enabled, source
+	}
+
+	return parsed, envGridDBCheckOnMiss
 }
 
 func main() {
@@ -411,9 +441,13 @@ func main() {
 			log.Printf("Warning: failed to seed known calls into grid database: %v", err)
 		}
 	}
+
+	gridDBCheckOnMiss, gridDBCheckSource := gridDBCheckOnMissEnabled(cfg)
+	log.Printf("Gridstore: db_check_on_miss=%v (source=%s)", gridDBCheckOnMiss, gridDBCheckSource)
+
 	cache := newGridCache(cfg.GridCacheSize, time.Duration(cfg.GridCacheTTLSec)*time.Second)
 	gridTTL := time.Duration(cfg.GridTTLDays) * 24 * time.Hour
-	gridUpdater, gridUpdateState, stopGridWriter, gridLookup := startGridWriter(gridStore, time.Duration(cfg.GridFlushSec)*time.Second, cache, gridTTL)
+	gridUpdater, gridUpdateState, stopGridWriter, gridLookup := startGridWriter(gridStore, time.Duration(cfg.GridFlushSec)*time.Second, cache, gridTTL, gridDBCheckOnMiss)
 	defer func() {
 		if stopGridWriter != nil {
 			stopGridWriter()
@@ -1737,7 +1771,7 @@ func seedKnownCalls(store *gridstore.Store, known *spot.KnownCallsigns) error {
 	return store.UpsertBatch(records)
 }
 
-func startGridWriter(store *gridstore.Store, flushInterval time.Duration, cache *gridCache, ttl time.Duration) (func(call, grid string), *gridMetrics, func(), func(call string) (string, bool)) {
+func startGridWriter(store *gridstore.Store, flushInterval time.Duration, cache *gridCache, ttl time.Duration, dbCheckOnMiss bool) (func(call, grid string), *gridMetrics, func(), func(call string) (string, bool)) {
 	if store == nil {
 		return nil, nil, nil, nil
 	}
@@ -1745,6 +1779,10 @@ func startGridWriter(store *gridstore.Store, flushInterval time.Duration, cache 
 		flushInterval = 60 * time.Second
 	}
 	metrics := &gridMetrics{}
+	storeForMissCheck := (*gridstore.Store)(nil)
+	if dbCheckOnMiss {
+		storeForMissCheck = store
+	}
 	type update struct {
 		call string
 		grid string
@@ -1818,7 +1856,9 @@ func startGridWriter(store *gridstore.Store, flushInterval time.Duration, cache 
 		if call == "" || len(grid) < 4 {
 			return
 		}
-		if cache != nil && !cache.shouldUpdate(call, grid, store) {
+		// A/B knob: by passing store=nil we skip the cache-miss SQLite read and
+		// always enqueue updates on cache miss (extra writes, less tail-latency).
+		if cache != nil && !cache.shouldUpdate(call, grid, storeForMissCheck) {
 			return
 		}
 		select {

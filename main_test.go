@@ -3,6 +3,7 @@ package main
 import (
 	"testing"
 
+	"dxcluster/config"
 	"dxcluster/spot"
 )
 
@@ -41,4 +42,51 @@ func TestCloneSpotForBroadcastPreservesMissingReport(t *testing.T) {
 	if clone.Report != src.Report {
 		t.Fatalf("expected Report=%d, got %d", src.Report, clone.Report)
 	}
+}
+
+func TestGridDBCheckOnMissEnabled_DefaultsTrue(t *testing.T) {
+	t.Setenv(envGridDBCheckOnMiss, "")
+
+	got, source := gridDBCheckOnMissEnabled(&config.Config{})
+	if !got {
+		t.Fatalf("expected default grid DB check to be enabled, got %v (source=%s)", got, source)
+	}
+}
+
+func TestGridDBCheckOnMissEnabled_ConfigFalse(t *testing.T) {
+	t.Setenv(envGridDBCheckOnMiss, "")
+	cfg := &config.Config{GridDBCheckOnMiss: boolPtr(false)}
+
+	got, source := gridDBCheckOnMissEnabled(cfg)
+	if got {
+		t.Fatalf("expected grid DB check to be disabled by config, got %v (source=%s)", got, source)
+	}
+}
+
+func TestGridDBCheckOnMissEnabled_EnvOverridesConfig(t *testing.T) {
+	cfg := &config.Config{GridDBCheckOnMiss: boolPtr(true)}
+	t.Setenv(envGridDBCheckOnMiss, "false")
+
+	got, source := gridDBCheckOnMissEnabled(cfg)
+	if got {
+		t.Fatalf("expected env override to disable grid DB check, got %v (source=%s)", got, source)
+	}
+	if source != envGridDBCheckOnMiss {
+		t.Fatalf("expected source=%q, got %q", envGridDBCheckOnMiss, source)
+	}
+}
+
+func TestGridDBCheckOnMissEnabled_InvalidEnvIgnored(t *testing.T) {
+	cfg := &config.Config{GridDBCheckOnMiss: boolPtr(false)}
+	t.Setenv(envGridDBCheckOnMiss, "notabool")
+
+	got, _ := gridDBCheckOnMissEnabled(cfg)
+	if got {
+		t.Fatalf("expected invalid env override to be ignored, got %v", got)
+	}
+}
+
+func boolPtr(v bool) *bool {
+	b := v
+	return &b
 }
