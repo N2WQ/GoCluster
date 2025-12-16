@@ -5,13 +5,13 @@ A modern Go-based DX cluster that aggregates amateur radio spots, enriches them 
 ## Quickstart
 
 1. Install Go `1.25+` (see `go.mod`).
-2. Edit `config.yaml` (at minimum: your callsigns and `telnet.port`).
+2. Edit `data/config/` (at minimum: set your callsigns in `ingest.yaml` and `telnet.port` in `runtime.yaml`). You can override the path with `DXC_CONFIG_PATH` if you want to point at a different directory or a legacy single-file config.
 3. Run:
    ```pwsh
    go mod tidy
    go run .
    ```
-4. Connect: `telnet localhost 9300` (or whatever `telnet.port` is set to in `config.yaml`).
+4. Connect: `telnet localhost 9300` (or whatever `telnet.port` is set to in `data/config/runtime.yaml`).
 
 ## Architecture and Spot Sources
 
@@ -20,9 +20,9 @@ A modern Go-based DX cluster that aggregates amateur radio spots, enriches them 
    - Parsing uses a single left-to-right token walk assisted by an Aho–Corasick (AC) keyword scanner so the line only needs to be scanned once.
    - The parser supports both `DX de CALL: 14074.0 ...` and the glued form `DX de CALL:14074.0 ...` by splitting the spotter token into `DECall` + optional attached frequency.
    - Frequency is the first token that parses as a plausible dial frequency (currently `100.0`-`3,000,000.0` kHz), rather than assuming a fixed column index.
-   - Mode is taken from the first explicit mode token (`CW`, `USB`, `FT8`, `MSK144`, etc.). If mode is absent, it is inferred from `config/mode_allocations.yaml` (with a simple fallback: `USB` ≥ 10 MHz else `CW`).
+   - Mode is taken from the first explicit mode token (`CW`, `USB`, `FT8`, `MSK144`, etc.). If mode is absent, it is inferred from `data/config/mode_allocations.yaml` (with a simple fallback: `USB` >= 10 MHz else `CW`).
    - Report/SNR is recognized in both `+5 dB` and `-13dB` forms; `HasReport` is set whenever a report is present (including a valid `0 dB`).
-   - Ingest burst protection is sized per source via `rbn.slot_buffer` / `rbn_digital.slot_buffer` in `config.yaml`; overflow logs are tagged by source for easier diagnosis.
+   - Ingest burst protection is sized per source via `rbn.slot_buffer` / `rbn_digital.slot_buffer` in `data/config/ingest.yaml`; overflow logs are tagged by source for easier diagnosis.
 3. **PSKReporter MQTT** (`pskreporter/client.go`) subscribes to `pskr/filter/v2/+/+/#` (or one or more `pskr/filter/v2/+/<MODE>/#` topics when `pskreporter.modes` is configured), converts JSON payloads into canonical spots, and applies locator-based metadata. Set `pskreporter.append_spotter_ssid: true` if you want receiver callsigns that lack SSIDs to pick up a `-#` suffix for deduplication.
 4. **CTY Database** (`cty/parser.go` + `data/cty/cty.plist`) performs longest-prefix lookups so both spotters and spotted stations carry continent/country/CQ/ITU/grid metadata.
 5. **Dedup Engine** (`dedup/deduplicator.go`) filters duplicates before they reach the ring buffer. A zero-second window effectively disables dedup, but the pipeline stays unified. A secondary, broadcast-only dedupe (configurable window, default 60s) runs after call correction/harmonic/frequency adjustments to collapse same-DX/frequency reports from spotters that share the same DE ADIF (DXCC) and DE CQ zone; it hashes kHz + DE ADIF + DE zone + DX call (time window enforced separately), so one spot per window per spotter country/zone reaches clients while the ring/history remain intact. When `secondary_prefer_stronger_snr` is true, the stronger SNR duplicate replaces the cached entry and is broadcast. Spotter SSID display is controlled at broadcast time (see `rbn.keep_ssid_suffix`).
@@ -43,7 +43,7 @@ High-level flow:
   - Run the AC scan over the uppercased line to find keyword hits.
   - Classify each token by checking for an exact hit that spans the token (fallback: scan the token text itself when whitespace/punctuation causes slight drift).
 - **Single pass extraction**: walk tokens left-to-right, consuming fields as they are discovered: spotter call (and optional `CALL:freq` attachment), frequency, DX call, mode, report (`<signed int> dB` or `<signed int>dB`), time (`HHMMZ`), then treat any remaining unconsumed tokens as the free-form comment.
-- **Mode inference**: when no explicit mode token exists, infer from `config/mode_allocations.yaml` by frequency (fallback: `USB` ≥ 10 MHz else `CW`).
+- **Mode inference**: when no explicit mode token exists, infer from `data/config/mode_allocations.yaml` by frequency (fallback: `USB` ≥ 10 MHz else `CW`).
 - **Report semantics**: `HasReport` is strictly “report was present in the source line”, so `0 dB` is distinct from “missing report”.
 
 ### Call-Correction Distance Tuning
@@ -223,7 +223,7 @@ Errors during filter commands return a usage message (e.g., invalid bands or mod
 
 Continent and CQ-zone filters behave like the band/mode whitelists: start permissive, tighten with `PASS`, reset with `ALL`. When a continent/zone filter is active, spots missing that metadata are rejected so the whitelist cannot be bypassed by incomplete records.
 
-New-user filter defaults are configured in `config.yaml` under `filter:` and are only applied when a callsign has no saved filter file in `data/users/`:
+New-user filter defaults are configured in `data/config/runtime.yaml` under `filter:` and are only applied when a callsign has no saved filter file in `data/users/`:
 
 - `filter.default_modes`: initial mode selection for `PASS/REJECT MODE`.
 - `filter.default_sources`: initial SOURCE selection (`HUMAN` for `IsHuman=true`, `SKIMMER` for `IsHuman=false`). Omit the field or list both categories to disable SOURCE filtering (equivalent to `PASS SOURCE ALL`).
@@ -232,7 +232,7 @@ Existing users keep whatever is stored in their `data/users/<CALL>.yaml` file; c
 
 ## RBN Skew Corrections
 
-1. Enable the `skew` block in `config.yaml` (the server writes to `skew.file` after each refresh):
+1. Enable the `skew` block in `data/config/data.yaml` (the server writes to `skew.file` after each refresh):
 
 ```yaml
 skew:
@@ -250,7 +250,7 @@ To match the 100 Hz accuracy of the underlying skimmers, the corrected frequency
 
 ## Known Calls Cache
 
-1. Populate the `known_calls` block in `config.yaml`:
+1. Populate the `known_calls` block in `data/config/data.yaml`:
 
 ```yaml
  known_calls:
@@ -267,7 +267,7 @@ You can disable the scheduler by setting `known_calls.enabled: false`. In that m
 
 ## CTY Database Refresh
 
-1. Configure the `cty` block in `config.yaml`:
+1. Configure the `cty` block in `data/config/data.yaml`:
 
 ```yaml
 cty:
@@ -282,7 +282,7 @@ cty:
 
 ## FCC ULS Downloads
 
-1. Configure the `fcc_uls` block in `config.yaml`:
+1. Configure the `fcc_uls` block in `data/config/data.yaml`:
 
 ```yaml
 fcc_uls:
@@ -357,7 +357,7 @@ Use these commands interactively to tailor the spot stream to your operating pre
 
 ### Telnet Throughput Controls
 
-The telnet server fans every post-dedup spot to every connected client. When PSKReporter or both RBN feeds spike, the broadcast queue can saturate and you'll see `Broadcast channel full, dropping spot` along with a rising `Telnet drops` metric in the stats ticker. Tune the `telnet` block in `config.yaml` to match your load profile:
+The telnet server fans every post-dedup spot to every connected client. When PSKReporter or both RBN feeds spike, the broadcast queue can saturate and you'll see `Broadcast channel full, dropping spot` along with a rising `Telnet drops` metric in the stats ticker. Tune the `telnet` block in `data/config/runtime.yaml` to match your load profile:
 
 - `broadcast_workers` keeps the existing behavior (`0` = auto at half your CPUs, minimum 2).
 - `broadcast_queue_size` controls the global queue depth ahead of the worker pool (default `2048`); larger buffers smooth bursty ingest before anything is dropped.
@@ -372,59 +372,22 @@ Increase the queue sizes if you see the broadcast-channel drop message frequentl
 ## Project Structure
 
 ```
-C:\src\gocluster\
-├── buffer\              # In-memory ring buffer storing processed spots
-│   └── ringbuffer.go
-├── commands\            # Command parser/processor for telnet sessions
-│   └── processor.go
-├── config\              # YAML configuration loader (`config.yaml`)
-│   └── config.go
-├── cty\                 # CTY prefix parsing and lookup (data enrichment)
-│   └── parser.go
-├── cmd\                 # Utilities (interactive CTY lookup CLI)
-│   └── ctylookup\main.go
-├── dedup\               # Deduplication engine and window management
-│   └── deduplicator.go
-├── filter\              # Per-user filter defaults and helpers
-│   └── filter.go
-├── pskreporter\         # MQTT client for PSKReporter FT8/FT4 spots
-│   └── client.go
-├── rbn\                 # Reverse Beacon Network TCP client/parser
-│   └── client.go
-├── spot\                # Canonical spot definition and helpers
-│   └── spot.go
-├── stats\               # Runtime statistics tracking
-│   └── stats.go
-├── telnet\              # Telnet server and broadcast helpers
-│   └── server.go
-├── main.go               # Entry point wiring config, clients, dedup, and telnet server
-├── config.yaml          # Runtime configuration
-├── data/cty/cty.plist   # CTY prefix database for metadata lookups
-├── go.mod               # Go module definition
-├── go.sum               # Dependency checksums
-└── README.md            # This documentation
-```
-
-If the project tree above renders with odd characters on your terminal/editor (code page differences), use this simplified view instead:
-
-```
 .
-├─ main.go                 # Wires config, ingest, pipeline, telnet server
-├─ config.yaml             # Runtime configuration
-├─ buffer/                 # Ring buffer feeding SHOW/DX and broadcasts
-├─ commands/               # Telnet command processor (HELP, SHOW/DX, etc.)
-├─ config/                 # YAML loader + defaults for config.yaml
-├─ cty/                    # CTY prefix database parsing/lookup
-├─ dedup/                  # Primary + secondary dedup engines
-├─ filter/                 # Per-client filter rules
-├─ gridstore/              # Persistent calls/grid database (SQLite)
-├─ pskreporter/            # PSKReporter MQTT ingest
-├─ rbn/                    # RBN and human/relay telnet ingest
-├─ spot/                   # Canonical spot type + formatting + correction helpers
-├─ telnet/                 # Telnet server + broadcast fanout
-└─ docs/                   # Operational / analysis notes
+├─ data/config/            # Runtime configuration (split YAML files)
+│  ├─ app.yaml             # Server identity, stats interval, console UI
+│  ├─ ingest.yaml          # RBN/PSKReporter/human ingest + call cache
+│  ├─ pipeline.yaml        # Dedup, call correction, harmonics, spot policy
+│  ├─ data.yaml            # CTY/known_calls/FCC/skew + grid DB tuning
+│  ├─ runtime.yaml         # Telnet server settings, buffer/filter defaults
+│  └─ mode_allocations.yaml # Mode inference for RBN/human ingest
+├─ config/                 # YAML loader + defaults (merges dir or single file)
+├─ config.yaml             # Legacy single-file config (use via DXC_CONFIG_PATH)
+├─ cmd/                    # Helper binaries (CTY lookup, skew fetch, analysis)
+├─ rbn/, pskreporter/, telnet/, dedup/, filter/, spot/, stats/, gridstore/  # Core packages
+├─ data/cty/cty.plist      # CTY prefix database for metadata lookups
+├─ go.mod / go.sum         # Go module definition + checksums
+└─ main.go                 # Entry point wiring ingest, protections, telnet server
 ```
-
 ## Code Walkthrough
 
 - `main.go` glues together ingest clients (RBN/PSKReporter), protections (dedup, call correction, harmonics, frequency averaging), persistence (grid store), telnet server, dashboard, schedulers (FCC ULS, known calls, skew), and graceful shutdown. Helpers are commented so you can follow the pipeline without prior cluster context.
@@ -438,14 +401,14 @@ If the project tree above renders with odd characters on your terminal/editor (c
 
 ## Getting Started
 
-1. Update `config.yaml` with your preferred callsigns for the `rbn`, `rbn_digital`, optional `human_telnet`, and optional `pskreporter` sections. Optionally list `pskreporter.modes` (e.g., [`FT8`, `FT4`]) to subscribe to just those MQTT feeds simultaneously. If you enable `human_telnet`, review `config/mode_allocations.yaml` (used to infer CW vs LSB/USB when the incoming spot line does not include an explicit mode token).
+1. Update `data/config/ingest.yaml` with your preferred callsigns for the `rbn`, `rbn_digital`, optional `human_telnet`, and optional `pskreporter` sections. Optionally list `pskreporter.modes` (e.g., [`FT8`, `FT4`]) to subscribe to just those MQTT feeds simultaneously. If you enable `human_telnet`, review `data/config/mode_allocations.yaml` (used to infer CW vs LSB/USB when the incoming spot line does not include an explicit mode token).
 2. Optionally enable/tune `call_correction` (master `enabled` switch, minimum corroborating spotters, required advantage, confidence percent, recency window, max edit distance, per-mode distance models, and `invalid_action` failover). `distance_model_cw` switches CW between the baseline rune-based Levenshtein (`plain`) and a Morse-aware cost function (`morse`), `distance_model_rtty` toggles RTTY between `plain` and a Baudot/ITA2-aware scorer (`baudot`), while SSB/voice modes always stay on `plain` because those reports are typed by humans.
 3. Optionally enable/tune `harmonics` to drop harmonic CW/USB/LSB/RTTY spots (master `enabled`, recency window, maximum harmonic multiple, frequency tolerance, and minimum report delta).
 4. Set `spot_policy.max_age_seconds` to drop stale spots before they're processed further. For CW/RTTY frequency smoothing, tune `spot_policy.frequency_averaging_seconds` (window), `spot_policy.frequency_averaging_tolerance_hz` (allowed deviation), and `spot_policy.frequency_averaging_min_reports` (minimum corroborating reports).
 5. (Optional) Enable `skew.enabled` after generating `skew.file` via `go run ./cmd/rbnskewfetch` (or let the server fetch it at the next 00:30 UTC window). The server applies each skimmer's multiplicative correction before normalization so SSIDs stay unique.
 6. If you maintain a historical callsign list, set `known_calls.file` plus `known_calls.url` (leave `enabled: true` to keep it refreshed). On first launch the server downloads the file if missing, loads it into memory, and then refreshes it daily at `known_calls.refresh_utc`.
 7. Grids/known calls are persisted in SQLite (`grid_db`, default `data/grids/calls.db`). Tune `grid_flush_seconds` for batch cadence, `grid_cache_size` to bound the in-memory LRU used for grid comparisons, and `grid_ttl_days` if you want old, unobserved calls to expire automatically after a configurable number of days.
-8. Adjust `stats.display_interval_seconds` in `config.yaml` to control how frequently runtime statistics print to the console (defaults to 30 seconds).
+8. Adjust `stats.display_interval_seconds` in `data/config/app.yaml` to control how frequently runtime statistics print to the console (defaults to 30 seconds).
 9. Install dependencies and run:
 	 ```pwsh
 	 go mod tidy
@@ -455,7 +418,7 @@ If the project tree above renders with odd characters on your terminal/editor (c
 
 ## Configuration Loader Defaults
 
-`config.Load` reads `config.yaml`, normalizes missing fields, and refuses to start when time strings are invalid. Key fallbacks:
+`config.Load` accepts a directory (merging all YAML files) or a single YAML file; the server defaults to `data/config`. It normalizes missing fields and refuses to start when time strings are invalid. Key fallbacks:
 
 - Stats tickers default to `30s` when unset. Telnet queues fall back to `broadcast_queue_size=2048`, `worker_queue_size=128`, `client_buffer_size=128`, and friendly greeting/duplicate-login messages are injected if blank.
 - Call correction uses conservative baselines unless overridden: `min_consensus_reports=4`, `min_advantage=1`, `min_confidence_percent=70`, `recency_seconds=45`, `max_edit_distance=2`, `frequency_tolerance_hz=0.5`, `invalid_action=broadcast`. Empty distance models inherit from `distance_model` or default to `plain`; negative SNR floors/extras are clamped to zero. Distance cache defaults to `size=5000` and `ttl=recency_seconds` (or `120s`).

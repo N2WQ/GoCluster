@@ -52,8 +52,11 @@ const (
 	ctyCacheEntryBytes  = 96
 	knownCallEntryBytes = 24
 	sourceModeDelimiter = "|"
+	defaultConfigPath   = "data/config"
+	legacyConfigPath    = "config.yaml"
+	envConfigPath       = "DXC_CONFIG_PATH"
 
-	// envGridDBCheckOnMiss overrides config.yaml's grid_db_check_on_miss at runtime.
+	// envGridDBCheckOnMiss overrides the config-driven grid_db_check_on_miss at runtime.
 	// When true, grid updates may synchronously consult SQLite on cache miss to avoid
 	// redundant writes. When false, the hot path never blocks on that read and may
 	// perform extra batched writes instead.
@@ -252,12 +255,40 @@ func isStdoutTTY() bool {
 	return term.IsTerminal(int(os.Stdout.Fd()))
 }
 
+func loadClusterConfig() (*config.Config, string, error) {
+	candidates := make([]string, 0, 3)
+	if envPath := strings.TrimSpace(os.Getenv(envConfigPath)); envPath != "" {
+		candidates = append(candidates, envPath)
+	}
+	candidates = append(candidates, defaultConfigPath, legacyConfigPath)
+
+	var lastErr error
+	for _, path := range candidates {
+		if path == "" {
+			continue
+		}
+		cfg, err := config.Load(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				lastErr = err
+				continue
+			}
+			return nil, path, err
+		}
+		return cfg, cfg.LoadedFrom, nil
+	}
+	return nil, "", fmt.Errorf("unable to load config; tried %s (last error: %v)", strings.Join(candidates, ", "), lastErr)
+}
+
 func gridDBCheckOnMissEnabled(cfg *config.Config) (bool, string) {
 	enabled := true
 	source := "default"
 	if cfg != nil && cfg.GridDBCheckOnMiss != nil {
 		enabled = *cfg.GridDBCheckOnMiss
-		source = "config.yaml"
+		source = strings.TrimSpace(cfg.LoadedFrom)
+		if source == "" {
+			source = "config"
+		}
 	}
 
 	raw := strings.TrimSpace(os.Getenv(envGridDBCheckOnMiss))
@@ -276,10 +307,11 @@ func gridDBCheckOnMissEnabled(cfg *config.Config) (bool, string) {
 
 func main() {
 	// Load configuration
-	cfg, err := config.Load("config.yaml")
+	cfg, configSource, err := loadClusterConfig()
 	if err != nil {
 		log.Fatalf("Error loading config: %v", err)
 	}
+	log.Printf("Loaded configuration from %s", configSource)
 
 	uiMode := strings.ToLower(strings.TrimSpace(cfg.UI.Mode))
 	renderAllowed := isStdoutTTY()
@@ -797,14 +829,14 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, dedup *
 		totalFreqCorrections := tracker.FrequencyCorrections()
 		totalHarmonics := tracker.HarmonicSuppressions()
 
-	var secondaryLine string
-	if secondary != nil {
-		secProcessed, secDupes, secCache := secondary.GetStats()
-		_ = secCache
-		secondaryLine = fmt.Sprintf("Secondary dedup: %s in / %s out", humanize.Comma(int64(secProcessed)), humanize.Comma(int64(secDupes)))
-	} else {
-		secondaryLine = "Secondary dedup: disabled"
-	}
+		var secondaryLine string
+		if secondary != nil {
+			secProcessed, secDupes, secCache := secondary.GetStats()
+			_ = secCache
+			secondaryLine = fmt.Sprintf("Secondary dedup: %s in / %s out", humanize.Comma(int64(secProcessed)), humanize.Comma(int64(secDupes)))
+		} else {
+			secondaryLine = "Secondary dedup: disabled"
+		}
 
 		var queueDrops, clientDrops uint64
 		var clientCount int

@@ -142,7 +142,7 @@ func defaultConfig() Config {
 			SystemPrompt:          "",
 			OutputTemplate:        "data/reports/analysis-{DATE}.llm.txt",
 			IncludeConfigSnapshot: true,
-			ClusterConfigPath:     "config.yaml",
+			ClusterConfigPath:     "data/config",
 		},
 	}
 }
@@ -588,7 +588,7 @@ func generateLLM(cfg Config, analysisDate time.Time, report []string) (string, e
 	if cfg.OpenAI.IncludeConfigSnapshot {
 		cfgPath := cfg.OpenAI.ClusterConfigPath
 		if cfgPath == "" {
-			cfgPath = "config.yaml"
+			cfgPath = "data/config"
 		}
 		cfgPath = filepath.Clean(filepath.Join(cfg.DataDir, cfgPath))
 		if snapshot := readFileIfExists(cfgPath); snapshot != "" {

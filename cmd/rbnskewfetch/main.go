@@ -15,7 +15,7 @@ import (
 
 func main() {
 	var (
-		configPath = flag.String("config", "config.yaml", "Path to the cluster configuration file")
+		configPath = flag.String("config", "data/config", "Path to the cluster configuration file or directory")
 		outputPath = flag.String("out", filepath.FromSlash("data/skm_correction/rbnskew.json"), "Destination JSON file")
 	)
 	flag.Parse()

@@ -15,14 +15,14 @@ import (
 )
 
 type distanceStats struct {
-	distance          int
-	totalDecisions    int
-	appliedCount      int
-	rejectedCount     int
-	meanConfidence    float64
-	medianConfidence  float64
-	confidences       []int
-	rejectionReasons  map[string]int
+	distance         int
+	totalDecisions   int
+	appliedCount     int
+	rejectedCount    int
+	meanConfidence   float64
+	medianConfidence float64
+	confidences      []int
+	rejectionReasons map[string]int
 }
 
 func main() {
@@ -230,7 +230,7 @@ func run(dbPath string) error {
 				if applyRateDelta > 30.0 {
 					fmt.Printf("⚠ CONSERVATIVE: Distance-3 apply rate is %.1f%% lower than distance-1.\n", applyRateDelta)
 					fmt.Printf("  You may be rejecting many valid distance-3 corrections.\n")
-					fmt.Printf("  Recommendation: Review distance3_extra_* settings in config.yaml\n")
+					fmt.Printf("  Recommendation: Review distance3_extra_* settings in data/config/pipeline.yaml\n")
 					fmt.Printf("\n")
 
 					// Check what's blocking distance-3

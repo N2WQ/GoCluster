@@ -92,7 +92,7 @@ var (
 	modeAlloc     []modeAllocation
 )
 
-const modeAllocPath = "config/mode_allocations.yaml"
+const modeAllocPath = "data/config/mode_allocations.yaml"
 
 type acTokenKind int
 

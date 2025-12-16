@@ -269,7 +269,7 @@ Notes:
 - `main.processOutputSpots` reads output channel and runs:
   - normalization (`EnsureNormalized`), grid backfill (optional), call correction (optional), harmonic suppression (optional), frequency averaging (optional), confidence glyph defaults, final CTY/license gate, stats accounting, grid persistence updates, ring buffer append, secondary dedupe, telnet broadcast.
 
-### `config/mode_allocations.yaml` (your active tab)
+### `data/config/mode_allocations.yaml` (your active tab)
 - Loaded/used by `rbn/client.go` for “minimal/human” telnet parsing when a spot line lacks an explicit mode.
 - It provides coarse Region 1 CW vs voice splits by band. This is not on the CPU hot path in the profiled workloads; it matters for correctness of inferred mode, not throughput.
 

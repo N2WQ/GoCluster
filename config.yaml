@@ -1,4 +1,5 @@
-# DX Cluster Configuration (ordered by pipeline flow)
+# DX Cluster Configuration (legacy single-file form).
+# Default runtime loads data/config/*.yaml; set DXC_CONFIG_PATH=config.yaml to use this file instead.
 
 server:
   name: "Go Cluster beta\r\n"

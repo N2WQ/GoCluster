@@ -86,6 +86,16 @@ func TestGridDBCheckOnMissEnabled_InvalidEnvIgnored(t *testing.T) {
 	}
 }
 
+func TestGridDBCheckOnMissEnabled_UsesLoadedFromWhenSet(t *testing.T) {
+	cfg := &config.Config{GridDBCheckOnMiss: boolPtr(true), LoadedFrom: "data/config"}
+	t.Setenv(envGridDBCheckOnMiss, "")
+
+	_, source := gridDBCheckOnMissEnabled(cfg)
+	if source != "data/config" {
+		t.Fatalf("expected source=data/config, got %s", source)
+	}
+}
+
 func boolPtr(v bool) *bool {
 	b := v
 	return &b

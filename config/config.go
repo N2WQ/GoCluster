@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -13,8 +14,9 @@ import (
 )
 
 // Config represents the complete cluster configuration. The struct maps
-// directly to `config.yaml` and is enriched with defaults during Load so
-// downstream packages can assume sane, non-zero values.
+// directly to the YAML files on disk (either a single file or a merged set
+// from a directory) and is enriched with defaults during Load so downstream
+// packages can assume sane, non-zero values.
 type Config struct {
 	Server          ServerConfig         `yaml:"server"`
 	Telnet          TelnetConfig         `yaml:"telnet"`
@@ -44,6 +46,9 @@ type Config struct {
 	// historical behavior.
 	GridDBCheckOnMiss *bool `yaml:"grid_db_check_on_miss"`
 	GridTTLDays       int   `yaml:"grid_ttl_days"`
+	// LoadedFrom is populated by Load with the path or directory used to build
+	// this configuration. It is not driven by YAML.
+	LoadedFrom string `yaml:"-"`
 }
 
 // ServerConfig contains general server settings
@@ -416,23 +421,47 @@ type CTYConfig struct {
 	RefreshUTC string `yaml:"refresh_utc"`
 }
 
-// Load reads configuration from a YAML file, applies defaults, and validates
-// key fields so the rest of the cluster can rely on a consistent baseline.
-func Load(filename string) (*Config, error) {
-	data, err := os.ReadFile(filename)
+// Load reads configuration from a YAML file or a directory containing YAML
+// files, applies defaults, and validates key fields so the rest of the cluster
+// can rely on a consistent baseline.
+func Load(path string) (*Config, error) {
+	info, err := os.Stat(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
+		return nil, fmt.Errorf("failed to stat config path %q: %w", path, err)
 	}
 
 	var raw map[string]any
-	if err := yaml.Unmarshal(data, &raw); err != nil {
-		return nil, fmt.Errorf("failed to parse config file: %w", err)
+	var data []byte
+
+	if info.IsDir() {
+		merged, files, err := loadConfigDir(path)
+		if err != nil {
+			return nil, err
+		}
+		raw = merged
+		data, err = yaml.Marshal(merged)
+		if err != nil {
+			return nil, fmt.Errorf("failed to render merged config from %q: %w", path, err)
+		}
+		// Store the directory we loaded from to aid downstream diagnostics.
+		if len(files) > 0 {
+			path = filepath.Clean(path)
+		}
+	} else {
+		data, err = os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read config file %q: %w", path, err)
+		}
+		if err := yaml.Unmarshal(data, &raw); err != nil {
+			return nil, fmt.Errorf("failed to parse config file %q: %w", path, err)
+		}
 	}
 
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("failed to parse config file: %w", err)
+		return nil, fmt.Errorf("failed to parse config file %q: %w", path, err)
 	}
+	cfg.LoadedFrom = filepath.Clean(path)
 
 	ctyEnabledSet := yamlKeyPresent(raw, "cty", "enabled")
 	hasSecondaryPrefer := yamlKeyPresent(raw, "dedup", "secondary_prefer_stronger_snr")
@@ -853,6 +882,61 @@ func Load(filename string) (*Config, error) {
 		return nil, fmt.Errorf("invalid skew refresh time %q: %w", cfg.Skew.RefreshUTC, err)
 	}
 	return &cfg, nil
+}
+
+func loadConfigDir(path string) (map[string]any, []string, error) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read config directory %q: %w", path, err)
+	}
+
+	files := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		if ext != ".yaml" && ext != ".yml" {
+			continue
+		}
+		files = append(files, filepath.Join(path, entry.Name()))
+	}
+	sort.Strings(files)
+	if len(files) == 0 {
+		return nil, nil, fmt.Errorf("no YAML files found in config directory %q", path)
+	}
+
+	merged := make(map[string]any)
+	for _, file := range files {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to read config file %q: %w", file, err)
+		}
+		var doc map[string]any
+		if err := yaml.Unmarshal(data, &doc); err != nil {
+			return nil, nil, fmt.Errorf("failed to parse config file %q: %w", file, err)
+		}
+		merged = mergeYAMLMaps(merged, doc)
+	}
+	return merged, files, nil
+}
+
+func mergeYAMLMaps(dst, src map[string]any) map[string]any {
+	if dst == nil {
+		dst = make(map[string]any)
+	}
+	for key, val := range src {
+		if existing, ok := dst[key]; ok {
+			existingMap, okExisting := existing.(map[string]any)
+			incomingMap, okIncoming := val.(map[string]any)
+			if okExisting && okIncoming {
+				dst[key] = mergeYAMLMaps(existingMap, incomingMap)
+				continue
+			}
+		}
+		dst[key] = val
+	}
+	return dst
 }
 
 // Print displays a concise, human-readable summary of the loaded configuration,
