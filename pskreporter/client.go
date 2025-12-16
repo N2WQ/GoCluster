@@ -40,7 +40,7 @@ type Client struct {
 	spotChan     chan *spot.Spot
 	shutdown     chan struct{}
 	workers      int
-	lookup       *cty.CTYDatabase
+	lookup       func() *cty.CTYDatabase
 	processing   chan []byte
 	workerWg     sync.WaitGroup
 	skewStore    *skew.Store
@@ -157,7 +157,7 @@ func (c *Client) dispatchUnlicensed(role, call, mode string, freq float64) {
 }
 
 // NewClient creates a new PSKReporter MQTT client
-func NewClient(broker string, port int, topics []string, name string, workers int, lookup *cty.CTYDatabase, skewStore *skew.Store, appendSSID bool, spotBuffer int) *Client {
+func NewClient(broker string, port int, topics []string, name string, workers int, lookup func() *cty.CTYDatabase, skewStore *skew.Store, appendSSID bool, spotBuffer int) *Client {
 	if spotBuffer <= 0 {
 		spotBuffer = defaultSpotBuffer
 	}
@@ -515,7 +515,11 @@ func (c *Client) fetchCallsignInfo(call string) (*cty.PrefixInfo, bool) {
 		return info, info != nil
 	}
 
-	info, ok := c.lookup.LookupCallsign(call)
+	db := c.lookup()
+	if db == nil {
+		return nil, true
+	}
+	info, ok := db.LookupCallsign(call)
 	c.setInfoCache(call, info, ok, now)
 	if !ok {
 		// log.Printf("PSKReporter: unknown call %s", call) // suppressed per user request

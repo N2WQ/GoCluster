@@ -61,7 +61,7 @@ type Client struct {
 	connected bool
 	shutdown  chan struct{}
 	spotChan  chan *spot.Spot
-	lookup    *cty.CTYDatabase
+	lookup    func() *cty.CTYDatabase
 	skewStore *skew.Store
 	reconnect chan struct{}
 	stopOnce  sync.Once
@@ -355,7 +355,7 @@ func ConfigureCallCache(size int, ttl time.Duration) {
 // NewClient creates a new RBN client. bufferSize controls how many parsed spots
 // can queue between the telnet reader and the downstream pipeline; it should be
 // sized to absorb RBN burstiness (especially FT8/FT4 decode cycles).
-func NewClient(host string, port int, callsign string, name string, lookup *cty.CTYDatabase, skewStore *skew.Store, keepSSID bool, bufferSize int) *Client {
+func NewClient(host string, port int, callsign string, name string, lookup func() *cty.CTYDatabase, skewStore *skew.Store, keepSSID bool, bufferSize int) *Client {
 	if bufferSize <= 0 {
 		bufferSize = 100 // legacy default; callers should override via config
 	}
@@ -1090,7 +1090,11 @@ func (c *Client) fetchCallsignInfo(call string) (*cty.PrefixInfo, bool) {
 	if c.lookup == nil {
 		return nil, true
 	}
-	info, ok := c.lookup.LookupCallsign(call)
+	db := c.lookup()
+	if db == nil {
+		return nil, true
+	}
+	info, ok := db.LookupCallsign(call)
 	// if !ok {
 	// 	log.Printf("RBN: unknown call %s", call)
 	// }

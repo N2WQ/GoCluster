@@ -9,7 +9,7 @@ stats:
 
 # Local console UI (applies only to the process console, not telnet clients)
 ui:
-  mode: "headless"     # ansi | tview | headless
+  mode: "tview"     # ansi | tview | headless
   refresh_ms: 250     # ANSI redraw cadence; 0 disables redraws
   color: true         # Enable simple ANSI colors for marked-up lines
   clear_screen: true  # Clear the screen each frame (set false to append)
@@ -231,13 +231,16 @@ spot_policy:
 
 # Reference data (CTY/known/FCC/skew)
 cty:
+  enabled: true
+  url: "https://www.country-files.com/cty/cty.plist"
   file: "data/cty/cty.plist"           # Path to the CTY prefix database (cty.plist)
+  refresh_utc: "00:10"                 # Daily download time in HH:MM UTC
 
 known_calls:
   enabled: true
   url: "https://www.supercheckpartial.com/MASTER.SCP"
   file: "data/scp/MASTER.SCP"
-  refresh_utc: "00:01"                    # Daily download time in HH:MM UTC
+  refresh_utc: "00:20"                    # Daily download time in HH:MM UTC
 
 fcc_uls:
   enabled: true

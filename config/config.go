@@ -408,9 +408,12 @@ type FCCULSConfig struct {
 	RefreshUTC string `yaml:"refresh_utc"`
 }
 
-// CTYConfig allows overriding the CTY prefix database path.
+// CTYConfig controls downloading of the CTY prefix plist.
 type CTYConfig struct {
-	File string `yaml:"file"`
+	Enabled    bool   `yaml:"enabled"`
+	URL        string `yaml:"url"`
+	File       string `yaml:"file"`
+	RefreshUTC string `yaml:"refresh_utc"`
 }
 
 // Load reads configuration from a YAML file, applies defaults, and validates
@@ -431,6 +434,7 @@ func Load(filename string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
+	ctyEnabledSet := yamlKeyPresent(raw, "cty", "enabled")
 	hasSecondaryPrefer := yamlKeyPresent(raw, "dedup", "secondary_prefer_stronger_snr")
 	hasAdaptiveMinReportsEnabled := yamlKeyPresent(raw, "call_correction", "adaptive_min_reports", "enabled")
 
@@ -750,6 +754,19 @@ func Load(filename string) (*Config, error) {
 		cfg.SpotPolicy.FrequencyAveragingMinReports = 4
 	}
 
+	if strings.TrimSpace(cfg.CTY.File) == "" {
+		cfg.CTY.File = "data/cty/cty.plist"
+	}
+	if strings.TrimSpace(cfg.CTY.URL) == "" {
+		cfg.CTY.URL = "https://www.country-files.com/cty/cty.plist"
+	}
+	if cfg.CTY.RefreshUTC == "" {
+		cfg.CTY.RefreshUTC = "00:45"
+	}
+	if !ctyEnabledSet {
+		cfg.CTY.Enabled = true
+	}
+
 	if strings.TrimSpace(cfg.KnownCalls.File) == "" {
 		cfg.KnownCalls.File = "data/scp/MASTER.SCP"
 	}
@@ -936,6 +953,9 @@ func (c *Config) Print() {
 	fmt.Printf("Spot policy: max_age=%ds\n", c.SpotPolicy.MaxAgeSeconds)
 	if c.CTY.File != "" {
 		fmt.Printf("CTY database: %s\n", c.CTY.File)
+	}
+	if c.CTY.Enabled && c.CTY.URL != "" {
+		fmt.Printf("CTY refresh: %s UTC (source=%s)\n", c.CTY.RefreshUTC, c.CTY.URL)
 	}
 	if c.KnownCalls.Enabled && c.KnownCalls.URL != "" {
 		fmt.Printf("Known calls refresh: %s UTC (source=%s)\n", c.KnownCalls.RefreshUTC, c.KnownCalls.URL)

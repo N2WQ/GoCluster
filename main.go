@@ -351,10 +351,35 @@ func main() {
 	// Start the FCC ULS downloader in the background (does not block spot processing)
 	uls.StartBackground(ctx, cfg.FCCULS)
 
-	// Load CTY database for callsign validation
-	ctyDB, err := cty.LoadCTYDatabase(cfg.CTY.File)
-	if err != nil {
-		log.Printf("Warning: failed to load CTY database: %v", err)
+	// Load CTY database for callsign validation and schedule refreshes.
+	var ctyDB atomic.Pointer[cty.CTYDatabase]
+	ctyPath := strings.TrimSpace(cfg.CTY.File)
+	ctyURL := strings.TrimSpace(cfg.CTY.URL)
+	if cfg.CTY.Enabled && ctyPath != "" {
+		if _, err := os.Stat(ctyPath); err != nil && errors.Is(err, os.ErrNotExist) && ctyURL != "" {
+			if fresh, refreshErr := refreshCTYDatabase(cfg.CTY); refreshErr != nil {
+				log.Printf("Warning: CTY download failed: %v", refreshErr)
+			} else {
+				ctyDB.Store(fresh)
+				log.Printf("Downloaded CTY database from %s", ctyURL)
+			}
+		}
+	}
+	if cfg.CTY.Enabled && ctyDB.Load() == nil && ctyPath != "" {
+		if loaded, loadErr := cty.LoadCTYDatabase(ctyPath); loadErr != nil {
+			log.Printf("Warning: failed to load CTY database: %v", loadErr)
+		} else {
+			ctyDB.Store(loaded)
+			log.Printf("Loaded CTY database from %s", ctyPath)
+		}
+	}
+	ctyLookup := func() *cty.CTYDatabase {
+		return ctyDB.Load()
+	}
+	if cfg.CTY.Enabled && ctyURL != "" && ctyPath != "" {
+		startCTYScheduler(ctx, cfg.CTY, &ctyDB)
+	} else if cfg.CTY.Enabled {
+		log.Printf("Warning: CTY download enabled but url or file missing")
 	}
 	spot.ConfigureMorseWeights(cfg.CallCorrection.MorseWeights.Insert, cfg.CallCorrection.MorseWeights.Delete, cfg.CallCorrection.MorseWeights.Sub, cfg.CallCorrection.MorseWeights.Scale)
 	spot.ConfigureBaudotWeights(cfg.CallCorrection.BaudotWeights.Insert, cfg.CallCorrection.BaudotWeights.Delete, cfg.CallCorrection.BaudotWeights.Sub, cfg.CallCorrection.BaudotWeights.Scale)
@@ -551,13 +576,13 @@ func main() {
 	}
 
 	// Start the unified output processor once the telnet server is ready
-	go processOutputSpots(deduplicator, secondaryDeduper, spotBuffer, telnetServer, statsTracker, correctionIndex, cfg.CallCorrection, ctyDB, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, ui, gridUpdater, gridLookup, unlicensedReporter, corrLogger, adaptiveMinReports, refresher, spotterReliability, cfg.RBN.KeepSSIDSuffix)
+	go processOutputSpots(deduplicator, secondaryDeduper, spotBuffer, telnetServer, statsTracker, correctionIndex, cfg.CallCorrection, ctyLookup, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, ui, gridUpdater, gridLookup, unlicensedReporter, corrLogger, adaptiveMinReports, refresher, spotterReliability, cfg.RBN.KeepSSIDSuffix)
 
 	// Connect to RBN CW/RTTY feed if enabled (port 7000)
 	// RBN spots go INTO the deduplicator input channel
 	var rbnClient *rbn.Client
 	if cfg.RBN.Enabled {
-		rbnClient = rbn.NewClient(cfg.RBN.Host, cfg.RBN.Port, cfg.RBN.Callsign, cfg.RBN.Name, ctyDB, skewStore, cfg.RBN.KeepSSIDSuffix, cfg.RBN.SlotBuffer)
+		rbnClient = rbn.NewClient(cfg.RBN.Host, cfg.RBN.Port, cfg.RBN.Callsign, cfg.RBN.Name, ctyLookup, skewStore, cfg.RBN.KeepSSIDSuffix, cfg.RBN.SlotBuffer)
 		rbnClient.SetUnlicensedReporter(unlicensedReporter)
 		err = rbnClient.Connect()
 		if err != nil {
@@ -572,7 +597,7 @@ func main() {
 	// RBN Digital spots go INTO the deduplicator input channel
 	var rbnDigitalClient *rbn.Client
 	if cfg.RBNDigital.Enabled {
-		rbnDigitalClient = rbn.NewClient(cfg.RBNDigital.Host, cfg.RBNDigital.Port, cfg.RBNDigital.Callsign, cfg.RBNDigital.Name, ctyDB, skewStore, cfg.RBNDigital.KeepSSIDSuffix, cfg.RBNDigital.SlotBuffer)
+		rbnDigitalClient = rbn.NewClient(cfg.RBNDigital.Host, cfg.RBNDigital.Port, cfg.RBNDigital.Callsign, cfg.RBNDigital.Name, ctyLookup, skewStore, cfg.RBNDigital.KeepSSIDSuffix, cfg.RBNDigital.SlotBuffer)
 		rbnDigitalClient.SetUnlicensedReporter(unlicensedReporter)
 		err = rbnDigitalClient.Connect()
 		if err != nil {
@@ -586,7 +611,7 @@ func main() {
 	// Connect to human/relay telnet feed if enabled (upstream cluster or operator-submitted spots)
 	var humanTelnetClient *rbn.Client
 	if cfg.HumanTelnet.Enabled {
-		humanTelnetClient = rbn.NewClient(cfg.HumanTelnet.Host, cfg.HumanTelnet.Port, cfg.HumanTelnet.Callsign, cfg.HumanTelnet.Name, ctyDB, skewStore, cfg.HumanTelnet.KeepSSIDSuffix, cfg.HumanTelnet.SlotBuffer)
+		humanTelnetClient = rbn.NewClient(cfg.HumanTelnet.Host, cfg.HumanTelnet.Port, cfg.HumanTelnet.Callsign, cfg.HumanTelnet.Name, ctyLookup, skewStore, cfg.HumanTelnet.KeepSSIDSuffix, cfg.HumanTelnet.SlotBuffer)
 		humanTelnetClient.UseMinimalParser()
 		humanTelnetClient.SetUnlicensedReporter(unlicensedReporter)
 		err = humanTelnetClient.Connect()
@@ -606,7 +631,7 @@ func main() {
 	)
 	if cfg.PSKReporter.Enabled {
 		pskrTopics = cfg.PSKReporter.SubscriptionTopics()
-		pskrClient = pskreporter.NewClient(cfg.PSKReporter.Broker, cfg.PSKReporter.Port, pskrTopics, cfg.PSKReporter.Name, cfg.PSKReporter.Workers, ctyDB, skewStore, cfg.PSKReporter.AppendSpotterSSID, cfg.PSKReporter.SpotChannelSize)
+		pskrClient = pskreporter.NewClient(cfg.PSKReporter.Broker, cfg.PSKReporter.Port, pskrTopics, cfg.PSKReporter.Name, cfg.PSKReporter.Workers, ctyLookup, skewStore, cfg.PSKReporter.AppendSpotterSSID, cfg.PSKReporter.SpotChannelSize)
 		pskrClient.SetUnlicensedReporter(unlicensedReporter)
 		err = pskrClient.Connect()
 		if err != nil {
@@ -619,7 +644,7 @@ func main() {
 
 	// Start stats display goroutine
 	statsInterval := time.Duration(cfg.Stats.DisplayIntervalSeconds) * time.Second
-	go displayStatsWithFCC(statsInterval, statsTracker, deduplicator, secondaryDeduper, spotBuffer, ctyDB, &knownCalls, telnetServer, ui, gridUpdateState, gridStore, cfg.FCCULS.DBPath)
+	go displayStatsWithFCC(statsInterval, statsTracker, deduplicator, secondaryDeduper, spotBuffer, ctyLookup, &knownCalls, telnetServer, ui, gridUpdateState, gridStore, cfg.FCCULS.DBPath)
 
 	// Set up signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
@@ -733,7 +758,7 @@ func makeUnlicensedReporter(dash uiSurface, tracker *stats.Tracker) func(source,
 // displayStats prints statistics at the configured interval
 // displayStatsWithFCC prints statistics at the configured interval. FCC metadata is refreshed
 // from disk each tick so the dashboard reflects the latest download/build state.
-func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, dedup *dedup.Deduplicator, secondary *dedup.SecondaryDeduper, buf *buffer.RingBuffer, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns], telnetSrv *telnet.Server, dash uiSurface, gridStats *gridMetrics, gridDB *gridstore.Store, fccDBPath string) {
+func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, dedup *dedup.Deduplicator, secondary *dedup.SecondaryDeduper, buf *buffer.RingBuffer, ctyLookup func() *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns], telnetSrv *telnet.Server, dash uiSurface, gridStats *gridMetrics, gridDB *gridstore.Store, fccDBPath string) {
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
@@ -772,13 +797,14 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, dedup *
 		totalFreqCorrections := tracker.FrequencyCorrections()
 		totalHarmonics := tracker.HarmonicSuppressions()
 
-		var secondaryLine string
-		if secondary != nil {
-			secProcessed, secDupes, secCache := secondary.GetStats()
-			secondaryLine = fmt.Sprintf("Secondary dedup: %s seen / %s dup / cache=%s", humanize.Comma(int64(secProcessed)), humanize.Comma(int64(secDupes)), humanize.Comma(int64(secCache)))
-		} else {
-			secondaryLine = "Secondary dedup: disabled"
-		}
+	var secondaryLine string
+	if secondary != nil {
+		secProcessed, secDupes, secCache := secondary.GetStats()
+		_ = secCache
+		secondaryLine = fmt.Sprintf("Secondary dedup: %s in / %s out", humanize.Comma(int64(secProcessed)), humanize.Comma(int64(secDupes)))
+	} else {
+		secondaryLine = "Secondary dedup: disabled"
+	}
 
 		var queueDrops, clientDrops uint64
 		var clientCount int
@@ -789,7 +815,7 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, dedup *
 
 		combinedRBN := rbnTotal + rbnFTTotal
 		lines := []string{
-			fmt.Sprintf("%s   %s", formatUptimeLine(tracker.GetUptime()), formatMemoryLine(buf, dedup, secondary, ctyDB, knownPtr)), // 1
+			fmt.Sprintf("%s   %s", formatUptimeLine(tracker.GetUptime()), formatMemoryLine(buf, dedup, secondary, ctyLookup, knownPtr)), // 1
 			formatGridLineOrPlaceholder(gridStats, gridDB), // 2
 			formatFCCLineOrPlaceholder(fccSnap),            // 3
 			fmt.Sprintf("RBN: %d TOTAL / %d CW / %d RTTY / %d FT8 / %d FT4", combinedRBN, rbnCW, rbnRTTY, rbnFT8, rbnFT4), // 4
@@ -902,7 +928,7 @@ func processOutputSpots(
 	tracker *stats.Tracker,
 	correctionIdx *spot.CorrectionIndex,
 	correctionCfg config.CallCorrectionConfig,
-	ctyDB *cty.CTYDatabase,
+	ctyLookup func() *cty.CTYDatabase,
 	harmonicDetector *spot.HarmonicDetector,
 	harmonicCfg config.HarmonicConfig,
 	knownCalls *atomic.Pointer[spot.KnownCallsigns],
@@ -932,6 +958,7 @@ func processOutputSpots(
 				return
 			}
 			s.EnsureNormalized()
+			ctyDB := ctyLookup()
 			dirty := false
 			modeUpper := s.ModeNorm
 			if refresher != nil {
@@ -1564,6 +1591,58 @@ func skewRefreshHourMinute(cfg config.SkewConfig) (int, int) {
 	return 0, 30
 }
 
+// downloadFileAtomic streams the remote file to a temp file and swaps it into place
+// atomically so readers never see a partial write.
+func downloadFileAtomic(url, destination string, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("fetch failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("fetch failed: status %s", resp.Status)
+	}
+
+	dir := filepath.Dir(destination)
+	if dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create directory: %w", err)
+		}
+	}
+	tmpDir := dir
+	if tmpDir == "" {
+		tmpDir = "."
+	}
+	tmpFile, err := os.CreateTemp(tmpDir, "download-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+	tmpName := tmpFile.Name()
+	defer os.Remove(tmpName)
+
+	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("copy body: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("finalize temp file: %w", err)
+	}
+	if err := os.Remove(destination); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove old file: %w", err)
+	}
+	if err := os.Rename(tmpName, destination); err != nil {
+		return fmt.Errorf("replace file: %w", err)
+	}
+	return nil
+}
+
 // startKnownCallScheduler downloads the known-calls file at the configured UTC
 // time every day and updates the in-memory cache pointer after each refresh.
 func startKnownCallScheduler(ctx context.Context, cfg config.KnownCallsConfig, knownPtr *atomic.Pointer[spot.KnownCallsigns], store *gridstore.Store) {
@@ -1606,62 +1685,10 @@ func refreshKnownCallsigns(cfg config.KnownCallsConfig) (*spot.KnownCallsigns, e
 	if path == "" {
 		return nil, errors.New("known calls: file path is empty")
 	}
-	if err := downloadKnownCallFile(url, path); err != nil {
-		return nil, err
+	if err := downloadFileAtomic(url, path, 1*time.Minute); err != nil {
+		return nil, fmt.Errorf("known calls: %w", err)
 	}
 	return spot.LoadKnownCallsigns(path)
-}
-
-// downloadKnownCallFile streams the remote SCP file to a temp file and swaps it
-// into place atomically so readers never see a partial write.
-func downloadKnownCallFile(url, destination string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return fmt.Errorf("known calls: build request: %w", err)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("known calls: fetch failed: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("known calls: fetch failed: status %s", resp.Status)
-	}
-
-	dir := filepath.Dir(destination)
-	if dir != "" && dir != "." {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return fmt.Errorf("known calls: create directory: %w", err)
-		}
-	}
-	tmpDir := dir
-	if tmpDir == "" {
-		tmpDir = "."
-	}
-	tmpFile, err := os.CreateTemp(tmpDir, "knowncalls-*.tmp")
-	if err != nil {
-		return fmt.Errorf("known calls: create temp file: %w", err)
-	}
-	tmpName := tmpFile.Name()
-	defer os.Remove(tmpName)
-
-	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
-		tmpFile.Close()
-		return fmt.Errorf("known calls: copy body: %w", err)
-	}
-	if err := tmpFile.Close(); err != nil {
-		return fmt.Errorf("known calls: finalize temp file: %w", err)
-	}
-	if err := os.Remove(destination); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("known calls: remove old file: %w", err)
-	}
-	if err := os.Rename(tmpName, destination); err != nil {
-		return fmt.Errorf("known calls: replace file: %w", err)
-	}
-	return nil
 }
 
 func nextKnownCallRefreshDelay(cfg config.KnownCallsConfig, now time.Time) time.Duration {
@@ -1684,6 +1711,72 @@ func knownCallRefreshHourMinute(cfg config.KnownCallsConfig) (int, int) {
 	return 1, 0
 }
 
+// startCTYScheduler downloads cty.plist at the configured UTC time every day and
+// updates the in-memory CTY database pointer after each refresh.
+func startCTYScheduler(ctx context.Context, cfg config.CTYConfig, ctyPtr *atomic.Pointer[cty.CTYDatabase]) {
+	if ctyPtr == nil {
+		return
+	}
+	go func() {
+		for {
+			delay := nextCTYRefreshDelay(cfg, time.Now().UTC())
+			timer := time.NewTimer(delay)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+			if fresh, err := refreshCTYDatabase(cfg); err != nil {
+				log.Printf("Warning: scheduled CTY download failed: %v", err)
+			} else {
+				ctyPtr.Store(fresh)
+				log.Printf("Scheduled CTY download complete (%d prefixes)", len(fresh.Keys))
+			}
+		}
+	}()
+}
+
+// refreshCTYDatabase downloads cty.plist, writes it atomically, and returns the parsed DB.
+func refreshCTYDatabase(cfg config.CTYConfig) (*cty.CTYDatabase, error) {
+	url := strings.TrimSpace(cfg.URL)
+	path := strings.TrimSpace(cfg.File)
+	if url == "" {
+		return nil, errors.New("cty: URL is empty")
+	}
+	if path == "" {
+		return nil, errors.New("cty: file path is empty")
+	}
+	if err := downloadFileAtomic(url, path, 1*time.Minute); err != nil {
+		return nil, fmt.Errorf("cty: %w", err)
+	}
+	db, err := cty.LoadCTYDatabase(path)
+	if err != nil {
+		return nil, fmt.Errorf("cty: load: %w", err)
+	}
+	return db, nil
+}
+
+func nextCTYRefreshDelay(cfg config.CTYConfig, now time.Time) time.Duration {
+	hour, minute := ctyRefreshHourMinute(cfg)
+	target := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, time.UTC)
+	if !target.After(now) {
+		target = target.Add(24 * time.Hour)
+	}
+	return target.Sub(now)
+}
+
+func ctyRefreshHourMinute(cfg config.CTYConfig) (int, int) {
+	refresh := strings.TrimSpace(cfg.RefreshUTC)
+	if refresh == "" {
+		refresh = "00:45"
+	}
+	if parsed, err := time.Parse("15:04", refresh); err == nil {
+		return parsed.Hour(), parsed.Minute()
+	}
+	return 0, 45
+}
+
 func formatGridLine(metrics *gridMetrics, store *gridstore.Store) string {
 	updatesSinceStart := metrics.learnedTotal.Load()
 	cacheLookups := metrics.cacheLookups.Load()
@@ -1701,16 +1794,16 @@ func formatGridLine(metrics *gridMetrics, store *gridstore.Store) string {
 	if cacheLookups > 0 {
 		hitRate = float64(cacheHits) * 100 / float64(cacheLookups)
 	}
+	hitPercent := int(math.Ceil(hitRate))
 
 	if dbTotal >= 0 {
-		return fmt.Sprintf("Grid database: %s (UPDATED) / %s (TOTAL) / %.1f%%",
-			humanize.Comma(int64(updatesSinceStart)),
+		return fmt.Sprintf("Grid database: %s TOTAL / %d%%",
 			humanize.Comma(dbTotal),
-			hitRate)
+			hitPercent)
 	}
-	return fmt.Sprintf("Grid database: %s (UPDATED) / %.1f%%",
+	return fmt.Sprintf("Grid database: %s UPDATED / %d%%",
 		humanize.Comma(int64(updatesSinceStart)),
-		hitRate)
+		hitPercent)
 }
 
 type fccSnapshot struct {
@@ -1947,7 +2040,7 @@ func sqlNullString(v string) sql.NullString {
 
 // formatMemoryLine reports memory-ish metrics in order:
 // exec alloc / ring buffer / primary dedup (dup%) / secondary dedup / CTY cache (hit%) / known calls (hit%).
-func formatMemoryLine(buf *buffer.RingBuffer, dedup *dedup.Deduplicator, secondary *dedup.SecondaryDeduper, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns]) string {
+func formatMemoryLine(buf *buffer.RingBuffer, dedup *dedup.Deduplicator, secondary *dedup.SecondaryDeduper, ctyLookup func() *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns]) string {
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
 	execMB := bytesToMB(mem.Alloc)
@@ -1974,11 +2067,14 @@ func formatMemoryLine(buf *buffer.RingBuffer, dedup *dedup.Deduplicator, seconda
 
 	ctyMB := 0.0
 	ctyRatio := 0.0
-	if ctyDB != nil {
-		metrics := ctyDB.Metrics()
-		ctyMB = bytesToMB(uint64(metrics.CacheEntries * ctyCacheEntryBytes))
-		if metrics.TotalLookups > 0 {
-			ctyRatio = float64(metrics.CacheHits) / float64(metrics.TotalLookups) * 100
+	if ctyLookup != nil {
+		db := ctyLookup()
+		if db != nil {
+			metrics := db.Metrics()
+			ctyMB = bytesToMB(uint64(metrics.CacheEntries * ctyCacheEntryBytes))
+			if metrics.TotalLookups > 0 {
+				ctyRatio = float64(metrics.CacheHits) / float64(metrics.TotalLookups) * 100
+			}
 		}
 	}
 

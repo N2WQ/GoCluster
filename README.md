@@ -265,6 +265,21 @@ To match the 100 Hz accuracy of the underlying skimmers, the corrected frequency
 
 You can disable the scheduler by setting `known_calls.enabled: false`. In that mode the server will still load whatever file already exists (and will fetch it once at startup if an URL is provided), but it will not refresh it automatically.
 
+## CTY Database Refresh
+
+1. Configure the `cty` block in `config.yaml`:
+
+```yaml
+cty:
+  enabled: true
+  url: "https://www.country-files.com/cty/cty.plist"
+  file: "data/cty/cty.plist"
+  refresh_utc: "00:45"
+```
+
+2. On startup the server downloads `cty.plist` if it is missing and a URL is configured, then loads it into the CTY trie/cache used by lookups. If the file already exists it is loaded directly.
+3. When `cty.enabled` is true, the scheduler downloads the plist daily at `cty.refresh_utc`, writes it via an atomic temp-file swap, and reloads the in-memory CTY database so new prefixes are used without a restart. Failures log a warning and retry at the next window.
+
 ## FCC ULS Downloads
 
 1. Configure the `fcc_uls` block in `config.yaml`:
