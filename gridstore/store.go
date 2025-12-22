@@ -14,6 +14,12 @@ import (
 	_ "modernc.org/sqlite" // SQLite driver (pure Go)
 )
 
+const (
+	busyTimeoutMS    = 5000
+	busyRetryMax     = 3
+	busyRetryBackoff = 50 * time.Millisecond
+)
+
 // Record represents a single callsign entry with optional grid and known-call flag.
 type Record struct {
 	Call         string
@@ -94,7 +100,7 @@ func Open(path string) (*Store, error) {
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 
-	if _, err := db.Exec(`PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;`); err != nil {
+	if _, err := db.Exec(`PRAGMA busy_timeout = ` + fmt.Sprint(busyTimeoutMS) + `; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;`); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("gridstore: set pragmas: %w", err)
 	}
@@ -163,7 +169,8 @@ func (s *Store) Upsert(rec Record) error {
 		expires = &ts
 	}
 
-	_, err := s.db.Exec(`
+	err := withBusyRetry(func() error {
+		_, execErr := s.db.Exec(`
 INSERT INTO calls (call, is_known, grid, observations, first_seen, updated_at, expires_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(call) DO UPDATE SET
@@ -174,10 +181,12 @@ ON CONFLICT(call) DO UPDATE SET
     updated_at = MAX(calls.updated_at, excluded.updated_at),
     expires_at = COALESCE(excluded.expires_at, calls.expires_at)
 `, rec.Call, boolToInt(rec.IsKnown), nullString(rec.Grid), rec.Observations, rec.FirstSeen.UTC().Unix(), rec.UpdatedAt.UTC().Unix(), expires)
-	if err != nil {
-		return fmt.Errorf("gridstore: upsert %s: %w", rec.Call, err)
-	}
-	return nil
+		if execErr != nil {
+			return fmt.Errorf("gridstore: upsert %s: %w", rec.Call, execErr)
+		}
+		return nil
+	})
+	return err
 }
 
 // UpsertBatch writes a group of records in a single transaction.
@@ -188,11 +197,12 @@ func (s *Store) UpsertBatch(recs []Record) error {
 	if len(recs) == 0 {
 		return nil
 	}
-	tx, err := s.db.Begin()
-	if err != nil {
-		return fmt.Errorf("gridstore: begin tx: %w", err)
-	}
-	stmt, err := tx.Prepare(`
+	err := withBusyRetry(func() error {
+		tx, beginErr := s.db.Begin()
+		if beginErr != nil {
+			return fmt.Errorf("gridstore: begin tx: %w", beginErr)
+		}
+		stmt, prepErr := tx.Prepare(`
 INSERT INTO calls (call, is_known, grid, observations, first_seen, updated_at, expires_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(call) DO UPDATE SET
@@ -203,42 +213,45 @@ ON CONFLICT(call) DO UPDATE SET
     updated_at = MAX(calls.updated_at, excluded.updated_at),
     expires_at = COALESCE(excluded.expires_at, calls.expires_at)
 `)
-	if err != nil {
-		tx.Rollback()
-		return fmt.Errorf("gridstore: prepare batch: %w", err)
-	}
-	now := time.Now().UTC()
-	for i := range recs {
-		rec := recs[i]
-		rec.Call = strings.TrimSpace(strings.ToUpper(rec.Call))
-		if rec.Call == "" {
-			continue
-		}
-		if rec.UpdatedAt.IsZero() {
-			rec.UpdatedAt = now
-		}
-		if rec.FirstSeen.IsZero() {
-			rec.FirstSeen = rec.UpdatedAt
-		}
-		var expires *int64
-		if rec.ExpiresAt != nil {
-			ts := rec.ExpiresAt.UTC().Unix()
-			expires = &ts
-		}
-		if _, err := stmt.Exec(rec.Call, boolToInt(rec.IsKnown), nullString(rec.Grid), rec.Observations, rec.FirstSeen.UTC().Unix(), rec.UpdatedAt.UTC().Unix(), expires); err != nil {
-			stmt.Close()
+		if prepErr != nil {
 			tx.Rollback()
-			return fmt.Errorf("gridstore: batch upsert %s: %w", rec.Call, err)
+			return fmt.Errorf("gridstore: prepare batch: %w", prepErr)
 		}
-	}
-	if err := stmt.Close(); err != nil {
-		tx.Rollback()
-		return fmt.Errorf("gridstore: close stmt: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("gridstore: commit: %w", err)
-	}
-	return nil
+		now := time.Now().UTC()
+		for i := range recs {
+			rec := recs[i]
+			rec.Call = strings.TrimSpace(strings.ToUpper(rec.Call))
+			if rec.Call == "" {
+				continue
+			}
+			if rec.UpdatedAt.IsZero() {
+				rec.UpdatedAt = now
+			}
+			if rec.FirstSeen.IsZero() {
+				rec.FirstSeen = rec.UpdatedAt
+			}
+			var expires *int64
+			if rec.ExpiresAt != nil {
+				ts := rec.ExpiresAt.UTC().Unix()
+				expires = &ts
+			}
+			if _, execErr := stmt.Exec(rec.Call, boolToInt(rec.IsKnown), nullString(rec.Grid), rec.Observations, rec.FirstSeen.UTC().Unix(), rec.UpdatedAt.UTC().Unix(), expires); execErr != nil {
+				stmt.Close()
+				tx.Rollback()
+				return fmt.Errorf("gridstore: batch upsert %s: %w", rec.Call, execErr)
+			}
+		}
+		if err := stmt.Close(); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("gridstore: close stmt: %w", err)
+		}
+		if err := tx.Commit(); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("gridstore: commit: %w", err)
+		}
+		return nil
+	})
+	return err
 }
 
 // Get loads a record by callsign. Returns (nil, nil) when not found.
@@ -330,4 +343,29 @@ func nullString(v sql.NullString) any {
 		return v.String
 	}
 	return nil
+}
+
+// withBusyRetry wraps a DB operation and retries a few times with backoff when SQLite reports SQLITE_BUSY.
+func withBusyRetry(fn func() error) error {
+	var err error
+	for attempt := 1; attempt <= busyRetryMax; attempt++ {
+		err = fn()
+		if err == nil {
+			return nil
+		}
+		if !IsBusyError(err) || attempt == busyRetryMax {
+			return err
+		}
+		time.Sleep(time.Duration(attempt) * busyRetryBackoff)
+	}
+	return err
+}
+
+// IsBusyError returns true when the error indicates SQLite returned SQLITE_BUSY / database is locked.
+func IsBusyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToUpper(err.Error())
+	return strings.Contains(msg, "SQLITE_BUSY") || strings.Contains(msg, "DATABASE IS LOCKED")
 }

@@ -1945,7 +1945,14 @@ func startGridWriter(store *gridstore.Store, flushInterval time.Duration, cache 
 				batch = append(batch, rec)
 			}
 			if err := store.UpsertBatch(batch); err != nil {
-				log.Printf("Warning: gridstore batch upsert failed: %v", err)
+				if gridstore.IsBusyError(err) {
+					// Keep the batch in-memory so a later flush can retry after the lock clears.
+					log.Printf("Warning: gridstore batch upsert busy (retaining %d pending): %v", len(batch), err)
+					return
+				}
+				log.Printf("Warning: gridstore batch upsert failed (dropping %d pending): %v", len(batch), err)
+				clear(pending)
+				return
 			}
 			metrics.learnedTotal.Add(uint64(len(batch)))
 			clear(pending)
