@@ -434,6 +434,13 @@ func ParseSpotComment(comment string, freq float64) CommentParseResult {
 		}
 	}
 
+	finalMode := FinalizeMode(mode, freq)
+	if !hasReport && pendingNumIdx >= 0 && modeWantsBareReport(finalMode) {
+		report = pendingNumValue
+		hasReport = true
+		consumed[pendingNumIdx] = true
+	}
+
 	cleaned := buildComment(tokens, consumed)
 	if !hasReport && cleaned != "" {
 		if m := snrPattern.FindStringSubmatch(cleaned); len(m) == 2 {
@@ -453,10 +460,19 @@ func ParseSpotComment(comment string, freq float64) CommentParseResult {
 	}
 
 	return CommentParseResult{
-		Mode:      FinalizeMode(mode, freq),
+		Mode:      finalMode,
 		Report:    report,
 		HasReport: hasReport,
 		TimeToken: timeToken,
 		Comment:   cleaned,
 	}
+}
+
+// modeWantsBareReport determines which modes treat bare signed integers as SNR/report.
+func modeWantsBareReport(mode string) bool {
+	switch strings.ToUpper(strings.TrimSpace(mode)) {
+	case "CW", "RTTY", "FT8", "FT4", "MSK144":
+		return true
+	}
+	return false
 }

@@ -52,3 +52,21 @@ func TestParseSpotCommentNormalizesSSBByFrequency(t *testing.T) {
 		t.Fatalf("expected comment CQ, got %q", result.Comment)
 	}
 }
+
+func TestParseSpotCommentBareNumericBecomesReportForDigital(t *testing.T) {
+	comment := "FT8 -04 73"
+	result := ParseSpotComment(comment, 14074.0)
+
+	if result.Mode != "FT8" {
+		t.Fatalf("expected mode FT8, got %q", result.Mode)
+	}
+	if !result.HasReport || result.Report != -4 {
+		t.Fatalf("expected bare numeric to become report -4, got HasReport=%v Report=%d", result.HasReport, result.Report)
+	}
+	if strings.Contains(result.Comment, "-04") {
+		t.Fatalf("expected numeric stripped from comment, got %q", result.Comment)
+	}
+	if !strings.Contains(result.Comment, "73") {
+		t.Fatalf("expected 73 to remain in comment, got %q", result.Comment)
+	}
+}
