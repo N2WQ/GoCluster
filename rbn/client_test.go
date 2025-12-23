@@ -1,6 +1,10 @@
 package rbn
 
-import "testing"
+import (
+	"testing"
+
+	"dxcluster/spot"
+)
 
 func TestExtractCallAndFreqFromGluedToken(t *testing.T) {
 	raw := "JI1HFJ-#:1294068.2"
@@ -23,17 +27,17 @@ func TestExtractCallAndFreqFromGluedToken(t *testing.T) {
 }
 
 func TestFinalizeModeDefaultsForVHFWhenUnknown(t *testing.T) {
-	mode := finalizeMode("", 144350.0)
+	mode := spot.FinalizeMode("", 144350.0)
 	if mode != "USB" {
 		t.Fatalf("expected USB fallback for VHF, got %q", mode)
 	}
 }
 
 func TestFinalizeModeNormalizesSSB(t *testing.T) {
-	if got := finalizeMode("SSB", 7000); got != "LSB" {
+	if got := spot.NormalizeVoiceMode("SSB", 7000); got != "LSB" {
 		t.Fatalf("expected SSB on 40m to normalize to LSB, got %q", got)
 	}
-	if got := finalizeMode("SSB", 14074); got != "USB" {
+	if got := spot.NormalizeVoiceMode("SSB", 14074); got != "USB" {
 		t.Fatalf("expected SSB on 20m to normalize to USB, got %q", got)
 	}
 }

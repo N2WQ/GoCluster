@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"path/filepath"
 	"regexp"
 	"runtime/debug"
 	"strconv"
@@ -16,14 +15,10 @@ import (
 	"sync"
 	"time"
 
-	"os"
-
 	"dxcluster/cty"
 	"dxcluster/skew"
 	"dxcluster/spot"
 	"dxcluster/uls"
-
-	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -35,7 +30,6 @@ var (
 	rbnCallCacheSize  = 4096
 	rbnCallCacheTTL   = 10 * time.Minute
 	rbnNormalizeCache = spot.NewCallCache(rbnCallCacheSize, rbnCallCacheTTL)
-	snrPattern        = regexp.MustCompile(`(?i)([-+]?\d{1,3})\s*dB`)
 )
 
 // UnlicensedReporter receives drop notifications for US calls failing FCC license checks.
@@ -75,201 +69,6 @@ type Client struct {
 	minimalParse bool
 }
 
-type modeAllocation struct {
-	Band      string  `yaml:"band"`
-	LowerKHz  float64 `yaml:"lower_khz"`
-	CWEndKHz  float64 `yaml:"cw_end_khz"`
-	UpperKHz  float64 `yaml:"upper_khz"`
-	VoiceMode string  `yaml:"voice_mode"`
-}
-
-type modeAllocTable struct {
-	Bands []modeAllocation `yaml:"bands"`
-}
-
-var (
-	modeAllocOnce sync.Once
-	modeAlloc     []modeAllocation
-)
-
-const modeAllocPath = "data/config/mode_allocations.yaml"
-
-type acTokenKind int
-
-const (
-	acTokenUnknown acTokenKind = iota
-	acTokenDX
-	acTokenDE
-	acTokenMode
-	acTokenDB
-	acTokenWPM
-)
-
-type acPattern struct {
-	word string
-	kind acTokenKind
-	mode string
-}
-
-type acMatch struct {
-	start   int
-	end     int
-	pattern acPattern
-}
-
-type acNode struct {
-	fail    int
-	next    map[byte]int
-	outputs []int
-}
-
-type acScanner struct {
-	patterns []acPattern
-	nodes    []acNode
-}
-
-func newACScanner(patterns []acPattern) *acScanner {
-	sc := &acScanner{
-		patterns: patterns,
-		nodes:    []acNode{{next: make(map[byte]int)}},
-	}
-	for idx, p := range patterns {
-		state := 0
-		for i := 0; i < len(p.word); i++ {
-			ch := p.word[i]
-			next, ok := sc.nodes[state].next[ch]
-			if !ok {
-				next = len(sc.nodes)
-				sc.nodes = append(sc.nodes, acNode{next: make(map[byte]int)})
-				sc.nodes[state].next[ch] = next
-			}
-			state = next
-		}
-		sc.nodes[state].outputs = append(sc.nodes[state].outputs, idx)
-	}
-
-	// Build failure links (BFS).
-	queue := make([]int, 0, len(sc.nodes))
-	for _, next := range sc.nodes[0].next {
-		queue = append(queue, next)
-	}
-	for len(queue) > 0 {
-		state := queue[0]
-		queue = queue[1:]
-		for ch, next := range sc.nodes[state].next {
-			fail := sc.nodes[state].fail
-			for fail > 0 {
-				if target, ok := sc.nodes[fail].next[ch]; ok {
-					fail = target
-					break
-				}
-				fail = sc.nodes[fail].fail
-			}
-			sc.nodes[next].fail = fail
-			sc.nodes[next].outputs = append(sc.nodes[next].outputs, sc.nodes[fail].outputs...)
-			queue = append(queue, next)
-		}
-	}
-	return sc
-}
-
-func (sc *acScanner) FindAll(text string) []acMatch {
-	if sc == nil {
-		return nil
-	}
-	state := 0
-	matches := make([]acMatch, 0, 8)
-	for i := 0; i < len(text); i++ {
-		ch := text[i]
-		next, ok := sc.nodes[state].next[ch]
-		for !ok && state > 0 {
-			state = sc.nodes[state].fail
-			next, ok = sc.nodes[state].next[ch]
-		}
-		if ok {
-			state = next
-		}
-		if len(sc.nodes[state].outputs) == 0 {
-			continue
-		}
-		end := i + 1
-		for _, pid := range sc.nodes[state].outputs {
-			p := sc.patterns[pid]
-			start := end - len(p.word)
-			if start >= 0 {
-				matches = append(matches, acMatch{start: start, end: end, pattern: p})
-			}
-		}
-	}
-	return matches
-}
-
-func buildMatchIndex(matches []acMatch) map[int][]acMatch {
-	if len(matches) == 0 {
-		return nil
-	}
-	index := make(map[int][]acMatch, len(matches))
-	for _, m := range matches {
-		index[m.start] = append(index[m.start], m)
-	}
-	return index
-}
-
-func classifyToken(matchIndex map[int][]acMatch, trimStart, trimEnd int) (acPattern, bool) {
-	if len(matchIndex) == 0 {
-		return acPattern{}, false
-	}
-	for _, m := range matchIndex[trimStart] {
-		if m.end == trimEnd {
-			return m.pattern, true
-		}
-	}
-	return acPattern{}, false
-}
-
-func classifyTokenWithFallback(matchIndex map[int][]acMatch, tok spotToken) (acPattern, bool) {
-	if pat, ok := classifyToken(matchIndex, tok.trimStart, tok.trimEnd); ok {
-		return pat, true
-	}
-	// Fallback: scan the token itself to tolerate any positional drift from the
-	// global match index (e.g., doubled spaces or trimmed punctuation).
-	for _, m := range getKeywordScanner().FindAll(tok.upper) {
-		if m.start == 0 && m.end == len(tok.upper) {
-			return m.pattern, true
-		}
-	}
-	return acPattern{}, false
-}
-
-var keywordPatterns = []acPattern{
-	{word: "DX", kind: acTokenDX},
-	{word: "DE", kind: acTokenDE},
-	{word: "DB", kind: acTokenDB},
-	{word: "WPM", kind: acTokenWPM},
-	{word: "CW", kind: acTokenMode, mode: "CW"},
-	{word: "CWT", kind: acTokenMode, mode: "CW"},
-	{word: "RTTY", kind: acTokenMode, mode: "RTTY"},
-	{word: "FT8", kind: acTokenMode, mode: "FT8"},
-	{word: "FT-8", kind: acTokenMode, mode: "FT8"},
-	{word: "FT4", kind: acTokenMode, mode: "FT4"},
-	{word: "FT-4", kind: acTokenMode, mode: "FT4"},
-	{word: "MSK", kind: acTokenMode, mode: "MSK144"},
-	{word: "MSK144", kind: acTokenMode, mode: "MSK144"},
-	{word: "MSK-144", kind: acTokenMode, mode: "MSK144"},
-	{word: "USB", kind: acTokenMode, mode: "USB"},
-	{word: "LSB", kind: acTokenMode, mode: "LSB"},
-	{word: "SSB", kind: acTokenMode, mode: "SSB"},
-}
-
-var keywordScannerOnce sync.Once
-var keywordScanner *acScanner
-
-func getKeywordScanner() *acScanner {
-	keywordScannerOnce.Do(func() {
-		keywordScanner = newACScanner(keywordPatterns)
-	})
-	return keywordScanner
-}
 
 type spotToken struct {
 	raw       string
@@ -386,52 +185,6 @@ func (c *Client) UseMinimalParser() {
 	if c != nil {
 		c.minimalParse = true
 	}
-}
-
-func loadModeAllocations() {
-	modeAllocOnce.Do(func() {
-		paths := []string{modeAllocPath, filepath.Join("..", modeAllocPath)}
-		for _, path := range paths {
-			data, err := os.ReadFile(path)
-			if err != nil {
-				continue
-			}
-			var table modeAllocTable
-			if err := yaml.Unmarshal(data, &table); err != nil {
-				log.Printf("Warning: unable to parse mode allocations (%s): %v", path, err)
-				return
-			}
-			modeAlloc = table.Bands
-			return
-		}
-		log.Printf("Warning: unable to load mode allocations from %s (or parent): file not found", modeAllocPath)
-	})
-}
-
-func guessModeFromAlloc(freqKHz float64) string {
-	loadModeAllocations()
-	for _, b := range modeAlloc {
-		if freqKHz >= b.LowerKHz && freqKHz <= b.UpperKHz {
-			if b.CWEndKHz > 0 && freqKHz <= b.CWEndKHz {
-				return "CW"
-			}
-			if strings.TrimSpace(b.VoiceMode) != "" {
-				return strings.ToUpper(strings.TrimSpace(b.VoiceMode))
-			}
-		}
-	}
-	return ""
-}
-
-func normalizeVoiceMode(mode string, freqKHz float64) string {
-	upper := strings.ToUpper(strings.TrimSpace(mode))
-	if upper == "SSB" {
-		if freqKHz >= 10000 {
-			return "USB"
-		}
-		return "LSB"
-	}
-	return upper
 }
 
 func parseFrequencyCandidate(tok string) (float64, bool) {
@@ -799,21 +552,6 @@ func parseTimeFromRBN(timeStr string) time.Time {
 	return spotTime
 }
 
-func finalizeMode(mode string, freq float64) string {
-	mode = normalizeVoiceMode(mode, freq)
-	if mode != "" {
-		return mode
-	}
-	alloc := guessModeFromAlloc(freq)
-	if alloc != "" {
-		return normalizeVoiceMode(alloc, freq)
-	}
-	if freq >= 10000 {
-		return "USB"
-	}
-	return "CW"
-}
-
 func buildComment(tokens []spotToken, consumed []bool) string {
 	parts := make([]string, 0, len(tokens))
 	for i, tok := range tokens {
@@ -822,13 +560,6 @@ func buildComment(tokens []spotToken, consumed []bool) string {
 		}
 		clean := strings.TrimSpace(tok.clean)
 		if clean == "" {
-			continue
-		}
-		upper := strings.ToUpper(clean)
-		if upper == "DX" || upper == "DE" {
-			continue
-		}
-		if len(upper) == 5 && upper[4] == 'Z' && isAllDigits(upper[:4]) {
 			continue
 		}
 		parts = append(parts, clean)
@@ -855,7 +586,6 @@ func (c *Client) parseSpot(line string) {
 	if strings.ToUpper(tokens[0].clean) != "DX" || strings.ToUpper(tokens[1].clean) != "DE" {
 		return
 	}
-	matchIndex := buildMatchIndex(getKeywordScanner().FindAll(strings.ToUpper(line)))
 	consumed := make([]bool, len(tokens))
 	consumed[0], consumed[1] = true, true
 
@@ -870,41 +600,13 @@ func (c *Client) parseSpot(line string) {
 	freq := freqFromCall
 	hasFreq := freqOK
 
-	var (
-		dxCall          string
-		mode            string
-		timeToken       string
-		wpmStr          string
-		report          int
-		hasReport       bool
-		pendingNumIdx   = -1
-		pendingNumValue int
-	)
+	var dxCall string
 
 	for idx := 3; idx < len(tokens); idx++ {
 		tok := tokens[idx]
-		originalClean := tok.clean
-		clean := originalClean
-		if timeToken == "" {
-			if ts, remainder := peelTimePrefix(clean); ts != "" {
-				timeToken = ts
-				shift := len(originalClean) - len(remainder)
-				clean = remainder
-				tokens[idx].clean = remainder
-				tokens[idx].upper = strings.ToUpper(remainder)
-				tokens[idx].trimStart = tok.trimStart + shift
-				tokens[idx].trimEnd = tokens[idx].trimStart + len(remainder)
-				tok = tokens[idx]
-			}
-		}
+		clean := tok.clean
 		if clean == "" {
 			consumed[idx] = true
-			continue
-		}
-		if timeToken == "" && isTimeToken(clean) {
-			timeToken = clean
-			consumed[idx] = true
-			pendingNumIdx = -1
 			continue
 		}
 		if !hasFreq {
@@ -916,60 +618,10 @@ func (c *Client) parseSpot(line string) {
 			}
 		}
 
-		if pat, ok := classifyTokenWithFallback(matchIndex, tok); ok {
-			switch pat.kind {
-			case acTokenMode:
-				if mode == "" {
-					mode = normalizeVoiceMode(pat.mode, freq)
-					consumed[idx] = true
-					continue
-				}
-			case acTokenDB:
-				if !hasReport && pendingNumIdx >= 0 {
-					report = pendingNumValue
-					hasReport = true
-					consumed[idx] = true
-					consumed[pendingNumIdx] = true
-					pendingNumIdx = -1
-					continue
-				}
-				consumed[idx] = true
-				continue
-			case acTokenWPM:
-				if wpmStr == "" && pendingNumIdx >= 0 {
-					wpmStr = tokens[pendingNumIdx].clean
-					consumed[idx] = true
-					consumed[pendingNumIdx] = true
-					pendingNumIdx = -1
-					continue
-				}
-			case acTokenDX, acTokenDE:
-				consumed[idx] = true
-				continue
-			}
-		}
-
-		if !hasReport {
-			if v, ok := parseInlineSNR(clean); ok {
-				report = v
-				hasReport = true
-				consumed[idx] = true
-				continue
-			}
-		}
-
 		if hasFreq && dxCall == "" && spot.IsValidCallsign(clean) {
 			dxCall = normalizeRBNCallsign(clean)
 			consumed[idx] = true
 			continue
-		}
-
-		if pendingNumIdx == -1 {
-			if v, ok := parseSignedInt(clean); ok {
-				pendingNumIdx = idx
-				pendingNumValue = v
-				continue
-			}
 		}
 	}
 
@@ -982,7 +634,8 @@ func (c *Client) parseSpot(line string) {
 		return
 	}
 
-	mode = finalizeMode(mode, freq)
+	parsed := spot.ParseSpotComment(buildComment(tokens, consumed), freq)
+	mode := parsed.Mode
 	if !spot.IsValidCallsign(dxCall) || !spot.IsValidCallsign(deCall) {
 		return
 	}
@@ -1012,30 +665,9 @@ func (c *Client) parseSpot(line string) {
 		deMeta = metadataFromPrefix(deInfo)
 	}
 
-	comment := buildComment(tokens, consumed)
-	if !hasReport && comment != "" {
-		if m := snrPattern.FindStringSubmatch(comment); len(m) == 2 {
-			if v, err := strconv.Atoi(m[1]); err == nil {
-				report = v
-				hasReport = true
-			}
-		}
-	}
-	if !hasReport {
-		if m := snrPattern.FindStringSubmatch(line); len(m) == 2 {
-			if v, err := strconv.Atoi(m[1]); err == nil {
-				report = v
-				hasReport = true
-			}
-		}
-	}
-	if wpmStr != "" {
-		if comment != "" {
-			comment = fmt.Sprintf("%s WPM %s", wpmStr, comment)
-		} else {
-			comment = fmt.Sprintf("%s WPM", wpmStr)
-		}
-	}
+	comment := parsed.Comment
+	report := parsed.Report
+	hasReport := parsed.HasReport
 
 	if !c.minimalParse {
 		freq = skew.ApplyCorrection(c.skewStore, deCallRaw, freq)
@@ -1044,8 +676,8 @@ func (c *Client) parseSpot(line string) {
 	s := spot.NewSpot(dxCall, deCall, freq, mode)
 	s.DXMetadata = dxMeta
 	s.DEMetadata = deMeta
-	if timeToken != "" {
-		s.Time = parseTimeFromRBN(timeToken)
+	if parsed.TimeToken != "" {
+		s.Time = parseTimeFromRBN(parsed.TimeToken)
 	}
 	if hasReport {
 		s.Report = report

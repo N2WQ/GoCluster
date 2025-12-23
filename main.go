@@ -35,6 +35,7 @@ import (
 	"dxcluster/dedup"
 	"dxcluster/filter"
 	"dxcluster/gridstore"
+	"dxcluster/peer"
 	"dxcluster/pskreporter"
 	"dxcluster/rbn"
 	"dxcluster/skew"
@@ -581,6 +582,20 @@ func main() {
 		log.Println("Secondary deduplication disabled; all spots broadcast")
 	}
 
+	// Start peering manager (DXSpider PC protocol) if enabled.
+	var peerManager *peer.Manager
+	if cfg.Peering.Enabled {
+		pm, err := peer.NewManager(cfg.Peering, cfg.Peering.LocalCallsign, deduplicator.GetInputChannel())
+		if err != nil {
+			log.Fatalf("Failed to init peering manager: %v", err)
+		}
+		if err := pm.Start(ctx); err != nil {
+			log.Fatalf("Failed to start peering manager: %v", err)
+		}
+		peerManager = pm
+		log.Printf("Peering: listen_port=%d peers=%d hop=%d keepalive=%ds", cfg.Peering.ListenPort, len(cfg.Peering.Peers), cfg.Peering.HopCount, cfg.Peering.KeepaliveSeconds)
+	}
+
 	// Create command processor
 	processor := commands.NewProcessor(spotBuffer)
 
@@ -608,7 +623,7 @@ func main() {
 	}
 
 	// Start the unified output processor once the telnet server is ready
-	go processOutputSpots(deduplicator, secondaryDeduper, spotBuffer, telnetServer, statsTracker, correctionIndex, cfg.CallCorrection, ctyLookup, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, ui, gridUpdater, gridLookup, unlicensedReporter, corrLogger, adaptiveMinReports, refresher, spotterReliability, cfg.RBN.KeepSSIDSuffix)
+	go processOutputSpots(deduplicator, secondaryDeduper, spotBuffer, telnetServer, peerManager, statsTracker, correctionIndex, cfg.CallCorrection, ctyLookup, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, ui, gridUpdater, gridLookup, unlicensedReporter, corrLogger, adaptiveMinReports, refresher, spotterReliability, cfg.RBN.KeepSSIDSuffix)
 
 	// Connect to RBN CW/RTTY feed if enabled (port 7000)
 	// RBN spots go INTO the deduplicator input channel
@@ -730,6 +745,9 @@ func main() {
 	// Stop deduplicator
 	if deduplicator != nil {
 		deduplicator.Stop()
+	}
+	if peerManager != nil {
+		peerManager.Stop()
 	}
 	if secondaryDeduper != nil {
 		secondaryDeduper.Stop()
@@ -957,6 +975,7 @@ func processOutputSpots(
 	secondary *dedup.SecondaryDeduper,
 	buf *buffer.RingBuffer,
 	telnet *telnet.Server,
+	peerManager *peer.Manager,
 	tracker *stats.Tracker,
 	correctionIdx *spot.CorrectionIndex,
 	correctionCfg config.CallCorrectionConfig,
@@ -1154,6 +1173,9 @@ func processOutputSpots(
 					toSend.DECall = collapseSSIDForBroadcast(s.DECall)
 				}
 				telnet.BroadcastSpot(toSend)
+			}
+			if peerManager != nil && s.SourceType != spot.SourceUpstream {
+				peerManager.PublishDX(s)
 			}
 		}()
 	}

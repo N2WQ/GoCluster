@@ -37,6 +37,7 @@ type Config struct {
 	Skew            SkewConfig           `yaml:"skew"`
 	FCCULS          FCCULSConfig         `yaml:"fcc_uls"`
 	KnownCalls      KnownCallsConfig     `yaml:"known_calls"`
+	Peering         PeeringConfig        `yaml:"peering"`
 	GridDBPath      string               `yaml:"grid_db"`
 	GridFlushSec    int                  `yaml:"grid_flush_seconds"`
 	GridCacheSize   int                  `yaml:"grid_cache_size"`
@@ -136,6 +137,60 @@ type PSKReporterConfig struct {
 }
 
 const defaultPSKReporterTopic = "pskr/filter/v2/+/+/#"
+
+// PeeringConfig controls DXSpider node-to-node peering.
+type PeeringConfig struct {
+	Enabled          bool            `yaml:"enabled"`
+	LocalCallsign    string          `yaml:"local_callsign"`
+	ListenPort       int             `yaml:"listen_port"`
+	HopCount         int             `yaml:"hop_count"`
+	NodeVersion      string          `yaml:"node_version"`
+	NodeBuild        string          `yaml:"node_build"`
+	LegacyVersion    string          `yaml:"legacy_version"`
+	PC92Bitmap       int             `yaml:"pc92_bitmap"`
+	NodeCount        int             `yaml:"node_count"`
+	UserCount        int             `yaml:"user_count"`
+	KeepaliveSeconds int             `yaml:"keepalive_seconds"`
+	WriteQueueSize   int             `yaml:"write_queue_size"`
+	MaxLineLength    int             `yaml:"max_line_length"`
+	Peers            []PeeringPeer   `yaml:"peers"`
+	Timeouts         PeeringTimeouts `yaml:"timeouts"`
+	Backoff          PeeringBackoff  `yaml:"backoff"`
+	Topology         PeeringTopology `yaml:"topology"`
+	ACL              PeeringACL      `yaml:"acl"`
+}
+
+type PeeringPeer struct {
+	Enabled        bool   `yaml:"enabled"`
+	Host           string `yaml:"host"`
+	Port           int    `yaml:"port"`
+	Password       string `yaml:"password"`
+	PreferPC9x     bool   `yaml:"prefer_pc9x"`
+	LoginCallsign  string `yaml:"login_callsign"`
+	RemoteCallsign string `yaml:"remote_callsign"`
+}
+
+type PeeringTimeouts struct {
+	LoginSeconds int `yaml:"login_seconds"`
+	InitSeconds  int `yaml:"init_seconds"`
+	IdleSeconds  int `yaml:"idle_seconds"`
+}
+
+type PeeringBackoff struct {
+	BaseMS int `yaml:"base_ms"`
+	MaxMS  int `yaml:"max_ms"`
+}
+
+type PeeringTopology struct {
+	DBPath                 string `yaml:"db_path"`
+	RetentionHours         int    `yaml:"retention_hours"`
+	PersistIntervalSeconds int    `yaml:"persist_interval_seconds"`
+}
+
+type PeeringACL struct {
+	AllowIPs       []string `yaml:"allow_ips"`
+	AllowCallsigns []string `yaml:"allow_callsigns"`
+}
 
 // SubscriptionTopics returns the MQTT topics to subscribe to based on the configured modes.
 // If no modes are specified, it falls back to `Topic` or the default `pskr/filter/v2/+/+/#`.
@@ -751,6 +806,68 @@ func Load(path string) (*Config, error) {
 	if strings.TrimSpace(cfg.Telnet.LoginGreeting) == "" {
 		cfg.Telnet.LoginGreeting = "Hello <CALL>, you are now connected to <CLUSTER>."
 	}
+	if strings.TrimSpace(cfg.Peering.LocalCallsign) == "" {
+		cfg.Peering.LocalCallsign = cfg.Server.NodeID
+	}
+	if cfg.Peering.ListenPort <= 0 {
+		cfg.Peering.ListenPort = 7300
+	}
+	if cfg.Peering.HopCount <= 0 {
+		cfg.Peering.HopCount = 99
+	}
+	if strings.TrimSpace(cfg.Peering.NodeVersion) == "" {
+		cfg.Peering.NodeVersion = "5457"
+	}
+	if strings.TrimSpace(cfg.Peering.LegacyVersion) == "" {
+		cfg.Peering.LegacyVersion = "5401"
+	}
+	if cfg.Peering.PC92Bitmap <= 0 {
+		cfg.Peering.PC92Bitmap = 5
+	}
+	if cfg.Peering.NodeCount <= 0 {
+		cfg.Peering.NodeCount = 1
+	}
+	if cfg.Peering.UserCount < 0 {
+		cfg.Peering.UserCount = 0
+	}
+	if cfg.Peering.KeepaliveSeconds <= 0 {
+		cfg.Peering.KeepaliveSeconds = 60
+	}
+	if cfg.Peering.WriteQueueSize <= 0 {
+		cfg.Peering.WriteQueueSize = 256
+	}
+	if cfg.Peering.MaxLineLength <= 0 {
+		cfg.Peering.MaxLineLength = 4096
+	}
+	if cfg.Peering.Timeouts.LoginSeconds <= 0 {
+		cfg.Peering.Timeouts.LoginSeconds = 15
+	}
+	if cfg.Peering.Timeouts.InitSeconds <= 0 {
+		cfg.Peering.Timeouts.InitSeconds = 60
+	}
+	if cfg.Peering.Timeouts.IdleSeconds <= 0 {
+		cfg.Peering.Timeouts.IdleSeconds = 600
+	}
+	if cfg.Peering.Backoff.BaseMS <= 0 {
+		cfg.Peering.Backoff.BaseMS = 2000
+	}
+	if cfg.Peering.Backoff.MaxMS <= 0 {
+		cfg.Peering.Backoff.MaxMS = 300000
+	}
+	if strings.TrimSpace(cfg.Peering.Topology.DBPath) == "" {
+		cfg.Peering.Topology.DBPath = "data/peers/topology.db"
+	}
+	if cfg.Peering.Topology.RetentionHours <= 0 {
+		cfg.Peering.Topology.RetentionHours = 24
+	}
+	if cfg.Peering.Topology.PersistIntervalSeconds <= 0 {
+		cfg.Peering.Topology.PersistIntervalSeconds = 300
+	}
+	for i := range cfg.Peering.Peers {
+		if cfg.Peering.Peers[i].Host != "" && cfg.Peering.Peers[i].Port > 0 && !cfg.Peering.Peers[i].Enabled {
+			cfg.Peering.Peers[i].Enabled = true
+		}
+	}
 
 	// Harmonic guardrails ensure suppression logic runs with bounded windows and tolerances.
 	if cfg.Harmonics.RecencySeconds <= 0 {
@@ -999,6 +1116,15 @@ func (c *Config) Print() {
 	}
 	if len(c.Filter.DefaultSources) > 0 {
 		fmt.Printf("Default sources: %s\n", strings.Join(c.Filter.DefaultSources, ", "))
+	}
+	if c.Peering.Enabled {
+		fmt.Printf("Peering: listen_port=%d peers=%d hop=%d keepalive=%ds topology=%s retention=%dh\n",
+			c.Peering.ListenPort,
+			len(c.Peering.Peers),
+			c.Peering.HopCount,
+			c.Peering.KeepaliveSeconds,
+			c.Peering.Topology.DBPath,
+			c.Peering.Topology.RetentionHours)
 	}
 	fmt.Printf("Stats interval: %ds\n", c.Stats.DisplayIntervalSeconds)
 	status := "disabled"

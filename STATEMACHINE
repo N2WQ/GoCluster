@@ -1,0 +1,41 @@
+Outbound Peer Handshake State Machine (Future Strict Mode Proposal)
+
+Overview
+The outbound handshake is modeled as a single reader loop with explicit states. The
+current implementation runs in permissive mode (spots imply readiness). If strict
+behavior is desired later, the same state machine can gate establishment on PC22
+while buffering or deferring early spots.
+
+States
+S0: AwaitLoginPrompt (optional)
+S1: AwaitBanner/Init (PC18 or legacy PC19/16/17/21)
+S2: AwaitReady (init sent, waiting for PC22 or early spots)
+S3: Established (steady-state)
+
+Transitions (common)
+- PC18 in S0/S1: choose PC9x, send init (PC92 A/K + PC20), enter S2.
+- PC19/16/17/21 in S0/S1: choose legacy, send init (PC19 + PC20), enter S2.
+- PC20 in S2: send init if needed, stay S2.
+- PC22 in S2: enter S3.
+- Login/password prompts in S0/S1/S2: send credentials, stay state.
+- PC51 in any state: reply, stay state.
+- PC92 in S2: handle topology, stay S2.
+
+Acceptance Matrix (S2 AwaitReady)
+
+Frame Type   Strict Mode                     Permissive Mode
+-------------------------------------------------------------
+PC22         Establish (enter S3)           Establish (enter S3)
+PC11/PC61    Extend deadline; buffer/ignore Establish + process spot
+PC18         Re-init if needed              Re-init if needed
+PC19/16/17   Re-init if needed              Re-init if needed
+PC20         Send init (if needed)          Send init (if needed)
+PC92         Handle topology                Handle topology
+PC51         Reply                          Reply
+Other        Extend deadline/log            Extend deadline/log
+
+Notes for strict mode
+- Spots received in S2 should not be dropped silently. Buffer them or process
+  after S3 is reached.
+- Extend the init timeout on any inbound activity to avoid false timeouts
+  during active spot streams.

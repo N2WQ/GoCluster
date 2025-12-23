@@ -9,8 +9,10 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -66,17 +68,17 @@ func (p *telnetParser) Feed(input []byte) (output []byte, replies [][]byte) {
 }
 
 type lineReader struct {
-	conn   net.Conn
-	parser *telnetParser
-	buf    []byte
+	conn    net.Conn
+	parser  *telnetParser
+	buf     []byte
 	writeMu *sync.Mutex
 }
 
 func newLineReader(conn net.Conn, writeMu *sync.Mutex) *lineReader {
 	return &lineReader{
-		conn:   conn,
-		parser: &telnetParser{},
-		buf:    make([]byte, 0, 4096),
+		conn:    conn,
+		parser:  &telnetParser{},
+		buf:     make([]byte, 0, 4096),
 		writeMu: writeMu,
 	}
 }
@@ -204,8 +206,11 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 
 	backoff := cfg.backoffBase
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	for {
-		if err := runProbe(cfg); err != nil {
+		if err := runProbe(ctx, cfg); err != nil {
 			log.Printf("session ended: %v", err)
 		}
 		if !cfg.reconnect {
@@ -215,14 +220,18 @@ func main() {
 			backoff = cfg.backoffMax
 		}
 		log.Printf("reconnecting in %s", backoff)
-		time.Sleep(backoff)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(backoff):
+		}
 		if backoff < cfg.backoffMax {
 			backoff *= 2
 		}
 	}
 }
 
-func runProbe(cfg probeConfig) error {
+func runProbe(ctx context.Context, cfg probeConfig) error {
 	addr := fmt.Sprintf("%s:%d", cfg.host, cfg.port)
 	log.Printf("dialing %s as %s", addr, cfg.call)
 	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
@@ -248,9 +257,6 @@ func runProbe(cfg probeConfig) error {
 		return writer.Flush()
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	var (
 		pc9x          bool
 		established   bool
@@ -258,7 +264,19 @@ func runProbe(cfg probeConfig) error {
 		sentPass      bool
 		keepaliveTick <-chan time.Time
 		initSent      bool
+		shouldSendBye bool
 	)
+
+	defer func() {
+		if shouldSendBye {
+			_ = conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+			if err := sendLine("BYE"); err != nil {
+				log.Printf("bye send error: %v", err)
+			} else {
+				log.Printf("TX BYE")
+			}
+		}
+	}()
 
 	if cfg.autoLogin {
 		log.Printf("TX login %s (auto)", cfg.call)
@@ -350,6 +368,7 @@ func runProbe(cfg probeConfig) error {
 		if strings.HasPrefix(line, "PC22") {
 			log.Printf("RX %s (established)", line)
 			established = true
+			shouldSendBye = true
 			handshakeDeadline = time.Now().Add(24 * time.Hour)
 			if cfg.keepalive > 0 {
 				t := time.NewTicker(cfg.keepalive)
@@ -402,6 +421,12 @@ func runProbe(cfg probeConfig) error {
 
 		if time.Now().After(handshakeDeadline) && !established {
 			return errors.New("handshake timeout")
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
 		}
 	}
 }

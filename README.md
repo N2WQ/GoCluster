@@ -5,7 +5,7 @@ A modern Go-based DX cluster that aggregates amateur radio spots, enriches them 
 ## Quickstart
 
 1. Install Go `1.25+` (see `go.mod`).
-2. Edit `data/config/` (at minimum: set your callsigns in `ingest.yaml` and `telnet.port` in `runtime.yaml`). You can override the path with `DXC_CONFIG_PATH` if you want to point at a different directory or a legacy single-file config.
+2. Edit `data/config/` (at minimum: set your callsigns in `ingest.yaml` and `telnet.port` in `runtime.yaml`). If you plan to peer with other DXSpider nodes, populate `peering.yaml` (local callsign, peers, ACL/passwords). You can override the path with `DXC_CONFIG_PATH` if you want to point at a different directory or a legacy single-file config.
 3. Run:
    ```pwsh
    go mod tidy
@@ -402,6 +402,7 @@ Increase the queue sizes if you see the broadcast-channel drop message frequentl
 ## Getting Started
 
 1. Update `data/config/ingest.yaml` with your preferred callsigns for the `rbn`, `rbn_digital`, optional `human_telnet`, and optional `pskreporter` sections. Optionally list `pskreporter.modes` (e.g., [`FT8`, `FT4`]) to subscribe to just those MQTT feeds simultaneously. If you enable `human_telnet`, review `data/config/mode_allocations.yaml` (used to infer CW vs LSB/USB when the incoming spot line does not include an explicit mode token).
+2. If peering with DXSpider clusters, edit `data/config/peering.yaml`: set `local_callsign`, optional `listen_port`, hop/version fields, and add one or more peers (host/port/password/prefer_pc9x). ACLs are available for inbound (`allow_ips`/`allow_callsigns`). Topology is cached to SQLite (`data/peers/topology.db`) in WAL mode with a 24h retention.
 2. Optionally enable/tune `call_correction` (master `enabled` switch, minimum corroborating spotters, required advantage, confidence percent, recency window, max edit distance, per-mode distance models, and `invalid_action` failover). `distance_model_cw` switches CW between the baseline rune-based Levenshtein (`plain`) and a Morse-aware cost function (`morse`), `distance_model_rtty` toggles RTTY between `plain` and a Baudot/ITA2-aware scorer (`baudot`), while SSB/voice modes always stay on `plain` because those reports are typed by humans.
 3. Optionally enable/tune `harmonics` to drop harmonic CW/USB/LSB/RTTY spots (master `enabled`, recency window, maximum harmonic multiple, frequency tolerance, and minimum report delta).
 4. Set `spot_policy.max_age_seconds` to drop stale spots before they're processed further. For CW/RTTY frequency smoothing, tune `spot_policy.frequency_averaging_seconds` (window), `spot_policy.frequency_averaging_tolerance_hz` (allowed deviation), and `spot_policy.frequency_averaging_min_reports` (minimum corroborating reports).

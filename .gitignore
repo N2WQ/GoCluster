@@ -2,3 +2,4 @@ data/
 .env
 cmd/daily_analysis/.env
 gocluster.exe
+NUL
