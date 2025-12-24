@@ -1,0 +1,57 @@
+STALE SPOT OUTPUT INVESTIGATION
+================================
+
+Symptom
+- Peer connects and spots flow initially.
+- After ~30–45 minutes, telnet clients stop seeing new spots.
+- Telnet clients remain connected; commands still work.
+- SHOW DX ends at the same timestamp as the last broadcast spot.
+
+High-confidence diagnosis (pipeline stall, not telnet broadcast)
+- The output pipeline is single-threaded in main.go:processOutputSpots.
+- That loop does synchronous grid backfill before ring buffer + broadcast.
+- Grid backfill path:
+  - processOutputSpots -> gridLookup (startGridWriter lookupFn)
+  - gridLookup -> gridCache.shouldUpdate -> store.Get on cache miss
+  - gridstore.Open sets db.SetMaxOpenConns(1)
+  - startKnownCallScheduler triggers seedKnownCalls (large UpsertBatch)
+  - UpsertBatch holds the sole SQLite connection for a long time.
+- While the batch runs, store.Get blocks; processOutputSpots blocks; no spots reach
+  ring buffer or telnet broadcast. Telnet commands still respond because they are
+  independent of the output pipeline.
+
+Why timing matches
+- Default known_calls refresh in data/config/data.yaml is 00:20 UTC.
+- If the cluster starts shortly before that, the stall occurs 20–45 minutes later,
+  consistent with observed behavior.
+
+How to confirm
+- Check logs around the stall for:
+  - "Scheduled known calls download complete ..."
+  - "gridstore batch upsert ..." warnings or a large delay after that log line.
+- Compare stall time with known_calls.refresh_utc in data/config/data.yaml.
+
+Short-term mitigations
+- Set grid_db_check_on_miss: false (or env DXC_GRID_DB_CHECK_ON_MISS=false) to
+  eliminate synchronous store.Get calls in the hot path.
+- Increase grid_cache_size and grid_cache_ttl_seconds to reduce cache misses.
+- Move known_calls.refresh_utc to a low-traffic time or disable known calls refresh.
+
+Long-term fixes (preferred)
+- Remove synchronous gridstore reads from processOutputSpots (decouple gridLookup).
+- Use a separate read-only SQLite connection pool for grid lookups, distinct from
+  the write path (avoid single-connection contention).
+- Bound lookup latency (timeouts) and treat slow grid lookups as cache misses.
+- Consider a background grid lookup worker with a bounded channel so output never blocks.
+
+Secondary risks worth noting (less likely)
+- dedup.Deduplicator has no panic recovery; a nil spot could kill the output pipeline.
+-  Current sources guard against nil, but this is a latent hazard.
+- Peer dedupe cache pruning runs only when topology storage is enabled. Without `peering.topology.db_path`, `m.maintenanceLoop` never starts and `m.dedupe.prune()` is never called, so the forward dedupe cache grows unbounded.
+
+Relevant code
+- main.go: processOutputSpots (gridLookup + gridUpdate before ring buffer/broadcast)
+- main.go: startGridWriter (lookupFn uses store.Get on cache miss)
+- gridstore/store.go: Open sets MaxOpenConns(1); UpsertBatch is long-running
+- main.go: startKnownCallScheduler -> seedKnownCalls -> UpsertBatch
+- dedup/deduplicator.go: process() has no panic recovery, so a panic there kills the goroutine

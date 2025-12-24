@@ -323,6 +323,10 @@ func (m *Manager) acceptLoop() {
 			log.Printf("Peering: accept failed: %v", err)
 			continue
 		}
+		if tcp, ok := conn.(*net.TCPConn); ok {
+			_ = tcp.SetKeepAlive(true)
+			_ = tcp.SetKeepAlivePeriod(2 * time.Minute)
+		}
 		peer := PeerEndpoint{host: conn.RemoteAddr().String(), port: 0}
 		settings := m.sessionSettings(peer)
 		sess := newSession(conn, dirInbound, m, peer, settings)
@@ -337,13 +341,17 @@ func (m *Manager) acceptLoop() {
 
 func (m *Manager) runOutbound(peer PeerEndpoint) {
 	backoff := newBackoff(time.Duration(m.cfg.Backoff.BaseMS)*time.Millisecond, time.Duration(m.cfg.Backoff.MaxMS)*time.Millisecond)
+	dialer := &net.Dialer{
+		Timeout:   10 * time.Second,
+		KeepAlive: 2 * time.Minute, // OS-level keepalive for peer links
+	}
 	for {
 		if m.ctx != nil && m.ctx.Err() != nil {
 			return
 		}
 		addr := fmt.Sprintf("%s:%d", peer.host, peer.port)
 		log.Printf("Peering: dialing %s as %s", addr, peer.loginCall)
-		conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+		conn, err := dialer.Dial("tcp", addr)
 		if err != nil {
 			delay := backoff.Next()
 			log.Printf("Peering: dial %s failed: %v (retry in %s)", addr, err, delay)

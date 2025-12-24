@@ -293,7 +293,11 @@ func (c *Client) establishConnection() error {
 	addr := net.JoinHostPort(c.host, fmt.Sprintf("%d", c.port))
 	log.Printf("%s: connecting to %s...", c.displayName(), addr)
 
-	conn, err := net.DialTimeout("tcp", addr, 30*time.Second)
+	dialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 2 * time.Minute, // OS-level keepalive to detect silent mid-path drops
+	}
+	conn, err := dialer.Dial("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", c.displayName(), err)
 	}

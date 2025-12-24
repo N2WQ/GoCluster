@@ -633,6 +633,10 @@ func (s *Server) acceptConnections() {
 				continue
 			}
 		}
+		if tcp, ok := conn.(*net.TCPConn); ok {
+			_ = tcp.SetKeepAlive(true)
+			_ = tcp.SetKeepAlivePeriod(2 * time.Minute)
+		}
 
 		// Handle this client in a new goroutine
 		go s.handleClient(conn)
