@@ -74,6 +74,9 @@ type TelnetConfig struct {
 	SkipHandshake     bool   `yaml:"skip_handshake"`
 	// BroadcastBatchIntervalMS controls telnet broadcast micro-batching. 0 disables batching.
 	BroadcastBatchIntervalMS int `yaml:"broadcast_batch_interval_ms"`
+	// KeepaliveSeconds, when >0, emits a periodic CRLF to all connected clients to keep idle
+	// network devices from timing out otherwise quiet sessions.
+	KeepaliveSeconds int `yaml:"keepalive_seconds"`
 	// LoginLineLimit bounds how many bytes are accepted for the initial callsign
 	// prompt. Keep this tight to prevent DoS via huge login banners.
 	LoginLineLimit int `yaml:"login_line_limit"`
@@ -852,6 +855,9 @@ func Load(path string) (*Config, error) {
 	if cfg.Telnet.BroadcastBatchIntervalMS <= 0 {
 		cfg.Telnet.BroadcastBatchIntervalMS = 250
 	}
+	if cfg.Telnet.KeepaliveSeconds < 0 {
+		cfg.Telnet.KeepaliveSeconds = 0
+	}
 	if cfg.Telnet.LoginLineLimit <= 0 {
 		cfg.Telnet.LoginLineLimit = 32
 	}
@@ -890,7 +896,9 @@ func Load(path string) (*Config, error) {
 		cfg.Peering.UserCount = 0
 	}
 	if cfg.Peering.KeepaliveSeconds <= 0 {
-		cfg.Peering.KeepaliveSeconds = 60
+		// Default to a short heartbeat to keep remote DXSpider peers from idling us out.
+		// Applies to both PC92 (pc9x) and PC51 (legacy) keepalives.
+		cfg.Peering.KeepaliveSeconds = 30
 	}
 	if cfg.Peering.WriteQueueSize <= 0 {
 		cfg.Peering.WriteQueueSize = 256

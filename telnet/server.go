@@ -89,6 +89,7 @@ type Server struct {
 	batchInterval     time.Duration        // Broadcast batch interval; 0 means immediate
 	batchMax          int                  // Max jobs per batch before flush
 	metrics           broadcastMetrics     // Broadcast metrics counters
+	keepaliveInterval time.Duration        // Optional periodic CRLF to keep idle sessions alive
 	clientShards      [][]*Client          // Cached shard layout for broadcasts
 	shardsDirty       atomic.Bool          // Flag to rebuild shards on client add/remove
 	processor         *commands.Processor  // Command processor for user commands
@@ -262,6 +263,7 @@ type ServerOptions struct {
 	WorkerQueue            int
 	ClientBuffer           int
 	BroadcastBatchInterval time.Duration
+	KeepaliveSeconds       int
 	SkipHandshake          bool
 	LoginLineLimit         int
 	CommandLineLimit       int
@@ -284,6 +286,7 @@ func NewServer(opts ServerOptions, processor *commands.Processor) *Server {
 		workerQueueSize:   config.WorkerQueue,
 		batchInterval:     config.BroadcastBatchInterval,
 		batchMax:          defaultBroadcastBatch,
+		keepaliveInterval: time.Duration(config.KeepaliveSeconds) * time.Second,
 		clientBufferSize:  config.ClientBuffer,
 		skipHandshake:     config.SkipHandshake,
 		processor:         processor,
@@ -344,6 +347,11 @@ func (s *Server) Start() error {
 	// Start broadcast handler
 	go s.handleBroadcasts()
 
+	// Optional keepalive emitter for idle sessions.
+	if s.keepaliveInterval > 0 {
+		go s.keepaliveLoop()
+	}
+
 	// Accept connections in a goroutine
 	go s.acceptConnections()
 
@@ -381,6 +389,25 @@ func (s *Server) handleBroadcasts() {
 			return
 		case spot := <-s.broadcast:
 			s.broadcastSpot(spot)
+		}
+	}
+}
+
+// keepaliveLoop emits periodic CRLF to all connected clients to prevent idle
+// disconnects by intermediate network devices when the spot stream is quiet.
+func (s *Server) keepaliveLoop() {
+	ticker := time.NewTicker(s.keepaliveInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-s.shutdown:
+			return
+		case <-ticker.C:
+			s.clientsMutex.RLock()
+			for _, client := range s.clients {
+				_ = client.Send("\r\n")
+			}
+			s.clientsMutex.RUnlock()
 		}
 	}
 }
@@ -724,8 +751,9 @@ func (s *Server) handleClient(conn net.Conn) {
 			return
 		}
 
-		// Skip empty lines
+		// Treat blank lines as client keepalives: echo CRLF so idle clients see traffic.
 		if strings.TrimSpace(line) == "" {
+			_ = client.Send("\r\n")
 			continue
 		}
 

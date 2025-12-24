@@ -214,6 +214,7 @@ func (s *session) keepaliveLoop() {
 		case <-s.ctx.Done():
 			return
 		case <-ticker.C:
+			// Heartbeat driven by peering.keepalive_seconds: PC92 K for pc9x, PC51 for legacy.
 			if s.pc9x {
 				line := s.buildPC92Keepalive()
 				_ = s.sendLine(line)

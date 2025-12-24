@@ -684,7 +684,7 @@ func main() {
 		rawPassthrough := make(chan string, 256)
 		go func() {
 			for line := range rawPassthrough {
-				if telnetServer != nil {
+				if telnetServer != nil && shouldBroadcastRawLine(line) {
 					telnetServer.BroadcastRaw(line)
 				}
 			}
@@ -2232,6 +2232,19 @@ func formatUptimeLine(uptime time.Duration) string {
 	hours := int(uptime.Hours())
 	minutes := int(uptime.Minutes()) % 60
 	return fmt.Sprintf("Uptime: %02d:%02d", hours, minutes)
+}
+
+// shouldBroadcastRawLine gates non-DX lines coming from the human/relay telnet ingest.
+// We only forward known WWV/WCY-style lines to telnet clients; upstream keepalives,
+// prompts, or other control chatter (e.g., "de N2WQ-22" banners) are dropped to avoid
+// leaking internal keepalives into user sessions.
+func shouldBroadcastRawLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return false
+	}
+	upper := strings.ToUpper(trimmed)
+	return strings.HasPrefix(upper, "WCY") || strings.HasPrefix(upper, "WWV")
 }
 
 func diffCounter(current, previous map[string]uint64, key string) uint64 {
