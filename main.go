@@ -641,6 +641,8 @@ func main() {
 	if peerManager != nil {
 		peerManager.SetRawBroadcast(telnetServer.BroadcastRaw)
 		peerManager.SetWWVBroadcast(telnetServer.BroadcastWWV)
+		peerManager.SetAnnouncementBroadcast(telnetServer.BroadcastAnnouncement)
+		peerManager.SetDirectMessage(telnetServer.SendDirectMessage)
 		peerManager.SetUserCountProvider(telnetServer.GetClientCount)
 	}
 
@@ -698,6 +700,10 @@ func main() {
 				}
 				if kind := wwvKindFromLine(line); kind != "" {
 					telnetServer.BroadcastWWV(kind, line)
+					continue
+				}
+				if announcement := announcementFromLine(line); announcement != "" {
+					telnetServer.BroadcastAnnouncement(announcement)
 				}
 			}
 		}()
@@ -2353,6 +2359,19 @@ func wwvKindFromLine(line string) string {
 	}
 	if strings.HasPrefix(upper, "WCY") {
 		return "WCY"
+	}
+	return ""
+}
+
+// announcementFromLine returns the raw announcement text for "To ALL" broadcasts.
+func announcementFromLine(line string) string {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return ""
+	}
+	upper := strings.ToUpper(trimmed)
+	if strings.HasPrefix(upper, "TO ALL") {
+		return trimmed
 	}
 	return ""
 }

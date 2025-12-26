@@ -110,6 +110,7 @@ Filter commands (allow + block, deny wins):
 	PASS BEACON - Deliver DX beacons (/B)
 	PASS WWV - Deliver WWV bulletins
 	PASS WCY - Deliver WCY bulletins
+	PASS ANNOUNCE - Deliver PC93 announcements
 	REJECT BAND <band>[,<band>...]      - Block listed bands; ALL blocks all bands.
 	REJECT MODE <mode>[,<mode>...]      - Block listed modes; ALL blocks all modes.
 	REJECT SOURCE <HUMAN|SKIMMER>       - Block human or automated spots.
@@ -127,6 +128,7 @@ Filter commands (allow + block, deny wins):
 	REJECT BEACON - Suppress DX beacons
 	REJECT WWV - Suppress WWV bulletins
 	REJECT WCY - Suppress WCY bulletins
+	REJECT ANNOUNCE - Suppress PC93 announcements
 	SHOW FILTER BANDS             - List supported bands
 	SHOW FILTER MODES             - Show supported modes and enabled state
 	SHOW FILTER DXCONT            - Show supported DX continents and enabled state
@@ -141,6 +143,7 @@ Filter commands (allow + block, deny wins):
 	SHOW FILTER BEACON            - Show whether beacon spots are enabled
 	SHOW FILTER WWV               - Show whether WWV bulletins are enabled
 	SHOW FILTER WCY               - Show whether WCY bulletins are enabled
+	SHOW FILTER ANNOUNCE          - Show whether PC93 announcements are enabled
 
 Supported modes: %s
 Supported bands: %s

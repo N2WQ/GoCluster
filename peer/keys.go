@@ -19,6 +19,10 @@ func wwvKey(f *Frame) string {
 	return fmt.Sprintf("wwv:%s:%s", f.Type, f.Raw)
 }
 
+func pc93Key(f *Frame) string {
+	return fmt.Sprintf("pc93:%s:%s", f.Type, f.Raw)
+}
+
 func pc26Key(f *Frame) string {
 	return fmt.Sprintf("pc26:%s", f.Raw)
 }

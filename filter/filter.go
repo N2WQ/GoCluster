@@ -301,6 +301,7 @@ type Filter struct {
 	IncludeBeacons       *bool           `yaml:"include_beacons,omitempty"` // nil/true delivers beacons; false suppresses
 	AllowWWV             *bool           `yaml:"allow_wwv,omitempty"`       // nil/true delivers WWV bulletins; false suppresses
 	AllowWCY             *bool           `yaml:"allow_wcy,omitempty"`       // nil/true delivers WCY bulletins; false suppresses
+	AllowAnnounce        *bool           `yaml:"allow_announce,omitempty"`  // nil/true delivers PC93 announcements; false suppresses
 	DXContinents         map[string]bool // Allowed DX continents
 	BlockDXContinents    map[string]bool // Blocked DX continents
 	DEContinents         map[string]bool // Allowed DE continents
@@ -384,6 +385,7 @@ func NewFilter() *Filter {
 		BlockAllSources:      false,
 		AllowWWV:             boolPtr(true),
 		AllowWCY:             boolPtr(true),
+		AllowAnnounce:        boolPtr(true),
 		AllConfidence:        true, // Accept every confidence glyph until user sets one
 		BlockAllConfidence:   false,
 		AllDXContinents:      true,
@@ -779,6 +781,14 @@ func (f *Filter) SetWCYEnabled(enabled bool) {
 	f.AllowWCY = boolPtr(enabled)
 }
 
+// SetAnnounceEnabled controls whether PC93 announcements are delivered.
+func (f *Filter) SetAnnounceEnabled(enabled bool) {
+	if f == nil {
+		return
+	}
+	f.AllowAnnounce = boolPtr(enabled)
+}
+
 // WWVEnabled reports whether the filter currently allows WWV bulletins.
 func (f *Filter) WWVEnabled() bool {
 	if f == nil || f.AllowWWV == nil {
@@ -795,14 +805,24 @@ func (f *Filter) WCYEnabled() bool {
 	return *f.AllowWCY
 }
 
+// AnnounceEnabled reports whether the filter currently allows PC93 announcements.
+func (f *Filter) AnnounceEnabled() bool {
+	if f == nil || f.AllowAnnounce == nil {
+		return true
+	}
+	return *f.AllowAnnounce
+}
+
 // AllowsBulletin reports whether the bulletin kind should be delivered.
-// Supported kinds are WWV/WCY (or PC23/PC73); unknown kinds default to true.
+// Supported kinds are WWV/WCY/ANNOUNCE (or PC23/PC73/PC93); unknown kinds default to true.
 func (f *Filter) AllowsBulletin(kind string) bool {
 	switch strings.ToUpper(strings.TrimSpace(kind)) {
 	case "WWV", "PC23":
 		return f.WWVEnabled()
 	case "WCY", "PC73":
 		return f.WCYEnabled()
+	case "ANNOUNCE", "PC93":
+		return f.AnnounceEnabled()
 	default:
 		return true
 	}
@@ -882,6 +902,7 @@ func (f *Filter) Reset() {
 	f.SetBeaconEnabled(true)
 	f.SetWWVEnabled(true)
 	f.SetWCYEnabled(true)
+	f.SetAnnounceEnabled(true)
 }
 
 // ResetDXContinents clears DX continent filters and accepts all.
@@ -1330,6 +1351,11 @@ func (f *Filter) String() string {
 	} else {
 		parts = append(parts, "WCY: OFF")
 	}
+	if f.AnnounceEnabled() {
+		parts = append(parts, "ANNOUNCE: ON")
+	} else {
+		parts = append(parts, "ANNOUNCE: OFF")
+	}
 
 	if f.AllDXGrid2 {
 		parts = append(parts, "DXGrid2: ALL")
@@ -1609,6 +1635,9 @@ func (f *Filter) normalizeDefaults() {
 	}
 	if f.AllowWCY == nil {
 		f.AllowWCY = boolPtr(true)
+	}
+	if f.AllowAnnounce == nil {
+		f.AllowAnnounce = boolPtr(true)
 	}
 
 	if len(f.Bands) == 0 {

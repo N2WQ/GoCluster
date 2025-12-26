@@ -15,25 +15,27 @@ import (
 )
 
 type Manager struct {
-	cfg           config.PeeringConfig
-	localCall     string
-	ingest        chan<- *spot.Spot
-	maxAgeSeconds int
-	topology      *topologyStore
-	sessions      map[string]*session
-	mu            sync.RWMutex
-	allowIPs      []*net.IPNet
-	allowCalls    map[string]struct{}
-	dedupe        *dedupeCache
-	ctx           context.Context
-	cancel        context.CancelFunc
-	listener      net.Listener
-	pc92Ch        chan pc92Work
-	legacyCh      chan legacyWork
-	rawBroadcast  func(string) // optional hook to emit raw lines (e.g., PC26) to telnet clients
-	wwvBroadcast  func(kind, line string)
-	reconnects    atomic.Uint64
-	userCountFn   func() int
+	cfg               config.PeeringConfig
+	localCall         string
+	ingest            chan<- *spot.Spot
+	maxAgeSeconds     int
+	topology          *topologyStore
+	sessions          map[string]*session
+	mu                sync.RWMutex
+	allowIPs          []*net.IPNet
+	allowCalls        map[string]struct{}
+	dedupe            *dedupeCache
+	ctx               context.Context
+	cancel            context.CancelFunc
+	listener          net.Listener
+	pc92Ch            chan pc92Work
+	legacyCh          chan legacyWork
+	rawBroadcast      func(string) // optional hook to emit raw lines (e.g., PC26) to telnet clients
+	wwvBroadcast      func(kind, line string)
+	announceBroadcast func(line string)
+	directMessage     func(to, line string)
+	reconnects        atomic.Uint64
+	userCountFn       func() int
 }
 
 // pc92Work wraps an inbound PC92 frame with the time it was observed so topology
@@ -230,6 +232,12 @@ func (m *Manager) HandleFrame(frame *Frame, sess *session) {
 				m.broadcastWWV(ev, frame.Hop-1, sess)
 			}
 		}
+	case "PC93":
+		if msg, ok := parsePC93(frame); ok {
+			if m.dedupe.markSeen(pc93Key(frame), now) {
+				m.routePC93(msg)
+			}
+		}
 	}
 }
 
@@ -284,6 +292,20 @@ func (m *Manager) SetWWVBroadcast(fn func(kind, line string)) {
 	m.wwvBroadcast = fn
 }
 
+// SetAnnouncementBroadcast installs a callback used for PC93 announcements ("To ALL").
+func (m *Manager) SetAnnouncementBroadcast(fn func(line string)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.announceBroadcast = fn
+}
+
+// SetDirectMessage installs a callback for PC93 talk messages addressed to a specific callsign.
+func (m *Manager) SetDirectMessage(fn func(to, line string)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.directMessage = fn
+}
+
 func (m *Manager) broadcastSpot(s *spot.Spot, hop int, origin string, exclude *session) {
 	if m == nil || s == nil {
 		return
@@ -326,6 +348,30 @@ func (m *Manager) broadcastWWV(ev WWVEvent, hop int, exclude *session) {
 	m.mu.RUnlock()
 	if cb != nil {
 		cb(kind, line)
+	}
+}
+
+func (m *Manager) routePC93(msg pc93Message) {
+	if m == nil {
+		return
+	}
+	line := formatPC93Line(msg)
+	if line == "" {
+		return
+	}
+	target, broadcast := pc93Target(msg)
+	m.mu.RLock()
+	announce := m.announceBroadcast
+	direct := m.directMessage
+	m.mu.RUnlock()
+	if !broadcast && target != "" {
+		if direct != nil {
+			direct(target, line)
+		}
+		return
+	}
+	if announce != nil {
+		announce(line)
 	}
 }
 
