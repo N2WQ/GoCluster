@@ -23,6 +23,7 @@ const secondaryShardCount = 64
 //   - DE ADIF (spotter DXCC)
 //   - DE CQ zone
 //   - Normalized DX call
+//   - Source class (human vs skimmer)
 //
 // It is intended
 // to run after call correction/harmonic/frequency adjustments and before
@@ -165,18 +166,35 @@ func (d *SecondaryDeduper) cleanup() {
 	}
 }
 
+const (
+	secondaryClassHuman   byte = 1
+	secondaryClassSkimmer byte = 2
+)
+
 // secondaryHash mirrors the primary hash structure (minute + kHz + fixed DX
-// call) but swaps DE callsign for DE DXCC + DE CQ zone and omits the time.
-// The time window is enforced by the cache itself so the hash is stable across
-// minute boundaries, collapsing within the configured window.
+// call) but swaps DE callsign for DE DXCC + DE CQ zone, appends a source class
+// discriminator, and omits the time. The time window is enforced by the cache
+// itself so the hash is stable across minute boundaries, collapsing within the
+// configured window. The source class split ensures a skimmer spot cannot
+// suppress a human spot (and vice versa) during broadcast-only dedupe.
 func secondaryHash(s *spot.Spot, deDXCC int, deZone int) uint32 {
-	var buf [24]byte
+	var buf [32]byte
 	freq := uint32(s.Frequency)
 	binary.LittleEndian.PutUint32(buf[0:4], freq)
 	binary.LittleEndian.PutUint16(buf[4:6], uint16(deDXCC))
 	binary.LittleEndian.PutUint16(buf[6:8], uint16(deZone))
 	writeFixedCallNormalized(buf[8:20], s.DXCall)
+	buf[20] = secondarySourceClass(s)
 	return uint32(xxh3.Hash(buf[:]))
+}
+
+// secondarySourceClass normalizes a spot to its secondary-dedupe class.
+// Skimmer sources are always treated as a distinct class from all human inputs.
+func secondarySourceClass(s *spot.Spot) byte {
+	if s != nil && spot.IsSkimmerSource(s.SourceType) {
+		return secondaryClassSkimmer
+	}
+	return secondaryClassHuman
 }
 
 // writeFixedCallNormalized uppercases, trims, and pads/truncates into 12 bytes.

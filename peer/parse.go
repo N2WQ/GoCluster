@@ -56,12 +56,11 @@ func parsePC11(fields []string, hop int, fallbackOrigin string) (*spot.Spot, err
 	s := spot.NewSpot(dx, spotter, freq, parsed.Mode)
 	s.Time = ts
 	s.Comment = parsed.Comment
-	s.SourceType = spot.SourceUpstream
+	s.SourceType = spot.SourcePeer
 	s.SourceNode = origin
 	s.Report = parsed.Report
 	s.HasReport = parsed.HasReport
-	// Heuristic: treat spots without an SNR/report as human-originated.
-	s.IsHuman = !parsed.HasReport
+	spot.ApplySourceHumanFlag(s)
 	if hop > 0 {
 		s.TTL = uint8(hop)
 	}
@@ -99,12 +98,12 @@ func parsePC61(fields []string, hop int, fallbackOrigin string) (*spot.Spot, err
 	s := spot.NewSpot(dx, spotter, freq, parsed.Mode)
 	s.Time = ts
 	s.Comment = parsed.Comment
-	s.SourceType = spot.SourceUpstream
+	s.SourceType = spot.SourcePeer
 	s.SourceNode = origin
 	s.SpotterIP = spotterIP
 	s.Report = parsed.Report
 	s.HasReport = parsed.HasReport
-	s.IsHuman = !parsed.HasReport
+	spot.ApplySourceHumanFlag(s)
 	if hop > 0 {
 		s.TTL = uint8(hop)
 	}

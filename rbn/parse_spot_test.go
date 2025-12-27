@@ -36,7 +36,7 @@ func TestACParserExtractsModeSNRAndGrid(t *testing.T) {
 	}
 }
 
-func TestACParserInfersModeFromBandTable(t *testing.T) {
+func TestACParserLeavesModeBlankWithoutExplicitToken(t *testing.T) {
 	c := NewClient("example.com", 0, "N0FT", "UPSTREAM", nil, nil, false, 10)
 	line := "DX de K0DG: 28015.1 K7SS WA 1912Z"
 	c.parseSpot(line)
@@ -48,8 +48,8 @@ func TestACParserInfersModeFromBandTable(t *testing.T) {
 		t.Fatalf("expected a parsed spot")
 	}
 
-	if s.Mode != "CW" {
-		t.Fatalf("expected inferred mode CW, got %q", s.Mode)
+	if s.Mode != "" {
+		t.Fatalf("expected blank mode without explicit token, got %q", s.Mode)
 	}
 	if s.HasReport {
 		t.Fatalf("did not expect a report, got %v", s.Report)
@@ -59,7 +59,7 @@ func TestACParserInfersModeFromBandTable(t *testing.T) {
 	}
 }
 
-func TestACParserUsesVoiceAllocationFor10m(t *testing.T) {
+func TestACParserLeavesModeBlankWithoutExplicitTokenVoiceBand(t *testing.T) {
 	c := NewClient("example.com", 0, "N0FT", "UPSTREAM", nil, nil, false, 10)
 	line := "DX de KC9IMA: 28319.0 KC9IMA ARRL 10-Meter Contest 1912Z"
 	c.parseSpot(line)
@@ -71,8 +71,8 @@ func TestACParserUsesVoiceAllocationFor10m(t *testing.T) {
 		t.Fatalf("expected a parsed spot")
 	}
 
-	if s.Mode != "USB" {
-		t.Fatalf("expected inferred mode USB, got %q", s.Mode)
+	if s.Mode != "" {
+		t.Fatalf("expected blank mode without explicit token, got %q", s.Mode)
 	}
 	if strings.TrimSpace(s.Comment) != "ARRL 10-Meter Contest" {
 		t.Fatalf("expected contest name in comment, got %q", s.Comment)

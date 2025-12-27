@@ -150,7 +150,7 @@ Each `spot.Spot` stores:
 - **Comment** - free-form message (human ingest strips mode/SNR/time tokens before storing)
 - **SourceType / SourceNode** - origin tags (`RBN`, `FT8`, `FT4`, `PSKREPORTER`, `UPSTREAM`, etc.)
 - **TTL** - hop count preventing loops
-- **IsHuman** - whether the spot was reported by a human operator (automated feeds set this to false)
+- **IsHuman** - whether the spot was reported by a human operator (RBN/PSKReporter spots are skimmers; peer/upstream/manual spots are human)
 - **IsBeacon** - true when the DX call ends with `/B` or the comment mentions `NCDXF`/`BEACON` (used to suppress beacon corrections/filtering)
 - **DXMetadata / DEMetadata** - structured `CallMetadata` each containing:
 	- `Continent`

@@ -382,6 +382,10 @@ func main() {
 		}
 	}
 
+	// Toggle FCC ULS lookups independently of the downloader so disabled configs
+	// can keep the DB on disk without performing license checks.
+	uls.SetLicenseChecksEnabled(cfg.FCCULS.Enabled)
+
 	// Start the FCC ULS downloader in the background (does not block spot processing)
 	uls.StartBackground(ctx, cfg.FCCULS)
 
@@ -439,7 +443,7 @@ func main() {
 		refresher.Start()
 		defer refresher.Stop()
 	}
-	if strings.TrimSpace(cfg.FCCULS.DBPath) != "" {
+	if cfg.FCCULS.Enabled && strings.TrimSpace(cfg.FCCULS.DBPath) != "" {
 		uls.SetLicenseDBPath(cfg.FCCULS.DBPath)
 	}
 
@@ -583,6 +587,30 @@ func main() {
 		log.Println("Secondary deduplication disabled; all spots broadcast")
 	}
 
+	modeSeeds := make([]spot.ModeSeed, 0, len(cfg.ModeInference.DigitalSeeds))
+	for _, seed := range cfg.ModeInference.DigitalSeeds {
+		modeSeeds = append(modeSeeds, spot.ModeSeed{
+			FrequencyKHz: seed.FrequencyKHz,
+			Mode:         seed.Mode,
+		})
+	}
+	modeAssigner := spot.NewModeAssigner(spot.ModeInferenceSettings{
+		DXFreqCacheTTL:        time.Duration(cfg.ModeInference.DXFreqCacheTTLSeconds) * time.Second,
+		DXFreqCacheSize:       cfg.ModeInference.DXFreqCacheSize,
+		DigitalWindow:         time.Duration(cfg.ModeInference.DigitalWindowSeconds) * time.Second,
+		DigitalMinCorroborate: cfg.ModeInference.DigitalMinCorroborators,
+		DigitalSeedTTL:        time.Duration(cfg.ModeInference.DigitalSeedTTLSeconds) * time.Second,
+		DigitalCacheSize:      cfg.ModeInference.DigitalCacheSize,
+		DigitalSeeds:          modeSeeds,
+	})
+	log.Printf("Mode inference: dx_cache=%d ttl=%ds digital_window=%ds min_corrob=%d seeds=%d seed_ttl=%ds",
+		cfg.ModeInference.DXFreqCacheSize,
+		cfg.ModeInference.DXFreqCacheTTLSeconds,
+		cfg.ModeInference.DigitalWindowSeconds,
+		cfg.ModeInference.DigitalMinCorroborators,
+		len(modeSeeds),
+		cfg.ModeInference.DigitalSeedTTLSeconds)
+
 	// Start peering manager (DXSpider PC protocol) if enabled.
 	var peerManager *peer.Manager
 	if cfg.Peering.Enabled {
@@ -648,7 +676,7 @@ func main() {
 
 	// Start the unified output processor once the telnet server is ready
 	var lastOutput atomic.Int64
-	go processOutputSpots(deduplicator, secondaryDeduper, spotBuffer, telnetServer, peerManager, statsTracker, correctionIndex, cfg.CallCorrection, ctyLookup, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, ui, gridUpdater, gridLookup, unlicensedReporter, corrLogger, adaptiveMinReports, refresher, spotterReliability, cfg.RBN.KeepSSIDSuffix, archiveWriter, &lastOutput)
+	go processOutputSpots(deduplicator, secondaryDeduper, modeAssigner, spotBuffer, telnetServer, peerManager, statsTracker, correctionIndex, cfg.CallCorrection, ctyLookup, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, ui, gridUpdater, gridLookup, unlicensedReporter, corrLogger, adaptiveMinReports, refresher, spotterReliability, cfg.RBN.KeepSSIDSuffix, archiveWriter, &lastOutput)
 	startPipelineHealthMonitor(ctx, deduplicator, &lastOutput, peerManager)
 
 	// Connect to RBN CW/RTTY feed if enabled (port 7000)
@@ -1051,6 +1079,7 @@ func isStale(s *spot.Spot, policy config.SpotPolicy) bool {
 func processOutputSpots(
 	deduplicator *dedup.Deduplicator,
 	secondary *dedup.SecondaryDeduper,
+	modeAssigner *spot.ModeAssigner,
 	buf *buffer.RingBuffer,
 	telnet *telnet.Server,
 	peerManager *peer.Manager,
@@ -1087,6 +1116,12 @@ func processOutputSpots(
 
 			if s == nil {
 				return
+			}
+			s.EnsureNormalized()
+			spot.ApplySourceHumanFlag(s)
+			explicitMode := strings.TrimSpace(s.Mode) != ""
+			if modeAssigner != nil {
+				modeAssigner.Assign(s, explicitMode)
 			}
 			s.EnsureNormalized()
 			ctyDB := ctyLookup()
@@ -1269,7 +1304,7 @@ func processOutputSpots(
 				}
 				telnet.BroadcastSpot(toSend)
 			}
-			if peerManager != nil && s.SourceType != spot.SourceUpstream {
+			if peerManager != nil && s.SourceType != spot.SourceUpstream && s.SourceType != spot.SourcePeer {
 				peerManager.PublishDX(s)
 			}
 		}()
@@ -1331,7 +1366,8 @@ func startPipelineHealthMonitor(ctx context.Context, dedup *dedup.Deduplicator, 
 }
 
 // collapseSSIDForBroadcast trims SSID fragments so clients see a single
-// skimmer identity (e.g., N2WQ-1-# -> N2WQ-#). It preserves non-SSID suffixes.
+// skimmer identity (e.g., N2WQ-1-# -> N2WQ-#, N2WQ-1 -> N2WQ).
+// It preserves non-numeric suffixes.
 func collapseSSIDForBroadcast(call string) string {
 	call = strings.TrimSpace(call)
 	if call == "" {
@@ -1339,12 +1375,23 @@ func collapseSSIDForBroadcast(call string) string {
 	}
 	if strings.HasSuffix(call, "-#") {
 		trimmed := strings.TrimSuffix(call, "-#")
-		if idx := strings.LastIndexByte(trimmed, '-'); idx > 0 {
-			trimmed = trimmed[:idx]
-		}
-		return trimmed + "-#"
+		return stripNumericSSID(trimmed) + "-#"
 	}
-	return call
+	return stripNumericSSID(call)
+}
+
+func stripNumericSSID(call string) string {
+	idx := strings.LastIndexByte(call, '-')
+	if idx <= 0 || idx == len(call)-1 {
+		return call
+	}
+	suffix := call[idx+1:]
+	for i := 0; i < len(suffix); i++ {
+		if suffix[i] < '0' || suffix[i] > '9' {
+			return call
+		}
+	}
+	return call[:idx]
 }
 
 func cloneSpotForBroadcast(src *spot.Spot) *spot.Spot {

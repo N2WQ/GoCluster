@@ -96,6 +96,28 @@ func TestGridDBCheckOnMissEnabled_UsesLoadedFromWhenSet(t *testing.T) {
 	}
 }
 
+func TestCollapseSSIDForBroadcast(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{"N2WQ-1-#", "N2WQ-#"},
+		{"N2WQ-#", "N2WQ-#"},
+		{"N2WQ-1", "N2WQ"},
+		{"N2WQ-12", "N2WQ"},
+		{"N2WQ-TEST", "N2WQ-TEST"},
+		{"N2WQ-1/P", "N2WQ-1/P"},
+		{"", ""},
+	}
+
+	for _, tc := range cases {
+		got := collapseSSIDForBroadcast(tc.input)
+		if got != tc.want {
+			t.Fatalf("collapseSSIDForBroadcast(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
 func boolPtr(v bool) *bool {
 	b := v
 	return &b

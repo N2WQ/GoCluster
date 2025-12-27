@@ -24,7 +24,8 @@ const (
 	SourceFT8         SourceType = "FT8"         // FT8 via MQTT
 	SourceFT4         SourceType = "FT4"         // FT4 via MQTT
 	SourcePSKReporter SourceType = "PSKREPORTER" // PSKReporter via MQTT
-	SourceUpstream    SourceType = "UPSTREAM"    // From another cluster
+	SourceUpstream    SourceType = "UPSTREAM"    // From an upstream/human telnet feed
+	SourcePeer        SourceType = "PEER"        // From DXSpider peer sessions
 )
 
 // Spot represents a DX spot in canonical form

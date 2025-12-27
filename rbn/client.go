@@ -574,8 +574,8 @@ func buildComment(tokens []spotToken, consumed []bool) string {
 
 // parseSpot converts a DX cluster-style telnet line into a canonical Spot.
 // Structural fields (DE/DX/freq/time) are parsed locally; comment parsing
-// (mode/report/time token handling) is delegated to spot.ParseSpotComment so
-// RBN/human/peer inputs stay consistent.
+// (explicit mode/report/time token handling) is delegated to spot.ParseSpotComment
+// so RBN/human/peer inputs stay consistent. Mode inference happens downstream.
 func (c *Client) parseSpot(line string) {
 	line = strings.TrimSpace(line)
 	if line == "" {

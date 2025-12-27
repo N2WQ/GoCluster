@@ -331,11 +331,13 @@ func buildComment(tokens []commentToken, consumed []bool) string {
 	return strings.Join(parts, " ")
 }
 
-// ParseSpotComment extracts mode, report, time tokens, speed tags (WPM/BPS), and a cleaned comment.
+// ParseSpotComment extracts explicit mode tokens, report/time/speed tags, and a cleaned comment.
+// When no explicit mode token is present, Mode is left empty so downstream mode
+// assignment can apply history and allocation logic.
 func ParseSpotComment(comment string, freq float64) CommentParseResult {
 	comment = strings.TrimSpace(comment)
 	if comment == "" {
-		return CommentParseResult{Mode: FinalizeMode("", freq)}
+		return CommentParseResult{}
 	}
 
 	tokens := tokenizeComment(comment)
@@ -435,11 +437,14 @@ func ParseSpotComment(comment string, freq float64) CommentParseResult {
 		}
 	}
 
-	finalMode := FinalizeMode(mode, freq)
-	if !hasReport && pendingNumIdx >= 0 && modeWantsBareReport(finalMode) {
-		report = pendingNumValue
-		hasReport = true
-		consumed[pendingNumIdx] = true
+	explicitMode := NormalizeVoiceMode(mode, freq)
+	if !hasReport && pendingNumIdx >= 0 && explicitMode != "" && modeWantsBareReport(explicitMode) {
+		// Treat bare 73/88 as greetings, not SNR, unless explicitly tagged with dB.
+		if pendingNumValue != 73 && pendingNumValue != 88 {
+			report = pendingNumValue
+			hasReport = true
+			consumed[pendingNumIdx] = true
+		}
 	}
 
 	cleaned := buildComment(tokens, consumed)
@@ -461,7 +466,7 @@ func ParseSpotComment(comment string, freq float64) CommentParseResult {
 	}
 
 	return CommentParseResult{
-		Mode:      finalMode,
+		Mode:      explicitMode,
 		Report:    report,
 		HasReport: hasReport,
 		TimeToken: timeToken,

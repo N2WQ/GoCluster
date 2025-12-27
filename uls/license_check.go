@@ -16,14 +16,25 @@ import (
 )
 
 var (
-	licenseDBPath string
-	licenseDB     *sql.DB
-	licenseOnce   sync.Once
-	licenseCache  sync.Map // call (uppercased) -> bool
-	licenseMu     sync.Mutex
-	licenseDead   atomic.Bool
-	loggedDBError atomic.Bool
+	licenseDBPath  string
+	licenseDB      *sql.DB
+	licenseOnce    sync.Once
+	licenseCache   sync.Map // call (uppercased) -> bool
+	licenseMu      sync.Mutex
+	licenseDead    atomic.Bool
+	licenseEnabled atomic.Bool
+	loggedDBError  atomic.Bool
 )
+
+func init() {
+	licenseEnabled.Store(true)
+}
+
+// SetLicenseChecksEnabled controls whether FCC ULS checks are performed.
+// When disabled, IsLicensedUS always returns true without touching the DB.
+func SetLicenseChecksEnabled(enabled bool) {
+	licenseEnabled.Store(enabled)
+}
 
 // SetLicenseDBPath configures the path to the FCC ULS SQLite database used for license lookups.
 // If the path is empty or the DB cannot be opened, lookups will be skipped and treated as allowed.
@@ -49,6 +60,9 @@ func SetLicenseDBPath(path string) {
 // If no DB is configured or the DB cannot be opened, the call is treated as licensed (allowed).
 // Results are cached for the lifetime of the process.
 func IsLicensedUS(call string) bool {
+	if !licenseEnabled.Load() {
+		return true
+	}
 	if licenseDead.Load() {
 		return true
 	}

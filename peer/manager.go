@@ -544,6 +544,8 @@ func (m *Manager) sessionSettings(peer PeerEndpoint) sessionSettings {
 		maxLine:         m.cfg.MaxLineLength,
 		pc92MaxBytes:    m.cfg.PC92MaxBytes,
 		password:        peer.password,
+		logKeepalive:    m.cfg.LogKeepalive,
+		logLineTooLong:  m.cfg.LogLineTooLong,
 	}
 }
 

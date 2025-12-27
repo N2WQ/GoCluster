@@ -60,6 +60,8 @@ type session struct {
 	cancel         context.CancelFunc
 	closeOnce      sync.Once
 	overlongPath   string
+	logKeepalive   bool
+	logLineTooLong bool
 }
 
 func newSession(conn net.Conn, dir direction, manager *Manager, peer PeerEndpoint, settings sessionSettings) *session {
@@ -103,6 +105,8 @@ func newSession(conn net.Conn, dir direction, manager *Manager, peer PeerEndpoin
 		dir:            dir,
 		tsGen:          &timestampGenerator{},
 		overlongPath:   "logs/peering_overlong.log",
+		logKeepalive:   settings.logKeepalive,
+		logLineTooLong: settings.logLineTooLong,
 	}
 	if useZiutek {
 		s.reader = newLineReaderWithTransport(conn, settings.maxLine, settings.pc92MaxBytes, readFn, nil, nil)
@@ -154,7 +158,9 @@ func (s *session) Run(ctx context.Context) error {
 		if err != nil {
 			var tooLong errLineTooLong
 			if errors.As(err, &tooLong) {
-				log.Printf("Peering: line too long from %s, dropping and continuing", s.peer.host)
+				if s.logLineTooLong {
+					log.Printf("Peering: line too long from %s, dropping and continuing", s.peer.host)
+				}
 				appendOverlongSample(s.overlongPath, s.peer.host, tooLong.preview, tooLong.length)
 				continue
 			}
@@ -374,13 +380,19 @@ func (s *session) handlePing(frame *Frame) {
 	}
 	call := strings.TrimSpace(s.localCall)
 	if call != "" && !strings.EqualFold(toNode, call) && toNode != "*" && toNode != "" {
-		log.Printf("Peering: PC51 ping addressed to %q (local %q); skipping response", toNode, call)
+		if s.logKeepalive {
+			log.Printf("Peering: PC51 ping addressed to %q (local %q); skipping response", toNode, call)
+		}
 		return
 	}
 	resp := fmt.Sprintf("PC51^%s^%s^0^", fromNode, toNode)
-	log.Printf("Peering: PC51 ping from %s to %s; sending ACK", fromNode, toNode)
+	if s.logKeepalive {
+		log.Printf("Peering: PC51 ping from %s to %s; sending ACK", fromNode, toNode)
+	}
 	if !s.sendPriorityLine(resp) {
-		log.Printf("Peering: PC51 ACK to %s dropped: priority queue full", toNode)
+		if s.logKeepalive {
+			log.Printf("Peering: PC51 ACK to %s dropped: priority queue full", toNode)
+		}
 	}
 }
 
@@ -719,4 +731,6 @@ type sessionSettings struct {
 	maxLine         int
 	pc92MaxBytes    int
 	password        string
+	logKeepalive    bool
+	logLineTooLong  bool
 }

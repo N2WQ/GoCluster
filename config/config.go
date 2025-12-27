@@ -72,6 +72,7 @@ type Config struct {
 	CallCache       CallCacheConfig      `yaml:"call_cache"`
 	Harmonics       HarmonicConfig       `yaml:"harmonics"`
 	SpotPolicy      SpotPolicy           `yaml:"spot_policy"`
+	ModeInference   ModeInferenceConfig  `yaml:"mode_inference"`
 	CTY             CTYConfig            `yaml:"cty"`
 	Buffer          BufferConfig         `yaml:"buffer"`
 	Skew            SkewConfig           `yaml:"skew"`
@@ -214,6 +215,10 @@ type PeeringConfig struct {
 	PC92Bitmap    int    `yaml:"pc92_bitmap"`
 	NodeCount     int    `yaml:"node_count"`
 	UserCount     int    `yaml:"user_count"`
+	// LogKeepalive controls whether keepalive/PC51 chatter is emitted to logs.
+	LogKeepalive bool `yaml:"log_keepalive"`
+	// LogLineTooLong controls whether oversized peer lines are logged.
+	LogLineTooLong bool `yaml:"log_line_too_long"`
 	// TelnetTransport selects the telnet parser/negotiation backend ("native" or "ziutek").
 	TelnetTransport  string `yaml:"telnet_transport"`
 	KeepaliveSeconds int    `yaml:"keepalive_seconds"`
@@ -506,6 +511,31 @@ type SpotPolicy struct {
 	// FrequencyAveragingMinReports is the minimum number of corroborating
 	// reports required before applying an averaged frequency.
 	FrequencyAveragingMinReports int `yaml:"frequency_averaging_min_reports"`
+}
+
+// ModeInferenceConfig controls how the cluster assigns modes when the
+// comment does not provide an explicit mode token.
+type ModeInferenceConfig struct {
+	// DXFreqCacheTTLSeconds bounds how long a DX+frequency mode stays in memory.
+	DXFreqCacheTTLSeconds int `yaml:"dx_freq_cache_ttl_seconds"`
+	// DXFreqCacheSize bounds the DX+frequency mode cache size.
+	DXFreqCacheSize int `yaml:"dx_freq_cache_size"`
+	// DigitalWindowSeconds is the recency window for counting distinct corroborators.
+	DigitalWindowSeconds int `yaml:"digital_window_seconds"`
+	// DigitalMinCorroborators is the minimum distinct spotters needed to trust a mode.
+	DigitalMinCorroborators int `yaml:"digital_min_corroborators"`
+	// DigitalSeedTTLSeconds controls how long seeded frequencies remain valid without refresh.
+	DigitalSeedTTLSeconds int `yaml:"digital_seed_ttl_seconds"`
+	// DigitalCacheSize bounds the number of frequency buckets tracked in the digital map.
+	DigitalCacheSize int `yaml:"digital_cache_size"`
+	// DigitalSeeds pre-populates the digital map with known FT4/FT8/JS8 dial frequencies.
+	DigitalSeeds []ModeSeed `yaml:"digital_seeds"`
+}
+
+// ModeSeed defines a single seeded digital frequency entry.
+type ModeSeed struct {
+	FrequencyKHz int    `yaml:"frequency_khz"`
+	Mode         string `yaml:"mode"`
 }
 
 // BufferConfig controls the ring buffer that holds recent spots.
@@ -1060,6 +1090,26 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.SpotPolicy.FrequencyAveragingMinReports <= 0 {
 		cfg.SpotPolicy.FrequencyAveragingMinReports = 4
+	}
+
+	// Mode inference defaults keep caches bounded and predictable.
+	if cfg.ModeInference.DXFreqCacheTTLSeconds <= 0 {
+		cfg.ModeInference.DXFreqCacheTTLSeconds = 300
+	}
+	if cfg.ModeInference.DXFreqCacheSize <= 0 {
+		cfg.ModeInference.DXFreqCacheSize = 50000
+	}
+	if cfg.ModeInference.DigitalWindowSeconds <= 0 {
+		cfg.ModeInference.DigitalWindowSeconds = 300
+	}
+	if cfg.ModeInference.DigitalMinCorroborators <= 0 {
+		cfg.ModeInference.DigitalMinCorroborators = 10
+	}
+	if cfg.ModeInference.DigitalSeedTTLSeconds <= 0 {
+		cfg.ModeInference.DigitalSeedTTLSeconds = 21600
+	}
+	if cfg.ModeInference.DigitalCacheSize <= 0 {
+		cfg.ModeInference.DigitalCacheSize = 5000
 	}
 
 	if strings.TrimSpace(cfg.CTY.File) == "" {
