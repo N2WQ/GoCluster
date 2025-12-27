@@ -2,7 +2,7 @@ DEC26REVIEW - repository-wide review notes (comment-only pass)
 Status: in progress
 
 Findings (ordered by severity; update as review continues):
-- Medium: archive/archive.go: writer uses *sql.DB with default pool while running insertLoop + cleanupLoop concurrently. SQLite busy_timeout is per-connection, so additional pooled conns may not inherit it; concurrent writes can yield "database is locked (5)" errors. Consider SetMaxOpenConns(1)/SetMaxIdleConns(1) or serializing cleanup with inserts.
+- Medium (resolved): archive/archive.go: writer uses *sql.DB with default pool while running insertLoop + cleanupLoop concurrently. SQLite busy_timeout is per-connection, so additional pooled conns may not inherit it; concurrent writes can yield "database is locked (5)" errors. Mitigated by forcing a single connection and chunked cleanup deletes.
 - Low: activity_monitor.go:87 and adaptive_refresher.go:87 close channels without a guard; a second Stop call would panic. Consider sync.Once or a non-blocking close pattern.
 - Low: activity_monitor.go:36 newActivityMonitor is unused (only referenced by blank identifier), suggesting dead code or missing wiring.
 - Low: analyze_corrections.go:88 and analyze_corrections.go:120 use bufio.Scanner without Buffer() resizing; long JSON lines can be truncated in this offline tool.

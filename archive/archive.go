@@ -38,6 +38,11 @@ func NewWriter(cfg config.ArchiveConfig) (*Writer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("archive: open db: %w", err)
 	}
+	// Serialize all archive writes through a single connection to avoid SQLITE_BUSY
+	// contention between inserts and cleanup deletes, and to ensure PRAGMA settings
+	// (busy_timeout, journal_mode) are consistently applied.
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 	if _, err := db.Exec(`pragma journal_mode=WAL; pragma synchronous=NORMAL; pragma busy_timeout=` + fmt.Sprintf("%d", cfg.BusyTimeoutMS)); err != nil {
 		return nil, fmt.Errorf("archive: pragmas: %w", err)
 	}
@@ -199,7 +204,8 @@ func (w *Writer) cleanupLoop() {
 }
 
 // Purpose: Run one retention cleanup pass.
-// Key aspects: Applies separate retention windows for FT vs other modes.
+// Key aspects: Applies separate retention windows and deletes in small batches
+// to keep write locks short under high ingest rates.
 // Upstream: cleanupLoop.
 // Downstream: sql.Exec deletes.
 func (w *Writer) cleanupOnce() {
@@ -207,14 +213,43 @@ func (w *Writer) cleanupOnce() {
 	cutoffFT := now - int64(w.cfg.RetentionFTSeconds)
 	cutoffDefault := now - int64(w.cfg.RetentionDefaultSeconds)
 
-	// FT modes
-	if _, err := w.db.Exec(`delete from spots where mode in ('FT8','FT4') and ts < ?`, cutoffFT); err != nil {
-		log.Printf("archive: cleanup FT: %v", err)
+	batchSize := w.cfg.CleanupBatchSize
+	if batchSize <= 0 {
+		batchSize = 2000
 	}
-	// All others
-	if _, err := w.db.Exec(`delete from spots where mode not in ('FT8','FT4') and ts < ?`, cutoffDefault); err != nil {
-		log.Printf("archive: cleanup default: %v", err)
+	yield := time.Duration(w.cfg.CleanupBatchYieldMS) * time.Millisecond
+	if w.cfg.CleanupBatchYieldMS < 0 {
+		yield = 0
 	}
+
+	deleteBatch := func(label, query string, cutoff int64) {
+		for {
+			// Use rowid-limited deletes to keep each transaction short and avoid long-lived locks.
+			res, err := w.db.Exec(query, cutoff, batchSize)
+			if err != nil {
+				log.Printf("archive: cleanup %s: %v", label, err)
+				return
+			}
+			affected, err := res.RowsAffected()
+			if err != nil {
+				log.Printf("archive: cleanup %s: rows affected: %v", label, err)
+				return
+			}
+			if affected < int64(batchSize) {
+				return
+			}
+			if yield > 0 {
+				time.Sleep(yield)
+			}
+		}
+	}
+
+	deleteBatch("FT", `delete from spots where rowid in (
+		select rowid from spots where mode in ('FT8','FT4') and ts < ? limit ?
+	)`, cutoffFT)
+	deleteBatch("default", `delete from spots where rowid in (
+		select rowid from spots where mode not in ('FT8','FT4') and ts < ? limit ?
+	)`, cutoffDefault)
 }
 
 // Purpose: Ensure the archive schema and indexes exist.

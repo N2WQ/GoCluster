@@ -200,15 +200,19 @@ const defaultPSKReporterTopic = "pskr/filter/v2/+/+/#"
 
 // ArchiveConfig controls optional SQLite archival of broadcasted spots.
 type ArchiveConfig struct {
-	Enabled                 bool   `yaml:"enabled"`
-	DBPath                  string `yaml:"db_path"`
-	QueueSize               int    `yaml:"queue_size"`
-	BatchSize               int    `yaml:"batch_size"`
-	BatchIntervalMS         int    `yaml:"batch_interval_ms"`
-	CleanupIntervalSeconds  int    `yaml:"cleanup_interval_seconds"`
-	RetentionFTSeconds      int    `yaml:"retention_ft_seconds"`      // FT8/FT4 retention
-	RetentionDefaultSeconds int    `yaml:"retention_default_seconds"` // All other modes
-	BusyTimeoutMS           int    `yaml:"busy_timeout_ms"`
+	Enabled                bool   `yaml:"enabled"`
+	DBPath                 string `yaml:"db_path"`
+	QueueSize              int    `yaml:"queue_size"`
+	BatchSize              int    `yaml:"batch_size"`
+	BatchIntervalMS        int    `yaml:"batch_interval_ms"`
+	CleanupIntervalSeconds int    `yaml:"cleanup_interval_seconds"`
+	// CleanupBatchSize limits how many rows are deleted per cleanup batch to keep locks short.
+	CleanupBatchSize int `yaml:"cleanup_batch_size"`
+	// CleanupBatchYieldMS sleeps between cleanup batches to reduce contention. 0 disables the yield.
+	CleanupBatchYieldMS     int `yaml:"cleanup_batch_yield_ms"`
+	RetentionFTSeconds      int `yaml:"retention_ft_seconds"`      // FT8/FT4 retention
+	RetentionDefaultSeconds int `yaml:"retention_default_seconds"` // All other modes
+	BusyTimeoutMS           int `yaml:"busy_timeout_ms"`
 }
 
 // PeeringConfig controls DXSpider node-to-node peering.
@@ -637,6 +641,7 @@ func Load(path string) (*Config, error) {
 	ctyEnabledSet := yamlKeyPresent(raw, "cty", "enabled")
 	hasSecondaryPrefer := yamlKeyPresent(raw, "dedup", "secondary_prefer_stronger_snr")
 	hasAdaptiveMinReportsEnabled := yamlKeyPresent(raw, "call_correction", "adaptive_min_reports", "enabled")
+	hasArchiveCleanupYield := yamlKeyPresent(raw, "archive", "cleanup_batch_yield_ms")
 
 	// UI defaults favor the lightweight ANSI renderer unless overridden. Mode
 	// is normalized to a small, explicit set to keep startup behavior
@@ -729,6 +734,15 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Archive.CleanupIntervalSeconds <= 0 {
 		cfg.Archive.CleanupIntervalSeconds = 3600 // hourly
+	}
+	if cfg.Archive.CleanupBatchSize <= 0 {
+		cfg.Archive.CleanupBatchSize = 2000
+	}
+	if cfg.Archive.CleanupBatchYieldMS < 0 {
+		cfg.Archive.CleanupBatchYieldMS = 0
+	}
+	if cfg.Archive.CleanupBatchYieldMS == 0 && !hasArchiveCleanupYield {
+		cfg.Archive.CleanupBatchYieldMS = 5
 	}
 	if cfg.Archive.RetentionFTSeconds <= 0 {
 		cfg.Archive.RetentionFTSeconds = 3600 // 1 hour by default for FT modes
@@ -1347,12 +1361,14 @@ func (c *Config) Print() {
 			c.HumanTelnet.KeepaliveSec)
 	}
 	if c.Archive.Enabled {
-		fmt.Printf("Archive: %s (queue=%d batch=%d/%dms cleanup=%ds retain_ft=%ds retain_other=%ds)\n",
+		fmt.Printf("Archive: %s (queue=%d batch=%d/%dms cleanup=%ds cleanup_batch=%d yield=%dms retain_ft=%ds retain_other=%ds)\n",
 			c.Archive.DBPath,
 			c.Archive.QueueSize,
 			c.Archive.BatchSize,
 			c.Archive.BatchIntervalMS,
 			c.Archive.CleanupIntervalSeconds,
+			c.Archive.CleanupBatchSize,
+			c.Archive.CleanupBatchYieldMS,
 			c.Archive.RetentionFTSeconds,
 			c.Archive.RetentionDefaultSeconds)
 	}
