@@ -23,24 +23,36 @@ type Tracker struct {
 	unlicensedDrops      atomic.Uint64
 }
 
-// NewTracker creates a new stats tracker
+// Purpose: Create a new stats tracker with a start timestamp.
+// Key aspects: Initializes atomic start time; counters are lazily created.
+// Upstream: main.go stats initialization.
+// Downstream: Tracker methods.
 func NewTracker() *Tracker {
 	t := &Tracker{}
 	t.start.Store(time.Now().UnixNano())
 	return t
 }
 
-// IncrementMode increases the count for a mode (FT8, FT4, MANUAL, etc.)
+// Purpose: Increment the counter for a given mode.
+// Key aspects: Uses sync.Map + atomic to avoid global locks.
+// Upstream: Spot ingest pipeline.
+// Downstream: incrementCounter.
 func (t *Tracker) IncrementMode(mode string) {
 	incrementCounter(&t.modeCounts, mode)
 }
 
-// IncrementSource increases the count for a source node (RBN, RBN-DIGITAL, PSKREPORTER)
+// Purpose: Increment the counter for a given source node.
+// Key aspects: Normalizes through incrementCounter.
+// Upstream: Spot ingest pipeline.
+// Downstream: incrementCounter.
 func (t *Tracker) IncrementSource(source string) {
 	incrementCounter(&t.sourceCounts, source)
 }
 
-// IncrementSourceMode increases the count for a specific source/mode combination.
+// Purpose: Increment the counter for a source/mode pair.
+// Key aspects: Normalizes strings and combines into a composite key.
+// Upstream: Spot ingest pipeline.
+// Downstream: incrementCounter.
 func (t *Tracker) IncrementSourceMode(source, mode string) {
 	source = strings.ToUpper(strings.TrimSpace(source))
 	mode = strings.ToUpper(strings.TrimSpace(mode))
@@ -51,8 +63,10 @@ func (t *Tracker) IncrementSourceMode(source, mode string) {
 	incrementCounter(&t.sourceModeCounts, key)
 }
 
-// GetCounts returns a copy of all counts
-// GetModeCounts returns a copy of mode counts
+// Purpose: Return a copy of per-mode counts.
+// Key aspects: Iterates sync.Map and reads atomics.
+// Upstream: Dashboard/metrics rendering.
+// Downstream: atomic loads.
 func (t *Tracker) GetModeCounts() map[string]uint64 {
 	counts := make(map[string]uint64)
 	t.modeCounts.Range(func(key, value any) bool {
@@ -62,7 +76,10 @@ func (t *Tracker) GetModeCounts() map[string]uint64 {
 	return counts
 }
 
-// GetSourceCounts returns a copy of source node counts
+// Purpose: Return a copy of per-source counts.
+// Key aspects: Iterates sync.Map and reads atomics.
+// Upstream: Dashboard/metrics rendering.
+// Downstream: atomic loads.
 func (t *Tracker) GetSourceCounts() map[string]uint64 {
 	counts := make(map[string]uint64)
 	t.sourceCounts.Range(func(key, value any) bool {
@@ -72,7 +89,10 @@ func (t *Tracker) GetSourceCounts() map[string]uint64 {
 	return counts
 }
 
-// GetSourceModeCounts returns a copy of source/mode combination counts.
+// Purpose: Return a copy of source/mode counts.
+// Key aspects: Iterates sync.Map and reads atomics.
+// Upstream: Dashboard/metrics rendering.
+// Downstream: atomic loads.
 func (t *Tracker) GetSourceModeCounts() map[string]uint64 {
 	counts := make(map[string]uint64)
 	t.sourceModeCounts.Range(func(key, value any) bool {
@@ -82,8 +102,10 @@ func (t *Tracker) GetSourceModeCounts() map[string]uint64 {
 	return counts
 }
 
-// GetTotal returns the total count across all sources
-// GetTotal returns the total count across all sources (sum of sourceCounts)
+// Purpose: Return the total count across all sources.
+// Key aspects: Sums atomic counters from sourceCounts.
+// Upstream: Dashboard/metrics rendering.
+// Downstream: atomic loads.
 func (t *Tracker) GetTotal() uint64 {
 	var total uint64
 	t.sourceCounts.Range(func(_, value any) bool {
@@ -93,13 +115,19 @@ func (t *Tracker) GetTotal() uint64 {
 	return total
 }
 
-// GetUptime returns how long the tracker has been running
+// Purpose: Return tracker uptime since creation/reset.
+// Key aspects: Uses stored UnixNano start.
+// Upstream: Dashboard/metrics rendering.
+// Downstream: time.Since.
 func (t *Tracker) GetUptime() time.Duration {
 	start := t.start.Load()
 	return time.Since(time.Unix(0, start))
 }
 
-// Reset resets all counters
+// Purpose: Reset all counters and start time.
+// Key aspects: Deletes all sync.Map entries and resets start.
+// Upstream: Admin reset flows.
+// Downstream: sync.Map delete, atomic store.
 func (t *Tracker) Reset() {
 	t.modeCounts.Range(func(key, _ any) bool {
 		t.modeCounts.Delete(key)
@@ -116,7 +144,10 @@ func (t *Tracker) Reset() {
 	t.start.Store(time.Now().UnixNano())
 }
 
-// SnapshotLines returns human-readable stats ready for console display.
+// Purpose: Format summary lines for console output.
+// Key aspects: Renders source and mode counts via formatMapCounts.
+// Upstream: Dashboard/console ticker.
+// Downstream: formatMapCounts.
 func (t *Tracker) SnapshotLines() []string {
 	lines := make([]string, 0, 2)
 	lines = append(lines, formatMapCounts("Spots by source", &t.sourceCounts))
@@ -124,46 +155,74 @@ func (t *Tracker) SnapshotLines() []string {
 	return lines
 }
 
-// IncrementCallCorrections increments the number of applied call corrections.
+// Purpose: Increment applied call correction counter.
+// Key aspects: Atomic increment.
+// Upstream: Correction pipeline.
+// Downstream: atomic counter.
 func (t *Tracker) IncrementCallCorrections() {
 	t.callCorrections.Add(1)
 }
 
-// IncrementFrequencyCorrections increments the number of frequency corrections.
+// Purpose: Increment applied frequency correction counter.
+// Key aspects: Atomic increment.
+// Upstream: Correction pipeline.
+// Downstream: atomic counter.
 func (t *Tracker) IncrementFrequencyCorrections() {
 	t.frequencyCorrections.Add(1)
 }
 
-// IncrementHarmonicSuppressions increments the number of spots dropped as harmonics.
+// Purpose: Increment harmonic suppression counter.
+// Key aspects: Atomic increment.
+// Upstream: Harmonic detector drop path.
+// Downstream: atomic counter.
 func (t *Tracker) IncrementHarmonicSuppressions() {
 	t.harmonicSuppressions.Add(1)
 }
 
-// IncrementUnlicensedDrops increments the number of US spots dropped for missing licenses.
+// Purpose: Increment unlicensed drop counter.
+// Key aspects: Atomic increment.
+// Upstream: License enforcement in pipeline.
+// Downstream: atomic counter.
 func (t *Tracker) IncrementUnlicensedDrops() {
 	t.unlicensedDrops.Add(1)
 }
 
-// CallCorrections returns the cumulative number of applied call corrections.
+// Purpose: Return total call correction count.
+// Key aspects: Atomic load.
+// Upstream: Dashboard/metrics.
+// Downstream: atomic counter.
 func (t *Tracker) CallCorrections() uint64 {
 	return t.callCorrections.Load()
 }
 
-// FrequencyCorrections returns the cumulative number of frequency corrections.
+// Purpose: Return total frequency correction count.
+// Key aspects: Atomic load.
+// Upstream: Dashboard/metrics.
+// Downstream: atomic counter.
 func (t *Tracker) FrequencyCorrections() uint64 {
 	return t.frequencyCorrections.Load()
 }
 
-// HarmonicSuppressions returns the cumulative number of dropped harmonics.
+// Purpose: Return total harmonic suppression count.
+// Key aspects: Atomic load.
+// Upstream: Dashboard/metrics.
+// Downstream: atomic counter.
 func (t *Tracker) HarmonicSuppressions() uint64 {
 	return t.harmonicSuppressions.Load()
 }
 
-// UnlicensedDrops returns the cumulative number of US license failures.
+// Purpose: Return total unlicensed drop count.
+// Key aspects: Atomic load.
+// Upstream: Dashboard/metrics.
+// Downstream: atomic counter.
 func (t *Tracker) UnlicensedDrops() uint64 {
 	return t.unlicensedDrops.Load()
 }
 
+// Purpose: Format a sync.Map of counters into a "label: key=value" string.
+// Key aspects: Stable order is not guaranteed; emits "(none)" when empty.
+// Upstream: Tracker.SnapshotLines.
+// Downstream: atomic loads, fmt.Fprintf.
 func formatMapCounts(label string, counts *sync.Map) string {
 	var builder strings.Builder
 	builder.WriteString(label)
@@ -183,6 +242,10 @@ func formatMapCounts(label string, counts *sync.Map) string {
 	return builder.String()
 }
 
+// Purpose: Increment a per-key atomic counter stored in a sync.Map.
+// Key aspects: Uses LoadOrStore to avoid races on first insert.
+// Upstream: Tracker increment methods.
+// Downstream: atomic.Uint64.
 func incrementCounter(m *sync.Map, key string) {
 	if strings.TrimSpace(key) == "" {
 		return

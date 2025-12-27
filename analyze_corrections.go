@@ -57,6 +57,10 @@ type BustedEntry struct {
 	RawLine     string
 }
 
+// Purpose: Offline entrypoint to compare correction logs against reference busted calls.
+// Key aspects: Loads two log formats and prints summary statistics to stdout.
+// Upstream: Invoked by `go run` for this ignore-tagged tool.
+// Downstream: parseModifiedLog, parseBustedLog, analyzeCorrections.
 func main() {
 	fmt.Println("Loading logs...")
 
@@ -69,6 +73,10 @@ func main() {
 	analyzeCorrections(corrections, bustedEntries)
 }
 
+// Purpose: Parse the modified cluster's correction log into structured entries.
+// Key aspects: Scans for JSON lines where decision=applied.
+// Upstream: main.
+// Downstream: os.Open, bufio.Scanner, json.Unmarshal.
 func parseModifiedLog(filepath string) []Correction {
 	file, err := os.Open(filepath)
 	if err != nil {
@@ -97,6 +105,10 @@ func parseModifiedLog(filepath string) []Correction {
 	return corrections
 }
 
+// Purpose: Parse a "busted calls" reference file into structured entries.
+// Key aspects: Extracts the "?" marker row and normalizes the fields.
+// Upstream: main.
+// Downstream: os.Open, bufio.Scanner, strconv.ParseFloat.
 func parseBustedLog(filepath string) []BustedEntry {
 	file, err := os.Open(filepath)
 	if err != nil {
@@ -151,6 +163,10 @@ func parseBustedLog(filepath string) []BustedEntry {
 	return entries
 }
 
+// Purpose: Normalize callsigns for comparison.
+// Key aspects: Uppercases and strips '-' and '/' before trimming.
+// Upstream: analyzeCorrections.
+// Downstream: strings.ToUpper, strings.ReplaceAll, strings.TrimSpace.
 func normalizeCall(call string) string {
 	call = strings.ToUpper(call)
 	call = strings.ReplaceAll(call, "-", "")
@@ -158,6 +174,10 @@ func normalizeCall(call string) string {
 	return strings.TrimSpace(call)
 }
 
+// Purpose: Convert a "HHMMZ" time token to minutes since midnight.
+// Key aspects: Safe fallback to 0 on malformed inputs.
+// Upstream: analyzeCorrections.
+// Downstream: strconv.Atoi.
 func timeToMinutes(timeStr string) int {
 	// Format: 0000Z
 	if len(timeStr) < 4 {
@@ -168,6 +188,10 @@ func timeToMinutes(timeStr string) int {
 	return hours*60 + mins
 }
 
+// Purpose: Compare applied corrections against known busted entries.
+// Key aspects: Matches by time/frequency window and reports accuracy buckets.
+// Upstream: main.
+// Downstream: normalizeCall, timeToMinutes, time.Parse, math.Abs, fmt.Printf.
 func analyzeCorrections(corrections []Correction, bustedEntries []BustedEntry) {
 	fmt.Println("\n" + strings.Repeat("=", 100))
 	fmt.Println("ANALYSIS: Comparing Corrections with Reference Busted Calls")

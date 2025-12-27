@@ -36,7 +36,10 @@ type Store struct {
 	db *sql.DB
 }
 
-// Entries loads all records from the calls table.
+// Purpose: Load all call records from the store.
+// Key aspects: Reads full table; returns a slice of Record values.
+// Upstream: Administrative tools or diagnostics.
+// Downstream: db.Query, row scanning.
 func (s *Store) Entries() ([]Record, error) {
 	if s == nil || s.db == nil {
 		return nil, errors.New("gridstore: store is not initialized")
@@ -83,7 +86,10 @@ func (s *Store) Entries() ([]Record, error) {
 	return list, nil
 }
 
-// Open creates/opens the SQLite database at the given path and ensures the schema exists.
+// Purpose: Open or create the gridstore SQLite database.
+// Key aspects: Initializes schema and configures SQLite for low contention.
+// Upstream: main.go startup and tools.
+// Downstream: initSchema, sql.Open, PRAGMA setup.
 func Open(path string) (*Store, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, errors.New("gridstore: database path is empty")
@@ -112,7 +118,10 @@ func Open(path string) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
-// Close releases the database handle.
+// Purpose: Close the underlying database handle.
+// Key aspects: Safe to call on nil store.
+// Upstream: main.go shutdown or tests.
+// Downstream: db.Close.
 func (s *Store) Close() error {
 	if s == nil || s.db == nil {
 		return nil
@@ -120,7 +129,10 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// PurgeOlderThan deletes records whose updated_at is older than cutoff. Returns rows removed.
+// Purpose: Delete records older than the cutoff time.
+// Key aspects: Uses updated_at timestamps; returns rows removed.
+// Upstream: Periodic maintenance in main pipeline.
+// Downstream: db.Exec.
 func (s *Store) PurgeOlderThan(cutoff time.Time) (int64, error) {
 	if s == nil || s.db == nil {
 		return 0, errors.New("gridstore: store is not initialized")
@@ -136,7 +148,10 @@ func (s *Store) PurgeOlderThan(cutoff time.Time) (int64, error) {
 	return removed, nil
 }
 
-// ClearKnownFlags resets is_known to 0 for all calls.
+// Purpose: Clear the known-call flag for all entries.
+// Key aspects: Bulk update across the calls table.
+// Upstream: Admin reset flows or tests.
+// Downstream: db.Exec.
 func (s *Store) ClearKnownFlags() error {
 	if s == nil || s.db == nil {
 		return errors.New("gridstore: store is not initialized")
@@ -147,7 +162,10 @@ func (s *Store) ClearKnownFlags() error {
 	return nil
 }
 
-// Upsert inserts or updates a record. If FirstSeen is zero, UpdatedAt is used for both.
+// Purpose: Insert or update a call record atomically.
+// Key aspects: Normalizes callsign; uses UPSERT to merge flags and counts.
+// Upstream: Spot processing and enrichment.
+// Downstream: withBusyRetry, db.Exec.
 func (s *Store) Upsert(rec Record) error {
 	if s == nil || s.db == nil {
 		return errors.New("gridstore: store is not initialized")
@@ -189,7 +207,10 @@ ON CONFLICT(call) DO UPDATE SET
 	return err
 }
 
-// UpsertBatch writes a group of records in a single transaction.
+// Purpose: Insert or update multiple records in a single transaction.
+// Key aspects: Reuses a prepared statement; normalizes timestamps per batch.
+// Upstream: Batch updates from spot pipelines or tools.
+// Downstream: withBusyRetry, sql.Tx.
 func (s *Store) UpsertBatch(recs []Record) error {
 	if s == nil || s.db == nil {
 		return errors.New("gridstore: store is not initialized")
@@ -254,7 +275,10 @@ ON CONFLICT(call) DO UPDATE SET
 	return err
 }
 
-// Get loads a record by callsign. Returns (nil, nil) when not found.
+// Purpose: Fetch a record by callsign.
+// Key aspects: Returns (nil, nil) when not found; normalizes callsign.
+// Upstream: Spot enrichment queries.
+// Downstream: db.QueryRow.
 func (s *Store) Get(call string) (*Record, error) {
 	if s == nil || s.db == nil {
 		return nil, errors.New("gridstore: store is not initialized")
@@ -298,7 +322,10 @@ WHERE call = ?
 	}, nil
 }
 
-// Count returns the total number of records in the calls table.
+// Purpose: Return the total number of stored calls.
+// Key aspects: Simple COUNT(*) query.
+// Upstream: Metrics/diagnostics.
+// Downstream: db.QueryRow.
 func (s *Store) Count() (int64, error) {
 	if s == nil || s.db == nil {
 		return 0, errors.New("gridstore: store is not initialized")
@@ -310,7 +337,10 @@ func (s *Store) Count() (int64, error) {
 	return count, nil
 }
 
-// initSchema creates the calls table and supporting indexes if they do not yet exist.
+// Purpose: Create the calls table schema and indexes if missing.
+// Key aspects: Executes a multi-statement schema definition.
+// Upstream: Open.
+// Downstream: db.Exec.
 func initSchema(db *sql.DB) error {
 	const schema = `
 CREATE TABLE IF NOT EXISTS calls (
@@ -331,6 +361,10 @@ CREATE INDEX IF NOT EXISTS idx_calls_grid ON calls(grid);
 	return nil
 }
 
+// Purpose: Convert a bool to 0/1 for SQLite writes.
+// Key aspects: True -> 1, false -> 0.
+// Upstream: Upsert, UpsertBatch.
+// Downstream: None.
 func boolToInt(v bool) int {
 	if v {
 		return 1
@@ -338,6 +372,10 @@ func boolToInt(v bool) int {
 	return 0
 }
 
+// Purpose: Convert sql.NullString to nil or string for binding.
+// Key aspects: Preserves NULLs when invalid.
+// Upstream: Upsert, UpsertBatch.
+// Downstream: None.
 func nullString(v sql.NullString) any {
 	if v.Valid {
 		return v.String
@@ -345,7 +383,10 @@ func nullString(v sql.NullString) any {
 	return nil
 }
 
-// withBusyRetry wraps a DB operation and retries a few times with backoff when SQLite reports SQLITE_BUSY.
+// Purpose: Retry SQLite operations that fail with SQLITE_BUSY.
+// Key aspects: Bounded retry with linear backoff.
+// Upstream: Upsert, UpsertBatch.
+// Downstream: IsBusyError, time.Sleep.
 func withBusyRetry(fn func() error) error {
 	var err error
 	for attempt := 1; attempt <= busyRetryMax; attempt++ {
@@ -361,7 +402,10 @@ func withBusyRetry(fn func() error) error {
 	return err
 }
 
-// IsBusyError returns true when the error indicates SQLite returned SQLITE_BUSY / database is locked.
+// Purpose: Detect SQLITE_BUSY / database locked errors.
+// Key aspects: Matches normalized error strings from the driver.
+// Upstream: withBusyRetry.
+// Downstream: strings.Contains.
 func IsBusyError(err error) bool {
 	if err == nil {
 		return false

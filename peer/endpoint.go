@@ -12,6 +12,10 @@ type PeerEndpoint struct {
 	preferPC9x bool
 }
 
+// Purpose: Build a peer endpoint from configuration.
+// Key aspects: Copies connection credentials and preferences.
+// Upstream: Peer manager initialization.
+// Downstream: PeerEndpoint.ID and session creation.
 func newPeerEndpoint(p config.PeeringPeer) PeerEndpoint {
 	return PeerEndpoint{
 		host:       p.Host,
@@ -23,6 +27,10 @@ func newPeerEndpoint(p config.PeeringPeer) PeerEndpoint {
 	}
 }
 
+// Purpose: Return a stable identifier for this peer.
+// Key aspects: Prefers remote callsign; falls back to host.
+// Upstream: Peer manager maps and logs.
+// Downstream: None.
 func (p PeerEndpoint) ID() string {
 	if p.remoteCall != "" {
 		return p.remoteCall

@@ -23,17 +23,26 @@ type errLineTooLong struct {
 	length  int
 }
 
+// Purpose: Provide a generic error string for overlong lines.
+// Key aspects: Keeps the error message stable for callers.
+// Upstream: lineReader.tryReadLine.
+// Downstream: None.
 func (e errLineTooLong) Error() string {
 	return "line too long"
 }
 
+// Purpose: Construct a lineReader with the default telnet parser.
+// Key aspects: Uses conn.Read and a refuse-all telnet parser.
+// Upstream: Peer session setup.
+// Downstream: newLineReaderWithTransport.
 func newLineReader(conn net.Conn, maxLine int, pc92Max int, replyFn func([]byte)) *lineReader {
 	return newLineReaderWithTransport(conn, maxLine, pc92Max, conn.Read, &telnetParser{}, replyFn)
 }
 
-// newLineReaderWithTransport allows callers to supply a read function that already
-// strips IAC sequences (e.g., external telnet library). When parser is nil, data
-// is treated as already-clean payload bytes.
+// Purpose: Construct a lineReader with a custom transport reader/parser.
+// Key aspects: Allows pre-stripped IAC data by passing parser=nil.
+// Upstream: Peer session setup for external telnet transport.
+// Downstream: lineReader.ReadLine.
 func newLineReaderWithTransport(conn net.Conn, maxLine int, pc92Max int, readFn func([]byte) (int, error), parser *telnetParser, replyFn func([]byte)) *lineReader {
 	if readFn == nil {
 		readFn = conn.Read
@@ -50,6 +59,10 @@ func newLineReaderWithTransport(conn net.Conn, maxLine int, pc92Max int, readFn 
 	}
 }
 
+// Purpose: Read a single line/frame with deadline and telnet filtering.
+// Key aspects: Aggregates reads into a buffer and handles overlong lines.
+// Upstream: Peer session read loop.
+// Downstream: tryReadLine, bytesIndexTerminator.
 func (r *lineReader) ReadLine(deadline time.Time) (string, error) {
 	if err := r.conn.SetReadDeadline(deadline); err != nil {
 		return "", err
@@ -88,6 +101,10 @@ func (r *lineReader) ReadLine(deadline time.Time) (string, error) {
 	}
 }
 
+// Purpose: Attempt to extract a full line from the current buffer.
+// Key aspects: Respects terminators, PC92 max size, and resync rules.
+// Upstream: ReadLine.
+// Downstream: trimLeadingTerminators, bytesIndexTerminator, frameTypeFromBuffer.
 func (r *lineReader) tryReadLine() (string, error, bool) {
 	for {
 		r.buf = trimLeadingTerminators(r.buf)
@@ -127,6 +144,10 @@ func (r *lineReader) tryReadLine() (string, error, bool) {
 	}
 }
 
+// Purpose: Trim trailing CR/LF from a line buffer.
+// Key aspects: Stops at first non-terminator from the end.
+// Upstream: tryReadLine.
+// Downstream: None.
 func trimLine(b []byte) []byte {
 	for len(b) > 0 {
 		if b[len(b)-1] == '\n' || b[len(b)-1] == '\r' {
@@ -138,7 +159,10 @@ func trimLine(b []byte) []byte {
 	return b
 }
 
-// trimLeadingTerminators discards any leading CR/LF/~ bytes so frames start cleanly.
+// Purpose: Remove leading terminator bytes so frames start cleanly.
+// Key aspects: Drops CR/LF/~ in sequence.
+// Upstream: tryReadLine.
+// Downstream: isTerminator.
 func trimLeadingTerminators(b []byte) []byte {
 	for len(b) > 0 {
 		if isTerminator(b[0]) {
@@ -150,12 +174,18 @@ func trimLeadingTerminators(b []byte) []byte {
 	return b
 }
 
+// Purpose: Report whether a byte is a line/frame terminator.
+// Key aspects: Recognizes CR, LF, and '~'.
+// Upstream: trimLeadingTerminators, bytesIndexFrameStart.
+// Downstream: None.
 func isTerminator(b byte) bool {
 	return b == '\n' || b == '\r' || b == '~'
 }
 
-// bytesIndexTerminator returns the index and width of the first terminator (~, CRLF, CR, LF).
-// We prefer ~ as a hard frame end; CR/LF are legacy telnet line ends.
+// Purpose: Find the first line terminator and its width.
+// Key aspects: Prefers '~' and handles CRLF pairs.
+// Upstream: tryReadLine.
+// Downstream: None.
 func bytesIndexTerminator(b []byte) (int, int) {
 	for i := 0; i < len(b); i++ {
 		switch b[i] {
@@ -173,7 +203,10 @@ func bytesIndexTerminator(b []byte) (int, int) {
 	return -1, 0
 }
 
-// bytesIndexFrameStart finds a valid PCxx^ frame start at buffer start or after a terminator.
+// Purpose: Find a valid PCxx^ frame start in the buffer.
+// Key aspects: Only considers starts at buffer start or after a terminator.
+// Upstream: tryReadLine resync.
+// Downstream: isFrameStartAt, isTerminator.
 func bytesIndexFrameStart(b []byte) int {
 	if isFrameStartAt(b, 0) {
 		return 0
@@ -189,6 +222,10 @@ func bytesIndexFrameStart(b []byte) int {
 	return -1
 }
 
+// Purpose: Check whether a buffer offset begins with a PCxx^ header.
+// Key aspects: Validates "PC" + two digits + caret.
+// Upstream: bytesIndexFrameStart, frameTypeFromBuffer.
+// Downstream: None.
 func isFrameStartAt(b []byte, i int) bool {
 	if i+4 >= len(b) {
 		return false
@@ -202,6 +239,10 @@ func isFrameStartAt(b []byte, i int) bool {
 	return b[i+4] == '^'
 }
 
+// Purpose: Extract the PC frame type from the start of a buffer.
+// Key aspects: Returns empty string if no valid frame start.
+// Upstream: tryReadLine.
+// Downstream: isFrameStartAt.
 func frameTypeFromBuffer(b []byte) string {
 	if !isFrameStartAt(b, 0) {
 		return ""

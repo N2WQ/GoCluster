@@ -7,10 +7,18 @@ import (
 	"dxcluster/spot"
 )
 
+// Purpose: Verify secondary dedupe splits by source class.
+// Key aspects: Ensures human and skimmer both pass, duplicates suppressed within class.
+// Upstream: go test execution.
+// Downstream: NewSecondaryDeduper and ShouldForward.
 func TestSecondaryDeduperSplitsBySourceClass(t *testing.T) {
 	d := NewSecondaryDeduper(time.Minute, false)
 	now := time.Unix(1_700_000_000, 0).UTC()
 
+	// Purpose: Build a spot with minimal metadata for dedupe tests.
+	// Key aspects: Sets SourceType, time, and DE metadata fields.
+	// Upstream: TestSecondaryDeduperSplitsBySourceClass.
+	// Downstream: spot.NewSpot.
 	makeSpot := func(source spot.SourceType, at time.Time) *spot.Spot {
 		s := spot.NewSpot("K1ABC", "W1XYZ", 14074.0, "FT8")
 		s.SourceType = source

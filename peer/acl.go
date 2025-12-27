@@ -6,6 +6,10 @@ import (
 	"strings"
 )
 
+// Purpose: Parse CIDR strings into IPNet blocks for ACL checks.
+// Key aspects: Accepts single-host entries by appending /32 or /128.
+// Upstream: Peer ACL configuration loading.
+// Downstream: net.ParseCIDR.
 func parseIPACL(cidrs []string) ([]*net.IPNet, error) {
 	var out []*net.IPNet
 	for _, cidr := range cidrs {

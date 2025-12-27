@@ -39,6 +39,10 @@ var SupportedModes = []string{
 	"PSK31",
 }
 
+// Purpose: Return a pointer to the provided bool.
+// Key aspects: Convenience helper for optional settings.
+// Upstream: NewFilter and default normalization.
+// Downstream: None.
 func boolPtr(value bool) *bool {
 	return &value
 }
@@ -116,18 +120,28 @@ var confidenceSymbolScores = map[string]int{
 	"C": 100,
 }
 
-// IsSupportedMode returns true if the given mode is in the supported list.
+// Purpose: Check whether a mode is supported for filtering.
+// Key aspects: Normalizes the input before lookup.
+// Upstream: Telnet filter parsing and validation.
+// Downstream: supportedModeSet.
 func IsSupportedMode(mode string) bool {
 	mode = strings.ToUpper(strings.TrimSpace(mode))
 	return supportedModeSet[mode]
 }
 
-// IsSupportedSource reports whether the label is one of the supported SOURCE categories.
+// Purpose: Check whether a source label is supported for filtering.
+// Key aspects: Normalizes the input before lookup.
+// Upstream: Telnet filter parsing and validation.
+// Downstream: supportedSourceSet.
 func IsSupportedSource(source string) bool {
 	source = strings.ToUpper(strings.TrimSpace(source))
 	return supportedSourceSet[source]
 }
 
+// Purpose: Normalize a source label to a supported canonical value.
+// Key aspects: Returns empty string when unsupported.
+// Upstream: Filter.SetSource, SetDefaultSourceSelection.
+// Downstream: supportedSourceSet.
 func normalizeSource(source string) string {
 	source = strings.ToUpper(strings.TrimSpace(source))
 	if supportedSourceSet[source] {
@@ -136,29 +150,43 @@ func normalizeSource(source string) string {
 	return ""
 }
 
-// IsSupportedContinent returns true if the continent code is known.
+// Purpose: Check whether a continent code is supported.
+// Key aspects: Normalizes the input before lookup.
+// Upstream: Telnet filter parsing and validation.
+// Downstream: supportedContinentSet.
 func IsSupportedContinent(cont string) bool {
 	cont = strings.ToUpper(strings.TrimSpace(cont))
 	return supportedContinentSet[cont]
 }
 
-// IsSupportedZone returns true when the CQ zone falls in the valid range.
+// Purpose: Validate CQ zone range.
+// Key aspects: Inclusive min/max bounds.
+// Upstream: Filter validation and matching.
+// Downstream: minCQZone/maxCQZone constants.
 func IsSupportedZone(zone int) bool {
 	return zone >= minCQZone && zone <= maxCQZone
 }
 
-// MinCQZone exposes the lower bound for CQ zones.
+// Purpose: Return the minimum supported CQ zone.
+// Key aspects: Exposes constant for UI/validation.
+// Upstream: Telnet filter formatting.
+// Downstream: minCQZone constant.
 func MinCQZone() int {
 	return minCQZone
 }
 
-// MaxCQZone exposes the upper bound for CQ zones.
+// Purpose: Return the maximum supported CQ zone.
+// Key aspects: Exposes constant for UI/validation.
+// Upstream: Telnet filter formatting.
+// Downstream: maxCQZone constant.
 func MaxCQZone() int {
 	return maxCQZone
 }
 
-// SetDefaultModeSelection replaces the modes that brand-new filters enable by default.
-// Passing an empty slice resets to the built-in CW/LSB/USB/RTTY set.
+// Purpose: Configure the default mode whitelist for new filters.
+// Key aspects: Normalizes inputs; empty slice resets to the built-in defaults.
+// Upstream: Config load or admin overrides.
+// Downstream: defaultModeSelection.
 func SetDefaultModeSelection(modes []string) {
 	if len(modes) == 0 {
 		defaultModeSelection = []string{"CW", "LSB", "USB", "RTTY"}
@@ -179,12 +207,10 @@ func SetDefaultModeSelection(modes []string) {
 	defaultModeSelection = normalized
 }
 
-// SetDefaultSourceSelection replaces the SOURCE categories that brand-new
-// filters allow by default.
-//
-// Supported categories are "HUMAN" and "SKIMMER". An empty slice (or any input
-// that normalizes to both categories) disables SOURCE filtering (equivalent to
-// allowing ALL sources).
+// Purpose: Configure the default source categories for new filters.
+// Key aspects: Normalizes input; "ALL" or both categories disables source filtering.
+// Upstream: Config load or admin overrides.
+// Downstream: defaultSourceSelection.
 func SetDefaultSourceSelection(sources []string) {
 	if len(sources) == 0 {
 		defaultSourceSelection = nil
@@ -224,9 +250,10 @@ func SetDefaultSourceSelection(sources []string) {
 // It is a variable to allow tests to redirect the path without touching real data.
 var UserDataDir = "data/users"
 
-// SaveUserFilter persists a user's Filter while preserving any existing
-// per-user metadata (such as recent IP history).
-// Callsign is uppercased for filename stability.
+// Purpose: Persist a user's filter while preserving metadata.
+// Key aspects: Loads existing record to merge recent IP history.
+// Upstream: Telnet client save flows.
+// Downstream: LoadUserRecord, SaveUserRecord.
 func SaveUserFilter(callsign string, f *Filter) error {
 	if f == nil {
 		return errors.New("nil filter")
@@ -242,8 +269,10 @@ func SaveUserFilter(callsign string, f *Filter) error {
 	return SaveUserRecord(callsign, record)
 }
 
-// LoadUserFilter loads the saved Filter for a given callsign.
-// Returns os.ErrNotExist if no saved file is found.
+// Purpose: Load the saved filter for a callsign.
+// Key aspects: Returns os.ErrNotExist when no record exists.
+// Upstream: Telnet client login/restore.
+// Downstream: LoadUserRecord.
 func LoadUserFilter(callsign string) (*Filter, error) {
 	record, err := LoadUserRecord(callsign)
 	if err != nil {
@@ -253,7 +282,10 @@ func LoadUserFilter(callsign string) (*Filter, error) {
 	return &filter, nil
 }
 
-// EnsureUserDataDir makes sure the directory for saved filters exists.
+// Purpose: Ensure the per-user data directory exists.
+// Key aspects: Creates the directory tree with default permissions.
+// Upstream: Startup or save operations.
+// Downstream: os.MkdirAll.
 func EnsureUserDataDir() error {
 	return os.MkdirAll(UserDataDir, 0o755)
 }
@@ -340,15 +372,10 @@ type Filter struct {
 	LegacyMinConfidence int `yaml:"minconfidence,omitempty"`
 }
 
-// NewFilter creates a new filter with every band enabled plus the configured
-// default mode and SOURCE selections.
-//
-// Returns:
-//   - *Filter: Initialized filter accepting all bands and the default mode subset
-//
-// Example:
-//
-//	filter := filter.NewFilter()
+// Purpose: Construct a new filter with defaults applied.
+// Key aspects: Starts with all bands, curated mode subset, and default sources.
+// Upstream: Telnet client session initialization.
+// Downstream: Filter setters and default selection state.
 func NewFilter() *Filter {
 	f := &Filter{
 		Bands:                make(map[string]bool),
@@ -415,21 +442,10 @@ func NewFilter() *Filter {
 	return f
 }
 
-// SetBand enables or disables filtering for a specific band.
-//
-// Parameters:
-//   - band: Band to filter (e.g., "20M", "40m")
-//   - enabled: true to accept this band, false to reject
-//
-// Behavior:
-//   - When enabled: adds to the allowlist and removes it from the blocklist
-//   - When disabled: adds to the blocklist and removes it from the allowlist
-//   - Blocklist takes precedence over allowlist during matching
-//
-// Examples:
-//
-//	filter.SetBand("20M", true)  // Allow 20m
-//	filter.SetBand("40m", false) // Explicitly block 40m
+// Purpose: Allow or block a specific band.
+// Key aspects: Normalizes band, updates allow/block lists with deny precedence.
+// Upstream: Telnet PASS/REJECT BAND commands.
+// Downstream: spot.NormalizeBand, spot.IsValidBand.
 func (f *Filter) SetBand(band string, enabled bool) {
 	normalized := spot.NormalizeBand(band)
 	if normalized == "" || !spot.IsValidBand(normalized) {
@@ -454,22 +470,10 @@ func (f *Filter) SetBand(band string, enabled bool) {
 	f.AllBands = len(f.Bands) == 0
 }
 
-// SetMode enables or disables filtering for a specific mode.
-//
-// Parameters:
-//   - mode: Mode to filter (e.g., "CW", "FT8", "USB")
-//   - enabled: true to accept this mode, false to reject
-//
-// Behavior:
-//   - When enabling first mode: Disables AllModes flag (switches to whitelist mode)
-//   - Multiple modes can be enabled (OR logic within modes)
-//   - Disabling a mode removes it from the filter
-//
-// Examples:
-//
-//	filter.SetMode("CW", true)   // Only accept CW (disables all other modes)
-//	filter.SetMode("FT8", true)  // Now accept CW OR FT8
-//	filter.SetMode("CW", false)  // Only accept FT8 now
+// Purpose: Allow or block a specific mode.
+// Key aspects: Updates allow/block lists and AllModes/BlockAllModes flags.
+// Upstream: Telnet PASS/REJECT MODE commands.
+// Downstream: None.
 func (f *Filter) SetMode(mode string, enabled bool) {
 	mode = strings.ToUpper(mode)
 	if f.Modes == nil {
@@ -491,10 +495,10 @@ func (f *Filter) SetMode(mode string, enabled bool) {
 	f.AllModes = len(f.Modes) == 0
 }
 
-// SetSource enables or disables filtering for the spot origin category.
-//
-// "HUMAN" refers to spots marked Spot.IsHuman=true, while "SKIMMER" refers to
-// everything else (Spot.IsHuman=false).
+// Purpose: Allow or block a specific source category.
+// Key aspects: Normalizes to HUMAN/SKIMMER; updates allow/block flags.
+// Upstream: Telnet PASS/REJECT SOURCE commands.
+// Downstream: normalizeSource.
 func (f *Filter) SetSource(source string, enabled bool) {
 	if f == nil {
 		return
@@ -522,26 +526,28 @@ func (f *Filter) SetSource(source string, enabled bool) {
 	f.AllSources = len(f.Sources) == 0
 }
 
-// AddDXCallsignPattern adds a DX callsign pattern to the filter.
-//
-// Parameters:
-//   - pattern: Callsign pattern with optional wildcards (e.g., "W1*", "LZ5VV", "*ABC")
-//
-// Behavior:
-//   - Multiple patterns can be added (OR logic)
-//   - Patterns are case-insensitive (normalized to uppercase)
+// Purpose: Add a DX callsign pattern to the allowlist.
+// Key aspects: Stores uppercase patterns; OR semantics across patterns.
+// Upstream: Telnet PASS DXCALL commands.
+// Downstream: None.
 func (f *Filter) AddDXCallsignPattern(pattern string) {
 	pattern = strings.ToUpper(pattern)
 	f.DXCallsigns = append(f.DXCallsigns, pattern)
 }
 
-// AddDECallsignPattern adds a DE/spotter callsign pattern to the filter.
+// Purpose: Add a DE callsign pattern to the allowlist.
+// Key aspects: Stores uppercase patterns; OR semantics across patterns.
+// Upstream: Telnet PASS DECALL commands.
+// Downstream: None.
 func (f *Filter) AddDECallsignPattern(pattern string) {
 	pattern = strings.ToUpper(pattern)
 	f.DECallsigns = append(f.DECallsigns, pattern)
 }
 
-// SetDXContinent enables or disables filtering for a specific DX continent.
+// Purpose: Allow or block a DX continent code.
+// Key aspects: Normalizes to uppercase and updates allow/block flags.
+// Upstream: Telnet PASS/REJECT DXCONT commands.
+// Downstream: IsSupportedContinent.
 func (f *Filter) SetDXContinent(cont string, enabled bool) {
 	cont = strings.ToUpper(strings.TrimSpace(cont))
 	if !IsSupportedContinent(cont) {
@@ -566,7 +572,10 @@ func (f *Filter) SetDXContinent(cont string, enabled bool) {
 	f.AllDXContinents = len(f.DXContinents) == 0
 }
 
-// SetDEContinent enables or disables filtering for a specific spotter continent.
+// Purpose: Allow or block a DE continent code.
+// Key aspects: Normalizes to uppercase and updates allow/block flags.
+// Upstream: Telnet PASS/REJECT DECONT commands.
+// Downstream: IsSupportedContinent.
 func (f *Filter) SetDEContinent(cont string, enabled bool) {
 	cont = strings.ToUpper(strings.TrimSpace(cont))
 	if !IsSupportedContinent(cont) {
@@ -591,7 +600,10 @@ func (f *Filter) SetDEContinent(cont string, enabled bool) {
 	f.AllDEContinents = len(f.DEContinents) == 0
 }
 
-// SetDXZone enables or disables filtering for a specific DX CQ zone (1-40).
+// Purpose: Allow or block a DX CQ zone.
+// Key aspects: Validates zone range and updates allow/block flags.
+// Upstream: Telnet PASS/REJECT DXZONE commands.
+// Downstream: IsSupportedZone.
 func (f *Filter) SetDXZone(zone int, enabled bool) {
 	if !IsSupportedZone(zone) {
 		return
@@ -615,7 +627,10 @@ func (f *Filter) SetDXZone(zone int, enabled bool) {
 	f.AllDXZones = len(f.DXZones) == 0
 }
 
-// SetDEZone enables or disables filtering for a specific spotter CQ zone (1-40).
+// Purpose: Allow or block a DE CQ zone.
+// Key aspects: Validates zone range and updates allow/block flags.
+// Upstream: Telnet PASS/REJECT DEZONE commands.
+// Downstream: IsSupportedZone.
 func (f *Filter) SetDEZone(zone int, enabled bool) {
 	if !IsSupportedZone(zone) {
 		return
@@ -639,7 +654,10 @@ func (f *Filter) SetDEZone(zone int, enabled bool) {
 	f.AllDEZones = len(f.DEZones) == 0
 }
 
-// SetDXDXCC enables or disables filtering for a specific DX ADIF/DXCC code.
+// Purpose: Allow or block a DX ADIF/DXCC code.
+// Key aspects: Updates allow/block lists with deny precedence.
+// Upstream: Telnet PASS/REJECT DXDXCC commands.
+// Downstream: None.
 func (f *Filter) SetDXDXCC(code int, enabled bool) {
 	if code <= 0 {
 		return
@@ -663,7 +681,10 @@ func (f *Filter) SetDXDXCC(code int, enabled bool) {
 	f.AllDXDXCC = len(f.DXDXCC) == 0
 }
 
-// SetDEDXCC enables or disables filtering for a specific DE ADIF/DXCC code.
+// Purpose: Allow or block a DE ADIF/DXCC code.
+// Key aspects: Updates allow/block lists with deny precedence.
+// Upstream: Telnet PASS/REJECT DEDXCC commands.
+// Downstream: None.
 func (f *Filter) SetDEDXCC(code int, enabled bool) {
 	if code <= 0 {
 		return
@@ -687,31 +708,35 @@ func (f *Filter) SetDEDXCC(code int, enabled bool) {
 	f.AllDEDXCC = len(f.DEDXCC) == 0
 }
 
-// ClearDXCallsignPatterns removes all DX callsign filters.
+// Purpose: Clear all DX callsign patterns.
+// Key aspects: Resets the DX pattern slice to empty.
+// Upstream: Telnet RESET/REJECT DXCALL ALL flows.
+// Downstream: None.
 func (f *Filter) ClearDXCallsignPatterns() {
 	f.DXCallsigns = make([]string, 0)
 }
 
-// ClearDECallsignPatterns removes all DE callsign filters.
+// Purpose: Clear all DE callsign patterns.
+// Key aspects: Resets the DE pattern slice to empty.
+// Upstream: Telnet RESET/REJECT DECALL ALL flows.
+// Downstream: None.
 func (f *Filter) ClearDECallsignPatterns() {
 	f.DECallsigns = make([]string, 0)
 }
 
-// ClearCallsignPatterns clears both DX and DE callsign filters.
+// Purpose: Clear both DX and DE callsign patterns.
+// Key aspects: Delegates to the per-direction clear helpers.
+// Upstream: Telnet RESET CALLSIGN filters.
+// Downstream: ClearDXCallsignPatterns, ClearDECallsignPatterns.
 func (f *Filter) ClearCallsignPatterns() {
 	f.ClearDXCallsignPatterns()
 	f.ClearDECallsignPatterns()
 }
 
-// SetConfidenceSymbol enables or disables filtering for a specific confidence glyph.
-//
-// Parameters:
-//   - symbol: Confidence glyph (e.g., "?", "P", "V")
-//   - enabled: true to accept this glyph, false to reject it
-//
-// Behavior:
-//   - Enabling any glyph disables AllConfidence (whitelist behavior)
-//   - Disabling the last glyph reverts to accepting all confidence values
+// Purpose: Allow or block a confidence glyph.
+// Key aspects: Normalizes glyphs; updates allow/block lists and flags.
+// Upstream: Telnet PASS/REJECT CONFIDENCE commands.
+// Downstream: normalizeConfidenceSymbol.
 func (f *Filter) SetConfidenceSymbol(symbol string, enabled bool) {
 	if f == nil {
 		return
@@ -739,7 +764,10 @@ func (f *Filter) SetConfidenceSymbol(symbol string, enabled bool) {
 	f.AllConfidence = len(f.Confidence) == 0
 }
 
-// ResetConfidence disables confidence-based filtering.
+// Purpose: Clear confidence filters and allow all glyphs.
+// Key aspects: Resets allow/block maps and legacy threshold.
+// Upstream: Telnet RESET CONFIDENCE flows.
+// Downstream: None.
 func (f *Filter) ResetConfidence() {
 	f.Confidence = make(map[string]bool)
 	f.BlockConfidence = make(map[string]bool)
@@ -748,7 +776,10 @@ func (f *Filter) ResetConfidence() {
 	f.LegacyMinConfidence = 0
 }
 
-// SetBeaconEnabled controls whether DX beacons (/B) are delivered.
+// Purpose: Set whether beacon spots are delivered.
+// Key aspects: Stores an explicit bool pointer to preserve tri-state.
+// Upstream: Telnet PASS/REJECT BEACON commands.
+// Downstream: BeaconsEnabled.
 func (f *Filter) SetBeaconEnabled(enabled bool) {
 	if f == nil {
 		return
@@ -757,7 +788,10 @@ func (f *Filter) SetBeaconEnabled(enabled bool) {
 	f.IncludeBeacons = &value
 }
 
-// BeaconsEnabled reports whether the filter currently allows beacon spots.
+// Purpose: Report whether beacon spots are allowed.
+// Key aspects: Defaults to true when unset.
+// Upstream: Filter.Matches.
+// Downstream: None.
 func (f *Filter) BeaconsEnabled() bool {
 	if f == nil || f.IncludeBeacons == nil {
 		return true
@@ -765,7 +799,10 @@ func (f *Filter) BeaconsEnabled() bool {
 	return *f.IncludeBeacons
 }
 
-// SetWWVEnabled controls whether WWV bulletins are delivered.
+// Purpose: Set whether WWV bulletins are delivered.
+// Key aspects: Stores a bool pointer to preserve tri-state.
+// Upstream: Telnet PASS/REJECT WWV commands.
+// Downstream: WWVEnabled.
 func (f *Filter) SetWWVEnabled(enabled bool) {
 	if f == nil {
 		return
@@ -773,7 +810,10 @@ func (f *Filter) SetWWVEnabled(enabled bool) {
 	f.AllowWWV = boolPtr(enabled)
 }
 
-// SetWCYEnabled controls whether WCY bulletins are delivered.
+// Purpose: Set whether WCY bulletins are delivered.
+// Key aspects: Stores a bool pointer to preserve tri-state.
+// Upstream: Telnet PASS/REJECT WCY commands.
+// Downstream: WCYEnabled.
 func (f *Filter) SetWCYEnabled(enabled bool) {
 	if f == nil {
 		return
@@ -781,7 +821,10 @@ func (f *Filter) SetWCYEnabled(enabled bool) {
 	f.AllowWCY = boolPtr(enabled)
 }
 
-// SetAnnounceEnabled controls whether PC93 announcements are delivered.
+// Purpose: Set whether PC93 announcements are delivered.
+// Key aspects: Stores a bool pointer to preserve tri-state.
+// Upstream: Telnet PASS/REJECT ANNOUNCE commands.
+// Downstream: AnnounceEnabled.
 func (f *Filter) SetAnnounceEnabled(enabled bool) {
 	if f == nil {
 		return
@@ -789,7 +832,10 @@ func (f *Filter) SetAnnounceEnabled(enabled bool) {
 	f.AllowAnnounce = boolPtr(enabled)
 }
 
-// WWVEnabled reports whether the filter currently allows WWV bulletins.
+// Purpose: Report whether WWV bulletins are allowed.
+// Key aspects: Defaults to true when unset.
+// Upstream: AllowsBulletin.
+// Downstream: None.
 func (f *Filter) WWVEnabled() bool {
 	if f == nil || f.AllowWWV == nil {
 		return true
@@ -797,7 +843,10 @@ func (f *Filter) WWVEnabled() bool {
 	return *f.AllowWWV
 }
 
-// WCYEnabled reports whether the filter currently allows WCY bulletins.
+// Purpose: Report whether WCY bulletins are allowed.
+// Key aspects: Defaults to true when unset.
+// Upstream: AllowsBulletin.
+// Downstream: None.
 func (f *Filter) WCYEnabled() bool {
 	if f == nil || f.AllowWCY == nil {
 		return true
@@ -805,7 +854,10 @@ func (f *Filter) WCYEnabled() bool {
 	return *f.AllowWCY
 }
 
-// AnnounceEnabled reports whether the filter currently allows PC93 announcements.
+// Purpose: Report whether PC93 announcements are allowed.
+// Key aspects: Defaults to true when unset.
+// Upstream: AllowsBulletin.
+// Downstream: None.
 func (f *Filter) AnnounceEnabled() bool {
 	if f == nil || f.AllowAnnounce == nil {
 		return true
@@ -813,8 +865,10 @@ func (f *Filter) AnnounceEnabled() bool {
 	return *f.AllowAnnounce
 }
 
-// AllowsBulletin reports whether the bulletin kind should be delivered.
-// Supported kinds are WWV/WCY/ANNOUNCE (or PC23/PC73/PC93); unknown kinds default to true.
+// Purpose: Decide whether a bulletin kind should be delivered.
+// Key aspects: Maps legacy PC codes to WWV/WCY/ANNOUNCE; defaults to true.
+// Upstream: Telnet bulletin broadcast.
+// Downstream: WWVEnabled, WCYEnabled, AnnounceEnabled.
 func (f *Filter) AllowsBulletin(kind string) bool {
 	switch strings.ToUpper(strings.TrimSpace(kind)) {
 	case "WWV", "PC23":
@@ -828,17 +882,10 @@ func (f *Filter) AllowsBulletin(kind string) bool {
 	}
 }
 
-// ResetBands clears all band filters and accepts all bands.
-//
-// Behavior:
-//   - Clears the Bands map
-//   - Sets AllBands = true
-//   - Spots from any band will pass (subject to mode/callsign filters)
-//
-// Example:
-//
-//	filter.ResetBands()
-//	// All bands now pass through
+// Purpose: Clear band filters and accept all bands.
+// Key aspects: Resets allow/block maps and flags.
+// Upstream: Telnet RESET BAND or filter reset flows.
+// Downstream: None.
 func (f *Filter) ResetBands() {
 	f.Bands = make(map[string]bool)
 	f.AllBands = true
@@ -846,17 +893,10 @@ func (f *Filter) ResetBands() {
 	f.BlockAllBands = false
 }
 
-// ResetModes clears all mode filters and accepts all modes.
-//
-// Behavior:
-//   - Clears the Modes map
-//   - Sets AllModes = true
-//   - Spots from any mode will pass (subject to band/callsign filters)
-//
-// Example:
-//
-//	filter.ResetModes()
-//	// All modes now pass through
+// Purpose: Clear mode filters and accept all modes.
+// Key aspects: Resets allow/block maps and flags.
+// Upstream: Telnet RESET MODE or filter reset flows.
+// Downstream: None.
 func (f *Filter) ResetModes() {
 	f.Modes = make(map[string]bool)
 	f.AllModes = true
@@ -864,7 +904,10 @@ func (f *Filter) ResetModes() {
 	f.BlockAllModes = false
 }
 
-// ResetSources clears SOURCE filtering and allows both human and automated spots.
+// Purpose: Clear source filters and allow all sources.
+// Key aspects: Resets allow/block maps and flags.
+// Upstream: Telnet RESET SOURCE or filter reset flows.
+// Downstream: None.
 func (f *Filter) ResetSources() {
 	f.Sources = make(map[string]bool)
 	f.AllSources = true
@@ -872,19 +915,10 @@ func (f *Filter) ResetSources() {
 	f.BlockAllSources = false
 }
 
-// Reset clears all filters and returns to default state (accept everything).
-//
-// Equivalent to calling:
-//   - ResetBands()
-//   - ResetModes()
-//   - ClearCallsignPatterns()
-//
-// After reset, all spots pass through the filter.
-//
-// Example:
-//
-//	filter.Reset()
-//	// Filter is now in default state (all spots pass)
+// Purpose: Reset all filter criteria back to permissive defaults.
+// Key aspects: Invokes the specific reset helpers for each filter domain.
+// Upstream: Telnet RESET ALL commands or new-session defaults.
+// Downstream: ResetBands, ResetModes, ResetSources, ClearCallsignPatterns, ResetConfidence, Reset* helpers.
 func (f *Filter) Reset() {
 	f.ResetBands()
 	f.ResetModes()
@@ -905,7 +939,10 @@ func (f *Filter) Reset() {
 	f.SetAnnounceEnabled(true)
 }
 
-// ResetDXContinents clears DX continent filters and accepts all.
+// Purpose: Clear DX continent filters and accept all.
+// Key aspects: Resets allow/block maps and flags.
+// Upstream: Telnet RESET DXCONT flows.
+// Downstream: None.
 func (f *Filter) ResetDXContinents() {
 	f.DXContinents = make(map[string]bool)
 	f.AllDXContinents = true
@@ -913,7 +950,10 @@ func (f *Filter) ResetDXContinents() {
 	f.BlockAllDXContinents = false
 }
 
-// ResetDEContinents clears spotter continent filters and accepts all.
+// Purpose: Clear DE continent filters and accept all.
+// Key aspects: Resets allow/block maps and flags.
+// Upstream: Telnet RESET DECONT flows.
+// Downstream: None.
 func (f *Filter) ResetDEContinents() {
 	f.DEContinents = make(map[string]bool)
 	f.AllDEContinents = true
@@ -921,7 +961,10 @@ func (f *Filter) ResetDEContinents() {
 	f.BlockAllDEContinents = false
 }
 
-// ResetDXZones clears DX CQ zone filters and accepts all.
+// Purpose: Clear DX CQ zone filters and accept all.
+// Key aspects: Resets allow/block maps and flags.
+// Upstream: Telnet RESET DXZONE flows.
+// Downstream: None.
 func (f *Filter) ResetDXZones() {
 	f.DXZones = make(map[int]bool)
 	f.AllDXZones = true
@@ -929,7 +972,10 @@ func (f *Filter) ResetDXZones() {
 	f.BlockAllDXZones = false
 }
 
-// ResetDEZones clears spotter CQ zone filters and accepts all.
+// Purpose: Clear DE CQ zone filters and accept all.
+// Key aspects: Resets allow/block maps and flags.
+// Upstream: Telnet RESET DEZONE flows.
+// Downstream: None.
 func (f *Filter) ResetDEZones() {
 	f.DEZones = make(map[int]bool)
 	f.AllDEZones = true
@@ -937,7 +983,10 @@ func (f *Filter) ResetDEZones() {
 	f.BlockAllDEZones = false
 }
 
-// ResetDXDXCC clears DX ADIF/DXCC filters and accepts all.
+// Purpose: Clear DX ADIF/DXCC filters and accept all.
+// Key aspects: Resets allow/block maps and flags.
+// Upstream: Telnet RESET DXDXCC flows.
+// Downstream: None.
 func (f *Filter) ResetDXDXCC() {
 	f.DXDXCC = make(map[int]bool)
 	f.BlockDXDXCC = make(map[int]bool)
@@ -945,7 +994,10 @@ func (f *Filter) ResetDXDXCC() {
 	f.BlockAllDXDXCC = false
 }
 
-// ResetDEDXCC clears DE ADIF/DXCC filters and accepts all.
+// Purpose: Clear DE ADIF/DXCC filters and accept all.
+// Key aspects: Resets allow/block maps and flags.
+// Upstream: Telnet RESET DEDXCC flows.
+// Downstream: None.
 func (f *Filter) ResetDEDXCC() {
 	f.DEDXCC = make(map[int]bool)
 	f.BlockDEDXCC = make(map[int]bool)
@@ -953,6 +1005,11 @@ func (f *Filter) ResetDEDXCC() {
 	f.BlockAllDEDXCC = false
 }
 
+// Purpose: Evaluate whether a spot passes all active filters.
+// Key aspects: Applies deny-first allow/block logic across bands, modes, sources,
+// geography, grids, confidence, and callsign patterns.
+// Upstream: Telnet broadcast workers.
+// Downstream: passesStringFilter, passesIntFilter, matchesCallsignPattern.
 // Matches returns true if the spot passes all active filters.
 //
 // Parameters:
@@ -1093,7 +1150,10 @@ func (f *Filter) Matches(s *spot.Spot) bool {
 	return true // Passed all filters
 }
 
-// passesStringFilter evaluates a token against allow/block lists with deny-first semantics.
+// Purpose: Evaluate a string token against allow/block lists.
+// Key aspects: Deny-first semantics; allow list optional when allowAll is true.
+// Upstream: Filter.Matches.
+// Downstream: safeTrimSpace.
 func passesStringFilter(token string, allow map[string]bool, block map[string]bool, allowAll, blockAll bool) bool {
 	if blockAll {
 		return false
@@ -1113,8 +1173,10 @@ func passesStringFilter(token string, allow map[string]bool, block map[string]bo
 	return true
 }
 
-// safeTrimSpace trims whitespace but guards against malformed string headers that could panic.
-// If a panic occurs, it returns an empty string to fail closed.
+// Purpose: Trim whitespace with panic protection.
+// Key aspects: Fails closed by returning empty string if panic occurs.
+// Upstream: passesStringFilter.
+// Downstream: strings.TrimSpace.
 func safeTrimSpace(s string) (out string) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -1125,7 +1187,10 @@ func safeTrimSpace(s string) (out string) {
 	return
 }
 
-// passesIntFilter evaluates an integer token against allow/block lists with deny-first semantics.
+// Purpose: Evaluate an integer token against allow/block lists.
+// Key aspects: Deny-first semantics; optional validator controls unknown values.
+// Upstream: Filter.Matches.
+// Downstream: validator callback.
 func passesIntFilter(token int, allow map[int]bool, block map[int]bool, allowAll, blockAll bool, validator func(int) bool) bool {
 	if blockAll {
 		return false
@@ -1151,6 +1216,10 @@ func passesIntFilter(token int, allow map[int]bool, block map[int]bool, allowAll
 	return true
 }
 
+// Purpose: Match a callsign against a simple wildcard pattern.
+// Key aspects: Supports leading or trailing '*' only; case-insensitive.
+// Upstream: Filter.Matches.
+// Downstream: strings.HasPrefix/HasSuffix.
 // matchesCallsignPattern checks if a callsign matches a pattern with wildcards.
 //
 // Parameters:
@@ -1197,8 +1266,10 @@ func matchesCallsignPattern(callsign, pattern string) bool {
 	return false
 }
 
-// isConfidenceExemptMode reports whether confidence filtering should be skipped
-// because the pipeline never assigns consensus/confidence glyphs to that mode.
+// Purpose: Report whether confidence filtering should be skipped for a mode.
+// Key aspects: Exempts modes that never receive confidence glyphs.
+// Upstream: Filter.Matches.
+// Downstream: None.
 func isConfidenceExemptMode(mode string) bool {
 	switch strings.ToUpper(strings.TrimSpace(mode)) {
 	case "FT8", "FT4":
@@ -1208,6 +1279,10 @@ func isConfidenceExemptMode(mode string) bool {
 	}
 }
 
+// Purpose: Render a human-readable summary of active filters.
+// Key aspects: Describes allow/block state for each filter category.
+// Upstream: Telnet SHOW FILTER command output.
+// Downstream: enabled* helpers and filter flags.
 // String returns a human-readable description of the active filters.
 //
 // Returns:
@@ -1385,7 +1460,10 @@ func (f *Filter) String() string {
 	return strings.Join(parts, " | ")
 }
 
-// EnabledConfidenceSymbols returns the currently whitelisted glyphs in display order.
+// Purpose: Return whitelisted confidence glyphs in display order.
+// Key aspects: Preserves supported glyph ordering, then appends unknown ones.
+// Upstream: Filter.String and UI display.
+// Downstream: SupportedConfidenceSymbols.
 func (f *Filter) EnabledConfidenceSymbols() []string {
 	if f == nil || len(f.Confidence) == 0 {
 		return nil
@@ -1406,7 +1484,10 @@ func (f *Filter) EnabledConfidenceSymbols() []string {
 	return result
 }
 
-// ConfidenceSymbolEnabled reports whether the glyph is currently allowed.
+// Purpose: Report whether a confidence glyph is allowed.
+// Key aspects: Defaults to allowed when AllConfidence is true.
+// Upstream: Filter.Matches.
+// Downstream: normalizeConfidenceSymbol.
 func (f *Filter) ConfidenceSymbolEnabled(symbol string) bool {
 	if f == nil || f.AllConfidence {
 		return true
@@ -1418,7 +1499,10 @@ func (f *Filter) ConfidenceSymbolEnabled(symbol string) bool {
 	return f.Confidence[canonical]
 }
 
-// enabledContinents returns sorted continent labels from the provided map.
+// Purpose: Return sorted continent labels from a map.
+// Key aspects: Returns "NONE" when the map is empty.
+// Upstream: Filter.String.
+// Downstream: sort.Strings.
 func enabledContinents(m map[string]bool) []string {
 	if len(m) == 0 {
 		return []string{"NONE"}
@@ -1431,7 +1515,10 @@ func enabledContinents(m map[string]bool) []string {
 	return out
 }
 
-// enabledZones returns sorted CQ zone labels as strings.
+// Purpose: Return sorted CQ zone labels as strings.
+// Key aspects: Returns "NONE" when the map is empty.
+// Upstream: Filter.String.
+// Downstream: sort.Ints, strconv.Itoa.
 func enabledZones(m map[int]bool) []string {
 	if len(m) == 0 {
 		return []string{"NONE"}
@@ -1448,7 +1535,10 @@ func enabledZones(m map[int]bool) []string {
 	return strs
 }
 
-// enabledGrid2 returns sorted 2-character grid prefixes from the provided map.
+// Purpose: Return sorted 2-character grid prefixes.
+// Key aspects: Returns "NONE" when the map is empty.
+// Upstream: Filter.String.
+// Downstream: sort.Strings.
 func enabledGrid2(m map[string]bool) []string {
 	if len(m) == 0 {
 		return []string{"NONE"}
@@ -1461,7 +1551,10 @@ func enabledGrid2(m map[string]bool) []string {
 	return out
 }
 
-// enabledDXCC returns sorted ADIF/DXCC codes from the provided map.
+// Purpose: Return sorted ADIF/DXCC codes as strings.
+// Key aspects: Returns "NONE" when the map is empty.
+// Upstream: Filter.String.
+// Downstream: sort.Ints, strconv.Itoa.
 func enabledDXCC(m map[int]bool) []string {
 	if len(m) == 0 {
 		return []string{"NONE"}
@@ -1478,7 +1571,10 @@ func enabledDXCC(m map[int]bool) []string {
 	return strs
 }
 
-// IsSupportedConfidenceSymbol returns true if the glyph is one of the known consensus indicators.
+// Purpose: Check whether a confidence glyph is supported.
+// Key aspects: Normalizes input before lookup.
+// Upstream: Telnet filter validation.
+// Downstream: supportedConfidenceSymbolSet.
 func IsSupportedConfidenceSymbol(symbol string) bool {
 	normalized := strings.ToUpper(strings.TrimSpace(symbol))
 	if normalized == "" {
@@ -1487,6 +1583,10 @@ func IsSupportedConfidenceSymbol(symbol string) bool {
 	return supportedConfidenceSymbolSet[normalized]
 }
 
+// Purpose: Normalize confidence inputs (glyphs or percentages) to glyphs.
+// Key aspects: Accepts '?/S/P/V/B/C' or numeric percentages.
+// Upstream: Filter.SetConfidenceSymbol, ConfidenceSymbolEnabled.
+// Downstream: supportedConfidenceSymbolSet, strconv.Atoi.
 func normalizeConfidenceSymbol(label string) string {
 	value := strings.TrimSpace(label)
 	if value == "" {
@@ -1514,6 +1614,10 @@ func normalizeConfidenceSymbol(label string) string {
 	}
 }
 
+// Purpose: Convert a numeric threshold into allowed confidence glyphs.
+// Key aspects: Clamps range 0..100 and includes glyphs >= threshold score.
+// Upstream: Filter.migrateLegacyConfidence.
+// Downstream: confidenceSymbolScores.
 func confidenceSymbolsForThreshold(threshold int) []string {
 	if threshold < 0 {
 		threshold = 0
@@ -1531,6 +1635,10 @@ func confidenceSymbolsForThreshold(threshold int) []string {
 	return result
 }
 
+// Purpose: Migrate legacy percentage-based confidence to glyph-based filters.
+// Key aspects: Populates glyph map and clears legacy field.
+// Upstream: Filter.normalizeDefaults after loading from disk.
+// Downstream: confidenceSymbolsForThreshold.
 func (f *Filter) migrateLegacyConfidence() {
 	if f == nil {
 		return
@@ -1552,8 +1660,10 @@ func (f *Filter) migrateLegacyConfidence() {
 	}
 }
 
-// normalizeDefaults repairs zero-value filters loaded from disk so missing fields
-// revert to the permissive defaults instead of accidentally blocking traffic.
+// Purpose: Repair zero-value filters loaded from disk.
+// Key aspects: Ensures maps/pointers exist and default flags are permissive.
+// Upstream: LoadUserRecord or YAML decoding flow.
+// Downstream: migrateLegacyConfidence, boolPtr.
 func (f *Filter) normalizeDefaults() {
 	if f == nil {
 		return
@@ -1678,9 +1788,10 @@ func (f *Filter) normalizeDefaults() {
 	}
 }
 
-// SetGrid2Prefix enables or disables a specific 2-character grid prefix.
-// Tokens longer than two characters are truncated to the first two; invalid
-// tokens are ignored.
+// Purpose: Allow or block a DX 2-character grid prefix.
+// Key aspects: Normalizes to two characters; updates allow/block maps.
+// Upstream: Telnet PASS/REJECT DXGRID2 commands.
+// Downstream: normalizeGrid2Token.
 func (f *Filter) SetDXGrid2Prefix(grid string, enabled bool) {
 	token := normalizeGrid2Token(grid)
 	if token == "" {
@@ -1705,7 +1816,10 @@ func (f *Filter) SetDXGrid2Prefix(grid string, enabled bool) {
 	f.AllDXGrid2 = len(f.DXGrid2Prefixes) == 0
 }
 
-// SetDEGrid2Prefix enables or disables a specific 2-character DE grid prefix.
+// Purpose: Allow or block a DE 2-character grid prefix.
+// Key aspects: Normalizes to two characters; updates allow/block maps.
+// Upstream: Telnet PASS/REJECT DEGRID2 commands.
+// Downstream: normalizeGrid2Token.
 func (f *Filter) SetDEGrid2Prefix(grid string, enabled bool) {
 	token := normalizeGrid2Token(grid)
 	if token == "" {
@@ -1730,7 +1844,10 @@ func (f *Filter) SetDEGrid2Prefix(grid string, enabled bool) {
 	f.AllDEGrid2 = len(f.DEGrid2Prefixes) == 0
 }
 
-// ResetDXGrid2 clears the DX 2-character grid whitelist and accepts all.
+// Purpose: Clear DX grid filters and accept all grids.
+// Key aspects: Resets allow/block maps and flags.
+// Upstream: Telnet RESET DXGRID2 flows.
+// Downstream: None.
 func (f *Filter) ResetDXGrid2() {
 	f.DXGrid2Prefixes = make(map[string]bool)
 	f.AllDXGrid2 = true
@@ -1738,7 +1855,10 @@ func (f *Filter) ResetDXGrid2() {
 	f.BlockAllDXGrid2 = false
 }
 
-// ResetDEGrid2 clears the DE 2-character grid whitelist and accepts all.
+// Purpose: Clear DE grid filters and accept all grids.
+// Key aspects: Resets allow/block maps and flags.
+// Upstream: Telnet RESET DEGRID2 flows.
+// Downstream: None.
 func (f *Filter) ResetDEGrid2() {
 	f.DEGrid2Prefixes = make(map[string]bool)
 	f.AllDEGrid2 = true
@@ -1746,6 +1866,10 @@ func (f *Filter) ResetDEGrid2() {
 	f.BlockAllDEGrid2 = false
 }
 
+// Purpose: Normalize a grid token to a 2-character prefix.
+// Key aspects: Uppercases, trims, and rejects invalid lengths.
+// Upstream: SetDXGrid2Prefix, SetDEGrid2Prefix, Filter.Matches.
+// Downstream: strings helpers.
 func normalizeGrid2Token(grid string) string {
 	grid = strings.ToUpper(strings.TrimSpace(grid))
 	if grid == "" {
@@ -1760,7 +1884,10 @@ func normalizeGrid2Token(grid string) string {
 	return grid
 }
 
-// prefix2 returns the first two characters of an already-normalized grid prefix.
+// Purpose: Return the first two characters of a normalized grid prefix.
+// Key aspects: Returns empty string if too short.
+// Upstream: Filter.Matches.
+// Downstream: None.
 func prefix2(grid2 string) string {
 	if len(grid2) < 2 {
 		return ""

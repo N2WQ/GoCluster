@@ -79,6 +79,10 @@ type ctyTrieNode struct {
 	terminalKey string
 }
 
+// Purpose: Build a read-only trie over CTY keys for longest-prefix lookups.
+// Key aspects: Stores nodes in a slice with integer child indexes for compactness.
+// Upstream: LoadCTYDatabaseFromReader.
+// Downstream: ctyTrie.longestPrefixKey.
 func buildCTYTrie(keys []string) ctyTrie {
 	tr := ctyTrie{nodes: []ctyTrieNode{{next: make(map[byte]int)}}}
 	for _, key := range keys {
@@ -106,6 +110,10 @@ func buildCTYTrie(keys []string) ctyTrie {
 	return tr
 }
 
+// Purpose: Find the longest CTY prefix matching a callsign.
+// Key aspects: Walks the trie once, tracking the latest terminal key.
+// Upstream: CTYDatabase.lookupCallsignNoCache.
+// Downstream: trie node traversal.
 func (tr *ctyTrie) longestPrefixKey(cs string) (string, bool) {
 	if tr == nil || len(tr.nodes) == 0 || cs == "" {
 		return "", false
@@ -143,7 +151,10 @@ type LookupMetrics struct {
 	ValidatedFromCache uint64
 }
 
-// LoadCTYDatabase loads cty.plist into a lookup database.
+// Purpose: Load the CTY plist file from disk into an in-memory database.
+// Key aspects: Opens the file and delegates parsing/normalization.
+// Upstream: main.go startup, cmd/ctylookup.
+// Downstream: LoadCTYDatabaseFromReader.
 func LoadCTYDatabase(path string) (*CTYDatabase, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -153,10 +164,10 @@ func LoadCTYDatabase(path string) (*CTYDatabase, error) {
 	return LoadCTYDatabaseFromReader(f)
 }
 
-// LoadCTYDatabaseFromReader decodes CTY data from an io.Reader (exposed for testing).
-// It normalizes keys to uppercase and pre-sorts them longest-first for prefix
-// search speed (useful for debugging/tests). Longest-prefix lookups are resolved
-// via a read-only trie built once at load time.
+// Purpose: Decode CTY data from a reader into a lookup database.
+// Key aspects: Normalizes keys, sorts by length for deterministic ordering, and builds a trie.
+// Upstream: LoadCTYDatabase, tests.
+// Downstream: decodeCTYData, buildCTYTrie.
 func LoadCTYDatabaseFromReader(r io.ReadSeeker) (*CTYDatabase, error) {
 	data, err := decodeCTYData(r)
 	if err != nil {
@@ -183,6 +194,10 @@ func LoadCTYDatabaseFromReader(r io.ReadSeeker) (*CTYDatabase, error) {
 	}, nil
 }
 
+// Purpose: Decode and normalize CTY plist data.
+// Key aspects: Uppercases/trim keys to normalize prefixes.
+// Upstream: LoadCTYDatabaseFromReader.
+// Downstream: plist decoder.
 func decodeCTYData(r io.ReadSeeker) (map[string]PrefixInfo, error) {
 	var raw map[string]PrefixInfo
 	decoder := plist.NewDecoder(r)
@@ -199,6 +214,10 @@ func decodeCTYData(r io.ReadSeeker) (map[string]PrefixInfo, error) {
 
 var suffixes = []string{"/QRP", "/P", "/M", "/MM", "/AM"}
 
+// Purpose: Normalize callsigns for CTY lookup.
+// Key aspects: Uppercases, trims, and strips portable suffixes.
+// Upstream: CTYDatabase.LookupCallsign.
+// Downstream: strings helpers.
 func normalizeCallsign(cs string) string {
 	cs = strings.ToUpper(strings.TrimSpace(cs))
 	for _, suf := range suffixes {
@@ -209,8 +228,10 @@ func normalizeCallsign(cs string) string {
 	return cs
 }
 
-// LookupCallsign returns metadata for the callsign or false if unknown. Results
-// are memoized (including misses) to cut repeated plist scans during bursts.
+// Purpose: Resolve CTY metadata for a callsign, with caching.
+// Key aspects: Normalizes callsign, caches hits/misses, and updates metrics.
+// Upstream: main.go enrichment, RBN/PSKReporter clients, cmd/ctylookup.
+// Downstream: cacheGet, lookupCallsignNoCache, cacheStore.
 func (db *CTYDatabase) LookupCallsign(cs string) (*PrefixInfo, bool) {
 	cs = normalizeCallsign(cs)
 	db.totalLookups.Add(1)
@@ -233,6 +254,10 @@ func (db *CTYDatabase) LookupCallsign(cs string) (*PrefixInfo, bool) {
 	return entry.info, entry.ok
 }
 
+// Purpose: Resolve CTY metadata without using the cache.
+// Key aspects: Checks exact callsign first, then longest-prefix in trie.
+// Upstream: CTYDatabase.LookupCallsign.
+// Downstream: ctyTrie.longestPrefixKey, clonePrefix.
 func (db *CTYDatabase) lookupCallsignNoCache(cs string) (*PrefixInfo, bool) {
 	if info, ok := db.Data[cs]; ok {
 		return clonePrefix(info), true
@@ -245,7 +270,10 @@ func (db *CTYDatabase) lookupCallsignNoCache(cs string) (*PrefixInfo, bool) {
 	return nil, false
 }
 
-// KeysWithPrefix returns all known CTY keys starting with prefix (used for testing).
+// Purpose: Return CTY keys that share a prefix (test helper).
+// Key aspects: Normalizes prefix and scans the sorted key list.
+// Upstream: Tests.
+// Downstream: None.
 func (db *CTYDatabase) KeysWithPrefix(pref string) []string {
 	norm := strings.ToUpper(strings.TrimSpace(pref))
 	matches := make([]string, 0)
@@ -257,11 +285,19 @@ func (db *CTYDatabase) KeysWithPrefix(pref string) []string {
 	return matches
 }
 
+// Purpose: Clone a PrefixInfo to avoid sharing mutable references.
+// Key aspects: Returns a copy on the heap.
+// Upstream: lookupCallsignNoCache.
+// Downstream: None.
 func clonePrefix(info PrefixInfo) *PrefixInfo {
 	copy := info
 	return &copy
 }
 
+// Purpose: Fetch a cached lookup result for a callsign.
+// Key aspects: Uses an LRU list protected by a mutex.
+// Upstream: CTYDatabase.LookupCallsign.
+// Downstream: cacheList/cacheMap mutation.
 func (db *CTYDatabase) cacheGet(cs string) (cacheEntry, bool) {
 	if db == nil || db.cacheCap <= 0 {
 		return cacheEntry{}, false
@@ -277,6 +313,10 @@ func (db *CTYDatabase) cacheGet(cs string) (cacheEntry, bool) {
 	return item.entry, true
 }
 
+// Purpose: Store a lookup result in the LRU cache.
+// Key aspects: Updates existing entries and evicts LRU on overflow.
+// Upstream: CTYDatabase.LookupCallsign.
+// Downstream: cacheList/cacheMap mutation.
 func (db *CTYDatabase) cacheStore(cs string, entry cacheEntry) {
 	if db == nil || db.cacheCap <= 0 {
 		return
@@ -307,7 +347,10 @@ func (db *CTYDatabase) cacheStore(cs string, entry cacheEntry) {
 	db.cacheEntries.Store(uint64(len(db.cacheMap)))
 }
 
-// Metrics returns snapshot of lookup/cache counters.
+// Purpose: Return snapshot of CTY lookup/cache metrics.
+// Key aspects: Uses atomic loads for lock-free reads.
+// Upstream: Metrics reporting/diagnostics.
+// Downstream: atomic counters.
 func (db *CTYDatabase) Metrics() LookupMetrics {
 	if db == nil {
 		return LookupMetrics{}

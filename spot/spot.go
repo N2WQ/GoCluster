@@ -75,6 +75,10 @@ type CallMetadata struct {
 	ADIF      int // ADIF/DXCC country code from CTY lookup
 }
 
+// Purpose: Construct a new spot with normalized defaults.
+// Key aspects: Normalizes calls/mode, rounds frequency, sets defaults.
+// Upstream: All spot creation paths (parsers and tests).
+// Downstream: EnsureNormalized and RefreshBeaconFlag.
 // NewSpot creates a new spot with sensible defaults
 func NewSpot(dxCall, deCall string, freq float64, mode string) *Spot {
 	freq = roundFrequencyTo100Hz(freq)
@@ -96,12 +100,20 @@ func NewSpot(dxCall, deCall string, freq float64, mode string) *Spot {
 	return spot
 }
 
+// Purpose: Round a kHz frequency to the nearest 100 Hz (0.1 kHz).
+// Key aspects: Uses half-up rounding to avoid banker rounding.
+// Upstream: NewSpot and frequency normalization.
+// Downstream: math.Floor.
 // roundFrequencyTo100Hz normalizes a kHz value to the nearest 100 Hz (0.1 kHz).
 func roundFrequencyTo100Hz(freqKHz float64) float64 {
 	// Use half-up rounding to avoid banker's rounding surprises at .x5 boundaries.
 	return math.Floor(freqKHz*10+0.5) / 10
 }
 
+// Purpose: Compute a 32-bit dedupe hash for the spot.
+// Key aspects: Uses fixed-size buffer with time/freq/calls to avoid allocations.
+// Upstream: deduplication (primary).
+// Downstream: writeFixedNormalizedCall and xxh3.Hash.
 // Hash32 returns a 32-bit hash for deduplication using a fixed-layout,
 // zero-allocation buffer. The hash covers:
 //   - Time truncated to the minute (Unix seconds)
@@ -125,6 +137,10 @@ func (s *Spot) Hash32() uint32 {
 	return uint32(xxh3.Hash(buf[:]))
 }
 
+// Purpose: Write a normalized callsign into a fixed-width buffer.
+// Key aspects: Pads/truncates to 12 bytes with zero fill.
+// Upstream: Spot.Hash32.
+// Downstream: None (byte copy only).
 // writeFixedNormalizedCall assumes call is already normalized/uppercased and fits into ASCII bytes.
 func writeFixedNormalizedCall(dst []byte, call string) {
 	const maxLen = 12
@@ -163,6 +179,10 @@ type stringBuilder struct {
 	buf []byte
 }
 
+// Purpose: Ensure the stringBuilder has capacity for n more bytes.
+// Key aspects: Grows underlying buffer without shrinking.
+// Upstream: FormatDXCluster and helpers.
+// Downstream: make/copy for buffer growth.
 func (sb *stringBuilder) Grow(n int) {
 	if n <= 0 {
 		return
@@ -175,14 +195,26 @@ func (sb *stringBuilder) Grow(n int) {
 	sb.buf = newBuf
 }
 
+// Purpose: Append a string to the builder buffer.
+// Key aspects: Appends raw bytes without extra allocations.
+// Upstream: FormatDXCluster and helpers.
+// Downstream: slice append.
 func (sb *stringBuilder) AppendString(s string) {
 	sb.buf = append(sb.buf, s...)
 }
 
+// Purpose: Append a single byte to the builder buffer.
+// Key aspects: Lightweight wrapper over slice append.
+// Upstream: FormatDXCluster and helpers.
+// Downstream: slice append.
 func (sb *stringBuilder) AppendByte(b byte) {
 	sb.buf = append(sb.buf, b)
 }
 
+// Purpose: Populate cached normalized fields on the Spot.
+// Key aspects: Uppercases/normalizes mode, band, calls, and grid prefixes.
+// Upstream: Multiple hot paths (dedup, format, filters).
+// Downstream: NormalizeCallsign and string operations.
 // EnsureNormalized populates cached normalized fields to avoid repeated string operations on hot paths.
 func (s *Spot) EnsureNormalized() {
 	if s.ModeNorm == "" && s.Mode != "" {
@@ -217,10 +249,18 @@ func (s *Spot) EnsureNormalized() {
 	}
 }
 
+// Purpose: Return the current length of the builder buffer.
+// Key aspects: Thin wrapper around len.
+// Upstream: FormatDXCluster and helpers.
+// Downstream: None.
 func (sb *stringBuilder) Len() int {
 	return len(sb.buf)
 }
 
+// Purpose: Truncate the builder buffer to n bytes.
+// Key aspects: Clamps negative n to zero.
+// Upstream: FormatDXCluster and helpers.
+// Downstream: slice reslice.
 func (sb *stringBuilder) Truncate(n int) {
 	if n < 0 {
 		n = 0
@@ -231,12 +271,20 @@ func (sb *stringBuilder) Truncate(n int) {
 	sb.buf = sb.buf[:n]
 }
 
+// Purpose: Convert the builder buffer to a string.
+// Key aspects: Returns a new string backed by copied bytes.
+// Upstream: FormatDXCluster.
+// Downstream: string conversion.
 func (sb *stringBuilder) String() string {
 	return string(sb.buf)
 }
 
 const spaceChunk = "                " // 16 spaces, used to pad without extra allocations
 
+// Purpose: Append a specific count of spaces to the builder.
+// Key aspects: Uses a constant chunk to minimize allocations.
+// Upstream: FormatDXCluster.
+// Downstream: stringBuilder.AppendString.
 func writeSpaces(b *stringBuilder, count int) {
 	for count > 0 {
 		if count > len(spaceChunk) {
@@ -249,6 +297,10 @@ func writeSpaces(b *stringBuilder, count int) {
 	}
 }
 
+// Purpose: Format a spot as a fixed-width DX cluster line.
+// Key aspects: Enforces column layout and caches formatted string once.
+// Upstream: telnet broadcast and archive formatting.
+// Downstream: formatZoneGridComment, writeSpaces, and stringBuilder helpers.
 // FormatDXCluster formats the spot as a fixed-width DX-cluster line.
 //
 // The returned string is always exactly 78 characters (no CRLF). Telnet output
@@ -274,6 +326,10 @@ func writeSpaces(b *stringBuilder, count int) {
 //   - CW/RTTY: no '+' prefix (e.g., "CW 23 dB")
 //   - All other modes: '+' is shown for non-negative values (e.g., "FT8 +12 dB")
 func (s *Spot) FormatDXCluster() string {
+	// Purpose: Populate s.formatted once for reuse on repeat formatting.
+	// Key aspects: Uses sync.Once to avoid redundant allocations.
+	// Upstream: FormatDXCluster.
+	// Downstream: stringBuilder helpers and s.formatZoneGridComment.
 	s.formatOnce.Do(func() {
 		// Pre-size a buffer to avoid multiple allocations while preserving the
 		// exact column layout described above.
@@ -417,6 +473,10 @@ func (s *Spot) FormatDXCluster() string {
 }
 
 // FreqToBand converts a frequency in kHz to a band string
+// Purpose: Map a frequency in kHz to an amateur band label.
+// Key aspects: Uses inclusive band edges and returns "unknown" when unmatched.
+// Upstream: NewSpot and parsing paths.
+// Downstream: None (pure mapping).
 func FreqToBand(freq float64) string {
 	for _, band := range bandTable {
 		if freq >= band.Min && freq <= band.Max {
@@ -427,6 +487,10 @@ func FreqToBand(freq float64) string {
 }
 
 // IsValid performs basic validation on the spot
+// Purpose: Validate core spot fields for basic sanity.
+// Key aspects: Ensures calls are valid and frequency > 0.
+// Upstream: ingest validation and tests.
+// Downstream: IsValidCallsign and frequency checks.
 func (s *Spot) IsValid() bool {
 	// Must have callsigns
 	if s.DXCall == "" || s.DECall == "" {
@@ -448,6 +512,10 @@ func (s *Spot) IsValid() bool {
 }
 
 // String returns a human-readable representation
+// Purpose: Return a concise debug string for a spot.
+// Key aspects: Includes call, freq, mode, and comment.
+// Upstream: logging/debug outputs.
+// Downstream: fmt.Sprintf and sanitizeDXClusterComment.
 func (s *Spot) String() string {
 	return fmt.Sprintf("[%s] %s spotted %s on %.1f kHz (%s %s) - %s",
 		s.Time.Format("15:04:05"),
@@ -459,10 +527,18 @@ func (s *Spot) String() string {
 		s.Comment)
 }
 
+// Purpose: Build the comment payload with zone/grid metadata.
+// Key aspects: Appends zone/grid tags when available.
+// Upstream: FormatDXCluster.
+// Downstream: formatCQZoneLabel and formatGridLabel.
 func (s *Spot) formatZoneGridComment() string {
 	return sanitizeDXClusterComment(s.Comment)
 }
 
+// Purpose: Format a CQ zone label for display.
+// Key aspects: Returns empty for invalid zones.
+// Upstream: formatZoneGridComment.
+// Downstream: fmt.Sprintf.
 func formatCQZoneLabel(zone int) string {
 	if zone <= 0 {
 		return "??"
@@ -470,6 +546,10 @@ func formatCQZoneLabel(zone int) string {
 	return fmt.Sprintf("%02d", zone)
 }
 
+// Purpose: Format a grid label for display.
+// Key aspects: Normalizes to uppercase and truncates to 4 chars.
+// Upstream: formatZoneGridComment.
+// Downstream: strings.ToUpper/TrimSpace.
 func formatGridLabel(grid string) string {
 	grid = strings.TrimSpace(strings.ToUpper(grid))
 	if grid == "" {
@@ -481,6 +561,10 @@ func formatGridLabel(grid string) string {
 	return grid
 }
 
+// Purpose: Sanitize comment text for DX cluster line output.
+// Key aspects: Strips control chars and collapses whitespace.
+// Upstream: String and FormatDXCluster.
+// Downstream: strings.Builder and rune filtering.
 func sanitizeDXClusterComment(comment string) string {
 	comment = strings.TrimSpace(comment)
 	if comment == "" {

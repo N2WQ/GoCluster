@@ -34,6 +34,10 @@ type HarmonicDetector struct {
 	sweepQuit chan struct{}
 }
 
+// Purpose: Construct a harmonic detector with configured thresholds.
+// Key aspects: Initializes entry maps and stores settings.
+// Upstream: main startup.
+// Downstream: map allocation.
 // NewHarmonicDetector creates a detector with the provided settings.
 func NewHarmonicDetector(settings HarmonicSettings) *HarmonicDetector {
 	return &HarmonicDetector{
@@ -43,6 +47,10 @@ func NewHarmonicDetector(settings HarmonicSettings) *HarmonicDetector {
 	}
 }
 
+// Purpose: Determine whether a spot is a harmonic that should be dropped.
+// Key aspects: Checks recency, report deltas, and harmonic multiples.
+// Upstream: processOutputSpots harmonic suppression stage.
+// Downstream: detectHarmonic and cleanup/prune.
 // ShouldDrop returns true if the given spot appears to be a harmonic of a lower
 // frequency fundamental. The second return value is the fundamental frequency
 // that triggered the drop (in kHz) for logging purposes, and the third value is
@@ -84,6 +92,10 @@ func (hd *HarmonicDetector) ShouldDrop(s *Spot, now time.Time) (bool, float64, i
 	return false, 0, 0, 0
 }
 
+// Purpose: Check candidate fundamentals for a harmonic match.
+// Key aspects: Evaluates harmonic multiples and report delta thresholds.
+// Upstream: ShouldDrop.
+// Downstream: math.Abs and settings thresholds.
 func (hd *HarmonicDetector) detectHarmonic(call string, s *Spot) (float64, int, int) {
 	candidates := hd.entries[call]
 	if len(candidates) == 0 {
@@ -134,6 +146,10 @@ func (hd *HarmonicDetector) detectHarmonic(call string, s *Spot) (float64, int, 
 	return fundamental, corroborators, deltaDB
 }
 
+// Purpose: Prune stale fundamental entries for a callsign.
+// Key aspects: Retains only entries within the recency window.
+// Upstream: ShouldDrop.
+// Downstream: map deletes and slice filtering.
 func (hd *HarmonicDetector) prune(call string, now time.Time) {
 	window := hd.settings.RecencyWindow
 	slice := hd.entries[call]
@@ -156,6 +172,10 @@ func (hd *HarmonicDetector) prune(call string, now time.Time) {
 	hd.lastSeen[call] = now
 }
 
+// Purpose: Drop inactive calls beyond the recency window.
+// Key aspects: Removes entries when lastSeen is too old.
+// Upstream: ShouldDrop and StartCleanup.
+// Downstream: map deletes.
 // cleanup drops inactive calls entirely when their last seen time is outside the recency window.
 func (hd *HarmonicDetector) cleanup(now time.Time) {
 	if len(hd.lastSeen) == 0 {
@@ -170,6 +190,10 @@ func (hd *HarmonicDetector) cleanup(now time.Time) {
 	}
 }
 
+// Purpose: Start periodic cleanup of harmonic entries.
+// Key aspects: Guards against multiple starts and uses quit channel.
+// Upstream: main startup.
+// Downstream: cleanup and time.NewTicker.
 // StartCleanup starts a periodic sweep to evict inactive calls even when new spots are sparse.
 func (hd *HarmonicDetector) StartCleanup(interval time.Duration) {
 	if hd == nil {
@@ -186,6 +210,10 @@ func (hd *HarmonicDetector) StartCleanup(interval time.Duration) {
 	hd.sweepQuit = make(chan struct{})
 	hd.mu.Unlock()
 
+	// Purpose: Periodically invoke cleanup until StopCleanup is called.
+	// Key aspects: Ticker-driven loop with quit channel.
+	// Upstream: StartCleanup.
+	// Downstream: cleanup and ticker.Stop.
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
@@ -202,6 +230,10 @@ func (hd *HarmonicDetector) StartCleanup(interval time.Duration) {
 	}()
 }
 
+// Purpose: Stop the periodic cleanup goroutine.
+// Key aspects: Closes quit channel and clears it.
+// Upstream: main shutdown.
+// Downstream: channel close only.
 // StopCleanup stops the periodic cleanup goroutine.
 func (hd *HarmonicDetector) StopCleanup() {
 	if hd == nil {

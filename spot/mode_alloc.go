@@ -31,6 +31,10 @@ var (
 const modeAllocPath = "data/config/mode_allocations.yaml"
 
 func loadModeAllocations() {
+	// Purpose: Load the mode allocation table from YAML once.
+	// Key aspects: Tries local and parent paths; logs warnings on failure.
+	// Upstream: GuessModeFromAlloc.
+	// Downstream: os.ReadFile and yaml.Unmarshal.
 	modeAllocOnce.Do(func() {
 		paths := []string{modeAllocPath, filepath.Join("..", modeAllocPath)}
 		for _, path := range paths {
@@ -50,6 +54,10 @@ func loadModeAllocations() {
 	})
 }
 
+// Purpose: Map a frequency to a mode using the allocation table.
+// Key aspects: Applies CW sub-band boundary and voice mode selection.
+// Upstream: FinalizeMode and mode inference fallback.
+// Downstream: loadModeAllocations and strings.TrimSpace.
 // GuessModeFromAlloc returns the allocated mode for the given frequency based on the YAML table.
 func GuessModeFromAlloc(freqKHz float64) string {
 	loadModeAllocations()
@@ -66,6 +74,10 @@ func GuessModeFromAlloc(freqKHz float64) string {
 	return ""
 }
 
+// Purpose: Normalize voice modes (SSB) to USB/LSB by frequency.
+// Key aspects: USB above 10 MHz, LSB below.
+// Upstream: comment parsing and FinalizeMode.
+// Downstream: strings.ToUpper.
 // NormalizeVoiceMode maps generic SSB to LSB/USB depending on frequency.
 func NormalizeVoiceMode(mode string, freqKHz float64) string {
 	upper := strings.ToUpper(strings.TrimSpace(mode))
@@ -78,6 +90,10 @@ func NormalizeVoiceMode(mode string, freqKHz float64) string {
 	return upper
 }
 
+// Purpose: Finalize mode selection using explicit mode, allocations, and defaults.
+// Key aspects: Prefers explicit mode, then allocation, then USB/CW fallback.
+// Upstream: ModeAssigner fallback and callers needing a final mode.
+// Downstream: NormalizeVoiceMode and GuessModeFromAlloc.
 // FinalizeMode harmonizes mode selection using explicit mode, allocations, and sensible defaults.
 func FinalizeMode(mode string, freq float64) string {
 	mode = NormalizeVoiceMode(mode, freq)

@@ -26,6 +26,10 @@ const (
 	TelnetEchoOff = "off"
 )
 
+// Purpose: Normalize and validate the telnet transport setting.
+// Key aspects: Defaults to "native"; returns ok=false on invalid values.
+// Upstream: Load config normalization.
+// Downstream: TelnetTransport constants.
 func normalizeTelnetTransport(value string) (string, bool) {
 	trimmed := strings.ToLower(strings.TrimSpace(value))
 	if trimmed == "" {
@@ -39,6 +43,10 @@ func normalizeTelnetTransport(value string) (string, bool) {
 	}
 }
 
+// Purpose: Normalize and validate the telnet echo mode setting.
+// Key aspects: Defaults to "server"; returns ok=false on invalid values.
+// Upstream: Load config normalization.
+// Downstream: TelnetEcho* constants.
 func normalizeTelnetEchoMode(value string) (string, bool) {
 	trimmed := strings.ToLower(strings.TrimSpace(value))
 	if trimmed == "" {
@@ -269,8 +277,10 @@ type PeeringACL struct {
 	AllowCallsigns []string `yaml:"allow_callsigns"`
 }
 
-// SubscriptionTopics returns the MQTT topics to subscribe to based on the configured modes.
-// If no modes are specified, it falls back to `Topic` or the default `pskr/filter/v2/+/+/#`.
+// Purpose: Build MQTT subscription topics based on configured modes.
+// Key aspects: Falls back to configured Topic or default when modes are empty.
+// Upstream: PSKReporter client setup.
+// Downstream: None.
 func (c *PSKReporterConfig) SubscriptionTopics() []string {
 	topics := make([]string, 0, len(c.Modes))
 	for _, mode := range c.Modes {
@@ -581,6 +591,10 @@ type CTYConfig struct {
 // Load reads configuration from a YAML file or a directory containing YAML
 // files, applies defaults, and validates key fields so the rest of the cluster
 // can rely on a consistent baseline.
+// Purpose: Load and normalize the cluster configuration from file or directory.
+// Key aspects: Supports directory merge; applies defaults and validates values.
+// Upstream: main.go startup.
+// Downstream: loadConfigDir, mergeYAMLMaps, normalize* helpers.
 func Load(path string) (*Config, error) {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -1213,6 +1227,10 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
+// Purpose: Load and merge all YAML files from a config directory.
+// Key aspects: Sorted file order provides deterministic overrides.
+// Upstream: Load.
+// Downstream: yaml.Unmarshal, mergeYAMLMaps.
 func loadConfigDir(path string) (map[string]any, []string, error) {
 	entries, err := os.ReadDir(path)
 	if err != nil {
@@ -1250,6 +1268,10 @@ func loadConfigDir(path string) (map[string]any, []string, error) {
 	return merged, files, nil
 }
 
+// Purpose: Deep-merge nested YAML maps.
+// Key aspects: Recurses into sub-maps; src overwrites non-map values.
+// Upstream: loadConfigDir.
+// Downstream: None.
 func mergeYAMLMaps(dst, src map[string]any) map[string]any {
 	if dst == nil {
 		dst = make(map[string]any)
@@ -1268,8 +1290,10 @@ func mergeYAMLMaps(dst, src map[string]any) map[string]any {
 	return dst
 }
 
-// Print displays a concise, human-readable summary of the loaded configuration,
-// primarily for startup logs and diagnostics.
+// Purpose: Print a human-readable configuration summary.
+// Key aspects: Focuses on operationally relevant fields.
+// Upstream: main.go startup logging.
+// Downstream: fmt.Printf.
 func (c *Config) Print() {
 	fmt.Printf("Server: %s (%s)\n", c.Server.Name, c.Server.NodeID)
 	workerDesc := "auto"
@@ -1436,8 +1460,10 @@ func (c *Config) Print() {
 	fmt.Printf("Ring buffer capacity: %d spots\n", c.Buffer.Capacity)
 }
 
-// normalizeBandStateOverrides applies guardrails and falls back to global defaults when
-// per-state values are missing or non-positive.
+// Purpose: Normalize per-band-state overrides for correction settings.
+// Key aspects: Applies default bins/tolerances when overrides are missing.
+// Upstream: Load config normalization.
+// Downstream: None.
 func normalizeBandStateOverrides(overrides []BandStateOverride, defaultBin int, defaultTol float64) []BandStateOverride {
 	if len(overrides) == 0 {
 		return overrides
@@ -1468,9 +1494,10 @@ func normalizeBandStateOverrides(overrides []BandStateOverride, defaultBin int, 
 	return out
 }
 
-// yamlKeyPresent walks a nested map decoded from YAML and reports whether the
-// provided path exists. Keys must match the YAML field names (e.g., "dedup",
-// "secondary_prefer_stronger_snr").
+// Purpose: Check whether a nested YAML key path exists.
+// Key aspects: Walks decoded maps using YAML field names.
+// Upstream: Load config normalization (detecting explicit settings).
+// Downstream: None.
 func yamlKeyPresent(raw map[string]any, path ...string) bool {
 	if len(path) == 0 || raw == nil {
 		return false

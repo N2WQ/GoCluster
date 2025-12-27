@@ -64,11 +64,19 @@ type dashboard struct {
 	lastTSString    string
 }
 
+// Purpose: Construct the tview dashboard when enabled.
+// Key aspects: Builds panes, wiring, batching, and starts render goroutines.
+// Upstream: main UI selection when ui.mode=tview.
+// Downstream: tview widgets, flushLoop goroutine, and app.Run goroutine.
 func newDashboard(enable bool) *dashboard {
 	if !enable {
 		return nil
 	}
 
+	// Purpose: Build a configured text pane for dashboard output.
+	// Key aspects: Sets color support and max line bounds.
+	// Upstream: newDashboard layout assembly.
+	// Downstream: tview.NewTextView and its setters.
 	makePane := func(title string) *tview.TextView {
 		tv := tview.NewTextView().
 			SetDynamicColors(true).
@@ -102,7 +110,15 @@ func newDashboard(enable bool) *dashboard {
 	app := tview.NewApplication().SetRoot(layout, true).EnableMouse(false)
 	ready := make(chan struct{})
 	var once sync.Once
+	// Purpose: Signal readiness once the dashboard is about to render.
+	// Key aspects: Close ready exactly once via sync.Once.
+	// Upstream: tview application draw loop.
+	// Downstream: close(ready).
 	app.SetBeforeDrawFunc(func(screen tcell.Screen) bool {
+		// Purpose: Close the ready channel exactly once after the first draw.
+		// Key aspects: Uses sync.Once to prevent double close.
+		// Upstream: tview draw callback.
+		// Downstream: close(ready).
 		once.Do(func() { close(ready) })
 		return false
 	})
@@ -118,8 +134,16 @@ func newDashboard(enable bool) *dashboard {
 		batchQuit:      make(chan struct{}),
 	}
 
+	// Purpose: Periodically flush buffered pane updates to the UI.
+	// Key aspects: Background goroutine; exits on batchQuit.
+	// Upstream: newDashboard.
+	// Downstream: d.flushLoop.
 	go d.flushLoop()
 
+	// Purpose: Run the tview application loop.
+	// Key aspects: Recovers panics and logs runtime errors.
+	// Upstream: newDashboard.
+	// Downstream: app.Run.
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -134,6 +158,10 @@ func newDashboard(enable bool) *dashboard {
 	return d
 }
 
+// Purpose: Stop the dashboard, batching ticker, and tview application.
+// Key aspects: Stops ticker, closes batchQuit, and calls app.Stop.
+// Upstream: main shutdown path.
+// Downstream: tview.Application.Stop.
 func (d *dashboard) Stop() {
 	if d == nil || d.app == nil {
 		return
@@ -147,6 +175,10 @@ func (d *dashboard) Stop() {
 	d.app.Stop()
 }
 
+// Purpose: Block until the dashboard has rendered at least once.
+// Key aspects: Waits on the ready channel; safe for nil receivers.
+// Upstream: main UI startup.
+// Downstream: channel receive.
 func (d *dashboard) WaitReady() {
 	if d == nil || d.ready == nil {
 		return
@@ -154,6 +186,10 @@ func (d *dashboard) WaitReady() {
 	<-d.ready
 }
 
+// Purpose: Replace the stats pane text.
+// Key aspects: Joins lines and queues a UI update.
+// Upstream: stats ticker in main.
+// Downstream: tview.QueueUpdateDraw and TextView.SetText.
 func (d *dashboard) SetStats(lines []string) {
 	if d == nil {
 		return
@@ -161,28 +197,52 @@ func (d *dashboard) SetStats(lines []string) {
 	d.statsMu.Lock()
 	text := strings.Join(lines, "\n")
 	d.statsMu.Unlock()
+	// Purpose: Apply stats text inside the UI thread.
+	// Key aspects: Sets full text and scrolls to end.
+	// Upstream: SetStats.
+	// Downstream: TextView.SetText and ScrollToEnd.
 	d.app.QueueUpdateDraw(func() {
 		d.statsView.SetText(text)
 		d.statsView.ScrollToEnd()
 	})
 }
 
+// Purpose: Queue a call-correction line for the calls pane.
+// Key aspects: Uses batching to reduce redraws.
+// Upstream: call correction path.
+// Downstream: d.enqueue.
 func (d *dashboard) AppendCall(line string) {
 	d.enqueue(&d.callBatch, line)
 }
 
+// Purpose: Queue an unlicensed call line for the unlicensed pane.
+// Key aspects: Uses batching to reduce redraws.
+// Upstream: unlicensed reporter.
+// Downstream: d.enqueue.
 func (d *dashboard) AppendUnlicensed(line string) {
 	d.enqueue(&d.unlicensedBatch, line)
 }
 
+// Purpose: Queue a harmonic suppression line for the harmonic pane.
+// Key aspects: Uses batching to reduce redraws.
+// Upstream: harmonic suppression path.
+// Downstream: d.enqueue.
 func (d *dashboard) AppendHarmonic(line string) {
 	d.enqueue(&d.harmBatch, line)
 }
 
+// Purpose: Queue a system log line for the system pane.
+// Key aspects: Uses batching to reduce redraws.
+// Upstream: log routing in main.
+// Downstream: d.enqueue.
 func (d *dashboard) AppendSystem(line string) {
 	d.enqueue(&d.sysBatch, line)
 }
 
+// Purpose: Append to a batch and flush if the batch limit is reached.
+// Key aspects: Shared batching logic for all panes.
+// Upstream: AppendCall/AppendUnlicensed/AppendHarmonic/AppendSystem.
+// Downstream: d.flushBatches.
 func (d *dashboard) enqueue(batch *[]string, line string) {
 	if d == nil || batch == nil {
 		return
@@ -197,6 +257,10 @@ func (d *dashboard) enqueue(batch *[]string, line string) {
 	}
 }
 
+// Purpose: Provide an io.Writer that feeds system messages into the dashboard.
+// Key aspects: Returns a paneWriter wrapping the dashboard.
+// Upstream: main UI wiring.
+// Downstream: paneWriter.Write.
 func (d *dashboard) SystemWriter() io.Writer {
 	if d == nil {
 		return nil
@@ -210,6 +274,10 @@ type paneWriter struct {
 	mu   sync.Mutex
 }
 
+// Purpose: Implement io.Writer for dashboard system output.
+// Key aspects: Buffers until newline and forwards complete lines to enqueue.
+// Upstream: log output when dashboard is active.
+// Downstream: bytes.IndexByte and d.enqueue.
 func (w *paneWriter) Write(p []byte) (int, error) {
 	if w == nil || w.dash == nil {
 		return len(p), nil
@@ -235,6 +303,10 @@ func (w *paneWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// Purpose: Periodically flush batched pane updates.
+// Key aspects: Ticker-driven loop; exits on batchQuit.
+// Upstream: goroutine started in newDashboard.
+// Downstream: d.flushBatches.
 func (d *dashboard) flushLoop() {
 	if d == nil || d.batchTicker == nil || d.batchQuit == nil {
 		return
@@ -249,6 +321,10 @@ func (d *dashboard) flushLoop() {
 	}
 }
 
+// Purpose: Drain batch queues and apply updates to the UI panes.
+// Key aspects: Adds timestamps, scrolls to end, and coalesces updates in one draw.
+// Upstream: flushLoop and enqueue immediate flush.
+// Downstream: tview.QueueUpdateDraw and fmt.Fprint.
 func (d *dashboard) flushBatches() {
 	if d == nil || d.app == nil {
 		return
@@ -276,6 +352,10 @@ func (d *dashboard) flushBatches() {
 		return
 	}
 
+	// Purpose: Apply batched pane updates inside the UI thread.
+	// Key aspects: Writes with timestamps and keeps per-pane scroll state.
+	// Upstream: flushBatches.
+	// Downstream: fmt.Fprint and TextView.ScrollToEnd.
 	d.app.QueueUpdateDraw(func() {
 		if len(callBatch) > 0 {
 			for _, line := range callBatch {

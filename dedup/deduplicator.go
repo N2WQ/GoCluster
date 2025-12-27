@@ -47,6 +47,10 @@ type cachedEntry struct {
 // shardCount must remain a power of two so we can use bit masking for fast shard selection.
 const shardCount = 64
 
+// Purpose: Construct a deduplicator with windowed suppression and channels.
+// Key aspects: Sizes input/output buffers and initializes shard maps.
+// Upstream: main startup wiring.
+// Downstream: cache shard allocation and channel creation.
 // NewDeduplicator creates a new deduplicator with the specified window. Passing
 // a zero window disables suppression but still allows metrics/visibility.
 func NewDeduplicator(window time.Duration, preferStronger bool, outputBuffer int) *Deduplicator {
@@ -74,36 +78,64 @@ func NewDeduplicator(window time.Duration, preferStronger bool, outputBuffer int
 	}
 }
 
+// Purpose: Start dedup processing and cleanup loops.
+// Key aspects: Spawns goroutines for processing and cleanup.
+// Upstream: main startup.
+// Downstream: process and cleanupLoop goroutines.
 // Start begins the deduplication processing loop and the background cleanup
 // goroutine. Safe to call once during startup.
 func (d *Deduplicator) Start() {
 	log.Println("Deduplicator: Starting unified processing loop for ALL sources")
 
 	// Start the main processing goroutine
+	// Purpose: Consume dedup input channel and forward unique spots.
+	// Key aspects: Runs until shutdown is closed.
+	// Upstream: Deduplicator.Start.
+	// Downstream: d.process.
 	go d.process()
 
 	// Start the cache cleanup goroutine
+	// Purpose: Periodically purge expired cache entries.
+	// Key aspects: Runs until shutdown is closed.
+	// Upstream: Deduplicator.Start.
+	// Downstream: d.cleanupLoop.
 	go d.cleanupLoop()
 }
 
+// Purpose: Signal processing and cleanup loops to exit.
+// Key aspects: Closing shutdown unblocks the goroutines.
+// Upstream: main shutdown.
+// Downstream: channel close only.
 // Stop signals the processing and cleanup loops to exit.
 func (d *Deduplicator) Stop() {
 	log.Println("Deduplicator: Stopping...")
 	close(d.shutdown)
 }
 
+// Purpose: Expose the deduplicator input channel.
+// Key aspects: Callers send spots for deduplication.
+// Upstream: ingest pipelines (RBN, PSKReporter, peer).
+// Downstream: d.inputChan.
 // GetInputChannel returns the input channel for spots. Each spot is checked
 // against the windowed cache and either forwarded or dropped.
 func (d *Deduplicator) GetInputChannel() chan<- *spot.Spot {
 	return d.inputChan
 }
 
+// Purpose: Expose the deduplicator output channel.
+// Key aspects: Consumers read unique spots from this channel.
+// Upstream: pipeline output stage.
+// Downstream: d.outputChan.
 // GetOutputChannel returns the output channel for deduplicated spots. Consumers
 // read from this to continue the pipeline (ring buffer, telnet broadcast, etc.).
 func (d *Deduplicator) GetOutputChannel() <-chan *spot.Spot {
 	return d.outputChan
 }
 
+// Purpose: Main processing loop for dedup input.
+// Key aspects: Reads input channel until shutdown is closed.
+// Upstream: goroutine started in Start.
+// Downstream: processSpot.
 // process is the main processing loop
 func (d *Deduplicator) process() {
 	for {
@@ -121,7 +153,15 @@ func (d *Deduplicator) process() {
 	}
 }
 
+// Purpose: Deduplicate a single spot and forward if accepted.
+// Key aspects: Uses shard locks, optional stronger-SNR replacement, and output channel.
+// Upstream: process loop.
+// Downstream: isDuplicateLocked, shardFor, and d.outputChan.
 func (d *Deduplicator) processSpot(s *spot.Spot) {
+	// Purpose: Recover from panics during spot processing.
+	// Key aspects: Logs stack trace and continues.
+	// Upstream: processSpot.
+	// Downstream: log.Printf and debug.Stack.
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("Deduplicator: panic processing spot: %v\n%s", r, debug.Stack())
@@ -162,6 +202,10 @@ func (d *Deduplicator) processSpot(s *spot.Spot) {
 	}
 }
 
+// Purpose: Return the timestamp of the most recent processed spot.
+// Key aspects: Reads the atomic timestamp; zero indicates no activity.
+// Upstream: pipeline health monitor.
+// Downstream: time.Unix.
 // LastProcessedAt returns the timestamp of the most recent spot seen by the deduper.
 // A zero time means no spots have been processed yet.
 func (d *Deduplicator) LastProcessedAt() time.Time {
@@ -175,6 +219,10 @@ func (d *Deduplicator) LastProcessedAt() time.Time {
 	return time.Unix(0, ns).UTC()
 }
 
+// Purpose: Check if a spot hash is a duplicate within the time window.
+// Key aspects: Caller must hold the shard lock; handles out-of-order time.
+// Upstream: processSpot.
+// Downstream: time.Sub comparisons.
 // isDuplicateLocked checks if a spot is a duplicate within a shard.
 // Caller must hold the shard mutex. When the window is zero the function always
 // returns false, effectively bypassing deduplication.
@@ -193,6 +241,10 @@ func isDuplicateLocked(cache map[uint32]cachedEntry, hash uint32, spotTime time.
 	return age < window, lastSeen
 }
 
+// Purpose: Periodically remove expired cache entries.
+// Key aspects: Ticker-driven cleanup until shutdown.
+// Upstream: goroutine started in Start.
+// Downstream: cleanup.
 // cleanupLoop periodically removes expired entries from the cache so the
 // footprint stays bounded when dedup is enabled.
 func (d *Deduplicator) cleanupLoop() {
@@ -210,6 +262,10 @@ func (d *Deduplicator) cleanupLoop() {
 	}
 }
 
+// Purpose: Remove expired cache entries across all shards.
+// Key aspects: Two-phase deletion to minimize lock time.
+// Upstream: cleanupLoop.
+// Downstream: shard cache mutation.
 // cleanup removes expired entries from the cache
 func (d *Deduplicator) cleanup() {
 	now := time.Now().UTC()
@@ -239,6 +295,10 @@ func (d *Deduplicator) cleanup() {
 
 }
 
+// Purpose: Return deduplication stats across all shards.
+// Key aspects: Aggregates processed/duplicate counts and cache size.
+// Upstream: stats display.
+// Downstream: shard counters under lock.
 // GetStats returns current deduplication statistics
 func (d *Deduplicator) GetStats() (processed uint64, duplicates uint64, cacheSize int) {
 	for i := range d.shards {
@@ -252,6 +312,10 @@ func (d *Deduplicator) GetStats() (processed uint64, duplicates uint64, cacheSiz
 	return processed, duplicates, cacheSize
 }
 
+// Purpose: Pick the shard for a given hash.
+// Key aspects: Uses bitmask with power-of-two shard count.
+// Upstream: processSpot.
+// Downstream: shard selection only.
 func (d *Deduplicator) shardFor(hash uint32) *cacheShard {
 	idx := hash & (shardCount - 1)
 	return &d.shards[idx]

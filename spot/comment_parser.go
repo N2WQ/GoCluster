@@ -50,6 +50,10 @@ type acScanner struct {
 }
 
 func newACScanner(patterns []acPattern) *acScanner {
+	// Purpose: Build an Aho-Corasick scanner for keyword patterns.
+	// Key aspects: Constructs trie, failure links, and output lists.
+	// Upstream: getKeywordScanner initialization.
+	// Downstream: acScanner.FindAll.
 	sc := &acScanner{
 		patterns: patterns,
 		nodes:    []acNode{{next: make(map[byte]int)}},
@@ -94,6 +98,10 @@ func newACScanner(patterns []acPattern) *acScanner {
 }
 
 func (sc *acScanner) FindAll(text string) []acMatch {
+	// Purpose: Find all keyword matches within the text.
+	// Key aspects: Uses Aho-Corasick state machine to emit overlapping matches.
+	// Upstream: ParseSpotComment and classifyTokenWithFallback.
+	// Downstream: acScanner nodes and output list.
 	if sc == nil {
 		return nil
 	}
@@ -125,6 +133,10 @@ func (sc *acScanner) FindAll(text string) []acMatch {
 }
 
 func buildMatchIndex(matches []acMatch) map[int][]acMatch {
+	// Purpose: Index matches by start position for O(1) lookup.
+	// Key aspects: Groups matches by their start offset.
+	// Upstream: ParseSpotComment.
+	// Downstream: map allocation and append.
 	if len(matches) == 0 {
 		return nil
 	}
@@ -136,6 +148,10 @@ func buildMatchIndex(matches []acMatch) map[int][]acMatch {
 }
 
 func classifyToken(matchIndex map[int][]acMatch, trimStart, trimEnd int) (acPattern, bool) {
+	// Purpose: Resolve an exact token match from the match index.
+	// Key aspects: Requires a match with identical start/end positions.
+	// Upstream: classifyTokenWithFallback.
+	// Downstream: matchIndex lookup.
 	if len(matchIndex) == 0 {
 		return acPattern{}, false
 	}
@@ -148,6 +164,10 @@ func classifyToken(matchIndex map[int][]acMatch, trimStart, trimEnd int) (acPatt
 }
 
 func classifyTokenWithFallback(matchIndex map[int][]acMatch, tok commentToken) (acPattern, bool) {
+	// Purpose: Resolve a token to a keyword pattern with fallback scanning.
+	// Key aspects: Checks index first, then scans token text directly.
+	// Upstream: ParseSpotComment loop.
+	// Downstream: classifyToken and getKeywordScanner.FindAll.
 	if pat, ok := classifyToken(matchIndex, tok.trimStart, tok.trimEnd); ok {
 		return pat, true
 	}
@@ -183,6 +203,10 @@ var keywordScannerOnce sync.Once
 var keywordScanner *acScanner
 
 func getKeywordScanner() *acScanner {
+	// Purpose: Lazily initialize the global keyword scanner.
+	// Key aspects: sync.Once to build shared Aho-Corasick trie.
+	// Upstream: ParseSpotComment and classifyTokenWithFallback.
+	// Downstream: newACScanner.
 	keywordScannerOnce.Do(func() {
 		keywordScanner = newACScanner(keywordPatterns)
 	})
@@ -200,6 +224,10 @@ type commentToken struct {
 }
 
 func tokenizeComment(comment string) []commentToken {
+	// Purpose: Tokenize a comment into word-like segments with trim metadata.
+	// Key aspects: Tracks original and trimmed offsets for keyword alignment.
+	// Upstream: ParseSpotComment.
+	// Downstream: strings.ToUpper and rune trimming.
 	tokens := make([]commentToken, 0, 16)
 	i := 0
 	for i < len(comment) {
@@ -248,6 +276,10 @@ func tokenizeComment(comment string) []commentToken {
 var snrPattern = regexp.MustCompile(`(?i)([-+]?\d{1,3})\s*dB`)
 
 func parseSignedInt(tok string) (int, bool) {
+	// Purpose: Parse a signed integer token with sanity bounds.
+	// Key aspects: Rejects decimals and values outside +/-200.
+	// Upstream: ParseSpotComment numeric handling.
+	// Downstream: strconv.Atoi.
 	if tok == "" {
 		return 0, false
 	}
@@ -265,6 +297,10 @@ func parseSignedInt(tok string) (int, bool) {
 }
 
 func parseInlineSNR(tok string) (int, bool) {
+	// Purpose: Parse a compact "±NNdB" report token.
+	// Key aspects: Requires trailing "db" and sane bounds.
+	// Upstream: ParseSpotComment.
+	// Downstream: strconv.Atoi.
 	lower := strings.ToLower(strings.TrimSpace(tok))
 	if !strings.HasSuffix(lower, "db") {
 		return 0, false
@@ -281,6 +317,10 @@ func parseInlineSNR(tok string) (int, bool) {
 }
 
 func peelTimePrefix(tok string) (string, string) {
+	// Purpose: Split a leading time token (HHMMZ) from a token.
+	// Key aspects: Returns the time token and remaining string.
+	// Upstream: ParseSpotComment.
+	// Downstream: isTimeToken.
 	if len(tok) < 5 {
 		return "", tok
 	}
@@ -292,6 +332,10 @@ func peelTimePrefix(tok string) (string, string) {
 }
 
 func isTimeToken(tok string) bool {
+	// Purpose: Check whether a token matches HHMMZ format.
+	// Key aspects: Requires 4 digits followed by Z.
+	// Upstream: ParseSpotComment.
+	// Downstream: isAllDigits.
 	if len(tok) != 5 {
 		return false
 	}
@@ -302,6 +346,10 @@ func isTimeToken(tok string) bool {
 }
 
 func isAllDigits(s string) bool {
+	// Purpose: Determine whether a string is all ASCII digits.
+	// Key aspects: Rejects empty strings.
+	// Upstream: isTimeToken.
+	// Downstream: rune iteration.
 	if s == "" {
 		return false
 	}
@@ -314,6 +362,10 @@ func isAllDigits(s string) bool {
 }
 
 func buildComment(tokens []commentToken, consumed []bool) string {
+	// Purpose: Rebuild the comment from unconsumed tokens.
+	// Key aspects: Skips consumed tokens and trims whitespace.
+	// Upstream: ParseSpotComment.
+	// Downstream: strings.Join.
 	parts := make([]string, 0, len(tokens))
 	for i, tok := range tokens {
 		if consumed[i] {
@@ -331,6 +383,10 @@ func buildComment(tokens []commentToken, consumed []bool) string {
 	return strings.Join(parts, " ")
 }
 
+// Purpose: Parse mode/report/time tokens and return a cleaned comment.
+// Key aspects: Uses keyword scanner, numeric parsing, and greeting guards (73/88).
+// Upstream: All spot parsers (RBN, peer, PSKReporter).
+// Downstream: tokenization helpers and NormalizeVoiceMode.
 // ParseSpotComment extracts explicit mode tokens, report/time/speed tags, and a cleaned comment.
 // When no explicit mode token is present, Mode is left empty so downstream mode
 // assignment can apply history and allocation logic.
@@ -474,6 +530,10 @@ func ParseSpotComment(comment string, freq float64) CommentParseResult {
 	}
 }
 
+// Purpose: Decide whether a mode accepts bare numeric reports.
+// Key aspects: Limits to CW/RTTY and selected digital modes.
+// Upstream: ParseSpotComment.
+// Downstream: strings.ToUpper.
 // modeWantsBareReport determines which modes treat bare signed integers as SNR/report.
 func modeWantsBareReport(mode string) bool {
 	switch strings.ToUpper(strings.TrimSpace(mode)) {

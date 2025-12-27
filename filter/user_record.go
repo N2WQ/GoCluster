@@ -19,8 +19,10 @@ type UserRecord struct {
 	RecentIPs []string `yaml:"recent_ips,omitempty"`
 }
 
-// LoadUserRecord loads the saved user record for a callsign.
-// Returns os.ErrNotExist if no saved file is found.
+// Purpose: Load a persisted user record by callsign.
+// Key aspects: Normalizes defaults and trims recent IPs; returns os.ErrNotExist if missing.
+// Upstream: LoadUserFilter, TouchUserRecordIP, telnet login flows.
+// Downstream: yaml.Unmarshal, trimRecentIPs, Filter normalization helpers.
 func LoadUserRecord(callsign string) (*UserRecord, error) {
 	callsign = strings.TrimSpace(callsign)
 	if callsign == "" {
@@ -41,8 +43,10 @@ func LoadUserRecord(callsign string) (*UserRecord, error) {
 	return &record, nil
 }
 
-// TouchUserRecordIP updates the recent IP history for a callsign and persists it
-// immediately. It returns the updated record and whether a new record was created.
+// Purpose: Update recent IP history for a callsign and persist it.
+// Key aspects: Creates a new record with defaults if none exists.
+// Upstream: Telnet login handling.
+// Downstream: LoadUserRecord, UpdateRecentIPs, SaveUserRecord.
 func TouchUserRecordIP(callsign, ip string) (*UserRecord, bool, error) {
 	record, err := LoadUserRecord(callsign)
 	created := false
@@ -61,8 +65,10 @@ func TouchUserRecordIP(callsign, ip string) (*UserRecord, bool, error) {
 	return record, created, nil
 }
 
-// SaveUserRecord persists a user record to data/users/<CALLSIGN>.yaml.
-// Callsign is uppercased for filename stability.
+// Purpose: Persist a user record to disk.
+// Key aspects: Ensures data dir exists; trims recent IP list.
+// Upstream: SaveUserFilter, TouchUserRecordIP.
+// Downstream: yaml.Marshal, os.WriteFile, userRecordPath.
 func SaveUserRecord(callsign string, record *UserRecord) error {
 	if record == nil {
 		return errors.New("nil user record")
@@ -83,8 +89,10 @@ func SaveUserRecord(callsign string, record *UserRecord) error {
 	return os.WriteFile(path, bs, 0o644)
 }
 
-// UpdateRecentIPs returns a most-recent-first list capped to five entries.
-// Duplicate IPs are collapsed so the list reflects unique recent sources.
+// Purpose: Update recent IP history with a new address.
+// Key aspects: Most-recent-first order; removes duplicates; enforces cap.
+// Upstream: TouchUserRecordIP.
+// Downstream: trimRecentIPs.
 func UpdateRecentIPs(recent []string, ip string) []string {
 	ip = strings.TrimSpace(ip)
 	if ip == "" {
@@ -104,8 +112,10 @@ func UpdateRecentIPs(recent []string, ip string) []string {
 	return trimRecentIPs(updated, maxRecentIPs)
 }
 
-// MergeRecentIPs keeps the primary order (most-recent-first) and appends any
-// missing entries from fallback until the max limit is reached.
+// Purpose: Merge two recent IP lists while preserving primary order.
+// Key aspects: De-duplicates and caps at maxRecentIPs.
+// Upstream: Client filter save flows.
+// Downstream: None.
 func MergeRecentIPs(primary, fallback []string) []string {
 	merged := make([]string, 0, maxRecentIPs)
 	for _, ip := range primary {
@@ -139,6 +149,10 @@ func MergeRecentIPs(primary, fallback []string) []string {
 	return merged
 }
 
+// Purpose: Trim a list of IPs to the provided limit.
+// Key aspects: Returns nil on non-positive limit; preserves order.
+// Upstream: UpdateRecentIPs, LoadUserRecord, SaveUserRecord.
+// Downstream: None.
 func trimRecentIPs(recent []string, limit int) []string {
 	if limit <= 0 {
 		return nil
@@ -149,6 +163,10 @@ func trimRecentIPs(recent []string, limit int) []string {
 	return recent[:limit]
 }
 
+// Purpose: Build the on-disk path for a user's record.
+// Key aspects: Uppercases callsign for stable filenames.
+// Upstream: LoadUserRecord, SaveUserRecord.
+// Downstream: filepath.Join, strings.ToUpper.
 func userRecordPath(callsign string) string {
 	return filepath.Join(UserDataDir, fmt.Sprintf("%s.yaml", strings.ToUpper(callsign)))
 }

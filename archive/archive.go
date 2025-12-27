@@ -26,7 +26,10 @@ type Writer struct {
 	dropCount uint64
 }
 
-// NewWriter initializes the SQLite database and returns a writer; call Start to begin processing.
+// Purpose: Initialize archive storage and return a writer instance.
+// Key aspects: Creates SQLite DB and schema; sets queue size defaults.
+// Upstream: main.go archive setup.
+// Downstream: ensureSchema, SQLite open/pragmas.
 func NewWriter(cfg config.ArchiveConfig) (*Writer, error) {
 	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), 0o755); err != nil {
 		return nil, fmt.Errorf("archive: mkdir: %w", err)
@@ -53,19 +56,30 @@ func NewWriter(cfg config.ArchiveConfig) (*Writer, error) {
 	}, nil
 }
 
-// Start launches the insert and cleanup loops.
+// Purpose: Start background loops for inserts and retention cleanup.
+// Key aspects: Runs goroutines; writer remains non-blocking for callers.
+// Upstream: main.go startup.
+// Downstream: insertLoop goroutine, cleanupLoop goroutine.
 func (w *Writer) Start() {
+	// Goroutine: batched insert loop drains queue without blocking ingest.
 	go w.insertLoop()
+	// Goroutine: periodic cleanup loop enforces retention windows.
 	go w.cleanupLoop()
 }
 
-// Stop closes the writer; best-effort flush.
+// Purpose: Stop the writer and close the underlying DB.
+// Key aspects: Signals loops to exit; closes DB without waiting for full drain.
+// Upstream: main.go shutdown.
+// Downstream: close(w.stop), db.Close.
 func (w *Writer) Stop() {
 	close(w.stop)
 	_ = w.db.Close()
 }
 
-// Enqueue attempts to queue a spot for archival without blocking; drops on full queue.
+// Purpose: Try to enqueue a spot for archival without blocking.
+// Key aspects: Drops silently when the queue is full to protect hot path.
+// Upstream: main.go spot ingest/broadcast.
+// Downstream: writer queue channel.
 func (w *Writer) Enqueue(s *spot.Spot) {
 	if w == nil || s == nil {
 		return
@@ -77,6 +91,10 @@ func (w *Writer) Enqueue(s *spot.Spot) {
 	}
 }
 
+// Purpose: Batch and insert queued spots into SQLite.
+// Key aspects: Uses a size/time batch; flushes on stop signal.
+// Upstream: Start goroutine.
+// Downstream: flush, time.Timer.
 func (w *Writer) insertLoop() {
 	batch := make([]*spot.Spot, 0, w.cfg.BatchSize)
 	timer := time.NewTimer(time.Duration(w.cfg.BatchIntervalMS) * time.Millisecond)
@@ -107,6 +125,10 @@ func (w *Writer) insertLoop() {
 	}
 }
 
+// Purpose: Flush a batch of spots into SQLite in a single transaction.
+// Key aspects: Best-effort logging on errors; per-spot inserts within tx.
+// Upstream: insertLoop.
+// Downstream: sql.Tx, stmt.Exec.
 func (w *Writer) flush(batch []*spot.Spot) {
 	if len(batch) == 0 {
 		return
@@ -155,6 +177,10 @@ func (w *Writer) flush(batch []*spot.Spot) {
 	_ = now
 }
 
+// Purpose: Periodically enforce retention policy by deleting old rows.
+// Key aspects: Uses a ticker; exits on stop signal.
+// Upstream: Start goroutine.
+// Downstream: cleanupOnce, time.Ticker.
 func (w *Writer) cleanupLoop() {
 	interval := time.Duration(w.cfg.CleanupIntervalSeconds) * time.Second
 	if interval <= 0 {
@@ -172,6 +198,10 @@ func (w *Writer) cleanupLoop() {
 	}
 }
 
+// Purpose: Run one retention cleanup pass.
+// Key aspects: Applies separate retention windows for FT vs other modes.
+// Upstream: cleanupLoop.
+// Downstream: sql.Exec deletes.
 func (w *Writer) cleanupOnce() {
 	now := time.Now().UTC().Unix()
 	cutoffFT := now - int64(w.cfg.RetentionFTSeconds)
@@ -187,6 +217,10 @@ func (w *Writer) cleanupOnce() {
 	}
 }
 
+// Purpose: Ensure the archive schema and indexes exist.
+// Key aspects: Executes a single multi-statement schema block.
+// Upstream: NewWriter.
+// Downstream: db.Exec.
 func ensureSchema(db *sql.DB) error {
 	schema := `
 	create table if not exists spots (
@@ -219,6 +253,10 @@ func ensureSchema(db *sql.DB) error {
 	return nil
 }
 
+// Purpose: Convert a bool to a SQLite-friendly integer.
+// Key aspects: True->1, false->0.
+// Upstream: flush, Recent row mapping.
+// Downstream: None.
 func boolToInt(b bool) int {
 	if b {
 		return 1
@@ -226,7 +264,10 @@ func boolToInt(b bool) int {
 	return 0
 }
 
-// DropDB is a helper to reset the archive during testing.
+// Purpose: Delete the archive DB file (test helper).
+// Key aspects: Validates path to avoid removing empty target.
+// Upstream: Tests or maintenance tools.
+// Downstream: os.Remove.
 func DropDB(path string) error {
 	if strings.TrimSpace(path) == "" {
 		return fmt.Errorf("archive: empty path")
@@ -234,11 +275,10 @@ func DropDB(path string) error {
 	return os.Remove(path)
 }
 
-// Recent returns the most recent N spots from the archive, ordered newest-first.
-// It is intentionally simple and read-only so callers (e.g., SHOW/DX) can
-// retrieve history without depending on the in-memory ring buffer. When the
-// archive is disabled, callers should fall back to the ring buffer before
-// invoking this method.
+// Purpose: Return the most recent N archived spots, newest-first.
+// Key aspects: Read-only query; reconstructs Spot objects from rows.
+// Upstream: Telnet SHOW/DX handlers when archive is enabled.
+// Downstream: db.Query, Spot normalization helpers.
 func (w *Writer) Recent(limit int) ([]*spot.Spot, error) {
 	if w == nil || w.db == nil {
 		return nil, fmt.Errorf("archive: writer is nil")
@@ -303,6 +343,10 @@ func (w *Writer) Recent(limit int) ([]*spot.Spot, error) {
 	return results, nil
 }
 
+// Purpose: Clamp an integer into the 0..255 range.
+// Key aspects: Used to rebuild uint8 fields from DB rows.
+// Upstream: Recent.
+// Downstream: None.
 func clampToByte(v int) int {
 	if v < 0 {
 		return 0

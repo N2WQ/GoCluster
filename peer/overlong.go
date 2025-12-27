@@ -22,8 +22,10 @@ type overlongSample struct {
 	ts      time.Time
 }
 
-// appendOverlongSample writes a preview of an overlong line to a log file for diagnostics.
-// It truncates the preview to keep the log bounded and omits empty lines.
+// Purpose: Enqueue a preview of an overlong line for diagnostic logging.
+// Key aspects: Truncates previews and drops when the queue is full.
+// Upstream: Peer reader when a line exceeds max length.
+// Downstream: overlongWorker goroutine.
 func appendOverlongSample(path, host, preview string, length int) {
 	preview = strings.TrimSpace(preview)
 	if preview == "" {
@@ -35,6 +37,7 @@ func appendOverlongSample(path, host, preview string, length int) {
 	}
 	overlongOnce.Do(func() {
 		overlongCh = make(chan overlongSample, 256)
+		// Goroutine: write overlong samples to disk without blocking readers.
 		go overlongWorker()
 	})
 	if overlongCh == nil {
@@ -54,6 +57,10 @@ func appendOverlongSample(path, host, preview string, length int) {
 	}
 }
 
+// Purpose: Persist overlong line samples to disk.
+// Key aspects: Best-effort; skips on file errors to avoid backpressure.
+// Upstream: appendOverlongSample goroutine.
+// Downstream: os.OpenFile, f.WriteString.
 func overlongWorker() {
 	for sample := range overlongCh {
 		if sample.preview == "" {

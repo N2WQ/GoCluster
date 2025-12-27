@@ -12,6 +12,10 @@ type dedupeCache struct {
 	ttl   time.Duration
 }
 
+// Purpose: Construct a time-bounded dedupe cache.
+// Key aspects: Stores keys with timestamps and TTL for pruning.
+// Upstream: Peer session dedup logic.
+// Downstream: dedupeCache.markSeen, dedupeCache.prune.
 func newDedupeCache(ttl time.Duration) *dedupeCache {
 	return &dedupeCache{
 		items: make(map[string]time.Time),
@@ -19,6 +23,10 @@ func newDedupeCache(ttl time.Duration) *dedupeCache {
 	}
 }
 
+// Purpose: Record a key as seen if it is new.
+// Key aspects: Returns false for duplicates; guarded by a mutex.
+// Upstream: Peer input dedupe checks.
+// Downstream: dedupeCache.items map.
 func (c *dedupeCache) markSeen(key string, now time.Time) bool {
 	if c == nil || key == "" {
 		return false
@@ -32,6 +40,10 @@ func (c *dedupeCache) markSeen(key string, now time.Time) bool {
 	return true
 }
 
+// Purpose: Remove expired entries from the dedupe cache.
+// Key aspects: Uses TTL to evict old keys.
+// Upstream: Periodic cleanup in peer sessions.
+// Downstream: dedupeCache.items map.
 func (c *dedupeCache) prune(now time.Time) {
 	if c == nil {
 		return

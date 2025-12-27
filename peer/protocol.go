@@ -20,6 +20,10 @@ const (
 // Replies perform a minimal refuse-all negotiation to keep the link in character mode.
 type telnetParser struct{}
 
+// Purpose: Strip telnet IAC sequences and emit minimal refusal replies.
+// Key aspects: Filters subnegotiation payloads and replies with WONT/DONT.
+// Upstream: Peer reader for native telnet mode.
+// Downstream: None.
 func (p *telnetParser) Feed(input []byte) (output []byte, replies [][]byte) {
 	var out []byte
 	var inIAC, inSB bool
@@ -67,7 +71,10 @@ type Frame struct {
 	Raw    string
 }
 
-// ParseFrame parses a caret-delimited PC frame into a Frame.
+// Purpose: Parse a caret-delimited PC frame line into a Frame.
+// Key aspects: Trims trailing "~" and extracts hop suffix.
+// Upstream: Peer reader.
+// Downstream: Frame payload handling.
 func ParseFrame(line string) (*Frame, error) {
 	raw := strings.TrimSpace(line)
 	if raw == "" {
@@ -99,7 +106,10 @@ func ParseFrame(line string) (*Frame, error) {
 	return f, nil
 }
 
-// Encode renders the frame back to wire form with a hop override.
+// Purpose: Encode a Frame back to wire format with optional hop override.
+// Key aspects: Preserves fields and appends Hn when hop>0.
+// Upstream: Peer writer.
+// Downstream: fmt.Sprintf.
 func (f *Frame) Encode(hop int) string {
 	if f == nil {
 		return ""
@@ -116,7 +126,10 @@ func (f *Frame) Encode(hop int) string {
 	return out
 }
 
-// payloadFields returns non-hop payload fields with trailing empties preserved.
+// Purpose: Return payload fields excluding hop marker.
+// Key aspects: Preserves trailing empty fields for protocol fidelity.
+// Upstream: parseSpotFromFrame and PC parsers.
+// Downstream: None.
 func (f *Frame) payloadFields() []string {
 	if f == nil {
 		return nil

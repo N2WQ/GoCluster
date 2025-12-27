@@ -95,7 +95,10 @@ type unlicensedEvent struct {
 	freq   float64
 }
 
-// ConfigureCallCache tunes the normalization cache used for PSKReporter spotters.
+// Purpose: Configure the callsign normalization cache for PSKReporter.
+// Key aspects: Applies sane defaults when size/ttl are zero.
+// Upstream: Config load or tests.
+// Downstream: callCacheSize/callCacheTTL globals.
 func ConfigureCallCache(size int, ttl time.Duration) {
 	if size <= 0 {
 		size = 4096
@@ -107,16 +110,23 @@ func ConfigureCallCache(size int, ttl time.Duration) {
 	callCacheTTL = ttl
 }
 
-// SetUnlicensedReporter installs a best-effort reporter for unlicensed US drops.
-// Reporting is fire-and-forget; when the queue is full we fallback to an async call.
+// Purpose: Install a reporter for unlicensed US drops.
+// Key aspects: Uses a bounded queue and a background goroutine for delivery.
+// Upstream: main.go startup.
+// Downstream: unlicensedLoop goroutine.
 func (c *Client) SetUnlicensedReporter(rep UnlicensedReporter) {
 	c.unlicensedReporter = rep
 	if rep != nil && c.unlicensedQueue == nil {
 		c.unlicensedQueue = make(chan unlicensedEvent, 256)
+		// Goroutine: drain unlicensed queue and invoke reporter callbacks.
 		go c.unlicensedLoop()
 	}
 }
 
+// Purpose: Drain the unlicensed event queue and invoke the reporter safely.
+// Key aspects: Recovers from reporter panics to keep the loop alive.
+// Upstream: SetUnlicensedReporter goroutine.
+// Downstream: UnlicensedReporter callback.
 func (c *Client) unlicensedLoop() {
 	for {
 		select {
@@ -140,6 +150,10 @@ func (c *Client) unlicensedLoop() {
 	}
 }
 
+// Purpose: Dispatch an unlicensed event without blocking ingest.
+// Key aspects: Enqueues when possible; otherwise calls reporter asynchronously.
+// Upstream: convertToSpot US license check.
+// Downstream: unlicensedQueue or UnlicensedReporter.
 func (c *Client) dispatchUnlicensed(role, call, mode string, freq float64) {
 	rep := c.unlicensedReporter
 	if rep == nil {
@@ -153,10 +167,14 @@ func (c *Client) dispatchUnlicensed(role, call, mode string, freq float64) {
 			// fall through to async direct call
 		}
 	}
+	// Goroutine: best-effort direct reporter call when queue is full.
 	go rep("PSKREPORTER", role, call, mode, freq)
 }
 
-// NewClient creates a new PSKReporter MQTT client
+// Purpose: Construct a PSKReporter MQTT client.
+// Key aspects: Initializes channels, caches, and worker settings.
+// Upstream: main.go startup.
+// Downstream: Client.Connect, worker pool.
 func NewClient(broker string, port int, topics []string, name string, workers int, lookup func() *cty.CTYDatabase, skewStore *skew.Store, appendSSID bool, spotBuffer int) *Client {
 	if spotBuffer <= 0 {
 		spotBuffer = defaultSpotBuffer
@@ -178,7 +196,10 @@ func NewClient(broker string, port int, topics []string, name string, workers in
 	}
 }
 
-// Connect establishes connection to PSKReporter MQTT broker
+// Purpose: Connect to the PSKReporter MQTT broker and start workers.
+// Key aspects: Configures reconnect/keepalive and sets handlers.
+// Upstream: main.go startup or reconnect flows.
+// Downstream: startWorkerPool, mqtt.Client.Connect.
 func (c *Client) Connect() error {
 	c.startWorkerPool()
 	// Create MQTT client options
@@ -228,7 +249,10 @@ func (c *Client) Connect() error {
 	return nil
 }
 
-// onConnect is called when connection is established
+// Purpose: Subscribe to configured topics on connect.
+// Key aspects: Logs subscription results and aborts on failure.
+// Upstream: MQTT on-connect callback.
+// Downstream: client.Subscribe, messageHandler.
 func (c *Client) onConnect(client mqtt.Client) {
 	log.Printf("PSKReporter: Connected, subscribing to %d topic(s)", len(c.topics))
 	for _, topic := range c.topics {
@@ -243,13 +267,19 @@ func (c *Client) onConnect(client mqtt.Client) {
 	log.Println("PSKReporter: Successfully subscribed, receiving spots...")
 }
 
-// onConnectionLost is called when connection is lost
+// Purpose: Log connection loss events.
+// Key aspects: Relies on MQTT auto-reconnect for recovery.
+// Upstream: MQTT connection-lost callback.
+// Downstream: None.
 func (c *Client) onConnectionLost(client mqtt.Client, err error) {
 	log.Printf("PSKReporter: Connection lost: %v", err)
 	log.Println("PSKReporter: Will attempt to reconnect...")
 }
 
-// messageHandler processes incoming MQTT messages
+// Purpose: Enqueue incoming MQTT payloads for worker processing.
+// Key aspects: Copies payload to avoid reuse; drops on full queue.
+// Upstream: MQTT subscription callback.
+// Downstream: processing channel.
 func (c *Client) messageHandler(client mqtt.Client, msg mqtt.Message) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -268,6 +298,10 @@ func (c *Client) messageHandler(client mqtt.Client, msg mqtt.Message) {
 	}
 }
 
+// Purpose: Start the PSKReporter worker pool and processing queue.
+// Key aspects: Sizes queue based on worker count; idempotent on repeat calls.
+// Upstream: Connect.
+// Downstream: workerLoop goroutines.
 func (c *Client) startWorkerPool() {
 	if c.workers <= 0 {
 		c.workers = defaultPSKReporterWorkers()
@@ -282,10 +316,15 @@ func (c *Client) startWorkerPool() {
 	c.processing = make(chan []byte, capacity)
 	c.workerWg.Add(c.workers)
 	for i := 0; i < c.workers; i++ {
+		// Goroutine: worker loop parses payloads into spots.
 		go c.workerLoop(i)
 	}
 }
 
+// Purpose: Process payloads from the processing queue.
+// Key aspects: Stops on shutdown; recovers from panics to avoid worker loss.
+// Upstream: startWorkerPool goroutine.
+// Downstream: handlePayload.
 func (c *Client) workerLoop(id int) {
 	log.Printf("PSKReporter worker %d started", id)
 	defer c.workerWg.Done()
@@ -304,6 +343,10 @@ func (c *Client) workerLoop(id int) {
 	}
 }
 
+// Purpose: Parse a payload and emit a spot to the output channel.
+// Key aspects: Validates JSON and drops malformed inputs.
+// Upstream: workerLoop.
+// Downstream: convertToSpot, spotChan.
 func (c *Client) handlePayload(payload []byte) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -326,6 +369,10 @@ func (c *Client) handlePayload(payload []byte) {
 	}
 }
 
+// Purpose: Convert a PSKReporter message into a canonical Spot.
+// Key aspects: Preserves observation timestamp; applies skew correction and CTY metadata.
+// Upstream: handlePayload.
+// Downstream: normalizeMessage, skew.ApplyCorrection, fetchCallsignInfo.
 // convertToSpot converts PSKReporter message to our Spot format
 // IMPORTANT: This function sets the spot's Time field to the actual observation time
 // from the PSKReporter message, NOT the current system time. This is critical for
@@ -426,6 +473,10 @@ func (c *Client) convertToSpot(msg *PSKRMessage) *spot.Spot {
 
 	return s
 }
+// Purpose: Convert CTY prefix metadata into Spot CallMetadata.
+// Key aspects: Returns zero-value metadata on nil input.
+// Upstream: convertToSpot.
+// Downstream: None.
 func metadataFromPrefix(info *cty.PrefixInfo) spot.CallMetadata {
 	if info == nil {
 		return spot.CallMetadata{}
@@ -439,11 +490,19 @@ func metadataFromPrefix(info *cty.PrefixInfo) spot.CallMetadata {
 	}
 }
 
+// Purpose: Report whether a mode is CW or RTTY.
+// Key aspects: Expects normalized/uppercased mode input.
+// Upstream: convertToSpot.
+// Downstream: None.
 func isCWorRTTY(mode string) bool {
 	// mode is expected to be uppercased/trimmed by normalizeMessage.
 	return mode == "CW" || mode == "RTTY"
 }
 
+// Purpose: Normalize and validate a PSKReporter message.
+// Key aspects: Uppercases fields, validates frequency, and normalizes callsigns.
+// Upstream: convertToSpot.
+// Downstream: spot.NormalizeCallsign, decorateSpotterCall.
 func (c *Client) normalizeMessage(msg *PSKRMessage) *normalizedPSK {
 	if msg == nil {
 		return nil
@@ -470,6 +529,10 @@ func (c *Client) normalizeMessage(msg *PSKRMessage) *normalizedPSK {
 	}
 }
 
+// Purpose: Normalize spotter callsign and optionally append an SSID suffix.
+// Key aspects: Uses a cache; appends "-#" only when enabled and safe.
+// Upstream: normalizeMessage.
+// Downstream: spot.NormalizeCallsign, spot.CallCache.
 func (c *Client) decorateSpotterCall(raw string) string {
 	cacheKey := raw
 	if c.appendSSID {
@@ -503,6 +566,10 @@ func (c *Client) decorateSpotterCall(raw string) string {
 	return normalized
 }
 
+// Purpose: Look up CTY metadata with a small local cache.
+// Key aspects: Uses TTL-based cache and tolerates missing CTY DB.
+// Upstream: convertToSpot.
+// Downstream: getInfoFromCache, setInfoCache, CTYDatabase.LookupCallsign.
 func (c *Client) fetchCallsignInfo(call string) (*cty.PrefixInfo, bool) {
 	if c.lookup == nil {
 		return nil, true
@@ -533,6 +600,10 @@ type infoCacheEntry struct {
 	at   time.Time
 }
 
+// Purpose: Fetch CTY metadata from the local info cache.
+// Key aspects: Enforces TTL expiration; guarded by a mutex.
+// Upstream: fetchCallsignInfo.
+// Downstream: None.
 func (c *Client) getInfoFromCache(call string, now time.Time) (*cty.PrefixInfo, bool) {
 	c.infoCacheMu.Lock()
 	defer c.infoCacheMu.Unlock()
@@ -547,17 +618,29 @@ func (c *Client) getInfoFromCache(call string, now time.Time) (*cty.PrefixInfo, 
 	return entry.info, entry.ok
 }
 
+// Purpose: Store CTY metadata in the local info cache.
+// Key aspects: Records timestamp for TTL eviction.
+// Upstream: fetchCallsignInfo.
+// Downstream: None.
 func (c *Client) setInfoCache(call string, info *cty.PrefixInfo, ok bool, now time.Time) {
 	c.infoCacheMu.Lock()
 	c.infoCache[call] = infoCacheEntry{info: info, ok: ok, at: now}
 	c.infoCacheMu.Unlock()
 }
 
+// Purpose: Wait for workers to exit and release the processing queue.
+// Key aspects: Blocks until workerWg completes.
+// Upstream: Stop.
+// Downstream: workerWg.Wait.
 func (c *Client) stopWorkerPool() {
 	c.workerWg.Wait()
 	c.processing = nil
 }
 
+// Purpose: Choose a default worker count for PSKReporter ingest.
+// Key aspects: Uses NumCPU with a minimum of 4.
+// Upstream: startWorkerPool.
+// Downstream: runtime.NumCPU.
 func defaultPSKReporterWorkers() int {
 	workers := runtime.NumCPU()
 	// PSKReporter bursts are high volume; keep a minimum of 4 workers even on small CPUs.
@@ -567,17 +650,26 @@ func defaultPSKReporterWorkers() int {
 	return workers
 }
 
-// GetSpotChannel returns the channel for receiving spots
+// Purpose: Expose the output spot channel.
+// Key aspects: Read-only channel for downstream consumers.
+// Upstream: main.go pipeline wiring.
+// Downstream: None.
 func (c *Client) GetSpotChannel() <-chan *spot.Spot {
 	return c.spotChan
 }
 
-// IsConnected returns whether the client is connected
+// Purpose: Report whether the MQTT client is connected.
+// Key aspects: Safe when client is nil.
+// Upstream: Diagnostics or health checks.
+// Downstream: mqtt.Client.IsConnected.
 func (c *Client) IsConnected() bool {
 	return c.client != nil && c.client.IsConnected()
 }
 
-// Stop closes the PSKReporter connection
+// Purpose: Stop the PSKReporter client and worker pool.
+// Key aspects: Unsubscribes, disconnects, and signals shutdown.
+// Upstream: main.go shutdown.
+// Downstream: stopWorkerPool, mqtt.Client.Disconnect.
 func (c *Client) Stop() {
 	log.Println("Stopping PSKReporter client...")
 

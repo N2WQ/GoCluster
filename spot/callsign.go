@@ -27,6 +27,10 @@ type cacheEntry struct {
 	expires time.Time
 }
 
+// Purpose: Construct a bounded normalization cache.
+// Key aspects: Defaults capacity/TTL when unset.
+// Upstream: global cache initialization and tests.
+// Downstream: list.New and map allocation.
 // NewCallCache creates a bounded FIFO cache sized for short-lived reuse.
 func NewCallCache(capacity int, ttl time.Duration) *CallCache {
 	if capacity <= 0 {
@@ -43,6 +47,10 @@ func NewCallCache(capacity int, ttl time.Duration) *CallCache {
 	}
 }
 
+// Purpose: Lookup a cached normalized callsign.
+// Key aspects: Enforces TTL and maintains LRU ordering.
+// Upstream: NormalizeCallsign.
+// Downstream: list operations and map access under lock.
 // Get returns a cached value for the raw key.
 func (c *CallCache) Get(key string) (string, bool) {
 	if c == nil {
@@ -65,6 +73,10 @@ func (c *CallCache) Get(key string) (string, bool) {
 	return entry.value, true
 }
 
+// Purpose: Insert or update a cached normalization entry.
+// Key aspects: Evicts oldest item when capacity is exceeded.
+// Upstream: NormalizeCallsign.
+// Downstream: list operations and map mutation under lock.
 // Add inserts or updates a cached value, evicting the oldest item when full.
 func (c *CallCache) Add(key, val string) {
 	if c == nil {
@@ -97,10 +109,18 @@ var normalizeCallCache = NewCallCache(4096, 10*time.Minute)
 
 // ConfigureNormalizeCallCache rebuilds the global normalization cache with the
 // provided limits so operators can tune size/TTL via config.
+// Purpose: Replace the global normalization cache with new limits.
+// Key aspects: Reinitializes cache to size/TTL; old entries discarded.
+// Upstream: main startup and config loading.
+// Downstream: NewCallCache.
 func ConfigureNormalizeCallCache(size int, ttl time.Duration) {
 	normalizeCallCache = NewCallCache(size, ttl)
 }
 
+// Purpose: Normalize a callsign for consistent comparisons.
+// Key aspects: Uppercases, trims, converts dots to slashes, and strips trailing slash.
+// Upstream: All parsing and validation paths.
+// Downstream: normalizeCallCache and strings operations.
 // NormalizeCallsign uppercases the string, trims whitespace, and removes trailing dots or slashes.
 func NormalizeCallsign(call string) string {
 	if cached, ok := normalizeCallCache.Get(call); ok {
@@ -114,6 +134,10 @@ func NormalizeCallsign(call string) string {
 	return normalized
 }
 
+// Purpose: Validate a normalized callsign for basic format rules.
+// Key aspects: Length bounds, digit presence, and regex match.
+// Upstream: IsValidCallsign.
+// Downstream: callsignPattern and unicode checks.
 func validateNormalizedCallsign(call string) bool {
 	if call == "" {
 		return false
@@ -127,12 +151,20 @@ func validateNormalizedCallsign(call string) bool {
 	return callsignPattern.MatchString(call)
 }
 
+// Purpose: Validate a raw callsign input.
+// Key aspects: Normalizes then validates format.
+// Upstream: Parser and dedupe validation.
+// Downstream: NormalizeCallsign and validateNormalizedCallsign.
 // IsValidCallsign applies format checks to make sure it looks like a valid amateur call.
 func IsValidCallsign(call string) bool {
 	normalized := NormalizeCallsign(call)
 	return validateNormalizedCallsign(normalized)
 }
 
+// Purpose: Determine whether a callsign is a beacon identifier.
+// Key aspects: Normalizes and checks /B suffix.
+// Upstream: RefreshBeaconFlag and other beacon detection.
+// Downstream: NormalizeCallsign and strings.HasSuffix.
 // IsBeaconCall reports whether the normalized callsign ends with /B.
 func IsBeaconCall(call string) bool {
 	normalized := NormalizeCallsign(call)

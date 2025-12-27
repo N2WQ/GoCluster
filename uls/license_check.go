@@ -26,18 +26,26 @@ var (
 	loggedDBError  atomic.Bool
 )
 
+// Purpose: Enable license checks by default when the package loads.
+// Key aspects: Uses an atomic flag to avoid locks during queries.
+// Upstream: Go runtime init for the uls package.
+// Downstream: licenseEnabled flag read by IsLicensedUS.
 func init() {
 	licenseEnabled.Store(true)
 }
 
-// SetLicenseChecksEnabled controls whether FCC ULS checks are performed.
-// When disabled, IsLicensedUS always returns true without touching the DB.
+// Purpose: Toggle FCC ULS license checks on or off.
+// Key aspects: Updates an atomic flag; disabled mode short-circuits lookups.
+// Upstream: Config load or administrative controls.
+// Downstream: licenseEnabled flag read by IsLicensedUS.
 func SetLicenseChecksEnabled(enabled bool) {
 	licenseEnabled.Store(enabled)
 }
 
-// SetLicenseDBPath configures the path to the FCC ULS SQLite database used for license lookups.
-// If the path is empty or the DB cannot be opened, lookups will be skipped and treated as allowed.
+// Purpose: Configure the FCC ULS SQLite path used for license lookups.
+// Key aspects: Normalizes path, validates presence, and marks the DB as dead on failure.
+// Upstream: Config load or refresh logic.
+// Downstream: licenseDBPath, licenseDead, os.Stat.
 func SetLicenseDBPath(path string) {
 	clean := strings.TrimSpace(path)
 	if clean == "" {
@@ -56,9 +64,10 @@ func SetLicenseDBPath(path string) {
 	licenseDBPath = clean
 }
 
-// IsLicensedUS reports whether the callsign appears in the FCC ULS AM table (active licenses only).
-// If no DB is configured or the DB cannot be opened, the call is treated as licensed (allowed).
-// Results are cached for the lifetime of the process.
+// Purpose: Determine whether a callsign appears in the FCC ULS AM table.
+// Key aspects: Normalizes callsign, caches results, retries on locked DB, and fails open on errors.
+// Upstream: Spot filtering in main.go, RBN client, PSKReporter client.
+// Downstream: getLicenseDB, NormalizeForLicense, SQL query, ResetLicenseDB.
 func IsLicensedUS(call string) bool {
 	if !licenseEnabled.Load() {
 		return true
@@ -122,6 +131,10 @@ func IsLicensedUS(call string) bool {
 	return allow
 }
 
+// Purpose: Lazily open the FCC ULS SQLite database in read-only mode.
+// Key aspects: Uses sync.Once; opens immutable/query-only to avoid WAL writes.
+// Upstream: IsLicensedUS.
+// Downstream: sql.Open, licenseDB/locks.
 func getLicenseDB() *sql.DB {
 	licenseOnce.Do(func() {
 		if licenseDBPath == "" {
@@ -144,7 +157,10 @@ func getLicenseDB() *sql.DB {
 	return licenseDB
 }
 
-// ResetLicenseDB closes any open license DB, clears caches, and allows reopening.
+// Purpose: Close the license DB and clear all related caches/flags.
+// Key aspects: Resets sync.Once so a future lookup can reopen the DB.
+// Upstream: Refresh in uls/downloader.go, IsLicensedUS error handling.
+// Downstream: sql.DB.Close, licenseCache/flags.
 func ResetLicenseDB() {
 	licenseMu.Lock()
 	defer licenseMu.Unlock()
@@ -158,8 +174,10 @@ func ResetLicenseDB() {
 	loggedDBError.Store(false)
 }
 
-// NormalizeForLicense strips adornments (SSID, skimmer suffix, portable prefixes)
-// so FCC lookups use the underlying base callsign.
+// Purpose: Normalize callsigns for FCC ULS lookup.
+// Key aspects: Strips SSIDs/skimmer suffixes and chooses the most call-like slash segment.
+// Upstream: IsLicensedUS.
+// Downstream: spot.NormalizeCallsign, unicode digit checks.
 func NormalizeForLicense(call string) string {
 	normalized := spot.NormalizeCallsign(call)
 	if normalized == "" {

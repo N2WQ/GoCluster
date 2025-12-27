@@ -22,6 +22,10 @@ type freqSample struct {
 	at   time.Time
 }
 
+// Purpose: Construct a frequency averager with empty state.
+// Key aspects: Initializes maps for samples and last-seen timestamps.
+// Upstream: main startup.
+// Downstream: map allocation.
 // NewFrequencyAverager creates an empty averager.
 func NewFrequencyAverager() *FrequencyAverager {
 	return &FrequencyAverager{
@@ -30,6 +34,10 @@ func NewFrequencyAverager() *FrequencyAverager {
 	}
 }
 
+// Purpose: Update history and compute average frequency within a window.
+// Key aspects: Filters by recency and tolerance, returns average/corroborators/total.
+// Upstream: processOutputSpots frequency averaging.
+// Downstream: cleanup and math.Abs.
 // Average updates the history for the given call and returns the average
 // frequency (in kHz) across all reports within the provided window that
 // sit within the supplied tolerance of the current report. The returned
@@ -83,6 +91,10 @@ func (fa *FrequencyAverager) Average(call string, freq float64, now time.Time, w
 	return sum / float64(corroborators), corroborators, total
 }
 
+// Purpose: Drop inactive calls to bound memory usage.
+// Key aspects: Runs every N ops to keep cleanup lightweight.
+// Upstream: Average and StartCleanup.
+// Downstream: map deletes for entries/lastSeen.
 // cleanup drops inactive calls to prevent unbounded map growth as calls churn.
 // It runs cheaply on every call; for larger maps you could adjust the cadence.
 func (fa *FrequencyAverager) cleanup(now time.Time, window time.Duration) {
@@ -99,6 +111,10 @@ func (fa *FrequencyAverager) cleanup(now time.Time, window time.Duration) {
 	}
 }
 
+// Purpose: Start a periodic cleanup goroutine.
+// Key aspects: Guards against multiple starts and uses a quit channel.
+// Upstream: main startup.
+// Downstream: cleanup and time.NewTicker.
 // StartCleanup launches a periodic sweep to drop inactive calls even when
 // traffic is sparse, keeping memory bounded over long runtimes.
 func (fa *FrequencyAverager) StartCleanup(interval, window time.Duration) {
@@ -116,6 +132,10 @@ func (fa *FrequencyAverager) StartCleanup(interval, window time.Duration) {
 	fa.sweepQuit = make(chan struct{})
 	fa.mu.Unlock()
 
+	// Purpose: Periodically invoke cleanup until StopCleanup is called.
+	// Key aspects: Ticker-driven loop with quit channel.
+	// Upstream: StartCleanup.
+	// Downstream: cleanup and ticker.Stop.
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
@@ -132,6 +152,10 @@ func (fa *FrequencyAverager) StartCleanup(interval, window time.Duration) {
 	}()
 }
 
+// Purpose: Stop the periodic cleanup goroutine.
+// Key aspects: Closes quit channel and clears it.
+// Upstream: main shutdown.
+// Downstream: channel close only.
 // StopCleanup stops the periodic sweep goroutine.
 func (fa *FrequencyAverager) StopCleanup() {
 	if fa == nil {

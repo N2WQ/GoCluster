@@ -29,6 +29,10 @@ type bucket struct {
 
 var _ = newActivityMonitor
 
+// Purpose: Build an activityMonitor configured for adaptive refresh cadence selection.
+// Key aspects: Returns nil when disabled; seeds buckets and a default logger.
+// Upstream: None (currently unused; reserved for adaptive refresh wiring).
+// Downstream: Uses log.Default and allocates the sliding window buckets.
 func newActivityMonitor(cfg config.AdaptiveRefreshConfig, logger *log.Logger) *activityMonitor {
 	if cfg.WindowMinutesForRate <= 0 {
 		return nil
@@ -46,10 +50,10 @@ func newActivityMonitor(cfg config.AdaptiveRefreshConfig, logger *log.Logger) *a
 	}
 }
 
-// Start begins periodic evaluation of recent CW/RTTY spot rates using the
-// configured evaluation period. A nil monitor is a no-op so callers do not
-// need to guard it. Busy/quiet transitions are logged when thresholds are
-// crossed; the current state is kept in-memory for future refresh hooks.
+// Purpose: Start periodic evaluation of recent spot rates.
+// Key aspects: Spawns a ticker goroutine; nil receivers are safe no-ops.
+// Upstream: Intended for adaptive refresh orchestration (not wired yet).
+// Downstream: time.NewTicker and m.evaluate inside the goroutine.
 func (m *activityMonitor) Start() {
 	if m == nil {
 		return
@@ -59,6 +63,10 @@ func (m *activityMonitor) Start() {
 		period = 30 * time.Second
 	}
 	ticker := time.NewTicker(period)
+	// Purpose: Periodically recompute the busy/quiet state until Stop is called.
+	// Key aspects: Owns ticker lifecycle and exits on stop channel.
+	// Upstream: Start.
+	// Downstream: ticker.Stop and m.evaluate.
 	go func() {
 		defer ticker.Stop()
 		for {
@@ -72,6 +80,10 @@ func (m *activityMonitor) Start() {
 	}()
 }
 
+// Purpose: Stop the activityMonitor background ticker.
+// Key aspects: Closing stopCh is the only shutdown signal.
+// Upstream: Intended to be called by owner during shutdown.
+// Downstream: None (channel close only).
 func (m *activityMonitor) Stop() {
 	if m == nil {
 		return
@@ -79,10 +91,10 @@ func (m *activityMonitor) Stop() {
 	close(m.stopCh)
 }
 
-// Increment records a single CW/RTTY spot observation at the provided time.
-// The call is safe to invoke from hot paths; it locks briefly to bump the
-// bucket for the current minute and resets stale buckets when the sliding
-// window advances.
+// Purpose: Record a spot arrival for activity rate tracking.
+// Key aspects: Minimal lock, rotates stale buckets, bumps the current minute.
+// Upstream: Intended for the spot ingest path (not wired yet).
+// Downstream: m.rotateBuckets and m.bucketIndex.
 func (m *activityMonitor) Increment(now time.Time) {
 	if m == nil {
 		return
@@ -100,13 +112,19 @@ func (m *activityMonitor) Increment(now time.Time) {
 	m.buckets[idx].count++
 }
 
+// Purpose: Map a timestamp to the corresponding bucket index.
+// Key aspects: Uses epoch minutes modulo bucket length.
+// Upstream: Increment.
+// Downstream: None.
 func (m *activityMonitor) bucketIndex(t time.Time) int {
 	minutes := int(t.Unix()/60) % len(m.buckets)
 	return minutes
 }
 
-// rotateBuckets zeros out any buckets that have aged beyond the configured
-// window so rate calculations only consider recent activity.
+// Purpose: Drop stale buckets outside the sliding window.
+// Key aspects: Resets bucket start/count when outside window span.
+// Upstream: Increment and evaluate.
+// Downstream: None.
 func (m *activityMonitor) rotateBuckets(now time.Time) {
 	for i := range m.buckets {
 		if now.Sub(m.buckets[i].start) >= time.Duration(len(m.buckets))*time.Minute {
@@ -116,10 +134,10 @@ func (m *activityMonitor) rotateBuckets(now time.Time) {
 	}
 }
 
-// evaluate recomputes the average rate over the sliding window and updates
-// the busy/quiet state machine, emitting logs when transitions occur. It
-// should be called on the monitor's ticker; callers pass the current time
-// to ease testing.
+// Purpose: Update busy/quiet state based on recent spot rate.
+// Key aspects: Computes windowed rate and logs state transitions.
+// Upstream: Start's ticker goroutine (and tests, if any).
+// Downstream: m.rotateBuckets and logger.Printf.
 func (m *activityMonitor) evaluate(now time.Time) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

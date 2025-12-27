@@ -49,6 +49,10 @@ type secondaryEntry struct {
 	hasReport bool
 }
 
+// Purpose: Construct a secondary deduper for broadcast-only suppression.
+// Key aspects: Initializes shard maps and window settings.
+// Upstream: main startup when secondary dedupe is enabled.
+// Downstream: shard allocation and state init.
 // NewSecondaryDeduper builds a deduper. A non-positive window disables
 // suppression (ShouldForward always returns true).
 func NewSecondaryDeduper(window time.Duration, preferStronger bool) *SecondaryDeduper {
@@ -65,16 +69,32 @@ func NewSecondaryDeduper(window time.Duration, preferStronger bool) *SecondaryDe
 	}
 }
 
+// Purpose: Start the cleanup loop for secondary dedupe.
+// Key aspects: Spawns a goroutine that prunes expired entries.
+// Upstream: main startup.
+// Downstream: cleanupLoop goroutine.
 // Start launches a periodic cleanup loop to bound memory.
 func (d *SecondaryDeduper) Start() {
+	// Purpose: Periodically purge expired entries.
+	// Key aspects: Runs until Stop closes shutdown.
+	// Upstream: SecondaryDeduper.Start.
+	// Downstream: d.cleanupLoop.
 	go d.cleanupLoop()
 }
 
+// Purpose: Stop the cleanup loop.
+// Key aspects: Closing shutdown unblocks cleanupLoop.
+// Upstream: main shutdown.
+// Downstream: channel close only.
 // Stop terminates the cleanup loop.
 func (d *SecondaryDeduper) Stop() {
 	close(d.shutdown)
 }
 
+// Purpose: Determine whether a spot should pass secondary dedupe.
+// Key aspects: Uses DE DXCC/zone + DX/freq + source class and optional stronger SNR.
+// Upstream: processOutputSpots broadcast stage.
+// Downstream: secondaryHash and isSecondaryDuplicateLocked.
 // ShouldForward returns true when the spot is not a duplicate within the
 // configured window. When preferStronger is enabled, a stronger SNR replaces
 // the cached entry and the new spot is forwarded.
@@ -116,6 +136,10 @@ func (d *SecondaryDeduper) ShouldForward(s *spot.Spot) bool {
 	return true
 }
 
+// Purpose: Return secondary dedupe stats across shards.
+// Key aspects: Aggregates processed/duplicate counts and cache size.
+// Upstream: stats display.
+// Downstream: shard counters under lock.
 // GetStats returns processed, duplicates, and cache size totals.
 func (d *SecondaryDeduper) GetStats() (processed uint64, duplicates uint64, cacheSize int) {
 	for i := range d.shards {
@@ -129,11 +153,19 @@ func (d *SecondaryDeduper) GetStats() (processed uint64, duplicates uint64, cach
 	return processed, duplicates, cacheSize
 }
 
+// Purpose: Pick the shard for a given hash.
+// Key aspects: Uses bitmask with power-of-two shard count.
+// Upstream: ShouldForward.
+// Downstream: shard selection only.
 func (d *SecondaryDeduper) shardFor(hash uint32) *secondaryShard {
 	idx := hash & (secondaryShardCount - 1)
 	return &d.shards[idx]
 }
 
+// Purpose: Periodically purge expired secondary dedupe entries.
+// Key aspects: Ticker-driven loop until shutdown.
+// Upstream: goroutine started in Start.
+// Downstream: cleanup.
 func (d *SecondaryDeduper) cleanupLoop() {
 	ticker := time.NewTicker(d.cleanupInterval)
 	defer ticker.Stop()
@@ -148,6 +180,10 @@ func (d *SecondaryDeduper) cleanupLoop() {
 	}
 }
 
+// Purpose: Remove expired entries from the secondary cache.
+// Key aspects: Iterates shards and deletes old entries.
+// Upstream: cleanupLoop.
+// Downstream: shard cache mutation.
 func (d *SecondaryDeduper) cleanup() {
 	if d.window <= 0 {
 		return
@@ -171,6 +207,10 @@ const (
 	secondaryClassSkimmer byte = 2
 )
 
+// Purpose: Hash a spot into the secondary dedupe keyspace.
+// Key aspects: Includes freq, DE DXCC/zone, DX call, and source class.
+// Upstream: ShouldForward.
+// Downstream: writeFixedCallNormalized and secondarySourceClass.
 // secondaryHash mirrors the primary hash structure (minute + kHz + fixed DX
 // call) but swaps DE callsign for DE DXCC + DE CQ zone, appends a source class
 // discriminator, and omits the time. The time window is enforced by the cache
@@ -188,6 +228,10 @@ func secondaryHash(s *spot.Spot, deDXCC int, deZone int) uint32 {
 	return uint32(xxh3.Hash(buf[:]))
 }
 
+// Purpose: Normalize a spot into human vs skimmer class for dedupe.
+// Key aspects: Skimmer sources are distinct from all human sources.
+// Upstream: secondaryHash.
+// Downstream: spot.IsSkimmerSource.
 // secondarySourceClass normalizes a spot to its secondary-dedupe class.
 // Skimmer sources are always treated as a distinct class from all human inputs.
 func secondarySourceClass(s *spot.Spot) byte {
@@ -197,6 +241,10 @@ func secondarySourceClass(s *spot.Spot) byte {
 	return secondaryClassHuman
 }
 
+// Purpose: Write a normalized callsign into a fixed-width buffer.
+// Key aspects: Uppercases, trims, and zero-pads to 12 bytes.
+// Upstream: secondaryHash.
+// Downstream: spot.NormalizeCallsign.
 // writeFixedCallNormalized uppercases, trims, and pads/truncates into 12 bytes.
 func writeFixedCallNormalized(dst []byte, call string) {
 	const maxLen = 12
@@ -216,6 +264,10 @@ func writeFixedCallNormalized(dst []byte, call string) {
 	}
 }
 
+// Purpose: Check if a secondary key is a duplicate within the time window.
+// Key aspects: Caller must hold shard lock; handles out-of-order timestamps.
+// Upstream: ShouldForward.
+// Downstream: time.Sub comparisons.
 // isSecondaryDuplicateLocked checks if a spot is a duplicate within a shard.
 func isSecondaryDuplicateLocked(cache map[uint32]secondaryEntry, hash uint32, spotTime time.Time, window time.Duration) (bool, secondaryEntry) {
 	lastSeen, exists := cache[hash]

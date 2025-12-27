@@ -43,6 +43,10 @@ var bandLookup = func() map[string]BandInfo {
 	return m
 }()
 
+// Purpose: Normalize a band label into canonical lookup form.
+// Key aspects: Lowercases, strips whitespace, normalizes units, and appends "m" for bare numbers.
+// Upstream: Callers parsing band labels or user input.
+// Downstream: strings.ReplaceAll and NormalizeBand lookup table.
 // NormalizeBand returns the canonical lowercase band identifier for the given label.
 // It removes whitespace, converts meter/centimeter words to units, and appends "m" when
 // the value looks like a bare number. The result is suitable for map lookups.
@@ -79,6 +83,10 @@ func NormalizeBand(label string) string {
 	return cleaned
 }
 
+// Purpose: Validate that a band label maps to a known band.
+// Key aspects: Normalizes label and checks lookup table.
+// Upstream: Band validation paths.
+// Downstream: NormalizeBand and bandLookup.
 // IsValidBand returns true if the provided label corresponds to a known band.
 func IsValidBand(label string) bool {
 	normalized := NormalizeBand(label)
@@ -89,6 +97,10 @@ func IsValidBand(label string) bool {
 	return ok
 }
 
+// Purpose: Return canonical names for all configured bands.
+// Key aspects: Preserves the bandTable order.
+// Upstream: UI/config validation paths.
+// Downstream: bandTable iteration.
 // SupportedBandNames returns the canonical names of all tracked bands.
 func SupportedBandNames() []string {
 	names := make([]string, len(bandTable))
@@ -98,6 +110,10 @@ func SupportedBandNames() []string {
 	return names
 }
 
+// Purpose: Return min/max frequencies across all bands.
+// Key aspects: Uses first/last entries in bandTable.
+// Upstream: Frequency sanity checks and UI displays.
+// Downstream: bandTable access.
 // FrequencyBounds returns the minimum and maximum frequencies covered by the band table.
 func FrequencyBounds() (min, max float64) {
 	if len(bandTable) == 0 {

@@ -22,9 +22,10 @@ type RingBuffer struct {
 	total    atomic.Uint64 // Total spots added (may exceed capacity)
 }
 
-// NewRingBuffer allocates a ring buffer with the specified capacity. Capacity
-// bounds the number of spots retained for historical queries; the dedup and
-// broadcast pipeline run independently of this storage.
+// Purpose: Construct a bounded ring buffer for recent spot snapshots.
+// Key aspects: Capacity bounds retention; storage is independent of dedup/broadcast.
+// Upstream: main.go initializes the shared spot cache.
+// Downstream: RingBuffer.Add, RingBuffer.GetRecent, RingBuffer.GetPosition, RingBuffer.GetCount.
 func NewRingBuffer(capacity int) *RingBuffer {
 	return &RingBuffer{
 		slots:    make([]atomic.Pointer[spot.Spot], capacity),
@@ -32,8 +33,10 @@ func NewRingBuffer(capacity int) *RingBuffer {
 	}
 }
 
-// Add appends a spot to the ring, assigning a monotonic ID so readers can skip
-// over stale entries when the buffer wraps.
+// Purpose: Publish a new spot into the ring with a monotonic ID.
+// Key aspects: Uses atomic counter and pointer store to avoid partial reads.
+// Upstream: main.go spot ingestion/broadcast pipeline.
+// Downstream: atomic counter and slot store; Spot.ID mutation.
 func (rb *RingBuffer) Add(s *spot.Spot) {
 	// Assign monotonic ID using atomic counter
 	newID := rb.total.Add(1)
@@ -44,8 +47,10 @@ func (rb *RingBuffer) Add(s *spot.Spot) {
 	rb.slots[idx].Store(s)
 }
 
-// GetRecent returns the N most recent spots (up to capacity). Readers walk the
-// ID-ordered ring backward to avoid taking locks or disturbing writers.
+// Purpose: Return up to N most recent spots in reverse chronological order.
+// Key aspects: Walks ID-ordered ring backwards; skips overwritten slots.
+// Upstream: Telnet SHOW/DX handlers and spot cache queries.
+// Downstream: atomic loads from ring slots.
 func (rb *RingBuffer) GetRecent(n int) []*spot.Spot {
 	if n <= 0 {
 		return []*spot.Spot{}
@@ -79,23 +84,28 @@ func (rb *RingBuffer) GetRecent(n int) []*spot.Spot {
 	return result
 }
 
-// GetPosition returns the current write position in the ring buffer
+// Purpose: Return the current write position modulo capacity.
+// Key aspects: Derived from atomic total; no locking.
+// Upstream: Diagnostics/metrics callers.
+// Downstream: atomic total counter.
 func (rb *RingBuffer) GetPosition() int {
 	total := rb.total.Load()
 	return int(total % uint64(rb.capacity))
 }
 
-// GetCount returns the total number of spots added (may be > capacity)
+// Purpose: Return total count of spots written to the ring.
+// Key aspects: Reads atomic counter; may exceed capacity.
+// Upstream: Metrics/diagnostics callers.
+// Downstream: atomic total counter.
 func (rb *RingBuffer) GetCount() int {
 	// total is atomic; no need to lock
 	return int(rb.total.Load())
 }
 
-// GetSizeKB returns an approximate size of the ring buffer in kilobytes.
-// The estimate includes the backing slice of pointers and an approximation
-// of the memory retained by the Spot objects. The per-spot estimate is
-// intentionally conservative (default ~500 bytes) because string data and
-// other heap allocations vary widely.
+// Purpose: Estimate ring buffer memory footprint in kilobytes.
+// Key aspects: Accounts for pointer backing + conservative per-spot estimate.
+// Upstream: Diagnostics/metrics callers.
+// Downstream: unsafe.Sizeof for pointer size.
 func (rb *RingBuffer) GetSizeKB() int {
 	// pointer size on this architecture
 	ptrSize := int(unsafe.Sizeof(uintptr(0)))

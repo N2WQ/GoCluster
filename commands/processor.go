@@ -27,11 +27,10 @@ type Processor struct {
 	spotInput  chan<- *spot.Spot
 }
 
-// NewProcessor wraps the shared ring buffer so SHOW/DX commands can read from
-// the central spot store. When an archive reader is provided, SHOW/DX prefers
-// the database and falls back to the ring buffer on errors or when empty.
-// spotInput is optional; when provided, DX commands enqueue human spots into
-// the shared deduplication pipeline.
+// Purpose: Construct a command processor bound to shared spot state.
+// Key aspects: SHOW/DX prefers archive when present; DX commands can enqueue spots.
+// Upstream: Telnet server initialization.
+// Downstream: Processor methods (ProcessCommand, handleShowDX, handleDX).
 func NewProcessor(buf *buffer.RingBuffer, archive archiveReader, spotInput chan<- *spot.Spot) *Processor {
 	return &Processor{
 		spotBuffer: buf,
@@ -40,15 +39,18 @@ func NewProcessor(buf *buffer.RingBuffer, archive archiveReader, spotInput chan<
 	}
 }
 
-// ProcessCommand parses a single telnet command and returns the response text
-// to write back to the client. A response of "BYE" signals the caller to close
-// the session.
+// Purpose: Parse a command and return the response text.
+// Key aspects: "BYE" signals the caller to close the session.
+// Upstream: Telnet client command loop.
+// Downstream: ProcessCommandForClient.
 func (p *Processor) ProcessCommand(cmd string) string {
 	return p.ProcessCommandForClient(cmd, "", "")
 }
 
-// ProcessCommandForClient behaves like ProcessCommand but also accepts the
-// client's callsign so DX commands can be posted with a proper spotter ID.
+// Purpose: Parse a command with client context for DX posting.
+// Key aspects: Routes DX commands and normalizes command tokens.
+// Upstream: Telnet client command loop with callsign context.
+// Downstream: handleDX, handleHelp, handleShow.
 func (p *Processor) ProcessCommandForClient(cmd string, spotter string, spotterIP string) string {
 	cmd = strings.TrimSpace(cmd)
 
@@ -84,7 +86,10 @@ func (p *Processor) ProcessCommandForClient(cmd string, spotter string, spotterI
 	}
 }
 
-// handleHelp returns help text for builtin commands and filter controls.
+// Purpose: Render the HELP text for users.
+// Key aspects: Includes filter command guidance and supported bands/modes.
+// Upstream: ProcessCommandForClient (HELP/H).
+// Downstream: filter.SupportedModes, spot.SupportedBandNames.
 func (p *Processor) handleHelp() string {
 	return fmt.Sprintf(`Available commands:
 HELP                 - Show this help
@@ -155,6 +160,10 @@ Examples:
 `, strings.Join(filter.SupportedModes, ", "), strings.Join(spot.SupportedBandNames(), ", "))
 }
 
+// Purpose: Handle the DX command and enqueue a human spot.
+// Key aspects: Validates callsign/frequency; parses comment for mode/report.
+// Upstream: ProcessCommandForClient (DX).
+// Downstream: spot.ParseSpotComment, spot.NewSpot, spotInput channel.
 func (p *Processor) handleDX(fields []string, spotter string, spotterIP string) string {
 	spotter = strings.TrimSpace(spotter)
 	if spotter == "" {
@@ -195,7 +204,10 @@ func (p *Processor) handleDX(fields []string, spotter string, spotterIP string) 
 	}
 }
 
-// handleShow routes SHOW subcommands; only SHOW/DX is currently supported.
+// Purpose: Route SHOW subcommands.
+// Key aspects: Currently only supports SHOW/DX.
+// Upstream: ProcessCommandForClient (SHOW/SH).
+// Downstream: handleShowDX.
 func (p *Processor) handleShow(args []string) string {
 	if len(args) == 0 {
 		return "Usage: SHOW/DX [count]\n"
@@ -211,7 +223,10 @@ func (p *Processor) handleShow(args []string) string {
 	}
 }
 
-// handleShowDX renders the most recent N spots (archive when enabled, otherwise ring buffer).
+// Purpose: Render the most recent N spots for SHOW/DX.
+// Key aspects: Prefers archive; falls back to ring buffer; outputs oldest-first.
+// Upstream: handleShow.
+// Downstream: archive.Recent, ring buffer, reverseSpotsInPlace.
 func (p *Processor) handleShowDX(args []string) string {
 	count := 10 // Default count
 
@@ -254,8 +269,10 @@ func (p *Processor) handleShowDX(args []string) string {
 	return result.String()
 }
 
-// reverseSpotsInPlace flips the order of the provided slice so callers can
-// present chronological output even when sources return newest-first.
+// Purpose: Reverse a slice of spots in place.
+// Key aspects: Used to present chronological output.
+// Upstream: handleShowDX.
+// Downstream: None.
 func reverseSpotsInPlace(spots []*spot.Spot) {
 	for i, j := 0, len(spots)-1; i < j; i, j = i+1, j-1 {
 		spots[i], spots[j] = spots[j], spots[i]

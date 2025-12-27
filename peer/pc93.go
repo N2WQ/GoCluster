@@ -19,6 +19,10 @@ type pc93Message struct {
 	Hop       int
 }
 
+// Purpose: Parse a PC93 frame into a structured message.
+// Key aspects: Requires minimum fields; decodes escaped text.
+// Upstream: Peer session reader for announcements/talk.
+// Downstream: decodePC93Text.
 func parsePC93(frame *Frame) (pc93Message, bool) {
 	if frame == nil {
 		return pc93Message{}, false
@@ -45,6 +49,10 @@ func parsePC93(frame *Frame) (pc93Message, bool) {
 	return msg, true
 }
 
+// Purpose: Decode escaped caret sequences in PC93 text.
+// Key aspects: Only handles %5E/%5e for caret.
+// Upstream: parsePC93.
+// Downstream: strings.ReplaceAll.
 func decodePC93Text(text string) string {
 	if text == "" {
 		return text
@@ -54,6 +62,10 @@ func decodePC93Text(text string) string {
 	return text
 }
 
+// Purpose: Determine whether a PC93 message targets a user or broadcast.
+// Key aspects: Treats ALL/WX/SYSOP/#rooms as broadcasts.
+// Upstream: Peer session routing.
+// Downstream: spot.IsValidCallsign.
 func pc93Target(msg pc93Message) (target string, broadcast bool) {
 	to := strings.TrimSpace(msg.To)
 	if to == "" {
@@ -73,6 +85,10 @@ func pc93Target(msg pc93Message) (target string, broadcast bool) {
 	return "", true
 }
 
+// Purpose: Format a PC93 message for telnet display.
+// Key aspects: Normalizes To/From labels and drops empty text.
+// Upstream: Telnet broadcast of announcements.
+// Downstream: fmt.Sprintf.
 func formatPC93Line(msg pc93Message) string {
 	to := strings.TrimSpace(msg.To)
 	if strings.EqualFold(to, "*") || strings.EqualFold(to, "ALL") || to == "" {

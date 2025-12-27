@@ -59,6 +59,11 @@ var tables = []tableSpec{
 	},
 }
 
+// Purpose: Build the FCC ULS SQLite database from extracted data files.
+// Key aspects: Loads HD first to capture active IDs, then filters AM by that set;
+// uses a temp DB file and atomic rename to avoid partial state.
+// Upstream: Refresh in uls/downloader.go after download/extract.
+// Downstream: loadTable, buildInsertSQL, resolveFile, parseID, SQLite operations.
 func buildDatabase(extractDir, dbPath string, tempDir string) error {
 	dir := filepath.Dir(dbPath)
 	if dir != "" && dir != "." {
@@ -122,6 +127,10 @@ func buildDatabase(extractDir, dbPath string, tempDir string) error {
 	return nil
 }
 
+// Purpose: Load a single ULS table from a DAT file into SQLite.
+// Key aspects: Uses a transaction and prepared statement; filters inactive IDs for AM.
+// Upstream: buildDatabase iterates over tables.
+// Downstream: resolveFile, buildInsertSQL, parseID, SQL insert/commit/rollback.
 func loadTable(db *sql.DB, extractDir string, spec tableSpec, activeIDs map[uint64]struct{}) error {
 	filePath := resolveFile(extractDir, spec.FileNames)
 	if filePath == "" {
@@ -219,6 +228,10 @@ func loadTable(db *sql.DB, extractDir string, spec tableSpec, activeIDs map[uint
 	return nil
 }
 
+// Purpose: Build an INSERT statement with the requested column count.
+// Key aspects: Generates positional placeholders for SQLite.
+// Upstream: loadTable.
+// Downstream: None.
 func buildInsertSQL(table string, columns int) string {
 	placeholders := make([]string, columns)
 	for i := 0; i < columns; i++ {
@@ -227,6 +240,10 @@ func buildInsertSQL(table string, columns int) string {
 	return fmt.Sprintf("INSERT INTO %s VALUES (%s);", table, strings.Join(placeholders, ","))
 }
 
+// Purpose: Locate the first existing data file in the extract directory.
+// Key aspects: Checks original and lowercase filenames to handle case differences.
+// Upstream: loadTable.
+// Downstream: os.Stat.
 func resolveFile(dir string, candidates []string) string {
 	for _, name := range candidates {
 		p := filepath.Join(dir, name)
@@ -240,12 +257,19 @@ func resolveFile(dir string, candidates []string) string {
 	return ""
 }
 
-// BuildOnce is a helper for manual runs, performing download+extract+load with force=true.
+// Purpose: Convenience entry point to force a full ULS refresh.
+// Key aspects: Delegates to Refresh with force=true; intended for manual runs.
+// Upstream: Manual invocation or tooling (not used in the main pipeline).
+// Downstream: Refresh in uls/downloader.go.
 func BuildOnce(cfg config.FCCULSConfig) error {
 	_, err := Refresh(cfg, true)
 	return err
 }
 
+// Purpose: Parse a ULS numeric identifier string into uint64.
+// Key aspects: Trims whitespace and uses base-10 parsing.
+// Upstream: loadTable.
+// Downstream: strconv.ParseUint.
 func parseID(raw string) (uint64, error) {
 	return strconv.ParseUint(strings.TrimSpace(raw), 10, 64)
 }

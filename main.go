@@ -79,6 +79,10 @@ type licenseEntry struct {
 	at       time.Time
 }
 
+// Purpose: Construct a licenseCache with a bounded TTL.
+// Key aspects: Normalizes non-positive TTL to a safe default.
+// Upstream: package init for licCache and main wiring.
+// Downstream: map allocation for cache entries.
 func newLicenseCache(ttl time.Duration) *licenseCache {
 	if ttl <= 0 {
 		ttl = 5 * time.Minute
@@ -89,6 +93,10 @@ func newLicenseCache(ttl time.Duration) *licenseCache {
 	}
 }
 
+// Purpose: Lookup a cached FCC license decision for a callsign.
+// Key aspects: Enforces TTL expiration and returns (value, ok).
+// Upstream: applyLicenseGate.
+// Downstream: time comparisons and map access under lock.
 func (lc *licenseCache) get(call string, now time.Time) (bool, bool) {
 	if lc == nil || call == "" {
 		return false, false
@@ -106,6 +114,10 @@ func (lc *licenseCache) get(call string, now time.Time) (bool, bool) {
 	return entry.licensed, true
 }
 
+// Purpose: Store a callsign license decision in the cache.
+// Key aspects: Overwrites existing entries with updated timestamp.
+// Upstream: applyLicenseGate.
+// Downstream: map assignment under lock.
 func (lc *licenseCache) set(call string, licensed bool, now time.Time) {
 	if lc == nil || call == "" {
 		return
@@ -138,8 +150,10 @@ type gridEntry struct {
 	updatedAt time.Time
 }
 
-// newGridCache builds an in-memory LRU for grids keyed by callsign, honoring an
-// optional TTL so old observations can expire without hitting SQLite.
+// Purpose: Build an in-memory LRU for grid lookups.
+// Key aspects: Enforces capacity and optional TTL for stale eviction.
+// Upstream: main grid cache setup.
+// Downstream: list.New and map allocation.
 func newGridCache(capacity int, ttl time.Duration) *gridCache {
 	if capacity <= 0 {
 		capacity = 100000
@@ -152,11 +166,10 @@ func newGridCache(capacity int, ttl time.Duration) *gridCache {
 	}
 }
 
-// shouldUpdate returns true when the provided grid differs from what is stored
-// in the cache (or DB), and updates the cache with the new value. On cache miss
-// it may consult SQLite (when store is non-nil) to avoid duplicate writes when
-// the database already holds the same grid. Passing store=nil disables the DB
-// read and treats cache misses as updates (useful for A/B testing CPU/latency).
+// Purpose: Decide whether a grid update should be written and update the cache.
+// Key aspects: Uses cache/DB checks to avoid redundant writes.
+// Upstream: startGridWriter enqueue function.
+// Downstream: gridstore.Store.Get, c.add, and cache mutation.
 func (c *gridCache) shouldUpdate(call, grid string, store *gridstore.Store) bool {
 	if call == "" || grid == "" {
 		return false
@@ -198,6 +211,10 @@ func (c *gridCache) shouldUpdate(call, grid string, store *gridstore.Store) bool
 	return true
 }
 
+// Purpose: Add or refresh a grid entry in the LRU cache.
+// Key aspects: Updates timestamps and evicts when capacity exceeded.
+// Upstream: shouldUpdate.
+// Downstream: list operations and map mutation under lock.
 func (c *gridCache) add(call, grid string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -223,6 +240,10 @@ func (c *gridCache) add(call, grid string) {
 	}
 }
 
+// Purpose: Retrieve a grid entry from the cache.
+// Key aspects: Applies TTL eviction and refreshes LRU order.
+// Upstream: lookupWithMetrics and grid backfill.
+// Downstream: list operations and map access under lock.
 func (c *gridCache) get(call string) (string, bool) {
 	if call == "" {
 		return "", false
@@ -242,6 +263,10 @@ func (c *gridCache) get(call string) (string, bool) {
 	return "", false
 }
 
+// Purpose: Retrieve a grid entry with hit/miss metrics.
+// Key aspects: Increments metrics counters when provided.
+// Upstream: grid backfill path in processOutputSpots.
+// Downstream: gridCache.get and atomic counters.
 func (c *gridCache) lookupWithMetrics(call string, metrics *gridMetrics) (string, bool) {
 	if metrics != nil {
 		metrics.cacheLookups.Add(1)
@@ -253,10 +278,18 @@ func (c *gridCache) lookupWithMetrics(call string, metrics *gridMetrics) (string
 	return grid, ok
 }
 
+// Purpose: Report whether stdout is a TTY for UI gating.
+// Key aspects: Uses term.IsTerminal on stdout fd.
+// Upstream: main UI selection.
+// Downstream: term.IsTerminal.
 func isStdoutTTY() bool {
 	return term.IsTerminal(int(os.Stdout.Fd()))
 }
 
+// Purpose: Load configuration from env/default locations.
+// Key aspects: Tries env override, default config dir, and legacy file path.
+// Upstream: main startup.
+// Downstream: config.Load and os.IsNotExist.
 func loadClusterConfig() (*config.Config, string, error) {
 	candidates := make([]string, 0, 3)
 	if envPath := strings.TrimSpace(os.Getenv(envConfigPath)); envPath != "" {
@@ -282,6 +315,10 @@ func loadClusterConfig() (*config.Config, string, error) {
 	return nil, "", fmt.Errorf("unable to load config; tried %s (last error: %v)", strings.Join(candidates, ", "), lastErr)
 }
 
+// Purpose: Resolve grid_db_check_on_miss behavior and its source.
+// Key aspects: Env DXC_GRID_DB_CHECK_ON_MISS overrides config defaults.
+// Upstream: main grid cache setup.
+// Downstream: strconv.ParseBool and logging on invalid input.
 func gridDBCheckOnMissEnabled(cfg *config.Config) (bool, string) {
 	enabled := true
 	source := "default"
@@ -307,6 +344,10 @@ func gridDBCheckOnMissEnabled(cfg *config.Config) (bool, string) {
 	return parsed, envGridDBCheckOnMiss
 }
 
+// Purpose: Program entrypoint; wires configuration, ingest, and output pipeline.
+// Key aspects: Initializes caches/clients/UI and manages graceful shutdown.
+// Upstream: OS process start.
+// Downstream: Startup helpers, goroutines, and network services.
 func main() {
 	// Load configuration
 	cfg, configSource, err := loadClusterConfig()
@@ -676,6 +717,10 @@ func main() {
 
 	// Start the unified output processor once the telnet server is ready
 	var lastOutput atomic.Int64
+	// Purpose: Run the single-threaded output pipeline for deduped spots.
+	// Key aspects: Handles corrections, licensing, secondary dedupe, and fan-out.
+	// Upstream: main startup after wiring dependencies.
+	// Downstream: processOutputSpots.
 	go processOutputSpots(deduplicator, secondaryDeduper, modeAssigner, spotBuffer, telnetServer, peerManager, statsTracker, correctionIndex, cfg.CallCorrection, ctyLookup, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, ui, gridUpdater, gridLookup, unlicensedReporter, corrLogger, adaptiveMinReports, refresher, spotterReliability, cfg.RBN.KeepSSIDSuffix, archiveWriter, &lastOutput)
 	startPipelineHealthMonitor(ctx, deduplicator, &lastOutput, peerManager)
 
@@ -693,6 +738,10 @@ func main() {
 		if err != nil {
 			log.Printf("Warning: Failed to connect to RBN CW/RTTY: %v", err)
 		} else {
+			// Purpose: Pump CW/RTTY RBN spots into the dedup input channel.
+			// Key aspects: Runs in its own goroutine to keep ingest non-blocking.
+			// Upstream: main startup after RBN connect.
+			// Downstream: processRBNSpots.
 			go processRBNSpots(rbnClient, deduplicator, "RBN-CW", cfg.SpotPolicy)
 			log.Println("RBN CW/RTTY client feeding spots into unified dedup engine")
 		}
@@ -712,6 +761,10 @@ func main() {
 		if err != nil {
 			log.Printf("Warning: Failed to connect to RBN Digital: %v", err)
 		} else {
+			// Purpose: Pump FT4/FT8 RBN digital spots into the dedup input channel.
+			// Key aspects: Runs in its own goroutine to keep ingest non-blocking.
+			// Upstream: main startup after RBN Digital connect.
+			// Downstream: processRBNSpots.
 			go processRBNSpots(rbnDigitalClient, deduplicator, "RBN-FT", cfg.SpotPolicy)
 			log.Println("RBN Digital (FT4/FT8) client feeding spots into unified dedup engine")
 		}
@@ -721,6 +774,10 @@ func main() {
 	var humanTelnetClient *rbn.Client
 	if cfg.HumanTelnet.Enabled {
 		rawPassthrough := make(chan string, 256)
+		// Purpose: Forward non-DX lines (WWV/announcements) to telnet clients.
+		// Key aspects: Filters by line type; exits when channel closes.
+		// Upstream: humanTelnetClient raw passthrough channel.
+		// Downstream: telnetServer.BroadcastWWV and BroadcastAnnouncement.
 		go func() {
 			for line := range rawPassthrough {
 				if telnetServer == nil {
@@ -749,6 +806,10 @@ func main() {
 		if err != nil {
 			log.Printf("Warning: Failed to connect to human/relay telnet feed: %v", err)
 		} else {
+			// Purpose: Pump human/relay telnet spots into the dedup input channel.
+			// Key aspects: Runs in its own goroutine to keep ingest non-blocking.
+			// Upstream: main startup after human telnet connect.
+			// Downstream: processHumanTelnetSpots.
 			go processHumanTelnetSpots(humanTelnetClient, deduplicator, "HUMAN-TELNET", cfg.SpotPolicy)
 			log.Println("Human/relay telnet client feeding spots into unified dedup engine")
 		}
@@ -768,6 +829,10 @@ func main() {
 		if err != nil {
 			log.Printf("Warning: Failed to connect to PSKReporter: %v", err)
 		} else {
+			// Purpose: Pump PSKReporter spots into the dedup input channel.
+			// Key aspects: Runs in its own goroutine to keep ingest non-blocking.
+			// Upstream: main startup after PSKReporter connect.
+			// Downstream: processPSKRSpots.
 			go processPSKRSpots(pskrClient, deduplicator, cfg.SpotPolicy)
 			log.Println("PSKReporter client feeding spots into unified dedup engine")
 		}
@@ -775,6 +840,10 @@ func main() {
 
 	// Start stats display goroutine
 	statsInterval := time.Duration(cfg.Stats.DisplayIntervalSeconds) * time.Second
+	// Purpose: Periodically emit stats to UI or logs.
+	// Key aspects: Runs on ticker interval until shutdown.
+	// Upstream: main startup.
+	// Downstream: displayStatsWithFCC.
 	go displayStatsWithFCC(statsInterval, statsTracker, deduplicator, secondaryDeduper, spotBuffer, ctyLookup, &knownCalls, telnetServer, ui, gridUpdateState, gridStore, cfg.FCCULS.DBPath)
 
 	// Set up signal handling for graceful shutdown
@@ -868,8 +937,15 @@ func main() {
 	log.Println("Cluster stopped")
 }
 
-// makeUnlicensedReporter formats drop messages for the dashboard/logger and bumps stats.
+// Purpose: Build a reporter callback for unlicensed drops.
+// Key aspects: Returns a closure that increments stats and formats output.
+// Upstream: main wiring for applyLicenseGate reporting.
+// Downstream: tracker.IncrementUnlicensedDrops and dash.AppendUnlicensed/log.Println.
 func makeUnlicensedReporter(dash uiSurface, tracker *stats.Tracker) func(source, role, call, mode string, freq float64) {
+	// Purpose: Emit an unlicensed drop event with consistent formatting.
+	// Key aspects: Normalizes fields and routes to UI or log.
+	// Upstream: applyLicenseGate.
+	// Downstream: tracker.IncrementUnlicensedDrops, dash.AppendUnlicensed, log.Println.
 	return func(source, role, call, mode string, freq float64) {
 		if tracker != nil {
 			tracker.IncrementUnlicensedDrops()
@@ -889,9 +965,10 @@ func makeUnlicensedReporter(dash uiSurface, tracker *stats.Tracker) func(source,
 	}
 }
 
-// displayStats prints statistics at the configured interval
-// displayStatsWithFCC prints statistics at the configured interval. FCC metadata is refreshed
-// from disk each tick so the dashboard reflects the latest download/build state.
+// Purpose: Periodically emit stats with FCC metadata refresh.
+// Key aspects: Uses a ticker, diff counters, and optional secondary dedupe stats.
+// Upstream: main stats goroutine.
+// Downstream: tracker accessors, loadFCCSnapshot, and UI/log output.
 func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, dedup *dedup.Deduplicator, secondary *dedup.SecondaryDeduper, buf *buffer.RingBuffer, ctyLookup func() *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns], telnetSrv *telnet.Server, dash uiSurface, gridStats *gridMetrics, gridDB *gridstore.Store, fccDBPath string) {
 	if interval <= 0 {
 		interval = 30 * time.Second
@@ -984,6 +1061,10 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, dedup *
 // processRBNSpots receives spots from RBN and sends to deduplicator
 // This is the UNIFIED ARCHITECTURE path
 // RBN → Deduplicator Input Channel
+// Purpose: Feed RBN spots into the unified deduplicator input.
+// Key aspects: Drops stale spots and avoids blocking on dedup input.
+// Upstream: RBN client ingest goroutine.
+// Downstream: deduplicator.GetInputChannel and isStale.
 func processRBNSpots(client *rbn.Client, deduplicator *dedup.Deduplicator, source string, spotPolicy config.SpotPolicy) {
 	spotChan := client.GetSpotChannel()
 	dedupInput := deduplicator.GetInputChannel()
@@ -1007,6 +1088,10 @@ func processRBNSpots(client *rbn.Client, deduplicator *dedup.Deduplicator, sourc
 }
 
 // processHumanTelnetSpots marks incoming telnet spots as human-sourced and sends them into dedup.
+// Purpose: Feed upstream human telnet spots into dedup after tagging as human.
+// Key aspects: Ensures SourceType/Mode defaults and enforces staleness guard.
+// Upstream: human telnet client ingest.
+// Downstream: deduplicator.GetInputChannel and isStale.
 func processHumanTelnetSpots(client *rbn.Client, deduplicator *dedup.Deduplicator, source string, spotPolicy config.SpotPolicy) {
 	spotChan := client.GetSpotChannel()
 	dedupInput := deduplicator.GetInputChannel()
@@ -1041,6 +1126,10 @@ func processHumanTelnetSpots(client *rbn.Client, deduplicator *dedup.Deduplicato
 
 // processPSKRSpots receives spots from PSKReporter and sends to deduplicator
 // PSKReporter → Deduplicator Input Channel
+// Purpose: Feed PSKReporter spots into the unified deduplicator input.
+// Key aspects: Drops stale spots and avoids blocking on dedup input.
+// Upstream: PSKReporter client worker pool.
+// Downstream: deduplicator.GetInputChannel and isStale.
 func processPSKRSpots(client *pskreporter.Client, deduplicator *dedup.Deduplicator, spotPolicy config.SpotPolicy) {
 	spotChan := client.GetSpotChannel()
 	dedupInput := deduplicator.GetInputChannel()
@@ -1064,6 +1153,10 @@ func processPSKRSpots(client *pskreporter.Client, deduplicator *dedup.Deduplicat
 
 // isStale enforces the global max_age_seconds guard before deduplication so old
 // spots are dropped early and do not consume dedupe/window resources.
+// Purpose: Enforce the global max_age_seconds guard.
+// Key aspects: Drops old spots early to reduce work.
+// Upstream: ingest pipelines and output stage.
+// Downstream: time.Since and policy.MaxAgeSeconds.
 func isStale(s *spot.Spot, policy config.SpotPolicy) bool {
 	if s == nil || policy.MaxAgeSeconds <= 0 {
 		return false
@@ -1076,6 +1169,10 @@ func isStale(s *spot.Spot, policy config.SpotPolicy) bool {
 
 // processOutputSpots receives deduplicated spots and distributes them
 // Deduplicator Output  Ring Buffer  Broadcast to Clients
+// Purpose: Process deduplicated spots and distribute to ring buffer and outputs.
+// Key aspects: Applies corrections, caching, licensing, secondary dedupe, and fan-out.
+// Upstream: deduplicator output channel.
+// Downstream: grid updates, telnet broadcast, archive writer, peer publish.
 func processOutputSpots(
 	deduplicator *dedup.Deduplicator,
 	secondary *dedup.SecondaryDeduper,
@@ -1313,12 +1410,20 @@ func processOutputSpots(
 
 // startPipelineHealthMonitor logs warnings when the output pipeline or dedup
 // goroutine appear stalled. It is intentionally lightweight and non-blocking.
+// Purpose: Warn when dedup/output pipelines appear stalled.
+// Key aspects: Periodic ticker checks without blocking hot paths.
+// Upstream: main startup after pipeline wiring.
+// Downstream: log.Printf, dedup.LastProcessedAt, peerManager.ReconnectCount.
 func startPipelineHealthMonitor(ctx context.Context, dedup *dedup.Deduplicator, lastOutput *atomic.Int64, peerManager *peer.Manager) {
 	const (
 		checkInterval      = 30 * time.Second
 		outputStallWarning = 2 * time.Minute
 	)
 	ticker := time.NewTicker(checkInterval)
+	// Purpose: Periodically check for stalled output and dedup activity.
+	// Key aspects: Exits on context cancellation and emits warnings.
+	// Upstream: startPipelineHealthMonitor.
+	// Downstream: ticker.Stop and log.Printf.
 	go func() {
 		defer ticker.Stop()
 		var lastReconnects uint64
@@ -1368,6 +1473,10 @@ func startPipelineHealthMonitor(ctx context.Context, dedup *dedup.Deduplicator, 
 // collapseSSIDForBroadcast trims SSID fragments so clients see a single
 // skimmer identity (e.g., N2WQ-1-# -> N2WQ-#, N2WQ-1 -> N2WQ).
 // It preserves non-numeric suffixes.
+// Purpose: Normalize spotter SSIDs before telnet broadcast.
+// Key aspects: Collapses numeric suffixes while preserving non-numeric tokens.
+// Upstream: cloneSpotForBroadcast.
+// Downstream: stripNumericSSID.
 func collapseSSIDForBroadcast(call string) string {
 	call = strings.TrimSpace(call)
 	if call == "" {
@@ -1380,6 +1489,10 @@ func collapseSSIDForBroadcast(call string) string {
 	return stripNumericSSID(call)
 }
 
+// Purpose: Remove a numeric SSID suffix (e.g., "-1") from a callsign.
+// Key aspects: Leaves non-numeric suffixes intact.
+// Upstream: collapseSSIDForBroadcast.
+// Downstream: strings.LastIndexByte.
 func stripNumericSSID(call string) string {
 	idx := strings.LastIndexByte(call, '-')
 	if idx <= 0 || idx == len(call)-1 {
@@ -1394,6 +1507,10 @@ func stripNumericSSID(call string) string {
 	return call[:idx]
 }
 
+// Purpose: Clone a spot prior to broadcast to avoid mutating shared state.
+// Key aspects: Copies fields that downstream may alter (SSID collapse).
+// Upstream: processOutputSpots broadcast path.
+// Downstream: spot.Clone and manual field copies.
 func cloneSpotForBroadcast(src *spot.Spot) *spot.Spot {
 	if src == nil {
 		return nil
@@ -1422,6 +1539,10 @@ func cloneSpotForBroadcast(src *spot.Spot) *spot.Spot {
 }
 
 // applyLicenseGate runs the FCC/CTY check after all corrections and returns true when the spot should be dropped.
+// Purpose: Enforce FCC ULS licensing gates for US calls.
+// Key aspects: Uses cache, CTY metadata, and reporter callback on drops.
+// Upstream: processOutputSpots before broadcast.
+// Downstream: licCache, uls.IsLicensedUS, reporter.
 func applyLicenseGate(s *spot.Spot, ctyDB *cty.CTYDatabase, reporter func(source, role, call, mode string, freq float64)) bool {
 	if s == nil {
 		return false
@@ -1488,6 +1609,10 @@ func applyLicenseGate(s *spot.Spot, ctyDB *cty.CTYDatabase, reporter func(source
 	return false
 }
 
+// Purpose: Resolve prefix metadata for a callsign using CTY database.
+// Key aspects: Handles / suffixes and falls back to base call.
+// Upstream: processOutputSpots DE metadata refresh and corrections.
+// Downstream: cty.Lookup.
 func effectivePrefixInfo(ctyDB *cty.CTYDatabase, call string) *cty.PrefixInfo {
 	if ctyDB == nil {
 		return nil
@@ -1508,6 +1633,10 @@ func effectivePrefixInfo(ctyDB *cty.CTYDatabase, call string) *cty.PrefixInfo {
 	return info
 }
 
+// Purpose: Convert CTY prefix info into spot.CallMetadata.
+// Key aspects: Copies continent/country/zone fields into a struct.
+// Upstream: effectivePrefixInfo consumers.
+// Downstream: None (pure mapping).
 func metadataFromPrefix(info *cty.PrefixInfo) spot.CallMetadata {
 	if info == nil {
 		return spot.CallMetadata{}
@@ -1521,6 +1650,10 @@ func metadataFromPrefix(info *cty.PrefixInfo) spot.CallMetadata {
 	}
 }
 
+// Purpose: Apply call correction and optionally log decision details.
+// Key aspects: Evaluates corrections, updates stats, and can suppress spots.
+// Upstream: processOutputSpots call correction stage.
+// Downstream: spot.ApplyCallCorrection, traceLogger, tracker updates.
 func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.CorrectionIndex, cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns], tracker *stats.Tracker, dash uiSurface, traceLogger spot.CorrectionTraceLogger, adaptive *spot.AdaptiveMinReports, spotterReliability spot.SpotterReliability) bool {
 	if spotEntry == nil {
 		return false
@@ -1658,6 +1791,10 @@ func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.Correcti
 	return false
 }
 
+// Purpose: Compute the time window for call correction recency.
+// Key aspects: Uses config recency defaults and overrides.
+// Upstream: main correctionIndex cleanup scheduling.
+// Downstream: time.Duration math.
 func callCorrectionWindow(cfg config.CallCorrectionConfig) time.Duration {
 	if cfg.RecencySeconds <= 0 {
 		return 45 * time.Second
@@ -1671,6 +1808,10 @@ type bandStateParams struct {
 }
 
 // resolveBandStateParams returns per-band, per-state overrides when defined; otherwise false.
+// Purpose: Resolve per-band/state overrides for call correction parameters.
+// Key aspects: Matches band/state in override list; returns ok on match.
+// Upstream: maybeApplyCallCorrectionWithLogger.
+// Downstream: band/state override scanning.
 func resolveBandStateParams(overrides []config.BandStateOverride, band, state string) (bandStateParams, bool) {
 	b := strings.ToLower(strings.TrimSpace(band))
 	if b == "" || len(overrides) == 0 {
@@ -1704,6 +1845,10 @@ func resolveBandStateParams(overrides []config.BandStateOverride, band, state st
 	return bandStateParams{}, false
 }
 
+// Purpose: Compute the frequency averaging look-back window.
+// Key aspects: Uses policy defaults with a minimum of zero.
+// Upstream: processOutputSpots frequency averaging path.
+// Downstream: time.Duration math.
 func frequencyAverageWindow(policy config.SpotPolicy) time.Duration {
 	seconds := policy.FrequencyAveragingSeconds
 	if seconds <= 0 {
@@ -1712,6 +1857,10 @@ func frequencyAverageWindow(policy config.SpotPolicy) time.Duration {
 	return time.Duration(seconds) * time.Second
 }
 
+// Purpose: Compute the frequency averaging tolerance in kHz.
+// Key aspects: Converts Hz config to kHz float.
+// Upstream: processOutputSpots frequency averaging path.
+// Downstream: float math.
 func frequencyAverageTolerance(policy config.SpotPolicy) float64 {
 	toleranceHz := policy.FrequencyAveragingToleranceHz
 	if toleranceHz <= 0 {
@@ -1721,6 +1870,10 @@ func frequencyAverageTolerance(policy config.SpotPolicy) float64 {
 }
 
 // spotsToEntries converts []*spot.Spot to bandmap.SpotEntry using Hz units for frequency.
+// Purpose: Convert spots into bandmap entries.
+// Key aspects: Maps DX call, frequency, and time into bandmap format.
+// Upstream: bandmap updates in processOutputSpots.
+// Downstream: bandmap.SpotEntry allocation.
 func spotsToEntries(spots []*spot.Spot) []bandmap.SpotEntry {
 	if len(spots) == 0 {
 		return nil
@@ -1742,6 +1895,10 @@ func spotsToEntries(spots []*spot.Spot) []bandmap.SpotEntry {
 	return entries
 }
 
+// Purpose: Format the confidence string for corrected calls.
+// Key aspects: Encodes percent, known-call, and CTY match cues.
+// Upstream: maybeApplyCallCorrectionWithLogger.
+// Downstream: fmt.Sprintf.
 func formatConfidence(percent int, totalReporters int, known bool, ctyMatch bool) string {
 	if totalReporters <= 1 {
 		if ctyMatch || known {
@@ -1768,11 +1925,19 @@ func formatConfidence(percent int, totalReporters int, known bool, ctyMatch bool
 	}
 }
 
+// Purpose: Decide whether a spot is eligible for frequency averaging.
+// Key aspects: Skips digital modes and requires a valid call/frequency.
+// Upstream: processOutputSpots frequency averaging path.
+// Downstream: string checks on mode and call.
 func shouldAverageFrequency(s *spot.Spot) bool {
 	mode := strings.ToUpper(strings.TrimSpace(s.Mode))
 	return mode == "CW" || mode == "RTTY"
 }
 
+// Purpose: Download and load the RBN skew correction table.
+// Key aspects: Uses configured URL and refreshes the in-memory store.
+// Upstream: startSkewScheduler and startup initialization.
+// Downstream: skew.Download, skew.LoadBytes, store.Set.
 func refreshSkewTable(cfg config.SkewConfig, store *skew.Store) (int, error) {
 	if store == nil {
 		return 0, errors.New("skew: store is nil")
@@ -1799,10 +1964,18 @@ func refreshSkewTable(cfg config.SkewConfig, store *skew.Store) (int, error) {
 	return table.Count(), nil
 }
 
+// Purpose: Periodically refresh the skew table based on configured schedule.
+// Key aspects: Sleeps until next refresh time and exits on ctx.Done.
+// Upstream: main startup when skew is enabled.
+// Downstream: refreshSkewTable and nextSkewRefreshDelay.
 func startSkewScheduler(ctx context.Context, cfg config.SkewConfig, store *skew.Store) {
 	if store == nil {
 		return
 	}
+	// Purpose: Background refresh loop for skew table updates.
+	// Key aspects: Waits for computed delays and respects context cancellation.
+	// Upstream: startSkewScheduler.
+	// Downstream: refreshSkewTable and time.NewTimer.
 	go func() {
 		for {
 			delay := nextSkewRefreshDelay(cfg, time.Now().UTC())
@@ -1822,6 +1995,10 @@ func startSkewScheduler(ctx context.Context, cfg config.SkewConfig, store *skew.
 	}()
 }
 
+// Purpose: Compute delay until the next skew refresh time.
+// Key aspects: Uses configured hour/minute and wraps to next day.
+// Upstream: startSkewScheduler.
+// Downstream: skewRefreshHourMinute and time math.
 func nextSkewRefreshDelay(cfg config.SkewConfig, now time.Time) time.Duration {
 	hour, minute := skewRefreshHourMinute(cfg)
 	target := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, time.UTC)
@@ -1831,6 +2008,10 @@ func nextSkewRefreshDelay(cfg config.SkewConfig, now time.Time) time.Duration {
 	return target.Sub(now)
 }
 
+// Purpose: Resolve the target hour/minute for skew refresh.
+// Key aspects: Defaults to 02:00 UTC when unset.
+// Upstream: nextSkewRefreshDelay.
+// Downstream: None.
 func skewRefreshHourMinute(cfg config.SkewConfig) (int, int) {
 	refresh := strings.TrimSpace(cfg.RefreshUTC)
 	if refresh == "" {
@@ -1844,6 +2025,10 @@ func skewRefreshHourMinute(cfg config.SkewConfig) (int, int) {
 
 // downloadFileAtomic streams the remote file to a temp file and swaps it into place
 // atomically so readers never see a partial write.
+// Purpose: Download a file to a temp path and atomically swap it into place.
+// Key aspects: Uses timeouts and ensures destination directory exists.
+// Upstream: refreshCTYDatabase and refreshKnownCallsigns.
+// Downstream: http.Get, os.Rename, and file I/O.
 func downloadFileAtomic(url, destination string, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -1894,12 +2079,20 @@ func downloadFileAtomic(url, destination string, timeout time.Duration) error {
 	return nil
 }
 
+// Purpose: Periodically refresh the known callsigns dataset.
+// Key aspects: Scheduled daily refresh and atomic pointer swap.
+// Upstream: main startup when known calls are enabled.
+// Downstream: refreshKnownCallsigns, seedKnownCalls, and time.NewTimer.
 // startKnownCallScheduler downloads the known-calls file at the configured UTC
 // time every day and updates the in-memory cache pointer after each refresh.
 func startKnownCallScheduler(ctx context.Context, cfg config.KnownCallsConfig, knownPtr *atomic.Pointer[spot.KnownCallsigns], store *gridstore.Store) {
 	if knownPtr == nil {
 		return
 	}
+	// Purpose: Background refresh loop for known callsigns.
+	// Key aspects: Waits until next scheduled time; exits on ctx.Done.
+	// Upstream: startKnownCallScheduler.
+	// Downstream: refreshKnownCallsigns and time.NewTimer.
 	go func() {
 		for {
 			delay := nextKnownCallRefreshDelay(cfg, time.Now().UTC())
@@ -1925,6 +2118,10 @@ func startKnownCallScheduler(ctx context.Context, cfg config.KnownCallsConfig, k
 	}()
 }
 
+// Purpose: Download and parse the known calls file.
+// Key aspects: Uses atomic file swap and returns parsed cache on success.
+// Upstream: startKnownCallScheduler and startup.
+// Downstream: downloadFileAtomic and spot.LoadKnownCallsigns.
 // refreshKnownCallsigns downloads the known calls file, writes it to disk, and
 // returns the parsed cache.
 func refreshKnownCallsigns(cfg config.KnownCallsConfig) (*spot.KnownCallsigns, error) {
@@ -1942,6 +2139,10 @@ func refreshKnownCallsigns(cfg config.KnownCallsConfig) (*spot.KnownCallsigns, e
 	return spot.LoadKnownCallsigns(path)
 }
 
+// Purpose: Compute delay until the next known calls refresh time.
+// Key aspects: Uses configured hour/minute and wraps to next day.
+// Upstream: startKnownCallScheduler.
+// Downstream: knownCallRefreshHourMinute and time math.
 func nextKnownCallRefreshDelay(cfg config.KnownCallsConfig, now time.Time) time.Duration {
 	hour, minute := knownCallRefreshHourMinute(cfg)
 	target := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, time.UTC)
@@ -1951,6 +2152,10 @@ func nextKnownCallRefreshDelay(cfg config.KnownCallsConfig, now time.Time) time.
 	return target.Sub(now)
 }
 
+// Purpose: Resolve the target hour/minute for known call refresh.
+// Key aspects: Defaults to 03:00 UTC when unset.
+// Upstream: nextKnownCallRefreshDelay.
+// Downstream: time.Parse.
 func knownCallRefreshHourMinute(cfg config.KnownCallsConfig) (int, int) {
 	refresh := strings.TrimSpace(cfg.RefreshUTC)
 	if refresh == "" {
@@ -1962,12 +2167,20 @@ func knownCallRefreshHourMinute(cfg config.KnownCallsConfig) (int, int) {
 	return 1, 0
 }
 
+// Purpose: Periodically refresh the CTY database from remote URL.
+// Key aspects: Scheduled daily refresh and atomic pointer swap.
+// Upstream: main startup when CTY is enabled.
+// Downstream: refreshCTYDatabase and time.NewTimer.
 // startCTYScheduler downloads cty.plist at the configured UTC time every day and
 // updates the in-memory CTY database pointer after each refresh.
 func startCTYScheduler(ctx context.Context, cfg config.CTYConfig, ctyPtr *atomic.Pointer[cty.CTYDatabase]) {
 	if ctyPtr == nil {
 		return
 	}
+	// Purpose: Background refresh loop for CTY database updates.
+	// Key aspects: Waits until next scheduled time; exits on ctx.Done.
+	// Upstream: startCTYScheduler.
+	// Downstream: refreshCTYDatabase and time.NewTimer.
 	go func() {
 		for {
 			delay := nextCTYRefreshDelay(cfg, time.Now().UTC())
@@ -1988,6 +2201,10 @@ func startCTYScheduler(ctx context.Context, cfg config.CTYConfig, ctyPtr *atomic
 	}()
 }
 
+// Purpose: Download and parse the CTY database.
+// Key aspects: Uses atomic file swap and returns parsed DB on success.
+// Upstream: startCTYScheduler and startup.
+// Downstream: downloadFileAtomic and cty.LoadCTYDatabase.
 // refreshCTYDatabase downloads cty.plist, writes it atomically, and returns the parsed DB.
 func refreshCTYDatabase(cfg config.CTYConfig) (*cty.CTYDatabase, error) {
 	url := strings.TrimSpace(cfg.URL)
@@ -2008,6 +2225,10 @@ func refreshCTYDatabase(cfg config.CTYConfig) (*cty.CTYDatabase, error) {
 	return db, nil
 }
 
+// Purpose: Compute delay until the next CTY refresh time.
+// Key aspects: Uses configured hour/minute and wraps to next day.
+// Upstream: startCTYScheduler.
+// Downstream: ctyRefreshHourMinute and time math.
 func nextCTYRefreshDelay(cfg config.CTYConfig, now time.Time) time.Duration {
 	hour, minute := ctyRefreshHourMinute(cfg)
 	target := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, time.UTC)
@@ -2017,6 +2238,10 @@ func nextCTYRefreshDelay(cfg config.CTYConfig, now time.Time) time.Duration {
 	return target.Sub(now)
 }
 
+// Purpose: Resolve the target hour/minute for CTY refresh.
+// Key aspects: Defaults to 04:00 UTC when unset.
+// Upstream: nextCTYRefreshDelay.
+// Downstream: time.Parse.
 func ctyRefreshHourMinute(cfg config.CTYConfig) (int, int) {
 	refresh := strings.TrimSpace(cfg.RefreshUTC)
 	if refresh == "" {
@@ -2028,6 +2253,10 @@ func ctyRefreshHourMinute(cfg config.CTYConfig) (int, int) {
 	return 0, 45
 }
 
+// Purpose: Format the grid database status line for stats output.
+// Key aspects: Uses cache hit rate and DB counts when available.
+// Upstream: displayStatsWithFCC.
+// Downstream: gridstore.Store.Count and humanize.Comma.
 func formatGridLine(metrics *gridMetrics, store *gridstore.Store) string {
 	updatesSinceStart := metrics.learnedTotal.Load()
 	cacheLookups := metrics.cacheLookups.Load()
@@ -2065,6 +2294,10 @@ type fccSnapshot struct {
 	Path      string
 }
 
+// Purpose: Format FCC database status line for stats output.
+// Key aspects: Includes counts, DB size, and update timestamp.
+// Upstream: displayStatsWithFCC.
+// Downstream: humanize.Comma and time formatting.
 func formatFCCLine(fcc *fccSnapshot) string {
 	if fcc == nil {
 		return ""
@@ -2076,6 +2309,10 @@ func formatFCCLine(fcc *fccSnapshot) string {
 	return fmt.Sprintf("FCC ULS: %s records. Last updated %s", humanize.Comma(fcc.HDCount), ts)
 }
 
+// Purpose: Format grid status or a placeholder when disabled/unavailable.
+// Key aspects: Falls back to a placeholder when metrics/store missing.
+// Upstream: displayStatsWithFCC.
+// Downstream: formatGridLine.
 func formatGridLineOrPlaceholder(metrics *gridMetrics, store *gridstore.Store) string {
 	if metrics == nil {
 		return "Grid database: (not available)"
@@ -2083,6 +2320,10 @@ func formatGridLineOrPlaceholder(metrics *gridMetrics, store *gridstore.Store) s
 	return formatGridLine(metrics, store)
 }
 
+// Purpose: Format FCC status or a placeholder when disabled/unavailable.
+// Key aspects: Falls back to a placeholder when snapshot missing.
+// Upstream: displayStatsWithFCC.
+// Downstream: formatFCCLine.
 func formatFCCLineOrPlaceholder(fcc *fccSnapshot) string {
 	if fcc == nil {
 		return "FCC ULS: (not available)"
@@ -2090,6 +2331,10 @@ func formatFCCLineOrPlaceholder(fcc *fccSnapshot) string {
 	return formatFCCLine(fcc)
 }
 
+// Purpose: Seed the grid database with known calls.
+// Key aspects: Writes known call grids and logs failures.
+// Upstream: main startup and known calls refresh scheduler.
+// Downstream: gridstore.Store.Set and known calls iterator.
 func seedKnownCalls(store *gridstore.Store, known *spot.KnownCallsigns) error {
 	if store == nil || known == nil {
 		return nil
@@ -2115,6 +2360,10 @@ func seedKnownCalls(store *gridstore.Store, known *spot.KnownCallsigns) error {
 	return store.UpsertBatch(records)
 }
 
+// Purpose: Start the grid writer pipeline and return update hooks.
+// Key aspects: Provides enqueue, metrics, stop, and lookup functions.
+// Upstream: main grid store setup.
+// Downstream: gridstore.Store and gridCache methods.
 func startGridWriter(store *gridstore.Store, flushInterval time.Duration, cache *gridCache, ttl time.Duration, dbCheckOnMiss bool) (func(call, grid string), *gridMetrics, func(), func(call string) (string, bool)) {
 	if store == nil {
 		return nil, nil, nil, nil
@@ -2137,6 +2386,10 @@ func startGridWriter(store *gridstore.Store, flushInterval time.Duration, cache 
 	var lookupPendingMu sync.Mutex
 	lookupPending := make(map[string]struct{})
 
+	// Purpose: Background writer loop to batch grid updates and periodic TTL purges.
+	// Key aspects: Flushes on size/interval and closes done on exit.
+	// Upstream: startGridWriter.
+	// Downstream: store.UpsertBatch, store.PurgeOlderThan, and metrics updates.
 	go func() {
 		defer close(done)
 		ticker := time.NewTicker(flushInterval)
@@ -2150,6 +2403,10 @@ func startGridWriter(store *gridstore.Store, flushInterval time.Duration, cache 
 		}
 
 		pending := make(map[string]update)
+		// Purpose: Flush pending grid updates to the database in a batch.
+		// Key aspects: Retains batch on busy errors; clears on success.
+		// Upstream: update loop and ticker ticks.
+		// Downstream: store.UpsertBatch, metrics.learnedTotal.
 		flush := func() {
 			if len(pending) == 0 {
 				return
@@ -2208,6 +2465,10 @@ func startGridWriter(store *gridstore.Store, flushInterval time.Duration, cache 
 		}
 	}()
 
+	// Purpose: Enqueue a grid update without blocking the output pipeline.
+	// Key aspects: Normalizes call/grid, uses cache to suppress duplicates.
+	// Upstream: processOutputSpots gridUpdate hook.
+	// Downstream: cache.shouldUpdate and updates channel.
 	updateFn := func(call, grid string) {
 		call = strings.TrimSpace(strings.ToUpper(call))
 		grid = strings.TrimSpace(strings.ToUpper(grid))
@@ -2226,6 +2487,10 @@ func startGridWriter(store *gridstore.Store, flushInterval time.Duration, cache 
 		}
 	}
 
+	// Purpose: Stop the grid writer and optional async lookup goroutine.
+	// Key aspects: Closes channels and waits for clean shutdown.
+	// Upstream: main shutdown path.
+	// Downstream: channel close and done waits.
 	stopFn := func() {
 		close(updates)
 		<-done
@@ -2235,6 +2500,10 @@ func startGridWriter(store *gridstore.Store, flushInterval time.Duration, cache 
 		}
 	}
 
+	// Purpose: Lookup a grid entry with optional async backfill on cache miss.
+	// Key aspects: Avoids synchronous DB reads on the output pipeline.
+	// Upstream: processOutputSpots gridLookup hook.
+	// Downstream: cache.lookupWithMetrics and lookupQueue enqueue.
 	lookupFn := func(call string) (string, bool) {
 		call = strings.TrimSpace(strings.ToUpper(call))
 		if call == "" {
@@ -2262,6 +2531,10 @@ func startGridWriter(store *gridstore.Store, flushInterval time.Duration, cache 
 	}
 
 	if asyncLookupEnabled {
+		// Purpose: Background cache backfill for grid lookups.
+		// Key aspects: Reads from lookupQueue and populates cache entries.
+		// Upstream: lookupFn enqueue path.
+		// Downstream: store.Get and cache.add.
 		go func() {
 			defer close(lookupDone)
 			for call := range lookupQueue {
@@ -2286,6 +2559,10 @@ func startGridWriter(store *gridstore.Store, flushInterval time.Duration, cache 
 	return updateFn, metrics, stopFn, lookupFn
 }
 
+// Purpose: Load FCC ULS database stats for dashboard display.
+// Key aspects: Opens SQLite, counts tables, and records file metadata.
+// Upstream: displayStatsWithFCC.
+// Downstream: sql.Open, db.QueryRow, os.Stat.
 // loadFCCSnapshot opens the FCC ULS database to report simple stats for the dashboard.
 func loadFCCSnapshot(path string) *fccSnapshot {
 	if strings.TrimSpace(path) == "" {
@@ -2321,6 +2598,10 @@ func loadFCCSnapshot(path string) *fccSnapshot {
 	return snap
 }
 
+// Purpose: Convert a string into sql.NullString.
+// Key aspects: Returns invalid when the input is empty.
+// Upstream: startGridWriter batch creation.
+// Downstream: sql.NullString initialization.
 func sqlNullString(v string) sql.NullString {
 	if v == "" {
 		return sql.NullString{}
@@ -2330,6 +2611,10 @@ func sqlNullString(v string) sql.NullString {
 
 // formatMemoryLine reports memory-ish metrics in order:
 // exec alloc / ring buffer / primary dedup (dup%) / secondary dedup / CTY cache (hit%) / known calls (hit%).
+// Purpose: Format the memory/status line for the stats pane.
+// Key aspects: Reports ring buffer occupancy and cache hit stats.
+// Upstream: displayStatsWithFCC.
+// Downstream: buffer.RingBuffer stats and cty/known cache lookups.
 func formatMemoryLine(buf *buffer.RingBuffer, dedup *dedup.Deduplicator, secondary *dedup.SecondaryDeduper, ctyLookup func() *cty.CTYDatabase, knownPtr *atomic.Pointer[spot.KnownCallsigns]) string {
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
@@ -2386,6 +2671,10 @@ func formatMemoryLine(buf *buffer.RingBuffer, dedup *dedup.Deduplicator, seconda
 		execMB, ringMB, dedupeMB, dedupeRatio, secondaryMB, ctyMB, ctyRatio, knownMB, knownRatio)
 }
 
+// Purpose: Format a human-readable uptime line.
+// Key aspects: Uses days/hours/minutes formatting.
+// Upstream: displayStatsWithFCC.
+// Downstream: time.Duration math.
 func formatUptimeLine(uptime time.Duration) string {
 	hours := int(uptime.Hours())
 	minutes := int(uptime.Minutes()) % 60
@@ -2395,6 +2684,10 @@ func formatUptimeLine(uptime time.Duration) string {
 // wwvKindFromLine tags non-DX lines coming from human/relay telnet ingest.
 // We only forward WWV/WCY bulletins to telnet clients; upstream keepalives,
 // prompts, or other control chatter (e.g., "de N2WQ-22" banners) are dropped.
+// Purpose: Extract WWV/WCY bulletin kind token from a raw line.
+// Key aspects: Uppercases and trims for display selection.
+// Upstream: WWV handling in peer/telnet paths.
+// Downstream: strings.TrimSpace/ToUpper.
 func wwvKindFromLine(line string) string {
 	trimmed := strings.TrimSpace(line)
 	if trimmed == "" {
@@ -2411,6 +2704,10 @@ func wwvKindFromLine(line string) string {
 }
 
 // announcementFromLine returns the raw announcement text for "To ALL" broadcasts.
+// Purpose: Extract announcement text from a PC93 line.
+// Key aspects: Strips known prefix and trims whitespace.
+// Upstream: PC93 announcement parsing.
+// Downstream: strings.TrimSpace.
 func announcementFromLine(line string) string {
 	trimmed := strings.TrimSpace(line)
 	if trimmed == "" {
@@ -2423,6 +2720,10 @@ func announcementFromLine(line string) string {
 	return ""
 }
 
+// Purpose: Compute per-interval delta for a counter map entry.
+// Key aspects: Updates previous map in-place.
+// Upstream: displayStatsWithFCC.
+// Downstream: map access/mutation.
 func diffCounter(current, previous map[string]uint64, key string) uint64 {
 	if current == nil {
 		current = map[string]uint64{}
@@ -2439,11 +2740,19 @@ func diffCounter(current, previous map[string]uint64, key string) uint64 {
 	return cur
 }
 
+// Purpose: Compute per-interval delta for a source+mode counter.
+// Key aspects: Uses sourceModeKey to access map keys.
+// Upstream: displayStatsWithFCC.
+// Downstream: sourceModeKey and map mutation.
 func diffSourceMode(current, previous map[string]uint64, source, mode string) uint64 {
 	key := sourceModeKey(source, mode)
 	return diffCounter(current, previous, key)
 }
 
+// Purpose: Build a stable key for source+mode counters.
+// Key aspects: Uppercases and concatenates with a delimiter.
+// Upstream: diffSourceMode.
+// Downstream: strings.ToUpper.
 func sourceModeKey(source, mode string) string {
 	source = strings.ToUpper(strings.TrimSpace(source))
 	mode = strings.ToUpper(strings.TrimSpace(mode))
@@ -2453,12 +2762,20 @@ func sourceModeKey(source, mode string) string {
 	return source + sourceModeDelimiter + mode
 }
 
+// Purpose: Convert bytes to megabytes (MB).
+// Key aspects: Uses base-10 MB.
+// Upstream: formatMemoryLine.
+// Downstream: float math.
 func bytesToMB(b uint64) float64 {
 	return float64(b) / (1024.0 * 1024.0)
 }
 
 // maybeStartHeapLogger starts periodic heap logging when DXC_HEAP_LOG_INTERVAL is set
 // (e.g., "60s"). Defaults to disabled when the variable is empty or invalid.
+// Purpose: Optionally start a periodic heap profile logger.
+// Key aspects: Controlled by environment variables.
+// Upstream: main startup.
+// Downstream: pprof.WriteHeapProfile and time.NewTicker.
 func maybeStartHeapLogger() {
 	intervalStr := strings.TrimSpace(os.Getenv("DXC_HEAP_LOG_INTERVAL"))
 	if intervalStr == "" {
@@ -2470,6 +2787,10 @@ func maybeStartHeapLogger() {
 		return
 	}
 	ticker := time.NewTicker(interval)
+	// Purpose: Emit periodic heap stats to the log.
+	// Key aspects: Runs on ticker cadence until process exit.
+	// Upstream: maybeStartHeapLogger.
+	// Downstream: runtime.ReadMemStats and log.Printf.
 	go func() {
 		log.Printf("Heap logger enabled (every %s)", interval)
 		for range ticker.C {
@@ -2487,12 +2808,20 @@ func maybeStartHeapLogger() {
 
 // maybeStartDiagServer exposes /debug/pprof/* and /debug/heapdump when DXC_PPROF_ADDR is set
 // (example: DXC_PPROF_ADDR=localhost:6061). Default is off.
+// Purpose: Optionally start the pprof/diagnostic HTTP server.
+// Key aspects: Reads env vars and starts http server in background.
+// Upstream: main startup.
+// Downstream: http.ListenAndServe and net/http/pprof.
 func maybeStartDiagServer() {
 	addr := strings.TrimSpace(os.Getenv("DXC_PPROF_ADDR"))
 	if addr == "" {
 		return
 	}
 	mux := http.NewServeMux()
+	// Purpose: Serve a heap dump endpoint that writes a pprof file to disk.
+	// Key aspects: Creates diagnostics dir, forces GC, and writes heap profile.
+	// Upstream: HTTP /debug/heapdump request.
+	// Downstream: os.MkdirAll, os.Create, pprof.WriteHeapProfile.
 	mux.HandleFunc("/debug/heapdump", func(w http.ResponseWriter, r *http.Request) {
 		ts := time.Now().UTC().Format("2006-01-02T15-04-05Z")
 		dir := filepath.Join("data", "diagnostics")
@@ -2520,6 +2849,10 @@ func maybeStartDiagServer() {
 	mux.Handle("/debug/pprof/symbol", http.HandlerFunc(httppprof.Symbol))
 	mux.Handle("/debug/pprof/trace", http.HandlerFunc(httppprof.Trace))
 
+	// Purpose: Run the diagnostics HTTP server.
+	// Key aspects: Logs startup and reports server errors.
+	// Upstream: maybeStartDiagServer.
+	// Downstream: http.ListenAndServe.
 	go func() {
 		log.Printf("Diagnostics server listening on %s (pprof + /debug/heapdump)", addr)
 		if err := http.ListenAndServe(addr, mux); err != nil {

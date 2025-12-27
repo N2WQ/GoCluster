@@ -17,6 +17,10 @@ type CallQualityStore struct {
 	data map[callFreqKey]int
 }
 
+// Purpose: Construct an empty call quality store.
+// Key aspects: Initializes the internal map.
+// Upstream: global callQuality initialization.
+// Downstream: map allocation.
 // NewCallQualityStore constructs an empty quality store.
 func NewCallQualityStore() *CallQualityStore {
 	return &CallQualityStore{
@@ -24,6 +28,10 @@ func NewCallQualityStore() *CallQualityStore {
 	}
 }
 
+// Purpose: Convert a frequency into a bin index.
+// Key aspects: Uses bin size and returns -1 for global priors.
+// Upstream: CallQualityStore methods.
+// Downstream: integer math.
 // freqBinHz returns the integer bin for a given frequency in Hz and bin size.
 func freqBinHz(freqHz float64, binSizeHz int) int {
 	if binSizeHz <= 0 {
@@ -35,6 +43,10 @@ func freqBinHz(freqHz float64, binSizeHz int) int {
 	return int(freqHz) / binSizeHz
 }
 
+// Purpose: Retrieve the quality score for a call/bin.
+// Key aspects: Falls back to global prior bin (-1).
+// Upstream: correction logic and IsGood.
+// Downstream: freqBinHz and map access under lock.
 // Get returns the quality score for a call in the given bin.
 func (s *CallQualityStore) Get(call string, freqHz float64, binSizeHz int) int {
 	if s == nil {
@@ -60,6 +72,10 @@ func (s *CallQualityStore) Get(call string, freqHz float64, binSizeHz int) int {
 	return 0
 }
 
+// Purpose: Adjust a call/bin quality score by delta.
+// Key aspects: Normalizes call and skips zero deltas.
+// Upstream: correction anchors and priors loading.
+// Downstream: freqBinHz and map mutation under lock.
 // Add adjusts the quality score for a call/bin by delta.
 func (s *CallQualityStore) Add(call string, freqHz float64, binSizeHz int, delta int) {
 	if s == nil {
@@ -75,6 +91,10 @@ func (s *CallQualityStore) Add(call string, freqHz float64, binSizeHz int, delta
 	s.data[key] = s.data[key] + delta
 }
 
+// Purpose: Determine whether a call meets the quality threshold.
+// Key aspects: Uses config bin size and threshold.
+// Upstream: call correction decision logic.
+// Downstream: Get.
 // IsGood reports whether the call meets the configured quality threshold in the bin.
 func (s *CallQualityStore) IsGood(call string, freqHz float64, cfg *CorrectionSettings) bool {
 	if cfg == nil {

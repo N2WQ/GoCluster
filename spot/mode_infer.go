@@ -44,6 +44,10 @@ type ModeAssigner struct {
 	digital  *digitalFreqMap
 }
 
+// Purpose: Construct a ModeAssigner with defaults applied.
+// Key aspects: Wires cache sizes/TTLs and fallback allocation logic.
+// Upstream: main startup wiring.
+// Downstream: newModeAssigner.
 // NewModeAssigner builds a mode assigner using the provided settings.
 func NewModeAssigner(settings ModeInferenceSettings) *ModeAssigner {
 	return newModeAssigner(settings, time.Now, func(freq float64) string {
@@ -51,6 +55,10 @@ func NewModeAssigner(settings ModeInferenceSettings) *ModeAssigner {
 	})
 }
 
+// Purpose: Internal constructor with injected time and fallback functions.
+// Key aspects: Normalizes settings and seeds the digital frequency map.
+// Upstream: NewModeAssigner and tests.
+// Downstream: newDXFreqCache, newDigitalFreqMap, seedDigitalMap.
 func newModeAssigner(settings ModeInferenceSettings, now func() time.Time, fallback func(freqKHz float64) string) *ModeAssigner {
 	if settings.DXFreqCacheTTL <= 0 {
 		settings.DXFreqCacheTTL = 5 * time.Minute
@@ -83,6 +91,10 @@ func newModeAssigner(settings ModeInferenceSettings, now func() time.Time, fallb
 // Assign fills in the spot.Mode when it is missing. The caller supplies whether
 // the mode was explicitly present in the comment/source before inference so
 // we can avoid feeding inferred data back into the digital map.
+// Purpose: Assign a mode to a spot using the inference pipeline.
+// Key aspects: Checks explicit mode, DX+freq cache, digital map, then fallback.
+// Upstream: processOutputSpots.
+// Downstream: dxCache, digital map, and fallback.
 func (a *ModeAssigner) Assign(s *Spot, explicitMode bool) string {
 	if a == nil || s == nil {
 		return ""
@@ -126,6 +138,10 @@ func (a *ModeAssigner) Assign(s *Spot, explicitMode bool) string {
 	return mode
 }
 
+// Purpose: Decide whether to feed a spot into the digital map.
+// Key aspects: Only explicit modes from skimmer sources are observed.
+// Upstream: Assign explicit-mode branch.
+// Downstream: IsSkimmerSource and isSeedMode.
 func (a *ModeAssigner) shouldObserveDigital(s *Spot, mode string) bool {
 	if s == nil {
 		return false
@@ -139,6 +155,10 @@ func (a *ModeAssigner) shouldObserveDigital(s *Spot, mode string) bool {
 	return true
 }
 
+// Purpose: Seed the digital frequency map with configured modes.
+// Key aspects: Validates seed modes and uses seed TTL handling.
+// Upstream: newModeAssigner.
+// Downstream: digital.Seed and isSeedMode.
 func (a *ModeAssigner) seedDigitalMap(seeds []ModeSeed) {
 	if a == nil || a.digital == nil || len(seeds) == 0 {
 		return
@@ -164,6 +184,10 @@ type dxFreqKey struct {
 }
 
 func dxKeyFromSpot(s *Spot) dxFreqKey {
+	// Purpose: Build the DX+frequency cache key for a spot.
+	// Key aspects: Normalizes DX call and uses integer kHz bucket.
+	// Upstream: Assign.
+	// Downstream: NormalizeCallsign and freqKeyFromSpot.
 	call := s.DXCallNorm
 	if call == "" {
 		call = NormalizeCallsign(s.DXCall)
@@ -176,6 +200,10 @@ func dxKeyFromSpot(s *Spot) dxFreqKey {
 
 // freqKeyFromSpot truncates the spot frequency to integer kHz, matching the
 // agreed DXcall+frequency cache key.
+// Purpose: Convert spot frequency to integer kHz for cache keys.
+// Key aspects: Rejects nil/invalid frequency.
+// Upstream: Assign and dxKeyFromSpot.
+// Downstream: None (pure conversion).
 func freqKeyFromSpot(s *Spot) int {
 	if s == nil {
 		return 0
@@ -200,6 +228,10 @@ type dxFreqEntry struct {
 }
 
 func newDXFreqCache(max int, ttl time.Duration) *dxFreqCache {
+	// Purpose: Construct the DX+frequency cache with LRU eviction.
+	// Key aspects: Enforces minimum size and stores TTL.
+	// Upstream: newModeAssigner.
+	// Downstream: list.New and map allocation.
 	if max < 1 {
 		max = 1
 	}
@@ -212,6 +244,10 @@ func newDXFreqCache(max int, ttl time.Duration) *dxFreqCache {
 }
 
 func (c *dxFreqCache) Get(key dxFreqKey, now time.Time) (string, bool) {
+	// Purpose: Retrieve a cached mode for a DX+frequency key.
+	// Key aspects: Enforces TTL and refreshes LRU position.
+	// Upstream: Assign cache check.
+	// Downstream: list operations and map access.
 	if c == nil {
 		return "", false
 	}
@@ -229,6 +265,10 @@ func (c *dxFreqCache) Get(key dxFreqKey, now time.Time) (string, bool) {
 }
 
 func (c *dxFreqCache) Set(key dxFreqKey, mode string, now time.Time) {
+	// Purpose: Store a mode for a DX+frequency key.
+	// Key aspects: Updates LRU and evicts oldest when full.
+	// Upstream: Assign after inference.
+	// Downstream: evictOldest and list operations.
 	if c == nil || key.call == "" || key.freq <= 0 || strings.TrimSpace(mode) == "" {
 		return
 	}
@@ -248,6 +288,10 @@ func (c *dxFreqCache) Set(key dxFreqKey, mode string, now time.Time) {
 }
 
 func (c *dxFreqCache) evictOldest() {
+	// Purpose: Remove the least recently used entry.
+	// Key aspects: No-op on empty cache.
+	// Upstream: dxFreqCache.Set.
+	// Downstream: list back removal and map delete.
 	if c == nil {
 		return
 	}
@@ -284,6 +328,10 @@ type digitalModeEvidence struct {
 const maxDigitalSpottersPerMode = 2048
 
 func newDigitalFreqMap(max int, window time.Duration, minCorroborators int, seedTTL time.Duration) *digitalFreqMap {
+	// Purpose: Construct the digital frequency map with LRU eviction.
+	// Key aspects: Normalizes min values and records corroborator thresholds.
+	// Upstream: newModeAssigner.
+	// Downstream: list.New and map allocation.
 	if max < 1 {
 		max = 1
 	}
@@ -301,6 +349,10 @@ func newDigitalFreqMap(max int, window time.Duration, minCorroborators int, seed
 }
 
 func (m *digitalFreqMap) Seed(freq int, mode string, now time.Time) {
+	// Purpose: Seed a frequency bucket with a known digital mode.
+	// Key aspects: Applies seed TTL and touches LRU.
+	// Upstream: ModeAssigner.seedDigitalMap.
+	// Downstream: getOrCreate and ensureMode.
 	if m == nil || freq <= 0 || strings.TrimSpace(mode) == "" {
 		return
 	}
@@ -313,6 +365,10 @@ func (m *digitalFreqMap) Seed(freq int, mode string, now time.Time) {
 }
 
 func (m *digitalFreqMap) Observe(freq int, mode string, spotter string, now time.Time) {
+	// Purpose: Record a skimmer observation for a digital mode at a frequency.
+	// Key aspects: Normalizes spotter, prunes old evidence, caps spotter count.
+	// Upstream: ModeAssigner.Assign explicit mode path.
+	// Downstream: getOrCreate, ensureMode, pruneSpotters.
 	if m == nil || freq <= 0 || strings.TrimSpace(mode) == "" {
 		return
 	}
@@ -337,6 +393,10 @@ func (m *digitalFreqMap) Observe(freq int, mode string, spotter string, now time
 }
 
 func (m *digitalFreqMap) Infer(freq int, now time.Time) string {
+	// Purpose: Infer a digital mode for a frequency using evidence and seeds.
+	// Key aspects: Prefers corroborated explicit evidence, falls back to seeds.
+	// Upstream: ModeAssigner.Assign when no cache hit.
+	// Downstream: pruneSpotters, pruneEntryIfEmpty, and LRU touch.
 	if m == nil || freq <= 0 {
 		return ""
 	}
@@ -388,6 +448,10 @@ func (m *digitalFreqMap) Infer(freq int, now time.Time) string {
 }
 
 func (m *digitalFreqMap) getOrCreate(freq int, now time.Time) *digitalFreqEntry {
+	// Purpose: Fetch or create a frequency entry and update LRU.
+	// Key aspects: Refreshes lastSeen and moves to front.
+	// Upstream: Seed and Observe.
+	// Downstream: list operations and map access.
 	if elem, ok := m.entries[freq]; ok {
 		entry := elem.Value.(*digitalFreqEntry)
 		entry.lastSeen = now
@@ -405,6 +469,10 @@ func (m *digitalFreqMap) getOrCreate(freq int, now time.Time) *digitalFreqEntry 
 }
 
 func (m *digitalFreqMap) touch(entry *digitalFreqEntry) {
+	// Purpose: Move the entry to the front of the LRU list.
+	// Key aspects: No-op when entry is nil or missing.
+	// Upstream: getOrCreate and Infer.
+	// Downstream: list.MoveToFront.
 	if m == nil || entry == nil {
 		return
 	}
@@ -414,6 +482,10 @@ func (m *digitalFreqMap) touch(entry *digitalFreqEntry) {
 }
 
 func (m *digitalFreqMap) evictIfNeeded() {
+	// Purpose: Evict oldest frequency entries when over capacity.
+	// Key aspects: Repeats until size is within limit.
+	// Upstream: Seed and Observe.
+	// Downstream: list.Back and map delete.
 	if m == nil {
 		return
 	}
@@ -429,6 +501,10 @@ func (m *digitalFreqMap) evictIfNeeded() {
 }
 
 func (entry *digitalFreqEntry) ensureMode(mode string) *digitalModeEvidence {
+	// Purpose: Ensure a mode evidence bucket exists for a frequency.
+	// Key aspects: Normalizes mode and allocates spotter map.
+	// Upstream: Seed and Observe.
+	// Downstream: strings.ToUpper and map allocation.
 	mode = strings.ToUpper(strings.TrimSpace(mode))
 	if mode == "" {
 		return nil
@@ -442,6 +518,10 @@ func (entry *digitalFreqEntry) ensureMode(mode string) *digitalModeEvidence {
 }
 
 func (m *digitalFreqMap) pruneSpotters(evidence *digitalModeEvidence, now time.Time) {
+	// Purpose: Remove spotter observations outside the evidence window.
+	// Key aspects: Uses m.window cutoff to prune stale entries.
+	// Upstream: Observe and Infer.
+	// Downstream: map delete.
 	if m == nil || evidence == nil || len(evidence.spotters) == 0 {
 		return
 	}
@@ -454,6 +534,10 @@ func (m *digitalFreqMap) pruneSpotters(evidence *digitalModeEvidence, now time.T
 }
 
 func (m *digitalFreqMap) evictOldestSpotter(evidence *digitalModeEvidence) {
+	// Purpose: Evict the oldest spotter to cap per-mode memory.
+	// Key aspects: Picks minimum lastSeen timestamp.
+	// Upstream: Observe.
+	// Downstream: map delete.
 	if evidence == nil || len(evidence.spotters) == 0 {
 		return
 	}
@@ -473,6 +557,10 @@ func (m *digitalFreqMap) evictOldestSpotter(evidence *digitalModeEvidence) {
 }
 
 func (m *digitalFreqMap) pruneEntryIfEmpty(entry *digitalFreqEntry, freq int) {
+	// Purpose: Drop empty mode entries and remove empty frequency buckets.
+	// Key aspects: Clears modes with no spotters and no seed TTL.
+	// Upstream: Infer.
+	// Downstream: map delete and list.Remove.
 	if m == nil || entry == nil {
 		return
 	}
@@ -490,6 +578,10 @@ func (m *digitalFreqMap) pruneEntryIfEmpty(entry *digitalFreqEntry, freq int) {
 }
 
 func isSeedMode(mode string) bool {
+	// Purpose: Check if a mode is eligible for digital seeding.
+	// Key aspects: Limits to FT4/FT8/JS8.
+	// Upstream: seedDigitalMap and shouldObserveDigital.
+	// Downstream: strings.ToUpper.
 	switch strings.ToUpper(strings.TrimSpace(mode)) {
 	case "FT4", "FT8", "JS8":
 		return true

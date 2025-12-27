@@ -46,6 +46,10 @@ type AdaptiveGroupThresholds struct {
 	BusyMinReports   int
 }
 
+// Purpose: Construct adaptive min_reports controller from config.
+// Key aspects: Returns nil when disabled or no groups are defined.
+// Upstream: main startup and call correction wiring.
+// Downstream: normalizeAdaptiveGroups and map allocation.
 // NewAdaptiveMinReports builds the controller from config. When disabled, or
 // when no groups are defined, it returns nil so callers can skip all overhead.
 func NewAdaptiveMinReports(cfg config.CallCorrectionConfig) *AdaptiveMinReports {
@@ -92,6 +96,10 @@ func NewAdaptiveMinReports(cfg config.CallCorrectionConfig) *AdaptiveMinReports 
 	}
 }
 
+// Purpose: Record that a reporter was active on a band.
+// Key aspects: Normalizes band/reporter and updates last-seen time.
+// Upstream: call correction input paths.
+// Downstream: reporterSeen map under lock.
 // Observe records that a reporter was active on a band at the given time.
 // It is safe to call from hot paths.
 func (a *AdaptiveMinReports) Observe(band, reporter string, now time.Time) {
@@ -112,6 +120,10 @@ func (a *AdaptiveMinReports) Observe(band, reporter string, now time.Time) {
 	a.reporterSeen[b][r] = now
 }
 
+// Purpose: Return current min_reports for a band.
+// Key aspects: Falls back to static config when adaptive is disabled or unknown band.
+// Upstream: call correction decision logic.
+// Downstream: ensureEvaluatedLocked and group lookup.
 // MinReportsForBand returns the current min_reports for the provided band,
 // falling back to the static configuration when adaptive control is disabled
 // or when the band is not mapped to any group.
@@ -141,6 +153,10 @@ func (a *AdaptiveMinReports) MinReportsForBand(band string, now time.Time) int {
 }
 
 func (a *AdaptiveMinReports) evaluate(now time.Time) {
+	// Purpose: Recompute group states and min_reports thresholds.
+	// Key aspects: Prunes stale reporters and applies hysteresis windows.
+	// Upstream: ensureEvaluatedLocked.
+	// Downstream: averageReporters and stateForCount.
 	// Drop stale reporters outside the window.
 	for band, reporters := range a.reporterSeen {
 		for call, seenAt := range reporters {
@@ -188,6 +204,10 @@ func (a *AdaptiveMinReports) evaluate(now time.Time) {
 }
 
 func (a *AdaptiveMinReports) averageReporters(bands []string) float64 {
+	// Purpose: Compute average unique reporters across bands.
+	// Key aspects: Normalizes band labels and averages reporter counts.
+	// Upstream: evaluate.
+	// Downstream: reporterSeen map access.
 	if len(bands) == 0 {
 		return 0
 	}
@@ -203,6 +223,10 @@ func (a *AdaptiveMinReports) averageReporters(bands []string) float64 {
 	return total / float64(len(bands))
 }
 
+// Purpose: Return the busiest state across all groups.
+// Key aspects: busy > normal > quiet; defaults to normal when empty.
+// Upstream: adaptive refresher and call correction logic.
+// Downstream: ensureEvaluatedLocked.
 // HighestState returns the busiest state across all groups ("busy" > "normal" > "quiet").
 // When no groups are present it defaults to "normal".
 func (a *AdaptiveMinReports) HighestState() string {
@@ -227,6 +251,10 @@ func (a *AdaptiveMinReports) HighestState() string {
 	return "quiet"
 }
 
+// Purpose: Return the adaptive state for a specific band.
+// Key aspects: Defaults to normal when unknown or disabled.
+// Upstream: call correction decision logic.
+// Downstream: ensureEvaluatedLocked and group lookup.
 // StateForBand returns the current adaptive state ("quiet"|"normal"|"busy") for the band,
 // defaulting to "normal" when unknown or when adaptive control is disabled.
 func (a *AdaptiveMinReports) StateForBand(band string, now time.Time) string {
@@ -249,6 +277,10 @@ func (a *AdaptiveMinReports) StateForBand(band string, now time.Time) string {
 }
 
 func (a *AdaptiveMinReports) ensureEvaluatedLocked(now time.Time) {
+	// Purpose: Run evaluation at the configured cadence.
+	// Key aspects: Updates lastEval to rate-limit evaluation work.
+	// Upstream: MinReportsForBand and HighestState.
+	// Downstream: evaluate.
 	if now.IsZero() {
 		now = time.Now()
 	}
@@ -259,6 +291,10 @@ func (a *AdaptiveMinReports) ensureEvaluatedLocked(now time.Time) {
 }
 
 func stateForCount(count float64, quietBelow, busyAbove int) string {
+	// Purpose: Map reporter count to quiet/normal/busy state.
+	// Key aspects: Compares against configured thresholds.
+	// Upstream: evaluate.
+	// Downstream: None (pure logic).
 	if count < float64(quietBelow) {
 		return "quiet"
 	}
@@ -269,6 +305,10 @@ func stateForCount(count float64, quietBelow, busyAbove int) string {
 }
 
 func normalizeAdaptiveGroups(groups []config.AdaptiveMinReportsGroup) []AdaptiveGroupThresholds {
+	// Purpose: Normalize adaptive group configs with defaults.
+	// Key aspects: Applies fallback thresholds and names.
+	// Upstream: NewAdaptiveMinReports.
+	// Downstream: strings.TrimSpace and append.
 	out := make([]AdaptiveGroupThresholds, 0, len(groups))
 	for _, g := range groups {
 		if len(g.Bands) == 0 {

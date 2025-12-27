@@ -117,6 +117,10 @@ type CorrectionTrace struct {
 	Reason                    string    `json:"reason,omitempty"`
 }
 
+// Purpose: Determine whether a mode is eligible for call correction.
+// Key aspects: Limits to CW/RTTY/SSB to avoid digital-mode conflicts.
+// Upstream: call correction pipeline and harmonic detection.
+// Downstream: correctionEligibleModes lookup.
 // IsCallCorrectionCandidate returns true if the given mode is eligible for
 // consensus-based call correction. Only CW, RTTY, and SSB are considered
 // because other digital modes already embed their own error correction.
@@ -147,6 +151,10 @@ type distanceCache struct {
 }
 
 func (dc *distanceCache) configure(max int, ttl time.Duration) {
+	// Purpose: Configure cache capacity and TTL for distance memoization.
+	// Key aspects: Disables cache when max/ttl are non-positive.
+	// Upstream: normalizeCorrectionSettings.
+	// Downstream: map allocation and resets.
 	dc.mu.Lock()
 	defer dc.mu.Unlock()
 	if max <= 0 || ttl <= 0 {
@@ -165,6 +173,10 @@ func (dc *distanceCache) configure(max int, ttl time.Duration) {
 }
 
 func (dc *distanceCache) get(key string, now time.Time) (int, bool) {
+	// Purpose: Retrieve a cached distance value.
+	// Key aspects: Enforces TTL expiration and returns (value, ok).
+	// Upstream: cachedCallDistance.
+	// Downstream: map lookup under lock.
 	if dc.max <= 0 || dc.ttl <= 0 {
 		return 0, false
 	}
@@ -182,6 +194,10 @@ func (dc *distanceCache) get(key string, now time.Time) (int, bool) {
 }
 
 func (dc *distanceCache) put(key string, distance int, now time.Time) {
+	// Purpose: Store a distance value and manage eviction order.
+	// Key aspects: Keeps order slice bounded and evicts when over capacity.
+	// Upstream: cachedCallDistance.
+	// Downstream: evictOldest and condenseOrderLocked.
 	if dc.max <= 0 || dc.ttl <= 0 {
 		return
 	}
@@ -211,6 +227,10 @@ func (dc *distanceCache) put(key string, distance int, now time.Time) {
 }
 
 func (dc *distanceCache) evictOldest() {
+	// Purpose: Evict oldest cache entries to stay within max.
+	// Key aspects: Deletes from entries and trims order slice.
+	// Upstream: distanceCache.put.
+	// Downstream: map delete and condenseOrderLocked.
 	// Drop oldest entries until we're within the max bound.
 	for len(dc.entries) > dc.max && len(dc.order) > 0 {
 		k := dc.order[0]
@@ -223,6 +243,10 @@ func (dc *distanceCache) evictOldest() {
 	}
 }
 
+// Purpose: Rebuild the eviction order to remove duplicates.
+// Key aspects: Keeps latest occurrences and trims order size.
+// Upstream: distanceCache.put and evictOldest.
+// Downstream: map lookups and slice rebuild.
 // condenseOrderLocked rebuilds the order slice to contain unique keys in their latest order,
 // keeping memory bounded even when the same key is updated frequently.
 func (dc *distanceCache) condenseOrderLocked() {
@@ -250,6 +274,10 @@ func (dc *distanceCache) condenseOrderLocked() {
 	dc.order = tmp
 }
 
+// Purpose: Set the global frequency tolerance for correction clustering.
+// Key aspects: Normalizes non-positive values to default.
+// Upstream: main startup configuration.
+// Downstream: frequencyToleranceKHz global.
 // SetFrequencyToleranceHz updates the frequency similarity window in Hz.
 func SetFrequencyToleranceHz(hz float64) {
 	if hz <= 0 {
@@ -259,6 +287,10 @@ func SetFrequencyToleranceHz(hz float64) {
 	frequencyToleranceKHz = hz / 1000.0
 }
 
+// Purpose: Configure Morse edit distance weights.
+// Key aspects: Applies defaults when non-positive and rebuilds cost table.
+// Upstream: main startup configuration.
+// Downstream: buildRuneCostTable and morse weight globals.
 // ConfigureMorseWeights allows callers to tune dot/dash edit costs. Non-positive
 // inputs fall back to defaults (ins=1, del=1, sub=2, scale=2).
 func ConfigureMorseWeights(insert, delete, sub, scale int) {
@@ -286,6 +318,10 @@ func ConfigureMorseWeights(insert, delete, sub, scale int) {
 	morseRuneIndex, morseCostTable = buildRuneCostTable(morseCodes, morsePatternCost)
 }
 
+// Purpose: Configure Baudot edit distance weights for RTTY.
+// Key aspects: Applies defaults when non-positive and rebuilds cost table.
+// Upstream: main startup configuration.
+// Downstream: buildRuneCostTable and baudot weight globals.
 // ConfigureBaudotWeights allows callers to tune ITA2 edit costs for RTTY distance.
 // Non-positive inputs fall back to defaults (ins=1, del=1, sub=2, scale=2).
 func ConfigureBaudotWeights(insert, delete, sub, scale int) {
@@ -329,6 +365,10 @@ func ConfigureBaudotWeights(insert, delete, sub, scale int) {
 //   - correctedCall: the most likely callsign if consensus is met.
 //   - supporters: how many unique spotters contributed to the correction.
 //   - ok: true if a correction is recommended, false otherwise.
+// Purpose: Suggest a corrected callsign based on nearby corroborators.
+// Key aspects: Applies consensus strategy, distance limits, and confidence gates.
+// Upstream: main call correction pipeline.
+// Downstream: distance calculations, quality anchors, and logging.
 func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings CorrectionSettings, now time.Time) (correctedCall string, supporters int, correctedConfidence int, subjectConfidence int, totalReporters int, ok bool) {
 	if subject == nil {
 		return "", 0, 0, 0, 0, false
@@ -636,6 +676,10 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 	return bestCall, bestCount, bestConfidence, subjectConfidence, totalReporters, true
 }
 
+// Purpose: Select the closest good anchor call for a busted call.
+// Key aspects: Uses mode-aware distance and quality anchors.
+// Upstream: SuggestCallCorrection.
+// Downstream: callQuality.IsGood and callDistance.
 // findAnchorForCall selects the closest good anchor (by mode-aware distance) for a busted call.
 func findAnchorForCall(bustedCall string, freqHz float64, mode string, candidates []string, cfg *CorrectionSettings) (string, bool) {
 	busted := strings.TrimSpace(bustedCall)
@@ -668,6 +712,10 @@ func findAnchorForCall(bustedCall string, freqHz float64, mode string, candidate
 	return best, true
 }
 
+// Purpose: Update call quality scores after a cluster decision.
+// Key aspects: Rewards winner and penalizes busted calls.
+// Upstream: SuggestCallCorrection.
+// Downstream: callQuality.Add.
 // updateCallQualityForCluster updates the quality store after a resolved cluster.
 func updateCallQualityForCluster(winnerCall string, freqHz float64, cfg *CorrectionSettings, clusterSpots []bandmap.SpotEntry) {
 	if cfg == nil || winnerCall == "" || len(clusterSpots) == 0 {
@@ -691,6 +739,10 @@ func updateCallQualityForCluster(winnerCall string, freqHz float64, cfg *Correct
 	}
 }
 
+// Purpose: Emit a correction trace to the configured logger.
+// Key aspects: No-op when debug logging is disabled.
+// Upstream: SuggestCallCorrection.
+// Downstream: cfg.TraceLogger.Enqueue.
 func logCorrectionTrace(cfg CorrectionSettings, tr CorrectionTrace, votes []bandmap.SpotEntry) {
 	if !cfg.DebugLog || cfg.TraceLogger == nil {
 		return
@@ -701,6 +753,10 @@ func logCorrectionTrace(cfg CorrectionSettings, tr CorrectionTrace, votes []band
 	})
 }
 
+// Purpose: Normalize correction settings with defaults.
+// Key aspects: Applies minimums and standardizes strategy names.
+// Upstream: SuggestCallCorrection.
+// Downstream: distance cache configuration and string normalization.
 // normalizeCorrectionSettings fills in safe defaults so callers can omit config
 // while unit tests can deliberately pass tiny values.
 func normalizeCorrectionSettings(settings CorrectionSettings) CorrectionSettings {
@@ -781,6 +837,10 @@ func normalizeCorrectionSettings(settings CorrectionSettings) CorrectionSettings
 	return cfg
 }
 
+// Purpose: Return the minimum SNR threshold for a mode.
+// Key aspects: Uses per-mode thresholds from config.
+// Upstream: passesSNRThreshold and passesSNREntry.
+// Downstream: strings.ToUpper.
 func minSNRThresholdForMode(mode string, cfg CorrectionSettings) int {
 	switch strings.ToUpper(strings.TrimSpace(mode)) {
 	case "CW":
@@ -792,6 +852,10 @@ func minSNRThresholdForMode(mode string, cfg CorrectionSettings) int {
 	}
 }
 
+// Purpose: Check whether a spot meets the SNR threshold for its mode.
+// Key aspects: Requires HasReport to enforce thresholds.
+// Upstream: SuggestCallCorrection.
+// Downstream: minSNRThresholdForMode.
 func passesSNRThreshold(s *Spot, cfg CorrectionSettings) bool {
 	if s == nil {
 		return false
@@ -803,6 +867,10 @@ func passesSNRThreshold(s *Spot, cfg CorrectionSettings) bool {
 	return s.Report >= required
 }
 
+// Purpose: Check whether a bandmap entry meets SNR threshold.
+// Key aspects: Uses entry.Mode and entry.SNR.
+// Upstream: SuggestCallCorrection.
+// Downstream: minSNRThresholdForMode.
 func passesSNREntry(e bandmap.SpotEntry, cfg CorrectionSettings) bool {
 	required := minSNRThresholdForMode(e.Mode, cfg)
 	if required <= 0 {
@@ -825,6 +893,10 @@ type correctionBucket struct {
 	spots []*Spot
 }
 
+// Purpose: Construct an empty correction index.
+// Key aspects: Initializes bucket and lastSeen maps.
+// Upstream: main startup.
+// Downstream: map allocation.
 // NewCorrectionIndex constructs an empty index.
 func NewCorrectionIndex() *CorrectionIndex {
 	return &CorrectionIndex{
@@ -833,6 +905,10 @@ func NewCorrectionIndex() *CorrectionIndex {
 	}
 }
 
+// Purpose: Insert a spot into the frequency bucket index.
+// Key aspects: Prunes stale entries and tracks lastSeen per bucket.
+// Upstream: processOutputSpots call correction path.
+// Downstream: bucketKey and pruneAndAppend.
 // Add inserts a spot into the appropriate bucket and prunes stale entries.
 func (ci *CorrectionIndex) Add(s *Spot, now time.Time, window time.Duration) {
 	if ci == nil || s == nil {
@@ -864,6 +940,10 @@ func (ci *CorrectionIndex) Add(s *Spot, now time.Time, window time.Duration) {
 	}
 }
 
+// Purpose: Retrieve nearby spots for call correction.
+// Key aspects: Scans adjacent buckets and prunes stale entries.
+// Upstream: SuggestCallCorrection.
+// Downstream: bucketKey and prune.
 // Candidates retrieves nearby spots (within +/- 0.5 kHz) for the given subject.
 func (ci *CorrectionIndex) Candidates(subject *Spot, now time.Time, window time.Duration) []*Spot {
 	if ci == nil || subject == nil {
@@ -899,11 +979,19 @@ func (ci *CorrectionIndex) Candidates(subject *Spot, now time.Time, window time.
 	return results
 }
 
+// Purpose: Compute the bucket key for a frequency.
+// Key aspects: Half-up rounding to 0.1 kHz.
+// Upstream: CorrectionIndex.Add and Candidates.
+// Downstream: math.Floor.
 func bucketKey(freq float64) int {
 	// Half-up rounding to 0.1 kHz keeps bucket boundaries stable at .x5 points.
 	return int(math.Floor(freq*10 + 0.5))
 }
 
+// Purpose: Drop stale spots outside the recency window.
+// Key aspects: Returns a compacted slice of active spots.
+// Upstream: Candidates.
+// Downstream: time comparisons.
 func prune(spots []*Spot, now time.Time, window time.Duration) []*Spot {
 	if len(spots) == 0 {
 		return spots
@@ -922,11 +1010,19 @@ func prune(spots []*Spot, now time.Time, window time.Duration) []*Spot {
 	return dst
 }
 
+// Purpose: Prune stale spots and append the new spot.
+// Key aspects: Reuses prune() to keep slice compact.
+// Upstream: CorrectionIndex.Add.
+// Downstream: prune.
 func pruneAndAppend(spots []*Spot, s *Spot, now time.Time, window time.Duration) []*Spot {
 	spots = prune(spots, now, window)
 	return append(spots, s)
 }
 
+// Purpose: Remove inactive buckets to bound memory.
+// Key aspects: Deletes buckets when lastSeen is outside window.
+// Upstream: CorrectionIndex.Add and StartCleanup.
+// Downstream: map deletes.
 // cleanup removes buckets that have been inactive longer than the window to keep
 // the map bounded even when frequencies churn across the spectrum.
 func (ci *CorrectionIndex) cleanup(now time.Time, window time.Duration) {
@@ -942,6 +1038,10 @@ func (ci *CorrectionIndex) cleanup(now time.Time, window time.Duration) {
 	}
 }
 
+// Purpose: Start a periodic cleanup goroutine for the index.
+// Key aspects: Uses ticker and quit channel; guards against double start.
+// Upstream: main startup.
+// Downstream: cleanup and time.NewTicker.
 // StartCleanup launches a periodic sweep to evict inactive buckets even when Candidates/Add
 // are not called frequently, keeping memory bounded.
 func (ci *CorrectionIndex) StartCleanup(interval, window time.Duration) {
@@ -959,6 +1059,10 @@ func (ci *CorrectionIndex) StartCleanup(interval, window time.Duration) {
 	ci.sweepQuit = make(chan struct{})
 	ci.mu.Unlock()
 
+	// Purpose: Periodically invoke cleanup until StopCleanup is called.
+	// Key aspects: Ticker-driven loop with quit channel.
+	// Upstream: StartCleanup.
+	// Downstream: cleanup and ticker.Stop.
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
@@ -975,6 +1079,10 @@ func (ci *CorrectionIndex) StartCleanup(interval, window time.Duration) {
 	}()
 }
 
+// Purpose: Stop the periodic cleanup goroutine.
+// Key aspects: Closes quit channel and clears it.
+// Upstream: main shutdown.
+// Downstream: channel close only.
 // StopCleanup stops the periodic cleanup goroutine.
 func (ci *CorrectionIndex) StopCleanup() {
 	if ci == nil {
@@ -999,6 +1107,10 @@ type distanceCacheConfig struct {
 	ttl  time.Duration
 }
 
+// Purpose: Normalize CW distance model selection.
+// Key aspects: Defaults to plain when unknown.
+// Upstream: normalizeCorrectionSettings and cachedCallDistance.
+// Downstream: strings.ToLower.
 func normalizeCWDistanceModel(model string) string {
 	switch strings.ToLower(strings.TrimSpace(model)) {
 	case distanceModelMorse:
@@ -1008,6 +1120,10 @@ func normalizeCWDistanceModel(model string) string {
 	}
 }
 
+// Purpose: Normalize RTTY distance model selection.
+// Key aspects: Defaults to plain when unknown.
+// Upstream: normalizeCorrectionSettings and cachedCallDistance.
+// Downstream: strings.ToLower.
 func normalizeRTTYDistanceModel(model string) string {
 	switch strings.ToLower(strings.TrimSpace(model)) {
 	case distanceModelBaudot:
@@ -1017,6 +1133,10 @@ func normalizeRTTYDistanceModel(model string) string {
 	}
 }
 
+// Purpose: Compute call distance with optional memoization.
+// Key aspects: Uses cache when configured, falls back to core distance.
+// Upstream: SuggestCallCorrection and findAnchorForCall.
+// Downstream: distanceCacheKey, distanceCache.get/put, callDistanceCore.
 // cachedCallDistance wraps callDistanceCore with an optional memoization layer.
 // A preconfigured cache is supplied by the caller so we avoid reconfiguring
 // shared state on every distance call.
@@ -1037,6 +1157,10 @@ func cachedCallDistance(subject, candidate, mode, cwModel, rttyModel string, cac
 	return callDistanceCore(subject, candidate, modeKey, cwModelNorm, rttyModelNorm)
 }
 
+// Purpose: Build a stable cache key for distance calculations.
+// Key aspects: Concatenates subject/candidate/mode/model identifiers.
+// Upstream: cachedCallDistance.
+// Downstream: strings.TrimSpace/ToUpper.
 func distanceCacheKey(subject, candidate, mode, cwModel, rttyModel string) string {
 	var b strings.Builder
 	// Estimated capacity: calls (2x12) + 4 delimiters + modes/models (~4*5) + slack.
@@ -1054,6 +1178,10 @@ func distanceCacheKey(subject, candidate, mode, cwModel, rttyModel string) strin
 }
 
 // callDistanceCore picks the distance function based on mode/model without caching.
+// Purpose: Compute mode-aware call distance without caching.
+// Key aspects: Routes to CW/RTTY-specific models or plain Levenshtein.
+// Upstream: cachedCallDistance and callDistance.
+// Downstream: cwCallDistance, rttyCallDistance, lev.Distance.
 func callDistanceCore(subject, candidate, mode, cwModel, rttyModel string) int {
 	switch mode {
 	case "CW":
@@ -1070,6 +1198,10 @@ func callDistanceCore(subject, candidate, mode, cwModel, rttyModel string) int {
 
 // callDistance is retained for tests; it routes to the core distance function
 // after normalizing mode/model inputs (no caching).
+// Purpose: Compute mode-aware call distance with normalized models.
+// Key aspects: Normalizes model strings before calling core.
+// Upstream: findAnchorForCall.
+// Downstream: callDistanceCore and normalizeCW/RTTYDistanceModel.
 func callDistance(subject, candidate, mode, cwModel, rttyModel string) int {
 	modeKey := strings.ToUpper(strings.TrimSpace(mode))
 	return callDistanceCore(
@@ -1081,10 +1213,11 @@ func callDistance(subject, candidate, mode, cwModel, rttyModel string) int {
 	)
 }
 
-// cwCallDistance computes Levenshtein at the callsign level but uses
-// Morse-aware substitution costs so CW confusability is reflected in the
-// distance. Insert/delete of whole characters cost 1; substitution uses a
-// Morse distance table built from weighted/normalized dot/dash edits.
+// Purpose: Compute CW-aware edit distance between two callsigns.
+// Key aspects: Uses Levenshtein with Morse-weighted substitutions; insert/delete
+// cost 1; pooled DP buffers limit allocations; substitutions use prebuilt costs.
+// Upstream: callDistanceCore (CW mode distance path).
+// Downstream: morseCharDist, min3, borrowIntSlice, returnIntSlice.
 func cwCallDistance(a, b string) int {
 	ra := []rune(strings.ToUpper(a))
 	rb := []rune(strings.ToUpper(b))
@@ -1121,6 +1254,10 @@ func cwCallDistance(a, b string) int {
 	return prev[lb]
 }
 
+// Purpose: Return substitution cost between two runes using Morse code weights.
+// Key aspects: Looks up precomputed table; falls back to a fixed penalty.
+// Upstream: cwCallDistance.
+// Downstream: morseRuneIndex, morseCostTable.
 func morseCharDist(a, b rune) int {
 	if a == b {
 		return 0
@@ -1134,7 +1271,10 @@ func morseCharDist(a, b rune) int {
 	return 2
 }
 
-// rttyCallDistance mirrors cwCallDistance but uses Baudot/ITA2-aware costs.
+// Purpose: Compute RTTY-aware edit distance between two callsigns.
+// Key aspects: Same DP structure as CW but uses Baudot substitution costs.
+// Upstream: callDistanceCore (RTTY mode distance path).
+// Downstream: baudotCharDist, min3, borrowIntSlice, returnIntSlice.
 func rttyCallDistance(a, b string) int {
 	ra := []rune(strings.ToUpper(a))
 	rb := []rune(strings.ToUpper(b))
@@ -1171,6 +1311,10 @@ func rttyCallDistance(a, b string) int {
 	return prev[lb]
 }
 
+// Purpose: Return substitution cost between two runes using Baudot weights.
+// Key aspects: Looks up precomputed table; falls back to a fixed penalty.
+// Upstream: rttyCallDistance.
+// Downstream: baudotRuneIndex, baudotCostTable.
 func baudotCharDist(a, b rune) int {
 	if a == b {
 		return 0
@@ -1184,6 +1328,10 @@ func baudotCharDist(a, b rune) int {
 	return 2
 }
 
+// Purpose: Return the minimum of three integers.
+// Key aspects: Branches to avoid allocations or slices.
+// Upstream: cwCallDistance, rttyCallDistance, morsePatternCost, baudotPatternCost.
+// Downstream: None.
 func min3(a, b, c int) int {
 	if a < b {
 		if a < c {
@@ -1197,8 +1345,11 @@ func min3(a, b, c int) int {
 	return c
 }
 
-// borrowIntSlice returns a slice of length n, reusing a pooled buffer when possible.
-// The second return value is true when the slice should be returned to the pool.
+// Purpose: Provide an int buffer for edit-distance DP with optional pooling.
+// Key aspects: Reuses a pooled 64-cap slice for small buffers; returns a flag to
+// drive proper pool return.
+// Upstream: cwCallDistance, rttyCallDistance.
+// Downstream: levBufPool.
 func borrowIntSlice(n int) ([]int, bool) {
 	if n <= 0 {
 		return nil, false
@@ -1210,6 +1361,10 @@ func borrowIntSlice(n int) ([]int, bool) {
 	return make([]int, n), false
 }
 
+// Purpose: Return a pooled DP buffer to the pool.
+// Key aspects: Re-slices to the original pool cap to keep buffers bounded.
+// Upstream: cwCallDistance, rttyCallDistance.
+// Downstream: levBufPool.
 func returnIntSlice(buf []int, fromPool bool) {
 	if !fromPool || buf == nil {
 		return
@@ -1327,15 +1482,19 @@ var (
 	baudotCostTable [][]int
 )
 
+// Purpose: Build Morse and Baudot cost tables at package init.
+// Key aspects: Precomputes rune indexes and dense cost matrices for fast lookup.
+// Upstream: Go runtime init for the spot package.
+// Downstream: buildRuneCostTable, morsePatternCost, baudotPatternCost.
 func init() {
 	morseRuneIndex, morseCostTable = buildRuneCostTable(morseCodes, morsePatternCost)
 	baudotRuneIndex, baudotCostTable = buildRuneCostTable(baudotCodes, baudotPatternCost)
 }
 
-// buildRuneCostTable creates a dense cost matrix for the provided codebook using
-// the supplied cost function on the code strings. The tables are tiny (tens of
-// entries) and avoid per-call dynamic programming when computing character
-// distances.
+// Purpose: Build rune indexes and dense substitution-cost tables for a codebook.
+// Key aspects: Computes pairwise costs once; small tables avoid per-call DP.
+// Upstream: init.
+// Downstream: cost function (morsePatternCost or baudotPatternCost).
 func buildRuneCostTable(codebook map[rune]string, cost func(a, b string) int) (map[rune]int, [][]int) {
 	index := make(map[rune]int, len(codebook))
 	keys := make([]rune, 0, len(codebook))
@@ -1362,10 +1521,11 @@ func buildRuneCostTable(codebook map[rune]string, cost func(a, b string) int) (m
 	return index, table
 }
 
-// morsePatternCost computes a normalized, weighted edit distance between two
-// Morse code strings (dot/dash). Insert/delete cost 1, dot<->dash substitution
-// costs 2, then we normalize by (maxLen+1) to bound the result and scale into a
-// small integer range for use as a substitution cost in cwCallDistance.
+// Purpose: Compute weighted, normalized edit cost between two Morse patterns.
+// Key aspects: Runs Levenshtein on dot/dash strings with weights, then normalizes
+// by length and scales to a small integer for substitution costs.
+// Upstream: buildRuneCostTable (Morse table build).
+// Downstream: getMorseWeights, min3.
 func morsePatternCost(a, b string) int {
 	cfg := getMorseWeights()
 	if a == b {
@@ -1427,6 +1587,10 @@ type morseWeightSet struct {
 	scale int
 }
 
+// Purpose: Snapshot the current Morse weighting settings.
+// Key aspects: Reads global cost parameters once per call.
+// Upstream: morsePatternCost.
+// Downstream: None.
 func getMorseWeights() morseWeightSet {
 	return morseWeightSet{
 		ins:   morseInsertCost,
@@ -1436,9 +1600,10 @@ func getMorseWeights() morseWeightSet {
 	}
 }
 
-// baudotPatternCost mirrors morsePatternCost but operates on ITA2 codes used
-// for RTTY. It uses weighted edit costs and normalization to keep substitution
-// costs small and comparable to character-level insert/delete.
+// Purpose: Compute weighted, normalized edit cost between two Baudot patterns.
+// Key aspects: Runs weighted Levenshtein and scales the result for substitutions.
+// Upstream: buildRuneCostTable (Baudot table build).
+// Downstream: min3.
 func baudotPatternCost(a, b string) int {
 	if a == b {
 		return 0

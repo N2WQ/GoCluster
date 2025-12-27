@@ -33,7 +33,10 @@ type Table struct {
 	entries map[string]Entry
 }
 
-// NewTable constructs a lookup table from the provided entries.
+// Purpose: Construct a lookup table keyed by raw skimmer callsign.
+// Key aspects: Normalizes callsigns to uppercase; rejects empty input.
+// Upstream: LoadFile, FetchAndWrite pipelines.
+// Downstream: Table.Lookup.
 func NewTable(entries []Entry) (*Table, error) {
 	table := &Table{entries: make(map[string]Entry, len(entries))}
 	for _, entry := range entries {
@@ -49,7 +52,10 @@ func NewTable(entries []Entry) (*Table, error) {
 	return table, nil
 }
 
-// LoadFile reads the JSON file produced by FetchAndWrite and constructs a lookup table.
+// Purpose: Load a JSON skew table from disk into a lookup table.
+// Key aspects: Parses JSON and filters unusable entries.
+// Upstream: main.go startup or tooling.
+// Downstream: FilterEntries, NewTable.
 func LoadFile(path string) (*Table, error) {
 	payload, err := os.ReadFile(path)
 	if err != nil {
@@ -66,7 +72,10 @@ func LoadFile(path string) (*Table, error) {
 	return NewTable(entries)
 }
 
-// Count returns the number of skimmers with published corrections.
+// Purpose: Return number of entries in the table.
+// Key aspects: Safe on nil receiver.
+// Upstream: Diagnostics/metrics.
+// Downstream: None.
 func (t *Table) Count() int {
 	if t == nil {
 		return 0
@@ -74,7 +83,10 @@ func (t *Table) Count() int {
 	return len(t.entries)
 }
 
-// Lookup returns the multiplicative correction factor for the provided raw DE call.
+// Purpose: Look up the correction factor for a raw skimmer callsign.
+// Key aspects: Normalizes callsign; returns (0,false) when missing.
+// Upstream: Store.Lookup and ApplyCorrection.
+// Downstream: Table.entries map.
 func (t *Table) Lookup(call string) (float64, bool) {
 	if t == nil {
 		return 0, false
@@ -95,12 +107,18 @@ type Store struct {
 	ptr atomic.Pointer[Table]
 }
 
-// NewStore constructs an empty store.
+// Purpose: Construct an empty atomic store for skew tables.
+// Key aspects: Uses atomic.Pointer for lock-free reads.
+// Upstream: main.go initialization.
+// Downstream: Store.Set, Store.Lookup.
 func NewStore() *Store {
 	return &Store{}
 }
 
-// Set replaces the currently stored table.
+// Purpose: Replace the stored skew table atomically.
+// Key aspects: Safe for concurrent readers.
+// Upstream: Skew refresh pipeline.
+// Downstream: atomic pointer store.
 func (s *Store) Set(table *Table) {
 	if s == nil {
 		return
@@ -108,7 +126,10 @@ func (s *Store) Set(table *Table) {
 	s.ptr.Store(table)
 }
 
-// Lookup retrieves the correction factor for the raw skimmer callsign.
+// Purpose: Look up the correction factor via the current table.
+// Key aspects: Handles nil store/table safely.
+// Upstream: ApplyCorrection and ingest paths.
+// Downstream: Table.Lookup.
 func (s *Store) Lookup(call string) (float64, bool) {
 	if s == nil {
 		return 0, false
@@ -120,9 +141,10 @@ func (s *Store) Lookup(call string) (float64, bool) {
 	return table.Lookup(call)
 }
 
-// ApplyCorrection multiplies the provided frequency (in kHz) by the stored
-// correction factor for the raw skimmer callsign, rounding to the nearest 0.1 kHz.
-// When skew data is unavailable, the original frequency is returned unchanged.
+// Purpose: Apply per-skimmer correction to an incoming frequency (kHz).
+// Key aspects: Multiplies by factor and rounds to 0.1 kHz; no-op if missing.
+// Upstream: RBN/PSKReporter ingest pipeline.
+// Downstream: Store.Lookup.
 func ApplyCorrection(store *Store, rawCall string, freqKHz float64) float64 {
 	if store == nil || freqKHz <= 0 {
 		return freqKHz
@@ -136,7 +158,10 @@ func ApplyCorrection(store *Store, rawCall string, freqKHz float64) float64 {
 	return math.Floor(corrected*10+0.5) / 10
 }
 
-// Count returns the number of entries currently cached.
+// Purpose: Return number of entries in the current stored table.
+// Key aspects: Safe on nil store/table.
+// Upstream: Diagnostics/metrics.
+// Downstream: Table.Count.
 func (s *Store) Count() int {
 	if s == nil {
 		return 0
@@ -148,9 +173,10 @@ func (s *Store) Count() int {
 	return table.Count()
 }
 
-// FilterEntries removes skew entries whose correction factor is 1.0 or that fall
-// below the provided minimum spot count. The returned slice is newly allocated
-// and can safely be mutated by callers.
+// Purpose: Filter skew entries by correction factor and minimum spots.
+// Key aspects: Drops factor==1 and entries below minSpots; returns a new slice.
+// Upstream: LoadFile, FetchAndWrite.
+// Downstream: None.
 func FilterEntries(entries []Entry, minSpots int) []Entry {
 	if minSpots < 0 {
 		minSpots = 0
@@ -168,7 +194,10 @@ func FilterEntries(entries []Entry, minSpots int) []Entry {
 	return filtered
 }
 
-// Fetch downloads the CSV table and returns parsed skew entries.
+// Purpose: Download the skew CSV and parse entries.
+// Key aspects: Validates URL and HTTP status; reads full body before parsing.
+// Upstream: FetchAndWrite and tooling.
+// Downstream: parseCSV, http.DefaultClient.Do.
 func Fetch(ctx context.Context, rawURL string) ([]Entry, error) {
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
@@ -197,7 +226,10 @@ func Fetch(ctx context.Context, rawURL string) ([]Entry, error) {
 	return parseCSV(body)
 }
 
-// WriteJSON marshals the entries to JSON and writes them to the provided path.
+// Purpose: Write skew entries to a JSON file.
+// Key aspects: Ensures destination directory exists; writes indented JSON.
+// Upstream: FetchAndWrite or tooling.
+// Downstream: os.WriteFile, json.MarshalIndent.
 func WriteJSON(entries []Entry, path string) error {
 	if len(entries) == 0 {
 		return errors.New("skew: no entries to write")
@@ -218,6 +250,10 @@ func WriteJSON(entries []Entry, path string) error {
 	return nil
 }
 
+// Purpose: Parse the skew CSV into entries.
+// Key aspects: Skips headers/comments; validates row length and drops factor==1.
+// Upstream: Fetch.
+// Downstream: csv.Reader, toEntry.
 func parseCSV(raw []byte) ([]Entry, error) {
 	reader := csv.NewReader(bytes.NewReader(raw))
 	reader.TrimLeadingSpace = true
@@ -263,6 +299,10 @@ func parseCSV(raw []byte) ([]Entry, error) {
 	return entries, nil
 }
 
+// Purpose: Convert a CSV record into a skew Entry.
+// Key aspects: Parses numeric fields and normalizes callsign.
+// Upstream: parseCSV.
+// Downstream: strconv parsing helpers.
 func toEntry(record []string) (Entry, error) {
 	normalize := func(idx int) string {
 		if idx >= len(record) {
@@ -296,7 +336,10 @@ func toEntry(record []string) (Entry, error) {
 	}, nil
 }
 
-// FetchAndWrite is a helper that downloads the CSV, filters the entries, and writes them to JSON.
+// Purpose: Fetch, filter, and persist the skew table as JSON.
+// Key aspects: Uses a bounded timeout; returns count of written entries.
+// Upstream: Tools or scheduled refresh.
+// Downstream: Fetch, FilterEntries, WriteJSON.
 func FetchAndWrite(ctx context.Context, url string, minSpots int, path string) (int, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()

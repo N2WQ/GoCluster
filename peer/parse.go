@@ -9,7 +9,10 @@ import (
 	"dxcluster/spot"
 )
 
-// parseSpotFromFrame converts PC61/PC11 into a Spot.
+// Purpose: Convert a peer frame into a Spot.
+// Key aspects: Routes to PC11/PC61/PC26 parsers based on frame type.
+// Upstream: Peer session reader.
+// Downstream: parsePC11, parsePC61, parsePC26.
 func parseSpotFromFrame(frame *Frame, fallbackOrigin string) (*spot.Spot, error) {
 	if frame == nil {
 		return nil, fmt.Errorf("nil frame")
@@ -27,6 +30,10 @@ func parseSpotFromFrame(frame *Frame, fallbackOrigin string) (*spot.Spot, error)
 	}
 }
 
+// Purpose: Parse a PC11 frame into a Spot.
+// Key aspects: Treats PC11 timestamps as authoritative; applies hop TTL.
+// Upstream: parseSpotFromFrame.
+// Downstream: parsePCDateTime, spot.ParseSpotComment.
 func parsePC11(fields []string, hop int, fallbackOrigin string) (*spot.Spot, error) {
 	if len(fields) < 7 {
 		return nil, fmt.Errorf("pc11: insufficient fields")
@@ -68,6 +75,10 @@ func parsePC11(fields []string, hop int, fallbackOrigin string) (*spot.Spot, err
 	return s, nil
 }
 
+// Purpose: Parse a PC61 frame into a Spot.
+// Key aspects: Includes spotter IP; treats timestamps as authoritative.
+// Upstream: parseSpotFromFrame.
+// Downstream: parsePCDateTime, spot.ParseSpotComment.
 func parsePC61(fields []string, hop int, fallbackOrigin string) (*spot.Spot, error) {
 	if len(fields) < 8 {
 		return nil, fmt.Errorf("pc61: insufficient fields")
@@ -111,7 +122,10 @@ func parsePC61(fields []string, hop int, fallbackOrigin string) (*spot.Spot, err
 	return s, nil
 }
 
-// parsePC26 handles merge DX spots (same layout as PC11 with an optional empty slot before hop).
+// Purpose: Parse a PC26 frame into a Spot.
+// Key aspects: Drops optional empty slot and delegates to PC11 parsing.
+// Upstream: parseSpotFromFrame.
+// Downstream: parsePC11.
 func parsePC26(fields []string, hop int, fallbackOrigin string) (*spot.Spot, error) {
 	// PC26: freq, dx, date, time, comment, spotter, origin, [empty], hop
 	if len(fields) < 7 {
@@ -124,6 +138,10 @@ func parsePC26(fields []string, hop int, fallbackOrigin string) (*spot.Spot, err
 	return parsePC11(fields, hop, fallbackOrigin)
 }
 
+// Purpose: Parse PC date/time tokens into a UTC timestamp.
+// Key aspects: Falls back to current time on parse errors.
+// Upstream: parsePC11, parsePC61.
+// Downstream: time.ParseInLocation.
 func parsePCDateTime(dateStr, timeStr string) time.Time {
 	if dateStr == "" || timeStr == "" {
 		return time.Now().UTC()

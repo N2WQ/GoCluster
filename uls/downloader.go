@@ -33,13 +33,15 @@ type metadata struct {
 	UpToDate     bool      `json:"up_to_date,omitempty"`
 }
 
-// StartBackground kicks off an immediate refresh (non-blocking) followed by
-// a daily scheduler at the configured UTC time. It is safe to call when
-// disabled; no work will be performed. Caller controls lifetime via ctx.
+// Purpose: Start a background refresh loop for the FCC ULS database.
+// Key aspects: Kicks off an immediate refresh and then schedules daily updates.
+// Upstream: main.go startup when ULS is enabled.
+// Downstream: Refresh, startScheduler.
 func StartBackground(ctx context.Context, cfg config.FCCULSConfig) {
 	if !cfg.Enabled {
 		return
 	}
+	// Run refresh/scheduler without blocking the caller.
 	go func() {
 		if updated, err := Refresh(cfg, false); err != nil {
 			log.Printf("Warning: FCC ULS refresh failed: %v", err)
@@ -52,9 +54,10 @@ func StartBackground(ctx context.Context, cfg config.FCCULSConfig) {
 	}()
 }
 
-// Refresh downloads the FCC ULS archive if needed, extracts it, and builds a
-// fresh SQLite database at the configured path. When force is true, it skips
-// conditional headers and always attempts to download and rebuild.
+// Purpose: Download, extract, and rebuild the FCC ULS SQLite database.
+// Key aspects: Uses conditional HTTP headers unless forced; rebuilds only when needed.
+// Upstream: StartBackground, BuildOnce/manual refresh triggers.
+// Downstream: downloadArchive, extractArchive, buildDatabase, ResetLicenseDB.
 func Refresh(cfg config.FCCULSConfig, force bool) (bool, error) {
 	url := strings.TrimSpace(cfg.URL)
 	dest := strings.TrimSpace(cfg.Archive)
@@ -118,6 +121,10 @@ func Refresh(cfg config.FCCULSConfig, force bool) (bool, error) {
 	return true, nil
 }
 
+// Purpose: Run the daily refresh schedule until ctx is canceled.
+// Key aspects: Uses reusable timers and honors ctx cancellation.
+// Upstream: StartBackground goroutine.
+// Downstream: nextRefreshDelay, Refresh.
 func startScheduler(ctx context.Context, cfg config.FCCULSConfig) {
 	for {
 		delay := nextRefreshDelay(cfg, time.Now().UTC())
@@ -138,6 +145,10 @@ func startScheduler(ctx context.Context, cfg config.FCCULSConfig) {
 	}
 }
 
+// Purpose: Compute the delay until the next scheduled refresh.
+// Key aspects: Uses configured UTC hour/minute; rolls to next day if needed.
+// Upstream: startScheduler.
+// Downstream: refreshHourMinute.
 func nextRefreshDelay(cfg config.FCCULSConfig, now time.Time) time.Duration {
 	hour, minute := refreshHourMinute(cfg)
 	target := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, time.UTC)
@@ -147,6 +158,10 @@ func nextRefreshDelay(cfg config.FCCULSConfig, now time.Time) time.Duration {
 	return target.Sub(now)
 }
 
+// Purpose: Parse the configured refresh time into hour/minute.
+// Key aspects: Defaults to 02:15 UTC on parse errors or empty config.
+// Upstream: nextRefreshDelay.
+// Downstream: time.Parse.
 func refreshHourMinute(cfg config.FCCULSConfig) (int, int) {
 	refresh := strings.TrimSpace(cfg.RefreshUTC)
 	if refresh == "" {
@@ -158,6 +173,10 @@ func refreshHourMinute(cfg config.FCCULSConfig) (int, int) {
 	return 2, 15
 }
 
+// Purpose: Fetch the FCC ULS archive to disk, honoring cached metadata.
+// Key aspects: Uses conditional headers, atomic rename, and metadata tracking.
+// Upstream: Refresh.
+// Downstream: readMetadata, writeMetadata, cleanupLegacyMeta, HTTP client.
 func downloadArchive(url, destination string, force bool) (bool, error) {
 	metaPath := destination + metadataSuffix
 	legacyMetaPath := destination + legacyMetaSuffix
@@ -267,6 +286,10 @@ func downloadArchive(url, destination string, force bool) (bool, error) {
 	return true, nil
 }
 
+// Purpose: Read metadata JSON from the first readable path.
+// Key aspects: Supports legacy path migration.
+// Upstream: downloadArchive, markMetadataBuildStatus.
+// Downstream: os.ReadFile, json.Unmarshal.
 func readMetadata(paths ...string) (*metadata, string) {
 	for _, path := range paths {
 		data, err := os.ReadFile(path)
@@ -282,6 +305,10 @@ func readMetadata(paths ...string) (*metadata, string) {
 	return nil, ""
 }
 
+// Purpose: Persist metadata JSON to disk.
+// Key aspects: Writes a human-readable indented JSON file.
+// Upstream: downloadArchive, markMetadataBuildStatus.
+// Downstream: json.MarshalIndent, os.WriteFile.
 func writeMetadata(path string, meta metadata) error {
 	data, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
@@ -290,6 +317,10 @@ func writeMetadata(path string, meta metadata) error {
 	return os.WriteFile(path, data, 0o644)
 }
 
+// Purpose: Remove legacy metadata files after a successful write.
+// Key aspects: Deletes only when the legacy path was the source.
+// Upstream: downloadArchive.
+// Downstream: os.Remove.
 func cleanupLegacyMeta(metaSource, newPath, legacyPath string) {
 	if legacyPath == "" || legacyPath == newPath {
 		return
@@ -301,8 +332,10 @@ func cleanupLegacyMeta(metaSource, newPath, legacyPath string) {
 	}
 }
 
-// markMetadataBuildStatus rewrites the metadata file to reflect whether the database build completed.
-// This prevents stale "up to date" markers when the download succeeded but SQLite creation failed.
+// Purpose: Update metadata to reflect whether the DB build succeeded.
+// Key aspects: Avoids stale "up to date" markers after a failed build.
+// Upstream: Refresh.
+// Downstream: readMetadata, writeMetadata.
 func markMetadataBuildStatus(metaPath string, success bool) {
 	if strings.TrimSpace(metaPath) == "" {
 		return

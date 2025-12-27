@@ -42,6 +42,10 @@ type ringPane struct {
 	count int
 }
 
+// Purpose: Construct the ANSI console renderer when UI output is allowed.
+// Key aspects: Computes pane sizes, clamps refresh interval, and optionally starts refresh loop.
+// Upstream: main UI selection based on config.
+// Downstream: applyANSIMarkup, new ansiWriter, and refreshLoop goroutine.
 func newANSIConsole(uiCfg config.UIConfig, allowRender bool) uiSurface {
 	if !allowRender {
 		return nil
@@ -98,14 +102,26 @@ func newANSIConsole(uiCfg config.UIConfig, allowRender bool) uiSurface {
 
 	// Only render when a TTY is present and refresh is positive.
 	if c.isTTY && c.refresh > 0 {
+		// Purpose: Run periodic ANSI renders on the configured cadence.
+		// Key aspects: Detached goroutine; exits when Stop closes quit.
+		// Upstream: newANSIConsole.
+		// Downstream: refreshLoop.
 		go c.refreshLoop()
 	}
 
 	return c
 }
 
+// Purpose: Satisfy uiSurface readiness contract for ANSI consoles.
+// Key aspects: No-op because ANSI renderer has no async initialization.
+// Upstream: main UI setup.
+// Downstream: None.
 func (c *ansiConsole) WaitReady() {}
 
+// Purpose: Stop the ANSI console render loop.
+// Key aspects: Ensures quit is closed once.
+// Upstream: main shutdown path.
+// Downstream: None (channel close only).
 func (c *ansiConsole) Stop() {
 	if c == nil {
 		return
@@ -115,6 +131,10 @@ func (c *ansiConsole) Stop() {
 	})
 }
 
+// Purpose: Replace the current stats pane contents.
+// Key aspects: Bounds copy to pane size and clears unused slots.
+// Upstream: stats ticker in main.
+// Downstream: None (mutates in-memory buffers).
 func (c *ansiConsole) SetStats(lines []string) {
 	if c == nil {
 		return
@@ -131,11 +151,31 @@ func (c *ansiConsole) SetStats(lines []string) {
 	c.mu.Unlock()
 }
 
+// Purpose: Append a call-correction line to the calls pane.
+// Key aspects: Delegates to the shared ring-buffer append logic.
+// Upstream: dashboard/system log writers.
+// Downstream: c.append.
 func (c *ansiConsole) AppendCall(line string)       { c.append(&c.calls, line) }
+// Purpose: Append an unlicensed call line to the unlicensed pane.
+// Key aspects: Delegates to the shared ring-buffer append logic.
+// Upstream: unlicensed reporter path.
+// Downstream: c.append.
 func (c *ansiConsole) AppendUnlicensed(line string) { c.append(&c.unlic, line) }
+// Purpose: Append a harmonic suppression line to the harmonic pane.
+// Key aspects: Delegates to the shared ring-buffer append logic.
+// Upstream: harmonic suppression path.
+// Downstream: c.append.
 func (c *ansiConsole) AppendHarmonic(line string)   { c.append(&c.harm, line) }
+// Purpose: Append a system log line to the system pane.
+// Key aspects: Delegates to the shared ring-buffer append logic.
+// Upstream: log routing for UI mode.
+// Downstream: c.append.
 func (c *ansiConsole) AppendSystem(line string)     { c.append(&c.system, line) }
 
+// Purpose: Provide an io.Writer for system log output.
+// Key aspects: Returns the ANSI writer wrapper or nil when inactive.
+// Upstream: UI logging setup in main.
+// Downstream: None (returns existing writer).
 func (c *ansiConsole) SystemWriter() io.Writer {
 	if c == nil {
 		return nil
@@ -143,6 +183,10 @@ func (c *ansiConsole) SystemWriter() io.Writer {
 	return c.writer
 }
 
+// Purpose: Append a line to a specific ring pane.
+// Key aspects: Applies markup, wraps index, and caps count.
+// Upstream: AppendCall/AppendUnlicensed/AppendHarmonic/AppendSystem.
+// Downstream: applyANSIMarkup.
 func (c *ansiConsole) append(pane *ringPane, line string) {
 	if c == nil || pane == nil {
 		return
@@ -161,6 +205,10 @@ func (c *ansiConsole) append(pane *ringPane, line string) {
 	c.mu.Unlock()
 }
 
+// Purpose: Periodic render loop for ANSI console output.
+// Key aspects: Recovers panics, ticks at refresh interval, exits on quit.
+// Upstream: goroutine started in newANSIConsole.
+// Downstream: time.NewTicker and c.render.
 func (c *ansiConsole) refreshLoop() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -179,6 +227,10 @@ func (c *ansiConsole) refreshLoop() {
 	}
 }
 
+// Purpose: Render the current snapshot to stdout.
+// Key aspects: Copies panes under lock, optionally clears screen, writes panes.
+// Upstream: refreshLoop (and any direct callers).
+// Downstream: snapshotPane, writePane, renderBuf.WriteTo.
 func (c *ansiConsole) render() {
 	if c == nil || !c.isTTY {
 		return
@@ -219,6 +271,10 @@ type stringByteWriter interface {
 	WriteByte(byte) error
 }
 
+// Purpose: Write a titled pane to the output buffer.
+// Key aspects: Emits header and each line with trailing newline.
+// Upstream: render.
+// Downstream: writer WriteString/WriteByte.
 func writePane(w stringByteWriter, title string, lines []string) {
 	w.WriteString(title)
 	w.WriteByte('\n')
@@ -230,6 +286,10 @@ func writePane(w stringByteWriter, title string, lines []string) {
 	}
 }
 
+// Purpose: Snapshot a ring pane into a caller-provided buffer.
+// Key aspects: Respects current count and ring order.
+// Upstream: render.
+// Downstream: None.
 func snapshotPane(p *ringPane, buf []string) []string {
 	if p == nil || len(p.lines) == 0 || p.count == 0 || len(buf) == 0 {
 		return buf[:0]
@@ -256,6 +316,10 @@ type ansiWriter struct {
 	mu     sync.Mutex
 }
 
+// Purpose: Implement io.Writer for system logs routed to the ANSI console.
+// Key aspects: Buffers until newline, applies markup, bounds buffer growth.
+// Upstream: log output when ANSI UI is active.
+// Downstream: indexByte, applyANSIMarkup, and w.append.
 func (w *ansiWriter) Write(p []byte) (int, error) {
 	if w == nil || w.append == nil {
 		return len(p), nil
@@ -291,10 +355,18 @@ func (w *ansiWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// Purpose: Find the first byte occurrence in a slice.
+// Key aspects: Thin wrapper around bytes.IndexByte.
+// Upstream: ansiWriter.Write.
+// Downstream: bytes.IndexByte.
 func indexByte(b []byte, c byte) int {
 	return bytes.IndexByte(b, c)
 }
 
+// Purpose: Apply or strip ANSI markup tokens.
+// Key aspects: Optionally appends reset code when markup is present.
+// Upstream: ansiConsole.append and ansiWriter.Write.
+// Downstream: strings.Replacer instances.
 func applyANSIMarkup(line string, enableColor bool) string {
 	if line == "" {
 		return line

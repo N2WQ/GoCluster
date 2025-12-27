@@ -8,6 +8,10 @@ import (
 	"strings"
 )
 
+// Purpose: Load quality priors for known-good callsigns.
+// Key aspects: Parses text file and applies score deltas to the quality store.
+// Upstream: main startup when priors file configured.
+// Downstream: callQuality.Add and NormalizeCallsign.
 // LoadCallQualityPriors seeds the quality store from a text file so
 // known-good calls start with a positive bias. Expected format:
 //

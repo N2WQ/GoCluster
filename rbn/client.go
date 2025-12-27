@@ -86,6 +86,10 @@ type spotToken struct {
 	trimEnd   int
 }
 
+// Purpose: Tokenize an RBN spot line into position-aware tokens.
+// Key aspects: Records raw/clean/uppercase slices and punctuation-trim indices.
+// Upstream: parseSpot for minimal parsing.
+// Downstream: None.
 func tokenizeSpotLine(line string) []spotToken {
 	tokens := make([]spotToken, 0, 16)
 	i := 0
@@ -132,7 +136,10 @@ func tokenizeSpotLine(line string) []spotToken {
 	return tokens
 }
 
-// ConfigureCallCache allows callers to tune the normalization cache used for RBN spotters.
+// Purpose: Configure the callsign normalization cache for RBN spotters.
+// Key aspects: Applies defaults and rebuilds the shared cache.
+// Upstream: Config load or tests.
+// Downstream: spot.NewCallCache.
 func ConfigureCallCache(size int, ttl time.Duration) {
 	if size <= 0 {
 		size = 4096
@@ -145,9 +152,10 @@ func ConfigureCallCache(size int, ttl time.Duration) {
 	rbnNormalizeCache = spot.NewCallCache(rbnCallCacheSize, rbnCallCacheTTL)
 }
 
-// NewClient creates a new RBN client. bufferSize controls how many parsed spots
-// can queue between the telnet reader and the downstream pipeline; it should be
-// sized to absorb RBN burstiness (especially FT8/FT4 decode cycles).
+// Purpose: Construct an RBN telnet client.
+// Key aspects: Initializes channels and caches; bufferSize absorbs bursty ingest.
+// Upstream: main.go startup.
+// Downstream: Client.Connect.
 func NewClient(host string, port int, callsign string, name string, lookup func() *cty.CTYDatabase, skewStore *skew.Store, keepSSID bool, bufferSize int) *Client {
 	if bufferSize <= 0 {
 		bufferSize = 100 // legacy default; callers should override via config
@@ -167,22 +175,20 @@ func NewClient(host string, port int, callsign string, name string, lookup func(
 	}
 }
 
-// UseMinimalParser switches this client into a permissive parser intended for
-// human/upstream telnet feeds (not strict RBN formats).
-//
-// The minimal parser requires DE, DX, and a numeric frequency (kHz). It then
-// optionally extracts a mode token, an SNR/report token in the form "<num> dB"
-// (or "<num>dB"), and a trailing HHMMZ timestamp. Any remaining tokens are
-// treated as a free-form comment after removing structural/mode/report/time
-// tokens so the spot can still render cleanly in DX-cluster output.
+// Purpose: Enable the permissive parser for non-RBN telnet feeds.
+// Key aspects: Extracts DE/DX/freq with optional mode/report/time tokens.
+// Upstream: main.go for human/relay telnet clients.
+// Downstream: parseSpot minimal parsing path.
 func (c *Client) UseMinimalParser() {
 	if c != nil {
 		c.minimalParse = true
 	}
 }
 
-// SetTelnetTransport selects the telnet parser/negotiation backend.
-// Supported values are "native" and "ziutek"; other values fall back to native.
+// Purpose: Select the telnet transport backend.
+// Key aspects: Normalizes values; unrecognized values fall back to native.
+// Upstream: Config load or caller setup.
+// Downstream: useZiutekTelnet.
 func (c *Client) SetTelnetTransport(transport string) {
 	if c == nil {
 		return
@@ -190,15 +196,20 @@ func (c *Client) SetTelnetTransport(transport string) {
 	c.telnetTransport = strings.ToLower(strings.TrimSpace(transport))
 }
 
-// SetRawPassthrough installs a channel for relaying non-DX lines when in minimalParse mode.
-// Lines are delivered best-effort using a non-blocking send to avoid wedging ingest.
+// Purpose: Install a raw line passthrough channel for minimal parsing.
+// Key aspects: Non-blocking delivery to avoid ingest stalls.
+// Upstream: main.go wiring for peer/raw feeds.
+// Downstream: parseSpot raw line forwarding.
 func (c *Client) SetRawPassthrough(ch chan<- string) {
 	if c != nil {
 		c.rawChan = ch
 	}
 }
 
-// EnableKeepalive configures a periodic CRLF keepalive to prevent idle timeouts on upstream telnet feeds.
+// Purpose: Enable periodic CRLF keepalives for upstream telnet feeds.
+// Key aspects: Stores interval for a later keepaliveLoop.
+// Upstream: Config load or caller setup.
+// Downstream: keepaliveLoop goroutine.
 func (c *Client) EnableKeepalive(interval time.Duration) {
 	if c == nil {
 		return
@@ -209,10 +220,18 @@ func (c *Client) EnableKeepalive(interval time.Duration) {
 	c.keepaliveInterval = interval
 }
 
+// Purpose: Report whether the ziutek telnet backend is selected.
+// Key aspects: Case-insensitive check.
+// Upstream: Connection setup.
+// Downstream: None.
 func (c *Client) useZiutekTelnet() bool {
 	return strings.EqualFold(c.telnetTransport, "ziutek")
 }
 
+// Purpose: Parse a numeric frequency token (kHz).
+// Key aspects: Validates against reasonable dial range.
+// Upstream: extractCallAndFreq.
+// Downstream: strconv.ParseFloat.
 func parseFrequencyCandidate(tok string) (float64, bool) {
 	if tok == "" {
 		return 0, false
@@ -227,6 +246,10 @@ func parseFrequencyCandidate(tok string) (float64, bool) {
 	return f, true
 }
 
+// Purpose: Extract a callsign and frequency from a token like "CALL:freq".
+// Key aspects: Uses the raw token to preserve punctuation positions.
+// Upstream: Minimal parser in parseSpot.
+// Downstream: parseFrequencyCandidate.
 func extractCallAndFreq(tok spotToken) (string, float64, bool) {
 	if tok.clean == "" {
 		return "", 0, false
@@ -242,16 +265,23 @@ func extractCallAndFreq(tok spotToken) (string, float64, bool) {
 	return callPart, freq, ok
 }
 
-// SetUnlicensedReporter installs a best-effort reporter for unlicensed US drops.
-// Reporting is fire-and-forget; when the queue is full we fallback to an async call.
+// Purpose: Install a reporter for unlicensed US drops.
+// Key aspects: Uses a bounded queue and a background goroutine for delivery.
+// Upstream: main.go startup.
+// Downstream: unlicensedLoop goroutine.
 func (c *Client) SetUnlicensedReporter(rep UnlicensedReporter) {
 	c.unlicensedReporter = rep
 	if rep != nil && c.unlicensedQueue == nil {
 		c.unlicensedQueue = make(chan unlicensedEvent, 256)
+		// Goroutine: drain unlicensed queue and invoke reporter callbacks.
 		go c.unlicensedLoop()
 	}
 }
 
+// Purpose: Drain unlicensed events and invoke the reporter safely.
+// Key aspects: Recovers from reporter panics to keep the loop alive.
+// Upstream: SetUnlicensedReporter goroutine.
+// Downstream: UnlicensedReporter callback.
 func (c *Client) unlicensedLoop() {
 	for {
 		select {
@@ -275,17 +305,23 @@ func (c *Client) unlicensedLoop() {
 	}
 }
 
-// Connect establishes the initial RBN connection and starts the supervision loop.
-// The first dial runs synchronously so failures are reported to the caller; any
-// subsequent disconnects are handled via the background reconnect loop.
+// Purpose: Establish initial RBN connection and start supervision.
+// Key aspects: First dial is synchronous; reconnects happen in background.
+// Upstream: main.go startup.
+// Downstream: establishConnection, connectionSupervisor goroutine.
 func (c *Client) Connect() error {
 	if err := c.establishConnection(); err != nil {
 		return err
 	}
+	// Goroutine: monitor reconnect signals and re-establish connections.
 	go c.connectionSupervisor()
 	return nil
 }
 
+// Purpose: Dispatch an unlicensed event without blocking ingest.
+// Key aspects: Enqueues when possible; otherwise calls reporter asynchronously.
+// Upstream: parseSpot US license check.
+// Downstream: unlicensedQueue or UnlicensedReporter.
 func (c *Client) dispatchUnlicensed(role, call, mode string, freq float64) {
 	rep := c.unlicensedReporter
 	if rep == nil {
@@ -299,11 +335,14 @@ func (c *Client) dispatchUnlicensed(role, call, mode string, freq float64) {
 			// fall through to async direct call
 		}
 	}
+	// Goroutine: best-effort direct reporter call when queue is full.
 	go rep(c.sourceKey(), role, call, mode, freq)
 }
 
-// establishConnection dials the remote RBN feed and spins up the login and read
-// goroutines. It is used for the initial connection and each subsequent reconnect.
+// Purpose: Dial the RBN feed and start login/read loops.
+// Key aspects: Wraps in telnet transport as configured and spawns goroutines.
+// Upstream: Connect and reconnect loop.
+// Downstream: handleLogin, keepaliveLoop, readLoop goroutines.
 func (c *Client) establishConnection() error {
 	addr := net.JoinHostPort(c.host, fmt.Sprintf("%d", c.port))
 	log.Printf("%s: connecting to %s...", c.displayName(), addr)
@@ -340,14 +379,18 @@ func (c *Client) establishConnection() error {
 	// Start login sequence and stream reader for this connection.
 	go c.handleLogin()
 	if c.keepaliveInterval > 0 {
+		// Goroutine: emit periodic keepalives for upstream connection.
 		go c.keepaliveLoop()
 	}
+	// Goroutine: read and parse incoming lines from the server.
 	go c.readLoop()
 	return nil
 }
 
-// connectionSupervisor waits for disconnect notifications and orchestrates the
-// exponential backoff / reconnect attempts while honoring shutdown signals.
+// Purpose: Supervise connection lifecycle and handle reconnects.
+// Key aspects: Uses backoff and honors shutdown signals.
+// Upstream: Connect goroutine.
+// Downstream: establishConnection, requestReconnect.
 func (c *Client) connectionSupervisor() {
 	const (
 		initialDelay = 5 * time.Second
@@ -390,7 +433,10 @@ func (c *Client) connectionSupervisor() {
 	}
 }
 
-// handleLogin performs the RBN login sequence
+// Purpose: Perform the RBN login sequence after connecting.
+// Key aspects: Waits briefly for prompt; sends callsign with CRLF.
+// Upstream: establishConnection goroutine.
+// Downstream: writer.WriteString/Flush.
 func (c *Client) handleLogin() {
 	// Wait for login prompt and respond with callsign
 	time.Sleep(2 * time.Second)
@@ -405,7 +451,10 @@ func (c *Client) handleLogin() {
 	c.writer.Flush()
 }
 
-// readLoop reads lines from RBN
+// Purpose: Read and parse incoming lines from the RBN connection.
+// Key aspects: Uses read deadlines; triggers reconnect on errors.
+// Upstream: establishConnection goroutine.
+// Downstream: parseSpot, requestReconnect, raw passthrough.
 func (c *Client) readLoop() {
 	// Guard the ingest goroutine so malformed input cannot crash the process.
 	defer func() {
@@ -467,8 +516,10 @@ func (c *Client) readLoop() {
 	}
 }
 
-// normalizeRBNCallsign removes the SSID portion from RBN skimmer callsigns. Example:
-// "W3LPL-1-#" becomes "W3LPL-#".
+// Purpose: Normalize RBN skimmer callsigns while preserving the -# suffix.
+// Key aspects: Strips SSIDs from skimmer calls like "W3LPL-1-#".
+// Upstream: parseSpot spotter normalization.
+// Downstream: rbnNormalizeCache, spot.NormalizeCallsign.
 func normalizeRBNCallsign(call string) string {
 	if cached, ok := rbnNormalizeCache.Get(call); ok {
 		return cached
@@ -501,16 +552,18 @@ func normalizeRBNCallsign(call string) string {
 	return call
 }
 
-// normalizeSpotter normalizes the spotter (DE) callsign for processing. SSID
-// suffixes are preserved so dedup/history can keep per-skimmer identity; any
-// broadcast-time collapsing is handled downstream.
+// Purpose: Normalize the spotter callsign while preserving SSIDs.
+// Key aspects: Leaves SSID in place so dedup/history keep per-skimmer identity.
+// Upstream: parseSpot.
+// Downstream: spot.NormalizeCallsign.
 func (c *Client) normalizeSpotter(raw string) string {
 	return spot.NormalizeCallsign(raw)
 }
 
-// parseTimeFromRBN parses the HHMMZ format from RBN and creates a proper timestamp
-// RBN only provides HH:MM in UTC, so we need to combine it with today's date
-// This ensures spots with the same RBN timestamp generate the same hash for deduplication
+// Purpose: Parse RBN HHMMZ timestamps into full UTC times.
+// Key aspects: Uses today's date and corrects around midnight boundaries.
+// Upstream: parseSpot.
+// Downstream: time.Date, time.Now.
 func parseTimeFromRBN(timeStr string) time.Time {
 	// timeStr format is "HHMMZ" e.g. "0531Z"
 	if len(timeStr) != 5 || !strings.HasSuffix(timeStr, "Z") {
@@ -554,6 +607,10 @@ func parseTimeFromRBN(timeStr string) time.Time {
 	return spotTime
 }
 
+// Purpose: Build a comment string from unconsumed tokens.
+// Key aspects: Preserves token order and trims empty parts.
+// Upstream: parseSpot minimal parsing.
+// Downstream: None.
 func buildComment(tokens []spotToken, consumed []bool) string {
 	parts := make([]string, 0, len(tokens))
 	for i, tok := range tokens {
@@ -572,6 +629,10 @@ func buildComment(tokens []spotToken, consumed []bool) string {
 	return strings.Join(parts, " ")
 }
 
+// Purpose: Parse a DX line into a canonical Spot.
+// Key aspects: Extracts DE/DX/freq/time locally and delegates comment parsing.
+// Upstream: readLoop for RBN/minimal feeds.
+// Downstream: spot.ParseSpotComment, fetchCallsignInfo, skew.ApplyCorrection.
 // parseSpot converts a DX cluster-style telnet line into a canonical Spot.
 // Structural fields (DE/DX/freq/time) are parsed locally; comment parsing
 // (explicit mode/report/time token handling) is delegated to spot.ParseSpotComment
@@ -720,6 +781,10 @@ func (c *Client) parseSpot(line string) {
 	}
 }
 
+// Purpose: Look up CTY metadata for a callsign.
+// Key aspects: Tolerates missing CTY DB; no local cache in this client.
+// Upstream: parseSpot.
+// Downstream: CTYDatabase.LookupCallsign.
 func (c *Client) fetchCallsignInfo(call string) (*cty.PrefixInfo, bool) {
 	if c.lookup == nil {
 		return nil, true
@@ -735,6 +800,10 @@ func (c *Client) fetchCallsignInfo(call string) (*cty.PrefixInfo, bool) {
 	return info, ok
 }
 
+// Purpose: Convert CTY prefix metadata into Spot CallMetadata.
+// Key aspects: Returns zero-value metadata on nil input.
+// Upstream: parseSpot.
+// Downstream: None.
 func metadataFromPrefix(info *cty.PrefixInfo) spot.CallMetadata {
 	if info == nil {
 		return spot.CallMetadata{}
@@ -748,17 +817,26 @@ func metadataFromPrefix(info *cty.PrefixInfo) spot.CallMetadata {
 	}
 }
 
-// GetSpotChannel returns the channel for receiving spots
+// Purpose: Expose the output spot channel.
+// Key aspects: Read-only channel for downstream consumers.
+// Upstream: main.go pipeline wiring.
+// Downstream: None.
 func (c *Client) GetSpotChannel() <-chan *spot.Spot {
 	return c.spotChan
 }
 
-// IsConnected returns whether the client is connected
+// Purpose: Report whether the client is connected.
+// Key aspects: Tracks connection state via a boolean flag.
+// Upstream: Diagnostics/health checks.
+// Downstream: None.
 func (c *Client) IsConnected() bool {
 	return c.connected
 }
 
-// Stop closes the RBN connection
+// Purpose: Stop the RBN client and close connections.
+// Key aspects: Signals shutdown once and closes the underlying conn.
+// Upstream: main.go shutdown.
+// Downstream: conn.Close, shutdown channel.
 func (c *Client) Stop() {
 	log.Printf("Stopping %s client...", c.displayName())
 	c.stopOnce.Do(func() {
@@ -769,6 +847,10 @@ func (c *Client) Stop() {
 	}
 }
 
+// Purpose: Report whether shutdown has been signaled.
+// Key aspects: Non-blocking channel check.
+// Upstream: readLoop, connectionSupervisor, requestReconnect.
+// Downstream: None.
 func (c *Client) isShutdown() bool {
 	select {
 	case <-c.shutdown:
@@ -778,6 +860,10 @@ func (c *Client) isShutdown() bool {
 	}
 }
 
+// Purpose: Signal the reconnect supervisor to re-dial.
+// Key aspects: Non-blocking send; logs reason once.
+// Upstream: readLoop error paths.
+// Downstream: connectionSupervisor.
 func (c *Client) requestReconnect(reason error) {
 	if c.isShutdown() {
 		return
@@ -791,6 +877,10 @@ func (c *Client) requestReconnect(reason error) {
 	}
 }
 
+// Purpose: Return a human-friendly name for logging.
+// Key aspects: Uses configured name or port-based defaults.
+// Upstream: Logging in multiple client methods.
+// Downstream: None.
 func (c *Client) displayName() string {
 	if c.name != "" {
 		return c.name
@@ -801,6 +891,10 @@ func (c *Client) displayName() string {
 	return "RBN"
 }
 
+// Purpose: Return the source identifier used in logs/metadata.
+// Key aspects: Distinguishes RBN vs RBN-DIGITAL by port.
+// Upstream: dispatchUnlicensed and logging.
+// Downstream: None.
 func (c *Client) sourceKey() string {
 	if c.port == 7001 {
 		return "RBN-DIGITAL"
@@ -808,7 +902,10 @@ func (c *Client) sourceKey() string {
 	return "RBN"
 }
 
-// keepaliveLoop sends periodic CRLF to keep upstream telnet feeds from timing out idle sessions.
+// Purpose: Send periodic CRLF keepalives to upstream telnet feed.
+// Key aspects: Stops on shutdown or connection teardown.
+// Upstream: establishConnection goroutine when keepalive enabled.
+// Downstream: writer.WriteString/Flush.
 func (c *Client) keepaliveLoop() {
 	ticker := time.NewTicker(c.keepaliveInterval)
 	defer ticker.Stop()

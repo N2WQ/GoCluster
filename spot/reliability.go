@@ -12,6 +12,10 @@ import (
 // minimum are ignored by call correction consensus.
 type SpotterReliability map[string]float64
 
+// Purpose: Load per-spotter reliability weights from a text file.
+// Key aspects: Parses SPOTTER WEIGHT lines and clamps to [0,1].
+// Upstream: main startup when reliability file configured.
+// Downstream: NormalizeCallsign and map assignment.
 // LoadSpotterReliability loads spotter weights from a text file to down-weight
 // noisy reporters. Format per line:
 //
@@ -60,6 +64,10 @@ func LoadSpotterReliability(path string) (SpotterReliability, int, error) {
 	return out, applied, nil
 }
 
+// Purpose: Return a reporter reliability weight with default 1.0.
+// Key aspects: Normalizes reporter and falls back when absent.
+// Upstream: call correction weighting logic.
+// Downstream: NormalizeCallsign.
 // reliabilityFor returns the weight for a reporter (defaults to 1.0).
 func reliabilityFor(r SpotterReliability, reporter string) float64 {
 	if r == nil {

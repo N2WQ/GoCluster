@@ -7,6 +7,10 @@ import (
 	"dxcluster/spot"
 )
 
+// Purpose: Ensure cloneSpotForBroadcast preserves Report/HasReport fields.
+// Key aspects: Verifies nil handling and value equality.
+// Upstream: go test execution.
+// Downstream: cloneSpotForBroadcast and spot.NewSpot.
 func TestCloneSpotForBroadcastPreservesHasReportAndReport(t *testing.T) {
 	src := spot.NewSpot("GM4YXI", "EA1TX", 144360.0, "MSK144")
 	src.Report = 0
@@ -27,6 +31,10 @@ func TestCloneSpotForBroadcastPreservesHasReportAndReport(t *testing.T) {
 	}
 }
 
+// Purpose: Ensure cloneSpotForBroadcast preserves missing report state.
+// Key aspects: Confirms HasReport=false remains false.
+// Upstream: go test execution.
+// Downstream: cloneSpotForBroadcast and spot.NewSpot.
 func TestCloneSpotForBroadcastPreservesMissingReport(t *testing.T) {
 	src := spot.NewSpot("GM4YXI", "EA1TX", 144360.0, "MSK144")
 	src.Report = 99
@@ -44,6 +52,10 @@ func TestCloneSpotForBroadcastPreservesMissingReport(t *testing.T) {
 	}
 }
 
+// Purpose: Verify gridDBCheckOnMissEnabled defaults to true.
+// Key aspects: Clears env override before test.
+// Upstream: go test execution.
+// Downstream: gridDBCheckOnMissEnabled.
 func TestGridDBCheckOnMissEnabled_DefaultsTrue(t *testing.T) {
 	t.Setenv(envGridDBCheckOnMiss, "")
 
@@ -53,6 +65,10 @@ func TestGridDBCheckOnMissEnabled_DefaultsTrue(t *testing.T) {
 	}
 }
 
+// Purpose: Verify config can disable grid DB check.
+// Key aspects: Uses explicit config override.
+// Upstream: go test execution.
+// Downstream: gridDBCheckOnMissEnabled.
 func TestGridDBCheckOnMissEnabled_ConfigFalse(t *testing.T) {
 	t.Setenv(envGridDBCheckOnMiss, "")
 	cfg := &config.Config{GridDBCheckOnMiss: boolPtr(false)}
@@ -63,6 +79,10 @@ func TestGridDBCheckOnMissEnabled_ConfigFalse(t *testing.T) {
 	}
 }
 
+// Purpose: Verify env override takes precedence over config.
+// Key aspects: Sets env to false and checks source.
+// Upstream: go test execution.
+// Downstream: gridDBCheckOnMissEnabled.
 func TestGridDBCheckOnMissEnabled_EnvOverridesConfig(t *testing.T) {
 	cfg := &config.Config{GridDBCheckOnMiss: boolPtr(true)}
 	t.Setenv(envGridDBCheckOnMiss, "false")
@@ -76,6 +96,10 @@ func TestGridDBCheckOnMissEnabled_EnvOverridesConfig(t *testing.T) {
 	}
 }
 
+// Purpose: Verify invalid env override is ignored.
+// Key aspects: Uses non-boolean env value.
+// Upstream: go test execution.
+// Downstream: gridDBCheckOnMissEnabled.
 func TestGridDBCheckOnMissEnabled_InvalidEnvIgnored(t *testing.T) {
 	cfg := &config.Config{GridDBCheckOnMiss: boolPtr(false)}
 	t.Setenv(envGridDBCheckOnMiss, "notabool")
@@ -86,6 +110,10 @@ func TestGridDBCheckOnMissEnabled_InvalidEnvIgnored(t *testing.T) {
 	}
 }
 
+// Purpose: Verify LoadedFrom is reported as the config source.
+// Key aspects: Leaves env unset to test config source reporting.
+// Upstream: go test execution.
+// Downstream: gridDBCheckOnMissEnabled.
 func TestGridDBCheckOnMissEnabled_UsesLoadedFromWhenSet(t *testing.T) {
 	cfg := &config.Config{GridDBCheckOnMiss: boolPtr(true), LoadedFrom: "data/config"}
 	t.Setenv(envGridDBCheckOnMiss, "")
@@ -96,6 +124,10 @@ func TestGridDBCheckOnMissEnabled_UsesLoadedFromWhenSet(t *testing.T) {
 	}
 }
 
+// Purpose: Validate SSID collapsing rules for broadcast formatting.
+// Key aspects: Covers numeric, non-numeric, and composite suffixes.
+// Upstream: go test execution.
+// Downstream: collapseSSIDForBroadcast.
 func TestCollapseSSIDForBroadcast(t *testing.T) {
 	cases := []struct {
 		input string
@@ -118,6 +150,10 @@ func TestCollapseSSIDForBroadcast(t *testing.T) {
 	}
 }
 
+// Purpose: Helper to allocate a bool pointer.
+// Key aspects: Avoids inline address-of literals.
+// Upstream: grid DB check tests in this file.
+// Downstream: None (returns pointer).
 func boolPtr(v bool) *bool {
 	b := v
 	return &b

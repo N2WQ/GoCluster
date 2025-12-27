@@ -9,9 +9,10 @@ import (
 	"strings"
 )
 
-// extractArchive extracts only the FCC ULS table files we care about into a
-// temporary directory and returns the directory path. Caller is responsible for
-// cleaning it up.
+// Purpose: Extract the FCC ULS DAT files needed for building the SQLite DB.
+// Key aspects: Filters to a small set of tables; returns a temp dir for caller cleanup.
+// Upstream: Refresh in uls/downloader.go.
+// Downstream: extractFile, os.MkdirTemp, zip reader.
 func extractArchive(archivePath string) (string, error) {
 	r, err := zip.OpenReader(archivePath)
 	if err != nil {
@@ -43,6 +44,10 @@ func extractArchive(archivePath string) (string, error) {
 	return tmpDir, nil
 }
 
+// Purpose: Extract a single file from the zip archive to disk.
+// Key aspects: Streams file contents and preserves caller-chosen filename.
+// Upstream: extractArchive.
+// Downstream: f.Open, io.Copy, os.Create.
 func extractFile(f *zip.File, dest string) error {
 	rc, err := f.Open()
 	if err != nil {

@@ -5,6 +5,10 @@ import (
 	"strings"
 )
 
+// Purpose: Parse PC23/PC73 frames into a WWVEvent.
+// Key aspects: Maps frame fields by type and fills origin/logger fields.
+// Upstream: Peer session reader.
+// Downstream: Frame.payloadFields.
 func parseWWV(frame *Frame) (WWVEvent, bool) {
 	if frame == nil {
 		return WWVEvent{}, false
@@ -65,6 +69,10 @@ func parseWWV(frame *Frame) (WWVEvent, bool) {
 	return ev, true
 }
 
+// Purpose: Format a WWVEvent into a human-readable bulletin line.
+// Key aspects: Distinguishes WWV (PC23) vs WCY (PC73) and drops empty payloads.
+// Upstream: Telnet broadcast of WWV/WCY bulletins.
+// Downstream: fmt.Sprintf.
 func formatWWVLine(ev WWVEvent) (kind string, line string) {
 	kind = "WWV"
 	if strings.EqualFold(ev.Kind, "PC73") {

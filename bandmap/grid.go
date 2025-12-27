@@ -42,13 +42,18 @@ type Shard struct {
 	bins map[uint32][]SpotEntry
 }
 
-// New constructs an empty BandMap.
+// Purpose: Construct an empty bandmap index.
+// Key aspects: Initializes the mode grid map; shards are created on demand.
+// Upstream: Spot correction/index initialization in the main pipeline.
+// Downstream: BandMap.Add, BandMap.Get, BandMap.Prune.
 func New() *BandMap {
 	return &BandMap{grids: make(map[string]*ShardedGrid)}
 }
 
-// Add inserts an entry into the map. The caller must pass frequencies in Hz and
-// perform any validation (CTY, SNR) beforehand.
+// Purpose: Insert a spot entry into the per-mode sharded grid.
+// Key aspects: Uses 100 Hz bins and caps bin length to avoid unbounded growth.
+// Upstream: Mode correction/index updates in the main pipeline.
+// Downstream: getOrCreateGrid, shard/bin storage.
 func (bm *BandMap) Add(mode string, entry SpotEntry) {
 	modeKey := strings.ToUpper(mode)
 	grid := bm.getOrCreateGrid(modeKey)
@@ -70,8 +75,10 @@ func (bm *BandMap) Add(mode string, entry SpotEntry) {
 	shard.bins[binID] = list
 }
 
-// Get returns entries within center±window (Hz) newer than now-maxAgeSeconds.
-// If maxAgeSeconds<=0, no time filtering is applied.
+// Purpose: Fetch entries in a frequency window for a given mode.
+// Key aspects: Scans bins in range and filters by recency when requested.
+// Upstream: Call correction and frequency evidence lookups.
+// Downstream: Shard bin lookup; time.Now for cutoff.
 func (bm *BandMap) Get(mode string, centerFreqHz uint32, windowHz uint32, maxAgeSeconds int64) []SpotEntry {
 	modeKey := strings.ToUpper(mode)
 
@@ -123,7 +130,10 @@ func (bm *BandMap) Get(mode string, centerFreqHz uint32, windowHz uint32, maxAge
 	return results
 }
 
-// Prune removes entries older than now-maxAgeSeconds. If maxAgeSeconds<=0, it does nothing.
+// Purpose: Drop stale entries across all modes.
+// Key aspects: Iterates shards and compacts slices in place.
+// Upstream: Periodic cleanup goroutine in correction pipeline.
+// Downstream: Shard bin mutation; time.Now for cutoff.
 func (bm *BandMap) Prune(maxAgeSeconds int64) {
 	if maxAgeSeconds <= 0 {
 		return
@@ -163,6 +173,10 @@ func (bm *BandMap) Prune(maxAgeSeconds int64) {
 	}
 }
 
+// Purpose: Fetch or allocate the sharded grid for a mode.
+// Key aspects: Double-checked locking to reduce contention.
+// Upstream: BandMap.Add.
+// Downstream: Shard allocation and map mutation.
 func (bm *BandMap) getOrCreateGrid(mode string) *ShardedGrid {
 	bm.mu.RLock()
 	grid, ok := bm.grids[mode]
