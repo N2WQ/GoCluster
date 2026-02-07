@@ -1126,7 +1126,7 @@ func Load(path string) (*Config, error) {
 		cfg.CallCorrection.RecencySecondsRTTY = cfg.CallCorrection.RecencySeconds
 	}
 	if cfg.CallCorrection.FrequencyToleranceHz <= 0 {
-		cfg.CallCorrection.FrequencyToleranceHz = 0.5
+		cfg.CallCorrection.FrequencyToleranceHz = 500
 	}
 	if cfg.CallCorrection.VoiceFrequencyToleranceHz <= 0 {
 		cfg.CallCorrection.VoiceFrequencyToleranceHz = 2000

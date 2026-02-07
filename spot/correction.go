@@ -4,6 +4,7 @@ import (
 	"dxcluster/bandmap"
 	"dxcluster/strutil"
 	"math"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -94,6 +95,7 @@ var correctionEligibleModes = map[string]struct{}{
 type CorrectionTrace struct {
 	Timestamp                 time.Time `json:"ts"`
 	Strategy                  string    `json:"strategy"`
+	DecisionPath              string    `json:"decision_path,omitempty"`
 	FrequencyKHz              float64   `json:"freq_khz"`
 	SubjectCall               string    `json:"subject"`
 	WinnerCall                string    `json:"winner"`
@@ -395,16 +397,59 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 	}
 	trace.SubjectConfidence = subjectConfidence
 
-	// Anchor path: use existing good calls in this bin to snap busted calls quickly.
-	allCalls := make([]string, 0, len(callKeys)+1)
+	type rankedCall struct {
+		call       string
+		support    int
+		confidence int
+		lastSeen   time.Time
+		lastFreq   float64
+	}
+
+	rankedCalls := make([]rankedCall, 0, len(callStats))
+	for call, agg := range callStats {
+		if agg == nil {
+			continue
+		}
+		support := len(agg.reporters)
+		confidence := 0
+		if totalReporters > 0 {
+			confidence = support * 100 / totalReporters
+		}
+		rankedCalls = append(rankedCalls, rankedCall{
+			call:       call,
+			support:    support,
+			confidence: confidence,
+			lastSeen:   agg.lastSeen,
+			lastFreq:   agg.lastFreq,
+		})
+	}
+	sort.Slice(rankedCalls, func(i, j int) bool {
+		if rankedCalls[i].support != rankedCalls[j].support {
+			return rankedCalls[i].support > rankedCalls[j].support
+		}
+		if !rankedCalls[i].lastSeen.Equal(rankedCalls[j].lastSeen) {
+			return rankedCalls[i].lastSeen.After(rankedCalls[j].lastSeen)
+		}
+		return rankedCalls[i].call < rankedCalls[j].call
+	})
+
+	majorityCall := ""
+	if len(rankedCalls) > 0 {
+		majorityCall = rankedCalls[0].call
+	}
+
+	// Anchor path: if a call in this cluster is already considered good, prefer
+	// its closest good neighbor candidate, but still require full gate checks.
+	allCalls := make([]string, 0, len(rankedCalls)+1)
 	allCalls = append(allCalls, subjectCall)
 	seen := map[string]struct{}{subjectCall: {}}
-	for _, c := range callKeys {
-		if _, ok := seen[c]; !ok {
-			allCalls = append(allCalls, c)
-			seen[c] = struct{}{}
+	for _, rc := range rankedCalls {
+		if _, ok := seen[rc.call]; !ok {
+			allCalls = append(allCalls, rc.call)
+			seen[rc.call] = struct{}{}
 		}
 	}
+	anchorCall := ""
 	hasGoodAnchor := false
 	if store := currentCallQuality(); store != nil {
 		for _, c := range allCalls {
@@ -416,138 +461,217 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 	}
 	if hasGoodAnchor {
 		if anchor, okAnchor := findAnchorForCall(subjectCall, freqHz, subject.Mode, allCalls, &cfg); okAnchor {
-			anchorSupport := 0
-			if agg := callStats[anchor]; agg != nil {
-				anchorSupport = len(agg.reporters)
-			}
-			anchorConfidence := 0
-			if totalReporters > 0 {
-				anchorConfidence = anchorSupport * 100 / totalReporters
-			}
-			anchorDistance := callDistance(subjectCall, anchor, subject.Mode, cfg.DistanceModelCW, cfg.DistanceModelRTTY)
-			anchorRunner := 0
-			for call, agg := range callStats {
-				if call == anchor || agg == nil {
-					continue
-				}
-				if len(agg.reporters) > anchorRunner {
-					anchorRunner = len(agg.reporters)
-				}
-			}
-			updateCallQualityForCluster(anchor, freqHz, &cfg, clusterSpots)
-			trace.WinnerCall = strings.ToUpper(anchor)
-			trace.WinnerSupport = anchorSupport
-			trace.RunnerUpSupport = anchorRunner
-			trace.WinnerConfidence = anchorConfidence
-			trace.Distance = anchorDistance
-			trace.Decision = "applied"
-			logCorrectionTrace(cfg, trace, clusterSpots)
-			return anchor, anchorSupport, anchorConfidence, subjectConfidence, totalReporters, true
+			anchorCall = anchor
 		}
 	}
 
-	bestCall := ""
-	bestCount := 0
-	bestConfidence := 0
-	var bestTime time.Time
-	bestFreq := 0.0
-	runnerUp := 0
-	runnerUpFreq := 0.0
-	for _, candidateCall := range callKeys {
+	type candidateEval struct {
+		support       int
+		confidence    int
+		distance      int
+		runnerUp      int
+		runnerUpFreq  float64
+		minReports    int
+		minAdvantage  int
+		minConfidence int
+		reason        string
+	}
+
+	evaluateCandidate := func(candidateCall string) candidateEval {
 		agg := callStats[candidateCall]
 		if agg == nil {
-			continue
+			return candidateEval{reason: "no_winner"}
 		}
-		count := len(agg.reporters)
-		confidence := count * 100 / totalReporters
-		if count > bestCount || (count == bestCount && agg.lastSeen.After(bestTime)) {
-			runnerUp = bestCount
-			runnerUpFreq = bestFreq
-			bestCall = candidateCall
-			bestCount = count
-			bestConfidence = confidence
-			bestTime = agg.lastSeen
-			bestFreq = agg.lastFreq
+		support := len(agg.reporters)
+		confidence := 0
+		if totalReporters > 0 {
+			confidence = support * 100 / totalReporters
+		}
+
+		runner := rankedCall{}
+		hasRunner := false
+		for _, rc := range rankedCalls {
+			if rc.call == candidateCall {
+				continue
+			}
+			runner = rc
+			hasRunner = true
+			break
+		}
+		runnerSupport := 0
+		runnerFreq := 0.0
+		if hasRunner {
+			runnerSupport = runner.support
+			runnerFreq = runner.lastFreq
+		}
+
+		distance := callDistance(subjectCall, candidateCall, subject.Mode, cfg.DistanceModelCW, cfg.DistanceModelRTTY)
+		if cfg.MaxEditDistance >= 0 && distance > cfg.MaxEditDistance {
+			return candidateEval{
+				support:      support,
+				confidence:   confidence,
+				distance:     distance,
+				runnerUp:     runnerSupport,
+				runnerUpFreq: runnerFreq,
+				reason:       "max_edit_distance",
+			}
+		}
+
+		minReports := cfg.MinConsensusReports
+		minAdvantage := cfg.MinAdvantage
+		minConf := cfg.MinConfidencePercent
+		if distance >= 3 {
+			minReports += cfg.Distance3ExtraReports
+			minAdvantage += cfg.Distance3ExtraAdvantage
+			minConf += cfg.Distance3ExtraConfidence
+		}
+		if support < minReports {
+			return candidateEval{
+				support:       support,
+				confidence:    confidence,
+				distance:      distance,
+				runnerUp:      runnerSupport,
+				runnerUpFreq:  runnerFreq,
+				minReports:    minReports,
+				minAdvantage:  minAdvantage,
+				minConfidence: minConf,
+				reason:        "min_reports",
+			}
+		}
+		if support < subjectCount+minAdvantage {
+			return candidateEval{
+				support:       support,
+				confidence:    confidence,
+				distance:      distance,
+				runnerUp:      runnerSupport,
+				runnerUpFreq:  runnerFreq,
+				minReports:    minReports,
+				minAdvantage:  minAdvantage,
+				minConfidence: minConf,
+				reason:        "advantage",
+			}
+		}
+		if confidence < minConf {
+			return candidateEval{
+				support:       support,
+				confidence:    confidence,
+				distance:      distance,
+				runnerUp:      runnerSupport,
+				runnerUpFreq:  runnerFreq,
+				minReports:    minReports,
+				minAdvantage:  minAdvantage,
+				minConfidence: minConf,
+				reason:        "confidence",
+			}
+		}
+
+		if runnerSupport > 0 {
+			freqSeparation := math.Abs(agg.lastFreq - runnerFreq)
+			if freqSeparation >= cfg.FreqGuardMinSeparationKHz && float64(runnerSupport) >= cfg.FreqGuardRunnerUpRatio*float64(support) {
+				return candidateEval{
+					support:       support,
+					confidence:    confidence,
+					distance:      distance,
+					runnerUp:      runnerSupport,
+					runnerUpFreq:  runnerFreq,
+					minReports:    minReports,
+					minAdvantage:  minAdvantage,
+					minConfidence: minConf,
+					reason:        "freq_guard",
+				}
+			}
+		}
+
+		if cfg.Cooldown != nil {
+			if block, _ := cfg.Cooldown.ShouldBlock(subjectCall, freqHz, cfg.CooldownMinReporters, cfg.RecencyWindow, subjectCount, subjectConfidence, support, confidence, now); block {
+				return candidateEval{
+					support:       support,
+					confidence:    confidence,
+					distance:      distance,
+					runnerUp:      runnerSupport,
+					runnerUpFreq:  runnerFreq,
+					minReports:    minReports,
+					minAdvantage:  minAdvantage,
+					minConfidence: minConf,
+					reason:        "cooldown",
+				}
+			}
+		}
+
+		return candidateEval{
+			support:       support,
+			confidence:    confidence,
+			distance:      distance,
+			runnerUp:      runnerSupport,
+			runnerUpFreq:  runnerFreq,
+			minReports:    minReports,
+			minAdvantage:  minAdvantage,
+			minConfidence: minConf,
 		}
 	}
 
-	if bestCall == "" || bestCall == subjectCall {
+	type decisionAttempt struct {
+		call string
+		path string
+	}
+	attempts := make([]decisionAttempt, 0, 2)
+	if anchorCall != "" && anchorCall != subjectCall {
+		attempts = append(attempts, decisionAttempt{call: anchorCall, path: "anchor"})
+	}
+	if majorityCall != "" && majorityCall != subjectCall && majorityCall != anchorCall {
+		attempts = append(attempts, decisionAttempt{call: majorityCall, path: "consensus"})
+	}
+
+	if len(attempts) == 0 {
 		trace.Decision = "rejected"
 		trace.Reason = "no_winner"
 		logCorrectionTrace(cfg, trace, clusterSpots)
 		return "", 0, 0, subjectConfidence, totalReporters, false
 	}
 
-	centerDistance := callDistance(subjectCall, bestCall, subject.Mode, cfg.DistanceModelCW, cfg.DistanceModelRTTY)
-	trace.Distance = centerDistance
-	trace.WinnerCall = strings.ToUpper(bestCall)
-	trace.WinnerSupport = bestCount
-	trace.WinnerConfidence = bestConfidence
-	trace.RunnerUpSupport = runnerUp
-
-	if cfg.MaxEditDistance >= 0 && centerDistance > cfg.MaxEditDistance {
-		trace.Decision = "rejected"
-		trace.Reason = "max_edit_distance"
-		logCorrectionTrace(cfg, trace, clusterSpots)
-		return "", 0, 0, subjectConfidence, totalReporters, false
-	}
-
-	// Apply consensus thresholds anchored on the majority winner.
-	minReports := cfg.MinConsensusReports
-	minAdvantage := cfg.MinAdvantage
-	minConf := cfg.MinConfidencePercent
-	if centerDistance >= 3 {
-		minReports += cfg.Distance3ExtraReports
-		minAdvantage += cfg.Distance3ExtraAdvantage
-		minConf += cfg.Distance3ExtraConfidence
-	}
-	if bestCount < minReports {
-		trace.Decision = "rejected"
-		trace.Reason = "min_reports"
-		trace.MinReports = minReports
-		logCorrectionTrace(cfg, trace, clusterSpots)
-		return "", 0, 0, subjectConfidence, totalReporters, false
-	}
-	if bestCount < subjectCount+minAdvantage {
-		trace.Decision = "rejected"
-		trace.Reason = "advantage"
-		trace.MinAdvantage = minAdvantage
-		logCorrectionTrace(cfg, trace, clusterSpots)
-		return "", 0, 0, subjectConfidence, totalReporters, false
-	}
-	if bestConfidence < minConf {
-		trace.Decision = "rejected"
-		trace.Reason = "confidence"
-		trace.MinConfidence = minConf
-		logCorrectionTrace(cfg, trace, clusterSpots)
-		return "", 0, 0, subjectConfidence, totalReporters, false
-	}
-
-	// Frequency-aware guard: if a nearby runner-up has comparable support, skip correction to avoid merging distinct signals.
-	if runnerUp > 0 {
-		freqSeparation := math.Abs(bestFreq - runnerUpFreq)
-		if freqSeparation >= cfg.FreqGuardMinSeparationKHz && float64(runnerUp) >= cfg.FreqGuardRunnerUpRatio*float64(bestCount) {
-			trace.Decision = "rejected"
-			trace.Reason = "freq_guard"
-			logCorrectionTrace(cfg, trace, clusterSpots)
-			return "", 0, 0, subjectConfidence, totalReporters, false
+	lastEval := candidateEval{}
+	lastPath := ""
+	lastCall := ""
+	for _, attempt := range attempts {
+		lastPath = attempt.path
+		lastCall = attempt.call
+		lastEval = evaluateCandidate(attempt.call)
+		if lastEval.reason != "" {
+			continue
 		}
+
+		updateCallQualityForCluster(attempt.call, freqHz, &cfg, clusterSpots)
+		trace.DecisionPath = attempt.path
+		trace.WinnerCall = strings.ToUpper(attempt.call)
+		trace.WinnerSupport = lastEval.support
+		trace.RunnerUpSupport = lastEval.runnerUp
+		trace.WinnerConfidence = lastEval.confidence
+		trace.Distance = lastEval.distance
+		trace.MinReports = lastEval.minReports
+		trace.MinAdvantage = lastEval.minAdvantage
+		trace.MinConfidence = lastEval.minConfidence
+		trace.Decision = "applied"
+		trace.Reason = ""
+		logCorrectionTrace(cfg, trace, clusterSpots)
+		return attempt.call, lastEval.support, lastEval.confidence, subjectConfidence, totalReporters, true
 	}
 
-	if cfg.Cooldown != nil {
-		if block, _ := cfg.Cooldown.ShouldBlock(subjectCall, freqHz, cfg.CooldownMinReporters, cfg.RecencyWindow, subjectCount, subjectConfidence, bestCount, bestConfidence, now); block {
-			trace.Decision = "rejected"
-			trace.Reason = "cooldown"
-			logCorrectionTrace(cfg, trace, clusterSpots)
-			return "", 0, 0, subjectConfidence, totalReporters, false
-		}
+	trace.DecisionPath = lastPath
+	trace.WinnerCall = strings.ToUpper(lastCall)
+	trace.WinnerSupport = lastEval.support
+	trace.RunnerUpSupport = lastEval.runnerUp
+	trace.WinnerConfidence = lastEval.confidence
+	trace.Distance = lastEval.distance
+	trace.MinReports = lastEval.minReports
+	trace.MinAdvantage = lastEval.minAdvantage
+	trace.MinConfidence = lastEval.minConfidence
+	trace.Decision = "rejected"
+	trace.Reason = lastEval.reason
+	if trace.Reason == "" {
+		trace.Reason = "no_winner"
 	}
-
-	updateCallQualityForCluster(bestCall, freqHz, &cfg, clusterSpots)
-	trace.Decision = "applied"
 	logCorrectionTrace(cfg, trace, clusterSpots)
-
-	return bestCall, bestCount, bestConfidence, subjectConfidence, totalReporters, true
+	return "", 0, 0, subjectConfidence, totalReporters, false
 }
 
 // Purpose: Select the closest good anchor call for a busted call.

@@ -12,3 +12,4 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 |---|---|---|---|---|---|---|---|
 | ADR-0001 | <title> | Proposed | YYYY-MM-DD | <area> | - | - | `docs/decisions/ADR-0001-<slug>.md` |
 | ADR-0002 | UI v2 Render Pipeline Optimization | Accepted | 2026-02-07 | ui/tview-v2 | - | - | `docs/decisions/ADR-0002-ui-v2-render-pipeline.md` |
+| ADR-0003 | Call Correction Anchor Gating and Config-Driven Determinism | Accepted | 2026-02-07 | spot/correction | - | - | `docs/decisions/ADR-0003-call-correction-anchor-gating.md` |

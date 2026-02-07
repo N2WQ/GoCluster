@@ -56,7 +56,7 @@ type decisionLogger struct {
 const (
 	defaultDecisionQueue     = 8192
 	schemaVersionKey         = "schema_version"
-	currentSchemaVersion     = "1"
+	currentSchemaVersion     = "2"
 	decisionLogRetentionDays = 3
 )
 
@@ -144,6 +144,7 @@ func (l *decisionLogger) write(entry CorrectionLogEntry) error {
 		res, insertErr = l.decisionStmt.Exec(
 			ts.UTC().Unix(),
 			entry.Trace.Strategy,
+			entry.Trace.DecisionPath,
 			entry.Trace.FrequencyKHz,
 			strings.ToUpper(entry.Trace.SubjectCall),
 			strings.ToUpper(entry.Trace.WinnerCall),
@@ -251,13 +252,13 @@ func (l *decisionLogger) ensureDB(ts time.Time) (*sql.DB, error) {
 
 		decisionStmt, err := db.Prepare(`
 INSERT INTO decisions (
-    ts, strategy, freq_khz, subject, winner, mode, source,
+    ts, strategy, decision_path, freq_khz, subject, winner, mode, source,
     total_reporters, subject_support, winner_support, runner_up_support,
     subject_confidence, winner_confidence, distance, distance_model,
     max_edit_distance, min_reports, min_advantage, min_confidence,
     d3_extra_reports, d3_extra_advantage, d3_extra_confidence,
     freq_guard_min_sep_khz, freq_guard_runner_ratio, decision, reason
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `)
 		if err != nil {
 			db.Close()
@@ -425,6 +426,7 @@ CREATE TABLE IF NOT EXISTS decisions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts INTEGER NOT NULL,
     strategy TEXT,
+    decision_path TEXT,
     freq_khz REAL,
     subject TEXT,
     winner TEXT,
@@ -466,8 +468,46 @@ CREATE INDEX IF NOT EXISTS idx_decisions_decision ON decisions(decision);
 `); err != nil {
 		return fmt.Errorf("call-correction logger: init schema: %w", err)
 	}
+	if err := ensureDecisionPathColumn(db); err != nil {
+		return err
+	}
 	if _, err := db.Exec(`INSERT OR REPLACE INTO metadata(key, value) VALUES (?, ?)`, schemaVersionKey, currentSchemaVersion); err != nil {
 		return fmt.Errorf("call-correction logger: write metadata: %w", err)
+	}
+	return nil
+}
+
+func ensureDecisionPathColumn(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(decisions)`)
+	if err != nil {
+		return fmt.Errorf("call-correction logger: schema introspection: %w", err)
+	}
+	defer rows.Close()
+
+	found := false
+	for rows.Next() {
+		var cid int
+		var name string
+		var dataType string
+		var notNull int
+		var defaultValue sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err != nil {
+			return fmt.Errorf("call-correction logger: schema introspection: %w", err)
+		}
+		if strings.EqualFold(name, "decision_path") {
+			found = true
+			break
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("call-correction logger: schema introspection: %w", err)
+	}
+	if found {
+		return nil
+	}
+	if _, err := db.Exec(`ALTER TABLE decisions ADD COLUMN decision_path TEXT`); err != nil {
+		return fmt.Errorf("call-correction logger: add decision_path column: %w", err)
 	}
 	return nil
 }

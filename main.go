@@ -550,7 +550,7 @@ func main() {
 	var correctionIndex *spot.CorrectionIndex
 	if cfg.CallCorrection.Enabled {
 		correctionIndex = spot.NewCorrectionIndex()
-		correctionIndex.StartCleanup(time.Minute, callCorrectionWindow(cfg.CallCorrection))
+		correctionIndex.StartCleanup(time.Minute, callCorrectionCleanupWindow(cfg.CallCorrection))
 	}
 	var callCooldown *spot.CallCooldown
 	if cfg.CallCorrection.CooldownEnabled {
@@ -2852,7 +2852,7 @@ func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.Correcti
 	}
 
 	now := time.Now().UTC()
-	window := callCorrectionWindow(cfg)
+	window := callCorrectionWindowForMode(cfg, spotEntry.Mode)
 	defer idx.Add(spotEntry, now, window)
 
 	modeUpper := strings.ToUpper(strings.TrimSpace(spotEntry.Mode))
@@ -2892,35 +2892,22 @@ func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.Correcti
 		}
 	}
 
-	settings := spot.CorrectionSettings{
-		MinConsensusReports:      minReports,
-		MinAdvantage:             cfg.MinAdvantage,
-		MinConfidencePercent:     cfg.MinConfidencePercent,
-		MaxEditDistance:          cfg.MaxEditDistance,
-		RecencyWindow:            window,
-		Strategy:                 cfg.Strategy,
-		MinSNRCW:                 cfg.MinSNRCW,
-		MinSNRRTTY:               cfg.MinSNRRTTY,
-		MinSNRVoice:              cfg.MinSNRVoice,
-		DistanceModelCW:          cfg.DistanceModelCW,
-		DistanceModelRTTY:        cfg.DistanceModelRTTY,
-		Distance3ExtraReports:    cfg.Distance3ExtraReports,
-		Distance3ExtraAdvantage:  cfg.Distance3ExtraAdvantage,
-		Distance3ExtraConfidence: cfg.Distance3ExtraConfidence,
-		DebugLog:                 cfg.DebugLog,
-		TraceLogger:              traceLogger,
-		FrequencyToleranceHz:     freqToleranceHz,
-		QualityBinHz:             qualityBinHz,
-		QualityGoodThreshold:     cfg.QualityGoodThreshold,
-		QualityNewCallIncrement:  cfg.QualityNewCallIncrement,
-		QualityBustedDecrement:   cfg.QualityBustedDecrement,
-		SpotterReliability:       spotterReliability,
-		MinSpotterReliability:    cfg.MinSpotterReliability,
-		Cooldown:                 cooldown,
-		CooldownMinReporters:     cooldownMinReports,
+	settings := buildCorrectionSettings(
+		cfg,
+		minReports,
+		cooldownMinReports,
+		window,
+		freqToleranceHz,
+		qualityBinHz,
+		traceLogger,
+		cooldown,
+		spotterReliability,
+	)
+	candidateWindowKHz := freqToleranceHz / 1000.0
+	if candidateWindowKHz <= 0 {
+		candidateWindowKHz = 0.5
 	}
-	candidateWindowKHz := 0.5
-	if isVoice {
+	if isVoice && cfg.VoiceCandidateWindowKHz > 0 {
 		candidateWindowKHz = cfg.VoiceCandidateWindowKHz
 	}
 	others := idx.Candidates(spotEntry, now, window, candidateWindowKHz)
@@ -2989,11 +2976,78 @@ func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.Correcti
 // Key aspects: Uses config recency defaults and overrides.
 // Upstream: main correctionIndex cleanup scheduling.
 // Downstream: time.Duration math.
-func callCorrectionWindow(cfg config.CallCorrectionConfig) time.Duration {
-	if cfg.RecencySeconds <= 0 {
-		return 45 * time.Second
+func callCorrectionWindowForMode(cfg config.CallCorrectionConfig, mode string) time.Duration {
+	baseSeconds := cfg.RecencySeconds
+	if baseSeconds <= 0 {
+		baseSeconds = 45
 	}
-	return time.Duration(cfg.RecencySeconds) * time.Second
+	switch strings.ToUpper(strings.TrimSpace(mode)) {
+	case "CW":
+		if cfg.RecencySecondsCW > 0 {
+			baseSeconds = cfg.RecencySecondsCW
+		}
+	case "RTTY":
+		if cfg.RecencySecondsRTTY > 0 {
+			baseSeconds = cfg.RecencySecondsRTTY
+		}
+	}
+	return time.Duration(baseSeconds) * time.Second
+}
+
+func callCorrectionCleanupWindow(cfg config.CallCorrectionConfig) time.Duration {
+	maxSeconds := cfg.RecencySeconds
+	if maxSeconds <= 0 {
+		maxSeconds = 45
+	}
+	if cfg.RecencySecondsCW > maxSeconds {
+		maxSeconds = cfg.RecencySecondsCW
+	}
+	if cfg.RecencySecondsRTTY > maxSeconds {
+		maxSeconds = cfg.RecencySecondsRTTY
+	}
+	return time.Duration(maxSeconds) * time.Second
+}
+
+func buildCorrectionSettings(
+	cfg config.CallCorrectionConfig,
+	minReports int,
+	cooldownMinReports int,
+	window time.Duration,
+	freqToleranceHz float64,
+	qualityBinHz int,
+	traceLogger spot.CorrectionTraceLogger,
+	cooldown *spot.CallCooldown,
+	spotterReliability spot.SpotterReliability,
+) spot.CorrectionSettings {
+	return spot.CorrectionSettings{
+		MinConsensusReports:       minReports,
+		MinAdvantage:              cfg.MinAdvantage,
+		MinConfidencePercent:      cfg.MinConfidencePercent,
+		MaxEditDistance:           cfg.MaxEditDistance,
+		RecencyWindow:             window,
+		Strategy:                  cfg.Strategy,
+		MinSNRCW:                  cfg.MinSNRCW,
+		MinSNRRTTY:                cfg.MinSNRRTTY,
+		MinSNRVoice:               cfg.MinSNRVoice,
+		DistanceModelCW:           cfg.DistanceModelCW,
+		DistanceModelRTTY:         cfg.DistanceModelRTTY,
+		Distance3ExtraReports:     cfg.Distance3ExtraReports,
+		Distance3ExtraAdvantage:   cfg.Distance3ExtraAdvantage,
+		Distance3ExtraConfidence:  cfg.Distance3ExtraConfidence,
+		DebugLog:                  cfg.DebugLog,
+		TraceLogger:               traceLogger,
+		FreqGuardMinSeparationKHz: cfg.FreqGuardMinSeparationKHz,
+		FreqGuardRunnerUpRatio:    cfg.FreqGuardRunnerUpRatio,
+		FrequencyToleranceHz:      freqToleranceHz,
+		QualityBinHz:              qualityBinHz,
+		QualityGoodThreshold:      cfg.QualityGoodThreshold,
+		QualityNewCallIncrement:   cfg.QualityNewCallIncrement,
+		QualityBustedDecrement:    cfg.QualityBustedDecrement,
+		SpotterReliability:        spotterReliability,
+		MinSpotterReliability:     cfg.MinSpotterReliability,
+		Cooldown:                  cooldown,
+		CooldownMinReporters:      cooldownMinReports,
+	}
 }
 
 type bandStateParams struct {

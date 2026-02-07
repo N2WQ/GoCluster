@@ -21,6 +21,7 @@ import (
 type Correction struct {
 	Ts                        string  `json:"ts"`
 	Strategy                  string  `json:"strategy"`
+	DecisionPath              string  `json:"decision_path,omitempty"`
 	FreqKhz                   float64 `json:"freq_khz"`
 	Subject                   string  `json:"subject"`
 	Winner                    string  `json:"winner"`

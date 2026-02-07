@@ -498,6 +498,115 @@ func TestApplyKnownCallFloorSkipsUnsupportedMode(t *testing.T) {
 	}
 }
 
+func TestBuildCorrectionSettingsMapsConfigFields(t *testing.T) {
+	cfg := config.CallCorrectionConfig{
+		MinAdvantage:              2,
+		MinConfidencePercent:      65,
+		MaxEditDistance:           3,
+		Strategy:                  "majority",
+		MinSNRCW:                  4,
+		MinSNRRTTY:                3,
+		MinSNRVoice:               1,
+		DistanceModelCW:           "morse",
+		DistanceModelRTTY:         "baudot",
+		Distance3ExtraReports:     1,
+		Distance3ExtraAdvantage:   1,
+		Distance3ExtraConfidence:  5,
+		DebugLog:                  true,
+		FreqGuardMinSeparationKHz: 0.2,
+		FreqGuardRunnerUpRatio:    0.6,
+		QualityGoodThreshold:      3,
+		QualityNewCallIncrement:   2,
+		QualityBustedDecrement:    2,
+		MinSpotterReliability:     0.4,
+	}
+	window := 75 * time.Second
+	reliability := spot.SpotterReliability{"W2BBB": 0.7}
+	got := buildCorrectionSettings(
+		cfg,
+		5,
+		6,
+		window,
+		900,
+		400,
+		nil,
+		nil,
+		reliability,
+	)
+
+	if got.MinConsensusReports != 5 {
+		t.Fatalf("expected min reports 5, got %d", got.MinConsensusReports)
+	}
+	if got.CooldownMinReporters != 6 {
+		t.Fatalf("expected cooldown min reporters 6, got %d", got.CooldownMinReporters)
+	}
+	if got.RecencyWindow != window {
+		t.Fatalf("expected window %s, got %s", window, got.RecencyWindow)
+	}
+	if got.FrequencyToleranceHz != 900 {
+		t.Fatalf("expected frequency tolerance 900Hz, got %.1f", got.FrequencyToleranceHz)
+	}
+	if got.QualityBinHz != 400 {
+		t.Fatalf("expected quality bin 400Hz, got %d", got.QualityBinHz)
+	}
+	if got.FreqGuardMinSeparationKHz != cfg.FreqGuardMinSeparationKHz {
+		t.Fatalf("expected freq guard separation %.3f, got %.3f", cfg.FreqGuardMinSeparationKHz, got.FreqGuardMinSeparationKHz)
+	}
+	if got.FreqGuardRunnerUpRatio != cfg.FreqGuardRunnerUpRatio {
+		t.Fatalf("expected freq guard runner ratio %.3f, got %.3f", cfg.FreqGuardRunnerUpRatio, got.FreqGuardRunnerUpRatio)
+	}
+	if got.MinAdvantage != cfg.MinAdvantage ||
+		got.MinConfidencePercent != cfg.MinConfidencePercent ||
+		got.MaxEditDistance != cfg.MaxEditDistance ||
+		got.Strategy != cfg.Strategy ||
+		got.MinSNRCW != cfg.MinSNRCW ||
+		got.MinSNRRTTY != cfg.MinSNRRTTY ||
+		got.MinSNRVoice != cfg.MinSNRVoice ||
+		got.DistanceModelCW != cfg.DistanceModelCW ||
+		got.DistanceModelRTTY != cfg.DistanceModelRTTY ||
+		got.Distance3ExtraReports != cfg.Distance3ExtraReports ||
+		got.Distance3ExtraAdvantage != cfg.Distance3ExtraAdvantage ||
+		got.Distance3ExtraConfidence != cfg.Distance3ExtraConfidence ||
+		got.QualityGoodThreshold != cfg.QualityGoodThreshold ||
+		got.QualityNewCallIncrement != cfg.QualityNewCallIncrement ||
+		got.QualityBustedDecrement != cfg.QualityBustedDecrement ||
+		got.MinSpotterReliability != cfg.MinSpotterReliability {
+		t.Fatalf("expected correction settings to mirror config fields")
+	}
+	if got.SpotterReliability["W2BBB"] != 0.7 {
+		t.Fatalf("expected spotter reliability map to be preserved")
+	}
+}
+
+func TestCallCorrectionWindowForModeUsesOverrides(t *testing.T) {
+	cfg := config.CallCorrectionConfig{
+		RecencySeconds:     120,
+		RecencySecondsCW:   45,
+		RecencySecondsRTTY: 90,
+	}
+
+	if got := callCorrectionWindowForMode(cfg, "CW"); got != 45*time.Second {
+		t.Fatalf("expected CW window 45s, got %s", got)
+	}
+	if got := callCorrectionWindowForMode(cfg, "RTTY"); got != 90*time.Second {
+		t.Fatalf("expected RTTY window 90s, got %s", got)
+	}
+	if got := callCorrectionWindowForMode(cfg, "USB"); got != 120*time.Second {
+		t.Fatalf("expected USB/base window 120s, got %s", got)
+	}
+}
+
+func TestCallCorrectionCleanupWindowUsesMaxRecency(t *testing.T) {
+	cfg := config.CallCorrectionConfig{
+		RecencySeconds:     60,
+		RecencySecondsCW:   180,
+		RecencySecondsRTTY: 90,
+	}
+	if got := callCorrectionCleanupWindow(cfg); got != 180*time.Second {
+		t.Fatalf("expected cleanup window 180s, got %s", got)
+	}
+}
+
 // Purpose: Validate SSID collapsing rules for broadcast formatting.
 // Key aspects: Covers numeric, non-numeric, and composite suffixes.
 // Upstream: go test execution.
