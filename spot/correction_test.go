@@ -1,6 +1,7 @@
 package spot
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -653,6 +654,177 @@ func TestSuggestCallCorrectionAppliesSpotterReliabilityFloor(t *testing.T) {
 	}
 }
 
+func TestSuggestCallCorrectionSlashPrecedenceDropsBareCall(t *testing.T) {
+	now := time.Now().UTC()
+	subject := &Spot{DXCall: "W1AW", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now}
+	others := []*Spot{
+		{DXCall: "W1AW/1", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "W1AW/1", DECall: "W3CCC", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "W1AW/1", DECall: "W4DDD", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "W1AW/1", DECall: "W5EEE", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "W1AW", DECall: "W6FFF", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "W1AW", DECall: "W7GGG", Frequency: 7010.0, Mode: "CW", Time: now},
+	}
+	trace := &captureTraceLogger{}
+	call, supporters, confidence, subjectConf, total, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+		Strategy:             "majority",
+		MinConsensusReports:  3,
+		MinAdvantage:         1,
+		MinConfidencePercent: 70,
+		MaxEditDistance:      2,
+		RecencyWindow:        30 * time.Second,
+		DebugLog:             true,
+		TraceLogger:          trace,
+	}, now)
+	if !ok {
+		t.Fatalf("expected slash correction to apply")
+	}
+	if call != "W1AW/1" {
+		t.Fatalf("expected W1AW/1 winner, got %q", call)
+	}
+	if supporters != 4 {
+		t.Fatalf("expected 4 slash supporters, got %d", supporters)
+	}
+	if confidence != 100 || subjectConf != 0 || total != 4 {
+		t.Fatalf("unexpected confidence tuple got winner=%d subject=%d total=%d", confidence, subjectConf, total)
+	}
+	last := trace.lastTrace(t)
+	if last.DecisionPath != "consensus+slash_precedence" {
+		t.Fatalf("expected slash precedence decision path, got %q", last.DecisionPath)
+	}
+}
+
+func TestSuggestCallCorrectionSlashPrecedenceRequiresCredibleSlashSupport(t *testing.T) {
+	now := time.Now().UTC()
+	subject := &Spot{DXCall: "W1AW", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now}
+	others := []*Spot{
+		{DXCall: "W1AW/1", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "W1AW", DECall: "W3CCC", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "W1AW", DECall: "W4DDD", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "W1AW", DECall: "W5EEE", Frequency: 7010.0, Mode: "CW", Time: now},
+	}
+	trace := &captureTraceLogger{}
+	_, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+		Strategy:             "majority",
+		MinConsensusReports:  3,
+		MinAdvantage:         1,
+		MinConfidencePercent: 70,
+		MaxEditDistance:      2,
+		RecencyWindow:        30 * time.Second,
+		DebugLog:             true,
+		TraceLogger:          trace,
+	}, now)
+	if ok {
+		t.Fatalf("expected no correction when slash support is not credible")
+	}
+	last := trace.lastTrace(t)
+	if strings.Contains(last.DecisionPath, "slash_precedence") {
+		t.Fatalf("did not expect slash precedence path, got %q", last.DecisionPath)
+	}
+}
+
+func TestSuggestCallCorrectionSlashRegionalPrefixSuffixEquivalent(t *testing.T) {
+	now := time.Now().UTC()
+	subject := &Spot{DXCall: "W1AW", DECall: "W1AAA", Frequency: 14032.0, Mode: "CW", Time: now}
+	others := []*Spot{
+		{DXCall: "KH6/W1AW", DECall: "W2BBB", Frequency: 14032.0, Mode: "CW", Time: now},
+		{DXCall: "W1AW/KH6", DECall: "W3CCC", Frequency: 14032.0, Mode: "CW", Time: now},
+		{DXCall: "W1AW/KH6", DECall: "W4DDD", Frequency: 14032.0, Mode: "CW", Time: now},
+	}
+	call, supporters, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+		Strategy:             "majority",
+		MinConsensusReports:  3,
+		MinAdvantage:         1,
+		MinConfidencePercent: 70,
+		MaxEditDistance:      2,
+		RecencyWindow:        30 * time.Second,
+	}, now)
+	if !ok {
+		t.Fatalf("expected merged KH6 variant to correct subject")
+	}
+	if supporters != 3 {
+		t.Fatalf("expected merged support=3, got %d", supporters)
+	}
+	if call != "W1AW/KH6" {
+		t.Fatalf("expected most-supported display variant W1AW/KH6, got %q", call)
+	}
+}
+
+func TestSuggestCallCorrectionConflictingSlashVariantsCanReject(t *testing.T) {
+	now := time.Now().UTC()
+	subject := &Spot{DXCall: "W1AW", DECall: "W1AAA", Frequency: 14032.0, Mode: "CW", Time: now}
+	others := []*Spot{
+		{DXCall: "W1AW/6", DECall: "W2BBB", Frequency: 14032.0, Mode: "CW", Time: now},
+		{DXCall: "W1AW/6", DECall: "W3CCC", Frequency: 14032.0, Mode: "CW", Time: now},
+		{DXCall: "W1AW/KH6", DECall: "W4DDD", Frequency: 14032.0, Mode: "CW", Time: now},
+		{DXCall: "KH6/W1AW", DECall: "W5EEE", Frequency: 14032.0, Mode: "CW", Time: now},
+		{DXCall: "W1AW", DECall: "W6FFF", Frequency: 14032.0, Mode: "CW", Time: now},
+		{DXCall: "W1AW", DECall: "W7GGG", Frequency: 14032.0, Mode: "CW", Time: now},
+	}
+	trace := &captureTraceLogger{}
+	_, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+		Strategy:             "majority",
+		MinConsensusReports:  2,
+		MinAdvantage:         1,
+		MinConfidencePercent: 60,
+		MaxEditDistance:      2,
+		RecencyWindow:        30 * time.Second,
+		DebugLog:             true,
+		TraceLogger:          trace,
+	}, now)
+	if ok {
+		t.Fatalf("expected conflicting slash variants to fail confidence gate")
+	}
+	last := trace.lastTrace(t)
+	if last.Reason != "confidence" {
+		t.Fatalf("expected confidence rejection, got %q", last.Reason)
+	}
+	if last.DecisionPath != "consensus+slash_precedence" {
+		t.Fatalf("expected slash precedence path on rejection, got %q", last.DecisionPath)
+	}
+}
+
+func TestSuggestCallCorrectionSlashPrecedenceAppliesToAnchorPath(t *testing.T) {
+	withTestCallQualityStore(t, func(store *CallQualityStore) {
+		now := time.Now().UTC()
+		subject := &Spot{DXCall: "W1AW", DECall: "W1AAA", Frequency: 14032.0, Mode: "CW", Time: now}
+		others := []*Spot{
+			{DXCall: "W1AW/1", DECall: "W2BBB", Frequency: 14032.0, Mode: "CW", Time: now},
+			{DXCall: "W1AW/1", DECall: "W3CCC", Frequency: 14032.0, Mode: "CW", Time: now},
+			{DXCall: "W1AW/1", DECall: "W4DDD", Frequency: 14032.0, Mode: "CW", Time: now},
+			{DXCall: "W1AW", DECall: "W5EEE", Frequency: 14032.0, Mode: "CW", Time: now},
+			{DXCall: "W1AW", DECall: "W6FFF", Frequency: 14032.0, Mode: "CW", Time: now},
+		}
+		store.Add("W1AW/1", subject.Frequency*1000, 500, 3)
+
+		trace := &captureTraceLogger{}
+		call, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+			Strategy:                "majority",
+			MinConsensusReports:     3,
+			MinAdvantage:            1,
+			MinConfidencePercent:    70,
+			MaxEditDistance:         2,
+			RecencyWindow:           30 * time.Second,
+			QualityBinHz:            500,
+			QualityGoodThreshold:    2,
+			QualityNewCallIncrement: 1,
+			QualityBustedDecrement:  1,
+			DebugLog:                true,
+			TraceLogger:             trace,
+		}, now)
+		if !ok {
+			t.Fatalf("expected anchor-driven slash correction")
+		}
+		if call != "W1AW/1" {
+			t.Fatalf("expected W1AW/1 from anchor path, got %q", call)
+		}
+		last := trace.lastTrace(t)
+		if last.DecisionPath != "anchor+slash_precedence" {
+			t.Fatalf("expected anchor+slash_precedence path, got %q", last.DecisionPath)
+		}
+	})
+}
+
 func TestCallDistanceToggle(t *testing.T) {
 	plain := callDistance("E1A", "H1A", "CW", "plain", "plain")
 	morse := callDistance("E1A", "H1A", "CW", "morse", "plain")
@@ -673,6 +845,33 @@ func TestCallDistanceRTTYUsesBaudot(t *testing.T) {
 	baudot := callDistance("K1AB6C", "K1A86C", "RTTY", "plain", "baudot")
 	if baudot <= plain {
 		t.Fatalf("expected baudot distance (%d) to exceed plain (%d)", baudot, plain)
+	}
+}
+
+func BenchmarkSuggestCallCorrectionSlashPrecedence(b *testing.B) {
+	now := time.Now().UTC()
+	subject := &Spot{DXCall: "W1AW", DECall: "W1AAA", Frequency: 14032.0, Mode: "CW", Time: now}
+	others := toEntries([]*Spot{
+		{DXCall: "W1AW/6", DECall: "W2BBB", Frequency: 14032.0, Mode: "CW", Time: now},
+		{DXCall: "W1AW/6", DECall: "W3CCC", Frequency: 14032.0, Mode: "CW", Time: now},
+		{DXCall: "W1AW/KH6", DECall: "W4DDD", Frequency: 14032.0, Mode: "CW", Time: now},
+		{DXCall: "KH6/W1AW", DECall: "W5EEE", Frequency: 14032.0, Mode: "CW", Time: now},
+		{DXCall: "W1AW", DECall: "W6FFF", Frequency: 14032.0, Mode: "CW", Time: now},
+		{DXCall: "W1AW", DECall: "W7GGG", Frequency: 14032.0, Mode: "CW", Time: now},
+	})
+	settings := CorrectionSettings{
+		Strategy:             "majority",
+		MinConsensusReports:  2,
+		MinAdvantage:         1,
+		MinConfidencePercent: 60,
+		MaxEditDistance:      2,
+		RecencyWindow:        30 * time.Second,
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _, _, _, _, _ = SuggestCallCorrection(subject, others, settings, now)
 	}
 }
 

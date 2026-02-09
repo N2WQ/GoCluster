@@ -242,8 +242,8 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 	}
 
 	cfg := normalizeCorrectionSettings(settings)
-	subjectCall := strings.TrimSpace(subject.DXCall)
-	if subjectCall == "" {
+	subjectIdentity := normalizeCorrectionCallIdentity(subject.DXCall)
+	if subjectIdentity.VoteKey == "" {
 		return "", 0, 0, 0, 0, false
 	}
 	subjectReporter := strings.TrimSpace(subject.DECall)
@@ -252,7 +252,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		Timestamp:                 now,
 		Strategy:                  strings.ToLower(strings.TrimSpace(cfg.Strategy)),
 		FrequencyKHz:              subject.Frequency,
-		SubjectCall:               strings.ToUpper(subjectCall),
+		SubjectCall:               subjectIdentity.Raw,
 		Mode:                      strutil.NormalizeUpper(subject.Mode),
 		Source:                    strutil.NormalizeUpper(subject.SourceNode),
 		MaxEditDistance:           cfg.MaxEditDistance,
@@ -275,7 +275,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 	allReporters := make(map[string]struct{}, len(others)+1)
 	clusterSpots := make([]bandmap.SpotEntry, 0, len(others)+1)
 	clusterSpots = append(clusterSpots, bandmap.SpotEntry{
-		Call:    subject.DXCall,
+		Call:    subjectIdentity.Raw,
 		Spotter: subject.DECall,
 		Mode:    subject.Mode,
 		FreqHz:  uint32(subject.Frequency*1000 + 0.5),
@@ -284,37 +284,95 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 	})
 
 	type callAggregate struct {
+		identity  correctionCallIdentity
 		reporters map[string]struct{}
-		lastSeen  time.Time
-		lastFreq  float64
+		// Keep per-variant reporter sets so display selection can preserve the
+		// most credible slash form after canonical grouping.
+		variantReporters map[string]map[string]struct{}
+		variantLastSeen  map[string]time.Time
+		lastSeen         time.Time
+		lastFreq         float64
 	}
 
 	// Pre-size call stats map to avoid resize churn; expect up to len(others)+1 unique calls.
 	callStats := make(map[string]*callAggregate, len(others)+1)
-	ensureCallEntry := func(call string) *callAggregate {
-		entry, ok := callStats[call]
+	ensureCallEntry := func(identity correctionCallIdentity) *callAggregate {
+		entry, ok := callStats[identity.VoteKey]
 		if !ok {
-			entry = &callAggregate{reporters: make(map[string]struct{}, 4)}
-			callStats[call] = entry
+			entry = &callAggregate{
+				identity:         identity,
+				reporters:        make(map[string]struct{}, 4),
+				variantReporters: make(map[string]map[string]struct{}, 2),
+				variantLastSeen:  make(map[string]time.Time, 2),
+			}
+			callStats[identity.VoteKey] = entry
 		}
 		return entry
 	}
-	addReporter := func(call, reporter string, seenAt time.Time, freqKHz float64) {
+	addReporter := func(identity correctionCallIdentity, reporter string, seenAt time.Time, freqKHz float64) {
 		// Ignore reporters that fall below the configured reliability floor.
 		if reliabilityFor(cfg.SpotterReliability, reporter) < cfg.MinSpotterReliability {
 			return
 		}
-		entry := ensureCallEntry(call)
+		entry := ensureCallEntry(identity)
 		entry.reporters[reporter] = struct{}{}
 		if seenAt.After(entry.lastSeen) {
 			entry.lastSeen = seenAt
 		}
 		entry.lastFreq = freqKHz
+
+		variant := identity.Raw
+		if variant == "" {
+			variant = identity.VoteKey
+		}
+		reporters := entry.variantReporters[variant]
+		if reporters == nil {
+			reporters = make(map[string]struct{}, 2)
+			entry.variantReporters[variant] = reporters
+		}
+		reporters[reporter] = struct{}{}
+		if seenAt.After(entry.variantLastSeen[variant]) {
+			entry.variantLastSeen[variant] = seenAt
+		}
+	}
+	displayForKey := func(key string) string {
+		entry := callStats[key]
+		if entry == nil {
+			return key
+		}
+		best := ""
+		bestSupport := -1
+		var bestSeen time.Time
+		for variant, reporters := range entry.variantReporters {
+			support := len(reporters)
+			seenAt := entry.variantLastSeen[variant]
+			if support > bestSupport {
+				best = variant
+				bestSupport = support
+				bestSeen = seenAt
+				continue
+			}
+			if support < bestSupport {
+				continue
+			}
+			if seenAt.After(bestSeen) {
+				best = variant
+				bestSeen = seenAt
+				continue
+			}
+			if seenAt.Equal(bestSeen) && (best == "" || variant < best) {
+				best = variant
+			}
+		}
+		if best == "" {
+			return key
+		}
+		return best
 	}
 
-	subjectAgg := ensureCallEntry(subjectCall)
+	subjectAgg := ensureCallEntry(subjectIdentity)
 	if subjectReporter != "" && passesSNRThreshold(subject, cfg) {
-		addReporter(subjectCall, subjectReporter, subject.Time, subject.Frequency)
+		addReporter(subjectIdentity, subjectReporter, subject.Time, subject.Frequency)
 		allReporters[subjectReporter] = struct{}{}
 	}
 	if subjectAgg.lastSeen.IsZero() {
@@ -329,8 +387,8 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 	toleranceKHz := toleranceHz / 1000.0
 
 	for _, entry := range others {
-		otherCall := strings.TrimSpace(entry.Call)
-		if otherCall == "" {
+		otherIdentity := normalizeCorrectionCallIdentity(entry.Call)
+		if otherIdentity.VoteKey == "" {
 			continue
 		}
 		reporter := strings.TrimSpace(entry.Spotter)
@@ -349,9 +407,9 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 			continue
 		}
 		if reporter == subjectReporter {
-			if otherCall == subjectCall {
+			if otherIdentity.VoteKey == subjectIdentity.VoteKey {
 				allReporters[reporter] = struct{}{}
-				addReporter(otherCall, reporter, seenAt, entryFreqKHz)
+				addReporter(otherIdentity, reporter, seenAt, entryFreqKHz)
 			}
 			continue
 		}
@@ -359,55 +417,130 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 			continue
 		}
 		allReporters[reporter] = struct{}{}
-		addReporter(otherCall, reporter, seenAt, entryFreqKHz)
+		addReporter(otherIdentity, reporter, seenAt, entryFreqKHz)
 		clusterSpots = append(clusterSpots, entry)
 	}
 
-	totalReporters = len(allReporters)
+	// Slash precedence: when a base call has both bare and slash-explicit
+	// variants in the same bucket, drop the bare variant if at least one slash
+	// variant meets existing credibility requirements.
+	excludedCalls := make(map[string]struct{})
+	slashPrecedenceActive := false
+	type baseGroup struct {
+		bareKey   string
+		slashKeys []string
+	}
+	baseGroups := make(map[string]*baseGroup, len(callStats))
+	for key, agg := range callStats {
+		if agg == nil || agg.identity.BaseKey == "" {
+			continue
+		}
+		group := baseGroups[agg.identity.BaseKey]
+		if group == nil {
+			group = &baseGroup{}
+			baseGroups[agg.identity.BaseKey] = group
+		}
+		if agg.identity.HasSlash {
+			group.slashKeys = append(group.slashKeys, key)
+			continue
+		}
+		if group.bareKey == "" || key < group.bareKey {
+			group.bareKey = key
+		}
+	}
+	for _, group := range baseGroups {
+		if group == nil || group.bareKey == "" || len(group.slashKeys) == 0 {
+			continue
+		}
+		credibleSlash := false
+		for _, slashKey := range group.slashKeys {
+			if agg := callStats[slashKey]; agg != nil && len(agg.reporters) >= cfg.MinConsensusReports {
+				credibleSlash = true
+				break
+			}
+		}
+		if !credibleSlash {
+			continue
+		}
+		excludedCalls[group.bareKey] = struct{}{}
+		slashPrecedenceActive = true
+	}
+
+	// Confidence denominator excludes calls filtered by slash precedence.
+	includedReporters := make(map[string]struct{}, len(allReporters))
+	for key, agg := range callStats {
+		if agg == nil {
+			continue
+		}
+		if _, excluded := excludedCalls[key]; excluded {
+			continue
+		}
+		for reporter := range agg.reporters {
+			includedReporters[reporter] = struct{}{}
+		}
+	}
+	totalReporters = len(includedReporters)
 	trace.TotalReporters = totalReporters
 	if totalReporters == 0 {
+		if slashPrecedenceActive {
+			trace.DecisionPath = "slash_precedence"
+			trace.Reason = "slash_precedence_no_reporters"
+		} else {
+			trace.Reason = "no_reporters"
+		}
 		trace.Decision = "rejected"
-		trace.Reason = "no_reporters"
 		logCorrectionTrace(cfg, trace, clusterSpots)
 		return "", 0, 0, 0, 0, false
 	}
 
 	freqHz := subject.Frequency * 1000.0
 
-	if cfg.Cooldown != nil && subjectAgg != nil {
-		cfg.Cooldown.Record(subjectCall, freqHz, subjectAgg.reporters, cfg.CooldownMinReporters, cfg.RecencyWindow, now)
-	}
-
 	// Majority-of-unique-spotters: pick the call with the most unique reporters
 	// on-frequency (within recency/SNR gates). Distance is only a safety cap.
-	callKeys := make([]string, len(callStats))
-	i := 0
+	callKeys := make([]string, 0, len(callStats))
 	for call := range callStats {
-		callKeys[i] = call
-		i++
+		if _, excluded := excludedCalls[call]; excluded {
+			continue
+		}
+		callKeys = append(callKeys, call)
 	}
 	if len(callKeys) == 0 {
+		trace.Decision = "rejected"
+		trace.DecisionPath = "slash_precedence"
+		trace.Reason = "slash_precedence_no_winner"
+		logCorrectionTrace(cfg, trace, clusterSpots)
 		return "", 0, 0, 0, 0, false
 	}
 
-	subjectCount := len(subjectAgg.reporters)
+	subjectCount := 0
+	if _, excluded := excludedCalls[subjectIdentity.VoteKey]; !excluded {
+		subjectCount = len(subjectAgg.reporters)
+	}
 	trace.SubjectSupport = subjectCount
 	if totalReporters > 0 {
 		subjectConfidence = subjectCount * 100 / totalReporters
 	}
 	trace.SubjectConfidence = subjectConfidence
 
+	if cfg.Cooldown != nil && subjectAgg != nil && subjectCount > 0 {
+		cfg.Cooldown.Record(subjectIdentity.VoteKey, freqHz, subjectAgg.reporters, cfg.CooldownMinReporters, cfg.RecencyWindow, now)
+	}
+
 	type rankedCall struct {
-		call       string
+		key        string
+		display    string
 		support    int
 		confidence int
 		lastSeen   time.Time
 		lastFreq   float64
 	}
 
-	rankedCalls := make([]rankedCall, 0, len(callStats))
+	rankedCalls := make([]rankedCall, 0, len(callKeys))
 	for call, agg := range callStats {
 		if agg == nil {
+			continue
+		}
+		if _, excluded := excludedCalls[call]; excluded {
 			continue
 		}
 		support := len(agg.reporters)
@@ -416,7 +549,8 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 			confidence = support * 100 / totalReporters
 		}
 		rankedCalls = append(rankedCalls, rankedCall{
-			call:       call,
+			key:        call,
+			display:    displayForKey(call),
 			support:    support,
 			confidence: confidence,
 			lastSeen:   agg.lastSeen,
@@ -430,26 +564,26 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		if !rankedCalls[i].lastSeen.Equal(rankedCalls[j].lastSeen) {
 			return rankedCalls[i].lastSeen.After(rankedCalls[j].lastSeen)
 		}
-		return rankedCalls[i].call < rankedCalls[j].call
+		return rankedCalls[i].key < rankedCalls[j].key
 	})
 
-	majorityCall := ""
+	majorityKey := ""
 	if len(rankedCalls) > 0 {
-		majorityCall = rankedCalls[0].call
+		majorityKey = rankedCalls[0].key
 	}
 
 	// Anchor path: if a call in this cluster is already considered good, prefer
 	// its closest good neighbor candidate, but still require full gate checks.
 	allCalls := make([]string, 0, len(rankedCalls)+1)
-	allCalls = append(allCalls, subjectCall)
-	seen := map[string]struct{}{subjectCall: {}}
+	allCalls = append(allCalls, subjectIdentity.VoteKey)
+	seen := map[string]struct{}{subjectIdentity.VoteKey: {}}
 	for _, rc := range rankedCalls {
-		if _, ok := seen[rc.call]; !ok {
-			allCalls = append(allCalls, rc.call)
-			seen[rc.call] = struct{}{}
+		if _, ok := seen[rc.key]; !ok {
+			allCalls = append(allCalls, rc.key)
+			seen[rc.key] = struct{}{}
 		}
 	}
-	anchorCall := ""
+	anchorKey := ""
 	hasGoodAnchor := false
 	if store := currentCallQuality(); store != nil {
 		for _, c := range allCalls {
@@ -460,8 +594,8 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		}
 	}
 	if hasGoodAnchor {
-		if anchor, okAnchor := findAnchorForCall(subjectCall, freqHz, subject.Mode, allCalls, &cfg); okAnchor {
-			anchorCall = anchor
+		if anchor, okAnchor := findAnchorForCall(subjectIdentity.VoteKey, freqHz, subject.Mode, allCalls, &cfg); okAnchor {
+			anchorKey = anchor
 		}
 	}
 
@@ -477,8 +611,8 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		reason        string
 	}
 
-	evaluateCandidate := func(candidateCall string) candidateEval {
-		agg := callStats[candidateCall]
+	evaluateCandidate := func(candidateKey string) candidateEval {
+		agg := callStats[candidateKey]
 		if agg == nil {
 			return candidateEval{reason: "no_winner"}
 		}
@@ -491,7 +625,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		runner := rankedCall{}
 		hasRunner := false
 		for _, rc := range rankedCalls {
-			if rc.call == candidateCall {
+			if rc.key == candidateKey {
 				continue
 			}
 			runner = rc
@@ -505,7 +639,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 			runnerFreq = runner.lastFreq
 		}
 
-		distance := callDistance(subjectCall, candidateCall, subject.Mode, cfg.DistanceModelCW, cfg.DistanceModelRTTY)
+		distance := correctionDistance(subjectIdentity, agg.identity, subject.Mode, cfg.DistanceModelCW, cfg.DistanceModelRTTY)
 		if cfg.MaxEditDistance >= 0 && distance > cfg.MaxEditDistance {
 			return candidateEval{
 				support:      support,
@@ -583,7 +717,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		}
 
 		if cfg.Cooldown != nil {
-			if block, _ := cfg.Cooldown.ShouldBlock(subjectCall, freqHz, cfg.CooldownMinReporters, cfg.RecencyWindow, subjectCount, subjectConfidence, support, confidence, now); block {
+			if block, _ := cfg.Cooldown.ShouldBlock(subjectIdentity.VoteKey, freqHz, cfg.CooldownMinReporters, cfg.RecencyWindow, subjectCount, subjectConfidence, support, confidence, now); block {
 				return candidateEval{
 					support:       support,
 					confidence:    confidence,
@@ -611,38 +745,43 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 	}
 
 	type decisionAttempt struct {
-		call string
+		key  string
 		path string
 	}
 	attempts := make([]decisionAttempt, 0, 2)
-	if anchorCall != "" && anchorCall != subjectCall {
-		attempts = append(attempts, decisionAttempt{call: anchorCall, path: "anchor"})
+	if anchorKey != "" && anchorKey != subjectIdentity.VoteKey {
+		attempts = append(attempts, decisionAttempt{key: anchorKey, path: "anchor"})
 	}
-	if majorityCall != "" && majorityCall != subjectCall && majorityCall != anchorCall {
-		attempts = append(attempts, decisionAttempt{call: majorityCall, path: "consensus"})
+	if majorityKey != "" && majorityKey != subjectIdentity.VoteKey && majorityKey != anchorKey {
+		attempts = append(attempts, decisionAttempt{key: majorityKey, path: "consensus"})
 	}
 
 	if len(attempts) == 0 {
+		if slashPrecedenceActive {
+			trace.DecisionPath = "slash_precedence"
+			trace.Reason = "slash_precedence_no_winner"
+		} else {
+			trace.Reason = "no_winner"
+		}
 		trace.Decision = "rejected"
-		trace.Reason = "no_winner"
 		logCorrectionTrace(cfg, trace, clusterSpots)
 		return "", 0, 0, subjectConfidence, totalReporters, false
 	}
 
 	lastEval := candidateEval{}
 	lastPath := ""
-	lastCall := ""
+	lastKey := ""
 	for _, attempt := range attempts {
 		lastPath = attempt.path
-		lastCall = attempt.call
-		lastEval = evaluateCandidate(attempt.call)
+		lastKey = attempt.key
+		lastEval = evaluateCandidate(attempt.key)
 		if lastEval.reason != "" {
 			continue
 		}
 
-		updateCallQualityForCluster(attempt.call, freqHz, &cfg, clusterSpots)
-		trace.DecisionPath = attempt.path
-		trace.WinnerCall = strings.ToUpper(attempt.call)
+		updateCallQualityForCluster(attempt.key, freqHz, &cfg, clusterSpots)
+		trace.DecisionPath = decorateDecisionPath(attempt.path, slashPrecedenceActive)
+		trace.WinnerCall = displayForKey(attempt.key)
 		trace.WinnerSupport = lastEval.support
 		trace.RunnerUpSupport = lastEval.runnerUp
 		trace.WinnerConfidence = lastEval.confidence
@@ -653,11 +792,11 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		trace.Decision = "applied"
 		trace.Reason = ""
 		logCorrectionTrace(cfg, trace, clusterSpots)
-		return attempt.call, lastEval.support, lastEval.confidence, subjectConfidence, totalReporters, true
+		return displayForKey(attempt.key), lastEval.support, lastEval.confidence, subjectConfidence, totalReporters, true
 	}
 
-	trace.DecisionPath = lastPath
-	trace.WinnerCall = strings.ToUpper(lastCall)
+	trace.DecisionPath = decorateDecisionPath(lastPath, slashPrecedenceActive)
+	trace.WinnerCall = displayForKey(lastKey)
 	trace.WinnerSupport = lastEval.support
 	trace.RunnerUpSupport = lastEval.runnerUp
 	trace.WinnerConfidence = lastEval.confidence
@@ -668,20 +807,182 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 	trace.Decision = "rejected"
 	trace.Reason = lastEval.reason
 	if trace.Reason == "" {
-		trace.Reason = "no_winner"
+		if slashPrecedenceActive {
+			trace.Reason = "slash_precedence_no_winner"
+		} else {
+			trace.Reason = "no_winner"
+		}
 	}
 	logCorrectionTrace(cfg, trace, clusterSpots)
 	return "", 0, 0, subjectConfidence, totalReporters, false
 }
 
+type correctionCallIdentity struct {
+	Raw      string
+	VoteKey  string
+	BaseKey  string
+	HasSlash bool
+	SlashKey string
+}
+
+// normalizeCorrectionCallIdentity derives correction-only identity keys.
+// VoteKey groups semantically equivalent variants (e.g., KH6/W1AW == W1AW/KH6).
+func normalizeCorrectionCallIdentity(call string) correctionCallIdentity {
+	raw := strutil.NormalizeUpper(call)
+	if raw == "" {
+		return correctionCallIdentity{}
+	}
+	segments := strings.Split(raw, "/")
+	parts := make([]string, 0, len(segments))
+	for _, seg := range segments {
+		seg = strings.TrimSpace(seg)
+		if seg == "" {
+			continue
+		}
+		parts = append(parts, seg)
+	}
+	if len(parts) == 0 {
+		return correctionCallIdentity{}
+	}
+	if len(parts) == 1 {
+		return correctionCallIdentity{
+			Raw:      raw,
+			VoteKey:  parts[0],
+			BaseKey:  parts[0],
+			HasSlash: false,
+		}
+	}
+	baseIdx := selectCorrectionBaseSegment(parts)
+	base := parts[baseIdx]
+	regionParts := make([]string, 0, len(parts)-1)
+	for i, seg := range parts {
+		if i == baseIdx {
+			continue
+		}
+		regionParts = append(regionParts, seg)
+	}
+	if len(regionParts) == 0 {
+		return correctionCallIdentity{
+			Raw:      raw,
+			VoteKey:  base,
+			BaseKey:  base,
+			HasSlash: false,
+		}
+	}
+	sort.Strings(regionParts)
+	regional := strings.Join(regionParts, "/")
+	voteKey := base + "/" + regional
+	return correctionCallIdentity{
+		Raw:      raw,
+		VoteKey:  voteKey,
+		BaseKey:  base,
+		HasSlash: true,
+		SlashKey: voteKey,
+	}
+}
+
+func selectCorrectionBaseSegment(parts []string) int {
+	bestIdx := 0
+	bestScore := correctionSegmentScore(parts[0])
+	for i := 1; i < len(parts); i++ {
+		score := correctionSegmentScore(parts[i])
+		if score > bestScore {
+			bestIdx = i
+			bestScore = score
+			continue
+		}
+		if score < bestScore {
+			continue
+		}
+		if len(parts[i]) > len(parts[bestIdx]) {
+			bestIdx = i
+			continue
+		}
+		if len(parts[i]) < len(parts[bestIdx]) {
+			continue
+		}
+		if parts[i] < parts[bestIdx] {
+			bestIdx = i
+		}
+	}
+	return bestIdx
+}
+
+func correctionSegmentScore(seg string) int {
+	if seg == "" {
+		return -1000
+	}
+	score := 0
+	if validateNormalizedCallsign(seg) {
+		score += 100
+	}
+	hasAlpha := false
+	hasDigit := false
+	onlyDigits := true
+	for i := 0; i < len(seg); i++ {
+		ch := seg[i]
+		if ch >= 'A' && ch <= 'Z' {
+			hasAlpha = true
+			onlyDigits = false
+			continue
+		}
+		if ch >= '0' && ch <= '9' {
+			hasDigit = true
+			continue
+		}
+		onlyDigits = false
+	}
+	if hasAlpha && hasDigit {
+		score += 40
+	}
+	if len(seg) >= 4 {
+		score += 20
+	}
+	if onlyDigits {
+		score -= 50
+	}
+	score += len(seg)
+	return score
+}
+
+func correctionDistance(subject, candidate correctionCallIdentity, mode, cwModel, rttyModel string) int {
+	if subject.BaseKey != "" && subject.BaseKey == candidate.BaseKey {
+		if !subject.HasSlash || !candidate.HasSlash {
+			return 0
+		}
+		if subject.SlashKey != "" && subject.SlashKey == candidate.SlashKey {
+			return 0
+		}
+	}
+	subjectKey := subject.VoteKey
+	if subjectKey == "" {
+		subjectKey = subject.Raw
+	}
+	candidateKey := candidate.VoteKey
+	if candidateKey == "" {
+		candidateKey = candidate.Raw
+	}
+	return callDistance(subjectKey, candidateKey, mode, cwModel, rttyModel)
+}
+
+func decorateDecisionPath(path string, slashPrecedence bool) string {
+	if !slashPrecedence {
+		return path
+	}
+	if path == "" {
+		return "slash_precedence"
+	}
+	return path + "+slash_precedence"
+}
+
 // Purpose: Select the closest good anchor call for a busted call.
 // Key aspects: Uses mode-aware distance and quality anchors.
 // Upstream: SuggestCallCorrection.
-// Downstream: callQuality.IsGood and callDistance.
+// Downstream: callQuality.IsGood and correctionDistance.
 // findAnchorForCall selects the closest good anchor (by mode-aware distance) for a busted call.
 func findAnchorForCall(bustedCall string, freqHz float64, mode string, candidates []string, cfg *CorrectionSettings) (string, bool) {
-	busted := strings.TrimSpace(bustedCall)
-	if busted == "" || cfg == nil {
+	bustedIdentity := normalizeCorrectionCallIdentity(bustedCall)
+	if bustedIdentity.VoteKey == "" || cfg == nil {
 		return "", false
 	}
 	store := currentCallQuality()
@@ -692,20 +993,21 @@ func findAnchorForCall(bustedCall string, freqHz float64, mode string, candidate
 	best := ""
 	bestDist := math.MaxInt
 	for _, c := range candidates {
-		c = strings.TrimSpace(c)
-		if c == "" || c == busted {
+		candidateIdentity := normalizeCorrectionCallIdentity(c)
+		candidateKey := candidateIdentity.VoteKey
+		if candidateKey == "" || candidateKey == bustedIdentity.VoteKey {
 			continue
 		}
-		if !store.IsGood(c, freqHz, cfg) {
+		if !store.IsGood(candidateKey, freqHz, cfg) {
 			continue
 		}
-		dist := callDistance(busted, c, modeKey, cfg.DistanceModelCW, cfg.DistanceModelRTTY)
+		dist := correctionDistance(bustedIdentity, candidateIdentity, modeKey, cfg.DistanceModelCW, cfg.DistanceModelRTTY)
 		if cfg.MaxEditDistance >= 0 && dist > cfg.MaxEditDistance {
 			continue
 		}
 		if dist < bestDist {
 			bestDist = dist
-			best = c
+			best = candidateKey
 		}
 	}
 	if best == "" {
@@ -727,18 +1029,24 @@ func updateCallQualityForCluster(winnerCall string, freqHz float64, cfg *Correct
 	if store == nil {
 		return
 	}
-	store.Add(winnerCall, freqHz, cfg.QualityBinHz, cfg.QualityNewCallIncrement)
+	winnerIdentity := normalizeCorrectionCallIdentity(winnerCall)
+	winnerKey := winnerIdentity.VoteKey
+	if winnerKey == "" {
+		return
+	}
+	store.Add(winnerKey, freqHz, cfg.QualityBinHz, cfg.QualityNewCallIncrement)
 
 	distinct := make(map[string]struct{})
 	for _, s := range clusterSpots {
-		call := strings.TrimSpace(s.Call)
+		callIdentity := normalizeCorrectionCallIdentity(s.Call)
+		call := callIdentity.VoteKey
 		if call == "" {
 			continue
 		}
 		distinct[call] = struct{}{}
 	}
 	for call := range distinct {
-		if call == strutil.NormalizeUpper(winnerCall) {
+		if call == winnerKey {
 			continue
 		}
 		store.Add(call, freqHz, cfg.QualityBinHz, -cfg.QualityBustedDecrement)
