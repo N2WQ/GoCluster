@@ -94,6 +94,10 @@ linters:
         - name: error-naming
         - name: var-naming
         - name: indent-error-flow
+        # Comment policy checks (CI-enforced baseline).
+        - name: exported
+        - name: package-comments
+        - name: comment-spacings
 
     gocritic:
       disable-all: true

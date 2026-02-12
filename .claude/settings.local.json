@@ -27,7 +27,9 @@
       "Bash(do echo \"=== $f ===\")",
       "Bash(done)",
       "Bash(for f in allocs-20260123-1*.pprof)",
-      "Bash(go mod graph:*)"
+      "Bash(go mod graph:*)",
+      "WebFetch(domain:google.github.io)",
+      "Bash(python3:*)"
     ],
     "deny": [],
     "ask": []
