@@ -33,7 +33,7 @@ func TestCleanupDecisionLogRetentionRemovesOldDBs(t *testing.T) {
 		mustWrite(dbPath + "-shm")
 	}
 
-	if err := cleanupDecisionLogRetention(basePath, now, 3); err != nil {
+	if err := cleanupDecisionLogRetention(basePath, now, 3, ""); err != nil {
 		t.Fatalf("cleanup: %v", err)
 	}
 
@@ -72,5 +72,36 @@ func TestCleanupDecisionLogRetentionRemovesOldDBs(t *testing.T) {
 		assertMissing(dbPath)
 		assertMissing(dbPath + "-wal")
 		assertMissing(dbPath + "-shm")
+	}
+}
+
+func TestCleanupDecisionLogRetentionKeepsActivePath(t *testing.T) {
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "callcorr_debug_modified.log")
+	now := time.Date(2025, 12, 13, 12, 0, 0, 0, time.UTC)
+	older := time.Date(2025, 12, 9, 12, 0, 0, 0, time.UTC)
+	keepPath := DecisionLogPath(basePath, older)
+
+	if err := os.WriteFile(keepPath, []byte("x"), 0o644); err != nil {
+		t.Fatalf("write %s: %v", keepPath, err)
+	}
+	if err := os.WriteFile(keepPath+"-wal", []byte("x"), 0o644); err != nil {
+		t.Fatalf("write %s-wal: %v", keepPath, err)
+	}
+	if err := os.WriteFile(keepPath+"-shm", []byte("x"), 0o644); err != nil {
+		t.Fatalf("write %s-shm: %v", keepPath, err)
+	}
+
+	if err := cleanupDecisionLogRetention(basePath, now, 3, keepPath); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+	if _, err := os.Stat(keepPath); err != nil {
+		t.Fatalf("expected active db %s to remain: %v", keepPath, err)
+	}
+	if _, err := os.Stat(keepPath + "-wal"); err != nil {
+		t.Fatalf("expected active wal %s-wal to remain: %v", keepPath, err)
+	}
+	if _, err := os.Stat(keepPath + "-shm"); err != nil {
+		t.Fatalf("expected active shm %s-shm to remain: %v", keepPath, err)
 	}
 }

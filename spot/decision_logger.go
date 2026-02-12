@@ -275,7 +275,7 @@ INSERT INTO decisions (
 		l.decisionStmt = decisionStmt
 		l.voteStmt = voteStmt
 		l.currentPath = path
-		if err := cleanupDecisionLogRetention(l.basePath, time.Now().UTC(), decisionLogRetentionDays); err != nil {
+		if err := cleanupDecisionLogRetention(l.basePath, time.Now().UTC(), decisionLogRetentionDays, path); err != nil {
 			log.Printf("call-correction logger retention cleanup: %v", err)
 		}
 		return l.db, nil
@@ -327,7 +327,7 @@ func (l *decisionLogger) pathFor(ts time.Time) string {
 	return DecisionLogPath(l.basePath, ts)
 }
 
-func cleanupDecisionLogRetention(basePath string, now time.Time, retentionDays int) error {
+func cleanupDecisionLogRetention(basePath string, now time.Time, retentionDays int, keepPath string) error {
 	if retentionDays <= 0 {
 		return nil
 	}
@@ -380,11 +380,22 @@ func cleanupDecisionLogRetention(basePath string, now time.Time, retentionDays i
 		}
 
 		dbPath := filepath.Join(dir, candidate)
+		// Never remove the file currently opened by this logger instance.
+		if keepPath != "" && samePath(dbPath, keepPath) {
+			continue
+		}
 		_ = os.Remove(dbPath)
 		_ = os.Remove(dbPath + "-wal")
 		_ = os.Remove(dbPath + "-shm")
 	}
 	return nil
+}
+
+func samePath(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	return filepath.Clean(a) == filepath.Clean(b)
 }
 
 func encodeVotes(votes []bandmap.SpotEntry) (string, error) {

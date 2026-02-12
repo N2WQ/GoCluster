@@ -613,6 +613,7 @@ func TestNearbyFiltersMatchAndBypassLocationFilters(t *testing.T) {
 	if err := f.EnableNearby(userFine, userCoarse); err != nil {
 		t.Fatalf("EnableNearby failed: %v", err)
 	}
+	f.SetMode("FT8", true)          // isolate nearby behavior from default mode profile
 	f.SetDXContinent("EU", true) // should be ignored while nearby is on
 
 	s := spot.NewSpot("K1ABC", "W1XYZ", 14074.0, "FT8")
