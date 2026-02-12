@@ -53,7 +53,7 @@ const (
 	dedupCompactShrinkRatio = 0.5
 )
 
-// Purpose: Construct a deduplicator with windowed suppression and channels.
+// NewDeduplicator constructs a deduplicator with windowed suppression and channels.
 // Key aspects: Sizes input/output buffers and initializes shard maps.
 // Upstream: main startup wiring.
 // Downstream: cache shard allocation and channel creation.
@@ -84,7 +84,7 @@ func NewDeduplicator(window time.Duration, preferStronger bool, outputBuffer int
 	}
 }
 
-// Purpose: Start dedup processing and cleanup loops.
+// Start starts dedup processing and cleanup loops.
 // Key aspects: Spawns goroutines for processing and cleanup.
 // Upstream: main startup.
 // Downstream: process and cleanupLoop goroutines.
@@ -108,7 +108,7 @@ func (d *Deduplicator) Start() {
 	go d.cleanupLoop()
 }
 
-// Purpose: Signal processing and cleanup loops to exit.
+// Stop signals processing and cleanup loops to exit.
 // Key aspects: Closing shutdown unblocks the goroutines.
 // Upstream: main shutdown.
 // Downstream: channel close only.
@@ -118,7 +118,7 @@ func (d *Deduplicator) Stop() {
 	close(d.shutdown)
 }
 
-// Purpose: Expose the deduplicator input channel.
+// GetInputChannel exposes the deduplicator input channel.
 // Key aspects: Callers send spots for deduplication.
 // Upstream: ingest pipelines (RBN, PSKReporter, peer).
 // Downstream: d.inputChan.
@@ -128,7 +128,7 @@ func (d *Deduplicator) GetInputChannel() chan<- *spot.Spot {
 	return d.inputChan
 }
 
-// Purpose: Expose the deduplicator output channel.
+// GetOutputChannel exposes the deduplicator output channel.
 // Key aspects: Consumers read unique spots from this channel.
 // Upstream: pipeline output stage.
 // Downstream: d.outputChan.
@@ -210,7 +210,7 @@ func (d *Deduplicator) processSpot(s *spot.Spot) {
 	}
 }
 
-// Purpose: Return the timestamp of the most recent processed spot.
+// LastProcessedAt returns the timestamp of the most recent processed spot.
 // Key aspects: Reads the atomic timestamp; zero indicates no activity.
 // Upstream: pipeline health monitor.
 // Downstream: time.Unix.
@@ -304,7 +304,7 @@ func (d *Deduplicator) cleanup() {
 
 }
 
-// Purpose: Return deduplication stats across all shards.
+// GetStats returns deduplication stats across all shards.
 // Key aspects: Aggregates processed/duplicate counts and cache size.
 // Upstream: stats display.
 // Downstream: shard counters under lock.

@@ -19,7 +19,7 @@ type KnownCallsigns struct {
 	dxHits    atomic.Uint64
 }
 
-// Purpose: Load a newline-delimited list of known callsigns.
+// LoadKnownCallsigns loads a newline-delimited list of known callsigns.
 // Key aspects: Skips blanks/comments and normalizes to uppercase.
 // Upstream: main startup and refresh tasks.
 // Downstream: bufio.Scanner and strings.TrimSpace.
@@ -47,7 +47,7 @@ func LoadKnownCallsigns(path string) (*KnownCallsigns, error) {
 	return &KnownCallsigns{entries: entries}, nil
 }
 
-// Purpose: Check membership in the known callsigns set.
+// Contains checks membership in the known callsigns set.
 // Key aspects: Normalizes input and updates lookup/hit counters.
 // Upstream: call correction confidence logic.
 // Downstream: atomic counters and map lookup.
@@ -70,7 +70,7 @@ func (k *KnownCallsigns) Contains(call string) bool {
 	return ok
 }
 
-// Purpose: Return the number of known callsigns.
+// Count returns the number of known callsigns.
 // Key aspects: Nil-safe; returns map size.
 // Upstream: stats output and logs.
 // Downstream: len on map.
@@ -82,7 +82,7 @@ func (k *KnownCallsigns) Count() int {
 	return len(k.entries)
 }
 
-// Purpose: Return lookup and hit counters for all calls.
+// Stats returns lookup and hit counters for all calls.
 // Key aspects: Uses atomic counters.
 // Upstream: stats output.
 // Downstream: atomic loads.
@@ -94,7 +94,7 @@ func (k *KnownCallsigns) Stats() (lookups uint64, hits uint64) {
 	return k.lookups.Load(), k.hits.Load()
 }
 
-// Purpose: Return lookup and hit counters for DX calls.
+// StatsDX returns lookup and hit counters for DX calls.
 // Key aspects: Uses atomic counters.
 // Upstream: stats output.
 // Downstream: atomic loads.
@@ -106,7 +106,7 @@ func (k *KnownCallsigns) StatsDX() (lookups uint64, hits uint64) {
 	return k.dxLookups.Load(), k.dxHits.Load()
 }
 
-// Purpose: Return a snapshot slice of all known callsigns.
+// List returns a snapshot slice of all known callsigns.
 // Key aspects: Allocates a slice sized to the map.
 // Upstream: grid store seeding and exports.
 // Downstream: map iteration.

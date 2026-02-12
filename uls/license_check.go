@@ -38,7 +38,7 @@ func init() {
 	licenseCache.Store(newLicenseCache(defaultLicenseCacheTTL, defaultLicenseCacheMaxEntries))
 }
 
-// Purpose: Toggle FCC ULS license checks on or off.
+// SetLicenseChecksEnabled toggles FCC ULS license checks on or off.
 // Key aspects: Updates an atomic flag; disabled mode short-circuits lookups.
 // Upstream: Config load or administrative controls.
 // Downstream: licenseEnabled flag read by IsLicensedUS.
@@ -46,7 +46,7 @@ func SetLicenseChecksEnabled(enabled bool) {
 	licenseEnabled.Store(enabled)
 }
 
-// Purpose: Configure the TTL for license lookup caching.
+// SetLicenseCacheTTL configures the TTL for license lookup caching.
 // Key aspects: Resets the cache with the new TTL and a fixed safety cap.
 // Upstream: Config load or operator overrides.
 // Downstream: IsLicensedUS cache behavior.
@@ -58,7 +58,7 @@ func SetLicenseCacheTTL(ttl time.Duration) {
 	licenseCache.Store(newLicenseCache(ttl, defaultLicenseCacheMaxEntries))
 }
 
-// Purpose: Mark whether a refresh/swap is in progress to fail open on lookups.
+// SetRefreshInProgress marks whether a refresh/swap is in progress to fail open on lookups.
 // Key aspects: Uses atomic flag so hot-path checks avoid locks.
 // Upstream: FCC ULS refresh/swap logic.
 // Downstream: IsLicensedUS and getLicenseDB.
@@ -66,7 +66,7 @@ func SetRefreshInProgress(active bool) {
 	refreshActive.Store(active)
 }
 
-// Purpose: Report whether a refresh/swap is currently active.
+// RefreshInProgress reports whether a refresh/swap is currently active.
 // Key aspects: Used by UI to avoid touching the DB during swaps.
 // Upstream: Stats/monitoring.
 // Downstream: RefreshInProgress callers.
@@ -74,7 +74,7 @@ func RefreshInProgress() bool {
 	return refreshActive.Load()
 }
 
-// Purpose: Configure the FCC ULS SQLite path used for license lookups.
+// SetLicenseDBPath configures the FCC ULS SQLite path used for license lookups.
 // Key aspects: Normalizes path, validates presence, and marks the DB as dead on failure.
 // Upstream: Config load or refresh logic.
 // Downstream: licenseDBPath, licenseDead, os.Stat.
@@ -96,7 +96,7 @@ func SetLicenseDBPath(path string) {
 	licenseDBPath = clean
 }
 
-// Purpose: Determine whether a callsign appears in the FCC ULS AM table.
+// IsLicensedUS reports whether a callsign appears in the FCC ULS AM table.
 // Key aspects: Normalizes callsign, caches results, retries on locked DB, and fails open on errors.
 // Upstream: Spot filtering in main.go, RBN client, PSKReporter client.
 // Downstream: getLicenseDB, NormalizeForLicense, SQL query, ResetLicenseDB.
@@ -202,7 +202,7 @@ func getLicenseDB() *sql.DB {
 	return licenseDB
 }
 
-// Purpose: Close the license DB and clear all related caches/flags.
+// ResetLicenseDB closes the license DB and clears all related caches/flags.
 // Key aspects: Resets sync.Once so a future lookup can reopen the DB.
 // Upstream: Refresh in uls/downloader.go, IsLicensedUS error handling.
 // Downstream: sql.DB.Close, licenseCache/flags.
@@ -234,7 +234,7 @@ func licenseCacheKey(jurisdiction, call string) string {
 	return jurisdiction + ":" + call
 }
 
-// Purpose: Normalize callsigns for FCC ULS lookup.
+// NormalizeForLicense normalizes callsigns for FCC ULS lookup.
 // Key aspects: Strips SSIDs/skimmer suffixes and chooses the most call-like slash segment.
 // Upstream: IsLicensedUS.
 // Downstream: spot.NormalizeCallsign, unicode digit checks.

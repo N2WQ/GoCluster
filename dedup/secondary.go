@@ -65,7 +65,7 @@ type secondaryEntry struct {
 	hasReport bool
 }
 
-// Purpose: Construct a secondary deduper for broadcast-only suppression.
+// NewSecondaryDeduper constructs a secondary deduper for broadcast-only suppression.
 // Key aspects: Initializes shard maps and window settings.
 // Upstream: main startup when secondary dedupe is enabled.
 // Downstream: shard allocation and state init.
@@ -75,7 +75,7 @@ func NewSecondaryDeduper(window time.Duration, preferStronger bool) *SecondaryDe
 	return NewSecondaryDeduperWithKey(window, preferStronger, SecondaryKeyGrid2)
 }
 
-// Purpose: Construct a secondary deduper with a specific hash mode.
+// NewSecondaryDeduperWithKey constructs a secondary deduper with a specific hash mode.
 // Key aspects: Allows CQ zone hashing without changing existing callers.
 // Upstream: main startup when secondary dedupe is enabled.
 // Downstream: shard allocation and state init.
@@ -95,7 +95,7 @@ func NewSecondaryDeduperWithKey(window time.Duration, preferStronger bool, keyMo
 	}
 }
 
-// Purpose: Start the cleanup loop for secondary dedupe.
+// Start starts the cleanup loop for secondary dedupe.
 // Key aspects: Spawns a goroutine that prunes expired entries.
 // Upstream: main startup.
 // Downstream: cleanupLoop goroutine.
@@ -108,7 +108,7 @@ func (d *SecondaryDeduper) Start() {
 	go d.cleanupLoop()
 }
 
-// Purpose: Stop the cleanup loop.
+// Stop stops the cleanup loop.
 // Key aspects: Closing shutdown unblocks cleanupLoop.
 // Upstream: main shutdown.
 // Downstream: channel close only.
@@ -117,7 +117,7 @@ func (d *SecondaryDeduper) Stop() {
 	close(d.shutdown)
 }
 
-// Purpose: Determine whether a spot should pass secondary dedupe.
+// ShouldForward reports whether a spot should pass secondary dedupe.
 // Key aspects: Uses DE DXCC/grid2 + DX/band + source class and optional stronger SNR.
 // Upstream: processOutputSpots broadcast stage.
 // Downstream: secondaryHash and isSecondaryDuplicateLocked.
@@ -162,7 +162,7 @@ func (d *SecondaryDeduper) ShouldForward(s *spot.Spot) bool {
 	return true
 }
 
-// Purpose: Return secondary dedupe stats across shards.
+// GetStats returns secondary dedupe stats across shards.
 // Key aspects: Aggregates processed/duplicate counts and cache size.
 // Upstream: stats display.
 // Downstream: shard counters under lock.

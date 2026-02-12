@@ -50,7 +50,7 @@ func newActivityMonitor(cfg config.AdaptiveRefreshConfig, logger *log.Logger) *a
 	}
 }
 
-// Purpose: Start periodic evaluation of recent spot rates.
+// Start starts periodic evaluation of recent spot rates.
 // Key aspects: Spawns a ticker goroutine; nil receivers are safe no-ops.
 // Upstream: Intended for adaptive refresh orchestration (not wired yet).
 // Downstream: time.NewTicker and m.evaluate inside the goroutine.
@@ -80,7 +80,7 @@ func (m *activityMonitor) Start() {
 	}()
 }
 
-// Purpose: Stop the activityMonitor background ticker.
+// Stop stops the activityMonitor background ticker.
 // Key aspects: Closing stopCh is the only shutdown signal.
 // Upstream: Intended to be called by owner during shutdown.
 // Downstream: None (channel close only).
@@ -91,7 +91,7 @@ func (m *activityMonitor) Stop() {
 	close(m.stopCh)
 }
 
-// Purpose: Record a spot arrival for activity rate tracking.
+// Increment records a spot arrival for activity rate tracking.
 // Key aspects: Minimal lock, rotates stale buckets, bumps the current minute.
 // Upstream: Intended for the spot ingest path (not wired yet).
 // Downstream: m.rotateBuckets and m.bucketIndex.

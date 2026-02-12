@@ -122,7 +122,7 @@ type CorrectionTrace struct {
 	Reason                    string    `json:"reason,omitempty"`
 }
 
-// Purpose: Determine whether a mode is eligible for call correction.
+// IsCallCorrectionCandidate reports whether a mode is eligible for call correction.
 // Key aspects: Limits to CW/RTTY and USB/LSB voice modes to avoid digital-mode conflicts.
 // Upstream: call correction pipeline and harmonic detection.
 // Downstream: correctionEligibleModes lookup.
@@ -140,7 +140,7 @@ func IsCallCorrectionCandidate(mode string) bool {
 // data sources.
 var frequencyToleranceKHz = 0.5
 
-// Purpose: Set the global frequency tolerance for correction clustering.
+// SetFrequencyToleranceHz sets the global frequency tolerance for correction clustering.
 // Key aspects: Normalizes non-positive values to default.
 // Upstream: main startup configuration.
 // Downstream: frequencyToleranceKHz global.
@@ -153,7 +153,7 @@ func SetFrequencyToleranceHz(hz float64) {
 	frequencyToleranceKHz = hz / 1000.0
 }
 
-// Purpose: Configure Morse edit distance weights.
+// ConfigureMorseWeights configures Morse edit distance weights.
 // Key aspects: Applies defaults when non-positive and rebuilds cost table.
 // Upstream: main startup configuration.
 // Downstream: buildRuneCostTable and morse weight globals.
@@ -184,7 +184,7 @@ func ConfigureMorseWeights(insert, delete, sub, scale int) {
 	morseRuneIndex, morseCostTable = buildRuneCostTable(morseCodes, morsePatternCost)
 }
 
-// Purpose: Configure Baudot edit distance weights for RTTY.
+// ConfigureBaudotWeights configures Baudot edit distance weights for RTTY.
 // Key aspects: Applies defaults when non-positive and rebuilds cost table.
 // Upstream: main startup configuration.
 // Downstream: buildRuneCostTable and baudot weight globals.
@@ -1199,7 +1199,7 @@ type correctionBucket struct {
 	spots []*Spot
 }
 
-// Purpose: Construct an empty correction index.
+// NewCorrectionIndex constructs an empty correction index.
 // Key aspects: Initializes bucket and lastSeen maps.
 // Upstream: main startup.
 // Downstream: map allocation.
@@ -1211,7 +1211,7 @@ func NewCorrectionIndex() *CorrectionIndex {
 	}
 }
 
-// Purpose: Insert a spot into the frequency bucket index.
+// Add inserts a spot into the frequency bucket index.
 // Key aspects: Prunes stale entries and tracks lastSeen per bucket.
 // Upstream: processOutputSpots call correction path.
 // Downstream: bucketKey and pruneAndAppend.
@@ -1246,7 +1246,7 @@ func (ci *CorrectionIndex) Add(s *Spot, now time.Time, window time.Duration) {
 	}
 }
 
-// Purpose: Retrieve nearby spots for call correction.
+// Candidates retrieve nearby spots for call correction.
 // Key aspects: Scans adjacent buckets and prunes stale entries.
 // Upstream: SuggestCallCorrection.
 // Downstream: bucketKey and prune.
@@ -1348,7 +1348,7 @@ func (ci *CorrectionIndex) cleanup(now time.Time, window time.Duration) {
 	}
 }
 
-// Purpose: Start a periodic cleanup goroutine for the index.
+// StartCleanup starts a periodic cleanup goroutine for the index.
 // Key aspects: Uses ticker and quit channel; guards against double start.
 // Upstream: main startup.
 // Downstream: cleanup and time.NewTicker.
@@ -1389,7 +1389,7 @@ func (ci *CorrectionIndex) StartCleanup(interval, window time.Duration) {
 	}()
 }
 
-// Purpose: Stop the periodic cleanup goroutine.
+// StopCleanup stops the periodic cleanup goroutine.
 // Key aspects: Closes quit channel and clears it.
 // Upstream: main shutdown.
 // Downstream: channel close only.

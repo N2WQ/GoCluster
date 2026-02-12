@@ -25,7 +25,7 @@ type Tracker struct {
 	reputationReasons    sync.Map // string -> *atomic.Uint64
 }
 
-// Purpose: Create a new stats tracker with a start timestamp.
+// NewTracker creates a new stats tracker with a start timestamp.
 // Key aspects: Initializes atomic start time; counters are lazily created.
 // Upstream: main.go stats initialization.
 // Downstream: Tracker methods.
@@ -35,7 +35,7 @@ func NewTracker() *Tracker {
 	return t
 }
 
-// Purpose: Increment the counter for a given mode.
+// IncrementMode increments the counter for a given mode.
 // Key aspects: Uses sync.Map + atomic to avoid global locks.
 // Upstream: Spot ingest pipeline.
 // Downstream: incrementCounter.
@@ -43,7 +43,7 @@ func (t *Tracker) IncrementMode(mode string) {
 	incrementCounter(&t.modeCounts, mode)
 }
 
-// Purpose: Increment the counter for a given source node.
+// IncrementSource increments the counter for a given source node.
 // Key aspects: Normalizes through incrementCounter.
 // Upstream: Spot ingest pipeline.
 // Downstream: incrementCounter.
@@ -51,7 +51,7 @@ func (t *Tracker) IncrementSource(source string) {
 	incrementCounter(&t.sourceCounts, source)
 }
 
-// Purpose: Increment the counter for a source/mode pair.
+// IncrementSourceMode increments the counter for a source/mode pair.
 // Key aspects: Normalizes strings and combines into a composite key.
 // Upstream: Spot ingest pipeline.
 // Downstream: incrementCounter.
@@ -65,7 +65,7 @@ func (t *Tracker) IncrementSourceMode(source, mode string) {
 	incrementCounter(&t.sourceModeCounts, key)
 }
 
-// Purpose: Return a copy of per-mode counts.
+// GetModeCounts returns a copy of per-mode counts.
 // Key aspects: Iterates sync.Map and reads atomics.
 // Upstream: Dashboard/metrics rendering.
 // Downstream: atomic loads.
@@ -78,7 +78,7 @@ func (t *Tracker) GetModeCounts() map[string]uint64 {
 	return counts
 }
 
-// Purpose: Return a copy of per-source counts.
+// GetSourceCounts returns a copy of per-source counts.
 // Key aspects: Iterates sync.Map and reads atomics.
 // Upstream: Dashboard/metrics rendering.
 // Downstream: atomic loads.
@@ -91,7 +91,7 @@ func (t *Tracker) GetSourceCounts() map[string]uint64 {
 	return counts
 }
 
-// Purpose: Return a copy of source/mode counts.
+// GetSourceModeCounts returns a copy of source/mode counts.
 // Key aspects: Iterates sync.Map and reads atomics.
 // Upstream: Dashboard/metrics rendering.
 // Downstream: atomic loads.
@@ -104,7 +104,7 @@ func (t *Tracker) GetSourceModeCounts() map[string]uint64 {
 	return counts
 }
 
-// Purpose: Return the number of distinct source keys tracked.
+// SourceCardinality returns the number of distinct source keys tracked.
 // Key aspects: Iterates sync.Map without allocating a map copy.
 // Upstream: diagnostics/logging.
 // Downstream: sync.Map Range.
@@ -117,7 +117,7 @@ func (t *Tracker) SourceCardinality() int {
 	return count
 }
 
-// Purpose: Return the number of distinct source|mode keys tracked.
+// SourceModeCardinality returns the number of distinct source|mode keys tracked.
 // Key aspects: Iterates sync.Map without allocating a map copy.
 // Upstream: diagnostics/logging.
 // Downstream: sync.Map Range.
@@ -130,7 +130,7 @@ func (t *Tracker) SourceModeCardinality() int {
 	return count
 }
 
-// Purpose: Return the total count across all sources.
+// GetTotal returns the total count across all sources.
 // Key aspects: Sums atomic counters from sourceCounts.
 // Upstream: Dashboard/metrics rendering.
 // Downstream: atomic loads.
@@ -143,7 +143,7 @@ func (t *Tracker) GetTotal() uint64 {
 	return total
 }
 
-// Purpose: Return tracker uptime since creation/reset.
+// GetUptime returns tracker uptime since creation/reset.
 // Key aspects: Uses stored UnixNano start.
 // Upstream: Dashboard/metrics rendering.
 // Downstream: time.Since.
@@ -152,7 +152,7 @@ func (t *Tracker) GetUptime() time.Duration {
 	return time.Since(time.Unix(0, start))
 }
 
-// Purpose: Reset all counters and start time.
+// Reset resets all counters and start time.
 // Key aspects: Deletes all sync.Map entries and resets start.
 // Upstream: Admin reset flows.
 // Downstream: sync.Map delete, atomic store.
@@ -172,7 +172,7 @@ func (t *Tracker) Reset() {
 	t.start.Store(time.Now().UTC().UnixNano())
 }
 
-// Purpose: Format summary lines for console output.
+// SnapshotLines formats summary lines for console output.
 // Key aspects: Renders source and mode counts via formatMapCounts.
 // Upstream: Dashboard/console ticker.
 // Downstream: formatMapCounts.
@@ -183,7 +183,7 @@ func (t *Tracker) SnapshotLines() []string {
 	return lines
 }
 
-// Purpose: Increment applied call correction counter.
+// IncrementCallCorrections increments applied call correction counter.
 // Key aspects: Atomic increment.
 // Upstream: Correction pipeline.
 // Downstream: atomic counter.
@@ -191,7 +191,7 @@ func (t *Tracker) IncrementCallCorrections() {
 	t.callCorrections.Add(1)
 }
 
-// Purpose: Increment applied frequency correction counter.
+// IncrementFrequencyCorrections increments applied frequency correction counter.
 // Key aspects: Atomic increment.
 // Upstream: Correction pipeline.
 // Downstream: atomic counter.
@@ -199,7 +199,7 @@ func (t *Tracker) IncrementFrequencyCorrections() {
 	t.frequencyCorrections.Add(1)
 }
 
-// Purpose: Increment harmonic suppression counter.
+// IncrementHarmonicSuppressions increments harmonic suppression counter.
 // Key aspects: Atomic increment.
 // Upstream: Harmonic detector drop path.
 // Downstream: atomic counter.
@@ -207,7 +207,7 @@ func (t *Tracker) IncrementHarmonicSuppressions() {
 	t.harmonicSuppressions.Add(1)
 }
 
-// Purpose: Increment unlicensed drop counter.
+// IncrementUnlicensedDrops increments unlicensed drop counter.
 // Key aspects: Atomic increment.
 // Upstream: License enforcement in pipeline.
 // Downstream: atomic counter.
@@ -215,7 +215,7 @@ func (t *Tracker) IncrementUnlicensedDrops() {
 	t.unlicensedDrops.Add(1)
 }
 
-// Purpose: Return total call correction count.
+// CallCorrections returns total call correction count.
 // Key aspects: Atomic load.
 // Upstream: Dashboard/metrics.
 // Downstream: atomic counter.
@@ -223,7 +223,7 @@ func (t *Tracker) CallCorrections() uint64 {
 	return t.callCorrections.Load()
 }
 
-// Purpose: Return total frequency correction count.
+// FrequencyCorrections returns total frequency correction count.
 // Key aspects: Atomic load.
 // Upstream: Dashboard/metrics.
 // Downstream: atomic counter.
@@ -231,7 +231,7 @@ func (t *Tracker) FrequencyCorrections() uint64 {
 	return t.frequencyCorrections.Load()
 }
 
-// Purpose: Return total harmonic suppression count.
+// HarmonicSuppressions returns total harmonic suppression count.
 // Key aspects: Atomic load.
 // Upstream: Dashboard/metrics.
 // Downstream: atomic counter.
@@ -239,7 +239,7 @@ func (t *Tracker) HarmonicSuppressions() uint64 {
 	return t.harmonicSuppressions.Load()
 }
 
-// Purpose: Return total unlicensed drop count.
+// UnlicensedDrops returns total unlicensed drop count.
 // Key aspects: Atomic load.
 // Upstream: Dashboard/metrics.
 // Downstream: atomic counter.
@@ -247,7 +247,7 @@ func (t *Tracker) UnlicensedDrops() uint64 {
 	return t.unlicensedDrops.Load()
 }
 
-// Purpose: Increment reputation drop counters by reason.
+// IncrementReputationDrop increments reputation drop counters by reason.
 // Key aspects: Tracks total drops plus reason-specific buckets.
 // Upstream: Telnet reputation gate.
 // Downstream: atomic counters and sync.Map.
@@ -256,7 +256,7 @@ func (t *Tracker) IncrementReputationDrop(reason string) {
 	incrementCounter(&t.reputationReasons, reason)
 }
 
-// Purpose: Return total reputation drop count.
+// ReputationDrops returns total reputation drop count.
 // Key aspects: Atomic load.
 // Upstream: Dashboard/metrics.
 // Downstream: atomic counter.
@@ -264,7 +264,7 @@ func (t *Tracker) ReputationDrops() uint64 {
 	return t.reputationDrops.Load()
 }
 
-// Purpose: Return a copy of reputation drop reasons.
+// ReputationDropReasons returns a copy of reputation drop reasons.
 // Key aspects: Iterates sync.Map and reads atomics.
 // Upstream: Dashboard/metrics rendering.
 // Downstream: atomic loads.

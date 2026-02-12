@@ -27,7 +27,7 @@ func newPeerEndpoint(p config.PeeringPeer) PeerEndpoint {
 	}
 }
 
-// Purpose: Return a stable identifier for this peer.
+// ID returns a stable identifier for this peer.
 // Key aspects: Prefers remote callsign; falls back to host.
 // Upstream: Peer manager maps and logs.
 // Downstream: None.

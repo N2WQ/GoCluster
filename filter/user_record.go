@@ -28,7 +28,7 @@ type UserRecord struct {
 	SolarSummaryMinutes int `yaml:"solar_summary_minutes,omitempty"`
 }
 
-// Purpose: Load a persisted user record by callsign.
+// LoadUserRecord loads a persisted user record by callsign.
 // Key aspects: Normalizes defaults and trims recent IPs; returns os.ErrNotExist if missing.
 // Upstream: LoadUserFilter, TouchUserRecordIP, telnet login flows.
 // Downstream: yaml.Unmarshal, trimRecentIPs, Filter normalization helpers.
@@ -59,7 +59,7 @@ func LoadUserRecord(callsign string) (*UserRecord, error) {
 	return &record, nil
 }
 
-// Purpose: Update recent IP history for a callsign and persist it.
+// TouchUserRecordIP updates recent IP history for a callsign and persists it.
 // Key aspects: Creates a new record with defaults if none exists.
 // Upstream: Telnet login handling.
 // Downstream: LoadUserRecord, UpdateRecentIPs, SaveUserRecord.
@@ -81,7 +81,7 @@ func TouchUserRecordIP(callsign, ip string) (*UserRecord, bool, error) {
 	return record, created, nil
 }
 
-// Purpose: Update login metadata (timestamp + IP) while returning the prior values.
+// TouchUserRecordLogin updates login metadata (timestamp + IP) while returning the prior values.
 // Key aspects: Persists the new state and provides previous login/IP for templates.
 // Upstream: Telnet login handling.
 // Downstream: SaveUserRecord.
@@ -111,7 +111,7 @@ func TouchUserRecordLogin(callsign, ip string, loginTime time.Time) (record *Use
 	return record, created, prevLogin, prevIP, nil
 }
 
-// Purpose: Persist a user record to disk.
+// SaveUserRecord persists a user record to disk.
 // Key aspects: Ensures data dir exists; trims recent IP list.
 // Upstream: SaveUserFilter, TouchUserRecordIP.
 // Downstream: yaml.Marshal, os.WriteFile, userRecordPath.
@@ -137,7 +137,7 @@ func SaveUserRecord(callsign string, record *UserRecord) error {
 	return os.WriteFile(path, bs, 0o644)
 }
 
-// Purpose: Update recent IP history with a new address.
+// UpdateRecentIPs updates recent IP history with a new address.
 // Key aspects: Most-recent-first order; removes duplicates; enforces cap.
 // Upstream: TouchUserRecordIP.
 // Downstream: trimRecentIPs.
@@ -160,7 +160,7 @@ func UpdateRecentIPs(recent []string, ip string) []string {
 	return trimRecentIPs(updated, maxRecentIPs)
 }
 
-// Purpose: Merge two recent IP lists while preserving primary order.
+// MergeRecentIPs merges two recent IP lists while preserving primary order.
 // Key aspects: De-duplicates and caps at maxRecentIPs.
 // Upstream: Client filter save flows.
 // Downstream: None.

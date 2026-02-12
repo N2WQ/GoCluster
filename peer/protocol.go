@@ -20,7 +20,7 @@ const (
 // Replies perform a minimal refuse-all negotiation to keep the link in character mode.
 type telnetParser struct{}
 
-// Purpose: Strip telnet IAC sequences and emit minimal refusal replies.
+// Feed strips telnet IAC sequences and emits minimal refusal replies.
 // Key aspects: Filters subnegotiation payloads and replies with WONT/DONT.
 // Upstream: Peer reader for native telnet mode.
 // Downstream: None.
@@ -71,7 +71,7 @@ type Frame struct {
 	Raw    string
 }
 
-// Purpose: Parse a caret-delimited PC frame line into a Frame.
+// ParseFrame parses a caret-delimited PC frame line into a Frame.
 // Key aspects: Trims trailing "~" and extracts hop suffix.
 // Upstream: Peer reader.
 // Downstream: Frame payload handling.
@@ -106,7 +106,7 @@ func ParseFrame(line string) (*Frame, error) {
 	return f, nil
 }
 
-// Purpose: Encode a Frame back to wire format with optional hop override.
+// Encode encodes a Frame back to wire format with optional hop override.
 // Key aspects: Preserves fields and appends Hn when hop>0.
 // Upstream: Peer writer.
 // Downstream: fmt.Sprintf.

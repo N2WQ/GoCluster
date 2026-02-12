@@ -133,7 +133,7 @@ type LookupMetrics struct {
 	ValidatedFromCache uint64
 }
 
-// Purpose: Load the CTY plist file from disk into an in-memory database.
+// LoadCTYDatabase loads the CTY plist file from disk into an in-memory database.
 // Key aspects: Opens the file and delegates parsing/normalization.
 // Upstream: main.go startup, cmd/ctylookup.
 // Downstream: LoadCTYDatabaseFromReader.
@@ -146,7 +146,7 @@ func LoadCTYDatabase(path string) (*CTYDatabase, error) {
 	return LoadCTYDatabaseFromReader(f)
 }
 
-// Purpose: Decode CTY data from a reader into a lookup database.
+// LoadCTYDatabaseFromReader decodes CTY data from a reader into a lookup database.
 // Key aspects: Normalizes keys, sorts by length for deterministic ordering, and builds a trie.
 // Upstream: LoadCTYDatabase, tests.
 // Downstream: decodeCTYData, buildCTYTrie.
@@ -199,7 +199,7 @@ func normalizeCallsign(cs string) string {
 	return cs
 }
 
-// Purpose: Resolve CTY metadata for a callsign.
+// LookupCallsign resolves CTY metadata for a callsign.
 // Key aspects: Assumes input is already normalized (uppercased, portable suffixes stripped).
 // Upstream: main.go enrichment, RBN/PSKReporter clients, cmd/ctylookup.
 // Downstream: lookupCallsignNoCache.
@@ -215,7 +215,7 @@ func (db *CTYDatabase) LookupCallsign(cs string) (*PrefixInfo, bool) {
 	return info, ok
 }
 
-// Purpose: Resolve CTY metadata for portable callsigns with slash segments.
+// LookupCallsignPortable resolves CTY metadata for portable callsigns with slash segments.
 // Key aspects: Chooses the shortest slash segment that matches CTY, order-independent.
 // Upstream: main.go CTY gate/enrichment, RBN/PSKReporter clients.
 // Downstream: lookupCallsignNoCache.
@@ -295,7 +295,7 @@ func (db *CTYDatabase) lookupCallsignPortableNoCache(cs string) (*PrefixInfo, bo
 	return db.lookupCallsignNoCache(lookup)
 }
 
-// Purpose: Return CTY keys that share a prefix (test helper).
+// KeysWithPrefix returns CTY keys that share a prefix (test helper).
 // Key aspects: Normalizes prefix and scans the sorted key list.
 // Upstream: Tests.
 // Downstream: None.
@@ -319,7 +319,7 @@ func clonePrefix(info PrefixInfo) *PrefixInfo {
 	return &copy
 }
 
-// Purpose: Return snapshot of CTY lookup/cache metrics.
+// Metrics returns snapshot of CTY lookup/cache metrics.
 // Key aspects: Uses atomic loads for lock-free reads.
 // Upstream: Metrics reporting/diagnostics.
 // Downstream: atomic counters.

@@ -83,7 +83,7 @@ func newCallMetaCache(capacity int, gridTTL time.Duration) *callMetaCache {
 	}
 }
 
-// Purpose: Clear all cached entries (used on CTY/SCP reload).
+// Clear clears all cached entries (used on CTY/SCP reload).
 // Key aspects: Resets shard maps under lock.
 // Upstream: CTY/SCP refresh handlers.
 // Downstream: shard state reset.
@@ -100,7 +100,7 @@ func (c *callMetaCache) Clear() {
 	}
 }
 
-// Purpose: Return CTY cache metrics for stats display.
+// CTYMetrics returns CTY cache metrics for stats display.
 // Key aspects: Uses atomic counters for lock-free reads.
 // Upstream: formatMemoryLine.
 // Downstream: atomic loads.
@@ -114,7 +114,7 @@ func (c *callMetaCache) CTYMetrics() ctyCacheMetrics {
 	}
 }
 
-// Purpose: Count entries for coarse memory estimation.
+// EntryCount counts entries for coarse memory estimation.
 // Key aspects: Locks each shard briefly to sum sizes.
 // Upstream: formatMemoryLine.
 // Downstream: shard entry maps.
@@ -132,7 +132,7 @@ func (c *callMetaCache) EntryCount() int {
 	return total
 }
 
-// Purpose: Lookup CTY prefix info with cache and DB fallback.
+// LookupCTY looks up CTY prefix info with cache and DB fallback.
 // Key aspects: Caches hits and misses; returns cached=true on hits.
 // Upstream: ingest validation and output metadata refresh.
 // Downstream: cty.LookupCallsignPortable.
@@ -192,7 +192,7 @@ func (c *callMetaCache) LookupCTY(call string, db *cty.CTYDatabase) (*cty.Prefix
 	return info, ok, false
 }
 
-// Purpose: Lookup a cached grid by callsign with TTL enforcement.
+// LookupGrid looks up a cached grid by callsign with TTL enforcement.
 // Key aspects: Returns derived flag and counts cache lookups/hits when metrics are provided.
 // Upstream: grid backfill path.
 // Downstream: per-shard LRU and TTL checks.
@@ -231,7 +231,7 @@ func (c *callMetaCache) LookupGrid(call string, metrics *gridMetrics) (string, b
 	return "", false, false
 }
 
-// Purpose: Update cached grid and indicate whether persistence is needed.
+// UpdateGrid updates cached grid and indicates whether persistence is needed.
 // Key aspects: Honors derived-vs-actual precedence and suppresses writes when unchanged.
 // Upstream: grid update hook.
 // Downstream: per-shard LRU mutation.
@@ -271,7 +271,7 @@ func (c *callMetaCache) UpdateGrid(call, grid string, derived bool) bool {
 	return true
 }
 
-// Purpose: Apply a persisted record into the cache.
+// ApplyRecord applies a persisted record into the cache.
 // Key aspects: Prefer newer grid timestamps; keep CTY/known metadata when present.
 // Upstream: grid lookup backfill.
 // Downstream: per-shard LRU mutation.
@@ -317,7 +317,7 @@ func (c *callMetaCache) ApplyRecord(rec gridstore.Record) {
 	}
 }
 
-// Purpose: Mark known-call status in cache when available.
+// SetKnown marks known-call status in cache when available.
 // Key aspects: Stores both hits and misses to avoid repeated checks.
 // Upstream: known calls lookup hooks.
 // Downstream: per-shard LRU mutation.

@@ -139,7 +139,7 @@ var (
 	pahoDebugOnce sync.Once
 )
 
-// Purpose: Configure the callsign normalization cache for PSKReporter.
+// ConfigureCallCache configures the callsign normalization cache for PSKReporter.
 // Key aspects: Applies sane defaults when size/ttl are zero.
 // Upstream: Config load or tests.
 // Downstream: callCacheSize/callCacheTTL globals.
@@ -154,7 +154,7 @@ func ConfigureCallCache(size int, ttl time.Duration) {
 	callCacheTTL = ttl
 }
 
-// Purpose: Construct a PSKReporter MQTT client.
+// NewClient constructs a PSKReporter MQTT client.
 // Key aspects: Initializes channels, caches, and worker settings.
 // Upstream: main.go startup.
 // Downstream: Client.Connect, worker pool.
@@ -244,7 +244,7 @@ func enablePahoDebugLogging() {
 	})
 }
 
-// Purpose: Connect to the PSKReporter MQTT broker and start workers.
+// Connect connects to the PSKReporter MQTT broker and starts workers.
 // Key aspects: Configures reconnect/keepalive and sets handlers.
 // Upstream: main.go startup or reconnect flows.
 // Downstream: startWorkerPool, mqtt.Client.Connect.
@@ -792,7 +792,7 @@ func newRateCounter(interval time.Duration) rateCounter {
 	return rateCounter{interval: interval}
 }
 
-// Purpose: Increment a counter and decide if it's time to log.
+// Inc increments a counter and decide if it's time to log.
 // Key aspects: Uses atomics to avoid contention on hot paths.
 // Upstream: Drop/error logging sites.
 // Downstream: log.Printf when true is returned.
@@ -860,7 +860,7 @@ func defaultPSKReporterWorkers() int {
 	return workers
 }
 
-// Purpose: Expose the output spot channel.
+// GetSpotChannel exposes the output spot channel.
 // Key aspects: Read-only channel for downstream consumers.
 // Upstream: main.go pipeline wiring.
 // Downstream: None.
@@ -868,7 +868,7 @@ func (c *Client) GetSpotChannel() <-chan *spot.Spot {
 	return c.spotChan
 }
 
-// Purpose: Expose the output path-only channel.
+// GetPathOnlyChannel exposes the output path-only channel.
 // Key aspects: Returns nil when path-only modes are disabled.
 // Upstream: main.go path-only processor.
 // Downstream: None.
@@ -879,7 +879,7 @@ func (c *Client) GetPathOnlyChannel() <-chan *spot.Spot {
 	return c.pathOnlyChan
 }
 
-// Purpose: Report whether the MQTT client is connected.
+// IsConnected reports whether the MQTT client is connected.
 // Key aspects: Safe when client is nil.
 // Upstream: Diagnostics or health checks.
 // Downstream: mqtt.Client.IsConnected.
@@ -922,7 +922,7 @@ type HealthSnapshot struct {
 	MQTTInboundQoS12Disconnects uint64
 }
 
-// Purpose: Provide a consistent ingest health snapshot.
+// HealthSnapshot provides a consistent ingest health snapshot.
 // Key aspects: Uses atomics for timestamps and counters; locks to read queue state.
 // Upstream: ingest health monitor.
 // Downstream: None.
@@ -991,7 +991,7 @@ func formatAge(now time.Time, at time.Time) string {
 	return age.Truncate(time.Second).String()
 }
 
-// Purpose: Stop the PSKReporter client and worker pool.
+// Stop stops the PSKReporter client and worker pool.
 // Key aspects: Unsubscribes, disconnects, and signals shutdown.
 // Upstream: main.go shutdown.
 // Downstream: stopWorkerPool, mqtt.Client.Disconnect.

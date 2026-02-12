@@ -100,7 +100,7 @@ type CallMetadata struct {
 	ADIF        int // ADIF/DXCC country code from CTY lookup
 }
 
-// Purpose: Construct a new spot with normalized defaults.
+// NewSpot constructs a new spot with normalized defaults.
 // Key aspects: Normalizes calls/mode, rounds frequency, sets defaults.
 // Upstream: All spot creation paths (parsers and tests).
 // Downstream: EnsureNormalized and RefreshBeaconFlag.
@@ -139,7 +139,7 @@ func NewSpot(dxCall, deCall string, freq float64, mode string) *Spot {
 	return spot
 }
 
-// Purpose: Construct a new spot using pre-normalized callsigns.
+// NewSpotNormalized constructs a new spot using pre-normalized callsigns.
 // Key aspects: Assumes NormalizeCallsign already ran on DX/DE calls.
 // Upstream: Ingest paths that normalize once.
 // Downstream: EnsureNormalized and RefreshBeaconFlag.
@@ -188,7 +188,7 @@ func roundFrequencyTo100Hz(freqKHz float64) float64 {
 	return math.Floor(freqKHz*10+0.5) / 10
 }
 
-// Purpose: Compute a 32-bit dedupe hash for the spot.
+// Hash32 computes a 32-bit dedupe hash for the spot.
 // Key aspects: Uses fixed-size buffer with time/freq/calls to avoid allocations.
 // Upstream: deduplication (primary).
 // Downstream: writeFixedNormalizedCall and xxh3.Hash.
@@ -343,7 +343,7 @@ type stringBuilder struct {
 	buf []byte
 }
 
-// Purpose: Ensure the stringBuilder has capacity for n more bytes.
+// Grow ensures the stringBuilder has capacity for n more bytes.
 // Key aspects: Grows underlying buffer without shrinking.
 // Upstream: FormatDXCluster and helpers.
 // Downstream: make/copy for buffer growth.
@@ -359,7 +359,7 @@ func (sb *stringBuilder) Grow(n int) {
 	sb.buf = newBuf
 }
 
-// Purpose: Append a string to the builder buffer.
+// AppendString appends a string to the builder buffer.
 // Key aspects: Appends raw bytes without extra allocations.
 // Upstream: FormatDXCluster and helpers.
 // Downstream: slice append.
@@ -367,7 +367,7 @@ func (sb *stringBuilder) AppendString(s string) {
 	sb.buf = append(sb.buf, s...)
 }
 
-// Purpose: Append a single byte to the builder buffer.
+// AppendByte appends a single byte to the builder buffer.
 // Key aspects: Lightweight wrapper over slice append.
 // Upstream: FormatDXCluster and helpers.
 // Downstream: slice append.
@@ -375,7 +375,7 @@ func (sb *stringBuilder) AppendByte(b byte) {
 	sb.buf = append(sb.buf, b)
 }
 
-// Purpose: Populate cached normalized fields on the Spot.
+// EnsureNormalized populates cached normalized fields on the Spot.
 // Key aspects: Uppercases/normalizes mode, band, calls, and grid prefixes.
 // Upstream: Multiple hot paths (dedup, format, filters).
 // Downstream: NormalizeCallsign and string operations.
@@ -451,7 +451,7 @@ func (s *Spot) InvalidateMetadataCache() {
 	s.DECellID = 0
 }
 
-// Purpose: Return the current length of the builder buffer.
+// Len returns the current length of the builder buffer.
 // Key aspects: Thin wrapper around len.
 // Upstream: FormatDXCluster and helpers.
 // Downstream: None.
@@ -459,7 +459,7 @@ func (sb *stringBuilder) Len() int {
 	return len(sb.buf)
 }
 
-// Purpose: Truncate the builder buffer to n bytes.
+// Truncate truncate the builder buffer to n bytes.
 // Key aspects: Clamps negative n to zero.
 // Upstream: FormatDXCluster and helpers.
 // Downstream: slice reslice.
@@ -473,7 +473,7 @@ func (sb *stringBuilder) Truncate(n int) {
 	sb.buf = sb.buf[:n]
 }
 
-// Purpose: Convert the builder buffer to a string.
+// String converts the builder buffer to a string.
 // Key aspects: Returns a new string backed by copied bytes.
 // Upstream: FormatDXCluster.
 // Downstream: string conversion.
@@ -514,7 +514,7 @@ func displayDXCall(call string) string {
 	return call
 }
 
-// Purpose: Format a spot as a fixed-width DX cluster line.
+// FormatDXCluster formats a spot as a fixed-width DX cluster line.
 // Key aspects: Enforces column layout and caches formatted string once.
 // Upstream: telnet broadcast and archive formatting.
 // Downstream: formatZoneGridComment, writeSpaces, and stringBuilder helpers.

@@ -62,7 +62,7 @@ type qualityShard struct {
 	dynamic map[callFreqKey]*qualityEntry
 }
 
-// Purpose: Construct an empty call quality store with default bounds.
+// NewCallQualityStore constructs an empty call quality store with default bounds.
 // Key aspects: Initializes sharded maps; cleanup is opt-in via StartCleanup.
 // Upstream: global callQuality initialization.
 // Downstream: NewCallQualityStoreWithOptions.
@@ -71,7 +71,7 @@ func NewCallQualityStore() *CallQualityStore {
 	return NewCallQualityStoreWithOptions(CallQualityOptions{})
 }
 
-// Purpose: Construct a bounded call quality store with custom options.
+// NewCallQualityStoreWithOptions constructs a bounded call quality store with custom options.
 // Key aspects: Applies defaults when options are unset.
 // Upstream: ConfigureCallQualityStore and tests.
 // Downstream: shard allocation.
@@ -121,7 +121,7 @@ func NewCallQualityStoreWithOptions(opts CallQualityOptions) *CallQualityStore {
 	return store
 }
 
-// Purpose: Start the periodic cleanup goroutine.
+// StartCleanup starts the periodic cleanup goroutine.
 // Key aspects: Prunes expired dynamic entries at a bounded cadence.
 // Upstream: ConfigureCallQualityStore or main startup.
 // Downstream: cleanupLoop.
@@ -140,7 +140,7 @@ func (s *CallQualityStore) StartCleanup() {
 	go s.cleanupLoop()
 }
 
-// Purpose: Stop the periodic cleanup goroutine.
+// StopCleanup stops the periodic cleanup goroutine.
 // Key aspects: Closes the quit channel and clears it.
 // Upstream: ConfigureCallQualityStore or shutdown.
 // Downstream: channel close only.
@@ -181,7 +181,7 @@ func (s *CallQualityStore) cleanup(now time.Time) {
 	}
 }
 
-// Purpose: Configure the global call-quality store with bounded defaults.
+// ConfigureCallQualityStore configures the global call-quality store with bounded defaults.
 // Key aspects: Stops prior cleanup goroutine and swaps the global store.
 // Upstream: main startup/config loading.
 // Downstream: NewCallQualityStoreWithOptions and StartCleanup.
@@ -215,7 +215,7 @@ func freqBinHz(freqHz float64, binSizeHz int) int {
 	return int(freqHz) / binSizeHz
 }
 
-// Purpose: Retrieve the quality score for a call/bin.
+// Get retrieves the quality score for a call/bin.
 // Key aspects: Falls back to global prior bin (-1) when no bin-specific entry exists.
 // Upstream: correction logic and IsGood.
 // Downstream: freqBinHz and shard access.
@@ -244,7 +244,7 @@ func (s *CallQualityStore) getWithTime(call string, freqHz float64, binSizeHz in
 	return 0
 }
 
-// Purpose: Adjust a call/bin quality score by delta.
+// Add adjusts a call/bin quality score by delta.
 // Key aspects: Normalizes call and skips zero deltas.
 // Upstream: correction anchors and priors loading.
 // Downstream: freqBinHz and shard mutation.
@@ -288,7 +288,7 @@ func (s *CallQualityStore) addWithTime(call string, freqHz float64, binSizeHz in
 	}
 }
 
-// Purpose: Insert a pinned prior (non-expiring when enabled).
+// AddPinned inserts a pinned prior (non-expiring when enabled).
 // Key aspects: Adds to pinned map or falls back to dynamic when pinning disabled.
 // Upstream: LoadCallQualityPriors.
 // Downstream: shard map mutation.
@@ -311,7 +311,7 @@ func (s *CallQualityStore) AddPinned(call string, freqHz float64, binSizeHz int,
 	shard.mu.Unlock()
 }
 
-// Purpose: Determine whether a call meets the quality threshold.
+// IsGood reports whether a call meets the quality threshold.
 // Key aspects: Uses config bin size and threshold.
 // Upstream: call correction decision logic.
 // Downstream: Get.

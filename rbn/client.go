@@ -155,7 +155,7 @@ func equalFoldASCII(a, b string) bool {
 	return true
 }
 
-// Purpose: Configure the callsign normalization cache for RBN spotters.
+// ConfigureCallCache configures the callsign normalization cache for RBN spotters.
 // Key aspects: Applies defaults and rebuilds the shared cache.
 // Upstream: Config load or tests.
 // Downstream: spot.NewCallCache.
@@ -171,7 +171,7 @@ func ConfigureCallCache(size int, ttl time.Duration) {
 	rbnNormalizeCache = spot.NewCallCache(rbnCallCacheSize, rbnCallCacheTTL)
 }
 
-// Purpose: Construct an RBN telnet client.
+// NewClient constructs an RBN telnet client.
 // Key aspects: Initializes channels and caches; bufferSize absorbs bursty ingest.
 // Upstream: main.go startup.
 // Downstream: Client.Connect.
@@ -193,7 +193,7 @@ func NewClient(host string, port int, callsign string, name string, skewStore *s
 	}
 }
 
-// Purpose: Enable the permissive parser for non-RBN telnet feeds.
+// UseMinimalParser enables the permissive parser for non-RBN telnet feeds.
 // Key aspects: Extracts DE/DX/freq with optional mode/report/time tokens.
 // Upstream: main.go for human/relay telnet clients.
 // Downstream: parseSpot minimal parsing path.
@@ -203,7 +203,7 @@ func (c *Client) UseMinimalParser() {
 	}
 }
 
-// Purpose: Select the telnet transport backend.
+// SetTelnetTransport select the telnet transport backend.
 // Key aspects: Normalizes values; unrecognized values fall back to native.
 // Upstream: Config load or caller setup.
 // Downstream: useZiutekTelnet.
@@ -214,7 +214,7 @@ func (c *Client) SetTelnetTransport(transport string) {
 	c.telnetTransport = strings.ToLower(strings.TrimSpace(transport))
 }
 
-// Purpose: Install a raw line passthrough channel for minimal parsing.
+// SetRawPassthrough install a raw line passthrough channel for minimal parsing.
 // Key aspects: Non-blocking delivery to avoid ingest stalls.
 // Upstream: main.go wiring for peer/raw feeds.
 // Downstream: parseSpot raw line forwarding.
@@ -224,7 +224,7 @@ func (c *Client) SetRawPassthrough(ch chan<- string) {
 	}
 }
 
-// Purpose: Enable periodic CRLF keepalives for upstream telnet feeds.
+// EnableKeepalive enables periodic CRLF keepalives for upstream telnet feeds.
 // Key aspects: Stores interval for a later keepaliveLoop.
 // Upstream: Config load or caller setup.
 // Downstream: keepaliveLoop goroutine.
@@ -283,7 +283,7 @@ func extractCallAndFreq(tok spotToken) (string, float64, bool) {
 	return callPart, freq, ok
 }
 
-// Purpose: Establish initial RBN connection and start supervision.
+// Connect establishes the initial RBN connection and starts supervision.
 // Key aspects: First dial is synchronous; reconnects happen in background.
 // Upstream: main.go startup.
 // Downstream: establishConnection, connectionSupervisor goroutine.
@@ -828,7 +828,7 @@ func (c *Client) parseSpot(line string) {
 	}
 }
 
-// Purpose: Expose the output spot channel.
+// GetSpotChannel exposes the output spot channel.
 // Key aspects: Read-only channel for downstream consumers.
 // Upstream: main.go pipeline wiring.
 // Downstream: None.
@@ -836,7 +836,7 @@ func (c *Client) GetSpotChannel() <-chan *spot.Spot {
 	return c.spotChan
 }
 
-// Purpose: Report whether the client is connected.
+// IsConnected reports whether the client is connected.
 // Key aspects: Tracks connection state via a boolean flag.
 // Upstream: Diagnostics/health checks.
 // Downstream: None.
@@ -857,7 +857,7 @@ type HealthSnapshot struct {
 	SpotDrops    uint64
 }
 
-// Purpose: Provide a consistent ingest health snapshot.
+// HealthSnapshot provides a consistent ingest health snapshot.
 // Key aspects: Uses atomics for timestamps and drop counts.
 // Upstream: ingest health monitor.
 // Downstream: None.
@@ -880,7 +880,7 @@ func (c *Client) HealthSnapshot() HealthSnapshot {
 	return snap
 }
 
-// Purpose: Stop the RBN client and close connections.
+// Stop stops the RBN client and closes connections.
 // Key aspects: Signals shutdown once and closes the underlying conn.
 // Upstream: main.go shutdown.
 // Downstream: conn.Close, shutdown channel.

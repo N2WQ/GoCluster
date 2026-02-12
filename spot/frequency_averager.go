@@ -22,7 +22,7 @@ type freqSample struct {
 	at   time.Time
 }
 
-// Purpose: Construct a frequency averager with empty state.
+// NewFrequencyAverager constructs a frequency averager with empty state.
 // Key aspects: Initializes maps for samples and last-seen timestamps.
 // Upstream: main startup.
 // Downstream: map allocation.
@@ -34,7 +34,7 @@ func NewFrequencyAverager() *FrequencyAverager {
 	}
 }
 
-// Purpose: Update history and compute average frequency within a window.
+// Average updates history and computes average frequency within a window.
 // Key aspects: Filters by recency and tolerance, returns average/corroborators/total.
 // Upstream: processOutputSpots frequency averaging.
 // Downstream: cleanup and math.Abs.
@@ -111,7 +111,7 @@ func (fa *FrequencyAverager) cleanup(now time.Time, window time.Duration) {
 	}
 }
 
-// Purpose: Start a periodic cleanup goroutine.
+// StartCleanup starts a periodic cleanup goroutine.
 // Key aspects: Guards against multiple starts and uses a quit channel.
 // Upstream: main startup.
 // Downstream: cleanup and time.NewTicker.
@@ -152,7 +152,7 @@ func (fa *FrequencyAverager) StartCleanup(interval, window time.Duration) {
 	}()
 }
 
-// Purpose: Stop the periodic cleanup goroutine.
+// StopCleanup stops the periodic cleanup goroutine.
 // Key aspects: Closes quit channel and clears it.
 // Upstream: main shutdown.
 // Downstream: channel close only.

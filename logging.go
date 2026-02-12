@@ -29,7 +29,7 @@ type ioLineSink struct {
 	withTimestamp bool
 }
 
-// Purpose: Write log lines to an io.Writer with optional timestamp prefix.
+// WriteLine writes log lines to an io.Writer with optional timestamp prefix.
 // Key aspects: Adds local time prefix and always terminates with newline.
 // Upstream: logFanout line dispatch.
 // Downstream: io.Writer.Write.
@@ -85,7 +85,7 @@ func newDailyFileSink(dir string, retentionDays int) (*dailyFileSink, error) {
 	return sink, nil
 }
 
-// Purpose: Append a timestamped line to the current daily log file.
+// WriteLine appends a timestamped line to the current daily log file.
 // Key aspects: Rotates on day change and logs file errors to stderr (rate-limited).
 // Upstream: logFanout line dispatch.
 // Downstream: os.OpenFile and file.WriteString.
@@ -124,7 +124,7 @@ func (s *dailyFileSink) WriteLine(line string, now time.Time) {
 	}
 }
 
-// Purpose: Close the currently open log file (if any).
+// Close closes the currently open log file (if any).
 // Key aspects: Safe for repeated calls and nil receivers.
 // Upstream: main shutdown path.
 // Downstream: os.File.Close.
@@ -256,7 +256,7 @@ func setupLogging(cfg config.LoggingConfig, console io.Writer) (*logFanout, erro
 	return fanout, nil
 }
 
-// Purpose: Swap the console sink (e.g., to a UI writer).
+// SetConsoleSink swaps the console sink (e.g., to a UI writer).
 // Key aspects: Updates the sink atomically with the line buffer.
 // Upstream: main after UI initialization.
 // Downstream: None.
@@ -273,7 +273,7 @@ func (f *logFanout) SetConsoleSink(writer io.Writer, withTimestamp bool) {
 	f.mu.Unlock()
 }
 
-// Purpose: Attach or replace the file sink.
+// SetFileSink attaches or replaces the file sink.
 // Key aspects: Allows setupLogging to install a daily sink after creation.
 // Upstream: setupLogging.
 // Downstream: None.
@@ -290,7 +290,7 @@ type rotateHookSetter interface {
 	SetRotateHook(hook logRotateHook)
 }
 
-// Purpose: Attach a rotate hook to the file sink if supported.
+// SetRotateHook attaches a rotate hook to the file sink if supported.
 // Key aspects: No-op when file logging is disabled or sink does not support hooks.
 // Upstream: main when enabling async prop report generation on rotation.
 // Downstream: dailyFileSink.SetRotateHook.
@@ -306,7 +306,7 @@ func (f *logFanout) SetRotateHook(hook logRotateHook) {
 	}
 }
 
-// Purpose: Fan out log output to console/UI and file sinks.
+// Write fans out log output to console/UI and file sinks.
 // Key aspects: Line-buffered with bounded internal storage.
 // Upstream: log.Logger output.
 // Downstream: lineSink.WriteLine.
@@ -354,7 +354,7 @@ func (f *logFanout) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// Purpose: Close all sinks owned by the fanout writer.
+// Close closes all sinks owned by the fanout writer.
 // Key aspects: Best-effort cleanup for process shutdown.
 // Upstream: main shutdown.
 // Downstream: lineSink.Close.
@@ -381,7 +381,7 @@ func (f *logFanout) Close() error {
 	return firstErr
 }
 
-// Purpose: Write a single line only to the file sink (no console/UI output).
+// WriteFileOnlyLine writes a single line only to the file sink (no console/UI output).
 // Key aspects: Safe when file logging is disabled.
 // Upstream: periodic background loggers that should not spam the console.
 // Downstream: lineSink.WriteLine.

@@ -544,7 +544,7 @@ type PeeringACL struct {
 	AllowCallsigns []string `yaml:"allow_callsigns"`
 }
 
-// Purpose: Build MQTT subscription topics based on configured modes.
+// SubscriptionTopics builds MQTT subscription topics based on configured modes.
 // Key aspects: Always uses a single catch-all subscription unless a custom topic is provided.
 // Upstream: PSKReporter client setup.
 // Downstream: None.
@@ -1920,7 +1920,7 @@ func mergeYAMLMaps(dst, src map[string]any) map[string]any {
 	return dst
 }
 
-// Purpose: Print a human-readable configuration summary.
+// Print prints a human-readable configuration summary.
 // Key aspects: Focuses on operationally relevant fields.
 // Upstream: main.go startup logging.
 // Downstream: fmt.Printf.

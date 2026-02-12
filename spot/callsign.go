@@ -34,7 +34,7 @@ type cacheEntry struct {
 	expires time.Time
 }
 
-// Purpose: Construct a bounded normalization cache.
+// NewCallCache constructs a bounded normalization cache.
 // Key aspects: Defaults capacity/TTL when unset.
 // Upstream: global cache initialization and tests.
 // Downstream: list.New and map allocation.
@@ -54,7 +54,7 @@ func NewCallCache(capacity int, ttl time.Duration) *CallCache {
 	}
 }
 
-// Purpose: Lookup a cached normalized callsign.
+// Get looks up a cached normalized callsign.
 // Key aspects: Enforces TTL and maintains LRU ordering.
 // Upstream: NormalizeCallsign.
 // Downstream: list operations and map access under lock.
@@ -80,7 +80,7 @@ func (c *CallCache) Get(key string) (string, bool) {
 	return entry.value, true
 }
 
-// Purpose: Insert or update a cached normalization entry.
+// Add inserts or updates a cached normalization entry.
 // Key aspects: Evicts oldest item when capacity is exceeded.
 // Upstream: NormalizeCallsign.
 // Downstream: list operations and map mutation under lock.
@@ -124,7 +124,7 @@ func ConfigureNormalizeCallCache(size int, ttl time.Duration) {
 	normalizeCallCache = NewCallCache(size, ttl)
 }
 
-// Purpose: Normalize a callsign for consistent comparisons.
+// NormalizeCallsign normalizes a callsign for consistent comparisons.
 // Key aspects: Uppercases, trims, converts dots to slashes, strips trailing slash,
 // and removes portable suffixes like /P or /MM.
 // Upstream: All parsing and validation paths.
@@ -165,7 +165,7 @@ func validateNormalizedCallsign(call string) bool {
 	return callsignPattern.MatchString(call)
 }
 
-// Purpose: Return the maximum allowed callsign length.
+// MaxCallsignLength returns the maximum allowed callsign length.
 // Key aspects: Exposes the validation limit for other packages.
 // Upstream: PSKReporter and other callers.
 // Downstream: maxCallsignLength constant.
@@ -173,7 +173,7 @@ func MaxCallsignLength() int {
 	return maxCallsignLength
 }
 
-// Purpose: Validate a raw callsign input.
+// IsValidCallsign validates a raw callsign input.
 // Key aspects: Normalizes then validates format.
 // Upstream: Parser and dedupe validation.
 // Downstream: NormalizeCallsign and validateNormalizedCallsign.
@@ -183,7 +183,7 @@ func IsValidCallsign(call string) bool {
 	return validateNormalizedCallsign(normalized)
 }
 
-// Purpose: Validate an already-normalized callsign.
+// IsValidNormalizedCallsign validates an already-normalized callsign.
 // Key aspects: Assumes NormalizeCallsign was already applied by the caller.
 // Upstream: Ingest paths that normalize once.
 // Downstream: validateNormalizedCallsign.
@@ -191,7 +191,7 @@ func IsValidNormalizedCallsign(call string) bool {
 	return validateNormalizedCallsign(call)
 }
 
-// Purpose: Determine whether a callsign is a beacon identifier.
+// IsBeaconCall reports whether a callsign is a beacon identifier.
 // Key aspects: Normalizes and checks /B suffix.
 // Upstream: RefreshBeaconFlag and other beacon detection.
 // Downstream: NormalizeCallsign and strings.HasSuffix.

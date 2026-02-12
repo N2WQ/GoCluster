@@ -46,7 +46,7 @@ type AdaptiveGroupThresholds struct {
 	BusyMinReports   int
 }
 
-// Purpose: Construct adaptive min_reports controller from config.
+// NewAdaptiveMinReports constructs adaptive min_reports controller from config.
 // Key aspects: Returns nil when disabled or no groups are defined.
 // Upstream: main startup and call correction wiring.
 // Downstream: normalizeAdaptiveGroups and map allocation.
@@ -96,7 +96,7 @@ func NewAdaptiveMinReports(cfg config.CallCorrectionConfig) *AdaptiveMinReports 
 	}
 }
 
-// Purpose: Record that a reporter was active on a band.
+// Observe records that a reporter was active on a band.
 // Key aspects: Normalizes band/reporter and updates last-seen time.
 // Upstream: call correction input paths.
 // Downstream: reporterSeen map under lock.
@@ -120,7 +120,7 @@ func (a *AdaptiveMinReports) Observe(band, reporter string, now time.Time) {
 	a.reporterSeen[b][r] = now
 }
 
-// Purpose: Return current min_reports for a band.
+// MinReportsForBand returns current min_reports for a band.
 // Key aspects: Falls back to static config when adaptive is disabled or unknown band.
 // Upstream: call correction decision logic.
 // Downstream: ensureEvaluatedLocked and group lookup.
@@ -223,7 +223,7 @@ func (a *AdaptiveMinReports) averageReporters(bands []string) float64 {
 	return total / float64(len(bands))
 }
 
-// Purpose: Return the busiest state across all groups.
+// HighestState returns the busiest state across all groups.
 // Key aspects: busy > normal > quiet; defaults to normal when empty.
 // Upstream: adaptive refresher and call correction logic.
 // Downstream: ensureEvaluatedLocked.
@@ -251,7 +251,7 @@ func (a *AdaptiveMinReports) HighestState() string {
 	return "quiet"
 }
 
-// Purpose: Return the adaptive state for a specific band.
+// StateForBand returns the adaptive state for a specific band.
 // Key aspects: Defaults to normal when unknown or disabled.
 // Upstream: call correction decision logic.
 // Downstream: ensureEvaluatedLocked and group lookup.

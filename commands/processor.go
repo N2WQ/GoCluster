@@ -37,7 +37,7 @@ type Processor struct {
 	repReport  func(reputation.DropEvent)
 }
 
-// Purpose: Construct a command processor bound to shared spot state.
+// NewProcessor constructs a command processor bound to shared spot state.
 // Key aspects: SHOW/DX uses archive history; DX commands can enqueue spots.
 // Upstream: Telnet server initialization.
 // Downstream: Processor methods (ProcessCommand, handleShowDX, handleDX).
@@ -53,7 +53,7 @@ func NewProcessor(buf *buffer.RingBuffer, archive archiveReader, spotInput chan<
 	}
 }
 
-// Purpose: Parse a command and return the response text.
+// ProcessCommand parses a command and returns the response text.
 // Key aspects: "BYE" signals the caller to close the session.
 // Upstream: Telnet client command loop.
 // Downstream: ProcessCommandForClient.
@@ -61,7 +61,7 @@ func (p *Processor) ProcessCommand(cmd string) string {
 	return p.ProcessCommandForClient(cmd, "", "", nil, "go")
 }
 
-// Purpose: Parse a command with client context for DX posting and filtered history.
+// ProcessCommandForClient parses a command with client context for DX posting and filtered history.
 // Key aspects: Routes DX commands, SHOW/DX, and SHOW/MYDX with optional filter.
 // Upstream: Telnet client command loop with callsign context.
 // Downstream: handleDX, handleHelp, handleShow.

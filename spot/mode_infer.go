@@ -44,7 +44,7 @@ type ModeAssigner struct {
 	digital  *digitalFreqMap
 }
 
-// Purpose: Construct a ModeAssigner with defaults applied.
+// NewModeAssigner constructs a ModeAssigner with defaults applied.
 // Key aspects: Wires cache sizes/TTLs and fallback allocation logic.
 // Upstream: main startup wiring.
 // Downstream: newModeAssigner.

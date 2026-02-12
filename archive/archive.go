@@ -96,7 +96,7 @@ type Writer struct {
 	seq       uint32
 }
 
-// Purpose: Initialize archive storage and return a writer instance.
+// NewWriter initializes archive storage and returns a writer instance.
 // Key aspects: Creates Pebble DB directory and queue defaults.
 // Upstream: main.go archive setup.
 // Downstream: openArchiveDB.
@@ -192,7 +192,7 @@ func archiveWriteOptions(cfg config.ArchiveConfig) (*pebble.WriteOptions, error)
 	}
 }
 
-// Purpose: Start background loops for inserts and retention cleanup.
+// Start starts background loops for inserts and retention cleanup.
 // Key aspects: Runs goroutines; writer remains non-blocking for callers.
 // Upstream: main.go startup.
 // Downstream: insertLoop goroutine, cleanupLoop goroutine.
@@ -207,7 +207,7 @@ func (w *Writer) Start() {
 	})
 }
 
-// Purpose: Stop the writer and close the underlying DB.
+// Stop stops the writer and closes the underlying DB.
 // Key aspects: Signals loops to exit; waits for completion before closing Pebble.
 // Upstream: main.go shutdown.
 // Downstream: insertLoop, cleanupLoop, db.Close.
@@ -225,7 +225,7 @@ func (w *Writer) Stop() {
 	}
 }
 
-// Purpose: Try to enqueue a spot for archival without blocking.
+// Enqueue tries to enqueue a spot for archival without blocking.
 // Key aspects: Drops silently when the queue is full to protect the hot path.
 // Upstream: main.go spot ingest/broadcast.
 // Downstream: writer queue channel.
@@ -495,7 +495,7 @@ func retentionCutoff(now int64, seconds int) int64 {
 	return now - int64(seconds)*int64(time.Second)
 }
 
-// Purpose: Delete the archive DB files (test helper).
+// DropDB deletes the archive DB files (test helper).
 // Key aspects: Removes the DB directory tree or file path.
 // Upstream: Tests or maintenance tools.
 // Downstream: os.RemoveAll.
@@ -506,7 +506,7 @@ func DropDB(path string) error {
 	return os.RemoveAll(path)
 }
 
-// Purpose: Return the most recent N archived spots, newest-first.
+// Recent returns the most recent N archived spots, newest-first.
 // Key aspects: Read-only iterator; reconstructs Spot objects from records.
 // Upstream: Telnet SHOW/DX handlers when archive is enabled.
 // Downstream: decodeSpot.
@@ -514,7 +514,7 @@ func (w *Writer) Recent(limit int) ([]*spot.Spot, error) {
 	return w.RecentFiltered(limit, nil)
 }
 
-// Purpose: Return the most recent N archived spots that match a predicate.
+// RecentFiltered returns the most recent N archived spots that match a predicate.
 // Key aspects: Progressive bounded scan to avoid unbounded reads on narrow filters.
 // Upstream: Telnet SHOW MYDX handlers.
 // Downstream: decodeSpot, predicate match.

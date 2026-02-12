@@ -34,7 +34,7 @@ type HarmonicDetector struct {
 	sweepQuit chan struct{}
 }
 
-// Purpose: Construct a harmonic detector with configured thresholds.
+// NewHarmonicDetector constructs a harmonic detector with configured thresholds.
 // Key aspects: Initializes entry maps and stores settings.
 // Upstream: main startup.
 // Downstream: map allocation.
@@ -47,7 +47,7 @@ func NewHarmonicDetector(settings HarmonicSettings) *HarmonicDetector {
 	}
 }
 
-// Purpose: Determine whether a spot is a harmonic that should be dropped.
+// ShouldDrop reports whether a spot is a harmonic that should be dropped.
 // Key aspects: Checks recency, report deltas, and harmonic multiples.
 // Upstream: processOutputSpots harmonic suppression stage.
 // Downstream: detectHarmonic and cleanup/prune.
@@ -190,7 +190,7 @@ func (hd *HarmonicDetector) cleanup(now time.Time) {
 	}
 }
 
-// Purpose: Start periodic cleanup of harmonic entries.
+// StartCleanup starts periodic cleanup of harmonic entries.
 // Key aspects: Guards against multiple starts and uses quit channel.
 // Upstream: main startup.
 // Downstream: cleanup and time.NewTicker.
@@ -230,7 +230,7 @@ func (hd *HarmonicDetector) StartCleanup(interval time.Duration) {
 	}()
 }
 
-// Purpose: Stop the periodic cleanup goroutine.
+// StopCleanup stops the periodic cleanup goroutine.
 // Key aspects: Closes quit channel and clears it.
 // Upstream: main shutdown.
 // Downstream: channel close only.

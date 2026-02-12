@@ -156,7 +156,7 @@ func sanitizeOptions(opts Options) Options {
 	return opts
 }
 
-// Purpose: Load all call records from the store.
+// Entries loads all call records from the store.
 // Key aspects: Reads full table; returns a slice of Record values.
 // Upstream: Administrative tools or diagnostics.
 // Downstream: Pebble iterator.
@@ -188,7 +188,7 @@ func (s *Store) Entries() ([]Record, error) {
 	return list, nil
 }
 
-// Purpose: Open or create the gridstore Pebble database.
+// Open opens or creates the gridstore Pebble database.
 // Key aspects: Initializes metadata and spins a single writer goroutine.
 // Upstream: main.go startup and tools.
 // Downstream: Pebble open, writer loop.
@@ -260,7 +260,7 @@ func Open(path string, opts Options) (*Store, error) {
 	return store, nil
 }
 
-// Purpose: Close the underlying database handle.
+// Close closes the underlying database handle.
 // Key aspects: Drains writer goroutine before closing Pebble.
 // Upstream: main.go shutdown or tests.
 // Downstream: writer loop, db.Close.
@@ -279,7 +279,7 @@ func (s *Store) Close() error {
 	return err
 }
 
-// Purpose: Delete records older than the cutoff time.
+// PurgeOlderThan deletes records older than the cutoff time.
 // Key aspects: Uses updated_at index; returns rows removed.
 // Upstream: Periodic maintenance in main pipeline.
 // Downstream: Pebble deletes.
@@ -296,7 +296,7 @@ func (s *Store) PurgeOlderThan(cutoff time.Time) (int64, error) {
 	return result.removed, result.err
 }
 
-// Purpose: Clear the known-call flag for all entries.
+// ClearKnownFlags clears the known-call flag for all entries.
 // Key aspects: Bulk update across the calls table.
 // Upstream: Admin reset flows or tests.
 // Downstream: writer loop.
@@ -313,7 +313,7 @@ func (s *Store) ClearKnownFlags() error {
 	return result.err
 }
 
-// Purpose: Insert or update a call record atomically.
+// Upsert inserts or updates a call record atomically.
 // Key aspects: Normalizes callsign; uses single writer goroutine.
 // Upstream: Spot processing and enrichment.
 // Downstream: UpsertBatch.
@@ -321,7 +321,7 @@ func (s *Store) Upsert(rec Record) error {
 	return s.UpsertBatch([]Record{rec})
 }
 
-// Purpose: Insert or update multiple records in a single batch.
+// UpsertBatch inserts or updates multiple records in a single batch.
 // Key aspects: Serializes writes through a single goroutine and Syncs to disk.
 // Upstream: Batch updates from spot pipelines or tools.
 // Downstream: writer loop.
@@ -341,7 +341,7 @@ func (s *Store) UpsertBatch(recs []Record) error {
 	return result.err
 }
 
-// Purpose: Fetch a record by callsign.
+// Get fetches a record by callsign.
 // Key aspects: Returns (nil, nil) when not found; normalizes callsign.
 // Upstream: Spot enrichment queries.
 // Downstream: Pebble get.
@@ -369,7 +369,7 @@ func (s *Store) Get(call string) (*Record, error) {
 	return &rec, nil
 }
 
-// Purpose: Return the total number of stored calls.
+// Count returns the total number of stored calls.
 // Key aspects: Uses cached count maintained by the writer.
 // Upstream: Metrics/diagnostics.
 // Downstream: atomic count.
@@ -380,7 +380,7 @@ func (s *Store) Count() (int64, error) {
 	return s.count.Load(), nil
 }
 
-// Purpose: Retry logic for legacy callers; Pebble has no SQLITE_BUSY analog.
+// IsBusyError retry logic for legacy callers; Pebble has no SQLITE_BUSY analog.
 // Key aspects: Always returns false to indicate no busy retry.
 // Upstream: startGridWriter retry guards.
 // Downstream: None.

@@ -20,7 +20,7 @@ type IntegrityStats struct {
 	CountMetaErr   error
 }
 
-// Purpose: Create a Pebble checkpoint on disk with a flushed WAL.
+// Checkpoint creates a Pebble checkpoint on disk with a flushed WAL.
 // Key aspects: Requires a non-empty destination path and uses Pebble's checkpoint.
 // Upstream: Scheduled gridstore checkpointing.
 // Downstream: Pebble DB.Checkpoint.
@@ -37,7 +37,7 @@ func (s *Store) Checkpoint(dest string) error {
 	return nil
 }
 
-// Purpose: Verify checkpoint integrity by opening it read-only and scanning entries.
+// VerifyCheckpoint verifies checkpoint integrity by opening it read-only and scanning entries.
 // Key aspects: Honors context cancellation and maxDuration for bounded scans.
 // Upstream: Corruption recovery on startup.
 // Downstream: Pebble iterator and decodeRecordValue.
@@ -64,7 +64,7 @@ func VerifyCheckpoint(ctx context.Context, path string, maxDuration time.Duratio
 	return stats, nil
 }
 
-// Purpose: Verify the active store via a bounded full-table scan.
+// Verify verifies the active store via a bounded full-table scan.
 // Key aspects: Decodes each record and returns stats for logging.
 // Upstream: Daily integrity scan scheduler.
 // Downstream: Pebble iterator and decodeRecordValue.

@@ -23,7 +23,7 @@ const (
 	tempCleanupMinAge   = 30 * time.Minute
 )
 
-// Purpose: Start a background refresh loop for the FCC ULS database.
+// StartBackground starts a background refresh loop for the FCC ULS database.
 // Key aspects: Kicks off an immediate refresh and then schedules daily updates.
 // Upstream: main.go startup when ULS is enabled.
 // Downstream: Refresh, startScheduler.
@@ -52,7 +52,7 @@ func StartBackground(ctx context.Context, cfg config.FCCULSConfig) {
 	}()
 }
 
-// Purpose: Download, extract, and rebuild the FCC ULS SQLite database.
+// Refresh downloads, extracts, and rebuilds the FCC ULS SQLite database.
 // Key aspects: Uses conditional HTTP headers unless forced; rebuilds only when needed.
 // Upstream: StartBackground, BuildOnce/manual refresh triggers.
 // Downstream: downloadArchive, extractArchive, buildDatabase, ResetLicenseDB.

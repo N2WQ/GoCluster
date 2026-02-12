@@ -43,7 +43,7 @@ var bandLookup = func() map[string]BandInfo {
 	return m
 }()
 
-// Purpose: Normalize a band label into canonical lookup form.
+// NormalizeBand normalizes a band label into canonical lookup form.
 // Key aspects: Lowercases, strips whitespace, normalizes units, and appends "m" for bare numbers.
 // Upstream: Callers parsing band labels or user input.
 // Downstream: strings.ReplaceAll and NormalizeBand lookup table.
@@ -83,7 +83,7 @@ func NormalizeBand(label string) string {
 	return cleaned
 }
 
-// Purpose: Validate that a band label maps to a known band.
+// IsValidBand validates that a band label maps to a known band.
 // Key aspects: Normalizes label and checks lookup table.
 // Upstream: Band validation paths.
 // Downstream: NormalizeBand and bandLookup.
@@ -97,7 +97,7 @@ func IsValidBand(label string) bool {
 	return ok
 }
 
-// Purpose: Return canonical names for all configured bands.
+// SupportedBandNames returns canonical names for all configured bands.
 // Key aspects: Preserves the bandTable order.
 // Upstream: UI/config validation paths.
 // Downstream: bandTable iteration.
@@ -110,7 +110,7 @@ func SupportedBandNames() []string {
 	return names
 }
 
-// Purpose: Return min/max frequencies across all bands.
+// FrequencyBounds returns min/max frequencies across all bands.
 // Key aspects: Uses first/last entries in bandTable.
 // Upstream: Frequency sanity checks and UI displays.
 // Downstream: bandTable access.

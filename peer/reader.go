@@ -52,7 +52,7 @@ type ErrLineTooLong struct {
 	Length  int
 }
 
-// Purpose: Provide a generic error string for overlong lines.
+// Error provides a generic error string for overlong lines.
 // Key aspects: Keeps the error message stable for callers.
 // Upstream: lineReader.tryReadLine.
 // Downstream: None.
@@ -88,7 +88,7 @@ func newLineReaderWithTransport(conn net.Conn, maxLine int, pc92Max int, readFn 
 	}
 }
 
-// Purpose: Read a single line/frame with deadline and telnet filtering.
+// ReadLine reads a single line/frame with deadline and telnet filtering.
 // Key aspects: Aggregates reads into a buffer and handles overlong lines.
 // Upstream: Peer session read loop.
 // Downstream: tryReadLine, bytesIndexTerminator.

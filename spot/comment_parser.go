@@ -387,7 +387,7 @@ func buildComment(tokens []commentToken, consumed []bool) string {
 	return strings.Join(parts, " ")
 }
 
-// Purpose: Parse mode/report/time tokens and return a cleaned comment.
+// ParseSpotComment parses mode/report/time tokens and return a cleaned comment.
 // Key aspects: Uses keyword scanner, numeric parsing, and greeting guards (73/88).
 // Upstream: All spot parsers (RBN, peer, PSKReporter).
 // Downstream: tokenization helpers and NormalizeVoiceMode.

@@ -1,6 +1,6 @@
 package spot
 
-// Purpose: Determine whether a source type represents a skimmer feed.
+// IsSkimmerSource reports whether a source type represents a skimmer feed.
 // Key aspects: Only RBN/FT8/FT4/PSKReporter are treated as skimmers.
 // Upstream: mode inference and source classification.
 // Downstream: None (pure predicate).
@@ -15,7 +15,7 @@ func IsSkimmerSource(source SourceType) bool {
 	}
 }
 
-// Purpose: Set IsHuman based solely on SourceType.
+// ApplySourceHumanFlag sets IsHuman based solely on SourceType.
 // Key aspects: Human is the inverse of IsSkimmerSource.
 // Upstream: ingest and output pipelines.
 // Downstream: IsSkimmerSource.

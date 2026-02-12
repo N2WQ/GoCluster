@@ -21,7 +21,7 @@ func newBackoff(base, max time.Duration) *backoff {
 	return &backoff{cur: base, max: max}
 }
 
-// Purpose: Return the next backoff delay and advance the window.
+// Next returns the next backoff delay and advances the window.
 // Key aspects: Doubles up to the max cap.
 // Upstream: Peer reconnect loops.
 // Downstream: None.
@@ -37,7 +37,7 @@ func (b *backoff) Next() time.Duration {
 	return d
 }
 
-// Purpose: Reset backoff to its initial state.
+// Reset resets backoff to its initial state.
 // Key aspects: Sets cur to zero so Next restarts at base.
 // Upstream: Successful reconnect paths.
 // Downstream: None.

@@ -150,25 +150,25 @@ func newANSIConsole(uiCfg config.UIConfig, allowRender bool) ui.Surface {
 	return c
 }
 
-// Purpose: Satisfy ui.Surface readiness contract for ANSI consoles.
+// WaitReady satisfies ui.Surface readiness contract for ANSI consoles.
 // Key aspects: No-op because ANSI renderer has no async initialization.
 // Upstream: main UI setup.
 // Downstream: None.
 func (c *ansiConsole) WaitReady() {}
 
-// Purpose: Satisfy ui.Surface snapshot contract (ANSI ignores structured snapshots).
+// SetSnapshot satisfies ui.Surface snapshot contract (ANSI ignores structured snapshots).
 // Key aspects: No-op for ANSI renderer.
 // Upstream: main stats loop.
 // Downstream: None.
 func (c *ansiConsole) SetSnapshot(_ ui.Snapshot) {}
 
-// Purpose: Satisfy ui.Surface network update contract (ANSI ignores live updates).
+// UpdateNetworkStatus satisfies ui.Surface network update contract (ANSI ignores live updates).
 // Key aspects: No-op for ANSI renderer.
 // Upstream: telnet client change notifier.
 // Downstream: None.
 func (c *ansiConsole) UpdateNetworkStatus(summaryLine string, clientLines []string) {}
 
-// Purpose: Stop the ANSI console render loop.
+// Stop stops the ANSI console render loop.
 // Key aspects: Ensures quit is closed once.
 // Upstream: main shutdown path.
 // Downstream: None (channel close only).
@@ -181,7 +181,7 @@ func (c *ansiConsole) Stop() {
 	})
 }
 
-// Purpose: Replace the current stats pane contents.
+// SetStats replaces the current stats pane contents.
 // Key aspects: Bounds copy to fixed pane size and pads blank lines.
 // Upstream: stats ticker in main.
 // Downstream: formatLine and render signal.
@@ -207,43 +207,43 @@ func (c *ansiConsole) SetStats(lines []string) {
 	c.signalRender()
 }
 
-// Purpose: Append a drop line to the dropped pane.
+// AppendDropped appends a drop line to the dropped pane.
 // Key aspects: Delegates to the shared ring-buffer append logic.
 // Upstream: drop reporters.
 // Downstream: c.append.
 func (c *ansiConsole) AppendDropped(line string) { c.append(&c.dropped, line) }
 
-// Purpose: Append a call-correction line to the calls pane.
+// AppendCall appends a call-correction line to the calls pane.
 // Key aspects: Delegates to the shared ring-buffer append logic.
 // Upstream: dashboard/system log writers.
 // Downstream: c.append.
 func (c *ansiConsole) AppendCall(line string) { c.append(&c.calls, line) }
 
-// Purpose: Append an unlicensed call line to the unlicensed pane.
+// AppendUnlicensed appends an unlicensed call line to the unlicensed pane.
 // Key aspects: Delegates to the shared ring-buffer append logic.
 // Upstream: unlicensed reporter path.
 // Downstream: c.append.
 func (c *ansiConsole) AppendUnlicensed(line string) { c.append(&c.unlic, line) }
 
-// Purpose: Append a harmonic suppression line to the harmonic pane.
+// AppendHarmonic appends a harmonic suppression line to the harmonic pane.
 // Key aspects: Delegates to the shared ring-buffer append logic.
 // Upstream: harmonic suppression path.
 // Downstream: c.append.
 func (c *ansiConsole) AppendHarmonic(line string) { c.append(&c.harm, line) }
 
-// Purpose: Append a reputation drop line to the dropped pane.
+// AppendReputation appends a reputation drop line to the dropped pane.
 // Key aspects: Routes reputation drops into the dropped pane for ANSI UI.
 // Upstream: reputation gate path.
 // Downstream: c.append.
 func (c *ansiConsole) AppendReputation(line string) { c.append(&c.dropped, line) }
 
-// Purpose: Append a system log line to the system pane.
+// AppendSystem appends a system log line to the system pane.
 // Key aspects: Delegates to the shared ring-buffer append logic.
 // Upstream: log routing for UI mode.
 // Downstream: c.append.
 func (c *ansiConsole) AppendSystem(line string) { c.append(&c.system, line) }
 
-// Purpose: Provide an io.Writer for system log output.
+// SystemWriter provides an io.Writer for system log output.
 // Key aspects: Returns the ANSI writer wrapper or nil when inactive.
 // Upstream: UI logging setup in main.
 // Downstream: None (returns existing writer).
@@ -462,7 +462,7 @@ type ansiWriter struct {
 	mu     sync.Mutex
 }
 
-// Purpose: Implement io.Writer for system logs routed to the ANSI console.
+// Write implements io.Writer for system logs routed to the ANSI console.
 // Key aspects: Buffers until newline and forwards complete lines.
 // Upstream: log output when ANSI UI is active.
 // Downstream: bytes.IndexByte and w.append.

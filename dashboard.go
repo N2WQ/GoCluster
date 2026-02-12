@@ -177,7 +177,7 @@ func newDashboard(uiCfg config.UIConfig, enable bool) *dashboard {
 	return d
 }
 
-// Purpose: Stop the dashboard, batching ticker, and tview application.
+// Stop stops the dashboard, batching ticker, and tview application.
 // Key aspects: Stops ticker, closes batchQuit, and calls app.Stop.
 // Upstream: main shutdown path.
 // Downstream: tview.Application.Stop.
@@ -194,7 +194,7 @@ func (d *dashboard) Stop() {
 	d.app.Stop()
 }
 
-// Purpose: Block until the dashboard has rendered at least once.
+// WaitReady waits until the dashboard has rendered at least once.
 // Key aspects: Waits on the ready channel; safe for nil receivers.
 // Upstream: main UI startup.
 // Downstream: channel receive.
@@ -205,7 +205,7 @@ func (d *dashboard) WaitReady() {
 	<-d.ready
 }
 
-// Purpose: Replace the stats pane text.
+// SetStats replaces the stats pane text.
 // Key aspects: Joins lines and queues a UI update.
 // Upstream: stats ticker in main.
 // Downstream: tview.QueueUpdateDraw and TextView.SetText.
@@ -226,19 +226,19 @@ func (d *dashboard) SetStats(lines []string) {
 	})
 }
 
-// Purpose: Satisfy ui.Surface network update contract (legacy dashboard ignores it).
+// UpdateNetworkStatus satisfies ui.Surface network update contract (legacy dashboard ignores it).
 // Key aspects: No-op for legacy tview UI.
 // Upstream: telnet client change notifier.
 // Downstream: None.
 func (d *dashboard) UpdateNetworkStatus(summaryLine string, clientLines []string) {}
 
-// Purpose: Satisfy ui.Surface snapshot contract (legacy dashboard ignores structured snapshots).
+// SetSnapshot satisfies ui.Surface snapshot contract (legacy dashboard ignores structured snapshots).
 // Key aspects: No-op for legacy tview UI.
 // Upstream: main stats loop.
 // Downstream: None.
 func (d *dashboard) SetSnapshot(_ ui.Snapshot) {}
 
-// Purpose: Queue a call-correction line for the calls pane.
+// AppendCall queues a call-correction line for the calls pane.
 // Key aspects: Uses batching to reduce redraws.
 // Upstream: call correction path.
 // Downstream: d.enqueue.
@@ -246,7 +246,7 @@ func (d *dashboard) AppendCall(line string) {
 	d.enqueue(&d.callBatch, line)
 }
 
-// Purpose: Queue a drop line for the dropped pane.
+// AppendDropped queues a drop line for the dropped pane.
 // Key aspects: Uses batching to reduce redraws.
 // Upstream: drop reporters.
 // Downstream: d.enqueue.
@@ -254,7 +254,7 @@ func (d *dashboard) AppendDropped(line string) {
 	d.enqueue(&d.droppedBatch, line)
 }
 
-// Purpose: Queue an unlicensed call line for the unlicensed pane.
+// AppendUnlicensed queues an unlicensed call line for the unlicensed pane.
 // Key aspects: Uses batching to reduce redraws.
 // Upstream: unlicensed reporter.
 // Downstream: d.enqueue.
@@ -262,7 +262,7 @@ func (d *dashboard) AppendUnlicensed(line string) {
 	d.enqueue(&d.unlicensedBatch, line)
 }
 
-// Purpose: Queue a harmonic suppression line for the harmonic pane.
+// AppendHarmonic queues a harmonic suppression line for the harmonic pane.
 // Key aspects: Uses batching to reduce redraws.
 // Upstream: harmonic suppression path.
 // Downstream: d.enqueue.
@@ -270,7 +270,7 @@ func (d *dashboard) AppendHarmonic(line string) {
 	d.enqueue(&d.harmBatch, line)
 }
 
-// Purpose: Queue a reputation drop line for the dropped pane.
+// AppendReputation queues a reputation drop line for the dropped pane.
 // Key aspects: Routes reputation drops into the dropped pane for legacy UI.
 // Upstream: reputation gate path.
 // Downstream: d.enqueue.
@@ -278,7 +278,7 @@ func (d *dashboard) AppendReputation(line string) {
 	d.enqueue(&d.droppedBatch, line)
 }
 
-// Purpose: Queue a system log line for the system pane.
+// AppendSystem queues a system log line for the system pane.
 // Key aspects: Uses batching to reduce redraws.
 // Upstream: log routing in main.
 // Downstream: d.enqueue.
@@ -304,7 +304,7 @@ func (d *dashboard) enqueue(batch *[]string, line string) {
 	}
 }
 
-// Purpose: Provide an io.Writer that feeds system messages into the dashboard.
+// SystemWriter provides an io.Writer that feeds system messages into the dashboard.
 // Key aspects: Returns a paneWriter wrapping the dashboard.
 // Upstream: main UI wiring.
 // Downstream: paneWriter.Write.
@@ -321,7 +321,7 @@ type paneWriter struct {
 	mu   sync.Mutex
 }
 
-// Purpose: Implement io.Writer for dashboard system output.
+// Write implements io.Writer for dashboard system output.
 // Key aspects: Buffers until newline and forwards complete lines to enqueue.
 // Upstream: log output when dashboard is active.
 // Downstream: bytes.IndexByte and d.enqueue.

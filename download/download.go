@@ -71,7 +71,7 @@ func MetadataPath(dest string) string {
 	return dest + MetadataSuffix
 }
 
-// Purpose: Download a file with conditional headers and metadata sidecar.
+// Download downloads a file with conditional headers and metadata sidecar.
 // Key aspects: Uses ETag/Last-Modified, computes SHA256, and writes atomically.
 // Upstream: CTY/SCP/IPinfo/ULS refreshers.
 // Downstream: HTTP client, metadata read/write helpers.
@@ -221,7 +221,7 @@ func Download(ctx context.Context, req Request) (Result, error) {
 	return result, nil
 }
 
-// Purpose: Read a metadata JSON file from the first readable path.
+// ReadMetadata reads a metadata JSON file from the first readable path.
 // Key aspects: Ignores parse errors to allow legacy fallbacks.
 // Upstream: Download, UpdateProcessedStatus.
 // Downstream: os.ReadFile, json.Unmarshal.
@@ -243,7 +243,7 @@ func ReadMetadata(paths ...string) (*Metadata, string) {
 	return nil, ""
 }
 
-// Purpose: Persist metadata JSON to disk.
+// WriteMetadata persists metadata JSON to disk.
 // Key aspects: Writes an indented JSON file for operator readability.
 // Upstream: Download, UpdateProcessedStatus.
 // Downstream: json.MarshalIndent, os.WriteFile.
@@ -258,7 +258,7 @@ func WriteMetadata(path string, meta Metadata) error {
 	return os.WriteFile(path, data, 0o644)
 }
 
-// Purpose: Update metadata with post-processing status (e.g., DB build).
+// UpdateProcessedStatus updates metadata with post-processing status (e.g., DB build).
 // Key aspects: Leaves download fields intact and only patches processing flags.
 // Upstream: Callers that build derived artifacts.
 // Downstream: ReadMetadata, WriteMetadata.

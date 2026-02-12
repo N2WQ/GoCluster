@@ -12,7 +12,7 @@ import (
 // minimum are ignored by call correction consensus.
 type SpotterReliability map[string]float64
 
-// Purpose: Load per-spotter reliability weights from a text file.
+// LoadSpotterReliability loads per-spotter reliability weights from a text file.
 // Key aspects: Parses SPOTTER WEIGHT lines and clamps to [0,1].
 // Upstream: main startup when reliability file configured.
 // Downstream: NormalizeCallsign and map assignment.

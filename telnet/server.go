@@ -898,23 +898,21 @@ func nextSolarSummaryAt(now time.Time, minutes int) time.Time {
 	return aligned.Add(time.Duration(minutes) * time.Minute)
 }
 
-// Telnet protocol IAC (Interpret As Command) constants.
-//
-// These constants are used for telnet protocol negotiation:
-//   - IAC: Introduces a telnet command sequence
-//   - DO/DONT: Request client to enable/disable an option
-//   - WILL/WONT: Client agrees/refuses to enable an option
-//
-// The server sends these sequences to negotiate terminal settings
-// and handle special characters properly.
 const (
-	IAC  = 255 // Interpret As Command - starts telnet command sequence
-	DONT = 254 // Request client to disable an option
-	DO   = 253 // Request client to enable an option
-	WONT = 252 // Client refuses to enable an option
-	WILL = 251 // Client agrees to enable an option
-	SB   = 250 // Subnegotiation begins
-	SE   = 240 // Subnegotiation ends
+	// IAC starts a telnet command sequence (Interpret As Command).
+	IAC = 255
+	// DONT requests the client to disable a telnet option.
+	DONT = 254
+	// DO requests the client to enable a telnet option.
+	DO = 253
+	// WONT indicates refusal to enable a telnet option.
+	WONT = 252
+	// WILL indicates agreement to enable a telnet option.
+	WILL = 251
+	// SB starts a telnet subnegotiation block.
+	SB = 250
+	// SE ends a telnet subnegotiation block.
+	SE = 240
 )
 
 const (

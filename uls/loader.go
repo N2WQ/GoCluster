@@ -311,7 +311,7 @@ func resolveFile(dir string, candidates []string) string {
 	return ""
 }
 
-// Purpose: Convenience entry point to force a full ULS refresh.
+// BuildOnce provides a convenience entry point to force a full ULS refresh.
 // Key aspects: Delegates to Refresh with force=true; intended for manual runs.
 // Upstream: Manual invocation or tooling (not used in the main pipeline).
 // Downstream: Refresh in uls/downloader.go.

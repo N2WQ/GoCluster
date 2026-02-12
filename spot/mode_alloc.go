@@ -54,7 +54,7 @@ func loadModeAllocations() {
 	})
 }
 
-// Purpose: Map a frequency to a mode using the allocation table.
+// GuessModeFromAlloc maps a frequency to a mode using the allocation table.
 // Key aspects: Applies CW sub-band boundary and voice mode selection.
 // Upstream: FinalizeMode and mode inference fallback.
 // Downstream: loadModeAllocations and strings.TrimSpace.
@@ -74,7 +74,7 @@ func GuessModeFromAlloc(freqKHz float64) string {
 	return ""
 }
 
-// Purpose: Normalize voice modes (SSB) to USB/LSB by frequency.
+// NormalizeVoiceMode normalizes voice modes (SSB) to USB/LSB by frequency.
 // Key aspects: USB above 10 MHz, LSB below.
 // Upstream: comment parsing and FinalizeMode.
 // Downstream: strings.ToUpper.
@@ -90,7 +90,7 @@ func NormalizeVoiceMode(mode string, freqKHz float64) string {
 	return upper
 }
 
-// Purpose: Finalize mode selection using explicit mode, allocations, and defaults.
+// FinalizeMode finalizes mode selection using explicit mode, allocations, and defaults.
 // Key aspects: Prefers explicit mode, then allocation, then USB/CW fallback.
 // Upstream: ModeAssigner fallback and callers needing a final mode.
 // Downstream: NormalizeVoiceMode and GuessModeFromAlloc.

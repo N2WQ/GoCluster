@@ -42,7 +42,7 @@ func newAdaptiveRefresher(adaptive *spot.AdaptiveMinReports, cfg config.Adaptive
 	}
 }
 
-// Purpose: Record an additional spot to gate refresh runs by volume.
+// IncrementSpots records an additional spot to gate refresh runs by volume.
 // Key aspects: Atomic increment to avoid locks on the hot path.
 // Upstream: Called by processOutputSpots per spot.
 // Downstream: atomic.AddInt64.
@@ -53,7 +53,7 @@ func (r *adaptiveRefresher) IncrementSpots() {
 	atomic.AddInt64(&r.spotCount, 1)
 }
 
-// Purpose: Start the periodic refresh evaluation loop.
+// Start starts the periodic refresh evaluation loop.
 // Key aspects: Runs a 1-minute ticker; nil receivers are safe.
 // Upstream: Called by main after construction.
 // Downstream: time.NewTicker and r.maybeRefresh in the goroutine.
@@ -80,7 +80,7 @@ func (r *adaptiveRefresher) Start() {
 	}()
 }
 
-// Purpose: Stop the refresh evaluation loop.
+// Stop stops the refresh evaluation loop.
 // Key aspects: Closing quit unblocks the goroutine.
 // Upstream: Called by main during shutdown.
 // Downstream: None (channel close only).

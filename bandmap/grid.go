@@ -42,7 +42,7 @@ type Shard struct {
 	bins map[uint32][]SpotEntry
 }
 
-// Purpose: Construct an empty bandmap index.
+// New constructs an empty bandmap index.
 // Key aspects: Initializes the mode grid map; shards are created on demand.
 // Upstream: Spot correction/index initialization in the main pipeline.
 // Downstream: BandMap.Add, BandMap.Get, BandMap.Prune.
@@ -50,7 +50,7 @@ func New() *BandMap {
 	return &BandMap{grids: make(map[string]*ShardedGrid)}
 }
 
-// Purpose: Insert a spot entry into the per-mode sharded grid.
+// Add inserts a spot entry into the per-mode sharded grid.
 // Key aspects: Uses 100 Hz bins and caps bin length to avoid unbounded growth.
 // Upstream: Mode correction/index updates in the main pipeline.
 // Downstream: getOrCreateGrid, shard/bin storage.
@@ -75,7 +75,7 @@ func (bm *BandMap) Add(mode string, entry SpotEntry) {
 	shard.bins[binID] = list
 }
 
-// Purpose: Fetch entries in a frequency window for a given mode.
+// Get fetches entries in a frequency window for a given mode.
 // Key aspects: Scans bins in range and filters by recency when requested.
 // Upstream: Call correction and frequency evidence lookups.
 // Downstream: Shard bin lookup; time.Now for cutoff.
@@ -130,7 +130,7 @@ func (bm *BandMap) Get(mode string, centerFreqHz uint32, windowHz uint32, maxAge
 	return results
 }
 
-// Purpose: Drop stale entries across all modes.
+// Prune drops stale entries across all modes.
 // Key aspects: Iterates shards and compacts slices in place.
 // Upstream: Periodic cleanup goroutine in correction pipeline.
 // Downstream: Shard bin mutation; time.Now for cutoff.
