@@ -93,6 +93,13 @@ type CorrectionSettings struct {
 	PriorBonusRequiresSCP  bool
 	PriorBonusApplyTo      string
 	PriorBonusKnownCallset *KnownCallsigns
+	// Optional recent-on-band bonus. When admitted, the bonus applies only to
+	// min_reports and never bypasses advantage/confidence/freq_guard/cooldown.
+	RecentBandBonusEnabled            bool
+	RecentBandWindow                  time.Duration
+	RecentBandBonusMax                int
+	RecentBandRecordMinUniqueSpotters int
+	RecentBandStore                   *RecentBandStore
 	// Cooldown protects a subject call from being flipped away when it already has
 	// recent diverse support on this frequency bin.
 	Cooldown *CallCooldown
@@ -554,6 +561,11 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 	if cfg.Cooldown != nil && subjectAgg != nil && subjectCount > 0 {
 		cfg.Cooldown.Record(subjectIdentity.VoteKey, freqHz, subjectAgg.reporters, cfg.CooldownMinReporters, cfg.RecencyWindow, now)
 	}
+	subjectBand := NormalizeBand(subject.Band)
+	if subjectBand == "" || subjectBand == "???" {
+		subjectBand = NormalizeBand(FreqToBand(subject.Frequency))
+	}
+	subjectMode := strutil.NormalizeUpper(subject.Mode)
 
 	type rankedCall struct {
 		key        string
@@ -674,6 +686,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		minConfidence int
 		priorBonus    int
 		priorSource   string
+		recentBonus   int
 		reason        string
 	}
 
@@ -728,6 +741,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		effectiveSupport := support
 		priorBonus := 0
 		priorBonusSource := ""
+		recentBonus := 0
 		if cfg.PriorBonusEnabled && cfg.PriorBonusMax > 0 && cfg.PriorBonusApplyTo == "min_reports" && support < minReports {
 			needed := minReports - support
 			if needed == 1 && needed <= cfg.PriorBonusMax {
@@ -760,6 +774,33 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 				}
 			}
 		}
+		if cfg.RecentBandBonusEnabled && cfg.RecentBandBonusMax > 0 && cfg.RecentBandStore != nil && effectiveSupport < minReports {
+			needed := minReports - effectiveSupport
+			if needed > 0 && needed <= cfg.RecentBandBonusMax {
+				candidates := []string{agg.identity.Raw, displayForKey(candidateKey), agg.identity.VoteKey, agg.identity.BaseKey}
+				seenCalls := make(map[string]struct{}, len(candidates))
+				admitted := false
+				for _, candidateCall := range candidates {
+					candidateCall = strings.TrimSpace(candidateCall)
+					if candidateCall == "" {
+						continue
+					}
+					upper := strutil.NormalizeUpper(candidateCall)
+					if _, exists := seenCalls[upper]; exists {
+						continue
+					}
+					seenCalls[upper] = struct{}{}
+					if cfg.RecentBandStore.HasRecentSupport(upper, subjectBand, subjectMode, cfg.RecentBandRecordMinUniqueSpotters, now) {
+						admitted = true
+						break
+					}
+				}
+				if admitted {
+					recentBonus = needed
+					effectiveSupport += recentBonus
+				}
+			}
+		}
 		if effectiveSupport < minReports {
 			return candidateEval{
 				support:       support,
@@ -773,6 +814,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 				minConfidence: minConf,
 				priorBonus:    priorBonus,
 				priorSource:   priorBonusSource,
+				recentBonus:   recentBonus,
 				reason:        "min_reports",
 			}
 		}
@@ -789,6 +831,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 				minConfidence: minConf,
 				priorBonus:    priorBonus,
 				priorSource:   priorBonusSource,
+				recentBonus:   recentBonus,
 				reason:        "advantage",
 			}
 		}
@@ -805,6 +848,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 				minConfidence: minConf,
 				priorBonus:    priorBonus,
 				priorSource:   priorBonusSource,
+				recentBonus:   recentBonus,
 				reason:        "confidence",
 			}
 		}
@@ -824,6 +868,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 					minConfidence: minConf,
 					priorBonus:    priorBonus,
 					priorSource:   priorBonusSource,
+					recentBonus:   recentBonus,
 					reason:        "freq_guard",
 				}
 			}
@@ -843,6 +888,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 					minConfidence: minConf,
 					priorBonus:    priorBonus,
 					priorSource:   priorBonusSource,
+					recentBonus:   recentBonus,
 					reason:        "cooldown",
 				}
 			}
@@ -860,6 +906,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 			minConfidence: minConf,
 			priorBonus:    priorBonus,
 			priorSource:   priorBonusSource,
+			recentBonus:   recentBonus,
 		}
 	}
 
@@ -917,7 +964,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		}
 
 		updateCallQualityForCluster(attempt.key, freqHz, &cfg, clusterSpots)
-		trace.DecisionPath = decorateDecisionPath(attempt.path, slashPrecedenceActive, lastEval.priorBonus > 0)
+		trace.DecisionPath = decorateDecisionPath(attempt.path, slashPrecedenceActive, lastEval.priorBonus > 0, lastEval.recentBonus > 0)
 		trace.WinnerCall = displayForKey(attempt.key)
 		trace.WinnerSupport = lastEval.support
 		trace.RunnerUpSupport = lastEval.runnerUp
@@ -935,7 +982,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		return displayForKey(attempt.key), lastEval.support, lastEval.confidence, subjectConfidence, totalReporters, true
 	}
 
-	trace.DecisionPath = decorateDecisionPath(lastPath, slashPrecedenceActive, lastEval.priorBonus > 0)
+	trace.DecisionPath = decorateDecisionPath(lastPath, slashPrecedenceActive, lastEval.priorBonus > 0, lastEval.recentBonus > 0)
 	trace.CandidateRank = lastRank
 	trace.WinnerCall = displayForKey(lastKey)
 	trace.WinnerSupport = lastEval.support
@@ -1109,7 +1156,7 @@ func correctionDistance(subject, candidate correctionCallIdentity, mode, cwModel
 	return callDistance(subjectKey, candidateKey, mode, cwModel, rttyModel)
 }
 
-func decorateDecisionPath(path string, slashPrecedence bool, priorBonus bool) string {
+func decorateDecisionPath(path string, slashPrecedence bool, priorBonus bool, recentBandBonus bool) string {
 	if slashPrecedence {
 		if path == "" {
 			path = "slash_precedence"
@@ -1122,6 +1169,13 @@ func decorateDecisionPath(path string, slashPrecedence bool, priorBonus bool) st
 			path = "prior_bonus"
 		} else {
 			path += "+prior_bonus"
+		}
+	}
+	if recentBandBonus {
+		if path == "" {
+			path = "recent_band_bonus"
+		} else {
+			path += "+recent_band_bonus"
 		}
 	}
 	return path
@@ -1298,6 +1352,15 @@ func normalizeCorrectionSettings(settings CorrectionSettings) CorrectionSettings
 	}
 	if cfg.ConfusionWeight < 0 {
 		cfg.ConfusionWeight = 0
+	}
+	if cfg.RecentBandWindow <= 0 {
+		cfg.RecentBandWindow = 12 * time.Hour
+	}
+	if cfg.RecentBandBonusMax < 0 {
+		cfg.RecentBandBonusMax = 0
+	}
+	if cfg.RecentBandRecordMinUniqueSpotters <= 0 {
+		cfg.RecentBandRecordMinUniqueSpotters = 2
 	}
 	if cfg.PriorBonusMax < 0 {
 		cfg.PriorBonusMax = 0

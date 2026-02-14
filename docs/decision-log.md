@@ -17,3 +17,4 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR-0005 | Mode-Specific Spotter Reliability Selection for Call Correction | Accepted | 2026-02-13 | spot/correction | - | - | `docs/decisions/ADR-0005-mode-specific-spotter-reliability.md` |
 | ADR-0006 | Confusion-Model Tie-Break Ranking for Call Correction | Accepted | 2026-02-13 | spot/correction | - | - | `docs/decisions/ADR-0006-confusion-model-tie-break-ranking.md` |
 | ADR-0007 | Call-Correction Top-K Evaluation, Strict Prior Bonus, and Decision Counters | Accepted | 2026-02-13 | spot/correction | - | - | `docs/decisions/ADR-0007-call-correction-topk-prior-bonus-observability.md` |
+| ADR-0008 | Call Correction Recent-On-Band Bonus (Min-Reports Only) | Accepted | 2026-02-14 | spot/correction | - | - | `docs/decisions/ADR-0008-call-correction-recent-band-bonus.md` |

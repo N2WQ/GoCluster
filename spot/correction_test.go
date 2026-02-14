@@ -48,6 +48,18 @@ func withTestCallQualityStore(t *testing.T, fn func(store *CallQualityStore)) {
 	fn(store)
 }
 
+func withTestRecentBandStore(t *testing.T, window time.Duration, fn func(store *RecentBandStore)) {
+	t.Helper()
+	store := NewRecentBandStoreWithOptions(RecentBandOptions{
+		Window:             window,
+		Shards:             1,
+		MaxEntries:         1024,
+		CleanupInterval:    time.Hour,
+		MaxSpottersPerCall: 8,
+	})
+	fn(store)
+}
+
 func TestSuggestCallCorrectionRequiresConsensus(t *testing.T) {
 	now := time.Date(2025, 11, 18, 10, 0, 0, 0, time.UTC)
 	subject := &Spot{DXCall: "K1ABC", DECall: "W1AAA", Frequency: 14074.0, Time: now}
@@ -566,6 +578,122 @@ func TestSuggestCallCorrectionPriorBonusRequiresSCP(t *testing.T) {
 	if last.PriorBonusApplied {
 		t.Fatalf("did not expect prior bonus to apply without SCP")
 	}
+}
+
+func TestSuggestCallCorrectionRecentBandBonusOneShort(t *testing.T) {
+	withTestRecentBandStore(t, 12*time.Hour, func(store *RecentBandStore) {
+		now := time.Now().UTC()
+		subject := &Spot{DXCall: "K1A8C", DECall: "", Frequency: 7010.0, Mode: "CW", Time: now}
+		others := []*Spot{
+			{DXCall: "K1ABC", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+		}
+		store.Record("K1ABC", "40m", "CW", "W8ZZZ", now.Add(-30*time.Minute))
+		store.Record("K1ABC", "40m", "CW", "W9YYY", now.Add(-20*time.Minute))
+		trace := &captureTraceLogger{}
+
+		call, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+			Strategy:                          "majority",
+			MinConsensusReports:               2,
+			CandidateEvalTopK:                 1,
+			MinAdvantage:                      1,
+			MinConfidencePercent:              40,
+			MaxEditDistance:                   2,
+			RecencyWindow:                     30 * time.Second,
+			RecentBandBonusEnabled:            true,
+			RecentBandWindow:                  12 * time.Hour,
+			RecentBandBonusMax:                1,
+			RecentBandRecordMinUniqueSpotters: 2,
+			RecentBandStore:                   store,
+			DebugLog:                          true,
+			TraceLogger:                       trace,
+		}, now)
+		if !ok {
+			t.Fatalf("expected recent-on-band bonus to satisfy one-short min_reports case")
+		}
+		if call != "K1ABC" {
+			t.Fatalf("expected K1ABC, got %s", call)
+		}
+		last := trace.lastTrace(t)
+		if !strings.Contains(last.DecisionPath, "recent_band_bonus") {
+			t.Fatalf("expected decision path to include recent_band_bonus, got %q", last.DecisionPath)
+		}
+	})
+}
+
+func TestSuggestCallCorrectionRecentBandBonusRequiresAdmission(t *testing.T) {
+	withTestRecentBandStore(t, 12*time.Hour, func(store *RecentBandStore) {
+		now := time.Now().UTC()
+		subject := &Spot{DXCall: "K1A8C", DECall: "", Frequency: 7010.0, Mode: "CW", Time: now}
+		others := []*Spot{
+			{DXCall: "K1ABC", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+		}
+		store.Record("K1ABC", "40m", "CW", "W8ZZZ", now.Add(-30*time.Minute))
+		trace := &captureTraceLogger{}
+
+		_, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+			Strategy:                          "majority",
+			MinConsensusReports:               2,
+			CandidateEvalTopK:                 1,
+			MinAdvantage:                      1,
+			MinConfidencePercent:              40,
+			MaxEditDistance:                   2,
+			RecencyWindow:                     30 * time.Second,
+			RecentBandBonusEnabled:            true,
+			RecentBandWindow:                  12 * time.Hour,
+			RecentBandBonusMax:                1,
+			RecentBandRecordMinUniqueSpotters: 2,
+			RecentBandStore:                   store,
+			DebugLog:                          true,
+			TraceLogger:                       trace,
+		}, now)
+		if ok {
+			t.Fatalf("expected no correction without enough unique recent spotters")
+		}
+		last := trace.lastTrace(t)
+		if last.Reason != "min_reports" {
+			t.Fatalf("expected min_reports rejection, got %q", last.Reason)
+		}
+	})
+}
+
+func TestSuggestCallCorrectionRecentBandBonusDoesNotBypassAdvantage(t *testing.T) {
+	withTestRecentBandStore(t, 12*time.Hour, func(store *RecentBandStore) {
+		now := time.Now().UTC()
+		subject := &Spot{DXCall: "K1A8C", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now}
+		others := []*Spot{
+			{DXCall: "K1ABC", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+		}
+		store.Record("K1ABC", "40m", "CW", "W8ZZZ", now.Add(-30*time.Minute))
+		store.Record("K1ABC", "40m", "CW", "W9YYY", now.Add(-20*time.Minute))
+		trace := &captureTraceLogger{}
+
+		_, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+			Strategy:                          "majority",
+			MinConsensusReports:               2,
+			CandidateEvalTopK:                 1,
+			MinAdvantage:                      1,
+			MinConfidencePercent:              40,
+			MaxEditDistance:                   2,
+			RecencyWindow:                     30 * time.Second,
+			RecentBandBonusEnabled:            true,
+			RecentBandWindow:                  12 * time.Hour,
+			RecentBandBonusMax:                1,
+			RecentBandRecordMinUniqueSpotters: 2,
+			RecentBandStore:                   store,
+			DebugLog:                          true,
+			TraceLogger:                       trace,
+		}, now)
+		if ok {
+			t.Fatalf("expected no correction because advantage gate should still hold")
+		}
+		last := trace.lastTrace(t)
+		if last.Reason != "advantage" {
+			t.Fatalf("expected advantage rejection, got %q", last.Reason)
+		}
+		if !strings.Contains(last.DecisionPath, "recent_band_bonus") {
+			t.Fatalf("expected decision path to include recent_band_bonus, got %q", last.DecisionPath)
+		}
+	})
 }
 
 func TestSuggestCallCorrectionAnchorRequiresConsensusGates(t *testing.T) {

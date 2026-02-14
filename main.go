@@ -596,6 +596,11 @@ func main() {
 		})
 		callCooldown.StartCleanup(time.Duration(cfg.CallCorrection.CooldownTTLSeconds) * time.Second)
 	}
+	var recentBandStore *spot.RecentBandStore
+	if cfg.CallCorrection.Enabled && cfg.CallCorrection.RecentBandBonusEnabled {
+		recentBandStore = spot.NewRecentBandStore(time.Duration(cfg.CallCorrection.RecentBandWindowSeconds) * time.Second)
+		recentBandStore.StartCleanup()
+	}
 
 	var knownCalls atomic.Pointer[spot.KnownCallsigns]
 	knownCallsPath := strings.TrimSpace(cfg.KnownCalls.File)
@@ -896,7 +901,7 @@ func main() {
 	// Downstream: processOutputSpots.
 	pathReport := newPathReportMetrics()
 	pskrPathOnlyStats := &pathOnlyStats{}
-	go processOutputSpots(deduplicator, secondaryFast, secondaryMed, secondarySlow, &secondaryStageCount, modeAssigner, spotBuffer, telnetServer, peerManager, statsTracker, correctionIndex, cfg.CallCorrection, ctyLookup, metaCache, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, surface, gridUpdater, gridLookup, gridLookupSync, unlicensedReporter, corrLogger, callCooldown, adaptiveMinReports, refresher, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel, cfg.RBN.KeepSSIDSuffix, archiveWriter, &lastOutput, pathPredictor, pathReport, allowedBandSet)
+	go processOutputSpots(deduplicator, secondaryFast, secondaryMed, secondarySlow, &secondaryStageCount, modeAssigner, spotBuffer, telnetServer, peerManager, statsTracker, correctionIndex, cfg.CallCorrection, ctyLookup, metaCache, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, surface, gridUpdater, gridLookup, gridLookupSync, unlicensedReporter, corrLogger, callCooldown, adaptiveMinReports, refresher, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel, recentBandStore, cfg.RBN.KeepSSIDSuffix, archiveWriter, &lastOutput, pathPredictor, pathReport, allowedBandSet)
 	startPipelineHealthMonitor(ctx, deduplicator, &lastOutput, peerManager)
 
 	// Connect to RBN CW/RTTY feed if enabled (port 7000)
@@ -1105,6 +1110,12 @@ func main() {
 	}
 	if correctionIndex != nil {
 		correctionIndex.StopCleanup()
+	}
+	if callCooldown != nil {
+		callCooldown.StopCleanup()
+	}
+	if recentBandStore != nil {
+		recentBandStore.StopCleanup()
 	}
 
 	// Stop deduplicator
@@ -1988,6 +1999,7 @@ func processOutputSpots(
 	spotterReliabilityCW spot.SpotterReliability,
 	spotterReliabilityRTTY spot.SpotterReliability,
 	confusionModel *spot.ConfusionModel,
+	recentBandStore *spot.RecentBandStore,
 	broadcastKeepSSID bool,
 	archiveWriter *archive.Writer,
 	lastOutput *atomic.Int64,
@@ -2045,7 +2057,7 @@ func processOutputSpots(
 				if knownCalls != nil {
 					knownCallset = knownCalls.Load()
 				}
-				suppress = maybeApplyCallCorrectionWithLogger(s, correctionIdx, correctionCfg, ctyDB, metaCache, tracker, dash, corrLogger, callCooldown, adaptiveMinReports, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel, knownCallset)
+				suppress = maybeApplyCallCorrectionWithLogger(s, correctionIdx, correctionCfg, ctyDB, metaCache, tracker, dash, corrLogger, callCooldown, adaptiveMinReports, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel, recentBandStore, knownCallset)
 				if suppress {
 					return
 				}
@@ -2123,6 +2135,9 @@ func processOutputSpots(
 				s.EnsureNormalized()
 				dirty = false
 			}
+
+			recordRecentBandObservation(s, recentBandStore, correctionCfg)
+
 			if tracker != nil {
 				modeKey := modeUpper
 				if modeKey == "" {
@@ -2928,7 +2943,7 @@ func metadataFromPrefix(info *cty.PrefixInfo) spot.CallMetadata {
 // Key aspects: Evaluates corrections, updates stats, and can suppress spots.
 // Upstream: processOutputSpots call correction stage.
 // Downstream: spot.ApplyCallCorrection, traceLogger, tracker updates.
-func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.CorrectionIndex, cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase, metaCache *callMetaCache, tracker *stats.Tracker, dash ui.Surface, traceLogger spot.CorrectionTraceLogger, cooldown *spot.CallCooldown, adaptive *spot.AdaptiveMinReports, spotterReliability spot.SpotterReliability, spotterReliabilityCW spot.SpotterReliability, spotterReliabilityRTTY spot.SpotterReliability, confusionModel *spot.ConfusionModel, knownCallset *spot.KnownCallsigns) bool {
+func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.CorrectionIndex, cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase, metaCache *callMetaCache, tracker *stats.Tracker, dash ui.Surface, traceLogger spot.CorrectionTraceLogger, cooldown *spot.CallCooldown, adaptive *spot.AdaptiveMinReports, spotterReliability spot.SpotterReliability, spotterReliabilityCW spot.SpotterReliability, spotterReliabilityRTTY spot.SpotterReliability, confusionModel *spot.ConfusionModel, recentBandStore *spot.RecentBandStore, knownCallset *spot.KnownCallsigns) bool {
 	if spotEntry == nil {
 		return false
 	}
@@ -2997,6 +3012,7 @@ func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.Correcti
 		spotterReliabilityCW,
 		spotterReliabilityRTTY,
 		confusionModel,
+		recentBandStore,
 		knownCallset,
 		func(tr spot.CorrectionTrace) {
 			if tracker == nil {
@@ -3123,49 +3139,55 @@ func buildCorrectionSettings(
 	spotterReliabilityCW spot.SpotterReliability,
 	spotterReliabilityRTTY spot.SpotterReliability,
 	confusionModel *spot.ConfusionModel,
+	recentBandStore *spot.RecentBandStore,
 	knownCallset *spot.KnownCallsigns,
 	decisionObserver spot.CorrectionDecisionObserver,
 ) spot.CorrectionSettings {
 	return spot.CorrectionSettings{
-		MinConsensusReports:       minReports,
-		CandidateEvalTopK:         cfg.CandidateEvalTopK,
-		MinAdvantage:              cfg.MinAdvantage,
-		MinConfidencePercent:      cfg.MinConfidencePercent,
-		MaxEditDistance:           cfg.MaxEditDistance,
-		RecencyWindow:             window,
-		Strategy:                  cfg.Strategy,
-		MinSNRCW:                  cfg.MinSNRCW,
-		MinSNRRTTY:                cfg.MinSNRRTTY,
-		MinSNRVoice:               cfg.MinSNRVoice,
-		DistanceModelCW:           cfg.DistanceModelCW,
-		DistanceModelRTTY:         cfg.DistanceModelRTTY,
-		Distance3ExtraReports:     cfg.Distance3ExtraReports,
-		Distance3ExtraAdvantage:   cfg.Distance3ExtraAdvantage,
-		Distance3ExtraConfidence:  cfg.Distance3ExtraConfidence,
-		DebugLog:                  cfg.DebugLog,
-		TraceLogger:               traceLogger,
-		FreqGuardMinSeparationKHz: cfg.FreqGuardMinSeparationKHz,
-		FreqGuardRunnerUpRatio:    cfg.FreqGuardRunnerUpRatio,
-		FrequencyToleranceHz:      freqToleranceHz,
-		QualityBinHz:              qualityBinHz,
-		QualityGoodThreshold:      cfg.QualityGoodThreshold,
-		QualityNewCallIncrement:   cfg.QualityNewCallIncrement,
-		QualityBustedDecrement:    cfg.QualityBustedDecrement,
-		SpotterReliability:        spotterReliability,
-		SpotterReliabilityCW:      spotterReliabilityCW,
-		SpotterReliabilityRTTY:    spotterReliabilityRTTY,
-		MinSpotterReliability:     cfg.MinSpotterReliability,
-		ConfusionModel:            confusionModel,
-		ConfusionWeight:           cfg.ConfusionModelWeight,
-		PriorBonusEnabled:         cfg.PriorBonusEnabled,
-		PriorBonusMax:             cfg.PriorBonusMax,
-		PriorBonusDistanceMax:     cfg.PriorBonusDistanceMax,
-		PriorBonusRequiresSCP:     cfg.PriorBonusRequiresSCP,
-		PriorBonusApplyTo:         cfg.PriorBonusApplyTo,
-		PriorBonusKnownCallset:    knownCallset,
-		Cooldown:                  cooldown,
-		CooldownMinReporters:      cooldownMinReports,
-		DecisionObserver:          decisionObserver,
+		MinConsensusReports:               minReports,
+		CandidateEvalTopK:                 cfg.CandidateEvalTopK,
+		MinAdvantage:                      cfg.MinAdvantage,
+		MinConfidencePercent:              cfg.MinConfidencePercent,
+		MaxEditDistance:                   cfg.MaxEditDistance,
+		RecencyWindow:                     window,
+		Strategy:                          cfg.Strategy,
+		MinSNRCW:                          cfg.MinSNRCW,
+		MinSNRRTTY:                        cfg.MinSNRRTTY,
+		MinSNRVoice:                       cfg.MinSNRVoice,
+		DistanceModelCW:                   cfg.DistanceModelCW,
+		DistanceModelRTTY:                 cfg.DistanceModelRTTY,
+		Distance3ExtraReports:             cfg.Distance3ExtraReports,
+		Distance3ExtraAdvantage:           cfg.Distance3ExtraAdvantage,
+		Distance3ExtraConfidence:          cfg.Distance3ExtraConfidence,
+		DebugLog:                          cfg.DebugLog,
+		TraceLogger:                       traceLogger,
+		FreqGuardMinSeparationKHz:         cfg.FreqGuardMinSeparationKHz,
+		FreqGuardRunnerUpRatio:            cfg.FreqGuardRunnerUpRatio,
+		FrequencyToleranceHz:              freqToleranceHz,
+		QualityBinHz:                      qualityBinHz,
+		QualityGoodThreshold:              cfg.QualityGoodThreshold,
+		QualityNewCallIncrement:           cfg.QualityNewCallIncrement,
+		QualityBustedDecrement:            cfg.QualityBustedDecrement,
+		SpotterReliability:                spotterReliability,
+		SpotterReliabilityCW:              spotterReliabilityCW,
+		SpotterReliabilityRTTY:            spotterReliabilityRTTY,
+		MinSpotterReliability:             cfg.MinSpotterReliability,
+		ConfusionModel:                    confusionModel,
+		ConfusionWeight:                   cfg.ConfusionModelWeight,
+		RecentBandBonusEnabled:            cfg.RecentBandBonusEnabled,
+		RecentBandWindow:                  time.Duration(cfg.RecentBandWindowSeconds) * time.Second,
+		RecentBandBonusMax:                cfg.RecentBandBonusMax,
+		RecentBandRecordMinUniqueSpotters: cfg.RecentBandRecordMinUniqueSpotters,
+		RecentBandStore:                   recentBandStore,
+		PriorBonusEnabled:                 cfg.PriorBonusEnabled,
+		PriorBonusMax:                     cfg.PriorBonusMax,
+		PriorBonusDistanceMax:             cfg.PriorBonusDistanceMax,
+		PriorBonusRequiresSCP:             cfg.PriorBonusRequiresSCP,
+		PriorBonusApplyTo:                 cfg.PriorBonusApplyTo,
+		PriorBonusKnownCallset:            knownCallset,
+		Cooldown:                          cooldown,
+		CooldownMinReporters:              cooldownMinReports,
+		DecisionObserver:                  decisionObserver,
 	}
 }
 
@@ -3247,6 +3269,39 @@ func modeSupportsConfidenceGlyph(mode string) bool {
 	default:
 		return false
 	}
+}
+
+// recordRecentBandObservation records accepted spots for recent-on-band
+// corroboration. This is intentionally post-gate (after correction/harmonic/
+// license filters) so the cache favors calls that already survived core checks.
+func recordRecentBandObservation(s *spot.Spot, store *spot.RecentBandStore, cfg config.CallCorrectionConfig) {
+	if s == nil || store == nil || !cfg.RecentBandBonusEnabled || s.IsBeacon {
+		return
+	}
+	mode := s.ModeNorm
+	if strings.TrimSpace(mode) == "" {
+		mode = s.Mode
+	}
+	if !spot.IsCallCorrectionCandidate(mode) {
+		return
+	}
+	call := s.DXCallNorm
+	if call == "" {
+		call = s.DXCall
+	}
+	band := s.BandNorm
+	if band == "" || band == "???" {
+		band = spot.FreqToBand(s.Frequency)
+	}
+	spotter := s.DECallNorm
+	if spotter == "" {
+		spotter = s.DECall
+	}
+	seenAt := s.Time.UTC()
+	if seenAt.IsZero() {
+		seenAt = time.Now().UTC()
+	}
+	store.Record(call, band, mode, spotter, seenAt)
 }
 
 // Purpose: Apply SCP known-call promotion only when confidence is still unknown.

@@ -704,6 +704,13 @@ type CallCorrectionConfig struct {
 	ConfusionModelEnabled bool    `yaml:"confusion_model_enabled"`
 	ConfusionModelFile    string  `yaml:"confusion_model_file"`
 	ConfusionModelWeight  float64 `yaml:"confusion_model_weight"`
+	// Optional recent-on-band bonus: if a candidate call has recent independent
+	// support on the same band+mode, it can receive a bounded boost that applies
+	// only to the min_reports gate.
+	RecentBandBonusEnabled            bool `yaml:"recent_band_bonus_enabled"`
+	RecentBandWindowSeconds           int  `yaml:"recent_band_window_seconds"`
+	RecentBandBonusMax                int  `yaml:"recent_band_bonus_max"`
+	RecentBandRecordMinUniqueSpotters int  `yaml:"recent_band_record_min_unique_spotters"`
 	// Optional strict prior bonus for one-short min_reports cases.
 	PriorBonusEnabled     bool   `yaml:"prior_bonus_enabled"`
 	PriorBonusMax         int    `yaml:"prior_bonus_max"`
@@ -1239,6 +1246,15 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.CallCorrection.ConfusionModelWeight < 0 {
 		cfg.CallCorrection.ConfusionModelWeight = 0
+	}
+	if cfg.CallCorrection.RecentBandWindowSeconds <= 0 {
+		cfg.CallCorrection.RecentBandWindowSeconds = 12 * 60 * 60
+	}
+	if cfg.CallCorrection.RecentBandBonusMax < 0 {
+		cfg.CallCorrection.RecentBandBonusMax = 0
+	}
+	if cfg.CallCorrection.RecentBandRecordMinUniqueSpotters <= 0 {
+		cfg.CallCorrection.RecentBandRecordMinUniqueSpotters = 2
 	}
 	if cfg.CallCorrection.PriorBonusMax < 0 {
 		cfg.CallCorrection.PriorBonusMax = 0
