@@ -56,7 +56,7 @@ type decisionLogger struct {
 const (
 	defaultDecisionQueue     = 8192
 	schemaVersionKey         = "schema_version"
-	currentSchemaVersion     = "2"
+	currentSchemaVersion     = "3"
 	decisionLogRetentionDays = 3
 )
 
@@ -167,6 +167,9 @@ func (l *decisionLogger) write(entry CorrectionLogEntry) error {
 			entry.Trace.Distance3ExtraConfidence,
 			entry.Trace.FreqGuardMinSeparationKHz,
 			entry.Trace.FreqGuardRunnerUpRatio,
+			entry.Trace.ConfusionWeight,
+			entry.Trace.WinnerConfusionScore,
+			entry.Trace.RunnerUpConfusionScore,
 			entry.Trace.Decision,
 			entry.Trace.Reason,
 		)
@@ -257,8 +260,10 @@ INSERT INTO decisions (
     subject_confidence, winner_confidence, distance, distance_model,
     max_edit_distance, min_reports, min_advantage, min_confidence,
     d3_extra_reports, d3_extra_advantage, d3_extra_confidence,
-    freq_guard_min_sep_khz, freq_guard_runner_ratio, decision, reason
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    freq_guard_min_sep_khz, freq_guard_runner_ratio,
+    confusion_weight, winner_confusion_score, runner_up_confusion_score,
+    decision, reason
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `)
 		if err != nil {
 			db.Close()
@@ -460,6 +465,9 @@ CREATE TABLE IF NOT EXISTS decisions (
     d3_extra_confidence INTEGER,
     freq_guard_min_sep_khz REAL,
     freq_guard_runner_ratio REAL,
+    confusion_weight REAL,
+    winner_confusion_score REAL,
+    runner_up_confusion_score REAL,
     decision TEXT,
     reason TEXT
 );
@@ -479,7 +487,7 @@ CREATE INDEX IF NOT EXISTS idx_decisions_decision ON decisions(decision);
 `); err != nil {
 		return fmt.Errorf("call-correction logger: init schema: %w", err)
 	}
-	if err := ensureDecisionPathColumn(db); err != nil {
+	if err := ensureDecisionColumns(db); err != nil {
 		return err
 	}
 	if _, err := db.Exec(`INSERT OR REPLACE INTO metadata(key, value) VALUES (?, ?)`, schemaVersionKey, currentSchemaVersion); err != nil {
@@ -488,14 +496,14 @@ CREATE INDEX IF NOT EXISTS idx_decisions_decision ON decisions(decision);
 	return nil
 }
 
-func ensureDecisionPathColumn(db *sql.DB) error {
+func ensureDecisionColumns(db *sql.DB) error {
 	rows, err := db.Query(`PRAGMA table_info(decisions)`)
 	if err != nil {
 		return fmt.Errorf("call-correction logger: schema introspection: %w", err)
 	}
 	defer rows.Close()
 
-	found := false
+	columns := make(map[string]struct{}, 32)
 	for rows.Next() {
 		var cid int
 		var name string
@@ -506,19 +514,46 @@ func ensureDecisionPathColumn(db *sql.DB) error {
 		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err != nil {
 			return fmt.Errorf("call-correction logger: schema introspection: %w", err)
 		}
-		if strings.EqualFold(name, "decision_path") {
-			found = true
-			break
-		}
+		columns[strings.ToLower(strings.TrimSpace(name))] = struct{}{}
 	}
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("call-correction logger: schema introspection: %w", err)
 	}
-	if found {
-		return nil
+
+	type missingColumn struct {
+		name string
+		sql  string
+		err  string
 	}
-	if _, err := db.Exec(`ALTER TABLE decisions ADD COLUMN decision_path TEXT`); err != nil {
-		return fmt.Errorf("call-correction logger: add decision_path column: %w", err)
+	needed := []missingColumn{
+		{
+			name: "decision_path",
+			sql:  `ALTER TABLE decisions ADD COLUMN decision_path TEXT`,
+			err:  "call-correction logger: add decision_path column",
+		},
+		{
+			name: "confusion_weight",
+			sql:  `ALTER TABLE decisions ADD COLUMN confusion_weight REAL`,
+			err:  "call-correction logger: add confusion_weight column",
+		},
+		{
+			name: "winner_confusion_score",
+			sql:  `ALTER TABLE decisions ADD COLUMN winner_confusion_score REAL`,
+			err:  "call-correction logger: add winner_confusion_score column",
+		},
+		{
+			name: "runner_up_confusion_score",
+			sql:  `ALTER TABLE decisions ADD COLUMN runner_up_confusion_score REAL`,
+			err:  "call-correction logger: add runner_up_confusion_score column",
+		},
+	}
+	for _, col := range needed {
+		if _, ok := columns[col.name]; ok {
+			continue
+		}
+		if _, err := db.Exec(col.sql); err != nil {
+			return fmt.Errorf("%s: %w", col.err, err)
+		}
 	}
 	return nil
 }

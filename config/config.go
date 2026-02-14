@@ -604,6 +604,9 @@ type CallCorrectionConfig struct {
 	// MinConsensusReports defines how many other unique spotters
 	// must agree on an alternate callsign before we consider correcting it.
 	MinConsensusReports int `yaml:"min_consensus_reports"`
+	// CandidateEvalTopK controls how many ranked consensus candidates are
+	// evaluated (after anchor) before giving up.
+	CandidateEvalTopK int `yaml:"candidate_eval_top_k"`
 	// MinAdvantage defines how many more corroborators the alternate call
 	// must have compared to the original before a correction can happen.
 	MinAdvantage int `yaml:"min_advantage"`
@@ -696,9 +699,29 @@ type CallCorrectionConfig struct {
 	AdaptiveRefreshByBand AdaptiveRefreshByBandConfig `yaml:"adaptive_refresh_by_band"`
 	// Optional prior quality map loaded at startup to seed anchors before runtime learning.
 	QualityPriorsFile string `yaml:"quality_priors_file"`
+	// Optional confusion model (RBN analytics confusion_model.json) used only to
+	// rank tied top-support correction candidates. Hard gates remain unchanged.
+	ConfusionModelEnabled bool    `yaml:"confusion_model_enabled"`
+	ConfusionModelFile    string  `yaml:"confusion_model_file"`
+	ConfusionModelWeight  float64 `yaml:"confusion_model_weight"`
+	// Optional recent-on-band bonus: if a candidate call has recent independent
+	// support on the same band+mode, it can receive a bounded boost that applies
+	// only to the min_reports gate.
+	RecentBandBonusEnabled            bool `yaml:"recent_band_bonus_enabled"`
+	RecentBandWindowSeconds           int  `yaml:"recent_band_window_seconds"`
+	RecentBandBonusMax                int  `yaml:"recent_band_bonus_max"`
+	RecentBandRecordMinUniqueSpotters int  `yaml:"recent_band_record_min_unique_spotters"`
+	// Optional strict prior bonus for one-short min_reports cases.
+	PriorBonusEnabled     bool   `yaml:"prior_bonus_enabled"`
+	PriorBonusMax         int    `yaml:"prior_bonus_max"`
+	PriorBonusDistanceMax int    `yaml:"prior_bonus_distance_max"`
+	PriorBonusRequiresSCP bool   `yaml:"prior_bonus_requires_scp"`
+	PriorBonusApplyTo     string `yaml:"prior_bonus_apply_to"`
 	// Optional spotter reliability weights (0-1). Reporters below MinSpotterReliability are ignored.
-	SpotterReliabilityFile string  `yaml:"spotter_reliability_file"`
-	MinSpotterReliability  float64 `yaml:"min_spotter_reliability"`
+	SpotterReliabilityFile     string  `yaml:"spotter_reliability_file"`
+	SpotterReliabilityFileCW   string  `yaml:"spotter_reliability_file_cw"`
+	SpotterReliabilityFileRTTY string  `yaml:"spotter_reliability_file_rtty"`
+	MinSpotterReliability      float64 `yaml:"min_spotter_reliability"`
 }
 
 // BandStateOverride groups bands and per-state overrides for correction tolerances.
@@ -1107,6 +1130,9 @@ func Load(path string) (*Config, error) {
 	if cfg.CallCorrection.MinConsensusReports <= 0 {
 		cfg.CallCorrection.MinConsensusReports = 4
 	}
+	if cfg.CallCorrection.CandidateEvalTopK <= 0 {
+		cfg.CallCorrection.CandidateEvalTopK = 1
+	}
 	if cfg.CallCorrection.MinAdvantage <= 0 {
 		cfg.CallCorrection.MinAdvantage = 1
 	}
@@ -1217,6 +1243,31 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.CallCorrection.MinSpotterReliability < 0 {
 		cfg.CallCorrection.MinSpotterReliability = 0
+	}
+	if cfg.CallCorrection.ConfusionModelWeight < 0 {
+		cfg.CallCorrection.ConfusionModelWeight = 0
+	}
+	if cfg.CallCorrection.RecentBandWindowSeconds <= 0 {
+		cfg.CallCorrection.RecentBandWindowSeconds = 12 * 60 * 60
+	}
+	if cfg.CallCorrection.RecentBandBonusMax < 0 {
+		cfg.CallCorrection.RecentBandBonusMax = 0
+	}
+	if cfg.CallCorrection.RecentBandRecordMinUniqueSpotters <= 0 {
+		cfg.CallCorrection.RecentBandRecordMinUniqueSpotters = 2
+	}
+	if cfg.CallCorrection.PriorBonusMax < 0 {
+		cfg.CallCorrection.PriorBonusMax = 0
+	}
+	if cfg.CallCorrection.PriorBonusDistanceMax <= 0 {
+		cfg.CallCorrection.PriorBonusDistanceMax = 1
+	}
+	cfg.CallCorrection.PriorBonusApplyTo = strings.ToLower(strings.TrimSpace(cfg.CallCorrection.PriorBonusApplyTo))
+	switch cfg.CallCorrection.PriorBonusApplyTo {
+	case "", "min_reports":
+		cfg.CallCorrection.PriorBonusApplyTo = "min_reports"
+	default:
+		cfg.CallCorrection.PriorBonusApplyTo = "min_reports"
 	}
 	if cfg.CallCorrection.MorseWeights.Insert <= 0 {
 		cfg.CallCorrection.MorseWeights.Insert = 1

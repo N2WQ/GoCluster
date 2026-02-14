@@ -48,6 +48,18 @@ func withTestCallQualityStore(t *testing.T, fn func(store *CallQualityStore)) {
 	fn(store)
 }
 
+func withTestRecentBandStore(t *testing.T, window time.Duration, fn func(store *RecentBandStore)) {
+	t.Helper()
+	store := NewRecentBandStoreWithOptions(RecentBandOptions{
+		Window:             window,
+		Shards:             1,
+		MaxEntries:         1024,
+		CleanupInterval:    time.Hour,
+		MaxSpottersPerCall: 8,
+	})
+	fn(store)
+}
+
 func TestSuggestCallCorrectionRequiresConsensus(t *testing.T) {
 	now := time.Date(2025, 11, 18, 10, 0, 0, 0, time.UTC)
 	subject := &Spot{DXCall: "K1ABC", DECall: "W1AAA", Frequency: 14074.0, Time: now}
@@ -261,6 +273,427 @@ func TestSuggestCallCorrectionMajorityStrategy(t *testing.T) {
 	if confidence <= 0 || subjectConfidence < 0 || total != 4 {
 		t.Fatalf("unexpected confidence/total values")
 	}
+}
+
+func TestSuggestCallCorrectionConfusionRankingBreaksTopSupportTie(t *testing.T) {
+	model, err := buildConfusionModel(confusionModelFile{
+		Modes:       []string{"CW"},
+		SNREdges:    []float64{-999, 999},
+		Alphabet:    "ABKC18?",
+		UnknownChar: "?",
+		SubCounts: [][][][]int64{
+			{
+				{
+					/* A */ {0, 1, 1, 1, 1, 1, 1},
+					/* B */ {1, 0, 1, 1, 1, 50, 1}, // B->8 modest
+					/* K */ {1, 1, 0, 1, 1, 1, 1},
+					/* C */ {1, 1, 1, 0, 1, 1, 1},
+					/* 1 */ {1, 1, 1, 1, 0, 1, 1},
+					/* 8 */ {1, 1, 1, 1, 1, 0, 1},
+					/* ? */ {1, 1, 1, 1, 1, 1, 0},
+				},
+			},
+		},
+		DelCounts: [][][]int64{
+			{
+				{1, 1, 1, 1, 1, 1, 1},
+			},
+		},
+		InsCounts: [][][]int64{
+			{
+				{1, 1, 1, 1, 1, 1, 1},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("build confusion model: %v", err)
+	}
+	// Boost X->8 heavily by mapping X through unknown '?' less favorably than B->8.
+	// Candidate K1AXC has one unknown char in this synthetic alphabet and should lose.
+	// To force a deterministic winner flip, use C->8 as strong signal instead.
+	model2, err := buildConfusionModel(confusionModelFile{
+		Modes:       []string{"CW"},
+		SNREdges:    []float64{-999, 999},
+		Alphabet:    "ABKC18?",
+		UnknownChar: "?",
+		SubCounts: [][][][]int64{
+			{
+				{
+					/* A */ {0, 1, 1, 1, 1, 1, 1},
+					/* B */ {1, 0, 1, 1, 1, 5, 1}, // B->8 weak
+					/* K */ {1, 1, 0, 1, 1, 1, 1},
+					/* C */ {1, 1, 1, 0, 1, 80, 1}, // C->8 strong
+					/* 1 */ {1, 1, 1, 1, 0, 1, 1},
+					/* 8 */ {1, 1, 1, 1, 1, 0, 1},
+					/* ? */ {1, 1, 1, 1, 1, 1, 0},
+				},
+			},
+		},
+		DelCounts: [][][]int64{
+			{
+				{1, 1, 1, 1, 1, 1, 1},
+			},
+		},
+		InsCounts: [][][]int64{
+			{
+				{1, 1, 1, 1, 1, 1, 1},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("build confusion model #2: %v", err)
+	}
+
+	now := time.Now().UTC()
+	subject := &Spot{DXCall: "K1A8C", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now, Report: 20}
+	others := []*Spot{
+		{DXCall: "K1ABC", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "K1ABC", DECall: "W3CCC", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "K1ACC", DECall: "W4DDD", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "K1ACC", DECall: "W5EEE", Frequency: 7010.0, Mode: "CW", Time: now},
+	}
+
+	callBase, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+		Strategy:             "majority",
+		MinConsensusReports:  2,
+		MinAdvantage:         1,
+		MinConfidencePercent: 40,
+		MaxEditDistance:      2,
+		RecencyWindow:        30 * time.Second,
+		ConfusionModel:       model,
+		ConfusionWeight:      0,
+	}, now)
+	if !ok {
+		t.Fatalf("expected baseline tie winner")
+	}
+	callWithConfusion, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+		Strategy:             "majority",
+		MinConsensusReports:  2,
+		MinAdvantage:         1,
+		MinConfidencePercent: 40,
+		MaxEditDistance:      2,
+		RecencyWindow:        30 * time.Second,
+		ConfusionModel:       model2,
+		ConfusionWeight:      2.0,
+	}, now)
+	if !ok {
+		t.Fatalf("expected confusion-ranked tie winner")
+	}
+	if callBase == callWithConfusion {
+		t.Fatalf("expected confusion ranking to break top-support tie differently; both=%q", callBase)
+	}
+}
+
+func TestSuggestCallCorrectionConfusionRankingDoesNotBypassMinReportsGate(t *testing.T) {
+	model, err := buildConfusionModel(confusionModelFile{
+		Modes:       []string{"CW"},
+		SNREdges:    []float64{-999, 999},
+		Alphabet:    "ABKC18?",
+		UnknownChar: "?",
+		SubCounts: [][][][]int64{
+			{
+				{
+					{0, 1, 1, 1, 1, 1, 1},
+					{1, 0, 1, 1, 50, 1, 1},
+					{1, 1, 0, 1, 1, 1, 1},
+					{1, 1, 1, 0, 1, 1, 1},
+					{1, 1, 1, 1, 0, 1, 1},
+					{1, 1, 1, 1, 1, 0, 1},
+					{1, 1, 1, 1, 1, 1, 0},
+				},
+			},
+		},
+		DelCounts: [][][]int64{
+			{
+				{1, 1, 1, 1, 1, 1, 1},
+			},
+		},
+		InsCounts: [][][]int64{
+			{
+				{1, 1, 1, 1, 1, 1, 1},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("build confusion model: %v", err)
+	}
+
+	now := time.Now().UTC()
+	subject := &Spot{DXCall: "K1A8C", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now, Report: 20}
+	others := []*Spot{
+		{DXCall: "K1ABC", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now}, // support=1
+	}
+
+	_, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+		Strategy:             "majority",
+		MinConsensusReports:  2, // hard gate should still reject
+		MinAdvantage:         1,
+		MinConfidencePercent: 40,
+		MaxEditDistance:      2,
+		RecencyWindow:        30 * time.Second,
+		ConfusionModel:       model,
+		ConfusionWeight:      5.0,
+	}, now)
+	if ok {
+		t.Fatalf("expected min_reports gate to reject even with strong confusion score")
+	}
+}
+
+func TestSuggestCallCorrectionCandidateEvalTopKFallback(t *testing.T) {
+	now := time.Now().UTC()
+	subject := &Spot{DXCall: "K1A8C", DECall: "", Frequency: 7010.0, Mode: "CW", Time: now}
+	others := []*Spot{
+		// Ranked #1 by support, but too far by edit distance.
+		{DXCall: "ZZZZZZ", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "ZZZZZZ", DECall: "W3CCC", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "ZZZZZZ", DECall: "W4DDD", Frequency: 7010.0, Mode: "CW", Time: now},
+		// Ranked #2 and valid correction.
+		{DXCall: "K1ABC", DECall: "W5EEE", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "K1ABC", DECall: "W6FFF", Frequency: 7010.0, Mode: "CW", Time: now},
+	}
+
+	traceTop1 := &captureTraceLogger{}
+	_, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+		Strategy:             "majority",
+		MinConsensusReports:  2,
+		CandidateEvalTopK:    1, // legacy top-1 only
+		MinAdvantage:         1,
+		MinConfidencePercent: 30,
+		MaxEditDistance:      2,
+		RecencyWindow:        30 * time.Second,
+		DebugLog:             true,
+		TraceLogger:          traceTop1,
+	}, now)
+	if ok {
+		t.Fatalf("expected no correction with top-1 only")
+	}
+	lastTop1 := traceTop1.lastTrace(t)
+	if lastTop1.Reason != "max_edit_distance" {
+		t.Fatalf("expected top-1 rejection by max_edit_distance, got %q", lastTop1.Reason)
+	}
+	if lastTop1.CandidateRank != 1 {
+		t.Fatalf("expected top-1 candidate rank, got %d", lastTop1.CandidateRank)
+	}
+
+	traceTop2 := &captureTraceLogger{}
+	call, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+		Strategy:             "majority",
+		MinConsensusReports:  2,
+		CandidateEvalTopK:    2, // allow fallback to #2 candidate
+		MinAdvantage:         1,
+		MinConfidencePercent: 30,
+		MaxEditDistance:      2,
+		RecencyWindow:        30 * time.Second,
+		DebugLog:             true,
+		TraceLogger:          traceTop2,
+	}, now)
+	if !ok {
+		t.Fatalf("expected correction with top-2 fallback")
+	}
+	if call != "K1ABC" {
+		t.Fatalf("expected fallback correction K1ABC, got %s", call)
+	}
+	lastTop2 := traceTop2.lastTrace(t)
+	if lastTop2.DecisionPath != "consensus" {
+		t.Fatalf("expected consensus decision path, got %q", lastTop2.DecisionPath)
+	}
+	if lastTop2.CandidateRank != 2 {
+		t.Fatalf("expected applied candidate rank 2, got %d", lastTop2.CandidateRank)
+	}
+}
+
+func TestSuggestCallCorrectionPriorBonusOneShortWithSCP(t *testing.T) {
+	now := time.Now().UTC()
+	subject := &Spot{DXCall: "K1A8C", DECall: "", Frequency: 7010.0, Mode: "CW", Time: now}
+	others := []*Spot{
+		{DXCall: "K1ABC", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+	}
+	known := &KnownCallsigns{entries: map[string]struct{}{"K1ABC": {}}}
+	trace := &captureTraceLogger{}
+
+	call, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+		Strategy:               "majority",
+		MinConsensusReports:    2, // candidate is one short
+		CandidateEvalTopK:      1,
+		MinAdvantage:           1,
+		MinConfidencePercent:   40,
+		MaxEditDistance:        2,
+		RecencyWindow:          30 * time.Second,
+		PriorBonusEnabled:      true,
+		PriorBonusMax:          1,
+		PriorBonusDistanceMax:  1,
+		PriorBonusRequiresSCP:  true,
+		PriorBonusApplyTo:      "min_reports",
+		PriorBonusKnownCallset: known,
+		DebugLog:               true,
+		TraceLogger:            trace,
+	}, now)
+	if !ok {
+		t.Fatalf("expected prior bonus to satisfy one-short min_reports case")
+	}
+	if call != "K1ABC" {
+		t.Fatalf("expected K1ABC, got %s", call)
+	}
+	last := trace.lastTrace(t)
+	if !last.PriorBonusApplied || last.PriorBonusValue != 1 {
+		t.Fatalf("expected prior bonus metadata on applied trace")
+	}
+	if !strings.Contains(last.DecisionPath, "prior_bonus") {
+		t.Fatalf("expected decision path to include prior_bonus, got %q", last.DecisionPath)
+	}
+}
+
+func TestSuggestCallCorrectionPriorBonusRequiresSCP(t *testing.T) {
+	now := time.Now().UTC()
+	subject := &Spot{DXCall: "K1A8C", DECall: "", Frequency: 7010.0, Mode: "CW", Time: now}
+	others := []*Spot{
+		{DXCall: "K1ABC", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+	}
+	trace := &captureTraceLogger{}
+
+	_, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+		Strategy:               "majority",
+		MinConsensusReports:    2, // candidate is one short
+		CandidateEvalTopK:      1,
+		MinAdvantage:           1,
+		MinConfidencePercent:   40,
+		MaxEditDistance:        2,
+		RecencyWindow:          30 * time.Second,
+		PriorBonusEnabled:      true,
+		PriorBonusMax:          1,
+		PriorBonusDistanceMax:  1,
+		PriorBonusRequiresSCP:  true,
+		PriorBonusApplyTo:      "min_reports",
+		PriorBonusKnownCallset: nil,
+		DebugLog:               true,
+		TraceLogger:            trace,
+	}, now)
+	if ok {
+		t.Fatalf("expected no correction without SCP hit for prior bonus")
+	}
+	last := trace.lastTrace(t)
+	if last.Reason != "min_reports" {
+		t.Fatalf("expected min_reports rejection, got %q", last.Reason)
+	}
+	if last.PriorBonusApplied {
+		t.Fatalf("did not expect prior bonus to apply without SCP")
+	}
+}
+
+func TestSuggestCallCorrectionRecentBandBonusOneShort(t *testing.T) {
+	withTestRecentBandStore(t, 12*time.Hour, func(store *RecentBandStore) {
+		now := time.Now().UTC()
+		subject := &Spot{DXCall: "K1A8C", DECall: "", Frequency: 7010.0, Mode: "CW", Time: now}
+		others := []*Spot{
+			{DXCall: "K1ABC", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+		}
+		store.Record("K1ABC", "40m", "CW", "W8ZZZ", now.Add(-30*time.Minute))
+		store.Record("K1ABC", "40m", "CW", "W9YYY", now.Add(-20*time.Minute))
+		trace := &captureTraceLogger{}
+
+		call, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+			Strategy:                          "majority",
+			MinConsensusReports:               2,
+			CandidateEvalTopK:                 1,
+			MinAdvantage:                      1,
+			MinConfidencePercent:              40,
+			MaxEditDistance:                   2,
+			RecencyWindow:                     30 * time.Second,
+			RecentBandBonusEnabled:            true,
+			RecentBandWindow:                  12 * time.Hour,
+			RecentBandBonusMax:                1,
+			RecentBandRecordMinUniqueSpotters: 2,
+			RecentBandStore:                   store,
+			DebugLog:                          true,
+			TraceLogger:                       trace,
+		}, now)
+		if !ok {
+			t.Fatalf("expected recent-on-band bonus to satisfy one-short min_reports case")
+		}
+		if call != "K1ABC" {
+			t.Fatalf("expected K1ABC, got %s", call)
+		}
+		last := trace.lastTrace(t)
+		if !strings.Contains(last.DecisionPath, "recent_band_bonus") {
+			t.Fatalf("expected decision path to include recent_band_bonus, got %q", last.DecisionPath)
+		}
+	})
+}
+
+func TestSuggestCallCorrectionRecentBandBonusRequiresAdmission(t *testing.T) {
+	withTestRecentBandStore(t, 12*time.Hour, func(store *RecentBandStore) {
+		now := time.Now().UTC()
+		subject := &Spot{DXCall: "K1A8C", DECall: "", Frequency: 7010.0, Mode: "CW", Time: now}
+		others := []*Spot{
+			{DXCall: "K1ABC", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+		}
+		store.Record("K1ABC", "40m", "CW", "W8ZZZ", now.Add(-30*time.Minute))
+		trace := &captureTraceLogger{}
+
+		_, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+			Strategy:                          "majority",
+			MinConsensusReports:               2,
+			CandidateEvalTopK:                 1,
+			MinAdvantage:                      1,
+			MinConfidencePercent:              40,
+			MaxEditDistance:                   2,
+			RecencyWindow:                     30 * time.Second,
+			RecentBandBonusEnabled:            true,
+			RecentBandWindow:                  12 * time.Hour,
+			RecentBandBonusMax:                1,
+			RecentBandRecordMinUniqueSpotters: 2,
+			RecentBandStore:                   store,
+			DebugLog:                          true,
+			TraceLogger:                       trace,
+		}, now)
+		if ok {
+			t.Fatalf("expected no correction without enough unique recent spotters")
+		}
+		last := trace.lastTrace(t)
+		if last.Reason != "min_reports" {
+			t.Fatalf("expected min_reports rejection, got %q", last.Reason)
+		}
+	})
+}
+
+func TestSuggestCallCorrectionRecentBandBonusDoesNotBypassAdvantage(t *testing.T) {
+	withTestRecentBandStore(t, 12*time.Hour, func(store *RecentBandStore) {
+		now := time.Now().UTC()
+		subject := &Spot{DXCall: "K1A8C", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now}
+		others := []*Spot{
+			{DXCall: "K1ABC", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+		}
+		store.Record("K1ABC", "40m", "CW", "W8ZZZ", now.Add(-30*time.Minute))
+		store.Record("K1ABC", "40m", "CW", "W9YYY", now.Add(-20*time.Minute))
+		trace := &captureTraceLogger{}
+
+		_, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+			Strategy:                          "majority",
+			MinConsensusReports:               2,
+			CandidateEvalTopK:                 1,
+			MinAdvantage:                      1,
+			MinConfidencePercent:              40,
+			MaxEditDistance:                   2,
+			RecencyWindow:                     30 * time.Second,
+			RecentBandBonusEnabled:            true,
+			RecentBandWindow:                  12 * time.Hour,
+			RecentBandBonusMax:                1,
+			RecentBandRecordMinUniqueSpotters: 2,
+			RecentBandStore:                   store,
+			DebugLog:                          true,
+			TraceLogger:                       trace,
+		}, now)
+		if ok {
+			t.Fatalf("expected no correction because advantage gate should still hold")
+		}
+		last := trace.lastTrace(t)
+		if last.Reason != "advantage" {
+			t.Fatalf("expected advantage rejection, got %q", last.Reason)
+		}
+		if !strings.Contains(last.DecisionPath, "recent_band_bonus") {
+			t.Fatalf("expected decision path to include recent_band_bonus, got %q", last.DecisionPath)
+		}
+	})
 }
 
 func TestSuggestCallCorrectionAnchorRequiresConsensusGates(t *testing.T) {
@@ -651,6 +1084,78 @@ func TestSuggestCallCorrectionAppliesSpotterReliabilityFloor(t *testing.T) {
 	}, now)
 	if ok {
 		t.Fatalf("expected low-reliability reporter to be ignored")
+	}
+}
+
+func TestSuggestCallCorrectionUsesCWModeSpecificReliability(t *testing.T) {
+	now := time.Now().UTC()
+	subject := &Spot{DXCall: "K1ABC", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now}
+	others := []*Spot{
+		{DXCall: "K1ABD", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+	}
+
+	_, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+		Strategy:              "majority",
+		MinConsensusReports:   1,
+		MinAdvantage:          1,
+		MinConfidencePercent:  50,
+		MaxEditDistance:       2,
+		RecencyWindow:         30 * time.Second,
+		SpotterReliability:    SpotterReliability{"W2BBB": 0.9},
+		SpotterReliabilityCW:  SpotterReliability{"W2BBB": 0.2},
+		MinSpotterReliability: 0.5,
+	}, now)
+	if ok {
+		t.Fatalf("expected CW mode-specific low reliability to override global map and reject")
+	}
+}
+
+func TestSuggestCallCorrectionFallsBackToGlobalReliabilityWhenModeMapMissing(t *testing.T) {
+	now := time.Now().UTC()
+	subject := &Spot{DXCall: "K1ABC", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now}
+	others := []*Spot{
+		{DXCall: "K1ABD", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "K1ABD", DECall: "W3CCC", Frequency: 7010.0, Mode: "CW", Time: now},
+	}
+
+	call, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+		Strategy:              "majority",
+		MinConsensusReports:   2,
+		MinAdvantage:          1,
+		MinConfidencePercent:  50,
+		MaxEditDistance:       2,
+		RecencyWindow:         30 * time.Second,
+		SpotterReliability:    SpotterReliability{"W2BBB": 0.9},
+		MinSpotterReliability: 0.5,
+	}, now)
+	if !ok {
+		t.Fatalf("expected global reliability fallback to allow correction")
+	}
+	if call != "K1ABD" {
+		t.Fatalf("expected K1ABD via global fallback, got %q", call)
+	}
+}
+
+func TestSuggestCallCorrectionUsesRTTYModeSpecificReliability(t *testing.T) {
+	now := time.Now().UTC()
+	subject := &Spot{DXCall: "K1ABC", DECall: "W1AAA", Frequency: 14080.0, Mode: "RTTY", Time: now}
+	others := []*Spot{
+		{DXCall: "K1ABD", DECall: "W2BBB", Frequency: 14080.0, Mode: "RTTY", Time: now},
+	}
+
+	_, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+		Strategy:               "majority",
+		MinConsensusReports:    1,
+		MinAdvantage:           1,
+		MinConfidencePercent:   50,
+		MaxEditDistance:        2,
+		RecencyWindow:          30 * time.Second,
+		SpotterReliability:     SpotterReliability{"W2BBB": 0.9},
+		SpotterReliabilityRTTY: SpotterReliability{"W2BBB": 0.2},
+		MinSpotterReliability:  0.5,
+	}, now)
+	if ok {
+		t.Fatalf("expected RTTY mode-specific low reliability to override global map and reject")
 	}
 }
 

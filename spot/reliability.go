@@ -2,6 +2,7 @@ package spot
 
 import (
 	"bufio"
+	"dxcluster/strutil"
 	"fmt"
 	"os"
 	"strconv"
@@ -70,15 +71,38 @@ func LoadSpotterReliability(path string) (SpotterReliability, int, error) {
 // Downstream: NormalizeCallsign.
 // reliabilityFor returns the weight for a reporter (defaults to 1.0).
 func reliabilityFor(r SpotterReliability, reporter string) float64 {
-	if r == nil {
-		return 1.0
-	}
-	reporter = NormalizeCallsign(reporter)
-	if reporter == "" {
-		return 1.0
-	}
-	if w, ok := r[reporter]; ok {
+	if w, ok := reliabilityLookup(r, reporter); ok {
 		return w
 	}
 	return 1.0
+}
+
+// reliabilityForMode returns the reporter weight for the given mode, preferring
+// mode-specific tables and falling back to the global table when absent.
+func reliabilityForMode(global, cw, rtty SpotterReliability, mode, reporter string) float64 {
+	switch strutil.NormalizeUpper(mode) {
+	case "CW":
+		if w, ok := reliabilityLookup(cw, reporter); ok {
+			return w
+		}
+	case "RTTY":
+		if w, ok := reliabilityLookup(rtty, reporter); ok {
+			return w
+		}
+	}
+	return reliabilityFor(global, reporter)
+}
+
+func reliabilityLookup(r SpotterReliability, reporter string) (float64, bool) {
+	if r == nil {
+		return 0, false
+	}
+	reporter = NormalizeCallsign(reporter)
+	if reporter == "" {
+		return 0, false
+	}
+	if w, ok := r[reporter]; ok {
+		return w, true
+	}
+	return 0, false
 }
