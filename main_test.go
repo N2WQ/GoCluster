@@ -518,10 +518,20 @@ func TestBuildCorrectionSettingsMapsConfigFields(t *testing.T) {
 		QualityGoodThreshold:      3,
 		QualityNewCallIncrement:   2,
 		QualityBustedDecrement:    2,
+		CandidateEvalTopK:         3,
 		MinSpotterReliability:     0.4,
+		ConfusionModelWeight:      0.25,
+		PriorBonusEnabled:         true,
+		PriorBonusMax:             1,
+		PriorBonusDistanceMax:     1,
+		PriorBonusRequiresSCP:     true,
+		PriorBonusApplyTo:         "min_reports",
 	}
 	window := 75 * time.Second
 	reliability := spot.SpotterReliability{"W2BBB": 0.7}
+	reliabilityCW := spot.SpotterReliability{"W2BBB": 0.8}
+	reliabilityRTTY := spot.SpotterReliability{"W2BBB": 0.9}
+	knownCallset := &spot.KnownCallsigns{}
 	got := buildCorrectionSettings(
 		cfg,
 		5,
@@ -532,6 +542,11 @@ func TestBuildCorrectionSettingsMapsConfigFields(t *testing.T) {
 		nil,
 		nil,
 		reliability,
+		reliabilityCW,
+		reliabilityRTTY,
+		nil,
+		knownCallset,
+		nil,
 	)
 
 	if got.MinConsensusReports != 5 {
@@ -570,11 +585,27 @@ func TestBuildCorrectionSettingsMapsConfigFields(t *testing.T) {
 		got.QualityGoodThreshold != cfg.QualityGoodThreshold ||
 		got.QualityNewCallIncrement != cfg.QualityNewCallIncrement ||
 		got.QualityBustedDecrement != cfg.QualityBustedDecrement ||
+		got.CandidateEvalTopK != cfg.CandidateEvalTopK ||
+		got.ConfusionWeight != cfg.ConfusionModelWeight ||
+		got.PriorBonusEnabled != cfg.PriorBonusEnabled ||
+		got.PriorBonusMax != cfg.PriorBonusMax ||
+		got.PriorBonusDistanceMax != cfg.PriorBonusDistanceMax ||
+		got.PriorBonusRequiresSCP != cfg.PriorBonusRequiresSCP ||
+		got.PriorBonusApplyTo != cfg.PriorBonusApplyTo ||
 		got.MinSpotterReliability != cfg.MinSpotterReliability {
 		t.Fatalf("expected correction settings to mirror config fields")
 	}
+	if got.PriorBonusKnownCallset != knownCallset {
+		t.Fatalf("expected known callset pointer to be preserved")
+	}
 	if got.SpotterReliability["W2BBB"] != 0.7 {
 		t.Fatalf("expected spotter reliability map to be preserved")
+	}
+	if got.SpotterReliabilityCW["W2BBB"] != 0.8 {
+		t.Fatalf("expected CW spotter reliability map to be preserved")
+	}
+	if got.SpotterReliabilityRTTY["W2BBB"] != 0.9 {
+		t.Fatalf("expected RTTY spotter reliability map to be preserved")
 	}
 }
 

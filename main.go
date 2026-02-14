@@ -501,12 +501,42 @@ func main() {
 		}
 	}
 	var spotterReliability spot.SpotterReliability
+	var spotterReliabilityCW spot.SpotterReliability
+	var spotterReliabilityRTTY spot.SpotterReliability
+	var confusionModel *spot.ConfusionModel
 	if relPath := strings.TrimSpace(cfg.CallCorrection.SpotterReliabilityFile); relPath != "" {
 		if rel, n, err := spot.LoadSpotterReliability(relPath); err != nil {
 			log.Printf("Warning: failed to load spotter reliability from %s: %v", relPath, err)
 		} else {
 			spotterReliability = rel
 			log.Printf("Loaded %d spotter reliability weights from %s", n, relPath)
+		}
+	}
+	if relPath := strings.TrimSpace(cfg.CallCorrection.SpotterReliabilityFileCW); relPath != "" {
+		if rel, n, err := spot.LoadSpotterReliability(relPath); err != nil {
+			log.Printf("Warning: failed to load CW spotter reliability from %s: %v", relPath, err)
+		} else {
+			spotterReliabilityCW = rel
+			log.Printf("Loaded %d CW spotter reliability weights from %s", n, relPath)
+		}
+	}
+	if relPath := strings.TrimSpace(cfg.CallCorrection.SpotterReliabilityFileRTTY); relPath != "" {
+		if rel, n, err := spot.LoadSpotterReliability(relPath); err != nil {
+			log.Printf("Warning: failed to load RTTY spotter reliability from %s: %v", relPath, err)
+		} else {
+			spotterReliabilityRTTY = rel
+			log.Printf("Loaded %d RTTY spotter reliability weights from %s", n, relPath)
+		}
+	}
+	if cfg.CallCorrection.ConfusionModelEnabled {
+		modelPath := strings.TrimSpace(cfg.CallCorrection.ConfusionModelFile)
+		if modelPath == "" {
+			log.Printf("Warning: call correction confusion model enabled but confusion_model_file is empty")
+		} else if loaded, err := spot.LoadConfusionModel(modelPath); err != nil {
+			log.Printf("Warning: failed to load confusion model from %s: %v", modelPath, err)
+		} else {
+			confusionModel = loaded
+			log.Printf("Loaded call correction confusion model from %s", modelPath)
 		}
 	}
 	adaptiveMinReports := spot.NewAdaptiveMinReports(cfg.CallCorrection)
@@ -866,7 +896,7 @@ func main() {
 	// Downstream: processOutputSpots.
 	pathReport := newPathReportMetrics()
 	pskrPathOnlyStats := &pathOnlyStats{}
-	go processOutputSpots(deduplicator, secondaryFast, secondaryMed, secondarySlow, &secondaryStageCount, modeAssigner, spotBuffer, telnetServer, peerManager, statsTracker, correctionIndex, cfg.CallCorrection, ctyLookup, metaCache, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, surface, gridUpdater, gridLookup, gridLookupSync, unlicensedReporter, corrLogger, callCooldown, adaptiveMinReports, refresher, spotterReliability, cfg.RBN.KeepSSIDSuffix, archiveWriter, &lastOutput, pathPredictor, pathReport, allowedBandSet)
+	go processOutputSpots(deduplicator, secondaryFast, secondaryMed, secondarySlow, &secondaryStageCount, modeAssigner, spotBuffer, telnetServer, peerManager, statsTracker, correctionIndex, cfg.CallCorrection, ctyLookup, metaCache, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, surface, gridUpdater, gridLookup, gridLookupSync, unlicensedReporter, corrLogger, callCooldown, adaptiveMinReports, refresher, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel, cfg.RBN.KeepSSIDSuffix, archiveWriter, &lastOutput, pathPredictor, pathReport, allowedBandSet)
 	startPipelineHealthMonitor(ctx, deduplicator, &lastOutput, peerManager)
 
 	// Connect to RBN CW/RTTY feed if enabled (port 7000)
@@ -1333,6 +1363,59 @@ func formatReputationDropSummary(total uint64, reasons map[string]uint64) string
 	return b.String()
 }
 
+func formatCorrectionDecisionSummary(tracker *stats.Tracker) string {
+	if tracker == nil {
+		return "CorrGate: n/a"
+	}
+	total := tracker.CorrectionDecisionTotal()
+	applied := tracker.CorrectionDecisionApplied()
+	rejected := tracker.CorrectionDecisionRejected()
+	fallback := tracker.CorrectionFallbackApplied()
+	prior := tracker.CorrectionPriorBonusUsed()
+	reasons := formatTopCounterSummary(tracker.CorrectionDecisionReasons(), 2)
+	paths := formatTopCounterSummary(tracker.CorrectionDecisionPaths(), 2)
+	return fmt.Sprintf("CorrGate: %s (T) / %s (A) / %s (R) / %s (FB) / %s (PB) [%s] [%s]",
+		humanize.Comma(int64(total)),
+		humanize.Comma(int64(applied)),
+		humanize.Comma(int64(rejected)),
+		humanize.Comma(int64(fallback)),
+		humanize.Comma(int64(prior)),
+		reasons,
+		paths,
+	)
+}
+
+func formatTopCounterSummary(counts map[string]uint64, limit int) string {
+	if len(counts) == 0 {
+		return "none"
+	}
+	type pair struct {
+		key   string
+		count uint64
+	}
+	items := make([]pair, 0, len(counts))
+	for key, count := range counts {
+		items = append(items, pair{key: key, count: count})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].count == items[j].count {
+			return items[i].key < items[j].key
+		}
+		return items[i].count > items[j].count
+	})
+	if limit <= 0 || limit > len(items) {
+		limit = len(items)
+	}
+	var b strings.Builder
+	for i := 0; i < limit; i++ {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(&b, "%s=%d", items[i].key, items[i].count)
+	}
+	return b.String()
+}
+
 // Purpose: Periodically emit stats with FCC metadata refresh.
 // Key aspects: Uses a ticker, diff counters, and optional secondary dedupe stats.
 // Upstream: main stats goroutine.
@@ -1394,6 +1477,7 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 		totalFreqCorrections := tracker.FrequencyCorrections()
 		totalHarmonics := tracker.HarmonicSuppressions()
 		reputationTotal := tracker.ReputationDrops()
+		corrDecisionLine := formatCorrectionDecisionSummary(tracker)
 
 		ingestTotal := uint64(0)
 		if ingestStats != nil {
@@ -1527,6 +1611,7 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 		lines = append(lines, pathOnlyLine)
 		lines = append(lines,
 			fmt.Sprintf("Calls: %d (C) / %d (U) / %d (F) / %d (H) / %d (R)", totalCorrections, totalUnlicensed, totalFreqCorrections, totalHarmonics, reputationTotal), // 6
+			corrDecisionLine,
 			pipelineLine, // 7
 			fmt.Sprintf("Telnet: %d clients. Drops: %d (Q) / %d (C) / %d (W)", clientCount, queueDrops, clientDrops, senderFailures), // 8
 		)
@@ -1900,6 +1985,9 @@ func processOutputSpots(
 	adaptiveMinReports *spot.AdaptiveMinReports,
 	refresher *adaptiveRefresher,
 	spotterReliability spot.SpotterReliability,
+	spotterReliabilityCW spot.SpotterReliability,
+	spotterReliabilityRTTY spot.SpotterReliability,
+	confusionModel *spot.ConfusionModel,
 	broadcastKeepSSID bool,
 	archiveWriter *archive.Writer,
 	lastOutput *atomic.Int64,
@@ -1953,7 +2041,11 @@ func processOutputSpots(
 
 			var suppress bool
 			if telnet != nil && !s.IsBeacon {
-				suppress = maybeApplyCallCorrectionWithLogger(s, correctionIdx, correctionCfg, ctyDB, metaCache, tracker, dash, corrLogger, callCooldown, adaptiveMinReports, spotterReliability)
+				var knownCallset *spot.KnownCallsigns
+				if knownCalls != nil {
+					knownCallset = knownCalls.Load()
+				}
+				suppress = maybeApplyCallCorrectionWithLogger(s, correctionIdx, correctionCfg, ctyDB, metaCache, tracker, dash, corrLogger, callCooldown, adaptiveMinReports, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel, knownCallset)
 				if suppress {
 					return
 				}
@@ -2836,7 +2928,7 @@ func metadataFromPrefix(info *cty.PrefixInfo) spot.CallMetadata {
 // Key aspects: Evaluates corrections, updates stats, and can suppress spots.
 // Upstream: processOutputSpots call correction stage.
 // Downstream: spot.ApplyCallCorrection, traceLogger, tracker updates.
-func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.CorrectionIndex, cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase, metaCache *callMetaCache, tracker *stats.Tracker, dash ui.Surface, traceLogger spot.CorrectionTraceLogger, cooldown *spot.CallCooldown, adaptive *spot.AdaptiveMinReports, spotterReliability spot.SpotterReliability) bool {
+func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.CorrectionIndex, cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase, metaCache *callMetaCache, tracker *stats.Tracker, dash ui.Surface, traceLogger spot.CorrectionTraceLogger, cooldown *spot.CallCooldown, adaptive *spot.AdaptiveMinReports, spotterReliability spot.SpotterReliability, spotterReliabilityCW spot.SpotterReliability, spotterReliabilityRTTY spot.SpotterReliability, confusionModel *spot.ConfusionModel, knownCallset *spot.KnownCallsigns) bool {
 	if spotEntry == nil {
 		return false
 	}
@@ -2902,6 +2994,16 @@ func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.Correcti
 		traceLogger,
 		cooldown,
 		spotterReliability,
+		spotterReliabilityCW,
+		spotterReliabilityRTTY,
+		confusionModel,
+		knownCallset,
+		func(tr spot.CorrectionTrace) {
+			if tracker == nil {
+				return
+			}
+			tracker.ObserveCallCorrectionDecision(tr.DecisionPath, tr.Decision, tr.Reason, tr.CandidateRank, tr.PriorBonusApplied)
+		},
 	)
 	candidateWindowKHz := freqToleranceHz / 1000.0
 	if candidateWindowKHz <= 0 {
@@ -3018,9 +3120,15 @@ func buildCorrectionSettings(
 	traceLogger spot.CorrectionTraceLogger,
 	cooldown *spot.CallCooldown,
 	spotterReliability spot.SpotterReliability,
+	spotterReliabilityCW spot.SpotterReliability,
+	spotterReliabilityRTTY spot.SpotterReliability,
+	confusionModel *spot.ConfusionModel,
+	knownCallset *spot.KnownCallsigns,
+	decisionObserver spot.CorrectionDecisionObserver,
 ) spot.CorrectionSettings {
 	return spot.CorrectionSettings{
 		MinConsensusReports:       minReports,
+		CandidateEvalTopK:         cfg.CandidateEvalTopK,
 		MinAdvantage:              cfg.MinAdvantage,
 		MinConfidencePercent:      cfg.MinConfidencePercent,
 		MaxEditDistance:           cfg.MaxEditDistance,
@@ -3044,9 +3152,20 @@ func buildCorrectionSettings(
 		QualityNewCallIncrement:   cfg.QualityNewCallIncrement,
 		QualityBustedDecrement:    cfg.QualityBustedDecrement,
 		SpotterReliability:        spotterReliability,
+		SpotterReliabilityCW:      spotterReliabilityCW,
+		SpotterReliabilityRTTY:    spotterReliabilityRTTY,
 		MinSpotterReliability:     cfg.MinSpotterReliability,
+		ConfusionModel:            confusionModel,
+		ConfusionWeight:           cfg.ConfusionModelWeight,
+		PriorBonusEnabled:         cfg.PriorBonusEnabled,
+		PriorBonusMax:             cfg.PriorBonusMax,
+		PriorBonusDistanceMax:     cfg.PriorBonusDistanceMax,
+		PriorBonusRequiresSCP:     cfg.PriorBonusRequiresSCP,
+		PriorBonusApplyTo:         cfg.PriorBonusApplyTo,
+		PriorBonusKnownCallset:    knownCallset,
 		Cooldown:                  cooldown,
 		CooldownMinReporters:      cooldownMinReports,
+		DecisionObserver:          decisionObserver,
 	}
 }
 

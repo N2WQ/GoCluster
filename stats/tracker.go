@@ -4,6 +4,7 @@ package stats
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -23,6 +24,14 @@ type Tracker struct {
 	unlicensedDrops      atomic.Uint64
 	reputationDrops      atomic.Uint64
 	reputationReasons    sync.Map // string -> *atomic.Uint64
+	corrDecisionTotal    atomic.Uint64
+	corrDecisionApplied  atomic.Uint64
+	corrDecisionRejected atomic.Uint64
+	corrFallbackApplied  atomic.Uint64
+	corrPriorBonusUsed   atomic.Uint64
+	corrDecisionReasons  sync.Map // string -> *atomic.Uint64
+	corrDecisionPaths    sync.Map // string -> *atomic.Uint64
+	corrDecisionRanks    sync.Map // string(rank) -> *atomic.Uint64
 }
 
 // Purpose: Create a new stats tracker with a start timestamp.
@@ -191,6 +200,50 @@ func (t *Tracker) IncrementCallCorrections() {
 	t.callCorrections.Add(1)
 }
 
+// Purpose: Record a correction decision outcome/reason/path for observability.
+// Key aspects: Tracks attempts, rejects by reason, path distribution, and fallback depth.
+// Upstream: call correction decision observer.
+// Downstream: atomic counters and sync.Map counters.
+func (t *Tracker) ObserveCallCorrectionDecision(path, decision, reason string, candidateRank int, priorBonusApplied bool) {
+	if t == nil {
+		return
+	}
+	t.corrDecisionTotal.Add(1)
+
+	decision = strings.ToLower(strings.TrimSpace(decision))
+	switch decision {
+	case "applied":
+		t.corrDecisionApplied.Add(1)
+	case "rejected":
+		t.corrDecisionRejected.Add(1)
+	default:
+		incrementCounter(&t.corrDecisionReasons, "unknown_decision")
+	}
+
+	path = strings.ToLower(strings.TrimSpace(path))
+	if path == "" {
+		path = "unknown"
+	}
+	incrementCounter(&t.corrDecisionPaths, path)
+
+	if candidateRank > 0 {
+		incrementCounter(&t.corrDecisionRanks, strconv.Itoa(candidateRank))
+	}
+	if decision == "applied" && strings.HasPrefix(path, "consensus") && candidateRank > 1 {
+		t.corrFallbackApplied.Add(1)
+	}
+	if priorBonusApplied {
+		t.corrPriorBonusUsed.Add(1)
+	}
+	if decision == "rejected" {
+		reason = strings.ToLower(strings.TrimSpace(reason))
+		if reason == "" {
+			reason = "unknown"
+		}
+		incrementCounter(&t.corrDecisionReasons, reason)
+	}
+}
+
 // Purpose: Increment applied frequency correction counter.
 // Key aspects: Atomic increment.
 // Upstream: Correction pipeline.
@@ -245,6 +298,85 @@ func (t *Tracker) HarmonicSuppressions() uint64 {
 // Downstream: atomic counter.
 func (t *Tracker) UnlicensedDrops() uint64 {
 	return t.unlicensedDrops.Load()
+}
+
+// Purpose: Return total correction decisions observed (applied + rejected).
+// Key aspects: Atomic load.
+// Upstream: dashboard/metrics output.
+// Downstream: atomic counter.
+func (t *Tracker) CorrectionDecisionTotal() uint64 {
+	return t.corrDecisionTotal.Load()
+}
+
+// Purpose: Return total applied correction decisions observed.
+// Key aspects: Atomic load.
+// Upstream: dashboard/metrics output.
+// Downstream: atomic counter.
+func (t *Tracker) CorrectionDecisionApplied() uint64 {
+	return t.corrDecisionApplied.Load()
+}
+
+// Purpose: Return total rejected correction decisions observed.
+// Key aspects: Atomic load.
+// Upstream: dashboard/metrics output.
+// Downstream: atomic counter.
+func (t *Tracker) CorrectionDecisionRejected() uint64 {
+	return t.corrDecisionRejected.Load()
+}
+
+// Purpose: Return applied decisions that succeeded after top-1 consensus fallback.
+// Key aspects: Atomic load.
+// Upstream: dashboard/metrics output.
+// Downstream: atomic counter.
+func (t *Tracker) CorrectionFallbackApplied() uint64 {
+	return t.corrFallbackApplied.Load()
+}
+
+// Purpose: Return decisions where prior bonus logic was used.
+// Key aspects: Atomic load.
+// Upstream: dashboard/metrics output.
+// Downstream: atomic counter.
+func (t *Tracker) CorrectionPriorBonusUsed() uint64 {
+	return t.corrPriorBonusUsed.Load()
+}
+
+// Purpose: Return a copy of correction rejection reasons.
+// Key aspects: Iterates sync.Map and reads atomics.
+// Upstream: dashboard/metrics output.
+// Downstream: atomic loads.
+func (t *Tracker) CorrectionDecisionReasons() map[string]uint64 {
+	counts := make(map[string]uint64)
+	t.corrDecisionReasons.Range(func(key, value any) bool {
+		counts[key.(string)] = value.(*atomic.Uint64).Load()
+		return true
+	})
+	return counts
+}
+
+// Purpose: Return a copy of correction decision path counts.
+// Key aspects: Iterates sync.Map and reads atomics.
+// Upstream: dashboard/metrics output.
+// Downstream: atomic loads.
+func (t *Tracker) CorrectionDecisionPaths() map[string]uint64 {
+	counts := make(map[string]uint64)
+	t.corrDecisionPaths.Range(func(key, value any) bool {
+		counts[key.(string)] = value.(*atomic.Uint64).Load()
+		return true
+	})
+	return counts
+}
+
+// Purpose: Return a copy of correction candidate-rank attempt counts.
+// Key aspects: Iterates sync.Map and reads atomics.
+// Upstream: dashboard/metrics output.
+// Downstream: atomic loads.
+func (t *Tracker) CorrectionDecisionRanks() map[string]uint64 {
+	counts := make(map[string]uint64)
+	t.corrDecisionRanks.Range(func(key, value any) bool {
+		counts[key.(string)] = value.(*atomic.Uint64).Load()
+		return true
+	})
+	return counts
 }
 
 // Purpose: Increment reputation drop counters by reason.

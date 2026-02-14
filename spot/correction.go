@@ -39,6 +39,9 @@ type CorrectionSettings struct {
 	// MinConsensusReports is the number of *other* unique spotters that must
 	// agree on the same DX call before we consider overriding the subject spot.
 	MinConsensusReports int
+	// CandidateEvalTopK controls how many consensus-ranked candidates are evaluated
+	// (after optional anchor attempt). K=1 preserves legacy top-1 behavior.
+	CandidateEvalTopK int
 	// MinAdvantage is the minimum delta (candidate supporters - subject supporters)
 	// required before a correction can happen.
 	MinAdvantage int
@@ -75,13 +78,28 @@ type CorrectionSettings struct {
 	Distance3ExtraConfidence int
 	// Spotter reliability weights (0..1). Reporters below MinSpotterReliability are ignored
 	// when counting corroborators.
-	SpotterReliability    SpotterReliability
-	MinSpotterReliability float64
+	SpotterReliability     SpotterReliability
+	SpotterReliabilityCW   SpotterReliability
+	SpotterReliabilityRTTY SpotterReliability
+	MinSpotterReliability  float64
+	// Optional confusion-model signal used to rank tied top-support candidates.
+	ConfusionModel  *ConfusionModel
+	ConfusionWeight float64
+	// Optional strict prior bonus used only for one-short min_reports candidates.
+	// Bonus never bypasses advantage/confidence/freq_guard/cooldown gates.
+	PriorBonusEnabled      bool
+	PriorBonusMax          int
+	PriorBonusDistanceMax  int
+	PriorBonusRequiresSCP  bool
+	PriorBonusApplyTo      string
+	PriorBonusKnownCallset *KnownCallsigns
 	// Cooldown protects a subject call from being flipped away when it already has
 	// recent diverse support on this frequency bin.
 	Cooldown *CallCooldown
 	// CooldownMinReporters allows adaptive thresholds per band/state when provided.
 	CooldownMinReporters int
+	// DecisionObserver receives every final decision trace (applied/rejected).
+	DecisionObserver CorrectionDecisionObserver
 }
 
 var correctionEligibleModes = map[string]struct{}{
@@ -118,9 +136,19 @@ type CorrectionTrace struct {
 	Distance3ExtraConfidence  int       `json:"d3_extra_confidence"`
 	FreqGuardMinSeparationKHz float64   `json:"freq_guard_min_separation_khz"`
 	FreqGuardRunnerUpRatio    float64   `json:"freq_guard_runner_ratio"`
+	ConfusionWeight           float64   `json:"confusion_weight,omitempty"`
+	WinnerConfusionScore      float64   `json:"winner_confusion_score,omitempty"`
+	RunnerUpConfusionScore    float64   `json:"runner_up_confusion_score,omitempty"`
+	CandidateRank             int       `json:"candidate_rank,omitempty"`
+	PriorBonusApplied         bool      `json:"prior_bonus_applied,omitempty"`
+	PriorBonusValue           int       `json:"prior_bonus_value,omitempty"`
+	PriorBonusSource          string    `json:"prior_bonus_source,omitempty"`
 	Decision                  string    `json:"decision"`
 	Reason                    string    `json:"reason,omitempty"`
 }
+
+// CorrectionDecisionObserver observes final correction decisions and rejection reasons.
+type CorrectionDecisionObserver func(trace CorrectionTrace)
 
 // Purpose: Determine whether a mode is eligible for call correction.
 // Key aspects: Limits to CW/RTTY and USB/LSB voice modes to avoid digital-mode conflicts.
@@ -264,6 +292,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		Distance3ExtraConfidence:  cfg.Distance3ExtraConfidence,
 		FreqGuardMinSeparationKHz: cfg.FreqGuardMinSeparationKHz,
 		FreqGuardRunnerUpRatio:    cfg.FreqGuardRunnerUpRatio,
+		ConfusionWeight:           cfg.ConfusionWeight,
 		DistanceModel:             distanceModelPlain,
 	}
 	switch trace.Mode {
@@ -311,7 +340,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 	}
 	addReporter := func(identity correctionCallIdentity, reporter string, seenAt time.Time, freqKHz float64) {
 		// Ignore reporters that fall below the configured reliability floor.
-		if reliabilityFor(cfg.SpotterReliability, reporter) < cfg.MinSpotterReliability {
+		if reliabilityForMode(cfg.SpotterReliability, cfg.SpotterReliabilityCW, cfg.SpotterReliabilityRTTY, subject.Mode, reporter) < cfg.MinSpotterReliability {
 			return
 		}
 		entry := ensureCallEntry(identity)
@@ -533,9 +562,10 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		confidence int
 		lastSeen   time.Time
 		lastFreq   float64
+		confusion  float64
 	}
 
-	rankedCalls := make([]rankedCall, 0, len(callKeys))
+	supportRankedCalls := make([]rankedCall, 0, len(callKeys))
 	for call, agg := range callStats {
 		if agg == nil {
 			continue
@@ -548,7 +578,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		if totalReporters > 0 {
 			confidence = support * 100 / totalReporters
 		}
-		rankedCalls = append(rankedCalls, rankedCall{
+		supportRankedCalls = append(supportRankedCalls, rankedCall{
 			key:        call,
 			display:    displayForKey(call),
 			support:    support,
@@ -557,27 +587,60 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 			lastFreq:   agg.lastFreq,
 		})
 	}
-	sort.Slice(rankedCalls, func(i, j int) bool {
-		if rankedCalls[i].support != rankedCalls[j].support {
-			return rankedCalls[i].support > rankedCalls[j].support
+	sort.Slice(supportRankedCalls, func(i, j int) bool {
+		if supportRankedCalls[i].support != supportRankedCalls[j].support {
+			return supportRankedCalls[i].support > supportRankedCalls[j].support
 		}
-		if !rankedCalls[i].lastSeen.Equal(rankedCalls[j].lastSeen) {
-			return rankedCalls[i].lastSeen.After(rankedCalls[j].lastSeen)
+		if !supportRankedCalls[i].lastSeen.Equal(supportRankedCalls[j].lastSeen) {
+			return supportRankedCalls[i].lastSeen.After(supportRankedCalls[j].lastSeen)
 		}
-		return rankedCalls[i].key < rankedCalls[j].key
+		return supportRankedCalls[i].key < supportRankedCalls[j].key
 	})
 
-	majorityKey := ""
-	if len(rankedCalls) > 0 {
-		majorityKey = rankedCalls[0].key
+	candidateRankedCalls := make([]rankedCall, len(supportRankedCalls))
+	copy(candidateRankedCalls, supportRankedCalls)
+	confusionScores := make(map[string]float64, len(candidateRankedCalls))
+	if cfg.ConfusionModel != nil && cfg.ConfusionWeight > 0 && len(candidateRankedCalls) > 1 {
+		topSupport := candidateRankedCalls[0].support
+		tieEnd := 1
+		for tieEnd < len(candidateRankedCalls) && candidateRankedCalls[tieEnd].support == topSupport {
+			tieEnd++
+		}
+		if tieEnd > 1 {
+			for i := 0; i < tieEnd; i++ {
+				score := cfg.ConfusionModel.ScoreCandidate(subjectIdentity.Raw, candidateRankedCalls[i].display, subject.Mode, float64(subject.Report))
+				candidateRankedCalls[i].confusion = score
+				confusionScores[candidateRankedCalls[i].key] = score
+			}
+			sort.Slice(candidateRankedCalls[:tieEnd], func(i, j int) bool {
+				left := float64(candidateRankedCalls[i].support) + cfg.ConfusionWeight*candidateRankedCalls[i].confusion
+				right := float64(candidateRankedCalls[j].support) + cfg.ConfusionWeight*candidateRankedCalls[j].confusion
+				if left != right {
+					return left > right
+				}
+				if candidateRankedCalls[i].confusion != candidateRankedCalls[j].confusion {
+					return candidateRankedCalls[i].confusion > candidateRankedCalls[j].confusion
+				}
+				if !candidateRankedCalls[i].lastSeen.Equal(candidateRankedCalls[j].lastSeen) {
+					return candidateRankedCalls[i].lastSeen.After(candidateRankedCalls[j].lastSeen)
+				}
+				return candidateRankedCalls[i].key < candidateRankedCalls[j].key
+			})
+		}
+	}
+	if len(candidateRankedCalls) > 0 {
+		trace.WinnerConfusionScore = confusionScores[candidateRankedCalls[0].key]
+	}
+	if len(candidateRankedCalls) > 1 {
+		trace.RunnerUpConfusionScore = confusionScores[candidateRankedCalls[1].key]
 	}
 
 	// Anchor path: if a call in this cluster is already considered good, prefer
 	// its closest good neighbor candidate, but still require full gate checks.
-	allCalls := make([]string, 0, len(rankedCalls)+1)
+	allCalls := make([]string, 0, len(supportRankedCalls)+1)
 	allCalls = append(allCalls, subjectIdentity.VoteKey)
 	seen := map[string]struct{}{subjectIdentity.VoteKey: {}}
-	for _, rc := range rankedCalls {
+	for _, rc := range supportRankedCalls {
 		if _, ok := seen[rc.key]; !ok {
 			allCalls = append(allCalls, rc.key)
 			seen[rc.key] = struct{}{}
@@ -601,6 +664,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 
 	type candidateEval struct {
 		support       int
+		effective     int
 		confidence    int
 		distance      int
 		runnerUp      int
@@ -608,6 +672,8 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		minReports    int
 		minAdvantage  int
 		minConfidence int
+		priorBonus    int
+		priorSource   string
 		reason        string
 	}
 
@@ -624,7 +690,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 
 		runner := rankedCall{}
 		hasRunner := false
-		for _, rc := range rankedCalls {
+		for _, rc := range supportRankedCalls {
 			if rc.key == candidateKey {
 				continue
 			}
@@ -659,9 +725,45 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 			minAdvantage += cfg.Distance3ExtraAdvantage
 			minConf += cfg.Distance3ExtraConfidence
 		}
-		if support < minReports {
+		effectiveSupport := support
+		priorBonus := 0
+		priorBonusSource := ""
+		if cfg.PriorBonusEnabled && cfg.PriorBonusMax > 0 && cfg.PriorBonusApplyTo == "min_reports" && support < minReports {
+			needed := minReports - support
+			if needed == 1 && needed <= cfg.PriorBonusMax {
+				if cfg.PriorBonusDistanceMax <= 0 || distance <= cfg.PriorBonusDistanceMax {
+					eligible := true
+					source := "config"
+					if cfg.PriorBonusRequiresSCP {
+						eligible = false
+						if known := cfg.PriorBonusKnownCallset; known != nil {
+							// Check multiple normalized variants so portable/base forms can match
+							// when either representation exists in MASTER.SCP.
+							alts := []string{agg.identity.Raw, agg.identity.VoteKey, agg.identity.BaseKey}
+							for _, call := range alts {
+								if strings.TrimSpace(call) == "" {
+									continue
+								}
+								if known.Contains(call) {
+									eligible = true
+									source = "scp"
+									break
+								}
+							}
+						}
+					}
+					if eligible {
+						priorBonus = needed
+						priorBonusSource = source
+						effectiveSupport = support + priorBonus
+					}
+				}
+			}
+		}
+		if effectiveSupport < minReports {
 			return candidateEval{
 				support:       support,
+				effective:     effectiveSupport,
 				confidence:    confidence,
 				distance:      distance,
 				runnerUp:      runnerSupport,
@@ -669,12 +771,15 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 				minReports:    minReports,
 				minAdvantage:  minAdvantage,
 				minConfidence: minConf,
+				priorBonus:    priorBonus,
+				priorSource:   priorBonusSource,
 				reason:        "min_reports",
 			}
 		}
 		if support < subjectCount+minAdvantage {
 			return candidateEval{
 				support:       support,
+				effective:     effectiveSupport,
 				confidence:    confidence,
 				distance:      distance,
 				runnerUp:      runnerSupport,
@@ -682,12 +787,15 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 				minReports:    minReports,
 				minAdvantage:  minAdvantage,
 				minConfidence: minConf,
+				priorBonus:    priorBonus,
+				priorSource:   priorBonusSource,
 				reason:        "advantage",
 			}
 		}
 		if confidence < minConf {
 			return candidateEval{
 				support:       support,
+				effective:     effectiveSupport,
 				confidence:    confidence,
 				distance:      distance,
 				runnerUp:      runnerSupport,
@@ -695,6 +803,8 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 				minReports:    minReports,
 				minAdvantage:  minAdvantage,
 				minConfidence: minConf,
+				priorBonus:    priorBonus,
+				priorSource:   priorBonusSource,
 				reason:        "confidence",
 			}
 		}
@@ -704,6 +814,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 			if freqSeparation >= cfg.FreqGuardMinSeparationKHz && float64(runnerSupport) >= cfg.FreqGuardRunnerUpRatio*float64(support) {
 				return candidateEval{
 					support:       support,
+					effective:     effectiveSupport,
 					confidence:    confidence,
 					distance:      distance,
 					runnerUp:      runnerSupport,
@@ -711,6 +822,8 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 					minReports:    minReports,
 					minAdvantage:  minAdvantage,
 					minConfidence: minConf,
+					priorBonus:    priorBonus,
+					priorSource:   priorBonusSource,
 					reason:        "freq_guard",
 				}
 			}
@@ -720,6 +833,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 			if block, _ := cfg.Cooldown.ShouldBlock(subjectIdentity.VoteKey, freqHz, cfg.CooldownMinReporters, cfg.RecencyWindow, subjectCount, subjectConfidence, support, confidence, now); block {
 				return candidateEval{
 					support:       support,
+					effective:     effectiveSupport,
 					confidence:    confidence,
 					distance:      distance,
 					runnerUp:      runnerSupport,
@@ -727,6 +841,8 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 					minReports:    minReports,
 					minAdvantage:  minAdvantage,
 					minConfidence: minConf,
+					priorBonus:    priorBonus,
+					priorSource:   priorBonusSource,
 					reason:        "cooldown",
 				}
 			}
@@ -734,6 +850,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 
 		return candidateEval{
 			support:       support,
+			effective:     effectiveSupport,
 			confidence:    confidence,
 			distance:      distance,
 			runnerUp:      runnerSupport,
@@ -741,19 +858,35 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 			minReports:    minReports,
 			minAdvantage:  minAdvantage,
 			minConfidence: minConf,
+			priorBonus:    priorBonus,
+			priorSource:   priorBonusSource,
 		}
 	}
 
 	type decisionAttempt struct {
-		key  string
-		path string
+		key       string
+		path      string
+		confusion float64
+		rank      int
 	}
-	attempts := make([]decisionAttempt, 0, 2)
+	maxConsensusAttempts := cfg.CandidateEvalTopK
+	if maxConsensusAttempts <= 0 {
+		maxConsensusAttempts = 1
+	}
+	attempts := make([]decisionAttempt, 0, 1+maxConsensusAttempts)
 	if anchorKey != "" && anchorKey != subjectIdentity.VoteKey {
-		attempts = append(attempts, decisionAttempt{key: anchorKey, path: "anchor"})
+		attempts = append(attempts, decisionAttempt{key: anchorKey, path: "anchor", confusion: confusionScores[anchorKey], rank: 1})
 	}
-	if majorityKey != "" && majorityKey != subjectIdentity.VoteKey && majorityKey != anchorKey {
-		attempts = append(attempts, decisionAttempt{key: majorityKey, path: "consensus"})
+	consensusAdded := 0
+	for _, rc := range candidateRankedCalls {
+		if consensusAdded >= maxConsensusAttempts {
+			break
+		}
+		if rc.key == subjectIdentity.VoteKey || rc.key == anchorKey {
+			continue
+		}
+		consensusAdded++
+		attempts = append(attempts, decisionAttempt{key: rc.key, path: "consensus", confusion: confusionScores[rc.key], rank: consensusAdded})
 	}
 
 	if len(attempts) == 0 {
@@ -771,16 +904,20 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 	lastEval := candidateEval{}
 	lastPath := ""
 	lastKey := ""
+	lastRank := 0
 	for _, attempt := range attempts {
 		lastPath = attempt.path
 		lastKey = attempt.key
+		lastRank = attempt.rank
+		trace.WinnerConfusionScore = attempt.confusion
+		trace.CandidateRank = attempt.rank
 		lastEval = evaluateCandidate(attempt.key)
 		if lastEval.reason != "" {
 			continue
 		}
 
 		updateCallQualityForCluster(attempt.key, freqHz, &cfg, clusterSpots)
-		trace.DecisionPath = decorateDecisionPath(attempt.path, slashPrecedenceActive)
+		trace.DecisionPath = decorateDecisionPath(attempt.path, slashPrecedenceActive, lastEval.priorBonus > 0)
 		trace.WinnerCall = displayForKey(attempt.key)
 		trace.WinnerSupport = lastEval.support
 		trace.RunnerUpSupport = lastEval.runnerUp
@@ -789,13 +926,17 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		trace.MinReports = lastEval.minReports
 		trace.MinAdvantage = lastEval.minAdvantage
 		trace.MinConfidence = lastEval.minConfidence
+		trace.PriorBonusApplied = lastEval.priorBonus > 0
+		trace.PriorBonusValue = lastEval.priorBonus
+		trace.PriorBonusSource = lastEval.priorSource
 		trace.Decision = "applied"
 		trace.Reason = ""
 		logCorrectionTrace(cfg, trace, clusterSpots)
 		return displayForKey(attempt.key), lastEval.support, lastEval.confidence, subjectConfidence, totalReporters, true
 	}
 
-	trace.DecisionPath = decorateDecisionPath(lastPath, slashPrecedenceActive)
+	trace.DecisionPath = decorateDecisionPath(lastPath, slashPrecedenceActive, lastEval.priorBonus > 0)
+	trace.CandidateRank = lastRank
 	trace.WinnerCall = displayForKey(lastKey)
 	trace.WinnerSupport = lastEval.support
 	trace.RunnerUpSupport = lastEval.runnerUp
@@ -804,6 +945,9 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 	trace.MinReports = lastEval.minReports
 	trace.MinAdvantage = lastEval.minAdvantage
 	trace.MinConfidence = lastEval.minConfidence
+	trace.PriorBonusApplied = lastEval.priorBonus > 0
+	trace.PriorBonusValue = lastEval.priorBonus
+	trace.PriorBonusSource = lastEval.priorSource
 	trace.Decision = "rejected"
 	trace.Reason = lastEval.reason
 	if trace.Reason == "" {
@@ -965,14 +1109,22 @@ func correctionDistance(subject, candidate correctionCallIdentity, mode, cwModel
 	return callDistance(subjectKey, candidateKey, mode, cwModel, rttyModel)
 }
 
-func decorateDecisionPath(path string, slashPrecedence bool) string {
-	if !slashPrecedence {
-		return path
+func decorateDecisionPath(path string, slashPrecedence bool, priorBonus bool) string {
+	if slashPrecedence {
+		if path == "" {
+			path = "slash_precedence"
+		} else {
+			path += "+slash_precedence"
+		}
 	}
-	if path == "" {
-		return "slash_precedence"
+	if priorBonus {
+		if path == "" {
+			path = "prior_bonus"
+		} else {
+			path += "+prior_bonus"
+		}
 	}
-	return path + "+slash_precedence"
+	return path
 }
 
 // Purpose: Select the closest good anchor call for a busted call.
@@ -1053,11 +1205,14 @@ func updateCallQualityForCluster(winnerCall string, freqHz float64, cfg *Correct
 	}
 }
 
-// Purpose: Emit a correction trace to the configured logger.
-// Key aspects: No-op when debug logging is disabled.
+// Purpose: Emit a correction trace to observer/log sinks.
+// Key aspects: Observer runs unconditionally; SQLite logging remains debug-gated.
 // Upstream: SuggestCallCorrection.
 // Downstream: cfg.TraceLogger.Enqueue.
 func logCorrectionTrace(cfg CorrectionSettings, tr CorrectionTrace, votes []bandmap.SpotEntry) {
+	if cfg.DecisionObserver != nil {
+		cfg.DecisionObserver(tr)
+	}
 	if !cfg.DebugLog || cfg.TraceLogger == nil {
 		return
 	}
@@ -1112,6 +1267,9 @@ func normalizeCorrectionSettings(settings CorrectionSettings) CorrectionSettings
 	if cfg.MinConfidencePercent <= 0 {
 		cfg.MinConfidencePercent = 70
 	}
+	if cfg.CandidateEvalTopK <= 0 {
+		cfg.CandidateEvalTopK = 1
+	}
 	if cfg.RecencyWindow <= 0 {
 		cfg.RecencyWindow = 45 * time.Second
 	}
@@ -1137,6 +1295,21 @@ func normalizeCorrectionSettings(settings CorrectionSettings) CorrectionSettings
 	cfg.DistanceModelRTTY = normalizeRTTYDistanceModel(cfg.DistanceModelRTTY)
 	if cfg.MinSpotterReliability < 0 {
 		cfg.MinSpotterReliability = 0
+	}
+	if cfg.ConfusionWeight < 0 {
+		cfg.ConfusionWeight = 0
+	}
+	if cfg.PriorBonusMax < 0 {
+		cfg.PriorBonusMax = 0
+	}
+	if cfg.PriorBonusDistanceMax <= 0 {
+		cfg.PriorBonusDistanceMax = 1
+	}
+	switch strings.ToLower(strings.TrimSpace(cfg.PriorBonusApplyTo)) {
+	case "", "min_reports":
+		cfg.PriorBonusApplyTo = "min_reports"
+	default:
+		cfg.PriorBonusApplyTo = "min_reports"
 	}
 	return cfg
 }
