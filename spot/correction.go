@@ -85,7 +85,7 @@ type CorrectionSettings struct {
 	// Optional confusion-model signal used to rank tied top-support candidates.
 	ConfusionModel  *ConfusionModel
 	ConfusionWeight float64
-	// Optional strict prior bonus used only for one-short min_reports candidates.
+	// Optional prior bonus for min_reports shortfalls, bounded by PriorBonusMax.
 	// Bonus never bypasses advantage/confidence/freq_guard/cooldown gates.
 	PriorBonusEnabled      bool
 	PriorBonusMax          int
@@ -745,7 +745,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		recentBonus := 0
 		if cfg.PriorBonusEnabled && cfg.PriorBonusMax > 0 && cfg.PriorBonusApplyTo == "min_reports" && support < minReports {
 			needed := minReports - support
-			if needed == 1 && needed <= cfg.PriorBonusMax {
+			if needed > 0 {
 				if cfg.PriorBonusDistanceMax <= 0 || distance <= cfg.PriorBonusDistanceMax {
 					eligible := true
 					source := "config"
@@ -769,6 +769,9 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 					}
 					if eligible {
 						priorBonus = needed
+						if priorBonus > cfg.PriorBonusMax {
+							priorBonus = cfg.PriorBonusMax
+						}
 						priorBonusSource = source
 						effectiveSupport = support + priorBonus
 					}
@@ -777,7 +780,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		}
 		if cfg.RecentBandBonusEnabled && cfg.RecentBandBonusMax > 0 && cfg.RecentBandStore != nil && effectiveSupport < minReports {
 			needed := minReports - effectiveSupport
-			if needed > 0 && needed <= cfg.RecentBandBonusMax {
+			if needed > 0 {
 				candidates := []string{agg.identity.Raw, displayForKey(candidateKey), agg.identity.VoteKey, agg.identity.BaseKey}
 				seenCalls := make(map[string]struct{}, len(candidates))
 				admitted := false
@@ -798,6 +801,9 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 				}
 				if admitted {
 					recentBonus = needed
+					if recentBonus > cfg.RecentBandBonusMax {
+						recentBonus = cfg.RecentBandBonusMax
+					}
 					effectiveSupport += recentBonus
 				}
 			}

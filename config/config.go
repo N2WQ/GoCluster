@@ -711,7 +711,7 @@ type CallCorrectionConfig struct {
 	RecentBandWindowSeconds           int  `yaml:"recent_band_window_seconds"`
 	RecentBandBonusMax                int  `yaml:"recent_band_bonus_max"`
 	RecentBandRecordMinUniqueSpotters int  `yaml:"recent_band_record_min_unique_spotters"`
-	// Optional strict prior bonus for one-short min_reports cases.
+	// Optional prior bonus for min_reports shortfalls, bounded by prior_bonus_max.
 	PriorBonusEnabled     bool   `yaml:"prior_bonus_enabled"`
 	PriorBonusMax         int    `yaml:"prior_bonus_max"`
 	PriorBonusDistanceMax int    `yaml:"prior_bonus_distance_max"`

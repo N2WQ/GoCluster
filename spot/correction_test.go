@@ -580,6 +580,107 @@ func TestSuggestCallCorrectionPriorBonusRequiresSCP(t *testing.T) {
 	}
 }
 
+func TestSuggestCallCorrectionPriorAndRecentBonusStackToCloseGap(t *testing.T) {
+	withTestRecentBandStore(t, 12*time.Hour, func(store *RecentBandStore) {
+		now := time.Now().UTC()
+		subject := &Spot{DXCall: "K1A8C", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now}
+		others := []*Spot{
+			{DXCall: "K1ABC", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+			{DXCall: "K1ABC", DECall: "W3CCC", Frequency: 7010.0, Mode: "CW", Time: now},
+		}
+		known := &KnownCallsigns{entries: map[string]struct{}{"K1ABC": {}}}
+		store.Record("K1ABC", "40m", "CW", "W8ZZZ", now.Add(-30*time.Minute))
+		store.Record("K1ABC", "40m", "CW", "W9YYY", now.Add(-20*time.Minute))
+		trace := &captureTraceLogger{}
+
+		call, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+			Strategy:                          "majority",
+			MinConsensusReports:               4, // support=2; prior +1 and recent +1 should close the gap
+			CandidateEvalTopK:                 1,
+			MinAdvantage:                      1,
+			MinConfidencePercent:              50,
+			MaxEditDistance:                   2,
+			RecencyWindow:                     30 * time.Second,
+			PriorBonusEnabled:                 true,
+			PriorBonusMax:                     1,
+			PriorBonusDistanceMax:             1,
+			PriorBonusRequiresSCP:             true,
+			PriorBonusApplyTo:                 "min_reports",
+			PriorBonusKnownCallset:            known,
+			RecentBandBonusEnabled:            true,
+			RecentBandWindow:                  12 * time.Hour,
+			RecentBandBonusMax:                1,
+			RecentBandRecordMinUniqueSpotters: 2,
+			RecentBandStore:                   store,
+			DebugLog:                          true,
+			TraceLogger:                       trace,
+		}, now)
+		if !ok {
+			t.Fatalf("expected stacked prior+recent bonus to satisfy min_reports")
+		}
+		if call != "K1ABC" {
+			t.Fatalf("expected K1ABC, got %s", call)
+		}
+		last := trace.lastTrace(t)
+		if !last.PriorBonusApplied || last.PriorBonusValue != 1 {
+			t.Fatalf("expected prior bonus metadata on applied trace")
+		}
+		if !strings.Contains(last.DecisionPath, "prior_bonus") || !strings.Contains(last.DecisionPath, "recent_band_bonus") {
+			t.Fatalf("expected decision path to include both prior_bonus and recent_band_bonus, got %q", last.DecisionPath)
+		}
+	})
+}
+
+func TestSuggestCallCorrectionPriorAndRecentBonusDoNotBypassAdvantage(t *testing.T) {
+	withTestRecentBandStore(t, 12*time.Hour, func(store *RecentBandStore) {
+		now := time.Now().UTC()
+		subject := &Spot{DXCall: "K1A8C", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now}
+		others := []*Spot{
+			{DXCall: "K1A8C", DECall: "W4DDD", Frequency: 7010.0, Mode: "CW", Time: now},
+			{DXCall: "K1A8C", DECall: "W5EEE", Frequency: 7010.0, Mode: "CW", Time: now},
+			{DXCall: "K1ABC", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+			{DXCall: "K1ABC", DECall: "W3CCC", Frequency: 7010.0, Mode: "CW", Time: now},
+		}
+		known := &KnownCallsigns{entries: map[string]struct{}{"K1ABC": {}}}
+		store.Record("K1ABC", "40m", "CW", "W8ZZZ", now.Add(-30*time.Minute))
+		store.Record("K1ABC", "40m", "CW", "W9YYY", now.Add(-20*time.Minute))
+		trace := &captureTraceLogger{}
+
+		_, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+			Strategy:                          "majority",
+			MinConsensusReports:               4, // support=2; prior +1 and recent +1 can satisfy min_reports
+			CandidateEvalTopK:                 1,
+			MinAdvantage:                      2, // subject support is 3, so support=2 should still fail advantage
+			MinConfidencePercent:              30,
+			MaxEditDistance:                   2,
+			RecencyWindow:                     30 * time.Second,
+			PriorBonusEnabled:                 true,
+			PriorBonusMax:                     1,
+			PriorBonusDistanceMax:             1,
+			PriorBonusRequiresSCP:             true,
+			PriorBonusApplyTo:                 "min_reports",
+			PriorBonusKnownCallset:            known,
+			RecentBandBonusEnabled:            true,
+			RecentBandWindow:                  12 * time.Hour,
+			RecentBandBonusMax:                1,
+			RecentBandRecordMinUniqueSpotters: 2,
+			RecentBandStore:                   store,
+			DebugLog:                          true,
+			TraceLogger:                       trace,
+		}, now)
+		if ok {
+			t.Fatalf("expected no correction because advantage gate should still hold")
+		}
+		last := trace.lastTrace(t)
+		if last.Reason != "advantage" {
+			t.Fatalf("expected advantage rejection, got %q", last.Reason)
+		}
+		if !strings.Contains(last.DecisionPath, "prior_bonus") || !strings.Contains(last.DecisionPath, "recent_band_bonus") {
+			t.Fatalf("expected decision path to include both prior_bonus and recent_band_bonus, got %q", last.DecisionPath)
+		}
+	})
+}
+
 func TestSuggestCallCorrectionRecentBandBonusOneShort(t *testing.T) {
 	withTestRecentBandStore(t, 12*time.Hour, func(store *RecentBandStore) {
 		now := time.Now().UTC()
