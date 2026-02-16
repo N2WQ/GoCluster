@@ -242,7 +242,7 @@ Effective labels in the snapshot use a fixed vocabulary: `all pass`, `all except
 - `REJECT BEACON` - drop beacon spots entirely (they remain tagged internally for future processing).
 - `REJECT SELF` - suppress all spots where the DX callsign matches your normalized callsign.
 
-Confidence glyphs are only emitted for modes that run consensus-based correction (CW/RTTY/USB/LSB voice modes). FT8/FT4 spots carry no confidence glyphs, so confidence filters do not affect them. After correction assigns `P`/`V`/`C`/`?`, any remaining `?` is upgraded to `S` when the DX call is present in `MASTER.SCP`.
+Confidence glyphs are only emitted for modes that run consensus-based correction (CW/RTTY/USB/LSB voice modes). FT8/FT4 spots carry no confidence glyphs, so confidence filters do not affect them. After correction assigns `P`/`V`/`C`/`?`, any remaining `?` is upgraded to `S` when the DX call is present in `MASTER.SCP` or has admitted recent-on-band support (same call+band+mode with sufficient unique spotters in the configured window).
 
 Band, mode, confidence, PATH, and DXGRID2/DEGRID2 commands share identical semantics: they accept comma- or space-separated lists, ignore duplicates/case, and treat the literal `ALL` as a shorthand to allow or block everything for that type. PASS/REJECT add to allow/block lists and remove the same items from the opposite list. DXGRID2 applies only to the DX grid when it is exactly two characters long; DEGRID2 applies only to the DE grid when it is exactly two characters long. 4/6-character or empty grids are unaffected, and longer tokens provided by the user are truncated to their first two characters before validation.
 SELF matches the normalized DX callsign only; when a spot is suppressed by secondary dedupe, a matching client still receives it if SELF is enabled. This delivery is per-client and does not bypass secondary dedupe for the global broadcast stream.
@@ -250,7 +250,7 @@ SELF matches the normalized DX callsign only; when a spot is suppressed by secon
 Confidence indicator legend in telnet output:
 
 - `?` - Unknown/low support
-- `S` - DX call is present in `MASTER.SCP` and the post-correction confidence would otherwise be `?`
+- `S` - post-correction confidence would otherwise be `?` and DX call is either in `MASTER.SCP` or admitted by recent-on-band evidence
 - `P` - 25-50% consensus for the subject call (no correction applied)
 - `V` - More than 50% consensus for the subject call (no correction applied)
 - `B` - Correction was suggested but CTY validation failed (call left unchanged)

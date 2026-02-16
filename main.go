@@ -1061,7 +1061,7 @@ func main() {
 	// Key aspects: Runs on ticker interval until shutdown.
 	// Upstream: main startup.
 	// Downstream: displayStatsWithFCC.
-	go displayStatsWithFCC(statsInterval, statsTracker, ingestValidator, deduplicator, secondaryFast, secondaryMed, secondarySlow, &secondaryStageCount, spotBuffer, ctyLookup, metaCache, ctyState, &knownCalls, knownCallsPath, telnetServer, surface, gridUpdateState, gridStoreHandle, cfg.FCCULS.DBPath, pathPredictor, rbnClient, rbnDigitalClient, pskrClient, pskrPathOnlyStats, peerManager, cfg.Server.NodeID, cfg.Skew.File)
+	go displayStatsWithFCC(statsInterval, statsTracker, ingestValidator, deduplicator, secondaryFast, secondaryMed, secondarySlow, &secondaryStageCount, spotBuffer, ctyLookup, metaCache, ctyState, &knownCalls, recentBandStore, knownCallsPath, telnetServer, surface, gridUpdateState, gridStoreHandle, cfg.FCCULS.DBPath, pathPredictor, rbnClient, rbnDigitalClient, pskrClient, pskrPathOnlyStats, peerManager, cfg.Server.NodeID, cfg.Skew.File)
 	if pathCfg.Enabled {
 		go startPathPredictionLogger(ctx, logMux, telnetServer, pathPredictor, pathReport)
 	}
@@ -1397,7 +1397,7 @@ func formatTopCounterSummary(counts map[string]uint64, limit int) string {
 // Key aspects: Uses a ticker, diff counters, and optional secondary dedupe stats.
 // Upstream: main stats goroutine.
 // Downstream: tracker accessors, loadFCCSnapshot, and UI/log output.
-func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestStats *ingestValidator, dedup *dedup.Deduplicator, secondaryFast *dedup.SecondaryDeduper, secondaryMed *dedup.SecondaryDeduper, secondarySlow *dedup.SecondaryDeduper, secondaryStage *atomic.Uint64, buf *buffer.RingBuffer, ctyLookup func() *cty.CTYDatabase, metaCache *callMetaCache, ctyState *ctyRefreshState, knownPtr *atomic.Pointer[spot.KnownCallsigns], knownCallsPath string, telnetSrv *telnet.Server, dash ui.Surface, gridStats *gridMetrics, gridDB *gridStoreHandle, fccDBPath string, pathPredictor *pathreliability.Predictor, rbnClient *rbn.Client, rbnDigitalClient *rbn.Client, pskrClient *pskreporter.Client, pskrPathOnly *pathOnlyStats, peerManager *peer.Manager, clusterCall string, skewPath string) {
+func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestStats *ingestValidator, dedup *dedup.Deduplicator, secondaryFast *dedup.SecondaryDeduper, secondaryMed *dedup.SecondaryDeduper, secondarySlow *dedup.SecondaryDeduper, secondaryStage *atomic.Uint64, buf *buffer.RingBuffer, ctyLookup func() *cty.CTYDatabase, metaCache *callMetaCache, ctyState *ctyRefreshState, knownPtr *atomic.Pointer[spot.KnownCallsigns], recentBandStore *spot.RecentBandStore, knownCallsPath string, telnetSrv *telnet.Server, dash ui.Surface, gridStats *gridMetrics, gridDB *gridStoreHandle, fccDBPath string, pathPredictor *pathreliability.Predictor, rbnClient *rbn.Client, rbnDigitalClient *rbn.Client, pskrClient *pskreporter.Client, pskrPathOnly *pathOnlyStats, peerManager *peer.Manager, clusterCall string, skewPath string) {
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
@@ -1599,7 +1599,7 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 
 		if dash != nil {
 			dash.SetStats(lines)
-			overviewLines := buildOverviewLines(tracker, dedup, secondaryFast, secondaryMed, secondarySlow, metaCache, knownPtr, ctyState, knownCallsPath, fccSnap, gridStats, gridDB, pathPredictor, telnetSrv, clusterCall,
+			overviewLines := buildOverviewLines(tracker, dedup, secondaryFast, secondaryMed, secondarySlow, metaCache, knownPtr, recentBandStore, ctyState, knownCallsPath, fccSnap, gridStats, gridDB, pathPredictor, telnetSrv, clusterCall,
 				rbnLive, pskLive, p92Live,
 				combinedRBN, rbnCW, rbnRTTY, rbnFT8, rbnFT4,
 				pskTotal, pskCW, pskRTTY, pskFT8, pskFT4, pskMSK144,
@@ -2079,7 +2079,7 @@ func processOutputSpots(
 					s.Confidence = "?"
 					dirty = true
 				}
-				if applyKnownCallFloor(s, knownCalls) {
+				if applyKnownCallFloor(s, knownCalls, recentBandStore, correctionCfg) {
 					dirty = true
 				}
 			}
@@ -3266,11 +3266,17 @@ func recordRecentBandObservation(s *spot.Spot, store *spot.RecentBandStore, cfg 
 	store.Record(call, band, mode, spotter, seenAt)
 }
 
-// Purpose: Apply SCP known-call promotion only when confidence is still unknown.
-// Key aspects: If confidence is '?', upgrade to 'S' when the DX call is in SCP.
+// Purpose: Apply confidence floor only when confidence is still unknown.
+// Key aspects: If confidence is '?', upgrade to 'S' when DX call is in
+// known-calls (SCP) or admitted by recent-on-band evidence.
 // Upstream: processOutputSpots after correction/confidence assignment.
-// Downstream: KnownCallsigns.Contains and modeSupportsConfidenceGlyph.
-func applyKnownCallFloor(s *spot.Spot, knownCalls *atomic.Pointer[spot.KnownCallsigns]) bool {
+// Downstream: KnownCallsigns.Contains, RecentBandStore.HasRecentSupport, and modeSupportsConfidenceGlyph.
+func applyKnownCallFloor(
+	s *spot.Spot,
+	knownCalls *atomic.Pointer[spot.KnownCallsigns],
+	recentBandStore *spot.RecentBandStore,
+	corrCfg config.CallCorrectionConfig,
+) bool {
 	if s == nil || s.IsBeacon {
 		return false
 	}
@@ -3284,9 +3290,6 @@ func applyKnownCallFloor(s *spot.Spot, knownCalls *atomic.Pointer[spot.KnownCall
 	if strings.TrimSpace(s.Confidence) != "?" {
 		return false
 	}
-	if knownCalls == nil {
-		return false
-	}
 	call := s.DXCallNorm
 	if call == "" {
 		call = s.DXCall
@@ -3294,7 +3297,24 @@ func applyKnownCallFloor(s *spot.Spot, knownCalls *atomic.Pointer[spot.KnownCall
 	if call == "" {
 		return false
 	}
-	if known := knownCalls.Load(); known != nil && known.Contains(call) {
+
+	knownHit := false
+	if knownCalls != nil {
+		if known := knownCalls.Load(); known != nil && known.Contains(call) {
+			knownHit = true
+		}
+	}
+
+	recentHit := false
+	if recentBandStore != nil && corrCfg.RecentBandBonusEnabled {
+		band := s.BandNorm
+		if band == "" || band == "???" {
+			band = spot.FreqToBand(s.Frequency)
+		}
+		recentHit = recentBandStore.HasRecentSupport(call, band, mode, corrCfg.RecentBandRecordMinUniqueSpotters, time.Now().UTC())
+	}
+
+	if knownHit || recentHit {
 		s.Confidence = "S"
 		return true
 	}
@@ -5193,6 +5213,7 @@ func buildOverviewLines(
 	secondarySlow *dedup.SecondaryDeduper,
 	metaCache *callMetaCache,
 	knownPtr *atomic.Pointer[spot.KnownCallsigns],
+	recentBandStore *spot.RecentBandStore,
 	ctyState *ctyRefreshState,
 	knownCallsPath string,
 	fccSnap *fccSnapshot,
@@ -5266,6 +5287,10 @@ func buildOverviewLines(
 	gridHitPct := percentValue(gridHits, gridLookups)
 	metaHitPct := percentValue(metaHits, metaLookups)
 	knownHitPct := percentValue(knownHits, knownLookups)
+	recentOnBandLabel := "n/a"
+	if recentBandStore != nil {
+		recentOnBandLabel = humanize.Comma(int64(recentBandStore.ActiveCallCount(now)))
+	}
 
 	gridSizeLabel := humanize.Comma(gridCount)
 	metaSizeLabel := humanize.Comma(int64(metaCount))
@@ -5274,7 +5299,9 @@ func buildOverviewLines(
 		fmt.Sprintf("[yellow]Grid cache[-]:  %s %s", formatPercentBarWithLabel(gridHitPct, 20, gridSizeLabel), formatPercentString(gridHitPct)),
 		fmt.Sprintf("[yellow]Meta cache[-]:  %s %s", formatPercentBarWithLabel(metaHitPct, 20, metaSizeLabel), formatPercentString(metaHitPct)),
 		fmt.Sprintf("[yellow]Known calls[-]: %s %s", formatPercentBarWithLabel(knownHitPct, 20, knownSizeLabel), formatPercentString(knownHitPct)),
+		"",
 	}
+	cacheBars = append(cacheBars, formatRecentOnBandLines(recentBandStore, now, recentOnBandLabel)...)
 
 	ctyTime := "n/a"
 	if ctyState != nil {
@@ -5515,6 +5542,100 @@ func formatPathLines(predictor *pathreliability.Predictor, now time.Time) []stri
 			coarseCol := padLeft(humanize.Comma(int64(entry.Coarse)), maxCoarse)
 			col := fmt.Sprintf("[yellow]%s[-]: %s / %s", bandCol, fineCol, coarseCol)
 			cols = append(cols, col)
+		}
+		if len(cols) == 0 {
+			continue
+		}
+		if len(cols) == 1 {
+			lines = append(lines, cols[0])
+			continue
+		}
+		colWidth := 0
+		for _, col := range cols {
+			if w := visibleLen(col); w > colWidth {
+				colWidth = w
+			}
+		}
+		colWidth += 2
+		var b strings.Builder
+		for i, col := range cols {
+			if i < len(cols)-1 {
+				b.WriteString(padRight(col, colWidth))
+			} else {
+				b.WriteString(col)
+			}
+		}
+		lines = append(lines, b.String())
+	}
+	return lines
+}
+
+func formatRecentOnBandLines(store *spot.RecentBandStore, now time.Time, totalLabel string) []string {
+	lines := []string{fmt.Sprintf("[yellow]Recent on band[-]: %s", totalLabel)}
+	if store == nil {
+		return lines
+	}
+	counts := store.ActiveCallCountsByBand(now)
+	if len(counts) == 0 {
+		return lines
+	}
+	bandOrder := spot.SupportedBandNames()
+	seen := make(map[string]struct{}, len(bandOrder))
+	entries := make([]struct {
+		band  string
+		count int
+	}, 0, len(counts))
+	for _, band := range bandOrder {
+		count := counts[band]
+		if count <= 0 {
+			continue
+		}
+		entries = append(entries, struct {
+			band  string
+			count int
+		}{band: band, count: count})
+		seen[band] = struct{}{}
+	}
+	for band, count := range counts {
+		if count <= 0 {
+			continue
+		}
+		if _, ok := seen[band]; ok {
+			continue
+		}
+		entries = append(entries, struct {
+			band  string
+			count int
+		}{band: band, count: count})
+	}
+	if len(entries) == 0 {
+		return lines
+	}
+	const colsPerRow = 6
+	maxBand := 0
+	maxCount := 0
+	for _, entry := range entries {
+		if len(entry.band) > maxBand {
+			maxBand = len(entry.band)
+		}
+		countStr := humanize.Comma(int64(entry.count))
+		if len(countStr) > maxCount {
+			maxCount = len(countStr)
+		}
+	}
+	rows := (len(entries) + colsPerRow - 1) / colsPerRow
+	cols := make([]string, 0, colsPerRow)
+	for r := 0; r < rows; r++ {
+		cols = cols[:0]
+		for c := 0; c < colsPerRow; c++ {
+			idx := c*rows + r
+			if idx >= len(entries) {
+				continue
+			}
+			entry := entries[idx]
+			bandCol := padLeft(entry.band, maxBand)
+			countCol := padLeft(humanize.Comma(int64(entry.count)), maxCount)
+			cols = append(cols, fmt.Sprintf("[yellow]%s[-]: %s", bandCol, countCol))
 		}
 		if len(cols) == 0 {
 			continue

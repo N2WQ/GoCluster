@@ -54,3 +54,55 @@ func TestRecentBandStoreNormalizesKeys(t *testing.T) {
 		t.Fatalf("expected key normalization across case differences")
 	}
 }
+
+func TestRecentBandStoreActiveCallCount(t *testing.T) {
+	now := time.Date(2026, 2, 16, 12, 0, 0, 0, time.UTC)
+	store := NewRecentBandStoreWithOptions(RecentBandOptions{
+		Window:             time.Hour,
+		Shards:             1,
+		MaxEntries:         128,
+		CleanupInterval:    time.Hour,
+		MaxSpottersPerCall: 8,
+	})
+
+	store.Record("K1ABC", "40m", "CW", "W1AAA", now.Add(-10*time.Minute))
+	store.Record("K1ABC", "20m", "CW", "W2BBB", now.Add(-5*time.Minute))
+	store.Record("N0XYZ", "40m", "CW", "W3CCC", now.Add(-8*time.Minute))
+	store.Record("OLD1", "40m", "CW", "W4DDD", now.Add(-2*time.Hour))
+
+	if got := store.ActiveCallCount(now); got != 2 {
+		t.Fatalf("expected 2 active calls, got %d", got)
+	}
+	if got := store.ActiveCallCount(now.Add(2 * time.Hour)); got != 0 {
+		t.Fatalf("expected 0 active calls after expiry, got %d", got)
+	}
+}
+
+func TestRecentBandStoreActiveCallCountsByBand(t *testing.T) {
+	now := time.Date(2026, 2, 16, 12, 0, 0, 0, time.UTC)
+	store := NewRecentBandStoreWithOptions(RecentBandOptions{
+		Window:             time.Hour,
+		Shards:             1,
+		MaxEntries:         128,
+		CleanupInterval:    time.Hour,
+		MaxSpottersPerCall: 8,
+	})
+
+	// Same call appears in two modes on 40m and should only count once on 40m.
+	store.Record("K1ABC", "40m", "CW", "W1AAA", now.Add(-10*time.Minute))
+	store.Record("K1ABC", "40m", "RTTY", "W2BBB", now.Add(-8*time.Minute))
+	store.Record("K1ABC", "20m", "CW", "W3CCC", now.Add(-7*time.Minute))
+	store.Record("N0XYZ", "40m", "CW", "W4DDD", now.Add(-6*time.Minute))
+	store.Record("OLD1", "15m", "CW", "W5EEE", now.Add(-2*time.Hour))
+
+	got := store.ActiveCallCountsByBand(now)
+	if got["40m"] != 2 {
+		t.Fatalf("expected 40m active-call count 2, got %d", got["40m"])
+	}
+	if got["20m"] != 1 {
+		t.Fatalf("expected 20m active-call count 1, got %d", got["20m"])
+	}
+	if _, ok := got["15m"]; ok {
+		t.Fatalf("did not expect expired 15m entry in counts")
+	}
+}

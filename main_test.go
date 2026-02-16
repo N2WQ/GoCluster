@@ -434,7 +434,7 @@ func TestApplyKnownCallFloorPromotesKnownDX(t *testing.T) {
 	s := spot.NewSpot("K1KI", "W2TT", 1831.3, "CW")
 	s.Confidence = "?"
 
-	if !applyKnownCallFloor(s, &knownPtr) {
+	if !applyKnownCallFloor(s, &knownPtr, nil, config.CallCorrectionConfig{}) {
 		t.Fatalf("expected known-call floor to mark confidence")
 	}
 	if s.Confidence != "S" {
@@ -462,7 +462,7 @@ func TestApplyKnownCallFloorKeepsNonUnknownConfidence(t *testing.T) {
 	s := spot.NewSpot("K1KI", "W2TT", 1831.3, "CW")
 	s.Confidence = "P"
 
-	if applyKnownCallFloor(s, &knownPtr) {
+	if applyKnownCallFloor(s, &knownPtr, nil, config.CallCorrectionConfig{}) {
 		t.Fatalf("did not expect known-call floor to override P")
 	}
 	if s.Confidence != "P" {
@@ -490,11 +490,150 @@ func TestApplyKnownCallFloorSkipsUnsupportedMode(t *testing.T) {
 	s := spot.NewSpot("K1KI", "W2TT", 14074.0, "FT8")
 	s.Confidence = "?"
 
-	if applyKnownCallFloor(s, &knownPtr) {
+	if applyKnownCallFloor(s, &knownPtr, nil, config.CallCorrectionConfig{}) {
 		t.Fatalf("did not expect known-call floor to apply to FT8")
 	}
 	if s.Confidence != "?" {
 		t.Fatalf("expected confidence ?, got %q", s.Confidence)
+	}
+}
+
+func TestApplyKnownCallFloorPromotesRecentOnBandDX(t *testing.T) {
+	store := spot.NewRecentBandStoreWithOptions(spot.RecentBandOptions{
+		Window:             12 * time.Hour,
+		Shards:             1,
+		MaxEntries:         128,
+		CleanupInterval:    time.Hour,
+		MaxSpottersPerCall: 8,
+	})
+	now := time.Now().UTC()
+	s := spot.NewSpot("K1REC", "W2TT", 7010.0, "CW")
+	s.Confidence = "?"
+	store.Record("K1REC", s.BandNorm, "CW", "N0AAA", now.Add(-10*time.Minute))
+	store.Record("K1REC", s.BandNorm, "CW", "N0BBB", now.Add(-5*time.Minute))
+
+	if !applyKnownCallFloor(s, nil, store, config.CallCorrectionConfig{
+		RecentBandBonusEnabled:            true,
+		RecentBandRecordMinUniqueSpotters: 2,
+	}) {
+		t.Fatalf("expected recent-on-band floor to mark confidence")
+	}
+	if s.Confidence != "S" {
+		t.Fatalf("expected confidence S, got %q", s.Confidence)
+	}
+}
+
+func TestApplyKnownCallFloorRecentOnBandHonorsModeAndFlag(t *testing.T) {
+	store := spot.NewRecentBandStoreWithOptions(spot.RecentBandOptions{
+		Window:             12 * time.Hour,
+		Shards:             1,
+		MaxEntries:         128,
+		CleanupInterval:    time.Hour,
+		MaxSpottersPerCall: 8,
+	})
+	now := time.Now().UTC()
+	s := spot.NewSpot("K1REC", "W2TT", 7010.0, "CW")
+	s.Confidence = "?"
+	store.Record("K1REC", s.BandNorm, "RTTY", "N0AAA", now.Add(-10*time.Minute))
+	store.Record("K1REC", s.BandNorm, "RTTY", "N0BBB", now.Add(-5*time.Minute))
+
+	if applyKnownCallFloor(s, nil, store, config.CallCorrectionConfig{
+		RecentBandBonusEnabled:            true,
+		RecentBandRecordMinUniqueSpotters: 2,
+	}) {
+		t.Fatalf("did not expect recent-on-band floor from mismatched mode")
+	}
+	if s.Confidence != "?" {
+		t.Fatalf("expected confidence ?, got %q", s.Confidence)
+	}
+
+	store.Record("K1REC", s.BandNorm, "CW", "N0AAA", now.Add(-10*time.Minute))
+	store.Record("K1REC", s.BandNorm, "CW", "N0BBB", now.Add(-5*time.Minute))
+	if applyKnownCallFloor(s, nil, store, config.CallCorrectionConfig{
+		RecentBandBonusEnabled:            false,
+		RecentBandRecordMinUniqueSpotters: 2,
+	}) {
+		t.Fatalf("did not expect recent-on-band floor when feature is disabled")
+	}
+	if s.Confidence != "?" {
+		t.Fatalf("expected confidence ?, got %q", s.Confidence)
+	}
+}
+
+func TestBuildOverviewLinesIncludesRecentOnBandCalls(t *testing.T) {
+	now := time.Now().UTC()
+	recentBandStore := spot.NewRecentBandStoreWithOptions(spot.RecentBandOptions{
+		Window:             12 * time.Hour,
+		Shards:             1,
+		MaxEntries:         128,
+		CleanupInterval:    time.Hour,
+		MaxSpottersPerCall: 8,
+	})
+	recentBandStore.Record("K1ABC", "40m", "CW", "W1AAA", now.Add(-10*time.Minute))
+	recentBandStore.Record("K1ABC", "20m", "CW", "W2BBB", now.Add(-5*time.Minute))
+	recentBandStore.Record("N0XYZ", "40m", "CW", "W3CCC", now.Add(-6*time.Minute))
+
+	lines := buildOverviewLines(
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		recentBandStore,
+		nil,
+		"",
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		"N2WQ-2",
+		false,
+		false,
+		false,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		"Path: n/a",
+		"",
+		nil,
+		"n/a",
+	)
+
+	found := false
+	for _, line := range lines {
+		if strings.Contains(line, "[yellow]Recent on band[-]: 2") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected recent-on-band line with count 2 in overview lines, got %v", lines)
+	}
+	perBandFound := false
+	for _, line := range lines {
+		if strings.Contains(line, "[yellow]40m[-]: 2") && strings.Contains(line, "[yellow]20m[-]: 1") {
+			perBandFound = true
+			break
+		}
+	}
+	if !perBandFound {
+		t.Fatalf("expected per-band recent-on-band counts in overview lines, got %v", lines)
 	}
 }
 

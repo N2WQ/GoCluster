@@ -236,6 +236,71 @@ func (s *RecentBandStore) RecentSupportCount(call, band, mode string, now time.T
 	return len(entry.spotters)
 }
 
+// ActiveCallCount returns the number of distinct calls with non-stale recent
+// support records across all bands/modes.
+func (s *RecentBandStore) ActiveCallCount(now time.Time) int {
+	if s == nil || s.window <= 0 {
+		return 0
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	} else {
+		now = now.UTC()
+	}
+	cutoff := now.Add(-s.window)
+	calls := make(map[string]struct{})
+	for i := range s.shards {
+		shard := &s.shards[i]
+		shard.mu.Lock()
+		for key, entry := range shard.entries {
+			s.pruneEntryLocked(entry, cutoff)
+			if len(entry.spotters) == 0 {
+				delete(shard.entries, key)
+				continue
+			}
+			calls[key.call] = struct{}{}
+		}
+		shard.mu.Unlock()
+	}
+	return len(calls)
+}
+
+// ActiveCallCountsByBand returns active distinct-call counts for each band.
+// A call is counted once per band even when it appears in multiple modes.
+func (s *RecentBandStore) ActiveCallCountsByBand(now time.Time) map[string]int {
+	if s == nil || s.window <= 0 {
+		return nil
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	} else {
+		now = now.UTC()
+	}
+	cutoff := now.Add(-s.window)
+	byBand := make(map[string]map[string]struct{})
+	for i := range s.shards {
+		shard := &s.shards[i]
+		shard.mu.Lock()
+		for key, entry := range shard.entries {
+			s.pruneEntryLocked(entry, cutoff)
+			if len(entry.spotters) == 0 {
+				delete(shard.entries, key)
+				continue
+			}
+			if byBand[key.band] == nil {
+				byBand[key.band] = make(map[string]struct{})
+			}
+			byBand[key.band][key.call] = struct{}{}
+		}
+		shard.mu.Unlock()
+	}
+	out := make(map[string]int, len(byBand))
+	for band, calls := range byBand {
+		out[band] = len(calls)
+	}
+	return out
+}
+
 func (s *RecentBandStore) cleanupLoop() {
 	ticker := time.NewTicker(s.cleanupInterval)
 	defer ticker.Stop()
