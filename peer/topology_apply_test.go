@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -23,11 +24,11 @@ func TestApplyPC92ParsesEntriesAfterType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseFrame: %v", err)
 	}
-	store.applyPC92(frame, now)
+	store.applyPC92(context.Background(), frame, now)
 
 	var count int
 	var origin, call, version, build, ip string
-	row := store.db.QueryRow(`select count(*), origin, call, version, build, ip from peer_nodes`)
+	row := store.db.QueryRowContext(context.Background(), `select count(*), origin, call, version, build, ip from peer_nodes`)
 	if err := row.Scan(&count, &origin, &call, &version, &build, &ip); err != nil {
 		t.Fatalf("scan: %v", err)
 	}
@@ -43,8 +44,8 @@ func TestApplyPC92ParsesEntriesAfterType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseFrame delete: %v", err)
 	}
-	store.applyPC92(frameDel, now)
-	row = store.db.QueryRow(`select count(*) from peer_nodes`)
+	store.applyPC92(context.Background(), frameDel, now)
+	row = store.db.QueryRowContext(context.Background(), `select count(*) from peer_nodes`)
 	if err := row.Scan(&count); err != nil {
 		t.Fatalf("scan count after delete: %v", err)
 	}
@@ -57,8 +58,8 @@ func TestApplyPC92ParsesEntriesAfterType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseFrame multi: %v", err)
 	}
-	store.applyPC92(frameMulti, now)
-	row = store.db.QueryRow(`select count(*) from peer_nodes where origin='NODE2'`)
+	store.applyPC92(context.Background(), frameMulti, now)
+	row = store.db.QueryRowContext(context.Background(), `select count(*) from peer_nodes where origin='NODE2'`)
 	if err := row.Scan(&count); err != nil {
 		t.Fatalf("scan multi count: %v", err)
 	}

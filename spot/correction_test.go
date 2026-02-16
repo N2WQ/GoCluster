@@ -48,10 +48,10 @@ func withTestCallQualityStore(t *testing.T, fn func(store *CallQualityStore)) {
 	fn(store)
 }
 
-func withTestRecentBandStore(t *testing.T, window time.Duration, fn func(store *RecentBandStore)) {
+func withTestRecentBandStore(t *testing.T, fn func(store *RecentBandStore)) {
 	t.Helper()
 	store := NewRecentBandStoreWithOptions(RecentBandOptions{
-		Window:             window,
+		Window:             12 * time.Hour,
 		Shards:             1,
 		MaxEntries:         1024,
 		CleanupInterval:    time.Hour,
@@ -581,7 +581,7 @@ func TestSuggestCallCorrectionPriorBonusRequiresSCP(t *testing.T) {
 }
 
 func TestSuggestCallCorrectionPriorAndRecentBonusStackToCloseGap(t *testing.T) {
-	withTestRecentBandStore(t, 12*time.Hour, func(store *RecentBandStore) {
+	withTestRecentBandStore(t, func(store *RecentBandStore) {
 		now := time.Now().UTC()
 		subject := &Spot{DXCall: "K1A8C", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now}
 		others := []*Spot{
@@ -632,7 +632,7 @@ func TestSuggestCallCorrectionPriorAndRecentBonusStackToCloseGap(t *testing.T) {
 }
 
 func TestSuggestCallCorrectionPriorAndRecentBonusDoNotBypassAdvantage(t *testing.T) {
-	withTestRecentBandStore(t, 12*time.Hour, func(store *RecentBandStore) {
+	withTestRecentBandStore(t, func(store *RecentBandStore) {
 		now := time.Now().UTC()
 		subject := &Spot{DXCall: "K1A8C", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now}
 		others := []*Spot{
@@ -682,7 +682,7 @@ func TestSuggestCallCorrectionPriorAndRecentBonusDoNotBypassAdvantage(t *testing
 }
 
 func TestSuggestCallCorrectionRecentBandBonusOneShort(t *testing.T) {
-	withTestRecentBandStore(t, 12*time.Hour, func(store *RecentBandStore) {
+	withTestRecentBandStore(t, func(store *RecentBandStore) {
 		now := time.Now().UTC()
 		subject := &Spot{DXCall: "K1A8C", DECall: "", Frequency: 7010.0, Mode: "CW", Time: now}
 		others := []*Spot{
@@ -722,7 +722,7 @@ func TestSuggestCallCorrectionRecentBandBonusOneShort(t *testing.T) {
 }
 
 func TestSuggestCallCorrectionRecentBandBonusRequiresAdmission(t *testing.T) {
-	withTestRecentBandStore(t, 12*time.Hour, func(store *RecentBandStore) {
+	withTestRecentBandStore(t, func(store *RecentBandStore) {
 		now := time.Now().UTC()
 		subject := &Spot{DXCall: "K1A8C", DECall: "", Frequency: 7010.0, Mode: "CW", Time: now}
 		others := []*Spot{
@@ -758,7 +758,7 @@ func TestSuggestCallCorrectionRecentBandBonusRequiresAdmission(t *testing.T) {
 }
 
 func TestSuggestCallCorrectionRecentBandBonusDoesNotBypassAdvantage(t *testing.T) {
-	withTestRecentBandStore(t, 12*time.Hour, func(store *RecentBandStore) {
+	withTestRecentBandStore(t, func(store *RecentBandStore) {
 		now := time.Now().UTC()
 		subject := &Spot{DXCall: "K1A8C", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now}
 		others := []*Spot{

@@ -3,7 +3,6 @@
 package stats
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -81,7 +80,15 @@ func (t *Tracker) IncrementSourceMode(source, mode string) {
 func (t *Tracker) GetModeCounts() map[string]uint64 {
 	counts := make(map[string]uint64)
 	t.modeCounts.Range(func(key, value any) bool {
-		counts[key.(string)] = value.(*atomic.Uint64).Load()
+		counterKey, keyOK := mapCounterKey(key)
+		if !keyOK {
+			return true
+		}
+		counter, valueOK := mapCounterValue(value)
+		if !valueOK {
+			return true
+		}
+		counts[counterKey] = counter.Load()
 		return true
 	})
 	return counts
@@ -94,7 +101,15 @@ func (t *Tracker) GetModeCounts() map[string]uint64 {
 func (t *Tracker) GetSourceCounts() map[string]uint64 {
 	counts := make(map[string]uint64)
 	t.sourceCounts.Range(func(key, value any) bool {
-		counts[key.(string)] = value.(*atomic.Uint64).Load()
+		counterKey, keyOK := mapCounterKey(key)
+		if !keyOK {
+			return true
+		}
+		counter, valueOK := mapCounterValue(value)
+		if !valueOK {
+			return true
+		}
+		counts[counterKey] = counter.Load()
 		return true
 	})
 	return counts
@@ -107,7 +122,15 @@ func (t *Tracker) GetSourceCounts() map[string]uint64 {
 func (t *Tracker) GetSourceModeCounts() map[string]uint64 {
 	counts := make(map[string]uint64)
 	t.sourceModeCounts.Range(func(key, value any) bool {
-		counts[key.(string)] = value.(*atomic.Uint64).Load()
+		counterKey, keyOK := mapCounterKey(key)
+		if !keyOK {
+			return true
+		}
+		counter, valueOK := mapCounterValue(value)
+		if !valueOK {
+			return true
+		}
+		counts[counterKey] = counter.Load()
 		return true
 	})
 	return counts
@@ -146,7 +169,10 @@ func (t *Tracker) SourceModeCardinality() int {
 func (t *Tracker) GetTotal() uint64 {
 	var total uint64
 	t.sourceCounts.Range(func(_, value any) bool {
-		total += value.(*atomic.Uint64).Load()
+		counter, ok := mapCounterValue(value)
+		if ok {
+			total += counter.Load()
+		}
 		return true
 	})
 	return total
@@ -348,7 +374,15 @@ func (t *Tracker) CorrectionPriorBonusUsed() uint64 {
 func (t *Tracker) CorrectionDecisionReasons() map[string]uint64 {
 	counts := make(map[string]uint64)
 	t.corrDecisionReasons.Range(func(key, value any) bool {
-		counts[key.(string)] = value.(*atomic.Uint64).Load()
+		counterKey, keyOK := mapCounterKey(key)
+		if !keyOK {
+			return true
+		}
+		counter, valueOK := mapCounterValue(value)
+		if !valueOK {
+			return true
+		}
+		counts[counterKey] = counter.Load()
 		return true
 	})
 	return counts
@@ -361,7 +395,15 @@ func (t *Tracker) CorrectionDecisionReasons() map[string]uint64 {
 func (t *Tracker) CorrectionDecisionPaths() map[string]uint64 {
 	counts := make(map[string]uint64)
 	t.corrDecisionPaths.Range(func(key, value any) bool {
-		counts[key.(string)] = value.(*atomic.Uint64).Load()
+		counterKey, keyOK := mapCounterKey(key)
+		if !keyOK {
+			return true
+		}
+		counter, valueOK := mapCounterValue(value)
+		if !valueOK {
+			return true
+		}
+		counts[counterKey] = counter.Load()
 		return true
 	})
 	return counts
@@ -374,7 +416,15 @@ func (t *Tracker) CorrectionDecisionPaths() map[string]uint64 {
 func (t *Tracker) CorrectionDecisionRanks() map[string]uint64 {
 	counts := make(map[string]uint64)
 	t.corrDecisionRanks.Range(func(key, value any) bool {
-		counts[key.(string)] = value.(*atomic.Uint64).Load()
+		counterKey, keyOK := mapCounterKey(key)
+		if !keyOK {
+			return true
+		}
+		counter, valueOK := mapCounterValue(value)
+		if !valueOK {
+			return true
+		}
+		counts[counterKey] = counter.Load()
 		return true
 	})
 	return counts
@@ -405,7 +455,15 @@ func (t *Tracker) ReputationDrops() uint64 {
 func (t *Tracker) ReputationDropReasons() map[string]uint64 {
 	reasons := make(map[string]uint64)
 	t.reputationReasons.Range(func(key, value any) bool {
-		reasons[key.(string)] = value.(*atomic.Uint64).Load()
+		counterKey, keyOK := mapCounterKey(key)
+		if !keyOK {
+			return true
+		}
+		counter, valueOK := mapCounterValue(value)
+		if !valueOK {
+			return true
+		}
+		reasons[counterKey] = counter.Load()
 		return true
 	})
 	return reasons
@@ -414,17 +472,27 @@ func (t *Tracker) ReputationDropReasons() map[string]uint64 {
 // Purpose: Format a sync.Map of counters into a "label: key=value" string.
 // Key aspects: Stable order is not guaranteed; emits "(none)" when empty.
 // Upstream: Tracker.SnapshotLines.
-// Downstream: atomic loads, fmt.Fprintf.
+// Downstream: atomic loads, strconv formatting.
 func formatMapCounts(label string, counts *sync.Map) string {
 	var builder strings.Builder
 	builder.WriteString(label)
 	builder.WriteString(": ")
 	first := true
 	counts.Range(func(key, value any) bool {
+		counterKey, keyOK := mapCounterKey(key)
+		if !keyOK {
+			return true
+		}
+		counter, valueOK := mapCounterValue(value)
+		if !valueOK {
+			return true
+		}
 		if !first {
 			builder.WriteString(", ")
 		}
-		fmt.Fprintf(&builder, "%s=%d", key.(string), value.(*atomic.Uint64).Load())
+		builder.WriteString(counterKey)
+		builder.WriteByte('=')
+		builder.WriteString(strconv.FormatUint(counter.Load(), 10))
 		first = false
 		return true
 	})
@@ -443,14 +511,37 @@ func incrementCounter(m *sync.Map, key string) {
 		return
 	}
 	if value, ok := m.Load(key); ok {
-		value.(*atomic.Uint64).Add(1)
-		return
+		if counter, valid := mapCounterValue(value); valid {
+			counter.Add(1)
+			return
+		}
 	}
 	counter := &atomic.Uint64{}
 	actual, loaded := m.LoadOrStore(key, counter)
 	if loaded {
-		actual.(*atomic.Uint64).Add(1)
+		if existing, valid := mapCounterValue(actual); valid {
+			existing.Add(1)
+			return
+		}
+		counter.Add(1)
+		m.Store(key, counter)
 		return
 	}
 	counter.Add(1)
+}
+
+func mapCounterKey(key any) (string, bool) {
+	keyStr, ok := key.(string)
+	if !ok {
+		return "", false
+	}
+	return keyStr, true
+}
+
+func mapCounterValue(value any) (*atomic.Uint64, bool) {
+	counter, ok := value.(*atomic.Uint64)
+	if !ok || counter == nil {
+		return nil, false
+	}
+	return counter, true
 }

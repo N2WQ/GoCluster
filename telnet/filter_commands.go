@@ -2,6 +2,7 @@ package telnet
 
 import (
 	"fmt"
+	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -218,7 +219,9 @@ func (e *filterCommandEngine) Handle(client *Client, line string) (string, bool)
 		}
 		resp, mutated := e.execute(client, parsed)
 		if mutated {
-			_ = client.saveFilter()
+			if err := client.saveFilter(); err != nil {
+				log.Printf("Warning: failed to persist filter for %s: %v", client.callsign, err)
+			}
 		}
 		return resp, true
 	}
@@ -914,9 +917,14 @@ func newNearbyHandler() *domainHandler {
 				if userFine == pathreliability.InvalidCell || userCoarse == pathreliability.InvalidCell {
 					return nearbyUnavailableMsg, false
 				}
+				var enableErr error
 				c.updateFilter(func(f *filter.Filter) {
-					_ = f.EnableNearby(userFine, userCoarse)
+					enableErr = f.EnableNearby(userFine, userCoarse)
 				})
+				if enableErr != nil {
+					log.Printf("Warning: failed to enable nearby filter for %s: %v", c.callsign, enableErr)
+					return nearbyUnavailableMsg, false
+				}
 				return "Nearby filter enabled.\n", true
 			case "OFF":
 				c.updateFilter(func(f *filter.Filter) {
@@ -931,6 +939,7 @@ func newNearbyHandler() *domainHandler {
 }
 
 func newContinentHandler(name string, setter func(*filter.Filter, string, bool), snapshot func(*filter.Filter) (bool, bool, map[string]bool, map[string]bool)) *domainHandler {
+	_ = snapshot
 	return &domainHandler{
 		name: name,
 		apply: func(c *Client, action filterAction, args []string) (string, bool) {
@@ -1002,6 +1011,7 @@ func newContinentHandler(name string, setter func(*filter.Filter, string, bool),
 }
 
 func newZoneHandler(name string, setter func(*filter.Filter, int, bool), snapshot func(*filter.Filter) (bool, bool, map[int]bool, map[int]bool)) *domainHandler {
+	_ = snapshot
 	return &domainHandler{
 		name: name,
 		apply: func(c *Client, action filterAction, args []string) (string, bool) {
@@ -1073,6 +1083,7 @@ func newZoneHandler(name string, setter func(*filter.Filter, int, bool), snapsho
 }
 
 func newDXCCHandler(name string, setter func(*filter.Filter, int, bool), snapshot func(*filter.Filter) (bool, bool, map[int]bool, map[int]bool)) *domainHandler {
+	_ = snapshot
 	return &domainHandler{
 		name: name,
 		apply: func(c *Client, action filterAction, args []string) (string, bool) {
@@ -1144,6 +1155,7 @@ func newDXCCHandler(name string, setter func(*filter.Filter, int, bool), snapsho
 }
 
 func newGrid2Handler(name string, setter func(*filter.Filter, string, bool), snapshot func(*filter.Filter) (bool, bool, map[string]bool, map[string]bool)) *domainHandler {
+	_ = snapshot
 	return &domainHandler{
 		name: name,
 		apply: func(c *Client, action filterAction, args []string) (string, bool) {
@@ -1230,16 +1242,6 @@ func newFeatureToggleHandler(name string, setter func(*filter.Filter, bool), ali
 			default:
 				return invalidFilterCommandMsg, false
 			}
-		},
-	}
-}
-
-func newAllResetHandler() *domainHandler {
-	return &domainHandler{
-		name:    "ALL",
-		aliases: []string{},
-		apply: func(c *Client, action filterAction, args []string) (string, bool) {
-			return invalidFilterCommandMsg, false
 		},
 	}
 }

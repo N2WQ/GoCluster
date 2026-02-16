@@ -78,6 +78,8 @@ type reasonRow struct {
 	Count  int64
 }
 
+const maxDailyAnalysisExtractBytes int64 = 1 << 30 // 1 GiB safety cap per extracted file
+
 type spot struct {
 	Ts   int64
 	Freq float64
@@ -270,7 +272,9 @@ func ensureDir(path string) {
 	if dir == "" || dir == "." {
 		return
 	}
-	_ = os.MkdirAll(dir, 0o755)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		log.Printf("daily_analysis: failed to create directory %s: %v", dir, err)
+	}
 }
 
 func readFileIfExists(path string) string {
@@ -282,7 +286,11 @@ func readFileIfExists(path string) string {
 }
 
 func downloadFile(url, dest string) error {
-	resp, err := http.Get(url)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -315,13 +323,26 @@ func unzip(zipPath, destDir string) error {
 	}
 	defer r.Close()
 
+	baseDir := filepath.Clean(destDir)
+	if err := os.MkdirAll(baseDir, 0o755); err != nil {
+		return err
+	}
+	basePrefix := baseDir + string(os.PathSeparator)
+
 	for _, f := range r.File {
-		destPath := filepath.Join(destDir, f.Name)
+		// #nosec G305 -- path is cleaned and verified to remain under baseDir below.
+		destPath := filepath.Clean(filepath.Join(baseDir, f.Name))
+		if destPath != baseDir && !strings.HasPrefix(destPath, basePrefix) {
+			return fmt.Errorf("zip entry escapes destination: %q", f.Name)
+		}
 		if f.FileInfo().IsDir() {
 			if err := os.MkdirAll(destPath, f.Mode()); err != nil {
 				return err
 			}
 			continue
+		}
+		if f.UncompressedSize64 > uint64(maxDailyAnalysisExtractBytes) {
+			return fmt.Errorf("zip entry too large: %q (%d bytes)", f.Name, f.UncompressedSize64)
 		}
 		if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
 			return err
@@ -335,13 +356,24 @@ func unzip(zipPath, destDir string) error {
 			rc.Close()
 			return err
 		}
-		if _, err := io.Copy(out, rc); err != nil {
+		written, err := io.Copy(out, io.LimitReader(rc, maxDailyAnalysisExtractBytes+1))
+		if err != nil {
 			rc.Close()
 			out.Close()
 			return err
 		}
-		rc.Close()
-		out.Close()
+		if written > maxDailyAnalysisExtractBytes {
+			rc.Close()
+			out.Close()
+			return fmt.Errorf("zip entry exceeds extraction limit: %q", f.Name)
+		}
+		if err := rc.Close(); err != nil {
+			out.Close()
+			return err
+		}
+		if err := out.Close(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -441,9 +473,10 @@ func computeStability(db *sql.DB, csvPath string, minTs int64, cfg StabilityConf
 	if err != nil {
 		return 0, 0, nil, nil, fmt.Errorf("load RBN CSV: %w", err)
 	}
+	ctx := context.Background()
 
 	corrections := make([]correction, 0, 8192)
-	rows, err := db.Query("select ts, upper(trim(winner)), freq_khz from decisions where decision='applied'")
+	rows, err := db.QueryContext(ctx, "select ts, upper(trim(winner)), freq_khz from decisions where decision='applied'")
 	if err != nil {
 		return 0, 0, nil, nil, fmt.Errorf("query applied decisions: %w", err)
 	}
@@ -540,7 +573,7 @@ func computeStability(db *sql.DB, csvPath string, minTs int64, cfg StabilityConf
 
 // generateLLM requests recommendations from OpenAI using the assembled report and optional config snapshot.
 // It respects OPENAI_API_KEY when api_key is blank in the config. When enabled but no key is found, it errors.
-func generateLLM(cfg Config, analysisDate time.Time, report []string) (string, error) {
+func generateLLM(cfg Config, report []string) (string, error) {
 	userContent := strings.Join(report, "\n")
 	if cfg.OpenAI.IncludeConfigSnapshot {
 		cfgPath := cfg.OpenAI.ClusterConfigPath
@@ -673,16 +706,17 @@ func main() {
 	db, err := sql.Open("sqlite", "file:"+dbPath+"?mode=ro")
 	must(err)
 	defer db.Close()
+	ctx := context.Background()
 
 	var minTs, maxTs, decisionCount int64
-	must(db.QueryRow("select min(ts), max(ts), count(*) from decisions").Scan(&minTs, &maxTs, &decisionCount))
+	must(db.QueryRowContext(ctx, "select min(ts), max(ts), count(*) from decisions").Scan(&minTs, &maxTs, &decisionCount))
 
 	var appliedCount, uniqueApplied int64
-	must(db.QueryRow("select count(*) from decisions where decision='applied'").Scan(&appliedCount))
-	must(db.QueryRow("select count(*) from (select distinct subject, winner from decisions where decision='applied')").Scan(&uniqueApplied))
+	must(db.QueryRowContext(ctx, "select count(*) from decisions where decision='applied'").Scan(&appliedCount))
+	must(db.QueryRowContext(ctx, "select count(*) from (select distinct subject, winner from decisions where decision='applied')").Scan(&uniqueApplied))
 
 	appliedSet := make(map[string]struct{})
-	rows, err := db.Query("select distinct upper(trim(subject)) || '|' || upper(trim(winner)) from decisions where decision='applied'")
+	rows, err := db.QueryContext(ctx, "select distinct upper(trim(subject)) || '|' || upper(trim(winner)) from decisions where decision='applied'")
 	must(err)
 	for rows.Next() {
 		var key string
@@ -693,7 +727,7 @@ func main() {
 	rows.Close()
 
 	subjectSet := make(map[string]struct{})
-	subjRows, err := db.Query("select distinct upper(trim(subject)) from decisions")
+	subjRows, err := db.QueryContext(ctx, "select distinct upper(trim(subject)) from decisions")
 	must(err)
 	for subjRows.Next() {
 		var s string
@@ -743,7 +777,7 @@ func main() {
 	}
 
 	rejectReasons := make([]reasonRow, 0)
-	rejRows, err := db.Query("select coalesce(reason,''), count(*) from decisions where decision='rejected' group by coalesce(reason,'')")
+	rejRows, err := db.QueryContext(ctx, "select coalesce(reason,''), count(*) from decisions where decision='rejected' group by coalesce(reason,'')")
 	must(err)
 	for rejRows.Next() {
 		var r string
@@ -756,7 +790,7 @@ func main() {
 	sort.Slice(rejectReasons, func(i, j int) bool { return rejectReasons[i].Count > rejectReasons[j].Count })
 
 	d3Reasons := make([]reasonRow, 0)
-	d3Rows, err := db.Query("select coalesce(reason,''), count(*) from decisions where decision='rejected' and distance=3 group by coalesce(reason,'')")
+	d3Rows, err := db.QueryContext(ctx, "select coalesce(reason,''), count(*) from decisions where decision='rejected' and distance=3 group by coalesce(reason,'')")
 	must(err)
 	for d3Rows.Next() {
 		var r string
@@ -769,9 +803,9 @@ func main() {
 	sort.Slice(d3Reasons, func(i, j int) bool { return d3Reasons[i].Count > d3Reasons[j].Count })
 
 	var totalConfRejects, nearConfD12, nearConfD3 int64
-	must(db.QueryRow("select count(*) from decisions where decision='rejected' and reason='confidence'").Scan(&totalConfRejects))
-	must(db.QueryRow("select count(*) from decisions where decision='rejected' and reason='confidence' and distance<=2 and winner_confidence between 55 and 59").Scan(&nearConfD12))
-	must(db.QueryRow("select count(*) from decisions where decision='rejected' and reason='confidence' and distance=3 and winner_confidence between 60 and 64").Scan(&nearConfD3))
+	must(db.QueryRowContext(ctx, "select count(*) from decisions where decision='rejected' and reason='confidence'").Scan(&totalConfRejects))
+	must(db.QueryRowContext(ctx, "select count(*) from decisions where decision='rejected' and reason='confidence' and distance<=2 and winner_confidence between 55 and 59").Scan(&nearConfD12))
+	must(db.QueryRowContext(ctx, "select count(*) from decisions where decision='rejected' and reason='confidence' and distance=3 and winner_confidence between 60 and 64").Scan(&nearConfD3))
 
 	report := make([]string, 0, 128)
 	report = append(report, fmt.Sprintf("Daily Call Correction Analysis - %s", analysisDate.Format("2006-01-02")))
@@ -850,7 +884,8 @@ func main() {
 	if _, err := os.Stat(csvPath); err == nil {
 		stableCount, totalStab, buckets, bandStab, stabErr := computeStability(db, csvPath, minTs, cfg.Stability)
 		if stabErr != nil {
-			log.Fatalf("stability computation failed: %v", stabErr)
+			log.Printf("stability computation failed: %v", stabErr)
+			return
 		}
 		report = append(report, "")
 		report = append(report, fmt.Sprintf("Temporal stability (window %d min, min follow-on %d, freq tol %.0f Hz):",
@@ -885,7 +920,7 @@ func main() {
 
 	// Optional LLM recommendations.
 	if cfg.OpenAI.Enabled {
-		llmContent, err := generateLLM(cfg, analysisDate, report)
+		llmContent, err := generateLLM(cfg, report)
 		if err != nil {
 			log.Printf("OpenAI request failed: %v (continuing without LLM recommendations)", err)
 		}

@@ -198,7 +198,7 @@ func loadClusterConfig() (*config.Config, string, error) {
 		}
 		return cfg, cfg.LoadedFrom, nil
 	}
-	return nil, "", fmt.Errorf("unable to load config; tried %s (last error: %v)", strings.Join(candidates, ", "), lastErr)
+	return nil, "", fmt.Errorf("unable to load config; tried %s (last error: %w)", strings.Join(candidates, ", "), lastErr)
 }
 
 // Purpose: Resolve grid_db_check_on_miss behavior and its source.
@@ -252,7 +252,8 @@ func main() {
 	}
 	log.Printf("Loaded configuration from %s", configSource)
 	if err := spot.SetDXClusterLineLength(cfg.Telnet.OutputLineLength); err != nil {
-		log.Fatalf("Invalid telnet output line length: %v", err)
+		log.Printf("Invalid telnet output line length: %v", err)
+		return
 	}
 
 	// Load path reliability config from dedicated file in the config directory.
@@ -450,7 +451,7 @@ func main() {
 	ctyURL := strings.TrimSpace(cfg.CTY.URL)
 	if cfg.CTY.Enabled && ctyPath != "" {
 		if _, err := os.Stat(ctyPath); err != nil && errors.Is(err, os.ErrNotExist) && ctyURL != "" {
-			if fresh, updated, refreshErr := refreshCTYDatabase(cfg.CTY); refreshErr != nil {
+			if fresh, updated, refreshErr := refreshCTYDatabase(ctx, cfg.CTY); refreshErr != nil {
 				log.Printf("Warning: CTY download failed: %v", refreshErr)
 				ctyState.recordFailure(time.Now().UTC(), refreshErr)
 			} else if updated && fresh != nil {
@@ -609,7 +610,7 @@ func main() {
 		if _, err := os.Stat(knownCallsPath); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				if knownCallsURL != "" {
-					if fresh, updated, refreshErr := refreshKnownCallsigns(cfg.KnownCalls); refreshErr != nil {
+					if fresh, updated, refreshErr := refreshKnownCallsigns(ctx, cfg.KnownCalls); refreshErr != nil {
 						log.Printf("Warning: known calls download failed: %v", refreshErr)
 					} else if updated && fresh != nil {
 						knownCalls.Store(fresh)
@@ -648,7 +649,8 @@ func main() {
 			log.Printf("Gridstore: corruption detected on open (%v); starting checkpoint restore", err)
 			startGridStoreRecovery(ctx, gridStoreHandle, cfg.GridDBPath, gridOpts, &knownCalls, metaCache)
 		} else {
-			log.Fatalf("Failed to open grid database: %v", err)
+			log.Printf("Failed to open grid database: %v", err)
+			return
 		}
 	} else {
 		gridStoreHandle.Set(gridStore)
@@ -693,7 +695,7 @@ func main() {
 			log.Printf("Warning: failed to load RBN skew table (%s): %v", cfg.Skew.File, loadErr)
 		}
 		if skewStore.Count() == 0 {
-			if count, err := refreshSkewTable(cfg.Skew, skewStore); err != nil {
+			if count, err := refreshSkewTable(ctx, cfg.Skew, skewStore); err != nil {
 				log.Printf("Warning: initial RBN skew download failed: %v", err)
 			} else {
 				log.Printf("Downloaded %d RBN skew corrections from %s", count, cfg.Skew.URL)
@@ -798,10 +800,12 @@ func main() {
 	if cfg.Peering.Enabled {
 		pm, err := peer.NewManager(cfg.Peering, cfg.Peering.LocalCallsign, ingestInput, cfg.SpotPolicy.MaxAgeSeconds, dropReporter)
 		if err != nil {
-			log.Fatalf("Failed to init peering manager: %v", err)
+			log.Printf("Failed to init peering manager: %v", err)
+			return
 		}
 		if err := pm.Start(ctx); err != nil {
-			log.Fatalf("Failed to start peering manager: %v", err)
+			log.Printf("Failed to start peering manager: %v", err)
+			return
 		}
 		peerManager = pm
 		log.Printf("Peering: listen_port=%d peers=%d hop=%d keepalive=%ds", cfg.Peering.ListenPort, len(cfg.Peering.Peers), cfg.Peering.HopCount, cfg.Peering.KeepaliveSeconds)
@@ -871,7 +875,8 @@ func main() {
 
 	err = telnetServer.Start()
 	if err != nil {
-		log.Fatalf("Failed to start telnet server: %v", err)
+		log.Printf("Failed to start telnet server: %v", err)
+		return
 	}
 	telnetServer.SetClientListListener(func() {
 		if surface == nil {
@@ -1335,45 +1340,6 @@ func emptyOr(value, fallback string) string {
 	return value
 }
 
-func formatReputationDropSummary(total uint64, reasons map[string]uint64) string {
-	if total == 0 {
-		return "Reputation: 0"
-	}
-	type pair struct {
-		key   string
-		count uint64
-	}
-	items := make([]pair, 0, len(reasons))
-	for key, count := range reasons {
-		items = append(items, pair{key: key, count: count})
-	}
-	sort.Slice(items, func(i, j int) bool {
-		if items[i].count == items[j].count {
-			return items[i].key < items[j].key
-		}
-		return items[i].count > items[j].count
-	})
-	limit := 4
-	if len(items) < limit {
-		limit = len(items)
-	}
-	var b strings.Builder
-	b.WriteString("Reputation: ")
-	b.WriteString(humanize.Comma(int64(total)))
-	if limit == 0 {
-		return b.String()
-	}
-	b.WriteString(" (")
-	for i := 0; i < limit; i++ {
-		if i > 0 {
-			b.WriteString(", ")
-		}
-		fmt.Fprintf(&b, "%s=%d", items[i].key, items[i].count)
-	}
-	b.WriteString(")")
-	return b.String()
-}
-
 func formatCorrectionDecisionSummary(tracker *stats.Tracker) string {
 	if tracker == nil {
 		return "CorrGate: n/a"
@@ -1602,7 +1568,8 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 		pskLive := pskReporterLive(pskSnap, now)
 		p92Live := peerManager != nil && peerManager.ActiveSessionCount() > 0
 
-		lines := []string{
+		lines := make([]string, 0, 11)
+		lines = append(lines,
 			fmt.Sprintf("%s   %s", formatUptimeLine(tracker.GetUptime()), formatMemoryLine(buf, dedup, secondaryFast, secondaryMed, secondarySlow, metaCache, knownPtr)), // 1
 			formatGridLineOrPlaceholder(gridStats, gridDB, pathPredictor), // 2
 			formatDataLineOrPlaceholder(ctyLookup, ctyState, fccSnap),     // 3
@@ -1618,7 +1585,7 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 				humanize.Comma(int64(pskMSK144)),
 			), // 5
 			fmt.Sprintf("%s: %s TOTAL", withIngestStatusLabel("P92", p92Live), humanize.Comma(int64(p92Total))), // 6
-		}
+		)
 		lines = append(lines, pathOnlyLine)
 		lines = append(lines,
 			fmt.Sprintf("Calls: %d (C) / %d (U) / %d (F) / %d (H) / %d (R)", totalCorrections, totalUnlicensed, totalFreqCorrections, totalHarmonics, reputationTotal), // 6
@@ -1910,7 +1877,7 @@ func processPSKRPathOnlySpots(client *pskreporter.Client, predictor *pathreliabi
 			pathReport.Observe(s, spotTime)
 		}
 		// Spot SNR reflects DX -> DE (spotter is the receiver).
-		predictor.Update(bucket, pathreliability.CellID(deCell), pathreliability.CellID(dxCell), deCoarse, dxCoarse, band, ft8, 1.0, spotTime, s.IsBeacon)
+		predictor.Update(bucket, deCell, dxCell, deCoarse, dxCoarse, band, ft8, 1.0, spotTime, s.IsBeacon)
 		if stats != nil {
 			stats.updates.Add(1)
 		}
@@ -2119,7 +2086,6 @@ func processOutputSpots(
 
 			if dirty {
 				s.EnsureNormalized()
-				dirty = false
 			}
 			// Final license gate runs after corrections so busted calls can be fixed first.
 			if applyLicenseGate(s, ctyDB, metaCache, unlicensedReporter) {
@@ -2133,7 +2099,6 @@ func processOutputSpots(
 
 			if dirty {
 				s.EnsureNormalized()
-				dirty = false
 			}
 
 			recordRecentBandObservation(s, recentBandStore, correctionCfg)
@@ -2148,9 +2113,6 @@ func processOutputSpots(
 				sourceLabel := sourceStatsLabel(s)
 				tracker.IncrementSource(sourceLabel)
 				tracker.IncrementSourceMode(sourceLabel, modeKey)
-			}
-
-			if gridUpdate != nil {
 			}
 
 			if !broadcastKeepSSID {
@@ -3448,11 +3410,14 @@ func shouldAverageFrequency(s *spot.Spot) bool {
 // Key aspects: Uses configured URL and refreshes the in-memory store.
 // Upstream: startSkewScheduler and startup initialization.
 // Downstream: skew.Download, skew.LoadBytes, store.Set.
-func refreshSkewTable(cfg config.SkewConfig, store *skew.Store) (int, error) {
+func refreshSkewTable(ctx context.Context, cfg config.SkewConfig, store *skew.Store) (int, error) {
 	if store == nil {
 		return 0, errors.New("skew: store is nil")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+	if ctx == nil {
+		return 0, errors.New("skew: nil context")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Minute)
 	defer cancel()
 
 	entries, err := skew.Fetch(ctx, cfg.URL)
@@ -3496,7 +3461,7 @@ func startSkewScheduler(ctx context.Context, cfg config.SkewConfig, store *skew.
 				return
 			case <-timer.C:
 			}
-			if count, err := refreshSkewTable(cfg, store); err != nil {
+			if count, err := refreshSkewTable(ctx, cfg, store); err != nil {
 				log.Printf("Warning: scheduled RBN skew download failed: %v", err)
 			} else {
 				log.Printf("Scheduled RBN skew download complete (%d entries)", count)
@@ -3557,7 +3522,7 @@ func startKnownCallScheduler(ctx context.Context, cfg config.KnownCallsConfig, k
 				return
 			case <-timer.C:
 			}
-			if fresh, updated, err := refreshKnownCallsigns(cfg); err != nil {
+			if fresh, updated, err := refreshKnownCallsigns(ctx, cfg); err != nil {
 				log.Printf("Warning: scheduled known calls download failed: %v", err)
 			} else if updated && fresh != nil {
 				knownPtr.Store(fresh)
@@ -3585,7 +3550,7 @@ func startKnownCallScheduler(ctx context.Context, cfg config.KnownCallsConfig, k
 // Downstream: download.Download and spot.LoadKnownCallsigns.
 // refreshKnownCallsigns downloads the known calls file, writes it to disk, and
 // returns the parsed cache when the remote content changed.
-func refreshKnownCallsigns(cfg config.KnownCallsConfig) (*spot.KnownCallsigns, bool, error) {
+func refreshKnownCallsigns(ctx context.Context, cfg config.KnownCallsConfig) (*spot.KnownCallsigns, bool, error) {
 	url := strings.TrimSpace(cfg.URL)
 	path := strings.TrimSpace(cfg.File)
 	if url == "" {
@@ -3594,7 +3559,10 @@ func refreshKnownCallsigns(cfg config.KnownCallsConfig) (*spot.KnownCallsigns, b
 	if path == "" {
 		return nil, false, errors.New("known calls: file path is empty")
 	}
-	result, err := download.Download(context.Background(), download.Request{
+	if ctx == nil {
+		return nil, false, errors.New("known calls: nil context")
+	}
+	result, err := download.Download(ctx, download.Request{
 		URL:         url,
 		Destination: path,
 		Timeout:     1 * time.Minute,
@@ -3668,7 +3636,7 @@ func startCTYScheduler(ctx context.Context, cfg config.CTYConfig, ctyPtr *atomic
 			backoff := ctyRetryBase
 			attempt := 0
 			for {
-				fresh, updated, err := refreshCTYDatabase(cfg)
+				fresh, updated, err := refreshCTYDatabase(ctx, cfg)
 				if err == nil {
 					if updated && fresh != nil {
 						ctyPtr.Store(fresh)
@@ -3773,7 +3741,7 @@ func startPropReportDailyScheduler(ctx context.Context, cfg config.PropReportCon
 // Upstream: startCTYScheduler and startup.
 // Downstream: download.Download and cty.LoadCTYDatabase.
 // refreshCTYDatabase downloads cty.plist, writes it atomically, and returns the parsed DB.
-func refreshCTYDatabase(cfg config.CTYConfig) (*cty.CTYDatabase, bool, error) {
+func refreshCTYDatabase(ctx context.Context, cfg config.CTYConfig) (*cty.CTYDatabase, bool, error) {
 	url := strings.TrimSpace(cfg.URL)
 	path := strings.TrimSpace(cfg.File)
 	if url == "" {
@@ -3782,7 +3750,10 @@ func refreshCTYDatabase(cfg config.CTYConfig) (*cty.CTYDatabase, bool, error) {
 	if path == "" {
 		return nil, false, errors.New("cty: file path is empty")
 	}
-	result, err := download.Download(context.Background(), download.Request{
+	if ctx == nil {
+		return nil, false, errors.New("cty: nil context")
+	}
+	result, err := download.Download(ctx, download.Request{
 		URL:         url,
 		Destination: path,
 		Timeout:     1 * time.Minute,
@@ -3953,19 +3924,6 @@ func (s *ctyRefreshState) age(now time.Time) (time.Duration, bool) {
 	return now.Sub(time.Unix(ts, 0)), true
 }
 
-func (s *ctyRefreshState) failures() (int64, string) {
-	if s == nil {
-		return 0, ""
-	}
-	var errText string
-	if val := s.lastError.Load(); val != nil {
-		if str, ok := val.(string); ok {
-			errText = str
-		}
-	}
-	return s.failureCount.Load(), errText
-}
-
 func (s *ctyRefreshState) lastSuccessTime() (time.Time, bool) {
 	if s == nil {
 		return time.Time{}, false
@@ -3975,21 +3933,6 @@ func (s *ctyRefreshState) lastSuccessTime() (time.Time, bool) {
 		return time.Time{}, false
 	}
 	return time.Unix(ts, 0).UTC(), true
-}
-
-// Purpose: Format FCC database status line for stats output.
-// Key aspects: Includes counts, DB size, and update timestamp.
-// Upstream: displayStatsWithFCC.
-// Downstream: humanize.Comma and time formatting.
-func formatFCCLine(fcc *fccSnapshot) string {
-	if fcc == nil {
-		return ""
-	}
-	ts := ""
-	if !fcc.UpdatedAt.IsZero() {
-		ts = fcc.UpdatedAt.UTC().Format("01-02-2006 15:04:05")
-	}
-	return fmt.Sprintf("FCC ULS: %s records. Last updated %s", humanize.Comma(fcc.HDCount), ts)
 }
 
 // Purpose: Format combined CTY + FCC last-updated line for stats output.
@@ -4035,39 +3978,6 @@ func formatGridLineOrPlaceholder(metrics *gridMetrics, store *gridStoreHandle, p
 		return "Grids: (not available)"
 	}
 	return formatGridLine(metrics, store, predictor)
-}
-
-// Purpose: Format FCC status or a placeholder when disabled/unavailable.
-// Key aspects: Falls back to a placeholder when snapshot missing.
-// Upstream: displayStatsWithFCC.
-// Downstream: formatFCCLine.
-func formatFCCLineOrPlaceholder(fcc *fccSnapshot) string {
-	if fcc == nil {
-		return "FCC ULS: (not available)"
-	}
-	return formatFCCLine(fcc)
-}
-
-// Purpose: Format CTY refresh status line for stats output.
-// Key aspects: Reports age since last successful refresh and failure count.
-// Upstream: displayStatsWithFCC.
-// Downstream: ctyRefreshState.age and formatDurationShort.
-func formatCTYLineOrPlaceholder(ctyLookup func() *cty.CTYDatabase, state *ctyRefreshState) string {
-	if ctyLookup == nil || ctyLookup() == nil {
-		return "CTY: (not loaded)"
-	}
-	if state == nil {
-		return "CTY: loaded"
-	}
-	age, ok := state.age(time.Now().UTC())
-	if !ok {
-		return "CTY: loaded (age unknown)"
-	}
-	failures, _ := state.failures()
-	if failures > 0 {
-		return fmt.Sprintf("CTY: age %s (failures=%d)", formatDurationShort(age), failures)
-	}
-	return fmt.Sprintf("CTY: age %s", formatDurationShort(age))
 }
 
 // Purpose: Seed the grid database with known calls.
@@ -4172,10 +4082,10 @@ func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, 
 	}
 
 	lookupRecord := func(baseCall, rawCall string) (*gridstore.Record, error) {
-		if baseCall == "" {
-			return nil, nil
-		}
 		var baseRec *gridstore.Record
+		if baseCall == "" {
+			return baseRec, nil
+		}
 		store := getStore()
 		if store != nil {
 			rec, err := store.Get(baseCall)
@@ -4204,31 +4114,19 @@ func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, 
 			}
 		}
 		if ctyLookup == nil {
-			if baseRec != nil {
-				return baseRec, nil
-			}
-			return nil, nil
+			return baseRec, nil
 		}
 		ctyDB := ctyLookup()
 		if ctyDB == nil {
-			if baseRec != nil {
-				return baseRec, nil
-			}
-			return nil, nil
+			return baseRec, nil
 		}
 		info := effectivePrefixInfo(ctyDB, cache, baseCall)
 		if info == nil {
-			if baseRec != nil {
-				return baseRec, nil
-			}
-			return nil, nil
+			return baseRec, nil
 		}
 		derivedGrid, ok := cty.Grid4FromLatLon(info.Latitude, info.Longitude)
 		if !ok {
-			if baseRec != nil {
-				return baseRec, nil
-			}
-			return nil, nil
+			return baseRec, nil
 		}
 		now := time.Now().UTC()
 		derivedRec := gridstore.Record{
@@ -4292,7 +4190,8 @@ func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, 
 			}
 			batch := make([]gridstore.Record, 0, len(pending))
 			gridUpdates := 0
-			for _, rec := range pending {
+			for call := range pending {
+				rec := pending[call]
 				if rec.Grid.Valid {
 					gridUpdates++
 				}
@@ -4857,7 +4756,7 @@ func restoreGridStoreFromPath(ctx context.Context, dbPath string, checkpointPath
 		return errors.New("gridstore: checkpoint path is empty")
 	}
 	if ctx == nil {
-		ctx = context.Background()
+		return errors.New("gridstore: nil context")
 	}
 	parent := filepath.Dir(dbPath)
 	base := filepath.Base(dbPath)
@@ -4899,7 +4798,9 @@ func restoreGridStoreFromPath(ctx context.Context, dbPath string, checkpointPath
 	}
 	if err := os.Rename(tempDir, dbPath); err != nil {
 		if hadExisting {
-			_ = os.Rename(backupDir, dbPath)
+			if rollbackErr := os.Rename(backupDir, dbPath); rollbackErr != nil {
+				log.Printf("Gridstore: rollback restore failed: %v", rollbackErr)
+			}
 		}
 		_ = os.RemoveAll(tempDir)
 		return fmt.Errorf("gridstore: finalize restore dir: %w", err)
@@ -5025,7 +4926,7 @@ func loadFCCSnapshot(path string) *fccSnapshot {
 
 	count := func(table string) int64 {
 		var c int64
-		if err := db.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&c); err != nil {
+		if err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM "+table).Scan(&c); err != nil {
 			log.Printf("Warning: FCC ULS count %s failed: %v", table, err)
 			return 0
 		}
@@ -5180,13 +5081,6 @@ func formatDurationMillis(d time.Duration) string {
 	return fmt.Sprintf("%dms", d.Milliseconds())
 }
 
-func formatTimeShortZ(t time.Time) string {
-	if t.IsZero() {
-		return "n/a"
-	}
-	return t.UTC().Format("2006-01-02 15:04Z")
-}
-
 func formatDateShortZ(t time.Time) string {
 	if t.IsZero() {
 		return "n/a"
@@ -5217,10 +5111,6 @@ func formatPercentString(pct float64) string {
 		pct = 100
 	}
 	return fmt.Sprintf("%.1f%%", pct)
-}
-
-func formatPercentBar(pct float64, width int) string {
-	return formatPercentBarWithLabel(pct, width, "")
 }
 
 func formatPercentBarWithLabel(pct float64, width int, label string) string {
@@ -5437,7 +5327,8 @@ func buildOverviewLines(
 		clusterCall = "unknown"
 	}
 
-	lines := []string{
+	lines := make([]string, 0, 16+len(cacheBars))
+	lines = append(lines,
 		fmt.Sprintf("[yellow]Cluster[-]: %s  [yellow]Version[-]: %s  [yellow]Uptime[-]: %s", clusterCall, Version, formatUptimeShort(uptime)),
 		"MEMORY / GC",
 		fmt.Sprintf("[yellow]Heap[-]: %s  [yellow]Sys[-]: %s  [yellow]GC p99 (interval)[-]: %s  [yellow]Last GC[-]: %s ago  [yellow]Goroutines[-]: %d", heap, sys, gcP99Label, formatDurationShort(lastGC), runtime.NumGoroutine()),
@@ -5454,7 +5345,7 @@ func buildOverviewLines(
 			humanize.Comma(int64(reputationTotal)),
 		),
 		"CACHES & DATA FRESHNESS",
-	}
+	)
 	lines = append(lines, cacheBars...)
 	lines = append(lines,
 		"",
@@ -5496,25 +5387,13 @@ func formatNetworkLatencyLines(telnetSrv *telnet.Server) []string {
 }
 
 func formatNetworkLines(telnetSrv *telnet.Server, clientList []string) []string {
-	lines := []string{formatNetworkSummaryLine(telnetSrv)}
-	lines = append(lines, formatNetworkLatencyLines(telnetSrv)...)
-	lines = append(lines, formatClientListLines(clientList)...)
+	latencyLines := formatNetworkLatencyLines(telnetSrv)
+	clientLines := formatClientListLines(clientList)
+	lines := make([]string, 0, 1+len(latencyLines)+len(clientLines))
+	lines = append(lines, formatNetworkSummaryLine(telnetSrv))
+	lines = append(lines, latencyLines...)
+	lines = append(lines, clientLines...)
 	return lines
-}
-
-func formatColumns(width int, cols ...string) string {
-	if width <= 0 || len(cols) == 0 {
-		return ""
-	}
-	var b strings.Builder
-	for i, col := range cols {
-		if i < len(cols)-1 {
-			b.WriteString(padRight(col, width))
-		} else {
-			b.WriteString(col)
-		}
-	}
-	return b.String()
 }
 
 func padRight(s string, width int) string {
@@ -5559,19 +5438,19 @@ func formatIngestLine(label string, total, cw, rtty, ft8, ft4, msk uint64, inclu
 	totalStr := padRight(humanize.Comma(int64(total)), 7)
 	fields := []string{
 		fmt.Sprintf("%s: %s", label, totalStr),
-		formatIngestField("[yellow]CW[-]", cw, 6),
-		formatIngestField("[yellow]RTTY[-]", rtty, 6),
-		formatIngestField("[yellow]FT8[-]", ft8, 6),
-		formatIngestField("[yellow]FT4[-]", ft4, 6),
+		formatIngestField("[yellow]CW[-]", cw),
+		formatIngestField("[yellow]RTTY[-]", rtty),
+		formatIngestField("[yellow]FT8[-]", ft8),
+		formatIngestField("[yellow]FT4[-]", ft4),
 	}
 	if includeMSK {
-		fields = append(fields, formatIngestField("[yellow]MSK[-]", msk, 6))
+		fields = append(fields, formatIngestField("[yellow]MSK[-]", msk))
 	}
 	return strings.Join(fields, " | ")
 }
 
-func formatIngestField(label string, value uint64, width int) string {
-	val := padRight(humanize.Comma(int64(value)), width)
+func formatIngestField(label string, value uint64) string {
+	val := padRight(humanize.Comma(int64(value)), 6)
 	return fmt.Sprintf("%s %s", label, val)
 }
 
@@ -6156,10 +6035,18 @@ func maybeStartDiagServer() {
 	// Purpose: Run the diagnostics HTTP server.
 	// Key aspects: Logs startup and reports server errors.
 	// Upstream: maybeStartDiagServer.
-	// Downstream: http.ListenAndServe.
+	// Downstream: http.Server with explicit timeouts.
 	go func() {
 		log.Printf("Diagnostics server listening on %s (pprof + /debug/heapdump)", addr)
-		if err := http.ListenAndServe(addr, mux); err != nil {
+		srv := &http.Server{
+			Addr:              addr,
+			Handler:           mux,
+			ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout:       15 * time.Second,
+			WriteTimeout:      30 * time.Second,
+			IdleTimeout:       60 * time.Second,
+		}
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Printf("Diagnostics server error: %v", err)
 		}
 	}()

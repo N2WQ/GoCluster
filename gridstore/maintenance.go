@@ -94,7 +94,7 @@ func verifyDB(ctx context.Context, db *pebble.DB, maxDuration time.Duration) (In
 		stats.CountMetaErr = err
 	}
 
-	iter, err := db.NewIter(iterOptionsForPrefix(callPrefix))
+	iter, err := db.NewIter(iterOptionsForCallPrefix())
 	if err != nil {
 		return stats, fmt.Errorf("gridstore: verify iterator: %w", err)
 	}
@@ -122,4 +122,3 @@ func verifyDB(ctx context.Context, db *pebble.DB, maxDuration time.Duration) (In
 	stats.Duration = time.Since(start)
 	return stats, nil
 }
-

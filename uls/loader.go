@@ -66,7 +66,10 @@ var tables = []tableSpec{
 // uses a temp DB file and atomic rename to avoid partial state.
 // Upstream: Refresh in uls/downloader.go after download/extract.
 // Downstream: loadTable, buildInsertSQL, resolveFile, parseID, SQLite operations.
-func buildDatabase(extractDir, dbPath string, tempDir string) error {
+func buildDatabase(ctx context.Context, extractDir, dbPath string, tempDir string) error {
+	if ctx == nil {
+		return errors.New("fcc uls: nil context")
+	}
 	dir := filepath.Dir(dbPath)
 	if dir != "" && dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -89,7 +92,7 @@ func buildDatabase(extractDir, dbPath string, tempDir string) error {
 	}
 	defer db.Close()
 
-	if _, err := db.Exec("PRAGMA foreign_keys=OFF;"); err != nil {
+	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys=OFF;"); err != nil {
 		return fmt.Errorf("fcc uls: pragma foreign_keys: %w", err)
 	}
 	// Direct SQLite temp files to a caller-provided directory to avoid unwritable %TEMP%.
@@ -97,7 +100,7 @@ func buildDatabase(extractDir, dbPath string, tempDir string) error {
 		if err := os.MkdirAll(tempDir, 0o755); err != nil {
 			return fmt.Errorf("fcc uls: ensure temp dir: %w", err)
 		}
-		if _, err := db.Exec(fmt.Sprintf("PRAGMA temp_store_directory='%s';", tempDir)); err != nil {
+		if _, err := db.ExecContext(ctx, fmt.Sprintf("PRAGMA temp_store_directory='%s';", tempDir)); err != nil {
 			return fmt.Errorf("fcc uls: set temp_store_directory: %w", err)
 		}
 	}
@@ -106,11 +109,11 @@ func buildDatabase(extractDir, dbPath string, tempDir string) error {
 
 	// Load HD first to collect the set of active license IDs, then load AM using that set.
 	for _, tbl := range tables {
-		if err := loadTable(db, extractDir, tbl, activeIDs); err != nil {
+		if err := loadTable(ctx, db, extractDir, tbl, activeIDs); err != nil {
 			return err
 		}
 		for _, idx := range tbl.Indexes {
-			if _, err := db.Exec(idx); err != nil {
+			if _, err := db.ExecContext(ctx, idx); err != nil {
 				return fmt.Errorf("fcc uls: create index for %s: %w", tbl.Name, err)
 			}
 		}
@@ -185,26 +188,42 @@ func minDuration(a, b time.Duration) time.Duration {
 // Key aspects: Uses a transaction and prepared statement; filters inactive IDs for AM.
 // Upstream: buildDatabase iterates over tables.
 // Downstream: resolveFile, buildInsertSQL, parseID, SQL insert/commit/rollback.
-func loadTable(db *sql.DB, extractDir string, spec tableSpec, activeIDs map[uint64]struct{}) error {
+func loadTable(ctx context.Context, db *sql.DB, extractDir string, spec tableSpec, activeIDs map[uint64]struct{}) error {
+	if ctx == nil {
+		return errors.New("fcc uls: nil context")
+	}
 	filePath := resolveFile(extractDir, spec.FileNames)
 	if filePath == "" {
 		return fmt.Errorf("fcc uls: missing data file for %s", spec.Name)
 	}
 
-	if _, err := db.Exec(spec.Schema); err != nil {
+	if _, err := db.ExecContext(ctx, spec.Schema); err != nil {
 		return fmt.Errorf("fcc uls: create table %s: %w", spec.Name, err)
 	}
 
 	insertSQL := buildInsertSQL(spec.Name, spec.Columns)
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("fcc uls: begin tx for %s: %w", spec.Name, err)
 	}
-	stmt, err := tx.Prepare(insertSQL)
+	stmt, err := tx.PrepareContext(ctx, insertSQL)
 	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+			return errors.Join(
+				fmt.Errorf("fcc uls: prepare insert for %s: %w", spec.Name, err),
+				fmt.Errorf("fcc uls: rollback %s: %w", spec.Name, rollbackErr),
+			)
+		}
 		return fmt.Errorf("fcc uls: prepare insert for %s: %w", spec.Name, err)
 	}
 	defer stmt.Close()
+
+	rollbackTx := func() error {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+			return fmt.Errorf("fcc uls: rollback %s: %w", spec.Name, rollbackErr)
+		}
+		return nil
+	}
 
 	f, err := os.Open(filePath)
 	if err != nil {
@@ -246,9 +265,12 @@ func loadTable(db *sql.DB, extractDir string, spec tableSpec, activeIDs map[uint
 				strings.TrimSpace(fields[9]),
 				strings.TrimSpace(fields[42]),
 			}
-			if _, err := stmt.Exec(args...); err != nil {
-				tx.Rollback()
-				return fmt.Errorf("fcc uls: insert into %s at row %d: %w", spec.Name, rowCount+1, err)
+			if _, err := stmt.ExecContext(ctx, args...); err != nil {
+				insertErr := fmt.Errorf("fcc uls: insert into %s at row %d: %w", spec.Name, rowCount+1, err)
+				if rollbackErr := rollbackTx(); rollbackErr != nil {
+					return errors.Join(insertErr, rollbackErr)
+				}
+				return insertErr
 			}
 		case "AM":
 			// AM field order: unique_system_identifier at index 1, call_sign at index 4
@@ -264,16 +286,22 @@ func loadTable(db *sql.DB, extractDir string, spec tableSpec, activeIDs map[uint
 			}
 			call := strings.TrimSpace(fields[4])
 			args := []any{id, call}
-			if _, err := stmt.Exec(args...); err != nil {
-				tx.Rollback()
-				return fmt.Errorf("fcc uls: insert into %s at row %d: %w", spec.Name, rowCount+1, err)
+			if _, err := stmt.ExecContext(ctx, args...); err != nil {
+				insertErr := fmt.Errorf("fcc uls: insert into %s at row %d: %w", spec.Name, rowCount+1, err)
+				if rollbackErr := rollbackTx(); rollbackErr != nil {
+					return errors.Join(insertErr, rollbackErr)
+				}
+				return insertErr
 			}
 		}
 		rowCount++
 	}
 	if err := scanner.Err(); err != nil {
-		tx.Rollback()
-		return fmt.Errorf("fcc uls: scan %s: %w", spec.Name, err)
+		scanErr := fmt.Errorf("fcc uls: scan %s: %w", spec.Name, err)
+		if rollbackErr := rollbackTx(); rollbackErr != nil {
+			return errors.Join(scanErr, rollbackErr)
+		}
+		return scanErr
 	}
 
 	if err := tx.Commit(); err != nil {

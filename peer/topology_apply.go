@@ -1,7 +1,10 @@
 package peer
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
-func (t *topologyStore) applyPC92Frame(f *Frame, now time.Time) {
-	t.applyPC92(f, now)
+func (t *topologyStore) applyPC92Frame(ctx context.Context, f *Frame, now time.Time) {
+	t.applyPC92(ctx, f, now)
 }

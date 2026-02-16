@@ -78,7 +78,13 @@ func Preflight(path, role string, timeout time.Duration, logf func(string, ...an
 	_ = db.Close()
 	quarantinePath, quarantineErr := quarantine(path, existing, logf)
 	if quarantineErr != nil {
-		return res, fmt.Errorf("preflight: %s db quarantine failed: %w (checkpoint=%v, quick_check=%v)", role, quarantineErr, checkpointErr, checkErr)
+		return res, fmt.Errorf(
+			"preflight: %s db quarantine failed: %w (checkpoint=%s, quick_check=%s)",
+			role,
+			quarantineErr,
+			formatErr(checkpointErr),
+			formatErr(checkErr),
+		)
 	}
 	res.Quarantined = true
 	res.QuarantinePath = quarantinePath
@@ -112,6 +118,13 @@ func quickCheck(ctx context.Context, db *sql.DB) error {
 		}
 	}
 	return rows.Err()
+}
+
+func formatErr(err error) string {
+	if err == nil {
+		return "<nil>"
+	}
+	return err.Error()
 }
 
 type fileState struct {

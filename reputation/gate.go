@@ -249,7 +249,10 @@ func (g *Gate) RecordLogin(call, ip string, now time.Time) {
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	addr, _ := netip.ParseAddr(strings.TrimSpace(ip))
+	addr := netip.Addr{}
+	if parsed, err := netip.ParseAddr(strings.TrimSpace(ip)); err == nil {
+		addr = parsed
+	}
 
 	ctyCountryKey, ctyContinentKey := g.lookupCTY(call)
 	ipResult, cymruResult, ipKey, ipContinent, ipKnown := g.lookupIP(addr, now)
@@ -309,7 +312,7 @@ func (g *Gate) RecordLogin(call, ip string, now time.Time) {
 	state.currentCountryCode = primary.CountryCode
 	state.currentCountry = primary.CountryName
 	state.currentSource = primary.Source
-	state.currentPrefix, _ = prefixKeyFromIP(addr)
+	state.currentPrefix = prefixKeyFromIP(addr)
 	state.lastSeen = now
 	if updatedRecord != nil {
 		state.asnHistory = append([]string(nil), updatedRecord.RecentASNs...)
@@ -332,16 +335,19 @@ func (g *Gate) Check(req Request) Decision {
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	addr, _ := netip.ParseAddr(strings.TrimSpace(req.IP))
-	prefix, _ := prefixKeyFromIP(addr)
+	addr := netip.Addr{}
+	if parsed, err := netip.ParseAddr(strings.TrimSpace(req.IP)); err == nil {
+		addr = parsed
+	}
+	prefix := prefixKeyFromIP(addr)
 
 	if addr.Is4() {
 		if g.prefixV4 != nil && !g.prefixV4.allow(prefix, now) {
-			return g.dropDecision(call, req.Band, prefix, DropPrefixCap, now)
+			return g.dropDecision(call, prefix, DropPrefixCap)
 		}
 	} else if addr.Is6() {
 		if g.prefixV6 != nil && !g.prefixV6.allow(prefix, now) {
-			return g.dropDecision(call, req.Band, prefix, DropPrefixCap, now)
+			return g.dropDecision(call, prefix, DropPrefixCap)
 		}
 	}
 
@@ -358,7 +364,7 @@ func (g *Gate) Check(req Request) Decision {
 	g.advanceState(state, now)
 
 	if now.Before(state.nextAllowedAt) {
-		decision := g.dropDecisionLocked(state, req.Band, prefix, DropProbation)
+		decision := g.dropDecisionLocked(state, prefix, DropProbation)
 		shard.mu.Unlock()
 		return decision
 	}
@@ -369,7 +375,7 @@ func (g *Gate) Check(req Request) Decision {
 	}
 
 	if state.totalCap > 0 && state.totalCount >= state.totalCap {
-		decision := g.dropDecisionLocked(state, band, prefix, DropTotalCap)
+		decision := g.dropDecisionLocked(state, prefix, DropTotalCap)
 		shard.mu.Unlock()
 		return decision
 	}
@@ -377,7 +383,7 @@ func (g *Gate) Check(req Request) Decision {
 	if state.perBandLimit > 0 {
 		count := state.perBandCounts[band]
 		if count >= state.perBandLimit {
-			decision := g.dropDecisionLocked(state, band, prefix, DropBandCap)
+			decision := g.dropDecisionLocked(state, prefix, DropBandCap)
 			shard.mu.Unlock()
 			return decision
 		}
@@ -397,21 +403,21 @@ func (g *Gate) Check(req Request) Decision {
 	return decision
 }
 
-func (g *Gate) dropDecision(call, band, prefix string, reason DropReason, now time.Time) Decision {
+func (g *Gate) dropDecision(call, prefix string, reason DropReason) Decision {
 	shard := g.callShard(call)
 	shard.mu.Lock()
 	state := shard.calls[call]
 	if state == nil {
 		state = &callState{}
 	}
-	decision := g.dropDecisionLocked(state, band, prefix, reason)
+	decision := g.dropDecisionLocked(state, prefix, reason)
 	shard.mu.Unlock()
 	decision.Drop = true
 	decision.Allow = false
 	return decision
 }
 
-func (g *Gate) dropDecisionLocked(state *callState, band, prefix string, reason DropReason) Decision {
+func (g *Gate) dropDecisionLocked(state *callState, prefix string, reason DropReason) Decision {
 	decision := Decision{
 		Allow:       false,
 		Drop:        true,
@@ -499,8 +505,8 @@ func (g *Gate) lookupCTY(call string) (string, string) {
 	if !ok || info == nil {
 		return "", ""
 	}
-	countryKey, _ := countryKeyFromName(info.Country)
-	continentKey, _ := continentKey(info.Continent)
+	countryKey := countryKeyFromName(info.Country)
+	continentKey := continentKey(info.Continent)
 	return countryKey, continentKey
 }
 
@@ -511,11 +517,11 @@ func (g *Gate) lookupIP(addr netip.Addr, now time.Time) (LookupResult, LookupRes
 	key := addr.String()
 	if cached, ok, _ := g.lookupCache.get(key, now); ok {
 		if g.cfg.ipinfoSnapshotMaxAge == 0 || now.Sub(cached.FetchedAt) <= g.cfg.ipinfoSnapshotMaxAge {
-			countryKey, _ := countryKeyFromCode(cached.CountryCode)
+			countryKey := countryKeyFromCode(cached.CountryCode)
 			if countryKey == "" {
-				countryKey, _ = countryKeyFromName(cached.CountryName)
+				countryKey = countryKeyFromName(cached.CountryName)
 			}
-			continentKey, _ := continentKey(cached.ContinentCode)
+			continentKey := continentKey(cached.ContinentCode)
 			return cached, LookupResult{}, countryKey, continentKey, true
 		}
 	}
@@ -556,11 +562,11 @@ func (g *Gate) lookupIP(addr netip.Addr, now time.Time) (LookupResult, LookupRes
 	if primary.Source == "" {
 		primary = cymru
 	}
-	countryKey, _ := countryKeyFromCode(primary.CountryCode)
+	countryKey := countryKeyFromCode(primary.CountryCode)
 	if countryKey == "" {
-		countryKey, _ = countryKeyFromName(primary.CountryName)
+		countryKey = countryKeyFromName(primary.CountryName)
 	}
-	continentKey, _ := continentKey(primary.ContinentCode)
+	continentKey := continentKey(primary.ContinentCode)
 	if primary.Source == "" {
 		return ipinfo, cymru, "", "", false
 	}
@@ -588,25 +594,6 @@ func (g *Gate) lookupIPInfoStore(addr netip.Addr) (LookupResult, bool) {
 	return result, ok
 }
 
-func (g *Gate) lookupIPInfoSnapshot(addr netip.Addr, now time.Time) LookupResult {
-	if g == nil {
-		return LookupResult{}
-	}
-	// Snapshot loading is optional; return empty when disabled or stale.
-	idx := g.ipinfoIndex.Load()
-	if idx == nil {
-		return LookupResult{}
-	}
-	if g.cfg.ipinfoSnapshotMaxAge > 0 && now.Sub(idx.loadedAt) > g.cfg.ipinfoSnapshotMaxAge {
-		return LookupResult{}
-	}
-	result, ok := idx.lookup(addr)
-	if !ok {
-		return LookupResult{}
-	}
-	return result
-}
-
 func (g *Gate) countryMismatch(ctyCountryKey, ipCountryKey string) bool {
 	if ctyCountryKey == "" || ipCountryKey == "" {
 		return false
@@ -621,11 +608,11 @@ func disagreement(ipinfo, cymru LookupResult) bool {
 	if ipinfo.ASN != "" && cymru.ASN != "" && ipinfo.ASN != cymru.ASN {
 		return true
 	}
-	ipCountryKey, _ := countryKeyFromCode(ipinfo.CountryCode)
+	ipCountryKey := countryKeyFromCode(ipinfo.CountryCode)
 	if ipCountryKey == "" {
-		ipCountryKey, _ = countryKeyFromName(ipinfo.CountryName)
+		ipCountryKey = countryKeyFromName(ipinfo.CountryName)
 	}
-	cymruCountryKey, _ := countryKeyFromCode(cymru.CountryCode)
+	cymruCountryKey := countryKeyFromCode(cymru.CountryCode)
 	if ipCountryKey != "" && cymruCountryKey != "" && ipCountryKey != cymruCountryKey {
 		return true
 	}

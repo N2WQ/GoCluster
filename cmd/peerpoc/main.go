@@ -114,7 +114,8 @@ func main() {
 func runProbe(ctx context.Context, cfg probeConfig) error {
 	addr := fmt.Sprintf("%s:%d", cfg.host, cfg.port)
 	log.Printf("dialing %s as %s", addr, cfg.call)
-	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return err
 	}
@@ -123,7 +124,9 @@ func runProbe(ctx context.Context, cfg probeConfig) error {
 	var sendMu sync.Mutex
 	reader := peer.NewLineReader(conn, 4096, 0, func(data []byte) {
 		sendMu.Lock()
-		_, _ = conn.Write(data)
+		if _, err := conn.Write(data); err != nil {
+			log.Printf("telnet reply write failed: %v", err)
+		}
 		sendMu.Unlock()
 	})
 	writer := bufio.NewWriter(conn)
@@ -153,7 +156,9 @@ func runProbe(ctx context.Context, cfg probeConfig) error {
 
 	defer func() {
 		if shouldSendBye {
-			_ = conn.SetWriteDeadline(time.Now().UTC().Add(2 * time.Second))
+			if err := conn.SetWriteDeadline(time.Now().UTC().Add(2 * time.Second)); err != nil {
+				log.Printf("failed to set BYE deadline: %v", err)
+			}
 			if err := sendLine("BYE"); err != nil {
 				log.Printf("bye send error: %v", err)
 			} else {
@@ -231,7 +236,9 @@ func runProbe(ctx context.Context, cfg probeConfig) error {
 				fromNode := strings.TrimSpace(fields[2])
 				if toNode == "*" || strings.EqualFold(toNode, cfg.call) {
 					resp := fmt.Sprintf("PC51^%s^%s^0^", fromNode, toNode)
-					_ = sendLine(resp)
+					if err := sendLine(resp); err != nil {
+						return fmt.Errorf("send PC51 ack: %w", err)
+					}
 					log.Printf("RX %s | TX %s", line, resp)
 					continue
 				}

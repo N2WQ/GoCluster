@@ -108,7 +108,7 @@ func Refresh(ctx context.Context, cfg config.FCCULSConfig, force bool) (bool, er
 	defer os.RemoveAll(extractDir)
 
 	ResetLicenseDB()
-	if err := buildDatabase(extractDir, dbPath, cfg.TempDir); err != nil {
+	if err := buildDatabase(ctx, extractDir, dbPath, cfg.TempDir); err != nil {
 		if metaErr := download.UpdateProcessedStatus(metaPath, false); metaErr != nil {
 			log.Printf("Warning: unable to update FCC ULS metadata %s: %v", metaPath, metaErr)
 		}

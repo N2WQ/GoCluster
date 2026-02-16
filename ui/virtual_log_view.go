@@ -109,7 +109,7 @@ func (v *virtualLogView) Draw(screen tcell.Screen) {
 	if v == nil {
 		return
 	}
-	v.Box.DrawForSubclass(screen, v)
+	v.DrawForSubclass(screen, v)
 
 	x, y, width, height := v.GetInnerRect()
 	if width <= 0 || height <= 0 {

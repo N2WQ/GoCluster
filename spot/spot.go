@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/zeebo/xxh3"
 )
@@ -333,10 +334,26 @@ func newDXClusterLayout(lineLength int) (dxClusterLayout, error) {
 
 func currentDXClusterLayout() dxClusterLayout {
 	if value := dxClusterLayoutValue.Load(); value != nil {
-		return value.(dxClusterLayout)
+		if layout, ok := value.(dxClusterLayout); ok {
+			return layout
+		}
 	}
-	layout, _ := newDXClusterLayout(dxClusterDefaultLineLength)
-	return layout
+	layout, err := newDXClusterLayout(dxClusterDefaultLineLength)
+	if err == nil {
+		return layout
+	}
+	fallback, fallbackErr := newDXClusterLayout(dxClusterMinLineLength)
+	if fallbackErr == nil {
+		return fallback
+	}
+	return dxClusterLayout{
+		lineLength:   dxClusterMinLineLength,
+		tailStartIdx: dxClusterMinLineLength - dxClusterTailLength,
+		glyphIdx:     dxClusterMinLineLength - dxClusterTailLength + 1,
+		gridIdx:      dxClusterMinLineLength - dxClusterTailLength + 3,
+		confIdx:      dxClusterMinLineLength - dxClusterTailLength + 8,
+		timeIdx:      dxClusterMinLineLength - dxClusterTailLength + 10,
+	}
 }
 
 type stringBuilder struct {
@@ -427,11 +444,43 @@ func (s *Spot) CloneWithComment(comment string) *Spot {
 	if s == nil {
 		return nil
 	}
-	clone := *s
-	clone.Comment = comment
-	clone.formatted = ""
-	clone.formatOnce = sync.Once{}
-	return &clone
+	clone := &Spot{
+		ID:                 s.ID,
+		DXCall:             s.DXCall,
+		DECall:             s.DECall,
+		Frequency:          s.Frequency,
+		Band:               s.Band,
+		Mode:               s.Mode,
+		Report:             s.Report,
+		Time:               s.Time,
+		Comment:            comment,
+		SourceType:         s.SourceType,
+		SourceNode:         s.SourceNode,
+		SpotterIP:          s.SpotterIP,
+		TTL:                s.TTL,
+		IsHuman:            s.IsHuman,
+		IsTestSpotter:      s.IsTestSpotter,
+		IsBeacon:           s.IsBeacon,
+		HasReport:          s.HasReport,
+		DXMetadata:         s.DXMetadata,
+		DEMetadata:         s.DEMetadata,
+		Confidence:         s.Confidence,
+		ModeNorm:           s.ModeNorm,
+		BandNorm:           s.BandNorm,
+		DXCallNorm:         s.DXCallNorm,
+		DECallNorm:         s.DECallNorm,
+		DXContinentNorm:    s.DXContinentNorm,
+		DEContinentNorm:    s.DEContinentNorm,
+		DXGridNorm:         s.DXGridNorm,
+		DEGridNorm:         s.DEGridNorm,
+		DXGrid2:            s.DXGrid2,
+		DEGrid2:            s.DEGrid2,
+		DXCellID:           s.DXCellID,
+		DECellID:           s.DECellID,
+		DECallStripped:     s.DECallStripped,
+		DECallNormStripped: s.DECallNormStripped,
+	}
+	return clone
 }
 
 // InvalidateMetadataCache clears cached fields derived from DXMetadata/DEMetadata.
@@ -747,17 +796,6 @@ func (s *Spot) formatZoneGridComment() string {
 	return sanitizeDXClusterComment(s.Comment)
 }
 
-// Purpose: Format a CQ zone label for display.
-// Key aspects: Returns empty for invalid zones.
-// Upstream: formatZoneGridComment.
-// Downstream: fmt.Sprintf.
-func formatCQZoneLabel(zone int) string {
-	if zone <= 0 {
-		return "??"
-	}
-	return fmt.Sprintf("%02d", zone)
-}
-
 // Purpose: Format a grid label for display.
 // Key aspects: Lowercases derived grids and truncates to 4 chars.
 // Upstream: formatZoneGridComment.
@@ -850,11 +888,9 @@ func firstPrintableASCIIOrQuestion(s string) string {
 	if s == "" {
 		return "?"
 	}
-	for _, r := range s {
-		if r >= 0x20 && r <= 0x7e {
-			return string(r)
-		}
-		return "?"
+	r, _ := utf8.DecodeRuneInString(s)
+	if r >= 0x20 && r <= 0x7e {
+		return string(r)
 	}
 	return "?"
 }

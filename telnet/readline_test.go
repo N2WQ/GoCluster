@@ -108,7 +108,7 @@ func TestReadLineIgnoresEscapedIAC(t *testing.T) {
 func TestReadLineHandlesCRLFAndCRNUL(t *testing.T) {
 	t.Run("crlf", func(t *testing.T) {
 		input := []byte{'S', '5', '3', 'Z', 'O', '\r', '\n', 'S', '5', '3', 'M', '\n'}
-		lines, _ := readLinesWithEchoBytes(t, input, false, 2)
+		lines := readLinesWithEchoBytes(t, input, false, 2)
 		if lines[0] != "S53ZO" || lines[1] != "S53M" {
 			t.Fatalf("expected lines %q and %q, got %q", "S53ZO", "S53M", lines)
 		}
@@ -116,7 +116,7 @@ func TestReadLineHandlesCRLFAndCRNUL(t *testing.T) {
 
 	t.Run("crnul", func(t *testing.T) {
 		input := []byte{'S', '5', '3', 'Z', 'O', '\r', 0x00, 'S', '5', '3', 'M', '\n'}
-		lines, _ := readLinesWithEchoBytes(t, input, false, 2)
+		lines := readLinesWithEchoBytes(t, input, false, 2)
 		if lines[0] != "S53ZO" || lines[1] != "S53M" {
 			t.Fatalf("expected lines %q and %q, got %q", "S53ZO", "S53M", lines)
 		}
@@ -125,7 +125,7 @@ func TestReadLineHandlesCRLFAndCRNUL(t *testing.T) {
 
 func TestReadLineCRThenDataStartsNextLine(t *testing.T) {
 	input := []byte{'A', '\r', 'B', '\n'}
-	lines, _ := readLinesWithEchoBytes(t, input, false, 2)
+	lines := readLinesWithEchoBytes(t, input, false, 2)
 	if lines[0] != "A" || lines[1] != "B" {
 		t.Fatalf("expected lines %q and %q, got %q", "A", "B", lines)
 	}
@@ -153,14 +153,13 @@ func readLineWithEchoBytes(t *testing.T, input []byte, echo bool) (string, strin
 	return line, out.String()
 }
 
-func readLinesWithEchoBytes(t *testing.T, input []byte, echo bool, count int) ([]string, string) {
+func readLinesWithEchoBytes(t *testing.T, input []byte, echo bool, count int) []string {
 	t.Helper()
 	reader := bufio.NewReader(bytes.NewBuffer(input))
-	var out bytes.Buffer
-	writer := bufio.NewWriter(&out)
+	var writer bytes.Buffer
 	client := &Client{
 		reader:    reader,
-		writer:    writer,
+		writer:    bufio.NewWriter(&writer),
 		echoInput: echo,
 	}
 	lines := make([]string, 0, count)
@@ -171,7 +170,7 @@ func readLinesWithEchoBytes(t *testing.T, input []byte, echo bool, count int) ([
 		}
 		lines = append(lines, line)
 	}
-	return lines, out.String()
+	return lines
 }
 
 func stringsRepeat(s string, count int) string {

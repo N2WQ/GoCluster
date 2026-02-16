@@ -26,6 +26,7 @@ const (
 	minRBNDialFrequencyKHz = 100.0
 	maxRBNDialFrequencyKHz = 3000000.0
 	rbnMaxLineLength       = 1024
+	rbnWriteDeadline       = 10 * time.Second
 )
 
 var (
@@ -404,8 +405,13 @@ func (c *Client) handleLogin() {
 		log.Printf("Logging in to RBN as %s", c.callsign)
 	}
 	// Use CRLF for telnet-style compatibility with RBN servers.
-	c.writer.WriteString(c.callsign + "\r\n")
-	c.writer.Flush()
+	if err := c.writeStringLine(c.callsign + "\r\n"); err != nil {
+		if c.isShutdown() {
+			return
+		}
+		log.Printf("%s: login write failed: %v", c.displayName(), err)
+		c.requestReconnect(err)
+	}
 }
 
 // readLineBounded reads a single line with a hard cap to avoid unbounded buffers.
@@ -486,7 +492,14 @@ func (c *Client) readLoop() {
 			return
 		default:
 			// Set read timeout
-			c.conn.SetReadDeadline(time.Now().UTC().Add(5 * time.Minute))
+			if err := c.conn.SetReadDeadline(time.Now().UTC().Add(5 * time.Minute)); err != nil {
+				if c.isShutdown() {
+					return
+				}
+				log.Printf("%s: failed to set read deadline: %v", c.displayName(), err)
+				c.requestReconnect(err)
+				return
+			}
 
 			line, err := c.readLineBounded(rbnMaxLineLength)
 			if err != nil {
@@ -938,17 +951,6 @@ func (c *Client) displayName() string {
 	return "RBN"
 }
 
-// Purpose: Return the source identifier used in logs/metadata.
-// Key aspects: Distinguishes RBN vs RBN-DIGITAL by port.
-// Upstream: dispatchUnlicensed and logging.
-// Downstream: None.
-func (c *Client) sourceKey() string {
-	if c.port == 7001 {
-		return "RBN-DIGITAL"
-	}
-	return "RBN"
-}
-
 // Purpose: Send periodic CRLF keepalives to upstream telnet feed.
 // Key aspects: Stops on shutdown or connection teardown.
 // Upstream: establishConnection goroutine when keepalive enabled.
@@ -963,12 +965,37 @@ func (c *Client) keepaliveLoop() {
 		case <-c.keepaliveDone:
 			return
 		case <-ticker.C:
-			c.writeMu.Lock()
-			if c.writer != nil {
-				_, _ = c.writer.WriteString("\r\n")
-				_ = c.writer.Flush()
+			if err := c.writeStringLine("\r\n"); err != nil {
+				if c.isShutdown() {
+					return
+				}
+				log.Printf("%s: keepalive write failed: %v", c.displayName(), err)
+				c.requestReconnect(err)
+				return
 			}
-			c.writeMu.Unlock()
 		}
 	}
+}
+
+func (c *Client) writeStringLine(line string) error {
+	if c == nil {
+		return errors.New("nil RBN client")
+	}
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	if c.conn == nil || c.writer == nil {
+		return errors.New("RBN connection not initialized")
+	}
+	if err := c.conn.SetWriteDeadline(time.Now().UTC().Add(rbnWriteDeadline)); err != nil {
+		return err
+	}
+	defer func() {
+		if err := c.conn.SetWriteDeadline(time.Time{}); err != nil && !c.isShutdown() {
+			log.Printf("%s: failed to clear write deadline: %v", c.displayName(), err)
+		}
+	}()
+	if _, err := c.writer.WriteString(line); err != nil {
+		return err
+	}
+	return c.writer.Flush()
 }

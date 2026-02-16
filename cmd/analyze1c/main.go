@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"flag"
 	"fmt"
@@ -42,7 +43,7 @@ func run(dbPath string) error {
 	defer db.Close()
 
 	// Query all decisions
-	rows, err := db.Query(`
+	rows, err := db.QueryContext(context.Background(), `
 		SELECT
 			distance,
 			decision,

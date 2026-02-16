@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"flag"
 	"fmt"
@@ -14,19 +15,19 @@ import (
 )
 
 type decisionRecord struct {
-	id                int64
-	subject           string
-	winner            string
-	distance          int
-	winnerConfidence  int
-	winnerSupport     int
-	subjectSupport    int
-	totalReporters    int
-	minReports        int
-	minAdvantage      int
-	minConfidence     int
-	decision          string
-	reason            string
+	id               int64
+	subject          string
+	winner           string
+	distance         int
+	winnerConfidence int
+	winnerSupport    int
+	subjectSupport   int
+	totalReporters   int
+	minReports       int
+	minAdvantage     int
+	minConfidence    int
+	decision         string
+	reason           string
 }
 
 func main() {
@@ -52,13 +53,15 @@ func main() {
 	// Load all decisions (both applied and rejected)
 	decisions, err := loadAllDecisions(db)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("load decisions failed: %v", err)
+		return
 	}
 
 	// Current state analysis
 	currentApplied := 0
 	currentRejected := 0
-	for _, d := range decisions {
+	for i := range decisions {
+		d := &decisions[i]
 		if d.decision == "applied" {
 			currentApplied++
 		} else {
@@ -81,7 +84,8 @@ func main() {
 	rescuedByDistance := make(map[int]int)
 	rescuedCases := []decisionRecord{}
 
-	for _, d := range decisions {
+	for i := range decisions {
+		d := &decisions[i]
 		// Skip distance-0 (no winner)
 		if d.distance == 0 {
 			continue
@@ -97,7 +101,7 @@ func main() {
 				rescued++
 				rescuedByDistance[d.distance]++
 				if len(rescuedCases) < 20 {
-					rescuedCases = append(rescuedCases, d)
+					rescuedCases = append(rescuedCases, *d)
 				}
 			}
 		}
@@ -147,10 +151,11 @@ func main() {
 		fmt.Printf("SAMPLE RESCUED CORRECTIONS:\n")
 		fmt.Printf("─────────────────────────────────────────────────────────────────────────────\n")
 
-		for i, r := range rescuedCases {
+		for i := range rescuedCases {
 			if i >= 10 {
 				break
 			}
+			r := &rescuedCases[i]
 			advantage := r.winnerSupport - r.subjectSupport
 			fmt.Printf("\n%s → %s (dist=%d)\n", r.subject, r.winner, r.distance)
 			fmt.Printf("  Support: %d/%d reporters (winner=%d, subject=%d, advantage=%d)\n",
@@ -204,7 +209,7 @@ func main() {
 }
 
 func loadAllDecisions(db *sql.DB) ([]decisionRecord, error) {
-	rows, err := db.Query(`
+	rows, err := db.QueryContext(context.Background(), `
 		SELECT
 			id, subject, winner, distance,
 			winner_confidence, winner_support, subject_support, total_reporters,
@@ -236,7 +241,10 @@ func loadAllDecisions(db *sql.DB) ([]decisionRecord, error) {
 	return decisions, rows.Err()
 }
 
-func checkThresholds(d decisionRecord, minReports, minAdvantage, minConfidence int) bool {
+func checkThresholds(d *decisionRecord, minReports, minAdvantage, minConfidence int) bool {
+	if d == nil {
+		return false
+	}
 	// Check minimum reports
 	if d.winnerSupport < minReports {
 		return false

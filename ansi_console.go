@@ -380,7 +380,10 @@ func (c *ansiConsole) render() {
 	} else {
 		writeDiffFrame(&buf, c.frame, c.lastFrame)
 	}
-	_, _ = buf.WriteTo(os.Stdout)
+	if _, err := buf.WriteTo(os.Stdout); err != nil {
+		c.disable("stdout write failed: " + err.Error())
+		return
+	}
 	copy(c.lastFrame, c.frame)
 }
 
@@ -408,7 +411,9 @@ func (c *ansiConsole) writeFallback(line string) {
 	if clean == "" {
 		return
 	}
-	_, _ = os.Stdout.Write([]byte(clean + "\n"))
+	if _, err := os.Stdout.Write([]byte(clean + "\n")); err != nil {
+		log.Printf("ANSI UI fallback write failed: %v", err)
+	}
 }
 
 func (c *ansiConsole) fillFrame(dst, stats, dropped, calls, unlic, harm, system []string) {

@@ -312,7 +312,10 @@ func (c *Config) normalize() {
 	rLevels, rMaxHold, rErr := normalizeRLevels(rInput)
 	if rErr != nil {
 		c.levelErr = rErr
-		rLevels, rMaxHold, _ = normalizeRLevels(def.RLevels)
+		fallbackLevels, fallbackMaxHold, fallbackErr := normalizeRLevels(def.RLevels)
+		if fallbackErr == nil {
+			rLevels, rMaxHold = fallbackLevels, fallbackMaxHold
+		}
 	}
 	c.rLevels = rLevels
 	c.rMaxHold = rMaxHold
@@ -324,7 +327,10 @@ func (c *Config) normalize() {
 	gLevels, gErr := normalizeGLevels(gInput)
 	if gErr != nil {
 		c.levelErr = gErr
-		gLevels, _ = normalizeGLevels(def.GLevels)
+		fallbackLevels, fallbackErr := normalizeGLevels(def.GLevels)
+		if fallbackErr == nil {
+			gLevels = fallbackLevels
+		}
 	}
 	c.gLevels = gLevels
 }

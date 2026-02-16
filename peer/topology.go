@@ -1,8 +1,10 @@
 package peer
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +18,15 @@ type topologyStore struct {
 	retention time.Duration
 }
 
+const topologyDBTimeout = 5 * time.Second
+
+func newTopologyDBContext(parent context.Context) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	return context.WithTimeout(parent, topologyDBTimeout)
+}
+
 func openTopologyStore(path string, retention time.Duration) (*topologyStore, error) {
 	if dir := filepath.Dir(path); dir != "" && dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -26,10 +37,14 @@ func openTopologyStore(path string, retention time.Duration) (*topologyStore, er
 	if err != nil {
 		return nil, err
 	}
-	if _, err := db.Exec(`pragma journal_mode=WAL;`); err != nil {
+	ctx, cancel := newTopologyDBContext(context.Background())
+	defer cancel()
+	if _, err := db.ExecContext(ctx, `pragma journal_mode=WAL;`); err != nil {
+		_ = db.Close()
 		return nil, err
 	}
 	if err := ensurePeerNodesSchema(db); err != nil {
+		_ = db.Close()
 		return nil, err
 	}
 	return &topologyStore{db: db, retention: retention}, nil
@@ -49,10 +64,12 @@ func ensurePeerNodesSchema(db *sql.DB) error {
 	);
 	create index if not exists idx_peer_nodes_origin on peer_nodes(origin);
 	`
-	if _, err := db.Exec(schema); err != nil {
+	ctx, cancel := newTopologyDBContext(context.Background())
+	defer cancel()
+	if _, err := db.ExecContext(ctx, schema); err != nil {
 		return err
 	}
-	cols, err := fetchColumns(db, "peer_nodes")
+	cols, err := fetchColumns(ctx, db, "peer_nodes")
 	if err != nil {
 		return err
 	}
@@ -65,18 +82,20 @@ func ensurePeerNodesSchema(db *sql.DB) error {
 		missing = true
 	}
 	if missing {
-		if _, err := db.Exec(`drop table if exists peer_nodes;`); err != nil {
+		ctx, cancel := newTopologyDBContext(context.Background())
+		defer cancel()
+		if _, err := db.ExecContext(ctx, `drop table if exists peer_nodes;`); err != nil {
 			return err
 		}
-		if _, err := db.Exec(schema); err != nil {
+		if _, err := db.ExecContext(ctx, schema); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func fetchColumns(db *sql.DB, table string) (map[string]struct{}, error) {
-	rows, err := db.Query(fmt.Sprintf("pragma table_info(%s);", table))
+func fetchColumns(ctx context.Context, db *sql.DB, table string) (map[string]struct{}, error) {
+	rows, err := db.QueryContext(ctx, fmt.Sprintf("pragma table_info(%s);", table))
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +114,7 @@ func fetchColumns(db *sql.DB, table string) (map[string]struct{}, error) {
 	return cols, rows.Err()
 }
 
-func (t *topologyStore) applyPC92(frame *Frame, now time.Time) {
+func (t *topologyStore) applyPC92(ctx context.Context, frame *Frame, now time.Time) {
 	if t == nil || frame == nil {
 		return
 	}
@@ -117,6 +136,8 @@ func (t *topologyStore) applyPC92(frame *Frame, now time.Time) {
 	if len(entries) == 0 {
 		return
 	}
+	ctx, cancel := newTopologyDBContext(ctx)
+	defer cancel()
 	for _, entry := range entries {
 		entry = strings.TrimSpace(entry)
 		if entry == "" {
@@ -132,29 +153,42 @@ func (t *topologyStore) applyPC92(frame *Frame, now time.Time) {
 		updatedAt := now.Unix()
 		if strings.EqualFold(recordType, "D") {
 			// Delete record type: remove matching origin+call rows.
-			_, _ = t.db.Exec(`delete from peer_nodes where origin = ? and call = ?`, origin, call)
+			if _, err := t.db.ExecContext(ctx, `delete from peer_nodes where origin = ? and call = ?`, origin, call); err != nil {
+				log.Printf("Peering: failed to delete topology row origin=%s call=%s: %v", origin, call, err)
+			}
 			continue
 		}
-		t.upsertPeerNode(origin, bitmap, call, version, build, ip, updatedAt)
+		if err := t.upsertPeerNode(ctx, origin, bitmap, call, version, build, ip, updatedAt); err != nil {
+			log.Printf("Peering: failed to upsert topology row origin=%s call=%s: %v", origin, call, err)
+		}
 	}
 }
 
-func (t *topologyStore) applyLegacy(frame *Frame, now time.Time) {
+func (t *topologyStore) applyLegacy(ctx context.Context, frame *Frame, now time.Time) {
 	if t == nil {
 		return
 	}
-	_, _ = t.db.Exec(`insert into peer_nodes(origin, bitmap, call, version, build, ip, updated_at) values(?,?,?,?,?,?,?)`,
-		frame.Type, 0, "", "", "", "", now.Unix())
+	ctx, cancel := newTopologyDBContext(ctx)
+	defer cancel()
+	if _, err := t.db.ExecContext(ctx, `insert into peer_nodes(origin, bitmap, call, version, build, ip, updated_at) values(?,?,?,?,?,?,?)`,
+		frame.Type, 0, "", "", "", "", now.Unix()); err != nil {
+		log.Printf("Peering: failed to record legacy topology frame %s: %v", frame.Type, err)
+	}
 }
 
-func (t *topologyStore) upsertPeerNode(origin string, bitmap int, call, version, build, ip string, updatedAt int64) {
+func (t *topologyStore) upsertPeerNode(ctx context.Context, origin string, bitmap int, call, version, build, ip string, updatedAt int64) error {
 	if t == nil {
-		return
+		return nil
 	}
 	// Best-effort upsert: delete any existing row for origin+call, then insert fresh state.
-	_, _ = t.db.Exec(`delete from peer_nodes where origin = ? and call = ?`, origin, call)
-	_, _ = t.db.Exec(`insert into peer_nodes(origin, bitmap, call, version, build, ip, updated_at) values(?,?,?,?,?,?,?)`,
-		origin, bitmap, call, version, build, ip, updatedAt)
+	if _, err := t.db.ExecContext(ctx, `delete from peer_nodes where origin = ? and call = ?`, origin, call); err != nil {
+		return err
+	}
+	if _, err := t.db.ExecContext(ctx, `insert into peer_nodes(origin, bitmap, call, version, build, ip, updated_at) values(?,?,?,?,?,?,?)`,
+		origin, bitmap, call, version, build, ip, updatedAt); err != nil {
+		return err
+	}
+	return nil
 }
 
 // isHopField returns true when the token is the trailing hop marker (e.g., H27).
@@ -171,12 +205,16 @@ func isHopField(token string) bool {
 	return true
 }
 
-func (t *topologyStore) prune(now time.Time) {
+func (t *topologyStore) prune(ctx context.Context, now time.Time) {
 	if t == nil {
 		return
 	}
 	cutoff := now.Add(-t.retention).Unix()
-	_, _ = t.db.Exec(`delete from peer_nodes where updated_at < ?`, cutoff)
+	ctx, cancel := newTopologyDBContext(ctx)
+	defer cancel()
+	if _, err := t.db.ExecContext(ctx, `delete from peer_nodes where updated_at < ?`, cutoff); err != nil {
+		log.Printf("Peering: failed to prune topology rows before %d: %v", cutoff, err)
+	}
 }
 
 func (t *topologyStore) Close() error {

@@ -1,6 +1,7 @@
 package uls
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -132,7 +133,7 @@ func IsLicensedUS(call string) bool {
 		delay := 100 * time.Millisecond
 		for attempt := 0; attempt < retries; attempt++ {
 			var dummy int
-			err := db.QueryRow("SELECT 1 FROM AM WHERE call_sign = ? LIMIT 1;", canonical).Scan(&dummy)
+			err := db.QueryRowContext(context.Background(), "SELECT 1 FROM AM WHERE call_sign = ? LIMIT 1;", canonical).Scan(&dummy)
 			if err == nil {
 				allow = true
 				break

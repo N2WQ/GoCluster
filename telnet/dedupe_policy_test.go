@@ -146,12 +146,12 @@ func TestBroadcastRespectsDedupePolicyWindows(t *testing.T) {
 
 	start := time.Now().UTC()
 	for i := 0; i < 10000; i++ {
-		s := *base
+		s := base.CloneWithComment(base.Comment)
 		s.Time = start.Add(time.Duration(i*60) * time.Second)
-		allowFast := secondaryFast.ShouldForward(&s)
-		allowMed := secondaryMed.ShouldForward(&s)
-		allowSlow := secondarySlow.ShouldForward(&s)
-		server.BroadcastSpot(&s, allowFast, allowMed, allowSlow)
+		allowFast := secondaryFast.ShouldForward(s)
+		allowMed := secondaryMed.ShouldForward(s)
+		allowSlow := secondarySlow.ShouldForward(s)
+		server.BroadcastSpot(s, allowFast, allowMed, allowSlow)
 	}
 
 	fastCount := drainSpotCount(t, fastClient.spotChan, 5000)

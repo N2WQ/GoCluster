@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"flag"
 	"fmt"
@@ -16,20 +17,23 @@ func main() {
 
 	db, err := sql.Open("sqlite", *dbPath)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("open db failed: %v", err)
+		return
 	}
 	defer db.Close()
+	ctx := context.Background()
 
 	// Count by decision type
 	fmt.Println("\n=== DECISION TYPE BREAKDOWN ===")
-	rows, err := db.Query(`
+	rows, err := db.QueryContext(ctx, `
 		SELECT decision, COUNT(*) as count
 		FROM decisions
 		GROUP BY decision
 		ORDER BY count DESC
 	`)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("query decision breakdown failed: %v", err)
+		return
 	}
 	defer rows.Close()
 
@@ -37,21 +41,23 @@ func main() {
 		var decision string
 		var count int
 		if err := rows.Scan(&decision, &count); err != nil {
-			log.Fatal(err)
+			log.Printf("scan decision breakdown failed: %v", err)
+			return
 		}
 		fmt.Printf("%s: %d\n", decision, count)
 	}
 
 	// Sample APPLIED decisions (if any)
 	fmt.Println("\n=== SAMPLE APPLIED DECISIONS ===")
-	rows2, err := db.Query(`
+	rows2, err := db.QueryContext(ctx, `
 		SELECT subject, winner, distance, winner_confidence, total_reporters, decision
 		FROM decisions
 		WHERE decision = 'APPLIED'
 		LIMIT 10
 	`)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("query applied decisions failed: %v", err)
+		return
 	}
 	defer rows2.Close()
 
@@ -60,7 +66,8 @@ func main() {
 		var subject, winner, decision string
 		var distance, confidence, reporters int
 		if err := rows2.Scan(&subject, &winner, &distance, &confidence, &reporters, &decision); err != nil {
-			log.Fatal(err)
+			log.Printf("scan applied decision failed: %v", err)
+			return
 		}
 		count++
 		fmt.Printf("%s → %s (dist=%d, conf=%d%%, reporters=%d)\n",
@@ -72,7 +79,7 @@ func main() {
 
 	// Sample distance-1 rejections
 	fmt.Println("\n=== SAMPLE DISTANCE-1 REJECTIONS ===")
-	rows3, err := db.Query(`
+	rows3, err := db.QueryContext(ctx, `
 		SELECT subject, winner, distance, winner_confidence, winner_support,
 		       total_reporters, min_reports, min_advantage, min_confidence,
 		       decision, reason
@@ -82,7 +89,8 @@ func main() {
 		LIMIT 10
 	`)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("query distance-1 rejections failed: %v", err)
+		return
 	}
 	defer rows3.Close()
 
@@ -92,7 +100,8 @@ func main() {
 		var distance, confidence, winnerSupport, totalReporters, minReports, minAdvantage, minConfidence int
 		if err := rows3.Scan(&subject, &winner, &distance, &confidence, &winnerSupport,
 			&totalReporters, &minReports, &minAdvantage, &minConfidence, &decision, &reason); err != nil {
-			log.Fatal(err)
+			log.Printf("scan distance-1 rejection failed: %v", err)
+			return
 		}
 
 		reasonStr := "UNKNOWN"
@@ -109,7 +118,7 @@ func main() {
 
 	// Check if there are any decisions with high confidence that were rejected
 	fmt.Println("\n=== HIGH CONFIDENCE REJECTIONS (>70%) ===")
-	rows4, err := db.Query(`
+	rows4, err := db.QueryContext(ctx, `
 		SELECT subject, winner, distance, winner_confidence, winner_support,
 		       total_reporters, decision, reason
 		FROM decisions
@@ -118,7 +127,8 @@ func main() {
 		LIMIT 10
 	`)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("query high-confidence rejections failed: %v", err)
+		return
 	}
 	defer rows4.Close()
 
@@ -129,7 +139,8 @@ func main() {
 		var distance, confidence, winnerSupport, totalReporters int
 		if err := rows4.Scan(&subject, &winner, &distance, &confidence, &winnerSupport,
 			&totalReporters, &decision, &reason); err != nil {
-			log.Fatal(err)
+			log.Printf("scan high-confidence rejection failed: %v", err)
+			return
 		}
 		count++
 

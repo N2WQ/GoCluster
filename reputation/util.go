@@ -31,23 +31,23 @@ var countryAliasCode = map[string]string{
 	"VENEZUELA":                        "VE",
 }
 
-func countryKeyFromCode(code string) (string, bool) {
+func countryKeyFromCode(code string) string {
 	code = strings.ToUpper(strings.TrimSpace(code))
 	if len(code) == 2 {
-		return code, true
+		return code
 	}
-	return "", false
+	return ""
 }
 
-func countryKeyFromName(name string) (string, bool) {
+func countryKeyFromName(name string) string {
 	name = normalizeCountryName(name)
 	if name == "" {
-		return "", false
+		return ""
 	}
 	if code, ok := countryAliasCode[name]; ok {
-		return code, true
+		return code
 	}
-	return name, true
+	return name
 }
 
 func normalizeCountryName(name string) string {
@@ -65,25 +65,25 @@ func normalizeCountryName(name string) string {
 	return b.String()
 }
 
-func continentKey(continent string) (string, bool) {
+func continentKey(continent string) string {
 	continent = strings.ToUpper(strings.TrimSpace(continent))
 	if len(continent) == 2 {
-		return continent, true
+		return continent
 	}
-	return "", false
+	return ""
 }
 
-func prefixKeyFromIP(addr netip.Addr) (string, bool) {
+func prefixKeyFromIP(addr netip.Addr) string {
 	if !addr.IsValid() {
-		return "", false
+		return ""
 	}
 	if addr.Is4() {
 		prefix := netip.PrefixFrom(addr, 24).Masked()
-		return prefix.String(), true
+		return prefix.String()
 	}
 	if addr.Is6() {
 		prefix := netip.PrefixFrom(addr, 48).Masked()
-		return prefix.String(), true
+		return prefix.String()
 	}
-	return "", false
+	return ""
 }

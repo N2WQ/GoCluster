@@ -37,11 +37,3 @@ func wwvKey(f *Frame) string {
 func pc93Key(f *Frame) string {
 	return fmt.Sprintf("pc93:%s:%s", f.Type, f.Raw)
 }
-
-// Purpose: Build a dedupe key for PC26 raw passthrough frames.
-// Key aspects: Uses raw frame content.
-// Upstream: Peer dedupe caches.
-// Downstream: fmt.Sprintf.
-func pc26Key(f *Frame) string {
-	return fmt.Sprintf("pc26:%s", f.Raw)
-}

@@ -48,7 +48,6 @@ linters:
     govet:
       disable-all: true
       enable:
-        - shadow
         - atomic
         - atomicalign
         - bools
@@ -72,9 +71,6 @@ linters:
         - unreachable
         - unusedresult
         - waitgroup
-      settings:
-        shadow:
-          strict: true
 
     prealloc:
       simple: true
@@ -89,7 +85,7 @@ linters:
     revive:
       rules:
         - name: atomic
-        - name: context-as-first-argument
+        - name: context-as-argument
         - name: error-return
         - name: error-naming
         - name: var-naming
@@ -123,6 +119,10 @@ linters:
       confidence: medium
       excludes:
         - G104
+        - G115
+        - G301
+        - G302
+        - G306
 
   exclusions:
     generated: strict

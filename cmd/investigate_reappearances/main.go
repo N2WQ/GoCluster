@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"flag"
 	"fmt"
@@ -15,19 +16,19 @@ import (
 )
 
 type reappearanceCase struct {
-	correctionID       int64
-	correctionTime     time.Time
-	subject            string
-	winner             string
-	freqKHz            float64
-	distance           int
-	confidence         int
-	subjectReappeared  bool
-	winnerReappeared   bool
-	bothReappeared     bool
-	subjectFreqKHz     float64
-	winnerFreqKHz      float64
-	freqSeparationKHz  float64
+	correctionID      int64
+	correctionTime    time.Time
+	subject           string
+	winner            string
+	freqKHz           float64
+	distance          int
+	confidence        int
+	subjectReappeared bool
+	winnerReappeared  bool
+	bothReappeared    bool
+	subjectFreqKHz    float64
+	winnerFreqKHz     float64
+	freqSeparationKHz float64
 }
 
 func main() {
@@ -50,7 +51,8 @@ func main() {
 	// Find cases where both subject and winner reappear
 	cases, err := analyzeBothReappearances(db, *lookAheadHours)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("analyze both reappearances failed: %v", err)
+		return
 	}
 
 	fmt.Printf("Found %d cases where both subject and winner reappeared\n\n", len(cases))
@@ -131,7 +133,7 @@ func main() {
 
 func analyzeBothReappearances(db *sql.DB, lookAheadHours int) ([]reappearanceCase, error) {
 	// Get all applied corrections
-	rows, err := db.Query(`
+	rows, err := db.QueryContext(context.Background(), `
 		SELECT
 			id, ts, subject, winner, freq_khz, distance, winner_confidence
 		FROM decisions
@@ -168,7 +170,7 @@ func analyzeBothReappearances(db *sql.DB, lookAheadHours int) ([]reappearanceCas
 			LIMIT 100
 		`
 
-		subRows, err := db.Query(checkQuery, ts, endTime, c.subject, c.winner)
+		subRows, err := db.QueryContext(context.Background(), checkQuery, ts, endTime, c.subject, c.winner)
 		if err != nil {
 			continue
 		}

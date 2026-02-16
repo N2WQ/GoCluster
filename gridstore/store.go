@@ -164,7 +164,7 @@ func (s *Store) Entries() ([]Record, error) {
 	if s == nil || s.db == nil {
 		return nil, errors.New("gridstore: store is not initialized")
 	}
-	iter, err := s.db.NewIter(iterOptionsForPrefix(callPrefix))
+	iter, err := s.db.NewIter(iterOptionsForCallPrefix())
 	if err != nil {
 		return nil, fmt.Errorf("gridstore: entries iterator: %w", err)
 	}
@@ -353,10 +353,11 @@ func (s *Store) Get(call string) (*Record, error) {
 	if call == "" {
 		return nil, errors.New("gridstore: call is empty")
 	}
+	var rec *Record
 	value, closer, err := s.db.Get(callKeyBytes(call))
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
-			return nil, nil
+			return rec, nil
 		}
 		return nil, fmt.Errorf("gridstore: get %s: %w", call, err)
 	}
@@ -365,8 +366,9 @@ func (s *Store) Get(call string) (*Record, error) {
 	if err != nil {
 		return nil, fmt.Errorf("gridstore: decode %s: %w", call, err)
 	}
-	rec := recordValueToRecord(call, val)
-	return &rec, nil
+	record := recordValueToRecord(call, val)
+	rec = &record
+	return rec, nil
 }
 
 // Count returns the total number of stored calls.
@@ -498,7 +500,7 @@ func (s *Store) applyUpsertBatch(recs []Record) error {
 
 // applyClearKnownFlags walks all records and clears known-call flags in batches.
 func (s *Store) applyClearKnownFlags() error {
-	iter, err := s.db.NewIter(iterOptionsForPrefix(callPrefix))
+	iter, err := s.db.NewIter(iterOptionsForCallPrefix())
 	if err != nil {
 		return fmt.Errorf("gridstore: clear known iterator: %w", err)
 	}
@@ -791,7 +793,7 @@ func encodeRecordValue(val recordValue) []byte {
 	binary.BigEndian.PutUint64(buf[2:], val.observations)
 	binary.BigEndian.PutUint64(buf[10:], uint64(val.firstSeen))
 	binary.BigEndian.PutUint64(buf[18:], uint64(val.updatedAt))
-	expires := uint64(^uint64(0))
+	expires := ^uint64(0)
 	if val.expiresAt != expiresNone {
 		expires = uint64(val.expiresAt)
 	}
@@ -920,7 +922,7 @@ func readCountMeta(db *pebble.DB) (int64, error) {
 }
 
 func computeCount(db *pebble.DB) (int64, error) {
-	iter, err := db.NewIter(iterOptionsForPrefix(callPrefix))
+	iter, err := db.NewIter(iterOptionsForCallPrefix())
 	if err != nil {
 		return 0, fmt.Errorf("gridstore: count iterator: %w", err)
 	}
@@ -1028,8 +1030,8 @@ func updatedUpperBound(cutoffUnix int64) []byte {
 	return updatedKeyBytes(cutoffUnix+1, "")
 }
 
-func iterOptionsForPrefix(prefix string) *pebble.IterOptions {
-	lower := []byte(prefix)
+func iterOptionsForCallPrefix() *pebble.IterOptions {
+	lower := []byte(callPrefix)
 	upper := prefixUpperBound(lower)
 	return &pebble.IterOptions{LowerBound: lower, UpperBound: upper}
 }

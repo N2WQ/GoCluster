@@ -3,6 +3,8 @@ package peer
 import "dxcluster/config"
 
 // PeerEndpoint wraps a configured peer.
+//
+//nolint:revive // Retained for package API clarity.
 type PeerEndpoint struct {
 	host       string
 	port       int

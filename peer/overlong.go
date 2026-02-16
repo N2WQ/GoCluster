@@ -67,7 +67,9 @@ func overlongWorker() {
 			continue
 		}
 		if dir := filepath.Dir(sample.path); dir != "" && dir != "." {
-			_ = os.MkdirAll(dir, 0o755)
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				continue
+			}
 		}
 		f, err := os.OpenFile(sample.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 		if err != nil {
@@ -75,7 +77,10 @@ func overlongWorker() {
 		}
 		ts := sample.ts.Format(time.RFC3339)
 		line := fmt.Sprintf("%s host=%s len=%d preview=%s\n", ts, sample.host, sample.length, sample.preview)
-		_, _ = f.WriteString(line)
+		if _, err := f.WriteString(line); err != nil {
+			_ = f.Close()
+			continue
+		}
 		_ = f.Close()
 	}
 }

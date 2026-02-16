@@ -69,7 +69,12 @@ func (c *CallCache) Get(key string) (string, bool) {
 	if !ok || elem == nil {
 		return "", false
 	}
-	entry := elem.Value.(cacheEntry)
+	entry, valid := elem.Value.(cacheEntry)
+	if !valid {
+		c.lru.Remove(elem)
+		delete(c.entries, key)
+		return "", false
+	}
 	if c.ttl > 0 && time.Now().UTC().After(entry.expires) {
 		c.lru.Remove(elem)
 		delete(c.entries, key)
@@ -105,9 +110,18 @@ func (c *CallCache) Add(key, val string) {
 	if c.lru.Len() > c.capacity {
 		oldest := c.lru.Back()
 		if oldest != nil {
-			entry := oldest.Value.(cacheEntry)
+			entry, valid := oldest.Value.(cacheEntry)
 			c.lru.Remove(oldest)
-			delete(c.entries, entry.key)
+			if valid {
+				delete(c.entries, entry.key)
+			} else {
+				for candidateKey, candidateElem := range c.entries {
+					if candidateElem == oldest {
+						delete(c.entries, candidateKey)
+						break
+					}
+				}
+			}
 		}
 	}
 }

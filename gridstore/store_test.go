@@ -33,7 +33,7 @@ func TestUpsertBatchMerge(t *testing.T) {
 	}
 
 	got := mustGet(t, store, "K1ABC")
-	assertGrid(t, got, "AA00", true)
+	assertGrid(t, got, "AA00")
 	assertKnown(t, got, false)
 	assertCTY(t, got, true, 291, 5, 8, "NA", "United States")
 	assertObservations(t, got, 1)
@@ -54,7 +54,7 @@ func TestUpsertBatchMerge(t *testing.T) {
 	}
 
 	merged := mustGet(t, store, "k1abc")
-	assertGrid(t, merged, "AA00", true)
+	assertGrid(t, merged, "AA00")
 	assertKnown(t, merged, true)
 	assertCTY(t, merged, true, 291, 5, 8, "NA", "United States")
 	assertObservations(t, merged, 3)
@@ -100,7 +100,7 @@ func TestDerivedGridDoesNotOverwriteActual(t *testing.T) {
 		t.Fatalf("upsert derived: %v", err)
 	}
 	got := mustGet(t, store, "K1ABC")
-	assertGrid(t, got, "FN20", true)
+	assertGrid(t, got, "FN20")
 	if got.GridDerived {
 		t.Fatalf("expected actual grid to remain non-derived")
 	}
@@ -114,7 +114,7 @@ func TestDerivedGridDoesNotOverwriteActual(t *testing.T) {
 		t.Fatalf("upsert actual second: %v", err)
 	}
 	got = mustGet(t, store, "K1ABC")
-	assertGrid(t, got, "FN20", true)
+	assertGrid(t, got, "FN20")
 	if got.GridDerived {
 		t.Fatalf("expected actual grid to clear derived flag")
 	}
@@ -201,12 +201,12 @@ func mustGet(t *testing.T, store *Store, call string) *Record {
 	return rec
 }
 
-func assertGrid(t *testing.T, rec *Record, grid string, valid bool) {
+func assertGrid(t *testing.T, rec *Record, grid string) {
 	t.Helper()
-	if rec.Grid.Valid != valid {
-		t.Fatalf("expected grid valid=%v, got %v", valid, rec.Grid.Valid)
+	if !rec.Grid.Valid {
+		t.Fatalf("expected grid valid=true, got %v", rec.Grid.Valid)
 	}
-	if valid && rec.Grid.String != grid {
+	if rec.Grid.String != grid {
 		t.Fatalf("expected grid %q, got %q", grid, rec.Grid.String)
 	}
 }

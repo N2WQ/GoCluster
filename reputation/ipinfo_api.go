@@ -68,7 +68,9 @@ func (c *ipinfoClient) lookup(addr netip.Addr, now time.Time) (LookupResult, boo
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		io.Copy(io.Discard, resp.Body)
+		if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+			return LookupResult{}, false
+		}
 		return LookupResult{}, false
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))

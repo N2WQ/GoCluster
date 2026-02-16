@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"database/sql"
 	"flag"
 	"fmt"
@@ -199,16 +200,17 @@ func main() {
 	db, err := sql.Open("sqlite", "file:"+dbPath+"?mode=ro")
 	must(err)
 	defer db.Close()
+	ctx := context.Background()
 
 	var minTs, maxTs, decisionCount int64
-	must(db.QueryRow("select min(ts), max(ts), count(*) from decisions").Scan(&minTs, &maxTs, &decisionCount))
+	must(db.QueryRowContext(ctx, "select min(ts), max(ts), count(*) from decisions").Scan(&minTs, &maxTs, &decisionCount))
 
 	var appliedCount, uniqueApplied int64
-	must(db.QueryRow("select count(*) from decisions where decision='applied'").Scan(&appliedCount))
-	must(db.QueryRow("select count(*) from (select distinct subject, winner from decisions where decision='applied')").Scan(&uniqueApplied))
+	must(db.QueryRowContext(ctx, "select count(*) from decisions where decision='applied'").Scan(&appliedCount))
+	must(db.QueryRowContext(ctx, "select count(*) from (select distinct subject, winner from decisions where decision='applied')").Scan(&uniqueApplied))
 
 	appliedSet := make(map[string]struct{})
-	rows, err := db.Query("select distinct upper(trim(subject)) || '|' || upper(trim(winner)) from decisions where decision='applied'")
+	rows, err := db.QueryContext(ctx, "select distinct upper(trim(subject)) || '|' || upper(trim(winner)) from decisions where decision='applied'")
 	must(err)
 	for rows.Next() {
 		var key string
@@ -219,7 +221,7 @@ func main() {
 	rows.Close()
 
 	subjectSet := make(map[string]struct{})
-	subjRows, err := db.Query("select distinct upper(trim(subject)) from decisions")
+	subjRows, err := db.QueryContext(ctx, "select distinct upper(trim(subject)) from decisions")
 	must(err)
 	for subjRows.Next() {
 		var s string
@@ -269,7 +271,7 @@ func main() {
 	}
 
 	rejectReasons := make([]reasonRow, 0)
-	rejRows, err := db.Query("select coalesce(reason,''), count(*) from decisions where decision='rejected' group by coalesce(reason,'')")
+	rejRows, err := db.QueryContext(ctx, "select coalesce(reason,''), count(*) from decisions where decision='rejected' group by coalesce(reason,'')")
 	must(err)
 	for rejRows.Next() {
 		var r string
@@ -282,7 +284,7 @@ func main() {
 	sort.Slice(rejectReasons, func(i, j int) bool { return rejectReasons[i].Count > rejectReasons[j].Count })
 
 	d3Reasons := make([]reasonRow, 0)
-	d3Rows, err := db.Query("select coalesce(reason,''), count(*) from decisions where decision='rejected' and distance=3 group by coalesce(reason,'')")
+	d3Rows, err := db.QueryContext(ctx, "select coalesce(reason,''), count(*) from decisions where decision='rejected' and distance=3 group by coalesce(reason,'')")
 	must(err)
 	for d3Rows.Next() {
 		var r string
@@ -295,9 +297,9 @@ func main() {
 	sort.Slice(d3Reasons, func(i, j int) bool { return d3Reasons[i].Count > d3Reasons[j].Count })
 
 	var totalConfRejects, nearConfD12, nearConfD3 int64
-	must(db.QueryRow("select count(*) from decisions where decision='rejected' and reason='confidence'").Scan(&totalConfRejects))
-	must(db.QueryRow("select count(*) from decisions where decision='rejected' and reason='confidence' and distance<=2 and winner_confidence between 55 and 59").Scan(&nearConfD12))
-	must(db.QueryRow("select count(*) from decisions where decision='rejected' and reason='confidence' and distance=3 and winner_confidence between 60 and 64").Scan(&nearConfD3))
+	must(db.QueryRowContext(ctx, "select count(*) from decisions where decision='rejected' and reason='confidence'").Scan(&totalConfRejects))
+	must(db.QueryRowContext(ctx, "select count(*) from decisions where decision='rejected' and reason='confidence' and distance<=2 and winner_confidence between 55 and 59").Scan(&nearConfD12))
+	must(db.QueryRowContext(ctx, "select count(*) from decisions where decision='rejected' and reason='confidence' and distance=3 and winner_confidence between 60 and 64").Scan(&nearConfD3))
 
 	report := make([]string, 0, 128)
 	report = append(report, fmt.Sprintf("Daily Call Correction Analysis - %s", dayStr))

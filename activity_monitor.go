@@ -18,7 +18,6 @@ type activityMonitor struct {
 	state       string
 	quietStreak int
 	lastEval    time.Time
-	lastRefresh time.Time
 	stopCh      chan struct{}
 }
 

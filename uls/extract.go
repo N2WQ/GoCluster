@@ -9,6 +9,8 @@ import (
 	"strings"
 )
 
+const maxULSExtractFileBytes int64 = 1 << 30 // 1 GiB safety cap per archive member
+
 // Purpose: Extract the FCC ULS DAT files needed for building the SQLite DB.
 // Key aspects: Filters to a small set of tables; returns a temp dir for caller cleanup.
 // Upstream: Refresh in uls/downloader.go.
@@ -49,6 +51,10 @@ func extractArchive(archivePath string) (string, error) {
 // Upstream: extractArchive.
 // Downstream: f.Open, io.Copy, os.Create.
 func extractFile(f *zip.File, dest string) error {
+	if f.UncompressedSize64 > uint64(maxULSExtractFileBytes) {
+		return fmt.Errorf("fcc uls: %s exceeds extraction limit (%d bytes)", f.Name, f.UncompressedSize64)
+	}
+
 	rc, err := f.Open()
 	if err != nil {
 		return fmt.Errorf("fcc uls: open %s: %w", f.Name, err)
@@ -61,8 +67,12 @@ func extractFile(f *zip.File, dest string) error {
 	}
 	defer out.Close()
 
-	if _, err := io.Copy(out, rc); err != nil {
+	written, err := io.Copy(out, io.LimitReader(rc, maxULSExtractFileBytes+1))
+	if err != nil {
 		return fmt.Errorf("fcc uls: copy %s: %w", dest, err)
+	}
+	if written > maxULSExtractFileBytes {
+		return fmt.Errorf("fcc uls: %s exceeds extraction limit", f.Name)
 	}
 	return nil
 }

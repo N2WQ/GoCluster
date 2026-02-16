@@ -5,7 +5,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -111,7 +110,7 @@ func main() {
 // readPeerFeed consumes PC frames from the peer connection and emits spot events for PC11/PC61.
 // It also replies to PC51 pings to keep the session alive. On read error, it reports the error
 // to errOut and returns so the caller can reconnect.
-func readPeerFeed(conn net.Conn, reader *peer.LineReader, writeMu *sync.Mutex, localCall string, fallbackOrigin string, tsGen *timestampGenerator, idleTimeout time.Duration, out chan<- spotEvent, errOut chan<- error) {
+func readPeerFeed(conn net.Conn, reader *peer.LineReader, writeMu *sync.Mutex, localCall string, fallbackOrigin string, idleTimeout time.Duration, out chan<- spotEvent, errOut chan<- error) {
 	for {
 		var deadline time.Time
 		if idleTimeout > 0 {
@@ -151,8 +150,6 @@ func readPeerFeed(conn net.Conn, reader *peer.LineReader, writeMu *sync.Mutex, l
 				s.EnsureNormalized()
 				log.Printf("PEER ARRIVAL %s DX %s DE %s", arrival.Format(time.RFC3339Nano), s.DXCall, s.DECall)
 				out <- spotEvent{Spot: s, Arrival: arrival, Source: "peer"}
-			} else {
-				// Silently drop parse errors; match analysis is noise-free.
 			}
 		}
 	}
@@ -203,7 +200,7 @@ func runMatcher(window time.Duration, peerEvents <-chan spotEvent, telnetEvents 
 			if ev.Spot == nil {
 				continue
 			}
-			if matched, delta, _ := telnetStore.match(ev); matched {
+			if matched, delta := telnetStore.match(ev); matched {
 				stats.add(delta)
 				log.Printf("DX %s / DE %s : %s", ev.Spot.DXCall, ev.Spot.DECall, formatDelay(delta))
 			} else {
@@ -213,7 +210,7 @@ func runMatcher(window time.Duration, peerEvents <-chan spotEvent, telnetEvents 
 			if ev.Spot == nil {
 				continue
 			}
-			if matched, delta, _ := peerStore.match(ev); matched {
+			if matched, delta := peerStore.match(ev); matched {
 				stats.add(-delta) // telnet arrival minus peer arrival
 				log.Printf("DX %s / DE %s : %s", ev.Spot.DXCall, ev.Spot.DECall, formatDelay(-delta))
 			} else {
@@ -245,13 +242,13 @@ func (s *eventStore) add(ev spotEvent) {
 }
 
 // match tries to find a counterpart in the store within the window. Returns delta=other.Arrival-ev.Arrival when matched.
-func (s *eventStore) match(ev spotEvent) (bool, time.Duration, spotEvent) {
+func (s *eventStore) match(ev spotEvent) (bool, time.Duration) {
 	key := spotKey(ev.Spot)
 	candidates := s.byKey[key]
 	if len(candidates) == 0 {
-		return false, 0, spotEvent{}
+		return false, 0
 	}
-	var bestIdx int = -1
+	bestIdx := -1
 	bestDiff := s.window + time.Second
 	for i, c := range candidates {
 		diff := ev.Arrival.Sub(c.Arrival)
@@ -264,7 +261,7 @@ func (s *eventStore) match(ev spotEvent) (bool, time.Duration, spotEvent) {
 		}
 	}
 	if bestIdx == -1 {
-		return false, 0, spotEvent{}
+		return false, 0
 	}
 	match := candidates[bestIdx]
 	// remove matched
@@ -274,7 +271,7 @@ func (s *eventStore) match(ev spotEvent) (bool, time.Duration, spotEvent) {
 	} else {
 		s.byKey[key] = candidates
 	}
-	return true, match.Arrival.Sub(ev.Arrival), match
+	return true, match.Arrival.Sub(ev.Arrival)
 }
 
 func (s *eventStore) prune() {
@@ -292,14 +289,6 @@ func (s *eventStore) prune() {
 			s.byKey[key] = filtered
 		}
 	}
-}
-
-func (s *eventStore) len() int {
-	total := 0
-	for _, list := range s.byKey {
-		total += len(list)
-	}
-	return total
 }
 
 func spotKey(s *spot.Spot) string {
@@ -326,7 +315,10 @@ func keepaliveLoop(writeMu *sync.Mutex, conn net.Conn, pc9x bool, cfg probeConfi
 			// Always emit PC51 pings so peers expecting legacy liveness see activity even on pc9x.
 			pc51 := fmt.Sprintf("PC51^%s^%s^1^", cfg.peerRemoteCall, cfg.localCall)
 			log.Printf("KEEPALIVE SEND %s", pc51)
-			_ = sendLine(writeMu, conn, pc51)
+			if err := sendLine(writeMu, conn, pc51); err != nil {
+				log.Printf("keepalive send failed (PC51): %v", err)
+				return
+			}
 			// For pc9x sessions, also send a PC92 keepalive to refresh topology.
 			if pc9x {
 				entry := pc92Entry(cfg.localCall, cfg.nodeVersion, cfg.nodeBuild, cfg.pc92Bitmap)
@@ -335,7 +327,10 @@ func keepaliveLoop(writeMu *sync.Mutex, conn net.Conn, pc9x bool, cfg probeConfi
 				users := liveUserCountProbe()
 				pc92k := fmt.Sprintf("PC92^%s^%s^K^%s^%d^%d^H%d^", cfg.localCall, ts, entry, nodes, users, cfg.hopCount)
 				log.Printf("KEEPALIVE SEND %s", pc92k)
-				_ = sendLine(writeMu, conn, pc92k)
+				if err := sendLine(writeMu, conn, pc92k); err != nil {
+					log.Printf("keepalive send failed (PC92 K): %v", err)
+					return
+				}
 			}
 		case <-stop:
 			return
@@ -362,7 +357,9 @@ func handlePeerPing(frame *peer.Frame, writeMu *sync.Mutex, conn net.Conn, local
 	}
 	resp := fmt.Sprintf("PC51^%s^%s^0^", fromNode, toNode)
 	log.Printf("Peering: PC51 ping from %s to %s; sending ACK", fromNode, toNode)
-	_ = sendLine(writeMu, conn, resp)
+	if err := sendLine(writeMu, conn, resp); err != nil {
+		log.Printf("Peering: failed to send PC51 ACK: %v", err)
+	}
 }
 
 // resolveClusterEndpoint derives host and port from flag inputs, allowing cluster_host to include port.
@@ -455,13 +452,17 @@ func runPeerSession(cfg probeConfig, peerEvents chan<- spotEvent, tsGen *timesta
 
 	// Send credentials immediately to match common DXSpider expectations (banner often precedes prompts).
 	if cfg.localCall != "" {
-		_ = sendLine(writeMu, conn, cfg.localCall)
+		if err := sendLine(writeMu, conn, cfg.localCall); err != nil {
+			return fmt.Errorf("send local call: %w", err)
+		}
 	}
 	if cfg.password != "" {
-		_ = sendLine(writeMu, conn, cfg.password)
+		if err := sendLine(writeMu, conn, cfg.password); err != nil {
+			return fmt.Errorf("send password: %w", err)
+		}
 	}
 
-	established, pc9x, err := handshake(context.Background(), reader, writeMu, conn, cfg, tsGen)
+	established, pc9x, err := handshake(reader, writeMu, conn, cfg, tsGen)
 	if err != nil {
 		return fmt.Errorf("handshake: %w", err)
 	}
@@ -474,14 +475,14 @@ func runPeerSession(cfg probeConfig, peerEvents chan<- spotEvent, tsGen *timesta
 	go keepaliveLoop(writeMu, conn, pc9x, cfg, tsGen, stopKA)
 
 	errCh := make(chan error, 1)
-	go readPeerFeed(conn, reader, writeMu, cfg.localCall, cfg.peerRemoteCall, tsGen, idleTimeout, peerEvents, errCh)
+	go readPeerFeed(conn, reader, writeMu, cfg.localCall, cfg.peerRemoteCall, idleTimeout, peerEvents, errCh)
 
 	err = <-errCh
 	close(stopKA)
 	return err
 }
 
-func handshake(ctx context.Context, reader *peer.LineReader, writeMu *sync.Mutex, conn net.Conn, cfg probeConfig, tsGen *timestampGenerator) (bool, bool, error) {
+func handshake(reader *peer.LineReader, writeMu *sync.Mutex, conn net.Conn, cfg probeConfig, tsGen *timestampGenerator) (bool, bool, error) {
 	initSent := false
 	sentCall := cfg.localCall != ""
 	sentPass := cfg.password == ""
@@ -504,15 +505,19 @@ func handshake(ctx context.Context, reader *peer.LineReader, writeMu *sync.Mutex
 		case strings.Contains(line, "PC18^"):
 			pc9x = cfg.preferPC9x && strings.Contains(strings.ToLower(line), "pc9x")
 			if !sentCall && cfg.localCall != "" {
-				sendLine(writeMu, conn, cfg.localCall)
+				if err := sendLine(writeMu, conn, cfg.localCall); err != nil {
+					return false, pc9x, fmt.Errorf("send local call: %w", err)
+				}
 				sentCall = true
 			}
 			if cfg.password != "" && !sentPass {
-				sendLine(writeMu, conn, cfg.password)
+				if err := sendLine(writeMu, conn, cfg.password); err != nil {
+					return false, pc9x, fmt.Errorf("send password: %w", err)
+				}
 				sentPass = true
 			}
 			if !initSent && sentCall && (cfg.password == "" || sentPass) {
-				if err := sendInit(writeMu, conn, cfg.localCall, pc9x, cfg.nodeVersion, cfg.nodeBuild, cfg.legacyVersion, cfg.pc92Bitmap, 1, 0, cfg.hopCount, tsGen); err != nil {
+				if err := sendInit(writeMu, conn, cfg.localCall, pc9x, cfg.nodeVersion, cfg.nodeBuild, cfg.legacyVersion, cfg.pc92Bitmap, cfg.hopCount, tsGen); err != nil {
 					return false, pc9x, err
 				}
 				initSent = true
@@ -520,15 +525,19 @@ func handshake(ctx context.Context, reader *peer.LineReader, writeMu *sync.Mutex
 		case strings.HasPrefix(strings.ToUpper(line), "PC19^") || strings.HasPrefix(strings.ToUpper(line), "PC16^") || strings.HasPrefix(strings.ToUpper(line), "PC17^") || strings.HasPrefix(strings.ToUpper(line), "PC21^"):
 			pc9x = cfg.preferPC9x
 			if !sentCall && cfg.localCall != "" {
-				sendLine(writeMu, conn, cfg.localCall)
+				if err := sendLine(writeMu, conn, cfg.localCall); err != nil {
+					return false, pc9x, fmt.Errorf("send local call: %w", err)
+				}
 				sentCall = true
 			}
 			if cfg.password != "" && !sentPass {
-				sendLine(writeMu, conn, cfg.password)
+				if err := sendLine(writeMu, conn, cfg.password); err != nil {
+					return false, pc9x, fmt.Errorf("send password: %w", err)
+				}
 				sentPass = true
 			}
 			if !initSent && sentCall && (cfg.password == "" || sentPass) {
-				if err := sendInit(writeMu, conn, cfg.localCall, pc9x, cfg.nodeVersion, cfg.nodeBuild, cfg.legacyVersion, cfg.pc92Bitmap, 1, 0, cfg.hopCount, tsGen); err != nil {
+				if err := sendInit(writeMu, conn, cfg.localCall, pc9x, cfg.nodeVersion, cfg.nodeBuild, cfg.legacyVersion, cfg.pc92Bitmap, cfg.hopCount, tsGen); err != nil {
 					return false, pc9x, err
 				}
 				initSent = true
@@ -543,7 +552,7 @@ func handshake(ctx context.Context, reader *peer.LineReader, writeMu *sync.Mutex
 	}
 }
 
-func sendInit(mu *sync.Mutex, conn net.Conn, localCall string, pc9x bool, nodeVersion, nodeBuild, legacy string, pc92Bitmap, nodeCount, userCount, hopCount int, tsGen *timestampGenerator) error {
+func sendInit(mu *sync.Mutex, conn net.Conn, localCall string, pc9x bool, nodeVersion, nodeBuild, legacy string, pc92Bitmap, hopCount int, tsGen *timestampGenerator) error {
 	if pc9x {
 		entry := pc92Entry(localCall, nodeVersion, nodeBuild, pc92Bitmap)
 		ts := tsGen.Next()

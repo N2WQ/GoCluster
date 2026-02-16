@@ -64,11 +64,11 @@ func newIngestValidator(
 		dropReporter:       dropReporter,
 		isLicensedUS:       uls.IsLicensedUS,
 		requireCTY:         requireCTY,
-		ctyDropDXCounter:   newRateCounter(defaultIngestCTYLogInterval),
-		ctyDropDECounter:   newRateCounter(defaultIngestCTYLogInterval),
-		invalidDropDX:      newRateCounter(defaultIngestDropLogInterval),
-		invalidDropDE:      newRateCounter(defaultIngestDropLogInterval),
-		dedupDropCounter:   newRateCounter(defaultIngestDropLogInterval),
+		ctyDropDXCounter:   newRateCounter(),
+		ctyDropDECounter:   newRateCounter(),
+		invalidDropDX:      newRateCounter(),
+		invalidDropDE:      newRateCounter(),
+		dedupDropCounter:   newRateCounter(),
 	}
 }
 
@@ -320,8 +320,8 @@ type rateCounter struct {
 	total    atomic.Uint64
 }
 
-func newRateCounter(interval time.Duration) rateCounter {
-	return rateCounter{interval: interval}
+func newRateCounter() rateCounter {
+	return rateCounter{interval: defaultIngestDropLogInterval}
 }
 
 // Inc increments the counter and returns (total, shouldLog).

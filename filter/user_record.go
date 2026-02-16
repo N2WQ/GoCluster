@@ -46,9 +46,9 @@ func LoadUserRecord(callsign string) (*UserRecord, error) {
 	if err := yaml.Unmarshal(bs, &record); err != nil {
 		return nil, err
 	}
-	record.Filter.migrateLegacyConfidence()
-	record.Filter.normalizeDefaults()
-	record.RecentIPs = trimRecentIPs(record.RecentIPs, maxRecentIPs)
+	record.migrateLegacyConfidence()
+	record.normalizeDefaults()
+	record.RecentIPs = trimRecentIPs(record.RecentIPs)
 	if strings.TrimSpace(record.Dialect) == "" {
 		record.Dialect = "go"
 	}
@@ -126,7 +126,7 @@ func SaveUserRecord(callsign string, record *UserRecord) error {
 	if err := os.MkdirAll(UserDataDir, 0o755); err != nil {
 		return err
 	}
-	record.RecentIPs = trimRecentIPs(record.RecentIPs, maxRecentIPs)
+	record.RecentIPs = trimRecentIPs(record.RecentIPs)
 	record.DedupePolicy = NormalizeDedupePolicy(record.DedupePolicy)
 	record.SolarSummaryMinutes = normalizeSolarSummaryMinutes(record.SolarSummaryMinutes)
 	bs, err := yaml.Marshal(record)
@@ -144,7 +144,7 @@ func SaveUserRecord(callsign string, record *UserRecord) error {
 func UpdateRecentIPs(recent []string, ip string) []string {
 	ip = strings.TrimSpace(ip)
 	if ip == "" {
-		return trimRecentIPs(recent, maxRecentIPs)
+		return trimRecentIPs(recent)
 	}
 	updated := make([]string, 0, len(recent)+1)
 	updated = append(updated, ip)
@@ -157,7 +157,7 @@ func UpdateRecentIPs(recent []string, ip string) []string {
 			break
 		}
 	}
-	return trimRecentIPs(updated, maxRecentIPs)
+	return trimRecentIPs(updated)
 }
 
 // MergeRecentIPs merges two recent IP lists while preserving primary order.
@@ -201,7 +201,8 @@ func MergeRecentIPs(primary, fallback []string) []string {
 // Key aspects: Returns nil on non-positive limit; preserves order.
 // Upstream: UpdateRecentIPs, LoadUserRecord, SaveUserRecord.
 // Downstream: None.
-func trimRecentIPs(recent []string, limit int) []string {
+func trimRecentIPs(recent []string) []string {
+	limit := maxRecentIPs
 	if limit <= 0 {
 		return nil
 	}

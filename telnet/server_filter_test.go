@@ -866,7 +866,7 @@ func TestRejectCallsignUsesBlocklist(t *testing.T) {
 		t.Fatalf("expected DX blocklist to contain W1*")
 	}
 
-	resp, handled = engine.Handle(client, "REJECT DXCALL")
+	_, handled = engine.Handle(client, "REJECT DXCALL")
 	if !handled {
 		t.Fatalf("expected REJECT DXCALL to be handled")
 	}

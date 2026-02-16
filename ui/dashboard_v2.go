@@ -227,13 +227,13 @@ func NewDashboardV2(cfg config.UIConfig, enable bool) *DashboardV2 {
 	d.pipelineGroup = newFocusGroup(d.pipelineCorrected, d.pipelineHarmonics)
 	d.eventsGroup = newFocusGroup(d.eventsStream)
 
-	d.addPage("overview", d.overviewRoot, true, false)
-	d.addPage("ingest", d.ingestRoot, true, false)
-	d.addPage("pipeline", d.pipelineRoot, true, false)
-	d.addPage("events", d.eventsRoot, true, false)
+	d.addPage("overview", d.overviewRoot)
+	d.addPage("ingest", d.ingestRoot)
+	d.addPage("pipeline", d.pipelineRoot)
+	d.addPage("events", d.eventsRoot)
 
 	help := buildHelpOverlay()
-	d.addPage("help", help, true, false)
+	d.addPage("help", help)
 
 	d.snapshotFrameFn = d.renderSnapshot
 	d.validationFrameFn = func() { d.ingestValidation.Render(d.app) }
@@ -247,7 +247,7 @@ func NewDashboardV2(cfg config.UIConfig, enable bool) *DashboardV2 {
 	d.scheduler.Start()
 
 	d.installKeybindings(cfg)
-	d.installRoot(cfg)
+	d.installRoot()
 
 	go func() {
 		if err := app.Run(); err != nil {
@@ -258,7 +258,7 @@ func NewDashboardV2(cfg config.UIConfig, enable bool) *DashboardV2 {
 	return d
 }
 
-func (d *DashboardV2) installRoot(cfg config.UIConfig) {
+func (d *DashboardV2) installRoot() {
 	root := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(d.pages, 0, 1, true).
 		AddItem(buildFooter(), 1, 0, false)
@@ -458,11 +458,11 @@ func (d *DashboardV2) pageAvailable(name string) bool {
 	return d.pagePresent[name]
 }
 
-func (d *DashboardV2) addPage(name string, page tview.Primitive, resize, visible bool) {
+func (d *DashboardV2) addPage(name string, page tview.Primitive) {
 	if d == nil || d.pages == nil || page == nil || name == "" {
 		return
 	}
-	d.pages.AddPage(name, page, resize, visible)
+	d.pages.AddPage(name, page, true, false)
 	d.pagePresent[name] = true
 }
 

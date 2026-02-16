@@ -45,6 +45,7 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"dxcluster/commands"
 	"dxcluster/cty"
@@ -438,6 +439,11 @@ type controlMessage struct {
 	closeAfter bool
 }
 
+var (
+	errClientClosed     = errors.New("client closed")
+	errControlQueueFull = errors.New("control queue full")
+)
+
 type dropBucket struct {
 	attempts uint64
 	drops    uint64
@@ -592,7 +598,9 @@ func (s *Server) handleDialectCommand(client *Client, line string) (string, bool
 	}
 	client.dialect = selected
 	// Persist updated dialect selection.
-	_ = client.saveFilter()
+	if err := client.saveFilter(); err != nil {
+		log.Printf("Warning: failed to persist dialect for %s: %v", client.callsign, err)
+	}
 	return fmt.Sprintf("Dialect set to %s\n", strings.ToUpper(string(selected))), true
 }
 
@@ -1173,7 +1181,8 @@ func listenWithReuse(addr string) (net.Listener, error) {
 	listener, err := lc.Listen(context.Background(), "tcp", addr)
 	if err != nil {
 		// Fallback to default listener to avoid failing on platforms that reject the control call.
-		return net.Listen("tcp", addr)
+		var fallback net.ListenConfig
+		return fallback.Listen(context.Background(), "tcp", addr)
 	}
 	return listener, nil
 }
@@ -1202,7 +1211,7 @@ func (s *Server) keepaliveLoop() {
 		case <-ticker.C:
 			s.clientsMutex.RLock()
 			for _, client := range s.clients {
-				_ = client.Send("\r\n")
+				s.sendClientMessage(client, "\r\n", "keepalive")
 			}
 			s.clientsMutex.RUnlock()
 		}
@@ -1312,7 +1321,7 @@ func (s *Server) BroadcastRaw(line string) {
 	s.clientsMutex.RLock()
 	defer s.clientsMutex.RUnlock()
 	for _, client := range s.clients {
-		_ = client.Send(line)
+		s.sendClientMessage(client, line, "raw broadcast")
 	}
 }
 
@@ -1381,7 +1390,9 @@ func (s *Server) enqueueBulletin(client *Client, kind, message string) {
 	if client == nil {
 		return
 	}
-	_ = client.enqueueControl(controlMessage{line: message})
+	if err := client.enqueueControl(controlMessage{line: message}); err != nil && !isExpectedClientSendErr(err) {
+		log.Printf("Failed to enqueue %s bulletin for %s: %v", kind, client.identity(), err)
+	}
 }
 
 func prepareBulletinLine(line string) string {
@@ -1708,15 +1719,30 @@ func (s *Server) acceptConnections() {
 			current := len(s.clients)
 			s.clientsMutex.RUnlock()
 			if current >= s.maxConnections {
-				_, _ = conn.Write([]byte("Server full. Try again later.\r\n"))
-				conn.Close()
+				if err := conn.SetWriteDeadline(time.Now().UTC().Add(defaultSendDeadline)); err == nil {
+					if _, err := conn.Write([]byte("Server full. Try again later.\r\n")); err != nil {
+						log.Printf("Failed to send server-full banner to %s: %v", addr, err)
+					}
+					if err := conn.SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, net.ErrClosed) {
+						log.Printf("Failed to clear write deadline for rejected client %s: %v", addr, err)
+					}
+				} else if !errors.Is(err, net.ErrClosed) {
+					log.Printf("Failed to set write deadline for rejected client %s: %v", addr, err)
+				}
+				if err := conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+					log.Printf("Failed to close rejected connection %s: %v", addr, err)
+				}
 				log.Printf("Rejected connection from %s: max connections reached (%d)", addr, s.maxConnections)
 				continue
 			}
 		}
 		if tcp, ok := conn.(*net.TCPConn); ok {
-			_ = tcp.SetKeepAlive(true)
-			_ = tcp.SetKeepAlivePeriod(2 * time.Minute)
+			if err := tcp.SetKeepAlive(true); err != nil {
+				log.Printf("Failed to enable TCP keepalive for %s: %v", conn.RemoteAddr(), err)
+			}
+			if err := tcp.SetKeepAlivePeriod(2 * time.Minute); err != nil {
+				log.Printf("Failed to set TCP keepalive period for %s: %v", conn.RemoteAddr(), err)
+			}
 		}
 
 		// Handle this client in a new goroutine
@@ -1815,7 +1841,9 @@ func (s *Server) handleClient(conn net.Conn) {
 			var inputErr *InputValidationError
 			if errors.As(err, &inputErr) {
 				if msg := s.formatInputValidationMessage(inputErr); strings.TrimSpace(msg) != "" {
-					_ = client.Send(msg)
+					if !s.sendClientMessage(client, msg, "login validation") {
+						return
+					}
 				}
 				s.sendPreLoginMessage(client, s.loginPrompt, loginTime)
 				continue
@@ -1924,7 +1952,9 @@ func (s *Server) handleClient(conn net.Conn) {
 		}
 	}
 	if strings.TrimSpace(greeting) != "" {
-		client.Send(greeting)
+		if !s.sendClientMessage(client, greeting, "greeting") {
+			return
+		}
 	}
 	dialectMsg := formatDialectWelcome(s.dialectWelcomeMsg, dialectTemplateData{
 		dialect:        strings.ToUpper(string(client.dialect)),
@@ -1932,11 +1962,15 @@ func (s *Server) handleClient(conn net.Conn) {
 		defaultDialect: dialectDefault,
 	})
 	if strings.TrimSpace(dialectMsg) != "" {
-		client.Send(dialectMsg)
+		if !s.sendClientMessage(client, dialectMsg, "dialect welcome") {
+			return
+		}
 	}
 	if s.pathPredictor != nil && s.pathDisplay {
 		if msg := s.formatPathStatusMessage(client); strings.TrimSpace(msg) != "" {
-			client.Send(msg)
+			if !s.sendClientMessage(client, msg, "path status") {
+				return
+			}
 		}
 	}
 
@@ -1957,7 +1991,9 @@ func (s *Server) handleClient(conn net.Conn) {
 			var inputErr *InputValidationError
 			if errors.As(err, &inputErr) {
 				if msg := s.formatInputValidationMessage(inputErr); strings.TrimSpace(msg) != "" {
-					_ = client.Send(msg)
+					if !s.sendClientMessage(client, msg, "command validation") {
+						return
+					}
 				}
 				continue
 			}
@@ -1967,42 +2003,54 @@ func (s *Server) handleClient(conn net.Conn) {
 
 		// Treat blank lines as client keepalives: echo CRLF so idle clients see traffic.
 		if strings.TrimSpace(line) == "" {
-			_ = client.Send("\r\n")
+			if !s.sendClientMessage(client, "\r\n", "command keepalive") {
+				return
+			}
 			continue
 		}
 
 		// Dialect selection is handled before filter commands.
 		if resp, handled := s.handleDialectCommand(client, line); handled {
 			if resp != "" {
-				client.Send(resp)
+				if !s.sendClientMessage(client, resp, "dialect command response") {
+					return
+				}
 			}
 			continue
 		}
 
 		if resp, handled := s.handlePathSettingsCommand(client, line); handled {
 			if resp != "" {
-				client.Send(resp)
+				if !s.sendClientMessage(client, resp, "path command response") {
+					return
+				}
 			}
 			continue
 		}
 
 		if resp, handled := s.handleDedupeCommand(client, line); handled {
 			if resp != "" {
-				client.Send(resp)
+				if !s.sendClientMessage(client, resp, "dedupe command response") {
+					return
+				}
 			}
 			continue
 		}
 
 		if resp, handled := s.handleDiagCommand(client, line); handled {
 			if resp != "" {
-				client.Send(resp)
+				if !s.sendClientMessage(client, resp, "diag command response") {
+					return
+				}
 			}
 			continue
 		}
 
 		if resp, handled := s.handleSolarCommand(client, line); handled {
 			if resp != "" {
-				client.Send(resp)
+				if !s.sendClientMessage(client, resp, "solar command response") {
+					return
+				}
 			}
 			continue
 		}
@@ -2010,7 +2058,9 @@ func (s *Server) handleClient(conn net.Conn) {
 		// Check for filter commands under the active dialect.
 		if resp, handled := s.filterEngine.Handle(client, line); handled {
 			if resp != "" {
-				client.Send(resp)
+				if !s.sendClientMessage(client, resp, "filter command response") {
+					return
+				}
 			}
 			continue
 		}
@@ -2041,7 +2091,9 @@ func (s *Server) handleClient(conn net.Conn) {
 
 		// Check for disconnect signal
 		if response == "BYE" {
-			_ = client.SendAndClose("73!\n")
+			if err := client.SendAndClose("73!\n"); err != nil && !isExpectedClientSendErr(err) {
+				log.Printf("Failed to send BYE close message to %s: %v", client.identity(), err)
+			}
 			closeOnExit = false
 			log.Printf("Client %s logged out", client.callsign)
 			return
@@ -2049,7 +2101,9 @@ func (s *Server) handleClient(conn net.Conn) {
 
 		// Send response
 		if response != "" {
-			client.Send(response)
+			if !s.sendClientMessage(client, response, "command response") {
+				return
+			}
 		}
 	}
 }
@@ -2092,8 +2146,12 @@ func sendTelnetOption(conn net.Conn, command, option byte) {
 	if err := conn.SetWriteDeadline(time.Now().UTC().Add(defaultSendDeadline)); err != nil {
 		return
 	}
-	_, _ = conn.Write([]byte{IAC, command, option})
-	_ = conn.SetWriteDeadline(time.Time{})
+	if _, err := conn.Write([]byte{IAC, command, option}); err != nil && !errors.Is(err, net.ErrClosed) {
+		log.Printf("Telnet option write failed: cmd=%d opt=%d err=%v", command, option, err)
+	}
+	if err := conn.SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, net.ErrClosed) {
+		log.Printf("Telnet option deadline clear failed: cmd=%d opt=%d err=%v", command, option, err)
+	}
 }
 
 // templateData holds contextual values that can be substituted into operator-configured templates.
@@ -2442,18 +2500,11 @@ func injectGlyphs(base string, glyph string) string {
 // Upstream: injectGlyphs.
 // Downstream: None.
 func firstPrintableASCIIOrQuestion(s string) byte {
-	for _, r := range s {
-		if r >= 0x20 && r <= 0x7e {
-			return byte(r)
-		}
-		return '?'
+	r, _ := utf8.DecodeRuneInString(s)
+	if r >= 0x20 && r <= 0x7e {
+		return byte(r)
 	}
 	return '?'
-}
-
-// applyWelcomeTokens remains for compatibility; it now delegates to the full token replacer.
-func applyWelcomeTokens(msg string, now time.Time) string {
-	return applyTemplateTokens(msg, templateData{now: now})
 }
 
 // applyTemplateTokens replaces supported placeholders in operator-provided templates.
@@ -2612,7 +2663,30 @@ func (s *Server) sendPreLoginMessage(client *Client, template string, now time.T
 	if strings.TrimSpace(msg) == "" {
 		return
 	}
-	_ = client.Send(msg)
+	s.sendClientMessage(client, msg, "pre-login message")
+}
+
+func isExpectedClientSendErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, errClientClosed) || errors.Is(err, errControlQueueFull) || errors.Is(err, net.ErrClosed)
+}
+
+func (s *Server) sendClientMessage(client *Client, message string, purpose string) bool {
+	if client == nil {
+		return false
+	}
+	if message == "" {
+		return true
+	}
+	if err := client.Send(message); err != nil {
+		if !isExpectedClientSendErr(err) {
+			log.Printf("Failed to enqueue %s for %s: %v", purpose, client.identity(), err)
+		}
+		return false
+	}
+	return true
 }
 
 func (s *Server) postLoginTemplateData(now time.Time, client *Client, prevLogin time.Time, prevIP, dialectSource, dialectDefault string) templateData {
@@ -2676,13 +2750,20 @@ func applyNearbyLoginState(client *Client, warning string) (warningLine string, 
 		return nearbyLoginInactiveMsg, false
 	}
 	var enableErr error
+	nearbyChanged := false
 	client.updateFilter(func(f *filter.Filter) {
+		beforeEnabled := f.NearbyEnabled
+		beforeFine := f.NearbyUserFine
+		beforeCoarse := f.NearbyUserCoarse
 		enableErr = f.EnableNearby(userFine, userCoarse)
+		if enableErr == nil {
+			nearbyChanged = !beforeEnabled || beforeFine != userFine || beforeCoarse != userCoarse
+		}
 	})
 	if enableErr != nil {
 		return nearbyLoginInactiveMsg, false
 	}
-	return normalizeWarningLine(warning), false
+	return normalizeWarningLine(warning), nearbyChanged
 }
 
 func normalizeWarningLine(line string) string {
@@ -2794,7 +2875,7 @@ func (c *Client) enqueueControl(msg controlMessage) error {
 	}
 	select {
 	case <-c.done:
-		return errors.New("client closed")
+		return errClientClosed
 	default:
 	}
 	select {
@@ -2808,18 +2889,18 @@ func (c *Client) enqueueControl(msg controlMessage) error {
 			}
 		}
 		c.close("control queue full")
-		return errors.New("control queue full")
+		return errControlQueueFull
 	}
 }
 
 // enqueueSpot queues a spot delivery and updates drop metrics + extreme drop detection.
-func (c *Client) enqueueSpot(env *spotEnvelope) bool {
+func (c *Client) enqueueSpot(env *spotEnvelope) {
 	if c == nil || env == nil || env.spot == nil {
-		return false
+		return
 	}
 	select {
 	case <-c.done:
-		return false
+		return
 	default:
 	}
 	dropped := false
@@ -2854,7 +2935,6 @@ func (c *Client) enqueueSpot(env *spotEnvelope) bool {
 		}
 	}
 
-	return !dropped
 }
 
 func (c *Client) close(reason string) {
@@ -2945,7 +3025,9 @@ func (c *Client) clearWriteDeadline() {
 	if c == nil || c.conn == nil {
 		return
 	}
-	_ = c.conn.SetWriteDeadline(time.Time{})
+	if err := c.conn.SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, net.ErrClosed) {
+		log.Printf("Failed to clear write deadline for %s: %v", c.identity(), err)
+	}
 }
 
 func (c *Client) setReadDeadline(deadline time.Time) error {
@@ -3007,7 +3089,9 @@ func (s *Server) unregisterClient(client *Client) {
 	s.clientsMutex.Unlock()
 	s.notifyClientListChange()
 
-	client.saveFilter()
+	if err := client.saveFilter(); err != nil {
+		log.Printf("Warning: failed to persist filter for %s during unregister: %v", client.callsign, err)
+	}
 	log.Printf("Unregistered client: %s (total: %d)", client.callsign, total)
 }
 

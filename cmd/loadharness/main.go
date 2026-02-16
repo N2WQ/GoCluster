@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"math/rand"
 	"sync/atomic"
 	"time"
 
@@ -83,15 +82,13 @@ func generateSpots(ctx context.Context, input chan<- *spot.Spot, ratePerSec int,
 
 	modes := []string{"FT8", "FT4", "CW", "RTTY", "SSB"}
 	var seq uint64
-	rng := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
-
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			for i := 0; i < ratePerSec; i++ {
-				s := makeSpot(seq, baseFreq, modes, rng)
+				s := makeSpot(seq, baseFreq, modes)
 				seq++
 				select {
 				case input <- s:
@@ -104,11 +101,12 @@ func generateSpots(ctx context.Context, input chan<- *spot.Spot, ratePerSec int,
 	}
 }
 
-func makeSpot(seq uint64, baseFreq float64, modes []string, rng *rand.Rand) *spot.Spot {
+func makeSpot(seq uint64, baseFreq float64, modes []string) *spot.Spot {
 	mode := modes[seq%uint64(len(modes))]
 	dx := fmt.Sprintf("DX%05d", seq%100000)
 	de := fmt.Sprintf("DE%05d", (seq*7)%50000)
-	freq := baseFreq + float64(seq%1000)*0.1 + rng.Float64()*0.01
+	jitter := float64((seq*1103515245+12345)%100) / 10000.0
+	freq := baseFreq + float64(seq%1000)*0.1 + jitter
 
 	s := spot.NewSpot(dx, de, freq, mode)
 	s.Report = int(seq%30) - 10
@@ -116,4 +114,3 @@ func makeSpot(seq uint64, baseFreq float64, modes []string, rng *rand.Rand) *spo
 	s.SourceType = spot.SourceManual
 	return s
 }
-

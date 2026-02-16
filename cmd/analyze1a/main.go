@@ -6,6 +6,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"flag"
 	"fmt"
@@ -20,48 +21,48 @@ import (
 )
 
 type correctionRecord struct {
-	id              int64
-	timestamp       time.Time
-	subject         string
-	winner          string
-	freqKHz         float64
-	distance        int
-	winnerSupport   int
-	totalReporters  int
-	confidence      int
-	mode            string
+	id             int64
+	timestamp      time.Time
+	subject        string
+	winner         string
+	freqKHz        float64
+	distance       int
+	winnerSupport  int
+	totalReporters int
+	confidence     int
+	mode           string
 }
 
 type stabilityStats struct {
-	totalCorrections      int
-	naturalAppearances    int
-	subjectReappearances  int
-	noSubsequentSpots     int
-	stabilityRatio        float64
+	totalCorrections     int
+	naturalAppearances   int
+	subjectReappearances int
+	noSubsequentSpots    int
+	stabilityRatio       float64
 
 	byDistance map[int]*distanceStability
 }
 
 type distanceStability struct {
-	distance              int
-	corrections           int
-	naturalAppearances    int
-	subjectReappearances  int
-	stabilityRatio        float64
+	distance             int
+	corrections          int
+	naturalAppearances   int
+	subjectReappearances int
+	stabilityRatio       float64
 }
 
 func main() {
 	decisionDB := flag.String("decisions", "data/logs/callcorr_debug_modified_2025-12-04.db", "Path to decision log database")
-	spotDB := flag.String("spots", "", "Path to spot database (if available)")
+	flag.String("spots", "", "Path to spot database (if available)")
 	lookAheadHours := flag.Int("lookahead", 24, "Hours to look ahead for validation")
 	flag.Parse()
 
-	if err := run(*decisionDB, *spotDB, *lookAheadHours); err != nil {
+	if err := run(*decisionDB, *lookAheadHours); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(decisionDBPath, spotDBPath string, lookAheadHours int) error {
+func run(decisionDBPath string, lookAheadHours int) error {
 	db, err := sql.Open("sqlite", decisionDBPath)
 	if err != nil {
 		return fmt.Errorf("open decision database: %w", err)
@@ -90,17 +91,14 @@ func run(decisionDBPath, spotDBPath string, lookAheadHours int) error {
 
 	// For now, we'll do a simplified analysis using the decision votes
 	// In a production system, you'd query a separate spot database
-	stats, err := analyzeStabilityFromVotes(db, corrections, lookAheadHours)
-	if err != nil {
-		return fmt.Errorf("analyze stability: %w", err)
-	}
+	stats := analyzeStabilityFromVotes(db, corrections, lookAheadHours)
 
 	printResults(stats)
 	return nil
 }
 
 func loadAppliedCorrections(db *sql.DB) ([]correctionRecord, error) {
-	rows, err := db.Query(`
+	rows, err := db.QueryContext(context.Background(), `
 		SELECT
 			id,
 			ts,
@@ -138,7 +136,7 @@ func loadAppliedCorrections(db *sql.DB) ([]correctionRecord, error) {
 	return corrections, rows.Err()
 }
 
-func analyzeStabilityFromVotes(db *sql.DB, corrections []correctionRecord, lookAheadHours int) (*stabilityStats, error) {
+func analyzeStabilityFromVotes(db *sql.DB, corrections []correctionRecord, lookAheadHours int) *stabilityStats {
 	stats := &stabilityStats{
 		totalCorrections: len(corrections),
 		byDistance:       make(map[int]*distanceStability),
@@ -191,7 +189,7 @@ func analyzeStabilityFromVotes(db *sql.DB, corrections []correctionRecord, lookA
 		}
 	}
 
-	return stats, nil
+	return stats
 }
 
 func checkSubsequentAppearances(db *sql.DB, corr correctionRecord, lookAheadHours int) (naturalWinner, naturalSubject bool) {
@@ -212,7 +210,7 @@ func checkSubsequentAppearances(db *sql.DB, corr correctionRecord, lookAheadHour
 		LIMIT 50
 	`
 
-	rows, err := db.Query(query, corr.timestamp.Unix(), endTime, corr.winner, corr.winner)
+	rows, err := db.QueryContext(context.Background(), query, corr.timestamp.Unix(), endTime, corr.winner, corr.winner)
 	if err != nil {
 		return false, false
 	}

@@ -430,7 +430,7 @@ func (w *Writer) cleanupOnce() {
 	}
 
 	for iter.First(); iter.Valid(); iter.Next() {
-		ts, _, ok := parseSpotKey(iter.Key())
+		ts, ok := parseSpotKey(iter.Key())
 		if !ok {
 			continue
 		}
@@ -558,7 +558,7 @@ func (w *Writer) RecentFiltered(limit int, match func(*spot.Spot) bool) ([]*spot
 			}
 		}
 		scanned++
-		ts, _, ok := parseSpotKey(iter.Key())
+		ts, ok := parseSpotKey(iter.Key())
 		if !ok {
 			continue
 		}
@@ -890,13 +890,12 @@ func spotKeyBytes(ts int64, seq uint32) []byte {
 	return buf
 }
 
-func parseSpotKey(key []byte) (int64, uint32, bool) {
+func parseSpotKey(key []byte) (int64, bool) {
 	if len(key) != spotKeyLen || !bytes.HasPrefix(key, spotPrefixBytes) {
-		return 0, 0, false
+		return 0, false
 	}
 	ts := int64(binary.BigEndian.Uint64(key[len(spotPrefix):]))
-	seq := binary.BigEndian.Uint32(key[len(spotPrefix)+8:])
-	return ts, seq, true
+	return ts, true
 }
 
 func normalizeUnixNano(t time.Time) int64 {

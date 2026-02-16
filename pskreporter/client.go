@@ -165,7 +165,6 @@ func NewClient(broker string, port int, topics []string, allowedModes []string, 
 	if maxPayloadBytes <= 0 {
 		maxPayloadBytes = defaultMaxPayloadBytes
 	}
-	logInterval := defaultDropLogInterval
 	modeSet := make(map[string]struct{}, len(allowedModes))
 	for _, m := range allowedModes {
 		m = strings.ToUpper(strings.TrimSpace(m))
@@ -209,11 +208,11 @@ func NewClient(broker string, port int, topics []string, allowedModes []string, 
 		spotterCache:            spot.NewCallCache(callCacheSize, callCacheTTL),
 		maxPayloadBytes:         maxPayloadBytes,
 
-		payloadDropCounter:     newRateCounter(logInterval),
-		payloadTooLargeCounter: newRateCounter(logInterval),
-		spotDropCounter:        newRateCounter(logInterval),
-		parseErrorCounter:      newRateCounter(logInterval),
-		pathOnlyDropCounter:    newRateCounter(logInterval),
+		payloadDropCounter:     newRateCounter(),
+		payloadTooLargeCounter: newRateCounter(),
+		spotDropCounter:        newRateCounter(),
+		parseErrorCounter:      newRateCounter(),
+		pathOnlyDropCounter:    newRateCounter(),
 	}
 }
 
@@ -750,11 +749,9 @@ func (c *Client) normalizeMessage(msg *PSKRMessage, modeInfo pskModeInfo) *norma
 // Upstream: normalizeMessage.
 // Downstream: spot.NormalizeCallsign, spot.CallCache.
 func (c *Client) decorateSpotterCall(raw string) string {
-	cacheKey := raw
+	cacheKey := "0|" + raw
 	if c.appendSSID {
 		cacheKey = "1|" + raw
-	} else {
-		cacheKey = "0|" + raw
 	}
 	if cached, ok := c.spotterCache.Get(cacheKey); ok {
 		return cached
@@ -788,8 +785,8 @@ type rateCounter struct {
 	count    atomic.Uint64
 }
 
-func newRateCounter(interval time.Duration) rateCounter {
-	return rateCounter{interval: interval}
+func newRateCounter() rateCounter {
+	return rateCounter{interval: defaultDropLogInterval}
 }
 
 // Inc increments a counter and decide if it's time to log.

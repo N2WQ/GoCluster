@@ -265,13 +265,11 @@ func (s *CallQualityStore) addWithTime(call string, freqHz float64, binSizeHz in
 	shard := s.shardFor(call, key.Bin)
 	shard.mu.Lock()
 	defer shard.mu.Unlock()
-	if entry := shard.dynamic[key]; entry != nil {
-		if s.ttl > 0 && now.Sub(entry.updated) > s.ttl {
-			delete(shard.dynamic, key)
-			entry = nil
-		}
-	}
 	entry := shard.dynamic[key]
+	if entry != nil && s.ttl > 0 && now.Sub(entry.updated) > s.ttl {
+		delete(shard.dynamic, key)
+		entry = nil
+	}
 	if entry == nil {
 		shard.dynamic[key] = &qualityEntry{score: delta, updated: now}
 	} else {

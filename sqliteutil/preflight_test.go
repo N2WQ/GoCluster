@@ -1,6 +1,7 @@
 package sqliteutil
 
 import (
+	"context"
 	"database/sql"
 	"os"
 	"path/filepath"
@@ -19,7 +20,7 @@ func TestPreflightHealthy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if _, err := db.Exec("create table t (id integer)"); err != nil {
+	if _, err := db.ExecContext(context.Background(), "create table t (id integer)"); err != nil {
 		t.Fatalf("create table: %v", err)
 	}
 	db.Close()

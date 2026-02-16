@@ -113,9 +113,6 @@ func LoadAllowlist(r io.Reader) (*Allowlist, error) {
 	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
-	if len(compiled.byJurisdiction) == 0 {
-		return nil, nil
-	}
 	return compiled, nil
 }
 

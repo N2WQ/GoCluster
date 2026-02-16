@@ -150,13 +150,13 @@ func (p *Processor) handleHelp(dialect string, topic string) string {
 	lines = append(lines, filterHelpLines(dialect)...)
 	lines = append(lines, "")
 	lines = append(lines, "List types:")
-	lines = append(lines, wrapListLines("", "  ", filterListTypes(), helpMaxWidth)...)
+	lines = append(lines, wrapListLines(filterListTypes())...)
 	lines = append(lines, "")
 	lines = append(lines, "Supported modes:")
-	lines = append(lines, wrapListLines("", "  ", filter.SupportedModes, helpMaxWidth)...)
+	lines = append(lines, wrapListLines(filter.SupportedModes)...)
 	lines = append(lines, "")
 	lines = append(lines, "Supported bands:")
-	lines = append(lines, wrapListLines("", "  ", spot.SupportedBandNames(), helpMaxWidth)...)
+	lines = append(lines, wrapListLines(spot.SupportedBandNames())...)
 	return strings.Join(lines, "\n") + "\n"
 }
 
@@ -399,7 +399,7 @@ func buildHelpCatalog(dialect string) helpCatalog {
 				"Example: SET/FILTER BAND/ON",
 			},
 		)
-		setFilterLines = appendListSection(setFilterLines, "Types:", append([]string{"DXBM"}, filterListTypes()...), helpMaxWidth)
+		setFilterLines = appendListSection(setFilterLines, "Types:", append([]string{"DXBM"}, filterListTypes()...))
 		setFilterLines = appendNotes(setFilterLines, []string{
 			"DXBM maps CC band codes to BAND filters.",
 		}, helpMaxWidth)
@@ -416,7 +416,7 @@ func buildHelpCatalog(dialect string) helpCatalog {
 				"Same semantics as REJECT.",
 			},
 		)
-		unsetFilterLines = appendListSection(unsetFilterLines, "Types:", append([]string{"DXBM"}, filterListTypes()...), helpMaxWidth)
+		unsetFilterLines = appendListSection(unsetFilterLines, "Types:", append([]string{"DXBM"}, filterListTypes()...))
 		add("UNSET/FILTER", "UNSET/FILTER - Block list-based filters.", unsetFilterLines)
 
 		setNoFilterLines := helpEntryLines(
@@ -461,7 +461,7 @@ func buildHelpCatalog(dialect string) helpCatalog {
 				"Alias of PASS MODE <MODE>.",
 			},
 		)
-		setModeLines = appendListSection(setModeLines, "Modes:", []string{"CW", "FT4", "FT8", "RTTY"}, helpMaxWidth)
+		setModeLines = appendListSection(setModeLines, "Modes:", []string{"CW", "FT4", "FT8", "RTTY"})
 		add("SET/<MODE>", "SET/<MODE> - Allow a mode.", setModeLines)
 
 		setNoModeLines := helpEntryLines(
@@ -472,7 +472,7 @@ func buildHelpCatalog(dialect string) helpCatalog {
 				"Alias of REJECT MODE <MODE>.",
 			},
 		)
-		setNoModeLines = appendListSection(setNoModeLines, "Modes:", []string{"CW", "FT4", "FT8", "RTTY"}, helpMaxWidth)
+		setNoModeLines = appendListSection(setNoModeLines, "Modes:", []string{"CW", "FT4", "FT8", "RTTY"})
 		add("SET/NO<MODE>", "SET/NO<MODE> - Block a mode.", setNoModeLines)
 
 		catalog.order = []string{
@@ -541,14 +541,14 @@ func buildHelpCatalog(dialect string) helpCatalog {
 				"List is comma or space separated; use ALL to allow all.",
 			},
 		)
-		passLines = appendListSection(passLines, "Types:", filterListTypes(), helpMaxWidth)
+		passLines = appendListSection(passLines, "Types:", filterListTypes())
 		passLines = appendListSection(passLines, "Feature toggles:", []string{
 			"PASS BEACON",
 			"PASS WWV",
 			"PASS WCY",
 			"PASS ANNOUNCE",
 			"PASS SELF",
-		}, helpMaxWidth)
+		})
 		add("PASS", "PASS - Allow filter matches.", passLines)
 
 		rejectLines := helpEntryLines(
@@ -560,14 +560,14 @@ func buildHelpCatalog(dialect string) helpCatalog {
 				"List is comma or space separated; use ALL to block all.",
 			},
 		)
-		rejectLines = appendListSection(rejectLines, "Types:", filterListTypes(), helpMaxWidth)
+		rejectLines = appendListSection(rejectLines, "Types:", filterListTypes())
 		rejectLines = appendListSection(rejectLines, "Feature toggles:", []string{
 			"REJECT BEACON",
 			"REJECT WWV",
 			"REJECT WCY",
 			"REJECT ANNOUNCE",
 			"REJECT SELF",
-		}, helpMaxWidth)
+		})
 		add("REJECT", "REJECT - Block filter matches.", rejectLines)
 
 		showDXLines := helpEntryLines(
@@ -766,12 +766,12 @@ func appendNotes(lines []string, notes []string, width int) []string {
 	return lines
 }
 
-func appendListSection(lines []string, title string, items []string, width int) []string {
+func appendListSection(lines []string, title string, items []string) []string {
 	if len(items) == 0 {
 		return lines
 	}
 	lines = append(lines, title)
-	lines = append(lines, wrapListLines("", "  ", items, width)...)
+	lines = append(lines, wrapListLines(items)...)
 	return lines
 }
 
@@ -915,17 +915,13 @@ func filterListTypes() []string {
 	}
 }
 
-func wrapListLines(title, indent string, items []string, width int) []string {
+func wrapListLines(items []string) []string {
 	lines := []string{}
-	if title != "" {
-		lines = append(lines, title)
-	}
 	if len(items) == 0 {
 		return lines
 	}
-	if indent == "" {
-		indent = "  "
-	}
+	indent := "  "
+	width := helpMaxWidth
 	line := indent
 	for _, item := range items {
 		candidate := indent + item
@@ -1075,7 +1071,7 @@ func (p *Processor) handleDX(fields []string, spotter string, spotterIP string) 
 // Purpose: Route SHOW subcommands with optional filter predicate.
 // Key aspects: Supports SHOW/DX, SHOW/MYDX, and SHOW DXCC lookups.
 // Upstream: ProcessCommandForClient (SHOW/SH).
-// Downstream: handleShowDX, handleShowMYDX, handleShowDXCC.
+// Downstream: handleShowMYDX, handleShowDXCC.
 func (p *Processor) handleShow(args []string, filterFn func(*spot.Spot) bool, dialect string) string {
 	if len(args) == 0 {
 		return showDXUsage(dialect)
@@ -1093,48 +1089,6 @@ func (p *Processor) handleShow(args []string, filterFn func(*spot.Spot) bool, di
 	default:
 		return fmt.Sprintf("Unknown SHOW subcommand: %s\n", subCmd)
 	}
-}
-
-// Purpose: Render the most recent N spots for SHOW/DX.
-// Key aspects: Archive-only history; outputs oldest-first.
-// Upstream: handleShow.
-// Downstream: archive.Recent, reverseSpotsInPlace.
-func (p *Processor) handleShowDX(args []string) string {
-	count := showDXDefaultCount // Default count
-
-	// Parse count if provided
-	if len(args) > 0 {
-		var err error
-		_, err = fmt.Sscanf(args[0], "%d", &count)
-		if err != nil || count < 1 || count > showDXMaxCount {
-			return "Invalid count. Use 1-250.\n"
-		}
-	}
-
-	var spots []*spot.Spot
-	if p.archive == nil {
-		return "No spots available.\n"
-	}
-	if rows, err := p.archive.Recent(count); err != nil {
-		log.Printf("SHOW DX: archive query failed: %v", err)
-	} else {
-		spots = rows
-	}
-	if len(spots) == 0 {
-		return "No spots available.\n"
-	}
-
-	// Display oldest first so the most recent spot is last in the list.
-	reverseSpotsInPlace(spots)
-
-	// Build response
-	var result strings.Builder
-	for _, spot := range spots {
-		result.WriteString(spot.FormatDXCluster())
-		result.WriteString("\r\n")
-	}
-
-	return result.String()
 }
 
 // Purpose: Render the most recent N spots that match the provided filter.

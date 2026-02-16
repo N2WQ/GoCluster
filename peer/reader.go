@@ -134,6 +134,8 @@ func (r *lineReader) ReadLine(deadline time.Time) (string, error) {
 // Key aspects: Respects terminators, PC92 max size, and resync rules.
 // Upstream: ReadLine.
 // Downstream: trimLeadingTerminators, bytesIndexTerminator, frameTypeFromBuffer.
+//
+//nolint:revive // Keep return ordering for existing call sites.
 func (r *lineReader) tryReadLine() (string, error, bool) {
 	for {
 		r.buf = trimLeadingTerminators(r.buf)

@@ -1,6 +1,7 @@
 package spot
 
 import (
+	"context"
 	"database/sql"
 	"path/filepath"
 	"testing"
@@ -40,7 +41,7 @@ func TestDecisionLoggerPersistsDecisionPath(t *testing.T) {
 	defer db.Close()
 
 	var decisionPath, decision string
-	if err := db.QueryRow(`SELECT decision_path, decision FROM decisions LIMIT 1`).Scan(&decisionPath, &decision); err != nil {
+	if err := db.QueryRowContext(context.Background(), `SELECT decision_path, decision FROM decisions LIMIT 1`).Scan(&decisionPath, &decision); err != nil {
 		t.Fatalf("query row: %v", err)
 	}
 	if decisionPath != "anchor" {

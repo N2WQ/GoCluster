@@ -61,7 +61,11 @@ func (c *GateCache) Get(key pathKey, now time.Time) (gateState, bool) {
 	if elem == nil {
 		return gateState{}, false
 	}
-	entry := elem.Value.(gateEntry)
+	entry, ok := elem.Value.(gateEntry)
+	if !ok {
+		c.removeElement(elem)
+		return gateState{}, false
+	}
 	if c.ttl > 0 && now.Sub(entry.state.lastSeen) > c.ttl {
 		c.removeElement(elem)
 		return gateState{}, false
@@ -79,12 +83,16 @@ func (c *GateCache) Put(key pathKey, state gateState, now time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if elem := c.items[key]; elem != nil {
-		entry := elem.Value.(gateEntry)
-		entry.state = state
-		entry.state.lastSeen = now
-		elem.Value = entry
-		c.lru.MoveToFront(elem)
-		return
+		entry, ok := elem.Value.(gateEntry)
+		if !ok {
+			c.removeElement(elem)
+		} else {
+			entry.state = state
+			entry.state.lastSeen = now
+			elem.Value = entry
+			c.lru.MoveToFront(elem)
+			return
+		}
 	}
 	entry := gateEntry{key: key, state: state}
 	entry.state.lastSeen = now
@@ -104,7 +112,16 @@ func (c *GateCache) evictOldest() {
 }
 
 func (c *GateCache) removeElement(elem *list.Element) {
-	entry := elem.Value.(gateEntry)
-	delete(c.items, entry.key)
+	entry, ok := elem.Value.(gateEntry)
+	if ok {
+		delete(c.items, entry.key)
+	} else {
+		for key, candidate := range c.items {
+			if candidate == elem {
+				delete(c.items, key)
+				break
+			}
+		}
+	}
 	c.lru.Remove(elem)
 }

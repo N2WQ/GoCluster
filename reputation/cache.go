@@ -47,7 +47,7 @@ func (c *ttlCache) get(key string, now time.Time) (LookupResult, bool, bool) {
 	if c == nil || strings.TrimSpace(key) == "" {
 		return LookupResult{}, false, false
 	}
-	shard := c.shards[c.shardIndex(key)]
+	shard := &c.shards[c.shardIndex(key)]
 	shard.mu.Lock()
 	defer shard.mu.Unlock()
 	entry, ok := shard.items[key]
@@ -87,7 +87,8 @@ func (c *ttlCache) sweepShardLocked(shard *cacheShard, now time.Time) {
 		return
 	}
 	limit := c.maxEntries
-	for key, entry := range shard.items {
+	for key := range shard.items {
+		entry := shard.items[key]
 		if !entry.expiresAt.IsZero() && now.After(entry.expiresAt) {
 			delete(shard.items, key)
 		}

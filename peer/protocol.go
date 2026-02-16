@@ -80,9 +80,7 @@ func ParseFrame(line string) (*Frame, error) {
 	if raw == "" {
 		return nil, fmt.Errorf("empty line")
 	}
-	if strings.HasSuffix(raw, "~") {
-		raw = strings.TrimSuffix(raw, "~")
-	}
+	raw = strings.TrimSuffix(raw, "~")
 	parts := strings.Split(raw, "^")
 	if len(parts) == 0 {
 		return nil, fmt.Errorf("no parts")

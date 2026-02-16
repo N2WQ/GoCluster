@@ -151,18 +151,22 @@ func (c *callMetaCache) LookupCTY(call string, db *cty.CTYDatabase) (*cty.Prefix
 	shard := c.shardFor(call)
 	shard.mu.Lock()
 	if elem, ok := shard.entries[call]; ok {
-		entry := elem.Value.(*callMetaEntry)
-		shard.order.MoveToFront(elem)
-		if entry.ctyChecked {
-			if entry.ctyValid {
+		if entry, valid := elem.Value.(*callMetaEntry); valid && entry != nil {
+			shard.order.MoveToFront(elem)
+			if entry.ctyChecked {
+				if entry.ctyValid {
+					c.ctyHits.Add(1)
+					info := entry.cty
+					shard.mu.Unlock()
+					return info, true, true
+				}
 				c.ctyHits.Add(1)
-				info := entry.cty
 				shard.mu.Unlock()
-				return info, true, true
+				return nil, false, true
 			}
-			c.ctyHits.Add(1)
-			shard.mu.Unlock()
-			return nil, false, true
+		} else {
+			shard.order.Remove(elem)
+			delete(shard.entries, call)
 		}
 	}
 	shard.mu.Unlock()
@@ -214,7 +218,12 @@ func (c *callMetaCache) LookupGrid(call string, metrics *gridMetrics) (string, b
 	if !ok {
 		return "", false, false
 	}
-	entry := elem.Value.(*callMetaEntry)
+	entry, valid := elem.Value.(*callMetaEntry)
+	if !valid || entry == nil {
+		shard.order.Remove(elem)
+		delete(shard.entries, call)
+		return "", false, false
+	}
 	shard.order.MoveToFront(elem)
 	if entry.gridValid {
 		if c.gridTTL > 0 && !entry.gridUpdatedAt.IsZero() && time.Since(entry.gridUpdatedAt) > c.gridTTL {
@@ -248,8 +257,14 @@ func (c *callMetaCache) UpdateGrid(call, grid string, derived bool) bool {
 	defer shard.mu.Unlock()
 	now := time.Now().UTC()
 	if elem, ok := shard.entries[call]; ok {
-		entry := elem.Value.(*callMetaEntry)
-		shard.order.MoveToFront(elem)
+		entry, valid := elem.Value.(*callMetaEntry)
+		if !valid || entry == nil {
+			shard.order.Remove(elem)
+			delete(shard.entries, call)
+			entry = shard.addEntry(call)
+		} else {
+			shard.order.MoveToFront(elem)
+		}
 		expired := c.gridTTL > 0 && !entry.gridUpdatedAt.IsZero() && now.Sub(entry.gridUpdatedAt) > c.gridTTL
 		if entry.gridValid && entry.grid == grid && entry.gridDerived == derived && !expired {
 			return false
@@ -292,7 +307,7 @@ func (c *callMetaCache) ApplyRecord(rec gridstore.Record) {
 		grid := strings.ToUpper(strings.TrimSpace(rec.Grid.String))
 		if grid != "" {
 			incomingDerived := rec.GridDerived
-			if !(entry.gridValid && !entry.gridDerived && incomingDerived) {
+			if !entry.gridValid || entry.gridDerived || !incomingDerived {
 				if !entry.gridValid || rec.UpdatedAt.After(entry.gridUpdatedAt) || (entry.gridDerived && !incomingDerived) {
 					entry.grid = grid
 					entry.gridValid = true
@@ -344,8 +359,12 @@ func (c *callMetaCache) shardFor(key string) *callMetaCacheShard {
 
 func (s *callMetaCacheShard) getOrCreate(call string) *callMetaEntry {
 	if elem, ok := s.entries[call]; ok {
-		s.order.MoveToFront(elem)
-		return elem.Value.(*callMetaEntry)
+		if entry, valid := elem.Value.(*callMetaEntry); valid && entry != nil {
+			s.order.MoveToFront(elem)
+			return entry
+		}
+		s.order.Remove(elem)
+		delete(s.entries, call)
 	}
 	return s.addEntry(call)
 }

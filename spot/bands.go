@@ -56,6 +56,7 @@ func NormalizeBand(label string) string {
 		return ""
 	}
 
+	//nolint:misspell // Accept UK/US unit spellings in user-provided labels.
 	replacementPairs := []struct{ old, new string }{
 		{"meters", "m"},
 		{"meter", "m"},

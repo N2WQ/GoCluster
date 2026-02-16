@@ -256,7 +256,12 @@ func (c *dxFreqCache) Get(key dxFreqKey, now time.Time) (string, bool) {
 		return "", false
 	}
 	if elem, ok := c.entries[key]; ok {
-		entry := elem.Value.(*dxFreqEntry)
+		entry, valid := elem.Value.(*dxFreqEntry)
+		if !valid || entry == nil {
+			delete(c.entries, key)
+			c.lru.Remove(elem)
+			return "", false
+		}
 		if c.ttl > 0 && now.Sub(entry.lastSeen) > c.ttl {
 			c.lru.Remove(elem)
 			delete(c.entries, key)
@@ -277,7 +282,18 @@ func (c *dxFreqCache) Set(key dxFreqKey, mode string, now time.Time) {
 		return
 	}
 	if elem, ok := c.entries[key]; ok {
-		entry := elem.Value.(*dxFreqEntry)
+		entry, valid := elem.Value.(*dxFreqEntry)
+		if !valid || entry == nil {
+			delete(c.entries, key)
+			c.lru.Remove(elem)
+			entry = &dxFreqEntry{key: key, mode: mode, lastSeen: now}
+			elem = c.lru.PushFront(entry)
+			c.entries[key] = elem
+			if c.lru.Len() > c.max {
+				c.evictOldest()
+			}
+			return
+		}
 		entry.mode = mode
 		entry.lastSeen = now
 		c.lru.MoveToFront(elem)
@@ -303,8 +319,17 @@ func (c *dxFreqCache) evictOldest() {
 	if elem == nil {
 		return
 	}
-	entry := elem.Value.(*dxFreqEntry)
-	delete(c.entries, entry.key)
+	entry, valid := elem.Value.(*dxFreqEntry)
+	if valid && entry != nil {
+		delete(c.entries, entry.key)
+	} else {
+		for key, candidate := range c.entries {
+			if candidate == elem {
+				delete(c.entries, key)
+				break
+			}
+		}
+	}
 	c.lru.Remove(elem)
 }
 
@@ -408,7 +433,12 @@ func (m *digitalFreqMap) Infer(freq int, now time.Time) string {
 	if !ok {
 		return ""
 	}
-	entry := elem.Value.(*digitalFreqEntry)
+	entry, valid := elem.Value.(*digitalFreqEntry)
+	if !valid || entry == nil {
+		delete(m.entries, freq)
+		m.lru.Remove(elem)
+		return ""
+	}
 	bestMode := ""
 	bestCount := 0
 	bestSeen := time.Time{}
@@ -457,7 +487,19 @@ func (m *digitalFreqMap) getOrCreate(freq int, now time.Time) *digitalFreqEntry 
 	// Upstream: Seed and Observe.
 	// Downstream: list operations and map access.
 	if elem, ok := m.entries[freq]; ok {
-		entry := elem.Value.(*digitalFreqEntry)
+		entry, valid := elem.Value.(*digitalFreqEntry)
+		if !valid || entry == nil {
+			delete(m.entries, freq)
+			m.lru.Remove(elem)
+			entry = &digitalFreqEntry{
+				freq:     freq,
+				lastSeen: now,
+				modes:    make(map[string]*digitalModeEvidence),
+			}
+			newElem := m.lru.PushFront(entry)
+			m.entries[freq] = newElem
+			return entry
+		}
 		entry.lastSeen = now
 		m.touch(entry)
 		return entry
@@ -498,8 +540,17 @@ func (m *digitalFreqMap) evictIfNeeded() {
 		if elem == nil {
 			return
 		}
-		entry := elem.Value.(*digitalFreqEntry)
-		delete(m.entries, entry.freq)
+		entry, valid := elem.Value.(*digitalFreqEntry)
+		if valid && entry != nil {
+			delete(m.entries, entry.freq)
+		} else {
+			for key, candidate := range m.entries {
+				if candidate == elem {
+					delete(m.entries, key)
+					break
+				}
+			}
+		}
 		m.lru.Remove(elem)
 	}
 }

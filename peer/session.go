@@ -26,6 +26,11 @@ const (
 	defaultPeerWriteDeadline = 2 * time.Second
 )
 
+var (
+	errSessionWriteQueueFull = errors.New("peer: write queue full")
+	errSessionContextUnset   = errors.New("peer: session context not initialized")
+)
+
 type session struct {
 	id             string
 	conn           net.Conn
@@ -190,13 +195,19 @@ func (s *session) writerLoop() {
 			if !ok {
 				return
 			}
-			_ = s.writeRaw(raw)
+			if err := s.writeRaw(raw); err != nil {
+				s.handleWriterError("priority raw", err)
+				return
+			}
 			continue
 		case line, ok := <-s.priorityLineCh:
 			if !ok {
 				return
 			}
-			_ = s.writeLine(line)
+			if err := s.writeLine(line); err != nil {
+				s.handleWriterError("priority line", err)
+				return
+			}
 			continue
 		default:
 		}
@@ -207,29 +218,41 @@ func (s *session) writerLoop() {
 			if !ok {
 				return
 			}
-			_ = s.writeRaw(raw)
+			if err := s.writeRaw(raw); err != nil {
+				s.handleWriterError("priority raw", err)
+				return
+			}
 		case line, ok := <-s.priorityLineCh:
 			if !ok {
 				return
 			}
-			_ = s.writeLine(line)
+			if err := s.writeLine(line); err != nil {
+				s.handleWriterError("priority line", err)
+				return
+			}
 		case line, ok := <-s.writeCh:
 			if !ok {
 				return
 			}
-			_ = s.writeLine(line)
+			if err := s.writeLine(line); err != nil {
+				s.handleWriterError("line", err)
+				return
+			}
 		}
 	}
 }
 
 func (s *session) sendLine(line string) error {
+	if s.ctx == nil {
+		return errSessionContextUnset
+	}
 	select {
 	case <-s.ctx.Done():
 		return s.ctx.Err()
 	case s.writeCh <- line:
 		return nil
 	default:
-		return errors.New("peer: write queue full")
+		return errSessionWriteQueueFull
 	}
 }
 
@@ -274,21 +297,6 @@ func (s *session) sendPriorityRaw(data []byte) bool {
 	}
 }
 
-func (s *session) sendRaw(data []byte) error {
-	if s.conn == nil {
-		return errors.New("peer: nil conn")
-	}
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	if err := s.conn.SetWriteDeadline(time.Now().UTC().Add(defaultPeerWriteDeadline)); err != nil {
-		return err
-	}
-	if _, err := s.writer.Write(data); err != nil {
-		return err
-	}
-	return s.writer.Flush()
-}
-
 func (s *session) writeLine(line string) error {
 	if s.conn == nil {
 		return errors.New("peer: nil conn")
@@ -325,11 +333,24 @@ func (s *session) writeRaw(data []byte) error {
 
 func (s *session) close() {
 	s.closeOnce.Do(func() {
+		if s.cancel != nil {
+			s.cancel()
+		}
 		if s.conn != nil {
 			_ = s.conn.Close()
 		}
-		close(s.writeCh)
 	})
+}
+
+func (s *session) handleWriterError(kind string, err error) {
+	if err == nil {
+		return
+	}
+	if s.ctx != nil && s.ctx.Err() != nil {
+		return
+	}
+	log.Printf("Peering: writer %s failed for %s: %v", kind, s.peer.host, err)
+	s.close()
 }
 
 func (s *session) keepaliveLoop() {
@@ -350,18 +371,24 @@ func (s *session) keepaliveLoop() {
 			// Always emit PC51 pings so peers that still expect legacy liveness
 			// see activity even when the session uses pc9x.
 			line := fmt.Sprintf("PC51^%s^%s^1^", s.remoteCall, s.localCall)
-			_ = s.sendLine(line)
+			if err := s.sendLine(line); err != nil && !errors.Is(err, errSessionWriteQueueFull) && !errors.Is(err, context.Canceled) {
+				log.Printf("Peering: keepalive enqueue failed for %s: %v", s.peer.host, err)
+			}
 			// For pc9x sessions, also send a PC92 keepalive to refresh topology.
 			if s.pc9x {
 				line := s.buildPC92Keepalive()
-				_ = s.sendLine(line)
+				if err := s.sendLine(line); err != nil && !errors.Is(err, errSessionWriteQueueFull) && !errors.Is(err, context.Canceled) {
+					log.Printf("Peering: PC92 keepalive enqueue failed for %s: %v", s.peer.host, err)
+				}
 			}
 		case <-cfgC:
 			// Periodic PC92 C config refresh to keep topology alive on peers; DXSpider
 			// purges nodes that miss several config intervals.
 			if s.pc9x {
 				line := s.buildPC92Config()
-				_ = s.sendLine(line)
+				if err := s.sendLine(line); err != nil && !errors.Is(err, errSessionWriteQueueFull) && !errors.Is(err, context.Canceled) {
+					log.Printf("Peering: PC92 config enqueue failed for %s: %v", s.peer.host, err)
+				}
 			}
 		}
 	}
@@ -535,7 +562,9 @@ func (s *session) runOutboundHandshake() error {
 
 func (s *session) runInboundHandshake() error {
 	s.pc9x = true
-	_ = s.sendLine("login:")
+	if err := s.sendLine("login:"); err != nil {
+		return fmt.Errorf("send login prompt: %w", err)
+	}
 	loginDeadline := time.Now().UTC().Add(s.loginTimeout)
 	var call string
 	for {
@@ -558,7 +587,9 @@ func (s *session) runInboundHandshake() error {
 	}
 	s.remoteCall = call
 	if s.password != "" {
-		_ = s.sendLine("password:")
+		if err := s.sendLine("password:"); err != nil {
+			return fmt.Errorf("send password prompt: %w", err)
+		}
 		passDeadline := time.Now().UTC().Add(s.loginTimeout)
 		line, err := s.reader.ReadLine(passDeadline)
 		if err != nil {

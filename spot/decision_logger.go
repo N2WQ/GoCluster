@@ -1,6 +1,7 @@
 package spot
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -58,7 +59,12 @@ const (
 	schemaVersionKey         = "schema_version"
 	currentSchemaVersion     = "3"
 	decisionLogRetentionDays = 3
+	decisionDBTimeout        = 5 * time.Second
 )
+
+func decisionDBContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), decisionDBTimeout)
+}
 
 // NewDecisionLogger builds a non-blocking SQLite-backed logger. The basePath acts
 // as a prefix/pattern:
@@ -127,8 +133,7 @@ func (l *decisionLogger) write(entry CorrectionLogEntry) error {
 	if ts.IsZero() {
 		ts = time.Now().UTC()
 	}
-	_, err := l.ensureDB(ts)
-	if err != nil {
+	if err := l.ensureDB(ts); err != nil {
 		return err
 	}
 
@@ -141,7 +146,9 @@ func (l *decisionLogger) write(entry CorrectionLogEntry) error {
 	var insertErr error
 	var res sql.Result
 	for attempt := 0; attempt < 2; attempt++ {
-		res, insertErr = l.decisionStmt.Exec(
+		ctx, cancel := decisionDBContext()
+		res, insertErr = l.decisionStmt.ExecContext(
+			ctx,
 			ts.UTC().Unix(),
 			entry.Trace.Strategy,
 			entry.Trace.DecisionPath,
@@ -173,13 +180,16 @@ func (l *decisionLogger) write(entry CorrectionLogEntry) error {
 			entry.Trace.Decision,
 			entry.Trace.Reason,
 		)
+		cancel()
 		if insertErr == nil {
 			break
 		}
 		if attempt == 0 && isSQLiteCorrupted(insertErr) {
-			l.closeDBLocked()
+			if closeErr := l.closeDBLocked(); closeErr != nil {
+				l.reportError(fmt.Errorf("call-correction logger: close corrupt db: %w", closeErr))
+			}
 			_ = os.Remove(path)
-			if _, err := l.ensureDB(ts); err != nil {
+			if err := l.ensureDB(ts); err != nil {
 				return err
 			}
 			if l.decisionStmt == nil || l.voteStmt == nil {
@@ -204,56 +214,66 @@ func (l *decisionLogger) write(entry CorrectionLogEntry) error {
 	if err != nil {
 		return fmt.Errorf("call-correction logger: fetch row id: %w", err)
 	}
-	if _, err := l.voteStmt.Exec(rowID, votesJSON); err != nil {
+	ctx, cancel := decisionDBContext()
+	if _, err := l.voteStmt.ExecContext(ctx, rowID, votesJSON); err != nil {
+		cancel()
 		return fmt.Errorf("call-correction logger: insert votes: %w", err)
 	}
+	cancel()
 	return nil
 }
 
-func (l *decisionLogger) ensureDB(ts time.Time) (*sql.DB, error) {
+func (l *decisionLogger) ensureDB(ts time.Time) error {
 	path := l.pathFor(ts)
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	if l.db != nil && l.currentPath == path {
-		return l.db, nil
+		return nil
 	}
 
 	if err := l.closeDBLocked(); err != nil {
-		return nil, err
+		return err
 	}
 
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return nil, fmt.Errorf("call-correction logger: mkdir %s: %w", filepath.Dir(path), err)
+		return fmt.Errorf("call-correction logger: mkdir %s: %w", filepath.Dir(path), err)
 	}
 
 	for attempt := 0; attempt < 2; attempt++ {
 		db, err := sql.Open("sqlite", path)
 		if err != nil {
-			return nil, fmt.Errorf("call-correction logger: open %s: %w", path, err)
+			return fmt.Errorf("call-correction logger: open %s: %w", path, err)
 		}
 		db.SetMaxOpenConns(1)
 		db.SetMaxIdleConns(1)
 
-		if _, err := db.Exec(`PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;`); err != nil {
+		pragmaCtx, pragmaCancel := decisionDBContext()
+		_, pragmaErr := db.ExecContext(pragmaCtx, `PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;`)
+		pragmaCancel()
+		if pragmaErr != nil {
 			db.Close()
-			if attempt == 0 && isSQLiteCorrupted(err) {
+			if attempt == 0 && isSQLiteCorrupted(pragmaErr) {
 				_ = os.Remove(path)
 				continue
 			}
-			return nil, fmt.Errorf("call-correction logger: pragmas: %w", err)
+			return fmt.Errorf("call-correction logger: pragmas: %w", pragmaErr)
 		}
-		if err := initDecisionSchema(db); err != nil {
+		schemaCtx, schemaCancel := decisionDBContext()
+		schemaErr := initDecisionSchema(schemaCtx, db)
+		schemaCancel()
+		if schemaErr != nil {
 			db.Close()
-			if attempt == 0 && isSQLiteCorrupted(err) {
+			if attempt == 0 && isSQLiteCorrupted(schemaErr) {
 				_ = os.Remove(path)
 				continue
 			}
-			return nil, err
+			return schemaErr
 		}
 
-		decisionStmt, err := db.Prepare(`
+		prepareDecisionCtx, prepareDecisionCancel := decisionDBContext()
+		decisionStmt, err := db.PrepareContext(prepareDecisionCtx, `
 INSERT INTO decisions (
     ts, strategy, decision_path, freq_khz, subject, winner, mode, source,
     total_reporters, subject_support, winner_support, runner_up_support,
@@ -265,15 +285,18 @@ INSERT INTO decisions (
     decision, reason
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `)
+		prepareDecisionCancel()
 		if err != nil {
 			db.Close()
-			return nil, fmt.Errorf("call-correction logger: prepare decisions: %w", err)
+			return fmt.Errorf("call-correction logger: prepare decisions: %w", err)
 		}
-		voteStmt, err := db.Prepare(`INSERT INTO decision_votes(decision_id, votes_json) VALUES (?, ?)`)
+		prepareVoteCtx, prepareVoteCancel := decisionDBContext()
+		voteStmt, err := db.PrepareContext(prepareVoteCtx, `INSERT INTO decision_votes(decision_id, votes_json) VALUES (?, ?)`)
+		prepareVoteCancel()
 		if err != nil {
 			decisionStmt.Close()
 			db.Close()
-			return nil, fmt.Errorf("call-correction logger: prepare votes: %w", err)
+			return fmt.Errorf("call-correction logger: prepare votes: %w", err)
 		}
 
 		l.db = db
@@ -283,9 +306,9 @@ INSERT INTO decisions (
 		if err := cleanupDecisionLogRetention(l.basePath, time.Now().UTC(), decisionLogRetentionDays, path); err != nil {
 			log.Printf("call-correction logger retention cleanup: %v", err)
 		}
-		return l.db, nil
+		return nil
 	}
-	return nil, fmt.Errorf("call-correction logger: unable to open database")
+	return fmt.Errorf("call-correction logger: unable to open database")
 }
 
 func (l *decisionLogger) closeDBLocked() error {
@@ -433,11 +456,11 @@ func encodeVotes(votes []bandmap.SpotEntry) (string, error) {
 	return string(data), nil
 }
 
-func initDecisionSchema(db *sql.DB) error {
+func initDecisionSchema(ctx context.Context, db *sql.DB) error {
 	if db == nil {
 		return fmt.Errorf("call-correction logger: db is nil")
 	}
-	if _, err := db.Exec(`
+	if _, err := db.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS decisions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts INTEGER NOT NULL,
@@ -487,17 +510,17 @@ CREATE INDEX IF NOT EXISTS idx_decisions_decision ON decisions(decision);
 `); err != nil {
 		return fmt.Errorf("call-correction logger: init schema: %w", err)
 	}
-	if err := ensureDecisionColumns(db); err != nil {
+	if err := ensureDecisionColumns(ctx, db); err != nil {
 		return err
 	}
-	if _, err := db.Exec(`INSERT OR REPLACE INTO metadata(key, value) VALUES (?, ?)`, schemaVersionKey, currentSchemaVersion); err != nil {
+	if _, err := db.ExecContext(ctx, `INSERT OR REPLACE INTO metadata(key, value) VALUES (?, ?)`, schemaVersionKey, currentSchemaVersion); err != nil {
 		return fmt.Errorf("call-correction logger: write metadata: %w", err)
 	}
 	return nil
 }
 
-func ensureDecisionColumns(db *sql.DB) error {
-	rows, err := db.Query(`PRAGMA table_info(decisions)`)
+func ensureDecisionColumns(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx, `PRAGMA table_info(decisions)`)
 	if err != nil {
 		return fmt.Errorf("call-correction logger: schema introspection: %w", err)
 	}
@@ -551,7 +574,7 @@ func ensureDecisionColumns(db *sql.DB) error {
 		if _, ok := columns[col.name]; ok {
 			continue
 		}
-		if _, err := db.Exec(col.sql); err != nil {
+		if _, err := db.ExecContext(ctx, col.sql); err != nil {
 			return fmt.Errorf("%s: %w", col.err, err)
 		}
 	}

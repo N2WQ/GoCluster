@@ -29,6 +29,8 @@ type PrefixInfo struct {
 }
 
 // CTYDatabase holds the plist data and sorted keys for longest-prefix lookup.
+//
+//nolint:revive // Retained for external API stability.
 type CTYDatabase struct {
 	Data map[string]PrefixInfo
 	Keys []string
@@ -261,9 +263,7 @@ func (db *CTYDatabase) lookupCallsignPortableNoCache(cs string) (*PrefixInfo, bo
 		return nil, false
 	}
 	lookup := cs
-	if strings.HasSuffix(lookup, "/B") {
-		lookup = strings.TrimSuffix(lookup, "/B")
-	}
+	lookup = strings.TrimSuffix(lookup, "/B")
 	if !strings.Contains(lookup, "/") {
 		return db.lookupCallsignNoCache(lookup)
 	}

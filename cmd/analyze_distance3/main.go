@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"flag"
 	"fmt"
@@ -36,9 +37,10 @@ func main() {
 	fmt.Printf("  DISTANCE-3 PENALTY ANALYSIS\n")
 	fmt.Printf("═══════════════════════════════════════════════════════════════════════════\n")
 	fmt.Printf("\n")
+	ctx := context.Background()
 
 	// Query all distance-3 decisions
-	rows, err := db.Query(`
+	rows, err := db.QueryContext(ctx, `
 		SELECT
 			subject, winner,
 			winner_support, subject_support, total_reporters,
@@ -48,7 +50,8 @@ func main() {
 		ORDER BY decision DESC, winner_confidence DESC
 	`)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("query distance-3 decisions failed: %v", err)
+		return
 	}
 	defer rows.Close()
 
@@ -57,7 +60,8 @@ func main() {
 		var c distance3Case
 		if err := rows.Scan(&c.subject, &c.winner, &c.winnerSupport, &c.subjectSupport,
 			&c.totalReporters, &c.winnerConfidence, &c.decision, &c.reason); err != nil {
-			log.Fatal(err)
+			log.Printf("scan distance-3 decision failed: %v", err)
+			return
 		}
 
 		if c.decision == "applied" {
@@ -142,10 +146,10 @@ func main() {
 
 	// Simulate different penalty scenarios
 	scenarios := []struct {
-		name          string
-		extraReports  int
+		name           string
+		extraReports   int
 		extraAdvantage int
-		extraConf     int
+		extraConf      int
 	}{
 		{"Current (conservative)", 0, 1, 5},
 		{"Relaxed advantage", 0, 0, 5},
@@ -159,7 +163,7 @@ func main() {
 		passed := 0
 		for _, c := range applied {
 			advantage := c.winnerSupport - c.subjectSupport
-			baseAdvantage := 1 // min_advantage from config
+			baseAdvantage := 1   // min_advantage from config
 			baseConfidence := 60 // min_confidence_percent from config
 
 			if c.winnerSupport >= 3+scenario.extraReports &&

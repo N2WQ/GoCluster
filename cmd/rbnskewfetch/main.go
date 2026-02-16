@@ -30,7 +30,8 @@ func main() {
 
 	count, err := skew.FetchAndWrite(ctx, cfg.Skew.URL, cfg.Skew.MinSpots, *outputPath)
 	if err != nil {
-		log.Fatalf("failed to fetch skew table: %v", err)
+		log.Printf("failed to fetch skew table: %v", err)
+		return
 	}
 
 	fmt.Fprintf(os.Stdout, "Wrote %d skew entries to %s\n", count, *outputPath)

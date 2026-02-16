@@ -2,6 +2,7 @@ package peer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -105,11 +106,14 @@ func (m *Manager) Start(ctx context.Context) error {
 	if m == nil {
 		return fmt.Errorf("nil manager")
 	}
-	m.ctx, m.cancel = context.WithCancel(ctx)
+	runCtx, cancel := context.WithCancel(ctx)
+	m.ctx = runCtx
+	m.cancel = cancel
 
 	if m.cfg.ListenPort > 0 {
 		addr := fmt.Sprintf(":%d", m.cfg.ListenPort)
-		ln, err := net.Listen("tcp", addr)
+		var lc net.ListenConfig
+		ln, err := lc.Listen(ctx, "tcp", addr)
 		if err != nil {
 			return fmt.Errorf("peering listen: %w", err)
 		}
@@ -127,16 +131,16 @@ func (m *Manager) Start(ctx context.Context) error {
 
 	// Always run maintenance to prune the peer dedupe cache even when topology
 	// persistence is disabled.
-	go m.maintenanceLoop()
+	go m.maintenanceLoop(runCtx)
 
 	// Topology updates are handled off the session read goroutine to prevent
 	// large PC92 maps from stalling spot delivery. The channel is deliberately
 	// bounded; oversize or overflow frames are dropped with a warning.
 	if m.topology != nil {
 		m.pc92Ch = make(chan pc92Work, defaultPC92Queue)
-		go m.topologyWorker()
+		go m.topologyWorker(runCtx)
 		m.legacyCh = make(chan legacyWork, defaultLegacyQueue)
-		go m.legacyWorker()
+		go m.legacyWorker(runCtx)
 	}
 	return nil
 }
@@ -176,11 +180,7 @@ func (m *Manager) PublishWWV(ev WWVEvent) {
 	if m == nil {
 		return
 	}
-	hop := m.cfg.HopCount
-	if hop <= 0 {
-		hop = defaultHopCount
-	}
-	m.broadcastWWV(ev, hop, nil)
+	m.broadcastWWV(ev)
 }
 
 func (m *Manager) HandleFrame(frame *Frame, sess *session) {
@@ -238,7 +238,7 @@ func (m *Manager) HandleFrame(frame *Frame, sess *session) {
 	case "PC23", "PC73":
 		if ev, ok := parseWWV(frame); ok {
 			if m.dedupe.markSeen(wwvKey(frame), now) {
-				m.broadcastWWV(ev, frame.Hop-1, sess)
+				m.broadcastWWV(ev)
 			}
 		}
 	case "PC93":
@@ -417,15 +417,15 @@ func (m *Manager) broadcastSpot(s *spot.Spot, hop int, origin string, exclude *s
 		}
 		if sess.pc9x {
 			line := formatPC61(s, origin, hop)
-			_ = sess.sendLine(line)
+			m.trySendLine(sess, line, "spot")
 		} else {
 			line := formatPC11(s, origin, hop)
-			_ = sess.sendLine(line)
+			m.trySendLine(sess, line, "spot")
 		}
 	}
 }
 
-func (m *Manager) broadcastWWV(ev WWVEvent, hop int, exclude *session) {
+func (m *Manager) broadcastWWV(ev WWVEvent) {
 	if m == nil {
 		return
 	}
@@ -479,7 +479,19 @@ func (m *Manager) forwardFrame(frame *Frame, hop int, exclude *session, pc9xOnly
 		if pc9xOnly && !sess.pc9x {
 			continue
 		}
-		_ = sess.sendLine(line)
+		m.trySendLine(sess, line, "frame")
+	}
+}
+
+func (m *Manager) trySendLine(sess *session, line string, kind string) {
+	if m == nil || sess == nil || strings.TrimSpace(line) == "" {
+		return
+	}
+	if err := sess.sendLine(line); err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, errSessionWriteQueueFull) {
+			return
+		}
+		log.Printf("Peering: failed to enqueue %s for %s: %v", kind, sessionLabel(sess), err)
 	}
 }
 
@@ -520,8 +532,12 @@ func (m *Manager) acceptLoop() {
 			continue
 		}
 		if tcp, ok := conn.(*net.TCPConn); ok {
-			_ = tcp.SetKeepAlive(true)
-			_ = tcp.SetKeepAlivePeriod(2 * time.Minute)
+			if err := tcp.SetKeepAlive(true); err != nil {
+				log.Printf("Peering: failed to enable keepalive for %s: %v", conn.RemoteAddr(), err)
+			}
+			if err := tcp.SetKeepAlivePeriod(2 * time.Minute); err != nil {
+				log.Printf("Peering: failed to set keepalive period for %s: %v", conn.RemoteAddr(), err)
+			}
 		}
 		peer := PeerEndpoint{host: conn.RemoteAddr().String(), port: 0}
 		settings := m.sessionSettings(peer)
@@ -545,7 +561,7 @@ func (m *Manager) runOutbound(peer PeerEndpoint) {
 		if m.ctx != nil && m.ctx.Err() != nil {
 			return
 		}
-		addr := fmt.Sprintf("%s:%d", peer.host, peer.port)
+		addr := net.JoinHostPort(peer.host, strconv.Itoa(peer.port))
 		log.Printf("Peering: dialing %s as %s", addr, peer.loginCall)
 		conn, err := dialer.Dial("tcp", addr)
 		if err != nil {
@@ -653,7 +669,7 @@ func (m *Manager) sessionSettings(peer PeerEndpoint) sessionSettings {
 	}
 }
 
-func (m *Manager) maintenanceLoop() {
+func (m *Manager) maintenanceLoop(ctx context.Context) {
 	interval := time.Duration(m.cfg.Topology.PersistIntervalSeconds) * time.Second
 	if interval <= 0 {
 		interval = 5 * time.Minute
@@ -662,12 +678,12 @@ func (m *Manager) maintenanceLoop() {
 	defer ticker.Stop()
 	for {
 		select {
-		case <-m.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			now := time.Now().UTC()
 			if m.topology != nil {
-				m.topology.prune(now)
+				m.topology.prune(ctx, now)
 			}
 			if m.dedupe != nil {
 				m.dedupe.prune(now)
@@ -679,17 +695,17 @@ func (m *Manager) maintenanceLoop() {
 // topologyWorker applies PC92 frames off the socket read goroutine so spot
 // traffic never blocks behind topology I/O. Oversize/overflow drops happen at
 // enqueue time; this worker best-effort applies what it receives.
-func (m *Manager) topologyWorker() {
+func (m *Manager) topologyWorker(ctx context.Context) {
 	for {
 		select {
-		case <-m.ctx.Done():
+		case <-ctx.Done():
 			return
 		case work := <-m.pc92Ch:
 			if m.topology == nil || work.frame == nil {
 				continue
 			}
 			start := time.Now().UTC()
-			m.topology.applyPC92Frame(work.frame, work.ts)
+			m.topology.applyPC92Frame(ctx, work.frame, work.ts)
 			if dur := time.Since(start); dur > 2*time.Second {
 				log.Printf("Peering: PC92 apply slow (%s) from %s", dur.Truncate(time.Millisecond), pc92Origin(work.frame))
 			}
@@ -699,16 +715,16 @@ func (m *Manager) topologyWorker() {
 
 // legacyWorker applies legacy topology frames off the socket read goroutine so
 // synchronous SQLite calls never delay keepalive handling.
-func (m *Manager) legacyWorker() {
+func (m *Manager) legacyWorker(ctx context.Context) {
 	for {
 		select {
-		case <-m.ctx.Done():
+		case <-ctx.Done():
 			return
 		case work := <-m.legacyCh:
 			if m.topology == nil || work.frame == nil {
 				continue
 			}
-			m.topology.applyLegacy(work.frame, work.ts)
+			m.topology.applyLegacy(ctx, work.frame, work.ts)
 		}
 	}
 }

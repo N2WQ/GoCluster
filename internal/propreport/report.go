@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -236,7 +237,10 @@ func ParseLog(path string) ([]string, error) {
 
 func parseInt(val string) int {
 	val = strings.ReplaceAll(val, ",", "")
-	out, _ := strconv.Atoi(val)
+	out, err := strconv.Atoi(val)
+	if err != nil {
+		return 0
+	}
 	return out
 }
 
@@ -288,12 +292,16 @@ func percentile(vals []int, p float64) int {
 
 func bandSortKey(b string) (int, float64, string) {
 	if strings.HasSuffix(b, "m") && !strings.HasSuffix(b, "cm") {
-		v, _ := strconv.ParseFloat(strings.TrimSuffix(b, "m"), 64)
-		return 0, v, b
+		v, err := strconv.ParseFloat(strings.TrimSuffix(b, "m"), 64)
+		if err == nil {
+			return 0, v, b
+		}
 	}
 	if strings.HasSuffix(b, "cm") {
-		v, _ := strconv.ParseFloat(strings.TrimSuffix(b, "cm"), 64)
-		return 1, v, b
+		v, err := strconv.ParseFloat(strings.TrimSuffix(b, "cm"), 64)
+		if err == nil {
+			return 1, v, b
+		}
 	}
 	return 2, 0, b
 }
@@ -434,6 +442,9 @@ var allowedBands = func() map[string]struct{} {
 
 func Generate(ctx context.Context, opts Options) (Result, error) {
 	var result Result
+	if ctx == nil {
+		return result, errors.New("propreport: nil context")
+	}
 	logf := func(format string, args ...any) {
 		if opts.Logger != nil {
 			opts.Logger.Printf(format, args...)
@@ -828,7 +839,8 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 	}
 
 	presentBands := make(map[string]struct{}, len(summaries))
-	for _, band := range summaries {
+	for i := range summaries {
+		band := &summaries[i]
 		presentBands[band.Band] = struct{}{}
 	}
 	filteredGroups := make(map[string][]string, len(bandGroups))
@@ -844,9 +856,11 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 	}
 
 	coverageMedians := make(map[string]coverageStat, len(summaries))
-	for _, band := range summaries {
+	for i := range summaries {
+		band := &summaries[i]
 		var spotters, pairs []int
-		for _, hour := range band.Hours {
+		for j := range band.Hours {
+			hour := &band.Hours[j]
 			if hour.UniqueSpotters > 0 {
 				spotters = append(spotters, hour.UniqueSpotters)
 			}
@@ -895,9 +909,6 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 			logf("Warning: failed to load OpenAI config (%s): %v", openAIConfigPath, err)
 		} else {
 			reqCtx := ctx
-			if reqCtx == nil {
-				reqCtx = context.Background()
-			}
 			if _, ok := reqCtx.Deadline(); !ok {
 				var cancel context.CancelFunc
 				reqCtx, cancel = context.WithTimeout(reqCtx, 60*time.Second)
@@ -946,8 +957,9 @@ func buildFinalReport(summary reportSummary) string {
 	b.WriteString("\n")
 
 	bandMap := make(map[string]bandSummary, len(summary.Bands))
-	for _, band := range summary.Bands {
-		bandMap[band.Band] = band
+	for i := range summary.Bands {
+		band := &summary.Bands[i]
+		bandMap[band.Band] = *band
 	}
 
 	b.WriteString("Evidence quality & coverage\n\n")
@@ -1007,7 +1019,8 @@ func writeModelContext(b *strings.Builder, ctx modelContext, bands []bandSummary
 	if len(bands) > 0 {
 		b.WriteString("Per-band half-life/stale (seconds): ")
 		parts := make([]string, 0, len(bands))
-		for _, band := range bands {
+		for i := range bands {
+			band := &bands[i]
 			hl := ctx.DefaultHalfLifeSec
 			if v, ok := ctx.BandHalfLifeSec[band.Band]; ok && v > 0 {
 				hl = v
@@ -1055,7 +1068,8 @@ func coverageSummary(bands []bandSummary, mixes []sourceMixHour, medians map[str
 	}
 	b.WriteString("Median unique spotters/grid pairs per band (non-zero hours only): ")
 	parts := make([]string, 0, len(bands))
-	for _, band := range bands {
+	for i := range bands {
+		band := &bands[i]
 		stat := medians[band.Band]
 		spotterStr := "n/a"
 		pairStr := "n/a"
@@ -1077,7 +1091,8 @@ func degeneracySummary(bands []bandSummary) string {
 		return "No degeneracy data available."
 	}
 	degenerate := make([]string, 0)
-	for _, band := range bands {
+	for i := range bands {
+		band := &bands[i]
 		if len(band.Hours) == 0 {
 			continue
 		}
@@ -1104,23 +1119,23 @@ func writeBandDetail(b *strings.Builder, band bandSummary) {
 	if len(band.StrongRanges) > 0 {
 		hours := rangeHours(band.StrongRanges)
 		fMin, fMax, gMin, gMax := rangeValues(band.StrongRanges)
-		b.WriteString(fmt.Sprintf("Evidence highest around %s (f_med ~%d–%d, ge10_med ~%d–%d).\n", hours, fMin, fMax, gMin, gMax))
+		fmt.Fprintf(b, "Evidence highest around %s (f_med ~%d–%d, ge10_med ~%d–%d).\n", hours, fMin, fMax, gMin, gMax)
 	} else {
-		b.WriteString(fmt.Sprintf("No strong-evidence window; strongest observed f_med ~%d–%d, ge10_med ~%d–%d.\n", band.OverallFRange.Min, band.OverallFRange.Max, band.OverallGRange.Min, band.OverallGRange.Max))
+		fmt.Fprintf(b, "No strong-evidence window; strongest observed f_med ~%d–%d, ge10_med ~%d–%d.\n", band.OverallFRange.Min, band.OverallFRange.Max, band.OverallGRange.Min, band.OverallGRange.Max)
 	}
 	if len(band.WeakRanges) > 0 {
 		hours := rangeHours(band.WeakRanges)
 		fMin, fMax, gMin, gMax := rangeValues(band.WeakRanges)
-		b.WriteString(fmt.Sprintf("Drops %s (f_med ~%d–%d, ge10_med ~%d–%d).\n", hours, fMin, fMax, gMin, gMax))
+		fmt.Fprintf(b, "Drops %s (f_med ~%d–%d, ge10_med ~%d–%d).\n", hours, fMin, fMax, gMin, gMax)
 	} else {
 		b.WriteString("No clear weak window in this log.\n")
 	}
 	if len(band.ModerateRanges) > 0 {
 		hours := rangeHours(band.ModerateRanges)
 		fMin, fMax, gMin, gMax := rangeValues(band.ModerateRanges)
-		b.WriteString(fmt.Sprintf("Moderate evidence %s (f_med ~%d–%d, ge10_med ~%d–%d).\n", hours, fMin, fMax, gMin, gMax))
+		fmt.Fprintf(b, "Moderate evidence %s (f_med ~%d–%d, ge10_med ~%d–%d).\n", hours, fMin, fMax, gMin, gMax)
 	}
-	b.WriteString(fmt.Sprintf("Conclusion: %s.\n\n", deterministicConclusion(band)))
+	fmt.Fprintf(b, "Conclusion: %s.\n\n", deterministicConclusion(band))
 }
 
 func rangeHours(ranges []rangeStat) string {
@@ -1132,7 +1147,8 @@ func rangeHours(ranges []rangeStat) string {
 }
 
 func rangeValues(ranges []rangeStat) (int, int, int, int) {
-	var fVals, gVals []int
+	fVals := make([]int, 0, 2*len(ranges))
+	gVals := make([]int, 0, 2*len(ranges))
 	for _, r := range ranges {
 		fVals = append(fVals, r.FRange.Min, r.FRange.Max)
 		gVals = append(gVals, r.GRange.Min, r.GRange.Max)
@@ -1156,15 +1172,6 @@ func deterministicConclusion(band bandSummary) string {
 	return "limited evidence overall; predictions are weak or inconsistent"
 }
 
-func mergeBands(a, b bandSummary) bandSummary {
-	return bandSummary{
-		Band:          a.Band + "+" + b.Band,
-		OverallFRange: rangeValue{Min: minInt([]int{a.OverallFRange.Min, b.OverallFRange.Min}), Max: maxInt([]int{a.OverallFRange.Max, b.OverallFRange.Max})},
-		OverallGRange: rangeValue{Min: minInt([]int{a.OverallGRange.Min, b.OverallGRange.Min}), Max: maxInt([]int{a.OverallGRange.Max, b.OverallGRange.Max})},
-		OverallLRange: rangeValue{Min: minInt([]int{a.OverallLRange.Min, b.OverallLRange.Min}), Max: maxInt([]int{a.OverallLRange.Max, b.OverallLRange.Max})},
-	}
-}
-
 func groupConclusion(bands []bandSummary) string {
 	if len(bands) == 0 {
 		return "no evidence; predictions are effectively unavailable"
@@ -1173,7 +1180,8 @@ func groupConclusion(bands []bandSummary) string {
 	weak := 0
 	moderate := 0
 	strong := 0
-	for _, b := range bands {
+	for i := range bands {
+		b := &bands[i]
 		switch {
 		case b.OverallFRange.Max == 0 && b.OverallGRange.Max == 0:
 			none++
@@ -1258,16 +1266,4 @@ func deterministicTakeaway(summary reportSummary, bandMap map[string]bandSummary
 		lines = append(lines, fmt.Sprintf("High bands (%s): %s.", strings.Join(summary.BandGroups["high"], "/"), highConclusion))
 	}
 	return strings.Join(lines, " ")
-}
-
-func bandForReport(bandMap map[string]bandSummary, band string) bandSummary {
-	if b, ok := bandMap[band]; ok {
-		return b
-	}
-	return bandSummary{
-		Band:          band,
-		OverallFRange: rangeValue{},
-		OverallGRange: rangeValue{},
-		OverallLRange: rangeValue{},
-	}
 }

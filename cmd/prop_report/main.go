@@ -45,7 +45,8 @@ func main() {
 		Logger:           log.Default(),
 	})
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("prop report generation failed: %v", err)
+		return
 	}
 
 	fmt.Printf("Wrote JSON summary: %s\n", result.JSONPath)

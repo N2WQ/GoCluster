@@ -40,7 +40,9 @@ func (s *ioLineSink) WriteLine(line string, now time.Time) {
 	if s.withTimestamp {
 		line = formatLogTimestamp(now) + " " + line
 	}
-	_, _ = io.WriteString(s.w, line+"\n")
+	if _, err := io.WriteString(s.w, line+"\n"); err != nil {
+		return
+	}
 }
 
 func (s *ioLineSink) Close() error {

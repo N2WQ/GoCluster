@@ -170,25 +170,6 @@ func IsCallCorrectionCandidate(mode string) bool {
 	return ok
 }
 
-// frequencyToleranceKHz defines how close two frequencies must be to be considered
-// the "same" signal. We only care about agreement on essentially identical frequencies,
-// so we allow a half-kilohertz wiggle room to absorb rounding differences between
-// data sources.
-var frequencyToleranceKHz = 0.5
-
-// SetFrequencyToleranceHz sets the global frequency tolerance for correction clustering.
-// Key aspects: Normalizes non-positive values to default.
-// Upstream: main startup configuration.
-// Downstream: frequencyToleranceKHz global.
-// SetFrequencyToleranceHz updates the frequency similarity window in Hz.
-func SetFrequencyToleranceHz(hz float64) {
-	if hz <= 0 {
-		frequencyToleranceKHz = 0.5
-		return
-	}
-	frequencyToleranceKHz = hz / 1000.0
-}
-
 // ConfigureMorseWeights configures Morse edit distance weights.
 // Key aspects: Applies defaults when non-positive and rebuilds cost table.
 // Upstream: main startup configuration.
@@ -1858,8 +1839,13 @@ func borrowIntSlice(n int) ([]int, bool) {
 		return nil, false
 	}
 	if n <= 64 {
-		buf := levBufPool.Get().([]int)
-		return buf[:n], true
+		if pooled, ok := levBufPool.Get().(*[]int); ok {
+			buf := *pooled
+			if cap(buf) >= 64 {
+				return buf[:n], true
+			}
+		}
+		return make([]int, n), false
 	}
 	return make([]int, n), false
 }
@@ -1874,7 +1860,8 @@ func returnIntSlice(buf []int, fromPool bool) {
 	}
 	// Keep pooled buffers bounded to the original cap.
 	if cap(buf) >= 64 {
-		levBufPool.Put(buf[:64])
+		resized := buf[:64]
+		levBufPool.Put(&resized)
 	}
 }
 
@@ -1935,7 +1922,8 @@ var (
 	levBufPool = sync.Pool{
 		New: func() interface{} {
 			// Typical callsigns are short; a small buffer covers common cases.
-			return make([]int, 64)
+			buf := make([]int, 64)
+			return &buf
 		},
 	}
 )
