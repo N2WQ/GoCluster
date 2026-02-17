@@ -276,6 +276,115 @@ func TestShowDXFiltersResults(t *testing.T) {
 	}
 }
 
+func TestShowMYDXDXCCSelectorOnly(t *testing.T) {
+	ctyDB := loadTestCTY(t)
+	ctyLookup := func() *cty.CTYDatabase { return ctyDB }
+
+	usNew := spot.NewSpot("K1AAA", "DE1AA", 14074.0, "FT8")
+	usNew.DXMetadata.ADIF = 291
+	usNew.Time = time.Now().UTC().Add(-30 * time.Second)
+
+	it := spot.NewSpot("IT9BBB", "DE2BB", 14030.0, "CW")
+	it.DXMetadata.ADIF = 248
+	it.Time = time.Now().UTC().Add(-45 * time.Second)
+
+	usOld := spot.NewSpot("W6CCC", "DE3CC", 10136.0, "CW")
+	usOld.DXMetadata.ADIF = 291
+	usOld.Time = time.Now().UTC().Add(-60 * time.Second)
+
+	archive := &fakeArchive{spots: []*spot.Spot{usNew, it, usOld}}
+	p := NewProcessor(nil, archive, nil, ctyLookup, nil, nil)
+	filterFn := func(s *spot.Spot) bool { return s != nil }
+
+	resp := p.ProcessCommandForClient("SHOW MYDX W6/LZ5VV", "N2WQ", "", filterFn, "go")
+	if !strings.Contains(resp, "K1AAA") || !strings.Contains(resp, "W6CCC") {
+		t.Fatalf("expected US ADIF matches in response, got %q", resp)
+	}
+	if strings.Contains(resp, "IT9BBB") {
+		t.Fatalf("unexpected non-matching ADIF in response: %q", resp)
+	}
+}
+
+func TestShowDXDXCCSelectorCountBothOrders(t *testing.T) {
+	ctyDB := loadTestCTY(t)
+	ctyLookup := func() *cty.CTYDatabase { return ctyDB }
+
+	usNew := spot.NewSpot("K1AAA", "DE1AA", 14074.0, "FT8")
+	usNew.DXMetadata.ADIF = 291
+	usNew.Time = time.Now().UTC().Add(-20 * time.Second)
+
+	usOld := spot.NewSpot("W6CCC", "DE3CC", 10136.0, "CW")
+	usOld.DXMetadata.ADIF = 291
+	usOld.Time = time.Now().UTC().Add(-40 * time.Second)
+
+	other := spot.NewSpot("IT9BBB", "DE2BB", 14030.0, "CW")
+	other.DXMetadata.ADIF = 248
+	other.Time = time.Now().UTC().Add(-30 * time.Second)
+
+	archive := &fakeArchive{spots: []*spot.Spot{usNew, other, usOld}}
+	p := NewProcessor(nil, archive, nil, ctyLookup, nil, nil)
+	filterFn := func(s *spot.Spot) bool { return s != nil }
+
+	respSelectorCount := p.ProcessCommandForClient("SHOW DX W6/LZ5VV/M 1", "N2WQ", "", filterFn, "go")
+	respCountSelector := p.ProcessCommandForClient("SHOW DX 1 W6/LZ5VV/M", "N2WQ", "", filterFn, "go")
+	if respSelectorCount != respCountSelector {
+		t.Fatalf("expected both argument orders to match, got %q vs %q", respSelectorCount, respCountSelector)
+	}
+	lines := strings.Split(strings.TrimSpace(strings.ReplaceAll(respSelectorCount, "\r", "")), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("expected one line for count=1, got %d (%q)", len(lines), respSelectorCount)
+	}
+	if !strings.Contains(respSelectorCount, "K1AAA") {
+		t.Fatalf("expected newest matching ADIF spot, got %q", respSelectorCount)
+	}
+}
+
+func TestShowMYDXDXCCSelectorErrors(t *testing.T) {
+	filterFn := func(s *spot.Spot) bool { return s != nil }
+	pNoCTY := NewProcessor(nil, &fakeArchive{}, nil, nil, nil, nil)
+	resp := pNoCTY.ProcessCommandForClient("SHOW MYDX JA1ABC 5", "N2WQ", "", filterFn, "go")
+	if resp != "CTY database is not available.\n" {
+		t.Fatalf("expected CTY unavailable error, got %q", resp)
+	}
+
+	nilLookup := func() *cty.CTYDatabase { return nil }
+	pUnloaded := NewProcessor(nil, &fakeArchive{}, nil, nilLookup, nil, nil)
+	resp = pUnloaded.ProcessCommandForClient("SHOW MYDX JA1ABC 5", "N2WQ", "", filterFn, "go")
+	if resp != "CTY database is not loaded.\n" {
+		t.Fatalf("expected CTY unloaded error, got %q", resp)
+	}
+
+	ctyDB := loadTestCTY(t)
+	ctyLookup := func() *cty.CTYDatabase { return ctyDB }
+	p := NewProcessor(nil, &fakeArchive{}, nil, ctyLookup, nil, nil)
+	resp = p.ProcessCommandForClient("SHOW MYDX ZZ0ZZ", "N2WQ", "", filterFn, "go")
+	if resp != "Unknown DXCC/prefix.\n" {
+		t.Fatalf("expected unknown selector error, got %q", resp)
+	}
+}
+
+func TestShowMYDXSelectorArgumentValidation(t *testing.T) {
+	ctyDB := loadTestCTY(t)
+	ctyLookup := func() *cty.CTYDatabase { return ctyDB }
+	p := NewProcessor(nil, &fakeArchive{}, nil, ctyLookup, nil, nil)
+	filterFn := func(s *spot.Spot) bool { return s != nil }
+
+	resp := p.ProcessCommandForClient("SHOW MYDX JA1ABC IT9", "N2WQ", "", filterFn, "go")
+	if !strings.Contains(resp, "Usage: SHOW MYDX") {
+		t.Fatalf("expected usage for two selectors, got %q", resp)
+	}
+
+	resp = p.ProcessCommandForClient("SHOW MYDX 10 20", "N2WQ", "", filterFn, "go")
+	if !strings.Contains(resp, "Usage: SHOW MYDX") {
+		t.Fatalf("expected usage for two counts, got %q", resp)
+	}
+
+	resp = p.ProcessCommandForClient("SHOW MYDX 251 W6/LZ5VV", "N2WQ", "", filterFn, "go")
+	if resp != "Invalid count. Use 1-250.\n" {
+		t.Fatalf("expected count bounds error, got %q", resp)
+	}
+}
+
 func TestHelpPerDialect(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
 
@@ -321,8 +430,13 @@ func TestShowDXDialectVariants(t *testing.T) {
 	}
 
 	resp = p.ProcessCommandForClient("SHOW DX", "N2WQ", "", filterFn, "cc")
-	if !strings.Contains(resp, "SHOW/DX") {
-		t.Fatalf("expected cc dialect to reject SHOW DX with guidance, got %q", resp)
+	if strings.Contains(resp, "SHOW/DX") && strings.Contains(resp, "Use SHOW/DX") {
+		t.Fatalf("expected cc dialect to accept SHOW DX alias, got %q", resp)
+	}
+
+	resp = p.ProcessCommandForClient("SH DX 5", "N2WQ", "", filterFn, "cc")
+	if strings.Contains(resp, "Unknown command") {
+		t.Fatalf("expected SH DX accepted for cc dialect, got %q", resp)
 	}
 }
 
@@ -385,6 +499,11 @@ func TestHelpTopicCCDialect(t *testing.T) {
 	resp = p.ProcessCommandForClient("HELP SET/FT8", "N2WQ", "", nil, "cc")
 	if !strings.Contains(resp, "Modes:") || !strings.Contains(resp, "FT8") {
 		t.Fatalf("expected mode shortcuts in help, got %q", resp)
+	}
+
+	resp = p.ProcessCommandForClient("HELP SHOW DX", "N2WQ", "", nil, "cc")
+	if !strings.Contains(resp, "SHOW/DX - Alias of SHOW MYDX") {
+		t.Fatalf("expected HELP SHOW DX to map to SHOW/DX in cc, got %q", resp)
 	}
 }
 

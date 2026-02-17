@@ -4,6 +4,9 @@
 # - Builds gocluster_pgo.exe with -pgo=logs/pgo-merged.pprof
 # Usage: run from repo root or let the script set the working directory.
 
+$ErrorActionPreference = "Stop"
+Set-StrictMode -Version Latest
+
 $repoRoot = "C:\src\gocluster"
 $logsDir = Join-Path $repoRoot "logs"
 $mergedProfile = Join-Path $logsDir "pgo-merged.pprof"
@@ -36,9 +39,34 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
+function Get-GitValue {
+    param(
+        [Parameter(Mandatory = $true)][scriptblock]$Probe,
+        [Parameter(Mandatory = $true)][string]$Default
+    )
+    try {
+        $output = & $Probe 2>$null
+        if ($LASTEXITCODE -eq 0 -and $output) {
+            $trimmed = $output.ToString().Trim()
+            if ($trimmed.Length -gt 0) {
+                return $trimmed
+            }
+        }
+    } catch {
+        # Default is used when git metadata is unavailable.
+    }
+    return $Default
+}
+
+$version = Get-GitValue -Probe { git describe --tags --always --dirty } -Default "dev"
+$commit = Get-GitValue -Probe { git rev-parse --short=12 HEAD } -Default "unknown"
+$buildTime = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+$ldflags = "-X main.Version=$version -X main.Commit=$commit -X main.BuildTime=$buildTime"
+
 # Build with PGO
 Write-Host "Building PGO binary -> $outputExe ..."
-& go build "-pgo=$mergedProfile" "-o=$outputExe" .
+Write-Host "Stamping build metadata: version=$version commit=$commit built=$buildTime"
+& go build "-pgo=$mergedProfile" "-ldflags=$ldflags" "-o=$outputExe" .
 if ($LASTEXITCODE -ne 0) {
     Write-Error "go build failed"
     exit $LASTEXITCODE

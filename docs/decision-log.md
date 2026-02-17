@@ -20,3 +20,5 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR-0008 | Call Correction Recent-On-Band Bonus (Min-Reports Only) | Accepted | 2026-02-14 | spot/correction | - | - | `docs/decisions/ADR-0008-call-correction-recent-band-bonus.md` |
 | ADR-0009 | Call Correction Stacked Prior + Recent Bonus for Min-Reports | Accepted | 2026-02-14 | spot/correction | ADR-0007 (prior-bonus scope) | - | `docs/decisions/ADR-0009-call-correction-stacked-prior-recent-bonus.md` |
 | ADR-0010 | S Glyph Confidence Floor Includes Recent-On-Band Admission | Accepted | 2026-02-16 | main/spot confidence | - | - | `docs/decisions/ADR-0010-s-glyph-recent-on-band-floor.md` |
+| ADR-0011 | SHOW DX / SHOW MYDX Optional DXCC Selector | Accepted | 2026-02-17 | commands/processor | - | - | `docs/decisions/ADR-0011-show-history-dxcc-selector.md` |
+| ADR-0012 | CC Dialect Accepts SHOW DX / SH DX History Aliases | Accepted | 2026-02-17 | commands/processor | - | - | `docs/decisions/ADR-0012-cc-show-dx-alias.md` |

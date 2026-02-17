@@ -11,6 +11,15 @@ A modern Go-based DX cluster that aggregates amateur radio spots, enriches them 
    go mod tidy
    go run .
    ```
+   Build an identifiable executable (recommended for deployments):
+   ```pwsh
+   $version = "v0.1.0"
+   $commit = (git rev-parse --short=12 HEAD)
+   $built = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+   go build -ldflags "-X main.Version=$version -X main.Commit=$commit -X main.BuildTime=$built" -o gocluster.exe .
+   .\gocluster.exe --version
+   ```
+   The PGO pipeline (`scripts/consolidate-and-build-pgo.ps1`, used by `launch-cluster.ps1`) now stamps version metadata automatically on every build.
 4. Connect: `telnet localhost 9300` (or whatever `telnet.port` is set to in `data/config/runtime.yaml`).
 
 ## Diagnostics (optional)
@@ -201,8 +210,8 @@ Telnet clients can issue commands via the prompt once logged in. The processor, 
 - Test spotter calls: when a logged-in callsign ends with `TEST` (optionally `-<SSID>`) and has no slash segments, the base call (SSID stripped) must resolve in CTY or the `DX` command is rejected with a message. Accepted test spots are still filtered/broadcast locally and subject to reputation gating; they bypass FCC ULS validation, but are not stored in the ring buffer, not archived, and never peered.
 
 - `HELP [command]` / `H` - list commands for the active dialect or show detailed help for a specific command (for example, `HELP DX`).
-- `SHOW DX [N]` / `SHOW/DX [N]` - alias of `SHOW MYDX`, streaming the most recent `N` filtered spots (`N` ranges from 1-250, default 50). Archive-only: if the Pebble archive is unavailable, the command returns `No spots available.` The command accepts the alias `SH DX` (or `SH/DX` in cc) as well.
-- `SHOW MYDX [N]` - stream the most recent `N` spots that match your filters (self-spots always pass; `N` ranges from 1-250, default 50). Archive-only: if the Pebble archive is unavailable, the command returns `No spots available.` Very narrow filters may return fewer than `N` results.
+- `SHOW DX [N]` / `SHOW/DX [N]` - alias of `SHOW MYDX`, streaming the most recent `N` filtered spots (`N` ranges from 1-250, default 50). Optional DXCC selector forms are supported: `SHOW DX <prefix|callsign> [N]` and `SHOW DX [N] <prefix|callsign>` (same for `SHOW/DX`). The selector is resolved through CTY portable lookup, and only spots whose `DXMetadata.ADIF` matches that DXCC are shown. Archive-only: if the Pebble archive is unavailable, the command returns `No spots available.` The command accepts the alias `SH DX` (or `SH/DX` in cc) as well.
+- `SHOW MYDX [N]` - stream the most recent `N` spots that match your filters (self-spots always pass; `N` ranges from 1-250, default 50). Optional DXCC selector forms are supported: `SHOW MYDX <prefix|callsign> [N]` and `SHOW MYDX [N] <prefix|callsign>`. The selector resolves via CTY and filters to matching DX ADIF/DXCC. If a selector is provided while CTY is unavailable, the command returns `CTY database is not available.` / `CTY database is not loaded.` Archive-only: if the Pebble archive is unavailable, the command returns `No spots available.` Very narrow filters may return fewer than `N` results.
 - `SET DIAG <ON|OFF>` - replace the comment field with a diagnostic tag: `<source><DEDXCC><DEGRID2><band><policy>`, where source is `R` (RBN), `P` (PSK), or `H` (human/peer) and policy is `F`/`S`.
 - `SET SOLAR <15|30|60|OFF>` - opt into wall-clock aligned solar summaries (OFF by default).
 - `BYE`, `QUIT`, `EXIT` - request a graceful logout; the server replies with `73!` and closes the connection.

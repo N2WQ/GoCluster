@@ -95,7 +95,7 @@ func (p *Processor) ProcessCommandForClient(cmd string, spotter string, spotterI
 			return p.handleShow(append([]string{"DX"}, parts[1:]...), filterFn, dialect)
 		case "SHOW", "SH":
 			if len(parts) >= 2 && parts[1] == "DX" {
-				return "Use SHOW/DX or SH/DX for DX history.\n"
+				return p.handleShow(append([]string{"DX"}, parts[2:]...), filterFn, dialect)
 			}
 		}
 	} else {
@@ -219,12 +219,17 @@ func buildHelpCatalog(dialect string) helpCatalog {
 
 	showMYDXLines := helpEntryLines(
 		"SHOW MYDX - Show filtered spot history.",
-		[]string{"SHOW MYDX [count]"},
+		[]string{
+			"SHOW MYDX [count]",
+			"SHOW MYDX <prefix|callsign> [count]",
+			"SHOW MYDX [count] <prefix|callsign>",
+		},
 		nil,
 		[]string{
 			"History is pulled from stored spots (not live buffer).",
 			"Count range is 1-250 (default 50).",
 			"Respects your filters; self-spots always pass.",
+			"When prefix/call is present, only matching DXCC (ADIF) spots are shown.",
 		},
 	)
 	add("SHOW MYDX", "SHOW MYDX - Show filtered spot history.", showMYDXLines)
@@ -347,7 +352,7 @@ func buildHelpCatalog(dialect string) helpCatalog {
 	if dialect == "cc" {
 		showLines := helpEntryLines(
 			"SHOW - See SHOW subcommands.",
-			[]string{"SHOW MYDX [count]", "SHOW DXCC <prefix|callsign>"},
+			[]string{"SHOW MYDX [count|selector]", "SHOW DXCC <prefix|callsign>"},
 			nil,
 			[]string{
 				"Use HELP SHOW/DX for the history alias.",
@@ -357,16 +362,25 @@ func buildHelpCatalog(dialect string) helpCatalog {
 
 		showDXLines := helpEntryLines(
 			"SHOW/DX - Alias of SHOW MYDX (stored history).",
-			[]string{"SHOW/DX [count]"},
+			[]string{
+				"SHOW/DX [count]",
+				"SHOW/DX <prefix|callsign> [count]",
+				"SHOW/DX [count] <prefix|callsign>",
+			},
 			[]string{"SH/DX"},
 			[]string{
 				"Count range is 1-250 (default 50).",
+				"When prefix/call is present, only matching DXCC (ADIF) spots are shown.",
 			},
 		)
 		add("SHOW/DX", "SHOW/DX - Alias of SHOW MYDX.", showDXLines, "SH/DX")
 		shDXLines := helpEntryLines(
 			"SH/DX - Alias of SHOW/DX.",
-			[]string{"SH/DX [count]"},
+			[]string{
+				"SH/DX [count]",
+				"SH/DX <prefix|callsign> [count]",
+				"SH/DX [count] <prefix|callsign>",
+			},
 			[]string{"SHOW/DX"},
 			nil,
 		)
@@ -514,7 +528,7 @@ func buildHelpCatalog(dialect string) helpCatalog {
 	} else {
 		showLines := helpEntryLines(
 			"SHOW - See SHOW subcommands.",
-			[]string{"SHOW DX [count]", "SHOW MYDX [count]", "SHOW DXCC <prefix|callsign>"},
+			[]string{"SHOW DX [count|selector]", "SHOW MYDX [count|selector]", "SHOW DXCC <prefix|callsign>"},
 			nil,
 			[]string{
 				"Use HELP SHOW DX for the history alias.",
@@ -572,16 +586,25 @@ func buildHelpCatalog(dialect string) helpCatalog {
 
 		showDXLines := helpEntryLines(
 			"SHOW DX - Alias of SHOW MYDX (stored history).",
-			[]string{"SHOW DX [count]"},
+			[]string{
+				"SHOW DX [count]",
+				"SHOW DX <prefix|callsign> [count]",
+				"SHOW DX [count] <prefix|callsign>",
+			},
 			[]string{"SH DX"},
 			[]string{
 				"Count range is 1-250 (default 50).",
+				"When prefix/call is present, only matching DXCC (ADIF) spots are shown.",
 			},
 		)
 		add("SHOW DX", "SHOW DX - Alias of SHOW MYDX.", showDXLines, "SH DX")
 		shDXLines := helpEntryLines(
 			"SH DX - Alias of SHOW DX.",
-			[]string{"SH DX [count]"},
+			[]string{
+				"SH DX [count]",
+				"SH DX <prefix|callsign> [count]",
+				"SH DX [count] <prefix|callsign>",
+			},
 			[]string{"SHOW DX"},
 			nil,
 		)
@@ -657,6 +680,9 @@ func normalizeHelpTopic(dialect string, topic string) string {
 	if dialect == "cc" {
 		if strings.HasPrefix(upper, "SHOW FILTER") {
 			return "SHOW/FILTER"
+		}
+		if strings.HasPrefix(upper, "SHOW DX") || upper == "SH DX" {
+			return "SHOW/DX"
 		}
 		if strings.HasPrefix(upper, "SHOW/DX") || upper == "SH/DX" {
 			return "SHOW/DX"
@@ -893,9 +919,13 @@ func normalizeDialectString(dialect string) string {
 
 func showDXUsage(dialect string) string {
 	if normalizeDialectString(dialect) == "cc" {
-		return "Usage: SHOW/DX [count 1-250]\n"
+		return showHistoryUsage("SHOW/DX")
 	}
-	return "Usage: SHOW DX [count 1-250]\n"
+	return showHistoryUsage("SHOW DX")
+}
+
+func showHistoryUsage(command string) string {
+	return fmt.Sprintf("Usage: %s [count 1-250] | %s <prefix|callsign> [count 1-250]\n", command, command)
 }
 
 const (
@@ -906,6 +936,74 @@ const (
 	testCallCTYUnavailableMsg = "Test calls require CTY-valid prefix; CTY database unavailable.\n"
 	testCallCTYInvalidMsg     = "Test calls require CTY-valid prefix; unknown test callsign.\n"
 )
+
+type showHistoryRequest struct {
+	count    int
+	selector string
+}
+
+func parseShowHistoryCount(token string) (int, bool, string) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return 0, false, ""
+	}
+	count, err := strconv.Atoi(token)
+	if err != nil {
+		return 0, false, ""
+	}
+	if count < 1 || count > showDXMaxCount {
+		return 0, true, "Invalid count. Use 1-250.\n"
+	}
+	return count, true, ""
+}
+
+func parseShowHistoryRequest(args []string, commandLabel string) (showHistoryRequest, string) {
+	req := showHistoryRequest{count: showDXDefaultCount}
+	switch len(args) {
+	case 0:
+		return req, ""
+	case 1:
+		if count, isCount, errText := parseShowHistoryCount(args[0]); isCount {
+			if errText != "" {
+				return showHistoryRequest{}, errText
+			}
+			req.count = count
+			return req, ""
+		}
+		req.selector = strings.TrimSpace(args[0])
+		if req.selector == "" {
+			return showHistoryRequest{}, showHistoryUsage(commandLabel)
+		}
+		return req, ""
+	case 2:
+		countA, isCountA, errTextA := parseShowHistoryCount(args[0])
+		countB, isCountB, errTextB := parseShowHistoryCount(args[1])
+		if errTextA != "" {
+			return showHistoryRequest{}, errTextA
+		}
+		if errTextB != "" {
+			return showHistoryRequest{}, errTextB
+		}
+		switch {
+		case isCountA && isCountB:
+			return showHistoryRequest{}, showHistoryUsage(commandLabel)
+		case isCountA && !isCountB:
+			req.count = countA
+			req.selector = strings.TrimSpace(args[1])
+		case !isCountA && isCountB:
+			req.count = countB
+			req.selector = strings.TrimSpace(args[0])
+		default:
+			return showHistoryRequest{}, showHistoryUsage(commandLabel)
+		}
+		if req.selector == "" {
+			return showHistoryRequest{}, showHistoryUsage(commandLabel)
+		}
+		return req, ""
+	default:
+		return showHistoryRequest{}, showHistoryUsage(commandLabel)
+	}
+}
 
 func filterListTypes() []string {
 	return []string{
@@ -1081,9 +1179,13 @@ func (p *Processor) handleShow(args []string, filterFn func(*spot.Spot) bool, di
 
 	switch subCmd {
 	case "DX":
-		return p.handleShowMYDX(args[1:], filterFn)
+		commandLabel := "SHOW DX"
+		if normalizeDialectString(dialect) == "cc" {
+			commandLabel = "SHOW/DX"
+		}
+		return p.handleShowMYDX(args[1:], filterFn, commandLabel)
 	case "MYDX":
-		return p.handleShowMYDX(args[1:], filterFn)
+		return p.handleShowMYDX(args[1:], filterFn, "SHOW MYDX")
 	case "DXCC":
 		return p.handleShowDXCC(args[1:])
 	default:
@@ -1091,21 +1193,33 @@ func (p *Processor) handleShow(args []string, filterFn func(*spot.Spot) bool, di
 	}
 }
 
-// Purpose: Render the most recent N spots that match the provided filter.
-// Key aspects: Archive-only history; outputs oldest-first.
+// Purpose: Render recent stored spots filtered by client rules and optional DXCC selector.
+// Key aspects: Archive-only history; outputs oldest-first; optional selector narrows by DX ADIF.
 // Upstream: handleShow (SHOW MYDX).
 // Downstream: archive.RecentFiltered.
-func (p *Processor) handleShowMYDX(args []string, filterFn func(*spot.Spot) bool) string {
+func (p *Processor) handleShowMYDX(args []string, filterFn func(*spot.Spot) bool, commandLabel string) string {
 	if filterFn == nil {
 		return noLoggedUserMsg
 	}
-	count := showDXDefaultCount // Default count
 
-	if len(args) > 0 {
-		var err error
-		_, err = fmt.Sscanf(args[0], "%d", &count)
-		if err != nil || count < 1 || count > showDXMaxCount {
-			return "Invalid count. Use 1-250.\n"
+	request, errText := parseShowHistoryRequest(args, commandLabel)
+	if errText != "" {
+		return errText
+	}
+
+	matchFn := filterFn
+	if request.selector != "" {
+		_, _, info, lookupErr := p.lookupPortableDXCC(request.selector)
+		if lookupErr != "" {
+			return lookupErr
+		}
+		dxADIF := info.ADIF
+		baseMatch := matchFn
+		matchFn = func(s *spot.Spot) bool {
+			if s == nil || s.DXMetadata.ADIF != dxADIF {
+				return false
+			}
+			return baseMatch(s)
 		}
 	}
 
@@ -1113,7 +1227,7 @@ func (p *Processor) handleShowMYDX(args []string, filterFn func(*spot.Spot) bool
 	if p.archive == nil {
 		return "No spots available.\n"
 	}
-	if rows, err := p.archive.RecentFiltered(count, filterFn); err != nil {
+	if rows, err := p.archive.RecentFiltered(request.count, matchFn); err != nil {
 		log.Printf("SHOW MYDX: archive query failed: %v", err)
 	} else {
 		spots = rows
@@ -1151,26 +1265,14 @@ func (p *Processor) handleShowDXCC(args []string) string {
 	if len(args) == 0 {
 		return "Usage: SHOW DXCC <prefix|callsign>\n"
 	}
-	if p.ctyLookup == nil {
-		return "CTY database is not available.\n"
-	}
-	db := p.ctyLookup()
-	if db == nil {
-		return "CTY database is not loaded.\n"
-	}
-
 	queryRaw := strings.TrimSpace(args[0])
 	if queryRaw == "" {
 		return "Usage: SHOW DXCC <prefix|callsign>\n"
 	}
-	lookup := spot.NormalizeCallsign(queryRaw)
-	if lookup == "" {
-		return "Unknown DXCC/prefix.\n"
-	}
 
-	info, ok := db.LookupCallsignPortable(lookup)
-	if !ok || info == nil {
-		return "Unknown DXCC/prefix.\n"
+	db, lookup, info, errText := p.lookupPortableDXCC(queryRaw)
+	if errText != "" {
+		return errText
 	}
 
 	prefix := strings.ToUpper(strings.TrimSpace(info.Prefix))
@@ -1187,6 +1289,25 @@ func (p *Processor) handleShowDXCC(args []string) string {
 	}
 	b.WriteByte('\n')
 	return b.String()
+}
+
+func (p *Processor) lookupPortableDXCC(queryRaw string) (*cty.CTYDatabase, string, *cty.PrefixInfo, string) {
+	if p.ctyLookup == nil {
+		return nil, "", nil, "CTY database is not available.\n"
+	}
+	db := p.ctyLookup()
+	if db == nil {
+		return nil, "", nil, "CTY database is not loaded.\n"
+	}
+	lookup := spot.NormalizeCallsign(strings.TrimSpace(queryRaw))
+	if lookup == "" {
+		return nil, "", nil, "Unknown DXCC/prefix.\n"
+	}
+	info, ok := db.LookupCallsignPortable(lookup)
+	if !ok || info == nil {
+		return nil, "", nil, "Unknown DXCC/prefix.\n"
+	}
+	return db, lookup, info, ""
 }
 
 // prefixIndex caches ADIF->prefix list mappings for the current CTY DB pointer.

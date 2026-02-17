@@ -50,6 +50,8 @@ try {
 
     $env:DXC_CONFIG_PATH = Join-Path $repoRoot 'data\config'
     Write-Host "Launching cluster: $exeToRun (DXC_CONFIG_PATH=$env:DXC_CONFIG_PATH)" -ForegroundColor Green
+    Write-Host "Binary version:" -ForegroundColor Green
+    & $exeToRun --version
     & $exeToRun
 }
 finally {
