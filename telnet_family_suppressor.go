@@ -15,6 +15,14 @@ type telnetFamilyBucket struct {
 	freqBin int
 }
 
+type telnetFamilyEntry struct {
+	bucket telnetFamilyBucket
+	key    string
+	seenAt time.Time
+	prev   *telnetFamilyEntry
+	next   *telnetFamilyEntry
+}
+
 // telnetFamilySuppressor tracks recently emitted calls in small mode/frequency
 // buckets so less-specific family variants can be suppressed for telnet output.
 // This is output-only: archive/peer behavior is unchanged.
@@ -25,17 +33,26 @@ type telnetFamilySuppressor struct {
 	fallbackHz float64
 
 	mu           sync.Mutex
-	buckets      map[telnetFamilyBucket]map[string]time.Time
+	buckets      map[telnetFamilyBucket]map[string]*telnetFamilyEntry
+	head         *telnetFamilyEntry
+	tail         *telnetFamilyEntry
 	totalEntries int
+	lastNow      time.Time
 }
 
 func newTelnetFamilySuppressor(window time.Duration, maxEntries int, familyPolicy spot.CorrectionFamilyPolicy, fallbackHz float64) *telnetFamilySuppressor {
+	if maxEntries <= 0 {
+		maxEntries = 1
+	}
+	if window <= 0 {
+		window = time.Second
+	}
 	return &telnetFamilySuppressor{
 		window:     window,
 		maxEntries: maxEntries,
 		family:     familyPolicy,
 		fallbackHz: fallbackHz,
-		buckets:    make(map[telnetFamilyBucket]map[string]time.Time),
+		buckets:    make(map[telnetFamilyBucket]map[string]*telnetFamilyEntry),
 	}
 }
 
@@ -56,105 +73,155 @@ func (s *telnetFamilySuppressor) ShouldSuppress(sp *spot.Spot, cfg config.CallCo
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.pruneBucketLocked(bucket, now)
+	now = s.monotonicNowLocked(now)
+	s.pruneExpiredLocked(now)
 	calls := s.buckets[bucket]
 	if calls == nil {
-		calls = make(map[string]time.Time, 4)
+		calls = make(map[string]*telnetFamilyEntry, 4)
 		s.buckets[bucket] = calls
 	}
-	if _, exists := calls[key]; exists {
-		calls[key] = now
+	if entry, exists := calls[key]; exists {
+		s.touchEntryLocked(entry, now)
 		return false
 	}
 
 	suppress := false
-	toDelete := make([]string, 0, 2)
-	for existing := range calls {
-		relation, related := spot.DetectCorrectionFamilyWithPolicy(existing, key, s.family)
+	for existingKey, existingEntry := range calls {
+		relation, related := spot.DetectCorrectionFamilyWithPolicy(existingKey, key, s.family)
 		if !related {
 			continue
 		}
-		if relation.MoreSpecific == existing && relation.LessSpecific == key {
+		if relation.MoreSpecific == existingKey && relation.LessSpecific == key {
 			suppress = true
 			break
 		}
-		if relation.MoreSpecific == key && relation.LessSpecific == existing {
-			toDelete = append(toDelete, existing)
+		if relation.MoreSpecific == key && relation.LessSpecific == existingKey {
+			s.removeEntryLocked(existingEntry)
 		}
 	}
 	if suppress {
 		return true
 	}
 
-	for _, existing := range toDelete {
-		if _, exists := calls[existing]; exists {
-			delete(calls, existing)
-			if s.totalEntries > 0 {
-				s.totalEntries--
-			}
-		}
-	}
-	calls[key] = now
-	s.totalEntries++
+	s.addEntryLocked(bucket, key, now)
 	for s.totalEntries > s.maxEntries {
-		if !s.evictOldestLocked() {
+		if !s.evictHeadLocked() {
 			break
 		}
 	}
 	return false
 }
 
-func (s *telnetFamilySuppressor) pruneBucketLocked(bucket telnetFamilyBucket, now time.Time) {
-	calls := s.buckets[bucket]
-	if len(calls) == 0 {
-		delete(s.buckets, bucket)
+func (s *telnetFamilySuppressor) monotonicNowLocked(now time.Time) time.Time {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	if !s.lastNow.IsZero() && now.Before(s.lastNow) {
+		return s.lastNow
+	}
+	s.lastNow = now
+	return now
+}
+
+func (s *telnetFamilySuppressor) touchEntryLocked(entry *telnetFamilyEntry, now time.Time) {
+	if entry == nil {
 		return
 	}
-	cutoff := now.Add(-s.window)
-	for key, seenAt := range calls {
-		if seenAt.Before(cutoff) {
-			delete(calls, key)
-			if s.totalEntries > 0 {
-				s.totalEntries--
-			}
-		}
+	entry.seenAt = now
+	s.moveToTailLocked(entry)
+}
+
+func (s *telnetFamilySuppressor) addEntryLocked(bucket telnetFamilyBucket, key string, now time.Time) {
+	calls := s.buckets[bucket]
+	if calls == nil {
+		calls = make(map[string]*telnetFamilyEntry, 4)
+		s.buckets[bucket] = calls
 	}
-	if len(calls) == 0 {
-		delete(s.buckets, bucket)
+	entry := &telnetFamilyEntry{
+		bucket: bucket,
+		key:    key,
+		seenAt: now,
+	}
+	calls[key] = entry
+	s.appendTailLocked(entry)
+	s.totalEntries++
+}
+
+func (s *telnetFamilySuppressor) pruneExpiredLocked(now time.Time) {
+	cutoff := now.Add(-s.window)
+	for s.head != nil && s.head.seenAt.Before(cutoff) {
+		s.removeEntryLocked(s.head)
 	}
 }
 
-func (s *telnetFamilySuppressor) evictOldestLocked() bool {
-	var (
-		oldestBucket telnetFamilyBucket
-		oldestKey    string
-		oldestTime   time.Time
-		found        bool
-	)
-	for bucket, calls := range s.buckets {
-		for key, seenAt := range calls {
-			if !found || seenAt.Before(oldestTime) {
-				oldestBucket = bucket
-				oldestKey = key
-				oldestTime = seenAt
-				found = true
+func (s *telnetFamilySuppressor) evictHeadLocked() bool {
+	if s.head == nil {
+		return false
+	}
+	s.removeEntryLocked(s.head)
+	return true
+}
+
+func (s *telnetFamilySuppressor) removeEntryLocked(entry *telnetFamilyEntry) {
+	if entry == nil {
+		return
+	}
+	if calls := s.buckets[entry.bucket]; calls != nil {
+		if current, exists := calls[entry.key]; exists && current == entry {
+			delete(calls, entry.key)
+			if s.totalEntries > 0 {
+				s.totalEntries--
+			}
+			if len(calls) == 0 {
+				delete(s.buckets, entry.bucket)
 			}
 		}
 	}
-	if !found {
-		return false
+	s.detachLocked(entry)
+}
+
+func (s *telnetFamilySuppressor) appendTailLocked(entry *telnetFamilyEntry) {
+	if entry == nil {
+		return
 	}
-	calls := s.buckets[oldestBucket]
-	if _, exists := calls[oldestKey]; exists {
-		delete(calls, oldestKey)
-		if s.totalEntries > 0 {
-			s.totalEntries--
-		}
+	if s.tail == nil {
+		s.head = entry
+		s.tail = entry
+		return
 	}
-	if len(calls) == 0 {
-		delete(s.buckets, oldestBucket)
+	entry.prev = s.tail
+	entry.next = nil
+	s.tail.next = entry
+	s.tail = entry
+}
+
+func (s *telnetFamilySuppressor) moveToTailLocked(entry *telnetFamilyEntry) {
+	if entry == nil || s.tail == entry {
+		return
 	}
-	return true
+	s.detachLocked(entry)
+	s.appendTailLocked(entry)
+}
+
+func (s *telnetFamilySuppressor) detachLocked(entry *telnetFamilyEntry) {
+	if entry == nil {
+		return
+	}
+	if entry.prev == nil && entry.next == nil && s.head != entry && s.tail != entry {
+		return
+	}
+	if entry.prev != nil {
+		entry.prev.next = entry.next
+	} else {
+		s.head = entry.next
+	}
+	if entry.next != nil {
+		entry.next.prev = entry.prev
+	} else {
+		s.tail = entry.prev
+	}
+	entry.prev = nil
+	entry.next = nil
 }
 
 func telnetFamilyBucketForSpot(sp *spot.Spot, cfg config.CallCorrectionConfig, fallbackHz float64) (telnetFamilyBucket, string, bool) {

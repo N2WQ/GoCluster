@@ -98,3 +98,71 @@ func TestTelnetFamilySuppressorDoesNotCrossFrequencyBuckets(t *testing.T) {
 		t.Fatalf("did not expect suppression across different frequency buckets")
 	}
 }
+
+func TestTelnetFamilySuppressorEvictsOldestAtCapacity(t *testing.T) {
+	suppressor := newTestTelnetFamilySuppressor()
+	suppressor.maxEntries = 2
+	cfg := config.CallCorrectionConfig{
+		FrequencyToleranceHz:      500,
+		VoiceFrequencyToleranceHz: 2000,
+	}
+	now := time.Now().UTC()
+
+	longer := spot.NewSpot("W1ABC", "W1AAA", 7010.0, "CW")
+	if suppressor.ShouldSuppress(longer, cfg, now) {
+		t.Fatalf("did not expect initial longer form to be suppressed")
+	}
+	unrelated := spot.NewSpot("K1XYZ", "W2BBB", 7011.0, "CW")
+	if suppressor.ShouldSuppress(unrelated, cfg, now.Add(time.Second)) {
+		t.Fatalf("did not expect unrelated call to be suppressed")
+	}
+	if suppressor.totalEntries != 2 {
+		t.Fatalf("expected cap to hold 2 entries, got %d", suppressor.totalEntries)
+	}
+
+	newest := spot.NewSpot("N2AAA", "W3CCC", 7012.0, "CW")
+	if suppressor.ShouldSuppress(newest, cfg, now.Add(2*time.Second)) {
+		t.Fatalf("did not expect newest call to be suppressed")
+	}
+	if suppressor.totalEntries != 2 {
+		t.Fatalf("expected cap-enforced entry count 2, got %d", suppressor.totalEntries)
+	}
+
+	// The original longer form should have been evicted as the oldest entry.
+	shorter := spot.NewSpot("W1AB", "W4DDD", 7010.0, "CW")
+	if suppressor.ShouldSuppress(shorter, cfg, now.Add(3*time.Second)) {
+		t.Fatalf("expected no suppression after oldest eviction removed the longer form")
+	}
+}
+
+func TestTelnetFamilySuppressorPrunesExpiredEntriesAtCapacity(t *testing.T) {
+	suppressor := newTestTelnetFamilySuppressor()
+	suppressor.window = 2 * time.Second
+	suppressor.maxEntries = 2
+	cfg := config.CallCorrectionConfig{
+		FrequencyToleranceHz:      500,
+		VoiceFrequencyToleranceHz: 2000,
+	}
+	now := time.Now().UTC()
+
+	longer := spot.NewSpot("W1ABC", "W1AAA", 7010.0, "CW")
+	if suppressor.ShouldSuppress(longer, cfg, now) {
+		t.Fatalf("did not expect initial longer form to be suppressed")
+	}
+	unrelated := spot.NewSpot("K1XYZ", "W2BBB", 7011.0, "CW")
+	if suppressor.ShouldSuppress(unrelated, cfg, now.Add(time.Second)) {
+		t.Fatalf("did not expect unrelated call to be suppressed")
+	}
+	if suppressor.totalEntries != 2 {
+		t.Fatalf("expected cap to hold 2 entries, got %d", suppressor.totalEntries)
+	}
+
+	// At t+3s the original longer form (t0) is expired for a 2s window.
+	shorter := spot.NewSpot("W1AB", "W4DDD", 7010.0, "CW")
+	if suppressor.ShouldSuppress(shorter, cfg, now.Add(3*time.Second)) {
+		t.Fatalf("expected no suppression after expiry pruned the older longer form")
+	}
+	if suppressor.totalEntries != 2 {
+		t.Fatalf("expected expiry prune + insert to keep entry count bounded at 2, got %d", suppressor.totalEntries)
+	}
+}
