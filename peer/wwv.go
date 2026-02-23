@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"dxcluster/strutil"
 	"fmt"
 	"strings"
 )
@@ -28,7 +29,7 @@ func parseWWV(frame *Frame) (WWVEvent, bool) {
 		Hop:   frame.Hop,
 	}
 
-	switch strings.ToUpper(strings.TrimSpace(frame.Type)) {
+	switch strutil.NormalizeUpper(frame.Type) {
 	case "PC23":
 		if len(fields) >= 6 {
 			ev.Forecast = strings.TrimSpace(fields[5])

@@ -1,6 +1,6 @@
 package pathreliability
 
-import "strings"
+import "dxcluster/strutil"
 
 const (
 	fieldLonSize    = 20.0
@@ -17,7 +17,7 @@ const (
 
 // GridCenterLatLon returns the center lat/lon for a 4-6 char Maidenhead grid.
 func GridCenterLatLon(grid string) (lat float64, lon float64, ok bool) {
-	g := strings.ToUpper(strings.TrimSpace(grid))
+	g := strutil.NormalizeUpper(grid)
 	if len(g) < 4 {
 		return 0, 0, false
 	}

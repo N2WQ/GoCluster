@@ -2,6 +2,7 @@ package reputation
 
 import (
 	"context"
+	"dxcluster/strutil"
 	"fmt"
 	"net"
 	"net/netip"
@@ -179,7 +180,7 @@ func parseCymruTXT(txts []string) (string, string) {
 			continue
 		}
 		asn := normalizeASN(parts[0])
-		cc := strings.ToUpper(strings.TrimSpace(parts[2]))
+		cc := strutil.NormalizeUpper(parts[2])
 		if asn == "" && cc == "" {
 			continue
 		}

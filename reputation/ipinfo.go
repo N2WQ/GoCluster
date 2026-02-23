@@ -2,6 +2,7 @@ package reputation
 
 import (
 	"bufio"
+	"dxcluster/strutil"
 	"encoding/csv"
 	"errors"
 	"fmt"
@@ -96,7 +97,7 @@ func LoadIPInfoSnapshot(path string) (*ipinfoIndex, error) {
 			continue
 		}
 		asn := normalizeASN(fieldAt(row, asnIdx))
-		countryCode := strings.ToUpper(strings.TrimSpace(fieldAt(row, countryCodeIdx)))
+		countryCode := strutil.NormalizeUpper(fieldAt(row, countryCodeIdx))
 		asn = internString(stringPool, asn)
 		countryCode = internString(stringPool, countryCode)
 

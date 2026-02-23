@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"dxcluster/bandmap"
+	"dxcluster/strutil"
 
 	_ "modernc.org/sqlite" // SQLite driver (pure Go)
 )
@@ -441,9 +442,9 @@ func encodeVotes(votes []bandmap.SpotEntry) (string, error) {
 	out := make([]voteRecord, 0, len(votes))
 	for _, v := range votes {
 		out = append(out, voteRecord{
-			Call:    strings.ToUpper(strings.TrimSpace(v.Call)),
-			Spotter: strings.ToUpper(strings.TrimSpace(v.Spotter)),
-			Mode:    strings.ToUpper(strings.TrimSpace(v.Mode)),
+			Call:    strutil.NormalizeUpper(v.Call),
+			Spotter: strutil.NormalizeUpper(v.Spotter),
+			Mode:    strutil.NormalizeUpper(v.Mode),
 			FreqHz:  v.FreqHz,
 			Time:    v.Time,
 			SNR:     v.SNR,

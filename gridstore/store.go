@@ -14,6 +14,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"dxcluster/internal/byteutil"
+	"dxcluster/internal/numutil"
+	"dxcluster/strutil"
+
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
 )
@@ -656,8 +660,8 @@ func normalizeRecordValue(rec Record, now time.Time) recordValue {
 	gridDerived := rec.GridDerived && gridValid
 	ctyContinent, ctyCountry, ctyValid := normalizeCTY(rec)
 	ctyADIF := clampUint32(rec.CTYADIF)
-	ctyCQZone := clampUint16(rec.CTYCQZone)
-	ctyITUZone := clampUint16(rec.CTYITUZone)
+	ctyCQZone := numutil.ClampUint16(rec.CTYCQZone)
+	ctyITUZone := numutil.ClampUint16(rec.CTYITUZone)
 	if !ctyValid {
 		ctyADIF = 0
 		ctyCQZone = 0
@@ -938,14 +942,14 @@ func computeCount(db *pebble.DB) (int64, error) {
 }
 
 func normalizeCall(call string) string {
-	return strings.ToUpper(strings.TrimSpace(call))
+	return strutil.NormalizeUpper(call)
 }
 
 func normalizeGrid(grid sql.NullString) (string, bool) {
 	if !grid.Valid {
 		return "", false
 	}
-	value := strings.ToUpper(strings.TrimSpace(grid.String))
+	value := strutil.NormalizeUpper(grid.String)
 	if value == "" {
 		return "", false
 	}
@@ -953,7 +957,7 @@ func normalizeGrid(grid sql.NullString) (string, bool) {
 }
 
 func normalizeCTY(rec Record) (string, string, bool) {
-	continent := strings.ToUpper(strings.TrimSpace(rec.CTYContinent))
+	continent := strutil.NormalizeUpper(rec.CTYContinent)
 	country := strings.TrimSpace(rec.CTYCountry)
 	ctyValid := rec.CTYValid
 	if !ctyValid && (rec.CTYADIF > 0 || rec.CTYCQZone > 0 || rec.CTYITUZone > 0 || continent != "" || country != "") {
@@ -963,17 +967,6 @@ func normalizeCTY(rec Record) (string, string, bool) {
 		return "", "", false
 	}
 	return continent, country, true
-}
-
-func clampUint16(v int) uint16 {
-	if v <= 0 {
-		return 0
-	}
-	max := int(^uint16(0))
-	if v > max {
-		return ^uint16(0)
-	}
-	return uint16(v)
 }
 
 func clampUint32(v int) uint32 {
@@ -1032,21 +1025,6 @@ func updatedUpperBound(cutoffUnix int64) []byte {
 
 func iterOptionsForCallPrefix() *pebble.IterOptions {
 	lower := []byte(callPrefix)
-	upper := prefixUpperBound(lower)
+	upper := byteutil.PrefixUpperBound(lower)
 	return &pebble.IterOptions{LowerBound: lower, UpperBound: upper}
-}
-
-func prefixUpperBound(prefix []byte) []byte {
-	if len(prefix) == 0 {
-		return nil
-	}
-	upper := make([]byte, len(prefix))
-	copy(upper, prefix)
-	for i := len(upper) - 1; i >= 0; i-- {
-		if upper[i] != 0xFF {
-			upper[i]++
-			return upper[:i+1]
-		}
-	}
-	return nil
 }

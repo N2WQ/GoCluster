@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"dxcluster/config"
+	"dxcluster/internal/linebuffer"
 	"dxcluster/ui"
 
 	"golang.org/x/term"
@@ -476,27 +477,9 @@ func (w *ansiWriter) Write(p []byte) (int, error) {
 		return len(p), nil
 	}
 	w.mu.Lock()
-	w.buf = append(w.buf, p...)
-	data := w.buf
-	var lines []string
-	for {
-		idx := bytes.IndexByte(data, '\n')
-		if idx == -1 {
-			break
-		}
-		line := string(bytes.TrimRight(data[:idx], "\r"))
-		lines = append(lines, line)
-		data = data[idx+1:]
-	}
 	const maxWriterBufferSize = 16 * 1024
-	if len(data) > maxWriterBufferSize {
-		trimmed := string(bytes.TrimRight(data, "\r"))
-		if trimmed != "" {
-			lines = append(lines, trimmed)
-		}
-		data = data[:0]
-	}
-	w.buf = data
+	remaining, lines := linebuffer.AppendAndExtractLines(w.buf, p, maxWriterBufferSize)
+	w.buf = remaining
 	w.mu.Unlock()
 
 	for _, line := range lines {

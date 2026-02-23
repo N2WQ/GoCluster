@@ -8,12 +8,12 @@ package main
 import (
 	"context"
 	"database/sql"
+	"dxcluster/strutil"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"sort"
-	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -128,8 +128,8 @@ func loadAppliedCorrections(db *sql.DB) ([]correctionRecord, error) {
 			return nil, err
 		}
 		c.timestamp = time.Unix(ts, 0)
-		c.subject = strings.ToUpper(strings.TrimSpace(c.subject))
-		c.winner = strings.ToUpper(strings.TrimSpace(c.winner))
+		c.subject = strutil.NormalizeUpper(c.subject)
+		c.winner = strutil.NormalizeUpper(c.winner)
 		corrections = append(corrections, c)
 	}
 
@@ -223,8 +223,8 @@ func checkSubsequentAppearances(db *sql.DB, corr correctionRecord, lookAheadHour
 			continue
 		}
 
-		subject = strings.ToUpper(strings.TrimSpace(subject))
-		winner = strings.ToUpper(strings.TrimSpace(winner))
+		subject = strutil.NormalizeUpper(subject)
+		winner = strutil.NormalizeUpper(winner)
 
 		// If the corrected winner appears as a subject in a later decision,
 		// that's strong evidence it's the correct callsign

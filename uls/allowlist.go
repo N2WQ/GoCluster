@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+
+	"dxcluster/strutil"
 )
 
 const defaultAllowlistJurisdiction = "US"
@@ -167,14 +169,14 @@ func splitAllowlistLine(line string) (string, string) {
 }
 
 func normalizeJurisdictionKey(key string) string {
-	key = strings.ToUpper(strings.TrimSpace(key))
+	key = strutil.NormalizeUpper(key)
 	if key == "" {
 		return defaultAllowlistJurisdiction
 	}
-	if digitsOnly(key) {
+	if strutil.IsAllDigitsASCII(key) {
 		return "ADIF" + key
 	}
-	if strings.HasPrefix(key, "ADIF") && digitsOnly(strings.TrimPrefix(key, "ADIF")) {
+	if strings.HasPrefix(key, "ADIF") && strutil.IsAllDigitsASCII(strings.TrimPrefix(key, "ADIF")) {
 		return key
 	}
 	return key
@@ -262,18 +264,6 @@ func isJurisdictionToken(token string) bool {
 			continue
 		}
 		return false
-	}
-	return true
-}
-
-func digitsOnly(s string) bool {
-	if s == "" {
-		return false
-	}
-	for i := 0; i < len(s); i++ {
-		if s[i] < '0' || s[i] > '9' {
-			return false
-		}
 	}
 	return true
 }

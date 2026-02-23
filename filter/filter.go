@@ -27,6 +27,7 @@ import (
 
 	"dxcluster/pathreliability"
 	"dxcluster/spot"
+	"dxcluster/strutil"
 )
 
 // SupportedModes lists the commonly used modes that users can enable/disable
@@ -55,7 +56,7 @@ func boolPtr(value bool) *bool {
 // canonicalModeToken collapses PSK variants into the PSK family while keeping
 // other modes uppercase/trimmed.
 func canonicalModeToken(mode string) string {
-	mode = strings.ToUpper(strings.TrimSpace(mode))
+	mode = strutil.NormalizeUpper(mode)
 	if canonical, _, ok := spot.CanonicalPSKMode(mode); ok {
 		return canonical
 	}
@@ -89,7 +90,7 @@ var defaultSourceSelection []string
 var supportedModeSet = func() map[string]bool {
 	m := make(map[string]bool)
 	for _, s := range SupportedModes {
-		m[strings.ToUpper(strings.TrimSpace(s))] = true
+		m[strutil.NormalizeUpper(s)] = true
 	}
 	return m
 }()
@@ -97,7 +98,7 @@ var supportedModeSet = func() map[string]bool {
 var supportedSourceSet = func() map[string]bool {
 	m := make(map[string]bool, len(SupportedSources))
 	for _, source := range SupportedSources {
-		s := strings.ToUpper(strings.TrimSpace(source))
+		s := strutil.NormalizeUpper(source)
 		if s == "" {
 			continue
 		}
@@ -155,7 +156,7 @@ var SupportedPathClasses = []string{
 var supportedPathClassSet = func() map[string]bool {
 	m := make(map[string]bool, len(SupportedPathClasses))
 	for _, class := range SupportedPathClasses {
-		key := strings.ToUpper(strings.TrimSpace(class))
+		key := strutil.NormalizeUpper(class)
 		if key == "" {
 			continue
 		}
@@ -178,7 +179,7 @@ func IsSupportedMode(mode string) bool {
 // Upstream: Telnet filter parsing and validation.
 // Downstream: supportedSourceSet.
 func IsSupportedSource(source string) bool {
-	source = strings.ToUpper(strings.TrimSpace(source))
+	source = strutil.NormalizeUpper(source)
 	return supportedSourceSet[source]
 }
 
@@ -187,7 +188,7 @@ func IsSupportedSource(source string) bool {
 // Upstream: Filter.SetSource, SetDefaultSourceSelection.
 // Downstream: supportedSourceSet.
 func normalizeSource(source string) string {
-	source = strings.ToUpper(strings.TrimSpace(source))
+	source = strutil.NormalizeUpper(source)
 	if supportedSourceSet[source] {
 		return source
 	}
@@ -199,7 +200,7 @@ func normalizeSource(source string) string {
 // Upstream: Telnet filter parsing and validation.
 // Downstream: supportedContinentSet.
 func IsSupportedContinent(cont string) bool {
-	cont = strings.ToUpper(strings.TrimSpace(cont))
+	cont = strutil.NormalizeUpper(cont)
 	return supportedContinentSet[cont]
 }
 
@@ -263,7 +264,7 @@ func SetDefaultSourceSelection(sources []string) {
 	normalized := make([]string, 0, len(sources))
 	seen := make(map[string]bool, len(SupportedSources))
 	for _, source := range sources {
-		candidate := strings.ToUpper(strings.TrimSpace(source))
+		candidate := strutil.NormalizeUpper(source)
 		if candidate == "" {
 			continue
 		}
@@ -556,6 +557,30 @@ func NewFilter() *Filter {
 	return f
 }
 
+func ensureBoolMap[K comparable](m *map[K]bool) {
+	if *m == nil {
+		*m = make(map[K]bool)
+	}
+}
+
+// applyAllowBlockToggle centralizes deny-first allow/block mutation for map-backed filters.
+// Invariant: allowAll reflects whether explicit allow entries exist after mutation.
+func applyAllowBlockToggle[K comparable](allow *map[K]bool, block *map[K]bool, token K, enabled bool, allowAll *bool, blockAll *bool) {
+	ensureBoolMap(allow)
+	ensureBoolMap(block)
+	if enabled {
+		(*allow)[token] = true
+		delete(*block, token)
+		*blockAll = false
+		*allowAll = len(*allow) == 0
+		return
+	}
+	delete(*allow, token)
+	(*block)[token] = true
+	*blockAll = false
+	*allowAll = len(*allow) == 0
+}
+
 // SetBand allows or blocks a specific band.
 // Key aspects: Normalizes band, updates allow/block lists with deny precedence.
 // Upstream: Telnet PASS/REJECT BAND commands.
@@ -565,23 +590,7 @@ func (f *Filter) SetBand(band string, enabled bool) {
 	if normalized == "" || !spot.IsValidBand(normalized) {
 		return
 	}
-	if f.Bands == nil {
-		f.Bands = make(map[string]bool)
-	}
-	if f.BlockBands == nil {
-		f.BlockBands = make(map[string]bool)
-	}
-	if enabled {
-		f.Bands[normalized] = true
-		delete(f.BlockBands, normalized)
-		f.BlockAllBands = false
-		f.AllBands = len(f.Bands) == 0
-		return
-	}
-	delete(f.Bands, normalized)
-	f.BlockBands[normalized] = true
-	f.BlockAllBands = false
-	f.AllBands = len(f.Bands) == 0
+	applyAllowBlockToggle(&f.Bands, &f.BlockBands, normalized, enabled, &f.AllBands, &f.BlockAllBands)
 }
 
 // SetMode allows or blocks a specific mode.
@@ -590,23 +599,7 @@ func (f *Filter) SetBand(band string, enabled bool) {
 // Downstream: None.
 func (f *Filter) SetMode(mode string, enabled bool) {
 	mode = canonicalModeToken(mode)
-	if f.Modes == nil {
-		f.Modes = make(map[string]bool)
-	}
-	if f.BlockModes == nil {
-		f.BlockModes = make(map[string]bool)
-	}
-	if enabled {
-		f.Modes[mode] = true
-		delete(f.BlockModes, mode)
-		f.BlockAllModes = false
-		f.AllModes = len(f.Modes) == 0
-		return
-	}
-	delete(f.Modes, mode)
-	f.BlockModes[mode] = true
-	f.BlockAllModes = false
-	f.AllModes = len(f.Modes) == 0
+	applyAllowBlockToggle(&f.Modes, &f.BlockModes, mode, enabled, &f.AllModes, &f.BlockAllModes)
 }
 
 // SetSource allows or blocks a specific source category.
@@ -621,23 +614,7 @@ func (f *Filter) SetSource(source string, enabled bool) {
 	if source == "" {
 		return
 	}
-	if f.Sources == nil {
-		f.Sources = make(map[string]bool)
-	}
-	if f.BlockSources == nil {
-		f.BlockSources = make(map[string]bool)
-	}
-	if enabled {
-		f.Sources[source] = true
-		delete(f.BlockSources, source)
-		f.BlockAllSources = false
-		f.AllSources = len(f.Sources) == 0
-		return
-	}
-	delete(f.Sources, source)
-	f.BlockSources[source] = true
-	f.BlockAllSources = false
-	f.AllSources = len(f.Sources) == 0
+	applyAllowBlockToggle(&f.Sources, &f.BlockSources, source, enabled, &f.AllSources, &f.BlockAllSources)
 }
 
 // AddDXCallsignPattern adds a DX callsign pattern to the allowlist.
@@ -693,7 +670,7 @@ func (f *Filter) AddBlockDECallsignPattern(pattern string) {
 }
 
 func normalizeCallsignPattern(pattern string) string {
-	pattern = strings.ToUpper(strings.TrimSpace(pattern))
+	pattern = strutil.NormalizeUpper(pattern)
 	return pattern
 }
 
@@ -725,27 +702,11 @@ func removePattern(list []string, pattern string) []string {
 // Upstream: Telnet PASS/REJECT DXCONT commands.
 // Downstream: IsSupportedContinent.
 func (f *Filter) SetDXContinent(cont string, enabled bool) {
-	cont = strings.ToUpper(strings.TrimSpace(cont))
+	cont = strutil.NormalizeUpper(cont)
 	if !IsSupportedContinent(cont) {
 		return
 	}
-	if f.DXContinents == nil {
-		f.DXContinents = make(map[string]bool)
-	}
-	if f.BlockDXContinents == nil {
-		f.BlockDXContinents = make(map[string]bool)
-	}
-	if enabled {
-		f.DXContinents[cont] = true
-		delete(f.BlockDXContinents, cont)
-		f.BlockAllDXContinents = false
-		f.AllDXContinents = len(f.DXContinents) == 0
-		return
-	}
-	delete(f.DXContinents, cont)
-	f.BlockDXContinents[cont] = true
-	f.BlockAllDXContinents = false
-	f.AllDXContinents = len(f.DXContinents) == 0
+	applyAllowBlockToggle(&f.DXContinents, &f.BlockDXContinents, cont, enabled, &f.AllDXContinents, &f.BlockAllDXContinents)
 }
 
 // SetDEContinent allows or blocks a DE continent code.
@@ -753,27 +714,11 @@ func (f *Filter) SetDXContinent(cont string, enabled bool) {
 // Upstream: Telnet PASS/REJECT DECONT commands.
 // Downstream: IsSupportedContinent.
 func (f *Filter) SetDEContinent(cont string, enabled bool) {
-	cont = strings.ToUpper(strings.TrimSpace(cont))
+	cont = strutil.NormalizeUpper(cont)
 	if !IsSupportedContinent(cont) {
 		return
 	}
-	if f.DEContinents == nil {
-		f.DEContinents = make(map[string]bool)
-	}
-	if f.BlockDEContinents == nil {
-		f.BlockDEContinents = make(map[string]bool)
-	}
-	if enabled {
-		f.DEContinents[cont] = true
-		delete(f.BlockDEContinents, cont)
-		f.BlockAllDEContinents = false
-		f.AllDEContinents = len(f.DEContinents) == 0
-		return
-	}
-	delete(f.DEContinents, cont)
-	f.BlockDEContinents[cont] = true
-	f.BlockAllDEContinents = false
-	f.AllDEContinents = len(f.DEContinents) == 0
+	applyAllowBlockToggle(&f.DEContinents, &f.BlockDEContinents, cont, enabled, &f.AllDEContinents, &f.BlockAllDEContinents)
 }
 
 // SetDXZone allows or blocks a DX CQ zone.
@@ -784,23 +729,7 @@ func (f *Filter) SetDXZone(zone int, enabled bool) {
 	if !IsSupportedZone(zone) {
 		return
 	}
-	if f.DXZones == nil {
-		f.DXZones = make(map[int]bool)
-	}
-	if f.BlockDXZones == nil {
-		f.BlockDXZones = make(map[int]bool)
-	}
-	if enabled {
-		f.DXZones[zone] = true
-		delete(f.BlockDXZones, zone)
-		f.BlockAllDXZones = false
-		f.AllDXZones = len(f.DXZones) == 0
-		return
-	}
-	delete(f.DXZones, zone)
-	f.BlockDXZones[zone] = true
-	f.BlockAllDXZones = false
-	f.AllDXZones = len(f.DXZones) == 0
+	applyAllowBlockToggle(&f.DXZones, &f.BlockDXZones, zone, enabled, &f.AllDXZones, &f.BlockAllDXZones)
 }
 
 // SetDEZone allows or blocks a DE CQ zone.
@@ -811,23 +740,7 @@ func (f *Filter) SetDEZone(zone int, enabled bool) {
 	if !IsSupportedZone(zone) {
 		return
 	}
-	if f.DEZones == nil {
-		f.DEZones = make(map[int]bool)
-	}
-	if f.BlockDEZones == nil {
-		f.BlockDEZones = make(map[int]bool)
-	}
-	if enabled {
-		f.DEZones[zone] = true
-		delete(f.BlockDEZones, zone)
-		f.BlockAllDEZones = false
-		f.AllDEZones = len(f.DEZones) == 0
-		return
-	}
-	delete(f.DEZones, zone)
-	f.BlockDEZones[zone] = true
-	f.BlockAllDEZones = false
-	f.AllDEZones = len(f.DEZones) == 0
+	applyAllowBlockToggle(&f.DEZones, &f.BlockDEZones, zone, enabled, &f.AllDEZones, &f.BlockAllDEZones)
 }
 
 // SetDXDXCC allows or blocks a DX ADIF/DXCC code.
@@ -838,23 +751,7 @@ func (f *Filter) SetDXDXCC(code int, enabled bool) {
 	if code <= 0 {
 		return
 	}
-	if f.DXDXCC == nil {
-		f.DXDXCC = make(map[int]bool)
-	}
-	if f.BlockDXDXCC == nil {
-		f.BlockDXDXCC = make(map[int]bool)
-	}
-	if enabled {
-		f.DXDXCC[code] = true
-		delete(f.BlockDXDXCC, code)
-		f.BlockAllDXDXCC = false
-		f.AllDXDXCC = len(f.DXDXCC) == 0
-		return
-	}
-	delete(f.DXDXCC, code)
-	f.BlockDXDXCC[code] = true
-	f.BlockAllDXDXCC = false
-	f.AllDXDXCC = len(f.DXDXCC) == 0
+	applyAllowBlockToggle(&f.DXDXCC, &f.BlockDXDXCC, code, enabled, &f.AllDXDXCC, &f.BlockAllDXDXCC)
 }
 
 // SetDEDXCC allows or blocks a DE ADIF/DXCC code.
@@ -865,23 +762,7 @@ func (f *Filter) SetDEDXCC(code int, enabled bool) {
 	if code <= 0 {
 		return
 	}
-	if f.DEDXCC == nil {
-		f.DEDXCC = make(map[int]bool)
-	}
-	if f.BlockDEDXCC == nil {
-		f.BlockDEDXCC = make(map[int]bool)
-	}
-	if enabled {
-		f.DEDXCC[code] = true
-		delete(f.BlockDEDXCC, code)
-		f.BlockAllDEDXCC = false
-		f.AllDEDXCC = len(f.DEDXCC) == 0
-		return
-	}
-	delete(f.DEDXCC, code)
-	f.BlockDEDXCC[code] = true
-	f.BlockAllDEDXCC = false
-	f.AllDEDXCC = len(f.DEDXCC) == 0
+	applyAllowBlockToggle(&f.DEDXCC, &f.BlockDEDXCC, code, enabled, &f.AllDEDXCC, &f.BlockAllDEDXCC)
 }
 
 // ClearDXCallsignPatterns clears all DX callsign allowlist patterns.
@@ -939,23 +820,7 @@ func (f *Filter) SetConfidenceSymbol(symbol string, enabled bool) {
 	if canonical == "" {
 		return
 	}
-	if f.Confidence == nil {
-		f.Confidence = make(map[string]bool)
-	}
-	if f.BlockConfidence == nil {
-		f.BlockConfidence = make(map[string]bool)
-	}
-	if enabled {
-		f.Confidence[canonical] = true
-		delete(f.BlockConfidence, canonical)
-		f.BlockAllConfidence = false
-		f.AllConfidence = len(f.Confidence) == 0
-		return
-	}
-	delete(f.Confidence, canonical)
-	f.BlockConfidence[canonical] = true
-	f.BlockAllConfidence = false
-	f.AllConfidence = len(f.Confidence) == 0
+	applyAllowBlockToggle(&f.Confidence, &f.BlockConfidence, canonical, enabled, &f.AllConfidence, &f.BlockAllConfidence)
 }
 
 // ResetConfidence clears confidence filters and allow all glyphs.
@@ -982,23 +847,7 @@ func (f *Filter) SetPathClass(class string, enabled bool) {
 	if canonical == "" {
 		return
 	}
-	if f.PathClasses == nil {
-		f.PathClasses = make(map[string]bool)
-	}
-	if f.BlockPathClasses == nil {
-		f.BlockPathClasses = make(map[string]bool)
-	}
-	if enabled {
-		f.PathClasses[canonical] = true
-		delete(f.BlockPathClasses, canonical)
-		f.BlockAllPathClasses = false
-		f.AllPathClasses = len(f.PathClasses) == 0
-		return
-	}
-	delete(f.PathClasses, canonical)
-	f.BlockPathClasses[canonical] = true
-	f.BlockAllPathClasses = false
-	f.AllPathClasses = len(f.PathClasses) == 0
+	applyAllowBlockToggle(&f.PathClasses, &f.BlockPathClasses, canonical, enabled, &f.AllPathClasses, &f.BlockAllPathClasses)
 }
 
 // ResetPathClasses clears path class filters and allow all classes.
@@ -1128,7 +977,7 @@ func (f *Filter) SelfEnabled() bool {
 // Upstream: Telnet bulletin broadcast.
 // Downstream: WWVEnabled, WCYEnabled, AnnounceEnabled.
 func (f *Filter) AllowsBulletin(kind string) bool {
-	switch strings.ToUpper(strings.TrimSpace(kind)) {
+	switch strutil.NormalizeUpper(kind) {
 	case "WWV", "PC23":
 		return f.WWVEnabled()
 	case "WCY", "PC73":
@@ -1485,7 +1334,7 @@ func (f *Filter) matchesWithPath(s *spot.Spot, pathClass string) bool {
 
 	modeUpper := s.ModeNorm
 	if modeUpper == "" {
-		modeUpper = strings.ToUpper(strings.TrimSpace(s.Mode))
+		modeUpper = strutil.NormalizeUpper(s.Mode)
 	}
 
 	bandNorm := spot.NormalizeBand(s.BandNorm)
@@ -1495,11 +1344,11 @@ func (f *Filter) matchesWithPath(s *spot.Spot, pathClass string) bool {
 
 	dxCont := s.DXContinentNorm
 	if dxCont == "" {
-		dxCont = strings.ToUpper(strings.TrimSpace(s.DXMetadata.Continent))
+		dxCont = strutil.NormalizeUpper(s.DXMetadata.Continent)
 	}
 	deCont := s.DEContinentNorm
 	if deCont == "" {
-		deCont = strings.ToUpper(strings.TrimSpace(s.DEMetadata.Continent))
+		deCont = strutil.NormalizeUpper(s.DEMetadata.Continent)
 	}
 
 	dxGrid2 := s.DXGrid2
@@ -1813,7 +1662,7 @@ func matchesCallsignPattern(callsign, pattern string) bool {
 // Upstream: Filter.Matches.
 // Downstream: None.
 func isConfidenceExemptMode(mode string) bool {
-	switch strings.ToUpper(strings.TrimSpace(mode)) {
+	switch strutil.NormalizeUpper(mode) {
 	case "FT8", "FT4", "PSK", "MSK144":
 		return true
 	default:
@@ -2164,7 +2013,7 @@ func enabledDXCC(m map[int]bool) []string {
 // Upstream: Telnet filter validation.
 // Downstream: supportedConfidenceSymbolSet.
 func IsSupportedConfidenceSymbol(symbol string) bool {
-	normalized := strings.ToUpper(strings.TrimSpace(symbol))
+	normalized := strutil.NormalizeUpper(symbol)
 	if normalized == "" {
 		return false
 	}
@@ -2216,7 +2065,7 @@ func normalizeConfidenceSymbol(label string) string {
 
 // normalizePathClass trims and uppercases a path class token, returning empty when unsupported.
 func normalizePathClass(label string) string {
-	normalized := strings.ToUpper(strings.TrimSpace(label))
+	normalized := strutil.NormalizeUpper(label)
 	if normalized == "" {
 		return ""
 	}
@@ -2486,23 +2335,7 @@ func (f *Filter) SetDXGrid2Prefix(grid string, enabled bool) {
 	if token == "" {
 		return
 	}
-	if f.DXGrid2Prefixes == nil {
-		f.DXGrid2Prefixes = make(map[string]bool)
-	}
-	if f.BlockDXGrid2 == nil {
-		f.BlockDXGrid2 = make(map[string]bool)
-	}
-	if enabled {
-		f.DXGrid2Prefixes[token] = true
-		delete(f.BlockDXGrid2, token)
-		f.BlockAllDXGrid2 = false
-		f.AllDXGrid2 = len(f.DXGrid2Prefixes) == 0
-		return
-	}
-	delete(f.DXGrid2Prefixes, token)
-	f.BlockDXGrid2[token] = true
-	f.BlockAllDXGrid2 = false
-	f.AllDXGrid2 = len(f.DXGrid2Prefixes) == 0
+	applyAllowBlockToggle(&f.DXGrid2Prefixes, &f.BlockDXGrid2, token, enabled, &f.AllDXGrid2, &f.BlockAllDXGrid2)
 }
 
 // SetDEGrid2Prefix allows or blocks a DE 2-character grid prefix.
@@ -2514,23 +2347,7 @@ func (f *Filter) SetDEGrid2Prefix(grid string, enabled bool) {
 	if token == "" {
 		return
 	}
-	if f.DEGrid2Prefixes == nil {
-		f.DEGrid2Prefixes = make(map[string]bool)
-	}
-	if f.BlockDEGrid2 == nil {
-		f.BlockDEGrid2 = make(map[string]bool)
-	}
-	if enabled {
-		f.DEGrid2Prefixes[token] = true
-		delete(f.BlockDEGrid2, token)
-		f.BlockAllDEGrid2 = false
-		f.AllDEGrid2 = len(f.DEGrid2Prefixes) == 0
-		return
-	}
-	delete(f.DEGrid2Prefixes, token)
-	f.BlockDEGrid2[token] = true
-	f.BlockAllDEGrid2 = false
-	f.AllDEGrid2 = len(f.DEGrid2Prefixes) == 0
+	applyAllowBlockToggle(&f.DEGrid2Prefixes, &f.BlockDEGrid2, token, enabled, &f.AllDEGrid2, &f.BlockAllDEGrid2)
 }
 
 // ResetDXGrid2 clears DX grid filters and accept all grids.
@@ -2560,7 +2377,7 @@ func (f *Filter) ResetDEGrid2() {
 // Upstream: SetDXGrid2Prefix, SetDEGrid2Prefix, Filter.Matches.
 // Downstream: strings helpers.
 func normalizeGrid2Token(grid string) string {
-	grid = strings.ToUpper(strings.TrimSpace(grid))
+	grid = strutil.NormalizeUpper(grid)
 	if grid == "" {
 		return ""
 	}

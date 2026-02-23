@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"dxcluster/config"
+	"dxcluster/internal/fsutil"
 
 	_ "modernc.org/sqlite"
 )
@@ -71,10 +72,8 @@ func buildDatabase(ctx context.Context, extractDir, dbPath string, tempDir strin
 		return errors.New("fcc uls: nil context")
 	}
 	dir := filepath.Dir(dbPath)
-	if dir != "" && dir != "." {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return fmt.Errorf("fcc uls: create db directory: %w", err)
-		}
+	if err := fsutil.EnsureParentDir(dbPath, "fcc uls: create db directory"); err != nil {
+		return err
 	}
 
 	tmpFile, err := os.CreateTemp(dir, "fcc-uls-*.dbtmp")

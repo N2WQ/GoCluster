@@ -11,6 +11,7 @@ import (
 	"dxcluster/filter"
 	"dxcluster/pathreliability"
 	"dxcluster/spot"
+	"dxcluster/strutil"
 )
 
 // DialectName identifies the command dialect a client is using.
@@ -123,38 +124,14 @@ func (e *filterCommandEngine) registerDomains() {
 		newConfidenceHandler(),
 		newPathHandler(),
 		newNearbyHandler(),
-		newContinentHandler("DXCONT", func(f *filter.Filter, value string, allowed bool) { f.SetDXContinent(value, allowed) },
-			func(f *filter.Filter) (bool, bool, map[string]bool, map[string]bool) {
-				return f.AllDXContinents, f.BlockAllDXContinents, f.DXContinents, f.BlockDXContinents
-			}),
-		newContinentHandler("DECONT", func(f *filter.Filter, value string, allowed bool) { f.SetDEContinent(value, allowed) },
-			func(f *filter.Filter) (bool, bool, map[string]bool, map[string]bool) {
-				return f.AllDEContinents, f.BlockAllDEContinents, f.DEContinents, f.BlockDEContinents
-			}),
-		newZoneHandler("DXZONE", func(f *filter.Filter, value int, allowed bool) { f.SetDXZone(value, allowed) },
-			func(f *filter.Filter) (bool, bool, map[int]bool, map[int]bool) {
-				return f.AllDXZones, f.BlockAllDXZones, f.DXZones, f.BlockDXZones
-			}),
-		newZoneHandler("DEZONE", func(f *filter.Filter, value int, allowed bool) { f.SetDEZone(value, allowed) },
-			func(f *filter.Filter) (bool, bool, map[int]bool, map[int]bool) {
-				return f.AllDEZones, f.BlockAllDEZones, f.DEZones, f.BlockDEZones
-			}),
-		newDXCCHandler("DXDXCC", func(f *filter.Filter, code int, allowed bool) { f.SetDXDXCC(code, allowed) },
-			func(f *filter.Filter) (bool, bool, map[int]bool, map[int]bool) {
-				return f.AllDXDXCC, f.BlockAllDXDXCC, f.DXDXCC, f.BlockDXDXCC
-			}),
-		newDXCCHandler("DEDXCC", func(f *filter.Filter, code int, allowed bool) { f.SetDEDXCC(code, allowed) },
-			func(f *filter.Filter) (bool, bool, map[int]bool, map[int]bool) {
-				return f.AllDEDXCC, f.BlockAllDEDXCC, f.DEDXCC, f.BlockDEDXCC
-			}),
-		newGrid2Handler("DXGRID2", func(f *filter.Filter, value string, allowed bool) { f.SetDXGrid2Prefix(value, allowed) },
-			func(f *filter.Filter) (bool, bool, map[string]bool, map[string]bool) {
-				return f.AllDXGrid2, f.BlockAllDXGrid2, f.DXGrid2Prefixes, f.BlockDXGrid2
-			}),
-		newGrid2Handler("DEGRID2", func(f *filter.Filter, value string, allowed bool) { f.SetDEGrid2Prefix(value, allowed) },
-			func(f *filter.Filter) (bool, bool, map[string]bool, map[string]bool) {
-				return f.AllDEGrid2, f.BlockAllDEGrid2, f.DEGrid2Prefixes, f.BlockDEGrid2
-			}),
+		newContinentHandler("DXCONT", func(f *filter.Filter, value string, allowed bool) { f.SetDXContinent(value, allowed) }),
+		newContinentHandler("DECONT", func(f *filter.Filter, value string, allowed bool) { f.SetDEContinent(value, allowed) }),
+		newZoneHandler("DXZONE", func(f *filter.Filter, value int, allowed bool) { f.SetDXZone(value, allowed) }),
+		newZoneHandler("DEZONE", func(f *filter.Filter, value int, allowed bool) { f.SetDEZone(value, allowed) }),
+		newDXCCHandler("DXDXCC", func(f *filter.Filter, code int, allowed bool) { f.SetDXDXCC(code, allowed) }),
+		newDXCCHandler("DEDXCC", func(f *filter.Filter, code int, allowed bool) { f.SetDEDXCC(code, allowed) }),
+		newGrid2Handler("DXGRID2", func(f *filter.Filter, value string, allowed bool) { f.SetDXGrid2Prefix(value, allowed) }),
+		newGrid2Handler("DEGRID2", func(f *filter.Filter, value string, allowed bool) { f.SetDEGrid2Prefix(value, allowed) }),
 		newFeatureToggleHandler("BEACON", func(f *filter.Filter, enabled bool) { f.SetBeaconEnabled(enabled) }),
 		newFeatureToggleHandler("WWV", func(f *filter.Filter, enabled bool) { f.SetWWVEnabled(enabled) }),
 		newFeatureToggleHandler("WCY", func(f *filter.Filter, enabled bool) { f.SetWCYEnabled(enabled) }),
@@ -277,7 +254,7 @@ func (e *filterCommandEngine) execute(client *Client, cmd parsedFilterCommand) (
 		return "Filters reset to defaults\n", true
 	}
 
-	handler := e.domains[strings.ToUpper(strings.TrimSpace(cmd.domain))]
+	handler := e.domains[strutil.NormalizeUpper(cmd.domain)]
 	if handler == nil {
 		switch cmd.action {
 		case actionAllow:
@@ -296,7 +273,7 @@ func (e *filterCommandEngine) execute(client *Client, cmd parsedFilterCommand) (
 	}
 
 	if cmd.action == actionAllow || cmd.action == actionBlock {
-		domainKey := strings.ToUpper(strings.TrimSpace(cmd.domain))
+		domainKey := strutil.NormalizeUpper(cmd.domain)
 		if locationFilterDomains[domainKey] {
 			client.filterMu.RLock()
 			nearby := client.filter != nil && client.filter.NearbyActive()
@@ -593,7 +570,7 @@ func newSourceHandler() *domainHandler {
 	return &domainHandler{
 		name: "SOURCE",
 		apply: func(c *Client, action filterAction, args []string) (string, bool) {
-			value := strings.ToUpper(strings.TrimSpace(strings.Join(args, " ")))
+			value := strutil.NormalizeUpper(strings.Join(args, " "))
 			switch action {
 			case actionAllow:
 				if value == "" {
@@ -750,7 +727,7 @@ func stringsUpper(values []string) []string {
 	}
 	out := make([]string, 0, len(values))
 	for _, value := range values {
-		out = append(out, strings.ToUpper(strings.TrimSpace(value)))
+		out = append(out, strutil.NormalizeUpper(value))
 	}
 	return out
 }
@@ -898,7 +875,7 @@ func newNearbyHandler() *domainHandler {
 			if len(args) != 1 {
 				return nearbyUsageMsg, false
 			}
-			mode := strings.ToUpper(strings.TrimSpace(args[0]))
+			mode := strutil.NormalizeUpper(args[0])
 			switch mode {
 			case "ON":
 				state := c.pathSnapshot()
@@ -938,8 +915,7 @@ func newNearbyHandler() *domainHandler {
 	}
 }
 
-func newContinentHandler(name string, setter func(*filter.Filter, string, bool), snapshot func(*filter.Filter) (bool, bool, map[string]bool, map[string]bool)) *domainHandler {
-	_ = snapshot
+func newContinentHandler(name string, setter func(*filter.Filter, string, bool)) *domainHandler {
 	return &domainHandler{
 		name: name,
 		apply: func(c *Client, action filterAction, args []string) (string, bool) {
@@ -1010,8 +986,7 @@ func newContinentHandler(name string, setter func(*filter.Filter, string, bool),
 	}
 }
 
-func newZoneHandler(name string, setter func(*filter.Filter, int, bool), snapshot func(*filter.Filter) (bool, bool, map[int]bool, map[int]bool)) *domainHandler {
-	_ = snapshot
+func newZoneHandler(name string, setter func(*filter.Filter, int, bool)) *domainHandler {
 	return &domainHandler{
 		name: name,
 		apply: func(c *Client, action filterAction, args []string) (string, bool) {
@@ -1082,8 +1057,7 @@ func newZoneHandler(name string, setter func(*filter.Filter, int, bool), snapsho
 	}
 }
 
-func newDXCCHandler(name string, setter func(*filter.Filter, int, bool), snapshot func(*filter.Filter) (bool, bool, map[int]bool, map[int]bool)) *domainHandler {
-	_ = snapshot
+func newDXCCHandler(name string, setter func(*filter.Filter, int, bool)) *domainHandler {
 	return &domainHandler{
 		name: name,
 		apply: func(c *Client, action filterAction, args []string) (string, bool) {
@@ -1154,8 +1128,7 @@ func newDXCCHandler(name string, setter func(*filter.Filter, int, bool), snapsho
 	}
 }
 
-func newGrid2Handler(name string, setter func(*filter.Filter, string, bool), snapshot func(*filter.Filter) (bool, bool, map[string]bool, map[string]bool)) *domainHandler {
-	_ = snapshot
+func newGrid2Handler(name string, setter func(*filter.Filter, string, bool)) *domainHandler {
 	return &domainHandler{
 		name: name,
 		apply: func(c *Client, action filterAction, args []string) (string, bool) {
@@ -1287,7 +1260,7 @@ func applyDXBMBands(c *Client, action filterAction, args []string) (string, bool
 func normalizeDXBMBands(values []string) (bands []string, invalid []string) {
 	seen := make(map[string]bool)
 	for _, v := range values {
-		raw := strings.ToUpper(strings.TrimSpace(v))
+		raw := strutil.NormalizeUpper(v)
 		if raw == "" {
 			continue
 		}
@@ -1816,7 +1789,7 @@ func parseModeList(arg string) []string {
 	}
 	modes := make([]string, 0, len(values))
 	for _, value := range values {
-		mode := strings.ToUpper(strings.TrimSpace(value))
+		mode := strutil.NormalizeUpper(value)
 		if mode == "" {
 			continue
 		}
@@ -1832,7 +1805,7 @@ func parseConfidenceList(arg string) []string {
 	}
 	symbols := make([]string, 0, len(values))
 	for _, value := range values {
-		symbol := strings.ToUpper(strings.TrimSpace(value))
+		symbol := strutil.NormalizeUpper(value)
 		if symbol == "" {
 			continue
 		}
@@ -1849,7 +1822,7 @@ func parsePathClassList(arg string) []string {
 	seen := make(map[string]bool)
 	classes := make([]string, 0, len(values))
 	for _, value := range values {
-		class := strings.ToUpper(strings.TrimSpace(value))
+		class := strutil.NormalizeUpper(value)
 		if class == "" || seen[class] {
 			continue
 		}
@@ -1867,7 +1840,7 @@ func parseContinentList(arg string) []string {
 	seen := make(map[string]bool)
 	continents := make([]string, 0, len(values))
 	for _, value := range values {
-		cont := strings.ToUpper(strings.TrimSpace(value))
+		cont := strutil.NormalizeUpper(value)
 		if cont == "" || seen[cont] {
 			continue
 		}
@@ -1944,7 +1917,7 @@ func parseGrid2List(arg string) ([]string, []string) {
 	grids := make([]string, 0, len(values))
 	invalid := make([]string, 0)
 	for _, value := range values {
-		raw := strings.ToUpper(strings.TrimSpace(value))
+		raw := strutil.NormalizeUpper(value)
 		if raw == "" {
 			continue
 		}
@@ -2054,7 +2027,7 @@ func featureLabels(name string) (enable string, disable string, status string) {
 }
 
 func isCCMode(mode string) bool {
-	mode = strings.ToUpper(strings.TrimSpace(mode))
+	mode = strutil.NormalizeUpper(mode)
 	switch mode {
 	case "CW", "FT4", "FT8", "RTTY":
 		return true

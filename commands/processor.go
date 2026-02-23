@@ -17,6 +17,7 @@ import (
 	"dxcluster/filter"
 	"dxcluster/reputation"
 	"dxcluster/spot"
+	"dxcluster/strutil"
 )
 
 // archiveReader is the minimal interface the archive layer exposes for read paths.
@@ -636,7 +637,7 @@ func buildHelpCatalog(dialect string) helpCatalog {
 }
 
 func normalizeHelpTopic(dialect string, topic string) string {
-	upper := strings.ToUpper(strings.TrimSpace(topic))
+	upper := strutil.NormalizeUpper(topic)
 	if upper == "" {
 		return ""
 	}
@@ -743,7 +744,7 @@ func normalizeHelpTopic(dialect string, topic string) string {
 }
 
 func isCCHelpMode(mode string) bool {
-	switch strings.ToUpper(strings.TrimSpace(mode)) {
+	switch strutil.NormalizeUpper(mode) {
 	case "CW", "FT4", "FT8", "RTTY":
 		return true
 	default:
@@ -1275,9 +1276,9 @@ func (p *Processor) handleShowDXCC(args []string) string {
 		return errText
 	}
 
-	prefix := strings.ToUpper(strings.TrimSpace(info.Prefix))
+	prefix := strutil.NormalizeUpper(info.Prefix)
 	country := strings.TrimSpace(info.Country)
-	continent := strings.ToUpper(strings.TrimSpace(info.Continent))
+	continent := strutil.NormalizeUpper(info.Continent)
 	others := p.prefixIdx.siblings(db, info.ADIF, prefix)
 
 	var b strings.Builder
@@ -1330,7 +1331,7 @@ func (p *prefixIndex) siblings(db *cty.CTYDatabase, adif int, current string) []
 	prefixes := p.adifToPrefixes[adif]
 	p.mu.Unlock()
 
-	current = strings.ToUpper(strings.TrimSpace(current))
+	current = strutil.NormalizeUpper(current)
 	out := make([]string, 0, len(prefixes))
 	for _, pref := range prefixes {
 		if pref == "" || pref == current {
@@ -1347,7 +1348,7 @@ func buildPrefixMap(db *cty.CTYDatabase) map[int][]string {
 	}
 	tmp := make(map[int]map[string]struct{}, len(db.Data))
 	for _, info := range db.Data {
-		pref := strings.ToUpper(strings.TrimSpace(info.Prefix))
+		pref := strutil.NormalizeUpper(info.Prefix)
 		if pref == "" {
 			continue
 		}

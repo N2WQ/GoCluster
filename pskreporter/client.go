@@ -13,8 +13,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"dxcluster/internal/ratelimit"
 	"dxcluster/skew"
 	"dxcluster/spot"
+	"dxcluster/strutil"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	jsoniter "github.com/json-iterator/go"
@@ -69,11 +71,11 @@ type Client struct {
 	lastSpotAt     atomic.Int64
 	lastParseErrAt atomic.Int64
 
-	payloadDropCounter     rateCounter
-	payloadTooLargeCounter rateCounter
-	spotDropCounter        rateCounter
-	parseErrorCounter      rateCounter
-	pathOnlyDropCounter    rateCounter
+	payloadDropCounter     ratelimit.Counter
+	payloadTooLargeCounter ratelimit.Counter
+	spotDropCounter        ratelimit.Counter
+	parseErrorCounter      ratelimit.Counter
+	pathOnlyDropCounter    ratelimit.Counter
 
 	allowAllModes bool
 	allowedModes  map[string]struct{}
@@ -167,7 +169,7 @@ func NewClient(broker string, port int, topics []string, allowedModes []string, 
 	}
 	modeSet := make(map[string]struct{}, len(allowedModes))
 	for _, m := range allowedModes {
-		m = strings.ToUpper(strings.TrimSpace(m))
+		m = strutil.NormalizeUpper(m)
 		if m == "" {
 			continue
 		}
@@ -175,7 +177,7 @@ func NewClient(broker string, port int, topics []string, allowedModes []string, 
 	}
 	pathOnlySet := make(map[string]struct{}, len(pathOnlyModes))
 	for _, m := range pathOnlyModes {
-		m = strings.ToUpper(strings.TrimSpace(m))
+		m = strutil.NormalizeUpper(m)
 		if m == "" {
 			continue
 		}
@@ -208,11 +210,11 @@ func NewClient(broker string, port int, topics []string, allowedModes []string, 
 		spotterCache:            spot.NewCallCache(callCacheSize, callCacheTTL),
 		maxPayloadBytes:         maxPayloadBytes,
 
-		payloadDropCounter:     newRateCounter(),
-		payloadTooLargeCounter: newRateCounter(),
-		spotDropCounter:        newRateCounter(),
-		parseErrorCounter:      newRateCounter(),
-		pathOnlyDropCounter:    newRateCounter(),
+		payloadDropCounter:     ratelimit.NewCounter(defaultDropLogInterval),
+		payloadTooLargeCounter: ratelimit.NewCounter(defaultDropLogInterval),
+		spotDropCounter:        ratelimit.NewCounter(defaultDropLogInterval),
+		parseErrorCounter:      ratelimit.NewCounter(defaultDropLogInterval),
+		pathOnlyDropCounter:    ratelimit.NewCounter(defaultDropLogInterval),
 	}
 }
 
@@ -349,9 +351,9 @@ func (c *Client) onConnectionLost(client mqtt.Client, err error) {
 	now := time.Now().UTC()
 	log.Printf("PSKReporter: Connection lost: %v (last_payload=%s last_spot=%s last_parse_err=%s processing=%d/%d mqtt_q=%d/%d spot_queue=%d/%d path_only_q=%d/%d drops payload=%d oversize=%d spot=%d path_only=%d parse=%d mqtt_drop=%d mqtt_qos12_timeout=%d mqtt_qos12_disconnect=%d)",
 		err,
-		formatAge(now, snap.LastPayloadAt),
-		formatAge(now, snap.LastSpotAt),
-		formatAge(now, snap.LastParseErrAt),
+		strutil.FormatAge(now, snap.LastPayloadAt),
+		strutil.FormatAge(now, snap.LastSpotAt),
+		strutil.FormatAge(now, snap.LastParseErrAt),
 		snap.ProcessingQueueLen,
 		snap.ProcessingQueueCap,
 		snap.MQTTInboundQueueLen,
@@ -731,8 +733,8 @@ func (c *Client) normalizeMessage(msg *PSKRMessage, modeInfo pskModeInfo) *norma
 	}
 	dxCall := spot.NormalizeCallsign(msg.SenderCall)
 	deCall := c.decorateSpotterCall(msg.ReceiverCall)
-	dxGrid := strings.ToUpper(strings.TrimSpace(msg.SenderLocator))
-	deGrid := strings.ToUpper(strings.TrimSpace(msg.ReceiverLocator))
+	dxGrid := strutil.NormalizeUpper(msg.SenderLocator)
+	deGrid := strutil.NormalizeUpper(msg.ReceiverLocator)
 	return &normalizedPSK{
 		modeUpper:   modeUpper,
 		displayMode: displayMode,
@@ -777,39 +779,6 @@ func (c *Client) decorateSpotterCall(raw string) string {
 	normalized = normalized + "-#"
 	c.spotterCache.Add(cacheKey, normalized)
 	return normalized
-}
-
-type rateCounter struct {
-	interval time.Duration
-	lastLog  atomic.Int64
-	count    atomic.Uint64
-}
-
-func newRateCounter() rateCounter {
-	return rateCounter{interval: defaultDropLogInterval}
-}
-
-// Inc increments a counter and decide if it's time to log.
-// Key aspects: Uses atomics to avoid contention on hot paths.
-// Upstream: Drop/error logging sites.
-// Downstream: log.Printf when true is returned.
-func (c *rateCounter) Inc() (uint64, bool) {
-	if c == nil {
-		return 0, false
-	}
-	total := c.count.Add(1)
-	if c.interval <= 0 {
-		return total, true
-	}
-	now := time.Now().UTC().UnixNano()
-	last := c.lastLog.Load()
-	if now-last < c.interval.Nanoseconds() {
-		return total, false
-	}
-	if c.lastLog.CompareAndSwap(last, now) {
-		return total, true
-	}
-	return total, false
 }
 
 // Purpose: Wait for workers to exit and release the processing queue.
@@ -943,11 +912,11 @@ func (c *Client) HealthSnapshot() HealthSnapshot {
 			}
 			return cap(c.pathOnlyChan)
 		}(),
-		PayloadDrops:    c.payloadDropCounter.count.Load(),
-		PayloadTooLarge: c.payloadTooLargeCounter.count.Load(),
-		SpotDrops:       c.spotDropCounter.count.Load(),
-		PathOnlyDrops:   c.pathOnlyDropCounter.count.Load(),
-		ParseErrors:     c.parseErrorCounter.count.Load(),
+		PayloadDrops:    c.payloadDropCounter.Total(),
+		PayloadTooLarge: c.payloadTooLargeCounter.Total(),
+		SpotDrops:       c.spotDropCounter.Total(),
+		PathOnlyDrops:   c.pathOnlyDropCounter.Total(),
+		ParseErrors:     c.parseErrorCounter.Total(),
 	}
 	mqttStats := c.mqttInboundStats()
 	snap.MQTTInboundQueueLen = mqttStats.QueueLen
@@ -972,20 +941,6 @@ func (c *Client) HealthSnapshot() HealthSnapshot {
 		snap.ProcessingQueueCap = cap(processing)
 	}
 	return snap
-}
-
-func formatAge(now time.Time, at time.Time) string {
-	if at.IsZero() {
-		return "never"
-	}
-	age := now.Sub(at)
-	if age < 0 {
-		age = 0
-	}
-	if age < time.Second {
-		return "0s"
-	}
-	return age.Truncate(time.Second).String()
 }
 
 // Stop stops the PSKReporter client and worker pool.

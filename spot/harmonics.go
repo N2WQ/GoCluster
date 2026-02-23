@@ -202,32 +202,11 @@ func (hd *HarmonicDetector) StartCleanup(interval time.Duration) {
 	if interval <= 0 {
 		interval = time.Minute
 	}
-	hd.mu.Lock()
-	if hd.sweepQuit != nil {
+	startPeriodicCleanup(&hd.mu, &hd.sweepQuit, interval, func() {
+		hd.mu.Lock()
+		hd.cleanup(time.Now().UTC())
 		hd.mu.Unlock()
-		return
-	}
-	hd.sweepQuit = make(chan struct{})
-	hd.mu.Unlock()
-
-	// Purpose: Periodically invoke cleanup until StopCleanup is called.
-	// Key aspects: Ticker-driven loop with quit channel.
-	// Upstream: StartCleanup.
-	// Downstream: cleanup and ticker.Stop.
-	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				hd.mu.Lock()
-				hd.cleanup(time.Now().UTC())
-				hd.mu.Unlock()
-			case <-hd.sweepQuit:
-				return
-			}
-		}
-	}()
+	})
 }
 
 // StopCleanup stops the periodic cleanup goroutine.
@@ -239,10 +218,5 @@ func (hd *HarmonicDetector) StopCleanup() {
 	if hd == nil {
 		return
 	}
-	hd.mu.Lock()
-	defer hd.mu.Unlock()
-	if hd.sweepQuit != nil {
-		close(hd.sweepQuit)
-		hd.sweepQuit = nil
-	}
+	stopPeriodicCleanup(&hd.mu, &hd.sweepQuit)
 }

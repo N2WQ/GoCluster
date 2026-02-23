@@ -2,13 +2,13 @@ package main
 
 import (
 	"container/list"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"dxcluster/cty"
 	"dxcluster/gridstore"
+	"dxcluster/strutil"
 )
 
 const callMetaCacheShardCount = 16
@@ -304,7 +304,7 @@ func (c *callMetaCache) ApplyRecord(rec gridstore.Record) {
 	entry := shard.getOrCreate(call)
 
 	if rec.Grid.Valid {
-		grid := strings.ToUpper(strings.TrimSpace(rec.Grid.String))
+		grid := strutil.NormalizeUpper(rec.Grid.String)
 		if grid != "" {
 			incomingDerived := rec.GridDerived
 			if !entry.gridValid || entry.gridDerived || !incomingDerived {

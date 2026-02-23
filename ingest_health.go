@@ -9,6 +9,7 @@ import (
 
 	"dxcluster/pskreporter"
 	"dxcluster/rbn"
+	"dxcluster/strutil"
 )
 
 const (
@@ -118,11 +119,11 @@ func formatIngestHealthLine(name string, snap ingestHealthSnapshot, idle bool, n
 	b.WriteString(state)
 	if !snap.LastMessageAt.IsZero() {
 		b.WriteString(" last_msg=")
-		b.WriteString(ageString(now, snap.LastMessageAt))
+		b.WriteString(strutil.FormatAge(now, snap.LastMessageAt))
 	}
 	if !snap.LastSpotAt.IsZero() {
 		b.WriteString(" last_spot=")
-		b.WriteString(ageString(now, snap.LastSpotAt))
+		b.WriteString(strutil.FormatAge(now, snap.LastSpotAt))
 	}
 	if snap.PayloadQueueCap > 0 {
 		b.WriteString(" payload_q=")
@@ -171,23 +172,9 @@ func formatIngestHealthLine(name string, snap ingestHealthSnapshot, idle bool, n
 	}
 	if !snap.LastParseErrAt.IsZero() {
 		b.WriteString(" last_parse_err=")
-		b.WriteString(ageString(now, snap.LastParseErrAt))
+		b.WriteString(strutil.FormatAge(now, snap.LastParseErrAt))
 	}
 	return b.String()
-}
-
-func ageString(now time.Time, at time.Time) string {
-	if at.IsZero() {
-		return "never"
-	}
-	age := now.Sub(at)
-	if age < 0 {
-		age = 0
-	}
-	if age < time.Second {
-		return "0s"
-	}
-	return age.Truncate(time.Second).String()
 }
 
 func rbnHealthSource(name string, client *rbn.Client) ingestHealthSource {

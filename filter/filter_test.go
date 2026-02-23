@@ -294,6 +294,58 @@ func TestDXCCFilters(t *testing.T) {
 	}
 }
 
+func TestSetSourceClearsBlockAndRecomputesAllFlag(t *testing.T) {
+	f := NewFilter()
+	f.ResetSources()
+	f.BlockAllSources = true
+	f.AllSources = false
+
+	f.SetSource("HUMAN", true)
+	if f.BlockAllSources {
+		t.Fatalf("expected SetSource allow to clear BlockAllSources")
+	}
+	if f.AllSources {
+		t.Fatalf("expected AllSources=false when explicit source allowlist is non-empty")
+	}
+	if !f.Sources["HUMAN"] {
+		t.Fatalf("expected HUMAN to be in source allowlist")
+	}
+
+	f.SetSource("HUMAN", false)
+	if f.AllSources != true {
+		t.Fatalf("expected AllSources=true after removing last allowed source")
+	}
+	if !f.BlockSources["HUMAN"] {
+		t.Fatalf("expected HUMAN to be in source blocklist after disable")
+	}
+}
+
+func TestSetDXZoneClearsBlockAndRecomputesAllFlag(t *testing.T) {
+	f := NewFilter()
+	f.ResetDXZones()
+	f.BlockAllDXZones = true
+	f.AllDXZones = false
+
+	f.SetDXZone(14, true)
+	if f.BlockAllDXZones {
+		t.Fatalf("expected SetDXZone allow to clear BlockAllDXZones")
+	}
+	if f.AllDXZones {
+		t.Fatalf("expected AllDXZones=false when explicit zone allowlist is non-empty")
+	}
+	if !f.DXZones[14] {
+		t.Fatalf("expected DX zone 14 in allowlist")
+	}
+
+	f.SetDXZone(14, false)
+	if !f.AllDXZones {
+		t.Fatalf("expected AllDXZones=true after removing last allowed zone")
+	}
+	if !f.BlockDXZones[14] {
+		t.Fatalf("expected DX zone 14 in blocklist after disable")
+	}
+}
+
 func TestNormalizeDefaultsRestoresPermissiveFilters(t *testing.T) {
 	var f Filter
 	f.normalizeDefaults()
@@ -613,7 +665,7 @@ func TestNearbyFiltersMatchAndBypassLocationFilters(t *testing.T) {
 	if err := f.EnableNearby(userFine, userCoarse); err != nil {
 		t.Fatalf("EnableNearby failed: %v", err)
 	}
-	f.SetMode("FT8", true)          // isolate nearby behavior from default mode profile
+	f.SetMode("FT8", true)       // isolate nearby behavior from default mode profile
 	f.SetDXContinent("EU", true) // should be ignored while nearby is on
 
 	s := spot.NewSpot("K1ABC", "W1XYZ", 14074.0, "FT8")

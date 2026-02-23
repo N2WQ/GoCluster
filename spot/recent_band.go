@@ -114,15 +114,9 @@ func (s *RecentBandStore) StartCleanup() {
 	if s == nil || s.cleanupInterval <= 0 || s.window <= 0 {
 		return
 	}
-	s.cleanupMu.Lock()
-	if s.quit != nil {
-		s.cleanupMu.Unlock()
-		return
-	}
-	s.quit = make(chan struct{})
-	s.cleanupMu.Unlock()
-
-	go s.cleanupLoop()
+	startPeriodicCleanup(&s.cleanupMu, &s.quit, s.cleanupInterval, func() {
+		s.cleanup(time.Now().UTC())
+	})
 }
 
 // StopCleanup stops the periodic stale-entry cleanup loop.
@@ -130,12 +124,7 @@ func (s *RecentBandStore) StopCleanup() {
 	if s == nil {
 		return
 	}
-	s.cleanupMu.Lock()
-	if s.quit != nil {
-		close(s.quit)
-		s.quit = nil
-	}
-	s.cleanupMu.Unlock()
+	stopPeriodicCleanup(&s.cleanupMu, &s.quit)
 }
 
 // Record stores one observed report for (call, band, mode) from a spotter.
@@ -299,19 +288,6 @@ func (s *RecentBandStore) ActiveCallCountsByBand(now time.Time) map[string]int {
 		out[band] = len(calls)
 	}
 	return out
-}
-
-func (s *RecentBandStore) cleanupLoop() {
-	ticker := time.NewTicker(s.cleanupInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			s.cleanup(time.Now().UTC())
-		case <-s.quit:
-			return
-		}
-	}
 }
 
 func (s *RecentBandStore) cleanup(now time.Time) {

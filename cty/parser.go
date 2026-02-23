@@ -4,6 +4,7 @@
 package cty
 
 import (
+	"dxcluster/strutil"
 	"fmt"
 	"io"
 	"os"
@@ -187,7 +188,7 @@ func decodeCTYData(r io.ReadSeeker) (map[string]PrefixInfo, error) {
 	}
 	data := make(map[string]PrefixInfo, len(raw))
 	for k, v := range raw {
-		norm := strings.ToUpper(strings.TrimSpace(k))
+		norm := strutil.NormalizeUpper(k)
 		data[norm] = v
 	}
 	return data, nil
@@ -300,7 +301,7 @@ func (db *CTYDatabase) lookupCallsignPortableNoCache(cs string) (*PrefixInfo, bo
 // Upstream: Tests.
 // Downstream: None.
 func (db *CTYDatabase) KeysWithPrefix(pref string) []string {
-	norm := strings.ToUpper(strings.TrimSpace(pref))
+	norm := strutil.NormalizeUpper(pref)
 	matches := make([]string, 0)
 	for _, key := range db.Keys {
 		if strings.HasPrefix(key, norm) {

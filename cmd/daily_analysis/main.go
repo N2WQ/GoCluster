@@ -20,6 +20,8 @@ import (
 
 	"dxcluster/internal/openaiutil"
 	spotpkg "dxcluster/spot"
+	"dxcluster/strutil"
+
 	"gopkg.in/yaml.v3"
 	_ "modernc.org/sqlite"
 )
@@ -423,7 +425,7 @@ func loadRBN(csvPath string) (map[string][]spot, error) {
 		if err != nil {
 			continue
 		}
-		dx := strings.ToUpper(strings.TrimSpace(parts[5]))
+		dx := strutil.NormalizeUpper(parts[5])
 		if dx == "" {
 			continue
 		}

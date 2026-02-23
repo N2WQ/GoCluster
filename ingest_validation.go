@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"dxcluster/cty"
+	"dxcluster/internal/ratelimit"
 	"dxcluster/spot"
 	"dxcluster/uls"
 )
@@ -30,11 +31,11 @@ type ingestValidator struct {
 	dropReporter       func(line string)
 	isLicensedUS       func(call string) bool
 	requireCTY         bool
-	ctyDropDXCounter   rateCounter
-	ctyDropDECounter   rateCounter
-	invalidDropDX      rateCounter
-	invalidDropDE      rateCounter
-	dedupDropCounter   rateCounter
+	ctyDropDXCounter   ratelimit.Counter
+	ctyDropDECounter   ratelimit.Counter
+	invalidDropDX      ratelimit.Counter
+	invalidDropDE      ratelimit.Counter
+	dedupDropCounter   ratelimit.Counter
 	ingestTotal        atomic.Uint64 // total spots received (includes those dropped by validation)
 }
 
@@ -64,11 +65,11 @@ func newIngestValidator(
 		dropReporter:       dropReporter,
 		isLicensedUS:       uls.IsLicensedUS,
 		requireCTY:         requireCTY,
-		ctyDropDXCounter:   newRateCounter(),
-		ctyDropDECounter:   newRateCounter(),
-		invalidDropDX:      newRateCounter(),
-		invalidDropDE:      newRateCounter(),
-		dedupDropCounter:   newRateCounter(),
+		ctyDropDXCounter:   ratelimit.NewCounterWithRetry(defaultIngestDropLogInterval),
+		ctyDropDECounter:   ratelimit.NewCounterWithRetry(defaultIngestDropLogInterval),
+		invalidDropDX:      ratelimit.NewCounterWithRetry(defaultIngestDropLogInterval),
+		invalidDropDE:      ratelimit.NewCounterWithRetry(defaultIngestDropLogInterval),
+		dedupDropCounter:   ratelimit.NewCounterWithRetry(defaultIngestDropLogInterval),
 	}
 }
 
@@ -311,36 +312,4 @@ func ingestSourceLabel(s *spot.Spot) string {
 		return string(s.SourceType)
 	}
 	return "unknown"
-}
-
-// rateCounter throttles log emission while tracking totals.
-type rateCounter struct {
-	interval time.Duration
-	last     atomic.Int64
-	total    atomic.Uint64
-}
-
-func newRateCounter() rateCounter {
-	return rateCounter{interval: defaultIngestDropLogInterval}
-}
-
-// Inc increments the counter and returns (total, shouldLog).
-func (c *rateCounter) Inc() (uint64, bool) {
-	if c == nil {
-		return 0, false
-	}
-	total := c.total.Add(1)
-	if c.interval <= 0 {
-		return total, true
-	}
-	now := time.Now().UTC().UnixNano()
-	for {
-		last := c.last.Load()
-		if now-last < c.interval.Nanoseconds() {
-			return total, false
-		}
-		if c.last.CompareAndSwap(last, now) {
-			return total, true
-		}
-	}
 }

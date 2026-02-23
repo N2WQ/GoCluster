@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"dxcluster/internal/logutil"
 	"dxcluster/internal/propreport"
 )
 
@@ -137,10 +138,10 @@ func (s *propReportScheduler) run(ctx context.Context) {
 }
 
 func (s *propReportScheduler) logf(format string, args ...any) {
-	if s == nil || s.logger == nil {
+	if s == nil {
 		return
 	}
-	s.logger.Printf(format, args...)
+	logutil.SafePrintf(s.logger, format, args...)
 }
 
 type propReportGenerator struct {

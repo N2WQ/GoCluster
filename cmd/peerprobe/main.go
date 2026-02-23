@@ -18,6 +18,7 @@ import (
 	"dxcluster/peer"
 	"dxcluster/rbn"
 	"dxcluster/spot"
+	"dxcluster/strutil"
 
 	"github.com/ziutek/telnet"
 
@@ -74,7 +75,7 @@ func main() {
 		peerHost:       *peerHost,
 		peerPort:       *peerPort,
 		peerRemoteCall: strings.TrimSpace(*peerRemote),
-		localCall:      strings.ToUpper(strings.TrimSpace(*localCall)),
+		localCall:      strutil.NormalizeUpper(*localCall),
 		password:       *peerPass,
 		preferPC9x:     *preferPC9x,
 		nodeVersion:    *nodeVer,
@@ -100,7 +101,7 @@ func main() {
 	startTelnetTap(clusterHostName, clusterHostPort, *clusterCall, telnetEvents)
 
 	// Start peer loop (auto-reconnect on EOF) in background.
-	tsGen := &timestampGenerator{}
+	tsGen := peer.NewTimestampGenerator()
 	go peerLoop(cfg, peerEvents, tsGen)
 
 	matchWindow := time.Duration(*windowMinutes) * time.Minute
@@ -141,7 +142,7 @@ func readPeerFeed(conn net.Conn, reader *peer.LineReader, writeMu *sync.Mutex, l
 			handlePeerPing(frame, writeMu, conn, localCall)
 			log.Printf("KEEPALIVE RECV %s", frame.Raw)
 		case "PC92":
-			if fields := payloadFields(frame.Fields); len(fields) >= 3 && strings.EqualFold(strings.TrimSpace(fields[2]), "K") {
+			if fields := peer.PayloadFields(frame.Fields); len(fields) >= 3 && strings.EqualFold(strings.TrimSpace(fields[2]), "K") {
 				log.Printf("KEEPALIVE RECV %s", frame.Raw)
 			}
 		case "PC11", "PC61":
@@ -295,14 +296,14 @@ func spotKey(s *spot.Spot) string {
 	if s == nil {
 		return ""
 	}
-	dx := strings.ToUpper(strings.TrimSpace(s.DXCall))
-	de := strings.ToUpper(strings.TrimSpace(s.DECall))
+	dx := strutil.NormalizeUpper(s.DXCall)
+	de := strutil.NormalizeUpper(s.DECall)
 	freq := fmt.Sprintf("%.1f", s.Frequency) // round to 100 Hz resolution
 	return dx + "|" + de + "|" + freq
 }
 
 // keepaliveLoop sends periodic keepalives to prevent remote idle timeouts.
-func keepaliveLoop(writeMu *sync.Mutex, conn net.Conn, pc9x bool, cfg probeConfig, tsGen *timestampGenerator, stop <-chan struct{}) {
+func keepaliveLoop(writeMu *sync.Mutex, conn net.Conn, pc9x bool, cfg probeConfig, tsGen *peer.TimestampGenerator, stop <-chan struct{}) {
 	interval := time.Duration(cfg.keepaliveSec) * time.Second
 	if interval <= 0 {
 		interval = 30 * time.Second
@@ -340,7 +341,7 @@ func keepaliveLoop(writeMu *sync.Mutex, conn net.Conn, pc9x bool, cfg probeConfi
 
 // handlePeerPing responds to PC51 ping frames with a PC51 ack, matching the production session logic.
 func handlePeerPing(frame *peer.Frame, writeMu *sync.Mutex, conn net.Conn, localCall string) {
-	fields := payloadFields(frame.Fields)
+	fields := peer.PayloadFields(frame.Fields)
 	if len(fields) < 3 {
 		return
 	}
@@ -427,7 +428,7 @@ func formatDelay(d time.Duration) string {
 }
 
 // peerLoop maintains the peer connection with auto-reconnect on errors.
-func peerLoop(cfg probeConfig, peerEvents chan<- spotEvent, tsGen *timestampGenerator) {
+func peerLoop(cfg probeConfig, peerEvents chan<- spotEvent, tsGen *peer.TimestampGenerator) {
 	for {
 		if err := runPeerSession(cfg, peerEvents, tsGen); err != nil {
 			log.Printf("Peer session ended: %v; reconnecting in 5s", err)
@@ -438,7 +439,7 @@ func peerLoop(cfg probeConfig, peerEvents chan<- spotEvent, tsGen *timestampGene
 	}
 }
 
-func runPeerSession(cfg probeConfig, peerEvents chan<- spotEvent, tsGen *timestampGenerator) error {
+func runPeerSession(cfg probeConfig, peerEvents chan<- spotEvent, tsGen *peer.TimestampGenerator) error {
 	addr := net.JoinHostPort(cfg.peerHost, fmt.Sprintf("%d", cfg.peerPort))
 	conn, err := telnet.DialTimeout("tcp", addr, time.Duration(cfg.loginSec)*time.Second)
 	if err != nil {
@@ -482,7 +483,7 @@ func runPeerSession(cfg probeConfig, peerEvents chan<- spotEvent, tsGen *timesta
 	return err
 }
 
-func handshake(reader *peer.LineReader, writeMu *sync.Mutex, conn net.Conn, cfg probeConfig, tsGen *timestampGenerator) (bool, bool, error) {
+func handshake(reader *peer.LineReader, writeMu *sync.Mutex, conn net.Conn, cfg probeConfig, tsGen *peer.TimestampGenerator) (bool, bool, error) {
 	initSent := false
 	sentCall := cfg.localCall != ""
 	sentPass := cfg.password == ""
@@ -552,7 +553,7 @@ func handshake(reader *peer.LineReader, writeMu *sync.Mutex, conn net.Conn, cfg 
 	}
 }
 
-func sendInit(mu *sync.Mutex, conn net.Conn, localCall string, pc9x bool, nodeVersion, nodeBuild, legacy string, pc92Bitmap, hopCount int, tsGen *timestampGenerator) error {
+func sendInit(mu *sync.Mutex, conn net.Conn, localCall string, pc9x bool, nodeVersion, nodeBuild, legacy string, pc92Bitmap, hopCount int, tsGen *peer.TimestampGenerator) error {
 	if pc9x {
 		entry := pc92Entry(localCall, nodeVersion, nodeBuild, pc92Bitmap)
 		ts := tsGen.Next()
@@ -602,39 +603,4 @@ func liveNodeCountProbe() int {
 // telnet listeners, so we report 0.
 func liveUserCountProbe() int {
 	return 0
-}
-
-// payloadFields returns non-hop payload fields with trailing empties preserved.
-func payloadFields(fields []string) []string {
-	if len(fields) == 0 {
-		return fields
-	}
-	out := make([]string, len(fields))
-	copy(out, fields)
-	last := strings.TrimSpace(out[len(out)-1])
-	if strings.HasPrefix(last, "H") || strings.HasPrefix(last, "h") {
-		out = out[:len(out)-1]
-	}
-	return out
-}
-
-// timestampGenerator mirrors the session helper to produce PC92 timestamps.
-type timestampGenerator struct {
-	lastSec int
-	seq     int
-	mu      sync.Mutex
-}
-
-func (g *timestampGenerator) Next() string {
-	now := time.Now().UTC()
-	sec := now.Hour()*3600 + now.Minute()*60 + now.Second()
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if sec != g.lastSec {
-		g.lastSec = sec
-		g.seq = 0
-		return fmt.Sprintf("%d", sec)
-	}
-	g.seq++
-	return fmt.Sprintf("%d.%02d", sec, g.seq)
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 
+	"dxcluster/strutil"
 	"dxcluster/uls"
 )
 
@@ -21,7 +22,7 @@ func hasLeadingLettersBeforeDigit(call string, threshold int) bool {
 	if threshold <= 0 {
 		return false
 	}
-	call = strings.ToUpper(strings.TrimSpace(call))
+	call = strutil.NormalizeUpper(call)
 	if call == "" {
 		return false
 	}

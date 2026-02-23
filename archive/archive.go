@@ -14,7 +14,10 @@ import (
 	"time"
 
 	"dxcluster/config"
+	"dxcluster/internal/byteutil"
+	"dxcluster/internal/numutil"
 	"dxcluster/spot"
+	"dxcluster/strutil"
 
 	"github.com/cockroachdb/pebble"
 )
@@ -27,7 +30,7 @@ const (
 var (
 	spotPrefixBytes = []byte(spotPrefix)
 	spotIterLower   = append([]byte(nil), spotPrefixBytes...)
-	spotIterUpper   = prefixUpperBound(spotIterLower)
+	spotIterUpper   = byteutil.PrefixUpperBound(spotIterLower)
 	// spotIterOptions is read-only and safe to reuse across iterators.
 	spotIterOptions = &pebble.IterOptions{
 		LowerBound: spotIterLower,
@@ -642,8 +645,8 @@ func encodeRecord(s *spot.Spot) []byte {
 	if deGrid == "" {
 		deGrid = strings.TrimSpace(s.DEMetadata.Grid)
 	}
-	dxCont := strings.ToUpper(strings.TrimSpace(s.DXMetadata.Continent))
-	deCont := strings.ToUpper(strings.TrimSpace(s.DEMetadata.Continent))
+	dxCont := strutil.NormalizeUpper(s.DXMetadata.Continent)
+	deCont := strutil.NormalizeUpper(s.DEMetadata.Continent)
 
 	lengths := [fieldCount]int{
 		len(dxCall),
@@ -684,8 +687,8 @@ func encodeRecord(s *spot.Spot) []byte {
 	buf[3] = 0
 	binary.BigEndian.PutUint64(buf[4:], math.Float64bits(s.Frequency))
 	binary.BigEndian.PutUint32(buf[12:], uint32(int32(s.Report)))
-	binary.BigEndian.PutUint16(buf[16:], clampUint16(s.DXMetadata.CQZone))
-	binary.BigEndian.PutUint16(buf[18:], clampUint16(s.DEMetadata.CQZone))
+	binary.BigEndian.PutUint16(buf[16:], numutil.ClampUint16(s.DXMetadata.CQZone))
+	binary.BigEndian.PutUint16(buf[18:], numutil.ClampUint16(s.DEMetadata.CQZone))
 	binary.BigEndian.PutUint32(buf[20:], uint32(clampInt(s.DXMetadata.ADIF)))
 	binary.BigEndian.PutUint32(buf[24:], uint32(clampInt(s.DEMetadata.ADIF)))
 
@@ -909,34 +912,9 @@ func normalizeUnixNano(t time.Time) int64 {
 	return ts
 }
 
-func clampUint16(value int) uint16 {
-	if value <= 0 {
-		return 0
-	}
-	if value > math.MaxUint16 {
-		return math.MaxUint16
-	}
-	return uint16(value)
-}
-
 func clampInt(value int) int {
 	if value < 0 {
 		return 0
 	}
 	return value
-}
-
-func prefixUpperBound(prefix []byte) []byte {
-	if len(prefix) == 0 {
-		return nil
-	}
-	upper := make([]byte, len(prefix))
-	copy(upper, prefix)
-	for i := len(upper) - 1; i >= 0; i-- {
-		if upper[i] != 0xFF {
-			upper[i]++
-			return upper[:i+1]
-		}
-	}
-	return nil
 }

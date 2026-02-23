@@ -6,10 +6,10 @@ package main
 import (
 	"context"
 	"database/sql"
+	"dxcluster/strutil"
 	"flag"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -154,8 +154,8 @@ func analyzeBothReappearances(db *sql.DB, lookAheadHours int) ([]reappearanceCas
 			return nil, err
 		}
 		c.correctionTime = time.Unix(ts, 0)
-		c.subject = strings.ToUpper(strings.TrimSpace(c.subject))
-		c.winner = strings.ToUpper(strings.TrimSpace(c.winner))
+		c.subject = strutil.NormalizeUpper(c.subject)
+		c.winner = strutil.NormalizeUpper(c.winner)
 
 		// Check for subsequent appearances
 		endTime := c.correctionTime.Add(time.Duration(lookAheadHours) * time.Hour).Unix()
@@ -185,7 +185,7 @@ func analyzeBothReappearances(db *sql.DB, lookAheadHours int) ([]reappearanceCas
 			if err := subRows.Scan(&subject, &freq); err != nil {
 				continue
 			}
-			subject = strings.ToUpper(strings.TrimSpace(subject))
+			subject = strutil.NormalizeUpper(subject)
 
 			if subject == c.subject {
 				subjectSeen = true

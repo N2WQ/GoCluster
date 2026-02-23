@@ -5,6 +5,7 @@ package skew
 import (
 	"bytes"
 	"context"
+	"dxcluster/strutil"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -40,7 +41,7 @@ type Table struct {
 func NewTable(entries []Entry) (*Table, error) {
 	table := &Table{entries: make(map[string]Entry, len(entries))}
 	for _, entry := range entries {
-		key := strings.ToUpper(strings.TrimSpace(entry.Callsign))
+		key := strutil.NormalizeUpper(entry.Callsign)
 		if key == "" {
 			continue
 		}
@@ -91,7 +92,7 @@ func (t *Table) Lookup(call string) (float64, bool) {
 	if t == nil {
 		return 0, false
 	}
-	key := strings.ToUpper(strings.TrimSpace(call))
+	key := strutil.NormalizeUpper(call)
 	if key == "" {
 		return 0, false
 	}

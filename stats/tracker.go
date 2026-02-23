@@ -3,6 +3,7 @@
 package stats
 
 import (
+	"dxcluster/strutil"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,11 +32,11 @@ type Tracker struct {
 	corrDecisionReasons  sync.Map // string -> *atomic.Uint64
 	corrDecisionPaths    sync.Map // string -> *atomic.Uint64
 	corrDecisionRanks    sync.Map // string(rank) -> *atomic.Uint64
-	stabHeld            atomic.Uint64
-	stabImmediate       atomic.Uint64
-	stabDelayed         atomic.Uint64
-	stabSuppressed      atomic.Uint64
-	stabOverflowRelease atomic.Uint64
+	stabHeld             atomic.Uint64
+	stabImmediate        atomic.Uint64
+	stabDelayed          atomic.Uint64
+	stabSuppressed       atomic.Uint64
+	stabOverflowRelease  atomic.Uint64
 }
 
 // NewTracker creates a new stats tracker with a start timestamp.
@@ -69,8 +70,8 @@ func (t *Tracker) IncrementSource(source string) {
 // Upstream: Spot ingest pipeline.
 // Downstream: incrementCounter.
 func (t *Tracker) IncrementSourceMode(source, mode string) {
-	source = strings.ToUpper(strings.TrimSpace(source))
-	mode = strings.ToUpper(strings.TrimSpace(mode))
+	source = strutil.NormalizeUpper(source)
+	mode = strutil.NormalizeUpper(mode)
 	if source == "" || mode == "" {
 		return
 	}
@@ -83,20 +84,7 @@ func (t *Tracker) IncrementSourceMode(source, mode string) {
 // Upstream: Dashboard/metrics rendering.
 // Downstream: atomic loads.
 func (t *Tracker) GetModeCounts() map[string]uint64 {
-	counts := make(map[string]uint64)
-	t.modeCounts.Range(func(key, value any) bool {
-		counterKey, keyOK := mapCounterKey(key)
-		if !keyOK {
-			return true
-		}
-		counter, valueOK := mapCounterValue(value)
-		if !valueOK {
-			return true
-		}
-		counts[counterKey] = counter.Load()
-		return true
-	})
-	return counts
+	return snapshotCounterMap(&t.modeCounts)
 }
 
 // GetSourceCounts returns a copy of per-source counts.
@@ -104,20 +92,7 @@ func (t *Tracker) GetModeCounts() map[string]uint64 {
 // Upstream: Dashboard/metrics rendering.
 // Downstream: atomic loads.
 func (t *Tracker) GetSourceCounts() map[string]uint64 {
-	counts := make(map[string]uint64)
-	t.sourceCounts.Range(func(key, value any) bool {
-		counterKey, keyOK := mapCounterKey(key)
-		if !keyOK {
-			return true
-		}
-		counter, valueOK := mapCounterValue(value)
-		if !valueOK {
-			return true
-		}
-		counts[counterKey] = counter.Load()
-		return true
-	})
-	return counts
+	return snapshotCounterMap(&t.sourceCounts)
 }
 
 // GetSourceModeCounts returns a copy of source/mode counts.
@@ -125,20 +100,7 @@ func (t *Tracker) GetSourceCounts() map[string]uint64 {
 // Upstream: Dashboard/metrics rendering.
 // Downstream: atomic loads.
 func (t *Tracker) GetSourceModeCounts() map[string]uint64 {
-	counts := make(map[string]uint64)
-	t.sourceModeCounts.Range(func(key, value any) bool {
-		counterKey, keyOK := mapCounterKey(key)
-		if !keyOK {
-			return true
-		}
-		counter, valueOK := mapCounterValue(value)
-		if !valueOK {
-			return true
-		}
-		counts[counterKey] = counter.Load()
-		return true
-	})
-	return counts
+	return snapshotCounterMap(&t.sourceModeCounts)
 }
 
 // SourceCardinality returns the number of distinct source keys tracked.
@@ -464,20 +426,7 @@ func (t *Tracker) CorrectionPriorBonusUsed() uint64 {
 // Upstream: dashboard/metrics output.
 // Downstream: atomic loads.
 func (t *Tracker) CorrectionDecisionReasons() map[string]uint64 {
-	counts := make(map[string]uint64)
-	t.corrDecisionReasons.Range(func(key, value any) bool {
-		counterKey, keyOK := mapCounterKey(key)
-		if !keyOK {
-			return true
-		}
-		counter, valueOK := mapCounterValue(value)
-		if !valueOK {
-			return true
-		}
-		counts[counterKey] = counter.Load()
-		return true
-	})
-	return counts
+	return snapshotCounterMap(&t.corrDecisionReasons)
 }
 
 // Purpose: Return a copy of correction decision path counts.
@@ -485,20 +434,7 @@ func (t *Tracker) CorrectionDecisionReasons() map[string]uint64 {
 // Upstream: dashboard/metrics output.
 // Downstream: atomic loads.
 func (t *Tracker) CorrectionDecisionPaths() map[string]uint64 {
-	counts := make(map[string]uint64)
-	t.corrDecisionPaths.Range(func(key, value any) bool {
-		counterKey, keyOK := mapCounterKey(key)
-		if !keyOK {
-			return true
-		}
-		counter, valueOK := mapCounterValue(value)
-		if !valueOK {
-			return true
-		}
-		counts[counterKey] = counter.Load()
-		return true
-	})
-	return counts
+	return snapshotCounterMap(&t.corrDecisionPaths)
 }
 
 // Purpose: Return a copy of correction candidate-rank attempt counts.
@@ -506,20 +442,7 @@ func (t *Tracker) CorrectionDecisionPaths() map[string]uint64 {
 // Upstream: dashboard/metrics output.
 // Downstream: atomic loads.
 func (t *Tracker) CorrectionDecisionRanks() map[string]uint64 {
-	counts := make(map[string]uint64)
-	t.corrDecisionRanks.Range(func(key, value any) bool {
-		counterKey, keyOK := mapCounterKey(key)
-		if !keyOK {
-			return true
-		}
-		counter, valueOK := mapCounterValue(value)
-		if !valueOK {
-			return true
-		}
-		counts[counterKey] = counter.Load()
-		return true
-	})
-	return counts
+	return snapshotCounterMap(&t.corrDecisionRanks)
 }
 
 // Purpose: Increment reputation drop counters by reason.
@@ -545,20 +468,7 @@ func (t *Tracker) ReputationDrops() uint64 {
 // Upstream: Dashboard/metrics rendering.
 // Downstream: atomic loads.
 func (t *Tracker) ReputationDropReasons() map[string]uint64 {
-	reasons := make(map[string]uint64)
-	t.reputationReasons.Range(func(key, value any) bool {
-		counterKey, keyOK := mapCounterKey(key)
-		if !keyOK {
-			return true
-		}
-		counter, valueOK := mapCounterValue(value)
-		if !valueOK {
-			return true
-		}
-		reasons[counterKey] = counter.Load()
-		return true
-	})
-	return reasons
+	return snapshotCounterMap(&t.reputationReasons)
 }
 
 // Purpose: Format a sync.Map of counters into a "label: key=value" string.
@@ -636,4 +546,24 @@ func mapCounterValue(value any) (*atomic.Uint64, bool) {
 		return nil, false
 	}
 	return counter, true
+}
+
+func snapshotCounterMap(m *sync.Map) map[string]uint64 {
+	counts := make(map[string]uint64)
+	if m == nil {
+		return counts
+	}
+	m.Range(func(key, value any) bool {
+		counterKey, keyOK := mapCounterKey(key)
+		if !keyOK {
+			return true
+		}
+		counter, valueOK := mapCounterValue(value)
+		if !valueOK {
+			return true
+		}
+		counts[counterKey] = counter.Load()
+		return true
+	})
+	return counts
 }

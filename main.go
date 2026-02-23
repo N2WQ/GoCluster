@@ -38,6 +38,8 @@ import (
 	"dxcluster/download"
 	"dxcluster/filter"
 	"dxcluster/gridstore"
+	"dxcluster/internal/ratelimit"
+	"dxcluster/internal/schedule"
 	"dxcluster/pathreliability"
 	"dxcluster/peer"
 	"dxcluster/pskreporter"
@@ -47,6 +49,7 @@ import (
 	"dxcluster/solarweather"
 	"dxcluster/spot"
 	"dxcluster/stats"
+	"dxcluster/strutil"
 	"dxcluster/telnet"
 	"dxcluster/ui"
 	"dxcluster/uls"
@@ -78,6 +81,8 @@ const (
 	// envMapLogInterval enables periodic map size logging when set to a Go duration.
 	envMapLogInterval = "DXC_MAP_LOG_INTERVAL"
 )
+
+var ingestForwardDropLogInterval = 30 * time.Second
 
 // Version will be set at build time
 var Version = "dev"
@@ -1063,8 +1068,8 @@ func main() {
 			// Purpose: Pump CW/RTTY RBN spots into the dedup input channel.
 			// Key aspects: Runs in its own goroutine to keep ingest non-blocking.
 			// Upstream: main startup after RBN connect.
-			// Downstream: processRBNSpots.
-			go processRBNSpots(rbnClient, ingestInput, "RBN-CW", cfg.SpotPolicy)
+			// Downstream: forwardSpots.
+			go forwardSpots(rbnClient.GetSpotChannel(), ingestInput, "RBN-CW", cfg.SpotPolicy, nil)
 			log.Println("RBN CW/RTTY client feeding spots into unified dedup engine")
 		}
 	}
@@ -1085,8 +1090,8 @@ func main() {
 			// Purpose: Pump FT4/FT8 RBN digital spots into the dedup input channel.
 			// Key aspects: Runs in its own goroutine to keep ingest non-blocking.
 			// Upstream: main startup after RBN Digital connect.
-			// Downstream: processRBNSpots.
-			go processRBNSpots(rbnDigitalClient, ingestInput, "RBN-FT", cfg.SpotPolicy)
+			// Downstream: forwardSpots.
+			go forwardSpots(rbnDigitalClient.GetSpotChannel(), ingestInput, "RBN-FT", cfg.SpotPolicy, nil)
 			log.Println("RBN Digital (FT4/FT8) client feeding spots into unified dedup engine")
 		}
 	}
@@ -1129,8 +1134,18 @@ func main() {
 			// Purpose: Pump human/relay telnet spots into the dedup input channel.
 			// Key aspects: Runs in its own goroutine to keep ingest non-blocking.
 			// Upstream: main startup after human telnet connect.
-			// Downstream: processHumanTelnetSpots.
-			go processHumanTelnetSpots(humanTelnetClient, ingestInput, "HUMAN-TELNET", cfg.SpotPolicy)
+			// Downstream: forwardSpots.
+			go forwardSpots(humanTelnetClient.GetSpotChannel(), ingestInput, "HUMAN-TELNET", cfg.SpotPolicy, func(sp *spot.Spot) {
+				sp.IsHuman = true
+				sp.SourceType = spot.SourceUpstream
+				if strings.TrimSpace(sp.SourceNode) == "" {
+					sp.SourceNode = "HUMAN-TELNET"
+				}
+				if strings.TrimSpace(sp.Mode) == "" {
+					sp.Mode = "RTTY" // temporary default until mode parser is added
+					sp.EnsureNormalized()
+				}
+			})
 			log.Println("Human/relay telnet client feeding spots into unified dedup engine")
 		}
 	}
@@ -1167,8 +1182,8 @@ func main() {
 			// Purpose: Pump PSKReporter spots into the dedup input channel.
 			// Key aspects: Runs in its own goroutine to keep ingest non-blocking.
 			// Upstream: main startup after PSKReporter connect.
-			// Downstream: processPSKRSpots.
-			go processPSKRSpots(pskrClient, ingestInput, cfg.SpotPolicy)
+			// Downstream: forwardSpots.
+			go forwardSpots(pskrClient.GetSpotChannel(), ingestInput, "PSKReporter", cfg.SpotPolicy, nil)
 			// Purpose: Pump PSKReporter path-only spots into the path predictor.
 			// Key aspects: Runs in its own goroutine; never touches dedup/broadcast.
 			// Upstream: main startup after PSKReporter connect.
@@ -1325,9 +1340,9 @@ func makeUnlicensedReporter(dash ui.Surface, tracker *stats.Tracker, deduper *dr
 		if tracker != nil {
 			tracker.IncrementUnlicensedDrops()
 		}
-		source = strings.ToUpper(strings.TrimSpace(source))
-		role = strings.ToUpper(strings.TrimSpace(role))
-		mode = strings.ToUpper(strings.TrimSpace(mode))
+		source = strutil.NormalizeUpper(source)
+		role = strutil.NormalizeUpper(role)
+		mode = strutil.NormalizeUpper(mode)
 		call = strings.TrimSpace(strings.ToUpper(call))
 
 		message := formatUnlicensedDropMessage(role, call, source, mode, freq)
@@ -1800,94 +1815,35 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 	}
 }
 
-// processRBNSpots receives spots from RBN and sends to deduplicator
-// This is the UNIFIED ARCHITECTURE path
-// RBN → Deduplicator Input Channel
-// Purpose: Feed RBN spots into the unified deduplicator input.
-// Key aspects: Drops stale spots and avoids blocking on dedup input.
-// Upstream: RBN client ingest goroutine.
-// Downstream: deduplicator.GetInputChannel and isStale.
-func processRBNSpots(client *rbn.Client, ingest chan<- *spot.Spot, source string, spotPolicy config.SpotPolicy) {
-	spotChan := client.GetSpotChannel()
-	var drops atomic.Uint64
-
-	for spot := range spotChan {
-		if isStale(spot, spotPolicy) {
+// forwardSpots pushes source spots into ingest with optional per-spot transform.
+// It drops nil and stale spots, performs non-blocking enqueue, and rate-limits drop logs.
+func forwardSpots(
+	spotChan <-chan *spot.Spot,
+	ingest chan<- *spot.Spot,
+	label string,
+	spotPolicy config.SpotPolicy,
+	transform func(*spot.Spot),
+) {
+	drops := ratelimit.NewCounter(ingestForwardDropLogInterval)
+	for s := range spotChan {
+		if s == nil {
 			continue
 		}
-		// Non-blocking send to avoid wedging ingest if dedup blocks.
-		select {
-		case ingest <- spot:
-		default:
-			count := drops.Add(1)
-			if count == 1 || count%100 == 0 {
-				log.Printf("%s: Ingest input full, dropping spot (total drops=%d)", source, count)
-			}
+		if transform != nil {
+			transform(s)
 		}
-	}
-	log.Printf("%s: Spot processing stopped", source)
-}
-
-// processHumanTelnetSpots marks incoming telnet spots as human-sourced and sends them into dedup.
-// Purpose: Feed upstream human telnet spots into dedup after tagging as human.
-// Key aspects: Ensures SourceType/Mode defaults and enforces staleness guard.
-// Upstream: human telnet client ingest.
-// Downstream: deduplicator.GetInputChannel and isStale.
-func processHumanTelnetSpots(client *rbn.Client, ingest chan<- *spot.Spot, source string, spotPolicy config.SpotPolicy) {
-	spotChan := client.GetSpotChannel()
-	var drops atomic.Uint64
-
-	for sp := range spotChan {
-		if sp != nil {
-			sp.IsHuman = true
-			sp.SourceType = spot.SourceUpstream
-			if strings.TrimSpace(sp.SourceNode) == "" {
-				sp.SourceNode = source
-			}
-			if strings.TrimSpace(sp.Mode) == "" {
-				sp.Mode = "RTTY" // temporary default until mode parser is added
-				sp.EnsureNormalized()
-			}
-			if isStale(sp, spotPolicy) {
-				continue
-			}
-		}
-		select {
-		case ingest <- sp:
-		default:
-			count := drops.Add(1)
-			if count == 1 || count%100 == 0 {
-				log.Printf("%s: Ingest input full, dropping spot (total drops=%d)", source, count)
-			}
-		}
-	}
-	log.Printf("%s: Spot processing stopped", source)
-}
-
-// processPSKRSpots receives spots from PSKReporter and sends to deduplicator
-// PSKReporter → Deduplicator Input Channel
-// Purpose: Feed PSKReporter spots into the unified deduplicator input.
-// Key aspects: Drops stale spots and avoids blocking on dedup input.
-// Upstream: PSKReporter client worker pool.
-// Downstream: deduplicator.GetInputChannel and isStale.
-func processPSKRSpots(client *pskreporter.Client, ingest chan<- *spot.Spot, spotPolicy config.SpotPolicy) {
-	spotChan := client.GetSpotChannel()
-	var drops atomic.Uint64
-
-	for spot := range spotChan {
-		if isStale(spot, spotPolicy) {
+		if isStale(s, spotPolicy) {
 			continue
 		}
-		// Non-blocking send to avoid backing up the PSK worker pool when dedup is slow.
 		select {
-		case ingest <- spot:
+		case ingest <- s:
 		default:
-			count := drops.Add(1)
-			if count == 1 || count%100 == 0 {
-				log.Printf("PSKReporter: Ingest input full, dropping spot (total drops=%d)", count)
+			if count, ok := drops.Inc(); ok {
+				log.Printf("%s: Ingest input full, dropping spot (total drops=%d)", label, count)
 			}
 		}
 	}
+	log.Printf("%s: Spot processing stopped", label)
 }
 
 type pathOnlyStats struct {
@@ -3054,7 +3010,7 @@ func stripTrailingHyphenSuffix(call string) string {
 // normalizeCallForMetadata strips skimmer and hyphen suffixes before metadata lookups.
 // It preserves portable segments (e.g., "/P") and does not mutate canonical calls.
 func normalizeCallForMetadata(call string) string {
-	call = strings.ToUpper(strings.TrimSpace(call))
+	call = strutil.NormalizeUpper(call)
 	if call == "" {
 		return call
 	}
@@ -3277,7 +3233,7 @@ func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.Correcti
 	window := callCorrectionWindowForMode(cfg, spotEntry.Mode)
 	defer idx.Add(spotEntry, now, window)
 
-	modeUpper := strings.ToUpper(strings.TrimSpace(spotEntry.Mode))
+	modeUpper := strutil.NormalizeUpper(spotEntry.Mode)
 	// Voice signals are wider, so use sideband-specific correction windows.
 	isVoice := modeUpper == "USB" || modeUpper == "LSB"
 
@@ -3414,7 +3370,7 @@ func callCorrectionWindowForMode(cfg config.CallCorrectionConfig, mode string) t
 	if baseSeconds <= 0 {
 		baseSeconds = 45
 	}
-	switch strings.ToUpper(strings.TrimSpace(mode)) {
+	switch strutil.NormalizeUpper(mode) {
 	case "CW":
 		if cfg.RecencySecondsCW > 0 {
 			baseSeconds = cfg.RecencySecondsCW
@@ -3602,7 +3558,7 @@ func frequencyAverageTolerance(policy config.SpotPolicy) float64 {
 // Upstream: processOutputSpots confidence seeding and fallback.
 // Downstream: strings.ToUpper/TrimSpace.
 func modeSupportsConfidenceGlyph(mode string) bool {
-	switch strings.ToUpper(strings.TrimSpace(mode)) {
+	switch strutil.NormalizeUpper(mode) {
 	case "CW", "RTTY", "USB", "LSB":
 		return true
 	default:
@@ -3745,7 +3701,7 @@ func sourceStatsLabel(s *spot.Spot) string {
 		return "UPSTREAM"
 	}
 
-	node := strings.ToUpper(strings.TrimSpace(s.SourceNode))
+	node := strutil.NormalizeUpper(s.SourceNode)
 	switch node {
 	case "RBN-DIGITAL":
 		return "RBN-DIGITAL"
@@ -3762,7 +3718,7 @@ func sourceStatsLabel(s *spot.Spot) string {
 }
 
 func rbnStatsLabel(sourceNode string) string {
-	trimmed := strings.ToUpper(strings.TrimSpace(sourceNode))
+	trimmed := strutil.NormalizeUpper(sourceNode)
 	if trimmed == "RBN-DIGITAL" {
 		return "RBN-DIGITAL"
 	}
@@ -3827,7 +3783,7 @@ func formatConfidence(percent int, totalReporters int) string {
 // Upstream: processOutputSpots frequency averaging path.
 // Downstream: string checks on mode and call.
 func shouldAverageFrequency(s *spot.Spot) bool {
-	mode := strings.ToUpper(strings.TrimSpace(s.Mode))
+	mode := strutil.NormalizeUpper(s.Mode)
 	return mode == "CW" || mode == "RTTY"
 }
 
@@ -3898,29 +3854,9 @@ func startSkewScheduler(ctx context.Context, cfg config.SkewConfig, store *skew.
 // Purpose: Compute delay until the next skew refresh time.
 // Key aspects: Uses configured hour/minute and wraps to next day.
 // Upstream: startSkewScheduler.
-// Downstream: skewRefreshHourMinute and time math.
+// Downstream: internal/schedule helpers.
 func nextSkewRefreshDelay(cfg config.SkewConfig, now time.Time) time.Duration {
-	hour, minute := skewRefreshHourMinute(cfg)
-	target := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, time.UTC)
-	if !target.After(now) {
-		target = target.Add(24 * time.Hour)
-	}
-	return target.Sub(now)
-}
-
-// Purpose: Resolve the target hour/minute for skew refresh.
-// Key aspects: Defaults to 02:00 UTC when unset.
-// Upstream: nextSkewRefreshDelay.
-// Downstream: None.
-func skewRefreshHourMinute(cfg config.SkewConfig) (int, int) {
-	refresh := strings.TrimSpace(cfg.RefreshUTC)
-	if refresh == "" {
-		refresh = "00:30"
-	}
-	if parsed, err := time.Parse("15:04", refresh); err == nil {
-		return parsed.Hour(), parsed.Minute()
-	}
-	return 0, 30
+	return schedule.NextDailyUTC(cfg.RefreshUTC, now, 0, 30, schedule.ParseOptions{})
 }
 
 // Purpose: Periodically refresh the known callsigns dataset.
@@ -4008,29 +3944,9 @@ func refreshKnownCallsigns(ctx context.Context, cfg config.KnownCallsConfig) (*s
 // Purpose: Compute delay until the next known calls refresh time.
 // Key aspects: Uses configured hour/minute and wraps to next day.
 // Upstream: startKnownCallScheduler.
-// Downstream: knownCallRefreshHourMinute and time math.
+// Downstream: internal/schedule helpers.
 func nextKnownCallRefreshDelay(cfg config.KnownCallsConfig, now time.Time) time.Duration {
-	hour, minute := knownCallRefreshHourMinute(cfg)
-	target := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, time.UTC)
-	if !target.After(now) {
-		target = target.Add(24 * time.Hour)
-	}
-	return target.Sub(now)
-}
-
-// Purpose: Resolve the target hour/minute for known call refresh.
-// Key aspects: Defaults to 03:00 UTC when unset.
-// Upstream: nextKnownCallRefreshDelay.
-// Downstream: time.Parse.
-func knownCallRefreshHourMinute(cfg config.KnownCallsConfig) (int, int) {
-	refresh := strings.TrimSpace(cfg.RefreshUTC)
-	if refresh == "" {
-		refresh = "01:00"
-	}
-	if parsed, err := time.Parse("15:04", refresh); err == nil {
-		return parsed.Hour(), parsed.Minute()
-	}
-	return 1, 0
+	return schedule.NextDailyUTC(cfg.RefreshUTC, now, 1, 0, schedule.ParseOptions{})
 }
 
 // Purpose: Periodically refresh the CTY database from remote URL.
@@ -4199,29 +4115,9 @@ func refreshCTYDatabase(ctx context.Context, cfg config.CTYConfig) (*cty.CTYData
 // Purpose: Compute delay until the next CTY refresh time.
 // Key aspects: Uses configured hour/minute and wraps to next day.
 // Upstream: startCTYScheduler.
-// Downstream: ctyRefreshHourMinute and time math.
+// Downstream: internal/schedule helpers.
 func nextCTYRefreshDelay(cfg config.CTYConfig, now time.Time) time.Duration {
-	hour, minute := ctyRefreshHourMinute(cfg)
-	target := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, time.UTC)
-	if !target.After(now) {
-		target = target.Add(24 * time.Hour)
-	}
-	return target.Sub(now)
-}
-
-// Purpose: Resolve the target hour/minute for CTY refresh.
-// Key aspects: Defaults to 04:00 UTC when unset.
-// Upstream: nextCTYRefreshDelay.
-// Downstream: time.Parse.
-func ctyRefreshHourMinute(cfg config.CTYConfig) (int, int) {
-	refresh := strings.TrimSpace(cfg.RefreshUTC)
-	if refresh == "" {
-		refresh = "00:45"
-	}
-	if parsed, err := time.Parse("15:04", refresh); err == nil {
-		return parsed.Hour(), parsed.Minute()
-	}
-	return 0, 45
+	return schedule.NextDailyUTC(cfg.RefreshUTC, now, 0, 45, schedule.ParseOptions{})
 }
 
 // Purpose: Format the grid database status line for stats output.
@@ -4766,7 +4662,7 @@ func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, 
 	// Upstream: processOutputSpots gridLookup hook.
 	// Downstream: cache.LookupGrid and lookupQueue enqueue.
 	lookupFn := func(call string) (string, bool, bool) {
-		rawCall := strings.ToUpper(strings.TrimSpace(call))
+		rawCall := strutil.NormalizeUpper(call)
 		baseCall := normalizeCallForMetadata(rawCall)
 		if baseCall == "" {
 			return "", false, false
@@ -4868,7 +4764,7 @@ func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, 
 		// Upstream: processOutputSpots grid backfill for RBN.
 		// Downstream: syncLookupQueue and cache.ApplyRecord.
 		lookupSyncFn = func(call string) (string, bool, bool) {
-			rawCall := strings.ToUpper(strings.TrimSpace(call))
+			rawCall := strutil.NormalizeUpper(call)
 			baseCall := normalizeCallForMetadata(rawCall)
 			if baseCall == "" {
 				return "", false, false
@@ -5117,25 +5013,8 @@ func nextGridCheckpointDelay(now time.Time) time.Duration {
 	return target.Sub(now)
 }
 
-func parseUTCHourMinute(value string, fallbackHour int, fallbackMinute int) (int, int) {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return fallbackHour, fallbackMinute
-	}
-	parsed, err := time.Parse("15:04", trimmed)
-	if err != nil {
-		return fallbackHour, fallbackMinute
-	}
-	return parsed.Hour(), parsed.Minute()
-}
-
 func nextDailyUTC(refreshUTC string, now time.Time, fallbackHour int, fallbackMinute int) time.Duration {
-	hour, minute := parseUTCHourMinute(refreshUTC, fallbackHour, fallbackMinute)
-	target := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, time.UTC)
-	if !target.After(now) {
-		target = target.Add(24 * time.Hour)
-	}
-	return target.Sub(now)
+	return schedule.NextDailyUTC(refreshUTC, now, fallbackHour, fallbackMinute, schedule.ParseOptions{})
 }
 
 func restoreGridStoreFromCheckpoint(ctx context.Context, dbPath string, opts gridstore.Options) (*gridstore.Store, string, error) {
@@ -6207,7 +6086,7 @@ func diffCounter(current, previous map[string]uint64, key string) uint64 {
 	if previous == nil {
 		previous = map[string]uint64{}
 	}
-	key = strings.ToUpper(strings.TrimSpace(key))
+	key = strutil.NormalizeUpper(key)
 	cur := current[key]
 	prev := previous[key]
 	if cur >= prev {
@@ -6323,8 +6202,8 @@ func rbnIngestDeltas(
 // Upstream: diffSourceMode.
 // Downstream: strings.ToUpper.
 func sourceModeKey(source, mode string) string {
-	source = strings.ToUpper(strings.TrimSpace(source))
-	mode = strings.ToUpper(strings.TrimSpace(mode))
+	source = strutil.NormalizeUpper(source)
+	mode = strutil.NormalizeUpper(mode)
 	if source == "" || mode == "" {
 		return ""
 	}

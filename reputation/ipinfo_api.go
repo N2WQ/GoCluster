@@ -2,6 +2,7 @@ package reputation
 
 import (
 	"context"
+	"dxcluster/strutil"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -82,7 +83,7 @@ func (c *ipinfoClient) lookup(addr netip.Addr, now time.Time) (LookupResult, boo
 		return LookupResult{}, false
 	}
 	asn := normalizeASN(parsed.ASN())
-	country := strings.ToUpper(strings.TrimSpace(parsed.Country))
+	country := strutil.NormalizeUpper(parsed.Country)
 	if asn == "" && country == "" {
 		return LookupResult{}, false
 	}

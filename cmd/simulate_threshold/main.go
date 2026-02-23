@@ -5,11 +5,11 @@ package main
 import (
 	"context"
 	"database/sql"
+	"dxcluster/strutil"
 	"flag"
 	"fmt"
 	"log"
 	"sort"
-	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -233,8 +233,8 @@ func loadAllDecisions(db *sql.DB) ([]decisionRecord, error) {
 			&d.decision, &d.reason); err != nil {
 			return nil, err
 		}
-		d.subject = strings.ToUpper(strings.TrimSpace(d.subject))
-		d.winner = strings.ToUpper(strings.TrimSpace(d.winner))
+		d.subject = strutil.NormalizeUpper(d.subject)
+		d.winner = strutil.NormalizeUpper(d.winner)
 		decisions = append(decisions, d)
 	}
 

@@ -1,8 +1,8 @@
 package pathreliability
 
 import (
+	"dxcluster/strutil"
 	"math"
-	"strings"
 )
 
 // FT8Equivalent returns the FT8-equivalent dB for a mode/SNR pair.
@@ -27,7 +27,7 @@ func FT8Equivalent(mode string, snr int, cfg Config) (float64, bool) {
 }
 
 func normalizeMode(mode string) string {
-	up := strings.ToUpper(strings.TrimSpace(mode))
+	up := strutil.NormalizeUpper(mode)
 	return up
 }
 

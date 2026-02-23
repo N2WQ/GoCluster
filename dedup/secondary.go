@@ -6,11 +6,11 @@ package dedup
 
 import (
 	"encoding/binary"
-	"strings"
 	"sync"
 	"time"
 
 	"dxcluster/spot"
+	"dxcluster/strutil"
 
 	"github.com/zeebo/xxh3"
 )
@@ -309,7 +309,7 @@ func bandKeyNumeric(s *spot.Spot) uint32 {
 	if band == "" {
 		band = spot.FreqToBand(s.Frequency)
 	}
-	band = strings.ToUpper(strings.TrimSpace(band))
+	band = strutil.NormalizeUpper(band)
 	var buf [4]byte
 	for i := 0; i < len(band) && i < len(buf); i++ {
 		buf[i] = band[i]

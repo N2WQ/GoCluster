@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -220,6 +222,110 @@ func TestGridDBCheckOnMissEnabled_UsesLoadedFromWhenSet(t *testing.T) {
 	_, source := gridDBCheckOnMissEnabled(cfg)
 	if source != "data/config" {
 		t.Fatalf("expected source=data/config, got %s", source)
+	}
+}
+
+func TestForwardSpotsDropsNilAndStale(t *testing.T) {
+	spotChan := make(chan *spot.Spot, 3)
+	ingest := make(chan *spot.Spot, 3)
+	policy := config.SpotPolicy{MaxAgeSeconds: 1}
+
+	stale := spot.NewSpot("K1ABC", "W1XYZ", 7000, "CW")
+	stale.Time = time.Now().Add(-2 * time.Second)
+	fresh := spot.NewSpot("K1DEF", "W1XYZ", 7000, "CW")
+	fresh.Time = time.Now().UTC()
+
+	spotChan <- nil
+	spotChan <- stale
+	spotChan <- fresh
+	close(spotChan)
+
+	forwardSpots(spotChan, ingest, "TEST", policy, nil)
+	close(ingest)
+
+	var got []*spot.Spot
+	for s := range ingest {
+		got = append(got, s)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected only one forwarded spot, got %d", len(got))
+	}
+	if got[0] == nil || got[0].DXCall != "K1DEF" {
+		t.Fatalf("expected fresh spot to be forwarded, got %+v", got[0])
+	}
+}
+
+func TestForwardSpotsAppliesHumanTransform(t *testing.T) {
+	spotChan := make(chan *spot.Spot, 1)
+	ingest := make(chan *spot.Spot, 1)
+	policy := config.SpotPolicy{}
+
+	in := spot.NewSpot("K1ABC", "W1XYZ", 7000, "")
+	in.Mode = ""
+	in.SourceNode = ""
+	spotChan <- in
+	close(spotChan)
+
+	forwardSpots(spotChan, ingest, "HUMAN-TELNET", policy, func(sp *spot.Spot) {
+		sp.IsHuman = true
+		sp.SourceType = spot.SourceUpstream
+		if strings.TrimSpace(sp.SourceNode) == "" {
+			sp.SourceNode = "HUMAN-TELNET"
+		}
+		if strings.TrimSpace(sp.Mode) == "" {
+			sp.Mode = "RTTY"
+			sp.EnsureNormalized()
+		}
+	})
+	close(ingest)
+
+	out := <-ingest
+	if out == nil {
+		t.Fatalf("expected transformed spot")
+	}
+	if !out.IsHuman {
+		t.Fatalf("expected IsHuman=true")
+	}
+	if out.SourceType != spot.SourceUpstream {
+		t.Fatalf("expected SourceType=upstream, got %q", out.SourceType)
+	}
+	if out.SourceNode != "HUMAN-TELNET" {
+		t.Fatalf("expected default SourceNode, got %q", out.SourceNode)
+	}
+	if strings.TrimSpace(out.Mode) == "" {
+		t.Fatalf("expected Mode to be defaulted")
+	}
+}
+
+func TestForwardSpotsRateLimitsDropLogs(t *testing.T) {
+	oldInterval := ingestForwardDropLogInterval
+	ingestForwardDropLogInterval = time.Hour
+	defer func() { ingestForwardDropLogInterval = oldInterval }()
+
+	oldWriter := log.Writer()
+	oldFlags := log.Flags()
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	log.SetFlags(0)
+	defer func() {
+		log.SetOutput(oldWriter)
+		log.SetFlags(oldFlags)
+	}()
+
+	spotChan := make(chan *spot.Spot, 2)
+	ingest := make(chan *spot.Spot) // unbuffered, no receiver: always drop
+	spotChan <- spot.NewSpot("K1ABC", "W1XYZ", 7000, "CW")
+	spotChan <- spot.NewSpot("K1DEF", "W1XYZ", 7001, "CW")
+	close(spotChan)
+
+	forwardSpots(spotChan, ingest, "TEST", config.SpotPolicy{}, nil)
+
+	logs := buf.String()
+	if strings.Count(logs, "Ingest input full, dropping spot") != 1 {
+		t.Fatalf("expected exactly one throttled drop log, got logs:\n%s", logs)
+	}
+	if !strings.Contains(logs, "TEST: Spot processing stopped") {
+		t.Fatalf("expected stop log line, got logs:\n%s", logs)
 	}
 }
 

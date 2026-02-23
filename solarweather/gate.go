@@ -2,10 +2,10 @@ package solarweather
 
 import (
 	"math"
-	"strings"
 	"time"
 
 	"dxcluster/pathreliability"
+	"dxcluster/strutil"
 )
 
 type PathInput struct {
@@ -93,7 +93,7 @@ func makePathKey(input PathInput, cfg Config) pathKey {
 }
 
 func normalizeGridKey(grid string) string {
-	g := strings.ToUpper(strings.TrimSpace(grid))
+	g := strutil.NormalizeUpper(grid)
 	if len(g) >= 6 {
 		return g[:6]
 	}

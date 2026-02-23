@@ -258,6 +258,19 @@ func parseHour(ts string, line string) (int, bool) {
 	return tsTime.Hour(), true
 }
 
+func updateBandHourMax(byHour map[int]map[string]int, hour int, line string, bandCounts *regexp.Regexp) {
+	if byHour[hour] == nil {
+		byHour[hour] = make(map[string]int)
+	}
+	for _, match := range bandCounts.FindAllStringSubmatch(line, -1) {
+		band := match[1]
+		count := parseInt(match[2])
+		if count > byHour[hour][band] {
+			byHour[hour][band] = count
+		}
+	}
+}
+
 func median(vals []int) int {
 	if len(vals) == 0 {
 		return 0
@@ -580,16 +593,7 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 			if !ok {
 				continue
 			}
-			if spottersByHour[hour] == nil {
-				spottersByHour[hour] = make(map[string]int)
-			}
-			for _, match := range bandCounts.FindAllStringSubmatch(entry, -1) {
-				band := match[1]
-				count := parseInt(match[2])
-				if count > spottersByHour[hour][band] {
-					spottersByHour[hour][band] = count
-				}
-			}
+			updateBandHourMax(spottersByHour, hour, entry, bandCounts)
 		}
 		if m := pairsRe.FindStringSubmatch(entry); len(m) == 2 {
 			ts := m[1]
@@ -597,16 +601,7 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 			if !ok {
 				continue
 			}
-			if pairsByHour[hour] == nil {
-				pairsByHour[hour] = make(map[string]int)
-			}
-			for _, match := range bandCounts.FindAllStringSubmatch(entry, -1) {
-				band := match[1]
-				count := parseInt(match[2])
-				if count > pairsByHour[hour][band] {
-					pairsByHour[hour][band] = count
-				}
-			}
+			updateBandHourMax(pairsByHour, hour, entry, bandCounts)
 		}
 		if m := ge10VarRe.FindStringSubmatch(entry); len(m) == 2 {
 			ts := m[1]

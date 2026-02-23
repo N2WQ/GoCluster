@@ -1,6 +1,8 @@
 package strutil
 
-import "strings"
+import (
+	"strings"
+)
 
 // NormalizeUpper trims surrounding whitespace and converts to upper case.
 // Use for callsigns, modes, and other tokens where case is not significant.

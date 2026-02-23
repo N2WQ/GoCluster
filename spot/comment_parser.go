@@ -1,6 +1,7 @@
 package spot
 
 import (
+	"dxcluster/strutil"
 	"regexp"
 	"strconv"
 	"strings"
@@ -540,7 +541,7 @@ func ParseSpotComment(comment string, freq float64) CommentParseResult {
 // Downstream: strings.ToUpper.
 // modeWantsBareReport determines which modes treat bare signed integers as SNR/report.
 func modeWantsBareReport(mode string) bool {
-	switch strings.ToUpper(strings.TrimSpace(mode)) {
+	switch strutil.NormalizeUpper(mode) {
 	case "CW", "RTTY", "FT8", "FT4", "MSK144":
 		return true
 	}

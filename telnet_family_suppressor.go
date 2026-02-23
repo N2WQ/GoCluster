@@ -2,12 +2,12 @@ package main
 
 import (
 	"math"
-	"strings"
 	"sync"
 	"time"
 
 	"dxcluster/config"
 	"dxcluster/spot"
+	"dxcluster/strutil"
 )
 
 type telnetFamilyBucket struct {
@@ -244,7 +244,7 @@ func telnetFamilyBucketForSpot(sp *spot.Spot, cfg config.CallCorrectionConfig, f
 	}
 	mode := sp.ModeNorm
 	if mode == "" {
-		mode = strings.ToUpper(strings.TrimSpace(sp.Mode))
+		mode = strutil.NormalizeUpper(sp.Mode)
 	}
 	if !spot.IsCallCorrectionCandidate(mode) {
 		return telnetFamilyBucket{}, "", 0, false

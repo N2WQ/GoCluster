@@ -14,6 +14,8 @@ import (
 
 	"dxcluster/config"
 	"dxcluster/download"
+	"dxcluster/internal/fsutil"
+	"dxcluster/internal/schedule"
 )
 
 const (
@@ -154,29 +156,9 @@ func startScheduler(ctx context.Context, cfg config.FCCULSConfig) {
 // Purpose: Compute the delay until the next scheduled refresh.
 // Key aspects: Uses configured UTC hour/minute; rolls to next day if needed.
 // Upstream: startScheduler.
-// Downstream: refreshHourMinute.
+// Downstream: internal/schedule helpers.
 func nextRefreshDelay(cfg config.FCCULSConfig, now time.Time) time.Duration {
-	hour, minute := refreshHourMinute(cfg)
-	target := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, time.UTC)
-	if !target.After(now) {
-		target = target.Add(24 * time.Hour)
-	}
-	return target.Sub(now)
-}
-
-// Purpose: Parse the configured refresh time into hour/minute.
-// Key aspects: Defaults to 02:15 UTC on parse errors or empty config.
-// Upstream: nextRefreshDelay.
-// Downstream: time.Parse.
-func refreshHourMinute(cfg config.FCCULSConfig) (int, int) {
-	refresh := strings.TrimSpace(cfg.RefreshUTC)
-	if refresh == "" {
-		refresh = "02:15"
-	}
-	if parsed, err := time.Parse("15:04", refresh); err == nil {
-		return parsed.Hour(), parsed.Minute()
-	}
-	return 2, 15
+	return schedule.NextDailyUTC(cfg.RefreshUTC, now, 2, 15, schedule.ParseOptions{})
 }
 
 // Purpose: Fetch the FCC ULS archive to disk, honoring cached metadata.
@@ -184,7 +166,7 @@ func refreshHourMinute(cfg config.FCCULSConfig) (int, int) {
 // Upstream: Refresh.
 // Downstream: download.Download.
 func downloadArchive(ctx context.Context, url, destination, metaPath string, force bool, dbExists bool) (bool, error) {
-	if err := ensureDir(destination); err != nil {
+	if err := fsutil.EnsureParentDir(destination, "fcc uls: create directory"); err != nil {
 		return false, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
@@ -202,17 +184,6 @@ func downloadArchive(ctx context.Context, url, destination, metaPath string, for
 		return false, fmt.Errorf("fcc uls: %w", err)
 	}
 	return res.Status == download.StatusUpdated, nil
-}
-
-func ensureDir(path string) error {
-	dir := filepath.Dir(path)
-	if dir == "" || dir == "." {
-		return nil
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("fcc uls: create directory: %w", err)
-	}
-	return nil
 }
 
 func fileExists(path string) (bool, error) {

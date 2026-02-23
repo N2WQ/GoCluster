@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"dxcluster/download"
+	"dxcluster/internal/schedule"
 )
 
 func (g *Gate) downloadLoop(ctx context.Context) {
@@ -190,25 +191,8 @@ func extractGzip(ctx context.Context, src, dest string) error {
 }
 
 func nextRefreshDelay(refreshUTC string, now time.Time) time.Duration {
-	hour, minute := parseRefreshHourMinute(refreshUTC)
-	target := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, time.UTC)
-	if !target.After(now) {
-		target = target.Add(24 * time.Hour)
-	}
-	return target.Sub(now)
-}
-
-func parseRefreshHourMinute(refreshUTC string) (int, int) {
-	refreshUTC = strings.TrimSpace(refreshUTC)
-	if refreshUTC == "" {
-		refreshUTC = "03:00"
-	}
-	if strings.HasPrefix(strings.ToLower(refreshUTC), "daily@") {
-		refreshUTC = refreshUTC[len("daily@"):]
-	}
-	refreshUTC = strings.TrimSuffix(strings.ToUpper(refreshUTC), "Z")
-	if parsed, err := time.Parse("15:04", refreshUTC); err == nil {
-		return parsed.Hour(), parsed.Minute()
-	}
-	return 3, 0
+	return schedule.NextDailyUTC(refreshUTC, now, 3, 0, schedule.ParseOptions{
+		AllowDailyPrefix: true,
+		AllowTrailingZ:   true,
+	})
 }

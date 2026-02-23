@@ -50,12 +50,14 @@ import (
 	"dxcluster/commands"
 	"dxcluster/cty"
 	"dxcluster/filter"
+	"dxcluster/internal/netutil"
 	"dxcluster/internal/ratelimit"
 	"dxcluster/pathreliability"
 	"dxcluster/reputation"
 	"dxcluster/solarweather"
 	"dxcluster/spot"
 	"dxcluster/strutil"
+
 	ztelnet "github.com/ziutek/telnet"
 )
 
@@ -293,8 +295,8 @@ func (c *Client) saveFilter() error {
 		RecentIPs:    c.recentIPs,
 		Dialect:      string(c.dialect),
 		DedupePolicy: c.getDedupePolicy().label(),
-		Grid:         strings.ToUpper(strings.TrimSpace(state.grid)),
-		NoiseClass:   strings.ToUpper(strings.TrimSpace(state.noiseClass)),
+		Grid:         strutil.NormalizeUpper(state.grid),
+		NoiseClass:   strutil.NormalizeUpper(state.noiseClass),
 	}
 	record.SolarSummaryMinutes = c.getSolarSummaryMinutes()
 	if existing, err := filter.LoadUserRecord(callsign); err == nil {
@@ -667,7 +669,7 @@ func (s *Server) handlePathSettingsCommand(client *Client, line string) (string,
 	if client == nil {
 		return "", false
 	}
-	upper := strings.Fields(strings.ToUpper(strings.TrimSpace(line)))
+	upper := strings.Fields(strutil.NormalizeUpper(line))
 	if len(upper) < 2 || upper[0] != "SET" {
 		return "", false
 	}
@@ -676,7 +678,7 @@ func (s *Server) handlePathSettingsCommand(client *Client, line string) (string,
 		if len(upper) < 3 {
 			return "Usage: SET GRID <4-6 char maidenhead>\n", true
 		}
-		grid := strings.ToUpper(strings.TrimSpace(upper[2]))
+		grid := strutil.NormalizeUpper(upper[2])
 		if len(grid) < 4 {
 			return "Grid must be at least 4 characters (e.g., FN31)\n", true
 		}
@@ -704,7 +706,7 @@ func (s *Server) handlePathSettingsCommand(client *Client, line string) (string,
 		if len(upper) < 3 {
 			return "Usage: SET NOISE <QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL>\n", true
 		}
-		class := strings.ToUpper(strings.TrimSpace(upper[2]))
+		class := strutil.NormalizeUpper(upper[2])
 		penalty := s.noisePenaltyForClass(class)
 		if class == "" || (penalty == 0 && class != "QUIET" && class != "RURAL" && class != "SUBURBAN" && class != "URBAN" && class != "INDUSTRIAL") {
 			return "Unknown noise class. Use QUIET, RURAL, SUBURBAN, URBAN, or INDUSTRIAL.\n", true
@@ -780,7 +782,7 @@ func (s *Server) handleDiagCommand(client *Client, line string) (string, bool) {
 	if client == nil {
 		return "", false
 	}
-	upper := strings.Fields(strings.ToUpper(strings.TrimSpace(line)))
+	upper := strings.Fields(strutil.NormalizeUpper(line))
 	if len(upper) < 2 || upper[0] != "SET" || upper[1] != "DIAG" {
 		return "", false
 	}
@@ -804,7 +806,7 @@ func (s *Server) handleSolarCommand(client *Client, line string) (string, bool) 
 	if client == nil {
 		return "", false
 	}
-	upper := strings.Fields(strings.ToUpper(strings.TrimSpace(line)))
+	upper := strings.Fields(strutil.NormalizeUpper(line))
 	if len(upper) < 2 || upper[0] != "SET" || upper[1] != "SOLAR" {
 		return "", false
 	}
@@ -834,7 +836,7 @@ func (s *Server) handleDedupeCommand(client *Client, line string) (string, bool)
 	if client == nil || s == nil {
 		return "", false
 	}
-	upper := strings.Fields(strings.ToUpper(strings.TrimSpace(line)))
+	upper := strings.Fields(strutil.NormalizeUpper(line))
 	if len(upper) < 2 {
 		return "", false
 	}
@@ -1559,7 +1561,7 @@ func normalizedDXCall(s *spot.Spot) string {
 // isSelfMatch reports whether the spot DX call matches the provided callsign.
 // Both values are normalized for portable/SSID consistency.
 func isSelfMatch(s *spot.Spot, callsign string) bool {
-	callsign = strings.ToUpper(strings.TrimSpace(callsign))
+	callsign = strutil.NormalizeUpper(callsign)
 	if callsign == "" {
 		return false
 	}
@@ -1736,12 +1738,12 @@ func (s *Server) acceptConnections() {
 				continue
 			}
 		}
-		if tcp, ok := conn.(*net.TCPConn); ok {
-			if err := tcp.SetKeepAlive(true); err != nil {
-				log.Printf("Failed to enable TCP keepalive for %s: %v", conn.RemoteAddr(), err)
+		if isTCP, enableErr, periodErr := netutil.EnableTCPKeepAlive(conn, 2*time.Minute); isTCP {
+			if enableErr != nil {
+				log.Printf("Failed to enable TCP keepalive for %s: %v", conn.RemoteAddr(), enableErr)
 			}
-			if err := tcp.SetKeepAlivePeriod(2 * time.Minute); err != nil {
-				log.Printf("Failed to set TCP keepalive period for %s: %v", conn.RemoteAddr(), err)
+			if periodErr != nil {
+				log.Printf("Failed to set TCP keepalive period for %s: %v", conn.RemoteAddr(), periodErr)
 			}
 		}
 
@@ -1883,11 +1885,11 @@ func (s *Server) handleClient(conn net.Conn) {
 		client.recentIPs = record.RecentIPs
 		client.dialect = normalizeDialectName(record.Dialect)
 		client.setDedupePolicy(s.resolveDedupePolicy(parseDedupePolicy(record.DedupePolicy)))
-		client.grid = strings.ToUpper(strings.TrimSpace(record.Grid))
+		client.grid = strutil.NormalizeUpper(record.Grid)
 		client.gridDerived = false
 		client.gridCell = pathreliability.EncodeCell(client.grid)
 		client.gridCoarseCell = pathreliability.EncodeCoarseCell(client.grid)
-		client.noiseClass = strings.ToUpper(strings.TrimSpace(record.NoiseClass))
+		client.noiseClass = strutil.NormalizeUpper(record.NoiseClass)
 		client.noisePenalty = s.noisePenaltyForClass(client.noiseClass)
 		client.setSolarSummaryMinutes(record.SolarSummaryMinutes, loginTime)
 		if created {
@@ -1914,7 +1916,7 @@ func (s *Server) handleClient(conn net.Conn) {
 	// Seed grid from lookup when none is stored.
 	if strings.TrimSpace(client.grid) == "" && s.gridLookup != nil {
 		if g, derived, ok := s.gridLookup(client.callsign); ok {
-			client.grid = strings.ToUpper(strings.TrimSpace(g))
+			client.grid = strutil.NormalizeUpper(g)
 			client.gridDerived = derived
 			client.gridCell = pathreliability.EncodeCell(client.grid)
 			client.gridCoarseCell = pathreliability.EncodeCoarseCell(client.grid)
@@ -2183,7 +2185,7 @@ func (s *Server) noisePenaltyForClass(class string) float64 {
 	if s == nil {
 		return 0
 	}
-	key := strings.ToUpper(strings.TrimSpace(class))
+	key := strutil.NormalizeUpper(class)
 	if val, ok := s.noiseOffsets[key]; ok {
 		return val
 	}
@@ -2427,7 +2429,7 @@ func diagDEGrid2(sp *spot.Spot) string {
 			grid2 = grid[:2]
 		}
 	}
-	grid2 = strings.ToUpper(strings.TrimSpace(grid2))
+	grid2 = strutil.NormalizeUpper(grid2)
 	if len(grid2) > 2 {
 		grid2 = grid2[:2]
 	}

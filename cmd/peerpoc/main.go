@@ -18,23 +18,6 @@ import (
 	"dxcluster/peer"
 )
 
-type timestampGenerator struct {
-	lastSec int
-	seq     int
-}
-
-func (g *timestampGenerator) Next() string {
-	now := time.Now().UTC()
-	sec := now.Hour()*3600 + now.Minute()*60 + now.Second()
-	if sec != g.lastSec {
-		g.lastSec = sec
-		g.seq = 0
-		return fmt.Sprintf("%d", sec)
-	}
-	g.seq++
-	return fmt.Sprintf("%d.%02d", sec, g.seq)
-}
-
 type probeConfig struct {
 	host          string
 	port          int
@@ -130,7 +113,7 @@ func runProbe(ctx context.Context, cfg probeConfig) error {
 		sendMu.Unlock()
 	})
 	writer := bufio.NewWriter(conn)
-	tsGen := &timestampGenerator{}
+	tsGen := peer.NewTimestampGenerator()
 
 	sendLine := func(line string) error {
 		if !strings.HasSuffix(line, "\n") {
@@ -322,7 +305,7 @@ func runProbe(ctx context.Context, cfg probeConfig) error {
 	}
 }
 
-func sendInit(send func(string) error, tsGen *timestampGenerator, cfg probeConfig, pc9x bool) error {
+func sendInit(send func(string) error, tsGen *peer.TimestampGenerator, cfg probeConfig, pc9x bool) error {
 	if pc9x {
 		if err := send(sendPC92Add(tsGen, cfg)); err != nil {
 			return err
@@ -340,7 +323,7 @@ func sendInit(send func(string) error, tsGen *timestampGenerator, cfg probeConfi
 	return send("PC20^")
 }
 
-func sendPC92Add(tsGen *timestampGenerator, cfg probeConfig) string {
+func sendPC92Add(tsGen *peer.TimestampGenerator, cfg probeConfig) string {
 	ts := tsGen.Next()
 	entry := fmt.Sprintf("%d%s:%s", cfg.pc92Bitmap, cfg.call, cfg.nodeVersion)
 	if strings.TrimSpace(cfg.build) != "" {
@@ -349,7 +332,7 @@ func sendPC92Add(tsGen *timestampGenerator, cfg probeConfig) string {
 	return fmt.Sprintf("PC92^%s^%s^A^^%s^H%d^", cfg.call, ts, entry, cfg.hop)
 }
 
-func buildPC92Keepalive(tsGen *timestampGenerator, cfg probeConfig) string {
+func buildPC92Keepalive(tsGen *peer.TimestampGenerator, cfg probeConfig) string {
 	ts := tsGen.Next()
 	entry := fmt.Sprintf("%d%s:%s", cfg.pc92Bitmap, cfg.call, cfg.nodeVersion)
 	if strings.TrimSpace(cfg.build) != "" {

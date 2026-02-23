@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"dxcluster/strutil"
 	"fmt"
 	"strconv"
 	"strings"
@@ -86,7 +87,7 @@ func ParseFrame(line string) (*Frame, error) {
 		return nil, fmt.Errorf("no parts")
 	}
 	f := &Frame{Raw: line}
-	f.Type = strings.ToUpper(strings.TrimSpace(parts[0]))
+	f.Type = strutil.NormalizeUpper(parts[0])
 	if len(parts) > 1 {
 		f.Fields = parts[1:]
 	}
@@ -132,14 +133,19 @@ func (f *Frame) payloadFields() []string {
 	if f == nil {
 		return nil
 	}
-	fields := make([]string, len(f.Fields))
-	copy(fields, f.Fields)
-	// strip hop marker if present at end
-	if len(fields) > 0 {
-		last := strings.TrimSpace(fields[len(fields)-1])
-		if strings.HasPrefix(last, "H") || strings.HasPrefix(last, "h") {
-			fields = fields[:len(fields)-1]
-		}
+	return PayloadFields(f.Fields)
+}
+
+// PayloadFields returns non-hop payload fields with trailing empties preserved.
+func PayloadFields(fields []string) []string {
+	if len(fields) == 0 {
+		return fields
 	}
-	return fields
+	out := make([]string, len(fields))
+	copy(out, fields)
+	last := strings.TrimSpace(out[len(out)-1])
+	if strings.HasPrefix(last, "H") || strings.HasPrefix(last, "h") {
+		out = out[:len(out)-1]
+	}
+	return out
 }

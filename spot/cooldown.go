@@ -1,21 +1,21 @@
 package spot
 
 import (
-	"strings"
+	"dxcluster/strutil"
 	"sync"
 	"time"
 )
 
 // CallCooldownConfig drives the cooldown gate applied before flipping away from a call.
 type CallCooldownConfig struct {
-	Enabled           bool
-	MinReporters      int
-	Duration          time.Duration
-	TTL               time.Duration
-	BinHz             int
-	MaxReporters      int
-	BypassAdvantage   int
-	BypassConfidence  int
+	Enabled          bool
+	MinReporters     int
+	Duration         time.Duration
+	TTL              time.Duration
+	BinHz            int
+	MaxReporters     int
+	BypassAdvantage  int
+	BypassConfidence int
 }
 
 type callCooldownKey struct {
@@ -24,9 +24,9 @@ type callCooldownKey struct {
 }
 
 type callCooldownEntry struct {
-	reporters      map[string]time.Time
-	cooldownUntil  time.Time
-	lastSeen       time.Time
+	reporters     map[string]time.Time
+	cooldownUntil time.Time
+	lastSeen      time.Time
 }
 
 // CallCooldown tracks recent reporter diversity per call/frequency bin so we can
@@ -83,26 +83,9 @@ func (c *CallCooldown) StartCleanup(interval time.Duration) {
 			interval = time.Minute
 		}
 	}
-	c.mu.Lock()
-	if c.quit != nil {
-		c.mu.Unlock()
-		return
-	}
-	c.quit = make(chan struct{})
-	c.mu.Unlock()
-
-	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				c.cleanup(time.Now().UTC())
-			case <-c.quit:
-				return
-			}
-		}
-	}()
+	startPeriodicCleanup(&c.mu, &c.quit, interval, func() {
+		c.cleanup(time.Now().UTC())
+	})
 }
 
 // StopCleanup stops the background cleanup ticker.
@@ -110,12 +93,7 @@ func (c *CallCooldown) StopCleanup() {
 	if c == nil {
 		return
 	}
-	c.mu.Lock()
-	if c.quit != nil {
-		close(c.quit)
-		c.quit = nil
-	}
-	c.mu.Unlock()
+	stopPeriodicCleanup(&c.mu, &c.quit)
 }
 
 // Record ingests the current set of reporters for a call at a frequency. It prunes
@@ -126,7 +104,7 @@ func (c *CallCooldown) Record(call string, freqHz float64, reporters map[string]
 	if c == nil {
 		return
 	}
-	call = strings.ToUpper(strings.TrimSpace(call))
+	call = strutil.NormalizeUpper(call)
 	if call == "" {
 		return
 	}
@@ -157,7 +135,7 @@ func (c *CallCooldown) Record(call string, freqHz float64, reporters map[string]
 	c.pruneEntry(entry, recency, now)
 
 	for reporter := range reporters {
-		rep := strings.ToUpper(strings.TrimSpace(reporter))
+		rep := strutil.NormalizeUpper(reporter)
 		if rep == "" {
 			continue
 		}
@@ -184,7 +162,7 @@ func (c *CallCooldown) ShouldBlock(call string, freqHz float64, minOverride int,
 	if c == nil {
 		return false, 0
 	}
-	call = strings.ToUpper(strings.TrimSpace(call))
+	call = strutil.NormalizeUpper(call)
 	if call == "" {
 		return false, 0
 	}

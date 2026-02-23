@@ -60,7 +60,7 @@ type session struct {
 	keepalive      time.Duration
 	configEvery    time.Duration
 	dir            direction
-	tsGen          *timestampGenerator
+	tsGen          *TimestampGenerator
 	ctx            context.Context
 	cancel         context.CancelFunc
 	closeOnce      sync.Once
@@ -108,7 +108,7 @@ func newSession(conn net.Conn, dir direction, manager *Manager, peer PeerEndpoin
 		keepalive:      settings.keepalive,
 		configEvery:    settings.configEvery,
 		dir:            dir,
-		tsGen:          &timestampGenerator{},
+		tsGen:          NewTimestampGenerator(),
 		overlongPath:   "logs/peering_overlong.log",
 		logKeepalive:   settings.logKeepalive,
 		logLineTooLong: settings.logLineTooLong,
@@ -720,26 +720,6 @@ func classifyPrompt(line string) (promptType, bool) {
 		return promptLogin, true
 	}
 	return promptUnknown, false
-}
-
-type timestampGenerator struct {
-	lastSec int
-	seq     int
-	mu      sync.Mutex
-}
-
-func (g *timestampGenerator) Next() string {
-	now := time.Now().UTC()
-	sec := now.Hour()*3600 + now.Minute()*60 + now.Second()
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if sec != g.lastSec {
-		g.lastSec = sec
-		g.seq = 0
-		return fmt.Sprintf("%d", sec)
-	}
-	g.seq++
-	return fmt.Sprintf("%d.%02d", sec, g.seq)
 }
 
 type sessionSettings struct {

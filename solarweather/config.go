@@ -1,6 +1,7 @@
 package solarweather
 
 import (
+	"dxcluster/strutil"
 	"fmt"
 	"math"
 	"os"
@@ -342,7 +343,7 @@ func normalizeRLevels(input []RLevel) ([]rLevel, time.Duration, error) {
 	levels := make([]rLevel, 0, len(input))
 	var maxHold time.Duration
 	for i, lvl := range input {
-		name := strings.ToUpper(strings.TrimSpace(lvl.Name))
+		name := strutil.NormalizeUpper(lvl.Name)
 		if name == "" {
 			name = fmt.Sprintf("R%d", i+2)
 		}
@@ -382,7 +383,7 @@ func normalizeGLevels(input []GLevel) ([]gLevel, error) {
 	}
 	levels := make([]gLevel, 0, len(input))
 	for i, lvl := range input {
-		name := strings.ToUpper(strings.TrimSpace(lvl.Name))
+		name := strutil.NormalizeUpper(lvl.Name)
 		if name == "" {
 			name = fmt.Sprintf("G%d", i+2)
 		}

@@ -2,6 +2,7 @@ package spot
 
 import (
 	"bufio"
+	"dxcluster/strutil"
 	"fmt"
 	"os"
 	"strings"
@@ -34,7 +35,7 @@ func LoadKnownCallsigns(path string) (*KnownCallsigns, error) {
 	entries := make(map[string]struct{})
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		call := strings.ToUpper(strings.TrimSpace(scanner.Text()))
+		call := strutil.NormalizeUpper(scanner.Text())
 		if call == "" || strings.HasPrefix(call, "#") {
 			continue
 		}
@@ -56,7 +57,7 @@ func (k *KnownCallsigns) Contains(call string) bool {
 	if k == nil {
 		return false
 	}
-	call = strings.ToUpper(strings.TrimSpace(call))
+	call = strutil.NormalizeUpper(call)
 	if call == "" {
 		return false
 	}

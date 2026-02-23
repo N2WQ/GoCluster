@@ -1,8 +1,8 @@
 package spot
 
 import (
+	"dxcluster/strutil"
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -129,15 +129,9 @@ func (s *CallQualityStore) StartCleanup() {
 	if s == nil || s.cleanupInterval <= 0 || s.ttl <= 0 {
 		return
 	}
-	s.cleanupMu.Lock()
-	if s.quit != nil {
-		s.cleanupMu.Unlock()
-		return
-	}
-	s.quit = make(chan struct{})
-	s.cleanupMu.Unlock()
-
-	go s.cleanupLoop()
+	startPeriodicCleanup(&s.cleanupMu, &s.quit, s.cleanupInterval, func() {
+		s.cleanup(time.Now().UTC())
+	})
 }
 
 // StopCleanup stops the periodic cleanup goroutine.
@@ -148,25 +142,7 @@ func (s *CallQualityStore) StopCleanup() {
 	if s == nil {
 		return
 	}
-	s.cleanupMu.Lock()
-	if s.quit != nil {
-		close(s.quit)
-		s.quit = nil
-	}
-	s.cleanupMu.Unlock()
-}
-
-func (s *CallQualityStore) cleanupLoop() {
-	ticker := time.NewTicker(s.cleanupInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			s.cleanup(time.Now().UTC())
-		case <-s.quit:
-			return
-		}
-	}
+	stopPeriodicCleanup(&s.cleanupMu, &s.quit)
 }
 
 func (s *CallQualityStore) cleanup(now time.Time) {
@@ -228,7 +204,7 @@ func (s *CallQualityStore) getWithTime(call string, freqHz float64, binSizeHz in
 	if s == nil {
 		return 0
 	}
-	call = strings.ToUpper(strings.TrimSpace(call))
+	call = strutil.NormalizeUpper(call)
 	if call == "" {
 		return 0
 	}
@@ -257,7 +233,7 @@ func (s *CallQualityStore) addWithTime(call string, freqHz float64, binSizeHz in
 	if s == nil {
 		return
 	}
-	call = strings.ToUpper(strings.TrimSpace(call))
+	call = strutil.NormalizeUpper(call)
 	if call == "" || delta == 0 {
 		return
 	}
@@ -298,7 +274,7 @@ func (s *CallQualityStore) AddPinned(call string, freqHz float64, binSizeHz int,
 		s.Add(call, freqHz, binSizeHz, score)
 		return
 	}
-	call = strings.ToUpper(strings.TrimSpace(call))
+	call = strutil.NormalizeUpper(call)
 	if call == "" || score == 0 {
 		return
 	}

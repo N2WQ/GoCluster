@@ -1,6 +1,7 @@
 package spot
 
 import (
+	"dxcluster/strutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -67,7 +68,7 @@ func GuessModeFromAlloc(freqKHz float64) string {
 				return "CW"
 			}
 			if strings.TrimSpace(b.VoiceMode) != "" {
-				return strings.ToUpper(strings.TrimSpace(b.VoiceMode))
+				return strutil.NormalizeUpper(b.VoiceMode)
 			}
 		}
 	}

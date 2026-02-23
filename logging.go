@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"dxcluster/config"
+	"dxcluster/internal/linebuffer"
 )
 
 const (
@@ -317,26 +317,8 @@ func (f *logFanout) Write(p []byte) (int, error) {
 		return len(p), nil
 	}
 	f.mu.Lock()
-	f.buf = append(f.buf, p...)
-	data := f.buf
-	var lines []string
-	for {
-		idx := bytes.IndexByte(data, '\n')
-		if idx == -1 {
-			break
-		}
-		line := string(bytes.TrimRight(data[:idx], "\r"))
-		lines = append(lines, line)
-		data = data[idx+1:]
-	}
-	if len(data) > maxLogBufferBytes {
-		trimmed := string(bytes.TrimRight(data, "\r"))
-		if trimmed != "" {
-			lines = append(lines, trimmed)
-		}
-		data = data[:0]
-	}
-	f.buf = data
+	remaining, lines := linebuffer.AppendAndExtractLines(f.buf, p, maxLogBufferBytes)
+	f.buf = remaining
 	console := f.console
 	file := f.file
 	f.mu.Unlock()

@@ -2,6 +2,7 @@ package spot
 
 import (
 	"container/list"
+	"dxcluster/strutil"
 	"regexp"
 	"strings"
 	"sync"
@@ -148,7 +149,7 @@ func NormalizeCallsign(call string) string {
 	if cached, ok := normalizeCallCache.Get(call); ok {
 		return cached
 	}
-	normalized := strings.ToUpper(strings.TrimSpace(call))
+	normalized := strutil.NormalizeUpper(call)
 	normalized = strings.ReplaceAll(normalized, ".", "/")
 	normalized = strings.TrimSuffix(normalized, "/")
 	normalized = strings.TrimSpace(normalized)

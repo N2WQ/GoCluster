@@ -228,26 +228,7 @@ func IsCallCorrectionCandidate(mode string) bool {
 // ConfigureMorseWeights allows callers to tune dot/dash edit costs. Non-positive
 // inputs fall back to defaults (ins=1, del=1, sub=2, scale=2).
 func ConfigureMorseWeights(insert, delete, sub, scale int) {
-	if insert > 0 {
-		morseInsertCost = insert
-	} else {
-		morseInsertCost = 1
-	}
-	if delete > 0 {
-		morseDeleteCost = delete
-	} else {
-		morseDeleteCost = 1
-	}
-	if sub > 0 {
-		morseSubCost = sub
-	} else {
-		morseSubCost = 2
-	}
-	if scale > 0 {
-		morseScale = scale
-	} else {
-		morseScale = 2
-	}
+	morseInsertCost, morseDeleteCost, morseSubCost, morseScale = normalizeDistanceWeights(insert, delete, sub, scale)
 	// Rebuild the Morse cost table with the new weights.
 	morseRuneIndex, morseCostTable = buildRuneCostTable(morseCodes, morsePatternCost)
 }
@@ -259,27 +240,24 @@ func ConfigureMorseWeights(insert, delete, sub, scale int) {
 // ConfigureBaudotWeights allows callers to tune ITA2 edit costs for RTTY distance.
 // Non-positive inputs fall back to defaults (ins=1, del=1, sub=2, scale=2).
 func ConfigureBaudotWeights(insert, delete, sub, scale int) {
-	if insert > 0 {
-		baudotInsertCost = insert
-	} else {
-		baudotInsertCost = 1
-	}
-	if delete > 0 {
-		baudotDeleteCost = delete
-	} else {
-		baudotDeleteCost = 1
-	}
-	if sub > 0 {
-		baudotSubCost = sub
-	} else {
-		baudotSubCost = 2
-	}
-	if scale > 0 {
-		baudotScale = scale
-	} else {
-		baudotScale = 2
-	}
+	baudotInsertCost, baudotDeleteCost, baudotSubCost, baudotScale = normalizeDistanceWeights(insert, delete, sub, scale)
 	baudotRuneIndex, baudotCostTable = buildRuneCostTable(baudotCodes, baudotPatternCost)
+}
+
+func normalizeDistanceWeights(insert, delete, sub, scale int) (int, int, int, int) {
+	if insert <= 0 {
+		insert = defaultDistanceInsertCost
+	}
+	if delete <= 0 {
+		delete = defaultDistanceDeleteCost
+	}
+	if sub <= 0 {
+		sub = defaultDistanceSubCost
+	}
+	if scale <= 0 {
+		scale = defaultDistanceScale
+	}
+	return insert, delete, sub, scale
 }
 
 // SuggestCallCorrection analyzes recent spots on the same frequency and determines
@@ -1935,32 +1913,11 @@ func (ci *CorrectionIndex) StartCleanup(interval, window time.Duration) {
 	if interval <= 0 {
 		interval = time.Minute
 	}
-	ci.mu.Lock()
-	if ci.sweepQuit != nil {
+	startPeriodicCleanup(&ci.mu, &ci.sweepQuit, interval, func() {
+		ci.mu.Lock()
+		ci.cleanup(time.Now().UTC(), window)
 		ci.mu.Unlock()
-		return
-	}
-	ci.sweepQuit = make(chan struct{})
-	ci.mu.Unlock()
-
-	// Purpose: Periodically invoke cleanup until StopCleanup is called.
-	// Key aspects: Ticker-driven loop with quit channel.
-	// Upstream: StartCleanup.
-	// Downstream: cleanup and ticker.Stop.
-	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				ci.mu.Lock()
-				ci.cleanup(time.Now().UTC(), window)
-				ci.mu.Unlock()
-			case <-ci.sweepQuit:
-				return
-			}
-		}
-	}()
+	})
 }
 
 // StopCleanup stops the periodic cleanup goroutine.
@@ -1972,18 +1929,18 @@ func (ci *CorrectionIndex) StopCleanup() {
 	if ci == nil {
 		return
 	}
-	ci.mu.Lock()
-	defer ci.mu.Unlock()
-	if ci.sweepQuit != nil {
-		close(ci.sweepQuit)
-		ci.sweepQuit = nil
-	}
+	stopPeriodicCleanup(&ci.mu, &ci.sweepQuit)
 }
 
 const (
 	distanceModelPlain  = "plain"
 	distanceModelMorse  = "morse"
 	distanceModelBaudot = "baudot"
+
+	defaultDistanceInsertCost = 1
+	defaultDistanceDeleteCost = 1
+	defaultDistanceSubCost    = 2
+	defaultDistanceScale      = 2
 )
 
 // Purpose: Normalize CW distance model selection.
@@ -2053,56 +2010,7 @@ func callDistance(subject, candidate, mode, cwModel, rttyModel string) int {
 // Upstream: callDistanceCore (CW mode distance path).
 // Downstream: morseCharDist, min3, borrowIntSlice, returnIntSlice.
 func cwCallDistance(a, b string) int {
-	ra := []rune(strings.ToUpper(a))
-	rb := []rune(strings.ToUpper(b))
-	la := len(ra)
-	lb := len(rb)
-
-	if la == 0 {
-		return lb
-	}
-	if lb == 0 {
-		return la
-	}
-
-	prev, prevPool := borrowIntSlice(lb + 1)
-	cur, curPool := borrowIntSlice(lb + 1)
-	defer returnIntSlice(prev, prevPool)
-	defer returnIntSlice(cur, curPool)
-
-	for j := 0; j <= lb; j++ {
-		prev[j] = j // j inserts
-	}
-
-	for i := 1; i <= la; i++ {
-		cur[0] = i // i deletes
-		for j := 1; j <= lb; j++ {
-			insert := cur[j-1] + 1
-			delete := prev[j] + 1
-			replace := prev[j-1] + morseCharDist(ra[i-1], rb[j-1])
-			cur[j] = min3(insert, delete, replace)
-		}
-		prev, cur = cur, prev
-	}
-
-	return prev[lb]
-}
-
-// Purpose: Return substitution cost between two runes using Morse code weights.
-// Key aspects: Looks up precomputed table; falls back to a fixed penalty.
-// Upstream: cwCallDistance.
-// Downstream: morseRuneIndex, morseCostTable.
-func morseCharDist(a, b rune) int {
-	if a == b {
-		return 0
-	}
-	if i, ok := morseRuneIndex[a]; ok {
-		if j, ok := morseRuneIndex[b]; ok {
-			return morseCostTable[i][j]
-		}
-	}
-	// Fallback cost when the rune is not in the Morse table.
-	return 2
+	return weightedCallDistance(a, b, morseRuneIndex, morseCostTable)
 }
 
 // Purpose: Compute RTTY-aware edit distance between two callsigns.
@@ -2110,6 +2018,10 @@ func morseCharDist(a, b rune) int {
 // Upstream: callDistanceCore (RTTY mode distance path).
 // Downstream: baudotCharDist, min3, borrowIntSlice, returnIntSlice.
 func rttyCallDistance(a, b string) int {
+	return weightedCallDistance(a, b, baudotRuneIndex, baudotCostTable)
+}
+
+func weightedCallDistance(a, b string, runeIndex map[rune]int, costTable [][]int) int {
 	ra := []rune(strings.ToUpper(a))
 	rb := []rune(strings.ToUpper(b))
 	la := len(ra)
@@ -2136,7 +2048,7 @@ func rttyCallDistance(a, b string) int {
 		for j := 1; j <= lb; j++ {
 			insert := cur[j-1] + 1
 			delete := prev[j] + 1
-			replace := prev[j-1] + baudotCharDist(ra[i-1], rb[j-1])
+			replace := prev[j-1] + weightedRuneDist(ra[i-1], rb[j-1], runeIndex, costTable)
 			cur[j] = min3(insert, delete, replace)
 		}
 		prev, cur = cur, prev
@@ -2145,21 +2057,17 @@ func rttyCallDistance(a, b string) int {
 	return prev[lb]
 }
 
-// Purpose: Return substitution cost between two runes using Baudot weights.
-// Key aspects: Looks up precomputed table; falls back to a fixed penalty.
-// Upstream: rttyCallDistance.
-// Downstream: baudotRuneIndex, baudotCostTable.
-func baudotCharDist(a, b rune) int {
+func weightedRuneDist(a, b rune, runeIndex map[rune]int, costTable [][]int) int {
 	if a == b {
 		return 0
 	}
-	if i, ok := baudotRuneIndex[a]; ok {
-		if j, ok := baudotRuneIndex[b]; ok {
-			return baudotCostTable[i][j]
+	if i, ok := runeIndex[a]; ok {
+		if j, ok := runeIndex[b]; ok {
+			return costTable[i][j]
 		}
 	}
-	// Fallback cost when the rune is not in the Baudot table.
-	return 2
+	// Fallback cost when the rune is not in the weighted table.
+	return defaultDistanceSubCost
 }
 
 // Purpose: Return the minimum of three integers.
@@ -2259,15 +2167,15 @@ var (
 	morseRuneIndex map[rune]int
 	morseCostTable [][]int
 
-	morseInsertCost = 1
-	morseDeleteCost = 1
-	morseSubCost    = 2
-	morseScale      = 2
+	morseInsertCost = defaultDistanceInsertCost
+	morseDeleteCost = defaultDistanceDeleteCost
+	morseSubCost    = defaultDistanceSubCost
+	morseScale      = defaultDistanceScale
 
-	baudotInsertCost = 1
-	baudotDeleteCost = 1
-	baudotSubCost    = 2
-	baudotScale      = 2
+	baudotInsertCost = defaultDistanceInsertCost
+	baudotDeleteCost = defaultDistanceDeleteCost
+	baudotSubCost    = defaultDistanceSubCost
+	baudotScale      = defaultDistanceScale
 
 	levBufPool = sync.Pool{
 		New: func() interface{} {
@@ -2368,7 +2276,49 @@ func buildRuneCostTable(codebook map[rune]string, cost func(a, b string) int) (m
 // Upstream: buildRuneCostTable (Morse table build).
 // Downstream: getMorseWeights, min3.
 func morsePatternCost(a, b string) int {
-	cfg := getMorseWeights()
+	return weightedPatternCost(a, b, getMorseWeights().distanceWeightSet)
+}
+
+type distanceWeightSet struct {
+	ins   int
+	del   int
+	sub   int
+	scale int
+}
+
+type morseWeightSet struct {
+	distanceWeightSet
+}
+
+// Purpose: Snapshot the current Morse weighting settings.
+// Key aspects: Reads global cost parameters once per call.
+// Upstream: morsePatternCost.
+// Downstream: None.
+func getMorseWeights() morseWeightSet {
+	return morseWeightSet{
+		distanceWeightSet: distanceWeightSet{
+			ins:   morseInsertCost,
+			del:   morseDeleteCost,
+			sub:   morseSubCost,
+			scale: morseScale,
+		},
+	}
+}
+
+// Purpose: Compute weighted, normalized edit cost between two Baudot patterns.
+// Key aspects: Runs weighted Levenshtein and scales the result for substitutions.
+// Upstream: buildRuneCostTable (Baudot table build).
+// Downstream: min3.
+func baudotPatternCost(a, b string) int {
+	return weightedPatternCost(a, b, distanceWeightSet{
+		ins:   baudotInsertCost,
+		del:   baudotDeleteCost,
+		sub:   baudotSubCost,
+		scale: baudotScale,
+	})
+}
+
+func weightedPatternCost(a, b string, cfg distanceWeightSet) int {
 	if a == b {
 		return 0
 	}
@@ -2386,15 +2336,15 @@ func morsePatternCost(a, b string) int {
 	cur := make([]int, lb+1)
 
 	for j := 0; j <= lb; j++ {
-		prev[j] = j * cfg.ins // j inserts
+		prev[j] = j * cfg.ins
 	}
 
 	for i := 1; i <= la; i++ {
-		cur[0] = i * cfg.del // i deletes
+		cur[0] = i * cfg.del
 		for j := 1; j <= lb; j++ {
 			subCost := 0
 			if ra[i-1] != rb[j-1] {
-				subCost = cfg.sub // dot<->dash heavier than insert/delete
+				subCost = cfg.sub
 			}
 			insert := cur[j-1] + cfg.ins
 			delete := prev[j] + cfg.del
@@ -2409,86 +2359,9 @@ func morsePatternCost(a, b string) int {
 	if lb > maxLen {
 		maxLen = lb
 	}
-	normalized := float64(raw) / float64(maxLen+1)
 	scale := cfg.scale
 	if scale <= 0 {
-		scale = 2
-	}
-	scaled := int(math.Ceil(normalized * float64(scale)))
-	if scaled < 1 && raw > 0 {
-		scaled = 1
-	}
-	return scaled
-}
-
-type morseWeightSet struct {
-	ins   int
-	del   int
-	sub   int
-	scale int
-}
-
-// Purpose: Snapshot the current Morse weighting settings.
-// Key aspects: Reads global cost parameters once per call.
-// Upstream: morsePatternCost.
-// Downstream: None.
-func getMorseWeights() morseWeightSet {
-	return morseWeightSet{
-		ins:   morseInsertCost,
-		del:   morseDeleteCost,
-		sub:   morseSubCost,
-		scale: morseScale,
-	}
-}
-
-// Purpose: Compute weighted, normalized edit cost between two Baudot patterns.
-// Key aspects: Runs weighted Levenshtein and scales the result for substitutions.
-// Upstream: buildRuneCostTable (Baudot table build).
-// Downstream: min3.
-func baudotPatternCost(a, b string) int {
-	if a == b {
-		return 0
-	}
-	ra := []rune(a)
-	rb := []rune(b)
-	la := len(ra)
-	lb := len(rb)
-	if la == 0 {
-		return baudotInsertCost
-	}
-	if lb == 0 {
-		return baudotInsertCost
-	}
-	prev := make([]int, lb+1)
-	cur := make([]int, lb+1)
-
-	for j := 0; j <= lb; j++ {
-		prev[j] = j * baudotInsertCost
-	}
-
-	for i := 1; i <= la; i++ {
-		cur[0] = i * baudotDeleteCost
-		for j := 1; j <= lb; j++ {
-			subCost := 0
-			if ra[i-1] != rb[j-1] {
-				subCost = baudotSubCost
-			}
-			insert := cur[j-1] + baudotInsertCost
-			delete := prev[j] + baudotDeleteCost
-			replace := prev[j-1] + subCost
-			cur[j] = min3(insert, delete, replace)
-		}
-		prev, cur = cur, prev
-	}
-
-	raw := prev[lb]
-	maxLen := la
-	if lb > maxLen {
-		maxLen = lb
-	}
-	scale := baudotScale
-	if scale <= 0 {
-		scale = 2
+		scale = defaultDistanceScale
 	}
 	normalized := float64(raw) / float64(maxLen+1)
 	scaled := int(math.Ceil(normalized * float64(scale)))

@@ -1,6 +1,7 @@
 package pathreliability
 
 import (
+	"dxcluster/strutil"
 	"fmt"
 	"math"
 	"os"
@@ -300,7 +301,7 @@ func (c *Config) normalize() {
 	}
 	normalizedThresholds := make(map[string]GlyphThresholds, len(c.ModeThresholds))
 	for k, v := range c.ModeThresholds {
-		key := strings.ToUpper(strings.TrimSpace(k))
+		key := strutil.NormalizeUpper(k)
 		if key == "" {
 			continue
 		}
@@ -350,7 +351,7 @@ func (c *Config) normalize() {
 	// Normalize noise keys to uppercase for lookup stability.
 	normalized := make(map[string]float64, len(c.NoiseOffsets))
 	for k, v := range c.NoiseOffsets {
-		normalized[strings.ToUpper(strings.TrimSpace(k))] = v
+		normalized[strutil.NormalizeUpper(k)] = v
 	}
 	c.NoiseOffsets = normalized
 	c.buildCaches()

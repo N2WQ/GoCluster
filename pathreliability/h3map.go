@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 
+	"dxcluster/internal/fsutil"
+
 	"github.com/uber/h3-go/v4"
 )
 
@@ -161,8 +163,8 @@ func generateH3Cells(res int, wantCount int) ([]uint64, error) {
 }
 
 func writeH3Table(dir string, res int, cells []uint64) error {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("h3map: create table dir: %w", err)
+	if err := fsutil.EnsureParentDir(h3TablePath(dir, res), "h3map: create table dir"); err != nil {
+		return err
 	}
 	path := h3TablePath(dir, res)
 	tmp, err := os.CreateTemp(dir, fmt.Sprintf("res%d-*.bin", res))

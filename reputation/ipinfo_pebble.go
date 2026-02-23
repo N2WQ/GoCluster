@@ -3,6 +3,7 @@ package reputation
 import (
 	"bufio"
 	"context"
+	"dxcluster/strutil"
 	"encoding/binary"
 	"encoding/csv"
 	"errors"
@@ -289,7 +290,7 @@ func buildIPInfoPebble(ctx context.Context, csvPath, rootDir string, compact boo
 			continue
 		}
 		asn := normalizeASN(fieldAt(row, asnIdx))
-		countryCode := strings.ToUpper(strings.TrimSpace(fieldAt(row, countryCodeIdx)))
+		countryCode := strutil.NormalizeUpper(fieldAt(row, countryCodeIdx))
 		if start.Is4() {
 			start4 := ip4ToUint32(start.As4())
 			end4 := ip4ToUint32(end.As4())

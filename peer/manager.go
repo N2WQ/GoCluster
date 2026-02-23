@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"dxcluster/config"
+	"dxcluster/internal/netutil"
 	"dxcluster/spot"
+	"dxcluster/strutil"
 )
 
 type Manager struct {
@@ -81,7 +83,7 @@ func NewManager(cfg config.PeeringConfig, localCall string, ingest chan<- *spot.
 	}
 	allowCalls := make(map[string]struct{})
 	for _, call := range cfg.ACL.AllowCallsigns {
-		call = strings.ToUpper(strings.TrimSpace(call))
+		call = strutil.NormalizeUpper(call)
 		if call == "" {
 			continue
 		}
@@ -90,7 +92,7 @@ func NewManager(cfg config.PeeringConfig, localCall string, ingest chan<- *spot.
 
 	return &Manager{
 		cfg:           cfg,
-		localCall:     strings.ToUpper(strings.TrimSpace(localCall)),
+		localCall:     strutil.NormalizeUpper(localCall),
 		ingest:        ingest,
 		maxAgeSeconds: maxAgeSeconds,
 		topology:      topo,
@@ -305,13 +307,13 @@ func formatPC61DropLine(frame *Frame, sess *session, err error) string {
 			}
 		}
 		if len(fields) > 1 {
-			dx = strings.ToUpper(strings.TrimSpace(fields[1]))
+			dx = strutil.NormalizeUpper(fields[1])
 			if dx == "" {
 				dx = "unknown"
 			}
 		}
 		if len(fields) > 5 {
-			de = strings.ToUpper(strings.TrimSpace(fields[5]))
+			de = strutil.NormalizeUpper(fields[5])
 			if de == "" {
 				de = "unknown"
 			}
@@ -496,7 +498,7 @@ func (m *Manager) trySendLine(sess *session, line string, kind string) {
 }
 
 func (m *Manager) allowInbound(call string, addr net.Addr) bool {
-	call = strings.ToUpper(strings.TrimSpace(call))
+	call = strutil.NormalizeUpper(call)
 	if len(m.allowCalls) > 0 {
 		if _, ok := m.allowCalls[call]; !ok {
 			return false
@@ -531,12 +533,12 @@ func (m *Manager) acceptLoop() {
 			log.Printf("Peering: accept failed: %v", err)
 			continue
 		}
-		if tcp, ok := conn.(*net.TCPConn); ok {
-			if err := tcp.SetKeepAlive(true); err != nil {
-				log.Printf("Peering: failed to enable keepalive for %s: %v", conn.RemoteAddr(), err)
+		if isTCP, enableErr, periodErr := netutil.EnableTCPKeepAlive(conn, 2*time.Minute); isTCP {
+			if enableErr != nil {
+				log.Printf("Peering: failed to enable keepalive for %s: %v", conn.RemoteAddr(), enableErr)
 			}
-			if err := tcp.SetKeepAlivePeriod(2 * time.Minute); err != nil {
-				log.Printf("Peering: failed to set keepalive period for %s: %v", conn.RemoteAddr(), err)
+			if periodErr != nil {
+				log.Printf("Peering: failed to set keepalive period for %s: %v", conn.RemoteAddr(), periodErr)
 			}
 		}
 		peer := PeerEndpoint{host: conn.RemoteAddr().String(), port: 0}
@@ -645,7 +647,7 @@ func (m *Manager) sessionSettings(peer PeerEndpoint) sessionSettings {
 		local = m.localCall
 	}
 	return sessionSettings{
-		localCall:       strings.ToUpper(strings.TrimSpace(local)),
+		localCall:       strutil.NormalizeUpper(local),
 		preferPC9x:      peer.preferPC9x,
 		nodeVersion:     m.cfg.NodeVersion,
 		nodeBuild:       m.cfg.NodeBuild,

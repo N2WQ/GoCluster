@@ -1,6 +1,7 @@
 package reputation
 
 import (
+	"dxcluster/strutil"
 	"errors"
 	"fmt"
 	"os"
@@ -122,7 +123,7 @@ func (s *Store) recordPath(callsign string) string {
 }
 
 func normalizeCallKey(call string) string {
-	return strings.ToUpper(strings.TrimSpace(call))
+	return strutil.NormalizeUpper(call)
 }
 
 func trimHistory(values []string, limit int) []string {

@@ -16,6 +16,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"dxcluster/internal/fsutil"
 )
 
 const MetadataSuffix = ".status.json"
@@ -158,7 +160,7 @@ func Download(ctx context.Context, req Request) (Result, error) {
 		return result, fmt.Errorf("download: fetch failed: status %s", resp.Status)
 	}
 
-	if err := ensureParentDir(dest); err != nil {
+	if err := fsutil.EnsureParentDir(dest, "download: create directory"); err != nil {
 		return result, err
 	}
 	tmpFile, err := os.CreateTemp(filepath.Dir(dest), "download-*.tmp")
@@ -302,17 +304,6 @@ func mergeMetadata(prev *Metadata, url string, resp *http.Response, now time.Tim
 		meta.SHA256 = hash
 	}
 	return meta
-}
-
-func ensureParentDir(path string) error {
-	dir := filepath.Dir(path)
-	if dir == "" || dir == "." {
-		return nil
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("download: create directory: %w", err)
-	}
-	return nil
 }
 
 func cleanupLegacyMetadata(source, metaPath string) {

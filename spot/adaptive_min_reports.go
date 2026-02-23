@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"dxcluster/config"
+	"dxcluster/strutil"
 )
 
 // AdaptiveMinReports adjusts the min_reports threshold per band group based on
@@ -107,7 +108,7 @@ func (a *AdaptiveMinReports) Observe(band, reporter string, now time.Time) {
 		return
 	}
 	b := strings.ToLower(strings.TrimSpace(band))
-	r := strings.ToUpper(strings.TrimSpace(reporter))
+	r := strutil.NormalizeUpper(reporter)
 	if b == "" || r == "" {
 		return
 	}

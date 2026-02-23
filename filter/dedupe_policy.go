@@ -1,6 +1,6 @@
 package filter
 
-import "strings"
+import "dxcluster/strutil"
 
 const (
 	DedupePolicyFast = "FAST"
@@ -10,7 +10,7 @@ const (
 
 // NormalizeDedupePolicy returns a supported policy label, defaulting to MED.
 func NormalizeDedupePolicy(value string) string {
-	trimmed := strings.ToUpper(strings.TrimSpace(value))
+	trimmed := strutil.NormalizeUpper(value)
 	switch trimmed {
 	case DedupePolicyFast, DedupePolicyMed, DedupePolicySlow:
 		return trimmed

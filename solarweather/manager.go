@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"dxcluster/internal/logutil"
 )
 
 type Manager struct {
@@ -374,8 +376,8 @@ func (m *Manager) sunVector(now time.Time) Vec3 {
 }
 
 func (m *Manager) logf(format string, args ...any) {
-	if m == nil || m.logger == nil {
+	if m == nil {
 		return
 	}
-	m.logger.Printf(format, args...)
+	logutil.SafePrintf(m.logger, format, args...)
 }

@@ -1,6 +1,7 @@
 package reputation
 
 import (
+	"dxcluster/strutil"
 	"net/netip"
 	"strings"
 	"unicode"
@@ -32,7 +33,7 @@ var countryAliasCode = map[string]string{
 }
 
 func countryKeyFromCode(code string) string {
-	code = strings.ToUpper(strings.TrimSpace(code))
+	code = strutil.NormalizeUpper(code)
 	if len(code) == 2 {
 		return code
 	}
@@ -66,7 +67,7 @@ func normalizeCountryName(name string) string {
 }
 
 func continentKey(continent string) string {
-	continent = strings.ToUpper(strings.TrimSpace(continent))
+	continent = strutil.NormalizeUpper(continent)
 	if len(continent) == 2 {
 		return continent
 	}

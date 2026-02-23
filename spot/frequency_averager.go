@@ -124,32 +124,11 @@ func (fa *FrequencyAverager) StartCleanup(interval, window time.Duration) {
 	if interval <= 0 {
 		interval = time.Minute
 	}
-	fa.mu.Lock()
-	if fa.sweepQuit != nil {
+	startPeriodicCleanup(&fa.mu, &fa.sweepQuit, interval, func() {
+		fa.mu.Lock()
+		fa.cleanup(time.Now().UTC(), window)
 		fa.mu.Unlock()
-		return
-	}
-	fa.sweepQuit = make(chan struct{})
-	fa.mu.Unlock()
-
-	// Purpose: Periodically invoke cleanup until StopCleanup is called.
-	// Key aspects: Ticker-driven loop with quit channel.
-	// Upstream: StartCleanup.
-	// Downstream: cleanup and ticker.Stop.
-	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				fa.mu.Lock()
-				fa.cleanup(time.Now().UTC(), window)
-				fa.mu.Unlock()
-			case <-fa.sweepQuit:
-				return
-			}
-		}
-	}()
+	})
 }
 
 // StopCleanup stops the periodic cleanup goroutine.
@@ -161,10 +140,5 @@ func (fa *FrequencyAverager) StopCleanup() {
 	if fa == nil {
 		return
 	}
-	fa.mu.Lock()
-	defer fa.mu.Unlock()
-	if fa.sweepQuit != nil {
-		close(fa.sweepQuit)
-		fa.sweepQuit = nil
-	}
+	stopPeriodicCleanup(&fa.mu, &fa.sweepQuit)
 }

@@ -2,6 +2,7 @@ package spot
 
 import (
 	"container/list"
+	"dxcluster/strutil"
 	"log"
 	"strings"
 	"time"
@@ -104,7 +105,7 @@ func (a *ModeAssigner) Assign(s *Spot, explicitMode bool) string {
 	// Respect explicit modes first.
 	if explicitMode {
 		mode := NormalizeVoiceMode(s.Mode, s.Frequency)
-		mode = strings.ToUpper(strings.TrimSpace(mode))
+		mode = strutil.NormalizeUpper(mode)
 		s.Mode = mode
 		if a.shouldObserveDigital(s, mode) {
 			spotter := s.DECallNorm
@@ -134,7 +135,7 @@ func (a *ModeAssigner) Assign(s *Spot, explicitMode bool) string {
 	if a.fallback != nil {
 		mode = a.fallback(s.Frequency)
 	}
-	mode = strings.ToUpper(strings.TrimSpace(mode))
+	mode = strutil.NormalizeUpper(mode)
 	if mode != "" {
 		s.Mode = mode
 		a.dxCache.Set(key, mode, now)
@@ -172,7 +173,7 @@ func (a *ModeAssigner) seedDigitalMap(seeds []ModeSeed) {
 		if seed.FrequencyKHz <= 0 {
 			continue
 		}
-		mode := strings.ToUpper(strings.TrimSpace(seed.Mode))
+		mode := strutil.NormalizeUpper(seed.Mode)
 		if !isSeedMode(mode) {
 			log.Printf("Mode inference: ignoring unsupported digital seed mode %q for %d kHz", seed.Mode, seed.FrequencyKHz)
 			continue
@@ -560,7 +561,7 @@ func (entry *digitalFreqEntry) ensureMode(mode string) *digitalModeEvidence {
 	// Key aspects: Normalizes mode and allocates spotter map.
 	// Upstream: Seed and Observe.
 	// Downstream: strings.ToUpper and map allocation.
-	mode = strings.ToUpper(strings.TrimSpace(mode))
+	mode = strutil.NormalizeUpper(mode)
 	if mode == "" {
 		return nil
 	}
@@ -637,7 +638,7 @@ func isSeedMode(mode string) bool {
 	// Key aspects: Limits to FT4/FT8/JS8.
 	// Upstream: seedDigitalMap and shouldObserveDigital.
 	// Downstream: strings.ToUpper.
-	switch strings.ToUpper(strings.TrimSpace(mode)) {
+	switch strutil.NormalizeUpper(mode) {
 	case "FT4", "FT8", "JS8":
 		return true
 	default:

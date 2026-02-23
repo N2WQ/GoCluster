@@ -1,6 +1,7 @@
 package filter
 
 import (
+	"dxcluster/strutil"
 	"errors"
 	"fmt"
 	"os"
@@ -53,8 +54,8 @@ func LoadUserRecord(callsign string) (*UserRecord, error) {
 		record.Dialect = "go"
 	}
 	record.DedupePolicy = NormalizeDedupePolicy(record.DedupePolicy)
-	record.Grid = strings.ToUpper(strings.TrimSpace(record.Grid))
-	record.NoiseClass = strings.ToUpper(strings.TrimSpace(record.NoiseClass))
+	record.Grid = strutil.NormalizeUpper(record.Grid)
+	record.NoiseClass = strutil.NormalizeUpper(record.NoiseClass)
 	record.SolarSummaryMinutes = normalizeSolarSummaryMinutes(record.SolarSummaryMinutes)
 	return &record, nil
 }

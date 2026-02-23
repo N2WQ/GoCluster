@@ -14,6 +14,7 @@ import (
 	"dxcluster/config"
 	"dxcluster/cty"
 	"dxcluster/spot"
+	"dxcluster/strutil"
 )
 
 // Gate enforces the passwordless telnet reputation policy.
@@ -327,7 +328,7 @@ func (g *Gate) Check(req Request) Decision {
 	if g == nil || !g.cfg.enabled {
 		return Decision{Allow: true}
 	}
-	call := strings.ToUpper(strings.TrimSpace(req.Call))
+	call := strutil.NormalizeUpper(req.Call)
 	if call == "" {
 		return Decision{Allow: true}
 	}
