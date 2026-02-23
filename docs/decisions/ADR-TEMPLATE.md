@@ -4,6 +4,8 @@ Status: Proposed | Accepted | Superseded | Deprecated
 Date: YYYY-MM-DD
 Decision Makers: <names or role>
 Technical Area: <component/package>
+Decision Origin: Design | Incident | Troubleshooting chat
+Troubleshooting Record(s): TSR-XXXX | none
 Tags: <optional comma-separated tags>
 
 ## Context
@@ -46,5 +48,5 @@ Tags: <optional comma-separated tags>
 - PR(s):
 - Commit(s):
 - Related ADR(s):
+- Troubleshooting Record(s):
 - Docs:
-

@@ -49,6 +49,8 @@ Purpose:
 Canonical location:
 - `docs/decisions/` for all ADR files.
 - `docs/decision-log.md` as the ADR index.
+- `docs/troubleshooting/` for Troubleshooting Records (`TSR-XXXX`).
+- `docs/troubleshooting-log.md` as the Troubleshooting Record index.
 
 ADR requirements:
 - Create/update an ADR for any Non-trivial change that affects:
@@ -58,15 +60,22 @@ ADR requirements:
   - shared component behavior used by multiple consumers
 - If no durable decision changed, state explicitly: `No decision change`.
 
+Troubleshooting-to-decision capture requirements:
+- If a troubleshooting chat request leads to a new or changed durable decision, create/update a `TSR-XXXX` record first, then create/update the ADR.
+- `TSR-XXXX` records must capture: triggering chat request summary/date, symptoms and impact, hypotheses tested, evidence, root cause (or best current explanation), and why an ADR was required.
+- Cross-link both ways: TSR references ADR(s), and ADR references TSR(s).
+- If troubleshooting concludes with no durable decision change, record `No decision change` and no ADR is required.
+
 ADR format (required fields):
 - Title
 - Status: Proposed | Accepted | Superseded | Deprecated
 - Date
+- Decision Origin: Design | Incident | Troubleshooting chat
 - Context
 - Decision
 - Alternatives considered (2-3 when material)
 - Consequences (benefits, risks, operational impact)
-- Links (issues/PRs/commits/tests/docs)
+- Links (issues/PRs/commits/tests/docs/TSR references)
 
 Immutability and supersession:
 - Do not rewrite history in accepted ADRs.
@@ -74,8 +83,9 @@ Immutability and supersession:
 
 Traceability:
 - Non-trivial PR-style summary must include `Decision refs: ADR-XXXX` (or `Decision refs: none`).
-- Scope-to-Code Traceability must include ADR references for decision-impacting items.
-- For any non-trivial change or troubleshooting task, read `docs/decision-log.md` first, then open all ADRs referenced by the affected component(s). If none apply, state `No relevant ADR found`.
+- If the decision originated from troubleshooting, include both ADR and TSR refs (example: `Decision refs: ADR-0016; TSR-0004`).
+- Scope-to-Code Traceability must include ADR references for decision-impacting items and TSR references when troubleshooting-originated.
+- For any non-trivial change or troubleshooting task, read `docs/decision-log.md` and `docs/troubleshooting-log.md` first, then open ADR/TSR files referenced by the affected component(s). If none apply, state `No relevant ADR found` and/or `No relevant TSR found`.
 
 ### CRITICAL CHECKLIST (read first; for every change)
 - Confirm current Scope Ledger vN and what is Agreed/Pending.
