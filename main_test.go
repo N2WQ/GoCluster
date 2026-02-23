@@ -623,6 +623,57 @@ func TestShouldDelayTelnetByStabilizerSkipsRecentSupport(t *testing.T) {
 	}
 }
 
+func TestShouldDelayTelnetByStabilizerUsesSlashFamilyRecentSupport(t *testing.T) {
+	store := spot.NewRecentBandStoreWithOptions(spot.RecentBandOptions{
+		Window:             12 * time.Hour,
+		Shards:             1,
+		MaxEntries:         128,
+		CleanupInterval:    time.Hour,
+		MaxSpottersPerCall: 8,
+	})
+	now := time.Now().UTC()
+	cfg := config.CallCorrectionConfig{
+		StabilizerEnabled:                 true,
+		RecentBandRecordMinUniqueSpotters: 2,
+	}
+
+	// Record slash-explicit observations through the normal admission path so
+	// family keys are inserted consistently.
+	recordRecentBandObservation(spot.NewSpot("W1AW/5", "N0AAA", 7010.0, "CW"), store, cfg)
+	recordRecentBandObservation(spot.NewSpot("W1AW/5", "N0BBB", 7010.0, "CW"), store, cfg)
+
+	bare := spot.NewSpot("W1AW", "W2TT", 7010.0, "CW")
+	bare.Confidence = "?"
+	if shouldDelayTelnetByStabilizer(bare, store, cfg, now) {
+		t.Fatalf("did not expect bare call to be delayed when slash family is recent")
+	}
+}
+
+func TestApplyKnownCallFloorPromotesViaSlashFamilyRecentSupport(t *testing.T) {
+	store := spot.NewRecentBandStoreWithOptions(spot.RecentBandOptions{
+		Window:             12 * time.Hour,
+		Shards:             1,
+		MaxEntries:         128,
+		CleanupInterval:    time.Hour,
+		MaxSpottersPerCall: 8,
+	})
+	cfg := config.CallCorrectionConfig{
+		RecentBandBonusEnabled:            true,
+		RecentBandRecordMinUniqueSpotters: 2,
+	}
+	recordRecentBandObservation(spot.NewSpot("W1AW/5", "N0AAA", 7010.0, "CW"), store, cfg)
+	recordRecentBandObservation(spot.NewSpot("W1AW/5", "N0BBB", 7010.0, "CW"), store, cfg)
+
+	s := spot.NewSpot("W1AW", "W2TT", 7010.0, "CW")
+	s.Confidence = "?"
+	if !applyKnownCallFloor(s, nil, store, cfg) {
+		t.Fatalf("expected recent-on-band floor to use slash family support")
+	}
+	if s.Confidence != "S" {
+		t.Fatalf("expected confidence S, got %q", s.Confidence)
+	}
+}
+
 func TestRecentBandAdmissionDelayedReleaseWaitsForOutcome(t *testing.T) {
 	store := newRecentBandStoreForStabilizerAdmissionTests()
 	cfg := config.CallCorrectionConfig{
@@ -826,6 +877,18 @@ func TestBuildCorrectionSettingsMapsConfigFields(t *testing.T) {
 					RequireCandidateValidated: true,
 					RequireSubjectUnvalidated: true,
 				},
+				LengthBonus: config.CallCorrectionTruncationLengthBonusConfig{
+					Enabled:                   true,
+					Max:                       2,
+					RequireCandidateValidated: true,
+					RequireSubjectUnvalidated: true,
+				},
+				Delta2Rails: config.CallCorrectionTruncationDelta2RailsConfig{
+					Enabled:                   true,
+					ExtraConfidencePercent:    12,
+					RequireCandidateValidated: true,
+					RequireSubjectUnvalidated: false,
+				},
 			},
 		},
 		MinAdvantage:                      2,
@@ -903,6 +966,18 @@ func TestBuildCorrectionSettingsMapsConfigFields(t *testing.T) {
 		got.TruncationAdvantagePolicy.RequireCandidateValidated != cfg.FamilyPolicy.Truncation.RelaxAdvantage.RequireCandidateValidated ||
 		got.TruncationAdvantagePolicy.RequireSubjectUnvalidated != cfg.FamilyPolicy.Truncation.RelaxAdvantage.RequireSubjectUnvalidated {
 		t.Fatalf("expected truncation advantage policy mapping to be preserved")
+	}
+	if got.TruncationLengthBonusEnabled != cfg.FamilyPolicy.Truncation.LengthBonus.Enabled ||
+		got.TruncationLengthBonusMax != cfg.FamilyPolicy.Truncation.LengthBonus.Max ||
+		got.TruncationLengthBonusRequireCandidateValidated != cfg.FamilyPolicy.Truncation.LengthBonus.RequireCandidateValidated ||
+		got.TruncationLengthBonusRequireSubjectUnvalidated != cfg.FamilyPolicy.Truncation.LengthBonus.RequireSubjectUnvalidated {
+		t.Fatalf("expected truncation length bonus mapping to be preserved")
+	}
+	if got.TruncationDelta2RailsEnabled != cfg.FamilyPolicy.Truncation.Delta2Rails.Enabled ||
+		got.TruncationDelta2ExtraConfidence != cfg.FamilyPolicy.Truncation.Delta2Rails.ExtraConfidencePercent ||
+		got.TruncationDelta2RequireCandidateValidated != cfg.FamilyPolicy.Truncation.Delta2Rails.RequireCandidateValidated ||
+		got.TruncationDelta2RequireSubjectUnvalidated != cfg.FamilyPolicy.Truncation.Delta2Rails.RequireSubjectUnvalidated {
+		t.Fatalf("expected truncation delta-2 rail mapping to be preserved")
 	}
 	if got.CooldownMinReporters != 6 {
 		t.Fatalf("expected cooldown min reporters 6, got %d", got.CooldownMinReporters)

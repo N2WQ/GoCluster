@@ -2646,7 +2646,7 @@ func shouldDelayTelnetByStabilizer(s *spot.Spot, store *spot.RecentBandStore, cf
 	if minUnique <= 0 {
 		minUnique = 2
 	}
-	return !store.HasRecentSupport(call, band, mode, minUnique, now)
+	return !hasRecentSupportForCallFamily(store, call, band, mode, minUnique, now)
 }
 
 // shouldRecordRecentBandInMainLoop controls recent-on-band admission timing for
@@ -3510,15 +3510,23 @@ func buildCorrectionSettings(
 		RecentBandBonusMax:                cfg.RecentBandBonusMax,
 		RecentBandRecordMinUniqueSpotters: cfg.RecentBandRecordMinUniqueSpotters,
 		RecentBandStore:                   recentBandStore,
-		PriorBonusEnabled:                 cfg.PriorBonusEnabled,
-		PriorBonusMax:                     cfg.PriorBonusMax,
-		PriorBonusDistanceMax:             cfg.PriorBonusDistanceMax,
-		PriorBonusRequiresSCP:             cfg.PriorBonusRequiresSCP,
-		PriorBonusApplyTo:                 cfg.PriorBonusApplyTo,
-		PriorBonusKnownCallset:            knownCallset,
-		Cooldown:                          cooldown,
-		CooldownMinReporters:              cooldownMinReports,
-		DecisionObserver:                  decisionObserver,
+		TruncationLengthBonusEnabled:      cfg.FamilyPolicy.Truncation.LengthBonus.Enabled,
+		TruncationLengthBonusMax:          cfg.FamilyPolicy.Truncation.LengthBonus.Max,
+		TruncationLengthBonusRequireCandidateValidated: cfg.FamilyPolicy.Truncation.LengthBonus.RequireCandidateValidated,
+		TruncationLengthBonusRequireSubjectUnvalidated: cfg.FamilyPolicy.Truncation.LengthBonus.RequireSubjectUnvalidated,
+		TruncationDelta2RailsEnabled:                   cfg.FamilyPolicy.Truncation.Delta2Rails.Enabled,
+		TruncationDelta2ExtraConfidence:                cfg.FamilyPolicy.Truncation.Delta2Rails.ExtraConfidencePercent,
+		TruncationDelta2RequireCandidateValidated:      cfg.FamilyPolicy.Truncation.Delta2Rails.RequireCandidateValidated,
+		TruncationDelta2RequireSubjectUnvalidated:      cfg.FamilyPolicy.Truncation.Delta2Rails.RequireSubjectUnvalidated,
+		PriorBonusEnabled:                              cfg.PriorBonusEnabled,
+		PriorBonusMax:                                  cfg.PriorBonusMax,
+		PriorBonusDistanceMax:                          cfg.PriorBonusDistanceMax,
+		PriorBonusRequiresSCP:                          cfg.PriorBonusRequiresSCP,
+		PriorBonusApplyTo:                              cfg.PriorBonusApplyTo,
+		PriorBonusKnownCallset:                         knownCallset,
+		Cooldown:                                       cooldown,
+		CooldownMinReporters:                           cooldownMinReports,
+		DecisionObserver:                               decisionObserver,
 	}
 }
 
@@ -3636,7 +3644,13 @@ func recordRecentBandObservation(s *spot.Spot, store *spot.RecentBandStore, cfg 
 	if seenAt.IsZero() {
 		seenAt = time.Now().UTC()
 	}
-	store.Record(call, band, mode, spotter, seenAt)
+	keys := spot.CorrectionFamilyKeys(call)
+	if len(keys) == 0 {
+		keys = []string{call}
+	}
+	for _, key := range keys {
+		store.Record(key, band, mode, spotter, seenAt)
+	}
 }
 
 // Purpose: Apply confidence floor only when confidence is still unknown.
@@ -3684,12 +3698,30 @@ func applyKnownCallFloor(
 		if band == "" || band == "???" {
 			band = spot.FreqToBand(s.Frequency)
 		}
-		recentHit = recentBandStore.HasRecentSupport(call, band, mode, corrCfg.RecentBandRecordMinUniqueSpotters, time.Now().UTC())
+		recentHit = hasRecentSupportForCallFamily(recentBandStore, call, band, mode, corrCfg.RecentBandRecordMinUniqueSpotters, time.Now().UTC())
 	}
 
 	if knownHit || recentHit {
 		s.Confidence = "S"
 		return true
+	}
+	return false
+}
+
+// hasRecentSupportForCallFamily checks recent support across family identities.
+// Key aspects: Uses canonical vote/base keys to keep slash variants coherent.
+func hasRecentSupportForCallFamily(store *spot.RecentBandStore, call, band, mode string, minUnique int, now time.Time) bool {
+	if store == nil {
+		return false
+	}
+	keys := spot.CorrectionFamilyKeys(call)
+	if len(keys) == 0 {
+		return store.HasRecentSupport(call, band, mode, minUnique, now)
+	}
+	for _, key := range keys {
+		if store.HasRecentSupport(key, band, mode, minUnique, now) {
+			return true
+		}
 	}
 	return false
 }

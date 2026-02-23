@@ -1540,6 +1540,163 @@ func TestSuggestCallCorrectionTruncationAdvantageRelaxationCanBeDisabled(t *test
 	}
 }
 
+func TestSuggestCallCorrectionTruncationLengthBonusAppliesToMinReportsOnly(t *testing.T) {
+	now := time.Now().UTC()
+	subject := &Spot{DXCall: "W1AB", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now}
+	others := []*Spot{
+		{DXCall: "W1ABC", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+	}
+	known := &KnownCallsigns{entries: map[string]struct{}{"W1ABC": {}}}
+	trace := &captureTraceLogger{}
+
+	call, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+		Strategy:                     "majority",
+		MinConsensusReports:          2,
+		MinAdvantage:                 0,
+		MinConfidencePercent:         40,
+		MaxEditDistance:              2,
+		RecencyWindow:                30 * time.Second,
+		PriorBonusKnownCallset:       known,
+		TruncationLengthBonusEnabled: true,
+		TruncationLengthBonusMax:     1,
+		TruncationLengthBonusRequireCandidateValidated: true,
+		TruncationLengthBonusRequireSubjectUnvalidated: true,
+		DebugLog:    true,
+		TraceLogger: trace,
+	}, now)
+	if !ok {
+		t.Fatalf("expected truncation length bonus to satisfy min_reports")
+	}
+	if call != "W1ABC" {
+		t.Fatalf("expected W1ABC, got %q", call)
+	}
+	last := trace.lastTrace(t)
+	if !strings.Contains(last.DecisionPath, "truncation_length_bonus") {
+		t.Fatalf("expected truncation_length_bonus in decision path, got %q", last.DecisionPath)
+	}
+}
+
+func TestSuggestCallCorrectionTruncationLengthBonusDoesNotBypassAdvantage(t *testing.T) {
+	now := time.Now().UTC()
+	subject := &Spot{DXCall: "W1AB", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now}
+	others := []*Spot{
+		{DXCall: "W1ABC", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "W1AB", DECall: "W4DDD", Frequency: 7010.0, Mode: "CW", Time: now},
+	}
+	known := &KnownCallsigns{entries: map[string]struct{}{"W1ABC": {}}}
+	trace := &captureTraceLogger{}
+
+	_, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+		Strategy:                     "majority",
+		MinConsensusReports:          2,
+		MinAdvantage:                 1,
+		MinConfidencePercent:         40,
+		MaxEditDistance:              2,
+		RecencyWindow:                30 * time.Second,
+		PriorBonusKnownCallset:       known,
+		TruncationLengthBonusEnabled: true,
+		TruncationLengthBonusMax:     1,
+		TruncationLengthBonusRequireCandidateValidated: true,
+		TruncationLengthBonusRequireSubjectUnvalidated: true,
+		DebugLog:    true,
+		TraceLogger: trace,
+	}, now)
+	if ok {
+		t.Fatalf("expected correction to remain blocked by advantage")
+	}
+	last := trace.lastTrace(t)
+	if last.Reason != "advantage" {
+		t.Fatalf("expected advantage rejection, got %q", last.Reason)
+	}
+	if !strings.Contains(last.DecisionPath, "truncation_length_bonus") {
+		t.Fatalf("expected truncation_length_bonus in decision path, got %q", last.DecisionPath)
+	}
+}
+
+func TestSuggestCallCorrectionTruncationDelta2RailsRequireCandidateValidation(t *testing.T) {
+	now := time.Now().UTC()
+	subject := &Spot{DXCall: "W1A", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now}
+	others := []*Spot{
+		{DXCall: "W1ABC", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "W1ABC", DECall: "W3CCC", Frequency: 7010.0, Mode: "CW", Time: now},
+	}
+	trace := &captureTraceLogger{}
+
+	_, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+		Strategy:             "majority",
+		MinConsensusReports:  2,
+		MinAdvantage:         0,
+		MinConfidencePercent: 40,
+		MaxEditDistance:      3,
+		RecencyWindow:        30 * time.Second,
+		FamilyPolicy: CorrectionFamilyPolicy{
+			Configured:                 true,
+			TruncationEnabled:          true,
+			TruncationMaxLengthDelta:   2,
+			TruncationMinShorterLength: 3,
+			TruncationAllowPrefix:      true,
+			TruncationAllowSuffix:      true,
+		},
+		TruncationDelta2RailsEnabled:              true,
+		TruncationDelta2ExtraConfidence:           10,
+		TruncationDelta2RequireCandidateValidated: true,
+		DebugLog:    true,
+		TraceLogger: trace,
+	}, now)
+	if ok {
+		t.Fatalf("expected delta2 rails to block unvalidated candidate")
+	}
+	last := trace.lastTrace(t)
+	if last.Reason != "truncation_delta2_candidate_unvalidated" {
+		t.Fatalf("expected truncation_delta2_candidate_unvalidated, got %q", last.Reason)
+	}
+}
+
+func TestSuggestCallCorrectionTruncationDelta2RailsRaiseConfidence(t *testing.T) {
+	now := time.Now().UTC()
+	subject := &Spot{DXCall: "W1A", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now}
+	others := []*Spot{
+		{DXCall: "W1ABC", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "W1ABC", DECall: "W3CCC", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "W1A", DECall: "W4DDD", Frequency: 7010.0, Mode: "CW", Time: now},
+	}
+	known := &KnownCallsigns{entries: map[string]struct{}{"W1ABC": {}}}
+	trace := &captureTraceLogger{}
+
+	_, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+		Strategy:             "majority",
+		MinConsensusReports:  2,
+		MinAdvantage:         0,
+		MinConfidencePercent: 40,
+		MaxEditDistance:      3,
+		RecencyWindow:        30 * time.Second,
+		FamilyPolicy: CorrectionFamilyPolicy{
+			Configured:                 true,
+			TruncationEnabled:          true,
+			TruncationMaxLengthDelta:   2,
+			TruncationMinShorterLength: 3,
+			TruncationAllowPrefix:      true,
+			TruncationAllowSuffix:      true,
+		},
+		PriorBonusKnownCallset:                    known,
+		TruncationDelta2RailsEnabled:              true,
+		TruncationDelta2ExtraConfidence:           20,
+		TruncationDelta2RequireCandidateValidated: true,
+		DebugLog:    true,
+		TraceLogger: trace,
+	}, now)
+	if ok {
+		t.Fatalf("expected delta2 extra confidence to reject 50%% candidate confidence")
+	}
+	last := trace.lastTrace(t)
+	if last.Reason != "confidence" {
+		t.Fatalf("expected confidence rejection, got %q", last.Reason)
+	}
+	if last.MinConfidence != 60 {
+		t.Fatalf("expected raised min confidence 60, got %d", last.MinConfidence)
+	}
+}
+
 func TestSuggestCallCorrectionSlashPrecedenceDropsBareCall(t *testing.T) {
 	withTestCallQualityStore(t, func(_ *CallQualityStore) {
 		now := time.Now().UTC()

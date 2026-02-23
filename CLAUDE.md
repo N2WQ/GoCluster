@@ -22,6 +22,10 @@ When the user asks to explain what existing code does (a file, package, function
 ### Codex Skills Wiring
 - Canonical skill location for this VS Code instance: `C:\Users\Developer\.codex\skills\<skill-name>\SKILL.md`.
 - Installed skills currently expected in that location: `explain-code`, `gh-address-comments`, `gh-fix-ci`, `initial-review`, `openai-docs`, `pdf`, `screenshot`, `security-best-practices`, `security-threat-model`, `sentry`.
+- Repo-managed troubleshooting skill sources live in `codex-skills/`; install/update with `scripts/install-codex-skills.ps1` and verify with `scripts/verify-codex-skills.ps1`.
+- Troubleshooting default bundle (highest ROI): `gh-fix-ci` and `sentry`.
+- Use `gh-fix-ci` for failing GitHub Actions PR checks and CI log triage.
+- Use `sentry` for production issue/event triage and feed findings into `TSR-XXXX` when troubleshooting leads to a durable decision.
 
 ## OBJECTIVITY AND INTEGRITY
 - Optimize for correctness over user agreement

@@ -63,6 +63,18 @@ func TestLoadCallCorrectionStabilizerDefaults(t *testing.T) {
 	if !cfg.CallCorrection.FamilyPolicy.Truncation.RelaxAdvantage.RequireSubjectUnvalidated {
 		t.Fatalf("expected truncation relax to require subject unvalidated by default")
 	}
+	if cfg.CallCorrection.FamilyPolicy.Truncation.LengthBonus.Enabled {
+		t.Fatalf("expected truncation length bonus disabled by default")
+	}
+	if cfg.CallCorrection.FamilyPolicy.Truncation.LengthBonus.Max != 0 {
+		t.Fatalf("expected truncation length bonus max default 0, got %d", cfg.CallCorrection.FamilyPolicy.Truncation.LengthBonus.Max)
+	}
+	if cfg.CallCorrection.FamilyPolicy.Truncation.Delta2Rails.Enabled {
+		t.Fatalf("expected truncation delta2 rails disabled by default")
+	}
+	if cfg.CallCorrection.FamilyPolicy.Truncation.Delta2Rails.ExtraConfidencePercent != 0 {
+		t.Fatalf("expected truncation delta2 extra confidence default 0, got %d", cfg.CallCorrection.FamilyPolicy.Truncation.Delta2Rails.ExtraConfidencePercent)
+	}
 	if !cfg.CallCorrection.FamilyPolicy.TelnetSuppression.Enabled {
 		t.Fatalf("expected telnet family suppression enabled by default")
 	}
@@ -115,6 +127,16 @@ func TestLoadCallCorrectionFamilyPolicyOverrides(t *testing.T) {
         min_advantage: 1
         require_candidate_validated: false
         require_subject_unvalidated: false
+      length_bonus:
+        enabled: true
+        max: 2
+        require_candidate_validated: false
+        require_subject_unvalidated: false
+      delta2_rails:
+        enabled: true
+        extra_confidence_percent: 15
+        require_candidate_validated: false
+        require_subject_unvalidated: true
     telnet_suppression:
       enabled: false
       window_seconds: 120
@@ -155,6 +177,30 @@ func TestLoadCallCorrectionFamilyPolicyOverrides(t *testing.T) {
 	}
 	if cfg.CallCorrection.FamilyPolicy.Truncation.RelaxAdvantage.RequireSubjectUnvalidated {
 		t.Fatalf("expected truncation relax subject-unvalidated requirement disabled")
+	}
+	if !cfg.CallCorrection.FamilyPolicy.Truncation.LengthBonus.Enabled {
+		t.Fatalf("expected truncation length bonus enabled")
+	}
+	if cfg.CallCorrection.FamilyPolicy.Truncation.LengthBonus.Max != 2 {
+		t.Fatalf("expected truncation length bonus max 2, got %d", cfg.CallCorrection.FamilyPolicy.Truncation.LengthBonus.Max)
+	}
+	if cfg.CallCorrection.FamilyPolicy.Truncation.LengthBonus.RequireCandidateValidated {
+		t.Fatalf("expected truncation length bonus candidate validation requirement disabled")
+	}
+	if cfg.CallCorrection.FamilyPolicy.Truncation.LengthBonus.RequireSubjectUnvalidated {
+		t.Fatalf("expected truncation length bonus subject-unvalidated requirement disabled")
+	}
+	if !cfg.CallCorrection.FamilyPolicy.Truncation.Delta2Rails.Enabled {
+		t.Fatalf("expected truncation delta2 rails enabled")
+	}
+	if cfg.CallCorrection.FamilyPolicy.Truncation.Delta2Rails.ExtraConfidencePercent != 15 {
+		t.Fatalf("expected truncation delta2 extra confidence 15, got %d", cfg.CallCorrection.FamilyPolicy.Truncation.Delta2Rails.ExtraConfidencePercent)
+	}
+	if cfg.CallCorrection.FamilyPolicy.Truncation.Delta2Rails.RequireCandidateValidated {
+		t.Fatalf("expected truncation delta2 candidate validation requirement disabled")
+	}
+	if !cfg.CallCorrection.FamilyPolicy.Truncation.Delta2Rails.RequireSubjectUnvalidated {
+		t.Fatalf("expected truncation delta2 subject-unvalidated requirement enabled")
 	}
 	if cfg.CallCorrection.FamilyPolicy.TelnetSuppression.Enabled {
 		t.Fatalf("expected telnet family suppression disabled")

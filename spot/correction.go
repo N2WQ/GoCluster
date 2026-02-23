@@ -140,6 +140,17 @@ type CorrectionSettings struct {
 	RecentBandBonusMax                int
 	RecentBandRecordMinUniqueSpotters int
 	RecentBandStore                   *RecentBandStore
+	// Optional truncation-family length bonus. When admitted, bonus applies
+	// only to min_reports and never bypasses other hard gates.
+	TruncationLengthBonusEnabled                   bool
+	TruncationLengthBonusMax                       int
+	TruncationLengthBonusRequireCandidateValidated bool
+	TruncationLengthBonusRequireSubjectUnvalidated bool
+	// Optional stricter rails for truncation relations where length delta is 2.
+	TruncationDelta2RailsEnabled              bool
+	TruncationDelta2ExtraConfidence           int
+	TruncationDelta2RequireCandidateValidated bool
+	TruncationDelta2RequireSubjectUnvalidated bool
 	// Cooldown protects a subject call from being flipped away when it already has
 	// recent diverse support on this frequency bin.
 	Cooldown *CallCooldown
@@ -750,6 +761,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		minReports    int
 		minAdvantage  int
 		minConfidence int
+		lengthBonus   int
 		priorBonus    int
 		priorSource   string
 		recentBonus   int
@@ -804,31 +816,89 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 			minAdvantage += cfg.Distance3ExtraAdvantage
 			minConf += cfg.Distance3ExtraConfidence
 		}
-		if relation, ok := detectCorrectionFamilyByIdentity(subjectIdentity, agg.identity, familyPolicy); ok && relation.Kind == CorrectionFamilyTruncation && truncationAdvantagePolicy.Enabled {
-			subjectKey := subjectIdentity.VoteKey
-			if subjectKey == "" {
-				subjectKey = subjectIdentity.Raw
+		subjectKey := subjectIdentity.VoteKey
+		if subjectKey == "" {
+			subjectKey = subjectIdentity.Raw
+		}
+		candidateKeyNorm := agg.identity.VoteKey
+		if candidateKeyNorm == "" {
+			candidateKeyNorm = agg.identity.Raw
+		}
+		truncationRelation := false
+		candidateMoreSpecific := false
+		lengthDelta := 0
+		candidateValidated := false
+		subjectValidated := false
+		if relation, ok := detectCorrectionFamilyByIdentity(subjectIdentity, agg.identity, familyPolicy); ok && relation.Kind == CorrectionFamilyTruncation {
+			truncationRelation = true
+			candidateMoreSpecific = relation.MoreSpecific == candidateKeyNorm && relation.LessSpecific == subjectKey
+			if candidateMoreSpecific {
+				lengthDelta = len(candidateKeyNorm) - len(subjectKey)
+				candidateValidated = callValidated(agg.identity, displayForKey(candidateKey))
+				subjectValidated = callValidated(subjectIdentity, displayForKey(subjectIdentity.VoteKey))
 			}
-			candidateKeyNorm := agg.identity.VoteKey
-			if candidateKeyNorm == "" {
-				candidateKeyNorm = agg.identity.Raw
+		}
+		if truncationRelation && candidateMoreSpecific && truncationAdvantagePolicy.Enabled {
+			eligible := true
+			if truncationAdvantagePolicy.RequireCandidateValidated && !candidateValidated {
+				eligible = false
 			}
-			if relation.MoreSpecific == candidateKeyNorm && relation.LessSpecific == subjectKey {
-				candidateValidated := callValidated(agg.identity, displayForKey(candidateKey))
-				subjectValidated := callValidated(subjectIdentity, displayForKey(subjectIdentity.VoteKey))
-				eligible := true
-				if truncationAdvantagePolicy.RequireCandidateValidated && !candidateValidated {
-					eligible = false
+			if truncationAdvantagePolicy.RequireSubjectUnvalidated && subjectValidated {
+				eligible = false
+			}
+			if eligible {
+				minAdvantage = truncationAdvantagePolicy.MinAdvantage
+			}
+		}
+		if truncationRelation && candidateMoreSpecific && cfg.TruncationDelta2RailsEnabled && lengthDelta >= 2 {
+			if cfg.TruncationDelta2RequireCandidateValidated && !candidateValidated {
+				return candidateEval{
+					support:       support,
+					confidence:    confidence,
+					distance:      distance,
+					runnerUp:      runnerSupport,
+					runnerUpFreq:  runnerFreq,
+					minReports:    minReports,
+					minAdvantage:  minAdvantage,
+					minConfidence: minConf,
+					reason:        "truncation_delta2_candidate_unvalidated",
 				}
-				if truncationAdvantagePolicy.RequireSubjectUnvalidated && subjectValidated {
-					eligible = false
+			}
+			if cfg.TruncationDelta2RequireSubjectUnvalidated && subjectValidated {
+				return candidateEval{
+					support:       support,
+					confidence:    confidence,
+					distance:      distance,
+					runnerUp:      runnerSupport,
+					runnerUpFreq:  runnerFreq,
+					minReports:    minReports,
+					minAdvantage:  minAdvantage,
+					minConfidence: minConf,
+					reason:        "truncation_delta2_subject_validated",
 				}
-				if eligible {
-					minAdvantage = truncationAdvantagePolicy.MinAdvantage
-				}
+			}
+			if cfg.TruncationDelta2ExtraConfidence > 0 {
+				minConf += cfg.TruncationDelta2ExtraConfidence
 			}
 		}
 		effectiveSupport := support
+		lengthBonus := 0
+		if cfg.TruncationLengthBonusEnabled && cfg.TruncationLengthBonusMax > 0 && effectiveSupport < minReports && truncationRelation && candidateMoreSpecific {
+			eligible := true
+			if cfg.TruncationLengthBonusRequireCandidateValidated && !candidateValidated {
+				eligible = false
+			}
+			if cfg.TruncationLengthBonusRequireSubjectUnvalidated && subjectValidated {
+				eligible = false
+			}
+			if eligible && lengthDelta > 0 {
+				lengthBonus = lengthDelta
+				if lengthBonus > cfg.TruncationLengthBonusMax {
+					lengthBonus = cfg.TruncationLengthBonusMax
+				}
+				effectiveSupport += lengthBonus
+			}
+		}
 		priorBonus := 0
 		priorBonusSource := ""
 		recentBonus := 0
@@ -908,6 +978,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 				minReports:    minReports,
 				minAdvantage:  minAdvantage,
 				minConfidence: minConf,
+				lengthBonus:   lengthBonus,
 				priorBonus:    priorBonus,
 				priorSource:   priorBonusSource,
 				recentBonus:   recentBonus,
@@ -925,6 +996,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 				minReports:    minReports,
 				minAdvantage:  minAdvantage,
 				minConfidence: minConf,
+				lengthBonus:   lengthBonus,
 				priorBonus:    priorBonus,
 				priorSource:   priorBonusSource,
 				recentBonus:   recentBonus,
@@ -942,6 +1014,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 				minReports:    minReports,
 				minAdvantage:  minAdvantage,
 				minConfidence: minConf,
+				lengthBonus:   lengthBonus,
 				priorBonus:    priorBonus,
 				priorSource:   priorBonusSource,
 				recentBonus:   recentBonus,
@@ -962,6 +1035,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 					minReports:    minReports,
 					minAdvantage:  minAdvantage,
 					minConfidence: minConf,
+					lengthBonus:   lengthBonus,
 					priorBonus:    priorBonus,
 					priorSource:   priorBonusSource,
 					recentBonus:   recentBonus,
@@ -982,6 +1056,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 					minReports:    minReports,
 					minAdvantage:  minAdvantage,
 					minConfidence: minConf,
+					lengthBonus:   lengthBonus,
 					priorBonus:    priorBonus,
 					priorSource:   priorBonusSource,
 					recentBonus:   recentBonus,
@@ -1000,6 +1075,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 			minReports:    minReports,
 			minAdvantage:  minAdvantage,
 			minConfidence: minConf,
+			lengthBonus:   lengthBonus,
 			priorBonus:    priorBonus,
 			priorSource:   priorBonusSource,
 			recentBonus:   recentBonus,
@@ -1060,7 +1136,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		}
 
 		updateCallQualityForCluster(attempt.key, freqHz, &cfg, clusterSpots)
-		trace.DecisionPath = decorateDecisionPath(attempt.path, slashPrecedenceActive, lastEval.priorBonus > 0, lastEval.recentBonus > 0)
+		trace.DecisionPath = decorateDecisionPath(attempt.path, slashPrecedenceActive, lastEval.lengthBonus > 0, lastEval.priorBonus > 0, lastEval.recentBonus > 0)
 		trace.WinnerCall = displayForKey(attempt.key)
 		trace.WinnerSupport = lastEval.support
 		trace.RunnerUpSupport = lastEval.runnerUp
@@ -1078,7 +1154,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		return displayForKey(attempt.key), lastEval.support, lastEval.confidence, subjectConfidence, totalReporters, true
 	}
 
-	trace.DecisionPath = decorateDecisionPath(lastPath, slashPrecedenceActive, lastEval.priorBonus > 0, lastEval.recentBonus > 0)
+	trace.DecisionPath = decorateDecisionPath(lastPath, slashPrecedenceActive, lastEval.lengthBonus > 0, lastEval.priorBonus > 0, lastEval.recentBonus > 0)
 	trace.CandidateRank = lastRank
 	trace.WinnerCall = displayForKey(lastKey)
 	trace.WinnerSupport = lastEval.support
@@ -1133,6 +1209,23 @@ type CorrectionFamilyRelation struct {
 // returned for invalid/blank inputs.
 func CorrectionVoteKey(call string) string {
 	return normalizeCorrectionCallIdentity(call).VoteKey
+}
+
+// CorrectionFamilyKeys returns deterministic keys for family-aware lookups.
+// Key aspects: Returns vote key first, then base key when distinct.
+// Upstream: stabilizer/recent-on-band family-aware admission.
+// Downstream: normalizeCorrectionCallIdentity.
+func CorrectionFamilyKeys(call string) []string {
+	identity := normalizeCorrectionCallIdentity(call)
+	if identity.VoteKey == "" {
+		return nil
+	}
+	keys := make([]string, 0, 2)
+	keys = append(keys, identity.VoteKey)
+	if identity.BaseKey != "" && identity.BaseKey != identity.VoteKey {
+		keys = append(keys, identity.BaseKey)
+	}
+	return keys
 }
 
 // DetectCorrectionFamily reports whether two calls are in the same
@@ -1343,12 +1436,19 @@ func correctionDistance(subject, candidate correctionCallIdentity, mode, cwModel
 	return callDistance(subjectKey, candidateKey, mode, cwModel, rttyModel)
 }
 
-func decorateDecisionPath(path string, slashPrecedence bool, priorBonus bool, recentBandBonus bool) string {
+func decorateDecisionPath(path string, slashPrecedence bool, truncationLengthBonus bool, priorBonus bool, recentBandBonus bool) string {
 	if slashPrecedence {
 		if path == "" {
 			path = "slash_precedence"
 		} else {
 			path += "+slash_precedence"
+		}
+	}
+	if truncationLengthBonus {
+		if path == "" {
+			path = "truncation_length_bonus"
+		} else {
+			path += "+truncation_length_bonus"
 		}
 	}
 	if priorBonus {
@@ -1590,6 +1690,15 @@ func normalizeCorrectionSettings(settings CorrectionSettings) CorrectionSettings
 	}
 	if cfg.RecentBandRecordMinUniqueSpotters <= 0 {
 		cfg.RecentBandRecordMinUniqueSpotters = 2
+	}
+	if cfg.TruncationLengthBonusMax < 0 {
+		cfg.TruncationLengthBonusMax = 0
+	}
+	if cfg.TruncationLengthBonusEnabled && cfg.TruncationLengthBonusMax <= 0 {
+		cfg.TruncationLengthBonusMax = 1
+	}
+	if cfg.TruncationDelta2ExtraConfidence < 0 {
+		cfg.TruncationDelta2ExtraConfidence = 0
 	}
 	if cfg.PriorBonusMax < 0 {
 		cfg.PriorBonusMax = 0

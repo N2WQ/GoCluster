@@ -99,6 +99,46 @@ func TestTelnetFamilySuppressorDoesNotCrossFrequencyBuckets(t *testing.T) {
 	}
 }
 
+func TestTelnetFamilySuppressorChecksAdjacentBinsWithinTolerance(t *testing.T) {
+	suppressor := newTestTelnetFamilySuppressor()
+	cfg := config.CallCorrectionConfig{
+		FrequencyToleranceHz:      1000,
+		VoiceFrequencyToleranceHz: 2000,
+	}
+	now := time.Now().UTC()
+
+	longer := spot.NewSpot("W1ABC", "W1AAA", 7010.5, "CW")
+	if suppressor.ShouldSuppress(longer, cfg, now) {
+		t.Fatalf("did not expect initial longer form to be suppressed")
+	}
+
+	// Adjacent rounded bin, but still within absolute tolerance.
+	shorter := spot.NewSpot("W1AB", "W2BBB", 7011.5, "CW")
+	if !suppressor.ShouldSuppress(shorter, cfg, now.Add(2*time.Second)) {
+		t.Fatalf("expected suppression across adjacent bins when within tolerance")
+	}
+}
+
+func TestTelnetFamilySuppressorAdjacentBinsHonorAbsoluteTolerance(t *testing.T) {
+	suppressor := newTestTelnetFamilySuppressor()
+	cfg := config.CallCorrectionConfig{
+		FrequencyToleranceHz:      1000,
+		VoiceFrequencyToleranceHz: 2000,
+	}
+	now := time.Now().UTC()
+
+	longer := spot.NewSpot("W1ABC", "W1AAA", 7010.5, "CW")
+	if suppressor.ShouldSuppress(longer, cfg, now) {
+		t.Fatalf("did not expect initial longer form to be suppressed")
+	}
+
+	// Adjacent rounded bin, but beyond absolute tolerance.
+	shorter := spot.NewSpot("W1AB", "W2BBB", 7011.6, "CW")
+	if suppressor.ShouldSuppress(shorter, cfg, now.Add(2*time.Second)) {
+		t.Fatalf("did not expect suppression when adjacent bins exceed absolute tolerance")
+	}
+}
+
 func TestTelnetFamilySuppressorEvictsOldestAtCapacity(t *testing.T) {
 	suppressor := newTestTelnetFamilySuppressor()
 	suppressor.maxEntries = 2

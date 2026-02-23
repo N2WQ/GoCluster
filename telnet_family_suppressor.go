@@ -16,11 +16,12 @@ type telnetFamilyBucket struct {
 }
 
 type telnetFamilyEntry struct {
-	bucket telnetFamilyBucket
-	key    string
-	seenAt time.Time
-	prev   *telnetFamilyEntry
-	next   *telnetFamilyEntry
+	bucket  telnetFamilyBucket
+	key     string
+	freqKHz float64
+	seenAt  time.Time
+	prev    *telnetFamilyEntry
+	next    *telnetFamilyEntry
 }
 
 // telnetFamilySuppressor tracks recently emitted calls in small mode/frequency
@@ -65,7 +66,7 @@ func (s *telnetFamilySuppressor) ShouldSuppress(sp *spot.Spot, cfg config.CallCo
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	bucket, key, ok := telnetFamilyBucketForSpot(sp, cfg, s.fallbackHz)
+	bucket, key, toleranceKHz, ok := telnetFamilyBucketForSpot(sp, cfg, s.fallbackHz)
 	if !ok {
 		return false
 	}
@@ -75,35 +76,47 @@ func (s *telnetFamilySuppressor) ShouldSuppress(sp *spot.Spot, cfg config.CallCo
 
 	now = s.monotonicNowLocked(now)
 	s.pruneExpiredLocked(now)
-	calls := s.buckets[bucket]
-	if calls == nil {
-		calls = make(map[string]*telnetFamilyEntry, 4)
-		s.buckets[bucket] = calls
-	}
-	if entry, exists := calls[key]; exists {
-		s.touchEntryLocked(entry, now)
-		return false
+	if calls := s.buckets[bucket]; calls != nil {
+		if entry, exists := calls[key]; exists {
+			s.touchEntryLocked(entry, now)
+			return false
+		}
 	}
 
 	suppress := false
-	for existingKey, existingEntry := range calls {
-		relation, related := spot.DetectCorrectionFamilyWithPolicy(existingKey, key, s.family)
-		if !related {
+	minBin := bucket.freqBin - 1
+	maxBin := bucket.freqBin + 1
+	for bin := minBin; bin <= maxBin; bin++ {
+		binBucket := telnetFamilyBucket{mode: bucket.mode, freqBin: bin}
+		calls := s.buckets[binBucket]
+		if calls == nil {
 			continue
 		}
-		if relation.MoreSpecific == existingKey && relation.LessSpecific == key {
-			suppress = true
-			break
+		for existingKey, existingEntry := range calls {
+			if math.Abs(existingEntry.freqKHz-sp.Frequency) > toleranceKHz {
+				continue
+			}
+			relation, related := spot.DetectCorrectionFamilyWithPolicy(existingKey, key, s.family)
+			if !related {
+				continue
+			}
+			if relation.MoreSpecific == existingKey && relation.LessSpecific == key {
+				suppress = true
+				break
+			}
+			if relation.MoreSpecific == key && relation.LessSpecific == existingKey {
+				s.removeEntryLocked(existingEntry)
+			}
 		}
-		if relation.MoreSpecific == key && relation.LessSpecific == existingKey {
-			s.removeEntryLocked(existingEntry)
+		if suppress {
+			break
 		}
 	}
 	if suppress {
 		return true
 	}
 
-	s.addEntryLocked(bucket, key, now)
+	s.addEntryLocked(bucket, key, sp.Frequency, now)
 	for s.totalEntries > s.maxEntries {
 		if !s.evictHeadLocked() {
 			break
@@ -131,16 +144,17 @@ func (s *telnetFamilySuppressor) touchEntryLocked(entry *telnetFamilyEntry, now 
 	s.moveToTailLocked(entry)
 }
 
-func (s *telnetFamilySuppressor) addEntryLocked(bucket telnetFamilyBucket, key string, now time.Time) {
+func (s *telnetFamilySuppressor) addEntryLocked(bucket telnetFamilyBucket, key string, freqKHz float64, now time.Time) {
 	calls := s.buckets[bucket]
 	if calls == nil {
 		calls = make(map[string]*telnetFamilyEntry, 4)
 		s.buckets[bucket] = calls
 	}
 	entry := &telnetFamilyEntry{
-		bucket: bucket,
-		key:    key,
-		seenAt: now,
+		bucket:  bucket,
+		key:     key,
+		freqKHz: freqKHz,
+		seenAt:  now,
 	}
 	calls[key] = entry
 	s.appendTailLocked(entry)
@@ -224,16 +238,16 @@ func (s *telnetFamilySuppressor) detachLocked(entry *telnetFamilyEntry) {
 	entry.next = nil
 }
 
-func telnetFamilyBucketForSpot(sp *spot.Spot, cfg config.CallCorrectionConfig, fallbackHz float64) (telnetFamilyBucket, string, bool) {
+func telnetFamilyBucketForSpot(sp *spot.Spot, cfg config.CallCorrectionConfig, fallbackHz float64) (telnetFamilyBucket, string, float64, bool) {
 	if sp == nil {
-		return telnetFamilyBucket{}, "", false
+		return telnetFamilyBucket{}, "", 0, false
 	}
 	mode := sp.ModeNorm
 	if mode == "" {
 		mode = strings.ToUpper(strings.TrimSpace(sp.Mode))
 	}
 	if !spot.IsCallCorrectionCandidate(mode) {
-		return telnetFamilyBucket{}, "", false
+		return telnetFamilyBucket{}, "", 0, false
 	}
 	call := sp.DXCallNorm
 	if call == "" {
@@ -241,7 +255,7 @@ func telnetFamilyBucketForSpot(sp *spot.Spot, cfg config.CallCorrectionConfig, f
 	}
 	key := spot.CorrectionVoteKey(call)
 	if key == "" {
-		return telnetFamilyBucket{}, "", false
+		return telnetFamilyBucket{}, "", 0, false
 	}
 	toleranceHz := cfg.FrequencyToleranceHz
 	if mode == "USB" || mode == "LSB" {
@@ -252,8 +266,8 @@ func telnetFamilyBucketForSpot(sp *spot.Spot, cfg config.CallCorrectionConfig, f
 	}
 	widthKHz := toleranceHz / 1000.0
 	if widthKHz <= 0 {
-		return telnetFamilyBucket{}, "", false
+		return telnetFamilyBucket{}, "", 0, false
 	}
 	freqBin := int(math.Floor(sp.Frequency/widthKHz + 0.5))
-	return telnetFamilyBucket{mode: mode, freqBin: freqBin}, key, true
+	return telnetFamilyBucket{mode: mode, freqBin: freqBin}, key, widthKHz, true
 }

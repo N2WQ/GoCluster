@@ -766,6 +766,11 @@ type CallCorrectionTruncationFamilyConfig struct {
 	AllowSuffixMatch bool `yaml:"allow_suffix_match"`
 	// RelaxAdvantage defines when truncation family candidates can reduce min_advantage.
 	RelaxAdvantage CallCorrectionTruncationAdvantageConfig `yaml:"relax_advantage"`
+	// LengthBonus defines optional capped bonus support for truncation families.
+	// The runtime applies this bonus only to the min_reports gate.
+	LengthBonus CallCorrectionTruncationLengthBonusConfig `yaml:"length_bonus"`
+	// Delta2Rails defines stricter gates for truncation matches where length delta is 2.
+	Delta2Rails CallCorrectionTruncationDelta2RailsConfig `yaml:"delta2_rails"`
 }
 
 // CallCorrectionTruncationAdvantageConfig controls truncation-family
@@ -778,6 +783,32 @@ type CallCorrectionTruncationAdvantageConfig struct {
 	// RequireCandidateValidated requires SCP/recent-band validation for the more-specific candidate.
 	RequireCandidateValidated bool `yaml:"require_candidate_validated"`
 	// RequireSubjectUnvalidated requires the less-specific subject to lack SCP/recent-band validation.
+	RequireSubjectUnvalidated bool `yaml:"require_subject_unvalidated"`
+}
+
+// CallCorrectionTruncationLengthBonusConfig controls truncation-family bonus
+// support that can apply only to the min_reports gate.
+type CallCorrectionTruncationLengthBonusConfig struct {
+	// Enabled toggles truncation-family length bonus.
+	Enabled bool `yaml:"enabled"`
+	// Max caps the added support derived from length delta.
+	Max int `yaml:"max"`
+	// RequireCandidateValidated requires SCP/recent-band validation for bonus use.
+	RequireCandidateValidated bool `yaml:"require_candidate_validated"`
+	// RequireSubjectUnvalidated requires the less-specific subject to be unvalidated.
+	RequireSubjectUnvalidated bool `yaml:"require_subject_unvalidated"`
+}
+
+// CallCorrectionTruncationDelta2RailsConfig controls stricter gating for
+// truncation relations where length delta is exactly 2.
+type CallCorrectionTruncationDelta2RailsConfig struct {
+	// Enabled toggles delta-2 strict rails.
+	Enabled bool `yaml:"enabled"`
+	// ExtraConfidencePercent increases the candidate confidence requirement.
+	ExtraConfidencePercent int `yaml:"extra_confidence_percent"`
+	// RequireCandidateValidated requires SCP/recent-band validation.
+	RequireCandidateValidated bool `yaml:"require_candidate_validated"`
+	// RequireSubjectUnvalidated optionally requires the subject to be unvalidated.
 	RequireSubjectUnvalidated bool `yaml:"require_subject_unvalidated"`
 }
 
@@ -1020,6 +1051,10 @@ func Load(path string) (*Config, error) {
 	hasFamilyTruncationRelaxEnabled := yamlKeyPresent(raw, "call_correction", "family_policy", "truncation", "relax_advantage", "enabled")
 	hasFamilyTruncationRelaxCandidate := yamlKeyPresent(raw, "call_correction", "family_policy", "truncation", "relax_advantage", "require_candidate_validated")
 	hasFamilyTruncationRelaxSubject := yamlKeyPresent(raw, "call_correction", "family_policy", "truncation", "relax_advantage", "require_subject_unvalidated")
+	hasFamilyTruncationLengthBonusCandidate := yamlKeyPresent(raw, "call_correction", "family_policy", "truncation", "length_bonus", "require_candidate_validated")
+	hasFamilyTruncationLengthBonusSubject := yamlKeyPresent(raw, "call_correction", "family_policy", "truncation", "length_bonus", "require_subject_unvalidated")
+	hasFamilyTruncationDelta2Candidate := yamlKeyPresent(raw, "call_correction", "family_policy", "truncation", "delta2_rails", "require_candidate_validated")
+	hasFamilyTruncationDelta2Subject := yamlKeyPresent(raw, "call_correction", "family_policy", "truncation", "delta2_rails", "require_subject_unvalidated")
 	hasFamilyTelnetSuppressionEnabled := yamlKeyPresent(raw, "call_correction", "family_policy", "telnet_suppression", "enabled")
 
 	if legacySecondaryWindow || legacySecondaryPrefer {
@@ -1382,6 +1417,31 @@ func Load(path string) (*Config, error) {
 	}
 	if !hasFamilyTruncationRelaxSubject {
 		cfg.CallCorrection.FamilyPolicy.Truncation.RelaxAdvantage.RequireSubjectUnvalidated = true
+	}
+	if cfg.CallCorrection.FamilyPolicy.Truncation.LengthBonus.Max < 0 {
+		cfg.CallCorrection.FamilyPolicy.Truncation.LengthBonus.Max = 0
+	}
+	if cfg.CallCorrection.FamilyPolicy.Truncation.LengthBonus.Enabled {
+		if cfg.CallCorrection.FamilyPolicy.Truncation.LengthBonus.Max <= 0 {
+			cfg.CallCorrection.FamilyPolicy.Truncation.LengthBonus.Max = 1
+		}
+		if !hasFamilyTruncationLengthBonusCandidate {
+			cfg.CallCorrection.FamilyPolicy.Truncation.LengthBonus.RequireCandidateValidated = true
+		}
+		if !hasFamilyTruncationLengthBonusSubject {
+			cfg.CallCorrection.FamilyPolicy.Truncation.LengthBonus.RequireSubjectUnvalidated = true
+		}
+	}
+	if cfg.CallCorrection.FamilyPolicy.Truncation.Delta2Rails.ExtraConfidencePercent < 0 {
+		cfg.CallCorrection.FamilyPolicy.Truncation.Delta2Rails.ExtraConfidencePercent = 0
+	}
+	if cfg.CallCorrection.FamilyPolicy.Truncation.Delta2Rails.Enabled {
+		if !hasFamilyTruncationDelta2Candidate {
+			cfg.CallCorrection.FamilyPolicy.Truncation.Delta2Rails.RequireCandidateValidated = true
+		}
+		if !hasFamilyTruncationDelta2Subject {
+			cfg.CallCorrection.FamilyPolicy.Truncation.Delta2Rails.RequireSubjectUnvalidated = false
+		}
 	}
 	if !hasFamilyTelnetSuppressionEnabled {
 		cfg.CallCorrection.FamilyPolicy.TelnetSuppression.Enabled = true
@@ -2313,7 +2373,7 @@ func (c *Config) Print() {
 		c.CallCorrection.Distance3ExtraReports,
 		c.CallCorrection.Distance3ExtraAdvantage,
 		c.CallCorrection.Distance3ExtraConfidence)
-	fmt.Printf("Call correction family policy: truncation(enabled=%t delta<=%d shorter_len>=%d prefix=%t suffix=%t relax_advantage=%t->%d validated(longer=%t shorter_unvalidated=%t)) telnet_suppression(enabled=%t window=%ds max_entries=%d fallback_tol=%.1fHz)\n",
+	fmt.Printf("Call correction family policy: truncation(enabled=%t delta<=%d shorter_len>=%d prefix=%t suffix=%t relax_advantage=%t->%d validated(longer=%t shorter_unvalidated=%t) length_bonus=%t(max=%d validated=%t shorter_unvalidated=%t) delta2_rails=%t(extra_conf=%d validated=%t shorter_unvalidated=%t)) telnet_suppression(enabled=%t window=%ds max_entries=%d fallback_tol=%.1fHz)\n",
 		c.CallCorrection.FamilyPolicy.Truncation.Enabled,
 		c.CallCorrection.FamilyPolicy.Truncation.MaxLengthDelta,
 		c.CallCorrection.FamilyPolicy.Truncation.MinShorterLength,
@@ -2323,6 +2383,14 @@ func (c *Config) Print() {
 		c.CallCorrection.FamilyPolicy.Truncation.RelaxAdvantage.MinAdvantage,
 		c.CallCorrection.FamilyPolicy.Truncation.RelaxAdvantage.RequireCandidateValidated,
 		c.CallCorrection.FamilyPolicy.Truncation.RelaxAdvantage.RequireSubjectUnvalidated,
+		c.CallCorrection.FamilyPolicy.Truncation.LengthBonus.Enabled,
+		c.CallCorrection.FamilyPolicy.Truncation.LengthBonus.Max,
+		c.CallCorrection.FamilyPolicy.Truncation.LengthBonus.RequireCandidateValidated,
+		c.CallCorrection.FamilyPolicy.Truncation.LengthBonus.RequireSubjectUnvalidated,
+		c.CallCorrection.FamilyPolicy.Truncation.Delta2Rails.Enabled,
+		c.CallCorrection.FamilyPolicy.Truncation.Delta2Rails.ExtraConfidencePercent,
+		c.CallCorrection.FamilyPolicy.Truncation.Delta2Rails.RequireCandidateValidated,
+		c.CallCorrection.FamilyPolicy.Truncation.Delta2Rails.RequireSubjectUnvalidated,
 		c.CallCorrection.FamilyPolicy.TelnetSuppression.Enabled,
 		c.CallCorrection.FamilyPolicy.TelnetSuppression.WindowSeconds,
 		c.CallCorrection.FamilyPolicy.TelnetSuppression.MaxEntries,

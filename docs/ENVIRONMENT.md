@@ -17,3 +17,21 @@ These knobs govern how long the server waits for input before taking action:
 ## PSKReporter MQTT Debug Logging
 
 Set `DXC_PSKR_MQTT_DEBUG=true` to enable verbose Paho MQTT debug logs for the PSKReporter client. Logs include DEBUG/WARN/ERROR/CRITICAL lines and should be used only while diagnosing reconnects or payload handling issues.
+
+## Codex Skills Setup (Repo-Managed)
+
+This repo vendors the highest-ROI troubleshooting skills under `codex-skills/` so they can be installed consistently on any machine that pulls the code.
+
+- Install/update bundled skills (`gh-fix-ci`, `sentry`):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install-codex-skills.ps1
+```
+
+- Verify local skills match the repo copies:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\verify-codex-skills.ps1
+```
+
+Scripts install to `${CODEX_HOME}\skills` when `CODEX_HOME` is set, otherwise `%USERPROFILE%\.codex\skills`.
