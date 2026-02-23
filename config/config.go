@@ -722,6 +722,7 @@ type CallCorrectionConfig struct {
 	// does not alter archive/peer output behavior.
 	StabilizerEnabled       bool   `yaml:"stabilizer_enabled"`
 	StabilizerDelaySeconds  int    `yaml:"stabilizer_delay_seconds"`
+	StabilizerMaxChecks     int    `yaml:"stabilizer_max_checks"`     // includes first delayed check; 1 preserves legacy behavior
 	StabilizerTimeoutAction string `yaml:"stabilizer_timeout_action"` // release | suppress
 	StabilizerMaxPending    int    `yaml:"stabilizer_max_pending"`
 	// Optional prior bonus for min_reports shortfalls, bounded by prior_bonus_max.
@@ -1387,6 +1388,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.CallCorrection.StabilizerDelaySeconds <= 0 {
 		cfg.CallCorrection.StabilizerDelaySeconds = 5
+	}
+	if cfg.CallCorrection.StabilizerMaxChecks <= 0 {
+		cfg.CallCorrection.StabilizerMaxChecks = 1
 	}
 	if cfg.CallCorrection.StabilizerMaxPending <= 0 {
 		cfg.CallCorrection.StabilizerMaxPending = 20000
@@ -2412,9 +2416,10 @@ func (c *Config) Print() {
 	if c.CallCorrection.StabilizerEnabled {
 		stabilizerStatus = "enabled"
 	}
-	fmt.Printf("Call correction stabilizer: %s (delay=%ds timeout_action=%s max_pending=%d)\n",
+	fmt.Printf("Call correction stabilizer: %s (delay=%ds max_checks=%d timeout_action=%s max_pending=%d)\n",
 		stabilizerStatus,
 		c.CallCorrection.StabilizerDelaySeconds,
+		c.CallCorrection.StabilizerMaxChecks,
 		c.CallCorrection.StabilizerTimeoutAction,
 		c.CallCorrection.StabilizerMaxPending)
 

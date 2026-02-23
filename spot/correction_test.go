@@ -1137,6 +1137,176 @@ func TestSuggestCallCorrectionFreqGuardUsesTrueRunnerUp(t *testing.T) {
 	})
 }
 
+func TestSuggestCallCorrectionRejectsAmbiguousMultiSignalSplit(t *testing.T) {
+	withTestCallQualityStore(t, func(_ *CallQualityStore) {
+		now := time.Now().UTC()
+		subject := &Spot{DXCall: "K1A8C", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now}
+		others := []*Spot{
+			{DXCall: "K1ABC", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+			{DXCall: "K1ABC", DECall: "W3CCC", Frequency: 7010.0, Mode: "CW", Time: now},
+			{DXCall: "K1ABC", DECall: "W4DDD", Frequency: 7010.0, Mode: "CW", Time: now},
+			{DXCall: "K1ABC", DECall: "W5EEE", Frequency: 7010.0, Mode: "CW", Time: now},
+			{DXCall: "K1ABQ", DECall: "W6FFF", Frequency: 7010.0, Mode: "CW", Time: now},
+			{DXCall: "K1ABQ", DECall: "W7GGG", Frequency: 7010.0, Mode: "CW", Time: now},
+			{DXCall: "K1ABQ", DECall: "W8HHH", Frequency: 7010.0, Mode: "CW", Time: now},
+		}
+		trace := &captureTraceLogger{}
+
+		_, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+			Strategy:                  "majority",
+			MinConsensusReports:       3,
+			MinAdvantage:              1,
+			MinConfidencePercent:      40,
+			MaxEditDistance:           3,
+			RecencyWindow:             30 * time.Second,
+			FrequencyToleranceHz:      500,
+			FreqGuardMinSeparationKHz: 0.1,
+			FreqGuardRunnerUpRatio:    0.5,
+			DebugLog:                  true,
+			TraceLogger:               trace,
+		}, now)
+		if ok {
+			t.Fatalf("expected split-signal ambiguity to reject correction")
+		}
+		last := trace.lastTrace(t)
+		if last.Reason != "ambiguous_multi_signal" {
+			t.Fatalf("expected ambiguous_multi_signal reason, got %q", last.Reason)
+		}
+	})
+}
+
+func TestSuggestCallCorrectionKeepsConsensusWhenSpotterOverlapIsHigh(t *testing.T) {
+	withTestCallQualityStore(t, func(_ *CallQualityStore) {
+		now := time.Now().UTC()
+		subject := &Spot{DXCall: "K1A8C", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now}
+		others := []*Spot{
+			{DXCall: "K1ABC", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+			{DXCall: "K1ABC", DECall: "W3CCC", Frequency: 7010.0, Mode: "CW", Time: now},
+			{DXCall: "K1ABC", DECall: "W4DDD", Frequency: 7010.0, Mode: "CW", Time: now},
+			{DXCall: "K1ABC", DECall: "W5EEE", Frequency: 7010.0, Mode: "CW", Time: now},
+			{DXCall: "K1ABQ", DECall: "W3CCC", Frequency: 7010.0, Mode: "CW", Time: now},
+			{DXCall: "K1ABQ", DECall: "W4DDD", Frequency: 7010.0, Mode: "CW", Time: now},
+			{DXCall: "K1ABQ", DECall: "W6FFF", Frequency: 7010.0, Mode: "CW", Time: now},
+		}
+
+		call, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+			Strategy:                  "majority",
+			MinConsensusReports:       3,
+			MinAdvantage:              1,
+			MinConfidencePercent:      40,
+			MaxEditDistance:           3,
+			RecencyWindow:             30 * time.Second,
+			FrequencyToleranceHz:      500,
+			FreqGuardMinSeparationKHz: 0.1,
+			FreqGuardRunnerUpRatio:    0.5,
+		}, now)
+		if !ok {
+			t.Fatalf("expected overlapping spotter evidence to allow correction")
+		}
+		if call != "K1ABC" {
+			t.Fatalf("expected K1ABC, got %q", call)
+		}
+	})
+}
+
+func TestSuggestCallCorrectionQualityPenaltySkipsKnownValidatedNonWinner(t *testing.T) {
+	withTestCallQualityStore(t, func(store *CallQualityStore) {
+		now := time.Now().UTC()
+		subject := &Spot{DXCall: "K1A8C", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now}
+		others := []*Spot{
+			{DXCall: "K1ABC", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+			{DXCall: "K1ABC", DECall: "W3CCC", Frequency: 7010.0, Mode: "CW", Time: now},
+			{DXCall: "K1ABC", DECall: "W4DDD", Frequency: 7010.0, Mode: "CW", Time: now},
+			{DXCall: "K1ABQ", DECall: "W5EEE", Frequency: 7010.0, Mode: "CW", Time: now},
+		}
+		known := &KnownCallsigns{entries: map[string]struct{}{"K1ABQ": {}}}
+
+		call, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+			Strategy:                  "majority",
+			MinConsensusReports:       2,
+			MinAdvantage:              1,
+			MinConfidencePercent:      40,
+			MaxEditDistance:           3,
+			RecencyWindow:             30 * time.Second,
+			QualityBinHz:              500,
+			QualityGoodThreshold:      2,
+			QualityNewCallIncrement:   1,
+			QualityBustedDecrement:    1,
+			PriorBonusKnownCallset:    known,
+			FreqGuardMinSeparationKHz: 0.1,
+			FreqGuardRunnerUpRatio:    0.9,
+		}, now)
+		if !ok {
+			t.Fatalf("expected correction to apply")
+		}
+		if call != "K1ABC" {
+			t.Fatalf("expected K1ABC, got %q", call)
+		}
+
+		freqHz := subject.Frequency * 1000
+		if got := store.Get("K1ABC", freqHz, 500); got != 1 {
+			t.Fatalf("expected winner quality +1, got %d", got)
+		}
+		if got := store.Get("K1ABQ", freqHz, 500); got != 0 {
+			t.Fatalf("expected known validated non-winner to skip penalty, got %d", got)
+		}
+		if got := store.Get("K1A8C", freqHz, 500); got != -1 {
+			t.Fatalf("expected unvalidated subject to remain penalized, got %d", got)
+		}
+	})
+}
+
+func TestSuggestCallCorrectionQualityPenaltySkipsRecentValidatedNonWinner(t *testing.T) {
+	withTestCallQualityStore(t, func(store *CallQualityStore) {
+		withTestRecentBandStore(t, func(recent *RecentBandStore) {
+			now := time.Now().UTC()
+			subject := &Spot{DXCall: "K1A8C", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now}
+			others := []*Spot{
+				{DXCall: "K1ABC", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+				{DXCall: "K1ABC", DECall: "W3CCC", Frequency: 7010.0, Mode: "CW", Time: now},
+				{DXCall: "K1ABC", DECall: "W4DDD", Frequency: 7010.0, Mode: "CW", Time: now},
+				{DXCall: "K1ABQ", DECall: "W5EEE", Frequency: 7010.0, Mode: "CW", Time: now},
+			}
+			recent.Record("K1ABQ", "40m", "CW", "N0AAA", now.Add(-10*time.Minute))
+			recent.Record("K1ABQ", "40m", "CW", "N0BBB", now.Add(-9*time.Minute))
+
+			call, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+				Strategy:                          "majority",
+				MinConsensusReports:               2,
+				MinAdvantage:                      1,
+				MinConfidencePercent:              40,
+				MaxEditDistance:                   3,
+				RecencyWindow:                     30 * time.Second,
+				QualityBinHz:                      500,
+				QualityGoodThreshold:              2,
+				QualityNewCallIncrement:           1,
+				QualityBustedDecrement:            1,
+				RecentBandStore:                   recent,
+				RecentBandRecordMinUniqueSpotters: 2,
+				FreqGuardMinSeparationKHz:         0.1,
+				FreqGuardRunnerUpRatio:            0.9,
+			}, now)
+			if !ok {
+				t.Fatalf("expected correction to apply")
+			}
+			if call != "K1ABC" {
+				t.Fatalf("expected K1ABC, got %q", call)
+			}
+
+			freqHz := subject.Frequency * 1000
+			if got := store.Get("K1ABC", freqHz, 500); got != 1 {
+				t.Fatalf("expected winner quality +1, got %d", got)
+			}
+			if got := store.Get("K1ABQ", freqHz, 500); got != 0 {
+				t.Fatalf("expected recent validated non-winner to skip penalty, got %d", got)
+			}
+			if got := store.Get("K1A8C", freqHz, 500); got != -1 {
+				t.Fatalf("expected unvalidated subject to remain penalized, got %d", got)
+			}
+		})
+	})
+}
+
 func TestSuggestCallCorrectionDecisionPathConsensus(t *testing.T) {
 	withTestCallQualityStore(t, func(_ *CallQualityStore) {
 		now := time.Now().UTC()

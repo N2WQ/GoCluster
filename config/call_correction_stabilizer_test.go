@@ -27,6 +27,9 @@ func TestLoadCallCorrectionStabilizerDefaults(t *testing.T) {
 	if cfg.CallCorrection.StabilizerDelaySeconds != 5 {
 		t.Fatalf("expected stabilizer delay default 5s, got %d", cfg.CallCorrection.StabilizerDelaySeconds)
 	}
+	if cfg.CallCorrection.StabilizerMaxChecks != 1 {
+		t.Fatalf("expected stabilizer max checks default 1, got %d", cfg.CallCorrection.StabilizerMaxChecks)
+	}
 	if cfg.CallCorrection.StabilizerTimeoutAction != "release" {
 		t.Fatalf("expected stabilizer timeout action default release, got %q", cfg.CallCorrection.StabilizerTimeoutAction)
 	}
@@ -113,6 +116,7 @@ func TestLoadCallCorrectionFamilyPolicyOverrides(t *testing.T) {
 	dir := t.TempDir()
 	pipeline := `call_correction:
   enabled: true
+  stabilizer_max_checks: 4
   slash_precedence_min_reports: 7
   family_policy:
     slash_precedence_min_reports: 3
@@ -156,6 +160,9 @@ func TestLoadCallCorrectionFamilyPolicyOverrides(t *testing.T) {
 	}
 	if cfg.CallCorrection.SlashPrecedenceMinReports != 3 {
 		t.Fatalf("expected legacy slash precedence mirror 3, got %d", cfg.CallCorrection.SlashPrecedenceMinReports)
+	}
+	if cfg.CallCorrection.StabilizerMaxChecks != 4 {
+		t.Fatalf("expected stabilizer max checks 4, got %d", cfg.CallCorrection.StabilizerMaxChecks)
 	}
 	if cfg.CallCorrection.FamilyPolicy.Truncation.MaxLengthDelta != 2 {
 		t.Fatalf("expected truncation max length delta 2, got %d", cfg.CallCorrection.FamilyPolicy.Truncation.MaxLengthDelta)

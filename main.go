@@ -80,6 +80,15 @@ const (
 	envMutexProfileFraction = "DXC_MUTEX_PROFILE_FRACTION"
 	// envMapLogInterval enables periodic map size logging when set to a Go duration.
 	envMapLogInterval = "DXC_MAP_LOG_INTERVAL"
+
+	shadowResolverQueueSize           = 8192
+	shadowResolverMaxActiveKeys       = 6000
+	shadowResolverMaxCandidatesPerKey = 8
+	shadowResolverMaxReportersPerCand = 32
+	shadowResolverInactiveTTL         = 10 * time.Minute
+	shadowResolverEvalMinInterval     = 500 * time.Millisecond
+	shadowResolverSweepInterval       = 1 * time.Second
+	shadowResolverHysteresisWindows   = 2
 )
 
 var ingestForwardDropLogInterval = 30 * time.Second
@@ -691,9 +700,34 @@ func main() {
 	log.Printf("Ring buffer created (capacity: %d)", capacity)
 
 	var correctionIndex *spot.CorrectionIndex
+	var signalResolver *spot.SignalResolver
 	if cfg.CallCorrection.Enabled {
 		correctionIndex = spot.NewCorrectionIndex()
 		correctionIndex.StartCleanup(time.Minute, callCorrectionCleanupWindow(cfg.CallCorrection))
+		signalResolver = spot.NewSignalResolver(spot.SignalResolverConfig{
+			QueueSize:                 shadowResolverQueueSize,
+			MaxActiveKeys:             shadowResolverMaxActiveKeys,
+			MaxCandidatesPerKey:       shadowResolverMaxCandidatesPerKey,
+			MaxReportersPerCand:       shadowResolverMaxReportersPerCand,
+			InactiveTTL:               shadowResolverInactiveTTL,
+			EvalMinInterval:           shadowResolverEvalMinInterval,
+			SweepInterval:             shadowResolverSweepInterval,
+			HysteresisWindows:         shadowResolverHysteresisWindows,
+			FreqGuardMinSeparationKHz: cfg.CallCorrection.FreqGuardMinSeparationKHz,
+			FreqGuardRunnerUpRatio:    cfg.CallCorrection.FreqGuardRunnerUpRatio,
+			MaxEditDistance:           cfg.CallCorrection.MaxEditDistance,
+			DistanceModelCW:           cfg.CallCorrection.DistanceModelCW,
+			DistanceModelRTTY:         cfg.CallCorrection.DistanceModelRTTY,
+			FamilyPolicy: spot.CorrectionFamilyPolicy{
+				Configured:                 true,
+				TruncationEnabled:          cfg.CallCorrection.FamilyPolicy.Truncation.Enabled,
+				TruncationMaxLengthDelta:   cfg.CallCorrection.FamilyPolicy.Truncation.MaxLengthDelta,
+				TruncationMinShorterLength: cfg.CallCorrection.FamilyPolicy.Truncation.MinShorterLength,
+				TruncationAllowPrefix:      cfg.CallCorrection.FamilyPolicy.Truncation.AllowPrefixMatch,
+				TruncationAllowSuffix:      cfg.CallCorrection.FamilyPolicy.Truncation.AllowSuffixMatch,
+			},
+		})
+		signalResolver.Start()
 	}
 	var callCooldown *spot.CallCooldown
 	if cfg.CallCorrection.CooldownEnabled {
@@ -1049,7 +1083,7 @@ func main() {
 	// Downstream: processOutputSpots.
 	pathReport := newPathReportMetrics()
 	pskrPathOnlyStats := &pathOnlyStats{}
-	go processOutputSpots(deduplicator, secondaryFast, secondaryMed, secondarySlow, archivePeerSecondaryMed, &secondaryStageCount, modeAssigner, spotBuffer, telnetServer, peerManager, statsTracker, correctionIndex, cfg.CallCorrection, ctyLookup, metaCache, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, surface, gridUpdater, gridLookup, gridLookupSync, unlicensedReporter, corrLogger, callCooldown, adaptiveMinReports, refresher, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel, recentBandStore, cfg.RBN.KeepSSIDSuffix, archiveWriter, &lastOutput, pathPredictor, pathReport, allowedBandSet)
+	go processOutputSpots(deduplicator, secondaryFast, secondaryMed, secondarySlow, archivePeerSecondaryMed, &secondaryStageCount, modeAssigner, spotBuffer, telnetServer, peerManager, statsTracker, correctionIndex, signalResolver, cfg.CallCorrection, ctyLookup, metaCache, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, surface, gridUpdater, gridLookup, gridLookupSync, unlicensedReporter, corrLogger, callCooldown, adaptiveMinReports, refresher, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel, recentBandStore, cfg.RBN.KeepSSIDSuffix, archiveWriter, &lastOutput, pathPredictor, pathReport, allowedBandSet)
 	startPipelineHealthMonitor(ctx, deduplicator, &lastOutput, peerManager)
 
 	// Connect to RBN CW/RTTY feed if enabled (port 7000)
@@ -1214,7 +1248,7 @@ func main() {
 	// Key aspects: Runs on ticker interval until shutdown.
 	// Upstream: main startup.
 	// Downstream: displayStatsWithFCC.
-	go displayStatsWithFCC(statsInterval, statsTracker, ingestValidator, deduplicator, secondaryFast, secondaryMed, secondarySlow, &secondaryStageCount, spotBuffer, ctyLookup, metaCache, ctyState, &knownCalls, recentBandStore, knownCallsPath, telnetServer, surface, gridUpdateState, gridStoreHandle, cfg.FCCULS.DBPath, pathPredictor, rbnClient, rbnDigitalClient, pskrClient, pskrPathOnlyStats, peerManager, cfg.Server.NodeID, cfg.Skew.File)
+	go displayStatsWithFCC(statsInterval, statsTracker, ingestValidator, deduplicator, secondaryFast, secondaryMed, secondarySlow, &secondaryStageCount, spotBuffer, ctyLookup, metaCache, ctyState, &knownCalls, recentBandStore, signalResolver, knownCallsPath, telnetServer, surface, gridUpdateState, gridStoreHandle, cfg.FCCULS.DBPath, pathPredictor, rbnClient, rbnDigitalClient, pskrClient, pskrPathOnlyStats, peerManager, cfg.Server.NodeID, cfg.Skew.File)
 	if pathCfg.Enabled {
 		go startPathPredictionLogger(ctx, logMux, telnetServer, pathPredictor, pathReport)
 	}
@@ -1274,6 +1308,9 @@ func main() {
 	}
 	if recentBandStore != nil {
 		recentBandStore.StopCleanup()
+	}
+	if signalResolver != nil {
+		signalResolver.Stop()
 	}
 
 	// Stop deduplicator
@@ -1536,6 +1573,35 @@ func formatStabilizerSummary(tracker *stats.Tracker) string {
 	)
 }
 
+func formatResolverSummary(resolver *spot.SignalResolver) string {
+	if resolver == nil {
+		return "Resolver: n/a"
+	}
+	metrics := resolver.MetricsSnapshot()
+	agreementPercent := 0
+	if metrics.DecisionsComparable > 0 {
+		agreementPercent = int((metrics.DecisionAgreement * 100) / metrics.DecisionsComparable)
+	}
+	return fmt.Sprintf(
+		"Resolver: %s (C) / %s (P) / %s (U) / %s (S) | agr %s/%s (%d%%) | d %s (SP) / %s (DW) / %s (UC) | q=%d drop %s (Q) / %s (K) / %s (C) / %s (R)",
+		humanize.Comma(int64(metrics.StateConfident)),
+		humanize.Comma(int64(metrics.StateProbable)),
+		humanize.Comma(int64(metrics.StateUncertain)),
+		humanize.Comma(int64(metrics.StateSplit)),
+		humanize.Comma(int64(metrics.DecisionAgreement)),
+		humanize.Comma(int64(metrics.DecisionsComparable)),
+		agreementPercent,
+		humanize.Comma(int64(metrics.DisagreeSplitCorrected)),
+		humanize.Comma(int64(metrics.DisagreeConfidentDifferentWinner)),
+		humanize.Comma(int64(metrics.DisagreeUncertainCorrected)),
+		metrics.QueueDepth,
+		humanize.Comma(int64(metrics.DropQueueFull)),
+		humanize.Comma(int64(metrics.DropMaxKeys)),
+		humanize.Comma(int64(metrics.DropMaxCandidates)),
+		humanize.Comma(int64(metrics.DropMaxReporters)),
+	)
+}
+
 func formatTopCounterSummary(counts map[string]uint64, limit int) string {
 	if len(counts) == 0 {
 		return "none"
@@ -1571,7 +1637,7 @@ func formatTopCounterSummary(counts map[string]uint64, limit int) string {
 // Key aspects: Uses a ticker, diff counters, and optional secondary dedupe stats.
 // Upstream: main stats goroutine.
 // Downstream: tracker accessors, loadFCCSnapshot, and UI/log output.
-func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestStats *ingestValidator, dedup *dedup.Deduplicator, secondaryFast *dedup.SecondaryDeduper, secondaryMed *dedup.SecondaryDeduper, secondarySlow *dedup.SecondaryDeduper, secondaryStage *atomic.Uint64, buf *buffer.RingBuffer, ctyLookup func() *cty.CTYDatabase, metaCache *callMetaCache, ctyState *ctyRefreshState, knownPtr *atomic.Pointer[spot.KnownCallsigns], recentBandStore *spot.RecentBandStore, knownCallsPath string, telnetSrv *telnet.Server, dash ui.Surface, gridStats *gridMetrics, gridDB *gridStoreHandle, fccDBPath string, pathPredictor *pathreliability.Predictor, rbnClient *rbn.Client, rbnDigitalClient *rbn.Client, pskrClient *pskreporter.Client, pskrPathOnly *pathOnlyStats, peerManager *peer.Manager, clusterCall string, skewPath string) {
+func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestStats *ingestValidator, dedup *dedup.Deduplicator, secondaryFast *dedup.SecondaryDeduper, secondaryMed *dedup.SecondaryDeduper, secondarySlow *dedup.SecondaryDeduper, secondaryStage *atomic.Uint64, buf *buffer.RingBuffer, ctyLookup func() *cty.CTYDatabase, metaCache *callMetaCache, ctyState *ctyRefreshState, knownPtr *atomic.Pointer[spot.KnownCallsigns], recentBandStore *spot.RecentBandStore, signalResolver *spot.SignalResolver, knownCallsPath string, telnetSrv *telnet.Server, dash ui.Surface, gridStats *gridMetrics, gridDB *gridStoreHandle, fccDBPath string, pathPredictor *pathreliability.Predictor, rbnClient *rbn.Client, rbnDigitalClient *rbn.Client, pskrClient *pskreporter.Client, pskrPathOnly *pathOnlyStats, peerManager *peer.Manager, clusterCall string, skewPath string) {
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
@@ -1630,6 +1696,7 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 		reputationTotal := tracker.ReputationDrops()
 		corrDecisionLine := formatCorrectionDecisionSummary(tracker)
 		stabilizerLine := formatStabilizerSummary(tracker)
+		resolverLine := formatResolverSummary(signalResolver)
 
 		ingestTotal := uint64(0)
 		if ingestStats != nil {
@@ -1766,6 +1833,7 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 			fmt.Sprintf("Calls: %d (C) / %d (U) / %d (F) / %d (H) / %d (R)", totalCorrections, totalUnlicensed, totalFreqCorrections, totalHarmonics, reputationTotal), // 6
 			corrDecisionLine,
 			stabilizerLine,
+			resolverLine,
 			pipelineLine, // 7
 			fmt.Sprintf("Telnet: %d clients. Drops: %d (Q) / %d (C) / %d (W)", clientCount, queueDrops, clientDrops, senderFailures), // 8
 		)
@@ -1802,6 +1870,7 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 					fmt.Sprintf("Corrections: %d  Unlicensed: %d  Freq: %d  Harmonics: %d  Reputation: %d",
 						totalCorrections, totalUnlicensed, totalFreqCorrections, totalHarmonics, reputationTotal),
 					stabilizerLine,
+					resolverLine,
 				},
 				NetworkLines: formatNetworkLines(telnetSrv, clientList),
 			}
@@ -2064,6 +2133,7 @@ func processOutputSpots(
 	peerManager *peer.Manager,
 	tracker *stats.Tracker,
 	correctionIdx *spot.CorrectionIndex,
+	signalResolver *spot.SignalResolver,
 	correctionCfg config.CallCorrectionConfig,
 	ctyLookup func() *cty.CTYDatabase,
 	metaCache *callMetaCache,
@@ -2160,16 +2230,28 @@ func processOutputSpots(
 	if stabilizerEnabled {
 		go func() {
 			releaseCh := telnetStabilizer.ReleaseChan()
-			for delayed := range releaseCh {
-				if delayed == nil {
+			for envelope := range releaseCh {
+				if envelope == nil || envelope.spot == nil {
 					continue
 				}
+				delayed := envelope.spot
+				checksCompleted := envelope.checksCompleted + 1
 				ctyDB := ctyLookup()
 				var knownCallset *spot.KnownCallsigns
 				if knownCalls != nil {
 					knownCallset = knownCalls.Load()
 				}
-				if suppress := maybeApplyCallCorrectionWithLogger(delayed, correctionIdx, correctionCfg, ctyDB, metaCache, tracker, dash, corrLogger, callCooldown, adaptiveMinReports, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel, recentBandStore, knownCallset); suppress {
+				now := time.Now().UTC()
+				resolverEvidence, hasResolverEvidence := buildResolverEvidenceSnapshot(delayed, correctionCfg, adaptiveMinReports, now)
+				if hasResolverEvidence && signalResolver != nil {
+					signalResolver.Enqueue(resolverEvidence)
+				}
+				preCorrectionCall := normalizedDXCall(delayed)
+				suppress := maybeApplyCallCorrectionWithLogger(delayed, correctionIdx, correctionCfg, ctyDB, metaCache, tracker, dash, corrLogger, callCooldown, adaptiveMinReports, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel, recentBandStore, knownCallset)
+				if hasResolverEvidence && signalResolver != nil && !suppress {
+					observeResolverCurrentDecision(signalResolver, resolverEvidence.Key, delayed, preCorrectionCall)
+				}
+				if suppress {
 					continue
 				}
 				applyKnownCallFloor(delayed, knownCalls, recentBandStore, correctionCfg)
@@ -2179,6 +2261,19 @@ func processOutputSpots(
 					continue
 				}
 				stillRisky := shouldDelayTelnetByStabilizer(delayed, recentBandStore, correctionCfg, time.Now().UTC())
+				if shouldRetryTelnetByStabilizer(delayed, stillRisky, checksCompleted, correctionCfg.StabilizerMaxChecks) {
+					if telnetStabilizer.EnqueueWithChecks(delayed, checksCompleted) {
+						if tracker != nil {
+							tracker.IncrementStabilizerHeld()
+						}
+						continue
+					}
+					// Bounded fail-open behavior: if a re-delay cannot be queued, release now.
+					if tracker != nil {
+						tracker.IncrementStabilizerOverflowRelease()
+					}
+					stillRisky = false
+				}
 				if !shouldRecordRecentBandAfterStabilizerDelay(correctionCfg.StabilizerTimeoutAction, stillRisky) {
 					if tracker != nil {
 						tracker.IncrementStabilizerSuppressedTimeout()
@@ -2250,11 +2345,20 @@ func processOutputSpots(
 
 			var suppress bool
 			if telnet != nil && !s.IsBeacon {
+				now := time.Now().UTC()
+				resolverEvidence, hasResolverEvidence := buildResolverEvidenceSnapshot(s, correctionCfg, adaptiveMinReports, now)
+				if hasResolverEvidence && signalResolver != nil {
+					signalResolver.Enqueue(resolverEvidence)
+				}
+				preCorrectionCall := normalizedDXCall(s)
 				var knownCallset *spot.KnownCallsigns
 				if knownCalls != nil {
 					knownCallset = knownCalls.Load()
 				}
 				suppress = maybeApplyCallCorrectionWithLogger(s, correctionIdx, correctionCfg, ctyDB, metaCache, tracker, dash, corrLogger, callCooldown, adaptiveMinReports, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel, recentBandStore, knownCallset)
+				if hasResolverEvidence && signalResolver != nil && !suppress {
+					observeResolverCurrentDecision(signalResolver, resolverEvidence.Key, s, preCorrectionCall)
+				}
 				if suppress {
 					return
 				}
@@ -2603,6 +2707,27 @@ func shouldDelayTelnetByStabilizer(s *spot.Spot, store *spot.RecentBandStore, cf
 		minUnique = 2
 	}
 	return !hasRecentSupportForCallFamily(store, call, band, mode, minUnique, now)
+}
+
+// shouldRetryTelnetByStabilizer reports whether a delayed spot should be held
+// for another stabilizer cycle. maxChecks includes the first delayed check, so
+// maxChecks=1 preserves legacy single-check behavior.
+func shouldRetryTelnetByStabilizer(s *spot.Spot, stillRisky bool, checksCompleted int, maxChecks int) bool {
+	if s == nil || !stillRisky {
+		return false
+	}
+	if maxChecks <= 0 {
+		maxChecks = 1
+	}
+	if checksCompleted >= maxChecks {
+		return false
+	}
+	switch strutil.NormalizeUpper(strings.TrimSpace(s.Confidence)) {
+	case "P", "V", "C":
+		return false
+	default:
+		return true
+	}
 }
 
 // shouldRecordRecentBandInMainLoop controls recent-on-band admission timing for
@@ -3230,53 +3355,17 @@ func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.Correcti
 	}
 
 	now := time.Now().UTC()
-	window := callCorrectionWindowForMode(cfg, spotEntry.Mode)
+	runtime := resolveCorrectionRuntimeSettings(cfg, spotEntry, adaptive, now, true)
+	window := runtime.window
 	defer idx.Add(spotEntry, now, window)
-
-	modeUpper := strutil.NormalizeUpper(spotEntry.Mode)
-	// Voice signals are wider, so use sideband-specific correction windows.
-	isVoice := modeUpper == "USB" || modeUpper == "LSB"
-
-	if adaptive != nil && (modeUpper == "CW" || modeUpper == "RTTY") {
-		reporter := spotEntry.DECallNorm
-		if reporter == "" {
-			reporter = spotEntry.DECall
-		}
-		adaptive.Observe(spotEntry.Band, reporter, now)
-	}
-
-	minReports := cfg.MinConsensusReports
-	cooldownMinReports := cfg.CooldownMinReporters
-	if adaptive != nil && (modeUpper == "CW" || modeUpper == "RTTY") {
-		if dyn := adaptive.MinReportsForBand(spotEntry.Band, now); dyn > 0 {
-			minReports = dyn
-			cooldownMinReports = dyn
-		}
-	}
-	state := "normal"
-	if adaptive != nil {
-		state = adaptive.StateForBand(spotEntry.Band, now)
-	}
-	qualityBinHz := cfg.QualityBinHz
-	freqToleranceHz := cfg.FrequencyToleranceHz
-	if isVoice {
-		freqToleranceHz = cfg.VoiceFrequencyToleranceHz
-	} else if params, ok := resolveBandStateParams(cfg.BandStateOverrides, spotEntry.Band, state); ok {
-		if params.QualityBinHz > 0 {
-			qualityBinHz = params.QualityBinHz
-		}
-		if params.FrequencyToleranceHz > 0 {
-			freqToleranceHz = params.FrequencyToleranceHz
-		}
-	}
 
 	settings := buildCorrectionSettings(
 		cfg,
-		minReports,
-		cooldownMinReports,
+		runtime.minReports,
+		runtime.cooldownMinReports,
 		window,
-		freqToleranceHz,
-		qualityBinHz,
+		runtime.freqToleranceHz,
+		runtime.qualityBinHz,
 		traceLogger,
 		cooldown,
 		spotterReliability,
@@ -3292,14 +3381,7 @@ func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.Correcti
 			tracker.ObserveCallCorrectionDecision(tr.DecisionPath, tr.Decision, tr.Reason, tr.CandidateRank, tr.PriorBonusApplied)
 		},
 	)
-	candidateWindowKHz := freqToleranceHz / 1000.0
-	if candidateWindowKHz <= 0 {
-		candidateWindowKHz = 0.5
-	}
-	if isVoice && cfg.VoiceCandidateWindowKHz > 0 {
-		candidateWindowKHz = cfg.VoiceCandidateWindowKHz
-	}
-	others := idx.Candidates(spotEntry, now, window, candidateWindowKHz)
+	others := idx.Candidates(spotEntry, now, window, runtime.candidateWindowKHz)
 	entries := spotsToEntries(others)
 	corrected, supporters, correctedConfidence, subjectConfidence, totalReporters, ok := spot.SuggestCallCorrection(spotEntry, entries, settings, now)
 
@@ -3395,6 +3477,167 @@ func callCorrectionCleanupWindow(cfg config.CallCorrectionConfig) time.Duration 
 		maxSeconds = cfg.RecencySecondsRTTY
 	}
 	return time.Duration(maxSeconds) * time.Second
+}
+
+type correctionRuntimeSettings struct {
+	window             time.Duration
+	minReports         int
+	cooldownMinReports int
+	qualityBinHz       int
+	freqToleranceHz    float64
+	candidateWindowKHz float64
+}
+
+func resolveCorrectionRuntimeSettings(
+	cfg config.CallCorrectionConfig,
+	spotEntry *spot.Spot,
+	adaptive *spot.AdaptiveMinReports,
+	now time.Time,
+	observeAdaptive bool,
+) correctionRuntimeSettings {
+	mode := ""
+	band := ""
+	if spotEntry != nil {
+		mode = spotEntry.Mode
+		band = spotEntry.Band
+	}
+	modeUpper := strutil.NormalizeUpper(mode)
+	if band == "" && spotEntry != nil {
+		band = spot.FreqToBand(spotEntry.Frequency)
+	}
+	isVoice := modeUpper == "USB" || modeUpper == "LSB"
+	window := callCorrectionWindowForMode(cfg, modeUpper)
+
+	if observeAdaptive && adaptive != nil && (modeUpper == "CW" || modeUpper == "RTTY") && spotEntry != nil {
+		reporter := spotEntry.DECallNorm
+		if reporter == "" {
+			reporter = spotEntry.DECall
+		}
+		adaptive.Observe(band, reporter, now)
+	}
+
+	minReports := cfg.MinConsensusReports
+	cooldownMinReports := cfg.CooldownMinReporters
+	if adaptive != nil && (modeUpper == "CW" || modeUpper == "RTTY") {
+		if dyn := adaptive.MinReportsForBand(band, now); dyn > 0 {
+			minReports = dyn
+			cooldownMinReports = dyn
+		}
+	}
+
+	state := "normal"
+	if adaptive != nil {
+		state = adaptive.StateForBand(band, now)
+	}
+
+	qualityBinHz := cfg.QualityBinHz
+	freqToleranceHz := cfg.FrequencyToleranceHz
+	if isVoice {
+		freqToleranceHz = cfg.VoiceFrequencyToleranceHz
+	} else if params, ok := resolveBandStateParams(cfg.BandStateOverrides, band, state); ok {
+		if params.QualityBinHz > 0 {
+			qualityBinHz = params.QualityBinHz
+		}
+		if params.FrequencyToleranceHz > 0 {
+			freqToleranceHz = params.FrequencyToleranceHz
+		}
+	}
+
+	candidateWindowKHz := freqToleranceHz / 1000.0
+	if candidateWindowKHz <= 0 {
+		candidateWindowKHz = 0.5
+	}
+	if isVoice && cfg.VoiceCandidateWindowKHz > 0 {
+		candidateWindowKHz = cfg.VoiceCandidateWindowKHz
+	}
+
+	return correctionRuntimeSettings{
+		window:             window,
+		minReports:         minReports,
+		cooldownMinReports: cooldownMinReports,
+		qualityBinHz:       qualityBinHz,
+		freqToleranceHz:    freqToleranceHz,
+		candidateWindowKHz: candidateWindowKHz,
+	}
+}
+
+func buildResolverEvidenceSnapshot(
+	spotEntry *spot.Spot,
+	cfg config.CallCorrectionConfig,
+	adaptive *spot.AdaptiveMinReports,
+	now time.Time,
+) (spot.ResolverEvidence, bool) {
+	if spotEntry == nil || !cfg.Enabled {
+		return spot.ResolverEvidence{}, false
+	}
+	mode := spotEntry.ModeNorm
+	if mode == "" {
+		mode = spotEntry.Mode
+	}
+	mode = strutil.NormalizeUpper(mode)
+	if !spot.IsCallCorrectionCandidate(mode) {
+		return spot.ResolverEvidence{}, false
+	}
+
+	call := normalizedDXCall(spotEntry)
+	reporter := spotEntry.DECallNorm
+	if reporter == "" {
+		reporter = spotEntry.DECall
+	}
+	reporter = strutil.NormalizeUpper(reporter)
+	if call == "" || reporter == "" {
+		return spot.ResolverEvidence{}, false
+	}
+
+	band := spotEntry.BandNorm
+	if band == "" || band == "???" {
+		band = spot.FreqToBand(spotEntry.Frequency)
+	}
+	band = spot.NormalizeBand(band)
+	if band == "" || band == "???" {
+		return spot.ResolverEvidence{}, false
+	}
+
+	runtime := resolveCorrectionRuntimeSettings(cfg, spotEntry, adaptive, now, false)
+	key := spot.NewResolverSignalKey(spotEntry.Frequency, band, mode, runtime.freqToleranceHz)
+
+	return spot.ResolverEvidence{
+		ObservedAt:    now,
+		Key:           key,
+		DXCall:        call,
+		Spotter:       reporter,
+		FrequencyKHz:  spotEntry.Frequency,
+		RecencyWindow: runtime.window,
+	}, true
+}
+
+func normalizedDXCall(s *spot.Spot) string {
+	if s == nil {
+		return ""
+	}
+	call := s.DXCallNorm
+	if call == "" {
+		call = s.DXCall
+	}
+	return spot.NormalizeCallsign(call)
+}
+
+func observeResolverCurrentDecision(
+	resolver *spot.SignalResolver,
+	key spot.ResolverSignalKey,
+	spotEntry *spot.Spot,
+	preCorrectionCall string,
+) {
+	if resolver == nil || spotEntry == nil {
+		return
+	}
+	finalCall := normalizedDXCall(spotEntry)
+	if finalCall == "" {
+		return
+	}
+	preCall := spot.NormalizeCallsign(preCorrectionCall)
+	corrected := preCall != "" && !strings.EqualFold(preCall, finalCall) && strings.EqualFold(strings.TrimSpace(spotEntry.Confidence), "C")
+	resolver.ObserveCurrentDecision(key, finalCall, corrected)
 }
 
 func buildCorrectionSettings(

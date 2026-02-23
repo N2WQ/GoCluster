@@ -29,7 +29,9 @@
       "Bash(for f in allocs-20260123-1*.pprof)",
       "Bash(go mod graph:*)",
       "WebFetch(domain:google.github.io)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(go vet:*)",
+      "Bash(staticcheck:*)"
     ],
     "deny": [],
     "ask": []

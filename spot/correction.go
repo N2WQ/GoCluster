@@ -594,8 +594,11 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		}
 		return false
 	}
-	callValidatedByRecent := func(identity correctionCallIdentity, displayCall string) bool {
-		if !cfg.RecentBandBonusEnabled || cfg.RecentBandStore == nil {
+	callValidatedByRecent := func(identity correctionCallIdentity, displayCall string, requireBonusEnabled bool) bool {
+		if cfg.RecentBandStore == nil {
+			return false
+		}
+		if requireBonusEnabled && !cfg.RecentBandBonusEnabled {
 			return false
 		}
 		candidates := []string{identity.Raw, identity.VoteKey, identity.BaseKey, displayCall}
@@ -617,7 +620,13 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		return false
 	}
 	callValidated := func(identity correctionCallIdentity, displayCall string) bool {
-		return callValidatedBySCP(identity, displayCall) || callValidatedByRecent(identity, displayCall)
+		return callValidatedBySCP(identity, displayCall) || callValidatedByRecent(identity, displayCall, true)
+	}
+	// Quality penalties should not push down independently validated calls.
+	// This uses known-call and recent-on-band evidence, even when recent bonus
+	// is disabled for min-reports boosts.
+	callValidatedForQualityPenalty := func(identity correctionCallIdentity, displayCall string) bool {
+		return callValidatedBySCP(identity, displayCall) || callValidatedByRecent(identity, displayCall, false)
 	}
 
 	type rankedCall struct {
@@ -999,6 +1008,43 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 				reason:        "confidence",
 			}
 		}
+		if hasRunner {
+			runnerAgg := callStats[runner.key]
+			if runnerAgg != nil {
+				runnerDistance := correctionDistance(subjectIdentity, runnerAgg.identity, subject.Mode, cfg.DistanceModelCW, cfg.DistanceModelRTTY)
+				_, related := detectCorrectionFamilyByIdentity(agg.identity, runnerAgg.identity, familyPolicy)
+				overlap := reporterSetOverlapCount(agg.reporters, runnerAgg.reporters)
+				if shouldRejectAsAmbiguousMultiSignal(
+					support,
+					runnerSupport,
+					agg.lastFreq,
+					runnerFreq,
+					cfg.FreqGuardMinSeparationKHz,
+					cfg.FreqGuardRunnerUpRatio,
+					overlap,
+					runnerDistance,
+					cfg.MaxEditDistance,
+					related,
+				) {
+					return candidateEval{
+						support:       support,
+						effective:     effectiveSupport,
+						confidence:    confidence,
+						distance:      distance,
+						runnerUp:      runnerSupport,
+						runnerUpFreq:  runnerFreq,
+						minReports:    minReports,
+						minAdvantage:  minAdvantage,
+						minConfidence: minConf,
+						lengthBonus:   lengthBonus,
+						priorBonus:    priorBonus,
+						priorSource:   priorBonusSource,
+						recentBonus:   recentBonus,
+						reason:        "ambiguous_multi_signal",
+					}
+				}
+			}
+		}
 
 		if runnerSupport > 0 {
 			freqSeparation := math.Abs(agg.lastFreq - runnerFreq)
@@ -1113,7 +1159,14 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 			continue
 		}
 
-		updateCallQualityForCluster(attempt.key, freqHz, &cfg, clusterSpots)
+		updateCallQualityForCluster(attempt.key, freqHz, &cfg, clusterSpots, func(callKey string) bool {
+			entry := callStats[callKey]
+			if entry != nil {
+				return callValidatedForQualityPenalty(entry.identity, displayForKey(callKey))
+			}
+			identity := normalizeCorrectionCallIdentity(callKey)
+			return callValidatedForQualityPenalty(identity, displayForKey(callKey))
+		})
 		trace.DecisionPath = decorateDecisionPath(attempt.path, slashPrecedenceActive, lastEval.lengthBonus > 0, lastEval.priorBonus > 0, lastEval.recentBonus > 0)
 		trace.WinnerCall = displayForKey(attempt.key)
 		trace.WinnerSupport = lastEval.support
@@ -1492,7 +1545,7 @@ func findAnchorForCall(bustedCall string, freqHz float64, mode string, candidate
 // Upstream: SuggestCallCorrection.
 // Downstream: callQuality.Add.
 // updateCallQualityForCluster updates the quality store after a resolved cluster.
-func updateCallQualityForCluster(winnerCall string, freqHz float64, cfg *CorrectionSettings, clusterSpots []bandmap.SpotEntry) {
+func updateCallQualityForCluster(winnerCall string, freqHz float64, cfg *CorrectionSettings, clusterSpots []bandmap.SpotEntry, skipPenalty func(call string) bool) {
 	if cfg == nil || winnerCall == "" || len(clusterSpots) == 0 {
 		return
 	}
@@ -1518,6 +1571,9 @@ func updateCallQualityForCluster(winnerCall string, freqHz float64, cfg *Correct
 	}
 	for call := range distinct {
 		if call == winnerKey {
+			continue
+		}
+		if skipPenalty != nil && skipPenalty(call) {
 			continue
 		}
 		store.Add(call, freqHz, cfg.QualityBinHz, -cfg.QualityBustedDecrement)
@@ -1881,6 +1937,76 @@ func pruneAndAppend(spots []*Spot, s *Spot, now time.Time, window time.Duration)
 	return append(spots, s)
 }
 
+func reporterSetOverlapCount(left, right map[string]struct{}) int {
+	if len(left) == 0 || len(right) == 0 {
+		return 0
+	}
+	// Iterate the smaller set to keep overlap checks cheap on dense clusters.
+	if len(left) > len(right) {
+		left, right = right, left
+	}
+	overlap := 0
+	for reporter := range left {
+		if _, ok := right[reporter]; ok {
+			overlap++
+		}
+	}
+	return overlap
+}
+
+// shouldRejectAsAmbiguousMultiSignal applies the split-signal guard to two
+// candidate calls competing in the same frequency cluster.
+func shouldRejectAsAmbiguousMultiSignal(
+	winnerSupport int,
+	runnerSupport int,
+	winnerFreqKHz float64,
+	runnerFreqKHz float64,
+	minSeparationKHz float64,
+	runnerUpRatio float64,
+	overlapCount int,
+	distance int,
+	maxEditDistance int,
+	related bool,
+) bool {
+	if winnerSupport <= 0 || runnerSupport <= 0 {
+		return false
+	}
+	if winnerSupport <= runnerSupport {
+		return false
+	}
+	if winnerSupport < ambiguousMultiSignalMinSupport || runnerSupport < ambiguousMultiSignalMinSupport {
+		return false
+	}
+	if winnerSupport-runnerSupport > ambiguousMultiSignalMaxSupportGap {
+		return false
+	}
+	if math.Abs(winnerFreqKHz-runnerFreqKHz) >= minSeparationKHz {
+		return false
+	}
+	if maxEditDistance >= 0 && distance > maxEditDistance {
+		return false
+	}
+	if related {
+		return false
+	}
+	minRunnerSupport := int(math.Ceil(runnerUpRatio * float64(winnerSupport)))
+	if minRunnerSupport < ambiguousMultiSignalMinSupport {
+		minRunnerSupport = ambiguousMultiSignalMinSupport
+	}
+	if runnerSupport < minRunnerSupport {
+		return false
+	}
+	minSupport := winnerSupport
+	if runnerSupport < minSupport {
+		minSupport = runnerSupport
+	}
+	if minSupport <= 0 {
+		return false
+	}
+	overlapRatio := float64(overlapCount) / float64(minSupport)
+	return overlapRatio <= ambiguousMultiSignalMaxOverlapRatio
+}
+
 // Purpose: Remove inactive buckets to bound memory.
 // Key aspects: Deletes buckets when lastSeen is outside window.
 // Upstream: CorrectionIndex.Add and StartCleanup.
@@ -1936,6 +2062,12 @@ const (
 	distanceModelPlain  = "plain"
 	distanceModelMorse  = "morse"
 	distanceModelBaudot = "baudot"
+
+	// Ambiguity guard thresholds are intentionally conservative and fixed so
+	// split-signal protection is deterministic without adding more operator knobs.
+	ambiguousMultiSignalMinSupport      = 2
+	ambiguousMultiSignalMaxSupportGap   = 1
+	ambiguousMultiSignalMaxOverlapRatio = 0.25
 
 	defaultDistanceInsertCost = 1
 	defaultDistanceDeleteCost = 1

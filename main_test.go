@@ -755,6 +755,33 @@ func TestShouldDelayTelnetByStabilizerUsesSlashFamilyRecentSupport(t *testing.T)
 	}
 }
 
+func TestShouldRetryTelnetByStabilizerEligibility(t *testing.T) {
+	base := spot.NewSpot("K1RISK", "W2TT", 7010.0, "CW")
+	base.Confidence = "?"
+	if !shouldRetryTelnetByStabilizer(base, true, 1, 2) {
+		t.Fatalf("expected retry when risky, unknown confidence, and checks remain")
+	}
+	if shouldRetryTelnetByStabilizer(base, true, 1, 1) {
+		t.Fatalf("did not expect retry when max_checks=1 (legacy single-check behavior)")
+	}
+	if shouldRetryTelnetByStabilizer(base, true, 2, 2) {
+		t.Fatalf("did not expect retry once max checks are exhausted")
+	}
+	if shouldRetryTelnetByStabilizer(base, false, 1, 2) {
+		t.Fatalf("did not expect retry when spot is no longer risky")
+	}
+}
+
+func TestShouldRetryTelnetByStabilizerSkipsPVCConfidence(t *testing.T) {
+	for _, confidence := range []string{"P", "V", "C"} {
+		s := spot.NewSpot("K1RISK", "W2TT", 7010.0, "CW")
+		s.Confidence = confidence
+		if shouldRetryTelnetByStabilizer(s, true, 1, 3) {
+			t.Fatalf("did not expect retry for confidence %s", confidence)
+		}
+	}
+}
+
 func TestApplyKnownCallFloorPromotesViaSlashFamilyRecentSupport(t *testing.T) {
 	store := spot.NewRecentBandStoreWithOptions(spot.RecentBandOptions{
 		Window:             12 * time.Hour,
@@ -858,6 +885,36 @@ func TestRecentBandAdmissionNonStabilizerRecordsInMainPath(t *testing.T) {
 	recordRecentBandObservation(s, store, cfg)
 	if count := recentBandSupportCountForSpot(store, s, now); count != 1 {
 		t.Fatalf("expected one recent support on non-stabilizer path, got %d", count)
+	}
+}
+
+func TestBuildResolverEvidenceSnapshotCapturesPreMutationCall(t *testing.T) {
+	cfg := config.CallCorrectionConfig{
+		Enabled:                   true,
+		MinConsensusReports:       3,
+		MinAdvantage:              2,
+		MinConfidencePercent:      70,
+		RecencySeconds:            45,
+		FrequencyToleranceHz:      500,
+		VoiceFrequencyToleranceHz: 2000,
+	}
+	s := spot.NewSpot("DL6LD", "K1AAA", 7010.0, "CW")
+	s.EnsureNormalized()
+
+	now := time.Now().UTC()
+	ev, ok := buildResolverEvidenceSnapshot(s, cfg, nil, now)
+	if !ok {
+		t.Fatalf("expected resolver evidence snapshot")
+	}
+	if ev.DXCall != "DL6LD" {
+		t.Fatalf("expected pre-mutation call DL6LD, got %q", ev.DXCall)
+	}
+
+	s.DXCall = "DL6LN"
+	s.DXCallNorm = ""
+	s.EnsureNormalized()
+	if ev.DXCall != "DL6LD" {
+		t.Fatalf("snapshot should remain immutable after mutation, got %q", ev.DXCall)
 	}
 }
 

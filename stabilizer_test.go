@@ -19,8 +19,11 @@ func TestTelnetSpotStabilizerReleasesAfterDelay(t *testing.T) {
 
 	select {
 	case got := <-stab.ReleaseChan():
-		if got != s {
+		if got == nil || got.spot != s {
 			t.Fatalf("expected released spot pointer to match enqueued spot")
+		}
+		if got.checksCompleted != 0 {
+			t.Fatalf("expected checksCompleted=0 for first release, got %d", got.checksCompleted)
 		}
 	case <-time.After(500 * time.Millisecond):
 		t.Fatalf("timed out waiting for delayed release")
@@ -63,8 +66,11 @@ func TestTelnetSpotStabilizerReleasesInEnqueueOrderForSameDeadline(t *testing.T)
 	got := make([]*spot.Spot, 0, 2)
 	for len(got) < 2 {
 		select {
-		case s := <-stab.ReleaseChan():
-			got = append(got, s)
+		case envelope := <-stab.ReleaseChan():
+			if envelope == nil || envelope.spot == nil {
+				t.Fatalf("expected non-nil release envelope")
+			}
+			got = append(got, envelope.spot)
 		case <-timeout:
 			t.Fatalf("timed out waiting for releases")
 		}
@@ -74,3 +80,25 @@ func TestTelnetSpotStabilizerReleasesInEnqueueOrderForSameDeadline(t *testing.T)
 	}
 }
 
+func TestTelnetSpotStabilizerReleaseCarriesChecksCompleted(t *testing.T) {
+	stab := newTelnetSpotStabilizer(20*time.Millisecond, 8)
+	stab.Start()
+	t.Cleanup(stab.Stop)
+
+	s := spot.NewSpot("K1CHK", "W1XYZ", 7010.0, "CW")
+	if ok := stab.EnqueueWithChecks(s, 2); !ok {
+		t.Fatalf("expected enqueue with checks to succeed")
+	}
+
+	select {
+	case got := <-stab.ReleaseChan():
+		if got == nil || got.spot != s {
+			t.Fatalf("expected released spot pointer to match enqueued spot")
+		}
+		if got.checksCompleted != 2 {
+			t.Fatalf("expected checksCompleted=2, got %d", got.checksCompleted)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("timed out waiting for delayed release")
+	}
+}

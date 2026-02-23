@@ -14,9 +14,15 @@ const (
 )
 
 type telnetStabilizerItem struct {
-	spot *spot.Spot
-	due  time.Time
-	seq  uint64
+	spot            *spot.Spot
+	due             time.Time
+	seq             uint64
+	checksCompleted int
+}
+
+type telnetStabilizerEnvelope struct {
+	spot            *spot.Spot
+	checksCompleted int
 }
 
 type telnetStabilizerHeap []*telnetStabilizerItem
@@ -57,8 +63,8 @@ type telnetSpotStabilizer struct {
 	delay      time.Duration
 	maxPending int64
 
-	in      chan *spot.Spot
-	release chan *spot.Spot
+	in      chan *telnetStabilizerEnvelope
+	release chan *telnetStabilizerEnvelope
 	stop    chan struct{}
 	done    chan struct{}
 
@@ -75,8 +81,8 @@ func newTelnetSpotStabilizer(delay time.Duration, maxPending int) *telnetSpotSta
 	return &telnetSpotStabilizer{
 		delay:      delay,
 		maxPending: int64(maxPending),
-		in:         make(chan *spot.Spot, 1024),
-		release:    make(chan *spot.Spot, 1024),
+		in:         make(chan *telnetStabilizerEnvelope, 1024),
+		release:    make(chan *telnetStabilizerEnvelope, 1024),
 		stop:       make(chan struct{}),
 		done:       make(chan struct{}),
 	}
@@ -102,7 +108,7 @@ func (s *telnetSpotStabilizer) Stop() {
 	<-s.done
 }
 
-func (s *telnetSpotStabilizer) ReleaseChan() <-chan *spot.Spot {
+func (s *telnetSpotStabilizer) ReleaseChan() <-chan *telnetStabilizerEnvelope {
 	if s == nil {
 		return nil
 	}
@@ -117,14 +123,21 @@ func (s *telnetSpotStabilizer) Pending() int64 {
 }
 
 func (s *telnetSpotStabilizer) Enqueue(sp *spot.Spot) bool {
+	return s.EnqueueWithChecks(sp, 0)
+}
+
+func (s *telnetSpotStabilizer) EnqueueWithChecks(sp *spot.Spot, checksCompleted int) bool {
 	if s == nil || sp == nil {
 		return false
+	}
+	if checksCompleted < 0 {
+		checksCompleted = 0
 	}
 	if !s.reserveSlot() {
 		return false
 	}
 	select {
-	case s.in <- sp:
+	case s.in <- &telnetStabilizerEnvelope{spot: sp, checksCompleted: checksCompleted}:
 		return true
 	default:
 		s.pending.Add(-1)
@@ -194,15 +207,16 @@ func (s *telnetSpotStabilizer) run() {
 		select {
 		case <-s.stop:
 			return
-		case sp := <-s.in:
-			if sp == nil {
+		case envelope := <-s.in:
+			if envelope == nil || envelope.spot == nil {
 				s.pending.Add(-1)
 				continue
 			}
 			heap.Push(&queue, &telnetStabilizerItem{
-				spot: sp,
-				due:  time.Now().UTC().Add(s.delay),
-				seq:  nextID,
+				spot:            envelope.spot,
+				due:             time.Now().UTC().Add(s.delay),
+				seq:             nextID,
+				checksCompleted: envelope.checksCompleted,
 			})
 			nextID++
 		case <-timerC:
@@ -219,7 +233,10 @@ func (s *telnetSpotStabilizer) run() {
 					continue
 				}
 				select {
-				case s.release <- item.spot:
+				case s.release <- &telnetStabilizerEnvelope{
+					spot:            item.spot,
+					checksCompleted: item.checksCompleted,
+				}:
 				case <-s.stop:
 					return
 				}
@@ -227,4 +244,3 @@ func (s *telnetSpotStabilizer) run() {
 		}
 	}
 }
-
