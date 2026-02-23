@@ -31,6 +31,11 @@ type Tracker struct {
 	corrDecisionReasons  sync.Map // string -> *atomic.Uint64
 	corrDecisionPaths    sync.Map // string -> *atomic.Uint64
 	corrDecisionRanks    sync.Map // string(rank) -> *atomic.Uint64
+	stabHeld            atomic.Uint64
+	stabImmediate       atomic.Uint64
+	stabDelayed         atomic.Uint64
+	stabSuppressed      atomic.Uint64
+	stabOverflowRelease atomic.Uint64
 }
 
 // NewTracker creates a new stats tracker with a start timestamp.
@@ -226,6 +231,51 @@ func (t *Tracker) IncrementCallCorrections() {
 	t.callCorrections.Add(1)
 }
 
+// IncrementStabilizerHeld records that a telnet spot was delayed by the
+// stabilizer because it lacked recent-on-band support.
+func (t *Tracker) IncrementStabilizerHeld() {
+	if t == nil {
+		return
+	}
+	t.stabHeld.Add(1)
+}
+
+// IncrementStabilizerReleasedImmediate records telnet spots delivered without a
+// stabilizer delay.
+func (t *Tracker) IncrementStabilizerReleasedImmediate() {
+	if t == nil {
+		return
+	}
+	t.stabImmediate.Add(1)
+}
+
+// IncrementStabilizerReleasedDelayed records telnet spots delivered after the
+// stabilizer delay window elapsed.
+func (t *Tracker) IncrementStabilizerReleasedDelayed() {
+	if t == nil {
+		return
+	}
+	t.stabDelayed.Add(1)
+}
+
+// IncrementStabilizerSuppressedTimeout records telnet spots dropped after delay
+// when the timeout action is suppress.
+func (t *Tracker) IncrementStabilizerSuppressedTimeout() {
+	if t == nil {
+		return
+	}
+	t.stabSuppressed.Add(1)
+}
+
+// IncrementStabilizerOverflowRelease records delayed spots released immediately
+// due to stabilizer queue overflow (fail-open behavior).
+func (t *Tracker) IncrementStabilizerOverflowRelease() {
+	if t == nil {
+		return
+	}
+	t.stabOverflowRelease.Add(1)
+}
+
 // Purpose: Record a correction decision outcome/reason/path for observability.
 // Key aspects: Tracks attempts, rejects by reason, path distribution, and fallback depth.
 // Upstream: call correction decision observer.
@@ -325,6 +375,48 @@ func (t *Tracker) HarmonicSuppressions() uint64 {
 // Downstream: atomic counter.
 func (t *Tracker) UnlicensedDrops() uint64 {
 	return t.unlicensedDrops.Load()
+}
+
+// StabilizerHeld returns the count of spots delayed by the stabilizer.
+func (t *Tracker) StabilizerHeld() uint64 {
+	if t == nil {
+		return 0
+	}
+	return t.stabHeld.Load()
+}
+
+// StabilizerReleasedImmediate returns spots delivered immediately when the
+// stabilizer was active.
+func (t *Tracker) StabilizerReleasedImmediate() uint64 {
+	if t == nil {
+		return 0
+	}
+	return t.stabImmediate.Load()
+}
+
+// StabilizerReleasedDelayed returns spots delivered after stabilizer delay.
+func (t *Tracker) StabilizerReleasedDelayed() uint64 {
+	if t == nil {
+		return 0
+	}
+	return t.stabDelayed.Load()
+}
+
+// StabilizerSuppressedTimeout returns spots suppressed after the delay window.
+func (t *Tracker) StabilizerSuppressedTimeout() uint64 {
+	if t == nil {
+		return 0
+	}
+	return t.stabSuppressed.Load()
+}
+
+// StabilizerOverflowRelease returns fail-open immediate releases caused by a
+// full stabilizer queue.
+func (t *Tracker) StabilizerOverflowRelease() uint64 {
+	if t == nil {
+		return 0
+	}
+	return t.stabOverflowRelease.Load()
 }
 
 // Purpose: Return total correction decisions observed (applied + rejected).

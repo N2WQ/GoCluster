@@ -22,3 +22,6 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR-0010 | S Glyph Confidence Floor Includes Recent-On-Band Admission | Accepted | 2026-02-16 | main/spot confidence | - | - | `docs/decisions/ADR-0010-s-glyph-recent-on-band-floor.md` |
 | ADR-0011 | SHOW DX / SHOW MYDX Optional DXCC Selector | Accepted | 2026-02-17 | commands/processor | - | - | `docs/decisions/ADR-0011-show-history-dxcc-selector.md` |
 | ADR-0012 | CC Dialect Accepts SHOW DX / SH DX History Aliases | Accepted | 2026-02-17 | commands/processor | - | - | `docs/decisions/ADR-0012-cc-show-dx-alias.md` |
+| ADR-0013 | Telnet Stabilizer for Risky Call-Correction Output | Accepted | 2026-02-17 | main/telnet fan-out | - | - | `docs/decisions/ADR-0013-call-correction-telnet-stabilizer.md` |
+| ADR-0014 | Call-Correction Family Policy: Slash Threshold, Truncation Advantage Rail, and Telnet Family Suppression | Accepted | 2026-02-22 | spot/correction, main/telnet fan-out | - | - | `docs/decisions/ADR-0014-call-correction-family-policy.md` |
+| ADR-0015 | YAML-Driven Call-Correction Family Policy Knobs | Accepted | 2026-02-23 | config, spot/correction, main/telnet fan-out | ADR-0014 (config surface) | - | `docs/decisions/ADR-0015-call-correction-family-policy-yamlization.md` |

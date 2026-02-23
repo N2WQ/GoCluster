@@ -12,6 +12,37 @@ import (
 	lev "github.com/agnivade/levenshtein"
 )
 
+// CorrectionFamilyPolicy controls relationship detection between candidate calls.
+// Configured is an internal marker used to distinguish zero-value tests from
+// explicit runtime policy wiring.
+type CorrectionFamilyPolicy struct {
+	Configured bool
+	// TruncationEnabled toggles one-character containment-family detection.
+	TruncationEnabled bool
+	// TruncationMaxLengthDelta bounds |len(longer)-len(shorter)| for truncation matches.
+	TruncationMaxLengthDelta int
+	// TruncationMinShorterLength prevents tiny strings from matching as truncations.
+	TruncationMinShorterLength int
+	// TruncationAllowPrefix enables shorter-as-prefix matches (for example W1AB/W1ABC).
+	TruncationAllowPrefix bool
+	// TruncationAllowSuffix enables shorter-as-suffix matches (for example A1ABC/WA1ABC).
+	TruncationAllowSuffix bool
+}
+
+// CorrectionTruncationAdvantagePolicy controls when truncation families can
+// lower min_advantage. Configured is an internal marker used to distinguish
+// zero-value tests from explicit runtime policy wiring.
+type CorrectionTruncationAdvantagePolicy struct {
+	Configured bool
+	Enabled    bool
+	// MinAdvantage is the effective min_advantage when relaxation applies.
+	MinAdvantage int
+	// RequireCandidateValidated requires SCP/recent validation for the longer candidate.
+	RequireCandidateValidated bool
+	// RequireSubjectUnvalidated requires the shorter subject to be unvalidated.
+	RequireSubjectUnvalidated bool
+}
+
 // CorrectionSettings captures the knobs that govern whether a consensus-based
 // call correction should happen. The values ultimately come from data/config/pipeline.yaml,
 // but the struct is deliberately defined here so the algorithm can be unit-tested
@@ -39,12 +70,21 @@ type CorrectionSettings struct {
 	// MinConsensusReports is the number of *other* unique spotters that must
 	// agree on the same DX call before we consider overriding the subject spot.
 	MinConsensusReports int
+	// FamilyPolicy controls slash/truncation relationship detection.
+	FamilyPolicy CorrectionFamilyPolicy
+	// SlashPrecedenceMinReports is the minimum number of unique reporters needed
+	// for a slash-explicit variant to exclude the corresponding bare call from
+	// voting/anchor candidacy in the same base family.
+	SlashPrecedenceMinReports int
 	// CandidateEvalTopK controls how many consensus-ranked candidates are evaluated
 	// (after optional anchor attempt). K=1 preserves legacy top-1 behavior.
 	CandidateEvalTopK int
 	// MinAdvantage is the minimum delta (candidate supporters - subject supporters)
 	// required before a correction can happen.
 	MinAdvantage int
+	// TruncationAdvantagePolicy controls whether truncation families may lower
+	// min_advantage when additional validation rails pass.
+	TruncationAdvantagePolicy CorrectionTruncationAdvantagePolicy
 	// MinConfidencePercent enforces that the alternate call must represent at least
 	// this percentage of all unique spotters currently reporting that frequency.
 	MinConfidencePercent int
@@ -472,7 +512,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		}
 		credibleSlash := false
 		for _, slashKey := range group.slashKeys {
-			if agg := callStats[slashKey]; agg != nil && len(agg.reporters) >= cfg.MinConsensusReports {
+			if agg := callStats[slashKey]; agg != nil && len(agg.reporters) >= cfg.SlashPrecedenceMinReports {
 				credibleSlash = true
 				break
 			}
@@ -548,6 +588,48 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 		subjectBand = NormalizeBand(FreqToBand(subject.Frequency))
 	}
 	subjectMode := strutil.NormalizeUpper(subject.Mode)
+	callValidatedBySCP := func(identity correctionCallIdentity, displayCall string) bool {
+		known := cfg.PriorBonusKnownCallset
+		if known == nil {
+			return false
+		}
+		candidates := []string{identity.Raw, identity.VoteKey, identity.BaseKey, displayCall}
+		for _, call := range candidates {
+			call = strings.TrimSpace(call)
+			if call == "" {
+				continue
+			}
+			if known.Contains(call) {
+				return true
+			}
+		}
+		return false
+	}
+	callValidatedByRecent := func(identity correctionCallIdentity, displayCall string) bool {
+		if !cfg.RecentBandBonusEnabled || cfg.RecentBandStore == nil {
+			return false
+		}
+		candidates := []string{identity.Raw, identity.VoteKey, identity.BaseKey, displayCall}
+		seenCalls := make(map[string]struct{}, len(candidates))
+		for _, candidateCall := range candidates {
+			candidateCall = strings.TrimSpace(candidateCall)
+			if candidateCall == "" {
+				continue
+			}
+			upper := strutil.NormalizeUpper(candidateCall)
+			if _, exists := seenCalls[upper]; exists {
+				continue
+			}
+			seenCalls[upper] = struct{}{}
+			if cfg.RecentBandStore.HasRecentSupport(upper, subjectBand, subjectMode, cfg.RecentBandRecordMinUniqueSpotters, now) {
+				return true
+			}
+		}
+		return false
+	}
+	callValidated := func(identity correctionCallIdentity, displayCall string) bool {
+		return callValidatedBySCP(identity, displayCall) || callValidatedByRecent(identity, displayCall)
+	}
 
 	type rankedCall struct {
 		key        string
@@ -655,6 +737,8 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 			anchorKey = anchor
 		}
 	}
+	familyPolicy := normalizeCorrectionFamilyPolicy(cfg.FamilyPolicy)
+	truncationAdvantagePolicy := normalizeCorrectionTruncationAdvantagePolicy(cfg.TruncationAdvantagePolicy)
 
 	type candidateEval struct {
 		support       int
@@ -719,6 +803,30 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 			minReports += cfg.Distance3ExtraReports
 			minAdvantage += cfg.Distance3ExtraAdvantage
 			minConf += cfg.Distance3ExtraConfidence
+		}
+		if relation, ok := detectCorrectionFamilyByIdentity(subjectIdentity, agg.identity, familyPolicy); ok && relation.Kind == CorrectionFamilyTruncation && truncationAdvantagePolicy.Enabled {
+			subjectKey := subjectIdentity.VoteKey
+			if subjectKey == "" {
+				subjectKey = subjectIdentity.Raw
+			}
+			candidateKeyNorm := agg.identity.VoteKey
+			if candidateKeyNorm == "" {
+				candidateKeyNorm = agg.identity.Raw
+			}
+			if relation.MoreSpecific == candidateKeyNorm && relation.LessSpecific == subjectKey {
+				candidateValidated := callValidated(agg.identity, displayForKey(candidateKey))
+				subjectValidated := callValidated(subjectIdentity, displayForKey(subjectIdentity.VoteKey))
+				eligible := true
+				if truncationAdvantagePolicy.RequireCandidateValidated && !candidateValidated {
+					eligible = false
+				}
+				if truncationAdvantagePolicy.RequireSubjectUnvalidated && subjectValidated {
+					eligible = false
+				}
+				if eligible {
+					minAdvantage = truncationAdvantagePolicy.MinAdvantage
+				}
+			}
 		}
 		effectiveSupport := support
 		priorBonus := 0
@@ -1004,6 +1112,97 @@ type correctionCallIdentity struct {
 	SlashKey string
 }
 
+// CorrectionFamilyKind classifies call-pair relationships relevant to
+// correction precedence logic.
+type CorrectionFamilyKind string
+
+const (
+	CorrectionFamilySlash      CorrectionFamilyKind = "slash"
+	CorrectionFamilyTruncation CorrectionFamilyKind = "truncation"
+)
+
+// CorrectionFamilyRelation captures a directed relation where MoreSpecific can
+// suppress LessSpecific under family-specific policy.
+type CorrectionFamilyRelation struct {
+	Kind         CorrectionFamilyKind
+	LessSpecific string
+	MoreSpecific string
+}
+
+// CorrectionVoteKey returns the correction vote key for a callsign. Empty is
+// returned for invalid/blank inputs.
+func CorrectionVoteKey(call string) string {
+	return normalizeCorrectionCallIdentity(call).VoteKey
+}
+
+// DetectCorrectionFamily reports whether two calls are in the same
+// correction-precedence family and, when true, which side is less/more specific.
+func DetectCorrectionFamily(callA, callB string) (CorrectionFamilyRelation, bool) {
+	return DetectCorrectionFamilyWithPolicy(callA, callB, CorrectionFamilyPolicy{})
+}
+
+// DetectCorrectionFamilyWithPolicy reports whether two calls are in the same
+// correction-precedence family under the provided policy.
+func DetectCorrectionFamilyWithPolicy(callA, callB string, policy CorrectionFamilyPolicy) (CorrectionFamilyRelation, bool) {
+	a := normalizeCorrectionCallIdentity(callA)
+	b := normalizeCorrectionCallIdentity(callB)
+	return detectCorrectionFamilyByIdentity(a, b, normalizeCorrectionFamilyPolicy(policy))
+}
+
+func detectCorrectionFamilyByIdentity(a, b correctionCallIdentity, policy CorrectionFamilyPolicy) (CorrectionFamilyRelation, bool) {
+	keyA := a.VoteKey
+	if keyA == "" {
+		keyA = a.Raw
+	}
+	keyB := b.VoteKey
+	if keyB == "" {
+		keyB = b.Raw
+	}
+	if keyA == "" || keyB == "" || keyA == keyB {
+		return CorrectionFamilyRelation{}, false
+	}
+	if a.BaseKey != "" && a.BaseKey == b.BaseKey && a.HasSlash != b.HasSlash {
+		if a.HasSlash {
+			return CorrectionFamilyRelation{
+				Kind:         CorrectionFamilySlash,
+				LessSpecific: keyB,
+				MoreSpecific: keyA,
+			}, true
+		}
+		return CorrectionFamilyRelation{
+			Kind:         CorrectionFamilySlash,
+			LessSpecific: keyA,
+			MoreSpecific: keyB,
+		}, true
+	}
+	if a.HasSlash || b.HasSlash {
+		return CorrectionFamilyRelation{}, false
+	}
+	if !policy.TruncationEnabled {
+		return CorrectionFamilyRelation{}, false
+	}
+	shorter, longer := keyA, keyB
+	if len(shorter) > len(longer) {
+		shorter, longer = longer, shorter
+	}
+	if len(shorter) < policy.TruncationMinShorterLength {
+		return CorrectionFamilyRelation{}, false
+	}
+	if len(longer)-len(shorter) != policy.TruncationMaxLengthDelta {
+		return CorrectionFamilyRelation{}, false
+	}
+	prefixMatch := policy.TruncationAllowPrefix && strings.HasPrefix(longer, shorter)
+	suffixMatch := policy.TruncationAllowSuffix && strings.HasSuffix(longer, shorter)
+	if prefixMatch || suffixMatch {
+		return CorrectionFamilyRelation{
+			Kind:         CorrectionFamilyTruncation,
+			LessSpecific: shorter,
+			MoreSpecific: longer,
+		}, true
+	}
+	return CorrectionFamilyRelation{}, false
+}
+
 // normalizeCorrectionCallIdentity derives correction-only identity keys.
 // VoteKey groups semantically equivalent variants (e.g., KH6/W1AW == W1AW/KH6).
 func normalizeCorrectionCallIdentity(call string) correctionCallIdentity {
@@ -1264,6 +1463,43 @@ func logCorrectionTrace(cfg CorrectionSettings, tr CorrectionTrace, votes []band
 	})
 }
 
+func normalizeCorrectionFamilyPolicy(policy CorrectionFamilyPolicy) CorrectionFamilyPolicy {
+	cfg := policy
+	if !cfg.Configured {
+		cfg.TruncationEnabled = true
+		cfg.TruncationMaxLengthDelta = 1
+		cfg.TruncationMinShorterLength = 3
+		cfg.TruncationAllowPrefix = true
+		cfg.TruncationAllowSuffix = true
+		return cfg
+	}
+	if cfg.TruncationMaxLengthDelta <= 0 {
+		cfg.TruncationMaxLengthDelta = 1
+	}
+	if cfg.TruncationMinShorterLength <= 0 {
+		cfg.TruncationMinShorterLength = 3
+	}
+	if !cfg.TruncationAllowPrefix && !cfg.TruncationAllowSuffix {
+		cfg.TruncationEnabled = false
+	}
+	return cfg
+}
+
+func normalizeCorrectionTruncationAdvantagePolicy(policy CorrectionTruncationAdvantagePolicy) CorrectionTruncationAdvantagePolicy {
+	cfg := policy
+	if !cfg.Configured {
+		cfg.Enabled = true
+		cfg.MinAdvantage = 0
+		cfg.RequireCandidateValidated = true
+		cfg.RequireSubjectUnvalidated = true
+		return cfg
+	}
+	if cfg.MinAdvantage < 0 {
+		cfg.MinAdvantage = 0
+	}
+	return cfg
+}
+
 // Purpose: Normalize correction settings with defaults.
 // Key aspects: Applies minimums and standardizes strategy names.
 // Upstream: SuggestCallCorrection.
@@ -1303,9 +1539,14 @@ func normalizeCorrectionSettings(settings CorrectionSettings) CorrectionSettings
 	if cfg.MinConsensusReports <= 0 {
 		cfg.MinConsensusReports = 4
 	}
+	cfg.FamilyPolicy = normalizeCorrectionFamilyPolicy(cfg.FamilyPolicy)
+	if cfg.SlashPrecedenceMinReports <= 0 {
+		cfg.SlashPrecedenceMinReports = 2
+	}
 	if cfg.MinAdvantage <= 0 {
 		cfg.MinAdvantage = 1
 	}
+	cfg.TruncationAdvantagePolicy = normalizeCorrectionTruncationAdvantagePolicy(cfg.TruncationAdvantagePolicy)
 	if cfg.MinConfidencePercent <= 0 {
 		cfg.MinConfidencePercent = 70
 	}

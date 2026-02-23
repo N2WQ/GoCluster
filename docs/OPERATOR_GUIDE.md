@@ -38,6 +38,7 @@ Every 5 minutes, the server logs:
 Stats ticker adds:
 - `Data` — last updated timestamps for CTY and FCC ULS.
 - `Calls` — correction/unlicensed/frequency/harmonic counts plus reputation drops `(R)`.
+- `Stabilizer` — telnet delay counters `(H/I/D/S/O)` when call-correction stabilizer is enabled: held, immediate, delayed, suppressed, overflow-release. Suppressed delayed spots do not update recent-on-band support.
 - `Path only` — per‑interval path‑only updates with drop reasons for WSPR (U=updated, S=stale, N=no SNR, G=no grid, H=bad H3, B=bad band, M=mode).
 
 ## Common Troubleshooting

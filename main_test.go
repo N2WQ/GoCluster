@@ -560,6 +560,179 @@ func TestApplyKnownCallFloorRecentOnBandHonorsModeAndFlag(t *testing.T) {
 	}
 }
 
+func TestShouldDelayTelnetByStabilizerDelaysUnknownWithoutRecentSupport(t *testing.T) {
+	store := spot.NewRecentBandStoreWithOptions(spot.RecentBandOptions{
+		Window:             12 * time.Hour,
+		Shards:             1,
+		MaxEntries:         128,
+		CleanupInterval:    time.Hour,
+		MaxSpottersPerCall: 8,
+	})
+	s := spot.NewSpot("K1RISK", "W2TT", 7010.0, "CW")
+	s.Confidence = "?"
+
+	cfg := config.CallCorrectionConfig{
+		StabilizerEnabled:                 true,
+		RecentBandRecordMinUniqueSpotters: 2,
+	}
+	if !shouldDelayTelnetByStabilizer(s, store, cfg, time.Now().UTC()) {
+		t.Fatalf("expected unknown, not-recent call to be delayed")
+	}
+}
+
+func TestShouldDelayTelnetByStabilizerSkipsPConfidence(t *testing.T) {
+	store := spot.NewRecentBandStoreWithOptions(spot.RecentBandOptions{
+		Window:             12 * time.Hour,
+		Shards:             1,
+		MaxEntries:         128,
+		CleanupInterval:    time.Hour,
+		MaxSpottersPerCall: 8,
+	})
+	s := spot.NewSpot("K1PASS", "W2TT", 7010.0, "CW")
+	s.Confidence = "P"
+
+	cfg := config.CallCorrectionConfig{
+		StabilizerEnabled:                 true,
+		RecentBandRecordMinUniqueSpotters: 2,
+	}
+	if shouldDelayTelnetByStabilizer(s, store, cfg, time.Now().UTC()) {
+		t.Fatalf("did not expect P-confidence call to be delayed")
+	}
+}
+
+func TestShouldDelayTelnetByStabilizerSkipsRecentSupport(t *testing.T) {
+	store := spot.NewRecentBandStoreWithOptions(spot.RecentBandOptions{
+		Window:             12 * time.Hour,
+		Shards:             1,
+		MaxEntries:         128,
+		CleanupInterval:    time.Hour,
+		MaxSpottersPerCall: 8,
+	})
+	now := time.Now().UTC()
+	s := spot.NewSpot("K1REC", "W2TT", 7010.0, "CW")
+	s.Confidence = "?"
+	store.Record("K1REC", s.BandNorm, "CW", "N0AAA", now.Add(-10*time.Minute))
+	store.Record("K1REC", s.BandNorm, "CW", "N0BBB", now.Add(-5*time.Minute))
+
+	cfg := config.CallCorrectionConfig{
+		StabilizerEnabled:                 true,
+		RecentBandRecordMinUniqueSpotters: 2,
+	}
+	if shouldDelayTelnetByStabilizer(s, store, cfg, now) {
+		t.Fatalf("did not expect recent-on-band call to be delayed")
+	}
+}
+
+func TestRecentBandAdmissionDelayedReleaseWaitsForOutcome(t *testing.T) {
+	store := newRecentBandStoreForStabilizerAdmissionTests()
+	cfg := config.CallCorrectionConfig{
+		StabilizerEnabled: true,
+	}
+	now := time.Now().UTC()
+	s := spot.NewSpot("K1RISK", "W2TT", 7010.0, "CW")
+
+	if shouldRecordRecentBandInMainLoop(true, true) {
+		recordRecentBandObservation(s, store, cfg)
+	}
+	if count := recentBandSupportCountForSpot(store, s, now); count != 0 {
+		t.Fatalf("expected no recent support before delayed release, got %d", count)
+	}
+
+	if !shouldRecordRecentBandAfterStabilizerDelay(stabilizerTimeoutRelease, true) {
+		t.Fatalf("expected release timeout action to admit delayed spot")
+	}
+	recordRecentBandObservation(s, store, cfg)
+	if count := recentBandSupportCountForSpot(store, s, now); count != 1 {
+		t.Fatalf("expected one recent support after delayed release, got %d", count)
+	}
+}
+
+func TestRecentBandAdmissionDelayedSuppressSkipsRecord(t *testing.T) {
+	store := newRecentBandStoreForStabilizerAdmissionTests()
+	cfg := config.CallCorrectionConfig{
+		StabilizerEnabled: true,
+	}
+	now := time.Now().UTC()
+	s := spot.NewSpot("K1RISK", "W2TT", 7010.0, "CW")
+
+	if shouldRecordRecentBandInMainLoop(true, true) {
+		recordRecentBandObservation(s, store, cfg)
+	}
+	if count := recentBandSupportCountForSpot(store, s, now); count != 0 {
+		t.Fatalf("expected no recent support before timeout decision, got %d", count)
+	}
+
+	if shouldRecordRecentBandAfterStabilizerDelay(stabilizerTimeoutSuppress, true) {
+		t.Fatalf("expected suppress timeout action to skip delayed admission")
+	}
+	if count := recentBandSupportCountForSpot(store, s, now); count != 0 {
+		t.Fatalf("expected no recent support after suppressed timeout, got %d", count)
+	}
+}
+
+func TestRecentBandAdmissionOverflowReleaseRecordsInMainPath(t *testing.T) {
+	store := newRecentBandStoreForStabilizerAdmissionTests()
+	cfg := config.CallCorrectionConfig{
+		StabilizerEnabled: true,
+	}
+	now := time.Now().UTC()
+	s := spot.NewSpot("K1OVR", "W2TT", 7010.0, "CW")
+
+	if !shouldRecordRecentBandInMainLoop(true, false) {
+		t.Fatalf("expected overflow fail-open path to record in main loop")
+	}
+	recordRecentBandObservation(s, store, cfg)
+	if count := recentBandSupportCountForSpot(store, s, now); count != 1 {
+		t.Fatalf("expected one recent support for overflow release, got %d", count)
+	}
+}
+
+func TestRecentBandAdmissionNonStabilizerRecordsInMainPath(t *testing.T) {
+	store := newRecentBandStoreForStabilizerAdmissionTests()
+	cfg := config.CallCorrectionConfig{
+		RecentBandBonusEnabled: true,
+	}
+	now := time.Now().UTC()
+	s := spot.NewSpot("K1MAIN", "W2TT", 7010.0, "CW")
+
+	if !shouldRecordRecentBandInMainLoop(false, false) {
+		t.Fatalf("expected non-stabilizer path to record in main loop")
+	}
+	recordRecentBandObservation(s, store, cfg)
+	if count := recentBandSupportCountForSpot(store, s, now); count != 1 {
+		t.Fatalf("expected one recent support on non-stabilizer path, got %d", count)
+	}
+}
+
+func newRecentBandStoreForStabilizerAdmissionTests() *spot.RecentBandStore {
+	return spot.NewRecentBandStoreWithOptions(spot.RecentBandOptions{
+		Window:             12 * time.Hour,
+		Shards:             1,
+		MaxEntries:         128,
+		CleanupInterval:    time.Hour,
+		MaxSpottersPerCall: 8,
+	})
+}
+
+func recentBandSupportCountForSpot(store *spot.RecentBandStore, s *spot.Spot, now time.Time) int {
+	if store == nil || s == nil {
+		return 0
+	}
+	call := s.DXCallNorm
+	if call == "" {
+		call = s.DXCall
+	}
+	mode := s.ModeNorm
+	if mode == "" {
+		mode = s.Mode
+	}
+	band := s.BandNorm
+	if band == "" || band == "???" {
+		band = spot.FreqToBand(s.Frequency)
+	}
+	return store.RecentSupportCount(call, band, mode, now)
+}
+
 func TestBuildOverviewLinesIncludesRecentOnBandCalls(t *testing.T) {
 	now := time.Now().UTC()
 	recentBandStore := spot.NewRecentBandStoreWithOptions(spot.RecentBandOptions{
@@ -639,6 +812,22 @@ func TestBuildOverviewLinesIncludesRecentOnBandCalls(t *testing.T) {
 
 func TestBuildCorrectionSettingsMapsConfigFields(t *testing.T) {
 	cfg := config.CallCorrectionConfig{
+		FamilyPolicy: config.CallCorrectionFamilyPolicyConfig{
+			SlashPrecedenceMinReports: 2,
+			Truncation: config.CallCorrectionTruncationFamilyConfig{
+				Enabled:          true,
+				MaxLengthDelta:   1,
+				MinShorterLength: 3,
+				AllowPrefixMatch: true,
+				AllowSuffixMatch: true,
+				RelaxAdvantage: config.CallCorrectionTruncationAdvantageConfig{
+					Enabled:                   true,
+					MinAdvantage:              0,
+					RequireCandidateValidated: true,
+					RequireSubjectUnvalidated: true,
+				},
+			},
+		},
 		MinAdvantage:                      2,
 		MinConfidencePercent:              65,
 		MaxEditDistance:                   3,
@@ -696,6 +885,24 @@ func TestBuildCorrectionSettingsMapsConfigFields(t *testing.T) {
 
 	if got.MinConsensusReports != 5 {
 		t.Fatalf("expected min reports 5, got %d", got.MinConsensusReports)
+	}
+	if got.SlashPrecedenceMinReports != cfg.FamilyPolicy.SlashPrecedenceMinReports {
+		t.Fatalf("expected slash min reports %d, got %d", cfg.FamilyPolicy.SlashPrecedenceMinReports, got.SlashPrecedenceMinReports)
+	}
+	if !got.FamilyPolicy.Configured ||
+		!got.FamilyPolicy.TruncationEnabled ||
+		got.FamilyPolicy.TruncationMaxLengthDelta != cfg.FamilyPolicy.Truncation.MaxLengthDelta ||
+		got.FamilyPolicy.TruncationMinShorterLength != cfg.FamilyPolicy.Truncation.MinShorterLength ||
+		got.FamilyPolicy.TruncationAllowPrefix != cfg.FamilyPolicy.Truncation.AllowPrefixMatch ||
+		got.FamilyPolicy.TruncationAllowSuffix != cfg.FamilyPolicy.Truncation.AllowSuffixMatch {
+		t.Fatalf("expected family policy mapping to be preserved")
+	}
+	if !got.TruncationAdvantagePolicy.Configured ||
+		!got.TruncationAdvantagePolicy.Enabled ||
+		got.TruncationAdvantagePolicy.MinAdvantage != cfg.FamilyPolicy.Truncation.RelaxAdvantage.MinAdvantage ||
+		got.TruncationAdvantagePolicy.RequireCandidateValidated != cfg.FamilyPolicy.Truncation.RelaxAdvantage.RequireCandidateValidated ||
+		got.TruncationAdvantagePolicy.RequireSubjectUnvalidated != cfg.FamilyPolicy.Truncation.RelaxAdvantage.RequireSubjectUnvalidated {
+		t.Fatalf("expected truncation advantage policy mapping to be preserved")
 	}
 	if got.CooldownMinReporters != 6 {
 		t.Fatalf("expected cooldown min reporters 6, got %d", got.CooldownMinReporters)

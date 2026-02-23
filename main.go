@@ -705,7 +705,7 @@ func main() {
 		callCooldown.StartCleanup(time.Duration(cfg.CallCorrection.CooldownTTLSeconds) * time.Second)
 	}
 	var recentBandStore *spot.RecentBandStore
-	if cfg.CallCorrection.Enabled && cfg.CallCorrection.RecentBandBonusEnabled {
+	if cfg.CallCorrection.Enabled && (cfg.CallCorrection.RecentBandBonusEnabled || cfg.CallCorrection.StabilizerEnabled) {
 		recentBandStore = spot.NewRecentBandStore(time.Duration(cfg.CallCorrection.RecentBandWindowSeconds) * time.Second)
 		recentBandStore.StartCleanup()
 	}
@@ -853,6 +853,7 @@ func main() {
 	var secondaryFast *dedup.SecondaryDeduper
 	var secondaryMed *dedup.SecondaryDeduper
 	var secondarySlow *dedup.SecondaryDeduper
+	var archivePeerSecondaryMed *dedup.SecondaryDeduper
 	if secondaryFastWindow > 0 {
 		secondaryFast = dedup.NewSecondaryDeduper(secondaryFastWindow, cfg.Dedup.SecondaryFastPreferStrong)
 		secondaryFast.Start()
@@ -873,6 +874,36 @@ func main() {
 		log.Printf("Secondary dedupe (slow) active with %v window", secondarySlowWindow)
 	} else {
 		log.Println("Secondary dedupe (slow) disabled")
+	}
+	if cfg.CallCorrection.Enabled && cfg.CallCorrection.StabilizerEnabled {
+		archiveWindow := time.Duration(0)
+		archivePreferStrong := false
+		archivePolicy := "disabled"
+		archiveKeyMode := dedup.SecondaryKeyGrid2
+		switch {
+		case secondaryMedWindow > 0:
+			archiveWindow = secondaryMedWindow
+			archivePreferStrong = cfg.Dedup.SecondaryMedPreferStrong
+			archivePolicy = "med"
+		case secondaryFastWindow > 0:
+			archiveWindow = secondaryFastWindow
+			archivePreferStrong = cfg.Dedup.SecondaryFastPreferStrong
+			archivePolicy = "fast-fallback"
+		case secondarySlowWindow > 0:
+			archiveWindow = secondarySlowWindow
+			archivePreferStrong = cfg.Dedup.SecondarySlowPreferStrong
+			archivePolicy = "slow-fallback"
+			archiveKeyMode = dedup.SecondaryKeyCQZone
+		}
+		if archiveWindow > 0 {
+			if archiveKeyMode == dedup.SecondaryKeyCQZone {
+				archivePeerSecondaryMed = dedup.NewSecondaryDeduperWithKey(archiveWindow, archivePreferStrong, archiveKeyMode)
+			} else {
+				archivePeerSecondaryMed = dedup.NewSecondaryDeduper(archiveWindow, archivePreferStrong)
+			}
+			archivePeerSecondaryMed.Start()
+			log.Printf("Archive/peer secondary dedupe (%s) active with %v window (stabilizer split)", archivePolicy, archiveWindow)
+		}
 	}
 	if secondaryFastWindow <= 0 && secondaryMedWindow <= 0 && secondarySlowWindow <= 0 {
 		log.Println("Warning: secondary dedupe disabled (fast+med+slow=0); spots broadcast without secondary suppression")
@@ -1013,7 +1044,7 @@ func main() {
 	// Downstream: processOutputSpots.
 	pathReport := newPathReportMetrics()
 	pskrPathOnlyStats := &pathOnlyStats{}
-	go processOutputSpots(deduplicator, secondaryFast, secondaryMed, secondarySlow, &secondaryStageCount, modeAssigner, spotBuffer, telnetServer, peerManager, statsTracker, correctionIndex, cfg.CallCorrection, ctyLookup, metaCache, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, surface, gridUpdater, gridLookup, gridLookupSync, unlicensedReporter, corrLogger, callCooldown, adaptiveMinReports, refresher, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel, recentBandStore, cfg.RBN.KeepSSIDSuffix, archiveWriter, &lastOutput, pathPredictor, pathReport, allowedBandSet)
+	go processOutputSpots(deduplicator, secondaryFast, secondaryMed, secondarySlow, archivePeerSecondaryMed, &secondaryStageCount, modeAssigner, spotBuffer, telnetServer, peerManager, statsTracker, correctionIndex, cfg.CallCorrection, ctyLookup, metaCache, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, surface, gridUpdater, gridLookup, gridLookupSync, unlicensedReporter, corrLogger, callCooldown, adaptiveMinReports, refresher, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel, recentBandStore, cfg.RBN.KeepSSIDSuffix, archiveWriter, &lastOutput, pathPredictor, pathReport, allowedBandSet)
 	startPipelineHealthMonitor(ctx, deduplicator, &lastOutput, peerManager)
 
 	// Connect to RBN CW/RTTY feed if enabled (port 7000)
@@ -1246,6 +1277,9 @@ func main() {
 	if secondarySlow != nil {
 		secondarySlow.Stop()
 	}
+	if archivePeerSecondaryMed != nil {
+		archivePeerSecondaryMed.Stop()
+	}
 
 	// Stop RBN CW/RTTY client
 	if rbnClient != nil {
@@ -1469,6 +1503,24 @@ func formatCorrectionDecisionSummary(tracker *stats.Tracker) string {
 	)
 }
 
+func formatStabilizerSummary(tracker *stats.Tracker) string {
+	if tracker == nil {
+		return "Stabilizer: n/a"
+	}
+	held := tracker.StabilizerHeld()
+	immediate := tracker.StabilizerReleasedImmediate()
+	delayed := tracker.StabilizerReleasedDelayed()
+	suppressed := tracker.StabilizerSuppressedTimeout()
+	overflow := tracker.StabilizerOverflowRelease()
+	return fmt.Sprintf("Stabilizer: %s (H) / %s (I) / %s (D) / %s (S) / %s (O)",
+		humanize.Comma(int64(held)),
+		humanize.Comma(int64(immediate)),
+		humanize.Comma(int64(delayed)),
+		humanize.Comma(int64(suppressed)),
+		humanize.Comma(int64(overflow)),
+	)
+}
+
 func formatTopCounterSummary(counts map[string]uint64, limit int) string {
 	if len(counts) == 0 {
 		return "none"
@@ -1562,6 +1614,7 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 		totalHarmonics := tracker.HarmonicSuppressions()
 		reputationTotal := tracker.ReputationDrops()
 		corrDecisionLine := formatCorrectionDecisionSummary(tracker)
+		stabilizerLine := formatStabilizerSummary(tracker)
 
 		ingestTotal := uint64(0)
 		if ingestStats != nil {
@@ -1697,6 +1750,7 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 		lines = append(lines,
 			fmt.Sprintf("Calls: %d (C) / %d (U) / %d (F) / %d (H) / %d (R)", totalCorrections, totalUnlicensed, totalFreqCorrections, totalHarmonics, reputationTotal), // 6
 			corrDecisionLine,
+			stabilizerLine,
 			pipelineLine, // 7
 			fmt.Sprintf("Telnet: %d clients. Drops: %d (Q) / %d (C) / %d (W)", clientCount, queueDrops, clientDrops, senderFailures), // 8
 		)
@@ -1732,6 +1786,7 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 					pipelineLine,
 					fmt.Sprintf("Corrections: %d  Unlicensed: %d  Freq: %d  Harmonics: %d  Reputation: %d",
 						totalCorrections, totalUnlicensed, totalFreqCorrections, totalHarmonics, reputationTotal),
+					stabilizerLine,
 				},
 				NetworkLines: formatNetworkLines(telnetSrv, clientList),
 			}
@@ -2045,6 +2100,7 @@ func processOutputSpots(
 	secondaryFast *dedup.SecondaryDeduper,
 	secondaryMed *dedup.SecondaryDeduper,
 	secondarySlow *dedup.SecondaryDeduper,
+	archivePeerSecondaryMed *dedup.SecondaryDeduper,
 	secondaryStage *atomic.Uint64,
 	modeAssigner *spot.ModeAssigner,
 	buf *buffer.RingBuffer,
@@ -2083,6 +2139,117 @@ func processOutputSpots(
 ) {
 	outputChan := deduplicator.GetOutputChannel()
 	secondaryActive := secondaryFast != nil || secondaryMed != nil || secondarySlow != nil
+	stabilizerEnabled := telnet != nil && correctionCfg.Enabled && correctionCfg.StabilizerEnabled && recentBandStore != nil
+	var telnetStabilizer *telnetSpotStabilizer
+	if stabilizerEnabled {
+		telnetStabilizer = newTelnetSpotStabilizer(
+			time.Duration(correctionCfg.StabilizerDelaySeconds)*time.Second,
+			correctionCfg.StabilizerMaxPending,
+		)
+		telnetStabilizer.Start()
+		defer telnetStabilizer.Stop()
+	}
+	var familySuppressor *telnetFamilySuppressor
+	if telnet != nil && correctionCfg.Enabled && correctionCfg.FamilyPolicy.TelnetSuppression.Enabled {
+		// Output-only suppression state for less-specific call-family variants.
+		// Archive/peer pipelines are unaffected by this map.
+		familySuppressor = newTelnetFamilySuppressor(
+			time.Duration(correctionCfg.FamilyPolicy.TelnetSuppression.WindowSeconds)*time.Second,
+			correctionCfg.FamilyPolicy.TelnetSuppression.MaxEntries,
+			spot.CorrectionFamilyPolicy{
+				Configured:                 true,
+				TruncationEnabled:          correctionCfg.FamilyPolicy.Truncation.Enabled,
+				TruncationMaxLengthDelta:   correctionCfg.FamilyPolicy.Truncation.MaxLengthDelta,
+				TruncationMinShorterLength: correctionCfg.FamilyPolicy.Truncation.MinShorterLength,
+				TruncationAllowPrefix:      correctionCfg.FamilyPolicy.Truncation.AllowPrefixMatch,
+				TruncationAllowSuffix:      correctionCfg.FamilyPolicy.Truncation.AllowSuffixMatch,
+			},
+			correctionCfg.FamilyPolicy.TelnetSuppression.FrequencyToleranceFallbackHz,
+		)
+	}
+
+	computeTelnetAllows := func(s *spot.Spot) (allowFast bool, allowMed bool, allowSlow bool) {
+		allowFast = true
+		if secondaryFast != nil {
+			allowFast = secondaryFast.ShouldForward(s)
+		}
+		allowMed = true
+		if secondaryMed != nil {
+			allowMed = secondaryMed.ShouldForward(s)
+		}
+		allowSlow = true
+		if secondarySlow != nil {
+			allowSlow = secondarySlow.ShouldForward(s)
+		}
+		fallbackAllowed := allowFast
+		if secondaryFast == nil {
+			if secondaryMed != nil {
+				fallbackAllowed = allowMed
+			} else if secondarySlow != nil {
+				fallbackAllowed = allowSlow
+			}
+		}
+		if secondaryFast == nil {
+			allowFast = fallbackAllowed
+		}
+		if secondaryMed == nil {
+			allowMed = fallbackAllowed
+		}
+		if secondarySlow == nil {
+			allowSlow = fallbackAllowed
+		}
+		return allowFast, allowMed, allowSlow
+	}
+
+	if stabilizerEnabled {
+		go func() {
+			releaseCh := telnetStabilizer.ReleaseChan()
+			for delayed := range releaseCh {
+				if delayed == nil {
+					continue
+				}
+				ctyDB := ctyLookup()
+				var knownCallset *spot.KnownCallsigns
+				if knownCalls != nil {
+					knownCallset = knownCalls.Load()
+				}
+				if suppress := maybeApplyCallCorrectionWithLogger(delayed, correctionIdx, correctionCfg, ctyDB, metaCache, tracker, dash, corrLogger, callCooldown, adaptiveMinReports, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel, recentBandStore, knownCallset); suppress {
+					continue
+				}
+				applyKnownCallFloor(delayed, knownCalls, recentBandStore, correctionCfg)
+				delayed.RefreshBeaconFlag()
+				delayed.EnsureNormalized()
+				if applyLicenseGate(delayed, ctyDB, metaCache, unlicensedReporter) {
+					continue
+				}
+				stillRisky := shouldDelayTelnetByStabilizer(delayed, recentBandStore, correctionCfg, time.Now().UTC())
+				if !shouldRecordRecentBandAfterStabilizerDelay(correctionCfg.StabilizerTimeoutAction, stillRisky) {
+					if tracker != nil {
+						tracker.IncrementStabilizerSuppressedTimeout()
+					}
+					continue
+				}
+				recordRecentBandObservation(delayed, recentBandStore, correctionCfg)
+				allowFast, allowMed, allowSlow := computeTelnetAllows(delayed)
+				if !allowFast && !allowMed && !allowSlow {
+					telnet.DeliverSelfSpot(delayed)
+					continue
+				}
+				if familySuppressor != nil && familySuppressor.ShouldSuppress(delayed, correctionCfg, time.Now().UTC()) {
+					// Keep self visibility semantics consistent with secondary dedupe drops.
+					telnet.DeliverSelfSpot(delayed)
+					continue
+				}
+				if tracker != nil {
+					tracker.IncrementStabilizerReleasedDelayed()
+				}
+				if lastOutput != nil {
+					lastOutput.Store(time.Now().UTC().UnixNano())
+				}
+				telnet.BroadcastSpot(delayed, allowFast, allowMed, allowSlow)
+			}
+		}()
+	}
 
 	for s := range outputChan {
 		func() {
@@ -2207,8 +2374,6 @@ func processOutputSpots(
 			if dirty {
 				s.EnsureNormalized()
 			}
-
-			recordRecentBandObservation(s, recentBandStore, correctionCfg)
 
 			if tracker != nil {
 				modeKey := modeUpper
@@ -2345,43 +2510,59 @@ func processOutputSpots(
 			if secondaryStage != nil {
 				secondaryStage.Add(1)
 			}
-			// Evaluate secondary dedupe per policy; disabled policies fall back to FAST when available.
-			allowFast := true
-			if secondaryFast != nil {
-				allowFast = secondaryFast.ShouldForward(s)
-			}
-			allowMed := true
-			if secondaryMed != nil {
-				allowMed = secondaryMed.ShouldForward(s)
-			}
-			allowSlow := true
-			if secondarySlow != nil {
-				allowSlow = secondarySlow.ShouldForward(s)
-			}
-			fallbackAllowed := allowFast
-			if secondaryFast == nil {
-				if secondaryMed != nil {
-					fallbackAllowed = allowMed
-				} else if secondarySlow != nil {
-					fallbackAllowed = allowSlow
-				}
-			}
-			if secondaryFast == nil {
-				allowFast = fallbackAllowed
-			}
-			if secondaryMed == nil {
-				allowMed = fallbackAllowed
-			}
-			if secondarySlow == nil {
-				allowSlow = fallbackAllowed
+			archivePeerAllowMed := true
+			if archivePeerSecondaryMed != nil {
+				archivePeerAllowMed = archivePeerSecondaryMed.ShouldForward(s)
 			}
 
-			// Broadcast-only dedupe: ring/history already updated above for non-test spots.
-			if !allowFast && !allowMed && !allowSlow {
-				if telnet != nil {
+			allowFast, allowMed, allowSlow := true, true, true
+			telnetDeliverNow := telnet != nil
+			delayedQueued := false
+			if !stabilizerEnabled {
+				allowFast, allowMed, allowSlow = computeTelnetAllows(s)
+				archivePeerAllowMed = allowMed
+				recordRecentBandObservation(s, recentBandStore, correctionCfg)
+				// Broadcast-only dedupe: ring/history already updated above for non-test spots.
+				if !allowFast && !allowMed && !allowSlow {
 					telnet.DeliverSelfSpot(s)
+					return
 				}
-				return
+			} else {
+				telnetDeliverNow = false
+				if shouldDelayTelnetByStabilizer(s, recentBandStore, correctionCfg, time.Now().UTC()) {
+					delayed := cloneSpotForTelnetStabilizer(s)
+					if delayed != nil && telnetStabilizer.Enqueue(delayed) {
+						delayedQueued = true
+						if tracker != nil {
+							tracker.IncrementStabilizerHeld()
+						}
+					} else {
+						allowFast, allowMed, allowSlow = computeTelnetAllows(s)
+						telnetDeliverNow = true
+						if tracker != nil {
+							tracker.IncrementStabilizerOverflowRelease()
+							tracker.IncrementStabilizerReleasedImmediate()
+						}
+					}
+				} else {
+					allowFast, allowMed, allowSlow = computeTelnetAllows(s)
+					telnetDeliverNow = true
+					if tracker != nil {
+						tracker.IncrementStabilizerReleasedImmediate()
+					}
+				}
+				if shouldRecordRecentBandInMainLoop(stabilizerEnabled, delayedQueued) {
+					recordRecentBandObservation(s, recentBandStore, correctionCfg)
+				}
+				if telnetDeliverNow && !allowFast && !allowMed && !allowSlow {
+					telnet.DeliverSelfSpot(s)
+					telnetDeliverNow = false
+				}
+				if telnetDeliverNow && familySuppressor != nil && familySuppressor.ShouldSuppress(s, correctionCfg, time.Now().UTC()) {
+					// Keep self visibility semantics consistent with secondary dedupe drops.
+					telnet.DeliverSelfSpot(s)
+					telnetDeliverNow = false
+				}
 			}
 
 			if gridUpdate != nil {
@@ -2401,23 +2582,88 @@ func processOutputSpots(
 				}
 			}
 
-			if lastOutput != nil {
-				lastOutput.Store(time.Now().UTC().UnixNano())
-			}
-
-			if archiveWriter != nil && allowMed && shouldArchiveSpot(s) {
+			emittedNow := false
+			if archiveWriter != nil && archivePeerAllowMed && shouldArchiveSpot(s) {
 				archiveWriter.Enqueue(s)
+				emittedNow = true
 			}
-
-			if telnet != nil {
+			if telnetDeliverNow {
 				telnet.BroadcastSpot(s, allowFast, allowMed, allowSlow)
+				emittedNow = true
 			}
-			if peerManager != nil && allowMed && shouldPublishToPeers(s) {
+			if peerManager != nil && archivePeerAllowMed && shouldPublishToPeers(s) {
 				peerSpot := cloneSpotForPeerPublish(s)
 				peerManager.PublishDX(peerSpot)
+				emittedNow = true
+			}
+			if emittedNow && lastOutput != nil {
+				lastOutput.Store(time.Now().UTC().UnixNano())
 			}
 		}()
 	}
+}
+
+func cloneSpotForTelnetStabilizer(s *spot.Spot) *spot.Spot {
+	if s == nil {
+		return nil
+	}
+	clone := s.CloneWithComment(s.Comment)
+	clone.InvalidateMetadataCache()
+	clone.EnsureNormalized()
+	return clone
+}
+
+// shouldDelayTelnetByStabilizer reports whether a spot should be held before
+// telnet broadcast. Risk is "not heard recently on same band+mode" for
+// correction-eligible, non-beacon spots, except P-confidence spots which are
+// treated as sufficiently corroborated for immediate pass-through.
+func shouldDelayTelnetByStabilizer(s *spot.Spot, store *spot.RecentBandStore, cfg config.CallCorrectionConfig, now time.Time) bool {
+	if s == nil || store == nil || !cfg.StabilizerEnabled || s.IsBeacon {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(s.Confidence), "P") {
+		return false
+	}
+	mode := s.ModeNorm
+	if mode == "" {
+		mode = s.Mode
+	}
+	if !spot.IsCallCorrectionCandidate(mode) {
+		return false
+	}
+	call := s.DXCallNorm
+	if call == "" {
+		call = s.DXCall
+	}
+	if strings.TrimSpace(call) == "" {
+		return false
+	}
+	band := s.BandNorm
+	if strings.TrimSpace(band) == "" || band == "???" {
+		band = spot.FreqToBand(s.Frequency)
+	}
+	minUnique := cfg.RecentBandRecordMinUniqueSpotters
+	if minUnique <= 0 {
+		minUnique = 2
+	}
+	return !store.HasRecentSupport(call, band, mode, minUnique, now)
+}
+
+// shouldRecordRecentBandInMainLoop controls recent-on-band admission timing for
+// the main output path. Delayed spots must only contribute after delay
+// resolution in the stabilizer release path.
+func shouldRecordRecentBandInMainLoop(stabilizerEnabled bool, delayedQueued bool) bool {
+	return !stabilizerEnabled || !delayedQueued
+}
+
+// shouldRecordRecentBandAfterStabilizerDelay controls recent-on-band admission
+// for delayed spots. If a delayed spot is still risky and timeout action is
+// suppress, it must not reinforce recent-on-band support.
+func shouldRecordRecentBandAfterStabilizerDelay(timeoutAction string, stillRisky bool) bool {
+	if !stillRisky {
+		return true
+	}
+	return !strings.EqualFold(strings.TrimSpace(timeoutAction), stabilizerTimeoutSuppress)
 }
 
 // Purpose: Gate ring-buffer storage for test spotters.
@@ -3213,9 +3459,25 @@ func buildCorrectionSettings(
 	decisionObserver spot.CorrectionDecisionObserver,
 ) spot.CorrectionSettings {
 	return spot.CorrectionSettings{
-		MinConsensusReports:               minReports,
-		CandidateEvalTopK:                 cfg.CandidateEvalTopK,
-		MinAdvantage:                      cfg.MinAdvantage,
+		MinConsensusReports: minReports,
+		FamilyPolicy: spot.CorrectionFamilyPolicy{
+			Configured:                 true,
+			TruncationEnabled:          cfg.FamilyPolicy.Truncation.Enabled,
+			TruncationMaxLengthDelta:   cfg.FamilyPolicy.Truncation.MaxLengthDelta,
+			TruncationMinShorterLength: cfg.FamilyPolicy.Truncation.MinShorterLength,
+			TruncationAllowPrefix:      cfg.FamilyPolicy.Truncation.AllowPrefixMatch,
+			TruncationAllowSuffix:      cfg.FamilyPolicy.Truncation.AllowSuffixMatch,
+		},
+		SlashPrecedenceMinReports: cfg.FamilyPolicy.SlashPrecedenceMinReports,
+		CandidateEvalTopK:         cfg.CandidateEvalTopK,
+		MinAdvantage:              cfg.MinAdvantage,
+		TruncationAdvantagePolicy: spot.CorrectionTruncationAdvantagePolicy{
+			Configured:                true,
+			Enabled:                   cfg.FamilyPolicy.Truncation.RelaxAdvantage.Enabled,
+			MinAdvantage:              cfg.FamilyPolicy.Truncation.RelaxAdvantage.MinAdvantage,
+			RequireCandidateValidated: cfg.FamilyPolicy.Truncation.RelaxAdvantage.RequireCandidateValidated,
+			RequireSubjectUnvalidated: cfg.FamilyPolicy.Truncation.RelaxAdvantage.RequireSubjectUnvalidated,
+		},
 		MinConfidencePercent:              cfg.MinConfidencePercent,
 		MaxEditDistance:                   cfg.MaxEditDistance,
 		RecencyWindow:                     window,
@@ -3343,8 +3605,12 @@ func modeSupportsConfidenceGlyph(mode string) bool {
 // recordRecentBandObservation records accepted spots for recent-on-band
 // corroboration. This is intentionally post-gate (after correction/harmonic/
 // license filters) so the cache favors calls that already survived core checks.
+// Stabilizer-delayed spots are recorded only after delay resolution.
 func recordRecentBandObservation(s *spot.Spot, store *spot.RecentBandStore, cfg config.CallCorrectionConfig) {
-	if s == nil || store == nil || !cfg.RecentBandBonusEnabled || s.IsBeacon {
+	if s == nil || store == nil || s.IsBeacon {
+		return
+	}
+	if !cfg.RecentBandBonusEnabled && !cfg.StabilizerEnabled {
 		return
 	}
 	mode := s.ModeNorm
@@ -5478,6 +5744,7 @@ func buildOverviewLines(
 			humanize.Comma(int64(totalHarmonics)),
 			humanize.Comma(int64(reputationTotal)),
 		),
+		fmt.Sprintf("[yellow]Stabilizer[-]: %s", strings.TrimPrefix(formatStabilizerSummary(tracker), "Stabilizer: ")),
 		"CACHES & DATA FRESHNESS",
 	)
 	lines = append(lines, cacheBars...)

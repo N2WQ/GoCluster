@@ -1264,6 +1264,282 @@ func TestSuggestCallCorrectionUsesRTTYModeSpecificReliability(t *testing.T) {
 	}
 }
 
+func TestDetectCorrectionFamilyExamples(t *testing.T) {
+	cases := []struct {
+		name string
+		a    string
+		b    string
+		kind CorrectionFamilyKind
+		less string
+		more string
+	}{
+		{
+			name: "bare_vs_slash_suffix",
+			a:    "W1AW",
+			b:    "W1AW/7",
+			kind: CorrectionFamilySlash,
+			less: CorrectionVoteKey("W1AW"),
+			more: CorrectionVoteKey("W1AW/7"),
+		},
+		{
+			name: "bare_vs_slash_prefix",
+			a:    "N2WQ",
+			b:    "KP4/N2WQ",
+			kind: CorrectionFamilySlash,
+			less: CorrectionVoteKey("N2WQ"),
+			more: CorrectionVoteKey("KP4/N2WQ"),
+		},
+		{
+			name: "one_char_prefix_truncation",
+			a:    "W1AB",
+			b:    "W1ABC",
+			kind: CorrectionFamilyTruncation,
+			less: CorrectionVoteKey("W1AB"),
+			more: CorrectionVoteKey("W1ABC"),
+		},
+		{
+			name: "one_char_suffix_truncation",
+			a:    "A1ABC",
+			b:    "WA1ABC",
+			kind: CorrectionFamilyTruncation,
+			less: CorrectionVoteKey("A1ABC"),
+			more: CorrectionVoteKey("WA1ABC"),
+		},
+	}
+
+	for _, tc := range cases {
+		rel, ok := DetectCorrectionFamily(tc.a, tc.b)
+		if !ok {
+			t.Fatalf("%s: expected family relation", tc.name)
+		}
+		if rel.Kind != tc.kind || rel.LessSpecific != tc.less || rel.MoreSpecific != tc.more {
+			t.Fatalf("%s: got kind=%s less=%s more=%s", tc.name, rel.Kind, rel.LessSpecific, rel.MoreSpecific)
+		}
+
+		relReverse, okReverse := DetectCorrectionFamily(tc.b, tc.a)
+		if !okReverse {
+			t.Fatalf("%s reverse: expected family relation", tc.name)
+		}
+		if relReverse.Kind != tc.kind || relReverse.LessSpecific != tc.less || relReverse.MoreSpecific != tc.more {
+			t.Fatalf("%s reverse: got kind=%s less=%s more=%s", tc.name, relReverse.Kind, relReverse.LessSpecific, relReverse.MoreSpecific)
+		}
+	}
+}
+
+func TestDetectCorrectionFamilyWithPolicyTruncationControls(t *testing.T) {
+	policy := CorrectionFamilyPolicy{
+		Configured:                 true,
+		TruncationEnabled:          true,
+		TruncationMaxLengthDelta:   2,
+		TruncationMinShorterLength: 4,
+		TruncationAllowPrefix:      true,
+		TruncationAllowSuffix:      false,
+	}
+
+	if rel, ok := DetectCorrectionFamilyWithPolicy("W1AB", "W1ABCD", policy); !ok || rel.Kind != CorrectionFamilyTruncation {
+		t.Fatalf("expected prefix truncation match with length delta 2 policy")
+	}
+	if _, ok := DetectCorrectionFamilyWithPolicy("A1ABC", "WA1ABC", policy); ok {
+		t.Fatalf("expected suffix truncation match to be disabled by policy")
+	}
+	policy.TruncationEnabled = false
+	if _, ok := DetectCorrectionFamilyWithPolicy("W1AB", "W1ABC", policy); ok {
+		t.Fatalf("expected truncation detection to be disabled")
+	}
+}
+
+func TestSuggestCallCorrectionSlashPrecedenceUsesDedicatedThreshold(t *testing.T) {
+	now := time.Now().UTC()
+	subject := &Spot{DXCall: "W1AW", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now}
+	others := []*Spot{
+		{DXCall: "W1AW/1", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "W1AW/1", DECall: "W3CCC", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "W1AW", DECall: "W4DDD", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "W1AW", DECall: "W5EEE", Frequency: 7010.0, Mode: "CW", Time: now},
+	}
+	trace := &captureTraceLogger{}
+	_, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+		Strategy:                  "majority",
+		MinConsensusReports:       4,
+		SlashPrecedenceMinReports: 2,
+		MinAdvantage:              1,
+		MinConfidencePercent:      40,
+		MaxEditDistance:           2,
+		RecencyWindow:             30 * time.Second,
+		DebugLog:                  true,
+		TraceLogger:               trace,
+	}, now)
+	if ok {
+		t.Fatalf("expected correction to fail min_reports with strict consensus")
+	}
+	last := trace.lastTrace(t)
+	if !strings.Contains(last.DecisionPath, "slash_precedence") {
+		t.Fatalf("expected slash_precedence in decision path, got %q", last.DecisionPath)
+	}
+	if last.Reason != "min_reports" {
+		t.Fatalf("expected min_reports rejection, got %q", last.Reason)
+	}
+}
+
+func TestSuggestCallCorrectionTruncationRelaxesAdvantageWhenOnlyLongerValidatedBySCP(t *testing.T) {
+	now := time.Now().UTC()
+	subject := &Spot{DXCall: "W1AB", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now}
+	others := []*Spot{
+		{DXCall: "W1ABC", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "W1ABC", DECall: "W3CCC", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "W1AB", DECall: "W4DDD", Frequency: 7010.0, Mode: "CW", Time: now},
+	}
+	known := &KnownCallsigns{entries: map[string]struct{}{"W1ABC": {}}}
+	trace := &captureTraceLogger{}
+
+	call, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+		Strategy:               "majority",
+		MinConsensusReports:    2,
+		MinAdvantage:           1,
+		MinConfidencePercent:   40,
+		MaxEditDistance:        2,
+		RecencyWindow:          30 * time.Second,
+		PriorBonusKnownCallset: known,
+		DebugLog:               true,
+		TraceLogger:            trace,
+	}, now)
+	if !ok {
+		t.Fatalf("expected truncation-family correction with relaxed advantage")
+	}
+	if call != "W1ABC" {
+		t.Fatalf("expected W1ABC, got %q", call)
+	}
+	last := trace.lastTrace(t)
+	if last.MinAdvantage != 0 {
+		t.Fatalf("expected min advantage relaxed to 0, got %d", last.MinAdvantage)
+	}
+}
+
+func TestSuggestCallCorrectionTruncationKeepsAdvantageWhenShorterAlsoValidated(t *testing.T) {
+	now := time.Now().UTC()
+	subject := &Spot{DXCall: "W1AB", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now}
+	others := []*Spot{
+		{DXCall: "W1ABC", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "W1ABC", DECall: "W3CCC", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "W1AB", DECall: "W4DDD", Frequency: 7010.0, Mode: "CW", Time: now},
+	}
+	known := &KnownCallsigns{entries: map[string]struct{}{
+		"W1ABC": {},
+		"W1AB":  {},
+	}}
+	trace := &captureTraceLogger{}
+
+	_, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+		Strategy:               "majority",
+		MinConsensusReports:    2,
+		MinAdvantage:           1,
+		MinConfidencePercent:   40,
+		MaxEditDistance:        2,
+		RecencyWindow:          30 * time.Second,
+		PriorBonusKnownCallset: known,
+		DebugLog:               true,
+		TraceLogger:            trace,
+	}, now)
+	if ok {
+		t.Fatalf("expected no correction when both truncation forms are validated")
+	}
+	last := trace.lastTrace(t)
+	if last.Reason != "advantage" {
+		t.Fatalf("expected advantage rejection, got %q", last.Reason)
+	}
+	if last.MinAdvantage != 1 {
+		t.Fatalf("expected min advantage to remain 1, got %d", last.MinAdvantage)
+	}
+}
+
+func TestSuggestCallCorrectionTruncationRelaxesAdvantageWithRecentBandValidation(t *testing.T) {
+	withTestRecentBandStore(t, func(store *RecentBandStore) {
+		now := time.Now().UTC()
+		subject := &Spot{DXCall: "W1AB", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now}
+		others := []*Spot{
+			{DXCall: "W1ABC", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+			{DXCall: "W1ABC", DECall: "W3CCC", Frequency: 7010.0, Mode: "CW", Time: now},
+			{DXCall: "W1AB", DECall: "W4DDD", Frequency: 7010.0, Mode: "CW", Time: now},
+		}
+		store.Record("W1ABC", "40m", "CW", "N0AAA", now.Add(-10*time.Minute))
+		store.Record("W1ABC", "40m", "CW", "N0BBB", now.Add(-9*time.Minute))
+		trace := &captureTraceLogger{}
+
+		call, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+			Strategy:                          "majority",
+			MinConsensusReports:               2,
+			MinAdvantage:                      1,
+			MinConfidencePercent:              40,
+			MaxEditDistance:                   2,
+			RecencyWindow:                     30 * time.Second,
+			RecentBandBonusEnabled:            true,
+			RecentBandStore:                   store,
+			RecentBandRecordMinUniqueSpotters: 2,
+			DebugLog:                          true,
+			TraceLogger:                       trace,
+		}, now)
+		if !ok {
+			t.Fatalf("expected truncation-family correction with recent-on-band validation")
+		}
+		if call != "W1ABC" {
+			t.Fatalf("expected W1ABC, got %q", call)
+		}
+		last := trace.lastTrace(t)
+		if last.MinAdvantage != 0 {
+			t.Fatalf("expected min advantage relaxed to 0, got %d", last.MinAdvantage)
+		}
+	})
+}
+
+func TestSuggestCallCorrectionTruncationAdvantageRelaxationCanBeDisabled(t *testing.T) {
+	now := time.Now().UTC()
+	subject := &Spot{DXCall: "W1AB", DECall: "W1AAA", Frequency: 7010.0, Mode: "CW", Time: now}
+	others := []*Spot{
+		{DXCall: "W1ABC", DECall: "W2BBB", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "W1ABC", DECall: "W3CCC", Frequency: 7010.0, Mode: "CW", Time: now},
+		{DXCall: "W1AB", DECall: "W4DDD", Frequency: 7010.0, Mode: "CW", Time: now},
+	}
+	known := &KnownCallsigns{entries: map[string]struct{}{"W1ABC": {}}}
+	trace := &captureTraceLogger{}
+
+	_, _, _, _, _, ok := SuggestCallCorrection(subject, toEntries(others), CorrectionSettings{
+		Strategy:               "majority",
+		MinConsensusReports:    2,
+		MinAdvantage:           1,
+		MinConfidencePercent:   40,
+		MaxEditDistance:        2,
+		RecencyWindow:          30 * time.Second,
+		PriorBonusKnownCallset: known,
+		FamilyPolicy: CorrectionFamilyPolicy{
+			Configured:                 true,
+			TruncationEnabled:          true,
+			TruncationMaxLengthDelta:   1,
+			TruncationMinShorterLength: 3,
+			TruncationAllowPrefix:      true,
+			TruncationAllowSuffix:      true,
+		},
+		TruncationAdvantagePolicy: CorrectionTruncationAdvantagePolicy{
+			Configured:                true,
+			Enabled:                   false,
+			MinAdvantage:              0,
+			RequireCandidateValidated: true,
+			RequireSubjectUnvalidated: true,
+		},
+		DebugLog:    true,
+		TraceLogger: trace,
+	}, now)
+	if ok {
+		t.Fatalf("expected correction to remain blocked when truncation relaxation is disabled")
+	}
+	last := trace.lastTrace(t)
+	if last.Reason != "advantage" {
+		t.Fatalf("expected advantage rejection, got %q", last.Reason)
+	}
+	if last.MinAdvantage != 1 {
+		t.Fatalf("expected min advantage to remain baseline 1, got %d", last.MinAdvantage)
+	}
+}
+
 func TestSuggestCallCorrectionSlashPrecedenceDropsBareCall(t *testing.T) {
 	withTestCallQualityStore(t, func(_ *CallQualityStore) {
 		now := time.Now().UTC()

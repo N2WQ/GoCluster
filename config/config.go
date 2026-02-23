@@ -601,9 +601,15 @@ type CallCorrectionConfig struct {
 	// BandStateOverrides allows per-band, per-activity-state tuning of frequency tolerance
 	// and quality binning. Values fall back to the global defaults when omitted.
 	BandStateOverrides []BandStateOverride `yaml:"band_state_overrides"`
+	// FamilyPolicy groups slash/truncation family precedence behavior and
+	// telnet output suppression bounds.
+	FamilyPolicy CallCorrectionFamilyPolicyConfig `yaml:"family_policy"`
 	// MinConsensusReports defines how many other unique spotters
 	// must agree on an alternate callsign before we consider correcting it.
 	MinConsensusReports int `yaml:"min_consensus_reports"`
+	// SlashPrecedenceMinReports is retained for backward compatibility.
+	// Prefer call_correction.family_policy.slash_precedence_min_reports.
+	SlashPrecedenceMinReports int `yaml:"slash_precedence_min_reports"`
 	// CandidateEvalTopK controls how many ranked consensus candidates are
 	// evaluated (after anchor) before giving up.
 	CandidateEvalTopK int `yaml:"candidate_eval_top_k"`
@@ -711,6 +717,13 @@ type CallCorrectionConfig struct {
 	RecentBandWindowSeconds           int  `yaml:"recent_band_window_seconds"`
 	RecentBandBonusMax                int  `yaml:"recent_band_bonus_max"`
 	RecentBandRecordMinUniqueSpotters int  `yaml:"recent_band_record_min_unique_spotters"`
+	// Optional telnet stabilizer: delay spots that have not been heard recently
+	// on the same band+mode. This gate is used only for telnet broadcast and
+	// does not alter archive/peer output behavior.
+	StabilizerEnabled       bool   `yaml:"stabilizer_enabled"`
+	StabilizerDelaySeconds  int    `yaml:"stabilizer_delay_seconds"`
+	StabilizerTimeoutAction string `yaml:"stabilizer_timeout_action"` // release | suppress
+	StabilizerMaxPending    int    `yaml:"stabilizer_max_pending"`
 	// Optional prior bonus for min_reports shortfalls, bounded by prior_bonus_max.
 	PriorBonusEnabled     bool   `yaml:"prior_bonus_enabled"`
 	PriorBonusMax         int    `yaml:"prior_bonus_max"`
@@ -722,6 +735,63 @@ type CallCorrectionConfig struct {
 	SpotterReliabilityFileCW   string  `yaml:"spotter_reliability_file_cw"`
 	SpotterReliabilityFileRTTY string  `yaml:"spotter_reliability_file_rtty"`
 	MinSpotterReliability      float64 `yaml:"min_spotter_reliability"`
+}
+
+// CallCorrectionFamilyPolicyConfig controls family-specific behavior for call
+// precedence and telnet output suppression.
+type CallCorrectionFamilyPolicyConfig struct {
+	// SlashPrecedenceMinReports defines how many unique reporters are required
+	// for a slash-explicit variant to suppress the bare call in the same base
+	// family during correction ranking.
+	SlashPrecedenceMinReports int `yaml:"slash_precedence_min_reports"`
+	// Truncation defines one-character containment-family matching and gate rails.
+	Truncation CallCorrectionTruncationFamilyConfig `yaml:"truncation"`
+	// TelnetSuppression defines output-only suppression behavior for family
+	// variants after correction decisions are made.
+	TelnetSuppression CallCorrectionTelnetFamilySuppressionConfig `yaml:"telnet_suppression"`
+}
+
+// CallCorrectionTruncationFamilyConfig controls truncation-family detection and
+// optional advantage relaxation behavior.
+type CallCorrectionTruncationFamilyConfig struct {
+	// Enabled toggles truncation-family detection entirely.
+	Enabled bool `yaml:"enabled"`
+	// MaxLengthDelta bounds |len(longer)-len(shorter)| for containment-family matches.
+	MaxLengthDelta int `yaml:"max_length_delta"`
+	// MinShorterLength prevents tiny strings from matching as truncation families.
+	MinShorterLength int `yaml:"min_shorter_length"`
+	// AllowPrefixMatch enables shorter-as-prefix matching (for example W1AB/W1ABC).
+	AllowPrefixMatch bool `yaml:"allow_prefix_match"`
+	// AllowSuffixMatch enables shorter-as-suffix matching (for example A1ABC/WA1ABC).
+	AllowSuffixMatch bool `yaml:"allow_suffix_match"`
+	// RelaxAdvantage defines when truncation family candidates can reduce min_advantage.
+	RelaxAdvantage CallCorrectionTruncationAdvantageConfig `yaml:"relax_advantage"`
+}
+
+// CallCorrectionTruncationAdvantageConfig controls truncation-family
+// min_advantage relaxation behavior.
+type CallCorrectionTruncationAdvantageConfig struct {
+	// Enabled toggles truncation-family min_advantage relaxation.
+	Enabled bool `yaml:"enabled"`
+	// MinAdvantage sets the effective min_advantage when relaxation applies.
+	MinAdvantage int `yaml:"min_advantage"`
+	// RequireCandidateValidated requires SCP/recent-band validation for the more-specific candidate.
+	RequireCandidateValidated bool `yaml:"require_candidate_validated"`
+	// RequireSubjectUnvalidated requires the less-specific subject to lack SCP/recent-band validation.
+	RequireSubjectUnvalidated bool `yaml:"require_subject_unvalidated"`
+}
+
+// CallCorrectionTelnetFamilySuppressionConfig controls telnet-only family
+// suppression runtime bounds.
+type CallCorrectionTelnetFamilySuppressionConfig struct {
+	// Enabled toggles telnet-only family suppression.
+	Enabled bool `yaml:"enabled"`
+	// WindowSeconds is the recency window for family suppression cache entries.
+	WindowSeconds int `yaml:"window_seconds"`
+	// MaxEntries bounds total cache entries across all mode/frequency buckets.
+	MaxEntries int `yaml:"max_entries"`
+	// FrequencyToleranceFallbackHz applies when per-mode tolerance values are invalid/missing.
+	FrequencyToleranceFallbackHz float64 `yaml:"frequency_tolerance_fallback_hz"`
 }
 
 // BandStateOverride groups bands and per-state overrides for correction tolerances.
@@ -942,6 +1012,15 @@ func Load(path string) (*Config, error) {
 	hasAdaptiveMinReportsEnabled := yamlKeyPresent(raw, "call_correction", "adaptive_min_reports", "enabled")
 	hasArchiveCleanupYield := yamlKeyPresent(raw, "archive", "cleanup_batch_yield_ms")
 	hasPSKRMQTTTimeout := yamlKeyPresent(raw, "pskreporter", "mqtt_qos12_enqueue_timeout_ms")
+	hasLegacySlashPrecedenceMinReports := yamlKeyPresent(raw, "call_correction", "slash_precedence_min_reports")
+	hasFamilySlashPrecedenceMinReports := yamlKeyPresent(raw, "call_correction", "family_policy", "slash_precedence_min_reports")
+	hasFamilyTruncationEnabled := yamlKeyPresent(raw, "call_correction", "family_policy", "truncation", "enabled")
+	hasFamilyTruncationPrefix := yamlKeyPresent(raw, "call_correction", "family_policy", "truncation", "allow_prefix_match")
+	hasFamilyTruncationSuffix := yamlKeyPresent(raw, "call_correction", "family_policy", "truncation", "allow_suffix_match")
+	hasFamilyTruncationRelaxEnabled := yamlKeyPresent(raw, "call_correction", "family_policy", "truncation", "relax_advantage", "enabled")
+	hasFamilyTruncationRelaxCandidate := yamlKeyPresent(raw, "call_correction", "family_policy", "truncation", "relax_advantage", "require_candidate_validated")
+	hasFamilyTruncationRelaxSubject := yamlKeyPresent(raw, "call_correction", "family_policy", "truncation", "relax_advantage", "require_subject_unvalidated")
+	hasFamilyTelnetSuppressionEnabled := yamlKeyPresent(raw, "call_correction", "family_policy", "telnet_suppression", "enabled")
 
 	if legacySecondaryWindow || legacySecondaryPrefer {
 		fmt.Printf("Warning: dedup.secondary_window_seconds and dedup.secondary_prefer_stronger_snr are deprecated and ignored; use secondary_fast_* / secondary_med_* / secondary_slow_* instead.\n")
@@ -1130,6 +1209,21 @@ func Load(path string) (*Config, error) {
 	if cfg.CallCorrection.MinConsensusReports <= 0 {
 		cfg.CallCorrection.MinConsensusReports = 4
 	}
+	switch {
+	case hasFamilySlashPrecedenceMinReports:
+		if cfg.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports <= 0 {
+			cfg.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports = 2
+		}
+	case hasLegacySlashPrecedenceMinReports:
+		cfg.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports = cfg.CallCorrection.SlashPrecedenceMinReports
+		if cfg.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports <= 0 {
+			cfg.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports = 2
+		}
+	default:
+		cfg.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports = 2
+	}
+	// Keep legacy field synchronized for compatibility with existing callers.
+	cfg.CallCorrection.SlashPrecedenceMinReports = cfg.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports
 	if cfg.CallCorrection.CandidateEvalTopK <= 0 {
 		cfg.CallCorrection.CandidateEvalTopK = 1
 	}
@@ -1255,6 +1349,67 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.CallCorrection.RecentBandRecordMinUniqueSpotters <= 0 {
 		cfg.CallCorrection.RecentBandRecordMinUniqueSpotters = 2
+	}
+	if cfg.CallCorrection.StabilizerDelaySeconds <= 0 {
+		cfg.CallCorrection.StabilizerDelaySeconds = 5
+	}
+	if cfg.CallCorrection.StabilizerMaxPending <= 0 {
+		cfg.CallCorrection.StabilizerMaxPending = 20000
+	}
+	if !hasFamilyTruncationEnabled {
+		cfg.CallCorrection.FamilyPolicy.Truncation.Enabled = true
+	}
+	if cfg.CallCorrection.FamilyPolicy.Truncation.MaxLengthDelta <= 0 {
+		cfg.CallCorrection.FamilyPolicy.Truncation.MaxLengthDelta = 1
+	}
+	if cfg.CallCorrection.FamilyPolicy.Truncation.MinShorterLength <= 0 {
+		cfg.CallCorrection.FamilyPolicy.Truncation.MinShorterLength = 3
+	}
+	if !hasFamilyTruncationPrefix {
+		cfg.CallCorrection.FamilyPolicy.Truncation.AllowPrefixMatch = true
+	}
+	if !hasFamilyTruncationSuffix {
+		cfg.CallCorrection.FamilyPolicy.Truncation.AllowSuffixMatch = true
+	}
+	if !hasFamilyTruncationRelaxEnabled {
+		cfg.CallCorrection.FamilyPolicy.Truncation.RelaxAdvantage.Enabled = true
+	}
+	if cfg.CallCorrection.FamilyPolicy.Truncation.RelaxAdvantage.MinAdvantage < 0 {
+		cfg.CallCorrection.FamilyPolicy.Truncation.RelaxAdvantage.MinAdvantage = 0
+	}
+	if !hasFamilyTruncationRelaxCandidate {
+		cfg.CallCorrection.FamilyPolicy.Truncation.RelaxAdvantage.RequireCandidateValidated = true
+	}
+	if !hasFamilyTruncationRelaxSubject {
+		cfg.CallCorrection.FamilyPolicy.Truncation.RelaxAdvantage.RequireSubjectUnvalidated = true
+	}
+	if !hasFamilyTelnetSuppressionEnabled {
+		cfg.CallCorrection.FamilyPolicy.TelnetSuppression.Enabled = true
+	}
+	if cfg.CallCorrection.FamilyPolicy.TelnetSuppression.WindowSeconds <= 0 {
+		windowSeconds := cfg.CallCorrection.RecencySeconds
+		if cfg.CallCorrection.RecencySecondsCW > windowSeconds {
+			windowSeconds = cfg.CallCorrection.RecencySecondsCW
+		}
+		if cfg.CallCorrection.RecencySecondsRTTY > windowSeconds {
+			windowSeconds = cfg.CallCorrection.RecencySecondsRTTY
+		}
+		cfg.CallCorrection.FamilyPolicy.TelnetSuppression.WindowSeconds = windowSeconds
+	}
+	if cfg.CallCorrection.FamilyPolicy.TelnetSuppression.MaxEntries <= 0 {
+		cfg.CallCorrection.FamilyPolicy.TelnetSuppression.MaxEntries = cfg.CallCorrection.StabilizerMaxPending
+	}
+	if cfg.CallCorrection.FamilyPolicy.TelnetSuppression.FrequencyToleranceFallbackHz <= 0 {
+		cfg.CallCorrection.FamilyPolicy.TelnetSuppression.FrequencyToleranceFallbackHz = cfg.CallCorrection.FrequencyToleranceHz
+	}
+	cfg.CallCorrection.StabilizerTimeoutAction = strings.ToLower(strings.TrimSpace(cfg.CallCorrection.StabilizerTimeoutAction))
+	if cfg.CallCorrection.StabilizerTimeoutAction == "" {
+		cfg.CallCorrection.StabilizerTimeoutAction = "release"
+	}
+	switch cfg.CallCorrection.StabilizerTimeoutAction {
+	case "release", "suppress":
+	default:
+		return nil, fmt.Errorf("invalid call_correction.stabilizer_timeout_action %q (expected release or suppress)", cfg.CallCorrection.StabilizerTimeoutAction)
 	}
 	if cfg.CallCorrection.PriorBonusMax < 0 {
 		cfg.CallCorrection.PriorBonusMax = 0
@@ -2143,9 +2298,10 @@ func (c *Config) Print() {
 	if c.CallCorrection.Enabled {
 		status = "enabled"
 	}
-	fmt.Printf("Call correction: %s (min_reports=%d advantage>%d confidence>=%d%% recency=%ds max_edit=%d tol=%.1fHz distance_cw=%s distance_rtty=%s invalid_action=%s d3_extra:+%d/+%d/+%d%%)\n",
+	fmt.Printf("Call correction: %s (min_reports=%d slash_min_reports=%d advantage>%d confidence>=%d%% recency=%ds max_edit=%d tol=%.1fHz distance_cw=%s distance_rtty=%s invalid_action=%s d3_extra:+%d/+%d/+%d%%)\n",
 		status,
 		c.CallCorrection.MinConsensusReports,
+		c.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports,
 		c.CallCorrection.MinAdvantage,
 		c.CallCorrection.MinConfidencePercent,
 		c.CallCorrection.RecencySeconds,
@@ -2157,6 +2313,20 @@ func (c *Config) Print() {
 		c.CallCorrection.Distance3ExtraReports,
 		c.CallCorrection.Distance3ExtraAdvantage,
 		c.CallCorrection.Distance3ExtraConfidence)
+	fmt.Printf("Call correction family policy: truncation(enabled=%t delta<=%d shorter_len>=%d prefix=%t suffix=%t relax_advantage=%t->%d validated(longer=%t shorter_unvalidated=%t)) telnet_suppression(enabled=%t window=%ds max_entries=%d fallback_tol=%.1fHz)\n",
+		c.CallCorrection.FamilyPolicy.Truncation.Enabled,
+		c.CallCorrection.FamilyPolicy.Truncation.MaxLengthDelta,
+		c.CallCorrection.FamilyPolicy.Truncation.MinShorterLength,
+		c.CallCorrection.FamilyPolicy.Truncation.AllowPrefixMatch,
+		c.CallCorrection.FamilyPolicy.Truncation.AllowSuffixMatch,
+		c.CallCorrection.FamilyPolicy.Truncation.RelaxAdvantage.Enabled,
+		c.CallCorrection.FamilyPolicy.Truncation.RelaxAdvantage.MinAdvantage,
+		c.CallCorrection.FamilyPolicy.Truncation.RelaxAdvantage.RequireCandidateValidated,
+		c.CallCorrection.FamilyPolicy.Truncation.RelaxAdvantage.RequireSubjectUnvalidated,
+		c.CallCorrection.FamilyPolicy.TelnetSuppression.Enabled,
+		c.CallCorrection.FamilyPolicy.TelnetSuppression.WindowSeconds,
+		c.CallCorrection.FamilyPolicy.TelnetSuppression.MaxEntries,
+		c.CallCorrection.FamilyPolicy.TelnetSuppression.FrequencyToleranceFallbackHz)
 	fmt.Printf("Call correction voice: tol=%.0fHz search=%.1fkHz min_snr=%d\n",
 		c.CallCorrection.VoiceFrequencyToleranceHz,
 		c.CallCorrection.VoiceCandidateWindowKHz,
@@ -2170,6 +2340,15 @@ func (c *Config) Print() {
 		c.CallCorrection.CallQualityMaxEntries,
 		c.CallCorrection.CallQualityCleanupIntervalSeconds,
 		pinPriors)
+	stabilizerStatus := "disabled"
+	if c.CallCorrection.StabilizerEnabled {
+		stabilizerStatus = "enabled"
+	}
+	fmt.Printf("Call correction stabilizer: %s (delay=%ds timeout_action=%s max_pending=%d)\n",
+		stabilizerStatus,
+		c.CallCorrection.StabilizerDelaySeconds,
+		c.CallCorrection.StabilizerTimeoutAction,
+		c.CallCorrection.StabilizerMaxPending)
 
 	harmonicStatus := "disabled"
 	if c.Harmonics.Enabled {

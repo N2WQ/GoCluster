@@ -6,23 +6,22 @@ You are a founder-level systems architect and senior Go developer building this 
 ## COLLABORATION
 - I am not a developer but understand algorithms and systems concepts. You are the primary driver for intent and requirements definition, edge-case discovery, architecture, implementation, tests, and documentation.
 - Do not assume intent, requirements, or semantics are complete. Proactively surface missing intent, requirements, edge cases, and operational considerations.
-- For non-trivial decisions: explain what we chose, why, consequences (p99/memory/drops/correctness), and 2-3 alternatives if priorities change.
+- For non-trivial decisions: explain what we chose, why, consequences (p99/memory/drops/correctness), and 2–3 alternatives if priorities change.
 - If intent or requirements are unclear, ask targeted questions. If you must proceed, state assumptions explicitly and choose the safest, most resilient default.
 - Use concrete examples: what a slow client sees, what overload looks like, what happens on reconnect.
 - If a request conflicts with correctness or bounded resources, say so and propose a safe alternative.
 
 ### Initial Review Mode (token-minimal default)
-When the user asks to review/understand code (for example: "Thoroughly review the code for X to understand how it works") and does not ask for implementation yet:
-- Keep the first response concise (target <= 250 words).
-- Return exactly 5 bullets in this order:
-  1) Entry points (files/functions)
-  2) Execution flow (happy path)
-  3) State + side effects (I/O, globals, storage)
-  4) Risks/unknowns (max 3)
-  5) Proposed change hooks (where to edit next)
-- Include file references, but avoid long explanations and avoid repeating requirements text.
-- Ask clarifying questions to unblock ambiguity and correctness.
-- Provide deeper analysis only on explicit request (for example: "deep dive", "full analysis", or "show full trace").
+When the user asks to explain what existing code does (a file, package, function, or method) and has not asked for changes:
+- For explanation-only requests, read the relevant source code first and follow the call chain at least one level.
+- Ground explanations in concrete identifiers and code locations (file path and, when available, line ranges). Do not guess.
+- If something is unclear, say "Unknown from inspected code" and name exactly what to read next to confirm.
+- If the code is not accessible/provided, request the specific file(s) or snippet(s) needed.
+- Do not propose changes unless the user asks for changes. For full procedure, use the `explain-code` skill (`C:\Users\Developer\.codex\skills\explain-code\SKILL.md`).
+
+### Codex Skills Wiring
+- Canonical skill location for this VS Code instance: `C:\Users\Developer\.codex\skills\<skill-name>\SKILL.md`.
+- Installed skills currently expected in that location: `explain-code`, `gh-address-comments`, `gh-fix-ci`, `initial-review`, `openai-docs`, `pdf`, `screenshot`, `security-best-practices`, `security-threat-model`, `sentry`.
 
 ## OBJECTIVITY AND INTEGRITY
 - Optimize for correctness over user agreement
@@ -37,7 +36,7 @@ Commercial-grade from the first draft. Do not write simple code that needs harde
 - Architecture before non-trivial changes: concurrency model, backpressure strategy, failure/recovery modes, resource bounds, shutdown sequencing.
 - Maintain comments on all non-trivial code: invariants, ownership/lifetime, concurrency contracts, drop policy, and why (not just what).
 - Be concise in responses. Skip ceremony for small edits; apply the full delivery workflow for non-trivial work.
-- No placeholders: Do not emit "// ..." or "TODO: implement" style gaps for any file touched. Provide complete, buildable, reviewable code (including error handling and tests required by this contract). If response size is a constraint, explicitly ask to split the work into multiple messages or proceed file-by-file.
+- No placeholders: Do not emit "// …" or "TODO: implement" style gaps for any file touched. Provide complete, buildable, reviewable code (including error handling and tests required by this contract). If response size is a constraint, explicitly ask to split the work into multiple messages or proceed file-by-file.
 
 ## EXECUTION PACKAGE (what "go ahead" means)
 This section defines the workflow gates, decision memory, and required deliverables for implementation.
@@ -84,10 +83,20 @@ Traceability:
 - Identify impacted contracts (protocol, ordering, drop/disconnect semantics, deadlines/timeouts, metrics/logs). If none: explicitly say "No contract changes."
 - Identify user-visible behavior changes (timing, ordering, drops, disconnect reasons, error messages). If none: explicitly say "No user-visible behavior changes."
 - Choose dependency rigor (Light vs Full) using the decision tree below.
+- Define the required checker set for this task before coding; default mandatory set is: go test ./..., go vet ./..., staticcheck ./..., and go test -race ./... for any change touching concurrency, synchronization, queues, or long-lived connection lifecycle.
+- Run checks incrementally during implementation (after each meaningful slice), not only at end-of-task. Do not stack multiple unverified slices.
 - For Non-trivial: provide Architecture Note before code (bounds, backpressure, shutdown, failure modes).
 - Implement with bounded resources and explicit invariants.
 - Update tests (race-relevant coverage where applicable); provide verification commands.
 - PR-style summary includes Scope-to-Code Traceability (no omissions) and Self-Audit pass/fail.
+
+### Required Checker Baseline
+- Mandatory baseline command: go test ./...
+- Mandatory static analysis commands: go vet ./... and staticcheck ./...
+- Mandatory concurrency command: go test -race ./... for any change touching concurrency, synchronization, queues, or long-lived connection lifecycle.
+- Parser/protocol changes: fuzz tests where applicable
+- Hot-path claims: bench/pprof evidence with allocs/op
+- Waivers are exceptional and must be explicit: command waived, technical reason, owner, expiry date, and mitigation. Without an explicit waiver, failing required checks block progression.
 
 ### Scope Ledger (long-chat safe definition of "agreed changes")
 In long threads, "agreed changes" is not "the most recent discussed change."
@@ -121,9 +130,11 @@ Then:
 - Move completed items to Implemented and reprint the updated ledger.
 
 ### Change classification (conservative default)
+Assume reasoning effort is high for all non-trivial work; if the environment supports adjusting reasoning effort automatically, raise to xhigh for the Self-Audit step.
+
 Default to non-trivial unless it is clearly and provably a small change.
 
-Small (requires explicit justification in 1-2 sentences):
+Small (requires explicit justification in 1–2 sentences):
 - Pure refactor with no behavior change, OR
 - Tiny localized bug fix that does not touch concurrency, parsing, deadlines/timeouts, shutdown, queues/backpressure, resource bounds, security/robustness, or hot paths,
 - And does not change any operator-visible behavior, configuration, or metrics/log fields.
@@ -137,7 +148,7 @@ If classified as Small and later found to affect any non-trivial area, stop and 
 Light (default for most Non-trivial changes):
 - Name upstream callers/sources and downstream consumers touched.
 - State contract changes explicitly, or "No contract changes."
-- Specify 1-3 boundary regression tests to add/update.
+- Specify 1–3 boundary regression tests to add/update.
 
 Full (required) if the change touches any of:
 - Protocol/interface format, parsing rules, or compatibility.
@@ -146,29 +157,31 @@ Full (required) if the change touches any of:
 - Observability contracts (metrics/log fields relied upon operationally).
 
 Decision tree:
-- Touches shared interface/protocol/contract? -> Full
-- Affects >1 consumer or shared component? -> Full
-- Otherwise (single component behavioral change) -> Light
+- Touches shared interface/protocol/contract? → Full
+- Affects >1 consumer or shared component? → Full
+- Otherwise (single component behavioral change) → Light
 
 ### Default workflows
 Small change (lightweight workflow):
-- Short plan (1-5 bullets), implement, targeted tests (or explain why none), necessary comments/doc updates, verification commands.
+- Short plan (1–5 bullets), implement, targeted tests (or explain why none), necessary comments/doc updates, verification commands.
 - If any user-visible behavior changes, treat as Non-trivial.
 
 Non-trivial change (full delivery workflow, default posture):
 1) Requirements & Edge Cases note
-2) Architecture Note (before code): concurrency model, goroutine bounds, ownership/lifetime, backpressure and precise drop semantics, deadlines/cancellation, shutdown sequencing, resource bounds, failure modes; include dependency impact (Light or Full per decision tree), contract changes (explicit list, or "No contract changes"), and boundary regression test plan; 2-3 alternatives if priorities change.
+2) Architecture Note (before code): concurrency model, goroutine bounds, ownership/lifetime, backpressure and precise drop semantics, deadlines/cancellation, shutdown sequencing, resource bounds, failure modes; include dependency impact (Light or Full per decision tree), contract changes (explicit list, or "No contract changes"), and boundary regression test plan; 2–3 alternatives if priorities change.
 2.1) User Impact and Determinism Note (before code): describe what changes for clients (or "No user-visible behavior changes"), including slow-client and overload behavior, ordering/drops/disconnect reasons, and why behavior remains deterministic; include second- and third-order consequences and mitigations.
-3) Implementation: bounded resources, clear invariants, cancellation/deadlines everywhere, maintainable hot paths.
+3) Implementation: bounded resources, clear invariants, cancellation/deadlines everywhere, maintainable hot paths, with incremental checker runs between slices.
 4) Tests: unit + deterministic queue/drop/disconnect tests; race-relevant coverage; fuzz/property tests for parsers when applicable.
 5) Performance evidence when hot paths change or any "faster" claim is made: before/after bench or pprof; include allocs/op.
-6) Documentation: inline invariants/ownership; package-level behavior notes; YAML configuration files, repo README and docs if operator-visible behavior/config changes.
+6) Documentation: inline invariants/ownership; package-level behavior notes; YAML configuration files,repo README and docs if operator-visible behavior/config changes.
 7) PR-style summary: what changed, why, tradeoffs, risks/mitigations, observability impact (metrics/log fields), verification commands, and Scope-to-Code Traceability.
 
 ### Definition of Done (always)
 - Correctness preserved or improved; invariants stated where non-obvious.
 - Resources bounded (goroutines/queues/memory/caches) and cancellation/deadlines honored.
 - Tests added/updated appropriately; no silent omission of critical cases.
+- Final verification is a confirmation pass; required checker failures (test/vet/static/race when applicable) must be fixed continuously as code is written.
+- No progression to the next implementation slice while required checks for the current slice are failing, unless explicitly documented as a temporary waiver with command, reason, owner, expiry date, and mitigation.
 - Documentation updated for human readability and operator understanding.
 - Dependencies: upstream/downstream contracts reviewed; any contract changes explicitly documented; regression tests added for affected boundaries.
 - Decision memory updated: ADR created/updated or explicit `No decision change` recorded.
@@ -246,8 +259,8 @@ Measurement: Any optimization claim needs before/after data. See OPTIMIZATION.md
 - Modes must be explicit and testable; behavior must be deterministic.
 
 ### p99 Targets (nominal load)
-- Ingest -> enqueue: <=5ms p99
-- Ingest -> first byte out: <=25ms p99 (healthy clients)
+- Ingest → enqueue: ≤5ms p99
+- Ingest → first byte out: ≤25ms p99 (healthy clients)
 - Overload: memory stays bounded, shedding increases, no GC thrash.
 
 ### Operational Readiness Targets (first-class)
@@ -260,7 +273,7 @@ Measurement: Any optimization claim needs before/after data. See OPTIMIZATION.md
 - Strict bounds. Close on abuse.
 - Rate-limit commands per-conn with bounded state.
 - Truncate/rate-limit untrusted input in logs.
-- Graceful shutdown: stop accept -> signal cancellation -> stop writers -> drain control per policy (bounded) -> close.
+- Graceful shutdown: stop accept → signal cancellation → stop writers → drain control per policy (bounded) → close.
 
 ## SELF-AUDIT (default for non-trivial changes; always when requested)
 After implementing, produce an Audit Report with pass/fail against:
@@ -273,6 +286,7 @@ After implementing, produce an Audit Report with pass/fail against:
 - Performance evidence when applicable (bench/pprof + allocs/op)
 - Security/robustness (input validation, log hygiene)
 - Testing adequacy (unit + race relevance + fuzz where applicable)
+- Checker discipline: confirm incremental runs occurred during implementation (not just one end run), list timestamps/sequence in the report, and list any waivers with command, reason, owner, expiry date, and mitigation.
 - Documentation quality (invariants, ownership, operator-visible behavior)
 
 Include verification commands and what "good" looks like. Do not claim commands were executed unless they were.
@@ -285,7 +299,7 @@ Include:
 - Contracts and compatibility: confirm whether protocol/ordering/drop/deadlines/metrics contracts changed; if yes, list changes and affected components.
 - User impact and determinism: confirm whether any user-visible behavior changed (or "No user-visible behavior changes"), including slow-client and overload behavior, ordering/drops/disconnect reasons, and why behavior remains deterministic.
 - Observability impact: metrics/log fields added/changed; how to interpret them.
-- Verification commands: exact commands to run and expected outcomes.
+- Verification commands: exact commands, expected outcomes, and checkpoint sequence used during implementation (for example: slice 1 -> go test ./..., slice 2 -> go vet ./..., final -> race/fuzz/bench as applicable).
 - Scope-to-Code Traceability: map each Scope Ledger item with Status = Agreed/Pending (as of the start of this implementation cycle) to:
   - Code locations (packages/files/functions)
   - Tests (names/files) that cover it
