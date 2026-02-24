@@ -83,8 +83,8 @@ const (
 
 	shadowResolverQueueSize           = 8192
 	shadowResolverMaxActiveKeys       = 6000
-	shadowResolverMaxCandidatesPerKey = 8
-	shadowResolverMaxReportersPerCand = 32
+	shadowResolverMaxCandidatesPerKey = 16
+	shadowResolverMaxReportersPerCand = 64
 	shadowResolverInactiveTTL         = 10 * time.Minute
 	shadowResolverEvalMinInterval     = 500 * time.Millisecond
 	shadowResolverSweepInterval       = 1 * time.Second
@@ -1583,7 +1583,7 @@ func formatResolverSummary(resolver *spot.SignalResolver) string {
 		agreementPercent = int((metrics.DecisionAgreement * 100) / metrics.DecisionsComparable)
 	}
 	return fmt.Sprintf(
-		"Resolver: %s (C) / %s (P) / %s (U) / %s (S) | agr %s/%s (%d%%) | d %s (SP) / %s (DW) / %s (UC) | q=%d drop %s (Q) / %s (K) / %s (C) / %s (R)",
+		"Resolver: %s (C) / %s (P) / %s (U) / %s (S) | agr %s/%s (%d%%) | d %s (SP) / %s (DW) / %s (UC) | q=%d drop %s (Q) / %s (K) / %s (C) / %s (R) | pressure %s (C) / %s (R) evict %s (C) / %s (R) hw %s (C) / %s (R)",
 		humanize.Comma(int64(metrics.StateConfident)),
 		humanize.Comma(int64(metrics.StateProbable)),
 		humanize.Comma(int64(metrics.StateUncertain)),
@@ -1599,6 +1599,12 @@ func formatResolverSummary(resolver *spot.SignalResolver) string {
 		humanize.Comma(int64(metrics.DropMaxKeys)),
 		humanize.Comma(int64(metrics.DropMaxCandidates)),
 		humanize.Comma(int64(metrics.DropMaxReporters)),
+		humanize.Comma(int64(metrics.CapPressureCandidates)),
+		humanize.Comma(int64(metrics.CapPressureReporters)),
+		humanize.Comma(int64(metrics.EvictedCandidates)),
+		humanize.Comma(int64(metrics.EvictedReporters)),
+		humanize.Comma(int64(metrics.HighWaterCandidates)),
+		humanize.Comma(int64(metrics.HighWaterReporters)),
 	)
 }
 

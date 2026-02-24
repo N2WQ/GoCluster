@@ -724,14 +724,14 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 	hasGoodAnchor := false
 	if store := currentCallQuality(); store != nil {
 		for _, c := range allCalls {
-			if store.IsGood(c, freqHz, &cfg) {
+			if store.IsGoodAt(c, freqHz, &cfg, now) {
 				hasGoodAnchor = true
 				break
 			}
 		}
 	}
 	if hasGoodAnchor {
-		if anchor, okAnchor := findAnchorForCall(subjectIdentity.VoteKey, freqHz, subject.Mode, allCalls, &cfg); okAnchor {
+		if anchor, okAnchor := findAnchorForCall(subjectIdentity.VoteKey, freqHz, subject.Mode, allCalls, &cfg, now); okAnchor {
 			anchorKey = anchor
 		}
 	}
@@ -1159,7 +1159,7 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 			continue
 		}
 
-		updateCallQualityForCluster(attempt.key, freqHz, &cfg, clusterSpots, func(callKey string) bool {
+		updateCallQualityForCluster(attempt.key, freqHz, &cfg, now, clusterSpots, func(callKey string) bool {
 			entry := callStats[callKey]
 			if entry != nil {
 				return callValidatedForQualityPenalty(entry.identity, displayForKey(callKey))
@@ -1502,9 +1502,9 @@ func decorateDecisionPath(path string, slashPrecedence bool, truncationLengthBon
 // Purpose: Select the closest good anchor call for a busted call.
 // Key aspects: Uses mode-aware distance and quality anchors.
 // Upstream: SuggestCallCorrection.
-// Downstream: callQuality.IsGood and correctionDistance.
+// Downstream: callQuality.IsGoodAt and correctionDistance.
 // findAnchorForCall selects the closest good anchor (by mode-aware distance) for a busted call.
-func findAnchorForCall(bustedCall string, freqHz float64, mode string, candidates []string, cfg *CorrectionSettings) (string, bool) {
+func findAnchorForCall(bustedCall string, freqHz float64, mode string, candidates []string, cfg *CorrectionSettings, now time.Time) (string, bool) {
 	bustedIdentity := normalizeCorrectionCallIdentity(bustedCall)
 	if bustedIdentity.VoteKey == "" || cfg == nil {
 		return "", false
@@ -1522,7 +1522,7 @@ func findAnchorForCall(bustedCall string, freqHz float64, mode string, candidate
 		if candidateKey == "" || candidateKey == bustedIdentity.VoteKey {
 			continue
 		}
-		if !store.IsGood(candidateKey, freqHz, cfg) {
+		if !store.IsGoodAt(candidateKey, freqHz, cfg, now) {
 			continue
 		}
 		dist := correctionDistance(bustedIdentity, candidateIdentity, modeKey, cfg.DistanceModelCW, cfg.DistanceModelRTTY)
@@ -1543,9 +1543,9 @@ func findAnchorForCall(bustedCall string, freqHz float64, mode string, candidate
 // Purpose: Update call quality scores after a cluster decision.
 // Key aspects: Rewards winner and penalizes busted calls.
 // Upstream: SuggestCallCorrection.
-// Downstream: callQuality.Add.
+// Downstream: callQuality.AddAt.
 // updateCallQualityForCluster updates the quality store after a resolved cluster.
-func updateCallQualityForCluster(winnerCall string, freqHz float64, cfg *CorrectionSettings, clusterSpots []bandmap.SpotEntry, skipPenalty func(call string) bool) {
+func updateCallQualityForCluster(winnerCall string, freqHz float64, cfg *CorrectionSettings, now time.Time, clusterSpots []bandmap.SpotEntry, skipPenalty func(call string) bool) {
 	if cfg == nil || winnerCall == "" || len(clusterSpots) == 0 {
 		return
 	}
@@ -1558,7 +1558,7 @@ func updateCallQualityForCluster(winnerCall string, freqHz float64, cfg *Correct
 	if winnerKey == "" {
 		return
 	}
-	store.Add(winnerKey, freqHz, cfg.QualityBinHz, cfg.QualityNewCallIncrement)
+	store.AddAt(winnerKey, freqHz, cfg.QualityBinHz, cfg.QualityNewCallIncrement, now)
 
 	distinct := make(map[string]struct{})
 	for _, s := range clusterSpots {
@@ -1576,7 +1576,7 @@ func updateCallQualityForCluster(winnerCall string, freqHz float64, cfg *Correct
 		if skipPenalty != nil && skipPenalty(call) {
 			continue
 		}
-		store.Add(call, freqHz, cfg.QualityBinHz, -cfg.QualityBustedDecrement)
+		store.AddAt(call, freqHz, cfg.QualityBinHz, -cfg.QualityBustedDecrement, now)
 	}
 }
 

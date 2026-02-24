@@ -31,41 +31,53 @@ Tags: call-correction, resolver, shadow-mode, architecture
 1. 2026-02-23 - Phase 1 ambiguity guard and quality penalty rail accepted and implemented (ADR-0021).
 2. 2026-02-23 - Phase 2 scope ledger proposed for shadow resolver.
 3. 2026-02-23 - Architecture Note drafted for review (`docs/call-correction-phase2-architecture-note.md`).
+4. 2026-02-23 - Shadow runtime review showed sustained resolver cap pressure (`dCcap`, `dR`) under live load.
+5. 2026-02-23 - Phase 2.1 patch implemented:
+   - raised internal cap bounds (`8/32 -> 16/64`),
+   - deterministic candidate/reporter eviction under cap pressure,
+   - added cap-pressure/eviction/high-water metrics.
 
 ## Hypotheses and Tests
 
 1. Hypothesis A - Shadow resolver can be integrated without user-visible behavior change.
-   - Evidence/commands: TBD during implementation.
-   - Outcome: Inconclusive
+   - Evidence/commands: local runtime logs (`Resolver`, `CorrGate`, `Stabilizer`, `Telnet`) and post-patch check suite.
+   - Outcome: Supported (no protocol/user-visible behavior changes in Phase 2.1)
 2. Hypothesis B - Resolver disagreement telemetry can identify safe cutover criteria for Phase 3.
-   - Evidence/commands: TBD during implementation.
-   - Outcome: Inconclusive
+   - Evidence/commands: resolver summary counters and shadow runbook interval calculations.
+   - Outcome: Supported (telemetry available; cutover still gated by quality/capacity criteria)
 3. Hypothesis C - Event-driven with per-key rate limit gives acceptable latency/cost balance.
-   - Evidence/commands: TBD benchmark + production-like replay.
-   - Outcome: Inconclusive
+   - Evidence/commands: no queue saturation (`dQ=0`) during live shadow runs; owner-goroutine bounded processing.
+   - Outcome: Provisionally supported (continue replay + soak monitoring)
 
 ## Findings
 
 - Root cause (or best current explanation):
-  - TBD (active troubleshooting/design phase).
+  - Original Phase 2 caps (`max candidates/key=8`, `max reporters/candidate=32`) were too tight for dense same-frequency clusters, causing frequent cap overflows (`dCcap`, `dR`) and evidence loss in shadow evaluation.
 - Contributing factors:
-  - TBD.
+  - Long correction windows and contest-like spot density.
+  - Hard drop-on-cap behavior biased shadow evidence toward first-seen entries.
 - Why this did or did not require a durable decision:
   - Expected to require a durable architecture decision due to shared hot-path impact and observability contract changes.
 
 ## Decision Linkage
 
 - ADR created/updated:
-  - `ADR-0022` (proposed, pending acceptance).
+  - `ADR-0022` updated with Phase 2.1 cap-eviction and pressure-metrics decisions.
 - Decision delta summary:
-  - Introduce signal resolver in shadow mode with bounded resources and deterministic cadence.
+  - Keep bounded resolver but replace candidate/reporter cap drops with deterministic eviction.
+  - Raise internal cap defaults to reduce pressure.
+  - Add explicit pressure/eviction/high-water observability.
 - Contract/behavior changes (or `No contract changes`):
   - Planned for Phase 2: no user-visible behavior change (shadow-only).
 
 ## Verification and Monitoring
 
 - Validation steps run:
-  - TBD in implementation cycle.
+  - `go test ./spot -run SignalResolver -count=1`
+  - `go test ./...`
+  - `go vet ./...`
+  - `staticcheck ./...`
+  - `go test -race ./...`
 - Signals to monitor (metrics/logs):
   - resolver queue drops, resolver state distribution, disagreement classes, agreement rate.
 - Rollback triggers:

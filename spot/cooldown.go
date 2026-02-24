@@ -266,6 +266,13 @@ func (c *CallCooldown) cleanup(now time.Time) {
 	}
 }
 
+// Cleanup evicts entries that have exceeded TTL without activity as of now.
+// It is exposed for deterministic callers (e.g., replay) that do not want a
+// wall-clock-driven background goroutine.
+func (c *CallCooldown) Cleanup(now time.Time) {
+	c.cleanup(now)
+}
+
 func (c *CallCooldown) evictOldest(entry *callCooldownEntry) {
 	if entry == nil || len(entry.reporters) <= c.cfg.MaxReporters {
 		return

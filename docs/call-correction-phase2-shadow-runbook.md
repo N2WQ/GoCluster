@@ -112,7 +112,7 @@ New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
 function ToInt([string]$v) { [int64]($v -replace ',', '') }
 
-$re = [regex]'^(?<ts>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) Resolver: (?<C>[\d,]+) \(C\) / (?<P>[\d,]+) \(P\) / (?<U>[\d,]+) \(U\) / (?<S>[\d,]+) \(S\) \| agr (?<A>[\d,]+)/(?<CMP>[\d,]+) \(\d+%\) \| d (?<SP>[\d,]+) \(SP\) / (?<DW>[\d,]+) \(DW\) / (?<UC>[\d,]+) \(UC\) \| q=(?<DEPTH>\d+) drop (?<Q>[\d,]+) \(Q\) / (?<K>[\d,]+) \(K\) / (?<CCAP>[\d,]+) \(C\) / (?<R>[\d,]+) \(R\)$'
+$re = [regex]'^(?<ts>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) Resolver: (?<C>[\d,]+) \(C\) / (?<P>[\d,]+) \(P\) / (?<U>[\d,]+) \(U\) / (?<S>[\d,]+) \(S\) \| agr (?<A>[\d,]+)/(?<CMP>[\d,]+) \(\d+%\) \| d (?<SP>[\d,]+) \(SP\) / (?<DW>[\d,]+) \(DW\) / (?<UC>[\d,]+) \(UC\) \| q=(?<DEPTH>\d+) drop (?<Q>[\d,]+) \(Q\) / (?<K>[\d,]+) \(K\) / (?<CCAP>[\d,]+) \(C\) / (?<R>[\d,]+) \(R\)(?: \| pressure (?<PC>[\d,]+) \(C\) / (?<PR>[\d,]+) \(R\) evict (?<EC>[\d,]+) \(C\) / (?<ER>[\d,]+) \(R\) hw (?<HC>[\d,]+) \(C\) / (?<HR>[\d,]+) \(R\))?$'
 
 $samples = @()
 Get-Content -Path $logPath | ForEach-Object {
@@ -134,6 +134,12 @@ Get-Content -Path $logPath | ForEach-Object {
       K     = ToInt $m.Groups['K'].Value
       CCAP  = ToInt $m.Groups['CCAP'].Value
       R     = ToInt $m.Groups['R'].Value
+      PC    = if ($m.Groups['PC'].Success) { ToInt $m.Groups['PC'].Value } else { 0 }
+      PR    = if ($m.Groups['PR'].Success) { ToInt $m.Groups['PR'].Value } else { 0 }
+      EC    = if ($m.Groups['EC'].Success) { ToInt $m.Groups['EC'].Value } else { 0 }
+      ER    = if ($m.Groups['ER'].Success) { ToInt $m.Groups['ER'].Value } else { 0 }
+      HC    = if ($m.Groups['HC'].Success) { ToInt $m.Groups['HC'].Value } else { 0 }
+      HR    = if ($m.Groups['HR'].Success) { ToInt $m.Groups['HR'].Value } else { 0 }
     }
   }
 }
@@ -155,6 +161,10 @@ for ($i = 1; $i -lt $samples.Count; $i++) {
   $dK = [int64]($b.K - $a.K)
   $dCcap = [int64]($b.CCAP - $a.CCAP)
   $dR = [int64]($b.R - $a.R)
+  $dPC = [int64]($b.PC - $a.PC)
+  $dPR = [int64]($b.PR - $a.PR)
+  $dEC = [int64]($b.EC - $a.EC)
+  $dER = [int64]($b.ER - $a.ER)
 
   $agreementPct = if ($dCMP -gt 0) { [math]::Round((100.0 * $dA / $dCMP), 3) } else { $null }
   $dwPct = if ($dCMP -gt 0) { [math]::Round((100.0 * $dDW / $dCMP), 3) } else { $null }
@@ -176,6 +186,10 @@ for ($i = 1; $i -lt $samples.Count; $i++) {
     dK = $dK
     dCcap = $dCcap
     dR = $dR
+    dPC = $dPC
+    dPR = $dPR
+    dEC = $dEC
+    dER = $dER
     AgreementPct = $agreementPct
     DWPct = $dwPct
     SPPct = $spPct
@@ -197,6 +211,10 @@ $totalDW = ($intervals | Measure-Object dDW -Sum).Sum
 $totalSP = ($intervals | Measure-Object dSP -Sum).Sum
 $totalUC = ($intervals | Measure-Object dUC -Sum).Sum
 $totalQ = ($intervals | Measure-Object dQ -Sum).Sum
+$totalPC = ($intervals | Measure-Object dPC -Sum).Sum
+$totalPR = ($intervals | Measure-Object dPR -Sum).Sum
+$totalEC = ($intervals | Measure-Object dEC -Sum).Sum
+$totalER = ($intervals | Measure-Object dER -Sum).Sum
 $maxDepth = ($intervals | Measure-Object DEPTH -Maximum).Maximum
 
 $overallAgreementPct = if ($totalCMP -gt 0) { [math]::Round((100.0 * $totalA / $totalCMP), 3) } else { 0.0 }
@@ -210,6 +228,8 @@ Write-Host "AgreementPct: $overallAgreementPct"
 Write-Host "DWPct/SPPct/UCPct: $overallDWPct / $overallSPPct / $overallUCPct"
 Write-Host "Max queue depth: $maxDepth ($([math]::Round(($maxDepth / [double]$queueSize) * 100.0, 2))%)"
 Write-Host "Total queue-full drops (dQ sum): $totalQ"
+Write-Host "Cap pressure (dPC/dPR): $totalPC / $totalPR"
+Write-Host "Evictions (dEC/dER): $totalEC / $totalER"
 
 # Warning/critical windows with sample guard.
 $warnOrCrit = $intervals | Where-Object {
@@ -219,7 +239,8 @@ $warnOrCrit = $intervals | Where-Object {
     $_.SPPct -gt 1.0 -or
     $_.UCPct -gt 2.0 -or
     $_.QueueDepthRatio -ge 0.25 -or
-    $_.dQ -ge 1 -or $_.dK -ge 1 -or $_.dCcap -ge 1 -or $_.dR -ge 1
+    $_.dQ -ge 1 -or $_.dK -ge 1 -or $_.dCcap -ge 1 -or $_.dR -ge 1 -or
+    $_.dPC -ge 1 -or $_.dPR -ge 1
   )
 }
 
@@ -238,7 +259,7 @@ go run ./cmd/inspect_decisions/main.go -db $dbFile
 
 Primary source line:
 
-`Resolver: C/P/U/S | agr A/CMP (%) | d SP/DW/UC | q=DEPTH drop Q/K/C/R`
+`Resolver: C/P/U/S | agr A/CMP (%) | d SP/DW/UC | q=DEPTH drop Q/K/C/R | pressure C/R evict C/R hw C/R`
 
 Fields:
 - `C`: confident state count (instantaneous active keys).
@@ -253,8 +274,14 @@ Fields:
 - `DEPTH`: resolver input queue depth (instantaneous).
 - `Q`: queue-full drops (cumulative).
 - `K`: max-active-key drops (cumulative).
-- `C`: max-candidates-per-key drops (cumulative).
-- `R`: max-reporters-per-candidate drops (cumulative).
+- `C`: hard drops caused by candidate-cap overflow when eviction cannot proceed (cumulative; expected zero).
+- `R`: hard drops caused by reporter-cap overflow when eviction cannot proceed (cumulative; expected zero).
+- `PC`: candidate-cap pressure events (cumulative; cap hit before deterministic eviction).
+- `PR`: reporter-cap pressure events (cumulative; cap hit before deterministic eviction).
+- `EC`: candidate evictions performed (cumulative).
+- `ER`: reporter evictions performed (cumulative).
+- `HC`: high-water candidate count per key (cumulative max).
+- `HR`: high-water reporter count per candidate (cumulative max).
 
 Related context lines to watch together:
 - `CorrGate: ...` (current correction decision totals and reasons).
@@ -275,6 +302,10 @@ Definitions for interval `t0 -> t1`:
 - `dK = K1 - K0`
 - `dCcap = C1 - C0`
 - `dR = R1 - R0`
+- `dPC = PC1 - PC0`
+- `dPR = PR1 - PR0`
+- `dEC = EC1 - EC0`
+- `dER = ER1 - ER0`
 
 Derived rates:
 - `AgreementRate = dA / max(dCMP, 1)`
@@ -310,8 +341,10 @@ Recommended windows:
 | `QueueDepthRatio` | `>= 25%` for 5 min | `>= 50%` at any point or `>= 25%` for 30 min | Investigate burst profile and consumer lag; verify no ingest blocking. |
 | `dQ` (queue-full drops) | `>= 1` in 5 min | `>= 10` in 5 min | Treat as resolver backpressure event; verify fail-open behavior and no fan-out impact. |
 | `dK` (max keys) | `>= 1` in 1 hour | `>= 1` in 5 min | Active-key cardinality pressure; inspect key churn and TTL behavior. |
-| `dCcap` (max candidates/key) | `>= 1` in 1 hour | `>= 1` in 5 min | Dense-cluster pressure; inspect same-frequency multiplicity and candidate cap fit. |
-| `dR` (max reporters/candidate) | `>= 1` in 1 hour | `>= 1` in 5 min | Very dense reporting pressure; inspect reporter cap fit for contest load. |
+| `dCcap` (hard candidate-cap drops) | `>= 1` in 1 hour | `>= 1` in 5 min | Treat as bug-level failure in eviction path; hard drops should stay zero. |
+| `dR` (hard reporter-cap drops) | `>= 1` in 1 hour | `>= 1` in 5 min | Treat as bug-level failure in eviction path; hard drops should stay zero. |
+| `dPC` (candidate-cap pressure) | `>= 1` in 1 hour | `>= 1` in 5 min | Capacity pressure signal; inspect candidate cap fit and cluster multiplicity. |
+| `dPR` (reporter-cap pressure) | `>= 1` in 1 hour | `>= 1` in 5 min | Capacity pressure signal; inspect reporter cap fit for burst density. |
 
 ## 9.3 State mix guardrails (advisory)
 
@@ -325,7 +358,7 @@ When any critical threshold trips:
 1. Confirm no user-visible regression (`CorrGate`, `Stabilizer`, `Pipeline`, `Telnet` lines).
 2. Capture a 30-minute slice of resolver/corrgate/stabilizer lines.
 3. Classify dominant issue:
-   - capacity (`Q/K/C/R`),
+   - capacity (`Q/K/C/R/PC/PR`),
    - alignment (`DW/SP/UC`),
    - mixed.
 4. Open/update TSR evidence with:
@@ -338,7 +371,8 @@ When any critical threshold trips:
 
 - `AgreementRate` healthy at 1h and 24h windows.
 - `DWRate` stable and low.
-- `Q/K/C/R` flat or near-flat.
+- `Q/K/C/R` flat or near-flat (`C/R` should remain zero).
+- `PC/PR` stable relative to `dCMP` (pressure should trend down after cap tuning).
 - Queue depth not persistently elevated.
 - No resolver panic logs.
 - No correlated increase in telnet drops/disconnect symptoms.
@@ -364,6 +398,7 @@ All gates below must pass simultaneously before proposing Phase 3 cutover ADR.
 ## 12.3 Resource/safety gate
 
 - `dK = 0`, `dCcap = 0`, `dR = 0` for rolling 7 days.
+- `dPC/dCMP <= 0.50%` and `dPR/dCMP <= 0.50%` for rolling 7 days.
 - `dQ` near-zero and never in sustained bursts (no 5-minute window with `dQ >= 10`).
 - Queue depth not persistently elevated (`QueueDepthRatio < 25%` over p99 1h windows).
 - No resolver panic/restart events in 14 days.

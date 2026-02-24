@@ -119,13 +119,16 @@ Initial Phase 2 defaults (internal constants):
 
 - input queue size: `8192`
 - max active keys: `6000`
-- max candidates per key: `8`
-- max reporters per candidate: `32`
+- max candidates per key: `16`
+- max reporters per candidate: `64`
 - key TTL (inactive eviction): `10m`
 
 If caps are hit:
-- drop new shadow evidence for affected path,
-- increment explicit drop counters,
+- perform deterministic bounded eviction for candidate/reporter cap pressure:
+  - candidate cap: evict weakest/oldest/lexicographically smallest call in key,
+  - reporter cap: evict oldest/lexicographically smallest reporter in candidate,
+- increment explicit cap-pressure and eviction counters,
+- keep hard-drop counters for unexpected fallback paths (expected zero),
 - keep current correction path unaffected.
 
 ## 7) Integration sequencing (critical)
@@ -159,6 +162,11 @@ Shadow metrics/counters:
 
 - resolver state counts: confident/probable/uncertain/split
 - shadow ingest drops (queue full)
+- cap-pressure/eviction metrics:
+  - candidate-cap pressure and candidate evictions,
+  - reporter-cap pressure and reporter evictions,
+  - high-water marks for candidates-per-key and reporters-per-candidate,
+  - hard cap-drop counters (expected zero with eviction path)
 - disagreement classes:
   - resolver `split` while current path corrected,
   - resolver confident with different winner than current correction,

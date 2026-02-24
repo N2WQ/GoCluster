@@ -181,7 +181,7 @@ func TestSignalResolverResourceCaps(t *testing.T) {
 	resolver := NewSignalResolver(SignalResolverConfig{
 		QueueSize:                 64,
 		MaxActiveKeys:             1,
-		MaxCandidatesPerKey:       1,
+		MaxCandidatesPerKey:       2,
 		MaxReportersPerCand:       1,
 		InactiveTTL:               time.Minute,
 		EvalMinInterval:           5 * time.Millisecond,
@@ -198,8 +198,9 @@ func TestSignalResolverResourceCaps(t *testing.T) {
 	evs := []ResolverEvidence{
 		{ObservedAt: now, Key: key1, DXCall: "DL6LD", Spotter: "K1AAA", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
 		{ObservedAt: now, Key: key2, DXCall: "DL6LN", Spotter: "K1AAB", FrequencyKHz: 7020.0, RecencyWindow: 30 * time.Second}, // max keys
-		{ObservedAt: now, Key: key1, DXCall: "DL6LN", Spotter: "K1AAC", FrequencyKHz: 7010.1, RecencyWindow: 30 * time.Second}, // max candidates
-		{ObservedAt: now, Key: key1, DXCall: "DL6LD", Spotter: "K1AAD", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second}, // max reporters
+		{ObservedAt: now, Key: key1, DXCall: "DL6LN", Spotter: "K1AAC", FrequencyKHz: 7010.1, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key1, DXCall: "DL6LZ", Spotter: "K1AAD", FrequencyKHz: 7010.2, RecencyWindow: 30 * time.Second}, // max candidates
+		{ObservedAt: now, Key: key1, DXCall: "DL6LN", Spotter: "K1AAE", FrequencyKHz: 7010.1, RecencyWindow: 30 * time.Second}, // max reporters
 	}
 	for _, ev := range evs {
 		resolver.Enqueue(ev)
@@ -211,11 +212,90 @@ func TestSignalResolverResourceCaps(t *testing.T) {
 	if metrics.DropMaxKeys == 0 {
 		t.Fatalf("expected max-keys drops > 0")
 	}
-	if metrics.DropMaxCandidates == 0 {
-		t.Fatalf("expected max-candidates drops > 0")
+	if metrics.DropMaxCandidates != 0 {
+		t.Fatalf("expected max-candidates drops == 0 with eviction, got %d", metrics.DropMaxCandidates)
 	}
-	if metrics.DropMaxReporters == 0 {
-		t.Fatalf("expected max-reporters drops > 0")
+	if metrics.DropMaxReporters != 0 {
+		t.Fatalf("expected max-reporters drops == 0 with eviction, got %d", metrics.DropMaxReporters)
+	}
+	if metrics.CapPressureCandidates == 0 {
+		t.Fatalf("expected candidate cap pressure > 0")
+	}
+	if metrics.CapPressureReporters == 0 {
+		t.Fatalf("expected reporter cap pressure > 0")
+	}
+	if metrics.EvictedCandidates == 0 {
+		t.Fatalf("expected candidate evictions > 0")
+	}
+	if metrics.EvictedReporters == 0 {
+		t.Fatalf("expected reporter evictions > 0")
+	}
+	if metrics.HighWaterCandidates == 0 {
+		t.Fatalf("expected candidate high-water > 0")
+	}
+	if metrics.HighWaterReporters == 0 {
+		t.Fatalf("expected reporter high-water > 0")
+	}
+}
+
+func TestChooseResolverCandidateEvictionDeterministic(t *testing.T) {
+	base := time.Date(2026, 2, 23, 20, 0, 0, 0, time.UTC)
+	candidates := map[string]*resolverCandidate{
+		"DL6LD": {
+			lastSeen: base,
+			reporters: map[string]time.Time{
+				"K1AAA": base,
+			},
+		},
+		"DL6LN": {
+			lastSeen: base.Add(10 * time.Second),
+			reporters: map[string]time.Time{
+				"K1AAB": base,
+			},
+		},
+		"DL6LZ": {
+			lastSeen: base.Add(10 * time.Second),
+			reporters: map[string]time.Time{
+				"K1AAC": base,
+				"K1AAD": base,
+			},
+		},
+	}
+	evict, ok := chooseResolverCandidateEviction(candidates)
+	if !ok {
+		t.Fatalf("expected eviction candidate")
+	}
+	if evict != "DL6LD" {
+		t.Fatalf("expected oldest weakest candidate DL6LD, got %q", evict)
+	}
+
+	// Tie on support and time should break lexicographically.
+	candidates = map[string]*resolverCandidate{
+		"ZZ1ZZ": {lastSeen: base, reporters: map[string]time.Time{"K1AAA": base}},
+		"AA1AA": {lastSeen: base, reporters: map[string]time.Time{"K1AAB": base}},
+	}
+	evict, ok = chooseResolverCandidateEviction(candidates)
+	if !ok {
+		t.Fatalf("expected eviction candidate on tie")
+	}
+	if evict != "AA1AA" {
+		t.Fatalf("expected lexicographic tie-break AA1AA, got %q", evict)
+	}
+}
+
+func TestChooseResolverReporterEvictionDeterministic(t *testing.T) {
+	base := time.Date(2026, 2, 23, 20, 0, 0, 0, time.UTC)
+	reporters := map[string]time.Time{
+		"K1AAB": base.Add(3 * time.Second),
+		"K1AAA": base,
+		"K1AAZ": base,
+	}
+	evict, ok := chooseResolverReporterEviction(reporters)
+	if !ok {
+		t.Fatalf("expected reporter eviction candidate")
+	}
+	if evict != "K1AAA" {
+		t.Fatalf("expected oldest lexicographic reporter K1AAA, got %q", evict)
 	}
 }
 

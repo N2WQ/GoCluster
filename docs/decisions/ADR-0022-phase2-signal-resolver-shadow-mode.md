@@ -21,6 +21,13 @@ Tags: call-correction, resolver, shadow-mode, bounded-resources, determinism
 - Resolver runs with a single-owner goroutine and bounded queue/state.
 - Resolver ingest is non-blocking and fail-open (drop-on-full + metrics), with evidence snapshots captured pre-correction mutation.
 - Evaluation cadence is event-driven with per-key rate limit plus periodic sweep.
+- Candidate/reporter cap handling uses deterministic bounded eviction in the resolver owner goroutine:
+  - candidate cap pressure evicts weakest/oldest candidate in-key,
+  - reporter cap pressure evicts oldest reporter in-candidate,
+  - hard-drop counters for these caps remain as fallback and are expected to stay zero.
+- Phase 2.1 internal default bounds are increased to reduce cap pressure under contest-like density:
+  - max candidates per key: `16` (from `8`),
+  - max reporters per candidate: `64` (from `32`).
 - Resolver outputs are observational only in Phase 2:
   - no correction apply cutover,
   - no stabilizer cutover,
@@ -59,6 +66,7 @@ Detailed implementation constraints and defaults are defined in:
   - Temporary dual-model complexity during migration.
 - Operational impact:
   - New shadow observability counters and disagreement metrics.
+  - New cap-pressure/eviction/high-water observability metrics for resolver sizing.
   - No protocol/wire behavior change in Phase 2.
 - Follow-up work required:
   - Phase 3 cutover ADR based on disagreement and performance evidence.

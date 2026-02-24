@@ -16,8 +16,8 @@ import (
 const (
 	defaultSignalResolverQueueSize              = 8192
 	defaultSignalResolverMaxActiveKeys          = 6000
-	defaultSignalResolverMaxCandidatesPerKey    = 8
-	defaultSignalResolverMaxReportersPerCand    = 32
+	defaultSignalResolverMaxCandidatesPerKey    = 16
+	defaultSignalResolverMaxReportersPerCand    = 64
 	defaultSignalResolverInactiveTTL            = 10 * time.Minute
 	defaultSignalResolverEvalMinInterval        = 500 * time.Millisecond
 	defaultSignalResolverSweepInterval          = 1 * time.Second
@@ -106,12 +106,18 @@ type SignalResolverMetrics struct {
 	ActiveKeys int
 	QueueDepth int
 
-	Accepted          uint64
-	Processed         uint64
-	DropQueueFull     uint64
-	DropMaxKeys       uint64
-	DropMaxCandidates uint64
-	DropMaxReporters  uint64
+	Accepted              uint64
+	Processed             uint64
+	DropQueueFull         uint64
+	DropMaxKeys           uint64
+	DropMaxCandidates     uint64
+	DropMaxReporters      uint64
+	CapPressureCandidates uint64
+	CapPressureReporters  uint64
+	EvictedCandidates     uint64
+	EvictedReporters      uint64
+	HighWaterCandidates   uint64
+	HighWaterReporters    uint64
 
 	StateConfident uint64
 	StateProbable  uint64
@@ -169,12 +175,18 @@ type SignalResolver struct {
 
 	activeKeys atomic.Int64
 
-	accepted          atomic.Uint64
-	processed         atomic.Uint64
-	dropQueueFull     atomic.Uint64
-	dropMaxKeys       atomic.Uint64
-	dropMaxCandidates atomic.Uint64
-	dropMaxReporters  atomic.Uint64
+	accepted              atomic.Uint64
+	processed             atomic.Uint64
+	dropQueueFull         atomic.Uint64
+	dropMaxKeys           atomic.Uint64
+	dropMaxCandidates     atomic.Uint64
+	dropMaxReporters      atomic.Uint64
+	capPressureCandidates atomic.Uint64
+	capPressureReporters  atomic.Uint64
+	evictedCandidates     atomic.Uint64
+	evictedReporters      atomic.Uint64
+	highWaterCandidates   atomic.Uint64
+	highWaterReporters    atomic.Uint64
 
 	decisionsObserved                atomic.Uint64
 	decisionsComparable              atomic.Uint64
@@ -331,12 +343,18 @@ func (r *SignalResolver) MetricsSnapshot() SignalResolverMetrics {
 		ActiveKeys: int(r.activeKeys.Load()),
 		QueueDepth: len(r.input),
 
-		Accepted:          r.accepted.Load(),
-		Processed:         r.processed.Load(),
-		DropQueueFull:     r.dropQueueFull.Load(),
-		DropMaxKeys:       r.dropMaxKeys.Load(),
-		DropMaxCandidates: r.dropMaxCandidates.Load(),
-		DropMaxReporters:  r.dropMaxReporters.Load(),
+		Accepted:              r.accepted.Load(),
+		Processed:             r.processed.Load(),
+		DropQueueFull:         r.dropQueueFull.Load(),
+		DropMaxKeys:           r.dropMaxKeys.Load(),
+		DropMaxCandidates:     r.dropMaxCandidates.Load(),
+		DropMaxReporters:      r.dropMaxReporters.Load(),
+		CapPressureCandidates: r.capPressureCandidates.Load(),
+		CapPressureReporters:  r.capPressureReporters.Load(),
+		EvictedCandidates:     r.evictedCandidates.Load(),
+		EvictedReporters:      r.evictedReporters.Load(),
+		HighWaterCandidates:   r.highWaterCandidates.Load(),
+		HighWaterReporters:    r.highWaterReporters.Load(),
 
 		DecisionsObserved:                r.decisionsObserved.Load(),
 		DecisionsComparable:              r.decisionsComparable.Load(),
@@ -431,24 +449,38 @@ func (r *SignalResolver) applyEvidence(states map[ResolverSignalKey]*resolverKey
 	candidate := st.candidates[ev.DXCall]
 	if candidate == nil {
 		if len(st.candidates) >= r.cfg.MaxCandidatesPerKey {
-			r.dropMaxCandidates.Add(1)
-			r.activeKeys.Store(int64(len(states)))
-			return
+			r.capPressureCandidates.Add(1)
+			evictCall, ok := chooseResolverCandidateEviction(st.candidates)
+			if !ok {
+				r.dropMaxCandidates.Add(1)
+				r.activeKeys.Store(int64(len(states)))
+				return
+			}
+			delete(st.candidates, evictCall)
+			r.evictedCandidates.Add(1)
 		}
 		candidate = &resolverCandidate{
 			reporters: make(map[string]time.Time, r.cfg.MaxReportersPerCand),
 		}
 		st.candidates[ev.DXCall] = candidate
 	}
+	updateAtomicMax(&r.highWaterCandidates, uint64(len(st.candidates)))
 	candidate.lastSeen = ev.ObservedAt
 	candidate.lastFreqKHz = ev.FrequencyKHz
 
 	if _, exists := candidate.reporters[ev.Spotter]; !exists && len(candidate.reporters) >= r.cfg.MaxReportersPerCand {
-		r.dropMaxReporters.Add(1)
-		r.activeKeys.Store(int64(len(states)))
-		return
+		r.capPressureReporters.Add(1)
+		evictReporter, ok := chooseResolverReporterEviction(candidate.reporters)
+		if !ok {
+			r.dropMaxReporters.Add(1)
+			r.activeKeys.Store(int64(len(states)))
+			return
+		}
+		delete(candidate.reporters, evictReporter)
+		r.evictedReporters.Add(1)
 	}
 	candidate.reporters[ev.Spotter] = ev.ObservedAt
+	updateAtomicMax(&r.highWaterReporters, uint64(len(candidate.reporters)))
 
 	st.dirty = true
 	if st.nextEvalAt.IsZero() || !ev.ObservedAt.Before(st.nextEvalAt) {
@@ -795,6 +827,69 @@ func timedReporterSetOverlapCount(left, right map[string]time.Time) int {
 		}
 	}
 	return overlap
+}
+
+func chooseResolverCandidateEviction(candidates map[string]*resolverCandidate) (string, bool) {
+	if len(candidates) == 0 {
+		return "", false
+	}
+	var (
+		selectedCall     string
+		selectedSupport  int
+		selectedLastSeen time.Time
+		initialized      bool
+	)
+	for call, candidate := range candidates {
+		support := 0
+		lastSeen := time.Time{}
+		if candidate != nil {
+			support = len(candidate.reporters)
+			lastSeen = candidate.lastSeen
+		}
+		if !initialized ||
+			support < selectedSupport ||
+			(support == selectedSupport && lastSeen.Before(selectedLastSeen)) ||
+			(support == selectedSupport && lastSeen.Equal(selectedLastSeen) && call < selectedCall) {
+			selectedCall = call
+			selectedSupport = support
+			selectedLastSeen = lastSeen
+			initialized = true
+		}
+	}
+	return selectedCall, initialized
+}
+
+func chooseResolverReporterEviction(reporters map[string]time.Time) (string, bool) {
+	if len(reporters) == 0 {
+		return "", false
+	}
+	var (
+		selectedReporter string
+		selectedSeenAt   time.Time
+		initialized      bool
+	)
+	for reporter, seenAt := range reporters {
+		if !initialized ||
+			seenAt.Before(selectedSeenAt) ||
+			(seenAt.Equal(selectedSeenAt) && reporter < selectedReporter) {
+			selectedReporter = reporter
+			selectedSeenAt = seenAt
+			initialized = true
+		}
+	}
+	return selectedReporter, initialized
+}
+
+func updateAtomicMax(dst *atomic.Uint64, value uint64) {
+	for {
+		current := dst.Load()
+		if value <= current {
+			return
+		}
+		if dst.CompareAndSwap(current, value) {
+			return
+		}
+	}
 }
 
 func strconvItoa(v int) string {

@@ -200,6 +200,17 @@ func (s *CallQualityStore) Get(call string, freqHz float64, binSizeHz int) int {
 	return s.getWithTime(call, freqHz, binSizeHz, time.Now().UTC())
 }
 
+// GetAt retrieves the quality score for a call/bin at the provided time.
+// Passing now enables deterministic callers (e.g., replay) to operate in event time.
+func (s *CallQualityStore) GetAt(call string, freqHz float64, binSizeHz int, now time.Time) int {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	} else {
+		now = now.UTC()
+	}
+	return s.getWithTime(call, freqHz, binSizeHz, now)
+}
+
 func (s *CallQualityStore) getWithTime(call string, freqHz float64, binSizeHz int, now time.Time) int {
 	if s == nil {
 		return 0
@@ -227,6 +238,17 @@ func (s *CallQualityStore) getWithTime(call string, freqHz float64, binSizeHz in
 // Add adjusts the dynamic quality score for a call/bin by delta.
 func (s *CallQualityStore) Add(call string, freqHz float64, binSizeHz int, delta int) {
 	s.addWithTime(call, freqHz, binSizeHz, delta, time.Now().UTC())
+}
+
+// AddAt adjusts a call/bin quality score by delta at the provided time.
+// Passing now enables deterministic callers (e.g., replay) to operate in event time.
+func (s *CallQualityStore) AddAt(call string, freqHz float64, binSizeHz int, delta int, now time.Time) {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	} else {
+		now = now.UTC()
+	}
+	s.addWithTime(call, freqHz, binSizeHz, delta, now)
 }
 
 func (s *CallQualityStore) addWithTime(call string, freqHz float64, binSizeHz int, delta int, now time.Time) {
@@ -295,6 +317,15 @@ func (s *CallQualityStore) IsGood(call string, freqHz float64, cfg *CorrectionSe
 		return false
 	}
 	return s.Get(call, freqHz, cfg.QualityBinHz) >= cfg.QualityGoodThreshold
+}
+
+// IsGoodAt reports whether a call meets the quality threshold at the provided time.
+// Passing now enables deterministic callers (e.g., replay) to operate in event time.
+func (s *CallQualityStore) IsGoodAt(call string, freqHz float64, cfg *CorrectionSettings, now time.Time) bool {
+	if cfg == nil {
+		return false
+	}
+	return s.GetAt(call, freqHz, cfg.QualityBinHz, now) >= cfg.QualityGoodThreshold
 }
 
 // Counts returns total pinned/dynamic entries across all shards.
@@ -380,7 +411,15 @@ func (s *CallQualityStore) evictOldestLocked(shard *qualityShard) {
 	if len(items) == 0 {
 		return
 	}
-	sort.Slice(items, func(i, j int) bool { return items[i].updated.Before(items[j].updated) })
+	sort.Slice(items, func(i, j int) bool {
+		if !items[i].updated.Equal(items[j].updated) {
+			return items[i].updated.Before(items[j].updated)
+		}
+		if items[i].key.Call != items[j].key.Call {
+			return items[i].key.Call < items[j].key.Call
+		}
+		return items[i].key.Bin < items[j].key.Bin
+	})
 	if remove > len(items) {
 		remove = len(items)
 	}
