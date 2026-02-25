@@ -299,6 +299,22 @@ func TestChooseResolverReporterEvictionDeterministic(t *testing.T) {
 	}
 }
 
+func TestRunnerForResolverCallDeterministicRanking(t *testing.T) {
+	base := time.Date(2026, 2, 23, 20, 0, 0, 0, time.UTC)
+	candidates := []rankedResolverCandidate{
+		{call: "DL6AA", support: 6, lastSeen: base},
+		{call: "DL6ZZ", support: 4, lastSeen: base},
+		{call: "DL6AB", support: 5, lastSeen: base.Add(10 * time.Second)},
+		{call: "DL6AC", support: 5, lastSeen: base},
+		{call: "DL6AD", support: 5, lastSeen: base.Add(10 * time.Second)},
+	}
+
+	runner, support := runnerForResolverCall(candidates, "DL6AA")
+	if runner != "DL6AB" || support != 5 {
+		t.Fatalf("expected runner DL6AB support=5, got %s support=%d", runner, support)
+	}
+}
+
 func waitForResolverSnapshotState(t *testing.T, resolver *SignalResolver, key ResolverSignalKey, timeout time.Duration, predicate func(ResolverSnapshot) bool) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)

@@ -57,6 +57,30 @@ func TestEventFormattersEmitPlainText(t *testing.T) {
 	}
 }
 
+// Purpose: Ensure confidence bucketing uses '?' only for single-reporter cases.
+// Key aspects: Multi-reporter inputs always map to P/V by percentage.
+func TestFormatConfidenceSingleReporterOnlyUnknown(t *testing.T) {
+	tests := []struct {
+		name           string
+		percent        int
+		totalReporters int
+		want           string
+	}{
+		{name: "single reporter unknown", percent: 100, totalReporters: 1, want: "?"},
+		{name: "zero percent still probable with multiple reporters", percent: 0, totalReporters: 2, want: "P"},
+		{name: "mid percent probable", percent: 45, totalReporters: 3, want: "P"},
+		{name: "majority very likely", percent: 51, totalReporters: 3, want: "V"},
+	}
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			if got := formatConfidence(tc.percent, tc.totalReporters); got != tc.want {
+				t.Fatalf("formatConfidence(%d, %d) = %q, want %q", tc.percent, tc.totalReporters, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestMakeUnlicensedReporterEmitsPlainTextToSurface(t *testing.T) {
 	surface := &captureSurface{}
 	reporter := makeUnlicensedReporter(surface, nil, nil)

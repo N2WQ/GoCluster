@@ -4001,7 +4001,8 @@ func spotsToEntries(spots []*spot.Spot) []bandmap.SpotEntry {
 }
 
 // Purpose: Format the confidence string for corrected calls.
-// Key aspects: Encodes percent-only consensus buckets (P/V/?); SCP floor applied later.
+// Key aspects: Uses '?' only for single-reporter (unique/no-support) cases, and
+// maps all multi-reporter cases into P/V buckets; SCP floor applied later.
 // Upstream: maybeApplyCallCorrectionWithLogger.
 // Downstream: None (pure mapping).
 func formatConfidence(percent int, totalReporters int) string {
@@ -4020,10 +4021,8 @@ func formatConfidence(percent int, totalReporters int) string {
 	switch {
 	case value >= 51:
 		return "V"
-	case value >= 25:
-		return "P"
 	default:
-		return "?"
+		return "P"
 	}
 }
 

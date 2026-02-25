@@ -51,10 +51,8 @@ func formatConfidence(percent int, totalReporters int) string {
 	switch {
 	case value >= 51:
 		return "V"
-	case value >= 25:
-		return "P"
 	default:
-		return "?"
+		return "P"
 	}
 }
 
@@ -396,18 +394,21 @@ func maybeApplyCallCorrectionReplay(
 	recentBandStore *spot.RecentBandStore,
 	knownCallset *spot.KnownCallsigns,
 	now time.Time,
-) bool {
+) (bool, replayConfidenceOutcome) {
+	outcome := replayConfidenceOutcome{}
 	if spotEntry == nil {
-		return false
+		return false, outcome
 	}
 	if !spot.IsCallCorrectionCandidate(spotEntry.Mode) {
-		return false
+		return false, outcome
 	}
 	if idx == nil || !cfg.Enabled {
 		if strings.TrimSpace(spotEntry.Confidence) == "" {
 			spotEntry.Confidence = "?"
 		}
-		return false
+		outcome.Final = normalizeConfidenceGlyph(spotEntry.Confidence)
+		outcome.LegacyFinal = outcome.Final
+		return false, outcome
 	}
 
 	runtime := resolveCorrectionRuntimeSettings(cfg, spotEntry, adaptive, now, true)
@@ -441,17 +442,21 @@ func maybeApplyCallCorrectionReplay(
 	corrected, _, _, subjectConfidence, totalReporters, ok := spot.SuggestCallCorrection(spotEntry, entries, settings, now)
 
 	spotEntry.Confidence = formatConfidence(subjectConfidence, totalReporters)
+	outcome.Final = normalizeConfidenceGlyph(spotEntry.Confidence)
+	outcome.LegacyFinal = normalizeConfidenceGlyph(formatConfidenceLegacy(subjectConfidence, totalReporters))
 	if !ok {
-		return false
+		return false, outcome
 	}
 
 	correctedNorm := spot.NormalizeCallsign(corrected)
 	if shouldRejectCTYCall(correctedNorm) {
 		if strings.EqualFold(cfg.InvalidAction, "suppress") {
-			return true
+			return true, outcome
 		}
 		spotEntry.Confidence = "B"
-		return false
+		outcome.Final = "B"
+		outcome.LegacyFinal = "B"
+		return false, outcome
 	}
 
 	if ctyDB != nil {
@@ -459,26 +464,32 @@ func maybeApplyCallCorrectionReplay(
 			spotEntry.DXCall = correctedNorm
 			spotEntry.DXCallNorm = correctedNorm
 			spotEntry.Confidence = "C"
+			outcome.Final = "C"
+			outcome.LegacyFinal = "C"
 			if tracker != nil {
 				tracker.IncrementCallCorrections()
 			}
 		} else {
 			if strings.EqualFold(cfg.InvalidAction, "suppress") {
-				return true
+				return true, outcome
 			}
 			spotEntry.Confidence = "B"
+			outcome.Final = "B"
+			outcome.LegacyFinal = "B"
 		}
-		return false
+		return false, outcome
 	}
 
 	spotEntry.DXCall = correctedNorm
 	spotEntry.DXCallNorm = correctedNorm
 	spotEntry.Confidence = "C"
+	outcome.Final = "C"
+	outcome.LegacyFinal = "C"
 	if tracker != nil {
 		tracker.IncrementCallCorrections()
 	}
 
-	return false
+	return false, outcome
 }
 
 func shouldRejectCTYCall(call string) bool {

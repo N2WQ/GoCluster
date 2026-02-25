@@ -265,6 +265,8 @@ func main() {
 		recordsSkippedMode int64
 		recordsSkippedBad  int64
 
+		abMetrics = replayABMetrics{}
+
 		disagreeCounts = map[string]int{"SP": 0, "DW": 0, "UC": 0}
 	)
 
@@ -362,7 +364,7 @@ func main() {
 		}
 
 		preCorrectionCall := normalizedDXCall(spotEntry)
-		suppress := maybeApplyCallCorrectionReplay(
+		suppress, confidenceOutcome := maybeApplyCallCorrectionReplay(
 			spotEntry,
 			correctionIndex,
 			cfg.CallCorrection,
@@ -385,6 +387,7 @@ func main() {
 			driver.Step(now)
 			continue
 		}
+		abMetrics.ObserveCurrentPath(confidenceOutcome)
 
 		spotEntry.RefreshBeaconFlag()
 		finalCall := normalizedDXCall(spotEntry)
@@ -400,6 +403,9 @@ func main() {
 		}
 
 		if hasResolverEvidence {
+			snap, snapOK := resolver.Lookup(resolverEvidence.Key)
+			abMetrics.ObserveResolverSnapshot(snap, snapOK)
+
 			resolverDecision, decisionKnown := classifyResolverMethodDecision(resolver, resolverEvidence.Key, preCorrectionCall)
 			if decisionKnown && resolverDecision.Comparable && resolverDecision.Applied {
 				band := spotEntry.BandNorm
@@ -419,6 +425,12 @@ func main() {
 					must(disagreeCSV.Write(disagreementCSVRow(row)))
 				}
 			}
+		}
+
+		if stabilizerDelayProxyEligible(spotEntry, recentBandStore, cfg.CallCorrection) {
+			legacyDelay := wouldDelayTelnetByStabilizerWithConfidence(spotEntry, recentBandStore, cfg.CallCorrection, now, confidenceOutcome.LegacyFinal)
+			newDelay := wouldDelayTelnetByStabilizerWithConfidence(spotEntry, recentBandStore, cfg.CallCorrection, now, confidenceOutcome.Final)
+			abMetrics.StabilizerDelayProxy.Observe(legacyDelay, newDelay)
 		}
 
 		recordRecentBandObservation(spotEntry, recentBandStore, cfg.CallCorrection)
@@ -450,6 +462,7 @@ func main() {
 	methodStability := buildMethodStabilitySet(currentStabilitySummary, resolverStabilitySummary)
 	gates.Overall.Stability = currentStabilitySummary
 	gates.Overall.MethodStability = methodStability
+	gates.Overall.ABMetrics = abMetrics
 	must(writeIntervalsCSV(manifest.Outputs.IntervalsCSV, intervals))
 	must(writeIntervalsCSV(manifest.Outputs.ThresholdHitsCSV, hits))
 	must(writeJSONAtomic(manifest.Outputs.GatesJSON, gates))
@@ -471,6 +484,7 @@ func main() {
 	manifest.Results.Drops.MaxReporters = last.DropMaxReporters
 	manifest.Results.Stability = currentStabilitySummary
 	manifest.Results.MethodStability = methodStability
+	manifest.Results.ABMetrics = abMetrics
 
 	manifest.FinishedAtUTC = time.Now().UTC().Format(time.RFC3339Nano)
 	must(writeJSONAtomic(manifest.Outputs.ManifestJSON, manifest))

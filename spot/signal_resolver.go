@@ -3,7 +3,6 @@ package spot
 import (
 	"log"
 	"math"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -208,7 +207,10 @@ type resolverKeyState struct {
 
 	recencyWindow time.Duration
 	candidates    map[string]*resolverCandidate
-	lastSeen      time.Time
+	// reporterRefs tracks how many active candidates currently reference each
+	// reporter for this key. Invariant: count is always >=1 when present.
+	reporterRefs map[string]int
+	lastSeen     time.Time
 
 	dirty      bool
 	nextEvalAt time.Time
@@ -434,6 +436,7 @@ func (r *SignalResolver) applyEvidence(states map[ResolverSignalKey]*resolverKey
 			key:           ev.Key,
 			recencyWindow: ev.RecencyWindow,
 			candidates:    make(map[string]*resolverCandidate, r.cfg.MaxCandidatesPerKey),
+			reporterRefs:  make(map[string]int, r.cfg.MaxReportersPerCand),
 			lastSeen:      ev.ObservedAt,
 		}
 		states[ev.Key] = st
@@ -456,7 +459,7 @@ func (r *SignalResolver) applyEvidence(states map[ResolverSignalKey]*resolverKey
 				r.activeKeys.Store(int64(len(states)))
 				return
 			}
-			delete(st.candidates, evictCall)
+			removeResolverCandidate(st, evictCall)
 			r.evictedCandidates.Add(1)
 		}
 		candidate = &resolverCandidate{
@@ -476,10 +479,10 @@ func (r *SignalResolver) applyEvidence(states map[ResolverSignalKey]*resolverKey
 			r.activeKeys.Store(int64(len(states)))
 			return
 		}
-		delete(candidate.reporters, evictReporter)
+		removeResolverReporter(st, candidate, evictReporter)
 		r.evictedReporters.Add(1)
 	}
-	candidate.reporters[ev.Spotter] = ev.ObservedAt
+	upsertResolverReporter(st, candidate, ev.Spotter, ev.ObservedAt)
 	updateAtomicMax(&r.highWaterReporters, uint64(len(candidate.reporters)))
 
 	st.dirty = true
@@ -524,6 +527,60 @@ func (r *SignalResolver) sweep(states map[ResolverSignalKey]*resolverKeyState, n
 	r.activeKeys.Store(int64(len(states)))
 }
 
+func upsertResolverReporter(st *resolverKeyState, candidate *resolverCandidate, reporter string, seenAt time.Time) {
+	if st == nil || candidate == nil || reporter == "" {
+		return
+	}
+	if candidate.reporters == nil {
+		candidate.reporters = make(map[string]time.Time, 1)
+	}
+	if st.reporterRefs == nil {
+		st.reporterRefs = make(map[string]int, 1)
+	}
+	if _, exists := candidate.reporters[reporter]; !exists {
+		st.reporterRefs[reporter]++
+	}
+	candidate.reporters[reporter] = seenAt
+}
+
+func removeResolverReporter(st *resolverKeyState, candidate *resolverCandidate, reporter string) {
+	if st == nil || candidate == nil || reporter == "" {
+		return
+	}
+	if candidate.reporters == nil {
+		return
+	}
+	if _, exists := candidate.reporters[reporter]; !exists {
+		return
+	}
+	delete(candidate.reporters, reporter)
+	if st.reporterRefs == nil {
+		return
+	}
+	count, exists := st.reporterRefs[reporter]
+	if !exists || count <= 1 {
+		delete(st.reporterRefs, reporter)
+		return
+	}
+	st.reporterRefs[reporter] = count - 1
+}
+
+func removeResolverCandidate(st *resolverKeyState, call string) {
+	if st == nil {
+		return
+	}
+	candidate, exists := st.candidates[call]
+	if !exists {
+		return
+	}
+	if candidate != nil {
+		for reporter := range candidate.reporters {
+			removeResolverReporter(st, candidate, reporter)
+		}
+	}
+	delete(st.candidates, call)
+}
+
 func (r *SignalResolver) pruneKeyState(st *resolverKeyState, now time.Time) {
 	if st == nil {
 		return
@@ -535,16 +592,16 @@ func (r *SignalResolver) pruneKeyState(st *resolverKeyState, now time.Time) {
 	cutoff := now.Add(-window)
 	for call, candidate := range st.candidates {
 		if candidate == nil {
-			delete(st.candidates, call)
+			removeResolverCandidate(st, call)
 			continue
 		}
 		for reporter, seenAt := range candidate.reporters {
 			if seenAt.Before(cutoff) {
-				delete(candidate.reporters, reporter)
+				removeResolverReporter(st, candidate, reporter)
 			}
 		}
 		if len(candidate.reporters) == 0 || candidate.lastSeen.Before(cutoff) {
-			delete(st.candidates, call)
+			removeResolverCandidate(st, call)
 		}
 	}
 }
@@ -557,6 +614,10 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 	st.lastEvalAt = now
 
 	ranked := make([]rankedResolverCandidate, 0, len(st.candidates))
+	top := rankedResolverCandidate{}
+	runner := rankedResolverCandidate{}
+	hasTop := false
+	hasRunner := false
 	for call, candidate := range st.candidates {
 		if candidate == nil {
 			continue
@@ -565,31 +626,35 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 		if support <= 0 {
 			continue
 		}
-		ranked = append(ranked, rankedResolverCandidate{
+		entry := rankedResolverCandidate{
 			call:        call,
 			support:     support,
 			lastSeen:    candidate.lastSeen,
 			lastFreqKHz: candidate.lastFreqKHz,
 			reporters:   candidate.reporters,
-		})
+		}
+		ranked = append(ranked, entry)
+		if !hasTop || resolverCandidateRanksAhead(entry, top) {
+			if hasTop {
+				runner = top
+				hasRunner = true
+			}
+			top = entry
+			hasTop = true
+			continue
+		}
+		if !hasRunner || resolverCandidateRanksAhead(entry, runner) {
+			runner = entry
+			hasRunner = true
+		}
 	}
-
-	sort.Slice(ranked, func(i, j int) bool {
-		if ranked[i].support != ranked[j].support {
-			return ranked[i].support > ranked[j].support
-		}
-		if !ranked[i].lastSeen.Equal(ranked[j].lastSeen) {
-			return ranked[i].lastSeen.After(ranked[j].lastSeen)
-		}
-		return ranked[i].call < ranked[j].call
-	})
 
 	snapshot := ResolverSnapshot{
 		Key:         st.key,
 		EvaluatedAt: now,
 		State:       ResolverStateUncertain,
 	}
-	if len(ranked) == 0 {
+	if !hasTop {
 		st.stableWinner = ""
 		st.pendingWinner = ""
 		st.pendingWins = 0
@@ -597,14 +662,12 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 		return
 	}
 
-	totalReporters := totalUniqueResolverReporters(ranked)
-	top := ranked[0]
-	runner := rankedResolverCandidate{}
-	hasRunner := len(ranked) > 1
-	if hasRunner {
-		runner = ranked[1]
+	totalReporters := len(st.reporterRefs)
+	if totalReporters <= 0 {
+		// Defensive fallback for externally-constructed test states that do not
+		// initialize reporterRefs.
+		totalReporters = totalUniqueResolverReporters(ranked)
 	}
-
 	provisionalState := classifyResolverState(top.support, totalReporters)
 	provisionalWinner := top.call
 	margin := top.support
@@ -794,6 +857,16 @@ func totalUniqueResolverReporters(candidates []rankedResolverCandidate) int {
 	return len(seen)
 }
 
+func resolverCandidateRanksAhead(left, right rankedResolverCandidate) bool {
+	if left.support != right.support {
+		return left.support > right.support
+	}
+	if !left.lastSeen.Equal(right.lastSeen) {
+		return left.lastSeen.After(right.lastSeen)
+	}
+	return left.call < right.call
+}
+
 func supportForResolverCall(candidates []rankedResolverCandidate, call string) int {
 	for _, candidate := range candidates {
 		if strings.EqualFold(candidate.call, call) {
@@ -804,11 +877,21 @@ func supportForResolverCall(candidates []rankedResolverCandidate, call string) i
 }
 
 func runnerForResolverCall(candidates []rankedResolverCandidate, winner string) (string, int) {
+	var (
+		runner rankedResolverCandidate
+		found  bool
+	)
 	for _, candidate := range candidates {
 		if strings.EqualFold(candidate.call, winner) {
 			continue
 		}
-		return candidate.call, candidate.support
+		if !found || resolverCandidateRanksAhead(candidate, runner) {
+			runner = candidate
+			found = true
+		}
+	}
+	if found {
+		return runner.call, runner.support
 	}
 	return "", 0
 }

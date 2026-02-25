@@ -63,6 +63,7 @@ type gatesSummary struct {
 		TotalEvictionsR     int64                    `json:"total_evictions_r"`
 		Stability           replayStabilitySummary   `json:"stability"`
 		MethodStability     replayMethodStabilitySet `json:"method_stability"`
+		ABMetrics           replayABMetrics          `json:"ab_metrics"`
 	} `json:"overall"`
 
 	ThresholdHits struct {

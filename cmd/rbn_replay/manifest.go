@@ -49,5 +49,6 @@ type replayManifest struct {
 
 		Stability       replayStabilitySummary   `json:"stability"`
 		MethodStability replayMethodStabilitySet `json:"method_stability"`
+		ABMetrics       replayABMetrics          `json:"ab_metrics"`
 	} `json:"results"`
 }

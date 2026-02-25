@@ -72,6 +72,18 @@ Dual-method summaries are included under `overall.method_stability` / `results.m
 
 Resolver `total_applied` is counted when resolver state is `confident|probable`, has a winner, and that winner differs from the pre-correction subject call for the same replay spot.
 
+Replay A/B instrumentation summaries are included under `overall.ab_metrics` / `results.ab_metrics`:
+- `current_path.confidence_counts`: final glyph histogram (`unknown`=`?`, `s`, `p`, `v`, `c`, `b`, `other`)
+- `current_path.legacy_unknown_now_p`: count of current-path `P` outcomes that would have been `?` under the legacy confidence mapping
+- `resolver.state_counts`: resolver snapshot state histogram (`confident`, `probable`, `uncertain`, `split`)
+- `resolver.projected_confidence_counts`: resolver state-derived projected confidence histogram using replay confidence mapping
+- `resolver.legacy_unknown_now_p`: resolver projected `P` outcomes that would have been `?` under legacy mapping
+- `stabilizer_delay_proxy`: replay-side proxy counters for stabilizer delay semantics:
+  - `would_delay_old`
+  - `would_delay_new`
+  - `newly_not_delayed_under_new_rule`
+  - `delay_delta` (`would_delay_new - would_delay_old`)
+
 ## Comparing runs (without chat history)
 
 Use the built-in comparer against run history:
@@ -84,6 +96,11 @@ Options:
 - `-Date 2026-02-21` compare latest two runs for one day.
 - `-RunIdA <id> -RunIdB <id>` compare specific run IDs from `runs.jsonl`.
 - `-HistoryDir "archive data/rbn_replay_history"` override history location.
+
+The comparer now also emits replay A/B deltas for:
+- current-path `unknown`/`p` confidence counts and `legacy_unknown_now_p`
+- resolver state and projected-confidence counts
+- stabilizer proxy delay counters (`would_delay_old` vs `would_delay_new`)
 
 ## Failure semantics (strict correctness mode)
 

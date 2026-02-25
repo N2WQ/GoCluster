@@ -32,6 +32,7 @@ type replayRunRecord struct {
 	SPPct             float64                  `json:"sp_pct"`
 	UCPct             float64                  `json:"uc_pct"`
 	Methods           replayMethodStabilitySet `json:"method_stability"`
+	ABMetrics         replayABMetrics          `json:"ab_metrics"`
 }
 
 func writeReplayRunHistory(
@@ -57,6 +58,7 @@ func writeReplayRunHistory(
 		SPPct:            manifest.Results.SPPct,
 		UCPct:            manifest.Results.UCPct,
 		Methods:          manifest.Results.MethodStability,
+		ABMetrics:        manifest.Results.ABMetrics,
 	}
 
 	if clusterCfg != nil {
