@@ -259,6 +259,40 @@ func observeResolverCurrentDecision(resolver *spot.SignalResolver, key spot.Reso
 	resolver.ObserveCurrentDecision(key, finalCall, corrected)
 }
 
+type resolverMethodDecision struct {
+	Winner     string
+	Comparable bool
+	Applied    bool
+}
+
+func classifyResolverMethodDecision(resolver *spot.SignalResolver, key spot.ResolverSignalKey, preCorrectionCall string) (resolverMethodDecision, bool) {
+	if resolver == nil {
+		return resolverMethodDecision{}, false
+	}
+	preCall := spot.NormalizeCallsign(preCorrectionCall)
+	if preCall == "" {
+		return resolverMethodDecision{}, false
+	}
+
+	snap, ok := resolver.Lookup(key)
+	if !ok {
+		return resolverMethodDecision{}, false
+	}
+	if snap.State != spot.ResolverStateConfident && snap.State != spot.ResolverStateProbable {
+		return resolverMethodDecision{}, true
+	}
+
+	winner := spot.NormalizeCallsign(snap.Winner)
+	if winner == "" {
+		return resolverMethodDecision{}, false
+	}
+	return resolverMethodDecision{
+		Winner:     winner,
+		Comparable: true,
+		Applied:    !strings.EqualFold(winner, preCall),
+	}, true
+}
+
 func buildCorrectionSettings(
 	cfg config.CallCorrectionConfig,
 	minReports int,

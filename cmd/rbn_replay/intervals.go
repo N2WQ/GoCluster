@@ -50,17 +50,19 @@ type intervalRow struct {
 
 type gatesSummary struct {
 	Overall struct {
-		ComparableDecisions uint64  `json:"comparable_decisions"`
-		AgreementPct        float64 `json:"agreement_pct"`
-		DWPct               float64 `json:"dw_pct"`
-		SPPct               float64 `json:"sp_pct"`
-		UCPct               float64 `json:"uc_pct"`
-		MaxQueueDepth       int     `json:"max_queue_depth"`
-		TotalQueueDrops     int64   `json:"total_queue_drops"`
-		TotalCapPressureC   int64   `json:"total_cap_pressure_c"`
-		TotalCapPressureR   int64   `json:"total_cap_pressure_r"`
-		TotalEvictionsC     int64   `json:"total_evictions_c"`
-		TotalEvictionsR     int64   `json:"total_evictions_r"`
+		ComparableDecisions uint64                   `json:"comparable_decisions"`
+		AgreementPct        float64                  `json:"agreement_pct"`
+		DWPct               float64                  `json:"dw_pct"`
+		SPPct               float64                  `json:"sp_pct"`
+		UCPct               float64                  `json:"uc_pct"`
+		MaxQueueDepth       int                      `json:"max_queue_depth"`
+		TotalQueueDrops     int64                    `json:"total_queue_drops"`
+		TotalCapPressureC   int64                    `json:"total_cap_pressure_c"`
+		TotalCapPressureR   int64                    `json:"total_cap_pressure_r"`
+		TotalEvictionsC     int64                    `json:"total_evictions_c"`
+		TotalEvictionsR     int64                    `json:"total_evictions_r"`
+		Stability           replayStabilitySummary   `json:"stability"`
+		MethodStability     replayMethodStabilitySet `json:"method_stability"`
 	} `json:"overall"`
 
 	ThresholdHits struct {

@@ -1,0 +1,24 @@
+# Historical RBN replay configuration.
+# This file is standalone for cmd/rbn_replay and intentionally separate from
+# data/config/*.yaml cluster runtime config files.
+
+# Directory containing cluster YAML files loaded by config.Load(...)
+# (pipeline, data, app, etc.).
+cluster_config_dir: "data/config"
+
+# Replay input/output root:
+# - downloads <archive_dir>/YYYYMMDD.zip
+# - writes outputs to <archive_dir>/rbn_replay/YYYY-MM-DD/
+archive_dir: "archive data"
+
+# If true, force RBN ZIP re-download every run.
+force_download: false
+
+# Winner follow-on stability scorer settings.
+stability:
+  # Horizon after each applied correction to search for winner follow-on spots.
+  window_minutes: 15
+  # Minimum follow-on spots required to count an applied correction as stable.
+  min_follow_on: 3
+  # Frequency tolerance when matching follow-on winner spots.
+  freq_tolerance_hz: 500

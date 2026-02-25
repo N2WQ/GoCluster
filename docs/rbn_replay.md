@@ -7,14 +7,18 @@ This repo includes an **offline**, **deterministic** replay runner that feeds a 
 Run a single UTC day:
 
 ```powershell
-go run ./cmd/rbn_replay -date 2026-02-08 -config data/config -archive-dir "archive data"
+go run ./cmd/rbn_replay -date 2026-02-08
 ```
 
 Flags:
 - `-date`: Required. `YYYY-MM-DD` or `YYYYMMDD` (UTC day).
-- `-config`: Config directory (defaults to `DXC_CONFIG_PATH` or `data/config`).
-- `-archive-dir`: Where inputs/outputs live (default: `archive data`).
+- `-replay-config`: Replay config YAML path (default: `cmd/rbn_replay/replay.yaml`).
+- `-config`: Cluster config directory override (defaults to `cluster_config_dir` in replay config).
+- `-archive-dir`: Archive directory override (defaults to `archive_dir` in replay config).
 - `-force-download`: Re-download the RBN zip even if already present.
+
+Replay config file:
+- `cmd/rbn_replay/replay.yaml` (standalone replay settings)
 
 ## Hermetic dependency model
 
@@ -51,6 +55,35 @@ Files:
 - `gates.json`: Aggregate totals/rates and simple “Phase 3 readiness” gate summaries.
 - `disagreements_sample.csv`: Bounded sample rows of disagreement cases (`SP`, `DW`, `UC`) for debugging.
 - `manifest.json`: Replay metadata (config source, input zip metadata, CSV header, record counts, outputs, final aggregate stats).
+
+Run-memory artifacts (append-only, persisted across reruns):
+- `<archive-dir>/rbn_replay_history/runs.jsonl`: one JSON record per replay execution.
+- `<archive-dir>/rbn_replay_history/runs/<YYYY-MM-DD>_<run-id>.json`: immutable per-run snapshot.
+
+Current-path stability metrics (winner follow-on ratio) are included in both `gates.json` and `manifest.json` under `overall.stability` / `results.stability`:
+- `window_minutes` (default `60`)
+- `min_follow_on` (default `2`)
+- `freq_tolerance_hz` (default `1000`)
+- `total_applied`, `stable_applied`, `stable_pct`
+
+Dual-method summaries are included under `overall.method_stability` / `results.method_stability`:
+- `current_path`: `total_applied`, `stable_applied`, `stable_pct`
+- `resolver`: `total_applied`, `stable_applied`, `stable_pct`
+
+Resolver `total_applied` is counted when resolver state is `confident|probable`, has a winner, and that winner differs from the pre-correction subject call for the same replay spot.
+
+## Comparing runs (without chat history)
+
+Use the built-in comparer against run history:
+
+```powershell
+.\cmd\rbn_replay\compare-runs.ps1
+```
+
+Options:
+- `-Date 2026-02-21` compare latest two runs for one day.
+- `-RunIdA <id> -RunIdB <id>` compare specific run IDs from `runs.jsonl`.
+- `-HistoryDir "archive data/rbn_replay_history"` override history location.
 
 ## Failure semantics (strict correctness mode)
 

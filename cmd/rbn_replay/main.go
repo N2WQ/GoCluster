@@ -25,14 +25,17 @@ const maxDisagreementsPerClass = 500
 
 func main() {
 	var (
-		dateFlag       = flag.String("date", "", "UTC date to replay (YYYY-MM-DD or YYYYMMDD)")
-		configDirFlag  = flag.String("config", "", "Config directory (defaults to DXC_CONFIG_PATH or data/config)")
-		archiveDirFlag = flag.String("archive-dir", "archive data", "Archive directory for downloads and outputs")
-		forceDownload  = flag.Bool("force-download", false, "Force re-download of the RBN history zip")
+		dateFlag         = flag.String("date", "", "UTC date to replay (YYYY-MM-DD or YYYYMMDD)")
+		replayConfigFlag = flag.String("replay-config", defaultReplayConfigPath, "Replay config YAML path")
+		configDirFlag    = flag.String("config", "", "Cluster config directory override (defaults to replay config, DXC_CONFIG_PATH, or data/config)")
+		archiveDirFlag   = flag.String("archive-dir", "", "Archive directory override (defaults to replay config)")
+		forceDownload    = flag.Bool("force-download", false, "Force re-download of the RBN history zip (overrides replay config)")
 	)
 	flag.Parse()
 
 	startedAt := time.Now().UTC()
+	replayCfg, err := loadReplayConfig(*replayConfigFlag)
+	must(err)
 
 	if strings.TrimSpace(*dateFlag) == "" {
 		fatalf("missing required -date (YYYY-MM-DD or YYYYMMDD)")
@@ -42,6 +45,9 @@ func main() {
 	dayEnd := dayStart.Add(24 * time.Hour)
 
 	configDir := strings.TrimSpace(*configDirFlag)
+	if configDir == "" {
+		configDir = strings.TrimSpace(replayCfg.ClusterConfigDir)
+	}
 	if configDir == "" {
 		if v := strings.TrimSpace(os.Getenv(envConfigPath)); v != "" {
 			configDir = v
@@ -58,7 +64,11 @@ func main() {
 		fatalf("call_correction.enabled must be true for replay (config=%s)", cfg.LoadedFrom)
 	}
 
-	archiveDir := filepath.Clean(strings.TrimSpace(*archiveDirFlag))
+	archiveDir := strings.TrimSpace(*archiveDirFlag)
+	if archiveDir == "" {
+		archiveDir = strings.TrimSpace(replayCfg.ArchiveDir)
+	}
+	archiveDir = filepath.Clean(archiveDir)
 	if archiveDir == "" {
 		fatalf("archive dir is empty")
 	}
@@ -67,13 +77,14 @@ func main() {
 	outDir := filepath.Join(archiveDir, "rbn_replay", dayStart.Format("2006-01-02"))
 	must(ensureDir(outDir))
 
+	forceRBNDownload := replayCfg.ForceDownload || *forceDownload
 	zipURL := fmt.Sprintf("https://data.reversebeacon.net/rbn_history/%s.zip", dayCompact)
 	zipPath := filepath.Join(archiveDir, dayCompact+".zip")
 	zipResult, err := download.Download(context.Background(), download.Request{
 		URL:         zipURL,
 		Destination: zipPath,
 		Timeout:     10 * time.Minute,
-		Force:       *forceDownload,
+		Force:       forceRBNDownload,
 		UserAgent:   "dxcluster-rbn-replay",
 	})
 	must(err)
@@ -241,6 +252,8 @@ func main() {
 	must(err)
 	defer csvParser.Close()
 	manifest.CSV.Header = csvParser.Header()
+	currentStabilityCollector := newReplayStabilityCollector(replayCfg.Stability)
+	resolverStabilityCollector := newReplayStabilityCollector(replayCfg.Stability)
 
 	var (
 		samples        []resolverSample
@@ -309,6 +322,8 @@ func main() {
 			fatalf("csv timestamp regression at #%d: prev=%s curr=%s", recordsTotal, lastRecordTime.UTC().Format(time.RFC3339), row.Time.UTC().Format(time.RFC3339))
 		}
 		lastRecordTime = row.Time
+		currentStabilityCollector.ObserveRaw(row)
+		resolverStabilityCollector.ObserveRaw(row)
 
 		for !nextSampleAt.After(row.Time) {
 			emitSample(nextSampleAt)
@@ -372,8 +387,28 @@ func main() {
 		}
 
 		spotEntry.RefreshBeaconFlag()
+		finalCall := normalizedDXCall(spotEntry)
+		if preCorrectionCall != "" &&
+			finalCall != "" &&
+			!strings.EqualFold(preCorrectionCall, finalCall) &&
+			strings.EqualFold(strings.TrimSpace(spotEntry.Confidence), "C") {
+			band := spotEntry.BandNorm
+			if band == "" || band == "???" {
+				band = spot.FreqToBand(spotEntry.Frequency)
+			}
+			currentStabilityCollector.ObserveApplied(now.Unix(), finalCall, spotEntry.Frequency, band)
+		}
 
 		if hasResolverEvidence {
+			resolverDecision, decisionKnown := classifyResolverMethodDecision(resolver, resolverEvidence.Key, preCorrectionCall)
+			if decisionKnown && resolverDecision.Comparable && resolverDecision.Applied {
+				band := spotEntry.BandNorm
+				if band == "" || band == "???" {
+					band = spot.FreqToBand(spotEntry.Frequency)
+				}
+				resolverStabilityCollector.ObserveApplied(now.Unix(), resolverDecision.Winner, spotEntry.Frequency, band)
+			}
+
 			observeResolverCurrentDecision(resolver, resolverEvidence.Key, spotEntry, preCorrectionCall)
 
 			row := classifyDisagreementSample(resolver, resolverEvidence.Key, spotEntry, preCorrectionCall)
@@ -410,6 +445,11 @@ func main() {
 	}
 
 	intervals, hits, gates := computeIntervalsAndGates(samples, shadowResolverQueueSize)
+	currentStabilitySummary := currentStabilityCollector.Evaluate(dayStart.Unix())
+	resolverStabilitySummary := resolverStabilityCollector.Evaluate(dayStart.Unix())
+	methodStability := buildMethodStabilitySet(currentStabilitySummary, resolverStabilitySummary)
+	gates.Overall.Stability = currentStabilitySummary
+	gates.Overall.MethodStability = methodStability
 	must(writeIntervalsCSV(manifest.Outputs.IntervalsCSV, intervals))
 	must(writeIntervalsCSV(manifest.Outputs.ThresholdHitsCSV, hits))
 	must(writeJSONAtomic(manifest.Outputs.GatesJSON, gates))
@@ -429,9 +469,12 @@ func main() {
 	manifest.Results.Drops.MaxKeys = last.DropMaxKeys
 	manifest.Results.Drops.MaxCandidates = last.DropMaxCandidates
 	manifest.Results.Drops.MaxReporters = last.DropMaxReporters
+	manifest.Results.Stability = currentStabilitySummary
+	manifest.Results.MethodStability = methodStability
 
 	manifest.FinishedAtUTC = time.Now().UTC().Format(time.RFC3339Nano)
 	must(writeJSONAtomic(manifest.Outputs.ManifestJSON, manifest))
+	must(writeReplayRunHistory(archiveDir, *replayConfigFlag, cfg, manifest))
 }
 
 func loadSpotterReliability(cfg config.CallCorrectionConfig) (base spot.SpotterReliability, cw spot.SpotterReliability, rtty spot.SpotterReliability, err error) {

@@ -46,5 +46,8 @@ type replayManifest struct {
 			MaxCandidates uint64 `json:"max_candidates"`
 			MaxReporters  uint64 `json:"max_reporters"`
 		} `json:"drops"`
+
+		Stability       replayStabilitySummary   `json:"stability"`
+		MethodStability replayMethodStabilitySet `json:"method_stability"`
 	} `json:"results"`
 }
