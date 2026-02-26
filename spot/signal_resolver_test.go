@@ -238,6 +238,99 @@ func TestSignalResolverResourceCaps(t *testing.T) {
 	}
 }
 
+func TestSignalResolverReliabilityWeightedRanking(t *testing.T) {
+	resolver := NewSignalResolver(SignalResolverConfig{
+		QueueSize:                 64,
+		MaxActiveKeys:             16,
+		MaxCandidatesPerKey:       8,
+		MaxReportersPerCand:       16,
+		InactiveTTL:               time.Minute,
+		EvalMinInterval:           5 * time.Millisecond,
+		SweepInterval:             5 * time.Millisecond,
+		HysteresisWindows:         2,
+		FreqGuardMinSeparationKHz: 0.1,
+		FreqGuardRunnerUpRatio:    0.6,
+		MaxEditDistance:           3,
+		SpotterReliability: SpotterReliability{
+			"K1LOW":  0.60,
+			"K1HIGH": 0.95,
+		},
+		MinSpotterReliability: 0.50,
+	})
+	resolver.Start()
+	t.Cleanup(resolver.Stop)
+
+	key := NewResolverSignalKey(7010.0, "40m", "CW", 500)
+	now := time.Now().UTC()
+	evs := []ResolverEvidence{
+		{ObservedAt: now, Key: key, DXCall: "AA1AA", Spotter: "K1LOW", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "ZZ1ZZ", Spotter: "K1HIGH", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+	}
+	for _, ev := range evs {
+		if ok := resolver.Enqueue(ev); !ok {
+			t.Fatalf("failed to enqueue weighted ranking evidence")
+		}
+	}
+
+	waitForResolverSnapshotState(t, resolver, key, 500*time.Millisecond, func(s ResolverSnapshot) bool {
+		return s.Winner == "ZZ1ZZ" && s.WinnerWeightedSupportMilli > s.RunnerWeightedSupportMilli
+	})
+}
+
+func TestSignalResolverReliabilityFloorDropsLowWeightEvidence(t *testing.T) {
+	resolver := NewSignalResolver(SignalResolverConfig{
+		QueueSize:                 64,
+		MaxActiveKeys:             16,
+		MaxCandidatesPerKey:       8,
+		MaxReportersPerCand:       16,
+		InactiveTTL:               time.Minute,
+		EvalMinInterval:           5 * time.Millisecond,
+		SweepInterval:             5 * time.Millisecond,
+		HysteresisWindows:         2,
+		FreqGuardMinSeparationKHz: 0.1,
+		FreqGuardRunnerUpRatio:    0.6,
+		MaxEditDistance:           3,
+		SpotterReliability: SpotterReliability{
+			"K1LOW":  0.60,
+			"K1HIGH": 0.95,
+		},
+		MinSpotterReliability: 0.90,
+	})
+	resolver.Start()
+	t.Cleanup(resolver.Stop)
+
+	key := NewResolverSignalKey(7020.0, "40m", "CW", 500)
+	now := time.Now().UTC()
+	if ok := resolver.Enqueue(ResolverEvidence{
+		ObservedAt:    now,
+		Key:           key,
+		DXCall:        "AA1AA",
+		Spotter:       "K1LOW",
+		FrequencyKHz:  7020.0,
+		RecencyWindow: 30 * time.Second,
+	}); !ok {
+		t.Fatalf("failed to enqueue low-reliability evidence")
+	}
+	if ok := resolver.Enqueue(ResolverEvidence{
+		ObservedAt:    now,
+		Key:           key,
+		DXCall:        "ZZ1ZZ",
+		Spotter:       "K1HIGH",
+		FrequencyKHz:  7020.0,
+		RecencyWindow: 30 * time.Second,
+	}); !ok {
+		t.Fatalf("failed to enqueue high-reliability evidence")
+	}
+
+	waitForResolverSnapshotState(t, resolver, key, 500*time.Millisecond, func(s ResolverSnapshot) bool {
+		return s.Winner == "ZZ1ZZ" && s.TotalReporters == 1
+	})
+	metrics := resolver.MetricsSnapshot()
+	if metrics.DropReliability == 0 {
+		t.Fatalf("expected reliability floor drops > 0")
+	}
+}
+
 func TestChooseResolverCandidateEvictionDeterministic(t *testing.T) {
 	base := time.Date(2026, 2, 23, 20, 0, 0, 0, time.UTC)
 	candidates := map[string]*resolverCandidate{
@@ -309,9 +402,12 @@ func TestRunnerForResolverCallDeterministicRanking(t *testing.T) {
 		{call: "DL6AD", support: 5, lastSeen: base.Add(10 * time.Second)},
 	}
 
-	runner, support := runnerForResolverCall(candidates, "DL6AA")
+	runner, support, weighted := runnerForResolverCall(candidates, "DL6AA")
 	if runner != "DL6AB" || support != 5 {
 		t.Fatalf("expected runner DL6AB support=5, got %s support=%d", runner, support)
+	}
+	if weighted != 0 {
+		t.Fatalf("expected weighted runner support default 0 in synthetic test candidate set, got %d", weighted)
 	}
 }
 

@@ -28,7 +28,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
 	defer cancel()
 
-	count, err := skew.FetchAndWrite(ctx, cfg.Skew.URL, cfg.Skew.MinSpots, *outputPath)
+	count, err := skew.FetchAndWrite(ctx, cfg.Skew.URL, cfg.Skew.MinAbsSkew, *outputPath)
 	if err != nil {
 		log.Printf("failed to fetch skew table: %v", err)
 		return

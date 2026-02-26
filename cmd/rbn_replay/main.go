@@ -16,6 +16,7 @@ import (
 	"dxcluster/config"
 	"dxcluster/cty"
 	"dxcluster/download"
+	"dxcluster/internal/correctionflow"
 	"dxcluster/spot"
 	"dxcluster/stats"
 	"dxcluster/uls"
@@ -402,11 +403,25 @@ func main() {
 			currentStabilityCollector.ObserveApplied(now.Unix(), finalCall, spotEntry.Frequency, band)
 		}
 
+		resolverSnapshot, resolverSnapshotOK := spot.ResolverSnapshot{}, false
 		if hasResolverEvidence {
-			snap, snapOK := resolver.Lookup(resolverEvidence.Key)
-			abMetrics.ObserveResolverSnapshot(snap, snapOK)
+			selection := correctionflow.SelectResolverPrimarySnapshotForCall(resolver, resolverEvidence.Key, cfg.CallCorrection, preCorrectionCall)
+			resolverSnapshot, resolverSnapshotOK = selection.Snapshot, selection.SnapshotOK
+			abMetrics.ObserveResolverSelection(selection)
+			abMetrics.ObserveResolverSnapshot(resolverSnapshot, resolverSnapshotOK)
+			resolverGate, gateEvaluated := evaluateResolverPrimaryGateReplay(
+				spotEntry,
+				preCorrectionCall,
+				selection,
+				cfg.CallCorrection,
+				recentBandStore,
+				knownCallset,
+				adaptiveMinReports,
+				now,
+			)
+			abMetrics.ObserveResolverRecentPlus1Gate(resolverGate, gateEvaluated)
 
-			resolverDecision, decisionKnown := classifyResolverMethodDecision(resolver, resolverEvidence.Key, preCorrectionCall)
+			resolverDecision, decisionKnown := classifyResolverMethodDecision(selection, preCorrectionCall, resolverGate, gateEvaluated)
 			if decisionKnown && resolverDecision.Comparable && resolverDecision.Applied {
 				band := spotEntry.BandNorm
 				if band == "" || band == "???" {
@@ -417,7 +432,7 @@ func main() {
 
 			observeResolverCurrentDecision(resolver, resolverEvidence.Key, spotEntry, preCorrectionCall)
 
-			row := classifyDisagreementSample(resolver, resolverEvidence.Key, spotEntry, preCorrectionCall)
+			row := classifyDisagreementSample(resolverSnapshot, resolverSnapshotOK, spotEntry, preCorrectionCall)
 			if row != nil {
 				count := disagreeCounts[row.Class]
 				if count < maxDisagreementsPerClass {
@@ -428,9 +443,8 @@ func main() {
 		}
 
 		if stabilizerDelayProxyEligible(spotEntry, recentBandStore, cfg.CallCorrection) {
-			legacyDelay := wouldDelayTelnetByStabilizerWithConfidence(spotEntry, recentBandStore, cfg.CallCorrection, now, confidenceOutcome.LegacyFinal)
-			newDelay := wouldDelayTelnetByStabilizerWithConfidence(spotEntry, recentBandStore, cfg.CallCorrection, now, confidenceOutcome.Final)
-			abMetrics.StabilizerDelayProxy.Observe(legacyDelay, newDelay)
+			delayDecision := evaluateStabilizerDelay(spotEntry, recentBandStore, cfg.CallCorrection, now, resolverSnapshot, resolverSnapshotOK)
+			abMetrics.StabilizerDelayProxy.Observe(delayDecision)
 		}
 
 		recordRecentBandObservation(spotEntry, recentBandStore, cfg.CallCorrection)

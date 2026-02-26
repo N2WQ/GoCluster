@@ -26,6 +26,10 @@ const (
 	TelnetEchoLocal = "local"
 	// TelnetEchoOff disables server echo and requests client echo off (best-effort).
 	TelnetEchoOff = "off"
+	// CallCorrectionResolverModeShadow keeps resolver in observational mode.
+	CallCorrectionResolverModeShadow = "shadow"
+	// CallCorrectionResolverModePrimary makes resolver the apply authority.
+	CallCorrectionResolverModePrimary = "primary"
 )
 
 // Purpose: Normalize and validate the telnet transport setting.
@@ -598,6 +602,10 @@ type CallCacheConfig struct {
 // CallCorrectionConfig controls consensus-based DX call corrections.
 type CallCorrectionConfig struct {
 	Enabled bool `yaml:"enabled"`
+	// ResolverMode selects correction authority:
+	//   - "shadow": legacy correction applies, resolver is observational.
+	//   - "primary": resolver applies, legacy correction runs shadow-only for disagreement telemetry.
+	ResolverMode string `yaml:"resolver_mode"`
 	// BandStateOverrides allows per-band, per-activity-state tuning of frequency tolerance
 	// and quality binning. Values fall back to the global defaults when omitted.
 	BandStateOverrides []BandStateOverride `yaml:"band_state_overrides"`
@@ -720,11 +728,34 @@ type CallCorrectionConfig struct {
 	// Optional telnet stabilizer: delay spots that have not been heard recently
 	// on the same band+mode. This gate is used only for telnet broadcast and
 	// does not alter archive/peer output behavior.
-	StabilizerEnabled       bool   `yaml:"stabilizer_enabled"`
-	StabilizerDelaySeconds  int    `yaml:"stabilizer_delay_seconds"`
-	StabilizerMaxChecks     int    `yaml:"stabilizer_max_checks"`     // includes first delayed check; 1 preserves legacy behavior
-	StabilizerTimeoutAction string `yaml:"stabilizer_timeout_action"` // release | suppress
-	StabilizerMaxPending    int    `yaml:"stabilizer_max_pending"`
+	StabilizerEnabled                 bool   `yaml:"stabilizer_enabled"`
+	StabilizerDelaySeconds            int    `yaml:"stabilizer_delay_seconds"`
+	StabilizerMaxChecks               int    `yaml:"stabilizer_max_checks"`     // includes first delayed check; 1 preserves legacy behavior
+	StabilizerTimeoutAction           string `yaml:"stabilizer_timeout_action"` // release | suppress
+	StabilizerMaxPending              int    `yaml:"stabilizer_max_pending"`
+	StabilizerPDelayConfidencePercent int    `yaml:"stabilizer_p_delay_confidence_percent"` // 0 disables; delay P when confidence is below this percentage
+	StabilizerPDelayMaxChecks         int    `yaml:"stabilizer_p_delay_max_checks"`         // includes first delayed check; 0 disables P-delay gate
+	StabilizerAmbiguousMaxChecks      int    `yaml:"stabilizer_ambiguous_max_checks"`       // includes first delayed check; 0 falls back to stabilizer_max_checks
+	StabilizerEditNeighborEnabled     bool   `yaml:"stabilizer_edit_neighbor_enabled"`      // feature-gated contested edit-neighbor delay policy
+	StabilizerEditNeighborMaxChecks   int    `yaml:"stabilizer_edit_neighbor_max_checks"`   // includes first delayed check; 0 falls back to stabilizer_max_checks
+	StabilizerEditNeighborMinSpotters int    `yaml:"stabilizer_edit_neighbor_min_spotters"` // minimum unique spotters for edit-neighbor recent support
+	// ResolverNeighborhood* enable cross-bucket winner competition to reduce
+	// rounded-frequency forking near bucket boundaries.
+	ResolverNeighborhoodEnabled      bool `yaml:"resolver_neighborhood_enabled"`
+	ResolverNeighborhoodBucketRadius int  `yaml:"resolver_neighborhood_bucket_radius"`
+	// ResolverNeighborhoodMaxDistance bounds neighborhood winner comparability
+	// for non-family calls (mode-aware distance). Values <=0 default to 1.
+	ResolverNeighborhoodMaxDistance int `yaml:"resolver_neighborhood_max_distance"`
+	// ResolverNeighborhoodAllowTruncation toggles truncation-family
+	// comparability admission in neighborhood arbitration.
+	ResolverNeighborhoodAllowTruncation bool `yaml:"resolver_neighborhood_allow_truncation_family"`
+	// ResolverRecentPlus1* controls a conservative resolver-primary-only
+	// min_reports corroboration rail using recent-on-band support.
+	ResolverRecentPlus1Enabled              bool `yaml:"resolver_recent_plus1_enabled"`
+	ResolverRecentPlus1MinUniqueWinner      int  `yaml:"resolver_recent_plus1_min_unique_winner"`
+	ResolverRecentPlus1RequireSubjectWeaker bool `yaml:"resolver_recent_plus1_require_subject_weaker"`
+	ResolverRecentPlus1MaxDistance          int  `yaml:"resolver_recent_plus1_max_distance"`
+	ResolverRecentPlus1AllowTruncation      bool `yaml:"resolver_recent_plus1_allow_truncation_family"`
 	// Optional prior bonus for min_reports shortfalls, bounded by prior_bonus_max.
 	PriorBonusEnabled     bool   `yaml:"prior_bonus_enabled"`
 	PriorBonusMax         int    `yaml:"prior_bonus_max"`
@@ -818,6 +849,9 @@ type CallCorrectionTruncationDelta2RailsConfig struct {
 type CallCorrectionTelnetFamilySuppressionConfig struct {
 	// Enabled toggles telnet-only family suppression.
 	Enabled bool `yaml:"enabled"`
+	// EditNeighborEnabled toggles resolver-contested edit-neighbor suppression
+	// for late-arriving variants in the same mode/frequency neighborhood.
+	EditNeighborEnabled bool `yaml:"edit_neighbor_enabled"`
 	// WindowSeconds is the recency window for family suppression cache entries.
 	WindowSeconds int `yaml:"window_seconds"`
 	// MaxEntries bounds total cache entries across all mode/frequency buckets.
@@ -958,11 +992,11 @@ type BufferConfig struct {
 
 // SkewConfig controls how the RBN skew table is fetched and applied.
 type SkewConfig struct {
-	Enabled    bool   `yaml:"enabled"`
-	URL        string `yaml:"url"`
-	File       string `yaml:"file"`
-	MinSpots   int    `yaml:"min_spots"`
-	RefreshUTC string `yaml:"refresh_utc"`
+	Enabled    bool    `yaml:"enabled"`
+	URL        string  `yaml:"url"`
+	File       string  `yaml:"file"`
+	MinAbsSkew float64 `yaml:"min_abs_skew"`
+	RefreshUTC string  `yaml:"refresh_utc"`
 }
 
 // KnownCallsConfig controls downloading of the known callsign list.
@@ -1057,6 +1091,10 @@ func Load(path string) (*Config, error) {
 	hasFamilyTruncationDelta2Candidate := yamlKeyPresent(raw, "call_correction", "family_policy", "truncation", "delta2_rails", "require_candidate_validated")
 	hasFamilyTruncationDelta2Subject := yamlKeyPresent(raw, "call_correction", "family_policy", "truncation", "delta2_rails", "require_subject_unvalidated")
 	hasFamilyTelnetSuppressionEnabled := yamlKeyPresent(raw, "call_correction", "family_policy", "telnet_suppression", "enabled")
+	hasResolverNeighborhoodAllowTruncation := yamlKeyPresent(raw, "call_correction", "resolver_neighborhood_allow_truncation_family")
+	hasResolverRecentPlus1Enabled := yamlKeyPresent(raw, "call_correction", "resolver_recent_plus1_enabled")
+	hasResolverRecentPlus1RequireSubjectWeaker := yamlKeyPresent(raw, "call_correction", "resolver_recent_plus1_require_subject_weaker")
+	hasResolverRecentPlus1AllowTruncation := yamlKeyPresent(raw, "call_correction", "resolver_recent_plus1_allow_truncation_family")
 
 	if legacySecondaryWindow || legacySecondaryPrefer {
 		fmt.Printf("Warning: dedup.secondary_window_seconds and dedup.secondary_prefer_stronger_snr are deprecated and ignored; use secondary_fast_* / secondary_med_* / secondary_slow_* instead.\n")
@@ -1332,6 +1370,14 @@ func Load(path string) (*Config, error) {
 			cfg.CallCorrection.Strategy = "majority"
 		}
 	}
+	cfg.CallCorrection.ResolverMode = strings.ToLower(strings.TrimSpace(cfg.CallCorrection.ResolverMode))
+	switch cfg.CallCorrection.ResolverMode {
+	case "", CallCorrectionResolverModeShadow:
+		cfg.CallCorrection.ResolverMode = CallCorrectionResolverModeShadow
+	case CallCorrectionResolverModePrimary:
+	default:
+		return nil, fmt.Errorf("invalid call_correction.resolver_mode %q (expected shadow or primary)", cfg.CallCorrection.ResolverMode)
+	}
 	if cfg.CallCorrection.InvalidAction == "" {
 		cfg.CallCorrection.InvalidAction = "broadcast"
 	}
@@ -1394,6 +1440,60 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.CallCorrection.StabilizerMaxPending <= 0 {
 		cfg.CallCorrection.StabilizerMaxPending = 20000
+	}
+	if cfg.CallCorrection.StabilizerPDelayConfidencePercent < 0 {
+		cfg.CallCorrection.StabilizerPDelayConfidencePercent = 0
+	}
+	if cfg.CallCorrection.StabilizerPDelayConfidencePercent > 100 {
+		cfg.CallCorrection.StabilizerPDelayConfidencePercent = 100
+	}
+	if cfg.CallCorrection.StabilizerPDelayMaxChecks < 0 {
+		cfg.CallCorrection.StabilizerPDelayMaxChecks = 0
+	}
+	if cfg.CallCorrection.StabilizerAmbiguousMaxChecks < 0 {
+		cfg.CallCorrection.StabilizerAmbiguousMaxChecks = 0
+	}
+	if cfg.CallCorrection.StabilizerEditNeighborMaxChecks < 0 {
+		cfg.CallCorrection.StabilizerEditNeighborMaxChecks = 0
+	}
+	if cfg.CallCorrection.StabilizerEditNeighborMinSpotters < 0 {
+		cfg.CallCorrection.StabilizerEditNeighborMinSpotters = 0
+	}
+	if cfg.CallCorrection.StabilizerEditNeighborEnabled && cfg.CallCorrection.StabilizerEditNeighborMinSpotters <= 0 {
+		cfg.CallCorrection.StabilizerEditNeighborMinSpotters = cfg.CallCorrection.RecentBandRecordMinUniqueSpotters
+		if cfg.CallCorrection.StabilizerEditNeighborMinSpotters <= 0 {
+			cfg.CallCorrection.StabilizerEditNeighborMinSpotters = 2
+		}
+	}
+	if cfg.CallCorrection.ResolverNeighborhoodBucketRadius < 0 {
+		cfg.CallCorrection.ResolverNeighborhoodBucketRadius = 0
+	}
+	if cfg.CallCorrection.ResolverNeighborhoodEnabled && cfg.CallCorrection.ResolverNeighborhoodBucketRadius <= 0 {
+		cfg.CallCorrection.ResolverNeighborhoodBucketRadius = 1
+	}
+	if cfg.CallCorrection.ResolverNeighborhoodBucketRadius > 2 {
+		cfg.CallCorrection.ResolverNeighborhoodBucketRadius = 2
+	}
+	if cfg.CallCorrection.ResolverNeighborhoodMaxDistance <= 0 {
+		cfg.CallCorrection.ResolverNeighborhoodMaxDistance = 1
+	}
+	if !hasResolverNeighborhoodAllowTruncation {
+		cfg.CallCorrection.ResolverNeighborhoodAllowTruncation = true
+	}
+	if !hasResolverRecentPlus1Enabled {
+		cfg.CallCorrection.ResolverRecentPlus1Enabled = true
+	}
+	if cfg.CallCorrection.ResolverRecentPlus1MinUniqueWinner <= 0 {
+		cfg.CallCorrection.ResolverRecentPlus1MinUniqueWinner = 3
+	}
+	if !hasResolverRecentPlus1RequireSubjectWeaker {
+		cfg.CallCorrection.ResolverRecentPlus1RequireSubjectWeaker = true
+	}
+	if cfg.CallCorrection.ResolverRecentPlus1MaxDistance <= 0 {
+		cfg.CallCorrection.ResolverRecentPlus1MaxDistance = 1
+	}
+	if !hasResolverRecentPlus1AllowTruncation {
+		cfg.CallCorrection.ResolverRecentPlus1AllowTruncation = true
 	}
 	if !hasFamilyTruncationEnabled {
 		cfg.CallCorrection.FamilyPolicy.Truncation.Enabled = true
@@ -1966,8 +2066,8 @@ func Load(path string) (*Config, error) {
 	if strings.TrimSpace(cfg.Skew.File) == "" {
 		cfg.Skew.File = "data/skm_correction/rbnskew.json"
 	}
-	if cfg.Skew.MinSpots < 0 {
-		cfg.Skew.MinSpots = 0
+	if cfg.Skew.MinAbsSkew <= 0 {
+		cfg.Skew.MinAbsSkew = 1
 	}
 	if strings.TrimSpace(cfg.Skew.RefreshUTC) == "" {
 		cfg.Skew.RefreshUTC = "00:30"
@@ -2362,8 +2462,9 @@ func (c *Config) Print() {
 	if c.CallCorrection.Enabled {
 		status = "enabled"
 	}
-	fmt.Printf("Call correction: %s (min_reports=%d slash_min_reports=%d advantage>%d confidence>=%d%% recency=%ds max_edit=%d tol=%.1fHz distance_cw=%s distance_rtty=%s invalid_action=%s d3_extra:+%d/+%d/+%d%%)\n",
+	fmt.Printf("Call correction: %s mode=%s (min_reports=%d slash_min_reports=%d advantage>%d confidence>=%d%% recency=%ds max_edit=%d tol=%.1fHz distance_cw=%s distance_rtty=%s invalid_action=%s d3_extra:+%d/+%d/+%d%%)\n",
 		status,
+		c.CallCorrection.ResolverMode,
 		c.CallCorrection.MinConsensusReports,
 		c.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports,
 		c.CallCorrection.MinAdvantage,
@@ -2377,7 +2478,7 @@ func (c *Config) Print() {
 		c.CallCorrection.Distance3ExtraReports,
 		c.CallCorrection.Distance3ExtraAdvantage,
 		c.CallCorrection.Distance3ExtraConfidence)
-	fmt.Printf("Call correction family policy: truncation(enabled=%t delta<=%d shorter_len>=%d prefix=%t suffix=%t relax_advantage=%t->%d validated(longer=%t shorter_unvalidated=%t) length_bonus=%t(max=%d validated=%t shorter_unvalidated=%t) delta2_rails=%t(extra_conf=%d validated=%t shorter_unvalidated=%t)) telnet_suppression(enabled=%t window=%ds max_entries=%d fallback_tol=%.1fHz)\n",
+	fmt.Printf("Call correction family policy: truncation(enabled=%t delta<=%d shorter_len>=%d prefix=%t suffix=%t relax_advantage=%t->%d validated(longer=%t shorter_unvalidated=%t) length_bonus=%t(max=%d validated=%t shorter_unvalidated=%t) delta2_rails=%t(extra_conf=%d validated=%t shorter_unvalidated=%t)) telnet_suppression(enabled=%t edit_neighbor=%t window=%ds max_entries=%d fallback_tol=%.1fHz)\n",
 		c.CallCorrection.FamilyPolicy.Truncation.Enabled,
 		c.CallCorrection.FamilyPolicy.Truncation.MaxLengthDelta,
 		c.CallCorrection.FamilyPolicy.Truncation.MinShorterLength,
@@ -2396,6 +2497,7 @@ func (c *Config) Print() {
 		c.CallCorrection.FamilyPolicy.Truncation.Delta2Rails.RequireCandidateValidated,
 		c.CallCorrection.FamilyPolicy.Truncation.Delta2Rails.RequireSubjectUnvalidated,
 		c.CallCorrection.FamilyPolicy.TelnetSuppression.Enabled,
+		c.CallCorrection.FamilyPolicy.TelnetSuppression.EditNeighborEnabled,
 		c.CallCorrection.FamilyPolicy.TelnetSuppression.WindowSeconds,
 		c.CallCorrection.FamilyPolicy.TelnetSuppression.MaxEntries,
 		c.CallCorrection.FamilyPolicy.TelnetSuppression.FrequencyToleranceFallbackHz)
@@ -2416,12 +2518,27 @@ func (c *Config) Print() {
 	if c.CallCorrection.StabilizerEnabled {
 		stabilizerStatus = "enabled"
 	}
-	fmt.Printf("Call correction stabilizer: %s (delay=%ds max_checks=%d timeout_action=%s max_pending=%d)\n",
+	fmt.Printf("Call correction stabilizer: %s (delay=%ds max_checks=%d timeout_action=%s max_pending=%d p_delay_pct=%d p_delay_checks=%d ambiguous_checks=%d edit_neighbor=%t edit_neighbor_checks=%d edit_neighbor_min_spotters=%d resolver_neighborhood=%t resolver_neighborhood_radius=%d resolver_neighborhood_max_distance=%d resolver_neighborhood_allow_trunc=%t resolver_recent_plus1=%t min_unique=%d subject_weaker=%t max_distance=%d allow_trunc=%t)\n",
 		stabilizerStatus,
 		c.CallCorrection.StabilizerDelaySeconds,
 		c.CallCorrection.StabilizerMaxChecks,
 		c.CallCorrection.StabilizerTimeoutAction,
-		c.CallCorrection.StabilizerMaxPending)
+		c.CallCorrection.StabilizerMaxPending,
+		c.CallCorrection.StabilizerPDelayConfidencePercent,
+		c.CallCorrection.StabilizerPDelayMaxChecks,
+		c.CallCorrection.StabilizerAmbiguousMaxChecks,
+		c.CallCorrection.StabilizerEditNeighborEnabled,
+		c.CallCorrection.StabilizerEditNeighborMaxChecks,
+		c.CallCorrection.StabilizerEditNeighborMinSpotters,
+		c.CallCorrection.ResolverNeighborhoodEnabled,
+		c.CallCorrection.ResolverNeighborhoodBucketRadius,
+		c.CallCorrection.ResolverNeighborhoodMaxDistance,
+		c.CallCorrection.ResolverNeighborhoodAllowTruncation,
+		c.CallCorrection.ResolverRecentPlus1Enabled,
+		c.CallCorrection.ResolverRecentPlus1MinUniqueWinner,
+		c.CallCorrection.ResolverRecentPlus1RequireSubjectWeaker,
+		c.CallCorrection.ResolverRecentPlus1MaxDistance,
+		c.CallCorrection.ResolverRecentPlus1AllowTruncation)
 
 	harmonicStatus := "disabled"
 	if c.Harmonics.Enabled {
@@ -2473,7 +2590,7 @@ func (c *Config) Print() {
 			c.GridWriteQueueDepth)
 	}
 	if c.Skew.Enabled {
-		fmt.Printf("Skew: refresh %s UTC (min_spots=%d source=%s)\n", c.Skew.RefreshUTC, c.Skew.MinSpots, c.Skew.URL)
+		fmt.Printf("Skew: refresh %s UTC (min_abs_skew=%g source=%s)\n", c.Skew.RefreshUTC, c.Skew.MinAbsSkew, c.Skew.URL)
 	}
 	fmt.Printf("Ring buffer capacity: %d spots\n", c.Buffer.Capacity)
 }

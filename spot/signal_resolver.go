@@ -3,6 +3,7 @@ package spot
 import (
 	"log"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,6 +25,7 @@ const (
 	defaultSignalResolverRecencyWindow          = 45 * time.Second
 	defaultSignalResolverStopDrainDeadline      = 250 * time.Millisecond
 	defaultSignalResolverFreqGuardRunnerUpRatio = 0.6
+	resolverReliabilityScale                    = 1000
 
 	resolverStateConfidentMinPercent = 51
 	resolverStateProbableMinPercent  = 25
@@ -89,15 +91,27 @@ type ResolverEvidence struct {
 
 // ResolverSnapshot is the latest shadow verdict for a ResolverSignalKey.
 type ResolverSnapshot struct {
-	Key            ResolverSignalKey
-	EvaluatedAt    time.Time
-	State          ResolverState
-	Winner         string
-	RunnerUp       string
-	WinnerSupport  int
-	RunnerSupport  int
-	Margin         int
-	TotalReporters int
+	Key                        ResolverSignalKey
+	EvaluatedAt                time.Time
+	State                      ResolverState
+	Winner                     string
+	RunnerUp                   string
+	WinnerSupport              int
+	RunnerSupport              int
+	Margin                     int
+	TotalReporters             int
+	WinnerWeightedSupportMilli int
+	RunnerWeightedSupportMilli int
+	TotalWeightedSupportMilli  int
+	CandidateRanks             []ResolverCandidateSupport
+}
+
+// ResolverCandidateSupport captures one candidate support tally from the latest
+// resolver evaluation, sorted by resolver ranking.
+type ResolverCandidateSupport struct {
+	Call                 string
+	Support              int
+	WeightedSupportMilli int
 }
 
 // SignalResolverMetrics exposes resolver ingest and disagreement observability.
@@ -111,6 +125,7 @@ type SignalResolverMetrics struct {
 	DropMaxKeys           uint64
 	DropMaxCandidates     uint64
 	DropMaxReporters      uint64
+	DropReliability       uint64
 	CapPressureCandidates uint64
 	CapPressureReporters  uint64
 	EvictedCandidates     uint64
@@ -145,12 +160,17 @@ type SignalResolverConfig struct {
 	SweepInterval       time.Duration
 	HysteresisWindows   int
 
-	FreqGuardMinSeparationKHz float64
-	FreqGuardRunnerUpRatio    float64
-	MaxEditDistance           int
-	DistanceModelCW           string
-	DistanceModelRTTY         string
-	FamilyPolicy              CorrectionFamilyPolicy
+	FreqGuardMinSeparationKHz  float64
+	FreqGuardRunnerUpRatio     float64
+	MaxEditDistance            int
+	DistanceModelCW            string
+	DistanceModelRTTY          string
+	FamilyPolicy               CorrectionFamilyPolicy
+	SpotterReliability         SpotterReliability
+	SpotterReliabilityCW       SpotterReliability
+	SpotterReliabilityRTTY     SpotterReliability
+	MinSpotterReliability      float64
+	minSpotterReliabilityMilli int
 }
 
 // SignalResolver performs signal-level shadow resolution from pre-correction evidence.
@@ -180,6 +200,7 @@ type SignalResolver struct {
 	dropMaxKeys           atomic.Uint64
 	dropMaxCandidates     atomic.Uint64
 	dropMaxReporters      atomic.Uint64
+	dropReliability       atomic.Uint64
 	capPressureCandidates atomic.Uint64
 	capPressureReporters  atomic.Uint64
 	evictedCandidates     atomic.Uint64
@@ -208,8 +229,8 @@ type resolverKeyState struct {
 	recencyWindow time.Duration
 	candidates    map[string]*resolverCandidate
 	// reporterRefs tracks how many active candidates currently reference each
-	// reporter for this key. Invariant: count is always >=1 when present.
-	reporterRefs map[string]int
+	// reporter for this key. Invariant: refCount is always >=1 when present.
+	reporterRefs map[string]resolverReporterRef
 	lastSeen     time.Time
 
 	dirty      bool
@@ -222,11 +243,17 @@ type resolverKeyState struct {
 }
 
 type rankedResolverCandidate struct {
-	call        string
-	support     int
-	lastSeen    time.Time
-	lastFreqKHz float64
-	reporters   map[string]time.Time
+	call                 string
+	support              int
+	weightedSupportMilli int
+	lastSeen             time.Time
+	lastFreqKHz          float64
+	reporters            map[string]time.Time
+}
+
+type resolverReporterRef struct {
+	refCount    int
+	weightMilli int
 }
 
 // NewSignalResolver builds a resolver. Call Start to activate the owner goroutine.
@@ -351,6 +378,7 @@ func (r *SignalResolver) MetricsSnapshot() SignalResolverMetrics {
 		DropMaxKeys:           r.dropMaxKeys.Load(),
 		DropMaxCandidates:     r.dropMaxCandidates.Load(),
 		DropMaxReporters:      r.dropMaxReporters.Load(),
+		DropReliability:       r.dropReliability.Load(),
 		CapPressureCandidates: r.capPressureCandidates.Load(),
 		CapPressureReporters:  r.capPressureReporters.Load(),
 		EvictedCandidates:     r.evictedCandidates.Load(),
@@ -426,6 +454,11 @@ func (r *SignalResolver) drain(states map[ResolverSignalKey]*resolverKeyState, d
 }
 
 func (r *SignalResolver) applyEvidence(states map[ResolverSignalKey]*resolverKeyState, ev ResolverEvidence) {
+	reporterWeightMilli, accepted := resolverSpotterWeightMilli(r.cfg, ev.Key.Mode, ev.Spotter)
+	if !accepted {
+		r.dropReliability.Add(1)
+		return
+	}
 	st := states[ev.Key]
 	if st == nil {
 		if len(states) >= r.cfg.MaxActiveKeys {
@@ -436,7 +469,7 @@ func (r *SignalResolver) applyEvidence(states map[ResolverSignalKey]*resolverKey
 			key:           ev.Key,
 			recencyWindow: ev.RecencyWindow,
 			candidates:    make(map[string]*resolverCandidate, r.cfg.MaxCandidatesPerKey),
-			reporterRefs:  make(map[string]int, r.cfg.MaxReportersPerCand),
+			reporterRefs:  make(map[string]resolverReporterRef, r.cfg.MaxReportersPerCand),
 			lastSeen:      ev.ObservedAt,
 		}
 		states[ev.Key] = st
@@ -482,7 +515,7 @@ func (r *SignalResolver) applyEvidence(states map[ResolverSignalKey]*resolverKey
 		removeResolverReporter(st, candidate, evictReporter)
 		r.evictedReporters.Add(1)
 	}
-	upsertResolverReporter(st, candidate, ev.Spotter, ev.ObservedAt)
+	upsertResolverReporter(st, candidate, ev.Spotter, ev.ObservedAt, reporterWeightMilli)
 	updateAtomicMax(&r.highWaterReporters, uint64(len(candidate.reporters)))
 
 	st.dirty = true
@@ -527,7 +560,7 @@ func (r *SignalResolver) sweep(states map[ResolverSignalKey]*resolverKeyState, n
 	r.activeKeys.Store(int64(len(states)))
 }
 
-func upsertResolverReporter(st *resolverKeyState, candidate *resolverCandidate, reporter string, seenAt time.Time) {
+func upsertResolverReporter(st *resolverKeyState, candidate *resolverCandidate, reporter string, seenAt time.Time, reporterWeightMilli int) {
 	if st == nil || candidate == nil || reporter == "" {
 		return
 	}
@@ -535,10 +568,19 @@ func upsertResolverReporter(st *resolverKeyState, candidate *resolverCandidate, 
 		candidate.reporters = make(map[string]time.Time, 1)
 	}
 	if st.reporterRefs == nil {
-		st.reporterRefs = make(map[string]int, 1)
+		st.reporterRefs = make(map[string]resolverReporterRef, 1)
 	}
 	if _, exists := candidate.reporters[reporter]; !exists {
-		st.reporterRefs[reporter]++
+		ref, exists := st.reporterRefs[reporter]
+		if !exists {
+			st.reporterRefs[reporter] = resolverReporterRef{
+				refCount:    1,
+				weightMilli: reporterWeightMilli,
+			}
+		} else {
+			ref.refCount++
+			st.reporterRefs[reporter] = ref
+		}
 	}
 	candidate.reporters[reporter] = seenAt
 }
@@ -557,12 +599,13 @@ func removeResolverReporter(st *resolverKeyState, candidate *resolverCandidate, 
 	if st.reporterRefs == nil {
 		return
 	}
-	count, exists := st.reporterRefs[reporter]
-	if !exists || count <= 1 {
+	ref, exists := st.reporterRefs[reporter]
+	if !exists || ref.refCount <= 1 {
 		delete(st.reporterRefs, reporter)
 		return
 	}
-	st.reporterRefs[reporter] = count - 1
+	ref.refCount--
+	st.reporterRefs[reporter] = ref
 }
 
 func removeResolverCandidate(st *resolverKeyState, call string) {
@@ -627,11 +670,12 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 			continue
 		}
 		entry := rankedResolverCandidate{
-			call:        call,
-			support:     support,
-			lastSeen:    candidate.lastSeen,
-			lastFreqKHz: candidate.lastFreqKHz,
-			reporters:   candidate.reporters,
+			call:                 call,
+			support:              support,
+			weightedSupportMilli: weightedSupportForResolverCandidate(candidate, st.reporterRefs),
+			lastSeen:             candidate.lastSeen,
+			lastFreqKHz:          candidate.lastFreqKHz,
+			reporters:            candidate.reporters,
 		}
 		ranked = append(ranked, entry)
 		if !hasTop || resolverCandidateRanksAhead(entry, top) {
@@ -668,11 +712,29 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 		// initialize reporterRefs.
 		totalReporters = totalUniqueResolverReporters(ranked)
 	}
-	provisionalState := classifyResolverState(top.support, totalReporters)
+	totalWeightedSupportMilli := totalResolverReporterWeightMilli(st.reporterRefs)
+	if totalWeightedSupportMilli <= 0 {
+		totalWeightedSupportMilli = totalUniqueResolverReporterWeightMilli(ranked)
+	}
+	provisionalState := classifyResolverState(top.weightedSupportMilli, totalWeightedSupportMilli)
 	provisionalWinner := top.call
 	margin := top.support
+	weightedMargin := top.weightedSupportMilli
 	if hasRunner {
 		margin = top.support - runner.support
+		weightedMargin = top.weightedSupportMilli - runner.weightedSupportMilli
+	}
+	rankedSorted := append([]rankedResolverCandidate(nil), ranked...)
+	sort.Slice(rankedSorted, func(i, j int) bool {
+		return resolverCandidateRanksAhead(rankedSorted[i], rankedSorted[j])
+	})
+	candidateRanks := make([]ResolverCandidateSupport, 0, len(rankedSorted))
+	for _, candidate := range rankedSorted {
+		candidateRanks = append(candidateRanks, ResolverCandidateSupport{
+			Call:                 candidate.call,
+			Support:              candidate.support,
+			WeightedSupportMilli: candidate.weightedSupportMilli,
+		})
 	}
 
 	split := false
@@ -709,6 +771,10 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 		snapshot.RunnerSupport = runner.support
 		snapshot.Margin = margin
 		snapshot.TotalReporters = totalReporters
+		snapshot.WinnerWeightedSupportMilli = top.weightedSupportMilli
+		snapshot.RunnerWeightedSupportMilli = runner.weightedSupportMilli
+		snapshot.TotalWeightedSupportMilli = totalWeightedSupportMilli
+		snapshot.CandidateRanks = candidateRanks
 		r.snapshots.Store(st.key, snapshot)
 		return
 	}
@@ -722,7 +788,7 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 	} else if provisionalWinner == st.stableWinner {
 		st.pendingWinner = ""
 		st.pendingWins = 0
-	} else if margin > 0 {
+	} else if weightedMargin > 0 {
 		if st.pendingWinner == provisionalWinner {
 			st.pendingWins++
 		} else {
@@ -745,9 +811,11 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 	}
 
 	winnerSupport := supportForResolverCall(ranked, publishedWinner)
-	runnerCall, runnerSupport := runnerForResolverCall(ranked, publishedWinner)
+	winnerWeightedSupportMilli := weightedSupportForResolverCall(ranked, publishedWinner)
+	runnerCall, runnerSupport, runnerWeightedSupportMilli := runnerForResolverCall(ranked, publishedWinner)
 	if winnerSupport == 0 {
 		winnerSupport = top.support
+		winnerWeightedSupportMilli = top.weightedSupportMilli
 		publishedWinner = top.call
 	}
 
@@ -758,6 +826,10 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 	snapshot.RunnerSupport = runnerSupport
 	snapshot.Margin = winnerSupport - runnerSupport
 	snapshot.TotalReporters = totalReporters
+	snapshot.WinnerWeightedSupportMilli = winnerWeightedSupportMilli
+	snapshot.RunnerWeightedSupportMilli = runnerWeightedSupportMilli
+	snapshot.TotalWeightedSupportMilli = totalWeightedSupportMilli
+	snapshot.CandidateRanks = candidateRanks
 	r.snapshots.Store(st.key, snapshot)
 }
 
@@ -789,6 +861,13 @@ func normalizeSignalResolverConfig(cfg SignalResolverConfig) SignalResolverConfi
 	if cfg.FreqGuardRunnerUpRatio <= 0 {
 		cfg.FreqGuardRunnerUpRatio = defaultSignalResolverFreqGuardRunnerUpRatio
 	}
+	if cfg.MinSpotterReliability < 0 {
+		cfg.MinSpotterReliability = 0
+	}
+	if cfg.MinSpotterReliability > 1 {
+		cfg.MinSpotterReliability = 1
+	}
+	cfg.minSpotterReliabilityMilli = reliabilityToMilli(cfg.MinSpotterReliability)
 	cfg.FamilyPolicy = normalizeCorrectionFamilyPolicy(cfg.FamilyPolicy)
 	return cfg
 }
@@ -829,11 +908,11 @@ func normalizeResolverEvidence(e ResolverEvidence) (ResolverEvidence, bool) {
 	}, true
 }
 
-func classifyResolverState(support int, totalReporters int) ResolverState {
-	if support <= 0 || totalReporters <= 0 {
+func classifyResolverState(weightedSupportMilli int, totalWeightedSupportMilli int) ResolverState {
+	if weightedSupportMilli <= 0 || totalWeightedSupportMilli <= 0 {
 		return ResolverStateUncertain
 	}
-	confidence := support * 100 / totalReporters
+	confidence := weightedSupportMilli * 100 / totalWeightedSupportMilli
 	switch {
 	case confidence >= resolverStateConfidentMinPercent:
 		return ResolverStateConfident
@@ -858,6 +937,9 @@ func totalUniqueResolverReporters(candidates []rankedResolverCandidate) int {
 }
 
 func resolverCandidateRanksAhead(left, right rankedResolverCandidate) bool {
+	if left.weightedSupportMilli != right.weightedSupportMilli {
+		return left.weightedSupportMilli > right.weightedSupportMilli
+	}
 	if left.support != right.support {
 		return left.support > right.support
 	}
@@ -876,7 +958,16 @@ func supportForResolverCall(candidates []rankedResolverCandidate, call string) i
 	return 0
 }
 
-func runnerForResolverCall(candidates []rankedResolverCandidate, winner string) (string, int) {
+func weightedSupportForResolverCall(candidates []rankedResolverCandidate, call string) int {
+	for _, candidate := range candidates {
+		if strings.EqualFold(candidate.call, call) {
+			return candidate.weightedSupportMilli
+		}
+	}
+	return 0
+}
+
+func runnerForResolverCall(candidates []rankedResolverCandidate, winner string) (string, int, int) {
 	var (
 		runner rankedResolverCandidate
 		found  bool
@@ -891,9 +982,9 @@ func runnerForResolverCall(candidates []rankedResolverCandidate, winner string) 
 		}
 	}
 	if found {
-		return runner.call, runner.support
+		return runner.call, runner.support, runner.weightedSupportMilli
 	}
-	return "", 0
+	return "", 0, 0
 }
 
 func timedReporterSetOverlapCount(left, right map[string]time.Time) int {
@@ -961,6 +1052,77 @@ func chooseResolverReporterEviction(reporters map[string]time.Time) (string, boo
 		}
 	}
 	return selectedReporter, initialized
+}
+
+func resolverSpotterWeightMilli(cfg SignalResolverConfig, mode string, reporter string) (int, bool) {
+	weight := reliabilityForMode(cfg.SpotterReliability, cfg.SpotterReliabilityCW, cfg.SpotterReliabilityRTTY, mode, reporter)
+	weightMilli := reliabilityToMilli(weight)
+	if weightMilli < cfg.minSpotterReliabilityMilli {
+		return 0, false
+	}
+	return weightMilli, true
+}
+
+func reliabilityToMilli(weight float64) int {
+	switch {
+	case weight <= 0:
+		return 0
+	case weight >= 1:
+		return resolverReliabilityScale
+	default:
+		return int(math.Round(weight * float64(resolverReliabilityScale)))
+	}
+}
+
+func totalResolverReporterWeightMilli(refs map[string]resolverReporterRef) int {
+	if len(refs) == 0 {
+		return 0
+	}
+	total := 0
+	for _, ref := range refs {
+		if ref.refCount <= 0 {
+			continue
+		}
+		if ref.weightMilli <= 0 {
+			continue
+		}
+		total += ref.weightMilli
+	}
+	return total
+}
+
+func totalUniqueResolverReporterWeightMilli(candidates []rankedResolverCandidate) int {
+	if len(candidates) == 0 {
+		return 0
+	}
+	seen := make(map[string]struct{}, 64)
+	total := 0
+	for _, candidate := range candidates {
+		for reporter := range candidate.reporters {
+			if _, ok := seen[reporter]; ok {
+				continue
+			}
+			seen[reporter] = struct{}{}
+			total += resolverReliabilityScale
+		}
+	}
+	return total
+}
+
+func weightedSupportForResolverCandidate(candidate *resolverCandidate, refs map[string]resolverReporterRef) int {
+	if candidate == nil || len(candidate.reporters) == 0 {
+		return 0
+	}
+	total := 0
+	for reporter := range candidate.reporters {
+		ref, ok := refs[reporter]
+		if ok {
+			total += ref.weightMilli
+			continue
+		}
+		total += resolverReliabilityScale
+	}
+	return total
 }
 
 func updateAtomicMax(dst *atomic.Uint64, value uint64) {

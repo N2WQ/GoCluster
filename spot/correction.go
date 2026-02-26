@@ -17,9 +17,10 @@ import (
 // explicit runtime policy wiring.
 type CorrectionFamilyPolicy struct {
 	Configured bool
-	// TruncationEnabled toggles one-character containment-family detection.
+	// TruncationEnabled toggles containment-family detection for bare calls.
 	TruncationEnabled bool
 	// TruncationMaxLengthDelta bounds |len(longer)-len(shorter)| for truncation matches.
+	// Matches are admitted when delta <= TruncationMaxLengthDelta.
 	TruncationMaxLengthDelta int
 	// TruncationMinShorterLength prevents tiny strings from matching as truncations.
 	TruncationMinShorterLength int
@@ -140,6 +141,14 @@ type CorrectionSettings struct {
 	RecentBandBonusMax                int
 	RecentBandRecordMinUniqueSpotters int
 	RecentBandStore                   *RecentBandStore
+	// ResolverRecentPlus1* controls a conservative resolver-primary-only
+	// +1 corroborator rail. It applies only when winner support is one short of
+	// min_reports and never bypasses advantage/confidence gates.
+	ResolverRecentPlus1Enabled              bool
+	ResolverRecentPlus1MinUniqueWinner      int
+	ResolverRecentPlus1RequireSubjectWeaker bool
+	ResolverRecentPlus1MaxDistance          int
+	ResolverRecentPlus1AllowTruncation      bool
 	// Optional truncation-family length bonus. When admitted, bonus applies
 	// only to min_reports and never bypasses other hard gates.
 	TruncationLengthBonusEnabled                   bool
@@ -207,6 +216,36 @@ type CorrectionTrace struct {
 
 // CorrectionDecisionObserver observes final correction decisions and rejection reasons.
 type CorrectionDecisionObserver func(trace CorrectionTrace)
+
+// ResolverPrimaryGateResult reports resolver-primary gate evaluation outcome.
+// It mirrors the key thresholds used in decision traces so callers can emit
+// deterministic observability without duplicating policy logic.
+type ResolverPrimaryGateResult struct {
+	Allow                 bool
+	Reason                string
+	Distance              int
+	MinReports            int
+	MinAdvantage          int
+	MinConfidence         int
+	WinnerSupport         int
+	EffectiveSupport      int
+	SubjectSupport        int
+	WinnerConfidence      int
+	LengthBonus           int
+	RecentPlus1Considered bool
+	RecentPlus1Applied    bool
+	RecentPlus1Reject     string
+	RecentPlus1Winner     int
+	RecentPlus1Subject    int
+}
+
+// ResolverPrimaryGateOptions carries resolver-primary gate context that cannot
+// be derived from static call/support inputs alone.
+type ResolverPrimaryGateOptions struct {
+	// RecentPlus1DisallowReason disables resolver recent+1 corroboration with a
+	// stable reason label (for example "edit_neighbor_contested").
+	RecentPlus1DisallowReason string
+}
 
 // Purpose: Determine whether a mode is eligible for call correction.
 // IsCallCorrectionCandidate reports whether a mode is eligible for call correction.
@@ -1211,6 +1250,227 @@ func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings C
 	return "", 0, 0, subjectConfidence, totalReporters, false
 }
 
+// EvaluateResolverPrimaryGates applies correction-family-sensitive threshold
+// rails for resolver-primary winner admission.
+//
+// Contract:
+//   - This helper is pure: it does not mutate shared state.
+//   - It intentionally reuses the same truncation-family rails used by
+//     SuggestCallCorrection (advantage relaxation, delta-2 rails, length bonus).
+//   - It does not apply frequency-split/cooldown gates because resolver state
+//     classification already encodes split evidence and resolver-primary uses
+//     snapshot-local support counts.
+func EvaluateResolverPrimaryGates(
+	subjectCall, winnerCall, subjectBand, subjectMode string,
+	subjectSupport, winnerSupport, winnerConfidence int,
+	settings CorrectionSettings,
+	now time.Time,
+	options ResolverPrimaryGateOptions,
+) ResolverPrimaryGateResult {
+	cfg := settings
+	options.RecentPlus1DisallowReason = strings.ToLower(strings.TrimSpace(options.RecentPlus1DisallowReason))
+	result := ResolverPrimaryGateResult{
+		Allow:            false,
+		WinnerSupport:    winnerSupport,
+		EffectiveSupport: winnerSupport,
+		SubjectSupport:   subjectSupport,
+		WinnerConfidence: winnerConfidence,
+	}
+
+	subjectIdentity := normalizeCorrectionCallIdentity(subjectCall)
+	winnerIdentity := normalizeCorrectionCallIdentity(winnerCall)
+	if subjectIdentity.VoteKey == "" || winnerIdentity.VoteKey == "" {
+		result.Reason = "invalid_identity"
+		return result
+	}
+	if strings.EqualFold(subjectIdentity.VoteKey, winnerIdentity.VoteKey) {
+		result.Reason = "same_call"
+		return result
+	}
+
+	distance := correctionDistance(subjectIdentity, winnerIdentity, subjectMode, cfg.DistanceModelCW, cfg.DistanceModelRTTY)
+	result.Distance = distance
+	if cfg.MaxEditDistance >= 0 && distance > cfg.MaxEditDistance {
+		result.Reason = "max_edit_distance"
+		return result
+	}
+
+	minReports := cfg.MinConsensusReports
+	minAdvantage := cfg.MinAdvantage
+	minConf := cfg.MinConfidencePercent
+	if distance >= 3 {
+		minReports += cfg.Distance3ExtraReports
+		minAdvantage += cfg.Distance3ExtraAdvantage
+		minConf += cfg.Distance3ExtraConfidence
+	}
+
+	familyPolicy := normalizeCorrectionFamilyPolicy(cfg.FamilyPolicy)
+	truncationAdvantagePolicy := normalizeCorrectionTruncationAdvantagePolicy(cfg.TruncationAdvantagePolicy)
+
+	truncationRelation := false
+	candidateMoreSpecific := false
+	lengthDelta := 0
+	candidateValidated := false
+	subjectValidated := false
+	if relation, ok := detectCorrectionFamilyByIdentity(subjectIdentity, winnerIdentity, familyPolicy); ok && relation.Kind == CorrectionFamilyTruncation {
+		truncationRelation = true
+		candidateMoreSpecific = len(winnerIdentity.VoteKey) > len(subjectIdentity.VoteKey)
+		if candidateMoreSpecific {
+			lengthDelta = len(winnerIdentity.VoteKey) - len(subjectIdentity.VoteKey)
+			candidateValidated = resolverCallValidated(winnerIdentity, winnerCall, subjectBand, subjectMode, cfg, now)
+			subjectValidated = resolverCallValidated(subjectIdentity, subjectCall, subjectBand, subjectMode, cfg, now)
+		}
+	}
+
+	if truncationRelation && candidateMoreSpecific && truncationAdvantagePolicy.Enabled {
+		eligible := true
+		if truncationAdvantagePolicy.RequireCandidateValidated && !candidateValidated {
+			eligible = false
+		}
+		if truncationAdvantagePolicy.RequireSubjectUnvalidated && subjectValidated {
+			eligible = false
+		}
+		if eligible {
+			minAdvantage = truncationAdvantagePolicy.MinAdvantage
+		}
+	}
+
+	if truncationRelation && candidateMoreSpecific && cfg.TruncationDelta2RailsEnabled && lengthDelta >= 2 {
+		if cfg.TruncationDelta2RequireCandidateValidated && !candidateValidated {
+			result.Reason = "truncation_delta2_candidate_unvalidated"
+			result.MinReports = minReports
+			result.MinAdvantage = minAdvantage
+			result.MinConfidence = minConf
+			return result
+		}
+		if cfg.TruncationDelta2RequireSubjectUnvalidated && subjectValidated {
+			result.Reason = "truncation_delta2_subject_validated"
+			result.MinReports = minReports
+			result.MinAdvantage = minAdvantage
+			result.MinConfidence = minConf
+			return result
+		}
+		if cfg.TruncationDelta2ExtraConfidence > 0 {
+			minConf += cfg.TruncationDelta2ExtraConfidence
+		}
+	}
+
+	effectiveSupport := winnerSupport
+	lengthBonus := 0
+	if cfg.TruncationLengthBonusEnabled && cfg.TruncationLengthBonusMax > 0 && effectiveSupport < minReports && truncationRelation && candidateMoreSpecific {
+		eligible := true
+		if cfg.TruncationLengthBonusRequireCandidateValidated && !candidateValidated {
+			eligible = false
+		}
+		if cfg.TruncationLengthBonusRequireSubjectUnvalidated && subjectValidated {
+			eligible = false
+		}
+		if eligible && lengthDelta > 0 {
+			lengthBonus = lengthDelta
+			if lengthBonus > cfg.TruncationLengthBonusMax {
+				lengthBonus = cfg.TruncationLengthBonusMax
+			}
+			effectiveSupport += lengthBonus
+		}
+	}
+
+	result.MinReports = minReports
+	result.MinAdvantage = minAdvantage
+	result.MinConfidence = minConf
+	result.LengthBonus = lengthBonus
+
+	if cfg.ResolverRecentPlus1Enabled && effectiveSupport == minReports-1 {
+		result.RecentPlus1Considered = true
+		rejectReason := ""
+		if options.RecentPlus1DisallowReason != "" {
+			rejectReason = options.RecentPlus1DisallowReason
+		}
+		distanceAllowed := distance <= cfg.ResolverRecentPlus1MaxDistance
+		familyAllowed := cfg.ResolverRecentPlus1AllowTruncation && truncationRelation
+		if rejectReason == "" && !distanceAllowed && !familyAllowed {
+			rejectReason = "distance_or_family"
+		}
+		winnerRecent := resolverCallRecentSupport(winnerIdentity, winnerCall, subjectBand, subjectMode, cfg, now)
+		subjectRecent := resolverCallRecentSupport(subjectIdentity, subjectCall, subjectBand, subjectMode, cfg, now)
+		result.RecentPlus1Winner = winnerRecent
+		result.RecentPlus1Subject = subjectRecent
+		if rejectReason == "" && winnerRecent < cfg.ResolverRecentPlus1MinUniqueWinner {
+			rejectReason = "winner_recent_insufficient"
+		}
+		if rejectReason == "" && cfg.ResolverRecentPlus1RequireSubjectWeaker && winnerRecent <= subjectRecent {
+			rejectReason = "subject_not_weaker"
+		}
+		if rejectReason == "" {
+			effectiveSupport++
+			result.RecentPlus1Applied = true
+		} else {
+			result.RecentPlus1Reject = rejectReason
+		}
+	}
+	result.EffectiveSupport = effectiveSupport
+
+	if effectiveSupport < minReports {
+		result.Reason = "min_reports"
+		return result
+	}
+	if winnerSupport < subjectSupport+minAdvantage {
+		result.Reason = "advantage"
+		return result
+	}
+	if winnerConfidence < minConf {
+		result.Reason = "confidence"
+		return result
+	}
+	result.Allow = true
+	return result
+}
+
+func resolverCallValidated(identity correctionCallIdentity, displayCall, subjectBand, subjectMode string, cfg CorrectionSettings, now time.Time) bool {
+	known := cfg.PriorBonusKnownCallset
+	if known != nil {
+		candidates := []string{identity.Raw, identity.VoteKey, identity.BaseKey, displayCall}
+		for _, call := range candidates {
+			call = strings.TrimSpace(call)
+			if call == "" {
+				continue
+			}
+			if known.Contains(call) {
+				return true
+			}
+		}
+	}
+	minUnique := cfg.RecentBandRecordMinUniqueSpotters
+	if minUnique <= 0 {
+		minUnique = 2
+	}
+	return resolverCallRecentSupport(identity, displayCall, subjectBand, subjectMode, cfg, now) >= minUnique
+}
+
+func resolverCallRecentSupport(identity correctionCallIdentity, displayCall, subjectBand, subjectMode string, cfg CorrectionSettings, now time.Time) int {
+	if cfg.RecentBandStore == nil {
+		return 0
+	}
+	candidates := []string{identity.Raw, identity.VoteKey, identity.BaseKey, displayCall}
+	seenCalls := make(map[string]struct{}, len(candidates))
+	maxSupport := 0
+	for _, candidateCall := range candidates {
+		candidateCall = strings.TrimSpace(candidateCall)
+		if candidateCall == "" {
+			continue
+		}
+		upper := strutil.NormalizeUpper(candidateCall)
+		if _, exists := seenCalls[upper]; exists {
+			continue
+		}
+		seenCalls[upper] = struct{}{}
+		support := cfg.RecentBandStore.RecentSupportCount(upper, subjectBand, subjectMode, now)
+		if support > maxSupport {
+			maxSupport = support
+		}
+	}
+	return maxSupport
+}
+
 type correctionCallIdentity struct {
 	Raw      string
 	VoteKey  string
@@ -1312,7 +1572,7 @@ func detectCorrectionFamilyByIdentity(a, b correctionCallIdentity, policy Correc
 	if len(shorter) < policy.TruncationMinShorterLength {
 		return CorrectionFamilyRelation{}, false
 	}
-	if len(longer)-len(shorter) != policy.TruncationMaxLengthDelta {
+	if len(longer)-len(shorter) > policy.TruncationMaxLengthDelta {
 		return CorrectionFamilyRelation{}, false
 	}
 	prefixMatch := policy.TruncationAllowPrefix && strings.HasPrefix(longer, shorter)
@@ -1725,6 +1985,12 @@ func normalizeCorrectionSettings(settings CorrectionSettings) CorrectionSettings
 	if cfg.RecentBandRecordMinUniqueSpotters <= 0 {
 		cfg.RecentBandRecordMinUniqueSpotters = 2
 	}
+	if cfg.ResolverRecentPlus1MinUniqueWinner <= 0 {
+		cfg.ResolverRecentPlus1MinUniqueWinner = 3
+	}
+	if cfg.ResolverRecentPlus1MaxDistance <= 0 {
+		cfg.ResolverRecentPlus1MaxDistance = 1
+	}
 	if cfg.TruncationLengthBonusMax < 0 {
 		cfg.TruncationLengthBonusMax = 0
 	}
@@ -2134,6 +2400,60 @@ func callDistance(subject, candidate, mode, cwModel, rttyModel string) int {
 		normalizeCWDistanceModel(cwModel),
 		normalizeRTTYDistanceModel(rttyModel),
 	)
+}
+
+// CallDistance computes mode-aware distance with the same model semantics used by
+// call-correction evaluation.
+// Purpose: Provide a shared distance helper for resolver-primary apply rails.
+// Key aspects: Uses normalized mode/model routing through callDistance.
+// Upstream: main resolver-primary correction apply path.
+// Downstream: callDistance.
+func CallDistance(subject, candidate, mode, cwModel, rttyModel string) int {
+	return callDistance(subject, candidate, mode, cwModel, rttyModel)
+}
+
+// IsEditNeighborPair reports whether two calls are distance-1 substitution
+// neighbors under the mode-aware distance model. Slash variants are excluded.
+func IsEditNeighborPair(left, right, mode, cwModel, rttyModel string) bool {
+	left = CorrectionVoteKey(left)
+	right = CorrectionVoteKey(right)
+	if left == "" || right == "" || strings.EqualFold(left, right) {
+		return false
+	}
+	if strings.Contains(left, "/") || strings.Contains(right, "/") {
+		return false
+	}
+	return CallDistance(left, right, mode, cwModel, rttyModel) == 1
+}
+
+// ResolverSnapshotHasComparableEditNeighbor reports whether snapshot evidence
+// contains an edit-neighbor candidate with support comparable to the given call.
+func ResolverSnapshotHasComparableEditNeighbor(snapshot ResolverSnapshot, call, mode, cwModel, rttyModel string) bool {
+	call = CorrectionVoteKey(call)
+	if call == "" || len(snapshot.CandidateRanks) == 0 {
+		return false
+	}
+	callSupport := 0
+	for _, candidate := range snapshot.CandidateRanks {
+		candidateCall := CorrectionVoteKey(candidate.Call)
+		if strings.EqualFold(candidateCall, call) {
+			callSupport = candidate.Support
+			break
+		}
+	}
+	for _, candidate := range snapshot.CandidateRanks {
+		candidateCall := CorrectionVoteKey(candidate.Call)
+		if candidateCall == "" || strings.EqualFold(candidateCall, call) {
+			continue
+		}
+		if candidate.Support < callSupport {
+			continue
+		}
+		if IsEditNeighborPair(call, candidateCall, mode, cwModel, rttyModel) {
+			return true
+		}
+	}
+	return false
 }
 
 // Purpose: Compute CW-aware edit distance between two callsigns.

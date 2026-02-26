@@ -1509,6 +1509,9 @@ func TestDetectCorrectionFamilyWithPolicyTruncationControls(t *testing.T) {
 	if rel, ok := DetectCorrectionFamilyWithPolicy("W1AB", "W1ABCD", policy); !ok || rel.Kind != CorrectionFamilyTruncation {
 		t.Fatalf("expected prefix truncation match with length delta 2 policy")
 	}
+	if rel, ok := DetectCorrectionFamilyWithPolicy("DL1T", "DL1TT", policy); !ok || rel.Kind != CorrectionFamilyTruncation {
+		t.Fatalf("expected prefix truncation match with length delta 1 under max-length-delta=2 policy")
+	}
 	if _, ok := DetectCorrectionFamilyWithPolicy("A1ABC", "WA1ABC", policy); ok {
 		t.Fatalf("expected suffix truncation match to be disabled by policy")
 	}

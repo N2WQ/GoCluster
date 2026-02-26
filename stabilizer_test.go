@@ -25,6 +25,9 @@ func TestTelnetSpotStabilizerReleasesAfterDelay(t *testing.T) {
 		if got.checksCompleted != 0 {
 			t.Fatalf("expected checksCompleted=0 for first release, got %d", got.checksCompleted)
 		}
+		if got.delayReason != "" {
+			t.Fatalf("expected empty delay reason for default enqueue, got %q", got.delayReason)
+		}
 	case <-time.After(500 * time.Millisecond):
 		t.Fatalf("timed out waiting for delayed release")
 	}
@@ -86,7 +89,7 @@ func TestTelnetSpotStabilizerReleaseCarriesChecksCompleted(t *testing.T) {
 	t.Cleanup(stab.Stop)
 
 	s := spot.NewSpot("K1CHK", "W1XYZ", 7010.0, "CW")
-	if ok := stab.EnqueueWithChecks(s, 2); !ok {
+	if ok := stab.EnqueueWithChecks(s, 2, "ambiguous_resolver"); !ok {
 		t.Fatalf("expected enqueue with checks to succeed")
 	}
 
@@ -97,6 +100,39 @@ func TestTelnetSpotStabilizerReleaseCarriesChecksCompleted(t *testing.T) {
 		}
 		if got.checksCompleted != 2 {
 			t.Fatalf("expected checksCompleted=2, got %d", got.checksCompleted)
+		}
+		if got.delayReason != "ambiguous_resolver" {
+			t.Fatalf("expected delayReason to round-trip, got %q", got.delayReason)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("timed out waiting for delayed release")
+	}
+}
+
+func TestTelnetSpotStabilizerReleaseCarriesResolverContext(t *testing.T) {
+	stab := newTelnetSpotStabilizer(20*time.Millisecond, 8)
+	stab.Start()
+	t.Cleanup(stab.Stop)
+
+	s := spot.NewSpot("K1CTX", "W1XYZ", 7010.0, "CW")
+	key := spot.NewResolverSignalKey(7010.0, "40m", "CW", 500)
+	if ok := stab.EnqueueWithContext(s, 1, "unknown_or_nonrecent", key, true, true); !ok {
+		t.Fatalf("expected enqueue with context to succeed")
+	}
+
+	select {
+	case got := <-stab.ReleaseChan():
+		if got == nil || got.spot != s {
+			t.Fatalf("expected released spot pointer to match enqueued spot")
+		}
+		if !got.hasResolverKey {
+			t.Fatalf("expected hasResolverKey=true")
+		}
+		if got.resolverKey != key {
+			t.Fatalf("expected resolver key %q, got %q", key.String(), got.resolverKey.String())
+		}
+		if !got.evidenceEnqueued {
+			t.Fatalf("expected evidenceEnqueued=true")
 		}
 	case <-time.After(500 * time.Millisecond):
 		t.Fatalf("timed out waiting for delayed release")

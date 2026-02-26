@@ -70,7 +70,7 @@ Dual-method summaries are included under `overall.method_stability` / `results.m
 - `current_path`: `total_applied`, `stable_applied`, `stable_pct`
 - `resolver`: `total_applied`, `stable_applied`, `stable_pct`
 
-Resolver `total_applied` is counted when resolver state is `confident|probable`, has a winner, and that winner differs from the pre-correction subject call for the same replay spot.
+Resolver `total_applied` is counted when resolver state is `confident|probable`, has a winner different from the pre-correction subject call, and resolver-primary gate evaluation admits that winner.
 
 Replay A/B instrumentation summaries are included under `overall.ab_metrics` / `results.ab_metrics`:
 - `current_path.confidence_counts`: final glyph histogram (`unknown`=`?`, `s`, `p`, `v`, `c`, `b`, `other`)
@@ -78,11 +78,27 @@ Replay A/B instrumentation summaries are included under `overall.ab_metrics` / `
 - `resolver.state_counts`: resolver snapshot state histogram (`confident`, `probable`, `uncertain`, `split`)
 - `resolver.projected_confidence_counts`: resolver state-derived projected confidence histogram using replay confidence mapping
 - `resolver.legacy_unknown_now_p`: resolver projected `P` outcomes that would have been `?` under legacy mapping
+- `resolver.neighborhood_*`: resolver neighborhood-policy counters:
+  - `neighborhood_used`
+  - `neighborhood_winner_override`
+  - `neighborhood_conflict_split`
+  - `neighborhood_excluded_unrelated`
+  - `neighborhood_excluded_distance`
+  - `neighborhood_excluded_anchor_missing`
+- `resolver.recent_plus1_*`: resolver recent-on-band `+1` corroborator counters:
+  - `recent_plus1_applied`
+  - `recent_plus1_rejected`
+  - `recent_plus1_reject_edit_neighbor_contested`
+  - `recent_plus1_reject_distance_or_family`
+  - `recent_plus1_reject_winner_recent_insufficient`
+  - `recent_plus1_reject_subject_not_weaker`
+  - `recent_plus1_reject_other`
 - `stabilizer_delay_proxy`: replay-side proxy counters for stabilizer delay semantics:
-  - `would_delay_old`
-  - `would_delay_new`
-  - `newly_not_delayed_under_new_rule`
-  - `delay_delta` (`would_delay_new - would_delay_old`)
+  - `would_delay`
+  - `reason_unknown_or_nonrecent`
+  - `reason_ambiguous_resolver`
+  - `reason_p_low_confidence`
+  - `reason_edit_neighbor_contested`
 
 ## Comparing runs (without chat history)
 
@@ -99,8 +115,8 @@ Options:
 
 The comparer now also emits replay A/B deltas for:
 - current-path `unknown`/`p` confidence counts and `legacy_unknown_now_p`
-- resolver state and projected-confidence counts
-- stabilizer proxy delay counters (`would_delay_old` vs `would_delay_new`)
+- resolver state, projected-confidence counts, neighborhood-policy counters (including neighborhood exclusion reasons), and recent-plus1 counters
+- stabilizer proxy delay counters and reason distribution
 
 ## Failure semantics (strict correctness mode)
 

@@ -2,9 +2,9 @@ package main
 
 import (
 	"strings"
-	"time"
 
 	"dxcluster/config"
+	"dxcluster/internal/correctionflow"
 	"dxcluster/spot"
 	"dxcluster/strutil"
 )
@@ -81,40 +81,54 @@ func (c *replayResolverStateCounts) Observe(state spot.ResolverState) {
 }
 
 type replayResolverABMetrics struct {
-	Samples                   uint64                    `json:"samples"`
-	MissingSnapshot           uint64                    `json:"missing_snapshot"`
-	StateCounts               replayResolverStateCounts `json:"state_counts"`
-	ProjectedConfidenceCounts replayConfidenceCounts    `json:"projected_confidence_counts"`
-	LegacyUnknownNowP         uint64                    `json:"legacy_unknown_now_p"`
+	Samples                           uint64                    `json:"samples"`
+	MissingSnapshot                   uint64                    `json:"missing_snapshot"`
+	StateCounts                       replayResolverStateCounts `json:"state_counts"`
+	ProjectedConfidenceCounts         replayConfidenceCounts    `json:"projected_confidence_counts"`
+	LegacyUnknownNowP                 uint64                    `json:"legacy_unknown_now_p"`
+	NeighborhoodUsed                  uint64                    `json:"neighborhood_used"`
+	NeighborhoodOverride              uint64                    `json:"neighborhood_winner_override"`
+	NeighborhoodSplit                 uint64                    `json:"neighborhood_conflict_split"`
+	NeighborhoodExcludedUnrelated     uint64                    `json:"neighborhood_excluded_unrelated"`
+	NeighborhoodExcludedDistance      uint64                    `json:"neighborhood_excluded_distance"`
+	NeighborhoodExcludedAnchorMissing uint64                    `json:"neighborhood_excluded_anchor_missing"`
+	RecentPlus1Applied                uint64                    `json:"recent_plus1_applied"`
+	RecentPlus1Rejected               uint64                    `json:"recent_plus1_rejected"`
+	RecentPlus1RejectEdit             uint64                    `json:"recent_plus1_reject_edit_neighbor_contested"`
+	RecentPlus1RejectDistance         uint64                    `json:"recent_plus1_reject_distance_or_family"`
+	RecentPlus1RejectWinner           uint64                    `json:"recent_plus1_reject_winner_recent_insufficient"`
+	RecentPlus1RejectSubject          uint64                    `json:"recent_plus1_reject_subject_not_weaker"`
+	RecentPlus1RejectOther            uint64                    `json:"recent_plus1_reject_other"`
 }
 
 type replayStabilizerDelayProxyMetrics struct {
-	Eligible                    uint64 `json:"eligible"`
-	WouldDelayOld               uint64 `json:"would_delay_old"`
-	WouldDelayNew               uint64 `json:"would_delay_new"`
-	NewlyNotDelayedUnderNewRule uint64 `json:"newly_not_delayed_under_new_rule"`
-	NewlyDelayedUnderNewRule    uint64 `json:"newly_delayed_under_new_rule"`
-	DelayDelta                  int64  `json:"delay_delta"`
+	Eligible                 uint64 `json:"eligible"`
+	WouldDelay               uint64 `json:"would_delay"`
+	ReasonUnknownOrNonRecent uint64 `json:"reason_unknown_or_nonrecent"`
+	ReasonAmbiguousResolver  uint64 `json:"reason_ambiguous_resolver"`
+	ReasonPLowConfidence     uint64 `json:"reason_p_low_confidence"`
+	ReasonEditNeighbor       uint64 `json:"reason_edit_neighbor_contested"`
 }
 
-func (m *replayStabilizerDelayProxyMetrics) Observe(oldDelay bool, newDelay bool) {
+func (m *replayStabilizerDelayProxyMetrics) Observe(decision correctionflow.StabilizerDelayDecision) {
 	if m == nil {
 		return
 	}
 	m.Eligible++
-	if oldDelay {
-		m.WouldDelayOld++
+	if !decision.ShouldDelay {
+		return
 	}
-	if newDelay {
-		m.WouldDelayNew++
+	m.WouldDelay++
+	switch decision.Reason {
+	case correctionflow.StabilizerDelayReasonUnknownOrNonRecent:
+		m.ReasonUnknownOrNonRecent++
+	case correctionflow.StabilizerDelayReasonAmbiguous:
+		m.ReasonAmbiguousResolver++
+	case correctionflow.StabilizerDelayReasonPLowConfidence:
+		m.ReasonPLowConfidence++
+	case correctionflow.StabilizerDelayReasonEditNeighbor:
+		m.ReasonEditNeighbor++
 	}
-	if oldDelay && !newDelay {
-		m.NewlyNotDelayedUnderNewRule++
-	}
-	if !oldDelay && newDelay {
-		m.NewlyDelayedUnderNewRule++
-	}
-	m.DelayDelta = int64(m.WouldDelayNew) - int64(m.WouldDelayOld)
 }
 
 type replayABMetrics struct {
@@ -155,16 +169,63 @@ func (m *replayABMetrics) ObserveResolverSnapshot(snap spot.ResolverSnapshot, ok
 	}
 }
 
+func (m *replayABMetrics) ObserveResolverSelection(selection correctionflow.ResolverPrimarySelection) {
+	if m == nil {
+		return
+	}
+	if selection.UsedNeighborhood {
+		m.Resolver.NeighborhoodUsed++
+	}
+	if selection.WinnerOverride {
+		m.Resolver.NeighborhoodOverride++
+	}
+	if selection.NeighborhoodSplit {
+		m.Resolver.NeighborhoodSplit++
+	}
+	if selection.NeighborhoodExcludedUnrelated > 0 {
+		m.Resolver.NeighborhoodExcludedUnrelated += uint64(selection.NeighborhoodExcludedUnrelated)
+	}
+	if selection.NeighborhoodExcludedDistance > 0 {
+		m.Resolver.NeighborhoodExcludedDistance += uint64(selection.NeighborhoodExcludedDistance)
+	}
+	if selection.NeighborhoodExcludedAnchorMissing > 0 {
+		m.Resolver.NeighborhoodExcludedAnchorMissing += uint64(selection.NeighborhoodExcludedAnchorMissing)
+	}
+}
+
+func (m *replayABMetrics) ObserveResolverRecentPlus1Gate(gate spot.ResolverPrimaryGateResult, evaluated bool) {
+	if m == nil || !evaluated || !gate.RecentPlus1Considered {
+		return
+	}
+	if gate.RecentPlus1Applied {
+		m.Resolver.RecentPlus1Applied++
+		return
+	}
+	m.Resolver.RecentPlus1Rejected++
+	switch strings.ToLower(strings.TrimSpace(gate.RecentPlus1Reject)) {
+	case "edit_neighbor_contested":
+		m.Resolver.RecentPlus1RejectEdit++
+	case "distance_or_family":
+		m.Resolver.RecentPlus1RejectDistance++
+	case "winner_recent_insufficient":
+		m.Resolver.RecentPlus1RejectWinner++
+	case "subject_not_weaker":
+		m.Resolver.RecentPlus1RejectSubject++
+	default:
+		m.Resolver.RecentPlus1RejectOther++
+	}
+}
+
 func projectedResolverConfidenceOutcome(snap spot.ResolverSnapshot) replayConfidenceOutcome {
 	if snap.State != spot.ResolverStateConfident && snap.State != spot.ResolverStateProbable {
 		return replayConfidenceOutcome{Final: "?", LegacyFinal: "?"}
 	}
-	if strings.TrimSpace(snap.Winner) == "" || snap.WinnerSupport <= 0 || snap.TotalReporters <= 0 {
+	winner := spot.NormalizeCallsign(snap.Winner)
+	if winner == "" || snap.TotalReporters <= 0 {
 		return replayConfidenceOutcome{Final: "?", LegacyFinal: "?"}
 	}
-	percent := (snap.WinnerSupport * 100) / snap.TotalReporters
-	newGlyph := formatConfidence(percent, snap.TotalReporters)
-	legacyGlyph := formatConfidenceLegacy(percent, snap.TotalReporters)
+	newGlyph := correctionflow.ResolverConfidenceGlyphForCall(snap, true, winner)
+	legacyGlyph := formatConfidenceLegacy(correctionflow.ResolverWinnerConfidence(snap), snap.TotalReporters)
 	return replayConfidenceOutcome{
 		Final:       normalizeConfidenceGlyph(newGlyph),
 		LegacyFinal: normalizeConfidenceGlyph(legacyGlyph),
@@ -232,69 +293,4 @@ func stabilizerDelayProxyEligible(s *spot.Spot, store *spot.RecentBandStore, cfg
 	}
 	band = spot.NormalizeBand(band)
 	return band != "" && band != "???"
-}
-
-func shouldDelayTelnetByStabilizerReplay(s *spot.Spot, store *spot.RecentBandStore, cfg config.CallCorrectionConfig, now time.Time) bool {
-	if s == nil || store == nil || !cfg.StabilizerEnabled || s.IsBeacon {
-		return false
-	}
-	if strings.EqualFold(strings.TrimSpace(s.Confidence), "P") {
-		return false
-	}
-	mode := s.ModeNorm
-	if mode == "" {
-		mode = s.Mode
-	}
-	if !spot.IsCallCorrectionCandidate(mode) {
-		return false
-	}
-	call := s.DXCallNorm
-	if call == "" {
-		call = s.DXCall
-	}
-	if strings.TrimSpace(call) == "" {
-		return false
-	}
-	band := s.BandNorm
-	if strings.TrimSpace(band) == "" || band == "???" {
-		band = spot.FreqToBand(s.Frequency)
-	}
-	minUnique := cfg.RecentBandRecordMinUniqueSpotters
-	if minUnique <= 0 {
-		minUnique = 2
-	}
-	return !hasRecentSupportForCallFamily(store, call, band, mode, minUnique, now)
-}
-
-func wouldDelayTelnetByStabilizerWithConfidence(
-	s *spot.Spot,
-	store *spot.RecentBandStore,
-	cfg config.CallCorrectionConfig,
-	now time.Time,
-	confidence string,
-) bool {
-	if s == nil {
-		return false
-	}
-	originalConfidence := s.Confidence
-	s.Confidence = normalizeConfidenceGlyph(confidence)
-	delayed := shouldDelayTelnetByStabilizerReplay(s, store, cfg, now)
-	s.Confidence = originalConfidence
-	return delayed
-}
-
-func hasRecentSupportForCallFamily(store *spot.RecentBandStore, call, band, mode string, minUnique int, now time.Time) bool {
-	if store == nil {
-		return false
-	}
-	keys := spot.CorrectionFamilyKeys(call)
-	if len(keys) == 0 {
-		return store.HasRecentSupport(call, band, mode, minUnique, now)
-	}
-	for _, key := range keys {
-		if store.HasRecentSupport(key, band, mode, minUnique, now) {
-			return true
-		}
-	}
-	return false
 }

@@ -206,3 +206,83 @@ func TestTelnetFamilySuppressorPrunesExpiredEntriesAtCapacity(t *testing.T) {
 		t.Fatalf("expected expiry prune + insert to keep entry count bounded at 2, got %d", suppressor.totalEntries)
 	}
 }
+
+func TestTelnetFamilySuppressorEditNeighborSuppressesContestedLateVariant(t *testing.T) {
+	suppressor := newTestTelnetFamilySuppressor()
+	cfg := config.CallCorrectionConfig{
+		FrequencyToleranceHz:      500,
+		VoiceFrequencyToleranceHz: 2000,
+		DistanceModelCW:           "morse",
+		DistanceModelRTTY:         "baudot",
+	}
+	cfg.FamilyPolicy.TelnetSuppression.EditNeighborEnabled = true
+	now := time.Now().UTC()
+
+	first := spot.NewSpot("K1ABC", "W1AAA", 7010.0, "CW")
+	firstSnapshot := spot.ResolverSnapshot{
+		State:          spot.ResolverStateSplit,
+		Winner:         "K1ABC",
+		WinnerSupport:  2,
+		TotalReporters: 4,
+		CandidateRanks: []spot.ResolverCandidateSupport{
+			{Call: "K1ABC", Support: 2},
+			{Call: "K1ABD", Support: 2},
+		},
+	}
+	if suppressor.ShouldSuppressWithResolver(first, cfg, now, firstSnapshot, true) {
+		t.Fatalf("did not expect first contested variant to be suppressed")
+	}
+
+	second := spot.NewSpot("K1ABD", "W2BBB", 7010.0, "CW")
+	secondSnapshot := spot.ResolverSnapshot{
+		State:          spot.ResolverStateSplit,
+		Winner:         "K1ABD",
+		WinnerSupport:  2,
+		TotalReporters: 4,
+		CandidateRanks: []spot.ResolverCandidateSupport{
+			{Call: "K1ABC", Support: 2},
+			{Call: "K1ABD", Support: 2},
+		},
+	}
+	if !suppressor.ShouldSuppressWithResolver(second, cfg, now.Add(time.Second), secondSnapshot, true) {
+		t.Fatalf("expected contested late variant to be suppressed")
+	}
+}
+
+func TestTelnetFamilySuppressorEditNeighborSkipsNonContestedVariants(t *testing.T) {
+	suppressor := newTestTelnetFamilySuppressor()
+	cfg := config.CallCorrectionConfig{
+		FrequencyToleranceHz:      500,
+		VoiceFrequencyToleranceHz: 2000,
+		DistanceModelCW:           "morse",
+		DistanceModelRTTY:         "baudot",
+	}
+	cfg.FamilyPolicy.TelnetSuppression.EditNeighborEnabled = true
+	now := time.Now().UTC()
+
+	first := spot.NewSpot("K1ABC", "W1AAA", 7010.0, "CW")
+	if suppressor.ShouldSuppressWithResolver(first, cfg, now, spot.ResolverSnapshot{
+		State:          spot.ResolverStateConfident,
+		Winner:         "K1ABC",
+		WinnerSupport:  3,
+		TotalReporters: 3,
+		CandidateRanks: []spot.ResolverCandidateSupport{
+			{Call: "K1ABC", Support: 3},
+		},
+	}, true) {
+		t.Fatalf("did not expect initial non-contested variant to be suppressed")
+	}
+
+	second := spot.NewSpot("K1ABD", "W2BBB", 7010.0, "CW")
+	if suppressor.ShouldSuppressWithResolver(second, cfg, now.Add(time.Second), spot.ResolverSnapshot{
+		State:          spot.ResolverStateConfident,
+		Winner:         "K1ABD",
+		WinnerSupport:  1,
+		TotalReporters: 1,
+		CandidateRanks: []spot.ResolverCandidateSupport{
+			{Call: "K1ABD", Support: 1},
+		},
+	}, true) {
+		t.Fatalf("did not expect non-contested late variant to be suppressed")
+	}
+}

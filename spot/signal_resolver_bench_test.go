@@ -27,7 +27,7 @@ func BenchmarkSignalResolverEvaluate(b *testing.B) {
 		key:           key,
 		recencyWindow: 30 * time.Second,
 		candidates:    make(map[string]*resolverCandidate, 8),
-		reporterRefs:  make(map[string]int, 8*32),
+		reporterRefs:  make(map[string]resolverReporterRef, 8*32),
 		lastSeen:      time.Now().UTC(),
 	}
 	now := time.Now().UTC()
@@ -37,7 +37,10 @@ func BenchmarkSignalResolverEvaluate(b *testing.B) {
 		for reporterIdx := 0; reporterIdx < 32; reporterIdx++ {
 			reporter := fmt.Sprintf("K1%03d", candidateIdx*100+reporterIdx)
 			reporters[reporter] = now
-			st.reporterRefs[reporter]++
+			st.reporterRefs[reporter] = resolverReporterRef{
+				refCount:    1,
+				weightMilli: resolverReliabilityScale,
+			}
 		}
 		st.candidates[call] = &resolverCandidate{
 			lastSeen:    now,

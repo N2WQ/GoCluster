@@ -28,6 +28,10 @@ func TestTrackerObserveCallCorrectionDecision(t *testing.T) {
 	if reasons["min_reports"] != 1 {
 		t.Fatalf("expected min_reports rejection count 1, got %d", reasons["min_reports"])
 	}
+	appliedReasons := tr.CorrectionDecisionAppliedReasons()
+	if appliedReasons["unknown"] != 2 {
+		t.Fatalf("expected unknown applied-reason count 2, got %d", appliedReasons["unknown"])
+	}
 	paths := tr.CorrectionDecisionPaths()
 	if paths["consensus"] != 1 || paths["consensus+prior_bonus"] != 1 || paths["anchor"] != 1 {
 		t.Fatalf("unexpected correction decision path counts: %+v", paths)

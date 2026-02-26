@@ -52,14 +52,16 @@ func formatCorrectionDecisionSummary(tracker *stats.Tracker) string {
 	fallback := tracker.CorrectionFallbackApplied()
 	prior := tracker.CorrectionPriorBonusUsed()
 	reasons := formatTopCounterSummary(tracker.CorrectionDecisionReasons(), 2)
+	appliedReasons := formatTopCounterSummary(tracker.CorrectionDecisionAppliedReasons(), 2)
 	paths := formatTopCounterSummary(tracker.CorrectionDecisionPaths(), 2)
-	return fmt.Sprintf("CorrGate: %s (T) / %s (A) / %s (R) / %s (FB) / %s (PB) [%s] [%s]",
+	return fmt.Sprintf("CorrGate: %s (T) / %s (A) / %s (R) / %s (FB) / %s (PB) [rej:%s ap:%s] [%s]",
 		humanize.Comma(int64(total)),
 		humanize.Comma(int64(applied)),
 		humanize.Comma(int64(rejected)),
 		humanize.Comma(int64(fallback)),
 		humanize.Comma(int64(prior)),
 		reasons,
+		appliedReasons,
 		paths,
 	)
 }

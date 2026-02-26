@@ -14,15 +14,23 @@ const (
 )
 
 type telnetStabilizerItem struct {
-	spot            *spot.Spot
-	due             time.Time
-	seq             uint64
-	checksCompleted int
+	spot             *spot.Spot
+	due              time.Time
+	seq              uint64
+	checksCompleted  int
+	delayReason      string
+	resolverKey      spot.ResolverSignalKey
+	hasResolverKey   bool
+	evidenceEnqueued bool
 }
 
 type telnetStabilizerEnvelope struct {
-	spot            *spot.Spot
-	checksCompleted int
+	spot             *spot.Spot
+	checksCompleted  int
+	delayReason      string
+	resolverKey      spot.ResolverSignalKey
+	hasResolverKey   bool
+	evidenceEnqueued bool
 }
 
 type telnetStabilizerHeap []*telnetStabilizerItem
@@ -123,10 +131,21 @@ func (s *telnetSpotStabilizer) Pending() int64 {
 }
 
 func (s *telnetSpotStabilizer) Enqueue(sp *spot.Spot) bool {
-	return s.EnqueueWithChecks(sp, 0)
+	return s.EnqueueWithChecks(sp, 0, "")
 }
 
-func (s *telnetSpotStabilizer) EnqueueWithChecks(sp *spot.Spot, checksCompleted int) bool {
+func (s *telnetSpotStabilizer) EnqueueWithChecks(sp *spot.Spot, checksCompleted int, delayReason string) bool {
+	return s.EnqueueWithContext(sp, checksCompleted, delayReason, spot.ResolverSignalKey{}, false, false)
+}
+
+func (s *telnetSpotStabilizer) EnqueueWithContext(
+	sp *spot.Spot,
+	checksCompleted int,
+	delayReason string,
+	resolverKey spot.ResolverSignalKey,
+	hasResolverKey bool,
+	evidenceEnqueued bool,
+) bool {
 	if s == nil || sp == nil {
 		return false
 	}
@@ -137,7 +156,14 @@ func (s *telnetSpotStabilizer) EnqueueWithChecks(sp *spot.Spot, checksCompleted 
 		return false
 	}
 	select {
-	case s.in <- &telnetStabilizerEnvelope{spot: sp, checksCompleted: checksCompleted}:
+	case s.in <- &telnetStabilizerEnvelope{
+		spot:             sp,
+		checksCompleted:  checksCompleted,
+		delayReason:      delayReason,
+		resolverKey:      resolverKey,
+		hasResolverKey:   hasResolverKey,
+		evidenceEnqueued: evidenceEnqueued,
+	}:
 		return true
 	default:
 		s.pending.Add(-1)
@@ -213,10 +239,14 @@ func (s *telnetSpotStabilizer) run() {
 				continue
 			}
 			heap.Push(&queue, &telnetStabilizerItem{
-				spot:            envelope.spot,
-				due:             time.Now().UTC().Add(s.delay),
-				seq:             nextID,
-				checksCompleted: envelope.checksCompleted,
+				spot:             envelope.spot,
+				due:              time.Now().UTC().Add(s.delay),
+				seq:              nextID,
+				checksCompleted:  envelope.checksCompleted,
+				delayReason:      envelope.delayReason,
+				resolverKey:      envelope.resolverKey,
+				hasResolverKey:   envelope.hasResolverKey,
+				evidenceEnqueued: envelope.evidenceEnqueued,
 			})
 			nextID++
 		case <-timerC:
@@ -234,8 +264,12 @@ func (s *telnetSpotStabilizer) run() {
 				}
 				select {
 				case s.release <- &telnetStabilizerEnvelope{
-					spot:            item.spot,
-					checksCompleted: item.checksCompleted,
+					spot:             item.spot,
+					checksCompleted:  item.checksCompleted,
+					delayReason:      item.delayReason,
+					resolverKey:      item.resolverKey,
+					hasResolverKey:   item.hasResolverKey,
+					evidenceEnqueued: item.evidenceEnqueued,
 				}:
 				case <-s.stop:
 					return

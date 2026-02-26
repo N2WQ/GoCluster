@@ -29,6 +29,7 @@ type Tracker struct {
 	corrDecisionRejected atomic.Uint64
 	corrFallbackApplied  atomic.Uint64
 	corrPriorBonusUsed   atomic.Uint64
+	corrAppliedReasons   sync.Map // string -> *atomic.Uint64
 	corrDecisionReasons  sync.Map // string -> *atomic.Uint64
 	corrDecisionPaths    sync.Map // string -> *atomic.Uint64
 	corrDecisionRanks    sync.Map // string(rank) -> *atomic.Uint64
@@ -37,6 +38,10 @@ type Tracker struct {
 	stabDelayed          atomic.Uint64
 	stabSuppressed       atomic.Uint64
 	stabOverflowRelease  atomic.Uint64
+	stabHeldByReason     sync.Map // string -> *atomic.Uint64
+	stabImmediateReason  sync.Map // string -> *atomic.Uint64
+	stabDelayedByReason  sync.Map // string -> *atomic.Uint64
+	stabSuppressedReason sync.Map // string -> *atomic.Uint64
 }
 
 // NewTracker creates a new stats tracker with a start timestamp.
@@ -171,6 +176,26 @@ func (t *Tracker) Reset() {
 		t.sourceModeCounts.Delete(key)
 		return true
 	})
+	t.stabHeldByReason.Range(func(key, _ any) bool {
+		t.stabHeldByReason.Delete(key)
+		return true
+	})
+	t.stabImmediateReason.Range(func(key, _ any) bool {
+		t.stabImmediateReason.Delete(key)
+		return true
+	})
+	t.stabDelayedByReason.Range(func(key, _ any) bool {
+		t.stabDelayedByReason.Delete(key)
+		return true
+	})
+	t.stabSuppressedReason.Range(func(key, _ any) bool {
+		t.stabSuppressedReason.Delete(key)
+		return true
+	})
+	t.corrAppliedReasons.Range(func(key, _ any) bool {
+		t.corrAppliedReasons.Delete(key)
+		return true
+	})
 	t.start.Store(time.Now().UTC().UnixNano())
 }
 
@@ -202,6 +227,14 @@ func (t *Tracker) IncrementStabilizerHeld() {
 	t.stabHeld.Add(1)
 }
 
+// IncrementStabilizerHeldReason records the reason bucket for delayed spots.
+func (t *Tracker) IncrementStabilizerHeldReason(reason string) {
+	if t == nil {
+		return
+	}
+	incrementCounter(&t.stabHeldByReason, strings.ToLower(strings.TrimSpace(reason)))
+}
+
 // IncrementStabilizerReleasedImmediate records telnet spots delivered without a
 // stabilizer delay.
 func (t *Tracker) IncrementStabilizerReleasedImmediate() {
@@ -209,6 +242,15 @@ func (t *Tracker) IncrementStabilizerReleasedImmediate() {
 		return
 	}
 	t.stabImmediate.Add(1)
+}
+
+// IncrementStabilizerReleasedImmediateReason records reason buckets for spots
+// delivered immediately while stabilizer was enabled.
+func (t *Tracker) IncrementStabilizerReleasedImmediateReason(reason string) {
+	if t == nil {
+		return
+	}
+	incrementCounter(&t.stabImmediateReason, strings.ToLower(strings.TrimSpace(reason)))
 }
 
 // IncrementStabilizerReleasedDelayed records telnet spots delivered after the
@@ -220,6 +262,15 @@ func (t *Tracker) IncrementStabilizerReleasedDelayed() {
 	t.stabDelayed.Add(1)
 }
 
+// IncrementStabilizerReleasedDelayedReason records reason buckets for delayed
+// releases that eventually reached telnet output.
+func (t *Tracker) IncrementStabilizerReleasedDelayedReason(reason string) {
+	if t == nil {
+		return
+	}
+	incrementCounter(&t.stabDelayedByReason, strings.ToLower(strings.TrimSpace(reason)))
+}
+
 // IncrementStabilizerSuppressedTimeout records telnet spots dropped after delay
 // when the timeout action is suppress.
 func (t *Tracker) IncrementStabilizerSuppressedTimeout() {
@@ -227,6 +278,15 @@ func (t *Tracker) IncrementStabilizerSuppressedTimeout() {
 		return
 	}
 	t.stabSuppressed.Add(1)
+}
+
+// IncrementStabilizerSuppressedTimeoutReason records reason buckets for delayed
+// spots suppressed after timeout checks were exhausted.
+func (t *Tracker) IncrementStabilizerSuppressedTimeoutReason(reason string) {
+	if t == nil {
+		return
+	}
+	incrementCounter(&t.stabSuppressedReason, strings.ToLower(strings.TrimSpace(reason)))
 }
 
 // IncrementStabilizerOverflowRelease records delayed spots released immediately
@@ -252,6 +312,11 @@ func (t *Tracker) ObserveCallCorrectionDecision(path, decision, reason string, c
 	switch decision {
 	case "applied":
 		t.corrDecisionApplied.Add(1)
+		applyReason := strings.ToLower(strings.TrimSpace(reason))
+		if applyReason == "" {
+			applyReason = "unknown"
+		}
+		incrementCounter(&t.corrAppliedReasons, applyReason)
 	case "rejected":
 		t.corrDecisionRejected.Add(1)
 	default:
@@ -381,6 +446,38 @@ func (t *Tracker) StabilizerOverflowRelease() uint64 {
 	return t.stabOverflowRelease.Load()
 }
 
+// StabilizerHeldByReason returns delayed-spot counts by delay reason.
+func (t *Tracker) StabilizerHeldByReason() map[string]uint64 {
+	if t == nil {
+		return map[string]uint64{}
+	}
+	return snapshotCounterMap(&t.stabHeldByReason)
+}
+
+// StabilizerReleasedImmediateByReason returns immediate-release counts by reason.
+func (t *Tracker) StabilizerReleasedImmediateByReason() map[string]uint64 {
+	if t == nil {
+		return map[string]uint64{}
+	}
+	return snapshotCounterMap(&t.stabImmediateReason)
+}
+
+// StabilizerReleasedDelayedByReason returns delayed-release counts by reason.
+func (t *Tracker) StabilizerReleasedDelayedByReason() map[string]uint64 {
+	if t == nil {
+		return map[string]uint64{}
+	}
+	return snapshotCounterMap(&t.stabDelayedByReason)
+}
+
+// StabilizerSuppressedByReason returns suppression counts by reason.
+func (t *Tracker) StabilizerSuppressedByReason() map[string]uint64 {
+	if t == nil {
+		return map[string]uint64{}
+	}
+	return snapshotCounterMap(&t.stabSuppressedReason)
+}
+
 // Purpose: Return total correction decisions observed (applied + rejected).
 // Key aspects: Atomic load.
 // Upstream: dashboard/metrics output.
@@ -427,6 +524,14 @@ func (t *Tracker) CorrectionPriorBonusUsed() uint64 {
 // Downstream: atomic loads.
 func (t *Tracker) CorrectionDecisionReasons() map[string]uint64 {
 	return snapshotCounterMap(&t.corrDecisionReasons)
+}
+
+// Purpose: Return a copy of correction applied reasons.
+// Key aspects: Iterates sync.Map and reads atomics.
+// Upstream: resolver-primary telemetry and dashboards.
+// Downstream: atomic loads.
+func (t *Tracker) CorrectionDecisionAppliedReasons() map[string]uint64 {
+	return snapshotCounterMap(&t.corrAppliedReasons)
 }
 
 // Purpose: Return a copy of correction decision path counts.

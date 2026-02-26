@@ -174,20 +174,17 @@ func (s *Store) Count() int {
 	return table.Count()
 }
 
-// FilterEntries filters skew entries by correction factor and minimum spots.
-// Key aspects: Drops factor==1 and entries below minSpots; returns a new slice.
+// FilterEntries filters skew entries by absolute skew threshold.
+// Key aspects: Keeps entries where abs(skew) >= minAbsSkew; returns a new slice.
 // Upstream: LoadFile, FetchAndWrite.
 // Downstream: None.
-func FilterEntries(entries []Entry, minSpots int) []Entry {
-	if minSpots < 0 {
-		minSpots = 0
+func FilterEntries(entries []Entry, minAbsSkew float64) []Entry {
+	if minAbsSkew < 0 {
+		minAbsSkew = 0
 	}
 	filtered := make([]Entry, 0, len(entries))
 	for _, entry := range entries {
-		if entry.CorrectionFactor == 1 {
-			continue
-		}
-		if minSpots > 0 && entry.Spots < minSpots {
+		if math.Abs(entry.SkewHz) < minAbsSkew {
 			continue
 		}
 		filtered = append(filtered, entry)
@@ -252,7 +249,7 @@ func WriteJSON(entries []Entry, path string) error {
 }
 
 // Purpose: Parse the skew CSV into entries.
-// Key aspects: Skips headers/comments; validates row length and drops factor==1.
+// Key aspects: Skips headers/comments and validates row length.
 // Upstream: Fetch.
 // Downstream: csv.Reader, toEntry.
 func parseCSV(raw []byte) ([]Entry, error) {
@@ -287,9 +284,6 @@ func parseCSV(raw []byte) ([]Entry, error) {
 		entry, err := toEntry(record)
 		if err != nil {
 			return nil, err
-		}
-		if entry.CorrectionFactor == 1 {
-			continue
 		}
 		entries = append(entries, entry)
 	}
@@ -341,7 +335,7 @@ func toEntry(record []string) (Entry, error) {
 // Key aspects: Uses a bounded timeout; returns count of written entries.
 // Upstream: Tools or scheduled refresh.
 // Downstream: Fetch, FilterEntries, WriteJSON.
-func FetchAndWrite(ctx context.Context, url string, minSpots int, path string) (int, error) {
+func FetchAndWrite(ctx context.Context, url string, minAbsSkew float64, path string) (int, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
@@ -349,7 +343,7 @@ func FetchAndWrite(ctx context.Context, url string, minSpots int, path string) (
 	if err != nil {
 		return 0, err
 	}
-	filtered := FilterEntries(entries, minSpots)
+	filtered := FilterEntries(entries, minAbsSkew)
 	if len(filtered) == 0 {
 		return 0, errors.New("skew: no entries after filtering")
 	}

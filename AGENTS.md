@@ -94,6 +94,8 @@ Traceability:
 ### CRITICAL CHECKLIST (read first; for every change)
 - Confirm current Scope Ledger vN and what is Agreed/Pending.
 - Classify change (default Non-trivial unless proven Small).
+- Pre-edit checklist (mandatory before any file edits): `Scope Ledger approved? yes/no`.
+- If `no` for a Non-trivial change: stop and request `Approved vN` before running `apply_patch`, writing files, or running full validation/checker commands.
 - Identify impacted contracts (protocol, ordering, drop/disconnect semantics, deadlines/timeouts, metrics/logs). If none: explicitly say “No contract changes.”
 - Identify user-visible behavior changes (timing, ordering, drops, disconnect reasons, error messages). If none: explicitly say “No user-visible behavior changes.”
 - Choose dependency rigor (Light vs Full) using the decision tree below.
@@ -126,11 +128,21 @@ Scope Ledger rules:
 Approval handshake:
 - When the assistant prints “Scope Ledger vN”, the user may reply “Approved vN”.
 - Once approved, implementation proceeds against that ledger snapshot unless later amended.
+- Hard gate: for any Non-trivial change, do not run `apply_patch`, write files, or run full validation until `Approved vN` is received.
 
 If no Scope Ledger exists yet:
 - The assistant must first produce a Proposed Scope Ledger compiled from the thread.
 - Mark any ambiguous items as Needs confirmation.
 - Proceed only with the smallest safe subset unless the user approves the full ledger.
+
+Non-trivial turn opening template (mandatory):
+- `Proposed Scope Ledger vN`
+- `Needs confirmation` items (if any)
+- `Waiting for Approved vN`
+
+Exception policy (narrow):
+- Scope Ledger approval may be skipped only when the user explicitly states emergency intent and includes exact text `skip ledger`.
+- Without exact `skip ledger` text, approval remains mandatory.
 
 ### Shorthand commands
 If the user says:
@@ -155,6 +167,7 @@ Small (requires explicit justification in 1–2 sentences):
 
 Non-trivial (default):
 - Anything else, including any ambiguity about scope/impact.
+- Classification guard: if uncertain between Small and Non-trivial, classify as Non-trivial and require Scope Ledger approval before edits.
 
 If classified as Small and later found to affect any non-trivial area, stop and re-run using the Full Delivery workflow.
 

@@ -2,10 +2,12 @@ package main
 
 import (
 	"math"
+	"strings"
 	"sync"
 	"time"
 
 	"dxcluster/config"
+	"dxcluster/internal/correctionflow"
 	"dxcluster/spot"
 	"dxcluster/strutil"
 )
@@ -16,12 +18,14 @@ type telnetFamilyBucket struct {
 }
 
 type telnetFamilyEntry struct {
-	bucket  telnetFamilyBucket
-	key     string
-	freqKHz float64
-	seenAt  time.Time
-	prev    *telnetFamilyEntry
-	next    *telnetFamilyEntry
+	bucket    telnetFamilyBucket
+	key       string
+	freqKHz   float64
+	seenAt    time.Time
+	support   int
+	contested bool
+	prev      *telnetFamilyEntry
+	next      *telnetFamilyEntry
 }
 
 // telnetFamilySuppressor tracks recently emitted calls in small mode/frequency
@@ -60,6 +64,13 @@ func newTelnetFamilySuppressor(window time.Duration, maxEntries int, familyPolic
 // ShouldSuppress returns true when the spot call is less specific than a recent
 // call in the same family bucket and should be hidden from telnet output.
 func (s *telnetFamilySuppressor) ShouldSuppress(sp *spot.Spot, cfg config.CallCorrectionConfig, now time.Time) bool {
+	return s.ShouldSuppressWithResolver(sp, cfg, now, spot.ResolverSnapshot{}, false)
+}
+
+// ShouldSuppressWithResolver returns true when the spot should be hidden from
+// telnet output due to family precedence or resolver-contested edit-neighbor
+// suppression policy.
+func (s *telnetFamilySuppressor) ShouldSuppressWithResolver(sp *spot.Spot, cfg config.CallCorrectionConfig, now time.Time, resolverSnapshot spot.ResolverSnapshot, resolverSnapshotOK bool) bool {
 	if s == nil || sp == nil {
 		return false
 	}
@@ -70,6 +81,15 @@ func (s *telnetFamilySuppressor) ShouldSuppress(sp *spot.Spot, cfg config.CallCo
 	if !ok {
 		return false
 	}
+	incomingSupport := 0
+	incomingContested := false
+	if resolverSnapshotOK {
+		incomingSupport = correctionflow.ResolverSupportForCall(resolverSnapshot, key)
+		incomingContested = resolverSnapshot.State == spot.ResolverStateSplit || resolverSnapshot.State == spot.ResolverStateUncertain
+		if !incomingContested && incomingSupport > 0 {
+			incomingContested = hasComparableEditNeighborCandidate(resolverSnapshot, key, bucket.mode, cfg.DistanceModelCW, cfg.DistanceModelRTTY)
+		}
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -78,6 +98,8 @@ func (s *telnetFamilySuppressor) ShouldSuppress(sp *spot.Spot, cfg config.CallCo
 	s.pruneExpiredLocked(now)
 	if calls := s.buckets[bucket]; calls != nil {
 		if entry, exists := calls[key]; exists {
+			entry.support = incomingSupport
+			entry.contested = incomingContested
 			s.touchEntryLocked(entry, now)
 			return false
 		}
@@ -97,15 +119,29 @@ func (s *telnetFamilySuppressor) ShouldSuppress(sp *spot.Spot, cfg config.CallCo
 				continue
 			}
 			relation, related := spot.DetectCorrectionFamilyWithPolicy(existingKey, key, s.family)
-			if !related {
-				continue
+			if related {
+				if relation.MoreSpecific == existingKey && relation.LessSpecific == key {
+					suppress = true
+					break
+				}
+				if relation.MoreSpecific == key && relation.LessSpecific == existingKey {
+					s.removeEntryLocked(existingEntry)
+				}
 			}
-			if relation.MoreSpecific == existingKey && relation.LessSpecific == key {
+			if cfg.FamilyPolicy.TelnetSuppression.EditNeighborEnabled &&
+				(incomingContested || existingEntry.contested) &&
+				isEditNeighborPair(existingKey, key, bucket.mode, cfg.DistanceModelCW, cfg.DistanceModelRTTY) {
+				if existingEntry.support > incomingSupport {
+					suppress = true
+					break
+				}
+				if existingEntry.support < incomingSupport {
+					s.removeEntryLocked(existingEntry)
+					continue
+				}
+				// Deterministic tie-break: earlier emitted spot wins.
 				suppress = true
 				break
-			}
-			if relation.MoreSpecific == key && relation.LessSpecific == existingKey {
-				s.removeEntryLocked(existingEntry)
 			}
 		}
 		if suppress {
@@ -116,7 +152,7 @@ func (s *telnetFamilySuppressor) ShouldSuppress(sp *spot.Spot, cfg config.CallCo
 		return true
 	}
 
-	s.addEntryLocked(bucket, key, sp.Frequency, now)
+	s.addEntryLocked(bucket, key, sp.Frequency, incomingSupport, incomingContested, now)
 	for s.totalEntries > s.maxEntries {
 		if !s.evictHeadLocked() {
 			break
@@ -144,17 +180,19 @@ func (s *telnetFamilySuppressor) touchEntryLocked(entry *telnetFamilyEntry, now 
 	s.moveToTailLocked(entry)
 }
 
-func (s *telnetFamilySuppressor) addEntryLocked(bucket telnetFamilyBucket, key string, freqKHz float64, now time.Time) {
+func (s *telnetFamilySuppressor) addEntryLocked(bucket telnetFamilyBucket, key string, freqKHz float64, support int, contested bool, now time.Time) {
 	calls := s.buckets[bucket]
 	if calls == nil {
 		calls = make(map[string]*telnetFamilyEntry, 4)
 		s.buckets[bucket] = calls
 	}
 	entry := &telnetFamilyEntry{
-		bucket:  bucket,
-		key:     key,
-		freqKHz: freqKHz,
-		seenAt:  now,
+		bucket:    bucket,
+		key:       key,
+		freqKHz:   freqKHz,
+		seenAt:    now,
+		support:   support,
+		contested: contested,
 	}
 	calls[key] = entry
 	s.appendTailLocked(entry)
@@ -270,4 +308,36 @@ func telnetFamilyBucketForSpot(sp *spot.Spot, cfg config.CallCorrectionConfig, f
 	}
 	freqBin := int(math.Floor(sp.Frequency/widthKHz + 0.5))
 	return telnetFamilyBucket{mode: mode, freqBin: freqBin}, key, widthKHz, true
+}
+
+func hasComparableEditNeighborCandidate(snapshot spot.ResolverSnapshot, call string, mode, cwModel, rttyModel string) bool {
+	if strings.TrimSpace(call) == "" || len(snapshot.CandidateRanks) == 0 {
+		return false
+	}
+	callSupport := correctionflow.ResolverSupportForCall(snapshot, call)
+	for _, candidate := range snapshot.CandidateRanks {
+		candidateCall := spot.CorrectionVoteKey(candidate.Call)
+		if candidateCall == "" || strings.EqualFold(candidateCall, call) {
+			continue
+		}
+		if candidate.Support < callSupport {
+			continue
+		}
+		if isEditNeighborPair(call, candidateCall, mode, cwModel, rttyModel) {
+			return true
+		}
+	}
+	return false
+}
+
+func isEditNeighborPair(left, right, mode, cwModel, rttyModel string) bool {
+	left = spot.CorrectionVoteKey(left)
+	right = spot.CorrectionVoteKey(right)
+	if left == "" || right == "" || strings.EqualFold(left, right) {
+		return false
+	}
+	if strings.Contains(left, "/") || strings.Contains(right, "/") {
+		return false
+	}
+	return spot.CallDistance(left, right, mode, cwModel, rttyModel) == 1
 }

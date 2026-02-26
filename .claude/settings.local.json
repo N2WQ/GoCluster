@@ -31,9 +31,14 @@
       "WebFetch(domain:google.github.io)",
       "Bash(python3:*)",
       "Bash(go vet:*)",
-      "Bash(staticcheck:*)"
+      "Bash(staticcheck:*)",
+      "Bash(sed 's/.*`yaml:\"\"//')",
+      "Bash(sed 's/\"\".*//')"
     ],
     "deny": [],
-    "ask": []
+    "ask": [],
+    "additionalDirectories": [
+      "\\tmp"
+    ]
   }
 }

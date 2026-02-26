@@ -14,6 +14,7 @@ import (
 
 	"dxcluster/config"
 	"dxcluster/spot"
+	"dxcluster/stats"
 	"dxcluster/ui"
 )
 
@@ -780,29 +781,152 @@ func TestShouldDelayTelnetByStabilizerUsesSlashFamilyRecentSupport(t *testing.T)
 }
 
 func TestShouldRetryTelnetByStabilizerEligibility(t *testing.T) {
-	base := spot.NewSpot("K1RISK", "W2TT", 7010.0, "CW")
-	base.Confidence = "?"
-	if !shouldRetryTelnetByStabilizer(base, true, 1, 2) {
+	decision := stabilizerDelayDecision{
+		ShouldDelay: true,
+		Reason:      stabilizerDelayReasonUnknownOrNonRecent,
+		MaxChecks:   2,
+	}
+	if !shouldRetryTelnetByStabilizer(decision, 1) {
 		t.Fatalf("expected retry when risky, unknown confidence, and checks remain")
 	}
-	if shouldRetryTelnetByStabilizer(base, true, 1, 1) {
+	decision.MaxChecks = 1
+	if shouldRetryTelnetByStabilizer(decision, 1) {
 		t.Fatalf("did not expect retry when max_checks=1 (legacy single-check behavior)")
 	}
-	if shouldRetryTelnetByStabilizer(base, true, 2, 2) {
+	decision.MaxChecks = 2
+	if shouldRetryTelnetByStabilizer(decision, 2) {
 		t.Fatalf("did not expect retry once max checks are exhausted")
 	}
-	if shouldRetryTelnetByStabilizer(base, false, 1, 2) {
+	decision.ShouldDelay = false
+	if shouldRetryTelnetByStabilizer(decision, 1) {
 		t.Fatalf("did not expect retry when spot is no longer risky")
 	}
 }
 
-func TestShouldRetryTelnetByStabilizerSkipsPVCConfidence(t *testing.T) {
-	for _, confidence := range []string{"P", "V", "C"} {
-		s := spot.NewSpot("K1RISK", "W2TT", 7010.0, "CW")
-		s.Confidence = confidence
-		if shouldRetryTelnetByStabilizer(s, true, 1, 3) {
-			t.Fatalf("did not expect retry for confidence %s", confidence)
-		}
+func TestShouldRetryTelnetByStabilizerUsesReasonScopedChecks(t *testing.T) {
+	decision := stabilizerDelayDecision{
+		ShouldDelay: true,
+		Reason:      stabilizerDelayReasonPLowConfidence,
+		MaxChecks:   3,
+	}
+	if !shouldRetryTelnetByStabilizer(decision, 2) {
+		t.Fatalf("expected retry while checks remain for low-confidence P policy")
+	}
+	if shouldRetryTelnetByStabilizer(decision, 3) {
+		t.Fatalf("did not expect retry once low-confidence P checks are exhausted")
+	}
+}
+
+func TestEvaluateTelnetStabilizerDelayUsesAmbiguousResolverPolicy(t *testing.T) {
+	store := newRecentBandStoreForStabilizerAdmissionTests()
+	cfg := config.CallCorrectionConfig{
+		StabilizerEnabled:            true,
+		StabilizerMaxChecks:          5,
+		StabilizerAmbiguousMaxChecks: 2,
+	}
+	s := spot.NewSpot("K1AMB", "W2TT", 7010.0, "CW")
+	s.Confidence = "V"
+	s.EnsureNormalized()
+
+	snapshot := spot.ResolverSnapshot{
+		State:          spot.ResolverStateSplit,
+		TotalReporters: 5,
+	}
+	decision := evaluateTelnetStabilizerDelay(s, store, cfg, time.Now().UTC(), snapshot, true)
+	if !decision.ShouldDelay {
+		t.Fatalf("expected ambiguous resolver state to trigger delay")
+	}
+	if decision.Reason != stabilizerDelayReasonAmbiguous {
+		t.Fatalf("expected ambiguous reason, got %q", decision.Reason.String())
+	}
+	if decision.MaxChecks != 2 {
+		t.Fatalf("expected ambiguous max checks 2, got %d", decision.MaxChecks)
+	}
+}
+
+func TestEvaluateTelnetStabilizerDelayUsesPLowConfidencePolicy(t *testing.T) {
+	store := newRecentBandStoreForStabilizerAdmissionTests()
+	now := time.Now().UTC()
+	cfg := config.CallCorrectionConfig{
+		StabilizerEnabled:                 true,
+		StabilizerMaxChecks:               5,
+		StabilizerPDelayConfidencePercent: 25,
+		StabilizerPDelayMaxChecks:         2,
+		RecentBandRecordMinUniqueSpotters: 2,
+	}
+	s := spot.NewSpot("K1PLOW", "W2TT", 7010.0, "CW")
+	s.Confidence = "P"
+	s.EnsureNormalized()
+	store.Record("K1PLOW", s.BandNorm, "CW", "N0AAA", now.Add(-2*time.Minute))
+	store.Record("K1PLOW", s.BandNorm, "CW", "N0BBB", now.Add(-1*time.Minute))
+
+	snapshot := spot.ResolverSnapshot{
+		State:                     spot.ResolverStateProbable,
+		TotalWeightedSupportMilli: 1000,
+		CandidateRanks: []spot.ResolverCandidateSupport{
+			{Call: "K1PLOW", WeightedSupportMilli: 200},
+		},
+	}
+	decision := evaluateTelnetStabilizerDelay(s, store, cfg, now, snapshot, true)
+	if !decision.ShouldDelay {
+		t.Fatalf("expected low-confidence P policy to trigger delay")
+	}
+	if decision.Reason != stabilizerDelayReasonPLowConfidence {
+		t.Fatalf("expected P-low-confidence reason, got %q", decision.Reason.String())
+	}
+	if decision.MaxChecks != 2 {
+		t.Fatalf("expected P-low-confidence max checks 2, got %d", decision.MaxChecks)
+	}
+}
+
+func TestEvaluateTelnetStabilizerDelayPLowConfidenceFailsOpenWithoutSnapshot(t *testing.T) {
+	store := newRecentBandStoreForStabilizerAdmissionTests()
+	now := time.Now().UTC()
+	cfg := config.CallCorrectionConfig{
+		StabilizerEnabled:                 true,
+		StabilizerPDelayConfidencePercent: 25,
+		StabilizerPDelayMaxChecks:         2,
+		RecentBandRecordMinUniqueSpotters: 2,
+	}
+	s := spot.NewSpot("K1PLOW", "W2TT", 7010.0, "CW")
+	s.Confidence = "P"
+	s.EnsureNormalized()
+	store.Record("K1PLOW", s.BandNorm, "CW", "N0AAA", now.Add(-2*time.Minute))
+	store.Record("K1PLOW", s.BandNorm, "CW", "N0BBB", now.Add(-1*time.Minute))
+
+	decision := evaluateTelnetStabilizerDelay(s, store, cfg, now, spot.ResolverSnapshot{}, false)
+	if decision.ShouldDelay {
+		t.Fatalf("expected fail-open behavior when low-confidence P has no snapshot evidence")
+	}
+}
+
+func TestEvaluateTelnetStabilizerDelayUsesEditNeighborPolicy(t *testing.T) {
+	store := newRecentBandStoreForStabilizerAdmissionTests()
+	now := time.Now().UTC()
+	cfg := config.CallCorrectionConfig{
+		StabilizerEnabled:                 true,
+		StabilizerMaxChecks:               5,
+		StabilizerEditNeighborEnabled:     true,
+		StabilizerEditNeighborMaxChecks:   3,
+		StabilizerEditNeighborMinSpotters: 2,
+	}
+	s := spot.NewSpot("K1ABC", "W2TT", 7010.0, "CW")
+	s.Confidence = "V"
+	s.EnsureNormalized()
+	store.Record("K1ABC", s.BandNorm, "CW", "N0AAA", now.Add(-2*time.Minute))
+	store.Record("K1ABC", s.BandNorm, "CW", "N0AAB", now.Add(-90*time.Second))
+	store.Record("K1ABD", s.BandNorm, "CW", "N0AAC", now.Add(-80*time.Second))
+	store.Record("K1ABD", s.BandNorm, "CW", "N0AAD", now.Add(-70*time.Second))
+
+	decision := evaluateTelnetStabilizerDelay(s, store, cfg, now, spot.ResolverSnapshot{}, false)
+	if !decision.ShouldDelay {
+		t.Fatalf("expected edit-neighbor policy to trigger delay")
+	}
+	if decision.Reason != stabilizerDelayReasonEditNeighbor {
+		t.Fatalf("expected edit-neighbor reason, got %q", decision.Reason.String())
+	}
+	if decision.MaxChecks != 3 {
+		t.Fatalf("expected edit-neighbor max checks 3, got %d", decision.MaxChecks)
 	}
 }
 
@@ -939,6 +1063,1042 @@ func TestBuildResolverEvidenceSnapshotCapturesPreMutationCall(t *testing.T) {
 	s.EnsureNormalized()
 	if ev.DXCall != "DL6LD" {
 		t.Fatalf("snapshot should remain immutable after mutation, got %q", ev.DXCall)
+	}
+}
+
+func TestResolverConfidenceGlyphFromSnapshot(t *testing.T) {
+	if got := resolverConfidenceGlyph(spot.ResolverSnapshot{}, false, "K1ABC"); got != "?" {
+		t.Fatalf("expected no-snapshot confidence ?, got %q", got)
+	}
+
+	splitLikely := spot.ResolverSnapshot{
+		State:          spot.ResolverStateSplit,
+		WinnerSupport:  2,
+		TotalReporters: 4,
+	}
+	if got := resolverConfidenceGlyph(splitLikely, true, "K1ABC"); got != "P" {
+		t.Fatalf("expected split multi-reporter confidence P, got %q", got)
+	}
+
+	splitStrong := spot.ResolverSnapshot{
+		State:          spot.ResolverStateSplit,
+		WinnerSupport:  3,
+		TotalReporters: 4,
+	}
+	if got := resolverConfidenceGlyph(splitStrong, true, "K1ABC"); got != "P" {
+		t.Fatalf("expected split multi-reporter confidence P, got %q", got)
+	}
+
+	weightedLikely := spot.ResolverSnapshot{
+		State:                      spot.ResolverStateProbable,
+		Winner:                     "K1ABC",
+		WinnerSupport:              1,
+		TotalReporters:             2,
+		WinnerWeightedSupportMilli: 600,
+		TotalWeightedSupportMilli:  1600,
+	}
+	if got := resolverConfidenceGlyph(weightedLikely, true, "K1ABC"); got != "P" {
+		t.Fatalf("expected weighted confidence P, got %q", got)
+	}
+
+	weightedStrong := spot.ResolverSnapshot{
+		State:                      spot.ResolverStateConfident,
+		Winner:                     "K1ABC",
+		WinnerSupport:              1,
+		TotalReporters:             2,
+		WinnerWeightedSupportMilli: 950,
+		TotalWeightedSupportMilli:  1550,
+	}
+	if got := resolverConfidenceGlyph(weightedStrong, true, "K1ABC"); got != "V" {
+		t.Fatalf("expected weighted confidence V, got %q", got)
+	}
+
+	callSpecific := spot.ResolverSnapshot{
+		State:                     spot.ResolverStateConfident,
+		Winner:                    "K1ABC",
+		TotalReporters:            3,
+		TotalWeightedSupportMilli: 1200,
+		CandidateRanks: []spot.ResolverCandidateSupport{
+			{Call: "K1ABC", Support: 2, WeightedSupportMilli: 900},
+			{Call: "K1ABD", Support: 1, WeightedSupportMilli: 300},
+		},
+	}
+	if got := resolverConfidenceGlyph(callSpecific, true, "K1ABD"); got != "P" {
+		t.Fatalf("expected emitted runner-up confidence P, got %q", got)
+	}
+	if got := resolverConfidenceGlyph(callSpecific, true, "K1ABC"); got != "V" {
+		t.Fatalf("expected emitted winner confidence V, got %q", got)
+	}
+}
+
+func TestMaybeApplyResolverCorrectionAppliesWinner(t *testing.T) {
+	resolver := spot.NewSignalResolver(spot.SignalResolverConfig{
+		QueueSize:              64,
+		MaxActiveKeys:          16,
+		MaxCandidatesPerKey:    8,
+		MaxReportersPerCand:    16,
+		InactiveTTL:            time.Minute,
+		EvalMinInterval:        5 * time.Millisecond,
+		SweepInterval:          5 * time.Millisecond,
+		HysteresisWindows:      1,
+		FreqGuardRunnerUpRatio: 0.6,
+		MaxEditDistance:        3,
+		DistanceModelCW:        "morse",
+		DistanceModelRTTY:      "baudot",
+	})
+	resolver.Start()
+	t.Cleanup(resolver.Stop)
+
+	key := spot.NewResolverSignalKey(7010.0, "40m", "CW", 500)
+	now := time.Now().UTC()
+	evidence := []spot.ResolverEvidence{
+		{ObservedAt: now, Key: key, DXCall: "K1ABC", Spotter: "N0AAA", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "K1ABC", Spotter: "N0BBB", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "K1ABD", Spotter: "N0CCC", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+	}
+	for _, ev := range evidence {
+		if ok := resolver.Enqueue(ev); !ok {
+			t.Fatalf("failed to enqueue resolver evidence")
+		}
+	}
+
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		snap, ok := resolver.Lookup(key)
+		if ok && snap.Winner == "K1ABC" && snap.WinnerSupport >= 2 && (snap.State == spot.ResolverStateConfident || snap.State == spot.ResolverStateProbable) {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	s := spot.NewSpot("K1ABD", "W1XYZ", 7010.0, "CW")
+	s.EnsureNormalized()
+
+	suppress := false
+	applyDeadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(applyDeadline) {
+		suppress = maybeApplyResolverCorrection(
+			s,
+			resolver,
+			spot.ResolverEvidence{Key: key},
+			true,
+			config.CallCorrectionConfig{
+				Enabled:              true,
+				MaxEditDistance:      6,
+				MinConsensusReports:  1,
+				MinAdvantage:         0,
+				MinConfidencePercent: 0,
+				DistanceModelCW:      "morse",
+				DistanceModelRTTY:    "baudot",
+				InvalidAction:        "broadcast",
+			},
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+		)
+		if s.DXCallNorm == "K1ABC" {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if suppress {
+		t.Fatalf("did not expect suppress")
+	}
+	if got := s.DXCallNorm; got != "K1ABC" {
+		t.Fatalf("expected resolver winner K1ABC, got %q", got)
+	}
+	if got := strings.TrimSpace(s.Confidence); got != "C" {
+		t.Fatalf("expected confidence C after resolver correction, got %q", got)
+	}
+}
+
+func TestMaybeApplyResolverCorrectionNoApplyUsesEmittedCallConfidence(t *testing.T) {
+	resolver := spot.NewSignalResolver(spot.SignalResolverConfig{
+		QueueSize:              64,
+		MaxActiveKeys:          16,
+		MaxCandidatesPerKey:    8,
+		MaxReportersPerCand:    16,
+		InactiveTTL:            time.Minute,
+		EvalMinInterval:        5 * time.Millisecond,
+		SweepInterval:          5 * time.Millisecond,
+		HysteresisWindows:      1,
+		FreqGuardRunnerUpRatio: 0.6,
+		MaxEditDistance:        3,
+		DistanceModelCW:        "morse",
+		DistanceModelRTTY:      "baudot",
+	})
+	resolver.Start()
+	t.Cleanup(resolver.Stop)
+
+	key := spot.NewResolverSignalKey(7010.0, "40m", "CW", 500)
+	now := time.Now().UTC()
+	evidence := []spot.ResolverEvidence{
+		{ObservedAt: now, Key: key, DXCall: "K1ABC", Spotter: "N0AAA", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "K1ABC", Spotter: "N0BBB", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "K1ABD", Spotter: "N0CCC", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+	}
+	for _, ev := range evidence {
+		if ok := resolver.Enqueue(ev); !ok {
+			t.Fatalf("failed to enqueue resolver evidence")
+		}
+	}
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		snap, ok := resolver.Lookup(key)
+		if ok && snap.Winner == "K1ABC" && snap.WinnerSupport >= 2 && (snap.State == spot.ResolverStateConfident || snap.State == spot.ResolverStateProbable) {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	tracker := stats.NewTracker()
+	s := spot.NewSpot("K1ABD", "W1XYZ", 7010.0, "CW")
+	s.EnsureNormalized()
+	suppress := maybeApplyResolverCorrection(
+		s,
+		resolver,
+		spot.ResolverEvidence{Key: key},
+		true,
+		config.CallCorrectionConfig{
+			Enabled:              true,
+			MaxEditDistance:      6,
+			MinConsensusReports:  1,
+			MinAdvantage:         5, // force gate rejection on advantage
+			MinConfidencePercent: 0,
+			DistanceModelCW:      "morse",
+			DistanceModelRTTY:    "baudot",
+			InvalidAction:        "broadcast",
+		},
+		nil,
+		nil,
+		tracker,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+	if suppress {
+		t.Fatalf("did not expect suppress")
+	}
+	if got := s.DXCallNorm; got != "K1ABD" {
+		t.Fatalf("expected call to remain K1ABD, got %q", got)
+	}
+	if got := strings.TrimSpace(s.Confidence); got != "P" {
+		t.Fatalf("expected emitted-call confidence P, got %q", got)
+	}
+	if got := tracker.CorrectionDecisionReasons()["resolver_gate_advantage"]; got != 1 {
+		t.Fatalf("expected resolver_gate_advantage=1, got %d", got)
+	}
+}
+
+func TestMaybeApplyResolverCorrectionUsesAdaptiveMinReports(t *testing.T) {
+	resolver := spot.NewSignalResolver(spot.SignalResolverConfig{
+		QueueSize:              64,
+		MaxActiveKeys:          16,
+		MaxCandidatesPerKey:    8,
+		MaxReportersPerCand:    16,
+		InactiveTTL:            time.Minute,
+		EvalMinInterval:        5 * time.Millisecond,
+		SweepInterval:          5 * time.Millisecond,
+		HysteresisWindows:      1,
+		FreqGuardRunnerUpRatio: 0.6,
+		MaxEditDistance:        3,
+		DistanceModelCW:        "morse",
+		DistanceModelRTTY:      "baudot",
+	})
+	resolver.Start()
+	t.Cleanup(resolver.Stop)
+
+	key := spot.NewResolverSignalKey(7010.0, "40m", "CW", 500)
+	now := time.Now().UTC()
+	evidence := []spot.ResolverEvidence{
+		{ObservedAt: now, Key: key, DXCall: "K1ABC", Spotter: "N0AAA", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "K1ABC", Spotter: "N0AAB", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "K1ABD", Spotter: "N0AAC", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+	}
+	for _, ev := range evidence {
+		if ok := resolver.Enqueue(ev); !ok {
+			t.Fatalf("failed to enqueue resolver evidence")
+		}
+	}
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		snap, ok := resolver.Lookup(key)
+		if ok && snap.Winner == "K1ABC" && snap.WinnerSupport >= 2 && (snap.State == spot.ResolverStateConfident || snap.State == spot.ResolverStateProbable) {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	adaptive := spot.NewAdaptiveMinReports(config.CallCorrectionConfig{
+		Enabled:             true,
+		MinConsensusReports: 1,
+		AdaptiveMinReports: config.AdaptiveMinReportsConfig{
+			Enabled:                 true,
+			WindowMinutes:           10,
+			EvaluationPeriodSeconds: 1,
+			HysteresisWindows:       1,
+			Groups: []config.AdaptiveMinReportsGroup{
+				{
+					Name:             "midbands",
+					Bands:            []string{"40m"},
+					QuietBelow:       1000,
+					BusyAbove:        2000,
+					QuietMinReports:  4,
+					NormalMinReports: 4,
+					BusyMinReports:   4,
+				},
+			},
+		},
+	})
+	if adaptive == nil {
+		t.Fatalf("expected adaptive min-reports controller")
+	}
+
+	tracker := stats.NewTracker()
+	s := spot.NewSpot("K1ABD", "W1XYZ", 7010.0, "CW")
+	s.EnsureNormalized()
+	suppress := maybeApplyResolverCorrection(
+		s,
+		resolver,
+		spot.ResolverEvidence{Key: key},
+		true,
+		config.CallCorrectionConfig{
+			Enabled:              true,
+			MaxEditDistance:      6,
+			MinConsensusReports:  1,
+			MinAdvantage:         0,
+			MinConfidencePercent: 0,
+			DistanceModelCW:      "morse",
+			DistanceModelRTTY:    "baudot",
+			InvalidAction:        "broadcast",
+		},
+		nil,
+		nil,
+		tracker,
+		nil,
+		nil,
+		nil,
+		adaptive,
+	)
+	if suppress {
+		t.Fatalf("did not expect suppress")
+	}
+	if got := s.DXCallNorm; got != "K1ABD" {
+		t.Fatalf("expected adaptive min_reports to block correction, got %q", got)
+	}
+	if got := tracker.CorrectionDecisionReasons()["resolver_gate_min_reports"]; got != 1 {
+		t.Fatalf("expected resolver_gate_min_reports=1, got %d", got)
+	}
+}
+
+func TestMaybeApplyResolverCorrectionUsesNeighborhoodWinner(t *testing.T) {
+	resolver := spot.NewSignalResolver(spot.SignalResolverConfig{
+		QueueSize:              64,
+		MaxActiveKeys:          16,
+		MaxCandidatesPerKey:    8,
+		MaxReportersPerCand:    16,
+		InactiveTTL:            time.Minute,
+		EvalMinInterval:        5 * time.Millisecond,
+		SweepInterval:          5 * time.Millisecond,
+		HysteresisWindows:      1,
+		FreqGuardRunnerUpRatio: 0.6,
+		MaxEditDistance:        3,
+		DistanceModelCW:        "morse",
+		DistanceModelRTTY:      "baudot",
+	})
+	resolver.Start()
+	t.Cleanup(resolver.Stop)
+
+	key := spot.NewResolverSignalKey(7010.0, "40m", "CW", 500)
+	neighborKey := spot.NewResolverSignalKey(7009.5, "40m", "CW", 500)
+	now := time.Now().UTC()
+	events := []spot.ResolverEvidence{
+		{ObservedAt: now, Key: key, DXCall: "K1ABD", Spotter: "N0AAA", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "K1ABC", Spotter: "N0AAB", FrequencyKHz: 7009.5, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "K1ABC", Spotter: "N0AAC", FrequencyKHz: 7009.5, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "K1ABC", Spotter: "N0AAD", FrequencyKHz: 7009.5, RecencyWindow: 30 * time.Second},
+	}
+	for _, ev := range events {
+		if ok := resolver.Enqueue(ev); !ok {
+			t.Fatalf("failed to enqueue resolver evidence")
+		}
+	}
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		mainSnap, mainOK := resolver.Lookup(key)
+		neighborSnap, neighborOK := resolver.Lookup(neighborKey)
+		if mainOK &&
+			neighborOK &&
+			mainSnap.Winner == "K1ABD" &&
+			neighborSnap.Winner == "K1ABC" &&
+			mainSnap.WinnerSupport >= 1 &&
+			neighborSnap.WinnerSupport >= 3 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	tracker := stats.NewTracker()
+	s := spot.NewSpot("K1ABD", "W1XYZ", 7010.0, "CW")
+	s.EnsureNormalized()
+	suppress := maybeApplyResolverCorrection(
+		s,
+		resolver,
+		spot.ResolverEvidence{Key: key},
+		true,
+		config.CallCorrectionConfig{
+			Enabled:                          true,
+			MaxEditDistance:                  6,
+			MinConsensusReports:              1,
+			MinAdvantage:                     0,
+			MinConfidencePercent:             0,
+			DistanceModelCW:                  "morse",
+			DistanceModelRTTY:                "baudot",
+			InvalidAction:                    "broadcast",
+			ResolverNeighborhoodEnabled:      true,
+			ResolverNeighborhoodBucketRadius: 1,
+			FreqGuardRunnerUpRatio:           0.6,
+		},
+		nil,
+		nil,
+		tracker,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+	if suppress {
+		t.Fatalf("did not expect suppress")
+	}
+	if got := s.DXCallNorm; got != "K1ABC" {
+		t.Fatalf("expected neighborhood winner K1ABC, got %q", got)
+	}
+	if got := tracker.CorrectionDecisionAppliedReasons()[resolverDecisionAppliedNeighbor]; got != 1 {
+		t.Fatalf("expected %s=1, got %d", resolverDecisionAppliedNeighbor, got)
+	}
+}
+
+func TestMaybeApplyResolverCorrectionRejectsNeighborhoodConflict(t *testing.T) {
+	resolver := spot.NewSignalResolver(spot.SignalResolverConfig{
+		QueueSize:              64,
+		MaxActiveKeys:          16,
+		MaxCandidatesPerKey:    8,
+		MaxReportersPerCand:    16,
+		InactiveTTL:            time.Minute,
+		EvalMinInterval:        5 * time.Millisecond,
+		SweepInterval:          5 * time.Millisecond,
+		HysteresisWindows:      1,
+		FreqGuardRunnerUpRatio: 0.6,
+		MaxEditDistance:        3,
+		DistanceModelCW:        "morse",
+		DistanceModelRTTY:      "baudot",
+	})
+	resolver.Start()
+	t.Cleanup(resolver.Stop)
+
+	key := spot.NewResolverSignalKey(7010.0, "40m", "CW", 500)
+	neighborKey := spot.NewResolverSignalKey(7009.5, "40m", "CW", 500)
+	now := time.Now().UTC()
+	events := []spot.ResolverEvidence{
+		{ObservedAt: now, Key: key, DXCall: "K1ABC", Spotter: "N0AAA", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "K1ABC", Spotter: "N0AAB", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "K1ABC", Spotter: "N0AAC", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "K1ABC", Spotter: "N0AAD", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "K1ABD", Spotter: "N0AAE", FrequencyKHz: 7009.5, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "K1ABD", Spotter: "N0AAF", FrequencyKHz: 7009.5, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "K1ABD", Spotter: "N0AAG", FrequencyKHz: 7009.5, RecencyWindow: 30 * time.Second},
+	}
+	for _, ev := range events {
+		if ok := resolver.Enqueue(ev); !ok {
+			t.Fatalf("failed to enqueue resolver evidence")
+		}
+	}
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		mainSnap, mainOK := resolver.Lookup(key)
+		neighborSnap, neighborOK := resolver.Lookup(neighborKey)
+		if mainOK &&
+			neighborOK &&
+			mainSnap.Winner == "K1ABC" &&
+			neighborSnap.Winner == "K1ABD" &&
+			mainSnap.WinnerSupport >= 4 &&
+			neighborSnap.WinnerSupport >= 3 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	tracker := stats.NewTracker()
+	s := spot.NewSpot("K1ABD", "W1XYZ", 7010.0, "CW")
+	s.EnsureNormalized()
+	suppress := maybeApplyResolverCorrection(
+		s,
+		resolver,
+		spot.ResolverEvidence{Key: key},
+		true,
+		config.CallCorrectionConfig{
+			Enabled:                          true,
+			MaxEditDistance:                  6,
+			MinConsensusReports:              1,
+			MinAdvantage:                     0,
+			MinConfidencePercent:             0,
+			DistanceModelCW:                  "morse",
+			DistanceModelRTTY:                "baudot",
+			InvalidAction:                    "broadcast",
+			ResolverNeighborhoodEnabled:      true,
+			ResolverNeighborhoodBucketRadius: 1,
+			FreqGuardRunnerUpRatio:           0.7,
+		},
+		nil,
+		nil,
+		tracker,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+	if suppress {
+		t.Fatalf("did not expect suppress")
+	}
+	if got := s.DXCallNorm; got != "K1ABD" {
+		t.Fatalf("expected neighborhood conflict to block correction, got %q", got)
+	}
+	if got := tracker.CorrectionDecisionReasons()[resolverDecisionNeighborConflict]; got != 1 {
+		t.Fatalf("expected %s=1, got %d", resolverDecisionNeighborConflict, got)
+	}
+}
+
+func TestMaybeApplyResolverCorrectionRecordsNoSnapshotReason(t *testing.T) {
+	tracker := stats.NewTracker()
+	s := spot.NewSpot("K1ABC", "W1XYZ", 7010.0, "CW")
+	s.EnsureNormalized()
+
+	suppress := maybeApplyResolverCorrection(
+		s,
+		nil,
+		spot.ResolverEvidence{},
+		false,
+		config.CallCorrectionConfig{
+			Enabled: true,
+		},
+		nil,
+		nil,
+		tracker,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+	if suppress {
+		t.Fatalf("did not expect suppress")
+	}
+	if got := strings.TrimSpace(s.Confidence); got != "?" {
+		t.Fatalf("expected confidence ?, got %q", got)
+	}
+	if got := tracker.CorrectionDecisionReasons()[resolverDecisionNoSnapshot]; got != 1 {
+		t.Fatalf("expected %s=1, got %d", resolverDecisionNoSnapshot, got)
+	}
+}
+
+func TestMaybeApplyResolverCorrectionHonorsMaxEditDistance(t *testing.T) {
+	resolver := spot.NewSignalResolver(spot.SignalResolverConfig{
+		QueueSize:              64,
+		MaxActiveKeys:          16,
+		MaxCandidatesPerKey:    8,
+		MaxReportersPerCand:    16,
+		InactiveTTL:            time.Minute,
+		EvalMinInterval:        5 * time.Millisecond,
+		SweepInterval:          5 * time.Millisecond,
+		HysteresisWindows:      1,
+		FreqGuardRunnerUpRatio: 0.6,
+		MaxEditDistance:        6,
+		DistanceModelCW:        "morse",
+		DistanceModelRTTY:      "baudot",
+	})
+	resolver.Start()
+	t.Cleanup(resolver.Stop)
+
+	key := spot.NewResolverSignalKey(7010.0, "40m", "CW", 500)
+	now := time.Now().UTC()
+	evidence := []spot.ResolverEvidence{
+		{ObservedAt: now, Key: key, DXCall: "WQ5W", Spotter: "N0AAA", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "WA2CNJ", Spotter: "N0BBB", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "WA2CNJ", Spotter: "N0CCC", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+	}
+	for _, ev := range evidence {
+		if ok := resolver.Enqueue(ev); !ok {
+			t.Fatalf("failed to enqueue resolver evidence")
+		}
+	}
+
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		snap, ok := resolver.Lookup(key)
+		if ok && snap.Winner == "WA2CNJ" && snap.WinnerSupport >= 2 && (snap.State == spot.ResolverStateConfident || snap.State == spot.ResolverStateProbable) {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	s := spot.NewSpot("WQ5W", "W1XYZ", 7010.0, "CW")
+	s.EnsureNormalized()
+	original := s.DXCallNorm
+	suppress := maybeApplyResolverCorrection(
+		s,
+		resolver,
+		spot.ResolverEvidence{Key: key},
+		true,
+		config.CallCorrectionConfig{
+			Enabled:         true,
+			MaxEditDistance: 1,
+			InvalidAction:   "broadcast",
+		},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+	if suppress {
+		t.Fatalf("did not expect suppress")
+	}
+	if got := s.DXCallNorm; got != original {
+		t.Fatalf("expected max_edit_distance to block correction, got %q", got)
+	}
+}
+
+func TestMaybeApplyResolverCorrectionHonorsDistance3ExtraRails(t *testing.T) {
+	resolver := spot.NewSignalResolver(spot.SignalResolverConfig{
+		QueueSize:              64,
+		MaxActiveKeys:          16,
+		MaxCandidatesPerKey:    8,
+		MaxReportersPerCand:    16,
+		InactiveTTL:            time.Minute,
+		EvalMinInterval:        5 * time.Millisecond,
+		SweepInterval:          5 * time.Millisecond,
+		HysteresisWindows:      1,
+		FreqGuardRunnerUpRatio: 0.6,
+		MaxEditDistance:        6,
+		DistanceModelCW:        "morse",
+		DistanceModelRTTY:      "baudot",
+	})
+	resolver.Start()
+	t.Cleanup(resolver.Stop)
+
+	key := spot.NewResolverSignalKey(7010.0, "40m", "CW", 500)
+	now := time.Now().UTC()
+	evidence := []spot.ResolverEvidence{
+		{ObservedAt: now, Key: key, DXCall: "WQ5W", Spotter: "N0AAA", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "WA2CNJ", Spotter: "N0BBB", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "WA2CNJ", Spotter: "N0CCC", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+	}
+	for _, ev := range evidence {
+		if ok := resolver.Enqueue(ev); !ok {
+			t.Fatalf("failed to enqueue resolver evidence")
+		}
+	}
+
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		snap, ok := resolver.Lookup(key)
+		if ok && snap.Winner == "WA2CNJ" && snap.WinnerSupport >= 2 && (snap.State == spot.ResolverStateConfident || snap.State == spot.ResolverStateProbable) {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	s := spot.NewSpot("WQ5W", "W1XYZ", 7010.0, "CW")
+	s.EnsureNormalized()
+	original := s.DXCallNorm
+	suppress := maybeApplyResolverCorrection(
+		s,
+		resolver,
+		spot.ResolverEvidence{Key: key},
+		true,
+		config.CallCorrectionConfig{
+			Enabled:                  true,
+			MaxEditDistance:          6,
+			MinConsensusReports:      1,
+			MinAdvantage:             0,
+			MinConfidencePercent:     0,
+			Distance3ExtraReports:    5,
+			Distance3ExtraAdvantage:  0,
+			Distance3ExtraConfidence: 0,
+			DistanceModelCW:          "morse",
+			DistanceModelRTTY:        "baudot",
+			InvalidAction:            "broadcast",
+		},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+	if suppress {
+		t.Fatalf("did not expect suppress")
+	}
+	if got := s.DXCallNorm; got != original {
+		t.Fatalf("expected distance-3 extra rails to block correction, got %q", got)
+	}
+}
+
+func TestMaybeApplyResolverCorrectionAppliesTruncationLengthBonusParity(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "known.txt")
+	if err := os.WriteFile(path, []byte("VE3NNT\n"), 0o644); err != nil {
+		t.Fatalf("write known calls file: %v", err)
+	}
+	known, err := spot.LoadKnownCallsigns(path)
+	if err != nil {
+		t.Fatalf("load known calls: %v", err)
+	}
+
+	settings := spot.CorrectionSettings{
+		MinConsensusReports:  3,
+		MinAdvantage:         1,
+		MinConfidencePercent: 45,
+		MaxEditDistance:      3,
+		DistanceModelCW:      "morse",
+		DistanceModelRTTY:    "baudot",
+		FamilyPolicy: spot.CorrectionFamilyPolicy{
+			Configured:                 true,
+			TruncationEnabled:          true,
+			TruncationMaxLengthDelta:   1,
+			TruncationMinShorterLength: 3,
+			TruncationAllowPrefix:      true,
+			TruncationAllowSuffix:      true,
+		},
+		TruncationLengthBonusEnabled:                   true,
+		TruncationLengthBonusMax:                       1,
+		TruncationLengthBonusRequireCandidateValidated: true,
+		TruncationLengthBonusRequireSubjectUnvalidated: true,
+		PriorBonusKnownCallset:                         known,
+	}
+	if relation, ok := spot.DetectCorrectionFamilyWithPolicy("VE3NN", "VE3NNT", settings.FamilyPolicy); !ok || relation.Kind != spot.CorrectionFamilyTruncation {
+		t.Fatalf("expected truncation family relation, got ok=%t relation=%+v", ok, relation)
+	} else if relation.MoreSpecific != "VE3NNT" || relation.LessSpecific != "VE3NN" {
+		t.Fatalf("expected VE3NNT to be more specific, got relation=%+v", relation)
+	}
+
+	result := spot.EvaluateResolverPrimaryGates("VE3NN", "VE3NNT", "40m", "CW", 1, 2, 66, settings, time.Now().UTC(), spot.ResolverPrimaryGateOptions{})
+	if !result.Allow {
+		t.Fatalf("expected truncation length bonus parity to admit VE3NNT, reason=%q result=%+v", result.Reason, result)
+	}
+	if result.LengthBonus != 1 || result.EffectiveSupport != 3 {
+		t.Fatalf("expected length bonus 1 and effective support 3, got bonus=%d effective=%d", result.LengthBonus, result.EffectiveSupport)
+	}
+}
+
+func TestMaybeApplyResolverCorrectionHonorsTruncationDelta2ValidationRail(t *testing.T) {
+	settings := spot.CorrectionSettings{
+		MinConsensusReports:  1,
+		MinAdvantage:         0,
+		MinConfidencePercent: 0,
+		MaxEditDistance:      3,
+		DistanceModelCW:      "morse",
+		DistanceModelRTTY:    "baudot",
+		FamilyPolicy: spot.CorrectionFamilyPolicy{
+			Configured:                 true,
+			TruncationEnabled:          true,
+			TruncationMaxLengthDelta:   2,
+			TruncationMinShorterLength: 3,
+			TruncationAllowPrefix:      true,
+			TruncationAllowSuffix:      true,
+		},
+		TruncationDelta2RailsEnabled:              true,
+		TruncationDelta2ExtraConfidence:           0,
+		TruncationDelta2RequireCandidateValidated: true,
+		TruncationDelta2RequireSubjectUnvalidated: false,
+	}
+	if relation, ok := spot.DetectCorrectionFamilyWithPolicy("VE3NN", "VE3NNTT", settings.FamilyPolicy); !ok || relation.Kind != spot.CorrectionFamilyTruncation {
+		t.Fatalf("expected truncation family relation, got ok=%t relation=%+v", ok, relation)
+	} else if relation.MoreSpecific != "VE3NNTT" || relation.LessSpecific != "VE3NN" {
+		t.Fatalf("expected VE3NNTT to be more specific, got relation=%+v", relation)
+	}
+
+	result := spot.EvaluateResolverPrimaryGates("VE3NN", "VE3NNTT", "40m", "CW", 1, 2, 66, settings, time.Now().UTC(), spot.ResolverPrimaryGateOptions{})
+	if result.Allow {
+		t.Fatalf("expected delta-2 validation rail to block correction result=%+v", result)
+	}
+	if result.Reason != "truncation_delta2_candidate_unvalidated" {
+		t.Fatalf("expected truncation_delta2_candidate_unvalidated, got %q", result.Reason)
+	}
+}
+
+func TestEvaluateResolverPrimaryGatesAppliesRecentPlus1OneShort(t *testing.T) {
+	now := time.Now().UTC()
+	recent := newRecentBandStoreForStabilizerAdmissionTests()
+	recent.Record("K1ABC", "40m", "CW", "N0AAA", now.Add(-time.Minute))
+	recent.Record("K1ABC", "40m", "CW", "N0AAB", now.Add(-time.Minute))
+	recent.Record("K1ABC", "40m", "CW", "N0AAC", now.Add(-time.Minute))
+	recent.Record("K1ABD", "40m", "CW", "N0AAD", now.Add(-time.Minute))
+
+	settings := spot.CorrectionSettings{
+		MinConsensusReports:                     3,
+		MinAdvantage:                            1,
+		MinConfidencePercent:                    45,
+		MaxEditDistance:                         3,
+		DistanceModelCW:                         "morse",
+		DistanceModelRTTY:                       "baudot",
+		RecentBandStore:                         recent,
+		RecentBandRecordMinUniqueSpotters:       2,
+		ResolverRecentPlus1Enabled:              true,
+		ResolverRecentPlus1MinUniqueWinner:      3,
+		ResolverRecentPlus1RequireSubjectWeaker: true,
+		ResolverRecentPlus1MaxDistance:          1,
+		ResolverRecentPlus1AllowTruncation:      true,
+	}
+	result := spot.EvaluateResolverPrimaryGates(
+		"K1ABD",
+		"K1ABC",
+		"40m",
+		"CW",
+		1,
+		2,
+		66,
+		settings,
+		now,
+		spot.ResolverPrimaryGateOptions{},
+	)
+	if !result.Allow {
+		t.Fatalf("expected resolver recent plus1 to admit one-short winner, result=%+v", result)
+	}
+	if !result.RecentPlus1Considered || !result.RecentPlus1Applied {
+		t.Fatalf("expected resolver recent plus1 considered+applied, result=%+v", result)
+	}
+	if result.EffectiveSupport != 3 {
+		t.Fatalf("expected effective support 3, got %d", result.EffectiveSupport)
+	}
+}
+
+func TestEvaluateResolverPrimaryGatesRejectsRecentPlus1WhenSubjectNotWeaker(t *testing.T) {
+	now := time.Now().UTC()
+	recent := newRecentBandStoreForStabilizerAdmissionTests()
+	recent.Record("K1ABC", "40m", "CW", "N0AAA", now.Add(-time.Minute))
+	recent.Record("K1ABC", "40m", "CW", "N0AAB", now.Add(-time.Minute))
+	recent.Record("K1ABC", "40m", "CW", "N0AAC", now.Add(-time.Minute))
+	recent.Record("K1ABD", "40m", "CW", "N0AAD", now.Add(-time.Minute))
+	recent.Record("K1ABD", "40m", "CW", "N0AAE", now.Add(-time.Minute))
+	recent.Record("K1ABD", "40m", "CW", "N0AAF", now.Add(-time.Minute))
+
+	settings := spot.CorrectionSettings{
+		MinConsensusReports:                     3,
+		MinAdvantage:                            1,
+		MinConfidencePercent:                    45,
+		MaxEditDistance:                         3,
+		DistanceModelCW:                         "morse",
+		DistanceModelRTTY:                       "baudot",
+		RecentBandStore:                         recent,
+		RecentBandRecordMinUniqueSpotters:       2,
+		ResolverRecentPlus1Enabled:              true,
+		ResolverRecentPlus1MinUniqueWinner:      3,
+		ResolverRecentPlus1RequireSubjectWeaker: true,
+		ResolverRecentPlus1MaxDistance:          1,
+		ResolverRecentPlus1AllowTruncation:      true,
+	}
+	result := spot.EvaluateResolverPrimaryGates(
+		"K1ABD",
+		"K1ABC",
+		"40m",
+		"CW",
+		1,
+		2,
+		66,
+		settings,
+		now,
+		spot.ResolverPrimaryGateOptions{},
+	)
+	if result.Allow {
+		t.Fatalf("expected subject_not_weaker to block plus1 path, result=%+v", result)
+	}
+	if !result.RecentPlus1Considered || result.RecentPlus1Applied {
+		t.Fatalf("expected resolver recent plus1 considered but not applied, result=%+v", result)
+	}
+	if result.RecentPlus1Reject != "subject_not_weaker" {
+		t.Fatalf("expected subject_not_weaker reject, got %q", result.RecentPlus1Reject)
+	}
+}
+
+func TestMaybeApplyResolverCorrectionUsesRecentPlus1AppliedReason(t *testing.T) {
+	resolver := spot.NewSignalResolver(spot.SignalResolverConfig{
+		QueueSize:              64,
+		MaxActiveKeys:          16,
+		MaxCandidatesPerKey:    8,
+		MaxReportersPerCand:    16,
+		InactiveTTL:            time.Minute,
+		EvalMinInterval:        5 * time.Millisecond,
+		SweepInterval:          5 * time.Millisecond,
+		HysteresisWindows:      1,
+		FreqGuardRunnerUpRatio: 0.6,
+		MaxEditDistance:        3,
+		DistanceModelCW:        "morse",
+		DistanceModelRTTY:      "baudot",
+	})
+	resolver.Start()
+	t.Cleanup(resolver.Stop)
+
+	key := spot.NewResolverSignalKey(7010.0, "40m", "CW", 500)
+	now := time.Now().UTC()
+	events := []spot.ResolverEvidence{
+		{ObservedAt: now, Key: key, DXCall: "K1ABC", Spotter: "N0AAA", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "K1ABC", Spotter: "N0AAB", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "K1ABD", Spotter: "N0AAC", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+	}
+	for _, ev := range events {
+		if ok := resolver.Enqueue(ev); !ok {
+			t.Fatalf("failed to enqueue resolver evidence")
+		}
+	}
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if snap, ok := resolver.Lookup(key); ok && snap.Winner == "K1ABC" && snap.WinnerSupport >= 2 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	recent := newRecentBandStoreForStabilizerAdmissionTests()
+	recent.Record("K1ABC", "40m", "CW", "N1AAA", now.Add(-time.Minute))
+	recent.Record("K1ABC", "40m", "CW", "N1AAB", now.Add(-time.Minute))
+	recent.Record("K1ABC", "40m", "CW", "N1AAC", now.Add(-time.Minute))
+	recent.Record("K1ABD", "40m", "CW", "N1AAD", now.Add(-time.Minute))
+
+	tracker := stats.NewTracker()
+	s := spot.NewSpot("K1ABD", "W1XYZ", 7010.0, "CW")
+	s.EnsureNormalized()
+	suppress := maybeApplyResolverCorrection(
+		s,
+		resolver,
+		spot.ResolverEvidence{Key: key},
+		true,
+		config.CallCorrectionConfig{
+			Enabled:                                 true,
+			MaxEditDistance:                         3,
+			MinConsensusReports:                     3,
+			MinAdvantage:                            1,
+			MinConfidencePercent:                    45,
+			DistanceModelCW:                         "morse",
+			DistanceModelRTTY:                       "baudot",
+			InvalidAction:                           "broadcast",
+			ResolverRecentPlus1Enabled:              true,
+			ResolverRecentPlus1MinUniqueWinner:      3,
+			ResolverRecentPlus1RequireSubjectWeaker: true,
+			ResolverRecentPlus1MaxDistance:          1,
+			ResolverRecentPlus1AllowTruncation:      true,
+		},
+		nil,
+		nil,
+		tracker,
+		nil,
+		recent,
+		nil,
+		nil,
+	)
+	if suppress {
+		t.Fatalf("did not expect suppress")
+	}
+	if got := s.DXCallNorm; got != "K1ABC" {
+		t.Fatalf("expected recent plus1 correction to K1ABC, got %q", got)
+	}
+	if got := tracker.CorrectionDecisionAppliedReasons()[resolverDecisionAppliedRecentPlus1]; got != 1 {
+		t.Fatalf("expected %s=1, got %d", resolverDecisionAppliedRecentPlus1, got)
+	}
+}
+
+func TestMaybeApplyResolverCorrectionRejectsRecentPlus1WhenSubjectNotWeaker(t *testing.T) {
+	resolver := spot.NewSignalResolver(spot.SignalResolverConfig{
+		QueueSize:              64,
+		MaxActiveKeys:          16,
+		MaxCandidatesPerKey:    8,
+		MaxReportersPerCand:    16,
+		InactiveTTL:            time.Minute,
+		EvalMinInterval:        5 * time.Millisecond,
+		SweepInterval:          5 * time.Millisecond,
+		HysteresisWindows:      1,
+		FreqGuardRunnerUpRatio: 0.6,
+		MaxEditDistance:        3,
+		DistanceModelCW:        "morse",
+		DistanceModelRTTY:      "baudot",
+	})
+	resolver.Start()
+	t.Cleanup(resolver.Stop)
+
+	key := spot.NewResolverSignalKey(7010.0, "40m", "CW", 500)
+	now := time.Now().UTC()
+	events := []spot.ResolverEvidence{
+		{ObservedAt: now, Key: key, DXCall: "K1ABC", Spotter: "N0AAA", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "K1ABC", Spotter: "N0AAB", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "K1ABD", Spotter: "N0AAC", FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+	}
+	for _, ev := range events {
+		if ok := resolver.Enqueue(ev); !ok {
+			t.Fatalf("failed to enqueue resolver evidence")
+		}
+	}
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if snap, ok := resolver.Lookup(key); ok && snap.Winner == "K1ABC" && snap.WinnerSupport >= 2 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	recent := newRecentBandStoreForStabilizerAdmissionTests()
+	recent.Record("K1ABC", "40m", "CW", "N1AAA", now.Add(-time.Minute))
+	recent.Record("K1ABC", "40m", "CW", "N1AAB", now.Add(-time.Minute))
+	recent.Record("K1ABC", "40m", "CW", "N1AAC", now.Add(-time.Minute))
+	recent.Record("K1ABD", "40m", "CW", "N1AAD", now.Add(-time.Minute))
+	recent.Record("K1ABD", "40m", "CW", "N1AAE", now.Add(-time.Minute))
+	recent.Record("K1ABD", "40m", "CW", "N1AAF", now.Add(-time.Minute))
+
+	tracker := stats.NewTracker()
+	s := spot.NewSpot("K1ABD", "W1XYZ", 7010.0, "CW")
+	s.EnsureNormalized()
+	suppress := maybeApplyResolverCorrection(
+		s,
+		resolver,
+		spot.ResolverEvidence{Key: key},
+		true,
+		config.CallCorrectionConfig{
+			Enabled:                                 true,
+			MaxEditDistance:                         3,
+			MinConsensusReports:                     3,
+			MinAdvantage:                            1,
+			MinConfidencePercent:                    45,
+			DistanceModelCW:                         "morse",
+			DistanceModelRTTY:                       "baudot",
+			InvalidAction:                           "broadcast",
+			ResolverRecentPlus1Enabled:              true,
+			ResolverRecentPlus1MinUniqueWinner:      3,
+			ResolverRecentPlus1RequireSubjectWeaker: true,
+			ResolverRecentPlus1MaxDistance:          1,
+			ResolverRecentPlus1AllowTruncation:      true,
+		},
+		nil,
+		nil,
+		tracker,
+		nil,
+		recent,
+		nil,
+		nil,
+	)
+	if suppress {
+		t.Fatalf("did not expect suppress")
+	}
+	if got := s.DXCallNorm; got != "K1ABD" {
+		t.Fatalf("expected plus1 rejection to keep K1ABD, got %q", got)
+	}
+	if got := tracker.CorrectionDecisionReasons()[resolverDecisionRecentPlus1RejectPrefix+"subject_not_weaker"]; got != 1 {
+		t.Fatalf("expected %ssubject_not_weaker=1, got %d", resolverDecisionRecentPlus1RejectPrefix, got)
 	}
 }
 
