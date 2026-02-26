@@ -9,18 +9,12 @@ import (
 	"dxcluster/spot"
 )
 
-func TestObserveCurrentPathLegacyUnknownNowP(t *testing.T) {
+func TestObserveAppliedOutputCountsGlyphs(t *testing.T) {
 	var metrics replayABMetrics
-	metrics.ObserveCurrentPath(replayConfidenceOutcome{
-		Final:       "P",
-		LegacyFinal: "?",
-	})
+	metrics.ObserveAppliedOutput(replayConfidenceOutcome{Final: "P"})
 
-	if metrics.CurrentPath.ConfidenceCounts.P != 1 {
-		t.Fatalf("expected current-path P count 1, got %d", metrics.CurrentPath.ConfidenceCounts.P)
-	}
-	if metrics.CurrentPath.LegacyUnknownNowP != 1 {
-		t.Fatalf("expected legacy_unknown_now_p 1, got %d", metrics.CurrentPath.LegacyUnknownNowP)
+	if metrics.Output.ConfidenceCounts.P != 1 {
+		t.Fatalf("expected output P count 1, got %d", metrics.Output.ConfidenceCounts.P)
 	}
 }
 
@@ -46,9 +40,6 @@ func TestObserveResolverSnapshotTracksStateAndProjectedConfidence(t *testing.T) 
 	}
 	if metrics.Resolver.ProjectedConfidenceCounts.P != 1 {
 		t.Fatalf("expected projected P count 1, got %d", metrics.Resolver.ProjectedConfidenceCounts.P)
-	}
-	if metrics.Resolver.LegacyUnknownNowP != 1 {
-		t.Fatalf("expected resolver legacy_unknown_now_p 1, got %d", metrics.Resolver.LegacyUnknownNowP)
 	}
 }
 

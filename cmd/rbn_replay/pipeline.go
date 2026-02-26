@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -14,8 +13,35 @@ import (
 	"dxcluster/uls"
 )
 
-func formatConfidence(percent int, totalReporters int) string {
-	return correctionflow.FormatConfidence(percent, totalReporters)
+const (
+	resolverDecisionPathPrimary                 = "resolver_primary"
+	resolverDecisionApplied                     = "resolver_applied"
+	resolverDecisionAppliedNeighbor             = "resolver_applied_neighbor_override"
+	resolverDecisionAppliedRecentPlus1          = "resolver_applied_recent_plus1"
+	resolverDecisionAppliedNeighborRecentPlus1  = "resolver_applied_neighbor_recent_plus1"
+	resolverDecisionNoSnapshot                  = "resolver_no_snapshot"
+	resolverDecisionNeighborConflict            = "resolver_neighbor_conflict"
+	resolverDecisionStateSplit                  = "resolver_state_split"
+	resolverDecisionStateUncertain              = "resolver_state_uncertain"
+	resolverDecisionStateUnknown                = "resolver_state_unknown"
+	resolverDecisionPrecallMissing              = "resolver_precall_missing"
+	resolverDecisionWinnerMissing               = "resolver_winner_missing"
+	resolverDecisionSameCall                    = "resolver_same_call"
+	resolverDecisionInvalidBaseCall             = "resolver_invalid_base"
+	resolverDecisionCTYMiss                     = "resolver_cty_miss"
+	resolverDecisionGatePrefix                  = "resolver_gate_"
+	resolverDecisionRecentPlus1RejectPrefix     = "resolver_recent_plus1_reject_"
+	resolverRecentPlus1DisallowEditNeighborGate = "edit_neighbor_contested"
+)
+
+type replayResolverApplyOutcome struct {
+	Suppress      bool
+	Applied       bool
+	Winner        string
+	Confidence    replayConfidenceOutcome
+	Selection     correctionflow.ResolverPrimarySelection
+	Gate          spot.ResolverPrimaryGateResult
+	GateEvaluated bool
 }
 
 func normalizedDXCall(s *spot.Spot) string {
@@ -24,10 +50,6 @@ func normalizedDXCall(s *spot.Spot) string {
 
 func buildResolverEvidenceSnapshot(spotEntry *spot.Spot, cfg config.CallCorrectionConfig, adaptive *spot.AdaptiveMinReports, now time.Time) (spot.ResolverEvidence, bool) {
 	return correctionflow.BuildResolverEvidenceSnapshot(spotEntry, cfg, adaptive, now)
-}
-
-func observeResolverCurrentDecision(resolver *spot.SignalResolver, key spot.ResolverSignalKey, spotEntry *spot.Spot, preCorrectionCall string) {
-	correctionflow.ObserveResolverCurrentDecision(resolver, key, spotEntry, preCorrectionCall)
 }
 
 func evaluateStabilizerDelay(
@@ -41,34 +63,199 @@ func evaluateStabilizerDelay(
 	return correctionflow.EvaluateStabilizerDelay(s, store, cfg, now, snapshot, snapshotOK)
 }
 
-type resolverMethodDecision struct {
-	Winner     string
-	Comparable bool
-	Applied    bool
+func observeResolverPrimaryDecision(tracker *stats.Tracker, decision, reason string, candidateRank int) {
+	if tracker == nil {
+		return
+	}
+	decision = strings.ToLower(strings.TrimSpace(decision))
+	if decision == "" {
+		decision = "rejected"
+	}
+	reason = strings.ToLower(strings.TrimSpace(reason))
+	if reason == "" {
+		reason = "unknown"
+	}
+	if candidateRank < 0 {
+		candidateRank = 0
+	}
+	tracker.ObserveCallCorrectionDecision(resolverDecisionPathPrimary, decision, reason, candidateRank, false)
 }
 
-func classifyResolverMethodDecision(selection correctionflow.ResolverPrimarySelection, preCorrectionCall string, gate spot.ResolverPrimaryGateResult, gateEvaluated bool) (resolverMethodDecision, bool) {
-	preCall := spot.NormalizeCallsign(preCorrectionCall)
-	if preCall == "" {
-		return resolverMethodDecision{}, false
+func resolverGateDecisionReason(reason string) string {
+	reason = strings.ToLower(strings.TrimSpace(reason))
+	if reason == "" {
+		reason = "unknown"
 	}
-	if !selection.SnapshotOK {
-		return resolverMethodDecision{}, false
+	return resolverDecisionGatePrefix + reason
+}
+
+func resolverRecentPlus1DecisionReason(gate spot.ResolverPrimaryGateResult) (string, bool) {
+	if !gate.RecentPlus1Considered || gate.RecentPlus1Applied {
+		return "", false
 	}
-	snap := selection.Snapshot
-	if snap.State != spot.ResolverStateConfident && snap.State != spot.ResolverStateProbable {
-		return resolverMethodDecision{}, true
+	reject := strings.ToLower(strings.TrimSpace(gate.RecentPlus1Reject))
+	if reject == "" {
+		return "", false
+	}
+	return resolverDecisionRecentPlus1RejectPrefix + reject, true
+}
+
+func maybeApplyResolverCorrectionReplay(
+	spotEntry *spot.Spot,
+	resolver *spot.SignalResolver,
+	evidence spot.ResolverEvidence,
+	hasEvidence bool,
+	cfg config.CallCorrectionConfig,
+	ctyDB *cty.CTYDatabase,
+	tracker *stats.Tracker,
+	adaptive *spot.AdaptiveMinReports,
+	spotterReliability spot.SpotterReliability,
+	spotterReliabilityCW spot.SpotterReliability,
+	spotterReliabilityRTTY spot.SpotterReliability,
+	confusionModel *spot.ConfusionModel,
+	recentBandStore *spot.RecentBandStore,
+	knownCallset *spot.KnownCallsigns,
+	now time.Time,
+) replayResolverApplyOutcome {
+	outcome := replayResolverApplyOutcome{}
+	if spotEntry == nil {
+		return outcome
+	}
+	outcome.Confidence.Final = normalizeConfidenceGlyph(spotEntry.Confidence)
+
+	if !spot.IsCallCorrectionCandidate(spotEntry.Mode) {
+		if strings.TrimSpace(spotEntry.Confidence) == "" {
+			spotEntry.Confidence = "?"
+		}
+		outcome.Confidence.Final = normalizeConfidenceGlyph(spotEntry.Confidence)
+		observeResolverPrimaryDecision(tracker, "rejected", "resolver_non_candidate_mode", 0)
+		return outcome
+	}
+	if !cfg.Enabled {
+		if strings.TrimSpace(spotEntry.Confidence) == "" {
+			spotEntry.Confidence = "?"
+		}
+		outcome.Confidence.Final = normalizeConfidenceGlyph(spotEntry.Confidence)
+		observeResolverPrimaryDecision(tracker, "rejected", "resolver_disabled", 0)
+		return outcome
 	}
 
-	winner := spot.NormalizeCallsign(snap.Winner)
-	if winner == "" {
-		return resolverMethodDecision{}, false
+	preCorrectionCall := normalizedDXCall(spotEntry)
+	if preCorrectionCall == "" {
+		spotEntry.Confidence = "?"
+		outcome.Confidence.Final = "?"
+		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionPrecallMissing, 0)
+		return outcome
 	}
-	return resolverMethodDecision{
-		Winner:     winner,
-		Comparable: true,
-		Applied:    !strings.EqualFold(winner, preCall) && (!gateEvaluated || gate.Allow),
-	}, true
+
+	if hasEvidence && resolver != nil {
+		outcome.Selection = correctionflow.SelectResolverPrimarySnapshotForCall(resolver, evidence.Key, cfg, preCorrectionCall)
+	}
+	snapshot := outcome.Selection.Snapshot
+	spotEntry.Confidence = correctionflow.ResolverConfidenceGlyphForCall(snapshot, outcome.Selection.SnapshotOK, preCorrectionCall)
+	outcome.Confidence.Final = normalizeConfidenceGlyph(spotEntry.Confidence)
+
+	if !outcome.Selection.SnapshotOK {
+		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionNoSnapshot, 0)
+		return outcome
+	}
+	if outcome.Selection.NeighborhoodSplit {
+		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionNeighborConflict, 0)
+		return outcome
+	}
+
+	switch snapshot.State {
+	case spot.ResolverStateConfident, spot.ResolverStateProbable:
+	case spot.ResolverStateSplit:
+		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionStateSplit, 0)
+		return outcome
+	case spot.ResolverStateUncertain:
+		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionStateUncertain, 0)
+		return outcome
+	default:
+		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionStateUnknown, 0)
+		return outcome
+	}
+
+	winnerCall := spot.NormalizeCallsign(snapshot.Winner)
+	if winnerCall == "" {
+		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionWinnerMissing, 1)
+		return outcome
+	}
+	if strings.EqualFold(winnerCall, preCorrectionCall) {
+		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionSameCall, 1)
+		return outcome
+	}
+
+	gate, gateEvaluated := evaluateResolverPrimaryGateReplay(
+		spotEntry,
+		preCorrectionCall,
+		outcome.Selection,
+		cfg,
+		spotterReliability,
+		spotterReliabilityCW,
+		spotterReliabilityRTTY,
+		confusionModel,
+		recentBandStore,
+		knownCallset,
+		adaptive,
+		now,
+	)
+	outcome.Gate = gate
+	outcome.GateEvaluated = gateEvaluated
+	if !gate.Allow {
+		reason := resolverGateDecisionReason(gate.Reason)
+		if plusReason, ok := resolverRecentPlus1DecisionReason(gate); ok {
+			reason = plusReason
+		}
+		observeResolverPrimaryDecision(tracker, "rejected", reason, 1)
+		return outcome
+	}
+
+	if shouldRejectCTYCall(winnerCall) {
+		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionInvalidBaseCall, 1)
+		if strings.EqualFold(cfg.InvalidAction, "suppress") {
+			outcome.Suppress = true
+			return outcome
+		}
+		spotEntry.Confidence = "B"
+		outcome.Confidence.Final = "B"
+		return outcome
+	}
+
+	if ctyDB != nil {
+		if _, ok := ctyDB.LookupCallsignPortable(winnerCall); !ok {
+			observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionCTYMiss, 1)
+			if strings.EqualFold(cfg.InvalidAction, "suppress") {
+				outcome.Suppress = true
+				return outcome
+			}
+			spotEntry.Confidence = "B"
+			outcome.Confidence.Final = "B"
+			return outcome
+		}
+	}
+
+	spotEntry.DXCall = winnerCall
+	spotEntry.DXCallNorm = winnerCall
+	spotEntry.Confidence = "C"
+	outcome.Confidence.Final = "C"
+	outcome.Applied = true
+	outcome.Winner = winnerCall
+	if tracker != nil {
+		tracker.IncrementCallCorrections()
+	}
+
+	appliedReason := resolverDecisionApplied
+	if gate.RecentPlus1Applied && outcome.Selection.WinnerOverride {
+		appliedReason = resolverDecisionAppliedNeighborRecentPlus1
+	} else if gate.RecentPlus1Applied {
+		appliedReason = resolverDecisionAppliedRecentPlus1
+	} else if outcome.Selection.WinnerOverride {
+		appliedReason = resolverDecisionAppliedNeighbor
+	}
+	observeResolverPrimaryDecision(tracker, "applied", appliedReason, 1)
+	return outcome
 }
 
 func evaluateResolverPrimaryGateReplay(
@@ -76,6 +263,10 @@ func evaluateResolverPrimaryGateReplay(
 	preCorrectionCall string,
 	selection correctionflow.ResolverPrimarySelection,
 	cfg config.CallCorrectionConfig,
+	spotterReliability spot.SpotterReliability,
+	spotterReliabilityCW spot.SpotterReliability,
+	spotterReliabilityRTTY spot.SpotterReliability,
+	confusionModel *spot.ConfusionModel,
 	recentBandStore *spot.RecentBandStore,
 	knownCallset *spot.KnownCallsigns,
 	adaptive *spot.AdaptiveMinReports,
@@ -115,20 +306,24 @@ func evaluateResolverPrimaryGateReplay(
 
 	runtime := correctionflow.ResolveRuntimeSettings(cfg, spotEntry, adaptive, now, false)
 	settings := correctionflow.BuildCorrectionSettings(correctionflow.BuildSettingsInput{
-		Cfg:                cfg,
-		MinReports:         runtime.MinReports,
-		CooldownMinReports: runtime.CooldownMinReports,
-		Window:             runtime.Window,
-		FreqToleranceHz:    runtime.FreqToleranceHz,
-		QualityBinHz:       runtime.QualityBinHz,
-		RecentBandStore:    recentBandStore,
-		KnownCallset:       knownCallset,
+		Cfg:                    cfg,
+		MinReports:             runtime.MinReports,
+		CooldownMinReports:     runtime.CooldownMinReports,
+		Window:                 runtime.Window,
+		FreqToleranceHz:        runtime.FreqToleranceHz,
+		QualityBinHz:           runtime.QualityBinHz,
+		SpotterReliability:     spotterReliability,
+		SpotterReliabilityCW:   spotterReliabilityCW,
+		SpotterReliabilityRTTY: spotterReliabilityRTTY,
+		ConfusionModel:         confusionModel,
+		RecentBandStore:        recentBandStore,
+		KnownCallset:           knownCallset,
 	})
 
 	gateOptions := spot.ResolverPrimaryGateOptions{}
 	if cfg.ResolverRecentPlus1Enabled {
 		if spot.ResolverSnapshotHasComparableEditNeighbor(snap, winner, subjectMode, cfg.DistanceModelCW, cfg.DistanceModelRTTY) {
-			gateOptions.RecentPlus1DisallowReason = "edit_neighbor_contested"
+			gateOptions.RecentPlus1DisallowReason = resolverRecentPlus1DisallowEditNeighborGate
 		}
 	}
 	return spot.EvaluateResolverPrimaryGates(
@@ -143,91 +338,6 @@ func evaluateResolverPrimaryGateReplay(
 		now,
 		gateOptions,
 	), true
-}
-
-func maybeApplyCallCorrectionReplay(
-	spotEntry *spot.Spot,
-	idx *spot.CorrectionIndex,
-	cfg config.CallCorrectionConfig,
-	ctyDB *cty.CTYDatabase,
-	tracker *stats.Tracker,
-	cooldown *spot.CallCooldown,
-	adaptive *spot.AdaptiveMinReports,
-	spotterReliability spot.SpotterReliability,
-	spotterReliabilityCW spot.SpotterReliability,
-	spotterReliabilityRTTY spot.SpotterReliability,
-	confusionModel *spot.ConfusionModel,
-	recentBandStore *spot.RecentBandStore,
-	knownCallset *spot.KnownCallsigns,
-	now time.Time,
-) (bool, replayConfidenceOutcome) {
-	outcome := replayConfidenceOutcome{}
-	if spotEntry == nil {
-		return false, outcome
-	}
-	if !spot.IsCallCorrectionCandidate(spotEntry.Mode) {
-		return false, outcome
-	}
-	if idx == nil || !cfg.Enabled {
-		if strings.TrimSpace(spotEntry.Confidence) == "" {
-			spotEntry.Confidence = "?"
-		}
-		outcome.Final = normalizeConfidenceGlyph(spotEntry.Confidence)
-		outcome.LegacyFinal = outcome.Final
-		return false, outcome
-	}
-
-	runtime := correctionflow.ResolveRuntimeSettings(cfg, spotEntry, adaptive, now, true)
-	settings := correctionflow.BuildCorrectionSettings(correctionflow.BuildSettingsInput{
-		Cfg:                    cfg,
-		MinReports:             runtime.MinReports,
-		CooldownMinReports:     runtime.CooldownMinReports,
-		Window:                 runtime.Window,
-		FreqToleranceHz:        runtime.FreqToleranceHz,
-		QualityBinHz:           runtime.QualityBinHz,
-		DebugLog:               cfg.DebugLog,
-		TraceLogger:            nil,
-		Cooldown:               cooldown,
-		SpotterReliability:     spotterReliability,
-		SpotterReliabilityCW:   spotterReliabilityCW,
-		SpotterReliabilityRTTY: spotterReliabilityRTTY,
-		ConfusionModel:         confusionModel,
-		RecentBandStore:        recentBandStore,
-		KnownCallset:           knownCallset,
-		DecisionObserver: func(tr spot.CorrectionTrace) {
-			if tracker == nil {
-				return
-			}
-			tracker.ObserveCallCorrectionDecision(tr.DecisionPath, tr.Decision, tr.Reason, tr.CandidateRank, tr.PriorBonusApplied)
-		},
-	})
-	ctyValid := func(string) bool { return true }
-	if ctyDB != nil {
-		ctyValid = func(call string) bool {
-			_, ok := ctyDB.LookupCallsignPortable(call)
-			return ok
-		}
-	}
-	result := correctionflow.ApplyConsensusCorrection(correctionflow.ApplyInput{
-		SpotEntry:          spotEntry,
-		Index:              idx,
-		Settings:           settings,
-		Window:             runtime.Window,
-		CandidateWindowKHz: runtime.CandidateWindowKHz,
-		Now:                now,
-		InvalidAction:      cfg.InvalidAction,
-		RejectInvalidBase:  shouldRejectCTYCall,
-		CTYValidCall:       ctyValid,
-	})
-	outcome.Final = normalizeConfidenceGlyph(spotEntry.Confidence)
-	outcome.LegacyFinal = normalizeConfidenceGlyph(formatConfidenceLegacy(result.SubjectConfidence, result.TotalReporters))
-	if outcome.Final == "C" || outcome.Final == "B" {
-		outcome.LegacyFinal = outcome.Final
-	}
-	if result.Applied && tracker != nil {
-		tracker.IncrementCallCorrections()
-	}
-	return result.Suppress, outcome
 }
 
 func shouldRejectCTYCall(call string) bool {
@@ -298,118 +408,4 @@ func recordRecentBandObservation(s *spot.Spot, store *spot.RecentBandStore, cfg 
 		reporter = s.DECall
 	}
 	store.Record(call, band, mode, reporter, s.Time)
-}
-
-type disagreementSampleRow struct {
-	TS time.Time
-
-	Band    string
-	Mode    string
-	FreqKHz float64
-	Spotter string
-
-	PreCall   string
-	FinalCall string
-	Corrected bool
-
-	SnapshotState  spot.ResolverState
-	SnapshotWinner string
-	SnapshotRunner string
-	WinnerSupport  int
-	RunnerSupport  int
-	TotalReporters int
-
-	Class string
-}
-
-func classifyDisagreementSample(snapshot spot.ResolverSnapshot, snapshotOK bool, spotEntry *spot.Spot, preCorrectionCall string) *disagreementSampleRow {
-	if !snapshotOK || spotEntry == nil {
-		return nil
-	}
-	finalCall := normalizedDXCall(spotEntry)
-	if finalCall == "" {
-		return nil
-	}
-	preCall := spot.NormalizeCallsign(preCorrectionCall)
-	corrected := preCall != "" && !strings.EqualFold(preCall, finalCall) && strings.EqualFold(strings.TrimSpace(spotEntry.Confidence), "C")
-
-	class := ""
-	if corrected {
-		switch snapshot.State {
-		case spot.ResolverStateSplit:
-			class = "SP"
-		case spot.ResolverStateUncertain:
-			class = "UC"
-		case spot.ResolverStateConfident:
-			if snapshot.Winner != "" && !strings.EqualFold(snapshot.Winner, finalCall) {
-				class = "DW"
-			}
-		}
-	}
-	if class == "" {
-		return nil
-	}
-
-	band := spotEntry.BandNorm
-	if band == "" || band == "???" {
-		band = spot.FreqToBand(spotEntry.Frequency)
-	}
-	band = spot.NormalizeBand(band)
-
-	mode := spotEntry.ModeNorm
-	if mode == "" {
-		mode = spotEntry.Mode
-	}
-	mode = strutil.NormalizeUpper(mode)
-
-	spotter := spotEntry.DECallNorm
-	if spotter == "" {
-		spotter = spotEntry.DECall
-	}
-	spotter = strutil.NormalizeUpper(spotter)
-
-	return &disagreementSampleRow{
-		TS: spotEntry.Time,
-
-		Band:    band,
-		Mode:    mode,
-		FreqKHz: spotEntry.Frequency,
-		Spotter: spotter,
-
-		PreCall:   preCall,
-		FinalCall: finalCall,
-		Corrected: corrected,
-
-		SnapshotState:  snapshot.State,
-		SnapshotWinner: snapshot.Winner,
-		SnapshotRunner: snapshot.RunnerUp,
-		WinnerSupport:  snapshot.WinnerSupport,
-		RunnerSupport:  snapshot.RunnerSupport,
-		TotalReporters: snapshot.TotalReporters,
-
-		Class: class,
-	}
-}
-
-func disagreementCSVRow(row *disagreementSampleRow) []string {
-	if row == nil {
-		return nil
-	}
-	return []string{
-		row.TS.UTC().Format("2006-01-02 15:04:05"),
-		row.Band,
-		row.Mode,
-		fmt.Sprintf("%.1f", row.FreqKHz),
-		row.Spotter,
-		row.PreCall,
-		row.FinalCall,
-		fmt.Sprintf("%v", row.Corrected),
-		string(row.SnapshotState),
-		row.SnapshotWinner,
-		row.SnapshotRunner,
-		fmt.Sprintf("%d", row.WinnerSupport),
-		fmt.Sprintf("%d", row.RunnerSupport),
-		fmt.Sprintf("%d", row.TotalReporters),
-		row.Class,
-	}
 }

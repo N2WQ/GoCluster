@@ -13,26 +13,21 @@ import (
 )
 
 type replayRunRecord struct {
-	RunID             string                   `json:"run_id"`
-	DateUTC           string                   `json:"date_utc"`
-	StartedAtUTC      string                   `json:"started_at_utc"`
-	FinishedAtUTC     string                   `json:"finished_at_utc"`
-	ArchiveDir        string                   `json:"archive_dir"`
-	OutputDir         string                   `json:"output_dir"`
-	ConfigLoadedFrom  string                   `json:"config_loaded_from"`
-	ReplayConfigPath  string                   `json:"replay_config_path"`
-	ReplayConfigSHA   string                   `json:"replay_config_sha256,omitempty"`
-	PipelineConfigSHA string                   `json:"pipeline_yaml_sha256,omitempty"`
-	CallCorrectionSHA string                   `json:"call_correction_sha256"`
-	InputZipPath      string                   `json:"input_zip_path"`
-	InputZipSHA       string                   `json:"input_zip_sha256,omitempty"`
-	Comparable        uint64                   `json:"comparable_decisions"`
-	AgreementPct      float64                  `json:"agreement_pct"`
-	DWPct             float64                  `json:"dw_pct"`
-	SPPct             float64                  `json:"sp_pct"`
-	UCPct             float64                  `json:"uc_pct"`
-	Methods           replayMethodStabilitySet `json:"method_stability"`
-	ABMetrics         replayABMetrics          `json:"ab_metrics"`
+	RunID             string                 `json:"run_id"`
+	DateUTC           string                 `json:"date_utc"`
+	StartedAtUTC      string                 `json:"started_at_utc"`
+	FinishedAtUTC     string                 `json:"finished_at_utc"`
+	ArchiveDir        string                 `json:"archive_dir"`
+	OutputDir         string                 `json:"output_dir"`
+	ConfigLoadedFrom  string                 `json:"config_loaded_from"`
+	ReplayConfigPath  string                 `json:"replay_config_path"`
+	ReplayConfigSHA   string                 `json:"replay_config_sha256,omitempty"`
+	PipelineConfigSHA string                 `json:"pipeline_yaml_sha256,omitempty"`
+	CallCorrectionSHA string                 `json:"call_correction_sha256"`
+	InputZipPath      string                 `json:"input_zip_path"`
+	InputZipSHA       string                 `json:"input_zip_sha256,omitempty"`
+	Stability         replayStabilitySummary `json:"stability"`
+	ABMetrics         replayABMetrics        `json:"ab_metrics"`
 }
 
 func writeReplayRunHistory(
@@ -52,12 +47,7 @@ func writeReplayRunHistory(
 		ReplayConfigPath: strings.TrimSpace(replayConfigPath),
 		InputZipPath:     manifest.InputZipPath,
 		InputZipSHA:      strings.TrimSpace(manifest.InputZipMeta.SHA256),
-		Comparable:       manifest.Results.ComparableDecisions,
-		AgreementPct:     manifest.Results.AgreementPct,
-		DWPct:            manifest.Results.DWPct,
-		SPPct:            manifest.Results.SPPct,
-		UCPct:            manifest.Results.UCPct,
-		Methods:          manifest.Results.MethodStability,
+		Stability:        manifest.Results.Stability,
 		ABMetrics:        manifest.Results.ABMetrics,
 	}
 

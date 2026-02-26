@@ -12,22 +12,12 @@ import (
 )
 
 func formatResolverSummaryFromMetrics(metrics spot.SignalResolverMetrics) string {
-	agreementPercent := 0
-	if metrics.DecisionsComparable > 0 {
-		agreementPercent = int((metrics.DecisionAgreement * 100) / metrics.DecisionsComparable)
-	}
 	return fmt.Sprintf(
-		"Resolver: %s (C) / %s (P) / %s (U) / %s (S) | agr %s/%s (%d%%) | d %s (SP) / %s (DW) / %s (UC) | q=%d drop %s (Q) / %s (K) / %s (C) / %s (R) | pressure %s (C) / %s (R) evict %s (C) / %s (R) hw %s (C) / %s (R)",
+		"Resolver: %s (C) / %s (P) / %s (U) / %s (S) | q=%d drop %s (Q) / %s (K) / %s (C) / %s (R) | pressure %s (C) / %s (R) evict %s (C) / %s (R) hw %s (C) / %s (R)",
 		humanize.Comma(int64(metrics.StateConfident)),
 		humanize.Comma(int64(metrics.StateProbable)),
 		humanize.Comma(int64(metrics.StateUncertain)),
 		humanize.Comma(int64(metrics.StateSplit)),
-		humanize.Comma(int64(metrics.DecisionAgreement)),
-		humanize.Comma(int64(metrics.DecisionsComparable)),
-		agreementPercent,
-		humanize.Comma(int64(metrics.DisagreeSplitCorrected)),
-		humanize.Comma(int64(metrics.DisagreeConfidentDifferentWinner)),
-		humanize.Comma(int64(metrics.DisagreeUncertainCorrected)),
 		metrics.QueueDepth,
 		humanize.Comma(int64(metrics.DropQueueFull)),
 		humanize.Comma(int64(metrics.DropMaxKeys)),

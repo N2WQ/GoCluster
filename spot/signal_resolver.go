@@ -85,6 +85,7 @@ type ResolverEvidence struct {
 	Key           ResolverSignalKey
 	DXCall        string
 	Spotter       string
+	Report        int
 	FrequencyKHz  float64
 	RecencyWindow time.Duration
 }
@@ -170,6 +171,8 @@ type SignalResolverConfig struct {
 	SpotterReliabilityCW       SpotterReliability
 	SpotterReliabilityRTTY     SpotterReliability
 	MinSpotterReliability      float64
+	ConfusionModel             *ConfusionModel
+	ConfusionWeight            float64
 	minSpotterReliabilityMilli int
 }
 
@@ -219,6 +222,7 @@ type SignalResolver struct {
 
 type resolverCandidate struct {
 	lastSeen    time.Time
+	lastReport  int
 	lastFreqKHz float64
 	reporters   map[string]time.Time
 }
@@ -246,7 +250,9 @@ type rankedResolverCandidate struct {
 	call                 string
 	support              int
 	weightedSupportMilli int
+	confusionScore       float64
 	lastSeen             time.Time
+	lastReport           int
 	lastFreqKHz          float64
 	reporters            map[string]time.Time
 }
@@ -502,6 +508,7 @@ func (r *SignalResolver) applyEvidence(states map[ResolverSignalKey]*resolverKey
 	}
 	updateAtomicMax(&r.highWaterCandidates, uint64(len(st.candidates)))
 	candidate.lastSeen = ev.ObservedAt
+	candidate.lastReport = ev.Report
 	candidate.lastFreqKHz = ev.FrequencyKHz
 
 	if _, exists := candidate.reporters[ev.Spotter]; !exists && len(candidate.reporters) >= r.cfg.MaxReportersPerCand {
@@ -657,10 +664,6 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 	st.lastEvalAt = now
 
 	ranked := make([]rankedResolverCandidate, 0, len(st.candidates))
-	top := rankedResolverCandidate{}
-	runner := rankedResolverCandidate{}
-	hasTop := false
-	hasRunner := false
 	for call, candidate := range st.candidates {
 		if candidate == nil {
 			continue
@@ -674,23 +677,11 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 			support:              support,
 			weightedSupportMilli: weightedSupportForResolverCandidate(candidate, st.reporterRefs),
 			lastSeen:             candidate.lastSeen,
+			lastReport:           candidate.lastReport,
 			lastFreqKHz:          candidate.lastFreqKHz,
 			reporters:            candidate.reporters,
 		}
 		ranked = append(ranked, entry)
-		if !hasTop || resolverCandidateRanksAhead(entry, top) {
-			if hasTop {
-				runner = top
-				hasRunner = true
-			}
-			top = entry
-			hasTop = true
-			continue
-		}
-		if !hasRunner || resolverCandidateRanksAhead(entry, runner) {
-			runner = entry
-			hasRunner = true
-		}
 	}
 
 	snapshot := ResolverSnapshot{
@@ -698,12 +689,24 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 		EvaluatedAt: now,
 		State:       ResolverStateUncertain,
 	}
-	if !hasTop {
+	if len(ranked) == 0 {
 		st.stableWinner = ""
 		st.pendingWinner = ""
 		st.pendingWins = 0
 		r.snapshots.Store(st.key, snapshot)
 		return
+	}
+
+	sort.Slice(ranked, func(i, j int) bool {
+		return resolverCandidateRanksAhead(ranked[i], ranked[j])
+	})
+	applyResolverConfusionTieBreak(ranked, st.key.Mode, r.cfg.ConfusionModel, r.cfg.ConfusionWeight)
+
+	top := ranked[0]
+	hasRunner := len(ranked) > 1
+	runner := rankedResolverCandidate{}
+	if hasRunner {
+		runner = ranked[1]
 	}
 
 	totalReporters := len(st.reporterRefs)
@@ -720,16 +723,16 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 	provisionalWinner := top.call
 	margin := top.support
 	weightedMargin := top.weightedSupportMilli
+	confusionTieMargin := 0.0
 	if hasRunner {
 		margin = top.support - runner.support
 		weightedMargin = top.weightedSupportMilli - runner.weightedSupportMilli
+		if weightedMargin == 0 && r.cfg.ConfusionWeight > 0 && top.confusionScore > runner.confusionScore {
+			confusionTieMargin = top.confusionScore - runner.confusionScore
+		}
 	}
-	rankedSorted := append([]rankedResolverCandidate(nil), ranked...)
-	sort.Slice(rankedSorted, func(i, j int) bool {
-		return resolverCandidateRanksAhead(rankedSorted[i], rankedSorted[j])
-	})
-	candidateRanks := make([]ResolverCandidateSupport, 0, len(rankedSorted))
-	for _, candidate := range rankedSorted {
+	candidateRanks := make([]ResolverCandidateSupport, 0, len(ranked))
+	for _, candidate := range ranked {
 		candidateRanks = append(candidateRanks, ResolverCandidateSupport{
 			Call:                 candidate.call,
 			Support:              candidate.support,
@@ -788,7 +791,7 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 	} else if provisionalWinner == st.stableWinner {
 		st.pendingWinner = ""
 		st.pendingWins = 0
-	} else if weightedMargin > 0 {
+	} else if weightedMargin > 0 || confusionTieMargin > 0 {
 		if st.pendingWinner == provisionalWinner {
 			st.pendingWins++
 		} else {
@@ -867,6 +870,9 @@ func normalizeSignalResolverConfig(cfg SignalResolverConfig) SignalResolverConfi
 	if cfg.MinSpotterReliability > 1 {
 		cfg.MinSpotterReliability = 1
 	}
+	if cfg.ConfusionWeight < 0 {
+		cfg.ConfusionWeight = 0
+	}
 	cfg.minSpotterReliabilityMilli = reliabilityToMilli(cfg.MinSpotterReliability)
 	cfg.FamilyPolicy = normalizeCorrectionFamilyPolicy(cfg.FamilyPolicy)
 	return cfg
@@ -903,9 +909,70 @@ func normalizeResolverEvidence(e ResolverEvidence) (ResolverEvidence, bool) {
 		Key:           key,
 		DXCall:        call,
 		Spotter:       spotter,
+		Report:        e.Report,
 		FrequencyKHz:  e.FrequencyKHz,
 		RecencyWindow: window,
 	}, true
+}
+
+func applyResolverConfusionTieBreak(ranked []rankedResolverCandidate, mode string, model *ConfusionModel, weight float64) {
+	if len(ranked) < 2 || model == nil || weight <= 0 {
+		return
+	}
+	tieEnd := 1
+	top := ranked[0]
+	for tieEnd < len(ranked) {
+		next := ranked[tieEnd]
+		if next.weightedSupportMilli != top.weightedSupportMilli || next.support != top.support {
+			break
+		}
+		tieEnd++
+	}
+	if tieEnd <= 1 {
+		return
+	}
+	cohort := ranked[:tieEnd]
+	for i := range cohort {
+		score := resolverConfusionAggregateScore(cohort[i], cohort, mode, model)
+		if math.IsNaN(score) || math.IsInf(score, 0) {
+			score = 0
+		}
+		cohort[i].confusionScore = score
+	}
+	sort.Slice(cohort, func(i, j int) bool {
+		leftScore := float64(cohort[i].weightedSupportMilli) + weight*cohort[i].confusionScore
+		rightScore := float64(cohort[j].weightedSupportMilli) + weight*cohort[j].confusionScore
+		if leftScore != rightScore {
+			return leftScore > rightScore
+		}
+		if cohort[i].confusionScore != cohort[j].confusionScore {
+			return cohort[i].confusionScore > cohort[j].confusionScore
+		}
+		return resolverCandidateRanksAhead(cohort[i], cohort[j])
+	})
+}
+
+func resolverConfusionAggregateScore(
+	candidate rankedResolverCandidate,
+	cohort []rankedResolverCandidate,
+	mode string,
+	model *ConfusionModel,
+) float64 {
+	if model == nil || len(cohort) <= 1 {
+		return 0
+	}
+	score := 0.0
+	for _, observed := range cohort {
+		if strings.EqualFold(observed.call, candidate.call) {
+			continue
+		}
+		weight := float64(observed.weightedSupportMilli)
+		if weight <= 0 {
+			weight = 1
+		}
+		score += model.ScoreCandidate(observed.call, candidate.call, mode, float64(observed.lastReport)) * weight
+	}
+	return score
 }
 
 func classifyResolverState(weightedSupportMilli int, totalWeightedSupportMilli int) ResolverState {

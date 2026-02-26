@@ -25,21 +25,14 @@ type replayManifest struct {
 	} `json:"csv"`
 
 	Outputs struct {
-		RunbookSamplesLog      string `json:"runbook_samples_log"`
-		IntervalsCSV           string `json:"intervals_csv"`
-		ThresholdHitsCSV       string `json:"threshold_hits_csv"`
-		DisagreementsSampleCSV string `json:"disagreements_sample_csv"`
-		GatesJSON              string `json:"gates_json"`
-		ManifestJSON           string `json:"manifest_json"`
+		RunbookSamplesLog string `json:"runbook_samples_log"`
+		IntervalsCSV      string `json:"intervals_csv"`
+		ThresholdHitsCSV  string `json:"threshold_hits_csv"`
+		GatesJSON         string `json:"gates_json"`
+		ManifestJSON      string `json:"manifest_json"`
 	} `json:"outputs"`
 
 	Results struct {
-		ComparableDecisions uint64  `json:"comparable_decisions"`
-		AgreementPct        float64 `json:"agreement_pct"`
-		DWPct               float64 `json:"dw_pct"`
-		SPPct               float64 `json:"sp_pct"`
-		UCPct               float64 `json:"uc_pct"`
-
 		Drops struct {
 			QueueFull     uint64 `json:"queue_full"`
 			MaxKeys       uint64 `json:"max_keys"`
@@ -47,8 +40,7 @@ type replayManifest struct {
 			MaxReporters  uint64 `json:"max_reporters"`
 		} `json:"drops"`
 
-		Stability       replayStabilitySummary   `json:"stability"`
-		MethodStability replayMethodStabilitySet `json:"method_stability"`
-		ABMetrics       replayABMetrics          `json:"ab_metrics"`
+		Stability replayStabilitySummary `json:"stability"`
+		ABMetrics replayABMetrics        `json:"ab_metrics"`
 	} `json:"results"`
 }

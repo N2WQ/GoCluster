@@ -1,12 +1,14 @@
 # ADR-0024 - Replay Dual-Method Recall/Stability Metrics
 
-Status: Accepted
+Status: Superseded
 Date: 2026-02-24
 Decision Makers: Cluster maintainers
 Technical Area: cmd/rbn_replay, replay evidence artifacts
 Decision Origin: Design
 Troubleshooting Record(s): n/a
 Tags: replay, resolver, metrics, phase3-evidence
+
+Superseded By: `docs/decisions/ADR-0037-replay-resolver-only-artifacts.md`
 
 ## Context
 

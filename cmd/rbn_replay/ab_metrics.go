@@ -46,13 +46,11 @@ func (c *replayConfidenceCounts) Observe(glyph string) {
 }
 
 type replayConfidenceOutcome struct {
-	Final       string
-	LegacyFinal string
+	Final string
 }
 
-type replayCurrentPathABMetrics struct {
-	ConfidenceCounts  replayConfidenceCounts `json:"confidence_counts"`
-	LegacyUnknownNowP uint64                 `json:"legacy_unknown_now_p"`
+type replayOutputABMetrics struct {
+	ConfidenceCounts replayConfidenceCounts `json:"confidence_counts"`
 }
 
 type replayResolverStateCounts struct {
@@ -85,7 +83,6 @@ type replayResolverABMetrics struct {
 	MissingSnapshot                   uint64                    `json:"missing_snapshot"`
 	StateCounts                       replayResolverStateCounts `json:"state_counts"`
 	ProjectedConfidenceCounts         replayConfidenceCounts    `json:"projected_confidence_counts"`
-	LegacyUnknownNowP                 uint64                    `json:"legacy_unknown_now_p"`
 	NeighborhoodUsed                  uint64                    `json:"neighborhood_used"`
 	NeighborhoodOverride              uint64                    `json:"neighborhood_winner_override"`
 	NeighborhoodSplit                 uint64                    `json:"neighborhood_conflict_split"`
@@ -132,24 +129,17 @@ func (m *replayStabilizerDelayProxyMetrics) Observe(decision correctionflow.Stab
 }
 
 type replayABMetrics struct {
-	CurrentPath          replayCurrentPathABMetrics        `json:"current_path"`
+	Output               replayOutputABMetrics             `json:"output"`
 	Resolver             replayResolverABMetrics           `json:"resolver"`
 	StabilizerDelayProxy replayStabilizerDelayProxyMetrics `json:"stabilizer_delay_proxy"`
 }
 
-func (m *replayABMetrics) ObserveCurrentPath(outcome replayConfidenceOutcome) {
+func (m *replayABMetrics) ObserveAppliedOutput(outcome replayConfidenceOutcome) {
 	if m == nil {
 		return
 	}
 	newGlyph := normalizeConfidenceGlyph(outcome.Final)
-	legacyGlyph := normalizeConfidenceGlyph(outcome.LegacyFinal)
-	if legacyGlyph == "" {
-		legacyGlyph = newGlyph
-	}
-	m.CurrentPath.ConfidenceCounts.Observe(newGlyph)
-	if legacyGlyph == "?" && newGlyph == "P" {
-		m.CurrentPath.LegacyUnknownNowP++
-	}
+	m.Output.ConfidenceCounts.Observe(newGlyph)
 }
 
 func (m *replayABMetrics) ObserveResolverSnapshot(snap spot.ResolverSnapshot, ok bool) {
@@ -164,9 +154,6 @@ func (m *replayABMetrics) ObserveResolverSnapshot(snap spot.ResolverSnapshot, ok
 	m.Resolver.StateCounts.Observe(snap.State)
 	projected := projectedResolverConfidenceOutcome(snap)
 	m.Resolver.ProjectedConfidenceCounts.Observe(projected.Final)
-	if projected.LegacyFinal == "?" && projected.Final == "P" {
-		m.Resolver.LegacyUnknownNowP++
-	}
 }
 
 func (m *replayABMetrics) ObserveResolverSelection(selection correctionflow.ResolverPrimarySelection) {
@@ -218,17 +205,15 @@ func (m *replayABMetrics) ObserveResolverRecentPlus1Gate(gate spot.ResolverPrima
 
 func projectedResolverConfidenceOutcome(snap spot.ResolverSnapshot) replayConfidenceOutcome {
 	if snap.State != spot.ResolverStateConfident && snap.State != spot.ResolverStateProbable {
-		return replayConfidenceOutcome{Final: "?", LegacyFinal: "?"}
+		return replayConfidenceOutcome{Final: "?"}
 	}
 	winner := spot.NormalizeCallsign(snap.Winner)
 	if winner == "" || snap.TotalReporters <= 0 {
-		return replayConfidenceOutcome{Final: "?", LegacyFinal: "?"}
+		return replayConfidenceOutcome{Final: "?"}
 	}
 	newGlyph := correctionflow.ResolverConfidenceGlyphForCall(snap, true, winner)
-	legacyGlyph := formatConfidenceLegacy(correctionflow.ResolverWinnerConfidence(snap), snap.TotalReporters)
 	return replayConfidenceOutcome{
-		Final:       normalizeConfidenceGlyph(newGlyph),
-		LegacyFinal: normalizeConfidenceGlyph(legacyGlyph),
+		Final: normalizeConfidenceGlyph(newGlyph),
 	}
 }
 
@@ -248,27 +233,6 @@ func normalizeConfidenceGlyph(value string) string {
 
 // formatConfidenceLegacy mirrors the pre-change confidence bucketing:
 // multi-reporter confidence under 25% was '?' instead of 'P'.
-func formatConfidenceLegacy(percent int, totalReporters int) string {
-	if totalReporters <= 1 {
-		return "?"
-	}
-	value := percent
-	if value < 0 {
-		value = 0
-	}
-	if value > 100 {
-		value = 100
-	}
-	switch {
-	case value >= 51:
-		return "V"
-	case value >= 25:
-		return "P"
-	default:
-		return "?"
-	}
-}
-
 func stabilizerDelayProxyEligible(s *spot.Spot, store *spot.RecentBandStore, cfg config.CallCorrectionConfig) bool {
 	if s == nil || store == nil || !cfg.StabilizerEnabled || s.IsBeacon {
 		return false

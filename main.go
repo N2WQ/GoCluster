@@ -729,6 +729,8 @@ func main() {
 			SpotterReliabilityCW:      spotterReliabilityCW,
 			SpotterReliabilityRTTY:    spotterReliabilityRTTY,
 			MinSpotterReliability:     cfg.CallCorrection.MinSpotterReliability,
+			ConfusionModel:            confusionModel,
+			ConfusionWeight:           cfg.CallCorrection.ConfusionModelWeight,
 			FamilyPolicy: spot.CorrectionFamilyPolicy{
 				Configured:                 true,
 				TruncationEnabled:          cfg.CallCorrection.FamilyPolicy.Truncation.Enabled,
@@ -2306,7 +2308,7 @@ func processOutputSpots(
 							observeResolverCurrentDecision(signalResolver, resolverEvidence.Key, shadowSpot, shadowPreCorrectionCall)
 						}
 					}
-					suppress = maybeApplyResolverCorrection(delayed, signalResolver, resolverEvidence, hasResolverEvidence, correctionCfg, ctyDB, metaCache, tracker, dash, recentBandStore, knownCallset, adaptiveMinReports)
+					suppress = maybeApplyResolverCorrection(delayed, signalResolver, resolverEvidence, hasResolverEvidence, correctionCfg, ctyDB, metaCache, tracker, dash, recentBandStore, knownCallset, adaptiveMinReports, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel)
 				} else {
 					suppress = maybeApplyCallCorrectionWithLogger(delayed, correctionIdx, correctionCfg, ctyDB, metaCache, tracker, dash, corrLogger, callCooldown, adaptiveMinReports, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel, recentBandStore, knownCallset)
 					if hasResolverEvidence && signalResolver != nil && !suppress {
@@ -2449,7 +2451,7 @@ func processOutputSpots(
 							observeResolverCurrentDecision(signalResolver, resolverEvidence.Key, shadowSpot, shadowPreCorrectionCall)
 						}
 					}
-					suppress = maybeApplyResolverCorrection(s, signalResolver, resolverEvidence, hasResolverEvidence, correctionCfg, ctyDB, metaCache, tracker, dash, recentBandStore, knownCallset, adaptiveMinReports)
+					suppress = maybeApplyResolverCorrection(s, signalResolver, resolverEvidence, hasResolverEvidence, correctionCfg, ctyDB, metaCache, tracker, dash, recentBandStore, knownCallset, adaptiveMinReports, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel)
 				} else {
 					suppress = maybeApplyCallCorrectionWithLogger(s, correctionIdx, correctionCfg, ctyDB, metaCache, tracker, dash, corrLogger, callCooldown, adaptiveMinReports, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel, recentBandStore, knownCallset)
 					if hasResolverEvidence && signalResolver != nil && !suppress {
@@ -3611,6 +3613,10 @@ func maybeApplyResolverCorrection(
 	recentBandStore *spot.RecentBandStore,
 	knownCallset *spot.KnownCallsigns,
 	adaptive *spot.AdaptiveMinReports,
+	spotterReliability spot.SpotterReliability,
+	spotterReliabilityCW spot.SpotterReliability,
+	spotterReliabilityRTTY spot.SpotterReliability,
+	confusionModel *spot.ConfusionModel,
 ) bool {
 	if spotEntry == nil {
 		return false
@@ -3693,14 +3699,18 @@ func maybeApplyResolverCorrection(
 	now := time.Now().UTC()
 	runtime := correctionflow.ResolveRuntimeSettings(cfg, spotEntry, adaptive, now, true)
 	settings := correctionflow.BuildCorrectionSettings(correctionflow.BuildSettingsInput{
-		Cfg:                cfg,
-		MinReports:         runtime.MinReports,
-		CooldownMinReports: runtime.CooldownMinReports,
-		Window:             runtime.Window,
-		FreqToleranceHz:    runtime.FreqToleranceHz,
-		QualityBinHz:       runtime.QualityBinHz,
-		RecentBandStore:    recentBandStore,
-		KnownCallset:       knownCallset,
+		Cfg:                    cfg,
+		MinReports:             runtime.MinReports,
+		CooldownMinReports:     runtime.CooldownMinReports,
+		Window:                 runtime.Window,
+		FreqToleranceHz:        runtime.FreqToleranceHz,
+		QualityBinHz:           runtime.QualityBinHz,
+		SpotterReliability:     spotterReliability,
+		SpotterReliabilityCW:   spotterReliabilityCW,
+		SpotterReliabilityRTTY: spotterReliabilityRTTY,
+		ConfusionModel:         confusionModel,
+		RecentBandStore:        recentBandStore,
+		KnownCallset:           knownCallset,
 	})
 	gateOptions := spot.ResolverPrimaryGateOptions{}
 	if cfg.ResolverRecentPlus1Enabled {

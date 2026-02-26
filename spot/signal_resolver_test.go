@@ -277,6 +277,80 @@ func TestSignalResolverReliabilityWeightedRanking(t *testing.T) {
 	})
 }
 
+func TestSignalResolverConfusionTieBreakEnabled(t *testing.T) {
+	model := mustBuildResolverConfusionModelForTieBreak(t)
+	resolver := NewSignalResolver(SignalResolverConfig{
+		QueueSize:                 64,
+		MaxActiveKeys:             16,
+		MaxCandidatesPerKey:       8,
+		MaxReportersPerCand:       16,
+		InactiveTTL:               time.Minute,
+		EvalMinInterval:           5 * time.Millisecond,
+		SweepInterval:             5 * time.Millisecond,
+		HysteresisWindows:         1,
+		FreqGuardMinSeparationKHz: 0.1,
+		FreqGuardRunnerUpRatio:    0.6,
+		MaxEditDistance:           3,
+		ConfusionModel:            model,
+		ConfusionWeight:           100.0,
+	})
+	resolver.Start()
+	t.Cleanup(resolver.Stop)
+
+	key := NewResolverSignalKey(7010.0, "40m", "CW", 500)
+	now := time.Now().UTC()
+	evs := []ResolverEvidence{
+		{ObservedAt: now, Key: key, DXCall: "AA1AA", Spotter: "K1AAA", Report: 10, FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "ZZ1ZZ", Spotter: "K1AAB", Report: 10, FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+	}
+	for _, ev := range evs {
+		if ok := resolver.Enqueue(ev); !ok {
+			t.Fatalf("failed to enqueue confusion tie-break evidence")
+		}
+	}
+
+	waitForResolverSnapshotState(t, resolver, key, 500*time.Millisecond, func(s ResolverSnapshot) bool {
+		return s.Winner == "ZZ1ZZ"
+	})
+}
+
+func TestSignalResolverConfusionTieBreakDisabledUsesFallbackOrder(t *testing.T) {
+	model := mustBuildResolverConfusionModelForTieBreak(t)
+	resolver := NewSignalResolver(SignalResolverConfig{
+		QueueSize:                 64,
+		MaxActiveKeys:             16,
+		MaxCandidatesPerKey:       8,
+		MaxReportersPerCand:       16,
+		InactiveTTL:               time.Minute,
+		EvalMinInterval:           5 * time.Millisecond,
+		SweepInterval:             5 * time.Millisecond,
+		HysteresisWindows:         1,
+		FreqGuardMinSeparationKHz: 0.1,
+		FreqGuardRunnerUpRatio:    0.6,
+		MaxEditDistance:           3,
+		ConfusionModel:            model,
+		ConfusionWeight:           0,
+	})
+	resolver.Start()
+	t.Cleanup(resolver.Stop)
+
+	key := NewResolverSignalKey(7010.0, "40m", "CW", 500)
+	now := time.Now().UTC()
+	evs := []ResolverEvidence{
+		{ObservedAt: now, Key: key, DXCall: "AA1AA", Spotter: "K1AAA", Report: 10, FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "ZZ1ZZ", Spotter: "K1AAB", Report: 10, FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+	}
+	for _, ev := range evs {
+		if ok := resolver.Enqueue(ev); !ok {
+			t.Fatalf("failed to enqueue fallback-order evidence")
+		}
+	}
+
+	waitForResolverSnapshotState(t, resolver, key, 500*time.Millisecond, func(s ResolverSnapshot) bool {
+		return s.Winner == "AA1AA"
+	})
+}
+
 func TestSignalResolverReliabilityFloorDropsLowWeightEvidence(t *testing.T) {
 	resolver := NewSignalResolver(SignalResolverConfig{
 		QueueSize:                 64,
@@ -329,6 +403,41 @@ func TestSignalResolverReliabilityFloorDropsLowWeightEvidence(t *testing.T) {
 	if metrics.DropReliability == 0 {
 		t.Fatalf("expected reliability floor drops > 0")
 	}
+}
+
+func mustBuildResolverConfusionModelForTieBreak(t *testing.T) *ConfusionModel {
+	t.Helper()
+	raw := confusionModelFile{
+		Modes:       []string{"CW"},
+		SNREdges:    []float64{-50, 50},
+		Alphabet:    "AZ1?",
+		UnknownChar: "?",
+		SubCounts:   make([][][][]int64, 1),
+		DelCounts:   make([][][]int64, 1),
+		InsCounts:   make([][][]int64, 1),
+	}
+	raw.SubCounts[0] = make([][][]int64, 1)
+	raw.DelCounts[0] = make([][]int64, 1)
+	raw.InsCounts[0] = make([][]int64, 1)
+	raw.SubCounts[0][0] = make([][]int64, 4)
+	for i := 0; i < 4; i++ {
+		raw.SubCounts[0][0][i] = make([]int64, 4)
+	}
+	// Bias confusion toward true Z being observed as A more often than the
+	// opposite direction so the tie-break can deterministically flip winner.
+	raw.SubCounts[0][0][0][0] = 50  // A->A
+	raw.SubCounts[0][0][0][1] = 1   // A->Z
+	raw.SubCounts[0][0][1][0] = 100 // Z->A
+	raw.SubCounts[0][0][1][1] = 50  // Z->Z
+	raw.SubCounts[0][0][2][2] = 50  // 1->1
+	raw.SubCounts[0][0][3][3] = 50  // ?->?
+	raw.DelCounts[0][0] = []int64{1, 1, 1, 1}
+	raw.InsCounts[0][0] = []int64{1, 1, 1, 1}
+	model, err := buildConfusionModel(raw)
+	if err != nil {
+		t.Fatalf("build confusion model: %v", err)
+	}
+	return model
 }
 
 func TestChooseResolverCandidateEvictionDeterministic(t *testing.T) {

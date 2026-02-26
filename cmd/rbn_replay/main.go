@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/csv"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,13 +15,10 @@ import (
 	"dxcluster/config"
 	"dxcluster/cty"
 	"dxcluster/download"
-	"dxcluster/internal/correctionflow"
 	"dxcluster/spot"
 	"dxcluster/stats"
 	"dxcluster/uls"
 )
-
-const maxDisagreementsPerClass = 500
 
 func main() {
 	var (
@@ -63,6 +59,9 @@ func main() {
 	}
 	if !cfg.CallCorrection.Enabled {
 		fatalf("call_correction.enabled must be true for replay (config=%s)", cfg.LoadedFrom)
+	}
+	if !strings.EqualFold(strings.TrimSpace(cfg.CallCorrection.ResolverMode), config.CallCorrectionResolverModePrimary) {
+		fatalf("call_correction.resolver_mode must be %q for replay (config=%s)", config.CallCorrectionResolverModePrimary, cfg.LoadedFrom)
 	}
 
 	archiveDir := strings.TrimSpace(*archiveDirFlag)
@@ -160,25 +159,6 @@ func main() {
 
 	adaptiveMinReports := spot.NewAdaptiveMinReports(cfg.CallCorrection)
 
-	var callCooldown *spot.CallCooldown
-	if cfg.CallCorrection.CooldownEnabled {
-		callCooldown = spot.NewCallCooldown(spot.CallCooldownConfig{
-			Enabled:          cfg.CallCorrection.CooldownEnabled,
-			MinReporters:     cfg.CallCorrection.CooldownMinReporters,
-			Duration:         time.Duration(cfg.CallCorrection.CooldownDurationSeconds) * time.Second,
-			TTL:              time.Duration(cfg.CallCorrection.CooldownTTLSeconds) * time.Second,
-			BinHz:            cfg.CallCorrection.CooldownBinHz,
-			MaxReporters:     cfg.CallCorrection.CooldownMaxReporters,
-			BypassAdvantage:  cfg.CallCorrection.CooldownBypassAdvantage,
-			BypassConfidence: cfg.CallCorrection.CooldownBypassConfidence,
-		})
-	}
-	cooldownCleanupInterval := time.Duration(cfg.CallCorrection.CooldownTTLSeconds) * time.Second
-	if callCooldown != nil && cooldownCleanupInterval <= 0 {
-		cooldownCleanupInterval = time.Minute
-	}
-	lastCooldownCleanup := time.Time{}
-
 	var recentBandStore *spot.RecentBandStore
 	if cfg.CallCorrection.Enabled && (cfg.CallCorrection.RecentBandBonusEnabled || cfg.CallCorrection.StabilizerEnabled) {
 		recentBandStore = spot.NewRecentBandStore(time.Duration(cfg.CallCorrection.RecentBandWindowSeconds) * time.Second)
@@ -188,7 +168,6 @@ func main() {
 	must(err)
 
 	tracker := stats.NewTracker()
-	correctionIndex := spot.NewCorrectionIndex()
 
 	resolver := spot.NewSignalResolver(spot.SignalResolverConfig{
 		QueueSize:                 shadowResolverQueueSize,
@@ -204,6 +183,12 @@ func main() {
 		MaxEditDistance:           cfg.CallCorrection.MaxEditDistance,
 		DistanceModelCW:           cfg.CallCorrection.DistanceModelCW,
 		DistanceModelRTTY:         cfg.CallCorrection.DistanceModelRTTY,
+		SpotterReliability:        spotterReliability,
+		SpotterReliabilityCW:      spotterReliabilityCW,
+		SpotterReliabilityRTTY:    spotterReliabilityRTTY,
+		MinSpotterReliability:     cfg.CallCorrection.MinSpotterReliability,
+		ConfusionModel:            confusionModel,
+		ConfusionWeight:           cfg.CallCorrection.ConfusionModelWeight,
 		FamilyPolicy: spot.CorrectionFamilyPolicy{
 			Configured:                 true,
 			TruncationEnabled:          cfg.CallCorrection.FamilyPolicy.Truncation.Enabled,
@@ -221,17 +206,6 @@ func main() {
 	must(err)
 	defer runbookSamplesFile.Close()
 
-	disagreementsPath := filepath.Join(outDir, "disagreements_sample.csv")
-	disagreeFile, err := os.OpenFile(disagreementsPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
-	must(err)
-	defer disagreeFile.Close()
-	disagreeCSV := csv.NewWriter(disagreeFile)
-	must(disagreeCSV.Write([]string{
-		"TS", "Band", "Mode", "FreqKHz", "Spotter", "PreCall", "FinalCall", "Corrected",
-		"SnapshotState", "SnapshotWinner", "SnapshotRunner", "WinnerSupport", "RunnerSupport", "TotalReporters",
-		"Class",
-	}))
-
 	manifest := replayManifest{
 		DateUTC:          dayStart.Format("2006-01-02"),
 		ConfigLoadedFrom: cfg.LoadedFrom,
@@ -243,7 +217,6 @@ func main() {
 		GoVersion:        runtime.Version(),
 	}
 	manifest.Outputs.RunbookSamplesLog = runbookSamplesPath
-	manifest.Outputs.DisagreementsSampleCSV = disagreementsPath
 	manifest.Outputs.ManifestJSON = filepath.Join(outDir, "manifest.json")
 	manifest.Outputs.IntervalsCSV = filepath.Join(outDir, "resolver_intervals.csv")
 	manifest.Outputs.ThresholdHitsCSV = filepath.Join(outDir, "resolver_threshold_hits.csv")
@@ -253,8 +226,7 @@ func main() {
 	must(err)
 	defer csvParser.Close()
 	manifest.CSV.Header = csvParser.Header()
-	currentStabilityCollector := newReplayStabilityCollector(replayCfg.Stability)
-	resolverStabilityCollector := newReplayStabilityCollector(replayCfg.Stability)
+	stabilityCollector := newReplayStabilityCollector(replayCfg.Stability)
 
 	var (
 		samples        []resolverSample
@@ -267,19 +239,10 @@ func main() {
 		recordsSkippedBad  int64
 
 		abMetrics = replayABMetrics{}
-
-		disagreeCounts = map[string]int{"SP": 0, "DW": 0, "UC": 0}
 	)
 
 	emitSample := func(ts time.Time) {
 		ts = ts.UTC()
-		if callCooldown != nil && cooldownCleanupInterval > 0 {
-			if lastCooldownCleanup.IsZero() || ts.Sub(lastCooldownCleanup) >= cooldownCleanupInterval {
-				callCooldown.Cleanup(ts)
-				lastCooldownCleanup = ts
-			}
-		}
-
 		driver.Sweep(ts)
 
 		metrics := resolver.MetricsSnapshot()
@@ -325,8 +288,6 @@ func main() {
 			fatalf("csv timestamp regression at #%d: prev=%s curr=%s", recordsTotal, lastRecordTime.UTC().Format(time.RFC3339), row.Time.UTC().Format(time.RFC3339))
 		}
 		lastRecordTime = row.Time
-		currentStabilityCollector.ObserveRaw(row)
-		resolverStabilityCollector.ObserveRaw(row)
 
 		for !nextSampleAt.After(row.Time) {
 			emitSample(nextSampleAt)
@@ -337,6 +298,7 @@ func main() {
 			recordsSkippedMode++
 			continue
 		}
+		stabilityCollector.ObserveRaw(row)
 
 		recordsProcessed++
 		now := row.Time.UTC()
@@ -364,14 +326,14 @@ func main() {
 			}
 		}
 
-		preCorrectionCall := normalizedDXCall(spotEntry)
-		suppress, confidenceOutcome := maybeApplyCallCorrectionReplay(
+		outcome := maybeApplyResolverCorrectionReplay(
 			spotEntry,
-			correctionIndex,
+			resolver,
+			resolverEvidence,
+			hasResolverEvidence,
 			cfg.CallCorrection,
 			ctyDB,
 			tracker,
-			callCooldown,
 			adaptiveMinReports,
 			spotterReliability,
 			spotterReliabilityCW,
@@ -384,66 +346,26 @@ func main() {
 
 		// Enqueue happened before correction; even suppressed spots should still
 		// advance resolver state for future observations.
-		if suppress {
+		if outcome.Suppress {
 			driver.Step(now)
 			continue
 		}
-		abMetrics.ObserveCurrentPath(confidenceOutcome)
+		abMetrics.ObserveAppliedOutput(outcome.Confidence)
+		abMetrics.ObserveResolverSelection(outcome.Selection)
+		abMetrics.ObserveResolverSnapshot(outcome.Selection.Snapshot, outcome.Selection.SnapshotOK)
+		abMetrics.ObserveResolverRecentPlus1Gate(outcome.Gate, outcome.GateEvaluated)
 
 		spotEntry.RefreshBeaconFlag()
-		finalCall := normalizedDXCall(spotEntry)
-		if preCorrectionCall != "" &&
-			finalCall != "" &&
-			!strings.EqualFold(preCorrectionCall, finalCall) &&
-			strings.EqualFold(strings.TrimSpace(spotEntry.Confidence), "C") {
+		if outcome.Applied {
 			band := spotEntry.BandNorm
 			if band == "" || band == "???" {
 				band = spot.FreqToBand(spotEntry.Frequency)
 			}
-			currentStabilityCollector.ObserveApplied(now.Unix(), finalCall, spotEntry.Frequency, band)
-		}
-
-		resolverSnapshot, resolverSnapshotOK := spot.ResolverSnapshot{}, false
-		if hasResolverEvidence {
-			selection := correctionflow.SelectResolverPrimarySnapshotForCall(resolver, resolverEvidence.Key, cfg.CallCorrection, preCorrectionCall)
-			resolverSnapshot, resolverSnapshotOK = selection.Snapshot, selection.SnapshotOK
-			abMetrics.ObserveResolverSelection(selection)
-			abMetrics.ObserveResolverSnapshot(resolverSnapshot, resolverSnapshotOK)
-			resolverGate, gateEvaluated := evaluateResolverPrimaryGateReplay(
-				spotEntry,
-				preCorrectionCall,
-				selection,
-				cfg.CallCorrection,
-				recentBandStore,
-				knownCallset,
-				adaptiveMinReports,
-				now,
-			)
-			abMetrics.ObserveResolverRecentPlus1Gate(resolverGate, gateEvaluated)
-
-			resolverDecision, decisionKnown := classifyResolverMethodDecision(selection, preCorrectionCall, resolverGate, gateEvaluated)
-			if decisionKnown && resolverDecision.Comparable && resolverDecision.Applied {
-				band := spotEntry.BandNorm
-				if band == "" || band == "???" {
-					band = spot.FreqToBand(spotEntry.Frequency)
-				}
-				resolverStabilityCollector.ObserveApplied(now.Unix(), resolverDecision.Winner, spotEntry.Frequency, band)
-			}
-
-			observeResolverCurrentDecision(resolver, resolverEvidence.Key, spotEntry, preCorrectionCall)
-
-			row := classifyDisagreementSample(resolverSnapshot, resolverSnapshotOK, spotEntry, preCorrectionCall)
-			if row != nil {
-				count := disagreeCounts[row.Class]
-				if count < maxDisagreementsPerClass {
-					disagreeCounts[row.Class] = count + 1
-					must(disagreeCSV.Write(disagreementCSVRow(row)))
-				}
-			}
+			stabilityCollector.ObserveApplied(now.Unix(), outcome.Winner, spotEntry.Frequency, band)
 		}
 
 		if stabilizerDelayProxyEligible(spotEntry, recentBandStore, cfg.CallCorrection) {
-			delayDecision := evaluateStabilizerDelay(spotEntry, recentBandStore, cfg.CallCorrection, now, resolverSnapshot, resolverSnapshotOK)
+			delayDecision := evaluateStabilizerDelay(spotEntry, recentBandStore, cfg.CallCorrection, now, outcome.Selection.Snapshot, outcome.Selection.SnapshotOK)
 			abMetrics.StabilizerDelayProxy.Observe(delayDecision)
 		}
 
@@ -459,9 +381,6 @@ func main() {
 		nextSampleAt = nextSampleAt.Add(sampleInterval)
 	}
 
-	disagreeCSV.Flush()
-	must(disagreeCSV.Error())
-
 	if err := runbookSamplesFile.Sync(); err != nil {
 		fatalf("sync runbook samples file: %v", err)
 	}
@@ -471,11 +390,8 @@ func main() {
 	}
 
 	intervals, hits, gates := computeIntervalsAndGates(samples, shadowResolverQueueSize)
-	currentStabilitySummary := currentStabilityCollector.Evaluate(dayStart.Unix())
-	resolverStabilitySummary := resolverStabilityCollector.Evaluate(dayStart.Unix())
-	methodStability := buildMethodStabilitySet(currentStabilitySummary, resolverStabilitySummary)
-	gates.Overall.Stability = currentStabilitySummary
-	gates.Overall.MethodStability = methodStability
+	stabilitySummary := stabilityCollector.Evaluate(dayStart.Unix())
+	gates.Overall.Stability = stabilitySummary
 	gates.Overall.ABMetrics = abMetrics
 	must(writeIntervalsCSV(manifest.Outputs.IntervalsCSV, intervals))
 	must(writeIntervalsCSV(manifest.Outputs.ThresholdHitsCSV, hits))
@@ -487,17 +403,11 @@ func main() {
 	manifest.CSV.RecordsSkippedBad = recordsSkippedBad
 
 	last := samples[len(samples)-1].Metrics
-	manifest.Results.ComparableDecisions = last.DecisionsComparable
-	manifest.Results.AgreementPct = gates.Overall.AgreementPct
-	manifest.Results.DWPct = gates.Overall.DWPct
-	manifest.Results.SPPct = gates.Overall.SPPct
-	manifest.Results.UCPct = gates.Overall.UCPct
 	manifest.Results.Drops.QueueFull = last.DropQueueFull
 	manifest.Results.Drops.MaxKeys = last.DropMaxKeys
 	manifest.Results.Drops.MaxCandidates = last.DropMaxCandidates
 	manifest.Results.Drops.MaxReporters = last.DropMaxReporters
-	manifest.Results.Stability = currentStabilitySummary
-	manifest.Results.MethodStability = methodStability
+	manifest.Results.Stability = stabilitySummary
 	manifest.Results.ABMetrics = abMetrics
 
 	manifest.FinishedAtUTC = time.Now().UTC().Format(time.RFC3339Nano)

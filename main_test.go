@@ -1199,6 +1199,10 @@ func TestMaybeApplyResolverCorrectionAppliesWinner(t *testing.T) {
 			nil,
 			nil,
 			nil,
+			nil,
+			nil,
+			nil,
+			nil,
 		)
 		if s.DXCallNorm == "K1ABC" {
 			break
@@ -1276,6 +1280,10 @@ func TestMaybeApplyResolverCorrectionNoApplyUsesEmittedCallConfidence(t *testing
 		nil,
 		nil,
 		tracker,
+		nil,
+		nil,
+		nil,
+		nil,
 		nil,
 		nil,
 		nil,
@@ -1384,6 +1392,10 @@ func TestMaybeApplyResolverCorrectionUsesAdaptiveMinReports(t *testing.T) {
 		nil,
 		nil,
 		adaptive,
+		nil,
+		nil,
+		nil,
+		nil,
 	)
 	if suppress {
 		t.Fatalf("did not expect suppress")
@@ -1467,6 +1479,10 @@ func TestMaybeApplyResolverCorrectionUsesNeighborhoodWinner(t *testing.T) {
 		nil,
 		nil,
 		tracker,
+		nil,
+		nil,
+		nil,
+		nil,
 		nil,
 		nil,
 		nil,
@@ -1561,6 +1577,10 @@ func TestMaybeApplyResolverCorrectionRejectsNeighborhoodConflict(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	)
 	if suppress {
 		t.Fatalf("did not expect suppress")
@@ -1589,6 +1609,10 @@ func TestMaybeApplyResolverCorrectionRecordsNoSnapshotReason(t *testing.T) {
 		nil,
 		nil,
 		tracker,
+		nil,
+		nil,
+		nil,
+		nil,
 		nil,
 		nil,
 		nil,
@@ -1658,6 +1682,10 @@ func TestMaybeApplyResolverCorrectionHonorsMaxEditDistance(t *testing.T) {
 			MaxEditDistance: 1,
 			InvalidAction:   "broadcast",
 		},
+		nil,
+		nil,
+		nil,
+		nil,
 		nil,
 		nil,
 		nil,
@@ -1735,6 +1763,10 @@ func TestMaybeApplyResolverCorrectionHonorsDistance3ExtraRails(t *testing.T) {
 			DistanceModelRTTY:        "baudot",
 			InvalidAction:            "broadcast",
 		},
+		nil,
+		nil,
+		nil,
+		nil,
 		nil,
 		nil,
 		nil,
@@ -2002,6 +2034,10 @@ func TestMaybeApplyResolverCorrectionUsesRecentPlus1AppliedReason(t *testing.T) 
 		recent,
 		nil,
 		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	)
 	if suppress {
 		t.Fatalf("did not expect suppress")
@@ -2088,6 +2124,10 @@ func TestMaybeApplyResolverCorrectionRejectsRecentPlus1WhenSubjectNotWeaker(t *t
 		tracker,
 		nil,
 		recent,
+		nil,
+		nil,
+		nil,
+		nil,
 		nil,
 		nil,
 	)

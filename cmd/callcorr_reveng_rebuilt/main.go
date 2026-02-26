@@ -205,6 +205,10 @@ type runState struct {
 	ctyDB           *cty.CTYDatabase
 	knownCallset    *spot.KnownCallsigns
 	recentBand      *spot.RecentBandStore
+	spotterRel      spot.SpotterReliability
+	spotterRelCW    spot.SpotterReliability
+	spotterRelRTTY  spot.SpotterReliability
+	confusionModel  *spot.ConfusionModel
 	adaptive        *spot.AdaptiveMinReports
 	resolver        *spot.SignalResolver
 	driver          *spot.SignalResolverDriver
@@ -284,6 +288,45 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	var spotterReliability spot.SpotterReliability
+	var spotterReliabilityCW spot.SpotterReliability
+	var spotterReliabilityRTTY spot.SpotterReliability
+	var confusionModel *spot.ConfusionModel
+	if relPath := strings.TrimSpace(cfg.CallCorrection.SpotterReliabilityFile); relPath != "" {
+		if rel, n, loadErr := spot.LoadSpotterReliability(relPath); loadErr != nil {
+			log.Printf("Warning: failed to load spotter reliability from %s: %v", relPath, loadErr)
+		} else {
+			spotterReliability = rel
+			log.Printf("Loaded %d spotter reliability weights from %s", n, relPath)
+		}
+	}
+	if relPath := strings.TrimSpace(cfg.CallCorrection.SpotterReliabilityFileCW); relPath != "" {
+		if rel, n, loadErr := spot.LoadSpotterReliability(relPath); loadErr != nil {
+			log.Printf("Warning: failed to load CW spotter reliability from %s: %v", relPath, loadErr)
+		} else {
+			spotterReliabilityCW = rel
+			log.Printf("Loaded %d CW spotter reliability weights from %s", n, relPath)
+		}
+	}
+	if relPath := strings.TrimSpace(cfg.CallCorrection.SpotterReliabilityFileRTTY); relPath != "" {
+		if rel, n, loadErr := spot.LoadSpotterReliability(relPath); loadErr != nil {
+			log.Printf("Warning: failed to load RTTY spotter reliability from %s: %v", relPath, loadErr)
+		} else {
+			spotterReliabilityRTTY = rel
+			log.Printf("Loaded %d RTTY spotter reliability weights from %s", n, relPath)
+		}
+	}
+	if cfg.CallCorrection.ConfusionModelEnabled {
+		modelPath := strings.TrimSpace(cfg.CallCorrection.ConfusionModelFile)
+		if modelPath == "" {
+			log.Printf("Warning: call correction confusion model enabled but confusion_model_file is empty")
+		} else if loaded, loadErr := spot.LoadConfusionModel(modelPath); loadErr != nil {
+			log.Printf("Warning: failed to load confusion model from %s: %v", modelPath, loadErr)
+		} else {
+			confusionModel = loaded
+			log.Printf("Loaded call correction confusion model from %s", modelPath)
+		}
+	}
 
 	rbnFiles, err := discover(*rbnDir, []string{".zip", ".csv"})
 	if err != nil {
@@ -314,6 +357,12 @@ func main() {
 		MaxEditDistance:           cfg.CallCorrection.MaxEditDistance,
 		DistanceModelCW:           cfg.CallCorrection.DistanceModelCW,
 		DistanceModelRTTY:         cfg.CallCorrection.DistanceModelRTTY,
+		SpotterReliability:        spotterReliability,
+		SpotterReliabilityCW:      spotterReliabilityCW,
+		SpotterReliabilityRTTY:    spotterReliabilityRTTY,
+		MinSpotterReliability:     cfg.CallCorrection.MinSpotterReliability,
+		ConfusionModel:            confusionModel,
+		ConfusionWeight:           cfg.CallCorrection.ConfusionModelWeight,
 		FamilyPolicy: spot.CorrectionFamilyPolicy{
 			Configured:                 true,
 			TruncationEnabled:          cfg.CallCorrection.FamilyPolicy.Truncation.Enabled,
@@ -344,6 +393,10 @@ func main() {
 		ctyDB:          ctyDB,
 		knownCallset:   knownCallset,
 		recentBand:     recentBandStore,
+		spotterRel:     spotterReliability,
+		spotterRelCW:   spotterReliabilityCW,
+		spotterRelRTTY: spotterReliabilityRTTY,
+		confusionModel: confusionModel,
 		adaptive:       spot.NewAdaptiveMinReports(cfg.CallCorrection),
 		resolver:       resolver,
 		driver:         driver,
@@ -620,14 +673,18 @@ func evaluateResolverPrimaryDecision(
 
 	runtime := correctionflow.ResolveRuntimeSettings(st.cfg.CallCorrection, spotEntry, st.adaptive, now, true)
 	settings := correctionflow.BuildCorrectionSettings(correctionflow.BuildSettingsInput{
-		Cfg:                st.cfg.CallCorrection,
-		MinReports:         runtime.MinReports,
-		CooldownMinReports: runtime.CooldownMinReports,
-		Window:             runtime.Window,
-		FreqToleranceHz:    runtime.FreqToleranceHz,
-		QualityBinHz:       runtime.QualityBinHz,
-		RecentBandStore:    st.recentBand,
-		KnownCallset:       st.knownCallset,
+		Cfg:                    st.cfg.CallCorrection,
+		MinReports:             runtime.MinReports,
+		CooldownMinReports:     runtime.CooldownMinReports,
+		Window:                 runtime.Window,
+		FreqToleranceHz:        runtime.FreqToleranceHz,
+		QualityBinHz:           runtime.QualityBinHz,
+		SpotterReliability:     st.spotterRel,
+		SpotterReliabilityCW:   st.spotterRelCW,
+		SpotterReliabilityRTTY: st.spotterRelRTTY,
+		ConfusionModel:         st.confusionModel,
+		RecentBandStore:        st.recentBand,
+		KnownCallset:           st.knownCallset,
 	})
 	gateOptions := spot.ResolverPrimaryGateOptions{}
 	if st.cfg.CallCorrection.ResolverRecentPlus1Enabled {

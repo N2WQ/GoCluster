@@ -837,6 +837,7 @@ func BuildResolverEvidenceSnapshot(spotEntry *spot.Spot, cfg config.CallCorrecti
 		Key:           key,
 		DXCall:        call,
 		Spotter:       reporter,
+		Report:        spotEntry.Report,
 		FrequencyKHz:  spotEntry.Frequency,
 		RecencyWindow: runtime.Window,
 	}, true

@@ -23,20 +23,6 @@ type replayStabilitySummary struct {
 	StablePct     float64 `json:"stable_pct"`
 }
 
-type replayMethodStabilitySummary struct {
-	TotalApplied  int     `json:"total_applied"`
-	StableApplied int     `json:"stable_applied"`
-	StablePct     float64 `json:"stable_pct"`
-}
-
-type replayMethodStabilitySet struct {
-	WindowMinutes   int                          `json:"window_minutes"`
-	MinFollowOn     int                          `json:"min_follow_on"`
-	FreqToleranceHz float64                      `json:"freq_tolerance_hz"`
-	CurrentPath     replayMethodStabilitySummary `json:"current_path"`
-	Resolver        replayMethodStabilitySummary `json:"resolver"`
-}
-
 type replayStabilityCollector struct {
 	cfg         replayStabilityConfig
 	spots       map[string][]stabilitypkg.Spot
@@ -132,26 +118,4 @@ func (c *replayStabilityCollector) Evaluate(minTs int64) replayStabilitySummary 
 		summary.StablePct = roundFloat((100.0*float64(summary.StableApplied))/float64(summary.TotalApplied), 3)
 	}
 	return summary
-}
-
-func methodStabilityFromSummary(summary replayStabilitySummary) replayMethodStabilitySummary {
-	return replayMethodStabilitySummary{
-		TotalApplied:  summary.TotalApplied,
-		StableApplied: summary.StableApplied,
-		StablePct:     summary.StablePct,
-	}
-}
-
-func buildMethodStabilitySet(current replayStabilitySummary, resolver replayStabilitySummary) replayMethodStabilitySet {
-	cfg := current
-	if cfg.WindowMinutes <= 0 {
-		cfg = resolver
-	}
-	return replayMethodStabilitySet{
-		WindowMinutes:   cfg.WindowMinutes,
-		MinFollowOn:     cfg.MinFollowOn,
-		FreqToleranceHz: cfg.FreqToleranceHz,
-		CurrentPath:     methodStabilityFromSummary(current),
-		Resolver:        methodStabilityFromSummary(resolver),
-	}
 }
