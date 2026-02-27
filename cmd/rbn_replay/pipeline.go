@@ -113,6 +113,36 @@ func maybeApplyResolverCorrectionReplay(
 	knownCallset *spot.KnownCallsigns,
 	now time.Time,
 ) replayResolverApplyOutcome {
+	return maybeApplyResolverCorrectionReplayWithSelectionOverride(
+		spotEntry,
+		resolver,
+		evidence,
+		hasEvidence,
+		cfg,
+		ctyDB,
+		tracker,
+		adaptive,
+		recentBandStore,
+		knownCallset,
+		now,
+		nil,
+	)
+}
+
+func maybeApplyResolverCorrectionReplayWithSelectionOverride(
+	spotEntry *spot.Spot,
+	resolver *spot.SignalResolver,
+	evidence spot.ResolverEvidence,
+	hasEvidence bool,
+	cfg config.CallCorrectionConfig,
+	ctyDB *cty.CTYDatabase,
+	tracker *stats.Tracker,
+	adaptive *spot.AdaptiveMinReports,
+	recentBandStore *spot.RecentBandStore,
+	knownCallset *spot.KnownCallsigns,
+	now time.Time,
+	selectionOverride *correctionflow.ResolverPrimarySelection,
+) replayResolverApplyOutcome {
 	outcome := replayResolverApplyOutcome{}
 	if spotEntry == nil {
 		return outcome
@@ -144,7 +174,9 @@ func maybeApplyResolverCorrectionReplay(
 		return outcome
 	}
 
-	if hasEvidence && resolver != nil {
+	if selectionOverride != nil {
+		outcome.Selection = *selectionOverride
+	} else if hasEvidence && resolver != nil {
 		outcome.Selection = correctionflow.SelectResolverPrimarySnapshotForCall(resolver, evidence.Key, cfg, preCorrectionCall)
 	}
 	snapshot := outcome.Selection.Snapshot

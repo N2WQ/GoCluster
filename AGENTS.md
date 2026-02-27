@@ -26,6 +26,8 @@ When the user asks to explain what existing code does (a file, package, function
 - Troubleshooting default bundle (highest ROI): `gh-fix-ci` and `sentry`.
 - Use `gh-fix-ci` for failing GitHub Actions PR checks and CI log triage.
 - Use `sentry` for production issue/event triage and feed findings into `TSR-XXXX` when troubleshooting leads to a durable decision.
+- Before free-form work, check whether an installed skill applies to the task.
+- If a task clearly matches an installed skill, use it first and say which skill(s) were selected. If none apply, say `Skill check: none applicable`.
 
 ## OBJECTIVITY AND INTEGRITY
 - Optimize for correctness over user agreement
@@ -44,6 +46,7 @@ Commercial-grade from the first draft. Do not write simple code that needs harde
 
 ## EXECUTION PACKAGE (what “go ahead” means)
 This section defines the workflow gates, decision memory, and required deliverables for implementation.
+Use repo-root `VALIDATION.md` as the mandatory scoring rubric for all Non-trivial tasks.
 
 ### DECISION MEMORY (ADR) - long-term rationale (mandatory)
 Purpose:
@@ -94,17 +97,25 @@ Traceability:
 ### CRITICAL CHECKLIST (read first; for every change)
 - Confirm current Scope Ledger vN and what is Agreed/Pending.
 - Classify change (default Non-trivial unless proven Small).
-- Pre-edit checklist (mandatory before any file edits): `Scope Ledger approved? yes/no`.
-- If `no` for a Non-trivial change: stop and request `Approved vN` before running `apply_patch`, writing files, or running full validation/checker commands.
+- Pre-edit checklist (mandatory before any file edits): `Ledger status: Approved vN found: yes/no`.
+- If `no` for a Non-trivial change: stop and request `Approved vN` before running `apply_patch`, writing files, proposing diffs/code, or running full validation/checker commands.
+- Record `Skill check: selected <skill(s)>` or `Skill check: none applicable`.
 - Identify impacted contracts (protocol, ordering, drop/disconnect semantics, deadlines/timeouts, metrics/logs). If none: explicitly say “No contract changes.”
 - Identify user-visible behavior changes (timing, ordering, drops, disconnect reasons, error messages). If none: explicitly say “No user-visible behavior changes.”
 - Choose dependency rigor (Light vs Full) using the decision tree below.
+- Before coding, list dependency impact: touched files/packages, upstream callers/sources reviewed, downstream consumers reviewed, shared components/interfaces reviewed, and config/metrics/docs affected.
+- If Full rigor applies, include a mandatory one-line evidence block: `Dependency scan evidence: <repo search commands/steps used>; reviewed files/packages: <list>`.
+- Define `README impact: Required` or `README impact: Not required` with one-sentence reason.
 - Define the required checker set for this task before coding; default mandatory set is: go test ./..., go vet ./..., staticcheck ./..., and go test -race ./... for any change touching concurrency, synchronization, queues, or long-lived connection lifecycle.
 - Run checks incrementally during implementation (after each meaningful slice), not only at end-of-task. Do not stack multiple unverified slices.
 - For Non-trivial: provide Architecture Note before code (bounds, backpressure, shutdown, failure modes).
 - Implement with bounded resources and explicit invariants.
 - Update tests (race-relevant coverage where applicable); provide verification commands.
 - PR-style summary includes Scope-to-Code Traceability (no omissions) and Self-Audit pass/fail.
+- For Non-trivial changes, apply `VALIDATION.md` and end the final output with this exact 3-line block:
+  - `Validation Score: X/6`
+  - `Failed items: none | <comma-separated failed item numbers/names>`
+  - `Auto-fail conditions triggered: no | yes (<conditions>)`
 
 ### Required Checker Baseline
 - Mandatory baseline command: go test ./...
@@ -128,12 +139,13 @@ Scope Ledger rules:
 Approval handshake:
 - When the assistant prints “Scope Ledger vN”, the user may reply “Approved vN”.
 - Once approved, implementation proceeds against that ledger snapshot unless later amended.
-- Hard gate: for any Non-trivial change, do not run `apply_patch`, write files, or run full validation until `Approved vN` is received.
+- Hard gate: for any Non-trivial change, do not run `apply_patch`, write files, propose diffs/code, or run full validation until `Approved vN` is received.
+- Missing approval is never implied from prior discussion, partial agreement, or “go ahead” phrasing unless it explicitly references the approved ledger snapshot.
 
 If no Scope Ledger exists yet:
 - The assistant must first produce a Proposed Scope Ledger compiled from the thread.
 - Mark any ambiguous items as Needs confirmation.
-- Proceed only with the smallest safe subset unless the user approves the full ledger.
+- Do not assume approval from conversation context. Until the user replies `Approved vN`, stop after the ledger and clarification questions.
 
 Non-trivial turn opening template (mandatory):
 - `Proposed Scope Ledger vN`
@@ -173,7 +185,7 @@ If classified as Small and later found to affect any non-trivial area, stop and 
 
 ### Dependency rigor (Light vs Full)
 Light (default for most Non-trivial changes):
-- Name upstream callers/sources and downstream consumers touched.
+- List touched files/packages plus upstream callers/sources and downstream consumers reviewed.
 - State contract changes explicitly, or “No contract changes.”
 - Specify 1–3 boundary regression tests to add/update.
 
@@ -182,6 +194,12 @@ Full (required) if the change touches any of:
 - Shared components used by multiple consumers (fan-out, queues, rate limits, auth/session, config schema).
 - Backpressure/drop/disconnect policy, deadlines/timeouts, shutdown sequencing.
 - Observability contracts (metrics/log fields relied upon operationally).
+
+Full rigor requires:
+- Repo-wide dependency scan of concrete files/packages reviewed.
+- Shared interfaces/components reviewed explicitly.
+- Config/metrics/log/docs impact reviewed explicitly.
+- Mandatory evidence block: `Dependency scan evidence: <repo search commands/steps used>; reviewed files/packages: <list>`.
 
 Decision tree:
 - Touches shared interface/protocol/contract? → Full
@@ -195,12 +213,12 @@ Small change (lightweight workflow):
 
 Non-trivial change (full delivery workflow, default posture):
 1) Requirements & Edge Cases note
-2) Architecture Note (before code): concurrency model, goroutine bounds, ownership/lifetime, backpressure and precise drop semantics, deadlines/cancellation, shutdown sequencing, resource bounds, failure modes; include dependency impact (Light or Full per decision tree), contract changes (explicit list, or “No contract changes”), and boundary regression test plan; 2–3 alternatives if priorities change.
+2) Architecture Note (before code): concurrency model, goroutine bounds, ownership/lifetime, backpressure and precise drop semantics, deadlines/cancellation, shutdown sequencing, resource bounds, failure modes; include dependency impact (Light or Full per decision tree), contract changes (explicit list, or “No contract changes”), boundary regression test plan, and for Full rigor the exact `Dependency scan evidence` line; 2–3 alternatives if priorities change.
 2.1) User Impact and Determinism Note (before code): describe what changes for clients (or “No user-visible behavior changes”), including slow-client and overload behavior, ordering/drops/disconnect reasons, and why behavior remains deterministic; include second- and third-order consequences and mitigations.
 3) Implementation: bounded resources, clear invariants, cancellation/deadlines everywhere, maintainable hot paths, with incremental checker runs between slices.
 4) Tests: unit + deterministic queue/drop/disconnect tests; race-relevant coverage; fuzz/property tests for parsers when applicable.
 5) Performance evidence when hot paths change or any “faster” claim is made: before/after bench or pprof; include allocs/op.
-6) Documentation: inline invariants/ownership; package-level behavior notes; YAML configuration files,repo README and docs if operator-visible behavior/config changes.
+6) Documentation: inline invariants/ownership; package-level behavior notes; review repo README on every non-trivial change and update it whenever usage, behavior, config, architecture assumptions, limitations, or verification steps changed; update YAML/config/docs as needed.
 7) PR-style summary: what changed, why, tradeoffs, risks/mitigations, observability impact (metrics/log fields), verification commands, and Scope-to-Code Traceability.
 
 ### Definition of Done (always)
@@ -209,10 +227,11 @@ Non-trivial change (full delivery workflow, default posture):
 - Tests added/updated appropriately; no silent omission of critical cases.
 - Final verification is a confirmation pass; required checker failures (test/vet/static/race when applicable) must be fixed continuously as code is written.
 - No progression to the next implementation slice while required checks for the current slice are failing, unless explicitly documented as a temporary waiver with command, reason, owner, expiry date, and mitigation.
-- Documentation updated for human readability and operator understanding.
-- Dependencies: upstream/downstream contracts reviewed; any contract changes explicitly documented; regression tests added for affected boundaries.
+- Documentation updated for human readability and operator understanding; README review status explicitly stated.
+- Dependencies: upstream/downstream contracts reviewed; repo-wide dependency scan performed when Full rigor applies; exact `Dependency scan evidence` line included for Full rigor; any contract changes explicitly documented; regression tests added for affected boundaries.
 - Decision memory updated: ADR created/updated or explicit `No decision change` recorded.
 - Verification commands provided; do not claim commands were executed unless they were.
+- A Non-trivial task is not complete unless the `VALIDATION.md` result is included as the exact required 3-line block.
 
 ## REQUIREMENTS DISCOVERY (default behavior for non-trivial changes)
 Before implementing non-trivial changes, produce a concise Intent & Requirements & Edge Cases note covering:
@@ -224,7 +243,7 @@ Before implementing non-trivial changes, produce a concise Intent & Requirements
 System Impact Checklist (required; apply Light vs Full depth per decision tree)
 - Upstream inputs: max line length, partial reads, CRLF/LF mix, invalid bytes/control chars, telnet IAC bytes policy, abuse/retry patterns, upstream feed quirks.
 - Downstream outputs: ordering guarantees, control-vs-spots priority, write stalls/partial writes, slow consumers, reconnect storms/client churn.
-- Shared services/dependencies: config schema, logging, metrics, persistence, clock/timers, DNS, rate limiters, upstream/downstream integrations.
+- Shared services/dependencies: config schema, logging, metrics, persistence, clock/timers, DNS, rate limiters, upstream/downstream integrations, repo shared components/interfaces.
 - Backpressure/resource bounds: queue-full semantics, drop/disconnect thresholds, per-conn and global memory ceilings, bounded caches, avoid backing-array retention.
 - Concurrency/lifecycle: goroutine ownership/lifecycle, cancellation propagation, timer/ticker ownership, lock contention, deadlock/leak risks.
 - Failure and shutdown: burst traffic, dependency timeouts, retry/backoff policy, shutdown coordination (drain vs abort), what is safe to drop.
@@ -305,7 +324,7 @@ Measurement: Any optimization claim needs before/after data. See OPTIMIZATION.md
 ## SELF-AUDIT (default for non-trivial changes; always when requested)
 After implementing, produce an Audit Report with pass/fail against:
 - Scope completeness vs Scope Ledger and Definition of Done
-- Dependency impact: upstream/downstream dependencies identified; contract changes listed; tests cover affected boundaries; no hidden behavior changes.
+- Dependency impact: upstream/downstream dependencies identified; concrete files/packages reviewed listed; for Full rigor the exact `Dependency scan evidence` line is present; contract changes listed; tests cover affected boundaries; no hidden behavior changes.
 - Correctness and protocol semantics (including telnet/IAC policy)
 - Concurrency/cancellation/shutdown (no leaks)
 - Backpressure/queues/drop semantics (precise + tested)
@@ -314,7 +333,9 @@ After implementing, produce an Audit Report with pass/fail against:
 - Security/robustness (input validation, log hygiene)
 - Testing adequacy (unit + race relevance + fuzz where applicable)
 - Checker discipline: confirm incremental runs occurred during implementation (not just one end run), list timestamps/sequence in the report, and list any waivers with command, reason, owner, expiry date, and mitigation.
-- Documentation quality (invariants, ownership, operator-visible behavior)
+- Documentation quality (invariants, ownership, operator-visible behavior, README review/update)
+- Skill usage discipline (applicable skill used, or explicit none-applicable statement)
+- Validation discipline: apply `VALIDATION.md` and report the exact required 3-line block with score, failed items, and auto-fail status.
 
 Include verification commands and what “good” looks like. Do not claim commands were executed unless they were.
 
@@ -326,7 +347,14 @@ Include:
 - Contracts and compatibility: confirm whether protocol/ordering/drop/deadlines/metrics contracts changed; if yes, list changes and affected components.
 - User impact and determinism: confirm whether any user-visible behavior changed (or “No user-visible behavior changes”), including slow-client and overload behavior, ordering/drops/disconnect reasons, and why behavior remains deterministic.
 - Observability impact: metrics/log fields added/changed; how to interpret them.
+- README impact: `Required` or `Not required`, with reason; if not updated, state `README reviewed; no change required`.
+- Skill check: skill(s) used, or `none applicable`.
 - Verification commands: exact commands, expected outcomes, and checkpoint sequence used during implementation (for example: slice 1 -> go test ./..., slice 2 -> go vet ./..., final -> race/fuzz/bench as applicable).
+- Dependency scan evidence: for Full-rigor tasks, include the exact `Dependency scan evidence: ...` line.
+- Validation: include this exact 3-line block per `VALIDATION.md`:
+  - `Validation Score: X/6`
+  - `Failed items: none | <comma-separated failed item numbers/names>`
+  - `Auto-fail conditions triggered: no | yes (<conditions>)`
 - Scope-to-Code Traceability: map each Scope Ledger item with Status = Agreed/Pending (as of the start of this implementation cycle) to:
   - Code locations (packages/files/functions)
   - Tests (names/files) that cover it

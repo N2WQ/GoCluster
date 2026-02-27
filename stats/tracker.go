@@ -41,6 +41,13 @@ type Tracker struct {
 	stabImmediateReason  sync.Map // string -> *atomic.Uint64
 	stabDelayedByReason  sync.Map // string -> *atomic.Uint64
 	stabSuppressedReason sync.Map // string -> *atomic.Uint64
+	temporalPending      atomic.Int64
+	temporalCommitted    atomic.Uint64
+	temporalFallback     atomic.Uint64
+	temporalAbstain      atomic.Uint64
+	temporalBypass       atomic.Uint64
+	temporalPathSwitches atomic.Uint64
+	temporalLatency      sync.Map // string(bucket) -> *atomic.Uint64
 }
 
 // NewTracker creates a new stats tracker with a start timestamp.
@@ -191,6 +198,16 @@ func (t *Tracker) Reset() {
 		t.stabSuppressedReason.Delete(key)
 		return true
 	})
+	t.temporalLatency.Range(func(key, _ any) bool {
+		t.temporalLatency.Delete(key)
+		return true
+	})
+	t.temporalPending.Store(0)
+	t.temporalCommitted.Store(0)
+	t.temporalFallback.Store(0)
+	t.temporalAbstain.Store(0)
+	t.temporalBypass.Store(0)
+	t.temporalPathSwitches.Store(0)
 	t.corrAppliedReasons.Range(func(key, _ any) bool {
 		t.corrAppliedReasons.Delete(key)
 		return true
@@ -472,6 +489,152 @@ func (t *Tracker) StabilizerSuppressedByReason() map[string]uint64 {
 		return map[string]uint64{}
 	}
 	return snapshotCounterMap(&t.stabSuppressedReason)
+}
+
+// IncrementTemporalPending records one temporal request entering the lag queue.
+func (t *Tracker) IncrementTemporalPending() {
+	if t == nil {
+		return
+	}
+	t.temporalPending.Add(1)
+}
+
+// DecrementTemporalPending records one temporal request leaving the lag queue.
+func (t *Tracker) DecrementTemporalPending() {
+	if t == nil {
+		return
+	}
+	for {
+		current := t.temporalPending.Load()
+		if current <= 0 {
+			t.temporalPending.Store(0)
+			return
+		}
+		if t.temporalPending.CompareAndSwap(current, current-1) {
+			return
+		}
+	}
+}
+
+// IncrementTemporalCommitted records one temporal apply commit.
+func (t *Tracker) IncrementTemporalCommitted() {
+	if t == nil {
+		return
+	}
+	t.temporalCommitted.Add(1)
+}
+
+// IncrementTemporalFallbackResolver records one temporal forced fallback to
+// baseline resolver selection.
+func (t *Tracker) IncrementTemporalFallbackResolver() {
+	if t == nil {
+		return
+	}
+	t.temporalFallback.Add(1)
+}
+
+// IncrementTemporalAbstainLowMargin records one temporal abstain action.
+func (t *Tracker) IncrementTemporalAbstainLowMargin() {
+	if t == nil {
+		return
+	}
+	t.temporalAbstain.Add(1)
+}
+
+// IncrementTemporalOverflowBypass records one temporal bypass/overflow release.
+func (t *Tracker) IncrementTemporalOverflowBypass() {
+	if t == nil {
+		return
+	}
+	t.temporalBypass.Add(1)
+}
+
+// IncrementTemporalPathSwitch records one committed temporal winner switch for
+// the same resolver key.
+func (t *Tracker) IncrementTemporalPathSwitch() {
+	if t == nil {
+		return
+	}
+	t.temporalPathSwitches.Add(1)
+}
+
+// ObserveTemporalCommitLatency records one temporal decision latency bucket.
+func (t *Tracker) ObserveTemporalCommitLatency(latency time.Duration) {
+	if t == nil {
+		return
+	}
+	if latency < 0 {
+		latency = 0
+	}
+	ms := latency.Milliseconds()
+	bucket := "gt_5000"
+	switch {
+	case ms <= 500:
+		bucket = "le_500"
+	case ms <= 1000:
+		bucket = "le_1000"
+	case ms <= 2000:
+		bucket = "le_2000"
+	case ms <= 5000:
+		bucket = "le_5000"
+	}
+	incrementCounter(&t.temporalLatency, bucket)
+}
+
+// TemporalPending returns current temporal queue depth.
+func (t *Tracker) TemporalPending() int64 {
+	if t == nil {
+		return 0
+	}
+	return t.temporalPending.Load()
+}
+
+// TemporalCommitted returns committed temporal apply count.
+func (t *Tracker) TemporalCommitted() uint64 {
+	if t == nil {
+		return 0
+	}
+	return t.temporalCommitted.Load()
+}
+
+// TemporalFallbackResolver returns forced temporal fallback count.
+func (t *Tracker) TemporalFallbackResolver() uint64 {
+	if t == nil {
+		return 0
+	}
+	return t.temporalFallback.Load()
+}
+
+// TemporalAbstainLowMargin returns temporal abstain count.
+func (t *Tracker) TemporalAbstainLowMargin() uint64 {
+	if t == nil {
+		return 0
+	}
+	return t.temporalAbstain.Load()
+}
+
+// TemporalOverflowBypass returns temporal bypass count.
+func (t *Tracker) TemporalOverflowBypass() uint64 {
+	if t == nil {
+		return 0
+	}
+	return t.temporalBypass.Load()
+}
+
+// TemporalPathSwitches returns committed temporal path-switch count.
+func (t *Tracker) TemporalPathSwitches() uint64 {
+	if t == nil {
+		return 0
+	}
+	return t.temporalPathSwitches.Load()
+}
+
+// TemporalCommitLatencyBuckets returns temporal latency bucket counters.
+func (t *Tracker) TemporalCommitLatencyBuckets() map[string]uint64 {
+	if t == nil {
+		return map[string]uint64{}
+	}
+	return snapshotCounterMap(&t.temporalLatency)
 }
 
 // Purpose: Return total correction decisions observed (applied + rejected).

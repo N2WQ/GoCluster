@@ -2,6 +2,7 @@ package main
 
 import (
 	"strings"
+	"time"
 
 	"dxcluster/config"
 	"dxcluster/internal/correctionflow"
@@ -132,6 +133,7 @@ type replayABMetrics struct {
 	Output               replayOutputABMetrics             `json:"output"`
 	Resolver             replayResolverABMetrics           `json:"resolver"`
 	StabilizerDelayProxy replayStabilizerDelayProxyMetrics `json:"stabilizer_delay_proxy"`
+	Temporal             replayTemporalABMetrics           `json:"temporal"`
 }
 
 func (m *replayABMetrics) ObserveAppliedOutput(outcome replayConfidenceOutcome) {
@@ -200,6 +202,77 @@ func (m *replayABMetrics) ObserveResolverRecentPlus1Gate(gate spot.ResolverPrima
 		m.Resolver.RecentPlus1RejectSubject++
 	default:
 		m.Resolver.RecentPlus1RejectOther++
+	}
+}
+
+type replayTemporalCommitLatencyMetrics struct {
+	Samples uint64 `json:"samples"`
+	LE500   uint64 `json:"le_500"`
+	LE1000  uint64 `json:"le_1000"`
+	LE2000  uint64 `json:"le_2000"`
+	LE5000  uint64 `json:"le_5000"`
+	GT5000  uint64 `json:"gt_5000"`
+}
+
+func (m *replayTemporalCommitLatencyMetrics) Observe(latency time.Duration) {
+	if m == nil {
+		return
+	}
+	if latency < 0 {
+		latency = 0
+	}
+	ms := latency.Milliseconds()
+	m.Samples++
+	switch {
+	case ms <= 500:
+		m.LE500++
+	case ms <= 1000:
+		m.LE1000++
+	case ms <= 2000:
+		m.LE2000++
+	case ms <= 5000:
+		m.LE5000++
+	default:
+		m.GT5000++
+	}
+}
+
+type replayTemporalABMetrics struct {
+	Pending          uint64                             `json:"pending"`
+	Committed        uint64                             `json:"committed"`
+	FallbackResolver uint64                             `json:"fallback_resolver"`
+	AbstainLowMargin uint64                             `json:"abstain_low_margin"`
+	OverflowBypass   uint64                             `json:"overflow_bypass"`
+	PathSwitches     uint64                             `json:"path_switches"`
+	CommitLatencyMS  replayTemporalCommitLatencyMetrics `json:"commit_latency_ms"`
+}
+
+func (m *replayTemporalABMetrics) ObservePending() {
+	if m == nil {
+		return
+	}
+	m.Pending++
+}
+
+func (m *replayTemporalABMetrics) ObserveDecision(decision correctionflow.TemporalDecision) {
+	if m == nil {
+		return
+	}
+	switch decision.Action {
+	case correctionflow.TemporalDecisionActionApply:
+		m.Committed++
+	case correctionflow.TemporalDecisionActionFallbackResolver:
+		m.FallbackResolver++
+	case correctionflow.TemporalDecisionActionAbstain:
+		m.AbstainLowMargin++
+	case correctionflow.TemporalDecisionActionBypass:
+		m.OverflowBypass++
+	}
+	if decision.PathSwitched {
+		m.PathSwitches++
+	}
+	if decision.Action != correctionflow.TemporalDecisionActionDefer {
+		m.CommitLatencyMS.Observe(decision.CommitLatency)
 	}
 }
 

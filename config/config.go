@@ -695,11 +695,56 @@ type CallCorrectionConfig struct {
 	ResolverRecentPlus1RequireSubjectWeaker bool `yaml:"resolver_recent_plus1_require_subject_weaker"`
 	ResolverRecentPlus1MaxDistance          int  `yaml:"resolver_recent_plus1_max_distance"`
 	ResolverRecentPlus1AllowTruncation      bool `yaml:"resolver_recent_plus1_allow_truncation_family"`
+	// TemporalDecoder enables fixed-lag sequence decoding for resolver-primary
+	// winner selection, with bounded pending state and deterministic fallback.
+	TemporalDecoder CallCorrectionTemporalDecoderConfig `yaml:"temporal_decoder"`
 	// Optional spotter reliability weights (0-1). Reporters below MinSpotterReliability are ignored.
 	SpotterReliabilityFile     string  `yaml:"spotter_reliability_file"`
 	SpotterReliabilityFileCW   string  `yaml:"spotter_reliability_file_cw"`
 	SpotterReliabilityFileRTTY string  `yaml:"spotter_reliability_file_rtty"`
 	MinSpotterReliability      float64 `yaml:"min_spotter_reliability"`
+}
+
+// CallCorrectionTemporalDecoderConfig controls fixed-lag temporal decoding for
+// resolver-primary winner selection.
+type CallCorrectionTemporalDecoderConfig struct {
+	// Enabled toggles temporal decoding.
+	Enabled bool `yaml:"enabled"`
+	// Scope controls which observations are routed through lagged decoding.
+	// Supported values: uncertain_only | all_correction_candidates.
+	Scope string `yaml:"scope"`
+	// LagSeconds is the primary look-ahead delay before the first decision.
+	LagSeconds int `yaml:"lag_seconds"`
+	// MaxWaitSeconds is the maximum delay budget before forced fallback.
+	MaxWaitSeconds int `yaml:"max_wait_seconds"`
+	// BeamSize bounds Viterbi/beam hypotheses per step.
+	BeamSize int `yaml:"beam_size"`
+	// MaxObsCandidates bounds per-observation candidate universe size.
+	MaxObsCandidates int `yaml:"max_obs_candidates"`
+	// StayBonus rewards state continuity between adjacent observations.
+	StayBonus int `yaml:"stay_bonus"`
+	// SwitchPenalty penalizes call changes between adjacent observations.
+	SwitchPenalty int `yaml:"switch_penalty"`
+	// FamilySwitchPenalty applies to slash/truncation-family switches.
+	FamilySwitchPenalty int `yaml:"family_switch_penalty"`
+	// Edit1SwitchPenalty applies to non-family edit-distance-1 switches.
+	Edit1SwitchPenalty int `yaml:"edit1_switch_penalty"`
+	// MinScore is the minimum best-path score required for commit.
+	MinScore int `yaml:"min_score"`
+	// MinMarginScore is the minimum score margin over runner-up required for commit.
+	MinMarginScore int `yaml:"min_margin_score"`
+	// OverflowAction controls commit fallback when confidence gates fail at max wait
+	// or temporal state overflows. Supported values:
+	//   - fallback_resolver: use current resolver-primary path
+	//   - abstain: skip correction and preserve subject call
+	//   - bypass: bypass temporal path and use immediate resolver behavior
+	OverflowAction string `yaml:"overflow_action"`
+	// MaxPending bounds concurrent temporal requests.
+	MaxPending int `yaml:"max_pending"`
+	// MaxActiveKeys bounds temporal decoder key-state cardinality.
+	MaxActiveKeys int `yaml:"max_active_keys"`
+	// MaxEventsPerKey bounds retained observations per key.
+	MaxEventsPerKey int `yaml:"max_events_per_key"`
 }
 
 // CallCorrectionFamilyPolicyConfig controls family-specific behavior for call
@@ -1338,6 +1383,78 @@ func Load(path string) (*Config, error) {
 	}
 	if !hasResolverRecentPlus1AllowTruncation {
 		cfg.CallCorrection.ResolverRecentPlus1AllowTruncation = true
+	}
+	cfg.CallCorrection.TemporalDecoder.Scope = strings.ToLower(strings.TrimSpace(cfg.CallCorrection.TemporalDecoder.Scope))
+	if cfg.CallCorrection.TemporalDecoder.Scope == "" {
+		cfg.CallCorrection.TemporalDecoder.Scope = "uncertain_only"
+	}
+	switch cfg.CallCorrection.TemporalDecoder.Scope {
+	case "uncertain_only", "all_correction_candidates":
+	default:
+		return nil, fmt.Errorf("invalid call_correction.temporal_decoder.scope %q (expected uncertain_only or all_correction_candidates)", cfg.CallCorrection.TemporalDecoder.Scope)
+	}
+	if cfg.CallCorrection.TemporalDecoder.LagSeconds <= 0 {
+		cfg.CallCorrection.TemporalDecoder.LagSeconds = 2
+	}
+	if cfg.CallCorrection.TemporalDecoder.MaxWaitSeconds <= 0 {
+		cfg.CallCorrection.TemporalDecoder.MaxWaitSeconds = 6
+	}
+	if cfg.CallCorrection.TemporalDecoder.MaxWaitSeconds < cfg.CallCorrection.TemporalDecoder.LagSeconds {
+		cfg.CallCorrection.TemporalDecoder.MaxWaitSeconds = cfg.CallCorrection.TemporalDecoder.LagSeconds
+	}
+	if cfg.CallCorrection.TemporalDecoder.BeamSize <= 0 {
+		cfg.CallCorrection.TemporalDecoder.BeamSize = 8
+	}
+	if cfg.CallCorrection.TemporalDecoder.MaxObsCandidates <= 0 {
+		cfg.CallCorrection.TemporalDecoder.MaxObsCandidates = 8
+	}
+	if cfg.CallCorrection.TemporalDecoder.StayBonus == 0 {
+		cfg.CallCorrection.TemporalDecoder.StayBonus = 120
+	}
+	if cfg.CallCorrection.TemporalDecoder.StayBonus < 0 {
+		cfg.CallCorrection.TemporalDecoder.StayBonus = 0
+	}
+	if cfg.CallCorrection.TemporalDecoder.SwitchPenalty <= 0 {
+		cfg.CallCorrection.TemporalDecoder.SwitchPenalty = 160
+	}
+	if cfg.CallCorrection.TemporalDecoder.FamilySwitchPenalty <= 0 {
+		cfg.CallCorrection.TemporalDecoder.FamilySwitchPenalty = 60
+	}
+	if cfg.CallCorrection.TemporalDecoder.Edit1SwitchPenalty <= 0 {
+		cfg.CallCorrection.TemporalDecoder.Edit1SwitchPenalty = 90
+	}
+	if cfg.CallCorrection.TemporalDecoder.FamilySwitchPenalty > cfg.CallCorrection.TemporalDecoder.SwitchPenalty {
+		cfg.CallCorrection.TemporalDecoder.FamilySwitchPenalty = cfg.CallCorrection.TemporalDecoder.SwitchPenalty
+	}
+	if cfg.CallCorrection.TemporalDecoder.Edit1SwitchPenalty > cfg.CallCorrection.TemporalDecoder.SwitchPenalty {
+		cfg.CallCorrection.TemporalDecoder.Edit1SwitchPenalty = cfg.CallCorrection.TemporalDecoder.SwitchPenalty
+	}
+	if cfg.CallCorrection.TemporalDecoder.MinScore < 0 {
+		cfg.CallCorrection.TemporalDecoder.MinScore = 0
+	}
+	if cfg.CallCorrection.TemporalDecoder.MinMarginScore <= 0 {
+		cfg.CallCorrection.TemporalDecoder.MinMarginScore = 80
+	}
+	cfg.CallCorrection.TemporalDecoder.OverflowAction = strings.ToLower(strings.TrimSpace(cfg.CallCorrection.TemporalDecoder.OverflowAction))
+	if cfg.CallCorrection.TemporalDecoder.OverflowAction == "" {
+		cfg.CallCorrection.TemporalDecoder.OverflowAction = "fallback_resolver"
+	}
+	switch cfg.CallCorrection.TemporalDecoder.OverflowAction {
+	case "fallback_resolver", "abstain", "bypass":
+	default:
+		return nil, fmt.Errorf("invalid call_correction.temporal_decoder.overflow_action %q (expected fallback_resolver, abstain, or bypass)", cfg.CallCorrection.TemporalDecoder.OverflowAction)
+	}
+	if cfg.CallCorrection.TemporalDecoder.MaxPending <= 0 {
+		cfg.CallCorrection.TemporalDecoder.MaxPending = 25000
+	}
+	if cfg.CallCorrection.TemporalDecoder.MaxActiveKeys <= 0 {
+		cfg.CallCorrection.TemporalDecoder.MaxActiveKeys = 6000
+	}
+	if cfg.CallCorrection.TemporalDecoder.MaxEventsPerKey <= 0 {
+		cfg.CallCorrection.TemporalDecoder.MaxEventsPerKey = 32
+	}
+	if cfg.CallCorrection.TemporalDecoder.MaxEventsPerKey > 256 {
+		cfg.CallCorrection.TemporalDecoder.MaxEventsPerKey = 256
 	}
 	if !hasFamilyTruncationEnabled {
 		cfg.CallCorrection.FamilyPolicy.Truncation.Enabled = true
@@ -2320,6 +2437,27 @@ func (c *Config) Print() {
 		c.CallCorrection.ResolverRecentPlus1RequireSubjectWeaker,
 		c.CallCorrection.ResolverRecentPlus1MaxDistance,
 		c.CallCorrection.ResolverRecentPlus1AllowTruncation)
+	temporalStatus := "disabled"
+	if c.CallCorrection.TemporalDecoder.Enabled {
+		temporalStatus = "enabled"
+	}
+	fmt.Printf("Call correction temporal decoder: %s (scope=%s lag=%ds max_wait=%ds beam=%d max_obs=%d stay_bonus=%d switch_penalty=%d family_penalty=%d edit1_penalty=%d min_score=%d min_margin=%d overflow_action=%s max_pending=%d max_active_keys=%d max_events_per_key=%d)\n",
+		temporalStatus,
+		c.CallCorrection.TemporalDecoder.Scope,
+		c.CallCorrection.TemporalDecoder.LagSeconds,
+		c.CallCorrection.TemporalDecoder.MaxWaitSeconds,
+		c.CallCorrection.TemporalDecoder.BeamSize,
+		c.CallCorrection.TemporalDecoder.MaxObsCandidates,
+		c.CallCorrection.TemporalDecoder.StayBonus,
+		c.CallCorrection.TemporalDecoder.SwitchPenalty,
+		c.CallCorrection.TemporalDecoder.FamilySwitchPenalty,
+		c.CallCorrection.TemporalDecoder.Edit1SwitchPenalty,
+		c.CallCorrection.TemporalDecoder.MinScore,
+		c.CallCorrection.TemporalDecoder.MinMarginScore,
+		c.CallCorrection.TemporalDecoder.OverflowAction,
+		c.CallCorrection.TemporalDecoder.MaxPending,
+		c.CallCorrection.TemporalDecoder.MaxActiveKeys,
+		c.CallCorrection.TemporalDecoder.MaxEventsPerKey)
 
 	harmonicStatus := "disabled"
 	if c.Harmonics.Enabled {

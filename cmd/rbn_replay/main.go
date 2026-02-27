@@ -1,6 +1,7 @@
 package main
 
 import (
+	"container/heap"
 	"context"
 	"errors"
 	"flag"
@@ -15,6 +16,7 @@ import (
 	"dxcluster/config"
 	"dxcluster/cty"
 	"dxcluster/download"
+	"dxcluster/internal/correctionflow"
 	"dxcluster/spot"
 	"dxcluster/stats"
 	"dxcluster/uls"
@@ -143,6 +145,10 @@ func main() {
 
 	knownCallset, err := loadKnownCallset(cfg.KnownCalls.File)
 	must(err)
+	var temporalDecoder *correctionflow.TemporalDecoder
+	if cfg.CallCorrection.Enabled && cfg.CallCorrection.TemporalDecoder.Enabled {
+		temporalDecoder = correctionflow.NewTemporalDecoder(cfg.CallCorrection)
+	}
 
 	tracker := stats.NewTracker()
 
@@ -216,7 +222,13 @@ func main() {
 		recordsSkippedBad  int64
 
 		abMetrics = replayABMetrics{}
+
+		temporalSeq     uint64
+		temporalNextID  uint64 = 1
+		temporalQueue          = replayTemporalHeap{}
+		temporalPending        = make(map[uint64]replayTemporalPending)
 	)
+	heap.Init(&temporalQueue)
 
 	emitSample := func(ts time.Time) {
 		ts = ts.UTC()
@@ -238,6 +250,114 @@ func main() {
 		fmt.Fprintf(runbookSamplesFile, "%s %s\n", prefix, formatResolverSummaryFromMetrics(metrics))
 
 		samples = append(samples, resolverSample{TS: ts, Metrics: metrics})
+	}
+
+	processOutcome := func(spotEntry *spot.Spot, outcome replayResolverApplyOutcome, now time.Time) {
+		if spotEntry == nil {
+			return
+		}
+		if outcome.Suppress {
+			return
+		}
+		abMetrics.ObserveAppliedOutput(outcome.Confidence)
+		abMetrics.ObserveResolverSelection(outcome.Selection)
+		abMetrics.ObserveResolverSnapshot(outcome.Selection.Snapshot, outcome.Selection.SnapshotOK)
+		abMetrics.ObserveResolverRecentPlus1Gate(outcome.Gate, outcome.GateEvaluated)
+
+		spotEntry.RefreshBeaconFlag()
+		if outcome.Applied {
+			band := spotEntry.BandNorm
+			if band == "" || band == "???" {
+				band = spot.FreqToBand(spotEntry.Frequency)
+			}
+			stabilityCollector.ObserveApplied(now.Unix(), outcome.Winner, spotEntry.Frequency, band)
+		}
+
+		if stabilizerDelayProxyEligible(spotEntry, recentBandStore, cfg.CallCorrection) {
+			delayDecision := evaluateStabilizerDelay(spotEntry, recentBandStore, cfg.CallCorrection, now, outcome.Selection.Snapshot, outcome.Selection.SnapshotOK)
+			abMetrics.StabilizerDelayProxy.Observe(delayDecision)
+		}
+
+		recordRecentBandObservation(spotEntry, recentBandStore, cfg.CallCorrection)
+	}
+
+	drainTemporal := func(now time.Time, force bool) {
+		if temporalDecoder == nil || !temporalDecoder.Enabled() {
+			return
+		}
+		due := popReplayTemporalDue(&temporalQueue, now)
+		for _, item := range due {
+			if item == nil {
+				continue
+			}
+			pending, ok := temporalPending[item.id]
+			if !ok || pending.spot == nil {
+				continue
+			}
+			decision := temporalDecoder.Evaluate(item.id, now, force)
+			if decision.Action == correctionflow.TemporalDecisionActionDefer {
+				nextDue := pending.maxAt
+				if nextDue.Before(now) {
+					nextDue = now
+				}
+				heap.Push(&temporalQueue, &replayTemporalItem{
+					id:  item.id,
+					due: nextDue,
+					seq: temporalSeq,
+				})
+				temporalSeq++
+				continue
+			}
+
+			delete(temporalPending, item.id)
+			abMetrics.Temporal.ObserveDecision(decision)
+
+			var outcome replayResolverApplyOutcome
+			switch decision.Action {
+			case correctionflow.TemporalDecisionActionApply:
+				selection := decision.Selection
+				outcome = maybeApplyResolverCorrectionReplayWithSelectionOverride(
+					pending.spot,
+					resolver,
+					pending.evidence,
+					pending.hasEvidence,
+					cfg.CallCorrection,
+					ctyDB,
+					tracker,
+					adaptiveMinReports,
+					recentBandStore,
+					knownCallset,
+					now,
+					&selection,
+				)
+			case correctionflow.TemporalDecisionActionAbstain:
+				outcome = replayResolverApplyOutcome{
+					Selection:  pending.selection,
+					Confidence: replayConfidenceOutcome{Final: normalizeConfidenceGlyph(pending.spot.Confidence)},
+				}
+				pending.spot.Confidence = correctionflow.ResolverConfidenceGlyphForCall(
+					pending.selection.Snapshot,
+					pending.selection.SnapshotOK,
+					normalizedDXCall(pending.spot),
+				)
+				outcome.Confidence.Final = normalizeConfidenceGlyph(pending.spot.Confidence)
+			default:
+				outcome = maybeApplyResolverCorrectionReplay(
+					pending.spot,
+					resolver,
+					pending.evidence,
+					pending.hasEvidence,
+					cfg.CallCorrection,
+					ctyDB,
+					tracker,
+					adaptiveMinReports,
+					recentBandStore,
+					knownCallset,
+					now,
+				)
+			}
+			processOutcome(pending.spot, outcome, now)
+		}
 	}
 
 	// Emit sample at day start.
@@ -279,6 +399,7 @@ func main() {
 
 		recordsProcessed++
 		now := row.Time.UTC()
+		drainTemporal(now, false)
 
 		// Keep resolver state current before enqueuing evidence, but do not drain the
 		// evidence for this spot until after observation (observe-before-drain).
@@ -302,6 +423,68 @@ func main() {
 				fatalf("resolver enqueue failed at %s for key=%s", now.Format(time.RFC3339), resolverEvidence.Key.String())
 			}
 		}
+		if temporalDecoder != nil && temporalDecoder.Enabled() && hasResolverEvidence {
+			subject := normalizedDXCall(spotEntry)
+			selection := correctionflow.ResolverPrimarySelection{}
+			if subject != "" {
+				selection = correctionflow.SelectResolverPrimarySnapshotForCall(resolver, resolverEvidence.Key, cfg.CallCorrection, subject)
+			}
+			if selection.SnapshotOK && temporalDecoder.ShouldHoldSelection(selection) {
+				id := temporalNextID
+				temporalNextID++
+				if accepted, reason := temporalDecoder.Observe(correctionflow.TemporalObservation{
+					ID:          id,
+					ObservedAt:  now,
+					Key:         resolverEvidence.Key,
+					SubjectCall: subject,
+					Selection:   selection,
+				}); accepted {
+					temporalPending[id] = replayTemporalPending{
+						id:          id,
+						spot:        spotEntry,
+						evidence:    resolverEvidence,
+						hasEvidence: hasResolverEvidence,
+						maxAt:       now.Add(temporalDecoder.MaxWaitDuration()),
+						selection:   selection,
+					}
+					heap.Push(&temporalQueue, &replayTemporalItem{
+						id:  id,
+						due: now.Add(temporalDecoder.LagDuration()),
+						seq: temporalSeq,
+					})
+					temporalSeq++
+					abMetrics.Temporal.ObservePending()
+
+					// Enqueue happened before temporal hold; advance resolver state for
+					// this observation now, then decide at lag release.
+					driver.Step(now)
+					continue
+				} else {
+					overflowDecision := correctionflow.TemporalDecision{
+						ID:            id,
+						Reason:        reason,
+						CommitLatency: 0,
+					}
+					switch cfg.CallCorrection.TemporalDecoder.OverflowAction {
+					case "abstain":
+						overflowDecision.Action = correctionflow.TemporalDecisionActionAbstain
+						abMetrics.Temporal.ObserveDecision(overflowDecision)
+						spotEntry.Confidence = correctionflow.ResolverConfidenceGlyphForCall(selection.Snapshot, selection.SnapshotOK, subject)
+						processOutcome(spotEntry, replayResolverApplyOutcome{
+							Selection:  selection,
+							Confidence: replayConfidenceOutcome{Final: normalizeConfidenceGlyph(spotEntry.Confidence)},
+						}, now)
+						driver.Step(now)
+						continue
+					case "bypass":
+						overflowDecision.Action = correctionflow.TemporalDecisionActionBypass
+					default:
+						overflowDecision.Action = correctionflow.TemporalDecisionActionFallbackResolver
+					}
+					abMetrics.Temporal.ObserveDecision(overflowDecision)
+				}
+			}
+		}
 
 		outcome := maybeApplyResolverCorrectionReplay(
 			spotEntry,
@@ -316,37 +499,13 @@ func main() {
 			knownCallset,
 			now,
 		)
-
-		// Enqueue happened before correction; even suppressed spots should still
-		// advance resolver state for future observations.
-		if outcome.Suppress {
-			driver.Step(now)
-			continue
-		}
-		abMetrics.ObserveAppliedOutput(outcome.Confidence)
-		abMetrics.ObserveResolverSelection(outcome.Selection)
-		abMetrics.ObserveResolverSnapshot(outcome.Selection.Snapshot, outcome.Selection.SnapshotOK)
-		abMetrics.ObserveResolverRecentPlus1Gate(outcome.Gate, outcome.GateEvaluated)
-
-		spotEntry.RefreshBeaconFlag()
-		if outcome.Applied {
-			band := spotEntry.BandNorm
-			if band == "" || band == "???" {
-				band = spot.FreqToBand(spotEntry.Frequency)
-			}
-			stabilityCollector.ObserveApplied(now.Unix(), outcome.Winner, spotEntry.Frequency, band)
-		}
-
-		if stabilizerDelayProxyEligible(spotEntry, recentBandStore, cfg.CallCorrection) {
-			delayDecision := evaluateStabilizerDelay(spotEntry, recentBandStore, cfg.CallCorrection, now, outcome.Selection.Snapshot, outcome.Selection.SnapshotOK)
-			abMetrics.StabilizerDelayProxy.Observe(delayDecision)
-		}
-
-		recordRecentBandObservation(spotEntry, recentBandStore, cfg.CallCorrection)
+		processOutcome(spotEntry, outcome, now)
 
 		// Drain the evidence we enqueued for this spot after observation.
 		driver.Step(now)
 	}
+	// Force-flush any remaining temporal requests at end-of-day.
+	drainTemporal(dayEnd.Add(24*time.Hour), true)
 
 	// Flush remaining samples to day end (inclusive).
 	for !nextSampleAt.After(dayEnd) {

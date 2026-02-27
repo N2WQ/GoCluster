@@ -1,5 +1,6 @@
 {
     "kiroAgent.configureMCP": "Disabled",
     "chatgpt.openOnStartup": true,
-    "chatgpt.runCodexInWindowsSubsystemForLinux": true
+    "chatgpt.runCodexInWindowsSubsystemForLinux": true,
+    "editor.aiStats.enabled": true
 }

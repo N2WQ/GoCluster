@@ -81,6 +81,54 @@ func TestLoadCallCorrectionStabilizerDefaults(t *testing.T) {
 	if !cfg.CallCorrection.ResolverRecentPlus1AllowTruncation {
 		t.Fatalf("expected resolver recent plus1 truncation-family allowance enabled by default")
 	}
+	if cfg.CallCorrection.TemporalDecoder.Enabled {
+		t.Fatalf("expected temporal decoder disabled by default")
+	}
+	if cfg.CallCorrection.TemporalDecoder.Scope != "uncertain_only" {
+		t.Fatalf("expected temporal decoder scope default uncertain_only, got %q", cfg.CallCorrection.TemporalDecoder.Scope)
+	}
+	if cfg.CallCorrection.TemporalDecoder.LagSeconds != 2 {
+		t.Fatalf("expected temporal decoder lag default 2, got %d", cfg.CallCorrection.TemporalDecoder.LagSeconds)
+	}
+	if cfg.CallCorrection.TemporalDecoder.MaxWaitSeconds != 6 {
+		t.Fatalf("expected temporal decoder max wait default 6, got %d", cfg.CallCorrection.TemporalDecoder.MaxWaitSeconds)
+	}
+	if cfg.CallCorrection.TemporalDecoder.BeamSize != 8 {
+		t.Fatalf("expected temporal decoder beam size default 8, got %d", cfg.CallCorrection.TemporalDecoder.BeamSize)
+	}
+	if cfg.CallCorrection.TemporalDecoder.MaxObsCandidates != 8 {
+		t.Fatalf("expected temporal decoder max obs default 8, got %d", cfg.CallCorrection.TemporalDecoder.MaxObsCandidates)
+	}
+	if cfg.CallCorrection.TemporalDecoder.StayBonus != 120 {
+		t.Fatalf("expected temporal decoder stay bonus default 120, got %d", cfg.CallCorrection.TemporalDecoder.StayBonus)
+	}
+	if cfg.CallCorrection.TemporalDecoder.SwitchPenalty != 160 {
+		t.Fatalf("expected temporal decoder switch penalty default 160, got %d", cfg.CallCorrection.TemporalDecoder.SwitchPenalty)
+	}
+	if cfg.CallCorrection.TemporalDecoder.FamilySwitchPenalty != 60 {
+		t.Fatalf("expected temporal decoder family switch penalty default 60, got %d", cfg.CallCorrection.TemporalDecoder.FamilySwitchPenalty)
+	}
+	if cfg.CallCorrection.TemporalDecoder.Edit1SwitchPenalty != 90 {
+		t.Fatalf("expected temporal decoder edit1 switch penalty default 90, got %d", cfg.CallCorrection.TemporalDecoder.Edit1SwitchPenalty)
+	}
+	if cfg.CallCorrection.TemporalDecoder.MinScore != 0 {
+		t.Fatalf("expected temporal decoder min score default 0, got %d", cfg.CallCorrection.TemporalDecoder.MinScore)
+	}
+	if cfg.CallCorrection.TemporalDecoder.MinMarginScore != 80 {
+		t.Fatalf("expected temporal decoder min margin default 80, got %d", cfg.CallCorrection.TemporalDecoder.MinMarginScore)
+	}
+	if cfg.CallCorrection.TemporalDecoder.OverflowAction != "fallback_resolver" {
+		t.Fatalf("expected temporal decoder overflow action default fallback_resolver, got %q", cfg.CallCorrection.TemporalDecoder.OverflowAction)
+	}
+	if cfg.CallCorrection.TemporalDecoder.MaxPending != 25000 {
+		t.Fatalf("expected temporal decoder max pending default 25000, got %d", cfg.CallCorrection.TemporalDecoder.MaxPending)
+	}
+	if cfg.CallCorrection.TemporalDecoder.MaxActiveKeys != 6000 {
+		t.Fatalf("expected temporal decoder max active keys default 6000, got %d", cfg.CallCorrection.TemporalDecoder.MaxActiveKeys)
+	}
+	if cfg.CallCorrection.TemporalDecoder.MaxEventsPerKey != 32 {
+		t.Fatalf("expected temporal decoder max events default 32, got %d", cfg.CallCorrection.TemporalDecoder.MaxEventsPerKey)
+	}
 	if cfg.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports != 2 {
 		t.Fatalf("expected family slash precedence min reports default 2, got %d", cfg.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports)
 	}
@@ -177,6 +225,23 @@ func TestLoadCallCorrectionFamilyPolicyOverrides(t *testing.T) {
   resolver_recent_plus1_require_subject_weaker: false
   resolver_recent_plus1_max_distance: 2
   resolver_recent_plus1_allow_truncation_family: false
+  temporal_decoder:
+    enabled: true
+    scope: "all_correction_candidates"
+    lag_seconds: 3
+    max_wait_seconds: 7
+    beam_size: 6
+    max_obs_candidates: 5
+    stay_bonus: 200
+    switch_penalty: 180
+    family_switch_penalty: 70
+    edit1_switch_penalty: 90
+    min_score: 100
+    min_margin_score: 25
+    overflow_action: "abstain"
+    max_pending: 9000
+    max_active_keys: 7000
+    max_events_per_key: 48
   slash_precedence_min_reports: 7
   family_policy:
     slash_precedence_min_reports: 3
@@ -267,6 +332,54 @@ func TestLoadCallCorrectionFamilyPolicyOverrides(t *testing.T) {
 	if cfg.CallCorrection.ResolverRecentPlus1AllowTruncation {
 		t.Fatalf("expected resolver recent plus1 truncation-family allowance disabled by override")
 	}
+	if !cfg.CallCorrection.TemporalDecoder.Enabled {
+		t.Fatalf("expected temporal decoder enabled by override")
+	}
+	if cfg.CallCorrection.TemporalDecoder.Scope != "all_correction_candidates" {
+		t.Fatalf("expected temporal scope all_correction_candidates, got %q", cfg.CallCorrection.TemporalDecoder.Scope)
+	}
+	if cfg.CallCorrection.TemporalDecoder.LagSeconds != 3 {
+		t.Fatalf("expected temporal lag 3, got %d", cfg.CallCorrection.TemporalDecoder.LagSeconds)
+	}
+	if cfg.CallCorrection.TemporalDecoder.MaxWaitSeconds != 7 {
+		t.Fatalf("expected temporal max wait 7, got %d", cfg.CallCorrection.TemporalDecoder.MaxWaitSeconds)
+	}
+	if cfg.CallCorrection.TemporalDecoder.BeamSize != 6 {
+		t.Fatalf("expected temporal beam size 6, got %d", cfg.CallCorrection.TemporalDecoder.BeamSize)
+	}
+	if cfg.CallCorrection.TemporalDecoder.MaxObsCandidates != 5 {
+		t.Fatalf("expected temporal max obs 5, got %d", cfg.CallCorrection.TemporalDecoder.MaxObsCandidates)
+	}
+	if cfg.CallCorrection.TemporalDecoder.StayBonus != 200 {
+		t.Fatalf("expected temporal stay bonus 200, got %d", cfg.CallCorrection.TemporalDecoder.StayBonus)
+	}
+	if cfg.CallCorrection.TemporalDecoder.SwitchPenalty != 180 {
+		t.Fatalf("expected temporal switch penalty 180, got %d", cfg.CallCorrection.TemporalDecoder.SwitchPenalty)
+	}
+	if cfg.CallCorrection.TemporalDecoder.FamilySwitchPenalty != 70 {
+		t.Fatalf("expected temporal family penalty 70, got %d", cfg.CallCorrection.TemporalDecoder.FamilySwitchPenalty)
+	}
+	if cfg.CallCorrection.TemporalDecoder.Edit1SwitchPenalty != 90 {
+		t.Fatalf("expected temporal edit1 penalty 90, got %d", cfg.CallCorrection.TemporalDecoder.Edit1SwitchPenalty)
+	}
+	if cfg.CallCorrection.TemporalDecoder.MinScore != 100 {
+		t.Fatalf("expected temporal min score 100, got %d", cfg.CallCorrection.TemporalDecoder.MinScore)
+	}
+	if cfg.CallCorrection.TemporalDecoder.MinMarginScore != 25 {
+		t.Fatalf("expected temporal min margin 25, got %d", cfg.CallCorrection.TemporalDecoder.MinMarginScore)
+	}
+	if cfg.CallCorrection.TemporalDecoder.OverflowAction != "abstain" {
+		t.Fatalf("expected temporal overflow action abstain, got %q", cfg.CallCorrection.TemporalDecoder.OverflowAction)
+	}
+	if cfg.CallCorrection.TemporalDecoder.MaxPending != 9000 {
+		t.Fatalf("expected temporal max pending 9000, got %d", cfg.CallCorrection.TemporalDecoder.MaxPending)
+	}
+	if cfg.CallCorrection.TemporalDecoder.MaxActiveKeys != 7000 {
+		t.Fatalf("expected temporal max active keys 7000, got %d", cfg.CallCorrection.TemporalDecoder.MaxActiveKeys)
+	}
+	if cfg.CallCorrection.TemporalDecoder.MaxEventsPerKey != 48 {
+		t.Fatalf("expected temporal max events per key 48, got %d", cfg.CallCorrection.TemporalDecoder.MaxEventsPerKey)
+	}
 	if cfg.CallCorrection.FamilyPolicy.Truncation.MaxLengthDelta != 2 {
 		t.Fatalf("expected truncation max length delta 2, got %d", cfg.CallCorrection.FamilyPolicy.Truncation.MaxLengthDelta)
 	}
@@ -343,6 +456,21 @@ func TestLoadCallCorrectionStabilizerDelayKnobSanitization(t *testing.T) {
   resolver_neighborhood_max_distance: -2
   resolver_recent_plus1_min_unique_winner: -3
   resolver_recent_plus1_max_distance: -2
+  temporal_decoder:
+    scope: "uncertain_only"
+    lag_seconds: -2
+    max_wait_seconds: 0
+    beam_size: -3
+    max_obs_candidates: -4
+    stay_bonus: -1
+    switch_penalty: -6
+    family_switch_penalty: 999
+    edit1_switch_penalty: 999
+    min_score: -7
+    min_margin_score: -8
+    max_pending: -9
+    max_active_keys: -10
+    max_events_per_key: 999
 `
 	if err := os.WriteFile(filepath.Join(dir, "pipeline.yaml"), []byte(pipeline), 0o644); err != nil {
 		t.Fatalf("write pipeline.yaml: %v", err)
@@ -378,5 +506,84 @@ func TestLoadCallCorrectionStabilizerDelayKnobSanitization(t *testing.T) {
 	}
 	if cfg.CallCorrection.ResolverRecentPlus1MaxDistance != 1 {
 		t.Fatalf("expected resolver recent plus1 max distance defaulted to 1, got %d", cfg.CallCorrection.ResolverRecentPlus1MaxDistance)
+	}
+	if cfg.CallCorrection.TemporalDecoder.LagSeconds != 2 {
+		t.Fatalf("expected temporal lag defaulted to 2, got %d", cfg.CallCorrection.TemporalDecoder.LagSeconds)
+	}
+	if cfg.CallCorrection.TemporalDecoder.MaxWaitSeconds != 6 {
+		t.Fatalf("expected temporal max wait defaulted to 6, got %d", cfg.CallCorrection.TemporalDecoder.MaxWaitSeconds)
+	}
+	if cfg.CallCorrection.TemporalDecoder.BeamSize != 8 {
+		t.Fatalf("expected temporal beam size defaulted to 8, got %d", cfg.CallCorrection.TemporalDecoder.BeamSize)
+	}
+	if cfg.CallCorrection.TemporalDecoder.MaxObsCandidates != 8 {
+		t.Fatalf("expected temporal max obs defaulted to 8, got %d", cfg.CallCorrection.TemporalDecoder.MaxObsCandidates)
+	}
+	if cfg.CallCorrection.TemporalDecoder.StayBonus != 0 {
+		t.Fatalf("expected temporal stay bonus clamped to 0, got %d", cfg.CallCorrection.TemporalDecoder.StayBonus)
+	}
+	if cfg.CallCorrection.TemporalDecoder.SwitchPenalty != 160 {
+		t.Fatalf("expected temporal switch penalty defaulted to 160, got %d", cfg.CallCorrection.TemporalDecoder.SwitchPenalty)
+	}
+	if cfg.CallCorrection.TemporalDecoder.FamilySwitchPenalty != 160 {
+		t.Fatalf("expected temporal family penalty clamped to switch penalty 160, got %d", cfg.CallCorrection.TemporalDecoder.FamilySwitchPenalty)
+	}
+	if cfg.CallCorrection.TemporalDecoder.Edit1SwitchPenalty != 160 {
+		t.Fatalf("expected temporal edit1 penalty clamped to switch penalty 160, got %d", cfg.CallCorrection.TemporalDecoder.Edit1SwitchPenalty)
+	}
+	if cfg.CallCorrection.TemporalDecoder.MinScore != 0 {
+		t.Fatalf("expected temporal min score clamped to 0, got %d", cfg.CallCorrection.TemporalDecoder.MinScore)
+	}
+	if cfg.CallCorrection.TemporalDecoder.MinMarginScore != 80 {
+		t.Fatalf("expected temporal min margin defaulted to 80, got %d", cfg.CallCorrection.TemporalDecoder.MinMarginScore)
+	}
+	if cfg.CallCorrection.TemporalDecoder.MaxPending != 25000 {
+		t.Fatalf("expected temporal max pending defaulted to 25000, got %d", cfg.CallCorrection.TemporalDecoder.MaxPending)
+	}
+	if cfg.CallCorrection.TemporalDecoder.MaxActiveKeys != 6000 {
+		t.Fatalf("expected temporal max active keys defaulted to 6000, got %d", cfg.CallCorrection.TemporalDecoder.MaxActiveKeys)
+	}
+	if cfg.CallCorrection.TemporalDecoder.MaxEventsPerKey != 256 {
+		t.Fatalf("expected temporal max events clamped to 256, got %d", cfg.CallCorrection.TemporalDecoder.MaxEventsPerKey)
+	}
+}
+
+func TestLoadRejectsInvalidTemporalDecoderScope(t *testing.T) {
+	dir := t.TempDir()
+	pipeline := `call_correction:
+  enabled: true
+  temporal_decoder:
+    scope: "invalid"
+`
+	if err := os.WriteFile(filepath.Join(dir, "pipeline.yaml"), []byte(pipeline), 0o644); err != nil {
+		t.Fatalf("write pipeline.yaml: %v", err)
+	}
+
+	_, err := Load(dir)
+	if err == nil {
+		t.Fatalf("expected Load() error for invalid temporal decoder scope")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "temporal_decoder.scope") {
+		t.Fatalf("expected temporal scope error, got %v", err)
+	}
+}
+
+func TestLoadRejectsInvalidTemporalDecoderOverflowAction(t *testing.T) {
+	dir := t.TempDir()
+	pipeline := `call_correction:
+  enabled: true
+  temporal_decoder:
+    overflow_action: "hold"
+`
+	if err := os.WriteFile(filepath.Join(dir, "pipeline.yaml"), []byte(pipeline), 0o644); err != nil {
+		t.Fatalf("write pipeline.yaml: %v", err)
+	}
+
+	_, err := Load(dir)
+	if err == nil {
+		t.Fatalf("expected Load() error for invalid temporal decoder overflow action")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "temporal_decoder.overflow_action") {
+		t.Fatalf("expected temporal overflow action error, got %v", err)
 	}
 }

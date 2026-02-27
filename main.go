@@ -4,6 +4,7 @@
 package main
 
 import (
+	"container/heap"
 	"context"
 	"database/sql"
 	"errors"
@@ -2185,6 +2186,83 @@ func processOutputSpots(
 		}
 		return allowFast, allowMed, allowSlow
 	}
+	temporalEnabled := correctionCfg.Enabled && correctionCfg.TemporalDecoder.Enabled
+	var temporalDecoder *correctionflow.TemporalDecoder
+	temporalPending := make(map[uint64]runtimeTemporalPending)
+	temporalQueue := runtimeTemporalHeap{}
+	var temporalNextID uint64 = 1
+	var temporalSeq uint64
+	if temporalEnabled {
+		temporalDecoder = correctionflow.NewTemporalDecoder(correctionCfg)
+		temporalEnabled = temporalDecoder != nil && temporalDecoder.Enabled()
+		if temporalEnabled {
+			heap.Init(&temporalQueue)
+		}
+	}
+
+	recordRuntimeTemporalDecision := func(decision correctionflow.TemporalDecision) {
+		if tracker == nil {
+			return
+		}
+		tracker.ObserveTemporalCommitLatency(decision.CommitLatency)
+		switch decision.Action {
+		case correctionflow.TemporalDecisionActionApply:
+			tracker.IncrementTemporalCommitted()
+		case correctionflow.TemporalDecisionActionFallbackResolver:
+			tracker.IncrementTemporalFallbackResolver()
+		case correctionflow.TemporalDecisionActionAbstain:
+			tracker.IncrementTemporalAbstainLowMargin()
+		case correctionflow.TemporalDecisionActionBypass:
+			tracker.IncrementTemporalOverflowBypass()
+		}
+		if decision.PathSwitched {
+			tracker.IncrementTemporalPathSwitch()
+		}
+	}
+
+	drainRuntimeTemporal := func(now time.Time, force bool) []runtimeTemporalRelease {
+		if !temporalEnabled || temporalDecoder == nil {
+			return nil
+		}
+		now = now.UTC()
+		due := popRuntimeTemporalDue(&temporalQueue, now)
+		if len(due) == 0 {
+			return nil
+		}
+		releases := make([]runtimeTemporalRelease, 0, len(due))
+		for _, item := range due {
+			if item == nil {
+				continue
+			}
+			pending, ok := temporalPending[item.id]
+			if !ok || pending.spot == nil {
+				continue
+			}
+			decision := temporalDecoder.Evaluate(item.id, now, force)
+			if decision.Action == correctionflow.TemporalDecisionActionDefer {
+				nextDue := pending.maxAt
+				if nextDue.Before(now) {
+					nextDue = now
+				}
+				heap.Push(&temporalQueue, &runtimeTemporalItem{
+					id:  item.id,
+					due: nextDue,
+					seq: temporalSeq,
+				})
+				temporalSeq++
+				continue
+			}
+			delete(temporalPending, item.id)
+			if tracker != nil {
+				tracker.DecrementTemporalPending()
+			}
+			releases = append(releases, runtimeTemporalRelease{
+				pending:  pending,
+				decision: decision,
+			})
+		}
+		return releases
+	}
 
 	if stabilizerEnabled {
 		go func() {
@@ -2274,7 +2352,7 @@ func processOutputSpots(
 		}()
 	}
 
-	for s := range outputChan {
+	processSpot := func(s *spot.Spot, temporalRelease *runtimeTemporalRelease) {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -2320,22 +2398,169 @@ func processOutputSpots(
 			hasStabilizerResolverKey := false
 			stabilizerEvidenceEnqueued := false
 			if telnet != nil && !s.IsBeacon {
-				now := time.Now().UTC()
-				resolverEvidence, hasResolverEvidence := buildResolverEvidenceSnapshot(s, correctionCfg, adaptiveMinReports, now)
-				if hasResolverEvidence && signalResolver != nil {
-					if signalResolver.Enqueue(resolverEvidence) {
-						stabilizerEvidenceEnqueued = true
-					}
-				}
-				if hasResolverEvidence {
-					stabilizerResolverKey = resolverEvidence.Key
-					hasStabilizerResolverKey = true
-				}
 				var knownCallset *spot.KnownCallsigns
 				if knownCalls != nil {
 					knownCallset = knownCalls.Load()
 				}
-				suppress = maybeApplyResolverCorrection(s, signalResolver, resolverEvidence, hasResolverEvidence, correctionCfg, ctyDB, metaCache, tracker, dash, recentBandStore, knownCallset, adaptiveMinReports, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel)
+				skipResolverApply := false
+				var resolverEvidence spot.ResolverEvidence
+				hasResolverEvidence := false
+				if temporalRelease != nil {
+					pending := temporalRelease.pending
+					resolverEvidence = pending.evidence
+					hasResolverEvidence = pending.hasEvidence
+					stabilizerResolverKey = pending.stabilizerResolverKey
+					hasStabilizerResolverKey = pending.hasStabilizerResolverKey
+					stabilizerEvidenceEnqueued = pending.stabilizerEvidenceEnqueued
+					recordRuntimeTemporalDecision(temporalRelease.decision)
+					switch temporalRelease.decision.Action {
+					case correctionflow.TemporalDecisionActionApply:
+						selection := temporalRelease.decision.Selection
+						suppress = maybeApplyResolverCorrectionWithSelectionOverride(
+							s,
+							signalResolver,
+							resolverEvidence,
+							hasResolverEvidence,
+							correctionCfg,
+							ctyDB,
+							metaCache,
+							tracker,
+							dash,
+							recentBandStore,
+							knownCallset,
+							adaptiveMinReports,
+							spotterReliability,
+							spotterReliabilityCW,
+							spotterReliabilityRTTY,
+							confusionModel,
+							&selection,
+						)
+					case correctionflow.TemporalDecisionActionAbstain:
+						skipResolverApply = true
+						s.Confidence = correctionflow.ResolverConfidenceGlyphForCall(
+							temporalRelease.pending.selection.Snapshot,
+							temporalRelease.pending.selection.SnapshotOK,
+							normalizedDXCall(s),
+						)
+					default:
+						// fallback_resolver / bypass: continue with baseline resolver path.
+					}
+				} else {
+					now := time.Now().UTC()
+					resolverEvidence, hasResolverEvidence = buildResolverEvidenceSnapshot(s, correctionCfg, adaptiveMinReports, now)
+					if hasResolverEvidence && signalResolver != nil {
+						if signalResolver.Enqueue(resolverEvidence) {
+							stabilizerEvidenceEnqueued = true
+						}
+					}
+					if hasResolverEvidence {
+						stabilizerResolverKey = resolverEvidence.Key
+						hasStabilizerResolverKey = true
+					}
+					if temporalEnabled && temporalDecoder != nil && hasResolverEvidence {
+						subject := normalizedDXCall(s)
+						selection := correctionflow.ResolverPrimarySelection{}
+						if subject != "" {
+							selection = correctionflow.SelectResolverPrimarySnapshotForCall(signalResolver, resolverEvidence.Key, correctionCfg, subject)
+						}
+						if selection.SnapshotOK && temporalDecoder.ShouldHoldSelection(selection) {
+							id := temporalNextID
+							temporalNextID++
+							observedAt := now
+							accepted, reason := temporalDecoder.Observe(correctionflow.TemporalObservation{
+								ID:          id,
+								ObservedAt:  observedAt,
+								Key:         resolverEvidence.Key,
+								SubjectCall: subject,
+								Selection:   selection,
+							})
+							if accepted {
+								temporalPending[id] = runtimeTemporalPending{
+									id:                         id,
+									spot:                       s,
+									evidence:                   resolverEvidence,
+									hasEvidence:                hasResolverEvidence,
+									stabilizerResolverKey:      stabilizerResolverKey,
+									hasStabilizerResolverKey:   hasStabilizerResolverKey,
+									stabilizerEvidenceEnqueued: stabilizerEvidenceEnqueued,
+									selection:                  selection,
+									maxAt:                      observedAt.Add(temporalDecoder.MaxWaitDuration()),
+								}
+								heap.Push(&temporalQueue, &runtimeTemporalItem{
+									id:  id,
+									due: observedAt.Add(temporalDecoder.LagDuration()),
+									seq: temporalSeq,
+								})
+								temporalSeq++
+								if tracker != nil {
+									tracker.IncrementTemporalPending()
+								}
+								return
+							}
+							overflowDecision := correctionflow.TemporalDecision{
+								ID:            id,
+								Reason:        reason,
+								CommitLatency: 0,
+							}
+							switch correctionCfg.TemporalDecoder.OverflowAction {
+							case "abstain":
+								overflowDecision.Action = correctionflow.TemporalDecisionActionAbstain
+								recordRuntimeTemporalDecision(overflowDecision)
+								skipResolverApply = true
+								s.Confidence = correctionflow.ResolverConfidenceGlyphForCall(
+									selection.Snapshot,
+									selection.SnapshotOK,
+									subject,
+								)
+							case "bypass":
+								overflowDecision.Action = correctionflow.TemporalDecisionActionBypass
+								recordRuntimeTemporalDecision(overflowDecision)
+							default:
+								overflowDecision.Action = correctionflow.TemporalDecisionActionFallbackResolver
+								recordRuntimeTemporalDecision(overflowDecision)
+							}
+						}
+					}
+				}
+				if !skipResolverApply && temporalRelease == nil {
+					suppress = maybeApplyResolverCorrection(
+						s,
+						signalResolver,
+						resolverEvidence,
+						hasResolverEvidence,
+						correctionCfg,
+						ctyDB,
+						metaCache,
+						tracker,
+						dash,
+						recentBandStore,
+						knownCallset,
+						adaptiveMinReports,
+						spotterReliability,
+						spotterReliabilityCW,
+						spotterReliabilityRTTY,
+						confusionModel,
+					)
+				} else if !skipResolverApply && temporalRelease != nil && temporalRelease.decision.Action != correctionflow.TemporalDecisionActionApply {
+					suppress = maybeApplyResolverCorrection(
+						s,
+						signalResolver,
+						resolverEvidence,
+						hasResolverEvidence,
+						correctionCfg,
+						ctyDB,
+						metaCache,
+						tracker,
+						dash,
+						recentBandStore,
+						knownCallset,
+						adaptiveMinReports,
+						spotterReliability,
+						spotterReliabilityCW,
+						spotterReliabilityRTTY,
+						confusionModel,
+					)
+				}
 				if suppress {
 					return
 				}
@@ -2662,6 +2887,73 @@ func processOutputSpots(
 				lastOutput.Store(time.Now().UTC().UnixNano())
 			}
 		}()
+	}
+	var temporalTimer *time.Timer
+	var temporalTimerCh <-chan time.Time
+	stopTemporalTimer := func() {
+		if temporalTimer == nil {
+			return
+		}
+		if !temporalTimer.Stop() {
+			select {
+			case <-temporalTimer.C:
+			default:
+			}
+		}
+		temporalTimer = nil
+		temporalTimerCh = nil
+	}
+	scheduleTemporalTimer := func(now time.Time) {
+		if !temporalEnabled || temporalDecoder == nil {
+			stopTemporalTimer()
+			return
+		}
+		nextDue, ok := runtimeTemporalNextDue(&temporalQueue)
+		if !ok {
+			stopTemporalTimer()
+			return
+		}
+		delay := nextDue.Sub(now)
+		if delay < 0 {
+			delay = 0
+		}
+		if temporalTimer == nil {
+			temporalTimer = time.NewTimer(delay)
+		} else {
+			if !temporalTimer.Stop() {
+				select {
+				case <-temporalTimer.C:
+				default:
+				}
+			}
+			temporalTimer.Reset(delay)
+		}
+		temporalTimerCh = temporalTimer.C
+	}
+	defer stopTemporalTimer()
+
+	for {
+		now := time.Now().UTC()
+		releases := drainRuntimeTemporal(now, false)
+		for idx := range releases {
+			release := releases[idx]
+			processSpot(release.pending.spot, &release)
+		}
+		scheduleTemporalTimer(now)
+
+		select {
+		case s, ok := <-outputChan:
+			if !ok {
+				for _, release := range drainRuntimeTemporal(time.Now().UTC().Add(24*time.Hour), true) {
+					release := release
+					processSpot(release.pending.spot, &release)
+				}
+				return
+			}
+			processSpot(s, nil)
+		case <-temporalTimerCh:
+			// Timer-driven wakeup for lag/max-wait release when ingest is idle.
+		}
 	}
 }
 
@@ -3398,6 +3690,46 @@ func maybeApplyResolverCorrection(
 	spotterReliabilityRTTY spot.SpotterReliability,
 	confusionModel *spot.ConfusionModel,
 ) bool {
+	return maybeApplyResolverCorrectionWithSelectionOverride(
+		spotEntry,
+		resolver,
+		evidence,
+		hasEvidence,
+		cfg,
+		ctyDB,
+		metaCache,
+		tracker,
+		dash,
+		recentBandStore,
+		knownCallset,
+		adaptive,
+		spotterReliability,
+		spotterReliabilityCW,
+		spotterReliabilityRTTY,
+		confusionModel,
+		nil,
+	)
+}
+
+func maybeApplyResolverCorrectionWithSelectionOverride(
+	spotEntry *spot.Spot,
+	resolver *spot.SignalResolver,
+	evidence spot.ResolverEvidence,
+	hasEvidence bool,
+	cfg config.CallCorrectionConfig,
+	ctyDB *cty.CTYDatabase,
+	metaCache *callMetaCache,
+	tracker *stats.Tracker,
+	dash ui.Surface,
+	recentBandStore *spot.RecentBandStore,
+	knownCallset *spot.KnownCallsigns,
+	adaptive *spot.AdaptiveMinReports,
+	spotterReliability spot.SpotterReliability,
+	spotterReliabilityCW spot.SpotterReliability,
+	spotterReliabilityRTTY spot.SpotterReliability,
+	confusionModel *spot.ConfusionModel,
+	selectionOverride *correctionflow.ResolverPrimarySelection,
+) bool {
 	if spotEntry == nil {
 		return false
 	}
@@ -3426,7 +3758,11 @@ func maybeApplyResolverCorrection(
 	selection := correctionflow.ResolverPrimarySelection{}
 	snapshot := spot.ResolverSnapshot{}
 	snapshotOK := false
-	if hasEvidence && resolver != nil {
+	if selectionOverride != nil {
+		selection = *selectionOverride
+		snapshot = selection.Snapshot
+		snapshotOK = selection.SnapshotOK
+	} else if hasEvidence && resolver != nil {
 		selection = correctionflow.SelectResolverPrimarySnapshotForCall(resolver, evidence.Key, cfg, preCorrectionCall)
 		snapshot = selection.Snapshot
 		snapshotOK = selection.SnapshotOK

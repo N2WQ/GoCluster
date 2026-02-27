@@ -27,6 +27,7 @@ Replay config:
 - Replay uses resolver-primary rails for apply/suppress/reject decisions, including:
   - resolver neighborhood selection
   - resolver primary gates (min reports/adv/confidence, family/distance rails, +1 rail)
+  - optional fixed-lag temporal decoding (`call_correction.temporal_decoder.*`) before final winner commit
   - invalid-base rejection rail
   - CTY rejection rail
 
@@ -34,6 +35,7 @@ Replay config:
 
 - Event-time only: replay is driven by row timestamps from the RBN CSV.
 - Resolver is driven by deterministic driver stepping (`observe-before-drain` ordering).
+- Temporal decoder decisions are also event-time only (hold/defer/commit windows use CSV timestamps, not wall clock).
 - Runbook sample cadence is fixed at 60 seconds.
 - Replay fails fast on timestamp regressions, out-of-day records, resolver enqueue failures, and resolver hard-drop counters.
 
@@ -78,6 +80,13 @@ Legacy comparison artifacts were removed from replay artifacts. Removed fields i
 - `resolver.neighborhood_*`
 - `resolver.recent_plus1_*`
 - `stabilizer_delay_proxy.*`
+- `temporal.pending`
+- `temporal.committed`
+- `temporal.fallback_resolver`
+- `temporal.abstain_low_margin`
+- `temporal.overflow_bypass`
+- `temporal.path_switches`
+- `temporal.commit_latency_ms.*`
 
 `stability` now represents resolver-applied winner follow-on stability for the emitted output path.
 

@@ -162,3 +162,58 @@ func TestObserveResolverRecentPlus1GateCounters(t *testing.T) {
 		t.Fatalf("expected recent_plus1_reject_other=1, got %d", metrics.Resolver.RecentPlus1RejectOther)
 	}
 }
+
+func TestObserveTemporalDecisionCounters(t *testing.T) {
+	var metrics replayABMetrics
+	metrics.Temporal.ObservePending()
+	metrics.Temporal.ObserveDecision(correctionflow.TemporalDecision{
+		Action:        correctionflow.TemporalDecisionActionApply,
+		PathSwitched:  true,
+		CommitLatency: 1200 * time.Millisecond,
+	})
+	metrics.Temporal.ObserveDecision(correctionflow.TemporalDecision{
+		Action:        correctionflow.TemporalDecisionActionFallbackResolver,
+		CommitLatency: 2500 * time.Millisecond,
+	})
+	metrics.Temporal.ObserveDecision(correctionflow.TemporalDecision{
+		Action:        correctionflow.TemporalDecisionActionAbstain,
+		CommitLatency: 600 * time.Millisecond,
+	})
+	metrics.Temporal.ObserveDecision(correctionflow.TemporalDecision{
+		Action:        correctionflow.TemporalDecisionActionBypass,
+		CommitLatency: 6 * time.Second,
+	})
+	if metrics.Temporal.Pending != 1 {
+		t.Fatalf("expected temporal pending=1, got %d", metrics.Temporal.Pending)
+	}
+	if metrics.Temporal.Committed != 1 {
+		t.Fatalf("expected temporal committed=1, got %d", metrics.Temporal.Committed)
+	}
+	if metrics.Temporal.FallbackResolver != 1 {
+		t.Fatalf("expected temporal fallback_resolver=1, got %d", metrics.Temporal.FallbackResolver)
+	}
+	if metrics.Temporal.AbstainLowMargin != 1 {
+		t.Fatalf("expected temporal abstain_low_margin=1, got %d", metrics.Temporal.AbstainLowMargin)
+	}
+	if metrics.Temporal.OverflowBypass != 1 {
+		t.Fatalf("expected temporal overflow_bypass=1, got %d", metrics.Temporal.OverflowBypass)
+	}
+	if metrics.Temporal.PathSwitches != 1 {
+		t.Fatalf("expected temporal path_switches=1, got %d", metrics.Temporal.PathSwitches)
+	}
+	if metrics.Temporal.CommitLatencyMS.Samples != 4 {
+		t.Fatalf("expected temporal latency samples=4, got %d", metrics.Temporal.CommitLatencyMS.Samples)
+	}
+	if metrics.Temporal.CommitLatencyMS.LE1000 != 1 {
+		t.Fatalf("expected temporal latency le_1000=1, got %d", metrics.Temporal.CommitLatencyMS.LE1000)
+	}
+	if metrics.Temporal.CommitLatencyMS.LE2000 != 1 {
+		t.Fatalf("expected temporal latency le_2000=1, got %d", metrics.Temporal.CommitLatencyMS.LE2000)
+	}
+	if metrics.Temporal.CommitLatencyMS.LE5000 != 1 {
+		t.Fatalf("expected temporal latency le_5000=1, got %d", metrics.Temporal.CommitLatencyMS.LE5000)
+	}
+	if metrics.Temporal.CommitLatencyMS.GT5000 != 1 {
+		t.Fatalf("expected temporal latency gt_5000=1, got %d", metrics.Temporal.CommitLatencyMS.GT5000)
+	}
+}
