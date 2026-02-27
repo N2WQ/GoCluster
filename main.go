@@ -9,8 +9,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"io"
-	"io/fs"
 	"log"
 	"math"
 	"net/http"
@@ -39,6 +37,7 @@ import (
 	"dxcluster/filter"
 	"dxcluster/gridstore"
 	"dxcluster/internal/correctionflow"
+	"dxcluster/internal/pebbleresilience"
 	"dxcluster/internal/ratelimit"
 	"dxcluster/internal/schedule"
 	"dxcluster/pathreliability"
@@ -93,6 +92,13 @@ const (
 )
 
 var ingestForwardDropLogInterval = 30 * time.Second
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
 
 // Version will be set at build time
 var Version = "dev"
@@ -703,16 +709,54 @@ func main() {
 		})
 		signalResolver.Start()
 	}
-	var recentBandStore *spot.RecentBandStore
-	if cfg.CallCorrection.Enabled && (cfg.CallCorrection.RecentBandBonusEnabled || cfg.CallCorrection.StabilizerEnabled) {
-		recentBandStore = spot.NewRecentBandStore(time.Duration(cfg.CallCorrection.RecentBandWindowSeconds) * time.Second)
-		recentBandStore.StartCleanup()
+	var recentBandStore spot.RecentSupportStore
+	var customSCPStore *spot.CustomSCPStore
+	if cfg.CallCorrection.Enabled && cfg.CallCorrection.CustomSCP.Enabled {
+		customOpts := spot.CustomSCPOptions{
+			Path:                   cfg.CallCorrection.CustomSCP.Path,
+			HorizonDays:            cfg.CallCorrection.CustomSCP.HistoryHorizonDays,
+			MaxKeys:                cfg.CallCorrection.CustomSCP.MaxKeys,
+			MaxSpottersPerKey:      cfg.CallCorrection.CustomSCP.MaxSpottersPerKey,
+			CleanupInterval:        time.Duration(cfg.CallCorrection.CustomSCP.CleanupIntervalSeconds) * time.Second,
+			CacheSizeBytes:         int64(cfg.CallCorrection.CustomSCP.BlockCacheMB) << 20,
+			BloomFilterBitsPerKey:  cfg.CallCorrection.CustomSCP.BloomFilterBits,
+			MemTableSizeBytes:      uint64(cfg.CallCorrection.CustomSCP.MemTableSizeMB) << 20,
+			L0CompactionThreshold:  cfg.CallCorrection.CustomSCP.L0CompactionThreshold,
+			L0StopWritesThreshold:  cfg.CallCorrection.CustomSCP.L0StopWritesThreshold,
+			CoreMinScore:           maxInt(cfg.CallCorrection.CustomSCP.ResolverMinScore, cfg.CallCorrection.CustomSCP.StabilizerMinScore),
+			CoreMinH3Cells:         maxInt(cfg.CallCorrection.CustomSCP.ResolverMinUniqueH3Cells, cfg.CallCorrection.CustomSCP.StabilizerMinUniqueH3Cells),
+			SFloorMinScore:         cfg.CallCorrection.CustomSCP.SFloorMinScore,
+			SFloorExactMinH3Cells:  cfg.CallCorrection.CustomSCP.SFloorMinUniqueH3CellsExact,
+			SFloorFamilyMinH3Cells: cfg.CallCorrection.CustomSCP.SFloorMinUniqueH3CellsFamily,
+			MinSNRDBCW:             cfg.CallCorrection.CustomSCP.MinSNRDBCW,
+			MinSNRDBRTTY:           cfg.CallCorrection.CustomSCP.MinSNRDBRTTY,
+		}
+		opened, openErr := openCustomSCPStoreWithRecovery(ctx, customOpts)
+		if openErr != nil {
+			log.Printf("Failed to open custom SCP database: %v", openErr)
+			return
+		}
+		customSCPStore = opened
+		customSCPStore.StartCleanup()
+		recentBandStore = customSCPStore
+		startCustomSCPCheckpointScheduler(ctx, customSCPStore, customOpts.Path)
+		startCustomSCPIntegrityScheduler(ctx, customSCPStore)
+		defer customSCPStore.Close()
+	} else if cfg.CallCorrection.Enabled && (cfg.CallCorrection.RecentBandBonusEnabled || cfg.CallCorrection.StabilizerEnabled) {
+		legacyStore := spot.NewRecentBandStore(time.Duration(cfg.CallCorrection.RecentBandWindowSeconds) * time.Second)
+		legacyStore.StartCleanup()
+		recentBandStore = legacyStore
+		defer legacyStore.StopCleanup()
 	}
 
 	var knownCalls atomic.Pointer[spot.KnownCallsigns]
+	useKnownCalls := !cfg.CallCorrection.CustomSCP.Enabled
 	knownCallsPath := strings.TrimSpace(cfg.KnownCalls.File)
 	knownCallsURL := strings.TrimSpace(cfg.KnownCalls.URL)
-	if knownCallsPath != "" {
+	if !useKnownCalls {
+		knownCallsPath = ""
+	}
+	if useKnownCalls && knownCallsPath != "" {
 		if _, err := os.Stat(knownCallsPath); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				if knownCallsURL != "" {
@@ -781,13 +825,13 @@ func main() {
 	startGridCheckpointScheduler(ctx, gridStoreHandle, cfg.GridDBPath)
 	startGridIntegrityScheduler(ctx, gridStoreHandle)
 
-	if cfg.KnownCalls.Enabled && knownCallsURL != "" && knownCallsPath != "" {
+	if useKnownCalls && cfg.KnownCalls.Enabled && knownCallsURL != "" && knownCallsPath != "" {
 		if knownCalls.Load() != nil {
 			startKnownCallScheduler(ctx, cfg.KnownCalls, &knownCalls, gridStoreHandle, metaCache)
 		} else {
 			log.Printf("Warning: known calls scheduler disabled (no initial data); ensure %s is reachable", cfg.KnownCalls.URL)
 		}
-	} else if cfg.KnownCalls.Enabled {
+	} else if useKnownCalls && cfg.KnownCalls.Enabled {
 		log.Printf("Warning: known calls download enabled but url or file missing")
 	}
 
@@ -1043,7 +1087,7 @@ func main() {
 	// Downstream: processOutputSpots.
 	pathReport := newPathReportMetrics()
 	pskrPathOnlyStats := &pathOnlyStats{}
-	go processOutputSpots(deduplicator, secondaryFast, secondaryMed, secondarySlow, archivePeerSecondaryMed, &secondaryStageCount, modeAssigner, spotBuffer, telnetServer, peerManager, statsTracker, signalResolver, cfg.CallCorrection, ctyLookup, metaCache, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, surface, gridUpdater, gridLookup, gridLookupSync, unlicensedReporter, adaptiveMinReports, refresher, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel, recentBandStore, cfg.RBN.KeepSSIDSuffix, archiveWriter, &lastOutput, pathPredictor, pathReport, allowedBandSet)
+	go processOutputSpots(deduplicator, secondaryFast, secondaryMed, secondarySlow, archivePeerSecondaryMed, &secondaryStageCount, modeAssigner, spotBuffer, telnetServer, peerManager, statsTracker, signalResolver, cfg.CallCorrection, ctyLookup, metaCache, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, surface, gridUpdater, gridLookup, gridLookupSync, unlicensedReporter, adaptiveMinReports, refresher, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel, recentBandStore, customSCPStore, cfg.RBN.KeepSSIDSuffix, archiveWriter, &lastOutput, pathPredictor, pathReport, allowedBandSet)
 	startPipelineHealthMonitor(ctx, deduplicator, &lastOutput, peerManager)
 
 	// Connect to RBN CW/RTTY feed if enabled (port 7000)
@@ -1600,7 +1644,7 @@ func formatTopCounterSummary(counts map[string]uint64, limit int) string {
 // Key aspects: Uses a ticker, diff counters, and optional secondary dedupe stats.
 // Upstream: main stats goroutine.
 // Downstream: tracker accessors, loadFCCSnapshot, and UI/log output.
-func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestStats *ingestValidator, dedup *dedup.Deduplicator, secondaryFast *dedup.SecondaryDeduper, secondaryMed *dedup.SecondaryDeduper, secondarySlow *dedup.SecondaryDeduper, secondaryStage *atomic.Uint64, buf *buffer.RingBuffer, ctyLookup func() *cty.CTYDatabase, metaCache *callMetaCache, ctyState *ctyRefreshState, knownPtr *atomic.Pointer[spot.KnownCallsigns], recentBandStore *spot.RecentBandStore, signalResolver *spot.SignalResolver, knownCallsPath string, telnetSrv *telnet.Server, dash ui.Surface, gridStats *gridMetrics, gridDB *gridStoreHandle, fccDBPath string, pathPredictor *pathreliability.Predictor, rbnClient *rbn.Client, rbnDigitalClient *rbn.Client, pskrClient *pskreporter.Client, pskrPathOnly *pathOnlyStats, peerManager *peer.Manager, clusterCall string, skewPath string) {
+func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestStats *ingestValidator, dedup *dedup.Deduplicator, secondaryFast *dedup.SecondaryDeduper, secondaryMed *dedup.SecondaryDeduper, secondarySlow *dedup.SecondaryDeduper, secondaryStage *atomic.Uint64, buf *buffer.RingBuffer, ctyLookup func() *cty.CTYDatabase, metaCache *callMetaCache, ctyState *ctyRefreshState, knownPtr *atomic.Pointer[spot.KnownCallsigns], recentBandStore spot.RecentSupportStore, signalResolver *spot.SignalResolver, knownCallsPath string, telnetSrv *telnet.Server, dash ui.Surface, gridStats *gridMetrics, gridDB *gridStoreHandle, fccDBPath string, pathPredictor *pathreliability.Predictor, rbnClient *rbn.Client, rbnDigitalClient *rbn.Client, pskrClient *pskreporter.Client, pskrPathOnly *pathOnlyStats, peerManager *peer.Manager, clusterCall string, skewPath string) {
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
@@ -2115,7 +2159,8 @@ func processOutputSpots(
 	spotterReliabilityCW spot.SpotterReliability,
 	spotterReliabilityRTTY spot.SpotterReliability,
 	confusionModel *spot.ConfusionModel,
-	recentBandStore *spot.RecentBandStore,
+	recentBandStore spot.RecentSupportStore,
+	customSCPStore *spot.CustomSCPStore,
 	broadcastKeepSSID bool,
 	archiveWriter *archive.Writer,
 	lastOutput *atomic.Int64,
@@ -2290,7 +2335,7 @@ func processOutputSpots(
 				if suppress {
 					continue
 				}
-				applyKnownCallFloor(delayed, knownCalls, recentBandStore, correctionCfg)
+				applyKnownCallFloor(delayed, knownCalls, recentBandStore, customSCPStore, correctionCfg)
 				delayed.RefreshBeaconFlag()
 				delayed.EnsureNormalized()
 				if applyLicenseGate(delayed, ctyDB, metaCache, unlicensedReporter) {
@@ -2329,7 +2374,7 @@ func processOutputSpots(
 					}
 					continue
 				}
-				recordRecentBandObservation(delayed, recentBandStore, correctionCfg)
+				recordRecentBandObservation(delayed, recentBandStore, customSCPStore, correctionCfg)
 				allowFast, allowMed, allowSlow := computeTelnetAllows(delayed)
 				if !allowFast && !allowMed && !allowSlow {
 					telnet.DeliverSelfSpot(delayed)
@@ -2615,7 +2660,7 @@ func processOutputSpots(
 					s.Confidence = "?"
 					dirty = true
 				}
-				if applyKnownCallFloor(s, knownCalls, recentBandStore, correctionCfg) {
+				if applyKnownCallFloor(s, knownCalls, recentBandStore, customSCPStore, correctionCfg) {
 					dirty = true
 				}
 			}
@@ -2784,7 +2829,7 @@ func processOutputSpots(
 			if !stabilizerEnabled {
 				allowFast, allowMed, allowSlow = computeTelnetAllows(s)
 				archivePeerAllowMed = allowMed
-				recordRecentBandObservation(s, recentBandStore, correctionCfg)
+				recordRecentBandObservation(s, recentBandStore, customSCPStore, correctionCfg)
 				// Broadcast-only dedupe: ring/history already updated above for non-test spots.
 				if !allowFast && !allowMed && !allowSlow {
 					telnet.DeliverSelfSpot(s)
@@ -2839,7 +2884,7 @@ func processOutputSpots(
 					}
 				}
 				if shouldRecordRecentBandInMainLoop(stabilizerEnabled, delayedQueued) {
-					recordRecentBandObservation(s, recentBandStore, correctionCfg)
+					recordRecentBandObservation(s, recentBandStore, customSCPStore, correctionCfg)
 				}
 				if telnetDeliverNow && !allowFast && !allowMed && !allowSlow {
 					telnet.DeliverSelfSpot(s)
@@ -2979,13 +3024,13 @@ const (
 
 // shouldDelayTelnetByStabilizer is a compatibility wrapper used by tests and
 // non-resolver call sites to evaluate baseline stabilizer delay eligibility.
-func shouldDelayTelnetByStabilizer(s *spot.Spot, store *spot.RecentBandStore, cfg config.CallCorrectionConfig, now time.Time) bool {
+func shouldDelayTelnetByStabilizer(s *spot.Spot, store spot.RecentSupportStore, cfg config.CallCorrectionConfig, now time.Time) bool {
 	return correctionflow.ShouldDelayTelnetByStabilizer(s, store, cfg, now)
 }
 
 func evaluateTelnetStabilizerDelay(
 	s *spot.Spot,
-	store *spot.RecentBandStore,
+	store spot.RecentSupportStore,
 	cfg config.CallCorrectionConfig,
 	now time.Time,
 	resolverSnapshot spot.ResolverSnapshot,
@@ -3682,7 +3727,7 @@ func maybeApplyResolverCorrection(
 	metaCache *callMetaCache,
 	tracker *stats.Tracker,
 	dash ui.Surface,
-	recentBandStore *spot.RecentBandStore,
+	recentBandStore spot.RecentSupportStore,
 	knownCallset *spot.KnownCallsigns,
 	adaptive *spot.AdaptiveMinReports,
 	spotterReliability spot.SpotterReliability,
@@ -3721,7 +3766,7 @@ func maybeApplyResolverCorrectionWithSelectionOverride(
 	metaCache *callMetaCache,
 	tracker *stats.Tracker,
 	dash ui.Surface,
-	recentBandStore *spot.RecentBandStore,
+	recentBandStore spot.RecentSupportStore,
 	knownCallset *spot.KnownCallsigns,
 	adaptive *spot.AdaptiveMinReports,
 	spotterReliability spot.SpotterReliability,
@@ -3944,7 +3989,7 @@ func buildCorrectionSettings(
 	minReports int,
 	window time.Duration,
 	freqToleranceHz float64,
-	recentBandStore *spot.RecentBandStore,
+	recentBandStore spot.RecentSupportStore,
 	knownCallset *spot.KnownCallsigns,
 ) spot.CorrectionSettings {
 	return correctionflow.BuildCorrectionSettings(correctionflow.BuildSettingsInput{
@@ -3998,8 +4043,16 @@ func modeSupportsConfidenceGlyph(mode string) bool {
 // corroboration. This is intentionally post-gate (after correction/harmonic/
 // license filters) so the cache favors calls that already survived core checks.
 // Stabilizer-delayed spots are recorded only after delay resolution.
-func recordRecentBandObservation(s *spot.Spot, store *spot.RecentBandStore, cfg config.CallCorrectionConfig) {
-	if s == nil || store == nil || s.IsBeacon {
+func recordRecentBandObservation(s *spot.Spot, store spot.RecentSupportStore, customSCP *spot.CustomSCPStore, cfg config.CallCorrectionConfig) {
+	if s == nil || s.IsBeacon {
+		return
+	}
+	if customSCP != nil && cfg.CustomSCP.Enabled {
+		customSCP.RecordSpot(s)
+		return
+	}
+	legacyStore, ok := store.(*spot.RecentBandStore)
+	if !ok || legacyStore == nil {
 		return
 	}
 	if !cfg.RecentBandBonusEnabled && !cfg.StabilizerEnabled {
@@ -4033,7 +4086,7 @@ func recordRecentBandObservation(s *spot.Spot, store *spot.RecentBandStore, cfg 
 		keys = []string{call}
 	}
 	for _, key := range keys {
-		store.Record(key, band, mode, spotter, seenAt)
+		legacyStore.Record(key, band, mode, spotter, seenAt)
 	}
 }
 
@@ -4045,7 +4098,8 @@ func recordRecentBandObservation(s *spot.Spot, store *spot.RecentBandStore, cfg 
 func applyKnownCallFloor(
 	s *spot.Spot,
 	knownCalls *atomic.Pointer[spot.KnownCallsigns],
-	recentBandStore *spot.RecentBandStore,
+	recentBandStore spot.RecentSupportStore,
+	customSCPStore *spot.CustomSCPStore,
 	corrCfg config.CallCorrectionConfig,
 ) bool {
 	if s == nil || s.IsBeacon {
@@ -4070,14 +4124,38 @@ func applyKnownCallFloor(
 	}
 
 	knownHit := false
-	if knownCalls != nil {
+	if customSCPStore != nil && corrCfg.CustomSCP.Enabled {
+		knownHit = customSCPStore.StaticContains(call)
+	} else if knownCalls != nil {
 		if known := knownCalls.Load(); known != nil && known.Contains(call) {
 			knownHit = true
 		}
 	}
 
 	recentHit := false
-	if recentBandStore != nil && corrCfg.RecentBandBonusEnabled {
+	if customSCPStore != nil && corrCfg.CustomSCP.Enabled {
+		band := s.BandNorm
+		if band == "" || band == "???" {
+			band = spot.FreqToBand(s.Frequency)
+		}
+		now := time.Now().UTC()
+		recentHit = customSCPStore.HasSFloorSupportExact(
+			call,
+			band,
+			mode,
+			corrCfg.CustomSCP.SFloorMinUniqueSpottersExact,
+			now,
+		)
+		if !recentHit {
+			recentHit = customSCPStore.HasSFloorSupportFamily(
+				spot.CorrectionFamilyKeys(call),
+				band,
+				mode,
+				corrCfg.CustomSCP.SFloorMinUniqueSpottersFamily,
+				now,
+			)
+		}
+	} else if recentBandStore != nil && corrCfg.RecentBandBonusEnabled {
 		band := s.BandNorm
 		if band == "" || band == "???" {
 			band = spot.FreqToBand(s.Frequency)
@@ -4094,7 +4172,7 @@ func applyKnownCallFloor(
 
 // hasRecentSupportForCallFamily checks recent support across family identities.
 // Key aspects: Uses canonical vote/base keys to keep slash variants coherent.
-func hasRecentSupportForCallFamily(store *spot.RecentBandStore, call, band, mode string, minUnique int, now time.Time) bool {
+func hasRecentSupportForCallFamily(store spot.RecentSupportStore, call, band, mode string, minUnique int, now time.Time) bool {
 	return correctionflow.HasRecentSupportForCallFamily(store, call, band, mode, minUnique, now)
 }
 
@@ -5320,66 +5398,20 @@ func startGridStoreRecovery(ctx context.Context, storeHandle *gridStoreHandle, d
 	}()
 }
 
-type gridCheckpointEntry struct {
-	path string
-	at   time.Time
-}
-
 func gridCheckpointRoot(dbPath string) string {
-	return filepath.Join(dbPath, gridCheckpointDirName)
+	return pebbleresilience.CheckpointRoot(dbPath, gridCheckpointDirName)
 }
 
-func listGridCheckpoints(root string) ([]gridCheckpointEntry, error) {
-	entries, err := os.ReadDir(root)
+func listGridCheckpoints(root string) ([]pebbleresilience.CheckpointEntry, error) {
+	checkpoints, err := pebbleresilience.ListCheckpoints(root, gridCheckpointNameLayoutUTC)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
 		return nil, err
 	}
-	var checkpoints []gridCheckpointEntry
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		if strings.HasPrefix(name, ".tmp-") {
-			continue
-		}
-		at, err := time.Parse(gridCheckpointNameLayoutUTC, name)
-		if err != nil {
-			continue
-		}
-		checkpoints = append(checkpoints, gridCheckpointEntry{
-			path: filepath.Join(root, name),
-			at:   at,
-		})
-	}
-	sort.Slice(checkpoints, func(i, j int) bool {
-		return checkpoints[i].at.After(checkpoints[j].at)
-	})
 	return checkpoints, nil
 }
 
 func cleanupGridCheckpoints(root string, now time.Time) (int, error) {
-	if root == "" {
-		return 0, nil
-	}
-	checkpoints, err := listGridCheckpoints(root)
-	if err != nil {
-		return 0, err
-	}
-	cutoff := now.Add(-gridCheckpointRetention)
-	removed := 0
-	for _, checkpoint := range checkpoints {
-		if checkpoint.at.Before(cutoff) {
-			if err := os.RemoveAll(checkpoint.path); err != nil {
-				return removed, err
-			}
-			removed++
-		}
-	}
-	return removed, nil
+	return pebbleresilience.CleanupCheckpoints(root, gridCheckpointNameLayoutUTC, gridCheckpointRetention, now)
 }
 
 func nextGridCheckpointDelay(now time.Time) time.Duration {
@@ -5407,182 +5439,156 @@ func restoreGridStoreFromCheckpoint(ctx context.Context, dbPath string, opts gri
 		if ctx.Err() != nil {
 			return nil, "", ctx.Err()
 		}
-		stats, err := gridstore.VerifyCheckpoint(ctx, checkpoint.path, gridCheckpointVerifyTimeout)
+		stats, err := gridstore.VerifyCheckpoint(ctx, checkpoint.Path, gridCheckpointVerifyTimeout)
 		if err != nil {
-			log.Printf("Gridstore: checkpoint verify failed (%s): %v", checkpoint.path, err)
+			log.Printf("Gridstore: checkpoint verify failed (%s): %v", checkpoint.Path, err)
 			continue
 		}
 		if stats.CountMetaErr != nil && !stats.CountMetaValid {
-			log.Printf("Gridstore: checkpoint %s count metadata warning: %v", checkpoint.path, stats.CountMetaErr)
+			log.Printf("Gridstore: checkpoint %s count metadata warning: %v", checkpoint.Path, stats.CountMetaErr)
 		}
-		if err := restoreGridStoreFromPath(ctx, dbPath, checkpoint.path); err != nil {
-			log.Printf("Gridstore: checkpoint restore failed (%s): %v", checkpoint.path, err)
+		if err := restoreGridStoreFromPath(ctx, dbPath, checkpoint.Path); err != nil {
+			log.Printf("Gridstore: checkpoint restore failed (%s): %v", checkpoint.Path, err)
 			continue
 		}
 		store, err := gridstore.Open(dbPath, opts)
 		if err != nil {
-			log.Printf("Gridstore: open after restore failed (%s): %v", checkpoint.path, err)
+			log.Printf("Gridstore: open after restore failed (%s): %v", checkpoint.Path, err)
 			continue
 		}
-		return store, checkpoint.path, nil
+		return store, checkpoint.Path, nil
 	}
 	return nil, "", errors.New("gridstore: no valid checkpoints")
 }
 
 func restoreGridStoreFromPath(ctx context.Context, dbPath string, checkpointPath string) error {
-	if strings.TrimSpace(dbPath) == "" {
-		return errors.New("gridstore: db path is empty")
-	}
-	if strings.TrimSpace(checkpointPath) == "" {
-		return errors.New("gridstore: checkpoint path is empty")
-	}
-	if ctx == nil {
-		return errors.New("gridstore: nil context")
-	}
-	parent := filepath.Dir(dbPath)
-	base := filepath.Base(dbPath)
-	if strings.TrimSpace(base) == "" || strings.TrimSpace(parent) == "" {
-		return fmt.Errorf("gridstore: invalid db path %q", dbPath)
-	}
-	ts := time.Now().UTC().Format(gridCheckpointNameLayoutUTC)
-	tempDir := filepath.Join(parent, base+".restore-"+ts)
-	backupDir := filepath.Join(parent, base+".backup-"+ts)
-	if err := os.MkdirAll(tempDir, 0o755); err != nil {
-		return fmt.Errorf("gridstore: create restore dir: %w", err)
-	}
-	if err := copyDirCtx(ctx, checkpointPath, tempDir); err != nil {
-		_ = os.RemoveAll(tempDir)
-		return err
-	}
-	if ctx.Err() != nil {
-		_ = os.RemoveAll(tempDir)
-		return ctx.Err()
-	}
-
-	hadExisting := false
-	if info, err := os.Stat(dbPath); err == nil {
-		if !info.IsDir() {
-			_ = os.RemoveAll(tempDir)
-			return fmt.Errorf("gridstore: db path %s is not a directory", dbPath)
-		}
-		hadExisting = true
-	} else if !os.IsNotExist(err) {
-		_ = os.RemoveAll(tempDir)
-		return fmt.Errorf("gridstore: stat db path: %w", err)
-	}
-
-	if hadExisting {
-		if err := os.Rename(dbPath, backupDir); err != nil {
-			_ = os.RemoveAll(tempDir)
-			return fmt.Errorf("gridstore: backup existing db: %w", err)
-		}
-	}
-	if err := os.Rename(tempDir, dbPath); err != nil {
-		if hadExisting {
-			if rollbackErr := os.Rename(backupDir, dbPath); rollbackErr != nil {
-				log.Printf("Gridstore: rollback restore failed: %v", rollbackErr)
-			}
-		}
-		_ = os.RemoveAll(tempDir)
-		return fmt.Errorf("gridstore: finalize restore dir: %w", err)
-	}
-
-	if hadExisting {
-		backupCheckpoint := filepath.Join(backupDir, gridCheckpointDirName)
-		newCheckpoint := filepath.Join(dbPath, gridCheckpointDirName)
-		if _, err := os.Stat(backupCheckpoint); err == nil {
-			if _, err := os.Stat(newCheckpoint); os.IsNotExist(err) {
-				if err := os.Rename(backupCheckpoint, newCheckpoint); err != nil {
-					log.Printf("Gridstore: checkpoint carry-forward failed: %v", err)
-				}
-			}
-		}
-		if err := os.RemoveAll(backupDir); err != nil {
-			log.Printf("Gridstore: cleanup backup dir failed: %v", err)
-		}
-	}
-	return nil
+	return pebbleresilience.RestoreFromCheckpointDir(
+		ctx,
+		dbPath,
+		checkpointPath,
+		gridCheckpointNameLayoutUTC,
+		gridCheckpointDirName,
+	)
 }
 
-func copyDirCtx(ctx context.Context, src string, dst string) error {
-	return filepath.WalkDir(src, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if ctx != nil {
+func openCustomSCPStoreWithRecovery(ctx context.Context, opts spot.CustomSCPOptions) (*spot.CustomSCPStore, error) {
+	store, err := spot.OpenCustomSCPStore(opts)
+	if err == nil {
+		return store, nil
+	}
+	if !pebble.IsCorruptionError(err) {
+		return nil, err
+	}
+	log.Printf("CustomSCP: corruption detected on open (%v); restoring from checkpoint", err)
+	if restoreErr := restoreCustomSCPStoreFromCheckpoint(ctx, opts.Path); restoreErr != nil {
+		return nil, fmt.Errorf("custom_scp: checkpoint restore failed: %w", restoreErr)
+	}
+	return spot.OpenCustomSCPStore(opts)
+}
+
+func startCustomSCPCheckpointScheduler(ctx context.Context, store *spot.CustomSCPStore, dbPath string) {
+	if store == nil || strings.TrimSpace(dbPath) == "" {
+		return
+	}
+	go func() {
+		for {
+			delay := nextGridCheckpointDelay(time.Now().UTC())
+			timer := time.NewTimer(delay)
 			select {
 			case <-ctx.Done():
-				return ctx.Err()
-			default:
+				timer.Stop()
+				return
+			case <-timer.C:
 			}
-		}
-		rel, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-		if rel == "." {
-			return nil
-		}
-		target := filepath.Join(dst, rel)
-		if entry.IsDir() {
-			return os.MkdirAll(target, 0o755)
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if !info.Mode().IsRegular() {
-			return nil
-		}
-		return copyFileCtx(ctx, path, target, info.Mode())
-	})
-}
-
-func copyFileCtx(ctx context.Context, src string, dst string, mode os.FileMode) (err error) {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		closeErr := out.Close()
-		if err == nil {
-			err = closeErr
-		}
-		if err != nil {
-			_ = os.Remove(dst)
+			root := customSCPCheckpointRoot(dbPath)
+			if err := os.MkdirAll(root, 0o755); err != nil {
+				log.Printf("CustomSCP: checkpoint mkdir failed: %v", err)
+				continue
+			}
+			ts := time.Now().UTC().Format(gridCheckpointNameLayoutUTC)
+			tmp := filepath.Join(root, ".tmp-"+ts)
+			dest := filepath.Join(root, ts)
+			if err := store.Checkpoint(tmp); err != nil {
+				log.Printf("CustomSCP: checkpoint failed: %v", err)
+				_ = os.RemoveAll(tmp)
+				continue
+			}
+			if err := os.Rename(tmp, dest); err != nil {
+				log.Printf("CustomSCP: checkpoint rename failed: %v", err)
+				_ = os.RemoveAll(tmp)
+				continue
+			}
+			if removed, err := cleanupCustomSCPCheckpoints(root, time.Now().UTC()); err != nil {
+				log.Printf("CustomSCP: checkpoint cleanup failed: %v", err)
+			} else if removed > 0 {
+				log.Printf("CustomSCP: checkpoint cleanup removed %d old checkpoint(s)", removed)
+			}
 		}
 	}()
-	buf := make([]byte, 128*1024)
-	for {
-		if ctx != nil {
+}
+
+func startCustomSCPIntegrityScheduler(ctx context.Context, store *spot.CustomSCPStore) {
+	if store == nil {
+		return
+	}
+	go func() {
+		for {
+			delay := nextDailyUTC(gridIntegrityScanUTC, time.Now().UTC(), 5, 0)
+			timer := time.NewTimer(delay)
 			select {
 			case <-ctx.Done():
-				return ctx.Err()
-			default:
+				timer.Stop()
+				return
+			case <-timer.C:
 			}
-		}
-		n, readErr := in.Read(buf)
-		if n > 0 {
-			if _, err = out.Write(buf[:n]); err != nil {
-				return err
+			scanCtx, cancel := context.WithTimeout(ctx, gridIntegrityScanTimeout)
+			records, err := store.Verify(scanCtx, gridIntegrityScanTimeout)
+			cancel()
+			if err != nil {
+				log.Printf("CustomSCP: integrity scan failed: %v", err)
+				continue
 			}
+			log.Printf("CustomSCP: integrity scan ok (records=%d)", records)
 		}
-		if readErr != nil {
-			if errors.Is(readErr, io.EOF) {
-				break
-			}
-			return readErr
-		}
+	}()
+}
+
+func customSCPCheckpointRoot(dbPath string) string {
+	return pebbleresilience.CheckpointRoot(dbPath, gridCheckpointDirName)
+}
+
+func listCustomSCPCheckpoints(root string) ([]pebbleresilience.CheckpointEntry, error) {
+	return pebbleresilience.ListCheckpoints(root, gridCheckpointNameLayoutUTC)
+}
+
+func cleanupCustomSCPCheckpoints(root string, now time.Time) (int, error) {
+	return pebbleresilience.CleanupCheckpoints(root, gridCheckpointNameLayoutUTC, gridCheckpointRetention, now)
+}
+
+func restoreCustomSCPStoreFromCheckpoint(ctx context.Context, dbPath string) error {
+	root := customSCPCheckpointRoot(dbPath)
+	checkpoints, err := listCustomSCPCheckpoints(root)
+	if err != nil {
+		return fmt.Errorf("custom_scp: list checkpoints: %w", err)
 	}
-	if err = out.Sync(); err != nil {
-		return err
+	if len(checkpoints) == 0 {
+		return errors.New("custom_scp: no checkpoints available")
 	}
-	return nil
+	for _, checkpoint := range checkpoints {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if _, err := spot.VerifyCustomSCPCheckpoint(ctx, checkpoint.Path, gridCheckpointVerifyTimeout); err != nil {
+			log.Printf("CustomSCP: checkpoint verify failed (%s): %v", checkpoint.Path, err)
+			continue
+		}
+		if err := pebbleresilience.RestoreFromCheckpointDir(ctx, dbPath, checkpoint.Path, gridCheckpointNameLayoutUTC, gridCheckpointDirName); err != nil {
+			log.Printf("CustomSCP: checkpoint restore failed (%s): %v", checkpoint.Path, err)
+			continue
+		}
+		return nil
+	}
+	return errors.New("custom_scp: no valid checkpoints")
 }
 
 // Purpose: Load FCC ULS database stats for dashboard display.
@@ -5874,7 +5880,7 @@ func buildOverviewLines(
 	secondarySlow *dedup.SecondaryDeduper,
 	metaCache *callMetaCache,
 	knownPtr *atomic.Pointer[spot.KnownCallsigns],
-	recentBandStore *spot.RecentBandStore,
+	recentBandStore spot.RecentSupportStore,
 	ctyState *ctyRefreshState,
 	knownCallsPath string,
 	fccSnap *fccSnapshot,
@@ -6232,7 +6238,7 @@ func formatPathLines(predictor *pathreliability.Predictor, now time.Time) []stri
 	return lines
 }
 
-func formatRecentOnBandLines(store *spot.RecentBandStore, now time.Time, totalLabel string) []string {
+func formatRecentOnBandLines(store spot.RecentSupportStore, now time.Time, totalLabel string) []string {
 	lines := []string{fmt.Sprintf("[yellow]Recent on band[-]: %s", totalLabel)}
 	if store == nil {
 		return lines

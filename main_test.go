@@ -565,7 +565,7 @@ func TestApplyKnownCallFloorPromotesKnownDX(t *testing.T) {
 	s := spot.NewSpot("K1KI", "W2TT", 1831.3, "CW")
 	s.Confidence = "?"
 
-	if !applyKnownCallFloor(s, &knownPtr, nil, config.CallCorrectionConfig{}) {
+	if !applyKnownCallFloor(s, &knownPtr, nil, nil, config.CallCorrectionConfig{}) {
 		t.Fatalf("expected known-call floor to mark confidence")
 	}
 	if s.Confidence != "S" {
@@ -593,7 +593,7 @@ func TestApplyKnownCallFloorKeepsNonUnknownConfidence(t *testing.T) {
 	s := spot.NewSpot("K1KI", "W2TT", 1831.3, "CW")
 	s.Confidence = "P"
 
-	if applyKnownCallFloor(s, &knownPtr, nil, config.CallCorrectionConfig{}) {
+	if applyKnownCallFloor(s, &knownPtr, nil, nil, config.CallCorrectionConfig{}) {
 		t.Fatalf("did not expect known-call floor to override P")
 	}
 	if s.Confidence != "P" {
@@ -621,7 +621,7 @@ func TestApplyKnownCallFloorSkipsUnsupportedMode(t *testing.T) {
 	s := spot.NewSpot("K1KI", "W2TT", 14074.0, "FT8")
 	s.Confidence = "?"
 
-	if applyKnownCallFloor(s, &knownPtr, nil, config.CallCorrectionConfig{}) {
+	if applyKnownCallFloor(s, &knownPtr, nil, nil, config.CallCorrectionConfig{}) {
 		t.Fatalf("did not expect known-call floor to apply to FT8")
 	}
 	if s.Confidence != "?" {
@@ -643,7 +643,7 @@ func TestApplyKnownCallFloorPromotesRecentOnBandDX(t *testing.T) {
 	store.Record("K1REC", s.BandNorm, "CW", "N0AAA", now.Add(-10*time.Minute))
 	store.Record("K1REC", s.BandNorm, "CW", "N0BBB", now.Add(-5*time.Minute))
 
-	if !applyKnownCallFloor(s, nil, store, config.CallCorrectionConfig{
+	if !applyKnownCallFloor(s, nil, store, nil, config.CallCorrectionConfig{
 		RecentBandBonusEnabled:            true,
 		RecentBandRecordMinUniqueSpotters: 2,
 	}) {
@@ -668,7 +668,7 @@ func TestApplyKnownCallFloorRecentOnBandHonorsModeAndFlag(t *testing.T) {
 	store.Record("K1REC", s.BandNorm, "RTTY", "N0AAA", now.Add(-10*time.Minute))
 	store.Record("K1REC", s.BandNorm, "RTTY", "N0BBB", now.Add(-5*time.Minute))
 
-	if applyKnownCallFloor(s, nil, store, config.CallCorrectionConfig{
+	if applyKnownCallFloor(s, nil, store, nil, config.CallCorrectionConfig{
 		RecentBandBonusEnabled:            true,
 		RecentBandRecordMinUniqueSpotters: 2,
 	}) {
@@ -680,7 +680,7 @@ func TestApplyKnownCallFloorRecentOnBandHonorsModeAndFlag(t *testing.T) {
 
 	store.Record("K1REC", s.BandNorm, "CW", "N0AAA", now.Add(-10*time.Minute))
 	store.Record("K1REC", s.BandNorm, "CW", "N0BBB", now.Add(-5*time.Minute))
-	if applyKnownCallFloor(s, nil, store, config.CallCorrectionConfig{
+	if applyKnownCallFloor(s, nil, store, nil, config.CallCorrectionConfig{
 		RecentBandBonusEnabled:            false,
 		RecentBandRecordMinUniqueSpotters: 2,
 	}) {
@@ -770,8 +770,8 @@ func TestShouldDelayTelnetByStabilizerUsesSlashFamilyRecentSupport(t *testing.T)
 
 	// Record slash-explicit observations through the normal admission path so
 	// family keys are inserted consistently.
-	recordRecentBandObservation(spot.NewSpot("W1AW/5", "N0AAA", 7010.0, "CW"), store, cfg)
-	recordRecentBandObservation(spot.NewSpot("W1AW/5", "N0BBB", 7010.0, "CW"), store, cfg)
+	recordRecentBandObservation(spot.NewSpot("W1AW/5", "N0AAA", 7010.0, "CW"), store, nil, cfg)
+	recordRecentBandObservation(spot.NewSpot("W1AW/5", "N0BBB", 7010.0, "CW"), store, nil, cfg)
 
 	bare := spot.NewSpot("W1AW", "W2TT", 7010.0, "CW")
 	bare.Confidence = "?"
@@ -942,12 +942,12 @@ func TestApplyKnownCallFloorPromotesViaSlashFamilyRecentSupport(t *testing.T) {
 		RecentBandBonusEnabled:            true,
 		RecentBandRecordMinUniqueSpotters: 2,
 	}
-	recordRecentBandObservation(spot.NewSpot("W1AW/5", "N0AAA", 7010.0, "CW"), store, cfg)
-	recordRecentBandObservation(spot.NewSpot("W1AW/5", "N0BBB", 7010.0, "CW"), store, cfg)
+	recordRecentBandObservation(spot.NewSpot("W1AW/5", "N0AAA", 7010.0, "CW"), store, nil, cfg)
+	recordRecentBandObservation(spot.NewSpot("W1AW/5", "N0BBB", 7010.0, "CW"), store, nil, cfg)
 
 	s := spot.NewSpot("W1AW", "W2TT", 7010.0, "CW")
 	s.Confidence = "?"
-	if !applyKnownCallFloor(s, nil, store, cfg) {
+	if !applyKnownCallFloor(s, nil, store, nil, cfg) {
 		t.Fatalf("expected recent-on-band floor to use slash family support")
 	}
 	if s.Confidence != "S" {
@@ -964,7 +964,7 @@ func TestRecentBandAdmissionDelayedReleaseWaitsForOutcome(t *testing.T) {
 	s := spot.NewSpot("K1RISK", "W2TT", 7010.0, "CW")
 
 	if shouldRecordRecentBandInMainLoop(true, true) {
-		recordRecentBandObservation(s, store, cfg)
+		recordRecentBandObservation(s, store, nil, cfg)
 	}
 	if count := recentBandSupportCountForSpot(store, s, now); count != 0 {
 		t.Fatalf("expected no recent support before delayed release, got %d", count)
@@ -973,7 +973,7 @@ func TestRecentBandAdmissionDelayedReleaseWaitsForOutcome(t *testing.T) {
 	if !shouldRecordRecentBandAfterStabilizerDelay(stabilizerTimeoutRelease, true) {
 		t.Fatalf("expected release timeout action to admit delayed spot")
 	}
-	recordRecentBandObservation(s, store, cfg)
+	recordRecentBandObservation(s, store, nil, cfg)
 	if count := recentBandSupportCountForSpot(store, s, now); count != 1 {
 		t.Fatalf("expected one recent support after delayed release, got %d", count)
 	}
@@ -988,7 +988,7 @@ func TestRecentBandAdmissionDelayedSuppressSkipsRecord(t *testing.T) {
 	s := spot.NewSpot("K1RISK", "W2TT", 7010.0, "CW")
 
 	if shouldRecordRecentBandInMainLoop(true, true) {
-		recordRecentBandObservation(s, store, cfg)
+		recordRecentBandObservation(s, store, nil, cfg)
 	}
 	if count := recentBandSupportCountForSpot(store, s, now); count != 0 {
 		t.Fatalf("expected no recent support before timeout decision, got %d", count)
@@ -1013,7 +1013,7 @@ func TestRecentBandAdmissionOverflowReleaseRecordsInMainPath(t *testing.T) {
 	if !shouldRecordRecentBandInMainLoop(true, false) {
 		t.Fatalf("expected overflow fail-open path to record in main loop")
 	}
-	recordRecentBandObservation(s, store, cfg)
+	recordRecentBandObservation(s, store, nil, cfg)
 	if count := recentBandSupportCountForSpot(store, s, now); count != 1 {
 		t.Fatalf("expected one recent support for overflow release, got %d", count)
 	}
@@ -1030,7 +1030,7 @@ func TestRecentBandAdmissionNonStabilizerRecordsInMainPath(t *testing.T) {
 	if !shouldRecordRecentBandInMainLoop(false, false) {
 		t.Fatalf("expected non-stabilizer path to record in main loop")
 	}
-	recordRecentBandObservation(s, store, cfg)
+	recordRecentBandObservation(s, store, nil, cfg)
 	if count := recentBandSupportCountForSpot(store, s, now); count != 1 {
 		t.Fatalf("expected one recent support on non-stabilizer path, got %d", count)
 	}

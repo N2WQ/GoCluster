@@ -25,7 +25,7 @@ type BuildSettingsInput struct {
 	MinReports      int
 	Window          time.Duration
 	FreqToleranceHz float64
-	RecentBandStore *spot.RecentBandStore
+	RecentBandStore spot.RecentSupportStore
 	KnownCallset    *spot.KnownCallsigns
 }
 

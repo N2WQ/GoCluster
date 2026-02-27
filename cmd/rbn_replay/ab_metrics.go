@@ -306,7 +306,7 @@ func normalizeConfidenceGlyph(value string) string {
 
 // stabilizerDelayProxyEligible reports whether a spot should be considered for
 // replay-side stabilizer delay-proxy accounting.
-func stabilizerDelayProxyEligible(s *spot.Spot, store *spot.RecentBandStore, cfg config.CallCorrectionConfig) bool {
+func stabilizerDelayProxyEligible(s *spot.Spot, store spot.RecentSupportStore, cfg config.CallCorrectionConfig) bool {
 	if s == nil || store == nil || !cfg.StabilizerEnabled || s.IsBeacon {
 		return false
 	}

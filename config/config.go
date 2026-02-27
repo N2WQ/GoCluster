@@ -664,6 +664,8 @@ type CallCorrectionConfig struct {
 	RecentBandBonusEnabled            bool `yaml:"recent_band_bonus_enabled"`
 	RecentBandWindowSeconds           int  `yaml:"recent_band_window_seconds"`
 	RecentBandRecordMinUniqueSpotters int  `yaml:"recent_band_record_min_unique_spotters"`
+	// CustomSCP controls the replacement runtime-learned SCP evidence database.
+	CustomSCP CallCorrectionCustomSCPConfig `yaml:"custom_scp"`
 	// Optional telnet stabilizer: delay spots that have not been heard recently
 	// on the same band+mode. This gate is used only for telnet broadcast and
 	// does not alter archive/peer output behavior.
@@ -703,6 +705,46 @@ type CallCorrectionConfig struct {
 	SpotterReliabilityFileCW   string  `yaml:"spotter_reliability_file_cw"`
 	SpotterReliabilityFileRTTY string  `yaml:"spotter_reliability_file_rtty"`
 	MinSpotterReliability      float64 `yaml:"min_spotter_reliability"`
+}
+
+// CallCorrectionCustomSCPConfig controls runtime-learned SCP membership and
+// long-horizon recency evidence.
+type CallCorrectionCustomSCPConfig struct {
+	Enabled bool `yaml:"enabled"`
+	// Path is the Pebble directory used for custom SCP persistence.
+	Path string `yaml:"path"`
+	// HistoryHorizonDays bounds observation retention.
+	HistoryHorizonDays int `yaml:"history_horizon_days"`
+
+	// >0 enables CW/RTTY SNR admission gates; <=0 disables the gate for that mode.
+	MinSNRDBCW   int `yaml:"min_snr_db_cw"`
+	MinSNRDBRTTY int `yaml:"min_snr_db_rtty"`
+
+	ResolverMinScore          int `yaml:"resolver_min_score"`
+	ResolverMinUniqueSpotters int `yaml:"resolver_min_unique_spotters"`
+	ResolverMinUniqueH3Cells  int `yaml:"resolver_min_unique_h3_cells"`
+
+	StabilizerMinScore          int `yaml:"stabilizer_min_score"`
+	StabilizerMinUniqueSpotters int `yaml:"stabilizer_min_unique_spotters"`
+	StabilizerMinUniqueH3Cells  int `yaml:"stabilizer_min_unique_h3_cells"`
+
+	SFloorMinScore                int `yaml:"s_floor_min_score"`
+	SFloorMinUniqueSpottersExact  int `yaml:"s_floor_min_unique_spotters_exact"`
+	SFloorMinUniqueH3CellsExact   int `yaml:"s_floor_min_unique_h3_cells_exact"`
+	SFloorMinUniqueSpottersFamily int `yaml:"s_floor_min_unique_spotters_family"`
+	SFloorMinUniqueH3CellsFamily  int `yaml:"s_floor_min_unique_h3_cells_family"`
+
+	MaxKeys           int   `yaml:"max_keys"`
+	MaxSpottersPerKey int   `yaml:"max_spotters_per_key"`
+	MaxDBBytes        int64 `yaml:"max_db_bytes"`
+
+	CleanupIntervalSeconds int `yaml:"cleanup_interval_seconds"`
+
+	BlockCacheMB          int `yaml:"block_cache_mb"`
+	BloomFilterBits       int `yaml:"bloom_filter_bits"`
+	MemTableSizeMB        int `yaml:"memtable_size_mb"`
+	L0CompactionThreshold int `yaml:"l0_compaction_threshold"`
+	L0StopWritesThreshold int `yaml:"l0_stop_writes_threshold"`
 }
 
 // CallCorrectionTemporalDecoderConfig controls fixed-lag temporal decoding for
@@ -1320,6 +1362,80 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.CallCorrection.RecentBandRecordMinUniqueSpotters <= 0 {
 		cfg.CallCorrection.RecentBandRecordMinUniqueSpotters = 2
+	}
+	if strings.TrimSpace(cfg.CallCorrection.CustomSCP.Path) == "" {
+		cfg.CallCorrection.CustomSCP.Path = filepath.Join("data", "scp")
+	}
+	if cfg.CallCorrection.CustomSCP.HistoryHorizonDays <= 0 {
+		cfg.CallCorrection.CustomSCP.HistoryHorizonDays = 395
+	}
+	if cfg.CallCorrection.CustomSCP.ResolverMinScore <= 0 {
+		cfg.CallCorrection.CustomSCP.ResolverMinScore = 5
+	}
+	if cfg.CallCorrection.CustomSCP.ResolverMinUniqueSpotters <= 0 {
+		cfg.CallCorrection.CustomSCP.ResolverMinUniqueSpotters = 4
+	}
+	if cfg.CallCorrection.CustomSCP.ResolverMinUniqueH3Cells <= 0 {
+		cfg.CallCorrection.CustomSCP.ResolverMinUniqueH3Cells = 2
+	}
+	if cfg.CallCorrection.CustomSCP.StabilizerMinScore <= 0 {
+		cfg.CallCorrection.CustomSCP.StabilizerMinScore = 5
+	}
+	if cfg.CallCorrection.CustomSCP.StabilizerMinUniqueSpotters <= 0 {
+		cfg.CallCorrection.CustomSCP.StabilizerMinUniqueSpotters = 3
+	}
+	if cfg.CallCorrection.CustomSCP.StabilizerMinUniqueH3Cells <= 0 {
+		cfg.CallCorrection.CustomSCP.StabilizerMinUniqueH3Cells = 2
+	}
+	if cfg.CallCorrection.CustomSCP.SFloorMinScore <= 0 {
+		cfg.CallCorrection.CustomSCP.SFloorMinScore = 3
+	}
+	if cfg.CallCorrection.CustomSCP.SFloorMinUniqueSpottersExact <= 0 {
+		cfg.CallCorrection.CustomSCP.SFloorMinUniqueSpottersExact = 3
+	}
+	if cfg.CallCorrection.CustomSCP.SFloorMinUniqueH3CellsExact <= 0 {
+		cfg.CallCorrection.CustomSCP.SFloorMinUniqueH3CellsExact = 2
+	}
+	if cfg.CallCorrection.CustomSCP.SFloorMinUniqueSpottersFamily <= 0 {
+		cfg.CallCorrection.CustomSCP.SFloorMinUniqueSpottersFamily = 5
+	}
+	if cfg.CallCorrection.CustomSCP.SFloorMinUniqueH3CellsFamily <= 0 {
+		cfg.CallCorrection.CustomSCP.SFloorMinUniqueH3CellsFamily = 3
+	}
+	if cfg.CallCorrection.CustomSCP.MaxKeys <= 0 {
+		cfg.CallCorrection.CustomSCP.MaxKeys = 500000
+	}
+	if cfg.CallCorrection.CustomSCP.MaxSpottersPerKey <= 0 {
+		cfg.CallCorrection.CustomSCP.MaxSpottersPerKey = 64
+	}
+	if cfg.CallCorrection.CustomSCP.MaxDBBytes <= 0 {
+		cfg.CallCorrection.CustomSCP.MaxDBBytes = 8 * 1024 * 1024 * 1024
+	}
+	if cfg.CallCorrection.CustomSCP.CleanupIntervalSeconds <= 0 {
+		cfg.CallCorrection.CustomSCP.CleanupIntervalSeconds = 600
+	}
+	if cfg.CallCorrection.CustomSCP.BlockCacheMB <= 0 {
+		cfg.CallCorrection.CustomSCP.BlockCacheMB = 64
+	}
+	if cfg.CallCorrection.CustomSCP.BloomFilterBits <= 0 {
+		cfg.CallCorrection.CustomSCP.BloomFilterBits = 10
+	}
+	if cfg.CallCorrection.CustomSCP.MemTableSizeMB <= 0 {
+		cfg.CallCorrection.CustomSCP.MemTableSizeMB = 32
+	}
+	if cfg.CallCorrection.CustomSCP.L0CompactionThreshold <= 0 {
+		cfg.CallCorrection.CustomSCP.L0CompactionThreshold = 4
+	}
+	if cfg.CallCorrection.CustomSCP.L0StopWritesThreshold <= cfg.CallCorrection.CustomSCP.L0CompactionThreshold {
+		cfg.CallCorrection.CustomSCP.L0StopWritesThreshold = cfg.CallCorrection.CustomSCP.L0CompactionThreshold + 4
+	}
+	if cfg.CallCorrection.CustomSCP.Enabled {
+		if cfg.CallCorrection.ResolverRecentPlus1MinUniqueWinner < cfg.CallCorrection.CustomSCP.ResolverMinUniqueSpotters {
+			cfg.CallCorrection.ResolverRecentPlus1MinUniqueWinner = cfg.CallCorrection.CustomSCP.ResolverMinUniqueSpotters
+		}
+		if cfg.CallCorrection.RecentBandRecordMinUniqueSpotters < cfg.CallCorrection.CustomSCP.StabilizerMinUniqueSpotters {
+			cfg.CallCorrection.RecentBandRecordMinUniqueSpotters = cfg.CallCorrection.CustomSCP.StabilizerMinUniqueSpotters
+		}
 	}
 	if cfg.CallCorrection.StabilizerDelaySeconds <= 0 {
 		cfg.CallCorrection.StabilizerDelaySeconds = 5

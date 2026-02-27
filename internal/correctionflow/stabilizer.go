@@ -36,7 +36,7 @@ type StabilizerDelayDecision struct {
 
 // ShouldDelayTelnetByStabilizer reports baseline stabilizer hold eligibility
 // without resolver evidence.
-func ShouldDelayTelnetByStabilizer(s *spot.Spot, store *spot.RecentBandStore, cfg config.CallCorrectionConfig, now time.Time) bool {
+func ShouldDelayTelnetByStabilizer(s *spot.Spot, store spot.RecentSupportStore, cfg config.CallCorrectionConfig, now time.Time) bool {
 	decision := EvaluateStabilizerDelay(s, store, cfg, now, spot.ResolverSnapshot{}, false)
 	return decision.ShouldDelay
 }
@@ -44,7 +44,7 @@ func ShouldDelayTelnetByStabilizer(s *spot.Spot, store *spot.RecentBandStore, cf
 // EvaluateStabilizerDelay computes stabilizer delay decision and retry budget.
 func EvaluateStabilizerDelay(
 	s *spot.Spot,
-	store *spot.RecentBandStore,
+	store spot.RecentSupportStore,
 	cfg config.CallCorrectionConfig,
 	now time.Time,
 	resolverSnapshot spot.ResolverSnapshot,
@@ -151,7 +151,7 @@ func StabilizerReleaseReason(decision StabilizerDelayDecision, prior string) str
 }
 
 // HasRecentSupportForCallFamily checks recent support across family identities.
-func HasRecentSupportForCallFamily(store *spot.RecentBandStore, call, band, mode string, minUnique int, now time.Time) bool {
+func HasRecentSupportForCallFamily(store spot.RecentSupportStore, call, band, mode string, minUnique int, now time.Time) bool {
 	if store == nil {
 		return false
 	}
@@ -188,7 +188,7 @@ func stabilizerCallConfidencePercent(s *spot.Spot, snapshot spot.ResolverSnapsho
 	return ResolverCallConfidencePercent(snapshot, call)
 }
 
-func hasRecentSupportForEditNeighbor(store *spot.RecentBandStore, call, band, mode string, minUnique int, now time.Time) bool {
+func hasRecentSupportForEditNeighbor(store spot.RecentSupportStore, call, band, mode string, minUnique int, now time.Time) bool {
 	if store == nil {
 		return false
 	}
@@ -208,7 +208,7 @@ func hasRecentSupportForEditNeighbor(store *spot.RecentBandStore, call, band, mo
 	return false
 }
 
-func maxRecentSupportForCallFamily(store *spot.RecentBandStore, call, band, mode string, now time.Time) int {
+func maxRecentSupportForCallFamily(store spot.RecentSupportStore, call, band, mode string, now time.Time) int {
 	if store == nil {
 		return 0
 	}

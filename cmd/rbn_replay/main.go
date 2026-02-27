@@ -138,13 +138,59 @@ func main() {
 
 	adaptiveMinReports := spot.NewAdaptiveMinReports(cfg.CallCorrection)
 
-	var recentBandStore *spot.RecentBandStore
-	if cfg.CallCorrection.Enabled && (cfg.CallCorrection.RecentBandBonusEnabled || cfg.CallCorrection.StabilizerEnabled) {
-		recentBandStore = spot.NewRecentBandStore(time.Duration(cfg.CallCorrection.RecentBandWindowSeconds) * time.Second)
+	var recentBandStore spot.RecentSupportStore
+	var customSCPStore *spot.CustomSCPStore
+	if cfg.CallCorrection.Enabled && cfg.CallCorrection.CustomSCP.Enabled {
+		replayCustomSCPPath := filepath.Join(outDir, "custom_scp_runtime")
+		if err := os.RemoveAll(replayCustomSCPPath); err != nil {
+			fatalf("remove replay custom SCP path %s: %v", replayCustomSCPPath, err)
+		}
+		coreMinScore := cfg.CallCorrection.CustomSCP.ResolverMinScore
+		if cfg.CallCorrection.CustomSCP.StabilizerMinScore > coreMinScore {
+			coreMinScore = cfg.CallCorrection.CustomSCP.StabilizerMinScore
+		}
+		coreMinH3Cells := cfg.CallCorrection.CustomSCP.ResolverMinUniqueH3Cells
+		if cfg.CallCorrection.CustomSCP.StabilizerMinUniqueH3Cells > coreMinH3Cells {
+			coreMinH3Cells = cfg.CallCorrection.CustomSCP.StabilizerMinUniqueH3Cells
+		}
+		customOpts := spot.CustomSCPOptions{
+			Path:                   replayCustomSCPPath,
+			HorizonDays:            cfg.CallCorrection.CustomSCP.HistoryHorizonDays,
+			MaxKeys:                cfg.CallCorrection.CustomSCP.MaxKeys,
+			MaxSpottersPerKey:      cfg.CallCorrection.CustomSCP.MaxSpottersPerKey,
+			CleanupInterval:        time.Duration(cfg.CallCorrection.CustomSCP.CleanupIntervalSeconds) * time.Second,
+			CacheSizeBytes:         int64(cfg.CallCorrection.CustomSCP.BlockCacheMB) << 20,
+			BloomFilterBitsPerKey:  cfg.CallCorrection.CustomSCP.BloomFilterBits,
+			MemTableSizeBytes:      uint64(cfg.CallCorrection.CustomSCP.MemTableSizeMB) << 20,
+			L0CompactionThreshold:  cfg.CallCorrection.CustomSCP.L0CompactionThreshold,
+			L0StopWritesThreshold:  cfg.CallCorrection.CustomSCP.L0StopWritesThreshold,
+			CoreMinScore:           coreMinScore,
+			CoreMinH3Cells:         coreMinH3Cells,
+			SFloorMinScore:         cfg.CallCorrection.CustomSCP.SFloorMinScore,
+			SFloorExactMinH3Cells:  cfg.CallCorrection.CustomSCP.SFloorMinUniqueH3CellsExact,
+			SFloorFamilyMinH3Cells: cfg.CallCorrection.CustomSCP.SFloorMinUniqueH3CellsFamily,
+			MinSNRDBCW:             cfg.CallCorrection.CustomSCP.MinSNRDBCW,
+			MinSNRDBRTTY:           cfg.CallCorrection.CustomSCP.MinSNRDBRTTY,
+		}
+		opened, err := spot.OpenCustomSCPStore(customOpts)
+		must(err)
+		customSCPStore = opened
+		customSCPStore.StartCleanup()
+		recentBandStore = customSCPStore
+		defer customSCPStore.Close()
+	} else if cfg.CallCorrection.Enabled && (cfg.CallCorrection.RecentBandBonusEnabled || cfg.CallCorrection.StabilizerEnabled) {
+		legacyStore := spot.NewRecentBandStore(time.Duration(cfg.CallCorrection.RecentBandWindowSeconds) * time.Second)
+		legacyStore.StartCleanup()
+		recentBandStore = legacyStore
+		defer legacyStore.StopCleanup()
 	}
 
-	knownCallset, err := loadKnownCallset(cfg.KnownCalls.File)
-	must(err)
+	useKnownCalls := !cfg.CallCorrection.CustomSCP.Enabled
+	var knownCallset *spot.KnownCallsigns
+	if useKnownCalls {
+		knownCallset, err = loadKnownCallset(cfg.KnownCalls.File)
+		must(err)
+	}
 	var temporalDecoder *correctionflow.TemporalDecoder
 	if cfg.CallCorrection.Enabled && cfg.CallCorrection.TemporalDecoder.Enabled {
 		temporalDecoder = correctionflow.NewTemporalDecoder(cfg.CallCorrection)

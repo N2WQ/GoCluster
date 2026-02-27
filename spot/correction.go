@@ -61,7 +61,7 @@ type CorrectionSettings struct {
 
 	KnownCallset                      *KnownCallsigns
 	RecentBandRecordMinUniqueSpotters int
-	RecentBandStore                   *RecentBandStore
+	RecentBandStore                   RecentSupportStore
 
 	ResolverRecentPlus1Enabled              bool
 	ResolverRecentPlus1MinUniqueWinner      int

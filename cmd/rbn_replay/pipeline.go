@@ -54,7 +54,7 @@ func buildResolverEvidenceSnapshot(spotEntry *spot.Spot, cfg config.CallCorrecti
 
 func evaluateStabilizerDelay(
 	s *spot.Spot,
-	store *spot.RecentBandStore,
+	store spot.RecentSupportStore,
 	cfg config.CallCorrectionConfig,
 	now time.Time,
 	snapshot spot.ResolverSnapshot,
@@ -109,7 +109,7 @@ func maybeApplyResolverCorrectionReplay(
 	ctyDB *cty.CTYDatabase,
 	tracker *stats.Tracker,
 	adaptive *spot.AdaptiveMinReports,
-	recentBandStore *spot.RecentBandStore,
+	recentBandStore spot.RecentSupportStore,
 	knownCallset *spot.KnownCallsigns,
 	now time.Time,
 ) replayResolverApplyOutcome {
@@ -138,7 +138,7 @@ func maybeApplyResolverCorrectionReplayWithSelectionOverride(
 	ctyDB *cty.CTYDatabase,
 	tracker *stats.Tracker,
 	adaptive *spot.AdaptiveMinReports,
-	recentBandStore *spot.RecentBandStore,
+	recentBandStore spot.RecentSupportStore,
 	knownCallset *spot.KnownCallsigns,
 	now time.Time,
 	selectionOverride *correctionflow.ResolverPrimarySelection,
@@ -287,7 +287,7 @@ func evaluateResolverPrimaryGateReplay(
 	preCorrectionCall string,
 	selection correctionflow.ResolverPrimarySelection,
 	cfg config.CallCorrectionConfig,
-	recentBandStore *spot.RecentBandStore,
+	recentBandStore spot.RecentSupportStore,
 	knownCallset *spot.KnownCallsigns,
 	adaptive *spot.AdaptiveMinReports,
 	now time.Time,
@@ -391,8 +391,16 @@ func hasLeadingLettersBeforeDigit(call string, threshold int) bool {
 	return count >= threshold
 }
 
-func recordRecentBandObservation(s *spot.Spot, store *spot.RecentBandStore, cfg config.CallCorrectionConfig) {
+func recordRecentBandObservation(s *spot.Spot, store spot.RecentSupportStore, cfg config.CallCorrectionConfig) {
 	if s == nil || store == nil || s.IsBeacon {
+		return
+	}
+	if customStore, ok := store.(*spot.CustomSCPStore); ok && cfg.CustomSCP.Enabled {
+		customStore.RecordSpot(s)
+		return
+	}
+	legacyStore, ok := store.(*spot.RecentBandStore)
+	if !ok || legacyStore == nil {
 		return
 	}
 	if !cfg.RecentBandBonusEnabled && !cfg.StabilizerEnabled {
@@ -421,5 +429,5 @@ func recordRecentBandObservation(s *spot.Spot, store *spot.RecentBandStore, cfg 
 	if reporter == "" {
 		reporter = s.DECall
 	}
-	store.Record(call, band, mode, reporter, s.Time)
+	legacyStore.Record(call, band, mode, reporter, s.Time)
 }
