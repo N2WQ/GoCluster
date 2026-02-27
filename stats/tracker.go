@@ -28,7 +28,6 @@ type Tracker struct {
 	corrDecisionApplied  atomic.Uint64
 	corrDecisionRejected atomic.Uint64
 	corrFallbackApplied  atomic.Uint64
-	corrPriorBonusUsed   atomic.Uint64
 	corrAppliedReasons   sync.Map // string -> *atomic.Uint64
 	corrDecisionReasons  sync.Map // string -> *atomic.Uint64
 	corrDecisionPaths    sync.Map // string -> *atomic.Uint64
@@ -302,7 +301,7 @@ func (t *Tracker) IncrementStabilizerOverflowRelease() {
 // Key aspects: Tracks attempts, rejects by reason, path distribution, and fallback depth.
 // Upstream: call correction decision observer.
 // Downstream: atomic counters and sync.Map counters.
-func (t *Tracker) ObserveCallCorrectionDecision(path, decision, reason string, candidateRank int, priorBonusApplied bool) {
+func (t *Tracker) ObserveCallCorrectionDecision(path, decision, reason string, candidateRank int) {
 	if t == nil {
 		return
 	}
@@ -334,9 +333,6 @@ func (t *Tracker) ObserveCallCorrectionDecision(path, decision, reason string, c
 	}
 	if decision == "applied" && strings.HasPrefix(path, "consensus") && candidateRank > 1 {
 		t.corrFallbackApplied.Add(1)
-	}
-	if priorBonusApplied {
-		t.corrPriorBonusUsed.Add(1)
 	}
 	if decision == "rejected" {
 		reason = strings.ToLower(strings.TrimSpace(reason))
@@ -508,14 +504,6 @@ func (t *Tracker) CorrectionDecisionRejected() uint64 {
 // Downstream: atomic counter.
 func (t *Tracker) CorrectionFallbackApplied() uint64 {
 	return t.corrFallbackApplied.Load()
-}
-
-// Purpose: Return decisions where prior bonus logic was used.
-// Key aspects: Atomic load.
-// Upstream: dashboard/metrics output.
-// Downstream: atomic counter.
-func (t *Tracker) CorrectionPriorBonusUsed() uint64 {
-	return t.corrPriorBonusUsed.Load()
 }
 
 // Purpose: Return a copy of correction rejection reasons.

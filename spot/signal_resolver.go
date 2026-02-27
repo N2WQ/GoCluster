@@ -138,14 +138,6 @@ type SignalResolverMetrics struct {
 	StateProbable  uint64
 	StateUncertain uint64
 	StateSplit     uint64
-
-	DecisionsObserved                uint64
-	DecisionsComparable              uint64
-	DecisionAgreement                uint64
-	DecisionDisagreement             uint64
-	DisagreeSplitCorrected           uint64
-	DisagreeConfidentDifferentWinner uint64
-	DisagreeUncertainCorrected       uint64
 }
 
 // SignalResolverConfig controls bounded resolver behavior.
@@ -210,14 +202,6 @@ type SignalResolver struct {
 	evictedReporters      atomic.Uint64
 	highWaterCandidates   atomic.Uint64
 	highWaterReporters    atomic.Uint64
-
-	decisionsObserved                atomic.Uint64
-	decisionsComparable              atomic.Uint64
-	decisionAgreement                atomic.Uint64
-	decisionDisagreement             atomic.Uint64
-	disagreeSplitCorrected           atomic.Uint64
-	disagreeConfidentDifferentWinner atomic.Uint64
-	disagreeUncertainCorrected       atomic.Uint64
 }
 
 type resolverCandidate struct {
@@ -329,46 +313,6 @@ func (r *SignalResolver) Lookup(key ResolverSignalKey) (ResolverSnapshot, bool) 
 	return ResolverSnapshot{}, false
 }
 
-// ObserveCurrentDecision compares current-path outcome with resolver shadow state.
-func (r *SignalResolver) ObserveCurrentDecision(key ResolverSignalKey, finalCall string, corrected bool) {
-	if r == nil {
-		return
-	}
-	finalCall = NormalizeCallsign(finalCall)
-	if finalCall == "" {
-		return
-	}
-	r.decisionsObserved.Add(1)
-
-	snap, ok := r.Lookup(key)
-	if !ok {
-		return
-	}
-
-	if corrected {
-		switch snap.State {
-		case ResolverStateSplit:
-			r.disagreeSplitCorrected.Add(1)
-		case ResolverStateUncertain:
-			r.disagreeUncertainCorrected.Add(1)
-		case ResolverStateConfident:
-			if snap.Winner != "" && !strings.EqualFold(snap.Winner, finalCall) {
-				r.disagreeConfidentDifferentWinner.Add(1)
-			}
-		}
-	}
-
-	if snap.State != ResolverStateConfident && snap.State != ResolverStateProbable {
-		return
-	}
-	r.decisionsComparable.Add(1)
-	if snap.Winner != "" && strings.EqualFold(snap.Winner, finalCall) {
-		r.decisionAgreement.Add(1)
-		return
-	}
-	r.decisionDisagreement.Add(1)
-}
-
 // MetricsSnapshot returns a point-in-time snapshot of resolver observability.
 func (r *SignalResolver) MetricsSnapshot() SignalResolverMetrics {
 	if r == nil {
@@ -391,14 +335,6 @@ func (r *SignalResolver) MetricsSnapshot() SignalResolverMetrics {
 		EvictedReporters:      r.evictedReporters.Load(),
 		HighWaterCandidates:   r.highWaterCandidates.Load(),
 		HighWaterReporters:    r.highWaterReporters.Load(),
-
-		DecisionsObserved:                r.decisionsObserved.Load(),
-		DecisionsComparable:              r.decisionsComparable.Load(),
-		DecisionAgreement:                r.decisionAgreement.Load(),
-		DecisionDisagreement:             r.decisionDisagreement.Load(),
-		DisagreeSplitCorrected:           r.disagreeSplitCorrected.Load(),
-		DisagreeConfidentDifferentWinner: r.disagreeConfidentDifferentWinner.Load(),
-		DisagreeUncertainCorrected:       r.disagreeUncertainCorrected.Load(),
 	}
 	r.snapshots.Range(func(_, value any) bool {
 		snap, ok := value.(ResolverSnapshot)

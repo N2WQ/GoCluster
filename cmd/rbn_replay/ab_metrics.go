@@ -231,8 +231,8 @@ func normalizeConfidenceGlyph(value string) string {
 	}
 }
 
-// formatConfidenceLegacy mirrors the pre-change confidence bucketing:
-// multi-reporter confidence under 25% was '?' instead of 'P'.
+// stabilizerDelayProxyEligible reports whether a spot should be considered for
+// replay-side stabilizer delay-proxy accounting.
 func stabilizerDelayProxyEligible(s *spot.Spot, store *spot.RecentBandStore, cfg config.CallCorrectionConfig) bool {
 	if s == nil || store == nil || !cfg.StabilizerEnabled || s.IsBeacon {
 		return false

@@ -26,10 +26,6 @@ const (
 	TelnetEchoLocal = "local"
 	// TelnetEchoOff disables server echo and requests client echo off (best-effort).
 	TelnetEchoOff = "off"
-	// CallCorrectionResolverModeShadow keeps resolver in observational mode.
-	CallCorrectionResolverModeShadow = "shadow"
-	// CallCorrectionResolverModePrimary makes resolver the apply authority.
-	CallCorrectionResolverModePrimary = "primary"
 )
 
 // Purpose: Normalize and validate the telnet transport setting.
@@ -599,15 +595,11 @@ type CallCacheConfig struct {
 	TTLSeconds int `yaml:"ttl_seconds"` // >0 expires cached entries after this many seconds
 }
 
-// CallCorrectionConfig controls consensus-based DX call corrections.
+// CallCorrectionConfig controls resolver-primary DX call correction behavior.
 type CallCorrectionConfig struct {
 	Enabled bool `yaml:"enabled"`
-	// ResolverMode selects correction authority:
-	//   - "shadow": legacy correction applies, resolver is observational.
-	//   - "primary": resolver applies, legacy correction runs shadow-only for disagreement telemetry.
-	ResolverMode string `yaml:"resolver_mode"`
-	// BandStateOverrides allows per-band, per-activity-state tuning of frequency tolerance
-	// and quality binning. Values fall back to the global defaults when omitted.
+	// BandStateOverrides allows per-band, per-activity-state tuning of frequency tolerance.
+	// Values fall back to the global defaults when omitted.
 	BandStateOverrides []BandStateOverride `yaml:"band_state_overrides"`
 	// FamilyPolicy groups slash/truncation family precedence behavior and
 	// telnet output suppression bounds.
@@ -615,12 +607,6 @@ type CallCorrectionConfig struct {
 	// MinConsensusReports defines how many other unique spotters
 	// must agree on an alternate callsign before we consider correcting it.
 	MinConsensusReports int `yaml:"min_consensus_reports"`
-	// SlashPrecedenceMinReports is retained for backward compatibility.
-	// Prefer call_correction.family_policy.slash_precedence_min_reports.
-	SlashPrecedenceMinReports int `yaml:"slash_precedence_min_reports"`
-	// CandidateEvalTopK controls how many ranked consensus candidates are
-	// evaluated (after anchor) before giving up.
-	CandidateEvalTopK int `yaml:"candidate_eval_top_k"`
 	// MinAdvantage defines how many more corroborators the alternate call
 	// must have compared to the original before a correction can happen.
 	MinAdvantage int `yaml:"min_advantage"`
@@ -636,43 +622,13 @@ type CallCorrectionConfig struct {
 	// original (Levenshtein distance). Prevents wildly different corrections.
 	MaxEditDistance int `yaml:"max_edit_distance"`
 	// FrequencyToleranceHz defines how close two frequencies must be to be considered
-	// the same signal when running consensus.
+	// the same signal for resolver evidence grouping.
 	FrequencyToleranceHz float64 `yaml:"frequency_tolerance_hz"`
-	// VoiceFrequencyToleranceHz defines the frequency window for USB/LSB consensus
+	// VoiceFrequencyToleranceHz defines the frequency window for USB/LSB resolver evidence
 	// (voice signals are wider than CW/RTTY).
 	VoiceFrequencyToleranceHz float64 `yaml:"voice_frequency_tolerance_hz"`
-	// DebugLog, when true, records call-correction decisions to an asynchronous SQLite log.
-	DebugLog bool `yaml:"debug_log"`
-	// DebugLogFile optionally overrides the decision log location/prefix; when blank a daily
-	// callcorr_YYYY-MM-DD.db file is written under data/analysis.
-	DebugLogFile string `yaml:"debug_log_file"`
-	// Quality-based anchors: optional per-frequency-bin confidence store.
-	QualityBinHz                      int   `yaml:"quality_bin_hz"`
-	QualityGoodThreshold              int   `yaml:"quality_good_threshold"`
-	QualityNewCallIncrement           int   `yaml:"quality_newcall_increment"`
-	QualityBustedDecrement            int   `yaml:"quality_busted_decrement"`
-	CallQualityTTLSeconds             int   `yaml:"call_quality_ttl_seconds"`
-	CallQualityMaxEntries             int   `yaml:"call_quality_max_entries"`
-	CallQualityCleanupIntervalSeconds int   `yaml:"call_quality_cleanup_interval_seconds"`
-	CallQualityPinPriors              *bool `yaml:"call_quality_pin_priors"`
-	// Strategy selects how consensus is computed:
-	//   - "majority": pick the most-reported call on-frequency (unique spotters); distance is only a safety cap.
-	//     Other values are accepted for compatibility but currently coerced to majority.
-	Strategy string `yaml:"strategy"`
-	// MinSNRCW/RTTY allow discarding marginal decodes from the corroborator set.
-	MinSNRCW   int `yaml:"min_snr_cw"`
-	MinSNRRTTY int `yaml:"min_snr_rtty"`
-	// MinSNRVoice allows discarding low-SNR USB/LSB reports (set 0 to ignore SNR).
-	MinSNRVoice int `yaml:"min_snr_voice"`
-	// DistanceModel controls how string distance is measured. Supported values:
-	//   - Deprecated: "distance_model" applies to both CW/RTTY when per-mode toggles unset
-	//   - "distance_model_cw"/"distance_model_rtty" override per mode:
-	//       * "plain" (default) uses rune-based Levenshtein
-	//       * "morse" (CW only) switches to Morse-aware distance
-	//       * "baudot" (RTTY only) switches to Baudot/ITA2-aware distance
-	DistanceModel     string `yaml:"distance_model"`
-	DistanceModelCW   string `yaml:"distance_model_cw"`
-	DistanceModelRTTY string `yaml:"distance_model_rtty"`
+	DistanceModelCW           string  `yaml:"distance_model_cw"`
+	DistanceModelRTTY         string  `yaml:"distance_model_rtty"`
 	// InvalidAction controls what to do when consensus suggests a callsign that
 	// fails CTY validation. Supported values:
 	//   - "broadcast": keep the original spot (default)
@@ -684,23 +640,10 @@ type CallCorrectionConfig struct {
 	Distance3ExtraReports    int `yaml:"distance3_extra_reports"`    // additional unique reporters required
 	Distance3ExtraAdvantage  int `yaml:"distance3_extra_advantage"`  // additional advantage over subject required
 	Distance3ExtraConfidence int `yaml:"distance3_extra_confidence"` // additional confidence percentage points required
-	// Cooldown gate to avoid flipping away from a call that already has recent, diverse
-	// support. Applies only to corrections away from the subject; corrections toward it
-	// still proceed. Bypass allows a decisively stronger alternate to override the cooldown.
-	CooldownEnabled          bool `yaml:"cooldown_enabled"`
-	CooldownMinReporters     int  `yaml:"cooldown_min_reporters"`
-	CooldownDurationSeconds  int  `yaml:"cooldown_duration_seconds"`
-	CooldownTTLSeconds       int  `yaml:"cooldown_ttl_seconds"`
-	CooldownBinHz            int  `yaml:"cooldown_bin_hz"`
-	CooldownMaxReporters     int  `yaml:"cooldown_max_reporters"`
-	CooldownBypassAdvantage  int  `yaml:"cooldown_bypass_advantage"`
-	CooldownBypassConfidence int  `yaml:"cooldown_bypass_confidence"`
 	// Frequency guard: skip corrections when a strong runner-up exists at a different frequency.
 	FreqGuardMinSeparationKHz float64 `yaml:"freq_guard_min_separation_khz"`
 	// Ratio (0-1): runner-up supporters must be at least this fraction of winner supporters to trigger the guard.
 	FreqGuardRunnerUpRatio float64 `yaml:"freq_guard_runnerup_ratio"`
-	// VoiceCandidateWindowKHz controls the correction-index search radius for USB/LSB.
-	VoiceCandidateWindowKHz float64 `yaml:"voice_candidate_window_khz"`
 	// MorseWeights tunes the dot/dash edit weights for CW distance calculations.
 	MorseWeights MorseWeightConfig `yaml:"morse_weights"`
 	// BaudotWeights tunes the ITA2 edit weights for RTTY distance calculations.
@@ -709,21 +652,17 @@ type CallCorrectionConfig struct {
 	AdaptiveRefresh AdaptiveRefreshConfig `yaml:"adaptive_refresh"`
 	// AdaptiveMinReports tunes min_reports dynamically by band group based on recent activity.
 	AdaptiveMinReports AdaptiveMinReportsConfig `yaml:"adaptive_min_reports"`
-	// AdaptiveRefreshByBand drives trust/quality refresh cadence from band activity.
+	// AdaptiveRefreshByBand drives trust refresh cadence from band activity.
 	AdaptiveRefreshByBand AdaptiveRefreshByBandConfig `yaml:"adaptive_refresh_by_band"`
-	// Optional prior quality map loaded at startup to seed anchors before runtime learning.
-	QualityPriorsFile string `yaml:"quality_priors_file"`
 	// Optional confusion model (RBN analytics confusion_model.json) used only to
 	// rank tied top-support correction candidates. Hard gates remain unchanged.
 	ConfusionModelEnabled bool    `yaml:"confusion_model_enabled"`
 	ConfusionModelFile    string  `yaml:"confusion_model_file"`
 	ConfusionModelWeight  float64 `yaml:"confusion_model_weight"`
-	// Optional recent-on-band bonus: if a candidate call has recent independent
-	// support on the same band+mode, it can receive a bounded boost that applies
-	// only to the min_reports gate.
+	// Optional recent-on-band corroboration store used by resolver gating,
+	// confidence floors, and stabilizer rails.
 	RecentBandBonusEnabled            bool `yaml:"recent_band_bonus_enabled"`
 	RecentBandWindowSeconds           int  `yaml:"recent_band_window_seconds"`
-	RecentBandBonusMax                int  `yaml:"recent_band_bonus_max"`
 	RecentBandRecordMinUniqueSpotters int  `yaml:"recent_band_record_min_unique_spotters"`
 	// Optional telnet stabilizer: delay spots that have not been heard recently
 	// on the same band+mode. This gate is used only for telnet broadcast and
@@ -756,12 +695,6 @@ type CallCorrectionConfig struct {
 	ResolverRecentPlus1RequireSubjectWeaker bool `yaml:"resolver_recent_plus1_require_subject_weaker"`
 	ResolverRecentPlus1MaxDistance          int  `yaml:"resolver_recent_plus1_max_distance"`
 	ResolverRecentPlus1AllowTruncation      bool `yaml:"resolver_recent_plus1_allow_truncation_family"`
-	// Optional prior bonus for min_reports shortfalls, bounded by prior_bonus_max.
-	PriorBonusEnabled     bool   `yaml:"prior_bonus_enabled"`
-	PriorBonusMax         int    `yaml:"prior_bonus_max"`
-	PriorBonusDistanceMax int    `yaml:"prior_bonus_distance_max"`
-	PriorBonusRequiresSCP bool   `yaml:"prior_bonus_requires_scp"`
-	PriorBonusApplyTo     string `yaml:"prior_bonus_apply_to"`
 	// Optional spotter reliability weights (0-1). Reporters below MinSpotterReliability are ignored.
 	SpotterReliabilityFile     string  `yaml:"spotter_reliability_file"`
 	SpotterReliabilityFileCW   string  `yaml:"spotter_reliability_file_cw"`
@@ -871,7 +804,6 @@ type BandStateOverride struct {
 
 // BandStateParams holds per-state overrides for a band group.
 type BandStateParams struct {
-	QualityBinHz         int     `yaml:"quality_bin_hz"`
 	FrequencyToleranceHz float64 `yaml:"frequency_tolerance_hz"`
 }
 
@@ -1078,8 +1010,6 @@ func Load(path string) (*Config, error) {
 	hasAdaptiveMinReportsEnabled := yamlKeyPresent(raw, "call_correction", "adaptive_min_reports", "enabled")
 	hasArchiveCleanupYield := yamlKeyPresent(raw, "archive", "cleanup_batch_yield_ms")
 	hasPSKRMQTTTimeout := yamlKeyPresent(raw, "pskreporter", "mqtt_qos12_enqueue_timeout_ms")
-	hasLegacySlashPrecedenceMinReports := yamlKeyPresent(raw, "call_correction", "slash_precedence_min_reports")
-	hasFamilySlashPrecedenceMinReports := yamlKeyPresent(raw, "call_correction", "family_policy", "slash_precedence_min_reports")
 	hasFamilyTruncationEnabled := yamlKeyPresent(raw, "call_correction", "family_policy", "truncation", "enabled")
 	hasFamilyTruncationPrefix := yamlKeyPresent(raw, "call_correction", "family_policy", "truncation", "allow_prefix_match")
 	hasFamilyTruncationSuffix := yamlKeyPresent(raw, "call_correction", "family_policy", "truncation", "allow_suffix_match")
@@ -1278,28 +1208,13 @@ func Load(path string) (*Config, error) {
 	if cfg.Stats.DisplayIntervalSeconds <= 0 {
 		cfg.Stats.DisplayIntervalSeconds = 30
 	}
-	// Call-correction defaults keep consensus strict unless the operator opts in
+	// Call-correction defaults keep resolver rails strict unless the operator opts in
 	// to looser thresholds.
 	if cfg.CallCorrection.MinConsensusReports <= 0 {
 		cfg.CallCorrection.MinConsensusReports = 4
 	}
-	switch {
-	case hasFamilySlashPrecedenceMinReports:
-		if cfg.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports <= 0 {
-			cfg.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports = 2
-		}
-	case hasLegacySlashPrecedenceMinReports:
-		cfg.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports = cfg.CallCorrection.SlashPrecedenceMinReports
-		if cfg.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports <= 0 {
-			cfg.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports = 2
-		}
-	default:
+	if cfg.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports <= 0 {
 		cfg.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports = 2
-	}
-	// Keep legacy field synchronized for compatibility with existing callers.
-	cfg.CallCorrection.SlashPrecedenceMinReports = cfg.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports
-	if cfg.CallCorrection.CandidateEvalTopK <= 0 {
-		cfg.CallCorrection.CandidateEvalTopK = 1
 	}
 	if cfg.CallCorrection.MinAdvantage <= 0 {
 		cfg.CallCorrection.MinAdvantage = 1
@@ -1331,82 +1246,14 @@ func Load(path string) (*Config, error) {
 	if cfg.CallCorrection.FreqGuardRunnerUpRatio <= 0 {
 		cfg.CallCorrection.FreqGuardRunnerUpRatio = 0.5
 	}
-	if cfg.CallCorrection.VoiceCandidateWindowKHz <= 0 {
-		cfg.CallCorrection.VoiceCandidateWindowKHz = 2
-	}
-	if cfg.CallCorrection.QualityBinHz <= 0 {
-		cfg.CallCorrection.QualityBinHz = 1000
-	}
-	if cfg.CallCorrection.QualityGoodThreshold <= 0 {
-		cfg.CallCorrection.QualityGoodThreshold = 2
-	}
-	if cfg.CallCorrection.QualityNewCallIncrement == 0 {
-		cfg.CallCorrection.QualityNewCallIncrement = 1
-	}
-	if cfg.CallCorrection.QualityBustedDecrement == 0 {
-		cfg.CallCorrection.QualityBustedDecrement = 1
-	}
-	if cfg.CallCorrection.CallQualityTTLSeconds <= 0 {
-		cfg.CallCorrection.CallQualityTTLSeconds = 86400
-	}
-	if cfg.CallCorrection.CallQualityMaxEntries <= 0 {
-		cfg.CallCorrection.CallQualityMaxEntries = 200000
-	}
-	if cfg.CallCorrection.CallQualityCleanupIntervalSeconds <= 0 {
-		cfg.CallCorrection.CallQualityCleanupIntervalSeconds = 600
-	}
-	if cfg.CallCorrection.CallQualityPinPriors == nil {
-		v := true
-		cfg.CallCorrection.CallQualityPinPriors = &v
-	}
-	if strings.TrimSpace(cfg.CallCorrection.Strategy) == "" {
-		cfg.CallCorrection.Strategy = "majority"
-	} else {
-		strategy := strings.ToLower(strings.TrimSpace(cfg.CallCorrection.Strategy))
-		switch strategy {
-		case "center", "classic", "majority":
-			cfg.CallCorrection.Strategy = strategy
-		default:
-			cfg.CallCorrection.Strategy = "majority"
-		}
-	}
-	cfg.CallCorrection.ResolverMode = strings.ToLower(strings.TrimSpace(cfg.CallCorrection.ResolverMode))
-	switch cfg.CallCorrection.ResolverMode {
-	case "", CallCorrectionResolverModeShadow:
-		cfg.CallCorrection.ResolverMode = CallCorrectionResolverModeShadow
-	case CallCorrectionResolverModePrimary:
-	default:
-		return nil, fmt.Errorf("invalid call_correction.resolver_mode %q (expected shadow or primary)", cfg.CallCorrection.ResolverMode)
-	}
 	if cfg.CallCorrection.InvalidAction == "" {
 		cfg.CallCorrection.InvalidAction = "broadcast"
-	}
-	// Normalize the distance model, inheriting the legacy default when mode-
-	// specific overrides are absent.
-	defaultDistance := strings.TrimSpace(cfg.CallCorrection.DistanceModel)
-	if defaultDistance == "" {
-		defaultDistance = "plain"
-	}
-	if strings.TrimSpace(cfg.CallCorrection.DistanceModelCW) == "" {
-		cfg.CallCorrection.DistanceModelCW = defaultDistance
-	}
-	if strings.TrimSpace(cfg.CallCorrection.DistanceModelRTTY) == "" {
-		cfg.CallCorrection.DistanceModelRTTY = defaultDistance
 	}
 	if strings.TrimSpace(cfg.CallCorrection.DistanceModelCW) == "" {
 		cfg.CallCorrection.DistanceModelCW = "plain"
 	}
 	if strings.TrimSpace(cfg.CallCorrection.DistanceModelRTTY) == "" {
 		cfg.CallCorrection.DistanceModelRTTY = "plain"
-	}
-	if cfg.CallCorrection.MinSNRCW < 0 {
-		cfg.CallCorrection.MinSNRCW = 0
-	}
-	if cfg.CallCorrection.MinSNRRTTY < 0 {
-		cfg.CallCorrection.MinSNRRTTY = 0
-	}
-	if cfg.CallCorrection.MinSNRVoice < 0 {
-		cfg.CallCorrection.MinSNRVoice = 0
 	}
 	if cfg.CallCorrection.Distance3ExtraReports < 0 {
 		cfg.CallCorrection.Distance3ExtraReports = 0
@@ -1425,9 +1272,6 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.CallCorrection.RecentBandWindowSeconds <= 0 {
 		cfg.CallCorrection.RecentBandWindowSeconds = 12 * 60 * 60
-	}
-	if cfg.CallCorrection.RecentBandBonusMax < 0 {
-		cfg.CallCorrection.RecentBandBonusMax = 0
 	}
 	if cfg.CallCorrection.RecentBandRecordMinUniqueSpotters <= 0 {
 		cfg.CallCorrection.RecentBandRecordMinUniqueSpotters = 2
@@ -1575,19 +1419,6 @@ func Load(path string) (*Config, error) {
 	default:
 		return nil, fmt.Errorf("invalid call_correction.stabilizer_timeout_action %q (expected release or suppress)", cfg.CallCorrection.StabilizerTimeoutAction)
 	}
-	if cfg.CallCorrection.PriorBonusMax < 0 {
-		cfg.CallCorrection.PriorBonusMax = 0
-	}
-	if cfg.CallCorrection.PriorBonusDistanceMax <= 0 {
-		cfg.CallCorrection.PriorBonusDistanceMax = 1
-	}
-	cfg.CallCorrection.PriorBonusApplyTo = strings.ToLower(strings.TrimSpace(cfg.CallCorrection.PriorBonusApplyTo))
-	switch cfg.CallCorrection.PriorBonusApplyTo {
-	case "", "min_reports":
-		cfg.CallCorrection.PriorBonusApplyTo = "min_reports"
-	default:
-		cfg.CallCorrection.PriorBonusApplyTo = "min_reports"
-	}
 	if cfg.CallCorrection.MorseWeights.Insert <= 0 {
 		cfg.CallCorrection.MorseWeights.Insert = 1
 	}
@@ -1669,46 +1500,8 @@ func Load(path string) (*Config, error) {
 	if cfg.CallCorrection.BaudotWeights.Scale <= 0 {
 		cfg.CallCorrection.BaudotWeights.Scale = 2
 	}
-	if cfg.CallCorrection.CooldownBinHz <= 0 {
-		cfg.CallCorrection.CooldownBinHz = cfg.CallCorrection.QualityBinHz
-		if cfg.CallCorrection.CooldownBinHz <= 0 {
-			cfg.CallCorrection.CooldownBinHz = 1000
-		}
-	}
-	if cfg.CallCorrection.CooldownMinReporters <= 0 {
-		cfg.CallCorrection.CooldownMinReporters = 3
-	}
-	if cfg.CallCorrection.CooldownDurationSeconds <= 0 {
-		cfg.CallCorrection.CooldownDurationSeconds = 180
-	}
-	if cfg.CallCorrection.CooldownTTLSeconds <= 0 {
-		ttl := cfg.CallCorrection.RecencySeconds * 2
-		if ttl <= 0 {
-			ttl = 120
-		}
-		cfg.CallCorrection.CooldownTTLSeconds = ttl
-	}
-	if cfg.CallCorrection.CooldownMaxReporters <= 0 {
-		cfg.CallCorrection.CooldownMaxReporters = 16
-	}
-	if cfg.CallCorrection.CooldownBypassAdvantage < 0 {
-		cfg.CallCorrection.CooldownBypassAdvantage = 0
-	}
-	if cfg.CallCorrection.CooldownBypassConfidence < 0 {
-		cfg.CallCorrection.CooldownBypassConfidence = 0
-	}
-	// Provide protective defaults when cooldown is enabled but bypass knobs are unset.
-	if cfg.CallCorrection.CooldownEnabled {
-		if cfg.CallCorrection.CooldownBypassAdvantage == 0 {
-			cfg.CallCorrection.CooldownBypassAdvantage = 2
-		}
-		if cfg.CallCorrection.CooldownBypassConfidence == 0 {
-			cfg.CallCorrection.CooldownBypassConfidence = 10
-		}
-	}
 	cfg.CallCorrection.BandStateOverrides = normalizeBandStateOverrides(
 		cfg.CallCorrection.BandStateOverrides,
-		cfg.CallCorrection.QualityBinHz,
 		cfg.CallCorrection.FrequencyToleranceHz,
 	)
 	if cfg.CallCache.Size <= 0 {
@@ -2462,9 +2255,8 @@ func (c *Config) Print() {
 	if c.CallCorrection.Enabled {
 		status = "enabled"
 	}
-	fmt.Printf("Call correction: %s mode=%s (min_reports=%d slash_min_reports=%d advantage>%d confidence>=%d%% recency=%ds max_edit=%d tol=%.1fHz distance_cw=%s distance_rtty=%s invalid_action=%s d3_extra:+%d/+%d/+%d%%)\n",
+	fmt.Printf("Call correction: %s (min_reports=%d slash_min_reports=%d advantage>%d confidence>=%d%% recency=%ds max_edit=%d tol=%.1fHz distance_cw=%s distance_rtty=%s invalid_action=%s d3_extra:+%d/+%d/+%d%%)\n",
 		status,
-		c.CallCorrection.ResolverMode,
 		c.CallCorrection.MinConsensusReports,
 		c.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports,
 		c.CallCorrection.MinAdvantage,
@@ -2501,19 +2293,8 @@ func (c *Config) Print() {
 		c.CallCorrection.FamilyPolicy.TelnetSuppression.WindowSeconds,
 		c.CallCorrection.FamilyPolicy.TelnetSuppression.MaxEntries,
 		c.CallCorrection.FamilyPolicy.TelnetSuppression.FrequencyToleranceFallbackHz)
-	fmt.Printf("Call correction voice: tol=%.0fHz search=%.1fkHz min_snr=%d\n",
-		c.CallCorrection.VoiceFrequencyToleranceHz,
-		c.CallCorrection.VoiceCandidateWindowKHz,
-		c.CallCorrection.MinSNRVoice)
-	pinPriors := true
-	if c.CallCorrection.CallQualityPinPriors != nil {
-		pinPriors = *c.CallCorrection.CallQualityPinPriors
-	}
-	fmt.Printf("Call correction quality: ttl=%ds max_entries=%d cleanup=%ds pin_priors=%t\n",
-		c.CallCorrection.CallQualityTTLSeconds,
-		c.CallCorrection.CallQualityMaxEntries,
-		c.CallCorrection.CallQualityCleanupIntervalSeconds,
-		pinPriors)
+	fmt.Printf("Call correction voice: tol=%.0fHz\n",
+		c.CallCorrection.VoiceFrequencyToleranceHz)
 	stabilizerStatus := "disabled"
 	if c.CallCorrection.StabilizerEnabled {
 		stabilizerStatus = "enabled"
@@ -2596,25 +2377,16 @@ func (c *Config) Print() {
 }
 
 // Purpose: Normalize per-band-state overrides for correction settings.
-// Key aspects: Applies default bins/tolerances when overrides are missing.
+// Key aspects: Applies default frequency tolerances when overrides are missing.
 // Upstream: Load config normalization.
 // Downstream: None.
-func normalizeBandStateOverrides(overrides []BandStateOverride, defaultBin int, defaultTol float64) []BandStateOverride {
+func normalizeBandStateOverrides(overrides []BandStateOverride, defaultTol float64) []BandStateOverride {
 	if len(overrides) == 0 {
 		return overrides
 	}
 	out := make([]BandStateOverride, 0, len(overrides))
 	for _, o := range overrides {
 		normalized := o
-		if normalized.Quiet.QualityBinHz <= 0 {
-			normalized.Quiet.QualityBinHz = defaultBin
-		}
-		if normalized.Normal.QualityBinHz <= 0 {
-			normalized.Normal.QualityBinHz = defaultBin
-		}
-		if normalized.Busy.QualityBinHz <= 0 {
-			normalized.Busy.QualityBinHz = defaultBin
-		}
 		if normalized.Quiet.FrequencyToleranceHz <= 0 {
 			normalized.Quiet.FrequencyToleranceHz = defaultTol
 		}

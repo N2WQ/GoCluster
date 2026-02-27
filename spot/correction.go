@@ -1,225 +1,87 @@
 package spot
 
 import (
-	"dxcluster/bandmap"
-	"dxcluster/strutil"
 	"math"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"dxcluster/strutil"
+
 	lev "github.com/agnivade/levenshtein"
 )
 
 // CorrectionFamilyPolicy controls relationship detection between candidate calls.
-// Configured is an internal marker used to distinguish zero-value tests from
-// explicit runtime policy wiring.
+// Configured distinguishes zero-value tests from explicit runtime wiring.
 type CorrectionFamilyPolicy struct {
 	Configured bool
-	// TruncationEnabled toggles containment-family detection for bare calls.
-	TruncationEnabled bool
-	// TruncationMaxLengthDelta bounds |len(longer)-len(shorter)| for truncation matches.
-	// Matches are admitted when delta <= TruncationMaxLengthDelta.
-	TruncationMaxLengthDelta int
-	// TruncationMinShorterLength prevents tiny strings from matching as truncations.
+
+	TruncationEnabled          bool
+	TruncationMaxLengthDelta   int
 	TruncationMinShorterLength int
-	// TruncationAllowPrefix enables shorter-as-prefix matches (for example W1AB/W1ABC).
-	TruncationAllowPrefix bool
-	// TruncationAllowSuffix enables shorter-as-suffix matches (for example A1ABC/WA1ABC).
-	TruncationAllowSuffix bool
+	TruncationAllowPrefix      bool
+	TruncationAllowSuffix      bool
 }
 
-// CorrectionTruncationAdvantagePolicy controls when truncation families can
-// lower min_advantage. Configured is an internal marker used to distinguish
-// zero-value tests from explicit runtime policy wiring.
+// CorrectionTruncationAdvantagePolicy controls truncation-family min_advantage relaxation.
+// Configured distinguishes zero-value tests from explicit runtime wiring.
 type CorrectionTruncationAdvantagePolicy struct {
 	Configured bool
 	Enabled    bool
-	// MinAdvantage is the effective min_advantage when relaxation applies.
-	MinAdvantage int
-	// RequireCandidateValidated requires SCP/recent validation for the longer candidate.
+
+	MinAdvantage              int
 	RequireCandidateValidated bool
-	// RequireSubjectUnvalidated requires the shorter subject to be unvalidated.
 	RequireSubjectUnvalidated bool
 }
 
-// CorrectionSettings captures the knobs that govern whether a consensus-based
-// call correction should happen. The values ultimately come from data/config/pipeline.yaml,
-// but the struct is deliberately defined here so the algorithm can be unit-tested
-// without importing the config package (which would create a cycle).
+// CorrectionSettings contains resolver-primary correction rails.
+// This is intentionally independent from config package types to keep spot logic
+// testable without import cycles.
 type CorrectionSettings struct {
-	// Strategy controls how consensus is computed:
-	//   - "center": pick a cluster center (median-like) and compare to subject
-	//   - "classic": subject vs. alternate comparisons (legacy behavior)
-	//   - "majority": most-reported call on-frequency (unique spotters), distance as safety cap only
-	Strategy string
-	// DebugLog enables per-subject diagnostic logging of decisions.
-	DebugLog bool
-	// TraceLogger records decision traces asynchronously when DebugLog is true.
-	TraceLogger CorrectionTraceLogger
-	// Frequency guard to avoid merging nearby strong signals.
 	FreqGuardMinSeparationKHz float64
 	FreqGuardRunnerUpRatio    float64
-	// FrequencyToleranceHz defines how close two spots must be to be considered the same signal.
-	FrequencyToleranceHz float64
-	// Quality-based anchors (frequency-binned call scores).
-	QualityBinHz            int
-	QualityGoodThreshold    int
-	QualityNewCallIncrement int
-	QualityBustedDecrement  int
-	// MinConsensusReports is the number of *other* unique spotters that must
-	// agree on the same DX call before we consider overriding the subject spot.
-	MinConsensusReports int
-	// FamilyPolicy controls slash/truncation relationship detection.
-	FamilyPolicy CorrectionFamilyPolicy
-	// SlashPrecedenceMinReports is the minimum number of unique reporters needed
-	// for a slash-explicit variant to exclude the corresponding bare call from
-	// voting/anchor candidacy in the same base family.
+	FrequencyToleranceHz      float64
+
+	MinConsensusReports       int
+	FamilyPolicy              CorrectionFamilyPolicy
 	SlashPrecedenceMinReports int
-	// CandidateEvalTopK controls how many consensus-ranked candidates are evaluated
-	// (after optional anchor attempt). K=1 preserves legacy top-1 behavior.
-	CandidateEvalTopK int
-	// MinAdvantage is the minimum delta (candidate supporters - subject supporters)
-	// required before a correction can happen.
-	MinAdvantage int
-	// TruncationAdvantagePolicy controls whether truncation families may lower
-	// min_advantage when additional validation rails pass.
+	MinAdvantage              int
 	TruncationAdvantagePolicy CorrectionTruncationAdvantagePolicy
-	// MinConfidencePercent enforces that the alternate call must represent at least
-	// this percentage of all unique spotters currently reporting that frequency.
-	MinConfidencePercent int
-	// RecencyWindow bounds how old the supporting spots can be. Anything older
-	// than this duration is ignored so stale data never drives a correction.
-	RecencyWindow time.Duration
-	// MaxEditDistance bounds how different the alternate call can be compared to
-	// the subject call. A value of 2 typically allows single-character typos.
-	MaxEditDistance int
+	MinConfidencePercent      int
+	RecencyWindow             time.Duration
+	MaxEditDistance           int
 
-	// MinSNRCW/MinSNRRTTY/MinSNRVoice let callers ignore corroborators below a
-	// minimum signal-to-noise ratio. FT8/FT4 aren't run through call correction.
-	MinSNRCW   int
-	MinSNRRTTY int
-	// MinSNRVoice lets callers ignore low-SNR USB/LSB reports when present.
-	MinSNRVoice int
-
-	// DistanceModelCW/DistanceModelRTTY control mode-specific distance behavior.
-	// Supported values:
-	//   - "plain": rune-based Levenshtein
-	//   - "morse": Morse-aware (CW only)
-	//   - "baudot": Baudot-aware (RTTY only)
 	DistanceModelCW   string
 	DistanceModelRTTY string
 
-	// Distance3Extra* tighten consensus requirements when the candidate callsign
-	// is at edit distance 3 from the subject. They are additive to the base
-	// thresholds above. Set them to zero to disable the stricter bar.
 	Distance3ExtraReports    int
 	Distance3ExtraAdvantage  int
 	Distance3ExtraConfidence int
-	// Spotter reliability weights (0..1). Reporters below MinSpotterReliability are ignored
-	// when counting corroborators.
-	SpotterReliability     SpotterReliability
-	SpotterReliabilityCW   SpotterReliability
-	SpotterReliabilityRTTY SpotterReliability
-	MinSpotterReliability  float64
-	// Optional confusion-model signal used to rank tied top-support candidates.
-	ConfusionModel  *ConfusionModel
-	ConfusionWeight float64
-	// Optional prior bonus for min_reports shortfalls, bounded by PriorBonusMax.
-	// Bonus never bypasses advantage/confidence/freq_guard/cooldown gates.
-	PriorBonusEnabled      bool
-	PriorBonusMax          int
-	PriorBonusDistanceMax  int
-	PriorBonusRequiresSCP  bool
-	PriorBonusApplyTo      string
-	PriorBonusKnownCallset *KnownCallsigns
-	// Optional recent-on-band bonus. When admitted, the bonus applies only to
-	// min_reports and never bypasses advantage/confidence/freq_guard/cooldown.
-	RecentBandBonusEnabled            bool
-	RecentBandWindow                  time.Duration
-	RecentBandBonusMax                int
+
+	KnownCallset                      *KnownCallsigns
 	RecentBandRecordMinUniqueSpotters int
 	RecentBandStore                   *RecentBandStore
-	// ResolverRecentPlus1* controls a conservative resolver-primary-only
-	// +1 corroborator rail. It applies only when winner support is one short of
-	// min_reports and never bypasses advantage/confidence gates.
+
 	ResolverRecentPlus1Enabled              bool
 	ResolverRecentPlus1MinUniqueWinner      int
 	ResolverRecentPlus1RequireSubjectWeaker bool
 	ResolverRecentPlus1MaxDistance          int
 	ResolverRecentPlus1AllowTruncation      bool
-	// Optional truncation-family length bonus. When admitted, bonus applies
-	// only to min_reports and never bypasses other hard gates.
+
 	TruncationLengthBonusEnabled                   bool
 	TruncationLengthBonusMax                       int
 	TruncationLengthBonusRequireCandidateValidated bool
 	TruncationLengthBonusRequireSubjectUnvalidated bool
-	// Optional stricter rails for truncation relations where length delta is 2.
+
 	TruncationDelta2RailsEnabled              bool
 	TruncationDelta2ExtraConfidence           int
 	TruncationDelta2RequireCandidateValidated bool
 	TruncationDelta2RequireSubjectUnvalidated bool
-	// Cooldown protects a subject call from being flipped away when it already has
-	// recent diverse support on this frequency bin.
-	Cooldown *CallCooldown
-	// CooldownMinReporters allows adaptive thresholds per band/state when provided.
-	CooldownMinReporters int
-	// DecisionObserver receives every final decision trace (applied/rejected).
-	DecisionObserver CorrectionDecisionObserver
 }
-
-var correctionEligibleModes = map[string]struct{}{
-	"CW":   {},
-	"RTTY": {},
-	"USB":  {},
-	"LSB":  {},
-}
-
-// CorrectionTrace captures the inputs and outcome of a correction decision for audit/comparison.
-type CorrectionTrace struct {
-	Timestamp                 time.Time `json:"ts"`
-	Strategy                  string    `json:"strategy"`
-	DecisionPath              string    `json:"decision_path,omitempty"`
-	FrequencyKHz              float64   `json:"freq_khz"`
-	SubjectCall               string    `json:"subject"`
-	WinnerCall                string    `json:"winner"`
-	Mode                      string    `json:"mode"`
-	Source                    string    `json:"source"`
-	TotalReporters            int       `json:"total_reporters"`
-	SubjectSupport            int       `json:"subject_support"`
-	WinnerSupport             int       `json:"winner_support"`
-	RunnerUpSupport           int       `json:"runner_up_support"`
-	SubjectConfidence         int       `json:"subject_confidence"`
-	WinnerConfidence          int       `json:"winner_confidence"`
-	Distance                  int       `json:"distance"`
-	DistanceModel             string    `json:"distance_model"`
-	MaxEditDistance           int       `json:"max_edit_distance"`
-	MinReports                int       `json:"min_reports"`
-	MinAdvantage              int       `json:"min_advantage"`
-	MinConfidence             int       `json:"min_confidence"`
-	Distance3ExtraReports     int       `json:"d3_extra_reports"`
-	Distance3ExtraAdvantage   int       `json:"d3_extra_advantage"`
-	Distance3ExtraConfidence  int       `json:"d3_extra_confidence"`
-	FreqGuardMinSeparationKHz float64   `json:"freq_guard_min_separation_khz"`
-	FreqGuardRunnerUpRatio    float64   `json:"freq_guard_runner_ratio"`
-	ConfusionWeight           float64   `json:"confusion_weight,omitempty"`
-	WinnerConfusionScore      float64   `json:"winner_confusion_score,omitempty"`
-	RunnerUpConfusionScore    float64   `json:"runner_up_confusion_score,omitempty"`
-	CandidateRank             int       `json:"candidate_rank,omitempty"`
-	PriorBonusApplied         bool      `json:"prior_bonus_applied,omitempty"`
-	PriorBonusValue           int       `json:"prior_bonus_value,omitempty"`
-	PriorBonusSource          string    `json:"prior_bonus_source,omitempty"`
-	Decision                  string    `json:"decision"`
-	Reason                    string    `json:"reason,omitempty"`
-}
-
-// CorrectionDecisionObserver observes final correction decisions and rejection reasons.
-type CorrectionDecisionObserver func(trace CorrectionTrace)
 
 // ResolverPrimaryGateResult reports resolver-primary gate evaluation outcome.
-// It mirrors the key thresholds used in decision traces so callers can emit
-// deterministic observability without duplicating policy logic.
+// It mirrors key thresholds so callers can emit deterministic observability.
 type ResolverPrimaryGateResult struct {
 	Allow                 bool
 	Reason                string
@@ -239,1027 +101,32 @@ type ResolverPrimaryGateResult struct {
 	RecentPlus1Subject    int
 }
 
-// ResolverPrimaryGateOptions carries resolver-primary gate context that cannot
-// be derived from static call/support inputs alone.
+// ResolverPrimaryGateOptions carries resolver-primary context that cannot be
+// derived from static call/support inputs alone.
 type ResolverPrimaryGateOptions struct {
-	// RecentPlus1DisallowReason disables resolver recent+1 corroboration with a
-	// stable reason label (for example "edit_neighbor_contested").
 	RecentPlus1DisallowReason string
 }
 
-// Purpose: Determine whether a mode is eligible for call correction.
-// IsCallCorrectionCandidate reports whether a mode is eligible for call correction.
-// Key aspects: Limits to CW/RTTY and USB/LSB voice modes to avoid digital-mode conflicts.
-// Upstream: call correction pipeline and harmonic detection.
-// Downstream: correctionEligibleModes lookup.
-// IsCallCorrectionCandidate returns true if the given mode is eligible for
-// consensus-based call correction. Only CW/RTTY and USB/LSB voice modes
-// are considered because other digital modes already embed their own error correction.
+var correctionEligibleModes = map[string]struct{}{
+	"CW":   {},
+	"RTTY": {},
+	"USB":  {},
+	"LSB":  {},
+}
+
+// IsCallCorrectionCandidate reports whether mode is eligible for call correction rails.
 func IsCallCorrectionCandidate(mode string) bool {
 	_, ok := correctionEligibleModes[strutil.NormalizeUpper(mode)]
 	return ok
 }
 
-// ConfigureMorseWeights configures Morse edit distance weights.
-// Key aspects: Applies defaults when non-positive and rebuilds cost table.
-// Upstream: main startup configuration.
-// Downstream: buildRuneCostTable and morse weight globals.
-// ConfigureMorseWeights allows callers to tune dot/dash edit costs. Non-positive
-// inputs fall back to defaults (ins=1, del=1, sub=2, scale=2).
-func ConfigureMorseWeights(insert, delete, sub, scale int) {
-	morseInsertCost, morseDeleteCost, morseSubCost, morseScale = normalizeDistanceWeights(insert, delete, sub, scale)
-	// Rebuild the Morse cost table with the new weights.
-	morseRuneIndex, morseCostTable = buildRuneCostTable(morseCodes, morsePatternCost)
-}
-
-// ConfigureBaudotWeights configures Baudot edit distance weights for RTTY.
-// Key aspects: Applies defaults when non-positive and rebuilds cost table.
-// Upstream: main startup configuration.
-// Downstream: buildRuneCostTable and baudot weight globals.
-// ConfigureBaudotWeights allows callers to tune ITA2 edit costs for RTTY distance.
-// Non-positive inputs fall back to defaults (ins=1, del=1, sub=2, scale=2).
-func ConfigureBaudotWeights(insert, delete, sub, scale int) {
-	baudotInsertCost, baudotDeleteCost, baudotSubCost, baudotScale = normalizeDistanceWeights(insert, delete, sub, scale)
-	baudotRuneIndex, baudotCostTable = buildRuneCostTable(baudotCodes, baudotPatternCost)
-}
-
-func normalizeDistanceWeights(insert, delete, sub, scale int) (int, int, int, int) {
-	if insert <= 0 {
-		insert = defaultDistanceInsertCost
-	}
-	if delete <= 0 {
-		delete = defaultDistanceDeleteCost
-	}
-	if sub <= 0 {
-		sub = defaultDistanceSubCost
-	}
-	if scale <= 0 {
-		scale = defaultDistanceScale
-	}
-	return insert, delete, sub, scale
-}
-
-// SuggestCallCorrection analyzes recent spots on the same frequency and determines
-// whether there is overwhelming evidence that the subject spot's DX call should
-// be corrected. IMPORTANT: This function only suggests a correction. The caller
-// (e.g., the main pipeline when call correction is enabled) decides whether to
-// apply it and is responsible for updating any caches or deduplication structures.
-//
-// Parameters:
-//   - subject: the spot we are evaluating.
-//   - others: a slice of other recent spots (e.g., from a spatial index). Frequencies are in Hz.
-//   - settings: consensus thresholds (min reporters, freshness).
-//   - now: the time reference used to evaluate recency. Passing it as an argument
-//     rather than calling time.Now() simplifies deterministic testing.
-//
-// Returns:
-//   - correctedCall: the most likely callsign if consensus is met.
-//   - supporters: how many unique spotters contributed to the correction.
-//   - ok: true if a correction is recommended, false otherwise.
-//
-// Purpose: Suggest a corrected callsign based on nearby corroborators.
-// Key aspects: Applies consensus strategy, distance limits, and confidence gates.
-// Upstream: main call correction pipeline.
-// Downstream: distance calculations, quality anchors, and logging.
-func SuggestCallCorrection(subject *Spot, others []bandmap.SpotEntry, settings CorrectionSettings, now time.Time) (correctedCall string, supporters int, correctedConfidence int, subjectConfidence int, totalReporters int, ok bool) {
-	if subject == nil {
-		return "", 0, 0, 0, 0, false
-	}
-
-	cfg := normalizeCorrectionSettings(settings)
-	subjectIdentity := normalizeCorrectionCallIdentity(subject.DXCall)
-	if subjectIdentity.VoteKey == "" {
-		return "", 0, 0, 0, 0, false
-	}
-	subjectReporter := strings.TrimSpace(subject.DECall)
-
-	trace := CorrectionTrace{
-		Timestamp:                 now,
-		Strategy:                  strings.ToLower(strings.TrimSpace(cfg.Strategy)),
-		FrequencyKHz:              subject.Frequency,
-		SubjectCall:               subjectIdentity.Raw,
-		Mode:                      strutil.NormalizeUpper(subject.Mode),
-		Source:                    strutil.NormalizeUpper(subject.SourceNode),
-		MaxEditDistance:           cfg.MaxEditDistance,
-		MinReports:                cfg.MinConsensusReports,
-		MinAdvantage:              cfg.MinAdvantage,
-		MinConfidence:             cfg.MinConfidencePercent,
-		Distance3ExtraReports:     cfg.Distance3ExtraReports,
-		Distance3ExtraAdvantage:   cfg.Distance3ExtraAdvantage,
-		Distance3ExtraConfidence:  cfg.Distance3ExtraConfidence,
-		FreqGuardMinSeparationKHz: cfg.FreqGuardMinSeparationKHz,
-		FreqGuardRunnerUpRatio:    cfg.FreqGuardRunnerUpRatio,
-		ConfusionWeight:           cfg.ConfusionWeight,
-		DistanceModel:             distanceModelPlain,
-	}
-	switch trace.Mode {
-	case "CW":
-		trace.DistanceModel = normalizeCWDistanceModel(cfg.DistanceModelCW)
-	case "RTTY":
-		trace.DistanceModel = normalizeRTTYDistanceModel(cfg.DistanceModelRTTY)
-	}
-	allReporters := make(map[string]struct{}, len(others)+1)
-	clusterSpots := make([]bandmap.SpotEntry, 0, len(others)+1)
-	clusterSpots = append(clusterSpots, bandmap.SpotEntry{
-		Call:    subjectIdentity.Raw,
-		Spotter: subject.DECall,
-		Mode:    subject.Mode,
-		FreqHz:  uint32(subject.Frequency*1000 + 0.5),
-		Time:    subject.Time.Unix(),
-		SNR:     subject.Report,
-	})
-
-	type callAggregate struct {
-		identity  correctionCallIdentity
-		reporters map[string]struct{}
-		// Keep per-variant reporter sets so display selection can preserve the
-		// most credible slash form after canonical grouping.
-		variantReporters map[string]map[string]struct{}
-		variantLastSeen  map[string]time.Time
-		lastSeen         time.Time
-		lastFreq         float64
-	}
-
-	// Pre-size call stats map to avoid resize churn; expect up to len(others)+1 unique calls.
-	callStats := make(map[string]*callAggregate, len(others)+1)
-	ensureCallEntry := func(identity correctionCallIdentity) *callAggregate {
-		entry, ok := callStats[identity.VoteKey]
-		if !ok {
-			entry = &callAggregate{
-				identity:         identity,
-				reporters:        make(map[string]struct{}, 4),
-				variantReporters: make(map[string]map[string]struct{}, 2),
-				variantLastSeen:  make(map[string]time.Time, 2),
-			}
-			callStats[identity.VoteKey] = entry
-		}
-		return entry
-	}
-	addReporter := func(identity correctionCallIdentity, reporter string, seenAt time.Time, freqKHz float64) {
-		// Ignore reporters that fall below the configured reliability floor.
-		if reliabilityForMode(cfg.SpotterReliability, cfg.SpotterReliabilityCW, cfg.SpotterReliabilityRTTY, subject.Mode, reporter) < cfg.MinSpotterReliability {
-			return
-		}
-		entry := ensureCallEntry(identity)
-		entry.reporters[reporter] = struct{}{}
-		if seenAt.After(entry.lastSeen) {
-			entry.lastSeen = seenAt
-		}
-		entry.lastFreq = freqKHz
-
-		variant := identity.Raw
-		if variant == "" {
-			variant = identity.VoteKey
-		}
-		reporters := entry.variantReporters[variant]
-		if reporters == nil {
-			reporters = make(map[string]struct{}, 2)
-			entry.variantReporters[variant] = reporters
-		}
-		reporters[reporter] = struct{}{}
-		if seenAt.After(entry.variantLastSeen[variant]) {
-			entry.variantLastSeen[variant] = seenAt
-		}
-	}
-	displayForKey := func(key string) string {
-		entry := callStats[key]
-		if entry == nil {
-			return key
-		}
-		best := ""
-		bestSupport := -1
-		var bestSeen time.Time
-		for variant, reporters := range entry.variantReporters {
-			support := len(reporters)
-			seenAt := entry.variantLastSeen[variant]
-			if support > bestSupport {
-				best = variant
-				bestSupport = support
-				bestSeen = seenAt
-				continue
-			}
-			if support < bestSupport {
-				continue
-			}
-			if seenAt.After(bestSeen) {
-				best = variant
-				bestSeen = seenAt
-				continue
-			}
-			if seenAt.Equal(bestSeen) && (best == "" || variant < best) {
-				best = variant
-			}
-		}
-		if best == "" {
-			return key
-		}
-		return best
-	}
-
-	subjectAgg := ensureCallEntry(subjectIdentity)
-	if subjectReporter != "" && passesSNRThreshold(subject, cfg) {
-		addReporter(subjectIdentity, subjectReporter, subject.Time, subject.Frequency)
-		allReporters[subjectReporter] = struct{}{}
-	}
-	if subjectAgg.lastSeen.IsZero() {
-		subjectAgg.lastSeen = subject.Time
-		subjectAgg.lastFreq = subject.Frequency
-	}
-
-	toleranceHz := cfg.FrequencyToleranceHz
-	if toleranceHz <= 0 {
-		toleranceHz = 500 // fallback to a half-kHz window
-	}
-	toleranceKHz := toleranceHz / 1000.0
-
-	for _, entry := range others {
-		otherIdentity := normalizeCorrectionCallIdentity(entry.Call)
-		if otherIdentity.VoteKey == "" {
-			continue
-		}
-		reporter := strings.TrimSpace(entry.Spotter)
-		if reporter == "" {
-			continue
-		}
-		if !passesSNREntry(entry, cfg) {
-			continue
-		}
-		entryFreqKHz := float64(entry.FreqHz) / 1000.0
-		if math.Abs(entryFreqKHz-subject.Frequency) > toleranceKHz {
-			continue
-		}
-		seenAt := time.Unix(entry.Time, 0)
-		if now.Sub(seenAt) > cfg.RecencyWindow {
-			continue
-		}
-		if reporter == subjectReporter {
-			if otherIdentity.VoteKey == subjectIdentity.VoteKey {
-				allReporters[reporter] = struct{}{}
-				addReporter(otherIdentity, reporter, seenAt, entryFreqKHz)
-			}
-			continue
-		}
-		if !strings.EqualFold(entry.Mode, subject.Mode) {
-			continue
-		}
-		allReporters[reporter] = struct{}{}
-		addReporter(otherIdentity, reporter, seenAt, entryFreqKHz)
-		clusterSpots = append(clusterSpots, entry)
-	}
-
-	// Slash precedence: when a base call has both bare and slash-explicit
-	// variants in the same bucket, drop the bare variant if at least one slash
-	// variant meets existing credibility requirements.
-	excludedCalls := make(map[string]struct{})
-	slashPrecedenceActive := false
-	type baseGroup struct {
-		bareKey   string
-		slashKeys []string
-	}
-	baseGroups := make(map[string]*baseGroup, len(callStats))
-	for key, agg := range callStats {
-		if agg == nil || agg.identity.BaseKey == "" {
-			continue
-		}
-		group := baseGroups[agg.identity.BaseKey]
-		if group == nil {
-			group = &baseGroup{}
-			baseGroups[agg.identity.BaseKey] = group
-		}
-		if agg.identity.HasSlash {
-			group.slashKeys = append(group.slashKeys, key)
-			continue
-		}
-		if group.bareKey == "" || key < group.bareKey {
-			group.bareKey = key
-		}
-	}
-	for _, group := range baseGroups {
-		if group == nil || group.bareKey == "" || len(group.slashKeys) == 0 {
-			continue
-		}
-		credibleSlash := false
-		for _, slashKey := range group.slashKeys {
-			if agg := callStats[slashKey]; agg != nil && len(agg.reporters) >= cfg.SlashPrecedenceMinReports {
-				credibleSlash = true
-				break
-			}
-		}
-		if !credibleSlash {
-			continue
-		}
-		excludedCalls[group.bareKey] = struct{}{}
-		slashPrecedenceActive = true
-	}
-
-	// Confidence denominator excludes calls filtered by slash precedence.
-	includedReporters := make(map[string]struct{}, len(allReporters))
-	for key, agg := range callStats {
-		if agg == nil {
-			continue
-		}
-		if _, excluded := excludedCalls[key]; excluded {
-			continue
-		}
-		for reporter := range agg.reporters {
-			includedReporters[reporter] = struct{}{}
-		}
-	}
-	totalReporters = len(includedReporters)
-	trace.TotalReporters = totalReporters
-	if totalReporters == 0 {
-		if slashPrecedenceActive {
-			trace.DecisionPath = "slash_precedence"
-			trace.Reason = "slash_precedence_no_reporters"
-		} else {
-			trace.Reason = "no_reporters"
-		}
-		trace.Decision = "rejected"
-		logCorrectionTrace(cfg, trace, clusterSpots)
-		return "", 0, 0, 0, 0, false
-	}
-
-	freqHz := subject.Frequency * 1000.0
-
-	// Majority-of-unique-spotters: pick the call with the most unique reporters
-	// on-frequency (within recency/SNR gates). Distance is only a safety cap.
-	callKeys := make([]string, 0, len(callStats))
-	for call := range callStats {
-		if _, excluded := excludedCalls[call]; excluded {
-			continue
-		}
-		callKeys = append(callKeys, call)
-	}
-	if len(callKeys) == 0 {
-		trace.Decision = "rejected"
-		trace.DecisionPath = "slash_precedence"
-		trace.Reason = "slash_precedence_no_winner"
-		logCorrectionTrace(cfg, trace, clusterSpots)
-		return "", 0, 0, 0, 0, false
-	}
-
-	subjectCount := 0
-	if _, excluded := excludedCalls[subjectIdentity.VoteKey]; !excluded {
-		subjectCount = len(subjectAgg.reporters)
-	}
-	trace.SubjectSupport = subjectCount
-	if totalReporters > 0 {
-		subjectConfidence = subjectCount * 100 / totalReporters
-	}
-	trace.SubjectConfidence = subjectConfidence
-
-	if cfg.Cooldown != nil && subjectAgg != nil && subjectCount > 0 {
-		cfg.Cooldown.Record(subjectIdentity.VoteKey, freqHz, subjectAgg.reporters, cfg.CooldownMinReporters, cfg.RecencyWindow, now)
-	}
-	subjectBand := NormalizeBand(subject.Band)
-	if subjectBand == "" || subjectBand == "???" {
-		subjectBand = NormalizeBand(FreqToBand(subject.Frequency))
-	}
-	subjectMode := strutil.NormalizeUpper(subject.Mode)
-	callValidatedBySCP := func(identity correctionCallIdentity, displayCall string) bool {
-		known := cfg.PriorBonusKnownCallset
-		if known == nil {
-			return false
-		}
-		candidates := []string{identity.Raw, identity.VoteKey, identity.BaseKey, displayCall}
-		for _, call := range candidates {
-			call = strings.TrimSpace(call)
-			if call == "" {
-				continue
-			}
-			if known.Contains(call) {
-				return true
-			}
-		}
-		return false
-	}
-	callValidatedByRecent := func(identity correctionCallIdentity, displayCall string, requireBonusEnabled bool) bool {
-		if cfg.RecentBandStore == nil {
-			return false
-		}
-		if requireBonusEnabled && !cfg.RecentBandBonusEnabled {
-			return false
-		}
-		candidates := []string{identity.Raw, identity.VoteKey, identity.BaseKey, displayCall}
-		seenCalls := make(map[string]struct{}, len(candidates))
-		for _, candidateCall := range candidates {
-			candidateCall = strings.TrimSpace(candidateCall)
-			if candidateCall == "" {
-				continue
-			}
-			upper := strutil.NormalizeUpper(candidateCall)
-			if _, exists := seenCalls[upper]; exists {
-				continue
-			}
-			seenCalls[upper] = struct{}{}
-			if cfg.RecentBandStore.HasRecentSupport(upper, subjectBand, subjectMode, cfg.RecentBandRecordMinUniqueSpotters, now) {
-				return true
-			}
-		}
-		return false
-	}
-	callValidated := func(identity correctionCallIdentity, displayCall string) bool {
-		return callValidatedBySCP(identity, displayCall) || callValidatedByRecent(identity, displayCall, true)
-	}
-	// Quality penalties should not push down independently validated calls.
-	// This uses known-call and recent-on-band evidence, even when recent bonus
-	// is disabled for min-reports boosts.
-	callValidatedForQualityPenalty := func(identity correctionCallIdentity, displayCall string) bool {
-		return callValidatedBySCP(identity, displayCall) || callValidatedByRecent(identity, displayCall, false)
-	}
-
-	type rankedCall struct {
-		key        string
-		display    string
-		support    int
-		confidence int
-		lastSeen   time.Time
-		lastFreq   float64
-		confusion  float64
-	}
-
-	supportRankedCalls := make([]rankedCall, 0, len(callKeys))
-	for call, agg := range callStats {
-		if agg == nil {
-			continue
-		}
-		if _, excluded := excludedCalls[call]; excluded {
-			continue
-		}
-		support := len(agg.reporters)
-		confidence := 0
-		if totalReporters > 0 {
-			confidence = support * 100 / totalReporters
-		}
-		supportRankedCalls = append(supportRankedCalls, rankedCall{
-			key:        call,
-			display:    displayForKey(call),
-			support:    support,
-			confidence: confidence,
-			lastSeen:   agg.lastSeen,
-			lastFreq:   agg.lastFreq,
-		})
-	}
-	sort.Slice(supportRankedCalls, func(i, j int) bool {
-		if supportRankedCalls[i].support != supportRankedCalls[j].support {
-			return supportRankedCalls[i].support > supportRankedCalls[j].support
-		}
-		if !supportRankedCalls[i].lastSeen.Equal(supportRankedCalls[j].lastSeen) {
-			return supportRankedCalls[i].lastSeen.After(supportRankedCalls[j].lastSeen)
-		}
-		return supportRankedCalls[i].key < supportRankedCalls[j].key
-	})
-
-	candidateRankedCalls := make([]rankedCall, len(supportRankedCalls))
-	copy(candidateRankedCalls, supportRankedCalls)
-	confusionScores := make(map[string]float64, len(candidateRankedCalls))
-	if cfg.ConfusionModel != nil && cfg.ConfusionWeight > 0 && len(candidateRankedCalls) > 1 {
-		topSupport := candidateRankedCalls[0].support
-		tieEnd := 1
-		for tieEnd < len(candidateRankedCalls) && candidateRankedCalls[tieEnd].support == topSupport {
-			tieEnd++
-		}
-		if tieEnd > 1 {
-			for i := 0; i < tieEnd; i++ {
-				score := cfg.ConfusionModel.ScoreCandidate(subjectIdentity.Raw, candidateRankedCalls[i].display, subject.Mode, float64(subject.Report))
-				candidateRankedCalls[i].confusion = score
-				confusionScores[candidateRankedCalls[i].key] = score
-			}
-			sort.Slice(candidateRankedCalls[:tieEnd], func(i, j int) bool {
-				left := float64(candidateRankedCalls[i].support) + cfg.ConfusionWeight*candidateRankedCalls[i].confusion
-				right := float64(candidateRankedCalls[j].support) + cfg.ConfusionWeight*candidateRankedCalls[j].confusion
-				if left != right {
-					return left > right
-				}
-				if candidateRankedCalls[i].confusion != candidateRankedCalls[j].confusion {
-					return candidateRankedCalls[i].confusion > candidateRankedCalls[j].confusion
-				}
-				if !candidateRankedCalls[i].lastSeen.Equal(candidateRankedCalls[j].lastSeen) {
-					return candidateRankedCalls[i].lastSeen.After(candidateRankedCalls[j].lastSeen)
-				}
-				return candidateRankedCalls[i].key < candidateRankedCalls[j].key
-			})
-		}
-	}
-	if len(candidateRankedCalls) > 0 {
-		trace.WinnerConfusionScore = confusionScores[candidateRankedCalls[0].key]
-	}
-	if len(candidateRankedCalls) > 1 {
-		trace.RunnerUpConfusionScore = confusionScores[candidateRankedCalls[1].key]
-	}
-
-	// Anchor path: if a call in this cluster is already considered good, prefer
-	// its closest good neighbor candidate, but still require full gate checks.
-	allCalls := make([]string, 0, len(supportRankedCalls)+1)
-	allCalls = append(allCalls, subjectIdentity.VoteKey)
-	seen := map[string]struct{}{subjectIdentity.VoteKey: {}}
-	for _, rc := range supportRankedCalls {
-		if _, ok := seen[rc.key]; !ok {
-			allCalls = append(allCalls, rc.key)
-			seen[rc.key] = struct{}{}
-		}
-	}
-	anchorKey := ""
-	hasGoodAnchor := false
-	if store := currentCallQuality(); store != nil {
-		for _, c := range allCalls {
-			if store.IsGoodAt(c, freqHz, &cfg, now) {
-				hasGoodAnchor = true
-				break
-			}
-		}
-	}
-	if hasGoodAnchor {
-		if anchor, okAnchor := findAnchorForCall(subjectIdentity.VoteKey, freqHz, subject.Mode, allCalls, &cfg, now); okAnchor {
-			anchorKey = anchor
-		}
-	}
-	familyPolicy := normalizeCorrectionFamilyPolicy(cfg.FamilyPolicy)
-	truncationAdvantagePolicy := normalizeCorrectionTruncationAdvantagePolicy(cfg.TruncationAdvantagePolicy)
-
-	type candidateEval struct {
-		support       int
-		effective     int
-		confidence    int
-		distance      int
-		runnerUp      int
-		runnerUpFreq  float64
-		minReports    int
-		minAdvantage  int
-		minConfidence int
-		lengthBonus   int
-		priorBonus    int
-		priorSource   string
-		recentBonus   int
-		reason        string
-	}
-
-	evaluateCandidate := func(candidateKey string) candidateEval {
-		agg := callStats[candidateKey]
-		if agg == nil {
-			return candidateEval{reason: "no_winner"}
-		}
-		support := len(agg.reporters)
-		confidence := 0
-		if totalReporters > 0 {
-			confidence = support * 100 / totalReporters
-		}
-
-		runner := rankedCall{}
-		hasRunner := false
-		for _, rc := range supportRankedCalls {
-			if rc.key == candidateKey {
-				continue
-			}
-			runner = rc
-			hasRunner = true
-			break
-		}
-		runnerSupport := 0
-		runnerFreq := 0.0
-		if hasRunner {
-			runnerSupport = runner.support
-			runnerFreq = runner.lastFreq
-		}
-
-		distance := correctionDistance(subjectIdentity, agg.identity, subject.Mode, cfg.DistanceModelCW, cfg.DistanceModelRTTY)
-		if cfg.MaxEditDistance >= 0 && distance > cfg.MaxEditDistance {
-			return candidateEval{
-				support:      support,
-				confidence:   confidence,
-				distance:     distance,
-				runnerUp:     runnerSupport,
-				runnerUpFreq: runnerFreq,
-				reason:       "max_edit_distance",
-			}
-		}
-
-		minReports := cfg.MinConsensusReports
-		minAdvantage := cfg.MinAdvantage
-		minConf := cfg.MinConfidencePercent
-		if distance >= 3 {
-			minReports += cfg.Distance3ExtraReports
-			minAdvantage += cfg.Distance3ExtraAdvantage
-			minConf += cfg.Distance3ExtraConfidence
-		}
-		subjectKey := subjectIdentity.VoteKey
-		if subjectKey == "" {
-			subjectKey = subjectIdentity.Raw
-		}
-		candidateKeyNorm := agg.identity.VoteKey
-		if candidateKeyNorm == "" {
-			candidateKeyNorm = agg.identity.Raw
-		}
-		truncationRelation := false
-		candidateMoreSpecific := false
-		lengthDelta := 0
-		candidateValidated := false
-		subjectValidated := false
-		if relation, ok := detectCorrectionFamilyByIdentity(subjectIdentity, agg.identity, familyPolicy); ok && relation.Kind == CorrectionFamilyTruncation {
-			truncationRelation = true
-			candidateMoreSpecific = relation.MoreSpecific == candidateKeyNorm && relation.LessSpecific == subjectKey
-			if candidateMoreSpecific {
-				lengthDelta = len(candidateKeyNorm) - len(subjectKey)
-				candidateValidated = callValidated(agg.identity, displayForKey(candidateKey))
-				subjectValidated = callValidated(subjectIdentity, displayForKey(subjectIdentity.VoteKey))
-			}
-		}
-		if truncationRelation && candidateMoreSpecific && truncationAdvantagePolicy.Enabled {
-			eligible := true
-			if truncationAdvantagePolicy.RequireCandidateValidated && !candidateValidated {
-				eligible = false
-			}
-			if truncationAdvantagePolicy.RequireSubjectUnvalidated && subjectValidated {
-				eligible = false
-			}
-			if eligible {
-				minAdvantage = truncationAdvantagePolicy.MinAdvantage
-			}
-		}
-		if truncationRelation && candidateMoreSpecific && cfg.TruncationDelta2RailsEnabled && lengthDelta >= 2 {
-			if cfg.TruncationDelta2RequireCandidateValidated && !candidateValidated {
-				return candidateEval{
-					support:       support,
-					confidence:    confidence,
-					distance:      distance,
-					runnerUp:      runnerSupport,
-					runnerUpFreq:  runnerFreq,
-					minReports:    minReports,
-					minAdvantage:  minAdvantage,
-					minConfidence: minConf,
-					reason:        "truncation_delta2_candidate_unvalidated",
-				}
-			}
-			if cfg.TruncationDelta2RequireSubjectUnvalidated && subjectValidated {
-				return candidateEval{
-					support:       support,
-					confidence:    confidence,
-					distance:      distance,
-					runnerUp:      runnerSupport,
-					runnerUpFreq:  runnerFreq,
-					minReports:    minReports,
-					minAdvantage:  minAdvantage,
-					minConfidence: minConf,
-					reason:        "truncation_delta2_subject_validated",
-				}
-			}
-			if cfg.TruncationDelta2ExtraConfidence > 0 {
-				minConf += cfg.TruncationDelta2ExtraConfidence
-			}
-		}
-		effectiveSupport := support
-		lengthBonus := 0
-		if cfg.TruncationLengthBonusEnabled && cfg.TruncationLengthBonusMax > 0 && effectiveSupport < minReports && truncationRelation && candidateMoreSpecific {
-			eligible := true
-			if cfg.TruncationLengthBonusRequireCandidateValidated && !candidateValidated {
-				eligible = false
-			}
-			if cfg.TruncationLengthBonusRequireSubjectUnvalidated && subjectValidated {
-				eligible = false
-			}
-			if eligible && lengthDelta > 0 {
-				lengthBonus = lengthDelta
-				if lengthBonus > cfg.TruncationLengthBonusMax {
-					lengthBonus = cfg.TruncationLengthBonusMax
-				}
-				effectiveSupport += lengthBonus
-			}
-		}
-		priorBonus := 0
-		priorBonusSource := ""
-		recentBonus := 0
-		if cfg.PriorBonusEnabled && cfg.PriorBonusMax > 0 && cfg.PriorBonusApplyTo == "min_reports" && support < minReports {
-			needed := minReports - support
-			if needed > 0 {
-				if cfg.PriorBonusDistanceMax <= 0 || distance <= cfg.PriorBonusDistanceMax {
-					eligible := true
-					source := "config"
-					if cfg.PriorBonusRequiresSCP {
-						eligible = false
-						if known := cfg.PriorBonusKnownCallset; known != nil {
-							// Check multiple normalized variants so portable/base forms can match
-							// when either representation exists in MASTER.SCP.
-							alts := []string{agg.identity.Raw, agg.identity.VoteKey, agg.identity.BaseKey}
-							for _, call := range alts {
-								if strings.TrimSpace(call) == "" {
-									continue
-								}
-								if known.Contains(call) {
-									eligible = true
-									source = "scp"
-									break
-								}
-							}
-						}
-					}
-					if eligible {
-						priorBonus = needed
-						if priorBonus > cfg.PriorBonusMax {
-							priorBonus = cfg.PriorBonusMax
-						}
-						priorBonusSource = source
-						effectiveSupport = support + priorBonus
-					}
-				}
-			}
-		}
-		if cfg.RecentBandBonusEnabled && cfg.RecentBandBonusMax > 0 && cfg.RecentBandStore != nil && effectiveSupport < minReports {
-			needed := minReports - effectiveSupport
-			if needed > 0 {
-				candidates := []string{agg.identity.Raw, displayForKey(candidateKey), agg.identity.VoteKey, agg.identity.BaseKey}
-				seenCalls := make(map[string]struct{}, len(candidates))
-				admitted := false
-				for _, candidateCall := range candidates {
-					candidateCall = strings.TrimSpace(candidateCall)
-					if candidateCall == "" {
-						continue
-					}
-					upper := strutil.NormalizeUpper(candidateCall)
-					if _, exists := seenCalls[upper]; exists {
-						continue
-					}
-					seenCalls[upper] = struct{}{}
-					if cfg.RecentBandStore.HasRecentSupport(upper, subjectBand, subjectMode, cfg.RecentBandRecordMinUniqueSpotters, now) {
-						admitted = true
-						break
-					}
-				}
-				if admitted {
-					recentBonus = needed
-					if recentBonus > cfg.RecentBandBonusMax {
-						recentBonus = cfg.RecentBandBonusMax
-					}
-					effectiveSupport += recentBonus
-				}
-			}
-		}
-		if effectiveSupport < minReports {
-			return candidateEval{
-				support:       support,
-				effective:     effectiveSupport,
-				confidence:    confidence,
-				distance:      distance,
-				runnerUp:      runnerSupport,
-				runnerUpFreq:  runnerFreq,
-				minReports:    minReports,
-				minAdvantage:  minAdvantage,
-				minConfidence: minConf,
-				lengthBonus:   lengthBonus,
-				priorBonus:    priorBonus,
-				priorSource:   priorBonusSource,
-				recentBonus:   recentBonus,
-				reason:        "min_reports",
-			}
-		}
-		if support < subjectCount+minAdvantage {
-			return candidateEval{
-				support:       support,
-				effective:     effectiveSupport,
-				confidence:    confidence,
-				distance:      distance,
-				runnerUp:      runnerSupport,
-				runnerUpFreq:  runnerFreq,
-				minReports:    minReports,
-				minAdvantage:  minAdvantage,
-				minConfidence: minConf,
-				lengthBonus:   lengthBonus,
-				priorBonus:    priorBonus,
-				priorSource:   priorBonusSource,
-				recentBonus:   recentBonus,
-				reason:        "advantage",
-			}
-		}
-		if confidence < minConf {
-			return candidateEval{
-				support:       support,
-				effective:     effectiveSupport,
-				confidence:    confidence,
-				distance:      distance,
-				runnerUp:      runnerSupport,
-				runnerUpFreq:  runnerFreq,
-				minReports:    minReports,
-				minAdvantage:  minAdvantage,
-				minConfidence: minConf,
-				lengthBonus:   lengthBonus,
-				priorBonus:    priorBonus,
-				priorSource:   priorBonusSource,
-				recentBonus:   recentBonus,
-				reason:        "confidence",
-			}
-		}
-		if hasRunner {
-			runnerAgg := callStats[runner.key]
-			if runnerAgg != nil {
-				runnerDistance := correctionDistance(subjectIdentity, runnerAgg.identity, subject.Mode, cfg.DistanceModelCW, cfg.DistanceModelRTTY)
-				_, related := detectCorrectionFamilyByIdentity(agg.identity, runnerAgg.identity, familyPolicy)
-				overlap := reporterSetOverlapCount(agg.reporters, runnerAgg.reporters)
-				if shouldRejectAsAmbiguousMultiSignal(
-					support,
-					runnerSupport,
-					agg.lastFreq,
-					runnerFreq,
-					cfg.FreqGuardMinSeparationKHz,
-					cfg.FreqGuardRunnerUpRatio,
-					overlap,
-					runnerDistance,
-					cfg.MaxEditDistance,
-					related,
-				) {
-					return candidateEval{
-						support:       support,
-						effective:     effectiveSupport,
-						confidence:    confidence,
-						distance:      distance,
-						runnerUp:      runnerSupport,
-						runnerUpFreq:  runnerFreq,
-						minReports:    minReports,
-						minAdvantage:  minAdvantage,
-						minConfidence: minConf,
-						lengthBonus:   lengthBonus,
-						priorBonus:    priorBonus,
-						priorSource:   priorBonusSource,
-						recentBonus:   recentBonus,
-						reason:        "ambiguous_multi_signal",
-					}
-				}
-			}
-		}
-
-		if runnerSupport > 0 {
-			freqSeparation := math.Abs(agg.lastFreq - runnerFreq)
-			if freqSeparation >= cfg.FreqGuardMinSeparationKHz && float64(runnerSupport) >= cfg.FreqGuardRunnerUpRatio*float64(support) {
-				return candidateEval{
-					support:       support,
-					effective:     effectiveSupport,
-					confidence:    confidence,
-					distance:      distance,
-					runnerUp:      runnerSupport,
-					runnerUpFreq:  runnerFreq,
-					minReports:    minReports,
-					minAdvantage:  minAdvantage,
-					minConfidence: minConf,
-					lengthBonus:   lengthBonus,
-					priorBonus:    priorBonus,
-					priorSource:   priorBonusSource,
-					recentBonus:   recentBonus,
-					reason:        "freq_guard",
-				}
-			}
-		}
-
-		if cfg.Cooldown != nil {
-			if block, _ := cfg.Cooldown.ShouldBlock(subjectIdentity.VoteKey, freqHz, cfg.CooldownMinReporters, cfg.RecencyWindow, subjectCount, subjectConfidence, support, confidence, now); block {
-				return candidateEval{
-					support:       support,
-					effective:     effectiveSupport,
-					confidence:    confidence,
-					distance:      distance,
-					runnerUp:      runnerSupport,
-					runnerUpFreq:  runnerFreq,
-					minReports:    minReports,
-					minAdvantage:  minAdvantage,
-					minConfidence: minConf,
-					lengthBonus:   lengthBonus,
-					priorBonus:    priorBonus,
-					priorSource:   priorBonusSource,
-					recentBonus:   recentBonus,
-					reason:        "cooldown",
-				}
-			}
-		}
-
-		return candidateEval{
-			support:       support,
-			effective:     effectiveSupport,
-			confidence:    confidence,
-			distance:      distance,
-			runnerUp:      runnerSupport,
-			runnerUpFreq:  runnerFreq,
-			minReports:    minReports,
-			minAdvantage:  minAdvantage,
-			minConfidence: minConf,
-			lengthBonus:   lengthBonus,
-			priorBonus:    priorBonus,
-			priorSource:   priorBonusSource,
-			recentBonus:   recentBonus,
-		}
-	}
-
-	type decisionAttempt struct {
-		key       string
-		path      string
-		confusion float64
-		rank      int
-	}
-	maxConsensusAttempts := cfg.CandidateEvalTopK
-	if maxConsensusAttempts <= 0 {
-		maxConsensusAttempts = 1
-	}
-	attempts := make([]decisionAttempt, 0, 1+maxConsensusAttempts)
-	if anchorKey != "" && anchorKey != subjectIdentity.VoteKey {
-		attempts = append(attempts, decisionAttempt{key: anchorKey, path: "anchor", confusion: confusionScores[anchorKey], rank: 1})
-	}
-	consensusAdded := 0
-	for _, rc := range candidateRankedCalls {
-		if consensusAdded >= maxConsensusAttempts {
-			break
-		}
-		if rc.key == subjectIdentity.VoteKey || rc.key == anchorKey {
-			continue
-		}
-		consensusAdded++
-		attempts = append(attempts, decisionAttempt{key: rc.key, path: "consensus", confusion: confusionScores[rc.key], rank: consensusAdded})
-	}
-
-	if len(attempts) == 0 {
-		if slashPrecedenceActive {
-			trace.DecisionPath = "slash_precedence"
-			trace.Reason = "slash_precedence_no_winner"
-		} else {
-			trace.Reason = "no_winner"
-		}
-		trace.Decision = "rejected"
-		logCorrectionTrace(cfg, trace, clusterSpots)
-		return "", 0, 0, subjectConfidence, totalReporters, false
-	}
-
-	lastEval := candidateEval{}
-	lastPath := ""
-	lastKey := ""
-	lastRank := 0
-	for _, attempt := range attempts {
-		lastPath = attempt.path
-		lastKey = attempt.key
-		lastRank = attempt.rank
-		trace.WinnerConfusionScore = attempt.confusion
-		trace.CandidateRank = attempt.rank
-		lastEval = evaluateCandidate(attempt.key)
-		if lastEval.reason != "" {
-			continue
-		}
-
-		updateCallQualityForCluster(attempt.key, freqHz, &cfg, now, clusterSpots, func(callKey string) bool {
-			entry := callStats[callKey]
-			if entry != nil {
-				return callValidatedForQualityPenalty(entry.identity, displayForKey(callKey))
-			}
-			identity := normalizeCorrectionCallIdentity(callKey)
-			return callValidatedForQualityPenalty(identity, displayForKey(callKey))
-		})
-		trace.DecisionPath = decorateDecisionPath(attempt.path, slashPrecedenceActive, lastEval.lengthBonus > 0, lastEval.priorBonus > 0, lastEval.recentBonus > 0)
-		trace.WinnerCall = displayForKey(attempt.key)
-		trace.WinnerSupport = lastEval.support
-		trace.RunnerUpSupport = lastEval.runnerUp
-		trace.WinnerConfidence = lastEval.confidence
-		trace.Distance = lastEval.distance
-		trace.MinReports = lastEval.minReports
-		trace.MinAdvantage = lastEval.minAdvantage
-		trace.MinConfidence = lastEval.minConfidence
-		trace.PriorBonusApplied = lastEval.priorBonus > 0
-		trace.PriorBonusValue = lastEval.priorBonus
-		trace.PriorBonusSource = lastEval.priorSource
-		trace.Decision = "applied"
-		trace.Reason = ""
-		logCorrectionTrace(cfg, trace, clusterSpots)
-		return displayForKey(attempt.key), lastEval.support, lastEval.confidence, subjectConfidence, totalReporters, true
-	}
-
-	trace.DecisionPath = decorateDecisionPath(lastPath, slashPrecedenceActive, lastEval.lengthBonus > 0, lastEval.priorBonus > 0, lastEval.recentBonus > 0)
-	trace.CandidateRank = lastRank
-	trace.WinnerCall = displayForKey(lastKey)
-	trace.WinnerSupport = lastEval.support
-	trace.RunnerUpSupport = lastEval.runnerUp
-	trace.WinnerConfidence = lastEval.confidence
-	trace.Distance = lastEval.distance
-	trace.MinReports = lastEval.minReports
-	trace.MinAdvantage = lastEval.minAdvantage
-	trace.MinConfidence = lastEval.minConfidence
-	trace.PriorBonusApplied = lastEval.priorBonus > 0
-	trace.PriorBonusValue = lastEval.priorBonus
-	trace.PriorBonusSource = lastEval.priorSource
-	trace.Decision = "rejected"
-	trace.Reason = lastEval.reason
-	if trace.Reason == "" {
-		if slashPrecedenceActive {
-			trace.Reason = "slash_precedence_no_winner"
-		} else {
-			trace.Reason = "no_winner"
-		}
-	}
-	logCorrectionTrace(cfg, trace, clusterSpots)
-	return "", 0, 0, subjectConfidence, totalReporters, false
-}
-
 // EvaluateResolverPrimaryGates applies correction-family-sensitive threshold
 // rails for resolver-primary winner admission.
 //
-// Contract:
-//   - This helper is pure: it does not mutate shared state.
-//   - It intentionally reuses the same truncation-family rails used by
-//     SuggestCallCorrection (advantage relaxation, delta-2 rails, length bonus).
-//   - It does not apply frequency-split/cooldown gates because resolver state
-//     classification already encodes split evidence and resolver-primary uses
-//     snapshot-local support counts.
+// Invariants:
+//   - Pure function: no shared mutable state updates.
+//   - Applies max-edit rails before confidence/support gates.
+//   - Truncation-family relaxations never bypass confidence and advantage rails.
 func EvaluateResolverPrimaryGates(
 	subjectCall, winnerCall, subjectBand, subjectMode string,
 	subjectSupport, winnerSupport, winnerConfidence int,
@@ -1303,7 +170,6 @@ func EvaluateResolverPrimaryGates(
 		minAdvantage += cfg.Distance3ExtraAdvantage
 		minConf += cfg.Distance3ExtraConfidence
 	}
-
 	familyPolicy := normalizeCorrectionFamilyPolicy(cfg.FamilyPolicy)
 	truncationAdvantagePolicy := normalizeCorrectionTruncationAdvantagePolicy(cfg.TruncationAdvantagePolicy)
 
@@ -1421,20 +287,20 @@ func EvaluateResolverPrimaryGates(
 		result.Reason = "confidence"
 		return result
 	}
+
 	result.Allow = true
 	return result
 }
 
 func resolverCallValidated(identity correctionCallIdentity, displayCall, subjectBand, subjectMode string, cfg CorrectionSettings, now time.Time) bool {
-	known := cfg.PriorBonusKnownCallset
-	if known != nil {
+	if cfg.KnownCallset != nil {
 		candidates := []string{identity.Raw, identity.VoteKey, identity.BaseKey, displayCall}
 		for _, call := range candidates {
 			call = strings.TrimSpace(call)
 			if call == "" {
 				continue
 			}
-			if known.Contains(call) {
+			if cfg.KnownCallset.Contains(call) {
 				return true
 			}
 		}
@@ -1479,8 +345,7 @@ type correctionCallIdentity struct {
 	SlashKey string
 }
 
-// CorrectionFamilyKind classifies call-pair relationships relevant to
-// correction precedence logic.
+// CorrectionFamilyKind classifies call-pair relations used by resolver rails.
 type CorrectionFamilyKind string
 
 const (
@@ -1489,23 +354,19 @@ const (
 )
 
 // CorrectionFamilyRelation captures a directed relation where MoreSpecific can
-// suppress LessSpecific under family-specific policy.
+// suppress LessSpecific in a family.
 type CorrectionFamilyRelation struct {
 	Kind         CorrectionFamilyKind
 	LessSpecific string
 	MoreSpecific string
 }
 
-// CorrectionVoteKey returns the correction vote key for a callsign. Empty is
-// returned for invalid/blank inputs.
+// CorrectionVoteKey returns the normalized correction vote key for a callsign.
 func CorrectionVoteKey(call string) string {
 	return normalizeCorrectionCallIdentity(call).VoteKey
 }
 
 // CorrectionFamilyKeys returns deterministic keys for family-aware lookups.
-// Key aspects: Returns vote key first, then base key when distinct.
-// Upstream: stabilizer/recent-on-band family-aware admission.
-// Downstream: normalizeCorrectionCallIdentity.
 func CorrectionFamilyKeys(call string) []string {
 	identity := normalizeCorrectionCallIdentity(call)
 	if identity.VoteKey == "" {
@@ -1519,14 +380,13 @@ func CorrectionFamilyKeys(call string) []string {
 	return keys
 }
 
-// DetectCorrectionFamily reports whether two calls are in the same
-// correction-precedence family and, when true, which side is less/more specific.
+// DetectCorrectionFamily reports whether two calls are in the same correction family.
 func DetectCorrectionFamily(callA, callB string) (CorrectionFamilyRelation, bool) {
 	return DetectCorrectionFamilyWithPolicy(callA, callB, CorrectionFamilyPolicy{})
 }
 
-// DetectCorrectionFamilyWithPolicy reports whether two calls are in the same
-// correction-precedence family under the provided policy.
+// DetectCorrectionFamilyWithPolicy reports whether two calls are in the same correction family
+// under the provided policy.
 func DetectCorrectionFamilyWithPolicy(callA, callB string, policy CorrectionFamilyPolicy) (CorrectionFamilyRelation, bool) {
 	a := normalizeCorrectionCallIdentity(callA)
 	b := normalizeCorrectionCallIdentity(callB)
@@ -1587,8 +447,8 @@ func detectCorrectionFamilyByIdentity(a, b correctionCallIdentity, policy Correc
 	return CorrectionFamilyRelation{}, false
 }
 
-// normalizeCorrectionCallIdentity derives correction-only identity keys.
-// VoteKey groups semantically equivalent variants (e.g., KH6/W1AW == W1AW/KH6).
+// normalizeCorrectionCallIdentity derives correction identity keys.
+// VoteKey groups semantically equivalent slash variants (e.g. KH6/W1AW == W1AW/KH6).
 func normalizeCorrectionCallIdentity(call string) correctionCallIdentity {
 	raw := strutil.NormalizeUpper(call)
 	if raw == "" {
@@ -1727,136 +587,6 @@ func correctionDistance(subject, candidate correctionCallIdentity, mode, cwModel
 	return callDistance(subjectKey, candidateKey, mode, cwModel, rttyModel)
 }
 
-func decorateDecisionPath(path string, slashPrecedence bool, truncationLengthBonus bool, priorBonus bool, recentBandBonus bool) string {
-	if slashPrecedence {
-		if path == "" {
-			path = "slash_precedence"
-		} else {
-			path += "+slash_precedence"
-		}
-	}
-	if truncationLengthBonus {
-		if path == "" {
-			path = "truncation_length_bonus"
-		} else {
-			path += "+truncation_length_bonus"
-		}
-	}
-	if priorBonus {
-		if path == "" {
-			path = "prior_bonus"
-		} else {
-			path += "+prior_bonus"
-		}
-	}
-	if recentBandBonus {
-		if path == "" {
-			path = "recent_band_bonus"
-		} else {
-			path += "+recent_band_bonus"
-		}
-	}
-	return path
-}
-
-// Purpose: Select the closest good anchor call for a busted call.
-// Key aspects: Uses mode-aware distance and quality anchors.
-// Upstream: SuggestCallCorrection.
-// Downstream: callQuality.IsGoodAt and correctionDistance.
-// findAnchorForCall selects the closest good anchor (by mode-aware distance) for a busted call.
-func findAnchorForCall(bustedCall string, freqHz float64, mode string, candidates []string, cfg *CorrectionSettings, now time.Time) (string, bool) {
-	bustedIdentity := normalizeCorrectionCallIdentity(bustedCall)
-	if bustedIdentity.VoteKey == "" || cfg == nil {
-		return "", false
-	}
-	store := currentCallQuality()
-	if store == nil {
-		return "", false
-	}
-	modeKey := strings.TrimSpace(mode)
-	best := ""
-	bestDist := math.MaxInt
-	for _, c := range candidates {
-		candidateIdentity := normalizeCorrectionCallIdentity(c)
-		candidateKey := candidateIdentity.VoteKey
-		if candidateKey == "" || candidateKey == bustedIdentity.VoteKey {
-			continue
-		}
-		if !store.IsGoodAt(candidateKey, freqHz, cfg, now) {
-			continue
-		}
-		dist := correctionDistance(bustedIdentity, candidateIdentity, modeKey, cfg.DistanceModelCW, cfg.DistanceModelRTTY)
-		if cfg.MaxEditDistance >= 0 && dist > cfg.MaxEditDistance {
-			continue
-		}
-		if dist < bestDist {
-			bestDist = dist
-			best = candidateKey
-		}
-	}
-	if best == "" {
-		return "", false
-	}
-	return best, true
-}
-
-// Purpose: Update call quality scores after a cluster decision.
-// Key aspects: Rewards winner and penalizes busted calls.
-// Upstream: SuggestCallCorrection.
-// Downstream: callQuality.AddAt.
-// updateCallQualityForCluster updates the quality store after a resolved cluster.
-func updateCallQualityForCluster(winnerCall string, freqHz float64, cfg *CorrectionSettings, now time.Time, clusterSpots []bandmap.SpotEntry, skipPenalty func(call string) bool) {
-	if cfg == nil || winnerCall == "" || len(clusterSpots) == 0 {
-		return
-	}
-	store := currentCallQuality()
-	if store == nil {
-		return
-	}
-	winnerIdentity := normalizeCorrectionCallIdentity(winnerCall)
-	winnerKey := winnerIdentity.VoteKey
-	if winnerKey == "" {
-		return
-	}
-	store.AddAt(winnerKey, freqHz, cfg.QualityBinHz, cfg.QualityNewCallIncrement, now)
-
-	distinct := make(map[string]struct{})
-	for _, s := range clusterSpots {
-		callIdentity := normalizeCorrectionCallIdentity(s.Call)
-		call := callIdentity.VoteKey
-		if call == "" {
-			continue
-		}
-		distinct[call] = struct{}{}
-	}
-	for call := range distinct {
-		if call == winnerKey {
-			continue
-		}
-		if skipPenalty != nil && skipPenalty(call) {
-			continue
-		}
-		store.AddAt(call, freqHz, cfg.QualityBinHz, -cfg.QualityBustedDecrement, now)
-	}
-}
-
-// Purpose: Emit a correction trace to observer/log sinks.
-// Key aspects: Observer runs unconditionally; SQLite logging remains debug-gated.
-// Upstream: SuggestCallCorrection.
-// Downstream: cfg.TraceLogger.Enqueue.
-func logCorrectionTrace(cfg CorrectionSettings, tr CorrectionTrace, votes []bandmap.SpotEntry) {
-	if cfg.DecisionObserver != nil {
-		cfg.DecisionObserver(tr)
-	}
-	if !cfg.DebugLog || cfg.TraceLogger == nil {
-		return
-	}
-	cfg.TraceLogger.Enqueue(CorrectionLogEntry{
-		Trace: tr,
-		Votes: votes,
-	})
-}
-
 func normalizeCorrectionFamilyPolicy(policy CorrectionFamilyPolicy) CorrectionFamilyPolicy {
 	cfg := policy
 	if !cfg.Configured {
@@ -1894,334 +624,116 @@ func normalizeCorrectionTruncationAdvantagePolicy(policy CorrectionTruncationAdv
 	return cfg
 }
 
-// Purpose: Normalize correction settings with defaults.
-// Key aspects: Applies minimums and standardizes strategy names.
-// Upstream: SuggestCallCorrection.
-// Downstream: string normalization.
-// normalizeCorrectionSettings fills in safe defaults so callers can omit config
-// while unit tests can deliberately pass tiny values.
-func normalizeCorrectionSettings(settings CorrectionSettings) CorrectionSettings {
-	cfg := settings
-	// Honor configured strategy; fallback to majority when blank/invalid.
-	switch strings.ToLower(strings.TrimSpace(cfg.Strategy)) {
-	case "center", "classic", "majority":
-		cfg.Strategy = strings.ToLower(strings.TrimSpace(cfg.Strategy))
+const (
+	distanceModelPlain  = "plain"
+	distanceModelMorse  = "morse"
+	distanceModelBaudot = "baudot"
+
+	ambiguousMultiSignalMinSupport      = 2
+	ambiguousMultiSignalMaxSupportGap   = 1
+	ambiguousMultiSignalMaxOverlapRatio = 0.25
+
+	defaultDistanceInsertCost = 1
+	defaultDistanceDeleteCost = 1
+	defaultDistanceSubCost    = 2
+	defaultDistanceScale      = 2
+)
+
+func normalizeCWDistanceModel(model string) string {
+	switch strings.ToLower(strings.TrimSpace(model)) {
+	case distanceModelMorse:
+		return distanceModelMorse
 	default:
-		cfg.Strategy = "majority"
+		return distanceModelPlain
 	}
-	if cfg.FreqGuardMinSeparationKHz <= 0 {
-		cfg.FreqGuardMinSeparationKHz = 0.1
-	}
-	if cfg.FreqGuardRunnerUpRatio <= 0 {
-		cfg.FreqGuardRunnerUpRatio = 0.5
-	}
-	if cfg.FrequencyToleranceHz <= 0 {
-		cfg.FrequencyToleranceHz = 500
-	}
-	if cfg.QualityBinHz <= 0 {
-		cfg.QualityBinHz = 1000
-	}
-	if cfg.QualityGoodThreshold <= 0 {
-		cfg.QualityGoodThreshold = 2
-	}
-	if cfg.QualityNewCallIncrement == 0 {
-		cfg.QualityNewCallIncrement = 1
-	}
-	if cfg.QualityBustedDecrement == 0 {
-		cfg.QualityBustedDecrement = 1
-	}
-	if cfg.MinConsensusReports <= 0 {
-		cfg.MinConsensusReports = 4
-	}
-	cfg.FamilyPolicy = normalizeCorrectionFamilyPolicy(cfg.FamilyPolicy)
-	if cfg.SlashPrecedenceMinReports <= 0 {
-		cfg.SlashPrecedenceMinReports = 2
-	}
-	if cfg.MinAdvantage <= 0 {
-		cfg.MinAdvantage = 1
-	}
-	cfg.TruncationAdvantagePolicy = normalizeCorrectionTruncationAdvantagePolicy(cfg.TruncationAdvantagePolicy)
-	if cfg.MinConfidencePercent <= 0 {
-		cfg.MinConfidencePercent = 70
-	}
-	if cfg.CandidateEvalTopK <= 0 {
-		cfg.CandidateEvalTopK = 1
-	}
-	if cfg.RecencyWindow <= 0 {
-		cfg.RecencyWindow = 45 * time.Second
-	}
-	if cfg.MaxEditDistance <= 0 {
-		cfg.MaxEditDistance = 2
-	}
-	if cfg.MinSNRCW < 0 {
-		cfg.MinSNRCW = 0
-	}
-	if cfg.MinSNRRTTY < 0 {
-		cfg.MinSNRRTTY = 0
-	}
-	if cfg.Distance3ExtraReports < 0 {
-		cfg.Distance3ExtraReports = 0
-	}
-	if cfg.Distance3ExtraAdvantage < 0 {
-		cfg.Distance3ExtraAdvantage = 0
-	}
-	if cfg.Distance3ExtraConfidence < 0 {
-		cfg.Distance3ExtraConfidence = 0
-	}
-	cfg.DistanceModelCW = normalizeCWDistanceModel(cfg.DistanceModelCW)
-	cfg.DistanceModelRTTY = normalizeRTTYDistanceModel(cfg.DistanceModelRTTY)
-	if cfg.MinSpotterReliability < 0 {
-		cfg.MinSpotterReliability = 0
-	}
-	if cfg.ConfusionWeight < 0 {
-		cfg.ConfusionWeight = 0
-	}
-	if cfg.RecentBandWindow <= 0 {
-		cfg.RecentBandWindow = 12 * time.Hour
-	}
-	if cfg.RecentBandBonusMax < 0 {
-		cfg.RecentBandBonusMax = 0
-	}
-	if cfg.RecentBandRecordMinUniqueSpotters <= 0 {
-		cfg.RecentBandRecordMinUniqueSpotters = 2
-	}
-	if cfg.ResolverRecentPlus1MinUniqueWinner <= 0 {
-		cfg.ResolverRecentPlus1MinUniqueWinner = 3
-	}
-	if cfg.ResolverRecentPlus1MaxDistance <= 0 {
-		cfg.ResolverRecentPlus1MaxDistance = 1
-	}
-	if cfg.TruncationLengthBonusMax < 0 {
-		cfg.TruncationLengthBonusMax = 0
-	}
-	if cfg.TruncationLengthBonusEnabled && cfg.TruncationLengthBonusMax <= 0 {
-		cfg.TruncationLengthBonusMax = 1
-	}
-	if cfg.TruncationDelta2ExtraConfidence < 0 {
-		cfg.TruncationDelta2ExtraConfidence = 0
-	}
-	if cfg.PriorBonusMax < 0 {
-		cfg.PriorBonusMax = 0
-	}
-	if cfg.PriorBonusDistanceMax <= 0 {
-		cfg.PriorBonusDistanceMax = 1
-	}
-	switch strings.ToLower(strings.TrimSpace(cfg.PriorBonusApplyTo)) {
-	case "", "min_reports":
-		cfg.PriorBonusApplyTo = "min_reports"
-	default:
-		cfg.PriorBonusApplyTo = "min_reports"
-	}
-	return cfg
 }
 
-// Purpose: Return the minimum SNR threshold for a mode.
-// Key aspects: Uses per-mode thresholds from config.
-// Upstream: passesSNRThreshold and passesSNREntry.
-// Downstream: strings.ToUpper.
-func minSNRThresholdForMode(mode string, cfg CorrectionSettings) int {
-	switch strutil.NormalizeUpper(mode) {
+func normalizeRTTYDistanceModel(model string) string {
+	switch strings.ToLower(strings.TrimSpace(model)) {
+	case distanceModelBaudot:
+		return distanceModelBaudot
+	default:
+		return distanceModelPlain
+	}
+}
+
+func callDistanceCore(subject, candidate, mode, cwModel, rttyModel string) int {
+	switch mode {
 	case "CW":
-		return cfg.MinSNRCW
+		if cwModel == distanceModelMorse {
+			return cwCallDistance(subject, candidate)
+		}
 	case "RTTY":
-		return cfg.MinSNRRTTY
-	case "USB", "LSB":
-		return cfg.MinSNRVoice
-	default:
-		return 0
+		if rttyModel == distanceModelBaudot {
+			return rttyCallDistance(subject, candidate)
+		}
 	}
+	return lev.ComputeDistance(subject, candidate)
 }
 
-// Purpose: Check whether a spot meets the SNR threshold for its mode.
-// Key aspects: Requires HasReport to enforce thresholds.
-// Upstream: SuggestCallCorrection.
-// Downstream: minSNRThresholdForMode.
-func passesSNRThreshold(s *Spot, cfg CorrectionSettings) bool {
-	if s == nil {
+func callDistance(subject, candidate, mode, cwModel, rttyModel string) int {
+	modeKey := strutil.NormalizeUpper(mode)
+	return callDistanceCore(
+		subject,
+		candidate,
+		modeKey,
+		normalizeCWDistanceModel(cwModel),
+		normalizeRTTYDistanceModel(rttyModel),
+	)
+}
+
+// CallDistance computes mode-aware call distance with the same semantics used
+// by resolver primary gating.
+func CallDistance(subject, candidate, mode, cwModel, rttyModel string) int {
+	return callDistance(subject, candidate, mode, cwModel, rttyModel)
+}
+
+// IsEditNeighborPair reports whether calls are distance-1 neighbors under the
+// mode-aware distance model. Slash variants are excluded.
+func IsEditNeighborPair(left, right, mode, cwModel, rttyModel string) bool {
+	left = CorrectionVoteKey(left)
+	right = CorrectionVoteKey(right)
+	if left == "" || right == "" || strings.EqualFold(left, right) {
 		return false
 	}
-	required := minSNRThresholdForMode(s.Mode, cfg)
-	if required <= 0 {
-		return true
+	if strings.Contains(left, "/") || strings.Contains(right, "/") {
+		return false
 	}
-	return s.Report >= required
+	return CallDistance(left, right, mode, cwModel, rttyModel) == 1
 }
 
-// Purpose: Check whether a bandmap entry meets SNR threshold.
-// Key aspects: Uses entry.Mode and entry.SNR.
-// Upstream: SuggestCallCorrection.
-// Downstream: minSNRThresholdForMode.
-func passesSNREntry(e bandmap.SpotEntry, cfg CorrectionSettings) bool {
-	required := minSNRThresholdForMode(e.Mode, cfg)
-	if required <= 0 {
-		return true
+// ResolverSnapshotHasComparableEditNeighbor reports whether snapshot evidence
+// contains an edit-neighbor candidate with support comparable to call.
+func ResolverSnapshotHasComparableEditNeighbor(snapshot ResolverSnapshot, call, mode, cwModel, rttyModel string) bool {
+	call = CorrectionVoteKey(call)
+	if call == "" || len(snapshot.CandidateRanks) == 0 {
+		return false
 	}
-	return e.SNR >= required
-}
-
-// CorrectionIndex maintains a time-bounded, frequency-bucketed view of recent
-// spots so consensus checks can run without scanning the entire ring buffer.
-type CorrectionIndex struct {
-	mu       sync.Mutex
-	buckets  map[int]*correctionBucket
-	lastSeen map[int]time.Time
-
-	sweepQuit chan struct{}
-}
-
-type correctionBucket struct {
-	spots []*Spot
-}
-
-// NewCorrectionIndex constructs an empty correction index.
-// Key aspects: Initializes bucket and lastSeen maps.
-// Upstream: main startup.
-// Downstream: map allocation.
-// NewCorrectionIndex constructs an empty index.
-func NewCorrectionIndex() *CorrectionIndex {
-	return &CorrectionIndex{
-		buckets:  make(map[int]*correctionBucket),
-		lastSeen: make(map[int]time.Time),
+	callSupport := 0
+	for _, candidate := range snapshot.CandidateRanks {
+		candidateCall := CorrectionVoteKey(candidate.Call)
+		if strings.EqualFold(candidateCall, call) {
+			callSupport = candidate.Support
+			break
+		}
 	}
-}
-
-// Add inserts a spot into the frequency bucket index.
-// Key aspects: Prunes stale entries and tracks lastSeen per bucket.
-// Upstream: processOutputSpots call correction path.
-// Downstream: bucketKey and pruneAndAppend.
-// Add inserts a spot into the appropriate bucket and prunes stale entries.
-func (ci *CorrectionIndex) Add(s *Spot, now time.Time, window time.Duration) {
-	if ci == nil || s == nil {
-		return
-	}
-	if window <= 0 {
-		window = 45 * time.Second
-	}
-
-	key := bucketKey(s.Frequency)
-
-	ci.mu.Lock()
-	defer ci.mu.Unlock()
-
-	ci.cleanup(now, window)
-
-	bucket := ci.buckets[key]
-	if bucket == nil {
-		bucket = &correctionBucket{}
-		ci.buckets[key] = bucket
-	}
-
-	bucket.spots = pruneAndAppend(bucket.spots, s, now, window)
-	if len(bucket.spots) == 0 {
-		delete(ci.buckets, key)
-		delete(ci.lastSeen, key)
-	} else {
-		ci.lastSeen[key] = now
-	}
-}
-
-// Candidates retrieve nearby spots for call correction.
-// Key aspects: Scans adjacent buckets and prunes stale entries.
-// Upstream: SuggestCallCorrection.
-// Downstream: bucketKey and prune.
-// Candidates retrieves nearby spots within the specified +/- window (kHz).
-func (ci *CorrectionIndex) Candidates(subject *Spot, now time.Time, window time.Duration, searchKHz float64) []*Spot {
-	if ci == nil || subject == nil {
-		return nil
-	}
-	if window <= 0 {
-		window = 45 * time.Second
-	}
-	if searchKHz <= 0 {
-		searchKHz = 0.5
-	}
-
-	key := bucketKey(subject.Frequency)
-	rangeBuckets := int(math.Ceil(searchKHz * 10))
-	minKey := key - rangeBuckets
-	maxKey := key + rangeBuckets
-
-	ci.mu.Lock()
-	defer ci.mu.Unlock()
-
-	var results []*Spot
-	for k := minKey; k <= maxKey; k++ {
-		bucket := ci.buckets[k]
-		if bucket == nil {
+	for _, candidate := range snapshot.CandidateRanks {
+		candidateCall := CorrectionVoteKey(candidate.Call)
+		if candidateCall == "" || strings.EqualFold(candidateCall, call) {
 			continue
 		}
-		bucket.spots = prune(bucket.spots, now, window)
-		if len(bucket.spots) == 0 {
-			// Drop empty buckets to prevent map growth as frequencies churn.
-			delete(ci.buckets, k)
-			delete(ci.lastSeen, k)
+		if candidate.Support < callSupport {
 			continue
 		}
-		ci.lastSeen[k] = now
-		results = append(results, bucket.spots...)
-	}
-	return results
-}
-
-// Purpose: Compute the bucket key for a frequency.
-// Key aspects: Half-up rounding to 0.1 kHz.
-// Upstream: CorrectionIndex.Add and Candidates.
-// Downstream: math.Floor.
-func bucketKey(freq float64) int {
-	// Half-up rounding to 0.1 kHz keeps bucket boundaries stable at .x5 points.
-	return int(math.Floor(freq*10 + 0.5))
-}
-
-// Purpose: Drop stale spots outside the recency window.
-// Key aspects: Returns a compacted slice of active spots.
-// Upstream: Candidates.
-// Downstream: time comparisons.
-func prune(spots []*Spot, now time.Time, window time.Duration) []*Spot {
-	if len(spots) == 0 {
-		return spots
-	}
-	cutoff := now.Add(-window)
-	dst := spots[:0]
-	for _, s := range spots {
-		if s == nil {
-			continue
-		}
-		if s.Time.Before(cutoff) {
-			continue
-		}
-		dst = append(dst, s)
-	}
-	return dst
-}
-
-// Purpose: Prune stale spots and append the new spot.
-// Key aspects: Reuses prune() to keep slice compact.
-// Upstream: CorrectionIndex.Add.
-// Downstream: prune.
-func pruneAndAppend(spots []*Spot, s *Spot, now time.Time, window time.Duration) []*Spot {
-	spots = prune(spots, now, window)
-	return append(spots, s)
-}
-
-func reporterSetOverlapCount(left, right map[string]struct{}) int {
-	if len(left) == 0 || len(right) == 0 {
-		return 0
-	}
-	// Iterate the smaller set to keep overlap checks cheap on dense clusters.
-	if len(left) > len(right) {
-		left, right = right, left
-	}
-	overlap := 0
-	for reporter := range left {
-		if _, ok := right[reporter]; ok {
-			overlap++
+		if IsEditNeighborPair(call, candidateCall, mode, cwModel, rttyModel) {
+			return true
 		}
 	}
-	return overlap
+	return false
 }
 
-// shouldRejectAsAmbiguousMultiSignal applies the split-signal guard to two
-// candidate calls competing in the same frequency cluster.
+// shouldRejectAsAmbiguousMultiSignal applies split-signal guard rails to two
+// competing candidates in the same frequency neighborhood.
 func shouldRejectAsAmbiguousMultiSignal(
 	winnerSupport int,
 	runnerSupport int,
@@ -2273,202 +785,38 @@ func shouldRejectAsAmbiguousMultiSignal(
 	return overlapRatio <= ambiguousMultiSignalMaxOverlapRatio
 }
 
-// Purpose: Remove inactive buckets to bound memory.
-// Key aspects: Deletes buckets when lastSeen is outside window.
-// Upstream: CorrectionIndex.Add and StartCleanup.
-// Downstream: map deletes.
-// cleanup removes buckets that have been inactive longer than the window to keep
-// the map bounded even when frequencies churn across the spectrum.
-func (ci *CorrectionIndex) cleanup(now time.Time, window time.Duration) {
-	if len(ci.lastSeen) == 0 {
-		return
-	}
-	cutoff := now.Add(-window)
-	for key, last := range ci.lastSeen {
-		if last.Before(cutoff) {
-			delete(ci.lastSeen, key)
-			delete(ci.buckets, key)
-		}
-	}
+// ConfigureMorseWeights applies Morse distance weights and rebuilds lookup tables.
+func ConfigureMorseWeights(insert, delete, sub, scale int) {
+	morseInsertCost, morseDeleteCost, morseSubCost, morseScale = normalizeDistanceWeights(insert, delete, sub, scale)
+	morseRuneIndex, morseCostTable = buildRuneCostTable(morseCodes, morsePatternCost)
 }
 
-// StartCleanup starts a periodic cleanup goroutine for the index.
-// Key aspects: Uses ticker and quit channel; guards against double start.
-// Upstream: main startup.
-// Downstream: cleanup and time.NewTicker.
-// StartCleanup launches a periodic sweep to evict inactive buckets even when Candidates/Add
-// are not called frequently, keeping memory bounded.
-func (ci *CorrectionIndex) StartCleanup(interval, window time.Duration) {
-	if ci == nil {
-		return
-	}
-	if interval <= 0 {
-		interval = time.Minute
-	}
-	startPeriodicCleanup(&ci.mu, &ci.sweepQuit, interval, func() {
-		ci.mu.Lock()
-		ci.cleanup(time.Now().UTC(), window)
-		ci.mu.Unlock()
-	})
+// ConfigureBaudotWeights applies Baudot distance weights and rebuilds lookup tables.
+func ConfigureBaudotWeights(insert, delete, sub, scale int) {
+	baudotInsertCost, baudotDeleteCost, baudotSubCost, baudotScale = normalizeDistanceWeights(insert, delete, sub, scale)
+	baudotRuneIndex, baudotCostTable = buildRuneCostTable(baudotCodes, baudotPatternCost)
 }
 
-// StopCleanup stops the periodic cleanup goroutine.
-// Key aspects: Closes quit channel and clears it.
-// Upstream: main shutdown.
-// Downstream: channel close only.
-// StopCleanup stops the periodic cleanup goroutine.
-func (ci *CorrectionIndex) StopCleanup() {
-	if ci == nil {
-		return
+func normalizeDistanceWeights(insert, delete, sub, scale int) (int, int, int, int) {
+	if insert <= 0 {
+		insert = defaultDistanceInsertCost
 	}
-	stopPeriodicCleanup(&ci.mu, &ci.sweepQuit)
+	if delete <= 0 {
+		delete = defaultDistanceDeleteCost
+	}
+	if sub <= 0 {
+		sub = defaultDistanceSubCost
+	}
+	if scale <= 0 {
+		scale = defaultDistanceScale
+	}
+	return insert, delete, sub, scale
 }
 
-const (
-	distanceModelPlain  = "plain"
-	distanceModelMorse  = "morse"
-	distanceModelBaudot = "baudot"
-
-	// Ambiguity guard thresholds are intentionally conservative and fixed so
-	// split-signal protection is deterministic without adding more operator knobs.
-	ambiguousMultiSignalMinSupport      = 2
-	ambiguousMultiSignalMaxSupportGap   = 1
-	ambiguousMultiSignalMaxOverlapRatio = 0.25
-
-	defaultDistanceInsertCost = 1
-	defaultDistanceDeleteCost = 1
-	defaultDistanceSubCost    = 2
-	defaultDistanceScale      = 2
-)
-
-// Purpose: Normalize CW distance model selection.
-// Key aspects: Defaults to plain when unknown.
-// Upstream: normalizeCorrectionSettings and callDistance.
-// Downstream: strings.ToLower.
-func normalizeCWDistanceModel(model string) string {
-	switch strings.ToLower(strings.TrimSpace(model)) {
-	case distanceModelMorse:
-		return distanceModelMorse
-	default:
-		return distanceModelPlain
-	}
-}
-
-// Purpose: Normalize RTTY distance model selection.
-// Key aspects: Defaults to plain when unknown.
-// Upstream: normalizeCorrectionSettings and callDistance.
-// Downstream: strings.ToLower.
-func normalizeRTTYDistanceModel(model string) string {
-	switch strings.ToLower(strings.TrimSpace(model)) {
-	case distanceModelBaudot:
-		return distanceModelBaudot
-	default:
-		return distanceModelPlain
-	}
-}
-
-// callDistanceCore picks the distance function based on mode/model without caching.
-// Purpose: Compute mode-aware call distance without caching.
-// Key aspects: Routes to CW/RTTY-specific models or plain Levenshtein.
-// Upstream: callDistance.
-// Downstream: cwCallDistance, rttyCallDistance, lev.Distance.
-func callDistanceCore(subject, candidate, mode, cwModel, rttyModel string) int {
-	switch mode {
-	case "CW":
-		if cwModel == distanceModelMorse {
-			return cwCallDistance(subject, candidate)
-		}
-	case "RTTY":
-		if rttyModel == distanceModelBaudot {
-			return rttyCallDistance(subject, candidate)
-		}
-	}
-	return lev.ComputeDistance(subject, candidate)
-}
-
-// callDistance normalizes mode/model inputs before routing to the core distance function.
-// Purpose: Compute mode-aware call distance with normalized models.
-// Key aspects: Normalizes model strings before calling core.
-// Upstream: SuggestCallCorrection and findAnchorForCall.
-// Downstream: callDistanceCore and normalizeCW/RTTYDistanceModel.
-func callDistance(subject, candidate, mode, cwModel, rttyModel string) int {
-	modeKey := strutil.NormalizeUpper(mode)
-	return callDistanceCore(
-		subject,
-		candidate,
-		modeKey,
-		normalizeCWDistanceModel(cwModel),
-		normalizeRTTYDistanceModel(rttyModel),
-	)
-}
-
-// CallDistance computes mode-aware distance with the same model semantics used by
-// call-correction evaluation.
-// Purpose: Provide a shared distance helper for resolver-primary apply rails.
-// Key aspects: Uses normalized mode/model routing through callDistance.
-// Upstream: main resolver-primary correction apply path.
-// Downstream: callDistance.
-func CallDistance(subject, candidate, mode, cwModel, rttyModel string) int {
-	return callDistance(subject, candidate, mode, cwModel, rttyModel)
-}
-
-// IsEditNeighborPair reports whether two calls are distance-1 substitution
-// neighbors under the mode-aware distance model. Slash variants are excluded.
-func IsEditNeighborPair(left, right, mode, cwModel, rttyModel string) bool {
-	left = CorrectionVoteKey(left)
-	right = CorrectionVoteKey(right)
-	if left == "" || right == "" || strings.EqualFold(left, right) {
-		return false
-	}
-	if strings.Contains(left, "/") || strings.Contains(right, "/") {
-		return false
-	}
-	return CallDistance(left, right, mode, cwModel, rttyModel) == 1
-}
-
-// ResolverSnapshotHasComparableEditNeighbor reports whether snapshot evidence
-// contains an edit-neighbor candidate with support comparable to the given call.
-func ResolverSnapshotHasComparableEditNeighbor(snapshot ResolverSnapshot, call, mode, cwModel, rttyModel string) bool {
-	call = CorrectionVoteKey(call)
-	if call == "" || len(snapshot.CandidateRanks) == 0 {
-		return false
-	}
-	callSupport := 0
-	for _, candidate := range snapshot.CandidateRanks {
-		candidateCall := CorrectionVoteKey(candidate.Call)
-		if strings.EqualFold(candidateCall, call) {
-			callSupport = candidate.Support
-			break
-		}
-	}
-	for _, candidate := range snapshot.CandidateRanks {
-		candidateCall := CorrectionVoteKey(candidate.Call)
-		if candidateCall == "" || strings.EqualFold(candidateCall, call) {
-			continue
-		}
-		if candidate.Support < callSupport {
-			continue
-		}
-		if IsEditNeighborPair(call, candidateCall, mode, cwModel, rttyModel) {
-			return true
-		}
-	}
-	return false
-}
-
-// Purpose: Compute CW-aware edit distance between two callsigns.
-// Key aspects: Uses Levenshtein with Morse-weighted substitutions; insert/delete
-// cost 1; pooled DP buffers limit allocations; substitutions use prebuilt costs.
-// Upstream: callDistanceCore (CW mode distance path).
-// Downstream: morseCharDist, min3, borrowIntSlice, returnIntSlice.
 func cwCallDistance(a, b string) int {
 	return weightedCallDistance(a, b, morseRuneIndex, morseCostTable)
 }
 
-// Purpose: Compute RTTY-aware edit distance between two callsigns.
-// Key aspects: Same DP structure as CW but uses Baudot substitution costs.
-// Upstream: callDistanceCore (RTTY mode distance path).
-// Downstream: baudotCharDist, min3, borrowIntSlice, returnIntSlice.
 func rttyCallDistance(a, b string) int {
 	return weightedCallDistance(a, b, baudotRuneIndex, baudotCostTable)
 }
@@ -2518,14 +866,9 @@ func weightedRuneDist(a, b rune, runeIndex map[rune]int, costTable [][]int) int 
 			return costTable[i][j]
 		}
 	}
-	// Fallback cost when the rune is not in the weighted table.
 	return defaultDistanceSubCost
 }
 
-// Purpose: Return the minimum of three integers.
-// Key aspects: Branches to avoid allocations or slices.
-// Upstream: cwCallDistance, rttyCallDistance, morsePatternCost, baudotPatternCost.
-// Downstream: None.
 func min3(a, b, c int) int {
 	if a < b {
 		if a < c {
@@ -2539,11 +882,6 @@ func min3(a, b, c int) int {
 	return c
 }
 
-// Purpose: Provide an int buffer for edit-distance DP with optional pooling.
-// Key aspects: Reuses a pooled 64-cap slice for small buffers; returns a flag to
-// drive proper pool return.
-// Upstream: cwCallDistance, rttyCallDistance.
-// Downstream: levBufPool.
 func borrowIntSlice(n int) ([]int, bool) {
 	if n <= 0 {
 		return nil, false
@@ -2560,15 +898,10 @@ func borrowIntSlice(n int) ([]int, bool) {
 	return make([]int, n), false
 }
 
-// Purpose: Return a pooled DP buffer to the pool.
-// Key aspects: Re-slices to the original pool cap to keep buffers bounded.
-// Upstream: cwCallDistance, rttyCallDistance.
-// Downstream: levBufPool.
 func returnIntSlice(buf []int, fromPool bool) {
 	if !fromPool || buf == nil {
 		return
 	}
-	// Keep pooled buffers bounded to the original cap.
 	if cap(buf) >= 64 {
 		resized := buf[:64]
 		levBufPool.Put(&resized)
@@ -2631,7 +964,6 @@ var (
 
 	levBufPool = sync.Pool{
 		New: func() interface{} {
-			// Typical callsigns are short; a small buffer covers common cases.
 			buf := make([]int, 64)
 			return &buf
 		},
@@ -2683,19 +1015,11 @@ var (
 	baudotCostTable [][]int
 )
 
-// Purpose: Build Morse and Baudot cost tables at package init.
-// Key aspects: Precomputes rune indexes and dense cost matrices for fast lookup.
-// Upstream: Go runtime init for the spot package.
-// Downstream: buildRuneCostTable, morsePatternCost, baudotPatternCost.
 func init() {
 	morseRuneIndex, morseCostTable = buildRuneCostTable(morseCodes, morsePatternCost)
 	baudotRuneIndex, baudotCostTable = buildRuneCostTable(baudotCodes, baudotPatternCost)
 }
 
-// Purpose: Build rune indexes and dense substitution-cost tables for a codebook.
-// Key aspects: Computes pairwise costs once; small tables avoid per-call DP.
-// Upstream: init.
-// Downstream: cost function (morsePatternCost or baudotPatternCost).
 func buildRuneCostTable(codebook map[rune]string, cost func(a, b string) int) (map[rune]int, [][]int) {
 	index := make(map[rune]int, len(codebook))
 	keys := make([]rune, 0, len(codebook))
@@ -2714,19 +1038,12 @@ func buildRuneCostTable(codebook map[rune]string, cost func(a, b string) int) (m
 				table[i][j] = 0
 				continue
 			}
-			a := codebook[ra]
-			b := codebook[rb]
-			table[i][j] = cost(a, b)
+			table[i][j] = cost(codebook[ra], codebook[rb])
 		}
 	}
 	return index, table
 }
 
-// Purpose: Compute weighted, normalized edit cost between two Morse patterns.
-// Key aspects: Runs Levenshtein on dot/dash strings with weights, then normalizes
-// by length and scales to a small integer for substitution costs.
-// Upstream: buildRuneCostTable (Morse table build).
-// Downstream: getMorseWeights, min3.
 func morsePatternCost(a, b string) int {
 	return weightedPatternCost(a, b, getMorseWeights().distanceWeightSet)
 }
@@ -2742,10 +1059,6 @@ type morseWeightSet struct {
 	distanceWeightSet
 }
 
-// Purpose: Snapshot the current Morse weighting settings.
-// Key aspects: Reads global cost parameters once per call.
-// Upstream: morsePatternCost.
-// Downstream: None.
 func getMorseWeights() morseWeightSet {
 	return morseWeightSet{
 		distanceWeightSet: distanceWeightSet{
@@ -2757,10 +1070,6 @@ func getMorseWeights() morseWeightSet {
 	}
 }
 
-// Purpose: Compute weighted, normalized edit cost between two Baudot patterns.
-// Key aspects: Runs weighted Levenshtein and scales the result for substitutions.
-// Upstream: buildRuneCostTable (Baudot table build).
-// Downstream: min3.
 func baudotPatternCost(a, b string) int {
 	return weightedPatternCost(a, b, distanceWeightSet{
 		ins:   baudotInsertCost,
@@ -2786,11 +1095,9 @@ func weightedPatternCost(a, b string, cfg distanceWeightSet) int {
 	}
 	prev := make([]int, lb+1)
 	cur := make([]int, lb+1)
-
 	for j := 0; j <= lb; j++ {
 		prev[j] = j * cfg.ins
 	}
-
 	for i := 1; i <= la; i++ {
 		cur[0] = i * cfg.del
 		for j := 1; j <= lb; j++ {

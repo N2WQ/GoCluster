@@ -28,10 +28,6 @@ func TestMaybeApplyResolverCorrectionReplayNoSnapshot(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
-		nil,
-		nil,
-		nil,
 		now,
 	)
 
@@ -97,7 +93,6 @@ func TestMaybeApplyResolverCorrectionReplayAppliesWinner(t *testing.T) {
 		MaxEditDistance:      3,
 		DistanceModelCW:      "morse",
 		DistanceModelRTTY:    "baudot",
-		QualityBinHz:         400,
 		FrequencyToleranceHz: 400,
 	}
 	spotEntry := spot.NewSpotNormalized("K1AB", "W1XYZ", 7010.0, "CW")
@@ -108,10 +103,6 @@ func TestMaybeApplyResolverCorrectionReplayAppliesWinner(t *testing.T) {
 		spot.ResolverEvidence{Key: key},
 		true,
 		cfg,
-		nil,
-		nil,
-		nil,
-		nil,
 		nil,
 		nil,
 		nil,

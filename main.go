@@ -543,19 +543,6 @@ func main() {
 		log.Printf("Configuration loaded for %s (%s)", cfg.Server.Name, cfg.Server.NodeID)
 	}
 
-	// Optional call-correction decision logger (asynchronous SQLite writer).
-	var corrLogger spot.CorrectionTraceLogger
-	if cfg.CallCorrection.DebugLog {
-		logger, err := spot.NewDecisionLogger(cfg.CallCorrection.DebugLogFile, 0)
-		if err != nil {
-			log.Printf("Warning: unable to start call-correction decision logger: %v", err)
-		} else {
-			corrLogger = logger
-			path := spot.DecisionLogPath(cfg.CallCorrection.DebugLogFile, time.Now().UTC())
-			log.Printf("Call correction decision logging to %s (SQLite, non-blocking)", path)
-		}
-	}
-
 	// Toggle FCC ULS lookups independently of the downloader so disabled configs
 	// can keep the DB on disk without performing license checks.
 	uls.SetLicenseChecksEnabled(cfg.FCCULS.Enabled)
@@ -605,23 +592,6 @@ func main() {
 	}
 	spot.ConfigureMorseWeights(cfg.CallCorrection.MorseWeights.Insert, cfg.CallCorrection.MorseWeights.Delete, cfg.CallCorrection.MorseWeights.Sub, cfg.CallCorrection.MorseWeights.Scale)
 	spot.ConfigureBaudotWeights(cfg.CallCorrection.BaudotWeights.Insert, cfg.CallCorrection.BaudotWeights.Delete, cfg.CallCorrection.BaudotWeights.Sub, cfg.CallCorrection.BaudotWeights.Scale)
-	pinPriors := true
-	if cfg.CallCorrection.CallQualityPinPriors != nil {
-		pinPriors = *cfg.CallCorrection.CallQualityPinPriors
-	}
-	spot.ConfigureCallQualityStore(
-		time.Duration(cfg.CallCorrection.CallQualityTTLSeconds)*time.Second,
-		cfg.CallCorrection.CallQualityMaxEntries,
-		time.Duration(cfg.CallCorrection.CallQualityCleanupIntervalSeconds)*time.Second,
-		pinPriors,
-	)
-	if priors := strings.TrimSpace(cfg.CallCorrection.QualityPriorsFile); priors != "" {
-		if n, err := spot.LoadCallQualityPriors(priors, cfg.CallCorrection.QualityBinHz); err != nil {
-			log.Printf("Warning: failed to load quality priors from %s: %v", priors, err)
-		} else {
-			log.Printf("Loaded %d call quality priors from %s", n, priors)
-		}
-	}
 	var spotterReliability spot.SpotterReliability
 	var spotterReliabilityCW spot.SpotterReliability
 	var spotterReliabilityRTTY spot.SpotterReliability
@@ -699,18 +669,8 @@ func main() {
 	spotBuffer := buffer.NewRingBuffer(capacity)
 	log.Printf("Ring buffer created (capacity: %d)", capacity)
 
-	resolverPrimaryMode := strings.EqualFold(strings.TrimSpace(cfg.CallCorrection.ResolverMode), config.CallCorrectionResolverModePrimary)
-	var correctionIndex *spot.CorrectionIndex
-	var correctionShadowIndex *spot.CorrectionIndex
 	var signalResolver *spot.SignalResolver
 	if cfg.CallCorrection.Enabled {
-		if resolverPrimaryMode {
-			correctionShadowIndex = spot.NewCorrectionIndex()
-			correctionShadowIndex.StartCleanup(time.Minute, callCorrectionCleanupWindow(cfg.CallCorrection))
-		} else {
-			correctionIndex = spot.NewCorrectionIndex()
-			correctionIndex.StartCleanup(time.Minute, callCorrectionCleanupWindow(cfg.CallCorrection))
-		}
 		signalResolver = spot.NewSignalResolver(spot.SignalResolverConfig{
 			QueueSize:                 shadowResolverQueueSize,
 			MaxActiveKeys:             shadowResolverMaxActiveKeys,
@@ -741,20 +701,6 @@ func main() {
 			},
 		})
 		signalResolver.Start()
-	}
-	var callCooldown *spot.CallCooldown
-	if cfg.CallCorrection.CooldownEnabled {
-		callCooldown = spot.NewCallCooldown(spot.CallCooldownConfig{
-			Enabled:          cfg.CallCorrection.CooldownEnabled,
-			MinReporters:     cfg.CallCorrection.CooldownMinReporters,
-			Duration:         time.Duration(cfg.CallCorrection.CooldownDurationSeconds) * time.Second,
-			TTL:              time.Duration(cfg.CallCorrection.CooldownTTLSeconds) * time.Second,
-			BinHz:            cfg.CallCorrection.CooldownBinHz,
-			MaxReporters:     cfg.CallCorrection.CooldownMaxReporters,
-			BypassAdvantage:  cfg.CallCorrection.CooldownBypassAdvantage,
-			BypassConfidence: cfg.CallCorrection.CooldownBypassConfidence,
-		})
-		callCooldown.StartCleanup(time.Duration(cfg.CallCorrection.CooldownTTLSeconds) * time.Second)
 	}
 	var recentBandStore *spot.RecentBandStore
 	if cfg.CallCorrection.Enabled && (cfg.CallCorrection.RecentBandBonusEnabled || cfg.CallCorrection.StabilizerEnabled) {
@@ -1096,7 +1042,7 @@ func main() {
 	// Downstream: processOutputSpots.
 	pathReport := newPathReportMetrics()
 	pskrPathOnlyStats := &pathOnlyStats{}
-	go processOutputSpots(deduplicator, secondaryFast, secondaryMed, secondarySlow, archivePeerSecondaryMed, &secondaryStageCount, modeAssigner, spotBuffer, telnetServer, peerManager, statsTracker, correctionIndex, correctionShadowIndex, signalResolver, cfg.CallCorrection, ctyLookup, metaCache, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, surface, gridUpdater, gridLookup, gridLookupSync, unlicensedReporter, corrLogger, callCooldown, adaptiveMinReports, refresher, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel, recentBandStore, cfg.RBN.KeepSSIDSuffix, archiveWriter, &lastOutput, pathPredictor, pathReport, allowedBandSet)
+	go processOutputSpots(deduplicator, secondaryFast, secondaryMed, secondarySlow, archivePeerSecondaryMed, &secondaryStageCount, modeAssigner, spotBuffer, telnetServer, peerManager, statsTracker, signalResolver, cfg.CallCorrection, ctyLookup, metaCache, harmonicDetector, cfg.Harmonics, &knownCalls, freqAverager, cfg.SpotPolicy, surface, gridUpdater, gridLookup, gridLookupSync, unlicensedReporter, adaptiveMinReports, refresher, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel, recentBandStore, cfg.RBN.KeepSSIDSuffix, archiveWriter, &lastOutput, pathPredictor, pathReport, allowedBandSet)
 	startPipelineHealthMonitor(ctx, deduplicator, &lastOutput, peerManager)
 
 	// Connect to RBN CW/RTTY feed if enabled (port 7000)
@@ -1313,15 +1259,6 @@ func main() {
 	if harmonicDetector != nil {
 		harmonicDetector.StopCleanup()
 	}
-	if correctionIndex != nil {
-		correctionIndex.StopCleanup()
-	}
-	if correctionShadowIndex != nil {
-		correctionShadowIndex.StopCleanup()
-	}
-	if callCooldown != nil {
-		callCooldown.StopCleanup()
-	}
 	if recentBandStore != nil {
 		recentBandStore.StopCleanup()
 	}
@@ -1366,16 +1303,6 @@ func main() {
 
 	// Stop the telnet server
 	telnetServer.Stop()
-
-	if corrLogger != nil {
-		if err := corrLogger.Close(); err != nil {
-			log.Printf("Warning: call-correction decision logger close: %v", err)
-		}
-		dropped := corrLogger.Dropped()
-		if dropped > 0 {
-			log.Printf("Call-correction decision logger dropped %d entries under load", dropped)
-		}
-	}
 
 	log.Println("Cluster stopped")
 }
@@ -1557,16 +1484,14 @@ func formatCorrectionDecisionSummary(tracker *stats.Tracker) string {
 	applied := tracker.CorrectionDecisionApplied()
 	rejected := tracker.CorrectionDecisionRejected()
 	fallback := tracker.CorrectionFallbackApplied()
-	prior := tracker.CorrectionPriorBonusUsed()
 	reasons := formatTopCounterSummary(tracker.CorrectionDecisionReasons(), 2)
 	appliedReasons := formatTopCounterSummary(tracker.CorrectionDecisionAppliedReasons(), 2)
 	paths := formatTopCounterSummary(tracker.CorrectionDecisionPaths(), 2)
-	return fmt.Sprintf("CorrGate: %s (T) / %s (A) / %s (R) / %s (FB) / %s (PB) [rej:%s ap:%s] [%s]",
+	return fmt.Sprintf("CorrGate: %s (T) / %s (A) / %s (R) / %s (FB) [rej:%s ap:%s] [%s]",
 		humanize.Comma(int64(total)),
 		humanize.Comma(int64(applied)),
 		humanize.Comma(int64(rejected)),
 		humanize.Comma(int64(fallback)),
-		humanize.Comma(int64(prior)),
 		reasons,
 		appliedReasons,
 		paths,
@@ -1619,22 +1544,12 @@ func formatResolverSummary(resolver *spot.SignalResolver) string {
 		return "Resolver: n/a"
 	}
 	metrics := resolver.MetricsSnapshot()
-	agreementPercent := 0
-	if metrics.DecisionsComparable > 0 {
-		agreementPercent = int((metrics.DecisionAgreement * 100) / metrics.DecisionsComparable)
-	}
 	return fmt.Sprintf(
-		"Resolver: %s (C) / %s (P) / %s (U) / %s (S) | agr %s/%s (%d%%) | d %s (SP) / %s (DW) / %s (UC) | q=%d drop %s (Q) / %s (K) / %s (C) / %s (R) | pressure %s (C) / %s (R) evict %s (C) / %s (R) hw %s (C) / %s (R)",
+		"Resolver: %s (C) / %s (P) / %s (U) / %s (S) | q=%d drop %s (Q) / %s (K) / %s (C) / %s (R) | pressure %s (C) / %s (R) evict %s (C) / %s (R) hw %s (C) / %s (R)",
 		humanize.Comma(int64(metrics.StateConfident)),
 		humanize.Comma(int64(metrics.StateProbable)),
 		humanize.Comma(int64(metrics.StateUncertain)),
 		humanize.Comma(int64(metrics.StateSplit)),
-		humanize.Comma(int64(metrics.DecisionAgreement)),
-		humanize.Comma(int64(metrics.DecisionsComparable)),
-		agreementPercent,
-		humanize.Comma(int64(metrics.DisagreeSplitCorrected)),
-		humanize.Comma(int64(metrics.DisagreeConfidentDifferentWinner)),
-		humanize.Comma(int64(metrics.DisagreeUncertainCorrected)),
 		metrics.QueueDepth,
 		humanize.Comma(int64(metrics.DropQueueFull)),
 		humanize.Comma(int64(metrics.DropMaxKeys)),
@@ -2179,8 +2094,6 @@ func processOutputSpots(
 	telnet *telnet.Server,
 	peerManager *peer.Manager,
 	tracker *stats.Tracker,
-	correctionIdx *spot.CorrectionIndex,
-	correctionShadowIdx *spot.CorrectionIndex,
 	signalResolver *spot.SignalResolver,
 	correctionCfg config.CallCorrectionConfig,
 	ctyLookup func() *cty.CTYDatabase,
@@ -2195,8 +2108,6 @@ func processOutputSpots(
 	gridLookup func(call string) (string, bool, bool),
 	gridLookupSync func(call string) (string, bool, bool),
 	unlicensedReporter func(source, role, call, mode string, freq float64),
-	corrLogger spot.CorrectionTraceLogger,
-	callCooldown *spot.CallCooldown,
 	adaptiveMinReports *spot.AdaptiveMinReports,
 	refresher *adaptiveRefresher,
 	spotterReliability spot.SpotterReliability,
@@ -2213,7 +2124,6 @@ func processOutputSpots(
 ) {
 	outputChan := deduplicator.GetOutputChannel()
 	secondaryActive := secondaryFast != nil || secondaryMed != nil || secondarySlow != nil
-	resolverPrimaryMode := strings.EqualFold(strings.TrimSpace(correctionCfg.ResolverMode), config.CallCorrectionResolverModePrimary)
 	stabilizerEnabled := telnet != nil && correctionCfg.Enabled && correctionCfg.StabilizerEnabled && recentBandStore != nil
 	var telnetStabilizer *telnetSpotStabilizer
 	if stabilizerEnabled {
@@ -2297,24 +2207,8 @@ func processOutputSpots(
 					resolverEvidence, hasResolverEvidence = buildResolverEvidenceSnapshot(delayed, correctionCfg, adaptiveMinReports, now)
 				}
 				resolverEvidenceEnqueued := envelope.evidenceEnqueued
-				preCorrectionCall := normalizedDXCall(delayed)
 				suppress := false
-				if resolverPrimaryMode {
-					if hasResolverEvidence && signalResolver != nil && correctionShadowIdx != nil {
-						shadowSpot := cloneSpotForTelnetStabilizer(delayed)
-						shadowPreCorrectionCall := normalizedDXCall(shadowSpot)
-						shadowSuppress := maybeApplyCallCorrectionWithLogger(shadowSpot, correctionShadowIdx, correctionCfg, ctyDB, nil, nil, nil, nil, callCooldown, adaptiveMinReports, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel, recentBandStore, knownCallset)
-						if !shadowSuppress {
-							observeResolverCurrentDecision(signalResolver, resolverEvidence.Key, shadowSpot, shadowPreCorrectionCall)
-						}
-					}
-					suppress = maybeApplyResolverCorrection(delayed, signalResolver, resolverEvidence, hasResolverEvidence, correctionCfg, ctyDB, metaCache, tracker, dash, recentBandStore, knownCallset, adaptiveMinReports, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel)
-				} else {
-					suppress = maybeApplyCallCorrectionWithLogger(delayed, correctionIdx, correctionCfg, ctyDB, metaCache, tracker, dash, corrLogger, callCooldown, adaptiveMinReports, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel, recentBandStore, knownCallset)
-					if hasResolverEvidence && signalResolver != nil && !suppress {
-						observeResolverCurrentDecision(signalResolver, resolverEvidence.Key, delayed, preCorrectionCall)
-					}
-				}
+				suppress = maybeApplyResolverCorrection(delayed, signalResolver, resolverEvidence, hasResolverEvidence, correctionCfg, ctyDB, metaCache, tracker, dash, recentBandStore, knownCallset, adaptiveMinReports, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel)
 				if suppress {
 					continue
 				}
@@ -2437,27 +2331,11 @@ func processOutputSpots(
 					stabilizerResolverKey = resolverEvidence.Key
 					hasStabilizerResolverKey = true
 				}
-				preCorrectionCall := normalizedDXCall(s)
 				var knownCallset *spot.KnownCallsigns
 				if knownCalls != nil {
 					knownCallset = knownCalls.Load()
 				}
-				if resolverPrimaryMode {
-					if hasResolverEvidence && signalResolver != nil && correctionShadowIdx != nil {
-						shadowSpot := cloneSpotForTelnetStabilizer(s)
-						shadowPreCorrectionCall := normalizedDXCall(shadowSpot)
-						shadowSuppress := maybeApplyCallCorrectionWithLogger(shadowSpot, correctionShadowIdx, correctionCfg, ctyDB, nil, nil, nil, nil, callCooldown, adaptiveMinReports, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel, recentBandStore, knownCallset)
-						if !shadowSuppress {
-							observeResolverCurrentDecision(signalResolver, resolverEvidence.Key, shadowSpot, shadowPreCorrectionCall)
-						}
-					}
-					suppress = maybeApplyResolverCorrection(s, signalResolver, resolverEvidence, hasResolverEvidence, correctionCfg, ctyDB, metaCache, tracker, dash, recentBandStore, knownCallset, adaptiveMinReports, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel)
-				} else {
-					suppress = maybeApplyCallCorrectionWithLogger(s, correctionIdx, correctionCfg, ctyDB, metaCache, tracker, dash, corrLogger, callCooldown, adaptiveMinReports, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel, recentBandStore, knownCallset)
-					if hasResolverEvidence && signalResolver != nil && !suppress {
-						observeResolverCurrentDecision(signalResolver, resolverEvidence.Key, s, preCorrectionCall)
-					}
-				}
+				suppress = maybeApplyResolverCorrection(s, signalResolver, resolverEvidence, hasResolverEvidence, correctionCfg, ctyDB, metaCache, tracker, dash, recentBandStore, knownCallset, adaptiveMinReports, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel)
 				if suppress {
 					return
 				}
@@ -3439,104 +3317,6 @@ func metadataFromPrefix(info *cty.PrefixInfo) spot.CallMetadata {
 	}
 }
 
-// Purpose: Apply call correction and optionally log decision details.
-// Key aspects: Evaluates corrections, updates stats, and can suppress spots.
-// Upstream: processOutputSpots call correction stage.
-// Downstream: spot.ApplyCallCorrection, traceLogger, tracker updates.
-func maybeApplyCallCorrectionWithLogger(spotEntry *spot.Spot, idx *spot.CorrectionIndex, cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase, metaCache *callMetaCache, tracker *stats.Tracker, dash ui.Surface, traceLogger spot.CorrectionTraceLogger, cooldown *spot.CallCooldown, adaptive *spot.AdaptiveMinReports, spotterReliability spot.SpotterReliability, spotterReliabilityCW spot.SpotterReliability, spotterReliabilityRTTY spot.SpotterReliability, confusionModel *spot.ConfusionModel, recentBandStore *spot.RecentBandStore, knownCallset *spot.KnownCallsigns) bool {
-	if spotEntry == nil {
-		return false
-	}
-	if !spot.IsCallCorrectionCandidate(spotEntry.Mode) {
-		// Leave any pre-seeded confidence intact for non-correction modes.
-		return false
-	}
-	if idx == nil || !cfg.Enabled {
-		if strings.TrimSpace(spotEntry.Confidence) == "" {
-			spotEntry.Confidence = "?"
-		}
-		return false
-	}
-
-	now := time.Now().UTC()
-	runtime := correctionflow.ResolveRuntimeSettings(cfg, spotEntry, adaptive, now, true)
-	settings := correctionflow.BuildCorrectionSettings(correctionflow.BuildSettingsInput{
-		Cfg:                    cfg,
-		MinReports:             runtime.MinReports,
-		CooldownMinReports:     runtime.CooldownMinReports,
-		Window:                 runtime.Window,
-		FreqToleranceHz:        runtime.FreqToleranceHz,
-		QualityBinHz:           runtime.QualityBinHz,
-		DebugLog:               cfg.DebugLog,
-		TraceLogger:            traceLogger,
-		Cooldown:               cooldown,
-		SpotterReliability:     spotterReliability,
-		SpotterReliabilityCW:   spotterReliabilityCW,
-		SpotterReliabilityRTTY: spotterReliabilityRTTY,
-		ConfusionModel:         confusionModel,
-		RecentBandStore:        recentBandStore,
-		KnownCallset:           knownCallset,
-		DecisionObserver: func(tr spot.CorrectionTrace) {
-			if tracker == nil {
-				return
-			}
-			tracker.ObserveCallCorrectionDecision(tr.DecisionPath, tr.Decision, tr.Reason, tr.CandidateRank, tr.PriorBonusApplied)
-		},
-	})
-
-	preCorrectionCall := correctionflow.NormalizedDXCall(spotEntry)
-	ctyValid := func(string) bool { return true }
-	if ctyDB != nil {
-		ctyValid = func(call string) bool {
-			return effectivePrefixInfo(ctyDB, metaCache, call) != nil
-		}
-	}
-	result := correctionflow.ApplyConsensusCorrection(correctionflow.ApplyInput{
-		SpotEntry:          spotEntry,
-		Index:              idx,
-		Settings:           settings,
-		Window:             runtime.Window,
-		CandidateWindowKHz: runtime.CandidateWindowKHz,
-		Now:                now,
-		InvalidAction:      cfg.InvalidAction,
-		RejectInvalidBase:  shouldRejectCTYCall,
-		CTYValidCall:       ctyValid,
-	})
-	if result.Suppress {
-		switch result.RejectReason {
-		case "invalid_base":
-			log.Printf("Call correction rejected (invalid base call): suggested %s at %.1f kHz", result.CorrectedCall, spotEntry.Frequency)
-		case "cty_miss":
-			log.Printf("Call correction rejected (CTY miss): suggested %s at %.1f kHz", result.CorrectedCall, spotEntry.Frequency)
-		}
-		log.Printf("Call correction suppression engaged: dropping spot from %s at %.1f kHz", preCorrectionCall, spotEntry.Frequency)
-		return true
-	}
-	if !result.Applied {
-		switch result.RejectReason {
-		case "invalid_base":
-			log.Printf("Call correction rejected (invalid base call): suggested %s at %.1f kHz", result.CorrectedCall, spotEntry.Frequency)
-		case "cty_miss":
-			log.Printf("Call correction rejected (CTY miss): suggested %s at %.1f kHz", result.CorrectedCall, spotEntry.Frequency)
-		}
-		return false
-	}
-
-	if preCorrectionCall == "" {
-		preCorrectionCall = spotEntry.DXCall
-	}
-	message := formatCallCorrectedMessage(preCorrectionCall, result.CorrectedCall, spotEntry.Frequency, result.Supporters, result.CorrectedConfidence)
-	if dash != nil {
-		dash.AppendCall(message)
-	} else {
-		log.Println(message)
-	}
-	if tracker != nil {
-		tracker.IncrementCallCorrections()
-	}
-	return false
-}
-
 const (
 	resolverDecisionPathPrimary                 = "resolver_primary"
 	resolverDecisionApplied                     = "resolver_applied"
@@ -3573,7 +3353,7 @@ func observeResolverPrimaryDecision(tracker *stats.Tracker, decision, reason str
 	if candidateRank < 0 {
 		candidateRank = 0
 	}
-	tracker.ObserveCallCorrectionDecision(resolverDecisionPathPrimary, decision, reason, candidateRank, false)
+	tracker.ObserveCallCorrectionDecision(resolverDecisionPathPrimary, decision, reason, candidateRank)
 }
 
 func resolverGateDecisionReason(reason string) string {
@@ -3699,18 +3479,12 @@ func maybeApplyResolverCorrection(
 	now := time.Now().UTC()
 	runtime := correctionflow.ResolveRuntimeSettings(cfg, spotEntry, adaptive, now, true)
 	settings := correctionflow.BuildCorrectionSettings(correctionflow.BuildSettingsInput{
-		Cfg:                    cfg,
-		MinReports:             runtime.MinReports,
-		CooldownMinReports:     runtime.CooldownMinReports,
-		Window:                 runtime.Window,
-		FreqToleranceHz:        runtime.FreqToleranceHz,
-		QualityBinHz:           runtime.QualityBinHz,
-		SpotterReliability:     spotterReliability,
-		SpotterReliabilityCW:   spotterReliabilityCW,
-		SpotterReliabilityRTTY: spotterReliabilityRTTY,
-		ConfusionModel:         confusionModel,
-		RecentBandStore:        recentBandStore,
-		KnownCallset:           knownCallset,
+		Cfg:             cfg,
+		MinReports:      runtime.MinReports,
+		Window:          runtime.Window,
+		FreqToleranceHz: runtime.FreqToleranceHz,
+		RecentBandStore: recentBandStore,
+		KnownCallset:    knownCallset,
 	})
 	gateOptions := spot.ResolverPrimaryGateOptions{}
 	if cfg.ResolverRecentPlus1Enabled {
@@ -3816,38 +3590,6 @@ func resolverConfidenceGlyph(snapshot spot.ResolverSnapshot, snapshotOK bool, em
 // Key aspects: Uses config recency defaults and overrides.
 // Upstream: main correctionIndex cleanup scheduling.
 // Downstream: time.Duration math.
-func callCorrectionWindowForMode(cfg config.CallCorrectionConfig, mode string) time.Duration {
-	baseSeconds := cfg.RecencySeconds
-	if baseSeconds <= 0 {
-		baseSeconds = 45
-	}
-	switch strutil.NormalizeUpper(mode) {
-	case "CW":
-		if cfg.RecencySecondsCW > 0 {
-			baseSeconds = cfg.RecencySecondsCW
-		}
-	case "RTTY":
-		if cfg.RecencySecondsRTTY > 0 {
-			baseSeconds = cfg.RecencySecondsRTTY
-		}
-	}
-	return time.Duration(baseSeconds) * time.Second
-}
-
-func callCorrectionCleanupWindow(cfg config.CallCorrectionConfig) time.Duration {
-	maxSeconds := cfg.RecencySeconds
-	if maxSeconds <= 0 {
-		maxSeconds = 45
-	}
-	if cfg.RecencySecondsCW > maxSeconds {
-		maxSeconds = cfg.RecencySecondsCW
-	}
-	if cfg.RecencySecondsRTTY > maxSeconds {
-		maxSeconds = cfg.RecencySecondsRTTY
-	}
-	return time.Duration(maxSeconds) * time.Second
-}
-
 func buildResolverEvidenceSnapshot(
 	spotEntry *spot.Spot,
 	cfg config.CallCorrectionConfig,
@@ -3861,49 +3603,21 @@ func normalizedDXCall(s *spot.Spot) string {
 	return correctionflow.NormalizedDXCall(s)
 }
 
-func observeResolverCurrentDecision(
-	resolver *spot.SignalResolver,
-	key spot.ResolverSignalKey,
-	spotEntry *spot.Spot,
-	preCorrectionCall string,
-) {
-	correctionflow.ObserveResolverCurrentDecision(resolver, key, spotEntry, preCorrectionCall)
-}
-
 func buildCorrectionSettings(
 	cfg config.CallCorrectionConfig,
 	minReports int,
-	cooldownMinReports int,
 	window time.Duration,
 	freqToleranceHz float64,
-	qualityBinHz int,
-	traceLogger spot.CorrectionTraceLogger,
-	cooldown *spot.CallCooldown,
-	spotterReliability spot.SpotterReliability,
-	spotterReliabilityCW spot.SpotterReliability,
-	spotterReliabilityRTTY spot.SpotterReliability,
-	confusionModel *spot.ConfusionModel,
 	recentBandStore *spot.RecentBandStore,
 	knownCallset *spot.KnownCallsigns,
-	decisionObserver spot.CorrectionDecisionObserver,
 ) spot.CorrectionSettings {
 	return correctionflow.BuildCorrectionSettings(correctionflow.BuildSettingsInput{
-		Cfg:                    cfg,
-		MinReports:             minReports,
-		CooldownMinReports:     cooldownMinReports,
-		Window:                 window,
-		FreqToleranceHz:        freqToleranceHz,
-		QualityBinHz:           qualityBinHz,
-		DebugLog:               cfg.DebugLog,
-		TraceLogger:            traceLogger,
-		Cooldown:               cooldown,
-		SpotterReliability:     spotterReliability,
-		SpotterReliabilityCW:   spotterReliabilityCW,
-		SpotterReliabilityRTTY: spotterReliabilityRTTY,
-		ConfusionModel:         confusionModel,
-		RecentBandStore:        recentBandStore,
-		KnownCallset:           knownCallset,
-		DecisionObserver:       decisionObserver,
+		Cfg:             cfg,
+		MinReports:      minReports,
+		Window:          window,
+		FreqToleranceHz: freqToleranceHz,
+		RecentBandStore: recentBandStore,
+		KnownCallset:    knownCallset,
 	})
 }
 
@@ -6686,7 +6400,6 @@ func maybeStartMapLogger(tracker *stats.Tracker, predictor *pathreliability.Pred
 	go func() {
 		log.Printf("Map logger enabled (every %s)", interval)
 		for range ticker.C {
-			cq := spot.GlobalCallQualityCounts()
 			sourceCount := 0
 			sourceModeCount := 0
 			if tracker != nil {
@@ -6716,8 +6429,8 @@ func maybeStartMapLogger(tracker *stats.Tracker, predictor *pathreliability.Pred
 				pathBuckets = predictor.TotalBuckets()
 			}
 
-			log.Printf("Map sizes: callQuality pinned=%d dynamic=%d; stats sources=%d source-modes=%d; dedup primary=%d secondary fast=%d med=%d slow=%d; path buckets=%d",
-				cq.Pinned, cq.Dynamic, sourceCount, sourceModeCount, primarySize, fastSize, medSize, slowSize, pathBuckets)
+			log.Printf("Map sizes: stats sources=%d source-modes=%d; dedup primary=%d secondary fast=%d med=%d slow=%d; path buckets=%d",
+				sourceCount, sourceModeCount, primarySize, fastSize, medSize, slowSize, pathBuckets)
 		}
 	}()
 }

@@ -78,7 +78,7 @@ func observeResolverPrimaryDecision(tracker *stats.Tracker, decision, reason str
 	if candidateRank < 0 {
 		candidateRank = 0
 	}
-	tracker.ObserveCallCorrectionDecision(resolverDecisionPathPrimary, decision, reason, candidateRank, false)
+	tracker.ObserveCallCorrectionDecision(resolverDecisionPathPrimary, decision, reason, candidateRank)
 }
 
 func resolverGateDecisionReason(reason string) string {
@@ -109,10 +109,6 @@ func maybeApplyResolverCorrectionReplay(
 	ctyDB *cty.CTYDatabase,
 	tracker *stats.Tracker,
 	adaptive *spot.AdaptiveMinReports,
-	spotterReliability spot.SpotterReliability,
-	spotterReliabilityCW spot.SpotterReliability,
-	spotterReliabilityRTTY spot.SpotterReliability,
-	confusionModel *spot.ConfusionModel,
 	recentBandStore *spot.RecentBandStore,
 	knownCallset *spot.KnownCallsigns,
 	now time.Time,
@@ -192,10 +188,6 @@ func maybeApplyResolverCorrectionReplay(
 		preCorrectionCall,
 		outcome.Selection,
 		cfg,
-		spotterReliability,
-		spotterReliabilityCW,
-		spotterReliabilityRTTY,
-		confusionModel,
 		recentBandStore,
 		knownCallset,
 		adaptive,
@@ -263,10 +255,6 @@ func evaluateResolverPrimaryGateReplay(
 	preCorrectionCall string,
 	selection correctionflow.ResolverPrimarySelection,
 	cfg config.CallCorrectionConfig,
-	spotterReliability spot.SpotterReliability,
-	spotterReliabilityCW spot.SpotterReliability,
-	spotterReliabilityRTTY spot.SpotterReliability,
-	confusionModel *spot.ConfusionModel,
 	recentBandStore *spot.RecentBandStore,
 	knownCallset *spot.KnownCallsigns,
 	adaptive *spot.AdaptiveMinReports,
@@ -306,18 +294,12 @@ func evaluateResolverPrimaryGateReplay(
 
 	runtime := correctionflow.ResolveRuntimeSettings(cfg, spotEntry, adaptive, now, false)
 	settings := correctionflow.BuildCorrectionSettings(correctionflow.BuildSettingsInput{
-		Cfg:                    cfg,
-		MinReports:             runtime.MinReports,
-		CooldownMinReports:     runtime.CooldownMinReports,
-		Window:                 runtime.Window,
-		FreqToleranceHz:        runtime.FreqToleranceHz,
-		QualityBinHz:           runtime.QualityBinHz,
-		SpotterReliability:     spotterReliability,
-		SpotterReliabilityCW:   spotterReliabilityCW,
-		SpotterReliabilityRTTY: spotterReliabilityRTTY,
-		ConfusionModel:         confusionModel,
-		RecentBandStore:        recentBandStore,
-		KnownCallset:           knownCallset,
+		Cfg:             cfg,
+		MinReports:      runtime.MinReports,
+		Window:          runtime.Window,
+		FreqToleranceHz: runtime.FreqToleranceHz,
+		RecentBandStore: recentBandStore,
+		KnownCallset:    knownCallset,
 	})
 
 	gateOptions := spot.ResolverPrimaryGateOptions{}

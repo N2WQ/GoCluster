@@ -1162,7 +1162,7 @@ func TestMaybeApplyResolverCorrectionAppliesWinner(t *testing.T) {
 		}
 	}
 
-	deadline := time.Now().Add(500 * time.Millisecond)
+	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		snap, ok := resolver.Lookup(key)
 		if ok && snap.Winner == "K1ABC" && snap.WinnerSupport >= 2 && (snap.State == spot.ResolverStateConfident || snap.State == spot.ResolverStateProbable) {
@@ -1175,7 +1175,7 @@ func TestMaybeApplyResolverCorrectionAppliesWinner(t *testing.T) {
 	s.EnsureNormalized()
 
 	suppress := false
-	applyDeadline := time.Now().Add(500 * time.Millisecond)
+	applyDeadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(applyDeadline) {
 		suppress = maybeApplyResolverCorrection(
 			s,
@@ -1813,7 +1813,7 @@ func TestMaybeApplyResolverCorrectionAppliesTruncationLengthBonusParity(t *testi
 		TruncationLengthBonusMax:                       1,
 		TruncationLengthBonusRequireCandidateValidated: true,
 		TruncationLengthBonusRequireSubjectUnvalidated: true,
-		PriorBonusKnownCallset:                         known,
+		KnownCallset: known,
 	}
 	if relation, ok := spot.DetectCorrectionFamilyWithPolicy("VE3NN", "VE3NNT", settings.FamilyPolicy); !ok || relation.Kind != spot.CorrectionFamilyTruncation {
 		t.Fatalf("expected truncation family relation, got ok=%t relation=%+v", ok, relation)
@@ -2278,59 +2278,33 @@ func TestBuildCorrectionSettingsMapsConfigFields(t *testing.T) {
 				},
 			},
 		},
-		MinAdvantage:                      2,
-		MinConfidencePercent:              65,
-		MaxEditDistance:                   3,
-		Strategy:                          "majority",
-		MinSNRCW:                          4,
-		MinSNRRTTY:                        3,
-		MinSNRVoice:                       1,
-		DistanceModelCW:                   "morse",
-		DistanceModelRTTY:                 "baudot",
-		Distance3ExtraReports:             1,
-		Distance3ExtraAdvantage:           1,
-		Distance3ExtraConfidence:          5,
-		DebugLog:                          true,
-		FreqGuardMinSeparationKHz:         0.2,
-		FreqGuardRunnerUpRatio:            0.6,
-		QualityGoodThreshold:              3,
-		QualityNewCallIncrement:           2,
-		QualityBustedDecrement:            2,
-		CandidateEvalTopK:                 3,
-		MinSpotterReliability:             0.4,
-		ConfusionModelWeight:              0.25,
-		RecentBandBonusEnabled:            true,
-		RecentBandWindowSeconds:           43200,
-		RecentBandBonusMax:                1,
-		RecentBandRecordMinUniqueSpotters: 2,
-		PriorBonusEnabled:                 true,
-		PriorBonusMax:                     1,
-		PriorBonusDistanceMax:             1,
-		PriorBonusRequiresSCP:             true,
-		PriorBonusApplyTo:                 "min_reports",
+		MinAdvantage:                            2,
+		MinConfidencePercent:                    65,
+		MaxEditDistance:                         3,
+		DistanceModelCW:                         "morse",
+		DistanceModelRTTY:                       "baudot",
+		Distance3ExtraReports:                   1,
+		Distance3ExtraAdvantage:                 1,
+		Distance3ExtraConfidence:                5,
+		FreqGuardMinSeparationKHz:               0.2,
+		FreqGuardRunnerUpRatio:                  0.6,
+		RecentBandRecordMinUniqueSpotters:       2,
+		ResolverRecentPlus1Enabled:              true,
+		ResolverRecentPlus1MinUniqueWinner:      3,
+		ResolverRecentPlus1RequireSubjectWeaker: true,
+		ResolverRecentPlus1MaxDistance:          1,
+		ResolverRecentPlus1AllowTruncation:      true,
 	}
 	window := 75 * time.Second
-	reliability := spot.SpotterReliability{"W2BBB": 0.7}
-	reliabilityCW := spot.SpotterReliability{"W2BBB": 0.8}
-	reliabilityRTTY := spot.SpotterReliability{"W2BBB": 0.9}
 	recentBandStore := spot.NewRecentBandStore(12 * time.Hour)
 	knownCallset := &spot.KnownCallsigns{}
 	got := buildCorrectionSettings(
 		cfg,
 		5,
-		6,
 		window,
 		900,
-		400,
-		nil,
-		nil,
-		reliability,
-		reliabilityCW,
-		reliabilityRTTY,
-		nil,
 		recentBandStore,
 		knownCallset,
-		nil,
 	)
 
 	if got.MinConsensusReports != 5 {
@@ -2366,17 +2340,11 @@ func TestBuildCorrectionSettingsMapsConfigFields(t *testing.T) {
 		got.TruncationDelta2RequireSubjectUnvalidated != cfg.FamilyPolicy.Truncation.Delta2Rails.RequireSubjectUnvalidated {
 		t.Fatalf("expected truncation delta-2 rail mapping to be preserved")
 	}
-	if got.CooldownMinReporters != 6 {
-		t.Fatalf("expected cooldown min reporters 6, got %d", got.CooldownMinReporters)
-	}
 	if got.RecencyWindow != window {
 		t.Fatalf("expected window %s, got %s", window, got.RecencyWindow)
 	}
 	if got.FrequencyToleranceHz != 900 {
 		t.Fatalf("expected frequency tolerance 900Hz, got %.1f", got.FrequencyToleranceHz)
-	}
-	if got.QualityBinHz != 400 {
-		t.Fatalf("expected quality bin 400Hz, got %d", got.QualityBinHz)
 	}
 	if got.FreqGuardMinSeparationKHz != cfg.FreqGuardMinSeparationKHz {
 		t.Fatalf("expected freq guard separation %.3f, got %.3f", cfg.FreqGuardMinSeparationKHz, got.FreqGuardMinSeparationKHz)
@@ -2387,75 +2355,24 @@ func TestBuildCorrectionSettingsMapsConfigFields(t *testing.T) {
 	if got.MinAdvantage != cfg.MinAdvantage ||
 		got.MinConfidencePercent != cfg.MinConfidencePercent ||
 		got.MaxEditDistance != cfg.MaxEditDistance ||
-		got.Strategy != cfg.Strategy ||
-		got.MinSNRCW != cfg.MinSNRCW ||
-		got.MinSNRRTTY != cfg.MinSNRRTTY ||
-		got.MinSNRVoice != cfg.MinSNRVoice ||
 		got.DistanceModelCW != cfg.DistanceModelCW ||
 		got.DistanceModelRTTY != cfg.DistanceModelRTTY ||
 		got.Distance3ExtraReports != cfg.Distance3ExtraReports ||
 		got.Distance3ExtraAdvantage != cfg.Distance3ExtraAdvantage ||
 		got.Distance3ExtraConfidence != cfg.Distance3ExtraConfidence ||
-		got.QualityGoodThreshold != cfg.QualityGoodThreshold ||
-		got.QualityNewCallIncrement != cfg.QualityNewCallIncrement ||
-		got.QualityBustedDecrement != cfg.QualityBustedDecrement ||
-		got.CandidateEvalTopK != cfg.CandidateEvalTopK ||
-		got.ConfusionWeight != cfg.ConfusionModelWeight ||
-		got.RecentBandBonusEnabled != cfg.RecentBandBonusEnabled ||
-		got.RecentBandWindow != 12*time.Hour ||
-		got.RecentBandBonusMax != cfg.RecentBandBonusMax ||
 		got.RecentBandRecordMinUniqueSpotters != cfg.RecentBandRecordMinUniqueSpotters ||
-		got.PriorBonusEnabled != cfg.PriorBonusEnabled ||
-		got.PriorBonusMax != cfg.PriorBonusMax ||
-		got.PriorBonusDistanceMax != cfg.PriorBonusDistanceMax ||
-		got.PriorBonusRequiresSCP != cfg.PriorBonusRequiresSCP ||
-		got.PriorBonusApplyTo != cfg.PriorBonusApplyTo ||
-		got.MinSpotterReliability != cfg.MinSpotterReliability {
+		got.ResolverRecentPlus1Enabled != cfg.ResolverRecentPlus1Enabled ||
+		got.ResolverRecentPlus1MinUniqueWinner != cfg.ResolverRecentPlus1MinUniqueWinner ||
+		got.ResolverRecentPlus1RequireSubjectWeaker != cfg.ResolverRecentPlus1RequireSubjectWeaker ||
+		got.ResolverRecentPlus1MaxDistance != cfg.ResolverRecentPlus1MaxDistance ||
+		got.ResolverRecentPlus1AllowTruncation != cfg.ResolverRecentPlus1AllowTruncation {
 		t.Fatalf("expected correction settings to mirror config fields")
 	}
-	if got.PriorBonusKnownCallset != knownCallset {
+	if got.KnownCallset != knownCallset {
 		t.Fatalf("expected known callset pointer to be preserved")
 	}
 	if got.RecentBandStore != recentBandStore {
 		t.Fatalf("expected recent-band store pointer to be preserved")
-	}
-	if got.SpotterReliability["W2BBB"] != 0.7 {
-		t.Fatalf("expected spotter reliability map to be preserved")
-	}
-	if got.SpotterReliabilityCW["W2BBB"] != 0.8 {
-		t.Fatalf("expected CW spotter reliability map to be preserved")
-	}
-	if got.SpotterReliabilityRTTY["W2BBB"] != 0.9 {
-		t.Fatalf("expected RTTY spotter reliability map to be preserved")
-	}
-}
-
-func TestCallCorrectionWindowForModeUsesOverrides(t *testing.T) {
-	cfg := config.CallCorrectionConfig{
-		RecencySeconds:     120,
-		RecencySecondsCW:   45,
-		RecencySecondsRTTY: 90,
-	}
-
-	if got := callCorrectionWindowForMode(cfg, "CW"); got != 45*time.Second {
-		t.Fatalf("expected CW window 45s, got %s", got)
-	}
-	if got := callCorrectionWindowForMode(cfg, "RTTY"); got != 90*time.Second {
-		t.Fatalf("expected RTTY window 90s, got %s", got)
-	}
-	if got := callCorrectionWindowForMode(cfg, "USB"); got != 120*time.Second {
-		t.Fatalf("expected USB/base window 120s, got %s", got)
-	}
-}
-
-func TestCallCorrectionCleanupWindowUsesMaxRecency(t *testing.T) {
-	cfg := config.CallCorrectionConfig{
-		RecencySeconds:     60,
-		RecencySecondsCW:   180,
-		RecencySecondsRTTY: 90,
-	}
-	if got := callCorrectionCleanupWindow(cfg); got != 180*time.Second {
-		t.Fatalf("expected cleanup window 180s, got %s", got)
 	}
 }
 

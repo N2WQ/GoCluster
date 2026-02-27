@@ -5,66 +5,28 @@ import (
 	"strings"
 	"time"
 
-	"dxcluster/bandmap"
 	"dxcluster/config"
 	"dxcluster/spot"
 	"dxcluster/strutil"
 )
 
 type RuntimeSettings struct {
-	Window             time.Duration
-	MinReports         int
-	CooldownMinReports int
-	QualityBinHz       int
-	FreqToleranceHz    float64
-	CandidateWindowKHz float64
+	Window          time.Duration
+	MinReports      int
+	FreqToleranceHz float64
 }
 
 type bandStateParams struct {
-	QualityBinHz         int
 	FrequencyToleranceHz float64
 }
 
 type BuildSettingsInput struct {
-	Cfg                    config.CallCorrectionConfig
-	MinReports             int
-	CooldownMinReports     int
-	Window                 time.Duration
-	FreqToleranceHz        float64
-	QualityBinHz           int
-	DebugLog               bool
-	TraceLogger            spot.CorrectionTraceLogger
-	Cooldown               *spot.CallCooldown
-	SpotterReliability     spot.SpotterReliability
-	SpotterReliabilityCW   spot.SpotterReliability
-	SpotterReliabilityRTTY spot.SpotterReliability
-	ConfusionModel         *spot.ConfusionModel
-	RecentBandStore        *spot.RecentBandStore
-	KnownCallset           *spot.KnownCallsigns
-	DecisionObserver       spot.CorrectionDecisionObserver
-}
-
-type ApplyInput struct {
-	SpotEntry          *spot.Spot
-	Index              *spot.CorrectionIndex
-	Settings           spot.CorrectionSettings
-	Window             time.Duration
-	CandidateWindowKHz float64
-	Now                time.Time
-	InvalidAction      string
-	RejectInvalidBase  func(string) bool
-	CTYValidCall       func(string) bool
-}
-
-type ApplyResult struct {
-	Suppress            bool
-	Applied             bool
-	CorrectedCall       string
-	Supporters          int
-	CorrectedConfidence int
-	SubjectConfidence   int
-	TotalReporters      int
-	RejectReason        string // "invalid_base" | "cty_miss"
+	Cfg             config.CallCorrectionConfig
+	MinReports      int
+	Window          time.Duration
+	FreqToleranceHz float64
+	RecentBandStore *spot.RecentBandStore
+	KnownCallset    *spot.KnownCallsigns
 }
 
 type ResolverPrimarySelection struct {
@@ -561,11 +523,10 @@ func CallCorrectionWindowForMode(cfg config.CallCorrectionConfig, mode string) t
 	return time.Duration(baseSeconds) * time.Second
 }
 
-// ResolveRuntimeSettings computes per-spot correction runtime parameters.
+// ResolveRuntimeSettings computes resolver runtime parameters from config.
 // Invariants:
-//   - voice (USB/LSB) uses voice tolerance and optional voice search window override.
-//   - adaptive min-reports can override both correction and cooldown min-report gates.
-//   - candidate search window always has a positive fallback (0.5 kHz).
+//   - voice (USB/LSB) uses voice tolerance.
+//   - adaptive min-reports can override correction min-report gate.
 //
 // Side effect: when observeAdaptive is true, CW/RTTY observations are recorded before
 // querying adaptive state so the current spot can influence near-term thresholds.
@@ -592,11 +553,9 @@ func ResolveRuntimeSettings(cfg config.CallCorrectionConfig, spotEntry *spot.Spo
 	}
 
 	minReports := cfg.MinConsensusReports
-	cooldownMinReports := cfg.CooldownMinReporters
 	if adaptive != nil && (modeUpper == "CW" || modeUpper == "RTTY") {
 		if dyn := adaptive.MinReportsForBand(band, now); dyn > 0 {
 			minReports = dyn
-			cooldownMinReports = dyn
 		}
 	}
 
@@ -605,40 +564,24 @@ func ResolveRuntimeSettings(cfg config.CallCorrectionConfig, spotEntry *spot.Spo
 		state = adaptive.StateForBand(band, now)
 	}
 
-	qualityBinHz := cfg.QualityBinHz
 	freqToleranceHz := cfg.FrequencyToleranceHz
 	if isVoice {
 		freqToleranceHz = cfg.VoiceFrequencyToleranceHz
 	} else if params, ok := resolveBandStateParams(cfg.BandStateOverrides, band, state); ok {
-		if params.QualityBinHz > 0 {
-			qualityBinHz = params.QualityBinHz
-		}
 		if params.FrequencyToleranceHz > 0 {
 			freqToleranceHz = params.FrequencyToleranceHz
 		}
 	}
 
-	candidateWindowKHz := freqToleranceHz / 1000.0
-	if candidateWindowKHz <= 0 {
-		candidateWindowKHz = 0.5
-	}
-	if isVoice && cfg.VoiceCandidateWindowKHz > 0 {
-		candidateWindowKHz = cfg.VoiceCandidateWindowKHz
-	}
-
 	return RuntimeSettings{
-		Window:             window,
-		MinReports:         minReports,
-		CooldownMinReports: cooldownMinReports,
-		QualityBinHz:       qualityBinHz,
-		FreqToleranceHz:    freqToleranceHz,
-		CandidateWindowKHz: candidateWindowKHz,
+		Window:          window,
+		MinReports:      minReports,
+		FreqToleranceHz: freqToleranceHz,
 	}
 }
 
-// BuildCorrectionSettings maps config/runtime inputs into SuggestCallCorrection settings.
-// Ownership: this is a pure mapper; it does not mutate shared state and keeps all
-// side-effect callbacks (trace logger/decision observer) passed through from callers.
+// BuildCorrectionSettings maps config/runtime inputs into resolver gate settings.
+// Ownership: this is a pure mapper; it does not mutate shared state.
 func BuildCorrectionSettings(in BuildSettingsInput) spot.CorrectionSettings {
 	cfg := in.Cfg
 	return spot.CorrectionSettings{
@@ -652,7 +595,6 @@ func BuildCorrectionSettings(in BuildSettingsInput) spot.CorrectionSettings {
 			TruncationAllowSuffix:      cfg.FamilyPolicy.Truncation.AllowSuffixMatch,
 		},
 		SlashPrecedenceMinReports: cfg.FamilyPolicy.SlashPrecedenceMinReports,
-		CandidateEvalTopK:         cfg.CandidateEvalTopK,
 		MinAdvantage:              cfg.MinAdvantage,
 		TruncationAdvantagePolicy: spot.CorrectionTruncationAdvantagePolicy{
 			Configured:                true,
@@ -664,33 +606,14 @@ func BuildCorrectionSettings(in BuildSettingsInput) spot.CorrectionSettings {
 		MinConfidencePercent:                           cfg.MinConfidencePercent,
 		MaxEditDistance:                                cfg.MaxEditDistance,
 		RecencyWindow:                                  in.Window,
-		Strategy:                                       cfg.Strategy,
-		MinSNRCW:                                       cfg.MinSNRCW,
-		MinSNRRTTY:                                     cfg.MinSNRRTTY,
-		MinSNRVoice:                                    cfg.MinSNRVoice,
 		DistanceModelCW:                                cfg.DistanceModelCW,
 		DistanceModelRTTY:                              cfg.DistanceModelRTTY,
 		Distance3ExtraReports:                          cfg.Distance3ExtraReports,
 		Distance3ExtraAdvantage:                        cfg.Distance3ExtraAdvantage,
 		Distance3ExtraConfidence:                       cfg.Distance3ExtraConfidence,
-		DebugLog:                                       in.DebugLog,
-		TraceLogger:                                    in.TraceLogger,
 		FreqGuardMinSeparationKHz:                      cfg.FreqGuardMinSeparationKHz,
 		FreqGuardRunnerUpRatio:                         cfg.FreqGuardRunnerUpRatio,
 		FrequencyToleranceHz:                           in.FreqToleranceHz,
-		QualityBinHz:                                   in.QualityBinHz,
-		QualityGoodThreshold:                           cfg.QualityGoodThreshold,
-		QualityNewCallIncrement:                        cfg.QualityNewCallIncrement,
-		QualityBustedDecrement:                         cfg.QualityBustedDecrement,
-		SpotterReliability:                             in.SpotterReliability,
-		SpotterReliabilityCW:                           in.SpotterReliabilityCW,
-		SpotterReliabilityRTTY:                         in.SpotterReliabilityRTTY,
-		MinSpotterReliability:                          cfg.MinSpotterReliability,
-		ConfusionModel:                                 in.ConfusionModel,
-		ConfusionWeight:                                cfg.ConfusionModelWeight,
-		RecentBandBonusEnabled:                         cfg.RecentBandBonusEnabled,
-		RecentBandWindow:                               time.Duration(cfg.RecentBandWindowSeconds) * time.Second,
-		RecentBandBonusMax:                             cfg.RecentBandBonusMax,
 		RecentBandRecordMinUniqueSpotters:              cfg.RecentBandRecordMinUniqueSpotters,
 		RecentBandStore:                                in.RecentBandStore,
 		ResolverRecentPlus1Enabled:                     cfg.ResolverRecentPlus1Enabled,
@@ -706,80 +629,8 @@ func BuildCorrectionSettings(in BuildSettingsInput) spot.CorrectionSettings {
 		TruncationDelta2ExtraConfidence:                cfg.FamilyPolicy.Truncation.Delta2Rails.ExtraConfidencePercent,
 		TruncationDelta2RequireCandidateValidated:      cfg.FamilyPolicy.Truncation.Delta2Rails.RequireCandidateValidated,
 		TruncationDelta2RequireSubjectUnvalidated:      cfg.FamilyPolicy.Truncation.Delta2Rails.RequireSubjectUnvalidated,
-		PriorBonusEnabled:                              cfg.PriorBonusEnabled,
-		PriorBonusMax:                                  cfg.PriorBonusMax,
-		PriorBonusDistanceMax:                          cfg.PriorBonusDistanceMax,
-		PriorBonusRequiresSCP:                          cfg.PriorBonusRequiresSCP,
-		PriorBonusApplyTo:                              cfg.PriorBonusApplyTo,
-		PriorBonusKnownCallset:                         in.KnownCallset,
-		Cooldown:                                       in.Cooldown,
-		CooldownMinReporters:                           in.CooldownMinReports,
-		DecisionObserver:                               in.DecisionObserver,
+		KnownCallset:                                   in.KnownCallset,
 	}
-}
-
-// ApplyConsensusCorrection runs one correction decision and applies rails.
-// Order contract:
-//   - candidate lookup is performed against current index contents
-//   - the current spot is added to the index on return (deferred), regardless of outcome
-//
-// Rail contract:
-//   - no suggestion -> keep subject call, confidence is ?/P/V
-//   - invalid-base or CTY miss -> reject reason set, either suppress or mark B
-//   - accepted correction -> DX call updated and confidence set to C
-func ApplyConsensusCorrection(in ApplyInput) ApplyResult {
-	result := ApplyResult{}
-	if in.SpotEntry == nil || in.Index == nil {
-		return result
-	}
-	if in.Now.IsZero() {
-		in.Now = time.Now().UTC()
-	} else {
-		in.Now = in.Now.UTC()
-	}
-	defer in.Index.Add(in.SpotEntry, in.Now, in.Window)
-
-	others := in.Index.Candidates(in.SpotEntry, in.Now, in.Window, in.CandidateWindowKHz)
-	entries := spotsToEntries(others)
-	corrected, supporters, correctedConfidence, subjectConfidence, totalReporters, ok := spot.SuggestCallCorrection(in.SpotEntry, entries, in.Settings, in.Now)
-	result.Supporters = supporters
-	result.CorrectedConfidence = correctedConfidence
-	result.SubjectConfidence = subjectConfidence
-	result.TotalReporters = totalReporters
-
-	in.SpotEntry.Confidence = FormatConfidence(subjectConfidence, totalReporters)
-	if !ok {
-		return result
-	}
-
-	correctedNorm := spot.NormalizeCallsign(corrected)
-	result.CorrectedCall = correctedNorm
-
-	if in.RejectInvalidBase != nil && in.RejectInvalidBase(correctedNorm) {
-		result.RejectReason = "invalid_base"
-		if strings.EqualFold(in.InvalidAction, "suppress") {
-			result.Suppress = true
-			return result
-		}
-		in.SpotEntry.Confidence = "B"
-		return result
-	}
-
-	if in.CTYValidCall != nil && !in.CTYValidCall(correctedNorm) {
-		result.RejectReason = "cty_miss"
-		if strings.EqualFold(in.InvalidAction, "suppress") {
-			result.Suppress = true
-			return result
-		}
-		in.SpotEntry.Confidence = "B"
-		return result
-	}
-
-	in.SpotEntry.DXCall = correctedNorm
-	in.SpotEntry.DXCallNorm = correctedNorm
-	in.SpotEntry.Confidence = "C"
-	result.Applied = true
-	return result
 }
 
 // NormalizedDXCall returns normalized DX call from DXCallNorm or DXCall fallback.
@@ -843,22 +694,6 @@ func BuildResolverEvidenceSnapshot(spotEntry *spot.Spot, cfg config.CallCorrecti
 	}, true
 }
 
-// ObserveResolverCurrentDecision records final decision outcome for resolver telemetry.
-// A decision is marked corrected only when final call differs from pre-call and
-// the confidence rail indicates an applied correction ("C").
-func ObserveResolverCurrentDecision(resolver *spot.SignalResolver, key spot.ResolverSignalKey, spotEntry *spot.Spot, preCorrectionCall string) {
-	if resolver == nil || spotEntry == nil {
-		return
-	}
-	finalCall := NormalizedDXCall(spotEntry)
-	if finalCall == "" {
-		return
-	}
-	preCall := spot.NormalizeCallsign(preCorrectionCall)
-	corrected := preCall != "" && !strings.EqualFold(preCall, finalCall) && strings.EqualFold(strings.TrimSpace(spotEntry.Confidence), "C")
-	resolver.ObserveCurrentDecision(key, finalCall, corrected)
-}
-
 // resolveBandStateParams selects per-band state override values.
 // Matching is case-insensitive on band labels and returns false when no override matches.
 func resolveBandStateParams(overrides []config.BandStateOverride, band, state string) (bandStateParams, bool) {
@@ -875,17 +710,14 @@ func resolveBandStateParams(overrides []config.BandStateOverride, band, state st
 			switch stateKey {
 			case "quiet":
 				return bandStateParams{
-					QualityBinHz:         o.Quiet.QualityBinHz,
 					FrequencyToleranceHz: o.Quiet.FrequencyToleranceHz,
 				}, true
 			case "busy":
 				return bandStateParams{
-					QualityBinHz:         o.Busy.QualityBinHz,
 					FrequencyToleranceHz: o.Busy.FrequencyToleranceHz,
 				}, true
 			default:
 				return bandStateParams{
-					QualityBinHz:         o.Normal.QualityBinHz,
 					FrequencyToleranceHz: o.Normal.FrequencyToleranceHz,
 				}, true
 			}
@@ -902,27 +734,4 @@ func clampPercent(value int) int {
 		return 100
 	}
 	return value
-}
-
-// spotsToEntries converts correction-index candidates into SuggestCallCorrection inputs.
-// The conversion is read-only and allocates a compact slice sized to candidate count.
-func spotsToEntries(spots []*spot.Spot) []bandmap.SpotEntry {
-	if len(spots) == 0 {
-		return nil
-	}
-	entries := make([]bandmap.SpotEntry, 0, len(spots))
-	for _, s := range spots {
-		if s == nil {
-			continue
-		}
-		entries = append(entries, bandmap.SpotEntry{
-			Call:    s.DXCall,
-			Spotter: s.DECall,
-			Mode:    s.Mode,
-			FreqHz:  uint32(s.Frequency*1000 + 0.5),
-			Time:    s.Time.Unix(),
-			SNR:     s.Report,
-		})
-	}
-	return entries
 }

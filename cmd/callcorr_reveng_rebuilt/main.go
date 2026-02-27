@@ -155,14 +155,12 @@ type mismatch struct {
 }
 
 type inferredMethod struct {
-	ResolverMode     string                      `json:"resolver_mode"`
 	ConfigLoadedFrom string                      `json:"config_loaded_from"`
 	CallCorrection   config.CallCorrectionConfig `json:"call_correction"`
 }
 
 type trainingReport struct {
 	Mode             string `json:"mode"`
-	ResolverMode     string `json:"resolver_mode"`
 	ConfigLoadedFrom string `json:"config_loaded_from"`
 	ExamplesTotal    int64  `json:"examples_total"`
 	Positives        int64  `json:"positives"`
@@ -170,7 +168,6 @@ type trainingReport struct {
 }
 
 type evalReport struct {
-	ResolverMode              string          `json:"resolver_mode"`
 	RBNRows                   int64           `json:"rbn_rows"`
 	PositivesTotal            int64           `json:"positives_total"`
 	CorrectPositive           int64           `json:"correct_positive"`
@@ -271,9 +268,6 @@ func main() {
 	cfg, err := config.Load(*configDir)
 	if err != nil {
 		log.Fatal(err)
-	}
-	if cfg.CallCorrection.ResolverMode != config.CallCorrectionResolverModePrimary {
-		log.Fatalf("strict resolver-primary mode required; effective call_correction.resolver_mode=%q (config=%s)", cfg.CallCorrection.ResolverMode, cfg.LoadedFrom)
 	}
 	spot.ConfigureMorseWeights(cfg.CallCorrection.MorseWeights.Insert, cfg.CallCorrection.MorseWeights.Delete, cfg.CallCorrection.MorseWeights.Sub, cfg.CallCorrection.MorseWeights.Scale)
 	spot.ConfigureBaudotWeights(cfg.CallCorrection.BaudotWeights.Insert, cfg.CallCorrection.BaudotWeights.Delete, cfg.CallCorrection.BaudotWeights.Sub, cfg.CallCorrection.BaudotWeights.Scale)
@@ -428,13 +422,11 @@ func main() {
 
 	report := buildEvalReport(state, labelStats)
 	method := inferredMethod{
-		ResolverMode:     cfg.CallCorrection.ResolverMode,
 		ConfigLoadedFrom: cfg.LoadedFrom,
 		CallCorrection:   cfg.CallCorrection,
 	}
 	train := trainingReport{
 		Mode:             "resolver_primary_config_mapping",
-		ResolverMode:     cfg.CallCorrection.ResolverMode,
 		ConfigLoadedFrom: cfg.LoadedFrom,
 		ExamplesTotal:    report.PositivesTotal + report.NegativesSampled,
 		Positives:        report.PositivesTotal,
@@ -673,18 +665,12 @@ func evaluateResolverPrimaryDecision(
 
 	runtime := correctionflow.ResolveRuntimeSettings(st.cfg.CallCorrection, spotEntry, st.adaptive, now, true)
 	settings := correctionflow.BuildCorrectionSettings(correctionflow.BuildSettingsInput{
-		Cfg:                    st.cfg.CallCorrection,
-		MinReports:             runtime.MinReports,
-		CooldownMinReports:     runtime.CooldownMinReports,
-		Window:                 runtime.Window,
-		FreqToleranceHz:        runtime.FreqToleranceHz,
-		QualityBinHz:           runtime.QualityBinHz,
-		SpotterReliability:     st.spotterRel,
-		SpotterReliabilityCW:   st.spotterRelCW,
-		SpotterReliabilityRTTY: st.spotterRelRTTY,
-		ConfusionModel:         st.confusionModel,
-		RecentBandStore:        st.recentBand,
-		KnownCallset:           st.knownCallset,
+		Cfg:             st.cfg.CallCorrection,
+		MinReports:      runtime.MinReports,
+		Window:          runtime.Window,
+		FreqToleranceHz: runtime.FreqToleranceHz,
+		RecentBandStore: st.recentBand,
+		KnownCallset:    st.knownCallset,
 	})
 	gateOptions := spot.ResolverPrimaryGateOptions{}
 	if st.cfg.CallCorrection.ResolverRecentPlus1Enabled {
@@ -787,10 +773,9 @@ func evaluateResolverPrimaryDecision(
 
 func buildEvalReport(st *runState, labels otherLoadStats) evalReport {
 	report := evalReport{
-		ResolverMode: st.cfg.CallCorrection.ResolverMode,
-		Replay:       st.replay,
-		Labels:       labels,
-		Counters:     st.counters,
+		Replay:   st.replay,
+		Labels:   labels,
+		Counters: st.counters,
 	}
 
 	report.PredictedAppliedTotal = countPredictedTotal(st.predictedByKey)
@@ -1265,8 +1250,8 @@ func hasLeadingLettersBeforeDigit(call string, threshold int) bool {
 
 func writeSummary(path string, report evalReport, method inferredMethod) {
 	text := fmt.Sprintf(
-		"callcorr_reveng summary\n======================\n\nMethod source:\n  config_loaded_from=%s\n  resolver_mode=%s\n\nOther logs:\n  lines=%d parsed=%d skipped_harmonic=%d skipped_invalid=%d skipped_no_db=%d conflicting_label=%d\n\nReplay:\n  rbn_rows=%d candidate_rows=%d skipped_bad_row=%d skipped_schema=%d\n\nPrimary counters:\n  decision_total=%d applied=%d rejected=%d suppressed=%d\n  no_snapshot=%d neighborhood_conflict=%d state_split=%d state_uncertain=%d state_unknown=%d\n  invalid_base=%d cty_miss=%d same_call=%d winner_missing=%d\n  neighborhood_used=%d override=%d split=%d excluded_unrelated=%d excluded_distance=%d excluded_anchor_missing=%d\n  recent_plus1_considered=%d applied=%d rejected=%d\n\nEvaluation:\n  positives_total=%d\n  correct_positive=%d\n  missed_positive=%d\n  predicted_extra_on_positives=%d\n  negatives_seen=%d\n  negatives_sampled=%d\n  false_positive=%d\n  true_negative=%d\n  predicted_applied_total=%d\n  predicted_on_unlabeled=%d\n  recall_percent=%.2f\n  precision_percent_sampled=%.2f\n",
-		method.ConfigLoadedFrom, method.ResolverMode,
+		"callcorr_reveng summary\n======================\n\nMethod source:\n  config_loaded_from=%s\n\nOther logs:\n  lines=%d parsed=%d skipped_harmonic=%d skipped_invalid=%d skipped_no_db=%d conflicting_label=%d\n\nReplay:\n  rbn_rows=%d candidate_rows=%d skipped_bad_row=%d skipped_schema=%d\n\nPrimary counters:\n  decision_total=%d applied=%d rejected=%d suppressed=%d\n  no_snapshot=%d neighborhood_conflict=%d state_split=%d state_uncertain=%d state_unknown=%d\n  invalid_base=%d cty_miss=%d same_call=%d winner_missing=%d\n  neighborhood_used=%d override=%d split=%d excluded_unrelated=%d excluded_distance=%d excluded_anchor_missing=%d\n  recent_plus1_considered=%d applied=%d rejected=%d\n\nEvaluation:\n  positives_total=%d\n  correct_positive=%d\n  missed_positive=%d\n  predicted_extra_on_positives=%d\n  negatives_seen=%d\n  negatives_sampled=%d\n  false_positive=%d\n  true_negative=%d\n  predicted_applied_total=%d\n  predicted_on_unlabeled=%d\n  recall_percent=%.2f\n  precision_percent_sampled=%.2f\n",
+		method.ConfigLoadedFrom,
 		report.Labels.Lines, report.Labels.Parsed, report.Labels.SkippedHarmonic, report.Labels.SkippedInvalid, report.Labels.SkippedNoDB, report.Labels.ConflictingLabel,
 		report.Replay.RBNRows, report.Replay.CandidateRows, report.Replay.SkippedBadRow, report.Replay.SkippedSchema,
 		report.Counters.DecisionTotal, report.Counters.Applied, report.Counters.Rejected, report.Counters.Suppressed,

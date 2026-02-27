@@ -24,7 +24,6 @@ Replay config:
 ## Resolver-only contract
 
 - Replay requires `call_correction.enabled=true`.
-- Replay requires `call_correction.resolver_mode=primary`.
 - Replay uses resolver-primary rails for apply/suppress/reject decisions, including:
   - resolver neighborhood selection
   - resolver primary gates (min reports/adv/confidence, family/distance rails, +1 rail)
@@ -48,7 +47,7 @@ All other dependencies are local snapshots and must already exist when enabled:
 - `fcc_uls.allowlist_path`
 - `fcc_uls.db_path`
 - `known_calls.file`
-- configured priors/confusion model/reliability files
+- optional confusion model and spotter-reliability files
 
 ## Output artifacts
 

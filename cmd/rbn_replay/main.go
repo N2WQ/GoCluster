@@ -60,9 +60,6 @@ func main() {
 	if !cfg.CallCorrection.Enabled {
 		fatalf("call_correction.enabled must be true for replay (config=%s)", cfg.LoadedFrom)
 	}
-	if !strings.EqualFold(strings.TrimSpace(cfg.CallCorrection.ResolverMode), config.CallCorrectionResolverModePrimary) {
-		fatalf("call_correction.resolver_mode must be %q for replay (config=%s)", config.CallCorrectionResolverModePrimary, cfg.LoadedFrom)
-	}
 
 	archiveDir := strings.TrimSpace(*archiveDirFlag)
 	if archiveDir == "" {
@@ -131,26 +128,6 @@ func main() {
 
 	spot.ConfigureMorseWeights(cfg.CallCorrection.MorseWeights.Insert, cfg.CallCorrection.MorseWeights.Delete, cfg.CallCorrection.MorseWeights.Sub, cfg.CallCorrection.MorseWeights.Scale)
 	spot.ConfigureBaudotWeights(cfg.CallCorrection.BaudotWeights.Insert, cfg.CallCorrection.BaudotWeights.Delete, cfg.CallCorrection.BaudotWeights.Sub, cfg.CallCorrection.BaudotWeights.Scale)
-
-	pinPriors := true
-	if cfg.CallCorrection.CallQualityPinPriors != nil {
-		pinPriors = *cfg.CallCorrection.CallQualityPinPriors
-	}
-	// Disable wall-clock cleanup for deterministic replay; TTL eviction still happens on access/add.
-	spot.ConfigureCallQualityStore(
-		time.Duration(cfg.CallCorrection.CallQualityTTLSeconds)*time.Second,
-		cfg.CallCorrection.CallQualityMaxEntries,
-		0,
-		pinPriors,
-	)
-	if priors := strings.TrimSpace(cfg.CallCorrection.QualityPriorsFile); priors != "" {
-		if _, err := os.Stat(priors); err != nil {
-			fatalf("call_correction.quality_priors_file missing/unreadable %s: %v", priors, err)
-		}
-		if _, err := spot.LoadCallQualityPriors(priors, cfg.CallCorrection.QualityBinHz); err != nil {
-			fatalf("load call quality priors %s: %v", priors, err)
-		}
-	}
 
 	spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, err := loadSpotterReliability(cfg.CallCorrection)
 	must(err)
@@ -335,10 +312,6 @@ func main() {
 			ctyDB,
 			tracker,
 			adaptiveMinReports,
-			spotterReliability,
-			spotterReliabilityCW,
-			spotterReliabilityRTTY,
-			confusionModel,
 			recentBandStore,
 			knownCallset,
 			now,

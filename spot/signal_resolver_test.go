@@ -42,40 +42,6 @@ func TestSignalResolverQueueSaturationIsNonBlocking(t *testing.T) {
 	}
 }
 
-func TestSignalResolverObserveCurrentDecisionClasses(t *testing.T) {
-	resolver := NewSignalResolver(SignalResolverConfig{})
-	key := NewResolverSignalKey(7010.0, "40m", "CW", 500)
-
-	resolver.snapshots.Store(key, ResolverSnapshot{Key: key, State: ResolverStateSplit})
-	resolver.ObserveCurrentDecision(key, "DL6LD", true)
-
-	resolver.snapshots.Store(key, ResolverSnapshot{Key: key, State: ResolverStateConfident, Winner: "DL6LN"})
-	resolver.ObserveCurrentDecision(key, "DL6LD", true)
-
-	resolver.snapshots.Store(key, ResolverSnapshot{Key: key, State: ResolverStateUncertain})
-	resolver.ObserveCurrentDecision(key, "DL6LD", true)
-
-	resolver.snapshots.Store(key, ResolverSnapshot{Key: key, State: ResolverStateProbable, Winner: "DL6LD"})
-	resolver.ObserveCurrentDecision(key, "DL6LD", false)
-
-	metrics := resolver.MetricsSnapshot()
-	if metrics.DisagreeSplitCorrected != 1 {
-		t.Fatalf("expected split disagreement count 1, got %d", metrics.DisagreeSplitCorrected)
-	}
-	if metrics.DisagreeConfidentDifferentWinner != 1 {
-		t.Fatalf("expected confident-different-winner count 1, got %d", metrics.DisagreeConfidentDifferentWinner)
-	}
-	if metrics.DisagreeUncertainCorrected != 1 {
-		t.Fatalf("expected uncertain-corrected count 1, got %d", metrics.DisagreeUncertainCorrected)
-	}
-	if metrics.DecisionsComparable != 2 {
-		t.Fatalf("expected comparable decisions 2, got %d", metrics.DecisionsComparable)
-	}
-	if metrics.DecisionAgreement != 1 || metrics.DecisionDisagreement != 1 {
-		t.Fatalf("expected agreement/disagreement 1/1, got %d/%d", metrics.DecisionAgreement, metrics.DecisionDisagreement)
-	}
-}
-
 func TestSignalResolverHysteresisTransition(t *testing.T) {
 	resolver := NewSignalResolver(SignalResolverConfig{
 		QueueSize:              64,

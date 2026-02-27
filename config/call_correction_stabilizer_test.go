@@ -24,9 +24,6 @@ func TestLoadCallCorrectionStabilizerDefaults(t *testing.T) {
 	if !cfg.CallCorrection.StabilizerEnabled {
 		t.Fatalf("expected stabilizer enabled")
 	}
-	if cfg.CallCorrection.ResolverMode != CallCorrectionResolverModeShadow {
-		t.Fatalf("expected resolver mode default %q, got %q", CallCorrectionResolverModeShadow, cfg.CallCorrection.ResolverMode)
-	}
 	if cfg.CallCorrection.StabilizerDelaySeconds != 5 {
 		t.Fatalf("expected stabilizer delay default 5s, got %d", cfg.CallCorrection.StabilizerDelaySeconds)
 	}
@@ -84,9 +81,6 @@ func TestLoadCallCorrectionStabilizerDefaults(t *testing.T) {
 	if !cfg.CallCorrection.ResolverRecentPlus1AllowTruncation {
 		t.Fatalf("expected resolver recent plus1 truncation-family allowance enabled by default")
 	}
-	if cfg.CallCorrection.SlashPrecedenceMinReports != 2 {
-		t.Fatalf("expected slash precedence min reports default 2, got %d", cfg.CallCorrection.SlashPrecedenceMinReports)
-	}
 	if cfg.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports != 2 {
 		t.Fatalf("expected family slash precedence min reports default 2, got %d", cfg.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports)
 	}
@@ -140,44 +134,6 @@ func TestLoadCallCorrectionStabilizerDefaults(t *testing.T) {
 	}
 	if cfg.CallCorrection.FamilyPolicy.TelnetSuppression.FrequencyToleranceFallbackHz != cfg.CallCorrection.FrequencyToleranceHz {
 		t.Fatalf("expected telnet family suppression fallback tolerance %.1f, got %.1f", cfg.CallCorrection.FrequencyToleranceHz, cfg.CallCorrection.FamilyPolicy.TelnetSuppression.FrequencyToleranceFallbackHz)
-	}
-}
-
-func TestLoadCallCorrectionResolverModePrimary(t *testing.T) {
-	dir := t.TempDir()
-	pipeline := `call_correction:
-  enabled: true
-  resolver_mode: "primary"
-`
-	if err := os.WriteFile(filepath.Join(dir, "pipeline.yaml"), []byte(pipeline), 0o644); err != nil {
-		t.Fatalf("write pipeline.yaml: %v", err)
-	}
-
-	cfg, err := Load(dir)
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-	if cfg.CallCorrection.ResolverMode != CallCorrectionResolverModePrimary {
-		t.Fatalf("expected resolver mode %q, got %q", CallCorrectionResolverModePrimary, cfg.CallCorrection.ResolverMode)
-	}
-}
-
-func TestLoadRejectsInvalidCallCorrectionResolverMode(t *testing.T) {
-	dir := t.TempDir()
-	pipeline := `call_correction:
-  enabled: true
-  resolver_mode: "hybrid"
-`
-	if err := os.WriteFile(filepath.Join(dir, "pipeline.yaml"), []byte(pipeline), 0o644); err != nil {
-		t.Fatalf("write pipeline.yaml: %v", err)
-	}
-
-	_, err := Load(dir)
-	if err == nil {
-		t.Fatalf("expected Load() error for invalid resolver_mode")
-	}
-	if !strings.Contains(strings.ToLower(err.Error()), "resolver_mode") {
-		t.Fatalf("expected resolver mode error, got %v", err)
 	}
 }
 
@@ -262,9 +218,6 @@ func TestLoadCallCorrectionFamilyPolicyOverrides(t *testing.T) {
 	}
 	if cfg.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports != 3 {
 		t.Fatalf("expected family slash precedence min reports 3, got %d", cfg.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports)
-	}
-	if cfg.CallCorrection.SlashPrecedenceMinReports != 3 {
-		t.Fatalf("expected legacy slash precedence mirror 3, got %d", cfg.CallCorrection.SlashPrecedenceMinReports)
 	}
 	if cfg.CallCorrection.StabilizerMaxChecks != 4 {
 		t.Fatalf("expected stabilizer max checks 4, got %d", cfg.CallCorrection.StabilizerMaxChecks)
