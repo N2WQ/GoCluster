@@ -5,6 +5,7 @@ import (
 	"dxcluster/strutil"
 	"log"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -43,6 +44,24 @@ type ModeAssigner struct {
 	fallback func(freqKHz float64) string
 	dxCache  *dxFreqCache
 	digital  *digitalFreqMap
+	// Stats are updated from the output pipeline goroutine and read from stats/UI goroutines.
+	dxLookups         atomic.Uint64
+	dxHits            atomic.Uint64
+	explicitAssigned  atomic.Uint64
+	inferredAssigned  atomic.Uint64
+	fallbackAssigned  atomic.Uint64
+	digitalBucketsMax uint64
+}
+
+// ModeInferenceStats captures hot-path mode inference cache health.
+type ModeInferenceStats struct {
+	DXLookups      uint64
+	DXHits         uint64
+	DigitalBuckets uint64
+	DigitalMax     uint64
+	Explicit       uint64
+	Inferred       uint64
+	Fallback       uint64
 }
 
 // NewModeAssigner constructs a ModeAssigner with defaults applied.
@@ -80,10 +99,11 @@ func newModeAssigner(settings ModeInferenceSettings, now func() time.Time, fallb
 		settings.DigitalCacheSize = 5000
 	}
 	assigner := &ModeAssigner{
-		now:      now,
-		fallback: fallback,
-		dxCache:  newDXFreqCache(settings.DXFreqCacheSize, settings.DXFreqCacheTTL),
-		digital:  newDigitalFreqMap(settings.DigitalCacheSize, settings.DigitalWindow, settings.DigitalMinCorroborate, settings.DigitalSeedTTL),
+		now:               now,
+		fallback:          fallback,
+		dxCache:           newDXFreqCache(settings.DXFreqCacheSize, settings.DXFreqCacheTTL),
+		digital:           newDigitalFreqMap(settings.DigitalCacheSize, settings.DigitalWindow, settings.DigitalMinCorroborate, settings.DigitalSeedTTL),
+		digitalBucketsMax: uint64(settings.DigitalCacheSize),
 	}
 	assigner.seedDigitalMap(settings.DigitalSeeds)
 	return assigner
@@ -107,6 +127,9 @@ func (a *ModeAssigner) Assign(s *Spot, explicitMode bool) string {
 		mode := NormalizeVoiceMode(s.Mode, s.Frequency)
 		mode = strutil.NormalizeUpper(mode)
 		s.Mode = mode
+		if mode != "" {
+			a.explicitAssigned.Add(1)
+		}
 		if a.shouldObserveDigital(s, mode) {
 			spotter := s.DECallNorm
 			if spotter == "" {
@@ -119,14 +142,18 @@ func (a *ModeAssigner) Assign(s *Spot, explicitMode bool) string {
 	}
 
 	key := dxKeyFromSpot(s)
+	a.dxLookups.Add(1)
 	if cached, ok := a.dxCache.Get(key, now); ok {
 		s.Mode = cached
+		a.dxHits.Add(1)
+		a.inferredAssigned.Add(1)
 		a.dxCache.Set(key, cached, now)
 		return cached
 	}
 
 	if inferred := a.digital.Infer(freqKeyFromSpot(s), now); inferred != "" {
 		s.Mode = inferred
+		a.inferredAssigned.Add(1)
 		a.dxCache.Set(key, inferred, now)
 		return inferred
 	}
@@ -138,9 +165,29 @@ func (a *ModeAssigner) Assign(s *Spot, explicitMode bool) string {
 	mode = strutil.NormalizeUpper(mode)
 	if mode != "" {
 		s.Mode = mode
+		a.fallbackAssigned.Add(1)
 		a.dxCache.Set(key, mode, now)
 	}
 	return mode
+}
+
+// Stats returns a snapshot of mode inference cache and source-mix counters.
+func (a *ModeAssigner) Stats() ModeInferenceStats {
+	if a == nil {
+		return ModeInferenceStats{}
+	}
+	stats := ModeInferenceStats{
+		DXLookups:  a.dxLookups.Load(),
+		DXHits:     a.dxHits.Load(),
+		DigitalMax: a.digitalBucketsMax,
+		Explicit:   a.explicitAssigned.Load(),
+		Inferred:   a.inferredAssigned.Load(),
+		Fallback:   a.fallbackAssigned.Load(),
+	}
+	if a.digital != nil {
+		stats.DigitalBuckets = a.digital.BucketCount()
+	}
+	return stats
 }
 
 // Purpose: Decide whether to feed a spot into the digital map.
@@ -341,6 +388,7 @@ type digitalFreqMap struct {
 	seedTTL          time.Duration
 	lru              *list.List
 	entries          map[int]*list.Element
+	bucketCount      atomic.Uint64
 }
 
 type digitalFreqEntry struct {
@@ -436,8 +484,7 @@ func (m *digitalFreqMap) Infer(freq int, now time.Time) string {
 	}
 	entry, valid := elem.Value.(*digitalFreqEntry)
 	if !valid || entry == nil {
-		delete(m.entries, freq)
-		m.lru.Remove(elem)
+		m.removeElement(freq, elem)
 		return ""
 	}
 	bestMode := ""
@@ -490,8 +537,7 @@ func (m *digitalFreqMap) getOrCreate(freq int, now time.Time) *digitalFreqEntry 
 	if elem, ok := m.entries[freq]; ok {
 		entry, valid := elem.Value.(*digitalFreqEntry)
 		if !valid || entry == nil {
-			delete(m.entries, freq)
-			m.lru.Remove(elem)
+			m.removeElement(freq, elem)
 			entry = &digitalFreqEntry{
 				freq:     freq,
 				lastSeen: now,
@@ -499,6 +545,7 @@ func (m *digitalFreqMap) getOrCreate(freq int, now time.Time) *digitalFreqEntry 
 			}
 			newElem := m.lru.PushFront(entry)
 			m.entries[freq] = newElem
+			m.bucketCount.Add(1)
 			return entry
 		}
 		entry.lastSeen = now
@@ -512,6 +559,7 @@ func (m *digitalFreqMap) getOrCreate(freq int, now time.Time) *digitalFreqEntry 
 	}
 	elem := m.lru.PushFront(entry)
 	m.entries[freq] = elem
+	m.bucketCount.Add(1)
 	return entry
 }
 
@@ -543,16 +591,15 @@ func (m *digitalFreqMap) evictIfNeeded() {
 		}
 		entry, valid := elem.Value.(*digitalFreqEntry)
 		if valid && entry != nil {
-			delete(m.entries, entry.freq)
+			m.removeElement(entry.freq, elem)
 		} else {
 			for key, candidate := range m.entries {
 				if candidate == elem {
-					delete(m.entries, key)
+					m.removeElement(key, elem)
 					break
 				}
 			}
 		}
-		m.lru.Remove(elem)
 	}
 }
 
@@ -627,9 +674,29 @@ func (m *digitalFreqMap) pruneEntryIfEmpty(entry *digitalFreqEntry, freq int) {
 	}
 	if len(entry.modes) == 0 {
 		if elem, ok := m.entries[freq]; ok {
-			delete(m.entries, freq)
-			m.lru.Remove(elem)
+			m.removeElement(freq, elem)
 		}
+	}
+}
+
+// BucketCount returns the current number of active digital frequency buckets.
+func (m *digitalFreqMap) BucketCount() uint64 {
+	if m == nil {
+		return 0
+	}
+	return m.bucketCount.Load()
+}
+
+func (m *digitalFreqMap) removeElement(freq int, elem *list.Element) {
+	if m == nil || elem == nil {
+		return
+	}
+	if _, ok := m.entries[freq]; ok {
+		delete(m.entries, freq)
+	}
+	m.lru.Remove(elem)
+	if m.bucketCount.Load() > 0 {
+		m.bucketCount.Add(^uint64(0))
 	}
 }
 

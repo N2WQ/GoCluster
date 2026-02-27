@@ -1252,7 +1252,7 @@ func main() {
 	// Key aspects: Runs on ticker interval until shutdown.
 	// Upstream: main startup.
 	// Downstream: displayStatsWithFCC.
-	go displayStatsWithFCC(statsInterval, statsTracker, ingestValidator, deduplicator, secondaryFast, secondaryMed, secondarySlow, &secondaryStageCount, spotBuffer, ctyLookup, metaCache, ctyState, &knownCalls, recentBandStore, signalResolver, knownCallsPath, telnetServer, surface, gridUpdateState, gridStoreHandle, cfg.FCCULS.DBPath, pathPredictor, rbnClient, rbnDigitalClient, pskrClient, pskrPathOnlyStats, peerManager, cfg.Server.NodeID, cfg.Skew.File)
+	go displayStatsWithFCC(statsInterval, statsTracker, ingestValidator, deduplicator, secondaryFast, secondaryMed, secondarySlow, &secondaryStageCount, spotBuffer, ctyLookup, metaCache, ctyState, &knownCalls, recentBandStore, signalResolver, knownCallsPath, telnetServer, surface, gridUpdateState, gridStoreHandle, cfg.FCCULS.DBPath, pathPredictor, modeAssigner, rbnClient, rbnDigitalClient, pskrClient, pskrPathOnlyStats, peerManager, cfg.Server.NodeID, cfg.Skew.File)
 	if pathCfg.Enabled {
 		go startPathPredictionLogger(ctx, logMux, telnetServer, pathPredictor, pathReport)
 	}
@@ -1552,15 +1552,23 @@ func formatStabilizerSummary(tracker *stats.Tracker) string {
 	delayed := tracker.StabilizerReleasedDelayed()
 	suppressed := tracker.StabilizerSuppressedTimeout()
 	overflow := tracker.StabilizerOverflowRelease()
-	heldReasons := tracker.StabilizerHeldByReason()
-	delayedReasons := tracker.StabilizerReleasedDelayedByReason()
-	suppressedReasons := tracker.StabilizerSuppressedByReason()
-	return fmt.Sprintf("Stabilizer: %s (H) / %s (I) / %s (D) / %s (S) / %s (O) | by-reason H[%s] D[%s] S[%s]",
+	return fmt.Sprintf("Stabilizer: %s (H) / %s (I) / %s (D) / %s (S) / %s (O)",
 		humanize.Comma(int64(held)),
 		humanize.Comma(int64(immediate)),
 		humanize.Comma(int64(delayed)),
 		humanize.Comma(int64(suppressed)),
 		humanize.Comma(int64(overflow)),
+	)
+}
+
+func formatStabilizerReasonSummary(tracker *stats.Tracker) string {
+	if tracker == nil {
+		return "Stabilizer Reason: n/a"
+	}
+	heldReasons := tracker.StabilizerHeldByReason()
+	delayedReasons := tracker.StabilizerReleasedDelayedByReason()
+	suppressedReasons := tracker.StabilizerSuppressedByReason()
+	return fmt.Sprintf("Stabilizer Reason: H[%s] D[%s] S[%s]",
 		formatStabilizerReasonTuple(heldReasons),
 		formatStabilizerReasonTuple(delayedReasons),
 		formatStabilizerReasonTuple(suppressedReasons),
@@ -1590,7 +1598,7 @@ func formatResolverSummary(resolver *spot.SignalResolver) string {
 	}
 	metrics := resolver.MetricsSnapshot()
 	return fmt.Sprintf(
-		"Resolver: %s (C) / %s (P) / %s (U) / %s (S) | q=%d drop %s (Q) / %s (K) / %s (C) / %s (R) | pressure %s (C) / %s (R) evict %s (C) / %s (R) hw %s (C) / %s (R)",
+		"Resolver: %s (C) / %s (P) / %s (U) / %s (S) | q=%d drop %s (Q) / %s (K) / %s (C) / %s (R)",
 		humanize.Comma(int64(metrics.StateConfident)),
 		humanize.Comma(int64(metrics.StateProbable)),
 		humanize.Comma(int64(metrics.StateUncertain)),
@@ -1600,12 +1608,51 @@ func formatResolverSummary(resolver *spot.SignalResolver) string {
 		humanize.Comma(int64(metrics.DropMaxKeys)),
 		humanize.Comma(int64(metrics.DropMaxCandidates)),
 		humanize.Comma(int64(metrics.DropMaxReporters)),
+	)
+}
+
+func formatResolverPressureSummary(resolver *spot.SignalResolver) string {
+	if resolver == nil {
+		return "Resolver Pressur: n/a"
+	}
+	metrics := resolver.MetricsSnapshot()
+	return fmt.Sprintf(
+		"Resolver Pressur: %s (C) / %s (R) evict %s (C) / %s (R) hw %s (C) / %s (R)",
 		humanize.Comma(int64(metrics.CapPressureCandidates)),
 		humanize.Comma(int64(metrics.CapPressureReporters)),
 		humanize.Comma(int64(metrics.EvictedCandidates)),
 		humanize.Comma(int64(metrics.EvictedReporters)),
 		humanize.Comma(int64(metrics.HighWaterCandidates)),
 		humanize.Comma(int64(metrics.HighWaterReporters)),
+	)
+}
+
+func formatTemporalSummary(tracker *stats.Tracker) string {
+	if tracker == nil {
+		return "Temporal: n/a"
+	}
+	return fmt.Sprintf(
+		"Temporal: pending %s | committed %s | fallback %s | abstain %s | bypass %s",
+		humanize.Comma(tracker.TemporalPending()),
+		humanize.Comma(int64(tracker.TemporalCommitted())),
+		humanize.Comma(int64(tracker.TemporalFallbackResolver())),
+		humanize.Comma(int64(tracker.TemporalAbstainLowMargin())),
+		humanize.Comma(int64(tracker.TemporalOverflowBypass())),
+	)
+}
+
+func formatTemporalLatencySummary(tracker *stats.Tracker) string {
+	if tracker == nil {
+		return "Temporal latency: n/a"
+	}
+	buckets := tracker.TemporalCommitLatencyBuckets()
+	return fmt.Sprintf(
+		"Temporal latency: <=500ms:%s <=1s:%s <=2s:%s <=5s:%s >5s:%s",
+		humanize.Comma(int64(buckets["le_500"])),
+		humanize.Comma(int64(buckets["le_1000"])),
+		humanize.Comma(int64(buckets["le_2000"])),
+		humanize.Comma(int64(buckets["le_5000"])),
+		humanize.Comma(int64(buckets["gt_5000"])),
 	)
 }
 
@@ -1644,7 +1691,7 @@ func formatTopCounterSummary(counts map[string]uint64, limit int) string {
 // Key aspects: Uses a ticker, diff counters, and optional secondary dedupe stats.
 // Upstream: main stats goroutine.
 // Downstream: tracker accessors, loadFCCSnapshot, and UI/log output.
-func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestStats *ingestValidator, dedup *dedup.Deduplicator, secondaryFast *dedup.SecondaryDeduper, secondaryMed *dedup.SecondaryDeduper, secondarySlow *dedup.SecondaryDeduper, secondaryStage *atomic.Uint64, buf *buffer.RingBuffer, ctyLookup func() *cty.CTYDatabase, metaCache *callMetaCache, ctyState *ctyRefreshState, knownPtr *atomic.Pointer[spot.KnownCallsigns], recentBandStore spot.RecentSupportStore, signalResolver *spot.SignalResolver, knownCallsPath string, telnetSrv *telnet.Server, dash ui.Surface, gridStats *gridMetrics, gridDB *gridStoreHandle, fccDBPath string, pathPredictor *pathreliability.Predictor, rbnClient *rbn.Client, rbnDigitalClient *rbn.Client, pskrClient *pskreporter.Client, pskrPathOnly *pathOnlyStats, peerManager *peer.Manager, clusterCall string, skewPath string) {
+func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestStats *ingestValidator, dedup *dedup.Deduplicator, secondaryFast *dedup.SecondaryDeduper, secondaryMed *dedup.SecondaryDeduper, secondarySlow *dedup.SecondaryDeduper, secondaryStage *atomic.Uint64, buf *buffer.RingBuffer, ctyLookup func() *cty.CTYDatabase, metaCache *callMetaCache, ctyState *ctyRefreshState, knownPtr *atomic.Pointer[spot.KnownCallsigns], recentBandStore spot.RecentSupportStore, signalResolver *spot.SignalResolver, knownCallsPath string, telnetSrv *telnet.Server, dash ui.Surface, gridStats *gridMetrics, gridDB *gridStoreHandle, fccDBPath string, pathPredictor *pathreliability.Predictor, modeAssigner *spot.ModeAssigner, rbnClient *rbn.Client, rbnDigitalClient *rbn.Client, pskrClient *pskreporter.Client, pskrPathOnly *pathOnlyStats, peerManager *peer.Manager, clusterCall string, skewPath string) {
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
@@ -1693,6 +1740,8 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 		pskFT8 := diffSourceMode(sourceModeTotals, prevSourceModeCounts, "PSKREPORTER", "FT8")
 		pskFT4 := diffSourceMode(sourceModeTotals, prevSourceModeCounts, "PSKREPORTER", "FT4")
 		pskMSK144 := diffSourceMode(sourceModeTotals, prevSourceModeCounts, "PSKREPORTER", "MSK144")
+		// PSK31/63 is tracked separately from canonical PSK to match Overview semantics.
+		psk31_63 := diffSourceModes(sourceModeTotals, prevSourceModeCounts, "PSKREPORTER", "PSK31", "PSK63")
 		// Peer ingest is summarized under the synthetic P92 label (stats key is PEER).
 		p92Total := diffCounter(sourceTotals, prevSourceCounts, "PEER")
 
@@ -1703,7 +1752,11 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 		reputationTotal := tracker.ReputationDrops()
 		corrDecisionLine := formatCorrectionDecisionSummary(tracker)
 		stabilizerLine := formatStabilizerSummary(tracker)
+		stabilizerReasonLine := formatStabilizerReasonSummary(tracker)
 		resolverLine := formatResolverSummary(signalResolver)
+		resolverPressureLine := formatResolverPressureSummary(signalResolver)
+		temporalLine := formatTemporalSummary(tracker)
+		temporalLatencyLine := formatTemporalLatencySummary(tracker)
 
 		ingestTotal := uint64(0)
 		if ingestStats != nil {
@@ -1835,12 +1888,17 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 			), // 5
 			fmt.Sprintf("%s: %s TOTAL", withIngestStatusLabel("P92", p92Live), humanize.Comma(int64(p92Total))), // 6
 		)
+		lines[4] += fmt.Sprintf(" / %s PSK31/63", humanize.Comma(int64(psk31_63)))
 		lines = append(lines, pathOnlyLine)
 		lines = append(lines,
 			fmt.Sprintf("Calls: %d (C) / %d (U) / %d (F) / %d (H) / %d (R)", totalCorrections, totalUnlicensed, totalFreqCorrections, totalHarmonics, reputationTotal), // 6
 			corrDecisionLine,
-			stabilizerLine,
 			resolverLine,
+			resolverPressureLine,
+			stabilizerLine,
+			stabilizerReasonLine,
+			temporalLine,
+			temporalLatencyLine,
 			pipelineLine, // 7
 			fmt.Sprintf("Telnet: %d clients. Drops: %d (Q) / %d (C) / %d (W)", clientCount, queueDrops, clientDrops, senderFailures), // 8
 		)
@@ -1850,13 +1908,15 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 
 		if dash != nil {
 			dash.SetStats(lines)
-			overviewLines := buildOverviewLines(tracker, dedup, secondaryFast, secondaryMed, secondarySlow, metaCache, knownPtr, recentBandStore, ctyState, knownCallsPath, fccSnap, gridStats, gridDB, pathPredictor, telnetSrv, clusterCall,
+			overviewLines := buildOverviewLines(tracker, dedup, secondaryFast, secondaryMed, secondarySlow, metaCache, knownPtr, recentBandStore, ctyState, knownCallsPath, fccSnap, gridStats, gridDB, pathPredictor, modeAssigner, telnetSrv, clusterCall,
 				rbnLive, pskLive, p92Live,
 				combinedRBN, rbnCW, rbnRTTY, rbnFT8, rbnFT4,
-				pskTotal, pskCW, pskRTTY, pskFT8, pskFT4, pskMSK144,
+				pskTotal, pskCW, pskRTTY, pskFT8, pskFT4, pskMSK144, psk31_63,
 				p92Total,
 				totalCorrections, totalUnlicensed, totalHarmonics, reputationTotal,
 				pathOnlyLine,
+				resolverLine,
+				resolverPressureLine,
 				skewPath,
 				&mem,
 				gcP99Label,
@@ -1876,8 +1936,12 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 					pipelineLine,
 					fmt.Sprintf("Corrections: %d  Unlicensed: %d  Freq: %d  Harmonics: %d  Reputation: %d",
 						totalCorrections, totalUnlicensed, totalFreqCorrections, totalHarmonics, reputationTotal),
-					stabilizerLine,
 					resolverLine,
+					resolverPressureLine,
+					stabilizerLine,
+					stabilizerReasonLine,
+					temporalLine,
+					temporalLatencyLine,
 				},
 				NetworkLines: formatNetworkLines(telnetSrv, clientList),
 			}
@@ -2692,6 +2756,12 @@ func processOutputSpots(
 				sourceLabel := sourceStatsLabel(s)
 				tracker.IncrementSource(sourceLabel)
 				tracker.IncrementSourceMode(sourceLabel, modeKey)
+				if sourceLabel == "PSKREPORTER" {
+					switch strutil.NormalizeUpper(s.Mode) {
+					case "PSK31", "PSK63":
+						tracker.IncrementSourceMode(sourceLabel, s.Mode)
+					}
+				}
 			}
 
 			if !broadcastKeepSSID {
@@ -2871,14 +2941,16 @@ func processOutputSpots(
 						telnetDeliverNow = true
 						if tracker != nil {
 							tracker.IncrementStabilizerOverflowRelease()
-							tracker.IncrementStabilizerReleasedImmediate()
-							tracker.IncrementStabilizerReleasedImmediateReason(delayDecision.Reason.String())
+							if stabilizerImmediateCountEligible(s) {
+								tracker.IncrementStabilizerReleasedImmediate()
+								tracker.IncrementStabilizerReleasedImmediateReason(delayDecision.Reason.String())
+							}
 						}
 					}
 				} else {
 					allowFast, allowMed, allowSlow = computeTelnetAllows(s)
 					telnetDeliverNow = true
-					if tracker != nil {
+					if tracker != nil && stabilizerImmediateCountEligible(s) {
 						tracker.IncrementStabilizerReleasedImmediate()
 						tracker.IncrementStabilizerReleasedImmediateReason(stabilizerDelayReasonNone.String())
 					}
@@ -4037,6 +4109,17 @@ func modeSupportsConfidenceGlyph(mode string) bool {
 	default:
 		return false
 	}
+}
+
+func stabilizerImmediateCountEligible(s *spot.Spot) bool {
+	if s == nil {
+		return false
+	}
+	mode := s.ModeNorm
+	if mode == "" {
+		mode = s.Mode
+	}
+	return spot.IsCallCorrectionCandidate(mode)
 }
 
 // recordRecentBandObservation records accepted spots for recent-on-band
@@ -5800,6 +5883,22 @@ func formatPercentString(pct float64) string {
 	return fmt.Sprintf("%.1f%%", pct)
 }
 
+func formatModeCacheLine(assigner *spot.ModeAssigner) string {
+	if assigner == nil {
+		return "[yellow]Mode cache[-]: [yellow]DX hit[-] n/a | [yellow]Digital[-] n/a | [yellow]Mix[-] E0 I0 F0"
+	}
+	stats := assigner.Stats()
+	dxHitPct := percentValue(stats.DXHits, stats.DXLookups)
+	return fmt.Sprintf("[yellow]Mode cache[-]: [yellow]DX hit[-] %s | [yellow]Digital[-] %s/%s | [yellow]Mix[-] E%s I%s F%s",
+		formatPercentString(dxHitPct),
+		humanize.Comma(int64(stats.DigitalBuckets)),
+		humanize.Comma(int64(stats.DigitalMax)),
+		humanize.Comma(int64(stats.Explicit)),
+		humanize.Comma(int64(stats.Inferred)),
+		humanize.Comma(int64(stats.Fallback)),
+	)
+}
+
 func formatPercentBarWithLabel(pct float64, width int, label string) string {
 	if width <= 0 {
 		return "[]"
@@ -5887,14 +5986,17 @@ func buildOverviewLines(
 	gridStats *gridMetrics,
 	gridDB *gridStoreHandle,
 	pathPredictor *pathreliability.Predictor,
+	modeAssigner *spot.ModeAssigner,
 	telnetSrv *telnet.Server,
 	clusterCall string,
 	rbnLive, pskLive, p92Live bool,
 	rbnTotal, rbnCW, rbnRTTY, rbnFT8, rbnFT4 uint64,
-	pskTotal, pskCW, pskRTTY, pskFT8, pskFT4, pskMSK144 uint64,
+	pskTotal, pskCW, pskRTTY, pskFT8, pskFT4, pskMSK144, psk31_63 uint64,
 	p92Total uint64,
 	totalCorrections, totalUnlicensed, totalHarmonics, reputationTotal uint64,
 	pathOnlyLine string,
+	resolverLine string,
+	resolverPressureLine string,
 	skewPath string,
 	mem *runtime.MemStats,
 	gcP99Label string,
@@ -5934,15 +6036,6 @@ func buildOverviewLines(
 		metaHits = metaMetrics.Hits
 	}
 
-	var knownCount int
-	var knownLookups, knownHits uint64
-	if knownPtr != nil {
-		if known := knownPtr.Load(); known != nil {
-			knownCount = known.Count()
-			knownLookups, knownHits = known.Stats()
-		}
-	}
-
 	gridCount := int64(-1)
 	if gridDB != nil {
 		if store := gridDB.Store(); store != nil {
@@ -5953,34 +6046,22 @@ func buildOverviewLines(
 	}
 	gridHitPct := percentValue(gridHits, gridLookups)
 	metaHitPct := percentValue(metaHits, metaLookups)
-	knownHitPct := percentValue(knownHits, knownLookups)
-	recentOnBandLabel := "n/a"
-	if recentBandStore != nil {
-		recentOnBandLabel = humanize.Comma(int64(recentBandStore.ActiveCallCount(now)))
-	}
-
 	gridSizeLabel := humanize.Comma(gridCount)
 	metaSizeLabel := humanize.Comma(int64(metaCount))
-	knownSizeLabel := humanize.Comma(int64(knownCount))
 	cacheBars := []string{
-		fmt.Sprintf("[yellow]Grid cache[-]:  %s %s", formatPercentBarWithLabel(gridHitPct, 20, gridSizeLabel), formatPercentString(gridHitPct)),
-		fmt.Sprintf("[yellow]Meta cache[-]:  %s %s", formatPercentBarWithLabel(metaHitPct, 20, metaSizeLabel), formatPercentString(metaHitPct)),
-		fmt.Sprintf("[yellow]Known calls[-]: %s %s", formatPercentBarWithLabel(knownHitPct, 20, knownSizeLabel), formatPercentString(knownHitPct)),
-		"",
+		fmt.Sprintf("[yellow]Grid cache[-]:  %s %s  |  [yellow]Meta[-]: %s %s",
+			formatPercentBarWithLabel(gridHitPct, 20, gridSizeLabel), formatPercentString(gridHitPct),
+			formatPercentBarWithLabel(metaHitPct, 20, metaSizeLabel), formatPercentString(metaHitPct)),
+		formatModeCacheLine(modeAssigner),
 	}
-	cacheBars = append(cacheBars, formatRecentOnBandLines(recentBandStore, now, recentOnBandLabel)...)
+	cacheBars = append(cacheBars, "")
+	cacheBars = append(cacheBars, formatKnownCallsByBandLines(recentBandStore, now, 10)...)
+	cacheBars = append(cacheBars, "")
 
 	ctyTime := "n/a"
 	if ctyState != nil {
 		if ts, ok := ctyState.lastSuccessTime(); ok {
 			ctyTime = formatDateShortZ(ts)
-		}
-	}
-
-	scpTime := "n/a"
-	if knownCallsPath != "" {
-		if info, err := os.Stat(knownCallsPath); err == nil {
-			scpTime = formatDateShortZ(info.ModTime())
 		}
 	}
 
@@ -6022,15 +6103,18 @@ func buildOverviewLines(
 	}
 
 	lines := make([]string, 0, 16+len(cacheBars))
+	pskLine := formatIngestLine(withIngestStatusLabel("PSK", pskLive), pskTotal, pskCW, pskRTTY, pskFT8, pskFT4, pskMSK144, true)
+	pskLine += " | " + formatIngestField("[yellow]PSK31/63[-]", psk31_63, 5)
 	lines = append(lines,
 		fmt.Sprintf("[yellow]Cluster[-]: %s  [yellow]Version[-]: %s  [yellow]Uptime[-]: %s", clusterCall, Version, formatUptimeShort(uptime)),
 		"MEMORY / GC",
 		fmt.Sprintf("[yellow]Heap[-]: %s  [yellow]Sys[-]: %s  [yellow]GC p99 (interval)[-]: %s  [yellow]Last GC[-]: %s ago  [yellow]Goroutines[-]: %d", heap, sys, gcP99Label, formatDurationShort(lastGC), runtime.NumGoroutine()),
 		"INGEST RATES (per min)",
-		formatIngestLine(withIngestStatusLabel("[yellow]RBN[-]", rbnLive), rbnTotal, rbnCW, rbnRTTY, rbnFT8, rbnFT4, 0, false),
-		formatIngestLine(withIngestStatusLabel("[yellow]PSK[-]", pskLive), pskTotal, pskCW, pskRTTY, pskFT8, pskFT4, pskMSK144, true),
-		fmt.Sprintf("%s: %s", withIngestStatusLabel("[yellow]P92[-]", p92Live), humanize.Comma(int64(p92Total))),
+		formatIngestLine(withIngestStatusLabel("RBN", rbnLive), rbnTotal, rbnCW, rbnRTTY, rbnFT8, rbnFT4, 0, false),
+		pskLine,
+		fmt.Sprintf("%s: %s", withIngestStatusLabel("P92", p92Live), humanize.Comma(int64(p92Total))),
 		pathOnlyLine,
+		"PIPELINE QUALITY",
 		fmt.Sprintf("[yellow]Primary Dedupe[-]: %s | [yellow]Secondary[-]: %s", primaryDupPct, secondarySummary),
 		fmt.Sprintf("[yellow]Corrections[-]: %s | [yellow]Unlicensed[-]: %s | [yellow]Harmonics[-]: %s | [yellow]Reputation[-]: %s",
 			humanize.Comma(int64(totalCorrections)),
@@ -6038,13 +6122,18 @@ func buildOverviewLines(
 			humanize.Comma(int64(totalHarmonics)),
 			humanize.Comma(int64(reputationTotal)),
 		),
+		fmt.Sprintf("[yellow]Resolver[-]: %s", strings.TrimPrefix(resolverLine, "Resolver: ")),
+		fmt.Sprintf("[yellow]Resolver Pressur[-]: %s", strings.TrimPrefix(resolverPressureLine, "Resolver Pressur: ")),
 		fmt.Sprintf("[yellow]Stabilizer[-]: %s", strings.TrimPrefix(formatStabilizerSummary(tracker), "Stabilizer: ")),
+		fmt.Sprintf("[yellow]Stabilizer Reason[-]: %s", strings.TrimPrefix(formatStabilizerReasonSummary(tracker), "Stabilizer Reason: ")),
+		fmt.Sprintf("[yellow]Temporal[-]: %s", strings.TrimPrefix(formatTemporalSummary(tracker), "Temporal: ")),
+		fmt.Sprintf("[yellow]Temporal latency[-]: %s", strings.TrimPrefix(formatTemporalLatencySummary(tracker), "Temporal latency: ")),
 		"CACHES & DATA FRESHNESS",
 	)
 	lines = append(lines, cacheBars...)
 	lines = append(lines,
 		"",
-		fmt.Sprintf("[yellow]CTY[-]: %s  [yellow]SCP[-]: %s  [yellow]FCC[-]: %s  [yellow]Skew[-]: %s", ctyTime, scpTime, fccTime, skewTime),
+		fmt.Sprintf("[yellow]CTY[-]: %s  [yellow]FCC[-]: %s  [yellow]Skew[-]: %s", ctyTime, fccTime, skewTime),
 		"PATH PREDICTIONS",
 	)
 	lines = append(lines, formatPathLines(pathPredictor, now)...)
@@ -6064,29 +6153,10 @@ func formatNetworkSummaryLine(telnetSrv *telnet.Server) string {
 	)
 }
 
-func formatNetworkLatencyLines(telnetSrv *telnet.Server) []string {
-	if telnetSrv == nil {
-		return []string{"[yellow]Latency[-]: enq n/a  first n/a", "[yellow]Write stall[-]: n/a"}
-	}
-	enq, first, stall := telnetSrv.LatencySnapshots()
-	formatPair := func(s telnet.LatencySnapshot) string {
-		if s.N == 0 {
-			return "n/a"
-		}
-		return fmt.Sprintf("p50 %s p99 %s", formatDurationMillis(s.P50), formatDurationMillis(s.P99))
-	}
-	return []string{
-		fmt.Sprintf("[yellow]Latency[-]: enq %s  first %s", formatPair(enq), formatPair(first)),
-		fmt.Sprintf("[yellow]Write stall[-]: %s", formatPair(stall)),
-	}
-}
-
 func formatNetworkLines(telnetSrv *telnet.Server, clientList []string) []string {
-	latencyLines := formatNetworkLatencyLines(telnetSrv)
 	clientLines := formatClientListLines(clientList)
-	lines := make([]string, 0, 1+len(latencyLines)+len(clientLines))
+	lines := make([]string, 0, 1+len(clientLines))
 	lines = append(lines, formatNetworkSummaryLine(telnetSrv))
-	lines = append(lines, latencyLines...)
 	lines = append(lines, clientLines...)
 	return lines
 }
@@ -6130,34 +6200,30 @@ func visibleLen(s string) int {
 }
 
 func formatIngestLine(label string, total, cw, rtty, ft8, ft4, msk uint64, includeMSK bool) string {
-	totalStr := padRight(humanize.Comma(int64(total)), 7)
+	totalStr := padRight(humanize.Comma(int64(total)), 6)
 	fields := []string{
 		fmt.Sprintf("%s: %s", label, totalStr),
-		formatIngestField("[yellow]CW[-]", cw),
-		formatIngestField("[yellow]RTTY[-]", rtty),
-		formatIngestField("[yellow]FT8[-]", ft8),
-		formatIngestField("[yellow]FT4[-]", ft4),
+		formatIngestField("[yellow]CW[-]", cw, 6),
+		formatIngestField("[yellow]RTTY[-]", rtty, 6),
+		formatIngestField("[yellow]FT8[-]", ft8, 6),
+		formatIngestField("[yellow]FT4[-]", ft4, 6),
 	}
 	if includeMSK {
-		fields = append(fields, formatIngestField("[yellow]MSK[-]", msk))
+		fields = append(fields, formatIngestField("[yellow]MSK[-]", msk, 5))
 	}
 	return strings.Join(fields, " | ")
 }
 
-func formatIngestField(label string, value uint64) string {
-	val := padRight(humanize.Comma(int64(value)), 6)
+func formatIngestField(label string, value uint64, width int) string {
+	val := padRight(humanize.Comma(int64(value)), width)
 	return fmt.Sprintf("%s %s", label, val)
 }
 
 func withIngestStatusLabel(label string, live bool) string {
-	return fmt.Sprintf("%s %s", label, ingestStatusMarker(live))
-}
-
-func ingestStatusMarker(live bool) string {
 	if live {
-		return "[green]ON[-]"
+		return fmt.Sprintf("[green]%s[-]", label)
 	}
-	return "[red]OFF[-]"
+	return fmt.Sprintf("[red]%s[-]", label)
 }
 
 func formatPathLines(predictor *pathreliability.Predictor, now time.Time) []string {
@@ -6238,32 +6304,34 @@ func formatPathLines(predictor *pathreliability.Predictor, now time.Time) []stri
 	return lines
 }
 
-func formatRecentOnBandLines(store spot.RecentSupportStore, now time.Time, totalLabel string) []string {
-	lines := []string{fmt.Sprintf("[yellow]Recent on band[-]: %s", totalLabel)}
+func formatKnownCallsByBandLines(store spot.RecentSupportStore, now time.Time, maxBands int) []string {
+	lines := []string{"[yellow]Known calls[-]: n/a"}
 	if store == nil {
 		return lines
 	}
+	total := store.ActiveCallCount(now)
+	lines[0] = fmt.Sprintf("[yellow]Known calls[-]: %s", humanize.Comma(int64(total)))
+
 	counts := store.ActiveCallCountsByBand(now)
 	if len(counts) == 0 {
 		return lines
 	}
 	bandOrder := spot.SupportedBandNames()
-	seen := make(map[string]struct{}, len(bandOrder))
-	entries := make([]struct {
+	type bandCount struct {
 		band  string
 		count int
-	}, 0, len(counts))
+	}
+	entries := make([]bandCount, 0, len(counts))
+	seen := make(map[string]struct{}, len(bandOrder))
 	for _, band := range bandOrder {
 		count := counts[band]
 		if count <= 0 {
 			continue
 		}
-		entries = append(entries, struct {
-			band  string
-			count int
-		}{band: band, count: count})
+		entries = append(entries, bandCount{band: band, count: count})
 		seen[band] = struct{}{}
 	}
+	extras := make([]string, 0, len(counts))
 	for band, count := range counts {
 		if count <= 0 {
 			continue
@@ -6271,15 +6339,20 @@ func formatRecentOnBandLines(store spot.RecentSupportStore, now time.Time, total
 		if _, ok := seen[band]; ok {
 			continue
 		}
-		entries = append(entries, struct {
-			band  string
-			count int
-		}{band: band, count: count})
+		extras = append(extras, band)
+	}
+	sort.Strings(extras)
+	for _, band := range extras {
+		entries = append(entries, bandCount{band: band, count: counts[band]})
 	}
 	if len(entries) == 0 {
 		return lines
 	}
-	const colsPerRow = 6
+	if maxBands > 0 && len(entries) > maxBands {
+		entries = entries[:maxBands]
+	}
+
+	const colsPerRow = 5
 	maxBand := 0
 	maxCount := 0
 	for _, entry := range entries {
@@ -6538,6 +6611,14 @@ func allowedBand(allowed map[string]struct{}, band string) bool {
 func diffSourceMode(current, previous map[string]uint64, source, mode string) uint64 {
 	key := sourceModeKey(source, mode)
 	return diffCounter(current, previous, key)
+}
+
+func diffSourceModes(current, previous map[string]uint64, source string, modes ...string) uint64 {
+	var total uint64
+	for _, mode := range modes {
+		total += diffSourceMode(current, previous, source, mode)
+	}
+	return total
 }
 
 // Purpose: Report whether both RBN feeds are connected.

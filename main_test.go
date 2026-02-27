@@ -1036,6 +1036,29 @@ func TestRecentBandAdmissionNonStabilizerRecordsInMainPath(t *testing.T) {
 	}
 }
 
+func TestStabilizerImmediateCountEligible(t *testing.T) {
+	if stabilizerImmediateCountEligible(nil) {
+		t.Fatalf("nil spot should not be stabilizer-immediate eligible")
+	}
+
+	ft8 := spot.NewSpot("K1ABC", "N2WQ", 14074.0, "FT8")
+	ft8.EnsureNormalized()
+	if stabilizerImmediateCountEligible(ft8) {
+		t.Fatalf("FT8 should not be stabilizer-immediate eligible")
+	}
+
+	cw := spot.NewSpot("K1ABC", "N2WQ", 7010.0, "CW")
+	cw.EnsureNormalized()
+	if !stabilizerImmediateCountEligible(cw) {
+		t.Fatalf("CW should be stabilizer-immediate eligible")
+	}
+
+	usbFallback := &spot.Spot{Mode: "USB"}
+	if !stabilizerImmediateCountEligible(usbFallback) {
+		t.Fatalf("USB mode fallback should be stabilizer-immediate eligible")
+	}
+}
+
 func TestBuildResolverEvidenceSnapshotCapturesPreMutationCall(t *testing.T) {
 	cfg := config.CallCorrectionConfig{
 		Enabled:                   true,
@@ -2171,7 +2194,7 @@ func recentBandSupportCountForSpot(store *spot.RecentBandStore, s *spot.Spot, no
 	return store.RecentSupportCount(call, band, mode, now)
 }
 
-func TestBuildOverviewLinesIncludesRecentOnBandCalls(t *testing.T) {
+func TestBuildOverviewLinesIncludesKnownCallsByBand(t *testing.T) {
 	now := time.Now().UTC()
 	recentBandStore := spot.NewRecentBandStoreWithOptions(spot.RecentBandOptions{
 		Window:             12 * time.Hour,
@@ -2200,6 +2223,7 @@ func TestBuildOverviewLinesIncludesRecentOnBandCalls(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 		"N2WQ-2",
 		false,
 		false,
@@ -2220,7 +2244,10 @@ func TestBuildOverviewLinesIncludesRecentOnBandCalls(t *testing.T) {
 		0,
 		0,
 		0,
+		0,
 		"Path: n/a",
+		"Resolver: n/a",
+		"Resolver Pressur: n/a",
 		"",
 		nil,
 		"n/a",
@@ -2228,23 +2255,61 @@ func TestBuildOverviewLinesIncludesRecentOnBandCalls(t *testing.T) {
 
 	found := false
 	for _, line := range lines {
-		if strings.Contains(line, "[yellow]Recent on band[-]: 2") {
+		if strings.Contains(line, "[yellow]Known calls[-]: 2") {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Fatalf("expected recent-on-band line with count 2 in overview lines, got %v", lines)
+		t.Fatalf("expected known-calls line with count 2 in overview lines, got %v", lines)
 	}
 	perBandFound := false
+	blankBeforeKnown := false
 	for _, line := range lines {
 		if strings.Contains(line, "[yellow]40m[-]: 2") && strings.Contains(line, "[yellow]20m[-]: 1") {
 			perBandFound = true
-			break
 		}
 	}
+	for i, line := range lines {
+		if !strings.Contains(line, "[yellow]Known calls[-]: 2") {
+			continue
+		}
+		if i > 0 && strings.TrimSpace(lines[i-1]) == "" {
+			blankBeforeKnown = true
+		}
+		break
+	}
 	if !perBandFound {
-		t.Fatalf("expected per-band recent-on-band counts in overview lines, got %v", lines)
+		t.Fatalf("expected per-band known-calls counts in overview lines, got %v", lines)
+	}
+	if !blankBeforeKnown {
+		t.Fatalf("expected blank spacer line before known-calls section, got %v", lines)
+	}
+	for _, line := range lines {
+		if strings.Contains(line, "Evidence policy") {
+			t.Fatalf("did not expect evidence policy line in overview lines, got %v", lines)
+		}
+	}
+}
+
+func TestDiffSourceModesPSK31AndPSK63Only(t *testing.T) {
+	current := map[string]uint64{
+		sourceModeKey("PSKREPORTER", "PSK31"):  12,
+		sourceModeKey("PSKREPORTER", "PSK63"):  8,
+		sourceModeKey("PSKREPORTER", "PSK125"): 20,
+		sourceModeKey("PSKREPORTER", "PSK"):    40,
+	}
+	previous := map[string]uint64{
+		sourceModeKey("PSKREPORTER", "PSK31"):  3,
+		sourceModeKey("PSKREPORTER", "PSK63"):  2,
+		sourceModeKey("PSKREPORTER", "PSK125"): 10,
+		sourceModeKey("PSKREPORTER", "PSK"):    35,
+	}
+
+	got := diffSourceModes(current, previous, "PSKREPORTER", "PSK31", "PSK63")
+	const want = 15 // (12-3) + (8-2)
+	if got != want {
+		t.Fatalf("expected PSK31/63 delta %d, got %d", want, got)
 	}
 }
 

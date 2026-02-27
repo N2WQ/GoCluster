@@ -65,12 +65,12 @@ func TestRBNIngestDeltasUsesRBNFT(t *testing.T) {
 	}
 }
 
-func TestIngestStatusMarker(t *testing.T) {
-	if got := ingestStatusMarker(true); got != "[green]ON[-]" {
-		t.Fatalf("expected ON marker, got %q", got)
+func TestWithIngestStatusLabel(t *testing.T) {
+	if got := withIngestStatusLabel("RBN", true); got != "[green]RBN[-]" {
+		t.Fatalf("expected live label, got %q", got)
 	}
-	if got := ingestStatusMarker(false); got != "[red]OFF[-]" {
-		t.Fatalf("expected OFF marker, got %q", got)
+	if got := withIngestStatusLabel("RBN", false); got != "[red]RBN[-]" {
+		t.Fatalf("expected offline label, got %q", got)
 	}
 }
 

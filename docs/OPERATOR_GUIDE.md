@@ -36,7 +36,7 @@ Every 5 minutes, the server logs:
 - `Path buckets (5m)` — per‑band bucket counts.
 - `Path weight dist (5m)` — per‑band weight histogram.
 Stats ticker adds:
-- `Data` — last updated timestamps for CTY and FCC ULS.
+- `Data` — last updated timestamps for CTY, FCC ULS, and skew table.
 - `Calls` — correction/unlicensed/frequency/harmonic counts plus reputation drops `(R)`.
 - `Calls` decision reasons (resolver-primary) now include conservative recent corroboration labels:
   - applied: `resolver_applied_recent_plus1`, `resolver_applied_neighbor_recent_plus1`

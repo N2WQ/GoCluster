@@ -31,8 +31,14 @@ func TestUpdateEventsOverviewBoxesMatchesOverviewSummary(t *testing.T) {
 		"PSK: 2",
 		"P92: 3",
 		"Path: 4",
+		"PIPELINE QUALITY",
 		"Primary: ok",
 		"Corrections: ok",
+		"Resolver: ok",
+		"Resolver Pressur: ok",
+		"Stabilizer: ok",
+		"Stabilizer Reason: ok",
+		"Temporal: ok",
 		"CACHES & DATA FRESHNESS",
 		"Grid: ok",
 		"PATH PREDICTIONS",
@@ -66,6 +72,9 @@ func TestUpdateEventsOverviewBoxesMatchesOverviewSummary(t *testing.T) {
 	if got, want := d.eventsPipeline.GetText(true), d.overviewPipeline.GetText(true); got != want {
 		t.Fatalf("events pipeline mismatch: got %q want %q", got, want)
 	}
+	if got := d.overviewPipeline.GetText(true); !strings.Contains(got, "Temporal: ok") {
+		t.Fatalf("expected pipeline section to include temporal line, got %q", got)
+	}
 }
 
 func TestOverviewPathPaneGrowsToFitBandBuckets(t *testing.T) {
@@ -78,8 +87,14 @@ func TestOverviewPathPaneGrowsToFitBandBuckets(t *testing.T) {
 		"PSK: 2",
 		"P92: 3",
 		"Path: 4",
+		"PIPELINE QUALITY",
 		"Primary: ok",
 		"Corrections: ok",
+		"Resolver: ok",
+		"Resolver Pressur: ok",
+		"Stabilizer: ok",
+		"Stabilizer Reason: ok",
+		"Temporal: ok",
 		"CACHES & DATA FRESHNESS",
 		"Grid: ok",
 		"PATH PREDICTIONS",
@@ -130,8 +145,14 @@ func TestOverviewCachesPaneResizesToContentHeight(t *testing.T) {
 		"PSK: 2",
 		"P92: 3",
 		"Path: 4",
+		"PIPELINE QUALITY",
 		"Primary: ok",
 		"Corrections: ok",
+		"Resolver: ok",
+		"Resolver Pressur: ok",
+		"Stabilizer: ok",
+		"Stabilizer Reason: ok",
+		"Temporal: ok",
 		"CACHES & DATA FRESHNESS",
 		"Grid: 1",
 		"Meta: 2",
@@ -205,8 +226,14 @@ func TestRenderSnapshotUpdatesOnlyActivePage(t *testing.T) {
 		"PSK: 2",
 		"P92: 3",
 		"Path: 4",
+		"PIPELINE QUALITY",
 		"Primary: ok",
 		"Corrections: ok",
+		"Resolver: ok",
+		"Resolver Pressur: ok",
+		"Stabilizer: ok",
+		"Stabilizer Reason: ok",
+		"Temporal: ok",
 		"CACHES & DATA FRESHNESS",
 		"Grid: ok",
 		"PATH PREDICTIONS",

@@ -26,26 +26,36 @@ const (
 	placeholderHeader = "[lightgray]Cluster[-]: --  [lightgray]Version[-]: --  [lightgray]Uptime[-]: --:--"
 	placeholderMem    = "[lightgray]Heap[-]: --  [lightgray]Sys[-]: --  [lightgray]GC p99 (interval)[-]: --  [lightgray]Last GC[-]: --  [lightgray]Goroutines[-]: --"
 	placeholderIngest = "[lightgray]RBN[-]: -- | [lightgray]CW[-] -- | [lightgray]RTTY[-] -- | [lightgray]FT8[-] -- | [lightgray]FT4[-] --\n" +
-		"[lightgray]PSK[-]: -- | [lightgray]CW[-] -- | [lightgray]RTTY[-] -- | [lightgray]FT8[-] -- | [lightgray]FT4[-] -- | [lightgray]MSK[-] --\n" +
+		"[lightgray]PSK[-]: -- | [lightgray]CW[-] -- | [lightgray]RTTY[-] -- | [lightgray]FT8[-] -- | [lightgray]FT4[-] -- | [lightgray]MSK[-] -- | [lightgray]PSK31/63[-] --\n" +
 		"[lightgray]P92[-]: --\n" +
 		"[lightgray]Path[-]: -- (U) / -- (S) / -- (N) / -- (G) / -- (H) / -- (B) / -- (M)"
 	placeholderPipeline = "[lightgray]Primary Dedupe[-]: -- | [lightgray]Secondary[-]: F-- M-- S--\n" +
-		"[lightgray]Corrections[-]: -- | [lightgray]Unlicensed[-]: -- | [lightgray]Harmonics[-]: -- | [lightgray]Reputation[-]: --"
-	placeholderCaches = "[lightgray]Grid cache[-]:  [[white:white]   [black:white]326,629[-:-]   [-:-]░░░░] 98.5%\n" +
-		"[lightgray]Meta cache[-]:  [[white:white]  [black:white] 5,479[-:-]  [-:-]] 99.5%\n" +
-		"[lightgray]Known calls[-]: [[white:white] [black:white]50,314[-:-] [-:-]░░░░░░░░] 49.4%\n\n" +
-		"[lightgray]CTY[-]: --  [lightgray]SCP[-]: --  [lightgray]FCC[-]: --  [lightgray]Skew[-]: --"
-	placeholderPath             = "[lightgray]Path pairs[-]: -- (L2) / -- (L1)\n[lightgray]160m[-]: -- / --   [lightgray]80m[-]: -- / --"
-	placeholderNetwork          = "[lightgray]Telnet[-]: -- clients   [lightgray]Drops[-]: Q-- C-- W--"
-	placeholderValidation       = "CTY drop: --"
-	placeholderUnlicensed       = "Unlicensed drop: --"
-	placeholderCorrected        = "Corrected: --"
-	placeholderHarmonics        = "Harmonics: --"
-	placeholderEvents           = "No events yet."
-	streamPanelMaxLines         = 200
-	overviewCachesDefaultHeight = 7
-	overviewCachesMinHeight     = 3
-	overviewPathMinHeight       = 3
+		"[lightgray]Corrections[-]: -- | [lightgray]Unlicensed[-]: -- | [lightgray]Harmonics[-]: -- | [lightgray]Reputation[-]: --\n" +
+		"[lightgray]Resolver[-]: --\n" +
+		"[lightgray]Resolver Pressur[-]: --\n" +
+		"[lightgray]Stabilizer[-]: --\n" +
+		"[lightgray]Stabilizer Reason[-]: --\n" +
+		"[lightgray]Temporal[-]: --\n" +
+		"[lightgray]Temporal latency[-]: --"
+	placeholderCaches = "[lightgray]Grid cache[-]:  [[white:white]   [black:white]326,629[-:-]   [-:-]░░░░] 98.5%  |  [lightgray]Meta[-]: [[white:white]  [black:white] 5,479[-:-]  [-:-]] 99.5%\n" +
+		"\n" +
+		"[lightgray]Known calls[-]: --\n" +
+		"[lightgray]160m[-]: --  [lightgray]80m[-]: --  [lightgray]40m[-]: --  [lightgray]20m[-]: --\n" +
+		"\n" +
+		"[lightgray]CTY[-]: --  [lightgray]FCC[-]: --  [lightgray]Skew[-]: --"
+	placeholderPath               = "[lightgray]Path pairs[-]: -- (L2) / -- (L1)\n[lightgray]160m[-]: -- / --   [lightgray]80m[-]: -- / --"
+	placeholderNetwork            = "[lightgray]Telnet[-]: -- clients   [lightgray]Drops[-]: Q-- C-- W--"
+	placeholderValidation         = "CTY drop: --"
+	placeholderUnlicensed         = "Unlicensed drop: --"
+	placeholderCorrected          = "Corrected: --"
+	placeholderHarmonics          = "Harmonics: --"
+	placeholderEvents             = "No events yet."
+	streamPanelMaxLines           = 200
+	overviewPipelineDefaultHeight = 9
+	overviewPipelineMinHeight     = 4
+	overviewCachesDefaultHeight   = 9
+	overviewCachesMinHeight       = 3
+	overviewPathMinHeight         = 3
 )
 
 var (
@@ -119,8 +129,9 @@ type DashboardV2 struct {
 	eventsFrameFn     func()
 	networkFrameFn    func()
 
-	overviewCachesHeight int
-	overviewPathHeight   int
+	overviewPipelineHeight int
+	overviewCachesHeight   int
+	overviewPathHeight     int
 }
 
 // NewDashboardV2 constructs the v2 dashboard if enabled.
@@ -141,16 +152,17 @@ func NewDashboardV2(cfg config.UIConfig, enable bool) *DashboardV2 {
 
 	metrics := NewMetrics()
 	d := &DashboardV2{
-		app:                  app,
-		pages:                pages,
-		ctx:                  ctx,
-		cancel:               cancel,
-		ready:                ready,
-		pageOrder:            cfg.V2.Pages,
-		metrics:              metrics,
-		pagePresent:          make(map[string]bool),
-		overviewCachesHeight: overviewCachesDefaultHeight,
-		overviewPathHeight:   overviewPathMinHeight,
+		app:                    app,
+		pages:                  pages,
+		ctx:                    ctx,
+		cancel:                 cancel,
+		ready:                  ready,
+		pageOrder:              cfg.V2.Pages,
+		metrics:                metrics,
+		pagePresent:            make(map[string]bool),
+		overviewPipelineHeight: overviewPipelineDefaultHeight,
+		overviewCachesHeight:   overviewCachesDefaultHeight,
+		overviewPathHeight:     overviewPathMinHeight,
 	}
 
 	d.overviewHdr = newBoxedTextView("Overview")
@@ -170,7 +182,7 @@ func NewDashboardV2(cfg config.UIConfig, enable bool) *DashboardV2 {
 	addOverviewTopSections(d.overviewRoot, d.overviewIngest)
 	d.overviewRoot.
 		AddItem(newSpacer(), 1, 0, false).
-		AddItem(d.overviewPipeline, 4, 0, false).
+		AddItem(d.overviewPipeline, overviewPipelineDefaultHeight, 0, false).
 		AddItem(newSpacer(), 1, 0, false).
 		AddItem(d.overviewCaches, overviewCachesDefaultHeight, 0, false).
 		AddItem(newSpacer(), 1, 0, false).
@@ -199,7 +211,7 @@ func NewDashboardV2(cfg config.UIConfig, enable bool) *DashboardV2 {
 	d.pipelineRoot = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(d.pipelineHdr, 3, 0, false).
 		AddItem(newSpacer(), 1, 0, false).
-		AddItem(d.pipelineQuality, 4, 0, false).
+		AddItem(d.pipelineQuality, overviewPipelineDefaultHeight, 0, false).
 		AddItem(newSpacer(), 1, 0, false).
 		AddItem(d.pipelineCorrected.Primitive(), 28, 0, false).
 		AddItem(newSpacer(), 1, 0, false).
@@ -218,7 +230,7 @@ func NewDashboardV2(cfg config.UIConfig, enable bool) *DashboardV2 {
 		AddItem(newSpacer(), 1, 0, false).
 		AddItem(d.eventsIngest, 6, 0, false).
 		AddItem(newSpacer(), 1, 0, false).
-		AddItem(d.eventsPipeline, 4, 0, false).
+		AddItem(d.eventsPipeline, overviewPipelineDefaultHeight, 0, false).
 		AddItem(newSpacer(), 1, 0, false).
 		AddItem(d.eventsStream.Primitive(), 0, 1, false)
 
@@ -269,7 +281,7 @@ func (d *DashboardV2) installRoot() {
 func (d *DashboardV2) installKeybindings(cfg config.UIConfig) {
 	d.app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if d.helpShown {
-			if event.Key() == tcell.KeyEsc || event.Key() == tcell.KeyF1 || event.Rune() == 'h' || event.Rune() == '?' {
+			if event.Key() == tcell.KeyEsc || event.Rune() == 'h' || event.Rune() == '?' {
 				d.toggleHelp(false)
 				return nil
 			}
@@ -294,21 +306,6 @@ func (d *DashboardV2) installKeybindings(cfg config.UIConfig) {
 		}
 
 		switch event.Key() {
-		case tcell.KeyF1:
-			d.toggleHelp(!d.helpShown)
-			return nil
-		case tcell.KeyF2:
-			d.showPage("overview")
-			return nil
-		case tcell.KeyF3:
-			d.showPage("ingest")
-			return nil
-		case tcell.KeyF4:
-			d.showPage("pipeline")
-			return nil
-		case tcell.KeyF5:
-			d.showPage("events")
-			return nil
 		case tcell.KeyTab:
 			if pageName, _ := d.pages.GetFrontPage(); pageName == "ingest" {
 				d.ingestGroup.cycle(d.app, 1)
@@ -347,23 +344,18 @@ func (d *DashboardV2) installKeybindings(cfg config.UIConfig) {
 		case 'h', '?':
 			d.toggleHelp(!d.helpShown)
 			return nil
-		}
-
-		if cfg.V2.Keybindings.UseAlternatives {
-			switch event.Rune() {
-			case 'o':
-				d.showPage("overview")
-				return nil
-			case 'i':
-				d.showPage("ingest")
-				return nil
-			case 'p':
-				d.showPage("pipeline")
-				return nil
-			case 'e':
-				d.showPage("events")
-				return nil
-			}
+		case 'o', 'O':
+			d.showPage("overview")
+			return nil
+		case 'i', 'I':
+			d.showPage("ingest")
+			return nil
+		case 'p', 'P':
+			d.showPage("pipeline")
+			return nil
+		case 'e', 'E':
+			d.showPage("events")
+			return nil
 		}
 
 		return event
@@ -664,7 +656,7 @@ func newSpacer() *tview.Box {
 
 func buildFooter() *tview.TextView {
 	return tview.NewTextView().SetDynamicColors(true).SetText(
-		accentText("F1") + "Help  " + accentText("F2") + "Overview  " + accentText("F3") + "Ingest  " + accentText("F4") + "Pipeline  " + accentText("F5") + "Events  [Q]Quit",
+		accentText("H") + "elp  " + accentText("O") + "verview  " + accentText("I") + "ngest  " + accentText("P") + "ipeline  " + accentText("E") + "vents  [Q]Quit",
 	)
 }
 
@@ -691,6 +683,17 @@ func (d *DashboardV2) updateOverviewBoxes(lines []string) {
 	}
 	setOverviewIngest(d.overviewIngest, lines)
 	setOverviewPipeline(d.overviewPipeline, lines)
+	pipelineLines := overviewSectionLines(lines, "PIPELINE QUALITY", "CACHES & DATA FRESHNESS")
+	if len(pipelineLines) > 0 {
+		neededHeight := len(pipelineLines) + 2
+		if neededHeight < overviewPipelineMinHeight {
+			neededHeight = overviewPipelineMinHeight
+		}
+		if d.overviewRoot != nil && neededHeight != d.overviewPipelineHeight {
+			d.overviewRoot.ResizeItem(d.overviewPipeline, neededHeight, 0)
+			d.overviewPipelineHeight = neededHeight
+		}
+	}
 	cacheIdx := -1
 	pathIdx := -1
 	networkIdx := -1
@@ -823,15 +826,37 @@ func setOverviewHeader(tv *tview.TextView, lines []string) {
 }
 
 func setOverviewIngest(tv *tview.TextView, lines []string) {
-	if len(lines) > 7 {
-		setBoxText(tv, lines[4]+"\n"+lines[5]+"\n"+lines[6]+"\n"+lines[7])
+	section := overviewSectionLines(lines, "INGEST RATES (per min)", "PIPELINE QUALITY")
+	if len(section) > 0 {
+		setBoxText(tv, strings.Join(section, "\n"))
 	}
 }
 
 func setOverviewPipeline(tv *tview.TextView, lines []string) {
-	if len(lines) > 9 {
-		setBoxText(tv, lines[8]+"\n"+lines[9])
+	section := overviewSectionLines(lines, "PIPELINE QUALITY", "CACHES & DATA FRESHNESS")
+	if len(section) > 0 {
+		setBoxText(tv, strings.Join(section, "\n"))
 	}
+}
+
+func overviewSectionLines(lines []string, startMarker, endMarker string) []string {
+	if len(lines) == 0 {
+		return nil
+	}
+	start := -1
+	end := -1
+	for i, line := range lines {
+		switch line {
+		case startMarker:
+			start = i
+		case endMarker:
+			end = i
+		}
+	}
+	if start < 0 || end <= start+1 {
+		return nil
+	}
+	return lines[start+1 : end]
 }
 
 func (d *DashboardV2) currentActivePage() string {
@@ -967,16 +992,36 @@ func scrollTextView(target *tview.TextView, event *tcell.EventKey) bool {
 }
 
 func buildHelpOverlay() tview.Primitive {
-	help := tview.NewTextView().SetDynamicColors(true).SetWrap(false)
+	help := tview.NewTextView().SetDynamicColors(true).SetWrap(true)
 	help.SetText(strings.TrimSpace(fmt.Sprintf(`
 KEYBOARD HELP
 
 NAVIGATION
-  %sF1%s  Help   %sF2%s Overview   %sF3%s Ingest   %sF4%s Pipeline   %sF5%s Events
+  %sH%s Help   %sO%s Overview   %sI%s Ingest   %sP%s Pipeline   %sE%s Events
   Tab Next pane   Shift+Tab Previous pane   q / Ctrl+C Quit
 
 SCROLLING
   ↑/↓ or k/j Scroll   PageUp/Down Fast scroll   Home/End Top/Bottom
+
+PIPELINE METRICS (PLAIN ENGLISH)
+  Primary Dedupe: Duplicate suppression at the main ingest gate.
+  Secondary F/M/S: Broadcast dedupe output by policy (fast/med/slow).
+  Corrections/Unlicensed/Harmonics/Reputation: Cumulative totals since process start.
+  Resolver C/P/U/S: Current resolver state counts (confident/probable/uncertain/split).
+  Resolver Pressur:
+    pressure: how often candidate/reporter caps were hit.
+    evict: how many entries were evicted because of those caps.
+    hw: highest candidate/reporter occupancy seen.
+  Stabilizer H/I/D/S/O:
+    H held for delay, I immediate release (correction-eligible modes only),
+    D released after delay, S suppressed on timeout, O overflow fail-open release.
+  Stabilizer Reason by-reason H/D/S:
+    u unknown_or_nonrecent, a ambiguous_resolver,
+    p p_low_confidence, e edit_neighbor_contested.
+  Temporal:
+    pending currently waiting, committed accepted by temporal decoder,
+    fallback/abstain/bypass are non-commit outcomes,
+    latency buckets show commit-delay distribution.
 `, accentTag, accentReset, accentTag, accentReset, accentTag, accentReset, accentTag, accentReset, accentTag, accentReset)))
 	help.SetBorder(true).SetTitle("Help")
 	help.SetBorderColor(uiBorderColor)
@@ -985,7 +1030,7 @@ SCROLLING
 		AddItem(nil, 0, 1, false).
 		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(nil, 0, 1, false).
-			AddItem(help, 15, 1, true).
+			AddItem(help, 30, 1, true).
 			AddItem(nil, 0, 1, false),
 			60, 1, true).
 		AddItem(nil, 0, 1, false)
