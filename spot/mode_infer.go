@@ -691,9 +691,7 @@ func (m *digitalFreqMap) removeElement(freq int, elem *list.Element) {
 	if m == nil || elem == nil {
 		return
 	}
-	if _, ok := m.entries[freq]; ok {
-		delete(m.entries, freq)
-	}
+	delete(m.entries, freq)
 	m.lru.Remove(elem)
 	if m.bucketCount.Load() > 0 {
 		m.bucketCount.Add(^uint64(0))

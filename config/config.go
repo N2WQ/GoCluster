@@ -126,6 +126,9 @@ type TelnetConfig struct {
 	Port           int  `yaml:"port"`
 	TLSEnabled     bool `yaml:"tls_enabled"`
 	MaxConnections int  `yaml:"max_connections"`
+	// MaxPreloginSessions bounds unauthenticated sessions so socket floods do not
+	// consume unbounded resources before callsign login completes.
+	MaxPreloginSessions int `yaml:"max_prelogin_sessions"`
 	// WelcomeMessage is sent before login; supports <CALL>, <CLUSTER>, <DATE>, <TIME>, <DATETIME>, <UPTIME>,
 	// <USER_COUNT>, <LAST_LOGIN>, <LAST_IP>, <DIALECT>, <DIALECT_SOURCE>, <DIALECT_DEFAULT>, <GRID>, and <NOISE>.
 	WelcomeMessage    string `yaml:"welcome_message"`
@@ -172,8 +175,18 @@ type TelnetConfig struct {
 	KeepaliveSeconds int `yaml:"keepalive_seconds"`
 	// ReadIdleTimeoutSeconds sets the read deadline for logged-in sessions; timeouts do not disconnect.
 	ReadIdleTimeoutSeconds int `yaml:"read_idle_timeout_seconds"`
-	// LoginTimeoutSeconds sets the maximum time to complete pre-login callsign entry.
+	// LoginTimeoutSeconds is the legacy pre-login timeout knob kept for
+	// compatibility. Tier-A admission uses prelogin_timeout_seconds.
 	LoginTimeoutSeconds int `yaml:"login_timeout_seconds"`
+	// PreloginTimeoutSeconds caps total time from accept to successful callsign entry.
+	// This hard-bounds unauthenticated socket lifetime.
+	PreloginTimeoutSeconds int `yaml:"prelogin_timeout_seconds"`
+	// AcceptRatePerIP limits accepted pre-login connections per source IP per second.
+	AcceptRatePerIP float64 `yaml:"accept_rate_per_ip"`
+	// AcceptBurstPerIP sets token bucket burst capacity for pre-login admissions.
+	AcceptBurstPerIP int `yaml:"accept_burst_per_ip"`
+	// PreloginConcurrencyPerIP bounds simultaneous unauthenticated sessions per IP.
+	PreloginConcurrencyPerIP int `yaml:"prelogin_concurrency_per_ip"`
 	// LoginLineLimit bounds how many bytes are accepted for the initial callsign
 	// prompt. Keep this tight to prevent DoS via huge login banners.
 	LoginLineLimit int `yaml:"login_line_limit"`
@@ -1767,6 +1780,24 @@ func Load(path string) (*Config, error) {
 	if cfg.Telnet.LoginTimeoutSeconds <= 0 {
 		cfg.Telnet.LoginTimeoutSeconds = 120
 	}
+	if cfg.Telnet.MaxPreloginSessions <= 0 {
+		cfg.Telnet.MaxPreloginSessions = 256
+	}
+	if cfg.Telnet.PreloginTimeoutSeconds <= 0 {
+		cfg.Telnet.PreloginTimeoutSeconds = 15
+	}
+	if cfg.Telnet.AcceptRatePerIP <= 0 {
+		cfg.Telnet.AcceptRatePerIP = 3
+	}
+	if cfg.Telnet.AcceptBurstPerIP <= 0 {
+		cfg.Telnet.AcceptBurstPerIP = 6
+	}
+	if cfg.Telnet.PreloginConcurrencyPerIP <= 0 {
+		cfg.Telnet.PreloginConcurrencyPerIP = 3
+	}
+	if cfg.Telnet.PreloginConcurrencyPerIP > cfg.Telnet.MaxPreloginSessions {
+		cfg.Telnet.PreloginConcurrencyPerIP = cfg.Telnet.MaxPreloginSessions
+	}
 	if cfg.Telnet.LoginLineLimit <= 0 {
 		cfg.Telnet.LoginLineLimit = 32
 	}
@@ -2335,6 +2366,12 @@ func (c *Config) Print() {
 		c.Telnet.WorkerQueue,
 		c.Telnet.ClientBuffer,
 		c.Telnet.SkipHandshake)
+	fmt.Printf("Telnet Tier-A: prelogin_max=%d prelogin_timeout=%ds ip_rate=%.2f/s ip_burst=%d ip_concurrency=%d\n",
+		c.Telnet.MaxPreloginSessions,
+		c.Telnet.PreloginTimeoutSeconds,
+		c.Telnet.AcceptRatePerIP,
+		c.Telnet.AcceptBurstPerIP,
+		c.Telnet.PreloginConcurrencyPerIP)
 	if c.Reputation.Enabled {
 		fmt.Printf("Reputation: enabled (cymru=%t api=%t pebble=%s v4_mem=%t wait=%ds ramp=%ds per_band=%d..%d total=%d..%d prefix4=%d@%d/s prefix6=%d@%d/s)\n",
 			c.Reputation.FallbackTeamCymru,

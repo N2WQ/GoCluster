@@ -1010,48 +1010,53 @@ func main() {
 
 	// Create and start telnet server
 	telnetServer := telnet.NewServer(telnet.ServerOptions{
-		Port:                    cfg.Telnet.Port,
-		WelcomeMessage:          cfg.Telnet.WelcomeMessage,
-		DuplicateLoginMsg:       cfg.Telnet.DuplicateLoginMsg,
-		LoginGreeting:           cfg.Telnet.LoginGreeting,
-		LoginPrompt:             cfg.Telnet.LoginPrompt,
-		LoginEmptyMessage:       cfg.Telnet.LoginEmptyMessage,
-		LoginInvalidMessage:     cfg.Telnet.LoginInvalidMessage,
-		InputTooLongMessage:     cfg.Telnet.InputTooLongMessage,
-		InputInvalidCharMessage: cfg.Telnet.InputInvalidCharMessage,
-		DialectWelcomeMessage:   cfg.Telnet.DialectWelcomeMessage,
-		DialectSourceDefault:    cfg.Telnet.DialectSourceDefaultLabel,
-		DialectSourcePersisted:  cfg.Telnet.DialectSourcePersistedLabel,
-		PathStatusMessage:       cfg.Telnet.PathStatusMessage,
-		ClusterCall:             cfg.Server.NodeID,
-		MaxConnections:          cfg.Telnet.MaxConnections,
-		BroadcastWorkers:        cfg.Telnet.BroadcastWorkers,
-		BroadcastQueue:          cfg.Telnet.BroadcastQueue,
-		WorkerQueue:             cfg.Telnet.WorkerQueue,
-		ClientBuffer:            cfg.Telnet.ClientBuffer,
-		ControlQueue:            cfg.Telnet.ControlQueueSize,
-		BroadcastBatchInterval:  time.Duration(cfg.Telnet.BroadcastBatchIntervalMS) * time.Millisecond,
-		Transport:               cfg.Telnet.Transport,
-		EchoMode:                cfg.Telnet.EchoMode,
-		SkipHandshake:           cfg.Telnet.SkipHandshake,
-		ReadIdleTimeout:         time.Duration(cfg.Telnet.ReadIdleTimeoutSeconds) * time.Second,
-		LoginTimeout:            time.Duration(cfg.Telnet.LoginTimeoutSeconds) * time.Second,
-		LoginLineLimit:          cfg.Telnet.LoginLineLimit,
-		CommandLineLimit:        cfg.Telnet.CommandLineLimit,
-		DropExtremeRate:         cfg.Telnet.DropExtremeRate,
-		DropExtremeWindow:       time.Duration(cfg.Telnet.DropExtremeWindowSeconds) * time.Second,
-		DropExtremeMinAttempts:  cfg.Telnet.DropExtremeMinAttempts,
-		ReputationGate:          repGate,
-		PathPredictor:           pathPredictor,
-		PathDisplayEnabled:      pathCfg.DisplayEnabled,
-		NoiseOffsets:            pathCfg.NoiseOffsets,
-		GridLookup:              gridLookup,
-		CTYLookup:               ctyLookup,
-		DedupeFastEnabled:       secondaryFastWindow > 0,
-		DedupeMedEnabled:        secondaryMedWindow > 0,
-		DedupeSlowEnabled:       secondarySlowWindow > 0,
-		NearbyLoginWarning:      cfg.Telnet.NearbyLoginWarning,
-		SolarWeather:            solarMgr,
+		Port:                     cfg.Telnet.Port,
+		WelcomeMessage:           cfg.Telnet.WelcomeMessage,
+		DuplicateLoginMsg:        cfg.Telnet.DuplicateLoginMsg,
+		LoginGreeting:            cfg.Telnet.LoginGreeting,
+		LoginPrompt:              cfg.Telnet.LoginPrompt,
+		LoginEmptyMessage:        cfg.Telnet.LoginEmptyMessage,
+		LoginInvalidMessage:      cfg.Telnet.LoginInvalidMessage,
+		InputTooLongMessage:      cfg.Telnet.InputTooLongMessage,
+		InputInvalidCharMessage:  cfg.Telnet.InputInvalidCharMessage,
+		DialectWelcomeMessage:    cfg.Telnet.DialectWelcomeMessage,
+		DialectSourceDefault:     cfg.Telnet.DialectSourceDefaultLabel,
+		DialectSourcePersisted:   cfg.Telnet.DialectSourcePersistedLabel,
+		PathStatusMessage:        cfg.Telnet.PathStatusMessage,
+		ClusterCall:              cfg.Server.NodeID,
+		MaxConnections:           cfg.Telnet.MaxConnections,
+		BroadcastWorkers:         cfg.Telnet.BroadcastWorkers,
+		BroadcastQueue:           cfg.Telnet.BroadcastQueue,
+		WorkerQueue:              cfg.Telnet.WorkerQueue,
+		ClientBuffer:             cfg.Telnet.ClientBuffer,
+		ControlQueue:             cfg.Telnet.ControlQueueSize,
+		BroadcastBatchInterval:   time.Duration(cfg.Telnet.BroadcastBatchIntervalMS) * time.Millisecond,
+		Transport:                cfg.Telnet.Transport,
+		EchoMode:                 cfg.Telnet.EchoMode,
+		SkipHandshake:            cfg.Telnet.SkipHandshake,
+		ReadIdleTimeout:          time.Duration(cfg.Telnet.ReadIdleTimeoutSeconds) * time.Second,
+		LoginTimeout:             time.Duration(cfg.Telnet.LoginTimeoutSeconds) * time.Second,
+		MaxPreloginSessions:      cfg.Telnet.MaxPreloginSessions,
+		PreloginTimeout:          time.Duration(cfg.Telnet.PreloginTimeoutSeconds) * time.Second,
+		AcceptRatePerIP:          cfg.Telnet.AcceptRatePerIP,
+		AcceptBurstPerIP:         cfg.Telnet.AcceptBurstPerIP,
+		PreloginConcurrencyPerIP: cfg.Telnet.PreloginConcurrencyPerIP,
+		LoginLineLimit:           cfg.Telnet.LoginLineLimit,
+		CommandLineLimit:         cfg.Telnet.CommandLineLimit,
+		DropExtremeRate:          cfg.Telnet.DropExtremeRate,
+		DropExtremeWindow:        time.Duration(cfg.Telnet.DropExtremeWindowSeconds) * time.Second,
+		DropExtremeMinAttempts:   cfg.Telnet.DropExtremeMinAttempts,
+		ReputationGate:           repGate,
+		PathPredictor:            pathPredictor,
+		PathDisplayEnabled:       pathCfg.DisplayEnabled,
+		NoiseOffsets:             pathCfg.NoiseOffsets,
+		GridLookup:               gridLookup,
+		CTYLookup:                ctyLookup,
+		DedupeFastEnabled:        secondaryFastWindow > 0,
+		DedupeMedEnabled:         secondaryMedWindow > 0,
+		DedupeSlowEnabled:        secondarySlowWindow > 0,
+		NearbyLoginWarning:       cfg.Telnet.NearbyLoginWarning,
+		SolarWeather:             solarMgr,
 	}, processor)
 
 	err = telnetServer.Start()
@@ -1836,10 +1841,13 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 		}
 
 		var queueDrops, clientDrops, senderFailures uint64
+		var preloginActive int64
+		var preloginRejectGlobal, preloginRejectRate, preloginRejectConcurrency, preloginTimeouts uint64
 		var clientCount int
 		var clientList []string
 		if telnetSrv != nil {
 			queueDrops, clientDrops, senderFailures = telnetSrv.BroadcastMetricSnapshot()
+			preloginActive, preloginRejectGlobal, preloginRejectRate, preloginRejectConcurrency, preloginTimeouts, _, _ = telnetSrv.PreloginMetricSnapshot()
 			clientCount = telnetSrv.GetClientCount()
 			clientList = telnetSrv.ListClientCallsigns()
 		}
@@ -1900,7 +1908,7 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 			temporalLine,
 			temporalLatencyLine,
 			pipelineLine, // 7
-			fmt.Sprintf("Telnet: %d clients. Drops: %d (Q) / %d (C) / %d (W)", clientCount, queueDrops, clientDrops, senderFailures), // 8
+			fmt.Sprintf("Telnet: %d clients. Drops: %d (Q) / %d (C) / %d (W). Prelogin: %d active / rejects %d (G) %d (R) %d (C) / %d (T)", clientCount, queueDrops, clientDrops, senderFailures, preloginActive, preloginRejectGlobal, preloginRejectRate, preloginRejectConcurrency, preloginTimeouts), // 8
 		)
 
 		prevSourceCounts = sourceTotals
@@ -6144,12 +6152,13 @@ func buildOverviewLines(
 
 func formatNetworkSummaryLine(telnetSrv *telnet.Server) string {
 	if telnetSrv == nil {
-		return "[yellow]Telnet[-]: 0 clients   [yellow]Drops[-]: Q0 C0 W0"
+		return "[yellow]Telnet[-]: 0 clients   [yellow]Drops[-]: Q0 C0 W0   [yellow]Prelogin[-]: A0 G0 R0 C0 T0"
 	}
 	queueDrops, clientDrops, senderFailures := telnetSrv.BroadcastMetricSnapshot()
+	preloginActive, preloginRejectGlobal, preloginRejectRate, preloginRejectConcurrency, preloginTimeouts, _, _ := telnetSrv.PreloginMetricSnapshot()
 	clientCount := telnetSrv.GetClientCount()
-	return fmt.Sprintf("[yellow]Telnet[-]: %d clients   [yellow]Drops[-]: Q%d C%d W%d",
-		clientCount, queueDrops, clientDrops, senderFailures,
+	return fmt.Sprintf("[yellow]Telnet[-]: %d clients   [yellow]Drops[-]: Q%d C%d W%d   [yellow]Prelogin[-]: A%d G%d R%d C%d T%d",
+		clientCount, queueDrops, clientDrops, senderFailures, preloginActive, preloginRejectGlobal, preloginRejectRate, preloginRejectConcurrency, preloginTimeouts,
 	)
 }
 

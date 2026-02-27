@@ -11,8 +11,12 @@ Both limits apply before parsing; the server drops the connection and logs the o
 
 These knobs govern how long the server waits for input before taking action:
 
+- `telnet.max_prelogin_sessions` &mdash; defaults to `256`. Hard cap on unauthenticated sessions to bound socket usage during floods.
+- `telnet.prelogin_timeout_seconds` &mdash; defaults to `15`. Total accept-to-callsign budget for unauthenticated sessions.
+- `telnet.accept_rate_per_ip` / `telnet.accept_burst_per_ip` &mdash; defaults to `3` and `6`. Per-IP token bucket for pre-login admission.
+- `telnet.prelogin_concurrency_per_ip` &mdash; defaults to `3`. Simultaneous unauthenticated session cap per source IP.
 - `telnet.read_idle_timeout_seconds` &mdash; defaults to `86400` (24 hours). The server refreshes a read deadline for logged-in sessions; timeouts do **not** disconnect clients and simply continue waiting for input.
-- `telnet.login_timeout_seconds` &mdash; defaults to `120`. Pre-login sessions that do not complete callsign entry within this window are disconnected.
+- `telnet.login_timeout_seconds` &mdash; legacy fallback knob (default `120`). Tier-A admission uses `prelogin_timeout_seconds`.
 
 ## PSKReporter MQTT Debug Logging
 

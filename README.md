@@ -451,8 +451,12 @@ The telnet server fans every post-dedup spot to every connected client. When PSK
 - `broadcast_batch_interval_ms` micro-batches outbound broadcasts to reduce mutex/IO churn (default `250`; set to `0` for immediate sends). Each shard flushes on interval or when the batch reaches its max size, preserving order per shard.
 - `login_line_limit` caps how many bytes a user can enter at the login prompt (default `32`). Keep this tight to prevent hostile clients from allocating massive buffers before authentication.
 - `command_line_limit` caps how long any post-login command may be (default `128`). Raise this when operators expect comma-heavy filter commands or scripted clients that send longer payloads.
+- `max_prelogin_sessions` hard-caps unauthenticated sockets (default `256`) so floods cannot consume unbounded resources before callsign login.
+- `prelogin_timeout_seconds` caps total accept->callsign time for unauthenticated sessions (default `15`).
+- `accept_rate_per_ip` and `accept_burst_per_ip` enforce per-IP token-bucket admission for prelogin sockets (defaults `3/s` and `6`).
+- `prelogin_concurrency_per_ip` limits simultaneous unauthenticated sessions per source IP (default `3`).
 - `read_idle_timeout_seconds` refreshes the read deadline for logged-in sessions (default `86400`); timeouts do not disconnect, they simply continue waiting for input.
-- `login_timeout_seconds` disconnects if pre-login callsign entry does not complete within the window (default `120`).
+- `login_timeout_seconds` remains as a legacy fallback knob; Tier-A prelogin gating uses `prelogin_timeout_seconds`.
 - `drop_extreme_rate`, `drop_extreme_window_seconds`, and `drop_extreme_min_attempts` enforce a safety valve for slow clients: once the drop rate crosses the threshold over the window (after the minimum attempts), the session is disconnected.
 - `keepalive_seconds` emits a CRLF to every connected client on a cadence (default `120`; `0` disables). Blank lines sent by clients are treated as keepalives and get an immediate CRLF reply so idle TCP sessions stay open.
 

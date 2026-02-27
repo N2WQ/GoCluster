@@ -36,6 +36,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/netip"
 	"os"
 	"runtime"
 	"sort"
@@ -171,6 +172,17 @@ type Server struct {
 	controlQueueSize     int                               // Per-client control queue capacity
 	readIdleTimeout      time.Duration                     // Read deadline for logged-in sessions (timeouts do not disconnect)
 	loginTimeout         time.Duration                     // Pre-login timeout before disconnect
+	maxPreloginSessions  int                               // Hard cap on concurrent unauthenticated sessions
+	preloginTimeout      time.Duration                     // End-to-end timeout from accept to successful login
+	acceptRatePerIP      float64                           // Token refill rate (tokens/sec) for pre-login admission
+	acceptBurstPerIP     int                               // Token bucket burst size for pre-login admission
+	preloginConcPerIP    int                               // Max concurrent pre-login sessions per source IP
+	preloginMu           sync.Mutex                        // Guards pre-login admission counters and token buckets
+	preloginActive       int                               // Active unauthenticated session count
+	preloginByIP         map[string]preloginIPState        // Admission state keyed by source IP
+	preloginTrackedMax   int                               // Max tracked IP states for bounded memory
+	preloginStateIdleTTL time.Duration                     // Idle eviction TTL for IP admission state
+	preloginLastGC       time.Time                         // Last opportunistic GC timestamp
 	dropExtremeRate      float64                           // Drop ratio threshold for disconnect
 	dropExtremeWindow    time.Duration                     // Window for extreme drop evaluation
 	dropExtremeMinAtt    int                               // Minimum attempts before extreme drop disconnect
@@ -186,6 +198,7 @@ type Server struct {
 	solarWeather         *solarweather.Manager             // Optional solar/geomagnetic override evaluator
 	noiseOffsets         map[string]float64                // Noise class lookup
 	gridLookup           func(string) (string, bool, bool) // Optional grid lookup from store
+	nowFn                func() time.Time                  // Optional clock injection for deterministic tests
 	dedupeFastEnabled    bool                              // Fast secondary dedupe policy enabled
 	dedupeMedEnabled     bool                              // Med secondary dedupe policy enabled
 	dedupeSlowEnabled    bool                              // Slow secondary dedupe policy enabled
@@ -451,6 +464,36 @@ type dropBucket struct {
 	drops    uint64
 }
 
+type preloginIPState struct {
+	tokens     float64
+	lastRefill time.Time
+	lastSeen   time.Time
+	active     int
+}
+
+type preloginTicket struct {
+	server *Server
+	ip     string
+	once   sync.Once
+}
+
+func (t *preloginTicket) Release() {
+	if t == nil || t.server == nil {
+		return
+	}
+	t.once.Do(func() {
+		t.server.releasePrelogin(t.ip)
+	})
+}
+
+type preloginRejectReason string
+
+const (
+	preloginRejectGlobalCap     preloginRejectReason = "global_cap"
+	preloginRejectIPRate        preloginRejectReason = "ip_rate"
+	preloginRejectIPConcurrency preloginRejectReason = "ip_concurrency"
+)
+
 // dropWindow tracks spot enqueue attempts and drops over a sliding window.
 // It is guarded by a mutex because updates can arrive from multiple workers.
 type dropWindow struct {
@@ -463,9 +506,16 @@ type dropWindow struct {
 }
 
 type broadcastMetrics struct {
-	queueDrops     uint64
-	clientDrops    uint64
-	senderFailures uint64
+	queueDrops                 uint64
+	clientDrops                uint64
+	senderFailures             uint64
+	preloginRejectGlobalCap    uint64
+	preloginRejectIPRate       uint64
+	preloginRejectIPConcurrent uint64
+	preloginTimeouts           uint64
+	preloginStateEvictions     uint64
+	preloginStateFullRejects   uint64
+	preloginActive             int64
 }
 
 func (m *broadcastMetrics) snapshot() (queueDrops, clientDrops, senderFailures uint64) {
@@ -475,11 +525,295 @@ func (m *broadcastMetrics) snapshot() (queueDrops, clientDrops, senderFailures u
 	return
 }
 
+func (m *broadcastMetrics) preloginSnapshot() (active int64, rejectGlobalCap, rejectIPRate, rejectIPConcurrency, timeouts, stateEvictions, stateFullRejects uint64) {
+	active = atomic.LoadInt64(&m.preloginActive)
+	rejectGlobalCap = atomic.LoadUint64(&m.preloginRejectGlobalCap)
+	rejectIPRate = atomic.LoadUint64(&m.preloginRejectIPRate)
+	rejectIPConcurrency = atomic.LoadUint64(&m.preloginRejectIPConcurrent)
+	timeouts = atomic.LoadUint64(&m.preloginTimeouts)
+	stateEvictions = atomic.LoadUint64(&m.preloginStateEvictions)
+	stateFullRejects = atomic.LoadUint64(&m.preloginStateFullRejects)
+	return
+}
+
 func (s *Server) recordSenderFailure() uint64 {
 	if s == nil {
 		return 0
 	}
 	return atomic.AddUint64(&s.metrics.senderFailures, 1)
+}
+
+func (s *Server) recordPreloginReject(reason preloginRejectReason) uint64 {
+	if s == nil {
+		return 0
+	}
+	switch reason {
+	case preloginRejectIPRate:
+		return atomic.AddUint64(&s.metrics.preloginRejectIPRate, 1)
+	case preloginRejectIPConcurrency:
+		return atomic.AddUint64(&s.metrics.preloginRejectIPConcurrent, 1)
+	default:
+		return atomic.AddUint64(&s.metrics.preloginRejectGlobalCap, 1)
+	}
+}
+
+func (s *Server) recordPreloginTimeout() uint64 {
+	if s == nil {
+		return 0
+	}
+	return atomic.AddUint64(&s.metrics.preloginTimeouts, 1)
+}
+
+func (s *Server) setPreloginActive(active int) {
+	if s == nil {
+		return
+	}
+	if active < 0 {
+		active = 0
+	}
+	atomic.StoreInt64(&s.metrics.preloginActive, int64(active))
+}
+
+func defaultPreloginStateCap(maxPreloginSessions int) int {
+	if maxPreloginSessions <= 0 {
+		maxPreloginSessions = defaultMaxPreloginSessions
+	}
+	cap := maxPreloginSessions * preloginTrackedStateFactor
+	if cap < minPreloginTrackedStates {
+		cap = minPreloginTrackedStates
+	}
+	if cap > maxPreloginTrackedStates {
+		cap = maxPreloginTrackedStates
+	}
+	return cap
+}
+
+func preloginStateIdleTTL(preloginTimeout time.Duration) time.Duration {
+	if preloginTimeout <= 0 {
+		return defaultPreloginStateIdleTTL
+	}
+	ttl := preloginTimeout * 2
+	if ttl < defaultPreloginStateIdleTTL {
+		ttl = defaultPreloginStateIdleTTL
+	}
+	return ttl
+}
+
+func (s *Server) now() time.Time {
+	if s != nil && s.nowFn != nil {
+		return s.nowFn().UTC()
+	}
+	return time.Now().UTC()
+}
+
+func remoteIP(addr net.Addr) string {
+	if addr == nil {
+		return ""
+	}
+	host, _, err := net.SplitHostPort(addr.String())
+	if err != nil {
+		host = strings.TrimSpace(addr.String())
+	}
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return ""
+	}
+	if parsed, err := netip.ParseAddr(host); err == nil {
+		return parsed.String()
+	}
+	return host
+}
+
+func (s *Server) releasePrelogin(ip string) {
+	if s == nil {
+		return
+	}
+	now := s.now()
+	s.preloginMu.Lock()
+	state, ok := s.preloginByIP[ip]
+	if ok {
+		if state.active > 0 {
+			state.active--
+		}
+		state.lastSeen = now
+		s.preloginByIP[ip] = state
+	}
+	if s.preloginActive > 0 {
+		s.preloginActive--
+	}
+	active := s.preloginActive
+	s.preloginMaybeGCLocked(now)
+	s.preloginMu.Unlock()
+	s.setPreloginActive(active)
+}
+
+func (s *Server) tryAcquirePrelogin(addr net.Addr) (*preloginTicket, preloginRejectReason) {
+	if s == nil {
+		return nil, preloginRejectGlobalCap
+	}
+	ip := remoteIP(addr)
+	if ip == "" {
+		ip = "unknown"
+	}
+	now := s.now()
+
+	var (
+		reason preloginRejectReason
+		active int
+	)
+
+	s.preloginMu.Lock()
+	defer func() {
+		s.preloginMu.Unlock()
+		s.setPreloginActive(active)
+	}()
+	if s.maxPreloginSessions <= 0 {
+		s.maxPreloginSessions = defaultMaxPreloginSessions
+	}
+	if s.acceptRatePerIP <= 0 {
+		s.acceptRatePerIP = defaultAcceptRatePerIP
+	}
+	if s.acceptBurstPerIP <= 0 {
+		s.acceptBurstPerIP = defaultAcceptBurstPerIP
+	}
+	if s.preloginConcPerIP <= 0 {
+		s.preloginConcPerIP = defaultPreloginConcPerIP
+	}
+	if s.preloginTrackedMax <= 0 {
+		s.preloginTrackedMax = defaultPreloginStateCap(s.maxPreloginSessions)
+	}
+	if s.preloginStateIdleTTL <= 0 {
+		s.preloginStateIdleTTL = preloginStateIdleTTL(s.preloginTimeout)
+	}
+	if s.preloginByIP == nil {
+		s.preloginByIP = make(map[string]preloginIPState)
+	}
+
+	s.preloginMaybeGCLocked(now)
+	if s.maxPreloginSessions > 0 && s.preloginActive >= s.maxPreloginSessions {
+		reason = preloginRejectGlobalCap
+		active = s.preloginActive
+		return nil, reason
+	}
+
+	state, ok := s.preloginByIP[ip]
+	if !ok {
+		if len(s.preloginByIP) >= s.preloginTrackedMax {
+			s.preloginMaybeGCLocked(now)
+		}
+		if len(s.preloginByIP) >= s.preloginTrackedMax {
+			if !s.preloginEvictOldestIdleLocked() {
+				atomic.AddUint64(&s.metrics.preloginStateFullRejects, 1)
+				reason = preloginRejectGlobalCap
+				active = s.preloginActive
+				return nil, reason
+			}
+		}
+		state = preloginIPState{
+			tokens:     float64(s.acceptBurstPerIP),
+			lastRefill: now,
+			lastSeen:   now,
+		}
+	}
+
+	if state.active >= s.preloginConcPerIP {
+		reason = preloginRejectIPConcurrency
+		active = s.preloginActive
+		return nil, reason
+	}
+
+	state = s.preloginRefillTokens(state, now)
+	if state.tokens < 1 {
+		state.lastSeen = now
+		s.preloginByIP[ip] = state
+		reason = preloginRejectIPRate
+		active = s.preloginActive
+		return nil, reason
+	}
+
+	state.tokens -= 1
+	state.active++
+	state.lastSeen = now
+	state.lastRefill = now
+	s.preloginByIP[ip] = state
+	s.preloginActive++
+	active = s.preloginActive
+
+	return &preloginTicket{
+		server: s,
+		ip:     ip,
+	}, ""
+}
+
+func (s *Server) preloginRefillTokens(state preloginIPState, now time.Time) preloginIPState {
+	if s == nil {
+		return state
+	}
+	if s.acceptRatePerIP <= 0 || s.acceptBurstPerIP <= 0 {
+		state.tokens = 0
+		state.lastRefill = now
+		return state
+	}
+	if state.lastRefill.IsZero() {
+		state.tokens = float64(s.acceptBurstPerIP)
+		state.lastRefill = now
+		return state
+	}
+	elapsed := now.Sub(state.lastRefill).Seconds()
+	if elapsed > 0 {
+		state.tokens += elapsed * s.acceptRatePerIP
+		limit := float64(s.acceptBurstPerIP)
+		if state.tokens > limit {
+			state.tokens = limit
+		}
+		state.lastRefill = now
+	}
+	return state
+}
+
+func (s *Server) preloginMaybeGCLocked(now time.Time) {
+	if s == nil {
+		return
+	}
+	if !s.preloginLastGC.IsZero() && now.Sub(s.preloginLastGC) < defaultPreloginGCInterval {
+		return
+	}
+	s.preloginLastGC = now
+	for ip, state := range s.preloginByIP {
+		if state.active > 0 {
+			continue
+		}
+		if now.Sub(state.lastSeen) > s.preloginStateIdleTTL {
+			delete(s.preloginByIP, ip)
+		}
+	}
+}
+
+func (s *Server) preloginEvictOldestIdleLocked() bool {
+	if s == nil {
+		return false
+	}
+	var (
+		oldestIP   string
+		oldestSeen time.Time
+		found      bool
+	)
+	for ip, state := range s.preloginByIP {
+		if state.active > 0 {
+			continue
+		}
+		if !found || state.lastSeen.Before(oldestSeen) {
+			found = true
+			oldestIP = ip
+			oldestSeen = state.lastSeen
+		}
+	}
+	if !found {
+		return false
+	}
+	delete(s.preloginByIP, oldestIP)
+	atomic.AddUint64(&s.metrics.preloginStateEvictions, 1)
+	return true
 }
 
 const dropWindowBuckets = 6
@@ -943,6 +1277,16 @@ const (
 	defaultCommandLineLimit       = 128
 	defaultReadIdleTimeout        = 24 * time.Hour
 	defaultLoginTimeout           = 2 * time.Minute
+	defaultMaxPreloginSessions    = 256
+	defaultPreloginTimeout        = 15 * time.Second
+	defaultAcceptRatePerIP        = 3.0
+	defaultAcceptBurstPerIP       = 6
+	defaultPreloginConcPerIP      = 3
+	defaultPreloginStateIdleTTL   = 2 * time.Minute
+	defaultPreloginGCInterval     = 30 * time.Second
+	minPreloginTrackedStates      = 1024
+	maxPreloginTrackedStates      = 65536
+	preloginTrackedStateFactor    = 16
 	defaultDropExtremeRate        = 0.80
 	defaultDropExtremeWindow      = 30 * time.Second
 	defaultDropExtremeMinAttempts = 100
@@ -961,49 +1305,54 @@ const (
 
 // ServerOptions configures the telnet server instance.
 type ServerOptions struct {
-	Port                    int
-	WelcomeMessage          string
-	DuplicateLoginMsg       string
-	LoginGreeting           string
-	LoginPrompt             string
-	LoginEmptyMessage       string
-	LoginInvalidMessage     string
-	InputTooLongMessage     string
-	InputInvalidCharMessage string
-	DialectWelcomeMessage   string
-	DialectSourceDefault    string
-	DialectSourcePersisted  string
-	PathStatusMessage       string
-	ClusterCall             string
-	MaxConnections          int
-	BroadcastWorkers        int
-	BroadcastQueue          int
-	WorkerQueue             int
-	ClientBuffer            int
-	ControlQueue            int
-	BroadcastBatchInterval  time.Duration
-	KeepaliveSeconds        int
-	SkipHandshake           bool
-	Transport               string
-	EchoMode                string
-	ReadIdleTimeout         time.Duration
-	LoginTimeout            time.Duration
-	LoginLineLimit          int
-	CommandLineLimit        int
-	DropExtremeRate         float64
-	DropExtremeWindow       time.Duration
-	DropExtremeMinAttempts  int
-	ReputationGate          *reputation.Gate
-	PathPredictor           *pathreliability.Predictor
-	PathDisplayEnabled      bool
-	SolarWeather            *solarweather.Manager
-	NoiseOffsets            map[string]float64
-	GridLookup              func(string) (string, bool, bool)
-	CTYLookup               func() *cty.CTYDatabase
-	DedupeFastEnabled       bool
-	DedupeMedEnabled        bool
-	DedupeSlowEnabled       bool
-	NearbyLoginWarning      string
+	Port                     int
+	WelcomeMessage           string
+	DuplicateLoginMsg        string
+	LoginGreeting            string
+	LoginPrompt              string
+	LoginEmptyMessage        string
+	LoginInvalidMessage      string
+	InputTooLongMessage      string
+	InputInvalidCharMessage  string
+	DialectWelcomeMessage    string
+	DialectSourceDefault     string
+	DialectSourcePersisted   string
+	PathStatusMessage        string
+	ClusterCall              string
+	MaxConnections           int
+	BroadcastWorkers         int
+	BroadcastQueue           int
+	WorkerQueue              int
+	ClientBuffer             int
+	ControlQueue             int
+	BroadcastBatchInterval   time.Duration
+	KeepaliveSeconds         int
+	SkipHandshake            bool
+	Transport                string
+	EchoMode                 string
+	ReadIdleTimeout          time.Duration
+	LoginTimeout             time.Duration
+	MaxPreloginSessions      int
+	PreloginTimeout          time.Duration
+	AcceptRatePerIP          float64
+	AcceptBurstPerIP         int
+	PreloginConcurrencyPerIP int
+	LoginLineLimit           int
+	CommandLineLimit         int
+	DropExtremeRate          float64
+	DropExtremeWindow        time.Duration
+	DropExtremeMinAttempts   int
+	ReputationGate           *reputation.Gate
+	PathPredictor            *pathreliability.Predictor
+	PathDisplayEnabled       bool
+	SolarWeather             *solarweather.Manager
+	NoiseOffsets             map[string]float64
+	GridLookup               func(string) (string, bool, bool)
+	CTYLookup                func() *cty.CTYDatabase
+	DedupeFastEnabled        bool
+	DedupeMedEnabled         bool
+	DedupeSlowEnabled        bool
+	NearbyLoginWarning       string
 }
 
 // NewServer creates a new telnet server
@@ -1011,59 +1360,67 @@ func NewServer(opts ServerOptions, processor *commands.Processor) *Server {
 	config := normalizeServerOptions(opts)
 	useZiutek := strings.EqualFold(config.Transport, "ziutek")
 	return &Server{
-		port:               config.Port,
-		welcomeMessage:     config.WelcomeMessage,
-		maxConnections:     config.MaxConnections,
-		duplicateLoginMsg:  config.DuplicateLoginMsg,
-		greetingTemplate:   config.LoginGreeting,
-		loginPrompt:        config.LoginPrompt,
-		loginEmptyMessage:  config.LoginEmptyMessage,
-		loginInvalidMsg:    config.LoginInvalidMessage,
-		inputTooLongMsg:    config.InputTooLongMessage,
-		inputInvalidMsg:    config.InputInvalidCharMessage,
-		dialectWelcomeMsg:  config.DialectWelcomeMessage,
-		dialectSourceDef:   config.DialectSourceDefault,
-		dialectSourcePers:  config.DialectSourcePersisted,
-		pathStatusMsg:      config.PathStatusMessage,
-		clusterCall:        config.ClusterCall,
-		clients:            make(map[string]*Client),
-		shutdown:           make(chan struct{}),
-		broadcast:          make(chan *broadcastPayload, config.BroadcastQueue),
-		broadcastWorkers:   config.BroadcastWorkers,
-		workerQueueSize:    config.WorkerQueue,
-		batchInterval:      config.BroadcastBatchInterval,
-		batchMax:           defaultBroadcastBatch,
-		keepaliveInterval:  time.Duration(config.KeepaliveSeconds) * time.Second,
-		clientBufferSize:   config.ClientBuffer,
-		controlQueueSize:   config.ControlQueue,
-		skipHandshake:      config.SkipHandshake,
-		transport:          config.Transport,
-		useZiutek:          useZiutek,
-		echoMode:           config.EchoMode,
-		processor:          processor,
-		readIdleTimeout:    config.ReadIdleTimeout,
-		loginTimeout:       config.LoginTimeout,
-		loginLineLimit:     config.LoginLineLimit,
-		commandLineLimit:   config.CommandLineLimit,
-		filterEngine:       newFilterCommandEngineWithCTY(config.CTYLookup),
-		latency:            newLatencyMetrics(),
-		reputationGate:     opts.ReputationGate,
-		startTime:          time.Now().UTC(),
-		pathPredictor:      opts.PathPredictor,
-		pathDisplay:        opts.PathDisplayEnabled,
-		solarWeather:       opts.SolarWeather,
-		noiseOffsets:       opts.NoiseOffsets,
-		gridLookup:         opts.GridLookup,
-		dedupeFastEnabled:  config.DedupeFastEnabled,
-		dedupeMedEnabled:   config.DedupeMedEnabled,
-		dedupeSlowEnabled:  config.DedupeSlowEnabled,
-		nearbyLoginWarning: normalizeWarningLine(config.NearbyLoginWarning),
-		dropExtremeRate:    config.DropExtremeRate,
-		dropExtremeWindow:  config.DropExtremeWindow,
-		dropExtremeMinAtt:  config.DropExtremeMinAttempts,
-		queueDropLog:       ratelimit.NewCounter(defaultDropLogInterval),
-		workerDropLog:      ratelimit.NewCounter(defaultDropLogInterval),
-		clientDropLog:      ratelimit.NewCounter(defaultDropLogInterval),
+		port:                 config.Port,
+		welcomeMessage:       config.WelcomeMessage,
+		maxConnections:       config.MaxConnections,
+		duplicateLoginMsg:    config.DuplicateLoginMsg,
+		greetingTemplate:     config.LoginGreeting,
+		loginPrompt:          config.LoginPrompt,
+		loginEmptyMessage:    config.LoginEmptyMessage,
+		loginInvalidMsg:      config.LoginInvalidMessage,
+		inputTooLongMsg:      config.InputTooLongMessage,
+		inputInvalidMsg:      config.InputInvalidCharMessage,
+		dialectWelcomeMsg:    config.DialectWelcomeMessage,
+		dialectSourceDef:     config.DialectSourceDefault,
+		dialectSourcePers:    config.DialectSourcePersisted,
+		pathStatusMsg:        config.PathStatusMessage,
+		clusterCall:          config.ClusterCall,
+		clients:              make(map[string]*Client),
+		shutdown:             make(chan struct{}),
+		broadcast:            make(chan *broadcastPayload, config.BroadcastQueue),
+		broadcastWorkers:     config.BroadcastWorkers,
+		workerQueueSize:      config.WorkerQueue,
+		batchInterval:        config.BroadcastBatchInterval,
+		batchMax:             defaultBroadcastBatch,
+		keepaliveInterval:    time.Duration(config.KeepaliveSeconds) * time.Second,
+		clientBufferSize:     config.ClientBuffer,
+		controlQueueSize:     config.ControlQueue,
+		skipHandshake:        config.SkipHandshake,
+		transport:            config.Transport,
+		useZiutek:            useZiutek,
+		echoMode:             config.EchoMode,
+		processor:            processor,
+		readIdleTimeout:      config.ReadIdleTimeout,
+		loginTimeout:         config.LoginTimeout,
+		maxPreloginSessions:  config.MaxPreloginSessions,
+		preloginTimeout:      config.PreloginTimeout,
+		acceptRatePerIP:      config.AcceptRatePerIP,
+		acceptBurstPerIP:     config.AcceptBurstPerIP,
+		preloginConcPerIP:    config.PreloginConcurrencyPerIP,
+		preloginByIP:         make(map[string]preloginIPState),
+		preloginTrackedMax:   defaultPreloginStateCap(config.MaxPreloginSessions),
+		preloginStateIdleTTL: preloginStateIdleTTL(config.PreloginTimeout),
+		loginLineLimit:       config.LoginLineLimit,
+		commandLineLimit:     config.CommandLineLimit,
+		filterEngine:         newFilterCommandEngineWithCTY(config.CTYLookup),
+		latency:              newLatencyMetrics(),
+		reputationGate:       opts.ReputationGate,
+		startTime:            time.Now().UTC(),
+		pathPredictor:        opts.PathPredictor,
+		pathDisplay:          opts.PathDisplayEnabled,
+		solarWeather:         opts.SolarWeather,
+		noiseOffsets:         opts.NoiseOffsets,
+		gridLookup:           opts.GridLookup,
+		dedupeFastEnabled:    config.DedupeFastEnabled,
+		dedupeMedEnabled:     config.DedupeMedEnabled,
+		dedupeSlowEnabled:    config.DedupeSlowEnabled,
+		nearbyLoginWarning:   normalizeWarningLine(config.NearbyLoginWarning),
+		dropExtremeRate:      config.DropExtremeRate,
+		dropExtremeWindow:    config.DropExtremeWindow,
+		dropExtremeMinAtt:    config.DropExtremeMinAttempts,
+		queueDropLog:         ratelimit.NewCounter(defaultDropLogInterval),
+		workerDropLog:        ratelimit.NewCounter(defaultDropLogInterval),
+		clientDropLog:        ratelimit.NewCounter(defaultDropLogInterval),
 	}
 }
 
@@ -1109,6 +1466,24 @@ func normalizeServerOptions(opts ServerOptions) ServerOptions {
 	}
 	if config.LoginTimeout <= 0 {
 		config.LoginTimeout = defaultLoginTimeout
+	}
+	if config.MaxPreloginSessions <= 0 {
+		config.MaxPreloginSessions = defaultMaxPreloginSessions
+	}
+	if config.PreloginTimeout <= 0 {
+		config.PreloginTimeout = defaultPreloginTimeout
+	}
+	if config.AcceptRatePerIP <= 0 {
+		config.AcceptRatePerIP = defaultAcceptRatePerIP
+	}
+	if config.AcceptBurstPerIP <= 0 {
+		config.AcceptBurstPerIP = defaultAcceptBurstPerIP
+	}
+	if config.PreloginConcurrencyPerIP <= 0 {
+		config.PreloginConcurrencyPerIP = defaultPreloginConcPerIP
+	}
+	if config.MaxPreloginSessions > 0 && config.PreloginConcurrencyPerIP > config.MaxPreloginSessions {
+		config.PreloginConcurrencyPerIP = config.MaxPreloginSessions
 	}
 	if config.DropExtremeRate <= 0 {
 		config.DropExtremeRate = defaultDropExtremeRate
@@ -1643,6 +2018,14 @@ func (s *Server) BroadcastMetricSnapshot() (queueDrops, clientDrops, senderFailu
 	return s.metrics.snapshot()
 }
 
+// PreloginMetricSnapshot returns Tier-A prelogin gauge/counters.
+func (s *Server) PreloginMetricSnapshot() (active int64, rejectGlobalCap, rejectIPRate, rejectIPConcurrency, timeouts, stateEvictions, stateFullRejects uint64) {
+	if s == nil {
+		return 0, 0, 0, 0, 0, 0, 0
+	}
+	return s.metrics.preloginSnapshot()
+}
+
 type pathPredictionStats struct {
 	Total        uint64
 	Derived      uint64
@@ -1699,6 +2082,27 @@ func defaultBroadcastWorkers() int {
 	return workers
 }
 
+func rejectConnWithBanner(conn net.Conn, addr, banner string) {
+	if conn == nil {
+		return
+	}
+	if strings.TrimSpace(banner) != "" {
+		if err := conn.SetWriteDeadline(time.Now().UTC().Add(defaultSendDeadline)); err == nil {
+			if _, err := conn.Write([]byte(banner)); err != nil {
+				log.Printf("Failed to send reject banner to %s: %v", addr, err)
+			}
+			if err := conn.SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, net.ErrClosed) {
+				log.Printf("Failed to clear write deadline for rejected client %s: %v", addr, err)
+			}
+		} else if !errors.Is(err, net.ErrClosed) {
+			log.Printf("Failed to set write deadline for rejected client %s: %v", addr, err)
+		}
+	}
+	if err := conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+		log.Printf("Failed to close rejected connection %s: %v", addr, err)
+	}
+}
+
 // acceptConnections handles incoming connections
 func (s *Server) acceptConnections() {
 	for {
@@ -1721,23 +2125,21 @@ func (s *Server) acceptConnections() {
 			current := len(s.clients)
 			s.clientsMutex.RUnlock()
 			if current >= s.maxConnections {
-				if err := conn.SetWriteDeadline(time.Now().UTC().Add(defaultSendDeadline)); err == nil {
-					if _, err := conn.Write([]byte("Server full. Try again later.\r\n")); err != nil {
-						log.Printf("Failed to send server-full banner to %s: %v", addr, err)
-					}
-					if err := conn.SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, net.ErrClosed) {
-						log.Printf("Failed to clear write deadline for rejected client %s: %v", addr, err)
-					}
-				} else if !errors.Is(err, net.ErrClosed) {
-					log.Printf("Failed to set write deadline for rejected client %s: %v", addr, err)
-				}
-				if err := conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-					log.Printf("Failed to close rejected connection %s: %v", addr, err)
-				}
+				rejectConnWithBanner(conn, addr, "Server full. Try again later.\r\n")
 				log.Printf("Rejected connection from %s: max connections reached (%d)", addr, s.maxConnections)
 				continue
 			}
 		}
+
+		ticket, rejectReason := s.tryAcquirePrelogin(conn.RemoteAddr())
+		if ticket == nil {
+			addr := conn.RemoteAddr().String()
+			total := s.recordPreloginReject(rejectReason)
+			rejectConnWithBanner(conn, addr, "Server busy. Try again later.\r\n")
+			log.Printf("Rejected connection from %s: prelogin %s (total=%d active=%d/%d)", addr, rejectReason, total, atomic.LoadInt64(&s.metrics.preloginActive), s.maxPreloginSessions)
+			continue
+		}
+
 		if isTCP, enableErr, periodErr := netutil.EnableTCPKeepAlive(conn, 2*time.Minute); isTCP {
 			if enableErr != nil {
 				log.Printf("Failed to enable TCP keepalive for %s: %v", conn.RemoteAddr(), enableErr)
@@ -1748,12 +2150,12 @@ func (s *Server) acceptConnections() {
 		}
 
 		// Handle this client in a new goroutine
-		go s.handleClient(conn)
+		go s.handleClient(conn, ticket)
 	}
 }
 
 // handleClient manages a single client connection
-func (s *Server) handleClient(conn net.Conn) {
+func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 	address := conn.RemoteAddr().String()
 	log.Printf("New connection from %s", address)
 
@@ -1807,7 +2209,11 @@ func (s *Server) handleClient(conn net.Conn) {
 
 	closeOnExit := true
 	registered := false
+	preloginTicket := ticket
 	defer func() {
+		if preloginTicket != nil {
+			preloginTicket.Release()
+		}
 		if closeOnExit {
 			client.close("")
 		}
@@ -1824,9 +2230,18 @@ func (s *Server) handleClient(conn net.Conn) {
 	s.sendPreLoginMessage(client, s.welcomeMessage, loginTime)
 	s.sendPreLoginMessage(client, s.loginPrompt, loginTime)
 
+	loginTimeout := s.preloginTimeout
+	if loginTimeout <= 0 {
+		loginTimeout = s.loginTimeout
+	}
+	if loginTimeout <= 0 {
+		loginTimeout = defaultPreloginTimeout
+	}
+	loginDeadline := time.Now().UTC().Add(loginTimeout)
+
 	var callsign string
 	for {
-		if err := client.setReadDeadline(time.Now().Add(s.loginTimeout)); err != nil {
+		if err := client.setReadDeadline(loginDeadline); err != nil {
 			log.Printf("Failed to set login deadline for %s: %v", address, err)
 			return
 		}
@@ -1837,6 +2252,7 @@ func (s *Server) handleClient(conn net.Conn) {
 		line, err := client.ReadLine(s.loginLineLimit, "login", false, false, false, false)
 		if err != nil {
 			if isTimeoutErr(err) {
+				s.recordPreloginTimeout()
 				log.Printf("Login timeout for %s", address)
 				return
 			}
@@ -1872,6 +2288,10 @@ func (s *Server) handleClient(conn net.Conn) {
 
 	client.callsign = callsign
 	log.Printf("Client %s logged in as %s", address, client.callsign)
+	if preloginTicket != nil {
+		preloginTicket.Release()
+		preloginTicket = nil
+	}
 
 	if s.reputationGate != nil {
 		s.reputationGate.RecordLogin(client.callsign, spotterIP(client.address), time.Now().UTC())
