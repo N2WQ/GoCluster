@@ -134,86 +134,95 @@ func dedupeKeyLabel(policy dedupePolicy) string {
 //   - BroadcastSpot() is thread-safe (uses mutex)
 //   - Each client goroutine operates independently
 type Server struct {
-	port                 int                               // TCP port to listen on
-	welcomeMessage       string                            // Welcome message for new connections
-	maxConnections       int                               // Maximum concurrent client connections
-	duplicateLoginMsg    string                            // Message sent to evicted duplicate session
-	greetingTemplate     string                            // Post-login greeting with placeholders
-	loginPrompt          string                            // Login prompt before callsign entry
-	loginEmptyMessage    string                            // Message for empty callsign
-	loginInvalidMsg      string                            // Message for invalid callsign
-	inputTooLongMsg      string                            // Template for input length violations
-	inputInvalidMsg      string                            // Template for invalid character violations
-	dialectWelcomeMsg    string                            // Template for dialect welcome line
-	dialectSourceDef     string                            // Label for default dialect source
-	dialectSourcePers    string                            // Label for persisted dialect source
-	pathStatusMsg        string                            // Template for path reliability status line
-	clusterCall          string                            // Cluster/node callsign for greeting substitution
-	listener             net.Listener                      // TCP listener
-	clients              map[string]*Client                // Map of callsign → Client
-	clientsMutex         sync.RWMutex                      // Protects clients map
-	shutdown             chan struct{}                     // Shutdown coordination channel
-	broadcast            chan *broadcastPayload            // Broadcast channel for spots (buffered, configurable)
-	broadcastWorkers     int                               // Number of goroutines delivering spots
-	workerQueues         []chan *broadcastJob              // Per-worker job queues
-	workerQueueSize      int                               // Capacity of each worker's queue
-	batchInterval        time.Duration                     // Broadcast batch interval; 0 means immediate
-	batchMax             int                               // Max jobs per batch before flush
-	metrics              broadcastMetrics                  // Broadcast metrics counters
-	keepaliveInterval    time.Duration                     // Optional periodic CRLF to keep idle sessions alive
-	clientShards         [][]*Client                       // Cached shard layout for broadcasts
-	shardsDirty          atomic.Bool                       // Flag to rebuild shards on client add/remove
-	processor            *commands.Processor               // Command processor for user commands
-	skipHandshake        bool                              // When true, omit Telnet IAC negotiation
-	transport            string                            // Telnet transport backend ("native" or "ziutek")
-	useZiutek            bool                              // True when the external telnet transport is enabled
-	echoMode             string                            // Input echo policy ("server", "local", "off")
-	clientBufferSize     int                               // Per-client spot channel capacity
-	controlQueueSize     int                               // Per-client control queue capacity
-	readIdleTimeout      time.Duration                     // Read deadline for logged-in sessions (timeouts do not disconnect)
-	loginTimeout         time.Duration                     // Pre-login timeout before disconnect
-	maxPreloginSessions  int                               // Hard cap on concurrent unauthenticated sessions
-	preloginTimeout      time.Duration                     // End-to-end timeout from accept to successful login
-	acceptRatePerIP      float64                           // Token refill rate (tokens/sec) for pre-login admission
-	acceptBurstPerIP     int                               // Token bucket burst size for pre-login admission
-	preloginConcPerIP    int                               // Max concurrent pre-login sessions per source IP
-	preloginMu           sync.Mutex                        // Guards pre-login admission counters and token buckets
-	preloginActive       int                               // Active unauthenticated session count
-	preloginByIP         map[string]preloginIPState        // Admission state keyed by source IP
-	preloginTrackedMax   int                               // Max tracked IP states for bounded memory
-	preloginStateIdleTTL time.Duration                     // Idle eviction TTL for IP admission state
-	preloginLastGC       time.Time                         // Last opportunistic GC timestamp
-	dropExtremeRate      float64                           // Drop ratio threshold for disconnect
-	dropExtremeWindow    time.Duration                     // Window for extreme drop evaluation
-	dropExtremeMinAtt    int                               // Minimum attempts before extreme drop disconnect
-	clientListListener   atomic.Value                      // optional func()
-	latency              latencyMetrics                    // latency samples for delivery path
-	loginLineLimit       int                               // Maximum bytes accepted for login/callsign input
-	commandLineLimit     int                               // Maximum bytes accepted for post-login commands
-	filterEngine         *filterCommandEngine              // Table-driven filter command parser/executor
-	reputationGate       *reputation.Gate                  // Optional reputation gate for login metadata
-	startTime            time.Time                         // Process start time for uptime tokens
-	pathPredictor        *pathreliability.Predictor        // Optional path reliability predictor
-	pathDisplay          bool                              // Toggle glyph rendering
-	solarWeather         *solarweather.Manager             // Optional solar/geomagnetic override evaluator
-	noiseOffsets         map[string]float64                // Noise class lookup
-	gridLookup           func(string) (string, bool, bool) // Optional grid lookup from store
-	nowFn                func() time.Time                  // Optional clock injection for deterministic tests
-	dedupeFastEnabled    bool                              // Fast secondary dedupe policy enabled
-	dedupeMedEnabled     bool                              // Med secondary dedupe policy enabled
-	dedupeSlowEnabled    bool                              // Slow secondary dedupe policy enabled
-	nearbyLoginWarning   string                            // Warning appended when NEARBY is active
-	queueDropLog         ratelimit.Counter                 // Rate-limited log counter for broadcast queue drops
-	workerDropLog        ratelimit.Counter                 // Rate-limited log counter for worker queue drops
-	clientDropLog        ratelimit.Counter                 // Rate-limited log counter for per-client drops
-	pathPredTotal        atomic.Uint64                     // Path predictions computed (glyphs)
-	pathPredDerived      atomic.Uint64                     // Predictions using derived user/DX grids
-	pathPredCombined     atomic.Uint64                     // Predictions with sufficient combined data
-	pathPredInsufficient atomic.Uint64                     // Predictions with insufficient data
-	pathPredNoSample     atomic.Uint64                     // Insufficient predictions with no samples
-	pathPredLowWeight    atomic.Uint64                     // Insufficient predictions below min weight
-	pathPredOverrideR    atomic.Uint64                     // R overrides applied
-	pathPredOverrideG    atomic.Uint64                     // G overrides applied
+	port                 int                                 // TCP port to listen on
+	welcomeMessage       string                              // Welcome message for new connections
+	maxConnections       int                                 // Maximum concurrent client connections
+	duplicateLoginMsg    string                              // Message sent to evicted duplicate session
+	greetingTemplate     string                              // Post-login greeting with placeholders
+	loginPrompt          string                              // Login prompt before callsign entry
+	loginEmptyMessage    string                              // Message for empty callsign
+	loginInvalidMsg      string                              // Message for invalid callsign
+	inputTooLongMsg      string                              // Template for input length violations
+	inputInvalidMsg      string                              // Template for invalid character violations
+	dialectWelcomeMsg    string                              // Template for dialect welcome line
+	dialectSourceDef     string                              // Label for default dialect source
+	dialectSourcePers    string                              // Label for persisted dialect source
+	pathStatusMsg        string                              // Template for path reliability status line
+	clusterCall          string                              // Cluster/node callsign for greeting substitution
+	listener             net.Listener                        // TCP listener
+	clients              map[string]*Client                  // Map of callsign → Client
+	clientsMutex         sync.RWMutex                        // Protects clients map
+	shutdown             chan struct{}                       // Shutdown coordination channel
+	stopOnce             sync.Once                           // Ensures Stop is idempotent
+	broadcast            chan *broadcastPayload              // Broadcast channel for spots (buffered, configurable)
+	broadcastWorkers     int                                 // Number of goroutines delivering spots
+	workerQueues         []chan *broadcastJob                // Per-worker job queues
+	workerQueueSize      int                                 // Capacity of each worker's queue
+	batchInterval        time.Duration                       // Broadcast batch interval; 0 means immediate
+	batchMax             int                                 // Max jobs per batch before flush
+	writerBatchMaxBytes  int                                 // Max bytes per writer-loop flush batch
+	writerBatchWait      time.Duration                       // Max wait before flushing partial writer batch
+	metrics              broadcastMetrics                    // Broadcast metrics counters
+	keepaliveInterval    time.Duration                       // Optional periodic CRLF to keep idle sessions alive
+	clientShardCache     atomic.Pointer[clientShardSnapshot] // Immutable cached shard layout for broadcasts
+	shardsDirty          atomic.Bool                         // Flag to rebuild shards on client add/remove
+	rejectWorkers        int                                 // Worker count for asynchronous reject writes
+	rejectQueueSize      int                                 // Capacity of asynchronous reject queue
+	rejectWriteDeadline  time.Duration                       // Deadline for reject banner write
+	rejectQueue          chan rejectJob                      // Bounded async reject queue
+	rejectWorkerOnce     sync.Once                           // Ensures reject workers start once
+	processor            *commands.Processor                 // Command processor for user commands
+	skipHandshake        bool                                // When true, omit Telnet IAC negotiation
+	transport            string                              // Telnet transport backend ("native" or "ziutek")
+	useZiutek            bool                                // True when the external telnet transport is enabled
+	echoMode             string                              // Input echo policy ("server", "local", "off")
+	clientBufferSize     int                                 // Per-client spot channel capacity
+	controlQueueSize     int                                 // Per-client control queue capacity
+	readIdleTimeout      time.Duration                       // Read deadline for logged-in sessions (timeouts do not disconnect)
+	loginTimeout         time.Duration                       // Pre-login timeout before disconnect
+	maxPreloginSessions  int                                 // Hard cap on concurrent unauthenticated sessions
+	preloginTimeout      time.Duration                       // End-to-end timeout from accept to successful login
+	acceptRatePerIP      float64                             // Token refill rate (tokens/sec) for pre-login admission
+	acceptBurstPerIP     int                                 // Token bucket burst size for pre-login admission
+	preloginConcPerIP    int                                 // Max concurrent pre-login sessions per source IP
+	preloginMu           sync.Mutex                          // Guards pre-login admission counters and token buckets
+	preloginActive       int                                 // Active unauthenticated session count
+	preloginByIP         map[string]preloginIPState          // Admission state keyed by source IP
+	preloginTrackedMax   int                                 // Max tracked IP states for bounded memory
+	preloginStateIdleTTL time.Duration                       // Idle eviction TTL for IP admission state
+	preloginLastGC       time.Time                           // Last opportunistic GC timestamp
+	dropExtremeRate      float64                             // Drop ratio threshold for disconnect
+	dropExtremeWindow    time.Duration                       // Window for extreme drop evaluation
+	dropExtremeMinAtt    int                                 // Minimum attempts before extreme drop disconnect
+	clientListListener   atomic.Value                        // optional func()
+	latency              latencyMetrics                      // latency samples for delivery path
+	loginLineLimit       int                                 // Maximum bytes accepted for login/callsign input
+	commandLineLimit     int                                 // Maximum bytes accepted for post-login commands
+	filterEngine         *filterCommandEngine                // Table-driven filter command parser/executor
+	reputationGate       *reputation.Gate                    // Optional reputation gate for login metadata
+	startTime            time.Time                           // Process start time for uptime tokens
+	pathPredictor        *pathreliability.Predictor          // Optional path reliability predictor
+	pathDisplay          bool                                // Toggle glyph rendering
+	solarWeather         *solarweather.Manager               // Optional solar/geomagnetic override evaluator
+	noiseOffsets         map[string]float64                  // Noise class lookup
+	gridLookup           func(string) (string, bool, bool)   // Optional grid lookup from store
+	nowFn                func() time.Time                    // Optional clock injection for deterministic tests
+	dedupeFastEnabled    bool                                // Fast secondary dedupe policy enabled
+	dedupeMedEnabled     bool                                // Med secondary dedupe policy enabled
+	dedupeSlowEnabled    bool                                // Slow secondary dedupe policy enabled
+	nearbyLoginWarning   string                              // Warning appended when NEARBY is active
+	queueDropLog         ratelimit.Counter                   // Rate-limited log counter for broadcast queue drops
+	workerDropLog        ratelimit.Counter                   // Rate-limited log counter for worker queue drops
+	clientDropLog        ratelimit.Counter                   // Rate-limited log counter for per-client drops
+	rejectDropLog        ratelimit.Counter                   // Rate-limited log counter for rejected-conn queue drops
+	pathPredTotal        atomic.Uint64                       // Path predictions computed (glyphs)
+	pathPredDerived      atomic.Uint64                       // Predictions using derived user/DX grids
+	pathPredCombined     atomic.Uint64                       // Predictions with sufficient combined data
+	pathPredInsufficient atomic.Uint64                       // Predictions with insufficient data
+	pathPredNoSample     atomic.Uint64                       // Insufficient predictions with no samples
+	pathPredLowWeight    atomic.Uint64                       // Insufficient predictions below min weight
+	pathPredOverrideR    atomic.Uint64                       // R overrides applied
+	pathPredOverrideG    atomic.Uint64                       // G overrides applied
 }
 
 // Client represents a connected telnet client session.
@@ -443,6 +452,10 @@ type broadcastJob struct {
 	enqueueAt time.Time
 }
 
+type clientShardSnapshot struct {
+	shards [][]*Client
+}
+
 type spotEnvelope struct {
 	spot      *spot.Spot
 	enqueueAt time.Time
@@ -452,6 +465,13 @@ type controlMessage struct {
 	line       string
 	raw        []byte
 	closeAfter bool
+}
+
+type rejectJob struct {
+	conn   net.Conn
+	addr   string
+	banner string
+	reason string
 }
 
 var (
@@ -509,6 +529,8 @@ type broadcastMetrics struct {
 	queueDrops                 uint64
 	clientDrops                uint64
 	senderFailures             uint64
+	rejectHandled              uint64
+	rejectQueueDrops           uint64
 	preloginRejectGlobalCap    uint64
 	preloginRejectIPRate       uint64
 	preloginRejectIPConcurrent uint64
@@ -522,6 +544,12 @@ func (m *broadcastMetrics) snapshot() (queueDrops, clientDrops, senderFailures u
 	queueDrops = atomic.LoadUint64(&m.queueDrops)
 	clientDrops = atomic.LoadUint64(&m.clientDrops)
 	senderFailures = atomic.LoadUint64(&m.senderFailures)
+	return
+}
+
+func (m *broadcastMetrics) rejectSnapshot() (handled, queueDrops uint64) {
+	handled = atomic.LoadUint64(&m.rejectHandled)
+	queueDrops = atomic.LoadUint64(&m.rejectQueueDrops)
 	return
 }
 
@@ -1269,10 +1297,15 @@ const (
 	defaultBroadcastQueueSize     = 2048
 	defaultBroadcastBatch         = 512
 	defaultBroadcastBatchInterval = 250 * time.Millisecond
+	defaultWriterBatchMaxBytes    = 16 * 1024
+	defaultWriterBatchWait        = 5 * time.Millisecond
 	defaultClientBufferSize       = 128
 	defaultControlQueueSize       = 32
 	defaultWorkerQueueSize        = 128
 	defaultSendDeadline           = 2 * time.Second
+	defaultRejectWorkers          = 2
+	defaultRejectQueueSize        = 1024
+	defaultRejectWriteDeadline    = 500 * time.Millisecond
 	defaultLoginLineLimit         = 32
 	defaultCommandLineLimit       = 128
 	defaultReadIdleTimeout        = 24 * time.Hour
@@ -1326,6 +1359,11 @@ type ServerOptions struct {
 	ClientBuffer             int
 	ControlQueue             int
 	BroadcastBatchInterval   time.Duration
+	WriterBatchMaxBytes      int
+	WriterBatchWait          time.Duration
+	RejectWorkers            int
+	RejectQueueSize          int
+	RejectWriteDeadline      time.Duration
 	KeepaliveSeconds         int
 	SkipHandshake            bool
 	Transport                string
@@ -1382,6 +1420,12 @@ func NewServer(opts ServerOptions, processor *commands.Processor) *Server {
 		workerQueueSize:      config.WorkerQueue,
 		batchInterval:        config.BroadcastBatchInterval,
 		batchMax:             defaultBroadcastBatch,
+		writerBatchMaxBytes:  config.WriterBatchMaxBytes,
+		writerBatchWait:      config.WriterBatchWait,
+		rejectWorkers:        config.RejectWorkers,
+		rejectQueueSize:      config.RejectQueueSize,
+		rejectWriteDeadline:  config.RejectWriteDeadline,
+		rejectQueue:          make(chan rejectJob, config.RejectQueueSize),
 		keepaliveInterval:    time.Duration(config.KeepaliveSeconds) * time.Second,
 		clientBufferSize:     config.ClientBuffer,
 		controlQueueSize:     config.ControlQueue,
@@ -1421,6 +1465,7 @@ func NewServer(opts ServerOptions, processor *commands.Processor) *Server {
 		queueDropLog:         ratelimit.NewCounter(defaultDropLogInterval),
 		workerDropLog:        ratelimit.NewCounter(defaultDropLogInterval),
 		clientDropLog:        ratelimit.NewCounter(defaultDropLogInterval),
+		rejectDropLog:        ratelimit.NewCounter(defaultDropLogInterval),
 	}
 }
 
@@ -1443,6 +1488,21 @@ func normalizeServerOptions(opts ServerOptions) ServerOptions {
 	}
 	if config.BroadcastBatchInterval <= 0 {
 		config.BroadcastBatchInterval = defaultBroadcastBatchInterval
+	}
+	if config.WriterBatchMaxBytes <= 0 {
+		config.WriterBatchMaxBytes = defaultWriterBatchMaxBytes
+	}
+	if config.WriterBatchWait <= 0 {
+		config.WriterBatchWait = defaultWriterBatchWait
+	}
+	if config.RejectWorkers <= 0 {
+		config.RejectWorkers = defaultRejectWorkers
+	}
+	if config.RejectQueueSize <= 0 {
+		config.RejectQueueSize = defaultRejectQueueSize
+	}
+	if config.RejectWriteDeadline <= 0 {
+		config.RejectWriteDeadline = defaultRejectWriteDeadline
 	}
 	if strings.TrimSpace(config.ClusterCall) == "" {
 		config.ClusterCall = "DXC"
@@ -1522,6 +1582,7 @@ func (s *Server) Start() error {
 
 	// Prepare worker pool before handling spots
 	s.startWorkerPool()
+	s.startRejectWorkers()
 
 	// Start broadcast handler
 	go s.handleBroadcasts()
@@ -1821,6 +1882,87 @@ func (s *Server) startWorkerPool() {
 	}
 }
 
+func (s *Server) startRejectWorkers() {
+	if s == nil {
+		return
+	}
+	s.rejectWorkerOnce.Do(func() {
+		if s.rejectWorkers <= 0 {
+			s.rejectWorkers = defaultRejectWorkers
+		}
+		if s.rejectQueueSize <= 0 {
+			s.rejectQueueSize = defaultRejectQueueSize
+		}
+		if s.rejectWriteDeadline <= 0 {
+			s.rejectWriteDeadline = defaultRejectWriteDeadline
+		}
+		if s.rejectQueue == nil {
+			s.rejectQueue = make(chan rejectJob, s.rejectQueueSize)
+		}
+		for i := 0; i < s.rejectWorkers; i++ {
+			go s.rejectWorker(i, s.rejectQueue)
+		}
+	})
+}
+
+func (s *Server) rejectWorker(id int, jobs <-chan rejectJob) {
+	log.Printf("Reject worker %d started", id)
+	for {
+		select {
+		case <-s.shutdown:
+			// Best-effort drain so queued rejected connections are not left hanging.
+			for {
+				select {
+				case job := <-jobs:
+					s.processReject(job)
+				default:
+					return
+				}
+			}
+		case job := <-jobs:
+			s.processReject(job)
+		}
+	}
+}
+
+func (s *Server) processReject(job rejectJob) {
+	if job.conn == nil {
+		return
+	}
+	deadline := s.rejectWriteDeadline
+	if deadline <= 0 {
+		deadline = defaultRejectWriteDeadline
+	}
+	rejectConnWithBanner(job.conn, job.addr, job.banner, deadline)
+	total := atomic.AddUint64(&s.metrics.rejectHandled, 1)
+	if strings.TrimSpace(job.reason) != "" {
+		log.Printf("Rejected connection from %s: %s (handled=%d)", job.addr, job.reason, total)
+	}
+}
+
+func (s *Server) enqueueReject(conn net.Conn, addr, banner, reason string) {
+	if conn == nil {
+		return
+	}
+	job := rejectJob{
+		conn:   conn,
+		addr:   addr,
+		banner: banner,
+		reason: reason,
+	}
+	select {
+	case <-s.shutdown:
+		rejectConnWithBanner(conn, addr, banner, s.rejectWriteDeadline)
+	case s.rejectQueue <- job:
+	default:
+		drops := atomic.AddUint64(&s.metrics.rejectQueueDrops, 1)
+		if _, ok := s.rejectDropLog.Inc(); ok {
+			log.Printf("Reject queue full (%d/%d), closing %s immediately (reason=%s, drops=%d)", len(s.rejectQueue), cap(s.rejectQueue), addr, reason, drops)
+		}
+		rejectConnWithBanner(conn, addr, "", 0)
+	}
+}
+
 func (s *Server) dispatchSpotToWorkers(payload *broadcastPayload, shards [][]*Client) {
 	for i, clients := range shards {
 		if len(clients) == 0 {
@@ -1847,12 +1989,20 @@ func (s *Server) dispatchSpotToWorkers(payload *broadcastPayload, shards [][]*Cl
 
 // cachedClientShards returns the shard snapshot, rebuilding only when marked dirty.
 func (s *Server) cachedClientShards() [][]*Client {
-	if !s.shardsDirty.Load() && len(s.clientShards) > 0 {
-		return s.clientShards
+	if !s.shardsDirty.Load() {
+		if snapshot := s.clientShardCache.Load(); snapshot != nil && len(snapshot.shards) > 0 {
+			return snapshot.shards
+		}
 	}
 
-	s.clientsMutex.RLock()
-	defer s.clientsMutex.RUnlock()
+	s.clientsMutex.Lock()
+	defer s.clientsMutex.Unlock()
+
+	if !s.shardsDirty.Load() {
+		if snapshot := s.clientShardCache.Load(); snapshot != nil && len(snapshot.shards) > 0 {
+			return snapshot.shards
+		}
+	}
 
 	workers := s.broadcastWorkers
 	if workers <= 0 {
@@ -1865,7 +2015,7 @@ func (s *Server) cachedClientShards() [][]*Client {
 		shards[shard] = append(shards[shard], client)
 		idx++
 	}
-	s.clientShards = shards
+	s.clientShardCache.Store(&clientShardSnapshot{shards: shards})
 	s.shardsDirty.Store(false)
 	return shards
 }
@@ -2018,6 +2168,14 @@ func (s *Server) BroadcastMetricSnapshot() (queueDrops, clientDrops, senderFailu
 	return s.metrics.snapshot()
 }
 
+// RejectMetricSnapshot returns asynchronous reject-path counters.
+func (s *Server) RejectMetricSnapshot() (handled, queueDrops uint64) {
+	if s == nil {
+		return 0, 0
+	}
+	return s.metrics.rejectSnapshot()
+}
+
 // PreloginMetricSnapshot returns Tier-A prelogin gauge/counters.
 func (s *Server) PreloginMetricSnapshot() (active int64, rejectGlobalCap, rejectIPRate, rejectIPConcurrency, timeouts, stateEvictions, stateFullRejects uint64) {
 	if s == nil {
@@ -2082,12 +2240,16 @@ func defaultBroadcastWorkers() int {
 	return workers
 }
 
-func rejectConnWithBanner(conn net.Conn, addr, banner string) {
+func rejectConnWithBanner(conn net.Conn, addr, banner string, writeDeadline time.Duration) {
 	if conn == nil {
 		return
 	}
 	if strings.TrimSpace(banner) != "" {
-		if err := conn.SetWriteDeadline(time.Now().UTC().Add(defaultSendDeadline)); err == nil {
+		deadline := writeDeadline
+		if deadline <= 0 {
+			deadline = defaultRejectWriteDeadline
+		}
+		if err := conn.SetWriteDeadline(time.Now().UTC().Add(deadline)); err == nil {
 			if _, err := conn.Write([]byte(banner)); err != nil {
 				log.Printf("Failed to send reject banner to %s: %v", addr, err)
 			}
@@ -2125,8 +2287,7 @@ func (s *Server) acceptConnections() {
 			current := len(s.clients)
 			s.clientsMutex.RUnlock()
 			if current >= s.maxConnections {
-				rejectConnWithBanner(conn, addr, "Server full. Try again later.\r\n")
-				log.Printf("Rejected connection from %s: max connections reached (%d)", addr, s.maxConnections)
+				s.enqueueReject(conn, addr, "Server full. Try again later.\r\n", fmt.Sprintf("max connections reached (%d)", s.maxConnections))
 				continue
 			}
 		}
@@ -2135,8 +2296,8 @@ func (s *Server) acceptConnections() {
 		if ticket == nil {
 			addr := conn.RemoteAddr().String()
 			total := s.recordPreloginReject(rejectReason)
-			rejectConnWithBanner(conn, addr, "Server busy. Try again later.\r\n")
-			log.Printf("Rejected connection from %s: prelogin %s (total=%d active=%d/%d)", addr, rejectReason, total, atomic.LoadInt64(&s.metrics.preloginActive), s.maxPreloginSessions)
+			reason := fmt.Sprintf("prelogin %s (total=%d active=%d/%d)", rejectReason, total, atomic.LoadInt64(&s.metrics.preloginActive), s.maxPreloginSessions)
+			s.enqueueReject(conn, addr, "Server busy. Try again later.\r\n", reason)
 			continue
 		}
 
@@ -3200,91 +3361,226 @@ func normalizeWarningLine(line string) string {
 }
 
 // writerLoop serializes all outbound traffic to the client and enforces
-// control-before-spot priority. It exits when the client is closed.
+// control-before-spot priority. It micro-batches writes to reduce flush churn
+// while preserving deterministic ordering and close-after-control semantics.
 func (c *Client) writerLoop() {
 	if c == nil {
 		return
 	}
 	controlCh := c.controlChan
 	spotCh := c.spotChan
+	maxBytes, wait := c.writerBatchConfig()
+	batch := make([]byte, 0, maxBytes)
+	spotEnqueueTimes := make([]time.Time, 0, 64)
+	timer := time.NewTimer(time.Hour)
+	stopAndDrainTimer(timer)
+	defer timer.Stop()
+
+	appendControl := func(msg controlMessage, closeAfter *bool) {
+		if msg.raw == nil && strings.TrimSpace(msg.line) == "" {
+			if msg.closeAfter {
+				*closeAfter = true
+			}
+			return
+		}
+		if len(msg.raw) > 0 {
+			batch = append(batch, msg.raw...)
+		} else if normalized := normalizeOutboundLine(msg.line); normalized != "" {
+			batch = append(batch, normalized...)
+		}
+		if msg.closeAfter {
+			*closeAfter = true
+		}
+	}
+
+	appendSpot := func(env *spotEnvelope) {
+		if env == nil || env.spot == nil {
+			return
+		}
+		formatted := env.spot.FormatDXCluster() + "\n"
+		if c.server != nil {
+			formatted = c.server.formatSpotForClient(c, env.spot)
+		}
+		if normalized := normalizeOutboundLine(formatted); normalized != "" {
+			batch = append(batch, normalized...)
+		}
+		if !env.enqueueAt.IsZero() {
+			spotEnqueueTimes = append(spotEnqueueTimes, env.enqueueAt)
+		}
+	}
+
 	for {
-		// Drain all pending control messages before considering spots.
+		batch = batch[:0]
+		spotEnqueueTimes = spotEnqueueTimes[:0]
+		closeAfter := false
+
+		// Always pull control first when available.
 		for {
 			select {
 			case <-c.done:
 				return
 			case msg := <-controlCh:
-				if !c.handleControl(msg) {
+				appendControl(msg, &closeAfter)
+				goto collect
+			default:
+			}
+			select {
+			case <-c.done:
+				return
+			case msg := <-controlCh:
+				appendControl(msg, &closeAfter)
+			case env := <-spotCh:
+				appendSpot(env)
+			}
+			goto collect
+		}
+	collect:
+		if len(batch) == 0 && !closeAfter {
+			continue
+		}
+
+		var deadline time.Time
+		if wait > 0 {
+			deadline = time.Now().UTC().Add(wait)
+		}
+
+	collectMore:
+		for len(batch) < maxBytes && !closeAfter {
+			// Drain all pending control messages before admitting spots.
+		drainControl:
+			for len(batch) < maxBytes && !closeAfter {
+				select {
+				case <-c.done:
 					return
+				case msg := <-controlCh:
+					appendControl(msg, &closeAfter)
+				default:
+					break drainControl
 				}
+			}
+			if len(batch) >= maxBytes || closeAfter {
+				break
+			}
+
+			// Admit an immediate spot only when control is empty.
+			select {
+			case <-c.done:
+				return
+			case msg := <-controlCh:
+				appendControl(msg, &closeAfter)
+				continue
+			case env := <-spotCh:
+				appendSpot(env)
 				continue
 			default:
 			}
-			break
-		}
 
-		select {
-		case <-c.done:
+			if deadline.IsZero() {
+				break
+			}
+			remaining := time.Until(deadline)
+			if remaining <= 0 {
+				break
+			}
+			resetTimer(timer, remaining)
+			select {
+			case <-c.done:
+				stopAndDrainTimer(timer)
+				return
+			case msg := <-controlCh:
+				stopAndDrainTimer(timer)
+				appendControl(msg, &closeAfter)
+				continue collectMore
+			case env := <-spotCh:
+				stopAndDrainTimer(timer)
+				appendSpot(env)
+				continue collectMore
+			case <-timer.C:
+				break collectMore
+			}
+		}
+		stopAndDrainTimer(timer)
+
+		start := time.Now().UTC()
+		if err := c.flushWriterBatch(batch); err != nil {
+			c.logWriterFailure("batch", err)
+			c.close("writer failure")
 			return
-		case msg := <-controlCh:
-			if !c.handleControl(msg) {
-				return
+		}
+		if c.server != nil {
+			c.server.observeWriteStallLatency(time.Since(start))
+			flushAt := time.Now().UTC()
+			for _, enqueueAt := range spotEnqueueTimes {
+				c.server.observeFirstByteLatency(flushAt.Sub(enqueueAt))
 			}
-		case env := <-spotCh:
-			if !c.handleSpot(env) {
-				return
-			}
+		}
+		if closeAfter {
+			c.close("control close")
+			return
 		}
 	}
 }
 
-func (c *Client) handleControl(msg controlMessage) bool {
-	if msg.raw == nil && strings.TrimSpace(msg.line) == "" {
-		return true
+func (c *Client) writerBatchConfig() (maxBytes int, wait time.Duration) {
+	maxBytes = defaultWriterBatchMaxBytes
+	wait = defaultWriterBatchWait
+	if c != nil && c.server != nil {
+		if c.server.writerBatchMaxBytes > 0 {
+			maxBytes = c.server.writerBatchMaxBytes
+		}
+		if c.server.writerBatchWait > 0 {
+			wait = c.server.writerBatchWait
+		}
 	}
-	start := time.Now().UTC()
-	var err error
-	if len(msg.raw) > 0 {
-		err = c.writeRaw(msg.raw)
-	} else {
-		err = c.writeLine(msg.line)
+	if maxBytes <= 0 {
+		maxBytes = defaultWriterBatchMaxBytes
 	}
-	if err != nil {
-		c.logWriterFailure("control", err)
-		c.close("writer failure")
-		return false
+	if wait < 0 {
+		wait = 0
 	}
-	if c.server != nil {
-		c.server.observeWriteStallLatency(time.Since(start))
-	}
-	if msg.closeAfter {
-		c.close("control close")
-		return false
-	}
-	return true
+	return
 }
 
-func (c *Client) handleSpot(env *spotEnvelope) bool {
-	if env == nil || env.spot == nil {
-		return true
+func resetTimer(timer *time.Timer, d time.Duration) {
+	if timer == nil {
+		return
 	}
-	if c.server != nil && !env.enqueueAt.IsZero() {
-		c.server.observeFirstByteLatency(time.Since(env.enqueueAt))
+	stopAndDrainTimer(timer)
+	timer.Reset(d)
+}
+
+func stopAndDrainTimer(timer *time.Timer) {
+	if timer == nil {
+		return
 	}
-	formatted := env.spot.FormatDXCluster() + "\n"
-	if c.server != nil {
-		formatted = c.server.formatSpotForClient(c, env.spot)
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
 	}
-	start := time.Now().UTC()
-	if err := c.writeLine(formatted); err != nil {
-		c.logWriterFailure("spot", err)
-		c.close("writer failure")
-		return false
+}
+
+func normalizeOutboundLine(message string) string {
+	normalized := strings.ReplaceAll(message, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\n", "\r\n")
+	return normalized
+}
+
+func (c *Client) flushWriterBatch(batch []byte) error {
+	if c == nil || len(batch) == 0 {
+		return nil
 	}
-	if c.server != nil {
-		c.server.observeWriteStallLatency(time.Since(start))
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	if err := c.setWriteDeadline(time.Now().UTC().Add(defaultSendDeadline)); err != nil {
+		return err
 	}
-	return true
+	defer c.clearWriteDeadline()
+	if _, err := c.writer.Write(batch); err != nil {
+		return err
+	}
+	return c.writer.Flush()
 }
 
 // enqueueControl pushes a control/bulletin message; a full queue disconnects the client.
@@ -3356,7 +3652,6 @@ func (c *Client) enqueueSpot(env *spotEnvelope) {
 			}
 		}
 	}
-
 }
 
 func (c *Client) close(reason string) {
@@ -3397,24 +3692,6 @@ func (c *Client) logWriterFailure(kind string, err error) {
 		c.server.recordSenderFailure()
 	}
 	log.Printf("Writer failure for %s (%s): %v", c.identity(), kind, err)
-}
-
-func (c *Client) writeLine(message string) error {
-	if c == nil {
-		return errors.New("nil client")
-	}
-	normalized := strings.ReplaceAll(message, "\r\n", "\n")
-	normalized = strings.ReplaceAll(normalized, "\n", "\r\n")
-	c.writeMu.Lock()
-	defer c.writeMu.Unlock()
-	if err := c.setWriteDeadline(time.Now().UTC().Add(defaultSendDeadline)); err != nil {
-		return err
-	}
-	defer c.clearWriteDeadline()
-	if _, err := c.writer.WriteString(normalized); err != nil {
-		return err
-	}
-	return c.writer.Flush()
 }
 
 func (c *Client) writeRaw(data []byte) error {
@@ -3593,18 +3870,23 @@ func (s *Server) LatencySnapshots() (enqueue, firstByte, writeStall LatencySnaps
 
 // Stop shuts down the telnet server
 func (s *Server) Stop() {
-	log.Println("Stopping telnet server...")
-	close(s.shutdown)
-	if s.listener != nil {
-		s.listener.Close()
+	if s == nil {
+		return
 	}
+	s.stopOnce.Do(func() {
+		log.Println("Stopping telnet server...")
+		close(s.shutdown)
+		if s.listener != nil {
+			_ = s.listener.Close()
+		}
 
-	// Disconnect all clients
-	s.clientsMutex.Lock()
-	for _, client := range s.clients {
-		client.close("server shutdown")
-	}
-	s.clientsMutex.Unlock()
+		// Disconnect all clients
+		s.clientsMutex.Lock()
+		for _, client := range s.clients {
+			client.close("server shutdown")
+		}
+		s.clientsMutex.Unlock()
+	})
 }
 
 // SendRaw sends raw bytes to the client

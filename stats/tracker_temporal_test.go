@@ -40,7 +40,7 @@ func TestTrackerTemporalCounters(t *testing.T) {
 		t.Fatalf("expected temporal path switches=1, got %d", tr.TemporalPathSwitches())
 	}
 	buckets := tr.TemporalCommitLatencyBuckets()
-	if buckets["le_500"] != 1 || buckets["le_1000"] != 1 || buckets["le_2000"] != 1 || buckets["le_5000"] != 1 || buckets["gt_5000"] != 1 {
+	if buckets["le_500"] != 1 || buckets["le_1000"] != 1 || buckets["le_2000"] != 1 || buckets["le_5000"] != 1 || buckets["le_10000"] != 1 || buckets["gt_10000"] != 0 {
 		t.Fatalf("unexpected temporal latency buckets: %+v", buckets)
 	}
 }

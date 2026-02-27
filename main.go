@@ -1031,6 +1031,11 @@ func main() {
 		ClientBuffer:             cfg.Telnet.ClientBuffer,
 		ControlQueue:             cfg.Telnet.ControlQueueSize,
 		BroadcastBatchInterval:   time.Duration(cfg.Telnet.BroadcastBatchIntervalMS) * time.Millisecond,
+		WriterBatchMaxBytes:      cfg.Telnet.WriterBatchMaxBytes,
+		WriterBatchWait:          time.Duration(cfg.Telnet.WriterBatchWaitMS) * time.Millisecond,
+		RejectWorkers:            cfg.Telnet.RejectWorkers,
+		RejectQueueSize:          cfg.Telnet.RejectQueueSize,
+		RejectWriteDeadline:      time.Duration(cfg.Telnet.RejectWriteDeadlineMS) * time.Millisecond,
 		Transport:                cfg.Telnet.Transport,
 		EchoMode:                 cfg.Telnet.EchoMode,
 		SkipHandshake:            cfg.Telnet.SkipHandshake,
@@ -1618,11 +1623,11 @@ func formatResolverSummary(resolver *spot.SignalResolver) string {
 
 func formatResolverPressureSummary(resolver *spot.SignalResolver) string {
 	if resolver == nil {
-		return "Resolver Pressur: n/a"
+		return "Resolver Pressure: n/a"
 	}
 	metrics := resolver.MetricsSnapshot()
 	return fmt.Sprintf(
-		"Resolver Pressur: %s (C) / %s (R) evict %s (C) / %s (R) hw %s (C) / %s (R)",
+		"Resolver Pressure: %s (C) / %s (R) evict %s (C) / %s (R) hw %s (C) / %s (R)",
 		humanize.Comma(int64(metrics.CapPressureCandidates)),
 		humanize.Comma(int64(metrics.CapPressureReporters)),
 		humanize.Comma(int64(metrics.EvictedCandidates)),
@@ -1651,13 +1656,12 @@ func formatTemporalLatencySummary(tracker *stats.Tracker) string {
 		return "Temporal latency: n/a"
 	}
 	buckets := tracker.TemporalCommitLatencyBuckets()
+	under5s := buckets["le_500"] + buckets["le_1000"] + buckets["le_2000"] + buckets["le_5000"]
 	return fmt.Sprintf(
-		"Temporal latency: <=500ms:%s <=1s:%s <=2s:%s <=5s:%s >5s:%s",
-		humanize.Comma(int64(buckets["le_500"])),
-		humanize.Comma(int64(buckets["le_1000"])),
-		humanize.Comma(int64(buckets["le_2000"])),
-		humanize.Comma(int64(buckets["le_5000"])),
-		humanize.Comma(int64(buckets["gt_5000"])),
+		"Temporal latency: under 5s:%s 5-10s:%s over 10s:%s",
+		humanize.Comma(int64(under5s)),
+		humanize.Comma(int64(buckets["le_10000"])),
+		humanize.Comma(int64(buckets["gt_10000"])),
 	)
 }
 
@@ -1896,15 +1900,18 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 			), // 5
 			fmt.Sprintf("%s: %s TOTAL", withIngestStatusLabel("P92", p92Live), humanize.Comma(int64(p92Total))), // 6
 		)
-		lines[4] += fmt.Sprintf(" / %s PSK31/63", humanize.Comma(int64(psk31_63)))
+		lines[4] += fmt.Sprintf(" / %s PSK", humanize.Comma(int64(psk31_63)))
 		lines = append(lines, pathOnlyLine)
 		lines = append(lines,
 			fmt.Sprintf("Calls: %d (C) / %d (U) / %d (F) / %d (H) / %d (R)", totalCorrections, totalUnlicensed, totalFreqCorrections, totalHarmonics, reputationTotal), // 6
 			corrDecisionLine,
+			"",
 			resolverLine,
 			resolverPressureLine,
+			"",
 			stabilizerLine,
 			stabilizerReasonLine,
+			"",
 			temporalLine,
 			temporalLatencyLine,
 			pipelineLine, // 7
@@ -1944,10 +1951,13 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 					pipelineLine,
 					fmt.Sprintf("Corrections: %d  Unlicensed: %d  Freq: %d  Harmonics: %d  Reputation: %d",
 						totalCorrections, totalUnlicensed, totalFreqCorrections, totalHarmonics, reputationTotal),
+					"",
 					resolverLine,
 					resolverPressureLine,
+					"",
 					stabilizerLine,
 					stabilizerReasonLine,
+					"",
 					temporalLine,
 					temporalLatencyLine,
 				},
@@ -6112,7 +6122,7 @@ func buildOverviewLines(
 
 	lines := make([]string, 0, 16+len(cacheBars))
 	pskLine := formatIngestLine(withIngestStatusLabel("PSK", pskLive), pskTotal, pskCW, pskRTTY, pskFT8, pskFT4, pskMSK144, true)
-	pskLine += " | " + formatIngestField("[yellow]PSK31/63[-]", psk31_63, 5)
+	pskLine += " | " + formatIngestField("[yellow]PSK[-]", psk31_63, 5)
 	lines = append(lines,
 		fmt.Sprintf("[yellow]Cluster[-]: %s  [yellow]Version[-]: %s  [yellow]Uptime[-]: %s", clusterCall, Version, formatUptimeShort(uptime)),
 		"MEMORY / GC",
@@ -6130,10 +6140,13 @@ func buildOverviewLines(
 			humanize.Comma(int64(totalHarmonics)),
 			humanize.Comma(int64(reputationTotal)),
 		),
+		"",
 		fmt.Sprintf("[yellow]Resolver[-]: %s", strings.TrimPrefix(resolverLine, "Resolver: ")),
-		fmt.Sprintf("[yellow]Resolver Pressur[-]: %s", strings.TrimPrefix(resolverPressureLine, "Resolver Pressur: ")),
+		fmt.Sprintf("[yellow]Resolver Pressure[-]: %s", strings.TrimPrefix(resolverPressureLine, "Resolver Pressure: ")),
+		"",
 		fmt.Sprintf("[yellow]Stabilizer[-]: %s", strings.TrimPrefix(formatStabilizerSummary(tracker), "Stabilizer: ")),
 		fmt.Sprintf("[yellow]Stabilizer Reason[-]: %s", strings.TrimPrefix(formatStabilizerReasonSummary(tracker), "Stabilizer Reason: ")),
+		"",
 		fmt.Sprintf("[yellow]Temporal[-]: %s", strings.TrimPrefix(formatTemporalSummary(tracker), "Temporal: ")),
 		fmt.Sprintf("[yellow]Temporal latency[-]: %s", strings.TrimPrefix(formatTemporalLatencySummary(tracker), "Temporal latency: ")),
 		"CACHES & DATA FRESHNESS",

@@ -26,15 +26,18 @@ const (
 	placeholderHeader = "[lightgray]Cluster[-]: --  [lightgray]Version[-]: --  [lightgray]Uptime[-]: --:--"
 	placeholderMem    = "[lightgray]Heap[-]: --  [lightgray]Sys[-]: --  [lightgray]GC p99 (interval)[-]: --  [lightgray]Last GC[-]: --  [lightgray]Goroutines[-]: --"
 	placeholderIngest = "[lightgray]RBN[-]: -- | [lightgray]CW[-] -- | [lightgray]RTTY[-] -- | [lightgray]FT8[-] -- | [lightgray]FT4[-] --\n" +
-		"[lightgray]PSK[-]: -- | [lightgray]CW[-] -- | [lightgray]RTTY[-] -- | [lightgray]FT8[-] -- | [lightgray]FT4[-] -- | [lightgray]MSK[-] -- | [lightgray]PSK31/63[-] --\n" +
+		"[lightgray]PSK[-]: -- | [lightgray]CW[-] -- | [lightgray]RTTY[-] -- | [lightgray]FT8[-] -- | [lightgray]FT4[-] -- | [lightgray]MSK[-] -- | [lightgray]PSK[-] --\n" +
 		"[lightgray]P92[-]: --\n" +
 		"[lightgray]Path[-]: -- (U) / -- (S) / -- (N) / -- (G) / -- (H) / -- (B) / -- (M)"
 	placeholderPipeline = "[lightgray]Primary Dedupe[-]: -- | [lightgray]Secondary[-]: F-- M-- S--\n" +
 		"[lightgray]Corrections[-]: -- | [lightgray]Unlicensed[-]: -- | [lightgray]Harmonics[-]: -- | [lightgray]Reputation[-]: --\n" +
+		"\n" +
 		"[lightgray]Resolver[-]: --\n" +
-		"[lightgray]Resolver Pressur[-]: --\n" +
+		"[lightgray]Resolver Pressure[-]: --\n" +
+		"\n" +
 		"[lightgray]Stabilizer[-]: --\n" +
 		"[lightgray]Stabilizer Reason[-]: --\n" +
+		"\n" +
 		"[lightgray]Temporal[-]: --\n" +
 		"[lightgray]Temporal latency[-]: --"
 	placeholderCaches = "[lightgray]Grid cache[-]:  [[white:white]   [black:white]326,629[-:-]   [-:-]░░░░] 98.5%  |  [lightgray]Meta[-]: [[white:white]  [black:white] 5,479[-:-]  [-:-]] 99.5%\n" +
@@ -1008,7 +1011,7 @@ PIPELINE METRICS (PLAIN ENGLISH)
   Secondary F/M/S: Broadcast dedupe output by policy (fast/med/slow).
   Corrections/Unlicensed/Harmonics/Reputation: Cumulative totals since process start.
   Resolver C/P/U/S: Current resolver state counts (confident/probable/uncertain/split).
-  Resolver Pressur:
+  Resolver Pressure:
     pressure: how often candidate/reporter caps were hit.
     evict: how many entries were evicted because of those caps.
     hw: highest candidate/reporter occupancy seen.

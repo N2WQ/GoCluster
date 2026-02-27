@@ -168,6 +168,16 @@ type TelnetConfig struct {
 	// ControlQueueSize bounds per-client control output (bulletins, prompts, keepalives).
 	ControlQueueSize int  `yaml:"control_queue_size"`
 	SkipHandshake    bool `yaml:"skip_handshake"`
+	// RejectWorkers configures asynchronous pre-auth reject writers.
+	RejectWorkers int `yaml:"reject_workers"`
+	// RejectQueueSize bounds queued reject jobs so accept never blocks on reject I/O.
+	RejectQueueSize int `yaml:"reject_queue_size"`
+	// RejectWriteDeadlineMS caps how long reject-banner writes may block.
+	RejectWriteDeadlineMS int `yaml:"reject_write_deadline_ms"`
+	// WriterBatchMaxBytes bounds per-flush payload size for client writer micro-batching.
+	WriterBatchMaxBytes int `yaml:"writer_batch_max_bytes"`
+	// WriterBatchWaitMS sets max wait before flushing a partial writer batch.
+	WriterBatchWaitMS int `yaml:"writer_batch_wait_ms"`
 	// BroadcastBatchIntervalMS controls telnet broadcast micro-batching. 0 disables batching.
 	BroadcastBatchIntervalMS int `yaml:"broadcast_batch_interval_ms"`
 	// KeepaliveSeconds, when >0, emits a periodic CRLF to all connected clients to keep idle
@@ -1768,6 +1778,21 @@ func Load(path string) (*Config, error) {
 	if cfg.Telnet.ControlQueueSize <= 0 {
 		cfg.Telnet.ControlQueueSize = 32
 	}
+	if cfg.Telnet.RejectWorkers <= 0 {
+		cfg.Telnet.RejectWorkers = 2
+	}
+	if cfg.Telnet.RejectQueueSize <= 0 {
+		cfg.Telnet.RejectQueueSize = 1024
+	}
+	if cfg.Telnet.RejectWriteDeadlineMS <= 0 {
+		cfg.Telnet.RejectWriteDeadlineMS = 500
+	}
+	if cfg.Telnet.WriterBatchMaxBytes <= 0 {
+		cfg.Telnet.WriterBatchMaxBytes = 16384
+	}
+	if cfg.Telnet.WriterBatchWaitMS <= 0 {
+		cfg.Telnet.WriterBatchWaitMS = 5
+	}
 	if cfg.Telnet.BroadcastBatchIntervalMS <= 0 {
 		cfg.Telnet.BroadcastBatchIntervalMS = 250
 	}
@@ -2366,6 +2391,12 @@ func (c *Config) Print() {
 		c.Telnet.WorkerQueue,
 		c.Telnet.ClientBuffer,
 		c.Telnet.SkipHandshake)
+	fmt.Printf("Telnet writer/reject: writer_batch=%dB/%dms reject_workers=%d reject_queue=%d reject_deadline=%dms\n",
+		c.Telnet.WriterBatchMaxBytes,
+		c.Telnet.WriterBatchWaitMS,
+		c.Telnet.RejectWorkers,
+		c.Telnet.RejectQueueSize,
+		c.Telnet.RejectWriteDeadlineMS)
 	fmt.Printf("Telnet Tier-A: prelogin_max=%d prelogin_timeout=%ds ip_rate=%.2f/s ip_burst=%d ip_concurrency=%d\n",
 		c.Telnet.MaxPreloginSessions,
 		c.Telnet.PreloginTimeoutSeconds,

@@ -14,6 +14,11 @@ func TestLoadAppliesTelnetPreloginDefaults(t *testing.T) {
   accept_rate_per_ip: 0
   accept_burst_per_ip: 0
   prelogin_concurrency_per_ip: 0
+  reject_workers: 0
+  reject_queue_size: 0
+  reject_write_deadline_ms: 0
+  writer_batch_max_bytes: 0
+  writer_batch_wait_ms: 0
 `
 	if err := os.WriteFile(filepath.Join(dir, "runtime.yaml"), []byte(config), 0o644); err != nil {
 		t.Fatalf("write runtime.yaml: %v", err)
@@ -36,6 +41,21 @@ func TestLoadAppliesTelnetPreloginDefaults(t *testing.T) {
 	}
 	if got := cfg.Telnet.PreloginConcurrencyPerIP; got != 3 {
 		t.Fatalf("expected prelogin_concurrency_per_ip default 3, got %d", got)
+	}
+	if got := cfg.Telnet.RejectWorkers; got != 2 {
+		t.Fatalf("expected reject_workers default 2, got %d", got)
+	}
+	if got := cfg.Telnet.RejectQueueSize; got != 1024 {
+		t.Fatalf("expected reject_queue_size default 1024, got %d", got)
+	}
+	if got := cfg.Telnet.RejectWriteDeadlineMS; got != 500 {
+		t.Fatalf("expected reject_write_deadline_ms default 500, got %d", got)
+	}
+	if got := cfg.Telnet.WriterBatchMaxBytes; got != 16384 {
+		t.Fatalf("expected writer_batch_max_bytes default 16384, got %d", got)
+	}
+	if got := cfg.Telnet.WriterBatchWaitMS; got != 5 {
+		t.Fatalf("expected writer_batch_wait_ms default 5, got %d", got)
 	}
 }
 

@@ -448,6 +448,8 @@ The telnet server fans every post-dedup spot to every connected client. When PSK
 - `worker_queue_size` controls how many per-shard jobs each worker buffers before dropping a shard assignment (default `128`).
 - `client_buffer_size` defines how many spots a single telnet session can fall behind before its personal queue starts dropping (default `128`).
 - `control_queue_size` bounds per-client control output (bulletins, prompts, keepalives). Control always drains before spots; a full control queue disconnects the client.
+- `writer_batch_max_bytes` and `writer_batch_wait_ms` control per-connection control-first writer micro-batching (defaults `16384` bytes and `5ms`).
+- `reject_workers`, `reject_queue_size`, and `reject_write_deadline_ms` move reject-banner I/O off the accept loop with bounded resources (defaults `2`, `1024`, `500ms`).
 - `broadcast_batch_interval_ms` micro-batches outbound broadcasts to reduce mutex/IO churn (default `250`; set to `0` for immediate sends). Each shard flushes on interval or when the batch reaches its max size, preserving order per shard.
 - `login_line_limit` caps how many bytes a user can enter at the login prompt (default `32`). Keep this tight to prevent hostile clients from allocating massive buffers before authentication.
 - `command_line_limit` caps how long any post-login command may be (default `128`). Raise this when operators expect comma-heavy filter commands or scripted clients that send longer payloads.

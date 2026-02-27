@@ -567,7 +567,7 @@ func (t *Tracker) ObserveTemporalCommitLatency(latency time.Duration) {
 		latency = 0
 	}
 	ms := latency.Milliseconds()
-	bucket := "gt_5000"
+	bucket := "gt_10000"
 	switch {
 	case ms <= 500:
 		bucket = "le_500"
@@ -577,6 +577,8 @@ func (t *Tracker) ObserveTemporalCommitLatency(latency time.Duration) {
 		bucket = "le_2000"
 	case ms <= 5000:
 		bucket = "le_5000"
+	case ms <= 10000:
+		bucket = "le_10000"
 	}
 	incrementCounter(&t.temporalLatency, bucket)
 }
