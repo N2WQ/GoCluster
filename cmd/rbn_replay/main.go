@@ -309,6 +309,7 @@ func main() {
 		abMetrics.ObserveResolverSelection(outcome.Selection)
 		abMetrics.ObserveResolverSnapshot(outcome.Selection.Snapshot, outcome.Selection.SnapshotOK)
 		abMetrics.ObserveResolverRecentPlus1Gate(outcome.Gate, outcome.GateEvaluated)
+		abMetrics.ObserveResolverBayesGate(outcome.Gate, outcome.GateEvaluated)
 
 		spotEntry.RefreshBeaconFlag()
 		if outcome.Applied {

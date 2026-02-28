@@ -720,6 +720,9 @@ type CallCorrectionConfig struct {
 	ResolverRecentPlus1RequireSubjectWeaker bool `yaml:"resolver_recent_plus1_require_subject_weaker"`
 	ResolverRecentPlus1MaxDistance          int  `yaml:"resolver_recent_plus1_max_distance"`
 	ResolverRecentPlus1AllowTruncation      bool `yaml:"resolver_recent_plus1_allow_truncation_family"`
+	// BayesBonus applies a conservative, capped prior bonus for distance-1/2
+	// resolver-primary near-threshold cases. The rail is disabled by default.
+	BayesBonus CallCorrectionBayesBonusConfig `yaml:"bayes_bonus"`
 	// TemporalDecoder enables fixed-lag sequence decoding for resolver-primary
 	// winner selection, with bounded pending state and deterministic fallback.
 	TemporalDecoder CallCorrectionTemporalDecoderConfig `yaml:"temporal_decoder"`
@@ -810,6 +813,45 @@ type CallCorrectionTemporalDecoderConfig struct {
 	MaxActiveKeys int `yaml:"max_active_keys"`
 	// MaxEventsPerKey bounds retained observations per key.
 	MaxEventsPerKey int `yaml:"max_events_per_key"`
+}
+
+// CallCorrectionBayesBonusConfig controls a conservative Bayesian-style
+// resolver-primary gate bonus for distance-1/2 candidates.
+type CallCorrectionBayesBonusConfig struct {
+	Enabled bool `yaml:"enabled"`
+
+	// Distance-specific prior scaling (permille). Example: 350 => 0.35.
+	WeightDistance1Milli int `yaml:"weight_distance1_milli"`
+	WeightDistance2Milli int `yaml:"weight_distance2_milli"`
+
+	// Smoothing constants for weighted support and recent evidence terms.
+	WeightedSmoothingMilli int `yaml:"weighted_smoothing_milli"`
+	RecentSmoothing        int `yaml:"recent_smoothing"`
+
+	// Term caps (milli-natural-log units).
+	ObsLogCapMilli   int `yaml:"obs_log_cap_milli"`
+	PriorLogMinMilli int `yaml:"prior_log_min_milli"`
+	PriorLogMaxMilli int `yaml:"prior_log_max_milli"`
+
+	// Report-gate threshold by distance (milli-natural-log units).
+	ReportThresholdDistance1Milli int `yaml:"report_threshold_distance1_milli"`
+	ReportThresholdDistance2Milli int `yaml:"report_threshold_distance2_milli"`
+
+	// Advantage-gate threshold by distance (milli-natural-log units).
+	AdvantageThresholdDistance1Milli int `yaml:"advantage_threshold_distance1_milli"`
+	AdvantageThresholdDistance2Milli int `yaml:"advantage_threshold_distance2_milli"`
+
+	// Minimum weighted-support deltas (milli) required to apply advantage bonus.
+	AdvantageMinWeightedDeltaDistance1Milli int `yaml:"advantage_min_weighted_delta_distance1_milli"`
+	AdvantageMinWeightedDeltaDistance2Milli int `yaml:"advantage_min_weighted_delta_distance2_milli"`
+
+	// Additional confidence points required for advantage bonus by distance.
+	AdvantageExtraConfidenceDistance1 int `yaml:"advantage_extra_confidence_distance1"`
+	AdvantageExtraConfidenceDistance2 int `yaml:"advantage_extra_confidence_distance2"`
+
+	// Additional conservative rails.
+	RequireCandidateValidated          bool `yaml:"require_candidate_validated"`
+	RequireSubjectUnvalidatedDistance2 bool `yaml:"require_subject_unvalidated_distance2"`
 }
 
 // CallCorrectionFamilyPolicyConfig controls family-specific behavior for call
@@ -1135,6 +1177,8 @@ func Load(path string) (*Config, error) {
 	hasResolverRecentPlus1Enabled := yamlKeyPresent(raw, "call_correction", "resolver_recent_plus1_enabled")
 	hasResolverRecentPlus1RequireSubjectWeaker := yamlKeyPresent(raw, "call_correction", "resolver_recent_plus1_require_subject_weaker")
 	hasResolverRecentPlus1AllowTruncation := yamlKeyPresent(raw, "call_correction", "resolver_recent_plus1_allow_truncation_family")
+	hasBayesBonusRequireCandidateValidated := yamlKeyPresent(raw, "call_correction", "bayes_bonus", "require_candidate_validated")
+	hasBayesBonusRequireSubjectUnvalidatedDistance2 := yamlKeyPresent(raw, "call_correction", "bayes_bonus", "require_subject_unvalidated_distance2")
 
 	if legacySecondaryWindow || legacySecondaryPrefer {
 		fmt.Printf("Warning: dedup.secondary_window_seconds and dedup.secondary_prefer_stronger_snr are deprecated and ignored; use secondary_fast_* / secondary_med_* / secondary_slow_* instead.\n")
@@ -1522,6 +1566,136 @@ func Load(path string) (*Config, error) {
 	}
 	if !hasResolverRecentPlus1AllowTruncation {
 		cfg.CallCorrection.ResolverRecentPlus1AllowTruncation = true
+	}
+	if cfg.CallCorrection.BayesBonus.WeightDistance1Milli <= 0 {
+		cfg.CallCorrection.BayesBonus.WeightDistance1Milli = 350
+	}
+	if cfg.CallCorrection.BayesBonus.WeightDistance2Milli <= 0 {
+		cfg.CallCorrection.BayesBonus.WeightDistance2Milli = 200
+	}
+	if cfg.CallCorrection.BayesBonus.WeightDistance1Milli > 1000 {
+		cfg.CallCorrection.BayesBonus.WeightDistance1Milli = 1000
+	}
+	if cfg.CallCorrection.BayesBonus.WeightDistance2Milli > 1000 {
+		cfg.CallCorrection.BayesBonus.WeightDistance2Milli = 1000
+	}
+	if cfg.CallCorrection.BayesBonus.WeightedSmoothingMilli <= 0 {
+		cfg.CallCorrection.BayesBonus.WeightedSmoothingMilli = 1000
+	}
+	if cfg.CallCorrection.BayesBonus.WeightedSmoothingMilli > 100000 {
+		cfg.CallCorrection.BayesBonus.WeightedSmoothingMilli = 100000
+	}
+	if cfg.CallCorrection.BayesBonus.RecentSmoothing <= 0 {
+		cfg.CallCorrection.BayesBonus.RecentSmoothing = 2
+	}
+	if cfg.CallCorrection.BayesBonus.RecentSmoothing > 100 {
+		cfg.CallCorrection.BayesBonus.RecentSmoothing = 100
+	}
+	if cfg.CallCorrection.BayesBonus.ObsLogCapMilli <= 0 {
+		cfg.CallCorrection.BayesBonus.ObsLogCapMilli = 350
+	}
+	if cfg.CallCorrection.BayesBonus.ObsLogCapMilli > 2000 {
+		cfg.CallCorrection.BayesBonus.ObsLogCapMilli = 2000
+	}
+	if cfg.CallCorrection.BayesBonus.PriorLogMinMilli == 0 {
+		cfg.CallCorrection.BayesBonus.PriorLogMinMilli = -200
+	}
+	if cfg.CallCorrection.BayesBonus.PriorLogMaxMilli == 0 {
+		cfg.CallCorrection.BayesBonus.PriorLogMaxMilli = 600
+	}
+	if cfg.CallCorrection.BayesBonus.PriorLogMinMilli > -10 {
+		cfg.CallCorrection.BayesBonus.PriorLogMinMilli = -10
+	}
+	if cfg.CallCorrection.BayesBonus.PriorLogMinMilli < -2000 {
+		cfg.CallCorrection.BayesBonus.PriorLogMinMilli = -2000
+	}
+	if cfg.CallCorrection.BayesBonus.PriorLogMaxMilli < 10 {
+		cfg.CallCorrection.BayesBonus.PriorLogMaxMilli = 10
+	}
+	if cfg.CallCorrection.BayesBonus.PriorLogMaxMilli > 3000 {
+		cfg.CallCorrection.BayesBonus.PriorLogMaxMilli = 3000
+	}
+	if cfg.CallCorrection.BayesBonus.PriorLogMinMilli >= cfg.CallCorrection.BayesBonus.PriorLogMaxMilli {
+		cfg.CallCorrection.BayesBonus.PriorLogMinMilli = -200
+		cfg.CallCorrection.BayesBonus.PriorLogMaxMilli = 600
+	}
+	if cfg.CallCorrection.BayesBonus.ReportThresholdDistance1Milli <= 0 {
+		cfg.CallCorrection.BayesBonus.ReportThresholdDistance1Milli = 450
+	}
+	if cfg.CallCorrection.BayesBonus.ReportThresholdDistance2Milli <= 0 {
+		cfg.CallCorrection.BayesBonus.ReportThresholdDistance2Milli = 650
+	}
+	if cfg.CallCorrection.BayesBonus.ReportThresholdDistance1Milli > 4000 {
+		cfg.CallCorrection.BayesBonus.ReportThresholdDistance1Milli = 4000
+	}
+	if cfg.CallCorrection.BayesBonus.ReportThresholdDistance2Milli > 4000 {
+		cfg.CallCorrection.BayesBonus.ReportThresholdDistance2Milli = 4000
+	}
+	if cfg.CallCorrection.BayesBonus.ReportThresholdDistance2Milli < cfg.CallCorrection.BayesBonus.ReportThresholdDistance1Milli {
+		cfg.CallCorrection.BayesBonus.ReportThresholdDistance2Milli = cfg.CallCorrection.BayesBonus.ReportThresholdDistance1Milli
+	}
+	if cfg.CallCorrection.BayesBonus.AdvantageThresholdDistance1Milli <= 0 {
+		cfg.CallCorrection.BayesBonus.AdvantageThresholdDistance1Milli = 700
+	}
+	if cfg.CallCorrection.BayesBonus.AdvantageThresholdDistance2Milli <= 0 {
+		cfg.CallCorrection.BayesBonus.AdvantageThresholdDistance2Milli = 950
+	}
+	if cfg.CallCorrection.BayesBonus.AdvantageThresholdDistance1Milli > 4000 {
+		cfg.CallCorrection.BayesBonus.AdvantageThresholdDistance1Milli = 4000
+	}
+	if cfg.CallCorrection.BayesBonus.AdvantageThresholdDistance2Milli > 4000 {
+		cfg.CallCorrection.BayesBonus.AdvantageThresholdDistance2Milli = 4000
+	}
+	if cfg.CallCorrection.BayesBonus.AdvantageThresholdDistance2Milli < cfg.CallCorrection.BayesBonus.AdvantageThresholdDistance1Milli {
+		cfg.CallCorrection.BayesBonus.AdvantageThresholdDistance2Milli = cfg.CallCorrection.BayesBonus.AdvantageThresholdDistance1Milli
+	}
+	if cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance1Milli < 0 {
+		cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance1Milli = 0
+	}
+	if cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance2Milli < 0 {
+		cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance2Milli = 0
+	}
+	if cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance1Milli == 0 {
+		cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance1Milli = 200
+	}
+	if cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance2Milli == 0 {
+		cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance2Milli = 300
+	}
+	if cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance1Milli > 5000 {
+		cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance1Milli = 5000
+	}
+	if cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance2Milli > 5000 {
+		cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance2Milli = 5000
+	}
+	if cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance2Milli < cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance1Milli {
+		cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance2Milli = cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance1Milli
+	}
+	if cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance1 < 0 {
+		cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance1 = 0
+	}
+	if cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance2 < 0 {
+		cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance2 = 0
+	}
+	if cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance1 == 0 {
+		cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance1 = 3
+	}
+	if cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance2 == 0 {
+		cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance2 = 5
+	}
+	if cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance1 > 50 {
+		cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance1 = 50
+	}
+	if cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance2 > 50 {
+		cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance2 = 50
+	}
+	if cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance2 < cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance1 {
+		cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance2 = cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance1
+	}
+	if !hasBayesBonusRequireCandidateValidated {
+		cfg.CallCorrection.BayesBonus.RequireCandidateValidated = true
+	}
+	if !hasBayesBonusRequireSubjectUnvalidatedDistance2 {
+		cfg.CallCorrection.BayesBonus.RequireSubjectUnvalidatedDistance2 = true
 	}
 	cfg.CallCorrection.TemporalDecoder.Scope = strings.ToLower(strings.TrimSpace(cfg.CallCorrection.TemporalDecoder.Scope))
 	if cfg.CallCorrection.TemporalDecoder.Scope == "" {
@@ -2621,6 +2795,29 @@ func (c *Config) Print() {
 		c.CallCorrection.ResolverRecentPlus1RequireSubjectWeaker,
 		c.CallCorrection.ResolverRecentPlus1MaxDistance,
 		c.CallCorrection.ResolverRecentPlus1AllowTruncation)
+	bayesStatus := "disabled"
+	if c.CallCorrection.BayesBonus.Enabled {
+		bayesStatus = "enabled"
+	}
+	fmt.Printf("Call correction bayes bonus: %s (w_d1=%d w_d2=%d tau_w=%d alpha_recent=%d obs_cap=%d prior=[%d,%d] report_thr=[%d,%d] adv_thr=[%d,%d] adv_delta_w=[%d,%d] adv_conf=[%d,%d] require_candidate_validated=%t require_subject_unvalidated_d2=%t)\n",
+		bayesStatus,
+		c.CallCorrection.BayesBonus.WeightDistance1Milli,
+		c.CallCorrection.BayesBonus.WeightDistance2Milli,
+		c.CallCorrection.BayesBonus.WeightedSmoothingMilli,
+		c.CallCorrection.BayesBonus.RecentSmoothing,
+		c.CallCorrection.BayesBonus.ObsLogCapMilli,
+		c.CallCorrection.BayesBonus.PriorLogMinMilli,
+		c.CallCorrection.BayesBonus.PriorLogMaxMilli,
+		c.CallCorrection.BayesBonus.ReportThresholdDistance1Milli,
+		c.CallCorrection.BayesBonus.ReportThresholdDistance2Milli,
+		c.CallCorrection.BayesBonus.AdvantageThresholdDistance1Milli,
+		c.CallCorrection.BayesBonus.AdvantageThresholdDistance2Milli,
+		c.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance1Milli,
+		c.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance2Milli,
+		c.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance1,
+		c.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance2,
+		c.CallCorrection.BayesBonus.RequireCandidateValidated,
+		c.CallCorrection.BayesBonus.RequireSubjectUnvalidatedDistance2)
 	temporalStatus := "disabled"
 	if c.CallCorrection.TemporalDecoder.Enabled {
 		temporalStatus = "enabled"

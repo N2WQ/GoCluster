@@ -1844,7 +1844,7 @@ func TestMaybeApplyResolverCorrectionAppliesTruncationLengthBonusParity(t *testi
 		t.Fatalf("expected VE3NNT to be more specific, got relation=%+v", relation)
 	}
 
-	result := spot.EvaluateResolverPrimaryGates("VE3NN", "VE3NNT", "40m", "CW", 1, 2, 66, settings, time.Now().UTC(), spot.ResolverPrimaryGateOptions{})
+	result := spot.EvaluateResolverPrimaryGates("VE3NN", "VE3NNT", "40m", "CW", 1, 2, 66, 1000, 2000, settings, time.Now().UTC(), spot.ResolverPrimaryGateOptions{})
 	if !result.Allow {
 		t.Fatalf("expected truncation length bonus parity to admit VE3NNT, reason=%q result=%+v", result.Reason, result)
 	}
@@ -1880,7 +1880,7 @@ func TestMaybeApplyResolverCorrectionHonorsTruncationDelta2ValidationRail(t *tes
 		t.Fatalf("expected VE3NNTT to be more specific, got relation=%+v", relation)
 	}
 
-	result := spot.EvaluateResolverPrimaryGates("VE3NN", "VE3NNTT", "40m", "CW", 1, 2, 66, settings, time.Now().UTC(), spot.ResolverPrimaryGateOptions{})
+	result := spot.EvaluateResolverPrimaryGates("VE3NN", "VE3NNTT", "40m", "CW", 1, 2, 66, 1000, 2000, settings, time.Now().UTC(), spot.ResolverPrimaryGateOptions{})
 	if result.Allow {
 		t.Fatalf("expected delta-2 validation rail to block correction result=%+v", result)
 	}
@@ -1920,6 +1920,8 @@ func TestEvaluateResolverPrimaryGatesAppliesRecentPlus1OneShort(t *testing.T) {
 		1,
 		2,
 		66,
+		1000,
+		2000,
 		settings,
 		now,
 		spot.ResolverPrimaryGateOptions{},
@@ -1968,6 +1970,8 @@ func TestEvaluateResolverPrimaryGatesRejectsRecentPlus1WhenSubjectNotWeaker(t *t
 		1,
 		2,
 		66,
+		1000,
+		2000,
 		settings,
 		now,
 		spot.ResolverPrimaryGateOptions{},
@@ -1980,6 +1984,194 @@ func TestEvaluateResolverPrimaryGatesRejectsRecentPlus1WhenSubjectNotWeaker(t *t
 	}
 	if result.RecentPlus1Reject != "subject_not_weaker" {
 		t.Fatalf("expected subject_not_weaker reject, got %q", result.RecentPlus1Reject)
+	}
+}
+
+func TestEvaluateResolverPrimaryGatesAppliesBayesReportBonusOneShort(t *testing.T) {
+	now := time.Now().UTC()
+	recent := newRecentBandStoreForStabilizerAdmissionTests()
+	recent.Record("K1ABC", "40m", "CW", "N0AAA", now.Add(-time.Minute))
+	recent.Record("K1ABC", "40m", "CW", "N0AAB", now.Add(-time.Minute))
+	recent.Record("K1ABC", "40m", "CW", "N0AAC", now.Add(-time.Minute))
+	recent.Record("K1ABC", "40m", "CW", "N0AAD", now.Add(-time.Minute))
+	recent.Record("K1ABD", "40m", "CW", "N0AAE", now.Add(-time.Minute))
+
+	settings := spot.CorrectionSettings{
+		MinConsensusReports:               3,
+		MinAdvantage:                      1,
+		MinConfidencePercent:              45,
+		MaxEditDistance:                   3,
+		DistanceModelCW:                   "morse",
+		DistanceModelRTTY:                 "baudot",
+		RecentBandStore:                   recent,
+		RecentBandRecordMinUniqueSpotters: 2,
+		ResolverRecentPlus1Enabled:        false,
+		BayesBonusPolicy: spot.CorrectionBayesBonusPolicy{
+			Configured:                       true,
+			Enabled:                          true,
+			AdvantageThresholdDistance1Milli: 450,
+		},
+	}
+	result := spot.EvaluateResolverPrimaryGates(
+		"K1ABD",
+		"K1ABC",
+		"40m",
+		"CW",
+		1,
+		2,
+		66,
+		1000,
+		3000,
+		settings,
+		now,
+		spot.ResolverPrimaryGateOptions{},
+	)
+	if !result.Allow {
+		t.Fatalf("expected bayes report bonus to admit one-short winner, result=%+v", result)
+	}
+	if !result.BayesReportBonusConsidered || !result.BayesReportBonusApplied {
+		t.Fatalf("expected bayes report bonus considered+applied, result=%+v", result)
+	}
+	if result.EffectiveSupport != 3 {
+		t.Fatalf("expected effective support 3, got %d", result.EffectiveSupport)
+	}
+}
+
+func TestEvaluateResolverPrimaryGatesRejectsBayesReportBonusScoreBelowThreshold(t *testing.T) {
+	now := time.Now().UTC()
+	recent := newRecentBandStoreForStabilizerAdmissionTests()
+	recent.Record("K1ABC", "40m", "CW", "N0AAA", now.Add(-time.Minute))
+	recent.Record("K1ABC", "40m", "CW", "N0AAB", now.Add(-time.Minute))
+	recent.Record("K1ABC", "40m", "CW", "N0AAC", now.Add(-time.Minute))
+	recent.Record("K1ABD", "40m", "CW", "N0AAD", now.Add(-time.Minute))
+	recent.Record("K1ABD", "40m", "CW", "N0AAE", now.Add(-time.Minute))
+
+	settings := spot.CorrectionSettings{
+		MinConsensusReports:               3,
+		MinAdvantage:                      1,
+		MinConfidencePercent:              45,
+		MaxEditDistance:                   3,
+		DistanceModelCW:                   "morse",
+		DistanceModelRTTY:                 "baudot",
+		RecentBandStore:                   recent,
+		RecentBandRecordMinUniqueSpotters: 2,
+		ResolverRecentPlus1Enabled:        false,
+		BayesBonusPolicy: spot.CorrectionBayesBonusPolicy{
+			Configured:                       true,
+			Enabled:                          true,
+			AdvantageThresholdDistance1Milli: 450,
+		},
+	}
+	result := spot.EvaluateResolverPrimaryGates(
+		"K1ABD",
+		"K1ABC",
+		"40m",
+		"CW",
+		1,
+		2,
+		66,
+		1800,
+		2000,
+		settings,
+		now,
+		spot.ResolverPrimaryGateOptions{},
+	)
+	if result.Allow {
+		t.Fatalf("expected bayes score rail to block one-short report bonus, result=%+v", result)
+	}
+	if result.Reason != "min_reports" {
+		t.Fatalf("expected min_reports reject, got %q", result.Reason)
+	}
+	if !result.BayesReportBonusConsidered || result.BayesReportBonusApplied {
+		t.Fatalf("expected bayes report bonus considered but not applied, result=%+v", result)
+	}
+	if result.BayesReportBonusReject != "score_below_threshold" {
+		t.Fatalf("expected score_below_threshold reject, got %q", result.BayesReportBonusReject)
+	}
+}
+
+func TestEvaluateResolverPrimaryGatesAppliesBayesAdvantageTieBreak(t *testing.T) {
+	now := time.Now().UTC()
+	recent := newRecentBandStoreForStabilizerAdmissionTests()
+	recent.Record("K1ABC", "40m", "CW", "N0AAA", now.Add(-time.Minute))
+	recent.Record("K1ABC", "40m", "CW", "N0AAB", now.Add(-time.Minute))
+	recent.Record("K1ABC", "40m", "CW", "N0AAC", now.Add(-time.Minute))
+	recent.Record("K1ABC", "40m", "CW", "N0AAD", now.Add(-time.Minute))
+	recent.Record("K1ABD", "40m", "CW", "N0AAE", now.Add(-time.Minute))
+
+	settings := spot.CorrectionSettings{
+		MinConsensusReports:               3,
+		MinAdvantage:                      1,
+		MinConfidencePercent:              45,
+		MaxEditDistance:                   3,
+		DistanceModelCW:                   "morse",
+		DistanceModelRTTY:                 "baudot",
+		RecentBandStore:                   recent,
+		RecentBandRecordMinUniqueSpotters: 2,
+		ResolverRecentPlus1Enabled:        false,
+		BayesBonusPolicy: spot.CorrectionBayesBonusPolicy{
+			Configured:                       true,
+			Enabled:                          true,
+			AdvantageThresholdDistance1Milli: 450,
+		},
+	}
+	result := spot.EvaluateResolverPrimaryGates(
+		"K1ABD",
+		"K1ABC",
+		"40m",
+		"CW",
+		2,
+		2,
+		70,
+		1500,
+		2300,
+		settings,
+		now,
+		spot.ResolverPrimaryGateOptions{},
+	)
+	if !result.Allow {
+		t.Fatalf("expected bayes advantage tie-break to admit winner, result=%+v", result)
+	}
+	if !result.BayesReportBonusApplied {
+		t.Fatalf("expected bayes report bonus to support one-short min_reports, result=%+v", result)
+	}
+	if !result.BayesAdvantageConsidered || !result.BayesAdvantageApplied {
+		t.Fatalf("expected bayes advantage bonus considered+applied, result=%+v", result)
+	}
+	if result.EffectiveAdvantageSupport != 3 {
+		t.Fatalf("expected effective advantage support 3, got %d", result.EffectiveAdvantageSupport)
+	}
+}
+
+func TestResolverBayesDecisionReasonReportReject(t *testing.T) {
+	reason, ok := resolverBayesDecisionReason(spot.ResolverPrimaryGateResult{
+		Reason:                     "min_reports",
+		BayesReportBonusConsidered: true,
+		BayesReportBonusApplied:    false,
+		BayesReportBonusReject:     "score_below_threshold",
+	})
+	if !ok {
+		t.Fatalf("expected bayes report reject reason")
+	}
+	want := resolverDecisionBayesReportRejectPrefix + "score_below_threshold"
+	if reason != want {
+		t.Fatalf("expected %q, got %q", want, reason)
+	}
+}
+
+func TestResolverBayesDecisionReasonAdvantageReject(t *testing.T) {
+	reason, ok := resolverBayesDecisionReason(spot.ResolverPrimaryGateResult{
+		Reason:                   "advantage",
+		BayesAdvantageConsidered: true,
+		BayesAdvantageApplied:    false,
+		BayesAdvantageReject:     "weighted_delta_insufficient",
+	})
+	if !ok {
+		t.Fatalf("expected bayes advantage reject reason")
+	}
+	want := resolverDecisionBayesAdvantageRejectPrefix + "weighted_delta_insufficient"
+	if reason != want {
+		t.Fatalf("expected %q, got %q", want, reason)
 	}
 }
 
@@ -2359,6 +2551,26 @@ func TestBuildCorrectionSettingsMapsConfigFields(t *testing.T) {
 		ResolverRecentPlus1RequireSubjectWeaker: true,
 		ResolverRecentPlus1MaxDistance:          1,
 		ResolverRecentPlus1AllowTruncation:      true,
+		BayesBonus: config.CallCorrectionBayesBonusConfig{
+			Enabled:                                 true,
+			WeightDistance1Milli:                    330,
+			WeightDistance2Milli:                    180,
+			WeightedSmoothingMilli:                  1200,
+			RecentSmoothing:                         3,
+			ObsLogCapMilli:                          400,
+			PriorLogMinMilli:                        -250,
+			PriorLogMaxMilli:                        700,
+			ReportThresholdDistance1Milli:           500,
+			ReportThresholdDistance2Milli:           700,
+			AdvantageThresholdDistance1Milli:        750,
+			AdvantageThresholdDistance2Milli:        980,
+			AdvantageMinWeightedDeltaDistance1Milli: 250,
+			AdvantageMinWeightedDeltaDistance2Milli: 350,
+			AdvantageExtraConfidenceDistance1:       4,
+			AdvantageExtraConfidenceDistance2:       6,
+			RequireCandidateValidated:               false,
+			RequireSubjectUnvalidatedDistance2:      false,
+		},
 	}
 	window := 75 * time.Second
 	recentBandStore := spot.NewRecentBandStore(12 * time.Hour)
@@ -2432,6 +2644,27 @@ func TestBuildCorrectionSettingsMapsConfigFields(t *testing.T) {
 		got.ResolverRecentPlus1MaxDistance != cfg.ResolverRecentPlus1MaxDistance ||
 		got.ResolverRecentPlus1AllowTruncation != cfg.ResolverRecentPlus1AllowTruncation {
 		t.Fatalf("expected correction settings to mirror config fields")
+	}
+	if !got.BayesBonusPolicy.Configured ||
+		got.BayesBonusPolicy.Enabled != cfg.BayesBonus.Enabled ||
+		got.BayesBonusPolicy.WeightDistance1Milli != cfg.BayesBonus.WeightDistance1Milli ||
+		got.BayesBonusPolicy.WeightDistance2Milli != cfg.BayesBonus.WeightDistance2Milli ||
+		got.BayesBonusPolicy.WeightedSmoothingMilli != cfg.BayesBonus.WeightedSmoothingMilli ||
+		got.BayesBonusPolicy.RecentSmoothing != cfg.BayesBonus.RecentSmoothing ||
+		got.BayesBonusPolicy.ObsLogCapMilli != cfg.BayesBonus.ObsLogCapMilli ||
+		got.BayesBonusPolicy.PriorLogMinMilli != cfg.BayesBonus.PriorLogMinMilli ||
+		got.BayesBonusPolicy.PriorLogMaxMilli != cfg.BayesBonus.PriorLogMaxMilli ||
+		got.BayesBonusPolicy.ReportThresholdDistance1Milli != cfg.BayesBonus.ReportThresholdDistance1Milli ||
+		got.BayesBonusPolicy.ReportThresholdDistance2Milli != cfg.BayesBonus.ReportThresholdDistance2Milli ||
+		got.BayesBonusPolicy.AdvantageThresholdDistance1Milli != cfg.BayesBonus.AdvantageThresholdDistance1Milli ||
+		got.BayesBonusPolicy.AdvantageThresholdDistance2Milli != cfg.BayesBonus.AdvantageThresholdDistance2Milli ||
+		got.BayesBonusPolicy.AdvantageMinWeightedDeltaDistance1Milli != cfg.BayesBonus.AdvantageMinWeightedDeltaDistance1Milli ||
+		got.BayesBonusPolicy.AdvantageMinWeightedDeltaDistance2Milli != cfg.BayesBonus.AdvantageMinWeightedDeltaDistance2Milli ||
+		got.BayesBonusPolicy.AdvantageExtraConfidenceDistance1 != cfg.BayesBonus.AdvantageExtraConfidenceDistance1 ||
+		got.BayesBonusPolicy.AdvantageExtraConfidenceDistance2 != cfg.BayesBonus.AdvantageExtraConfidenceDistance2 ||
+		got.BayesBonusPolicy.RequireCandidateValidated != cfg.BayesBonus.RequireCandidateValidated ||
+		got.BayesBonusPolicy.RequireSubjectUnvalidatedDistance2 != cfg.BayesBonus.RequireSubjectUnvalidatedDistance2 {
+		t.Fatalf("expected bayes bonus mapping to be preserved")
 	}
 	if got.KnownCallset != knownCallset {
 		t.Fatalf("expected known callset pointer to be preserved")

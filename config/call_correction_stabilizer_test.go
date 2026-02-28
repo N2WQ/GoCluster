@@ -81,6 +81,25 @@ func TestLoadCallCorrectionStabilizerDefaults(t *testing.T) {
 	if !cfg.CallCorrection.ResolverRecentPlus1AllowTruncation {
 		t.Fatalf("expected resolver recent plus1 truncation-family allowance enabled by default")
 	}
+	if cfg.CallCorrection.BayesBonus.Enabled {
+		t.Fatalf("expected bayes bonus disabled by default")
+	}
+	if cfg.CallCorrection.BayesBonus.WeightDistance1Milli != 350 || cfg.CallCorrection.BayesBonus.WeightDistance2Milli != 200 {
+		t.Fatalf("expected bayes distance weights defaults 350/200, got %d/%d",
+			cfg.CallCorrection.BayesBonus.WeightDistance1Milli,
+			cfg.CallCorrection.BayesBonus.WeightDistance2Milli)
+	}
+	if cfg.CallCorrection.BayesBonus.ReportThresholdDistance1Milli != 450 || cfg.CallCorrection.BayesBonus.ReportThresholdDistance2Milli != 650 {
+		t.Fatalf("expected bayes report thresholds defaults 450/650, got %d/%d",
+			cfg.CallCorrection.BayesBonus.ReportThresholdDistance1Milli,
+			cfg.CallCorrection.BayesBonus.ReportThresholdDistance2Milli)
+	}
+	if !cfg.CallCorrection.BayesBonus.RequireCandidateValidated {
+		t.Fatalf("expected bayes require_candidate_validated enabled by default")
+	}
+	if !cfg.CallCorrection.BayesBonus.RequireSubjectUnvalidatedDistance2 {
+		t.Fatalf("expected bayes require_subject_unvalidated_distance2 enabled by default")
+	}
 	if cfg.CallCorrection.TemporalDecoder.Enabled {
 		t.Fatalf("expected temporal decoder disabled by default")
 	}
@@ -225,6 +244,25 @@ func TestLoadCallCorrectionFamilyPolicyOverrides(t *testing.T) {
   resolver_recent_plus1_require_subject_weaker: false
   resolver_recent_plus1_max_distance: 2
   resolver_recent_plus1_allow_truncation_family: false
+  bayes_bonus:
+    enabled: true
+    weight_distance1_milli: 330
+    weight_distance2_milli: 180
+    weighted_smoothing_milli: 1200
+    recent_smoothing: 3
+    obs_log_cap_milli: 400
+    prior_log_min_milli: -250
+    prior_log_max_milli: 700
+    report_threshold_distance1_milli: 500
+    report_threshold_distance2_milli: 700
+    advantage_threshold_distance1_milli: 750
+    advantage_threshold_distance2_milli: 980
+    advantage_min_weighted_delta_distance1_milli: 250
+    advantage_min_weighted_delta_distance2_milli: 350
+    advantage_extra_confidence_distance1: 4
+    advantage_extra_confidence_distance2: 6
+    require_candidate_validated: false
+    require_subject_unvalidated_distance2: false
   temporal_decoder:
     enabled: true
     scope: "all_correction_candidates"
@@ -331,6 +369,57 @@ func TestLoadCallCorrectionFamilyPolicyOverrides(t *testing.T) {
 	}
 	if cfg.CallCorrection.ResolverRecentPlus1AllowTruncation {
 		t.Fatalf("expected resolver recent plus1 truncation-family allowance disabled by override")
+	}
+	if !cfg.CallCorrection.BayesBonus.Enabled {
+		t.Fatalf("expected bayes bonus enabled by override")
+	}
+	if cfg.CallCorrection.BayesBonus.WeightDistance1Milli != 330 || cfg.CallCorrection.BayesBonus.WeightDistance2Milli != 180 {
+		t.Fatalf("expected bayes distance weights 330/180, got %d/%d",
+			cfg.CallCorrection.BayesBonus.WeightDistance1Milli,
+			cfg.CallCorrection.BayesBonus.WeightDistance2Milli)
+	}
+	if cfg.CallCorrection.BayesBonus.WeightedSmoothingMilli != 1200 || cfg.CallCorrection.BayesBonus.RecentSmoothing != 3 {
+		t.Fatalf("expected bayes smoothing 1200/3, got %d/%d",
+			cfg.CallCorrection.BayesBonus.WeightedSmoothingMilli,
+			cfg.CallCorrection.BayesBonus.RecentSmoothing)
+	}
+	if cfg.CallCorrection.BayesBonus.ObsLogCapMilli != 400 ||
+		cfg.CallCorrection.BayesBonus.PriorLogMinMilli != -250 ||
+		cfg.CallCorrection.BayesBonus.PriorLogMaxMilli != 700 {
+		t.Fatalf("expected bayes log caps 400/-250/700, got %d/%d/%d",
+			cfg.CallCorrection.BayesBonus.ObsLogCapMilli,
+			cfg.CallCorrection.BayesBonus.PriorLogMinMilli,
+			cfg.CallCorrection.BayesBonus.PriorLogMaxMilli)
+	}
+	if cfg.CallCorrection.BayesBonus.ReportThresholdDistance1Milli != 500 ||
+		cfg.CallCorrection.BayesBonus.ReportThresholdDistance2Milli != 700 {
+		t.Fatalf("expected bayes report thresholds 500/700, got %d/%d",
+			cfg.CallCorrection.BayesBonus.ReportThresholdDistance1Milli,
+			cfg.CallCorrection.BayesBonus.ReportThresholdDistance2Milli)
+	}
+	if cfg.CallCorrection.BayesBonus.AdvantageThresholdDistance1Milli != 750 ||
+		cfg.CallCorrection.BayesBonus.AdvantageThresholdDistance2Milli != 980 {
+		t.Fatalf("expected bayes advantage thresholds 750/980, got %d/%d",
+			cfg.CallCorrection.BayesBonus.AdvantageThresholdDistance1Milli,
+			cfg.CallCorrection.BayesBonus.AdvantageThresholdDistance2Milli)
+	}
+	if cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance1Milli != 250 ||
+		cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance2Milli != 350 {
+		t.Fatalf("expected bayes weighted deltas 250/350, got %d/%d",
+			cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance1Milli,
+			cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance2Milli)
+	}
+	if cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance1 != 4 ||
+		cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance2 != 6 {
+		t.Fatalf("expected bayes extra confidence 4/6, got %d/%d",
+			cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance1,
+			cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance2)
+	}
+	if cfg.CallCorrection.BayesBonus.RequireCandidateValidated {
+		t.Fatalf("expected bayes require_candidate_validated disabled by override")
+	}
+	if cfg.CallCorrection.BayesBonus.RequireSubjectUnvalidatedDistance2 {
+		t.Fatalf("expected bayes require_subject_unvalidated_distance2 disabled by override")
 	}
 	if !cfg.CallCorrection.TemporalDecoder.Enabled {
 		t.Fatalf("expected temporal decoder enabled by override")
@@ -456,6 +545,23 @@ func TestLoadCallCorrectionStabilizerDelayKnobSanitization(t *testing.T) {
   resolver_neighborhood_max_distance: -2
   resolver_recent_plus1_min_unique_winner: -3
   resolver_recent_plus1_max_distance: -2
+  bayes_bonus:
+    enabled: true
+    weight_distance1_milli: -50
+    weight_distance2_milli: 2500
+    weighted_smoothing_milli: -10
+    recent_smoothing: -2
+    obs_log_cap_milli: -4
+    prior_log_min_milli: 100
+    prior_log_max_milli: -100
+    report_threshold_distance1_milli: -5
+    report_threshold_distance2_milli: -6
+    advantage_threshold_distance1_milli: -7
+    advantage_threshold_distance2_milli: -8
+    advantage_min_weighted_delta_distance1_milli: -9
+    advantage_min_weighted_delta_distance2_milli: -10
+    advantage_extra_confidence_distance1: -11
+    advantage_extra_confidence_distance2: -12
   temporal_decoder:
     scope: "uncertain_only"
     lag_seconds: -2
@@ -506,6 +612,48 @@ func TestLoadCallCorrectionStabilizerDelayKnobSanitization(t *testing.T) {
 	}
 	if cfg.CallCorrection.ResolverRecentPlus1MaxDistance != 1 {
 		t.Fatalf("expected resolver recent plus1 max distance defaulted to 1, got %d", cfg.CallCorrection.ResolverRecentPlus1MaxDistance)
+	}
+	if cfg.CallCorrection.BayesBonus.WeightDistance1Milli != 350 {
+		t.Fatalf("expected bayes distance1 weight defaulted to 350, got %d", cfg.CallCorrection.BayesBonus.WeightDistance1Milli)
+	}
+	if cfg.CallCorrection.BayesBonus.WeightDistance2Milli != 1000 {
+		t.Fatalf("expected bayes distance2 weight clamped to 1000, got %d", cfg.CallCorrection.BayesBonus.WeightDistance2Milli)
+	}
+	if cfg.CallCorrection.BayesBonus.WeightedSmoothingMilli != 1000 || cfg.CallCorrection.BayesBonus.RecentSmoothing != 2 {
+		t.Fatalf("expected bayes smoothing defaults 1000/2, got %d/%d",
+			cfg.CallCorrection.BayesBonus.WeightedSmoothingMilli,
+			cfg.CallCorrection.BayesBonus.RecentSmoothing)
+	}
+	if cfg.CallCorrection.BayesBonus.ObsLogCapMilli != 350 {
+		t.Fatalf("expected bayes obs log cap defaulted to 350, got %d", cfg.CallCorrection.BayesBonus.ObsLogCapMilli)
+	}
+	if cfg.CallCorrection.BayesBonus.PriorLogMinMilli != -10 || cfg.CallCorrection.BayesBonus.PriorLogMaxMilli != 10 {
+		t.Fatalf("expected bayes prior bounds clamped to -10/10, got %d/%d",
+			cfg.CallCorrection.BayesBonus.PriorLogMinMilli,
+			cfg.CallCorrection.BayesBonus.PriorLogMaxMilli)
+	}
+	if cfg.CallCorrection.BayesBonus.ReportThresholdDistance1Milli != 450 || cfg.CallCorrection.BayesBonus.ReportThresholdDistance2Milli != 650 {
+		t.Fatalf("expected bayes report thresholds defaults 450/650, got %d/%d",
+			cfg.CallCorrection.BayesBonus.ReportThresholdDistance1Milli,
+			cfg.CallCorrection.BayesBonus.ReportThresholdDistance2Milli)
+	}
+	if cfg.CallCorrection.BayesBonus.AdvantageThresholdDistance1Milli != 700 || cfg.CallCorrection.BayesBonus.AdvantageThresholdDistance2Milli != 950 {
+		t.Fatalf("expected bayes advantage thresholds defaults 700/950, got %d/%d",
+			cfg.CallCorrection.BayesBonus.AdvantageThresholdDistance1Milli,
+			cfg.CallCorrection.BayesBonus.AdvantageThresholdDistance2Milli)
+	}
+	if cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance1Milli != 200 || cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance2Milli != 300 {
+		t.Fatalf("expected bayes weighted-delta defaults 200/300, got %d/%d",
+			cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance1Milli,
+			cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance2Milli)
+	}
+	if cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance1 != 3 || cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance2 != 5 {
+		t.Fatalf("expected bayes extra-confidence defaults 3/5, got %d/%d",
+			cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance1,
+			cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance2)
+	}
+	if !cfg.CallCorrection.BayesBonus.RequireCandidateValidated || !cfg.CallCorrection.BayesBonus.RequireSubjectUnvalidatedDistance2 {
+		t.Fatalf("expected bayes conservative validation flags to default to true")
 	}
 	if cfg.CallCorrection.TemporalDecoder.LagSeconds != 2 {
 		t.Fatalf("expected temporal lag defaulted to 2, got %d", cfg.CallCorrection.TemporalDecoder.LagSeconds)

@@ -109,3 +109,56 @@ func TestCustomSCPStoreH3CellDiversityGate(t *testing.T) {
 		t.Fatalf("expected H3 diversity gate to pass after multi-cell evidence")
 	}
 }
+
+func TestCustomSCPStoreRecordSpotAdmitsVOnly(t *testing.T) {
+	store, err := OpenCustomSCPStore(CustomSCPOptions{
+		Path:           filepath.Join(t.TempDir(), "scp"),
+		CoreMinScore:   1,
+		CoreMinH3Cells: 1,
+	})
+	if err != nil {
+		t.Fatalf("open custom store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+
+	now := time.Now().UTC()
+	makeSpot := func(spotter, confidence string) *Spot {
+		return &Spot{
+			DXCall:     "K1ABC",
+			DECall:     spotter,
+			DEGridNorm: "FN20",
+			Frequency:  7020,
+			Band:       "40m",
+			Mode:       "CW",
+			HasReport:  true,
+			Report:     12,
+			Time:       now,
+			Confidence: confidence,
+		}
+	}
+
+	store.RecordSpot(makeSpot("N0AAA", "S"))
+	if store.StaticContains("K1ABC") {
+		t.Fatalf("expected S confidence to be rejected from static membership")
+	}
+
+	store.RecordSpot(makeSpot("N0BBB", "P"))
+	if store.StaticContains("K1ABC") {
+		t.Fatalf("expected P confidence to be rejected from static membership")
+	}
+
+	store.RecordSpot(makeSpot("N0CCC", "C"))
+	if store.StaticContains("K1ABC") {
+		t.Fatalf("expected C confidence to be rejected from static membership")
+	}
+
+	store.RecordSpot(makeSpot("N0DDD", "V"))
+	if !store.StaticContains("K1ABC") {
+		t.Fatalf("expected V-admitted call to enter static membership")
+	}
+	if got := store.ActiveCallCount(now); got != 1 {
+		t.Fatalf("expected exactly one active call after V admission, got %d", got)
+	}
+}

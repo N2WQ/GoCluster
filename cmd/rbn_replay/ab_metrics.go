@@ -97,6 +97,24 @@ type replayResolverABMetrics struct {
 	RecentPlus1RejectWinner           uint64                    `json:"recent_plus1_reject_winner_recent_insufficient"`
 	RecentPlus1RejectSubject          uint64                    `json:"recent_plus1_reject_subject_not_weaker"`
 	RecentPlus1RejectOther            uint64                    `json:"recent_plus1_reject_other"`
+	BayesReportConsidered             uint64                    `json:"bayes_report_considered"`
+	BayesReportApplied                uint64                    `json:"bayes_report_applied"`
+	BayesReportRejected               uint64                    `json:"bayes_report_rejected"`
+	BayesReportRejectEdit             uint64                    `json:"bayes_report_reject_edit_neighbor_contested"`
+	BayesReportRejectWinner           uint64                    `json:"bayes_report_reject_winner_recent_insufficient"`
+	BayesReportRejectSubject          uint64                    `json:"bayes_report_reject_subject_not_weaker"`
+	BayesReportRejectCandidate        uint64                    `json:"bayes_report_reject_candidate_unvalidated"`
+	BayesReportRejectScore            uint64                    `json:"bayes_report_reject_score_below_threshold"`
+	BayesReportRejectOther            uint64                    `json:"bayes_report_reject_other"`
+	BayesAdvantageConsidered          uint64                    `json:"bayes_advantage_considered"`
+	BayesAdvantageApplied             uint64                    `json:"bayes_advantage_applied"`
+	BayesAdvantageRejected            uint64                    `json:"bayes_advantage_rejected"`
+	BayesAdvantageRejectScore         uint64                    `json:"bayes_advantage_reject_score_below_threshold"`
+	BayesAdvantageRejectDelta         uint64                    `json:"bayes_advantage_reject_weighted_delta_insufficient"`
+	BayesAdvantageRejectConfidence    uint64                    `json:"bayes_advantage_reject_confidence_insufficient"`
+	BayesAdvantageRejectCandidate     uint64                    `json:"bayes_advantage_reject_candidate_unvalidated"`
+	BayesAdvantageRejectSubject       uint64                    `json:"bayes_advantage_reject_subject_validated"`
+	BayesAdvantageRejectOther         uint64                    `json:"bayes_advantage_reject_other"`
 }
 
 type replayStabilizerDelayProxyMetrics struct {
@@ -202,6 +220,56 @@ func (m *replayABMetrics) ObserveResolverRecentPlus1Gate(gate spot.ResolverPrima
 		m.Resolver.RecentPlus1RejectSubject++
 	default:
 		m.Resolver.RecentPlus1RejectOther++
+	}
+}
+
+func (m *replayABMetrics) ObserveResolverBayesGate(gate spot.ResolverPrimaryGateResult, evaluated bool) {
+	if m == nil || !evaluated {
+		return
+	}
+	if gate.BayesReportBonusConsidered {
+		m.Resolver.BayesReportConsidered++
+		if gate.BayesReportBonusApplied {
+			m.Resolver.BayesReportApplied++
+		} else {
+			m.Resolver.BayesReportRejected++
+			switch strings.ToLower(strings.TrimSpace(gate.BayesReportBonusReject)) {
+			case "edit_neighbor_contested":
+				m.Resolver.BayesReportRejectEdit++
+			case "winner_recent_insufficient":
+				m.Resolver.BayesReportRejectWinner++
+			case "subject_not_weaker":
+				m.Resolver.BayesReportRejectSubject++
+			case "candidate_unvalidated":
+				m.Resolver.BayesReportRejectCandidate++
+			case "score_below_threshold":
+				m.Resolver.BayesReportRejectScore++
+			default:
+				m.Resolver.BayesReportRejectOther++
+			}
+		}
+	}
+	if gate.BayesAdvantageConsidered {
+		m.Resolver.BayesAdvantageConsidered++
+		if gate.BayesAdvantageApplied {
+			m.Resolver.BayesAdvantageApplied++
+		} else {
+			m.Resolver.BayesAdvantageRejected++
+			switch strings.ToLower(strings.TrimSpace(gate.BayesAdvantageReject)) {
+			case "score_below_threshold":
+				m.Resolver.BayesAdvantageRejectScore++
+			case "weighted_delta_insufficient":
+				m.Resolver.BayesAdvantageRejectDelta++
+			case "confidence_insufficient":
+				m.Resolver.BayesAdvantageRejectConfidence++
+			case "candidate_unvalidated":
+				m.Resolver.BayesAdvantageRejectCandidate++
+			case "subject_validated":
+				m.Resolver.BayesAdvantageRejectSubject++
+			default:
+				m.Resolver.BayesAdvantageRejectOther++
+			}
+		}
 	}
 }
 

@@ -296,6 +296,11 @@ func (s *CustomSCPStore) RecordSpot(sp *Spot) {
 	if s == nil || sp == nil || sp.IsBeacon {
 		return
 	}
+	// Admission is intentionally limited to strongest-confidence output to avoid
+	// self-reinforcement loops where SCP-backed S/C outputs feed SCP evidence.
+	if strutil.NormalizeUpper(sp.Confidence) != "V" {
+		return
+	}
 	mode := sp.ModeNorm
 	if mode == "" {
 		mode = sp.Mode

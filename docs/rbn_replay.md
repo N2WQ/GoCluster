@@ -79,6 +79,8 @@ Legacy comparison artifacts were removed from replay artifacts. Removed fields i
 - `resolver.projected_confidence_counts`
 - `resolver.neighborhood_*`
 - `resolver.recent_plus1_*`
+- `resolver.bayes_report_*`
+- `resolver.bayes_advantage_*`
 - `stabilizer_delay_proxy.*`
 - `temporal.pending`
 - `temporal.committed`

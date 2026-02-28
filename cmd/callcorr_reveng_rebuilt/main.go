@@ -653,6 +653,8 @@ func evaluateResolverPrimaryDecision(
 
 	subjectSupport := correctionflow.ResolverSupportForCall(snapshot, preCall)
 	winnerSupport := correctionflow.ResolverSupportForCall(snapshot, winnerCall)
+	subjectWeightedSupport := correctionflow.ResolverWeightedSupportForCall(snapshot, preCall)
+	winnerWeightedSupport := correctionflow.ResolverWeightedSupportForCall(snapshot, winnerCall)
 	winnerConfidence := correctionflow.ResolverWinnerConfidence(snapshot)
 	subjectMode := spotEntry.ModeNorm
 	if subjectMode == "" {
@@ -673,7 +675,7 @@ func evaluateResolverPrimaryDecision(
 		KnownCallset:    st.knownCallset,
 	})
 	gateOptions := spot.ResolverPrimaryGateOptions{}
-	if st.cfg.CallCorrection.ResolverRecentPlus1Enabled {
+	if st.cfg.CallCorrection.ResolverRecentPlus1Enabled || st.cfg.CallCorrection.BayesBonus.Enabled {
 		if spot.ResolverSnapshotHasComparableEditNeighbor(snapshot, winnerCall, subjectMode, st.cfg.CallCorrection.DistanceModelCW, st.cfg.CallCorrection.DistanceModelRTTY) {
 			gateOptions.RecentPlus1DisallowReason = resolverRecentPlus1DisallowEditNeighborGate
 		}
@@ -686,6 +688,8 @@ func evaluateResolverPrimaryDecision(
 		subjectSupport,
 		winnerSupport,
 		winnerConfidence,
+		subjectWeightedSupport,
+		winnerWeightedSupport,
 		settings,
 		now,
 		gateOptions,
@@ -716,7 +720,9 @@ func evaluateResolverPrimaryDecision(
 	if !gate.Allow {
 		st.counters.Rejected++
 		reason := resolverGateDecisionReason(gate.Reason)
-		if plusReason, ok := resolverRecentPlus1DecisionReason(gate); ok {
+		if bayesReason, ok := resolverBayesDecisionReason(gate); ok {
+			reason = bayesReason
+		} else if plusReason, ok := resolverRecentPlus1DecisionReason(gate); ok {
 			reason = plusReason
 		}
 		incrementCount(st.counters.RejectedReasonCounts, reason)
@@ -754,17 +760,15 @@ func evaluateResolverPrimaryDecision(
 	spotEntry.Confidence = "C"
 
 	st.counters.Applied++
-	reason := resolverDecisionApplied
-	if gate.RecentPlus1Applied && selection.WinnerOverride {
-		reason = resolverDecisionAppliedNeighborRecentPlus1
+	reason := resolverAppliedDecisionReason(gate, selection)
+	switch reason {
+	case resolverDecisionAppliedNeighborRecentPlus1:
 		st.counters.AppliedResolverNeighborRecentPlus1++
-	} else if gate.RecentPlus1Applied {
-		reason = resolverDecisionAppliedRecentPlus1
+	case resolverDecisionAppliedRecentPlus1:
 		st.counters.AppliedResolverRecentPlus1++
-	} else if selection.WinnerOverride {
-		reason = resolverDecisionAppliedNeighbor
+	case resolverDecisionAppliedNeighbor:
 		st.counters.AppliedResolverNeighborOverride++
-	} else {
+	default:
 		st.counters.AppliedResolver++
 	}
 	incrementCount(st.counters.AppliedReasonCounts, reason)
@@ -1359,12 +1363,64 @@ func resolverRecentPlus1DecisionReason(gate spot.ResolverPrimaryGateResult) (str
 	return resolverDecisionRecentPlus1RejectPrefix + reject, true
 }
 
+func resolverBayesDecisionReason(gate spot.ResolverPrimaryGateResult) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(gate.Reason)) {
+	case "min_reports":
+		if !gate.BayesReportBonusConsidered || gate.BayesReportBonusApplied {
+			return "", false
+		}
+		reject := strings.ToLower(strings.TrimSpace(gate.BayesReportBonusReject))
+		if reject == "" {
+			return "", false
+		}
+		return resolverDecisionBayesReportRejectPrefix + reject, true
+	case "advantage":
+		if !gate.BayesAdvantageConsidered || gate.BayesAdvantageApplied {
+			return "", false
+		}
+		reject := strings.ToLower(strings.TrimSpace(gate.BayesAdvantageReject))
+		if reject == "" {
+			return "", false
+		}
+		return resolverDecisionBayesAdvantageRejectPrefix + reject, true
+	default:
+		return "", false
+	}
+}
+
+func resolverAppliedDecisionReason(gate spot.ResolverPrimaryGateResult, selection correctionflow.ResolverPrimarySelection) string {
+	switch {
+	case gate.BayesAdvantageApplied && selection.WinnerOverride:
+		return resolverDecisionAppliedNeighborBayesAdvantage
+	case gate.BayesAdvantageApplied:
+		return resolverDecisionAppliedBayesAdvantage
+	case gate.BayesReportBonusApplied && selection.WinnerOverride:
+		return resolverDecisionAppliedNeighborBayesReport
+	case gate.BayesReportBonusApplied:
+		return resolverDecisionAppliedBayesReport
+	case gate.RecentPlus1Applied && selection.WinnerOverride:
+		return resolverDecisionAppliedNeighborRecentPlus1
+	case gate.RecentPlus1Applied:
+		return resolverDecisionAppliedRecentPlus1
+	case selection.WinnerOverride:
+		return resolverDecisionAppliedNeighbor
+	default:
+		return resolverDecisionApplied
+	}
+}
+
 const (
-	resolverDecisionApplied                     = "resolver_applied"
-	resolverDecisionAppliedNeighbor             = "resolver_applied_neighbor_override"
-	resolverDecisionAppliedRecentPlus1          = "resolver_applied_recent_plus1"
-	resolverDecisionAppliedNeighborRecentPlus1  = "resolver_applied_neighbor_recent_plus1"
-	resolverDecisionGatePrefix                  = "resolver_gate_"
-	resolverDecisionRecentPlus1RejectPrefix     = "resolver_recent_plus1_reject_"
-	resolverRecentPlus1DisallowEditNeighborGate = "edit_neighbor_contested"
+	resolverDecisionApplied                       = "resolver_applied"
+	resolverDecisionAppliedNeighbor               = "resolver_applied_neighbor_override"
+	resolverDecisionAppliedRecentPlus1            = "resolver_applied_recent_plus1"
+	resolverDecisionAppliedNeighborRecentPlus1    = "resolver_applied_neighbor_recent_plus1"
+	resolverDecisionAppliedBayesReport            = "resolver_applied_bayes_report"
+	resolverDecisionAppliedNeighborBayesReport    = "resolver_applied_neighbor_bayes_report"
+	resolverDecisionAppliedBayesAdvantage         = "resolver_applied_bayes_advantage"
+	resolverDecisionAppliedNeighborBayesAdvantage = "resolver_applied_neighbor_bayes_advantage"
+	resolverDecisionGatePrefix                    = "resolver_gate_"
+	resolverDecisionRecentPlus1RejectPrefix       = "resolver_recent_plus1_reject_"
+	resolverDecisionBayesReportRejectPrefix       = "resolver_bayes_report_reject_"
+	resolverDecisionBayesAdvantageRejectPrefix    = "resolver_bayes_advantage_reject_"
+	resolverRecentPlus1DisallowEditNeighborGate   = "edit_neighbor_contested"
 )

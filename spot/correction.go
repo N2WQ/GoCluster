@@ -35,6 +35,39 @@ type CorrectionTruncationAdvantagePolicy struct {
 	RequireSubjectUnvalidated bool
 }
 
+// CorrectionBayesBonusPolicy controls a conservative Bayesian-style rail used
+// only for resolver-primary distance-1/2 near-threshold admission.
+type CorrectionBayesBonusPolicy struct {
+	// Configured distinguishes explicit runtime wiring from zero-value tests.
+	Configured bool
+	Enabled    bool
+
+	WeightDistance1Milli int
+	WeightDistance2Milli int
+
+	WeightedSmoothingMilli int
+	RecentSmoothing        int
+
+	ObsLogCapMilli   int
+	PriorLogMinMilli int
+	PriorLogMaxMilli int
+
+	ReportThresholdDistance1Milli int
+	ReportThresholdDistance2Milli int
+
+	AdvantageThresholdDistance1Milli int
+	AdvantageThresholdDistance2Milli int
+
+	AdvantageMinWeightedDeltaDistance1Milli int
+	AdvantageMinWeightedDeltaDistance2Milli int
+
+	AdvantageExtraConfidenceDistance1 int
+	AdvantageExtraConfidenceDistance2 int
+
+	RequireCandidateValidated          bool
+	RequireSubjectUnvalidatedDistance2 bool
+}
+
 // CorrectionSettings contains resolver-primary correction rails.
 // This is intentionally independent from config package types to keep spot logic
 // testable without import cycles.
@@ -78,27 +111,42 @@ type CorrectionSettings struct {
 	TruncationDelta2ExtraConfidence           int
 	TruncationDelta2RequireCandidateValidated bool
 	TruncationDelta2RequireSubjectUnvalidated bool
+
+	BayesBonusPolicy CorrectionBayesBonusPolicy
 }
 
 // ResolverPrimaryGateResult reports resolver-primary gate evaluation outcome.
 // It mirrors key thresholds so callers can emit deterministic observability.
 type ResolverPrimaryGateResult struct {
-	Allow                 bool
-	Reason                string
-	Distance              int
-	MinReports            int
-	MinAdvantage          int
-	MinConfidence         int
-	WinnerSupport         int
-	EffectiveSupport      int
-	SubjectSupport        int
-	WinnerConfidence      int
-	LengthBonus           int
-	RecentPlus1Considered bool
-	RecentPlus1Applied    bool
-	RecentPlus1Reject     string
-	RecentPlus1Winner     int
-	RecentPlus1Subject    int
+	Allow                       bool
+	Reason                      string
+	Distance                    int
+	MinReports                  int
+	MinAdvantage                int
+	MinConfidence               int
+	WinnerSupport               int
+	EffectiveSupport            int
+	SubjectSupport              int
+	WinnerConfidence            int
+	SubjectWeightedSupportMilli int
+	WinnerWeightedSupportMilli  int
+	LengthBonus                 int
+	RecentPlus1Considered       bool
+	RecentPlus1Applied          bool
+	RecentPlus1Reject           string
+	RecentPlus1Winner           int
+	RecentPlus1Subject          int
+	BayesReportBonusConsidered  bool
+	BayesReportBonusApplied     bool
+	BayesReportBonusReject      string
+	BayesAdvantageConsidered    bool
+	BayesAdvantageApplied       bool
+	BayesAdvantageReject        string
+	BayesWinnerRecent           int
+	BayesSubjectRecent          int
+	BayesScoreMilli             int
+	BayesDistanceWeightMilli    int
+	EffectiveAdvantageSupport   int
 }
 
 // ResolverPrimaryGateOptions carries resolver-primary context that cannot be
@@ -130,6 +178,7 @@ func IsCallCorrectionCandidate(mode string) bool {
 func EvaluateResolverPrimaryGates(
 	subjectCall, winnerCall, subjectBand, subjectMode string,
 	subjectSupport, winnerSupport, winnerConfidence int,
+	subjectWeightedSupportMilli, winnerWeightedSupportMilli int,
 	settings CorrectionSettings,
 	now time.Time,
 	options ResolverPrimaryGateOptions,
@@ -137,11 +186,13 @@ func EvaluateResolverPrimaryGates(
 	cfg := settings
 	options.RecentPlus1DisallowReason = strings.ToLower(strings.TrimSpace(options.RecentPlus1DisallowReason))
 	result := ResolverPrimaryGateResult{
-		Allow:            false,
-		WinnerSupport:    winnerSupport,
-		EffectiveSupport: winnerSupport,
-		SubjectSupport:   subjectSupport,
-		WinnerConfidence: winnerConfidence,
+		Allow:                       false,
+		WinnerSupport:               winnerSupport,
+		EffectiveSupport:            winnerSupport,
+		SubjectSupport:              subjectSupport,
+		WinnerConfidence:            winnerConfidence,
+		SubjectWeightedSupportMilli: subjectWeightedSupportMilli,
+		WinnerWeightedSupportMilli:  winnerWeightedSupportMilli,
 	}
 
 	subjectIdentity := normalizeCorrectionCallIdentity(subjectCall)
@@ -177,7 +228,9 @@ func EvaluateResolverPrimaryGates(
 	candidateMoreSpecific := false
 	lengthDelta := 0
 	candidateValidated := false
+	candidateValidatedKnown := false
 	subjectValidated := false
+	subjectValidatedKnown := false
 	if relation, ok := detectCorrectionFamilyByIdentity(subjectIdentity, winnerIdentity, familyPolicy); ok && relation.Kind == CorrectionFamilyTruncation {
 		truncationRelation = true
 		candidateMoreSpecific = len(winnerIdentity.VoteKey) > len(subjectIdentity.VoteKey)
@@ -185,15 +238,33 @@ func EvaluateResolverPrimaryGates(
 			lengthDelta = len(winnerIdentity.VoteKey) - len(subjectIdentity.VoteKey)
 			candidateValidated = resolverCallValidated(winnerIdentity, winnerCall, subjectBand, subjectMode, cfg, now)
 			subjectValidated = resolverCallValidated(subjectIdentity, subjectCall, subjectBand, subjectMode, cfg, now)
+			candidateValidatedKnown = true
+			subjectValidatedKnown = true
 		}
+	}
+	resolveCandidateValidated := func() bool {
+		if candidateValidatedKnown {
+			return candidateValidated
+		}
+		candidateValidated = resolverCallValidated(winnerIdentity, winnerCall, subjectBand, subjectMode, cfg, now)
+		candidateValidatedKnown = true
+		return candidateValidated
+	}
+	resolveSubjectValidated := func() bool {
+		if subjectValidatedKnown {
+			return subjectValidated
+		}
+		subjectValidated = resolverCallValidated(subjectIdentity, subjectCall, subjectBand, subjectMode, cfg, now)
+		subjectValidatedKnown = true
+		return subjectValidated
 	}
 
 	if truncationRelation && candidateMoreSpecific && truncationAdvantagePolicy.Enabled {
 		eligible := true
-		if truncationAdvantagePolicy.RequireCandidateValidated && !candidateValidated {
+		if truncationAdvantagePolicy.RequireCandidateValidated && !resolveCandidateValidated() {
 			eligible = false
 		}
-		if truncationAdvantagePolicy.RequireSubjectUnvalidated && subjectValidated {
+		if truncationAdvantagePolicy.RequireSubjectUnvalidated && resolveSubjectValidated() {
 			eligible = false
 		}
 		if eligible {
@@ -202,14 +273,14 @@ func EvaluateResolverPrimaryGates(
 	}
 
 	if truncationRelation && candidateMoreSpecific && cfg.TruncationDelta2RailsEnabled && lengthDelta >= 2 {
-		if cfg.TruncationDelta2RequireCandidateValidated && !candidateValidated {
+		if cfg.TruncationDelta2RequireCandidateValidated && !resolveCandidateValidated() {
 			result.Reason = "truncation_delta2_candidate_unvalidated"
 			result.MinReports = minReports
 			result.MinAdvantage = minAdvantage
 			result.MinConfidence = minConf
 			return result
 		}
-		if cfg.TruncationDelta2RequireSubjectUnvalidated && subjectValidated {
+		if cfg.TruncationDelta2RequireSubjectUnvalidated && resolveSubjectValidated() {
 			result.Reason = "truncation_delta2_subject_validated"
 			result.MinReports = minReports
 			result.MinAdvantage = minAdvantage
@@ -225,10 +296,10 @@ func EvaluateResolverPrimaryGates(
 	lengthBonus := 0
 	if cfg.TruncationLengthBonusEnabled && cfg.TruncationLengthBonusMax > 0 && effectiveSupport < minReports && truncationRelation && candidateMoreSpecific {
 		eligible := true
-		if cfg.TruncationLengthBonusRequireCandidateValidated && !candidateValidated {
+		if cfg.TruncationLengthBonusRequireCandidateValidated && !resolveCandidateValidated() {
 			eligible = false
 		}
-		if cfg.TruncationLengthBonusRequireSubjectUnvalidated && subjectValidated {
+		if cfg.TruncationLengthBonusRequireSubjectUnvalidated && resolveSubjectValidated() {
 			eligible = false
 		}
 		if eligible && lengthDelta > 0 {
@@ -244,6 +315,7 @@ func EvaluateResolverPrimaryGates(
 	result.MinAdvantage = minAdvantage
 	result.MinConfidence = minConf
 	result.LengthBonus = lengthBonus
+	effectiveWinnerSupportForAdvantage := winnerSupport
 
 	if cfg.ResolverRecentPlus1Enabled && effectiveSupport == minReports-1 {
 		result.RecentPlus1Considered = true
@@ -273,13 +345,101 @@ func EvaluateResolverPrimaryGates(
 			result.RecentPlus1Reject = rejectReason
 		}
 	}
+
+	bayes := normalizeCorrectionBayesBonusPolicy(cfg.BayesBonusPolicy)
+	if bayes.Enabled && distance >= 1 && distance <= 2 {
+		weightDistance := bayes.WeightDistance1Milli
+		reportThreshold := bayes.ReportThresholdDistance1Milli
+		advantageThreshold := bayes.AdvantageThresholdDistance1Milli
+		minWeightedDelta := bayes.AdvantageMinWeightedDeltaDistance1Milli
+		extraConfidence := bayes.AdvantageExtraConfidenceDistance1
+		if distance == 2 {
+			weightDistance = bayes.WeightDistance2Milli
+			reportThreshold = bayes.ReportThresholdDistance2Milli
+			advantageThreshold = bayes.AdvantageThresholdDistance2Milli
+			minWeightedDelta = bayes.AdvantageMinWeightedDeltaDistance2Milli
+			extraConfidence = bayes.AdvantageExtraConfidenceDistance2
+		}
+
+		winnerRecent := resolverCallRecentSupport(winnerIdentity, winnerCall, subjectBand, subjectMode, cfg, now)
+		subjectRecent := resolverCallRecentSupport(subjectIdentity, subjectCall, subjectBand, subjectMode, cfg, now)
+		result.BayesWinnerRecent = winnerRecent
+		result.BayesSubjectRecent = subjectRecent
+		result.BayesDistanceWeightMilli = weightDistance
+
+		weightedNumerator := winnerWeightedSupportMilli + bayes.WeightedSmoothingMilli
+		weightedDenominator := subjectWeightedSupportMilli + bayes.WeightedSmoothingMilli
+		obsTermMilli := logRatioMilli(weightedNumerator, weightedDenominator)
+		obsTermMilli = clampInt(obsTermMilli, -bayes.ObsLogCapMilli, bayes.ObsLogCapMilli)
+
+		recentNumerator := winnerRecent + bayes.RecentSmoothing
+		recentDenominator := subjectRecent + bayes.RecentSmoothing
+		priorTermMilli := logRatioMilli(recentNumerator, recentDenominator)
+		priorTermMilli = clampInt(priorTermMilli, bayes.PriorLogMinMilli, bayes.PriorLogMaxMilli)
+
+		bayesScoreMilli := obsTermMilli + int(math.Round(float64(weightDistance*priorTermMilli)/1000.0))
+		result.BayesScoreMilli = bayesScoreMilli
+
+		if effectiveSupport == minReports-1 {
+			result.BayesReportBonusConsidered = true
+			rejectReason := ""
+			if options.RecentPlus1DisallowReason != "" {
+				rejectReason = options.RecentPlus1DisallowReason
+			}
+			if rejectReason == "" && winnerRecent < cfg.ResolverRecentPlus1MinUniqueWinner {
+				rejectReason = "winner_recent_insufficient"
+			}
+			if rejectReason == "" && winnerRecent <= subjectRecent {
+				rejectReason = "subject_not_weaker"
+			}
+			if rejectReason == "" && bayes.RequireCandidateValidated && !resolveCandidateValidated() {
+				rejectReason = "candidate_unvalidated"
+			}
+			if rejectReason == "" && bayesScoreMilli < reportThreshold {
+				rejectReason = "score_below_threshold"
+			}
+			if rejectReason == "" {
+				effectiveSupport++
+				result.BayesReportBonusApplied = true
+			} else {
+				result.BayesReportBonusReject = rejectReason
+			}
+		}
+
+		if result.BayesReportBonusApplied && winnerSupport == subjectSupport {
+			result.BayesAdvantageConsidered = true
+			rejectReason := ""
+			if bayesScoreMilli < advantageThreshold {
+				rejectReason = "score_below_threshold"
+			}
+			if rejectReason == "" && (winnerWeightedSupportMilli-subjectWeightedSupportMilli) < minWeightedDelta {
+				rejectReason = "weighted_delta_insufficient"
+			}
+			if rejectReason == "" && winnerConfidence < minConf+extraConfidence {
+				rejectReason = "confidence_insufficient"
+			}
+			if rejectReason == "" && bayes.RequireCandidateValidated && !resolveCandidateValidated() {
+				rejectReason = "candidate_unvalidated"
+			}
+			if rejectReason == "" && distance == 2 && bayes.RequireSubjectUnvalidatedDistance2 && resolveSubjectValidated() {
+				rejectReason = "subject_validated"
+			}
+			if rejectReason == "" {
+				result.BayesAdvantageApplied = true
+				effectiveWinnerSupportForAdvantage++
+			} else {
+				result.BayesAdvantageReject = rejectReason
+			}
+		}
+	}
 	result.EffectiveSupport = effectiveSupport
+	result.EffectiveAdvantageSupport = effectiveWinnerSupportForAdvantage
 
 	if effectiveSupport < minReports {
 		result.Reason = "min_reports"
 		return result
 	}
-	if winnerSupport < subjectSupport+minAdvantage {
+	if effectiveWinnerSupportForAdvantage < subjectSupport+minAdvantage {
 		result.Reason = "advantage"
 		return result
 	}
@@ -624,6 +784,110 @@ func normalizeCorrectionTruncationAdvantagePolicy(policy CorrectionTruncationAdv
 	return cfg
 }
 
+func normalizeCorrectionBayesBonusPolicy(policy CorrectionBayesBonusPolicy) CorrectionBayesBonusPolicy {
+	cfg := policy
+	if !cfg.Configured {
+		cfg.WeightDistance1Milli = 350
+		cfg.WeightDistance2Milli = 200
+		cfg.WeightedSmoothingMilli = 1000
+		cfg.RecentSmoothing = 2
+		cfg.ObsLogCapMilli = 350
+		cfg.PriorLogMinMilli = -200
+		cfg.PriorLogMaxMilli = 600
+		cfg.ReportThresholdDistance1Milli = 450
+		cfg.ReportThresholdDistance2Milli = 650
+		cfg.AdvantageThresholdDistance1Milli = 700
+		cfg.AdvantageThresholdDistance2Milli = 950
+		cfg.AdvantageMinWeightedDeltaDistance1Milli = 200
+		cfg.AdvantageMinWeightedDeltaDistance2Milli = 300
+		cfg.AdvantageExtraConfidenceDistance1 = 3
+		cfg.AdvantageExtraConfidenceDistance2 = 5
+		cfg.RequireCandidateValidated = true
+		cfg.RequireSubjectUnvalidatedDistance2 = true
+		return cfg
+	}
+	if cfg.WeightDistance1Milli < 0 {
+		cfg.WeightDistance1Milli = 0
+	}
+	if cfg.WeightDistance2Milli < 0 {
+		cfg.WeightDistance2Milli = 0
+	}
+	if cfg.WeightDistance1Milli == 0 {
+		cfg.WeightDistance1Milli = 350
+	}
+	if cfg.WeightDistance2Milli == 0 {
+		cfg.WeightDistance2Milli = 200
+	}
+	if cfg.WeightDistance1Milli > 1000 {
+		cfg.WeightDistance1Milli = 1000
+	}
+	if cfg.WeightDistance2Milli > 1000 {
+		cfg.WeightDistance2Milli = 1000
+	}
+	if cfg.WeightedSmoothingMilli <= 0 {
+		cfg.WeightedSmoothingMilli = 1000
+	}
+	if cfg.RecentSmoothing <= 0 {
+		cfg.RecentSmoothing = 2
+	}
+	if cfg.ObsLogCapMilli <= 0 {
+		cfg.ObsLogCapMilli = 350
+	}
+	if cfg.PriorLogMinMilli == 0 {
+		cfg.PriorLogMinMilli = -200
+	}
+	if cfg.PriorLogMaxMilli == 0 {
+		cfg.PriorLogMaxMilli = 600
+	}
+	if cfg.PriorLogMinMilli >= cfg.PriorLogMaxMilli {
+		cfg.PriorLogMinMilli = -200
+		cfg.PriorLogMaxMilli = 600
+	}
+	if cfg.ReportThresholdDistance1Milli <= 0 {
+		cfg.ReportThresholdDistance1Milli = 450
+	}
+	if cfg.ReportThresholdDistance2Milli <= 0 {
+		cfg.ReportThresholdDistance2Milli = 650
+	}
+	if cfg.ReportThresholdDistance2Milli < cfg.ReportThresholdDistance1Milli {
+		cfg.ReportThresholdDistance2Milli = cfg.ReportThresholdDistance1Milli
+	}
+	if cfg.AdvantageThresholdDistance1Milli <= 0 {
+		cfg.AdvantageThresholdDistance1Milli = 700
+	}
+	if cfg.AdvantageThresholdDistance2Milli <= 0 {
+		cfg.AdvantageThresholdDistance2Milli = 950
+	}
+	if cfg.AdvantageThresholdDistance2Milli < cfg.AdvantageThresholdDistance1Milli {
+		cfg.AdvantageThresholdDistance2Milli = cfg.AdvantageThresholdDistance1Milli
+	}
+	if cfg.AdvantageMinWeightedDeltaDistance1Milli <= 0 {
+		cfg.AdvantageMinWeightedDeltaDistance1Milli = 200
+	}
+	if cfg.AdvantageMinWeightedDeltaDistance2Milli <= 0 {
+		cfg.AdvantageMinWeightedDeltaDistance2Milli = 300
+	}
+	if cfg.AdvantageMinWeightedDeltaDistance2Milli < cfg.AdvantageMinWeightedDeltaDistance1Milli {
+		cfg.AdvantageMinWeightedDeltaDistance2Milli = cfg.AdvantageMinWeightedDeltaDistance1Milli
+	}
+	if cfg.AdvantageExtraConfidenceDistance1 < 0 {
+		cfg.AdvantageExtraConfidenceDistance1 = 0
+	}
+	if cfg.AdvantageExtraConfidenceDistance2 < 0 {
+		cfg.AdvantageExtraConfidenceDistance2 = 0
+	}
+	if cfg.AdvantageExtraConfidenceDistance1 == 0 {
+		cfg.AdvantageExtraConfidenceDistance1 = 3
+	}
+	if cfg.AdvantageExtraConfidenceDistance2 == 0 {
+		cfg.AdvantageExtraConfidenceDistance2 = 5
+	}
+	if cfg.AdvantageExtraConfidenceDistance2 < cfg.AdvantageExtraConfidenceDistance1 {
+		cfg.AdvantageExtraConfidenceDistance2 = cfg.AdvantageExtraConfidenceDistance1
+	}
+	return cfg
+}
+
 const (
 	distanceModelPlain  = "plain"
 	distanceModelMorse  = "morse"
@@ -880,6 +1144,23 @@ func min3(a, b, c int) int {
 		return b
 	}
 	return c
+}
+
+func clampInt(value, min, max int) int {
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
+}
+
+func logRatioMilli(numerator, denominator int) int {
+	if numerator <= 0 || denominator <= 0 {
+		return 0
+	}
+	return int(math.Round(1000.0 * math.Log(float64(numerator)/float64(denominator))))
 }
 
 func borrowIntSlice(n int) ([]int, bool) {

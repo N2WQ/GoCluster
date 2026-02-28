@@ -163,6 +163,75 @@ func TestObserveResolverRecentPlus1GateCounters(t *testing.T) {
 	}
 }
 
+func TestObserveResolverBayesGateCounters(t *testing.T) {
+	var metrics replayABMetrics
+	metrics.ObserveResolverBayesGate(spot.ResolverPrimaryGateResult{
+		BayesReportBonusConsidered: true,
+		BayesReportBonusApplied:    true,
+		BayesAdvantageConsidered:   true,
+		BayesAdvantageApplied:      true,
+	}, true)
+	metrics.ObserveResolverBayesGate(spot.ResolverPrimaryGateResult{
+		BayesReportBonusConsidered: true,
+		BayesReportBonusApplied:    false,
+		BayesReportBonusReject:     "score_below_threshold",
+	}, true)
+	metrics.ObserveResolverBayesGate(spot.ResolverPrimaryGateResult{
+		BayesReportBonusConsidered: true,
+		BayesReportBonusApplied:    false,
+		BayesReportBonusReject:     "candidate_unvalidated",
+	}, true)
+	metrics.ObserveResolverBayesGate(spot.ResolverPrimaryGateResult{
+		BayesAdvantageConsidered: true,
+		BayesAdvantageApplied:    false,
+		BayesAdvantageReject:     "weighted_delta_insufficient",
+	}, true)
+	metrics.ObserveResolverBayesGate(spot.ResolverPrimaryGateResult{
+		BayesAdvantageConsidered: true,
+		BayesAdvantageApplied:    false,
+		BayesAdvantageReject:     "subject_validated",
+	}, true)
+	metrics.ObserveResolverBayesGate(spot.ResolverPrimaryGateResult{
+		BayesAdvantageConsidered: true,
+		BayesAdvantageApplied:    false,
+		BayesAdvantageReject:     "unexpected_reason",
+	}, true)
+
+	if metrics.Resolver.BayesReportConsidered != 3 {
+		t.Fatalf("expected bayes_report_considered=3, got %d", metrics.Resolver.BayesReportConsidered)
+	}
+	if metrics.Resolver.BayesReportApplied != 1 {
+		t.Fatalf("expected bayes_report_applied=1, got %d", metrics.Resolver.BayesReportApplied)
+	}
+	if metrics.Resolver.BayesReportRejected != 2 {
+		t.Fatalf("expected bayes_report_rejected=2, got %d", metrics.Resolver.BayesReportRejected)
+	}
+	if metrics.Resolver.BayesReportRejectScore != 1 {
+		t.Fatalf("expected bayes_report_reject_score_below_threshold=1, got %d", metrics.Resolver.BayesReportRejectScore)
+	}
+	if metrics.Resolver.BayesReportRejectCandidate != 1 {
+		t.Fatalf("expected bayes_report_reject_candidate_unvalidated=1, got %d", metrics.Resolver.BayesReportRejectCandidate)
+	}
+	if metrics.Resolver.BayesAdvantageConsidered != 4 {
+		t.Fatalf("expected bayes_advantage_considered=4, got %d", metrics.Resolver.BayesAdvantageConsidered)
+	}
+	if metrics.Resolver.BayesAdvantageApplied != 1 {
+		t.Fatalf("expected bayes_advantage_applied=1, got %d", metrics.Resolver.BayesAdvantageApplied)
+	}
+	if metrics.Resolver.BayesAdvantageRejected != 3 {
+		t.Fatalf("expected bayes_advantage_rejected=3, got %d", metrics.Resolver.BayesAdvantageRejected)
+	}
+	if metrics.Resolver.BayesAdvantageRejectDelta != 1 {
+		t.Fatalf("expected bayes_advantage_reject_weighted_delta_insufficient=1, got %d", metrics.Resolver.BayesAdvantageRejectDelta)
+	}
+	if metrics.Resolver.BayesAdvantageRejectSubject != 1 {
+		t.Fatalf("expected bayes_advantage_reject_subject_validated=1, got %d", metrics.Resolver.BayesAdvantageRejectSubject)
+	}
+	if metrics.Resolver.BayesAdvantageRejectOther != 1 {
+		t.Fatalf("expected bayes_advantage_reject_other=1, got %d", metrics.Resolver.BayesAdvantageRejectOther)
+	}
+}
+
 func TestObserveTemporalDecisionCounters(t *testing.T) {
 	var metrics replayABMetrics
 	metrics.Temporal.ObservePending()
