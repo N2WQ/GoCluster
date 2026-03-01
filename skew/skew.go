@@ -143,7 +143,7 @@ func (s *Store) Lookup(call string) (float64, bool) {
 }
 
 // ApplyCorrection applies per-skimmer correction to an incoming frequency (kHz).
-// Key aspects: Multiplies by factor and rounds to 0.1 kHz; no-op if missing.
+// Key aspects: Multiplies by factor and rounds to 0.01 kHz; no-op if missing.
 // Upstream: RBN/PSKReporter ingest pipeline.
 // Downstream: Store.Lookup.
 func ApplyCorrection(store *Store, rawCall string, freqKHz float64) float64 {
@@ -155,8 +155,8 @@ func ApplyCorrection(store *Store, rawCall string, freqKHz float64) float64 {
 		return freqKHz
 	}
 	corrected := freqKHz * factor
-	// Half-up rounding to 0.1 kHz to avoid banker's rounding surprises.
-	return math.Floor(corrected*10+0.5) / 10
+	// Half-up rounding to 0.01 kHz to avoid banker's rounding surprises.
+	return math.Floor(corrected*100+0.5) / 100
 }
 
 // Count returns the number of entries in the current stored table.

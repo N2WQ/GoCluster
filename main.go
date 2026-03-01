@@ -2719,14 +2719,14 @@ func processOutputSpots(
 					dxCall = s.DXCall
 				}
 				avg, corroborators, _ := freqAvg.Average(dxCall, s.Frequency, time.Now().UTC(), window, tolerance)
-				// Half-up rounding to 0.1 kHz to avoid banker's rounding at .x5 boundaries.
-				rounded := math.Floor(avg*10+0.5) / 10
+				// Half-up rounding to 0.01 kHz to avoid banker's rounding at .x5 boundaries.
+				rounded := math.Floor(avg*100+0.5) / 100
 				// Apply the averaged frequency when we have enough corroborators and the rounded
 				// value actually differs from the reported frequency. We deliberately decouple
 				// this apply threshold from the inclusion tolerance so sub-500 Hz shifts are
 				// preserved instead of being discarded by the same 0.5 kHz gate.
 				delta := math.Abs(rounded - s.Frequency)
-				if corroborators >= spotPolicy.FrequencyAveragingMinReports && delta >= 0.05 {
+				if corroborators >= spotPolicy.FrequencyAveragingMinReports && delta >= 0.005 {
 					s.Frequency = rounded
 					if tracker != nil {
 						tracker.IncrementFrequencyCorrections()

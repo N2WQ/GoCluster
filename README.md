@@ -44,7 +44,7 @@ A modern Go-based DX cluster that aggregates amateur radio spots, enriches them 
    - PSK modes are normalized to a canonical `PSK` family for filtering, dedupe, and stats while preserving the reported variant (PSK31/63/125) in telnet/archive output.
 4. **CTY Database** (`cty/parser.go` + `data/cty/cty.plist`) performs longest-prefix lookups; when a callsign includes slashes, it prefers the shortest matching segment (portable/location prefix), so `N2WQ/VE3` and `VE3/N2WQ` both resolve to `VE3` (Canada) for metadata. The in-memory CTY DB is paired with a unified call metadata cache so repeated lookups do not thrash the trie.
 5. **Dedup Engine** (`dedup/deduplicator.go`) filters duplicates before they reach the ring buffer. A zero-second window effectively disables dedup, but the pipeline stays unified. A secondary, broadcast-only dedupe runs after call correction/harmonic/frequency adjustments to collapse repeat DX reports without altering ring/history. It hashes band + DE ADIF (DXCC) + DE grid2 prefix (FAST/MED) or DE CQ zone (SLOW) + normalized DX call + source class (human vs skimmer); the time window is enforced by the cache, so one spot per window per key reaches clients while the ring/history remain intact. Three secondary policies are available: **fast** (120s, grid2), **med** (300s, grid2), and **slow** (480s, CQ zone), each with its own `secondary_*_prefer_stronger_snr` toggle in `data/config/dedupe.yaml`. Telnet clients select with `SET DEDUPE FAST|MED|SLOW` (use `SHOW DEDUPE` to confirm); default is MED. Archive and peer publishing use the MED policy. When call-correction stabilizer is enabled, telnet MED dedupe remains per-client while archive/peer MED dedupe is split to an independent instance so delayed telnet release does not change archive/peer suppression timing. The console pipeline line reports per-policy output as `<count>/<percent> (F) / <count>/<percent> (M) / <count>/<percent> (S)`. When a policy's prefer-stronger flag is true, the stronger SNR duplicate replaces the cached entry and is broadcast for that policy. Spotter SSID display is controlled at broadcast time (see `rbn.keep_ssid_suffix`); when disabled, telnet output, archive, and filters use stripped DE calls while peers keep the raw calls.
-6. **Frequency Averager** (`spot/frequency_averager.go`) merges CW/RTTY skimmer reports by averaging corroborating reports within a tolerance and rounding to 0.1 kHz once the minimum corroborators is met.
+6. **Frequency Averager** (`spot/frequency_averager.go`) merges CW/RTTY skimmer reports by averaging corroborating reports within a tolerance and rounding to 0.01 kHz (10 Hz) once the minimum corroborators is met.
 7. **Call/Harmonic/License Guards** (`spot/correction.go`, `spot/harmonics.go`, `main.go`) apply resolver-primary call correction, suppress harmonics, and finally run FCC license gating for DX right before broadcast/buffering (CTY validation runs in the ingest gate; corrected calls are re-validated against CTY before acceptance). Resolver winner admission uses shared family rails, optional neighborhood competition (`resolver_neighborhood_*`), and the conservative one-short recent corroborator rail (`resolver_recent_plus1_*`). Family behavior is configured under `call_correction.family_policy` (slash precedence, truncation rails, and telnet family suppression including optional contested edit-neighbor suppression). A conservative split-signal ambiguity guard rejects corrections when top candidates have strong support but highly disjoint spotter sets in the same narrow frequency neighborhood (`reason=ambiguous_multi_signal`). Calls ending in `/B` (standard beacon IDs) are auto-tagged and bypass correction/harmonic/license drops (only user filters can hide them). The license gate uses a license-normalized base call (e.g., `W6/UT5UF` -> `UT5UF`) to decide if FCC checks apply and which call to query, while CTY metadata still reflects the portable/location prefix (so `N2WQ/VE3` reports Canada for DXCC but uses `N2WQ` for licensing); drops appear in the "Unlicensed US Calls" pane.
 8. **Skimmer Frequency Corrections** (`cmd/rbnskewfetch`, `skew/`, `rbn/client.go`, `pskreporter/client.go`) download SM7IUN's skew list, convert it to JSON, and apply per-spotter multiplicative factors before any callsign normalization for every CW/RTTY skimmer feed.
 
@@ -173,6 +173,7 @@ The telnet server broadcasts spots as fixed-width DX-cluster lines:
 - Exactly **78 characters**, followed by **CRLF** (line endings are normalized in `telnet.Client.Send`).
 - Column numbering below is **1-based** (column 1 is the `D` in `DX de `).
 - The left side is padded so **mode always starts at column 40**.
+- Frequency is rendered in kHz with exactly **two decimal places**.
 - The displayed DX callsign uses the canonical normalized call (portable suffixes stripped) and is truncated to 10 characters to preserve fixed columns (the full normalized callsign is still stored and hashed). During correction, slash-explicit winners are preserved when slash precedence applies, so output can intentionally show variants like `W1AW/1`.
 - The right-side tail is fixed so clients can rely on it:
   - Grid: columns 67-70 (4 chars; blank if unknown)
@@ -188,7 +189,7 @@ Report formatting:
 Example:
 
 ```
-DX de W3LPL:       7009.5  K1ABC       FT8 -5 dB                          FN20 S 0615Z
+DX de W3LPL:      7009.50  K1ABC       FT8 -5 dB                          FN20 S 0615Z
 ```
 
 Each `spot.Spot` stores:
@@ -326,7 +327,7 @@ skew:
 
 Each RBN spot uses the *raw* spotter string (SSID intact, before any normalization) to look up the correction. If found, the original frequency is multiplied by the factor before any dedup, CTY validation, call correction, or harmonic detection runs. This keeps SSID-specific skew data aligned with the broadcast nodes.
 
-To match the 100 Hz accuracy of the underlying skimmers, the corrected frequency is rounded to the nearest 0.1 kHz before it continues through the pipeline.
+To match 10 Hz resolution end-to-end, corrected frequencies are rounded to the nearest 0.01 kHz (half-up) before continuing through the pipeline.
 
 ## Known Calls Cache
 

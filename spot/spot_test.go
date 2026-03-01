@@ -52,6 +52,32 @@ func TestNewSpotNormalizesSSBToSideband(t *testing.T) {
 	}
 }
 
+func TestRoundFrequencyTo10HzHalfUp(t *testing.T) {
+	tests := []struct {
+		name string
+		in   float64
+		want float64
+	}{
+		{name: "round down below half", in: 7009.504, want: 7009.50},
+		{name: "round up at half", in: 7009.505, want: 7009.51},
+		{name: "round up above half", in: 7009.506, want: 7009.51},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := roundFrequencyTo10Hz(tt.in); got != tt.want {
+				t.Fatalf("roundFrequencyTo10Hz(%f)=%f want %f", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewSpotRoundsFrequencyTo10HzHalfUp(t *testing.T) {
+	s := NewSpot("W1ABC", "K1XYZ", 7014.995, "CW")
+	if s.Frequency != 7015.00 {
+		t.Fatalf("expected rounded frequency 7015.00, got %.2f", s.Frequency)
+	}
+}
+
 func TestEnsureNormalizedCollapsesPSKVariants(t *testing.T) {
 	s := NewSpot("K1ABC", "W1AW", 14074.0, "PSK31")
 	s.ModeNorm = "" // force recompute
@@ -326,7 +352,7 @@ func TestFormatDXClusterAlignmentNoConfidence(t *testing.T) {
 	got := s.FormatDXCluster()
 	layout := CurrentDXClusterLayout()
 
-	const freqStr = "7009.5"
+	const freqStr = "7009.50"
 	freqIdx := strings.Index(got, freqStr)
 	if freqIdx == -1 {
 		t.Fatalf("frequency string missing from output: %q", got)
@@ -371,7 +397,7 @@ func TestFormatDXClusterAlignmentWithConfidence(t *testing.T) {
 	got := s.FormatDXCluster()
 	layout := CurrentDXClusterLayout()
 
-	const freqStr = "7014.0"
+	const freqStr = "7014.00"
 	freqIdx := strings.Index(got, freqStr)
 	if freqIdx == -1 {
 		t.Fatalf("frequency string missing from output: %q", got)

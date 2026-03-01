@@ -52,3 +52,34 @@ func TestParseCSVKeepsFactorOne(t *testing.T) {
 		t.Fatalf("expected 2 entries, got %d", len(entries))
 	}
 }
+
+// Purpose: Ensure ApplyCorrection rounds corrected frequency to nearest 10 Hz using half-up rules.
+// Key aspects: Verifies behavior at the .005 kHz boundary.
+// Upstream: RBN/PSKReporter ingest.
+// Downstream: ApplyCorrection.
+func TestApplyCorrectionRoundsTo10HzHalfUp(t *testing.T) {
+	table, err := NewTable([]Entry{{Callsign: "N0CALL", CorrectionFactor: 1.0}})
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+	store := NewStore()
+	store.Set(table)
+
+	tests := []struct {
+		name string
+		in   float64
+		want float64
+	}{
+		{name: "below half rounds down", in: 7014.994, want: 7014.99},
+		{name: "at half rounds up", in: 7014.995, want: 7015.00},
+		{name: "above half rounds up", in: 7014.996, want: 7015.00},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ApplyCorrection(store, "N0CALL", tt.in)
+			if got != tt.want {
+				t.Fatalf("ApplyCorrection(..., %.3f)=%.2f want %.2f", tt.in, got, tt.want)
+			}
+		})
+	}
+}
