@@ -9,6 +9,9 @@ func TestTrackerStabilizerCounters(t *testing.T) {
 	tr.IncrementStabilizerHeldReason("unknown_or_nonrecent")
 	tr.IncrementStabilizerHeldReason("unknown_or_nonrecent")
 	tr.IncrementStabilizerHeldReason("ambiguous_resolver")
+	tr.ObserveStabilizerGlyphTurns("?", 2)
+	tr.ObserveStabilizerGlyphTurns("P", 1)
+	tr.ObserveStabilizerGlyphTurns("p", 3)
 	tr.IncrementStabilizerReleasedImmediate()
 	tr.IncrementStabilizerReleasedImmediateReason("none")
 	tr.IncrementStabilizerReleasedDelayed()
@@ -36,6 +39,13 @@ func TestTrackerStabilizerCounters(t *testing.T) {
 	heldByReason := tr.StabilizerHeldByReason()
 	if heldByReason["unknown_or_nonrecent"] != 2 || heldByReason["ambiguous_resolver"] != 1 {
 		t.Fatalf("unexpected held_by_reason counters: %v", heldByReason)
+	}
+	glyphTurns := tr.StabilizerGlyphTurnStats()
+	if got := glyphTurns["?"]; got.Samples != 1 || got.AverageTurns != 2 {
+		t.Fatalf("unexpected glyph '?' turn stats: %+v", got)
+	}
+	if got := glyphTurns["P"]; got.Samples != 2 || got.AverageTurns != 2 {
+		t.Fatalf("unexpected glyph 'P' turn stats: %+v", got)
 	}
 	immediateByReason := tr.StabilizerReleasedImmediateByReason()
 	if immediateByReason["none"] != 1 {

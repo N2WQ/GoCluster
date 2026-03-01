@@ -825,7 +825,7 @@ func TestEvaluateTelnetStabilizerDelayUsesAmbiguousResolverPolicy(t *testing.T) 
 		StabilizerAmbiguousMaxChecks: 2,
 	}
 	s := spot.NewSpot("K1AMB", "W2TT", 7010.0, "CW")
-	s.Confidence = "V"
+	s.Confidence = "S"
 	s.EnsureNormalized()
 
 	snapshot := spot.ResolverSnapshot{
@@ -911,7 +911,7 @@ func TestEvaluateTelnetStabilizerDelayUsesEditNeighborPolicy(t *testing.T) {
 		StabilizerEditNeighborMinSpotters: 2,
 	}
 	s := spot.NewSpot("K1ABC", "W2TT", 7010.0, "CW")
-	s.Confidence = "V"
+	s.Confidence = "S"
 	s.EnsureNormalized()
 	store.Record("K1ABC", s.BandNorm, "CW", "N0AAA", now.Add(-2*time.Minute))
 	store.Record("K1ABC", s.BandNorm, "CW", "N0AAB", now.Add(-90*time.Second))
@@ -927,6 +927,30 @@ func TestEvaluateTelnetStabilizerDelayUsesEditNeighborPolicy(t *testing.T) {
 	}
 	if decision.MaxChecks != 3 {
 		t.Fatalf("expected edit-neighbor max checks 3, got %d", decision.MaxChecks)
+	}
+}
+
+func TestEvaluateTelnetStabilizerDelayVPassesThrough(t *testing.T) {
+	store := newRecentBandStoreForStabilizerAdmissionTests()
+	cfg := config.CallCorrectionConfig{
+		StabilizerEnabled:            true,
+		StabilizerMaxChecks:          5,
+		StabilizerAmbiguousMaxChecks: 2,
+	}
+	s := spot.NewSpot("K1VOK", "W2TT", 7010.0, "CW")
+	s.Confidence = "V"
+	s.EnsureNormalized()
+
+	snapshot := spot.ResolverSnapshot{
+		State:          spot.ResolverStateSplit,
+		TotalReporters: 5,
+	}
+	decision := evaluateTelnetStabilizerDelay(s, store, cfg, time.Now().UTC(), snapshot, true)
+	if decision.ShouldDelay {
+		t.Fatalf("did not expect V glyph to be delayed")
+	}
+	if decision.Reason != stabilizerDelayReasonNone {
+		t.Fatalf("expected none reason, got %q", decision.Reason.String())
 	}
 }
 

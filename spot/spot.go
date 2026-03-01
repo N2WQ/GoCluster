@@ -616,6 +616,17 @@ func (s *Spot) FormatDXCluster() string {
 		if maxDELen < 1 {
 			maxDELen = 1
 		}
+		// Keep short SSID markers for display, but if a trailing "-#" would make
+		// the left field too tight, drop just that marker before any hard truncation.
+		if strings.HasSuffix(deCall, "-#") {
+			maxDELenWithGap := maxDELen - 1
+			if maxDELenWithGap < 1 {
+				maxDELenWithGap = 1
+			}
+			if len(deCall) > maxDELenWithGap {
+				deCall = strings.TrimSuffix(deCall, "-#")
+			}
+		}
 		if len(deCall) > maxDELen {
 			deCall = deCall[:maxDELen]
 		}

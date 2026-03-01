@@ -177,6 +177,44 @@ func TestFormatDXClusterUsesStrippedDECall(t *testing.T) {
 	}
 }
 
+func TestFormatDXClusterStripsTrailingHashSSIDOnlyWhenTooLong(t *testing.T) {
+	tooLong := &Spot{
+		DXCall:    "II2WOG",
+		DECall:    "EA8/DF4UE-#",
+		Frequency: 3540.0,
+		Mode:      "CW",
+		Time:      time.Date(2025, time.November, 22, 6, 15, 0, 0, time.UTC),
+	}
+
+	gotTooLong := tooLong.FormatDXCluster()
+	if strings.Contains(gotTooLong, "EA8/DF4UE-#:") {
+		t.Fatalf("expected trailing -# to be stripped when call is too long, got %q", gotTooLong)
+	}
+	if !strings.Contains(gotTooLong, "DX de EA8/DF4UE:") {
+		t.Fatalf("expected stripped DE call in prefix, got %q", gotTooLong)
+	}
+	freqIdx := strings.Index(gotTooLong, "3540.00")
+	if freqIdx <= 0 {
+		t.Fatalf("expected frequency in output, got %q", gotTooLong)
+	}
+	if gotTooLong[freqIdx-1] != ' ' {
+		t.Fatalf("expected a space between DE prefix and frequency, got %q", gotTooLong)
+	}
+
+	shortEnough := &Spot{
+		DXCall:    "II2WOG",
+		DECall:    "OH4KA-#",
+		Frequency: 3540.0,
+		Mode:      "CW",
+		Time:      time.Date(2025, time.November, 22, 6, 15, 0, 0, time.UTC),
+	}
+
+	gotShort := shortEnough.FormatDXCluster()
+	if !strings.Contains(gotShort, "DX de OH4KA-#:") {
+		t.Fatalf("expected trailing -# to be preserved when call fits, got %q", gotShort)
+	}
+}
+
 func TestCloneWithCommentResetsFormatting(t *testing.T) {
 	s := &Spot{
 		DXCall:    "KE0UI",

@@ -11,6 +11,12 @@ import (
 	"time"
 )
 
+// StabilizerGlyphTurnStat describes average delay turns for one confidence glyph.
+type StabilizerGlyphTurnStat struct {
+	AverageTurns float64
+	Samples      uint64
+}
+
 // Tracker tracks spot statistics by source
 type Tracker struct {
 	// counters live in sync.Map + atomic.Uint64 so per-spot increments don't fight over a mutex
@@ -37,6 +43,8 @@ type Tracker struct {
 	stabDelayed          atomic.Uint64
 	stabSuppressed       atomic.Uint64
 	stabOverflowRelease  atomic.Uint64
+	stabGlyphTurnTotal   sync.Map // string(glyph) -> *atomic.Uint64
+	stabGlyphTurnSamples sync.Map // string(glyph) -> *atomic.Uint64
 	stabHeldByReason     sync.Map // string -> *atomic.Uint64
 	stabImmediateReason  sync.Map // string -> *atomic.Uint64
 	stabDelayedByReason  sync.Map // string -> *atomic.Uint64
@@ -186,6 +194,14 @@ func (t *Tracker) Reset() {
 		t.stabHeldByReason.Delete(key)
 		return true
 	})
+	t.stabGlyphTurnTotal.Range(func(key, _ any) bool {
+		t.stabGlyphTurnTotal.Delete(key)
+		return true
+	})
+	t.stabGlyphTurnSamples.Range(func(key, _ any) bool {
+		t.stabGlyphTurnSamples.Delete(key)
+		return true
+	})
 	t.stabImmediateReason.Range(func(key, _ any) bool {
 		t.stabImmediateReason.Delete(key)
 		return true
@@ -249,6 +265,23 @@ func (t *Tracker) IncrementStabilizerHeldReason(reason string) {
 		return
 	}
 	incrementCounter(&t.stabHeldByReason, strings.ToLower(strings.TrimSpace(reason)))
+}
+
+// ObserveStabilizerGlyphTurns records final stabilizer delay turns by output
+// confidence glyph.
+func (t *Tracker) ObserveStabilizerGlyphTurns(glyph string, turns int) {
+	if t == nil {
+		return
+	}
+	glyph = strings.ToUpper(strings.TrimSpace(glyph))
+	if glyph == "" {
+		glyph = "?"
+	}
+	if turns < 1 {
+		turns = 1
+	}
+	addCounterBy(&t.stabGlyphTurnTotal, glyph, uint64(turns))
+	incrementCounter(&t.stabGlyphTurnSamples, glyph)
 }
 
 // IncrementStabilizerReleasedImmediate records telnet spots delivered without a
@@ -465,6 +498,27 @@ func (t *Tracker) StabilizerHeldByReason() map[string]uint64 {
 		return map[string]uint64{}
 	}
 	return snapshotCounterMap(&t.stabHeldByReason)
+}
+
+// StabilizerGlyphTurnStats returns average delay turns and sample counts by glyph.
+func (t *Tracker) StabilizerGlyphTurnStats() map[string]StabilizerGlyphTurnStat {
+	if t == nil {
+		return map[string]StabilizerGlyphTurnStat{}
+	}
+	totals := snapshotCounterMap(&t.stabGlyphTurnTotal)
+	samples := snapshotCounterMap(&t.stabGlyphTurnSamples)
+	out := make(map[string]StabilizerGlyphTurnStat, len(totals))
+	for glyph, total := range totals {
+		sampleCount := samples[glyph]
+		if sampleCount == 0 {
+			continue
+		}
+		out[glyph] = StabilizerGlyphTurnStat{
+			AverageTurns: float64(total) / float64(sampleCount),
+			Samples:      sampleCount,
+		}
+	}
+	return out
 }
 
 // StabilizerReleasedImmediateByReason returns immediate-release counts by reason.
@@ -788,6 +842,31 @@ func incrementCounter(m *sync.Map, key string) {
 		return
 	}
 	counter.Add(1)
+}
+
+// addCounterBy adds delta to a per-key atomic counter stored in a sync.Map.
+func addCounterBy(m *sync.Map, key string, delta uint64) {
+	if m == nil || delta == 0 || strings.TrimSpace(key) == "" {
+		return
+	}
+	if value, ok := m.Load(key); ok {
+		if counter, valid := mapCounterValue(value); valid {
+			counter.Add(delta)
+			return
+		}
+	}
+	counter := &atomic.Uint64{}
+	actual, loaded := m.LoadOrStore(key, counter)
+	if loaded {
+		if existing, valid := mapCounterValue(actual); valid {
+			existing.Add(delta)
+			return
+		}
+		counter.Add(delta)
+		m.Store(key, counter)
+		return
+	}
+	counter.Add(delta)
 }
 
 func mapCounterKey(key any) (string, bool) {

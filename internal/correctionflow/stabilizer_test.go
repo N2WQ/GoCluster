@@ -102,7 +102,7 @@ func TestEvaluateStabilizerDelayAmbiguousResolver(t *testing.T) {
 		StabilizerAmbiguousMaxChecks: 3,
 	}
 	s := spot.NewSpot("K1AMB", "W1XYZ", 7010.0, "CW")
-	s.Confidence = "V"
+	s.Confidence = "S"
 
 	decision := EvaluateStabilizerDelay(s, store, cfg, time.Now().UTC(), spot.ResolverSnapshot{
 		State: spot.ResolverStateSplit,
@@ -129,7 +129,7 @@ func TestEvaluateStabilizerDelayEditNeighborContested(t *testing.T) {
 		StabilizerEditNeighborMinSpotters: 2,
 	}
 	s := spot.NewSpot("K1ABC", "W1XYZ", 7010.0, "CW")
-	s.Confidence = "V"
+	s.Confidence = "S"
 	s.EnsureNormalized()
 	store.Record("K1ABC", "40m", "CW", "N0AAA", now.Add(-2*time.Minute))
 	store.Record("K1ABC", "40m", "CW", "N0AAB", now.Add(-90*time.Second))
@@ -145,6 +145,27 @@ func TestEvaluateStabilizerDelayEditNeighborContested(t *testing.T) {
 	}
 	if decision.MaxChecks != 2 {
 		t.Fatalf("expected edit-neighbor max checks 2, got %d", decision.MaxChecks)
+	}
+}
+
+func TestEvaluateStabilizerDelayVPassesThrough(t *testing.T) {
+	store := newTestRecentBandStore()
+	cfg := config.CallCorrectionConfig{
+		StabilizerEnabled:            true,
+		StabilizerMaxChecks:          6,
+		StabilizerAmbiguousMaxChecks: 3,
+	}
+	s := spot.NewSpot("K1VOK", "W1XYZ", 7010.0, "CW")
+	s.Confidence = "V"
+
+	decision := EvaluateStabilizerDelay(s, store, cfg, time.Now().UTC(), spot.ResolverSnapshot{
+		State: spot.ResolverStateSplit,
+	}, true)
+	if decision.ShouldDelay {
+		t.Fatalf("did not expect V glyph to be delayed")
+	}
+	if decision.Reason != StabilizerDelayReasonNone {
+		t.Fatalf("expected reason %q, got %q", StabilizerDelayReasonNone.String(), decision.Reason.String())
 	}
 }
 

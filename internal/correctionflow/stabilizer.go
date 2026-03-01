@@ -83,6 +83,10 @@ func EvaluateStabilizerDelay(
 	if minUnique <= 0 {
 		minUnique = 2
 	}
+	glyph := stabilizerConfidenceGlyph(s.Confidence)
+	if !stabilizerDelayEligibleGlyph(glyph) {
+		return decision
+	}
 
 	if resolverSnapshotOK && (resolverSnapshot.State == spot.ResolverStateSplit || resolverSnapshot.State == spot.ResolverStateUncertain) {
 		decision.ShouldDelay = true
@@ -91,7 +95,7 @@ func EvaluateStabilizerDelay(
 		return decision
 	}
 
-	if strings.EqualFold(strings.TrimSpace(s.Confidence), "P") {
+	if glyph == "P" {
 		if cfg.StabilizerPDelayConfidencePercent > 0 && cfg.StabilizerPDelayMaxChecks > 0 {
 			if percent, ok := stabilizerCallConfidencePercent(s, resolverSnapshot, resolverSnapshotOK); ok && percent < cfg.StabilizerPDelayConfidencePercent {
 				decision.ShouldDelay = true
@@ -227,4 +231,21 @@ func maxRecentSupportForCallFamily(store spot.RecentSupportStore, call, band, mo
 		}
 	}
 	return maxSupport
+}
+
+func stabilizerConfidenceGlyph(confidence string) string {
+	trimmed := strings.ToUpper(strings.TrimSpace(confidence))
+	if trimmed == "" {
+		return "?"
+	}
+	return trimmed[:1]
+}
+
+func stabilizerDelayEligibleGlyph(glyph string) bool {
+	switch glyph {
+	case "?", "S", "P":
+		return true
+	default:
+		return false
+	}
 }

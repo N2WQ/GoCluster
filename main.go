@@ -1571,35 +1571,43 @@ func formatStabilizerSummary(tracker *stats.Tracker) string {
 	)
 }
 
-func formatStabilizerReasonSummary(tracker *stats.Tracker) string {
+func formatStabilizerGlyphSummary(tracker *stats.Tracker) string {
 	if tracker == nil {
-		return "Stabilizer Reason: n/a"
+		return "Stabilizer Glyph: n/a"
 	}
-	heldReasons := tracker.StabilizerHeldByReason()
-	delayedReasons := tracker.StabilizerReleasedDelayedByReason()
-	suppressedReasons := tracker.StabilizerSuppressedByReason()
-	return fmt.Sprintf("Stabilizer Reason: H[%s] D[%s] S[%s]",
-		formatStabilizerReasonTuple(heldReasons),
-		formatStabilizerReasonTuple(delayedReasons),
-		formatStabilizerReasonTuple(suppressedReasons),
-	)
-}
-
-func formatStabilizerReasonTuple(counters map[string]uint64) string {
-	if len(counters) == 0 {
-		return "u=0 a=0 p=0 e=0"
+	glyphStats := tracker.StabilizerGlyphTurnStats()
+	if len(glyphStats) == 0 {
+		return "Stabilizer Glyph: n/a"
 	}
-	unknown := counters[stabilizerDelayReasonUnknownOrNonRecent.String()]
-	ambiguous := counters[stabilizerDelayReasonAmbiguous.String()]
-	lowP := counters[stabilizerDelayReasonPLowConfidence.String()]
-	editNeighbor := counters[stabilizerDelayReasonEditNeighbor.String()]
-	return fmt.Sprintf(
-		"u=%s a=%s p=%s e=%s",
-		humanize.Comma(int64(unknown)),
-		humanize.Comma(int64(ambiguous)),
-		humanize.Comma(int64(lowP)),
-		humanize.Comma(int64(editNeighbor)),
-	)
+	order := []string{"?", "S", "P", "V", "C"}
+	parts := make([]string, 0, len(glyphStats))
+	seen := make(map[string]struct{}, len(order))
+	for _, glyph := range order {
+		stat, ok := glyphStats[glyph]
+		if !ok || stat.Samples == 0 {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s %.2f", glyph, stat.AverageTurns))
+		seen[glyph] = struct{}{}
+	}
+	extras := make([]string, 0, len(glyphStats))
+	for glyph, stat := range glyphStats {
+		if _, ok := seen[glyph]; ok {
+			continue
+		}
+		if stat.Samples == 0 {
+			continue
+		}
+		extras = append(extras, glyph)
+	}
+	sort.Strings(extras)
+	for _, glyph := range extras {
+		parts = append(parts, fmt.Sprintf("%s %.2f", glyph, glyphStats[glyph].AverageTurns))
+	}
+	if len(parts) == 0 {
+		return "Stabilizer Glyph: n/a"
+	}
+	return "Stabilizer Glyph: avg turns " + strings.Join(parts, " | ")
 }
 
 func formatResolverSummary(resolver *spot.SignalResolver) string {
@@ -1648,20 +1656,6 @@ func formatTemporalSummary(tracker *stats.Tracker) string {
 		humanize.Comma(int64(tracker.TemporalFallbackResolver())),
 		humanize.Comma(int64(tracker.TemporalAbstainLowMargin())),
 		humanize.Comma(int64(tracker.TemporalOverflowBypass())),
-	)
-}
-
-func formatTemporalLatencySummary(tracker *stats.Tracker) string {
-	if tracker == nil {
-		return "Temporal latency: n/a"
-	}
-	buckets := tracker.TemporalCommitLatencyBuckets()
-	under5s := buckets["le_500"] + buckets["le_1000"] + buckets["le_2000"] + buckets["le_5000"]
-	return fmt.Sprintf(
-		"Temporal latency: under 5s:%s 5-10s:%s over 10s:%s",
-		humanize.Comma(int64(under5s)),
-		humanize.Comma(int64(buckets["le_10000"])),
-		humanize.Comma(int64(buckets["gt_10000"])),
 	)
 }
 
@@ -1761,11 +1755,10 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 		reputationTotal := tracker.ReputationDrops()
 		corrDecisionLine := formatCorrectionDecisionSummary(tracker)
 		stabilizerLine := formatStabilizerSummary(tracker)
-		stabilizerReasonLine := formatStabilizerReasonSummary(tracker)
+		stabilizerGlyphLine := formatStabilizerGlyphSummary(tracker)
 		resolverLine := formatResolverSummary(signalResolver)
 		resolverPressureLine := formatResolverPressureSummary(signalResolver)
 		temporalLine := formatTemporalSummary(tracker)
-		temporalLatencyLine := formatTemporalLatencySummary(tracker)
 
 		ingestTotal := uint64(0)
 		if ingestStats != nil {
@@ -1910,10 +1903,9 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 			resolverPressureLine,
 			"",
 			stabilizerLine,
-			stabilizerReasonLine,
+			stabilizerGlyphLine,
 			"",
 			temporalLine,
-			temporalLatencyLine,
 			pipelineLine, // 7
 			fmt.Sprintf("Telnet: %d clients. Drops: %d (Q) / %d (C) / %d (W). Prelogin: %d active / rejects %d (G) %d (R) %d (C) / %d (T)", clientCount, queueDrops, clientDrops, senderFailures, preloginActive, preloginRejectGlobal, preloginRejectRate, preloginRejectConcurrency, preloginTimeouts), // 8
 		)
@@ -1956,10 +1948,9 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 					resolverPressureLine,
 					"",
 					stabilizerLine,
-					stabilizerReasonLine,
+					stabilizerGlyphLine,
 					"",
 					temporalLine,
-					temporalLatencyLine,
 				},
 				NetworkLines: formatNetworkLines(telnetSrv, clientList),
 			}
@@ -2453,6 +2444,7 @@ func processOutputSpots(
 					if tracker != nil {
 						tracker.IncrementStabilizerSuppressedTimeout()
 						tracker.IncrementStabilizerSuppressedTimeoutReason(delayDecision.Reason.String())
+						tracker.ObserveStabilizerGlyphTurns(delayed.Confidence, checksCompleted)
 					}
 					continue
 				}
@@ -2470,6 +2462,7 @@ func processOutputSpots(
 				if tracker != nil {
 					tracker.IncrementStabilizerReleasedDelayed()
 					tracker.IncrementStabilizerReleasedDelayedReason(stabilizerReleaseReason(delayDecision, envelope.delayReason))
+					tracker.ObserveStabilizerGlyphTurns(delayed.Confidence, checksCompleted)
 				}
 				if lastOutput != nil {
 					lastOutput.Store(time.Now().UTC().UnixNano())
@@ -6189,10 +6182,9 @@ func buildOverviewLines(
 		fmt.Sprintf("[yellow]Resolver Pressure[-]: %s", strings.TrimPrefix(resolverPressureLine, "Resolver Pressure: ")),
 		"",
 		fmt.Sprintf("[yellow]Stabilizer[-]: %s", strings.TrimPrefix(formatStabilizerSummary(tracker), "Stabilizer: ")),
-		fmt.Sprintf("[yellow]Stabilizer Reason[-]: %s", strings.TrimPrefix(formatStabilizerReasonSummary(tracker), "Stabilizer Reason: ")),
+		fmt.Sprintf("[yellow]Stabilizer Glyph[-]: %s", strings.TrimPrefix(formatStabilizerGlyphSummary(tracker), "Stabilizer Glyph: ")),
 		"",
 		fmt.Sprintf("[yellow]Temporal[-]: %s", strings.TrimPrefix(formatTemporalSummary(tracker), "Temporal: ")),
-		fmt.Sprintf("[yellow]Temporal latency[-]: %s", strings.TrimPrefix(formatTemporalLatencySummary(tracker), "Temporal latency: ")),
 		"CACHES & DATA FRESHNESS",
 	)
 	lines = append(lines, cacheBars...)

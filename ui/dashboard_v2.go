@@ -36,10 +36,9 @@ const (
 		"[lightgray]Resolver Pressure[-]: --\n" +
 		"\n" +
 		"[lightgray]Stabilizer[-]: --\n" +
-		"[lightgray]Stabilizer Reason[-]: --\n" +
+		"[lightgray]Stabilizer Glyph[-]: --\n" +
 		"\n" +
-		"[lightgray]Temporal[-]: --\n" +
-		"[lightgray]Temporal latency[-]: --"
+		"[lightgray]Temporal[-]: --"
 	placeholderCaches = "[lightgray]Grid cache[-]:  [[white:white]   [black:white]326,629[-:-]   [-:-]░░░░] 98.5%  |  [lightgray]Meta[-]: [[white:white]  [black:white] 5,479[-:-]  [-:-]] 99.5%\n" +
 		"\n" +
 		"[lightgray]Known calls[-]: --\n" +
@@ -1018,13 +1017,11 @@ PIPELINE METRICS (PLAIN ENGLISH)
   Stabilizer H/I/D/S/O:
     H held for delay, I immediate release (correction-eligible modes only),
     D released after delay, S suppressed on timeout, O overflow fail-open release.
-  Stabilizer Reason by-reason H/D/S:
-    u unknown_or_nonrecent, a ambiguous_resolver,
-    p p_low_confidence, e edit_neighbor_contested.
+  Stabilizer Glyph:
+    average stabilizer delay turns by glyph (ordered ? / S / P / V / C).
   Temporal:
     pending currently waiting, committed accepted by temporal decoder,
-    fallback/abstain/bypass are non-commit outcomes,
-    latency buckets show commit-delay distribution.
+    fallback/abstain/bypass are non-commit outcomes.
 `, accentTag, accentReset, accentTag, accentReset, accentTag, accentReset, accentTag, accentReset, accentTag, accentReset)))
 	help.SetBorder(true).SetTitle("Help")
 	help.SetBorderColor(uiBorderColor)

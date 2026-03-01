@@ -43,7 +43,7 @@ Stats ticker adds:
   - rejected: `resolver_recent_plus1_reject_*` (distance/family, winner recent insufficient, subject not weaker, contested neighbor)
   - bayes applied: `resolver_applied_bayes_report`, `resolver_applied_neighbor_bayes_report`, `resolver_applied_bayes_advantage`, `resolver_applied_neighbor_bayes_advantage`
   - bayes rejected: `resolver_bayes_report_reject_*`, `resolver_bayes_advantage_reject_*`
-- `Stabilizer` — telnet delay counters `(H/I/D/S/O)` when call-correction stabilizer is enabled: held, immediate, delayed, suppressed, overflow-release. Reason tuples use `u/a/p/e` for `unknown_or_nonrecent`, `ambiguous_resolver`, `p_low_confidence`, and `edit_neighbor_contested`. Suppressed delayed spots do not update recent-on-band support.
+- `Stabilizer` — telnet delay counters `(H/I/D/S/O)` when call-correction stabilizer is enabled: held, immediate, delayed, suppressed, overflow-release. Delay eligibility is glyph-scoped to `?`, `S`, and `P`; `V` and `C` always pass through. Reason tuples use `u/a/p/e` for `unknown_or_nonrecent`, `ambiguous_resolver`, `p_low_confidence`, and `edit_neighbor_contested`. Suppressed delayed spots do not update recent-on-band support.
 - `Path only` — per‑interval path‑only updates with drop reasons for WSPR (U=updated, S=stale, N=no SNR, G=no grid, H=bad H3, B=bad band, M=mode).
 
 ## Common Troubleshooting
