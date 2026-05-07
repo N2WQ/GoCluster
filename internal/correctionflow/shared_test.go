@@ -305,6 +305,50 @@ func TestSelectResolverPrimarySnapshotForCallPreservesTruncationBenefit(t *testi
 	}
 }
 
+func TestBuildCorrectionSettingsPreservesBayesNeutralZeros(t *testing.T) {
+	cfg := config.CallCorrectionConfig{
+		Enabled: true,
+		BayesBonus: config.CallCorrectionBayesBonusConfig{
+			Enabled: true,
+
+			WeightedSmoothingMilli: 1000,
+			RecentSmoothing:        2,
+			ObsLogCapMilli:         350,
+			PriorLogMaxMilli:       600,
+
+			ReportThresholdDistance1Milli:    450,
+			ReportThresholdDistance2Milli:    650,
+			AdvantageThresholdDistance1Milli: 700,
+			AdvantageThresholdDistance2Milli: 950,
+		},
+	}
+
+	got := BuildCorrectionSettings(BuildSettingsInput{Cfg: cfg})
+	if !got.BayesBonusPolicy.Configured {
+		t.Fatalf("expected mapped bayes policy to be marked configured")
+	}
+	if got.BayesBonusPolicy.WeightDistance1Milli != 0 || got.BayesBonusPolicy.WeightDistance2Milli != 0 {
+		t.Fatalf("expected mapped distance weights to preserve zero, got %d/%d",
+			got.BayesBonusPolicy.WeightDistance1Milli,
+			got.BayesBonusPolicy.WeightDistance2Milli)
+	}
+	if got.BayesBonusPolicy.PriorLogMinMilli != 0 {
+		t.Fatalf("expected mapped prior min to preserve zero, got %d", got.BayesBonusPolicy.PriorLogMinMilli)
+	}
+	if got.BayesBonusPolicy.AdvantageMinWeightedDeltaDistance1Milli != 0 ||
+		got.BayesBonusPolicy.AdvantageMinWeightedDeltaDistance2Milli != 0 {
+		t.Fatalf("expected mapped weighted deltas to preserve zero, got %d/%d",
+			got.BayesBonusPolicy.AdvantageMinWeightedDeltaDistance1Milli,
+			got.BayesBonusPolicy.AdvantageMinWeightedDeltaDistance2Milli)
+	}
+	if got.BayesBonusPolicy.AdvantageExtraConfidenceDistance1 != 0 ||
+		got.BayesBonusPolicy.AdvantageExtraConfidenceDistance2 != 0 {
+		t.Fatalf("expected mapped extra confidence to preserve zero, got %d/%d",
+			got.BayesBonusPolicy.AdvantageExtraConfidenceDistance1,
+			got.BayesBonusPolicy.AdvantageExtraConfidenceDistance2)
+	}
+}
+
 type selectionSnapshotExpectation struct {
 	Key              spot.ResolverSignalKey
 	Winner           string

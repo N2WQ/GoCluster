@@ -592,6 +592,7 @@ func removeResolverCandidate(st *resolverKeyState, call string) {
 		}
 	}
 	delete(st.candidates, call)
+	invalidateResolverWinnerState(st, call)
 }
 
 func (r *SignalResolver) pruneKeyState(st *resolverKeyState, now time.Time) {
@@ -617,6 +618,37 @@ func (r *SignalResolver) pruneKeyState(st *resolverKeyState, now time.Time) {
 			removeResolverCandidate(st, call)
 		}
 	}
+}
+
+// invalidateResolverWinnerState keeps hysteresis state coupled to retained
+// candidates. A removed stable winner cannot remain authoritative across later
+// evaluations; any pending challenger against that old winner is stale too.
+func invalidateResolverWinnerState(st *resolverKeyState, call string) {
+	if st == nil || call == "" {
+		return
+	}
+	if st.stableWinner == call {
+		st.stableWinner = ""
+		st.pendingWinner = ""
+		st.pendingWins = 0
+		return
+	}
+	if st.pendingWinner == call {
+		st.pendingWinner = ""
+		st.pendingWins = 0
+	}
+}
+
+func resolverRankedContainsCall(candidates []rankedResolverCandidate, call string) bool {
+	if call == "" {
+		return false
+	}
+	for i := range candidates {
+		if candidates[i].call == call {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
@@ -661,6 +693,14 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 		st.rankedScratch = ranked[:0]
 		r.publishSnapshot(st.key, snapshot)
 		return
+	}
+	if st.stableWinner != "" && !resolverRankedContainsCall(ranked, st.stableWinner) {
+		st.stableWinner = ""
+		st.pendingWinner = ""
+		st.pendingWins = 0
+	} else if st.pendingWinner != "" && !resolverRankedContainsCall(ranked, st.pendingWinner) {
+		st.pendingWinner = ""
+		st.pendingWins = 0
 	}
 
 	sort.Slice(ranked, func(i, j int) bool {
@@ -794,6 +834,11 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 		winnerSupport = top.support
 		winnerWeightedSupportMilli = top.weightedSupportMilli
 		publishedWinner = top.call
+		publishedState = provisionalState
+		st.stableWinner = top.call
+		st.pendingWinner = ""
+		st.pendingWins = 0
+		runnerCall, runnerSupport, runnerWeightedSupportMilli = runnerForResolverCall(ranked, publishedWinner)
 	}
 
 	snapshot.State = publishedState

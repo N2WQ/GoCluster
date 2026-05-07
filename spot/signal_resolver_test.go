@@ -262,6 +262,137 @@ func TestSignalResolverResourceCaps(t *testing.T) {
 	}
 }
 
+func TestSignalResolverCandidateRemovalInvalidatesWinnerState(t *testing.T) {
+	now := time.Now().UTC()
+	st := &resolverKeyState{
+		candidates: map[string]*resolverCandidate{
+			"OLD": {
+				lastSeen:  now,
+				reporters: map[string]time.Time{"K1AAA": now},
+			},
+			"NEW": {
+				lastSeen:  now,
+				reporters: map[string]time.Time{"K1AAB": now},
+			},
+		},
+		reporterRefs: map[string]resolverReporterRef{
+			"K1AAA": {refCount: 1, weightMilli: resolverReliabilityScale},
+			"K1AAB": {refCount: 1, weightMilli: resolverReliabilityScale},
+		},
+		stableWinner:  "OLD",
+		pendingWinner: "NEW",
+		pendingWins:   1,
+	}
+
+	removeResolverCandidate(st, "OLD")
+	if st.stableWinner != "" || st.pendingWinner != "" || st.pendingWins != 0 {
+		t.Fatalf("expected stable removal to clear winner state, got stable=%q pending=%q wins=%d", st.stableWinner, st.pendingWinner, st.pendingWins)
+	}
+
+	st.pendingWinner = "NEW"
+	st.pendingWins = 2
+	removeResolverCandidate(st, "NEW")
+	if st.pendingWinner != "" || st.pendingWins != 0 {
+		t.Fatalf("expected pending removal to clear pending state, got pending=%q wins=%d", st.pendingWinner, st.pendingWins)
+	}
+}
+
+func TestSignalResolverCapEvictionInvalidatesStableWinner(t *testing.T) {
+	resolver := NewSignalResolver(SignalResolverConfig{
+		QueueSize:              16,
+		MaxActiveKeys:          4,
+		MaxCandidatesPerKey:    2,
+		MaxReportersPerCand:    4,
+		InactiveTTL:            time.Minute,
+		EvalMinInterval:        time.Millisecond,
+		SweepInterval:          time.Millisecond,
+		HysteresisWindows:      2,
+		FreqGuardRunnerUpRatio: 0.6,
+	})
+	key := NewResolverSignalKey(7010.0, "40m", "CW", 500)
+	now := time.Now().UTC()
+	states := make(map[ResolverSignalKey]*resolverKeyState)
+	resolver.applyEvidence(states, ResolverEvidence{ObservedAt: now, Key: key, DXCall: "OLD", Spotter: "K1AAA", FrequencyKHz: 7010.0, RecencyWindow: time.Minute})
+	if states[key].stableWinner != "OLD" {
+		t.Fatalf("expected OLD to become initial stable winner, got %q", states[key].stableWinner)
+	}
+	resolver.applyEvidence(states, ResolverEvidence{ObservedAt: now.Add(2 * time.Millisecond), Key: key, DXCall: "MID", Spotter: "K1AAB", FrequencyKHz: 7010.1, RecencyWindow: time.Minute})
+	resolver.applyEvidence(states, ResolverEvidence{ObservedAt: now.Add(4 * time.Millisecond), Key: key, DXCall: "NEW", Spotter: "K1AAC", FrequencyKHz: 7010.2, RecencyWindow: time.Minute})
+
+	st := states[key]
+	if st == nil {
+		t.Fatalf("expected key state to remain")
+	}
+	if _, exists := st.candidates["OLD"]; exists {
+		t.Fatalf("expected OLD to be evicted")
+	}
+	if st.stableWinner == "OLD" || st.pendingWinner == "OLD" {
+		t.Fatalf("expected evicted candidate to be absent from winner state, got stable=%q pending=%q", st.stableWinner, st.pendingWinner)
+	}
+	snap, ok := resolver.Lookup(key)
+	if !ok {
+		t.Fatalf("expected resolver snapshot")
+	}
+	if snap.Winner == "OLD" || snap.RunnerUp == "OLD" || snap.Winner == snap.RunnerUp {
+		t.Fatalf("expected snapshot to exclude evicted winner and avoid duplicate runner, got %+v", snap)
+	}
+}
+
+func TestSignalResolverStaleStableWinnerFallbackRepairsState(t *testing.T) {
+	resolver := NewSignalResolver(SignalResolverConfig{
+		MaxActiveKeys:          4,
+		MaxCandidatesPerKey:    4,
+		MaxReportersPerCand:    4,
+		HysteresisWindows:      2,
+		FreqGuardRunnerUpRatio: 0.6,
+	})
+	key := NewResolverSignalKey(7010.0, "40m", "CW", 500)
+	now := time.Now().UTC()
+	st := &resolverKeyState{
+		key:           key,
+		recencyWindow: time.Minute,
+		candidates: map[string]*resolverCandidate{
+			"TOP": {
+				lastSeen:    now,
+				lastFreqKHz: 7010.0,
+				reporters:   map[string]time.Time{"K1AAA": now, "K1AAB": now},
+				identity:    normalizeCorrectionCallIdentity("TOP"),
+				callRunes:   []rune("TOP"),
+			},
+			"RUN": {
+				lastSeen:    now.Add(-time.Millisecond),
+				lastFreqKHz: 7010.1,
+				reporters:   map[string]time.Time{"K1AAC": now},
+				identity:    normalizeCorrectionCallIdentity("RUN"),
+				callRunes:   []rune("RUN"),
+			},
+		},
+		reporterRefs: map[string]resolverReporterRef{
+			"K1AAA": {refCount: 1, weightMilli: resolverReliabilityScale},
+			"K1AAB": {refCount: 1, weightMilli: resolverReliabilityScale},
+			"K1AAC": {refCount: 1, weightMilli: resolverReliabilityScale},
+		},
+		stableWinner:  "STALE",
+		pendingWinner: "TOP",
+		pendingWins:   1,
+	}
+
+	resolver.evaluateKey(st, now)
+	snap, ok := resolver.Lookup(key)
+	if !ok {
+		t.Fatalf("expected snapshot")
+	}
+	if st.stableWinner != "TOP" || st.pendingWinner != "" || st.pendingWins != 0 {
+		t.Fatalf("expected stale state repaired to TOP, got stable=%q pending=%q wins=%d", st.stableWinner, st.pendingWinner, st.pendingWins)
+	}
+	if snap.Winner != "TOP" || snap.RunnerUp != "RUN" || snap.Winner == snap.RunnerUp {
+		t.Fatalf("expected winner TOP and runner RUN after stale fallback, got %+v", snap)
+	}
+	if snap.Margin != 1 {
+		t.Fatalf("expected recomputed margin 1, got %d in %+v", snap.Margin, snap)
+	}
+}
+
 func TestSignalResolverReliabilityWeightedRanking(t *testing.T) {
 	resolver := NewSignalResolver(SignalResolverConfig{
 		QueueSize:                 64,

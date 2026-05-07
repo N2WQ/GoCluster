@@ -649,6 +649,60 @@ func TestLoadCallCorrectionFamilyPolicyOverrides(t *testing.T) {
 	}
 }
 
+func TestLoadCallCorrectionBayesBonusPreservesExplicitNeutralZeros(t *testing.T) {
+	dir := testConfigDir(t)
+	writeRequiredFloodControlFile(t, dir)
+	writeTestConfigOverlay(t, dir, "pipeline.yaml", `call_correction:
+  bayes_bonus:
+    weight_distance1_milli: 0
+    weight_distance2_milli: 0
+    prior_log_min_milli: 0
+    advantage_min_weighted_delta_distance1_milli: 0
+    advantage_min_weighted_delta_distance2_milli: 0
+    advantage_extra_confidence_distance1: 0
+    advantage_extra_confidence_distance2: 0
+`)
+
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	bayes := cfg.CallCorrection.BayesBonus
+	if bayes.WeightDistance1Milli != 0 || bayes.WeightDistance2Milli != 0 {
+		t.Fatalf("expected explicit bayes distance zeros to survive, got %d/%d", bayes.WeightDistance1Milli, bayes.WeightDistance2Milli)
+	}
+	if bayes.PriorLogMinMilli != 0 {
+		t.Fatalf("expected explicit prior_log_min_milli zero to survive, got %d", bayes.PriorLogMinMilli)
+	}
+	if bayes.AdvantageMinWeightedDeltaDistance1Milli != 0 || bayes.AdvantageMinWeightedDeltaDistance2Milli != 0 {
+		t.Fatalf("expected explicit weighted delta zeros to survive, got %d/%d",
+			bayes.AdvantageMinWeightedDeltaDistance1Milli,
+			bayes.AdvantageMinWeightedDeltaDistance2Milli)
+	}
+	if bayes.AdvantageExtraConfidenceDistance1 != 0 || bayes.AdvantageExtraConfidenceDistance2 != 0 {
+		t.Fatalf("expected explicit extra confidence zeros to survive, got %d/%d",
+			bayes.AdvantageExtraConfidenceDistance1,
+			bayes.AdvantageExtraConfidenceDistance2)
+	}
+}
+
+func TestLoadCallCorrectionBayesBonusStillRejectsUnsafeZeroThreshold(t *testing.T) {
+	dir := testConfigDir(t)
+	writeRequiredFloodControlFile(t, dir)
+	writeTestConfigOverlay(t, dir, "pipeline.yaml", `call_correction:
+  bayes_bonus:
+    report_threshold_distance1_milli: 0
+`)
+
+	_, err := Load(dir)
+	if err == nil {
+		t.Fatalf("expected Load() to reject zero report threshold")
+	}
+	if !strings.Contains(err.Error(), `call_correction.bayes_bonus.report_threshold_distance1_milli`) {
+		t.Fatalf("expected report threshold validation error, got %v", err)
+	}
+}
+
 func TestLoadCallCorrectionStabilizerDelayKnobSanitization(t *testing.T) {
 	dir := testConfigDir(t)
 	writeRequiredFloodControlFile(t, dir)

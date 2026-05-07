@@ -2159,9 +2159,13 @@ func TestEvaluateResolverPrimaryGatesAppliesBayesReportBonusOneShort(t *testing.
 		RecentBandRecordMinUniqueSpotters: 2,
 		ResolverRecentPlus1Enabled:        false,
 		BayesBonusPolicy: spot.CorrectionBayesBonusPolicy{
-			Configured:                       true,
-			Enabled:                          true,
-			AdvantageThresholdDistance1Milli: 450,
+			Configured:                              true,
+			Enabled:                                 true,
+			WeightDistance1Milli:                    350,
+			WeightDistance2Milli:                    200,
+			AdvantageThresholdDistance1Milli:        450,
+			AdvantageMinWeightedDeltaDistance1Milli: 200,
+			AdvantageExtraConfidenceDistance1:       3,
 		},
 	}
 	result := spot.EvaluateResolverPrimaryGates(
@@ -2209,9 +2213,13 @@ func TestEvaluateResolverPrimaryGatesRejectsBayesReportBonusScoreBelowThreshold(
 		RecentBandRecordMinUniqueSpotters: 2,
 		ResolverRecentPlus1Enabled:        false,
 		BayesBonusPolicy: spot.CorrectionBayesBonusPolicy{
-			Configured:                       true,
-			Enabled:                          true,
-			AdvantageThresholdDistance1Milli: 450,
+			Configured:                              true,
+			Enabled:                                 true,
+			WeightDistance1Milli:                    350,
+			WeightDistance2Milli:                    200,
+			AdvantageThresholdDistance1Milli:        450,
+			AdvantageMinWeightedDeltaDistance1Milli: 200,
+			AdvantageExtraConfidenceDistance1:       3,
 		},
 	}
 	result := spot.EvaluateResolverPrimaryGates(
@@ -2262,9 +2270,13 @@ func TestEvaluateResolverPrimaryGatesAppliesBayesAdvantageTieBreak(t *testing.T)
 		RecentBandRecordMinUniqueSpotters: 2,
 		ResolverRecentPlus1Enabled:        false,
 		BayesBonusPolicy: spot.CorrectionBayesBonusPolicy{
-			Configured:                       true,
-			Enabled:                          true,
-			AdvantageThresholdDistance1Milli: 450,
+			Configured:                              true,
+			Enabled:                                 true,
+			WeightDistance1Milli:                    350,
+			WeightDistance2Milli:                    200,
+			AdvantageThresholdDistance1Milli:        450,
+			AdvantageMinWeightedDeltaDistance1Milli: 200,
+			AdvantageExtraConfidenceDistance1:       3,
 		},
 	}
 	result := spot.EvaluateResolverPrimaryGates(

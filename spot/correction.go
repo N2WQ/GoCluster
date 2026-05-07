@@ -1,3 +1,7 @@
+// File role: resolver-primary call-correction gates, call identity handling,
+// mode-aware distance models, and bounded correction helpers.
+// Crawler notes: See spot/README.md and ADR-0120 for correction-state,
+// Bayes-rail, and distance-snapshot contracts.
 package spot
 
 import (
@@ -5,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"dxcluster/strutil"
@@ -810,12 +815,6 @@ func normalizeCorrectionBayesBonusPolicy(policy CorrectionBayesBonusPolicy) Corr
 	if cfg.WeightDistance2Milli < 0 {
 		cfg.WeightDistance2Milli = 0
 	}
-	if cfg.WeightDistance1Milli == 0 {
-		cfg.WeightDistance1Milli = 350
-	}
-	if cfg.WeightDistance2Milli == 0 {
-		cfg.WeightDistance2Milli = 200
-	}
 	if cfg.WeightDistance1Milli > 1000 {
 		cfg.WeightDistance1Milli = 1000
 	}
@@ -831,11 +830,11 @@ func normalizeCorrectionBayesBonusPolicy(policy CorrectionBayesBonusPolicy) Corr
 	if cfg.ObsLogCapMilli <= 0 {
 		cfg.ObsLogCapMilli = 350
 	}
-	if cfg.PriorLogMinMilli == 0 {
-		cfg.PriorLogMinMilli = -200
-	}
 	if cfg.PriorLogMaxMilli == 0 {
 		cfg.PriorLogMaxMilli = 600
+	}
+	if cfg.PriorLogMinMilli > 0 {
+		cfg.PriorLogMinMilli = 0
 	}
 	if cfg.PriorLogMinMilli >= cfg.PriorLogMaxMilli {
 		cfg.PriorLogMinMilli = -200
@@ -859,11 +858,11 @@ func normalizeCorrectionBayesBonusPolicy(policy CorrectionBayesBonusPolicy) Corr
 	if cfg.AdvantageThresholdDistance2Milli < cfg.AdvantageThresholdDistance1Milli {
 		cfg.AdvantageThresholdDistance2Milli = cfg.AdvantageThresholdDistance1Milli
 	}
-	if cfg.AdvantageMinWeightedDeltaDistance1Milli <= 0 {
-		cfg.AdvantageMinWeightedDeltaDistance1Milli = 200
+	if cfg.AdvantageMinWeightedDeltaDistance1Milli < 0 {
+		cfg.AdvantageMinWeightedDeltaDistance1Milli = 0
 	}
-	if cfg.AdvantageMinWeightedDeltaDistance2Milli <= 0 {
-		cfg.AdvantageMinWeightedDeltaDistance2Milli = 300
+	if cfg.AdvantageMinWeightedDeltaDistance2Milli < 0 {
+		cfg.AdvantageMinWeightedDeltaDistance2Milli = 0
 	}
 	if cfg.AdvantageMinWeightedDeltaDistance2Milli < cfg.AdvantageMinWeightedDeltaDistance1Milli {
 		cfg.AdvantageMinWeightedDeltaDistance2Milli = cfg.AdvantageMinWeightedDeltaDistance1Milli
@@ -873,12 +872,6 @@ func normalizeCorrectionBayesBonusPolicy(policy CorrectionBayesBonusPolicy) Corr
 	}
 	if cfg.AdvantageExtraConfidenceDistance2 < 0 {
 		cfg.AdvantageExtraConfidenceDistance2 = 0
-	}
-	if cfg.AdvantageExtraConfidenceDistance1 == 0 {
-		cfg.AdvantageExtraConfidenceDistance1 = 3
-	}
-	if cfg.AdvantageExtraConfidenceDistance2 == 0 {
-		cfg.AdvantageExtraConfidenceDistance2 = 5
 	}
 	if cfg.AdvantageExtraConfidenceDistance2 < cfg.AdvantageExtraConfidenceDistance1 {
 		cfg.AdvantageExtraConfidenceDistance2 = cfg.AdvantageExtraConfidenceDistance1
@@ -1047,16 +1040,16 @@ func shouldRejectAsAmbiguousMultiSignal(
 	return overlapRatio <= ambiguousMultiSignalMaxOverlapRatio
 }
 
-// ConfigureMorseWeights applies Morse distance weights and rebuilds lookup tables.
+// ConfigureMorseWeights builds a complete immutable Morse distance snapshot and
+// atomically publishes it for concurrent correction readers.
 func ConfigureMorseWeights(insert, delete, sub, scale int) {
-	morseInsertCost, morseDeleteCost, morseSubCost, morseScale = normalizeDistanceWeights(insert, delete, sub, scale)
-	morseRuneIndex, morseCostTable = buildRuneCostTable(morseCodes, morsePatternCost)
+	morseDistanceSnapshot.Store(buildDistanceTableSnapshot(morseCodes, normalizeDistanceWeightSet(insert, delete, sub, scale)))
 }
 
-// ConfigureBaudotWeights applies Baudot distance weights and rebuilds lookup tables.
+// ConfigureBaudotWeights builds a complete immutable Baudot distance snapshot
+// and atomically publishes it for concurrent correction readers.
 func ConfigureBaudotWeights(insert, delete, sub, scale int) {
-	baudotInsertCost, baudotDeleteCost, baudotSubCost, baudotScale = normalizeDistanceWeights(insert, delete, sub, scale)
-	baudotRuneIndex, baudotCostTable = buildRuneCostTable(baudotCodes, baudotPatternCost)
+	baudotDistanceSnapshot.Store(buildDistanceTableSnapshot(baudotCodes, normalizeDistanceWeightSet(insert, delete, sub, scale)))
 }
 
 func normalizeDistanceWeights(insert, delete, sub, scale int) (int, int, int, int) {
@@ -1075,12 +1068,24 @@ func normalizeDistanceWeights(insert, delete, sub, scale int) (int, int, int, in
 	return insert, delete, sub, scale
 }
 
+func normalizeDistanceWeightSet(insert, delete, sub, scale int) distanceWeightSet {
+	insert, delete, sub, scale = normalizeDistanceWeights(insert, delete, sub, scale)
+	return distanceWeightSet{
+		ins:   insert,
+		del:   delete,
+		sub:   sub,
+		scale: scale,
+	}
+}
+
 func cwCallDistance(a, b string) int {
-	return weightedCallDistance(a, b, morseRuneIndex, morseCostTable)
+	snapshot := loadMorseDistanceSnapshot()
+	return weightedCallDistance(a, b, snapshot.runeIndex, snapshot.costTable)
 }
 
 func rttyCallDistance(a, b string) int {
-	return weightedCallDistance(a, b, baudotRuneIndex, baudotCostTable)
+	snapshot := loadBaudotDistanceSnapshot()
+	return weightedCallDistance(a, b, snapshot.runeIndex, snapshot.costTable)
 }
 
 func weightedCallDistance(a, b string, runeIndex map[rune]int, costTable [][]int) int {
@@ -1227,27 +1232,12 @@ var morseCodes = map[rune]string{
 	'/': "-..-.",
 }
 
-var (
-	morseRuneIndex map[rune]int
-	morseCostTable [][]int
-
-	morseInsertCost = defaultDistanceInsertCost
-	morseDeleteCost = defaultDistanceDeleteCost
-	morseSubCost    = defaultDistanceSubCost
-	morseScale      = defaultDistanceScale
-
-	baudotInsertCost = defaultDistanceInsertCost
-	baudotDeleteCost = defaultDistanceDeleteCost
-	baudotSubCost    = defaultDistanceSubCost
-	baudotScale      = defaultDistanceScale
-
-	levBufPool = sync.Pool{
-		New: func() interface{} {
-			buf := make([]int, 64)
-			return &buf
-		},
-	}
-)
+var levBufPool = sync.Pool{
+	New: func() interface{} {
+		buf := make([]int, 64)
+		return &buf
+	},
+}
 
 var baudotCodes = map[rune]string{
 	'A': "L00011",
@@ -1289,14 +1279,55 @@ var baudotCodes = map[rune]string{
 	'/': "F11101",
 }
 
+// distanceTableSnapshot is immutable after construction. Configure*Weights
+// publishes a whole snapshot at once so readers never observe mixed weights and
+// cost tables.
+type distanceTableSnapshot struct {
+	runeIndex map[rune]int
+	costTable [][]int
+	weights   distanceWeightSet
+}
+
 var (
-	baudotRuneIndex map[rune]int
-	baudotCostTable [][]int
+	morseDistanceSnapshot  atomic.Pointer[distanceTableSnapshot]
+	baudotDistanceSnapshot atomic.Pointer[distanceTableSnapshot]
 )
 
 func init() {
-	morseRuneIndex, morseCostTable = buildRuneCostTable(morseCodes, morsePatternCost)
-	baudotRuneIndex, baudotCostTable = buildRuneCostTable(baudotCodes, baudotPatternCost)
+	defaultWeights := normalizeDistanceWeightSet(defaultDistanceInsertCost, defaultDistanceDeleteCost, defaultDistanceSubCost, defaultDistanceScale)
+	morseDistanceSnapshot.Store(buildDistanceTableSnapshot(morseCodes, defaultWeights))
+	baudotDistanceSnapshot.Store(buildDistanceTableSnapshot(baudotCodes, defaultWeights))
+}
+
+func buildDistanceTableSnapshot(codebook map[rune]string, weights distanceWeightSet) *distanceTableSnapshot {
+	index, table := buildRuneCostTable(codebook, func(a, b string) int {
+		return weightedPatternCost(a, b, weights)
+	})
+	return &distanceTableSnapshot{
+		runeIndex: index,
+		costTable: table,
+		weights:   weights,
+	}
+}
+
+func loadMorseDistanceSnapshot() *distanceTableSnapshot {
+	if snapshot := morseDistanceSnapshot.Load(); snapshot != nil {
+		return snapshot
+	}
+	return buildDistanceTableSnapshot(
+		morseCodes,
+		normalizeDistanceWeightSet(defaultDistanceInsertCost, defaultDistanceDeleteCost, defaultDistanceSubCost, defaultDistanceScale),
+	)
+}
+
+func loadBaudotDistanceSnapshot() *distanceTableSnapshot {
+	if snapshot := baudotDistanceSnapshot.Load(); snapshot != nil {
+		return snapshot
+	}
+	return buildDistanceTableSnapshot(
+		baudotCodes,
+		normalizeDistanceWeightSet(defaultDistanceInsertCost, defaultDistanceDeleteCost, defaultDistanceSubCost, defaultDistanceScale),
+	)
 }
 
 func buildRuneCostTable(codebook map[rune]string, cost func(a, b string) int) (map[rune]int, [][]int) {
@@ -1323,39 +1354,11 @@ func buildRuneCostTable(codebook map[rune]string, cost func(a, b string) int) (m
 	return index, table
 }
 
-func morsePatternCost(a, b string) int {
-	return weightedPatternCost(a, b, getMorseWeights().distanceWeightSet)
-}
-
 type distanceWeightSet struct {
 	ins   int
 	del   int
 	sub   int
 	scale int
-}
-
-type morseWeightSet struct {
-	distanceWeightSet
-}
-
-func getMorseWeights() morseWeightSet {
-	return morseWeightSet{
-		distanceWeightSet: distanceWeightSet{
-			ins:   morseInsertCost,
-			del:   morseDeleteCost,
-			sub:   morseSubCost,
-			scale: morseScale,
-		},
-	}
-}
-
-func baudotPatternCost(a, b string) int {
-	return weightedPatternCost(a, b, distanceWeightSet{
-		ins:   baudotInsertCost,
-		del:   baudotDeleteCost,
-		sub:   baudotSubCost,
-		scale: baudotScale,
-	})
 }
 
 func weightedPatternCost(a, b string, cfg distanceWeightSet) int {
@@ -1367,10 +1370,10 @@ func weightedPatternCost(a, b string, cfg distanceWeightSet) int {
 	la := len(ra)
 	lb := len(rb)
 	if la == 0 {
-		return cfg.ins
+		return scaleWeightedPatternCost(lb*cfg.ins, lb, cfg)
 	}
 	if lb == 0 {
-		return cfg.ins
+		return scaleWeightedPatternCost(la*cfg.del, la, cfg)
 	}
 	prev := make([]int, lb+1)
 	cur := make([]int, lb+1)
@@ -1397,13 +1400,20 @@ func weightedPatternCost(a, b string, cfg distanceWeightSet) int {
 	if lb > maxLen {
 		maxLen = lb
 	}
+	return scaleWeightedPatternCost(raw, maxLen, cfg)
+}
+
+func scaleWeightedPatternCost(raw, maxLen int, cfg distanceWeightSet) int {
+	if raw <= 0 {
+		return 0
+	}
 	scale := cfg.scale
 	if scale <= 0 {
 		scale = defaultDistanceScale
 	}
 	normalized := float64(raw) / float64(maxLen+1)
 	scaled := int(math.Ceil(normalized * float64(scale)))
-	if scaled < 1 && raw > 0 {
+	if scaled < 1 {
 		scaled = 1
 	}
 	return scaled

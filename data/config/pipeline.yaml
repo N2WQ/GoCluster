@@ -106,6 +106,9 @@ call_correction:
   bayes_bonus:
     # Milli fields are fixed-point weights/thresholds. Distance1/Distance2
     # variants apply different strictness based on resolver edit distance.
+    # Explicit 0 is only neutral for distance weights, prior_log_min_milli,
+    # advantage weighted deltas, and extra confidence deltas; thresholds,
+    # smoothing, and caps must stay positive.
     enabled: true
     weight_distance1_milli: 350
     weight_distance2_milli: 200

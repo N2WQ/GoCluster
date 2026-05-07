@@ -1380,6 +1380,13 @@ type loadRawPresence struct {
 	hasResolverRecentPlus1Enabled                   bool
 	hasResolverRecentPlus1RequireSubjectWeaker      bool
 	hasResolverRecentPlus1AllowTruncation           bool
+	hasBayesBonusWeightDistance1Milli               bool
+	hasBayesBonusWeightDistance2Milli               bool
+	hasBayesBonusPriorLogMinMilli                   bool
+	hasBayesBonusAdvantageMinWeightedDeltaD1        bool
+	hasBayesBonusAdvantageMinWeightedDeltaD2        bool
+	hasBayesBonusAdvantageExtraConfidenceD1         bool
+	hasBayesBonusAdvantageExtraConfidenceD2         bool
 	hasBayesBonusRequireCandidateValidated          bool
 	hasBayesBonusRequireSubjectUnvalidatedDistance2 bool
 	hasFTPMinUniqueSpotters                         bool
@@ -1448,6 +1455,13 @@ func captureLoadRawPresence(raw map[string]any) loadRawPresence {
 		hasResolverRecentPlus1Enabled:                   yamlKeyPresent(raw, "call_correction", "resolver_recent_plus1_enabled"),
 		hasResolverRecentPlus1RequireSubjectWeaker:      yamlKeyPresent(raw, "call_correction", "resolver_recent_plus1_require_subject_weaker"),
 		hasResolverRecentPlus1AllowTruncation:           yamlKeyPresent(raw, "call_correction", "resolver_recent_plus1_allow_truncation_family"),
+		hasBayesBonusWeightDistance1Milli:               yamlKeyPresent(raw, "call_correction", "bayes_bonus", "weight_distance1_milli"),
+		hasBayesBonusWeightDistance2Milli:               yamlKeyPresent(raw, "call_correction", "bayes_bonus", "weight_distance2_milli"),
+		hasBayesBonusPriorLogMinMilli:                   yamlKeyPresent(raw, "call_correction", "bayes_bonus", "prior_log_min_milli"),
+		hasBayesBonusAdvantageMinWeightedDeltaD1:        yamlKeyPresent(raw, "call_correction", "bayes_bonus", "advantage_min_weighted_delta_distance1_milli"),
+		hasBayesBonusAdvantageMinWeightedDeltaD2:        yamlKeyPresent(raw, "call_correction", "bayes_bonus", "advantage_min_weighted_delta_distance2_milli"),
+		hasBayesBonusAdvantageExtraConfidenceD1:         yamlKeyPresent(raw, "call_correction", "bayes_bonus", "advantage_extra_confidence_distance1"),
+		hasBayesBonusAdvantageExtraConfidenceD2:         yamlKeyPresent(raw, "call_correction", "bayes_bonus", "advantage_extra_confidence_distance2"),
 		hasBayesBonusRequireCandidateValidated:          yamlKeyPresent(raw, "call_correction", "bayes_bonus", "require_candidate_validated"),
 		hasBayesBonusRequireSubjectUnvalidatedDistance2: yamlKeyPresent(raw, "call_correction", "bayes_bonus", "require_subject_unvalidated_distance2"),
 		hasFTPMinUniqueSpotters:                         yamlKeyPresent(raw, "call_correction", "p_min_unique_spotters"),
@@ -2230,10 +2244,16 @@ func normalizeCallCorrectionResolverConfig(cfg *Config, presence loadRawPresence
 }
 
 func normalizeCallCorrectionBayesDefaultsConfig(cfg *Config, presence loadRawPresence) {
-	if cfg.CallCorrection.BayesBonus.WeightDistance1Milli <= 0 {
+	if cfg.CallCorrection.BayesBonus.WeightDistance1Milli < 0 {
+		cfg.CallCorrection.BayesBonus.WeightDistance1Milli = 0
+	}
+	if cfg.CallCorrection.BayesBonus.WeightDistance1Milli == 0 && !presence.hasBayesBonusWeightDistance1Milli {
 		cfg.CallCorrection.BayesBonus.WeightDistance1Milli = 350
 	}
-	if cfg.CallCorrection.BayesBonus.WeightDistance2Milli <= 0 {
+	if cfg.CallCorrection.BayesBonus.WeightDistance2Milli < 0 {
+		cfg.CallCorrection.BayesBonus.WeightDistance2Milli = 0
+	}
+	if cfg.CallCorrection.BayesBonus.WeightDistance2Milli == 0 && !presence.hasBayesBonusWeightDistance2Milli {
 		cfg.CallCorrection.BayesBonus.WeightDistance2Milli = 200
 	}
 	if cfg.CallCorrection.BayesBonus.WeightDistance1Milli > 1000 {
@@ -2260,14 +2280,14 @@ func normalizeCallCorrectionBayesDefaultsConfig(cfg *Config, presence loadRawPre
 	if cfg.CallCorrection.BayesBonus.ObsLogCapMilli > 2000 {
 		cfg.CallCorrection.BayesBonus.ObsLogCapMilli = 2000
 	}
-	if cfg.CallCorrection.BayesBonus.PriorLogMinMilli == 0 {
+	if cfg.CallCorrection.BayesBonus.PriorLogMinMilli == 0 && !presence.hasBayesBonusPriorLogMinMilli {
 		cfg.CallCorrection.BayesBonus.PriorLogMinMilli = -200
 	}
 	if cfg.CallCorrection.BayesBonus.PriorLogMaxMilli == 0 {
 		cfg.CallCorrection.BayesBonus.PriorLogMaxMilli = 600
 	}
-	if cfg.CallCorrection.BayesBonus.PriorLogMinMilli > -10 {
-		cfg.CallCorrection.BayesBonus.PriorLogMinMilli = -10
+	if cfg.CallCorrection.BayesBonus.PriorLogMinMilli > 0 {
+		cfg.CallCorrection.BayesBonus.PriorLogMinMilli = 0
 	}
 	if cfg.CallCorrection.BayesBonus.PriorLogMinMilli < -2000 {
 		cfg.CallCorrection.BayesBonus.PriorLogMinMilli = -2000
@@ -2318,10 +2338,10 @@ func normalizeCallCorrectionBayesDefaultsConfig(cfg *Config, presence loadRawPre
 	if cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance2Milli < 0 {
 		cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance2Milli = 0
 	}
-	if cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance1Milli == 0 {
+	if cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance1Milli == 0 && !presence.hasBayesBonusAdvantageMinWeightedDeltaD1 {
 		cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance1Milli = 200
 	}
-	if cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance2Milli == 0 {
+	if cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance2Milli == 0 && !presence.hasBayesBonusAdvantageMinWeightedDeltaD2 {
 		cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance2Milli = 300
 	}
 	if cfg.CallCorrection.BayesBonus.AdvantageMinWeightedDeltaDistance1Milli > 5000 {
@@ -2339,10 +2359,10 @@ func normalizeCallCorrectionBayesDefaultsConfig(cfg *Config, presence loadRawPre
 	if cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance2 < 0 {
 		cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance2 = 0
 	}
-	if cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance1 == 0 {
+	if cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance1 == 0 && !presence.hasBayesBonusAdvantageExtraConfidenceD1 {
 		cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance1 = 3
 	}
-	if cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance2 == 0 {
+	if cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance2 == 0 && !presence.hasBayesBonusAdvantageExtraConfidenceD2 {
 		cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance2 = 5
 	}
 	if cfg.CallCorrection.BayesBonus.AdvantageExtraConfidenceDistance1 > 50 {
