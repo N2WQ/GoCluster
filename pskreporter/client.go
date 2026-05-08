@@ -675,20 +675,20 @@ func (c *Client) convertToSpot(msg *PSKRMessage, modeInfo pskModeInfo) *spot.Spo
 		freqKHz = skew.ApplyCorrection(c.skewStore, norm.deCall, freqKHz)
 	}
 
-	// Create spot
-	// In PSKReporter: sender = DX station, receiver = spotter
-	// In our model: DXCall = sender, DECall = receiver
-	s := spot.NewSpotNormalized(dxCall, deCall, freqKHz, norm.displayMode)
-	s.ModeNorm = norm.modeUpper
+	// Create spot. In PSKReporter: sender = DX station, receiver = spotter.
+	// In our model: DXCall = sender, DECall = receiver.
+	s := spot.NewSpotFromNormalizedIngest(
+		dxCall,
+		deCall,
+		freqKHz,
+		norm.displayMode,
+		norm.modeUpper,
+		spotTime,
+		spot.SourcePSKReporter,
+		"PSKREPORTER",
+		false,
+	)
 	s.ModeProvenance = spot.ModeProvenanceSourceExplicit
-	s.IsHuman = false
-
-	// CRITICAL: Set the actual observation timestamp from PSKReporter
-	// This overwrites the time.Now() that was set in NewSpot()
-	// The PSKReporter "t" field contains the Unix timestamp (seconds since epoch)
-	// when the signal was actually observed, which is what we need for accurate
-	// deduplication across multiple spotters reporting the same signal
-	s.Time = spotTime
 
 	// Set report (SNR in dB) when present.
 	if msg.Report != nil {
@@ -699,17 +699,12 @@ func (c *Client) convertToSpot(msg *PSKRMessage, modeInfo pskModeInfo) *spot.Spo
 	// Comment intentionally left empty for PSKReporter; grids are stored in metadata
 	// and rendered in the DX cluster tail to avoid duplicating payload.
 
-	// Set source type and node
-	s.SourceType = spot.SourcePSKReporter
-	s.SourceNode = "PSKREPORTER"
 	if norm.ftCanonicalized && norm.observedFreqKHz > 0 {
 		s.ObservedFrequency = norm.observedFreqKHz
 	}
 
 	s.DXMetadata.Grid = norm.dxGrid
 	s.DEMetadata.Grid = norm.deGrid
-
-	s.RefreshBeaconFlag()
 
 	return s
 }

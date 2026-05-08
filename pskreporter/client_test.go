@@ -129,6 +129,40 @@ func TestConvertToSpotCanonicalizesFTFrequencyAndPreservesObserved(t *testing.T)
 	}
 }
 
+func TestConvertToSpotUsesObservationTimestampAndMachineSource(t *testing.T) {
+	client := NewClient("localhost", 1883, nil, "", 1, 0, 0, 0, nil, nil, false, 16, 0)
+	observed := time.Now().UTC().Add(-time.Minute).Truncate(time.Second)
+	msg := &PSKRMessage{
+		SequenceNumber:  1,
+		Frequency:       14074000,
+		Mode:            "FT8",
+		Report:          intPtr(10),
+		Timestamp:       observed.Unix(),
+		SenderCall:      "K1ABC",
+		SenderLocator:   "FN42",
+		ReceiverCall:    "N0CALL",
+		ReceiverLocator: "EM10",
+	}
+
+	modeInfo, ok := parseModeInfo(msg.Mode)
+	if !ok {
+		t.Fatalf("expected valid mode info for %q", msg.Mode)
+	}
+	got := client.convertToSpot(msg, modeInfo)
+	if got == nil {
+		t.Fatal("expected spot")
+	}
+	if !got.Time.Equal(observed) || got.Time.Location() != time.UTC {
+		t.Fatalf("expected observation timestamp in UTC, got %s (%s)", got.Time, got.Time.Location())
+	}
+	if got.SourceType != spot.SourcePSKReporter || got.SourceNode != "PSKREPORTER" || got.IsHuman {
+		t.Fatalf("unexpected source fields: source=%q node=%q isHuman=%v", got.SourceType, got.SourceNode, got.IsHuman)
+	}
+	if got.ModeProvenance != spot.ModeProvenanceSourceExplicit {
+		t.Fatalf("expected source-explicit mode provenance, got %q", got.ModeProvenance)
+	}
+}
+
 func TestConvertToSpotFTFrequencyFailsOpenWithoutMatchingDial(t *testing.T) {
 	registry := spot.NewFTDialRegistry([]spot.ModeSeed{
 		{FrequencyKHz: 14074, Mode: "FT8"},

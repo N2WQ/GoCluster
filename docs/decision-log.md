@@ -11,6 +11,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 |---|---|---|---|---|---|---|---|
 | ADR-0001 | <title> | Proposed | YYYY-MM-DD | <area> | - | - | `docs/decisions/ADR-0001-<slug>.md` |
+| ADR-0121 | PSKReporter Trusted Spot Materialization | Accepted | 2026-05-07 | pskreporter, spot, hot path | - | - | `docs/decisions/ADR-0121-pskreporter-trusted-spot-materialization.md` |
 | ADR-0120 | Resolver Correction State Hardening | Accepted | 2026-05-06 | spot, correction, config, concurrency | - | - | `docs/decisions/ADR-0120-resolver-correction-state-hardening.md` |
 | ADR-0119 | Non-trivial Scope Adversarial Review | Accepted | 2026-05-06 | workflow, scope ledger, validation | - | - | `docs/decisions/ADR-0119-non-trivial-scope-adversarial-review.md` |
 | ADR-0118 | Telnet Broadcast Job Value Queues | Accepted | 2026-05-06 | telnet, fan-out, queues, hot path | - | - | `docs/decisions/ADR-0118-telnet-broadcast-job-value-queues.md` |

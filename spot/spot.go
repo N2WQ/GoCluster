@@ -207,6 +207,53 @@ func NewSpotNormalized(dxCallNorm, deCallNorm string, freq float64, mode string)
 	return spot
 }
 
+// NewSpotFromNormalizedIngest builds a spot for machine-ingest paths that have
+// already canonicalized calls and mode. It preserves the caller's observation
+// time and skips constructor normalization work that high-volume feeds already
+// performed before validation.
+func NewSpotFromNormalizedIngest(
+	dxCallNorm, deCallNorm string,
+	freq float64,
+	mode, modeNorm string,
+	observedAt time.Time,
+	sourceType SourceType,
+	sourceNode string,
+	isHuman bool,
+) *Spot {
+	freq = roundFrequencyTo10Hz(freq)
+	if modeNorm == "" {
+		modeNorm = mode
+	}
+	band := FreqToBand(freq)
+	if observedAt.IsZero() {
+		observedAt = time.Now().UTC()
+	} else {
+		observedAt = observedAt.UTC()
+	}
+	spot := &Spot{
+		DXCall:     dxCallNorm,
+		DECall:     deCallNorm,
+		Frequency:  freq,
+		Mode:       mode,
+		Band:       band,
+		Time:       observedAt,
+		SourceType: sourceType,
+		SourceNode: sourceNode,
+		TTL:        5, // Default hop count
+		Report:     0, // Meaningful only when HasReport is true
+		HasReport:  false,
+		IsHuman:    isHuman,
+		ModeNorm:   modeNorm,
+		BandNorm:   band,
+		DXCallNorm: dxCallNorm,
+		DECallNorm: deCallNorm,
+		DXCellID:   0,
+		DECellID:   0,
+	}
+	spot.RefreshBeaconFlag()
+	return spot
+}
+
 // Purpose: Round a kHz frequency to the nearest 10 Hz (0.01 kHz).
 // Key aspects: Uses half-up rounding to avoid banker rounding.
 // Upstream: NewSpot and frequency normalization.

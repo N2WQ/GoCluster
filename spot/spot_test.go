@@ -47,6 +47,40 @@ func TestSpotConstructorsCanonicalizeDXNumericSSID(t *testing.T) {
 	}
 }
 
+func TestNewSpotFromNormalizedIngestPreservesTrustedFields(t *testing.T) {
+	observed := time.Unix(1710000000, 0)
+	s := NewSpotFromNormalizedIngest(
+		"K1ABC",
+		"W1XYZ-1",
+		14076.114,
+		"PSK31",
+		"PSK",
+		observed,
+		SourcePSKReporter,
+		"PSKREPORTER",
+		false,
+	)
+
+	if s.DXCall != "K1ABC" || s.DXCallNorm != "K1ABC" {
+		t.Fatalf("expected trusted DX call to be preserved, got DXCall=%q DXCallNorm=%q", s.DXCall, s.DXCallNorm)
+	}
+	if s.DECall != "W1XYZ-1" || s.DECallNorm != "W1XYZ-1" {
+		t.Fatalf("expected trusted DE call to be preserved, got DECall=%q DECallNorm=%q", s.DECall, s.DECallNorm)
+	}
+	if s.Frequency != 14076.11 || s.Band != "20m" || s.BandNorm != "20m" {
+		t.Fatalf("unexpected frequency/band fields: freq=%.2f band=%q bandNorm=%q", s.Frequency, s.Band, s.BandNorm)
+	}
+	if s.Mode != "PSK31" || s.ModeNorm != "PSK" {
+		t.Fatalf("unexpected mode fields: Mode=%q ModeNorm=%q", s.Mode, s.ModeNorm)
+	}
+	if !s.Time.Equal(observed.UTC()) || s.Time.Location() != time.UTC {
+		t.Fatalf("expected UTC observation time, got %s (%s)", s.Time, s.Time.Location())
+	}
+	if s.SourceType != SourcePSKReporter || s.SourceNode != "PSKREPORTER" || s.IsHuman {
+		t.Fatalf("unexpected source fields: source=%q node=%q isHuman=%v", s.SourceType, s.SourceNode, s.IsHuman)
+	}
+}
+
 func TestEnsureNormalizedCanonicalizesDXNumericSSID(t *testing.T) {
 	s := &Spot{DXCall: "K1ABC-2", DECall: "W1XYZ-1", Frequency: 14074.0, Mode: "FT8"}
 	s.EnsureNormalized()
