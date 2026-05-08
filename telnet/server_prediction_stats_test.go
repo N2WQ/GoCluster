@@ -47,3 +47,81 @@ func TestPathPredictionStatsSnapshotSplit(t *testing.T) {
 		t.Fatalf("expected zeroed snapshot, got %+v", after)
 	}
 }
+
+func TestPathP50DiagStatsSnapshotBuckets(t *testing.T) {
+	s := &Server{}
+	s.recordPathP50Diag(pathreliability.Result{
+		MeanDB:    -11,
+		HasMeanDB: true,
+		P50DB:     -15,
+		HasP50:    true,
+		Count:     19,
+	})
+	s.recordPathP50Diag(pathreliability.Result{
+		MeanDB:    -20,
+		HasMeanDB: true,
+		P50DB:     -12,
+		HasP50:    true,
+		Count:     3,
+	})
+	s.recordPathP50Diag(pathreliability.Result{
+		MeanDB:    -1,
+		HasMeanDB: true,
+		P50DB:     -13,
+		HasP50:    true,
+		Count:     525,
+	})
+	s.recordPathP50Diag(pathreliability.Result{
+		MeanDB:    1,
+		HasMeanDB: true,
+		P50DB:     -7,
+		HasP50:    true,
+		Count:     150,
+	})
+	s.recordPathP50Diag(pathreliability.Result{MeanDB: -11, HasMeanDB: true, Count: 7})
+
+	stats := s.PathP50DiagStatsSnapshot()
+	if stats.Observed != 5 || stats.Missing != 1 {
+		t.Fatalf("unexpected observed/missing: %+v", stats)
+	}
+	if stats.Delta[pathP50DiagDeltaLeNeg6] != 1 ||
+		stats.Delta[pathP50DiagDeltaNeg5Pos5] != 1 ||
+		stats.Delta[pathP50DiagDelta6To11] != 1 ||
+		stats.Delta[pathP50DiagDeltaGe12] != 1 {
+		t.Fatalf("unexpected delta buckets: %+v", stats.Delta)
+	}
+	if stats.N[pathP50DiagNLt17] != 1 ||
+		stats.N[pathP50DiagN17To99] != 1 ||
+		stats.N[pathP50DiagN100To499] != 1 ||
+		stats.N[pathP50DiagNGe500] != 1 {
+		t.Fatalf("unexpected n buckets: %+v", stats.N)
+	}
+	after := s.PathP50DiagStatsSnapshot()
+	if after.Observed != 0 || after.Missing != 0 {
+		t.Fatalf("expected snapshot reset, got %+v", after)
+	}
+}
+
+func BenchmarkRecordPathPrediction(b *testing.B) {
+	s := &Server{}
+	res := pathreliability.Result{Source: pathreliability.SourceCombined, Weight: 2}
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		s.recordPathPrediction(res, false, false)
+	}
+}
+
+func BenchmarkRecordPathP50Diag(b *testing.B) {
+	s := &Server{}
+	res := pathreliability.Result{
+		MeanDB:    -11,
+		HasMeanDB: true,
+		P50DB:     -15,
+		HasP50:    true,
+		Count:     119,
+	}
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		s.recordPathP50Diag(res)
+	}
+}

@@ -112,9 +112,9 @@ When you see a glyph next to a spot, here's what happened behind the scenes:
    the cluster minimum, the system shows a space (insufficient data). Users can
    make their own view stricter with `SET PATHSAMPLES <count>`, but cannot lower
    the cluster default. In `enforce` mode this check uses capped selected
-   observations. Five-minute system logs report this as `low_count`.
+   observations. Five-minute propagation logs report this as `low_count`.
 
-8. **Check confidence**: If the combined data weight is below the minimum threshold (default 0.6), the system shows a space (insufficient data) instead of making an unreliable prediction. Five-minute system logs report this as `low_weight`.
+8. **Check confidence**: If the combined data weight is below the minimum threshold (default 0.6), the system shows a space (insufficient data) instead of making an unreliable prediction. Five-minute propagation logs report this as `low_weight`.
 
 9. **Map to glyph**: The final signal strength gets compared against mode-specific thresholds to pick the right symbol.
 

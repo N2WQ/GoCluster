@@ -247,3 +247,55 @@ func TestFileOnlyEventLogsRejectNegativeBounds(t *testing.T) {
 		})
 	}
 }
+
+func TestPropagationLoggingUsesShippedYAMLDefaults(t *testing.T) {
+	dir := testConfigDir(t)
+	writeRequiredFloodControlFile(t, dir)
+
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if !cfg.Logging.Propagation.Enabled {
+		t.Fatalf("expected propagation logging enabled")
+	}
+	if filepath.Clean(cfg.Logging.Propagation.Dir) != filepath.Join("data", "logs", "propagation") {
+		t.Fatalf("unexpected propagation dir %q", cfg.Logging.Propagation.Dir)
+	}
+	if cfg.Logging.Propagation.RetentionDays != 7 {
+		t.Fatalf("expected retention_days=7, got %d", cfg.Logging.Propagation.RetentionDays)
+	}
+}
+
+func TestPropagationLoggingHonorsExplicitDisableAndRejectsNegativeRetention(t *testing.T) {
+	dir := testConfigDir(t)
+	writeRequiredFloodControlFile(t, dir)
+	cfgText := `logging:
+  propagation:
+    enabled: false
+    dir: "custom/prop"
+    retention_days: 3
+`
+	writeTestConfigOverlay(t, dir, "app.yaml", cfgText)
+
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Logging.Propagation.Enabled {
+		t.Fatalf("expected propagation logging disabled")
+	}
+	if cfg.Logging.Propagation.Dir != "custom/prop" || cfg.Logging.Propagation.RetentionDays != 3 {
+		t.Fatalf("unexpected propagation config: %+v", cfg.Logging.Propagation)
+	}
+
+	dir = testConfigDir(t)
+	writeRequiredFloodControlFile(t, dir)
+	writeTestConfigOverlay(t, dir, "app.yaml", `logging:
+  propagation:
+    retention_days: -1
+`)
+	if _, err := Load(dir); err == nil {
+		t.Fatalf("expected Load() to reject negative propagation retention")
+	}
+}

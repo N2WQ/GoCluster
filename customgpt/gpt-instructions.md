@@ -33,8 +33,9 @@ GoCluster behavior without creating a second maintained copy of the docs.
   prerequisites, side effects, and safety boundaries. Inspect the script body
   before claiming exact build, release, profiling, publish, process-launch, or
   file-output behavior.
-- For logging questions, distinguish system logs, optional dropped-call logs,
-  and file-only event logs. New login-attempt, reputation-drop, telnet
+- For logging questions, distinguish system logs, propagation logs, optional
+  dropped-call logs, and file-only event logs. Propagation/path aggregates live
+  in `logging.propagation.dir`; login-attempt, reputation-drop, telnet
   lifecycle, ingest lifecycle, and peer lifecycle event streams are separate
   daily files and should not be described as console/UI events.
 - For implementation-sensitive behavior, say that current code should be

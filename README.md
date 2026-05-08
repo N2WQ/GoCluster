@@ -36,9 +36,9 @@ release, and service details are later in this file and in
 - To change how repeated spots appear, use `SET DEDUPE FAST|MED|SLOW`.
 - To focus on nearby spots, set your grid and use `PASS NEARBY ON`.
 - To investigate surprising output, use
-  `SET DIAG OFF|DEDUPE|SOURCE|CONF|PATH|MODE`.
+  `SET DIAG OFF|DEDUPE|SOURCE|CONF|PATH|PATHP50|MODE`.
 - To understand path hints, use `SET GRID` and `SET NOISE`, then use `SET DIAG PATH`
-  on spots whose path glyphs look surprising.
+  or `SET DIAG PATHP50` on spots whose path glyphs look surprising.
 - To confirm the baseline call used for own-call features, use `SHOW OWN`.
 - To see recent spotter countries for your baseline call, use `WHOSPOTSME [band]`.
 - To receive periodic solar summaries, use `SET SOLAR 15|30|60|OFF`.
@@ -270,6 +270,7 @@ For the mode-specific support rules, timing knobs, and decision history, see
 - `SET DIAG SOURCE`: `<source>` with `MAN`, `RBN`, `RBNFT`, `PSK`, `DXS`, `UP`, or `P:<peer>` for peer-origin spots.
 - `SET DIAG CONF`: `<score>%` when the pipeline calculated a confidence percent, otherwise `--%`.
 - `SET DIAG PATH`: `n<count>|w<weight>|a<age>` for usable path evidence, or `n<count>|<reason>` for insufficient evidence (`none`, `lown`, `loww`, or `stale`).
+- `SET DIAG PATHP50`: `p<db>d<delta>n<count>` for shadow p50 SNR, mean-minus-p50 delta, and selected observation count.
 - `SET DIAG MODE`: `<mode>|<provenance>` to show the final normalized mode and why it was assigned.
 
 Mode provenance tokens:
@@ -332,6 +333,28 @@ Example readings:
 - `n32|w1`: large raw sample count but low rounded effective weight. Treat this
   as useful but thinner evidence than `w7`.
 
+`SET DIAG PATHP50` keeps the path glyph in the normal tail column and uses the
+comment space for a compact p50 comparison:
+
+- `p<db>` is the shadow p50 SNR bin in FT8-equivalent dB. Fixed 3 dB bins are
+  used, so this is a compact bin value, not an exact raw report.
+- `d<db>` is active mean SNR minus p50 SNR. Positive `d` means the active mean
+  is stronger than p50; negative `d` means p50 is stronger than the active
+  mean.
+- `n<count>` is the compact selected observation count for this prediction.
+  PATHP50 does not use the longer `n<capped>/r<raw>` form; use `SET DIAG PATH`
+  when raw/capped detail matters.
+- Positive values omit a plus sign to preserve comment space; unavailable
+  values are shown as `?`.
+
+Example readings:
+
+- `p-15d4n19`: p50 bin -15 dB, active mean is 4 dB stronger than p50, 19
+  selected observations.
+- `p3d-2n42`: p50 bin 3 dB, active mean is 2 dB weaker than p50, 42 selected
+  observations.
+- `p?d?n0`: no p50 or delta is available.
+
 ## Path Reliability Tags
 
 Path reliability is an optional telnet hint based on your grid, the DX grid,
@@ -372,13 +395,15 @@ Important operational notes:
 - Stale evidence becomes `INSUFFICIENT`; age alone does not demote a strong
   path through weaker glyph tiers.
 - Receiver contribution caps are shipped in `shadow` mode. Normal glyphs still
-  use raw selected evidence, while `SET DIAG PATH` and five-minute logs expose
-  where capped receiver evidence would be stricter. Operators can switch to
-  enforcement in `path_reliability.yaml`.
+  use raw selected evidence, while `SET DIAG PATH`, `SET DIAG PATHP50`, and
+  five-minute propagation logs expose where capped receiver evidence would be
+  stricter.
+  Operators can switch to enforcement in `path_reliability.yaml`.
 - Five-minute `Path predictions (5m)` logs split insufficient evidence into
   `no_sample`, `low_count`, `low_weight`, and `stale`; `low_count` means the
   selected sample count missed the observation floor, while `low_weight` means
-  decayed effective weight missed the weight floor.
+  decayed effective weight missed the weight floor. These lines are written to
+  `logging.propagation.dir`, not the system log.
 - If grids are missing, evidence is stale, too sparse, too weak, or the H3 tables are unavailable, the result stays `INSUFFICIENT`.
 - `PATH` filters work on the class names, not on the glyph characters.
 - `R` and `G` are solar-weather display overrides, not normal path classes.
@@ -518,6 +543,13 @@ Each entry uses the same timestamped daily-file logger as the system log and rec
 
 `logging.login_attempts`, `logging.reputation_drops`, `logging.telnet_connections`, `logging.ingest_connections`, and `logging.peer_connections` write separate file-only daily event logs for failed or blocked login attempts, reputation-gated spot drops, telnet lifecycle, ingest lifecycle, and peer lifecycle. These event logs do not add local console or UI output; check `data/config/README.md` for the per-log `enabled`, `dir`, `retention_days`, and `dedupe_window_seconds` settings.
 
+`logging.propagation` writes separate file-only daily propagation logs under
+`data/logs/propagation` by default. This is where the five-minute path
+prediction, source mix, bucket, weight distribution, ge10 variance, unique
+spotter/grid-pair, and diagnostic-observed PATHP50 aggregate lines are written.
+Daily propagation reports read this log by default; pass `prop_report -log` to
+an old system log path when generating reports from historical files.
+
 ```yaml
 logging:
   dropped_calls:
@@ -528,6 +560,10 @@ logging:
     bad_de_dx: true
     no_license: true
     harmonics: true
+  propagation:
+    enabled: true
+    dir: "data/logs/propagation"
+    retention_days: 7
 ```
 
 ## Repo Layout

@@ -1,6 +1,12 @@
+// File role: Owns daily file sinks and process log fanout for live runtime logs.
+// Crawler notes: Start here for system-log, propagation-log, rotation hook,
+// and file-only line behavior before tracing report scheduling.
+// Related docs: docs/OPERATOR_GUIDE.md, data/config/README.md.
+// Related tests: internal/cluster/logging_test.go, internal/cluster/main_runtime_test.go.
 package cluster
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -18,6 +24,8 @@ const (
 	logFileDateLayout  = "02-Jan-2006"
 	maxLogBufferBytes  = 16 * 1024
 )
+
+var errPropagationLoggingDisabled = errors.New("propagation logging disabled")
 
 type lineSink interface {
 	WriteLine(line string, now time.Time)
@@ -260,6 +268,20 @@ func setupLogging(cfg config.LoggingConfig, console io.Writer) (*logFanout, erro
 	}
 	fanout.SetFileSink(fileSink)
 	return fanout, nil
+}
+
+// newPropagationLogSink builds the file-only propagation aggregate sink.
+// Keeping this separate from the system log lets report generation read one
+// purpose-built daily file without duplicating path lines into console/UI logs.
+func newPropagationLogSink(cfg config.PropagationLoggingConfig) (lineSink, error) {
+	if !cfg.Enabled {
+		return nil, errPropagationLoggingDisabled
+	}
+	sink, err := newDailyLogSink(cfg.Dir, cfg.RetentionDays)
+	if err != nil {
+		return nil, fmt.Errorf("propagation logging setup: %w", err)
+	}
+	return sink, nil
 }
 
 // SetConsoleSink swaps the console sink (e.g., to a UI writer).

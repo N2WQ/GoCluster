@@ -47,7 +47,10 @@ The shipped config in [`../data/config/path_reliability.yaml`](../data/config/pa
 - `PSK: -19`
 - `WSPR: -26`
 
-After that conversion, the value is clamped to the shipped `clamp_min` and `clamp_max`, then converted from dB into linear power for storage.
+After that conversion, the current active mean path clamps the value to the
+shipped `clamp_min` and `clamp_max`, then converts from dB into linear power
+for storage. Shadow p50 diagnostics bin the pre-clamp FT8-equivalent dB value
+so out-of-range observations remain visible as underflow or overflow bins.
 
 ## Bucket Storage
 
@@ -64,6 +67,7 @@ Each bucket stores:
 - accumulated weight
 - raw observation count
 - capped receiver-attributed power, weight, and observation count
+- fixed raw and capped SNR histograms for shadow p50 diagnostics
 - fixed receiver contribution slots
 - last update time
 
@@ -86,9 +90,21 @@ reused; this is an approximation, not an unbounded exact unique-receiver set.
 - `enforce`: use capped count and capped weight for the count/weight gates.
 - `off`: disable capped tracking and use raw evidence only.
 
-Five-minute path prediction logs split insufficient outcomes into `no_sample`,
-`low_count`, `low_weight`, and `stale`. `low_count` maps to
-`InsufficientLowCount`; `low_weight` maps to `InsufficientLowWeight`.
+`distribution_statistic_mode` controls the shadow p50 SNR diagnostic:
+
+- `shadow`: retain two inline 18-bin histograms per bucket, one raw lane and
+  one capped lane. Updates touch only the selected bin unless time has advanced,
+  and p50 scans the fixed array. This feeds `SET DIAG PATHP50` only.
+- `off`: skip histogram updates and expose no p50 diagnostic value.
+
+The SNR bins are fixed in code: `< -24`, `-24..-21`, then 3 dB bins up to
+`21..24`, and `>= 24`. Displayed p50 values use the bin's compact lower-edge
+value; underflow displays as `-24` and overflow displays as `24`.
+
+Five-minute propagation logs split insufficient path prediction outcomes into
+`no_sample`, `low_count`, `low_weight`, and `stale`. `low_count` maps to
+`InsufficientLowCount`; `low_weight` maps to `InsufficientLowWeight`. These
+aggregate lines are written to `logging.propagation.dir`.
 
 The shipped config currently uses:
 
@@ -96,6 +112,7 @@ The shipped config currently uses:
 - `stale_after_half_life_multiplier: 3`
 - `stale_after_seconds: 1800` as the fallback purge window
 - `max_prediction_age_half_life_multiplier: 1.25` as a display/filter freshness gate
+- `distribution_statistic_mode: shadow`
 - `receiver_contribution_mode: shadow`
 - `receiver_fine_slots: 4`
 - `receiver_coarse_slots: 8`
@@ -144,6 +161,18 @@ Telnet users can set a stricter personal observation floor with
 `max(min_observation_count, user setting)` and cannot lower the cluster default.
 In `shadow` mode this floor still uses the raw selected observation count; in
 `enforce` mode it uses the capped selected observation count.
+
+`SET DIAG PATHP50` is an operator-visible comparison view. It shows
+`p<db>d<delta>n<count>`, where `p` is the shadow p50 SNR bin, `d` is active
+mean SNR minus p50 SNR, and `n` is the compact selected count for the
+prediction. PATHP50 omits the longer `n<capped>/r<raw>` form to preserve
+comment space; use `SET DIAG PATH` when raw/capped detail matters. Positive
+values omit a plus sign.
+
+The propagation log can include `Path p50 diag (5m)` while operators are using
+PATHP50. That aggregate is intentionally diagnostic-observed only: normal path
+display still uses the non-distribution prediction path and does not compute
+p50 solely for logging.
 
 Noise is applied only to the DX-to-user side in the power domain. The shipped
 table uses P.372-17-informed operational receive penalties: low bands retain
@@ -208,7 +237,8 @@ Runtime path reliability settings are owned by [`../data/config/path_reliability
 ## Config Boundary
 
 `enabled`, `display_enabled`, `glyph_symbols`, `allowed_bands`,
-`min_observation_count`, and `receiver_contribution_mode` are operator policy.
+`min_observation_count`, `distribution_statistic_mode`, and
+`receiver_contribution_mode` are operator policy.
 Half-lives, stale/freshness multipliers, effective weight, fine/coarse merge,
 reverse discount, mode thresholds, mode offsets, and noise tables are algorithm
 calibration; do not retune them under normal operation without validation and

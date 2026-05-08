@@ -1,11 +1,12 @@
 # Purpose: Path-reliability ingestion, sample floors, receiver contribution caps, decay, weights, thresholds, and glyphs.
 # Ownership: mixed operator policy and algorithm calibration.
 # Runtime behavior: Required feature-root config loaded from the active config directory at startup.
-# Safe edits: Limit routine edits to enable/display, allowed bands, sample-floor policy, receiver-cap mode, and glyphs; retune calibration only with field evidence and validation.
+# Safe edits: Limit routine edits to enable/display, allowed bands, sample-floor policy, receiver-cap mode, distribution diagnostics, and glyphs; retune calibration only with field evidence and validation.
 # Source: data/config/README.md.
 #
 # Routine operator policy is limited to enable/display behavior, allowed bands,
-# global sample-floor policy, receiver contribution mode, and glyph characters.
+# global sample-floor policy, receiver contribution mode, distribution
+# diagnostics, and glyph characters.
 # Decay, weights, thresholds, mode offsets, merge rules, and noise tables are
 # algorithm calibration. Do not retune those under normal operation without
 # validation and decision-memory handling.
@@ -16,6 +17,7 @@
 # Voice modes (LSB/USB) are display-only and never ingested.
 # The glyph reflects a merged path estimate adjusted for the user's noise class.
 # Internally, SNRs are converted to linear power and averaged in that domain.
+# Shadow p50 diagnostics retain fixed-width SNR bins only for diagnostic output.
 #
 # Glyph scale (configured via glyph_symbols):
 #   high/medium/low/unlikely map to the glyphs below; insufficient uses its own placeholder.
@@ -79,18 +81,23 @@ stale_after_half_life_multiplier: 3
 max_prediction_age_half_life_multiplier: 1.25
 
 # Minimum decayed weight required to report a glyph; below this returns glyph_symbols.insufficient.
-min_effective_weight: 0.6
+min_effective_weight: 0.5
 
 # Minimum selected observations required to report a glyph; below this returns glyph_symbols.insufficient.
 # In shadow/off receiver contribution modes this uses raw selected observations.
 # In enforce mode this uses capped selected observations.
-min_observation_count: 19
+min_observation_count: 17
+
+# Shadow p50 SNR diagnostics. "shadow" collects bounded histogram evidence for
+# SET DIAG PATHP50 without changing active glyphs or PATH filtering; "off"
+# skips the histogram work.
+distribution_statistic_mode: shadow
 
 # Receiver contribution caps limit how much one receiving station can add to a
 # bucket's trust evidence. "shadow" keeps current glyph behavior but logs and
 # diagnoses where capped evidence would be stricter; "enforce" gates glyphs and
 # PATH filters on capped evidence; "off" disables capped tracking.
-receiver_contribution_mode: shadow
+receiver_contribution_mode: enforce
 receiver_fine_slots: 4              # Receiver slots retained in fine buckets.
 receiver_coarse_slots: 8            # Receiver slots retained in coarse buckets.
 receiver_max_effective_count: 5     # Max capped observation count one receiver can contribute per bucket.

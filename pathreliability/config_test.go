@@ -153,6 +153,13 @@ func TestDefaultMinObservationCount(t *testing.T) {
 	}
 }
 
+func TestDefaultDistributionStatisticMode(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.DistributionStatisticMode != DistributionStatisticShadow {
+		t.Fatalf("default distribution statistic mode = %q, want %q", cfg.DistributionStatisticMode, DistributionStatisticShadow)
+	}
+}
+
 func TestDefaultReceiverContributionCaps(t *testing.T) {
 	cfg := DefaultConfig()
 	if cfg.ReceiverContributionMode != ReceiverContributionShadow {
@@ -204,6 +211,19 @@ receiver_contribution_mode: maybe
 		t.Fatalf("expected invalid receiver contribution mode to fail")
 	}
 	if !strings.Contains(err.Error(), "receiver_contribution_mode") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadFileRejectsInvalidDistributionStatisticMode(t *testing.T) {
+	path := writeTempConfigOverlay(t, `
+distribution_statistic_mode: maybe
+`)
+	_, err := LoadFile(path)
+	if err == nil {
+		t.Fatalf("expected invalid distribution statistic mode to fail")
+	}
+	if !strings.Contains(err.Error(), "distribution_statistic_mode") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -268,6 +288,7 @@ func TestLoadFileRejectsMissingRequiredYAMLSettings(t *testing.T) {
 		{name: "enabled", path: []string{"enabled"}, want: "enabled"},
 		{name: "display enabled", path: []string{"display_enabled"}, want: "display_enabled"},
 		{name: "min observation count", path: []string{"min_observation_count"}, want: "min_observation_count"},
+		{name: "distribution statistic mode", path: []string{"distribution_statistic_mode"}, want: "distribution_statistic_mode"},
 		{name: "receiver contribution mode", path: []string{"receiver_contribution_mode"}, want: "receiver_contribution_mode"},
 		{name: "receiver fine slots", path: []string{"receiver_fine_slots"}, want: "receiver_fine_slots"},
 		{name: "receiver coarse slots", path: []string{"receiver_coarse_slots"}, want: "receiver_coarse_slots"},

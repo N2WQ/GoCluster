@@ -34,6 +34,34 @@ func TestParsePredictionTotalsWithAndWithoutStale(t *testing.T) {
 	}
 }
 
+func TestParseP50DiagTotals(t *testing.T) {
+	line := "2026/05/08 13:20:00 Path p50 diag (5m): observed=1,200 missing=10 d_le_neg6=11 d_neg5_pos5=900 d_6_11=200 d_ge12=89 n_lt17=3 n_17_99=197 n_100_499=700 n_ge500=290"
+	got, ok := parseP50DiagTotals(line)
+	if !ok {
+		t.Fatalf("expected p50 diag totals to parse")
+	}
+	if got.Observed != 1200 || got.Missing != 10 || got.DLeNeg6 != 11 || got.DNeg5Pos5 != 900 || got.D6To11 != 200 || got.DGe12 != 89 || got.NLt17 != 3 || got.N17To99 != 197 || got.N100To499 != 700 || got.NGe500 != 290 {
+		t.Fatalf("unexpected p50 diag totals: %+v", got)
+	}
+}
+
+func TestP50DiagSummaryTextMarksDiagnosticObserved(t *testing.T) {
+	got := p50DiagSummaryText([]p50DiagHour{{
+		Hour:         "13:00",
+		Samples:      1,
+		AvgObserved:  10,
+		AvgMissing:   1,
+		AvgDGe12:     4,
+		AvgN100To499: 5,
+	}})
+	if !strings.Contains(got, "Diagnostic-observed PATHP50 comparisons") {
+		t.Fatalf("expected diagnostic-observed wording, got %q", got)
+	}
+	if !strings.Contains(got, ">=12 4") || !strings.Contains(got, "n=100..499 5") {
+		t.Fatalf("expected p50 aggregate values, got %q", got)
+	}
+}
+
 func TestPredictionActivitySummarySeparatesCountAndWeightLimits(t *testing.T) {
 	got := predictionActivitySummary([]predictionHour{
 		{Hour: "01:00", AvgTotal: 100, AvgCombined: 20, AvgInsufficient: 80, AvgLowCount: 60, AvgLowWeight: 10},

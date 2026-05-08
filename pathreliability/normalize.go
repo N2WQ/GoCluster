@@ -1,3 +1,9 @@
+// File role: Owns path reliability signal normalization and sample blending.
+// Crawler notes: Start here for mode-to-FT8-equivalent SNR conversion, dB/power
+// conversion, glyph class mapping, noise penalties, and fine/coarse sample
+// selection used by prediction and PATHP50 diagnostics.
+// Related docs: pathreliability/README.md, data/config/path_reliability.yaml.
+// Related tests: pathreliability/*normalize*_test.go, pathreliability/*p50*_test.go.
 package pathreliability
 
 import (
@@ -132,6 +138,43 @@ func SelectSample(fine Sample, coarse Sample, minFineWeight float64, fineOnlyWei
 		CappedCount:  maxCount(fine.CappedCount, coarseCandidate.CappedCount),
 		CappedWeight: fine.CappedWeight + coarseCandidate.CappedWeight,
 		CapLimited:   fine.CapLimited || coarseCandidate.CapLimited,
+	}
+}
+
+func selectSampleWithDistribution(fine sampleWithBins, coarse sampleWithBins, minFineWeight float64, fineOnlyWeight float64) sampleWithBins {
+	coarseCandidate := coarse
+	hasFine := sampleHasEvidence(fine.Sample)
+	hasCoarse := sampleHasEvidence(coarseCandidate.Sample)
+	switch {
+	case hasFine && !hasCoarse:
+		return fine
+	case !hasFine && hasCoarse:
+		return coarseCandidate
+	case !hasFine && !hasCoarse:
+		return sampleWithBins{}
+	}
+	if fineOnlyWeight > 0 && fine.Weight >= fineOnlyWeight {
+		return fine
+	}
+	if minFineWeight > 0 && fine.Weight < minFineWeight {
+		return coarseCandidate
+	}
+	sample := SelectSample(fine.Sample, coarseCandidate.Sample, minFineWeight, fineOnlyWeight)
+	if !sampleHasEvidence(sample) {
+		return sampleWithBins{}
+	}
+	var bins snrHistogram
+	p50DB, hasP50 := 0.0, false
+	if fine.HasP50 || coarseCandidate.HasP50 {
+		bins.addScaled(fine.snrBins, 1)
+		bins.addScaled(coarseCandidate.snrBins, 1)
+		p50DB, hasP50 = bins.p50DB()
+	}
+	return sampleWithBins{
+		Sample:  sample,
+		P50DB:   p50DB,
+		HasP50:  hasP50,
+		snrBins: bins,
 	}
 }
 

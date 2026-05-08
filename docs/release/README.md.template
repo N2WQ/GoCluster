@@ -63,7 +63,7 @@ After login, type `HELP` for the command list. Useful first commands:
 - `SHOW FILTER`: display active filters.
 - `PASS <type> <list>` and `REJECT <type> <list>`: adjust filters.
 - `SHOW DEDUPE` and `SET DEDUPE FAST|MED|SLOW`: inspect or change duplicate suppression.
-- `SET DIAG OFF|DEDUPE|SOURCE|CONF|PATH|MODE`: replace spot comments with compact per-session diagnostics.
+- `SET DIAG OFF|DEDUPE|SOURCE|CONF|PATH|PATHP50|MODE`: replace spot comments with compact per-session diagnostics.
 - `SET SOLAR 15|30|60|OFF`: opt into or stop periodic solar summaries.
 - `DIALECT`, `DIALECT LIST`, `DIALECT <go|cc>`: show or switch command dialect.
 - `BYE`: disconnect.
@@ -93,6 +93,11 @@ journalctl -u gocluster -f
 
 The interactive local console requires running the process in a real terminal,
 not as a normal unattended service.
+
+Daily propagation/path aggregate logs are written to
+`logging.propagation.dir` (`data/logs/propagation` in the shipped config), not
+to the system log. The `prop_report` tool reads that propagation log by
+default; use `-log` for historical system log files.
 
 ## Included Docs
 

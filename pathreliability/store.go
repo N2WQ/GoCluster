@@ -40,6 +40,8 @@ type bucket struct {
 	cappedSumPower float64
 	cappedWeight   float64
 	cappedCount    uint32
+	rawSNRBins     snrHistogram
+	cappedSNRBins  snrHistogram
 	slots          [inlineReceiverSlots]receiverSlot
 	// extraSlots is allocated only for coarse buckets that use slots 5-8.
 	extraSlots *[maxCoarseReceiverSlots - inlineReceiverSlots]receiverSlot
@@ -102,6 +104,12 @@ func (s *Store) Update(receiverCell, senderCell CellID, receiverCoarse, senderCo
 // contribution trust to the normalized receiving station identity hash.
 // A zero hash is intentionally unattributed and does not add capped trust.
 func (s *Store) UpdateWithReceiverHash(receiverCell, senderCell CellID, receiverCoarse, senderCoarse CellID, band string, power float64, weight float64, now time.Time, receiverHash uint64) {
+	s.UpdateWithReceiverHashDB(receiverCell, senderCell, receiverCoarse, senderCoarse, band, powerToDB(power), power, weight, now, receiverHash)
+}
+
+// UpdateWithReceiverHashDB applies a new reading with the unclamped
+// FT8-equivalent SNR kept available for shadow distribution diagnostics.
+func (s *Store) UpdateWithReceiverHashDB(receiverCell, senderCell CellID, receiverCoarse, senderCoarse CellID, band string, ft8DB float64, power float64, weight float64, now time.Time, receiverHash uint64) {
 	if s == nil || !s.cfg.Enabled {
 		return
 	}
@@ -110,17 +118,21 @@ func (s *Store) UpdateWithReceiverHash(receiverCell, senderCell CellID, receiver
 		return
 	}
 	halfLife := s.bandIndex.HalfLifeSeconds(band, s.cfg)
+	snrBin := -1
+	if s.cfg.DistributionStatisticMode == DistributionStatisticShadow {
+		snrBin = snrHistogramBinIndex(ft8DB)
+	}
 	if receiverCell == InvalidCell || senderCell == InvalidCell {
 		// Still allow coarse update when fine cells are missing.
 	} else {
-		s.updateBucket(packKey(receiverCell, senderCell, idx), power, weight, now, halfLife, receiverHash, s.cfg.ReceiverFineSlots)
+		s.updateBucket(packKey(receiverCell, senderCell, idx), power, weight, now, halfLife, receiverHash, s.cfg.ReceiverFineSlots, snrBin)
 	}
 	if receiverCoarse != InvalidCell && senderCoarse != InvalidCell {
-		s.updateBucket(packCoarseKey(receiverCoarse, senderCoarse, idx), power, weight, now, halfLife, receiverHash, s.cfg.ReceiverCoarseSlots)
+		s.updateBucket(packCoarseKey(receiverCoarse, senderCoarse, idx), power, weight, now, halfLife, receiverHash, s.cfg.ReceiverCoarseSlots, snrBin)
 	}
 }
 
-func (s *Store) updateBucket(key uint64, power float64, weight float64, now time.Time, halfLifeSec int, receiverHash uint64, receiverSlots int) {
+func (s *Store) updateBucket(key uint64, power float64, weight float64, now time.Time, halfLifeSec int, receiverHash uint64, receiverSlots int, snrBin int) {
 	if key == 0 {
 		return
 	}
@@ -138,13 +150,16 @@ func (s *Store) updateBucket(key uint64, power float64, weight float64, now time
 	}
 	elapsed := nowSec - b.lastUpdate
 	decay := decayFactor(elapsed, halfLifeSec)
+	if snrBin >= 0 && decay != 1 {
+		b.rawSNRBins.decay(decay)
+	}
 	oldWeight := b.weight * decay
 	oldSumPower := b.sumPower * decay
 	newWeight := oldWeight + weight
 	if newWeight <= 0 {
 		b.weight = 0
 		b.sumPower = 0
-		b.updateCapped(power, weight, nowSec, decay, receiverHash, receiverSlots, s.cfg)
+		b.updateCapped(power, weight, nowSec, decay, receiverHash, receiverSlots, s.cfg, snrBin)
 		b.lastUpdate = nowSec
 		return
 	}
@@ -154,11 +169,14 @@ func (s *Store) updateBucket(key uint64, power float64, weight float64, now time
 	if b.count < maxBucketObservationCount {
 		b.count++
 	}
-	b.updateCapped(power, weight, nowSec, decay, receiverHash, receiverSlots, s.cfg)
+	if snrBin >= 0 {
+		b.rawSNRBins.add(snrBin, weight)
+	}
+	b.updateCapped(power, weight, nowSec, decay, receiverHash, receiverSlots, s.cfg, snrBin)
 	b.lastUpdate = nowSec
 }
 
-func (b *bucket) updateCapped(power float64, weight float64, nowSec int64, decay float64, receiverHash uint64, receiverSlots int, cfg Config) {
+func (b *bucket) updateCapped(power float64, weight float64, nowSec int64, decay float64, receiverHash uint64, receiverSlots int, cfg Config, snrBin int) {
 	if b == nil {
 		return
 	}
@@ -167,6 +185,9 @@ func (b *bucket) updateCapped(power float64, weight float64, nowSec int64, decay
 	}
 	b.cappedWeight *= decay
 	b.cappedSumPower *= decay
+	if snrBin >= 0 && decay != 1 {
+		b.cappedSNRBins.decay(decay)
+	}
 	if b.cappedWeight <= 0 || b.cappedSumPower <= 0 {
 		b.cappedWeight = 0
 		b.cappedSumPower = 0
@@ -201,6 +222,9 @@ func (b *bucket) updateCapped(power float64, weight float64, nowSec int64, decay
 	slot.lastUpdate = nowSec
 	b.cappedWeight += acceptedWeight
 	b.cappedSumPower += power * acceptedWeight
+	if snrBin >= 0 {
+		b.cappedSNRBins.add(snrBin, acceptedWeight)
+	}
 	if b.cappedCount < maxBucketObservationCount {
 		b.cappedCount++
 	}
@@ -289,6 +313,13 @@ type Sample struct {
 	CapLimited   bool
 }
 
+type sampleWithBins struct {
+	Sample
+	P50DB   float64
+	HasP50  bool
+	snrBins snrHistogram
+}
+
 type bandCounts struct {
 	fine   int
 	coarse int
@@ -314,6 +345,24 @@ func (s *Store) Lookup(receiverCell, senderCell CellID, receiverCoarse, senderCo
 	}
 	if receiverCoarse != InvalidCell && senderCoarse != InvalidCell {
 		coarse = s.sample(packCoarseKey(receiverCoarse, senderCoarse, idx), halfLife, now)
+	}
+	return
+}
+
+func (s *Store) lookupWithDistribution(receiverCell, senderCell CellID, receiverCoarse, senderCoarse CellID, band string, now time.Time) (fine sampleWithBins, coarse sampleWithBins) {
+	if s == nil || !s.cfg.Enabled {
+		return
+	}
+	idx, ok := s.bandIndex.Lookup(band)
+	if !ok {
+		return
+	}
+	halfLife := s.bandIndex.HalfLifeSeconds(band, s.cfg)
+	if receiverCell != InvalidCell && senderCell != InvalidCell {
+		fine = s.sampleWithDistribution(packKey(receiverCell, senderCell, idx), halfLife, now)
+	}
+	if receiverCoarse != InvalidCell && senderCoarse != InvalidCell {
+		coarse = s.sampleWithDistribution(packCoarseKey(receiverCoarse, senderCoarse, idx), halfLife, now)
 	}
 	return
 }
@@ -400,6 +449,107 @@ func (s *Store) sample(key uint64, halfLife int, now time.Time) Sample {
 		CappedCount:  cappedCount,
 		CappedWeight: cappedWeight,
 		CapLimited:   capLimited,
+	}
+}
+
+func (s *Store) sampleWithDistribution(key uint64, halfLife int, now time.Time) sampleWithBins {
+	if key == 0 {
+		return sampleWithBins{}
+	}
+	sh := &s.shards[key%uint64(len(s.shards))]
+	sh.mu.RLock()
+	b := sh.buckets[key]
+	if b == nil {
+		sh.mu.RUnlock()
+		return sampleWithBins{}
+	}
+	snap := bucket{
+		sumPower:       b.sumPower,
+		weight:         b.weight,
+		count:          b.count,
+		lastUpdate:     b.lastUpdate,
+		cappedSumPower: b.cappedSumPower,
+		cappedWeight:   b.cappedWeight,
+		cappedCount:    b.cappedCount,
+		rawSNRBins:     b.rawSNRBins,
+		cappedSNRBins:  b.cappedSNRBins,
+	}
+	sh.mu.RUnlock()
+	nowSec := now.Unix()
+	age := nowSec - snap.lastUpdate
+	if age < 0 {
+		age = 0
+	}
+	staleAfter := s.staleAfterSeconds(halfLife)
+	if staleAfter > 0 && age > staleAfter {
+		return sampleWithBins{}
+	}
+	decay := decayFactor(age, halfLife)
+	rawWeight := snap.weight * decay
+	if rawWeight <= 0 {
+		return sampleWithBins{}
+	}
+	rawSumPower := snap.sumPower * decay
+	if rawSumPower <= 0 {
+		return sampleWithBins{}
+	}
+	cappedWeight := rawWeight
+	cappedSumPower := rawSumPower
+	cappedCount := snap.count
+	capLimited := false
+	if s.cfg.ReceiverContributionMode != ReceiverContributionOff {
+		cappedWeight = snap.cappedWeight * decay
+		cappedSumPower = snap.cappedSumPower * decay
+		if cappedWeight <= 0 || cappedSumPower <= 0 {
+			cappedWeight = 0
+			cappedSumPower = 0
+		}
+		cappedCount = snap.cappedCount
+		capLimited = receiverCapLimited(snap.count, cappedCount, rawWeight, cappedWeight)
+	}
+	activeWeight := rawWeight
+	activeSumPower := rawSumPower
+	activeCount := snap.count
+	activeSNRBins := snap.rawSNRBins
+	if s.cfg.ReceiverContributionMode == ReceiverContributionEnforce {
+		activeWeight = cappedWeight
+		activeSumPower = cappedSumPower
+		activeCount = cappedCount
+		activeSNRBins = snap.cappedSNRBins
+	}
+	p50DB, hasP50 := 0.0, false
+	if s.cfg.DistributionStatisticMode == DistributionStatisticShadow {
+		activeSNRBins.decay(decay)
+		p50DB, hasP50 = activeSNRBins.p50DB()
+	}
+	if activeWeight <= 0 || activeSumPower <= 0 {
+		return sampleWithBins{
+			Sample: Sample{
+				AgeSec:       age,
+				Count:        activeCount,
+				RawCount:     snap.count,
+				RawWeight:    rawWeight,
+				CappedCount:  cappedCount,
+				CappedWeight: cappedWeight,
+				CapLimited:   capLimited,
+			},
+		}
+	}
+	return sampleWithBins{
+		Sample: Sample{
+			Value:        activeSumPower / activeWeight,
+			Weight:       activeWeight,
+			AgeSec:       age,
+			Count:        activeCount,
+			RawCount:     snap.count,
+			RawWeight:    rawWeight,
+			CappedCount:  cappedCount,
+			CappedWeight: cappedWeight,
+			CapLimited:   capLimited,
+		},
+		P50DB:   p50DB,
+		HasP50:  hasP50,
+		snrBins: activeSNRBins,
 	}
 }
 

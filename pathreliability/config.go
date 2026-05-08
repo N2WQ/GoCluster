@@ -1,3 +1,9 @@
+// File role: Owns path reliability configuration loading, defaults, and validation.
+// Crawler notes: Start here for YAML keys, operator tuning boundaries, required
+// config contracts, distribution-statistic mode, receiver-cap mode, and derived
+// threshold/noise lookup preparation used by the predictor.
+// Related docs: pathreliability/README.md, data/config/path_reliability.yaml.
+// Related tests: pathreliability/config_test.go.
 package pathreliability
 
 import (
@@ -24,6 +30,7 @@ type Config struct {
 	MaxPredictionAgeHalfLifeMultiplier float64                       `yaml:"max_prediction_age_half_life_multiplier"` // prediction age gate = k * half-life; 0 disables
 	MinEffectiveWeight                 float64                       `yaml:"min_effective_weight"`                    // minimum decayed weight to report
 	MinObservationCount                int                           `yaml:"min_observation_count"`                   // minimum selected observations to report
+	DistributionStatisticMode          string                        `yaml:"distribution_statistic_mode"`             // off or shadow p50 SNR distribution diagnostics
 	ReceiverContributionMode           string                        `yaml:"receiver_contribution_mode"`              // off, shadow, or enforce receiver contribution caps
 	ReceiverFineSlots                  int                           `yaml:"receiver_fine_slots"`                     // tracked receiver slots in fine buckets
 	ReceiverCoarseSlots                int                           `yaml:"receiver_coarse_slots"`                   // tracked receiver slots in coarse buckets
@@ -68,6 +75,7 @@ var requiredConfigPaths = []yamlconfig.Path{
 	{"max_prediction_age_half_life_multiplier"},
 	{"min_effective_weight"},
 	{"min_observation_count"},
+	{"distribution_statistic_mode"},
 	{"receiver_contribution_mode"},
 	{"receiver_fine_slots"},
 	{"receiver_coarse_slots"},
@@ -106,6 +114,9 @@ const (
 	ReceiverContributionOff     = "off"
 	ReceiverContributionShadow  = "shadow"
 	ReceiverContributionEnforce = "enforce"
+
+	DistributionStatisticOff    = "off"
+	DistributionStatisticShadow = "shadow"
 
 	maxFineReceiverSlots   = 4
 	maxCoarseReceiverSlots = 8
@@ -234,6 +245,7 @@ func DefaultConfig() Config {
 		MaxPredictionAgeHalfLifeMultiplier: 1.25,
 		MinEffectiveWeight:                 1.0,
 		MinObservationCount:                19,
+		DistributionStatisticMode:          DistributionStatisticShadow,
 		ReceiverContributionMode:           ReceiverContributionShadow,
 		ReceiverFineSlots:                  4,
 		ReceiverCoarseSlots:                8,
@@ -319,6 +331,15 @@ func (c *Config) finalize() error {
 	}
 	if c.MinObservationCount <= 0 {
 		return fmt.Errorf("min_observation_count must be > 0")
+	}
+	statMode := strings.ToLower(strings.TrimSpace(c.DistributionStatisticMode))
+	switch statMode {
+	case "":
+		c.DistributionStatisticMode = DistributionStatisticShadow
+	case DistributionStatisticOff, DistributionStatisticShadow:
+		c.DistributionStatisticMode = statMode
+	default:
+		return fmt.Errorf("distribution_statistic_mode must be one of off or shadow")
 	}
 	mode := strings.ToLower(strings.TrimSpace(c.ReceiverContributionMode))
 	switch mode {

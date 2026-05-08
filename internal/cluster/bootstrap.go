@@ -1437,12 +1437,12 @@ func startPipelineHealthMonitor(ctx context.Context, dedup *dedup.Deduplicator, 
 	}()
 }
 
-func startPathPredictionLogger(ctx context.Context, logMux *logFanout, srv *telnet.Server, predictor *pathreliability.Predictor, pathReport *pathReportMetrics) {
+func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telnet.Server, predictor *pathreliability.Predictor, pathReport *pathReportMetrics) {
 	// Purpose: Periodically report path prediction outcomes, bucket counts, and weight histograms.
-	// Key aspects: Uses atomic snapshot/reset; exits on context cancellation.
+	// Key aspects: Writes only to the propagation file sink, uses atomic snapshot/reset, and exits on context cancellation.
 	// Upstream: main startup.
 	// Downstream: telnet.Server.PathPredictionStatsSnapshot, pathreliability.Predictor stats/histograms.
-	if srv == nil && predictor == nil {
+	if propLog == nil || (srv == nil && predictor == nil) {
 		return
 	}
 	ticker := time.NewTicker(5 * time.Minute)
@@ -1513,10 +1513,7 @@ func startPathPredictionLogger(ctx context.Context, logMux *logFanout, srv *teln
 		case <-ticker.C:
 			now := time.Now().UTC()
 			fileOnly := func(line string) {
-				if logMux == nil {
-					return
-				}
-				logMux.WriteFileOnlyLine(line, now)
+				propLog.WriteLine(line, now)
 			}
 			if srv != nil {
 				stats := srv.PathPredictionStatsSnapshot()
@@ -1535,6 +1532,22 @@ func startPathPredictionLogger(ctx context.Context, logMux *logFanout, srv *teln
 						humanize.Comma(int64(stats.CapWouldBlock)),
 						humanize.Comma(int64(stats.OverrideR)),
 						humanize.Comma(int64(stats.OverrideG)),
+					))
+				}
+				p50Diag := srv.PathP50DiagStatsSnapshot()
+				if p50Diag.Observed > 0 {
+					fileOnly(fmt.Sprintf(
+						"Path p50 diag (5m): observed=%s missing=%s d_le_neg6=%s d_neg5_pos5=%s d_6_11=%s d_ge12=%s n_lt17=%s n_17_99=%s n_100_499=%s n_ge500=%s",
+						humanize.Comma(int64(p50Diag.Observed)),
+						humanize.Comma(int64(p50Diag.Missing)),
+						humanize.Comma(int64(p50Diag.Delta[0])),
+						humanize.Comma(int64(p50Diag.Delta[1])),
+						humanize.Comma(int64(p50Diag.Delta[2])),
+						humanize.Comma(int64(p50Diag.Delta[3])),
+						humanize.Comma(int64(p50Diag.N[0])),
+						humanize.Comma(int64(p50Diag.N[1])),
+						humanize.Comma(int64(p50Diag.N[2])),
+						humanize.Comma(int64(p50Diag.N[3])),
 					))
 				}
 			}
@@ -2833,7 +2846,7 @@ func sleepWithContext(ctx context.Context, d time.Duration) bool {
 // verifies the prior-day log file exists before enqueueing.
 // Upstream: main prop-report initialization.
 // Downstream: nextDailyUTC, propReportScheduler.Enqueue.
-func startPropReportDailyScheduler(ctx context.Context, cfg config.PropReportConfig, logCfg config.LoggingConfig, scheduler *propReportScheduler) {
+func startPropReportDailyScheduler(ctx context.Context, cfg config.PropReportConfig, logCfg config.PropagationLoggingConfig, scheduler *propReportScheduler) {
 	if scheduler == nil || !cfg.Enabled {
 		return
 	}
@@ -2842,7 +2855,7 @@ func startPropReportDailyScheduler(ctx context.Context, cfg config.PropReportCon
 	}
 	logDir := strings.TrimSpace(logCfg.Dir)
 	if logDir == "" {
-		log.Printf("Prop report daily scheduler disabled (logging.dir empty)")
+		log.Printf("Prop report daily scheduler disabled (logging.propagation.dir empty)")
 		return
 	}
 

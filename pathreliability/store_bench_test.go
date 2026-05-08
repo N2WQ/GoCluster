@@ -15,7 +15,7 @@ func BenchmarkStoreUpdate(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		store.Update(1, 2, 3, 4, "20m", power, 1.0, now)
+		store.UpdateWithReceiverHashDB(1, 2, 3, 4, "20m", -5, power, 1.0, now, 0)
 	}
 }
 
@@ -35,7 +35,28 @@ func BenchmarkStoreUpdateReceiverCapShadow(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		store.UpdateWithReceiverHash(1, 2, 3, 4, "20m", power, 1.0, now, receivers[i&3])
+		store.UpdateWithReceiverHashDB(1, 2, 3, 4, "20m", -5, power, 1.0, now, receivers[i&3])
+	}
+}
+
+func BenchmarkStoreUpdateP50ElapsedSecondDecay(b *testing.B) {
+	cfg := DefaultConfig()
+	cfg.ReceiverContributionMode = ReceiverContributionShadow
+	store := NewStore(cfg, []string{"20m"})
+	now := time.Now().UTC()
+	power := dbToPower(-5)
+	receivers := []uint64{
+		ReceiverIdentityHash("N2WQ"),
+		ReceiverIdentityHash("K1ABC"),
+		ReceiverIdentityHash("W1AW"),
+		ReceiverIdentityHash("VE3XYZ"),
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		t := now.Add(time.Duration(i) * time.Second)
+		store.UpdateWithReceiverHashDB(1, 2, 3, 4, "20m", -5, power, 1.0, t, receivers[i&3])
 	}
 }
 

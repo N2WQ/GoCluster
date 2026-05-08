@@ -175,7 +175,7 @@ Log in with your callsign. Useful first commands:
 - `SET GRID <grid>`: set your 4-6 character Maidenhead grid.
 - `SET NOISE QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL`: set receive noise class.
 - `SET PATHSAMPLES <count|DEFAULT>`: require more path samples than the cluster default, or clear your personal override.
-- `SET DIAG OFF|DEDUPE|SOURCE|CONF|PATH|MODE`: replace spot comments with compact per-session diagnostics.
+- `SET DIAG OFF|DEDUPE|SOURCE|CONF|PATH|PATHP50|MODE`: replace spot comments with compact per-session diagnostics.
 - `SET SOLAR 15|30|60|OFF`: opt into or stop periodic solar summaries.
 - `DIALECT`, `DIALECT LIST`, `DIALECT <go|cc>`: show or switch command dialect.
 - `SHOW FILTER`: display active filters.
@@ -247,9 +247,11 @@ n<count>|<reason>
 - `stale` means selected samples existed, but the selected evidence was too old
   for the band's freshness gate.
 
-The five-minute `Path predictions (5m)` system log uses the same reason split:
-`no_sample`, `low_count`, `low_weight`, and `stale`. `low_count` is the
-observation-count gate; `low_weight` is the decayed effective-weight gate.
+The five-minute `Path predictions (5m)` propagation log uses the same reason
+split: `no_sample`, `low_count`, `low_weight`, and `stale`. `low_count` is the
+observation-count gate; `low_weight` is the decayed effective-weight gate. The
+shipped config writes these aggregate lines to `data/logs/propagation`, not the
+system log.
 
 The fixed-width cluster format may clip the right edge of a long diagnostic
 comment to keep the grid, confidence, and time columns aligned. The leftmost
@@ -269,12 +271,51 @@ Example readings:
   below the minimum.
 - `n32|w1`: large raw sample count but low rounded effective weight.
 
+### Reading `SET DIAG PATHP50`
+
+`SET DIAG PATHP50` is a second path diagnostic view. It does not change glyphs
+or PATH filters. The normal path glyph is still shown in the fixed tail column.
+The diagnostic comment shows p50 SNR and the mean-minus-p50 delta so operators
+can see how the distribution method compares with the current method.
+
+```text
+p<db>d<delta>n<count>
+```
+
+- `p<db>` is the shadow p50 SNR bin in FT8-equivalent dB. It uses fixed 3 dB
+  bins, so it is a compact bin value rather than an exact raw report.
+- `d<delta>` is active mean SNR minus p50 SNR. Positive `d` means the active
+  mean is stronger than p50; negative `d` means p50 is stronger than the active
+  mean.
+- `n<count>` is the compact selected observation count for this prediction.
+  PATHP50 omits the longer `n<capped>/r<raw>` form; use `SET DIAG PATH` when
+  raw/capped detail matters.
+- Positive values omit a plus sign to preserve comment space. Unavailable
+  values are shown as `?`.
+
+When operators are actively using `SET DIAG PATHP50`, the propagation log can
+also include `Path p50 diag (5m)` aggregates. Those counters are
+diagnostic-observed only: they summarize spots for which PATHP50 already
+computed p50, and they do not mean the cluster computed p50 for every normal
+spot.
+
+Example readings:
+
+- `p-15d4n19`: p50 bin -15 dB, active mean is 4 dB stronger than p50, 19
+  selected observations.
+- `p3d-2n42`: p50 bin 3 dB, active mean is 2 dB weaker than p50, 42 selected
+  observations.
+- `p?d?n0`: no p50 or delta is available.
+
 ## Logs And Health
 
-System logs, optional dropped-call logs, and file-only event logs are configured
-in `app.yaml`. The file-only event logs are separate daily files for login
-attempt failures, reputation-gated spot drops, telnet client lifecycle, ingest
-source lifecycle, and peer lifecycle. They do not add local UI or console panes.
+System logs, propagation logs, optional dropped-call logs, and file-only event
+logs are configured in `app.yaml`. Propagation logs are separate daily files
+under `logging.propagation.dir`; they contain the path prediction aggregates
+used by the daily propagation report. The file-only event logs are separate
+daily files for login attempt failures, reputation-gated spot drops, telnet
+client lifecycle, ingest source lifecycle, and peer lifecycle. They do not add
+local UI or console panes.
 Under `systemd`, stdout/stderr also go to journald and can be tailed with:
 
 ```sh

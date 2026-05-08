@@ -53,6 +53,7 @@ type reportSummary struct {
 	BandGroups        map[string][]string     `json:"band_groups"`
 	CoverageMedians   map[string]coverageStat `json:"coverage_medians_by_band"`
 	PredictionsByHour []predictionHour        `json:"predictions_by_hour"`
+	P50DiagByHour     []p50DiagHour           `json:"p50_diag_by_hour"`
 	SourceMixByHour   []sourceMixHour         `json:"source_mix_by_hour"`
 	Thresholds        classificationThreshold `json:"thresholds"`
 }
@@ -111,6 +112,34 @@ type predictionHour struct {
 	AvgStale         float64 `json:"avg_stale"`
 	AvgCapLimited    float64 `json:"avg_cap_limited"`
 	AvgCapWouldBlock float64 `json:"avg_cap_would_block"`
+}
+
+type p50DiagTotals struct {
+	Observed  int
+	Missing   int
+	DLeNeg6   int
+	DNeg5Pos5 int
+	D6To11    int
+	DGe12     int
+	NLt17     int
+	N17To99   int
+	N100To499 int
+	NGe500    int
+}
+
+type p50DiagHour struct {
+	Hour         string  `json:"hour"`
+	Samples      int     `json:"samples"`
+	AvgObserved  float64 `json:"avg_observed"`
+	AvgMissing   float64 `json:"avg_missing"`
+	AvgDLeNeg6   float64 `json:"avg_d_le_neg6"`
+	AvgDNeg5Pos5 float64 `json:"avg_d_neg5_pos5"`
+	AvgD6To11    float64 `json:"avg_d_6_11"`
+	AvgDGe12     float64 `json:"avg_d_ge12"`
+	AvgNLt17     float64 `json:"avg_n_lt17"`
+	AvgN17To99   float64 `json:"avg_n_17_99"`
+	AvgN100To499 float64 `json:"avg_n_100_499"`
+	AvgNGe500    float64 `json:"avg_n_ge500"`
 }
 
 type sourceMixHour struct {
@@ -203,6 +232,7 @@ var (
 	bucketsRe     = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path buckets`)
 	weightsRe     = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path weight dist`)
 	predsRe       = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path predictions`)
+	p50DiagRe     = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path p50 diag`)
 	sourceMixRe   = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path source mix`)
 	spottersRe    = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path unique spotters`)
 	pairsRe       = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path unique grid pairs`)
@@ -211,6 +241,7 @@ var (
 	bandBuckets   = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)\s+f=([\d,]+)\s+c=([\d,]+)`)
 	bandWeights   = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)\s+t=([\d,]+)\s+<1=([\d,]+)\s+1-2=([\d,]+)\s+2-3=([\d,]+)\s+3-5=([\d,]+)\s+5-10=([\d,]+)\s+>=10=([\d,]+)`)
 	predsFields   = regexp.MustCompile(`\b(total|derived|combined|insufficient|no_sample|low_count|low_weight|stale|cap_limited|cap_would_block)=([\d,]+)`)
+	p50DiagFields = regexp.MustCompile(`\b(observed|missing|d_le_neg6|d_neg5_pos5|d_6_11|d_ge12|n_lt17|n_17_99|n_100_499|n_ge500)=([\d,]+)`)
 	sourceFields  = regexp.MustCompile(`([A-Za-z\-]+)=([\d,]+)`)
 	hourField     = regexp.MustCompile(`hour=(\d{2})`)
 	bandCounts    = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)=([\d,]+)`)
@@ -299,6 +330,35 @@ func parsePredictionTotals(line string) (predTotals, bool) {
 		Stale:         values["stale"],
 		CapLimited:    values["cap_limited"],
 		CapWouldBlock: values["cap_would_block"],
+	}, true
+}
+
+func parseP50DiagTotals(line string) (p50DiagTotals, bool) {
+	matches := p50DiagFields.FindAllStringSubmatch(line, -1)
+	if len(matches) == 0 {
+		return p50DiagTotals{}, false
+	}
+	values := make(map[string]int, len(matches))
+	for _, match := range matches {
+		if len(match) != 3 {
+			continue
+		}
+		values[match[1]] = parseInt(match[2])
+	}
+	if _, ok := values["observed"]; !ok {
+		return p50DiagTotals{}, false
+	}
+	return p50DiagTotals{
+		Observed:  values["observed"],
+		Missing:   values["missing"],
+		DLeNeg6:   values["d_le_neg6"],
+		DNeg5Pos5: values["d_neg5_pos5"],
+		D6To11:    values["d_6_11"],
+		DGe12:     values["d_ge12"],
+		NLt17:     values["n_lt17"],
+		N17To99:   values["n_17_99"],
+		N100To499: values["n_100_499"],
+		NGe500:    values["n_ge500"],
 	}, true
 }
 
@@ -598,7 +658,7 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 
 	logPath := strings.TrimSpace(opts.LogPath)
 	if logPath == "" {
-		logPath = filepath.Join("data", "logs", fmt.Sprintf("%s.log", date.Format("02-Jan-2006")))
+		logPath = filepath.Join("data", "logs", "propagation", fmt.Sprintf("%s.log", date.Format("02-Jan-2006")))
 	}
 	jsonOut := strings.TrimSpace(opts.JSONOut)
 	if jsonOut == "" {
@@ -638,6 +698,7 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 	bucketByTS := make(map[string]map[string]int)
 	weightByTS := make(map[string]map[string]weightBins)
 	predByTS := make(map[string]predTotals)
+	p50DiagByTS := make(map[string]p50DiagTotals)
 	sourceMixByHour := make(map[int]*sourceMixHour)
 	spottersByHour := make(map[int]map[string]int)
 	pairsByHour := make(map[int]map[string]int)
@@ -673,6 +734,13 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 			totals, ok := parsePredictionTotals(entry)
 			if ok {
 				predByTS[ts] = totals
+			}
+		}
+		if m := p50DiagRe.FindStringSubmatch(entry); len(m) == 2 {
+			ts := m[1]
+			totals, ok := parseP50DiagTotals(entry)
+			if ok {
+				p50DiagByTS[ts] = totals
 			}
 		}
 		if m := sourceMixRe.FindStringSubmatch(entry); len(m) == 2 {
@@ -955,6 +1023,57 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 		})
 	}
 
+	p50DiagHours := make(map[int][]p50DiagTotals)
+	for ts, totals := range p50DiagByTS {
+		tsTime, err := time.Parse("2006/01/02 15:04:05", ts)
+		if err != nil {
+			continue
+		}
+		hour := tsTime.Hour()
+		p50DiagHours[hour] = append(p50DiagHours[hour], totals)
+	}
+
+	p50DiagSummary := make([]p50DiagHour, 0, len(p50DiagHours))
+	var p50DiagHourKeys []int
+	for h := range p50DiagHours {
+		p50DiagHourKeys = append(p50DiagHourKeys, h)
+	}
+	sort.Ints(p50DiagHourKeys)
+	for _, h := range p50DiagHourKeys {
+		rows := p50DiagHours[h]
+		if len(rows) == 0 {
+			continue
+		}
+		var observed, missing, dLeNeg6, dNeg5Pos5, d6To11, dGe12, nLt17, n17To99, n100To499, nGe500 int
+		for _, r := range rows {
+			observed += r.Observed
+			missing += r.Missing
+			dLeNeg6 += r.DLeNeg6
+			dNeg5Pos5 += r.DNeg5Pos5
+			d6To11 += r.D6To11
+			dGe12 += r.DGe12
+			nLt17 += r.NLt17
+			n17To99 += r.N17To99
+			n100To499 += r.N100To499
+			nGe500 += r.NGe500
+		}
+		count := len(rows)
+		p50DiagSummary = append(p50DiagSummary, p50DiagHour{
+			Hour:         fmt.Sprintf("%02d:00", h),
+			Samples:      count,
+			AvgObserved:  float64(observed) / float64(count),
+			AvgMissing:   float64(missing) / float64(count),
+			AvgDLeNeg6:   float64(dLeNeg6) / float64(count),
+			AvgDNeg5Pos5: float64(dNeg5Pos5) / float64(count),
+			AvgD6To11:    float64(d6To11) / float64(count),
+			AvgDGe12:     float64(dGe12) / float64(count),
+			AvgNLt17:     float64(nLt17) / float64(count),
+			AvgN17To99:   float64(n17To99) / float64(count),
+			AvgN100To499: float64(n100To499) / float64(count),
+			AvgNGe500:    float64(nGe500) / float64(count),
+		})
+	}
+
 	sourceMixSummary := make([]sourceMixHour, 0, len(sourceMixByHour))
 	var sourceHours []int
 	for h := range sourceMixByHour {
@@ -1012,6 +1131,7 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 		BandGroups:        filteredGroups,
 		CoverageMedians:   coverageMedians,
 		PredictionsByHour: predSummary,
+		P50DiagByHour:     p50DiagSummary,
 		SourceMixByHour:   sourceMixSummary,
 		Thresholds: classificationThreshold{
 			StrongRule: "strong if ge10_med >= p75(ge10) and f_med >= p50(f)",
@@ -1100,6 +1220,11 @@ func buildFinalReport(summary reportSummary) string {
 	b.WriteString("Prediction activity by hour (overall)\n\n")
 	b.WriteString(predictionActivitySummary(summary.PredictionsByHour))
 	b.WriteString("\n\n")
+	if len(summary.P50DiagByHour) > 0 {
+		b.WriteString("PATHP50 diagnostic comparison\n\n")
+		b.WriteString(p50DiagSummaryText(summary.P50DiagByHour))
+		b.WriteString("\n\n")
+	}
 
 	b.WriteString("Plain‑English takeaway\n\n")
 	b.WriteString(deterministicTakeaway(summary, bandMap))
@@ -1421,6 +1546,30 @@ func predictionActivitySummary(hours []predictionHour) string {
 		s += fmt.Sprintf(" Hours where receiver caps would block shadow predictions: %s.", strings.Join(capWouldBlockSample, ", "))
 	}
 	return s
+}
+
+func p50DiagSummaryText(hours []p50DiagHour) string {
+	if len(hours) == 0 {
+		return "No PATHP50 diagnostic comparison data recorded for this day."
+	}
+	sort.Slice(hours, func(i, j int) bool { return hours[i].Hour < hours[j].Hour })
+	var observed, missing, dLeNeg6, dNeg5Pos5, d6To11, dGe12, nLt17, n17To99, n100To499, nGe500 float64
+	for _, h := range hours {
+		observed += h.AvgObserved
+		missing += h.AvgMissing
+		dLeNeg6 += h.AvgDLeNeg6
+		dNeg5Pos5 += h.AvgDNeg5Pos5
+		d6To11 += h.AvgD6To11
+		dGe12 += h.AvgDGe12
+		nLt17 += h.AvgNLt17
+		n17To99 += h.AvgN17To99
+		n100To499 += h.AvgN100To499
+		nGe500 += h.AvgNGe500
+	}
+	return fmt.Sprintf(
+		"Diagnostic-observed PATHP50 comparisons: observed %.0f, missing %.0f. Delta buckets mean-minus-p50: <=-6 %.0f, -5..5 %.0f, 6..11 %.0f, >=12 %.0f. Sample buckets: n<17 %.0f, n=17..99 %.0f, n=100..499 %.0f, n>=500 %.0f.",
+		observed, missing, dLeNeg6, dNeg5Pos5, d6To11, dGe12, nLt17, n17To99, n100To499, nGe500,
+	)
 }
 
 func deterministicTakeaway(summary reportSummary, bandMap map[string]bandSummary) string {
