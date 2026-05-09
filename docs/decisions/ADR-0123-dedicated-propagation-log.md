@@ -42,7 +42,9 @@ Add companion `Path p50 shadow` aggregate lines to compare the active
 mean-based glyph class with the p50 shadow glyph class. The log records fixed
 same/different outcome counters, sample-count buckets, band buckets, mode
 family buckets, source buckets, and the mean/p50 glyph-pair matrix. These
-counters are updated only on the existing PATHP50 diagnostic path.
+counters are updated only on the existing PATHP50 diagnostic path. As refined
+by ADR-0125, this shadow glyph comparison gates p50 with the same active
+eligibility used by normal path display.
 
 Daily propagation report rotation and scheduled generation read the propagation
 log path. Manual `prop_report -log` remains available for historical system log

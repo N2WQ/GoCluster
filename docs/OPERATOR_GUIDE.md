@@ -304,7 +304,11 @@ compare the current mean-based glyph class with the p50 shadow glyph class and
 bucket the differences by sample count, band, mode family, source, and glyph
 pair. Use those lines to evaluate whether p50 is usually more conservative,
 usually more optimistic, or only different in low-sample contexts. They are not
-an enforcement switch.
+an enforcement switch. The shadow comparison applies the same active eligibility
+gate used for normal path display: if the active prediction is insufficient due
+to low count, low weight, stale evidence, or no sample, the p50 side is also
+counted as insufficient for the glyph comparison. The raw PATHP50 comment can
+still show p50 and delta values for diagnosis.
 
 Example readings:
 

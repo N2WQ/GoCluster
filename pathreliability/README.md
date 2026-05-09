@@ -177,27 +177,31 @@ p50 solely for logging.
 The companion `Path p50 shadow` aggregate compares the active mean-based glyph
 class with the p50 shadow glyph class for the same diagnostic-observed spots.
 It records fixed counters for same/different outcomes, sample-count buckets,
-band, mode family, source, and mean/p50 glyph-pair matrix. This is a shadow
-comparison diagnostic only; active glyphs and PATH filters remain mean-based.
+band, mode family, source, and mean/p50 glyph-pair matrix. The comparison uses
+the same active eligibility gate as normal path display: when the active result
+is insufficient, the p50 side is also counted as insufficient even if raw p50
+diagnostic values exist. This is a shadow comparison diagnostic only; active
+glyphs and PATH filters remain mean-based.
 
-Noise is applied only to the DX-to-user side in the power domain. The shipped
-table uses P.372-17-informed operational receive penalties: low bands retain
-strong local-noise penalties, while 10m and 6m are tapered because absolute
-external noise falls and receiver/system noise matters more near VHF.
+The receive-side noise table is still resolved by `SET NOISE` class and band,
+but the checked-in calibration currently sets every value to 0 dB. This keeps
+the config schema and saved user classes compatible while evaluating whether
+observed SNR evidence should stand without an additional broad band-noise
+correction.
 
 | Band | Quiet | Rural | Suburban | Urban | Industrial |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 160m | 0 | 6 | 14 | 22 | 28 |
-| 80m | 0 | 5 | 13 | 20 | 26 |
-| 60m | 0 | 5 | 12 | 19 | 24 |
-| 40m | 0 | 4 | 11 | 17 | 22 |
-| 30m | 0 | 3 | 9 | 14 | 18 |
-| 20m | 0 | 3 | 7 | 11 | 15 |
-| 17m | 0 | 2 | 6 | 9 | 12 |
-| 15m | 0 | 2 | 5 | 8 | 11 |
-| 12m | 0 | 1 | 4 | 6 | 9 |
-| 10m | 0 | 1 | 3 | 5 | 7 |
-| 6m | 0 | 0 | 2 | 3 | 5 |
+| 160m | 0 | 0 | 0 | 0 | 0 |
+| 80m | 0 | 0 | 0 | 0 | 0 |
+| 60m | 0 | 0 | 0 | 0 | 0 |
+| 40m | 0 | 0 | 0 | 0 | 0 |
+| 30m | 0 | 0 | 0 | 0 | 0 |
+| 20m | 0 | 0 | 0 | 0 | 0 |
+| 17m | 0 | 0 | 0 | 0 | 0 |
+| 15m | 0 | 0 | 0 | 0 | 0 |
+| 12m | 0 | 0 | 0 | 0 | 0 |
+| 10m | 0 | 0 | 0 | 0 | 0 |
+| 6m | 0 | 0 | 0 | 0 | 0 |
 
 ## Class Mapping
 

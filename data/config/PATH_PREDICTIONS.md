@@ -68,25 +68,27 @@ rather than fading from `>` to `=` to `<` because of age alone.
 
 ### Your Noise Environment
 
-Your local noise floor dramatically affects what you can **receive**. The system adjusts the receive-path prediction based on the noise environment you've set (using the `SET NOISE` command).
-
-The adjustment is band-specific. Low bands get stronger local-noise corrections, while 10m and 6m are intentionally tapered because absolute external noise falls sharply and receiver/system noise matters more near VHF:
+`SET NOISE` stores your local receive-noise class. The checked-in configuration
+currently assigns 0 dB for every class and band so path glyphs are evaluated
+from observed SNR evidence without an additional broad band-noise penalty:
 
 | Band | Quiet | Rural | Suburban | Urban | Industrial |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 160m | 0 | 6 | 14 | 22 | 28 |
-| 80m | 0 | 5 | 13 | 20 | 26 |
-| 60m | 0 | 5 | 12 | 19 | 24 |
-| 40m | 0 | 4 | 11 | 17 | 22 |
-| 30m | 0 | 3 | 9 | 14 | 18 |
-| 20m | 0 | 3 | 7 | 11 | 15 |
-| 17m | 0 | 2 | 6 | 9 | 12 |
-| 15m | 0 | 2 | 5 | 8 | 11 |
-| 12m | 0 | 1 | 4 | 6 | 9 |
-| 10m | 0 | 1 | 3 | 5 | 7 |
-| 6m | 0 | 0 | 2 | 3 | 5 |
+| 160m | 0 | 0 | 0 | 0 | 0 |
+| 80m | 0 | 0 | 0 | 0 | 0 |
+| 60m | 0 | 0 | 0 | 0 | 0 |
+| 40m | 0 | 0 | 0 | 0 | 0 |
+| 30m | 0 | 0 | 0 | 0 | 0 |
+| 20m | 0 | 0 | 0 | 0 | 0 |
+| 17m | 0 | 0 | 0 | 0 | 0 |
+| 15m | 0 | 0 | 0 | 0 | 0 |
+| 12m | 0 | 0 | 0 | 0 | 0 |
+| 10m | 0 | 0 | 0 | 0 | 0 |
+| 6m | 0 | 0 | 0 | 0 | 0 |
 
-This noise adjustment only affects the receive direction. Your transmit effectiveness doesn't change based on local noise.
+If a local config reintroduces nonzero penalties, the adjustment affects only
+the receive direction. Your transmit effectiveness does not change based on
+local noise.
 
 ### The Final Calculation
 
@@ -100,7 +102,7 @@ When you see a glyph next to a spot, here's what happened behind the scenes:
 
 4. **Check freshness**: Selected receive/transmit evidence must be recent enough for the band. Stale selected evidence is discarded.
 
-5. **Merge directions**: Receive and transmit paths combine (60/40 split), with your noise penalty applied to the receive side.
+5. **Merge directions**: Receive and transmit paths combine (60/40 split), with the configured receive-side noise penalty applied when nonzero.
 
 6. **Apply receiver contribution caps**: The cluster tracks a bounded set of
    receiver identities per bucket. In the shipped `shadow` mode this does not
@@ -154,13 +156,16 @@ operators can inspect the impact before enforcing it.
 
 ### Noise Environment Setup
 
-Make sure you set your noise environment correctly:
+`SET NOISE` still stores your receive-noise class:
 
 ```
 SET NOISE SUBURBAN
 ```
 
-If you don't set it, the system assumes "quiet" and might show overly optimistic predictions for receive paths. Most suburban/urban hams should set SUBURBAN or URBAN to get realistic predictions.
+In the checked-in configuration, all classes currently resolve to 0 dB, so this
+setting does not change active path glyphs during the no-noise-penalty
+evaluation. If a local configuration reintroduces nonzero penalties, operators
+should set the class that best matches their receive environment.
 
 ### Band-Specific Behavior
 
@@ -174,7 +179,8 @@ The system is highly configurable (see [path_reliability.yaml](path_reliability.
 - **Glyph symbols**: Can be customized (default: `>=<-` and space)
 - **Half-life timings**: Per-band decay rates
 - **Freshness gate**: Maximum selected evidence age as a multiple of band half-life
-- **Noise penalties**: band-specific dB adjustments per environment type
+- **Noise penalties**: receive-side dB adjustments per environment type; the
+  checked-in table currently uses 0 dB for every class and band
 - **Mode thresholds**: What signal strength qualifies as high/medium/low for each mode
 - **Minimum observation count**: How many selected raw observations are needed before showing a prediction
 - **Minimum weight**: How much data is needed before showing a prediction

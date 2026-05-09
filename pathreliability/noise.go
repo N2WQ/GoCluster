@@ -1,3 +1,10 @@
+// File role: owns receive-noise class and band penalty lookup for path reliability.
+// Crawler notes: start here when changing SET NOISE penalty semantics, required
+// noise_offsets_by_band validation, or default in-memory noise tables.
+// Related docs: data/config/path_reliability.yaml,
+// docs/decisions/ADR-0124-no-noise-penalty-path-evaluation.md.
+// Related tests: pathreliability/noise_test.go,
+// pathreliability/config_test.go, telnet/path_settings_test.go.
 package pathreliability
 
 import (
@@ -17,20 +24,20 @@ var defaultNoisePenaltyByClassBand = map[string]map[string]float64{
 		"17m": 0, "15m": 0, "12m": 0, "10m": 0, "6m": 0,
 	},
 	"RURAL": {
-		"160m": 6, "80m": 5, "60m": 5, "40m": 4, "30m": 3, "20m": 3,
-		"17m": 2, "15m": 2, "12m": 1, "10m": 1, "6m": 0,
+		"160m": 0, "80m": 0, "60m": 0, "40m": 0, "30m": 0, "20m": 0,
+		"17m": 0, "15m": 0, "12m": 0, "10m": 0, "6m": 0,
 	},
 	"SUBURBAN": {
-		"160m": 14, "80m": 13, "60m": 12, "40m": 11, "30m": 9, "20m": 7,
-		"17m": 6, "15m": 5, "12m": 4, "10m": 3, "6m": 2,
+		"160m": 0, "80m": 0, "60m": 0, "40m": 0, "30m": 0, "20m": 0,
+		"17m": 0, "15m": 0, "12m": 0, "10m": 0, "6m": 0,
 	},
 	"URBAN": {
-		"160m": 22, "80m": 20, "60m": 19, "40m": 17, "30m": 14, "20m": 11,
-		"17m": 9, "15m": 8, "12m": 6, "10m": 5, "6m": 3,
+		"160m": 0, "80m": 0, "60m": 0, "40m": 0, "30m": 0, "20m": 0,
+		"17m": 0, "15m": 0, "12m": 0, "10m": 0, "6m": 0,
 	},
 	"INDUSTRIAL": {
-		"160m": 28, "80m": 26, "60m": 24, "40m": 22, "30m": 18, "20m": 15,
-		"17m": 12, "15m": 11, "12m": 9, "10m": 7, "6m": 5,
+		"160m": 0, "80m": 0, "60m": 0, "40m": 0, "30m": 0, "20m": 0,
+		"17m": 0, "15m": 0, "12m": 0, "10m": 0, "6m": 0,
 	},
 }
 

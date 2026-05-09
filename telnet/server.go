@@ -3001,7 +3001,13 @@ func (s *Server) recordPathP50Diag(res pathreliability.Result, sp *spot.Spot, ba
 	s.pathP50DiagObserved.Add(1)
 	meanGlyph, meanOK := pathP50ShadowGlyphBucket(res.Glyph, cfg)
 	p50Glyph, p50OK := pathP50ShadowGlyphBucket(res.P50Glyph, cfg)
-	if !p50OK && meanOK && pathP50ShadowGlyphStrong(meanGlyph) {
+	p50CompareGlyph := p50Glyph
+	p50CompareOK := p50OK
+	if res.Source != pathreliability.SourceCombined {
+		p50CompareGlyph = pathP50ShadowGlyphInsufficient
+		p50CompareOK = true
+	}
+	if !p50CompareOK && meanOK && pathP50ShadowGlyphStrong(meanGlyph) {
 		s.pathP50ShadowSevNone.Add(1)
 	}
 	if !res.HasMeanDB || !res.HasP50 || !meanOK || !p50OK {
@@ -3011,7 +3017,7 @@ func (s *Server) recordPathP50Diag(res pathreliability.Result, sp *spot.Spot, ba
 	delta := int(math.Round(res.MeanDB - res.P50DB))
 	s.pathP50DiagDelta[pathP50DiagDeltaBucket(delta)].Add(1)
 	s.pathP50DiagN[pathP50DiagNBucket(res.Count)].Add(1)
-	s.recordPathP50Shadow(meanGlyph, p50Glyph, res.Count, sp, band, mode)
+	s.recordPathP50Shadow(meanGlyph, p50CompareGlyph, res.Count, sp, band, mode)
 }
 
 func (s *Server) recordPathP50Shadow(meanGlyph, p50Glyph int, count uint32, sp *spot.Spot, band string, mode string) {

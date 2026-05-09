@@ -370,7 +370,8 @@ At a high level, the cluster:
 3. groups them by coarse and fine geographic cells derived from Maidenhead grids
 4. combines recent DX-to-you and you-to-DX evidence with decay over time
 5. rejects selected evidence that is too old for the band's freshness gate
-6. applies your selected noise class on the receive side using a band-specific penalty
+6. resolves your selected noise class on the receive side; the checked-in table
+   currently uses 0 dB for every class and band during no-noise-penalty evaluation
 7. maps the result to `HIGH`, `MEDIUM`, `LOW`, `UNLIKELY`, or `INSUFFICIENT`
 
 What the classes mean to an operator:
@@ -379,16 +380,16 @@ What the classes mean to an operator:
 | --- | --- | --- | --- |
 | `>` | `HIGH` | Recent evidence suggests a favorable path. | Use `SET DIAG PATH` to see sample count, weight, and age. |
 | `=` | `MEDIUM` | Recent evidence suggests a workable path. | Use `SET DIAG PATH`; low effective weight can still map to a usable class. |
-| `<` | `LOW` | Recent evidence suggests a weak or marginal path. | Check `SET NOISE` and remember low-band noise penalties are stronger than 10m/6m. |
+| `<` | `LOW` | Recent evidence suggests a weak or marginal path. | Use `SET DIAG PATH` to confirm grids, sample count, and freshness. |
 | `-` | `UNLIKELY` | Recent evidence suggests a poor path. | Check whether your grid and the DX grid are correct before treating this as a hard no. |
 | blank | `INSUFFICIENT` | The cluster did not have enough usable recent evidence to rate the path. | Run `SET DIAG PATH`; common reasons are `none`, `lown`, `loww`, and `stale`. |
 
 Important operational notes:
 
 - You need `SET GRID` for path hints to be useful.
-- `SET NOISE` changes the receive-side penalty used in the calculation. The
-  penalty is band-specific: low bands get stronger local-noise corrections than
-  10m and 6m.
+- `SET NOISE` still stores a receive-noise class for compatibility, but the
+  checked-in path config currently assigns 0 dB to every class and band while
+  no-noise-penalty behavior is evaluated.
 - `SET PATHSAMPLES <count>` lets you require more selected observations than
   the cluster default before your session shows a path tag. `SET PATHSAMPLES
   DEFAULT` clears that personal override.
@@ -551,7 +552,10 @@ When `SET DIAG PATHP50` is active, the log can also include `Path p50 shadow`
 aggregate lines comparing the current mean-based glyph class with the p50
 shadow glyph class by outcome, sample-count bucket, band, mode family, source,
 and glyph-pair matrix. These lines are diagnostic-observed only; they do not
-mean normal spot delivery is computing p50 for every spot.
+mean normal spot delivery is computing p50 for every spot. The shadow glyph
+comparison applies the same active eligibility gate as normal path display, so
+p50 is counted as insufficient whenever the active method is insufficient due
+to low count, low weight, stale evidence, or no sample.
 Daily propagation reports read this log by default; pass `prop_report -log` to
 an old system log path when generating reports from historical files.
 

@@ -6,11 +6,11 @@ func TestNoiseModelPenaltyAndClassLookup(t *testing.T) {
 	cfg := DefaultConfig()
 	model := cfg.NoiseModel()
 
-	if got := model.Penalty("URBAN", "160m"); got != 22 {
-		t.Fatalf("expected urban 160m penalty 22, got %v", got)
+	if got := model.Penalty("URBAN", "160m"); got != 0 {
+		t.Fatalf("expected urban 160m penalty 0, got %v", got)
 	}
-	if got := model.Penalty("urban", "6M"); got != 3 {
-		t.Fatalf("expected urban 6m penalty 3, got %v", got)
+	if got := model.Penalty("urban", "6M"); got != 0 {
+		t.Fatalf("expected urban 6m penalty 0, got %v", got)
 	}
 	if !model.HasClass("QUIET") {
 		t.Fatalf("expected quiet class to be valid")

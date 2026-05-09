@@ -53,6 +53,7 @@ func TestPathP50DiagStatsSnapshotBuckets(t *testing.T) {
 	s := &Server{}
 	cfg := pathreliability.DefaultConfig()
 	s.recordPathP50Diag(pathreliability.Result{
+		Source:    pathreliability.SourceCombined,
 		Glyph:     cfg.GlyphSymbols.Medium,
 		MeanDB:    -11,
 		HasMeanDB: true,
@@ -62,6 +63,7 @@ func TestPathP50DiagStatsSnapshotBuckets(t *testing.T) {
 		Count:     19,
 	}, &spot.Spot{SourceType: spot.SourceRBN, SourceNode: "RBN"}, "20m", "CW", cfg)
 	s.recordPathP50Diag(pathreliability.Result{
+		Source:    pathreliability.SourceCombined,
 		Glyph:     cfg.GlyphSymbols.Unlikely,
 		MeanDB:    -20,
 		HasMeanDB: true,
@@ -71,6 +73,7 @@ func TestPathP50DiagStatsSnapshotBuckets(t *testing.T) {
 		Count:     3,
 	}, &spot.Spot{SourceType: spot.SourceFT8}, "40m", "FT8", cfg)
 	s.recordPathP50Diag(pathreliability.Result{
+		Source:    pathreliability.SourceCombined,
 		Glyph:     cfg.GlyphSymbols.High,
 		MeanDB:    -1,
 		HasMeanDB: true,
@@ -80,6 +83,7 @@ func TestPathP50DiagStatsSnapshotBuckets(t *testing.T) {
 		Count:     525,
 	}, &spot.Spot{SourceType: spot.SourcePSKReporter}, "15m", "RTTY", cfg)
 	s.recordPathP50Diag(pathreliability.Result{
+		Source:    pathreliability.SourceCombined,
 		Glyph:     cfg.GlyphSymbols.High,
 		MeanDB:    1,
 		HasMeanDB: true,
@@ -109,7 +113,7 @@ func TestPathP50DiagStatsSnapshotBuckets(t *testing.T) {
 	if stats.Shadow.Same != 1 || stats.Shadow.MeanGT != 2 || stats.Shadow.P50GT != 1 {
 		t.Fatalf("unexpected shadow comparison counters: %+v", stats.Shadow)
 	}
-	if stats.Shadow.SevLow != 1 || stats.Shadow.SevNone != 1 {
+	if stats.Shadow.SevLow != 1 || stats.Shadow.SevNone != 0 {
 		t.Fatalf("unexpected severe counters: %+v", stats.Shadow)
 	}
 	if stats.Shadow.N[pathP50DiagNLt17] != 1 ||
@@ -137,6 +141,37 @@ func TestPathP50DiagStatsSnapshotBuckets(t *testing.T) {
 	}
 }
 
+func TestPathP50ShadowComparisonGatesP50WhenActiveInsufficient(t *testing.T) {
+	s := &Server{}
+	cfg := pathreliability.DefaultConfig()
+	s.recordPathP50Diag(pathreliability.Result{
+		Source:             pathreliability.SourceInsufficient,
+		InsufficientReason: pathreliability.InsufficientLowCount,
+		Glyph:              cfg.GlyphSymbols.Insufficient,
+		MeanDB:             -11,
+		HasMeanDB:          true,
+		P50DB:              -7,
+		HasP50:             true,
+		P50Glyph:           cfg.GlyphSymbols.High,
+		Count:              7,
+	}, &spot.Spot{SourceType: spot.SourcePSKReporter}, "20m", "FT8", cfg)
+
+	stats := s.PathP50DiagStatsSnapshot()
+	if stats.Observed != 1 || stats.Missing != 0 {
+		t.Fatalf("unexpected observed/missing: %+v", stats)
+	}
+	if stats.Shadow.Same != 1 || stats.Shadow.P50GT != 0 || stats.Shadow.MeanGT != 0 {
+		t.Fatalf("expected gated insufficient comparison, got %+v", stats.Shadow)
+	}
+	insufficientPair := pathP50ShadowGlyphInsufficient*pathP50ShadowGlyphCount + pathP50ShadowGlyphInsufficient
+	if stats.Shadow.Pair[insufficientPair] != 1 {
+		t.Fatalf("expected I/I pair after gating p50, got %+v", stats.Shadow.Pair)
+	}
+	if stats.Delta[pathP50DiagDeltaNeg5Pos5] != 1 || stats.N[pathP50DiagNLt17] != 1 {
+		t.Fatalf("expected raw p50 diagnostic buckets to remain recorded, delta=%+v n=%+v", stats.Delta, stats.N)
+	}
+}
+
 func BenchmarkRecordPathPrediction(b *testing.B) {
 	s := &Server{}
 	res := pathreliability.Result{Source: pathreliability.SourceCombined, Weight: 2}
@@ -151,6 +186,7 @@ func BenchmarkRecordPathP50Diag(b *testing.B) {
 	cfg := pathreliability.DefaultConfig()
 	sp := &spot.Spot{SourceType: spot.SourceRBN, SourceNode: "RBN"}
 	res := pathreliability.Result{
+		Source:    pathreliability.SourceCombined,
 		Glyph:     cfg.GlyphSymbols.Medium,
 		MeanDB:    -11,
 		HasMeanDB: true,

@@ -124,13 +124,13 @@ func TestDefaultNoiseOffsetsByBand(t *testing.T) {
 		penalty float64
 	}{
 		{"QUIET", "160m", 0},
-		{"RURAL", "160m", 6},
+		{"RURAL", "160m", 0},
 		{"RURAL", "6m", 0},
-		{"SUBURBAN", "40m", 11},
-		{"URBAN", "160m", 22},
-		{"URBAN", "6m", 3},
-		{"INDUSTRIAL", "160m", 28},
-		{"INDUSTRIAL", "6m", 5},
+		{"SUBURBAN", "40m", 0},
+		{"URBAN", "160m", 0},
+		{"URBAN", "6m", 0},
+		{"INDUSTRIAL", "160m", 0},
+		{"INDUSTRIAL", "6m", 0},
 	}
 	for _, tc := range cases {
 		if got := model.Penalty(tc.class, tc.band); got != tc.penalty {

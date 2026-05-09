@@ -11,6 +11,8 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 |---|---|---|---|---|---|---|---|
 | ADR-0001 | <title> | Proposed | YYYY-MM-DD | <area> | - | - | `docs/decisions/ADR-0001-<slug>.md` |
+| ADR-0125 | Gated PATHP50 Shadow Glyph Comparison | Accepted | 2026-05-08 | pathreliability, telnet diagnostics, propagation logs | - | - | `docs/decisions/ADR-0125-gated-pathp50-shadow-comparison.md` |
+| ADR-0124 | No-Noise-Penalty Path Evaluation | Accepted | 2026-05-08 | pathreliability, config, telnet | ADR-0064 | - | `docs/decisions/ADR-0124-no-noise-penalty-path-evaluation.md` |
 | ADR-0123 | Dedicated Propagation Log | Accepted | 2026-05-08 | logging, pathreliability, propagation reports | - | - | `docs/decisions/ADR-0123-dedicated-propagation-log.md` |
 | ADR-0122 | Path P50 Shadow Diagnostics | Accepted | 2026-05-08 | pathreliability, telnet diagnostics, config | - | - | `docs/decisions/ADR-0122-path-p50-shadow-diagnostics.md` |
 | ADR-0121 | PSKReporter Trusted Spot Materialization | Accepted | 2026-05-07 | pskreporter, spot, hot path | - | - | `docs/decisions/ADR-0121-pskreporter-trusted-spot-materialization.md` |
@@ -125,7 +127,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR-0061 | YAML-Driven FT Corroboration Timing and Threshold Knobs | Accepted | 2026-04-08 | config, main output pipeline, FT confidence, docs | ADR-0060 (code-bound FT timing/threshold clause) | - | `docs/decisions/ADR-0061-ft-corroboration-yaml-knobs.md` |
 | ADR-0062 | Shared Ingest Flood Control With Required YAML Policy | Accepted | 2026-04-08 | config, ingest, dedupe, stats, docs | - | - | `docs/decisions/ADR-0062-shared-ingest-flood-control.md` |
 | ADR-0063 | Configurable Telnet Bulletin Dedupe | Accepted | 2026-04-19 | config, peer, telnet fan-out | - | - | `docs/decisions/ADR-0063-configurable-bulletin-dedupe.md` |
-| ADR-0064 | Band-Specific Path Noise Penalties | Accepted | 2026-04-20 | pathreliability, telnet, config | - | - | `docs/decisions/ADR-0064-band-specific-path-noise-penalties.md` |
+| ADR-0064 | Band-Specific Path Noise Penalties | Superseded | 2026-04-20 | pathreliability, telnet, config | - | ADR-0124 | `docs/decisions/ADR-0064-band-specific-path-noise-penalties.md` |
 | ADR-0065 | Path Reliability Freshness Gate | Accepted | 2026-04-20 | pathreliability, telnet, reports, config | - | - | `docs/decisions/ADR-0065-path-reliability-freshness-gate.md` |
 | ADR-0066 | DXSummit HTTP Ingest | Accepted | 2026-04-21 | dxsummit, config, spot, runtime, docs | - | - | `docs/decisions/ADR-0066-dxsummit-http-ingest.md` |
 | ADR-0067 | Centralized YAML Settings Enforcement | Accepted | 2026-04-22 | config, pathreliability, solarweather, spot, runtime, reports | - | - | `docs/decisions/ADR-0067-centralized-yaml-settings-enforcement.md` |
