@@ -11,9 +11,10 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 |---|---|---|---|---|---|---|---|
 | ADR-0001 | <title> | Proposed | YYYY-MM-DD | <area> | - | - | `docs/decisions/ADR-0001-<slug>.md` |
+| ADR-0127 | Location-Specific Path Noise Penalties | Accepted | 2026-05-09 | pathreliability, config, telnet, reports | ADR-0124 | - | `docs/decisions/ADR-0127-location-specific-path-noise-penalties.md` |
 | ADR-0126 | Active P50 Path Scoring | Accepted | 2026-05-09 | pathreliability, telnet diagnostics, propagation logs | ADR-0122; ADR-0125; ADR-0123 PATHP50 shadow-comparison portion | - | `docs/decisions/ADR-0126-active-p50-path-scoring.md` |
 | ADR-0125 | Gated PATHP50 Shadow Glyph Comparison | Superseded | 2026-05-08 | pathreliability, telnet diagnostics, propagation logs | - | ADR-0126 | `docs/decisions/ADR-0125-gated-pathp50-shadow-comparison.md` |
-| ADR-0124 | No-Noise-Penalty Path Evaluation | Accepted | 2026-05-08 | pathreliability, config, telnet | ADR-0064 | - | `docs/decisions/ADR-0124-no-noise-penalty-path-evaluation.md` |
+| ADR-0124 | No-Noise-Penalty Path Evaluation | Superseded | 2026-05-08 | pathreliability, config, telnet | ADR-0064 | ADR-0127 | `docs/decisions/ADR-0124-no-noise-penalty-path-evaluation.md` |
 | ADR-0123 | Dedicated Propagation Log | Accepted | 2026-05-08 | logging, pathreliability, propagation reports | - | - | `docs/decisions/ADR-0123-dedicated-propagation-log.md` |
 | ADR-0122 | Path P50 Shadow Diagnostics | Superseded | 2026-05-08 | pathreliability, telnet diagnostics, config | - | ADR-0126 | `docs/decisions/ADR-0122-path-p50-shadow-diagnostics.md` |
 | ADR-0121 | PSKReporter Trusted Spot Materialization | Accepted | 2026-05-07 | pskreporter, spot, hot path | - | - | `docs/decisions/ADR-0121-pskreporter-trusted-spot-materialization.md` |

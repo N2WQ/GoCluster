@@ -100,11 +100,24 @@ func TestBuildModelContextIncludesPredictionAgeGate(t *testing.T) {
 	if ctx.MinObservationCount != cfg.MinObservationCount || ctx.ReceiverContributionMode != pathreliability.ReceiverContributionShadow {
 		t.Fatalf("expected receiver contribution context, got %+v", ctx)
 	}
+	if got := ctx.NoiseOffsets["URBAN"]; got != 17 {
+		t.Fatalf("expected urban noise offset 17, got %v", got)
+	}
 
 	cfg.MaxPredictionAgeHalfLifeMultiplier = 0
 	ctx = buildModelContext(cfg, []string{"20m"})
 	if got := ctx.MaxPredictionAgeByBand["20m"]; got != 0 {
 		t.Fatalf("expected disabled max age 0, got %d", got)
+	}
+}
+
+func TestFormatNoiseOffsets(t *testing.T) {
+	got := formatNoiseOffsets(map[string]float64{
+		"URBAN": 17,
+		"QUIET": 0,
+	})
+	if got != "QUIET=0; URBAN=17" {
+		t.Fatalf("unexpected noise offset summary: %q", got)
 	}
 }
 

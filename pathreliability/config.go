@@ -18,34 +18,34 @@ import (
 
 // Config holds tuning knobs for path reliability aggregation and display.
 type Config struct {
-	Enabled                            bool                          `yaml:"enabled"`
-	AllowedBands                       []string                      `yaml:"allowed_bands"`
-	ClampMin                           float64                       `yaml:"clamp_min"`                               // FT8-equiv floor (dB)
-	ClampMax                           float64                       `yaml:"clamp_max"`                               // FT8-equiv ceiling (dB)
-	DefaultHalfLifeSec                 int                           `yaml:"default_half_life_seconds"`               // fallback half-life when band not listed
-	BandHalfLifeSec                    map[string]int                `yaml:"band_half_life_seconds"`                  // per-band overrides
-	StaleAfterSeconds                  int                           `yaml:"stale_after_seconds"`                     // fallback purge when older than this
-	StaleAfterHalfLifeMultiplier       float64                       `yaml:"stale_after_half_life_multiplier"`        // stale = k * half-life (per band)
-	MaxPredictionAgeHalfLifeMultiplier float64                       `yaml:"max_prediction_age_half_life_multiplier"` // prediction age gate = k * half-life; 0 disables
-	MinEffectiveWeight                 float64                       `yaml:"min_effective_weight"`                    // minimum decayed weight to report
-	MinObservationCount                int                           `yaml:"min_observation_count"`                   // minimum selected observations to report
-	ReceiverContributionMode           string                        `yaml:"receiver_contribution_mode"`              // off, shadow, or enforce receiver contribution caps
-	ReceiverFineSlots                  int                           `yaml:"receiver_fine_slots"`                     // tracked receiver slots in fine buckets
-	ReceiverCoarseSlots                int                           `yaml:"receiver_coarse_slots"`                   // tracked receiver slots in coarse buckets
-	ReceiverMaxEffectiveCount          uint32                        `yaml:"receiver_max_effective_count"`            // max accepted reports per receiver per bucket
-	ReceiverMaxEffectiveWeight         float64                       `yaml:"receiver_max_effective_weight"`           // max accepted effective weight per receiver per bucket
-	MinFineWeight                      float64                       `yaml:"min_fine_weight"`                         // minimum fine weight to blend with coarse
-	FineOnlyWeight                     float64                       `yaml:"fine_only_weight"`                        // minimum fine weight to use fine only
-	ReverseHintDiscount                float64                       `yaml:"reverse_hint_discount"`                   // multiplier when using reverse direction
-	MergeReceiveWeight                 float64                       `yaml:"merge_receive_weight"`                    // merge weight for DX->user
-	MergeTransmitWeight                float64                       `yaml:"merge_transmit_weight"`                   // merge weight for user->DX
-	BeaconWeightCap                    float64                       `yaml:"beacon_weight_cap"`                       // cap per-beacon contribution
-	DisplayEnabled                     bool                          `yaml:"display_enabled"`                         // toggle glyph rendering
-	ModeOffsets                        ModeOffsets                   `yaml:"mode_offsets"`                            // per-mode FT8-equiv offsets
-	ModeThresholds                     map[string]GlyphThresholds    `yaml:"mode_thresholds"`                         // per-mode glyph thresholds in FT8-equiv dB
-	GlyphThresholds                    GlyphThresholds               `yaml:"glyph_thresholds"`                        // fallback glyph thresholds in FT8-equiv dB
-	GlyphSymbols                       GlyphSymbols                  `yaml:"glyph_symbols"`                           // glyph mapping for high/medium/low/unlikely/insufficient
-	NoiseOffsetsByBand                 map[string]map[string]float64 `yaml:"noise_offsets_by_band"`                   // noise class -> band -> dB penalty
+	Enabled                            bool                       `yaml:"enabled"`
+	AllowedBands                       []string                   `yaml:"allowed_bands"`
+	ClampMin                           float64                    `yaml:"clamp_min"`                               // FT8-equiv floor (dB)
+	ClampMax                           float64                    `yaml:"clamp_max"`                               // FT8-equiv ceiling (dB)
+	DefaultHalfLifeSec                 int                        `yaml:"default_half_life_seconds"`               // fallback half-life when band not listed
+	BandHalfLifeSec                    map[string]int             `yaml:"band_half_life_seconds"`                  // per-band overrides
+	StaleAfterSeconds                  int                        `yaml:"stale_after_seconds"`                     // fallback purge when older than this
+	StaleAfterHalfLifeMultiplier       float64                    `yaml:"stale_after_half_life_multiplier"`        // stale = k * half-life (per band)
+	MaxPredictionAgeHalfLifeMultiplier float64                    `yaml:"max_prediction_age_half_life_multiplier"` // prediction age gate = k * half-life; 0 disables
+	MinEffectiveWeight                 float64                    `yaml:"min_effective_weight"`                    // minimum decayed weight to report
+	MinObservationCount                int                        `yaml:"min_observation_count"`                   // minimum selected observations to report
+	ReceiverContributionMode           string                     `yaml:"receiver_contribution_mode"`              // off, shadow, or enforce receiver contribution caps
+	ReceiverFineSlots                  int                        `yaml:"receiver_fine_slots"`                     // tracked receiver slots in fine buckets
+	ReceiverCoarseSlots                int                        `yaml:"receiver_coarse_slots"`                   // tracked receiver slots in coarse buckets
+	ReceiverMaxEffectiveCount          uint32                     `yaml:"receiver_max_effective_count"`            // max accepted reports per receiver per bucket
+	ReceiverMaxEffectiveWeight         float64                    `yaml:"receiver_max_effective_weight"`           // max accepted effective weight per receiver per bucket
+	MinFineWeight                      float64                    `yaml:"min_fine_weight"`                         // minimum fine weight to blend with coarse
+	FineOnlyWeight                     float64                    `yaml:"fine_only_weight"`                        // minimum fine weight to use fine only
+	ReverseHintDiscount                float64                    `yaml:"reverse_hint_discount"`                   // multiplier when using reverse direction
+	MergeReceiveWeight                 float64                    `yaml:"merge_receive_weight"`                    // merge weight for DX->user
+	MergeTransmitWeight                float64                    `yaml:"merge_transmit_weight"`                   // merge weight for user->DX
+	BeaconWeightCap                    float64                    `yaml:"beacon_weight_cap"`                       // cap per-beacon contribution
+	DisplayEnabled                     bool                       `yaml:"display_enabled"`                         // toggle glyph rendering
+	ModeOffsets                        ModeOffsets                `yaml:"mode_offsets"`                            // per-mode FT8-equiv offsets
+	ModeThresholds                     map[string]GlyphThresholds `yaml:"mode_thresholds"`                         // per-mode glyph thresholds in FT8-equiv dB
+	GlyphThresholds                    GlyphThresholds            `yaml:"glyph_thresholds"`                        // fallback glyph thresholds in FT8-equiv dB
+	GlyphSymbols                       GlyphSymbols               `yaml:"glyph_symbols"`                           // glyph mapping for high/medium/low/unlikely/insufficient
+	NoiseOffsets                       map[string]float64         `yaml:"noise_offsets"`                           // noise class -> dB penalty
 
 	noiseModel NoiseModel
 }
@@ -89,7 +89,7 @@ var requiredConfigPaths = []yamlconfig.Path{
 	{"mode_offsets", "rtty"},
 	{"mode_offsets", "psk"},
 	{"mode_offsets", "wspr"},
-	{"noise_offsets_by_band"},
+	{"noise_offsets"},
 }
 
 // ModeOffsets normalizes non-FT8 modes to FT8-equivalent dB.
@@ -270,7 +270,7 @@ func DefaultConfig() Config {
 			Unlikely:     "!",
 			Insufficient: "?",
 		},
-		NoiseOffsetsByBand: defaultNoiseOffsetsByBand(),
+		NoiseOffsets: defaultNoiseOffsets(),
 	}
 	cfg.buildCaches()
 	return cfg
@@ -403,10 +403,10 @@ func (c *Config) finalize() error {
 		c.GlyphSymbols.Insufficient == "" {
 		return fmt.Errorf("glyph_symbols must define high, medium, low, unlikely, and insufficient")
 	}
-	if err := validateNoiseOffsetsByBandForBands(c.NoiseOffsetsByBand, c.AllowedBands); err != nil {
+	if err := validateNoiseOffsets(c.NoiseOffsets); err != nil {
 		return err
 	}
-	c.NoiseOffsetsByBand = normalizeNoiseOffsetsByBand(c.NoiseOffsetsByBand, nil)
+	c.NoiseOffsets = normalizeNoiseOffsets(c.NoiseOffsets, nil)
 	c.buildCaches()
 	return nil
 }
@@ -415,7 +415,7 @@ func (c *Config) buildCaches() {
 	if c == nil {
 		return
 	}
-	c.noiseModel = newNoiseModel(c.NoiseOffsetsByBand)
+	c.noiseModel = newNoiseModel(c.NoiseOffsets)
 }
 
 func validGlyphThresholds(t GlyphThresholds) bool {
@@ -445,7 +445,7 @@ func (c Config) NoiseModel() NoiseModel {
 	if !c.noiseModel.empty() {
 		return c.noiseModel
 	}
-	return newNoiseModel(c.NoiseOffsetsByBand)
+	return newNoiseModel(c.NoiseOffsets)
 }
 
 // LoadFile loads YAML config, validates required YAML-owned settings, and builds derived caches.
@@ -458,7 +458,7 @@ func LoadFile(path string) (Config, error) {
 	if err != nil {
 		return cfg, err
 	}
-	_, _, err = decodeNoiseOffsetsByBand(bs)
+	_, _, err = decodeNoiseOffsets(bs)
 	if err != nil {
 		return cfg, err
 	}

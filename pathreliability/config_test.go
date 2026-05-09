@@ -115,26 +115,22 @@ glyph_symbols:
 	}
 }
 
-func TestDefaultNoiseOffsetsByBand(t *testing.T) {
+func TestDefaultNoiseOffsets(t *testing.T) {
 	cfg := DefaultConfig()
 	model := cfg.NoiseModel()
 	cases := []struct {
 		class   string
-		band    string
 		penalty float64
 	}{
-		{"QUIET", "160m", 0},
-		{"RURAL", "160m", 0},
-		{"RURAL", "6m", 0},
-		{"SUBURBAN", "40m", 0},
-		{"URBAN", "160m", 0},
-		{"URBAN", "6m", 0},
-		{"INDUSTRIAL", "160m", 0},
-		{"INDUSTRIAL", "6m", 0},
+		{"QUIET", 0},
+		{"RURAL", 4},
+		{"SUBURBAN", 12},
+		{"URBAN", 17},
+		{"INDUSTRIAL", 20},
 	}
 	for _, tc := range cases {
-		if got := model.Penalty(tc.class, tc.band); got != tc.penalty {
-			t.Fatalf("Penalty(%s, %s) = %v, want %v", tc.class, tc.band, got, tc.penalty)
+		if got := model.Penalty(tc.class); got != tc.penalty {
+			t.Fatalf("Penalty(%s) = %v, want %v", tc.class, got, tc.penalty)
 		}
 	}
 }
@@ -236,15 +232,14 @@ func TestLoadFileRejectsInvalidReceiverContributionCaps(t *testing.T) {
 
 func TestLoadFileRejectsNegativeNoisePenalty(t *testing.T) {
 	path := writeTempConfigOverlay(t, `
-noise_offsets_by_band:
-  rural:
-    160M: -3
+noise_offsets:
+  rural: -3
 `)
 	_, err := LoadFile(path)
 	if err == nil {
 		t.Fatalf("expected negative noise penalty to fail")
 	}
-	if !strings.Contains(err.Error(), "noise_offsets_by_band.RURAL.160m") {
+	if !strings.Contains(err.Error(), "noise_offsets.RURAL") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -274,6 +269,7 @@ func TestLoadFileRejectsMissingRequiredYAMLSettings(t *testing.T) {
 		{name: "receiver max effective count", path: []string{"receiver_max_effective_count"}, want: "receiver_max_effective_count"},
 		{name: "receiver max effective weight", path: []string{"receiver_max_effective_weight"}, want: "receiver_max_effective_weight"},
 		{name: "ft4 offset", path: []string{"mode_offsets", "ft4"}, want: "mode_offsets.ft4"},
+		{name: "noise offsets", path: []string{"noise_offsets"}, want: "noise_offsets"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -302,31 +298,28 @@ mode_offsets:
 	}
 }
 
-func TestLoadFileRejectsLegacyNoiseOffsets(t *testing.T) {
-	path := writeTempConfig(t, `
-noise_offsets:
-  quiet: 0
+func TestLoadFileRejectsObsoleteNoiseOffsetsByBand(t *testing.T) {
+	path := writeTempConfigOverlay(t, `
+noise_offsets_by_band:
+  quiet:
+    20m: 0
 `)
 	_, err := LoadFile(path)
 	if err == nil {
-		t.Fatalf("expected legacy noise_offsets to fail")
+		t.Fatalf("expected obsolete noise_offsets_by_band to fail")
 	}
-	if !strings.Contains(err.Error(), "noise_offsets is no longer supported") {
+	if !strings.Contains(err.Error(), "noise_offsets_by_band is no longer supported") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
 func TestLoadFileRejectsMissingNoiseClass(t *testing.T) {
 	path := writeTempConfig(t, `
-noise_offsets_by_band:
-  quiet:
-    20m: 0
-  rural:
-    20m: 3
-  suburban:
-    20m: 7
-  urban:
-    20m: 11
+noise_offsets:
+  quiet: 0
+  rural: 4
+  suburban: 12
+  urban: 17
 `)
 	_, err := LoadFile(path)
 	if err == nil {
@@ -337,16 +330,46 @@ noise_offsets_by_band:
 	}
 }
 
-func TestLoadFileRejectsMalformedNoiseOffsetsByBand(t *testing.T) {
-	path := writeTempConfig(t, `
-noise_offsets_by_band:
-  quiet: 0
+func TestLoadFileRejectsUnsupportedNoiseClass(t *testing.T) {
+	path := writeTempConfigOverlay(t, `
+noise_offsets:
+  mobile: 9
 `)
 	_, err := LoadFile(path)
 	if err == nil {
-		t.Fatalf("expected malformed noise_offsets_by_band to fail")
+		t.Fatalf("expected unsupported noise class to fail")
 	}
-	if !strings.Contains(err.Error(), "noise_offsets_by_band") {
+	if !strings.Contains(err.Error(), `unsupported noise class "mobile"`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadFileRejectsDuplicateNoiseClass(t *testing.T) {
+	path := writeTempConfig(t, `
+noise_offsets:
+  quiet: 0
+  QUIET: 1
+`)
+	_, err := LoadFile(path)
+	if err == nil {
+		t.Fatalf("expected duplicate noise class to fail")
+	}
+	if !strings.Contains(err.Error(), `duplicate noise class "QUIET"`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadFileRejectsMalformedNoiseOffsets(t *testing.T) {
+	path := writeTempConfigOverlay(t, `
+noise_offsets:
+  quiet:
+    20m: 0
+`)
+	_, err := LoadFile(path)
+	if err == nil {
+		t.Fatalf("expected malformed noise_offsets to fail")
+	}
+	if !strings.Contains(err.Error(), "noise_offsets.quiet must be a scalar penalty") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

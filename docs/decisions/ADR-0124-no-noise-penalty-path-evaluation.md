@@ -1,6 +1,6 @@
 # ADR-0124: No-Noise-Penalty Path Evaluation
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-05-08
 - Decision Origin: Design
 
@@ -60,4 +60,4 @@ configuration, that lookup has no effective receive-side adjustment.
 - Related tests: `pathreliability/config_test.go`, `pathreliability/noise_test.go`, `telnet/path_settings_test.go`
 - Related docs: `data/config/path_reliability.yaml`, `README.md`, `pathreliability/README.md`, `data/config/PATH_PREDICTIONS.md`, `telnet/README.md`
 - Related TSRs:
-- Supersedes / superseded by: Supersedes ADR-0064
+- Supersedes / superseded by: Supersedes ADR-0064; superseded by ADR-0127

@@ -244,7 +244,7 @@ type Server struct {
 	pathPredictor         *pathreliability.Predictor                 // Optional path reliability predictor
 	pathDisplay           bool                                       // Toggle glyph rendering
 	solarWeather          *solarweather.Manager                      // Optional solar/geomagnetic override evaluator
-	noiseModel            pathreliability.NoiseModel                 // Noise class and band lookup
+	noiseModel            pathreliability.NoiseModel                 // Noise class lookup
 	gridLookup            func(string) (string, bool, bool)          // Optional grid lookup from store
 	ctyLookup             func() *cty.CTYDatabase                    // Optional CTY lookup for login validation and filter display
 	usLicenseCheck        func(string) bool                          // Optional US FCC ULS license checker for login validation
@@ -3541,11 +3541,11 @@ func (s *Server) noiseClassKnown(class string) bool {
 	return s.noiseModel.HasClass(class)
 }
 
-func (s *Server) noisePenaltyForClassBand(class string, band string) float64 {
+func (s *Server) noisePenaltyForClass(class string) float64 {
 	if s == nil {
 		return 0
 	}
-	return s.noiseModel.Penalty(class, band)
+	return s.noiseModel.Penalty(class)
 }
 
 // formatSpotForClient renders a spot with optional reliability glyphs.
@@ -3658,7 +3658,7 @@ func (s *Server) pathPredictionForClient(client *Client, sp *spot.Spot, includeD
 		mode = sp.Mode
 	}
 	now := s.now()
-	noisePenalty := s.noisePenaltyForClassBand(state.noiseClass, band)
+	noisePenalty := s.noisePenaltyForClass(state.noiseClass)
 	minObservationCount := effectivePathMinObservationCount(state, cfg)
 	var res pathreliability.Result
 	if includeDistribution {
@@ -3754,7 +3754,7 @@ func (s *Server) pathClassForClient(client *Client, sp *spot.Spot) string {
 		mode = strings.TrimSpace(sp.Mode)
 	}
 	now := s.now()
-	noisePenalty := s.noisePenaltyForClassBand(state.noiseClass, band)
+	noisePenalty := s.noisePenaltyForClass(state.noiseClass)
 	minObservationCount := effectivePathMinObservationCount(state, cfg)
 	res := s.pathPredictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, now)
 	if res.Source == pathreliability.SourceInsufficient {

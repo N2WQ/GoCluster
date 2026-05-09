@@ -167,25 +167,13 @@ The propagation log can include `Path p50 diag (5m)` while operators are using
 PATHP50. That aggregate is diagnostic-observed only: it summarizes sessions
 that requested PATHP50 and records missing p50 plus selected-count buckets.
 
-The receive-side noise table is still resolved by `SET NOISE` class and band,
-but the checked-in calibration currently sets every value to 0 dB. This keeps
-the config schema and saved user classes compatible while evaluating whether
-observed SNR evidence should stand without an additional broad band-noise
-correction.
+The receive-side noise table is resolved only by `SET NOISE` class. The same
+location penalty applies on every band and is subtracted from DX-to-user path
+evidence at prediction time.
 
-| Band | Quiet | Rural | Suburban | Urban | Industrial |
+| Class | Quiet | Rural | Suburban | Urban | Industrial |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 160m | 0 | 0 | 0 | 0 | 0 |
-| 80m | 0 | 0 | 0 | 0 | 0 |
-| 60m | 0 | 0 | 0 | 0 | 0 |
-| 40m | 0 | 0 | 0 | 0 | 0 |
-| 30m | 0 | 0 | 0 | 0 | 0 |
-| 20m | 0 | 0 | 0 | 0 | 0 |
-| 17m | 0 | 0 | 0 | 0 | 0 |
-| 15m | 0 | 0 | 0 | 0 | 0 |
-| 12m | 0 | 0 | 0 | 0 | 0 |
-| 10m | 0 | 0 | 0 | 0 | 0 |
-| 6m | 0 | 0 | 0 | 0 | 0 |
+| Penalty dB | 0 | 4 | 12 | 17 | 20 |
 
 ## Class Mapping
 

@@ -161,27 +161,27 @@ type ge10Variance struct {
 }
 
 type modelContext struct {
-	ClampMin                           float64                       `json:"clamp_min"`
-	ClampMax                           float64                       `json:"clamp_max"`
-	DefaultHalfLifeSec                 int                           `json:"default_half_life_seconds"`
-	BandHalfLifeSec                    map[string]int                `json:"band_half_life_seconds"`
-	StaleAfterSeconds                  int                           `json:"stale_after_seconds"`
-	StaleAfterHalfLifeMultiplier       float64                       `json:"stale_after_half_life_multiplier"`
-	StaleAfterByBand                   map[string]int                `json:"stale_after_by_band_seconds"`
-	MaxPredictionAgeHalfLifeMultiplier float64                       `json:"max_prediction_age_half_life_multiplier"`
-	MaxPredictionAgeByBand             map[string]int                `json:"max_prediction_age_by_band_seconds"`
-	MinEffectiveWeight                 float64                       `json:"min_effective_weight"`
-	MinObservationCount                int                           `json:"min_observation_count"`
-	ReceiverContributionMode           string                        `json:"receiver_contribution_mode"`
-	ReceiverFineSlots                  int                           `json:"receiver_fine_slots"`
-	ReceiverCoarseSlots                int                           `json:"receiver_coarse_slots"`
-	ReceiverMaxEffectiveCount          uint32                        `json:"receiver_max_effective_count"`
-	ReceiverMaxEffectiveWeight         float64                       `json:"receiver_max_effective_weight"`
-	MinFineWeight                      float64                       `json:"min_fine_weight"`
-	ReverseHintDiscount                float64                       `json:"reverse_hint_discount"`
-	MergeReceiveWeight                 float64                       `json:"merge_receive_weight"`
-	MergeTransmitWeight                float64                       `json:"merge_transmit_weight"`
-	NoiseOffsetsByBand                 map[string]map[string]float64 `json:"noise_offsets_by_band"`
+	ClampMin                           float64            `json:"clamp_min"`
+	ClampMax                           float64            `json:"clamp_max"`
+	DefaultHalfLifeSec                 int                `json:"default_half_life_seconds"`
+	BandHalfLifeSec                    map[string]int     `json:"band_half_life_seconds"`
+	StaleAfterSeconds                  int                `json:"stale_after_seconds"`
+	StaleAfterHalfLifeMultiplier       float64            `json:"stale_after_half_life_multiplier"`
+	StaleAfterByBand                   map[string]int     `json:"stale_after_by_band_seconds"`
+	MaxPredictionAgeHalfLifeMultiplier float64            `json:"max_prediction_age_half_life_multiplier"`
+	MaxPredictionAgeByBand             map[string]int     `json:"max_prediction_age_by_band_seconds"`
+	MinEffectiveWeight                 float64            `json:"min_effective_weight"`
+	MinObservationCount                int                `json:"min_observation_count"`
+	ReceiverContributionMode           string             `json:"receiver_contribution_mode"`
+	ReceiverFineSlots                  int                `json:"receiver_fine_slots"`
+	ReceiverCoarseSlots                int                `json:"receiver_coarse_slots"`
+	ReceiverMaxEffectiveCount          uint32             `json:"receiver_max_effective_count"`
+	ReceiverMaxEffectiveWeight         float64            `json:"receiver_max_effective_weight"`
+	MinFineWeight                      float64            `json:"min_fine_weight"`
+	ReverseHintDiscount                float64            `json:"reverse_hint_discount"`
+	MergeReceiveWeight                 float64            `json:"merge_receive_weight"`
+	MergeTransmitWeight                float64            `json:"merge_transmit_weight"`
+	NoiseOffsets                       map[string]float64 `json:"noise_offsets"`
 }
 
 type openAIConfig struct {
@@ -603,21 +603,17 @@ func buildModelContext(cfg pathreliability.Config, bands []string) modelContext 
 		ReverseHintDiscount:                cfg.ReverseHintDiscount,
 		MergeReceiveWeight:                 cfg.MergeReceiveWeight,
 		MergeTransmitWeight:                cfg.MergeTransmitWeight,
-		NoiseOffsetsByBand:                 cloneNestedFloatMap(cfg.NoiseOffsetsByBand),
+		NoiseOffsets:                       cloneFloatMap(cfg.NoiseOffsets),
 	}
 }
 
-func cloneNestedFloatMap(in map[string]map[string]float64) map[string]map[string]float64 {
+func cloneFloatMap(in map[string]float64) map[string]float64 {
 	if len(in) == 0 {
 		return nil
 	}
-	out := make(map[string]map[string]float64, len(in))
-	for k, inner := range in {
-		copied := make(map[string]float64, len(inner))
-		for innerK, v := range inner {
-			copied[innerK] = v
-		}
-		out[k] = copied
+	out := make(map[string]float64, len(in))
+	for k, v := range in {
+		out[k] = v
 	}
 	return out
 }
@@ -1254,9 +1250,9 @@ func writeModelContext(b *strings.Builder, ctx modelContext, bands []bandSummary
 	} else {
 		b.WriteString("Prediction freshness gate: disabled.\n")
 	}
-	if len(ctx.NoiseOffsetsByBand) > 0 {
-		b.WriteString("Noise offsets by band (dB): ")
-		b.WriteString(formatNoiseOffsetsByBand(ctx.NoiseOffsetsByBand))
+	if len(ctx.NoiseOffsets) > 0 {
+		b.WriteString("Noise offsets by class (dB): ")
+		b.WriteString(formatNoiseOffsets(ctx.NoiseOffsets))
 		b.WriteString(".\n")
 	}
 	if len(bands) > 0 {
@@ -1280,7 +1276,7 @@ func writeModelContext(b *strings.Builder, ctx modelContext, bands []bandSummary
 	}
 }
 
-func formatNoiseOffsetsByBand(offsets map[string]map[string]float64) string {
+func formatNoiseOffsets(offsets map[string]float64) string {
 	classes := make([]string, 0, len(offsets))
 	for class := range offsets {
 		classes = append(classes, class)
@@ -1288,27 +1284,7 @@ func formatNoiseOffsetsByBand(offsets map[string]map[string]float64) string {
 	sort.Strings(classes)
 	parts := make([]string, 0, len(classes))
 	for _, class := range classes {
-		byBand := offsets[class]
-		bands := make([]string, 0, len(byBand))
-		for band := range byBand {
-			bands = append(bands, band)
-		}
-		sort.Slice(bands, func(i, j int) bool {
-			gi, vi, si := bandSortKey(bands[i])
-			gj, vj, sj := bandSortKey(bands[j])
-			if gi != gj {
-				return gi < gj
-			}
-			if vi != vj {
-				return vi < vj
-			}
-			return si < sj
-		})
-		values := make([]string, 0, len(bands))
-		for _, band := range bands {
-			values = append(values, fmt.Sprintf("%s=%g", band, byBand[band]))
-		}
-		parts = append(parts, fmt.Sprintf("%s{%s}", class, strings.Join(values, ",")))
+		parts = append(parts, fmt.Sprintf("%s=%g", class, offsets[class]))
 	}
 	return strings.Join(parts, "; ")
 }

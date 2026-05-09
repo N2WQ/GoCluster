@@ -69,26 +69,14 @@ rather than fading from `>` to `=` to `<` because of age alone.
 ### Your Noise Environment
 
 `SET NOISE` stores your local receive-noise class. The checked-in configuration
-currently assigns 0 dB for every class and band so path glyphs are evaluated
-from observed SNR evidence without an additional broad band-noise penalty:
+uses one receive-side penalty per location class:
 
-| Band | Quiet | Rural | Suburban | Urban | Industrial |
+| Class | Quiet | Rural | Suburban | Urban | Industrial |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 160m | 0 | 0 | 0 | 0 | 0 |
-| 80m | 0 | 0 | 0 | 0 | 0 |
-| 60m | 0 | 0 | 0 | 0 | 0 |
-| 40m | 0 | 0 | 0 | 0 | 0 |
-| 30m | 0 | 0 | 0 | 0 | 0 |
-| 20m | 0 | 0 | 0 | 0 | 0 |
-| 17m | 0 | 0 | 0 | 0 | 0 |
-| 15m | 0 | 0 | 0 | 0 | 0 |
-| 12m | 0 | 0 | 0 | 0 | 0 |
-| 10m | 0 | 0 | 0 | 0 | 0 |
-| 6m | 0 | 0 | 0 | 0 | 0 |
+| Penalty dB | 0 | 4 | 12 | 17 | 20 |
 
-If a local config reintroduces nonzero penalties, the adjustment affects only
-the receive direction. Your transmit effectiveness does not change based on
-local noise.
+The adjustment affects only the receive direction. Your transmit effectiveness
+does not change based on local noise.
 
 ### The Final Calculation
 
@@ -162,10 +150,8 @@ operators can inspect the impact before enforcing it.
 SET NOISE SUBURBAN
 ```
 
-In the checked-in configuration, all classes currently resolve to 0 dB, so this
-setting does not change active path glyphs during the no-noise-penalty
-evaluation. If a local configuration reintroduces nonzero penalties, operators
-should set the class that best matches their receive environment.
+In the checked-in configuration, each class resolves to a scalar dB penalty.
+Operators should set the class that best matches their receive environment.
 
 ### Band-Specific Behavior
 
@@ -179,8 +165,7 @@ The system is highly configurable (see [path_reliability.yaml](path_reliability.
 - **Glyph symbols**: Can be customized (default: `>=<-` and space)
 - **Half-life timings**: Per-band decay rates
 - **Freshness gate**: Maximum selected evidence age as a multiple of band half-life
-- **Noise penalties**: receive-side dB adjustments per environment type; the
-  checked-in table currently uses 0 dB for every class and band
+- **Noise penalties**: receive-side dB adjustments per environment type
 - **Mode thresholds**: What signal strength qualifies as high/medium/low for each mode
 - **Minimum observation count**: How many selected raw observations are needed before showing a prediction
 - **Minimum weight**: How much data is needed before showing a prediction

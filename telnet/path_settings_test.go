@@ -67,18 +67,18 @@ func TestHandlePathSettingsPathSamplesStricterThanDefault(t *testing.T) {
 	}
 }
 
-func TestNoisePenaltyForClassBand(t *testing.T) {
+func TestNoisePenaltyForClass(t *testing.T) {
 	cfg := pathreliability.DefaultConfig()
 	server := &Server{noiseModel: cfg.NoiseModel()}
-	if got := server.noisePenaltyForClassBand("URBAN", "160m"); got != 0 {
-		t.Fatalf("expected urban 160m penalty 0, got %v", got)
+	if got := server.noisePenaltyForClass("URBAN"); got != 17 {
+		t.Fatalf("expected urban penalty 17, got %v", got)
 	}
-	if got := server.noisePenaltyForClassBand("URBAN", "6m"); got != 0 {
-		t.Fatalf("expected urban 6m penalty 0, got %v", got)
+	if got := server.noisePenaltyForClass("urban"); got != 17 {
+		t.Fatalf("expected normalized urban penalty 17, got %v", got)
 	}
 }
 
-func TestPathPredictionUsesZeroNoisePenalty(t *testing.T) {
+func TestPathPredictionUsesLocationNoisePenalty(t *testing.T) {
 	requireH3Mappings(t)
 	cfg := pathreliability.DefaultConfig()
 	cfg.MinEffectiveWeight = 0.1
@@ -113,17 +113,17 @@ func TestPathPredictionUsesZeroNoisePenalty(t *testing.T) {
 	highBandSpot.BandNorm = "6m"
 	highBandSpot.DXMetadata.Grid = "FN32"
 
-	if got := server.pathGlyphsForClient(client, lowBandSpot); got != cfg.GlyphSymbols.High {
-		t.Fatalf("expected 160m zero penalty to preserve high glyph, got %q", got)
+	if got := server.pathGlyphsForClient(client, lowBandSpot); got != cfg.GlyphSymbols.Unlikely {
+		t.Fatalf("expected 160m urban penalty to lower glyph, got %q", got)
 	}
-	if got := server.pathGlyphsForClient(client, highBandSpot); got != cfg.GlyphSymbols.High {
-		t.Fatalf("expected 6m zero penalty to preserve high glyph, got %q", got)
+	if got := server.pathGlyphsForClient(client, highBandSpot); got != cfg.GlyphSymbols.Unlikely {
+		t.Fatalf("expected 6m urban penalty to lower glyph, got %q", got)
 	}
-	if got := server.pathClassForClient(client, lowBandSpot); got != filter.PathClassHigh {
-		t.Fatalf("expected 160m PATH class high, got %q", got)
+	if got := server.pathClassForClient(client, lowBandSpot); got != filter.PathClassUnlikely {
+		t.Fatalf("expected 160m PATH class unlikely, got %q", got)
 	}
-	if got := server.pathClassForClient(client, highBandSpot); got != filter.PathClassHigh {
-		t.Fatalf("expected 6m PATH class high, got %q", got)
+	if got := server.pathClassForClient(client, highBandSpot); got != filter.PathClassUnlikely {
+		t.Fatalf("expected 6m PATH class unlikely, got %q", got)
 	}
 }
 

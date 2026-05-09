@@ -175,69 +175,11 @@ mode_offsets:
   psk: -19  # PSK reports are shifted into FT8-equivalent dB.
   wspr: 0   # WSPR reports are shifted into FT8-equivalent dB.
 
-# Receive-side noise penalty table for SET NOISE.
-# During the no-noise-penalty evaluation, every class/band remains explicit but
-# uses 0 dB so observed SNR evidence is not adjusted again for broad band-noise
-# assumptions. Keep the full table shape to preserve strict validation and
-# saved noise-class compatibility.
-noise_offsets_by_band:
-  quiet:
-    160m: 0
-    80m: 0
-    60m: 0
-    40m: 0
-    30m: 0
-    20m: 0
-    17m: 0
-    15m: 0
-    12m: 0
-    10m: 0
-    6m: 0
-  rural:
-    160m: 0
-    80m: 0
-    60m: 0
-    40m: 0
-    30m: 0
-    20m: 0
-    17m: 0
-    15m: 0
-    12m: 0
-    10m: 0
-    6m: 0
-  suburban:
-    160m: 0
-    80m: 0
-    60m: 0
-    40m: 0
-    30m: 0
-    20m: 0
-    17m: 0
-    15m: 0
-    12m: 0
-    10m: 0
-    6m: 0
-  urban:
-    160m: 0
-    80m: 0
-    60m: 0
-    40m: 0
-    30m: 0
-    20m: 0
-    17m: 0
-    15m: 0
-    12m: 0
-    10m: 0
-    6m: 0
-  industrial:
-    160m: 0
-    80m: 0
-    60m: 0
-    40m: 0
-    30m: 0
-    20m: 0
-    17m: 0
-    15m: 0
-    12m: 0
-    10m: 0
-    6m: 0
+# Receive-side noise penalties for SET NOISE.
+# Values are dB subtracted from DX->user path evidence at prediction time.
+noise_offsets:
+  quiet: 0
+  rural: 4
+  suburban: 12
+  urban: 17
+  industrial: 20

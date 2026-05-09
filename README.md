@@ -366,7 +366,7 @@ At a high level, the cluster:
 4. combines recent DX-to-you and you-to-DX evidence with decay over time
 5. rejects selected evidence that is too old for the band's freshness gate
 6. resolves your selected noise class on the receive side; the checked-in table
-   currently uses 0 dB for every class and band during no-noise-penalty evaluation
+   applies one scalar dB penalty per class
 7. maps the result to `HIGH`, `MEDIUM`, `LOW`, `UNLIKELY`, or `INSUFFICIENT`
 
 What the classes mean to an operator:
@@ -382,9 +382,8 @@ What the classes mean to an operator:
 Important operational notes:
 
 - You need `SET GRID` for path hints to be useful.
-- `SET NOISE` still stores a receive-noise class for compatibility, but the
-  checked-in path config currently assigns 0 dB to every class and band while
-  no-noise-penalty behavior is evaluated.
+- `SET NOISE` stores a receive-noise class; the checked-in path config applies
+  one scalar dB penalty per class.
 - `SET PATHSAMPLES <count>` lets you require more selected observations than
   the cluster default before your session shows a path tag. `SET PATHSAMPLES
   DEFAULT` clears that personal override.
