@@ -157,25 +157,6 @@ func (m NoiseModel) Penalty(class string, band string) float64 {
 	return byBand[bandKey]
 }
 
-func (m NoiseModel) uniquePenaltyCount() int {
-	seen := map[float64]struct{}{}
-	m.visitPenalties(func(penalty float64) {
-		seen[penalty] = struct{}{}
-	})
-	return len(seen)
-}
-
-func (m NoiseModel) visitPenalties(fn func(float64)) {
-	if fn == nil {
-		return
-	}
-	for _, byBand := range m.penalties {
-		for _, penalty := range byBand {
-			fn(penalty)
-		}
-	}
-}
-
 func decodeNoiseOffsetsByBand(bs []byte) (map[string]map[string]float64, bool, error) {
 	var root yaml.Node
 	if err := yaml.Unmarshal(bs, &root); err != nil {

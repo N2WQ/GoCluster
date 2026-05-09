@@ -49,11 +49,10 @@ func (p *Predictor) UpdateWithReceiverHash(bucket BucketClass, receiverCell, sen
 	if isBeacon && p.cfg.BeaconWeightCap > 0 && w > p.cfg.BeaconWeightCap {
 		w = p.cfg.BeaconWeightCap
 	}
-	power := p.cfg.powerFromDB(ft8dB)
 	switch bucket {
 	case BucketCombined:
 		if p.combined != nil {
-			p.combined.UpdateWithReceiverHashDB(receiverCell, senderCell, receiverCoarse, senderCoarse, band, ft8dB, power, w, now, receiverHash)
+			p.combined.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, band, ft8dB, w, now, receiverHash)
 		}
 	default:
 		return
@@ -99,9 +98,7 @@ func (r InsufficientReason) String() string {
 // Result carries merged glyph and diagnostics.
 type Result struct {
 	Glyph              string
-	Value              float64 // power
-	MeanDB             float64
-	HasMeanDB          bool
+	Class              string
 	P50DB              float64
 	HasP50             bool
 	P50Glyph           string
@@ -133,16 +130,17 @@ func (p *Predictor) Predict(userCell, dxCell CellID, userCoarse, dxCoarse CellID
 // pass a floor above the configured default when applying stricter per-session
 // display or filter policy.
 func (p *Predictor) PredictWithMinObservationCount(userCell, dxCell CellID, userCoarse, dxCoarse CellID, band string, mode string, noisePenalty float64, minObservationCount int, now time.Time) Result {
-	return p.predictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, now, false)
+	return p.predictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, now)
 }
 
-// PredictWithMinObservationCountAndDistribution includes shadow SNR
-// distribution diagnostics for callers that render PATHP50 output.
+// PredictWithMinObservationCountAndDistribution is kept for PATHP50 callers.
+// Active prediction always uses the p50 distribution, so this returns the same
+// result as PredictWithMinObservationCount.
 func (p *Predictor) PredictWithMinObservationCountAndDistribution(userCell, dxCell CellID, userCoarse, dxCoarse CellID, band string, mode string, noisePenalty float64, minObservationCount int, now time.Time) Result {
-	return p.predictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, now, true)
+	return p.predictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, now)
 }
 
-func (p *Predictor) predictWithMinObservationCount(userCell, dxCell CellID, userCoarse, dxCoarse CellID, band string, mode string, noisePenalty float64, minObservationCount int, now time.Time, includeDistribution bool) Result {
+func (p *Predictor) predictWithMinObservationCount(userCell, dxCell CellID, userCoarse, dxCoarse CellID, band string, mode string, noisePenalty float64, minObservationCount int, now time.Time) Result {
 	insufficient := "?"
 	if p != nil && p.cfg.GlyphSymbols.Insufficient != "" {
 		insufficient = p.cfg.GlyphSymbols.Insufficient
@@ -153,22 +151,18 @@ func (p *Predictor) predictWithMinObservationCount(userCell, dxCell CellID, user
 
 	modeKey := normalizeMode(mode)
 	makeResult := func(sample Sample, p50DB float64, hasP50 bool, source PredictionSource, capWouldBlock bool) Result {
-		meanDB, hasMeanDB := 0.0, false
-		p50Glyph := ""
-		if includeDistribution {
-			meanDB, hasMeanDB = meanDBForSample(sample)
-			if hasP50 {
-				p50Glyph = GlyphForPower(p.cfg.powerFromDB(p50DB), modeKey, p.cfg)
-			}
+		class := classUnlikely
+		glyph := p.cfg.GlyphSymbols.Unlikely
+		if hasP50 {
+			class = ClassForDB(p50DB, modeKey, p.cfg)
+			glyph = glyphForClass(class, p.cfg)
 		}
 		return Result{
-			Glyph:         GlyphForPower(sample.Value, modeKey, p.cfg),
-			Value:         sample.Value,
-			MeanDB:        meanDB,
-			HasMeanDB:     hasMeanDB,
+			Glyph:         glyph,
+			Class:         class,
 			P50DB:         p50DB,
 			HasP50:        hasP50,
-			P50Glyph:      p50Glyph,
+			P50Glyph:      glyph,
 			Weight:        sample.Weight,
 			AgeSec:        sample.AgeSec,
 			Count:         sample.Count,
@@ -182,19 +176,13 @@ func (p *Predictor) predictWithMinObservationCount(userCell, dxCell CellID, user
 		}
 	}
 	makeInsufficient := func(sample Sample, p50DB float64, hasP50 bool, reason InsufficientReason, capWouldBlock bool) Result {
-		meanDB, hasMeanDB := 0.0, false
 		p50Glyph := ""
-		if includeDistribution {
-			meanDB, hasMeanDB = meanDBForSample(sample)
-			if hasP50 {
-				p50Glyph = GlyphForPower(p.cfg.powerFromDB(p50DB), modeKey, p.cfg)
-			}
+		if hasP50 {
+			p50Glyph = GlyphForDB(p50DB, modeKey, p.cfg)
 		}
 		return Result{
 			Glyph:              insufficient,
-			Value:              sample.Value,
-			MeanDB:             meanDB,
-			HasMeanDB:          hasMeanDB,
+			Class:              "",
 			P50DB:              p50DB,
 			HasP50:             hasP50,
 			P50Glyph:           p50Glyph,
@@ -212,39 +200,34 @@ func (p *Predictor) predictWithMinObservationCount(userCell, dxCell CellID, user
 		}
 	}
 
-	merged, p50DB, hasP50, reason, ok := p.mergeFromStore(p.combined, userCell, dxCell, userCoarse, dxCoarse, band, noisePenalty, now, includeDistribution)
+	merged, reason, ok := p.mergeFromStoreWithDistribution(p.combined, userCell, dxCell, userCoarse, dxCoarse, band, noisePenalty, now)
 	if minObservationCount < p.cfg.MinObservationCount {
 		minObservationCount = p.cfg.MinObservationCount
 	}
-	capWouldBlock := p.capWouldBlock(merged, minObservationCount)
-	if ok && merged.Weight >= p.cfg.MinEffectiveWeight && countMeetsMinimum(merged.Count, minObservationCount) {
-		return makeResult(merged, p50DB, hasP50, SourceCombined, capWouldBlock)
+	capWouldBlock := p.capWouldBlock(merged.Sample, minObservationCount)
+	if ok && merged.Weight >= p.cfg.MinEffectiveWeight && countMeetsMinimum(merged.Count, minObservationCount) && merged.HasP50 {
+		return makeResult(merged.Sample, merged.P50DB, merged.HasP50, SourceCombined, capWouldBlock)
 	}
 	if ok {
 		if reason == InsufficientNone {
 			if !countMeetsMinimum(merged.Count, minObservationCount) {
 				reason = InsufficientLowCount
-			} else {
+			} else if merged.Weight < p.cfg.MinEffectiveWeight {
 				reason = InsufficientLowWeight
+			} else {
+				reason = InsufficientNoSample
 			}
 		}
-		return makeInsufficient(merged, p50DB, hasP50, reason, capWouldBlock)
+		return makeInsufficient(merged.Sample, merged.P50DB, merged.HasP50, reason, capWouldBlock)
 	}
 	if reason == InsufficientNone {
 		reason = InsufficientNoSample
 	}
-	return makeInsufficient(merged, p50DB, hasP50, reason, capWouldBlock)
+	return makeInsufficient(merged.Sample, merged.P50DB, merged.HasP50, reason, capWouldBlock)
 }
 
 func countMeetsMinimum(count uint32, min int) bool {
 	return min <= 0 || uint64(count) >= uint64(min)
-}
-
-func meanDBForSample(sample Sample) (float64, bool) {
-	if sample.Value <= 0 {
-		return 0, false
-	}
-	return powerToDB(sample.Value), true
 }
 
 func (p *Predictor) capWouldBlock(sample Sample, minObservationCount int) bool {
@@ -257,7 +240,7 @@ func (p *Predictor) capWouldBlock(sample Sample, minObservationCount int) bool {
 	return sample.CappedWeight < p.cfg.MinEffectiveWeight
 }
 
-func mergeSamples(receive Sample, transmit Sample, cfg Config, noisePenalty float64) (Sample, bool) {
+func mergeSamples(receive Sample, transmit Sample, cfg Config) (Sample, bool) {
 	hasReceive := sampleHasEvidence(receive)
 	hasTransmit := sampleHasEvidence(transmit)
 	if !hasReceive && !hasTransmit {
@@ -265,15 +248,9 @@ func mergeSamples(receive Sample, transmit Sample, cfg Config, noisePenalty floa
 	}
 	receiveActive := receive.Weight > 0
 	transmitActive := transmit.Weight > 0
-	receivePower := receive.Value
-	if receiveActive && noisePenalty > 0 {
-		receivePower = ApplyNoisePower(receivePower, noisePenalty, cfg)
-	}
 	if receiveActive && transmitActive {
-		mergedPower := cfg.MergeReceiveWeight*receivePower + cfg.MergeTransmitWeight*transmit.Value
 		mergedWeight := cfg.MergeReceiveWeight*receive.Weight + cfg.MergeTransmitWeight*transmit.Weight
 		return Sample{
-			Value:        mergedPower,
 			Weight:       mergedWeight,
 			AgeSec:       weightedSampleAge(receive, transmit),
 			Count:        saturatingAddCounts(receive.Count, transmit.Count),
@@ -285,10 +262,10 @@ func mergeSamples(receive Sample, transmit Sample, cfg Config, noisePenalty floa
 		}, true
 	}
 	if receiveActive {
-		return singleDirectionMerge(receive, transmit, receivePower, cfg), true
+		return singleDirectionMerge(receive, transmit, cfg), true
 	}
 	if transmitActive {
-		return singleDirectionMerge(transmit, receive, transmit.Value, cfg), true
+		return singleDirectionMerge(transmit, receive, cfg), true
 	}
 	return Sample{
 		AgeSec:       maxSampleAge(receive, transmit),
@@ -302,7 +279,7 @@ func mergeSamples(receive Sample, transmit Sample, cfg Config, noisePenalty floa
 }
 
 func mergeSamplesWithDistribution(receive sampleWithBins, transmit sampleWithBins, cfg Config, noisePenalty float64) (sampleWithBins, bool) {
-	merged, ok := mergeSamples(receive.Sample, transmit.Sample, cfg, noisePenalty)
+	merged, ok := mergeSamples(receive.Sample, transmit.Sample, cfg)
 	if !ok {
 		return sampleWithBins{}, false
 	}
@@ -334,10 +311,9 @@ func mergeSamplesWithDistribution(receive sampleWithBins, transmit sampleWithBin
 	}, true
 }
 
-func singleDirectionMerge(active Sample, other Sample, value float64, cfg Config) Sample {
+func singleDirectionMerge(active Sample, other Sample, cfg Config) Sample {
 	rawWeight := sampleRawWeight(active)
 	cappedWeight := sampleCappedWeight(active)
-	active.Value = value
 	active.Weight *= cfg.ReverseHintDiscount
 	active.RawWeight = rawWeight * cfg.ReverseHintDiscount
 	active.CappedWeight = cappedWeight * cfg.ReverseHintDiscount
@@ -384,37 +360,6 @@ func sampleCappedWeight(sample Sample) float64 {
 		return sample.CappedWeight
 	}
 	return sample.Weight
-}
-
-func (p *Predictor) mergeFromStore(store *Store, userCell, dxCell CellID, userCoarse, dxCoarse CellID, band string, noisePenalty float64, now time.Time, includeDistribution bool) (Sample, float64, bool, InsufficientReason, bool) {
-	if store == nil {
-		return Sample{}, 0, false, InsufficientNoSample, false
-	}
-	if includeDistribution {
-		merged, reason, ok := p.mergeFromStoreWithDistribution(store, userCell, dxCell, userCoarse, dxCoarse, band, noisePenalty, now)
-		return merged.Sample, merged.P50DB, merged.HasP50, reason, ok
-	}
-	// Receive (DX->user): receiver=user, sender=dx.
-	rFine, rCoarse := store.Lookup(userCell, dxCell, userCoarse, dxCoarse, band, now)
-	receive := SelectSample(rFine, rCoarse, p.cfg.MinFineWeight, p.cfg.FineOnlyWeight)
-
-	// Transmit (user->DX): receiver=dx, sender=user.
-	tFine, tCoarse := store.Lookup(dxCell, userCell, dxCoarse, userCoarse, band, now)
-	transmit := SelectSample(tFine, tCoarse, p.cfg.MinFineWeight, p.cfg.FineOnlyWeight)
-
-	receive, transmit, staleDropped, staleCount := p.applyFreshnessGate(store, band, receive, transmit)
-	merged, ok := mergeSamples(receive, transmit, p.cfg, noisePenalty)
-	reason := InsufficientNone
-	if staleDropped {
-		reason = InsufficientStale
-	}
-	if !ok {
-		if reason == InsufficientNone {
-			reason = InsufficientNoSample
-		}
-		return Sample{Count: staleCount, RawCount: staleCount, CappedCount: staleCount}, 0, false, reason, false
-	}
-	return merged, 0, false, reason, true
 }
 
 func (p *Predictor) mergeFromStoreWithDistribution(store *Store, userCell, dxCell CellID, userCoarse, dxCoarse CellID, band string, noisePenalty float64, now time.Time) (sampleWithBins, InsufficientReason, bool) {

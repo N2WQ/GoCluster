@@ -270,7 +270,7 @@ For the mode-specific support rules, timing knobs, and decision history, see
 - `SET DIAG SOURCE`: `<source>` with `MAN`, `RBN`, `RBNFT`, `PSK`, `DXS`, `UP`, or `P:<peer>` for peer-origin spots.
 - `SET DIAG CONF`: `<score>%` when the pipeline calculated a confidence percent, otherwise `--%`.
 - `SET DIAG PATH`: `n<count>|w<weight>|a<age>` for usable path evidence, or `n<count>|<reason>` for insufficient evidence (`none`, `lown`, `loww`, or `stale`).
-- `SET DIAG PATHP50`: `p<db>d<delta>n<count>` for shadow p50 SNR, mean-minus-p50 delta, and selected observation count.
+- `SET DIAG PATHP50`: `p<db>n<count>` for active p50 SNR and selected observation count.
 - `SET DIAG MODE`: `<mode>|<provenance>` to show the final normalized mode and why it was assigned.
 
 Mode provenance tokens:
@@ -334,13 +334,10 @@ Example readings:
   as useful but thinner evidence than `w7`.
 
 `SET DIAG PATHP50` keeps the path glyph in the normal tail column and uses the
-comment space for a compact p50 comparison:
+comment space for the active p50 path statistic:
 
-- `p<db>` is the shadow p50 SNR bin lower edge in FT8-equivalent dB. Fixed
-  1 dB bins are used, so this is a compact bin value, not an exact raw report.
-- `d<db>` is active mean SNR minus p50 SNR. Positive `d` means the active mean
-  is stronger than p50; negative `d` means p50 is stronger than the active
-  mean.
+- `p<db>` is the p50 SNR bin lower edge in FT8-equivalent dB. Fixed 1 dB bins
+  are used, so this is a compact bin value, not an exact raw report.
 - `n<count>` is the compact selected observation count for this prediction.
   PATHP50 does not use the longer `n<capped>/r<raw>` form; use `SET DIAG PATH`
   when raw/capped detail matters.
@@ -349,11 +346,9 @@ comment space for a compact p50 comparison:
 
 Example readings:
 
-- `p-15d4n19`: p50 lower edge is -15 dB, active mean is 4 dB stronger than
-  p50, 19 selected observations.
-- `p3d-2n42`: p50 lower edge is 3 dB, active mean is 2 dB weaker than p50,
-  42 selected observations.
-- `p?d?n0`: no p50 or delta is available.
+- `p-15n19`: p50 lower edge is -15 dB with 19 selected observations.
+- `p3n42`: p50 lower edge is 3 dB with 42 selected observations.
+- `p?n0`: no p50 is available.
 
 ## Path Reliability Tags
 
@@ -548,14 +543,10 @@ Each entry uses the same timestamped daily-file logger as the system log and rec
 `data/logs/propagation` by default. This is where the five-minute path
 prediction, source mix, bucket, weight distribution, ge10 variance, unique
 spotter/grid-pair, and diagnostic-observed PATHP50 aggregate lines are written.
-When `SET DIAG PATHP50` is active, the log can also include `Path p50 shadow`
-aggregate lines comparing the current mean-based glyph class with the p50
-shadow glyph class by outcome, sample-count bucket, band, mode family, source,
-and glyph-pair matrix. These lines are diagnostic-observed only; they do not
-mean normal spot delivery is computing p50 for every spot. The shadow glyph
-comparison applies the same active eligibility gate as normal path display, so
-p50 is counted as insufficient whenever the active method is insufficient due
-to low count, low weight, stale evidence, or no sample.
+When `SET DIAG PATHP50` is active, the log can also include `Path p50 diag`
+aggregate lines with observed/missing counts and sample-count buckets. These
+lines are diagnostic-observed only; they summarize spots that requested PATHP50
+diagnostics and do not change normal spot delivery or filtering.
 Daily propagation reports read this log by default; pass `prop_report -log` to
 an old system log path when generating reports from historical files.
 

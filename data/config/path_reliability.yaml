@@ -1,12 +1,11 @@
 # Purpose: Path-reliability ingestion, sample floors, receiver contribution caps, decay, weights, thresholds, and glyphs.
 # Ownership: mixed operator policy and algorithm calibration.
 # Runtime behavior: Required feature-root config loaded from the active config directory at startup.
-# Safe edits: Limit routine edits to enable/display, allowed bands, sample-floor policy, receiver-cap mode, distribution diagnostics, and glyphs; retune calibration only with field evidence and validation.
+# Safe edits: Limit routine edits to enable/display, allowed bands, sample-floor policy, receiver-cap mode, and glyphs; retune calibration only with field evidence and validation.
 # Source: data/config/README.md.
 #
 # Routine operator policy is limited to enable/display behavior, allowed bands,
-# global sample-floor policy, receiver contribution mode, distribution
-# diagnostics, and glyph characters.
+# global sample-floor policy, receiver contribution mode, and glyph characters.
 # Decay, weights, thresholds, mode offsets, merge rules, and noise tables are
 # algorithm calibration. Do not retune those under normal operation without
 # validation and decision-memory handling.
@@ -15,9 +14,10 @@
 # This feature uses a single combined FT8-equivalent dB bucket family.
 # It ingests FT8/FT4/CW/RTTY/PSK/WSPR into the same bucket set.
 # Voice modes (LSB/USB) are display-only and never ingested.
-# The glyph reflects a merged path estimate adjusted for the user's noise class.
-# Internally, SNRs are converted to linear power and averaged in that domain.
-# Shadow p50 diagnostics retain fixed-width SNR bins only for diagnostic output.
+# The glyph reflects the p50 SNR of selected, decayed path evidence adjusted for
+# the user's noise class.
+# Internally, SNRs are retained in fixed-width histogram bins; active glyphs and
+# PATH filters compare the selected p50 bin against the thresholds below.
 #
 # Glyph scale (configured via glyph_symbols):
 #   high/medium/low/unlikely map to the glyphs below; insufficient uses its own placeholder.
@@ -48,7 +48,7 @@ glyph_symbols:
   unlikely: "-"
   insufficient: " "
 
-# Clamp FT8-equivalent dB before converting to power; FT8 cannot decode below about -25 dB.
+# Clamp FT8-equivalent dB before assigning fixed histogram bins.
 clamp_min: -25
 clamp_max: 25
 
@@ -86,17 +86,12 @@ min_effective_weight: 0.5
 # Minimum selected observations required to report a glyph; below this returns glyph_symbols.insufficient.
 # In shadow/off receiver contribution modes this uses raw selected observations.
 # In enforce mode this uses capped selected observations.
-min_observation_count: 17
-
-# Shadow p50 SNR diagnostics. "shadow" collects bounded histogram evidence for
-# SET DIAG PATHP50 without changing active glyphs or PATH filtering; "off"
-# skips the histogram work.
-distribution_statistic_mode: shadow
+min_observation_count: 19
 
 # Receiver contribution caps limit how much one receiving station can add to a
-# bucket's trust evidence. "shadow" keeps current glyph behavior but logs and
-# diagnoses where capped evidence would be stricter; "enforce" gates glyphs and
-# PATH filters on capped evidence; "off" disables capped tracking.
+# bucket's trust evidence. "shadow" uses raw selected evidence for active glyphs
+# while recording where capped evidence would block a prediction; "enforce" gates
+# glyphs and PATH filters on capped evidence; "off" disables capped tracking.
 receiver_contribution_mode: shadow
 receiver_fine_slots: 4              # Receiver slots retained in fine buckets.
 receiver_coarse_slots: 8            # Receiver slots retained in coarse buckets.
@@ -178,7 +173,7 @@ mode_offsets:
   cw: -7    # CW reports are shifted into FT8-equivalent dB.
   rtty: -7  # RTTY reports are shifted into FT8-equivalent dB.
   psk: -19  # PSK reports are shifted into FT8-equivalent dB.
-  wspr: -26 # WSPR reports are shifted into FT8-equivalent dB.
+  wspr: 0   # WSPR reports are shifted into FT8-equivalent dB.
 
 # Receive-side noise penalty table for SET NOISE.
 # During the no-noise-penalty evaluation, every class/band remains explicit but

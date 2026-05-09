@@ -1,8 +1,12 @@
 # ADR-0125: Gated PATHP50 Shadow Glyph Comparison
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-05-08
 - Decision Origin: Field evidence
+
+Superseded by ADR-0126 on 2026-05-09. This ADR records the historical gated
+shadow comparison; active runtime scoring now uses p50 directly and no longer
+emits shadow comparison lines.
 
 ## Context
 `SET DIAG PATHP50` exposes raw p50 diagnostic values while the active path

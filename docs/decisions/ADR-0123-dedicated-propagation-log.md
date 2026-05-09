@@ -8,6 +8,10 @@ Decision Origin: Design
 Troubleshooting Record(s): none
 Tags: propagation, logging, PATHP50, reports
 
+Note: ADR-0126 supersedes the PATHP50 shadow-comparison portions of this ADR.
+The dedicated propagation log remains accepted, but runtime no longer emits
+`Path p50 shadow` lines.
+
 ## Context
 
 Path reliability diagnostics and daily propagation reports previously depended

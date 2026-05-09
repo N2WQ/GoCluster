@@ -1,7 +1,7 @@
 // File role: Owns path reliability configuration loading, defaults, and validation.
 // Crawler notes: Start here for YAML keys, operator tuning boundaries, required
-// config contracts, distribution-statistic mode, receiver-cap mode, and derived
-// threshold/noise lookup preparation used by the predictor.
+// config contracts, receiver-cap mode, and derived noise models used by the
+// predictor.
 // Related docs: pathreliability/README.md, data/config/path_reliability.yaml.
 // Related tests: pathreliability/config_test.go.
 package pathreliability
@@ -10,7 +10,6 @@ import (
 	"dxcluster/internal/yamlconfig"
 	"dxcluster/strutil"
 	"fmt"
-	"math"
 	"os"
 	"strings"
 
@@ -30,7 +29,6 @@ type Config struct {
 	MaxPredictionAgeHalfLifeMultiplier float64                       `yaml:"max_prediction_age_half_life_multiplier"` // prediction age gate = k * half-life; 0 disables
 	MinEffectiveWeight                 float64                       `yaml:"min_effective_weight"`                    // minimum decayed weight to report
 	MinObservationCount                int                           `yaml:"min_observation_count"`                   // minimum selected observations to report
-	DistributionStatisticMode          string                        `yaml:"distribution_statistic_mode"`             // off or shadow p50 SNR distribution diagnostics
 	ReceiverContributionMode           string                        `yaml:"receiver_contribution_mode"`              // off, shadow, or enforce receiver contribution caps
 	ReceiverFineSlots                  int                           `yaml:"receiver_fine_slots"`                     // tracked receiver slots in fine buckets
 	ReceiverCoarseSlots                int                           `yaml:"receiver_coarse_slots"`                   // tracked receiver slots in coarse buckets
@@ -49,13 +47,7 @@ type Config struct {
 	GlyphSymbols                       GlyphSymbols                  `yaml:"glyph_symbols"`                           // glyph mapping for high/medium/low/unlikely/insufficient
 	NoiseOffsetsByBand                 map[string]map[string]float64 `yaml:"noise_offsets_by_band"`                   // noise class -> band -> dB penalty
 
-	modeThresholdsPower  map[string]GlyphThresholdsPower
-	glyphThresholdsPower GlyphThresholdsPower
-	noisePenaltyDivisors map[float64]float64
-	noiseModel           NoiseModel
-	powerLUT             []float64
-	powerLUTMinDB        float64
-	powerLUTStepDB       float64
+	noiseModel NoiseModel
 }
 
 var requiredConfigPaths = []yamlconfig.Path{
@@ -75,7 +67,6 @@ var requiredConfigPaths = []yamlconfig.Path{
 	{"max_prediction_age_half_life_multiplier"},
 	{"min_effective_weight"},
 	{"min_observation_count"},
-	{"distribution_statistic_mode"},
 	{"receiver_contribution_mode"},
 	{"receiver_fine_slots"},
 	{"receiver_coarse_slots"},
@@ -115,9 +106,6 @@ const (
 	ReceiverContributionShadow  = "shadow"
 	ReceiverContributionEnforce = "enforce"
 
-	DistributionStatisticOff    = "off"
-	DistributionStatisticShadow = "shadow"
-
 	maxFineReceiverSlots   = 4
 	maxCoarseReceiverSlots = 8
 )
@@ -133,14 +121,6 @@ type GlyphThresholds struct {
 	hasMedium   bool
 	hasLow      bool
 	hasUnlikely bool
-}
-
-// GlyphThresholdsPower defines power-domain cutoffs for glyphs.
-type GlyphThresholdsPower struct {
-	High     float64
-	Medium   float64
-	Low      float64
-	Unlikely float64
 }
 
 // UnmarshalYAML enforces the new high/medium/low/unlikely keys and rejects legacy names.
@@ -245,7 +225,6 @@ func DefaultConfig() Config {
 		MaxPredictionAgeHalfLifeMultiplier: 1.25,
 		MinEffectiveWeight:                 1.0,
 		MinObservationCount:                19,
-		DistributionStatisticMode:          DistributionStatisticShadow,
 		ReceiverContributionMode:           ReceiverContributionShadow,
 		ReceiverFineSlots:                  4,
 		ReceiverCoarseSlots:                8,
@@ -331,15 +310,6 @@ func (c *Config) finalize() error {
 	}
 	if c.MinObservationCount <= 0 {
 		return fmt.Errorf("min_observation_count must be > 0")
-	}
-	statMode := strings.ToLower(strings.TrimSpace(c.DistributionStatisticMode))
-	switch statMode {
-	case "":
-		c.DistributionStatisticMode = DistributionStatisticShadow
-	case DistributionStatisticOff, DistributionStatisticShadow:
-		c.DistributionStatisticMode = statMode
-	default:
-		return fmt.Errorf("distribution_statistic_mode must be one of off or shadow")
 	}
 	mode := strings.ToLower(strings.TrimSpace(c.ReceiverContributionMode))
 	switch mode {
@@ -445,53 +415,7 @@ func (c *Config) buildCaches() {
 	if c == nil {
 		return
 	}
-	if c.powerLUTStepDB <= 0 {
-		c.powerLUTStepDB = 0.1
-	}
-	minDB := math.Floor(c.ClampMin/c.powerLUTStepDB) * c.powerLUTStepDB
-	maxDB := math.Ceil(c.ClampMax/c.powerLUTStepDB) * c.powerLUTStepDB
-	if maxDB < minDB {
-		minDB = c.ClampMin
-		maxDB = c.ClampMax
-	}
-	size := int(math.Round((maxDB-minDB)/c.powerLUTStepDB)) + 1
-	if size < 2 {
-		size = 2
-	}
-	lut := make([]float64, size)
-	for i := 0; i < size; i++ {
-		db := minDB + float64(i)*c.powerLUTStepDB
-		lut[i] = dbToPower(db)
-	}
-	c.powerLUT = lut
-	c.powerLUTMinDB = minDB
-
 	c.noiseModel = newNoiseModel(c.NoiseOffsetsByBand)
-	c.noisePenaltyDivisors = make(map[float64]float64, c.noiseModel.uniquePenaltyCount())
-	c.noiseModel.visitPenalties(func(penalty float64) {
-		if penalty > 0 {
-			c.noisePenaltyDivisors[penalty] = dbToPower(penalty)
-		}
-	})
-
-	c.glyphThresholdsPower = thresholdsPower(c.GlyphThresholds)
-	c.modeThresholdsPower = make(map[string]GlyphThresholdsPower, len(c.ModeThresholds))
-	for mode, thresholds := range c.ModeThresholds {
-		c.modeThresholdsPower[mode] = thresholdsPower(thresholds)
-	}
-}
-
-func thresholdsPower(t GlyphThresholds) GlyphThresholdsPower {
-	return GlyphThresholdsPower{
-		High:     dbToPower(t.High),
-		Medium:   dbToPower(t.Medium),
-		Low:      dbToPower(t.Low),
-		Unlikely: dbToPower(t.Unlikely),
-	}
-}
-
-func dbToPower(db float64) float64 {
-	return math.Pow(10, db/10)
 }
 
 func validGlyphThresholds(t GlyphThresholds) bool {

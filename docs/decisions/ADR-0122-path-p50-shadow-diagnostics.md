@@ -1,12 +1,15 @@
 # ADR-0122 - Path P50 Shadow Diagnostics
 
-Status: Accepted
+Status: Superseded
 Date: 2026-05-08
 Decision Makers: Founder, Codex
 Technical Area: pathreliability, telnet diagnostics, config
 Decision Origin: Design
 Troubleshooting Record(s): none
 Tags: path reliability, retained state, diagnostics, hot path
+
+Superseded by ADR-0126 on 2026-05-09. This ADR records the historical shadow
+diagnostic design; active runtime scoring now uses p50 directly.
 
 ## Context
 

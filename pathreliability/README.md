@@ -47,10 +47,10 @@ The shipped config in [`../data/config/path_reliability.yaml`](../data/config/pa
 - `PSK: -19`
 - `WSPR: -26`
 
-After that conversion, the current active mean path clamps the value to the
-shipped `clamp_min` and `clamp_max`, then converts from dB into linear power
-for storage. Shadow p50 diagnostics bin the pre-clamp FT8-equivalent dB value
-so out-of-range observations remain visible as underflow or overflow bins.
+After that conversion, the predictor stores the pre-clamp FT8-equivalent dB
+value in fixed histogram bins. Active glyphs and PATH filters use the selected
+p50 bin, so out-of-range observations remain visible as underflow or overflow
+bins instead of being collapsed into one aggregate value.
 
 ## Bucket Storage
 
@@ -63,11 +63,10 @@ The predictor stores directional buckets keyed by:
 
 Each bucket stores:
 
-- accumulated power
 - accumulated weight
 - raw observation count
-- capped receiver-attributed power, weight, and observation count
-- fixed raw and capped SNR histograms for shadow p50 diagnostics
+- capped receiver-attributed weight and observation count
+- fixed raw and capped SNR histograms for active p50 scoring
 - fixed receiver contribution slots
 - last update time
 
@@ -85,17 +84,14 @@ reused; this is an approximation, not an unbounded exact unique-receiver set.
 
 `receiver_contribution_mode` controls how capped evidence is used:
 
-- `shadow`: keep existing raw-count glyph/filter behavior, but expose whether
-  capped evidence would have blocked the prediction.
+- `shadow`: use raw selected evidence for active p50 glyphs and PATH filters,
+  but expose whether capped evidence would have blocked the prediction.
 - `enforce`: use capped count and capped weight for the count/weight gates.
 - `off`: disable capped tracking and use raw evidence only.
 
-`distribution_statistic_mode` controls the shadow p50 SNR diagnostic:
-
-- `shadow`: retain two inline 50-bin histograms per bucket, one raw lane and
-  one capped lane. Updates touch only the selected bin unless time has advanced,
-  and p50 scans the fixed array. This feeds `SET DIAG PATHP50` only.
-- `off`: skip histogram updates and expose no p50 diagnostic value.
+The store always retains fixed raw and capped SNR histograms. Updates touch only
+the selected bin unless time has advanced, and p50 scans the fixed array. These
+histograms are required for active glyphs and PATH filters.
 
 The SNR bins are fixed in code: `< -24`, one-dB bins from `-24..-23` through
 `23..24`, and `>= 24`. Displayed p50 values use the bin's compact lower-edge
@@ -112,7 +108,6 @@ The shipped config currently uses:
 - `stale_after_half_life_multiplier: 3`
 - `stale_after_seconds: 1800` as the fallback purge window
 - `max_prediction_age_half_life_multiplier: 1.25` as a display/filter freshness gate
-- `distribution_statistic_mode: shadow`
 - `receiver_contribution_mode: shadow`
 - `receiver_fine_slots: 4`
 - `receiver_coarse_slots: 8`
@@ -162,26 +157,15 @@ Telnet users can set a stricter personal observation floor with
 In `shadow` mode this floor still uses the raw selected observation count; in
 `enforce` mode it uses the capped selected observation count.
 
-`SET DIAG PATHP50` is an operator-visible comparison view. It shows
-`p<db>d<delta>n<count>`, where `p` is the shadow p50 SNR bin, `d` is active
-mean SNR minus p50 SNR, and `n` is the compact selected count for the
-prediction. PATHP50 omits the longer `n<capped>/r<raw>` form to preserve
-comment space; use `SET DIAG PATH` when raw/capped detail matters. Positive
-values omit a plus sign.
+`SET DIAG PATHP50` is an operator-visible view of the active p50 score. It shows
+`p<db>n<count>`, where `p` is the active p50 SNR bin and `n` is the compact
+selected count for the prediction. PATHP50 omits the longer `n<capped>/r<raw>`
+form to preserve comment space; use `SET DIAG PATH` when raw/capped detail
+matters. Positive values omit a plus sign.
 
 The propagation log can include `Path p50 diag (5m)` while operators are using
-PATHP50. That aggregate is intentionally diagnostic-observed only: normal path
-display still uses the non-distribution prediction path and does not compute
-p50 solely for logging.
-
-The companion `Path p50 shadow` aggregate compares the active mean-based glyph
-class with the p50 shadow glyph class for the same diagnostic-observed spots.
-It records fixed counters for same/different outcomes, sample-count buckets,
-band, mode family, source, and mean/p50 glyph-pair matrix. The comparison uses
-the same active eligibility gate as normal path display: when the active result
-is insufficient, the p50 side is also counted as insufficient even if raw p50
-diagnostic values exist. This is a shadow comparison diagnostic only; active
-glyphs and PATH filters remain mean-based.
+PATHP50. That aggregate is diagnostic-observed only: it summarizes sessions
+that requested PATHP50 and records missing p50 plus selected-count buckets.
 
 The receive-side noise table is still resolved by `SET NOISE` class and band,
 but the checked-in calibration currently sets every value to 0 dB. This keeps
@@ -247,8 +231,7 @@ Runtime path reliability settings are owned by [`../data/config/path_reliability
 ## Config Boundary
 
 `enabled`, `display_enabled`, `glyph_symbols`, `allowed_bands`,
-`min_observation_count`, `distribution_statistic_mode`, and
-`receiver_contribution_mode` are operator policy.
+`min_observation_count`, and `receiver_contribution_mode` are operator policy.
 Half-lives, stale/freshness multipliers, effective weight, fine/coarse merge,
 reverse discount, mode thresholds, mode offsets, and noise tables are algorithm
 calibration; do not retune them under normal operation without validation and

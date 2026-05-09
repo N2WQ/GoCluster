@@ -1,6 +1,7 @@
 package pathreliability
 
 import (
+	"math"
 	"testing"
 	"time"
 	"unsafe"
@@ -78,7 +79,7 @@ func TestStoreSNRHistogramTracksUnclampedUnderflowOverflowAndDecay(t *testing.T)
 	receiverCoarse := CellID(3)
 	senderCoarse := CellID(4)
 
-	store.UpdateWithReceiverHashDB(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", -30, cfg.powerFromDB(-30), 1, now, ReceiverIdentityHash("K1ABC"))
+	store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", -30, 1, now, ReceiverIdentityHash("K1ABC"))
 	fine, _ := store.lookupWithDistribution(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", now.Add(10*time.Second))
 	if !fine.HasP50 || fine.P50DB != -24 {
 		t.Fatalf("underflow p50=%v has=%v, want -24", fine.P50DB, fine.HasP50)
@@ -88,7 +89,7 @@ func TestStoreSNRHistogramTracksUnclampedUnderflowOverflowAndDecay(t *testing.T)
 	}
 
 	store = NewStore(cfg, []string{"20m"})
-	store.UpdateWithReceiverHashDB(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", 30, cfg.powerFromDB(30), 1, now, ReceiverIdentityHash("K1ABC"))
+	store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", 30, 1, now, ReceiverIdentityHash("K1ABC"))
 	fine, _ = store.lookupWithDistribution(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", now)
 	if !fine.HasP50 || fine.P50DB != 24 {
 		t.Fatalf("overflow p50=%v has=%v, want 24", fine.P50DB, fine.HasP50)
@@ -104,10 +105,10 @@ func TestStoreSNRHistogramRawAndCappedDiverge(t *testing.T) {
 	r1 := ReceiverIdentityHash("K1ABC")
 	r2 := ReceiverIdentityHash("W1AW")
 
-	update := func(store *Store, cfg Config) {
-		store.UpdateWithReceiverHashDB(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", 30, cfg.powerFromDB(30), 1, now, r1)
-		store.UpdateWithReceiverHashDB(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", 30, cfg.powerFromDB(30), 1, now, r1)
-		store.UpdateWithReceiverHashDB(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", -30, cfg.powerFromDB(-30), 1, now, r2)
+	update := func(store *Store) {
+		store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", 30, 1, now, r1)
+		store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", 30, 1, now, r1)
+		store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", -30, 1, now, r2)
 	}
 
 	shadowCfg := DefaultConfig()
@@ -117,7 +118,7 @@ func TestStoreSNRHistogramRawAndCappedDiverge(t *testing.T) {
 	shadowCfg.ReceiverMaxEffectiveCount = 1
 	shadowCfg.ReceiverMaxEffectiveWeight = 1
 	shadow := NewStore(shadowCfg, []string{"20m"})
-	update(shadow, shadowCfg)
+	update(shadow)
 	shadowFine, _ := shadow.lookupWithDistribution(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", now)
 	if !shadowFine.HasP50 || shadowFine.P50DB != 24 {
 		t.Fatalf("shadow raw p50=%v has=%v, want 24", shadowFine.P50DB, shadowFine.HasP50)
@@ -126,7 +127,7 @@ func TestStoreSNRHistogramRawAndCappedDiverge(t *testing.T) {
 	enforceCfg := shadowCfg
 	enforceCfg.ReceiverContributionMode = ReceiverContributionEnforce
 	enforce := NewStore(enforceCfg, []string{"20m"})
-	update(enforce, enforceCfg)
+	update(enforce)
 	enforceFine, _ := enforce.lookupWithDistribution(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", now)
 	if !enforceFine.HasP50 || enforceFine.P50DB != -24 {
 		t.Fatalf("enforced capped p50=%v has=%v, want -24", enforceFine.P50DB, enforceFine.HasP50)
@@ -136,7 +137,7 @@ func TestStoreSNRHistogramRawAndCappedDiverge(t *testing.T) {
 	}
 }
 
-func TestPredictDistributionOnlyWhenRequested(t *testing.T) {
+func TestPredictAlwaysUsesActiveP50Distribution(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.MinEffectiveWeight = 0.01
 	cfg.MinObservationCount = 1
@@ -149,8 +150,8 @@ func TestPredictDistributionOnlyWhenRequested(t *testing.T) {
 
 	predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -15, 1, now, false, ReceiverIdentityHash("K1ABC"))
 	plain := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, now)
-	if plain.HasP50 || plain.P50Glyph != "" {
-		t.Fatalf("plain prediction should not calculate p50")
+	if !plain.HasP50 || plain.P50DB != -15 {
+		t.Fatalf("plain prediction p50=%v has=%v, want -15", plain.P50DB, plain.HasP50)
 	}
 	withDistribution := predictor.PredictWithMinObservationCountAndDistribution(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, now)
 	if !withDistribution.HasP50 || withDistribution.P50DB != -15 {
@@ -161,9 +162,107 @@ func TestPredictDistributionOnlyWhenRequested(t *testing.T) {
 	}
 }
 
-func TestStoreSNRHistogramOffAndPurgeStale(t *testing.T) {
+func TestPredictActiveP50ResistsStrongOutlier(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.DistributionStatisticMode = DistributionStatisticOff
+	cfg.MinEffectiveWeight = 0.01
+	cfg.MinObservationCount = 1
+	predictor := NewPredictor(cfg, []string{"20m"})
+	now := time.Unix(1_700_000_000, 0).UTC()
+	userCell := CellID(1)
+	dxCell := CellID(2)
+	userCoarse := CellID(3)
+	dxCoarse := CellID(4)
+
+	predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -20, 1, now, false, ReceiverIdentityHash("K1ABC"))
+	predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -20, 1, now, false, ReceiverIdentityHash("W1AW"))
+	predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 20, 1, now, false, ReceiverIdentityHash("VE3XYZ"))
+
+	res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, now)
+	if res.Source != SourceCombined {
+		t.Fatalf("expected combined result, got source=%v reason=%v", res.Source, res.InsufficientReason)
+	}
+	if !res.HasP50 || res.P50DB != -20 {
+		t.Fatalf("p50=%v has=%v, want -20", res.P50DB, res.HasP50)
+	}
+	if res.Class != classLow || res.Glyph != cfg.GlyphSymbols.Low {
+		t.Fatalf("expected LOW p50 class/glyph, got class=%q glyph=%q", res.Class, res.Glyph)
+	}
+}
+
+func TestPredictActiveP50ThresholdEquality(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.MinEffectiveWeight = 0.01
+	cfg.MinObservationCount = 1
+	now := time.Unix(1_700_000_000, 0).UTC()
+	userCell := CellID(1)
+	dxCell := CellID(2)
+	userCoarse := CellID(3)
+	dxCoarse := CellID(4)
+	cases := []struct {
+		db        float64
+		wantClass string
+		wantGlyph string
+	}{
+		{db: -13, wantClass: classHigh, wantGlyph: cfg.GlyphSymbols.High},
+		{db: -17, wantClass: classMedium, wantGlyph: cfg.GlyphSymbols.Medium},
+		{db: -21, wantClass: classLow, wantGlyph: cfg.GlyphSymbols.Low},
+		{db: -22, wantClass: classUnlikely, wantGlyph: cfg.GlyphSymbols.Unlikely},
+	}
+	for _, tc := range cases {
+		predictor := NewPredictor(cfg, []string{"20m"})
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", tc.db, 1, now, false, ReceiverIdentityHash("K1ABC"))
+		res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, now)
+		if res.Class != tc.wantClass || res.Glyph != tc.wantGlyph {
+			t.Fatalf("db=%v class/glyph=%q/%q, want %q/%q", tc.db, res.Class, res.Glyph, tc.wantClass, tc.wantGlyph)
+		}
+	}
+}
+
+func TestPredictSkipsInvalidSNRHistogramUpdate(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.MinEffectiveWeight = 0.01
+	cfg.MinObservationCount = 1
+	predictor := NewPredictor(cfg, []string{"20m"})
+	now := time.Unix(1_700_000_000, 0).UTC()
+	userCell := CellID(1)
+	dxCell := CellID(2)
+	userCoarse := CellID(3)
+	dxCoarse := CellID(4)
+
+	predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", math.NaN(), 1, now, false, ReceiverIdentityHash("K1ABC"))
+	res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, now)
+	if res.Source != SourceInsufficient || res.InsufficientReason != InsufficientNoSample {
+		t.Fatalf("expected invalid SNR to leave no sample, got source=%v reason=%v", res.Source, res.InsufficientReason)
+	}
+}
+
+func TestPredictPositiveWeightEmptyHistogramIsInsufficient(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.MinEffectiveWeight = 0.01
+	cfg.MinObservationCount = 1
+	predictor := NewPredictor(cfg, []string{"20m"})
+	now := time.Unix(1_700_000_000, 0).UTC()
+	userCell := CellID(1)
+	dxCell := CellID(2)
+	userCoarse := CellID(3)
+	dxCoarse := CellID(4)
+	key := packKey(userCell, dxCell, 0)
+	sh := &predictor.combined.shards[key%uint64(len(predictor.combined.shards))]
+	sh.mu.Lock()
+	sh.buckets[key] = &bucket{weight: 2, count: 2, lastUpdate: now.Unix()}
+	sh.mu.Unlock()
+
+	res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, now)
+	if res.Source != SourceInsufficient || res.InsufficientReason != InsufficientNoSample {
+		t.Fatalf("expected empty histogram to be insufficient/no_sample, got source=%v reason=%v", res.Source, res.InsufficientReason)
+	}
+	if res.HasP50 {
+		t.Fatalf("expected no p50 for empty histogram")
+	}
+}
+
+func TestStoreSNRHistogramPurgeStale(t *testing.T) {
+	cfg := DefaultConfig()
 	cfg.MinEffectiveWeight = 0.01
 	cfg.MinObservationCount = 1
 	cfg.DefaultHalfLifeSec = 1
@@ -175,10 +274,10 @@ func TestStoreSNRHistogramOffAndPurgeStale(t *testing.T) {
 	receiverCoarse := CellID(3)
 	senderCoarse := CellID(4)
 
-	store.UpdateWithReceiverHashDB(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", -15, cfg.powerFromDB(-15), 1, now, ReceiverIdentityHash("K1ABC"))
+	store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", -15, 1, now, ReceiverIdentityHash("K1ABC"))
 	fine, _ := store.lookupWithDistribution(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", now)
-	if fine.HasP50 {
-		t.Fatalf("distribution_statistic_mode=off should not expose p50")
+	if !fine.HasP50 {
+		t.Fatalf("expected active p50")
 	}
 	if removed := store.PurgeStale(now.Add(2 * time.Second)); removed != 2 {
 		t.Fatalf("removed stale buckets=%d, want 2", removed)
@@ -198,6 +297,8 @@ type legacyBucketForSize struct {
 	_ float64
 	_ float64
 	_ uint32
+	_ snrHistogram
+	_ snrHistogram
 	_ [inlineReceiverSlots]receiverSlot
 	_ *[maxCoarseReceiverSlots - inlineReceiverSlots]receiverSlot
 }
@@ -207,4 +308,7 @@ func TestBucketRetainedSizeEstimate(t *testing.T) {
 	legacySize := unsafe.Sizeof(legacyBucketForSize{})
 	currentSize := unsafe.Sizeof(bucket{})
 	t.Logf("legacy_bucket_size_bytes=%d current_bucket_size_bytes=%d retained_heap_delta_bytes_for_%d_buckets=%d", legacySize, currentSize, estimatedBuckets, (currentSize-legacySize)*estimatedBuckets)
+	if currentSize > legacySize {
+		t.Fatalf("bucket retained size grew from %d to %d", legacySize, currentSize)
+	}
 }

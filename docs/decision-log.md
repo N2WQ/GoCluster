@@ -11,10 +11,11 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 |---|---|---|---|---|---|---|---|
 | ADR-0001 | <title> | Proposed | YYYY-MM-DD | <area> | - | - | `docs/decisions/ADR-0001-<slug>.md` |
-| ADR-0125 | Gated PATHP50 Shadow Glyph Comparison | Accepted | 2026-05-08 | pathreliability, telnet diagnostics, propagation logs | - | - | `docs/decisions/ADR-0125-gated-pathp50-shadow-comparison.md` |
+| ADR-0126 | Active P50 Path Scoring | Accepted | 2026-05-09 | pathreliability, telnet diagnostics, propagation logs | ADR-0122; ADR-0125; ADR-0123 PATHP50 shadow-comparison portion | - | `docs/decisions/ADR-0126-active-p50-path-scoring.md` |
+| ADR-0125 | Gated PATHP50 Shadow Glyph Comparison | Superseded | 2026-05-08 | pathreliability, telnet diagnostics, propagation logs | - | ADR-0126 | `docs/decisions/ADR-0125-gated-pathp50-shadow-comparison.md` |
 | ADR-0124 | No-Noise-Penalty Path Evaluation | Accepted | 2026-05-08 | pathreliability, config, telnet | ADR-0064 | - | `docs/decisions/ADR-0124-no-noise-penalty-path-evaluation.md` |
 | ADR-0123 | Dedicated Propagation Log | Accepted | 2026-05-08 | logging, pathreliability, propagation reports | - | - | `docs/decisions/ADR-0123-dedicated-propagation-log.md` |
-| ADR-0122 | Path P50 Shadow Diagnostics | Accepted | 2026-05-08 | pathreliability, telnet diagnostics, config | - | - | `docs/decisions/ADR-0122-path-p50-shadow-diagnostics.md` |
+| ADR-0122 | Path P50 Shadow Diagnostics | Superseded | 2026-05-08 | pathreliability, telnet diagnostics, config | - | ADR-0126 | `docs/decisions/ADR-0122-path-p50-shadow-diagnostics.md` |
 | ADR-0121 | PSKReporter Trusted Spot Materialization | Accepted | 2026-05-07 | pskreporter, spot, hot path | - | - | `docs/decisions/ADR-0121-pskreporter-trusted-spot-materialization.md` |
 | ADR-0120 | Resolver Correction State Hardening | Accepted | 2026-05-06 | spot, correction, config, concurrency | - | - | `docs/decisions/ADR-0120-resolver-correction-state-hardening.md` |
 | ADR-0119 | Non-trivial Scope Adversarial Review | Accepted | 2026-05-06 | workflow, scope ledger, validation | - | - | `docs/decisions/ADR-0119-non-trivial-scope-adversarial-review.md` |

@@ -1,6 +1,6 @@
 // File role: Owns path reliability signal normalization and sample blending.
-// Crawler notes: Start here for mode-to-FT8-equivalent SNR conversion, dB/power
-// conversion, glyph class mapping, noise penalties, and fine/coarse sample
+// Crawler notes: Start here for mode-to-FT8-equivalent SNR conversion, glyph
+// class mapping, noise penalties, and fine/coarse sample
 // selection used by prediction and PATHP50 diagnostics.
 // Related docs: pathreliability/README.md, data/config/path_reliability.yaml.
 // Related tests: pathreliability/*normalize*_test.go, pathreliability/*p50*_test.go.
@@ -41,33 +41,9 @@ func normalizeMode(mode string) string {
 	return up
 }
 
-// ApplyNoisePower applies a noise penalty (dB) in the power domain.
-func ApplyNoisePower(power float64, penaltyDB float64, cfg Config) float64 {
-	if power <= 0 || penaltyDB <= 0 {
-		return power
-	}
-	divisor := cfg.noiseDivisorForPenalty(penaltyDB)
-	if divisor <= 0 {
-		return power
-	}
-	return power / divisor
-}
-
-// GlyphForPower maps power to the ASCII glyph scale for a given mode.
-func GlyphForPower(power float64, mode string, cfg Config) string {
-	thresholds := thresholdsForModePower(mode, cfg)
-	switch {
-	case power >= thresholds.High:
-		return cfg.GlyphSymbols.High
-	case power >= thresholds.Medium:
-		return cfg.GlyphSymbols.Medium
-	case power >= thresholds.Low:
-		return cfg.GlyphSymbols.Low
-	case power >= thresholds.Unlikely:
-		return cfg.GlyphSymbols.Unlikely
-	default:
-		return cfg.GlyphSymbols.Unlikely
-	}
+// GlyphForDB maps an FT8-equivalent SNR quantile to the ASCII glyph scale.
+func GlyphForDB(db float64, mode string, cfg Config) string {
+	return glyphForClass(ClassForDB(db, mode, cfg), cfg)
 }
 
 const (
@@ -77,29 +53,42 @@ const (
 	classUnlikely = "UNLIKELY"
 )
 
-// ClassForPower maps power to the threshold class name for filtering.
-func ClassForPower(power float64, mode string, cfg Config) string {
-	thresholds := thresholdsForModePower(mode, cfg)
+// ClassForDB maps an FT8-equivalent SNR quantile to the threshold class name.
+func ClassForDB(db float64, mode string, cfg Config) string {
+	thresholds := thresholdsForModeDB(mode, cfg)
 	switch {
-	case power >= thresholds.High:
+	case db >= thresholds.High:
 		return classHigh
-	case power >= thresholds.Medium:
+	case db >= thresholds.Medium:
 		return classMedium
-	case power >= thresholds.Low:
+	case db >= thresholds.Low:
 		return classLow
 	default:
 		return classUnlikely
 	}
 }
 
-func thresholdsForModePower(mode string, cfg Config) GlyphThresholdsPower {
+func glyphForClass(class string, cfg Config) string {
+	switch class {
+	case classHigh:
+		return cfg.GlyphSymbols.High
+	case classMedium:
+		return cfg.GlyphSymbols.Medium
+	case classLow:
+		return cfg.GlyphSymbols.Low
+	default:
+		return cfg.GlyphSymbols.Unlikely
+	}
+}
+
+func thresholdsForModeDB(mode string, cfg Config) GlyphThresholds {
 	key := normalizeMode(mode)
-	if cfg.modeThresholdsPower != nil {
-		if t, ok := cfg.modeThresholdsPower[key]; ok {
+	if cfg.ModeThresholds != nil {
+		if t, ok := cfg.ModeThresholds[key]; ok {
 			return t
 		}
 	}
-	return cfg.glyphThresholdsPower
+	return cfg.GlyphThresholds
 }
 
 // SelectSample chooses or blends fine/coarse samples by confidence weight.
@@ -129,7 +118,6 @@ func SelectSample(fine Sample, coarse Sample, minFineWeight float64, fineOnlyWei
 		return Sample{}
 	}
 	return Sample{
-		Value:        (fine.Value*fine.Weight + coarseCandidate.Value*coarseCandidate.Weight) / sum,
 		Weight:       sum,
 		AgeSec:       weightedSampleAge(fine, coarseCandidate),
 		Count:        maxCount(fine.Count, coarseCandidate.Count),
@@ -210,40 +198,4 @@ func weightedSampleAge(left Sample, right Sample) int64 {
 		return 0
 	}
 	return int64(math.Ceil(age))
-}
-
-func (c Config) powerFromDB(db float64) float64 {
-	if c.powerLUTStepDB <= 0 || len(c.powerLUT) == 0 {
-		return dbToPower(clamp(db, c.ClampMin, c.ClampMax))
-	}
-	clamped := clamp(db, c.ClampMin, c.ClampMax)
-	// LUT uses a fixed dB step; round to the nearest index.
-	idx := int(math.Round((clamped - c.powerLUTMinDB) / c.powerLUTStepDB))
-	if idx < 0 {
-		idx = 0
-	}
-	if idx >= len(c.powerLUT) {
-		idx = len(c.powerLUT) - 1
-	}
-	return c.powerLUT[idx]
-}
-
-func (c Config) noiseDivisorForPenalty(penalty float64) float64 {
-	if penalty <= 0 {
-		return 1
-	}
-	if c.noisePenaltyDivisors != nil {
-		if v, ok := c.noisePenaltyDivisors[penalty]; ok && v > 0 {
-			return v
-		}
-	}
-	return dbToPower(penalty)
-}
-
-func powerToDB(power float64) float64 {
-	const minPower = 1e-10
-	if power < minPower {
-		power = minPower
-	}
-	return 10 * math.Log10(power)
 }

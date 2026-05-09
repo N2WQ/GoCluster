@@ -275,18 +275,15 @@ Example readings:
 
 `SET DIAG PATHP50` is a second path diagnostic view. It does not change glyphs
 or PATH filters. The normal path glyph is still shown in the fixed tail column.
-The diagnostic comment shows p50 SNR and the mean-minus-p50 delta so operators
-can see how the distribution method compares with the current method.
+The diagnostic comment shows the active p50 SNR statistic and compact selected
+observation count.
 
 ```text
-p<db>d<delta>n<count>
+p<db>n<count>
 ```
 
-- `p<db>` is the shadow p50 SNR bin lower edge in FT8-equivalent dB. It uses
-  fixed 1 dB bins, so it is a compact bin value rather than an exact raw report.
-- `d<delta>` is active mean SNR minus p50 SNR. Positive `d` means the active
-  mean is stronger than p50; negative `d` means p50 is stronger than the active
-  mean.
+- `p<db>` is the p50 SNR bin lower edge in FT8-equivalent dB. It uses fixed
+  1 dB bins, so it is a compact bin value rather than an exact raw report.
 - `n<count>` is the compact selected observation count for this prediction.
   PATHP50 omits the longer `n<capped>/r<raw>` form; use `SET DIAG PATH` when
   raw/capped detail matters.
@@ -296,27 +293,15 @@ p<db>d<delta>n<count>
 When operators are actively using `SET DIAG PATHP50`, the propagation log can
 also include `Path p50 diag (5m)` aggregates. Those counters are
 diagnostic-observed only: they summarize spots for which PATHP50 already
-computed p50, and they do not mean the cluster computed p50 for every normal
-spot.
-
-The same diagnostic run can also write `Path p50 shadow` aggregate lines. These
-compare the current mean-based glyph class with the p50 shadow glyph class and
-bucket the differences by sample count, band, mode family, source, and glyph
-pair. Use those lines to evaluate whether p50 is usually more conservative,
-usually more optimistic, or only different in low-sample contexts. They are not
-an enforcement switch. The shadow comparison applies the same active eligibility
-gate used for normal path display: if the active prediction is insufficient due
-to low count, low weight, stale evidence, or no sample, the p50 side is also
-counted as insufficient for the glyph comparison. The raw PATHP50 comment can
-still show p50 and delta values for diagnosis.
+diagnostics were requested. Normal glyph and PATH filter scoring already uses
+p50, but this aggregate does not count every normal spot unless operators are
+requesting PATHP50 diagnostics for those spots.
 
 Example readings:
 
-- `p-15d4n19`: p50 lower edge is -15 dB, active mean is 4 dB stronger than
-  p50, 19 selected observations.
-- `p3d-2n42`: p50 lower edge is 3 dB, active mean is 2 dB weaker than p50,
-  42 selected observations.
-- `p?d?n0`: no p50 or delta is available.
+- `p-15n19`: p50 lower edge is -15 dB with 19 selected observations.
+- `p3n42`: p50 lower edge is 3 dB with 42 selected observations.
+- `p?n0`: no p50 is available.
 
 ## Logs And Health
 

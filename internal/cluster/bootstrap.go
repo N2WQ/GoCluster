@@ -1537,78 +1537,14 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 				p50Diag := srv.PathP50DiagStatsSnapshot()
 				if p50Diag.Observed > 0 {
 					fileOnly(fmt.Sprintf(
-						"Path p50 diag (5m): observed=%s missing=%s d_le_neg6=%s d_neg5_pos5=%s d_6_11=%s d_ge12=%s n_lt17=%s n_17_99=%s n_100_499=%s n_ge500=%s",
+						"Path p50 diag (5m): observed=%s missing=%s n_lt17=%s n_17_99=%s n_100_499=%s n_ge500=%s",
 						humanize.Comma(int64(p50Diag.Observed)),
 						humanize.Comma(int64(p50Diag.Missing)),
-						humanize.Comma(int64(p50Diag.Delta[0])),
-						humanize.Comma(int64(p50Diag.Delta[1])),
-						humanize.Comma(int64(p50Diag.Delta[2])),
-						humanize.Comma(int64(p50Diag.Delta[3])),
 						humanize.Comma(int64(p50Diag.N[0])),
 						humanize.Comma(int64(p50Diag.N[1])),
 						humanize.Comma(int64(p50Diag.N[2])),
 						humanize.Comma(int64(p50Diag.N[3])),
 					))
-					fileOnly(fmt.Sprintf(
-						"Path p50 shadow (5m): observed=%s missing=%s same=%s mean_gt=%s p50_gt=%s sev_hi_low=%s sev_hi_none=%s",
-						humanize.Comma(int64(p50Diag.Observed)),
-						humanize.Comma(int64(p50Diag.Missing)),
-						humanize.Comma(int64(p50Diag.Shadow.Same)),
-						humanize.Comma(int64(p50Diag.Shadow.MeanGT)),
-						humanize.Comma(int64(p50Diag.Shadow.P50GT)),
-						humanize.Comma(int64(p50Diag.Shadow.SevLow)),
-						humanize.Comma(int64(p50Diag.Shadow.SevNone)),
-					))
-					fileOnly(fmt.Sprintf(
-						"Path p50 shadow n (5m): n_lt17=%s n_17_99=%s n_100_499=%s n_ge500=%s",
-						humanize.Comma(int64(p50Diag.Shadow.N[0])),
-						humanize.Comma(int64(p50Diag.Shadow.N[1])),
-						humanize.Comma(int64(p50Diag.Shadow.N[2])),
-						humanize.Comma(int64(p50Diag.Shadow.N[3])),
-					))
-					fileOnly(fmt.Sprintf(
-						"Path p50 shadow band (5m): 160m=%s 80m=%s 60m=%s 40m=%s 30m=%s 20m=%s 17m=%s 15m=%s 12m=%s 10m=%s 6m=%s other=%s",
-						humanize.Comma(int64(p50Diag.Shadow.Band[0])),
-						humanize.Comma(int64(p50Diag.Shadow.Band[1])),
-						humanize.Comma(int64(p50Diag.Shadow.Band[2])),
-						humanize.Comma(int64(p50Diag.Shadow.Band[3])),
-						humanize.Comma(int64(p50Diag.Shadow.Band[4])),
-						humanize.Comma(int64(p50Diag.Shadow.Band[5])),
-						humanize.Comma(int64(p50Diag.Shadow.Band[6])),
-						humanize.Comma(int64(p50Diag.Shadow.Band[7])),
-						humanize.Comma(int64(p50Diag.Shadow.Band[8])),
-						humanize.Comma(int64(p50Diag.Shadow.Band[9])),
-						humanize.Comma(int64(p50Diag.Shadow.Band[10])),
-						humanize.Comma(int64(p50Diag.Shadow.Band[11])),
-					))
-					fileOnly(fmt.Sprintf(
-						"Path p50 shadow mode (5m): CW=%s FT=%s RTTY=%s PHONE=%s OTHER=%s",
-						humanize.Comma(int64(p50Diag.Shadow.Mode[0])),
-						humanize.Comma(int64(p50Diag.Shadow.Mode[1])),
-						humanize.Comma(int64(p50Diag.Shadow.Mode[2])),
-						humanize.Comma(int64(p50Diag.Shadow.Mode[3])),
-						humanize.Comma(int64(p50Diag.Shadow.Mode[4])),
-					))
-					fileOnly(fmt.Sprintf(
-						"Path p50 shadow source (5m): RBN=%s RBN-FT=%s PSK=%s HUMAN=%s PEER=%s UPSTREAM=%s OTHER=%s",
-						humanize.Comma(int64(p50Diag.Shadow.Source[0])),
-						humanize.Comma(int64(p50Diag.Shadow.Source[1])),
-						humanize.Comma(int64(p50Diag.Shadow.Source[2])),
-						humanize.Comma(int64(p50Diag.Shadow.Source[3])),
-						humanize.Comma(int64(p50Diag.Shadow.Source[4])),
-						humanize.Comma(int64(p50Diag.Shadow.Source[5])),
-						humanize.Comma(int64(p50Diag.Shadow.Source[6])),
-					))
-					classes := []string{"I", "U", "L", "M", "H"}
-					var pairLine strings.Builder
-					pairLine.WriteString("Path p50 shadow pair (5m):")
-					for meanIdx, meanClass := range classes {
-						for p50Idx, p50Class := range classes {
-							idx := meanIdx*len(classes) + p50Idx
-							fmt.Fprintf(&pairLine, " %s/%s=%s", meanClass, p50Class, humanize.Comma(int64(p50Diag.Shadow.Pair[idx])))
-						}
-					}
-					fileOnly(pairLine.String())
 				}
 			}
 			if pathReport != nil {

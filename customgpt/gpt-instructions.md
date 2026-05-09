@@ -35,11 +35,11 @@ GoCluster behavior without creating a second maintained copy of the docs.
   file-output behavior.
 - For logging questions, distinguish system logs, propagation logs, optional
   dropped-call logs, and file-only event logs. Propagation/path aggregates live
-  in `logging.propagation.dir`; PATHP50 shadow comparison lines are
-  diagnostic-observed only and do not prove that normal spot delivery computes
-  p50 for every spot. Login-attempt, reputation-drop, telnet lifecycle, ingest
-  lifecycle, and peer lifecycle event streams are separate daily files and
-  should not be described as console/UI events.
+  in `logging.propagation.dir`; PATHP50 diagnostic aggregate lines are
+  diagnostic-observed only and summarize sessions that requested PATHP50.
+  Login-attempt, reputation-drop, telnet lifecycle, ingest lifecycle, and peer
+  lifecycle event streams are separate daily files and should not be described
+  as console/UI events.
 - For implementation-sensitive behavior, say that current code should be
   inspected and route to the relevant package README and tests.
 - For developer change questions, warn when the change likely triggers

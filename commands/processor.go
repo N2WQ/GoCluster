@@ -436,7 +436,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"SOURCE shows compact ingest provenance.",
 			"CONF shows pipeline confidence percent when available.",
 			"PATH shows observation count, weight, and age.",
-			"PATHP50 shows compact p50 SNR, mean-minus-p50 delta, and sample count.",
+			"PATHP50 shows compact active p50 SNR and sample count.",
 			"MODE shows <mode>|<provenance>.",
 		},
 	)

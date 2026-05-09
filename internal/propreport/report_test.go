@@ -35,78 +35,35 @@ func TestParsePredictionTotalsWithAndWithoutStale(t *testing.T) {
 }
 
 func TestParseP50DiagTotals(t *testing.T) {
-	line := "2026/05/08 13:20:00 Path p50 diag (5m): observed=1,200 missing=10 d_le_neg6=11 d_neg5_pos5=900 d_6_11=200 d_ge12=89 n_lt17=3 n_17_99=197 n_100_499=700 n_ge500=290"
+	line := "2026/05/08 13:20:00 Path p50 diag (5m): observed=1,200 missing=10 n_lt17=3 n_17_99=197 n_100_499=700 n_ge500=290"
 	got, ok := parseP50DiagTotals(line)
 	if !ok {
 		t.Fatalf("expected p50 diag totals to parse")
 	}
-	if got.Observed != 1200 || got.Missing != 10 || got.DLeNeg6 != 11 || got.DNeg5Pos5 != 900 || got.D6To11 != 200 || got.DGe12 != 89 || got.NLt17 != 3 || got.N17To99 != 197 || got.N100To499 != 700 || got.NGe500 != 290 {
+	if got.Observed != 1200 || got.Missing != 10 || got.NLt17 != 3 || got.N17To99 != 197 || got.N100To499 != 700 || got.NGe500 != 290 {
 		t.Fatalf("unexpected p50 diag totals: %+v", got)
 	}
+}
+
+func FuzzParseP50DiagTotals(f *testing.F) {
+	f.Add("2026/05/08 13:20:00 Path p50 diag (5m): observed=1,200 missing=10 n_lt17=3 n_17_99=197 n_100_499=700 n_ge500=290")
+	f.Add("not a p50 line")
+	f.Fuzz(func(t *testing.T, line string) {
+		_, _ = parseP50DiagTotals(line)
+	})
 }
 
 func TestP50DiagSummaryTextMarksDiagnosticObserved(t *testing.T) {
 	got := p50DiagSummaryText(p50DiagTotals{
 		Observed:  10,
 		Missing:   1,
-		DGe12:     4,
 		N100To499: 5,
 	})
-	if !strings.Contains(got, "Diagnostic-observed PATHP50 comparisons") {
+	if !strings.Contains(got, "Diagnostic-observed PATHP50 data") {
 		t.Fatalf("expected diagnostic-observed wording, got %q", got)
 	}
-	if !strings.Contains(got, ">=12 4") || !strings.Contains(got, "n=100..499 5") {
+	if !strings.Contains(got, "n=100..499 5") {
 		t.Fatalf("expected p50 aggregate values, got %q", got)
-	}
-}
-
-func TestParseP50ShadowLines(t *testing.T) {
-	var totals p50ShadowTotals
-	lines := []string{
-		"2026/05/08 13:20:00 Path p50 shadow (5m): observed=100 missing=7 same=60 mean_gt=30 p50_gt=3 sev_hi_low=8 sev_hi_none=2",
-		"2026/05/08 13:20:00 Path p50 shadow n (5m): n_lt17=1 n_17_99=2 n_100_499=3 n_ge500=4",
-		"2026/05/08 13:20:00 Path p50 shadow band (5m): 160m=1 80m=2 60m=3 40m=4 30m=5 20m=6 17m=7 15m=8 12m=9 10m=10 6m=11 other=12",
-		"2026/05/08 13:20:00 Path p50 shadow mode (5m): CW=13 FT=14 RTTY=15 PHONE=16 OTHER=17",
-		"2026/05/08 13:20:00 Path p50 shadow source (5m): RBN=18 RBN-FT=19 PSK=20 HUMAN=21 PEER=22 UPSTREAM=23 OTHER=24",
-		"2026/05/08 13:20:00 Path p50 shadow pair (5m): I/I=1 I/U=2 I/L=3 I/M=4 I/H=5 U/I=6 U/U=7 U/L=8 U/M=9 U/H=10 L/I=11 L/U=12 L/L=13 L/M=14 L/H=15 M/I=16 M/U=17 M/L=18 M/M=19 M/H=20 H/I=21 H/U=22 H/L=23 H/M=24 H/H=25",
-	}
-	for _, line := range lines {
-		if !parseP50ShadowLine(line, &totals) {
-			t.Fatalf("expected line to parse: %s", line)
-		}
-	}
-	if totals.Observed != 100 || totals.Missing != 7 || totals.Same != 60 || totals.MeanGT != 30 || totals.P50GT != 3 || totals.SevHiLow != 8 || totals.SevHiNone != 2 {
-		t.Fatalf("unexpected shadow main totals: %+v", totals)
-	}
-	if totals.N != [4]int{1, 2, 3, 4} {
-		t.Fatalf("unexpected n totals: %+v", totals.N)
-	}
-	if totals.Band[0] != 1 || totals.Band[11] != 12 {
-		t.Fatalf("unexpected band totals: %+v", totals.Band)
-	}
-	if totals.Mode != [5]int{13, 14, 15, 16, 17} {
-		t.Fatalf("unexpected mode totals: %+v", totals.Mode)
-	}
-	if totals.Source != [7]int{18, 19, 20, 21, 22, 23, 24} {
-		t.Fatalf("unexpected source totals: %+v", totals.Source)
-	}
-	if totals.Pair[0] != 1 || totals.Pair[24] != 25 {
-		t.Fatalf("unexpected pair totals: %+v", totals.Pair)
-	}
-}
-
-func TestP50ShadowSummaryText(t *testing.T) {
-	got := p50ShadowSummaryText(p50ShadowTotals{
-		Observed: 100,
-		Same:     60,
-		MeanGT:   30,
-		P50GT:    3,
-		SevHiLow: 8,
-		N:        [4]int{1, 2, 3, 4},
-		Mode:     [5]int{5, 6, 7, 8, 9},
-	})
-	if !strings.Contains(got, "mean stronger 30") || !strings.Contains(got, "severe mean-optimistic 8") || !strings.Contains(got, "FT 6") {
-		t.Fatalf("expected shadow summary values, got %q", got)
 	}
 }
 

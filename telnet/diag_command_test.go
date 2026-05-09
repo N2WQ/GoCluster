@@ -213,14 +213,12 @@ func TestDiagPathTagShowsCappedAndRawCountsWhenLimited(t *testing.T) {
 	}
 }
 
-func TestDiagPathP50TagShowsP50MeanAndCounts(t *testing.T) {
+func TestDiagPathP50TagShowsP50AndCounts(t *testing.T) {
 	prediction := pathPrediction{
 		result: pathreliability.Result{
 			Source:       pathreliability.SourceCombined,
 			P50DB:        -15,
 			HasP50:       true,
-			MeanDB:       -11,
-			HasMeanDB:    true,
 			Glyph:        ">",
 			Count:        19,
 			RawCount:     19,
@@ -230,32 +228,28 @@ func TestDiagPathP50TagShowsP50MeanAndCounts(t *testing.T) {
 		},
 	}
 	got := diagPathP50Tag(prediction, true)
-	if got != "p-15d4n19" {
+	if got != "p-15n19" {
 		t.Fatalf("unexpected PATHP50 diagnostic: %q", got)
 	}
 	prediction.result = pathreliability.Result{
-		Source:    pathreliability.SourceCombined,
-		P50DB:     3,
-		HasP50:    true,
-		MeanDB:    1,
-		HasMeanDB: true,
-		Glyph:     "=",
-		Count:     42,
+		Source: pathreliability.SourceCombined,
+		P50DB:  3,
+		HasP50: true,
+		Glyph:  "=",
+		Count:  42,
 	}
-	if got := diagPathP50Tag(prediction, true); got != "p3d-2n42" {
+	if got := diagPathP50Tag(prediction, true); got != "p3n42" {
 		t.Fatalf("unexpected positive PATHP50 diagnostic: %q", got)
 	}
 	prediction.result = pathreliability.Result{
-		Source:    pathreliability.SourceCombined,
-		MeanDB:    -11,
-		HasMeanDB: true,
-		Glyph:     "-",
-		Count:     7,
+		Source: pathreliability.SourceCombined,
+		Glyph:  "-",
+		Count:  7,
 	}
-	if got := diagPathP50Tag(prediction, true); got != "p?d?n7" {
+	if got := diagPathP50Tag(prediction, true); got != "p?n7" {
 		t.Fatalf("unexpected missing p50 PATHP50 diagnostic: %q", got)
 	}
-	if got := diagPathP50Tag(pathPrediction{}, false); got != "p?d?n0" {
+	if got := diagPathP50Tag(pathPrediction{}, false); got != "p?n0" {
 		t.Fatalf("unexpected no-prediction PATHP50 diagnostic: %q", got)
 	}
 }
@@ -263,16 +257,14 @@ func TestDiagPathP50TagShowsP50MeanAndCounts(t *testing.T) {
 func TestDiagPathP50TagFitsReportedModeCommentSpace(t *testing.T) {
 	prediction := pathPrediction{
 		result: pathreliability.Result{
-			Source:    pathreliability.SourceCombined,
-			P50DB:     -24,
-			HasP50:    true,
-			MeanDB:    -1,
-			HasMeanDB: true,
-			Count:     1355,
+			Source: pathreliability.SourceCombined,
+			P50DB:  -24,
+			HasP50: true,
+			Count:  1355,
 		},
 	}
 	tag := diagPathP50Tag(prediction, true)
-	if tag != "p-24d23n1355" {
+	if tag != "p-24n1355" {
 		t.Fatalf("unexpected compact PATHP50 diagnostic: %q", tag)
 	}
 
@@ -319,10 +311,10 @@ func TestFormatSpotForClientPathP50DiagComment(t *testing.T) {
 	sp.Confidence = "V"
 
 	line := server.formatSpotForClient(client, sp)
-	if !strings.Contains(line, "p-15d") || !strings.Contains(line, "n2") {
+	if !strings.Contains(line, "p-15n2") {
 		t.Fatalf("expected PATHP50 diagnostic in output, got %q", line)
 	}
-	if strings.Contains(line, "p+") || strings.Contains(line, "d+") {
+	if strings.Contains(line, "p+") {
 		t.Fatalf("expected positive PATHP50 values to omit plus signs, got %q", line)
 	}
 	if strings.Contains(line, "|") {

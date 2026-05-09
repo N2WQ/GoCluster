@@ -73,7 +73,7 @@ Configuration is split by concern so you only edit the relevant file:
 - `iaru_regions.yaml` - reference table for DXCC/ADIF to IARU region mapping.
 - `iaru_mode_inference.yaml` - reference table / algorithm calibration for final regional frequency policy.
 - `pipeline.yaml` - algorithm calibration for call correction, harmonics, mode inference, and spot-quality policy; not a normal operator tuning surface.
-- `path_reliability.yaml` - operator policy for enable/display/sample-floor/receiver-cap mode/distribution diagnostics, plus algorithm calibration for decay, weights, thresholds, offsets, and noise tables.
+- `path_reliability.yaml` - operator policy for enable/display/sample-floor/receiver-cap mode/glyphs, plus active p50 histogram compatibility and algorithm calibration for decay, weights, thresholds, offsets, and noise tables.
 - `solarweather.yaml` - operator policy for enable/fetch/reporting controls, plus algorithm calibration for daylight/high-latitude/level thresholds and override glyph behavior.
 - `toxicity.yaml` - optional deployment/runtime settings for the Cloudflare Worker human-comment toxicity classifier.
 - `toxicity_safe_gate.yaml` - optional reference table for routine ham-radio comments that may bypass the classifier when the Worker is enabled.

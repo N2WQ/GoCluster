@@ -144,7 +144,7 @@ func TestReceiverCapCoarseBucketsUseExtraSlots(t *testing.T) {
 	receiverCoarse := CellID(3)
 	senderCoarse := CellID(4)
 	for i := 0; i < 8; i++ {
-		store.UpdateWithReceiverHash(InvalidCell, InvalidCell, receiverCoarse, senderCoarse, "20m", cfg.powerFromDB(-5), 1.0, now, uint64(i+1))
+		store.UpdateWithReceiverHash(InvalidCell, InvalidCell, receiverCoarse, senderCoarse, "20m", -5, 1.0, now, uint64(i+1))
 	}
 
 	key := packCoarseKey(receiverCoarse, senderCoarse, 0)
