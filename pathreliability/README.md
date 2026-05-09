@@ -92,13 +92,13 @@ reused; this is an approximation, not an unbounded exact unique-receiver set.
 
 `distribution_statistic_mode` controls the shadow p50 SNR diagnostic:
 
-- `shadow`: retain two inline 18-bin histograms per bucket, one raw lane and
+- `shadow`: retain two inline 50-bin histograms per bucket, one raw lane and
   one capped lane. Updates touch only the selected bin unless time has advanced,
   and p50 scans the fixed array. This feeds `SET DIAG PATHP50` only.
 - `off`: skip histogram updates and expose no p50 diagnostic value.
 
-The SNR bins are fixed in code: `< -24`, `-24..-21`, then 3 dB bins up to
-`21..24`, and `>= 24`. Displayed p50 values use the bin's compact lower-edge
+The SNR bins are fixed in code: `< -24`, one-dB bins from `-24..-23` through
+`23..24`, and `>= 24`. Displayed p50 values use the bin's compact lower-edge
 value; underflow displays as `-24` and overflow displays as `24`.
 
 Five-minute propagation logs split insufficient path prediction outcomes into
@@ -173,6 +173,12 @@ The propagation log can include `Path p50 diag (5m)` while operators are using
 PATHP50. That aggregate is intentionally diagnostic-observed only: normal path
 display still uses the non-distribution prediction path and does not compute
 p50 solely for logging.
+
+The companion `Path p50 shadow` aggregate compares the active mean-based glyph
+class with the p50 shadow glyph class for the same diagnostic-observed spots.
+It records fixed counters for same/different outcomes, sample-count buckets,
+band, mode family, source, and mean/p50 glyph-pair matrix. This is a shadow
+comparison diagnostic only; active glyphs and PATH filters remain mean-based.
 
 Noise is applied only to the DX-to-user side in the power domain. The shipped
 table uses P.372-17-informed operational receive penalties: low bands retain

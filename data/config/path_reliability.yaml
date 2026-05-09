@@ -97,7 +97,7 @@ distribution_statistic_mode: shadow
 # bucket's trust evidence. "shadow" keeps current glyph behavior but logs and
 # diagnoses where capped evidence would be stricter; "enforce" gates glyphs and
 # PATH filters on capped evidence; "off" disables capped tracking.
-receiver_contribution_mode: enforce
+receiver_contribution_mode: shadow
 receiver_fine_slots: 4              # Receiver slots retained in fine buckets.
 receiver_coarse_slots: 8            # Receiver slots retained in coarse buckets.
 receiver_max_effective_count: 5     # Max capped observation count one receiver can contribute per bucket.

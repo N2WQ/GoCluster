@@ -282,8 +282,8 @@ can see how the distribution method compares with the current method.
 p<db>d<delta>n<count>
 ```
 
-- `p<db>` is the shadow p50 SNR bin in FT8-equivalent dB. It uses fixed 3 dB
-  bins, so it is a compact bin value rather than an exact raw report.
+- `p<db>` is the shadow p50 SNR bin lower edge in FT8-equivalent dB. It uses
+  fixed 1 dB bins, so it is a compact bin value rather than an exact raw report.
 - `d<delta>` is active mean SNR minus p50 SNR. Positive `d` means the active
   mean is stronger than p50; negative `d` means p50 is stronger than the active
   mean.
@@ -299,12 +299,19 @@ diagnostic-observed only: they summarize spots for which PATHP50 already
 computed p50, and they do not mean the cluster computed p50 for every normal
 spot.
 
+The same diagnostic run can also write `Path p50 shadow` aggregate lines. These
+compare the current mean-based glyph class with the p50 shadow glyph class and
+bucket the differences by sample count, band, mode family, source, and glyph
+pair. Use those lines to evaluate whether p50 is usually more conservative,
+usually more optimistic, or only different in low-sample contexts. They are not
+an enforcement switch.
+
 Example readings:
 
-- `p-15d4n19`: p50 bin -15 dB, active mean is 4 dB stronger than p50, 19
-  selected observations.
-- `p3d-2n42`: p50 bin 3 dB, active mean is 2 dB weaker than p50, 42 selected
-  observations.
+- `p-15d4n19`: p50 lower edge is -15 dB, active mean is 4 dB stronger than
+  p50, 19 selected observations.
+- `p3d-2n42`: p50 lower edge is 3 dB, active mean is 2 dB weaker than p50,
+  42 selected observations.
 - `p?d?n0`: no p50 or delta is available.
 
 ## Logs And Health

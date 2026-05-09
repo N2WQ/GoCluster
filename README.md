@@ -336,8 +336,8 @@ Example readings:
 `SET DIAG PATHP50` keeps the path glyph in the normal tail column and uses the
 comment space for a compact p50 comparison:
 
-- `p<db>` is the shadow p50 SNR bin in FT8-equivalent dB. Fixed 3 dB bins are
-  used, so this is a compact bin value, not an exact raw report.
+- `p<db>` is the shadow p50 SNR bin lower edge in FT8-equivalent dB. Fixed
+  1 dB bins are used, so this is a compact bin value, not an exact raw report.
 - `d<db>` is active mean SNR minus p50 SNR. Positive `d` means the active mean
   is stronger than p50; negative `d` means p50 is stronger than the active
   mean.
@@ -349,10 +349,10 @@ comment space for a compact p50 comparison:
 
 Example readings:
 
-- `p-15d4n19`: p50 bin -15 dB, active mean is 4 dB stronger than p50, 19
-  selected observations.
-- `p3d-2n42`: p50 bin 3 dB, active mean is 2 dB weaker than p50, 42 selected
-  observations.
+- `p-15d4n19`: p50 lower edge is -15 dB, active mean is 4 dB stronger than
+  p50, 19 selected observations.
+- `p3d-2n42`: p50 lower edge is 3 dB, active mean is 2 dB weaker than p50,
+  42 selected observations.
 - `p?d?n0`: no p50 or delta is available.
 
 ## Path Reliability Tags
@@ -547,6 +547,11 @@ Each entry uses the same timestamped daily-file logger as the system log and rec
 `data/logs/propagation` by default. This is where the five-minute path
 prediction, source mix, bucket, weight distribution, ge10 variance, unique
 spotter/grid-pair, and diagnostic-observed PATHP50 aggregate lines are written.
+When `SET DIAG PATHP50` is active, the log can also include `Path p50 shadow`
+aggregate lines comparing the current mean-based glyph class with the p50
+shadow glyph class by outcome, sample-count bucket, band, mode family, source,
+and glyph-pair matrix. These lines are diagnostic-observed only; they do not
+mean normal spot delivery is computing p50 for every spot.
 Daily propagation reports read this log by default; pass `prop_report -log` to
 an old system log path when generating reports from historical files.
 

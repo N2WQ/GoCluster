@@ -104,6 +104,7 @@ type Result struct {
 	HasMeanDB          bool
 	P50DB              float64
 	HasP50             bool
+	P50Glyph           string
 	Weight             float64
 	AgeSec             int64
 	Count              uint32
@@ -153,8 +154,12 @@ func (p *Predictor) predictWithMinObservationCount(userCell, dxCell CellID, user
 	modeKey := normalizeMode(mode)
 	makeResult := func(sample Sample, p50DB float64, hasP50 bool, source PredictionSource, capWouldBlock bool) Result {
 		meanDB, hasMeanDB := 0.0, false
+		p50Glyph := ""
 		if includeDistribution {
 			meanDB, hasMeanDB = meanDBForSample(sample)
+			if hasP50 {
+				p50Glyph = GlyphForPower(p.cfg.powerFromDB(p50DB), modeKey, p.cfg)
+			}
 		}
 		return Result{
 			Glyph:         GlyphForPower(sample.Value, modeKey, p.cfg),
@@ -163,6 +168,7 @@ func (p *Predictor) predictWithMinObservationCount(userCell, dxCell CellID, user
 			HasMeanDB:     hasMeanDB,
 			P50DB:         p50DB,
 			HasP50:        hasP50,
+			P50Glyph:      p50Glyph,
 			Weight:        sample.Weight,
 			AgeSec:        sample.AgeSec,
 			Count:         sample.Count,
@@ -177,8 +183,12 @@ func (p *Predictor) predictWithMinObservationCount(userCell, dxCell CellID, user
 	}
 	makeInsufficient := func(sample Sample, p50DB float64, hasP50 bool, reason InsufficientReason, capWouldBlock bool) Result {
 		meanDB, hasMeanDB := 0.0, false
+		p50Glyph := ""
 		if includeDistribution {
 			meanDB, hasMeanDB = meanDBForSample(sample)
+			if hasP50 {
+				p50Glyph = GlyphForPower(p.cfg.powerFromDB(p50DB), modeKey, p.cfg)
+			}
 		}
 		return Result{
 			Glyph:              insufficient,
@@ -187,6 +197,7 @@ func (p *Predictor) predictWithMinObservationCount(userCell, dxCell CellID, user
 			HasMeanDB:          hasMeanDB,
 			P50DB:              p50DB,
 			HasP50:             hasP50,
+			P50Glyph:           p50Glyph,
 			Weight:             sample.Weight,
 			AgeSec:             sample.AgeSec,
 			Count:              sample.Count,

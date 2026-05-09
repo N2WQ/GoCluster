@@ -38,6 +38,12 @@ updated only when a PATHP50 diagnostic prediction already computed p50. Normal
 spot display still uses the non-distribution prediction path and does not
 compute p50 for logging.
 
+Add companion `Path p50 shadow` aggregate lines to compare the active
+mean-based glyph class with the p50 shadow glyph class. The log records fixed
+same/different outcome counters, sample-count buckets, band buckets, mode
+family buckets, source buckets, and the mean/p50 glyph-pair matrix. These
+counters are updated only on the existing PATHP50 diagnostic path.
+
 Daily propagation report rotation and scheduled generation read the propagation
 log path. Manual `prop_report -log` remains available for historical system log
 files.
@@ -63,9 +69,13 @@ files.
   - Propagation reports have a dedicated input file.
   - System logs are quieter.
   - PATHP50 aggregate evidence is available during diagnostic runs.
+  - Shadow comparison lines expose whether p50 differs mostly by low sample
+    count, band, mode, source, or broad glyph-pair class.
 - Negative outcomes / risks:
   - A new file sink adds constant startup/runtime overhead.
   - PATHP50 aggregate data is diagnostic-observed, not fleet-wide.
+  - Shadow comparison does not prove correctness without a later outcome proxy;
+    it only shows when the two candidate methods disagree.
   - Operators must look in `data/logs/propagation` for path aggregate lines.
 - Operational impact:
   - New config block: `logging.propagation`.
@@ -78,7 +88,8 @@ Required validation includes:
 
 - config loader tests for propagation log defaults and invalid retention.
 - runtime tests for fixed PATHP50 diagnostic counter bucketing/reset.
-- propagation-report parser tests for `Path p50 diag (5m)`.
+- propagation-report parser tests for `Path p50 diag (5m)` and `Path p50
+  shadow` lines.
 - targeted package tests across config, telnet, internal/cluster,
   internal/propreport, and cmd/prop_report.
 - full repo tests, race check, vet, staticcheck, golangci-lint.

@@ -53,7 +53,9 @@ type reportSummary struct {
 	BandGroups        map[string][]string     `json:"band_groups"`
 	CoverageMedians   map[string]coverageStat `json:"coverage_medians_by_band"`
 	PredictionsByHour []predictionHour        `json:"predictions_by_hour"`
+	P50DiagTotals     p50DiagTotals           `json:"p50_diag_totals"`
 	P50DiagByHour     []p50DiagHour           `json:"p50_diag_by_hour"`
+	P50ShadowTotals   p50ShadowTotals         `json:"p50_shadow_totals"`
 	SourceMixByHour   []sourceMixHour         `json:"source_mix_by_hour"`
 	Thresholds        classificationThreshold `json:"thresholds"`
 }
@@ -125,6 +127,21 @@ type p50DiagTotals struct {
 	N17To99   int
 	N100To499 int
 	NGe500    int
+}
+
+type p50ShadowTotals struct {
+	Observed  int
+	Missing   int
+	Same      int
+	MeanGT    int
+	P50GT     int
+	SevHiLow  int
+	SevHiNone int
+	N         [4]int
+	Band      [12]int
+	Mode      [5]int
+	Source    [7]int
+	Pair      [25]int
 }
 
 type p50DiagHour struct {
@@ -233,6 +250,7 @@ var (
 	weightsRe     = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path weight dist`)
 	predsRe       = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path predictions`)
 	p50DiagRe     = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path p50 diag`)
+	p50ShadowRe   = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path p50 shadow`)
 	sourceMixRe   = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path source mix`)
 	spottersRe    = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path unique spotters`)
 	pairsRe       = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path unique grid pairs`)
@@ -242,6 +260,7 @@ var (
 	bandWeights   = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)\s+t=([\d,]+)\s+<1=([\d,]+)\s+1-2=([\d,]+)\s+2-3=([\d,]+)\s+3-5=([\d,]+)\s+5-10=([\d,]+)\s+>=10=([\d,]+)`)
 	predsFields   = regexp.MustCompile(`\b(total|derived|combined|insufficient|no_sample|low_count|low_weight|stale|cap_limited|cap_would_block)=([\d,]+)`)
 	p50DiagFields = regexp.MustCompile(`\b(observed|missing|d_le_neg6|d_neg5_pos5|d_6_11|d_ge12|n_lt17|n_17_99|n_100_499|n_ge500)=([\d,]+)`)
+	counterFields = regexp.MustCompile(`([A-Za-z0-9_./-]+)=([\d,]+)`)
 	sourceFields  = regexp.MustCompile(`([A-Za-z\-]+)=([\d,]+)`)
 	hourField     = regexp.MustCompile(`hour=(\d{2})`)
 	bandCounts    = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)=([\d,]+)`)
@@ -360,6 +379,102 @@ func parseP50DiagTotals(line string) (p50DiagTotals, bool) {
 		N100To499: values["n_100_499"],
 		NGe500:    values["n_ge500"],
 	}, true
+}
+
+func parseCounterFields(line string) map[string]int {
+	matches := counterFields.FindAllStringSubmatch(line, -1)
+	out := make(map[string]int, len(matches))
+	for _, match := range matches {
+		if len(match) == 3 {
+			out[match[1]] = parseInt(match[2])
+		}
+	}
+	return out
+}
+
+func parseP50ShadowLine(line string, totals *p50ShadowTotals) bool {
+	if totals == nil {
+		return false
+	}
+	values := parseCounterFields(line)
+	if len(values) == 0 {
+		return false
+	}
+	switch {
+	case strings.Contains(line, "Path p50 shadow n "):
+		totals.N[0] = values["n_lt17"]
+		totals.N[1] = values["n_17_99"]
+		totals.N[2] = values["n_100_499"]
+		totals.N[3] = values["n_ge500"]
+	case strings.Contains(line, "Path p50 shadow band "):
+		for i, key := range []string{"160m", "80m", "60m", "40m", "30m", "20m", "17m", "15m", "12m", "10m", "6m", "other"} {
+			totals.Band[i] = values[key]
+		}
+	case strings.Contains(line, "Path p50 shadow mode "):
+		for i, key := range []string{"CW", "FT", "RTTY", "PHONE", "OTHER"} {
+			totals.Mode[i] = values[key]
+		}
+	case strings.Contains(line, "Path p50 shadow source "):
+		for i, key := range []string{"RBN", "RBN-FT", "PSK", "HUMAN", "PEER", "UPSTREAM", "OTHER"} {
+			totals.Source[i] = values[key]
+		}
+	case strings.Contains(line, "Path p50 shadow pair "):
+		classes := []string{"I", "U", "L", "M", "H"}
+		for meanIdx, meanClass := range classes {
+			for p50Idx, p50Class := range classes {
+				totals.Pair[meanIdx*len(classes)+p50Idx] = values[meanClass+"/"+p50Class]
+			}
+		}
+	default:
+		totals.Observed = values["observed"]
+		totals.Missing = values["missing"]
+		totals.Same = values["same"]
+		totals.MeanGT = values["mean_gt"]
+		totals.P50GT = values["p50_gt"]
+		totals.SevHiLow = values["sev_hi_low"]
+		totals.SevHiNone = values["sev_hi_none"]
+	}
+	return true
+}
+
+func addP50DiagTotals(left p50DiagTotals, right p50DiagTotals) p50DiagTotals {
+	left.Observed += right.Observed
+	left.Missing += right.Missing
+	left.DLeNeg6 += right.DLeNeg6
+	left.DNeg5Pos5 += right.DNeg5Pos5
+	left.D6To11 += right.D6To11
+	left.DGe12 += right.DGe12
+	left.NLt17 += right.NLt17
+	left.N17To99 += right.N17To99
+	left.N100To499 += right.N100To499
+	left.NGe500 += right.NGe500
+	return left
+}
+
+func addP50ShadowTotals(left p50ShadowTotals, right p50ShadowTotals) p50ShadowTotals {
+	left.Observed += right.Observed
+	left.Missing += right.Missing
+	left.Same += right.Same
+	left.MeanGT += right.MeanGT
+	left.P50GT += right.P50GT
+	left.SevHiLow += right.SevHiLow
+	left.SevHiNone += right.SevHiNone
+	for i := range left.N {
+		left.N[i] += right.N[i]
+	}
+	for i := range left.Band {
+		left.Band[i] += right.Band[i]
+	}
+	for i := range left.Mode {
+		left.Mode[i] += right.Mode[i]
+	}
+	for i := range left.Source {
+		left.Source[i] += right.Source[i]
+	}
+	for i := range left.Pair {
+		left.Pair[i] += right.Pair[i]
+	}
+	return left
 }
 
 func parseHour(ts string, line string) (int, bool) {
@@ -699,6 +814,7 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 	weightByTS := make(map[string]map[string]weightBins)
 	predByTS := make(map[string]predTotals)
 	p50DiagByTS := make(map[string]p50DiagTotals)
+	p50ShadowByTS := make(map[string]*p50ShadowTotals)
 	sourceMixByHour := make(map[int]*sourceMixHour)
 	spottersByHour := make(map[int]map[string]int)
 	pairsByHour := make(map[int]map[string]int)
@@ -742,6 +858,15 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 			if ok {
 				p50DiagByTS[ts] = totals
 			}
+		}
+		if m := p50ShadowRe.FindStringSubmatch(entry); len(m) == 2 {
+			ts := m[1]
+			totals := p50ShadowByTS[ts]
+			if totals == nil {
+				totals = &p50ShadowTotals{}
+				p50ShadowByTS[ts] = totals
+			}
+			parseP50ShadowLine(entry, totals)
 		}
 		if m := sourceMixRe.FindStringSubmatch(entry); len(m) == 2 {
 			ts := m[1]
@@ -1024,7 +1149,9 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 	}
 
 	p50DiagHours := make(map[int][]p50DiagTotals)
+	var p50DiagTotalsAll p50DiagTotals
 	for ts, totals := range p50DiagByTS {
+		p50DiagTotalsAll = addP50DiagTotals(p50DiagTotalsAll, totals)
 		tsTime, err := time.Parse("2006/01/02 15:04:05", ts)
 		if err != nil {
 			continue
@@ -1072,6 +1199,13 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 			AvgN100To499: float64(n100To499) / float64(count),
 			AvgNGe500:    float64(nGe500) / float64(count),
 		})
+	}
+
+	var p50ShadowTotalsAll p50ShadowTotals
+	for _, totals := range p50ShadowByTS {
+		if totals != nil {
+			p50ShadowTotalsAll = addP50ShadowTotals(p50ShadowTotalsAll, *totals)
+		}
 	}
 
 	sourceMixSummary := make([]sourceMixHour, 0, len(sourceMixByHour))
@@ -1131,7 +1265,9 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 		BandGroups:        filteredGroups,
 		CoverageMedians:   coverageMedians,
 		PredictionsByHour: predSummary,
+		P50DiagTotals:     p50DiagTotalsAll,
 		P50DiagByHour:     p50DiagSummary,
+		P50ShadowTotals:   p50ShadowTotalsAll,
 		SourceMixByHour:   sourceMixSummary,
 		Thresholds: classificationThreshold{
 			StrongRule: "strong if ge10_med >= p75(ge10) and f_med >= p50(f)",
@@ -1220,9 +1356,13 @@ func buildFinalReport(summary reportSummary) string {
 	b.WriteString("Prediction activity by hour (overall)\n\n")
 	b.WriteString(predictionActivitySummary(summary.PredictionsByHour))
 	b.WriteString("\n\n")
-	if len(summary.P50DiagByHour) > 0 {
+	if summary.P50DiagTotals.Observed > 0 {
 		b.WriteString("PATHP50 diagnostic comparison\n\n")
-		b.WriteString(p50DiagSummaryText(summary.P50DiagByHour))
+		b.WriteString(p50DiagSummaryText(summary.P50DiagTotals))
+		if summary.P50ShadowTotals.Observed > 0 {
+			b.WriteString("\n\n")
+			b.WriteString(p50ShadowSummaryText(summary.P50ShadowTotals))
+		}
 		b.WriteString("\n\n")
 	}
 
@@ -1548,27 +1688,25 @@ func predictionActivitySummary(hours []predictionHour) string {
 	return s
 }
 
-func p50DiagSummaryText(hours []p50DiagHour) string {
-	if len(hours) == 0 {
+func p50DiagSummaryText(totals p50DiagTotals) string {
+	if totals.Observed == 0 {
 		return "No PATHP50 diagnostic comparison data recorded for this day."
 	}
-	sort.Slice(hours, func(i, j int) bool { return hours[i].Hour < hours[j].Hour })
-	var observed, missing, dLeNeg6, dNeg5Pos5, d6To11, dGe12, nLt17, n17To99, n100To499, nGe500 float64
-	for _, h := range hours {
-		observed += h.AvgObserved
-		missing += h.AvgMissing
-		dLeNeg6 += h.AvgDLeNeg6
-		dNeg5Pos5 += h.AvgDNeg5Pos5
-		d6To11 += h.AvgD6To11
-		dGe12 += h.AvgDGe12
-		nLt17 += h.AvgNLt17
-		n17To99 += h.AvgN17To99
-		n100To499 += h.AvgN100To499
-		nGe500 += h.AvgNGe500
+	return fmt.Sprintf(
+		"Diagnostic-observed PATHP50 comparisons: observed %d, missing %d. Delta buckets mean-minus-p50: <=-6 %d, -5..5 %d, 6..11 %d, >=12 %d. Sample buckets: n<17 %d, n=17..99 %d, n=100..499 %d, n>=500 %d.",
+		totals.Observed, totals.Missing, totals.DLeNeg6, totals.DNeg5Pos5, totals.D6To11, totals.DGe12, totals.NLt17, totals.N17To99, totals.N100To499, totals.NGe500,
+	)
+}
+
+func p50ShadowSummaryText(totals p50ShadowTotals) string {
+	if totals.Observed == 0 {
+		return "No PATHP50 shadow glyph comparison data recorded for this day."
 	}
 	return fmt.Sprintf(
-		"Diagnostic-observed PATHP50 comparisons: observed %.0f, missing %.0f. Delta buckets mean-minus-p50: <=-6 %.0f, -5..5 %.0f, 6..11 %.0f, >=12 %.0f. Sample buckets: n<17 %.0f, n=17..99 %.0f, n=100..499 %.0f, n>=500 %.0f.",
-		observed, missing, dLeNeg6, dNeg5Pos5, d6To11, dGe12, nLt17, n17To99, n100To499, nGe500,
+		"PATHP50 shadow glyph comparison: same %d, mean stronger %d, p50 stronger %d, severe mean-optimistic %d, severe p50-missing %d. Sample buckets: n<17 %d, n=17..99 %d, n=100..499 %d, n>=500 %d. Mode context: CW %d, FT %d, RTTY %d, PHONE %d, OTHER %d.",
+		totals.Same, totals.MeanGT, totals.P50GT, totals.SevHiLow, totals.SevHiNone,
+		totals.N[0], totals.N[1], totals.N[2], totals.N[3],
+		totals.Mode[0], totals.Mode[1], totals.Mode[2], totals.Mode[3], totals.Mode[4],
 	)
 }
 

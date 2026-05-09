@@ -277,6 +277,16 @@ type Server struct {
 	pathP50DiagMissing    atomic.Uint64                              // PATHP50 diagnostics without usable mean+p50 comparison
 	pathP50DiagDelta      [pathP50DiagDeltaBuckets]atomic.Uint64     // PATHP50 mean-minus-p50 delta buckets
 	pathP50DiagN          [pathP50DiagNBuckets]atomic.Uint64         // PATHP50 selected-observation count buckets
+	pathP50ShadowSame     atomic.Uint64                              // PATHP50 current and shadow glyph classes match
+	pathP50ShadowMeanGT   atomic.Uint64                              // PATHP50 current mean glyph class is stronger than p50
+	pathP50ShadowP50GT    atomic.Uint64                              // PATHP50 shadow p50 glyph class is stronger than current mean
+	pathP50ShadowSevLow   atomic.Uint64                              // PATHP50 mean medium/high while p50 low/unlikely
+	pathP50ShadowSevNone  atomic.Uint64                              // PATHP50 mean medium/high while p50 glyph is missing
+	pathP50ShadowPair     [pathP50ShadowPairBuckets]atomic.Uint64    // PATHP50 mean-vs-p50 glyph class matrix
+	pathP50ShadowN        [pathP50DiagNBuckets]atomic.Uint64         // PATHP50 shadow selected-observation count buckets
+	pathP50ShadowBand     [pathP50ShadowBandBuckets]atomic.Uint64    // PATHP50 shadow comparison band buckets
+	pathP50ShadowMode     [pathP50ShadowModeBuckets]atomic.Uint64    // PATHP50 shadow comparison mode family buckets
+	pathP50ShadowSource   [pathP50ShadowSourceBuckets]atomic.Uint64  // PATHP50 shadow comparison source buckets
 }
 
 // Client represents a connected telnet client session.
@@ -2858,8 +2868,13 @@ type pathPredictionStats struct {
 }
 
 const (
-	pathP50DiagDeltaBuckets = 4
-	pathP50DiagNBuckets     = 4
+	pathP50DiagDeltaBuckets    = 4
+	pathP50DiagNBuckets        = 4
+	pathP50ShadowGlyphCount    = 5
+	pathP50ShadowPairBuckets   = pathP50ShadowGlyphCount * pathP50ShadowGlyphCount
+	pathP50ShadowBandBuckets   = 12
+	pathP50ShadowModeBuckets   = 5
+	pathP50ShadowSourceBuckets = 7
 )
 
 const (
@@ -2876,11 +2891,66 @@ const (
 	pathP50DiagNGe500
 )
 
+const (
+	pathP50ShadowGlyphInsufficient = iota
+	pathP50ShadowGlyphUnlikely
+	pathP50ShadowGlyphLow
+	pathP50ShadowGlyphMedium
+	pathP50ShadowGlyphHigh
+)
+
+const (
+	pathP50ShadowBand160m = iota
+	pathP50ShadowBand80m
+	pathP50ShadowBand60m
+	pathP50ShadowBand40m
+	pathP50ShadowBand30m
+	pathP50ShadowBand20m
+	pathP50ShadowBand17m
+	pathP50ShadowBand15m
+	pathP50ShadowBand12m
+	pathP50ShadowBand10m
+	pathP50ShadowBand6m
+	pathP50ShadowBandOther
+)
+
+const (
+	pathP50ShadowModeCW = iota
+	pathP50ShadowModeFT
+	pathP50ShadowModeRTTY
+	pathP50ShadowModePhone
+	pathP50ShadowModeOther
+)
+
+const (
+	pathP50ShadowSourceRBN = iota
+	pathP50ShadowSourceRBNFT
+	pathP50ShadowSourcePSK
+	pathP50ShadowSourceHuman
+	pathP50ShadowSourcePeer
+	pathP50ShadowSourceUpstream
+	pathP50ShadowSourceOther
+)
+
+type pathP50ShadowStats struct {
+	Same    uint64
+	MeanGT  uint64
+	P50GT   uint64
+	SevLow  uint64
+	SevNone uint64
+	Pair    [pathP50ShadowPairBuckets]uint64
+	N       [pathP50DiagNBuckets]uint64
+	Band    [pathP50ShadowBandBuckets]uint64
+	Mode    [pathP50ShadowModeBuckets]uint64
+	Source  [pathP50ShadowSourceBuckets]uint64
+}
+
 type pathP50DiagStats struct {
 	Observed uint64
 	Missing  uint64
 	Delta    [pathP50DiagDeltaBuckets]uint64
 	N        [pathP50DiagNBuckets]uint64
+	Shadow   pathP50ShadowStats
 }
 
 func (s *Server) recordPathPrediction(res pathreliability.Result, userDerived, dxDerived bool) {
@@ -2924,18 +2994,139 @@ func (s *Server) recordPathPrediction(res pathreliability.Result, userDerived, d
 // recordPathP50Diag records only PATHP50 diagnostics that already computed p50.
 // Normal path display must not call the distribution predictor just to feed
 // this aggregate; it is intentionally diagnostic-observed rather than fleet-wide.
-func (s *Server) recordPathP50Diag(res pathreliability.Result) {
+func (s *Server) recordPathP50Diag(res pathreliability.Result, sp *spot.Spot, band string, mode string, cfg pathreliability.Config) {
 	if s == nil {
 		return
 	}
 	s.pathP50DiagObserved.Add(1)
-	if !res.HasMeanDB || !res.HasP50 {
+	meanGlyph, meanOK := pathP50ShadowGlyphBucket(res.Glyph, cfg)
+	p50Glyph, p50OK := pathP50ShadowGlyphBucket(res.P50Glyph, cfg)
+	if !p50OK && meanOK && pathP50ShadowGlyphStrong(meanGlyph) {
+		s.pathP50ShadowSevNone.Add(1)
+	}
+	if !res.HasMeanDB || !res.HasP50 || !meanOK || !p50OK {
 		s.pathP50DiagMissing.Add(1)
 		return
 	}
 	delta := int(math.Round(res.MeanDB - res.P50DB))
 	s.pathP50DiagDelta[pathP50DiagDeltaBucket(delta)].Add(1)
 	s.pathP50DiagN[pathP50DiagNBucket(res.Count)].Add(1)
+	s.recordPathP50Shadow(meanGlyph, p50Glyph, res.Count, sp, band, mode)
+}
+
+func (s *Server) recordPathP50Shadow(meanGlyph, p50Glyph int, count uint32, sp *spot.Spot, band string, mode string) {
+	if meanGlyph == p50Glyph {
+		s.pathP50ShadowSame.Add(1)
+	} else if meanGlyph > p50Glyph {
+		s.pathP50ShadowMeanGT.Add(1)
+	} else {
+		s.pathP50ShadowP50GT.Add(1)
+	}
+	if pathP50ShadowGlyphStrong(meanGlyph) && (p50Glyph == pathP50ShadowGlyphLow || p50Glyph == pathP50ShadowGlyphUnlikely) {
+		s.pathP50ShadowSevLow.Add(1)
+	}
+	pair := meanGlyph*pathP50ShadowGlyphCount + p50Glyph
+	if pair >= 0 && pair < pathP50ShadowPairBuckets {
+		s.pathP50ShadowPair[pair].Add(1)
+	}
+	s.pathP50ShadowN[pathP50DiagNBucket(count)].Add(1)
+	s.pathP50ShadowBand[pathP50ShadowBandBucket(band)].Add(1)
+	s.pathP50ShadowMode[pathP50ShadowModeBucket(mode)].Add(1)
+	s.pathP50ShadowSource[pathP50ShadowSourceBucket(sp)].Add(1)
+}
+
+func pathP50ShadowGlyphStrong(glyph int) bool {
+	return glyph == pathP50ShadowGlyphMedium || glyph == pathP50ShadowGlyphHigh
+}
+
+func pathP50ShadowGlyphBucket(glyph string, cfg pathreliability.Config) (int, bool) {
+	if glyph == "" {
+		return pathP50ShadowGlyphInsufficient, false
+	}
+	switch glyph {
+	case cfg.GlyphSymbols.High:
+		return pathP50ShadowGlyphHigh, true
+	case cfg.GlyphSymbols.Medium:
+		return pathP50ShadowGlyphMedium, true
+	case cfg.GlyphSymbols.Low:
+		return pathP50ShadowGlyphLow, true
+	case cfg.GlyphSymbols.Unlikely:
+		return pathP50ShadowGlyphUnlikely, true
+	case cfg.GlyphSymbols.Insufficient:
+		return pathP50ShadowGlyphInsufficient, true
+	default:
+		return pathP50ShadowGlyphInsufficient, false
+	}
+}
+
+func pathP50ShadowBandBucket(band string) int {
+	switch strings.TrimSpace(band) {
+	case "160m":
+		return pathP50ShadowBand160m
+	case "80m":
+		return pathP50ShadowBand80m
+	case "60m":
+		return pathP50ShadowBand60m
+	case "40m":
+		return pathP50ShadowBand40m
+	case "30m":
+		return pathP50ShadowBand30m
+	case "20m":
+		return pathP50ShadowBand20m
+	case "17m":
+		return pathP50ShadowBand17m
+	case "15m":
+		return pathP50ShadowBand15m
+	case "12m":
+		return pathP50ShadowBand12m
+	case "10m":
+		return pathP50ShadowBand10m
+	case "6m":
+		return pathP50ShadowBand6m
+	default:
+		return pathP50ShadowBandOther
+	}
+}
+
+func pathP50ShadowModeBucket(mode string) int {
+	mode = strings.TrimSpace(mode)
+	switch {
+	case strings.EqualFold(mode, "CW"):
+		return pathP50ShadowModeCW
+	case strings.EqualFold(mode, "FT8"), strings.EqualFold(mode, "FT4"), strings.EqualFold(mode, "FT2"), strings.EqualFold(mode, "JS8"):
+		return pathP50ShadowModeFT
+	case strings.EqualFold(mode, "RTTY"):
+		return pathP50ShadowModeRTTY
+	case strings.EqualFold(mode, "SSB"), strings.EqualFold(mode, "USB"), strings.EqualFold(mode, "LSB"), strings.EqualFold(mode, "AM"), strings.EqualFold(mode, "FM"):
+		return pathP50ShadowModePhone
+	default:
+		return pathP50ShadowModeOther
+	}
+}
+
+func pathP50ShadowSourceBucket(sp *spot.Spot) int {
+	if sp == nil {
+		return pathP50ShadowSourceOther
+	}
+	switch sp.SourceType {
+	case spot.SourceRBN:
+		if strings.EqualFold(strings.TrimSpace(sp.SourceNode), "RBN-DIGITAL") {
+			return pathP50ShadowSourceRBNFT
+		}
+		return pathP50ShadowSourceRBN
+	case spot.SourceFT8, spot.SourceFT4:
+		return pathP50ShadowSourceRBNFT
+	case spot.SourcePSKReporter:
+		return pathP50ShadowSourcePSK
+	case spot.SourceManual:
+		return pathP50ShadowSourceHuman
+	case spot.SourcePeer:
+		return pathP50ShadowSourcePeer
+	case spot.SourceUpstream:
+		return pathP50ShadowSourceUpstream
+	default:
+		return pathP50ShadowSourceOther
+	}
 }
 
 func pathP50DiagDeltaBucket(delta int) int {
@@ -2976,6 +3167,26 @@ func (s *Server) PathP50DiagStatsSnapshot() pathP50DiagStats {
 	}
 	for i := range out.N {
 		out.N[i] = s.pathP50DiagN[i].Swap(0)
+	}
+	out.Shadow.Same = s.pathP50ShadowSame.Swap(0)
+	out.Shadow.MeanGT = s.pathP50ShadowMeanGT.Swap(0)
+	out.Shadow.P50GT = s.pathP50ShadowP50GT.Swap(0)
+	out.Shadow.SevLow = s.pathP50ShadowSevLow.Swap(0)
+	out.Shadow.SevNone = s.pathP50ShadowSevNone.Swap(0)
+	for i := range out.Shadow.Pair {
+		out.Shadow.Pair[i] = s.pathP50ShadowPair[i].Swap(0)
+	}
+	for i := range out.Shadow.N {
+		out.Shadow.N[i] = s.pathP50ShadowN[i].Swap(0)
+	}
+	for i := range out.Shadow.Band {
+		out.Shadow.Band[i] = s.pathP50ShadowBand[i].Swap(0)
+	}
+	for i := range out.Shadow.Mode {
+		out.Shadow.Mode[i] = s.pathP50ShadowMode[i].Swap(0)
+	}
+	for i := range out.Shadow.Source {
+		out.Shadow.Source[i] = s.pathP50ShadowSource[i].Swap(0)
 	}
 	return out
 }
@@ -3691,7 +3902,7 @@ func (s *Server) pathPredictionForClient(client *Client, sp *spot.Spot, includeD
 	var res pathreliability.Result
 	if includeDistribution {
 		res = s.pathPredictor.PredictWithMinObservationCountAndDistribution(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, now)
-		s.recordPathP50Diag(res)
+		s.recordPathP50Diag(res, sp, band, mode, cfg)
 	} else {
 		res = s.pathPredictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, now)
 	}

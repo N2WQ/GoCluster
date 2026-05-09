@@ -27,10 +27,10 @@ new telnet diagnostic mode, `SET DIAG PATHP50`.
 
 The retained representation is fixed and inline:
 
-- 18 fixed SNR bins: `< -24`, `-24..-21`, 3 dB bins through `21..24`, and
-  `>= 24`.
+- 50 fixed SNR bins: `< -24`, one-dB bins from `-24..-23` through `23..24`,
+  and `>= 24`.
 - one raw histogram lane and one capped histogram lane per bucket.
-- each lane stores decayed effective weight by bin using a fixed `[18]float32`
+- each lane stores decayed effective weight by bin using a fixed `[50]float32`
   array.
 - no per-bin receiver identity slots, no maps, no slices, and no side tables.
 
@@ -76,7 +76,8 @@ preserve comment space.
     count.
 - Negative outcomes / risks:
   - p50 values are bin values, not exact raw SNRs.
-  - Bucket size increases because two fixed histograms are retained per bucket.
+  - Bucket size increases because two fixed 50-bin histograms are retained per
+    bucket.
   - The elapsed-second update path now decays two fixed arrays when p50 shadow
     mode is enabled.
 - Operational impact:
@@ -87,6 +88,10 @@ preserve comment space.
   - Compare p50 and mean diagnostics in live logs and operator reports before
     considering enforcement, threshold changes, or additional distribution
     views.
+  - The first comparison step is a diagnostic-observed shadow aggregate:
+    record current mean glyph class versus p50 glyph class, same/different
+    outcomes, sample-count, band, mode-family, source, and glyph-pair buckets
+    in the propagation log. This does not change active glyphs or PATH filters.
 
 ## Validation
 

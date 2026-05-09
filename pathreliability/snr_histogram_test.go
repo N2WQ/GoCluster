@@ -14,13 +14,13 @@ func TestSNRHistogramBinAssignment(t *testing.T) {
 		{db: -30, want: 0},
 		{db: -24.1, want: 0},
 		{db: -24, want: 1},
-		{db: -21.1, want: 1},
-		{db: -21, want: 2},
-		{db: -0.1, want: 8},
-		{db: 0, want: 9},
-		{db: 23.9, want: 16},
-		{db: 24, want: 17},
-		{db: 30, want: 17},
+		{db: -23.1, want: 1},
+		{db: -23, want: 2},
+		{db: -0.1, want: 24},
+		{db: 0, want: 25},
+		{db: 23.9, want: 48},
+		{db: 24, want: 49},
+		{db: 30, want: 49},
 	}
 	for _, tc := range cases {
 		if got := snrHistogramBinIndex(tc.db); got != tc.want {
@@ -37,8 +37,31 @@ func TestSNRHistogramWeightedP50(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected p50")
 	}
-	if got != -15 {
-		t.Fatalf("p50=%v, want -15", got)
+	if got != -14 {
+		t.Fatalf("p50=%v, want -14", got)
+	}
+}
+
+func TestSNRHistogramShiftedUsesOneDBBins(t *testing.T) {
+	var hist snrHistogram
+	hist.add(snrHistogramBinIndex(-20), 1)
+
+	shifted := hist.shifted(2)
+	got, ok := shifted.p50DB()
+	if !ok {
+		t.Fatalf("expected shifted p50")
+	}
+	if got != -18 {
+		t.Fatalf("shifted p50=%v, want -18", got)
+	}
+
+	underflow := hist.shifted(-5)
+	got, ok = underflow.p50DB()
+	if !ok {
+		t.Fatalf("expected underflow shifted p50")
+	}
+	if got != -24 {
+		t.Fatalf("underflow shifted p50=%v, want -24", got)
 	}
 }
 
@@ -126,12 +149,15 @@ func TestPredictDistributionOnlyWhenRequested(t *testing.T) {
 
 	predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -15, 1, now, false, ReceiverIdentityHash("K1ABC"))
 	plain := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, now)
-	if plain.HasP50 {
+	if plain.HasP50 || plain.P50Glyph != "" {
 		t.Fatalf("plain prediction should not calculate p50")
 	}
 	withDistribution := predictor.PredictWithMinObservationCountAndDistribution(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, now)
 	if !withDistribution.HasP50 || withDistribution.P50DB != -15 {
 		t.Fatalf("distribution prediction p50=%v has=%v, want -15", withDistribution.P50DB, withDistribution.HasP50)
+	}
+	if withDistribution.P50Glyph != withDistribution.Glyph {
+		t.Fatalf("expected p50 glyph %q to match active glyph %q", withDistribution.P50Glyph, withDistribution.Glyph)
 	}
 }
 
