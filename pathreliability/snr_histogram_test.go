@@ -300,10 +300,11 @@ type legacyBucketForSize struct {
 }
 
 func TestBucketRetainedSizeEstimate(t *testing.T) {
-	const estimatedBuckets = 110_000
-	legacySize := unsafe.Sizeof(legacyBucketForSize{})
-	currentSize := unsafe.Sizeof(bucket{})
-	t.Logf("legacy_bucket_size_bytes=%d current_bucket_size_bytes=%d retained_heap_delta_bytes_for_%d_buckets=%d", legacySize, currentSize, estimatedBuckets, (currentSize-legacySize)*estimatedBuckets)
+	const estimatedBuckets int64 = 110_000
+	legacySize := int64(unsafe.Sizeof(legacyBucketForSize{}))
+	currentSize := int64(unsafe.Sizeof(bucket{}))
+	delta := (currentSize - legacySize) * estimatedBuckets
+	t.Logf("legacy_bucket_size_bytes=%d current_bucket_size_bytes=%d retained_heap_delta_bytes_for_%d_buckets=%d", legacySize, currentSize, estimatedBuckets, delta)
 	if currentSize > legacySize {
 		t.Fatalf("bucket retained size grew from %d to %d", legacySize, currentSize)
 	}

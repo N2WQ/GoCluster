@@ -288,10 +288,12 @@ Mode provenance tokens:
 are intentionally short because they must fit in the normal DX-cluster comment
 area:
 
-- `n<count>` is the raw observation count behind the selected path evidence.
-  This is a sample-size indicator, not a decayed confidence score. `n0` means no
-  usable selected observations; `n1` means one selected observation; higher
-  values such as `n18` or `n32` mean a larger evidence base.
+- `n<count>` is the selected observation count behind the selected path
+  evidence. In `shadow` and `off` receiver-cap modes it is raw selected count;
+  in `enforce` mode it is the floored capped effective count. It is a
+  sample-size indicator, not a confidence percent. `n0` means no usable
+  selected observations; `n1` means one selected observation; higher values
+  such as `n18` or `n32` mean a larger evidence base.
 - `w<weight>` is the rounded effective weight after decay, fine/coarse sample
   selection, receive/transmit merge, and reverse-direction discounting. It is
   not dB, SNR, or a percent. A count can be much larger than the weight when the
@@ -303,7 +305,7 @@ area:
 - `a<age>` is the effective age of the selected evidence. Ages under one minute
   are seconds, then rounded up to `m` or `h`.
 - `n<count>|none` means there was no usable selected path sample.
-- `n<count>|lown` means selected evidence existed but the raw observation count
+- `n<count>|lown` means selected evidence existed but the selected observation count
   stayed below the configured minimum.
 - `n<count>|loww` means selected evidence existed but the effective weight
   stayed below the configured minimum.
@@ -323,7 +325,7 @@ Example readings:
 - `n0|none`: no usable selected path sample.
 - `n3|lown`: three selected observations existed, but the configured minimum
   sample size was not met.
-- `n5/r19|lown`: capped receiver evidence had five accepted observations from
+- `n5/r19|lown`: capped receiver evidence had five effective observations from
   nineteen raw observations, and the capped count would not meet the floor.
 - `n5/r19|w3`: capped receiver evidence is shown first, with raw count after
   `/r`, when receiver caps reduced the diagnostic evidence.

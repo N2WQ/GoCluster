@@ -91,7 +91,7 @@ min_observation_count: 30
 receiver_contribution_mode: enforce
 receiver_fine_slots: 6              # Receiver slots retained in fine buckets.
 receiver_coarse_slots: 12           # Receiver slots retained in coarse buckets.
-receiver_max_effective_count: 5     # Max capped observation count one receiver can contribute per bucket.
+receiver_max_effective_count: 5     # Max decayed effective observation count one receiver can contribute per bucket.
 receiver_max_effective_weight: 5.0  # Max capped effective weight one receiver can contribute per bucket.
 
 # Minimum fine weight required before blending fine with coarse (res-1); below this uses coarse only.

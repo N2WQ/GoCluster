@@ -230,10 +230,12 @@ n<count>|<reason>
 ```
 
 - `n<count>` is the selected observation count behind the displayed path
-  decision. It is a sample-size clue, not a confidence percent.
+  decision. In `enforce` receiver-cap mode this is the floored capped effective
+  count; in `shadow` and `off` modes it is raw selected count. It is a
+  sample-size clue, not a confidence percent.
 - `n<capped>/r<raw>` means receiver contribution caps reduced the diagnostic
-  evidence. In the shipped `enforce` mode the capped count and capped weight
-  gate the path class; in `shadow` mode the split is informational.
+  evidence. In the shipped `enforce` mode the capped effective count and capped
+  weight gate the path class; in `shadow` mode the split is informational.
 - `w<weight>` is the rounded effective weight after decay and path selection.
   It is not SNR or dB. Weight is an evidence-strength gate, not the displayed
   path class itself.
@@ -264,7 +266,7 @@ Example readings:
 - `n3|lown`: three selected observations existed, but not enough to emit a
   path class.
 - `n5/r19|lown`: nineteen raw observations existed, but capped receiver
-  evidence would not meet the minimum sample floor.
+  effective evidence would not meet the minimum sample floor.
 - `n5/r19|w3`: capped receiver evidence is shown because one or more receivers
   hit a contribution cap.
 - `n1|loww`: one selected observation existed, but the effective weight was

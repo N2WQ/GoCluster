@@ -94,18 +94,20 @@ When you see a glyph next to a spot, here's what happened behind the scenes:
 
 6. **Apply receiver contribution caps**: The cluster tracks a bounded set of
    receiver identities per bucket. In the shipped `enforce` mode, the count and
-   weight gates use capped evidence. If an operator switches to `shadow`, the
-   displayed glyph uses raw evidence while diagnostics and logs show where the
-   capped evidence would have been stricter.
+   weight gates use capped effective evidence. Old capped receiver evidence
+   decays on the same clock as signal weight, so newer evidence can replace it.
+   If an operator switches to `shadow`, the displayed glyph uses raw evidence
+   while diagnostics and logs show where the capped evidence would have been
+   stricter.
 
 7. **Check evidence floor**: If the selected observation count is below the
    cluster minimum, the system shows a space (insufficient data). Users can make
    their own view stricter with `SET PATHSAMPLES <count>`, but cannot lower the
-   cluster default. In `enforce` mode this check uses capped selected
-   observations; in `shadow` mode it uses raw selected observations. Five-minute
-   propagation logs report this as `low_count`.
+   cluster default. In `enforce` mode this check uses floored capped effective
+   observations; in `shadow` mode it uses raw selected observations.
+   Five-minute propagation logs report this as `low_count`.
 
-8. **Check confidence**: If the combined data weight is below the minimum threshold (default 0.6), the system shows a space (insufficient data) instead of making an unreliable prediction. Five-minute propagation logs report this as `low_weight`.
+8. **Check confidence**: If the combined data weight is below the minimum threshold (default 0.5), the system shows a space (insufficient data) instead of making an unreliable prediction. Five-minute propagation logs report this as `low_weight`.
 
 9. **Map to glyph**: The final signal strength gets compared against mode-specific thresholds to pick the right symbol.
 
@@ -137,8 +139,8 @@ for at least 30 selected observations before showing a path tag. Use
 `SET PATHSAMPLES DEFAULT` to return to the cluster default.
 
 **One receiver cannot carry a bucket by itself**: receiver contribution caps
-limit one receiving station to a shipped maximum of five accepted reports and
-five accepted weight units per bucket. The shipped mode is `enforce`, so caps
+limit one receiving station to a shipped maximum of five decayed effective
+observations and five decayed effective weight units per bucket. The shipped mode is `enforce`, so caps
 gate the active path class.
 
 **Beacons get capped**: The system limits how much any single beacon can dominate the data to prevent bias from loud beacons.
@@ -168,7 +170,7 @@ The system is highly configurable (see [path_reliability.yaml](path_reliability.
 - **Freshness gate**: Maximum selected evidence age as a multiple of band half-life
 - **Noise penalties**: receive-side dB adjustments per environment type
 - **Mode thresholds**: What signal strength qualifies as high/medium/low for each mode
-- **Minimum observation count**: How many selected observations are needed before showing a prediction; in `enforce` mode these are capped selected observations
+- **Minimum observation count**: How many selected observations are needed before showing a prediction; in `enforce` mode these are floored capped effective observations
 - **Minimum weight**: How much data is needed before showing a prediction
 - **Receiver contribution caps**: Whether capped receiver evidence is off, shadowed, or enforced, and how many receiver slots are tracked in fine/coarse buckets
 

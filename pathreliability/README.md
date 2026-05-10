@@ -45,7 +45,7 @@ The shipped config in [`../data/config/path_reliability.yaml`](../data/config/pa
 - `CW: -7`
 - `RTTY: -7`
 - `PSK: -19`
-- `WSPR: -26`
+- `WSPR: 0`
 
 After that conversion, the predictor stores the pre-clamp FT8-equivalent dB
 value in fixed histogram bins. Active glyphs and PATH filters use the selected
@@ -65,28 +65,33 @@ Each bucket stores:
 
 - accumulated weight
 - raw observation count
-- capped receiver-attributed weight and observation count
+- capped receiver-attributed weight and effective observation count
 - fixed raw and capped SNR histograms for active p50 scoring
 - fixed receiver contribution slots
 - last update time
 
 Updates apply exponential decay using the band's half-life before adding the new sample.
-The observation count is not decayed; it is a bounded diagnostic count of how
-many reports contributed to the selected bucket evidence.
+The raw observation count is not decayed; it is a bounded diagnostic count of
+how many reports contributed to the selected bucket evidence. Capped
+receiver-attributed count is a decayed effective count, aligned with capped
+weight and capped SNR bins, so old receiver evidence fades and makes room for
+newer evidence.
 
 Receiver contribution caps are bucket-owned and bounded by the bucket itself:
 fine buckets track up to `receiver_fine_slots` identities and coarse buckets
 track up to `receiver_coarse_slots` identities. The shipped values are `6` and
-`12`. One receiver can add at most `receiver_max_effective_count: 5` accepted
-reports and `receiver_max_effective_weight: 5.0` accepted weight to a bucket's
-capped trust evidence. When the slot set is full, the weakest/oldest slot is
+`12`. One receiver can add at most `receiver_max_effective_count: 5` decayed
+effective observations and `receiver_max_effective_weight: 5.0` decayed
+effective weight to a bucket's capped trust evidence. When a new report has
+only partial remaining count or weight capacity, the capped histogram receives
+the same fraction. When the slot set is full, the weakest/oldest slot is
 reused; this is an approximation, not an unbounded exact unique-receiver set.
 
 `receiver_contribution_mode` controls how capped evidence is used:
 
 - `shadow`: use raw selected evidence for active p50 glyphs and PATH filters,
   but expose whether capped evidence would have blocked the prediction.
-- `enforce`: use capped count and capped weight for the count/weight gates.
+- `enforce`: use capped effective count and capped weight for the count/weight gates.
 - `off`: disable capped tracking and use raw evidence only.
 
 The store always retains fixed raw and capped SNR histograms. Updates touch only
@@ -111,7 +116,7 @@ The shipped config currently uses:
 - `receiver_contribution_mode: enforce`
 - `receiver_fine_slots: 6`
 - `receiver_coarse_slots: 12`
-- `receiver_max_effective_count: 5`
+- `receiver_max_effective_count: 5` decayed effective observations per receiver
 - `receiver_max_effective_weight: 5.0`
 
 ## Sample Selection And Merge
@@ -141,8 +146,8 @@ fade through weaker glyph tiers just because it got older.
 
 The shipped config currently uses:
 
-- `min_effective_weight: 0.6`
-- `min_observation_count: 20`
+- `min_effective_weight: 0.5`
+- `min_observation_count: 30`
 - `min_fine_weight: 5`
 - `fine_only_weight: 20`
 - `reverse_hint_discount: 0.5`
@@ -155,7 +160,7 @@ Telnet users can set a stricter personal observation floor with
 `SET PATHSAMPLES <count>`. That setting is applied as
 `max(min_observation_count, user setting)` and cannot lower the cluster default.
 In `shadow` mode this floor still uses the raw selected observation count; in
-`enforce` mode it uses the capped selected observation count.
+`enforce` mode it uses the floored capped effective observation count.
 
 The receive-side noise table is resolved only by `SET NOISE` class. The same
 location penalty applies on every band and is subtracted from DX-to-user path
@@ -176,7 +181,7 @@ Prediction returns either:
 - `INSUFFICIENT`
 
 `INSUFFICIENT` is returned when there is no usable sample, selected evidence is
-too old for the freshness gate, the selected raw observation count is below
+too old for the freshness gate, the selected observation count is below
 `min_observation_count`, or the merged effective weight stays below
 `min_effective_weight`.
 

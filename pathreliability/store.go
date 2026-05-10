@@ -21,12 +21,13 @@ const (
 
 // receiverSlot is bucket-owned retained state. Slots are deliberately fixed and
 // small so capped receiver trust is bounded by the bucket maps, not by total
-// historical receiver cardinality.
+// historical receiver cardinality. Weight and count are both decayed effective
+// values; neither is a lifetime receiver admission counter.
 type receiverSlot struct {
 	hash       uint64
 	weight     float64
 	lastUpdate int64
-	count      uint32
+	count      float64
 }
 
 // bucket holds decaying histogram evidence for a directional path.
@@ -37,7 +38,7 @@ type bucket struct {
 	lastUpdate int64
 
 	cappedWeight  float64
-	cappedCount   uint32
+	cappedCount   float64
 	rawSNRBins    snrHistogram
 	cappedSNRBins snrHistogram
 	slots         [inlineReceiverSlots]receiverSlot
@@ -69,7 +70,10 @@ type pathStoreStatsSnapshot struct {
 	byBand   []bandCounts
 }
 
-const maxBucketObservationCount uint32 = 1<<32 - 1
+const (
+	maxBucketObservationCount uint32 = 1<<32 - 1
+	effectiveCountEpsilon            = 1e-9
+)
 
 // NewStore constructs a path store with normalized config.
 func NewStore(cfg Config, bands []string) *Store {
@@ -169,11 +173,15 @@ func (b *bucket) updateCapped(weight float64, nowSec int64, decay float64, recei
 		return
 	}
 	b.cappedWeight *= decay
+	b.cappedCount *= decay
 	if snrBin >= 0 && decay != 1 {
 		b.cappedSNRBins.decay(decay)
 	}
 	if b.cappedWeight <= 0 || math.IsNaN(b.cappedWeight) {
 		b.cappedWeight = 0
+	}
+	if b.cappedCount <= 0 || math.IsNaN(b.cappedCount) {
+		b.cappedCount = 0
 	}
 	b.decayReceiverSlots(decay, receiverSlots)
 	if receiverHash == 0 || receiverSlots <= 0 || weight <= 0 || cfg.ReceiverMaxEffectiveWeight <= 0 || cfg.ReceiverMaxEffectiveCount == 0 {
@@ -186,29 +194,32 @@ func (b *bucket) updateCapped(weight float64, nowSec int64, decay float64, recei
 	if slot.hash != receiverHash {
 		*slot = receiverSlot{hash: receiverHash}
 	}
-	if slot.count >= cfg.ReceiverMaxEffectiveCount {
-		return
-	}
 	remainingWeight := cfg.ReceiverMaxEffectiveWeight - slot.weight
-	if remainingWeight <= 0 {
+	if remainingWeight <= effectiveCountEpsilon {
 		return
 	}
-	acceptedWeight := weight
-	if acceptedWeight > remainingWeight {
-		acceptedWeight = remainingWeight
-	}
-	if acceptedWeight <= 0 {
+	remainingCount := float64(cfg.ReceiverMaxEffectiveCount) - slot.count
+	if remainingCount <= effectiveCountEpsilon {
 		return
 	}
+	acceptedFraction := 1.0
+	if remainingCount < acceptedFraction {
+		acceptedFraction = remainingCount
+	}
+	if weightLimitFraction := remainingWeight / weight; weightLimitFraction < acceptedFraction {
+		acceptedFraction = weightLimitFraction
+	}
+	if acceptedFraction <= effectiveCountEpsilon || math.IsNaN(acceptedFraction) {
+		return
+	}
+	acceptedWeight := weight * acceptedFraction
 	slot.weight += acceptedWeight
-	slot.count++
+	slot.count += acceptedFraction
 	slot.lastUpdate = nowSec
 	b.cappedWeight += acceptedWeight
+	b.cappedCount += acceptedFraction
 	if snrBin >= 0 {
 		b.cappedSNRBins.add(snrBin, acceptedWeight)
-	}
-	if b.cappedCount < maxBucketObservationCount {
-		b.cappedCount++
 	}
 }
 
@@ -222,8 +233,15 @@ func (b *bucket) decayReceiverSlots(decay float64, receiverSlots int) {
 			continue
 		}
 		slot.weight *= decay
+		slot.count *= decay
 		if slot.weight < 0 {
 			slot.weight = 0
+		}
+		if slot.count < 0 || math.IsNaN(slot.count) {
+			slot.count = 0
+		}
+		if slot.weight <= effectiveCountEpsilon && slot.count <= effectiveCountEpsilon {
+			*slot = receiverSlot{}
 		}
 	}
 }
@@ -389,7 +407,7 @@ func (s *Store) sample(key uint64, halfLife int, now time.Time) Sample {
 		if cappedWeight <= 0 {
 			cappedWeight = 0
 		}
-		cappedCount = snap.cappedCount
+		cappedCount = effectiveCountToUint32(snap.cappedCount * decay)
 		capLimited = receiverCapLimited(snap.count, cappedCount, rawWeight, cappedWeight)
 	}
 	activeWeight := rawWeight
@@ -464,7 +482,7 @@ func (s *Store) sampleWithDistribution(key uint64, halfLife int, now time.Time) 
 		if cappedWeight <= 0 {
 			cappedWeight = 0
 		}
-		cappedCount = snap.cappedCount
+		cappedCount = effectiveCountToUint32(snap.cappedCount * decay)
 		capLimited = receiverCapLimited(snap.count, cappedCount, rawWeight, cappedWeight)
 	}
 	activeWeight := rawWeight
@@ -510,6 +528,16 @@ func (s *Store) sampleWithDistribution(key uint64, halfLife int, now time.Time) 
 func receiverCapLimited(rawCount uint32, cappedCount uint32, rawWeight float64, cappedWeight float64) bool {
 	const epsilon = 1e-9
 	return rawCount > cappedCount || rawWeight > cappedWeight+epsilon
+}
+
+func effectiveCountToUint32(count float64) uint32 {
+	if count <= 0 || math.IsNaN(count) {
+		return 0
+	}
+	if count >= float64(maxBucketObservationCount) {
+		return maxBucketObservationCount
+	}
+	return uint32(math.Floor(count + effectiveCountEpsilon))
 }
 
 // PurgeStale removes buckets older than stale-after.

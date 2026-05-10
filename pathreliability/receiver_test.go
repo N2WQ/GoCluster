@@ -1,6 +1,7 @@
 package pathreliability
 
 import (
+	"math"
 	"testing"
 	"time"
 )
@@ -136,6 +137,145 @@ func TestReceiverCapEnforceUnattributedDoesNotAddCappedTrust(t *testing.T) {
 	}
 	if res.RawCount != 1 || res.CappedCount != 0 {
 		t.Fatalf("expected raw=1 capped=0, got raw=%d capped=%d", res.RawCount, res.CappedCount)
+	}
+}
+
+func TestReceiverCapEnforceDecayedCountAdmitsNewEvidence(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ReceiverContributionMode = ReceiverContributionEnforce
+	cfg.MinEffectiveWeight = 0.01
+	cfg.MinObservationCount = 1
+	cfg.DefaultHalfLifeSec = 10
+	cfg.StaleAfterHalfLifeMultiplier = 100
+	cfg.MaxPredictionAgeHalfLifeMultiplier = 100
+	predictor := NewPredictor(cfg, []string{"20m"})
+	userCell := CellID(1)
+	dxCell := CellID(2)
+	userCoarse := CellID(3)
+	dxCoarse := CellID(4)
+	now := time.Unix(1_700_000_000, 0).UTC()
+	later := now.Add(20 * time.Second)
+	receiver := ReceiverIdentityHash("N2WQ")
+
+	for i := 0; i < 5; i++ {
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -20, 1.0, now, false, receiver)
+	}
+	for i := 0; i < 4; i++ {
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 20, 1.0, later, false, receiver)
+	}
+
+	res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, later)
+	if res.Source != SourceCombined {
+		t.Fatalf("expected decayed receiver cap to admit fresh evidence, got source=%v reason=%v count=%d capped=%d raw=%d", res.Source, res.InsufficientReason, res.Count, res.CappedCount, res.RawCount)
+	}
+	if !res.HasP50 || res.P50DB != 20 {
+		t.Fatalf("expected fresh strong evidence to move capped p50 to 20, got p50=%v has=%v", res.P50DB, res.HasP50)
+	}
+	if res.Count != 5 || res.CappedCount != 5 || res.RawCount != 9 {
+		t.Fatalf("unexpected counts after decayed admission: count=%d capped=%d raw=%d", res.Count, res.CappedCount, res.RawCount)
+	}
+}
+
+func TestReceiverCapEnforceSingleReceiverEffectiveCountStaysBelowFloor(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ReceiverContributionMode = ReceiverContributionEnforce
+	cfg.MinEffectiveWeight = 0.01
+	cfg.MinObservationCount = 30
+	cfg.DefaultHalfLifeSec = 10
+	cfg.StaleAfterHalfLifeMultiplier = 100
+	cfg.MaxPredictionAgeHalfLifeMultiplier = 100
+	predictor := NewPredictor(cfg, []string{"20m"})
+	userCell := CellID(1)
+	dxCell := CellID(2)
+	userCoarse := CellID(3)
+	dxCoarse := CellID(4)
+	now := time.Unix(1_700_000_000, 0).UTC()
+	receiver := ReceiverIdentityHash("N2WQ")
+
+	for i := 0; i < 60; i++ {
+		at := now.Add(time.Duration(i) * time.Second)
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 20, 1.0, at, false, receiver)
+	}
+
+	res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 30, now.Add(59*time.Second))
+	if res.Source != SourceInsufficient || res.InsufficientReason != InsufficientLowCount {
+		t.Fatalf("expected one receiver to stay below floor, got source=%v reason=%v count=%d capped=%d raw=%d", res.Source, res.InsufficientReason, res.Count, res.CappedCount, res.RawCount)
+	}
+	if res.CappedCount > cfg.ReceiverMaxEffectiveCount {
+		t.Fatalf("single receiver capped effective count=%d exceeded cap=%d", res.CappedCount, cfg.ReceiverMaxEffectiveCount)
+	}
+}
+
+func TestReceiverCapEnforceMultiReceiverDecayedP50Recovers(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ReceiverContributionMode = ReceiverContributionEnforce
+	cfg.MinEffectiveWeight = 0.01
+	cfg.MinObservationCount = 30
+	cfg.DefaultHalfLifeSec = 10
+	cfg.StaleAfterHalfLifeMultiplier = 100
+	cfg.MaxPredictionAgeHalfLifeMultiplier = 100
+	predictor := NewPredictor(cfg, []string{"20m"})
+	userCell := CellID(1)
+	dxCell := CellID(2)
+	userCoarse := CellID(3)
+	dxCoarse := CellID(4)
+	now := time.Unix(1_700_000_000, 0).UTC()
+	later := now.Add(20 * time.Second)
+	receivers := []uint64{
+		ReceiverIdentityHash("N2WQ"),
+		ReceiverIdentityHash("K1ABC"),
+		ReceiverIdentityHash("W1AW"),
+		ReceiverIdentityHash("VE3XYZ"),
+		ReceiverIdentityHash("K3LR"),
+		ReceiverIdentityHash("W3LPL"),
+	}
+
+	for _, receiver := range receivers {
+		for i := 0; i < 5; i++ {
+			predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -20, 1.0, now, false, receiver)
+		}
+	}
+	for _, receiver := range receivers {
+		for i := 0; i < 4; i++ {
+			predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 20, 1.0, later, false, receiver)
+		}
+	}
+
+	res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 30, later)
+	if res.Source != SourceCombined {
+		t.Fatalf("expected receiver-diverse fresh evidence to pass, got source=%v reason=%v count=%d capped=%d raw=%d", res.Source, res.InsufficientReason, res.Count, res.CappedCount, res.RawCount)
+	}
+	if !res.HasP50 || res.P50DB != 20 {
+		t.Fatalf("expected receiver-diverse capped p50 to recover to 20, got p50=%v has=%v", res.P50DB, res.HasP50)
+	}
+	if res.Count != 30 || res.CappedCount != 30 || res.RawCount != 54 {
+		t.Fatalf("unexpected counts after multi-receiver recovery: count=%d capped=%d raw=%d", res.Count, res.CappedCount, res.RawCount)
+	}
+}
+
+func TestReceiverCapFractionalAdmissionKeepsCountAndWeightCoherent(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ReceiverContributionMode = ReceiverContributionEnforce
+	cfg.ReceiverMaxEffectiveCount = 5
+	cfg.ReceiverMaxEffectiveWeight = 2.5
+	store := NewStore(cfg, []string{"20m"})
+	receiverCell := CellID(1)
+	senderCell := CellID(2)
+	receiverCoarse := CellID(3)
+	senderCoarse := CellID(4)
+	now := time.Unix(1_700_000_000, 0).UTC()
+	receiver := ReceiverIdentityHash("N2WQ")
+
+	for i := 0; i < 3; i++ {
+		store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", -5, 1.0, now, receiver)
+	}
+
+	fine, _ := store.Lookup(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", now)
+	if fine.Count != 2 || fine.CappedCount != 2 {
+		t.Fatalf("expected floored fractional capped count 2, got count=%d capped=%d", fine.Count, fine.CappedCount)
+	}
+	if math.Abs(fine.CappedWeight-2.5) > 1e-9 {
+		t.Fatalf("expected capped weight 2.5, got %v", fine.CappedWeight)
 	}
 }
 

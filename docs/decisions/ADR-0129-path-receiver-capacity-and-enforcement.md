@@ -77,4 +77,5 @@ values, but the compiled ceiling remains the retained-state guardrail.
   `customgpt/operator-guide-index.md`
 - Related TSRs:
 - Supersedes / superseded by: supersedes the shipped slot ceiling and
-  enforcement-mode portions of ADR-0095.
+  enforcement-mode portions of ADR-0095; superseded by ADR-0130 for receiver
+  count-decay semantics.
