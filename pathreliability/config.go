@@ -20,8 +20,6 @@ import (
 type Config struct {
 	Enabled                            bool                       `yaml:"enabled"`
 	AllowedBands                       []string                   `yaml:"allowed_bands"`
-	ClampMin                           float64                    `yaml:"clamp_min"`                               // FT8-equiv floor (dB)
-	ClampMax                           float64                    `yaml:"clamp_max"`                               // FT8-equiv ceiling (dB)
 	DefaultHalfLifeSec                 int                        `yaml:"default_half_life_seconds"`               // fallback half-life when band not listed
 	BandHalfLifeSec                    map[string]int             `yaml:"band_half_life_seconds"`                  // per-band overrides
 	StaleAfterSeconds                  int                        `yaml:"stale_after_seconds"`                     // fallback purge when older than this
@@ -58,8 +56,6 @@ var requiredConfigPaths = []yamlconfig.Path{
 	{"glyph_symbols", "low"},
 	{"glyph_symbols", "unlikely"},
 	{"glyph_symbols", "insufficient"},
-	{"clamp_min"},
-	{"clamp_max"},
 	{"default_half_life_seconds"},
 	{"band_half_life_seconds"},
 	{"stale_after_seconds"},
@@ -216,8 +212,6 @@ func DefaultConfig() Config {
 	cfg := Config{
 		Enabled:                            true,
 		AllowedBands:                       []string{"160m", "80m", "60m", "40m", "30m", "20m", "17m", "15m", "12m", "10m", "6m"},
-		ClampMin:                           -25,
-		ClampMax:                           15,
 		DefaultHalfLifeSec:                 300,
 		BandHalfLifeSec:                    map[string]int{},
 		StaleAfterSeconds:                  1800,
@@ -289,9 +283,6 @@ func (c *Config) finalize() error {
 	}
 	if len(c.AllowedBands) == 0 {
 		return fmt.Errorf("allowed_bands must not be empty")
-	}
-	if c.ClampMax <= c.ClampMin {
-		return fmt.Errorf("clamp_max must be greater than clamp_min")
 	}
 	if c.DefaultHalfLifeSec <= 0 {
 		return fmt.Errorf("default_half_life_seconds must be > 0")

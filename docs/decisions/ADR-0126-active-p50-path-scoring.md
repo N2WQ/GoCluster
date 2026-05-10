@@ -4,6 +4,9 @@
 - Date: 2026-05-09
 - Decision Origin: Design
 
+Note: ADR-0128 supersedes the `SET DIAG PATHP50` command and `Path p50 diag`
+aggregate portions of this ADR. Active p50 scoring remains accepted.
+
 ## Context
 Path reliability originally used a decayed linear-power mean for active glyphs
 and PATH filters. PATHP50 diagnostics showed that the previous aggregate and
@@ -28,10 +31,6 @@ uses the selected p50 dB bin directly.
 
 There is no mean fallback. If an otherwise eligible sample has no p50, the
 prediction is insufficient. Enabled scoring always requires the histogram.
-
-`SET DIAG PATHP50` now displays `p<db>n<count>`. Propagation logs retain the
-diagnostic-observed `Path p50 diag` aggregate for observed/missing p50 and
-sample-count buckets.
 
 ## Alternatives considered
 1. Keep the decayed linear-power mean as active scoring.
@@ -63,7 +62,6 @@ sample-count buckets.
 ### Operational impact
 - Active path glyphs and PATH filters may become more conservative on paths with
   a few strong outliers and many weaker reports.
-- `SET DIAG PATHP50` displays `p<db>n<count>`.
 - Slow clients, telnet queues, reconnect handling, and shutdown behavior are
   unchanged.
 
@@ -72,4 +70,4 @@ sample-count buckets.
 - Related tests: `pathreliability/snr_histogram_test.go`, `pathreliability/config_test.go`, `telnet/diag_command_test.go`, `telnet/server_prediction_stats_test.go`, `internal/propreport/report_test.go`
 - Related docs: `README.md`, `docs/OPERATOR_GUIDE.md`, `pathreliability/README.md`, `data/config/path_reliability.yaml`, `customgpt/troubleshooting-index.md`
 - Related TSRs:
-- Supersedes / superseded by: Supersedes ADR-0122 and ADR-0125; supersedes the PATHP50 shadow-comparison portion of ADR-0123.
+- Supersedes / superseded by: Supersedes ADR-0122 and ADR-0125; supersedes the PATHP50 shadow-comparison portion of ADR-0123; superseded by ADR-0128 for PATHP50 diagnostics only.

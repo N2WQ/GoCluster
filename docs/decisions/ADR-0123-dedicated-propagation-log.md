@@ -12,6 +12,10 @@ Note: ADR-0126 supersedes the PATHP50 shadow-comparison portions of this ADR.
 The dedicated propagation log remains accepted, but runtime no longer emits
 `Path p50 shadow` lines.
 
+Note: ADR-0128 supersedes the `Path p50 diag (5m)` aggregate and propagation
+report parsing portions of this ADR. The dedicated propagation log remains
+accepted.
+
 ## Context
 
 Path reliability diagnostics and daily propagation reports previously depended

@@ -1534,18 +1534,6 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 						humanize.Comma(int64(stats.OverrideG)),
 					))
 				}
-				p50Diag := srv.PathP50DiagStatsSnapshot()
-				if p50Diag.Observed > 0 {
-					fileOnly(fmt.Sprintf(
-						"Path p50 diag (5m): observed=%s missing=%s n_lt17=%s n_17_99=%s n_100_499=%s n_ge500=%s",
-						humanize.Comma(int64(p50Diag.Observed)),
-						humanize.Comma(int64(p50Diag.Missing)),
-						humanize.Comma(int64(p50Diag.N[0])),
-						humanize.Comma(int64(p50Diag.N[1])),
-						humanize.Comma(int64(p50Diag.N[2])),
-						humanize.Comma(int64(p50Diag.N[3])),
-					))
-				}
 			}
 			if pathReport != nil {
 				sourceCounts := pathReport.SnapshotSources()

@@ -82,11 +82,10 @@ const (
 	diagModeSource
 	diagModeConfidence
 	diagModePath
-	diagModePathP50
 	diagModeMode
 )
 
-const diagUsage = "Usage: SET DIAG <OFF|DEDUPE|SOURCE|CONF|PATH|PATHP50|MODE>\n"
+const diagUsage = "Usage: SET DIAG <OFF|DEDUPE|SOURCE|CONF|PATH|MODE>\n"
 
 const maxUserPathMinObservationCount = 10000
 
@@ -273,9 +272,6 @@ type Server struct {
 	pathPredCapWouldBlock atomic.Uint64                              // Shadow predictions that receiver caps would block
 	pathPredOverrideR     atomic.Uint64                              // R overrides applied
 	pathPredOverrideG     atomic.Uint64                              // G overrides applied
-	pathP50DiagObserved   atomic.Uint64                              // PATHP50 diagnostic predictions observed
-	pathP50DiagMissing    atomic.Uint64                              // PATHP50 diagnostics without usable p50 value
-	pathP50DiagN          [pathP50DiagNBuckets]atomic.Uint64         // PATHP50 selected-observation count buckets
 }
 
 // Client represents a connected telnet client session.
@@ -415,7 +411,7 @@ func (c *Client) getDiagMode() diagMode {
 	}
 	mode := diagMode(c.diagMode.Load())
 	switch mode {
-	case diagModeDedupe, diagModeSource, diagModeConfidence, diagModePath, diagModePathP50, diagModeMode:
+	case diagModeDedupe, diagModeSource, diagModeConfidence, diagModePath, diagModeMode:
 		return mode
 	default:
 		return diagModeOff
@@ -1608,9 +1604,6 @@ func (s *Server) handleDiagCommand(client *Client, line string) (string, bool) {
 	case "PATH":
 		client.setDiagMode(diagModePath)
 		return "Diagnostic comments: PATH\n", true
-	case "PATHP50":
-		client.setDiagMode(diagModePathP50)
-		return "Diagnostic comments: PATHP50\n", true
 	case "MODE":
 		client.setDiagMode(diagModeMode)
 		return "Diagnostic comments: MODE\n", true
@@ -2856,23 +2849,6 @@ type pathPredictionStats struct {
 	OverrideG     uint64
 }
 
-const (
-	pathP50DiagNBuckets = 4
-)
-
-const (
-	pathP50DiagNLt17 = iota
-	pathP50DiagN17To99
-	pathP50DiagN100To499
-	pathP50DiagNGe500
-)
-
-type pathP50DiagStats struct {
-	Observed uint64
-	Missing  uint64
-	N        [pathP50DiagNBuckets]uint64
-}
-
 func (s *Server) recordPathPrediction(res pathreliability.Result, userDerived, dxDerived bool) {
 	if s == nil {
 		return
@@ -2909,47 +2885,6 @@ func (s *Server) recordPathPrediction(res pathreliability.Result, userDerived, d
 			}
 		}
 	}
-}
-
-// recordPathP50Diag records PATHP50 diagnostic observations. Active path
-// prediction now computes p50 for the glyph, so this aggregate tracks diagnostic
-// use rather than a mean-vs-shadow comparison.
-func (s *Server) recordPathP50Diag(res pathreliability.Result) {
-	if s == nil {
-		return
-	}
-	s.pathP50DiagObserved.Add(1)
-	if !res.HasP50 {
-		s.pathP50DiagMissing.Add(1)
-		return
-	}
-	s.pathP50DiagN[pathP50DiagNBucket(res.Count)].Add(1)
-}
-
-func pathP50DiagNBucket(n uint32) int {
-	switch {
-	case n < 17:
-		return pathP50DiagNLt17
-	case n < 100:
-		return pathP50DiagN17To99
-	case n < 500:
-		return pathP50DiagN100To499
-	default:
-		return pathP50DiagNGe500
-	}
-}
-
-func (s *Server) PathP50DiagStatsSnapshot() pathP50DiagStats {
-	if s == nil {
-		return pathP50DiagStats{}
-	}
-	var out pathP50DiagStats
-	out.Observed = s.pathP50DiagObserved.Swap(0)
-	out.Missing = s.pathP50DiagMissing.Swap(0)
-	for i := range out.N {
-		out.N[i] = s.pathP50DiagN[i].Swap(0)
-	}
-	return out
 }
 
 func (s *Server) PathPredictionStatsSnapshot() pathPredictionStats {
@@ -3577,8 +3512,8 @@ func (s *Server) formatSpotForClientWithDiag(client *Client, sp *spot.Spot, mode
 	}
 	var prediction pathPrediction
 	havePrediction := false
-	if mode == diagModePath || mode == diagModePathP50 || (s != nil && s.pathPredictor != nil && s.pathDisplay) {
-		prediction, havePrediction = s.pathPredictionForClient(client, sp, mode == diagModePathP50)
+	if mode == diagModePath || (s != nil && s.pathPredictor != nil && s.pathDisplay) {
+		prediction, havePrediction = s.pathPredictionForClient(client, sp)
 	}
 	base := sp.FormatDXClusterWithComment(diagTagForSpot(client, sp, mode, prediction, havePrediction))
 	if s == nil || s.pathPredictor == nil || !s.pathDisplay {
@@ -3607,14 +3542,14 @@ type pathPrediction struct {
 }
 
 func (s *Server) pathGlyphsForClient(client *Client, sp *spot.Spot) string {
-	prediction, ok := s.pathPredictionForClient(client, sp, false)
+	prediction, ok := s.pathPredictionForClient(client, sp)
 	if !ok {
 		return ""
 	}
 	return s.pathGlyphFromPrediction(prediction)
 }
 
-func (s *Server) pathPredictionForClient(client *Client, sp *spot.Spot, includeDistribution bool) (pathPrediction, bool) {
+func (s *Server) pathPredictionForClient(client *Client, sp *spot.Spot) (pathPrediction, bool) {
 	if s == nil || client == nil || sp == nil || s.pathPredictor == nil {
 		return pathPrediction{}, false
 	}
@@ -3660,13 +3595,7 @@ func (s *Server) pathPredictionForClient(client *Client, sp *spot.Spot, includeD
 	now := s.now()
 	noisePenalty := s.noisePenaltyForClass(state.noiseClass)
 	minObservationCount := effectivePathMinObservationCount(state, cfg)
-	var res pathreliability.Result
-	if includeDistribution {
-		res = s.pathPredictor.PredictWithMinObservationCountAndDistribution(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, now)
-		s.recordPathP50Diag(res)
-	} else {
-		res = s.pathPredictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, now)
-	}
+	res := s.pathPredictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, now)
 	s.recordPathPrediction(res, state.gridDerived, sp.DXMetadata.GridDerived)
 	return pathPrediction{
 		result:   res,
@@ -3791,8 +3720,6 @@ func diagTagForSpot(client *Client, sp *spot.Spot, mode diagMode, prediction pat
 		return diagConfidenceTag(sp)
 	case diagModePath:
 		return diagPathTag(prediction, havePrediction)
-	case diagModePathP50:
-		return diagPathP50Tag(prediction, havePrediction)
 	case diagModeMode:
 		return diagModeTag(sp)
 	default:
@@ -3904,33 +3831,10 @@ func diagPathTag(prediction pathPrediction, havePrediction bool) string {
 	return count + "|w" + weight + "|a" + diagAgeToken(res.AgeSec)
 }
 
-func diagPathP50Tag(prediction pathPrediction, havePrediction bool) string {
-	if !havePrediction {
-		return "p?n0"
-	}
-	res := prediction.result
-	p50 := "?"
-	if res.HasP50 {
-		p50 = diagPathDBToken(res.P50DB)
-	}
-	return "p" + p50 + diagPathCompactCountToken(res)
-}
-
-func diagPathDBToken(value float64) string {
-	if math.IsNaN(value) || math.IsInf(value, 0) {
-		return "?"
-	}
-	return strconv.FormatInt(int64(math.Round(value)), 10)
-}
-
 func diagPathCountToken(res pathreliability.Result) string {
 	if res.CapLimited {
 		return "n" + strconv.FormatUint(uint64(res.CappedCount), 10) + "/r" + strconv.FormatUint(uint64(res.RawCount), 10)
 	}
-	return "n" + strconv.FormatUint(uint64(res.Count), 10)
-}
-
-func diagPathCompactCountToken(res pathreliability.Result) string {
 	return "n" + strconv.FormatUint(uint64(res.Count), 10)
 }
 

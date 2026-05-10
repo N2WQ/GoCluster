@@ -48,103 +48,11 @@ func TestPathPredictionStatsSnapshotSplit(t *testing.T) {
 	}
 }
 
-func TestPathP50DiagStatsSnapshotBuckets(t *testing.T) {
-	s := &Server{}
-	cfg := pathreliability.DefaultConfig()
-	s.recordPathP50Diag(pathreliability.Result{
-		Source:   pathreliability.SourceCombined,
-		Glyph:    cfg.GlyphSymbols.Medium,
-		P50DB:    -15,
-		HasP50:   true,
-		P50Glyph: cfg.GlyphSymbols.Medium,
-		Count:    19,
-	})
-	s.recordPathP50Diag(pathreliability.Result{
-		Source:   pathreliability.SourceCombined,
-		Glyph:    cfg.GlyphSymbols.Unlikely,
-		P50DB:    -12,
-		HasP50:   true,
-		P50Glyph: cfg.GlyphSymbols.Medium,
-		Count:    3,
-	})
-	s.recordPathP50Diag(pathreliability.Result{
-		Source:   pathreliability.SourceCombined,
-		Glyph:    cfg.GlyphSymbols.High,
-		P50DB:    -13,
-		HasP50:   true,
-		P50Glyph: cfg.GlyphSymbols.Low,
-		Count:    525,
-	})
-	s.recordPathP50Diag(pathreliability.Result{
-		Source:   pathreliability.SourceCombined,
-		Glyph:    cfg.GlyphSymbols.High,
-		P50DB:    -7,
-		HasP50:   true,
-		P50Glyph: cfg.GlyphSymbols.Medium,
-		Count:    150,
-	})
-	s.recordPathP50Diag(pathreliability.Result{Glyph: cfg.GlyphSymbols.High, Count: 7})
-
-	stats := s.PathP50DiagStatsSnapshot()
-	if stats.Observed != 5 || stats.Missing != 1 {
-		t.Fatalf("unexpected observed/missing: %+v", stats)
-	}
-	if stats.N[pathP50DiagNLt17] != 1 ||
-		stats.N[pathP50DiagN17To99] != 1 ||
-		stats.N[pathP50DiagN100To499] != 1 ||
-		stats.N[pathP50DiagNGe500] != 1 {
-		t.Fatalf("unexpected n buckets: %+v", stats.N)
-	}
-	after := s.PathP50DiagStatsSnapshot()
-	if after.Observed != 0 || after.Missing != 0 {
-		t.Fatalf("expected snapshot reset, got %+v", after)
-	}
-}
-
-func TestPathP50DiagRecordsInsufficientRawP50WithoutShadowComparison(t *testing.T) {
-	s := &Server{}
-	cfg := pathreliability.DefaultConfig()
-	s.recordPathP50Diag(pathreliability.Result{
-		Source:             pathreliability.SourceInsufficient,
-		InsufficientReason: pathreliability.InsufficientLowCount,
-		Glyph:              cfg.GlyphSymbols.Insufficient,
-		P50DB:              -7,
-		HasP50:             true,
-		P50Glyph:           cfg.GlyphSymbols.High,
-		Count:              7,
-	})
-
-	stats := s.PathP50DiagStatsSnapshot()
-	if stats.Observed != 1 || stats.Missing != 0 {
-		t.Fatalf("unexpected observed/missing: %+v", stats)
-	}
-	if stats.N[pathP50DiagNLt17] != 1 {
-		t.Fatalf("expected raw p50 diagnostic n bucket to remain recorded, n=%+v", stats.N)
-	}
-}
-
 func BenchmarkRecordPathPrediction(b *testing.B) {
 	s := &Server{}
 	res := pathreliability.Result{Source: pathreliability.SourceCombined, Weight: 2}
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		s.recordPathPrediction(res, false, false)
-	}
-}
-
-func BenchmarkRecordPathP50Diag(b *testing.B) {
-	s := &Server{}
-	cfg := pathreliability.DefaultConfig()
-	res := pathreliability.Result{
-		Source:   pathreliability.SourceCombined,
-		Glyph:    cfg.GlyphSymbols.Medium,
-		P50DB:    -15,
-		HasP50:   true,
-		P50Glyph: cfg.GlyphSymbols.Low,
-		Count:    119,
-	}
-	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		s.recordPathP50Diag(res)
 	}
 }

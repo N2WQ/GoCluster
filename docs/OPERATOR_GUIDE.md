@@ -175,7 +175,7 @@ Log in with your callsign. Useful first commands:
 - `SET GRID <grid>`: set your 4-6 character Maidenhead grid.
 - `SET NOISE QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL`: set receive noise class.
 - `SET PATHSAMPLES <count|DEFAULT>`: require more path samples than the cluster default, or clear your personal override.
-- `SET DIAG OFF|DEDUPE|SOURCE|CONF|PATH|PATHP50|MODE`: replace spot comments with compact per-session diagnostics.
+- `SET DIAG OFF|DEDUPE|SOURCE|CONF|PATH|MODE`: replace spot comments with compact per-session diagnostics.
 - `SET SOLAR 15|30|60|OFF`: opt into or stop periodic solar summaries.
 - `DIALECT`, `DIALECT LIST`, `DIALECT <go|cc>`: show or switch command dialect.
 - `SHOW FILTER`: display active filters.
@@ -270,38 +270,6 @@ Example readings:
 - `n1|loww`: one selected observation existed, but the effective weight was
   below the minimum.
 - `n32|w1`: large raw sample count but low rounded effective weight.
-
-### Reading `SET DIAG PATHP50`
-
-`SET DIAG PATHP50` is a second path diagnostic view. It does not change glyphs
-or PATH filters. The normal path glyph is still shown in the fixed tail column.
-The diagnostic comment shows the active p50 SNR statistic and compact selected
-observation count.
-
-```text
-p<db>n<count>
-```
-
-- `p<db>` is the p50 SNR bin lower edge in FT8-equivalent dB. It uses fixed
-  1 dB bins, so it is a compact bin value rather than an exact raw report.
-- `n<count>` is the compact selected observation count for this prediction.
-  PATHP50 omits the longer `n<capped>/r<raw>` form; use `SET DIAG PATH` when
-  raw/capped detail matters.
-- Positive values omit a plus sign to preserve comment space. Unavailable
-  values are shown as `?`.
-
-When operators are actively using `SET DIAG PATHP50`, the propagation log can
-also include `Path p50 diag (5m)` aggregates. Those counters are
-diagnostic-observed only: they summarize spots for which PATHP50 already
-diagnostics were requested. Normal glyph and PATH filter scoring already uses
-p50, but this aggregate does not count every normal spot unless operators are
-requesting PATHP50 diagnostics for those spots.
-
-Example readings:
-
-- `p-15n19`: p50 lower edge is -15 dB with 19 selected observations.
-- `p3n42`: p50 lower edge is 3 dB with 42 selected observations.
-- `p?n0`: no p50 is available.
 
 ## Logs And Health
 

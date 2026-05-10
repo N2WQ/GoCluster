@@ -153,12 +153,8 @@ func TestPredictAlwaysUsesActiveP50Distribution(t *testing.T) {
 	if !plain.HasP50 || plain.P50DB != -15 {
 		t.Fatalf("plain prediction p50=%v has=%v, want -15", plain.P50DB, plain.HasP50)
 	}
-	withDistribution := predictor.PredictWithMinObservationCountAndDistribution(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, now)
-	if !withDistribution.HasP50 || withDistribution.P50DB != -15 {
-		t.Fatalf("distribution prediction p50=%v has=%v, want -15", withDistribution.P50DB, withDistribution.HasP50)
-	}
-	if withDistribution.P50Glyph != withDistribution.Glyph {
-		t.Fatalf("expected p50 glyph %q to match active glyph %q", withDistribution.P50Glyph, withDistribution.Glyph)
+	if plain.P50Glyph != plain.Glyph {
+		t.Fatalf("expected p50 glyph %q to match active glyph %q", plain.P50Glyph, plain.Glyph)
 	}
 }
 

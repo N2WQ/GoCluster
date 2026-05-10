@@ -133,13 +133,6 @@ func (p *Predictor) PredictWithMinObservationCount(userCell, dxCell CellID, user
 	return p.predictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, now)
 }
 
-// PredictWithMinObservationCountAndDistribution is kept for PATHP50 callers.
-// Active prediction always uses the p50 distribution, so this returns the same
-// result as PredictWithMinObservationCount.
-func (p *Predictor) PredictWithMinObservationCountAndDistribution(userCell, dxCell CellID, userCoarse, dxCoarse CellID, band string, mode string, noisePenalty float64, minObservationCount int, now time.Time) Result {
-	return p.predictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, now)
-}
-
 func (p *Predictor) predictWithMinObservationCount(userCell, dxCell CellID, userCoarse, dxCoarse CellID, band string, mode string, noisePenalty float64, minObservationCount int, now time.Time) Result {
 	insufficient := "?"
 	if p != nil && p.cfg.GlyphSymbols.Insufficient != "" {

@@ -284,6 +284,19 @@ func TestLoadFileRejectsMissingRequiredYAMLSettings(t *testing.T) {
 	}
 }
 
+func TestLoadFileRejectsRemovedClampKeys(t *testing.T) {
+	path := writeTempConfigOverlay(t, `
+clamp_min: -25
+`)
+	_, err := LoadFile(path)
+	if err == nil {
+		t.Fatalf("expected removed clamp_min key to fail")
+	}
+	if !strings.Contains(err.Error(), "field clamp_min not found") {
+		t.Fatalf("expected strict YAML error for clamp_min, got %v", err)
+	}
+}
+
 func TestLoadFileRejectsNullRequiredYAMLSetting(t *testing.T) {
 	path := writeTempConfigOverlay(t, `
 mode_offsets:

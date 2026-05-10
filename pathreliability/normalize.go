@@ -1,7 +1,7 @@
 // File role: Owns path reliability signal normalization and sample blending.
 // Crawler notes: Start here for mode-to-FT8-equivalent SNR conversion, glyph
-// class mapping, noise penalties, and fine/coarse sample
-// selection used by prediction and PATHP50 diagnostics.
+// class mapping, noise penalties, and fine/coarse sample selection used by
+// prediction.
 // Related docs: pathreliability/README.md, data/config/path_reliability.yaml.
 // Related tests: pathreliability/*normalize*_test.go, pathreliability/*p50*_test.go.
 package pathreliability

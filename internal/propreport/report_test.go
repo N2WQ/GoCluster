@@ -34,39 +34,6 @@ func TestParsePredictionTotalsWithAndWithoutStale(t *testing.T) {
 	}
 }
 
-func TestParseP50DiagTotals(t *testing.T) {
-	line := "2026/05/08 13:20:00 Path p50 diag (5m): observed=1,200 missing=10 n_lt17=3 n_17_99=197 n_100_499=700 n_ge500=290"
-	got, ok := parseP50DiagTotals(line)
-	if !ok {
-		t.Fatalf("expected p50 diag totals to parse")
-	}
-	if got.Observed != 1200 || got.Missing != 10 || got.NLt17 != 3 || got.N17To99 != 197 || got.N100To499 != 700 || got.NGe500 != 290 {
-		t.Fatalf("unexpected p50 diag totals: %+v", got)
-	}
-}
-
-func FuzzParseP50DiagTotals(f *testing.F) {
-	f.Add("2026/05/08 13:20:00 Path p50 diag (5m): observed=1,200 missing=10 n_lt17=3 n_17_99=197 n_100_499=700 n_ge500=290")
-	f.Add("not a p50 line")
-	f.Fuzz(func(t *testing.T, line string) {
-		_, _ = parseP50DiagTotals(line)
-	})
-}
-
-func TestP50DiagSummaryTextMarksDiagnosticObserved(t *testing.T) {
-	got := p50DiagSummaryText(p50DiagTotals{
-		Observed:  10,
-		Missing:   1,
-		N100To499: 5,
-	})
-	if !strings.Contains(got, "Diagnostic-observed PATHP50 data") {
-		t.Fatalf("expected diagnostic-observed wording, got %q", got)
-	}
-	if !strings.Contains(got, "n=100..499 5") {
-		t.Fatalf("expected p50 aggregate values, got %q", got)
-	}
-}
-
 func TestPredictionActivitySummarySeparatesCountAndWeightLimits(t *testing.T) {
 	got := predictionActivitySummary([]predictionHour{
 		{Hour: "01:00", AvgTotal: 100, AvgCombined: 20, AvgInsufficient: 80, AvgLowCount: 60, AvgLowWeight: 10},

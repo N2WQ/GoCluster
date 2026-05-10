@@ -35,8 +35,7 @@ GoCluster behavior without creating a second maintained copy of the docs.
   file-output behavior.
 - For logging questions, distinguish system logs, propagation logs, optional
   dropped-call logs, and file-only event logs. Propagation/path aggregates live
-  in `logging.propagation.dir`; PATHP50 diagnostic aggregate lines are
-  diagnostic-observed only and summarize sessions that requested PATHP50.
+  in `logging.propagation.dir`.
   Login-attempt, reputation-drop, telnet lifecycle, ingest lifecycle, and peer
   lifecycle event streams are separate daily files and should not be described
   as console/UI events.

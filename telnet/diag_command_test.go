@@ -44,7 +44,7 @@ func TestHandleDiagCommandOnRejected(t *testing.T) {
 	if !handled {
 		t.Fatalf("expected SET DIAG ON to be handled as usage")
 	}
-	if !strings.Contains(resp, "Usage: SET DIAG <OFF|DEDUPE|SOURCE|CONF|PATH|PATHP50|MODE>") {
+	if !strings.Contains(resp, "Usage: SET DIAG <OFF|DEDUPE|SOURCE|CONF|PATH|MODE>") {
 		t.Fatalf("expected usage response, got %q", resp)
 	}
 	if client.getDiagMode() != diagModeOff {
@@ -65,22 +65,6 @@ func TestHandleDiagCommandMode(t *testing.T) {
 	}
 	if client.getDiagMode() != diagModeMode {
 		t.Fatalf("expected diag mode MODE")
-	}
-}
-
-func TestHandleDiagCommandPathP50(t *testing.T) {
-	server := NewServer(ServerOptions{}, nil)
-	client := &Client{}
-
-	resp, handled := server.handleDiagCommand(client, "SET DIAG PATHP50")
-	if !handled {
-		t.Fatalf("expected SET DIAG PATHP50 to be handled")
-	}
-	if !strings.Contains(resp, "PATHP50") {
-		t.Fatalf("expected PATHP50 response, got %q", resp)
-	}
-	if client.getDiagMode() != diagModePathP50 {
-		t.Fatalf("expected diag mode PATHP50")
 	}
 }
 
@@ -210,115 +194,6 @@ func TestDiagPathTagShowsCappedAndRawCountsWhenLimited(t *testing.T) {
 	got := diagPathTag(prediction, true)
 	if got != "n5/r19|w5|a12" {
 		t.Fatalf("unexpected capped path diagnostic: %q", got)
-	}
-}
-
-func TestDiagPathP50TagShowsP50AndCounts(t *testing.T) {
-	prediction := pathPrediction{
-		result: pathreliability.Result{
-			Source:       pathreliability.SourceCombined,
-			P50DB:        -15,
-			HasP50:       true,
-			Glyph:        ">",
-			Count:        19,
-			RawCount:     19,
-			CappedCount:  5,
-			CappedWeight: 5,
-			CapLimited:   true,
-		},
-	}
-	got := diagPathP50Tag(prediction, true)
-	if got != "p-15n19" {
-		t.Fatalf("unexpected PATHP50 diagnostic: %q", got)
-	}
-	prediction.result = pathreliability.Result{
-		Source: pathreliability.SourceCombined,
-		P50DB:  3,
-		HasP50: true,
-		Glyph:  "=",
-		Count:  42,
-	}
-	if got := diagPathP50Tag(prediction, true); got != "p3n42" {
-		t.Fatalf("unexpected positive PATHP50 diagnostic: %q", got)
-	}
-	prediction.result = pathreliability.Result{
-		Source: pathreliability.SourceCombined,
-		Glyph:  "-",
-		Count:  7,
-	}
-	if got := diagPathP50Tag(prediction, true); got != "p?n7" {
-		t.Fatalf("unexpected missing p50 PATHP50 diagnostic: %q", got)
-	}
-	if got := diagPathP50Tag(pathPrediction{}, false); got != "p?n0" {
-		t.Fatalf("unexpected no-prediction PATHP50 diagnostic: %q", got)
-	}
-}
-
-func TestDiagPathP50TagFitsReportedModeCommentSpace(t *testing.T) {
-	prediction := pathPrediction{
-		result: pathreliability.Result{
-			Source: pathreliability.SourceCombined,
-			P50DB:  -24,
-			HasP50: true,
-			Count:  1355,
-		},
-	}
-	tag := diagPathP50Tag(prediction, true)
-	if tag != "p-24n1355" {
-		t.Fatalf("unexpected compact PATHP50 diagnostic: %q", tag)
-	}
-
-	sp := spot.NewSpot("N3QE", "AA4PA-#", 3585.60, "RTTY")
-	sp.Report = 24
-	sp.HasReport = true
-	sp.Time = time.Date(2025, time.January, 7, 4, 9, 0, 0, time.UTC)
-	sp.DXMetadata.Grid = "FM19"
-	sp.Confidence = "S"
-
-	line := sp.FormatDXClusterWithComment(tag)
-	if !strings.Contains(line, tag) {
-		t.Fatalf("expected compact PATHP50 diagnostic to fit, got %q", line)
-	}
-	if len(strings.TrimRight(line, "\r\n")) != spot.CurrentDXClusterLayout().LineLength {
-		t.Fatalf("expected fixed-width spot line, got len=%d line=%q", len(strings.TrimRight(line, "\r\n")), line)
-	}
-}
-
-func TestFormatSpotForClientPathP50DiagComment(t *testing.T) {
-	requireH3Mappings(t)
-	now := time.Date(2025, time.January, 7, 4, 9, 0, 0, time.UTC)
-	predictor := newTestPathPredictor()
-	server := NewServer(ServerOptions{
-		PathPredictor:      predictor,
-		PathDisplayEnabled: true,
-	}, nil)
-	server.nowFn = func() time.Time { return now }
-	client := &Client{grid: "FN31"}
-	client.setDiagMode(diagModePathP50)
-
-	userCell := pathreliability.EncodeCell("FN31")
-	dxCell := pathreliability.EncodeCell("FN32")
-	userCoarse := pathreliability.EncodeCoarseCell("FN31")
-	dxCoarse := pathreliability.EncodeCoarseCell("FN32")
-	receiver := pathreliability.ReceiverIdentityHash("W1AW")
-	predictor.UpdateWithReceiverHash(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -15, 1, now.Add(-10*time.Second), false, receiver)
-	predictor.UpdateWithReceiverHash(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -11, 1, now.Add(-5*time.Second), false, receiver)
-
-	sp := spot.NewSpot("K1ABC", "W1AW", 14074.0, "FT8")
-	sp.Time = now
-	sp.Band = "20m"
-	sp.DXMetadata.Grid = "FN32"
-	sp.Confidence = "V"
-
-	line := server.formatSpotForClient(client, sp)
-	if !strings.Contains(line, "p-15n2") {
-		t.Fatalf("expected PATHP50 diagnostic in output, got %q", line)
-	}
-	if strings.Contains(line, "p+") {
-		t.Fatalf("expected positive PATHP50 values to omit plus signs, got %q", line)
-	}
-	if strings.Contains(line, "|") {
-		t.Fatalf("expected compact PATHP50 diagnostic without separators, got %q", line)
 	}
 }
 

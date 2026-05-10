@@ -48,10 +48,6 @@ glyph_symbols:
   unlikely: "-"
   insufficient: " "
 
-# Clamp FT8-equivalent dB before assigning fixed histogram bins.
-clamp_min: -25
-clamp_max: 25
-
 # Decay half-life in seconds when no per-band override applies.
 default_half_life_seconds: 420
 

@@ -157,16 +157,6 @@ Telnet users can set a stricter personal observation floor with
 In `shadow` mode this floor still uses the raw selected observation count; in
 `enforce` mode it uses the capped selected observation count.
 
-`SET DIAG PATHP50` is an operator-visible view of the active p50 score. It shows
-`p<db>n<count>`, where `p` is the active p50 SNR bin and `n` is the compact
-selected count for the prediction. PATHP50 omits the longer `n<capped>/r<raw>`
-form to preserve comment space; use `SET DIAG PATH` when raw/capped detail
-matters. Positive values omit a plus sign.
-
-The propagation log can include `Path p50 diag (5m)` while operators are using
-PATHP50. That aggregate is diagnostic-observed only: it summarizes sessions
-that requested PATHP50 and records missing p50 plus selected-count buckets.
-
 The receive-side noise table is resolved only by `SET NOISE` class. The same
 location penalty applies on every band and is subtracted from DX-to-user path
 evidence at prediction time.

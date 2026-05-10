@@ -1,7 +1,7 @@
 // File role: Owns fixed-bin SNR histograms for active p50 path scoring.
 // Crawler notes: Start here when changing p50 bin geometry, retained bucket
-// size, or the CPU cost of PATHP50 distribution scans. The arrays are embedded
-// in path buckets, so bin-count changes directly affect retained heap.
+// size, or active p50 scoring cost. The arrays are embedded in path buckets, so
+// bin-count changes directly affect retained heap.
 // Related docs: pathreliability/README.md, docs/decisions/ADR-0126-active-p50-path-scoring.md.
 // Related tests: pathreliability/snr_histogram_test.go, pathreliability/store_bench_test.go.
 package pathreliability
