@@ -99,8 +99,11 @@ the selected bin unless time has advanced, and p50 scans the fixed array. These
 histograms are required for active glyphs and PATH filters.
 
 The SNR bins are fixed in code: `< -24`, one-dB bins from `-24..-23` through
-`23..24`, and `>= 24`. Displayed p50 values use the bin's compact lower-edge
-value; underflow displays as `-24` and overflow displays as `24`.
+`23..24`, and `>= 24`. Finite bins use their midpoint as the displayed p50
+representative; underflow displays as `-24` and overflow displays as `24`.
+When an exact 50/50 median boundary falls between two non-empty bins, p50 uses
+the average of the two bin representatives so balanced bimodal evidence maps to
+the typical middle rather than always choosing the weaker bin.
 
 Five-minute propagation logs split insufficient path prediction outcomes into
 `no_sample`, `low_count`, `low_weight`, and `stale`. `low_count` maps to

@@ -43,6 +43,16 @@ func snrHistogramBinLowerDB(index int) float64 {
 	return snrHistogramMinDB + float64(index-1)*snrHistogramStepDB
 }
 
+func snrHistogramBinRepresentativeDB(index int) float64 {
+	if index <= snrHistogramUnderflowBin {
+		return snrHistogramMinDB
+	}
+	if index >= snrHistogramOverflowBin {
+		return snrHistogramMaxDB
+	}
+	return snrHistogramBinLowerDB(index) + float64(snrHistogramStepDB)/2
+}
+
 func (h *snrHistogram) add(bin int, weight float64) {
 	if h == nil || bin < 0 || bin >= snrHistogramBinCount || weight <= 0 || math.IsNaN(weight) {
 		return
@@ -107,8 +117,26 @@ func (h snrHistogram) p50DB() (float64, bool) {
 	for i, weight := range h {
 		cumulative += weight
 		if cumulative >= target {
-			return snrHistogramBinLowerDB(i), true
+			selected := snrHistogramBinRepresentativeDB(i)
+			if cumulative == target {
+				if next, ok := h.nextNonEmptyRepresentativeDB(i + 1); ok {
+					return (selected + next) / 2, true
+				}
+			}
+			return selected, true
 		}
 	}
-	return snrHistogramBinLowerDB(snrHistogramOverflowBin), true
+	return snrHistogramBinRepresentativeDB(snrHistogramOverflowBin), true
+}
+
+func (h snrHistogram) nextNonEmptyRepresentativeDB(start int) (float64, bool) {
+	if start < 0 {
+		start = 0
+	}
+	for i := start; i < len(h); i++ {
+		if h[i] > 0 {
+			return snrHistogramBinRepresentativeDB(i), true
+		}
+	}
+	return 0, false
 }

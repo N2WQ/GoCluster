@@ -6,6 +6,8 @@
 
 Note: ADR-0128 supersedes the `SET DIAG PATHP50` command and `Path p50 diag`
 aggregate portions of this ADR. Active p50 scoring remains accepted.
+ADR-0131 supersedes the lower-edge p50 representative and exact median-boundary
+behavior while preserving fixed-bin active p50 scoring.
 
 ## Context
 Path reliability originally used a decayed linear-power mean for active glyphs
@@ -54,7 +56,7 @@ prediction is insufficient. Enabled scoring always requires the histogram.
   histogram array.
 
 ### Risks
-- P50 values are bin lower edges, not exact raw SNRs.
+- P50 values are fixed-bin representatives, not exact raw SNRs.
 - Existing SNR thresholds were inherited from mode tables and still need field
   calibration against observed operator outcomes.
 - Old propagation reports are not part of current runtime scoring.
@@ -70,4 +72,4 @@ prediction is insufficient. Enabled scoring always requires the histogram.
 - Related tests: `pathreliability/snr_histogram_test.go`, `pathreliability/config_test.go`, `telnet/diag_command_test.go`, `telnet/server_prediction_stats_test.go`, `internal/propreport/report_test.go`
 - Related docs: `README.md`, `docs/OPERATOR_GUIDE.md`, `pathreliability/README.md`, `data/config/path_reliability.yaml`, `customgpt/troubleshooting-index.md`
 - Related TSRs:
-- Supersedes / superseded by: Supersedes ADR-0122 and ADR-0125; supersedes the PATHP50 shadow-comparison portion of ADR-0123; superseded by ADR-0128 for PATHP50 diagnostics only.
+- Supersedes / superseded by: Supersedes ADR-0122 and ADR-0125; supersedes the PATHP50 shadow-comparison portion of ADR-0123; superseded by ADR-0128 for PATHP50 diagnostics only and ADR-0131 for p50 representative and exact-boundary behavior.

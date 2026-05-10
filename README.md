@@ -373,6 +373,9 @@ Important operational notes:
   DEFAULT` clears that personal override.
 - Stale evidence becomes `INSUFFICIENT`; age alone does not demote a strong
   path through weaker glyph tiers.
+- Active p50 uses midpoint representatives for fixed SNR bins. Balanced
+  weak/strong evidence uses the middle between both selected bin representatives
+  instead of always choosing the weaker bin.
 - Receiver contribution caps are shipped in `enforce` mode. Normal glyphs and
   PATH filters use capped selected evidence, while `SET DIAG PATH` and
   five-minute propagation logs expose when caps reduced raw evidence.

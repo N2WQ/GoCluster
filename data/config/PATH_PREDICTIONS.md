@@ -109,7 +109,11 @@ When you see a glyph next to a spot, here's what happened behind the scenes:
 
 8. **Check confidence**: If the combined data weight is below the minimum threshold (default 0.5), the system shows a space (insufficient data) instead of making an unreliable prediction. Five-minute propagation logs report this as `low_weight`.
 
-9. **Map to glyph**: The final signal strength gets compared against mode-specific thresholds to pick the right symbol.
+9. **Map to glyph**: The selected p50 signal strength gets compared against
+   mode-specific thresholds to pick the right symbol. Fixed histogram bins use
+   midpoint representatives, and exact 50/50 splits between two non-empty bins
+   use the average of both representatives so balanced weak/strong evidence
+   reflects the typical middle.
 
 ## How to Use This Information
 

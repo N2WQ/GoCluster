@@ -82,7 +82,7 @@ min_effective_weight: 0.5
 # Minimum selected observations required to report a glyph; below this returns glyph_symbols.insufficient.
 # In shadow/off receiver contribution modes this uses raw selected observations.
 # In enforce mode this uses capped selected observations.
-min_observation_count: 30
+min_observation_count: 23
 
 # Receiver contribution caps limit how much one receiving station can add to a
 # bucket's trust evidence. "shadow" uses raw selected evidence for active glyphs
@@ -125,30 +125,30 @@ mode_thresholds:
     low: -14
     unlikely: -17
   cw:
-    high: 0
-    medium: -5
-    low: -9
-    unlikely: -12
+    high: -1
+    medium: -6
+    low: -10
+    unlikely: -14
   rtty:
-    high: 12
-    medium: 4
-    low: 0
-    unlikely: -3
+    high: -1
+    medium: -6
+    low: -10
+    unlikely: -14
   psk:
     high: 5
     medium: 0
     low: -4
     unlikely: -7
   usb:
-    high: 22
-    medium: 17
-    low: 13
-    unlikely: 10
+    high: 10
+    medium: 5
+    low: 0
+    unlikely: -5
   lsb:
-    high: 22
-    medium: 17
-    low: 13
-    unlikely: 10
+    high: 10
+    medium: 5
+    low: 0
+    unlikely: -5
 
 # Fallback glyph thresholds in FT8-equivalent dB (used when a mode is missing above).
 glyph_thresholds:

@@ -168,8 +168,8 @@ func TestReceiverCapEnforceDecayedCountAdmitsNewEvidence(t *testing.T) {
 	if res.Source != SourceCombined {
 		t.Fatalf("expected decayed receiver cap to admit fresh evidence, got source=%v reason=%v count=%d capped=%d raw=%d", res.Source, res.InsufficientReason, res.Count, res.CappedCount, res.RawCount)
 	}
-	if !res.HasP50 || res.P50DB != 20 {
-		t.Fatalf("expected fresh strong evidence to move capped p50 to 20, got p50=%v has=%v", res.P50DB, res.HasP50)
+	if !res.HasP50 || res.P50DB != 20.5 {
+		t.Fatalf("expected fresh strong evidence to move capped p50 to 20.5, got p50=%v has=%v", res.P50DB, res.HasP50)
 	}
 	if res.Count != 5 || res.CappedCount != 5 || res.RawCount != 9 {
 		t.Fatalf("unexpected counts after decayed admission: count=%d capped=%d raw=%d", res.Count, res.CappedCount, res.RawCount)
@@ -245,11 +245,42 @@ func TestReceiverCapEnforceMultiReceiverDecayedP50Recovers(t *testing.T) {
 	if res.Source != SourceCombined {
 		t.Fatalf("expected receiver-diverse fresh evidence to pass, got source=%v reason=%v count=%d capped=%d raw=%d", res.Source, res.InsufficientReason, res.Count, res.CappedCount, res.RawCount)
 	}
-	if !res.HasP50 || res.P50DB != 20 {
-		t.Fatalf("expected receiver-diverse capped p50 to recover to 20, got p50=%v has=%v", res.P50DB, res.HasP50)
+	if !res.HasP50 || res.P50DB != 20.5 {
+		t.Fatalf("expected receiver-diverse capped p50 to recover to 20.5, got p50=%v has=%v", res.P50DB, res.HasP50)
 	}
 	if res.Count != 30 || res.CappedCount != 30 || res.RawCount != 54 {
 		t.Fatalf("unexpected counts after multi-receiver recovery: count=%d capped=%d raw=%d", res.Count, res.CappedCount, res.RawCount)
+	}
+}
+
+func TestReceiverCapEnforceEvenSplitUsesTypicalMiddleP50(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ReceiverContributionMode = ReceiverContributionEnforce
+	cfg.MinEffectiveWeight = 0.01
+	cfg.MinObservationCount = 1
+	predictor := NewPredictor(cfg, []string{"20m"})
+	userCell := CellID(1)
+	dxCell := CellID(2)
+	userCoarse := CellID(3)
+	dxCoarse := CellID(4)
+	now := time.Unix(1_700_000_000, 0).UTC()
+	weakReceiver := ReceiverIdentityHash("WEAK")
+	strongReceiver := ReceiverIdentityHash("STRONG")
+
+	for i := 0; i < 5; i++ {
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -20, 1.0, now, false, weakReceiver)
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -14, 1.0, now, false, strongReceiver)
+	}
+
+	res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, now)
+	if res.Source != SourceCombined {
+		t.Fatalf("expected capped even split to pass, got source=%v reason=%v count=%d capped=%d raw=%d", res.Source, res.InsufficientReason, res.Count, res.CappedCount, res.RawCount)
+	}
+	if !res.HasP50 || res.P50DB != -16.5 {
+		t.Fatalf("expected capped even-split p50=-16.5, got p50=%v has=%v", res.P50DB, res.HasP50)
+	}
+	if res.Class != classMedium || res.Glyph != cfg.GlyphSymbols.Medium {
+		t.Fatalf("expected MEDIUM capped even-split glyph, got class=%q glyph=%q", res.Class, res.Glyph)
 	}
 }
 
