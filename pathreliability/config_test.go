@@ -154,8 +154,8 @@ func TestDefaultReceiverContributionCaps(t *testing.T) {
 	if cfg.ReceiverContributionMode != ReceiverContributionShadow {
 		t.Fatalf("default receiver contribution mode = %q, want %q", cfg.ReceiverContributionMode, ReceiverContributionShadow)
 	}
-	if cfg.ReceiverFineSlots != 4 || cfg.ReceiverCoarseSlots != 8 {
-		t.Fatalf("default receiver slots fine=%d coarse=%d, want fine=4 coarse=8", cfg.ReceiverFineSlots, cfg.ReceiverCoarseSlots)
+	if cfg.ReceiverFineSlots != 6 || cfg.ReceiverCoarseSlots != 12 {
+		t.Fatalf("default receiver slots fine=%d coarse=%d, want fine=6 coarse=12", cfg.ReceiverFineSlots, cfg.ReceiverCoarseSlots)
 	}
 	if cfg.ReceiverMaxEffectiveCount != 5 {
 		t.Fatalf("default receiver max effective count = %d, want 5", cfg.ReceiverMaxEffectiveCount)
@@ -211,9 +211,9 @@ func TestLoadFileRejectsInvalidReceiverContributionCaps(t *testing.T) {
 		want string
 	}{
 		{name: "fine slots zero", body: "receiver_fine_slots: 0\n", want: "receiver_fine_slots"},
-		{name: "fine slots too large", body: "receiver_fine_slots: 5\n", want: "receiver_fine_slots"},
+		{name: "fine slots too large", body: "receiver_fine_slots: 7\n", want: "receiver_fine_slots"},
 		{name: "coarse slots zero", body: "receiver_coarse_slots: 0\n", want: "receiver_coarse_slots"},
-		{name: "coarse slots too large", body: "receiver_coarse_slots: 9\n", want: "receiver_coarse_slots"},
+		{name: "coarse slots too large", body: "receiver_coarse_slots: 13\n", want: "receiver_coarse_slots"},
 		{name: "max count zero", body: "receiver_max_effective_count: 0\n", want: "receiver_max_effective_count"},
 		{name: "max weight zero", body: "receiver_max_effective_weight: 0\n", want: "receiver_max_effective_weight"},
 	}

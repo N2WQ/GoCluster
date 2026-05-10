@@ -86,4 +86,5 @@ interners, goroutines, queues, or persistence records.
 - Related tests: `pathreliability/receiver_test.go`, `pathreliability/config_test.go`, `telnet/diag_command_test.go`, `telnet/server_prediction_stats_test.go`, `internal/propreport/report_test.go`
 - Related docs: `data/config/path_reliability.yaml`, `pathreliability/README.md`, `README.md`, `docs/OPERATOR_GUIDE.md`, `customgpt/common-questions.md`, `customgpt/operator-guide-index.md`
 - Related TSRs:
-- Supersedes / superseded by:
+- Supersedes / superseded by: ADR-0129 supersedes the shipped slot ceiling and
+  enforcement-mode portions of this decision.

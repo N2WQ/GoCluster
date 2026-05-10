@@ -11,6 +11,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 |---|---|---|---|---|---|---|---|
 | ADR-0001 | <title> | Proposed | YYYY-MM-DD | <area> | - | - | `docs/decisions/ADR-0001-<slug>.md` |
+| ADR-0129 | Path Receiver Capacity And Enforcement | Accepted | 2026-05-10 | pathreliability, config, retained state | ADR-0095 (slot ceiling and enforcement mode) | - | `docs/decisions/ADR-0129-path-receiver-capacity-and-enforcement.md` |
 | ADR-0128 | Remove PATHP50 Diagnostics And Clamp Config | Accepted | 2026-05-10 | pathreliability, telnet diagnostics, config, reports | ADR-0126 PATHP50 diagnostics; ADR-0123 Path p50 diag aggregate | - | `docs/decisions/ADR-0128-remove-pathp50-diagnostics-and-clamp-config.md` |
 | ADR-0127 | Location-Specific Path Noise Penalties | Accepted | 2026-05-09 | pathreliability, config, telnet, reports | ADR-0124 | - | `docs/decisions/ADR-0127-location-specific-path-noise-penalties.md` |
 | ADR-0126 | Active P50 Path Scoring | Accepted | 2026-05-09 | pathreliability, telnet diagnostics, propagation logs | ADR-0122; ADR-0125; ADR-0123 PATHP50 shadow-comparison portion | ADR-0128 (PATHP50 diagnostics only) | `docs/decisions/ADR-0126-active-p50-path-scoring.md` |
@@ -44,7 +45,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR-0098 | Support-Agent Raw GitHub Source URLs | Accepted | 2026-05-02 | docs, customgpt | - | - | `docs/decisions/ADR-0098-support-agent-raw-github-source-urls.md` |
 | ADR-0097 | YAML Ownership Boundary Documentation | Accepted | 2026-05-01 | config, docs, customgpt | - | - | `docs/decisions/ADR-0097-yaml-ownership-boundary-docs.md` |
 | ADR-0096 | Path Prediction Low Count Logging | Accepted | 2026-04-30 | pathreliability, telnet diagnostics, reports | - | - | `docs/decisions/ADR-0096-path-prediction-low-count-logging.md` |
-| ADR-0095 | Path Reliability Receiver Contribution Caps | Accepted | 2026-04-30 | pathreliability, config, telnet diagnostics, reports | - | - | `docs/decisions/ADR-0095-path-reliability-receiver-contribution-caps.md` |
+| ADR-0095 | Path Reliability Receiver Contribution Caps | Accepted | 2026-04-30 | pathreliability, config, telnet diagnostics, reports | - | ADR-0129 (slot ceiling and enforcement mode) | `docs/decisions/ADR-0095-path-reliability-receiver-contribution-caps.md` |
 | ADR-0094 | Support-Agent Documentation Impact Gate | Accepted | 2026-04-30 | workflow, docs, customgpt | ADR-0092 (extends compact strict workflow) | - | `docs/decisions/ADR-0094-support-agent-doc-impact-gate.md` |
 | ADR-0093 | File-Only Connection and Gate Event Logs | Accepted | 2026-04-30 | logging, telnet, ingest, peer, reputation | - | - | `docs/decisions/ADR-0093-file-only-connection-and-gate-event-logs.md` |
 | ADR-0092 | Codex Token-Efficient Strict Workflow | Accepted | 2026-04-30 | workflow, Codex | - | - | `docs/decisions/ADR-0092-codex-token-efficient-strict-workflow.md` |

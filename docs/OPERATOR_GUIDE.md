@@ -229,19 +229,19 @@ Insufficient evidence is shown as:
 n<count>|<reason>
 ```
 
-- `n<count>` is the raw number of selected observations behind the displayed
-  path decision. It is a sample-size clue, not a confidence percent.
+- `n<count>` is the selected observation count behind the displayed path
+  decision. It is a sample-size clue, not a confidence percent.
 - `n<capped>/r<raw>` means receiver contribution caps reduced the diagnostic
-  evidence. In the shipped `shadow` mode this is informational; in `enforce`
-  mode the capped count and capped weight gate the path class.
+  evidence. In the shipped `enforce` mode the capped count and capped weight
+  gate the path class; in `shadow` mode the split is informational.
 - `w<weight>` is the rounded effective weight after decay and path selection.
   It is not SNR or dB. Weight is an evidence-strength gate, not the displayed
   path class itself.
 - `a<age>` is the effective age of the selected evidence. Bare numbers are
   seconds; `m` and `h` mean minutes and hours.
 - `none` means no usable selected sample existed.
-- `lown` means selected samples existed, but their raw observation count was
-  below the configured minimum.
+- `lown` means selected samples existed, but their observation count was below
+  the configured minimum.
 - `loww` means selected samples existed, but their effective weight was below
   the configured minimum.
 - `stale` means selected samples existed, but the selected evidence was too old
@@ -259,7 +259,7 @@ fields remain the important ones: count and effective weight or reason.
 
 Example readings:
 
-- `n18|w7`: 18 selected raw observations, rounded effective weight 7.
+- `n18|w7`: 18 selected observations, rounded effective weight 7.
 - `n0|none`: no usable selected sample.
 - `n3|lown`: three selected observations existed, but not enough to emit a
   path class.
@@ -269,7 +269,7 @@ Example readings:
   hit a contribution cap.
 - `n1|loww`: one selected observation existed, but the effective weight was
   below the minimum.
-- `n32|w1`: large raw sample count but low rounded effective weight.
+- `n32|w1`: large selected count but low rounded effective weight.
 
 ## Logs And Health
 

@@ -76,8 +76,8 @@ many reports contributed to the selected bucket evidence.
 
 Receiver contribution caps are bucket-owned and bounded by the bucket itself:
 fine buckets track up to `receiver_fine_slots` identities and coarse buckets
-track up to `receiver_coarse_slots` identities. The shipped values are `4` and
-`8`. One receiver can add at most `receiver_max_effective_count: 5` accepted
+track up to `receiver_coarse_slots` identities. The shipped values are `6` and
+`12`. One receiver can add at most `receiver_max_effective_count: 5` accepted
 reports and `receiver_max_effective_weight: 5.0` accepted weight to a bucket's
 capped trust evidence. When the slot set is full, the weakest/oldest slot is
 reused; this is an approximation, not an unbounded exact unique-receiver set.
@@ -108,9 +108,9 @@ The shipped config currently uses:
 - `stale_after_half_life_multiplier: 3`
 - `stale_after_seconds: 1800` as the fallback purge window
 - `max_prediction_age_half_life_multiplier: 1.25` as a display/filter freshness gate
-- `receiver_contribution_mode: shadow`
-- `receiver_fine_slots: 4`
-- `receiver_coarse_slots: 8`
+- `receiver_contribution_mode: enforce`
+- `receiver_fine_slots: 6`
+- `receiver_coarse_slots: 12`
 - `receiver_max_effective_count: 5`
 - `receiver_max_effective_weight: 5.0`
 
@@ -142,7 +142,7 @@ fade through weaker glyph tiers just because it got older.
 The shipped config currently uses:
 
 - `min_effective_weight: 0.6`
-- `min_observation_count: 19`
+- `min_observation_count: 20`
 - `min_fine_weight: 5`
 - `fine_only_weight: 20`
 - `reverse_hint_discount: 0.5`

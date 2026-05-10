@@ -80,7 +80,7 @@ func TestReceiverCapEnforceFailsSingleReceiverLowCount(t *testing.T) {
 	}
 }
 
-func TestReceiverCapEnforcePassesFourReceiversAtDefaultFloor(t *testing.T) {
+func TestReceiverCapEnforcePassesReceiversAtDefaultFloor(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.ReceiverContributionMode = ReceiverContributionEnforce
 	cfg.MinEffectiveWeight = 0.1
@@ -96,6 +96,8 @@ func TestReceiverCapEnforcePassesFourReceiversAtDefaultFloor(t *testing.T) {
 		ReceiverIdentityHash("K1ABC"),
 		ReceiverIdentityHash("W1AW"),
 		ReceiverIdentityHash("VE3XYZ"),
+		ReceiverIdentityHash("K3LR"),
+		ReceiverIdentityHash("W3LPL"),
 	}
 
 	for i := 0; i < 20; i++ {
@@ -104,7 +106,7 @@ func TestReceiverCapEnforcePassesFourReceiversAtDefaultFloor(t *testing.T) {
 
 	res := predictor.Predict(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, now)
 	if res.Source != SourceCombined {
-		t.Fatalf("expected four capped receivers to pass, got source=%v reason=%v count=%d", res.Source, res.InsufficientReason, res.Count)
+		t.Fatalf("expected capped receivers to pass, got source=%v reason=%v count=%d", res.Source, res.InsufficientReason, res.Count)
 	}
 	if res.Count != 20 || res.CappedCount != 20 {
 		t.Fatalf("expected capped selected count 20, got count=%d capped=%d", res.Count, res.CappedCount)
@@ -143,7 +145,7 @@ func TestReceiverCapCoarseBucketsUseExtraSlots(t *testing.T) {
 	now := time.Now().UTC()
 	receiverCoarse := CellID(3)
 	senderCoarse := CellID(4)
-	for i := 0; i < 8; i++ {
+	for i := 0; i < maxCoarseReceiverSlots; i++ {
 		store.UpdateWithReceiverHash(InvalidCell, InvalidCell, receiverCoarse, senderCoarse, "20m", -5, 1.0, now, uint64(i+1))
 	}
 
@@ -159,7 +161,7 @@ func TestReceiverCapCoarseBucketsUseExtraSlots(t *testing.T) {
 		sh.mu.RUnlock()
 		t.Fatalf("expected coarse bucket to allocate extra receiver slots")
 	}
-	for i := 0; i < 4; i++ {
+	for i := 0; i < maxCoarseReceiverSlots-inlineReceiverSlots; i++ {
 		if b.extraSlots[i].hash == 0 {
 			sh.mu.RUnlock()
 			t.Fatalf("expected extra slot %d to be populated", i)

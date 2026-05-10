@@ -102,8 +102,8 @@ const (
 	ReceiverContributionShadow  = "shadow"
 	ReceiverContributionEnforce = "enforce"
 
-	maxFineReceiverSlots   = 4
-	maxCoarseReceiverSlots = 8
+	maxFineReceiverSlots   = 6
+	maxCoarseReceiverSlots = 12
 )
 
 // GlyphThresholds defines FT8-equiv dB cutoffs for glyphs.
@@ -220,8 +220,8 @@ func DefaultConfig() Config {
 		MinEffectiveWeight:                 1.0,
 		MinObservationCount:                19,
 		ReceiverContributionMode:           ReceiverContributionShadow,
-		ReceiverFineSlots:                  4,
-		ReceiverCoarseSlots:                8,
+		ReceiverFineSlots:                  6,
+		ReceiverCoarseSlots:                12,
 		ReceiverMaxEffectiveCount:          5,
 		ReceiverMaxEffectiveWeight:         5.0,
 		MinFineWeight:                      5.0,

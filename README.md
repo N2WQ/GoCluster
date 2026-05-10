@@ -318,7 +318,7 @@ different path logic.
 
 Example readings:
 
-- `n18|w7`: 18 selected raw observations, rounded effective weight 7. The age
+- `n18|w7`: 18 selected observations, rounded effective weight 7. The age
   token may be clipped if it does not fit before the fixed tail.
 - `n0|none`: no usable selected path sample.
 - `n3|lown`: three selected observations existed, but the configured minimum
@@ -329,7 +329,7 @@ Example readings:
   `/r`, when receiver caps reduced the diagnostic evidence.
 - `n1|loww`: one selected observation existed, but the effective weight was
   below the minimum.
-- `n32|w1`: large raw sample count but low rounded effective weight. Treat this
+- `n32|w1`: large selected count but low rounded effective weight. Treat this
   as useful but thinner evidence than `w7`.
 
 ## Path Reliability Tags
@@ -371,10 +371,9 @@ Important operational notes:
   DEFAULT` clears that personal override.
 - Stale evidence becomes `INSUFFICIENT`; age alone does not demote a strong
   path through weaker glyph tiers.
-- Receiver contribution caps are shipped in `shadow` mode. Normal glyphs still
-  use raw selected evidence, while `SET DIAG PATH` and five-minute propagation
-  logs expose where capped receiver evidence would be stricter.
-  Operators can switch to enforcement in `path_reliability.yaml`.
+- Receiver contribution caps are shipped in `enforce` mode. Normal glyphs and
+  PATH filters use capped selected evidence, while `SET DIAG PATH` and
+  five-minute propagation logs expose when caps reduced raw evidence.
 - Five-minute `Path predictions (5m)` logs split insufficient evidence into
   `no_sample`, `low_count`, `low_weight`, and `stale`; `low_count` means the
   selected sample count missed the observation floor, while `low_weight` means

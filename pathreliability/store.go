@@ -16,7 +16,7 @@ const (
 	defaultShards = 64
 	ln2           = 0.6931471805599453
 
-	inlineReceiverSlots = 4
+	inlineReceiverSlots = 6
 )
 
 // receiverSlot is bucket-owned retained state. Slots are deliberately fixed and
@@ -41,7 +41,7 @@ type bucket struct {
 	rawSNRBins    snrHistogram
 	cappedSNRBins snrHistogram
 	slots         [inlineReceiverSlots]receiverSlot
-	// extraSlots is allocated only for coarse buckets that use slots 5-8.
+	// extraSlots is allocated only for coarse buckets that use slots 7-12.
 	extraSlots *[maxCoarseReceiverSlots - inlineReceiverSlots]receiverSlot
 }
 

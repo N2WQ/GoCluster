@@ -82,15 +82,15 @@ min_effective_weight: 0.5
 # Minimum selected observations required to report a glyph; below this returns glyph_symbols.insufficient.
 # In shadow/off receiver contribution modes this uses raw selected observations.
 # In enforce mode this uses capped selected observations.
-min_observation_count: 19
+min_observation_count: 30
 
 # Receiver contribution caps limit how much one receiving station can add to a
 # bucket's trust evidence. "shadow" uses raw selected evidence for active glyphs
 # while recording where capped evidence would block a prediction; "enforce" gates
 # glyphs and PATH filters on capped evidence; "off" disables capped tracking.
-receiver_contribution_mode: shadow
-receiver_fine_slots: 4              # Receiver slots retained in fine buckets.
-receiver_coarse_slots: 8            # Receiver slots retained in coarse buckets.
+receiver_contribution_mode: enforce
+receiver_fine_slots: 6              # Receiver slots retained in fine buckets.
+receiver_coarse_slots: 12           # Receiver slots retained in coarse buckets.
 receiver_max_effective_count: 5     # Max capped observation count one receiver can contribute per bucket.
 receiver_max_effective_weight: 5.0  # Max capped effective weight one receiver can contribute per bucket.
 
