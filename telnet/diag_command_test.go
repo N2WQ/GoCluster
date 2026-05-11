@@ -175,6 +175,9 @@ func TestDiagPathInsufficientLowCountReason(t *testing.T) {
 	if got := diagPathInsufficientReason(pathreliability.InsufficientLowCount); got != "lown" {
 		t.Fatalf("expected low-count path diagnostic reason lown, got %q", got)
 	}
+	if got := diagPathInsufficientReason(pathreliability.InsufficientLowReceiver); got != "lowr" {
+		t.Fatalf("expected low-receiver path diagnostic reason lowr, got %q", got)
+	}
 }
 
 func TestDiagPathTagShowsCappedAndRawCountsWhenLimited(t *testing.T) {
@@ -192,7 +195,7 @@ func TestDiagPathTagShowsCappedAndRawCountsWhenLimited(t *testing.T) {
 		},
 	}
 	got := diagPathTag(prediction, true)
-	if got != "n5/r19|w5|a12" {
+	if got != "n19/c5|w5|a12" {
 		t.Fatalf("unexpected capped path diagnostic: %q", got)
 	}
 }

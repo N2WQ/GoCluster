@@ -269,7 +269,7 @@ For the mode-specific support rules, timing knobs, and decision history, see
 - `SET DIAG DEDUPE`: `<DE-DXCC>|<DE-key>|<src>|<policy>`, where `<src>` is `H` for human-class or `S` for skimmer/automated-class.
 - `SET DIAG SOURCE`: `<source>` with `MAN`, `RBN`, `RBNFT`, `PSK`, `DXS`, `UP`, or `P:<peer>` for peer-origin spots.
 - `SET DIAG CONF`: `<score>%` when the pipeline calculated a confidence percent, otherwise `--%`.
-- `SET DIAG PATH`: `n<count>|w<weight>|a<age>` for usable path evidence, or `n<count>|<reason>` for insufficient evidence (`none`, `lown`, `loww`, or `stale`).
+- `SET DIAG PATH`: `n<count>|w<weight>|a<age>` for usable path evidence, or `n<count>|<reason>` for insufficient evidence (`none`, `lown`, `lowr`, `loww`, or `stale`).
 - `SET DIAG MODE`: `<mode>|<provenance>` to show the final normalized mode and why it was assigned.
 
 Mode provenance tokens:
@@ -288,10 +288,9 @@ Mode provenance tokens:
 are intentionally short because they must fit in the normal DX-cluster comment
 area:
 
-- `n<count>` is the selected observation count behind the selected path
-  evidence. In `shadow` and `off` receiver-cap modes it is raw selected count;
-  in `enforce` mode it is the floored capped effective count. It is a
-  sample-size indicator, not a confidence percent. `n0` means no usable
+- `n<count>` is the raw selected observation count behind the selected path
+  evidence in every receiver-cap mode. It is a sample-size indicator, not a
+  confidence percent. `n0` means no usable
   selected observations; `n1` means one selected observation; higher values
   such as `n18` or `n32` mean a larger evidence base.
 - `w<weight>` is the rounded effective weight after decay, fine/coarse sample
@@ -307,6 +306,9 @@ area:
 - `n<count>|none` means there was no usable selected path sample.
 - `n<count>|lown` means selected evidence existed but the selected observation count
   stayed below the configured minimum.
+- `n<count>|lowr` means raw selected observations met the count floor, but
+  attributed receiver diversity was too low under receiver-cap enforcement or
+  candidate cap evaluation.
 - `n<count>|loww` means selected evidence existed but the effective weight
   stayed below the configured minimum.
 - `n<count>|stale` means selected evidence existed but was too old for the
@@ -325,10 +327,11 @@ Example readings:
 - `n0|none`: no usable selected path sample.
 - `n3|lown`: three selected observations existed, but the configured minimum
   sample size was not met.
-- `n5/r19|lown`: capped receiver evidence had five effective observations from
-  nineteen raw observations, and the capped count would not meet the floor.
-- `n5/r19|w3`: capped receiver evidence is shown first, with raw count after
-  `/r`, when receiver caps reduced the diagnostic evidence.
+- `n19/c5/rx1|lowr`: nineteen raw observations existed, but capped receiver
+  evidence represented only one attributed receiver.
+- `n19/c5/rx1|w3`: raw selected observations are shown first, capped effective
+  count after `/c`, and attributed receivers after `/rx` when receiver caps
+  reduced diagnostic evidence.
 - `n1|loww`: one selected observation existed, but the effective weight was
   below the minimum.
 - `n32|w1`: large selected count but low rounded effective weight. Treat this
@@ -361,7 +364,7 @@ What the classes mean to an operator:
 | `=` | `MEDIUM` | Recent evidence suggests a workable path. | Use `SET DIAG PATH`; low effective weight can still map to a usable class. |
 | `<` | `LOW` | Recent evidence suggests a weak or marginal path. | Use `SET DIAG PATH` to confirm grids, sample count, and freshness. |
 | `-` | `UNLIKELY` | Recent evidence suggests a poor path. | Check whether your grid and the DX grid are correct before treating this as a hard no. |
-| blank | `INSUFFICIENT` | The cluster did not have enough usable recent evidence to rate the path. | Run `SET DIAG PATH`; common reasons are `none`, `lown`, `loww`, and `stale`. |
+| blank | `INSUFFICIENT` | The cluster did not have enough usable recent evidence to rate the path. | Run `SET DIAG PATH`; common reasons are `none`, `lown`, `lowr`, `loww`, and `stale`. |
 
 Important operational notes:
 
@@ -376,14 +379,24 @@ Important operational notes:
 - Active p50 uses midpoint representatives for fixed SNR bins. Balanced
   weak/strong evidence uses the middle between both selected bin representatives
   instead of always choosing the weaker bin.
-- Receiver contribution caps are shipped in `enforce` mode. Normal glyphs and
-  PATH filters use capped selected evidence, while `SET DIAG PATH` and
-  five-minute propagation logs expose when caps reduced raw evidence.
+- Receiver contribution caps are currently configured in `shadow` mode for cap
+  tuning. Normal glyphs and PATH filters use raw selected evidence, while
+  `SET DIAG PATH` and five-minute propagation logs expose when caps would
+  reduce or block evidence.
 - Five-minute `Path predictions (5m)` logs split insufficient evidence into
-  `no_sample`, `low_count`, `low_weight`, and `stale`; `low_count` means the
-  selected sample count missed the observation floor, while `low_weight` means
-  decayed effective weight missed the weight floor. These lines are written to
-  `logging.propagation.dir`, not the system log.
+  `no_sample`, `low_count`, `low_receiver`, `low_weight`, and `stale`;
+  `low_count` means the selected raw sample count missed the observation floor,
+  `low_receiver` means receiver diversity missed the derived receiver gate,
+  and `low_weight` means decayed effective weight missed the weight floor.
+  These lines are written to `logging.propagation.dir`, not the system log.
+- In receiver-cap `shadow` mode, `Path cap shadow (5m)` logs compare the three
+  configured count caps with `capN_pass`, `capN_low_count`,
+  `capN_low_receiver`, `capN_low_weight`, and `capN_block` counters without
+  changing active glyphs.
+- When candidate p50 shadow is enabled, `Path cap p50 shadow (5m)` logs show
+  whether each candidate cap would have produced an unlikely/low/medium/high
+  p50 class and whether it would have been the same, stronger, weaker, or
+  insufficient compared with the active glyph.
 - If grids are missing, evidence is stale, too sparse, too weak, or the H3 tables are unavailable, the result stays `INSUFFICIENT`.
 - `PATH` filters work on the class names, not on the glyph characters.
 - `R` and `G` are solar-weather display overrides, not normal path classes.

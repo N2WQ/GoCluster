@@ -93,23 +93,26 @@ When you see a glyph next to a spot, here's what happened behind the scenes:
 5. **Merge directions**: Receive and transmit paths combine (60/40 split), with the configured receive-side noise penalty applied when nonzero.
 
 6. **Apply receiver contribution caps**: The cluster tracks a bounded set of
-   receiver identities per bucket. In the shipped `enforce` mode, the count and
-   weight gates use capped effective evidence. Old capped receiver evidence
-   decays on the same clock as signal weight, so newer evidence can replace it.
-   If an operator switches to `shadow`, the displayed glyph uses raw evidence
-   while diagnostics and logs show where the capped evidence would have been
-   stricter.
+   receiver identities per bucket. In `enforce` mode, receiver diversity and
+   capped weight gate the path class separately from the raw observation floor.
+   Old capped receiver evidence decays on the same clock as signal weight, so
+   newer evidence can replace it. If an operator switches to `shadow`, the
+   displayed glyph uses raw evidence while diagnostics and logs show where the
+   capped evidence would have been stricter.
 
-7. **Check evidence floor**: If the selected observation count is below the
+7. **Check evidence floor**: If the raw selected observation count is below the
    cluster minimum, the system shows a space (insufficient data). Users can make
    their own view stricter with `SET PATHSAMPLES <count>`, but cannot lower the
-   cluster default. In `enforce` mode this check uses floored capped effective
-   observations; in `shadow` mode it uses raw selected observations.
-   Five-minute propagation logs report this as `low_count`.
+   cluster default. Five-minute propagation logs report this as `low_count`.
 
-8. **Check confidence**: If the combined data weight is below the minimum threshold (default 0.5), the system shows a space (insufficient data) instead of making an unreliable prediction. Five-minute propagation logs report this as `low_weight`.
+8. **Check receiver diversity**: In receiver-cap enforcement and cap-shadow
+   candidate evaluation, the selected capped evidence must include enough live
+   attributed receiver slots for the configured sample floor and receiver cap.
+   Five-minute propagation logs report this as `low_receiver`.
 
-9. **Map to glyph**: The selected p50 signal strength gets compared against
+9. **Check confidence**: If the combined data weight is below the minimum threshold (default 0.5), the system shows a space (insufficient data) instead of making an unreliable prediction. Five-minute propagation logs report this as `low_weight`.
+
+10. **Map to glyph**: The selected p50 signal strength gets compared against
    mode-specific thresholds to pick the right symbol. Fixed histogram bins use
    midpoint representatives, and exact 50/50 splits between two non-empty bins
    use the average of both representatives so balanced weak/strong evidence
@@ -143,9 +146,12 @@ for at least 30 selected observations before showing a path tag. Use
 `SET PATHSAMPLES DEFAULT` to return to the cluster default.
 
 **One receiver cannot carry a bucket by itself**: receiver contribution caps
-limit one receiving station to a shipped maximum of five decayed effective
-observations and five decayed effective weight units per bucket. The shipped mode is `enforce`, so caps
-gate the active path class.
+limit one receiving station to the configured decayed effective observation and
+weight caps per bucket. In `enforce` mode, caps gate the active path class. In
+`shadow` mode, active glyphs still use raw selected evidence while the
+propagation log records what candidate caps would have done. When candidate p50
+shadow is enabled, the log also shows whether each candidate cap would have
+changed the p50 glyph class.
 
 **Beacons get capped**: The system limits how much any single beacon can dominate the data to prevent bias from loud beacons.
 
@@ -174,9 +180,9 @@ The system is highly configurable (see [path_reliability.yaml](path_reliability.
 - **Freshness gate**: Maximum selected evidence age as a multiple of band half-life
 - **Noise penalties**: receive-side dB adjustments per environment type
 - **Mode thresholds**: What signal strength qualifies as high/medium/low for each mode
-- **Minimum observation count**: How many selected observations are needed before showing a prediction; in `enforce` mode these are floored capped effective observations
+- **Minimum observation count**: How many raw selected observations are needed before showing a prediction; receiver diversity is checked separately when receiver caps are enforced
 - **Minimum weight**: How much data is needed before showing a prediction
-- **Receiver contribution caps**: Whether capped receiver evidence is off, shadowed, or enforced, and how many receiver slots are tracked in fine/coarse buckets
+- **Receiver contribution caps**: Whether capped receiver evidence is off, shadowed, or enforced, how many receiver slots are tracked in fine/coarse buckets, which three candidate count caps are compared in the `Path cap shadow (5m)` log, and whether candidate p50/glyph outcomes are logged in `Path cap p50 shadow (5m)`
 
 ## The Bottom Line
 

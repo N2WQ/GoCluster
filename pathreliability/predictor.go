@@ -74,6 +74,7 @@ const (
 	InsufficientNone InsufficientReason = iota
 	InsufficientNoSample
 	InsufficientLowCount
+	InsufficientLowReceiver
 	InsufficientLowWeight
 	InsufficientStale
 )
@@ -86,6 +87,8 @@ func (r InsufficientReason) String() string {
 		return "no_sample"
 	case InsufficientLowCount:
 		return "low_count"
+	case InsufficientLowReceiver:
+		return "low_receiver"
 	case InsufficientLowWeight:
 		return "low_weight"
 	case InsufficientStale:
@@ -105,12 +108,16 @@ type Result struct {
 	Weight             float64
 	AgeSec             int64
 	Count              uint32
+	ObservationCount   uint32
 	RawCount           uint32
 	RawWeight          float64
 	CappedCount        uint32
 	CappedWeight       float64
+	ReceiverCount      uint32
+	ReceiverRequired   uint32
 	CapLimited         bool
 	CapWouldBlock      bool
+	CapShadow          ReceiverCapShadowSummary
 	Source             PredictionSource
 	InsufficientReason InsufficientReason
 }
@@ -125,10 +132,10 @@ func (p *Predictor) Predict(userCell, dxCell CellID, userCoarse, dxCoarse CellID
 }
 
 // PredictWithMinObservationCount returns a merged glyph using the supplied
-// observation floor. In shadow/off modes the floor is applied to raw selected
-// count; in enforce mode it is applied to capped selected count. Callers may
-// pass a floor above the configured default when applying stricter per-session
-// display or filter policy.
+// observation floor. The floor is always applied to selected raw observations.
+// In enforce mode receiver-concentration is checked separately from the raw
+// sample floor. Callers may pass a floor above the configured default when
+// applying stricter per-session display or filter policy.
 func (p *Predictor) PredictWithMinObservationCount(userCell, dxCell CellID, userCoarse, dxCoarse CellID, band string, mode string, noisePenalty float64, minObservationCount int, now time.Time) Result {
 	return p.predictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, now)
 }
@@ -143,6 +150,7 @@ func (p *Predictor) predictWithMinObservationCount(userCell, dxCell CellID, user
 	}
 
 	modeKey := normalizeMode(mode)
+	receiverMinObservationCount := p.cfg.MinObservationCount
 	makeResult := func(sample Sample, p50DB float64, hasP50 bool, source PredictionSource, capWouldBlock bool) Result {
 		class := classUnlikely
 		glyph := p.cfg.GlyphSymbols.Unlikely
@@ -151,21 +159,25 @@ func (p *Predictor) predictWithMinObservationCount(userCell, dxCell CellID, user
 			glyph = glyphForClass(class, p.cfg)
 		}
 		return Result{
-			Glyph:         glyph,
-			Class:         class,
-			P50DB:         p50DB,
-			HasP50:        hasP50,
-			P50Glyph:      glyph,
-			Weight:        sample.Weight,
-			AgeSec:        sample.AgeSec,
-			Count:         sample.Count,
-			RawCount:      sample.RawCount,
-			RawWeight:     sample.RawWeight,
-			CappedCount:   sample.CappedCount,
-			CappedWeight:  sample.CappedWeight,
-			CapLimited:    sample.CapLimited,
-			CapWouldBlock: capWouldBlock,
-			Source:        source,
+			Glyph:            glyph,
+			Class:            class,
+			P50DB:            p50DB,
+			HasP50:           hasP50,
+			P50Glyph:         glyph,
+			Weight:           sample.Weight,
+			AgeSec:           sample.AgeSec,
+			Count:            sample.Count,
+			ObservationCount: sampleObservationCount(sample),
+			RawCount:         sample.RawCount,
+			RawWeight:        sample.RawWeight,
+			CappedCount:      sample.CappedCount,
+			CappedWeight:     sample.CappedWeight,
+			ReceiverCount:    sample.CappedReceiverCount,
+			ReceiverRequired: p.requiredReceiverCount(sample, receiverMinObservationCount),
+			CapLimited:       sample.CapLimited,
+			CapWouldBlock:    capWouldBlock,
+			CapShadow:        p.capShadowSummary(sample, hasP50, source, minObservationCount, receiverMinObservationCount, modeKey),
+			Source:           source,
 		}
 	}
 	makeInsufficient := func(sample Sample, p50DB float64, hasP50 bool, reason InsufficientReason, capWouldBlock bool) Result {
@@ -182,12 +194,16 @@ func (p *Predictor) predictWithMinObservationCount(userCell, dxCell CellID, user
 			Weight:             sample.Weight,
 			AgeSec:             sample.AgeSec,
 			Count:              sample.Count,
+			ObservationCount:   sampleObservationCount(sample),
 			RawCount:           sample.RawCount,
 			RawWeight:          sample.RawWeight,
 			CappedCount:        sample.CappedCount,
 			CappedWeight:       sample.CappedWeight,
+			ReceiverCount:      sample.CappedReceiverCount,
+			ReceiverRequired:   p.requiredReceiverCount(sample, receiverMinObservationCount),
 			CapLimited:         sample.CapLimited,
 			CapWouldBlock:      capWouldBlock,
+			CapShadow:          p.capShadowSummary(sample, hasP50, SourceInsufficient, minObservationCount, receiverMinObservationCount, modeKey),
 			Source:             SourceInsufficient,
 			InsufficientReason: reason,
 		}
@@ -197,14 +213,18 @@ func (p *Predictor) predictWithMinObservationCount(userCell, dxCell CellID, user
 	if minObservationCount < p.cfg.MinObservationCount {
 		minObservationCount = p.cfg.MinObservationCount
 	}
-	capWouldBlock := p.capWouldBlock(merged.Sample, minObservationCount)
-	if ok && merged.Weight >= p.cfg.MinEffectiveWeight && countMeetsMinimum(merged.Count, minObservationCount) && merged.HasP50 {
+	capWouldBlock := p.capWouldBlock(merged.Sample, receiverMinObservationCount)
+	countOK := countMeetsMinimum(sampleObservationCount(merged.Sample), minObservationCount)
+	receiverOK := p.receiverGateMeetsMinimum(merged.Sample, receiverMinObservationCount)
+	if ok && merged.Weight >= p.cfg.MinEffectiveWeight && countOK && receiverOK && merged.HasP50 {
 		return makeResult(merged.Sample, merged.P50DB, merged.HasP50, SourceCombined, capWouldBlock)
 	}
 	if ok {
 		if reason == InsufficientNone {
-			if !countMeetsMinimum(merged.Count, minObservationCount) {
+			if !countOK {
 				reason = InsufficientLowCount
+			} else if !receiverOK {
+				reason = InsufficientLowReceiver
 			} else if merged.Weight < p.cfg.MinEffectiveWeight {
 				reason = InsufficientLowWeight
 			} else {
@@ -223,14 +243,92 @@ func countMeetsMinimum(count uint32, min int) bool {
 	return min <= 0 || uint64(count) >= uint64(min)
 }
 
+func (p *Predictor) receiverGateMeetsMinimum(sample Sample, minObservationCount int) bool {
+	if p == nil || p.cfg.ReceiverContributionMode != ReceiverContributionEnforce {
+		return true
+	}
+	required := p.requiredReceiverCount(sample, minObservationCount)
+	return required == 0 || sample.CappedReceiverCount >= required
+}
+
+func (p *Predictor) candidateReceiverGateMeetsMinimum(candidate ReceiverCapShadowSampleCandidate, minObservationCount int) bool {
+	if p == nil {
+		return true
+	}
+	required := requiredReceiverCount(minObservationCount, candidate.MaxEffectiveCount, candidate.CappedReceiverCapacity)
+	return required == 0 || candidate.CappedReceiverCount >= required
+}
+
+func (p *Predictor) requiredReceiverCount(sample Sample, minObservationCount int) uint32 {
+	if p == nil {
+		return 0
+	}
+	return requiredReceiverCount(minObservationCount, p.cfg.ReceiverMaxEffectiveCount, sample.CappedReceiverCapacity)
+}
+
+func requiredReceiverCount(minObservationCount int, maxEffectiveCount uint32, capacity uint32) uint32 {
+	if minObservationCount <= 0 || maxEffectiveCount == 0 || capacity == 0 {
+		return 0
+	}
+	required := uint32((uint64(minObservationCount) + uint64(maxEffectiveCount) - 1) / uint64(maxEffectiveCount))
+	if required > capacity {
+		return capacity
+	}
+	return required
+}
+
 func (p *Predictor) capWouldBlock(sample Sample, minObservationCount int) bool {
 	if p == nil || p.cfg.ReceiverContributionMode != ReceiverContributionShadow || !sample.CapLimited {
 		return false
 	}
-	if !countMeetsMinimum(sample.CappedCount, minObservationCount) {
+	required := p.requiredReceiverCount(sample, minObservationCount)
+	if required > 0 && sample.CappedReceiverCount < required {
 		return true
 	}
 	return sample.CappedWeight < p.cfg.MinEffectiveWeight
+}
+
+func (p *Predictor) capShadowSummary(sample Sample, hasP50 bool, source PredictionSource, rawMinObservationCount int, receiverMinObservationCount int, modeKey string) ReceiverCapShadowSummary {
+	if p == nil || p.cfg.ReceiverContributionMode != ReceiverContributionShadow || sample.CapShadow.Count <= 0 {
+		return ReceiverCapShadowSummary{}
+	}
+	count := sample.CapShadow.Count
+	if count > ReceiverShadowCapCandidateCount {
+		count = ReceiverShadowCapCandidateCount
+	}
+	var out ReceiverCapShadowSummary
+	out.Count = count
+	for i := 0; i < count; i++ {
+		candidate := sample.CapShadow.Candidates[i]
+		countOK := countMeetsMinimum(sampleObservationCount(sample), rawMinObservationCount)
+		receiverOK := p.candidateReceiverGateMeetsMinimum(candidate, receiverMinObservationCount)
+		weightOK := candidate.Weight >= p.cfg.MinEffectiveWeight
+		pass := hasP50 && countOK && receiverOK && weightOK
+		outCandidate := ReceiverCapShadowCandidate{
+			MaxEffectiveCount: candidate.MaxEffectiveCount,
+			Pass:              pass,
+			LowCount:          !countOK,
+			LowReceiver:       countOK && !receiverOK,
+			LowWeight:         countOK && receiverOK && !weightOK,
+			Block:             source == SourceCombined && !pass,
+		}
+		if p.cfg.ReceiverShadowP50Enabled && candidate.hasSNRBins {
+			p50DB, candidateHasP50 := candidate.snrBins.p50DB()
+			p50Class := ""
+			p50Glyph := ""
+			if candidateHasP50 {
+				p50Class = ClassForDB(p50DB, modeKey, p.cfg)
+				p50Glyph = glyphForClass(p50Class, p.cfg)
+			}
+			outCandidate.P50DB = p50DB
+			outCandidate.HasP50 = candidateHasP50
+			outCandidate.P50Class = p50Class
+			outCandidate.P50Glyph = p50Glyph
+			outCandidate.P50Pass = candidateHasP50 && countOK && receiverOK && weightOK
+		}
+		out.Candidates[i] = outCandidate
+	}
+	return out
 }
 
 func mergeSamples(receive Sample, transmit Sample, cfg Config) (Sample, bool) {
@@ -244,14 +342,18 @@ func mergeSamples(receive Sample, transmit Sample, cfg Config) (Sample, bool) {
 	if receiveActive && transmitActive {
 		mergedWeight := cfg.MergeReceiveWeight*receive.Weight + cfg.MergeTransmitWeight*transmit.Weight
 		return Sample{
-			Weight:       mergedWeight,
-			AgeSec:       weightedSampleAge(receive, transmit),
-			Count:        saturatingAddCounts(receive.Count, transmit.Count),
-			RawCount:     saturatingAddCounts(sampleRawCount(receive), sampleRawCount(transmit)),
-			RawWeight:    cfg.MergeReceiveWeight*sampleRawWeight(receive) + cfg.MergeTransmitWeight*sampleRawWeight(transmit),
-			CappedCount:  saturatingAddCounts(sampleCappedCount(receive), sampleCappedCount(transmit)),
-			CappedWeight: cfg.MergeReceiveWeight*sampleCappedWeight(receive) + cfg.MergeTransmitWeight*sampleCappedWeight(transmit),
-			CapLimited:   receive.CapLimited || transmit.CapLimited,
+			Weight:                 mergedWeight,
+			AgeSec:                 weightedSampleAge(receive, transmit),
+			Count:                  saturatingAddCounts(receive.Count, transmit.Count),
+			ObservationCount:       saturatingAddCounts(sampleObservationCount(receive), sampleObservationCount(transmit)),
+			RawCount:               saturatingAddCounts(sampleRawCount(receive), sampleRawCount(transmit)),
+			RawWeight:              cfg.MergeReceiveWeight*sampleRawWeight(receive) + cfg.MergeTransmitWeight*sampleRawWeight(transmit),
+			CappedCount:            saturatingAddCounts(sampleCappedCount(receive), sampleCappedCount(transmit)),
+			CappedWeight:           cfg.MergeReceiveWeight*sampleCappedWeight(receive) + cfg.MergeTransmitWeight*sampleCappedWeight(transmit),
+			CappedReceiverCount:    saturatingAddCounts(receive.CappedReceiverCount, transmit.CappedReceiverCount),
+			CappedReceiverCapacity: saturatingAddCounts(receive.CappedReceiverCapacity, transmit.CappedReceiverCapacity),
+			CapLimited:             receive.CapLimited || transmit.CapLimited,
+			CapShadow:              mergeBothDirectionCapShadow(receive.CapShadow, transmit.CapShadow, cfg),
 		}, true
 	}
 	if receiveActive {
@@ -261,13 +363,17 @@ func mergeSamples(receive Sample, transmit Sample, cfg Config) (Sample, bool) {
 		return singleDirectionMerge(transmit, receive, cfg), true
 	}
 	return Sample{
-		AgeSec:       maxSampleAge(receive, transmit),
-		Count:        saturatingAddCounts(receive.Count, transmit.Count),
-		RawCount:     saturatingAddCounts(sampleRawCount(receive), sampleRawCount(transmit)),
-		RawWeight:    sampleRawWeight(receive) + sampleRawWeight(transmit),
-		CappedCount:  saturatingAddCounts(sampleCappedCount(receive), sampleCappedCount(transmit)),
-		CappedWeight: sampleCappedWeight(receive) + sampleCappedWeight(transmit),
-		CapLimited:   receive.CapLimited || transmit.CapLimited,
+		AgeSec:                 maxSampleAge(receive, transmit),
+		Count:                  saturatingAddCounts(receive.Count, transmit.Count),
+		ObservationCount:       saturatingAddCounts(sampleObservationCount(receive), sampleObservationCount(transmit)),
+		RawCount:               saturatingAddCounts(sampleRawCount(receive), sampleRawCount(transmit)),
+		RawWeight:              sampleRawWeight(receive) + sampleRawWeight(transmit),
+		CappedCount:            saturatingAddCounts(sampleCappedCount(receive), sampleCappedCount(transmit)),
+		CappedWeight:           sampleCappedWeight(receive) + sampleCappedWeight(transmit),
+		CappedReceiverCount:    saturatingAddCounts(receive.CappedReceiverCount, transmit.CappedReceiverCount),
+		CappedReceiverCapacity: saturatingAddCounts(receive.CappedReceiverCapacity, transmit.CappedReceiverCapacity),
+		CapLimited:             receive.CapLimited || transmit.CapLimited,
+		CapShadow:              inactiveDirectionCapShadow(receive.CapShadow, transmit.CapShadow),
 	}, true
 }
 
@@ -295,6 +401,7 @@ func mergeSamplesWithDistribution(receive sampleWithBins, transmit sampleWithBin
 	} else if transmitActive {
 		bins.addScaled(transmit.snrBins, cfg.ReverseHintDiscount)
 	}
+	merged.CapShadow = mergeCapShadowDirectionsWithDistribution(receive.CapShadow, transmit.CapShadow, cfg, noisePenalty)
 	p50DB, hasP50 := bins.p50DB()
 	return sampleWithBins{
 		Sample:  merged,
@@ -310,9 +417,11 @@ func singleDirectionMerge(active Sample, other Sample, cfg Config) Sample {
 	active.Weight *= cfg.ReverseHintDiscount
 	active.RawWeight = rawWeight * cfg.ReverseHintDiscount
 	active.CappedWeight = cappedWeight * cfg.ReverseHintDiscount
+	active.ObservationCount = sampleObservationCount(active)
 	active.RawCount = saturatingAddCounts(sampleRawCount(active), sampleRawCount(other))
 	active.CappedCount = saturatingAddCounts(sampleCappedCount(active), sampleCappedCount(other))
 	active.CapLimited = active.CapLimited || other.CapLimited
+	active.CapShadow = singleDirectionCapShadow(active.CapShadow, other.CapShadow, cfg)
 	return active
 }
 
@@ -324,7 +433,17 @@ func maxSampleAge(left Sample, right Sample) int64 {
 }
 
 func sampleHasEvidence(sample Sample) bool {
-	return sample.Weight > 0 || sample.RawWeight > 0 || sample.RawCount > 0 || sample.CappedWeight > 0 || sample.CappedCount > 0
+	return sample.Weight > 0 || sample.RawWeight > 0 || sample.RawCount > 0 || sample.ObservationCount > 0 || sample.CappedWeight > 0 || sample.CappedCount > 0
+}
+
+func sampleObservationCount(sample Sample) uint32 {
+	if sample.ObservationCount > 0 {
+		return sample.ObservationCount
+	}
+	if sample.RawCount > 0 {
+		return sample.RawCount
+	}
+	return sample.Count
 }
 
 func sampleRawCount(sample Sample) uint32 {

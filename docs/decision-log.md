@@ -11,6 +11,9 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 |---|---|---|---|---|---|---|---|
 | ADR-0001 | <title> | Proposed | YYYY-MM-DD | <area> | - | - | `docs/decisions/ADR-0001-<slug>.md` |
+| ADR-0134 | Path Observation Floor And Receiver Diversity Gate | Accepted | 2026-05-11 | pathreliability, config, telnet diagnostics, propagation logs | ADR-0129 (enforce-mode capped-count floor portion); ADR-0132 (cap-shadow low-count-only fields) | - | `docs/decisions/ADR-0134-path-observation-floor-and-receiver-diversity-gate.md` |
+| ADR-0133 | Path Receiver Cap P50 Shadow Histograms | Accepted | 2026-05-11 | pathreliability, config, propagation logs, reports | - | - | `docs/decisions/ADR-0133-path-receiver-cap-p50-shadow-histograms.md` |
+| ADR-0132 | Path Receiver Cap Shadow Candidates | Accepted | 2026-05-10 | pathreliability, config, propagation logs, reports | - | - | `docs/decisions/ADR-0132-path-receiver-cap-shadow-candidates.md` |
 | ADR-0131 | Path P50 Midpoint And Even-Split Semantics | Accepted | 2026-05-10 | pathreliability, telnet display, PATH filters | ADR-0126 (lower-edge p50 representative and exact-boundary behavior) | - | `docs/decisions/ADR-0131-path-p50-midpoint-and-even-split-semantics.md` |
 | ADR-0130 | Path Receiver Cap Count Decay | Accepted | 2026-05-10 | pathreliability, retained state, config semantics | ADR-0129 (lifetime count semantics) | - | `docs/decisions/ADR-0130-path-receiver-cap-count-decay.md` |
 | ADR-0129 | Path Receiver Capacity And Enforcement | Accepted | 2026-05-10 | pathreliability, config, retained state | ADR-0095 (slot ceiling and enforcement mode) | ADR-0130 (count-decay semantics) | `docs/decisions/ADR-0129-path-receiver-capacity-and-enforcement.md` |

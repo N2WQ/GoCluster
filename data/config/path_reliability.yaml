@@ -79,20 +79,21 @@ max_prediction_age_half_life_multiplier: 1.25
 # Minimum decayed weight required to report a glyph; below this returns glyph_symbols.insufficient.
 min_effective_weight: 0.5
 
-# Minimum selected observations required to report a glyph; below this returns glyph_symbols.insufficient.
-# In shadow/off receiver contribution modes this uses raw selected observations.
-# In enforce mode this uses capped selected observations.
-min_observation_count: 23
+# Minimum raw selected observations required to report a glyph; below this returns glyph_symbols.insufficient.
+# Receiver-cap enforce mode applies receiver diversity as a separate gate so this count keeps one meaning.
+min_observation_count: 21
 
 # Receiver contribution caps limit how much one receiving station can add to a
 # bucket's trust evidence. "shadow" uses raw selected evidence for active glyphs
 # while recording where capped evidence would block a prediction; "enforce" gates
 # glyphs and PATH filters on capped evidence; "off" disables capped tracking.
-receiver_contribution_mode: enforce
+receiver_contribution_mode: shadow
 receiver_fine_slots: 6              # Receiver slots retained in fine buckets.
 receiver_coarse_slots: 12           # Receiver slots retained in coarse buckets.
-receiver_max_effective_count: 5     # Max decayed effective observation count one receiver can contribute per bucket.
-receiver_max_effective_weight: 5.0  # Max capped effective weight one receiver can contribute per bucket.
+receiver_max_effective_count: 6     # Max decayed effective observation count one receiver can contribute per bucket.
+receiver_shadow_max_effective_counts: [5, 6, 8]  # Three candidate count caps logged for shadow-only comparison.
+receiver_shadow_p50_enabled: true   # Also log candidate p50/glyph outcomes for the receiver cap shadow comparison.
+receiver_max_effective_weight: 8.0  # Max capped effective weight one receiver can contribute per bucket.
 
 # Minimum fine weight required before blending fine with coarse (res-1); below this uses coarse only.
 min_fine_weight: 5

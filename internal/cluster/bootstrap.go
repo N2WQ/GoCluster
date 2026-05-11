@@ -1519,13 +1519,14 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 				stats := srv.PathPredictionStatsSnapshot()
 				if stats.Total > 0 {
 					fileOnly(fmt.Sprintf(
-						"Path predictions (5m): total=%s derived=%s combined=%s insufficient=%s no_sample=%s low_count=%s low_weight=%s stale=%s cap_limited=%s cap_would_block=%s override_r=%s override_g=%s",
+						"Path predictions (5m): total=%s derived=%s combined=%s insufficient=%s no_sample=%s low_count=%s low_receiver=%s low_weight=%s stale=%s cap_limited=%s cap_would_block=%s override_r=%s override_g=%s",
 						humanize.Comma(int64(stats.Total)),
 						humanize.Comma(int64(stats.Derived)),
 						humanize.Comma(int64(stats.Combined)),
 						humanize.Comma(int64(stats.Insufficient)),
 						humanize.Comma(int64(stats.NoSample)),
 						humanize.Comma(int64(stats.LowCount)),
+						humanize.Comma(int64(stats.LowReceiver)),
 						humanize.Comma(int64(stats.LowWeight)),
 						humanize.Comma(int64(stats.Stale)),
 						humanize.Comma(int64(stats.CapLimited)),
@@ -1533,6 +1534,55 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 						humanize.Comma(int64(stats.OverrideR)),
 						humanize.Comma(int64(stats.OverrideG)),
 					))
+					if predictor != nil {
+						cfg := predictor.Config()
+						if cfg.ReceiverContributionMode == pathreliability.ReceiverContributionShadow && len(cfg.ReceiverShadowMaxEffectiveCounts) == pathreliability.ReceiverShadowCapCandidateCount {
+							var line strings.Builder
+							line.WriteString("Path cap shadow (5m):")
+							fmt.Fprintf(&line, " total=%s", humanize.Comma(int64(stats.Total)))
+							for i, capCount := range cfg.ReceiverShadowMaxEffectiveCounts {
+								fmt.Fprintf(&line, " cap%d_pass=%s cap%d_low_count=%s cap%d_low_receiver=%s cap%d_low_weight=%s cap%d_block=%s",
+									capCount,
+									humanize.Comma(int64(stats.CapShadow.Pass[i])),
+									capCount,
+									humanize.Comma(int64(stats.CapShadow.LowCount[i])),
+									capCount,
+									humanize.Comma(int64(stats.CapShadow.LowReceiver[i])),
+									capCount,
+									humanize.Comma(int64(stats.CapShadow.LowWeight[i])),
+									capCount,
+									humanize.Comma(int64(stats.CapShadow.Block[i])),
+								)
+							}
+							fileOnly(line.String())
+							if cfg.ReceiverShadowP50Enabled {
+								line.Reset()
+								line.WriteString("Path cap p50 shadow (5m):")
+								fmt.Fprintf(&line, " total=%s", humanize.Comma(int64(stats.Total)))
+								for i, capCount := range cfg.ReceiverShadowMaxEffectiveCounts {
+									fmt.Fprintf(&line, " cap%d_p50_pass_unlikely=%s cap%d_p50_pass_low=%s cap%d_p50_pass_medium=%s cap%d_p50_pass_high=%s cap%d_p50_same=%s cap%d_p50_stronger=%s cap%d_p50_weaker=%s cap%d_p50_to_insufficient=%s",
+										capCount,
+										humanize.Comma(int64(stats.CapP50Shadow.PassUnlikely[i])),
+										capCount,
+										humanize.Comma(int64(stats.CapP50Shadow.PassLow[i])),
+										capCount,
+										humanize.Comma(int64(stats.CapP50Shadow.PassMedium[i])),
+										capCount,
+										humanize.Comma(int64(stats.CapP50Shadow.PassHigh[i])),
+										capCount,
+										humanize.Comma(int64(stats.CapP50Shadow.Same[i])),
+										capCount,
+										humanize.Comma(int64(stats.CapP50Shadow.Stronger[i])),
+										capCount,
+										humanize.Comma(int64(stats.CapP50Shadow.Weaker[i])),
+										capCount,
+										humanize.Comma(int64(stats.CapP50Shadow.ToInsufficient[i])),
+									)
+								}
+								fileOnly(line.String())
+							}
+						}
+					}
 				}
 			}
 			if pathReport != nil {

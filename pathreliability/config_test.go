@@ -160,6 +160,14 @@ func TestDefaultReceiverContributionCaps(t *testing.T) {
 	if cfg.ReceiverMaxEffectiveCount != 5 {
 		t.Fatalf("default receiver max effective count = %d, want 5", cfg.ReceiverMaxEffectiveCount)
 	}
+	if len(cfg.ReceiverShadowMaxEffectiveCounts) != ReceiverShadowCapCandidateCount {
+		t.Fatalf("default receiver shadow cap count len = %d, want %d", len(cfg.ReceiverShadowMaxEffectiveCounts), ReceiverShadowCapCandidateCount)
+	}
+	for i, want := range []uint32{5, 6, 8} {
+		if cfg.ReceiverShadowMaxEffectiveCounts[i] != want {
+			t.Fatalf("default receiver shadow cap count[%d] = %d, want %d", i, cfg.ReceiverShadowMaxEffectiveCounts[i], want)
+		}
+	}
 	if cfg.ReceiverMaxEffectiveWeight != 5 {
 		t.Fatalf("default receiver max effective weight = %v, want 5", cfg.ReceiverMaxEffectiveWeight)
 	}
@@ -215,6 +223,10 @@ func TestLoadFileRejectsInvalidReceiverContributionCaps(t *testing.T) {
 		{name: "coarse slots zero", body: "receiver_coarse_slots: 0\n", want: "receiver_coarse_slots"},
 		{name: "coarse slots too large", body: "receiver_coarse_slots: 13\n", want: "receiver_coarse_slots"},
 		{name: "max count zero", body: "receiver_max_effective_count: 0\n", want: "receiver_max_effective_count"},
+		{name: "shadow counts null", body: "receiver_shadow_max_effective_counts:\n", want: "receiver_shadow_max_effective_counts"},
+		{name: "shadow counts too short", body: "receiver_shadow_max_effective_counts: [5, 6]\n", want: "receiver_shadow_max_effective_counts"},
+		{name: "shadow count zero", body: "receiver_shadow_max_effective_counts: [0, 6, 8]\n", want: "receiver_shadow_max_effective_counts"},
+		{name: "shadow counts unsorted", body: "receiver_shadow_max_effective_counts: [5, 5, 8]\n", want: "receiver_shadow_max_effective_counts"},
 		{name: "max weight zero", body: "receiver_max_effective_weight: 0\n", want: "receiver_max_effective_weight"},
 	}
 	for _, tc := range cases {
@@ -267,6 +279,8 @@ func TestLoadFileRejectsMissingRequiredYAMLSettings(t *testing.T) {
 		{name: "receiver fine slots", path: []string{"receiver_fine_slots"}, want: "receiver_fine_slots"},
 		{name: "receiver coarse slots", path: []string{"receiver_coarse_slots"}, want: "receiver_coarse_slots"},
 		{name: "receiver max effective count", path: []string{"receiver_max_effective_count"}, want: "receiver_max_effective_count"},
+		{name: "receiver shadow max effective counts", path: []string{"receiver_shadow_max_effective_counts"}, want: "receiver_shadow_max_effective_counts"},
+		{name: "receiver shadow p50 enabled", path: []string{"receiver_shadow_p50_enabled"}, want: "receiver_shadow_p50_enabled"},
 		{name: "receiver max effective weight", path: []string{"receiver_max_effective_weight"}, want: "receiver_max_effective_weight"},
 		{name: "ft4 offset", path: []string{"mode_offsets", "ft4"}, want: "mode_offsets.ft4"},
 		{name: "noise offsets", path: []string{"noise_offsets"}, want: "noise_offsets"},

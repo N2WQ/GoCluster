@@ -37,6 +37,26 @@ func BenchmarkStoreUpdateReceiverCapShadow(b *testing.B) {
 	}
 }
 
+func BenchmarkStoreUpdateReceiverCapP50Shadow(b *testing.B) {
+	cfg := DefaultConfig()
+	cfg.ReceiverContributionMode = ReceiverContributionShadow
+	cfg.ReceiverShadowP50Enabled = true
+	store := NewStore(cfg, []string{"20m"})
+	now := time.Now().UTC()
+	receivers := []uint64{
+		ReceiverIdentityHash("N2WQ"),
+		ReceiverIdentityHash("K1ABC"),
+		ReceiverIdentityHash("W1AW"),
+		ReceiverIdentityHash("VE3XYZ"),
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		store.UpdateWithReceiverHash(1, 2, 3, 4, "20m", -5, 1.0, now, receivers[i&3])
+	}
+}
+
 func BenchmarkStoreUpdateP50ElapsedSecondDecay(b *testing.B) {
 	cfg := DefaultConfig()
 	cfg.ReceiverContributionMode = ReceiverContributionShadow
@@ -91,6 +111,69 @@ func BenchmarkPredictFreshnessGate(b *testing.B) {
 
 	predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 10, now, false)
 	predictor.Update(BucketCombined, dxCell, userCell, dxCoarse, userCoarse, "20m", -7, 8, now, false)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = predictor.Predict(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, now)
+	}
+}
+
+func BenchmarkPredictReceiverCapShadow(b *testing.B) {
+	cfg := DefaultConfig()
+	cfg.ReceiverContributionMode = ReceiverContributionShadow
+	cfg.MinEffectiveWeight = 0.1
+	cfg.MinObservationCount = 1
+	predictor := NewPredictor(cfg, []string{"20m"})
+	userCell := CellID(1)
+	dxCell := CellID(2)
+	userCoarse := CellID(3)
+	dxCoarse := CellID(4)
+	now := time.Now().UTC()
+	receivers := []uint64{
+		ReceiverIdentityHash("N2WQ"),
+		ReceiverIdentityHash("K1ABC"),
+		ReceiverIdentityHash("W1AW"),
+		ReceiverIdentityHash("VE3XYZ"),
+	}
+
+	for i := 0; i < 24; i++ {
+		receiver := receivers[i%len(receivers)]
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1, now, false, receiver)
+		predictor.UpdateWithReceiverHash(BucketCombined, dxCell, userCell, dxCoarse, userCoarse, "20m", -7, 1, now, false, receiver)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = predictor.Predict(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, now)
+	}
+}
+
+func BenchmarkPredictReceiverCapP50Shadow(b *testing.B) {
+	cfg := DefaultConfig()
+	cfg.ReceiverContributionMode = ReceiverContributionShadow
+	cfg.ReceiverShadowP50Enabled = true
+	cfg.MinEffectiveWeight = 0.1
+	cfg.MinObservationCount = 1
+	predictor := NewPredictor(cfg, []string{"20m"})
+	userCell := CellID(1)
+	dxCell := CellID(2)
+	userCoarse := CellID(3)
+	dxCoarse := CellID(4)
+	now := time.Now().UTC()
+	receivers := []uint64{
+		ReceiverIdentityHash("N2WQ"),
+		ReceiverIdentityHash("K1ABC"),
+		ReceiverIdentityHash("W1AW"),
+		ReceiverIdentityHash("VE3XYZ"),
+	}
+
+	for i := 0; i < 24; i++ {
+		receiver := receivers[i%len(receivers)]
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1, now, false, receiver)
+		predictor.UpdateWithReceiverHash(BucketCombined, dxCell, userCell, dxCoarse, userCoarse, "20m", -7, 1, now, false, receiver)
+	}
 
 	b.ReportAllocs()
 	b.ResetTimer()

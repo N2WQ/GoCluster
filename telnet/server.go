@@ -266,10 +266,13 @@ type Server struct {
 	pathPredInsufficient  atomic.Uint64                              // Predictions with insufficient data
 	pathPredNoSample      atomic.Uint64                              // Insufficient predictions with no samples
 	pathPredLowCount      atomic.Uint64                              // Insufficient predictions below min observation count
+	pathPredLowReceiver   atomic.Uint64                              // Insufficient predictions below receiver-diversity gate
 	pathPredLowWeight     atomic.Uint64                              // Insufficient predictions below min weight
 	pathPredStale         atomic.Uint64                              // Insufficient predictions with stale selected evidence
 	pathPredCapLimited    atomic.Uint64                              // Predictions where receiver caps reduced diagnostic evidence
 	pathPredCapWouldBlock atomic.Uint64                              // Shadow predictions that receiver caps would block
+	pathPredCapShadow     pathCapShadowAtomicStats                   // Candidate cap-shadow diagnostics
+	pathPredCapP50Shadow  pathCapP50ShadowAtomicStats                // Candidate cap p50/glyph shadow diagnostics
 	pathPredOverrideR     atomic.Uint64                              // R overrides applied
 	pathPredOverrideG     atomic.Uint64                              // G overrides applied
 }
@@ -2841,12 +2844,53 @@ type pathPredictionStats struct {
 	Insufficient  uint64
 	NoSample      uint64
 	LowCount      uint64
+	LowReceiver   uint64
 	LowWeight     uint64
 	Stale         uint64
 	CapLimited    uint64
 	CapWouldBlock uint64
 	OverrideR     uint64
 	OverrideG     uint64
+	CapShadow     pathCapShadowStats
+	CapP50Shadow  pathCapP50ShadowStats
+}
+
+type pathCapShadowStats struct {
+	Pass        [pathreliability.ReceiverShadowCapCandidateCount]uint64
+	LowCount    [pathreliability.ReceiverShadowCapCandidateCount]uint64
+	LowReceiver [pathreliability.ReceiverShadowCapCandidateCount]uint64
+	LowWeight   [pathreliability.ReceiverShadowCapCandidateCount]uint64
+	Block       [pathreliability.ReceiverShadowCapCandidateCount]uint64
+}
+
+type pathCapShadowAtomicStats struct {
+	pass        [pathreliability.ReceiverShadowCapCandidateCount]atomic.Uint64
+	lowCount    [pathreliability.ReceiverShadowCapCandidateCount]atomic.Uint64
+	lowReceiver [pathreliability.ReceiverShadowCapCandidateCount]atomic.Uint64
+	lowWeight   [pathreliability.ReceiverShadowCapCandidateCount]atomic.Uint64
+	block       [pathreliability.ReceiverShadowCapCandidateCount]atomic.Uint64
+}
+
+type pathCapP50ShadowStats struct {
+	PassUnlikely   [pathreliability.ReceiverShadowCapCandidateCount]uint64
+	PassLow        [pathreliability.ReceiverShadowCapCandidateCount]uint64
+	PassMedium     [pathreliability.ReceiverShadowCapCandidateCount]uint64
+	PassHigh       [pathreliability.ReceiverShadowCapCandidateCount]uint64
+	Same           [pathreliability.ReceiverShadowCapCandidateCount]uint64
+	Stronger       [pathreliability.ReceiverShadowCapCandidateCount]uint64
+	Weaker         [pathreliability.ReceiverShadowCapCandidateCount]uint64
+	ToInsufficient [pathreliability.ReceiverShadowCapCandidateCount]uint64
+}
+
+type pathCapP50ShadowAtomicStats struct {
+	passUnlikely   [pathreliability.ReceiverShadowCapCandidateCount]atomic.Uint64
+	passLow        [pathreliability.ReceiverShadowCapCandidateCount]atomic.Uint64
+	passMedium     [pathreliability.ReceiverShadowCapCandidateCount]atomic.Uint64
+	passHigh       [pathreliability.ReceiverShadowCapCandidateCount]atomic.Uint64
+	same           [pathreliability.ReceiverShadowCapCandidateCount]atomic.Uint64
+	stronger       [pathreliability.ReceiverShadowCapCandidateCount]atomic.Uint64
+	weaker         [pathreliability.ReceiverShadowCapCandidateCount]atomic.Uint64
+	toInsufficient [pathreliability.ReceiverShadowCapCandidateCount]atomic.Uint64
 }
 
 func (s *Server) recordPathPrediction(res pathreliability.Result, userDerived, dxDerived bool) {
@@ -2863,6 +2907,45 @@ func (s *Server) recordPathPrediction(res pathreliability.Result, userDerived, d
 	if res.CapWouldBlock {
 		s.pathPredCapWouldBlock.Add(1)
 	}
+	for i := 0; i < res.CapShadow.Count && i < pathreliability.ReceiverShadowCapCandidateCount; i++ {
+		candidate := res.CapShadow.Candidates[i]
+		if candidate.Pass {
+			s.pathPredCapShadow.pass[i].Add(1)
+		}
+		if candidate.LowCount {
+			s.pathPredCapShadow.lowCount[i].Add(1)
+		}
+		if candidate.LowReceiver {
+			s.pathPredCapShadow.lowReceiver[i].Add(1)
+		}
+		if candidate.LowWeight {
+			s.pathPredCapShadow.lowWeight[i].Add(1)
+		}
+		if candidate.Block {
+			s.pathPredCapShadow.block[i].Add(1)
+		}
+		if candidate.P50Pass {
+			s.recordPathCapP50Pass(i, candidate.P50Class)
+		}
+		if res.Source == pathreliability.SourceCombined {
+			if !candidate.P50Pass {
+				s.pathPredCapP50Shadow.toInsufficient[i].Add(1)
+				continue
+			}
+			activeRank := pathClassRank(res.Class)
+			candidateRank := pathClassRank(candidate.P50Class)
+			switch {
+			case activeRank == 0 || candidateRank == 0:
+				s.pathPredCapP50Shadow.same[i].Add(1)
+			case candidateRank > activeRank:
+				s.pathPredCapP50Shadow.stronger[i].Add(1)
+			case candidateRank < activeRank:
+				s.pathPredCapP50Shadow.weaker[i].Add(1)
+			default:
+				s.pathPredCapP50Shadow.same[i].Add(1)
+			}
+		}
+	}
 	switch res.Source {
 	case pathreliability.SourceCombined:
 		s.pathPredCombined.Add(1)
@@ -2873,6 +2956,8 @@ func (s *Server) recordPathPrediction(res pathreliability.Result, userDerived, d
 			s.pathPredStale.Add(1)
 		case pathreliability.InsufficientLowCount:
 			s.pathPredLowCount.Add(1)
+		case pathreliability.InsufficientLowReceiver:
+			s.pathPredLowReceiver.Add(1)
 		case pathreliability.InsufficientLowWeight:
 			s.pathPredLowWeight.Add(1)
 		case pathreliability.InsufficientNoSample:
@@ -2887,17 +2972,49 @@ func (s *Server) recordPathPrediction(res pathreliability.Result, userDerived, d
 	}
 }
 
+func (s *Server) recordPathCapP50Pass(idx int, class string) {
+	if s == nil || idx < 0 || idx >= pathreliability.ReceiverShadowCapCandidateCount {
+		return
+	}
+	switch class {
+	case "HIGH":
+		s.pathPredCapP50Shadow.passHigh[idx].Add(1)
+	case "MEDIUM":
+		s.pathPredCapP50Shadow.passMedium[idx].Add(1)
+	case "LOW":
+		s.pathPredCapP50Shadow.passLow[idx].Add(1)
+	default:
+		s.pathPredCapP50Shadow.passUnlikely[idx].Add(1)
+	}
+}
+
+func pathClassRank(class string) int {
+	switch class {
+	case "UNLIKELY":
+		return 1
+	case "LOW":
+		return 2
+	case "MEDIUM":
+		return 3
+	case "HIGH":
+		return 4
+	default:
+		return 0
+	}
+}
+
 func (s *Server) PathPredictionStatsSnapshot() pathPredictionStats {
 	if s == nil {
 		return pathPredictionStats{}
 	}
-	return pathPredictionStats{
+	stats := pathPredictionStats{
 		Total:         s.pathPredTotal.Swap(0),
 		Derived:       s.pathPredDerived.Swap(0),
 		Combined:      s.pathPredCombined.Swap(0),
 		Insufficient:  s.pathPredInsufficient.Swap(0),
 		NoSample:      s.pathPredNoSample.Swap(0),
 		LowCount:      s.pathPredLowCount.Swap(0),
+		LowReceiver:   s.pathPredLowReceiver.Swap(0),
 		LowWeight:     s.pathPredLowWeight.Swap(0),
 		Stale:         s.pathPredStale.Swap(0),
 		CapLimited:    s.pathPredCapLimited.Swap(0),
@@ -2905,6 +3022,22 @@ func (s *Server) PathPredictionStatsSnapshot() pathPredictionStats {
 		OverrideR:     s.pathPredOverrideR.Swap(0),
 		OverrideG:     s.pathPredOverrideG.Swap(0),
 	}
+	for i := 0; i < pathreliability.ReceiverShadowCapCandidateCount; i++ {
+		stats.CapShadow.Pass[i] = s.pathPredCapShadow.pass[i].Swap(0)
+		stats.CapShadow.LowCount[i] = s.pathPredCapShadow.lowCount[i].Swap(0)
+		stats.CapShadow.LowReceiver[i] = s.pathPredCapShadow.lowReceiver[i].Swap(0)
+		stats.CapShadow.LowWeight[i] = s.pathPredCapShadow.lowWeight[i].Swap(0)
+		stats.CapShadow.Block[i] = s.pathPredCapShadow.block[i].Swap(0)
+		stats.CapP50Shadow.PassUnlikely[i] = s.pathPredCapP50Shadow.passUnlikely[i].Swap(0)
+		stats.CapP50Shadow.PassLow[i] = s.pathPredCapP50Shadow.passLow[i].Swap(0)
+		stats.CapP50Shadow.PassMedium[i] = s.pathPredCapP50Shadow.passMedium[i].Swap(0)
+		stats.CapP50Shadow.PassHigh[i] = s.pathPredCapP50Shadow.passHigh[i].Swap(0)
+		stats.CapP50Shadow.Same[i] = s.pathPredCapP50Shadow.same[i].Swap(0)
+		stats.CapP50Shadow.Stronger[i] = s.pathPredCapP50Shadow.stronger[i].Swap(0)
+		stats.CapP50Shadow.Weaker[i] = s.pathPredCapP50Shadow.weaker[i].Swap(0)
+		stats.CapP50Shadow.ToInsufficient[i] = s.pathPredCapP50Shadow.toInsufficient[i].Swap(0)
+	}
+	return stats
 }
 
 func defaultBroadcastWorkers() int {
@@ -3833,9 +3966,21 @@ func diagPathTag(prediction pathPrediction, havePrediction bool) string {
 
 func diagPathCountToken(res pathreliability.Result) string {
 	if res.CapLimited {
-		return "n" + strconv.FormatUint(uint64(res.CappedCount), 10) + "/r" + strconv.FormatUint(uint64(res.RawCount), 10)
+		count := res.ObservationCount
+		if count == 0 {
+			count = res.RawCount
+		}
+		token := "n" + strconv.FormatUint(uint64(count), 10) + "/c" + strconv.FormatUint(uint64(res.CappedCount), 10)
+		if res.ReceiverRequired > 0 {
+			token += "/rx" + strconv.FormatUint(uint64(res.ReceiverCount), 10)
+		}
+		return token
 	}
-	return "n" + strconv.FormatUint(uint64(res.Count), 10)
+	count := res.ObservationCount
+	if count == 0 {
+		count = res.Count
+	}
+	return "n" + strconv.FormatUint(uint64(count), 10)
 }
 
 func diagModeTag(sp *spot.Spot) string {
@@ -3878,6 +4023,8 @@ func diagPathInsufficientReason(reason pathreliability.InsufficientReason) strin
 		return "stale"
 	case pathreliability.InsufficientLowCount:
 		return "lown"
+	case pathreliability.InsufficientLowReceiver:
+		return "lowr"
 	case pathreliability.InsufficientLowWeight:
 		return "loww"
 	default:

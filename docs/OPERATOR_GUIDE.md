@@ -216,11 +216,12 @@ column already shows it when path display is enabled:
 n<count>|w<weight>|a<age>
 ```
 
-When receiver contribution caps reduce the diagnostic evidence, capped count is
-shown first and raw selected count is shown after `/r`:
+When receiver contribution caps reduce the diagnostic evidence, raw selected
+count is shown first, capped effective count is shown after `/c`, and live
+attributed receivers are shown after `/rx`:
 
 ```text
-n<capped>/r<raw>|w<weight>|a<age>
+n<raw>/c<capped>/rx<receivers>|w<weight>|a<age>
 ```
 
 Insufficient evidence is shown as:
@@ -229,13 +230,12 @@ Insufficient evidence is shown as:
 n<count>|<reason>
 ```
 
-- `n<count>` is the selected observation count behind the displayed path
-  decision. In `enforce` receiver-cap mode this is the floored capped effective
-  count; in `shadow` and `off` modes it is raw selected count. It is a
-  sample-size clue, not a confidence percent.
-- `n<capped>/r<raw>` means receiver contribution caps reduced the diagnostic
-  evidence. In the shipped `enforce` mode the capped effective count and capped
-  weight gate the path class; in `shadow` mode the split is informational.
+- `n<count>` is the raw selected observation count behind the displayed path
+  decision in every receiver-cap mode. It is a sample-size clue, not a
+  confidence percent.
+- `n<raw>/c<capped>/rx<receivers>` means receiver contribution caps reduced
+  the diagnostic evidence. The raw count is the sample floor; the capped count,
+  receiver count, and capped weight explain receiver-cap trust evidence.
 - `w<weight>` is the rounded effective weight after decay and path selection.
   It is not SNR or dB. Weight is an evidence-strength gate, not the displayed
   path class itself.
@@ -244,16 +244,31 @@ n<count>|<reason>
 - `none` means no usable selected sample existed.
 - `lown` means selected samples existed, but their observation count was below
   the configured minimum.
+- `lowr` means raw selected observations met the count floor, but receiver
+  diversity was below the derived receiver gate.
 - `loww` means selected samples existed, but their effective weight was below
   the configured minimum.
 - `stale` means selected samples existed, but the selected evidence was too old
   for the band's freshness gate.
 
 The five-minute `Path predictions (5m)` propagation log uses the same reason
-split: `no_sample`, `low_count`, `low_weight`, and `stale`. `low_count` is the
-observation-count gate; `low_weight` is the decayed effective-weight gate. The
-shipped config writes these aggregate lines to `data/logs/propagation`, not the
-system log.
+split: `no_sample`, `low_count`, `low_receiver`, `low_weight`, and `stale`.
+`low_count` is the raw observation-count gate; `low_receiver` is the
+receiver-diversity gate; `low_weight` is the decayed effective-weight gate.
+The shipped config writes these aggregate lines to `data/logs/propagation`,
+not the system log.
+
+When `receiver_contribution_mode` is `shadow`, the propagation log also writes
+`Path cap shadow (5m)`. That line compares the three configured
+`receiver_shadow_max_effective_counts` values with `capN_pass`,
+`capN_low_count`, `capN_low_receiver`, `capN_low_weight`, and `capN_block`
+counters. It is a cap tuning diagnostic only; it does not change active glyphs
+or PATH filters.
+When `receiver_shadow_p50_enabled` is true, the propagation log also writes
+`Path cap p50 shadow (5m)`. That line shows whether each candidate cap would
+have produced an unlikely, low, medium, or high p50 class, and whether that
+candidate would have matched, strengthened, weakened, or made insufficient the
+active path glyph.
 
 The fixed-width cluster format may clip the right edge of a long diagnostic
 comment to keep the grid, confidence, and time columns aligned. The leftmost
@@ -265,10 +280,11 @@ Example readings:
 - `n0|none`: no usable selected sample.
 - `n3|lown`: three selected observations existed, but not enough to emit a
   path class.
-- `n5/r19|lown`: nineteen raw observations existed, but capped receiver
-  effective evidence would not meet the minimum sample floor.
-- `n5/r19|w3`: capped receiver evidence is shown because one or more receivers
-  hit a contribution cap.
+- `n19/c5/rx1|lowr`: nineteen raw observations existed, but only one
+  attributed receiver contributed capped evidence.
+- `n19/c5/rx1|w3`: receiver caps reduced diagnostic evidence; raw count is
+  shown first, capped effective count after `/c`, and attributed receiver count
+  after `/rx`.
 - `n1|loww`: one selected observation existed, but the effective weight was
   below the minimum.
 - `n32|w1`: large selected count but low rounded effective weight.
