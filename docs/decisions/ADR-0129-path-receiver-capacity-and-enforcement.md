@@ -78,4 +78,4 @@ values, but the compiled ceiling remains the retained-state guardrail.
 - Related TSRs:
 - Supersedes / superseded by: supersedes the shipped slot ceiling and
   enforcement-mode portions of ADR-0095; superseded by ADR-0130 for receiver
-  count-decay semantics.
+  count-decay semantics and by ADR-0135 for the shipped cap value.

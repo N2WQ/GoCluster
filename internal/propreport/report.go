@@ -188,8 +188,6 @@ type modelContext struct {
 	ReceiverFineSlots                  int                `json:"receiver_fine_slots"`
 	ReceiverCoarseSlots                int                `json:"receiver_coarse_slots"`
 	ReceiverMaxEffectiveCount          uint32             `json:"receiver_max_effective_count"`
-	ReceiverShadowMaxEffectiveCounts   []uint32           `json:"receiver_shadow_max_effective_counts"`
-	ReceiverShadowP50Enabled           bool               `json:"receiver_shadow_p50_enabled"`
 	ReceiverMaxEffectiveWeight         float64            `json:"receiver_max_effective_weight"`
 	MinFineWeight                      float64            `json:"min_fine_weight"`
 	ReverseHintDiscount                float64            `json:"reverse_hint_discount"`
@@ -385,7 +383,7 @@ func parseCapShadowTotals(line string) (capShadowTotals, bool) {
 	if len(matches) == 0 {
 		return capShadowTotals{}, false
 	}
-	byCap := make(map[uint32]*capShadowCandidateTotals, pathreliability.ReceiverShadowCapCandidateCount)
+	byCap := make(map[uint32]*capShadowCandidateTotals, 3)
 	var caps []uint32
 	for _, match := range matches {
 		if len(match) != 4 {
@@ -439,7 +437,7 @@ func parseCapP50ShadowTotals(line string) (capP50ShadowTotals, bool) {
 	if len(matches) == 0 {
 		return capP50ShadowTotals{}, false
 	}
-	byCap := make(map[uint32]*capP50ShadowCandidateTotals, pathreliability.ReceiverShadowCapCandidateCount)
+	byCap := make(map[uint32]*capP50ShadowCandidateTotals, 3)
 	var caps []uint32
 	for _, match := range matches {
 		if len(match) != 4 {
@@ -725,8 +723,6 @@ func buildModelContext(cfg pathreliability.Config, bands []string) modelContext 
 		ReceiverFineSlots:                  cfg.ReceiverFineSlots,
 		ReceiverCoarseSlots:                cfg.ReceiverCoarseSlots,
 		ReceiverMaxEffectiveCount:          cfg.ReceiverMaxEffectiveCount,
-		ReceiverShadowMaxEffectiveCounts:   append([]uint32(nil), cfg.ReceiverShadowMaxEffectiveCounts...),
-		ReceiverShadowP50Enabled:           cfg.ReceiverShadowP50Enabled,
 		ReceiverMaxEffectiveWeight:         cfg.ReceiverMaxEffectiveWeight,
 		MinFineWeight:                      cfg.MinFineWeight,
 		ReverseHintDiscount:                cfg.ReverseHintDiscount,
@@ -1467,9 +1463,6 @@ func writeModelContext(b *strings.Builder, ctx modelContext, bands []bandSummary
 		ctx.MinEffectiveWeight, ctx.MinObservationCount, ctx.MinFineWeight, ctx.ReverseHintDiscount)
 	fmt.Fprintf(b, "Receiver contribution caps: mode=%s fine_slots=%d coarse_slots=%d max_count=%d max_weight=%.2f.\n",
 		ctx.ReceiverContributionMode, ctx.ReceiverFineSlots, ctx.ReceiverCoarseSlots, ctx.ReceiverMaxEffectiveCount, ctx.ReceiverMaxEffectiveWeight)
-	if len(ctx.ReceiverShadowMaxEffectiveCounts) > 0 {
-		fmt.Fprintf(b, "Receiver cap shadow candidates: %s. Candidate p50 shadow: %t.\n", formatUint32List(ctx.ReceiverShadowMaxEffectiveCounts), ctx.ReceiverShadowP50Enabled)
-	}
 	fmt.Fprintf(b, "Merge weights: receive %.2f / transmit %.2f.\n", ctx.MergeReceiveWeight, ctx.MergeTransmitWeight)
 	if ctx.MaxPredictionAgeHalfLifeMultiplier > 0 {
 		fmt.Fprintf(b, "Prediction freshness gate: %.2fx half-life; older selected evidence is treated as insufficient.\n", ctx.MaxPredictionAgeHalfLifeMultiplier)
@@ -1500,17 +1493,6 @@ func writeModelContext(b *strings.Builder, ctx modelContext, bands []bandSummary
 		b.WriteString(strings.Join(parts, "; "))
 		b.WriteString(".\n")
 	}
-}
-
-func formatUint32List(values []uint32) string {
-	if len(values) == 0 {
-		return ""
-	}
-	parts := make([]string, 0, len(values))
-	for _, value := range values {
-		parts = append(parts, strconv.FormatUint(uint64(value), 10))
-	}
-	return strings.Join(parts, ", ")
 }
 
 func formatNoiseOffsets(offsets map[string]float64) string {

@@ -37,10 +37,9 @@ func BenchmarkStoreUpdateReceiverCapShadow(b *testing.B) {
 	}
 }
 
-func BenchmarkStoreUpdateReceiverCapP50Shadow(b *testing.B) {
+func BenchmarkStoreUpdateReceiverCapEnforce(b *testing.B) {
 	cfg := DefaultConfig()
-	cfg.ReceiverContributionMode = ReceiverContributionShadow
-	cfg.ReceiverShadowP50Enabled = true
+	cfg.ReceiverContributionMode = ReceiverContributionEnforce
 	store := NewStore(cfg, []string{"20m"})
 	now := time.Now().UTC()
 	receivers := []uint64{
@@ -150,10 +149,9 @@ func BenchmarkPredictReceiverCapShadow(b *testing.B) {
 	}
 }
 
-func BenchmarkPredictReceiverCapP50Shadow(b *testing.B) {
+func BenchmarkPredictReceiverCapEnforce(b *testing.B) {
 	cfg := DefaultConfig()
-	cfg.ReceiverContributionMode = ReceiverContributionShadow
-	cfg.ReceiverShadowP50Enabled = true
+	cfg.ReceiverContributionMode = ReceiverContributionEnforce
 	cfg.MinEffectiveWeight = 0.1
 	cfg.MinObservationCount = 1
 	predictor := NewPredictor(cfg, []string{"20m"})

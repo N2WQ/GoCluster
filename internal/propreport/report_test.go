@@ -142,7 +142,6 @@ func TestBuildModelContextIncludesPredictionAgeGate(t *testing.T) {
 	cfg.BandHalfLifeSec = map[string]int{"20m": 360, "10m": 240}
 	cfg.MaxPredictionAgeHalfLifeMultiplier = 1.25
 	cfg.ReceiverContributionMode = pathreliability.ReceiverContributionShadow
-	cfg.ReceiverShadowP50Enabled = true
 
 	ctx := buildModelContext(cfg, []string{"20m", "10m"})
 	if ctx.MaxPredictionAgeHalfLifeMultiplier != 1.25 {
@@ -156,12 +155,6 @@ func TestBuildModelContextIncludesPredictionAgeGate(t *testing.T) {
 	}
 	if ctx.MinObservationCount != cfg.MinObservationCount || ctx.ReceiverContributionMode != pathreliability.ReceiverContributionShadow {
 		t.Fatalf("expected receiver contribution context, got %+v", ctx)
-	}
-	if len(ctx.ReceiverShadowMaxEffectiveCounts) != pathreliability.ReceiverShadowCapCandidateCount || ctx.ReceiverShadowMaxEffectiveCounts[0] != 5 {
-		t.Fatalf("expected receiver shadow cap context, got %+v", ctx.ReceiverShadowMaxEffectiveCounts)
-	}
-	if !ctx.ReceiverShadowP50Enabled {
-		t.Fatalf("expected receiver p50 shadow context enabled")
 	}
 	if got := ctx.NoiseOffsets["URBAN"]; got != 17 {
 		t.Fatalf("expected urban noise offset 17, got %v", got)

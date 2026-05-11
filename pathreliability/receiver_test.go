@@ -1,7 +1,6 @@
 package pathreliability
 
 import (
-	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -51,142 +50,39 @@ func TestReceiverCapShadowPreservesRawPredictionAndReportsWouldBlock(t *testing.
 	if !res.CapLimited || !res.CapWouldBlock {
 		t.Fatalf("expected cap limited/would-block diagnostics, got limited=%v wouldBlock=%v", res.CapLimited, res.CapWouldBlock)
 	}
-	if res.CapShadow.Count != ReceiverShadowCapCandidateCount {
-		t.Fatalf("expected %d cap-shadow candidates, got %d", ReceiverShadowCapCandidateCount, res.CapShadow.Count)
-	}
-	for i := 0; i < res.CapShadow.Count; i++ {
-		candidate := res.CapShadow.Candidates[i]
-		if !candidate.LowReceiver || !candidate.Block || candidate.Pass {
-			t.Fatalf("expected candidate %d to be low-receiver blocking, got %+v", i, candidate)
-		}
-	}
 }
 
-func TestReceiverCapShadowCandidateCountsDifferentiateOutcomes(t *testing.T) {
+func TestReceiverCapEnforceCap8RequiresThreeReceiversAtObservationFloor(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.ReceiverContributionMode = ReceiverContributionShadow
-	cfg.ReceiverMaxEffectiveCount = 6
+	cfg.ReceiverContributionMode = ReceiverContributionEnforce
+	cfg.ReceiverMaxEffectiveCount = 8
 	cfg.ReceiverMaxEffectiveWeight = 10
-	cfg.ReceiverShadowMaxEffectiveCounts = []uint32{5, 6, 8}
 	cfg.MinEffectiveWeight = 0.1
-	cfg.MinObservationCount = 23
-	predictor := NewPredictor(cfg, []string{"20m"})
-	userCell := CellID(1)
-	dxCell := CellID(2)
-	userCoarse := CellID(3)
-	dxCoarse := CellID(4)
-	now := time.Now().UTC()
-	receivers := []uint64{
-		ReceiverIdentityHash("N2WQ"),
-		ReceiverIdentityHash("K1ABC"),
-		ReceiverIdentityHash("W1AW"),
-		ReceiverIdentityHash("VE3XYZ"),
-	}
-
-	for _, receiver := range receivers {
-		for i := 0; i < 6; i++ {
-			predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1.0, now, false, receiver)
-		}
-	}
-
-	res := predictor.Predict(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, now)
-	if res.Source != SourceCombined {
-		t.Fatalf("expected raw shadow prediction to pass, got source=%v reason=%v", res.Source, res.InsufficientReason)
-	}
-	if res.CapShadow.Count != ReceiverShadowCapCandidateCount {
-		t.Fatalf("expected %d cap-shadow candidates, got %d", ReceiverShadowCapCandidateCount, res.CapShadow.Count)
-	}
-	cap5 := res.CapShadow.Candidates[0]
-	if cap5.MaxEffectiveCount != 5 || !cap5.LowReceiver || !cap5.Block || cap5.Pass {
-		t.Fatalf("expected cap5 to block on low receiver diversity, got %+v", cap5)
-	}
-	for i := 1; i < res.CapShadow.Count; i++ {
-		candidate := res.CapShadow.Candidates[i]
-		if !candidate.Pass || candidate.Block || candidate.LowCount || candidate.LowWeight {
-			t.Fatalf("expected candidate %d to pass, got %+v", i, candidate)
-		}
-	}
-}
-
-func TestReceiverCapShadowP50CandidatesExposeGlyphChanges(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.ReceiverContributionMode = ReceiverContributionShadow
-	cfg.ReceiverMaxEffectiveCount = 6
-	cfg.ReceiverMaxEffectiveWeight = 8
-	cfg.ReceiverShadowMaxEffectiveCounts = []uint32{5, 6, 8}
-	cfg.ReceiverShadowP50Enabled = true
-	cfg.MinEffectiveWeight = 0.1
-	cfg.MinObservationCount = 1
+	cfg.MinObservationCount = 21
 	predictor := NewPredictor(cfg, []string{"20m"})
 	userCell := CellID(1)
 	dxCell := CellID(2)
 	userCoarse := CellID(3)
 	dxCoarse := CellID(4)
 	now := time.Unix(1_700_000_000, 0).UTC()
-	strongReceiver := ReceiverIdentityHash("STRONG")
-
-	for i := 0; i < 12; i++ {
-		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 20, 1, now, false, strongReceiver)
-	}
-	for i := 0; i < 6; i++ {
-		receiver := ReceiverIdentityHash(fmt.Sprintf("WEAK%d", i))
-		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -20, 1, now, false, receiver)
+	receivers := []uint64{
+		ReceiverIdentityHash("N2WQ"),
+		ReceiverIdentityHash("K1ABC"),
+		ReceiverIdentityHash("W1AW"),
 	}
 
-	res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, now)
-	if res.Source != SourceCombined || res.Class != classHigh {
-		t.Fatalf("expected active raw high prediction, got source=%v class=%q reason=%v", res.Source, res.Class, res.InsufficientReason)
-	}
-	if res.CapShadow.Count != ReceiverShadowCapCandidateCount {
-		t.Fatalf("expected %d cap-shadow candidates, got %d", ReceiverShadowCapCandidateCount, res.CapShadow.Count)
-	}
-	cap5 := res.CapShadow.Candidates[0]
-	if !cap5.P50Pass || !cap5.HasP50 || cap5.P50Class != classLow || cap5.P50Glyph != cfg.GlyphSymbols.Low {
-		t.Fatalf("expected cap5 p50 low pass, got %+v", cap5)
-	}
-	cap6 := res.CapShadow.Candidates[1]
-	if !cap6.P50Pass || !cap6.HasP50 || cap6.P50Class != classHigh || cap6.P50DB != 0.5 {
-		t.Fatalf("expected cap6 p50 high even split, got %+v", cap6)
-	}
-	cap8 := res.CapShadow.Candidates[2]
-	if !cap8.P50Pass || !cap8.HasP50 || cap8.P50Class != classHigh || cap8.P50Glyph != cfg.GlyphSymbols.High {
-		t.Fatalf("expected cap8 p50 high pass, got %+v", cap8)
-	}
-}
-
-func TestReceiverCapShadowP50UsesCandidateFineCoarseSelection(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.ReceiverContributionMode = ReceiverContributionShadow
-	cfg.ReceiverMaxEffectiveCount = 5
-	cfg.ReceiverMaxEffectiveWeight = 8
-	cfg.ReceiverShadowMaxEffectiveCounts = []uint32{5, 6, 8}
-	cfg.ReceiverShadowP50Enabled = true
-	cfg.MinEffectiveWeight = 0.1
-	cfg.MinObservationCount = 1
-	cfg.MinFineWeight = 10
-	cfg.FineOnlyWeight = 20
-	predictor := NewPredictor(cfg, []string{"20m"})
-	userCell := CellID(10)
-	dxCell := CellID(20)
-	userCoarse := CellID(30)
-	dxCoarse := CellID(40)
-	now := time.Unix(1_700_000_100, 0).UTC()
-
-	for i := 0; i < 25; i++ {
-		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, InvalidCell, InvalidCell, "20m", -20, 1, now, false, ReceiverIdentityHash("FINE"))
-	}
-	for i := 0; i < 12; i++ {
-		receiver := ReceiverIdentityHash(fmt.Sprintf("COARSE%d", i))
-		predictor.UpdateWithReceiverHash(BucketCombined, InvalidCell, InvalidCell, userCoarse, dxCoarse, "20m", 20, 1, now, false, receiver)
+	for _, receiver := range receivers {
+		for i := 0; i < 8; i++ {
+			predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1.0, now, false, receiver)
+		}
 	}
 
-	res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, now)
-	if res.Source != SourceCombined || res.Class != classLow {
-		t.Fatalf("expected active fine-only low prediction, got source=%v class=%q reason=%v", res.Source, res.Class, res.InsufficientReason)
+	res := predictor.Predict(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, now)
+	if res.Source != SourceCombined {
+		t.Fatalf("expected three receivers to satisfy cap8 gate, got source=%v reason=%v raw=%d receivers=%d/%d", res.Source, res.InsufficientReason, res.RawCount, res.ReceiverCount, res.ReceiverRequired)
 	}
-	cap5 := res.CapShadow.Candidates[0]
-	if !cap5.P50Pass || cap5.P50Class != classHigh {
-		t.Fatalf("expected cap5 candidate p50 to use coarse high evidence, got %+v", cap5)
+	if res.ReceiverCount != 3 || res.ReceiverRequired != 3 {
+		t.Fatalf("expected cap8 gate to require three receivers, got receivers=%d required=%d", res.ReceiverCount, res.ReceiverRequired)
 	}
 }
 

@@ -42,15 +42,13 @@ type bucket struct {
 	rawSNRBins    snrHistogram
 	cappedSNRBins snrHistogram
 	slots         [inlineReceiverSlots]receiverSlot
-	// extraSlots is allocated only when a bucket needs coarse receiver slots or
-	// cap-shadow candidate state. Keeping it behind the existing pointer avoids
-	// growing every raw bucket.
+	// extraSlots is allocated only when a bucket needs coarse receiver slots.
+	// Keeping it behind the existing pointer avoids growing every raw bucket.
 	extraSlots *bucketExtraState
 }
 
 type bucketExtraState struct {
-	slots     *[maxCoarseReceiverSlots - inlineReceiverSlots]receiverSlot
-	capShadow receiverCapShadowBucketState
+	slots *[maxCoarseReceiverSlots - inlineReceiverSlots]receiverSlot
 }
 
 type shard struct {
@@ -178,11 +176,6 @@ func (b *bucket) updateCapped(weight float64, nowSec int64, decay float64, recei
 	}
 	if cfg.ReceiverContributionMode == ReceiverContributionOff {
 		return
-	}
-	if cfg.ReceiverContributionMode == ReceiverContributionShadow {
-		if capShadow := b.capShadowState(receiverHash != 0 && receiverSlots > 0 && weight > 0 && cfg.ReceiverMaxEffectiveWeight > 0 && len(cfg.ReceiverShadowMaxEffectiveCounts) == ReceiverShadowCapCandidateCount); capShadow != nil {
-			capShadow.update(weight, nowSec, decay, receiverHash, receiverSlots, cfg, snrBin)
-		}
 	}
 	b.cappedWeight *= decay
 	b.cappedCount *= decay
@@ -318,19 +311,6 @@ func (b *bucket) receiverSlotAt(index int, allocate bool) *receiverSlot {
 	return &b.extraSlots.slots[extraIndex]
 }
 
-func (b *bucket) capShadowState(allocate bool) *receiverCapShadowBucketState {
-	if b == nil {
-		return nil
-	}
-	if b.extraSlots == nil {
-		if !allocate {
-			return nil
-		}
-		b.extraSlots = &bucketExtraState{}
-	}
-	return &b.extraSlots.capShadow
-}
-
 // Sample represents selected decayed path evidence with weight and counts.
 type Sample struct {
 	Weight                 float64
@@ -344,7 +324,6 @@ type Sample struct {
 	CappedReceiverCount    uint32
 	CappedReceiverCapacity uint32
 	CapLimited             bool
-	CapShadow              ReceiverCapShadowSample
 }
 
 type sampleWithBins struct {
@@ -436,10 +415,6 @@ func (s *Store) sample(key uint64, halfLife int, now time.Time, receiverSlots in
 		cappedReceiverCount = b.receiverCountAfterDecay(receiverSlots, decay)
 		cappedReceiverCapacity = receiverSlotCapacity(receiverSlots)
 	}
-	var capShadow receiverCapShadowRawSample
-	if capShadowState := b.capShadowState(false); capShadowState != nil {
-		capShadow = capShadowState.snapshot(s.cfg, receiverSlots)
-	}
 	sh.mu.RUnlock()
 	rawWeight := snap.weight * decay
 	if rawWeight <= 0 {
@@ -448,7 +423,6 @@ func (s *Store) sample(key uint64, halfLife int, now time.Time, receiverSlots in
 	cappedWeight := rawWeight
 	cappedCount := snap.count
 	capLimited := false
-	capShadowSample := ReceiverCapShadowSample{}
 	if s.cfg.ReceiverContributionMode != ReceiverContributionOff {
 		cappedWeight = snap.cappedWeight * decay
 		if cappedWeight <= 0 {
@@ -456,7 +430,6 @@ func (s *Store) sample(key uint64, halfLife int, now time.Time, receiverSlots in
 		}
 		cappedCount = effectiveCountToUint32(snap.cappedCount * decay)
 		capLimited = receiverCapLimited(snap.count, cappedCount, rawWeight, cappedWeight)
-		capShadowSample = capShadow.decayed(decay)
 	}
 	activeWeight := rawWeight
 	activeCount := snap.count
@@ -476,7 +449,6 @@ func (s *Store) sample(key uint64, halfLife int, now time.Time, receiverSlots in
 			CappedReceiverCount:    cappedReceiverCount,
 			CappedReceiverCapacity: cappedReceiverCapacity,
 			CapLimited:             capLimited,
-			CapShadow:              capShadowSample,
 		}
 	}
 	return Sample{
@@ -491,7 +463,6 @@ func (s *Store) sample(key uint64, halfLife int, now time.Time, receiverSlots in
 		CappedReceiverCount:    cappedReceiverCount,
 		CappedReceiverCapacity: cappedReceiverCapacity,
 		CapLimited:             capLimited,
-		CapShadow:              capShadowSample,
 	}
 }
 
@@ -532,10 +503,6 @@ func (s *Store) sampleWithDistribution(key uint64, halfLife int, now time.Time, 
 		cappedReceiverCount = b.receiverCountAfterDecay(receiverSlots, decay)
 		cappedReceiverCapacity = receiverSlotCapacity(receiverSlots)
 	}
-	var capShadow receiverCapShadowRawSample
-	if capShadowState := b.capShadowState(false); capShadowState != nil {
-		capShadow = capShadowState.snapshot(s.cfg, receiverSlots)
-	}
 	sh.mu.RUnlock()
 	rawWeight := snap.weight * decay
 	if rawWeight <= 0 {
@@ -544,7 +511,6 @@ func (s *Store) sampleWithDistribution(key uint64, halfLife int, now time.Time, 
 	cappedWeight := rawWeight
 	cappedCount := snap.count
 	capLimited := false
-	capShadowSample := ReceiverCapShadowSample{}
 	if s.cfg.ReceiverContributionMode != ReceiverContributionOff {
 		cappedWeight = snap.cappedWeight * decay
 		if cappedWeight <= 0 {
@@ -552,7 +518,6 @@ func (s *Store) sampleWithDistribution(key uint64, halfLife int, now time.Time, 
 		}
 		cappedCount = effectiveCountToUint32(snap.cappedCount * decay)
 		capLimited = receiverCapLimited(snap.count, cappedCount, rawWeight, cappedWeight)
-		capShadowSample = capShadow.decayed(decay)
 	}
 	activeWeight := rawWeight
 	activeCount := snap.count
@@ -577,7 +542,6 @@ func (s *Store) sampleWithDistribution(key uint64, halfLife int, now time.Time, 
 				CappedReceiverCount:    cappedReceiverCount,
 				CappedReceiverCapacity: cappedReceiverCapacity,
 				CapLimited:             capLimited,
-				CapShadow:              capShadowSample,
 			},
 		}
 	}
@@ -594,7 +558,6 @@ func (s *Store) sampleWithDistribution(key uint64, halfLife int, now time.Time, 
 			CappedReceiverCount:    cappedReceiverCount,
 			CappedReceiverCapacity: cappedReceiverCapacity,
 			CapLimited:             capLimited,
-			CapShadow:              capShadowSample,
 		},
 		P50DB:   p50DB,
 		HasP50:  hasP50,

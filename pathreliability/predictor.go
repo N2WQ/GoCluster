@@ -1,6 +1,6 @@
 // File role: Owns path prediction orchestration and final glyph diagnostics.
 // Crawler notes: Start here for PATH class calculation, insufficient reasons,
-// receive/transmit merge policy, receiver-cap enforcement/shadow semantics, and
+// receive/transmit merge policy, receiver-cap enforcement semantics, and
 // the observation-floor contract used by telnet display and filters.
 // Related docs: pathreliability/README.md, README.md, data/config/PATH_PREDICTIONS.md.
 // Related tests: pathreliability/*_test.go, telnet/*path*_test.go.
@@ -117,7 +117,6 @@ type Result struct {
 	ReceiverRequired   uint32
 	CapLimited         bool
 	CapWouldBlock      bool
-	CapShadow          ReceiverCapShadowSummary
 	Source             PredictionSource
 	InsufficientReason InsufficientReason
 }
@@ -176,7 +175,6 @@ func (p *Predictor) predictWithMinObservationCount(userCell, dxCell CellID, user
 			ReceiverRequired: p.requiredReceiverCount(sample, receiverMinObservationCount),
 			CapLimited:       sample.CapLimited,
 			CapWouldBlock:    capWouldBlock,
-			CapShadow:        p.capShadowSummary(sample, hasP50, source, minObservationCount, receiverMinObservationCount, modeKey),
 			Source:           source,
 		}
 	}
@@ -203,7 +201,6 @@ func (p *Predictor) predictWithMinObservationCount(userCell, dxCell CellID, user
 			ReceiverRequired:   p.requiredReceiverCount(sample, receiverMinObservationCount),
 			CapLimited:         sample.CapLimited,
 			CapWouldBlock:      capWouldBlock,
-			CapShadow:          p.capShadowSummary(sample, hasP50, SourceInsufficient, minObservationCount, receiverMinObservationCount, modeKey),
 			Source:             SourceInsufficient,
 			InsufficientReason: reason,
 		}
@@ -251,14 +248,6 @@ func (p *Predictor) receiverGateMeetsMinimum(sample Sample, minObservationCount 
 	return required == 0 || sample.CappedReceiverCount >= required
 }
 
-func (p *Predictor) candidateReceiverGateMeetsMinimum(candidate ReceiverCapShadowSampleCandidate, minObservationCount int) bool {
-	if p == nil {
-		return true
-	}
-	required := requiredReceiverCount(minObservationCount, candidate.MaxEffectiveCount, candidate.CappedReceiverCapacity)
-	return required == 0 || candidate.CappedReceiverCount >= required
-}
-
 func (p *Predictor) requiredReceiverCount(sample Sample, minObservationCount int) uint32 {
 	if p == nil {
 		return 0
@@ -288,49 +277,6 @@ func (p *Predictor) capWouldBlock(sample Sample, minObservationCount int) bool {
 	return sample.CappedWeight < p.cfg.MinEffectiveWeight
 }
 
-func (p *Predictor) capShadowSummary(sample Sample, hasP50 bool, source PredictionSource, rawMinObservationCount int, receiverMinObservationCount int, modeKey string) ReceiverCapShadowSummary {
-	if p == nil || p.cfg.ReceiverContributionMode != ReceiverContributionShadow || sample.CapShadow.Count <= 0 {
-		return ReceiverCapShadowSummary{}
-	}
-	count := sample.CapShadow.Count
-	if count > ReceiverShadowCapCandidateCount {
-		count = ReceiverShadowCapCandidateCount
-	}
-	var out ReceiverCapShadowSummary
-	out.Count = count
-	for i := 0; i < count; i++ {
-		candidate := sample.CapShadow.Candidates[i]
-		countOK := countMeetsMinimum(sampleObservationCount(sample), rawMinObservationCount)
-		receiverOK := p.candidateReceiverGateMeetsMinimum(candidate, receiverMinObservationCount)
-		weightOK := candidate.Weight >= p.cfg.MinEffectiveWeight
-		pass := hasP50 && countOK && receiverOK && weightOK
-		outCandidate := ReceiverCapShadowCandidate{
-			MaxEffectiveCount: candidate.MaxEffectiveCount,
-			Pass:              pass,
-			LowCount:          !countOK,
-			LowReceiver:       countOK && !receiverOK,
-			LowWeight:         countOK && receiverOK && !weightOK,
-			Block:             source == SourceCombined && !pass,
-		}
-		if p.cfg.ReceiverShadowP50Enabled && candidate.hasSNRBins {
-			p50DB, candidateHasP50 := candidate.snrBins.p50DB()
-			p50Class := ""
-			p50Glyph := ""
-			if candidateHasP50 {
-				p50Class = ClassForDB(p50DB, modeKey, p.cfg)
-				p50Glyph = glyphForClass(p50Class, p.cfg)
-			}
-			outCandidate.P50DB = p50DB
-			outCandidate.HasP50 = candidateHasP50
-			outCandidate.P50Class = p50Class
-			outCandidate.P50Glyph = p50Glyph
-			outCandidate.P50Pass = candidateHasP50 && countOK && receiverOK && weightOK
-		}
-		out.Candidates[i] = outCandidate
-	}
-	return out
-}
-
 func mergeSamples(receive Sample, transmit Sample, cfg Config) (Sample, bool) {
 	hasReceive := sampleHasEvidence(receive)
 	hasTransmit := sampleHasEvidence(transmit)
@@ -353,7 +299,6 @@ func mergeSamples(receive Sample, transmit Sample, cfg Config) (Sample, bool) {
 			CappedReceiverCount:    saturatingAddCounts(receive.CappedReceiverCount, transmit.CappedReceiverCount),
 			CappedReceiverCapacity: saturatingAddCounts(receive.CappedReceiverCapacity, transmit.CappedReceiverCapacity),
 			CapLimited:             receive.CapLimited || transmit.CapLimited,
-			CapShadow:              mergeBothDirectionCapShadow(receive.CapShadow, transmit.CapShadow, cfg),
 		}, true
 	}
 	if receiveActive {
@@ -373,7 +318,6 @@ func mergeSamples(receive Sample, transmit Sample, cfg Config) (Sample, bool) {
 		CappedReceiverCount:    saturatingAddCounts(receive.CappedReceiverCount, transmit.CappedReceiverCount),
 		CappedReceiverCapacity: saturatingAddCounts(receive.CappedReceiverCapacity, transmit.CappedReceiverCapacity),
 		CapLimited:             receive.CapLimited || transmit.CapLimited,
-		CapShadow:              inactiveDirectionCapShadow(receive.CapShadow, transmit.CapShadow),
 	}, true
 }
 
@@ -401,7 +345,6 @@ func mergeSamplesWithDistribution(receive sampleWithBins, transmit sampleWithBin
 	} else if transmitActive {
 		bins.addScaled(transmit.snrBins, cfg.ReverseHintDiscount)
 	}
-	merged.CapShadow = mergeCapShadowDirectionsWithDistribution(receive.CapShadow, transmit.CapShadow, cfg, noisePenalty)
 	p50DB, hasP50 := bins.p50DB()
 	return sampleWithBins{
 		Sample:  merged,
@@ -421,7 +364,6 @@ func singleDirectionMerge(active Sample, other Sample, cfg Config) Sample {
 	active.RawCount = saturatingAddCounts(sampleRawCount(active), sampleRawCount(other))
 	active.CappedCount = saturatingAddCounts(sampleCappedCount(active), sampleCappedCount(other))
 	active.CapLimited = active.CapLimited || other.CapLimited
-	active.CapShadow = singleDirectionCapShadow(active.CapShadow, other.CapShadow, cfg)
 	return active
 }
 

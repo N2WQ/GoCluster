@@ -31,8 +31,6 @@ type Config struct {
 	ReceiverFineSlots                  int                        `yaml:"receiver_fine_slots"`                     // tracked receiver slots in fine buckets
 	ReceiverCoarseSlots                int                        `yaml:"receiver_coarse_slots"`                   // tracked receiver slots in coarse buckets
 	ReceiverMaxEffectiveCount          uint32                     `yaml:"receiver_max_effective_count"`            // max accepted reports per receiver per bucket
-	ReceiverShadowMaxEffectiveCounts   []uint32                   `yaml:"receiver_shadow_max_effective_counts"`    // exactly three shadow cap counts to compare in diagnostics
-	ReceiverShadowP50Enabled           bool                       `yaml:"receiver_shadow_p50_enabled"`             // enable candidate cap p50/glyph shadow diagnostics
 	ReceiverMaxEffectiveWeight         float64                    `yaml:"receiver_max_effective_weight"`           // max accepted effective weight per receiver per bucket
 	MinFineWeight                      float64                    `yaml:"min_fine_weight"`                         // minimum fine weight to blend with coarse
 	FineOnlyWeight                     float64                    `yaml:"fine_only_weight"`                        // minimum fine weight to use fine only
@@ -69,8 +67,6 @@ var requiredConfigPaths = []yamlconfig.Path{
 	{"receiver_fine_slots"},
 	{"receiver_coarse_slots"},
 	{"receiver_max_effective_count"},
-	{"receiver_shadow_max_effective_counts"},
-	{"receiver_shadow_p50_enabled"},
 	{"receiver_max_effective_weight"},
 	{"min_fine_weight"},
 	{"fine_only_weight"},
@@ -108,11 +104,6 @@ const (
 
 	maxFineReceiverSlots   = 6
 	maxCoarseReceiverSlots = 12
-
-	// ReceiverShadowCapCandidateCount is the fixed number of candidate count
-	// caps tracked for file-only cap-shadow diagnostics. The fixed cardinality
-	// keeps per-bucket retained state deterministic.
-	ReceiverShadowCapCandidateCount = 3
 )
 
 // GlyphThresholds defines FT8-equiv dB cutoffs for glyphs.
@@ -232,8 +223,6 @@ func DefaultConfig() Config {
 		ReceiverFineSlots:                  6,
 		ReceiverCoarseSlots:                12,
 		ReceiverMaxEffectiveCount:          5,
-		ReceiverShadowMaxEffectiveCounts:   []uint32{5, 6, 8},
-		ReceiverShadowP50Enabled:           false,
 		ReceiverMaxEffectiveWeight:         5.0,
 		MinFineWeight:                      5.0,
 		FineOnlyWeight:                     20.0,
@@ -328,17 +317,6 @@ func (c *Config) finalize() error {
 	}
 	if c.ReceiverMaxEffectiveCount == 0 {
 		return fmt.Errorf("receiver_max_effective_count must be > 0")
-	}
-	if len(c.ReceiverShadowMaxEffectiveCounts) != ReceiverShadowCapCandidateCount {
-		return fmt.Errorf("receiver_shadow_max_effective_counts must contain exactly %d values", ReceiverShadowCapCandidateCount)
-	}
-	for i, count := range c.ReceiverShadowMaxEffectiveCounts {
-		if count == 0 {
-			return fmt.Errorf("receiver_shadow_max_effective_counts[%d] must be > 0", i)
-		}
-		if i > 0 && count <= c.ReceiverShadowMaxEffectiveCounts[i-1] {
-			return fmt.Errorf("receiver_shadow_max_effective_counts must be strictly increasing")
-		}
 	}
 	if c.ReceiverMaxEffectiveWeight <= 0 {
 		return fmt.Errorf("receiver_max_effective_weight must be > 0")

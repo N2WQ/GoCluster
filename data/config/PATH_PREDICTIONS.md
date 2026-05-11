@@ -182,7 +182,7 @@ The system is highly configurable (see [path_reliability.yaml](path_reliability.
 - **Mode thresholds**: What signal strength qualifies as high/medium/low for each mode
 - **Minimum observation count**: How many raw selected observations are needed before showing a prediction; receiver diversity is checked separately when receiver caps are enforced
 - **Minimum weight**: How much data is needed before showing a prediction
-- **Receiver contribution caps**: Whether capped receiver evidence is off, shadowed, or enforced, how many receiver slots are tracked in fine/coarse buckets, which three candidate count caps are compared in the `Path cap shadow (5m)` log, and whether candidate p50/glyph outcomes are logged in `Path cap p50 shadow (5m)`
+- **Receiver contribution caps**: Whether capped receiver evidence is off, shadowed, or enforced, how many receiver slots are tracked in fine/coarse buckets, and how many decayed effective observations one receiver can contribute per bucket
 
 ## The Bottom Line
 

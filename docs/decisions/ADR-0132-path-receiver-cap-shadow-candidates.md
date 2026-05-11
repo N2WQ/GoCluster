@@ -1,6 +1,6 @@
 # ADR-0132: Path Receiver Cap Shadow Candidates
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-05-10
 - Decision Origin: Design
 
@@ -85,4 +85,4 @@ sidecar so the base bucket size does not grow for raw buckets.
   `data/config/PATH_PREDICTIONS.md`, `customgpt/common-questions.md`
 - Related TSRs:
 - Supersedes / superseded by: extends ADR-0095, ADR-0129, and ADR-0130; extended
-  by ADR-0133; does not supersede them.
+  by ADR-0133; superseded by ADR-0135.

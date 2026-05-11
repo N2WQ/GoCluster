@@ -379,24 +379,15 @@ Important operational notes:
 - Active p50 uses midpoint representatives for fixed SNR bins. Balanced
   weak/strong evidence uses the middle between both selected bin representatives
   instead of always choosing the weaker bin.
-- Receiver contribution caps are currently configured in `shadow` mode for cap
-  tuning. Normal glyphs and PATH filters use raw selected evidence, while
-  `SET DIAG PATH` and five-minute propagation logs expose when caps would
-  reduce or block evidence.
+- Receiver contribution caps are configured in `enforce` mode. Normal glyphs
+  and PATH filters use capped receiver evidence, with the checked-in cap set to
+  eight decayed effective observations per receiver per bucket.
 - Five-minute `Path predictions (5m)` logs split insufficient evidence into
   `no_sample`, `low_count`, `low_receiver`, `low_weight`, and `stale`;
   `low_count` means the selected raw sample count missed the observation floor,
   `low_receiver` means receiver diversity missed the derived receiver gate,
   and `low_weight` means decayed effective weight missed the weight floor.
   These lines are written to `logging.propagation.dir`, not the system log.
-- In receiver-cap `shadow` mode, `Path cap shadow (5m)` logs compare the three
-  configured count caps with `capN_pass`, `capN_low_count`,
-  `capN_low_receiver`, `capN_low_weight`, and `capN_block` counters without
-  changing active glyphs.
-- When candidate p50 shadow is enabled, `Path cap p50 shadow (5m)` logs show
-  whether each candidate cap would have produced an unlikely/low/medium/high
-  p50 class and whether it would have been the same, stronger, weaker, or
-  insufficient compared with the active glyph.
 - If grids are missing, evidence is stale, too sparse, too weak, or the H3 tables are unavailable, the result stays `INSUFFICIENT`.
 - `PATH` filters work on the class names, not on the glyph characters.
 - `R` and `G` are solar-weather display overrides, not normal path classes.

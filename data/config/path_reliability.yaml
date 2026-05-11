@@ -84,15 +84,13 @@ min_effective_weight: 0.5
 min_observation_count: 21
 
 # Receiver contribution caps limit how much one receiving station can add to a
-# bucket's trust evidence. "shadow" uses raw selected evidence for active glyphs
-# while recording where capped evidence would block a prediction; "enforce" gates
-# glyphs and PATH filters on capped evidence; "off" disables capped tracking.
-receiver_contribution_mode: shadow
+# bucket's trust evidence. "enforce" gates glyphs and PATH filters on capped
+# evidence; "shadow" uses raw active evidence while recording whether the active
+# cap would block; "off" disables capped tracking.
+receiver_contribution_mode: enforce
 receiver_fine_slots: 6              # Receiver slots retained in fine buckets.
 receiver_coarse_slots: 12           # Receiver slots retained in coarse buckets.
-receiver_max_effective_count: 6     # Max decayed effective observation count one receiver can contribute per bucket.
-receiver_shadow_max_effective_counts: [5, 6, 8]  # Three candidate count caps logged for shadow-only comparison.
-receiver_shadow_p50_enabled: true   # Also log candidate p50/glyph outcomes for the receiver cap shadow comparison.
+receiver_max_effective_count: 8     # Max decayed effective observation count one receiver can contribute per bucket.
 receiver_max_effective_weight: 8.0  # Max capped effective weight one receiver can contribute per bucket.
 
 # Minimum fine weight required before blending fine with coarse (res-1); below this uses coarse only.

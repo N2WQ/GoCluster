@@ -88,19 +88,10 @@ only partial remaining count or weight capacity, the capped histogram receives
 the same fraction. When the slot set is full, the weakest/oldest slot is
 reused; this is an approximation, not an unbounded exact unique-receiver set.
 
-`receiver_shadow_max_effective_counts` contains exactly three increasing count
-cap candidates. In `shadow` mode, the predictor tracks those candidates through
-the same fine/coarse and receive/transmit selection path as the active sample.
-The gate-only counters report pass, low count, low weight, and would-block. When
-`receiver_shadow_p50_enabled` is true, each candidate also tracks fixed SNR
-histograms so diagnostics can report the alternate p50 class and whether that
-candidate would have been the same, stronger, weaker, or insufficient compared
-with the active glyph.
-
 `receiver_contribution_mode` controls how capped evidence is used:
 
 - `shadow`: use raw selected evidence for active p50 glyphs and PATH filters,
-  but expose whether capped evidence would have blocked the prediction.
+  but expose whether the configured cap would have blocked the prediction.
 - `enforce`: use raw selected count for the observation floor, plus capped
   receiver diversity and capped weight for receiver-cap trust gates.
 - `off`: disable capped tracking and use raw evidence only.
@@ -126,22 +117,9 @@ the typical middle rather than always choosing the weaker bin.
 Five-minute propagation logs split insufficient path prediction outcomes into
 `no_sample`, `low_count`, `low_receiver`, `low_weight`, and `stale`.
 `low_count` maps to the raw selected observation floor; `low_receiver` maps to
-the receiver-diversity gate in enforce/candidate cap evaluation; `low_weight`
+the receiver-diversity gate in enforce evaluation; `low_weight`
 maps to the decayed effective weight floor. These aggregate lines are written
 to `logging.propagation.dir`.
-
-When receiver caps run in `shadow` mode, the next file-only aggregate line is
-`Path cap shadow (5m)`. It reports the configured candidates as fields such as
-`cap5_pass`, `cap5_low_count`, `cap5_low_receiver`, `cap5_low_weight`, and
-`cap5_block`, comparing the candidate count caps against the same live
-prediction traffic without changing the active glyph.
-
-When `receiver_shadow_p50_enabled` is true, the propagation log also writes
-`Path cap p50 shadow (5m)`. It reports candidate p50 outcomes as fields such as
-`cap5_p50_pass_low`, `cap5_p50_same`, `cap5_p50_stronger`,
-`cap5_p50_weaker`, and `cap5_p50_to_insufficient`. These fields answer whether
-the candidate cap would have changed the displayed p50 class; they still do not
-change active glyphs or PATH filters.
 
 The shipped config currently uses:
 
@@ -149,12 +127,10 @@ The shipped config currently uses:
 - `stale_after_half_life_multiplier: 3`
 - `stale_after_seconds: 1800` as the fallback purge window
 - `max_prediction_age_half_life_multiplier: 1.25` as a display/filter freshness gate
-- `receiver_contribution_mode: shadow`
+- `receiver_contribution_mode: enforce`
 - `receiver_fine_slots: 6`
 - `receiver_coarse_slots: 12`
-- `receiver_max_effective_count: 6` decayed effective observations per receiver
-- `receiver_shadow_max_effective_counts: [5, 6, 8]` for shadow comparison
-- `receiver_shadow_p50_enabled: true` for candidate p50/glyph comparison
+- `receiver_max_effective_count: 8` decayed effective observations per receiver
 - `receiver_max_effective_weight: 8.0`
 
 ## Sample Selection And Merge

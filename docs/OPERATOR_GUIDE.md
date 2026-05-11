@@ -258,18 +258,6 @@ receiver-diversity gate; `low_weight` is the decayed effective-weight gate.
 The shipped config writes these aggregate lines to `data/logs/propagation`,
 not the system log.
 
-When `receiver_contribution_mode` is `shadow`, the propagation log also writes
-`Path cap shadow (5m)`. That line compares the three configured
-`receiver_shadow_max_effective_counts` values with `capN_pass`,
-`capN_low_count`, `capN_low_receiver`, `capN_low_weight`, and `capN_block`
-counters. It is a cap tuning diagnostic only; it does not change active glyphs
-or PATH filters.
-When `receiver_shadow_p50_enabled` is true, the propagation log also writes
-`Path cap p50 shadow (5m)`. That line shows whether each candidate cap would
-have produced an unlikely, low, medium, or high p50 class, and whether that
-candidate would have matched, strengthened, weakened, or made insufficient the
-active path glyph.
-
 The fixed-width cluster format may clip the right edge of a long diagnostic
 comment to keep the grid, confidence, and time columns aligned. The leftmost
 fields remain the important ones: count and effective weight or reason.

@@ -1,6 +1,6 @@
 # ADR-0133: Path Receiver Cap P50 Shadow Histograms
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-05-11
 - Decision Origin: Design
 
@@ -85,4 +85,4 @@ peer wire format, and `SET DIAG PATH` output are unchanged.
   `pathreliability/README.md`, `README.md`, `docs/OPERATOR_GUIDE.md`,
   `data/config/PATH_PREDICTIONS.md`, `customgpt/common-questions.md`
 - Related TSRs: `docs/troubleshooting/TSR-0022-path-receiver-cap-lifetime-count.md`
-- Supersedes / superseded by: extends ADR-0132; does not supersede it.
+- Supersedes / superseded by: extends ADR-0132; superseded by ADR-0135.

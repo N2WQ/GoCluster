@@ -108,11 +108,9 @@ func SelectSample(fine Sample, coarse Sample, minFineWeight float64, fineOnlyWei
 		return Sample{}
 	}
 	if fineOnlyWeight > 0 && fine.Weight >= fineOnlyWeight {
-		fine.CapShadow = selectCapShadowFineCoarse(fine.CapShadow, coarseCandidate.CapShadow, minFineWeight, fineOnlyWeight)
 		return fine
 	}
 	if minFineWeight > 0 && fine.Weight < minFineWeight {
-		coarseCandidate.CapShadow = selectCapShadowFineCoarse(fine.CapShadow, coarseCandidate.CapShadow, minFineWeight, fineOnlyWeight)
 		return coarseCandidate
 	}
 	sum := fine.Weight + coarseCandidate.Weight
@@ -131,7 +129,6 @@ func SelectSample(fine Sample, coarse Sample, minFineWeight float64, fineOnlyWei
 		CappedReceiverCount:    maxCount(fine.CappedReceiverCount, coarseCandidate.CappedReceiverCount),
 		CappedReceiverCapacity: maxCount(fine.CappedReceiverCapacity, coarseCandidate.CappedReceiverCapacity),
 		CapLimited:             fine.CapLimited || coarseCandidate.CapLimited,
-		CapShadow:              mergeFineCoarseCapShadow(fine.CapShadow, coarseCandidate.CapShadow),
 	}
 }
 
@@ -148,18 +145,15 @@ func selectSampleWithDistribution(fine sampleWithBins, coarse sampleWithBins, mi
 		return sampleWithBins{}
 	}
 	if fineOnlyWeight > 0 && fine.Weight >= fineOnlyWeight {
-		fine.CapShadow = selectCapShadowFineCoarse(fine.CapShadow, coarseCandidate.CapShadow, minFineWeight, fineOnlyWeight)
 		return fine
 	}
 	if minFineWeight > 0 && fine.Weight < minFineWeight {
-		coarseCandidate.CapShadow = selectCapShadowFineCoarse(fine.CapShadow, coarseCandidate.CapShadow, minFineWeight, fineOnlyWeight)
 		return coarseCandidate
 	}
 	sample := SelectSample(fine.Sample, coarseCandidate.Sample, minFineWeight, fineOnlyWeight)
 	if !sampleHasEvidence(sample) {
 		return sampleWithBins{}
 	}
-	sample.CapShadow = selectCapShadowFineCoarse(fine.CapShadow, coarseCandidate.CapShadow, minFineWeight, fineOnlyWeight)
 	var bins snrHistogram
 	p50DB, hasP50 := 0.0, false
 	if fine.HasP50 || coarseCandidate.HasP50 {
