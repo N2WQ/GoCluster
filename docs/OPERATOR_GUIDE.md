@@ -216,11 +216,12 @@ column already shows it when path display is enabled:
 n<count>|w<weight>|a<age>
 ```
 
-When receiver contribution caps reduce the diagnostic evidence, capped count is
-shown first and raw selected count is shown after `/r`:
+When receiver contribution caps reduce the diagnostic evidence, raw selected
+count is shown first, capped effective count is shown after `/c`, and live
+attributed receivers are shown after `/rx`:
 
 ```text
-n<capped>/r<raw>|w<weight>|a<age>
+n<raw>/c<capped>/rx<receivers>|w<weight>|a<age>
 ```
 
 Insufficient evidence is shown as:
@@ -229,27 +230,33 @@ Insufficient evidence is shown as:
 n<count>|<reason>
 ```
 
-- `n<count>` is the raw number of selected observations behind the displayed
-  path decision. It is a sample-size clue, not a confidence percent.
-- `n<capped>/r<raw>` means receiver contribution caps reduced the diagnostic
-  evidence. In the shipped `shadow` mode this is informational; in `enforce`
-  mode the capped count and capped weight gate the path class.
+- `n<count>` is the raw selected observation count behind the displayed path
+  decision in every receiver-cap mode. It is a sample-size clue, not a
+  confidence percent.
+- `n<raw>/c<capped>/rx<receivers>` means receiver contribution caps reduced
+  the diagnostic evidence. The raw count is the sample floor; the capped count,
+  receiver count, and capped weight explain receiver-cap trust evidence.
 - `w<weight>` is the rounded effective weight after decay and path selection.
   It is not SNR or dB. Weight is an evidence-strength gate, not the displayed
   path class itself.
 - `a<age>` is the effective age of the selected evidence. Bare numbers are
   seconds; `m` and `h` mean minutes and hours.
 - `none` means no usable selected sample existed.
-- `lown` means selected samples existed, but their raw observation count was
-  below the configured minimum.
+- `lown` means selected samples existed, but their observation count was below
+  the configured minimum.
+- `lowr` means raw selected observations met the count floor, but receiver
+  diversity was below the derived receiver gate.
 - `loww` means selected samples existed, but their effective weight was below
   the configured minimum.
 - `stale` means selected samples existed, but the selected evidence was too old
   for the band's freshness gate.
 
-The five-minute `Path predictions (5m)` system log uses the same reason split:
-`no_sample`, `low_count`, `low_weight`, and `stale`. `low_count` is the
-observation-count gate; `low_weight` is the decayed effective-weight gate.
+The five-minute `Path predictions (5m)` propagation log uses the same reason
+split: `no_sample`, `low_count`, `low_receiver`, `low_weight`, and `stale`.
+`low_count` is the raw observation-count gate; `low_receiver` is the
+receiver-diversity gate; `low_weight` is the decayed effective-weight gate.
+The shipped config writes these aggregate lines to `data/logs/propagation`,
+not the system log.
 
 The fixed-width cluster format may clip the right edge of a long diagnostic
 comment to keep the grid, confidence, and time columns aligned. The leftmost
@@ -257,24 +264,28 @@ fields remain the important ones: count and effective weight or reason.
 
 Example readings:
 
-- `n18|w7`: 18 selected raw observations, rounded effective weight 7.
+- `n18|w7`: 18 selected observations, rounded effective weight 7.
 - `n0|none`: no usable selected sample.
 - `n3|lown`: three selected observations existed, but not enough to emit a
   path class.
-- `n5/r19|lown`: nineteen raw observations existed, but capped receiver
-  evidence would not meet the minimum sample floor.
-- `n5/r19|w3`: capped receiver evidence is shown because one or more receivers
-  hit a contribution cap.
+- `n19/c5/rx1|lowr`: nineteen raw observations existed, but only one
+  attributed receiver contributed capped evidence.
+- `n19/c5/rx1|w3`: receiver caps reduced diagnostic evidence; raw count is
+  shown first, capped effective count after `/c`, and attributed receiver count
+  after `/rx`.
 - `n1|loww`: one selected observation existed, but the effective weight was
   below the minimum.
-- `n32|w1`: large raw sample count but low rounded effective weight.
+- `n32|w1`: large selected count but low rounded effective weight.
 
 ## Logs And Health
 
-System logs, optional dropped-call logs, and file-only event logs are configured
-in `app.yaml`. The file-only event logs are separate daily files for login
-attempt failures, reputation-gated spot drops, telnet client lifecycle, ingest
-source lifecycle, and peer lifecycle. They do not add local UI or console panes.
+System logs, propagation logs, optional dropped-call logs, and file-only event
+logs are configured in `app.yaml`. Propagation logs are separate daily files
+under `logging.propagation.dir`; they contain the path prediction aggregates
+used by the daily propagation report. The file-only event logs are separate
+daily files for login attempt failures, reputation-gated spot drops, telnet
+client lifecycle, ingest source lifecycle, and peer lifecycle. They do not add
+local UI or console panes.
 Under `systemd`, stdout/stderr also go to journald and can be tailed with:
 
 ```sh

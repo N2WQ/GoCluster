@@ -100,6 +100,10 @@ func retainCustomSCPTestStaticLocked(store *CustomSCPStore, call string, seenUni
 	store.upsertStaticExpiryLocked(retained, store.static[retained])
 }
 
+func freshCustomSCPTestTime() time.Time {
+	return time.Now().UTC().Truncate(time.Second).Add(-time.Hour)
+}
+
 func TestCustomSCPStoreCWAndRTTYSNRThresholds(t *testing.T) {
 	opts := CustomSCPOptions{
 		Path:           filepath.Join(t.TempDir(), "scp"),
@@ -394,7 +398,7 @@ func TestCustomSCPStoreRecordObservationOverflowRetainsNewestDeterministically(t
 		_ = store.Close()
 	})
 
-	seenAt := time.Date(2026, 4, 11, 22, 0, 0, 0, time.UTC)
+	seenAt := freshCustomSCPTestTime()
 	for _, spotter := range []string{"N0AAA", "N0BBB", "N0CCC"} {
 		store.recordObservation("K1ABC", "40m", "CW", spotter, 101, 0, false, seenAt)
 	}
@@ -433,7 +437,7 @@ func TestCustomSCPStoreHasSFloorSupportFamilyKeyPairMatchesSlice(t *testing.T) {
 		_ = store.Close()
 	})
 
-	now := time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC)
+	now := freshCustomSCPTestTime()
 	store.recordObservation("W1AW", "40m", "CW", "N0AAA", 101, 0, false, now)
 	voteKey, baseKey, ok := CorrectionFamilyKeyPair("W1AW/5")
 	if !ok {
@@ -551,7 +555,7 @@ func TestCustomSCPStoreSpotterSliceChurnBoundsInternerAndCounters(t *testing.T) 
 		_ = store.Close()
 	})
 
-	now := time.Date(2026, 4, 12, 12, 0, 0, 0, time.UTC)
+	now := freshCustomSCPTestTime()
 	for i := 0; i < 20; i++ {
 		store.recordObservation("K1CHURN", "40m", "CW", "N0"+string(rune('A'+i)), uint16(100+i), 0, false, now.Add(time.Duration(i)*time.Second))
 	}
@@ -652,7 +656,7 @@ func TestCustomSCPInternerReleasesSnapshotPrunedEntry(t *testing.T) {
 		_ = store.Close()
 	})
 
-	now := time.Date(2026, 4, 12, 12, 0, 0, 0, time.UTC)
+	now := freshCustomSCPTestTime()
 	key := customSCPKey{call: "K1SNAP", band: "40m", bucket: "cw"}
 	entry := &customSCPEntry{
 		spotters: customSCPTestSpotters(map[string]customSCPSpotterObs{
@@ -696,7 +700,7 @@ func TestCustomSCPInternerReleasesMaxKeyEviction(t *testing.T) {
 		_ = store.Close()
 	})
 
-	now := time.Date(2026, 4, 12, 12, 0, 0, 0, time.UTC)
+	now := freshCustomSCPTestTime()
 	store.recordObservation("K1OLD", "40m", "CW", "N0OLD", 101, 0, false, now.Add(-time.Minute))
 	store.recordObservation("K1NEW", "20m", "RTTY", "N0NEW", 202, 3, true, now)
 
@@ -735,7 +739,7 @@ func TestCustomSCPStatsSnapshotReportsRetainedStateCardinality(t *testing.T) {
 		_ = store.Close()
 	})
 
-	now := time.Date(2026, 4, 12, 12, 0, 0, 0, time.UTC)
+	now := freshCustomSCPTestTime()
 	store.recordObservation("K1STAT", "40m", "CW", "N0AAA", 101, 0, false, now)
 
 	stats := store.StatsSnapshot()
@@ -774,7 +778,7 @@ func TestCustomSCPStoreStaticCallCountUsesStaticHorizon(t *testing.T) {
 		_ = store.Close()
 	})
 
-	now := time.Date(2026, 4, 19, 12, 0, 0, 0, time.UTC)
+	now := freshCustomSCPTestTime()
 	store.recordObservation("K1DUP", "40m", "CW", "N0AAA", 101, 0, false, now.Add(-10*24*time.Hour))
 	store.recordObservation("K1DUP", "20m", "CW", "N0BBB", 102, 0, false, now.Add(-9*24*time.Hour))
 	store.recordObservation("K1FRESH", "40m", "CW", "N0CCC", 103, 0, false, now.Add(-8*24*time.Hour))

@@ -1,47 +1,46 @@
 package pathreliability
 
 import (
-	"math"
 	"testing"
 	"time"
 )
 
-func TestGlyphForPower(t *testing.T) {
+func TestGlyphForDB(t *testing.T) {
 	cfg := DefaultConfig()
-	if got := GlyphForPower(cfg.powerFromDB(-12), "FT8", cfg); got != "+" {
+	if got := GlyphForDB(-12, "FT8", cfg); got != "+" {
 		t.Fatalf("expected + for -12 dB, got %q", got)
 	}
-	if got := GlyphForPower(cfg.powerFromDB(-16), "FT8", cfg); got != "=" {
+	if got := GlyphForDB(-16, "FT8", cfg); got != "=" {
 		t.Fatalf("expected = for -16 dB, got %q", got)
 	}
-	if got := GlyphForPower(cfg.powerFromDB(-20), "FT8", cfg); got != "-" {
+	if got := GlyphForDB(-20, "FT8", cfg); got != "-" {
 		t.Fatalf("expected - for -20 dB, got %q", got)
 	}
-	if got := GlyphForPower(cfg.powerFromDB(-30), "FT8", cfg); got != "!" {
+	if got := GlyphForDB(-30, "FT8", cfg); got != "!" {
 		t.Fatalf("expected ! for -30 dB, got %q", got)
 	}
-	if got := GlyphForPower(cfg.powerFromDB(-4), "CW", cfg); got != "-" {
+	if got := GlyphForDB(-4, "CW", cfg); got != "-" {
 		t.Fatalf("expected - for -4 dB in CW thresholds, got %q", got)
 	}
 }
 
-func TestClassForPower(t *testing.T) {
+func TestClassForDB(t *testing.T) {
 	cfg := DefaultConfig()
-	if got := ClassForPower(cfg.powerFromDB(-12), "FT8", cfg); got != "HIGH" {
+	if got := ClassForDB(-12, "FT8", cfg); got != "HIGH" {
 		t.Fatalf("expected HIGH for -12 dB, got %q", got)
 	}
-	if got := ClassForPower(cfg.powerFromDB(-16), "FT8", cfg); got != "MEDIUM" {
+	if got := ClassForDB(-16, "FT8", cfg); got != "MEDIUM" {
 		t.Fatalf("expected MEDIUM for -16 dB, got %q", got)
 	}
-	if got := ClassForPower(cfg.powerFromDB(-20), "FT8", cfg); got != "LOW" {
+	if got := ClassForDB(-20, "FT8", cfg); got != "LOW" {
 		t.Fatalf("expected LOW for -20 dB, got %q", got)
 	}
-	if got := ClassForPower(cfg.powerFromDB(-30), "FT8", cfg); got != "UNLIKELY" {
+	if got := ClassForDB(-30, "FT8", cfg); got != "UNLIKELY" {
 		t.Fatalf("expected UNLIKELY for -30 dB, got %q", got)
 	}
 }
 
-func TestGlyphForPowerUsesCustomSymbols(t *testing.T) {
+func TestGlyphForDBUsesCustomSymbols(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.GlyphSymbols = GlyphSymbols{
 		High:         "H",
@@ -50,34 +49,30 @@ func TestGlyphForPowerUsesCustomSymbols(t *testing.T) {
 		Unlikely:     "U",
 		Insufficient: "I",
 	}
-	if got := GlyphForPower(cfg.powerFromDB(-12), "FT8", cfg); got != "H" {
+	if got := GlyphForDB(-12, "FT8", cfg); got != "H" {
 		t.Fatalf("expected H for -12 dB, got %q", got)
 	}
-	if got := GlyphForPower(cfg.powerFromDB(-16), "FT8", cfg); got != "M" {
+	if got := GlyphForDB(-16, "FT8", cfg); got != "M" {
 		t.Fatalf("expected M for -16 dB, got %q", got)
 	}
-	if got := GlyphForPower(cfg.powerFromDB(-20), "FT8", cfg); got != "L" {
+	if got := GlyphForDB(-20, "FT8", cfg); got != "L" {
 		t.Fatalf("expected L for -20 dB, got %q", got)
 	}
-	if got := GlyphForPower(cfg.powerFromDB(-30), "FT8", cfg); got != "U" {
+	if got := GlyphForDB(-30, "FT8", cfg); got != "U" {
 		t.Fatalf("expected U for -30 dB, got %q", got)
 	}
 }
 
-func TestMergeSamplesWeighted(t *testing.T) {
+func TestMergeSamplesWeightedMetadata(t *testing.T) {
 	cfg := DefaultConfig()
-	receive := Sample{Value: cfg.powerFromDB(-10), Weight: 10, Count: 3}
-	transmit := Sample{Value: cfg.powerFromDB(-5), Weight: 4, Count: 2}
-	merged, ok := mergeSamples(receive, transmit, cfg, 0)
+	receive := Sample{Weight: 10, Count: 3}
+	transmit := Sample{Weight: 4, Count: 2}
+	merged, ok := mergeSamples(receive, transmit, cfg)
 	if !ok {
 		t.Fatalf("expected merge ok")
 	}
 	if merged.Weight <= 0 {
 		t.Fatalf("expected positive merged weight")
-	}
-	mergedDB := powerToDB(merged.Value)
-	if mergedDB >= -7 || mergedDB <= -11 {
-		t.Fatalf("unexpected merged dB: %v", mergedDB)
 	}
 	if merged.AgeSec != 0 {
 		t.Fatalf("expected merged age 0, got %d", merged.AgeSec)
@@ -88,20 +83,16 @@ func TestMergeSamplesWeighted(t *testing.T) {
 }
 
 func TestSelectSampleMinFineWeight(t *testing.T) {
-	fine := Sample{Value: -20, Weight: 2, AgeSec: 12, Count: 2}
-	coarse := Sample{Value: -5, Weight: 10, AgeSec: 30, Count: 7}
+	fine := Sample{Weight: 2, AgeSec: 12, Count: 2}
+	coarse := Sample{Weight: 10, AgeSec: 30, Count: 7}
 	got := SelectSample(fine, coarse, 5, 20)
-	if got.Value != coarse.Value || got.Weight != coarse.Weight || got.Count != coarse.Count {
-		t.Fatalf("expected coarse when fine below min, got value=%v weight=%v count=%d", got.Value, got.Weight, got.Count)
+	if got.Weight != coarse.Weight || got.Count != coarse.Count {
+		t.Fatalf("expected coarse when fine below min, got weight=%v count=%d", got.Weight, got.Count)
 	}
 
-	fine = Sample{Value: -10, Weight: 6, AgeSec: 10, Count: 3}
-	coarse = Sample{Value: -4, Weight: 10, AgeSec: 20, Count: 8}
+	fine = Sample{Weight: 6, AgeSec: 10, Count: 3}
+	coarse = Sample{Weight: 10, AgeSec: 20, Count: 8}
 	got = SelectSample(fine, coarse, 5, 20)
-	wantValue := (fine.Value*fine.Weight + coarse.Value*coarse.Weight) / (fine.Weight + coarse.Weight)
-	if math.Abs(got.Value-wantValue) > 0.0001 {
-		t.Fatalf("expected blended value %v, got %v", wantValue, got.Value)
-	}
 	if got.Weight != fine.Weight+coarse.Weight {
 		t.Fatalf("expected blended weight %v, got %v", fine.Weight+coarse.Weight, got.Weight)
 	}
@@ -112,19 +103,19 @@ func TestSelectSampleMinFineWeight(t *testing.T) {
 		t.Fatalf("expected blended count to use larger selected layer count 8, got %d", got.Count)
 	}
 
-	fine = Sample{Value: -18, Weight: 2, AgeSec: 5, Count: 4}
+	fine = Sample{Weight: 2, AgeSec: 5, Count: 4}
 	got = SelectSample(fine, Sample{}, 5, 20)
-	if got.Value != fine.Value || got.Weight != fine.Weight || got.Count != fine.Count {
-		t.Fatalf("expected fine sample when coarse missing, got value=%v weight=%v count=%d", got.Value, got.Weight, got.Count)
+	if got.Weight != fine.Weight || got.Count != fine.Count {
+		t.Fatalf("expected fine sample when coarse missing, got weight=%v count=%d", got.Weight, got.Count)
 	}
 }
 
 func TestSelectSampleFineOnlyThreshold(t *testing.T) {
-	fine := Sample{Value: -12, Weight: 25, AgeSec: 10}
-	coarse := Sample{Value: -6, Weight: 100, AgeSec: 30}
+	fine := Sample{Weight: 25, AgeSec: 10}
+	coarse := Sample{Weight: 100, AgeSec: 30}
 	got := SelectSample(fine, coarse, 5, 20)
-	if got.Value != fine.Value || got.Weight != fine.Weight {
-		t.Fatalf("expected fine-only when fine meets threshold, got value=%v weight=%v", got.Value, got.Weight)
+	if got.Weight != fine.Weight {
+		t.Fatalf("expected fine-only when fine meets threshold, got weight=%v", got.Weight)
 	}
 }
 
@@ -300,18 +291,6 @@ func TestBucketForIngest(t *testing.T) {
 	}
 }
 
-func TestPowerFromDBClampsToRange(t *testing.T) {
-	cfg := DefaultConfig()
-	high := cfg.powerFromDB(cfg.ClampMax + 10)
-	low := cfg.powerFromDB(cfg.ClampMin - 10)
-	if math.Abs(powerToDB(high)-cfg.ClampMax) > 0.2 {
-		t.Fatalf("expected high clamp near %v dB, got %v dB", cfg.ClampMax, powerToDB(high))
-	}
-	if math.Abs(powerToDB(low)-cfg.ClampMin) > 0.2 {
-		t.Fatalf("expected low clamp near %v dB, got %v dB", cfg.ClampMin, powerToDB(low))
-	}
-}
-
 func TestPredictUsesCombinedBuckets(t *testing.T) {
 	requireH3Mappings(t)
 	cfg := DefaultConfig()
@@ -330,7 +309,7 @@ func TestPredictUsesCombinedBuckets(t *testing.T) {
 	if resCW.Glyph == cfg.GlyphSymbols.Insufficient {
 		t.Fatalf("expected combined glyph for CW, got insufficient")
 	}
-	if resCW.Glyph != GlyphForPower(cfg.powerFromDB(-5), "CW", cfg) {
+	if resCW.Glyph != GlyphForDB(-5, "CW", cfg) {
 		t.Fatalf("unexpected CW glyph: %q", resCW.Glyph)
 	}
 	if resCW.Source != SourceCombined {
@@ -341,7 +320,7 @@ func TestPredictUsesCombinedBuckets(t *testing.T) {
 	if resFT8.Glyph == cfg.GlyphSymbols.Insufficient {
 		t.Fatalf("expected combined glyph for FT8, got insufficient")
 	}
-	if resFT8.Glyph != GlyphForPower(cfg.powerFromDB(-5), "FT8", cfg) {
+	if resFT8.Glyph != GlyphForDB(-5, "FT8", cfg) {
 		t.Fatalf("unexpected FT8 glyph: %q", resFT8.Glyph)
 	}
 	if resFT8.Source != SourceCombined {

@@ -45,9 +45,12 @@ The shipped config in [`../data/config/path_reliability.yaml`](../data/config/pa
 - `CW: -7`
 - `RTTY: -7`
 - `PSK: -19`
-- `WSPR: -26`
+- `WSPR: 0`
 
-After that conversion, the value is clamped to the shipped `clamp_min` and `clamp_max`, then converted from dB into linear power for storage.
+After that conversion, the predictor stores the pre-clamp FT8-equivalent dB
+value in fixed histogram bins. Active glyphs and PATH filters use the selected
+p50 bin, so out-of-range observations remain visible as underflow or overflow
+bins instead of being collapsed into one aggregate value.
 
 ## Bucket Storage
 
@@ -60,35 +63,63 @@ The predictor stores directional buckets keyed by:
 
 Each bucket stores:
 
-- accumulated power
 - accumulated weight
 - raw observation count
-- capped receiver-attributed power, weight, and observation count
+- capped receiver-attributed weight and effective observation count
+- fixed raw and capped SNR histograms for active p50 scoring
 - fixed receiver contribution slots
+- optional fixed candidate cap-shadow slots and p50 histograms when shadow diagnostics are active
 - last update time
 
 Updates apply exponential decay using the band's half-life before adding the new sample.
-The observation count is not decayed; it is a bounded diagnostic count of how
-many reports contributed to the selected bucket evidence.
+The raw observation count is not decayed; it is a bounded diagnostic count of
+how many reports contributed to the selected bucket evidence. Capped
+receiver-attributed count is a decayed effective count, aligned with capped
+weight and capped SNR bins, so old receiver evidence fades and makes room for
+newer evidence.
 
 Receiver contribution caps are bucket-owned and bounded by the bucket itself:
 fine buckets track up to `receiver_fine_slots` identities and coarse buckets
-track up to `receiver_coarse_slots` identities. The shipped values are `4` and
-`8`. One receiver can add at most `receiver_max_effective_count: 5` accepted
-reports and `receiver_max_effective_weight: 5.0` accepted weight to a bucket's
-capped trust evidence. When the slot set is full, the weakest/oldest slot is
+track up to `receiver_coarse_slots` identities. The checked-in values are `6`
+and `12`. One receiver can add at most `receiver_max_effective_count` decayed
+effective observations and `receiver_max_effective_weight: 8.0` decayed
+effective weight to a bucket's capped trust evidence. When a new report has
+only partial remaining count or weight capacity, the capped histogram receives
+the same fraction. When the slot set is full, the weakest/oldest slot is
 reused; this is an approximation, not an unbounded exact unique-receiver set.
 
 `receiver_contribution_mode` controls how capped evidence is used:
 
-- `shadow`: keep existing raw-count glyph/filter behavior, but expose whether
-  capped evidence would have blocked the prediction.
-- `enforce`: use capped count and capped weight for the count/weight gates.
+- `shadow`: use raw selected evidence for active p50 glyphs and PATH filters,
+  but expose whether the configured cap would have blocked the prediction.
+- `enforce`: use raw selected count for the observation floor, plus capped
+  receiver diversity and capped weight for receiver-cap trust gates.
 - `off`: disable capped tracking and use raw evidence only.
 
-Five-minute path prediction logs split insufficient outcomes into `no_sample`,
-`low_count`, `low_weight`, and `stale`. `low_count` maps to
-`InsufficientLowCount`; `low_weight` maps to `InsufficientLowWeight`.
+In enforce mode, the global `min_observation_count` still means selected raw
+observations. Receiver concentration is checked by a separate derived gate:
+the selected capped evidence must include at least
+`ceil(min_observation_count / receiver_max_effective_count)` live attributed
+receiver slots, capped by the selected bucket's slot capacity. This keeps the
+sample floor and receiver-diversity floor debuggable as separate causes.
+
+The store always retains fixed raw and capped SNR histograms. Updates touch only
+the selected bin unless time has advanced, and p50 scans the fixed array. These
+histograms are required for active glyphs and PATH filters.
+
+The SNR bins are fixed in code: `< -24`, one-dB bins from `-24..-23` through
+`23..24`, and `>= 24`. Finite bins use their midpoint as the displayed p50
+representative; underflow displays as `-24` and overflow displays as `24`.
+When an exact 50/50 median boundary falls between two non-empty bins, p50 uses
+the average of the two bin representatives so balanced bimodal evidence maps to
+the typical middle rather than always choosing the weaker bin.
+
+Five-minute propagation logs split insufficient path prediction outcomes into
+`no_sample`, `low_count`, `low_receiver`, `low_weight`, and `stale`.
+`low_count` maps to the raw selected observation floor; `low_receiver` maps to
+the receiver-diversity gate in enforce evaluation; `low_weight`
+maps to the decayed effective weight floor. These aggregate lines are written
+to `logging.propagation.dir`.
 
 The shipped config currently uses:
 
@@ -96,11 +127,11 @@ The shipped config currently uses:
 - `stale_after_half_life_multiplier: 3`
 - `stale_after_seconds: 1800` as the fallback purge window
 - `max_prediction_age_half_life_multiplier: 1.25` as a display/filter freshness gate
-- `receiver_contribution_mode: shadow`
-- `receiver_fine_slots: 4`
-- `receiver_coarse_slots: 8`
-- `receiver_max_effective_count: 5`
-- `receiver_max_effective_weight: 5.0`
+- `receiver_contribution_mode: enforce`
+- `receiver_fine_slots: 6`
+- `receiver_coarse_slots: 12`
+- `receiver_max_effective_count: 8` decayed effective observations per receiver
+- `receiver_max_effective_weight: 8.0`
 
 ## Sample Selection And Merge
 
@@ -129,8 +160,8 @@ fade through weaker glyph tiers just because it got older.
 
 The shipped config currently uses:
 
-- `min_effective_weight: 0.6`
-- `min_observation_count: 19`
+- `min_effective_weight: 0.5`
+- `min_observation_count: 21`
 - `min_fine_weight: 5`
 - `fine_only_weight: 20`
 - `reverse_hint_discount: 0.5`
@@ -142,27 +173,17 @@ If only one direction exists, the predictor still uses it, but discounts the eff
 Telnet users can set a stricter personal observation floor with
 `SET PATHSAMPLES <count>`. That setting is applied as
 `max(min_observation_count, user setting)` and cannot lower the cluster default.
-In `shadow` mode this floor still uses the raw selected observation count; in
-`enforce` mode it uses the capped selected observation count.
+This floor uses the raw selected observation count in all receiver-cap modes.
+In enforce mode, receiver concentration is evaluated separately from this user
+sample floor.
 
-Noise is applied only to the DX-to-user side in the power domain. The shipped
-table uses P.372-17-informed operational receive penalties: low bands retain
-strong local-noise penalties, while 10m and 6m are tapered because absolute
-external noise falls and receiver/system noise matters more near VHF.
+The receive-side noise table is resolved only by `SET NOISE` class. The same
+location penalty applies on every band and is subtracted from DX-to-user path
+evidence at prediction time.
 
-| Band | Quiet | Rural | Suburban | Urban | Industrial |
+| Class | Quiet | Rural | Suburban | Urban | Industrial |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 160m | 0 | 6 | 14 | 22 | 28 |
-| 80m | 0 | 5 | 13 | 20 | 26 |
-| 60m | 0 | 5 | 12 | 19 | 24 |
-| 40m | 0 | 4 | 11 | 17 | 22 |
-| 30m | 0 | 3 | 9 | 14 | 18 |
-| 20m | 0 | 3 | 7 | 11 | 15 |
-| 17m | 0 | 2 | 6 | 9 | 12 |
-| 15m | 0 | 2 | 5 | 8 | 11 |
-| 12m | 0 | 1 | 4 | 6 | 9 |
-| 10m | 0 | 1 | 3 | 5 | 7 |
-| 6m | 0 | 0 | 2 | 3 | 5 |
+| Penalty dB | 0 | 4 | 12 | 17 | 20 |
 
 ## Class Mapping
 
@@ -176,7 +197,8 @@ Prediction returns either:
 
 `INSUFFICIENT` is returned when there is no usable sample, selected evidence is
 too old for the freshness gate, the selected raw observation count is below
-`min_observation_count`, or the merged effective weight stays below
+`min_observation_count`, receiver diversity is too low under enforce/candidate
+cap evaluation, or the merged effective weight stays below
 `min_effective_weight`.
 
 The shipped glyph symbols are:

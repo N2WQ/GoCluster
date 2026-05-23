@@ -115,26 +115,22 @@ glyph_symbols:
 	}
 }
 
-func TestDefaultNoiseOffsetsByBand(t *testing.T) {
+func TestDefaultNoiseOffsets(t *testing.T) {
 	cfg := DefaultConfig()
 	model := cfg.NoiseModel()
 	cases := []struct {
 		class   string
-		band    string
 		penalty float64
 	}{
-		{"QUIET", "160m", 0},
-		{"RURAL", "160m", 6},
-		{"RURAL", "6m", 0},
-		{"SUBURBAN", "40m", 11},
-		{"URBAN", "160m", 22},
-		{"URBAN", "6m", 3},
-		{"INDUSTRIAL", "160m", 28},
-		{"INDUSTRIAL", "6m", 5},
+		{"QUIET", 0},
+		{"RURAL", 4},
+		{"SUBURBAN", 12},
+		{"URBAN", 17},
+		{"INDUSTRIAL", 20},
 	}
 	for _, tc := range cases {
-		if got := model.Penalty(tc.class, tc.band); got != tc.penalty {
-			t.Fatalf("Penalty(%s, %s) = %v, want %v", tc.class, tc.band, got, tc.penalty)
+		if got := model.Penalty(tc.class); got != tc.penalty {
+			t.Fatalf("Penalty(%s) = %v, want %v", tc.class, got, tc.penalty)
 		}
 	}
 }
@@ -158,8 +154,8 @@ func TestDefaultReceiverContributionCaps(t *testing.T) {
 	if cfg.ReceiverContributionMode != ReceiverContributionShadow {
 		t.Fatalf("default receiver contribution mode = %q, want %q", cfg.ReceiverContributionMode, ReceiverContributionShadow)
 	}
-	if cfg.ReceiverFineSlots != 4 || cfg.ReceiverCoarseSlots != 8 {
-		t.Fatalf("default receiver slots fine=%d coarse=%d, want fine=4 coarse=8", cfg.ReceiverFineSlots, cfg.ReceiverCoarseSlots)
+	if cfg.ReceiverFineSlots != 6 || cfg.ReceiverCoarseSlots != 12 {
+		t.Fatalf("default receiver slots fine=%d coarse=%d, want fine=6 coarse=12", cfg.ReceiverFineSlots, cfg.ReceiverCoarseSlots)
 	}
 	if cfg.ReceiverMaxEffectiveCount != 5 {
 		t.Fatalf("default receiver max effective count = %d, want 5", cfg.ReceiverMaxEffectiveCount)
@@ -215,9 +211,9 @@ func TestLoadFileRejectsInvalidReceiverContributionCaps(t *testing.T) {
 		want string
 	}{
 		{name: "fine slots zero", body: "receiver_fine_slots: 0\n", want: "receiver_fine_slots"},
-		{name: "fine slots too large", body: "receiver_fine_slots: 5\n", want: "receiver_fine_slots"},
+		{name: "fine slots too large", body: "receiver_fine_slots: 7\n", want: "receiver_fine_slots"},
 		{name: "coarse slots zero", body: "receiver_coarse_slots: 0\n", want: "receiver_coarse_slots"},
-		{name: "coarse slots too large", body: "receiver_coarse_slots: 9\n", want: "receiver_coarse_slots"},
+		{name: "coarse slots too large", body: "receiver_coarse_slots: 13\n", want: "receiver_coarse_slots"},
 		{name: "max count zero", body: "receiver_max_effective_count: 0\n", want: "receiver_max_effective_count"},
 		{name: "max weight zero", body: "receiver_max_effective_weight: 0\n", want: "receiver_max_effective_weight"},
 	}
@@ -236,15 +232,14 @@ func TestLoadFileRejectsInvalidReceiverContributionCaps(t *testing.T) {
 
 func TestLoadFileRejectsNegativeNoisePenalty(t *testing.T) {
 	path := writeTempConfigOverlay(t, `
-noise_offsets_by_band:
-  rural:
-    160M: -3
+noise_offsets:
+  rural: -3
 `)
 	_, err := LoadFile(path)
 	if err == nil {
 		t.Fatalf("expected negative noise penalty to fail")
 	}
-	if !strings.Contains(err.Error(), "noise_offsets_by_band.RURAL.160m") {
+	if !strings.Contains(err.Error(), "noise_offsets.RURAL") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -256,6 +251,19 @@ func TestLoadFilePreservesExplicitFT4Zero(t *testing.T) {
 	}
 	if cfg.ModeOffsets.FT4 != 0 {
 		t.Fatalf("expected explicit mode_offsets.ft4=0 to survive load, got %v", cfg.ModeOffsets.FT4)
+	}
+}
+
+func TestLoadFileUsesCap8EnforcePolicy(t *testing.T) {
+	cfg, err := LoadFile(filepath.Join("..", "data", "config", "path_reliability.yaml"))
+	if err != nil {
+		t.Fatalf("load shipped config: %v", err)
+	}
+	if cfg.ReceiverContributionMode != ReceiverContributionEnforce {
+		t.Fatalf("receiver contribution mode = %q, want %q", cfg.ReceiverContributionMode, ReceiverContributionEnforce)
+	}
+	if cfg.ReceiverMaxEffectiveCount != 8 {
+		t.Fatalf("receiver max effective count = %d, want 8", cfg.ReceiverMaxEffectiveCount)
 	}
 }
 
@@ -274,6 +282,7 @@ func TestLoadFileRejectsMissingRequiredYAMLSettings(t *testing.T) {
 		{name: "receiver max effective count", path: []string{"receiver_max_effective_count"}, want: "receiver_max_effective_count"},
 		{name: "receiver max effective weight", path: []string{"receiver_max_effective_weight"}, want: "receiver_max_effective_weight"},
 		{name: "ft4 offset", path: []string{"mode_offsets", "ft4"}, want: "mode_offsets.ft4"},
+		{name: "noise offsets", path: []string{"noise_offsets"}, want: "noise_offsets"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -285,6 +294,19 @@ func TestLoadFileRejectsMissingRequiredYAMLSettings(t *testing.T) {
 				t.Fatalf("expected error to mention %s, got %v", tc.want, err)
 			}
 		})
+	}
+}
+
+func TestLoadFileRejectsRemovedClampKeys(t *testing.T) {
+	path := writeTempConfigOverlay(t, `
+clamp_min: -25
+`)
+	_, err := LoadFile(path)
+	if err == nil {
+		t.Fatalf("expected removed clamp_min key to fail")
+	}
+	if !strings.Contains(err.Error(), "field clamp_min not found") {
+		t.Fatalf("expected strict YAML error for clamp_min, got %v", err)
 	}
 }
 
@@ -302,31 +324,28 @@ mode_offsets:
 	}
 }
 
-func TestLoadFileRejectsLegacyNoiseOffsets(t *testing.T) {
-	path := writeTempConfig(t, `
-noise_offsets:
-  quiet: 0
+func TestLoadFileRejectsObsoleteNoiseOffsetsByBand(t *testing.T) {
+	path := writeTempConfigOverlay(t, `
+noise_offsets_by_band:
+  quiet:
+    20m: 0
 `)
 	_, err := LoadFile(path)
 	if err == nil {
-		t.Fatalf("expected legacy noise_offsets to fail")
+		t.Fatalf("expected obsolete noise_offsets_by_band to fail")
 	}
-	if !strings.Contains(err.Error(), "noise_offsets is no longer supported") {
+	if !strings.Contains(err.Error(), "noise_offsets_by_band is no longer supported") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
 func TestLoadFileRejectsMissingNoiseClass(t *testing.T) {
 	path := writeTempConfig(t, `
-noise_offsets_by_band:
-  quiet:
-    20m: 0
-  rural:
-    20m: 3
-  suburban:
-    20m: 7
-  urban:
-    20m: 11
+noise_offsets:
+  quiet: 0
+  rural: 4
+  suburban: 12
+  urban: 17
 `)
 	_, err := LoadFile(path)
 	if err == nil {
@@ -337,16 +356,46 @@ noise_offsets_by_band:
 	}
 }
 
-func TestLoadFileRejectsMalformedNoiseOffsetsByBand(t *testing.T) {
-	path := writeTempConfig(t, `
-noise_offsets_by_band:
-  quiet: 0
+func TestLoadFileRejectsUnsupportedNoiseClass(t *testing.T) {
+	path := writeTempConfigOverlay(t, `
+noise_offsets:
+  mobile: 9
 `)
 	_, err := LoadFile(path)
 	if err == nil {
-		t.Fatalf("expected malformed noise_offsets_by_band to fail")
+		t.Fatalf("expected unsupported noise class to fail")
 	}
-	if !strings.Contains(err.Error(), "noise_offsets_by_band") {
+	if !strings.Contains(err.Error(), `unsupported noise class "mobile"`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadFileRejectsDuplicateNoiseClass(t *testing.T) {
+	path := writeTempConfig(t, `
+noise_offsets:
+  quiet: 0
+  QUIET: 1
+`)
+	_, err := LoadFile(path)
+	if err == nil {
+		t.Fatalf("expected duplicate noise class to fail")
+	}
+	if !strings.Contains(err.Error(), `duplicate noise class "QUIET"`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadFileRejectsMalformedNoiseOffsets(t *testing.T) {
+	path := writeTempConfigOverlay(t, `
+noise_offsets:
+  quiet:
+    20m: 0
+`)
+	_, err := LoadFile(path)
+	if err == nil {
+		t.Fatalf("expected malformed noise_offsets to fail")
+	}
+	if !strings.Contains(err.Error(), "noise_offsets.quiet must be a scalar penalty") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

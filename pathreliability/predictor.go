@@ -1,6 +1,6 @@
 // File role: Owns path prediction orchestration and final glyph diagnostics.
 // Crawler notes: Start here for PATH class calculation, insufficient reasons,
-// receive/transmit merge policy, receiver-cap enforcement/shadow semantics, and
+// receive/transmit merge policy, receiver-cap enforcement semantics, and
 // the observation-floor contract used by telnet display and filters.
 // Related docs: pathreliability/README.md, README.md, data/config/PATH_PREDICTIONS.md.
 // Related tests: pathreliability/*_test.go, telnet/*path*_test.go.
@@ -49,11 +49,10 @@ func (p *Predictor) UpdateWithReceiverHash(bucket BucketClass, receiverCell, sen
 	if isBeacon && p.cfg.BeaconWeightCap > 0 && w > p.cfg.BeaconWeightCap {
 		w = p.cfg.BeaconWeightCap
 	}
-	power := p.cfg.powerFromDB(ft8dB)
 	switch bucket {
 	case BucketCombined:
 		if p.combined != nil {
-			p.combined.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, band, power, w, now, receiverHash)
+			p.combined.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, band, ft8dB, w, now, receiverHash)
 		}
 	default:
 		return
@@ -75,6 +74,7 @@ const (
 	InsufficientNone InsufficientReason = iota
 	InsufficientNoSample
 	InsufficientLowCount
+	InsufficientLowReceiver
 	InsufficientLowWeight
 	InsufficientStale
 )
@@ -87,6 +87,8 @@ func (r InsufficientReason) String() string {
 		return "no_sample"
 	case InsufficientLowCount:
 		return "low_count"
+	case InsufficientLowReceiver:
+		return "low_receiver"
 	case InsufficientLowWeight:
 		return "low_weight"
 	case InsufficientStale:
@@ -99,14 +101,20 @@ func (r InsufficientReason) String() string {
 // Result carries merged glyph and diagnostics.
 type Result struct {
 	Glyph              string
-	Value              float64 // power
+	Class              string
+	P50DB              float64
+	HasP50             bool
+	P50Glyph           string
 	Weight             float64
 	AgeSec             int64
 	Count              uint32
+	ObservationCount   uint32
 	RawCount           uint32
 	RawWeight          float64
 	CappedCount        uint32
 	CappedWeight       float64
+	ReceiverCount      uint32
+	ReceiverRequired   uint32
 	CapLimited         bool
 	CapWouldBlock      bool
 	Source             PredictionSource
@@ -123,11 +131,15 @@ func (p *Predictor) Predict(userCell, dxCell CellID, userCoarse, dxCoarse CellID
 }
 
 // PredictWithMinObservationCount returns a merged glyph using the supplied
-// observation floor. In shadow/off modes the floor is applied to raw selected
-// count; in enforce mode it is applied to capped selected count. Callers may
-// pass a floor above the configured default when applying stricter per-session
-// display or filter policy.
+// observation floor. The floor is always applied to selected raw observations.
+// In enforce mode receiver-concentration is checked separately from the raw
+// sample floor. Callers may pass a floor above the configured default when
+// applying stricter per-session display or filter policy.
 func (p *Predictor) PredictWithMinObservationCount(userCell, dxCell CellID, userCoarse, dxCoarse CellID, band string, mode string, noisePenalty float64, minObservationCount int, now time.Time) Result {
+	return p.predictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, now)
+}
+
+func (p *Predictor) predictWithMinObservationCount(userCell, dxCell CellID, userCoarse, dxCoarse CellID, band string, mode string, noisePenalty float64, minObservationCount int, now time.Time) Result {
 	insufficient := "?"
 	if p != nil && p.cfg.GlyphSymbols.Insufficient != "" {
 		insufficient = p.cfg.GlyphSymbols.Insufficient
@@ -137,33 +149,56 @@ func (p *Predictor) PredictWithMinObservationCount(userCell, dxCell CellID, user
 	}
 
 	modeKey := normalizeMode(mode)
-	makeResult := func(sample Sample, source PredictionSource, capWouldBlock bool) Result {
+	receiverMinObservationCount := p.cfg.MinObservationCount
+	makeResult := func(sample Sample, p50DB float64, hasP50 bool, source PredictionSource, capWouldBlock bool) Result {
+		class := classUnlikely
+		glyph := p.cfg.GlyphSymbols.Unlikely
+		if hasP50 {
+			class = ClassForDB(p50DB, modeKey, p.cfg)
+			glyph = glyphForClass(class, p.cfg)
+		}
 		return Result{
-			Glyph:         GlyphForPower(sample.Value, modeKey, p.cfg),
-			Value:         sample.Value,
-			Weight:        sample.Weight,
-			AgeSec:        sample.AgeSec,
-			Count:         sample.Count,
-			RawCount:      sample.RawCount,
-			RawWeight:     sample.RawWeight,
-			CappedCount:   sample.CappedCount,
-			CappedWeight:  sample.CappedWeight,
-			CapLimited:    sample.CapLimited,
-			CapWouldBlock: capWouldBlock,
-			Source:        source,
+			Glyph:            glyph,
+			Class:            class,
+			P50DB:            p50DB,
+			HasP50:           hasP50,
+			P50Glyph:         glyph,
+			Weight:           sample.Weight,
+			AgeSec:           sample.AgeSec,
+			Count:            sample.Count,
+			ObservationCount: sampleObservationCount(sample),
+			RawCount:         sample.RawCount,
+			RawWeight:        sample.RawWeight,
+			CappedCount:      sample.CappedCount,
+			CappedWeight:     sample.CappedWeight,
+			ReceiverCount:    sample.CappedReceiverCount,
+			ReceiverRequired: p.requiredReceiverCount(sample, receiverMinObservationCount),
+			CapLimited:       sample.CapLimited,
+			CapWouldBlock:    capWouldBlock,
+			Source:           source,
 		}
 	}
-	makeInsufficient := func(sample Sample, reason InsufficientReason, capWouldBlock bool) Result {
+	makeInsufficient := func(sample Sample, p50DB float64, hasP50 bool, reason InsufficientReason, capWouldBlock bool) Result {
+		p50Glyph := ""
+		if hasP50 {
+			p50Glyph = GlyphForDB(p50DB, modeKey, p.cfg)
+		}
 		return Result{
 			Glyph:              insufficient,
-			Value:              sample.Value,
+			Class:              "",
+			P50DB:              p50DB,
+			HasP50:             hasP50,
+			P50Glyph:           p50Glyph,
 			Weight:             sample.Weight,
 			AgeSec:             sample.AgeSec,
 			Count:              sample.Count,
+			ObservationCount:   sampleObservationCount(sample),
 			RawCount:           sample.RawCount,
 			RawWeight:          sample.RawWeight,
 			CappedCount:        sample.CappedCount,
 			CappedWeight:       sample.CappedWeight,
+			ReceiverCount:      sample.CappedReceiverCount,
+			ReceiverRequired:   p.requiredReceiverCount(sample, receiverMinObservationCount),
 			CapLimited:         sample.CapLimited,
 			CapWouldBlock:      capWouldBlock,
 			Source:             SourceInsufficient,
@@ -171,45 +206,78 @@ func (p *Predictor) PredictWithMinObservationCount(userCell, dxCell CellID, user
 		}
 	}
 
-	merged, reason, ok := p.mergeFromStore(p.combined, userCell, dxCell, userCoarse, dxCoarse, band, noisePenalty, now)
+	merged, reason, ok := p.mergeFromStoreWithDistribution(p.combined, userCell, dxCell, userCoarse, dxCoarse, band, noisePenalty, now)
 	if minObservationCount < p.cfg.MinObservationCount {
 		minObservationCount = p.cfg.MinObservationCount
 	}
-	capWouldBlock := p.capWouldBlock(merged, minObservationCount)
-	if ok && merged.Weight >= p.cfg.MinEffectiveWeight && countMeetsMinimum(merged.Count, minObservationCount) {
-		return makeResult(merged, SourceCombined, capWouldBlock)
+	capWouldBlock := p.capWouldBlock(merged.Sample, receiverMinObservationCount)
+	countOK := countMeetsMinimum(sampleObservationCount(merged.Sample), minObservationCount)
+	receiverOK := p.receiverGateMeetsMinimum(merged.Sample, receiverMinObservationCount)
+	if ok && merged.Weight >= p.cfg.MinEffectiveWeight && countOK && receiverOK && merged.HasP50 {
+		return makeResult(merged.Sample, merged.P50DB, merged.HasP50, SourceCombined, capWouldBlock)
 	}
 	if ok {
 		if reason == InsufficientNone {
-			if !countMeetsMinimum(merged.Count, minObservationCount) {
+			if !countOK {
 				reason = InsufficientLowCount
-			} else {
+			} else if !receiverOK {
+				reason = InsufficientLowReceiver
+			} else if merged.Weight < p.cfg.MinEffectiveWeight {
 				reason = InsufficientLowWeight
+			} else {
+				reason = InsufficientNoSample
 			}
 		}
-		return makeInsufficient(merged, reason, capWouldBlock)
+		return makeInsufficient(merged.Sample, merged.P50DB, merged.HasP50, reason, capWouldBlock)
 	}
 	if reason == InsufficientNone {
 		reason = InsufficientNoSample
 	}
-	return makeInsufficient(merged, reason, capWouldBlock)
+	return makeInsufficient(merged.Sample, merged.P50DB, merged.HasP50, reason, capWouldBlock)
 }
 
 func countMeetsMinimum(count uint32, min int) bool {
 	return min <= 0 || uint64(count) >= uint64(min)
 }
 
+func (p *Predictor) receiverGateMeetsMinimum(sample Sample, minObservationCount int) bool {
+	if p == nil || p.cfg.ReceiverContributionMode != ReceiverContributionEnforce {
+		return true
+	}
+	required := p.requiredReceiverCount(sample, minObservationCount)
+	return required == 0 || sample.CappedReceiverCount >= required
+}
+
+func (p *Predictor) requiredReceiverCount(sample Sample, minObservationCount int) uint32 {
+	if p == nil {
+		return 0
+	}
+	return requiredReceiverCount(minObservationCount, p.cfg.ReceiverMaxEffectiveCount, sample.CappedReceiverCapacity)
+}
+
+func requiredReceiverCount(minObservationCount int, maxEffectiveCount uint32, capacity uint32) uint32 {
+	if minObservationCount <= 0 || maxEffectiveCount == 0 || capacity == 0 {
+		return 0
+	}
+	required := uint32((uint64(minObservationCount) + uint64(maxEffectiveCount) - 1) / uint64(maxEffectiveCount))
+	if required > capacity {
+		return capacity
+	}
+	return required
+}
+
 func (p *Predictor) capWouldBlock(sample Sample, minObservationCount int) bool {
 	if p == nil || p.cfg.ReceiverContributionMode != ReceiverContributionShadow || !sample.CapLimited {
 		return false
 	}
-	if !countMeetsMinimum(sample.CappedCount, minObservationCount) {
+	required := p.requiredReceiverCount(sample, minObservationCount)
+	if required > 0 && sample.CappedReceiverCount < required {
 		return true
 	}
 	return sample.CappedWeight < p.cfg.MinEffectiveWeight
 }
 
-func mergeSamples(receive Sample, transmit Sample, cfg Config, noisePenalty float64) (Sample, bool) {
+func mergeSamples(receive Sample, transmit Sample, cfg Config) (Sample, bool) {
 	hasReceive := sampleHasEvidence(receive)
 	hasTransmit := sampleHasEvidence(transmit)
 	if !hasReceive && !hasTransmit {
@@ -217,49 +285,82 @@ func mergeSamples(receive Sample, transmit Sample, cfg Config, noisePenalty floa
 	}
 	receiveActive := receive.Weight > 0
 	transmitActive := transmit.Weight > 0
-	receivePower := receive.Value
-	if receiveActive && noisePenalty > 0 {
-		receivePower = ApplyNoisePower(receivePower, noisePenalty, cfg)
-	}
 	if receiveActive && transmitActive {
-		mergedPower := cfg.MergeReceiveWeight*receivePower + cfg.MergeTransmitWeight*transmit.Value
 		mergedWeight := cfg.MergeReceiveWeight*receive.Weight + cfg.MergeTransmitWeight*transmit.Weight
 		return Sample{
-			Value:        mergedPower,
-			Weight:       mergedWeight,
-			AgeSec:       weightedSampleAge(receive, transmit),
-			Count:        saturatingAddCounts(receive.Count, transmit.Count),
-			RawCount:     saturatingAddCounts(sampleRawCount(receive), sampleRawCount(transmit)),
-			RawWeight:    cfg.MergeReceiveWeight*sampleRawWeight(receive) + cfg.MergeTransmitWeight*sampleRawWeight(transmit),
-			CappedCount:  saturatingAddCounts(sampleCappedCount(receive), sampleCappedCount(transmit)),
-			CappedWeight: cfg.MergeReceiveWeight*sampleCappedWeight(receive) + cfg.MergeTransmitWeight*sampleCappedWeight(transmit),
-			CapLimited:   receive.CapLimited || transmit.CapLimited,
+			Weight:                 mergedWeight,
+			AgeSec:                 weightedSampleAge(receive, transmit),
+			Count:                  saturatingAddCounts(receive.Count, transmit.Count),
+			ObservationCount:       saturatingAddCounts(sampleObservationCount(receive), sampleObservationCount(transmit)),
+			RawCount:               saturatingAddCounts(sampleRawCount(receive), sampleRawCount(transmit)),
+			RawWeight:              cfg.MergeReceiveWeight*sampleRawWeight(receive) + cfg.MergeTransmitWeight*sampleRawWeight(transmit),
+			CappedCount:            saturatingAddCounts(sampleCappedCount(receive), sampleCappedCount(transmit)),
+			CappedWeight:           cfg.MergeReceiveWeight*sampleCappedWeight(receive) + cfg.MergeTransmitWeight*sampleCappedWeight(transmit),
+			CappedReceiverCount:    saturatingAddCounts(receive.CappedReceiverCount, transmit.CappedReceiverCount),
+			CappedReceiverCapacity: saturatingAddCounts(receive.CappedReceiverCapacity, transmit.CappedReceiverCapacity),
+			CapLimited:             receive.CapLimited || transmit.CapLimited,
 		}, true
 	}
 	if receiveActive {
-		return singleDirectionMerge(receive, transmit, receivePower, cfg), true
+		return singleDirectionMerge(receive, transmit, cfg), true
 	}
 	if transmitActive {
-		return singleDirectionMerge(transmit, receive, transmit.Value, cfg), true
+		return singleDirectionMerge(transmit, receive, cfg), true
 	}
 	return Sample{
-		AgeSec:       maxSampleAge(receive, transmit),
-		Count:        saturatingAddCounts(receive.Count, transmit.Count),
-		RawCount:     saturatingAddCounts(sampleRawCount(receive), sampleRawCount(transmit)),
-		RawWeight:    sampleRawWeight(receive) + sampleRawWeight(transmit),
-		CappedCount:  saturatingAddCounts(sampleCappedCount(receive), sampleCappedCount(transmit)),
-		CappedWeight: sampleCappedWeight(receive) + sampleCappedWeight(transmit),
-		CapLimited:   receive.CapLimited || transmit.CapLimited,
+		AgeSec:                 maxSampleAge(receive, transmit),
+		Count:                  saturatingAddCounts(receive.Count, transmit.Count),
+		ObservationCount:       saturatingAddCounts(sampleObservationCount(receive), sampleObservationCount(transmit)),
+		RawCount:               saturatingAddCounts(sampleRawCount(receive), sampleRawCount(transmit)),
+		RawWeight:              sampleRawWeight(receive) + sampleRawWeight(transmit),
+		CappedCount:            saturatingAddCounts(sampleCappedCount(receive), sampleCappedCount(transmit)),
+		CappedWeight:           sampleCappedWeight(receive) + sampleCappedWeight(transmit),
+		CappedReceiverCount:    saturatingAddCounts(receive.CappedReceiverCount, transmit.CappedReceiverCount),
+		CappedReceiverCapacity: saturatingAddCounts(receive.CappedReceiverCapacity, transmit.CappedReceiverCapacity),
+		CapLimited:             receive.CapLimited || transmit.CapLimited,
 	}, true
 }
 
-func singleDirectionMerge(active Sample, other Sample, value float64, cfg Config) Sample {
+func mergeSamplesWithDistribution(receive sampleWithBins, transmit sampleWithBins, cfg Config, noisePenalty float64) (sampleWithBins, bool) {
+	merged, ok := mergeSamples(receive.Sample, transmit.Sample, cfg)
+	if !ok {
+		return sampleWithBins{}, false
+	}
+	receiveActive := receive.Weight > 0
+	transmitActive := transmit.Weight > 0
+	var bins snrHistogram
+	if receiveActive && transmitActive {
+		receiveBins := receive.snrBins
+		if noisePenalty > 0 {
+			receiveBins = receiveBins.shifted(-noisePenalty)
+		}
+		bins.addScaled(receiveBins, cfg.MergeReceiveWeight)
+		bins.addScaled(transmit.snrBins, cfg.MergeTransmitWeight)
+	} else if receiveActive {
+		receiveBins := receive.snrBins
+		if noisePenalty > 0 {
+			receiveBins = receiveBins.shifted(-noisePenalty)
+		}
+		bins.addScaled(receiveBins, cfg.ReverseHintDiscount)
+	} else if transmitActive {
+		bins.addScaled(transmit.snrBins, cfg.ReverseHintDiscount)
+	}
+	p50DB, hasP50 := bins.p50DB()
+	return sampleWithBins{
+		Sample:  merged,
+		P50DB:   p50DB,
+		HasP50:  hasP50,
+		snrBins: bins,
+	}, true
+}
+
+func singleDirectionMerge(active Sample, other Sample, cfg Config) Sample {
 	rawWeight := sampleRawWeight(active)
 	cappedWeight := sampleCappedWeight(active)
-	active.Value = value
 	active.Weight *= cfg.ReverseHintDiscount
 	active.RawWeight = rawWeight * cfg.ReverseHintDiscount
 	active.CappedWeight = cappedWeight * cfg.ReverseHintDiscount
+	active.ObservationCount = sampleObservationCount(active)
 	active.RawCount = saturatingAddCounts(sampleRawCount(active), sampleRawCount(other))
 	active.CappedCount = saturatingAddCounts(sampleCappedCount(active), sampleCappedCount(other))
 	active.CapLimited = active.CapLimited || other.CapLimited
@@ -274,7 +375,17 @@ func maxSampleAge(left Sample, right Sample) int64 {
 }
 
 func sampleHasEvidence(sample Sample) bool {
-	return sample.Weight > 0 || sample.RawWeight > 0 || sample.RawCount > 0 || sample.CappedWeight > 0 || sample.CappedCount > 0
+	return sample.Weight > 0 || sample.RawWeight > 0 || sample.RawCount > 0 || sample.ObservationCount > 0 || sample.CappedWeight > 0 || sample.CappedCount > 0
+}
+
+func sampleObservationCount(sample Sample) uint32 {
+	if sample.ObservationCount > 0 {
+		return sample.ObservationCount
+	}
+	if sample.RawCount > 0 {
+		return sample.RawCount
+	}
+	return sample.Count
 }
 
 func sampleRawCount(sample Sample) uint32 {
@@ -305,20 +416,28 @@ func sampleCappedWeight(sample Sample) float64 {
 	return sample.Weight
 }
 
-func (p *Predictor) mergeFromStore(store *Store, userCell, dxCell CellID, userCoarse, dxCoarse CellID, band string, noisePenalty float64, now time.Time) (Sample, InsufficientReason, bool) {
+func (p *Predictor) mergeFromStoreWithDistribution(store *Store, userCell, dxCell CellID, userCoarse, dxCoarse CellID, band string, noisePenalty float64, now time.Time) (sampleWithBins, InsufficientReason, bool) {
 	if store == nil {
-		return Sample{}, InsufficientNoSample, false
+		return sampleWithBins{}, InsufficientNoSample, false
 	}
-	// Receive (DX->user): receiver=user, sender=dx.
-	rFine, rCoarse := store.Lookup(userCell, dxCell, userCoarse, dxCoarse, band, now)
-	receive := SelectSample(rFine, rCoarse, p.cfg.MinFineWeight, p.cfg.FineOnlyWeight)
+	rFine, rCoarse := store.lookupWithDistribution(userCell, dxCell, userCoarse, dxCoarse, band, now)
+	receive := selectSampleWithDistribution(rFine, rCoarse, p.cfg.MinFineWeight, p.cfg.FineOnlyWeight)
 
-	// Transmit (user->DX): receiver=dx, sender=user.
-	tFine, tCoarse := store.Lookup(dxCell, userCell, dxCoarse, userCoarse, band, now)
-	transmit := SelectSample(tFine, tCoarse, p.cfg.MinFineWeight, p.cfg.FineOnlyWeight)
+	tFine, tCoarse := store.lookupWithDistribution(dxCell, userCell, dxCoarse, userCoarse, band, now)
+	transmit := selectSampleWithDistribution(tFine, tCoarse, p.cfg.MinFineWeight, p.cfg.FineOnlyWeight)
 
-	receive, transmit, staleDropped, staleCount := p.applyFreshnessGate(store, band, receive, transmit)
-	merged, ok := mergeSamples(receive, transmit, p.cfg, noisePenalty)
+	receiveSample, transmitSample, staleDropped, staleCount := p.applyFreshnessGate(store, band, receive.Sample, transmit.Sample)
+	if !sampleHasEvidence(receiveSample) {
+		receive = sampleWithBins{}
+	} else {
+		receive.Sample = receiveSample
+	}
+	if !sampleHasEvidence(transmitSample) {
+		transmit = sampleWithBins{}
+	} else {
+		transmit.Sample = transmitSample
+	}
+	merged, ok := mergeSamplesWithDistribution(receive, transmit, p.cfg, noisePenalty)
 	reason := InsufficientNone
 	if staleDropped {
 		reason = InsufficientStale
@@ -327,7 +446,7 @@ func (p *Predictor) mergeFromStore(store *Store, userCell, dxCell CellID, userCo
 		if reason == InsufficientNone {
 			reason = InsufficientNoSample
 		}
-		return Sample{Count: staleCount, RawCount: staleCount, CappedCount: staleCount}, reason, false
+		return sampleWithBins{Sample: Sample{Count: staleCount, RawCount: staleCount, CappedCount: staleCount}}, reason, false
 	}
 	return merged, reason, true
 }

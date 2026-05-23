@@ -1,6 +1,6 @@
 # ADR-0064: Band-Specific Path Noise Penalties
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-04-20
 - Decision Origin: Design
 
@@ -60,4 +60,4 @@ error. Persisted user records do not need migration because they store only
 - Related tests: `pathreliability/config_test.go`, `pathreliability/noise_test.go`, `telnet/path_settings_test.go`
 - Related docs: `data/config/path_reliability.yaml`, `pathreliability/README.md`, `data/config/PATH_PREDICTIONS.md`
 - Related TSRs:
-- Supersedes / superseded by:
+- Supersedes / superseded by: Superseded by ADR-0124

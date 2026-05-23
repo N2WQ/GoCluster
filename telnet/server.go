@@ -85,6 +85,8 @@ const (
 	diagModeMode
 )
 
+const diagUsage = "Usage: SET DIAG <OFF|DEDUPE|SOURCE|CONF|PATH|MODE>\n"
+
 const maxUserPathMinObservationCount = 10000
 
 func parseDedupePolicy(value string) dedupePolicy {
@@ -241,7 +243,7 @@ type Server struct {
 	pathPredictor         *pathreliability.Predictor                 // Optional path reliability predictor
 	pathDisplay           bool                                       // Toggle glyph rendering
 	solarWeather          *solarweather.Manager                      // Optional solar/geomagnetic override evaluator
-	noiseModel            pathreliability.NoiseModel                 // Noise class and band lookup
+	noiseModel            pathreliability.NoiseModel                 // Noise class lookup
 	gridLookup            func(string) (string, bool, bool)          // Optional grid lookup from store
 	ctyLookup             func() *cty.CTYDatabase                    // Optional CTY lookup for login validation and filter display
 	usLicenseCheck        func(string) bool                          // Optional US FCC ULS license checker for login validation
@@ -264,6 +266,7 @@ type Server struct {
 	pathPredInsufficient  atomic.Uint64                              // Predictions with insufficient data
 	pathPredNoSample      atomic.Uint64                              // Insufficient predictions with no samples
 	pathPredLowCount      atomic.Uint64                              // Insufficient predictions below min observation count
+	pathPredLowReceiver   atomic.Uint64                              // Insufficient predictions below receiver-diversity gate
 	pathPredLowWeight     atomic.Uint64                              // Insufficient predictions below min weight
 	pathPredStale         atomic.Uint64                              // Insufficient predictions with stale selected evidence
 	pathPredCapLimited    atomic.Uint64                              // Predictions where receiver caps reduced diagnostic evidence
@@ -1584,7 +1587,7 @@ func (s *Server) handleDiagCommand(client *Client, line string) (string, bool) {
 		return "", false
 	}
 	if len(upper) < 3 {
-		return "Usage: SET DIAG <OFF|DEDUPE|SOURCE|CONF|PATH|MODE>\n", true
+		return diagUsage, true
 	}
 	switch upper[2] {
 	case "DEDUPE":
@@ -1606,7 +1609,7 @@ func (s *Server) handleDiagCommand(client *Client, line string) (string, bool) {
 		client.setDiagMode(diagModeMode)
 		return "Diagnostic comments: MODE\n", true
 	default:
-		return "Usage: SET DIAG <OFF|DEDUPE|SOURCE|CONF|PATH|MODE>\n", true
+		return diagUsage, true
 	}
 }
 
@@ -2839,6 +2842,7 @@ type pathPredictionStats struct {
 	Insufficient  uint64
 	NoSample      uint64
 	LowCount      uint64
+	LowReceiver   uint64
 	LowWeight     uint64
 	Stale         uint64
 	CapLimited    uint64
@@ -2871,6 +2875,8 @@ func (s *Server) recordPathPrediction(res pathreliability.Result, userDerived, d
 			s.pathPredStale.Add(1)
 		case pathreliability.InsufficientLowCount:
 			s.pathPredLowCount.Add(1)
+		case pathreliability.InsufficientLowReceiver:
+			s.pathPredLowReceiver.Add(1)
 		case pathreliability.InsufficientLowWeight:
 			s.pathPredLowWeight.Add(1)
 		case pathreliability.InsufficientNoSample:
@@ -2889,13 +2895,14 @@ func (s *Server) PathPredictionStatsSnapshot() pathPredictionStats {
 	if s == nil {
 		return pathPredictionStats{}
 	}
-	return pathPredictionStats{
+	stats := pathPredictionStats{
 		Total:         s.pathPredTotal.Swap(0),
 		Derived:       s.pathPredDerived.Swap(0),
 		Combined:      s.pathPredCombined.Swap(0),
 		Insufficient:  s.pathPredInsufficient.Swap(0),
 		NoSample:      s.pathPredNoSample.Swap(0),
 		LowCount:      s.pathPredLowCount.Swap(0),
+		LowReceiver:   s.pathPredLowReceiver.Swap(0),
 		LowWeight:     s.pathPredLowWeight.Swap(0),
 		Stale:         s.pathPredStale.Swap(0),
 		CapLimited:    s.pathPredCapLimited.Swap(0),
@@ -2903,6 +2910,7 @@ func (s *Server) PathPredictionStatsSnapshot() pathPredictionStats {
 		OverrideR:     s.pathPredOverrideR.Swap(0),
 		OverrideG:     s.pathPredOverrideG.Swap(0),
 	}
+	return stats
 }
 
 func defaultBroadcastWorkers() int {
@@ -3474,11 +3482,11 @@ func (s *Server) noiseClassKnown(class string) bool {
 	return s.noiseModel.HasClass(class)
 }
 
-func (s *Server) noisePenaltyForClassBand(class string, band string) float64 {
+func (s *Server) noisePenaltyForClass(class string) float64 {
 	if s == nil {
 		return 0
 	}
-	return s.noiseModel.Penalty(class, band)
+	return s.noiseModel.Penalty(class)
 }
 
 // formatSpotForClient renders a spot with optional reliability glyphs.
@@ -3591,7 +3599,7 @@ func (s *Server) pathPredictionForClient(client *Client, sp *spot.Spot) (pathPre
 		mode = sp.Mode
 	}
 	now := s.now()
-	noisePenalty := s.noisePenaltyForClassBand(state.noiseClass, band)
+	noisePenalty := s.noisePenaltyForClass(state.noiseClass)
 	minObservationCount := effectivePathMinObservationCount(state, cfg)
 	res := s.pathPredictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, now)
 	s.recordPathPrediction(res, state.gridDerived, sp.DXMetadata.GridDerived)
@@ -3681,13 +3689,16 @@ func (s *Server) pathClassForClient(client *Client, sp *spot.Spot) string {
 		mode = strings.TrimSpace(sp.Mode)
 	}
 	now := s.now()
-	noisePenalty := s.noisePenaltyForClassBand(state.noiseClass, band)
+	noisePenalty := s.noisePenaltyForClass(state.noiseClass)
 	minObservationCount := effectivePathMinObservationCount(state, cfg)
 	res := s.pathPredictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, now)
 	if res.Source == pathreliability.SourceInsufficient {
 		return filter.PathClassInsufficient
 	}
-	return pathreliability.ClassForPower(res.Value, mode, cfg)
+	if res.Class == "" {
+		return filter.PathClassInsufficient
+	}
+	return res.Class
 }
 
 func pathPredictionBand(sp *spot.Spot) string {
@@ -3828,9 +3839,21 @@ func diagPathTag(prediction pathPrediction, havePrediction bool) string {
 
 func diagPathCountToken(res pathreliability.Result) string {
 	if res.CapLimited {
-		return "n" + strconv.FormatUint(uint64(res.CappedCount), 10) + "/r" + strconv.FormatUint(uint64(res.RawCount), 10)
+		count := res.ObservationCount
+		if count == 0 {
+			count = res.RawCount
+		}
+		token := "n" + strconv.FormatUint(uint64(count), 10) + "/c" + strconv.FormatUint(uint64(res.CappedCount), 10)
+		if res.ReceiverRequired > 0 {
+			token += "/rx" + strconv.FormatUint(uint64(res.ReceiverCount), 10)
+		}
+		return token
 	}
-	return "n" + strconv.FormatUint(uint64(res.Count), 10)
+	count := res.ObservationCount
+	if count == 0 {
+		count = res.Count
+	}
+	return "n" + strconv.FormatUint(uint64(count), 10)
 }
 
 func diagModeTag(sp *spot.Spot) string {
@@ -3873,6 +3896,8 @@ func diagPathInsufficientReason(reason pathreliability.InsufficientReason) strin
 		return "stale"
 	case pathreliability.InsufficientLowCount:
 		return "lown"
+	case pathreliability.InsufficientLowReceiver:
+		return "lowr"
 	case pathreliability.InsufficientLowWeight:
 		return "loww"
 	default:

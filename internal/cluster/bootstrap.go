@@ -1437,12 +1437,12 @@ func startPipelineHealthMonitor(ctx context.Context, dedup *dedup.Deduplicator, 
 	}()
 }
 
-func startPathPredictionLogger(ctx context.Context, logMux *logFanout, srv *telnet.Server, predictor *pathreliability.Predictor, pathReport *pathReportMetrics) {
+func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telnet.Server, predictor *pathreliability.Predictor, pathReport *pathReportMetrics) {
 	// Purpose: Periodically report path prediction outcomes, bucket counts, and weight histograms.
-	// Key aspects: Uses atomic snapshot/reset; exits on context cancellation.
+	// Key aspects: Writes only to the propagation file sink, uses atomic snapshot/reset, and exits on context cancellation.
 	// Upstream: main startup.
 	// Downstream: telnet.Server.PathPredictionStatsSnapshot, pathreliability.Predictor stats/histograms.
-	if srv == nil && predictor == nil {
+	if propLog == nil || (srv == nil && predictor == nil) {
 		return
 	}
 	ticker := time.NewTicker(5 * time.Minute)
@@ -1513,22 +1513,20 @@ func startPathPredictionLogger(ctx context.Context, logMux *logFanout, srv *teln
 		case <-ticker.C:
 			now := time.Now().UTC()
 			fileOnly := func(line string) {
-				if logMux == nil {
-					return
-				}
-				logMux.WriteFileOnlyLine(line, now)
+				propLog.WriteLine(line, now)
 			}
 			if srv != nil {
 				stats := srv.PathPredictionStatsSnapshot()
 				if stats.Total > 0 {
 					fileOnly(fmt.Sprintf(
-						"Path predictions (5m): total=%s derived=%s combined=%s insufficient=%s no_sample=%s low_count=%s low_weight=%s stale=%s cap_limited=%s cap_would_block=%s override_r=%s override_g=%s",
+						"Path predictions (5m): total=%s derived=%s combined=%s insufficient=%s no_sample=%s low_count=%s low_receiver=%s low_weight=%s stale=%s cap_limited=%s cap_would_block=%s override_r=%s override_g=%s",
 						humanize.Comma(int64(stats.Total)),
 						humanize.Comma(int64(stats.Derived)),
 						humanize.Comma(int64(stats.Combined)),
 						humanize.Comma(int64(stats.Insufficient)),
 						humanize.Comma(int64(stats.NoSample)),
 						humanize.Comma(int64(stats.LowCount)),
+						humanize.Comma(int64(stats.LowReceiver)),
 						humanize.Comma(int64(stats.LowWeight)),
 						humanize.Comma(int64(stats.Stale)),
 						humanize.Comma(int64(stats.CapLimited)),
@@ -2833,7 +2831,7 @@ func sleepWithContext(ctx context.Context, d time.Duration) bool {
 // verifies the prior-day log file exists before enqueueing.
 // Upstream: main prop-report initialization.
 // Downstream: nextDailyUTC, propReportScheduler.Enqueue.
-func startPropReportDailyScheduler(ctx context.Context, cfg config.PropReportConfig, logCfg config.LoggingConfig, scheduler *propReportScheduler) {
+func startPropReportDailyScheduler(ctx context.Context, cfg config.PropReportConfig, logCfg config.PropagationLoggingConfig, scheduler *propReportScheduler) {
 	if scheduler == nil || !cfg.Enabled {
 		return
 	}
@@ -2842,7 +2840,7 @@ func startPropReportDailyScheduler(ctx context.Context, cfg config.PropReportCon
 	}
 	logDir := strings.TrimSpace(logCfg.Dir)
 	if logDir == "" {
-		log.Printf("Prop report daily scheduler disabled (logging.dir empty)")
+		log.Printf("Prop report daily scheduler disabled (logging.propagation.dir empty)")
 		return
 	}
 

@@ -86,3 +86,7 @@ logging:
     dir: "data/logs/peer_connections"
     retention_days: 7
     dedupe_window_seconds: 120
+  propagation:
+    enabled: true
+    dir: "data/logs/propagation" # Separate daily file for path/propagation aggregates.
+    retention_days: 7

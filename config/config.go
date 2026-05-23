@@ -428,6 +428,7 @@ type LoggingConfig struct {
 	TelnetConnections       EventFileLoggingConfig   `yaml:"telnet_connections"`
 	IngestConnections       EventFileLoggingConfig   `yaml:"ingest_connections"`
 	PeerConnections         EventFileLoggingConfig   `yaml:"peer_connections"`
+	Propagation             PropagationLoggingConfig `yaml:"propagation"`
 }
 
 // DroppedCallLoggingConfig controls optional per-category dropped-call files.
@@ -447,6 +448,13 @@ type EventFileLoggingConfig struct {
 	Dir                 string `yaml:"dir"`
 	RetentionDays       int    `yaml:"retention_days"`
 	DedupeWindowSeconds int    `yaml:"dedupe_window_seconds"`
+}
+
+// PropagationLoggingConfig controls file-only path/propagation aggregate logs.
+type PropagationLoggingConfig struct {
+	Enabled       bool   `yaml:"enabled"`
+	Dir           string `yaml:"dir"`
+	RetentionDays int    `yaml:"retention_days"`
 }
 
 // PropReportConfig controls automatic propagation report generation on log rotation.
@@ -1408,6 +1416,7 @@ type loadRawPresence struct {
 	hasTelnetConnectionsDedupeWindow                bool
 	hasIngestConnectionsDedupeWindow                bool
 	hasPeerConnectionsDedupeWindow                  bool
+	hasPropagationLoggingEnabled                    bool
 	hasDroppedCallsBadDEDX                          bool
 	hasDroppedCallsNoLicense                        bool
 	hasDroppedCallsHarmonics                        bool
@@ -1483,6 +1492,7 @@ func captureLoadRawPresence(raw map[string]any) loadRawPresence {
 		hasTelnetConnectionsDedupeWindow:                yamlKeyPresent(raw, "logging", "telnet_connections", "dedupe_window_seconds"),
 		hasIngestConnectionsDedupeWindow:                yamlKeyPresent(raw, "logging", "ingest_connections", "dedupe_window_seconds"),
 		hasPeerConnectionsDedupeWindow:                  yamlKeyPresent(raw, "logging", "peer_connections", "dedupe_window_seconds"),
+		hasPropagationLoggingEnabled:                    yamlKeyPresent(raw, "logging", "propagation", "enabled"),
 		hasDroppedCallsBadDEDX:                          yamlKeyPresent(raw, "logging", "dropped_calls", "bad_de_dx"),
 		hasDroppedCallsNoLicense:                        yamlKeyPresent(raw, "logging", "dropped_calls", "no_license"),
 		hasDroppedCallsHarmonics:                        yamlKeyPresent(raw, "logging", "dropped_calls", "harmonics"),
@@ -1679,7 +1689,10 @@ func normalizeLoggingAndPropReportConfig(cfg *Config, presence loadRawPresence) 
 	if err := normalizeDroppedCallLoggingConfig(cfg, presence); err != nil {
 		return err
 	}
-	return normalizeEventFileLoggingConfigs(cfg, presence)
+	if err := normalizeEventFileLoggingConfigs(cfg, presence); err != nil {
+		return err
+	}
+	return normalizePropagationLoggingConfig(cfg, presence)
 }
 
 func normalizeDroppedCallLoggingConfig(cfg *Config, presence loadRawPresence) error {
@@ -1756,6 +1769,27 @@ func normalizeEventFileLoggingConfigs(cfg *Config, presence loadRawPresence) err
 		if item.cfg.Dir == "" {
 			item.cfg.Dir = filepath.Join(baseDir, item.subdir)
 		}
+	}
+	return nil
+}
+
+func normalizePropagationLoggingConfig(cfg *Config, presence loadRawPresence) error {
+	prop := &cfg.Logging.Propagation
+	prop.Dir = strings.TrimSpace(prop.Dir)
+	if !presence.hasPropagationLoggingEnabled {
+		prop.Enabled = cfg.Logging.Enabled
+	}
+	if prop.RetentionDays < 0 {
+		return fmt.Errorf("invalid logging.propagation.retention_days %d (must be >= 0)", prop.RetentionDays)
+	}
+	if prop.RetentionDays == 0 {
+		prop.RetentionDays = cfg.Logging.RetentionDays
+		if prop.RetentionDays <= 0 {
+			prop.RetentionDays = 7
+		}
+	}
+	if prop.Dir == "" {
+		prop.Dir = filepath.Join("data", "logs", "propagation")
 	}
 	return nil
 }
@@ -3490,6 +3524,10 @@ func (c *Config) Print() {
 		c.Logging.TelnetConnections.Enabled,
 		c.Logging.IngestConnections.Enabled,
 		c.Logging.PeerConnections.Enabled)
+	fmt.Printf("Propagation log: enabled=%t dir=%s retention_days=%d\n",
+		c.Logging.Propagation.Enabled,
+		c.Logging.Propagation.Dir,
+		c.Logging.Propagation.RetentionDays)
 	if c.PropReport.Enabled {
 		fmt.Printf("Prop report: enabled (refresh=%s UTC)\n", c.PropReport.RefreshUTC)
 	} else {

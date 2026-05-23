@@ -1,0 +1,48 @@
+# TSR-0024: Custom SCP Test Time Horizon
+
+- Status: Resolved
+- Date opened: 2026-05-23
+- Status date: 2026-05-23
+
+## Trigger
+`go test ./spot` failed in Custom SCP retained-state tests after fixed April
+2026 observation fixtures aged past their configured 30-day horizon.
+
+## Symptoms and impact
+The failing tests expected retained Custom SCP entries, spotters, interner refs,
+and expiry-index cardinality, but `recordObservation` retained no state. This
+blocked full repository validation while production horizon behavior remained
+correct.
+
+## Hypotheses tested
+1. Pebble persistence or WAL replay failure.
+2. Spotter slice, interner, or max-key eviction regression.
+3. Test fixture timestamps aged beyond `HorizonDays`.
+
+## Evidence
+- Targeted `go test ./spot -run 'TestCustomSCP(...)' -count=1 -v` reproduced
+  four empty-state failures.
+- `spot/custom_scp_store.go` computes the observation cutoff from
+  `time.Now().UTC()` and returns before mutation when `seenAt` is stale.
+- The failing tests used April 11-12, 2026 observations with 30-day horizons;
+  on 2026-05-23 those observations are older than the active horizon.
+
+## Root cause or best current explanation
+The tests used absolute dates for data that was meant to be fresh relative to
+the process clock. Once the calendar advanced past the configured horizon, the
+production stale-observation guard correctly dropped the fixtures.
+
+## Fix or mitigation
+Use current-relative UTC test fixtures inside the active horizon while
+preserving each test's intended ordering and stale/fresh relationships.
+
+## Why an ADR was or was not required
+- No durable production decision changed.
+- A lightweight ADR stub records that the fix is test-only and preserves the
+  existing Custom SCP horizon contract.
+
+## Links
+- Related ADRs: ADR-0136
+- Related issues/PRs/commits: -
+- Related tests: `spot/custom_scp_store_test.go`
+- Related docs: `docs/decision-memory.md`

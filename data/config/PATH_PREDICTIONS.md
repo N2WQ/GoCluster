@@ -68,25 +68,15 @@ rather than fading from `>` to `=` to `<` because of age alone.
 
 ### Your Noise Environment
 
-Your local noise floor dramatically affects what you can **receive**. The system adjusts the receive-path prediction based on the noise environment you've set (using the `SET NOISE` command).
+`SET NOISE` stores your local receive-noise class. The checked-in configuration
+uses one receive-side penalty per location class:
 
-The adjustment is band-specific. Low bands get stronger local-noise corrections, while 10m and 6m are intentionally tapered because absolute external noise falls sharply and receiver/system noise matters more near VHF:
-
-| Band | Quiet | Rural | Suburban | Urban | Industrial |
+| Class | Quiet | Rural | Suburban | Urban | Industrial |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 160m | 0 | 6 | 14 | 22 | 28 |
-| 80m | 0 | 5 | 13 | 20 | 26 |
-| 60m | 0 | 5 | 12 | 19 | 24 |
-| 40m | 0 | 4 | 11 | 17 | 22 |
-| 30m | 0 | 3 | 9 | 14 | 18 |
-| 20m | 0 | 3 | 7 | 11 | 15 |
-| 17m | 0 | 2 | 6 | 9 | 12 |
-| 15m | 0 | 2 | 5 | 8 | 11 |
-| 12m | 0 | 1 | 4 | 6 | 9 |
-| 10m | 0 | 1 | 3 | 5 | 7 |
-| 6m | 0 | 0 | 2 | 3 | 5 |
+| Penalty dB | 0 | 4 | 12 | 17 | 20 |
 
-This noise adjustment only affects the receive direction. Your transmit effectiveness doesn't change based on local noise.
+The adjustment affects only the receive direction. Your transmit effectiveness
+does not change based on local noise.
 
 ### The Final Calculation
 
@@ -100,23 +90,33 @@ When you see a glyph next to a spot, here's what happened behind the scenes:
 
 4. **Check freshness**: Selected receive/transmit evidence must be recent enough for the band. Stale selected evidence is discarded.
 
-5. **Merge directions**: Receive and transmit paths combine (60/40 split), with your noise penalty applied to the receive side.
+5. **Merge directions**: Receive and transmit paths combine (60/40 split), with the configured receive-side noise penalty applied when nonzero.
 
 6. **Apply receiver contribution caps**: The cluster tracks a bounded set of
-   receiver identities per bucket. In the shipped `shadow` mode this does not
-   change the displayed glyph, but diagnostics and logs show where the capped
-   evidence would have been stricter. If an operator switches to `enforce`,
-   the count and weight gates use capped evidence.
+   receiver identities per bucket. In `enforce` mode, receiver diversity and
+   capped weight gate the path class separately from the raw observation floor.
+   Old capped receiver evidence decays on the same clock as signal weight, so
+   newer evidence can replace it. If an operator switches to `shadow`, the
+   displayed glyph uses raw evidence while diagnostics and logs show where the
+   capped evidence would have been stricter.
 
-7. **Check evidence floor**: If the selected raw observation count is below
-   the cluster minimum, the system shows a space (insufficient data). Users can
-   make their own view stricter with `SET PATHSAMPLES <count>`, but cannot lower
-   the cluster default. In `enforce` mode this check uses capped selected
-   observations. Five-minute system logs report this as `low_count`.
+7. **Check evidence floor**: If the raw selected observation count is below the
+   cluster minimum, the system shows a space (insufficient data). Users can make
+   their own view stricter with `SET PATHSAMPLES <count>`, but cannot lower the
+   cluster default. Five-minute propagation logs report this as `low_count`.
 
-8. **Check confidence**: If the combined data weight is below the minimum threshold (default 0.6), the system shows a space (insufficient data) instead of making an unreliable prediction. Five-minute system logs report this as `low_weight`.
+8. **Check receiver diversity**: In receiver-cap enforcement and cap-shadow
+   candidate evaluation, the selected capped evidence must include enough live
+   attributed receiver slots for the configured sample floor and receiver cap.
+   Five-minute propagation logs report this as `low_receiver`.
 
-9. **Map to glyph**: The final signal strength gets compared against mode-specific thresholds to pick the right symbol.
+9. **Check confidence**: If the combined data weight is below the minimum threshold (default 0.5), the system shows a space (insufficient data) instead of making an unreliable prediction. Five-minute propagation logs report this as `low_weight`.
+
+10. **Map to glyph**: The selected p50 signal strength gets compared against
+   mode-specific thresholds to pick the right symbol. Fixed histogram bins use
+   midpoint representatives, and exact 50/50 splits between two non-empty bins
+   use the average of both representatives so balanced weak/strong evidence
+   reflects the typical middle.
 
 ## How to Use This Information
 
@@ -146,21 +146,25 @@ for at least 30 selected observations before showing a path tag. Use
 `SET PATHSAMPLES DEFAULT` to return to the cluster default.
 
 **One receiver cannot carry a bucket by itself**: receiver contribution caps
-limit one receiving station to a shipped maximum of five accepted reports and
-five accepted weight units per bucket. The shipped mode is `shadow`, so
-operators can inspect the impact before enforcing it.
+limit one receiving station to the configured decayed effective observation and
+weight caps per bucket. In `enforce` mode, caps gate the active path class. In
+`shadow` mode, active glyphs still use raw selected evidence while the
+propagation log records what candidate caps would have done. When candidate p50
+shadow is enabled, the log also shows whether each candidate cap would have
+changed the p50 glyph class.
 
 **Beacons get capped**: The system limits how much any single beacon can dominate the data to prevent bias from loud beacons.
 
 ### Noise Environment Setup
 
-Make sure you set your noise environment correctly:
+`SET NOISE` still stores your receive-noise class:
 
 ```
 SET NOISE SUBURBAN
 ```
 
-If you don't set it, the system assumes "quiet" and might show overly optimistic predictions for receive paths. Most suburban/urban hams should set SUBURBAN or URBAN to get realistic predictions.
+In the checked-in configuration, each class resolves to a scalar dB penalty.
+Operators should set the class that best matches their receive environment.
 
 ### Band-Specific Behavior
 
@@ -174,11 +178,11 @@ The system is highly configurable (see [path_reliability.yaml](path_reliability.
 - **Glyph symbols**: Can be customized (default: `>=<-` and space)
 - **Half-life timings**: Per-band decay rates
 - **Freshness gate**: Maximum selected evidence age as a multiple of band half-life
-- **Noise penalties**: band-specific dB adjustments per environment type
+- **Noise penalties**: receive-side dB adjustments per environment type
 - **Mode thresholds**: What signal strength qualifies as high/medium/low for each mode
-- **Minimum observation count**: How many selected raw observations are needed before showing a prediction
+- **Minimum observation count**: How many raw selected observations are needed before showing a prediction; receiver diversity is checked separately when receiver caps are enforced
 - **Minimum weight**: How much data is needed before showing a prediction
-- **Receiver contribution caps**: Whether capped receiver evidence is off, shadowed, or enforced, and how many receiver slots are tracked in fine/coarse buckets
+- **Receiver contribution caps**: Whether capped receiver evidence is off, shadowed, or enforced, how many receiver slots are tracked in fine/coarse buckets, and how many decayed effective observations one receiver can contribute per bucket
 
 ## The Bottom Line
 

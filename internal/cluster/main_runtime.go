@@ -55,6 +55,7 @@ type clusterRuntime struct {
 	configSource string
 
 	logMux            *logFanout
+	propagationLog    lineSink
 	droppedCallLogger *droppedCallLogger
 	eventFileLogger   *eventFileLogger
 	surface           ui.Surface
@@ -206,6 +207,11 @@ func (r *clusterRuntime) setupLoggingAndUI() bool {
 	if eventLogErr != nil {
 		log.Printf("Logging: %v", eventLogErr)
 	}
+	propagationLog, propagationLogErr := newPropagationLogSink(r.cfg.Logging.Propagation)
+	r.propagationLog = propagationLog
+	if propagationLogErr != nil && !errors.Is(propagationLogErr, errPropagationLoggingDisabled) {
+		log.Printf("Logging: %v", propagationLogErr)
+	}
 	log.Printf("Loaded configuration from %s", r.configSource)
 	if err := spot.SetDXClusterLineLength(r.cfg.Telnet.OutputLineLength); err != nil {
 		log.Printf("Invalid telnet output line length: %v", err)
@@ -292,14 +298,14 @@ func (r *clusterRuntime) startBackgroundServices() {
 	}
 
 	if r.cfg.PropReport.Enabled {
-		if !r.cfg.Logging.Enabled {
-			log.Printf("Prop report enabled, but logging is disabled; no log rotation events will trigger reports")
+		if !r.cfg.Logging.Propagation.Enabled || r.propagationLog == nil {
+			log.Printf("Prop report enabled, but propagation logging is disabled; no propagation log rotation events will trigger reports")
 		}
 		propRunner := newPropReportGenerator(r.configSource, log.Default())
 		r.propScheduler = newPropReportScheduler(true, propRunner, log.Default(), propReportTimeout)
 		r.propScheduler.Start(r.ctx)
-		if r.logMux != nil {
-			r.logMux.SetRotateHook(func(prevDate time.Time, prevPath, newPath string) {
+		if setter, ok := r.propagationLog.(rotateHookSetter); ok {
+			setter.SetRotateHook(func(prevDate time.Time, prevPath, newPath string) {
 				if prevDate.IsZero() {
 					return
 				}
@@ -309,7 +315,7 @@ func (r *clusterRuntime) startBackgroundServices() {
 				})
 			})
 		}
-		startPropReportDailyScheduler(r.ctx, r.cfg.PropReport, r.cfg.Logging, r.propScheduler)
+		startPropReportDailyScheduler(r.ctx, r.cfg.PropReport, r.cfg.Logging.Propagation, r.propScheduler)
 		log.Printf("Prop report scheduler enabled")
 	} else {
 		log.Printf("Prop report scheduler disabled")
@@ -1328,7 +1334,7 @@ func (r *clusterRuntime) startMonitors() {
 		dashboardIngestSourceConfigFromConfig(r.cfg),
 	)
 	if r.pathCfg.Enabled {
-		go startPathPredictionLogger(r.ctx, r.logMux, r.telnetServer, r.pathPredictor, r.pathReport)
+		go startPathPredictionLogger(r.ctx, r.propagationLog, r.telnetServer, r.pathPredictor, r.pathReport)
 	}
 }
 
@@ -1472,6 +1478,9 @@ func (r *clusterRuntime) close() {
 	}
 	if r.eventFileLogger != nil {
 		_ = r.eventFileLogger.Close()
+	}
+	if r.propagationLog != nil {
+		_ = r.propagationLog.Close()
 	}
 	if r.logMux != nil {
 		r.logMux.Close()

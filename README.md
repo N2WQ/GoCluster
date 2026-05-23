@@ -37,8 +37,8 @@ release, and service details are later in this file and in
 - To focus on nearby spots, set your grid and use `PASS NEARBY ON`.
 - To investigate surprising output, use
   `SET DIAG OFF|DEDUPE|SOURCE|CONF|PATH|MODE`.
-- To understand path hints, use `SET GRID` and `SET NOISE`, then use `SET DIAG PATH`
-  on spots whose path glyphs look surprising.
+- To understand path hints, use `SET GRID` and `SET NOISE`, then use
+  `SET DIAG PATH` on spots whose path glyphs look surprising.
 - To confirm the baseline call used for own-call features, use `SHOW OWN`.
 - To see recent spotter countries for your baseline call, use `WHOSPOTSME [band]`.
 - To receive periodic solar summaries, use `SET SOLAR 15|30|60|OFF`.
@@ -269,7 +269,7 @@ For the mode-specific support rules, timing knobs, and decision history, see
 - `SET DIAG DEDUPE`: `<DE-DXCC>|<DE-key>|<src>|<policy>`, where `<src>` is `H` for human-class or `S` for skimmer/automated-class.
 - `SET DIAG SOURCE`: `<source>` with `MAN`, `RBN`, `RBNFT`, `PSK`, `DXS`, `UP`, or `P:<peer>` for peer-origin spots.
 - `SET DIAG CONF`: `<score>%` when the pipeline calculated a confidence percent, otherwise `--%`.
-- `SET DIAG PATH`: `n<count>|w<weight>|a<age>` for usable path evidence, or `n<count>|<reason>` for insufficient evidence (`none`, `lown`, `loww`, or `stale`).
+- `SET DIAG PATH`: `n<count>|w<weight>|a<age>` for usable path evidence, or `n<count>|<reason>` for insufficient evidence (`none`, `lown`, `lowr`, `loww`, or `stale`).
 - `SET DIAG MODE`: `<mode>|<provenance>` to show the final normalized mode and why it was assigned.
 
 Mode provenance tokens:
@@ -288,10 +288,11 @@ Mode provenance tokens:
 are intentionally short because they must fit in the normal DX-cluster comment
 area:
 
-- `n<count>` is the raw observation count behind the selected path evidence.
-  This is a sample-size indicator, not a decayed confidence score. `n0` means no
-  usable selected observations; `n1` means one selected observation; higher
-  values such as `n18` or `n32` mean a larger evidence base.
+- `n<count>` is the raw selected observation count behind the selected path
+  evidence in every receiver-cap mode. It is a sample-size indicator, not a
+  confidence percent. `n0` means no usable
+  selected observations; `n1` means one selected observation; higher values
+  such as `n18` or `n32` mean a larger evidence base.
 - `w<weight>` is the rounded effective weight after decay, fine/coarse sample
   selection, receive/transmit merge, and reverse-direction discounting. It is
   not dB, SNR, or a percent. A count can be much larger than the weight when the
@@ -303,8 +304,11 @@ area:
 - `a<age>` is the effective age of the selected evidence. Ages under one minute
   are seconds, then rounded up to `m` or `h`.
 - `n<count>|none` means there was no usable selected path sample.
-- `n<count>|lown` means selected evidence existed but the raw observation count
+- `n<count>|lown` means selected evidence existed but the selected observation count
   stayed below the configured minimum.
+- `n<count>|lowr` means raw selected observations met the count floor, but
+  attributed receiver diversity was too low under receiver-cap enforcement or
+  candidate cap evaluation.
 - `n<count>|loww` means selected evidence existed but the effective weight
   stayed below the configured minimum.
 - `n<count>|stale` means selected evidence existed but was too old for the
@@ -318,18 +322,19 @@ different path logic.
 
 Example readings:
 
-- `n18|w7`: 18 selected raw observations, rounded effective weight 7. The age
+- `n18|w7`: 18 selected observations, rounded effective weight 7. The age
   token may be clipped if it does not fit before the fixed tail.
 - `n0|none`: no usable selected path sample.
 - `n3|lown`: three selected observations existed, but the configured minimum
   sample size was not met.
-- `n5/r19|lown`: capped receiver evidence had five accepted observations from
-  nineteen raw observations, and the capped count would not meet the floor.
-- `n5/r19|w3`: capped receiver evidence is shown first, with raw count after
-  `/r`, when receiver caps reduced the diagnostic evidence.
+- `n19/c5/rx1|lowr`: nineteen raw observations existed, but capped receiver
+  evidence represented only one attributed receiver.
+- `n19/c5/rx1|w3`: raw selected observations are shown first, capped effective
+  count after `/c`, and attributed receivers after `/rx` when receiver caps
+  reduced diagnostic evidence.
 - `n1|loww`: one selected observation existed, but the effective weight was
   below the minimum.
-- `n32|w1`: large raw sample count but low rounded effective weight. Treat this
+- `n32|w1`: large selected count but low rounded effective weight. Treat this
   as useful but thinner evidence than `w7`.
 
 ## Path Reliability Tags
@@ -347,7 +352,8 @@ At a high level, the cluster:
 3. groups them by coarse and fine geographic cells derived from Maidenhead grids
 4. combines recent DX-to-you and you-to-DX evidence with decay over time
 5. rejects selected evidence that is too old for the band's freshness gate
-6. applies your selected noise class on the receive side using a band-specific penalty
+6. resolves your selected noise class on the receive side; the checked-in table
+   applies one scalar dB penalty per class
 7. maps the result to `HIGH`, `MEDIUM`, `LOW`, `UNLIKELY`, or `INSUFFICIENT`
 
 What the classes mean to an operator:
@@ -356,29 +362,32 @@ What the classes mean to an operator:
 | --- | --- | --- | --- |
 | `>` | `HIGH` | Recent evidence suggests a favorable path. | Use `SET DIAG PATH` to see sample count, weight, and age. |
 | `=` | `MEDIUM` | Recent evidence suggests a workable path. | Use `SET DIAG PATH`; low effective weight can still map to a usable class. |
-| `<` | `LOW` | Recent evidence suggests a weak or marginal path. | Check `SET NOISE` and remember low-band noise penalties are stronger than 10m/6m. |
+| `<` | `LOW` | Recent evidence suggests a weak or marginal path. | Use `SET DIAG PATH` to confirm grids, sample count, and freshness. |
 | `-` | `UNLIKELY` | Recent evidence suggests a poor path. | Check whether your grid and the DX grid are correct before treating this as a hard no. |
-| blank | `INSUFFICIENT` | The cluster did not have enough usable recent evidence to rate the path. | Run `SET DIAG PATH`; common reasons are `none`, `lown`, `loww`, and `stale`. |
+| blank | `INSUFFICIENT` | The cluster did not have enough usable recent evidence to rate the path. | Run `SET DIAG PATH`; common reasons are `none`, `lown`, `lowr`, `loww`, and `stale`. |
 
 Important operational notes:
 
 - You need `SET GRID` for path hints to be useful.
-- `SET NOISE` changes the receive-side penalty used in the calculation. The
-  penalty is band-specific: low bands get stronger local-noise corrections than
-  10m and 6m.
+- `SET NOISE` stores a receive-noise class; the checked-in path config applies
+  one scalar dB penalty per class.
 - `SET PATHSAMPLES <count>` lets you require more selected observations than
   the cluster default before your session shows a path tag. `SET PATHSAMPLES
   DEFAULT` clears that personal override.
 - Stale evidence becomes `INSUFFICIENT`; age alone does not demote a strong
   path through weaker glyph tiers.
-- Receiver contribution caps are shipped in `shadow` mode. Normal glyphs still
-  use raw selected evidence, while `SET DIAG PATH` and five-minute logs expose
-  where capped receiver evidence would be stricter. Operators can switch to
-  enforcement in `path_reliability.yaml`.
+- Active p50 uses midpoint representatives for fixed SNR bins. Balanced
+  weak/strong evidence uses the middle between both selected bin representatives
+  instead of always choosing the weaker bin.
+- Receiver contribution caps are configured in `enforce` mode. Normal glyphs
+  and PATH filters use capped receiver evidence, with the checked-in cap set to
+  eight decayed effective observations per receiver per bucket.
 - Five-minute `Path predictions (5m)` logs split insufficient evidence into
-  `no_sample`, `low_count`, `low_weight`, and `stale`; `low_count` means the
-  selected sample count missed the observation floor, while `low_weight` means
-  decayed effective weight missed the weight floor.
+  `no_sample`, `low_count`, `low_receiver`, `low_weight`, and `stale`;
+  `low_count` means the selected raw sample count missed the observation floor,
+  `low_receiver` means receiver diversity missed the derived receiver gate,
+  and `low_weight` means decayed effective weight missed the weight floor.
+  These lines are written to `logging.propagation.dir`, not the system log.
 - If grids are missing, evidence is stale, too sparse, too weak, or the H3 tables are unavailable, the result stays `INSUFFICIENT`.
 - `PATH` filters work on the class names, not on the glyph characters.
 - `R` and `G` are solar-weather display overrides, not normal path classes.
@@ -518,6 +527,13 @@ Each entry uses the same timestamped daily-file logger as the system log and rec
 
 `logging.login_attempts`, `logging.reputation_drops`, `logging.telnet_connections`, `logging.ingest_connections`, and `logging.peer_connections` write separate file-only daily event logs for failed or blocked login attempts, reputation-gated spot drops, telnet lifecycle, ingest lifecycle, and peer lifecycle. These event logs do not add local console or UI output; check `data/config/README.md` for the per-log `enabled`, `dir`, `retention_days`, and `dedupe_window_seconds` settings.
 
+`logging.propagation` writes separate file-only daily propagation logs under
+`data/logs/propagation` by default. This is where the five-minute path
+prediction, source mix, bucket, weight distribution, ge10 variance, unique
+spotter/grid-pair, and report inputs are written.
+Daily propagation reports read this log by default; pass `prop_report -log` to
+an old system log path when generating reports from historical files.
+
 ```yaml
 logging:
   dropped_calls:
@@ -528,6 +544,10 @@ logging:
     bad_de_dx: true
     no_license: true
     harmonics: true
+  propagation:
+    enabled: true
+    dir: "data/logs/propagation"
+    retention_days: 7
 ```
 
 ## Repo Layout

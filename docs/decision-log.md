@@ -11,6 +11,21 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 |---|---|---|---|---|---|---|---|
 | ADR-0001 | <title> | Proposed | YYYY-MM-DD | <area> | - | - | `docs/decisions/ADR-0001-<slug>.md` |
+| ADR-0136 | Custom SCP Test Time Fixtures | Accepted | 2026-05-23 | spot, custom_scp, tests | - | - | `docs/decisions/ADR-0136-custom-scp-test-time-fixtures.md` |
+| ADR-0135 | Path Cap8 Enforcement And Shadow Candidate Retirement | Accepted | 2026-05-11 | pathreliability, config, retained state, propagation logs, reports | ADR-0132; ADR-0133; ADR-0129 (shipped cap value portion) | - | `docs/decisions/ADR-0135-path-cap8-enforcement-and-shadow-candidate-retirement.md` |
+| ADR-0134 | Path Observation Floor And Receiver Diversity Gate | Accepted | 2026-05-11 | pathreliability, config, telnet diagnostics, propagation logs | ADR-0129 (enforce-mode capped-count floor portion); ADR-0132 (cap-shadow low-count-only fields) | - | `docs/decisions/ADR-0134-path-observation-floor-and-receiver-diversity-gate.md` |
+| ADR-0133 | Path Receiver Cap P50 Shadow Histograms | Superseded | 2026-05-11 | pathreliability, config, propagation logs, reports | - | ADR-0135 | `docs/decisions/ADR-0133-path-receiver-cap-p50-shadow-histograms.md` |
+| ADR-0132 | Path Receiver Cap Shadow Candidates | Superseded | 2026-05-10 | pathreliability, config, propagation logs, reports | - | ADR-0135 | `docs/decisions/ADR-0132-path-receiver-cap-shadow-candidates.md` |
+| ADR-0131 | Path P50 Midpoint And Even-Split Semantics | Accepted | 2026-05-10 | pathreliability, telnet display, PATH filters | ADR-0126 (lower-edge p50 representative and exact-boundary behavior) | - | `docs/decisions/ADR-0131-path-p50-midpoint-and-even-split-semantics.md` |
+| ADR-0130 | Path Receiver Cap Count Decay | Accepted | 2026-05-10 | pathreliability, retained state, config semantics | ADR-0129 (lifetime count semantics) | - | `docs/decisions/ADR-0130-path-receiver-cap-count-decay.md` |
+| ADR-0129 | Path Receiver Capacity And Enforcement | Accepted | 2026-05-10 | pathreliability, config, retained state | ADR-0095 (slot ceiling and enforcement mode) | ADR-0130 (count-decay semantics); ADR-0135 (shipped cap value portion) | `docs/decisions/ADR-0129-path-receiver-capacity-and-enforcement.md` |
+| ADR-0128 | Remove PATHP50 Diagnostics And Clamp Config | Accepted | 2026-05-10 | pathreliability, telnet diagnostics, config, reports | ADR-0126 PATHP50 diagnostics; ADR-0123 Path p50 diag aggregate | - | `docs/decisions/ADR-0128-remove-pathp50-diagnostics-and-clamp-config.md` |
+| ADR-0127 | Location-Specific Path Noise Penalties | Accepted | 2026-05-09 | pathreliability, config, telnet, reports | ADR-0124 | - | `docs/decisions/ADR-0127-location-specific-path-noise-penalties.md` |
+| ADR-0126 | Active P50 Path Scoring | Accepted | 2026-05-09 | pathreliability, telnet diagnostics, propagation logs | ADR-0122; ADR-0125; ADR-0123 PATHP50 shadow-comparison portion | ADR-0128 (PATHP50 diagnostics only); ADR-0131 (p50 representative and exact-boundary behavior) | `docs/decisions/ADR-0126-active-p50-path-scoring.md` |
+| ADR-0125 | Gated PATHP50 Shadow Glyph Comparison | Superseded | 2026-05-08 | pathreliability, telnet diagnostics, propagation logs | - | ADR-0126 | `docs/decisions/ADR-0125-gated-pathp50-shadow-comparison.md` |
+| ADR-0124 | No-Noise-Penalty Path Evaluation | Superseded | 2026-05-08 | pathreliability, config, telnet | ADR-0064 | ADR-0127 | `docs/decisions/ADR-0124-no-noise-penalty-path-evaluation.md` |
+| ADR-0123 | Dedicated Propagation Log | Accepted | 2026-05-08 | logging, pathreliability, propagation reports | - | ADR-0128 (`Path p50 diag` aggregate only) | `docs/decisions/ADR-0123-dedicated-propagation-log.md` |
+| ADR-0122 | Path P50 Shadow Diagnostics | Superseded | 2026-05-08 | pathreliability, telnet diagnostics, config | - | ADR-0126 | `docs/decisions/ADR-0122-path-p50-shadow-diagnostics.md` |
 | ADR-0121 | PSKReporter Trusted Spot Materialization | Accepted | 2026-05-07 | pskreporter, spot, hot path | - | - | `docs/decisions/ADR-0121-pskreporter-trusted-spot-materialization.md` |
 | ADR-0120 | Resolver Correction State Hardening | Accepted | 2026-05-06 | spot, correction, config, concurrency | - | - | `docs/decisions/ADR-0120-resolver-correction-state-hardening.md` |
 | ADR-0119 | Non-trivial Scope Adversarial Review | Accepted | 2026-05-06 | workflow, scope ledger, validation | - | - | `docs/decisions/ADR-0119-non-trivial-scope-adversarial-review.md` |
@@ -37,7 +52,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR-0098 | Support-Agent Raw GitHub Source URLs | Accepted | 2026-05-02 | docs, customgpt | - | - | `docs/decisions/ADR-0098-support-agent-raw-github-source-urls.md` |
 | ADR-0097 | YAML Ownership Boundary Documentation | Accepted | 2026-05-01 | config, docs, customgpt | - | - | `docs/decisions/ADR-0097-yaml-ownership-boundary-docs.md` |
 | ADR-0096 | Path Prediction Low Count Logging | Accepted | 2026-04-30 | pathreliability, telnet diagnostics, reports | - | - | `docs/decisions/ADR-0096-path-prediction-low-count-logging.md` |
-| ADR-0095 | Path Reliability Receiver Contribution Caps | Accepted | 2026-04-30 | pathreliability, config, telnet diagnostics, reports | - | - | `docs/decisions/ADR-0095-path-reliability-receiver-contribution-caps.md` |
+| ADR-0095 | Path Reliability Receiver Contribution Caps | Accepted | 2026-04-30 | pathreliability, config, telnet diagnostics, reports | - | ADR-0129 (slot ceiling and enforcement mode) | `docs/decisions/ADR-0095-path-reliability-receiver-contribution-caps.md` |
 | ADR-0094 | Support-Agent Documentation Impact Gate | Accepted | 2026-04-30 | workflow, docs, customgpt | ADR-0092 (extends compact strict workflow) | - | `docs/decisions/ADR-0094-support-agent-doc-impact-gate.md` |
 | ADR-0093 | File-Only Connection and Gate Event Logs | Accepted | 2026-04-30 | logging, telnet, ingest, peer, reputation | - | - | `docs/decisions/ADR-0093-file-only-connection-and-gate-event-logs.md` |
 | ADR-0092 | Codex Token-Efficient Strict Workflow | Accepted | 2026-04-30 | workflow, Codex | - | - | `docs/decisions/ADR-0092-codex-token-efficient-strict-workflow.md` |
@@ -123,7 +138,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR-0061 | YAML-Driven FT Corroboration Timing and Threshold Knobs | Accepted | 2026-04-08 | config, main output pipeline, FT confidence, docs | ADR-0060 (code-bound FT timing/threshold clause) | - | `docs/decisions/ADR-0061-ft-corroboration-yaml-knobs.md` |
 | ADR-0062 | Shared Ingest Flood Control With Required YAML Policy | Accepted | 2026-04-08 | config, ingest, dedupe, stats, docs | - | - | `docs/decisions/ADR-0062-shared-ingest-flood-control.md` |
 | ADR-0063 | Configurable Telnet Bulletin Dedupe | Accepted | 2026-04-19 | config, peer, telnet fan-out | - | - | `docs/decisions/ADR-0063-configurable-bulletin-dedupe.md` |
-| ADR-0064 | Band-Specific Path Noise Penalties | Accepted | 2026-04-20 | pathreliability, telnet, config | - | - | `docs/decisions/ADR-0064-band-specific-path-noise-penalties.md` |
+| ADR-0064 | Band-Specific Path Noise Penalties | Superseded | 2026-04-20 | pathreliability, telnet, config | - | ADR-0124 | `docs/decisions/ADR-0064-band-specific-path-noise-penalties.md` |
 | ADR-0065 | Path Reliability Freshness Gate | Accepted | 2026-04-20 | pathreliability, telnet, reports, config | - | - | `docs/decisions/ADR-0065-path-reliability-freshness-gate.md` |
 | ADR-0066 | DXSummit HTTP Ingest | Accepted | 2026-04-21 | dxsummit, config, spot, runtime, docs | - | - | `docs/decisions/ADR-0066-dxsummit-http-ingest.md` |
 | ADR-0067 | Centralized YAML Settings Enforcement | Accepted | 2026-04-22 | config, pathreliability, solarweather, spot, runtime, reports | - | - | `docs/decisions/ADR-0067-centralized-yaml-settings-enforcement.md` |

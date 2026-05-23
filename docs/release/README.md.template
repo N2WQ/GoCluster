@@ -94,6 +94,11 @@ journalctl -u gocluster -f
 The interactive local console requires running the process in a real terminal,
 not as a normal unattended service.
 
+Daily propagation/path aggregate logs are written to
+`logging.propagation.dir` (`data/logs/propagation` in the shipped config), not
+to the system log. The `prop_report` tool reads that propagation log by
+default; use `-log` for historical system log files.
+
 ## Included Docs
 
 - `docs/OPERATOR_GUIDE.md` - practical operator guide.

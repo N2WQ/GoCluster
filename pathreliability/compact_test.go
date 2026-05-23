@@ -13,8 +13,8 @@ func TestStoreCompactPreservesEntries(t *testing.T) {
 	shard := &store.shards[0]
 	now := time.Now().UTC().Unix()
 	shard.mu.Lock()
-	shard.buckets[1] = &bucket{sumPower: 1, weight: 1, lastUpdate: now}
-	shard.buckets[2] = &bucket{sumPower: 2, weight: 1, lastUpdate: now}
+	shard.buckets[1] = &bucket{weight: 1, lastUpdate: now}
+	shard.buckets[2] = &bucket{weight: 1, lastUpdate: now}
 	shard.peak = 10
 	shard.mu.Unlock()
 

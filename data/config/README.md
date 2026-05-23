@@ -57,7 +57,7 @@ row.
 
 Configuration is split by concern so you only edit the relevant file:
 
-- `app.yaml` - deployment/runtime settings for server identity, stats interval, console UI, system logging, and optional dropped-call logs.
+- `app.yaml` - deployment/runtime settings for server identity, stats interval, console UI, system logging, propagation logging, and optional dropped-call logs.
 - `runtime.yaml` - deployment/runtime settings plus operator policy for default filters, telnet messages, dedupe defaults, and `who_spots_me.window_minutes`.
 - `ingest.yaml` - deployment/runtime settings for RBN/PSKReporter/human/DXSummit source enablement, source cadence, and call cache bounds.
 - `peering.yaml` - deployment/runtime settings for peer links and ACLs.
@@ -73,7 +73,7 @@ Configuration is split by concern so you only edit the relevant file:
 - `iaru_regions.yaml` - reference table for DXCC/ADIF to IARU region mapping.
 - `iaru_mode_inference.yaml` - reference table / algorithm calibration for final regional frequency policy.
 - `pipeline.yaml` - algorithm calibration for call correction, harmonics, mode inference, and spot-quality policy; not a normal operator tuning surface.
-- `path_reliability.yaml` - operator policy for enable/display/sample-floor/receiver-cap mode, plus algorithm calibration for decay, weights, thresholds, offsets, and noise tables.
+- `path_reliability.yaml` - operator policy for enable/display/sample-floor/receiver-cap mode/glyphs, plus active p50 histogram compatibility and algorithm calibration for decay, weights, thresholds, offsets, and noise tables.
 - `solarweather.yaml` - operator policy for enable/fetch/reporting controls, plus algorithm calibration for daylight/high-latitude/level thresholds and override glyph behavior.
 - `toxicity.yaml` - optional deployment/runtime settings for the Cloudflare Worker human-comment toxicity classifier.
 - `toxicity_safe_gate.yaml` - optional reference table for routine ham-radio comments that may bypass the classifier when the Worker is enabled.
@@ -104,6 +104,14 @@ Loader behavior:
 - `peering.yaml` in the public example uses disabled `.example.invalid` peers, blank passwords, and placeholder callsigns. Put real peer connection details only in a private config directory.
 - `reputation.yaml` in the public example disables IPinfo download/API usage and uses a placeholder download token so the strict loader still sees the required key. Put real IPinfo tokens only in a private config directory.
 - Use `prop_report -config-dir <dir>` to point report generation at an alternate config directory. The older `-path-config` flag accepts either a directory or `path_reliability.yaml` path for compatibility.
+
+Propagation logs:
+- `logging.propagation` writes path/propagation aggregate lines to a separate
+  daily file and does not add UI/console output.
+- Each block supports `enabled`, `dir`, and `retention_days`.
+- `retention_days: 0` inherits `logging.retention_days`.
+- The daily `prop_report` tool defaults to this log location; pass `-log` for
+  historical system-log files.
 
 File-only event logs:
 - `logging.login_attempts`, `logging.reputation_drops`, `logging.telnet_connections`, `logging.ingest_connections`, and `logging.peer_connections` write separate daily files and do not add UI/console output.

@@ -12,6 +12,9 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
 | TSR-0001 | <title> | Open | YYYY-MM-DD | <area> | - | `docs/troubleshooting/TSR-0001-<slug>.md` |
+| TSR-0024 | Custom SCP Test Time Horizon | Resolved | 2026-05-23 | spot, custom_scp, tests | ADR-0136 | `docs/troubleshooting/TSR-0024-custom-scp-test-time-horizon.md` |
+| TSR-0023 | Path Capped Count Gate Overload | Resolved | 2026-05-11 | pathreliability, config, telnet diagnostics, propagation logs | ADR-0134 | `docs/troubleshooting/TSR-0023-path-capped-count-gate-overload.md` |
+| TSR-0022 | Path Receiver Cap Lifetime Count | Resolved | 2026-05-10 | pathreliability, retained state | ADR-0130 | `docs/troubleshooting/TSR-0022-path-receiver-cap-lifetime-count.md` |
 | TSR-0021 | Command-Like Login CTY Admission | Resolved | 2026-05-04 | spot, CTY, telnet, ingest, peer, replay | ADR-0110 | `docs/troubleshooting/TSR-0021-command-like-login-cty-admission.md` |
 | TSR-0002 | Per-Spot Call Correction Split-Evidence Ambiguity and Quality Penalty Reinforcement | Resolved | 2026-02-23 | spot/correction, main/telnet fan-out | ADR-0021 | `docs/troubleshooting/TSR-0002-call-correction-ambiguity-and-quality-penalty.md` |
 | TSR-0003 | Phase 2 Signal Resolver Shadow-Mode Design and Validation Plan | Open | 2026-02-23 | spot/correction, main output pipeline | ADR-0022 | `docs/troubleshooting/TSR-0003-phase2-signal-resolver-shadow-design.md` |

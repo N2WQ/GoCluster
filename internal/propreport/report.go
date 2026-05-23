@@ -45,16 +45,18 @@ type Result struct {
 }
 
 type reportSummary struct {
-	DateUTC           string                  `json:"date_utc"`
-	LogFile           string                  `json:"log_file"`
-	Timezone          string                  `json:"timezone"`
-	ModelContext      modelContext            `json:"model_context"`
-	Bands             []bandSummary           `json:"bands"`
-	BandGroups        map[string][]string     `json:"band_groups"`
-	CoverageMedians   map[string]coverageStat `json:"coverage_medians_by_band"`
-	PredictionsByHour []predictionHour        `json:"predictions_by_hour"`
-	SourceMixByHour   []sourceMixHour         `json:"source_mix_by_hour"`
-	Thresholds        classificationThreshold `json:"thresholds"`
+	DateUTC            string                  `json:"date_utc"`
+	LogFile            string                  `json:"log_file"`
+	Timezone           string                  `json:"timezone"`
+	ModelContext       modelContext            `json:"model_context"`
+	Bands              []bandSummary           `json:"bands"`
+	BandGroups         map[string][]string     `json:"band_groups"`
+	CoverageMedians    map[string]coverageStat `json:"coverage_medians_by_band"`
+	PredictionsByHour  []predictionHour        `json:"predictions_by_hour"`
+	CapShadowByHour    []capShadowHour         `json:"cap_shadow_by_hour"`
+	CapP50ShadowByHour []capP50ShadowHour      `json:"cap_p50_shadow_by_hour"`
+	SourceMixByHour    []sourceMixHour         `json:"source_mix_by_hour"`
+	Thresholds         classificationThreshold `json:"thresholds"`
 }
 
 type bandSummary struct {
@@ -107,10 +109,44 @@ type predictionHour struct {
 	AvgInsufficient  float64 `json:"avg_insufficient"`
 	AvgNoSample      float64 `json:"avg_no_sample"`
 	AvgLowCount      float64 `json:"avg_low_count"`
+	AvgLowReceiver   float64 `json:"avg_low_receiver"`
 	AvgLowWeight     float64 `json:"avg_low_weight"`
 	AvgStale         float64 `json:"avg_stale"`
 	AvgCapLimited    float64 `json:"avg_cap_limited"`
 	AvgCapWouldBlock float64 `json:"avg_cap_would_block"`
+}
+
+type capShadowHour struct {
+	Hour       string                   `json:"hour"`
+	Samples    int                      `json:"samples"`
+	Candidates []capShadowCandidateHour `json:"candidates"`
+}
+
+type capShadowCandidateHour struct {
+	MaxEffectiveCount uint32  `json:"max_effective_count"`
+	AvgPass           float64 `json:"avg_pass"`
+	AvgLowCount       float64 `json:"avg_low_count"`
+	AvgLowReceiver    float64 `json:"avg_low_receiver"`
+	AvgLowWeight      float64 `json:"avg_low_weight"`
+	AvgBlock          float64 `json:"avg_block"`
+}
+
+type capP50ShadowHour struct {
+	Hour       string                      `json:"hour"`
+	Samples    int                         `json:"samples"`
+	Candidates []capP50ShadowCandidateHour `json:"candidates"`
+}
+
+type capP50ShadowCandidateHour struct {
+	MaxEffectiveCount uint32  `json:"max_effective_count"`
+	AvgPassUnlikely   float64 `json:"avg_pass_unlikely"`
+	AvgPassLow        float64 `json:"avg_pass_low"`
+	AvgPassMedium     float64 `json:"avg_pass_medium"`
+	AvgPassHigh       float64 `json:"avg_pass_high"`
+	AvgSame           float64 `json:"avg_same"`
+	AvgStronger       float64 `json:"avg_stronger"`
+	AvgWeaker         float64 `json:"avg_weaker"`
+	AvgToInsufficient float64 `json:"avg_to_insufficient"`
 }
 
 type sourceMixHour struct {
@@ -139,27 +175,25 @@ type ge10Variance struct {
 }
 
 type modelContext struct {
-	ClampMin                           float64                       `json:"clamp_min"`
-	ClampMax                           float64                       `json:"clamp_max"`
-	DefaultHalfLifeSec                 int                           `json:"default_half_life_seconds"`
-	BandHalfLifeSec                    map[string]int                `json:"band_half_life_seconds"`
-	StaleAfterSeconds                  int                           `json:"stale_after_seconds"`
-	StaleAfterHalfLifeMultiplier       float64                       `json:"stale_after_half_life_multiplier"`
-	StaleAfterByBand                   map[string]int                `json:"stale_after_by_band_seconds"`
-	MaxPredictionAgeHalfLifeMultiplier float64                       `json:"max_prediction_age_half_life_multiplier"`
-	MaxPredictionAgeByBand             map[string]int                `json:"max_prediction_age_by_band_seconds"`
-	MinEffectiveWeight                 float64                       `json:"min_effective_weight"`
-	MinObservationCount                int                           `json:"min_observation_count"`
-	ReceiverContributionMode           string                        `json:"receiver_contribution_mode"`
-	ReceiverFineSlots                  int                           `json:"receiver_fine_slots"`
-	ReceiverCoarseSlots                int                           `json:"receiver_coarse_slots"`
-	ReceiverMaxEffectiveCount          uint32                        `json:"receiver_max_effective_count"`
-	ReceiverMaxEffectiveWeight         float64                       `json:"receiver_max_effective_weight"`
-	MinFineWeight                      float64                       `json:"min_fine_weight"`
-	ReverseHintDiscount                float64                       `json:"reverse_hint_discount"`
-	MergeReceiveWeight                 float64                       `json:"merge_receive_weight"`
-	MergeTransmitWeight                float64                       `json:"merge_transmit_weight"`
-	NoiseOffsetsByBand                 map[string]map[string]float64 `json:"noise_offsets_by_band"`
+	DefaultHalfLifeSec                 int                `json:"default_half_life_seconds"`
+	BandHalfLifeSec                    map[string]int     `json:"band_half_life_seconds"`
+	StaleAfterSeconds                  int                `json:"stale_after_seconds"`
+	StaleAfterHalfLifeMultiplier       float64            `json:"stale_after_half_life_multiplier"`
+	StaleAfterByBand                   map[string]int     `json:"stale_after_by_band_seconds"`
+	MaxPredictionAgeHalfLifeMultiplier float64            `json:"max_prediction_age_half_life_multiplier"`
+	MaxPredictionAgeByBand             map[string]int     `json:"max_prediction_age_by_band_seconds"`
+	MinEffectiveWeight                 float64            `json:"min_effective_weight"`
+	MinObservationCount                int                `json:"min_observation_count"`
+	ReceiverContributionMode           string             `json:"receiver_contribution_mode"`
+	ReceiverFineSlots                  int                `json:"receiver_fine_slots"`
+	ReceiverCoarseSlots                int                `json:"receiver_coarse_slots"`
+	ReceiverMaxEffectiveCount          uint32             `json:"receiver_max_effective_count"`
+	ReceiverMaxEffectiveWeight         float64            `json:"receiver_max_effective_weight"`
+	MinFineWeight                      float64            `json:"min_fine_weight"`
+	ReverseHintDiscount                float64            `json:"reverse_hint_discount"`
+	MergeReceiveWeight                 float64            `json:"merge_receive_weight"`
+	MergeTransmitWeight                float64            `json:"merge_transmit_weight"`
+	NoiseOffsets                       map[string]float64 `json:"noise_offsets"`
 }
 
 type openAIConfig struct {
@@ -192,29 +226,66 @@ type predTotals struct {
 	Insufficient  int
 	NoSample      int
 	LowCount      int
+	LowReceiver   int
 	LowWeight     int
 	Stale         int
 	CapLimited    int
 	CapWouldBlock int
 }
 
+type capShadowTotals struct {
+	Total      int
+	Candidates []capShadowCandidateTotals
+}
+
+type capShadowCandidateTotals struct {
+	MaxEffectiveCount uint32
+	Pass              int
+	LowCount          int
+	LowReceiver       int
+	LowWeight         int
+	Block             int
+}
+
+type capP50ShadowTotals struct {
+	Total      int
+	Candidates []capP50ShadowCandidateTotals
+}
+
+type capP50ShadowCandidateTotals struct {
+	MaxEffectiveCount uint32
+	PassUnlikely      int
+	PassLow           int
+	PassMedium        int
+	PassHigh          int
+	Same              int
+	Stronger          int
+	Weaker            int
+	ToInsufficient    int
+}
+
 var (
-	tsRe          = regexp.MustCompile(`^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}`)
-	bucketsRe     = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path buckets`)
-	weightsRe     = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path weight dist`)
-	predsRe       = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path predictions`)
-	sourceMixRe   = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path source mix`)
-	spottersRe    = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path unique spotters`)
-	pairsRe       = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path unique grid pairs`)
-	ge10VarRe     = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path ge10 variance`)
-	ansiRe        = regexp.MustCompile(`\x1b\[[0-9;]*m`)
-	bandBuckets   = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)\s+f=([\d,]+)\s+c=([\d,]+)`)
-	bandWeights   = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)\s+t=([\d,]+)\s+<1=([\d,]+)\s+1-2=([\d,]+)\s+2-3=([\d,]+)\s+3-5=([\d,]+)\s+5-10=([\d,]+)\s+>=10=([\d,]+)`)
-	predsFields   = regexp.MustCompile(`\b(total|derived|combined|insufficient|no_sample|low_count|low_weight|stale|cap_limited|cap_would_block)=([\d,]+)`)
-	sourceFields  = regexp.MustCompile(`([A-Za-z\-]+)=([\d,]+)`)
-	hourField     = regexp.MustCompile(`hour=(\d{2})`)
-	bandCounts    = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)=([\d,]+)`)
-	ge10VarFields = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)\s+min=(\d+)\s+med=(\d+)\s+p75=(\d+)\s+max=(\d+)\s+deg=(\d)`)
+	tsRe              = regexp.MustCompile(`^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}`)
+	bucketsRe         = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path buckets`)
+	weightsRe         = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path weight dist`)
+	predsRe           = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path predictions`)
+	capShadowRe       = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path cap shadow`)
+	capP50ShadowRe    = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path cap p50 shadow`)
+	sourceMixRe       = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path source mix`)
+	spottersRe        = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path unique spotters`)
+	pairsRe           = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path unique grid pairs`)
+	ge10VarRe         = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path ge10 variance`)
+	ansiRe            = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	bandBuckets       = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)\s+f=([\d,]+)\s+c=([\d,]+)`)
+	bandWeights       = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)\s+t=([\d,]+)\s+<1=([\d,]+)\s+1-2=([\d,]+)\s+2-3=([\d,]+)\s+3-5=([\d,]+)\s+5-10=([\d,]+)\s+>=10=([\d,]+)`)
+	predsFields       = regexp.MustCompile(`\b(total|derived|combined|insufficient|no_sample|low_count|low_receiver|low_weight|stale|cap_limited|cap_would_block)=([\d,]+)`)
+	totalField        = regexp.MustCompile(`\btotal=([\d,]+)`)
+	capShadowField    = regexp.MustCompile(`\bcap(\d+)_(pass|low_count|low_receiver|low_weight|block)=([\d,]+)`)
+	capP50ShadowField = regexp.MustCompile(`\bcap(\d+)_p50_(pass_unlikely|pass_low|pass_medium|pass_high|same|stronger|weaker|to_insufficient)=([\d,]+)`)
+	sourceFields      = regexp.MustCompile(`([A-Za-z\-]+)=([\d,]+)`)
+	hourField         = regexp.MustCompile(`hour=(\d{2})`)
+	bandCounts        = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)=([\d,]+)`)
+	ge10VarFields     = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)\s+min=(\d+)\s+med=(\d+)\s+p75=(\d+)\s+max=(\d+)\s+deg=(\d)`)
 )
 
 func parseLog(path string) ([]string, error) {
@@ -295,11 +366,126 @@ func parsePredictionTotals(line string) (predTotals, bool) {
 		Insufficient:  values["insufficient"],
 		NoSample:      values["no_sample"],
 		LowCount:      values["low_count"],
+		LowReceiver:   values["low_receiver"],
 		LowWeight:     values["low_weight"],
 		Stale:         values["stale"],
 		CapLimited:    values["cap_limited"],
 		CapWouldBlock: values["cap_would_block"],
 	}, true
+}
+
+func parseCapShadowTotals(line string) (capShadowTotals, bool) {
+	total := 0
+	if m := totalField.FindStringSubmatch(line); len(m) == 2 {
+		total = parseInt(m[1])
+	}
+	matches := capShadowField.FindAllStringSubmatch(line, -1)
+	if len(matches) == 0 {
+		return capShadowTotals{}, false
+	}
+	byCap := make(map[uint32]*capShadowCandidateTotals, 3)
+	var caps []uint32
+	for _, match := range matches {
+		if len(match) != 4 {
+			continue
+		}
+		capValue64, err := strconv.ParseUint(match[1], 10, 32)
+		if err != nil || capValue64 == 0 {
+			continue
+		}
+		capValue := uint32(capValue64)
+		candidate := byCap[capValue]
+		if candidate == nil {
+			candidate = &capShadowCandidateTotals{MaxEffectiveCount: capValue}
+			byCap[capValue] = candidate
+			caps = append(caps, capValue)
+		}
+		value := parseInt(match[3])
+		switch match[2] {
+		case "pass":
+			candidate.Pass = value
+		case "low_count":
+			candidate.LowCount = value
+		case "low_receiver":
+			candidate.LowReceiver = value
+		case "low_weight":
+			candidate.LowWeight = value
+		case "block":
+			candidate.Block = value
+		}
+	}
+	if len(caps) == 0 {
+		return capShadowTotals{}, false
+	}
+	sort.Slice(caps, func(i, j int) bool { return caps[i] < caps[j] })
+	out := capShadowTotals{
+		Total:      total,
+		Candidates: make([]capShadowCandidateTotals, 0, len(caps)),
+	}
+	for _, capValue := range caps {
+		out.Candidates = append(out.Candidates, *byCap[capValue])
+	}
+	return out, true
+}
+
+func parseCapP50ShadowTotals(line string) (capP50ShadowTotals, bool) {
+	total := 0
+	if m := totalField.FindStringSubmatch(line); len(m) == 2 {
+		total = parseInt(m[1])
+	}
+	matches := capP50ShadowField.FindAllStringSubmatch(line, -1)
+	if len(matches) == 0 {
+		return capP50ShadowTotals{}, false
+	}
+	byCap := make(map[uint32]*capP50ShadowCandidateTotals, 3)
+	var caps []uint32
+	for _, match := range matches {
+		if len(match) != 4 {
+			continue
+		}
+		capValue64, err := strconv.ParseUint(match[1], 10, 32)
+		if err != nil || capValue64 == 0 {
+			continue
+		}
+		capValue := uint32(capValue64)
+		candidate := byCap[capValue]
+		if candidate == nil {
+			candidate = &capP50ShadowCandidateTotals{MaxEffectiveCount: capValue}
+			byCap[capValue] = candidate
+			caps = append(caps, capValue)
+		}
+		value := parseInt(match[3])
+		switch match[2] {
+		case "pass_unlikely":
+			candidate.PassUnlikely = value
+		case "pass_low":
+			candidate.PassLow = value
+		case "pass_medium":
+			candidate.PassMedium = value
+		case "pass_high":
+			candidate.PassHigh = value
+		case "same":
+			candidate.Same = value
+		case "stronger":
+			candidate.Stronger = value
+		case "weaker":
+			candidate.Weaker = value
+		case "to_insufficient":
+			candidate.ToInsufficient = value
+		}
+	}
+	if len(caps) == 0 {
+		return capP50ShadowTotals{}, false
+	}
+	sort.Slice(caps, func(i, j int) bool { return caps[i] < caps[j] })
+	out := capP50ShadowTotals{
+		Total:      total,
+		Candidates: make([]capP50ShadowCandidateTotals, 0, len(caps)),
+	}
+	for _, capValue := range caps {
+		out.Candidates = append(out.Candidates, *byCap[capValue])
+	}
+	return out, true
 }
 
 func parseHour(ts string, line string) (int, bool) {
@@ -524,8 +710,6 @@ func buildModelContext(cfg pathreliability.Config, bands []string) modelContext 
 		}
 	}
 	return modelContext{
-		ClampMin:                           cfg.ClampMin,
-		ClampMax:                           cfg.ClampMax,
 		DefaultHalfLifeSec:                 cfg.DefaultHalfLifeSec,
 		BandHalfLifeSec:                    cfg.BandHalfLifeSec,
 		StaleAfterSeconds:                  cfg.StaleAfterSeconds,
@@ -544,21 +728,17 @@ func buildModelContext(cfg pathreliability.Config, bands []string) modelContext 
 		ReverseHintDiscount:                cfg.ReverseHintDiscount,
 		MergeReceiveWeight:                 cfg.MergeReceiveWeight,
 		MergeTransmitWeight:                cfg.MergeTransmitWeight,
-		NoiseOffsetsByBand:                 cloneNestedFloatMap(cfg.NoiseOffsetsByBand),
+		NoiseOffsets:                       cloneFloatMap(cfg.NoiseOffsets),
 	}
 }
 
-func cloneNestedFloatMap(in map[string]map[string]float64) map[string]map[string]float64 {
+func cloneFloatMap(in map[string]float64) map[string]float64 {
 	if len(in) == 0 {
 		return nil
 	}
-	out := make(map[string]map[string]float64, len(in))
-	for k, inner := range in {
-		copied := make(map[string]float64, len(inner))
-		for innerK, v := range inner {
-			copied[innerK] = v
-		}
-		out[k] = copied
+	out := make(map[string]float64, len(in))
+	for k, v := range in {
+		out[k] = v
 	}
 	return out
 }
@@ -598,7 +778,7 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 
 	logPath := strings.TrimSpace(opts.LogPath)
 	if logPath == "" {
-		logPath = filepath.Join("data", "logs", fmt.Sprintf("%s.log", date.Format("02-Jan-2006")))
+		logPath = filepath.Join("data", "logs", "propagation", fmt.Sprintf("%s.log", date.Format("02-Jan-2006")))
 	}
 	jsonOut := strings.TrimSpace(opts.JSONOut)
 	if jsonOut == "" {
@@ -638,6 +818,8 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 	bucketByTS := make(map[string]map[string]int)
 	weightByTS := make(map[string]map[string]weightBins)
 	predByTS := make(map[string]predTotals)
+	capShadowByTS := make(map[string]capShadowTotals)
+	capP50ShadowByTS := make(map[string]capP50ShadowTotals)
 	sourceMixByHour := make(map[int]*sourceMixHour)
 	spottersByHour := make(map[int]map[string]int)
 	pairsByHour := make(map[int]map[string]int)
@@ -673,6 +855,20 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 			totals, ok := parsePredictionTotals(entry)
 			if ok {
 				predByTS[ts] = totals
+			}
+		}
+		if m := capShadowRe.FindStringSubmatch(entry); len(m) == 2 {
+			ts := m[1]
+			totals, ok := parseCapShadowTotals(entry)
+			if ok {
+				capShadowByTS[ts] = totals
+			}
+		}
+		if m := capP50ShadowRe.FindStringSubmatch(entry); len(m) == 2 {
+			ts := m[1]
+			totals, ok := parseCapP50ShadowTotals(entry)
+			if ok {
+				capP50ShadowByTS[ts] = totals
 			}
 		}
 		if m := sourceMixRe.FindStringSubmatch(entry); len(m) == 2 {
@@ -927,13 +1123,14 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 		if len(rows) == 0 {
 			continue
 		}
-		var total, combined, insufficient, noSample, lowCount, lowWeight, stale, capLimited, capWouldBlock int
+		var total, combined, insufficient, noSample, lowCount, lowReceiver, lowWeight, stale, capLimited, capWouldBlock int
 		for _, r := range rows {
 			total += r.Total
 			combined += r.Combined
 			insufficient += r.Insufficient
 			noSample += r.NoSample
 			lowCount += r.LowCount
+			lowReceiver += r.LowReceiver
 			lowWeight += r.LowWeight
 			stale += r.Stale
 			capLimited += r.CapLimited
@@ -948,11 +1145,136 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 			AvgInsufficient:  float64(insufficient) / float64(count),
 			AvgNoSample:      float64(noSample) / float64(count),
 			AvgLowCount:      float64(lowCount) / float64(count),
+			AvgLowReceiver:   float64(lowReceiver) / float64(count),
 			AvgLowWeight:     float64(lowWeight) / float64(count),
 			AvgStale:         float64(stale) / float64(count),
 			AvgCapLimited:    float64(capLimited) / float64(count),
 			AvgCapWouldBlock: float64(capWouldBlock) / float64(count),
 		})
+	}
+
+	capShadowHours := make(map[int][]capShadowTotals)
+	for ts, totals := range capShadowByTS {
+		tsTime, err := time.Parse("2006/01/02 15:04:05", ts)
+		if err != nil {
+			continue
+		}
+		hour := tsTime.Hour()
+		capShadowHours[hour] = append(capShadowHours[hour], totals)
+	}
+
+	capShadowSummary := make([]capShadowHour, 0, len(capShadowHours))
+	var capShadowHourKeys []int
+	for h := range capShadowHours {
+		capShadowHourKeys = append(capShadowHourKeys, h)
+	}
+	sort.Ints(capShadowHourKeys)
+	for _, h := range capShadowHourKeys {
+		rows := capShadowHours[h]
+		if len(rows) == 0 {
+			continue
+		}
+		byCap := make(map[uint32]*capShadowCandidateTotals)
+		for _, row := range rows {
+			for _, candidate := range row.Candidates {
+				accum := byCap[candidate.MaxEffectiveCount]
+				if accum == nil {
+					accum = &capShadowCandidateTotals{MaxEffectiveCount: candidate.MaxEffectiveCount}
+					byCap[candidate.MaxEffectiveCount] = accum
+				}
+				accum.Pass += candidate.Pass
+				accum.LowCount += candidate.LowCount
+				accum.LowReceiver += candidate.LowReceiver
+				accum.LowWeight += candidate.LowWeight
+				accum.Block += candidate.Block
+			}
+		}
+		var caps []uint32
+		for capValue := range byCap {
+			caps = append(caps, capValue)
+		}
+		sort.Slice(caps, func(i, j int) bool { return caps[i] < caps[j] })
+		hourSummary := capShadowHour{
+			Hour:    fmt.Sprintf("%02d:00", h),
+			Samples: len(rows),
+		}
+		for _, capValue := range caps {
+			candidate := byCap[capValue]
+			hourSummary.Candidates = append(hourSummary.Candidates, capShadowCandidateHour{
+				MaxEffectiveCount: capValue,
+				AvgPass:           float64(candidate.Pass) / float64(len(rows)),
+				AvgLowCount:       float64(candidate.LowCount) / float64(len(rows)),
+				AvgLowReceiver:    float64(candidate.LowReceiver) / float64(len(rows)),
+				AvgLowWeight:      float64(candidate.LowWeight) / float64(len(rows)),
+				AvgBlock:          float64(candidate.Block) / float64(len(rows)),
+			})
+		}
+		capShadowSummary = append(capShadowSummary, hourSummary)
+	}
+
+	capP50ShadowHours := make(map[int][]capP50ShadowTotals)
+	for ts, totals := range capP50ShadowByTS {
+		tsTime, err := time.Parse("2006/01/02 15:04:05", ts)
+		if err != nil {
+			continue
+		}
+		hour := tsTime.Hour()
+		capP50ShadowHours[hour] = append(capP50ShadowHours[hour], totals)
+	}
+
+	capP50ShadowSummary := make([]capP50ShadowHour, 0, len(capP50ShadowHours))
+	var capP50ShadowHourKeys []int
+	for h := range capP50ShadowHours {
+		capP50ShadowHourKeys = append(capP50ShadowHourKeys, h)
+	}
+	sort.Ints(capP50ShadowHourKeys)
+	for _, h := range capP50ShadowHourKeys {
+		rows := capP50ShadowHours[h]
+		if len(rows) == 0 {
+			continue
+		}
+		byCap := make(map[uint32]*capP50ShadowCandidateTotals)
+		for _, row := range rows {
+			for _, candidate := range row.Candidates {
+				accum := byCap[candidate.MaxEffectiveCount]
+				if accum == nil {
+					accum = &capP50ShadowCandidateTotals{MaxEffectiveCount: candidate.MaxEffectiveCount}
+					byCap[candidate.MaxEffectiveCount] = accum
+				}
+				accum.PassUnlikely += candidate.PassUnlikely
+				accum.PassLow += candidate.PassLow
+				accum.PassMedium += candidate.PassMedium
+				accum.PassHigh += candidate.PassHigh
+				accum.Same += candidate.Same
+				accum.Stronger += candidate.Stronger
+				accum.Weaker += candidate.Weaker
+				accum.ToInsufficient += candidate.ToInsufficient
+			}
+		}
+		var caps []uint32
+		for capValue := range byCap {
+			caps = append(caps, capValue)
+		}
+		sort.Slice(caps, func(i, j int) bool { return caps[i] < caps[j] })
+		hourSummary := capP50ShadowHour{
+			Hour:    fmt.Sprintf("%02d:00", h),
+			Samples: len(rows),
+		}
+		for _, capValue := range caps {
+			candidate := byCap[capValue]
+			hourSummary.Candidates = append(hourSummary.Candidates, capP50ShadowCandidateHour{
+				MaxEffectiveCount: capValue,
+				AvgPassUnlikely:   float64(candidate.PassUnlikely) / float64(len(rows)),
+				AvgPassLow:        float64(candidate.PassLow) / float64(len(rows)),
+				AvgPassMedium:     float64(candidate.PassMedium) / float64(len(rows)),
+				AvgPassHigh:       float64(candidate.PassHigh) / float64(len(rows)),
+				AvgSame:           float64(candidate.Same) / float64(len(rows)),
+				AvgStronger:       float64(candidate.Stronger) / float64(len(rows)),
+				AvgWeaker:         float64(candidate.Weaker) / float64(len(rows)),
+				AvgToInsufficient: float64(candidate.ToInsufficient) / float64(len(rows)),
+			})
+		}
+		capP50ShadowSummary = append(capP50ShadowSummary, hourSummary)
 	}
 
 	sourceMixSummary := make([]sourceMixHour, 0, len(sourceMixByHour))
@@ -1004,15 +1326,17 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 	}
 
 	summary := reportSummary{
-		DateUTC:           date.Format("2006-01-02"),
-		LogFile:           logPath,
-		Timezone:          "UTC",
-		ModelContext:      buildModelContext(pathCfg, bands),
-		Bands:             summaries,
-		BandGroups:        filteredGroups,
-		CoverageMedians:   coverageMedians,
-		PredictionsByHour: predSummary,
-		SourceMixByHour:   sourceMixSummary,
+		DateUTC:            date.Format("2006-01-02"),
+		LogFile:            logPath,
+		Timezone:           "UTC",
+		ModelContext:       buildModelContext(pathCfg, bands),
+		Bands:              summaries,
+		BandGroups:         filteredGroups,
+		CoverageMedians:    coverageMedians,
+		PredictionsByHour:  predSummary,
+		CapShadowByHour:    capShadowSummary,
+		CapP50ShadowByHour: capP50ShadowSummary,
+		SourceMixByHour:    sourceMixSummary,
 		Thresholds: classificationThreshold{
 			StrongRule: "strong if ge10_med >= p75(ge10) and f_med >= p50(f)",
 			WeakRule:   "weak if ge10_med <= p25(ge10) and f_med <= p50(f)",
@@ -1100,6 +1424,16 @@ func buildFinalReport(summary reportSummary) string {
 	b.WriteString("Prediction activity by hour (overall)\n\n")
 	b.WriteString(predictionActivitySummary(summary.PredictionsByHour))
 	b.WriteString("\n\n")
+	if len(summary.CapShadowByHour) > 0 {
+		b.WriteString("Receiver cap shadow by hour\n\n")
+		b.WriteString(capShadowActivitySummary(summary.CapShadowByHour))
+		b.WriteString("\n\n")
+	}
+	if len(summary.CapP50ShadowByHour) > 0 {
+		b.WriteString("Receiver cap p50 shadow by hour\n\n")
+		b.WriteString(capP50ShadowActivitySummary(summary.CapP50ShadowByHour))
+		b.WriteString("\n\n")
+	}
 
 	b.WriteString("Plain‑English takeaway\n\n")
 	b.WriteString(deterministicTakeaway(summary, bandMap))
@@ -1123,8 +1457,8 @@ func writeModelContext(b *strings.Builder, ctx modelContext, bands []bandSummary
 	if b == nil {
 		return
 	}
-	fmt.Fprintf(b, "Clamp: %.1f to %.1f dB. Default half-life: %ds. Stale after: %ds or %.2fx half-life per band.\n",
-		ctx.ClampMin, ctx.ClampMax, ctx.DefaultHalfLifeSec, ctx.StaleAfterSeconds, ctx.StaleAfterHalfLifeMultiplier)
+	fmt.Fprintf(b, "Default half-life: %ds. Stale after: %ds or %.2fx half-life per band.\n",
+		ctx.DefaultHalfLifeSec, ctx.StaleAfterSeconds, ctx.StaleAfterHalfLifeMultiplier)
 	fmt.Fprintf(b, "Min effective weight: %.2f. Min observations: %d. Min fine weight: %.2f. Reverse hint discount: %.2f.\n",
 		ctx.MinEffectiveWeight, ctx.MinObservationCount, ctx.MinFineWeight, ctx.ReverseHintDiscount)
 	fmt.Fprintf(b, "Receiver contribution caps: mode=%s fine_slots=%d coarse_slots=%d max_count=%d max_weight=%.2f.\n",
@@ -1135,9 +1469,9 @@ func writeModelContext(b *strings.Builder, ctx modelContext, bands []bandSummary
 	} else {
 		b.WriteString("Prediction freshness gate: disabled.\n")
 	}
-	if len(ctx.NoiseOffsetsByBand) > 0 {
-		b.WriteString("Noise offsets by band (dB): ")
-		b.WriteString(formatNoiseOffsetsByBand(ctx.NoiseOffsetsByBand))
+	if len(ctx.NoiseOffsets) > 0 {
+		b.WriteString("Noise offsets by class (dB): ")
+		b.WriteString(formatNoiseOffsets(ctx.NoiseOffsets))
 		b.WriteString(".\n")
 	}
 	if len(bands) > 0 {
@@ -1161,7 +1495,7 @@ func writeModelContext(b *strings.Builder, ctx modelContext, bands []bandSummary
 	}
 }
 
-func formatNoiseOffsetsByBand(offsets map[string]map[string]float64) string {
+func formatNoiseOffsets(offsets map[string]float64) string {
 	classes := make([]string, 0, len(offsets))
 	for class := range offsets {
 		classes = append(classes, class)
@@ -1169,27 +1503,7 @@ func formatNoiseOffsetsByBand(offsets map[string]map[string]float64) string {
 	sort.Strings(classes)
 	parts := make([]string, 0, len(classes))
 	for _, class := range classes {
-		byBand := offsets[class]
-		bands := make([]string, 0, len(byBand))
-		for band := range byBand {
-			bands = append(bands, band)
-		}
-		sort.Slice(bands, func(i, j int) bool {
-			gi, vi, si := bandSortKey(bands[i])
-			gj, vj, sj := bandSortKey(bands[j])
-			if gi != gj {
-				return gi < gj
-			}
-			if vi != vj {
-				return vi < vj
-			}
-			return si < sj
-		})
-		values := make([]string, 0, len(bands))
-		for _, band := range bands {
-			values = append(values, fmt.Sprintf("%s=%g", band, byBand[band]))
-		}
-		parts = append(parts, fmt.Sprintf("%s{%s}", class, strings.Join(values, ",")))
+		parts = append(parts, fmt.Sprintf("%s=%g", class, offsets[class]))
 	}
 	return strings.Join(parts, "; ")
 }
@@ -1375,6 +1689,7 @@ func predictionActivitySummary(hours []predictionHour) string {
 	var maxHour, minHour string
 	var lowSample []string
 	var lowCountSample []string
+	var lowReceiverSample []string
 	var lowWeightSample []string
 	var staleSample []string
 	var capWouldBlockSample []string
@@ -1392,6 +1707,9 @@ func predictionActivitySummary(hours []predictionHour) string {
 		}
 		if h.AvgLowCount > h.AvgLowWeight && h.AvgLowCount > 0 {
 			lowCountSample = append(lowCountSample, h.Hour)
+		}
+		if h.AvgLowReceiver > h.AvgLowCount && h.AvgLowReceiver > h.AvgLowWeight && h.AvgLowReceiver > 0 {
+			lowReceiverSample = append(lowReceiverSample, h.Hour)
 		}
 		if h.AvgLowWeight > h.AvgLowCount && h.AvgLowWeight > 0 {
 			lowWeightSample = append(lowWeightSample, h.Hour)
@@ -1411,6 +1729,9 @@ func predictionActivitySummary(hours []predictionHour) string {
 	if len(lowCountSample) > 0 {
 		s += fmt.Sprintf(" Hours mostly count-limited: %s.", strings.Join(lowCountSample, ", "))
 	}
+	if len(lowReceiverSample) > 0 {
+		s += fmt.Sprintf(" Hours mostly receiver-limited: %s.", strings.Join(lowReceiverSample, ", "))
+	}
 	if len(lowWeightSample) > 0 {
 		s += fmt.Sprintf(" Hours mostly weight-limited: %s.", strings.Join(lowWeightSample, ", "))
 	}
@@ -1421,6 +1742,123 @@ func predictionActivitySummary(hours []predictionHour) string {
 		s += fmt.Sprintf(" Hours where receiver caps would block shadow predictions: %s.", strings.Join(capWouldBlockSample, ", "))
 	}
 	return s
+}
+
+func capShadowActivitySummary(hours []capShadowHour) string {
+	if len(hours) == 0 {
+		return "No receiver cap shadow lines were present."
+	}
+	type capRollup struct {
+		samples int
+		pass    float64
+		lowCnt  float64
+		lowRx   float64
+		lowWgt  float64
+		block   float64
+	}
+	rollups := make(map[uint32]*capRollup)
+	for _, hour := range hours {
+		for _, candidate := range hour.Candidates {
+			rollup := rollups[candidate.MaxEffectiveCount]
+			if rollup == nil {
+				rollup = &capRollup{}
+				rollups[candidate.MaxEffectiveCount] = rollup
+			}
+			rollup.samples += hour.Samples
+			rollup.pass += candidate.AvgPass * float64(hour.Samples)
+			rollup.lowCnt += candidate.AvgLowCount * float64(hour.Samples)
+			rollup.lowRx += candidate.AvgLowReceiver * float64(hour.Samples)
+			rollup.lowWgt += candidate.AvgLowWeight * float64(hour.Samples)
+			rollup.block += candidate.AvgBlock * float64(hour.Samples)
+		}
+	}
+	var caps []uint32
+	for capValue := range rollups {
+		caps = append(caps, capValue)
+	}
+	sort.Slice(caps, func(i, j int) bool { return caps[i] < caps[j] })
+	parts := make([]string, 0, len(caps))
+	for _, capValue := range caps {
+		rollup := rollups[capValue]
+		if rollup == nil || rollup.samples == 0 {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("cap%d avg pass %.1f, low_count %.1f, low_receiver %.1f, low_weight %.1f, would_block %.1f",
+			capValue,
+			rollup.pass/float64(rollup.samples),
+			rollup.lowCnt/float64(rollup.samples),
+			rollup.lowRx/float64(rollup.samples),
+			rollup.lowWgt/float64(rollup.samples),
+			rollup.block/float64(rollup.samples),
+		))
+	}
+	if len(parts) == 0 {
+		return "Receiver cap shadow lines were present, but no candidate fields parsed."
+	}
+	return strings.Join(parts, ". ") + "."
+}
+
+func capP50ShadowActivitySummary(hours []capP50ShadowHour) string {
+	if len(hours) == 0 {
+		return "No receiver cap p50 shadow lines were present."
+	}
+	type capRollup struct {
+		samples        int
+		passUnlikely   float64
+		passLow        float64
+		passMedium     float64
+		passHigh       float64
+		same           float64
+		stronger       float64
+		weaker         float64
+		toInsufficient float64
+	}
+	rollups := make(map[uint32]*capRollup)
+	for _, hour := range hours {
+		for _, candidate := range hour.Candidates {
+			rollup := rollups[candidate.MaxEffectiveCount]
+			if rollup == nil {
+				rollup = &capRollup{}
+				rollups[candidate.MaxEffectiveCount] = rollup
+			}
+			rollup.samples += hour.Samples
+			rollup.passUnlikely += candidate.AvgPassUnlikely * float64(hour.Samples)
+			rollup.passLow += candidate.AvgPassLow * float64(hour.Samples)
+			rollup.passMedium += candidate.AvgPassMedium * float64(hour.Samples)
+			rollup.passHigh += candidate.AvgPassHigh * float64(hour.Samples)
+			rollup.same += candidate.AvgSame * float64(hour.Samples)
+			rollup.stronger += candidate.AvgStronger * float64(hour.Samples)
+			rollup.weaker += candidate.AvgWeaker * float64(hour.Samples)
+			rollup.toInsufficient += candidate.AvgToInsufficient * float64(hour.Samples)
+		}
+	}
+	var caps []uint32
+	for capValue := range rollups {
+		caps = append(caps, capValue)
+	}
+	sort.Slice(caps, func(i, j int) bool { return caps[i] < caps[j] })
+	parts := make([]string, 0, len(caps))
+	for _, capValue := range caps {
+		rollup := rollups[capValue]
+		if rollup == nil || rollup.samples == 0 {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("cap%d p50 avg pass unlikely %.1f, low %.1f, medium %.1f, high %.1f; same %.1f, stronger %.1f, weaker %.1f, to_insufficient %.1f",
+			capValue,
+			rollup.passUnlikely/float64(rollup.samples),
+			rollup.passLow/float64(rollup.samples),
+			rollup.passMedium/float64(rollup.samples),
+			rollup.passHigh/float64(rollup.samples),
+			rollup.same/float64(rollup.samples),
+			rollup.stronger/float64(rollup.samples),
+			rollup.weaker/float64(rollup.samples),
+			rollup.toInsufficient/float64(rollup.samples),
+		))
+	}
+	if len(parts) == 0 {
+		return "Receiver cap p50 shadow lines were present, but no candidate fields parsed."
+	}
+	return strings.Join(parts, ". ") + "."
 }
 
 func deterministicTakeaway(summary reportSummary, bandMap map[string]bandSummary) string {

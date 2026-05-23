@@ -111,7 +111,7 @@ If a duplicate is suppressed, slow clients do not see another control-queue enqu
 ## Grid, Noise, And Nearby
 
 - `SET GRID` stores the user's Maidenhead grid for path reliability
-- `SET NOISE` stores the user's noise class and applies a band-specific DX-to-user path penalty
+- `SET NOISE` stores the user's noise class; the checked-in path config applies one receive-side penalty per class
 - `SET PATHSAMPLES` stores a stricter per-user path sample floor; it cannot lower the cluster default
 - `PASS NEARBY ON` requires a grid and keeps spots whose DX side or DE side falls in the user's nearby area
 

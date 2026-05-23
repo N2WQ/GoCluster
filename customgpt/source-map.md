@@ -32,7 +32,7 @@ linking or citing these docs over duplicating their content here.
 | Bulletin dedupe | [telnet/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md) | [data/config/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/config/README.md) |
 | Confidence tags | [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md) | [spot/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/spot/README.md) |
 | Call correction | [spot/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/spot/README.md) | `docs/decisions/`, `docs/troubleshooting/` |
-| Path reliability tags | [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md) | [pathreliability/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/pathreliability/README.md) |
+| Path reliability tags and diagnostics | [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md) | [docs/OPERATOR_GUIDE.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/OPERATOR_GUIDE.md), [pathreliability/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/pathreliability/README.md) |
 | RBN ingest | [rbn/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/rbn/README.md) | `rbn/` tests |
 | PSKReporter ingest | [pskreporter/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/pskreporter/README.md) | `pskreporter/` tests |
 | DXSummit ingest | [dxsummit/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/dxsummit/README.md) | [data/config/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/config/README.md) |
@@ -64,8 +64,9 @@ linking or citing these docs over duplicating their content here.
   and safety boundaries; inspect the script body before claiming exact behavior.
 - For YAML tuning questions, check the ownership class first. Do not recommend
   changing algorithm calibration as a first troubleshooting step.
-- For logging questions, distinguish system logs, optional dropped-call logs,
-  and file-only event logs. The event logs for login attempts, reputation
+- For logging questions, distinguish system logs, propagation logs, optional
+  dropped-call logs, and file-only event logs. Propagation/path aggregates live
+  in `logging.propagation.dir`; event logs for login attempts, reputation
   drops, telnet lifecycle, ingest lifecycle, and peer lifecycle do not add
   console or UI output.
 - For symptom reports, route to [customgpt/troubleshooting-index.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/customgpt/troubleshooting-index.md) before

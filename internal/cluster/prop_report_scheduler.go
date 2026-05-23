@@ -1,3 +1,8 @@
+// File role: Owns bounded asynchronous daily propagation-report generation.
+// Crawler notes: Start here to trace how propagation log rotation and fixed UTC
+// schedules enqueue report jobs without blocking runtime shutdown or logging.
+// Related docs: docs/OPERATOR_GUIDE.md, data/config/README.md.
+// Related tests: internal/cluster/prop_report_scheduler_test.go.
 package cluster
 
 import (
@@ -186,7 +191,7 @@ func (g *propReportGenerator) Run(ctx context.Context, job propReportJob) error 
 		return fmt.Errorf("missing job date")
 	}
 	if strings.TrimSpace(job.LogPath) == "" {
-		job.LogPath = filepath.Join("data", "logs", fmt.Sprintf("%s.log", job.Date.Format(propReportLogDateLayout)))
+		job.LogPath = filepath.Join("data", "logs", "propagation", fmt.Sprintf("%s.log", job.Date.Format(propReportLogDateLayout)))
 	}
 
 	_, err := propreport.Generate(ctx, propreport.Options{
