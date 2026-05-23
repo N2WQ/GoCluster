@@ -11,6 +11,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 |---|---|---|---|---|---|---|---|
 | ADR-0001 | <title> | Proposed | YYYY-MM-DD | <area> | - | - | `docs/decisions/ADR-0001-<slug>.md` |
+| ADR-0136 | Custom SCP Test Time Fixtures | Accepted | 2026-05-23 | spot, custom_scp, tests | - | - | `docs/decisions/ADR-0136-custom-scp-test-time-fixtures.md` |
 | ADR-0135 | Path Cap8 Enforcement And Shadow Candidate Retirement | Accepted | 2026-05-11 | pathreliability, config, retained state, propagation logs, reports | ADR-0132; ADR-0133; ADR-0129 (shipped cap value portion) | - | `docs/decisions/ADR-0135-path-cap8-enforcement-and-shadow-candidate-retirement.md` |
 | ADR-0134 | Path Observation Floor And Receiver Diversity Gate | Accepted | 2026-05-11 | pathreliability, config, telnet diagnostics, propagation logs | ADR-0129 (enforce-mode capped-count floor portion); ADR-0132 (cap-shadow low-count-only fields) | - | `docs/decisions/ADR-0134-path-observation-floor-and-receiver-diversity-gate.md` |
 | ADR-0133 | Path Receiver Cap P50 Shadow Histograms | Superseded | 2026-05-11 | pathreliability, config, propagation logs, reports | - | ADR-0135 | `docs/decisions/ADR-0133-path-receiver-cap-p50-shadow-histograms.md` |

@@ -74,7 +74,7 @@ stale_after_half_life_multiplier: 3
 # Maximum age for selected prediction evidence, as a multiple of band half-life.
 # 0 disables this freshness gate. Evidence older than this returns insufficient
 # rather than decaying into weaker glyph tiers from age alone.
-max_prediction_age_half_life_multiplier: 1.25
+max_prediction_age_half_life_multiplier: 1.5
 
 # Minimum decayed weight required to report a glyph; below this returns glyph_symbols.insufficient.
 min_effective_weight: 0.5
