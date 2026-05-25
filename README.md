@@ -151,23 +151,26 @@ The cluster already removes upstream duplicates before spots reach users. `SET D
 
 Separately, shared-ingest flood control is configured in [`data/config/floodcontrol.yaml`](data/config/floodcontrol.yaml). That stage runs before primary dedupe, is not per-user, and can `observe`, `suppress`, or `drop` by actor rail. The shipped file starts in `observe` mode on every rail, but the file itself is required at startup.
 
-Each user can choose a policy for their own session:
+Each user can choose a policy for their own session. The exact windows come
+from the active `dedup.secondary_*_window_seconds` values in
+`data/config/dedupe.yaml`:
 
-- `FAST`: `120s` window. Keyed by band + DE DXCC + DE 2-character grid + DX call.
-- `MED`: `300s` window. Uses the same key as `FAST`. This is the default for new users.
-- `SLOW`: `480s` window. Keyed by band + DE DXCC + DE CQ zone + DX call.
+- `FAST`: shortest configured window, keyed by band + DE DXCC + DE 2-character grid + DX call.
+- `MED`: middle configured window, using the same key as `FAST`.
+- `SLOW`: longest configured window, keyed by band + DE DXCC + DE CQ zone + DX call.
 
 In plain terms:
 
 - `FAST` shows more repeats from the same general area.
-- `MED` is the middle ground and the shipped default.
+- `MED` is the middle ground.
 - `SLOW` suppresses more repeats because CQ zone is broader than a 2-character grid square.
+- New users use the operator-configured `dedup.default_policy` from `data/config/dedupe.yaml`; the shipped default is `SLOW`.
 
 Useful commands:
 
 - `SHOW DEDUPE` shows your active policy and whether `FAST`, `MED`, and `SLOW` are enabled server-side.
 - `SET DEDUPE FAST|MED|SLOW` stores your preference by callsign.
-- If you request a disabled policy, the server automatically chooses the nearest enabled policy and tells you what it picked.
+- If you request a disabled policy, the server automatically chooses an enabled policy and tells you what it picked.
 
 WWV, WCY, and `TO ALL` announcement bulletins have a separate server-wide duplicate guard because they are delivered as telnet control traffic rather than spots. The shipped `runtime.yaml` suppresses identical bulletin lines for `600s` across peer and relay sources; set `telnet.bulletin_dedupe_window_seconds: 0` to disable that behavior.
 

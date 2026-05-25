@@ -81,16 +81,17 @@ spots and archive-backed history queries. Local self-spot bypasses still honor
 
 The telnet server exposes per-user dedupe policy control through `SHOW DEDUPE` and `SET DEDUPE`.
 
-- new users default to `MED`
+- new users default to `dedup.default_policy` from the active config directory; the shipped default is `SLOW`
 - the selected policy is persisted per callsign
 - `SHOW DEDUPE` reports the active policy and whether `FAST`, `MED`, and `SLOW` are enabled server-side
-- if a user requests a disabled policy, the server falls back to the nearest enabled one and reports that in the response
+- if a user requests a disabled policy, the server falls back to an enabled one and reports that in the response
 
-The shipped policy windows are:
+Policy windows come from the active `dedup.secondary_*_window_seconds` values
+in `data/config/dedupe.yaml`:
 
-- `FAST`: `120s`, keyed by band + DE DXCC + DE grid2 + DX call
-- `MED`: `300s`, keyed by band + DE DXCC + DE grid2 + DX call
-- `SLOW`: `480s`, keyed by band + DE DXCC + DE CQ zone + DX call
+- `FAST`: shortest configured window, keyed by band + DE DXCC + DE grid2 + DX call
+- `MED`: middle configured window, keyed by band + DE DXCC + DE grid2 + DX call
+- `SLOW`: longest configured window, keyed by band + DE DXCC + DE CQ zone + DX call
 
 This is why `SLOW` suppresses more repeats from one region than `FAST` or `MED`: CQ zone is broader than a 2-character grid square.
 

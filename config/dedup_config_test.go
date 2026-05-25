@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -31,6 +32,9 @@ func TestDedupLegacySecondaryKeysRemainIgnored(t *testing.T) {
 	dir := testConfigDir(t)
 	writeRequiredFloodControlFile(t, dir)
 	cfgText := `dedup:
+  secondary_fast_window_seconds: 120
+  secondary_med_window_seconds: 300
+  secondary_slow_window_seconds: 480
   secondary_window_seconds: 999
   secondary_prefer_stronger_snr: true
 `
@@ -57,5 +61,41 @@ func TestDedupLegacySecondaryKeysRemainIgnored(t *testing.T) {
 	}
 	if cfg.Dedup.SecondarySlowPreferStrong {
 		t.Fatalf("expected legacy secondary_prefer_stronger_snr to be ignored for secondary_slow_prefer_stronger_snr")
+	}
+}
+
+func TestDedupDefaultPolicyLoadsFromYAML(t *testing.T) {
+	dir := testConfigDir(t)
+	writeRequiredFloodControlFile(t, dir)
+	writeTestConfigOverlay(t, dir, "dedupe.yaml", "dedup:\n  default_policy: FAST\n")
+
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Dedup.DefaultPolicy != "FAST" {
+		t.Fatalf("expected dedup.default_policy FAST, got %q", cfg.Dedup.DefaultPolicy)
+	}
+}
+
+func TestDedupDefaultPolicyRejectsInvalidValue(t *testing.T) {
+	dir := testConfigDir(t)
+	writeRequiredFloodControlFile(t, dir)
+	writeTestConfigOverlay(t, dir, "dedupe.yaml", "dedup:\n  default_policy: TURBO\n")
+
+	_, err := Load(dir)
+	if err == nil || !strings.Contains(err.Error(), `invalid dedup.default_policy "TURBO"`) {
+		t.Fatalf("expected invalid dedup.default_policy error, got %v", err)
+	}
+}
+
+func TestDedupDefaultPolicyIsRequired(t *testing.T) {
+	dir := testConfigDir(t)
+	writeRequiredFloodControlFile(t, dir)
+	removeTestConfigKey(t, dir, "dedupe.yaml", "dedup", "default_policy")
+
+	_, err := Load(dir)
+	if err == nil || !strings.Contains(err.Error(), `required YAML setting "dedup.default_policy" is missing`) {
+		t.Fatalf("expected missing dedup.default_policy error, got %v", err)
 	}
 }

@@ -249,6 +249,8 @@ type Server struct {
 	usLicenseCheck        func(string) bool                          // Optional US FCC ULS license checker for login validation
 	nowFn                 func() time.Time                           // Optional clock injection for deterministic tests
 	admissionGeoLookupFn  func(string, time.Time) (string, string)   // Optional prelogin geo-key lookup override for tests
+	defaultDedupePolicy   dedupePolicy                               // YAML-owned default for new user records
+	defaultDedupeSet      bool                                       // Distinguishes configured FAST from a zero-value server
 	dedupeFastEnabled     bool                                       // Fast secondary dedupe policy enabled
 	dedupeMedEnabled      bool                                       // Med secondary dedupe policy enabled
 	dedupeSlowEnabled     bool                                       // Slow secondary dedupe policy enabled
@@ -1554,6 +1556,22 @@ func (s *Server) resolveDedupePolicy(requested dedupePolicy) dedupePolicy {
 	return dedupePolicyFast
 }
 
+func (s *Server) defaultDedupePolicyValue() dedupePolicy {
+	if s == nil || !s.defaultDedupeSet {
+		return dedupePolicyMed
+	}
+	switch s.defaultDedupePolicy {
+	case dedupePolicyFast, dedupePolicyMed, dedupePolicySlow:
+		return s.defaultDedupePolicy
+	default:
+		return dedupePolicyMed
+	}
+}
+
+func (s *Server) effectiveDefaultDedupePolicy() dedupePolicy {
+	return s.resolveDedupePolicy(s.defaultDedupePolicyValue())
+}
+
 func (s *Server) formatDedupeStatus(client *Client) string {
 	if client == nil {
 		return ""
@@ -1881,6 +1899,7 @@ type ServerOptions struct {
 	GridLookup                func(string) (string, bool, bool)
 	CTYLookup                 func() *cty.CTYDatabase
 	USLicenseCheck            func(string) bool
+	DefaultDedupePolicy       string
 	DedupeFastEnabled         bool
 	DedupeMedEnabled          bool
 	DedupeSlowEnabled         bool
@@ -1969,6 +1988,8 @@ func NewServer(opts ServerOptions, processor *commands.Processor) *Server {
 		gridLookup:            opts.GridLookup,
 		ctyLookup:             config.CTYLookup,
 		usLicenseCheck:        config.USLicenseCheck,
+		defaultDedupePolicy:   parseDedupePolicy(config.DefaultDedupePolicy),
+		defaultDedupeSet:      true,
 		dedupeFastEnabled:     config.DedupeFastEnabled,
 		dedupeMedEnabled:      config.DedupeMedEnabled,
 		dedupeSlowEnabled:     config.DedupeSlowEnabled,
@@ -2136,6 +2157,7 @@ func normalizeServerOptions(opts ServerOptions) ServerOptions {
 	if strings.TrimSpace(config.NearbyLoginWarning) == "" {
 		config.NearbyLoginWarning = nearbyLoginWarningMsg
 	}
+	config.DefaultDedupePolicy = filter.NormalizeDedupePolicyOrDefault(config.DefaultDedupePolicy, filter.DedupePolicySlow)
 	return config
 }
 
@@ -3152,7 +3174,8 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 
 	// Capture the client's IP immediately after login so it is persisted before
 	// any other session state mutates.
-	record, created, prevLogin, prevIP, err := filter.TouchUserRecordLogin(client.callsign, spotterIP(client.address), loginTime)
+	defaultPolicy := s.effectiveDefaultDedupePolicy()
+	record, created, prevLogin, prevIP, err := filter.TouchUserRecordLoginWithDefaultDedupe(client.callsign, spotterIP(client.address), loginTime, defaultPolicy.label())
 	if err == nil {
 		client.filter = &record.Filter
 		client.recentIPs = record.RecentIPs
@@ -3176,7 +3199,7 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 		client.filter = filter.NewFilter()
 		client.recentIPs = filter.UpdateRecentIPs(nil, spotterIP(client.address))
 		client.dialect = s.filterEngine.defaultDialect
-		client.setDedupePolicy(s.resolveDedupePolicy(dedupePolicyMed))
+		client.setDedupePolicy(defaultPolicy)
 		client.gridCell = pathreliability.InvalidCell
 		client.gridCoarseCell = pathreliability.InvalidCell
 		client.gridDerived = false
@@ -4143,7 +4166,7 @@ func (s *Server) preLoginTemplateData(now time.Time) templateData {
 		dialect:        dialect,
 		dialectSource:  s.dialectSourceDef,
 		dialectDefault: defaultDialect,
-		dedupePolicy:   filter.DedupePolicyMed,
+		dedupePolicy:   s.effectiveDefaultDedupePolicy().label(),
 	}
 }
 

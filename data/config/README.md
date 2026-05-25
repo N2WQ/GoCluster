@@ -58,7 +58,7 @@ row.
 Configuration is split by concern so you only edit the relevant file:
 
 - `app.yaml` - deployment/runtime settings for server identity, stats interval, console UI, system logging, propagation logging, and optional dropped-call logs.
-- `runtime.yaml` - deployment/runtime settings plus operator policy for default filters, telnet messages, dedupe defaults, and `who_spots_me.window_minutes`.
+- `runtime.yaml` - deployment/runtime settings plus operator policy for default filters, telnet messages, and `who_spots_me.window_minutes`.
 - `ingest.yaml` - deployment/runtime settings for RBN/PSKReporter/human/DXSummit source enablement, source cadence, and call cache bounds.
 - `peering.yaml` - deployment/runtime settings for peer links and ACLs.
 - `reputation.yaml` - deployment/runtime settings plus operator policy for reputation gates.
@@ -66,7 +66,7 @@ Configuration is split by concern so you only edit the relevant file:
 - `data.yaml` - deployment/runtime settings for CTY/FCC/skew sources, grid/cache tuning, data paths, and H3 table path.
 - `prop_report.yaml` - deployment/runtime settings for scheduled propagation-report generation controls.
 - `openai.yaml` - optional secret-bearing tool config for LLM report generation.
-- `dedupe.yaml` - operator policy settings for primary/secondary dedupe windows.
+- `dedupe.yaml` - operator policy settings for primary/secondary dedupe windows and the default telnet dedupe policy for new users.
 - `floodcontrol.yaml` - operator policy settings for shared-ingest flood rails, actions, windows, and per-source thresholds.
 - `spot_taxonomy.yaml` - reference table plus limited operator policy for supported modes, events, and PSKReporter routing; YAML can only select behavior families already implemented by the binary.
 - `mode_seeds.yaml` - reference table / algorithm calibration for digital frequency hints.

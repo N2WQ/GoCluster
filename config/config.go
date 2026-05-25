@@ -807,17 +807,18 @@ func (c *PSKReporterConfig) SubscriptionTopics() []string {
 // Secondary dedupe has three policy windows (fast/med/slow) with independent SNR behavior.
 // When enabled, stronger SNR updates may replace the cached entry and be forwarded.
 type DedupConfig struct {
-	ClusterWindowSeconds       int  `yaml:"cluster_window_seconds"`             // <=0 disables primary dedup
-	SecondaryFastWindowSeconds int  `yaml:"secondary_fast_window_seconds"`      // <=0 disables fast secondary dedupe
-	SecondaryMedWindowSeconds  int  `yaml:"secondary_med_window_seconds"`       // <=0 disables med secondary dedupe
-	SecondarySlowWindowSeconds int  `yaml:"secondary_slow_window_seconds"`      // <=0 disables slow secondary dedupe
-	PreferStrongerSNR          bool `yaml:"prefer_stronger_snr"`                // keep max SNR when dropping duplicates
-	SecondaryFastPreferStrong  bool `yaml:"secondary_fast_prefer_stronger_snr"` // keep max SNR in fast secondary buckets
-	SecondaryMedPreferStrong   bool `yaml:"secondary_med_prefer_stronger_snr"`  // keep max SNR in med secondary buckets
-	SecondarySlowPreferStrong  bool `yaml:"secondary_slow_prefer_stronger_snr"` // keep max SNR in slow secondary buckets
-	OutputBufferSize           int  `yaml:"output_buffer_size"`                 // channel capacity for dedup output
-	LegacySecondaryWindow      int  `yaml:"secondary_window_seconds"`           // deprecated: accepted only so Load can warn and ignore it
-	LegacySecondaryPreferSNR   bool `yaml:"secondary_prefer_stronger_snr"`      // deprecated: accepted only so Load can warn and ignore it
+	ClusterWindowSeconds       int    `yaml:"cluster_window_seconds"`             // <=0 disables primary dedup
+	SecondaryFastWindowSeconds int    `yaml:"secondary_fast_window_seconds"`      // <=0 disables fast secondary dedupe
+	SecondaryMedWindowSeconds  int    `yaml:"secondary_med_window_seconds"`       // <=0 disables med secondary dedupe
+	SecondarySlowWindowSeconds int    `yaml:"secondary_slow_window_seconds"`      // <=0 disables slow secondary dedupe
+	DefaultPolicy              string `yaml:"default_policy"`                     // default telnet policy for new user records
+	PreferStrongerSNR          bool   `yaml:"prefer_stronger_snr"`                // keep max SNR when dropping duplicates
+	SecondaryFastPreferStrong  bool   `yaml:"secondary_fast_prefer_stronger_snr"` // keep max SNR in fast secondary buckets
+	SecondaryMedPreferStrong   bool   `yaml:"secondary_med_prefer_stronger_snr"`  // keep max SNR in med secondary buckets
+	SecondarySlowPreferStrong  bool   `yaml:"secondary_slow_prefer_stronger_snr"` // keep max SNR in slow secondary buckets
+	OutputBufferSize           int    `yaml:"output_buffer_size"`                 // channel capacity for dedup output
+	LegacySecondaryWindow      int    `yaml:"secondary_window_seconds"`           // deprecated: accepted only so Load can warn and ignore it
+	LegacySecondaryPreferSNR   bool   `yaml:"secondary_prefer_stronger_snr"`      // deprecated: accepted only so Load can warn and ignore it
 }
 
 // FilterConfig holds default filter behavior for new users.
@@ -1607,7 +1608,9 @@ func Load(path string) (*Config, error) {
 	if err := normalizeReferenceDataConfig(&cfg, presence); err != nil {
 		return nil, err
 	}
-	normalizeDedupAndBufferConfig(&cfg, presence)
+	if err := normalizeDedupAndBufferConfig(&cfg, presence); err != nil {
+		return nil, err
+	}
 	if err := normalizeFloodControlConfig(&cfg, raw); err != nil {
 		return nil, err
 	}
@@ -3131,8 +3134,15 @@ func normalizeGridConfig(cfg *Config) {
 	}
 }
 
-func normalizeDedupAndBufferConfig(cfg *Config, presence loadRawPresence) {
+func normalizeDedupAndBufferConfig(cfg *Config, presence loadRawPresence) error {
 	// Normalize dedup settings so the window drives behavior.
+	defaultPolicy := strutil.NormalizeUpper(cfg.Dedup.DefaultPolicy)
+	switch defaultPolicy {
+	case "FAST", "MED", "SLOW":
+		cfg.Dedup.DefaultPolicy = defaultPolicy
+	default:
+		return fmt.Errorf("invalid dedup.default_policy %q: must be FAST, MED, or SLOW", cfg.Dedup.DefaultPolicy)
+	}
 	if cfg.Dedup.ClusterWindowSeconds < 0 {
 		cfg.Dedup.ClusterWindowSeconds = 0
 	}
@@ -3169,6 +3179,7 @@ func normalizeDedupAndBufferConfig(cfg *Config, presence loadRawPresence) {
 	if cfg.Buffer.Capacity <= 0 {
 		cfg.Buffer.Capacity = 300000
 	}
+	return nil
 }
 
 func normalizeSkewConfig(cfg *Config) error {
@@ -3623,7 +3634,7 @@ func (c *Config) Print() {
 	if c.Dedup.SecondarySlowWindowSeconds > 0 {
 		secondarySlow = fmt.Sprintf("%ds", c.Dedup.SecondarySlowWindowSeconds)
 	}
-	fmt.Printf("Dedup: cluster=%s (prefer_stronger=%t) secondary_fast=%s (prefer_stronger=%t) secondary_med=%s (prefer_stronger=%t) secondary_slow=%s (prefer_stronger=%t)\n",
+	fmt.Printf("Dedup: cluster=%s (prefer_stronger=%t) secondary_fast=%s (prefer_stronger=%t) secondary_med=%s (prefer_stronger=%t) secondary_slow=%s (prefer_stronger=%t) default_policy=%s\n",
 		clusterWindow,
 		c.Dedup.PreferStrongerSNR,
 		secondaryFast,
@@ -3631,7 +3642,8 @@ func (c *Config) Print() {
 		secondaryMed,
 		c.Dedup.SecondaryMedPreferStrong,
 		secondarySlow,
-		c.Dedup.SecondarySlowPreferStrong)
+		c.Dedup.SecondarySlowPreferStrong,
+		c.Dedup.DefaultPolicy)
 	fmt.Printf("Flood control: enabled=%t partition=%s log_interval=%ds rails=%s\n",
 		c.FloodControl.Enabled,
 		c.FloodControl.PartitionMode,

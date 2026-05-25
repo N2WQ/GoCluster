@@ -74,11 +74,21 @@ func LoadUserRecord(callsign string) (*UserRecord, error) {
 // Upstream: Telnet login handling.
 // Downstream: LoadUserRecord, UpdateRecentIPs, SaveUserRecord.
 func TouchUserRecordIP(callsign, ip string) (*UserRecord, bool, error) {
+	return TouchUserRecordIPWithDefaultDedupe(callsign, ip, DedupePolicyMed)
+}
+
+// TouchUserRecordIPWithDefaultDedupe updates recent IP history using the
+// caller-supplied default policy for new records.
+// Key aspects: Creates a new record with config-aware defaults if none exists.
+// Upstream: Telnet login handling.
+// Downstream: LoadUserRecord, UpdateRecentIPs, SaveUserRecord.
+func TouchUserRecordIPWithDefaultDedupe(callsign, ip, defaultDedupePolicy string) (*UserRecord, bool, error) {
+	defaultDedupePolicy = NormalizeDedupePolicy(defaultDedupePolicy)
 	record, err := LoadUserRecord(callsign)
 	created := false
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			record = &UserRecord{Filter: *NewFilter(), Dialect: "go", DedupePolicy: DedupePolicyMed}
+			record = &UserRecord{Filter: *NewFilter(), Dialect: "go", DedupePolicy: defaultDedupePolicy}
 			created = true
 		} else {
 			return nil, false, err
@@ -96,14 +106,24 @@ func TouchUserRecordIP(callsign, ip string) (*UserRecord, bool, error) {
 // Upstream: Telnet login handling.
 // Downstream: SaveUserRecord.
 func TouchUserRecordLogin(callsign, ip string, loginTime time.Time) (record *UserRecord, created bool, prevLogin time.Time, prevIP string, err error) {
+	return TouchUserRecordLoginWithDefaultDedupe(callsign, ip, loginTime, DedupePolicyMed)
+}
+
+// TouchUserRecordLoginWithDefaultDedupe updates login metadata using the
+// caller-supplied default policy for new records.
+// Key aspects: Persists the new state and provides previous login/IP for templates.
+// Upstream: Telnet login handling.
+// Downstream: LoadUserRecord, SaveUserRecord.
+func TouchUserRecordLoginWithDefaultDedupe(callsign, ip string, loginTime time.Time, defaultDedupePolicy string) (record *UserRecord, created bool, prevLogin time.Time, prevIP string, err error) {
 	callsign = strings.TrimSpace(callsign)
 	if callsign == "" {
 		return nil, false, time.Time{}, "", errors.New("empty callsign")
 	}
+	defaultDedupePolicy = NormalizeDedupePolicy(defaultDedupePolicy)
 	record, err = LoadUserRecord(callsign)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			record = &UserRecord{Filter: *NewFilter(), Dialect: "go", DedupePolicy: DedupePolicyMed}
+			record = &UserRecord{Filter: *NewFilter(), Dialect: "go", DedupePolicy: defaultDedupePolicy}
 			created = true
 		} else {
 			return nil, false, time.Time{}, "", err

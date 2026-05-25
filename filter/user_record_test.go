@@ -126,6 +126,39 @@ func TestTouchUserRecordLogin(t *testing.T) {
 	}
 }
 
+func TestTouchUserRecordLoginUsesConfiguredDefaultDedupe(t *testing.T) {
+	tmp := t.TempDir()
+	orig := UserDataDir
+	UserDataDir = tmp
+	t.Cleanup(func() { UserDataDir = orig })
+
+	login := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	record, created, _, _, err := TouchUserRecordLoginWithDefaultDedupe("k3to", "203.0.113.9", login, DedupePolicySlow)
+	if err != nil {
+		t.Fatalf("TouchUserRecordLoginWithDefaultDedupe failed: %v", err)
+	}
+	if !created {
+		t.Fatalf("expected new record to be created")
+	}
+	if record.DedupePolicy != DedupePolicySlow {
+		t.Fatalf("expected default dedupe policy SLOW, got %q", record.DedupePolicy)
+	}
+
+	if err := os.WriteFile(filepath.Join(tmp, "SAVED.yaml"), []byte("dialect: go\ndedupe_policy: MED\n"), 0o644); err != nil {
+		t.Fatalf("write saved-policy record: %v", err)
+	}
+	saved, created, _, _, err := TouchUserRecordLoginWithDefaultDedupe("SAVED", "198.51.100.10", login.Add(time.Hour), DedupePolicySlow)
+	if err != nil {
+		t.Fatalf("TouchUserRecordLoginWithDefaultDedupe saved policy failed: %v", err)
+	}
+	if created {
+		t.Fatalf("expected saved record to be reused")
+	}
+	if saved.DedupePolicy != DedupePolicyMed {
+		t.Fatalf("expected saved MED policy to remain authoritative, got %q", saved.DedupePolicy)
+	}
+}
+
 func TestUserRecordRoundTrip(t *testing.T) {
 	tmp := t.TempDir()
 	orig := UserDataDir

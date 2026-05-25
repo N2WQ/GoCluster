@@ -6,9 +6,10 @@
 
 dedup:
   cluster_window_seconds: 120                 # Primary dedupe window (all sources before ring)
-  secondary_fast_window_seconds: 120          # Fast policy (broadcast-only, by DE DXCC+grid2)
-  secondary_med_window_seconds: 300           # Med policy (broadcast-only, by DE DXCC+grid2)
+  secondary_fast_window_seconds: 180          # Fast policy (broadcast-only, by DE DXCC+grid2)
+  secondary_med_window_seconds: 360           # Med policy (broadcast-only, by DE DXCC+grid2)
   secondary_slow_window_seconds: 480          # Slow policy (broadcast-only, by DE DXCC+CQ zone)
+  default_policy: SLOW                        # Default telnet policy for new users
   prefer_stronger_snr: true                   # Primary: keep strongest SNR on duplicate collisions
   secondary_fast_prefer_stronger_snr: false   # Fast: keep strongest SNR within bucket
   secondary_med_prefer_stronger_snr: false    # Med: keep strongest SNR within bucket
