@@ -24,12 +24,12 @@ Log in with your callsign, then start with:
   class for path hints.
 - `BYE`: disconnect.
 
-The sections below prioritize the telnet experience: commands first, then
-filters, dedupe, confidence, diagnostics, and path hints. Node setup, build,
-release, and service details are later in this file and in
+The sections below prioritize the telnet experience: command examples first,
+then filters, dedupe, confidence, diagnostics, and path hints. Node setup,
+build, release, and service details are later in this file and in
 [`docs/OPERATOR_GUIDE.md`](docs/OPERATOR_GUIDE.md).
 
-## Common Telnet Workflows
+## Common Telnet Commands
 
 - To allow or block spots, use `PASS <type> <list>` and
   `REJECT <type> <list>`, then confirm with `SHOW FILTER`.
@@ -47,6 +47,90 @@ New DX spots are materialized and displayed without trailing numeric SSIDs on
 the DX call. For example, `K1ABC-2` is treated as `K1ABC` when it is the station
 being spotted. Login calls keep their session identity, but local own-call
 features ignore numeric SSIDs.
+
+### Output Examples
+
+The examples below show representative telnet command output. Exact filter
+lists and timing windows can differ when an operator changes the active config.
+
+Confirm which baseline call is used for own-call features:
+
+```text
+> SHOW OWN
+Own call: N2WQ
+Login call: N2WQ-7
+SSID handling: numeric SSIDs are ignored for own-call features.
+```
+
+Inspect and change your duplicate-suppression policy:
+
+```text
+> SHOW DEDUPE
+Dedupe: SLOW (cqzone) (fast=on med=on slow=on)
+> SET DEDUPE FAST
+Dedupe policy set to FAST
+```
+
+Check whether nearby filtering or a blocklist is active. This example is
+abridged; real `SHOW FILTER` output includes every filter domain:
+
+```text
+> SHOW FILTER
+Current filters: BAND=ALL MODE=CW, LSB, USB, RTTY, FT8, FT4, FT2, PSK, JS8,
+                 MSK144, SSTV SOURCE=ALL EVENT=LLOTA, IOTA, POTA, SOTA, WWFF
+BAND: allow=ALL block=NONE
+MODE: enabled=CW, LSB, USB, RTTY, FT8, FT4, FT2, PSK, JS8, MSK144, SSTV
+EVENT: enabled=LLOTA, IOTA, POTA, SOTA, WWFF; no-event spots=pass
+...
+NEARBY: OFF
+SELF: ON
+```
+
+See recent countries that have heard your baseline call:
+
+```text
+> WHOSPOTSME 20M
+WHOSPOTSME 20M (last 10m):
+  EU:  G(4) DL(2) F(1)
+  NA:  K(3) VE(1)
+```
+
+### Filter Examples
+
+Use comma-separated lists for multiple values. `PASS` adds to the allowlist for
+that filter type; `REJECT` adds to the blocklist. Run `SHOW FILTER` after
+changes to confirm the effective state.
+
+```text
+PASS BAND 20m,40m
+REJECT BAND 160m,80m
+
+PASS DXZONE 14,15
+REJECT DEZONE 3,4,5
+
+PASS DXCONT EU,AF
+REJECT DECONT NA
+
+PASS DXDXCC 291,110
+REJECT DEDXCC 291
+
+PASS DXGRID2 FN,EM
+REJECT DEGRID2 DM
+
+PASS DXCALL K1*,W1AW
+REJECT DECALL N0CALL
+
+PASS SOURCE HUMAN
+REJECT SOURCE SKIMMER
+
+PASS CONFIDENCE P,V,C
+REJECT CONFIDENCE ?
+
+PASS PATH HIGH,MEDIUM
+REJECT PATH UNLIKELY,INSUFFICIENT
+
+SHOW FILTER
+```
 
 ## HELP
 
@@ -147,7 +231,11 @@ Supported bands:
 
 ## Dedupe Policies
 
-The cluster already removes upstream duplicates before spots reach users. `SET DEDUPE` controls the second, operator-facing dedupe stage that decides how aggressively repeated live spots are hidden in your telnet feed.
+The cluster already removes upstream duplicates before spots reach users.
+`SET DEDUPE` controls the second, operator-facing dedupe stage that decides how
+aggressively repeated live spots are hidden in your telnet feed. `SHOW DEDUPE`
+shows the active policy and whether `FAST`, `MED`, and `SLOW` are enabled
+server-side.
 
 Separately, shared-ingest flood control is configured in [`data/config/floodcontrol.yaml`](data/config/floodcontrol.yaml). That stage runs before primary dedupe, is not per-user, and can `observe`, `suppress`, or `drop` by actor rail. The shipped file starts in `observe` mode on every rail, but the file itself is required at startup.
 
@@ -165,11 +253,6 @@ In plain terms:
 - `MED` is the middle ground.
 - `SLOW` suppresses more repeats because CQ zone is broader than a 2-character grid square.
 - New users use the operator-configured `dedup.default_policy` from `data/config/dedupe.yaml`; the shipped default is `SLOW`.
-
-Useful commands:
-
-- `SHOW DEDUPE` shows your active policy and whether `FAST`, `MED`, and `SLOW` are enabled server-side.
-- `SET DEDUPE FAST|MED|SLOW` stores your preference by callsign.
 - If you request a disabled policy, the server automatically chooses an enabled policy and tells you what it picked.
 
 WWV, WCY, and `TO ALL` announcement bulletins have a separate server-wide duplicate guard because they are delivered as telnet control traffic rather than spots. The shipped `runtime.yaml` suppresses identical bulletin lines for `600s` across peer and relay sources; set `telnet.bulletin_dedupe_window_seconds: 0` to disable that behavior.
@@ -180,12 +263,16 @@ WWV, WCY, and `TO ALL` announcement bulletins have a separate server-wide duplic
 
 Event recognition is intentionally family-level. A comment token such as `POTA` or `POTA-1234` marks the spot as `POTA`; the reference text stays in the comment and is not a separate filter key. Slash forms such as `POTA/SOTA` and event-specific reference grammars without the acronym prefix are not interpreted by this filter.
 
-Useful commands:
+Common commands:
 
-- `PASS EVENT POTA,SOTA` shows spots tagged with either family.
-- `REJECT EVENT WWFF` hides WWFF-tagged spots.
-- `PASS EVENT ALL` disables EVENT filtering.
-- `REJECT EVENT ALL` hides all EVENT-tagged spots; spots with no event tag still pass this filter domain.
+```text
+PASS EVENT POTA,SOTA
+REJECT EVENT WWFF
+PASS EVENT ALL
+REJECT EVENT ALL
+```
+
+`REJECT EVENT ALL` hides all EVENT-tagged spots; spots with no event tag still pass this filter domain.
 
 ## Toxic Comment Filtering
 
@@ -221,11 +308,7 @@ This is a binary+config contract. Deploy or roll back the binary and config dire
 
 `NEARBY` is a quick local-area filter for operators who want spots near their own location without building manual continent, zone, DXCC, or grid lists.
 
-How it works:
-
-- First set your grid with `SET GRID <4-6 char maidenhead>`.
-- Turn it on with `PASS NEARBY ON`.
-- While it is on, the cluster keeps spots whose DX side or DE side falls in your nearby area.
+First set your grid with `SET GRID <4-6 char maidenhead>`, then turn nearby filtering on with `PASS NEARBY ON`. While it is on, the cluster keeps spots whose DX side or DE side falls in your nearby area.
 
 Band handling is intentionally simple:
 
@@ -238,12 +321,10 @@ Band handling is intentionally simple:
 - Attempts to change those filters while `NEARBY` is on are rejected with a warning.
 - `PASS NEARBY OFF` restores the saved location-filter state from before `NEARBY` was enabled.
 
-Session behavior:
-
-- `NEARBY` persists across logins.
-- The login greeting warns you when `NEARBY` is active.
-- If your stored grid is missing or the H3 mapping tables are unavailable, `NEARBY` stays stored but inactive until the grid/H3 state becomes usable again.
-- `SHOW FILTER` includes the current `NEARBY` state.
+`NEARBY` persists across logins. The login greeting warns you when it is active,
+and `SHOW FILTER` includes the current `NEARBY` state. If your stored grid is
+missing or the H3 mapping tables are unavailable, `NEARBY` stays stored but
+inactive until the grid/H3 state becomes usable again.
 
 ## Confidence Tags
 

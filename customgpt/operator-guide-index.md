@@ -46,6 +46,7 @@ existing operator-facing docs.
 | Need | Start here |
 | --- | --- |
 | `PASS`, `REJECT`, `SHOW FILTER`, `RESET FILTER` | [telnet/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md), [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md) |
+| Filter examples by band, zone, DXCC, grid, callsign, source, confidence, and path | [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md), [telnet/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md) |
 | MODE filtering and `UNKNOWN` | [telnet/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md), [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md) |
 | EVENT filtering | [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md), [telnet/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md) |
 | Toxic comment filtering | [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md), [telnet/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md), [data/config/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/config/README.md), [cloudflare/toxicity-worker/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/cloudflare/toxicity-worker/README.md) |
