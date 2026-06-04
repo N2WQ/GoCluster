@@ -538,7 +538,7 @@ with `DXC_CONFIG_PATH` pointing at the directory.
 Review normal deployment/runtime files before first run:
 
 - `app.yaml`: set `server.node_id`, choose local UI mode, and confirm log paths.
-- `runtime.yaml`: confirm telnet port, filter defaults, buffers, and memory controls.
+- `runtime.yaml`: confirm telnet port, filter defaults, buffers, and Go runtime controls.
 - `ingest.yaml`: configure RBN, PSKReporter, DXSummit, and local/human ingest settings.
 - `peering.yaml`: edit only if this node peers with other clusters.
 - `reputation.yaml`: edit only if IPinfo/Cymru reputation enrichment is enabled.

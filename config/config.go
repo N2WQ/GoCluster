@@ -313,12 +313,14 @@ type WhoSpotsMeConfig struct {
 	WindowMinutes int `yaml:"window_minutes"`
 }
 
-// GoRuntimeConfig controls process-wide Go runtime memory tuning.
+// GoRuntimeConfig controls process-wide Go runtime tuning.
 type GoRuntimeConfig struct {
 	// MemoryLimitMiB mirrors GOMEMLIMIT in MiB. Zero leaves the runtime/env value unchanged.
 	MemoryLimitMiB int `yaml:"memory_limit_mib"`
 	// GCPercent mirrors GOGC. Zero leaves the runtime/env value unchanged.
 	GCPercent int `yaml:"gc_percent"`
+	// MaxProcs mirrors GOMAXPROCS. Zero leaves the runtime/env value unchanged.
+	MaxProcs int `yaml:"max_procs"`
 }
 
 // ReputationConfig controls the passwordless telnet reputation gate.
@@ -1995,6 +1997,9 @@ func validateGoRuntimeConfig(cfg *Config) error {
 	if cfg.GoRuntime.MemoryLimitMiB > 0 && cfg.GoRuntime.MemoryLimitMiB < 64 {
 		return fmt.Errorf("invalid go_runtime.memory_limit_mib %d (must be 0 or >= 64)", cfg.GoRuntime.MemoryLimitMiB)
 	}
+	if cfg.GoRuntime.MaxProcs < 0 {
+		return fmt.Errorf("invalid go_runtime.max_procs %d (must be >= 0)", cfg.GoRuntime.MaxProcs)
+	}
 	return nil
 }
 
@@ -3467,9 +3472,10 @@ func (c *Config) Print() {
 	fmt.Printf("Telnet bulletins: dedupe_window=%ds dedupe_max_entries=%d\n",
 		c.Telnet.BulletinDedupeWindowSeconds,
 		c.Telnet.BulletinDedupeMaxEntries)
-	fmt.Printf("Go runtime: memory_limit_mib=%d gc_percent=%d\n",
+	fmt.Printf("Go runtime: memory_limit_mib=%d gc_percent=%d max_procs=%d\n",
 		c.GoRuntime.MemoryLimitMiB,
-		c.GoRuntime.GCPercent)
+		c.GoRuntime.GCPercent,
+		c.GoRuntime.MaxProcs)
 	fmt.Printf("Who spots me: window=%dm\n", c.WhoSpotsMe.WindowMinutes)
 	fmt.Printf("Telnet Tier-A: prelogin_max=%d prelogin_timeout=%ds ip_rate=%.2f/s ip_burst=%d subnet_rate=%.2f/s subnet_burst=%d global_rate=%.2f/s global_burst=%d ip_concurrency=%d\n",
 		c.Telnet.MaxPreloginSessions,

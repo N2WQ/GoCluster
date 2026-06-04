@@ -17,7 +17,7 @@ The packaged `data/config` directory is public example config. For a real node:
 Minimum files to review:
 
 - `app.yaml`: server identity, UI/headless mode, and logging paths.
-- `runtime.yaml`: telnet port, default filters, buffers, and memory controls.
+- `runtime.yaml`: telnet port, default filters, buffers, and Go runtime controls.
 - `ingest.yaml`: RBN, PSKReporter, DXSummit, and human/manual ingest settings.
 - `peering.yaml`: only if peering with other clusters is used.
 - `reputation.yaml`: only if IPinfo/Cymru enrichment is enabled.

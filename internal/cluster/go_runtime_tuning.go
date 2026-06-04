@@ -1,8 +1,11 @@
+// File role: applies YAML-owned Go runtime controls at startup before the
+// cluster constructs retained stores, sockets, and long-lived goroutines.
 package cluster
 
 import (
 	"fmt"
 	"log"
+	"runtime"
 	"runtime/debug"
 
 	"dxcluster/config"
@@ -17,6 +20,9 @@ func applyGoRuntimeTuning(cfg config.GoRuntimeConfig) {
 	if cfg.GCPercent > 0 {
 		debug.SetGCPercent(cfg.GCPercent)
 	}
+	if cfg.MaxProcs > 0 {
+		runtime.GOMAXPROCS(cfg.MaxProcs)
+	}
 }
 
 func logGoRuntimeTuning(cfg config.GoRuntimeConfig) {
@@ -28,7 +34,11 @@ func logGoRuntimeTuning(cfg config.GoRuntimeConfig) {
 	if cfg.GCPercent > 0 {
 		gcPercent = formatGoRuntimePercent(cfg.GCPercent)
 	}
-	log.Printf("Go runtime tuning: memory_limit=%s gc_percent=%s", memoryLimit, gcPercent)
+	maxProcs := "unchanged"
+	if cfg.MaxProcs > 0 {
+		maxProcs = formatGoRuntimeCount(cfg.MaxProcs)
+	}
+	log.Printf("Go runtime tuning: memory_limit=%s gc_percent=%s max_procs=%s", memoryLimit, gcPercent, maxProcs)
 }
 
 func formatGoRuntimeMiB(v int) string {
@@ -36,5 +46,9 @@ func formatGoRuntimeMiB(v int) string {
 }
 
 func formatGoRuntimePercent(v int) string {
+	return fmt.Sprintf("%d", v)
+}
+
+func formatGoRuntimeCount(v int) string {
 	return fmt.Sprintf("%d", v)
 }

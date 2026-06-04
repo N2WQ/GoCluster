@@ -35,7 +35,7 @@ For a real node:
 Review normal deployment/runtime files before first run:
 
 - `app.yaml`: server node ID, console/headless mode, and logging paths.
-- `runtime.yaml`: telnet port, default filters, buffers, and memory controls.
+- `runtime.yaml`: telnet port, default filters, buffers, and Go runtime controls.
 - `ingest.yaml`: RBN, PSKReporter, DXSummit, and human/manual ingest settings.
 - `peering.yaml`: only if this node connects to peer clusters.
 - `reputation.yaml`: only if IPinfo/Cymru reputation enrichment is enabled.

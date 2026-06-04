@@ -80,7 +80,7 @@ Configuration is split by concern so you only edit the relevant file:
 
 Normal operator edits:
 - identity, ports, source credentials, source enablement, peer details, paths,
-  logs, memory controls, retention, and scheduled reports.
+  logs, Go runtime controls, retention, and scheduled reports.
 
 Advanced policy edits:
 - dedupe/flood rails, supported taxonomy/routing, filter defaults, the cluster
@@ -98,7 +98,7 @@ Loader behavior:
 - `iaru_regions.yaml`, `iaru_mode_inference.yaml`, and `spot_taxonomy.yaml` are required reference tables. Startup fails if they are missing or malformed; there is no built-in table fallback.
 - Required YAML-owned settings must be present and non-null in YAML. Missing settings and unknown keys fail config load with a file/key error instead of receiving hidden Go defaults.
 - Documented zero values are meaningful. For example, `telnet.broadcast_batch_interval_ms: 0` means immediate delivery, and `*_keepalive_seconds: 0` means the keepalive is disabled.
-- `go_runtime.memory_limit_mib` and `go_runtime.gc_percent` apply the same process-wide Go runtime controls as `GOMEMLIMIT` and `GOGC` without requiring a wrapper script. Set either value to `0` to leave the Go runtime or environment-provided value unchanged.
+- `go_runtime.memory_limit_mib`, `go_runtime.gc_percent`, and `go_runtime.max_procs` apply the same process-wide Go runtime controls as `GOMEMLIMIT`, `GOGC`, and `GOMAXPROCS` without requiring a wrapper script. Set any value to `0` to leave the Go runtime or environment-provided value unchanged.
 - `openai.yaml` is optional for server startup and `prop_report -no-llm`. When propagation-report LLM generation is enabled, the file is required and validated at that tool boundary. Secret values must not be logged or committed.
 - `toxicity.yaml` is optional for server startup. When enabled, it requires a Worker endpoint, bearer token environment variable, bounded worker/queue/cache settings, and `toxicity_safe_gate.yaml`; secret bearer token values must stay in the environment or private config, not checked-in YAML.
 - `peering.yaml` in the public example uses disabled `.example.invalid` peers, blank passwords, and placeholder callsigns. Put real peer connection details only in a private config directory.

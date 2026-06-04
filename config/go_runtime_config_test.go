@@ -17,6 +17,9 @@ func TestLoadGoRuntimeConfigFromShippedRuntimeYAML(t *testing.T) {
 	if cfg.GoRuntime.GCPercent != 50 {
 		t.Fatalf("expected go_runtime.gc_percent=50, got %d", cfg.GoRuntime.GCPercent)
 	}
+	if cfg.GoRuntime.MaxProcs != 0 {
+		t.Fatalf("expected go_runtime.max_procs=0, got %d", cfg.GoRuntime.MaxProcs)
+	}
 }
 
 func TestLoadGoRuntimeZeroSentinels(t *testing.T) {
@@ -25,12 +28,13 @@ func TestLoadGoRuntimeZeroSentinels(t *testing.T) {
 go_runtime:
   memory_limit_mib: 0
   gc_percent: 0
+  max_procs: 0
 `)
 	cfg, err := Load(dir)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
-	if cfg.GoRuntime.MemoryLimitMiB != 0 || cfg.GoRuntime.GCPercent != 0 {
+	if cfg.GoRuntime.MemoryLimitMiB != 0 || cfg.GoRuntime.GCPercent != 0 || cfg.GoRuntime.MaxProcs != 0 {
 		t.Fatalf("expected zero sentinels to survive load, got %+v", cfg.GoRuntime)
 	}
 }
@@ -55,6 +59,11 @@ func TestLoadRejectsInvalidGoRuntimeConfig(t *testing.T) {
 			name: "negative gc",
 			body: "go_runtime:\n  gc_percent: -1\n",
 			want: "go_runtime.gc_percent",
+		},
+		{
+			name: "negative max procs",
+			body: "go_runtime:\n  max_procs: -1\n",
+			want: "go_runtime.max_procs",
 		},
 		{
 			name: "missing section",

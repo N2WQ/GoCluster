@@ -11,6 +11,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 |---|---|---|---|---|---|---|---|
 | ADR-0001 | <title> | Proposed | YYYY-MM-DD | <area> | - | - | `docs/decisions/ADR-0001-<slug>.md` |
+| ADR-0141 | Go Runtime Max Procs YAML Control | Accepted | 2026-06-04 | config, startup, runtime scheduler, operations | - | - | `docs/decisions/ADR-0141-go-runtime-max-procs-yaml-control.md` |
 | ADR-0140 | Agentic Code-Walk, Blast-Radius, and Leak Workflow | Accepted | 2026-06-04 | workflow, Codex, tooling, skills | - | - | `docs/decisions/ADR-0140-agentic-code-walk-blast-radius-leak-workflow.md` |
 | ADR-0139 | Active Path P50 Histogram Lane Retention | Accepted | 2026-06-04 | pathreliability, retained state, hot path, reports | - | - | `docs/decisions/ADR-0139-active-path-p50-histogram-lane-retention.md` |
 | ADR-0138 | YAML-Owned Default Dedupe Policy | Accepted | 2026-05-25 | config, dedupe, telnet, user records | - | - | `docs/decisions/ADR-0138-yaml-owned-default-dedupe-policy.md` |

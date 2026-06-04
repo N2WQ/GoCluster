@@ -1,17 +1,18 @@
 # Purpose: Telnet delivery/runtime settings, buffer sizing, default filters, messages, dedupe, and user policy defaults.
 # Ownership: deployment/runtime settings plus operator policy.
 # Runtime behavior: Required merged runtime config loaded from the active config directory at startup.
-# Safe edits: Set memory, telnet ports/messages, default filter policy, and bounded queue values for the local deployment.
+# Safe edits: Set Go runtime controls, telnet ports/messages, default filter policy, and bounded queue values for the local deployment.
 # Source: data/config/README.md.
 
 # Persistence
 buffer:
   capacity: 75000                   # Number of spots held in the in-memory ring buffer (post-primary dedup)
 
-# Go runtime memory controls. Zero leaves the Go/env default unchanged.
+# Go runtime controls. Zero leaves the Go/env default unchanged.
 go_runtime:
-  memory_limit_mib: 750             # Soft runtime memory target, equivalent to GOMEMLIMIT=750MiB
+  memory_limit_mib: 1024            # Soft runtime memory target, equivalent to GOMEMLIMIT=750MiB
   gc_percent: 50                    # GC aggressiveness, equivalent to GOGC=50
+  max_procs: 2                      # Scheduler parallelism, equivalent to GOMAXPROCS; 0 leaves Go/env default unchanged
 
 # Telnet server (user-facing interface)
 telnet:
