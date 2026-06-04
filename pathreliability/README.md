@@ -66,17 +66,16 @@ Each bucket stores:
 - accumulated weight
 - raw observation count
 - capped receiver-attributed weight and effective observation count
-- fixed raw and capped SNR histograms for active p50 scoring
+- one fixed SNR histogram for the active p50 scoring lane
 - fixed receiver contribution slots
-- optional fixed candidate cap-shadow slots and p50 histograms when shadow diagnostics are active
 - last update time
 
 Updates apply exponential decay using the band's half-life before adding the new sample.
 The raw observation count is not decayed; it is a bounded diagnostic count of
 how many reports contributed to the selected bucket evidence. Capped
 receiver-attributed count is a decayed effective count, aligned with capped
-weight and capped SNR bins, so old receiver evidence fades and makes room for
-newer evidence.
+weight in enforce mode, so old receiver evidence fades and makes room for newer
+evidence.
 
 Receiver contribution caps are bucket-owned and bounded by the bucket itself:
 fine buckets track up to `receiver_fine_slots` identities and coarse buckets
@@ -84,9 +83,11 @@ track up to `receiver_coarse_slots` identities. The checked-in values are `6`
 and `12`. One receiver can add at most `receiver_max_effective_count` decayed
 effective observations and `receiver_max_effective_weight: 8.0` decayed
 effective weight to a bucket's capped trust evidence. When a new report has
-only partial remaining count or weight capacity, the capped histogram receives
-the same fraction. When the slot set is full, the weakest/oldest slot is
-reused; this is an approximation, not an unbounded exact unique-receiver set.
+only partial remaining count or weight capacity, capped weight receives the
+same fraction, and the active histogram receives that fraction when `enforce`
+mode makes capped evidence the active p50 lane. When the slot set is full, the
+weakest/oldest slot is reused; this is an approximation, not an unbounded exact
+unique-receiver set.
 
 `receiver_contribution_mode` controls how capped evidence is used:
 
@@ -103,9 +104,13 @@ the selected capped evidence must include at least
 receiver slots, capped by the selected bucket's slot capacity. This keeps the
 sample floor and receiver-diversity floor debuggable as separate causes.
 
-The store always retains fixed raw and capped SNR histograms. Updates touch only
-the selected bin unless time has advanced, and p50 scans the fixed array. These
-histograms are required for active glyphs and PATH filters.
+The store retains one fixed SNR histogram per bucket for the active p50 lane.
+In `off` and `shadow` mode that lane is raw selected evidence. In `enforce`
+mode that lane is capped receiver-attributed evidence. Updates touch only the
+selected bin unless time has advanced, and p50 scans the fixed array. Raw and
+capped counts/weights remain separately retained for sample floors,
+receiver-diversity gates, and `SET DIAG PATH`; the inactive histogram lane is
+not retained during normal operation.
 
 The SNR bins are fixed in code: `< -24`, one-dB bins from `-24..-23` through
 `23..24`, and `>= 24`. Finite bins use their midpoint as the displayed p50

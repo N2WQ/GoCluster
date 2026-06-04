@@ -1,7 +1,11 @@
+// File role: Owns propagation-report aggregates for path prediction reporting.
+// Crawler notes: Start here when investigating path source-mix logs, hourly
+// unique spotter/grid-pair counts, or allocation in path reporting.
+// Related docs: pathreliability/README.md, docs/decisions/ADR-0139-active-path-p50-histogram-lane-retention.md.
+// Related tests: internal/cluster/path_report_metrics_test.go, internal/cluster/path_report_metrics_bench_test.go.
 package cluster
 
 import (
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -13,17 +17,18 @@ import (
 // pathReportMetrics tracks per-spot aggregates for reporting.
 // It maintains per-hour unique spotters/grid pairs and per-5m source mix.
 type pathReportMetrics struct {
-	mu           sync.Mutex
-	hourKey      string
-	spotters     map[string]map[string]struct{}
-	gridPairs    map[string]map[string]struct{}
-	sourceCounts map[string]uint64
+	mu            sync.Mutex
+	hourKey       string
+	hourStartUnix int64
+	spotters      map[string]map[string]struct{}
+	gridPairs     map[string]map[uint32]struct{}
+	sourceCounts  map[string]uint64
 }
 
 func newPathReportMetrics() *pathReportMetrics {
 	return &pathReportMetrics{
 		spotters:     make(map[string]map[string]struct{}),
-		gridPairs:    make(map[string]map[string]struct{}),
+		gridPairs:    make(map[string]map[uint32]struct{}),
 		sourceCounts: make(map[string]uint64),
 	}
 }
@@ -37,7 +42,8 @@ func (m *pathReportMetrics) Observe(s *spot.Spot, now time.Time) {
 		ts = now
 	}
 	ts = ts.UTC()
-	hourKey := ts.Format("2006-01-02 15")
+	hourStart := ts.Truncate(time.Hour)
+	hourStartUnix := hourStart.Unix()
 
 	band := strings.TrimSpace(s.BandNorm)
 	if band == "" {
@@ -59,10 +65,11 @@ func (m *pathReportMetrics) Observe(s *spot.Spot, now time.Time) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.hourKey != hourKey {
-		m.hourKey = hourKey
+	if m.hourKey == "" || m.hourStartUnix != hourStartUnix {
+		m.hourKey = hourStart.Format("2006-01-02 15")
+		m.hourStartUnix = hourStartUnix
 		m.spotters = make(map[string]map[string]struct{})
-		m.gridPairs = make(map[string]map[string]struct{})
+		m.gridPairs = make(map[string]map[uint32]struct{})
 	}
 
 	if label := sourceBucket(s.SourceType); label != "" {
@@ -81,13 +88,12 @@ func (m *pathReportMetrics) Observe(s *spot.Spot, now time.Time) {
 	deCoarse := pathreliability.EncodeCoarseCell(s.DEMetadata.Grid)
 	dxCoarse := pathreliability.EncodeCoarseCell(s.DXMetadata.Grid)
 	if deCoarse != pathreliability.InvalidCell && dxCoarse != pathreliability.InvalidCell {
-		key := fmt.Sprintf("%d|%d", deCoarse, dxCoarse)
 		set := m.gridPairs[band]
 		if set == nil {
-			set = make(map[string]struct{})
+			set = make(map[uint32]struct{})
 			m.gridPairs[band] = set
 		}
-		set[key] = struct{}{}
+		set[pathReportGridPairKey(deCoarse, dxCoarse)] = struct{}{}
 	}
 }
 
@@ -114,7 +120,9 @@ func (m *pathReportMetrics) HourlyCounts(now time.Time) (string, map[string]int,
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.hourKey == "" {
-		m.hourKey = now.UTC().Format("2006-01-02 15")
+		hourStart := now.UTC().Truncate(time.Hour)
+		m.hourKey = hourStart.Format("2006-01-02 15")
+		m.hourStartUnix = hourStart.Unix()
 	}
 	spotters := make(map[string]int, len(m.spotters))
 	for band, set := range m.spotters {
@@ -125,6 +133,10 @@ func (m *pathReportMetrics) HourlyCounts(now time.Time) (string, map[string]int,
 		pairs[band] = len(set)
 	}
 	return m.hourKey, spotters, pairs
+}
+
+func pathReportGridPairKey(deCoarse, dxCoarse pathreliability.CellID) uint32 {
+	return uint32(deCoarse)<<16 | uint32(dxCoarse)
 }
 
 func sourceBucket(source spot.SourceType) string {

@@ -392,7 +392,7 @@ area:
   stayed below the configured minimum.
 - `n<count>|lowr` means raw selected observations met the count floor, but
   attributed receiver diversity was too low under receiver-cap enforcement or
-  candidate cap evaluation.
+  receiver-cap shadow evaluation.
 - `n<count>|loww` means selected evidence existed but the effective weight
   stayed below the configured minimum.
 - `n<count>|stale` means selected evidence existed but was too old for the

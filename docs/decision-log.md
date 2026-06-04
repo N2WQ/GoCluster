@@ -11,6 +11,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 |---|---|---|---|---|---|---|---|
 | ADR-0001 | <title> | Proposed | YYYY-MM-DD | <area> | - | - | `docs/decisions/ADR-0001-<slug>.md` |
+| ADR-0139 | Active Path P50 Histogram Lane Retention | Accepted | 2026-06-04 | pathreliability, retained state, hot path, reports | - | - | `docs/decisions/ADR-0139-active-path-p50-histogram-lane-retention.md` |
 | ADR-0138 | YAML-Owned Default Dedupe Policy | Accepted | 2026-05-25 | config, dedupe, telnet, user records | - | - | `docs/decisions/ADR-0138-yaml-owned-default-dedupe-policy.md` |
 | ADR-0137 | Prod User Dedupe Slow Bulk Update | Accepted | 2026-05-25 | user records, dedupe, operations | - | - | `docs/decisions/ADR-0137-prod-user-dedupe-slow-bulk-update.md` |
 | ADR-0136 | Custom SCP Test Time Fixtures | Accepted | 2026-05-23 | spot, custom_scp, tests | - | - | `docs/decisions/ADR-0136-custom-scp-test-time-fixtures.md` |

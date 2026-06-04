@@ -37,11 +37,10 @@ type bucket struct {
 	// lastUpdate stores Unix seconds.
 	lastUpdate int64
 
-	cappedWeight  float64
-	cappedCount   float64
-	rawSNRBins    snrHistogram
-	cappedSNRBins snrHistogram
-	slots         [inlineReceiverSlots]receiverSlot
+	cappedWeight float64
+	cappedCount  float64
+	snrBins      snrHistogram
+	slots        [inlineReceiverSlots]receiverSlot
 	// extraSlots is allocated only when a bucket needs coarse receiver slots.
 	// Keeping it behind the existing pointer avoids growing every raw bucket.
 	extraSlots *bucketExtraState
@@ -148,8 +147,8 @@ func (s *Store) updateBucket(key uint64, weight float64, now time.Time, halfLife
 	}
 	elapsed := nowSec - b.lastUpdate
 	decay := decayFactor(elapsed, halfLifeSec)
-	if snrBin >= 0 && decay != 1 {
-		b.rawSNRBins.decay(decay)
+	if snrBin >= 0 && decay != 1 && s.cfg.ReceiverContributionMode != ReceiverContributionEnforce {
+		b.snrBins.decay(decay)
 	}
 	oldWeight := b.weight * decay
 	newWeight := oldWeight + weight
@@ -163,8 +162,8 @@ func (s *Store) updateBucket(key uint64, weight float64, now time.Time, halfLife
 	if b.count < maxBucketObservationCount {
 		b.count++
 	}
-	if snrBin >= 0 {
-		b.rawSNRBins.add(snrBin, weight)
+	if snrBin >= 0 && s.cfg.ReceiverContributionMode != ReceiverContributionEnforce {
+		b.snrBins.add(snrBin, weight)
 	}
 	b.updateCapped(weight, nowSec, decay, receiverHash, receiverSlots, s.cfg, snrBin)
 	b.lastUpdate = nowSec
@@ -179,8 +178,9 @@ func (b *bucket) updateCapped(weight float64, nowSec int64, decay float64, recei
 	}
 	b.cappedWeight *= decay
 	b.cappedCount *= decay
-	if snrBin >= 0 && decay != 1 {
-		b.cappedSNRBins.decay(decay)
+	activeCapped := cfg.ReceiverContributionMode == ReceiverContributionEnforce
+	if snrBin >= 0 && decay != 1 && activeCapped {
+		b.snrBins.decay(decay)
 	}
 	if b.cappedWeight <= 0 || math.IsNaN(b.cappedWeight) {
 		b.cappedWeight = 0
@@ -223,8 +223,8 @@ func (b *bucket) updateCapped(weight float64, nowSec int64, decay float64, recei
 	slot.lastUpdate = nowSec
 	b.cappedWeight += acceptedWeight
 	b.cappedCount += acceptedFraction
-	if snrBin >= 0 {
-		b.cappedSNRBins.add(snrBin, acceptedWeight)
+	if snrBin >= 0 && activeCapped {
+		b.snrBins.add(snrBin, acceptedWeight)
 	}
 }
 
@@ -489,13 +489,12 @@ func (s *Store) sampleWithDistribution(key uint64, halfLife int, now time.Time, 
 	}
 	decay := decayFactor(age, halfLife)
 	snap := bucket{
-		weight:        b.weight,
-		count:         b.count,
-		lastUpdate:    b.lastUpdate,
-		cappedWeight:  b.cappedWeight,
-		cappedCount:   b.cappedCount,
-		rawSNRBins:    b.rawSNRBins,
-		cappedSNRBins: b.cappedSNRBins,
+		weight:       b.weight,
+		count:        b.count,
+		lastUpdate:   b.lastUpdate,
+		cappedWeight: b.cappedWeight,
+		cappedCount:  b.cappedCount,
+		snrBins:      b.snrBins,
 	}
 	cappedReceiverCount := uint32(0)
 	cappedReceiverCapacity := uint32(0)
@@ -521,11 +520,10 @@ func (s *Store) sampleWithDistribution(key uint64, halfLife int, now time.Time, 
 	}
 	activeWeight := rawWeight
 	activeCount := snap.count
-	activeSNRBins := snap.rawSNRBins
+	activeSNRBins := snap.snrBins
 	if s.cfg.ReceiverContributionMode == ReceiverContributionEnforce {
 		activeWeight = cappedWeight
 		activeCount = cappedCount
-		activeSNRBins = snap.cappedSNRBins
 	}
 	activeSNRBins.decay(decay)
 	p50DB, hasP50 := activeSNRBins.p50DB()

@@ -149,9 +149,9 @@ for at least 30 selected observations before showing a path tag. Use
 limit one receiving station to the configured decayed effective observation and
 weight caps per bucket. In `enforce` mode, caps gate the active path class. In
 `shadow` mode, active glyphs still use raw selected evidence while the
-propagation log records what candidate caps would have done. When candidate p50
-shadow is enabled, the log also shows whether each candidate cap would have
-changed the p50 glyph class.
+prediction diagnostics can report whether the configured cap would have blocked
+the prediction. Retired candidate-cap shadow lanes are not maintained by the
+current runtime.
 
 **Beacons get capped**: The system limits how much any single beacon can dominate the data to prevent bias from loud beacons.
 
