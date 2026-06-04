@@ -39,8 +39,8 @@ and followed the required workflow for that task type. Otherwise score `0`.
 ### 3) Current-state understanding and dependency rigor
 Score `1` only if pre-code current-state understanding and dependency coverage
 were concrete and complete for the task, including `Dependency scan evidence`
-for Full rigor and `Config Contract Audit` for config/schema work. Otherwise
-score `0`.
+for Full rigor, triggered code-walk evidence, triggered blast-radius audit, and
+`Config Contract Audit` for config/schema work. Otherwise score `0`.
 
 ### 4) Pre-code design discipline
 Score `1` only if Codex disclosed contract/user-visible behavior, provided a
@@ -50,7 +50,9 @@ audits for the task type. Otherwise score `0`.
 ### 5) Verification and review discipline
 Score `1` only if tests and required checks were actually run and reported
 honestly, incrementally when required, and a `Review Pass` occurred before
-closeout. Otherwise score `0`.
+closeout. Triggered leak-detection evidence must distinguish static reasoning,
+local test/race evidence, profile evidence, and runtime confirmation. Otherwise
+score `0`.
 
 ### 6) Documentation, decision memory, and traceability
 Score `1` only if README/doc review status, decision-memory handling,
@@ -74,6 +76,7 @@ happened:
 11. Codex introduced or preserved a runtime fallback for a YAML-owned setting without explicitly documenting and approving that exception.
 12. Codex changed documented zero/false sentinel behavior without consumer-level regression tests.
 13. Codex omitted `SCOPE ADVERSARIAL REVIEW` before presenting the approval token for a Non-trivial Scope Ledger.
+14. Codex claimed code-walk, blast-radius, or leak-detection coverage from tools or profiles that were not actually run or inspected.
 
 ## Waivers
 Waivers are allowed only when explicit, narrowly scoped, and time-bounded.

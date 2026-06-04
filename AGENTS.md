@@ -65,6 +65,11 @@ When the user asks what existing code does and has not asked for changes:
   unless the user asks for explanation, but feature work still requires
   targeted current-code discovery before planning.
 - Use triggered audit skills before implementation when available:
+  `go-code-walk` for unfamiliar or cross-package current-state discovery;
+  `go-blast-radius-audit` for uncertain blast radius, shared interfaces,
+  semantic call/reference impact, or dependency/test impact analysis;
+  `go-leak-detection` for goroutine, timer, channel, socket, file-handle,
+  heap-retention, shutdown, lifecycle, or long-running leak concerns;
   `go-retained-state-audit` for retained server-lifetime state, maps, caches,
   interners, pools, indexes, or cleanup/eviction behavior;
   `go-config-contract-audit` for YAML/config loaders/schema/defaults/operator

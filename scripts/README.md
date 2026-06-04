@@ -11,6 +11,10 @@ skill installation.
 - `check-go-crawler-entry-comments.ps1` checks changed support-critical Go files
   for package/file entry comments. It is a mechanical review aid; source-aware
   review still decides whether comments explain useful intent and why.
+- `verify-agentic-tools.ps1` checks required repo workflow tools and required
+  semantic/navigation helpers, then reports recommended or optional
+  investigation helpers separately so missing optional tools do not block
+  ordinary Go work.
 
 ## Header Standard
 

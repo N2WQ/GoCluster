@@ -1,0 +1,4 @@
+interface:
+  display_name: "Go Blast-Radius Audit"
+  short_description: "Map semantic, package, test, and docs impact"
+  default_prompt: "Audit the blast radius for the proposed Go change using references, call hierarchy, package dependencies, tests, docs, config, and support routing; classify required follow-up evidence."

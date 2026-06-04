@@ -1,9 +1,16 @@
 # Codex Skills Bundle
 
-This directory vendors the repo-approved Codex troubleshooting skills so onboarding does not depend on network installs.
+This directory vendors repo-approved Codex skills so onboarding does not depend on network installs.
 
-Bundled skills:
+Repo-managed skills:
 - `gh-fix-ci`
+- `go-blast-radius-audit`
+- `go-code-walk`
+- `go-config-contract-audit`
+- `go-hotpath-design`
+- `go-leak-detection`
+- `go-retained-state-audit`
+- `pprof-impact-review`
 - `sentry`
 
 Install into local Codex home:
@@ -18,7 +25,7 @@ Verify local install matches repo copies:
 powershell -ExecutionPolicy Bypass -File .\scripts\verify-codex-skills.ps1
 ```
 
-By default scripts install/verify the two bundled troubleshooting skills. To target a subset:
+By default scripts install/verify `gh-fix-ci` and `sentry`. To target a subset:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\install-codex-skills.ps1 -Skills gh-fix-ci

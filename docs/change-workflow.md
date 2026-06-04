@@ -73,6 +73,8 @@ code and docs, not assumptions.
 Minimum discovery:
 - relevant entry points and command/API surfaces
 - caller/callee flow at least one level where material
+- `Code-walk evidence` when behavior is unfamiliar, cross-package, or depends
+  on semantic callers/interfaces; use `go-code-walk` when available
 - persisted state, config, archive, or schema surfaces when relevant
 - user-visible/operator-visible output and HELP/docs surfaces
 - existing tests for the affected behavior
@@ -206,6 +208,44 @@ Use Full when any are true:
 Required output:
 - exact one-line evidence block:
   `Dependency scan evidence: <repo search commands/steps used>; reviewed files/packages: <list>`
+
+When Full rigor is triggered by uncertain blast radius, shared interfaces,
+semantic callers, package dependency impact, or docs/support routing impact,
+also use `go-blast-radius-audit` when available and report a compact
+`Blast-radius audit` result before implementation.
+
+## Tool-assisted analysis
+Use tool-assisted analysis to improve evidence, not to replace source review.
+
+Required baseline tools for this workflow are the repository's normal Go and
+validation tools plus semantic/navigation helpers already called out by the
+triggered skill. Missing required tools are validation or discovery gaps.
+
+Optional tools such as `goda`, `go-callvis`, `semgrep`, `ast-grep`, and
+Sysinternals improve specific investigations. Report missing optional tools as
+conditional evidence gaps only for the workflow that needed them; their absence
+does not block ordinary Go implementation, review, or validation.
+
+### Code-walk evidence
+Use `go-code-walk` when current-state discovery needs semantic source walking,
+especially for unfamiliar behavior, cross-package behavior, interface dispatch,
+or caller/callee chains. Record inspected files, commands, tests, ADRs/TSRs,
+and unknowns. Do not treat callgraph output as proof of concrete runtime
+behavior.
+
+### Blast-radius audit
+Use `go-blast-radius-audit` before approval or implementation when a change may
+affect shared APIs, interfaces, cross-package behavior, config/docs/support
+routing, or uncertain dependency/test surfaces. Classify each discovered impact
+as in scope, out of scope, requiring revised ledger, validation follow-up, or
+documentation/support follow-up.
+
+### Leak-detection audit
+Use `go-leak-detection` when work touches or investigates goroutines, timers,
+tickers, channels, sockets, file handles, queues, shutdown, long-lived
+lifecycle, retained heap, or pprof/trace leak evidence. Distinguish static
+reasoning, local test/race evidence, profile evidence, and long-running runtime
+confirmation.
 
 ## Config Contract Audit
 Required when a task touches YAML files, config structs, config loaders,

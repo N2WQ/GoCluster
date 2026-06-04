@@ -30,6 +30,19 @@ Recommended prompt:
 Plan only. Inspect the current code, identify risks and edge cases, and produce a decision-complete approach. Do not implement yet.
 ```
 
+For unfamiliar or cross-package behavior, ask Codex to include `Code-walk
+evidence`. The evidence should name the package docs, source files, symbols,
+callers/callees, tests, and ADRs/TSRs it inspected.
+
+For changes where the impact is uncertain, ask Codex to include a
+`Blast-radius audit`. The audit should separate semantic callers, package/test
+dependencies, config/docs/support impact, and optional-tool gaps.
+
+For goroutine, timer, channel, socket, file-handle, shutdown, retained-heap, or
+long-running lifecycle concerns, ask Codex to include a `Leak-detection audit`.
+The audit should distinguish static source reasoning, local test/race evidence,
+profile evidence, and runtime confirmation.
+
 For config, YAML, loader, or defaulting work, ask Codex to include a
 `Config Contract Audit`. The audit should show which YAML files are touched,
 which loader owns them, how missing/null/zero/false values behave, and which

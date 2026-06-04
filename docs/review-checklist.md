@@ -19,12 +19,16 @@ Required output:
 
 Review focus:
 - correctness
+- code-walk evidence for unfamiliar or cross-package behavior
+- blast-radius coverage for shared, semantic, package, docs, and support impact
 - protocol/format compatibility
 - hidden behavior drift
 - YAML schema, required-key, null, and sentinel-value behavior
 - hidden runtime defaults or downstream config re-defaulting
 - edge cases
 - concurrency and lifecycle safety
+- leak-detection evidence for goroutine, timer, channel, socket, file-handle,
+  retained-heap, shutdown, or lifecycle concerns
 - cancellation and shutdown
 - backpressure, queue, drop, and disconnect semantics
 - memory/allocation risks
@@ -57,9 +61,11 @@ After the Review Pass, produce a Self-Audit with pass/fail for each category bel
 
 ### Required categories
 - Scope and dependency coverage
+- Code-walk and blast-radius evidence
 - Contract, config, and protocol correctness
 - Go comment intent audit
 - Concurrency, backpressure, and resource bounds
+- Leak-detection evidence
 - Verification and checker discipline
 - Documentation, decision memory, and traceability
 - Validation block completeness

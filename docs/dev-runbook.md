@@ -18,7 +18,65 @@ Expected Go toolchain:
 - `staticcheck`
 - `golangci-lint` pinned to the CI version in `.github/workflows/ci.yml`
 
+Expected agentic workflow helpers:
+- `rg`
+- `gopls`
+- `callgraph`
+- `jq`
+- `yq`
+- `fd`
+
 If a tool is missing locally, report that fact explicitly and treat it as a validation gap, not a silent success.
+
+Optional investigation helpers:
+- `goda` and `go-callvis` for package/call graph visualization
+- `semgrep` and `ast-grep` for structural search when text search is
+  insufficient
+- Sysinternals tools such as `handle.exe`, TCPView, and Process Explorer for
+  Windows handle/socket/process leak evidence
+
+Missing optional tools should be reported only as conditional evidence gaps for
+the workflow that needed them. Their absence does not block ordinary Go
+implementation, review, or validation.
+
+## Tool-assisted investigation
+
+### Code-walk examples
+Use semantic tools when source walking needs more than text search:
+- `gopls definition <file:line:col>`
+- `gopls references -d <file:line:col>`
+- `gopls implementation <file:line:col>`
+- `gopls call_hierarchy <file:line:col>`
+- `callgraph -algo rta -test ./...`
+- `callgraph -algo vta -test ./...`
+
+Report the files and commands inspected. Summarize callgraph output; do not
+paste large graphs into the final response.
+
+### Blast-radius examples
+Use package and contract searches to decide scope and validation impact:
+- `go list -deps -test -json ./...`
+- `go list -deps -test -json ./... | jq <filter>`
+- `rg <symbol-or-contract>`
+- `yq <expression> <yaml-file>`
+
+If optional graph or structural-search tools are unavailable, state which
+question remains less certain and whether existing required tools were enough
+for the approved scope.
+
+### Leak-detection examples
+Use the narrowest evidence that answers the leak question:
+- targeted lifecycle tests for start/stop, reconnect, churn, slow clients, and
+  shutdown
+- `go test -race ./...` when concurrency/lifecycle rules require it
+- `go test <pkg> -run <test> -memprofile mem.out -blockprofile block.out -mutexprofile mutex.out -trace trace.out`
+- `go tool pprof -top mem.out`
+- `go tool trace trace.out`
+- `scripts/run-with-profiling.ps1` for local runtime CPU, heap, allocs, block,
+  mutex, goroutine, trace, retained-state, and OS process captures
+
+State the evidence level reached: static reasoning, local test/race evidence,
+profile evidence, or runtime-confirmed long-running/load evidence.
 
 ## Default command set by task type
 
