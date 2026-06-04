@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -21,7 +22,14 @@ type virtualLogView struct {
 	head  int
 	count int
 	max   int
-	total uint64
+	bytes int
+
+	byteLimit        int
+	messageByteLimit int
+	evictOnByteLimit bool
+	dropped          uint64
+	truncated        uint64
+	total            uint64
 
 	offset int
 	follow bool
@@ -35,7 +43,22 @@ type virtualLogView struct {
 	cachedOverflowText  string
 }
 
+type virtualLogOptions struct {
+	MaxLines         int
+	MaxBytes         int
+	MaxMessageBytes  int
+	EvictOnByteLimit bool
+}
+
 func newVirtualLogView(title string, max int, dynamicColors bool) *virtualLogView {
+	return newVirtualLogViewWithOptions(title, virtualLogOptions{
+		MaxLines:         max,
+		EvictOnByteLimit: true,
+	}, dynamicColors)
+}
+
+func newVirtualLogViewWithOptions(title string, opts virtualLogOptions, dynamicColors bool) *virtualLogView {
+	max := opts.MaxLines
 	if max <= 0 {
 		max = 1
 	}
@@ -43,6 +66,9 @@ func newVirtualLogView(title string, max int, dynamicColors bool) *virtualLogVie
 		Box:                 tview.NewBox().SetBorder(true),
 		lines:               make([]string, max),
 		max:                 max,
+		byteLimit:           opts.MaxBytes,
+		messageByteLimit:    opts.MaxMessageBytes,
+		evictOnByteLimit:    opts.EvictOnByteLimit,
 		follow:              true,
 		dynamicColors:       dynamicColors,
 		baseTitle:           title,
@@ -64,15 +90,7 @@ func (v *virtualLogView) Append(line string) {
 		return
 	}
 	v.mu.Lock()
-	if v.count < v.max {
-		pos := (v.head + v.count) % v.max
-		v.lines[pos] = line
-		v.count++
-	} else {
-		v.lines[v.head] = line
-		v.head = (v.head + 1) % v.max
-	}
-	v.total++
+	v.appendLocked(line)
 	v.mu.Unlock()
 }
 
@@ -86,7 +104,10 @@ func (v *virtualLogView) Reset(lines []string) {
 	}
 	v.head = 0
 	v.count = 0
+	v.bytes = 0
 	v.total = 0
+	v.dropped = 0
+	v.truncated = 0
 	v.offset = 0
 	v.follow = true
 	v.cachedOverflowCount = -1
@@ -97,9 +118,7 @@ func (v *virtualLogView) Reset(lines []string) {
 			start = len(lines) - v.max
 		}
 		for _, line := range lines[start:] {
-			v.lines[v.count] = line
-			v.count++
-			v.total++
+			v.appendLocked(line)
 		}
 	}
 	v.mu.Unlock()
@@ -124,7 +143,11 @@ func (v *virtualLogView) Draw(screen tcell.Screen) {
 	for i, row := range rows {
 		yPos := y + i
 		if dynamicColors {
-			tview.Print(screen, " "+row, x, yPos, width, tview.AlignLeft, tcell.ColorWhite)
+			style := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(v.GetBackgroundColor())
+			screen.SetContent(x, yPos, ' ', nil, style)
+			if width > 1 {
+				tview.Print(screen, row, x+1, yPos, width-1, tview.AlignLeft, tcell.ColorWhite)
+			}
 			continue
 		}
 		drawPlainLine(screen, x, yPos, width, row, v.GetBackgroundColor())
@@ -291,6 +314,82 @@ func (v *virtualLogView) overflowLineLocked(overflow int) string {
 	v.cachedOverflowCount = overflow
 	v.cachedOverflowText = string(b)
 	return v.cachedOverflowText
+}
+
+func (v *virtualLogView) appendLocked(line string) {
+	if v == nil || v.max <= 0 {
+		return
+	}
+	if v.messageByteLimit > 0 && len(line) > v.messageByteLimit {
+		line = truncateStringBytes(line, v.messageByteLimit)
+		v.truncated++
+	}
+	if v.byteLimit > 0 && len(line) > v.byteLimit {
+		line = truncateStringBytes(line, v.byteLimit)
+		v.truncated++
+	}
+	lineBytes := len(line)
+	if v.byteLimit > 0 && !v.evictOnByteLimit && v.bytes+lineBytes > v.byteLimit {
+		v.dropped++
+		return
+	}
+	for v.byteLimit > 0 && v.evictOnByteLimit && v.count > 0 && v.bytes+lineBytes > v.byteLimit {
+		v.evictOldestLocked()
+	}
+	if v.byteLimit > 0 && v.bytes+lineBytes > v.byteLimit {
+		v.dropped++
+		return
+	}
+	if v.count == v.max {
+		v.evictOldestLocked()
+	}
+	pos := (v.head + v.count) % v.max
+	v.lines[pos] = line
+	v.count++
+	v.bytes += lineBytes
+	v.total++
+}
+
+func (v *virtualLogView) evictOldestLocked() {
+	if v == nil || v.count <= 0 || v.max <= 0 {
+		return
+	}
+	old := v.lines[v.head]
+	if old != "" {
+		v.bytes -= len(old)
+		if v.bytes < 0 {
+			v.bytes = 0
+		}
+		v.lines[v.head] = ""
+	}
+	v.head = (v.head + 1) % v.max
+	v.count--
+}
+
+func truncateStringBytes(s string, maxBytes int) string {
+	if maxBytes <= 0 || len(s) <= maxBytes {
+		return s
+	}
+	const suffix = "... [truncated]"
+	if maxBytes <= len(suffix) {
+		return utf8Prefix(s, maxBytes)
+	}
+	prefixLen := maxBytes - len(suffix)
+	return utf8Prefix(s, prefixLen) + suffix
+}
+
+func utf8Prefix(s string, maxBytes int) string {
+	if maxBytes <= 0 {
+		return ""
+	}
+	if len(s) <= maxBytes {
+		return s
+	}
+	end := maxBytes
+	for end > 0 && !utf8.RuneStart(s[end]) {
+		end--
+	}
+	return s[:end]
 }
 
 func drawPlainLine(screen tcell.Screen, x, y, width int, text string, bg tcell.Color) {

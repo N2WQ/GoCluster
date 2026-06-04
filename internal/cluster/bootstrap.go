@@ -823,13 +823,11 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 		var preloginRejectGlobal, preloginRejectRate, preloginRejectConcurrency, preloginTimeouts uint64
 		var bulletinDedupe telnet.BulletinDedupeSnapshot
 		var clientCount int
-		var clientList []string
 		if telnetSrv != nil {
 			queueDrops, clientDrops, senderFailures = telnetSrv.BroadcastMetricSnapshot()
 			preloginActive, preloginRejectGlobal, preloginRejectRate, preloginRejectConcurrency, preloginTimeouts, _, _ = telnetSrv.PreloginMetricSnapshot()
 			bulletinDedupe = telnetSrv.BulletinDedupeSnapshot()
 			clientCount = telnetSrv.GetClientCount()
-			clientList = telnetSrv.ListClientCallsigns()
 		}
 
 		combinedRBN := rbnTotal + rbnFTTotal
@@ -931,32 +929,9 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 				&mem,
 				gcP99Label,
 			)
-			ingestLines := []string{}
-			if len(overviewLines) > 0 {
-				ingestLines = append(ingestLines, overviewLines[0], "")
-			}
-			if len(overviewLines) > 7 {
-				ingestLines = append(ingestLines, overviewLines[3], overviewLines[4], overviewLines[5], overviewLines[6], overviewLines[7])
-			}
 			snapshot := ui.Snapshot{
 				GeneratedAt:   time.Now().UTC(),
 				OverviewLines: overviewLines,
-				IngestLines:   ingestLines,
-				PipelineLines: []string{
-					pipelineLine,
-					fmt.Sprintf("Corrections: %d  Unlicensed: %d  Freq: %d  Harmonics: %d  Reputation: %d",
-						totalCorrections, totalUnlicensed, totalFreqCorrections, totalHarmonics, reputationTotal),
-					"",
-					resolverLine,
-					resolverPressureLine,
-					"",
-					stabilizerLine,
-					stabilizerGlyphLine,
-					"",
-					temporalLine,
-					toxicityLine,
-				},
-				NetworkLines: formatNetworkLines(telnetSrv, clientList),
 			}
 			dash.SetSnapshot(snapshot)
 		} else {

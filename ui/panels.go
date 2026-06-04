@@ -114,8 +114,24 @@ type streamPanel struct {
 	view *virtualLogView
 }
 
+type streamPanelOptions struct {
+	MaxEvents        int
+	MaxBytes         int
+	MaxMessageBytes  int
+	EvictOnByteLimit bool
+}
+
 func newStreamPanel(baseTitle string, max int, dynamicColors bool) *streamPanel {
 	return &streamPanel{view: newVirtualLogView(baseTitle, max, dynamicColors)}
+}
+
+func newStreamPanelWithOptions(baseTitle string, opts streamPanelOptions, dynamicColors bool) *streamPanel {
+	return &streamPanel{view: newVirtualLogViewWithOptions(baseTitle, virtualLogOptions{
+		MaxLines:         opts.MaxEvents,
+		MaxBytes:         opts.MaxBytes,
+		MaxMessageBytes:  opts.MaxMessageBytes,
+		EvictOnByteLimit: opts.EvictOnByteLimit,
+	}, dynamicColors)}
 }
 
 func (p *streamPanel) Primitive() tview.Primitive {

@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"dxcluster/config"
+
 	"github.com/rivo/tview"
 )
 
@@ -334,5 +336,64 @@ func TestEventsStreamDynamicColorsDisabled(t *testing.T) {
 	got := panel.SnapshotText()
 	if !strings.Contains(got, "[yellow]tag[-] literal") {
 		t.Fatalf("expected literal bracket text in events stream, got %q", got)
+	}
+}
+
+func TestStreamPanelOptionsFromConfigUsesByteAndMessageCaps(t *testing.T) {
+	opts := streamPanelOptionsFromConfig(config.UIV2BufferConfig{
+		MaxEvents:        7,
+		MaxBytesMB:       2,
+		MaxMessageBytes:  128,
+		EvictOnByteLimit: true,
+	}, 3)
+
+	if opts.MaxEvents != 7 {
+		t.Fatalf("expected max events 7, got %d", opts.MaxEvents)
+	}
+	if opts.MaxBytes != 2*1024*1024 {
+		t.Fatalf("expected max bytes from MiB config, got %d", opts.MaxBytes)
+	}
+	if opts.MaxMessageBytes != 128 {
+		t.Fatalf("expected max message bytes 128, got %d", opts.MaxMessageBytes)
+	}
+	if !opts.EvictOnByteLimit {
+		t.Fatalf("expected evict-on-byte-limit to be preserved")
+	}
+}
+
+func TestSetStatsAndSetSnapshotCoalesceToOneFrame(t *testing.T) {
+	lines := []string{
+		"Cluster: test  Version: 1  Uptime: 00:01",
+		"MEMORY / GC",
+		"Heap: 1 MiB",
+		"INGEST RATES (per min)",
+		"RBN: 1",
+		"PIPELINE QUALITY",
+		"Primary: ok",
+		"CACHES & DATA FRESHNESS",
+		"Grid: ok",
+		"PATH PREDICTIONS",
+		"Path: ok",
+		"NETWORK",
+		"Telnet: ok",
+	}
+	d := &DashboardV2{
+		overviewHdr:      newBoxedTextView("Overview"),
+		overviewIngest:   newBoxedTextView("Ingest Rates (per min)"),
+		overviewPipeline: newBoxedTextView("Pipeline Quality"),
+		overviewMem:      newBoxedTextView("Memory / GC"),
+		overviewCaches:   newBoxedTextView("Caches & Data Freshness"),
+		overviewPath:     newBoxedTextView("Path Predictions"),
+		overviewSources:  newBoxedTextView("Ingest Sources"),
+		overviewNetwork:  newBoxedTextView("Network"),
+		scheduler:        newFrameScheduler(nil, 60, 50*time.Millisecond, nil),
+	}
+	d.snapshotFrameFn = func() {}
+
+	d.SetStats([]string{"legacy stats"})
+	d.SetSnapshot(Snapshot{OverviewLines: lines})
+
+	if batch := d.scheduler.collectBatch(); len(batch) != 1 {
+		t.Fatalf("expected SetStats and SetSnapshot to coalesce into one frame, got %d", len(batch))
 	}
 }

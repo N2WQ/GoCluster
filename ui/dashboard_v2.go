@@ -83,11 +83,11 @@ type DashboardV2 struct {
 
 	ready chan struct{}
 
-	snapshot   atomic.Pointer[Snapshot]
+	snapshot   atomic.Pointer[dashboardSnapshot]
 	statsMu    sync.Mutex
 	statsLines []string
 	networkMu  sync.RWMutex
-	network    []string
+	network    string
 
 	overviewRoot      *tview.Flex
 	overviewHdr       *tview.TextView
@@ -174,6 +174,9 @@ func NewDashboardV2(cfg config.UIConfig, enable bool) *DashboardV2 {
 		overviewSourcesHeight:  overviewSourcesDefaultHeight,
 	}
 
+	eventBufferOpts := streamPanelOptionsFromConfig(cfg.V2.EventBuffer, streamPanelMaxLines)
+	debugBufferOpts := streamPanelOptionsFromConfig(cfg.V2.DebugBuffer, streamPanelMaxLines)
+
 	d.overviewHdr = newBoxedTextView("Overview")
 	d.overviewMem = newBoxedTextView("Memory / GC")
 	d.overviewIngest = newBoxedTextView("Ingest Rates (per min)")
@@ -204,8 +207,8 @@ func NewDashboardV2(cfg config.UIConfig, enable bool) *DashboardV2 {
 		AddItem(d.overviewNetwork, 0, 1, false)
 	d.ingestHdr = newBoxedTextView("Overview")
 	d.ingestIngest = newBoxedTextView("Ingest Rates (per min)")
-	d.ingestValidation = newStreamPanel("Validation", streamPanelMaxLines, true)
-	d.ingestUnlicensed = newStreamPanel("Unlicensed", streamPanelMaxLines, true)
+	d.ingestValidation = newStreamPanelWithOptions("Validation", eventBufferOpts, true)
+	d.ingestUnlicensed = newStreamPanelWithOptions("Unlicensed", eventBufferOpts, true)
 	d.seedIngestPlaceholders()
 	d.ingestRoot = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(d.ingestHdr, 3, 0, false).
@@ -218,8 +221,8 @@ func NewDashboardV2(cfg config.UIConfig, enable bool) *DashboardV2 {
 
 	d.pipelineHdr = newBoxedTextView("Overview")
 	d.pipelineQuality = newBoxedTextView("Pipeline Quality")
-	d.pipelineCorrected = newStreamPanel("Corrected", streamPanelMaxLines, true)
-	d.pipelineHarmonics = newStreamPanel("Harmonics", streamPanelMaxLines, true)
+	d.pipelineCorrected = newStreamPanelWithOptions("Corrected", eventBufferOpts, true)
+	d.pipelineHarmonics = newStreamPanelWithOptions("Harmonics", eventBufferOpts, true)
 	d.seedPipelinePlaceholders()
 	d.pipelineRoot = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(d.pipelineHdr, 3, 0, false).
@@ -234,7 +237,7 @@ func NewDashboardV2(cfg config.UIConfig, enable bool) *DashboardV2 {
 	d.eventsMem = newBoxedTextView("Memory / GC")
 	d.eventsIngest = newBoxedTextView("Ingest Rates (per min)")
 	d.eventsPipeline = newBoxedTextView("Pipeline Quality")
-	d.eventsStream = newStreamPanel("Events", streamPanelMaxLines, false)
+	d.eventsStream = newStreamPanelWithOptions("Events", debugBufferOpts, false)
 	d.seedEventsPlaceholders()
 	d.eventsRoot = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(d.eventsHdr, 3, 0, false).
@@ -284,6 +287,26 @@ func NewDashboardV2(cfg config.UIConfig, enable bool) *DashboardV2 {
 	}()
 
 	return d
+}
+
+func streamPanelOptionsFromConfig(buf config.UIV2BufferConfig, fallbackMaxEvents int) streamPanelOptions {
+	maxEvents := buf.MaxEvents
+	if maxEvents <= 0 {
+		maxEvents = fallbackMaxEvents
+	}
+	if maxEvents <= 0 {
+		maxEvents = 1
+	}
+	maxBytes := 0
+	if buf.MaxBytesMB > 0 {
+		maxBytes = buf.MaxBytesMB * 1024 * 1024
+	}
+	return streamPanelOptions{
+		MaxEvents:        maxEvents,
+		MaxBytes:         maxBytes,
+		MaxMessageBytes:  buf.MaxMessageBytes,
+		EvictOnByteLimit: buf.EvictOnByteLimit,
+	}
 }
 
 func (d *DashboardV2) installRoot() {
@@ -530,7 +553,7 @@ func (d *DashboardV2) SetStats(lines []string) {
 	d.statsMu.Lock()
 	d.statsLines = append(d.statsLines[:0], lines...)
 	d.statsMu.Unlock()
-	d.scheduler.Schedule("stats", d.snapshotFrameFn)
+	d.scheduler.Schedule("snapshot", d.snapshotFrameFn)
 }
 
 func (d *DashboardV2) SetSnapshot(snapshot Snapshot) {
@@ -568,22 +591,98 @@ func (d *DashboardV2) renderSnapshot() {
 	d.refreshVisiblePage(active)
 }
 
-func cloneSnapshot(src Snapshot) *Snapshot {
-	copyLines := func(lines []string) []string {
-		if len(lines) == 0 {
-			return nil
+type dashboardSnapshot struct {
+	GeneratedAt    time.Time
+	HasContent     bool
+	Header         string
+	Memory         string
+	Ingest         string
+	Pipeline       string
+	Caches         string
+	Path           string
+	Sources        string
+	Network        string
+	PipelineHeight int
+	CachesHeight   int
+	PathHeight     int
+	SourcesHeight  int
+}
+
+func cloneSnapshot(src Snapshot) *dashboardSnapshot {
+	return buildDashboardSnapshot(src.GeneratedAt, src.OverviewLines)
+}
+
+func buildDashboardSnapshot(generatedAt time.Time, lines []string) *dashboardSnapshot {
+	snap := &dashboardSnapshot{
+		GeneratedAt: generatedAt,
+		HasContent:  len(lines) > 0,
+	}
+	if len(lines) == 0 {
+		return snap
+	}
+	snap.Header = lines[0]
+	if len(lines) > 2 {
+		snap.Memory = lines[2]
+	}
+	snap.Ingest = joinOverviewSection(lines, "INGEST RATES (per min)", "PIPELINE QUALITY")
+	snap.Pipeline, snap.PipelineHeight = joinOverviewSectionWithHeight(lines, "PIPELINE QUALITY", "CACHES & DATA FRESHNESS", overviewPipelineMinHeight)
+
+	cacheIdx := -1
+	pathIdx := -1
+	sourceIdx := -1
+	networkIdx := -1
+	for i, line := range lines {
+		switch line {
+		case "CACHES & DATA FRESHNESS":
+			cacheIdx = i
+		case "PATH PREDICTIONS":
+			pathIdx = i
+		case "INGEST SOURCES":
+			sourceIdx = i
+		case "NETWORK":
+			networkIdx = i
 		}
-		out := make([]string, len(lines))
-		copy(out, lines)
-		return out
 	}
-	return &Snapshot{
-		GeneratedAt:   src.GeneratedAt,
-		OverviewLines: copyLines(src.OverviewLines),
-		IngestLines:   copyLines(src.IngestLines),
-		PipelineLines: copyLines(src.PipelineLines),
-		NetworkLines:  copyLines(src.NetworkLines),
+	if cacheIdx >= 0 && pathIdx > cacheIdx+1 {
+		snap.Caches, snap.CachesHeight = joinLinesWithHeight(lines[cacheIdx+1:pathIdx], overviewCachesMinHeight)
 	}
+	pathEnd := networkIdx
+	if sourceIdx > pathIdx+1 && sourceIdx < pathEnd {
+		pathEnd = sourceIdx
+	}
+	if pathIdx >= 0 && pathEnd > pathIdx+1 {
+		snap.Path, snap.PathHeight = joinLinesWithHeight(lines[pathIdx+1:pathEnd], overviewPathMinHeight)
+	}
+	if sourceIdx >= 0 && networkIdx > sourceIdx+1 {
+		snap.Sources, snap.SourcesHeight = joinLinesWithHeight(lines[sourceIdx+1:networkIdx], overviewSourcesMinHeight)
+	}
+	if networkIdx >= 0 && len(lines) > networkIdx+1 {
+		snap.Network = strings.Join(lines[networkIdx+1:], "\n")
+	}
+	return snap
+}
+
+func joinOverviewSection(lines []string, startMarker, endMarker string) string {
+	section := overviewSectionLines(lines, startMarker, endMarker)
+	if len(section) == 0 {
+		return ""
+	}
+	return strings.Join(section, "\n")
+}
+
+func joinOverviewSectionWithHeight(lines []string, startMarker, endMarker string, minHeight int) (string, int) {
+	return joinLinesWithHeight(overviewSectionLines(lines, startMarker, endMarker), minHeight)
+}
+
+func joinLinesWithHeight(lines []string, minHeight int) (string, int) {
+	if len(lines) == 0 {
+		return "", 0
+	}
+	height := len(lines) + 2
+	if height < minHeight {
+		height = minHeight
+	}
+	return strings.Join(lines, "\n"), height
 }
 
 func (d *DashboardV2) AppendDropped(line string) {
@@ -677,135 +776,99 @@ func buildFooter() *tview.TextView {
 }
 
 func (d *DashboardV2) updateOverviewBoxes(lines []string) {
-	if len(lines) == 0 {
+	d.updateOverviewSnapshot(buildDashboardSnapshot(time.Time{}, lines))
+}
+
+func (d *DashboardV2) updateOverviewSnapshot(snap *dashboardSnapshot) {
+	if snap == nil || !snap.HasContent {
 		d.seedOverviewPlaceholders()
 		return
 	}
-	// Expected format from buildOverviewLines:
-	// 0 header
-	// 1 "MEMORY / GC"
-	// 2 memory line
-	// 3 "INGEST RATES (per min)"
-	// 4 rbn line
-	// 5 psk line
-	// 6 p92 line
-	// 7 path-only line
-	// 8 primary/secondary line
-	// 9 corrections line
-	// Section markers are used to slice cache/path/network blocks.
-	setOverviewHeader(d.overviewHdr, lines)
-	if len(lines) > 2 {
-		setBoxText(d.overviewMem, lines[2])
+	setBoxText(d.overviewHdr, snap.Header)
+	if snap.Memory != "" {
+		setBoxText(d.overviewMem, snap.Memory)
 	}
-	setOverviewIngest(d.overviewIngest, lines)
-	setOverviewPipeline(d.overviewPipeline, lines)
-	pipelineLines := overviewSectionLines(lines, "PIPELINE QUALITY", "CACHES & DATA FRESHNESS")
-	if len(pipelineLines) > 0 {
-		neededHeight := len(pipelineLines) + 2
-		if neededHeight < overviewPipelineMinHeight {
-			neededHeight = overviewPipelineMinHeight
-		}
-		if d.overviewRoot != nil && neededHeight != d.overviewPipelineHeight {
-			d.overviewRoot.ResizeItem(d.overviewPipeline, neededHeight, 0)
-			d.overviewPipelineHeight = neededHeight
+	if snap.Ingest != "" {
+		setBoxText(d.overviewIngest, snap.Ingest)
+	}
+	if snap.Pipeline != "" {
+		setBoxText(d.overviewPipeline, snap.Pipeline)
+		if d.overviewRoot != nil && snap.PipelineHeight > 0 && snap.PipelineHeight != d.overviewPipelineHeight {
+			d.overviewRoot.ResizeItem(d.overviewPipeline, snap.PipelineHeight, 0)
+			d.overviewPipelineHeight = snap.PipelineHeight
 		}
 	}
-	cacheIdx := -1
-	pathIdx := -1
-	sourceIdx := -1
-	networkIdx := -1
-	for i, line := range lines {
-		switch line {
-		case "CACHES & DATA FRESHNESS":
-			cacheIdx = i
-		case "PATH PREDICTIONS":
-			pathIdx = i
-		case "INGEST SOURCES":
-			sourceIdx = i
-		case "NETWORK":
-			networkIdx = i
+	if snap.Caches != "" {
+		setBoxText(d.overviewCaches, snap.Caches)
+		if d.overviewRoot != nil && snap.CachesHeight > 0 && snap.CachesHeight != d.overviewCachesHeight {
+			d.overviewRoot.ResizeItem(d.overviewCaches, snap.CachesHeight, 0)
+			d.overviewCachesHeight = snap.CachesHeight
 		}
 	}
-	if cacheIdx >= 0 && pathIdx > cacheIdx+1 {
-		cacheLines := lines[cacheIdx+1 : pathIdx]
-		setBoxText(d.overviewCaches, strings.Join(cacheLines, "\n"))
-		neededHeight := len(cacheLines) + 2
-		if neededHeight < overviewCachesMinHeight {
-			neededHeight = overviewCachesMinHeight
-		}
-		// Resize only on actual content-height changes.
-		if d.overviewRoot != nil && neededHeight != d.overviewCachesHeight {
-			d.overviewRoot.ResizeItem(d.overviewCaches, neededHeight, 0)
-			d.overviewCachesHeight = neededHeight
-		}
-	}
-	pathEnd := networkIdx
-	if sourceIdx > pathIdx+1 && sourceIdx < pathEnd {
-		pathEnd = sourceIdx
-	}
-	if pathIdx >= 0 && pathEnd > pathIdx+1 {
-		pathLines := lines[pathIdx+1 : pathEnd]
-		setBoxText(d.overviewPath, strings.Join(pathLines, "\n"))
-		neededHeight := len(pathLines) + 2
-		if neededHeight < overviewPathMinHeight {
-			neededHeight = overviewPathMinHeight
-		}
+	if snap.Path != "" {
+		setBoxText(d.overviewPath, snap.Path)
 		// Grow-only resize preserves full path bucket visibility while avoiding
 		// repetitive layout churn on every stats refresh.
-		if d.overviewRoot != nil && neededHeight > d.overviewPathHeight {
-			d.overviewRoot.ResizeItem(d.overviewPath, neededHeight, 0)
-			d.overviewPathHeight = neededHeight
+		if d.overviewRoot != nil && snap.PathHeight > d.overviewPathHeight {
+			d.overviewRoot.ResizeItem(d.overviewPath, snap.PathHeight, 0)
+			d.overviewPathHeight = snap.PathHeight
 		}
 	}
-	if sourceIdx >= 0 && networkIdx > sourceIdx+1 {
-		sourceLines := lines[sourceIdx+1 : networkIdx]
-		setBoxText(d.overviewSources, strings.Join(sourceLines, "\n"))
-		neededHeight := len(sourceLines) + 2
-		if neededHeight < overviewSourcesMinHeight {
-			neededHeight = overviewSourcesMinHeight
-		}
-		if d.overviewRoot != nil && d.overviewSources != nil && neededHeight != d.overviewSourcesHeight {
-			d.overviewRoot.ResizeItem(d.overviewSources, neededHeight, 0)
-			d.overviewSourcesHeight = neededHeight
+	if snap.Sources != "" {
+		setBoxText(d.overviewSources, snap.Sources)
+		if d.overviewRoot != nil && d.overviewSources != nil && snap.SourcesHeight > 0 && snap.SourcesHeight != d.overviewSourcesHeight {
+			d.overviewRoot.ResizeItem(d.overviewSources, snap.SourcesHeight, 0)
+			d.overviewSourcesHeight = snap.SourcesHeight
 		}
 	} else {
 		setBoxText(d.overviewSources, placeholderIngestSources)
 	}
-	if networkIdx >= 0 && len(lines) > networkIdx+1 {
-		networkLines := lines[networkIdx+1:]
-		setBoxText(d.overviewNetwork, strings.Join(networkLines, "\n"))
+	if snap.Network != "" {
+		setBoxText(d.overviewNetwork, snap.Network)
 	}
 }
 
-func (d *DashboardV2) updateIngestBoxes(lines []string) {
-	if len(lines) == 0 {
+func (d *DashboardV2) updateIngestSnapshot(snap *dashboardSnapshot) {
+	if snap == nil || !snap.HasContent {
 		d.seedIngestPlaceholders()
 		return
 	}
-	setOverviewHeader(d.ingestHdr, lines)
-	setOverviewIngest(d.ingestIngest, lines)
+	setBoxText(d.ingestHdr, snap.Header)
+	if snap.Ingest != "" {
+		setBoxText(d.ingestIngest, snap.Ingest)
+	}
 }
 
-func (d *DashboardV2) updatePipelineBoxes(lines []string) {
-	if len(lines) == 0 {
+func (d *DashboardV2) updatePipelineSnapshot(snap *dashboardSnapshot) {
+	if snap == nil || !snap.HasContent {
 		d.seedPipelinePlaceholders()
 		return
 	}
-	setOverviewHeader(d.pipelineHdr, lines)
-	setOverviewPipeline(d.pipelineQuality, lines)
+	setBoxText(d.pipelineHdr, snap.Header)
+	if snap.Pipeline != "" {
+		setBoxText(d.pipelineQuality, snap.Pipeline)
+	}
 }
 
 func (d *DashboardV2) updateEventsOverviewBoxes(lines []string) {
-	if len(lines) == 0 {
+	d.updateEventsOverviewSnapshot(buildDashboardSnapshot(time.Time{}, lines))
+}
+
+func (d *DashboardV2) updateEventsOverviewSnapshot(snap *dashboardSnapshot) {
+	if snap == nil || !snap.HasContent {
 		d.seedEventsPlaceholders()
 		return
 	}
-	setOverviewHeader(d.eventsHdr, lines)
-	if len(lines) > 2 {
-		setBoxText(d.eventsMem, lines[2])
+	setBoxText(d.eventsHdr, snap.Header)
+	if snap.Memory != "" {
+		setBoxText(d.eventsMem, snap.Memory)
 	}
-	setOverviewIngest(d.eventsIngest, lines)
-	setOverviewPipeline(d.eventsPipeline, lines)
+	if snap.Ingest != "" {
+		setBoxText(d.eventsIngest, snap.Ingest)
+	}
+	if snap.Pipeline != "" {
+		setBoxText(d.eventsPipeline, snap.Pipeline)
+	}
 }
 
 func (d *DashboardV2) seedOverviewPlaceholders() {
@@ -857,26 +920,6 @@ func setBoxText(tv *tview.TextView, text string) {
 	tv.SetText(padLines(text))
 }
 
-func setOverviewHeader(tv *tview.TextView, lines []string) {
-	if len(lines) > 0 {
-		setBoxText(tv, lines[0])
-	}
-}
-
-func setOverviewIngest(tv *tview.TextView, lines []string) {
-	section := overviewSectionLines(lines, "INGEST RATES (per min)", "PIPELINE QUALITY")
-	if len(section) > 0 {
-		setBoxText(tv, strings.Join(section, "\n"))
-	}
-}
-
-func setOverviewPipeline(tv *tview.TextView, lines []string) {
-	section := overviewSectionLines(lines, "PIPELINE QUALITY", "CACHES & DATA FRESHNESS")
-	if len(section) > 0 {
-		setBoxText(tv, strings.Join(section, "\n"))
-	}
-}
-
 func overviewSectionLines(lines []string, startMarker, endMarker string) []string {
 	if len(lines) == 0 {
 		return nil
@@ -913,64 +956,60 @@ func (d *DashboardV2) refreshVisiblePage(page string) {
 	if d == nil {
 		return
 	}
-	lines := d.overviewSnapshotLines()
+	snap := d.overviewSnapshot()
 	switch page {
 	case "overview":
-		d.updateOverviewBoxes(lines)
+		d.updateOverviewSnapshot(snap)
 		d.renderOverviewNetwork()
 	case "ingest":
-		d.updateIngestBoxes(lines)
+		d.updateIngestSnapshot(snap)
 	case "pipeline":
-		d.updatePipelineBoxes(lines)
+		d.updatePipelineSnapshot(snap)
 	case "events":
-		d.updateEventsOverviewBoxes(lines)
+		d.updateEventsOverviewSnapshot(snap)
 	}
 }
 
-func (d *DashboardV2) overviewSnapshotLines() []string {
+func (d *DashboardV2) overviewSnapshot() *dashboardSnapshot {
 	if d == nil {
 		return nil
 	}
-	if snap := d.snapshot.Load(); snap != nil && len(snap.OverviewLines) > 0 {
-		return snap.OverviewLines
+	if snap := d.snapshot.Load(); snap != nil && snap.HasContent {
+		return snap
 	}
 	d.statsMu.Lock()
 	defer d.statsMu.Unlock()
-	return append([]string(nil), d.statsLines...)
+	return buildDashboardSnapshot(time.Time{}, d.statsLines)
 }
 
 func (d *DashboardV2) storeNetworkLines(lines []string) {
 	if d == nil {
 		return
 	}
+	text := strings.Join(lines, "\n")
 	d.networkMu.Lock()
-	d.network = append(d.network[:0], lines...)
+	d.network = text
 	d.networkMu.Unlock()
 }
 
-func (d *DashboardV2) networkLinesSnapshot() []string {
+func (d *DashboardV2) networkTextSnapshot() string {
 	if d == nil {
-		return nil
+		return ""
 	}
 	d.networkMu.RLock()
 	defer d.networkMu.RUnlock()
-	if len(d.network) == 0 {
-		return nil
-	}
-	out := make([]string, len(d.network))
-	copy(out, d.network)
-	return out
+	return d.network
 }
 
 func (d *DashboardV2) renderOverviewNetwork() {
 	if d == nil || d.overviewNetwork == nil {
 		return
 	}
-	lines := d.networkLinesSnapshot()
-	if len(lines) == 0 {
+	text := d.networkTextSnapshot()
+	if text == "" {
 		return
 	}
-	d.overviewNetwork.SetText(padLines(strings.Join(lines, "\n")))
+	setBoxText(d.overviewNetwork, text)
 }
 
 func addOverviewTopSections(root *tview.Flex, ingest *tview.TextView) {
