@@ -10,7 +10,7 @@ buffer:
 
 # Go runtime controls. Zero leaves the Go/env default unchanged.
 go_runtime:
-  memory_limit_mib: 1536            # Soft runtime memory target, equivalent to GOMEMLIMIT=750MiB
+  memory_limit_mib: 1536            # Soft runtime memory target, equivalent to GOMEMLIMIT=1536MiB
   gc_percent: 50                    # GC aggressiveness, equivalent to GOGC=50
   max_procs: 2                      # Scheduler parallelism, equivalent to GOMAXPROCS; 0 leaves Go/env default unchanged
 

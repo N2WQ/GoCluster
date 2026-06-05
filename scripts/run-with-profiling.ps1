@@ -29,8 +29,6 @@ $logsDir         = Join-Path $repoRoot "logs"
 $blockProfileRate = "10ms" # block profile sampling threshold
 $mutexProfileFraction = "10" # 1/N mutex events sampled
 $mapLogInterval  = "60s"   # retained-state cardinality log cadence
-$goMemLimit      = "750MiB" # soft runtime memory target; tune lower only after GC p99 review
-$goGC            = "50"     # more frequent GC to keep heap smaller
 
 # Ensure logs directory exists
 New-Item -ItemType Directory -Path $logsDir -Force | Out-Null
@@ -57,6 +55,85 @@ function Quote-PowerShellLiteral {
     return "'" + $Value.Replace("'", "''") + "'"
 }
 
+function Read-GoRuntimeSettings {
+    param([string]$RuntimeYamlPath)
+
+    if (-not (Test-Path -LiteralPath $RuntimeYamlPath -PathType Leaf)) {
+        throw "runtime.yaml not found at $RuntimeYamlPath"
+    }
+
+    $values = @{}
+    $inGoRuntime = $false
+    $sectionIndent = 0
+
+    foreach ($rawLine in Get-Content -LiteralPath $RuntimeYamlPath) {
+        if (-not $inGoRuntime) {
+            if ($rawLine -match '^(\s*)go_runtime\s*:\s*(?:#.*)?$') {
+                $inGoRuntime = $true
+                $sectionIndent = $matches[1].Length
+            }
+            continue
+        }
+
+        if ($rawLine -match '^\s*(?:#.*)?$') {
+            continue
+        }
+
+        if ($rawLine -match '^(\s*)[A-Za-z_][A-Za-z0-9_]*\s*:') {
+            $indent = $matches[1].Length
+            if ($indent -le $sectionIndent) {
+                break
+            }
+        }
+
+        if ($rawLine -match '^\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([^#]*?)\s*(?:#.*)?$') {
+            $key = $matches[1]
+            if ($key -notin @("memory_limit_mib", "gc_percent", "max_procs")) {
+                continue
+            }
+
+            $rawValue = $matches[2].Trim().Trim("'").Trim('"')
+            $parsedValue = 0
+            if ($rawValue -eq "" -or -not [int]::TryParse($rawValue, [ref]$parsedValue)) {
+                throw "invalid go_runtime.$key value in ${RuntimeYamlPath}: $rawValue"
+            }
+            $values[$key] = $parsedValue
+        }
+    }
+
+    foreach ($requiredKey in @("memory_limit_mib", "gc_percent", "max_procs")) {
+        if (-not $values.ContainsKey($requiredKey)) {
+            throw "missing go_runtime.$requiredKey in $RuntimeYamlPath"
+        }
+    }
+    if ($values["memory_limit_mib"] -lt 0 -or ($values["memory_limit_mib"] -gt 0 -and $values["memory_limit_mib"] -lt 64)) {
+        throw "invalid go_runtime.memory_limit_mib $($values["memory_limit_mib"]) in $RuntimeYamlPath (must be 0 or >= 64)"
+    }
+    if ($values["gc_percent"] -lt 0) {
+        throw "invalid go_runtime.gc_percent $($values["gc_percent"]) in $RuntimeYamlPath (must be >= 0)"
+    }
+    if ($values["max_procs"] -lt 0) {
+        throw "invalid go_runtime.max_procs $($values["max_procs"]) in $RuntimeYamlPath (must be >= 0)"
+    }
+
+    return [pscustomobject]@{
+        MemoryLimitMiB = $values["memory_limit_mib"]
+        GCPercent = $values["gc_percent"]
+        MaxProcs = $values["max_procs"]
+    }
+}
+
+function Format-GoRuntimeEnvValue {
+    param(
+        [int]$Value,
+        [string]$Suffix = ""
+    )
+    if ($Value -le 0) {
+        return "unchanged"
+    }
+    return "$Value$Suffix"
+}
+
 function Get-ClusterProcessByParent {
     param(
         [int]$ParentPid,
@@ -78,6 +155,17 @@ function Get-ClusterProcessByParent {
     return $null
 }
 
+$runtimeYamlPath = Join-Path $configDir "runtime.yaml"
+try {
+    $goRuntime = Read-GoRuntimeSettings -RuntimeYamlPath $runtimeYamlPath
+} catch {
+    Write-ProfilerWarning "Failed to read Go runtime settings from ${runtimeYamlPath}: $_"
+    exit 1
+}
+$goMemLimit = Format-GoRuntimeEnvValue -Value $goRuntime.MemoryLimitMiB -Suffix "MiB"
+$goGC = Format-GoRuntimeEnvValue -Value $goRuntime.GCPercent
+$goMaxProcs = Format-GoRuntimeEnvValue -Value $goRuntime.MaxProcs
+
 # Env vars for the cluster
 $envVars = @{
     DXC_CONFIG_PATH = $configDir
@@ -88,8 +176,15 @@ $envVars = @{
     DXC_BLOCK_PROFILE_RATE = $blockProfileRate
     DXC_MUTEX_PROFILE_FRACTION = $mutexProfileFraction
     DXC_PSKR_MQTT_DEBUG = "false"
-    GOMEMLIMIT = $goMemLimit
-    GOGC = $goGC
+}
+if ($goRuntime.MemoryLimitMiB -gt 0) {
+    $envVars["GOMEMLIMIT"] = $goMemLimit
+}
+if ($goRuntime.GCPercent -gt 0) {
+    $envVars["GOGC"] = $goGC
+}
+if ($goRuntime.MaxProcs -gt 0) {
+    $envVars["GOMAXPROCS"] = $goMaxProcs
 }
 
 # Start the cluster through a wrapper in a new terminal so the UI owns its console.
@@ -143,7 +238,7 @@ if (-not $proc) {
     exit 1
 }
 
-Write-ProfilerInfo "gocluster started in separate terminal (launcher PID=$($launcherProc.Id), gocluster PID=$targetPid); pprof at http://$pprofAddr; GOMEMLIMIT=$goMemLimit; GOGC=$goGC"
+Write-ProfilerInfo "gocluster started in separate terminal (launcher PID=$($launcherProc.Id), gocluster PID=$targetPid); pprof at http://$pprofAddr; runtime.yaml=$runtimeYamlPath; GOMEMLIMIT=$goMemLimit; GOGC=$goGC; GOMAXPROCS=$goMaxProcs"
 Write-ProfilerInfo "Profiler controller log -> $controllerLogPath"
 
 $osSamplePath = Join-Path $logsDir ("os-process-$launchTs-pid$targetPid.csv")
