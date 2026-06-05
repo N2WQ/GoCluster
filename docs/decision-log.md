@@ -11,6 +11,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 |---|---|---|---|---|---|---|---|
 | ADR-0001 | <title> | Proposed | YYYY-MM-DD | <area> | - | - | `docs/decisions/ADR-0001-<slug>.md` |
+| ADR-0144 | Slice-Shaped Scope Ledgers | Accepted | 2026-06-05 | workflow, Codex, validation | - | - | `docs/decisions/ADR-0144-slice-shaped-scope-ledgers.md` |
 | ADR-0143 | Custom SCP Support Lookup Duplicate Work Removal | Accepted | 2026-06-05 | spot, internal/correctionflow, custom_scp, hot path | - | - | `docs/decisions/ADR-0143-custom-scp-support-lookup-duplicate-work-removal.md` |
 | ADR-0142 | UI v2 Buffer Bounds And Render Churn | Accepted | 2026-06-04 | ui/tview-v2, config, retained state, hot path | - | - | `docs/decisions/ADR-0142-ui-v2-buffer-bounds-and-render-churn.md` |
 | ADR-0141 | Go Runtime Max Procs YAML Control | Accepted | 2026-06-04 | config, startup, runtime scheduler, operations | - | - | `docs/decisions/ADR-0141-go-runtime-max-procs-yaml-control.md` |

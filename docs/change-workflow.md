@@ -62,6 +62,9 @@ For Non-trivial changes:
 - record `Ledger status: Approved vN found: yes/no`
 - do not treat discussion, "please implement", "go ahead", or any non-exact wording as approval
 - every scope change after approval requires a new ledger version
+- broad refactor-shaped Scope Ledger items are not approval-ready; split them
+  into independently coded, tested, and reviewed slices before presenting the
+  approval token
 - before showing the approval token, perform `SCOPE ADVERSARIAL REVIEW`; if it
   finds a material gap, revise the Scope Ledger version and repeat the review
 
@@ -130,6 +133,24 @@ Before code, explicitly identify:
 - checker set and validation command order
 
 In the compact template, these are reported under the `DESIGN` marker.
+
+### Slice-shaped Scope Ledger hard gate
+Every Non-trivial Scope Ledger must be slice-shaped before it can be approved.
+A ledger item is implementation-ready only when it is small enough to code,
+test, and review independently.
+
+Each approved implementation slice must state:
+- objective
+- bounded files, packages, or docs expected to change
+- blast-radius boundary and explicit out-of-slice work
+- production-safe stopping point
+- targeted checks to run before the next slice starts
+
+Do not approve broad entries such as "refactor the parser", "clean up
+telnet", or "rewrite config handling" unless they are decomposed into
+independent slices. A mechanical migration may remain one slice only when its
+target set is bounded, the transformation is uniform, and the validation path is
+narrow and explicit.
 
 ## Workflow-drift audit
 Required when editing any workflow contract, validation rule, runbook, review

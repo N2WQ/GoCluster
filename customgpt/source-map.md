@@ -42,6 +42,7 @@ linking or citing these docs over duplicating their content here.
 | Developer workflow | [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md) | [docs/WORKING_WITH_CODEX.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/WORKING_WITH_CODEX.md), [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md) |
 | Code walking, blast-radius, and leak-detection workflow | [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md) | [docs/dev-runbook.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/dev-runbook.md), `codex-skills/` |
 | Dependency visualization and code-map summaries | [docs/code-maps/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/code-maps/README.md) | [docs/dev-runbook.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/dev-runbook.md), [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), `codex-skills/` |
+| Slice-shaped Scope Ledgers | [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md) | [docs/templates/non-trivial-change-template.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/templates/non-trivial-change-template.md), [VALIDATION.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/VALIDATION.md), [docs/decisions/ADR-0144-slice-shaped-scope-ledgers.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/decisions/ADR-0144-slice-shaped-scope-ledgers.md) |
 | Code quality | [docs/code-quality.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/code-quality.md) | [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md) |
 | Domain contract | [docs/domain-contract.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/domain-contract.md) | [telnet/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md), [peer/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/peer/README.md) |
 | Validation commands | [docs/dev-runbook.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/dev-runbook.md) | [VALIDATION.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/VALIDATION.md) |
@@ -57,6 +58,9 @@ linking or citing these docs over duplicating their content here.
   package README before using code.
 - For developer behavior, route to [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md) and the workflow docs before
   implementation advice.
+- For broad refactor or Scope Ledger questions, route to the slice-shaped
+  Scope Ledger rule and reject approval advice unless the work is split into
+  independently coded, tested, and reviewed slices.
 - For dependency-visualization questions, route to [docs/code-maps/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/code-maps/README.md)
   and current source. The support agent cannot run local `goda`, Graphviz,
   `gopls`, or `callgraph`; it can only use retrievable Markdown, source, tests,

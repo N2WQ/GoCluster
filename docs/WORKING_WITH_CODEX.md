@@ -89,6 +89,10 @@ For Non-trivial work, the handoff point is the Scope Ledger. Ask Codex to presen
 Approved vN
 ```
 
+Reject broad refactor-shaped ledgers. A Non-trivial Scope Ledger should include
+a `Slice plan` whose slices are small enough to code, test, and review
+independently before the next slice starts.
+
 No code, diffs, or full validation should happen before that approval.
 Before that ledger, Codex should inspect the relevant current code path so the scope is grounded in actual entry points, state, tests, and user-visible behavior.
 The proposed ledger should also include a `Reasoning budget` recommendation.

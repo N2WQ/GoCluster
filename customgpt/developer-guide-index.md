@@ -41,6 +41,8 @@ workflow rules.
 - Small vs Non-trivial classification is owned by [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md) and
   [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md).
 - Non-trivial work requires a Scope Ledger and exact `Approved vN` before code.
+- Non-trivial Scope Ledgers must be slice-shaped; broad refactor-shaped ledgers
+  are not approval-ready.
 - Config, protocol, parser, concurrency, queue, retained-state, hot-path, or
   operator-visible changes are normally Non-trivial.
 - Workflow-doc or repo-managed skill edits require the workflow-drift audit in
@@ -50,6 +52,7 @@ workflow rules.
 
 | Change area | Required routing |
 | --- | --- |
+| Broad refactor proposal or unsliced Scope Ledger | [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), [docs/templates/non-trivial-change-template.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/templates/non-trivial-change-template.md), [VALIDATION.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/VALIDATION.md) |
 | Unfamiliar or cross-package Go behavior | [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), [docs/dev-runbook.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/dev-runbook.md), package README, crawler-entry source comments |
 | Uncertain blast radius, shared APIs, semantic callers, package/test impact | [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), [docs/dev-runbook.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/dev-runbook.md) |
 | Dependency visualization, package graph summaries, or support-agent code maps | [docs/code-maps/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/code-maps/README.md), [docs/dev-runbook.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/dev-runbook.md), [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md) |
@@ -87,6 +90,8 @@ For custom GPT responses:
 
 - Route to docs and tests before giving implementation advice.
 - Say when a change likely triggers Non-trivial workflow.
+- Reject broad refactor-shaped Scope Ledgers unless they are split into
+  independently coded, tested, and reviewed slices.
 - Say when effective YAML or current code must be inspected.
 - Do not summarize old ADRs as current behavior without checking the current
   doc/code path.

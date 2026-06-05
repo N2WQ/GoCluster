@@ -30,7 +30,8 @@ Do not accept paraphrases or extra lines inside that block.
 Score `1` only if scope was ledgered and approved, no pre-approval
 implementation or full validation happened, `SCOPE ADVERSARIAL REVIEW` was
 completed before the approval token, no silent scope expansion occurred, and
-final traceability mapped back to approved items. Otherwise score `0`.
+the approved Scope Ledger was slice-shaped with implementation-ready slices.
+Final traceability must map back to approved items. Otherwise score `0`.
 
 ### 2) Skill and workflow discipline
 Score `1` only if Codex showed the skill check, classified the task correctly,
@@ -44,8 +45,8 @@ for Full rigor, triggered code-walk evidence, triggered blast-radius audit, and
 
 ### 4) Pre-code design discipline
 Score `1` only if Codex disclosed contract/user-visible behavior, provided a
-distinct implementation plan, architecture framing, and required pre-code
-audits for the task type. Otherwise score `0`.
+distinct slice-by-slice implementation plan, architecture framing, and required
+pre-code audits for the task type. Otherwise score `0`.
 
 ### 5) Verification and review discipline
 Score `1` only if tests and required checks were actually run and reported
@@ -77,6 +78,7 @@ happened:
 12. Codex changed documented zero/false sentinel behavior without consumer-level regression tests.
 13. Codex omitted `SCOPE ADVERSARIAL REVIEW` before presenting the approval token for a Non-trivial Scope Ledger.
 14. Codex claimed code-walk, blast-radius, or leak-detection coverage from tools or profiles that were not actually run or inspected.
+15. Codex approved or executed a broad refactor-shaped Scope Ledger without slice-level objective, blast-radius boundary, production-safe stopping point, targeted checks, and per-slice validation evidence.
 
 ## Waivers
 Waivers are allowed only when explicit, narrowly scoped, and time-bounded.

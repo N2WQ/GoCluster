@@ -35,6 +35,13 @@ restating unchanged facts.
 - In scope:
   - [Agreed|Pending|Rejected|Deferred] item
 - Out of scope:
+- Slice plan:
+  - slice:
+  - objective:
+  - bounded files/packages/docs:
+  - blast-radius boundary:
+  - production-safe stopping point:
+  - targeted checks before next slice:
 - Risks requiring attention:
 - Reasoning budget: <low|medium|high|xhigh> (lowest sufficient). Rationale: <one sentence>; escalation trigger: <one phrase or "none expected">.
 
@@ -90,9 +97,12 @@ that approval.
 ### IMPLEMENTATION
 For each slice:
 - slice:
+- objective:
 - files:
+- blast-radius boundary:
 - checks:
 - result:
+- next-slice gate: passed | blocked - reason
 - remaining risk:
 
 ### REVIEW
