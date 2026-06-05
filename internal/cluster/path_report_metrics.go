@@ -34,6 +34,15 @@ func newPathReportMetrics() *pathReportMetrics {
 }
 
 func (m *pathReportMetrics) Observe(s *spot.Spot, now time.Time) {
+	if s == nil {
+		return
+	}
+	deCoarse := pathreliability.EncodeCoarseCell(s.DEMetadata.Grid)
+	dxCoarse := pathreliability.EncodeCoarseCell(s.DXMetadata.Grid)
+	m.ObserveWithCells(s, now, deCoarse, dxCoarse)
+}
+
+func (m *pathReportMetrics) ObserveWithCells(s *spot.Spot, now time.Time, deCoarse, dxCoarse pathreliability.CellID) {
 	if m == nil || s == nil {
 		return
 	}
@@ -85,8 +94,6 @@ func (m *pathReportMetrics) Observe(s *spot.Spot, now time.Time) {
 		set[deCall] = struct{}{}
 	}
 
-	deCoarse := pathreliability.EncodeCoarseCell(s.DEMetadata.Grid)
-	dxCoarse := pathreliability.EncodeCoarseCell(s.DXMetadata.Grid)
 	if deCoarse != pathreliability.InvalidCell && dxCoarse != pathreliability.InvalidCell {
 		set := m.gridPairs[band]
 		if set == nil {

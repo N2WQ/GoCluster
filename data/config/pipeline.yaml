@@ -189,7 +189,7 @@ call_correction:
     max_keys: 250000                 # Hard cap on retained call/band/mode keys
     max_spotters_per_key: 12         # Hard cap on retained spotter evidence per key
     max_db_bytes: 4294967296         # Approximate Pebble size cap before cleanup pressure
-    cleanup_interval_seconds: 600    # Background cleanup cadence
+    cleanup_interval_seconds: 601    # Background cleanup cadence
     block_cache_mb: 32               # Pebble block cache size
     bloom_filter_bits: 10            # Bloom filter bits/key
     memtable_size_mb: 32             # Pebble memtable size

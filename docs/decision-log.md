@@ -11,6 +11,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 |---|---|---|---|---|---|---|---|
 | ADR-0001 | <title> | Proposed | YYYY-MM-DD | <area> | - | - | `docs/decisions/ADR-0001-<slug>.md` |
+| ADR-0146 | H3 Path Cell Duplicate Work Removal | Accepted | 2026-06-05 | spot, internal/cluster, pathreliability, hot path | - | - | `docs/decisions/ADR-0146-h3-path-cell-duplicate-work-removal.md` |
 | ADR-0145 | PSKReporter Fast Payload Parser | Accepted | 2026-06-05 | pskreporter, mqtt, parser, hot path | - | - | `docs/decisions/ADR-0145-pskreporter-fast-payload-parser.md` |
 | ADR-0144 | Slice-Shaped Scope Ledgers | Accepted | 2026-06-05 | workflow, Codex, validation | - | - | `docs/decisions/ADR-0144-slice-shaped-scope-ledgers.md` |
 | ADR-0143 | Custom SCP Support Lookup Duplicate Work Removal | Accepted | 2026-06-05 | spot, internal/correctionflow, custom_scp, hot path | - | - | `docs/decisions/ADR-0143-custom-scp-support-lookup-duplicate-work-removal.md` |

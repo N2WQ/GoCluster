@@ -48,6 +48,26 @@ func TestPathReportMetricsCountsAndHourReset(t *testing.T) {
 	}
 }
 
+func TestPathReportMetricsObserveWithCellsUsesHydratedCells(t *testing.T) {
+	requirePathReportH3Mappings(t)
+
+	now := time.Date(2026, 6, 4, 10, 15, 0, 0, time.UTC)
+	metrics := newPathReportMetrics()
+	s := pathReportMetricsSpot("K1ABC", "BAD", "BAD", spot.SourcePSKReporter, now)
+	deCoarse := pathreliability.EncodeCoarseCell("FN20")
+	dxCoarse := pathreliability.EncodeCoarseCell("EM12")
+	if deCoarse == pathreliability.InvalidCell || dxCoarse == pathreliability.InvalidCell {
+		t.Skip("InitH3Mappings did not provide expected coarse cells")
+	}
+
+	metrics.ObserveWithCells(s, now, deCoarse, dxCoarse)
+
+	_, spotters, pairs := metrics.HourlyCounts(now)
+	if spotters["20m"] != 1 || pairs["20m"] != 1 {
+		t.Fatalf("hour counts spotters=%d pairs=%d, want 1/1", spotters["20m"], pairs["20m"])
+	}
+}
+
 func requirePathReportH3Mappings(t *testing.T) {
 	t.Helper()
 	if err := pathreliability.InitH3MappingsFromDir("../../data/h3"); err != nil {

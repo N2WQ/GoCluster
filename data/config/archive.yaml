@@ -21,7 +21,7 @@ archive:
   auto_delete_corrupt_db: true # When true, deletes the DB if startup integrity checks fail.
 
   # Retention and cleanup.
-  cleanup_interval_seconds: 900    # How often to purge expired rows.
+  cleanup_interval_seconds: 907    # How often to purge expired rows.
   cleanup_batch_size: 2000         # Max rows per cleanup batch delete.
   cleanup_batch_yield_ms: 50       # Sleep between cleanup batches; 0 disables the yield.
   retention_ft_seconds: 86400      # FT8/FT4 retention window.

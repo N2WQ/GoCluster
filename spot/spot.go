@@ -106,6 +106,8 @@ type Spot struct {
 	DEGrid2         string
 	DXCellID        uint16 // H3 res-2 proxy ID for path reliability (0 when unknown)
 	DECellID        uint16 // H3 res-2 proxy ID for path reliability (0 when unknown)
+	DXCoarseCellID  uint16 // H3 res-1 proxy ID for path reliability (0 when unknown)
+	DECoarseCellID  uint16 // H3 res-1 proxy ID for path reliability (0 when unknown)
 	// Broadcast-only overrides (telnet/archive view); canonical calls remain raw.
 	DECallStripped     string
 	DECallNormStripped string
@@ -147,23 +149,25 @@ func NewSpot(dxCall, deCall string, freq float64, mode string) *Spot {
 	dxNorm := NormalizeSpotDXCallsign(dxCall)
 	deNorm := NormalizeCallsign(deCall)
 	spot := &Spot{
-		DXCall:     dxNorm,
-		DECall:     deNorm,
-		Frequency:  freq,
-		Mode:       mode,
-		Band:       band,
-		Time:       time.Now().UTC(),
-		SourceType: SourceManual,
-		TTL:        5, // Default hop count
-		Report:     0, // Meaningful only when HasReport is true
-		HasReport:  false,
-		IsHuman:    true,
-		ModeNorm:   modeNorm,
-		BandNorm:   band,
-		DXCallNorm: dxNorm,
-		DECallNorm: deNorm,
-		DXCellID:   0,
-		DECellID:   0,
+		DXCall:         dxNorm,
+		DECall:         deNorm,
+		Frequency:      freq,
+		Mode:           mode,
+		Band:           band,
+		Time:           time.Now().UTC(),
+		SourceType:     SourceManual,
+		TTL:            5, // Default hop count
+		Report:         0, // Meaningful only when HasReport is true
+		HasReport:      false,
+		IsHuman:        true,
+		ModeNorm:       modeNorm,
+		BandNorm:       band,
+		DXCallNorm:     dxNorm,
+		DECallNorm:     deNorm,
+		DXCellID:       0,
+		DECellID:       0,
+		DXCoarseCellID: 0,
+		DECoarseCellID: 0,
 	}
 	spot.RefreshBeaconFlag()
 	return spot
@@ -185,23 +189,25 @@ func NewSpotNormalized(dxCallNorm, deCallNorm string, freq float64, mode string)
 	dxCall := NormalizeSpotDXCallsign(dxCallNorm)
 	deCall := strings.TrimSpace(deCallNorm)
 	spot := &Spot{
-		DXCall:     dxCall,
-		DECall:     deCall,
-		Frequency:  freq,
-		Mode:       mode,
-		Band:       band,
-		Time:       time.Now().UTC(),
-		SourceType: SourceManual,
-		TTL:        5, // Default hop count
-		Report:     0, // Meaningful only when HasReport is true
-		HasReport:  false,
-		IsHuman:    true,
-		ModeNorm:   modeNorm,
-		BandNorm:   band,
-		DXCallNorm: dxCall,
-		DECallNorm: deCall,
-		DXCellID:   0,
-		DECellID:   0,
+		DXCall:         dxCall,
+		DECall:         deCall,
+		Frequency:      freq,
+		Mode:           mode,
+		Band:           band,
+		Time:           time.Now().UTC(),
+		SourceType:     SourceManual,
+		TTL:            5, // Default hop count
+		Report:         0, // Meaningful only when HasReport is true
+		HasReport:      false,
+		IsHuman:        true,
+		ModeNorm:       modeNorm,
+		BandNorm:       band,
+		DXCallNorm:     dxCall,
+		DECallNorm:     deCall,
+		DXCellID:       0,
+		DECellID:       0,
+		DXCoarseCellID: 0,
+		DECoarseCellID: 0,
 	}
 	spot.RefreshBeaconFlag()
 	return spot
@@ -231,24 +237,26 @@ func NewSpotFromNormalizedIngest(
 		observedAt = observedAt.UTC()
 	}
 	spot := &Spot{
-		DXCall:     dxCallNorm,
-		DECall:     deCallNorm,
-		Frequency:  freq,
-		Mode:       mode,
-		Band:       band,
-		Time:       observedAt,
-		SourceType: sourceType,
-		SourceNode: sourceNode,
-		TTL:        5, // Default hop count
-		Report:     0, // Meaningful only when HasReport is true
-		HasReport:  false,
-		IsHuman:    isHuman,
-		ModeNorm:   modeNorm,
-		BandNorm:   band,
-		DXCallNorm: dxCallNorm,
-		DECallNorm: deCallNorm,
-		DXCellID:   0,
-		DECellID:   0,
+		DXCall:         dxCallNorm,
+		DECall:         deCallNorm,
+		Frequency:      freq,
+		Mode:           mode,
+		Band:           band,
+		Time:           observedAt,
+		SourceType:     sourceType,
+		SourceNode:     sourceNode,
+		TTL:            5, // Default hop count
+		Report:         0, // Meaningful only when HasReport is true
+		HasReport:      false,
+		IsHuman:        isHuman,
+		ModeNorm:       modeNorm,
+		BandNorm:       band,
+		DXCallNorm:     dxCallNorm,
+		DECallNorm:     deCallNorm,
+		DXCellID:       0,
+		DECellID:       0,
+		DXCoarseCellID: 0,
+		DECoarseCellID: 0,
 	}
 	spot.RefreshBeaconFlag()
 	return spot
@@ -575,6 +583,8 @@ func (s *Spot) CloneWithComment(comment string) *Spot {
 		DEGrid2:             s.DEGrid2,
 		DXCellID:            s.DXCellID,
 		DECellID:            s.DECellID,
+		DXCoarseCellID:      s.DXCoarseCellID,
+		DECoarseCellID:      s.DECoarseCellID,
 		DECallStripped:      s.DECallStripped,
 		DECallNormStripped:  s.DECallNormStripped,
 		ownedSnapshot:       true,
@@ -633,6 +643,8 @@ func (s *Spot) InvalidateMetadataCache() {
 	s.DEGrid2 = ""
 	s.DXCellID = 0
 	s.DECellID = 0
+	s.DXCoarseCellID = 0
+	s.DECoarseCellID = 0
 }
 
 // Len returns the current length of the builder buffer.

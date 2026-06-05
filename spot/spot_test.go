@@ -348,6 +348,10 @@ func TestCloneWithCommentResetsFormatting(t *testing.T) {
 		ConfidencePercent:   67,
 		ConfidencePercentOK: true,
 		Time:                time.Date(2025, time.November, 22, 4, 54, 0, 0, time.UTC),
+		DXCellID:            101,
+		DECellID:            102,
+		DXCoarseCellID:      11,
+		DECoarseCellID:      12,
 	}
 
 	orig := s.FormatDXCluster()
@@ -366,10 +370,36 @@ func TestCloneWithCommentResetsFormatting(t *testing.T) {
 	if clone.ConfidencePercent != 67 || !clone.ConfidencePercentOK {
 		t.Fatalf("expected confidence percent metadata to be cloned, got percent=%d ok=%v", clone.ConfidencePercent, clone.ConfidencePercentOK)
 	}
+	if clone.DXCellID != 101 || clone.DECellID != 102 || clone.DXCoarseCellID != 11 || clone.DECoarseCellID != 12 {
+		t.Fatalf("expected path cell caches to be cloned, got dx=%d de=%d dxCoarse=%d deCoarse=%d", clone.DXCellID, clone.DECellID, clone.DXCoarseCellID, clone.DECoarseCellID)
+	}
 
 	origAgain := s.FormatDXCluster()
 	if !strings.Contains(origAgain, "ORIG") {
 		t.Fatalf("expected original comment unchanged, got %q", origAgain)
+	}
+}
+
+func TestInvalidateMetadataCacheClearsPathCells(t *testing.T) {
+	s := &Spot{
+		DXContinentNorm: "NA",
+		DEContinentNorm: "EU",
+		DXGridNorm:      "EM12",
+		DEGridNorm:      "FN20",
+		DXGrid2:         "EM",
+		DEGrid2:         "FN",
+		DXCellID:        101,
+		DECellID:        102,
+		DXCoarseCellID:  11,
+		DECoarseCellID:  12,
+	}
+
+	s.InvalidateMetadataCache()
+	if s.DXContinentNorm != "" || s.DEContinentNorm != "" || s.DXGridNorm != "" || s.DEGridNorm != "" || s.DXGrid2 != "" || s.DEGrid2 != "" {
+		t.Fatalf("expected normalized metadata cache to be cleared, got dxCont=%q deCont=%q dxGrid=%q deGrid=%q dxGrid2=%q deGrid2=%q", s.DXContinentNorm, s.DEContinentNorm, s.DXGridNorm, s.DEGridNorm, s.DXGrid2, s.DEGrid2)
+	}
+	if s.DXCellID != 0 || s.DECellID != 0 || s.DXCoarseCellID != 0 || s.DECoarseCellID != 0 {
+		t.Fatalf("expected path cell caches to be cleared, got dx=%d de=%d dxCoarse=%d deCoarse=%d", s.DXCellID, s.DECellID, s.DXCoarseCellID, s.DECoarseCellID)
 	}
 }
 

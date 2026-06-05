@@ -424,22 +424,14 @@ func (p *outputPipeline) prepareFanoutSpot(ctx *outputSpotContext) bool {
 		}
 	}
 	if p.pathPredictor != nil && p.pathPredictor.Config().Enabled {
-		if s.DXCellID == 0 {
-			s.DXCellID = uint16(pathreliability.EncodeCell(strings.TrimSpace(s.DXMetadata.Grid)))
-		}
-		if s.DECellID == 0 {
-			s.DECellID = uint16(pathreliability.EncodeCell(strings.TrimSpace(s.DEMetadata.Grid)))
-		}
+		hydrateSpotFinePathCells(s)
 		if s.HasReport {
 			mode := s.ModeNorm
 			if strings.TrimSpace(mode) == "" {
 				mode = s.Mode
 			}
 			if ft8, ok := pathreliability.FT8Equivalent(mode, s.Report, p.pathPredictor.Config()); ok {
-				dxCell := pathreliability.CellID(s.DXCellID)
-				deCell := pathreliability.CellID(s.DECellID)
-				dxCoarse := pathreliability.EncodeCoarseCell(s.DXMetadata.Grid)
-				deCoarse := pathreliability.EncodeCoarseCell(s.DEMetadata.Grid)
+				cells := hydrateSpotPathCells(s)
 				band := s.BandNorm
 				if strings.TrimSpace(band) == "" {
 					band = s.Band
@@ -456,9 +448,9 @@ func (p *outputPipeline) prepareFanoutSpot(ctx *outputSpotContext) bool {
 					bucket := pathreliability.BucketForIngest(mode)
 					if bucket != pathreliability.BucketNone {
 						if p.pathReport != nil {
-							p.pathReport.Observe(s, spotTime)
+							p.pathReport.ObserveWithCells(s, spotTime, cells.deCoarse, cells.dxCoarse)
 						}
-						p.pathPredictor.UpdateWithReceiverHash(bucket, deCell, dxCell, deCoarse, dxCoarse, band, ft8, 1.0, spotTime, s.IsBeacon, pathReceiverHash(s))
+						p.pathPredictor.UpdateWithReceiverHash(bucket, cells.deFine, cells.dxFine, cells.deCoarse, cells.dxCoarse, band, ft8, 1.0, spotTime, s.IsBeacon, pathReceiverHash(s))
 					}
 				}
 			}

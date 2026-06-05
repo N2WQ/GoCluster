@@ -1090,12 +1090,9 @@ func processPSKRPathOnlySpots(client *pskreporter.Client, predictor *pathreliabi
 			recordPathOnlyDrop(stats, pathOnlyDropNoGrid)
 			continue
 		}
-		dxCell := pathreliability.EncodeCell(dxGrid)
-		deCell := pathreliability.EncodeCell(deGrid)
-		dxCoarse := pathreliability.EncodeCoarseCell(dxGrid)
-		deCoarse := pathreliability.EncodeCoarseCell(deGrid)
-		if (dxCell == pathreliability.InvalidCell || deCell == pathreliability.InvalidCell) &&
-			(dxCoarse == pathreliability.InvalidCell || deCoarse == pathreliability.InvalidCell) {
+		cells := hydrateSpotPathCells(s)
+		if (cells.dxFine == pathreliability.InvalidCell || cells.deFine == pathreliability.InvalidCell) &&
+			(cells.dxCoarse == pathreliability.InvalidCell || cells.deCoarse == pathreliability.InvalidCell) {
 			recordPathOnlyDrop(stats, pathOnlyDropBadH3)
 			continue
 		}
@@ -1120,10 +1117,10 @@ func processPSKRPathOnlySpots(client *pskreporter.Client, predictor *pathreliabi
 			spotTime = time.Now().UTC()
 		}
 		if pathReport != nil {
-			pathReport.Observe(s, spotTime)
+			pathReport.ObserveWithCells(s, spotTime, cells.deCoarse, cells.dxCoarse)
 		}
 		// Spot SNR reflects DX -> DE (spotter is the receiver).
-		predictor.UpdateWithReceiverHash(bucket, deCell, dxCell, deCoarse, dxCoarse, band, ft8, 1.0, spotTime, s.IsBeacon, pathReceiverHash(s))
+		predictor.UpdateWithReceiverHash(bucket, cells.deFine, cells.dxFine, cells.deCoarse, cells.dxCoarse, band, ft8, 1.0, spotTime, s.IsBeacon, pathReceiverHash(s))
 		if stats != nil {
 			stats.updates.Add(1)
 		}
