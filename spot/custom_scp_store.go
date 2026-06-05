@@ -1,3 +1,12 @@
+// File role: Owns the Pebble-backed Custom SCP retained-evidence store used by
+// correction, stabilizer, and S-floor support paths.
+// Crawler notes: Start here for Custom SCP admission, recent/static support
+// lookup cost, retained-state bounds, persistence convergence, and cleanup
+// coupling between entries, static calls, expiry indexes, active counters, and
+// interned strings.
+// Related docs: docs/decisions/ADR-0080-custom-scp-retained-heap-layout.md,
+// docs/decisions/ADR-0143-custom-scp-support-lookup-duplicate-work-removal.md.
+// Related tests: spot/custom_scp_store_test.go, spot/bounded_store_bench_test.go.
 package spot
 
 import (
@@ -509,8 +518,10 @@ func (s *CustomSCPStore) recordObservation(call, band, mode, spotter string, cel
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	call = s.retainStaticCallLocked(call, seenUnix)
-	s.upsertStaticExpiryLocked(call, s.static[call])
+	call, staticChanged := s.retainStaticCallLocked(call, seenUnix)
+	if staticChanged {
+		s.upsertStaticExpiryLocked(call, s.static[call])
+	}
 
 	key := customSCPKey{call: call, band: band, bucket: bucket}
 	entry := s.entries[key]
@@ -572,7 +583,9 @@ func (s *CustomSCPStore) recordObservation(call, band, mode, spotter string, cel
 	if !wasActive {
 		s.active.Add(key.call, key.band)
 	}
-	s.persistStaticLocked(call, s.static[call])
+	if staticChanged {
+		s.persistStaticLocked(call, s.static[call])
+	}
 	if obs, ok := entrySpotterObs(entry, persistSpotter); updated && ok {
 		s.persistObservationLocked(key, spotter, obs)
 	}
@@ -665,6 +678,18 @@ func (s *CustomSCPStore) RecentSupportCount(call, band, mode string, now time.Ti
 	return snapshot.uniqueSpotters
 }
 
+// RecentSupportCountNormalized is the no-cache lookup path for callers that
+// already own a correction-normalized call key. Synthetic edit-neighbor probes
+// use this to avoid filling the global callsign normalization cache with
+// one-off misses; raw external callers must keep using RecentSupportCount.
+func (s *CustomSCPStore) RecentSupportCountNormalized(call, band, mode string, now time.Time) int {
+	snapshot := s.snapshotForNormalizedCall(call, band, mode, now)
+	if snapshot.score < s.opts.CoreMinScore || snapshot.uniqueCells < s.opts.CoreMinH3Cells {
+		return 0
+	}
+	return snapshot.uniqueSpotters
+}
+
 // HasSFloorSupportExact reports exact-call support for S-floor promotion.
 func (s *CustomSCPStore) HasSFloorSupportExact(call, band, mode string, minUnique int, now time.Time) bool {
 	snapshot := s.snapshotFor(call, band, mode, now)
@@ -748,6 +773,13 @@ func (s *CustomSCPStore) snapshotFor(call, band, mode string, now time.Time) cus
 		return customSCPSnapshot{}
 	}
 	call = NormalizeCallsign(call)
+	return s.snapshotForNormalizedCall(call, band, mode, now)
+}
+
+func (s *CustomSCPStore) snapshotForNormalizedCall(call, band, mode string, now time.Time) customSCPSnapshot {
+	if s == nil {
+		return customSCPSnapshot{}
+	}
 	band = NormalizeBand(band)
 	bucket, ok := customSCPBucketForMode(mode)
 	if !ok || call == "" || band == "" || band == "???" {
@@ -969,7 +1001,7 @@ func (s *CustomSCPStore) loadFromDB() error {
 				pendingDeletes++
 				continue
 			}
-			call = s.retainStaticCallLocked(call, seen)
+			call, _ = s.retainStaticCallLocked(call, seen)
 			s.upsertStaticExpiryLocked(call, seen)
 		case bytes.HasPrefix(k, customSCPObsPrefixBytes):
 			call, band, bucket, spotter, ok := parseObservationKeyBytes(k)
@@ -1068,9 +1100,9 @@ func (s *CustomSCPStore) releaseInternedStringLocked(value string) {
 	s.interner.release(value)
 }
 
-func (s *CustomSCPStore) retainStaticCallLocked(call string, seenUnix int64) string {
+func (s *CustomSCPStore) retainStaticCallLocked(call string, seenUnix int64) (string, bool) {
 	if s == nil || call == "" {
-		return call
+		return call, false
 	}
 	if s.static == nil {
 		s.static = make(map[string]int64, 1024)
@@ -1078,12 +1110,13 @@ func (s *CustomSCPStore) retainStaticCallLocked(call string, seenUnix int64) str
 	if current, ok := s.static[call]; ok {
 		if seenUnix > current {
 			s.static[call] = seenUnix
+			return s.interner.canonical(call), true
 		}
-		return s.interner.canonical(call)
+		return s.interner.canonical(call), false
 	}
 	retained := s.retainInternedStringLocked(call)
 	s.static[retained] = seenUnix
-	return retained
+	return retained, true
 }
 
 func (s *CustomSCPStore) pruneEntryLocked(entry *customSCPEntry, cutoff int64, removed *[]string) int {

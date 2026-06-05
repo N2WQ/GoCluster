@@ -219,3 +219,37 @@ func TestHasRecentSupportForCallFamily(t *testing.T) {
 		t.Fatalf("expected bare call to match slash family support")
 	}
 }
+
+func BenchmarkHasRecentSupportForEditNeighborRecentBand(b *testing.B) {
+	now := time.Now().UTC()
+	store := spot.NewRecentBandStoreWithOptions(spot.RecentBandOptions{
+		Window:             12 * time.Hour,
+		Shards:             1,
+		MaxEntries:         128,
+		CleanupInterval:    time.Hour,
+		MaxSpottersPerCall: 8,
+	})
+	for _, tc := range []struct {
+		call    string
+		spotter string
+		seenAt  time.Time
+	}{
+		{call: "K1ABC", spotter: "N0AAA", seenAt: now.Add(-2 * time.Minute)},
+		{call: "K1ABC", spotter: "N0AAB", seenAt: now.Add(-90 * time.Second)},
+		{call: "K1ABD", spotter: "N0AAC", seenAt: now.Add(-80 * time.Second)},
+		{call: "K1ABD", spotter: "N0AAD", seenAt: now.Add(-70 * time.Second)},
+	} {
+		store.Record(tc.call, "40m", "CW", tc.spotter, tc.seenAt)
+	}
+	if got := store.RecentSupportCount("K1ABD", "40m", "CW", now); got != 2 {
+		b.Fatalf("expected seeded neighbor support 2, got %d", got)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if !hasRecentSupportForEditNeighbor(store, "K1ABC", "40m", "CW", 2, now) {
+			b.Fatalf("expected contested edit-neighbor support")
+		}
+	}
+}

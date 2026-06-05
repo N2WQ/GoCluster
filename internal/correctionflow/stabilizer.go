@@ -8,6 +8,10 @@ import (
 	"dxcluster/spot"
 )
 
+type normalizedRecentSupportCounter interface {
+	RecentSupportCountNormalized(call, band, mode string, now time.Time) int
+}
+
 // StabilizerDelayReason explains why a spot is held by the telnet stabilizer.
 type StabilizerDelayReason string
 
@@ -198,16 +202,19 @@ func hasRecentSupportForEditNeighbor(store spot.RecentSupportStore, call, band, 
 		minUnique = 2
 	}
 	ownSupport := maxRecentSupportForCallFamily(store, call, band, mode, now)
-	for _, variant := range EditDistanceOneSubstitutionVariants(call) {
-		support := store.RecentSupportCount(variant, band, mode, now)
+	found := false
+	ForEachEditDistanceOneSubstitutionVariant(call, func(variant string) bool {
+		support := recentSupportCountForNormalizedCall(store, variant, band, mode, now)
 		if support < minUnique {
-			continue
-		}
-		if support >= ownSupport {
 			return true
 		}
-	}
-	return false
+		if support >= ownSupport {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
 }
 
 func maxRecentSupportForCallFamily(store spot.RecentSupportStore, call, band, mode string, now time.Time) int {
@@ -220,18 +227,28 @@ func maxRecentSupportForCallFamily(store spot.RecentSupportStore, call, band, mo
 		return 0
 	}
 	if strings.TrimSpace(key) != "" {
-		support := store.RecentSupportCount(key, band, mode, now)
+		support := recentSupportCountForNormalizedCall(store, key, band, mode, now)
 		if support > maxSupport {
 			maxSupport = support
 		}
 	}
 	if baseKey != "" {
-		support := store.RecentSupportCount(baseKey, band, mode, now)
+		support := recentSupportCountForNormalizedCall(store, baseKey, band, mode, now)
 		if support > maxSupport {
 			maxSupport = support
 		}
 	}
 	return maxSupport
+}
+
+func recentSupportCountForNormalizedCall(store spot.RecentSupportStore, call, band, mode string, now time.Time) int {
+	if store == nil {
+		return 0
+	}
+	if normalized, ok := store.(normalizedRecentSupportCounter); ok {
+		return normalized.RecentSupportCountNormalized(call, band, mode, now)
+	}
+	return store.RecentSupportCount(call, band, mode, now)
 }
 
 func stabilizerConfidenceGlyph(confidence string) string {

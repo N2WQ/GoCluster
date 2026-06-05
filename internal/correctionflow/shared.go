@@ -450,14 +450,8 @@ const editNeighborAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 // EditDistanceOneSubstitutionVariants returns deterministic distance-1
 // substitution variants for a correction vote key.
 func EditDistanceOneSubstitutionVariants(call string) []string {
-	key := spot.CorrectionVoteKey(call)
-	if key == "" {
-		return nil
-	}
-	if strings.Contains(key, "/") {
-		return nil
-	}
-	if len(key) < 3 || len(key) > 12 {
+	key, ok := editDistanceOneSubstitutionKey(call)
+	if !ok {
 		return nil
 	}
 	seed := []byte(key)
@@ -475,6 +469,46 @@ func EditDistanceOneSubstitutionVariants(call string) []string {
 		seed[idx] = original
 	}
 	return out
+}
+
+// ForEachEditDistanceOneSubstitutionVariant streams deterministic distance-1
+// substitution variants and stops when visit returns false. It is used by hot
+// lookup paths that need early exit without retaining every generated variant.
+func ForEachEditDistanceOneSubstitutionVariant(call string, visit func(string) bool) {
+	if visit == nil {
+		return
+	}
+	key, ok := editDistanceOneSubstitutionKey(call)
+	if !ok {
+		return
+	}
+	seed := []byte(key)
+	for idx := range seed {
+		original := seed[idx]
+		for i := 0; i < len(editNeighborAlphabet); i++ {
+			replacement := editNeighborAlphabet[i]
+			if replacement == original {
+				continue
+			}
+			seed[idx] = replacement
+			if !visit(string(seed)) {
+				seed[idx] = original
+				return
+			}
+		}
+		seed[idx] = original
+	}
+}
+
+func editDistanceOneSubstitutionKey(call string) (string, bool) {
+	key := spot.CorrectionVoteKey(call)
+	if key == "" || strings.Contains(key, "/") {
+		return "", false
+	}
+	if len(key) < 3 || len(key) > 12 {
+		return "", false
+	}
+	return key, true
 }
 
 func resolverSnapshotBeats(left, right spot.ResolverSnapshot) bool {

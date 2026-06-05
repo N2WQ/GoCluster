@@ -34,9 +34,9 @@ facts and call paths, not for implementation.
      for possible whole-program call edges.
    - Treat callgraph output as a conservative aid, not proof that a path runs
      in the concrete scenario.
-   - Optional tools such as `goda` or `go-callvis` can improve package or graph
-     visualization when installed, but their absence is not a blocker for
-     ordinary code walking.
+   - Optional tools such as Graphviz `dot`, `goda`, or `go-callvis` can improve
+     package or graph visualization when installed, but their absence is not a
+     blocker for ordinary code walking.
 
 4. Check decision and support context.
    - Read `docs/decision-log.md` and `docs/troubleshooting-log.md` for

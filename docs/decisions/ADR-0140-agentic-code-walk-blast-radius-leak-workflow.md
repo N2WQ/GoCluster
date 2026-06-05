@@ -16,7 +16,8 @@ have first-class workflow routing for three recurring agentic development needs:
 The local workstation now has strong baseline tools for this work, including
 `gopls`, `callgraph`, `jq`, `yq`, `fd`, `bat`, `govulncheck`, `dlv`,
 `goimports`, `gotestsum`, and `benchstat`. Some useful tools remain optional,
-including `goda`, `go-callvis`, `semgrep`, `ast-grep`, and Sysinternals.
+including Graphviz `dot`, `goda`, `go-callvis`, `semgrep`, `ast-grep`, and
+Sysinternals.
 
 ## Decision
 Add three repo-managed Codex skills:
@@ -49,8 +50,9 @@ optional local tools separately.
    - Rejected because code walking, blast-radius analysis, and leak detection
      trigger for different reasons and produce different evidence.
 3. Make optional tools mandatory.
-   - Rejected because missing `goda`, `semgrep`, or Sysinternals should not
-     block normal Go work when required baseline tools can answer the question.
+   - Rejected because missing Graphviz, `goda`, `semgrep`, or Sysinternals
+     should not block normal Go work when required baseline tools can answer
+     the question.
 4. Leave guidance only in conversation history.
    - Rejected because future runs need discoverable repo workflow rules.
 

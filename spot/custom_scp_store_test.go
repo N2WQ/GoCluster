@@ -96,7 +96,7 @@ func requireCustomSCPEntryMissingSpotter(t *testing.T, entry *customSCPEntry, sp
 }
 
 func retainCustomSCPTestStaticLocked(store *CustomSCPStore, call string, seenUnix int64) {
-	retained := store.retainStaticCallLocked(call, seenUnix)
+	retained, _ := store.retainStaticCallLocked(call, seenUnix)
 	store.upsertStaticExpiryLocked(retained, store.static[retained])
 }
 
@@ -258,6 +258,39 @@ func TestCustomSCPStoreRecordSpotAdmitsVOnly(t *testing.T) {
 	}
 	if got := store.ActiveCallCount(now); got != 1 {
 		t.Fatalf("expected exactly one active call after V admission, got %d", got)
+	}
+}
+
+func TestCustomSCPStoreRecordSpotSingleFamilyKeyWritesOneObservation(t *testing.T) {
+	store, err := OpenCustomSCPStore(CustomSCPOptions{
+		Path:           filepath.Join(t.TempDir(), "scp"),
+		CoreMinScore:   1,
+		CoreMinH3Cells: 1,
+	})
+	if err != nil {
+		t.Fatalf("open custom store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+
+	now := time.Now().UTC()
+	store.RecordSpot(&Spot{
+		DXCall:     "K1SINGLE",
+		DECall:     "N0AAA",
+		DEGridNorm: "FN20",
+		Frequency:  7020,
+		Band:       "40m",
+		Mode:       "CW",
+		HasReport:  true,
+		Report:     12,
+		Time:       now,
+		Confidence: "V",
+	})
+
+	key := customSCPKey{call: "K1SINGLE", band: "40m", bucket: "cw"}
+	if got := countObservationRecords(t, store, key); got != 1 {
+		t.Fatalf("expected exactly one observation record for single-key family, got %d", got)
 	}
 }
 
@@ -756,6 +789,65 @@ func TestCustomSCPStatsSnapshotReportsRetainedStateCardinality(t *testing.T) {
 		t.Fatalf("expected expiry index stats to track retained state, got %+v", stats)
 	}
 	assertCustomSCPInternerInvariant(t, store)
+}
+
+func TestCustomSCPRecentSupportCountNormalizedSkipsNormalizeCache(t *testing.T) {
+	originalCache := normalizeCallCache
+	normalizeCallCache = NewCallCache(16, time.Hour)
+	t.Cleanup(func() {
+		normalizeCallCache = originalCache
+	})
+
+	store, err := OpenCustomSCPStore(CustomSCPOptions{
+		Path:           filepath.Join(t.TempDir(), "scp"),
+		CoreMinScore:   1,
+		CoreMinH3Cells: 1,
+	})
+	if err != nil {
+		t.Fatalf("open custom store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+
+	now := freshCustomSCPTestTime()
+	store.recordObservation("K1FAST", "40m", "CW", "N0AAA", 101, 0, false, now)
+	normalizeCallCache = NewCallCache(16, time.Hour)
+	if got := store.RecentSupportCountNormalized("K1FAST", "40m", "CW", now); got != 1 {
+		t.Fatalf("normalized support count = %d, want 1", got)
+	}
+	if _, ok := normalizeCallCache.Get("K1FAST"); ok {
+		t.Fatalf("normalized support count should not populate callsign cache")
+	}
+	if got := store.RecentSupportCount("K1FAST", "40m", "CW", now); got != 1 {
+		t.Fatalf("public support count = %d, want 1", got)
+	}
+	if _, ok := normalizeCallCache.Get("K1FAST"); !ok {
+		t.Fatalf("public support count should keep using callsign normalization cache")
+	}
+}
+
+func TestCustomSCPRetainStaticCallReportsOnlyTimestampAdvances(t *testing.T) {
+	store := &CustomSCPStore{}
+
+	call, changed := store.retainStaticCallLocked("K1STATIC", 100)
+	if call != "K1STATIC" || !changed {
+		t.Fatalf("first retain call=%q changed=%v, want changed K1STATIC", call, changed)
+	}
+	call, changed = store.retainStaticCallLocked("K1STATIC", 90)
+	if call != "K1STATIC" || changed {
+		t.Fatalf("older retain call=%q changed=%v, want unchanged K1STATIC", call, changed)
+	}
+	if got := store.static["K1STATIC"]; got != 100 {
+		t.Fatalf("older retain changed timestamp to %d", got)
+	}
+	call, changed = store.retainStaticCallLocked("K1STATIC", 101)
+	if call != "K1STATIC" || !changed {
+		t.Fatalf("newer retain call=%q changed=%v, want changed K1STATIC", call, changed)
+	}
+	if got := store.static["K1STATIC"]; got != 101 {
+		t.Fatalf("newer retain left timestamp %d, want 101", got)
+	}
 }
 
 func TestCustomSCPStoreStaticCallCountUsesStaticHorizon(t *testing.T) {

@@ -56,6 +56,12 @@ receiver-contribution mode and removes avoidable allocation from path reporting
 metrics. Operationally, a higher `GOMEMLIMIT` can provide short-term headroom,
 but it is not the durable fix.
 
+Follow-up Custom SCP profiling showed additional allocation and write churn that
+was not the p50 root cause: edit-neighbor support probes generated synthetic
+calls that missed the global callsign normalization cache, and unchanged static
+membership observations still attempted static persistence. ADR-0143 records the
+behavior-preserving follow-up optimization.
+
 ## Why an ADR was or was not required
 
 - ADR required because the fix changes retained-state resource bounds in the
@@ -63,7 +69,7 @@ but it is not the durable fix.
 
 ## Links
 
-- Related ADRs: ADR-0139
+- Related ADRs: ADR-0139, ADR-0143
 - Related issues/PRs/commits:
 - Related tests: `pathreliability/active_p50_contract_test.go`,
   `pathreliability/snr_histogram_test.go`, `pathreliability/receiver_test.go`,

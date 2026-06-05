@@ -25,11 +25,12 @@ Expected agentic workflow helpers:
 - `jq`
 - `yq`
 - `fd`
+- `bat`
 
 If a tool is missing locally, report that fact explicitly and treat it as a validation gap, not a silent success.
 
 Optional investigation helpers:
-- `goda` and `go-callvis` for package/call graph visualization
+- Graphviz `dot`, `goda`, and `go-callvis` for package/call graph visualization
 - `semgrep` and `ast-grep` for structural search when text search is
   insufficient
 - Sysinternals tools such as `handle.exe`, TCPView, and Process Explorer for

@@ -9,6 +9,11 @@ import (
 	"dxcluster/spot"
 )
 
+var (
+	benchmarkEditNeighborVariantsSink []string
+	benchmarkEditNeighborCountSink    int
+)
+
 func TestFormatConfidenceParity(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -401,5 +406,53 @@ func TestEditDistanceOneSubstitutionVariants(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected variant K1ABD")
+	}
+}
+
+func TestForEachEditDistanceOneSubstitutionVariantMatchesSlice(t *testing.T) {
+	want := EditDistanceOneSubstitutionVariants("K1ABC")
+	var got []string
+	ForEachEditDistanceOneSubstitutionVariant("K1ABC", func(candidate string) bool {
+		got = append(got, candidate)
+		return true
+	})
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("streamed variants do not match slice form")
+	}
+}
+
+func TestForEachEditDistanceOneSubstitutionVariantStopsEarly(t *testing.T) {
+	want := EditDistanceOneSubstitutionVariants("K1ABC")
+	calls := 0
+	first := ""
+	ForEachEditDistanceOneSubstitutionVariant("K1ABC", func(candidate string) bool {
+		calls++
+		first = candidate
+		return false
+	})
+	if calls != 1 {
+		t.Fatalf("expected one callback before stop, got %d", calls)
+	}
+	if first != want[0] {
+		t.Fatalf("first streamed variant %q, want %q", first, want[0])
+	}
+}
+
+func BenchmarkEditDistanceOneSubstitutionVariants(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		benchmarkEditNeighborVariantsSink = EditDistanceOneSubstitutionVariants("K1ABC")
+	}
+}
+
+func BenchmarkForEachEditDistanceOneSubstitutionVariant(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		count := 0
+		ForEachEditDistanceOneSubstitutionVariant("K1ABC", func(candidate string) bool {
+			if candidate != "" {
+				count++
+			}
+			return true
+		})
+		benchmarkEditNeighborCountSink = count
 	}
 }

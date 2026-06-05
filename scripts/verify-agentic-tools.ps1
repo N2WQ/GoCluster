@@ -28,7 +28,10 @@ $ErrorActionPreference = "Stop"
 $processPath = $env:Path
 $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-$env:Path = "$processPath;$machinePath;$userPath"
+$graphvizUserBin = Join-Path $env:LOCALAPPDATA "Programs\Graphviz\bin"
+$graphvizVirtualStoreBin = Join-Path $env:LOCALAPPDATA "VirtualStore\Program Files\Graphviz\bin"
+$graphvizMachineBin = "C:\Program Files\Graphviz\bin"
+$env:Path = "$processPath;$machinePath;$userPath;$graphvizUserBin;$graphvizVirtualStoreBin;$graphvizMachineBin"
 
 $versionArgs = @{
     "go" = @("version")
@@ -44,10 +47,8 @@ $versionArgs = @{
     "govulncheck" = @("-version")
     "dlv" = @("version")
     "gotestsum" = @("--version")
-    "benchstat" = @("-h")
     "delta" = @("--version")
     "fzf" = @("--version")
-    "goda" = @("version")
     "go-callvis" = @("-version")
     "semgrep" = @("--version")
     "ast-grep" = @("--version")
@@ -74,7 +75,7 @@ $toolGroups = @(
     @{
         Label = "optional investigation helpers"
         Required = $false
-        Tools = @("goda", "go-callvis", "semgrep", "ast-grep", "osv-scanner", "gitleaks", "handle", "tcpview")
+        Tools = @("dot", "goda", "go-callvis", "semgrep", "ast-grep", "osv-scanner", "gitleaks", "handle", "tcpview")
     }
 )
 

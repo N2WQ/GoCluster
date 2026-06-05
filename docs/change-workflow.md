@@ -221,10 +221,11 @@ Required baseline tools for this workflow are the repository's normal Go and
 validation tools plus semantic/navigation helpers already called out by the
 triggered skill. Missing required tools are validation or discovery gaps.
 
-Optional tools such as `goda`, `go-callvis`, `semgrep`, `ast-grep`, and
-Sysinternals improve specific investigations. Report missing optional tools as
-conditional evidence gaps only for the workflow that needed them; their absence
-does not block ordinary Go implementation, review, or validation.
+Optional tools such as Graphviz `dot`, `goda`, `go-callvis`, `semgrep`,
+`ast-grep`, and Sysinternals improve specific investigations. Report missing
+optional tools as conditional evidence gaps only for the workflow that needed
+them; their absence does not block ordinary Go implementation, review, or
+validation.
 
 ### Code-walk evidence
 Use `go-code-walk` when current-state discovery needs semantic source walking,

@@ -1,3 +1,10 @@
+// File role: Owns the bounded recent-on-band support store used by resolver and
+// telnet stabilizer checks when Custom SCP is not the active recent store.
+// Crawler notes: Start here for recent support lookup cost, bounded entry and
+// spotter retention, cleanup coupling, and normalized-key fast paths shared with
+// correctionflow edit-neighbor probes.
+// Related docs: docs/decisions/ADR-0143-custom-scp-support-lookup-duplicate-work-removal.md.
+// Related tests: spot/recent_band_test.go, internal/correctionflow/stabilizer_test.go.
 package spot
 
 import (
@@ -237,6 +244,43 @@ func (s *RecentBandStore) RecentSupportCount(call, band, mode string, now time.T
 	return len(entry.spotters)
 }
 
+// RecentSupportCountNormalized is the no-cache lookup path for callers that
+// already own a correction-normalized call key. Raw callers must keep using
+// RecentSupportCount so recent-band key normalization remains centralized.
+func (s *RecentBandStore) RecentSupportCountNormalized(call, band, mode string, now time.Time) int {
+	if s == nil {
+		return 0
+	}
+	key, ok := s.normalizeKeyForNormalizedCall(call, band, mode)
+	if !ok {
+		return 0
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	} else {
+		now = now.UTC()
+	}
+	cutoff := now.Add(-s.window)
+	shard := s.shardFor(key)
+	if shard == nil {
+		return 0
+	}
+
+	shard.mu.Lock()
+	defer shard.mu.Unlock()
+
+	entry := shard.entries[key]
+	if entry == nil {
+		return 0
+	}
+	s.pruneEntryLocked(entry, cutoff)
+	if len(entry.spotters) == 0 {
+		s.deleteEntryLocked(shard, key)
+		return 0
+	}
+	return len(entry.spotters)
+}
+
 // ActiveCallCount returns the maintained distinct-call snapshot across all
 // bands/modes. Read-side queries are intentionally side-effect free; freshness
 // advances on writes and cleanup passes.
@@ -283,6 +327,10 @@ func (s *RecentBandStore) cleanup(now time.Time) {
 
 func (s *RecentBandStore) normalizeKey(call, band, mode string) (recentBandKey, bool) {
 	call = normalizeRecentBandCall(call)
+	return s.normalizeKeyForNormalizedCall(call, band, mode)
+}
+
+func (s *RecentBandStore) normalizeKeyForNormalizedCall(call, band, mode string) (recentBandKey, bool) {
 	band = NormalizeBand(band)
 	mode = normalizeRecentBandMode(mode)
 	if call == "" || band == "" || band == "???" || mode == "" {

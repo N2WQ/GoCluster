@@ -16,8 +16,9 @@ approved or implementation continues. It complements dependency rigor in
 - Required baseline tools are the repo workflow tools: Go toolchain, `gopls`
   when semantic symbol data is needed, `rg`, `go list`, `jq` for JSON package
   analysis, and the standard validation commands.
-- Optional tools such as `goda`, `go-callvis`, `semgrep`, `ast-grep`, and
-  Sysinternals can improve evidence for specific investigations.
+- Optional tools such as Graphviz `dot`, `goda`, `go-callvis`, `semgrep`,
+  `ast-grep`, and Sysinternals can improve evidence for specific
+  investigations.
 - Missing optional tools are reported as conditional evidence gaps only for the
   workflow that needed them. Their absence does not block ordinary Go
   implementation, review, or validation.
@@ -47,8 +48,8 @@ approved or implementation continues. It complements dependency rigor in
      dependencies.
    - Identify targeted package tests, broader package suites, and required full
      validation from `docs/dev-runbook.md`.
-   - If optional `goda` is installed, use it for reverse-import or graph views
-     when package impact remains unclear.
+   - If optional Graphviz `dot` and `goda` are installed, use them for rendered
+     reverse-import or graph views when package impact remains unclear.
 
 4. Search non-Go contracts.
    - Use `rg` and `yq` for YAML keys, command names, HELP text, log/event
