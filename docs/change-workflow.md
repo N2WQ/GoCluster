@@ -241,6 +241,11 @@ routing, or uncertain dependency/test surfaces. Classify each discovered impact
 as in scope, out of scope, requiring revised ledger, validation follow-up, or
 documentation/support follow-up.
 
+When graph output is useful beyond the current turn, summarize the durable
+package edges and limits in a Markdown code map under `docs/code-maps/`. The
+custom GPT support agent can retrieve Markdown and source files; it cannot run
+local graph tools or treat rendered images as authoritative evidence.
+
 ### Leak-detection audit
 Use `go-leak-detection` when work touches or investigates goroutines, timers,
 tickers, channels, sockets, file handles, queues, shutdown, long-lived

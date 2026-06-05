@@ -37,6 +37,9 @@ facts and call paths, not for implementation.
    - Optional tools such as Graphviz `dot`, `goda`, or `go-callvis` can improve
      package or graph visualization when installed, but their absence is not a
      blocker for ordinary code walking.
+   - If the custom GPT support agent will need the result later, put the stable
+     package edges, inspected files, and limits in a Markdown code map under
+     `docs/code-maps/`; do not rely on a rendered graph alone.
 
 4. Check decision and support context.
    - Read `docs/decision-log.md` and `docs/troubleshooting-log.md` for
@@ -56,5 +59,7 @@ facts and call paths, not for implementation.
 - Include a `Code-walk evidence` section when this skill is used for
   Non-trivial workflow discovery.
 - Keep command output summarized; do not paste large call graphs.
+- For support-agent reuse, summarize durable graph conclusions in Markdown that
+  points to source files and tests the support agent can retrieve.
 - Do not propose changes until current behavior and unknowns are clear enough
   to support a Scope Ledger or an explanation.

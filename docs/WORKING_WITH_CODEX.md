@@ -38,6 +38,23 @@ For changes where the impact is uncertain, ask Codex to include a
 `Blast-radius audit`. The audit should separate semantic callers, package/test
 dependencies, config/docs/support impact, and optional-tool gaps.
 
+For developer questions that the custom GPT support agent should answer later,
+ask Codex for a support-agent-readable code-map summary when dependency shape
+matters. The support agent can retrieve Markdown docs and source, but it cannot
+run local tools. Durable summaries belong under `docs/code-maps/`; local
+Graphviz or `goda` images are only supporting artifacts unless a Markdown code
+map cites what they show.
+
+Useful prompts:
+
+```text
+Produce Code-walk evidence and, if package impact is unclear, a Markdown code-map summary that the custom GPT support agent can retrieve.
+```
+
+```text
+Use goda/Graphviz locally to inspect dependencies, but report the important edges in Markdown with limits and source files to inspect next.
+```
+
 For goroutine, timer, channel, socket, file-handle, shutdown, retained-heap, or
 long-running lifecycle concerns, ask Codex to include a `Leak-detection audit`.
 The audit should distinguish static source reasoning, local test/race evidence,

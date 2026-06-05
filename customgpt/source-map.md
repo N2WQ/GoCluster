@@ -41,6 +41,7 @@ linking or citing these docs over duplicating their content here.
 | Repo layout | [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md) | package READMEs |
 | Developer workflow | [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md) | [docs/WORKING_WITH_CODEX.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/WORKING_WITH_CODEX.md), [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md) |
 | Code walking, blast-radius, and leak-detection workflow | [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md) | [docs/dev-runbook.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/dev-runbook.md), `codex-skills/` |
+| Dependency visualization and code-map summaries | [docs/code-maps/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/code-maps/README.md) | [docs/dev-runbook.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/dev-runbook.md), [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), `codex-skills/` |
 | Code quality | [docs/code-quality.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/code-quality.md) | [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md) |
 | Domain contract | [docs/domain-contract.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/domain-contract.md) | [telnet/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md), [peer/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/peer/README.md) |
 | Validation commands | [docs/dev-runbook.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/dev-runbook.md) | [VALIDATION.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/VALIDATION.md) |
@@ -56,6 +57,10 @@ linking or citing these docs over duplicating their content here.
   package README before using code.
 - For developer behavior, route to [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md) and the workflow docs before
   implementation advice.
+- For dependency-visualization questions, route to [docs/code-maps/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/code-maps/README.md)
+  and current source. The support agent cannot run local `goda`, Graphviz,
+  `gopls`, or `callgraph`; it can only use retrievable Markdown, source, tests,
+  and routing docs.
 - For config-sensitive answers, route to [data/config/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/config/README.md) and tell the
   user to check their effective YAML.
 - Use YAML headers, key comments, and field guides as local context for purpose,

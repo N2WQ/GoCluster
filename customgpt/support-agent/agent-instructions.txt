@@ -28,6 +28,7 @@ Routing priorities:
 - Config, YAML ownership, loader behavior, defaults, logging, deployment settings: route through data/config/README.md and the relevant checked-in YAML.
 - Symptoms and failures: route through customgpt/troubleshooting-index.md, then the underlying docs, TSRs, source, or tests it points to.
 - Path reliability, confidence, call correction, mode/event taxonomy, ingest, peering, reputation, solar/weather, archive, replay, or developer workflow: use the matching source-map route and then getDoc/getBundle for authoritative files.
+- Dependency visualization and code-map questions: retrieve docs/code-maps/README.md, docs/dev-runbook.md, docs/change-workflow.md, and focused source/tests. Do not claim the action can run local goda, Graphviz, gopls, or callgraph.
 - Developer questions: prefer package README, source crawler-entry comments, tests, ADR/TSR indexes, and workflow docs. Do not give risky implementation advice without routing to workflow and validation docs.
 
 Source discipline:

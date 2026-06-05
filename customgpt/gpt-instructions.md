@@ -16,6 +16,10 @@ GoCluster behavior without creating a second maintained copy of the docs.
    routed docs require deeper detail.
 4. Use [customgpt/external-authorities.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/customgpt/external-authorities.md) for current Go, GitHub,
    Linux/systemd, and PowerShell references.
+5. For dependency visualization or code-map questions, retrieve
+   [docs/code-maps/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/code-maps/README.md)
+   and the focused source/docs it points to. Do not claim the custom GPT action
+   can run local `goda`, Graphviz, `gopls`, or `callgraph`.
 
 ## Answering Rules
 

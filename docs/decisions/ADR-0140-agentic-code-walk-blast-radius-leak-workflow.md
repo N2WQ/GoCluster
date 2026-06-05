@@ -43,6 +43,11 @@ Define a required/optional tool boundary:
 Add `scripts/verify-agentic-tools.ps1` to report required, recommended, and
 optional local tools separately.
 
+Use Markdown code maps under `docs/code-maps/` when graph-derived dependency
+evidence should be useful to the custom GPT support agent. The support agent can
+retrieve Markdown, source, YAML, and first-party PowerShell, but it cannot run
+local graph tools or rely on rendered graph images as its only evidence.
+
 ## Alternatives considered
 1. Put all command guidance in `AGENTS.md`.
    - Rejected because `AGENTS.md` is always-loaded and should remain compact.
@@ -80,6 +85,8 @@ optional local tools separately.
   `Blast-radius audit`, and `Leak-detection audit` when triggered.
 - Support-agent routing gains developer-workflow pointers only; it remains a
   routing layer.
+- Durable dependency visualizations should be summarized as Markdown code maps
+  before being treated as support-agent evidence.
 
 ## Links
 - Related issues/PRs/commits:
@@ -91,8 +98,8 @@ optional local tools separately.
 - Related docs: `AGENTS.md`, `docs/change-workflow.md`,
   `docs/dev-runbook.md`, `docs/review-checklist.md`,
   `docs/templates/non-trivial-change-template.md`, `VALIDATION.md`,
-  `docs/WORKING_WITH_CODEX.md`, `customgpt/source-map.md`,
-  `customgpt/developer-guide-index.md`, `customgpt/common-questions.md`,
-  `codex-skills/`
+  `docs/WORKING_WITH_CODEX.md`, `docs/code-maps/README.md`,
+  `customgpt/source-map.md`, `customgpt/developer-guide-index.md`,
+  `customgpt/common-questions.md`, `codex-skills/`
 - Related TSRs:
 - Supersedes / superseded by:

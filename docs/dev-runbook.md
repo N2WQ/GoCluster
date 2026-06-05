@@ -60,10 +60,16 @@ Use package and contract searches to decide scope and validation impact:
 - `go list -deps -test -json ./... | jq <filter>`
 - `rg <symbol-or-contract>`
 - `yq <expression> <yaml-file>`
+- `goda graph ./internal/cluster ./telnet | dot -Tsvg -o .\tmp\cluster-telnet.svg`
+- `goda tree ./internal/cluster`
 
 If optional graph or structural-search tools are unavailable, state which
 question remains less certain and whether existing required tools were enough
 for the approved scope.
+
+When a dependency graph should help the custom GPT support agent later, capture
+the durable conclusion in a small Markdown code map under `docs/code-maps/`.
+Do not rely on SVG/PNG output as the support agent's only evidence.
 
 ### Leak-detection examples
 Use the narrowest evidence that answers the leak question:

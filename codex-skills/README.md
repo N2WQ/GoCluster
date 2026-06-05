@@ -4,8 +4,11 @@ This directory vendors repo-approved Codex skills so onboarding does not depend 
 
 Repo-managed skills:
 - `gh-fix-ci`
-- `go-blast-radius-audit`
-- `go-code-walk`
+- `go-blast-radius-audit` - maps blast radius, including optional
+  `goda`/Graphviz dependency visualization and support-agent-readable code maps
+  when useful
+- `go-code-walk` - walks unfamiliar code paths with source, semantic tools, and
+  optional dependency visualization
 - `go-config-contract-audit`
 - `go-hotpath-design`
 - `go-leak-detection`

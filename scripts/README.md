@@ -14,7 +14,9 @@ skill installation.
 - `verify-agentic-tools.ps1` checks required repo workflow tools and required
   semantic/navigation helpers, then reports recommended or optional
   investigation helpers separately so missing optional tools do not block
-  ordinary Go work.
+  ordinary Go work. It also reports optional dependency-visualization helpers
+  such as Graphviz `dot` and `goda`; summarize durable graph findings in
+  `docs/code-maps/` when the custom GPT support agent should use them later.
 
 ## Header Standard
 

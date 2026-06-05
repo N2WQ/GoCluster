@@ -50,6 +50,9 @@ approved or implementation continues. It complements dependency rigor in
      validation from `docs/dev-runbook.md`.
    - If optional Graphviz `dot` and `goda` are installed, use them for rendered
      reverse-import or graph views when package impact remains unclear.
+   - When graph evidence should be useful to the custom GPT support agent,
+     write a small Markdown code map under `docs/code-maps/` that names the
+     command, important edges, inspected source/tests, and limits.
 
 4. Search non-Go contracts.
    - Use `rg` and `yq` for YAML keys, command names, HELP text, log/event
@@ -73,3 +76,5 @@ approved or implementation continues. It complements dependency rigor in
 - State optional missing tools separately from required missing tools.
 - Do not claim exhaustive blast-radius coverage from text search alone when
   semantic callers, interfaces, config, or support docs are material.
+- Do not treat rendered graph output as support-agent evidence unless a
+  retrievable Markdown summary captures the conclusion and source follow-ups.
