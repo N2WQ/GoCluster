@@ -114,7 +114,7 @@ type PSKRMessage struct {
 // Purpose: Canonicalize a PSKReporter mode token once for filtering + conversion.
 // Key aspects: Returns canonical/variant/isPSK; empty canonical means invalid.
 // Upstream: handlePayload allowlist checks.
-// Downstream: normalizeMessage conversion path.
+// Downstream: normalizePayload conversion path.
 func parseModeInfo(raw string) (pskModeInfo, bool) {
 	canonical, variant, isPSK := spot.CanonicalPSKMode(raw)
 	if canonical == "" {
@@ -559,20 +559,22 @@ func (c *Client) handlePayload(payload []byte) {
 			log.Printf("PSKReporter: panic in handlePayload: %v", r)
 		}
 	}()
-	var pskrMsg PSKRMessage
-	if err := jsonFast.Unmarshal(payload, &pskrMsg); err != nil {
-		if errCompat := jsonCompat.Unmarshal(payload, &pskrMsg); errCompat != nil {
+	pskrMsg, ok := parsePSKRPayloadFast(payload)
+	if !ok {
+		var err error
+		pskrMsg, err = parsePSKRPayloadCompat(payload)
+		if err != nil {
 			c.lastParseErrAt.Store(time.Now().UnixNano())
 			if count, ok := c.parseErrorCounter.Inc(); ok {
-				log.Printf("PSKReporter: Failed to parse message (total=%d): %v", count, errCompat)
+				log.Printf("PSKReporter: Failed to parse message (total=%d): %v", count, err)
 			}
 			return
 		}
 	}
-	if pskrMsg.Report == nil || *pskrMsg.Report == 0 {
+	if !pskrMsg.hasReport || pskrMsg.report == 0 {
 		return
 	}
-	modeInfo, ok := parseModeInfo(pskrMsg.Mode)
+	modeInfo, ok := pskrMsg.modeInfo()
 	if !ok {
 		return
 	}
@@ -580,7 +582,7 @@ func (c *Client) handlePayload(payload []byte) {
 	if !pathOnly && !spot.PSKReporterRouteIsNormal(modeInfo.canonical) {
 		return
 	}
-	s := c.convertToSpot(&pskrMsg, modeInfo)
+	s := c.convertPayloadToSpot(&pskrMsg, modeInfo)
 	if s == nil {
 		return
 	}
@@ -606,33 +608,46 @@ func (c *Client) handlePayload(payload []byte) {
 	}
 }
 
-// Purpose: Convert a PSKReporter message into a canonical Spot.
+// Purpose: Adapt legacy PSKRMessage callers to the parsed-payload conversion path.
+// Key aspects: Keeps existing tests/helpers on the same conversion implementation.
+// Upstream: PSKReporter tests and compatibility helpers.
+// Downstream: convertPayloadToSpot.
+// modeInfo must come from parseModeInfo or pskrPayload.modeInfo to avoid re-normalization.
+func (c *Client) convertToSpot(msg *PSKRMessage, modeInfo pskModeInfo) *spot.Spot {
+	payload := pskrPayloadFromMessage(msg)
+	return c.convertPayloadToSpot(&payload, modeInfo)
+}
+
+// Purpose: Convert a parsed PSKReporter payload into a canonical Spot.
 // Key aspects: Preserves observation timestamp; applies skew correction and attaches grids.
-// Upstream: handlePayload.
-// Downstream: normalizeMessage, skew.ApplyCorrection.
-// convertToSpot converts PSKReporter message to our Spot format.
-// modeInfo must come from parseModeInfo to avoid re-normalization.
+// Upstream: handlePayload, convertToSpot.
+// Downstream: normalizePayload, skew.ApplyCorrection, spot.NewSpotFromNormalizedIngest.
 // IMPORTANT: This function sets the spot's Time field to the actual observation time
 // from the PSKReporter message, NOT the current system time. This is critical for
 // deduplication to work correctly, as the Hash32() function includes the timestamp
 // truncated to the minute. If we used the current time instead of the observation time,
 // identical spots arriving a few seconds apart could cross a minute boundary and
 // generate different hashes, preventing proper deduplication.
-func (c *Client) convertToSpot(msg *PSKRMessage, modeInfo pskModeInfo) *spot.Spot {
+func (c *Client) convertPayloadToSpot(msg *pskrPayload, modeInfo pskModeInfo) *spot.Spot {
+	if msg == nil {
+		return nil
+	}
 	// Validate required fields
-	if msg.SenderCall == "" {
-		c.reportBadCall("DX", "missing_callsign", msg.SenderCall, msg.ReceiverCall, msg.SenderCall, modeInfo.canonical)
+	senderCall := msg.senderCallString()
+	receiverCall := msg.receiverCallString()
+	if senderCall == "" {
+		c.reportBadCall("DX", "missing_callsign", senderCall, receiverCall, senderCall, modeInfo.canonical)
 		return nil
 	}
-	if msg.ReceiverCall == "" {
-		c.reportBadCall("DE", "missing_callsign", msg.ReceiverCall, msg.ReceiverCall, msg.SenderCall, modeInfo.canonical)
+	if receiverCall == "" {
+		c.reportBadCall("DE", "missing_callsign", receiverCall, receiverCall, senderCall, modeInfo.canonical)
 		return nil
 	}
-	if msg.Frequency == 0 {
+	if msg.frequency == 0 {
 		return nil
 	}
 
-	norm, ok := c.normalizeMessage(msg, modeInfo)
+	norm, ok := c.normalizePayload(msg, senderCall, receiverCall, modeInfo)
 	if !ok {
 		return nil
 	}
@@ -640,25 +655,25 @@ func (c *Client) convertToSpot(msg *PSKRMessage, modeInfo pskModeInfo) *spot.Spo
 	dxCall := norm.dxCall
 	deCall := norm.deCall
 	if !spot.IsValidNormalizedCallsign(dxCall) {
-		// log.Printf("PSKReporter: invalid DX call %s", msg.SenderCall) // noisy: caller requested silence
-		c.reportBadCall("DX", "invalid_callsign", msg.SenderCall, deCall, msg.SenderCall, norm.modeUpper)
+		// log.Printf("PSKReporter: invalid DX call %s", senderCall) // noisy: caller requested silence
+		c.reportBadCall("DX", "invalid_callsign", senderCall, deCall, senderCall, norm.modeUpper)
 		return nil
 	}
 	if !spot.IsValidNormalizedCallsign(deCall) {
-		// log.Printf("PSKReporter: invalid DE call %s", msg.ReceiverCall) // noisy: caller requested silence
-		c.reportBadCall("DE", "invalid_callsign", msg.ReceiverCall, msg.ReceiverCall, dxCall, norm.modeUpper)
+		// log.Printf("PSKReporter: invalid DE call %s", receiverCall) // noisy: caller requested silence
+		c.reportBadCall("DE", "invalid_callsign", receiverCall, receiverCall, dxCall, norm.modeUpper)
 		return nil
 	}
 
 	// Validate timestamp is reasonable (not zero, not too far in past/future)
 	// PSKReporter timestamps are Unix timestamps in seconds
-	if msg.Timestamp == 0 {
-		log.Printf("PSKReporter: Invalid timestamp (zero) for spot %s", msg.SenderCall)
+	if msg.timestamp == 0 {
+		log.Printf("PSKReporter: Invalid timestamp (zero) for spot %s", senderCall)
 		return nil
 	}
 
 	// Check if timestamp is within a reasonable range (not more than 1 day old or in the future)
-	spotTime := time.Unix(msg.Timestamp, 0)
+	spotTime := time.Unix(msg.timestamp, 0)
 	age := time.Since(spotTime)
 	if age < -1*time.Hour {
 		log.Printf("PSKReporter: Spot timestamp is in the future: %s (age: %v)", spotTime.Format(time.RFC3339), age)
@@ -691,8 +706,8 @@ func (c *Client) convertToSpot(msg *PSKRMessage, modeInfo pskModeInfo) *spot.Spo
 	s.ModeProvenance = spot.ModeProvenanceSourceExplicit
 
 	// Set report (SNR in dB) when present.
-	if msg.Report != nil {
-		s.Report = *msg.Report
+	if msg.hasReport {
+		s.Report = msg.report
 		s.HasReport = true
 	}
 
@@ -734,21 +749,21 @@ func (c *Client) badCallSource() string {
 
 // Purpose: Report whether a mode needs source-skew correction.
 // Key aspects: Uses taxonomy capabilities for normalized mode input.
-// Upstream: convertToSpot.
+// Upstream: convertPayloadToSpot.
 // Downstream: None.
 func isCWorRTTY(mode string) bool {
 	return spot.SourceSkewCorrectedMode(mode)
 }
 
-// Purpose: Normalize and validate a PSKReporter message.
+// Purpose: Normalize and validate a parsed PSKReporter payload.
 // Key aspects: Uses pre-parsed mode info, validates frequency, normalizes callsigns, uppercases grids.
-// Upstream: convertToSpot.
+// Upstream: convertPayloadToSpot.
 // Downstream: spot.NormalizeCallsign, decorateSpotterCall.
-func (c *Client) normalizeMessage(msg *PSKRMessage, modeInfo pskModeInfo) (normalizedPSK, bool) {
+func (c *Client) normalizePayload(msg *pskrPayload, senderCall, receiverCall string, modeInfo pskModeInfo) (normalizedPSK, bool) {
 	if msg == nil {
 		return normalizedPSK{}, false
 	}
-	if modeInfo.canonical == "" || msg.SenderCall == "" || msg.ReceiverCall == "" {
+	if modeInfo.canonical == "" || senderCall == "" || receiverCall == "" {
 		return normalizedPSK{}, false
 	}
 	modeUpper := modeInfo.canonical
@@ -756,7 +771,7 @@ func (c *Client) normalizeMessage(msg *PSKRMessage, modeInfo pskModeInfo) (norma
 	if displayMode == "" {
 		displayMode = modeUpper
 	}
-	freqKHz := float64(msg.Frequency) / 1000.0
+	freqKHz := float64(msg.frequency) / 1000.0
 	if freqKHz <= 0 {
 		return normalizedPSK{}, false
 	}
@@ -766,10 +781,10 @@ func (c *Client) normalizeMessage(msg *PSKRMessage, modeInfo pskModeInfo) (norma
 		freqKHz = canonicalFreqKHz
 		ftCanonicalized = canonicalFreqKHz != observedFreqKHz
 	}
-	dxCall := spot.NormalizeSpotDXCallsign(msg.SenderCall)
-	deCall := c.decorateSpotterCall(msg.ReceiverCall)
-	dxGrid := strutil.NormalizeUpper(msg.SenderLocator)
-	deGrid := strutil.NormalizeUpper(msg.ReceiverLocator)
+	dxCall := spot.NormalizeSpotDXCallsign(senderCall)
+	deCall := c.decorateSpotterCall(receiverCall)
+	dxGrid := msg.senderGridString()
+	deGrid := msg.receiverGridString()
 	return normalizedPSK{
 		modeUpper:       modeUpper,
 		displayMode:     displayMode,
@@ -785,7 +800,7 @@ func (c *Client) normalizeMessage(msg *PSKRMessage, modeInfo pskModeInfo) (norma
 
 // Purpose: Normalize spotter callsign and optionally append an SSID suffix.
 // Key aspects: Uses a cache; appends "-#" only when enabled and safe.
-// Upstream: normalizeMessage.
+// Upstream: normalizePayload.
 // Downstream: spot.NormalizeCallsign, spot.CallCache.
 func (c *Client) decorateSpotterCall(raw string) string {
 	if cached, ok := c.spotterCache.Get(raw); ok {
