@@ -32,59 +32,58 @@ import (
 // preserve the support model: explain why a spot was delayed, mutated, dropped,
 // or delivered, without splitting ownership across goroutines.
 type outputPipeline struct {
-	outputChan              <-chan *spot.Spot
-	secondaryFast           *dedup.SecondaryDeduper
-	secondaryMed            *dedup.SecondaryDeduper
-	secondarySlow           *dedup.SecondaryDeduper
-	archivePeerSecondaryMed *dedup.SecondaryDeduper
-	secondaryStage          *atomic.Uint64
-	modeAssigner            *spot.ModeAssigner
-	buf                     *buffer.RingBuffer
-	telnet                  *telnet.Server
-	peerManager             *peer.Manager
-	tracker                 *stats.Tracker
-	signalResolver          *spot.SignalResolver
-	correctionCfg           config.CallCorrectionConfig
-	ctyLookup               func() *cty.CTYDatabase
-	metaCache               *callMetaCache
-	harmonicDetector        *spot.HarmonicDetector
-	harmonicCfg             config.HarmonicConfig
-	freqAvg                 *spot.FrequencyAverager
-	spotPolicy              config.SpotPolicy
-	dash                    ui.Surface
-	gridUpdate              func(call, grid string)
-	gridLookup              func(call string) (string, bool, bool)
-	gridLookupSync          func(call string) (string, bool, bool)
-	unlicensedReporter      func(source, role, call, deCall, dxCall, mode string, freq float64)
-	droppedCallLogger       *droppedCallLogger
-	adaptiveMinReports      *spot.AdaptiveMinReports
-	refresher               *adaptiveRefresher
-	spotterReliability      spot.SpotterReliability
-	spotterReliabilityCW    spot.SpotterReliability
-	spotterReliabilityRTTY  spot.SpotterReliability
-	confusionModel          *spot.ConfusionModel
-	recentBandStore         spot.RecentSupportStore
-	customSCPStore          *spot.CustomSCPStore
-	whoSpotsMeStore         *spot.WhoSpotsMeStore
-	broadcastKeepSSID       bool
-	archiveWriter           *archive.Writer
-	lastOutput              *atomic.Int64
-	pathPredictor           *pathreliability.Predictor
-	pathReport              *pathReportMetrics
-	allowedBands            map[string]struct{}
-	secondaryActive         bool
-	stabilizerEnabled       bool
-	telnetStabilizer        *telnetSpotStabilizer
-	familySuppressor        *telnetFamilySuppressor
-	temporal                *runtimeTemporalController
-	temporalTimer           *time.Timer
-	temporalTimerCh         <-chan time.Time
-	ftConfidence            *ftConfidenceController
-	ftRecentBandStore       *spot.RecentBandStore
-	ftTimer                 *time.Timer
-	ftTimerCh               <-chan time.Time
-	ftTimerDue              time.Time
-	toxicityClassifier      *toxicity.Classifier
+	outputChan             <-chan *spot.Spot
+	secondaryFast          *dedup.SecondaryDeduper
+	secondaryMed           *dedup.SecondaryDeduper
+	secondarySlow          *dedup.SecondaryDeduper
+	secondaryStage         *atomic.Uint64
+	modeAssigner           *spot.ModeAssigner
+	buf                    *buffer.RingBuffer
+	telnet                 *telnet.Server
+	peerManager            *peer.Manager
+	tracker                *stats.Tracker
+	signalResolver         *spot.SignalResolver
+	correctionCfg          config.CallCorrectionConfig
+	ctyLookup              func() *cty.CTYDatabase
+	metaCache              *callMetaCache
+	harmonicDetector       *spot.HarmonicDetector
+	harmonicCfg            config.HarmonicConfig
+	freqAvg                *spot.FrequencyAverager
+	spotPolicy             config.SpotPolicy
+	dash                   ui.Surface
+	gridUpdate             func(call, grid string)
+	gridLookup             func(call string) (string, bool, bool)
+	gridLookupSync         func(call string) (string, bool, bool)
+	unlicensedReporter     func(source, role, call, deCall, dxCall, mode string, freq float64)
+	droppedCallLogger      *droppedCallLogger
+	adaptiveMinReports     *spot.AdaptiveMinReports
+	refresher              *adaptiveRefresher
+	spotterReliability     spot.SpotterReliability
+	spotterReliabilityCW   spot.SpotterReliability
+	spotterReliabilityRTTY spot.SpotterReliability
+	confusionModel         *spot.ConfusionModel
+	recentBandStore        spot.RecentSupportStore
+	customSCPStore         *spot.CustomSCPStore
+	whoSpotsMeStore        *spot.WhoSpotsMeStore
+	broadcastKeepSSID      bool
+	archiveWriter          *archive.Writer
+	lastOutput             *atomic.Int64
+	pathPredictor          *pathreliability.Predictor
+	pathReport             *pathReportMetrics
+	allowedBands           map[string]struct{}
+	secondaryActive        bool
+	stabilizerEnabled      bool
+	telnetStabilizer       *telnetSpotStabilizer
+	familySuppressor       *telnetFamilySuppressor
+	temporal               *runtimeTemporalController
+	temporalTimer          *time.Timer
+	temporalTimerCh        <-chan time.Time
+	ftConfidence           *ftConfidenceController
+	ftRecentBandStore      *spot.RecentBandStore
+	ftTimer                *time.Timer
+	ftTimerCh              <-chan time.Time
+	ftTimerDue             time.Time
+	toxicityClassifier     *toxicity.Classifier
 }
 
 // outputSpotContext carries mutable spot state and resolver context through the
@@ -108,7 +107,6 @@ func newOutputPipeline(
 	secondaryFast *dedup.SecondaryDeduper,
 	secondaryMed *dedup.SecondaryDeduper,
 	secondarySlow *dedup.SecondaryDeduper,
-	archivePeerSecondaryMed *dedup.SecondaryDeduper,
 	secondaryStage *atomic.Uint64,
 	modeAssigner *spot.ModeAssigner,
 	buf *buffer.RingBuffer,
@@ -147,51 +145,50 @@ func newOutputPipeline(
 	toxicityClassifier *toxicity.Classifier,
 ) *outputPipeline {
 	pipeline := &outputPipeline{
-		outputChan:              deduplicator.GetOutputChannel(),
-		secondaryFast:           secondaryFast,
-		secondaryMed:            secondaryMed,
-		secondarySlow:           secondarySlow,
-		archivePeerSecondaryMed: archivePeerSecondaryMed,
-		secondaryStage:          secondaryStage,
-		modeAssigner:            modeAssigner,
-		buf:                     buf,
-		telnet:                  telnet,
-		peerManager:             peerManager,
-		tracker:                 tracker,
-		signalResolver:          signalResolver,
-		correctionCfg:           correctionCfg,
-		ctyLookup:               ctyLookup,
-		metaCache:               metaCache,
-		harmonicDetector:        harmonicDetector,
-		harmonicCfg:             harmonicCfg,
-		freqAvg:                 freqAvg,
-		spotPolicy:              spotPolicy,
-		dash:                    dash,
-		gridUpdate:              gridUpdate,
-		gridLookup:              gridLookup,
-		gridLookupSync:          gridLookupSync,
-		unlicensedReporter:      unlicensedReporter,
-		droppedCallLogger:       droppedCallLogger,
-		adaptiveMinReports:      adaptiveMinReports,
-		refresher:               refresher,
-		spotterReliability:      spotterReliability,
-		spotterReliabilityCW:    spotterReliabilityCW,
-		spotterReliabilityRTTY:  spotterReliabilityRTTY,
-		confusionModel:          confusionModel,
-		recentBandStore:         recentBandStore,
-		customSCPStore:          customSCPStore,
-		whoSpotsMeStore:         whoSpotsMeStore,
-		broadcastKeepSSID:       broadcastKeepSSID,
-		archiveWriter:           archiveWriter,
-		lastOutput:              lastOutput,
-		pathPredictor:           pathPredictor,
-		pathReport:              pathReport,
-		allowedBands:            allowedBands,
-		toxicityClassifier:      toxicityClassifier,
-		secondaryActive:         secondaryFast != nil || secondaryMed != nil || secondarySlow != nil,
-		temporal:                newRuntimeTemporalController(correctionCfg),
-		ftConfidence:            newFTConfidenceController(correctionCfg, tracker),
-		ftRecentBandStore:       newFTRecentBandStore(correctionCfg),
+		outputChan:             deduplicator.GetOutputChannel(),
+		secondaryFast:          secondaryFast,
+		secondaryMed:           secondaryMed,
+		secondarySlow:          secondarySlow,
+		secondaryStage:         secondaryStage,
+		modeAssigner:           modeAssigner,
+		buf:                    buf,
+		telnet:                 telnet,
+		peerManager:            peerManager,
+		tracker:                tracker,
+		signalResolver:         signalResolver,
+		correctionCfg:          correctionCfg,
+		ctyLookup:              ctyLookup,
+		metaCache:              metaCache,
+		harmonicDetector:       harmonicDetector,
+		harmonicCfg:            harmonicCfg,
+		freqAvg:                freqAvg,
+		spotPolicy:             spotPolicy,
+		dash:                   dash,
+		gridUpdate:             gridUpdate,
+		gridLookup:             gridLookup,
+		gridLookupSync:         gridLookupSync,
+		unlicensedReporter:     unlicensedReporter,
+		droppedCallLogger:      droppedCallLogger,
+		adaptiveMinReports:     adaptiveMinReports,
+		refresher:              refresher,
+		spotterReliability:     spotterReliability,
+		spotterReliabilityCW:   spotterReliabilityCW,
+		spotterReliabilityRTTY: spotterReliabilityRTTY,
+		confusionModel:         confusionModel,
+		recentBandStore:        recentBandStore,
+		customSCPStore:         customSCPStore,
+		whoSpotsMeStore:        whoSpotsMeStore,
+		broadcastKeepSSID:      broadcastKeepSSID,
+		archiveWriter:          archiveWriter,
+		lastOutput:             lastOutput,
+		pathPredictor:          pathPredictor,
+		pathReport:             pathReport,
+		allowedBands:           allowedBands,
+		toxicityClassifier:     toxicityClassifier,
+		secondaryActive:        secondaryFast != nil || secondaryMed != nil || secondarySlow != nil,
+		temporal:               newRuntimeTemporalController(correctionCfg),
+		ftConfidence:           newFTConfidenceController(correctionCfg, tracker),
+		ftRecentBandStore:      newFTRecentBandStore(correctionCfg),
 	}
 	pipeline.stabilizerEnabled = telnet != nil && correctionCfg.Enabled && correctionCfg.StabilizerEnabled && recentBandStore != nil
 	if pipeline.stabilizerEnabled {

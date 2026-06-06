@@ -120,10 +120,9 @@ type clusterRuntime struct {
 	ingestValidator *ingestValidator
 	ingestInput     chan<- *spot.Spot
 
-	secondaryFast           *dedup.SecondaryDeduper
-	secondaryMed            *dedup.SecondaryDeduper
-	secondarySlow           *dedup.SecondaryDeduper
-	archivePeerSecondaryMed *dedup.SecondaryDeduper
+	secondaryFast *dedup.SecondaryDeduper
+	secondaryMed  *dedup.SecondaryDeduper
+	secondarySlow *dedup.SecondaryDeduper
 
 	modeAssigner       *spot.ModeAssigner
 	toxicityClassifier *toxicity.Classifier
@@ -146,13 +145,6 @@ type clusterRuntime struct {
 	dxsummitClient *dxsummit.Client
 	pskrClient     *pskreporter.Client
 	pskrTopics     []string
-}
-
-type archivePeerSecondaryPolicy struct {
-	window       time.Duration
-	preferStrong bool
-	label        string
-	keyMode      dedup.SecondaryKeyMode
 }
 
 func newClusterRuntime(versionInfo BuildInfo, cfg *config.Config, configSource string) *clusterRuntime {
@@ -780,49 +772,8 @@ func (r *clusterRuntime) initializeSecondaryDedupers() {
 		log.Println("Secondary dedupe (slow) disabled")
 	}
 
-	policy := selectArchivePeerSecondaryPolicy(r.cfg, secondaryFastWindow, secondaryMedWindow, secondarySlowWindow)
-	if policy.window > 0 {
-		if policy.keyMode == dedup.SecondaryKeyCQZone {
-			r.archivePeerSecondaryMed = dedup.NewSecondaryDeduperWithKey(policy.window, policy.preferStrong, policy.keyMode)
-		} else {
-			r.archivePeerSecondaryMed = dedup.NewSecondaryDeduper(policy.window, policy.preferStrong)
-		}
-		r.archivePeerSecondaryMed.Start()
-		log.Printf("Archive/peer secondary dedupe (%s) active with %v window (stabilizer split)", policy.label, policy.window)
-	}
 	if secondaryFastWindow <= 0 && secondaryMedWindow <= 0 && secondarySlowWindow <= 0 {
 		log.Println("Warning: secondary dedupe disabled (fast+med+slow=0); spots broadcast without secondary suppression")
-	}
-}
-
-func selectArchivePeerSecondaryPolicy(cfg *config.Config, fastWindow, medWindow, slowWindow time.Duration) archivePeerSecondaryPolicy {
-	if cfg == nil || !cfg.CallCorrection.Enabled || !cfg.CallCorrection.StabilizerEnabled {
-		return archivePeerSecondaryPolicy{}
-	}
-	switch {
-	case medWindow > 0:
-		return archivePeerSecondaryPolicy{
-			window:       medWindow,
-			preferStrong: cfg.Dedup.SecondaryMedPreferStrong,
-			label:        "med",
-			keyMode:      dedup.SecondaryKeyGrid2,
-		}
-	case fastWindow > 0:
-		return archivePeerSecondaryPolicy{
-			window:       fastWindow,
-			preferStrong: cfg.Dedup.SecondaryFastPreferStrong,
-			label:        "fast-fallback",
-			keyMode:      dedup.SecondaryKeyGrid2,
-		}
-	case slowWindow > 0:
-		return archivePeerSecondaryPolicy{
-			window:       slowWindow,
-			preferStrong: cfg.Dedup.SecondarySlowPreferStrong,
-			label:        "slow-fallback",
-			keyMode:      dedup.SecondaryKeyCQZone,
-		}
-	default:
-		return archivePeerSecondaryPolicy{}
 	}
 }
 
@@ -1095,7 +1046,6 @@ func (r *clusterRuntime) startOutputPipeline() {
 		r.secondaryFast,
 		r.secondaryMed,
 		r.secondarySlow,
-		r.archivePeerSecondaryMed,
 		&r.secondaryStageCount,
 		r.modeAssigner,
 		r.spotBuffer,
@@ -1420,9 +1370,6 @@ func (r *clusterRuntime) shutdown() {
 	}
 	if r.secondarySlow != nil {
 		r.secondarySlow.Stop()
-	}
-	if r.archivePeerSecondaryMed != nil {
-		r.archivePeerSecondaryMed.Stop()
 	}
 	if r.rbnClient != nil {
 		r.rbnClient.Stop()

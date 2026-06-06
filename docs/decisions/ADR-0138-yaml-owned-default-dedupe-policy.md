@@ -54,4 +54,5 @@ runtime path. This decision changes the telnet/user default only.
 - Related tests: `config/dedup_config_test.go`, `filter/user_record_test.go`, `telnet/server_options_test.go`
 - Related docs: `README.md`, `telnet/README.md`, `data/config/README.md`, `data/config/dedupe.yaml`
 - Related TSRs:
-- Supersedes / superseded by:
+- Supersedes / superseded by: ADR-0148 supersedes the archive/peer
+  MED-oriented side rail; telnet default-policy behavior remains accepted.

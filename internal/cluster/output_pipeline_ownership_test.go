@@ -63,11 +63,10 @@ func TestOutputPipelineEmitSpotReusesFinalOwnedSnapshot(t *testing.T) {
 	}
 
 	pipeline.emitSpot(&ctx, outputDeliveryPlan{
-		archivePeerAllowMed: true,
-		telnetDeliverNow:    true,
-		allowFast:           true,
-		allowMed:            true,
-		allowSlow:           true,
+		telnetDeliverNow: true,
+		allowFast:        true,
+		allowMed:         true,
+		allowSlow:        true,
 	})
 
 	recent := ring.GetRecent(1)

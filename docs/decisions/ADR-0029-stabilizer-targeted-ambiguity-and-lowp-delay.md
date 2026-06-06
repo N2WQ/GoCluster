@@ -73,3 +73,6 @@ Decision Origin: Design
   - `stabilizer_test.go`
   - `stats/tracker_stabilizer_test.go`
   - `config/call_correction_stabilizer_test.go`
+- Partial supersession:
+  - ADR-0148 supersedes the archive/peer unchanged clause. Reason-scoped
+    stabilizer delay policy remains accepted.

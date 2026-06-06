@@ -58,3 +58,6 @@ Decision Origin: Design
   - `README.md`
   - `data/config/pipeline.yaml`
   - `docs/decision-log.md`
+- Partial supersession:
+  - ADR-0148 supersedes the archive/peer unchanged clause. Stabilizer retry
+    bounds and timeout-action behavior remain accepted.

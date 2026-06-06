@@ -10,14 +10,17 @@ import (
 )
 
 type outputDeliveryPlan struct {
-	archivePeerAllowMed bool
-	allowFast           bool
-	allowMed            bool
-	allowSlow           bool
-	telnetDeliverNow    bool
-	telnetDeliverSelf   bool
-	familySnapshot      spot.ResolverSnapshot
-	familySnapshotOK    bool
+	allowFast         bool
+	allowMed          bool
+	allowSlow         bool
+	telnetDeliverNow  bool
+	telnetDeliverSelf bool
+	familySnapshot    spot.ResolverSnapshot
+	familySnapshotOK  bool
+}
+
+func (p outputDeliveryPlan) normalFanoutAllowed() bool {
+	return p.allowFast || p.allowMed || p.allowSlow
 }
 
 // startStabilizerReleaseLoop routes delayed spots back through the output
@@ -33,9 +36,9 @@ func (p *outputPipeline) startStabilizerReleaseLoop() {
 	}()
 }
 
-// handleStabilizerRelease rechecks resolver, support-floor, license, and
-// secondary gates after a delay because the evidence that justified holding the
-// spot may have changed while it was queued.
+// handleStabilizerRelease rechecks resolver, support-floor, license, and the
+// final shared secondary gates after a delay because the evidence that justified
+// holding the spot may have changed while it was queued.
 func (p *outputPipeline) handleStabilizerRelease(envelope *telnetStabilizerEnvelope) {
 	if envelope == nil || envelope.spot == nil {
 		return
@@ -110,18 +113,10 @@ func (p *outputPipeline) handleStabilizerRelease(envelope *telnetStabilizerEnvel
 	}
 	recordRecentBandObservation(delayed, p.recentBandStore, p.customSCPStore, p.correctionCfg)
 	recordWhoSpotsMeObservation(delayed, p.whoSpotsMeStore, time.Now().UTC())
-	allowFast, allowMed, allowSlow := p.computeTelnetAllows(delayed)
-	delayedSnapshot := delayed.SnapshotForAsync()
-	if delayedSnapshot == nil {
-		return
-	}
-	dxCall := normalizedDXCall(delayedSnapshot)
-	if !allowFast && !allowMed && !allowSlow {
-		p.telnet.DeliverSelfSpotOwned(dxCall, delayedSnapshot)
-		return
-	}
-	if p.familySuppressor != nil && p.familySuppressor.ShouldSuppressWithResolver(delayed, p.correctionCfg, time.Now().UTC(), delaySnapshot, delaySnapshotOK) {
-		p.telnet.DeliverSelfSpotOwned(dxCall, delayedSnapshot)
+	plan := p.buildFinalDeliveryPlan(delayed, delaySnapshot, delaySnapshotOK, time.Now().UTC())
+	releaseCtx := outputSpotContext{spot: delayed}
+	if !plan.normalFanoutAllowed() {
+		p.emitSpot(&releaseCtx, plan)
 		return
 	}
 	if p.tracker != nil {
@@ -129,16 +124,14 @@ func (p *outputPipeline) handleStabilizerRelease(envelope *telnetStabilizerEnvel
 		p.tracker.IncrementStabilizerReleasedDelayedReason(stabilizerReleaseReason(delayDecision, envelope.delayReason))
 		p.tracker.ObserveStabilizerGlyphTurns(delayed.Confidence, checksCompleted)
 	}
-	if p.lastOutput != nil {
-		p.lastOutput.Store(time.Now().UTC().UnixNano())
-	}
-	p.telnet.BroadcastSpotOwned(delayedSnapshot, allowFast, allowMed, allowSlow)
+	p.updateGridCache(delayed)
+	p.emitSpot(&releaseCtx, plan)
 }
 
-// computeTelnetAllows translates optional secondary dedup rails into fast/med/
-// slow telnet delivery decisions. The fallback keeps older configs usable when
-// only one rail is enabled.
-func (p *outputPipeline) computeTelnetAllows(s *spot.Spot) (bool, bool, bool) {
+// computeSecondaryAllows translates optional secondary dedup rails into
+// fast/med/slow output-policy decisions. Telnet clients consume all three
+// policy lanes; archive and peer consume the final shared MED lane.
+func (p *outputPipeline) computeSecondaryAllows(s *spot.Spot) (bool, bool, bool) {
 	allowFast := true
 	if p.secondaryFast != nil {
 		allowFast = p.secondaryFast.ShouldForward(s)
@@ -171,6 +164,36 @@ func (p *outputPipeline) computeTelnetAllows(s *spot.Spot) (bool, bool, bool) {
 	return allowFast, allowMed, allowSlow
 }
 
+func (p *outputPipeline) buildFinalDeliveryPlan(
+	s *spot.Spot,
+	familySnapshot spot.ResolverSnapshot,
+	familySnapshotOK bool,
+	now time.Time,
+) outputDeliveryPlan {
+	allowFast, allowMed, allowSlow := p.computeSecondaryAllows(s)
+	plan := outputDeliveryPlan{
+		allowFast:        allowFast,
+		allowMed:         allowMed,
+		allowSlow:        allowSlow,
+		telnetDeliverNow: p.telnet != nil,
+		familySnapshot:   familySnapshot,
+		familySnapshotOK: familySnapshotOK,
+	}
+	if !plan.normalFanoutAllowed() {
+		plan.telnetDeliverNow = false
+		plan.telnetDeliverSelf = p.telnet != nil
+		return plan
+	}
+	if p.familySuppressor != nil && p.familySuppressor.ShouldSuppressWithResolver(s, p.correctionCfg, now, familySnapshot, familySnapshotOK) {
+		plan.allowFast = false
+		plan.allowMed = false
+		plan.allowSlow = false
+		plan.telnetDeliverNow = false
+		plan.telnetDeliverSelf = p.telnet != nil
+	}
+	return plan
+}
+
 // deliverSpot is the final synchronous fanout stage after all mutation and
 // suppression decisions are complete.
 func (p *outputPipeline) deliverSpot(ctx *outputSpotContext) {
@@ -181,42 +204,31 @@ func (p *outputPipeline) deliverSpot(ctx *outputSpotContext) {
 	if !ok {
 		return
 	}
-	p.updateGridCache(ctx.spot)
+	if plan.normalFanoutAllowed() {
+		p.updateGridCache(ctx.spot)
+	}
 	p.emitSpot(ctx, plan)
 }
 
-// resolveDeliveryPlan decides whether telnet sees the spot now, later, only as
-// a self-owned echo, or not at all. Archive/peer allowance is kept separate so
-// telnet-facing stabilization never changes archival truth.
+// resolveDeliveryPlan decides whether a spot reaches final fanout now, waits in
+// the stabilizer, or is reduced to a telnet self-echo. Secondary dedupe is the
+// final shared thinning gate after stabilizer processing.
 func (p *outputPipeline) resolveDeliveryPlan(ctx *outputSpotContext) (outputDeliveryPlan, bool) {
 	s := ctx.spot
 	plan := outputDeliveryPlan{
-		archivePeerAllowMed: true,
-		allowFast:           true,
-		allowMed:            true,
-		allowSlow:           true,
-		telnetDeliverNow:    p.telnet != nil,
-	}
-	if p.archivePeerSecondaryMed != nil {
-		plan.archivePeerAllowMed = p.archivePeerSecondaryMed.ShouldForward(s)
+		allowFast:        true,
+		allowMed:         true,
+		allowSlow:        true,
+		telnetDeliverNow: p.telnet != nil,
 	}
 	if !p.stabilizerEnabled {
-		plan.allowFast, plan.allowMed, plan.allowSlow = p.computeTelnetAllows(s)
-		plan.archivePeerAllowMed = plan.allowMed
 		recordRecentBandObservation(s, p.recentBandStore, p.customSCPStore, p.correctionCfg)
 		recordWhoSpotsMeObservation(s, p.whoSpotsMeStore, time.Now().UTC())
 		p.recordFTRecentBandObservation(s)
 		if ctx.hasStabilizerResolverKey && p.signalResolver != nil {
 			plan.familySnapshot, plan.familySnapshotOK = p.signalResolver.Lookup(ctx.stabilizerResolverKey)
 		}
-		if !plan.allowFast && !plan.allowMed && !plan.allowSlow {
-			p.deliverSelfSpotOwned(s)
-			return plan, false
-		}
-		if p.familySuppressor != nil && p.familySuppressor.ShouldSuppressWithResolver(s, p.correctionCfg, time.Now().UTC(), plan.familySnapshot, plan.familySnapshotOK) {
-			p.deliverSelfSpotOwned(s)
-			return plan, false
-		}
+		plan = p.buildFinalDeliveryPlan(s, plan.familySnapshot, plan.familySnapshotOK, time.Now().UTC())
 		return plan, true
 	}
 
@@ -241,20 +253,18 @@ func (p *outputPipeline) resolveDeliveryPlan(ctx *outputSpotContext) (outputDeli
 				p.tracker.IncrementStabilizerHeld()
 				p.tracker.IncrementStabilizerHeldReason(delayDecision.Reason.String())
 			}
-		} else {
-			plan.allowFast, plan.allowMed, plan.allowSlow = p.computeTelnetAllows(s)
-			plan.telnetDeliverNow = true
-			if p.tracker != nil {
-				p.tracker.IncrementStabilizerOverflowRelease()
-				if stabilizerImmediateCountEligible(s) {
-					p.tracker.IncrementStabilizerReleasedImmediate()
-					p.tracker.IncrementStabilizerReleasedImmediateReason(delayDecision.Reason.String())
-				}
+			return plan, false
+		}
+		plan = p.buildFinalDeliveryPlan(s, plan.familySnapshot, plan.familySnapshotOK, time.Now().UTC())
+		if p.tracker != nil {
+			p.tracker.IncrementStabilizerOverflowRelease()
+			if stabilizerImmediateCountEligible(s) {
+				p.tracker.IncrementStabilizerReleasedImmediate()
+				p.tracker.IncrementStabilizerReleasedImmediateReason(delayDecision.Reason.String())
 			}
 		}
 	} else {
-		plan.allowFast, plan.allowMed, plan.allowSlow = p.computeTelnetAllows(s)
-		plan.telnetDeliverNow = true
+		plan = p.buildFinalDeliveryPlan(s, plan.familySnapshot, plan.familySnapshotOK, time.Now().UTC())
 		if p.tracker != nil && stabilizerImmediateCountEligible(s) {
 			p.tracker.IncrementStabilizerReleasedImmediate()
 			p.tracker.IncrementStabilizerReleasedImmediateReason(stabilizerDelayReasonNone.String())
@@ -265,26 +275,7 @@ func (p *outputPipeline) resolveDeliveryPlan(ctx *outputSpotContext) (outputDeli
 		recordWhoSpotsMeObservation(s, p.whoSpotsMeStore, time.Now().UTC())
 		p.recordFTRecentBandObservation(s)
 	}
-	if plan.telnetDeliverNow && !plan.allowFast && !plan.allowMed && !plan.allowSlow {
-		plan.telnetDeliverSelf = true
-		plan.telnetDeliverNow = false
-	}
-	if plan.telnetDeliverNow && p.familySuppressor != nil && p.familySuppressor.ShouldSuppressWithResolver(s, p.correctionCfg, time.Now().UTC(), plan.familySnapshot, plan.familySnapshotOK) {
-		plan.telnetDeliverSelf = true
-		plan.telnetDeliverNow = false
-	}
 	return plan, true
-}
-
-func (p *outputPipeline) deliverSelfSpotOwned(s *spot.Spot) {
-	if p == nil || p.telnet == nil || s == nil {
-		return
-	}
-	dxCall := normalizedDXCall(s)
-	if dxCall == "" {
-		return
-	}
-	p.telnet.DeliverSelfSpotOwned(dxCall, s.SealForAsync())
 }
 
 func (p *outputPipeline) updateGridCache(s *spot.Spot) {
@@ -318,22 +309,22 @@ func (p *outputPipeline) emitSpot(ctx *outputSpotContext, plan outputDeliveryPla
 	if shared == nil {
 		return
 	}
-	if p.buf != nil && shouldBufferSpot(shared) {
+	if p.buf != nil && plan.normalFanoutAllowed() && shouldBufferSpot(shared) {
 		p.buf.AddOwned(shared)
 	}
 	emittedNow := false
-	if p.archiveWriter != nil && plan.archivePeerAllowMed && shouldArchiveSpot(shared) {
+	if p.archiveWriter != nil && plan.allowMed && shouldArchiveSpot(shared) {
 		p.archiveWriter.EnqueueOwned(archiveSnapshotForSpot(shared))
 		emittedNow = true
 	}
-	if plan.telnetDeliverNow {
+	if plan.telnetDeliverNow && plan.normalFanoutAllowed() {
 		p.telnet.BroadcastSpotOwned(shared, plan.allowFast, plan.allowMed, plan.allowSlow)
 		emittedNow = true
 	}
 	if plan.telnetDeliverSelf {
 		p.telnet.DeliverSelfSpotOwned(normalizedDXCall(shared), shared)
 	}
-	if p.peerManager != nil && plan.archivePeerAllowMed {
+	if p.peerManager != nil && plan.allowMed {
 		if p.peerManager.PublishDXWithComment(shared, peerPublishComment(shared)) {
 			emittedNow = true
 		}

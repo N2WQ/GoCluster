@@ -98,6 +98,9 @@ Tags: call-correction, telnet, dedupe, bounded-state
   - `main_test.go`
   - `config/call_correction_stabilizer_test.go`
   - `stats/tracker_stabilizer_test.go`
+- Partial supersession:
+  - ADR-0148 supersedes the archive/peer MED split and preserved archive/peer
+    timing clauses. The bounded stabilizer delay policy remains accepted.
 - Docs/config:
   - `data/config/pipeline.yaml`
   - `README.md`
