@@ -12,6 +12,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
 | TSR-0001 | <title> | Open | YYYY-MM-DD | <area> | - | `docs/troubleshooting/TSR-0001-<slug>.md` |
+| TSR-0026 | Archive Cleanup Scan CPU Spikes | Resolved | 2026-06-06 | archive, Pebble, hot path, profiling | ADR-0151 | `docs/troubleshooting/TSR-0026-archive-cleanup-scan-cpu-spikes.md` |
 | TSR-0025 | P50 Merge CPU And Heap Pressure | Resolved | 2026-06-04 | pathreliability, retained state, hot path, profiling | ADR-0139 | `docs/troubleshooting/TSR-0025-p50-merge-cpu-and-heap-pressure.md` |
 | TSR-0024 | Custom SCP Test Time Horizon | Resolved | 2026-05-23 | spot, custom_scp, tests | ADR-0136 | `docs/troubleshooting/TSR-0024-custom-scp-test-time-horizon.md` |
 | TSR-0023 | Path Capped Count Gate Overload | Resolved | 2026-05-11 | pathreliability, config, telnet diagnostics, propagation logs | ADR-0134 | `docs/troubleshooting/TSR-0023-path-capped-count-gate-overload.md` |

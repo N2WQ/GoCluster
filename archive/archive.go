@@ -81,11 +81,6 @@ const (
 )
 
 const (
-	cleanupBatchDefault = 2000
-	cleanupBatchMax     = 10000
-)
-
-const (
 	flagHasReport = 1 << iota
 	flagIsHuman
 	flagDXGridDerived
@@ -407,92 +402,53 @@ func (w *Writer) cleanupLoop() {
 	}
 }
 
-// Purpose: Run one retention cleanup pass.
-// Key aspects: Deletes expired rows in small batches to keep write locks short
-// under high ingest rates.
-// Upstream: cleanupLoop.
-// Downstream: pebble.Batch deletes.
 func (w *Writer) cleanupOnce() {
+	w.cleanupOnceAt(time.Now().UTC())
+}
+
+// Purpose: Run one retention cleanup pass.
+// Key aspects: Deletes expired timestamp keys with one Pebble range tombstone
+// after a bounded oldest-key probe. Repeated cleanup intentionally reuses the
+// full expired range so late-arriving old spots are removed on the next pass.
+// Upstream: cleanupLoop.
+// Downstream: pebble.DeleteRange.
+func (w *Writer) cleanupOnceAt(now time.Time) {
 	if w == nil || w.db == nil {
 		return
 	}
-	now := time.Now().UTC().UnixNano()
-	cutoff := retentionCutoff(now, w.cfg.RetentionSeconds)
-
-	batchSize := w.cfg.CleanupBatchSize
-	if batchSize <= 0 {
-		batchSize = cleanupBatchDefault
+	cutoff := retentionCutoff(now.UTC().UnixNano(), w.cfg.RetentionSeconds)
+	if cutoff <= 0 {
+		return
 	}
-	if batchSize > cleanupBatchMax {
-		batchSize = cleanupBatchMax
-	}
-	yield := time.Duration(w.cfg.CleanupBatchYieldMS) * time.Millisecond
-	if w.cfg.CleanupBatchYieldMS < 0 {
-		yield = 0
-	}
+	rangeEnd := spotKeyBytes(cutoff, 0)
 
 	iter, err := w.db.NewIter(spotIterOptions)
 	if err != nil {
 		log.Printf("archive: cleanup iterator: %v", err)
 		return
 	}
-	defer iter.Close()
 
-	var pebbleBatch *pebble.Batch
-	defer func() {
-		if pebbleBatch != nil {
-			pebbleBatch.Close()
-		}
-	}()
-
-	pending := 0
-	ensureBatch := func() *pebble.Batch {
-		if pebbleBatch == nil {
-			pebbleBatch = w.db.NewBatch()
-		}
-		return pebbleBatch
-	}
-	commitBatch := func() bool {
-		if pending == 0 {
-			return true
-		}
-		if pebbleBatch == nil {
-			return true
-		}
-		if err := pebbleBatch.Commit(w.writeOpts); err != nil {
-			log.Printf("archive: cleanup commit: %v", err)
-			return false
-		}
-		pebbleBatch.Reset()
-		pending = 0
-		if yield > 0 {
-			time.Sleep(yield)
-		}
-		return true
-	}
-
-	for iter.First(); iter.Valid(); iter.Next() {
-		ts, ok := parseSpotKey(iter.Key())
-		if !ok {
-			continue
-		}
-		if ts >= cutoff {
-			break
-		}
-		if err := ensureBatch().Delete(iter.Key(), nil); err != nil {
-			log.Printf("archive: cleanup delete: %v", err)
-			return
-		}
-		pending++
-		if pending >= batchSize && !commitBatch() {
-			return
-		}
+	hasExpired := false
+	if iter.First() {
+		hasExpired = bytes.Compare(iter.Key(), rangeEnd) < 0
+	} else if err := iter.Error(); err != nil {
+		log.Printf("archive: cleanup iterate: %v", err)
+		_ = iter.Close()
+		return
 	}
 	if err := iter.Error(); err != nil {
 		log.Printf("archive: cleanup iterate: %v", err)
+		_ = iter.Close()
 		return
 	}
-	_ = commitBatch()
+	_ = iter.Close()
+
+	if !hasExpired {
+		return
+	}
+	if err := w.db.DeleteRange(spotIterLower, rangeEnd, w.writeOpts); err != nil {
+		log.Printf("archive: cleanup delete range: %v", err)
+	}
 }
 
 func retentionCutoff(now int64, seconds int) int64 {

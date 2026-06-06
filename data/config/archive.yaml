@@ -15,13 +15,9 @@ archive:
   queue_size: 5000            # Drops newest when full to protect hot path.
   batch_size: 3000            # Max rows per flush.
   batch_interval_ms: 3000     # Max time to wait before flushing even if batch_size not reached.
-  busy_timeout_ms: 1000       # Ignored for Pebble (retained for compatibility).
-  preflight_timeout_ms: 3000  # Ignored for Pebble (retained for compatibility).
   synchronous: "off"          # OFF maximizes throughput but loses crash safety; use normal/full for durability.
   auto_delete_corrupt_db: true # When true, deletes the DB if startup integrity checks fail.
 
   # Retention and cleanup.
   cleanup_interval_seconds: 907    # How often to purge expired rows.
-  cleanup_batch_size: 2000         # Max rows per cleanup batch delete.
-  cleanup_batch_yield_ms: 50       # Sleep between cleanup batches; 0 disables the yield.
   retention_seconds: 86400         # Retention window for all archived spot modes.

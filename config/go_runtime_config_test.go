@@ -11,14 +11,14 @@ func TestLoadGoRuntimeConfigFromShippedRuntimeYAML(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
-	if cfg.GoRuntime.MemoryLimitMiB != 750 {
-		t.Fatalf("expected go_runtime.memory_limit_mib=750, got %d", cfg.GoRuntime.MemoryLimitMiB)
+	if cfg.GoRuntime.MemoryLimitMiB != 1536 {
+		t.Fatalf("expected go_runtime.memory_limit_mib=1536, got %d", cfg.GoRuntime.MemoryLimitMiB)
 	}
 	if cfg.GoRuntime.GCPercent != 50 {
 		t.Fatalf("expected go_runtime.gc_percent=50, got %d", cfg.GoRuntime.GCPercent)
 	}
-	if cfg.GoRuntime.MaxProcs != 0 {
-		t.Fatalf("expected go_runtime.max_procs=0, got %d", cfg.GoRuntime.MaxProcs)
+	if cfg.GoRuntime.MaxProcs != 2 {
+		t.Fatalf("expected go_runtime.max_procs=2, got %d", cfg.GoRuntime.MaxProcs)
 	}
 }
 

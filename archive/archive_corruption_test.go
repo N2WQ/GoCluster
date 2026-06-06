@@ -26,8 +26,6 @@ func TestAutoDeleteCorruptDB(t *testing.T) {
 		BatchSize:              10,
 		BatchIntervalMS:        1,
 		CleanupIntervalSeconds: 60,
-		CleanupBatchSize:       1,
-		CleanupBatchYieldMS:    0,
 		RetentionSeconds:       1,
 		Synchronous:            "off",
 		AutoDeleteCorruptDB:    true,

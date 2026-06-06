@@ -651,20 +651,12 @@ type ArchiveConfig struct {
 	BatchSize              int    `yaml:"batch_size"`
 	BatchIntervalMS        int    `yaml:"batch_interval_ms"`
 	CleanupIntervalSeconds int    `yaml:"cleanup_interval_seconds"`
-	// CleanupBatchSize limits how many rows are deleted per cleanup batch to keep locks short.
-	CleanupBatchSize int `yaml:"cleanup_batch_size"`
-	// CleanupBatchYieldMS sleeps between cleanup batches to reduce contention. 0 disables the yield.
-	CleanupBatchYieldMS int `yaml:"cleanup_batch_yield_ms"`
 	// RetentionSeconds applies one archive retention window to every mode.
 	RetentionSeconds int `yaml:"retention_seconds"`
-	// BusyTimeoutMS is ignored for the Pebble archive (retained for compatibility).
-	BusyTimeoutMS int `yaml:"busy_timeout_ms"`
 	// Synchronous controls archive durability: off disables fsync; normal/full/extra enable sync.
 	Synchronous string `yaml:"synchronous"`
 	// AutoDeleteCorruptDB removes the archive DB on startup if corruption is detected.
 	AutoDeleteCorruptDB bool `yaml:"auto_delete_corrupt_db"`
-	// PreflightTimeoutMS is ignored for the Pebble archive (retained for compatibility).
-	PreflightTimeoutMS int `yaml:"preflight_timeout_ms"`
 }
 
 // PeeringConfig controls DXSpider node-to-node peering.
@@ -1370,7 +1362,6 @@ type loadRawPresence struct {
 	legacySecondaryWindow                           bool
 	legacySecondaryPrefer                           bool
 	hasAdaptiveMinReportsEnabled                    bool
-	hasArchiveCleanupYield                          bool
 	hasPSKRMQTTTimeout                              bool
 	hasDXSummitBaseURL                              bool
 	hasDXSummitPollInterval                         bool
@@ -1446,7 +1437,6 @@ func captureLoadRawPresence(raw map[string]any) loadRawPresence {
 		legacySecondaryWindow:                           yamlKeyPresent(raw, "dedup", "secondary_window_seconds"),
 		legacySecondaryPrefer:                           yamlKeyPresent(raw, "dedup", "secondary_prefer_stronger_snr"),
 		hasAdaptiveMinReportsEnabled:                    yamlKeyPresent(raw, "call_correction", "adaptive_min_reports", "enabled"),
-		hasArchiveCleanupYield:                          yamlKeyPresent(raw, "archive", "cleanup_batch_yield_ms"),
 		hasPSKRMQTTTimeout:                              yamlKeyPresent(raw, "pskreporter", "mqtt_qos12_enqueue_timeout_ms"),
 		hasDXSummitBaseURL:                              yamlKeyPresent(raw, "dxsummit", "base_url"),
 		hasDXSummitPollInterval:                         yamlKeyPresent(raw, "dxsummit", "poll_interval_seconds"),
@@ -1944,7 +1934,7 @@ func normalizeDXSummitConfig(cfg *Config, presence loadRawPresence) error {
 	return nil
 }
 
-func normalizeArchiveAndStatsConfig(cfg *Config, presence loadRawPresence) error {
+func normalizeArchiveAndStatsConfig(cfg *Config, _ loadRawPresence) error {
 	if cfg.Archive.QueueSize <= 0 {
 		cfg.Archive.QueueSize = 10000
 	}
@@ -1957,26 +1947,11 @@ func normalizeArchiveAndStatsConfig(cfg *Config, presence loadRawPresence) error
 	if cfg.Archive.CleanupIntervalSeconds <= 0 {
 		cfg.Archive.CleanupIntervalSeconds = 3600
 	}
-	if cfg.Archive.CleanupBatchSize <= 0 {
-		cfg.Archive.CleanupBatchSize = 2000
-	}
-	if cfg.Archive.CleanupBatchYieldMS < 0 {
-		cfg.Archive.CleanupBatchYieldMS = 0
-	}
-	if cfg.Archive.CleanupBatchYieldMS == 0 && !presence.hasArchiveCleanupYield {
-		cfg.Archive.CleanupBatchYieldMS = 5
-	}
 	if cfg.Archive.RetentionSeconds <= 0 {
 		cfg.Archive.RetentionSeconds = DefaultArchiveRetentionSeconds
 	}
 	if strings.TrimSpace(cfg.Archive.DBPath) == "" {
 		cfg.Archive.DBPath = "data/archive/pebble"
-	}
-	if cfg.Archive.BusyTimeoutMS <= 0 {
-		cfg.Archive.BusyTimeoutMS = 1000
-	}
-	if cfg.Archive.PreflightTimeoutMS <= 0 {
-		cfg.Archive.PreflightTimeoutMS = 2000
 	}
 	syncMode := strings.ToLower(strings.TrimSpace(cfg.Archive.Synchronous))
 	if syncMode == "" {
@@ -3589,14 +3564,12 @@ func (c *Config) Print() {
 			c.DXSummit.RequestTimeoutMS)
 	}
 	if c.Archive.Enabled {
-		fmt.Printf("Archive: %s (queue=%d batch=%d/%dms cleanup=%ds cleanup_batch=%d yield=%dms retention=%ds sync=%s auto_delete_corrupt=%t)\n",
+		fmt.Printf("Archive: %s (queue=%d batch=%d/%dms cleanup=%ds retention=%ds sync=%s auto_delete_corrupt=%t)\n",
 			c.Archive.DBPath,
 			c.Archive.QueueSize,
 			c.Archive.BatchSize,
 			c.Archive.BatchIntervalMS,
 			c.Archive.CleanupIntervalSeconds,
-			c.Archive.CleanupBatchSize,
-			c.Archive.CleanupBatchYieldMS,
 			c.Archive.RetentionSeconds,
 			c.Archive.Synchronous,
 			c.Archive.AutoDeleteCorruptDB)

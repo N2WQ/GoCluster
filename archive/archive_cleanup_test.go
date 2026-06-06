@@ -9,29 +9,12 @@ import (
 	"dxcluster/spot"
 )
 
-// Purpose: Ensure cleanup deletes old rows even when batch size is small.
-// Key aspects: Inserts more stale rows than the batch size and validates retention.
+// Purpose: Ensure cleanup deletes expired rows with one timestamp range delete.
+// Key aspects: Inserts stale and retained rows, then validates the retention boundary.
 // Upstream: go test.
-// Downstream: NewWriter, cleanupOnce, Recent.
-func TestCleanupOnceDeletesInBatches(t *testing.T) {
-	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "archive.db")
-	cfg := config.ArchiveConfig{
-		Enabled:                true,
-		DBPath:                 dbPath,
-		QueueSize:              10,
-		BatchSize:              10,
-		BatchIntervalMS:        1,
-		CleanupIntervalSeconds: 60,
-		CleanupBatchSize:       2,
-		CleanupBatchYieldMS:    0,
-		RetentionSeconds:       1,
-		Synchronous:            "off",
-	}
-	writer, err := NewWriter(cfg)
-	if err != nil {
-		t.Fatalf("NewWriter() error: %v", err)
-	}
+// Downstream: NewWriter, cleanupOnceAt, Recent.
+func TestCleanupOnceRangeDeletesExpiredRows(t *testing.T) {
+	writer := newCleanupTestWriter(t, 1)
 	defer writer.Stop()
 
 	now := time.Now().UTC()
@@ -56,7 +39,7 @@ func TestCleanupOnceDeletesInBatches(t *testing.T) {
 	batch = append(batch, keepCW)
 
 	writer.flush(batch)
-	writer.cleanupOnce()
+	writer.cleanupOnceAt(now)
 
 	spots, err := writer.Recent(10)
 	if err != nil {
@@ -76,6 +59,70 @@ func TestCleanupOnceDeletesInBatches(t *testing.T) {
 	}
 }
 
+// Purpose: Verify the archive cutoff is exclusive for expired rows.
+// Key aspects: Deletes rows before cutoff while retaining rows exactly at and after cutoff.
+// Upstream: go test.
+// Downstream: cleanupOnceAt, spotKeyBytes range end semantics.
+func TestCleanupOnceRetainsCutoffBoundary(t *testing.T) {
+	const retentionSeconds = 10
+	writer := newCleanupTestWriter(t, retentionSeconds)
+	defer writer.Stop()
+
+	now := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
+	cutoff := now.Add(-retentionSeconds * time.Second)
+
+	expired := spot.NewSpot("DXOLD", "DEOLD", 14020.0, "CW")
+	expired.Time = cutoff.Add(-time.Nanosecond)
+	atCutoff := spot.NewSpot("DXCUT", "DECUT", 14021.0, "CW")
+	atCutoff.Time = cutoff
+	afterCutoff := spot.NewSpot("DXNEW", "DENEW", 14022.0, "CW")
+	afterCutoff.Time = cutoff.Add(time.Nanosecond)
+
+	writer.flush([]*spot.Spot{expired, atCutoff, afterCutoff})
+	writer.cleanupOnceAt(now)
+
+	seen := recentDXCalls(t, writer)
+	if seen["DXOLD"] {
+		t.Fatalf("expected DXOLD before cutoff to be deleted, got %+v", seen)
+	}
+	if !seen["DXCUT"] || !seen["DXNEW"] {
+		t.Fatalf("expected cutoff and newer rows to remain, got %+v", seen)
+	}
+}
+
+// Purpose: Verify repeated range cleanup removes old rows inserted after a prior cleanup.
+// Key aspects: Avoids an unsafe in-memory cleanup watermark that would miss late old rows.
+// Upstream: go test.
+// Downstream: cleanupOnceAt, Pebble range tombstone sequence behavior.
+func TestCleanupOnceDeletesLateOldRowsAfterPriorCleanup(t *testing.T) {
+	const retentionSeconds = 10
+	writer := newCleanupTestWriter(t, retentionSeconds)
+	defer writer.Stop()
+
+	now := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
+	old := now.Add(-time.Minute)
+
+	firstOld := spot.NewSpot("DXOLD1", "DEOLD1", 14020.0, "CW")
+	firstOld.Time = old
+	writer.flush([]*spot.Spot{firstOld})
+	writer.cleanupOnceAt(now)
+	if seen := recentDXCalls(t, writer); len(seen) != 0 {
+		t.Fatalf("expected first cleanup to remove old rows, got %+v", seen)
+	}
+
+	lateOld := spot.NewSpot("DXOLD2", "DEOLD2", 14021.0, "CW")
+	lateOld.Time = old
+	writer.flush([]*spot.Spot{lateOld})
+	if seen := recentDXCalls(t, writer); !seen["DXOLD2"] {
+		t.Fatalf("expected late old row to be visible before next cleanup, got %+v", seen)
+	}
+
+	writer.cleanupOnceAt(now)
+	if seen := recentDXCalls(t, writer); len(seen) != 0 {
+		t.Fatalf("expected second cleanup to remove late old rows, got %+v", seen)
+	}
+}
+
 func TestNewWriterDefaultsRetentionSeconds(t *testing.T) {
 	writer, err := NewWriter(config.ArchiveConfig{
 		DBPath:      filepath.Join(t.TempDir(), "archive.db"),
@@ -90,27 +137,31 @@ func TestNewWriterDefaultsRetentionSeconds(t *testing.T) {
 	}
 }
 
-func BenchmarkCleanupOnceSingleRetention(b *testing.B) {
+func BenchmarkCleanupOnceRangeDeleteLargeExpired(b *testing.B) {
+	const rowsPerIteration = 5000
+	now := time.Now().UTC()
+	old := now.Add(-time.Hour)
+
+	writer, err := NewWriter(config.ArchiveConfig{
+		Enabled:                true,
+		DBPath:                 filepath.Join(b.TempDir(), "archive.db"),
+		QueueSize:              rowsPerIteration,
+		BatchSize:              rowsPerIteration,
+		BatchIntervalMS:        1,
+		CleanupIntervalSeconds: 60,
+		RetentionSeconds:       1,
+		Synchronous:            "off",
+	})
+	if err != nil {
+		b.Fatalf("NewWriter() error: %v", err)
+	}
+	defer writer.Stop()
+
+	b.ReportAllocs()
+	b.ReportMetric(rowsPerIteration, "expired_rows/op")
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		dir := b.TempDir()
-		writer, err := NewWriter(config.ArchiveConfig{
-			Enabled:                true,
-			DBPath:                 filepath.Join(dir, "archive.db"),
-			QueueSize:              10,
-			BatchSize:              500,
-			BatchIntervalMS:        1,
-			CleanupIntervalSeconds: 60,
-			CleanupBatchSize:       200,
-			CleanupBatchYieldMS:    0,
-			RetentionSeconds:       1,
-			Synchronous:            "off",
-		})
-		if err != nil {
-			b.Fatalf("NewWriter() error: %v", err)
-		}
-		old := time.Now().UTC().Add(-10 * time.Second)
-		batch := make([]*spot.Spot, 0, 200)
+		batch := make([]*spot.Spot, 0, rowsPerIteration)
 		for n := 0; n < cap(batch); n++ {
 			s := spot.NewSpot("DXOLD", "DEOLD", 14020.0, "CW")
 			s.Time = old
@@ -118,8 +169,40 @@ func BenchmarkCleanupOnceSingleRetention(b *testing.B) {
 		}
 		writer.flush(batch)
 		b.StartTimer()
-		writer.cleanupOnce()
+		writer.cleanupOnceAt(now)
 		b.StopTimer()
-		writer.Stop()
 	}
+}
+
+func newCleanupTestWriter(t *testing.T, retentionSeconds int) *Writer {
+	t.Helper()
+	writer, err := NewWriter(config.ArchiveConfig{
+		Enabled:                true,
+		DBPath:                 filepath.Join(t.TempDir(), "archive.db"),
+		QueueSize:              10,
+		BatchSize:              10,
+		BatchIntervalMS:        1,
+		CleanupIntervalSeconds: 60,
+		RetentionSeconds:       retentionSeconds,
+		Synchronous:            "off",
+	})
+	if err != nil {
+		t.Fatalf("NewWriter() error: %v", err)
+	}
+	return writer
+}
+
+func recentDXCalls(t *testing.T, writer *Writer) map[string]bool {
+	t.Helper()
+	spots, err := writer.Recent(10)
+	if err != nil {
+		t.Fatalf("recent failed: %v", err)
+	}
+	seen := make(map[string]bool, len(spots))
+	for _, s := range spots {
+		if s != nil {
+			seen[s.DXCall] = true
+		}
+	}
+	return seen
 }

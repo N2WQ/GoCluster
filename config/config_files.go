@@ -102,16 +102,22 @@ func validateRemovedRuntimeKeys(raw map[string]any) error {
 	removed := []string{
 		"archive.retention_ft_seconds",
 		"archive.retention_default_seconds",
+		"archive.cleanup_batch_size",
+		"archive.cleanup_batch_yield_ms",
 		"pskreporter.modes",
 		"pskreporter.path_only_modes",
 	}
 	for _, path := range removed {
 		parts := strings.Split(path, ".")
 		if yamlKeyPresent(raw, parts...) {
-			if strings.HasPrefix(path, "archive.") {
+			switch path {
+			case "archive.retention_ft_seconds", "archive.retention_default_seconds":
 				return fmt.Errorf("removed YAML setting %q: use archive.retention_seconds", path)
+			case "archive.cleanup_batch_size", "archive.cleanup_batch_yield_ms":
+				return fmt.Errorf("removed YAML setting %q: archive cleanup now uses timestamp range deletion; remove this key", path)
+			default:
+				return fmt.Errorf("removed YAML setting %q: define PSKReporter mode routing in spot_taxonomy.yaml using pskreporter_route", path)
 			}
-			return fmt.Errorf("removed YAML setting %q: define PSKReporter mode routing in spot_taxonomy.yaml using pskreporter_route", path)
 		}
 	}
 	return nil
@@ -179,7 +185,6 @@ var runtimeAllowZeroSettings = map[string]struct{}{
 	"logging.ingest_connections.dedupe_window_seconds":                         {},
 	"logging.peer_connections.retention_days":                                  {},
 	"logging.peer_connections.dedupe_window_seconds":                           {},
-	"archive.cleanup_batch_yield_ms":                                           {},
 	"dedup.cluster_window_seconds":                                             {},
 	"dedup.secondary_fast_window_seconds":                                      {},
 	"dedup.secondary_med_window_seconds":                                       {},

@@ -62,7 +62,7 @@ Configuration is split by concern so you only edit the relevant file:
 - `ingest.yaml` - deployment/runtime settings for RBN/PSKReporter/human/DXSummit source enablement, source cadence, and call cache bounds.
 - `peering.yaml` - deployment/runtime settings for peer links and ACLs.
 - `reputation.yaml` - deployment/runtime settings plus operator policy for reputation gates.
-- `archive.yaml` - deployment/runtime settings for archive enablement, storage path, backpressure, and single-window retention.
+- `archive.yaml` - deployment/runtime settings for archive enablement, storage path, backpressure, cleanup cadence, and single-window retention; expired rows are removed with timestamp range deletion rather than operator-tuned cleanup batches.
 - `data.yaml` - deployment/runtime settings for CTY/FCC/skew sources, grid/cache tuning, data paths, and H3 table path.
 - `prop_report.yaml` - deployment/runtime settings for scheduled propagation-report generation controls.
 - `openai.yaml` - optional secret-bearing tool config for LLM report generation.
