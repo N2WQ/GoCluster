@@ -1,13 +1,15 @@
 # Code Maps
 
-This directory is for support-agent-readable code-map summaries. Use it when a
-dependency or package graph will remain useful beyond one Codex turn.
+This directory is for support-agent-readable code maps generated from current
+repository evidence. Maps are generated artifacts, not hand-authored narrative
+content.
 
 The custom GPT support agent can retrieve Markdown source files, but it cannot
 run local tools such as `gopls`, `goda`, `callgraph`, or Graphviz `dot`.
-Therefore durable graph evidence belongs in small Markdown summaries that name
-the commands, packages, files, assumptions, and limits. Rendered SVG/PNG files
-may be useful locally, but they are not the support agent's authoritative input.
+Therefore durable graph evidence belongs in checked-in Markdown generated from
+code, tests, `docs/decision-log.md`, and `docs/decisions/*.md`. Rendered
+SVG/PNG files may be useful locally, but they are not the support agent's
+authoritative input.
 
 ## When To Add A Code Map
 
@@ -21,30 +23,39 @@ Add a code map only when one of these is true:
 Do not check in broad whole-repo graphs by default. They are noisy, drift
 quickly, and can make the support agent over-trust stale topology.
 
-## Required Summary Shape
+Generated map files must start with a generated-file warning and should not be
+edited by hand. Change the manifest or generator, then regenerate the map.
 
-Each checked-in code map should be a focused Markdown file with:
-- scope: packages, commands, or subsystem covered
-- generated: date and command line used
-- tools: `goda`, Graphviz `dot`, `go list`, `gopls`, `callgraph`, or other
-  evidence tools used
-- entry points: package READMEs, crawler-entry comments, source files, and tests
-  inspected
-- graph summary: the small set of edges or clusters that matter
+## Generated Map Shape
+
+Each checked-in code map is generated from `docs/code-maps/manifest.json` and
+should include:
+- scope: packages or subsystem covered
+- source fingerprint
+- generation command
+- package dependency edges
+- repository dependencies outside the explicit scope
+- source and test files discovered from Go package metadata
+- related ADRs discovered from decision-log metadata and ADR text
 - limits: what the graph does not prove, including interface dispatch,
   build-tag/test-only edges, runtime feature flags, and concrete traffic paths
-- follow-up: source files or tests the support agent should retrieve next
 
 ## Local Commands
 
 Examples:
 
 ```powershell
-goda graph ./internal/cluster ./telnet | dot -Tsvg -o .\tmp\cluster-telnet.svg
-goda tree ./internal/cluster
-go list -deps -test -json ./... | jq <filter>
-callgraph -algo rta -test ./...
+.\scripts\update-code-maps.ps1 -All
+.\scripts\check-code-maps.ps1 -All
+go run ./cmd/codemap generate -all
+go run ./cmd/codemap check -all
 ```
 
-Use rendered graphs to guide source review, not to replace it. For concrete
+Optional local visuals can still be rendered to `tmp/` when useful:
+
+```powershell
+goda graph ./internal/cluster ./telnet | dot -Tsvg -o .\tmp\cluster-telnet.svg
+```
+
+Use generated maps to guide source review, not to replace it. For concrete
 behavior, verify the relevant source, tests, config, and decision records.

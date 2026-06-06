@@ -641,6 +641,13 @@ The repo root now follows a simple ownership rule:
 - `main.go` is the live binary entrypoint only.
 - `internal/cluster` contains the live runtime implementation and cluster-local helpers.
 - `cmd/` contains standalone tools and offline runners.
+- `scripts/` contains build, release, profiling, validation, and developer helper scripts; use [`scripts/README.md`](scripts/README.md) before running or changing them.
+- `data/` contains more than config: public example YAML in `data/config/`,
+  private ignored config in `data/config.local/`, reference inputs such as CTY,
+  FCC, H3, grids, beacons, and reputation/IPinfo data, plus runtime/local state
+  such as users, logs, reports, diagnostics, peer topology, RBN data, SCP data,
+  and skew/correction data. Treat committed example/reference data differently
+  from ignored operator-local state.
 - Domain packages such as `spot`, `peer`, `telnet`, `config`, and `pathreliability` remain reusable subsystems with their own tests and package-local docs.
 
 Historical analysis notes and protocol reference material live under [`docs/archive/analysis`](docs/archive/analysis) and [`docs/reference`](docs/reference) rather than competing with the live binary at the repo root.
@@ -657,8 +664,10 @@ Implementation-heavy material now lives next to the relevant code:
 - [`pskreporter/README.md`](pskreporter/README.md) - MQTT normalization, path-only modes, and FT frequency handling
 - [`dxsummit/README.md`](dxsummit/README.md) - HTTP polling, DXSummit source markers, and HF/VHF/UHF scope
 - [`peer/README.md`](peer/README.md) - peer forwarding, receive-only behavior, and control-plane details
+- [`scripts/README.md`](scripts/README.md) - build, release, profiling, and workflow helper scripts
+- [`data/config/README.md`](data/config/README.md) - YAML ownership, loader rules, and safe config editing boundaries
+- [`data/h3/README.md`](data/h3/README.md) - H3 dataset notes
 
 Additional operator references:
 
-- [`data/config/README.md`](data/config/README.md)
 - [`docs/OPERATOR_GUIDE.md`](docs/OPERATOR_GUIDE.md)

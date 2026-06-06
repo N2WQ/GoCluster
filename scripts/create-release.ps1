@@ -26,6 +26,10 @@
 .PARAMETER Remote
 	Git remote used to resolve the release repository. Defaults to origin.
 
+.PARAMETER SkipCodeMapCheck
+	Skip the generated code-map freshness check. Only allowed with -PackageOnly
+	for local package testing.
+
 .NOTES
 	Prerequisites: Go toolchain, git, and GitHub CLI authentication for publishing.
 	Side effects: builds a binary, creates package directories/zips, and can
@@ -40,7 +44,8 @@ param(
     [string]$OutputDir = ".",
     [string]$PackageName = "gocluster-windows-amd64",
     [string]$PackageDirectoryName = "ready_to_run",
-    [string]$Remote = "origin"
+    [string]$Remote = "origin",
+    [switch]$SkipCodeMapCheck
 )
 
 Set-StrictMode -Version Latest
@@ -90,6 +95,10 @@ Commit or stash local changes before release, or rerun with -PackageOnly -AllowD
 
 function Assert-GoModulesTidy {
     Invoke-GoRunHost -Arguments @("mod", "tidy", "-diff")
+}
+
+function Assert-CodeMapsFresh {
+    Invoke-GoRunHost -Arguments @("run", "./cmd/codemap", "check", "-all")
 }
 
 function Assert-GitHubCliReady {
@@ -428,12 +437,20 @@ function Publish-GitHubRelease {
 if ($AllowDirty -and -not $PackageOnly) {
     throw "-AllowDirty is only permitted with -PackageOnly."
 }
+if ($SkipCodeMapCheck -and -not $PackageOnly) {
+    throw "-SkipCodeMapCheck is only permitted with -PackageOnly."
+}
 
 $repoRoot = Resolve-RepoRoot
 Push-Location $repoRoot
 try {
     $gitStatus = @(Assert-CleanWorktree -RepoRoot $repoRoot -AllowDirty:$AllowDirty)
     Assert-GoModulesTidy
+    if ($SkipCodeMapCheck) {
+        Write-Warning "Skipping generated code-map freshness check for package-only testing."
+    } else {
+        Assert-CodeMapsFresh
+    }
 
     $commit = (& git rev-parse --short=12 HEAD).Trim()
     $dirtySuffix = ""

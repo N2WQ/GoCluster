@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "maps": [
+    {
+      "id": "runtime-ingest-fanout",
+      "title": "Runtime Ingest And Fanout",
+      "output": "docs/code-maps/runtime-ingest-fanout.md",
+      "packages": [
+        "./internal/cluster",
+        "./telnet",
+        "./peer",
+        "./commands",
+        "./spot"
+      ]
+    }
+  ]
+}
