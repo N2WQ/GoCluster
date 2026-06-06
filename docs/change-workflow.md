@@ -238,6 +238,12 @@ also use `go-blast-radius-audit` when available and report a compact
 ## Tool-assisted analysis
 Use tool-assisted analysis to improve evidence, not to replace source review.
 
+Generated code maps under `docs/code-maps/` may be used as first-pass package,
+file, test, and ADR orientation when relevant and fresh. They do not prove
+runtime behavior, interface dispatch, goroutine lifecycle, config-specific
+paths, or concrete data flow; verify conclusions against current source, tests,
+config, and ADRs before planning or editing.
+
 Required baseline tools for this workflow are the repository's normal Go and
 validation tools plus semantic/navigation helpers already called out by the
 triggered skill. Missing required tools are validation or discovery gaps.

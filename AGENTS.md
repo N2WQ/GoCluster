@@ -113,6 +113,9 @@ For Non-trivial work, Codex must:
 - treat slice-shaped Scope Ledgers as a hard gate: broad refactor-shaped ledger
   items are not approval-ready until split into independently coded, tested,
   and reviewed slices
+- when a relevant generated code map exists, check freshness, read it during
+  Current-State Discovery, and verify conclusions against current source,
+  tests, config, and ADRs before planning or editing
 
 Before exact approval, do not edit files, propose diffs, run formatters, or run
 full checker suites.
