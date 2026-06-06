@@ -638,6 +638,10 @@ const (
 	defaultDXSummitMaxResponseBytes         = 1048576
 )
 
+// DefaultArchiveRetentionSeconds is the archive retention fallback for direct
+// ArchiveConfig construction outside the required YAML runtime config path.
+const DefaultArchiveRetentionSeconds = 86400
+
 // ArchiveConfig controls optional Pebble archival of broadcasted spots.
 type ArchiveConfig struct {
 	Enabled bool `yaml:"enabled"`
@@ -650,9 +654,9 @@ type ArchiveConfig struct {
 	// CleanupBatchSize limits how many rows are deleted per cleanup batch to keep locks short.
 	CleanupBatchSize int `yaml:"cleanup_batch_size"`
 	// CleanupBatchYieldMS sleeps between cleanup batches to reduce contention. 0 disables the yield.
-	CleanupBatchYieldMS     int `yaml:"cleanup_batch_yield_ms"`
-	RetentionFTSeconds      int `yaml:"retention_ft_seconds"`      // FT8/FT4 retention
-	RetentionDefaultSeconds int `yaml:"retention_default_seconds"` // All other modes
+	CleanupBatchYieldMS int `yaml:"cleanup_batch_yield_ms"`
+	// RetentionSeconds applies one archive retention window to every mode.
+	RetentionSeconds int `yaml:"retention_seconds"`
 	// BusyTimeoutMS is ignored for the Pebble archive (retained for compatibility).
 	BusyTimeoutMS int `yaml:"busy_timeout_ms"`
 	// Synchronous controls archive durability: off disables fsync; normal/full/extra enable sync.
@@ -1962,11 +1966,8 @@ func normalizeArchiveAndStatsConfig(cfg *Config, presence loadRawPresence) error
 	if cfg.Archive.CleanupBatchYieldMS == 0 && !presence.hasArchiveCleanupYield {
 		cfg.Archive.CleanupBatchYieldMS = 5
 	}
-	if cfg.Archive.RetentionFTSeconds <= 0 {
-		cfg.Archive.RetentionFTSeconds = 3600
-	}
-	if cfg.Archive.RetentionDefaultSeconds <= 0 {
-		cfg.Archive.RetentionDefaultSeconds = 86400
+	if cfg.Archive.RetentionSeconds <= 0 {
+		cfg.Archive.RetentionSeconds = DefaultArchiveRetentionSeconds
 	}
 	if strings.TrimSpace(cfg.Archive.DBPath) == "" {
 		cfg.Archive.DBPath = "data/archive/pebble"
@@ -3588,7 +3589,7 @@ func (c *Config) Print() {
 			c.DXSummit.RequestTimeoutMS)
 	}
 	if c.Archive.Enabled {
-		fmt.Printf("Archive: %s (queue=%d batch=%d/%dms cleanup=%ds cleanup_batch=%d yield=%dms retain_ft=%ds retain_other=%ds sync=%s auto_delete_corrupt=%t)\n",
+		fmt.Printf("Archive: %s (queue=%d batch=%d/%dms cleanup=%ds cleanup_batch=%d yield=%dms retention=%ds sync=%s auto_delete_corrupt=%t)\n",
 			c.Archive.DBPath,
 			c.Archive.QueueSize,
 			c.Archive.BatchSize,
@@ -3596,8 +3597,7 @@ func (c *Config) Print() {
 			c.Archive.CleanupIntervalSeconds,
 			c.Archive.CleanupBatchSize,
 			c.Archive.CleanupBatchYieldMS,
-			c.Archive.RetentionFTSeconds,
-			c.Archive.RetentionDefaultSeconds,
+			c.Archive.RetentionSeconds,
 			c.Archive.Synchronous,
 			c.Archive.AutoDeleteCorruptDB)
 	}

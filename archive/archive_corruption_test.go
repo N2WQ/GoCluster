@@ -20,18 +20,17 @@ func TestAutoDeleteCorruptDB(t *testing.T) {
 	}
 
 	cfg := config.ArchiveConfig{
-		Enabled:                 true,
-		DBPath:                  dbPath,
-		QueueSize:               10,
-		BatchSize:               10,
-		BatchIntervalMS:         1,
-		CleanupIntervalSeconds:  60,
-		CleanupBatchSize:        1,
-		CleanupBatchYieldMS:     0,
-		RetentionFTSeconds:      1,
-		RetentionDefaultSeconds: 1,
-		Synchronous:             "off",
-		AutoDeleteCorruptDB:     true,
+		Enabled:                true,
+		DBPath:                 dbPath,
+		QueueSize:              10,
+		BatchSize:              10,
+		BatchIntervalMS:        1,
+		CleanupIntervalSeconds: 60,
+		CleanupBatchSize:       1,
+		CleanupBatchYieldMS:    0,
+		RetentionSeconds:       1,
+		Synchronous:            "off",
+		AutoDeleteCorruptDB:    true,
 	}
 	writer, err := NewWriter(cfg)
 	if err != nil {

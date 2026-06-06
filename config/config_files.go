@@ -100,12 +100,17 @@ func validateConfigFileTopLevel(file string, spec configFileSpec, doc map[string
 
 func validateRemovedRuntimeKeys(raw map[string]any) error {
 	removed := []string{
+		"archive.retention_ft_seconds",
+		"archive.retention_default_seconds",
 		"pskreporter.modes",
 		"pskreporter.path_only_modes",
 	}
 	for _, path := range removed {
 		parts := strings.Split(path, ".")
 		if yamlKeyPresent(raw, parts...) {
+			if strings.HasPrefix(path, "archive.") {
+				return fmt.Errorf("removed YAML setting %q: use archive.retention_seconds", path)
+			}
 			return fmt.Errorf("removed YAML setting %q: define PSKReporter mode routing in spot_taxonomy.yaml using pskreporter_route", path)
 		}
 	}

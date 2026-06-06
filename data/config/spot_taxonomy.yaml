@@ -22,7 +22,7 @@
 # - ft_dial_canonicalization: canonicalize FT dial frequencies where supported.
 # - ft_confidence.enabled: include mode in bounded FT burst confidence handling.
 # - quiet_gap_seconds_key/hard_cap_seconds_key: keys into pipeline.yaml FT burst timing.
-# - archive_retention_class/report_format: archive classification and report parsing.
+# - report_format: archive report parsing.
 # - bare_numeric_report: allow signed numeric report parsing without explicit dB token.
 # - confidence_filter_exempt: bypass confidence filters for modes where confidence is not meaningful.
 # - call_correction_profile/frequency_averaging/source_skew_correction:
@@ -42,7 +42,6 @@ modes:
     comment_tokens: [CW, CWT]
     pskreporter_route: normal
     path_reliability_ingest: true
-    archive_retention_class: default
     report_format: plain_db
     bare_numeric_report: true
     source_skew_correction: true
@@ -65,7 +64,6 @@ modes:
     filter_visible: true
     default_filter_allowed: true
     comment_tokens: [USB]
-    archive_retention_class: default
     call_correction_profile: voice
     custom_scp_bucket: voice
     path_reliability_bucket: SSB
@@ -76,7 +74,6 @@ modes:
     filter_visible: true
     default_filter_allowed: true
     comment_tokens: [LSB]
-    archive_retention_class: default
     call_correction_profile: voice
     custom_scp_bucket: voice
     path_reliability_bucket: SSB
@@ -90,7 +87,6 @@ modes:
     comment_tokens: [RTTY]
     pskreporter_route: normal
     path_reliability_ingest: true
-    archive_retention_class: default
     report_format: plain_db
     bare_numeric_report: true
     source_skew_correction: true
@@ -113,7 +109,6 @@ modes:
       enabled: true
       quiet_gap_seconds_key: ft8_quiet_gap_seconds
       hard_cap_seconds_key: ft8_hard_cap_seconds
-    archive_retention_class: ft
     report_format: signed_db
     bare_numeric_report: true
     custom_scp_bucket: ft8
@@ -133,7 +128,6 @@ modes:
       enabled: true
       quiet_gap_seconds_key: ft4_quiet_gap_seconds
       hard_cap_seconds_key: ft4_hard_cap_seconds
-    archive_retention_class: ft
     report_format: signed_db
     bare_numeric_report: true
     custom_scp_bucket: ft4
@@ -151,7 +145,6 @@ modes:
       enabled: true
       quiet_gap_seconds_key: ft2_quiet_gap_seconds
       hard_cap_seconds_key: ft2_hard_cap_seconds
-    archive_retention_class: ft
     report_format: signed_db
     custom_scp_bucket: ft2
 
@@ -161,7 +154,6 @@ modes:
     comment_tokens: [MSK, MSK144, MSK-144]
     pskreporter_route: normal
     confidence_filter_exempt: true
-    archive_retention_class: default
     bare_numeric_report: true
 
   - name: PSK
@@ -172,7 +164,6 @@ modes:
     pskreporter_route: normal
     path_reliability_ingest: true
     confidence_filter_exempt: true
-    archive_retention_class: default
     path_reliability_bucket: PSK
     path_reliability_offset_mode: PSK
 
@@ -181,13 +172,11 @@ modes:
     filter_visible: true
     comment_tokens: [JS8]
     mode_inference_seed: true
-    archive_retention_class: default
 
   - name: SSTV
     display: SSTV
     filter_visible: true
     comment_tokens: [SSTV]
-    archive_retention_class: default
 
   - name: WSPR
     display: WSPR

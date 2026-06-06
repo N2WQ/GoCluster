@@ -62,7 +62,7 @@ Configuration is split by concern so you only edit the relevant file:
 - `ingest.yaml` - deployment/runtime settings for RBN/PSKReporter/human/DXSummit source enablement, source cadence, and call cache bounds.
 - `peering.yaml` - deployment/runtime settings for peer links and ACLs.
 - `reputation.yaml` - deployment/runtime settings plus operator policy for reputation gates.
-- `archive.yaml` - deployment/runtime settings for archive enablement, storage path, backpressure, and retention.
+- `archive.yaml` - deployment/runtime settings for archive enablement, storage path, backpressure, and single-window retention.
 - `data.yaml` - deployment/runtime settings for CTY/FCC/skew sources, grid/cache tuning, data paths, and H3 table path.
 - `prop_report.yaml` - deployment/runtime settings for scheduled propagation-report generation controls.
 - `openai.yaml` - optional secret-bearing tool config for LLM report generation.
@@ -123,6 +123,7 @@ File-only event logs:
 Spot taxonomy:
 - `spot_taxonomy.yaml` is the only YAML surface for supported MODE tokens, EVENT families, EVENT reference prefixes, and PSKReporter mode routing.
 - `ingest.yaml` owns PSKReporter transport/runtime settings only. Legacy `pskreporter.modes` and `pskreporter.path_only_modes` are rejected; use `pskreporter_route: normal`, `path_only`, or `ignore` on taxonomy modes instead.
+- Archive retention is not taxonomy-owned; `archive.retention_seconds` applies one retention window to all archived modes.
 - EVENT filtering is family-level. Standalone tokens such as `POTA` and acronym-prefixed references such as `POTA-1234` both tag `POTA`; reference values are not retained or filterable.
 - Adding taxonomy modes/events requires editing `spot_taxonomy.yaml` and restarting the cluster with the matching binary/config directory.
 

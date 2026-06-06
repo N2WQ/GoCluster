@@ -24,5 +24,4 @@ archive:
   cleanup_interval_seconds: 907    # How often to purge expired rows.
   cleanup_batch_size: 2000         # Max rows per cleanup batch delete.
   cleanup_batch_yield_ms: 50       # Sleep between cleanup batches; 0 disables the yield.
-  retention_ft_seconds: 86400      # FT8/FT4 retention window.
-  retention_default_seconds: 86400 # Other modes retention window.
+  retention_seconds: 86400         # Retention window for all archived spot modes.

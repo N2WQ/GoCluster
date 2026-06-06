@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `916922dc0048e97b`
+- Source fingerprint: `9de14e0909ddc57a`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -297,6 +297,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0149](docs/decisions/ADR-0149-single-window-archive-retention.md) | Accepted | 2026-06-06 | archive, config, spot taxonomy, hot path | `area:spot, path:spot` |
 | [ADR-0148](docs/decisions/ADR-0148-post-stabilizer-shared-secondary-fanout.md) | Accepted | 2026-06-06 | internal/cluster, stabilizer, dedupe, archive, peer, hot path | `area:internal/cluster, area:peer, path:internal/cluster` |
 | [ADR-0146](docs/decisions/ADR-0146-h3-path-cell-duplicate-work-removal.md) | Accepted | 2026-06-05 | spot, internal/cluster, pathreliability, hot path | `area:internal/cluster, area:spot, path:internal/cluster, path:spot` |
 | [ADR-0143](docs/decisions/ADR-0143-custom-scp-support-lookup-duplicate-work-removal.md) | Accepted | 2026-06-05 | spot, internal/correctionflow, custom_scp, hot path | `area:spot, path:spot` |

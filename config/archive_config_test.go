@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // Purpose: Verify archive cleanup batch defaults are applied when omitted.
 // Key aspects: Loads minimal YAML and inspects normalized config values.
@@ -21,6 +24,9 @@ func TestArchiveCleanupBatchDefaults(t *testing.T) {
 	}
 	if cfg.Archive.CleanupBatchYieldMS != 50 {
 		t.Fatalf("expected cleanup_batch_yield_ms=50 from shipped YAML, got %d", cfg.Archive.CleanupBatchYieldMS)
+	}
+	if cfg.Archive.RetentionSeconds != DefaultArchiveRetentionSeconds {
+		t.Fatalf("expected retention_seconds=%d from shipped YAML, got %d", DefaultArchiveRetentionSeconds, cfg.Archive.RetentionSeconds)
 	}
 }
 
@@ -77,5 +83,25 @@ func TestArchiveSynchronousInvalid(t *testing.T) {
 
 	if _, err := Load(dir); err == nil {
 		t.Fatalf("expected Load() to fail for invalid archive.synchronous")
+	}
+}
+
+// Purpose: Verify removed split archive retention keys fail with a migration hint.
+// Key aspects: Prevents silently preserving mode-specific archive retention.
+// Upstream: go test.
+// Downstream: Load, validateRemovedRuntimeKeys.
+func TestArchiveSplitRetentionKeysRejected(t *testing.T) {
+	for _, key := range []string{"retention_ft_seconds", "retention_default_seconds"} {
+		t.Run(key, func(t *testing.T) {
+			dir := testConfigDir(t)
+			writeRequiredFloodControlFile(t, dir)
+			writeTestConfigOverlay(t, dir, "archive.yaml", "archive:\n  "+key+": 3600\n")
+
+			if _, err := Load(dir); err == nil {
+				t.Fatalf("expected Load() to reject removed archive retention key")
+			} else if got := err.Error(); got == "" || !strings.Contains(got, "archive.retention_seconds") {
+				t.Fatalf("expected archive.retention_seconds migration hint, got %v", err)
+			}
+		})
 	}
 }

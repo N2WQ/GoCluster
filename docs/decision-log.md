@@ -11,6 +11,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 |---|---|---|---|---|---|---|---|
 | ADR-0001 | <title> | Proposed | YYYY-MM-DD | <area> | - | - | `docs/decisions/ADR-0001-<slug>.md` |
+| ADR-0149 | Single-Window Archive Retention | Accepted | 2026-06-06 | archive, config, spot taxonomy, hot path | ADR-0069 archive retention class | - | `docs/decisions/ADR-0149-single-window-archive-retention.md` |
 | ADR-0148 | Post-Stabilizer Shared Secondary Fanout | Accepted | 2026-06-06 | internal/cluster, stabilizer, dedupe, archive, peer, hot path | ADR-0013 archive/peer side rail; ADR-0020 archive/peer unchanged clause; ADR-0029 archive/peer unchanged clause; ADR-0138 archive/peer MED side rail | - | `docs/decisions/ADR-0148-post-stabilizer-shared-secondary-fanout.md` |
 | ADR-0147 | Generated Code Map Freshness Gate | Accepted | 2026-06-05 | workflow, docs/code-maps, scripts, CI, release | - | - | `docs/decisions/ADR-0147-generated-code-map-freshness-gate.md` |
 | ADR-0146 | H3 Path Cell Duplicate Work Removal | Accepted | 2026-06-05 | spot, internal/cluster, pathreliability, hot path | - | - | `docs/decisions/ADR-0146-h3-path-cell-duplicate-work-removal.md` |

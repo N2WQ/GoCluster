@@ -21,7 +21,7 @@ The taxonomy owns:
 - default MODE selection and CC mode shortcut eligibility
 - EVENT standalone tokens and acronym-prefixed reference prefixes
 - PSKReporter route (`normal`, `path_only`, `ignore`)
-- existing mode capability flags such as FT dial canonicalization, FT confidence timing keys, archive retention class, report formatting, path-reliability ingest, confidence-filter exemption, call-correction profile, source-skew correction, frequency averaging, and custom SCP bucket
+- existing mode capability flags such as FT dial canonicalization, FT confidence timing keys, report formatting, path-reliability ingest, confidence-filter exemption, call-correction profile, source-skew correction, frequency averaging, and custom SCP bucket
 
 Algorithm families remain code-owned. YAML can opt a mode into an existing capability class, but it cannot define new decoding algorithms, transports, distance models, or EVENT grammars beyond the supported token and prefix matchers.
 
@@ -44,3 +44,8 @@ Algorithm families remain code-owned. YAML can opt a mode into an existing capab
 - `data/config/spot_taxonomy.yaml`
 - `spot/taxonomy.go`
 - `docs/decisions/ADR-0068-event-comment-tags-and-filter-contract.md`
+
+## Supersession Notes
+
+- ADR-0149 removes archive retention class ownership from spot taxonomy. Archive
+  retention is now one archive-level window, not a per-mode taxonomy capability.

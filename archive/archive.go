@@ -109,7 +109,7 @@ func recordLayout(version byte) (fixedHeaderSize int, headerSize int, fieldN int
 	}
 }
 
-// Writer persists spots to Pebble asynchronously with per-mode retention.
+// Writer persists spots to Pebble asynchronously with one archive retention window.
 // It is designed to be removable: the hot path never blocks on the writer,
 // and backpressure results in dropped archive writes.
 type Writer struct {
@@ -140,6 +140,9 @@ func NewWriter(cfg config.ArchiveConfig) (*Writer, error) {
 	if err != nil {
 		_ = db.Close()
 		return nil, err
+	}
+	if cfg.RetentionSeconds <= 0 {
+		cfg.RetentionSeconds = config.DefaultArchiveRetentionSeconds
 	}
 	qsize := cfg.QueueSize
 	if qsize <= 0 {
@@ -405,8 +408,8 @@ func (w *Writer) cleanupLoop() {
 }
 
 // Purpose: Run one retention cleanup pass.
-// Key aspects: Applies separate retention windows and deletes in small batches
-// to keep write locks short under high ingest rates.
+// Key aspects: Deletes expired rows in small batches to keep write locks short
+// under high ingest rates.
 // Upstream: cleanupLoop.
 // Downstream: pebble.Batch deletes.
 func (w *Writer) cleanupOnce() {
@@ -414,12 +417,7 @@ func (w *Writer) cleanupOnce() {
 		return
 	}
 	now := time.Now().UTC().UnixNano()
-	cutoffFT := retentionCutoff(now, w.cfg.RetentionFTSeconds)
-	cutoffDefault := retentionCutoff(now, w.cfg.RetentionDefaultSeconds)
-	stopAfter := cutoffFT
-	if cutoffDefault > stopAfter {
-		stopAfter = cutoffDefault
-	}
+	cutoff := retentionCutoff(now, w.cfg.RetentionSeconds)
 
 	batchSize := w.cfg.CleanupBatchSize
 	if batchSize <= 0 {
@@ -448,7 +446,6 @@ func (w *Writer) cleanupOnce() {
 	}()
 
 	pending := 0
-	sameCutoff := cutoffFT == cutoffDefault
 	ensureBatch := func() *pebble.Batch {
 		if pebbleBatch == nil {
 			pebbleBatch = w.db.NewBatch()
@@ -479,43 +476,8 @@ func (w *Writer) cleanupOnce() {
 		if !ok {
 			continue
 		}
-		if ts >= stopAfter {
-			break
-		}
-		cutoff := cutoffDefault
-		if sameCutoff {
-			if _, err := modeIsFTRecord(iter.Value()); err != nil {
-				log.Printf("archive: cleanup decode: %v", err)
-				if err := ensureBatch().Delete(iter.Key(), nil); err != nil {
-					log.Printf("archive: cleanup delete corrupt: %v", err)
-					return
-				}
-				pending++
-				if pending >= batchSize && !commitBatch() {
-					return
-				}
-				continue
-			}
-		} else {
-			isFT, err := modeIsFTRecord(iter.Value())
-			if err != nil {
-				log.Printf("archive: cleanup decode: %v", err)
-				if err := ensureBatch().Delete(iter.Key(), nil); err != nil {
-					log.Printf("archive: cleanup delete corrupt: %v", err)
-					return
-				}
-				pending++
-				if pending >= batchSize && !commitBatch() {
-					return
-				}
-				continue
-			}
-			if isFT {
-				cutoff = cutoffFT
-			}
-		}
 		if ts >= cutoff {
-			continue
+			break
 		}
 		if err := ensureBatch().Delete(iter.Key(), nil); err != nil {
 			log.Printf("archive: cleanup delete: %v", err)
@@ -875,41 +837,6 @@ func decodeRecord(raw []byte) (archiveRecord, error) {
 		toxicityCategories: toxicityCategories,
 		toxicityModel:      toxicityModel,
 	}, nil
-}
-
-func modeIsFTRecord(raw []byte) (bool, error) {
-	if len(raw) < recordHeaderSizeV2 {
-		return false, errInvalidRecord
-	}
-	fixedHeaderSize, headerSize, fieldN, ok := recordLayout(raw[0])
-	if !ok || len(raw) < headerSize {
-		return false, errInvalidRecord
-	}
-	offset := fixedHeaderSize
-	lengths := [fieldCount]int{}
-	total := headerSize
-	for i := 0; i < fieldN; i++ {
-		l := int(binary.BigEndian.Uint16(raw[offset:]))
-		lengths[i] = l
-		offset += 2
-		total += l
-	}
-	if total != len(raw) {
-		return false, errInvalidRecord
-	}
-	dataOffset := headerSize
-	for i := 0; i < fieldMode; i++ {
-		dataOffset += lengths[i]
-	}
-	modeLen := lengths[fieldMode]
-	if modeLen == 0 {
-		return false, nil
-	}
-	if dataOffset+modeLen > len(raw) {
-		return false, errInvalidRecord
-	}
-	mode := string(raw[dataOffset : dataOffset+modeLen])
-	return spot.ArchiveRetentionClassForMode(mode) == spot.ArchiveRetentionFT, nil
 }
 
 func decodeSpot(ts int64, raw []byte) (*spot.Spot, error) {

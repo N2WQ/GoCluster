@@ -1,3 +1,5 @@
+// Package spot owns canonical spot data structures and bounded mode/EVENT
+// taxonomy lookup tables used by ingest, filtering, correction, and fan-out.
 package spot
 
 import (
@@ -14,7 +16,7 @@ import (
 )
 
 // The taxonomy keeps mode and EVENT behavior in config-owned data instead of
-// scattering special cases through ingest, filters, archive, path reliability,
+// scattering special cases through ingest, filters, path reliability,
 // and support commands. Runtime code reads immutable lookup tables built at
 // startup; the hard caps below keep a bad YAML edit from creating oversized
 // process-lifetime maps.
@@ -26,11 +28,6 @@ const (
 	pskReporterRouteIgnore   = "ignore"
 
 	eventReferenceSuffixAlnumHyphen = "alnum_hyphen"
-)
-
-const (
-	ArchiveRetentionDefault = "default"
-	ArchiveRetentionFT      = "ft"
 )
 
 const (
@@ -100,7 +97,7 @@ type taxonomyFile struct {
 }
 
 // ModeDefinition is one mode contract shared by ingest, filtering, confidence,
-// archive retention, path reliability, source skew, and custom-SCP behavior.
+// path reliability, source skew, and custom-SCP behavior.
 // A field should live here only when support needs the mode behavior to be
 // data-owned rather than hard-coded in one package.
 type ModeDefinition struct {
@@ -119,7 +116,6 @@ type ModeDefinition struct {
 	ModeInferenceSeed         bool                   `yaml:"mode_inference_seed"`
 	FTDialCanonicalization    bool                   `yaml:"ft_dial_canonicalization"`
 	FTConfidence              FTConfidenceDefinition `yaml:"ft_confidence"`
-	ArchiveRetentionClass     string                 `yaml:"archive_retention_class"`
 	ReportFormat              string                 `yaml:"report_format"`
 	BareNumericReport         bool                   `yaml:"bare_numeric_report"`
 	ConfidenceFilterExempt    bool                   `yaml:"confidence_filter_exempt"`
@@ -435,11 +431,6 @@ func validateModeDefinition(mode ModeDefinition) error {
 			return fmt.Errorf("unsupported pskreporter_route %q", mode.PSKReporterRoute)
 		}
 	}
-	switch mode.ArchiveRetentionClass {
-	case "", ArchiveRetentionDefault, ArchiveRetentionFT:
-	default:
-		return fmt.Errorf("unsupported archive_retention_class %q", mode.ArchiveRetentionClass)
-	}
 	switch mode.ReportFormat {
 	case ReportFormatDefault, ReportFormatSignedDB, ReportFormatPlainDB:
 	default:
@@ -631,14 +622,6 @@ func (t *Taxonomy) FTConfidenceTimingKeys(mode string) (quietGapKey, hardCapKey 
 		return "", "", false
 	}
 	return def.FTConfidence.QuietGapSecondsKey, def.FTConfidence.HardCapSecondsKey, true
-}
-
-func (t *Taxonomy) ArchiveRetentionClass(mode string) string {
-	def, ok := t.modesByName[t.CanonicalMode(mode)]
-	if !ok || def.ArchiveRetentionClass == "" {
-		return ArchiveRetentionDefault
-	}
-	return def.ArchiveRetentionClass
 }
 
 func (t *Taxonomy) ReportFormat(mode string) string {
@@ -884,10 +867,6 @@ func FTConfidenceTimingKeys(mode string) (quietGapKey, hardCapKey string, ok boo
 	return CurrentTaxonomy().FTConfidenceTimingKeys(mode)
 }
 
-func ArchiveRetentionClassForMode(mode string) string {
-	return CurrentTaxonomy().ArchiveRetentionClass(mode)
-}
-
 func ReportFormatForMode(mode string) string {
 	return CurrentTaxonomy().ReportFormat(mode)
 }
@@ -935,18 +914,18 @@ func PathReliabilityModePolicies() map[string]string {
 func defaultTaxonomyFile() taxonomyFile {
 	return taxonomyFile{
 		Modes: []ModeDefinition{
-			{Name: "CW", Display: "CW", FilterVisible: true, DefaultFilterAllowed: true, CCShortcut: true, CommentTokens: []string{"CW", "CWT"}, PSKReporterRoute: pskReporterRouteNormal, PathReliabilityIngest: true, ArchiveRetentionClass: ArchiveRetentionDefault, ReportFormat: ReportFormatPlainDB, BareNumericReport: true, SourceSkewCorrection: true, CallCorrectionProfile: CallCorrectionProfileStandard, FrequencyAveraging: true, CustomSCPBucket: CustomSCPBucketCW, PathReliabilityBucket: "CW", PathReliabilityOffsetMode: "CW"},
+			{Name: "CW", Display: "CW", FilterVisible: true, DefaultFilterAllowed: true, CCShortcut: true, CommentTokens: []string{"CW", "CWT"}, PSKReporterRoute: pskReporterRouteNormal, PathReliabilityIngest: true, ReportFormat: ReportFormatPlainDB, BareNumericReport: true, SourceSkewCorrection: true, CallCorrectionProfile: CallCorrectionProfileStandard, FrequencyAveraging: true, CustomSCPBucket: CustomSCPBucketCW, PathReliabilityBucket: "CW", PathReliabilityOffsetMode: "CW"},
 			{Name: "SSB", Display: "SSB", FilterVisible: false, CommentTokens: []string{"SSB"}, VoiceByFrequency: true, PathReliabilityBucket: "SSB", PathReliabilityOffsetMode: "SSB"},
-			{Name: "USB", Display: "USB", FilterVisible: true, DefaultFilterAllowed: true, CommentTokens: []string{"USB"}, ArchiveRetentionClass: ArchiveRetentionDefault, CallCorrectionProfile: CallCorrectionProfileVoice, CustomSCPBucket: CustomSCPBucketVoice, PathReliabilityBucket: "SSB", PathReliabilityOffsetMode: "SSB"},
-			{Name: "LSB", Display: "LSB", FilterVisible: true, DefaultFilterAllowed: true, CommentTokens: []string{"LSB"}, ArchiveRetentionClass: ArchiveRetentionDefault, CallCorrectionProfile: CallCorrectionProfileVoice, CustomSCPBucket: CustomSCPBucketVoice, PathReliabilityBucket: "SSB", PathReliabilityOffsetMode: "SSB"},
-			{Name: "RTTY", Display: "RTTY", FilterVisible: true, DefaultFilterAllowed: true, CCShortcut: true, CommentTokens: []string{"RTTY"}, PSKReporterRoute: pskReporterRouteNormal, PathReliabilityIngest: true, ArchiveRetentionClass: ArchiveRetentionDefault, ReportFormat: ReportFormatPlainDB, BareNumericReport: true, SourceSkewCorrection: true, CallCorrectionProfile: CallCorrectionProfileStandard, FrequencyAveraging: true, CustomSCPBucket: CustomSCPBucketRTTY, PathReliabilityBucket: "RTTY", PathReliabilityOffsetMode: "RTTY"},
-			{Name: "FT8", Display: "FT8", FilterVisible: true, CCShortcut: true, CommentTokens: []string{"FT8", "FT-8"}, PSKReporterRoute: pskReporterRouteNormal, PathReliabilityIngest: true, ModeInferenceSeed: true, FTDialCanonicalization: true, FTConfidence: FTConfidenceDefinition{Enabled: true, QuietGapSecondsKey: "ft8_quiet_gap_seconds", HardCapSecondsKey: "ft8_hard_cap_seconds"}, ArchiveRetentionClass: ArchiveRetentionFT, ReportFormat: ReportFormatSignedDB, BareNumericReport: true, CustomSCPBucket: CustomSCPBucketFT8, PathReliabilityBucket: "FT8", PathReliabilityOffsetMode: "FT8"},
-			{Name: "FT4", Display: "FT4", FilterVisible: true, CCShortcut: true, CommentTokens: []string{"FT4", "FT-4"}, PSKReporterRoute: pskReporterRouteNormal, PathReliabilityIngest: true, ModeInferenceSeed: true, FTDialCanonicalization: true, FTConfidence: FTConfidenceDefinition{Enabled: true, QuietGapSecondsKey: "ft4_quiet_gap_seconds", HardCapSecondsKey: "ft4_hard_cap_seconds"}, ArchiveRetentionClass: ArchiveRetentionFT, ReportFormat: ReportFormatSignedDB, BareNumericReport: true, CustomSCPBucket: CustomSCPBucketFT4, PathReliabilityBucket: "FT4", PathReliabilityOffsetMode: "FT4"},
-			{Name: "FT2", Display: "FT2", FilterVisible: true, CCShortcut: true, CommentTokens: []string{"FT2", "FT-2"}, PSKReporterRoute: pskReporterRouteNormal, FTDialCanonicalization: true, FTConfidence: FTConfidenceDefinition{Enabled: true, QuietGapSecondsKey: "ft2_quiet_gap_seconds", HardCapSecondsKey: "ft2_hard_cap_seconds"}, ArchiveRetentionClass: ArchiveRetentionFT, ReportFormat: ReportFormatSignedDB, CustomSCPBucket: CustomSCPBucketFT2},
-			{Name: "MSK144", Display: "MSK144", FilterVisible: true, CommentTokens: []string{"MSK", "MSK144", "MSK-144"}, PSKReporterRoute: pskReporterRouteNormal, ConfidenceFilterExempt: true, ArchiveRetentionClass: ArchiveRetentionDefault, BareNumericReport: true},
-			{Name: "PSK", Display: "PSK", FilterVisible: true, CommentTokens: []string{"PSK"}, Variants: []string{"PSK31", "PSK63", "PSK125"}, PSKReporterRoute: pskReporterRouteNormal, PathReliabilityIngest: true, ConfidenceFilterExempt: true, ArchiveRetentionClass: ArchiveRetentionDefault, PathReliabilityBucket: "PSK", PathReliabilityOffsetMode: "PSK"},
-			{Name: "JS8", Display: "JS8", FilterVisible: true, CommentTokens: []string{"JS8"}, ModeInferenceSeed: true, ArchiveRetentionClass: ArchiveRetentionDefault},
-			{Name: "SSTV", Display: "SSTV", FilterVisible: true, CommentTokens: []string{"SSTV"}, ArchiveRetentionClass: ArchiveRetentionDefault},
+			{Name: "USB", Display: "USB", FilterVisible: true, DefaultFilterAllowed: true, CommentTokens: []string{"USB"}, CallCorrectionProfile: CallCorrectionProfileVoice, CustomSCPBucket: CustomSCPBucketVoice, PathReliabilityBucket: "SSB", PathReliabilityOffsetMode: "SSB"},
+			{Name: "LSB", Display: "LSB", FilterVisible: true, DefaultFilterAllowed: true, CommentTokens: []string{"LSB"}, CallCorrectionProfile: CallCorrectionProfileVoice, CustomSCPBucket: CustomSCPBucketVoice, PathReliabilityBucket: "SSB", PathReliabilityOffsetMode: "SSB"},
+			{Name: "RTTY", Display: "RTTY", FilterVisible: true, DefaultFilterAllowed: true, CCShortcut: true, CommentTokens: []string{"RTTY"}, PSKReporterRoute: pskReporterRouteNormal, PathReliabilityIngest: true, ReportFormat: ReportFormatPlainDB, BareNumericReport: true, SourceSkewCorrection: true, CallCorrectionProfile: CallCorrectionProfileStandard, FrequencyAveraging: true, CustomSCPBucket: CustomSCPBucketRTTY, PathReliabilityBucket: "RTTY", PathReliabilityOffsetMode: "RTTY"},
+			{Name: "FT8", Display: "FT8", FilterVisible: true, CCShortcut: true, CommentTokens: []string{"FT8", "FT-8"}, PSKReporterRoute: pskReporterRouteNormal, PathReliabilityIngest: true, ModeInferenceSeed: true, FTDialCanonicalization: true, FTConfidence: FTConfidenceDefinition{Enabled: true, QuietGapSecondsKey: "ft8_quiet_gap_seconds", HardCapSecondsKey: "ft8_hard_cap_seconds"}, ReportFormat: ReportFormatSignedDB, BareNumericReport: true, CustomSCPBucket: CustomSCPBucketFT8, PathReliabilityBucket: "FT8", PathReliabilityOffsetMode: "FT8"},
+			{Name: "FT4", Display: "FT4", FilterVisible: true, CCShortcut: true, CommentTokens: []string{"FT4", "FT-4"}, PSKReporterRoute: pskReporterRouteNormal, PathReliabilityIngest: true, ModeInferenceSeed: true, FTDialCanonicalization: true, FTConfidence: FTConfidenceDefinition{Enabled: true, QuietGapSecondsKey: "ft4_quiet_gap_seconds", HardCapSecondsKey: "ft4_hard_cap_seconds"}, ReportFormat: ReportFormatSignedDB, BareNumericReport: true, CustomSCPBucket: CustomSCPBucketFT4, PathReliabilityBucket: "FT4", PathReliabilityOffsetMode: "FT4"},
+			{Name: "FT2", Display: "FT2", FilterVisible: true, CCShortcut: true, CommentTokens: []string{"FT2", "FT-2"}, PSKReporterRoute: pskReporterRouteNormal, FTDialCanonicalization: true, FTConfidence: FTConfidenceDefinition{Enabled: true, QuietGapSecondsKey: "ft2_quiet_gap_seconds", HardCapSecondsKey: "ft2_hard_cap_seconds"}, ReportFormat: ReportFormatSignedDB, CustomSCPBucket: CustomSCPBucketFT2},
+			{Name: "MSK144", Display: "MSK144", FilterVisible: true, CommentTokens: []string{"MSK", "MSK144", "MSK-144"}, PSKReporterRoute: pskReporterRouteNormal, ConfidenceFilterExempt: true, BareNumericReport: true},
+			{Name: "PSK", Display: "PSK", FilterVisible: true, CommentTokens: []string{"PSK"}, Variants: []string{"PSK31", "PSK63", "PSK125"}, PSKReporterRoute: pskReporterRouteNormal, PathReliabilityIngest: true, ConfidenceFilterExempt: true, PathReliabilityBucket: "PSK", PathReliabilityOffsetMode: "PSK"},
+			{Name: "JS8", Display: "JS8", FilterVisible: true, CommentTokens: []string{"JS8"}, ModeInferenceSeed: true},
+			{Name: "SSTV", Display: "SSTV", FilterVisible: true, CommentTokens: []string{"SSTV"}},
 			{Name: "WSPR", Display: "WSPR", FilterVisible: false, CommentTokens: []string{"WSPR"}, PSKReporterRoute: pskReporterRoutePathOnly, PathReliabilityIngest: true, PathReliabilityBucket: "WSPR", PathReliabilityOffsetMode: "WSPR"},
 			{Name: UnknownModeToken, Display: UnknownModeToken, Synthetic: true, FilterVisible: true, DefaultFilterAllowed: true, BlankModeToken: true},
 		},

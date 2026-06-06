@@ -17,17 +17,16 @@ func TestCleanupOnceDeletesInBatches(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "archive.db")
 	cfg := config.ArchiveConfig{
-		Enabled:                 true,
-		DBPath:                  dbPath,
-		QueueSize:               10,
-		BatchSize:               10,
-		BatchIntervalMS:         1,
-		CleanupIntervalSeconds:  60,
-		CleanupBatchSize:        2,
-		CleanupBatchYieldMS:     0,
-		RetentionFTSeconds:      1,
-		RetentionDefaultSeconds: 1,
-		Synchronous:             "off",
+		Enabled:                true,
+		DBPath:                 dbPath,
+		QueueSize:              10,
+		BatchSize:              10,
+		BatchIntervalMS:        1,
+		CleanupIntervalSeconds: 60,
+		CleanupBatchSize:       2,
+		CleanupBatchYieldMS:    0,
+		RetentionSeconds:       1,
+		Synchronous:            "off",
 	}
 	writer, err := NewWriter(cfg)
 	if err != nil {
@@ -77,36 +76,50 @@ func TestCleanupOnceDeletesInBatches(t *testing.T) {
 	}
 }
 
-func TestModeIsFTRecord(t *testing.T) {
-	ft := spot.NewSpot("DXFT", "DEFT", 14074.0, "FT8")
-	ftRaw := encodeRecord(ft)
-	isFT, err := modeIsFTRecord(ftRaw)
+func TestNewWriterDefaultsRetentionSeconds(t *testing.T) {
+	writer, err := NewWriter(config.ArchiveConfig{
+		DBPath:      filepath.Join(t.TempDir(), "archive.db"),
+		Synchronous: "off",
+	})
 	if err != nil {
-		t.Fatalf("modeIsFTRecord(FT8) error: %v", err)
+		t.Fatalf("NewWriter() error: %v", err)
 	}
-	if !isFT {
-		t.Fatalf("expected FT8 to be detected as FT")
+	defer writer.Stop()
+	if writer.cfg.RetentionSeconds != config.DefaultArchiveRetentionSeconds {
+		t.Fatalf("expected retention default %d, got %d", config.DefaultArchiveRetentionSeconds, writer.cfg.RetentionSeconds)
 	}
+}
 
-	cw := spot.NewSpot("DXCW", "DECW", 14030.0, "CW")
-	cwRaw := encodeRecord(cw)
-	isFT, err = modeIsFTRecord(cwRaw)
-	if err != nil {
-		t.Fatalf("modeIsFTRecord(CW) error: %v", err)
-	}
-	if isFT {
-		t.Fatalf("expected CW to be non-FT")
-	}
-
-	invalid := cwRaw[:10]
-	if _, err := modeIsFTRecord(invalid); err == nil {
-		t.Fatalf("expected invalid record to error")
-	}
-
-	badVersion := make([]byte, len(cwRaw))
-	copy(badVersion, cwRaw)
-	badVersion[0] = recordVersion + 1
-	if _, err := modeIsFTRecord(badVersion); err == nil {
-		t.Fatalf("expected bad version to error")
+func BenchmarkCleanupOnceSingleRetention(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		dir := b.TempDir()
+		writer, err := NewWriter(config.ArchiveConfig{
+			Enabled:                true,
+			DBPath:                 filepath.Join(dir, "archive.db"),
+			QueueSize:              10,
+			BatchSize:              500,
+			BatchIntervalMS:        1,
+			CleanupIntervalSeconds: 60,
+			CleanupBatchSize:       200,
+			CleanupBatchYieldMS:    0,
+			RetentionSeconds:       1,
+			Synchronous:            "off",
+		})
+		if err != nil {
+			b.Fatalf("NewWriter() error: %v", err)
+		}
+		old := time.Now().UTC().Add(-10 * time.Second)
+		batch := make([]*spot.Spot, 0, 200)
+		for n := 0; n < cap(batch); n++ {
+			s := spot.NewSpot("DXOLD", "DEOLD", 14020.0, "CW")
+			s.Time = old
+			batch = append(batch, s)
+		}
+		writer.flush(batch)
+		b.StartTimer()
+		writer.cleanupOnce()
+		b.StopTimer()
+		writer.Stop()
 	}
 }

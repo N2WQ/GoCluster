@@ -81,11 +81,10 @@ func TestTaxonomyOnlyModeParsesWithoutCodeChange(t *testing.T) {
 	old := CurrentTaxonomy()
 	file := defaultTaxonomyFile()
 	file.Modes = append(file.Modes, ModeDefinition{
-		Name:                  "HELL",
-		Display:               "HELL",
-		FilterVisible:         true,
-		CommentTokens:         []string{"HELL"},
-		ArchiveRetentionClass: ArchiveRetentionDefault,
+		Name:          "HELL",
+		Display:       "HELL",
+		FilterVisible: true,
+		CommentTokens: []string{"HELL"},
 	})
 	taxonomy, err := buildTaxonomy(file)
 	if err != nil {

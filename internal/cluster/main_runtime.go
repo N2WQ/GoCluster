@@ -928,14 +928,13 @@ func (r *clusterRuntime) initializeArchiveWriter() {
 	}
 	r.archiveWriter = writer
 	r.archiveWriter.Start()
-	log.Printf("Archive: writing to %s (batch=%d/%dms queue=%d cleanup=%ds ft_retention=%ds other_retention=%ds)",
+	log.Printf("Archive: writing to %s (batch=%d/%dms queue=%d cleanup=%ds retention=%ds)",
 		r.cfg.Archive.DBPath,
 		r.cfg.Archive.BatchSize,
 		r.cfg.Archive.BatchIntervalMS,
 		r.cfg.Archive.QueueSize,
 		r.cfg.Archive.CleanupIntervalSeconds,
-		r.cfg.Archive.RetentionFTSeconds,
-		r.cfg.Archive.RetentionDefaultSeconds)
+		r.cfg.Archive.RetentionSeconds)
 }
 
 func (r *clusterRuntime) initializeTelnetServer() bool {
