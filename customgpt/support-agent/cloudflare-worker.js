@@ -24,6 +24,10 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
+    if (request.method === "OPTIONS") {
+      return corsPreflightResponse();
+    }
+
     if (url.pathname === "/privacy") {
       return privacyPolicyResponse();
     }
@@ -347,7 +351,7 @@ async function fetchRepoFilePayload(requestedPathOrUrl, basePath, lineWindow) {
 
   const response = await fetch(sourceUrl, {
     headers: {
-      "user-agent": "gocluster-docs-action/4.5-discovery"
+      "user-agent": "gocluster-docs-action/4.6-quality"
     }
   });
 
@@ -644,7 +648,7 @@ function githubApiFetchOptions() {
   return {
     headers: {
       "accept": "application/vnd.github+json",
-      "user-agent": "gocluster-docs-action/4.5-discovery"
+      "user-agent": "gocluster-docs-action/4.6-quality"
     }
   };
 }
@@ -1205,9 +1209,25 @@ function jsonResponse(body, status = 200) {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
-      "access-control-allow-origin": "*"
+      ...corsHeaders()
     }
   });
+}
+
+function corsPreflightResponse() {
+  return new Response(null, {
+    status: 204,
+    headers: corsHeaders()
+  });
+}
+
+function corsHeaders() {
+  return {
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET, OPTIONS",
+    "access-control-allow-headers": "Authorization, Content-Type",
+    "access-control-max-age": "86400"
+  };
 }
 
 function privacyPolicyResponse() {
@@ -1312,7 +1332,7 @@ function privacyPolicyResponse() {
     status: 200,
     headers: {
       "content-type": "text/html; charset=utf-8",
-      "access-control-allow-origin": "*"
+      ...corsHeaders()
     }
   });
 }

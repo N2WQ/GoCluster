@@ -15,6 +15,9 @@ skill installation.
   package metadata and ADR records.
 - `check-code-maps.ps1` verifies checked-in Markdown code maps are fresh without
   modifying files. Use this in CI and release freshness gates.
+- `check-support-agent.ps1` verifies the custom GPT support-agent deployment
+  bundle, routing docs, local Worker behavior, and optional deployed Worker
+  health without printing bearer tokens.
 - `verify-agentic-tools.ps1` checks required repo workflow tools and required
   semantic/navigation helpers, then reports recommended or optional
   investigation helpers separately so missing optional tools do not block

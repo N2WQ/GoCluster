@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: GoCluster Repository Retrieval Action
-  description: Read-only authenticated API for retrieving current public GoCluster repository files by source map, troubleshooting index, repo-relative path, bundle, approved raw GitHub URL, bounded line window, directory listing, or bounded filename discovery. Safe text retrieval includes Go, Markdown, YAML, and first-party PowerShell scripts. Full-file content is capped at 140000 characters, bundles are capped at 12 files, related_paths are capped at 80, line windows are capped at 400 lines, directory listings are capped at 80 entries, and filename discovery is capped at 80 results. The GPT routes through repo-derived routes, symptom_routes, and related_paths, then retrieves authoritative files before answering.
-  version: 4.5.0
+  description: Read-only authenticated API for retrieving current public GoCluster repository files by source map, troubleshooting index, repo-relative path, bundle, approved raw GitHub URL, bounded line window, directory listing, or bounded filename discovery. Safe text retrieval includes Go, Markdown, YAML, and first-party PowerShell scripts. Full-file content is capped at 140000 characters, bundles are capped at 12 files, related_paths are capped at 80, line windows are capped at 400 lines, directory listings are capped at 80 entries, and filename discovery is capped at 80 results. The GPT routes through repo-derived routes, symptom_routes, and related_paths, then retrieves authoritative files before answering. Answer quality, routing depth, and evaluation expectations are governed by docs/support-agent-quality-contract.md.
+  version: 4.6.0
 
 servers:
   - url: https://gocluster-docs-action.n2wq-api.workers.dev
@@ -47,7 +47,7 @@ paths:
     get:
       operationId: getSourceMap
       summary: Retrieve the GoCluster source map
-      description: Retrieves customgpt/source-map.md, including discovered related_paths for follow-up retrieval.
+      description: Retrieves customgpt/source-map.md, including discovered related_paths for follow-up retrieval. Use this before answering GoCluster questions, including support-agent quality, deployment, routing, and evaluation questions.
       responses:
         "200":
           description: Retrieved source map
@@ -64,7 +64,7 @@ paths:
     get:
       operationId: getTroubleshootingIndex
       summary: Retrieve the GoCluster troubleshooting index
-      description: Retrieves customgpt/troubleshooting-index.md, including discovered related_paths for follow-up retrieval.
+      description: Retrieves customgpt/troubleshooting-index.md, including discovered related_paths for follow-up retrieval. Choose the most specific symptom route; platform-specific routes beat generic startup or service routes when the user has named the platform.
       responses:
         "200":
           description: Retrieved troubleshooting index
