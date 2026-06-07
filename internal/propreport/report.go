@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"dxcluster/config"
+	"dxcluster/internal/logutil"
 	"dxcluster/internal/openaiutil"
 	"dxcluster/internal/yamlconfig"
 	"dxcluster/pathreliability"
@@ -778,7 +779,7 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 
 	logPath := strings.TrimSpace(opts.LogPath)
 	if logPath == "" {
-		logPath = filepath.Join("data", "logs", "propagation", fmt.Sprintf("%s.log", date.Format("02-Jan-2006")))
+		logPath = logutil.DailyArchivePath(filepath.Join("data", "logs", "propagation"), date)
 	}
 	jsonOut := strings.TrimSpace(opts.JSONOut)
 	if jsonOut == "" {

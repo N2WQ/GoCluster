@@ -63,8 +63,9 @@ Alternative binary run:
 ## 4) Where logs are and file names
 
 System log files:
-- Directory: `logging.dir` from `data/config/app.yaml` (default `data/logs`).
-- File pattern: `DD-Mon-YYYY.log` in UTC date (example: `23-Feb-2026.log`).
+- Directory: `logging.dir` from `data/config/app.yaml` (default `data/logs/system`).
+- Active file: `system.log`.
+- Archive pattern: `DD-Mon-YYYY.log` in UTC date (example: `23-Feb-2026.log`).
 - Each line timestamp is UTC (`YYYY/MM/DD HH:MM:SS`).
 
 Decision DB files when `call_correction.debug_log: true`:
@@ -74,8 +75,8 @@ Decision DB files when `call_correction.debug_log: true`:
 Handy variables:
 
 ```pwsh
-$logDir  = "data/logs"  # set to logging.dir
-$logFile = Join-Path $logDir ((Get-Date).ToUniversalTime().ToString("dd-MMM-yyyy") + ".log")
+$logDir  = "data/logs/system"  # set to logging.dir
+$logFile = Join-Path $logDir "system.log"
 $dbFile  = Join-Path $logDir ("callcorr_debug_" + (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd") + ".db")
 ```
 

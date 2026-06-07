@@ -16,6 +16,11 @@ Note: ADR-0128 supersedes the `Path p50 diag (5m)` aggregate and propagation
 report parsing portions of this ADR. The dedicated propagation log remains
 accepted.
 
+Note: ADR-0152 supersedes the active propagation filename shape. The dedicated
+propagation log remains accepted; active propagation writes now go to
+`propagation.log`, while completed UTC archives retain the existing
+`DD-Mon-YYYY.log` format.
+
 ## Context
 
 Path reliability diagnostics and daily propagation reports previously depended
@@ -123,7 +128,7 @@ Required validation includes:
 - Issue(s): none
 - PR(s): pending
 - Commit(s): pending
-- Related ADR(s): ADR-0093, ADR-0095, ADR-0096, ADR-0122
+- Related ADR(s): ADR-0093, ADR-0095, ADR-0096, ADR-0122, ADR-0152
 - Troubleshooting Record(s): none
 - Docs: `README.md`, `docs/OPERATOR_GUIDE.md`,
   `pathreliability/README.md`, `data/config/README.md`

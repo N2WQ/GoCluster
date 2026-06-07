@@ -103,5 +103,5 @@ func assertDroppedLogLine(t *testing.T, dir, subdir, wantBody string) {
 }
 
 func droppedLogPath(dir, subdir string) string {
-	return filepath.Join(dir, subdir, logFileNameForDate(time.Now().UTC()))
+	return filepath.Join(dir, subdir, activeLogFileNameForDir(filepath.Join(dir, subdir)))
 }

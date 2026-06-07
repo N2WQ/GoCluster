@@ -19,15 +19,14 @@ import (
 )
 
 const (
-	propReportQueueDepth    = 1
-	propReportTimeout       = 2 * time.Minute
-	propReportDateLayout    = "2006-01-02"
-	propReportLogDateLayout = "02-Jan-2006"
+	propReportQueueDepth = 1
+	propReportTimeout    = 2 * time.Minute
+	propReportDateLayout = "2006-01-02"
 )
 
-// propReportJob identifies one daily log file that should produce a propagation
-// report. Date is the stable dedupe key; LogPath is allowed to be filled in late
-// so manual and rotation-triggered jobs share the same path logic.
+// propReportJob identifies one completed UTC log archive that should produce a
+// propagation report. Date is the stable dedupe key; LogPath is allowed to be
+// filled in late so manual and rotation-triggered jobs share the same path logic.
 type propReportJob struct {
 	Date    time.Time
 	LogPath string
@@ -191,7 +190,7 @@ func (g *propReportGenerator) Run(ctx context.Context, job propReportJob) error 
 		return fmt.Errorf("missing job date")
 	}
 	if strings.TrimSpace(job.LogPath) == "" {
-		job.LogPath = filepath.Join("data", "logs", "propagation", fmt.Sprintf("%s.log", job.Date.Format(propReportLogDateLayout)))
+		job.LogPath = logutil.DailyArchivePath(filepath.Join("data", "logs", "propagation"), job.Date)
 	}
 
 	_, err := propreport.Generate(ctx, propreport.Options{

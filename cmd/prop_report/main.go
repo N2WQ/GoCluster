@@ -13,7 +13,7 @@ import (
 
 func main() {
 	dateFlag := flag.String("date", "", "Date to analyze (YYYY-MM-DD, defaults to today UTC)")
-	logPathFlag := flag.String("log", "", "Path to daily propagation log (defaults to data/logs/propagation/<DD-Mon-YYYY>.log)")
+	logPathFlag := flag.String("log", "", "Path to archived daily propagation log (defaults to data/logs/propagation/<DD-Mon-YYYY>.log)")
 	jsonOutFlag := flag.String("json-out", "", "Output JSON summary path (defaults to data/reports/prop-YYYY-MM-DD.json)")
 	reportOutFlag := flag.String("report-out", "", "Output report path (defaults to data/reports/prop-YYYY-MM-DD.md)")
 	configDirFlag := flag.String("config-dir", filepath.Join("data", "config"), "Config directory for model context")

@@ -105,18 +105,34 @@ Loader behavior:
 - `reputation.yaml` in the public example disables IPinfo download/API usage and uses a placeholder download token so the strict loader still sees the required key. Put real IPinfo tokens only in a private config directory.
 - Use `prop_report -config-dir <dir>` to point report generation at an alternate config directory. The older `-path-config` flag accepts either a directory or `path_reliability.yaml` path for compatibility.
 
+Runtime log file names:
+- System, dropped-call, file-only event, and propagation logs keep a stable
+  active filename derived from the configured `dir` basename, such as
+  `system.log` in `data/logs/system`.
+- Dropped-call category logs use category subdirectories under
+  `logging.dropped_calls.dir`, such as `bad_de_dx/bad_de_dx.log`.
+- On UTC day rotation, the completed active file is archived with the existing
+  date-only format, such as `07-Jun-2026.log`. The active file is then reopened
+  empty before new-day events are written.
+
 Propagation logs:
 - `logging.propagation` writes path/propagation aggregate lines to a separate
-  daily file and does not add UI/console output.
+  file sink and does not add UI/console output.
 - Each block supports `enabled`, `dir`, and `retention_days`.
 - `retention_days: 0` inherits `logging.retention_days`.
-- The daily `prop_report` tool defaults to this log location; pass `-log` for
-  historical system-log files.
+- The active propagation file is `propagation.log`; archives retain the
+  date-only format, such as `07-Jun-2026.log`.
+- The daily `prop_report` tool defaults to the date-only propagation archive;
+  pass `-log` for historical system-log files or an explicit active/archive
+  path.
 
 File-only event logs:
-- `logging.login_attempts`, `logging.reputation_drops`, `logging.telnet_connections`, `logging.ingest_connections`, and `logging.peer_connections` write separate daily files and do not add UI/console output.
+- `logging.login_attempts`, `logging.reputation_drops`, `logging.telnet_connections`, `logging.ingest_connections`, and `logging.peer_connections` write separate file sinks and do not add UI/console output.
 - Each block supports `enabled`, `dir`, `retention_days`, and `dedupe_window_seconds`.
 - `retention_days: 0` inherits `logging.retention_days`; omitted `dedupe_window_seconds` inherits `logging.drop_dedupe_window_seconds`; explicit `dedupe_window_seconds: 0` disables de-dupe for that event log.
+- Active event files use the directory basename, such as
+  `login_attempts.log`; archives retain the date-only format, such as
+  `07-Jun-2026.log`.
 - Login attempt logs record failed or blocked login attempts only, not successful login audits. Telnet connection logs record successful login lifecycle separately.
 - Event log values are sanitized and truncated; peer passwords, raw commands, raw peer frames, and payload bodies are not logged.
 

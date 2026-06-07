@@ -605,18 +605,24 @@ account, unit-file, and operational command sequence.
 
 ## Operator Logs
 
-`logging.dropped_calls` can write optional daily files for dropped calls without changing any drop policy. The shipped config enables it; set `logging.dropped_calls.enabled: false` to disable those files. When enabled, the cluster writes separate files for bad DE/DX calls, FCC no-license drops, and harmonic suppressions under `logging.dropped_calls.dir`.
+`logging.dropped_calls` can write optional UTC-rotated files for dropped calls without changing any drop policy. The shipped config enables it; set `logging.dropped_calls.enabled: false` to disable those files. When enabled, the cluster writes separate files for bad DE/DX calls, FCC no-license drops, and harmonic suppressions under `logging.dropped_calls.dir`.
 
-Each entry uses the same timestamped daily-file logger as the system log and records only the ingestion source, dropped role, reason, call, DE, DX, mode, and a short detail field. Frequency, category, and dashboard text are intentionally omitted.
+Each entry uses the same timestamped file logger as the system log and records only the ingestion source, dropped role, reason, call, DE, DX, mode, and a short detail field. Frequency, category, and dashboard text are intentionally omitted.
 
-`logging.login_attempts`, `logging.reputation_drops`, `logging.telnet_connections`, `logging.ingest_connections`, and `logging.peer_connections` write separate file-only daily event logs for failed or blocked login attempts, reputation-gated spot drops, telnet lifecycle, ingest lifecycle, and peer lifecycle. These event logs do not add local console or UI output; check `data/config/README.md` for the per-log `enabled`, `dir`, `retention_days`, and `dedupe_window_seconds` settings.
+`logging.login_attempts`, `logging.reputation_drops`, `logging.telnet_connections`, `logging.ingest_connections`, and `logging.peer_connections` write separate file-only event logs for failed or blocked login attempts, reputation-gated spot drops, telnet lifecycle, ingest lifecycle, and peer lifecycle. These event logs do not add local console or UI output; check `data/config/README.md` for the per-log `enabled`, `dir`, `retention_days`, and `dedupe_window_seconds` settings.
 
-`logging.propagation` writes separate file-only daily propagation logs under
+Runtime file logs keep a stable active filename derived from the configured
+directory name, such as `data/logs/system/system.log` and
+`data/logs/propagation/propagation.log`. Completed UTC days archive with the
+existing date-only format, such as `07-Jun-2026.log`.
+
+`logging.propagation` writes a separate file-only propagation log under
 `data/logs/propagation` by default. This is where the five-minute path
 prediction, source mix, bucket, weight distribution, ge10 variance, unique
 spotter/grid-pair, and report inputs are written.
-Daily propagation reports read this log by default; pass `prop_report -log` to
-an old system log path when generating reports from historical files.
+Daily propagation reports read the completed propagation archive by default;
+pass `prop_report -log` to an old system log path when generating reports from
+historical files.
 
 ```yaml
 logging:

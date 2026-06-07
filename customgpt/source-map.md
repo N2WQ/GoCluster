@@ -79,7 +79,8 @@ linking or citing these docs over duplicating their content here.
   dropped-call logs, and file-only event logs. Propagation/path aggregates live
   in `logging.propagation.dir`; event logs for login attempts, reputation
   drops, telnet lifecycle, ingest lifecycle, and peer lifecycle do not add
-  console or UI output.
+  console or UI output. Runtime file logs use stable active names such as
+  `system.log` and UTC date-only archives such as `07-Jun-2026.log`.
 - For symptom reports, route to [customgpt/troubleshooting-index.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/customgpt/troubleshooting-index.md) before
   using broad docs or historical TSRs.
 - For decision history, route to the ADR/TSR indexes before summarizing.

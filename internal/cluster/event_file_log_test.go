@@ -84,7 +84,7 @@ func eventCfg(dir string) config.EventFileLoggingConfig {
 
 func assertEventLogLine(t *testing.T, dir, wantBody string) {
 	t.Helper()
-	path := filepath.Join(dir, logFileNameForDate(time.Now().UTC()))
+	path := filepath.Join(dir, activeLogFileNameForDir(dir))
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)

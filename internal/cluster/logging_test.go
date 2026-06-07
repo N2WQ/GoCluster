@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -13,6 +14,15 @@ func TestLogFileNameForDate(t *testing.T) {
 	when := time.Date(2026, time.January, 22, 12, 0, 0, 0, time.UTC)
 	if got := logFileNameForDate(when); got != "22-Jan-2026.log" {
 		t.Fatalf("expected log filename to be 22-Jan-2026.log, got %q", got)
+	}
+}
+
+func TestActiveLogFileNameForDir(t *testing.T) {
+	if got := activeLogFileNameForDir(filepath.Join("data", "logs", "system")); got != "system.log" {
+		t.Fatalf("expected active filename system.log, got %q", got)
+	}
+	if got := activeLogFileNameForDir(filepath.Join("data", "logs", "propagation")); got != "propagation.log" {
+		t.Fatalf("expected active filename propagation.log, got %q", got)
 	}
 }
 
@@ -27,6 +37,9 @@ func TestParseLogFileDate(t *testing.T) {
 	if _, ok := parseLogFileDate("notes.txt"); ok {
 		t.Fatalf("expected non-log file to be rejected")
 	}
+	if _, ok := parseLogFileDate("system.log"); ok {
+		t.Fatalf("expected active log file name to be rejected")
+	}
 }
 
 func TestCleanupOldLogs(t *testing.T) {
@@ -35,6 +48,7 @@ func TestCleanupOldLogs(t *testing.T) {
 		"20-Jan-2026.log",
 		"21-Jan-2026.log",
 		"22-Jan-2026.log",
+		"system.log",
 		"notes.txt",
 	}
 	for _, name := range files {
@@ -55,7 +69,7 @@ func TestCleanupOldLogs(t *testing.T) {
 			t.Fatalf("stat %s: %v", name, err)
 		}
 	}
-	expectPresent := []string{"21-Jan-2026.log", "22-Jan-2026.log", "notes.txt"}
+	expectPresent := []string{"21-Jan-2026.log", "22-Jan-2026.log", "system.log", "notes.txt"}
 	for _, name := range expectPresent {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Fatalf("expected %s to remain: %v", name, err)
@@ -63,8 +77,32 @@ func TestCleanupOldLogs(t *testing.T) {
 	}
 }
 
+func TestDailyFileSinkWritesStableActiveFile(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "system")
+	sink, err := newDailyFileSink(dir, 1)
+	if err != nil {
+		t.Fatalf("newDailyFileSink: %v", err)
+	}
+	defer sink.Close()
+
+	day := time.Date(2026, time.January, 22, 12, 0, 0, 0, time.UTC)
+	sink.WriteLine("first", day)
+
+	activePath := filepath.Join(dir, "system.log")
+	data, err := os.ReadFile(activePath)
+	if err != nil {
+		t.Fatalf("read active log: %v", err)
+	}
+	if !strings.Contains(string(data), "first") {
+		t.Fatalf("expected active log to contain first line, got %q", data)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "22-Jan-2026.log")); !os.IsNotExist(err) {
+		t.Fatalf("did not expect archive before rotation, stat err=%v", err)
+	}
+}
+
 func TestDailyFileSinkRotateHook(t *testing.T) {
-	dir := t.TempDir()
+	dir := filepath.Join(t.TempDir(), "propagation")
 	sink, err := newDailyFileSink(dir, 1)
 	if err != nil {
 		t.Fatalf("newDailyFileSink: %v", err)
@@ -106,8 +144,26 @@ func TestDailyFileSinkRotateHook(t *testing.T) {
 	if filepath.Base(gotPrevPath) != "22-Jan-2026.log" {
 		t.Fatalf("unexpected prev log path: %s", gotPrevPath)
 	}
-	if filepath.Base(gotNewPath) != "23-Jan-2026.log" {
+	if filepath.Base(gotNewPath) != "propagation.log" {
 		t.Fatalf("unexpected new log path: %s", gotNewPath)
+	}
+	if err := sink.Close(); err != nil {
+		t.Fatalf("Close() error: %v", err)
+	}
+
+	archiveData, err := os.ReadFile(filepath.Join(dir, "22-Jan-2026.log"))
+	if err != nil {
+		t.Fatalf("read archive: %v", err)
+	}
+	if !strings.Contains(string(archiveData), "first") {
+		t.Fatalf("expected archive to contain first line, got %q", archiveData)
+	}
+	activeData, err := os.ReadFile(filepath.Join(dir, "propagation.log"))
+	if err != nil {
+		t.Fatalf("read active: %v", err)
+	}
+	if strings.Contains(string(activeData), "first") || !strings.Contains(string(activeData), "second") {
+		t.Fatalf("expected active to contain only new-day line, got %q", activeData)
 	}
 }
 
@@ -164,7 +220,7 @@ func TestRotateHookLoggingDoesNotDeadlock(t *testing.T) {
 
 	// Force the next log write to rotate without relying on wall-clock midnight.
 	sink.mu.Lock()
-	sink.currentDate = now.Add(-24 * time.Hour).Format(logFileDateLayout)
+	sink.currentDate = dateOnly(now.Add(-24 * time.Hour)).Format(logDateKeyLayout)
 	sink.mu.Unlock()
 
 	hookDone := make(chan struct{})
@@ -189,5 +245,105 @@ func TestRotateHookLoggingDoesNotDeadlock(t *testing.T) {
 	case <-hookDone:
 	case <-time.After(2 * time.Second):
 		t.Fatalf("rotate hook did not complete")
+	}
+}
+
+func TestDailyFileSinkAdoptsCurrentLegacyLog(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "system")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	day := time.Date(2026, time.January, 22, 12, 0, 0, 0, time.UTC)
+	legacyPath := filepath.Join(dir, "22-Jan-2026.log")
+	if err := os.WriteFile(legacyPath, []byte("legacy\n"), 0644); err != nil {
+		t.Fatalf("write legacy: %v", err)
+	}
+	sink, err := newDailyFileSink(dir, 365)
+	if err != nil {
+		t.Fatalf("newDailyFileSink: %v", err)
+	}
+	defer sink.Close()
+
+	sink.WriteLine("current", day)
+
+	if _, err := os.Stat(legacyPath); !os.IsNotExist(err) {
+		t.Fatalf("expected legacy current-day file to be adopted, stat err=%v", err)
+	}
+	activeData, err := os.ReadFile(filepath.Join(dir, "system.log"))
+	if err != nil {
+		t.Fatalf("read active: %v", err)
+	}
+	if !strings.Contains(string(activeData), "legacy") || !strings.Contains(string(activeData), "current") {
+		t.Fatalf("expected active to contain adopted and current lines, got %q", activeData)
+	}
+}
+
+func TestDailyFileSinkArchivesStaleActiveOnStartup(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "system")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	activePath := filepath.Join(dir, "system.log")
+	if err := os.WriteFile(activePath, []byte("2026/01/22 23:59:59 stale\n"), 0644); err != nil {
+		t.Fatalf("write active: %v", err)
+	}
+	sink, err := newDailyFileSink(dir, 1)
+	if err != nil {
+		t.Fatalf("newDailyFileSink: %v", err)
+	}
+	defer sink.Close()
+
+	sink.WriteLine("fresh", time.Date(2026, time.January, 23, 0, 0, 1, 0, time.UTC))
+
+	archiveData, err := os.ReadFile(filepath.Join(dir, "22-Jan-2026.log"))
+	if err != nil {
+		t.Fatalf("read archive: %v", err)
+	}
+	if !strings.Contains(string(archiveData), "stale") {
+		t.Fatalf("expected archive to contain stale line, got %q", archiveData)
+	}
+	activeData, err := os.ReadFile(activePath)
+	if err != nil {
+		t.Fatalf("read active: %v", err)
+	}
+	if strings.Contains(string(activeData), "stale") || !strings.Contains(string(activeData), "fresh") {
+		t.Fatalf("expected active to contain only fresh line, got %q", activeData)
+	}
+}
+
+func TestDailyFileSinkArchiveCollisionMergesWithoutOverwrite(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "system")
+	sink, err := newDailyFileSink(dir, 1)
+	if err != nil {
+		t.Fatalf("newDailyFileSink: %v", err)
+	}
+	defer sink.Close()
+
+	day1 := time.Date(2026, time.January, 22, 12, 0, 0, 0, time.UTC)
+	day2 := day1.Add(24 * time.Hour)
+	sink.WriteLine("from-active", day1)
+	archivePath := filepath.Join(dir, "22-Jan-2026.log")
+	if err := os.WriteFile(archivePath, []byte("existing\n"), 0644); err != nil {
+		t.Fatalf("write archive: %v", err)
+	}
+
+	sink.WriteLine("new-day", day2)
+	if err := sink.Close(); err != nil {
+		t.Fatalf("Close() error: %v", err)
+	}
+
+	archiveData, err := os.ReadFile(archivePath)
+	if err != nil {
+		t.Fatalf("read archive: %v", err)
+	}
+	if !strings.Contains(string(archiveData), "existing") || !strings.Contains(string(archiveData), "from-active") {
+		t.Fatalf("expected archive merge without overwrite, got %q", archiveData)
+	}
+	activeData, err := os.ReadFile(filepath.Join(dir, "system.log"))
+	if err != nil {
+		t.Fatalf("read active: %v", err)
+	}
+	if strings.Contains(string(activeData), "from-active") || !strings.Contains(string(activeData), "new-day") {
+		t.Fatalf("expected active to contain only new-day line, got %q", activeData)
 	}
 }

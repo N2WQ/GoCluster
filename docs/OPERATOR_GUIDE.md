@@ -280,12 +280,14 @@ Example readings:
 ## Logs And Health
 
 System logs, propagation logs, optional dropped-call logs, and file-only event
-logs are configured in `app.yaml`. Propagation logs are separate daily files
-under `logging.propagation.dir`; they contain the path prediction aggregates
-used by the daily propagation report. The file-only event logs are separate
-daily files for login attempt failures, reputation-gated spot drops, telnet
-client lifecycle, ingest source lifecycle, and peer lifecycle. They do not add
-local UI or console panes.
+logs are configured in `app.yaml`. Runtime file logs keep a stable active
+filename derived from the configured directory name, such as `system.log` or
+`propagation.log`, and completed UTC days archive as `DD-Mon-YYYY.log`.
+Propagation logs live under `logging.propagation.dir`; they contain the path
+prediction aggregates used by the daily propagation report. The file-only event
+logs cover login attempt failures, reputation-gated spot drops, telnet client
+lifecycle, ingest source lifecycle, and peer lifecycle. They do not add local UI
+or console panes.
 Under `systemd`, stdout/stderr also go to journald and can be tailed with:
 
 ```sh

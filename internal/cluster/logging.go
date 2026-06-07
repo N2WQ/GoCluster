@@ -17,12 +17,15 @@ import (
 
 	"dxcluster/config"
 	"dxcluster/internal/linebuffer"
+	"dxcluster/internal/logutil"
 )
 
 const (
 	logTimestampLayout = "2006/01/02 15:04:05"
-	logFileDateLayout  = "02-Jan-2006"
+	logFileDateLayout  = logutil.DailyArchiveDateLayout
+	logDateKeyLayout   = "2006-01-02"
 	maxLogBufferBytes  = 16 * 1024
+	activeLogTailBytes = 64 * 1024
 )
 
 var errPropagationLoggingDisabled = errors.New("propagation logging disabled")
@@ -99,8 +102,8 @@ func newDailyLogSink(dir string, retentionDays int) (lineSink, error) {
 	return newDailyFileSink(dir, retentionDays)
 }
 
-// WriteLine appends a timestamped line to the current daily log file.
-// Key aspects: Rotates on day change and logs file errors to stderr (rate-limited).
+// WriteLine appends a timestamped line to the stable current-day log file.
+// Key aspects: Archives before first new-day write and logs file errors to stderr (rate-limited).
 // Upstream: logFanout line dispatch.
 // Downstream: os.OpenFile and file.WriteString.
 func (s *dailyFileSink) WriteLine(line string, now time.Time) {
@@ -108,7 +111,8 @@ func (s *dailyFileSink) WriteLine(line string, now time.Time) {
 		return
 	}
 	now = now.UTC()
-	date := now.Format(logFileDateLayout)
+	day := dateOnly(now)
+	dateKey := day.Format(logDateKeyLayout)
 
 	var hook logRotateHook
 	var prevDate time.Time
@@ -117,8 +121,8 @@ func (s *dailyFileSink) WriteLine(line string, now time.Time) {
 
 	s.mu.Lock()
 
-	if s.file == nil || s.currentDate != date {
-		hook, prevDate, prevPath, newPath = s.rotateLocked(date, now)
+	if s.file == nil || s.currentDate != dateKey {
+		hook, prevDate, prevPath, newPath = s.rotateLocked(dateKey, day, now)
 	}
 	if s.file == nil {
 		s.mu.Unlock()
@@ -169,17 +173,16 @@ func (s *dailyFileSink) SetRotateHook(hook logRotateHook) {
 	s.mu.Unlock()
 }
 
-func (s *dailyFileSink) rotateLocked(date string, now time.Time) (logRotateHook, time.Time, string, string) {
+func (s *dailyFileSink) rotateLocked(dateKey string, day, now time.Time) (logRotateHook, time.Time, string, string) {
 	var hook logRotateHook
 	var prevDate time.Time
 	var prevPath string
 	var newPath string
-	if s.currentDate != "" && s.currentDate != date {
-		parsed, err := time.ParseInLocation(logFileDateLayout, s.currentDate, time.UTC)
+	if s.currentDate != "" && s.currentDate != dateKey {
+		parsed, err := time.ParseInLocation(logDateKeyLayout, s.currentDate, time.UTC)
 		if err == nil {
 			prevDate = parsed
 		}
-		prevPath = s.currentPath
 		hook = s.rotateHook
 	}
 	if s.file != nil {
@@ -190,14 +193,40 @@ func (s *dailyFileSink) rotateLocked(date string, now time.Time) (logRotateHook,
 		s.reportErrorLocked(now, fmt.Errorf("failed to create log directory %q: %w", s.dir, err))
 		return nil, time.Time{}, "", ""
 	}
-	path := filepath.Join(s.dir, logFileNameForDate(now))
+	if !prevDate.IsZero() {
+		archivedPath, err := s.archiveActiveLogLocked(prevDate)
+		if err != nil {
+			s.reportErrorLocked(now, err)
+			return nil, time.Time{}, "", ""
+		}
+		prevPath = archivedPath
+	} else if s.currentDate == "" {
+		activePath := activeLogPathForDir(s.dir)
+		if activeDate, ok := inferActiveLogDate(activePath); ok {
+			if !dateOnly(activeDate).Equal(day) {
+				archivedPath, err := s.archiveActiveLogLocked(dateOnly(activeDate))
+				if err != nil {
+					s.reportErrorLocked(now, err)
+					return nil, time.Time{}, "", ""
+				}
+				prevDate = dateOnly(activeDate)
+				prevPath = archivedPath
+				hook = s.rotateHook
+			}
+		} else if err := s.adoptLegacyCurrentLogLocked(day); err != nil {
+			s.reportErrorLocked(now, err)
+			return nil, time.Time{}, "", ""
+		}
+	}
+
+	path := activeLogPathForDir(s.dir)
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		s.reportErrorLocked(now, fmt.Errorf("open failed for %s: %w", path, err))
 		return nil, time.Time{}, "", ""
 	}
 	s.file = file
-	s.currentDate = date
+	s.currentDate = dateKey
 	s.currentPath = path
 	newPath = path
 	if s.cleanupFn != nil {
@@ -213,6 +242,131 @@ func (s *dailyFileSink) rotateLocked(date string, now time.Time) (logRotateHook,
 		}()
 	}
 	return hook, prevDate, prevPath, newPath
+}
+
+func (s *dailyFileSink) archiveActiveLogLocked(date time.Time) (string, error) {
+	activePath := activeLogPathForDir(s.dir)
+	archivePath := archiveLogPathForDate(s.dir, date)
+	info, err := os.Stat(activePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return archivePath, nil
+		}
+		return "", fmt.Errorf("stat active log %s: %w", activePath, err)
+	}
+	if info.IsDir() {
+		return "", fmt.Errorf("active log path is a directory: %s", activePath)
+	}
+	if info.Size() == 0 {
+		if err := os.Remove(activePath); err != nil && !os.IsNotExist(err) {
+			return "", fmt.Errorf("remove empty active log %s: %w", activePath, err)
+		}
+		return archivePath, nil
+	}
+	if _, err := os.Stat(archivePath); err != nil {
+		if !os.IsNotExist(err) {
+			return "", fmt.Errorf("stat archive log %s: %w", archivePath, err)
+		}
+		if err := os.Rename(activePath, archivePath); err != nil {
+			return "", fmt.Errorf("archive active log %s to %s: %w", activePath, archivePath, err)
+		}
+		return archivePath, nil
+	}
+	if err := appendFileAndRemove(activePath, archivePath); err != nil {
+		return "", err
+	}
+	return archivePath, nil
+}
+
+func (s *dailyFileSink) adoptLegacyCurrentLogLocked(day time.Time) error {
+	legacyPath := archiveLogPathForDate(s.dir, day)
+	activePath := activeLogPathForDir(s.dir)
+	if _, err := os.Stat(legacyPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("stat current legacy log %s: %w", legacyPath, err)
+	}
+	if _, err := os.Stat(activePath); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat active log %s: %w", activePath, err)
+	}
+	if err := os.Rename(legacyPath, activePath); err != nil {
+		return fmt.Errorf("adopt current legacy log %s to %s: %w", legacyPath, activePath, err)
+	}
+	return nil
+}
+
+func appendFileAndRemove(srcPath, dstPath string) error {
+	src, err := os.Open(srcPath)
+	if err != nil {
+		return fmt.Errorf("open active log for archive merge %s: %w", srcPath, err)
+	}
+
+	dst, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		_ = src.Close()
+		return fmt.Errorf("open archive log for merge %s: %w", dstPath, err)
+	}
+	_, copyErr := io.Copy(dst, src)
+	closeDstErr := dst.Close()
+	closeSrcErr := src.Close()
+	if copyErr != nil {
+		return fmt.Errorf("merge active log %s into %s: %w", srcPath, dstPath, copyErr)
+	}
+	if closeDstErr != nil {
+		return fmt.Errorf("close archive log %s after merge: %w", dstPath, closeDstErr)
+	}
+	if closeSrcErr != nil {
+		return fmt.Errorf("close active log %s after merge: %w", srcPath, closeSrcErr)
+	}
+	if err := os.Remove(srcPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove merged active log %s: %w", srcPath, err)
+	}
+	return nil
+}
+
+func inferActiveLogDate(path string) (time.Time, bool) {
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return time.Time{}, false
+	}
+	if date, ok := parseLogDateFromTail(path, info.Size()); ok {
+		return date, true
+	}
+	return dateOnly(info.ModTime().UTC()), true
+}
+
+func parseLogDateFromTail(path string, size int64) (time.Time, bool) {
+	if size <= 0 {
+		return time.Time{}, false
+	}
+	readSize := size
+	if readSize > activeLogTailBytes {
+		readSize = activeLogTailBytes
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return time.Time{}, false
+	}
+	defer file.Close()
+	buf := make([]byte, int(readSize))
+	if _, err := file.ReadAt(buf, size-readSize); err != nil && !errors.Is(err, io.EOF) {
+		return time.Time{}, false
+	}
+	lines := strings.Split(string(buf), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if len(line) < len(logTimestampLayout) {
+			continue
+		}
+		parsed, err := time.ParseInLocation(logTimestampLayout, line[:len(logTimestampLayout)], time.UTC)
+		if err == nil {
+			return dateOnly(parsed.UTC()), true
+		}
+	}
+	return time.Time{}, false
 }
 
 func (s *dailyFileSink) reportErrorLocked(now time.Time, err error) {
@@ -411,20 +565,24 @@ func formatLogTimestamp(now time.Time) string {
 	return now.UTC().Format(logTimestampLayout)
 }
 
+func activeLogFileNameForDir(dir string) string {
+	return logutil.DailyActiveFileName(dir)
+}
+
+func activeLogPathForDir(dir string) string {
+	return logutil.DailyActivePath(dir)
+}
+
 func logFileNameForDate(now time.Time) string {
-	return now.UTC().Format(logFileDateLayout) + ".log"
+	return logutil.DailyArchiveFileName(now)
+}
+
+func archiveLogPathForDate(dir string, now time.Time) string {
+	return logutil.DailyArchivePath(dir, now)
 }
 
 func parseLogFileDate(name string) (time.Time, bool) {
-	if filepath.Ext(name) != ".log" {
-		return time.Time{}, false
-	}
-	base := strings.TrimSuffix(name, ".log")
-	parsed, err := time.ParseInLocation(logFileDateLayout, base, time.UTC)
-	if err != nil {
-		return time.Time{}, false
-	}
-	return parsed, true
+	return logutil.ParseDailyArchiveDate(name)
 }
 
 func cleanupOldLogs(dir string, now time.Time, retentionDays int) error {

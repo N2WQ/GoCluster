@@ -43,19 +43,20 @@ ui:
     keybindings:
       use_alternatives: true         # Enable o/i/p/e navigation
 
-# Optional daily system log files (local time, one file per day).
+# Optional UTC-rotated system log files. Active files keep stable names; archives
+# keep the existing date-only format, for example system.log -> 07-Jun-2026.log.
 # Repeated file-log blocks use:
-#   dir: output directory for daily files.
+#   dir: output directory; the active filename is derived from the directory name.
 #   retention_days: local retention window; 0 inherits the root logging value where supported.
 #   dedupe_window_seconds: repeated-event suppression window; 0 disables dedupe for that file.
 logging:
   enabled: true
-  dir: "data/logs/system" # Root system-log directory.
-  retention_days: 7       # Keep daily logs for this many days.
+  dir: "data/logs/system" # Root system-log directory; active file is system.log.
+  retention_days: 7       # Keep archived logs for this many days.
   drop_dedupe_window_seconds: 120  # 0 disables console dropped-event dedupe; dropped_calls may override file dedupe
   dropped_calls:
     enabled: true
-    dir: "data/logs/dropped_calls" # Separate daily file for dropped spot categories.
+    dir: "data/logs/dropped_calls" # Parent directory for separate dropped-call category logs.
     retention_days: 7
     dedupe_window_seconds: 120
     bad_de_dx: true
@@ -88,5 +89,5 @@ logging:
     dedupe_window_seconds: 120
   propagation:
     enabled: true
-    dir: "data/logs/propagation" # Separate daily file for path/propagation aggregates.
+    dir: "data/logs/propagation" # Path/propagation aggregate log; active file is propagation.log.
     retention_days: 7
