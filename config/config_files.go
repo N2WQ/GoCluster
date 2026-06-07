@@ -1,11 +1,15 @@
 package config
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"math"
-	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
+
+	"dxcluster/internal/yamlconfig"
 )
 
 const (
@@ -65,76 +69,124 @@ type loadedConfigDir struct {
 	pathsByBase map[string]string
 }
 
-func (l loadedConfigDir) mustPathFor(base string) string {
-	path, ok := l.pathsByBase[strings.ToLower(base)]
-	if !ok {
-		return base
-	}
-	return path
+type LoadDiagnostics struct {
+	Warnings []string
+	Errors   []string
 }
 
-func requireRegisteredConfigFiles(loaded loadedConfigDir) error {
+func (d *LoadDiagnostics) addWarning(message string) {
+	if strings.TrimSpace(message) == "" {
+		return
+	}
+	d.Warnings = append(d.Warnings, message)
+}
+
+func (d *LoadDiagnostics) addError(message string) {
+	if strings.TrimSpace(message) == "" {
+		return
+	}
+	d.Errors = append(d.Errors, message)
+}
+
+func (d *LoadDiagnostics) appendYAMLDiagnostics(diags []yamlconfig.Diagnostic) {
+	for _, diag := range diags {
+		message := diag.Error()
+		switch diag.Severity {
+		case yamlconfig.DiagnosticWarning:
+			d.addWarning(message)
+		default:
+			d.addError(message)
+		}
+	}
+}
+
+func (d *LoadDiagnostics) sort() {
+	sort.Strings(d.Warnings)
+	sort.Strings(d.Errors)
+}
+
+func (d LoadDiagnostics) HasErrors() bool {
+	return len(d.Errors) > 0
+}
+
+func (d LoadDiagnostics) Error() error {
+	if !d.HasErrors() {
+		return nil
+	}
+	return DiagnosticError{Diagnostics: d}
+}
+
+type DiagnosticError struct {
+	Diagnostics LoadDiagnostics
+}
+
+func (e DiagnosticError) Error() string {
+	switch len(e.Diagnostics.Errors) {
+	case 0:
+		return "config diagnostics failed"
+	case 1:
+		return e.Diagnostics.Errors[0]
+	default:
+		var buf bytes.Buffer
+		fmt.Fprintf(&buf, "config diagnostics failed with %d error(s):", len(e.Diagnostics.Errors))
+		for _, err := range e.Diagnostics.Errors {
+			fmt.Fprintf(&buf, "\n- %s", err)
+		}
+		return buf.String()
+	}
+}
+
+func IsDiagnosticError(err error) bool {
+	var diagErr DiagnosticError
+	return errors.As(err, &diagErr)
+}
+
+func requiredConfigFileDiagnostics(loaded loadedConfigDir) []string {
+	missing := make([]string, 0)
 	for base, spec := range configFileRegistry {
 		if !spec.required {
 			continue
 		}
 		if _, ok := loaded.pathsByBase[base]; !ok {
-			return fmt.Errorf("required config file %q not found in config directory", base)
+			missing = append(missing, fmt.Sprintf("required config file %q not found in config directory", base))
 		}
 	}
-	return nil
+	sort.Strings(missing)
+	return missing
 }
 
-func validateConfigFileTopLevel(file string, spec configFileSpec, doc map[string]any) error {
-	if spec.class != configFileMergedRuntime {
-		return nil
-	}
-	allowed := runtimeTopLevelKeys()
-	for key := range doc {
-		if _, ok := allowed[key]; !ok {
-			return fmt.Errorf("unrecognized top-level config key %q in %s", key, filepath.Base(file))
-		}
-	}
-	return nil
-}
-
-func validateRemovedRuntimeKeys(raw map[string]any) error {
+func removedRuntimeKeyDiagnostics(raw map[string]any) []string {
 	removed := []string{
 		"archive.retention_ft_seconds",
 		"archive.retention_default_seconds",
 		"archive.cleanup_batch_size",
 		"archive.cleanup_batch_yield_ms",
+		"archive.busy_timeout_ms",
+		"archive.preflight_timeout_ms",
 		"pskreporter.modes",
 		"pskreporter.path_only_modes",
 	}
+	diagnostics := make([]string, 0)
 	for _, path := range removed {
 		parts := strings.Split(path, ".")
 		if yamlKeyPresent(raw, parts...) {
-			switch path {
-			case "archive.retention_ft_seconds", "archive.retention_default_seconds":
-				return fmt.Errorf("removed YAML setting %q: use archive.retention_seconds", path)
-			case "archive.cleanup_batch_size", "archive.cleanup_batch_yield_ms":
-				return fmt.Errorf("removed YAML setting %q: archive cleanup now uses timestamp range deletion; remove this key", path)
-			default:
-				return fmt.Errorf("removed YAML setting %q: define PSKReporter mode routing in spot_taxonomy.yaml using pskreporter_route", path)
-			}
+			diagnostics = append(diagnostics, removedRuntimeKeyMessage(path))
 		}
 	}
-	return nil
+	return diagnostics
 }
 
-func runtimeTopLevelKeys() map[string]struct{} {
-	out := make(map[string]struct{})
-	t := reflect.TypeOf(Config{})
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		key, ok := yamlFieldName(field)
-		if !ok {
-			continue
-		}
-		out[key] = struct{}{}
+func removedRuntimeKeyMessage(path string) string {
+	switch path {
+	case "archive.retention_ft_seconds", "archive.retention_default_seconds":
+		return fmt.Sprintf("removed YAML setting %q: use archive.retention_seconds", path)
+	case "archive.cleanup_batch_size", "archive.cleanup_batch_yield_ms":
+		return fmt.Sprintf("removed YAML setting %q: archive cleanup now uses timestamp range deletion; remove this key", path)
+	case "archive.busy_timeout_ms", "archive.preflight_timeout_ms":
+		return fmt.Sprintf("removed YAML setting %q: Pebble archive compatibility fields are no longer supported; remove this key", path)
+	default:
+		return fmt.Sprintf("removed YAML setting %q: define PSKReporter mode routing in spot_taxonomy.yaml using pskreporter_route", path)
 	}
-	return out
 }
 
 var runtimePresenceExemptPaths = map[string]struct{}{
@@ -223,11 +275,14 @@ var runtimeAllowNegativeSettings = map[string]struct{}{
 	"call_correction.bayes_bonus.prior_log_min_milli": {},
 }
 
-func validateMergedRuntimePresence(raw map[string]any) error {
-	return validateStructPresence(raw, reflect.TypeOf(Config{}), nil)
+func mergedRuntimePresenceDiagnostics(raw map[string]any) []string {
+	diagnostics := make([]string, 0)
+	collectStructPresenceDiagnostics(raw, reflect.TypeOf(Config{}), nil, &diagnostics)
+	sort.Strings(diagnostics)
+	return diagnostics
 }
 
-func validateStructPresence(raw map[string]any, t reflect.Type, prefix []string) error {
+func collectStructPresenceDiagnostics(raw map[string]any, t reflect.Type, prefix []string, diagnostics *[]string) {
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
 		key, ok := yamlFieldName(field)
@@ -239,20 +294,23 @@ func validateStructPresence(raw map[string]any, t reflect.Type, prefix []string)
 		if _, exempt := runtimePresenceExemptPaths[joined]; exempt {
 			continue
 		}
-		if !yamlKeyPresent(raw, path...) {
-			return fmt.Errorf("required YAML setting %q is missing", joined)
+		value, present := yamlValueAt(raw, path...)
+		if !present {
+			*diagnostics = append(*diagnostics, fmt.Sprintf("required YAML setting %q is missing", joined))
+			continue
+		}
+		if value == nil {
+			*diagnostics = append(*diagnostics, fmt.Sprintf("required YAML setting %q must not be null", joined))
+			continue
 		}
 		fieldType := field.Type
 		for fieldType.Kind() == reflect.Pointer {
 			fieldType = fieldType.Elem()
 		}
 		if fieldType.Kind() == reflect.Struct {
-			if err := validateStructPresence(raw, fieldType, path); err != nil {
-				return err
-			}
+			collectStructPresenceDiagnostics(raw, fieldType, path, diagnostics)
 		}
 	}
-	return nil
 }
 
 func validateConfiguredRuntimeValues(cfg Config) error {

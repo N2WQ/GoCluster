@@ -32,7 +32,7 @@ func TestResolveIARURegionUsesContinentDefaultsAndOverrides(t *testing.T) {
 	}
 }
 
-func TestLoadIARURegionsFileRejectsUnknownKeys(t *testing.T) {
+func TestLoadIARURegionsFileWarnsUnknownKeys(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "iaru_regions.yaml")
 	data := []byte(`defaults_by_continent:
   EU: R1
@@ -44,11 +44,20 @@ unexpected: true
 		t.Fatalf("write config: %v", err)
 	}
 
-	err := LoadIARURegionsFile(path)
-	if err == nil {
-		t.Fatalf("expected unknown key error")
+	warnings, err := LoadIARURegionsFileWithWarnings(path)
+	if err != nil {
+		t.Fatalf("LoadIARURegionsFileWithWarnings() error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "unexpected") {
-		t.Fatalf("expected error to mention unknown key, got %v", err)
+	if !containsWarning(warnings, "unexpected") {
+		t.Fatalf("expected warning to mention unknown key, got %#v", warnings)
 	}
+}
+
+func containsWarning(messages []string, needle string) bool {
+	for _, message := range messages {
+		if strings.Contains(message, needle) {
+			return true
+		}
+	}
+	return false
 }

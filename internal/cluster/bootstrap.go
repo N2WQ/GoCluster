@@ -200,7 +200,7 @@ func isStdoutTTY() bool {
 // Key aspects: Tries env override first, then the default config dir.
 // Upstream: main startup.
 // Downstream: config.Load and os.IsNotExist.
-func loadClusterConfig() (*config.Config, string, error) {
+func loadClusterConfig() (*config.Config, string, config.LoadDiagnostics, error) {
 	candidates := make([]string, 0, 2)
 	if envPath := strings.TrimSpace(os.Getenv(envConfigPath)); envPath != "" {
 		candidates = append(candidates, envPath)
@@ -208,21 +208,36 @@ func loadClusterConfig() (*config.Config, string, error) {
 	candidates = append(candidates, defaultConfigPath)
 
 	var lastErr error
+	var lastDiagnostics config.LoadDiagnostics
 	for _, path := range candidates {
 		if path == "" {
 			continue
 		}
-		cfg, err := config.Load(path)
+		cfg, diagnostics, err := config.LoadWithDiagnostics(path)
 		if err != nil {
+			lastDiagnostics = diagnostics
 			if os.IsNotExist(err) {
 				lastErr = err
 				continue
 			}
-			return nil, path, err
+			return nil, path, diagnostics, err
 		}
-		return cfg, cfg.LoadedFrom, nil
+		return cfg, cfg.LoadedFrom, diagnostics, nil
 	}
-	return nil, "", fmt.Errorf("unable to load config; tried %s (last error: %w)", strings.Join(candidates, ", "), lastErr)
+	return nil, "", lastDiagnostics, fmt.Errorf("unable to load config; tried %s (last error: %w)", strings.Join(candidates, ", "), lastErr)
+}
+
+func logStartupConfigDiagnosticsFallback(diagnostics config.LoadDiagnostics) {
+	if len(diagnostics.Warnings) == 0 && len(diagnostics.Errors) == 0 {
+		return
+	}
+	log.Printf("Config diagnostics: configured system log is unavailable before config load completes; writing startup diagnostics to stderr")
+	for _, warning := range diagnostics.Warnings {
+		log.Printf("Config warning: %s", warning)
+	}
+	for _, errText := range diagnostics.Errors {
+		log.Printf("Config error: %s", errText)
+	}
 }
 
 // Purpose: Resolve grid_db_check_on_miss behavior and its source.
@@ -258,15 +273,19 @@ func gridDBCheckOnMissEnabled(cfg *config.Config) (bool, string) {
 // It preserves the existing configuration load, startup, and shutdown flow.
 func Run(versionInfo BuildInfo) error {
 	currentBuildInfo = versionInfo
-	cfg, configSource, err := loadClusterConfig()
+	cfg, configSource, diagnostics, err := loadClusterConfig()
 	if err != nil {
+		logStartupConfigDiagnosticsFallback(diagnostics)
 		return err
 	}
 	applyGoRuntimeTuning(cfg.GoRuntime)
-	runtime := newClusterRuntime(versionInfo, cfg, configSource)
+	runtime := newClusterRuntime(versionInfo, cfg, configSource, diagnostics)
 	defer runtime.close()
 	if !runtime.initialize() {
-		return nil
+		if runtime.startupErr != nil {
+			return runtime.startupErr
+		}
+		return fmt.Errorf("cluster startup aborted")
 	}
 	runtime.waitForShutdown()
 	return nil

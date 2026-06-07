@@ -108,6 +108,7 @@ func TestDailyFileSinkRotateHook(t *testing.T) {
 		t.Fatalf("newDailyFileSink: %v", err)
 	}
 	defer sink.Close()
+	sink.cleanupFn = func(string, time.Time, int) error { return nil }
 
 	var gotPrevDate time.Time
 	var gotPrevPath string

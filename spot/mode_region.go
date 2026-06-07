@@ -1,3 +1,9 @@
+// File role: Loads and applies the startup-owned IARU regional mode inference
+// reference table.
+// Crawler notes: Start here for regional frequency policy, unknown-region CW
+// safety, and reference-table startup diagnostics.
+// Related docs: data/config/README.md, docs/decisions/ADR-0153-startup-config-diagnostics-and-gridstore-logging.md.
+// Related tests: spot/mode_region_test.go.
 package spot
 
 import (
@@ -7,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"dxcluster/internal/yamlconfig"
 
 	"gopkg.in/yaml.v3"
 )
@@ -63,18 +71,30 @@ func loadRegionModes() {
 // YAML. Runtime startup calls this with the active config directory; the package
 // no longer seeds hard-coded band/mode tables before YAML load.
 func LoadIARUModeInferenceFile(path string) error {
+	_, err := LoadIARUModeInferenceFileWithWarnings(path)
+	return err
+}
+
+func LoadIARUModeInferenceFileWithWarnings(path string) ([]string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	unknown, err := yamlconfig.UnknownFieldDiagnostics(path, data, regionModeTable{})
+	if err != nil {
+		return nil, err
+	}
+	warnings := make([]string, 0, len(unknown))
+	for _, diag := range unknown {
+		warnings = append(warnings, diag.Error())
 	}
 	var table regionModeTable
 	dec := yaml.NewDecoder(bytes.NewReader(data))
-	dec.KnownFields(true)
 	if err := dec.Decode(&table); err != nil {
-		return fmt.Errorf("parse regional mode table %s: %w", path, err)
+		return warnings, fmt.Errorf("parse regional mode table %s: %w", path, err)
 	}
 	if err := validateRegionModeTable(table); err != nil {
-		return fmt.Errorf("validate regional mode table %s: %w", path, err)
+		return warnings, fmt.Errorf("validate regional mode table %s: %w", path, err)
 	}
 	regionModes = regionModeTable{
 		VoiceModeByBand:     cloneStringMap(table.VoiceModeByBand),
@@ -82,7 +102,7 @@ func LoadIARUModeInferenceFile(path string) error {
 		Regions:             cloneRegionSegmentMap(table.Regions),
 	}
 	regionModesSet = true
-	return nil
+	return warnings, nil
 }
 
 func validateRegionModeTable(table regionModeTable) error {

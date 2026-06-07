@@ -119,7 +119,9 @@ type GlyphThresholds struct {
 	hasUnlikely bool
 }
 
-// UnmarshalYAML enforces the new high/medium/low/unlikely keys and rejects legacy names.
+// UnmarshalYAML accepts the current high/medium/low/unlikely keys. Removed
+// legacy threshold names are rejected before permissive decode so ordinary
+// extra keys can still be reported as warning-only startup diagnostics.
 func (t *GlyphThresholds) UnmarshalYAML(value *yaml.Node) error {
 	if t == nil {
 		return nil
@@ -150,10 +152,8 @@ func (t *GlyphThresholds) UnmarshalYAML(value *yaml.Node) error {
 		case "unlikely":
 			t.Unlikely = v
 			t.hasUnlikely = true
-		case "excellent", "good", "marginal":
-			return fmt.Errorf("unsupported glyph threshold key %q; use high/medium/low/unlikely", k)
 		default:
-			return fmt.Errorf("unsupported glyph threshold key %q; use high/medium/low/unlikely", k)
+			continue
 		}
 	}
 	return nil
@@ -168,7 +168,8 @@ type GlyphSymbols struct {
 	Insufficient string `yaml:"insufficient"`
 }
 
-// UnmarshalYAML enforces single printable ASCII glyphs and rejects unknown keys.
+// UnmarshalYAML enforces single printable ASCII glyphs. Unknown keys are
+// ignored here after the loader has reported warning-only startup diagnostics.
 func (s *GlyphSymbols) UnmarshalYAML(value *yaml.Node) error {
 	if s == nil {
 		return nil
@@ -201,7 +202,7 @@ func (s *GlyphSymbols) UnmarshalYAML(value *yaml.Node) error {
 		case "insufficient":
 			s.Insufficient = v
 		default:
-			return fmt.Errorf("unsupported glyph_symbols key %q; use high/medium/low/unlikely/insufficient", k)
+			continue
 		}
 	}
 	return nil
@@ -441,23 +442,118 @@ func (c Config) NoiseModel() NoiseModel {
 
 // LoadFile loads YAML config, validates required YAML-owned settings, and builds derived caches.
 func LoadFile(path string) (Config, error) {
+	cfg, _, errors, err := LoadFileWithDiagnostics(path)
+	if err != nil {
+		return cfg, err
+	}
+	if len(errors) > 0 {
+		return cfg, fmt.Errorf("%s", strings.Join(errors, "; "))
+	}
+	return cfg, nil
+}
+
+func LoadFileWithWarnings(path string) (Config, []string, error) {
+	cfg, warnings, errors, err := LoadFileWithDiagnostics(path)
+	if err != nil {
+		return cfg, warnings, err
+	}
+	if len(errors) > 0 {
+		return cfg, warnings, fmt.Errorf("%s", strings.Join(errors, "; "))
+	}
+	return cfg, warnings, nil
+}
+
+func LoadFileWithDiagnostics(path string) (Config, []string, []string, error) {
 	var cfg Config
 	if strings.TrimSpace(path) == "" {
-		return cfg, fmt.Errorf("path reliability config path is required")
+		return cfg, nil, nil, fmt.Errorf("path reliability config path is required")
 	}
 	bs, err := os.ReadFile(path)
 	if err != nil {
-		return cfg, err
+		return cfg, nil, nil, err
+	}
+	if err := rejectRemovedPathReliabilityKeys(bs); err != nil {
+		return cfg, nil, nil, err
+	}
+	unknown, err := yamlconfig.UnknownFieldDiagnostics(path, bs, Config{})
+	if err != nil {
+		return cfg, nil, nil, err
 	}
 	_, _, err = decodeNoiseOffsets(bs)
 	if err != nil {
-		return cfg, err
+		return cfg, nil, nil, err
 	}
-	if err := yamlconfig.DecodeBytes(path, bs, &cfg, requiredConfigPaths); err != nil {
-		return cfg, err
+	required, err := yamlconfig.RequiredPathDiagnostics(path, bs, requiredConfigPaths)
+	if err != nil {
+		return cfg, nil, nil, err
+	}
+	warnings := make([]string, 0, len(unknown))
+	errors := make([]string, 0, len(required))
+	for _, diag := range unknown {
+		warnings = append(warnings, diag.Error())
+	}
+	for _, diag := range required {
+		errors = append(errors, diag.Error())
+	}
+	if len(errors) > 0 {
+		return cfg, warnings, errors, nil
+	}
+	if err := yamlconfig.DecodeBytesPermissive(path, bs, &cfg, requiredConfigPaths); err != nil {
+		return cfg, warnings, nil, err
 	}
 	if err := cfg.finalize(); err != nil {
-		return cfg, err
+		return cfg, warnings, nil, err
 	}
-	return cfg, nil
+	return cfg, warnings, nil, nil
+}
+
+func rejectRemovedPathReliabilityKeys(bs []byte) error {
+	var root yaml.Node
+	if err := yaml.Unmarshal(bs, &root); err != nil {
+		return err
+	}
+	if len(root.Content) == 0 {
+		return nil
+	}
+	doc := root.Content[0]
+	if doc.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(doc.Content); i += 2 {
+		key := strings.ToLower(strings.TrimSpace(doc.Content[i].Value))
+		value := doc.Content[i+1]
+		switch key {
+		case "clamp_min", "clamp_max":
+			return fmt.Errorf("field %s not found in type pathreliability.Config", key)
+		case "glyph_thresholds":
+			if err := rejectLegacyGlyphThresholdKeys("glyph_thresholds", value); err != nil {
+				return err
+			}
+		case "mode_thresholds":
+			if value.Kind != yaml.MappingNode {
+				continue
+			}
+			for j := 0; j+1 < len(value.Content); j += 2 {
+				mode := strings.TrimSpace(value.Content[j].Value)
+				if err := rejectLegacyGlyphThresholdKeys("mode_thresholds."+mode, value.Content[j+1]); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func rejectLegacyGlyphThresholdKeys(path string, node *yaml.Node) error {
+	if node == nil || node.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		key := strings.ToLower(strings.TrimSpace(node.Content[i].Value))
+		switch key {
+		case "excellent", "good", "marginal":
+			return fmt.Errorf("unsupported glyph threshold key %q at %s; use high, medium, low, or unlikely", key, path)
+		}
+	}
+	return nil
 }

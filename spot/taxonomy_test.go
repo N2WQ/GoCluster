@@ -25,7 +25,7 @@ func TestLoadTaxonomyFileShippedConfig(t *testing.T) {
 	}
 }
 
-func TestLoadTaxonomyFileRejectsUnknownKeys(t *testing.T) {
+func TestLoadTaxonomyFileWarnsUnknownKeys(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "spot_taxonomy.yaml")
 	body := []byte(`
 modes:
@@ -39,8 +39,12 @@ events: []
 	if err := os.WriteFile(path, body, 0o644); err != nil {
 		t.Fatalf("write taxonomy: %v", err)
 	}
-	if _, err := LoadTaxonomyFile(path); err == nil {
-		t.Fatalf("expected unknown key to fail")
+	_, warnings, err := LoadTaxonomyFileWithWarnings(path)
+	if err != nil {
+		t.Fatalf("LoadTaxonomyFileWithWarnings() error: %v", err)
+	}
+	if !containsWarning(warnings, "unexpected") {
+		t.Fatalf("expected warning to mention unknown key, got %#v", warnings)
 	}
 }
 

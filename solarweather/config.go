@@ -449,21 +449,62 @@ func normalizeGLevels(input []GLevel) ([]gLevel, error) {
 
 // LoadFile loads YAML config, validates required YAML-owned settings, and builds derived level caches.
 func LoadFile(path string) (Config, error) {
-	var cfg Config
-	if strings.TrimSpace(path) == "" {
-		return cfg, fmt.Errorf("solar weather config path is required")
-	}
-	bs, err := os.ReadFile(path)
+	cfg, _, errors, err := LoadFileWithDiagnostics(path)
 	if err != nil {
 		return cfg, err
 	}
-	if err := yamlconfig.DecodeBytes(path, bs, &cfg, requiredConfigPaths); err != nil {
-		return cfg, err
-	}
-	if err := cfg.finalize(); err != nil {
-		return cfg, err
+	if len(errors) > 0 {
+		return cfg, fmt.Errorf("%s", strings.Join(errors, "; "))
 	}
 	return cfg, nil
+}
+
+func LoadFileWithWarnings(path string) (Config, []string, error) {
+	cfg, warnings, errors, err := LoadFileWithDiagnostics(path)
+	if err != nil {
+		return cfg, warnings, err
+	}
+	if len(errors) > 0 {
+		return cfg, warnings, fmt.Errorf("%s", strings.Join(errors, "; "))
+	}
+	return cfg, warnings, nil
+}
+
+func LoadFileWithDiagnostics(path string) (Config, []string, []string, error) {
+	var cfg Config
+	if strings.TrimSpace(path) == "" {
+		return cfg, nil, nil, fmt.Errorf("solar weather config path is required")
+	}
+	bs, err := os.ReadFile(path)
+	if err != nil {
+		return cfg, nil, nil, err
+	}
+	unknown, err := yamlconfig.UnknownFieldDiagnostics(path, bs, Config{})
+	if err != nil {
+		return cfg, nil, nil, err
+	}
+	required, err := yamlconfig.RequiredPathDiagnostics(path, bs, requiredConfigPaths)
+	if err != nil {
+		return cfg, nil, nil, err
+	}
+	warnings := make([]string, 0, len(unknown))
+	errors := make([]string, 0, len(required))
+	for _, diag := range unknown {
+		warnings = append(warnings, diag.Error())
+	}
+	for _, diag := range required {
+		errors = append(errors, diag.Error())
+	}
+	if len(errors) > 0 {
+		return cfg, warnings, errors, nil
+	}
+	if err := yamlconfig.DecodeBytesPermissive(path, bs, &cfg, requiredConfigPaths); err != nil {
+		return cfg, warnings, nil, err
+	}
+	if err := cfg.finalize(); err != nil {
+		return cfg, warnings, nil, err
+	}
+	return cfg, warnings, nil, nil
 }
 
 // Validate performs sanity checks on the configuration.

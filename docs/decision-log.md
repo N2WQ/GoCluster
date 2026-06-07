@@ -3,14 +3,17 @@
 This index tracks all architecture and workflow decisions recorded as ADRs.
 
 ## How To Use
+
 - Create new ADRs in `docs/decisions/` using `ADR-TEMPLATE.md`.
 - Add one row per ADR to the table below.
 - Do not delete old ADR rows; mark status as `Superseded`/`Deprecated` when needed.
 
 ## ADR Index
+
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
-|---|---|---|---|---|---|---|---|
-| ADR-0001 | <title> | Proposed | YYYY-MM-DD | <area> | - | - | `docs/decisions/ADR-0001-<slug>.md` |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0001 | Placeholder Title | Proposed | YYYY-MM-DD | placeholder area | - | - | `docs/decisions/ADR-0001-placeholder-slug.md` |
+| ADR-0153 | Startup Config Diagnostics And Gridstore Logging | Accepted | 2026-06-07 | config, startup, pathreliability, gridstore, operations | ADR-0067 unknown-key fatal behavior | - | `docs/decisions/ADR-0153-startup-config-diagnostics-and-gridstore-logging.md` |
 | ADR-0152 | Stable Active Log Filenames With Date-Only Archives | Accepted | 2026-06-07 | logging, propagation reports, operations | ADR-0093 active filename shape; ADR-0123 active filename shape | - | `docs/decisions/ADR-0152-stable-active-log-filenames-with-date-only-archives.md` |
 | ADR-0151 | Archive Range Deletion Cleanup | Accepted | 2026-06-06 | archive, config, hot path, profiling | ADR-0149 cleanup implementation | - | `docs/decisions/ADR-0151-archive-range-deletion-cleanup.md` |
 | ADR-0149 | Single-Window Archive Retention | Accepted | 2026-06-06 | archive, config, spot taxonomy, hot path | ADR-0069 archive retention class | - | `docs/decisions/ADR-0149-single-window-archive-retention.md` |

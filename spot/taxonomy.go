@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"dxcluster/internal/yamlconfig"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -166,28 +168,40 @@ func init() {
 	currentTaxonomy.Store(t)
 }
 
-// LoadTaxonomyFile decodes the checked-in reference table with KnownFields so
-// misspelled support/operator knobs fail at startup instead of silently changing
-// mode behavior.
+// LoadTaxonomyFile decodes the checked-in reference table. Unknown keys are
+// warning-only startup diagnostics reported by LoadTaxonomyFileWithWarnings.
 func LoadTaxonomyFile(path string) (*Taxonomy, error) {
+	taxonomy, _, err := LoadTaxonomyFileWithWarnings(path)
+	return taxonomy, err
+}
+
+func LoadTaxonomyFileWithWarnings(path string) (*Taxonomy, []string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	unknown, err := yamlconfig.UnknownFieldDiagnostics(path, data, taxonomyFile{})
+	if err != nil {
+		return nil, nil, err
+	}
+	warnings := make([]string, 0, len(unknown))
+	for _, diag := range unknown {
+		warnings = append(warnings, diag.Error())
 	}
 	var file taxonomyFile
 	dec := yaml.NewDecoder(bytes.NewReader(data))
-	dec.KnownFields(true)
 	if err := dec.Decode(&file); err != nil {
-		return nil, fmt.Errorf("decode spot taxonomy: %w", err)
+		return nil, warnings, fmt.Errorf("decode spot taxonomy: %w", err)
 	}
 	var extra struct{}
 	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
 		if err != nil {
-			return nil, fmt.Errorf("decode spot taxonomy: %w", err)
+			return nil, warnings, fmt.Errorf("decode spot taxonomy: %w", err)
 		}
-		return nil, fmt.Errorf("decode spot taxonomy: multiple YAML documents are not supported")
+		return nil, warnings, fmt.Errorf("decode spot taxonomy: multiple YAML documents are not supported")
 	}
-	return buildTaxonomy(file)
+	taxonomy, err := buildTaxonomy(file)
+	return taxonomy, warnings, err
 }
 
 // ConfigureTaxonomy publishes a fully built taxonomy. It panics on nil because

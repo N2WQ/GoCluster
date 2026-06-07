@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `9de14e0909ddc57a`
+- Source fingerprint: `2f8b04441b4b26cb`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,7 +12,7 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 1 | 2 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 27 | 25 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 27 | 26 |
 | `dxcluster/peer` | `peer` | 20 | 20 |
 | `dxcluster/spot` | `spot` | 32 | 23 |
 | `dxcluster/telnet` | `telnet` | 7 | 21 |
@@ -71,6 +71,7 @@
 | `dxcluster/peer` | `dxcluster/internal/netutil` |
 | `dxcluster/peer` | `dxcluster/strutil` |
 | `dxcluster/spot` | `dxcluster/config` |
+| `dxcluster/spot` | `dxcluster/internal/yamlconfig` |
 | `dxcluster/spot` | `dxcluster/pathreliability` |
 | `dxcluster/spot` | `dxcluster/strutil` |
 | `dxcluster/telnet` | `dxcluster/cty` |
@@ -136,6 +137,7 @@ Test files:
 - `internal/cluster/grid_lookup_test.go`
 - `internal/cluster/ingest_validation_test.go`
 - `internal/cluster/logging_test.go`
+- `internal/cluster/main_runtime_test.go`
 - `internal/cluster/main_stats_test.go`
 - `internal/cluster/main_test.go`
 - `internal/cluster/output_pipeline_delivery_test.go`

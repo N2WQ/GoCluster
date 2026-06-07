@@ -3,7 +3,6 @@ package spot
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -36,7 +35,7 @@ func TestClassifyRegionalMode(t *testing.T) {
 	}
 }
 
-func TestLoadIARUModeInferenceFileRejectsUnknownKeys(t *testing.T) {
+func TestLoadIARUModeInferenceFileWarnsUnknownKeys(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "iaru_mode_inference.yaml")
 	data := []byte(`voice_mode_by_band:
   40m: LSB
@@ -57,11 +56,11 @@ unexpected: true
 		t.Fatalf("write config: %v", err)
 	}
 
-	err := LoadIARUModeInferenceFile(path)
-	if err == nil {
-		t.Fatalf("expected unknown key error")
+	warnings, err := LoadIARUModeInferenceFileWithWarnings(path)
+	if err != nil {
+		t.Fatalf("LoadIARUModeInferenceFileWithWarnings() error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "unexpected") {
-		t.Fatalf("expected error to mention unknown key, got %v", err)
+	if !containsWarning(warnings, "unexpected") {
+		t.Fatalf("expected warning to mention unknown key, got %#v", warnings)
 	}
 }

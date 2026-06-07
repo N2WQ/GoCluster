@@ -9,6 +9,7 @@ package cluster
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -50,9 +51,11 @@ import (
 // performs the explicit signal-driven stops, and close replays the former defer
 // chain order for background services and durable resources.
 type clusterRuntime struct {
-	versionInfo  BuildInfo
-	cfg          *config.Config
-	configSource string
+	versionInfo       BuildInfo
+	cfg               *config.Config
+	configSource      string
+	configDiagnostics config.LoadDiagnostics
+	startupErr        error
 
 	logMux            *logFanout
 	propagationLog    lineSink
@@ -147,15 +150,23 @@ type clusterRuntime struct {
 	pskrTopics     []string
 }
 
-func newClusterRuntime(versionInfo BuildInfo, cfg *config.Config, configSource string) *clusterRuntime {
+func newClusterRuntime(versionInfo BuildInfo, cfg *config.Config, configSource string, diagnostics config.LoadDiagnostics) *clusterRuntime {
 	return &clusterRuntime{
 		versionInfo:       versionInfo,
 		cfg:               cfg,
 		configSource:      configSource,
+		configDiagnostics: diagnostics,
 		pathReport:        newPathReportMetrics(),
 		pskrPathOnlyStats: &pathOnlyStats{},
 		gridStoreHandle:   newGridStoreHandle(nil),
 	}
+}
+
+func (r *clusterRuntime) failStartup(format string, args ...any) bool {
+	message := fmt.Sprintf(format, args...)
+	log.Print(message)
+	r.startupErr = errors.New(message)
+	return false
 }
 
 func (r *clusterRuntime) initialize() bool {
@@ -205,12 +216,14 @@ func (r *clusterRuntime) setupLoggingAndUI() bool {
 		log.Printf("Logging: %v", propagationLogErr)
 	}
 	log.Printf("Loaded configuration from %s", r.configSource)
+	r.logConfigDiagnostics()
 	if err := spot.SetDXClusterLineLength(r.cfg.Telnet.OutputLineLength); err != nil {
-		log.Printf("Invalid telnet output line length: %v", err)
-		return false
+		return r.failStartup("Invalid telnet output line length: %v", err)
 	}
 
-	r.loadPathReliabilityConfig()
+	if !r.loadPathReliabilityConfig() {
+		return false
+	}
 	r.loadSolarWeatherConfig()
 	r.configureSurface()
 
@@ -219,20 +232,32 @@ func (r *clusterRuntime) setupLoggingAndUI() bool {
 	return true
 }
 
-func (r *clusterRuntime) loadPathReliabilityConfig() {
+func (r *clusterRuntime) logConfigDiagnostics() {
+	for _, warning := range r.configDiagnostics.Warnings {
+		log.Printf("Config warning: %s", warning)
+	}
+}
+
+func (r *clusterRuntime) loadPathReliabilityConfig() bool {
 	pathCfg := r.cfg.PathReliability
 	allowedBands, allowedBandSet := normalizeAllowedBands(pathCfg.AllowedBands)
 	pathPredictor := pathreliability.NewPredictor(pathCfg, allowedBands)
 	if pathCfg.Enabled {
+		if errs := pathreliability.ValidateH3Tables(r.cfg.H3TablePath); len(errs) > 0 {
+			messages := make([]string, 0, len(errs))
+			for _, err := range errs {
+				messages = append(messages, err.Error())
+			}
+			return r.failStartup("Path reliability H3 table validation failed: %s", strings.Join(messages, "; "))
+		}
 		if err := pathreliability.InitH3MappingsFromDir(r.cfg.H3TablePath); err != nil {
-			log.Printf("Path reliability H3 mapping init failed: %v; feature disabled", err)
-			pathCfg.Enabled = false
-			pathPredictor = pathreliability.NewPredictor(pathCfg, allowedBands)
+			return r.failStartup("Path reliability H3 mapping init failed: %v", err)
 		}
 	}
 	r.pathCfg = pathCfg
 	r.allowedBandSet = allowedBandSet
 	r.pathPredictor = pathPredictor
+	return true
 }
 
 func (r *clusterRuntime) loadSolarWeatherConfig() {
@@ -381,10 +406,12 @@ func (r *clusterRuntime) initializeReferenceData() bool {
 
 func (r *clusterRuntime) loadYAMLReferenceTables() bool {
 	taxonomyPath := filepath.Join(r.configSource, "spot_taxonomy.yaml")
-	taxonomy, err := spot.LoadTaxonomyFile(taxonomyPath)
+	taxonomy, warnings, err := spot.LoadTaxonomyFileWithWarnings(taxonomyPath)
+	for _, warning := range warnings {
+		log.Printf("Config warning: %s", warning)
+	}
 	if err != nil {
-		log.Printf("Failed to load required spot taxonomy %s: %v", taxonomyPath, err)
-		return false
+		return r.failStartup("Failed to load required spot taxonomy %s: %v", taxonomyPath, err)
 	}
 	spot.ConfigureTaxonomy(taxonomy)
 	pathPolicies := make(map[string]pathreliability.ModePolicy)
@@ -396,14 +423,20 @@ func (r *clusterRuntime) loadYAMLReferenceTables() bool {
 		return false
 	}
 	iaruPath := filepath.Join(r.configSource, "iaru_regions.yaml")
-	if err := spot.LoadIARURegionsFile(iaruPath); err != nil {
-		log.Printf("Failed to load required IARU region table %s: %v", iaruPath, err)
-		return false
+	warnings, err = spot.LoadIARURegionsFileWithWarnings(iaruPath)
+	for _, warning := range warnings {
+		log.Printf("Config warning: %s", warning)
+	}
+	if err != nil {
+		return r.failStartup("Failed to load required IARU region table %s: %v", iaruPath, err)
 	}
 	modePath := filepath.Join(r.configSource, "iaru_mode_inference.yaml")
-	if err := spot.LoadIARUModeInferenceFile(modePath); err != nil {
-		log.Printf("Failed to load required IARU mode inference table %s: %v", modePath, err)
-		return false
+	warnings, err = spot.LoadIARUModeInferenceFileWithWarnings(modePath)
+	for _, warning := range warnings {
+		log.Printf("Config warning: %s", warning)
+	}
+	if err != nil {
+		return r.failStartup("Failed to load required IARU mode inference table %s: %v", modePath, err)
 	}
 	return true
 }
@@ -411,20 +444,17 @@ func (r *clusterRuntime) loadYAMLReferenceTables() bool {
 func (r *clusterRuntime) validateTaxonomyReferences() bool {
 	for _, mode := range r.cfg.Filter.DefaultModes {
 		if !spot.IsSupportedFilterMode(mode) {
-			log.Printf("Invalid filter.default_modes entry %q: mode is not declared as filter_visible in spot_taxonomy.yaml", mode)
-			return false
+			return r.failStartup("Invalid filter.default_modes entry %q: mode is not declared as filter_visible in spot_taxonomy.yaml", mode)
 		}
 	}
 	for _, seed := range r.cfg.ModeInference.DigitalSeeds {
 		if !spot.IsModeInferenceSeedMode(seed.Mode) {
-			log.Printf("Invalid mode_inference.digital_seeds mode %q at %d kHz: mode must be declared with mode_inference_seed: true in spot_taxonomy.yaml", seed.Mode, seed.FrequencyKHz)
-			return false
+			return r.failStartup("Invalid mode_inference.digital_seeds mode %q at %d kHz: mode must be declared with mode_inference_seed: true in spot_taxonomy.yaml", seed.Mode, seed.FrequencyKHz)
 		}
 	}
 	for mode := range r.cfg.PathReliability.ModeThresholds {
 		if !spot.IsKnownMode(mode) {
-			log.Printf("Invalid path_reliability.mode_thresholds mode %q: mode is not declared in spot_taxonomy.yaml", mode)
-			return false
+			return r.failStartup("Invalid path_reliability.mode_thresholds mode %q: mode is not declared in spot_taxonomy.yaml", mode)
 		}
 	}
 	return true
@@ -659,8 +689,7 @@ func (r *clusterRuntime) initializeGridStore() bool {
 			log.Printf("Gridstore: corruption detected on open (%v); starting checkpoint restore", err)
 			startGridStoreRecovery(r.ctx, r.gridStoreHandle, r.cfg.GridDBPath, gridOpts, r.metaCache)
 		} else {
-			log.Printf("Failed to open grid database: %v", err)
-			return false
+			return r.failStartup("Gridstore: failed to open grid database: %v", err)
 		}
 	} else {
 		r.gridStoreHandle.Set(gridStore)

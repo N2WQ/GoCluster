@@ -1,6 +1,9 @@
 package pathreliability
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestH3MapperDeterministic(t *testing.T) {
 	m1, err := NewH3Mapper(1)
@@ -33,6 +36,19 @@ func checkStableIDs(t *testing.T, a, b *H3Mapper, ids []CellID) {
 		}
 		if got := b.ToID[cell]; got != id {
 			t.Fatalf("expected id %d for cell %d, got %d", id, cell, got)
+		}
+	}
+}
+
+func TestValidateH3TablesReportsAllMissingTables(t *testing.T) {
+	errs := ValidateH3Tables(t.TempDir())
+	if len(errs) != 2 {
+		t.Fatalf("ValidateH3Tables() returned %d errors, want 2: %v", len(errs), errs)
+	}
+	got := errs[0].Error() + "\n" + errs[1].Error()
+	for _, want := range []string{"res1.bin", "res2.bin"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected missing %s in errors, got %s", want, got)
 		}
 	}
 }

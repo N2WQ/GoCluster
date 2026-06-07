@@ -27,7 +27,7 @@ func TestArchiveRetentionDefault(t *testing.T) {
 // Purpose: Verify removed archive cleanup batch keys fail with a migration hint.
 // Key aspects: Prevents obsolete cleanup knobs from appearing to control range deletion.
 // Upstream: go test.
-// Downstream: Load, validateRemovedRuntimeKeys.
+// Downstream: Load, removedRuntimeKeyDiagnostics.
 func TestArchiveCleanupBatchKeysRejected(t *testing.T) {
 	for _, key := range []string{"cleanup_batch_size", "cleanup_batch_yield_ms"} {
 		t.Run(key, func(t *testing.T) {
@@ -44,10 +44,10 @@ func TestArchiveCleanupBatchKeysRejected(t *testing.T) {
 	}
 }
 
-// Purpose: Verify removed ignored archive compatibility keys are no longer schema fields.
-// Key aspects: Relies on strict YAML decoding rather than a compatibility presence check.
+// Purpose: Verify removed ignored archive compatibility keys stay fatal.
+// Key aspects: Uses the explicit removed-key denylist because ordinary extra keys are warning-only.
 // Upstream: go test.
-// Downstream: Load, yaml decoder KnownFields.
+// Downstream: Load, removedRuntimeKeyDiagnostics.
 func TestArchiveIgnoredCompatibilityKeysRejected(t *testing.T) {
 	for _, key := range []string{"busy_timeout_ms", "preflight_timeout_ms"} {
 		t.Run(key, func(t *testing.T) {
@@ -101,7 +101,7 @@ func TestArchiveSynchronousInvalid(t *testing.T) {
 // Purpose: Verify removed split archive retention keys fail with a migration hint.
 // Key aspects: Prevents silently preserving mode-specific archive retention.
 // Upstream: go test.
-// Downstream: Load, validateRemovedRuntimeKeys.
+// Downstream: Load, removedRuntimeKeyDiagnostics.
 func TestArchiveSplitRetentionKeysRejected(t *testing.T) {
 	for _, key := range []string{"retention_ft_seconds", "retention_default_seconds"} {
 		t.Run(key, func(t *testing.T) {

@@ -67,12 +67,45 @@ func TestLoadRejectsUnknownYAMLFile(t *testing.T) {
 	}
 }
 
-func TestLoadRejectsUnknownRuntimeKey(t *testing.T) {
+func TestLoadWarnsUnknownRuntimeKey(t *testing.T) {
 	dir := testConfigDir(t)
 	writeTestConfigOverlay(t, dir, "runtime.yaml", "telnet:\n  mystery_knob: 1\n")
-	_, err := Load(dir)
-	if err == nil || !strings.Contains(err.Error(), "field mystery_knob not found") {
-		t.Fatalf("expected unknown runtime key error, got %v", err)
+	_, diagnostics, err := LoadWithDiagnostics(dir)
+	if err != nil {
+		t.Fatalf("LoadWithDiagnostics() error: %v", err)
+	}
+	if !containsDiagnostic(diagnostics.Warnings, "telnet.mystery_knob") {
+		t.Fatalf("expected warning for telnet.mystery_knob, got %#v", diagnostics.Warnings)
+	}
+	if containsDiagnostic(diagnostics.Errors, "telnet.mystery_knob") {
+		t.Fatalf("did not expect fatal error for telnet.mystery_knob, got %#v", diagnostics.Errors)
+	}
+}
+
+func TestLoadReportsAllMissingStartupConfigInputs(t *testing.T) {
+	dir := testConfigDir(t)
+	removeTestConfigKey(t, dir, "runtime.yaml", "telnet", "port")
+	writeTestConfigOverlay(t, dir, "archive.yaml", "archive:\n  cleanup_batch_size: 10\n")
+	if err := os.Remove(filepath.Join(dir, "path_reliability.yaml")); err != nil {
+		t.Fatalf("remove path_reliability.yaml: %v", err)
+	}
+	if err := os.Remove(filepath.Join(dir, "solarweather.yaml")); err != nil {
+		t.Fatalf("remove solarweather.yaml: %v", err)
+	}
+
+	_, diagnostics, err := LoadWithDiagnostics(dir)
+	if err == nil {
+		t.Fatalf("expected missing startup config inputs to fail")
+	}
+	for _, want := range []string{
+		`required config file "path_reliability.yaml"`,
+		`required config file "solarweather.yaml"`,
+		`required YAML setting "telnet.port" is missing`,
+		`removed YAML setting "archive.cleanup_batch_size"`,
+	} {
+		if !containsDiagnostic(diagnostics.Errors, want) {
+			t.Fatalf("expected diagnostic containing %q, got %#v", want, diagnostics.Errors)
+		}
 	}
 }
 
@@ -83,6 +116,15 @@ func TestLoadRejectsMissingRequiredRuntimeSetting(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), `required YAML setting "telnet.port" is missing`) {
 		t.Fatalf("expected missing telnet.port error, got %v", err)
 	}
+}
+
+func containsDiagnostic(messages []string, needle string) bool {
+	for _, message := range messages {
+		if strings.Contains(message, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestLoadPreservesDocumentedZeroSentinels(t *testing.T) {

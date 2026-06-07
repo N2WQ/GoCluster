@@ -1,3 +1,10 @@
+// File role: Loads and validates precomputed H3 mapping tables for path
+// reliability startup and platform fallback mappers.
+// Crawler notes: Start here when H3 table files, expected cell counts, or
+// startup validation of path prediction cell coverage changes.
+// Related docs: pathreliability/README.md, data/h3/README.md,
+// docs/decisions/ADR-0153-startup-config-diagnostics-and-gridstore-logging.md.
+// Related tests: pathreliability/h3map_test.go.
 package pathreliability
 
 import (
@@ -5,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const (
@@ -35,6 +43,27 @@ func loadH3Table(dir string, res int, wantCount int) ([]uint64, error) {
 		cells[i] = binary.LittleEndian.Uint64(data[offset : offset+8])
 	}
 	return cells, nil
+}
+
+func ValidateH3Tables(dir string) []error {
+	trimmed := strings.TrimSpace(dir)
+	if trimmed == "" {
+		trimmed = "data/h3"
+	}
+	checks := []struct {
+		res       int
+		wantCount int
+	}{
+		{res: coarseResolution, wantCount: h3Res1Count},
+		{res: fineResolution, wantCount: h3Res2Count},
+	}
+	errs := make([]error, 0, len(checks))
+	for _, check := range checks {
+		if _, err := loadH3Table(trimmed, check.res, check.wantCount); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", h3TablePath(trimmed, check.res), err))
+		}
+	}
+	return errs
 }
 
 func buildMapperFromCells(res int, cells []uint64) (*H3Mapper, error) {

@@ -297,8 +297,18 @@ journalctl -u gocluster -f
 Common startup failures are usually config-path or config-content issues:
 
 - `DXC_CONFIG_PATH` must point at a complete config directory, not one YAML file.
-- Unknown YAML files or unknown keys fail startup.
-- Required YAML-owned settings and reference tables must be present.
+- Unknown YAML files fail startup. Extra YAML keys are logged as config
+  warnings and ignored, except known removed migration keys, which still fail
+  startup with a migration hint.
+- Required startup YAML files, YAML-owned settings, and reference tables must
+  be present. The loader reports all missing required files and settings it can
+  find before aborting startup.
+- When path reliability is enabled, `data.h3_table_path` must contain valid
+  `res1.bin` and `res2.bin` H3 tables. Missing or malformed H3 tables fail
+  startup because path predictions depend on those cells.
+- Gridstore startup open failures are written to the system log. Corruption
+  starts checkpoint recovery and runs temporarily without persistence; other
+  open failures abort startup.
 - The default config directory is `data/config` when `DXC_CONFIG_PATH` is not set.
 
 For config loader details, see `data/config/README.md`.

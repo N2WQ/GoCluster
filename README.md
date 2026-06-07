@@ -323,8 +323,10 @@ Band handling is intentionally simple:
 
 `NEARBY` persists across logins. The login greeting warns you when it is active,
 and `SHOW FILTER` includes the current `NEARBY` state. If your stored grid is
-missing or the H3 mapping tables are unavailable, `NEARBY` stays stored but
-inactive until the grid/H3 state becomes usable again.
+missing, `NEARBY` stays stored but inactive until a valid grid is configured.
+When path reliability is enabled, missing or invalid H3 mapping tables fail
+startup and are reported in the system log instead of silently weakening path
+predictions.
 
 ## Confidence Tags
 
@@ -472,7 +474,9 @@ Important operational notes:
   `low_receiver` means receiver diversity missed the derived receiver gate,
   and `low_weight` means decayed effective weight missed the weight floor.
   These lines are written to `logging.propagation.dir`, not the system log.
-- If grids are missing, evidence is stale, too sparse, too weak, or the H3 tables are unavailable, the result stays `INSUFFICIENT`.
+- If grids are missing, evidence is stale, too sparse, or too weak, the result
+  stays `INSUFFICIENT`. When path reliability is enabled, H3 table failures are
+  startup failures because those cells are critical to path predictions.
 - `PATH` filters work on the class names, not on the glyph characters.
 - `R` and `G` are solar-weather display overrides, not normal path classes.
 
@@ -551,10 +555,13 @@ mode-inference calibration as normal setup. Use
 [`data/config/README.md`](data/config/README.md) for the ownership class before
 editing a YAML file.
 
-The loader expects a complete config directory, rejects unknown YAML files and
-unknown keys, and fails fast when required YAML-owned settings or reference
-tables are missing. Keep private callsigns, peer hostnames/IPs, passwords, and
-tokens out of committed example config.
+The loader expects a complete config directory and rejects unknown YAML files.
+It walks the required startup config set before aborting, so missing required
+files and missing/null YAML-owned settings are reported together in the startup
+diagnostics. Extra YAML keys are logged as config warnings and ignored; known
+removed migration keys still fail startup with a migration hint. Keep private
+callsigns, peer hostnames/IPs, passwords, and tokens out of committed example
+config.
 
 At minimum, replace the public placeholder identity before connecting a real
 node: change `server.node_id` in `app.yaml` from `N0CALL-1`, change the RBN

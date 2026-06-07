@@ -33,7 +33,12 @@ That point is mapped into:
 - H3 resolution 2 for fine cells
 - H3 resolution 1 for coarse cells
 
-The runtime uses stable `uint16` proxy IDs built from the precomputed H3 tables in [`../data/h3`](../data/h3). If the grid is invalid or the mapping tables are unavailable, the cell becomes invalid and prediction can fall back to insufficient.
+The runtime uses stable `uint16` proxy IDs built from the precomputed H3
+tables in [`../data/h3`](../data/h3). If a spot's grid is invalid, the cell
+becomes invalid and prediction can fall back to insufficient. When path
+reliability is enabled, missing, malformed, or wrong-sized H3 mapping tables
+are startup failures reported in the system log because all path predictions
+depend on those cells.
 
 ## FT8-Equivalent Conversion
 

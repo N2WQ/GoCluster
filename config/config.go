@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"dxcluster/internal/yamlconfig"
 	"dxcluster/pathreliability"
 	"dxcluster/solarweather"
 	"dxcluster/strutil"
@@ -1510,32 +1511,75 @@ func captureLoadRawPresence(raw map[string]any) loadRawPresence {
 // Upstream: main.go startup.
 // Downstream: loadConfigDir, mergeYAMLMaps, normalize* helpers.
 func Load(path string) (*Config, error) {
+	cfg, _, err := LoadWithDiagnostics(path)
+	return cfg, err
+}
+
+func LoadWithDiagnostics(path string) (*Config, LoadDiagnostics, error) {
+	diagnostics := LoadDiagnostics{}
 	info, err := os.Stat(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to stat config path %q: %w", path, err)
+		return nil, diagnostics, fmt.Errorf("failed to stat config path %q: %w", path, err)
 	}
 
 	if !info.IsDir() {
-		return nil, fmt.Errorf("config path %q must be a directory containing YAML files", path)
+		return nil, diagnostics, fmt.Errorf("config path %q must be a directory containing YAML files", path)
 	}
 
-	loaded, err := loadConfigDir(path)
+	loaded, loadDiagnostics, err := loadConfigDir(path)
+	diagnostics = loadDiagnostics
 	if err != nil {
-		return nil, err
+		return nil, diagnostics, err
 	}
-	if err := requireRegisteredConfigFiles(loaded); err != nil {
-		return nil, err
+	for _, errText := range requiredConfigFileDiagnostics(loaded) {
+		diagnostics.addError(errText)
 	}
 	raw := loaded.merged
-	if err := validateRemovedRuntimeKeys(raw); err != nil {
-		return nil, err
+	for _, errText := range removedRuntimeKeyDiagnostics(raw) {
+		diagnostics.addError(errText)
 	}
-	if err := validateMergedRuntimePresence(raw); err != nil {
-		return nil, err
+	for _, errText := range mergedRuntimePresenceDiagnostics(raw) {
+		diagnostics.addError(errText)
 	}
+
+	var pathCfg pathreliability.Config
+	var solarCfg solarweather.Config
+	if pathFile, ok := loaded.pathsByBase[pathReliabilityConfigFile]; ok {
+		var pathWarnings []string
+		var pathErrors []string
+		pathCfg, pathWarnings, pathErrors, err = pathreliability.LoadFileWithDiagnostics(pathFile)
+		for _, warning := range pathWarnings {
+			diagnostics.addWarning(warning)
+		}
+		if err != nil {
+			diagnostics.addError(fmt.Sprintf("failed to load %s: %v", pathReliabilityConfigFile, err))
+		}
+		for _, errText := range pathErrors {
+			diagnostics.addError(errText)
+		}
+	}
+	if solarFile, ok := loaded.pathsByBase[solarWeatherConfigFile]; ok {
+		var solarWarnings []string
+		var solarErrors []string
+		solarCfg, solarWarnings, solarErrors, err = solarweather.LoadFileWithDiagnostics(solarFile)
+		for _, warning := range solarWarnings {
+			diagnostics.addWarning(warning)
+		}
+		if err != nil {
+			diagnostics.addError(fmt.Sprintf("failed to load %s: %v", solarWeatherConfigFile, err))
+		}
+		for _, errText := range solarErrors {
+			diagnostics.addError(errText)
+		}
+	}
+	diagnostics.sort()
+	if diagnostics.HasErrors() {
+		return nil, diagnostics, diagnostics.Error()
+	}
+
 	data, err := yaml.Marshal(raw)
 	if err != nil {
-		return nil, fmt.Errorf("failed to render merged config from %q: %w", path, err)
+		return nil, diagnostics, fmt.Errorf("failed to render merged config from %q: %w", path, err)
 	}
 	// Store the directory we loaded from to aid downstream diagnostics.
 	if len(loaded.files) > 0 {
@@ -1544,23 +1588,14 @@ func Load(path string) (*Config, error) {
 
 	var cfg Config
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
-	decoder.KnownFields(true)
 	if err := decoder.Decode(&cfg); err != nil {
-		return nil, fmt.Errorf("failed to parse config file %q: %w", path, err)
+		return nil, diagnostics, fmt.Errorf("failed to parse config file %q: %w", path, err)
 	}
 	cfg.LoadedFrom = filepath.Clean(path)
 	if err := validateConfiguredRuntimeValues(cfg); err != nil {
-		return nil, err
-	}
-	pathCfg, err := pathreliability.LoadFile(loaded.mustPathFor(pathReliabilityConfigFile))
-	if err != nil {
-		return nil, fmt.Errorf("failed to load %s: %w", pathReliabilityConfigFile, err)
+		return nil, diagnostics, err
 	}
 	cfg.PathReliability = pathCfg
-	solarCfg, err := solarweather.LoadFile(loaded.mustPathFor(solarWeatherConfigFile))
-	if err != nil {
-		return nil, fmt.Errorf("failed to load %s: %w", solarWeatherConfigFile, err)
-	}
 	cfg.SolarWeather = solarCfg
 
 	presence := captureLoadRawPresence(raw)
@@ -1570,51 +1605,52 @@ func Load(path string) (*Config, error) {
 	}
 
 	if err := normalizeUIConfig(&cfg, raw, presence); err != nil {
-		return nil, err
+		return nil, diagnostics, err
 	}
 	if err := normalizeLoggingAndPropReportConfig(&cfg, presence); err != nil {
-		return nil, err
+		return nil, diagnostics, err
 	}
 	normalizeFeedConfig(&cfg, presence)
 	if err := normalizeDXSummitConfig(&cfg, presence); err != nil {
-		return nil, err
+		return nil, diagnostics, err
 	}
 	if err := normalizeArchiveAndStatsConfig(&cfg, presence); err != nil {
-		return nil, err
+		return nil, diagnostics, err
 	}
 	if err := validateGoRuntimeConfig(&cfg); err != nil {
-		return nil, err
+		return nil, diagnostics, err
 	}
 	if err := normalizeCallCorrectionConfig(&cfg, presence); err != nil {
-		return nil, err
+		return nil, diagnostics, err
 	}
 	normalizeCallCacheConfig(&cfg)
 	if err := normalizeTelnetConfig(&cfg, presence); err != nil {
-		return nil, err
+		return nil, diagnostics, err
 	}
 	if err := normalizeFeedTransportConfig(&cfg); err != nil {
-		return nil, err
+		return nil, diagnostics, err
 	}
 	if err := normalizePeeringConfig(&cfg); err != nil {
-		return nil, err
+		return nil, diagnostics, err
 	}
 	// Keep outbound peer enablement explicit: omitted or false stays disabled.
 	// This avoids accidental dial loops for placeholder entries.
 	normalizeSignalPolicyConfig(&cfg)
 	if err := normalizeReferenceDataConfig(&cfg, presence); err != nil {
-		return nil, err
+		return nil, diagnostics, err
 	}
 	if err := normalizeDedupAndBufferConfig(&cfg, presence); err != nil {
-		return nil, err
+		return nil, diagnostics, err
 	}
 	if err := normalizeFloodControlConfig(&cfg, raw); err != nil {
-		return nil, err
+		return nil, diagnostics, err
 	}
 	if err := normalizeSkewConfig(&cfg); err != nil {
-		return nil, err
+		return nil, diagnostics, err
 	}
 	normalizeReputationConfig(&cfg, presence)
-	return &cfg, nil
+	diagnostics.sort()
+	return &cfg, diagnostics, nil
 }
 
 func normalizeUIConfig(cfg *Config, raw map[string]any, presence loadRawPresence) error {
@@ -3339,10 +3375,11 @@ func normalizeReputationConfig(cfg *Config, presence loadRawPresence) {
 // Key aspects: Sorted file order provides deterministic overrides.
 // Upstream: Load.
 // Downstream: yaml.Unmarshal, mergeYAMLMaps.
-func loadConfigDir(path string) (loadedConfigDir, error) {
+func loadConfigDir(path string) (loadedConfigDir, LoadDiagnostics, error) {
+	diagnostics := LoadDiagnostics{}
 	entries, err := os.ReadDir(path)
 	if err != nil {
-		return loadedConfigDir{}, fmt.Errorf("failed to read config directory %q: %w", path, err)
+		return loadedConfigDir{}, diagnostics, fmt.Errorf("failed to read config directory %q: %w", path, err)
 	}
 
 	files := make([]string, 0, len(entries))
@@ -3357,10 +3394,10 @@ func loadConfigDir(path string) (loadedConfigDir, error) {
 		}
 		base := strings.ToLower(entry.Name())
 		if _, ok := configFileRegistry[base]; !ok {
-			return loadedConfigDir{}, fmt.Errorf("unrecognized config file %q in %q", entry.Name(), path)
+			return loadedConfigDir{}, diagnostics, fmt.Errorf("unrecognized config file %q in %q", entry.Name(), path)
 		}
 		if _, exists := pathsByBase[base]; exists {
-			return loadedConfigDir{}, fmt.Errorf("duplicate config file %q in %q", entry.Name(), path)
+			return loadedConfigDir{}, diagnostics, fmt.Errorf("duplicate config file %q in %q", entry.Name(), path)
 		}
 		file := filepath.Join(path, entry.Name())
 		files = append(files, file)
@@ -3368,7 +3405,7 @@ func loadConfigDir(path string) (loadedConfigDir, error) {
 	}
 	sort.Strings(files)
 	if len(files) == 0 {
-		return loadedConfigDir{}, fmt.Errorf("no YAML files found in config directory %q", path)
+		return loadedConfigDir{}, diagnostics, fmt.Errorf("no YAML files found in config directory %q", path)
 	}
 
 	merged := make(map[string]any)
@@ -3380,22 +3417,24 @@ func loadConfigDir(path string) (loadedConfigDir, error) {
 		}
 		data, err := os.ReadFile(file)
 		if err != nil {
-			return loadedConfigDir{}, fmt.Errorf("failed to read config file %q: %w", file, err)
+			return loadedConfigDir{}, diagnostics, fmt.Errorf("failed to read config file %q: %w", file, err)
 		}
 		var doc map[string]any
 		if err := yaml.Unmarshal(data, &doc); err != nil {
-			return loadedConfigDir{}, fmt.Errorf("failed to parse config file %q: %w", file, err)
+			return loadedConfigDir{}, diagnostics, fmt.Errorf("failed to parse config file %q: %w", file, err)
 		}
-		if err := validateConfigFileTopLevel(file, spec, doc); err != nil {
-			return loadedConfigDir{}, err
+		unknown, err := yamlconfig.UnknownFieldDiagnostics(file, data, Config{})
+		if err != nil {
+			return loadedConfigDir{}, diagnostics, fmt.Errorf("failed to inspect config file %q: %w", file, err)
 		}
+		diagnostics.appendYAMLDiagnostics(unknown)
 		merged = mergeYAMLMaps(merged, doc)
 	}
 	return loadedConfigDir{
 		merged:      merged,
 		files:       files,
 		pathsByBase: pathsByBase,
-	}, nil
+	}, diagnostics, nil
 }
 
 // Purpose: Deep-merge nested YAML maps.
@@ -3852,23 +3891,28 @@ func normalizeBandStateOverrides(overrides []BandStateOverride, defaultTol float
 // Upstream: Load config normalization (detecting explicit settings).
 // Downstream: None.
 func yamlKeyPresent(raw map[string]any, path ...string) bool {
+	_, ok := yamlValueAt(raw, path...)
+	return ok
+}
+
+func yamlValueAt(raw map[string]any, path ...string) (any, bool) {
 	if len(path) == 0 || raw == nil {
-		return false
+		return nil, false
 	}
 	current := raw
 	for i, key := range path {
 		val, ok := current[key]
 		if !ok {
-			return false
+			return nil, false
 		}
 		if i == len(path)-1 {
-			return true
+			return val, true
 		}
 		next, ok := val.(map[string]any)
 		if !ok {
-			return false
+			return nil, false
 		}
 		current = next
 	}
-	return false
+	return nil, false
 }

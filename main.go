@@ -173,6 +173,6 @@ func main() {
 		return
 	}
 	if err := cluster.Run(versionInfo.clusterBuildInfo()); err != nil {
-		log.Fatalf("Error loading config: %v", err)
+		log.Fatalf("Startup failed: %v", err)
 	}
 }

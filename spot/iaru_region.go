@@ -1,3 +1,8 @@
+// File role: Loads and applies the startup-owned IARU region reference table.
+// Crawler notes: Start here for DXCC/ADIF-to-IARU-region config diagnostics,
+// region normalization, and reference-table startup failures.
+// Related docs: data/config/README.md, docs/decisions/ADR-0153-startup-config-diagnostics-and-gridstore-logging.md.
+// Related tests: spot/iaru_region_test.go.
 package spot
 
 import (
@@ -7,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"dxcluster/internal/yamlconfig"
 
 	"gopkg.in/yaml.v3"
 )
@@ -54,22 +61,34 @@ func NormalizeIARURegion(region string) IARURegion {
 // Runtime startup calls this with the active config directory so region policy
 // cannot silently fall back to built-in tables.
 func LoadIARURegionsFile(path string) error {
+	_, err := LoadIARURegionsFileWithWarnings(path)
+	return err
+}
+
+func LoadIARURegionsFileWithWarnings(path string) ([]string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	unknown, err := yamlconfig.UnknownFieldDiagnostics(path, data, iaruRegionTable{})
+	if err != nil {
+		return nil, err
+	}
+	warnings := make([]string, 0, len(unknown))
+	for _, diag := range unknown {
+		warnings = append(warnings, diag.Error())
 	}
 	var table iaruRegionTable
 	dec := yaml.NewDecoder(bytes.NewReader(data))
-	dec.KnownFields(true)
 	if err := dec.Decode(&table); err != nil {
-		return fmt.Errorf("parse IARU region map %s: %w", path, err)
+		return warnings, fmt.Errorf("parse IARU region map %s: %w", path, err)
 	}
 	if err := validateIARURegionTable(table); err != nil {
-		return fmt.Errorf("validate IARU region map %s: %w", path, err)
+		return warnings, fmt.Errorf("validate IARU region map %s: %w", path, err)
 	}
 	iaruRegions = table
 	iaruRegionsSet = true
-	return nil
+	return warnings, nil
 }
 
 func validateIARURegionTable(table iaruRegionTable) error {
