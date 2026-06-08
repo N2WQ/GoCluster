@@ -1,0 +1,4 @@
+interface:
+  display_name: "Workflow Contract Audit"
+  short_description: "Check Codex workflow and skill contract drift"
+  default_prompt: "Audit edits to AGENTS.md, workflow docs, validation rules, runbooks, review checklists, repo-managed skills, and workflow scripts for trigger, marker, validation, and closeout drift."

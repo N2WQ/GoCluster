@@ -5,6 +5,8 @@ checkout should use these skill files directly instead of copying them into a
 user-level Codex skills directory.
 
 Repo-authoritative skills:
+- `decision-memory-audit` - ADR/TSR pre-read, record choice, indexes, decision
+  refs, and Scope-to-Code Traceability for Non-trivial work
 - `explain-code` - grounded explanation of existing code without changes
 - `gh-address-comments` - inspect and address GitHub PR review comments through
   `gh` CLI when requested
@@ -14,6 +16,9 @@ Repo-authoritative skills:
   when useful
 - `go-code-walk` - walks unfamiliar code paths with source, semantic tools, and
   optional dependency visualization
+- `go-connection-lifecycle-audit` - audits reconnect, retry/backoff,
+  keepalive, silent-stall, liveness, shutdown, and operator diagnostics for
+  long-lived Go connection paths
 - `go-config-contract-audit`
 - `go-hotpath-design`
 - `go-leak-detection`
@@ -23,6 +28,8 @@ Repo-authoritative skills:
 - `security-best-practices` - explicit security best-practice review support
 - `security-threat-model` - repository-grounded threat modeling support
 - `sentry`
+- `workflow-contract-audit` - checks Codex workflow, validation, runbook,
+  template, skill, and workflow-script edits for contract drift
 
 Intentionally not vendored as project skills:
 - Codex runtime/system skills; those are provided by the Codex environment.

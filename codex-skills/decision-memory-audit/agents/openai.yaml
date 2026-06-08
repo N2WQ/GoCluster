@@ -1,0 +1,4 @@
+interface:
+  display_name: "Decision Memory Audit"
+  short_description: "Handle ADR and TSR workflow obligations"
+  default_prompt: "Audit a Non-trivial or troubleshooting task for ADR and TSR pre-read, full ADR versus lightweight stub choice, index maintenance, closeout decision refs, and scope-to-code traceability."

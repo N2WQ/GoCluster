@@ -164,6 +164,8 @@ checklist, Codex guidance, or repo-managed skill, including:
 - `docs/WORKING_WITH_CODEX.md`
 - `codex-skills/**/SKILL.md`
 
+Use `workflow-contract-audit` when available.
+
 Audit requirements:
 - preserve exact strings that other workflow docs or users rely on
 - check that moved or shortened rules remain reachable from `AGENTS.md`
@@ -279,6 +281,19 @@ tickers, channels, sockets, file handles, queues, shutdown, long-lived
 lifecycle, retained heap, or pprof/trace leak evidence. Distinguish static
 reasoning, local test/race evidence, profile evidence, and long-running runtime
 confirmation.
+
+### Connection lifecycle audit
+Use `go-connection-lifecycle-audit` when work touches or investigates
+long-lived inbound or outbound connection behavior, reconnect, retry/backoff,
+keepalive, deadlines, EOF/read-loop recovery, silent-stall or zero-data modes,
+connection shutdown, source liveness, or operator-visible connection
+diagnostics.
+
+The audit must distinguish connection health from data-stream health, and must
+not treat keepalive on an existing socket as proof of recovery after a lost or
+never-established connection. When implementation touches goroutines, sockets,
+timers, channels, cancellation, shutdown, or queues, also use
+`go-leak-detection` and run `go test -race ./...` unless explicitly waived.
 
 ## Config Contract Audit
 Required when a task touches YAML files, config structs, config loaders,
@@ -458,6 +473,8 @@ reference where possible.
 Every Non-trivial task requires ADR handling:
 - full ADR when a durable decision changed
 - lightweight ADR stub when no durable decision changed
+
+Use `decision-memory-audit` when available.
 
 Use `docs/decision-memory.md` for the detailed rules.
 

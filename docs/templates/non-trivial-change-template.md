@@ -84,7 +84,8 @@ that approval.
 - dependency rigor: Light | Full
 - dependency scan evidence: <required for Full rigor>
 - blast-radius audit: <result | N/A - reason>
-- triggered audits: Config Contract Audit | Retained-State Audit | Performance evidence | none
+- triggered audits: Config Contract Audit | Retained-State Audit | Performance evidence | Decision-memory audit | Workflow-drift audit | none
+- connection lifecycle audit: <result | N/A - reason>
 - leak-detection audit: <result | N/A - reason>
 - YAML comment/header audit: PASS|FAIL|N/A - note
 - Go comment intent audit: PASS|FAIL|N/A - note
@@ -124,6 +125,7 @@ If no material findings:
 - Leak-detection evidence: PASS|FAIL|N/A - note
 - Verification and checker discipline: PASS|FAIL|N/A - note
 - Documentation, decision memory, and traceability: PASS|FAIL|N/A - note
+- Workflow-drift audit: PASS|FAIL|N/A - note
 - Validation block completeness: PASS|FAIL|N/A - note
 
 ### CLOSEOUT

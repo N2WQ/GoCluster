@@ -67,9 +67,16 @@ When the user asks what existing code does and has not asked for changes:
   unless the user asks for explanation, but feature work still requires
   targeted current-code discovery before planning.
 - Use triggered audit skills before implementation when available:
+  `decision-memory-audit` for Non-trivial ADR/TSR pre-read, ADR/stub choice,
+  index maintenance, final decision refs, and Scope-to-Code Traceability;
+  `workflow-contract-audit` for edits to Codex workflow contracts, validation
+  rules, runbooks, review checklists, repo-managed skills, or workflow scripts;
   `go-code-walk` for unfamiliar or cross-package current-state discovery;
   `go-blast-radius-audit` for uncertain blast radius, shared interfaces,
   semantic call/reference impact, or dependency/test impact analysis;
+  `go-connection-lifecycle-audit` for long-lived connection, reconnect,
+  retry/backoff, keepalive, deadline, silent-stall, source liveness, or
+  operator-visible connection diagnostics work;
   `go-leak-detection` for goroutine, timer, channel, socket, file-handle,
   heap-retention, shutdown, lifecycle, or long-running leak concerns;
   `go-retained-state-audit` for retained server-lifetime state, maps, caches,

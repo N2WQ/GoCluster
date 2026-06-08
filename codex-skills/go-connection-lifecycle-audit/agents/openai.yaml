@@ -1,0 +1,4 @@
+interface:
+  display_name: "Go Connection Lifecycle Audit"
+  short_description: "Audit reconnect, retry, keepalive, and liveness behavior"
+  default_prompt: "Audit a Go connection lifecycle path for retry, reconnect, backoff, keepalive, deadlines, silent-stall detection, shutdown, resource cleanup, operator logs, and validation evidence without changing runtime behavior unless explicitly approved."
