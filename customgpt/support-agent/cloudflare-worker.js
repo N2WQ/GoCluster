@@ -17,8 +17,250 @@ const MAX_LINE_WINDOW_LINES = 400;
 const MAX_DIR_ENTRIES = 80;
 const MAX_FIND_RESULTS = 80;
 const MAX_FIND_QUERY_CHARS = 64;
+const MAX_SEARCH_QUERY_CHARS = 96;
+const MAX_SEARCH_RESULTS = 12;
+const SEARCH_CONTEXT_LINES = 2;
 const AUTH_SECRET_BINDING = "GOCLUSTER_DOCS_ACTION_TOKEN";
 const AUTH_MODE = "bearer";
+
+const SUPPORT_ROUTES = [
+  {
+    id: "windows-startup-config",
+    persona: "node-operator",
+    domain: "startup-config-diagnostics",
+    card_path: "customgpt/support-cards/windows-startup-config.md",
+    required_sources: [
+      "customgpt/troubleshooting-index.md",
+      "docs/OPERATOR_GUIDE.md",
+      "data/config/README.md",
+      "config/config_files.go",
+      "internal/cluster/bootstrap.go"
+    ],
+    match_any: ["windows", "startup", "missing yaml", "required yaml", "required config", "dxc_config_path", "h3", "gridstore", "powershell"],
+    must_include: ["DXC_CONFIG_PATH", "Config diagnostics", "Config warning", "required config file", "required YAML setting"],
+    must_avoid: ["systemctl as first Windows step", "journalctl as first Windows step", "reference-YAML-only answer"]
+  },
+  {
+    id: "log-destination",
+    persona: "node-operator",
+    domain: "logs-observability",
+    card_path: "customgpt/support-cards/log-destination.md",
+    required_sources: [
+      "customgpt/troubleshooting-index.md",
+      "docs/OPERATOR_GUIDE.md",
+      "data/config/README.md",
+      "docs/decisions/ADR-0123-dedicated-propagation-log.md",
+      "docs/decisions/ADR-0093-file-only-connection-and-gate-event-logs.md",
+      "internal/cluster/bootstrap.go"
+    ],
+    match_any: ["log", "stderr", "system.log", "propagation.log", "config warning", "config diagnostics", "file-only", "console"],
+    must_include: ["startup stderr fallback", "system log timing", "required config file", "required YAML setting", "propagation.log when path aggregates are missing"],
+    must_avoid: ["claim lost logging without checking dedicated log", "conflate console/UI with file-only logs"]
+  },
+  {
+    id: "toxicity-filter",
+    persona: "telnet-user",
+    domain: "filtering-dedupe",
+    card_path: "customgpt/support-cards/toxicity-filter.md",
+    required_sources: [
+      "customgpt/troubleshooting-index.md",
+      "README.md",
+      "telnet/README.md",
+      "data/config/README.md",
+      "cloudflare/toxicity-worker/README.md"
+    ],
+    match_any: ["reject toxic", "toxic comment", "toxicity", "unknown", "safe_local", "unavailable", "worker timeout"],
+    must_include: ["SHOW FILTER", "UNKNOWN", "SAFE_LOCAL", "UNAVAILABLE", "do not guess classification"],
+    must_avoid: ["guess the AI classification", "claim unknown/unavailable is blocked"]
+  },
+  {
+    id: "runtime-yaml-controls",
+    persona: "node-operator",
+    domain: "yaml-operator-policy",
+    card_path: "customgpt/support-cards/runtime-yaml-controls.md",
+    required_sources: [
+      "customgpt/source-map.md",
+      "data/config/README.md",
+      "data/config/runtime.yaml"
+    ],
+    match_any: ["gomemlimit", "gomaxprocs", "gogc", "memory limit", "max_procs", "go_runtime", "runtime.yaml", "runtime controls"],
+    must_include: ["go_runtime.memory_limit_mib", "go_runtime.gc_percent", "go_runtime.max_procs", "effective YAML"],
+    must_avoid: ["hard-coded launcher defaults as source of truth"]
+  },
+  {
+    id: "path-reliability",
+    persona: "telnet-user",
+    domain: "path-reliability",
+    card_path: "customgpt/support-cards/path-reliability.md",
+    required_sources: [
+      "customgpt/troubleshooting-index.md",
+      "README.md",
+      "docs/OPERATOR_GUIDE.md",
+      "pathreliability/README.md",
+      "data/config/PATH_PREDICTIONS.md",
+      "data/config/README.md"
+    ],
+    match_any: ["path", "pathsamples", "diag path", "path glyph", "blank glyph", "h3", "threshold", "noise", "grid"],
+    must_include: ["SET GRID", "SET PATHSAMPLES", "SET DIAG PATH", "effective YAML before retuning"],
+    must_avoid: ["blank glyph means bad path", "threshold edit as first step"]
+  },
+  {
+    id: "truncated-retrieval",
+    persona: "future-developer",
+    domain: "action-retrieval-resilience",
+    card_path: "customgpt/support-cards/truncated-retrieval.md",
+    required_sources: [
+      "docs/support-agent-quality-contract.md",
+      "docs/support-agent-runbook.md",
+      "customgpt/source-map.md"
+    ],
+    match_any: ["truncated", "too large", "line window", "related paths", "partial evidence", "findfiles", "listdir"],
+    must_include: ["partial evidence", "line window", "listDir", "findFiles", "search"],
+    must_avoid: ["false retrieval refusal"]
+  },
+  {
+    id: "ambiguous-short-prompt",
+    persona: "cross-cutting",
+    domain: "ambiguous-unknown-prompts",
+    card_path: "customgpt/support-cards/ambiguous-short-prompt.md",
+    required_sources: [
+      "customgpt/source-map.md",
+      "commands/README.md",
+      "telnet/README.md"
+    ],
+    match_any: ["p93", "med?", "bad path", "filter weird", "cluster broken", "glyph", "unknown command"],
+    must_include: ["ambiguous", "not enough context", "nearest documented lookup", "one focused follow-up"],
+    must_avoid: ["invented token meaning", "unsupported callsign or command interpretation"],
+    ambiguity: true
+  },
+  {
+    id: "linux-service-startup",
+    persona: "node-operator",
+    domain: "platform-run-mode",
+    card_path: "customgpt/support-cards/linux-service-startup.md",
+    required_sources: [
+      "customgpt/troubleshooting-index.md",
+      "docs/OPERATOR_GUIDE.md",
+      "customgpt/external-authorities.md"
+    ],
+    match_any: ["linux service", "systemd", "service restarts", "journalctl", "systemctl", "workingdirectory", "execstart", "headless"],
+    must_include: ["systemctl status", "journalctl", "WorkingDirectory", "ExecStart", "DXC_CONFIG_PATH"],
+    must_avoid: ["Windows PowerShell commands", "diagnosis without service logs"]
+  },
+  {
+    id: "telnet-connectivity",
+    persona: "telnet-user",
+    domain: "telnet-connectivity",
+    card_path: "customgpt/support-cards/telnet-connectivity.md",
+    required_sources: [
+      "customgpt/troubleshooting-index.md",
+      "docs/OPERATOR_GUIDE.md",
+      "data/config/README.md",
+      "telnet/README.md"
+    ],
+    match_any: ["telnet", "connect", "connection refused", "timeout", "login prompt", "port", "locally", "remotely"],
+    must_include: ["configured telnet port", "host-local test", "process running"],
+    must_avoid: ["firewall first", "assume default port"]
+  },
+  {
+    id: "confidence-glyph",
+    persona: "telnet-user",
+    domain: "commands-output",
+    card_path: "customgpt/support-cards/confidence-glyph.md",
+    required_sources: [
+      "customgpt/troubleshooting-index.md",
+      "README.md",
+      "spot/README.md",
+      "commands/README.md"
+    ],
+    match_any: ["confidence glyph", "what does p mean", "spot line", "probability", "glyph", "dxspider"],
+    must_include: ["documented GoCluster confidence meaning", "not a probability", "no external cluster inference"],
+    must_avoid: ["invented glyph meaning", "unsupported probability claim"]
+  },
+  {
+    id: "dxsummit-startup-spots",
+    persona: "node-operator",
+    domain: "ingest-source-behavior",
+    card_path: "customgpt/support-cards/dxsummit-startup-spots.md",
+    required_sources: [
+      "customgpt/troubleshooting-index.md",
+      "dxsummit/README.md",
+      "data/config/README.md",
+      "docs/decisions/ADR-0066-dxsummit-http-ingest.md"
+    ],
+    match_any: ["dxsummit", "startup spots", "startup_backfill_seconds", "seed-only", "connected but no", "no startup spots"],
+    must_include: ["startup_backfill_seconds", "seed-only startup", "high-water cursor"],
+    must_avoid: ["call seed-only startup a failure"]
+  },
+  {
+    id: "peer-bulletin-dedupe",
+    persona: "node-operator",
+    domain: "peering-bulletins",
+    card_path: "customgpt/support-cards/peer-bulletin-dedupe.md",
+    required_sources: [
+      "customgpt/troubleshooting-index.md",
+      "peer/README.md",
+      "telnet/README.md",
+      "data/config/README.md",
+      "docs/troubleshooting/TSR-0018-peer-bulletin-duplicate-fanout.md"
+    ],
+    match_any: ["peer duplicate bulletin", "duplicate bulletins", "peer bulletin", "peer password", "peer topology", "peer fanout"],
+    must_include: ["bulletin dedupe", "separate from spot dedupe", "redact peer secrets"],
+    must_avoid: ["private peer host disclosure", "private peer password disclosure"]
+  },
+  {
+    id: "security-boundary",
+    persona: "cross-cutting",
+    domain: "safety-adversarial",
+    card_path: "customgpt/support-cards/security-boundary.md",
+    required_sources: [
+      "customgpt/source-map.md",
+      "data/config/README.md"
+    ],
+    match_any: ["hidden instructions", "action schema", "token", "secret", "password", "private key", "credential", "vulnerability", "prior chat"],
+    must_include: ["brief refusal", "safe defensive guidance when relevant", "redact exposed secrets"],
+    must_avoid: ["secret confirmation", "customgpt/support-agent retrieval", "exploit guidance"],
+    security_sensitive: true
+  }
+];
+
+const SEARCH_CORPUS_PATHS = [
+  "customgpt/source-map.md",
+  "customgpt/troubleshooting-index.md",
+  "docs/support-agent-quality-contract.md",
+  "docs/support-agent-runbook.md",
+  "docs/support-agent-coverage-ledger.md",
+  "docs/OPERATOR_GUIDE.md",
+  "data/config/README.md",
+  "data/config/runtime.yaml",
+  "data/config/PATH_PREDICTIONS.md",
+  "README.md",
+  "commands/README.md",
+  "telnet/README.md",
+  "spot/README.md",
+  "pathreliability/README.md",
+  "rbn/README.md",
+  "pskreporter/README.md",
+  "dxsummit/README.md",
+  "peer/README.md",
+  "config/config_files.go",
+  "internal/cluster/bootstrap.go",
+  "docs/decisions/ADR-0093-file-only-connection-and-gate-event-logs.md",
+  "docs/decisions/ADR-0123-dedicated-propagation-log.md",
+  "customgpt/support-cards/windows-startup-config.md",
+  "customgpt/support-cards/log-destination.md",
+  "customgpt/support-cards/runtime-yaml-controls.md",
+  "customgpt/support-cards/toxicity-filter.md",
+  "customgpt/support-cards/path-reliability.md",
+  "customgpt/support-cards/truncated-retrieval.md",
+  "customgpt/support-cards/ambiguous-short-prompt.md",
+  "customgpt/support-cards/telnet-connectivity.md",
+  "customgpt/support-cards/linux-service-startup.md",
+  "customgpt/support-cards/confidence-glyph.md",
+  "customgpt/support-cards/dxsummit-startup-spots.md",
+  "customgpt/support-cards/peer-bulletin-dedupe.md",
+  "customgpt/support-cards/security-boundary.md"
+];
 
 export default {
   async fetch(request, env, ctx) {
@@ -71,6 +313,34 @@ export default {
 
       if (url.pathname === "/external-authorities") {
         return await fetchRepoFileResponse(EXTERNAL_AUTHORITIES_PATH, "");
+      }
+
+      if (url.pathname === "/support-route") {
+        const query = normalizeSupportQuery(url.searchParams.get("query") || url.searchParams.get("q") || url.searchParams.get("prompt") || "");
+        if (!query) {
+          return jsonResponse(
+            {
+              error: "missing_query",
+              message: "Provide a support prompt or symptom using ?query="
+            },
+            400
+          );
+        }
+        return await supportRouteResponse(query);
+      }
+
+      if (url.pathname === "/search") {
+        const query = normalizeSearchQuery(url.searchParams.get("query") || url.searchParams.get("q") || "");
+        if (!query) {
+          return jsonResponse(
+            {
+              error: "missing_query",
+              message: "Provide a bounded text query using ?query="
+            },
+            400
+          );
+        }
+        return await searchResponse(query);
       }
 
       if (url.pathname === "/list-dir") {
@@ -179,7 +449,7 @@ export default {
       return jsonResponse(
         {
           error: "not_found",
-          message: "Use /version, /entrypoint, /source-map, /troubleshooting-index, /external-authorities, /list-dir?path=, /find-files?query=, /doc?path=, /file?path=, /bundle, or /privacy"
+          message: "Use /version, /entrypoint, /support-route?query=, /search?query=, /source-map, /troubleshooting-index, /external-authorities, /list-dir?path=, /find-files?query=, /doc?path=, /file?path=, /bundle, or /privacy"
         },
         404
       );
@@ -194,6 +464,165 @@ export default {
     }
   }
 };
+
+async function supportRouteResponse(query) {
+  const ranked = SUPPORT_ROUTES
+    .map((route) => ({
+      route,
+      score: scoreSupportRoute(query, route)
+    }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || a.route.id.localeCompare(b.route.id));
+
+  const selected = ranked.length > 0 ? ranked[0].route : SUPPORT_ROUTES.find((route) => route.id === "ambiguous-short-prompt");
+  const confidence = ranked.length === 0 ? "low" : ranked[0].score >= 4 ? "high" : "medium";
+  const files = [];
+  const paths = dedupeStrings([selected.card_path, ...selected.required_sources]);
+
+  for (const path of paths) {
+    const file = await fetchRepoFilePayload(path, "");
+    if (!file.error) {
+      files.push(file);
+    }
+  }
+
+  return jsonResponse({
+    repo: `${REPO_OWNER}/${REPO_NAME}`,
+    branch: BRANCH,
+    auth: AUTH_MODE,
+    retrieved_at: new Date().toISOString(),
+    query,
+    support_route: {
+      id: selected.id,
+      persona: selected.persona,
+      domain: selected.domain,
+      confidence,
+      ambiguity: Boolean(selected.ambiguity || confidence === "low"),
+      security_sensitive: Boolean(selected.security_sensitive),
+      card_path: selected.card_path,
+      required_sources: selected.required_sources,
+      must_include: selected.must_include,
+      must_avoid: selected.must_avoid,
+      matched_routes: ranked.slice(0, 3).map((item) => ({
+        id: item.route.id,
+        score: item.score,
+        persona: item.route.persona,
+        domain: item.route.domain
+      }))
+    },
+    files
+  });
+}
+
+function scoreSupportRoute(query, route) {
+  const text = normalizeSupportQuery(query);
+  let score = 0;
+
+  for (const needle of route.match_any || []) {
+    const normalized = normalizeSupportQuery(needle);
+    if (!normalized) {
+      continue;
+    }
+    if (text.includes(normalized)) {
+      score += normalized.length <= 4 ? 1 : 2;
+      continue;
+    }
+    const words = normalized.split(/\s+/).filter(Boolean);
+    if (words.length > 1 && words.every((word) => text.includes(word))) {
+      score += 1;
+    }
+  }
+
+  return score;
+}
+
+async function searchResponse(query) {
+  const files = [];
+  const matches = [];
+  const paths = dedupeStrings(SEARCH_CORPUS_PATHS).filter(isSafeRepoPath);
+
+  for (const searchPath of paths) {
+    const file = await fetchRepoFilePayload(searchPath, "");
+    if (file.error || typeof file.content !== "string") {
+      continue;
+    }
+
+    const fileMatches = searchFileContent(file.path, file.content, query);
+    for (const match of fileMatches) {
+      matches.push({
+        ...match,
+        source_url: file.source_url,
+        kind: file.kind
+      });
+      files.push({
+        repo: file.repo,
+        branch: file.branch,
+        path: file.path,
+        source_url: file.source_url,
+        kind: file.kind,
+        line_start: match.line_start,
+        line_end: match.line_end,
+        line_count: match.line_end - match.line_start + 1,
+        content: match.snippet
+      });
+      if (matches.length >= MAX_SEARCH_RESULTS) {
+        return jsonResponse(searchPayload(query, matches, files, true));
+      }
+    }
+  }
+
+  return jsonResponse(searchPayload(query, matches, files, false));
+}
+
+function searchPayload(query, matches, files, truncated) {
+  return {
+    repo: `${REPO_OWNER}/${REPO_NAME}`,
+    branch: BRANCH,
+    auth: AUTH_MODE,
+    retrieved_at: new Date().toISOString(),
+    query,
+    corpus_count: SEARCH_CORPUS_PATHS.length,
+    result_count: matches.length,
+    truncated,
+    limits: {
+      max_search_query_chars: MAX_SEARCH_QUERY_CHARS,
+      max_search_results: MAX_SEARCH_RESULTS,
+      search_context_lines: SEARCH_CONTEXT_LINES
+    },
+    matches,
+    files
+  };
+}
+
+function searchFileContent(path, content, query) {
+  const lines = String(content || "").split(/\r?\n/);
+  const queryText = normalizeSearchQuery(query);
+  const tokens = queryText.split(/\s+/).filter(Boolean);
+  const matches = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const lineText = line.toLowerCase();
+    const exact = lineText.includes(queryText);
+    const allTokens = tokens.length > 1 && tokens.every((token) => lineText.includes(token));
+    if (!exact && !allTokens) {
+      continue;
+    }
+
+    const start = Math.max(0, i - SEARCH_CONTEXT_LINES);
+    const end = Math.min(lines.length - 1, i + SEARCH_CONTEXT_LINES);
+    const snippet = lines.slice(start, end + 1).join("\n");
+    matches.push({
+      path,
+      line_start: start + 1,
+      line_end: end + 1,
+      matched_line: i + 1,
+      snippet
+    });
+  }
+
+  return matches;
+}
 
 async function fetchDirectoryResponse(dirPath) {
   const apiUrl = contentsApiUrl(dirPath);
@@ -351,7 +780,7 @@ async function fetchRepoFilePayload(requestedPathOrUrl, basePath, lineWindow) {
 
   const response = await fetch(sourceUrl, {
     headers: {
-      "user-agent": "gocluster-docs-action/4.6-quality"
+      "user-agent": "gocluster-docs-action/4.7-quality"
     }
   });
 
@@ -644,11 +1073,37 @@ function normalizeFindQuery(value) {
   return query;
 }
 
+function normalizeSupportQuery(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[`"'()[\]{}<>]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 240);
+}
+
+function normalizeSearchQuery(value) {
+  const query = String(value || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!query || query.length > MAX_SEARCH_QUERY_CHARS) {
+    return "";
+  }
+
+  if (/[\x00-\x1f]/.test(query)) {
+    return "";
+  }
+
+  return query;
+}
+
 function githubApiFetchOptions() {
   return {
     headers: {
       "accept": "application/vnd.github+json",
-      "user-agent": "gocluster-docs-action/4.6-quality"
+      "user-agent": "gocluster-docs-action/4.7-quality"
     }
   };
 }

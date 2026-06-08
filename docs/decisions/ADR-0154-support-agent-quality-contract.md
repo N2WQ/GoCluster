@@ -39,6 +39,29 @@ Adopt a repository-owned support-agent quality contract:
    support-agent bundle and Worker behavior.
 7. Support `OPTIONS` preflight in the Worker for browser/manual diagnostics
    while preserving bearer-auth requirements for JSON retrieval endpoints.
+8. Add a local support-agent evaluation harness:
+   `docs/support-agent-eval-cases.json` defines executable prompt cases and
+   `scripts/evaluate-support-agent.ps1` runs them against the checked-in Worker
+   with workspace-backed local repository fetches. The harness validates
+   retrieval/source coverage by default and can score pasted or live-generated
+   answers.
+9. Add `docs/support-agent-coverage-ledger.md` as the support-domain coverage
+   ledger. The ledger must cover telnet users, node operators, and future
+   developers instead of only recent incident prompts.
+10. Add source-backed support cards under `customgpt/support-cards/` for
+    high-risk and high-frequency support routes. Cards define the matching
+    context, first safe check, required answer content, forbidden answer
+    shortcuts, and authoritative sources.
+11. Add Worker `/support-route?query=` so the action can return an explicit
+    route contract with persona, domain, confidence, ambiguity,
+    security-sensitivity, support card, required sources, `must_include`, and
+    `must_avoid`.
+12. Add Worker `/search?query=` over a curated safe repository corpus so exact
+    diagnostic strings, settings, and code ownership references can be found
+    without exposing the support-agent deployment bundle.
+13. Require support answers to treat `getSupportRoute` output as the answer
+    contract. Search augments route evidence; it does not replace the route
+    card or authoritative source files.
 
 ## Alternatives considered
 
@@ -69,23 +92,38 @@ Adopt a repository-owned support-agent quality contract:
 - The GPT can still produce weak answers if the deployed instructions or action
   schema are not updated from the checked-in bundle.
 - Manual Preview evaluation remains necessary because model synthesis quality is
-  not fully testable by repository smoke checks.
+  not fully testable by repository smoke checks. The local eval harness reduces
+  that gap but does not replace Preview.
 - Route docs require ongoing maintenance as new support surfaces are added.
+- Support cards can become stale if source files change without a matching
+  support-agent coverage update. The smoke and eval scripts make this visible
+  but do not remove the maintenance burden.
+- Live model scoring is stochastic. The deterministic retrieval suite is the
+  release gate for route/source coverage; live model evals are an answer-shape
+  regression signal and should be repeated when prompts, cards, or model
+  selection changes.
 
 ### Operational impact
 
 - No GoCluster runtime, config, telnet, parser, protocol, queue, archive, peer,
   replay, or long-lived connection behavior changes.
 - Support-agent deployment now has a clearer release gate: update the GPT
-  instructions/schema, update the Worker, run the smoke script, and run the
-  representative eval prompts.
+  instructions/schema, update the Worker, run the smoke script, run the local
+  eval harness, and run the representative Preview prompts.
+- Support-agent maintenance now has a first-class domain inventory and
+  route-contract API. This makes shallow answers and missing coverage
+  observable before users hit them.
 
 ## Links
 
 - Related issues/PRs/commits: none
-- Related tests: `scripts/check-support-agent.ps1`
+- Related tests: `scripts/check-support-agent.ps1`,
+  `scripts/evaluate-support-agent.ps1`
 - Related docs: `docs/support-agent-quality-contract.md`,
-  `docs/support-agent-evals.md`, `docs/support-agent-runbook.md`,
+  `docs/support-agent-coverage-ledger.md`,
+  `docs/support-agent-eval-cases.json`, `docs/support-agent-evals.md`,
+  `docs/support-agent-runbook.md`,
+  `customgpt/support-cards/`,
   `customgpt/support-agent/agent-instructions.txt`,
   `customgpt/support-agent/actions-schema.yaml`,
   `customgpt/support-agent/cloudflare-worker.js`,

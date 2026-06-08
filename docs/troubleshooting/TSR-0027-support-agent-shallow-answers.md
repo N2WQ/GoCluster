@@ -32,6 +32,12 @@ and config documentation deeply enough to produce an actionable answer.
    gates, and missing versioned support-agent smoke/eval checks.
    - Supported by the generic startup route appearing before the Windows route
      and by the lack of a checked-in support-agent evaluation/runbook contract.
+4. The remaining gap was not just the number of prompt categories; it was the
+   lack of a route contract tied to telnet-user, node-operator, and
+   future-developer personas.
+   - Supported by eval cases that could retrieve source files yet still
+     produce shallow or incomplete live answers without a support card and
+     explicit `must_include` / `must_avoid` route contract.
 
 ## Evidence
 
@@ -46,6 +52,10 @@ and config documentation deeply enough to produce an actionable answer.
   shape requirements.
 - No checked-in `scripts/check-support-agent.ps1` existed to validate the
   support-agent bundle and Worker behavior.
+- The v7 deterministic support-agent eval suite passed 18/18 retrieval cases
+  after adding coverage ledger, support cards, `/support-route`, and `/search`.
+- The v7 live `gpt-5-nano` eval suite passed 18/18 answer cases in
+  `.tmp/support-agent-evals/20260607-205708-275-02026333`.
 
 ## Root cause or best current explanation
 
@@ -54,6 +64,11 @@ retrieval mechanism, but not a durable answer-quality contract. Route
 specificity, troubleshooting answer shape, eval prompts, release smoke checks,
 and deployment runbook steps were underspecified, so the GPT could satisfy
 "retrieved something" while still giving a thin answer.
+
+The later evals showed a second root cause: plain retrieval leaves too much
+answer-shape judgment to the model. High-risk support paths need an explicit
+route contract and source-backed support card so the model knows what it must
+include, what shortcuts to avoid, and which persona/domain it is serving.
 
 ## Fix or mitigation
 
@@ -70,6 +85,23 @@ and deployment runbook steps were underspecified, so the GPT could satisfy
   support-agent smoke checks.
 - Added Worker `OPTIONS` handling for CORS preflight diagnostics without
   weakening bearer authentication.
+- Added `docs/support-agent-eval-cases.json` and
+  `scripts/evaluate-support-agent.ps1` so support-agent prompt regressions can
+  be exercised locally against the checked-in Worker and current workspace
+  files. The harness validates retrieval/source coverage and can score pasted or
+  live-generated answers.
+- Added `docs/support-agent-coverage-ledger.md` to inventory support domains
+  across telnet users, node operators, future developers, and cross-cutting
+  concerns.
+- Added source-backed support cards under `customgpt/support-cards/`.
+- Added Worker `/support-route?query=` for persona/domain routing, support card
+  retrieval, required sources, and `must_include` / `must_avoid` answer
+  contracts.
+- Added Worker `/search?query=` over a curated safe corpus for exact
+  diagnostics and symbol/source lookups.
+- Updated the action schema and agent instructions so `getSupportRoute` is the
+  first support retrieval step, with search used to deepen exact-source lookup
+  rather than replace route evidence.
 
 ## Why an ADR was or was not required
 
@@ -81,8 +113,12 @@ and deployment runbook steps were underspecified, so the GPT could satisfy
 
 - Related ADRs: `docs/decisions/ADR-0154-support-agent-quality-contract.md`
 - Related issues/PRs/commits: none
-- Related tests: `scripts/check-support-agent.ps1`
+- Related tests: `scripts/check-support-agent.ps1`,
+  `scripts/evaluate-support-agent.ps1`
 - Related docs: `docs/support-agent-quality-contract.md`,
-  `docs/support-agent-evals.md`, `docs/support-agent-runbook.md`,
+  `docs/support-agent-coverage-ledger.md`,
+  `docs/support-agent-eval-cases.json`, `docs/support-agent-evals.md`,
+  `docs/support-agent-runbook.md`,
+  `customgpt/support-cards/`,
   `customgpt/troubleshooting-index.md`,
   `customgpt/support-agent/agent-instructions.txt`

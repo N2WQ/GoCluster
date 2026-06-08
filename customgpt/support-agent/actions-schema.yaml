@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: GoCluster Repository Retrieval Action
-  description: Read-only authenticated API for retrieving current public GoCluster repository files by source map, troubleshooting index, repo-relative path, bundle, approved raw GitHub URL, bounded line window, directory listing, or bounded filename discovery. Safe text retrieval includes Go, Markdown, YAML, and first-party PowerShell scripts. Full-file content is capped at 140000 characters, bundles are capped at 12 files, related_paths are capped at 80, line windows are capped at 400 lines, directory listings are capped at 80 entries, and filename discovery is capped at 80 results. The GPT routes through repo-derived routes, symptom_routes, and related_paths, then retrieves authoritative files before answering. Answer quality, routing depth, and evaluation expectations are governed by docs/support-agent-quality-contract.md.
-  version: 4.6.0
+  description: Read-only authenticated API for retrieving current public GoCluster repository files by support-route contract, source map, troubleshooting index, repo-relative path, bundle, approved raw GitHub URL, bounded line window, directory listing, bounded filename discovery, or bounded support-corpus text search. Safe text retrieval includes Go, Markdown, YAML, and first-party PowerShell scripts. Full-file content is capped at 140000 characters, bundles are capped at 12 files, related_paths are capped at 80, line windows are capped at 400 lines, directory listings are capped at 80 entries, filename discovery is capped at 80 results, and support search returns bounded snippets from a curated safe corpus. The GPT routes through support-route contracts, repo-derived routes, symptom_routes, and related_paths, then retrieves authoritative files before answering. Answer quality, routing depth, and evaluation expectations are governed by docs/support-agent-quality-contract.md.
+  version: 4.7.0
 
 servers:
   - url: https://gocluster-docs-action.n2wq-api.workers.dev
@@ -93,6 +93,56 @@ paths:
           description: Missing or invalid bearer token
         "404":
           description: External authorities document not found
+
+  /support-route:
+    get:
+      operationId: getSupportRoute
+      summary: Retrieve a structured GoCluster support route
+      description: Classifies a prompt into a persona/domain support route and returns a source-backed support card, required source files, must-include answer facts, and must-avoid unsafe claims. Use this before broad source-map or troubleshooting routing for support questions where a card may exist.
+      parameters:
+        - name: query
+          in: query
+          required: true
+          description: User prompt, symptom, or short conversation summary.
+          schema:
+            type: string
+            maxLength: 240
+      responses:
+        "200":
+          description: Structured support route and source files
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportRouteResponse"
+        "400":
+          description: Missing or invalid query
+        "401":
+          description: Missing or invalid bearer token
+
+  /search:
+    get:
+      operationId: searchSupportCorpus
+      summary: Search safe GoCluster support corpus text
+      description: Searches a curated safe corpus of GoCluster docs, source snippets, config examples, and support cards for exact diagnostic strings, config keys, and command names. This is bounded support retrieval, not unrestricted repository search.
+      parameters:
+        - name: query
+          in: query
+          required: true
+          description: Case-insensitive text query, such as required YAML setting, propagation.log, or go_runtime.max_procs.
+          schema:
+            type: string
+            maxLength: 96
+      responses:
+        "200":
+          description: Bounded support-corpus search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponse"
+        "400":
+          description: Missing or invalid query
+        "401":
+          description: Missing or invalid bearer token
 
   /list-dir:
     get:
@@ -636,6 +686,211 @@ components:
         - first_checks
         - route_paths
         - do_not_guess
+
+    SupportRouteMatch:
+      type: object
+      properties:
+        id:
+          type: string
+        score:
+          type: integer
+        persona:
+          type: string
+        domain:
+          type: string
+      required:
+        - id
+        - score
+        - persona
+        - domain
+
+    SupportRouteContract:
+      type: object
+      properties:
+        id:
+          type: string
+        persona:
+          type: string
+        domain:
+          type: string
+        confidence:
+          type: string
+        ambiguity:
+          type: boolean
+        security_sensitive:
+          type: boolean
+        card_path:
+          type: string
+        required_sources:
+          type: array
+          items:
+            type: string
+        must_include:
+          type: array
+          items:
+            type: string
+        must_avoid:
+          type: array
+          items:
+            type: string
+        matched_routes:
+          type: array
+          items:
+            $ref: "#/components/schemas/SupportRouteMatch"
+      required:
+        - id
+        - persona
+        - domain
+        - confidence
+        - ambiguity
+        - security_sensitive
+        - card_path
+        - required_sources
+        - must_include
+        - must_avoid
+        - matched_routes
+
+    SupportRouteResponse:
+      type: object
+      properties:
+        repo:
+          type: string
+        branch:
+          type: string
+        auth:
+          type: string
+        retrieved_at:
+          type: string
+        query:
+          type: string
+        support_route:
+          $ref: "#/components/schemas/SupportRouteContract"
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/FileResponse"
+      required:
+        - repo
+        - branch
+        - auth
+        - retrieved_at
+        - query
+        - support_route
+        - files
+
+    SearchMatch:
+      type: object
+      properties:
+        path:
+          type: string
+        source_url:
+          type: string
+        kind:
+          type: string
+        line_start:
+          type: integer
+        line_end:
+          type: integer
+        matched_line:
+          type: integer
+        snippet:
+          type: string
+      required:
+        - path
+        - source_url
+        - kind
+        - line_start
+        - line_end
+        - matched_line
+        - snippet
+
+    SearchLimits:
+      type: object
+      properties:
+        max_search_query_chars:
+          type: integer
+        max_search_results:
+          type: integer
+        search_context_lines:
+          type: integer
+      required:
+        - max_search_query_chars
+        - max_search_results
+        - search_context_lines
+
+    SearchSnippetFile:
+      type: object
+      properties:
+        repo:
+          type: string
+        branch:
+          type: string
+        path:
+          type: string
+        source_url:
+          type: string
+        kind:
+          type: string
+        line_start:
+          type: integer
+        line_end:
+          type: integer
+        line_count:
+          type: integer
+        content:
+          type: string
+      required:
+        - repo
+        - branch
+        - path
+        - source_url
+        - kind
+        - line_start
+        - line_end
+        - line_count
+        - content
+
+    SearchResponse:
+      type: object
+      properties:
+        repo:
+          type: string
+        branch:
+          type: string
+        auth:
+          type: string
+        retrieved_at:
+          type: string
+        query:
+          type: string
+        corpus_count:
+          type: integer
+        result_count:
+          type: integer
+        truncated:
+          type: boolean
+        limits:
+          $ref: "#/components/schemas/SearchLimits"
+        matches:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchMatch"
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchSnippetFile"
+      required:
+        - repo
+        - branch
+        - auth
+        - retrieved_at
+        - query
+        - corpus_count
+        - result_count
+        - truncated
+        - limits
+        - matches
+        - files
 
     BundleResponse:
       type: object

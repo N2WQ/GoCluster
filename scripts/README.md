@@ -16,8 +16,13 @@ skill installation.
 - `check-code-maps.ps1` verifies checked-in Markdown code maps are fresh without
   modifying files. Use this in CI and release freshness gates.
 - `check-support-agent.ps1` verifies the custom GPT support-agent deployment
-  bundle, routing docs, local Worker behavior, and optional deployed Worker
-  health without printing bearer tokens.
+  bundle, support-route contracts, bounded support search, routing docs, local
+  Worker behavior, and optional deployed Worker health without printing bearer
+  tokens.
+- `evaluate-support-agent.ps1` runs the local support-agent eval harness against
+  `docs/support-agent-eval-cases.json`, using the checked-in Worker and current
+  workspace files to validate retrieval/source coverage and optionally score
+  pasted or live-generated answers.
 - `verify-agentic-tools.ps1` checks required repo workflow tools and required
   semantic/navigation helpers, then reports recommended or optional
   investigation helpers separately so missing optional tools do not block

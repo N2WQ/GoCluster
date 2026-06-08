@@ -32,22 +32,35 @@ repo docs, package READMEs, source, tests, ADRs, and TSRs.
      source/tests when exact behavior matters.
    - External tooling: use `customgpt/external-authorities.md` only for
      Go/GitHub/Linux/systemd/PowerShell mechanics, never for GoCluster behavior.
-2. Retrieve routing evidence.
+2. Retrieve support-route evidence.
+   - Support, symptom, config, telnet/user, operator, developer/debug,
+     ambiguous, retrieval-resilience, and safety-boundary questions start with
+     `getSupportRoute`.
+   - A support route returns persona, domain, confidence, ambiguity, a support
+     card, required sources, required answer facts, and forbidden unsafe claims.
+3. Retrieve fallback routing evidence when needed.
    - Symptoms, failures, surprising output, startup problems, and "how do I
-     troubleshoot" questions start with `getTroubleshootingIndex`.
-   - Normal topic questions start with `getSourceMap`.
-3. Choose the narrowest matching route.
+     troubleshoot" questions use `getTroubleshootingIndex` when no support card
+     is decisive.
+   - Normal topic questions use `getSourceMap` when no support card is decisive.
+4. Choose the narrowest matching route.
    - A platform-specific, command-specific, source-specific, or feature-specific
      route beats a broad route.
    - If a later user message narrows the platform or symptom, retrieve the
      newly specific route before answering.
-4. Retrieve authoritative content.
+5. Retrieve authoritative content.
    - Route rows, snippets, `related_paths`, `routes`, and `symptom_routes` are
      hints. The agent must call `getDoc` or use a concrete `getBundle` file
      before making a GoCluster claim.
+   - `getSupportRoute` and `searchSupportCorpus` may return concrete `files[]`
+     evidence. Those files can satisfy retrieval when they are authoritative
+     for the claim.
+   - Use `searchSupportCorpus` for exact diagnostic strings, config keys,
+     command names, glyphs, or log names that are hard to locate through broad
+     docs.
    - If a file is truncated, use the header, related paths, directory listing,
      filename discovery, or a bounded line window before refusing.
-5. Synthesize a support answer.
+6. Synthesize a support answer.
    - Start with the direct answer or most likely cause when evidence supports
      it.
    - Give an ordered next-step checklist.
@@ -97,18 +110,28 @@ An answer is not good enough when:
 - it refuses while action-returned content, related paths, directory listing,
   filename discovery, or bounded line windows could still retrieve usable
   evidence
+- it ignores a support route's `must_include`, `must_avoid`, ambiguity, or
+  security-sensitive flags
 
 ## Evaluation Expectations
 
-Support-agent changes should be checked with three layers:
+Support-agent changes should be checked with four layers:
 
 1. Contract checks: instruction size, schema shape, Worker route behavior, auth
    behavior, safe path denial, route extraction, line windows, and deployed
    endpoint health.
-2. Route checks: representative prompts name the expected route documents and
-   the minimum authoritative files that must be retrieved.
+2. Route checks: representative prompts name the expected support route, route
+   documents, and minimum authoritative files that must be retrieved.
 3. Answer checks: representative prompts are judged against the quality gates in
    this document, not against exact wording alone.
+4. Local harness checks: `scripts/evaluate-support-agent.ps1` runs the
+   machine-readable cases from `docs/support-agent-eval-cases.json` against the
+   checked-in Worker and current workspace. It verifies retrieval/source
+   coverage by default, and can score pasted Preview/browser/app answers or
+   optional live-model answers when configured.
 
-The regression prompt set lives in `docs/support-agent-evals.md`. Deployment and
-smoke-check instructions live in `docs/support-agent-runbook.md`.
+The persona-domain coverage ledger lives in
+`docs/support-agent-coverage-ledger.md`. The regression prompt set lives in
+`docs/support-agent-evals.md`; the executable case catalog lives in
+`docs/support-agent-eval-cases.json`. Deployment, smoke-check, and local eval
+instructions live in `docs/support-agent-runbook.md`.
