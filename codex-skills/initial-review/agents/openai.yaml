@@ -1,0 +1,4 @@
+interface:
+  display_name: "Initial Review"
+  short_description: "Concise code understanding review"
+  default_prompt: "Review code to understand behavior without implementing changes."

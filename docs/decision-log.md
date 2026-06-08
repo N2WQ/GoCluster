@@ -13,6 +13,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Placeholder Title | Proposed | YYYY-MM-DD | placeholder area | - | - | `docs/decisions/ADR-0001-placeholder-slug.md` |
+| ADR-0155 | Repo-Authoritative Codex Skills | Accepted | 2026-06-08 | workflow, Codex, skills, portability | - | - | `docs/decisions/ADR-0155-repo-authoritative-codex-skills.md` |
 | ADR-0154 | Support-Agent Quality Contract | Accepted | 2026-06-07 | customgpt, supportability, actions, operations | ADR-0107; ADR-0108; ADR-0109; ADR-0112; ADR-0113 | - | `docs/decisions/ADR-0154-support-agent-quality-contract.md` |
 | ADR-0153 | Startup Config Diagnostics And Gridstore Logging | Accepted | 2026-06-07 | config, startup, pathreliability, gridstore, operations | ADR-0067 unknown-key fatal behavior | - | `docs/decisions/ADR-0153-startup-config-diagnostics-and-gridstore-logging.md` |
 | ADR-0152 | Stable Active Log Filenames With Date-Only Archives | Accepted | 2026-06-07 | logging, propagation reports, operations | ADR-0093 active filename shape; ADR-0123 active filename shape | - | `docs/decisions/ADR-0152-stable-active-log-filenames-with-date-only-archives.md` |

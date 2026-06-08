@@ -81,7 +81,7 @@ Minimum discovery:
 - persisted state, config, archive, or schema surfaces when relevant
 - user-visible/operator-visible output and HELP/docs surfaces
 - existing tests for the affected behavior
-- applicable installed or repo-managed skills
+- applicable repo-managed, runtime/system, or explicitly available plugin skills
 
 Ask product or semantic questions only after discoverable code facts have been
 checked. If a fact cannot be established from inspection, say

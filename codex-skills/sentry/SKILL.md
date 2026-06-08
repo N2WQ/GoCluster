@@ -25,14 +25,14 @@ If the token is missing, give the user these steps:
 
 Use `scripts/sentry_api.py` for deterministic API calls. It handles pagination and retries once on transient errors.
 
-## Skill path (set once)
+## Skill path (from repo root)
 
-```bash
-export CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
-export SENTRY_API="$CODEX_HOME/skills/sentry/scripts/sentry_api.py"
+```powershell
+$env:SENTRY_API = (Resolve-Path .\codex-skills\sentry\scripts\sentry_api.py).Path
 ```
 
-User-scoped skills install under `$CODEX_HOME/skills` (default: `~/.codex/skills`).
+Use the repo-relative script path so Sentry inspection follows the checked-in
+skill bundle.
 
 ### 1) List issues (ordered by most recent)
 

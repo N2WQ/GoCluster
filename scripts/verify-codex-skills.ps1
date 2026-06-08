@@ -1,36 +1,37 @@
 <#
 .SYNOPSIS
-	Verify selected repo-managed Codex skills against the local Codex home.
+	Verify the repo-managed Codex skills bundle.
 
 .DESCRIPTION
-	Compares files in codex-skills/ with installed copies under CODEX_HOME/skills
-	or USERPROFILE/.codex/skills and reports missing, extra, or changed files for
-	each selected skill.
+	Checks skill directories under codex-skills/ for required SKILL.md metadata,
+	duplicate names, missing asset references from agents/openai.yaml, and stale
+	user-skill install path references. This verifier does not read, write, or
+	compare user-level Codex skill directories.
 
 .PARAMETER Skills
-	Repo-managed skill names to verify. Defaults to gh-fix-ci and sentry.
+	Repo-managed skill names to verify. Defaults to every directory directly
+	under codex-skills/.
 
 .NOTES
-	Prerequisites: run from this repository with CODEX_HOME or USERPROFILE set.
-	Side effects: reads repo and local Codex skill files only.
+	Prerequisites: run from this repository.
+	Side effects: reads repo files only.
 	Safety: this verifier does not install, delete, or modify skill files.
 #>
 
 Param(
-    [string[]]$Skills = @("gh-fix-ci", "sentry")
+    [string[]]$Skills = @()
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-function Get-CodexHome {
-    if ($env:CODEX_HOME -and $env:CODEX_HOME.Trim() -ne "") {
-        return $env:CODEX_HOME
-    }
-    if ($env:USERPROFILE -and $env:USERPROFILE.Trim() -ne "") {
-        return (Join-Path $env:USERPROFILE ".codex")
-    }
-    throw "Unable to resolve Codex home. Set CODEX_HOME or USERPROFILE."
+function Add-Failure {
+    Param(
+        [System.Collections.Generic.List[string]]$Failures,
+        [string]$Message
+    )
+    $Failures.Add($Message) | Out-Null
+    Write-Host "FAIL $Message"
 }
 
 function Get-RelativePath {
@@ -44,59 +45,116 @@ function Get-RelativePath {
     return [System.Uri]::UnescapeDataString($relativeUri.ToString()).Replace('/', '\')
 }
 
+function Get-FrontMatterValue {
+    Param(
+        [string]$FrontMatter,
+        [string]$Key
+    )
+    $pattern = "(?m)^$([regex]::Escape($Key)):\s*['""]?([^'""\r\n]+)['""]?\s*$"
+    $match = [regex]::Match($FrontMatter, $pattern)
+    if (-not $match.Success) {
+        return $null
+    }
+    return $match.Groups[1].Value.Trim()
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $sourceRoot = Join-Path $repoRoot "codex-skills"
 if (-not (Test-Path -LiteralPath $sourceRoot)) {
     throw "Missing source directory: $sourceRoot"
 }
 
-$destRoot = Join-Path (Get-CodexHome) "skills"
-$hasFailures = $false
-
-foreach ($skill in $Skills) {
-    $sourceDir = Join-Path $sourceRoot $skill
-    $destDir = Join-Path $destRoot $skill
-
-    if (-not (Test-Path -LiteralPath $sourceDir)) {
-        Write-Host "FAIL [$skill] missing repo source: $sourceDir"
-        $hasFailures = $true
-        continue
-    }
-    if (-not (Test-Path -LiteralPath $destDir)) {
-        Write-Host "FAIL [$skill] not installed at: $destDir"
-        $hasFailures = $true
-        continue
-    }
-
-    $sourceFiles = Get-ChildItem -LiteralPath $sourceDir -Recurse -File
-    $skillFailure = $false
-    foreach ($sourceFile in $sourceFiles) {
-        $relPath = Get-RelativePath -BasePath $sourceDir -ChildPath $sourceFile.FullName
-        $destFile = Join-Path $destDir $relPath
-        if (-not (Test-Path -LiteralPath $destFile)) {
-            Write-Host "FAIL [$skill] missing file: $relPath"
-            $skillFailure = $true
-            continue
-        }
-
-        $sourceHash = (Get-FileHash -LiteralPath $sourceFile.FullName -Algorithm SHA256).Hash
-        $destHash = (Get-FileHash -LiteralPath $destFile -Algorithm SHA256).Hash
-        if ($sourceHash -ne $destHash) {
-            Write-Host "FAIL [$skill] hash mismatch: $relPath"
-            $skillFailure = $true
-        }
-    }
-
-    if ($skillFailure) {
-        $hasFailures = $true
-    } else {
-        Write-Host "PASS [$skill] installed and in sync."
-    }
+if ($Skills.Count -eq 0) {
+    $Skills = Get-ChildItem -LiteralPath $sourceRoot -Directory |
+        Sort-Object Name |
+        Select-Object -ExpandProperty Name
 }
 
-if ($hasFailures) {
+$failures = New-Object System.Collections.Generic.List[string]
+$seenNames = @{}
+$textExtensions = @(".json", ".md", ".ps1", ".py", ".sh", ".svg", ".swift", ".txt", ".yaml", ".yml")
+$forbiddenPatterns = @(
+    @{ Label = "CODEX_HOME skills path"; Pattern = "CODEX_HOME[\\/]+skills" },
+    @{ Label = "user .codex skills path"; Pattern = "\.codex[\\/]+skills" },
+    @{ Label = "USERPROFILE Codex skills path"; Pattern = "USERPROFILE.*\.codex.*skills" },
+    @{ Label = "user-home Codex wording"; Pattern = ("local Codex " + "home") }
+)
+
+foreach ($skill in $Skills) {
+    $skillDir = Join-Path $sourceRoot $skill
+    if (-not (Test-Path -LiteralPath $skillDir)) {
+        Add-Failure -Failures $failures -Message "[$skill] missing repo source: $skillDir"
+        continue
+    }
+
+    $skillFile = Join-Path $skillDir "SKILL.md"
+    if (-not (Test-Path -LiteralPath $skillFile)) {
+        Add-Failure -Failures $failures -Message "[$skill] missing SKILL.md"
+        continue
+    }
+
+    $content = Get-Content -LiteralPath $skillFile -Raw
+    $frontMatterMatch = [regex]::Match($content, "(?s)^---\r?\n(.*?)\r?\n---")
+    if (-not $frontMatterMatch.Success) {
+        Add-Failure -Failures $failures -Message "[$skill] missing SKILL.md front matter"
+        continue
+    }
+
+    $frontMatter = $frontMatterMatch.Groups[1].Value
+    $declaredName = Get-FrontMatterValue -FrontMatter $frontMatter -Key "name"
+    $description = Get-FrontMatterValue -FrontMatter $frontMatter -Key "description"
+    if ([string]::IsNullOrWhiteSpace($declaredName)) {
+        Add-Failure -Failures $failures -Message "[$skill] missing front matter name"
+    } elseif ($declaredName -ne $skill) {
+        Add-Failure -Failures $failures -Message "[$skill] front matter name '$declaredName' does not match directory"
+    } elseif ($seenNames.ContainsKey($declaredName)) {
+        Add-Failure -Failures $failures -Message "[$skill] duplicate skill name '$declaredName' also declared by '$($seenNames[$declaredName])'"
+    } else {
+        $seenNames[$declaredName] = $skill
+    }
+
+    if ([string]::IsNullOrWhiteSpace($description)) {
+        Add-Failure -Failures $failures -Message "[$skill] missing front matter description"
+    }
+
+    $agentFile = Join-Path $skillDir "agents\openai.yaml"
+    if (Test-Path -LiteralPath $agentFile) {
+        $agentLines = Get-Content -LiteralPath $agentFile
+        foreach ($line in $agentLines) {
+            $match = [regex]::Match($line, "^\s*icon_(small|large):\s*['""]?(.+?)['""]?\s*$")
+            if (-not $match.Success) {
+                continue
+            }
+            $assetPath = $match.Groups[2].Value.Trim()
+            if ($assetPath.StartsWith("./")) {
+                $assetPath = $assetPath.Substring(2)
+            }
+            $assetFullPath = Join-Path $skillDir $assetPath
+            if (-not (Test-Path -LiteralPath $assetFullPath)) {
+                Add-Failure -Failures $failures -Message "[$skill] missing agent asset: $assetPath"
+            }
+        }
+    }
+
+    $textFiles = Get-ChildItem -LiteralPath $skillDir -Recurse -File |
+        Where-Object { $textExtensions -contains $_.Extension.ToLowerInvariant() }
+    foreach ($file in $textFiles) {
+        $relativePath = Get-RelativePath -BasePath $skillDir -ChildPath $file.FullName
+        $fileText = Get-Content -LiteralPath $file.FullName -Raw
+        foreach ($forbidden in $forbiddenPatterns) {
+            if ($fileText -match $forbidden.Pattern) {
+                Add-Failure -Failures $failures -Message "[$skill] stale $($forbidden.Label): $relativePath"
+            }
+        }
+    }
+
+    Write-Host "PASS [$skill] repo skill metadata checked."
+}
+
+if ($failures.Count -gt 0) {
+    Write-Host "FAIL repo skill verification found $($failures.Count) issue(s)."
     exit 1
 }
 
-Write-Host "PASS all requested skills verified."
+Write-Host "PASS all requested repo skills verified."
 exit 0

@@ -53,14 +53,16 @@ When the user asks what existing code does and has not asked for changes:
 - do not propose changes unless the user asks for changes
 
 ## Skill Check
-- Before free-form work, check whether an installed or repo-managed skill
-  clearly matches the task.
+- Before free-form work, check whether a repo-managed, runtime/system, or
+  explicitly available plugin skill clearly matches the task.
 - Emit exactly one skill marker: `Skill check: selected <skill>` or
   `Skill check: none applicable`.
-- Canonical installed skills location is `~/.codex/skills` (Windows typically
-  `%USERPROFILE%\.codex\skills`).
+- `codex-skills/` is the canonical gocluster project skill source. Do not
+  require or assume copied user-level skills for gocluster work.
 - Repo-managed skills under `codex-skills/` count as available when their
-  trigger matches; prefer the installed version when both exist.
+  trigger matches; they are authoritative for this repository. User-level
+  skills do not override repo-managed skills and are outside the gocluster
+  contract unless the task is explicitly user-specific.
 - Explanation-only code-understanding skills are not required for feature work
   unless the user asks for explanation, but feature work still requires
   targeted current-code discovery before planning.

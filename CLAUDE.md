@@ -15,5 +15,5 @@ Do not treat this file as a second competing execution contract.
 Useful pointers:
 - executor contract: `AGENTS.md`
 - human/operator workflow overview: `docs/WORKING_WITH_CODEX.md`
-- installed skills root: `C:\Users\Developer\.codex\skills\`
-- repo-managed skills root: `codex-skills\`
+- gocluster project skills root: `codex-skills\`
+- user-level skills are not part of this repository's execution contract
