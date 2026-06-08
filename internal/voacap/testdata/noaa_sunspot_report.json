@@ -1,0 +1,44 @@
+[
+  {
+    "time_tag": "2026-06-08T00:00:00Z",
+    "Observatory": "A",
+    "Station": "STA",
+    "Numspot": 3
+  },
+  {
+    "time_tag": "2026-06-08T00:00:00Z",
+    "Observatory": "B",
+    "Station": "STB",
+    "Numspot": "4"
+  },
+  {
+    "time_tag": "2026-06-08T04:00:00Z",
+    "Observatory": "C",
+    "Station": 12345,
+    "Numspot": 2
+  },
+  {
+    "time_tag": "2026-06-08T08:00:00Z",
+    "Observatory": "D",
+    "Station": "STD",
+    "Numspot": 1
+  },
+  {
+    "time_tag": "2026-06-08T09:00:00",
+    "Observatory": "E",
+    "Station": "STE",
+    "Numspot": 0
+  },
+  {
+    "time_tag": "not-a-time",
+    "Observatory": "bad-time",
+    "Station": "BAD",
+    "Numspot": 99
+  },
+  {
+    "time_tag": "2026-06-08T10:00:00Z",
+    "Observatory": "bad-spots",
+    "Station": "BAD",
+    "Numspot": -1
+  }
+]
