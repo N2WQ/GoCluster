@@ -1140,7 +1140,7 @@ func pathGlyphHelpLines(cfg PathGlyphHelpConfig) []string {
 		fmt.Sprintf("%s - INSUFFICIENT: not enough recent evidence.", quoteHelpGlyph(cfg.Insufficient)),
 		"Bucket p50 data is authoritative; VOACAP may only replace insufficient data when closed or aligned with sparse p50.",
 		fmt.Sprintf("%s - CLOSED: VOACAP fallback predicts the current UTC hour's SNR at or below the mode's closed threshold.", quoteHelpGlyph(cfg.Closed)),
-		"PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, INSUFFICIENT.",
+		"PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, CLOSED, INSUFFICIENT.",
 	} {
 		lines = append(lines, wrapTextLines(note, helpMaxWidth, "    ")...)
 	}

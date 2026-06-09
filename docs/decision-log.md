@@ -13,10 +13,12 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Placeholder Title | Proposed | YYYY-MM-DD | placeholder area | - | - | `docs/decisions/ADR-0001-placeholder-slug.md` |
+| ADR-0166 | Closed Path Filter Token | Accepted | 2026-06-09 | telnet, filter, pathreliability, voacap | ADR-0161 filter semantics | - | `docs/decisions/ADR-0166-closed-path-filter-token.md` |
+| ADR-0165 | VOACAP Ham Median Card Template | Accepted | 2026-06-09 | voacap, pathreliability, model calibration | - | - | `docs/decisions/ADR-0165-voacap-ham-median-card-template.md` |
 | ADR-0164 | VOACAP Rolling-Hour Runtime Forecast Window | Accepted | 2026-06-09 | voacap, pathreliability, operations, observability | ADR-0162 runtime deck start assumption | - | `docs/decisions/ADR-0164-voacap-rolling-hour-runtime-forecast-window.md` |
 | ADR-0163 | VOACAP-Aligned Sparse P50 Fallback | Accepted | 2026-06-09 | voacap, pathreliability, operations, supportability | ADR-0161 closed-only limitation | - | `docs/decisions/ADR-0163-voacap-aligned-sparse-p50-fallback.md` |
 | ADR-0162 | VOACAP Hourly Forecast Window Cache | Accepted | 2026-06-09 | voacap, pathreliability, retained-state, operations | ADR-0161 single best-window cache value clause | ADR-0164 runtime deck start assumption | `docs/decisions/ADR-0162-voacap-hourly-forecast-window-cache.md` |
-| ADR-0161 | VOACAP Closed-Only Path Fallback | Accepted | 2026-06-09 | voacap, pathreliability, config, operations | - | ADR-0163 closed-only limitation | `docs/decisions/ADR-0161-voacap-closed-only-path-fallback.md` |
+| ADR-0161 | VOACAP Closed-Only Path Fallback | Accepted | 2026-06-09 | voacap, pathreliability, config, operations | - | ADR-0163 closed-only limitation; ADR-0166 filter semantics | `docs/decisions/ADR-0161-voacap-closed-only-path-fallback.md` |
 | ADR-0160 | VOACAP FT8 SNR Output Contract | Accepted | 2026-06-09 | voacap, pathreliability, experiments | - | - | `docs/decisions/ADR-0160-voacap-ft8-snr-output-contract.md` |
 | ADR-0159 | VOACAP YAML-Owned SSN Forecast Experiment | Accepted | 2026-06-08 | voacap, config, experiments, process lifecycle | - | - | `docs/decisions/ADR-0159-voacap-yaml-owned-ssn-forecast-experiment.md` |
 | ADR-0158 | VOACAP Process Wrapper Experiment | Accepted | 2026-06-08 | voacap, experiments, process lifecycle | - | - | `docs/decisions/ADR-0158-voacap-process-wrapper-experiment.md` |

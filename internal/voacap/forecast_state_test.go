@@ -176,6 +176,7 @@ func TestBuildExperimentDeckUsesConfiguredHoursAndFrequencies(t *testing.T) {
 		"MONTH      2026 6.00",
 		"SUNSPOT    112.",
 		"CIRCUIT   42.36N   071.06W    52.23N    021.01E  S     0",
+		"SYSTEM       1. 153. 3.00  50. 10.0 3.00 0.10",
 		"FREQUENCY  3.50 7.00 0.00 0.00",
 	} {
 		if !strings.Contains(body, want) {

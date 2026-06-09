@@ -650,7 +650,7 @@ func TestHelpPathGlyphLegendUsesConfiguredSymbols(t *testing.T) {
 		`when closed or aligned with sparse p50.`,
 		`"!" - CLOSED: VOACAP fallback predicts the current UTC hour's SNR at or`,
 		`below the mode's closed threshold.`,
-		"PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, INSUFFICIENT.",
+		"PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, CLOSED, INSUFFICIENT.",
 	} {
 		if !strings.Contains(resp, want) {
 			t.Fatalf("expected configured path glyph help %q in %q", want, resp)

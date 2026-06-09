@@ -255,8 +255,8 @@ func TestPathPredictionUsesVOACAPClosedFallbackOnlyWhenInsufficient(t *testing.T
 	if got := server.pathGlyphsForClient(client, sp); got != "!" {
 		t.Fatalf("expected closed fallback glyph !, got %q", got)
 	}
-	if got := server.pathClassForClient(client, sp); got != filter.PathClassUnlikely {
-		t.Fatalf("expected closed fallback PATH class UNLIKELY, got %q", got)
+	if got := server.pathClassForClient(client, sp); got != filter.PathClassClosed {
+		t.Fatalf("expected closed fallback PATH class CLOSED, got %q", got)
 	}
 	client.setDiagMode(diagModePath)
 	line := server.formatSpotForClient(client, sp)

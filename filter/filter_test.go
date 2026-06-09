@@ -853,6 +853,124 @@ func TestPathFilterBlocklist(t *testing.T) {
 	}
 }
 
+func TestPathFilterClosedSubtypeCompatibility(t *testing.T) {
+	s := &spot.Spot{Mode: "CW", Band: "20m"}
+
+	tests := []struct {
+		name        string
+		setup       func(*Filter)
+		class       string
+		wantMatches bool
+	}{
+		{
+			name:        "default allows closed",
+			setup:       func(*Filter) {},
+			class:       PathClassClosed,
+			wantMatches: true,
+		},
+		{
+			name: "closed allowlist accepts closed",
+			setup: func(f *Filter) {
+				f.SetPathClass(PathClassClosed, true)
+			},
+			class:       PathClassClosed,
+			wantMatches: true,
+		},
+		{
+			name: "closed allowlist rejects ordinary unlikely",
+			setup: func(f *Filter) {
+				f.SetPathClass(PathClassClosed, true)
+			},
+			class:       PathClassUnlikely,
+			wantMatches: false,
+		},
+		{
+			name: "closed blocklist rejects closed",
+			setup: func(f *Filter) {
+				f.SetPathClass(PathClassClosed, false)
+			},
+			class:       PathClassClosed,
+			wantMatches: false,
+		},
+		{
+			name: "closed blocklist allows ordinary unlikely",
+			setup: func(f *Filter) {
+				f.SetPathClass(PathClassClosed, false)
+			},
+			class:       PathClassUnlikely,
+			wantMatches: true,
+		},
+		{
+			name: "unlikely allowlist preserves closed compatibility",
+			setup: func(f *Filter) {
+				f.SetPathClass(PathClassUnlikely, true)
+			},
+			class:       PathClassClosed,
+			wantMatches: true,
+		},
+		{
+			name: "unlikely blocklist preserves closed compatibility",
+			setup: func(f *Filter) {
+				f.SetPathClass(PathClassUnlikely, false)
+			},
+			class:       PathClassClosed,
+			wantMatches: false,
+		},
+		{
+			name: "closed block overrides unlikely allow",
+			setup: func(f *Filter) {
+				f.SetPathClass(PathClassUnlikely, true)
+				f.SetPathClass(PathClassClosed, false)
+			},
+			class:       PathClassClosed,
+			wantMatches: false,
+		},
+		{
+			name: "closed allow overrides unlikely block",
+			setup: func(f *Filter) {
+				f.SetPathClass(PathClassUnlikely, false)
+				f.SetPathClass(PathClassClosed, true)
+			},
+			class:       PathClassClosed,
+			wantMatches: true,
+		},
+		{
+			name: "unlikely block still rejects ordinary unlikely",
+			setup: func(f *Filter) {
+				f.SetPathClass(PathClassUnlikely, false)
+				f.SetPathClass(PathClassClosed, true)
+			},
+			class:       PathClassUnlikely,
+			wantMatches: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := NewFilter()
+			tt.setup(f)
+			if got := f.MatchesWithPath(s, tt.class); got != tt.wantMatches {
+				t.Fatalf("MatchesWithPath(%s)=%v, want %v", tt.class, got, tt.wantMatches)
+			}
+		})
+	}
+}
+
+func BenchmarkPathFilterClosedSubtype(b *testing.B) {
+	f := NewFilter()
+	f.SetPathClass(PathClassUnlikely, false)
+	f.SetPathClass(PathClassClosed, true)
+	s := spot.NewSpot("K1ABC", "W1XYZ", 14074.0, "CW")
+	s.EnsureNormalized()
+
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if !f.MatchesWithPath(s, PathClassClosed) {
+			b.Fatal("expected closed path match")
+		}
+	}
+}
+
 func TestMatchesDefaultsToInsufficientPathClass(t *testing.T) {
 	f := NewFilter()
 	f.SetPathClass(PathClassHigh, true)

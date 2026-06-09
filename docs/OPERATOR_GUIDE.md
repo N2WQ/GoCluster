@@ -251,7 +251,9 @@ valn|<p50>/<snr>h<hour>s<ssn>
 - `vcap|<snr>|h<hour>|s<ssn>` means the optional VOACAP closed fallback
   supplied the result. `<snr>` is the selected hour's integer FT8-equivalent
   SNR, `h<hour>` is the selected UTC forecast hour, and `<ssn>` is the rounded
-  EWMA SSN generation used for the run.
+  EWMA SSN generation used for the run. `PASS/REJECT PATH CLOSED` targets
+  these closed fallback spots; `UNLIKELY` PATH filters still include them for
+  compatibility.
 - `valn|<p50>/<snr>h<hour>s<ssn>` means sparse bucket p50 evidence was
   insufficient by sample gates but aligned with the current-hour VOACAP class.
   `<p50>` is rounded for display so the diagnostic fits the fixed-width line.

@@ -106,7 +106,7 @@ func BuildPathDeck(req PathDeckRequest) ([]byte, error) {
 		formatVOACAPLongitude(req.Transmit.Longitude),
 		formatVOACAPLatitude(req.Receive.Latitude),
 		formatVOACAPLongitude(req.Receive.Longitude))
-	fmt.Fprintln(&buf, "SYSTEM       1. 145. 0.10  90. 10.0 3.00 0.10")
+	fmt.Fprintln(&buf, "SYSTEM       1. 153. 3.00  50. 10.0 3.00 0.10")
 	fmt.Fprintln(&buf, "FPROB      1.00 1.00 1.00 0.00")
 	fmt.Fprintln(&buf, "ANTENNA       1    1    2   30     0.000[default\\Isotrope     ]  0.0    0.1000")
 	fmt.Fprintln(&buf, "ANTENNA       2    2    2   30     0.000[default\\Isotrope     ]  0.0    0.0000")

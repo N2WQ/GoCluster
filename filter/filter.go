@@ -160,6 +160,7 @@ const (
 	PathClassMedium       = "MEDIUM"
 	PathClassLow          = "LOW"
 	PathClassUnlikely     = "UNLIKELY"
+	PathClassClosed       = "CLOSED"
 	PathClassInsufficient = "INSUFFICIENT"
 )
 
@@ -169,6 +170,7 @@ var SupportedPathClasses = []string{
 	PathClassMedium,
 	PathClassLow,
 	PathClassUnlikely,
+	PathClassClosed,
 	PathClassInsufficient,
 }
 
@@ -1570,7 +1572,7 @@ func (f *Filter) matchesWithPath(s *spot.Spot, pathClass string) bool {
 	if pathClass == "" {
 		pathClass = PathClassInsufficient
 	}
-	if !passesStringFilter(pathClass, f.PathClasses, f.BlockPathClasses, f.AllPathClasses, f.BlockAllPathClasses) {
+	if !passesPathClassFilter(pathClass, f.PathClasses, f.BlockPathClasses, f.AllPathClasses, f.BlockAllPathClasses) {
 		return false
 	}
 
@@ -1654,6 +1656,33 @@ func passesStringFilter(token string, allow map[string]bool, block map[string]bo
 		if token == "" || !allow[token] {
 			return false
 		}
+	}
+	return true
+}
+
+// passesPathClassFilter preserves legacy UNLIKELY behavior for VOACAP-closed
+// spots while letting operators target CLOSED directly.
+func passesPathClassFilter(pathClass string, allow map[string]bool, block map[string]bool, allowAll, blockAll bool) bool {
+	if pathClass != PathClassClosed {
+		return passesStringFilter(pathClass, allow, block, allowAll, blockAll)
+	}
+	if blockAll {
+		return false
+	}
+	if block[PathClassClosed] {
+		return false
+	}
+	if allow[PathClassClosed] {
+		return true
+	}
+	if block[PathClassUnlikely] {
+		return false
+	}
+	if !allowAll && len(allow) == 0 {
+		return false
+	}
+	if len(allow) > 0 {
+		return allow[PathClassUnlikely]
 	}
 	return true
 }

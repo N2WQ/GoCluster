@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `368c2f05718613e3`
+- Source fingerprint: `22b94d514267e5e6`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -300,6 +300,8 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0166](docs/decisions/ADR-0166-closed-path-filter-token.md) | Accepted | 2026-06-09 | telnet, filter, pathreliability, voacap | `area:telnet, path:commands, path:telnet` |
+| [ADR-0164](docs/decisions/ADR-0164-voacap-rolling-hour-runtime-forecast-window.md) | Accepted | 2026-06-09 | voacap, pathreliability, operations, observability | `path:telnet` |
 | [ADR-0163](docs/decisions/ADR-0163-voacap-aligned-sparse-p50-fallback.md) | Accepted | 2026-06-09 | voacap, pathreliability, operations, supportability | `path:internal/cluster, path:telnet` |
 | [ADR-0162](docs/decisions/ADR-0162-voacap-hourly-forecast-window-cache.md) | Accepted | 2026-06-09 | voacap, pathreliability, retained-state, operations | `path:telnet` |
 | [ADR-0161](docs/decisions/ADR-0161-voacap-closed-only-path-fallback.md) | Accepted | 2026-06-09 | voacap, pathreliability, config, operations | `path:internal/cluster, path:telnet` |

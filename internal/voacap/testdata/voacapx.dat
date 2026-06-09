@@ -6,7 +6,7 @@ MONTH      2026 6.00
 SUNSPOT    100.
 LABEL     BOSTON              WARSAW
 CIRCUIT   42.36N    71.06W    52.23N    21.01E  S     0
-SYSTEM       1. 145. 0.10  90. 10.0 3.00 0.10
+SYSTEM       1. 153. 3.00  50. 10.0 3.00 0.10
 FPROB      1.00 1.00 1.00 0.00
 ANTENNA       1    1    2   30     0.000[default\Isotrope     ]  0.0    0.1000
 ANTENNA       2    2    2   30     0.000[default\Isotrope     ]  0.0    0.0000

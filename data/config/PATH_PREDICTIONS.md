@@ -14,6 +14,7 @@ Here's what each symbol means:
 - **`=`** (equals) = **Medium** - Moderate path. Definitely workable with good technique.
 - **`<`** (less-than) = **Low** - Weak path. It'll take patience, but it's possible.
 - **`-`** (dash) = **Unlikely** - Very difficult path. Marginal conditions, but don't rule it out completely.
+- **configured closed glyph** = **Closed** - Optional VOACAP fallback predicts the current UTC hour is at or below the closed threshold for this mode and path.
 - **` `** (space) = **Insufficient data** - The system doesn't have enough information yet to make a prediction.
 
 These symbols are mode-specific, meaning the same path might show `>` for FT8 but `=` for CW, because the thresholds are calibrated differently for each mode's sensitivity.
@@ -130,6 +131,10 @@ VOACAP current-hour class. Cached VOACAP output retains the parsed hourly
 records for the requested band. Runtime fallback decks start at the current
 rolling UTC window, and parsed VOACAP hour `24` is stored as UTC hour `0`.
 The fallback never replaces a normal sufficient p50 bucket prediction.
+For `PASS/REJECT PATH`, the closed fallback is filter-visible as `CLOSED`.
+`CLOSED` remains compatible with `UNLIKELY`, so existing `UNLIKELY` filters
+still include closed fallback spots, while direct `CLOSED` filters target only
+closed fallback spots.
 
 Five-minute propagation logs keep final emit counters in `Path predictions
 (5m)`: `voacap_closed` and `voacap_aligned`. When fallback work occurs, a

@@ -127,7 +127,7 @@ PASS CONFIDENCE P,V,C
 REJECT CONFIDENCE ?
 
 PASS PATH HIGH,MEDIUM
-REJECT PATH UNLIKELY,INSUFFICIENT
+REJECT PATH CLOSED,INSUFFICIENT
 
 SHOW FILTER
 ```
@@ -215,7 +215,7 @@ Path reliability glyphs:
     when closed or aligned with sparse p50.
   "#" - CLOSED: VOACAP fallback predicts the current UTC hour's SNR at or
     below the mode's closed threshold.
-  PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, INSUFFICIENT.
+  PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, CLOSED, INSUFFICIENT.
 
 List types:
   BAND, MODE, SOURCE, EVENT, DXCALL, DECALL, DXGRID2, DEGRID2, DXCONT, DECONT
@@ -456,7 +456,8 @@ At a high level, the cluster:
 5. rejects selected evidence that is too old for the band's freshness gate
 6. resolves your selected noise class on the receive side; the checked-in table
    applies one scalar dB penalty per class
-7. maps the result to `HIGH`, `MEDIUM`, `LOW`, `UNLIKELY`, or `INSUFFICIENT`
+7. maps the result to `HIGH`, `MEDIUM`, `LOW`, `UNLIKELY`, or `INSUFFICIENT`;
+   VOACAP closed fallback results use the separate `CLOSED` filter value
 
 What the classes mean to an operator:
 
@@ -466,7 +467,7 @@ What the classes mean to an operator:
 | `=` | `MEDIUM` | Recent evidence suggests a workable path, or sparse p50 aligned with VOACAP when bucket evidence was insufficient. | Use `SET DIAG PATH`; low effective weight can still map to a usable class. |
 | `<` | `LOW` | Recent evidence suggests a weak or marginal path, or sparse p50 aligned with VOACAP when bucket evidence was insufficient. | Use `SET DIAG PATH` to confirm grids, sample count, freshness, or `valn` alignment. |
 | `-` | `UNLIKELY` | Recent evidence suggests a poor path, or sparse p50 aligned with VOACAP when bucket evidence was insufficient. | Check whether your grid and the DX grid are correct before treating this as a hard no. |
-| `!` | `UNLIKELY` | Bucket evidence was insufficient, but the optional VOACAP fallback predicts closed conditions for the current mode and path. | Check `SET DIAG PATH`; VOACAP fallback never overrides sufficient bucket evidence. |
+| `#` | `CLOSED` | Bucket evidence was insufficient, but the optional VOACAP fallback predicts closed conditions for the current mode and path. | Check `SET DIAG PATH`; VOACAP fallback never overrides sufficient bucket evidence. |
 | blank | `INSUFFICIENT` | The cluster did not have enough usable recent evidence to rate the path. | Run `SET DIAG PATH`; common reasons are `none`, `lown`, `lowr`, `loww`, and `stale`. |
 
 Important operational notes:
@@ -508,6 +509,10 @@ Important operational notes:
   authoritative. Runtime fallback decks cover the rolling UTC forecast window;
   parsed VOACAP hour `24` is treated as UTC hour `0`.
 - `PATH` filters work on the class names, not on the glyph characters.
+  `CLOSED` is a VOACAP-closed subtype of `UNLIKELY`: existing
+  `PASS/REJECT PATH UNLIKELY` filters still include closed fallback spots,
+  while direct `PASS/REJECT PATH CLOSED` rules can pass or reject only closed
+  fallback spots.
 - `R` and `G` are solar-weather display overrides, not normal path classes.
 
 If solar-weather support is enabled, a normal path glyph can be replaced by:

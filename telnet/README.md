@@ -59,10 +59,15 @@ The telnet layer owns the live filter parser and persistence rules.
 Path and confidence filters are operator-visible here:
 
 - `PASS/REJECT CONFIDENCE` works with `?`, `S`, `C`, `P`, `V`, `B`
-- `PASS/REJECT PATH` works with `HIGH`, `MEDIUM`, `LOW`, `UNLIKELY`, `INSUFFICIENT`
+- `PASS/REJECT PATH` works with `HIGH`, `MEDIUM`, `LOW`, `UNLIKELY`, `CLOSED`, `INSUFFICIENT`
 - `PASS/REJECT MODE` and `PASS/REJECT EVENT` validate against the active `spot_taxonomy.yaml`
 - the shipped `PASS/REJECT EVENT` families are `LLOTA`, `IOTA`, `POTA`, `SOTA`, `WWFF`, or `ALL`
 - `PASS TOXIC` shows spots classified as toxic; `REJECT TOXIC` hides only spots with the classifier status `TOXIC`
+
+`CLOSED` is the optional VOACAP closed fallback class. It is filter-visible as
+`CLOSED`, but remains compatible with `UNLIKELY`: existing
+`PASS/REJECT PATH UNLIKELY` filters still include closed fallback spots. Direct
+`PASS/REJECT PATH CLOSED` rules target only closed fallback spots.
 
 EVENT filters are family-level. Standalone tokens such as `POTA` and acronym-prefixed references such as `POTA-1234` both match `POTA`; the reference stays in the comment and is not separately filterable. Spots with no recognized EVENT tag are not affected by EVENT filters, including `REJECT EVENT ALL`.
 

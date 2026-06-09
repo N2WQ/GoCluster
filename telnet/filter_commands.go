@@ -917,7 +917,7 @@ func newPathHandler() *domainHandler {
 			switch action {
 			case actionAllow:
 				if value == "" {
-					return "Usage: PASS PATH <class>[,<class>...] (HIGH, MEDIUM, LOW, UNLIKELY, INSUFFICIENT, or ALL)\nType HELP for usage.\n", false
+					return "Usage: PASS PATH <class>[,<class>...] (HIGH, MEDIUM, LOW, UNLIKELY, CLOSED, INSUFFICIENT, or ALL)\nType HELP for usage.\n", false
 				}
 				if strings.EqualFold(value, "ALL") {
 					c.updateFilter(func(f *filter.Filter) { f.ResetPathClasses() })
@@ -925,7 +925,7 @@ func newPathHandler() *domainHandler {
 				}
 				classes := parsePathClassList(value)
 				if len(classes) == 0 {
-					return "Usage: PASS PATH <class>[,<class>...] (HIGH, MEDIUM, LOW, UNLIKELY, INSUFFICIENT, or ALL)\nType HELP for usage.\n", false
+					return "Usage: PASS PATH <class>[,<class>...] (HIGH, MEDIUM, LOW, UNLIKELY, CLOSED, INSUFFICIENT, or ALL)\nType HELP for usage.\n", false
 				}
 				invalid := collectInvalidPathClasses(classes)
 				if len(invalid) > 0 {

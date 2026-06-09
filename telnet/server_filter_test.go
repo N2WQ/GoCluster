@@ -298,6 +298,21 @@ func TestPassCommands(t *testing.T) {
 			},
 		},
 		{
+			name: "pass path closed",
+			cmd:  "PASS PATH CLOSED",
+			setup: func(c *Client) {
+				c.server = &Server{pathPredictor: newTestPathPredictor()}
+			},
+			check: func(t *testing.T, f *filter.Filter) {
+				if f.AllPathClasses {
+					t.Fatalf("AllPathClasses should be false when CLOSED is set")
+				}
+				if !f.PathClasses[filter.PathClassClosed] {
+					t.Fatalf("expected CLOSED path class to be enabled")
+				}
+			},
+		},
+		{
 			name: "pass path all",
 			cmd:  "PASS PATH ALL",
 			setup: func(c *Client) {
@@ -802,6 +817,21 @@ func TestRejectCommands(t *testing.T) {
 			},
 		},
 		{
+			name: "reject path closed",
+			cmd:  "REJECT PATH CLOSED",
+			setup: func(c *Client) {
+				c.server = &Server{pathPredictor: newTestPathPredictor()}
+			},
+			check: func(t *testing.T, f *filter.Filter) {
+				if !f.BlockPathClasses[filter.PathClassClosed] {
+					t.Fatalf("expected CLOSED path class to be blocked")
+				}
+				if !f.AllPathClasses || f.BlockAllPathClasses {
+					t.Fatalf("expected AllPathClasses=true and BlockAllPathClasses=false after REJECT PATH CLOSED")
+				}
+			},
+		},
+		{
 			name: "reject path all",
 			cmd:  "REJECT PATH ALL",
 			setup: func(c *Client) {
@@ -1231,6 +1261,20 @@ func TestShowFilterShowsBlockList(t *testing.T) {
 	}
 	if !strings.Contains(resp, "effective: all except: 20m") {
 		t.Fatalf("expected effective label in snapshot, got: %q", resp)
+	}
+}
+
+func TestShowFilterShowsClosedPathClass(t *testing.T) {
+	client := newTestClient()
+	client.filter.SetPathClass(filter.PathClassClosed, true)
+	engine := newFilterCommandEngine()
+
+	resp, handled := engine.Handle(client, "SHOW FILTER")
+	if !handled {
+		t.Fatalf("expected SHOW FILTER to be handled")
+	}
+	if !strings.Contains(resp, "PATH: allow=CLOSED block=NONE") {
+		t.Fatalf("expected CLOSED path class in snapshot, got: %q", resp)
 	}
 }
 

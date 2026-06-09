@@ -151,8 +151,10 @@ selected VOACAP record is at or below
 glyph. Otherwise, it can return a normal `HIGH`, `MEDIUM`, `LOW`, or
 `UNLIKELY` glyph only when the insufficient bucket result still has sparse p50
 evidence and that p50 class matches the VOACAP current-hour class. It never
-overrides a sufficient bucket p50 result. For PATH filters, the closed glyph
-remains in the existing `UNLIKELY` class.
+overrides a sufficient bucket p50 result. For PATH filters, the closed glyph is
+visible as `CLOSED` and remains compatible with `UNLIKELY`: existing
+`PASS/REJECT PATH UNLIKELY` filters still include closed fallback spots, while
+direct `PASS/REJECT PATH CLOSED` rules target only closed fallback spots.
 
 The shipped config currently uses:
 
