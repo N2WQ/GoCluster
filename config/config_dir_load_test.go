@@ -82,6 +82,20 @@ func TestLoadWarnsUnknownRuntimeKey(t *testing.T) {
 	}
 }
 
+func TestLoadAllowsOptionalToolConfigWithoutMerging(t *testing.T) {
+	dir := testConfigDir(t)
+	if err := os.WriteFile(filepath.Join(dir, "voacap_experiment.yaml"), []byte("ssn_fetch_interval_seconds: 1800\n"), 0o644); err != nil {
+		t.Fatalf("write optional tool config: %v", err)
+	}
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Server.Name == "" {
+		t.Fatalf("expected normal runtime config to load")
+	}
+}
+
 func TestLoadReportsAllMissingStartupConfigInputs(t *testing.T) {
 	dir := testConfigDir(t)
 	removeTestConfigKey(t, dir, "runtime.yaml", "telnet", "port")

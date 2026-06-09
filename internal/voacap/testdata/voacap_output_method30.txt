@@ -1,0 +1,9 @@
+VOACAP method-30 excerpt used by parser tests.
+
+      1.0 17.2  3.6  7.0 10.1  0.0  0.0 FREQ
+            16   -8   20   29    -    -  SNR
+          0.62 0.02 0.72 0.83    -    -  REL
+
+      2.0 16.6  3.6  7.0 10.1  0.0  0.0 FREQ
+            17  -11   22   29    -    -  SNR
+          0.62 0.01 0.75 0.84    -    -  REL

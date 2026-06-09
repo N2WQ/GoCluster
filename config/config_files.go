@@ -13,14 +13,15 @@ import (
 )
 
 const (
-	pathReliabilityConfigFile = "path_reliability.yaml"
-	solarWeatherConfigFile    = "solarweather.yaml"
-	iaruRegionsConfigFile     = "iaru_regions.yaml"
-	iaruModeInferenceFile     = "iaru_mode_inference.yaml"
-	spotTaxonomyConfigFile    = "spot_taxonomy.yaml"
-	openAIConfigFile          = "openai.yaml"
-	toxicityConfigFile        = "toxicity.yaml"
-	toxicitySafeGateFile      = "toxicity_safe_gate.yaml"
+	pathReliabilityConfigFile  = "path_reliability.yaml"
+	solarWeatherConfigFile     = "solarweather.yaml"
+	iaruRegionsConfigFile      = "iaru_regions.yaml"
+	iaruModeInferenceFile      = "iaru_mode_inference.yaml"
+	spotTaxonomyConfigFile     = "spot_taxonomy.yaml"
+	openAIConfigFile           = "openai.yaml"
+	toxicityConfigFile         = "toxicity.yaml"
+	toxicitySafeGateFile       = "toxicity_safe_gate.yaml"
+	voacapExperimentConfigFile = "voacap_experiment.yaml"
 )
 
 type configFileClass string
@@ -41,26 +42,27 @@ type configFileSpec struct {
 // data/config. It prevents accidental runtime settings from entering the
 // process through unregistered files or hidden merge behavior.
 var configFileRegistry = map[string]configFileSpec{
-	"app.yaml":                {class: configFileMergedRuntime, required: true},
-	"archive.yaml":            {class: configFileMergedRuntime, required: true},
-	"data.yaml":               {class: configFileMergedRuntime, required: true},
-	"dedupe.yaml":             {class: configFileMergedRuntime, required: true},
-	"floodcontrol.yaml":       {class: configFileMergedRuntime, required: true},
-	"ingest.yaml":             {class: configFileMergedRuntime, required: true},
-	"mode_seeds.yaml":         {class: configFileMergedRuntime, required: true},
-	"peering.yaml":            {class: configFileMergedRuntime, required: true},
-	"pipeline.yaml":           {class: configFileMergedRuntime, required: true},
-	"prop_report.yaml":        {class: configFileMergedRuntime, required: true},
-	"reputation.yaml":         {class: configFileMergedRuntime, required: true},
-	"runtime.yaml":            {class: configFileMergedRuntime, required: true},
-	pathReliabilityConfigFile: {class: configFileFeatureRoot, required: true},
-	solarWeatherConfigFile:    {class: configFileFeatureRoot, required: true},
-	iaruRegionsConfigFile:     {class: configFileReference, required: true},
-	iaruModeInferenceFile:     {class: configFileReference, required: true},
-	spotTaxonomyConfigFile:    {class: configFileReference, required: true},
-	openAIConfigFile:          {class: configFileOptionalTool, required: false},
-	toxicityConfigFile:        {class: configFileOptionalTool, required: false},
-	toxicitySafeGateFile:      {class: configFileReference, required: false},
+	"app.yaml":                 {class: configFileMergedRuntime, required: true},
+	"archive.yaml":             {class: configFileMergedRuntime, required: true},
+	"data.yaml":                {class: configFileMergedRuntime, required: true},
+	"dedupe.yaml":              {class: configFileMergedRuntime, required: true},
+	"floodcontrol.yaml":        {class: configFileMergedRuntime, required: true},
+	"ingest.yaml":              {class: configFileMergedRuntime, required: true},
+	"mode_seeds.yaml":          {class: configFileMergedRuntime, required: true},
+	"peering.yaml":             {class: configFileMergedRuntime, required: true},
+	"pipeline.yaml":            {class: configFileMergedRuntime, required: true},
+	"prop_report.yaml":         {class: configFileMergedRuntime, required: true},
+	"reputation.yaml":          {class: configFileMergedRuntime, required: true},
+	"runtime.yaml":             {class: configFileMergedRuntime, required: true},
+	pathReliabilityConfigFile:  {class: configFileFeatureRoot, required: true},
+	solarWeatherConfigFile:     {class: configFileFeatureRoot, required: true},
+	iaruRegionsConfigFile:      {class: configFileReference, required: true},
+	iaruModeInferenceFile:      {class: configFileReference, required: true},
+	spotTaxonomyConfigFile:     {class: configFileReference, required: true},
+	openAIConfigFile:           {class: configFileOptionalTool, required: false},
+	toxicityConfigFile:         {class: configFileOptionalTool, required: false},
+	toxicitySafeGateFile:       {class: configFileReference, required: false},
+	voacapExperimentConfigFile: {class: configFileOptionalTool, required: false},
 }
 
 type loadedConfigDir struct {

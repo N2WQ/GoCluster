@@ -1,0 +1,45 @@
+# Purpose: Controls the manual VOACAP SSN forecast experiment.
+# Ownership: algorithm calibration.
+# Runtime behavior: Optional tool config; ignored by server startup and loaded strictly by voacap_ssn_forecast_watch.
+# Safe edits: Change only for VOACAP experiments with run evidence; do not treat these values as production path-reliability settings.
+# Source: data/config/README.md.
+
+# Poll cadence for NOAA SWPC sunspot_report.json.
+ssn_fetch_interval_seconds: 1800
+
+# HTTP timeout for one NOAA fetch attempt.
+ssn_request_timeout_seconds: 30
+
+# Half-life for smoothing fresh SSN observations before forecast decisions.
+ewma_half_life_seconds: 28800
+
+# Relative EWMA change from the last successful forecast that triggers VOACAP.
+recompute_delta_percent: 12
+
+# Local ITSHFBC/VOACAP installation root.
+voacap_home: "C:\\itshfbc"
+
+# Hard timeout for one VOACAP process invocation.
+voacap_timeout_seconds: 30
+
+# Number of forecast hours emitted by the baseline experiment deck.
+forecast_hours: 8
+
+# Center frequencies in MHz; VOACAP supports up to ten fixed-width slots.
+center_frequencies_mhz:
+  - 1.90
+  - 3.60
+  - 5.00
+  - 7.10
+  - 10.14
+  - 14.10
+  - 18.10
+  - 21.15
+  - 24.91
+  - 28.10
+
+# Persisted observer state used to suppress stale observations and repeated forecasts.
+state_path: ".tmp/voacap-ssn-forecast-state.json"
+
+# Prefix for output files written in the VOACAP run directory.
+output_name_prefix: "gocluster_voacap_forecast"

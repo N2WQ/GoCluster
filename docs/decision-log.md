@@ -13,6 +13,8 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Placeholder Title | Proposed | YYYY-MM-DD | placeholder area | - | - | `docs/decisions/ADR-0001-placeholder-slug.md` |
+| ADR-0160 | VOACAP FT8 SNR Output Contract | Accepted | 2026-06-09 | voacap, pathreliability, experiments | - | - | `docs/decisions/ADR-0160-voacap-ft8-snr-output-contract.md` |
+| ADR-0159 | VOACAP YAML-Owned SSN Forecast Experiment | Accepted | 2026-06-08 | voacap, config, experiments, process lifecycle | - | - | `docs/decisions/ADR-0159-voacap-yaml-owned-ssn-forecast-experiment.md` |
 | ADR-0158 | VOACAP Process Wrapper Experiment | Accepted | 2026-06-08 | voacap, experiments, process lifecycle | - | - | `docs/decisions/ADR-0158-voacap-process-wrapper-experiment.md` |
 | ADR-0157 | VOACAP SSN Moving Average Experiment | Accepted | 2026-06-08 | voacap, solarweather, experiments | - | - | `docs/decisions/ADR-0157-voacap-ssn-moving-average-experiment.md` |
 | ADR-0156 | Expanded Repo-Managed Audit Skills | Accepted | 2026-06-08 | workflow, Codex, skills, lifecycle, decision-memory | - | - | `docs/decisions/ADR-0156-expanded-repo-managed-audit-skills.md` |

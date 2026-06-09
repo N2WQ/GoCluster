@@ -17,6 +17,7 @@ contract. Not every YAML file is the same kind of knob.
 | Operator policy settings | Explicit cluster policy that changes what users see, such as dedupe windows, flood rails, filter defaults, supported mode/event routing, path sample floors, and logging/event retention. | Change deliberately, document the operational reason, restart when required, and validate behavior. |
 | Reference tables | Domain tables consumed at startup, such as supported taxonomy, regional mode inference, IARU region mapping, and seeded digital frequencies. | Edit only to correct or extend known domain/reference data; deploy with the matching binary/config directory. |
 | Algorithm calibration | Thresholds, weights, distance models, decay/merge rules, correction rails, and path/scoring calibration used by call correction, path reliability, mode inference, solar overrides, and similar methods. | Do not change during normal operation. Change only with field evidence, replay/validation, documentation review, and decision-memory handling. |
+| Optional tool config | Settings loaded only by a specific command or experiment boundary, not by server startup. | Keep optional at startup; validate strictly at the tool boundary before use. |
 
 If a setting is unclear, treat it as algorithm calibration until the owning
 README or ADR says it is a normal operator knob.
@@ -77,6 +78,7 @@ Configuration is split by concern so you only edit the relevant file:
 - `solarweather.yaml` - operator policy for enable/fetch/reporting controls, plus algorithm calibration for daylight/high-latitude/level thresholds and override glyph behavior.
 - `toxicity.yaml` - optional deployment/runtime settings for the Cloudflare Worker human-comment toxicity classifier.
 - `toxicity_safe_gate.yaml` - optional reference table for routine ham-radio comments that may bypass the classifier when the Worker is enabled.
+- `voacap_experiment.yaml` - optional tool config for manual VOACAP SSN forecast experiments; ignored by server startup and loaded by `voacap_ssn_forecast_watch`.
 
 Normal operator edits:
 - identity, ports, source credentials, source enablement, peer details, paths,
@@ -104,6 +106,7 @@ Loader behavior:
 - `go_runtime.memory_limit_mib`, `go_runtime.gc_percent`, and `go_runtime.max_procs` apply the same process-wide Go runtime controls as `GOMEMLIMIT`, `GOGC`, and `GOMAXPROCS` without requiring a wrapper script. Set any value to `0` to leave the Go runtime or environment-provided value unchanged.
 - `openai.yaml` is optional for server startup and `prop_report -no-llm`. When propagation-report LLM generation is enabled, the file is required and validated at that tool boundary. Secret values must not be logged or committed.
 - `toxicity.yaml` is optional for server startup. When enabled, it requires a Worker endpoint, bearer token environment variable, bounded worker/queue/cache settings, and `toxicity_safe_gate.yaml`; secret bearer token values must stay in the environment or private config, not checked-in YAML.
+- `voacap_experiment.yaml` is optional for server startup. The file is validated only by the VOACAP experiment command, and its SSN smoothing, recompute delta, forecast duration, VOACAP timeout/home, and center-frequency values are experiment-owned rather than production path-reliability settings.
 - `peering.yaml` in the public example uses disabled `.example.invalid` peers, blank passwords, and placeholder callsigns. Put real peer connection details only in a private config directory.
 - `reputation.yaml` in the public example disables IPinfo download/API usage and uses a placeholder download token so the strict loader still sees the required key. Put real IPinfo tokens only in a private config directory.
 - Use `prop_report -config-dir <dir>` to point report generation at an alternate config directory. The older `-path-config` flag accepts either a directory or `path_reliability.yaml` path for compatibility.
