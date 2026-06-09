@@ -13,6 +13,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Placeholder Title | Proposed | YYYY-MM-DD | placeholder area | - | - | `docs/decisions/ADR-0001-placeholder-slug.md` |
+| ADR-0158 | VOACAP Process Wrapper Experiment | Accepted | 2026-06-08 | voacap, experiments, process lifecycle | - | - | `docs/decisions/ADR-0158-voacap-process-wrapper-experiment.md` |
 | ADR-0157 | VOACAP SSN Moving Average Experiment | Accepted | 2026-06-08 | voacap, solarweather, experiments | - | - | `docs/decisions/ADR-0157-voacap-ssn-moving-average-experiment.md` |
 | ADR-0156 | Expanded Repo-Managed Audit Skills | Accepted | 2026-06-08 | workflow, Codex, skills, lifecycle, decision-memory | - | - | `docs/decisions/ADR-0156-expanded-repo-managed-audit-skills.md` |
 | ADR-0155 | Repo-Authoritative Codex Skills | Accepted | 2026-06-08 | workflow, Codex, skills, portability | - | - | `docs/decisions/ADR-0155-repo-authoritative-codex-skills.md` |

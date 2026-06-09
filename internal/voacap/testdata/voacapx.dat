@@ -1,0 +1,16 @@
+COMMENT    Ham FT8/CW baseline VOACAP deck: Boston to Warsaw.
+LINEMAX      55       number of lines-per-page
+COEFFS    CCIR
+TIME          1   24    1    1
+MONTH      2026 6.00
+SUNSPOT    100.
+LABEL     BOSTON              WARSAW
+CIRCUIT   42.36N    71.06W    52.23N    21.01E  S     0
+SYSTEM       1. 145. 0.10  90. 10.0 3.00 0.10
+FPROB      1.00 1.00 1.00 0.00
+ANTENNA       1    1    2   30     0.000[default\Isotrope     ]  0.0    0.1000
+ANTENNA       2    2    2   30     0.000[default\Isotrope     ]  0.0    0.0000
+FREQUENCY  3.57 7.0410.1414.0718.1021.0724.9128.07 0.00 0.00
+METHOD       30    0
+EXECUTE
+QUIT
