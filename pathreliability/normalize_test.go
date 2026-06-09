@@ -19,8 +19,8 @@ func TestGlyphForDB(t *testing.T) {
 	if got := GlyphForDB(-30, "FT8", cfg); got != "!" {
 		t.Fatalf("expected ! for -30 dB, got %q", got)
 	}
-	if got := GlyphForDB(-4, "CW", cfg); got != "-" {
-		t.Fatalf("expected - for -4 dB in CW thresholds, got %q", got)
+	if got := GlyphForDB(-4, "CW", cfg); got != "=" {
+		t.Fatalf("expected = for -4 dB in CW thresholds, got %q", got)
 	}
 }
 

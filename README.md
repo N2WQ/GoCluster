@@ -211,7 +211,8 @@ Path reliability glyphs:
   "<" - LOW: weak or marginal path.
   "-" - UNLIKELY: poor path.
   " " - INSUFFICIENT: not enough recent evidence.
-  "!" - CLOSED: VOACAP fallback predicts FT8 SNR below the closed threshold.
+  "#" - CLOSED: VOACAP fallback predicts SNR at or below the mode's closed
+    threshold.
   PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, INSUFFICIENT.
 
 List types:
@@ -482,7 +483,7 @@ Important operational notes:
 - If `voacap_fallback.enabled` is true, an insufficient bucket result may start
   a delayed nonblocking VOACAP lookup. A cached fallback can only replace the
   blank glyph with the configured closed glyph when VOACAP predicts an
-  FT8-equivalent SNR at or below the closed threshold.
+  FT8-equivalent SNR at or below `mode_thresholds.<mode>.closed`.
 - `PATH` filters work on the class names, not on the glyph characters.
 - `R` and `G` are solar-weather display overrides, not normal path classes.
 

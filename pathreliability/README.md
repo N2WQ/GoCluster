@@ -134,10 +134,12 @@ to `logging.propagation.dir`.
 When `voacap_fallback.enabled` is true, insufficient bucket results may start a
 delayed VOACAP lookup. The lookup is nonblocking in the telnet path and can
 only return the configured closed glyph after a cached VOACAP method-30 result
-predicts FT8-equivalent SNR at or below the configured closed threshold. It
-does not produce `HIGH`, `MEDIUM`, or `LOW` classes and it never overrides a
-sufficient bucket p50 result. For PATH filters, the closed glyph remains in the
-existing `UNLIKELY` class.
+predicts FT8-equivalent SNR at or below `mode_thresholds.<mode>.closed`. Cached
+VOACAP output stores the best matching-band SNR and re-evaluates the closed
+verdict against the request mode, so the first mode to populate the cache does
+not decide later modes. It does not produce `HIGH`, `MEDIUM`, or `LOW` classes
+and it never overrides a sufficient bucket p50 result. For PATH filters, the
+closed glyph remains in the existing `UNLIKELY` class.
 
 The shipped config currently uses:
 
@@ -226,19 +228,20 @@ The shipped glyph symbols are:
 - `<` for `LOW`
 - `-` for `UNLIKELY`
 - space for `INSUFFICIENT`
-- `!` for VOACAP `CLOSED` fallback when enabled and cached
+- configured `glyph_symbols.closed` for VOACAP `CLOSED` fallback when enabled
+  and cached
 
 The shipped threshold table is:
 
-| Mode | High | Medium | Low | Unlikely |
-| --- | ---: | ---: | ---: | ---: |
-| FT8 | -13 | -17 | -21 | -21 |
-| FT4 | -5 | -10 | -14 | -17 |
-| CW | 0 | -5 | -9 | -12 |
-| RTTY | 12 | 4 | 0 | -3 |
-| PSK | 5 | 0 | -4 | -7 |
-| USB | 22 | 17 | 13 | 10 |
-| LSB | 22 | 17 | 13 | 10 |
+| Mode | High | Medium | Low | Unlikely | Closed |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| FT8 | -13 | -17 | -21 | -24 | -29 |
+| FT4 | -5 | -10 | -14 | -17 | -22 |
+| CW | -1 | -6 | -10 | -14 | -19 |
+| RTTY | -1 | -6 | -10 | -14 | -19 |
+| PSK | 5 | 0 | -4 | -7 | -12 |
+| USB | 10 | 5 | 0 | -5 | -10 |
+| LSB | 10 | 5 | 0 | -5 | -10 |
 
 ## Config Ownership
 

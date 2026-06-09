@@ -93,6 +93,49 @@ func TestVOACAPClosedFallbackCachesOpenVerdictWithoutReturningGlyph(t *testing.T
 	}
 }
 
+func TestVOACAPClosedFallbackReevaluatesCachedForecastPerMode(t *testing.T) {
+	cfg := testVOACAPFallbackConfig()
+	cfg.VOACAPFallback.DelaySeconds = 0
+	var calls atomic.Int32
+	forecaster := fakeClosedForecaster{
+		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
+			calls.Add(1)
+			if job.ThresholdDB != -29 {
+				t.Fatalf("FT8 job threshold = %v, want -29", job.ThresholdDB)
+			}
+			return VOACAPClosedForecast{Closed: false, FT8SNRDB: -14, FrequencyMHz: job.FrequencyMHz}, nil
+		},
+	}
+	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
+	ctx, cancel := context.WithCancel(context.Background())
+	fallback.Start(ctx)
+	defer func() {
+		cancel()
+		fallback.Wait()
+	}()
+
+	req := testClosedRequest()
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	if _, ok := fallback.CheckClosed(req, now); ok {
+		t.Fatalf("FT8 enqueue should not synchronously return a result")
+	}
+	waitUntil(t, func() bool { return calls.Load() == 1 })
+	if _, ok := fallback.CheckClosed(req, now.Add(time.Second)); ok {
+		t.Fatalf("FT8 threshold should keep -14 open")
+	}
+	req.Mode = "PSK"
+	res, ok := fallback.CheckClosed(req, now.Add(2*time.Second))
+	if !ok {
+		t.Fatalf("PSK threshold should classify cached -14 forecast as closed")
+	}
+	if res.Source != SourceVOACAPClosed || res.VOACAPFT8SNRDB != -14 {
+		t.Fatalf("unexpected PSK cached closed result: %+v", res)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("cached forecast should not rerun for mode threshold re-evaluation, calls=%d", calls.Load())
+	}
+}
+
 func TestVOACAPClosedFallbackBoundsDelayMap(t *testing.T) {
 	cfg := testVOACAPFallbackConfig()
 	cfg.VOACAPFallback.MaxDelayEntries = 2
@@ -180,7 +223,7 @@ func TestVOACAPRunnerClosedForecasterLiveSafeLabelDeck(t *testing.T) {
 		SSN:            147,
 		WindowStartUTC: time.Date(2026, time.June, 9, 3, 0, 0, 0, time.UTC),
 		FrequencyMHz:   7.1,
-		ThresholdDB:    cfg.VOACAPClosedThresholdDB(),
+		ThresholdDB:    thresholdsForModeDB("FT8", DefaultConfig()).Closed,
 	})
 	if err != nil {
 		t.Fatalf("ForecastClosed() live error: %v", err)

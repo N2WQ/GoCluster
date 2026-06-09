@@ -79,9 +79,6 @@ voacap_fallback:
   max_queue_depth: 1000
   worker_count: 1
   output_name_prefix: "gocluster_voacap_path"
-  # Closed means FT8-equivalent SNR <= closed_base_ft8_snr_db - closed_safety_margin_db.
-  closed_base_ft8_snr_db: -24
-  closed_safety_margin_db: 5
 
 # Decay half-life in seconds when no per-band override applies.
 default_half_life_seconds: 420
@@ -143,53 +140,62 @@ merge_receive_weight: 0.6
 merge_transmit_weight: 0.4
 
 # Per-mode glyph thresholds in FT8-equivalent dB.
-# FT8/FT4 thresholds follow: < -21 unlikely, -21..-17 low, -17..-13 medium, >= -13 high.
+# FT8 thresholds follow: >= -13 high, -17..-13 medium, -21..-17 low,
+# below -21 unlikely for bucket predictions, and <= -29 closed for VOACAP.
 # CW/RTTY/PSK thresholds derive from 0/3/7/12 dB buckets with a -7 dB correction.
 # Repeated threshold keys mean: high >= high, medium >= medium, low >= low,
-# unlikely >= unlikely; below unlikely is still displayed as unlikely.
+# unlikely >= unlikely; VOACAP closed fallback uses closed <= closed.
 mode_thresholds:
   ft8:
     high: -13
     medium: -17
     low: -21
-    unlikely: -21
+    unlikely: -24
+    closed: -29
   ft4:
     high: -5
     medium: -10
     low: -14
     unlikely: -17
+    closed: -22
   cw:
     high: -1
     medium: -6
     low: -10
     unlikely: -14
+    closed: -19
   rtty:
     high: -1
     medium: -6
     low: -10
     unlikely: -14
+    closed: -19
   psk:
     high: 5
     medium: 0
     low: -4
     unlikely: -7
+    closed: -12
   usb:
     high: 10
     medium: 5
     low: 0
     unlikely: -5
+    closed: -10
   lsb:
     high: 10
     medium: 5
     low: 0
     unlikely: -5
+    closed: -10
 
 # Fallback glyph thresholds in FT8-equivalent dB (used when a mode is missing above).
 glyph_thresholds:
   high: -13
   medium: -17
   low: -21
-  unlikely: -21
+  unlikely: -24
+  closed: -29
 
 # Cap per-beacon contribution so a single beacon cannot dominate.
 beacon_weight_cap: 1.0

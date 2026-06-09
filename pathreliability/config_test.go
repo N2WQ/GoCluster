@@ -120,14 +120,14 @@ func TestLoadFileReadsClosedGlyphAndVOACAPFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load shipped config: %v", err)
 	}
-	if cfg.GlyphSymbols.Closed != "!" {
-		t.Fatalf("closed glyph = %q, want !", cfg.GlyphSymbols.Closed)
+	if cfg.GlyphSymbols.Closed != "#" {
+		t.Fatalf("closed glyph = %q, want #", cfg.GlyphSymbols.Closed)
 	}
-	if cfg.VOACAPFallback.Enabled {
-		t.Fatalf("VOACAP fallback should be disabled in shipped config")
+	if !cfg.VOACAPFallback.Enabled {
+		t.Fatalf("VOACAP fallback should be enabled in shipped config")
 	}
-	if cfg.VOACAPFallback.VOACAPClosedThresholdDB() != -29 {
-		t.Fatalf("closed threshold = %d, want -29", cfg.VOACAPFallback.VOACAPClosedThresholdDB())
+	if got := thresholdsForModeDB("FT8", cfg).Closed; got != -29 {
+		t.Fatalf("FT8 closed threshold = %v, want -29", got)
 	}
 	if cfg.VOACAPFallback.SSNFetchIntervalSeconds != 1800 || cfg.VOACAPFallback.SSNEWMAHalfLifeSeconds != 28800 {
 		t.Fatalf("unexpected SSN fallback cadence: %+v", cfg.VOACAPFallback)
@@ -301,9 +301,10 @@ func TestLoadFileRejectsMissingRequiredYAMLSettings(t *testing.T) {
 		{name: "receiver max effective count", path: []string{"receiver_max_effective_count"}, want: "receiver_max_effective_count"},
 		{name: "receiver max effective weight", path: []string{"receiver_max_effective_weight"}, want: "receiver_max_effective_weight"},
 		{name: "closed glyph", path: []string{"glyph_symbols", "closed"}, want: "glyph_symbols.closed"},
+		{name: "fallback closed threshold", path: []string{"glyph_thresholds", "closed"}, want: "glyph_thresholds.closed"},
+		{name: "ft8 closed threshold", path: []string{"mode_thresholds", "ft8", "closed"}, want: "mode_thresholds.ft8"},
 		{name: "voacap enabled", path: []string{"voacap_fallback", "enabled"}, want: "voacap_fallback.enabled"},
 		{name: "voacap queue depth", path: []string{"voacap_fallback", "max_queue_depth"}, want: "voacap_fallback.max_queue_depth"},
-		{name: "voacap closed margin", path: []string{"voacap_fallback", "closed_safety_margin_db"}, want: "voacap_fallback.closed_safety_margin_db"},
 		{name: "ft4 offset", path: []string{"mode_offsets", "ft4"}, want: "mode_offsets.ft4"},
 		{name: "noise offsets", path: []string{"noise_offsets"}, want: "noise_offsets"},
 	}
@@ -433,8 +434,10 @@ func TestLoadFileRejectsInvalidVOACAPFallbackBounds(t *testing.T) {
 		{name: "worker count", body: "voacap_fallback:\n  worker_count: 2\n", want: "voacap_fallback.worker_count"},
 		{name: "cache entries", body: "voacap_fallback:\n  max_cache_entries: 0\n", want: "voacap_fallback.max_cache_entries"},
 		{name: "long output prefix", body: "voacap_fallback:\n  output_name_prefix: gocluster_voacap_path_prefix_too_long\n", want: "voacap_fallback.output_name_prefix"},
-		{name: "negative margin", body: "voacap_fallback:\n  closed_safety_margin_db: -1\n", want: "voacap_fallback.closed_safety_margin_db"},
 		{name: "too many frequencies", body: "voacap_fallback:\n  center_frequencies_mhz: [1,2,3,4,5,6,7,8,9,10,11]\n", want: "voacap_fallback.center_frequencies_mhz"},
+		{name: "invalid closed threshold ordering", body: "mode_thresholds:\n  ft8:\n    closed: -24\n", want: "mode_thresholds.ft8"},
+		{name: "removed closed base", body: "voacap_fallback:\n  closed_base_ft8_snr_db: -24\n", want: "voacap_fallback.closed_base_ft8_snr_db"},
+		{name: "removed closed margin", body: "voacap_fallback:\n  closed_safety_margin_db: 5\n", want: "voacap_fallback.closed_safety_margin_db"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

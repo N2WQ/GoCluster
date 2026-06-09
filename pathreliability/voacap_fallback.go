@@ -1,3 +1,11 @@
+// File role: Owns the optional nonblocking VOACAP closed-band fallback.
+// Crawler notes: Start here for SSN-gated fallback delay/cache behavior,
+// mode-owned closed-threshold evaluation, VOACAP deck launch, and closed glyph
+// result construction.
+// Related docs: pathreliability/README.md,
+// data/config/PATH_PREDICTIONS.md, docs/decisions/ADR-0161-voacap-closed-only-path-fallback.md.
+// Related tests: pathreliability/voacap_fallback_test.go,
+// telnet/path_settings_test.go.
 package pathreliability
 
 import (
@@ -45,7 +53,7 @@ type VOACAPClosedJob struct {
 	SSN            int
 	WindowStartUTC time.Time
 	FrequencyMHz   float64
-	ThresholdDB    int
+	ThresholdDB    float64
 
 	key      voacapCacheKey
 	delayKey voacapDelayKey
@@ -211,7 +219,7 @@ func (f *VOACAPClosedFallback) CheckClosed(req VOACAPClosedRequest, now time.Tim
 	if entry, ok := f.cache[key]; ok {
 		if f.cacheExpired(entry, now) {
 			delete(f.cache, key)
-		} else if entry.forecast.Closed {
+		} else if f.forecastClosedForMode(entry.forecast, prepared.Mode) {
 			return f.resultFromCache(key, entry, now), true
 		} else {
 			return Result{}, false
@@ -231,7 +239,7 @@ func (f *VOACAPClosedFallback) CheckClosed(req VOACAPClosedRequest, now time.Tim
 		SSN:            ssn,
 		WindowStartUTC: forecastWindowStart(now),
 		FrequencyMHz:   float64(key.frequencyKHz) / 1000,
-		ThresholdDB:    f.fallback.VOACAPClosedThresholdDB(),
+		ThresholdDB:    f.closedThresholdForMode(prepared.Mode),
 		key:            key,
 		delayKey:       delayKey,
 	}
@@ -259,6 +267,17 @@ func (f *VOACAPClosedFallback) prepareRequest(req VOACAPClosedRequest) (VOACAPCl
 		return VOACAPClosedRequest{}, false
 	}
 	return req, true
+}
+
+func (f *VOACAPClosedFallback) closedThresholdForMode(mode string) float64 {
+	if f == nil {
+		return 0
+	}
+	return thresholdsForModeDB(mode, f.cfg).Closed
+}
+
+func (f *VOACAPClosedFallback) forecastClosedForMode(forecast VOACAPClosedForecast, mode string) bool {
+	return float64(forecast.FT8SNRDB) <= f.closedThresholdForMode(mode)
 }
 
 func (f *VOACAPClosedFallback) cacheKey(req VOACAPClosedRequest, ssn int, now time.Time) voacapCacheKey {
@@ -482,7 +501,7 @@ func (f VOACAPRunnerClosedForecaster) buildDeck(job VOACAPClosedJob) ([]byte, er
 	})
 }
 
-func closedForecastFromRecords(records []voacap.PredictionRecord, band string, thresholdDB int) (VOACAPClosedForecast, error) {
+func closedForecastFromRecords(records []voacap.PredictionRecord, band string, thresholdDB float64) (VOACAPClosedForecast, error) {
 	band = normalizeBand(band)
 	var best voacap.PredictionRecord
 	found := false
@@ -499,7 +518,7 @@ func closedForecastFromRecords(records []voacap.PredictionRecord, band string, t
 		return VOACAPClosedForecast{}, fmt.Errorf("VOACAP output has no prediction records for band %s", band)
 	}
 	return VOACAPClosedForecast{
-		Closed:        best.FT8SNRDB <= thresholdDB,
+		Closed:        float64(best.FT8SNRDB) <= thresholdDB,
 		FT8SNRDB:      best.FT8SNRDB,
 		VOACAPSNRDBHz: best.VOACAPSNRDBHz,
 		HourUTC:       best.HourUTC,

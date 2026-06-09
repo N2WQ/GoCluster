@@ -29,12 +29,18 @@ the normal predictor returns `INSUFFICIENT`. An insufficient request starts a
 15-minute delayed, nonblocking lookup keyed by directed H3 cell pair, band,
 center frequency, forecast window, month, SSN generation, and direction. Cached
 VOACAP output can only emit the configured closed glyph when the best
-matching-band FT8-equivalent SNR is at or below the configured closed threshold.
-It does not emit HIGH, MEDIUM, LOW, or ordinary UNLIKELY predictions.
+matching-band FT8-equivalent SNR is at or below the request mode's configured
+`mode_thresholds.<mode>.closed` threshold. Cached VOACAP output stores the best
+matching-band SNR and re-evaluates closed/open against the request mode so one
+mode does not permanently decide the cached verdict for another mode. It does
+not emit HIGH, MEDIUM, LOW, or ordinary UNLIKELY predictions.
 
-The closed glyph is configurable through `glyph_symbols.closed`. The shipped
-symbol is `!`. PATH filters continue to use the existing class names; the closed
-fallback maps to `UNLIKELY` for filter semantics.
+The closed glyph is configurable through `glyph_symbols.closed`. PATH filters
+continue to use the existing class names; the closed fallback maps to
+`UNLIKELY` for filter semantics. The old global VOACAP threshold keys
+`voacap_fallback.closed_base_ft8_snr_db` and
+`voacap_fallback.closed_safety_margin_db` are removed; mode thresholds own the
+closed floor with the rest of the glyph scale.
 
 ## Alternatives considered
 
@@ -56,13 +62,13 @@ fallback maps to `UNLIKELY` for filter semantics.
 - Adds a bounded, lazy fallback for data-sparse paths without blocking telnet
   spot rendering.
 - Keeps operator policy in YAML for fetch cadence, forecast bands, delay,
-  cache size, queue depth, delta threshold, and closed threshold.
+  cache size, queue depth, delta threshold, and per-mode closed thresholds.
 
 ### Risks
 
 - A VOACAP false-closed forecast may hide a workable opening when buckets are
-  empty. The safety margin is configurable, and sufficient bucket evidence still
-  overrides the fallback.
+  empty. The per-mode closed floor is configurable, and sufficient bucket
+  evidence still overrides the fallback.
 - Direction, SSN generation, month, and forecast window expand cache keys, so
   cache sizing must account for active path diversity.
 - Enabling the fallback requires a valid local VOACAP installation; startup

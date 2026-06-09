@@ -646,7 +646,8 @@ func TestHelpPathGlyphLegendUsesConfiguredSymbols(t *testing.T) {
 		`"<" - LOW: weak or marginal path.`,
 		`"-" - UNLIKELY: poor path.`,
 		`" " - INSUFFICIENT: not enough recent evidence.`,
-		`"!" - CLOSED: VOACAP fallback predicts FT8 SNR below the closed threshold.`,
+		`"!" - CLOSED: VOACAP fallback predicts SNR at or below the mode's closed`,
+		`threshold.`,
 		"PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, INSUFFICIENT.",
 	} {
 		if !strings.Contains(resp, want) {

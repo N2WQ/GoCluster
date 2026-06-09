@@ -75,8 +75,6 @@ var requiredConfigPaths = []yamlconfig.Path{
 	{"voacap_fallback", "max_queue_depth"},
 	{"voacap_fallback", "worker_count"},
 	{"voacap_fallback", "output_name_prefix"},
-	{"voacap_fallback", "closed_base_ft8_snr_db"},
-	{"voacap_fallback", "closed_safety_margin_db"},
 	{"default_half_life_seconds"},
 	{"band_half_life_seconds"},
 	{"stale_after_seconds"},
@@ -99,6 +97,7 @@ var requiredConfigPaths = []yamlconfig.Path{
 	{"glyph_thresholds", "medium"},
 	{"glyph_thresholds", "low"},
 	{"glyph_thresholds", "unlikely"},
+	{"glyph_thresholds", "closed"},
 	{"beacon_weight_cap"},
 	{"display_enabled"},
 	{"mode_offsets", "ft4"},
@@ -133,14 +132,16 @@ type GlyphThresholds struct {
 	Medium   float64 `yaml:"medium"`   // >= Medium
 	Low      float64 `yaml:"low"`      // >= Low
 	Unlikely float64 `yaml:"unlikely"` // >= Unlikely (still "unlikely" below)
+	Closed   float64 `yaml:"closed"`   // <= Closed for closed-band fallback
 
 	hasHigh     bool
 	hasMedium   bool
 	hasLow      bool
 	hasUnlikely bool
+	hasClosed   bool
 }
 
-// UnmarshalYAML accepts the current high/medium/low/unlikely keys. Removed
+// UnmarshalYAML accepts the current high/medium/low/unlikely/closed keys. Removed
 // legacy threshold names are rejected before permissive decode so ordinary
 // extra keys can still be reported as warning-only startup diagnostics.
 func (t *GlyphThresholds) UnmarshalYAML(value *yaml.Node) error {
@@ -173,6 +174,9 @@ func (t *GlyphThresholds) UnmarshalYAML(value *yaml.Node) error {
 		case "unlikely":
 			t.Unlikely = v
 			t.hasUnlikely = true
+		case "closed":
+			t.Closed = v
+			t.hasClosed = true
 		default:
 			continue
 		}
@@ -253,8 +257,6 @@ type VOACAPFallbackConfig struct {
 	MaxQueueDepth            int       `yaml:"max_queue_depth"`
 	WorkerCount              int       `yaml:"worker_count"`
 	OutputNamePrefix         string    `yaml:"output_name_prefix"`
-	ClosedBaseFT8SNRDB       int       `yaml:"closed_base_ft8_snr_db"`
-	ClosedSafetyMarginDB     int       `yaml:"closed_safety_margin_db"`
 }
 
 // DefaultConfig returns a safe, enabled configuration.
@@ -289,23 +291,25 @@ func DefaultConfig() Config {
 			WSPR: 26,
 		},
 		ModeThresholds: map[string]GlyphThresholds{
-			"FT8":  {High: -13, Medium: -17, Low: -21, Unlikely: -21, hasHigh: true, hasMedium: true, hasLow: true, hasUnlikely: true},
-			"FT4":  {High: -13, Medium: -17, Low: -21, Unlikely: -21, hasHigh: true, hasMedium: true, hasLow: true, hasUnlikely: true},
-			"CW":   {High: 5, Medium: -1, Low: -5, Unlikely: -5, hasHigh: true, hasMedium: true, hasLow: true, hasUnlikely: true},
-			"RTTY": {High: 5, Medium: -1, Low: -5, Unlikely: -5, hasHigh: true, hasMedium: true, hasLow: true, hasUnlikely: true},
-			"PSK":  {High: 5, Medium: -1, Low: -5, Unlikely: -5, hasHigh: true, hasMedium: true, hasLow: true, hasUnlikely: true},
-			"USB":  {High: 5, Medium: -1, Low: -5, Unlikely: -5, hasHigh: true, hasMedium: true, hasLow: true, hasUnlikely: true},
-			"LSB":  {High: 5, Medium: -1, Low: -5, Unlikely: -5, hasHigh: true, hasMedium: true, hasLow: true, hasUnlikely: true},
+			"FT8":  {High: -13, Medium: -17, Low: -21, Unlikely: -24, Closed: -29, hasHigh: true, hasMedium: true, hasLow: true, hasUnlikely: true, hasClosed: true},
+			"FT4":  {High: -5, Medium: -10, Low: -14, Unlikely: -17, Closed: -22, hasHigh: true, hasMedium: true, hasLow: true, hasUnlikely: true, hasClosed: true},
+			"CW":   {High: -1, Medium: -6, Low: -10, Unlikely: -14, Closed: -19, hasHigh: true, hasMedium: true, hasLow: true, hasUnlikely: true, hasClosed: true},
+			"RTTY": {High: -1, Medium: -6, Low: -10, Unlikely: -14, Closed: -19, hasHigh: true, hasMedium: true, hasLow: true, hasUnlikely: true, hasClosed: true},
+			"PSK":  {High: 5, Medium: 0, Low: -4, Unlikely: -7, Closed: -12, hasHigh: true, hasMedium: true, hasLow: true, hasUnlikely: true, hasClosed: true},
+			"USB":  {High: 10, Medium: 5, Low: 0, Unlikely: -5, Closed: -10, hasHigh: true, hasMedium: true, hasLow: true, hasUnlikely: true, hasClosed: true},
+			"LSB":  {High: 10, Medium: 5, Low: 0, Unlikely: -5, Closed: -10, hasHigh: true, hasMedium: true, hasLow: true, hasUnlikely: true, hasClosed: true},
 		},
 		GlyphThresholds: GlyphThresholds{
 			High:        -13,
 			Medium:      -17,
 			Low:         -21,
-			Unlikely:    -21,
+			Unlikely:    -24,
+			Closed:      -29,
 			hasHigh:     true,
 			hasMedium:   true,
 			hasLow:      true,
 			hasUnlikely: true,
+			hasClosed:   true,
 		},
 		GlyphSymbols: GlyphSymbols{
 			High:         "+",
@@ -426,7 +430,7 @@ func (c *Config) finalize() error {
 			return fmt.Errorf("mode_thresholds contains empty mode")
 		}
 		if !completeGlyphThresholds(v) {
-			return fmt.Errorf("mode_thresholds.%s must define valid high/medium/low/unlikely thresholds", k)
+			return fmt.Errorf("mode_thresholds.%s must define valid high/medium/low/unlikely/closed thresholds", k)
 		}
 		normalizedThresholds[key] = v
 	}
@@ -437,7 +441,7 @@ func (c *Config) finalize() error {
 		}
 	}
 	if !completeGlyphThresholds(c.GlyphThresholds) {
-		return fmt.Errorf("glyph_thresholds must define valid high/medium/low/unlikely thresholds")
+		return fmt.Errorf("glyph_thresholds must define valid high/medium/low/unlikely/closed thresholds")
 	}
 	if c.GlyphSymbols.High == "" ||
 		c.GlyphSymbols.Medium == "" ||
@@ -479,8 +483,6 @@ func defaultVOACAPFallbackConfig() VOACAPFallbackConfig {
 		MaxQueueDepth:            1000,
 		WorkerCount:              1,
 		OutputNamePrefix:         "gocluster_voacap_path",
-		ClosedBaseFT8SNRDB:       -24,
-		ClosedSafetyMarginDB:     5,
 	}
 }
 
@@ -544,16 +546,7 @@ func (c *VOACAPFallbackConfig) finalize() error {
 	if len(strings.TrimSpace(c.OutputNamePrefix)) > 24 {
 		return fmt.Errorf("voacap_fallback.output_name_prefix must be at most 24 characters")
 	}
-	if c.ClosedSafetyMarginDB < 0 {
-		return fmt.Errorf("voacap_fallback.closed_safety_margin_db must be >= 0")
-	}
 	return nil
-}
-
-// VOACAPClosedThresholdDB returns the FT8-equivalent SNR at or below which the
-// fallback may mark an otherwise insufficient path as closed.
-func (c VOACAPFallbackConfig) VOACAPClosedThresholdDB() int {
-	return c.ClosedBaseFT8SNRDB - c.ClosedSafetyMarginDB
 }
 
 func (c *Config) buildCaches() {
@@ -564,12 +557,12 @@ func (c *Config) buildCaches() {
 }
 
 func validGlyphThresholds(t GlyphThresholds) bool {
-	return t.High > t.Medium && t.Medium > t.Low && t.Low >= t.Unlikely
+	return t.High > t.Medium && t.Medium > t.Low && t.Low >= t.Unlikely && t.Unlikely > t.Closed
 }
 
 func completeGlyphThresholds(t GlyphThresholds) bool {
-	if t.hasHigh || t.hasMedium || t.hasLow || t.hasUnlikely {
-		return t.hasHigh && t.hasMedium && t.hasLow && t.hasUnlikely && validGlyphThresholds(t)
+	if t.hasHigh || t.hasMedium || t.hasLow || t.hasUnlikely || t.hasClosed {
+		return t.hasHigh && t.hasMedium && t.hasLow && t.hasUnlikely && t.hasClosed && validGlyphThresholds(t)
 	}
 	return validGlyphThresholds(t)
 }
@@ -678,6 +671,10 @@ func rejectRemovedPathReliabilityKeys(bs []byte) error {
 		switch key {
 		case "clamp_min", "clamp_max":
 			return fmt.Errorf("field %s not found in type pathreliability.Config", key)
+		case "voacap_fallback":
+			if err := rejectRemovedVOACAPFallbackKeys(value); err != nil {
+				return err
+			}
 		case "glyph_thresholds":
 			if err := rejectLegacyGlyphThresholdKeys("glyph_thresholds", value); err != nil {
 				return err
@@ -705,7 +702,21 @@ func rejectLegacyGlyphThresholdKeys(path string, node *yaml.Node) error {
 		key := strings.ToLower(strings.TrimSpace(node.Content[i].Value))
 		switch key {
 		case "excellent", "good", "marginal":
-			return fmt.Errorf("unsupported glyph threshold key %q at %s; use high, medium, low, or unlikely", key, path)
+			return fmt.Errorf("unsupported glyph threshold key %q at %s; use high, medium, low, unlikely, or closed", key, path)
+		}
+	}
+	return nil
+}
+
+func rejectRemovedVOACAPFallbackKeys(node *yaml.Node) error {
+	if node == nil || node.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		key := strings.ToLower(strings.TrimSpace(node.Content[i].Value))
+		switch key {
+		case "closed_base_ft8_snr_db", "closed_safety_margin_db":
+			return fmt.Errorf("voacap_fallback.%s is no longer supported; configure mode_thresholds.<mode>.closed instead", key)
 		}
 	}
 	return nil
