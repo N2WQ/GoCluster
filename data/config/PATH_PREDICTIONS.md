@@ -118,6 +118,13 @@ When you see a glyph next to a spot, here's what happened behind the scenes:
    use the average of both representatives so balanced weak/strong evidence
    reflects the typical middle.
 
+If the selected bucket evidence is insufficient and the optional
+`voacap_fallback.enabled` setting is true, the cluster can start a delayed
+nonblocking VOACAP lookup for the same grid-center endpoints. A cached VOACAP
+result can only replace the blank glyph with the configured closed glyph when
+the forecasted FT8-equivalent SNR is at or below the closed threshold. It never
+replaces a normal p50 bucket prediction.
+
 ## How to Use This Information
 
 ### Making Quick Decisions
@@ -126,6 +133,8 @@ The glyphs help you prioritize. If you see:
 - **`>` or `=`**: Go for it! These are solid opportunities.
 - **`<`**: Worth trying, especially if you need that entity or grid.
 - **`-`**: Probably not worth your time unless it's a rare one.
+- **`!`**: Optional VOACAP fallback thinks the band is closed for FT8 on this
+  path.
 - **Space**: No prediction available - you're on your own. Could be good or bad.
 
 ### Understanding Limitations

@@ -131,6 +131,14 @@ the receiver-diversity gate in enforce evaluation; `low_weight`
 maps to the decayed effective weight floor. These aggregate lines are written
 to `logging.propagation.dir`.
 
+When `voacap_fallback.enabled` is true, insufficient bucket results may start a
+delayed VOACAP lookup. The lookup is nonblocking in the telnet path and can
+only return the configured closed glyph after a cached VOACAP method-30 result
+predicts FT8-equivalent SNR at or below the configured closed threshold. It
+does not produce `HIGH`, `MEDIUM`, or `LOW` classes and it never overrides a
+sufficient bucket p50 result. For PATH filters, the closed glyph remains in the
+existing `UNLIKELY` class.
+
 The shipped config currently uses:
 
 - half-lives ranging from `600s` on `160m` and `80m` down to `240s` on `12m`, `10m`, and `6m`
@@ -218,6 +226,7 @@ The shipped glyph symbols are:
 - `<` for `LOW`
 - `-` for `UNLIKELY`
 - space for `INSUFFICIENT`
+- `!` for VOACAP `CLOSED` fallback when enabled and cached
 
 The shipped threshold table is:
 

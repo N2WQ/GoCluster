@@ -10,6 +10,7 @@ import (
 	"dxcluster/internal/yamlconfig"
 	"dxcluster/strutil"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 
@@ -42,7 +43,8 @@ type Config struct {
 	ModeOffsets                        ModeOffsets                `yaml:"mode_offsets"`                            // per-mode FT8-equiv offsets
 	ModeThresholds                     map[string]GlyphThresholds `yaml:"mode_thresholds"`                         // per-mode glyph thresholds in FT8-equiv dB
 	GlyphThresholds                    GlyphThresholds            `yaml:"glyph_thresholds"`                        // fallback glyph thresholds in FT8-equiv dB
-	GlyphSymbols                       GlyphSymbols               `yaml:"glyph_symbols"`                           // glyph mapping for high/medium/low/unlikely/insufficient
+	GlyphSymbols                       GlyphSymbols               `yaml:"glyph_symbols"`                           // glyph mapping for high/medium/low/unlikely/insufficient/closed
+	VOACAPFallback                     VOACAPFallbackConfig       `yaml:"voacap_fallback"`                         // optional closed-only VOACAP fallback
 	NoiseOffsets                       map[string]float64         `yaml:"noise_offsets"`                           // noise class -> dB penalty
 
 	noiseModel NoiseModel
@@ -56,6 +58,25 @@ var requiredConfigPaths = []yamlconfig.Path{
 	{"glyph_symbols", "low"},
 	{"glyph_symbols", "unlikely"},
 	{"glyph_symbols", "insufficient"},
+	{"glyph_symbols", "closed"},
+	{"voacap_fallback", "enabled"},
+	{"voacap_fallback", "ssn_fetch_interval_seconds"},
+	{"voacap_fallback", "ssn_request_timeout_seconds"},
+	{"voacap_fallback", "ssn_ewma_half_life_seconds"},
+	{"voacap_fallback", "recompute_delta_percent"},
+	{"voacap_fallback", "voacap_home"},
+	{"voacap_fallback", "voacap_timeout_seconds"},
+	{"voacap_fallback", "forecast_hours"},
+	{"voacap_fallback", "center_frequencies_mhz"},
+	{"voacap_fallback", "delay_seconds"},
+	{"voacap_fallback", "cache_ttl_seconds"},
+	{"voacap_fallback", "max_cache_entries"},
+	{"voacap_fallback", "max_delay_entries"},
+	{"voacap_fallback", "max_queue_depth"},
+	{"voacap_fallback", "worker_count"},
+	{"voacap_fallback", "output_name_prefix"},
+	{"voacap_fallback", "closed_base_ft8_snr_db"},
+	{"voacap_fallback", "closed_safety_margin_db"},
 	{"default_half_life_seconds"},
 	{"band_half_life_seconds"},
 	{"stale_after_seconds"},
@@ -166,6 +187,7 @@ type GlyphSymbols struct {
 	Low          string `yaml:"low"`
 	Unlikely     string `yaml:"unlikely"`
 	Insufficient string `yaml:"insufficient"`
+	Closed       string `yaml:"closed"`
 }
 
 // UnmarshalYAML enforces single printable ASCII glyphs. Unknown keys are
@@ -201,11 +223,38 @@ func (s *GlyphSymbols) UnmarshalYAML(value *yaml.Node) error {
 			s.Unlikely = v
 		case "insufficient":
 			s.Insufficient = v
+		case "closed":
+			s.Closed = v
 		default:
 			continue
 		}
 	}
 	return nil
+}
+
+// VOACAPFallbackConfig owns the disabled-by-default, closed-only fallback from
+// insufficient bucket evidence to a cached VOACAP FT8-equivalent SNR verdict.
+// Bounds are required even when disabled so enabling the fallback cannot create
+// process-lifetime unbounded queues or cache maps.
+type VOACAPFallbackConfig struct {
+	Enabled                  bool      `yaml:"enabled"`
+	SSNFetchIntervalSeconds  int       `yaml:"ssn_fetch_interval_seconds"`
+	SSNRequestTimeoutSeconds int       `yaml:"ssn_request_timeout_seconds"`
+	SSNEWMAHalfLifeSeconds   int       `yaml:"ssn_ewma_half_life_seconds"`
+	RecomputeDeltaPercent    float64   `yaml:"recompute_delta_percent"`
+	VOACAPHome               string    `yaml:"voacap_home"`
+	VOACAPTimeoutSeconds     int       `yaml:"voacap_timeout_seconds"`
+	ForecastHours            int       `yaml:"forecast_hours"`
+	CenterFrequenciesMHz     []float64 `yaml:"center_frequencies_mhz"`
+	DelaySeconds             int       `yaml:"delay_seconds"`
+	CacheTTLSeconds          int       `yaml:"cache_ttl_seconds"`
+	MaxCacheEntries          int       `yaml:"max_cache_entries"`
+	MaxDelayEntries          int       `yaml:"max_delay_entries"`
+	MaxQueueDepth            int       `yaml:"max_queue_depth"`
+	WorkerCount              int       `yaml:"worker_count"`
+	OutputNamePrefix         string    `yaml:"output_name_prefix"`
+	ClosedBaseFT8SNRDB       int       `yaml:"closed_base_ft8_snr_db"`
+	ClosedSafetyMarginDB     int       `yaml:"closed_safety_margin_db"`
 }
 
 // DefaultConfig returns a safe, enabled configuration.
@@ -264,8 +313,10 @@ func DefaultConfig() Config {
 			Low:          "-",
 			Unlikely:     "!",
 			Insufficient: "?",
+			Closed:       "!",
 		},
-		NoiseOffsets: defaultNoiseOffsets(),
+		VOACAPFallback: defaultVOACAPFallbackConfig(),
+		NoiseOffsets:   defaultNoiseOffsets(),
 	}
 	cfg.buildCaches()
 	return cfg
@@ -392,8 +443,15 @@ func (c *Config) finalize() error {
 		c.GlyphSymbols.Medium == "" ||
 		c.GlyphSymbols.Low == "" ||
 		c.GlyphSymbols.Unlikely == "" ||
-		c.GlyphSymbols.Insufficient == "" {
-		return fmt.Errorf("glyph_symbols must define high, medium, low, unlikely, and insufficient")
+		c.GlyphSymbols.Insufficient == "" ||
+		c.GlyphSymbols.Closed == "" {
+		return fmt.Errorf("glyph_symbols must define high, medium, low, unlikely, insufficient, and closed")
+	}
+	if err := c.VOACAPFallback.finalize(); err != nil {
+		return err
+	}
+	if c.VOACAPFallback.Enabled && !c.Enabled {
+		return fmt.Errorf("voacap_fallback.enabled requires path reliability enabled")
 	}
 	if err := validateNoiseOffsets(c.NoiseOffsets); err != nil {
 		return err
@@ -401,6 +459,101 @@ func (c *Config) finalize() error {
 	c.NoiseOffsets = normalizeNoiseOffsets(c.NoiseOffsets, nil)
 	c.buildCaches()
 	return nil
+}
+
+func defaultVOACAPFallbackConfig() VOACAPFallbackConfig {
+	return VOACAPFallbackConfig{
+		Enabled:                  false,
+		SSNFetchIntervalSeconds:  1800,
+		SSNRequestTimeoutSeconds: 30,
+		SSNEWMAHalfLifeSeconds:   28800,
+		RecomputeDeltaPercent:    12,
+		VOACAPHome:               `C:\itshfbc`,
+		VOACAPTimeoutSeconds:     30,
+		ForecastHours:            8,
+		CenterFrequenciesMHz:     []float64{1.9, 3.6, 5.36, 7.1, 10.14, 14.1, 18.1, 21.15, 24.91, 28.1},
+		DelaySeconds:             900,
+		CacheTTLSeconds:          28800,
+		MaxCacheEntries:          50000,
+		MaxDelayEntries:          50000,
+		MaxQueueDepth:            1000,
+		WorkerCount:              1,
+		OutputNamePrefix:         "gocluster_voacap_path",
+		ClosedBaseFT8SNRDB:       -24,
+		ClosedSafetyMarginDB:     5,
+	}
+}
+
+func (c *VOACAPFallbackConfig) finalize() error {
+	if c == nil {
+		return nil
+	}
+	if c.SSNFetchIntervalSeconds <= 0 {
+		return fmt.Errorf("voacap_fallback.ssn_fetch_interval_seconds must be > 0")
+	}
+	if c.SSNRequestTimeoutSeconds <= 0 {
+		return fmt.Errorf("voacap_fallback.ssn_request_timeout_seconds must be > 0")
+	}
+	if c.SSNEWMAHalfLifeSeconds <= 0 {
+		return fmt.Errorf("voacap_fallback.ssn_ewma_half_life_seconds must be > 0")
+	}
+	if math.IsNaN(c.RecomputeDeltaPercent) || math.IsInf(c.RecomputeDeltaPercent, 0) || c.RecomputeDeltaPercent <= 0 {
+		return fmt.Errorf("voacap_fallback.recompute_delta_percent must be > 0")
+	}
+	if c.Enabled && strings.TrimSpace(c.VOACAPHome) == "" {
+		return fmt.Errorf("voacap_fallback.voacap_home must not be empty when enabled")
+	}
+	if c.VOACAPTimeoutSeconds <= 0 {
+		return fmt.Errorf("voacap_fallback.voacap_timeout_seconds must be > 0")
+	}
+	if c.ForecastHours <= 0 || c.ForecastHours > 24 {
+		return fmt.Errorf("voacap_fallback.forecast_hours must be between 1 and 24")
+	}
+	if len(c.CenterFrequenciesMHz) == 0 {
+		return fmt.Errorf("voacap_fallback.center_frequencies_mhz must contain at least one frequency")
+	}
+	if len(c.CenterFrequenciesMHz) > 10 {
+		return fmt.Errorf("voacap_fallback.center_frequencies_mhz must contain at most ten frequencies")
+	}
+	for i, freq := range c.CenterFrequenciesMHz {
+		if math.IsNaN(freq) || math.IsInf(freq, 0) || freq <= 0 {
+			return fmt.Errorf("voacap_fallback.center_frequencies_mhz[%d] must be > 0", i)
+		}
+	}
+	if c.DelaySeconds < 0 {
+		return fmt.Errorf("voacap_fallback.delay_seconds must be >= 0")
+	}
+	if c.CacheTTLSeconds <= 0 {
+		return fmt.Errorf("voacap_fallback.cache_ttl_seconds must be > 0")
+	}
+	if c.MaxCacheEntries <= 0 {
+		return fmt.Errorf("voacap_fallback.max_cache_entries must be > 0")
+	}
+	if c.MaxDelayEntries <= 0 {
+		return fmt.Errorf("voacap_fallback.max_delay_entries must be > 0")
+	}
+	if c.MaxQueueDepth <= 0 {
+		return fmt.Errorf("voacap_fallback.max_queue_depth must be > 0")
+	}
+	if c.WorkerCount != 1 {
+		return fmt.Errorf("voacap_fallback.worker_count must be 1 for the shared VOACAP run directory")
+	}
+	if c.Enabled && strings.TrimSpace(c.OutputNamePrefix) == "" {
+		return fmt.Errorf("voacap_fallback.output_name_prefix must not be empty when enabled")
+	}
+	if len(strings.TrimSpace(c.OutputNamePrefix)) > 24 {
+		return fmt.Errorf("voacap_fallback.output_name_prefix must be at most 24 characters")
+	}
+	if c.ClosedSafetyMarginDB < 0 {
+		return fmt.Errorf("voacap_fallback.closed_safety_margin_db must be >= 0")
+	}
+	return nil
+}
+
+// VOACAPClosedThresholdDB returns the FT8-equivalent SNR at or below which the
+// fallback may mark an otherwise insufficient path as closed.
+func (c VOACAPFallbackConfig) VOACAPClosedThresholdDB() int {
+	return c.ClosedBaseFT8SNRDB - c.ClosedSafetyMarginDB
 }
 
 func (c *Config) buildCaches() {

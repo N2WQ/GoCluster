@@ -107,6 +107,7 @@ type predictionHour struct {
 	Samples          int     `json:"samples"`
 	AvgTotal         float64 `json:"avg_total"`
 	AvgCombined      float64 `json:"avg_combined"`
+	AvgVOACAPClosed  float64 `json:"avg_voacap_closed"`
 	AvgInsufficient  float64 `json:"avg_insufficient"`
 	AvgNoSample      float64 `json:"avg_no_sample"`
 	AvgLowCount      float64 `json:"avg_low_count"`
@@ -224,6 +225,7 @@ type weightBins struct {
 type predTotals struct {
 	Total         int
 	Combined      int
+	VOACAPClosed  int
 	Insufficient  int
 	NoSample      int
 	LowCount      int
@@ -279,7 +281,7 @@ var (
 	ansiRe            = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 	bandBuckets       = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)\s+f=([\d,]+)\s+c=([\d,]+)`)
 	bandWeights       = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)\s+t=([\d,]+)\s+<1=([\d,]+)\s+1-2=([\d,]+)\s+2-3=([\d,]+)\s+3-5=([\d,]+)\s+5-10=([\d,]+)\s+>=10=([\d,]+)`)
-	predsFields       = regexp.MustCompile(`\b(total|derived|combined|insufficient|no_sample|low_count|low_receiver|low_weight|stale|cap_limited|cap_would_block)=([\d,]+)`)
+	predsFields       = regexp.MustCompile(`\b(total|derived|combined|voacap_closed|insufficient|no_sample|low_count|low_receiver|low_weight|stale|cap_limited|cap_would_block)=([\d,]+)`)
 	totalField        = regexp.MustCompile(`\btotal=([\d,]+)`)
 	capShadowField    = regexp.MustCompile(`\bcap(\d+)_(pass|low_count|low_receiver|low_weight|block)=([\d,]+)`)
 	capP50ShadowField = regexp.MustCompile(`\bcap(\d+)_p50_(pass_unlikely|pass_low|pass_medium|pass_high|same|stronger|weaker|to_insufficient)=([\d,]+)`)
@@ -364,6 +366,7 @@ func parsePredictionTotals(line string) (predTotals, bool) {
 	return predTotals{
 		Total:         values["total"],
 		Combined:      values["combined"],
+		VOACAPClosed:  values["voacap_closed"],
 		Insufficient:  values["insufficient"],
 		NoSample:      values["no_sample"],
 		LowCount:      values["low_count"],
@@ -1124,10 +1127,11 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 		if len(rows) == 0 {
 			continue
 		}
-		var total, combined, insufficient, noSample, lowCount, lowReceiver, lowWeight, stale, capLimited, capWouldBlock int
+		var total, combined, voacapClosed, insufficient, noSample, lowCount, lowReceiver, lowWeight, stale, capLimited, capWouldBlock int
 		for _, r := range rows {
 			total += r.Total
 			combined += r.Combined
+			voacapClosed += r.VOACAPClosed
 			insufficient += r.Insufficient
 			noSample += r.NoSample
 			lowCount += r.LowCount
@@ -1143,6 +1147,7 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 			Samples:          count,
 			AvgTotal:         float64(total) / float64(count),
 			AvgCombined:      float64(combined) / float64(count),
+			AvgVOACAPClosed:  float64(voacapClosed) / float64(count),
 			AvgInsufficient:  float64(insufficient) / float64(count),
 			AvgNoSample:      float64(noSample) / float64(count),
 			AvgLowCount:      float64(lowCount) / float64(count),
@@ -1693,6 +1698,7 @@ func predictionActivitySummary(hours []predictionHour) string {
 	var lowReceiverSample []string
 	var lowWeightSample []string
 	var staleSample []string
+	var voacapClosedSample []string
 	var capWouldBlockSample []string
 	for _, h := range hours {
 		if h.AvgTotal > maxTotal {
@@ -1718,6 +1724,9 @@ func predictionActivitySummary(hours []predictionHour) string {
 		if h.AvgStale > 0 {
 			staleSample = append(staleSample, h.Hour)
 		}
+		if h.AvgVOACAPClosed > 0 {
+			voacapClosedSample = append(voacapClosedSample, h.Hour)
+		}
 		if h.AvgCapWouldBlock > 0 {
 			capWouldBlockSample = append(capWouldBlockSample, h.Hour)
 		}
@@ -1738,6 +1747,9 @@ func predictionActivitySummary(hours []predictionHour) string {
 	}
 	if len(staleSample) > 0 {
 		s += fmt.Sprintf(" Hours with stale selected evidence: %s.", strings.Join(staleSample, ", "))
+	}
+	if len(voacapClosedSample) > 0 {
+		s += fmt.Sprintf(" Hours with VOACAP closed fallback predictions: %s.", strings.Join(voacapClosedSample, ", "))
 	}
 	if len(capWouldBlockSample) > 0 {
 		s += fmt.Sprintf(" Hours where receiver caps would block shadow predictions: %s.", strings.Join(capWouldBlockSample, ", "))

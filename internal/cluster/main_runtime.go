@@ -30,6 +30,7 @@ import (
 	"dxcluster/floodcontrol"
 	"dxcluster/gridstore"
 	"dxcluster/internal/toxicity"
+	"dxcluster/internal/voacap"
 	"dxcluster/pathreliability"
 	"dxcluster/peer"
 	"dxcluster/pskreporter"
@@ -68,6 +69,8 @@ type clusterRuntime struct {
 
 	pathCfg        pathreliability.Config
 	pathPredictor  *pathreliability.Predictor
+	voacapSSN      *voacap.SunspotMonitor
+	voacapFallback *pathreliability.VOACAPClosedFallback
 	allowedBandSet map[string]struct{}
 
 	solarCfg solarweather.Config
@@ -257,6 +260,27 @@ func (r *clusterRuntime) loadPathReliabilityConfig() bool {
 	r.pathCfg = pathCfg
 	r.allowedBandSet = allowedBandSet
 	r.pathPredictor = pathPredictor
+	if pathCfg.VOACAPFallback.Enabled {
+		if err := voacap.NewRunner(pathCfg.VOACAPFallback.VOACAPHome).Validate(); err != nil {
+			return r.failStartup("VOACAP fallback validation failed: %v", err)
+		}
+		ssnMonitor, err := voacap.NewSunspotMonitor(voacap.SunspotMonitorConfig{
+			FetchInterval:      time.Duration(pathCfg.VOACAPFallback.SSNFetchIntervalSeconds) * time.Second,
+			RequestTimeout:     time.Duration(pathCfg.VOACAPFallback.SSNRequestTimeoutSeconds) * time.Second,
+			EWMAHalfLife:       time.Duration(pathCfg.VOACAPFallback.SSNEWMAHalfLifeSeconds) * time.Second,
+			RecomputeThreshold: pathCfg.VOACAPFallback.RecomputeDeltaPercent / 100,
+		})
+		if err != nil {
+			return r.failStartup("VOACAP SSN monitor config failed: %v", err)
+		}
+		forecaster := pathreliability.NewVOACAPRunnerClosedForecaster(pathCfg.VOACAPFallback)
+		fallback, err := pathreliability.NewVOACAPClosedFallback(pathCfg, forecaster, ssnMonitor, log.Default())
+		if err != nil {
+			return r.failStartup("VOACAP closed fallback config failed: %v", err)
+		}
+		r.voacapSSN = ssnMonitor
+		r.voacapFallback = fallback
+	}
 	return true
 }
 
@@ -308,6 +332,15 @@ func (r *clusterRuntime) configureSurface() {
 }
 
 func (r *clusterRuntime) startBackgroundServices() {
+	if r.voacapSSN != nil {
+		r.voacapSSN.Start(r.ctx)
+		log.Printf("VOACAP SSN monitor enabled")
+	}
+	if r.voacapFallback != nil {
+		r.voacapFallback.Start(r.ctx)
+		log.Printf("VOACAP closed fallback enabled")
+	}
+
 	if r.solarCfg.Enabled {
 		r.solarMgr = solarweather.NewManager(r.solarCfg, log.Default())
 		r.solarMgr.Start(r.ctx)
@@ -857,6 +890,7 @@ func (r *clusterRuntime) initializeServices() bool {
 			Low:          r.pathCfg.GlyphSymbols.Low,
 			Unlikely:     r.pathCfg.GlyphSymbols.Unlikely,
 			Insufficient: r.pathCfg.GlyphSymbols.Insufficient,
+			Closed:       r.pathCfg.GlyphSymbols.Closed,
 		}),
 		commands.WithDedupeHelp(commands.DedupeHelpConfig{
 			Configured:        true,
@@ -1051,6 +1085,7 @@ func (r *clusterRuntime) buildTelnetServerOptions() telnet.ServerOptions {
 		DropExtremeMinAttempts:    r.cfg.Telnet.DropExtremeMinAttempts,
 		ReputationGate:            r.repGate,
 		PathPredictor:             r.pathPredictor,
+		PathClosedFallback:        r.voacapFallback,
 		PathDisplayEnabled:        r.pathCfg.DisplayEnabled,
 		NoiseModel:                r.pathCfg.NoiseModel(),
 		GridLookup:                r.gridLookup,
@@ -1442,6 +1477,12 @@ func (r *clusterRuntime) close() {
 	}
 	if r.cancel != nil {
 		r.cancel()
+	}
+	if r.voacapFallback != nil {
+		r.voacapFallback.Wait()
+	}
+	if r.voacapSSN != nil {
+		r.voacapSSN.Wait()
 	}
 	if r.propScheduler != nil {
 		r.propScheduler.Wait()

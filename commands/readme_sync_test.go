@@ -43,6 +43,7 @@ func TestReadmeDefaultGoHelpBlockMatchesProcessor(t *testing.T) {
 			Low:          pathCfg.GlyphSymbols.Low,
 			Unlikely:     pathCfg.GlyphSymbols.Unlikely,
 			Insufficient: pathCfg.GlyphSymbols.Insufficient,
+			Closed:       pathCfg.GlyphSymbols.Closed,
 		}),
 	)
 

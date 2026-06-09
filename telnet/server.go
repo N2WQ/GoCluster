@@ -241,6 +241,7 @@ type Server struct {
 	reputationGate        *reputation.Gate                           // Optional reputation gate for login metadata
 	startTime             time.Time                                  // Process start time for uptime tokens
 	pathPredictor         *pathreliability.Predictor                 // Optional path reliability predictor
+	pathClosedFallback    pathreliability.ClosedFallback             // Optional nonblocking VOACAP closed fallback
 	pathDisplay           bool                                       // Toggle glyph rendering
 	solarWeather          *solarweather.Manager                      // Optional solar/geomagnetic override evaluator
 	noiseModel            pathreliability.NoiseModel                 // Noise class lookup
@@ -265,6 +266,7 @@ type Server struct {
 	pathPredTotal         atomic.Uint64                              // Path predictions computed (glyphs)
 	pathPredDerived       atomic.Uint64                              // Predictions using derived user/DX grids
 	pathPredCombined      atomic.Uint64                              // Predictions with sufficient combined data
+	pathPredVOACAPClosed  atomic.Uint64                              // Insufficient bucket predictions replaced by VOACAP closed fallback
 	pathPredInsufficient  atomic.Uint64                              // Predictions with insufficient data
 	pathPredNoSample      atomic.Uint64                              // Insufficient predictions with no samples
 	pathPredLowCount      atomic.Uint64                              // Insufficient predictions below min observation count
@@ -1893,6 +1895,7 @@ type ServerOptions struct {
 	DropExtremeMinAttempts    int
 	ReputationGate            *reputation.Gate
 	PathPredictor             *pathreliability.Predictor
+	PathClosedFallback        pathreliability.ClosedFallback
 	PathDisplayEnabled        bool
 	SolarWeather              *solarweather.Manager
 	NoiseModel                pathreliability.NoiseModel
@@ -1982,6 +1985,7 @@ func NewServer(opts ServerOptions, processor *commands.Processor) *Server {
 		reputationGate:        opts.ReputationGate,
 		startTime:             time.Now().UTC(),
 		pathPredictor:         opts.PathPredictor,
+		pathClosedFallback:    opts.PathClosedFallback,
 		pathDisplay:           opts.PathDisplayEnabled,
 		solarWeather:          opts.SolarWeather,
 		noiseModel:            config.NoiseModel,
@@ -2861,6 +2865,7 @@ type pathPredictionStats struct {
 	Total         uint64
 	Derived       uint64
 	Combined      uint64
+	VOACAPClosed  uint64
 	Insufficient  uint64
 	NoSample      uint64
 	LowCount      uint64
@@ -2890,6 +2895,8 @@ func (s *Server) recordPathPrediction(res pathreliability.Result, userDerived, d
 	switch res.Source {
 	case pathreliability.SourceCombined:
 		s.pathPredCombined.Add(1)
+	case pathreliability.SourceVOACAPClosed:
+		s.pathPredVOACAPClosed.Add(1)
 	default:
 		s.pathPredInsufficient.Add(1)
 		switch res.InsufficientReason {
@@ -2921,6 +2928,7 @@ func (s *Server) PathPredictionStatsSnapshot() pathPredictionStats {
 		Total:         s.pathPredTotal.Swap(0),
 		Derived:       s.pathPredDerived.Swap(0),
 		Combined:      s.pathPredCombined.Swap(0),
+		VOACAPClosed:  s.pathPredVOACAPClosed.Swap(0),
 		Insufficient:  s.pathPredInsufficient.Swap(0),
 		NoSample:      s.pathPredNoSample.Swap(0),
 		LowCount:      s.pathPredLowCount.Swap(0),
@@ -3625,6 +3633,14 @@ func (s *Server) pathPredictionForClient(client *Client, sp *spot.Spot) (pathPre
 	noisePenalty := s.noisePenaltyForClass(state.noiseClass)
 	minObservationCount := effectivePathMinObservationCount(state, cfg)
 	res := s.pathPredictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, now)
+	res = s.pathResultWithClosedFallback(res, pathreliability.VOACAPClosedRequest{
+		UserCell: userCell,
+		DXCell:   dxCell,
+		UserGrid: grid,
+		DXGrid:   sp.DXMetadata.Grid,
+		Band:     band,
+		Mode:     mode,
+	}, now)
 	s.recordPathPrediction(res, state.gridDerived, sp.DXMetadata.GridDerived)
 	return pathPrediction{
 		result:   res,
@@ -3639,7 +3655,7 @@ func (s *Server) pathPredictionForClient(client *Client, sp *spot.Spot) (pathPre
 
 func (s *Server) pathGlyphFromPrediction(prediction pathPrediction) string {
 	res := prediction.result
-	if res.Source == pathreliability.SourceInsufficient {
+	if res.Source == pathreliability.SourceInsufficient || res.Source == pathreliability.SourceVOACAPClosed {
 		return res.Glyph
 	}
 	g := res.Glyph
@@ -3715,6 +3731,14 @@ func (s *Server) pathClassForClient(client *Client, sp *spot.Spot) string {
 	noisePenalty := s.noisePenaltyForClass(state.noiseClass)
 	minObservationCount := effectivePathMinObservationCount(state, cfg)
 	res := s.pathPredictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, now)
+	res = s.pathResultWithClosedFallback(res, pathreliability.VOACAPClosedRequest{
+		UserCell: userCell,
+		DXCell:   dxCell,
+		UserGrid: grid,
+		DXGrid:   sp.DXMetadata.Grid,
+		Band:     band,
+		Mode:     mode,
+	}, now)
 	if res.Source == pathreliability.SourceInsufficient {
 		return filter.PathClassInsufficient
 	}
@@ -3722,6 +3746,17 @@ func (s *Server) pathClassForClient(client *Client, sp *spot.Spot) string {
 		return filter.PathClassInsufficient
 	}
 	return res.Class
+}
+
+func (s *Server) pathResultWithClosedFallback(res pathreliability.Result, req pathreliability.VOACAPClosedRequest, now time.Time) pathreliability.Result {
+	if s == nil || s.pathClosedFallback == nil || res.Source != pathreliability.SourceInsufficient {
+		return res
+	}
+	closed, ok := s.pathClosedFallback.CheckClosed(req, now)
+	if !ok {
+		return res
+	}
+	return closed
 }
 
 func pathPredictionBand(sp *spot.Spot) string {
@@ -3851,6 +3886,9 @@ func diagPathTag(prediction pathPrediction, havePrediction bool) string {
 	if res.Source == pathreliability.SourceInsufficient {
 		reason := diagPathInsufficientReason(res.InsufficientReason)
 		return count + "|" + reason
+	}
+	if res.Source == pathreliability.SourceVOACAPClosed {
+		return "vcap|" + strconv.Itoa(res.VOACAPFT8SNRDB) + "|s" + strconv.Itoa(res.VOACAPSSN) + "|a" + diagAgeToken(res.VOACAPAgeSec)
 	}
 	weightValue := res.Weight
 	if res.CapLimited {

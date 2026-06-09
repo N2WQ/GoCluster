@@ -65,6 +65,7 @@ type PredictionSource uint8
 const (
 	SourceInsufficient PredictionSource = iota
 	SourceCombined
+	SourceVOACAPClosed
 )
 
 // InsufficientReason describes why a prediction returned the insufficient glyph.
@@ -119,6 +120,11 @@ type Result struct {
 	CapWouldBlock      bool
 	Source             PredictionSource
 	InsufficientReason InsufficientReason
+	VOACAPFT8SNRDB     int
+	VOACAPSSN          int
+	VOACAPAgeSec       int64
+	VOACAPHourUTC      int
+	VOACAPFrequencyMHz float64
 }
 
 // Predict returns a single merged glyph for the path.

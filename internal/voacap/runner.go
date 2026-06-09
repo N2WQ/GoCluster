@@ -66,6 +66,13 @@ func NewRunner(home string) Runner {
 	}
 }
 
+// Validate checks that the configured VOACAP engine and shared run directory
+// are usable before a runtime enables background forecast work.
+func (r Runner) Validate() error {
+	r = r.withDefaults()
+	return r.validate()
+}
+
 func (r Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 	if ctx == nil {
 		return RunResult{}, errors.New("nil context")

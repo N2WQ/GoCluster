@@ -635,6 +635,7 @@ func TestHelpPathGlyphLegendUsesConfiguredSymbols(t *testing.T) {
 		Low:          "<",
 		Unlikely:     "-",
 		Insufficient: " ",
+		Closed:       "!",
 	}))
 
 	resp := p.ProcessCommandForClient("HELP", "N2WQ", "", nil, "go")
@@ -645,6 +646,7 @@ func TestHelpPathGlyphLegendUsesConfiguredSymbols(t *testing.T) {
 		`"<" - LOW: weak or marginal path.`,
 		`"-" - UNLIKELY: poor path.`,
 		`" " - INSUFFICIENT: not enough recent evidence.`,
+		`"!" - CLOSED: VOACAP fallback predicts FT8 SNR below the closed threshold.`,
 		"PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, INSUFFICIENT.",
 	} {
 		if !strings.Contains(resp, want) {
@@ -661,6 +663,7 @@ func TestHelpPathGlyphLegendOmittedWhenDisabled(t *testing.T) {
 		Low:          "<",
 		Unlikely:     "-",
 		Insufficient: " ",
+		Closed:       "!",
 	}))
 
 	resp := p.ProcessCommandForClient("HELP", "N2WQ", "", nil, "go")
@@ -820,6 +823,7 @@ func TestHelpLineWidth(t *testing.T) {
 		Low:          "<",
 		Unlikely:     "-",
 		Insufficient: " ",
+		Closed:       "!",
 	}))
 	pWithDedupeWindows := NewProcessor(nil, nil, nil, nil, nil, nil, WithDedupeHelp(DedupeHelpConfig{
 		Configured:        true,

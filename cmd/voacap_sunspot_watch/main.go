@@ -119,7 +119,11 @@ func poll(url string, timeout time.Duration, halfLife time.Duration, threshold f
 	if err != nil {
 		return err
 	}
-	trigger, delta, err := voacap.ShouldRecomputeVOACAP(ewma.Average, st.LastVOACAPSSN, st.LastVOACAPSSNInitialized, threshold)
+	roundedSSN, err := voacap.RoundedSunspotSSN(ewma.Average)
+	if err != nil {
+		return err
+	}
+	trigger, delta, err := voacap.ShouldRecomputeVOACAP(float64(roundedSSN), st.LastVOACAPSSN, st.LastVOACAPSSNInitialized, threshold)
 	if err != nil {
 		return err
 	}
@@ -127,7 +131,7 @@ func poll(url string, timeout time.Duration, halfLife time.Duration, threshold f
 	marker := ""
 	if trigger {
 		marker = "*"
-		st.LastVOACAPSSN = ewma.Average
+		st.LastVOACAPSSN = float64(roundedSSN)
 		st.LastVOACAPSSNInitialized = true
 	}
 	st.LastObservedAtUTC = latest.ObservedAtUTC
@@ -135,7 +139,7 @@ func poll(url string, timeout time.Duration, halfLife time.Duration, threshold f
 	st.EWMA = ewma.Average
 	st.EWMAInitialized = ewma.Initialized
 
-	printSample(now, latest, ewma.Average, delta, marker, "new")
+	printSample(now, latest, roundedSSN, delta, marker, "new")
 	return saveState(statePath, *st)
 }
 
@@ -210,15 +214,15 @@ func saveState(path string, st state) error {
 }
 
 func printHeader() {
-	fmt.Println("fetched_at_utc observed_at_utc raw_ssn ewma delta recompute status")
+	fmt.Println("fetched_at_utc observed_at_utc raw_ssn ewma_ssn delta recompute status")
 }
 
-func printSample(now time.Time, observation voacap.SunspotObservation, ewma float64, delta float64, marker string, status string) {
-	fmt.Printf("%s %s %d %.2f %.4f %s %s\n",
+func printSample(now time.Time, observation voacap.SunspotObservation, ewmaSSN int, delta float64, marker string, status string) {
+	fmt.Printf("%s %s %d %d %.4f %s %s\n",
 		now.Format(time.RFC3339),
 		observation.ObservedAtUTC.Format(time.RFC3339),
 		observation.RawWolfEstimate,
-		ewma,
+		ewmaSSN,
 		delta,
 		marker,
 		status,
@@ -234,10 +238,16 @@ func printUnchanged(now time.Time, st state) {
 	if st.LastRawSSN != 0 {
 		rawSSN = fmt.Sprintf("%d", st.LastRawSSN)
 	}
-	fmt.Printf("%s %s %s %.2f 0.0000  unchanged\n",
+	roundedSSN := 0
+	if st.EWMAInitialized {
+		if rounded, err := voacap.RoundedSunspotSSN(st.EWMA); err == nil {
+			roundedSSN = rounded
+		}
+	}
+	fmt.Printf("%s %s %s %d 0.0000  unchanged\n",
 		now.Format(time.RFC3339),
 		observedAt,
 		rawSSN,
-		st.EWMA,
+		roundedSSN,
 	)
 }

@@ -115,6 +115,25 @@ glyph_symbols:
 	}
 }
 
+func TestLoadFileReadsClosedGlyphAndVOACAPFallback(t *testing.T) {
+	cfg, err := LoadFile(filepath.Join("..", "data", "config", "path_reliability.yaml"))
+	if err != nil {
+		t.Fatalf("load shipped config: %v", err)
+	}
+	if cfg.GlyphSymbols.Closed != "!" {
+		t.Fatalf("closed glyph = %q, want !", cfg.GlyphSymbols.Closed)
+	}
+	if cfg.VOACAPFallback.Enabled {
+		t.Fatalf("VOACAP fallback should be disabled in shipped config")
+	}
+	if cfg.VOACAPFallback.VOACAPClosedThresholdDB() != -29 {
+		t.Fatalf("closed threshold = %d, want -29", cfg.VOACAPFallback.VOACAPClosedThresholdDB())
+	}
+	if cfg.VOACAPFallback.SSNFetchIntervalSeconds != 1800 || cfg.VOACAPFallback.SSNEWMAHalfLifeSeconds != 28800 {
+		t.Fatalf("unexpected SSN fallback cadence: %+v", cfg.VOACAPFallback)
+	}
+}
+
 func TestDefaultNoiseOffsets(t *testing.T) {
 	cfg := DefaultConfig()
 	model := cfg.NoiseModel()
@@ -281,6 +300,10 @@ func TestLoadFileRejectsMissingRequiredYAMLSettings(t *testing.T) {
 		{name: "receiver coarse slots", path: []string{"receiver_coarse_slots"}, want: "receiver_coarse_slots"},
 		{name: "receiver max effective count", path: []string{"receiver_max_effective_count"}, want: "receiver_max_effective_count"},
 		{name: "receiver max effective weight", path: []string{"receiver_max_effective_weight"}, want: "receiver_max_effective_weight"},
+		{name: "closed glyph", path: []string{"glyph_symbols", "closed"}, want: "glyph_symbols.closed"},
+		{name: "voacap enabled", path: []string{"voacap_fallback", "enabled"}, want: "voacap_fallback.enabled"},
+		{name: "voacap queue depth", path: []string{"voacap_fallback", "max_queue_depth"}, want: "voacap_fallback.max_queue_depth"},
+		{name: "voacap closed margin", path: []string{"voacap_fallback", "closed_safety_margin_db"}, want: "voacap_fallback.closed_safety_margin_db"},
 		{name: "ft4 offset", path: []string{"mode_offsets", "ft4"}, want: "mode_offsets.ft4"},
 		{name: "noise offsets", path: []string{"noise_offsets"}, want: "noise_offsets"},
 	}
@@ -397,5 +420,31 @@ noise_offsets:
 	}
 	if !strings.Contains(err.Error(), "noise_offsets.quiet must be a scalar penalty") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadFileRejectsInvalidVOACAPFallbackBounds(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{name: "enabled while path disabled", body: "enabled: false\nvoacap_fallback:\n  enabled: true\n", want: "voacap_fallback.enabled"},
+		{name: "worker count", body: "voacap_fallback:\n  worker_count: 2\n", want: "voacap_fallback.worker_count"},
+		{name: "cache entries", body: "voacap_fallback:\n  max_cache_entries: 0\n", want: "voacap_fallback.max_cache_entries"},
+		{name: "long output prefix", body: "voacap_fallback:\n  output_name_prefix: gocluster_voacap_path_prefix_too_long\n", want: "voacap_fallback.output_name_prefix"},
+		{name: "negative margin", body: "voacap_fallback:\n  closed_safety_margin_db: -1\n", want: "voacap_fallback.closed_safety_margin_db"},
+		{name: "too many frequencies", body: "voacap_fallback:\n  center_frequencies_mhz: [1,2,3,4,5,6,7,8,9,10,11]\n", want: "voacap_fallback.center_frequencies_mhz"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := LoadFile(writeTempConfigOverlay(t, tc.body))
+			if err == nil {
+				t.Fatalf("expected invalid %s to fail", tc.want)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected error to mention %s, got %v", tc.want, err)
+			}
+		})
 	}
 }

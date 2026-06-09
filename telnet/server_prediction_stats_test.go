@@ -16,13 +16,17 @@ func TestPathPredictionStatsSnapshotSplit(t *testing.T) {
 	s.recordPathPrediction(pathreliability.Result{Source: pathreliability.SourceInsufficient, Weight: 0.25, InsufficientReason: pathreliability.InsufficientLowWeight}, false, false)
 	s.recordPathPrediction(pathreliability.Result{Source: pathreliability.SourceInsufficient, Weight: 0, InsufficientReason: pathreliability.InsufficientStale}, false, false)
 	s.recordPathPrediction(pathreliability.Result{Source: pathreliability.SourceCombined, Weight: 2, CapLimited: true, CapWouldBlock: true}, false, false)
+	s.recordPathPrediction(pathreliability.Result{Source: pathreliability.SourceVOACAPClosed}, false, false)
 
 	stats := s.PathPredictionStatsSnapshot()
-	if stats.Total != 7 {
-		t.Fatalf("expected total=7, got %d", stats.Total)
+	if stats.Total != 8 {
+		t.Fatalf("expected total=8, got %d", stats.Total)
 	}
 	if stats.Combined != 2 {
 		t.Fatalf("expected combined=2, got %d", stats.Combined)
+	}
+	if stats.VOACAPClosed != 1 {
+		t.Fatalf("expected voacap closed=1, got %d", stats.VOACAPClosed)
 	}
 	if stats.Insufficient != 5 {
 		t.Fatalf("expected insufficient=5, got %d", stats.Insufficient)
@@ -47,7 +51,7 @@ func TestPathPredictionStatsSnapshotSplit(t *testing.T) {
 	}
 
 	after := s.PathPredictionStatsSnapshot()
-	if after.Total != 0 || after.Combined != 0 || after.Insufficient != 0 || after.NoSample != 0 || after.LowCount != 0 || after.LowReceiver != 0 || after.LowWeight != 0 || after.Stale != 0 || after.CapLimited != 0 || after.CapWouldBlock != 0 || after.OverrideR != 0 || after.OverrideG != 0 {
+	if after.Total != 0 || after.Combined != 0 || after.VOACAPClosed != 0 || after.Insufficient != 0 || after.NoSample != 0 || after.LowCount != 0 || after.LowReceiver != 0 || after.LowWeight != 0 || after.Stale != 0 || after.CapLimited != 0 || after.CapWouldBlock != 0 || after.OverrideR != 0 || after.OverrideG != 0 {
 		t.Fatalf("expected zeroed snapshot, got %+v", after)
 	}
 }

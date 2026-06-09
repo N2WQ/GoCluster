@@ -217,3 +217,105 @@ func TestPathSamplesOverrideAppliesToDisplayFilterAndDiag(t *testing.T) {
 		t.Fatalf("expected low-count diagnostic from user floor, got %q", line)
 	}
 }
+
+func TestPathPredictionUsesVOACAPClosedFallbackOnlyWhenInsufficient(t *testing.T) {
+	cfg := pathreliability.DefaultConfig()
+	cfg.MinObservationCount = 1
+	cfg.GlyphSymbols.Closed = "!"
+	predictor := pathreliability.NewPredictor(cfg, []string{"20m"})
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	server := &Server{
+		pathPredictor: predictor,
+		pathDisplay:   true,
+		noiseModel:    cfg.NoiseModel(),
+		nowFn:         func() time.Time { return now },
+		pathClosedFallback: fakePathClosedFallback{
+			result: pathreliability.Result{
+				Glyph:              "!",
+				Class:              "UNLIKELY",
+				HasP50:             true,
+				P50DB:              -34,
+				Source:             pathreliability.SourceVOACAPClosed,
+				VOACAPFT8SNRDB:     -34,
+				VOACAPSSN:          112,
+				VOACAPAgeSec:       3,
+				VOACAPFrequencyMHz: 14.1,
+			},
+			ok: true,
+		},
+	}
+	client := &Client{
+		grid:       "FN31",
+		gridCell:   pathreliability.CellID(1),
+		noiseClass: "QUIET",
+	}
+	sp := spot.NewSpot("DX1AA", "DE1AA", 14074, "FT8")
+	sp.BandNorm = "20m"
+	sp.DXCellID = 2
+	sp.DXMetadata.Grid = "FN32"
+
+	if got := server.pathGlyphsForClient(client, sp); got != "!" {
+		t.Fatalf("expected closed fallback glyph !, got %q", got)
+	}
+	if got := server.pathClassForClient(client, sp); got != filter.PathClassUnlikely {
+		t.Fatalf("expected closed fallback PATH class UNLIKELY, got %q", got)
+	}
+	client.setDiagMode(diagModePath)
+	line := server.formatSpotForClient(client, sp)
+	if !strings.Contains(line, "vcap|-34|s112|a3") {
+		t.Fatalf("expected VOACAP closed diagnostic, got %q", line)
+	}
+}
+
+func TestPathPredictionBucketResultWinsOverVOACAPClosedFallback(t *testing.T) {
+	cfg := pathreliability.DefaultConfig()
+	cfg.MinEffectiveWeight = 0.1
+	cfg.MinObservationCount = 1
+	cfg.GlyphSymbols.Closed = "!"
+	predictor := pathreliability.NewPredictor(cfg, []string{"20m"})
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	userCell := pathreliability.CellID(1)
+	dxCell := pathreliability.CellID(2)
+	predictor.Update(pathreliability.BucketCombined, userCell, dxCell, pathreliability.InvalidCell, pathreliability.InvalidCell, "20m", -12, 1, now, false)
+
+	fallback := &countingClosedFallback{result: pathreliability.Result{Source: pathreliability.SourceVOACAPClosed, Glyph: "!", Class: "UNLIKELY"}, ok: true}
+	server := &Server{
+		pathPredictor:      predictor,
+		pathDisplay:        true,
+		pathClosedFallback: fallback,
+		noiseModel:         cfg.NoiseModel(),
+		nowFn:              func() time.Time { return now },
+	}
+	client := &Client{grid: "FN31", gridCell: userCell, noiseClass: "QUIET"}
+	sp := spot.NewSpot("DX1AA", "DE1AA", 14074, "FT8")
+	sp.BandNorm = "20m"
+	sp.DXCellID = uint16(dxCell)
+	sp.DXMetadata.Grid = "FN32"
+
+	if got := server.pathGlyphsForClient(client, sp); got == "!" {
+		t.Fatalf("bucket result should win over closed fallback")
+	}
+	if fallback.calls != 0 {
+		t.Fatalf("fallback called for sufficient bucket result")
+	}
+}
+
+type fakePathClosedFallback struct {
+	result pathreliability.Result
+	ok     bool
+}
+
+func (f fakePathClosedFallback) CheckClosed(pathreliability.VOACAPClosedRequest, time.Time) (pathreliability.Result, bool) {
+	return f.result, f.ok
+}
+
+type countingClosedFallback struct {
+	result pathreliability.Result
+	ok     bool
+	calls  int
+}
+
+func (f *countingClosedFallback) CheckClosed(pathreliability.VOACAPClosedRequest, time.Time) (pathreliability.Result, bool) {
+	f.calls++
+	return f.result, f.ok
+}

@@ -101,7 +101,11 @@ func poll(cfg voacap.ExperimentConfig, st *voacap.ForecastState) error {
 func completeDecision(cfg voacap.ExperimentConfig, st *voacap.ForecastState, decision voacap.ForecastDecision, now time.Time) error {
 	outputPath := ""
 	if decision.ForecastRequired {
-		result, err := runForecast(context.Background(), cfg, decision.EWMA, now)
+		forecastSSN, err := voacap.RoundedSunspotSSN(decision.EWMA)
+		if err != nil {
+			return err
+		}
+		result, err := runForecast(context.Background(), cfg, forecastSSN, now)
 		outputPath = result.OutputPath
 		if err != nil {
 			failure := voacap.MarkForecastFailure(st, err, now)
@@ -120,7 +124,7 @@ func completeDecision(cfg voacap.ExperimentConfig, st *voacap.ForecastState, dec
 			}
 			return fmt.Errorf("parse VOACAP predictions: %w", err)
 		}
-		success, err := voacap.MarkForecastSuccess(st, decision.EWMA, outputPath, forecastOutputSize(outputPath), now)
+		success, err := voacap.MarkForecastSuccess(st, float64(forecastSSN), outputPath, forecastOutputSize(outputPath), now)
 		if err != nil {
 			return err
 		}
@@ -133,8 +137,8 @@ func completeDecision(cfg voacap.ExperimentConfig, st *voacap.ForecastState, dec
 	return saveState(cfg.StatePath, *st)
 }
 
-func runForecast(ctx context.Context, cfg voacap.ExperimentConfig, smoothedSSN float64, now time.Time) (voacap.RunResult, error) {
-	deck, err := voacap.BuildExperimentDeck(cfg, smoothedSSN, now)
+func runForecast(ctx context.Context, cfg voacap.ExperimentConfig, smoothedSSN int, now time.Time) (voacap.RunResult, error) {
+	deck, err := voacap.BuildExperimentDeck(cfg, float64(smoothedSSN), now)
 	if err != nil {
 		return voacap.RunResult{}, err
 	}
@@ -229,7 +233,7 @@ func forecastOutputSize(path string) int {
 }
 
 func printHeader() {
-	fmt.Println("fetched_at_utc observed_at_utc raw_ssn ewma delta transition marker forecast_output")
+	fmt.Println("fetched_at_utc observed_at_utc raw_ssn ewma_ssn delta transition marker forecast_output")
 }
 
 func printPredictionHeader() {
@@ -270,11 +274,17 @@ func printDecision(now time.Time, decision voacap.ForecastDecision, st voacap.Fo
 	if outputPath == "" {
 		outputPath = "-"
 	}
-	fmt.Printf("%s %s %s %.2f %.4f %s %s %s\n",
+	roundedSSN := 0
+	if st.EWMAInitialized {
+		if rounded, err := voacap.RoundedSunspotSSN(st.EWMA); err == nil {
+			roundedSSN = rounded
+		}
+	}
+	fmt.Printf("%s %s %s %d %.4f %s %s %s\n",
 		now.Format(time.RFC3339),
 		observedAt,
 		rawSSN,
-		st.EWMA,
+		roundedSSN,
 		decision.Delta,
 		decision.Transition,
 		marker,

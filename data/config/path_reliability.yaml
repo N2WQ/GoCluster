@@ -20,7 +20,8 @@
 # PATH filters compare the selected p50 bin against the thresholds below.
 #
 # Glyph scale (configured via glyph_symbols):
-#   high/medium/low/unlikely map to the glyphs below; insufficient uses its own placeholder.
+#   high/medium/low/unlikely map to bucket p50 evidence; insufficient and
+#   closed use their own placeholders.
 
 # Master enable for path reliability (set false to disable ingestion/display entirely).
 enabled: true
@@ -47,6 +48,40 @@ glyph_symbols:
   low: "<"
   unlikely: "-"
   insufficient: " "
+  closed: "#"
+
+# Optional VOACAP fallback. Disabled by default; when enabled it can only
+# replace an insufficient bucket prediction with a closed-band glyph.
+voacap_fallback:
+  enabled: true
+  ssn_fetch_interval_seconds: 1800
+  ssn_request_timeout_seconds: 30
+  ssn_ewma_half_life_seconds: 28800
+  recompute_delta_percent: 12
+  voacap_home: "C:\\itshfbc"
+  voacap_timeout_seconds: 30
+  forecast_hours: 8
+  center_frequencies_mhz:
+    - 3.75
+    - 5.37
+    - 7.15
+    - 10.13
+    - 14.18
+    - 18.12
+    - 21.23
+    - 24.94
+    - 28.85
+  # Delay fallback so fresh cluster observations have time to populate buckets.
+  delay_seconds: 900
+  cache_ttl_seconds: 28800
+  max_cache_entries: 50000
+  max_delay_entries: 50000
+  max_queue_depth: 1000
+  worker_count: 1
+  output_name_prefix: "gocluster_voacap_path"
+  # Closed means FT8-equivalent SNR <= closed_base_ft8_snr_db - closed_safety_margin_db.
+  closed_base_ft8_snr_db: -24
+  closed_safety_margin_db: 5
 
 # Decay half-life in seconds when no per-band override applies.
 default_half_life_seconds: 420

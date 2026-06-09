@@ -211,6 +211,7 @@ Path reliability glyphs:
   "<" - LOW: weak or marginal path.
   "-" - UNLIKELY: poor path.
   " " - INSUFFICIENT: not enough recent evidence.
+  "!" - CLOSED: VOACAP fallback predicts FT8 SNR below the closed threshold.
   PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, INSUFFICIENT.
 
 List types:
@@ -450,6 +451,7 @@ What the classes mean to an operator:
 | `=` | `MEDIUM` | Recent evidence suggests a workable path. | Use `SET DIAG PATH`; low effective weight can still map to a usable class. |
 | `<` | `LOW` | Recent evidence suggests a weak or marginal path. | Use `SET DIAG PATH` to confirm grids, sample count, and freshness. |
 | `-` | `UNLIKELY` | Recent evidence suggests a poor path. | Check whether your grid and the DX grid are correct before treating this as a hard no. |
+| `!` | `UNLIKELY` | Bucket evidence was insufficient, but the optional VOACAP fallback predicts closed FT8 conditions. | Check `SET DIAG PATH`; VOACAP fallback never overrides sufficient bucket evidence. |
 | blank | `INSUFFICIENT` | The cluster did not have enough usable recent evidence to rate the path. | Run `SET DIAG PATH`; common reasons are `none`, `lown`, `lowr`, `loww`, and `stale`. |
 
 Important operational notes:
@@ -477,6 +479,10 @@ Important operational notes:
 - If grids are missing, evidence is stale, too sparse, or too weak, the result
   stays `INSUFFICIENT`. When path reliability is enabled, H3 table failures are
   startup failures because those cells are critical to path predictions.
+- If `voacap_fallback.enabled` is true, an insufficient bucket result may start
+  a delayed nonblocking VOACAP lookup. A cached fallback can only replace the
+  blank glyph with the configured closed glyph when VOACAP predicts an
+  FT8-equivalent SNR at or below the closed threshold.
 - `PATH` filters work on the class names, not on the glyph characters.
 - `R` and `G` are solar-weather display overrides, not normal path classes.
 

@@ -41,6 +41,7 @@ type PathGlyphHelpConfig struct {
 	Low          string
 	Unlikely     string
 	Insufficient string
+	Closed       string
 }
 
 // DedupeHelpConfig carries the effective secondary dedupe policy windows into
@@ -1124,7 +1125,7 @@ func pathGlyphHelpLines(cfg PathGlyphHelpConfig) []string {
 	if !cfg.Enabled {
 		return nil
 	}
-	if cfg.High == "" || cfg.Medium == "" || cfg.Low == "" || cfg.Unlikely == "" || cfg.Insufficient == "" {
+	if cfg.High == "" || cfg.Medium == "" || cfg.Low == "" || cfg.Unlikely == "" || cfg.Insufficient == "" || cfg.Closed == "" {
 		return nil
 	}
 	lines := []string{
@@ -1137,6 +1138,7 @@ func pathGlyphHelpLines(cfg PathGlyphHelpConfig) []string {
 		fmt.Sprintf("%s - LOW: weak or marginal path.", quoteHelpGlyph(cfg.Low)),
 		fmt.Sprintf("%s - UNLIKELY: poor path.", quoteHelpGlyph(cfg.Unlikely)),
 		fmt.Sprintf("%s - INSUFFICIENT: not enough recent evidence.", quoteHelpGlyph(cfg.Insufficient)),
+		fmt.Sprintf("%s - CLOSED: VOACAP fallback predicts FT8 SNR below the closed threshold.", quoteHelpGlyph(cfg.Closed)),
 		"PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, INSUFFICIENT.",
 	} {
 		lines = append(lines, wrapTextLines(note, helpMaxWidth, "    ")...)
