@@ -230,6 +230,12 @@ Insufficient evidence is shown as:
 n<count>|<reason>
 ```
 
+VOACAP closed fallback results are shown as:
+
+```text
+vcap|<snr>|h<hour>|s<ssn>
+```
+
 - `n<count>` is the raw selected observation count behind the displayed path
   decision in every receiver-cap mode. It is a sample-size clue, not a
   confidence percent.
@@ -241,6 +247,10 @@ n<count>|<reason>
   path class itself.
 - `a<age>` is the effective age of the selected evidence. Bare numbers are
   seconds; `m` and `h` mean minutes and hours.
+- `vcap|<snr>|h<hour>|s<ssn>` means the optional VOACAP closed fallback
+  supplied the result. `<snr>` is the selected hour's integer FT8-equivalent
+  SNR, `h<hour>` is the selected UTC forecast hour, and `<ssn>` is the rounded
+  EWMA SSN generation used for the run.
 - `none` means no usable selected sample existed.
 - `lown` means selected samples existed, but their observation count was below
   the configured minimum.
@@ -260,7 +270,8 @@ not the system log.
 
 The fixed-width cluster format may clip the right edge of a long diagnostic
 comment to keep the grid, confidence, and time columns aligned. The leftmost
-fields remain the important ones: count and effective weight or reason.
+fields remain the important ones: count and effective weight or reason for
+bucket results, and SNR plus selected UTC hour for VOACAP fallback results.
 
 Example readings:
 
@@ -273,6 +284,8 @@ Example readings:
 - `n19/c5/rx1|w3`: receiver caps reduced diagnostic evidence; raw count is
   shown first, capped effective count after `/c`, and attributed receiver count
   after `/rx`.
+- `vcap|-34|h20|s112`: VOACAP fallback selected the 20:00 UTC forecast record,
+  predicted FT8-equivalent SNR -34, and used SSN generation 112.
 - `n1|loww`: one selected observation existed, but the effective weight was
   below the minimum.
 - `n32|w1`: large selected count but low rounded effective weight.

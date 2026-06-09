@@ -135,11 +135,14 @@ When `voacap_fallback.enabled` is true, insufficient bucket results may start a
 delayed VOACAP lookup. The lookup is nonblocking in the telnet path and can
 only return the configured closed glyph after a cached VOACAP method-30 result
 predicts FT8-equivalent SNR at or below `mode_thresholds.<mode>.closed`. Cached
-VOACAP output stores the best matching-band SNR and re-evaluates the closed
-verdict against the request mode, so the first mode to populate the cache does
-not decide later modes. It does not produce `HIGH`, `MEDIUM`, or `LOW` classes
-and it never overrides a sufficient bucket p50 result. For PATH filters, the
-closed glyph remains in the existing `UNLIKELY` class.
+VOACAP output stores one hourly record per parsed forecast hour for the
+requested band. If more than one configured center frequency maps to the same
+band and hour, the cache keeps the strongest FT8-equivalent SNR for that hour.
+Lookup selects the record matching the current UTC hour and re-evaluates the
+closed verdict against the request mode, so the first mode to populate the cache
+does not decide later modes. It does not produce `HIGH`, `MEDIUM`, or `LOW`
+classes and it never overrides a sufficient bucket p50 result. For PATH
+filters, the closed glyph remains in the existing `UNLIKELY` class.
 
 The shipped config currently uses:
 

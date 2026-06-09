@@ -239,6 +239,7 @@ func TestPathPredictionUsesVOACAPClosedFallbackOnlyWhenInsufficient(t *testing.T
 				VOACAPFT8SNRDB:     -34,
 				VOACAPSSN:          112,
 				VOACAPAgeSec:       3,
+				VOACAPHourUTC:      20,
 				VOACAPFrequencyMHz: 14.1,
 			},
 			ok: true,
@@ -262,7 +263,7 @@ func TestPathPredictionUsesVOACAPClosedFallbackOnlyWhenInsufficient(t *testing.T
 	}
 	client.setDiagMode(diagModePath)
 	line := server.formatSpotForClient(client, sp)
-	if !strings.Contains(line, "vcap|-34|s112|a3") {
+	if !strings.Contains(line, "vcap|-34|h20|s112") {
 		t.Fatalf("expected VOACAP closed diagnostic, got %q", line)
 	}
 }

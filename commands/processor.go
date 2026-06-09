@@ -1138,7 +1138,7 @@ func pathGlyphHelpLines(cfg PathGlyphHelpConfig) []string {
 		fmt.Sprintf("%s - LOW: weak or marginal path.", quoteHelpGlyph(cfg.Low)),
 		fmt.Sprintf("%s - UNLIKELY: poor path.", quoteHelpGlyph(cfg.Unlikely)),
 		fmt.Sprintf("%s - INSUFFICIENT: not enough recent evidence.", quoteHelpGlyph(cfg.Insufficient)),
-		fmt.Sprintf("%s - CLOSED: VOACAP fallback predicts SNR at or below the mode's closed threshold.", quoteHelpGlyph(cfg.Closed)),
+		fmt.Sprintf("%s - CLOSED: VOACAP fallback predicts the current UTC hour's SNR at or below the mode's closed threshold.", quoteHelpGlyph(cfg.Closed)),
 		"PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, INSUFFICIENT.",
 	} {
 		lines = append(lines, wrapTextLines(note, helpMaxWidth, "    ")...)

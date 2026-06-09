@@ -18,10 +18,10 @@ func TestVOACAPClosedFallbackDelaysEnqueuesAndReturnsCachedClosed(t *testing.T) 
 		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
 			calls.Add(1)
 			return VOACAPClosedForecast{
-				Closed:       true,
-				FT8SNRDB:     -34,
-				HourUTC:      3,
-				FrequencyMHz: job.FrequencyMHz,
+				WindowStartUTC: job.WindowStartUTC,
+				Records: []VOACAPHourlyForecast{
+					{FT8SNRDB: -34, HourUTC: 20, FrequencyMHz: job.FrequencyMHz},
+				},
 			}, nil
 		},
 	}
@@ -56,7 +56,7 @@ func TestVOACAPClosedFallbackDelaysEnqueuesAndReturnsCachedClosed(t *testing.T) 
 	if res.Source != SourceVOACAPClosed || res.Glyph != cfg.GlyphSymbols.Closed || res.Class != classUnlikely {
 		t.Fatalf("unexpected cached result: %+v", res)
 	}
-	if res.VOACAPFT8SNRDB != -34 || res.VOACAPSSN != 112 || res.VOACAPFrequencyMHz != 14.1 {
+	if res.VOACAPFT8SNRDB != -34 || res.VOACAPSSN != 112 || res.VOACAPHourUTC != 20 || res.VOACAPFrequencyMHz != 14.1 {
 		t.Fatalf("unexpected VOACAP diagnostics: %+v", res)
 	}
 }
@@ -68,7 +68,12 @@ func TestVOACAPClosedFallbackCachesOpenVerdictWithoutReturningGlyph(t *testing.T
 	forecaster := fakeClosedForecaster{
 		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
 			calls.Add(1)
-			return VOACAPClosedForecast{Closed: false, FT8SNRDB: -20, FrequencyMHz: job.FrequencyMHz}, nil
+			return VOACAPClosedForecast{
+				WindowStartUTC: job.WindowStartUTC,
+				Records: []VOACAPHourlyForecast{
+					{FT8SNRDB: -20, HourUTC: 20, FrequencyMHz: job.FrequencyMHz},
+				},
+			}, nil
 		},
 	}
 	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
@@ -100,10 +105,12 @@ func TestVOACAPClosedFallbackReevaluatesCachedForecastPerMode(t *testing.T) {
 	forecaster := fakeClosedForecaster{
 		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
 			calls.Add(1)
-			if job.ThresholdDB != -29 {
-				t.Fatalf("FT8 job threshold = %v, want -29", job.ThresholdDB)
-			}
-			return VOACAPClosedForecast{Closed: false, FT8SNRDB: -14, FrequencyMHz: job.FrequencyMHz}, nil
+			return VOACAPClosedForecast{
+				WindowStartUTC: job.WindowStartUTC,
+				Records: []VOACAPHourlyForecast{
+					{FT8SNRDB: -14, HourUTC: 20, FrequencyMHz: job.FrequencyMHz},
+				},
+			}, nil
 		},
 	}
 	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
@@ -136,6 +143,131 @@ func TestVOACAPClosedFallbackReevaluatesCachedForecastPerMode(t *testing.T) {
 	}
 }
 
+func TestVOACAPClosedFallbackReusesForecastWindowAcrossHours(t *testing.T) {
+	cfg := testVOACAPFallbackConfig()
+	cfg.VOACAPFallback.DelaySeconds = 0
+	var calls atomic.Int32
+	forecaster := fakeClosedForecaster{
+		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
+			calls.Add(1)
+			return VOACAPClosedForecast{
+				WindowStartUTC: job.WindowStartUTC,
+				Records: []VOACAPHourlyForecast{
+					{FT8SNRDB: -34, HourUTC: 20, FrequencyMHz: job.FrequencyMHz},
+					{FT8SNRDB: -31, HourUTC: 21, FrequencyMHz: job.FrequencyMHz},
+				},
+			}, nil
+		},
+	}
+	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
+	ctx, cancel := context.WithCancel(context.Background())
+	fallback.Start(ctx)
+	defer func() {
+		cancel()
+		fallback.Wait()
+	}()
+
+	req := testClosedRequest()
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	if _, ok := fallback.CheckClosed(req, now); ok {
+		t.Fatalf("enqueue should not synchronously return a result")
+	}
+	waitUntil(t, func() bool { return calls.Load() == 1 })
+
+	res, ok := fallback.CheckClosed(req, now.Add(time.Second))
+	if !ok || res.VOACAPFT8SNRDB != -34 || res.VOACAPHourUTC != 20 {
+		t.Fatalf("expected hour 20 cached closed result, got ok=%v result=%+v", ok, res)
+	}
+	res, ok = fallback.CheckClosed(req, now.Add(time.Hour))
+	if !ok || res.VOACAPFT8SNRDB != -31 || res.VOACAPHourUTC != 21 {
+		t.Fatalf("expected hour 21 cached closed result, got ok=%v result=%+v", ok, res)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("forecast window should be reused across hours, calls=%d", calls.Load())
+	}
+}
+
+func TestVOACAPClosedFallbackReusesForecastWindowAcrossMidnight(t *testing.T) {
+	cfg := testVOACAPFallbackConfig()
+	cfg.VOACAPFallback.DelaySeconds = 0
+	var calls atomic.Int32
+	forecaster := fakeClosedForecaster{
+		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
+			calls.Add(1)
+			return VOACAPClosedForecast{
+				WindowStartUTC: job.WindowStartUTC,
+				Records: []VOACAPHourlyForecast{
+					{FT8SNRDB: -34, HourUTC: 23, FrequencyMHz: job.FrequencyMHz},
+					{FT8SNRDB: -33, HourUTC: 0, FrequencyMHz: job.FrequencyMHz},
+				},
+			}, nil
+		},
+	}
+	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
+	ctx, cancel := context.WithCancel(context.Background())
+	fallback.Start(ctx)
+	defer func() {
+		cancel()
+		fallback.Wait()
+	}()
+
+	req := testClosedRequest()
+	now := time.Date(2026, time.June, 8, 23, 0, 0, 0, time.UTC)
+	if _, ok := fallback.CheckClosed(req, now); ok {
+		t.Fatalf("enqueue should not synchronously return a result")
+	}
+	waitUntil(t, func() bool { return calls.Load() == 1 })
+
+	res, ok := fallback.CheckClosed(req, now.Add(time.Hour))
+	if !ok || res.VOACAPFT8SNRDB != -33 || res.VOACAPHourUTC != 0 {
+		t.Fatalf("expected midnight cached closed result, got ok=%v result=%+v", ok, res)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("forecast window should be reused across midnight, calls=%d", calls.Load())
+	}
+}
+
+func TestVOACAPClosedFallbackDoesNotReuseForecastOutsideHorizon(t *testing.T) {
+	cfg := testVOACAPFallbackConfig()
+	cfg.VOACAPFallback.DelaySeconds = 0
+	cfg.VOACAPFallback.CacheTTLSeconds = int((48 * time.Hour).Seconds())
+	cfg.VOACAPFallback.ForecastHours = 2
+	var calls atomic.Int32
+	forecaster := fakeClosedForecaster{
+		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
+			calls.Add(1)
+			return VOACAPClosedForecast{
+				WindowStartUTC: job.WindowStartUTC,
+				Records: []VOACAPHourlyForecast{
+					{FT8SNRDB: -34, HourUTC: 20, FrequencyMHz: job.FrequencyMHz},
+					{FT8SNRDB: -33, HourUTC: 21, FrequencyMHz: job.FrequencyMHz},
+				},
+			}, nil
+		},
+	}
+	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
+	ctx, cancel := context.WithCancel(context.Background())
+	fallback.Start(ctx)
+	defer func() {
+		cancel()
+		fallback.Wait()
+	}()
+
+	req := testClosedRequest()
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	if _, ok := fallback.CheckClosed(req, now); ok {
+		t.Fatalf("enqueue should not synchronously return a result")
+	}
+	waitUntil(t, func() bool { return calls.Load() == 1 })
+	if res, ok := fallback.CheckClosed(req, now.Add(time.Second)); !ok || res.VOACAPHourUTC != 20 {
+		t.Fatalf("expected cached hour 20 result inside horizon, got ok=%v result=%+v", ok, res)
+	}
+	if res, ok := fallback.CheckClosed(req, now.Add(24*time.Hour)); ok {
+		t.Fatalf("must not reuse same UTC hour outside forecast horizon, got %+v", res)
+	}
+	waitUntil(t, func() bool { return calls.Load() == 2 })
+}
+
 func TestVOACAPClosedFallbackBoundsDelayMap(t *testing.T) {
 	cfg := testVOACAPFallbackConfig()
 	cfg.VOACAPFallback.MaxDelayEntries = 2
@@ -153,25 +285,25 @@ func TestVOACAPClosedFallbackBoundsDelayMap(t *testing.T) {
 	}
 }
 
-func TestClosedForecastFromRecordsUsesBestBandSNR(t *testing.T) {
+func TestClosedForecastFromRecordsBuildsHourlyWindow(t *testing.T) {
 	records := []voacapPredictionRecordForTest{
-		{HourUTC: 1, FrequencyMHz: 14.1, FT8SNRDB: -35},
+		{HourUTC: 1, FrequencyMHz: 14.1, FT8SNRDB: -35, VOACAPSNRDBHz: 5},
+		{HourUTC: 1, FrequencyMHz: 14.2, FT8SNRDB: -32, VOACAPSNRDBHz: 8},
 		{HourUTC: 2, FrequencyMHz: 14.1, FT8SNRDB: -30},
 		{HourUTC: 1, FrequencyMHz: 7.1, FT8SNRDB: -10},
 	}
-	forecast, err := closedForecastFromRecords(testPredictionRecords(records), "20m", -29)
+	forecast, err := closedForecastFromRecords(testPredictionRecords(records), "20m")
 	if err != nil {
 		t.Fatalf("closedForecastFromRecords() error: %v", err)
 	}
-	if !forecast.Closed || forecast.FT8SNRDB != -30 || forecast.HourUTC != 2 {
-		t.Fatalf("unexpected closed forecast: %+v", forecast)
+	if len(forecast.Records) != 2 {
+		t.Fatalf("forecast records = %d, want 2: %+v", len(forecast.Records), forecast)
 	}
-	forecast, err = closedForecastFromRecords(testPredictionRecords(records), "20m", -31)
-	if err != nil {
-		t.Fatalf("closedForecastFromRecords() error: %v", err)
+	if forecast.Records[0].HourUTC != 1 || forecast.Records[0].FT8SNRDB != -32 || forecast.Records[0].VOACAPSNRDBHz != 8 {
+		t.Fatalf("hour 1 should keep the strongest same-hour SNR, got %+v", forecast.Records[0])
 	}
-	if forecast.Closed {
-		t.Fatalf("best SNR -30 should be open at threshold -31")
+	if forecast.Records[1].HourUTC != 2 || forecast.Records[1].FT8SNRDB != -30 {
+		t.Fatalf("hour 2 should be retained, got %+v", forecast.Records[1])
 	}
 }
 
@@ -223,12 +355,14 @@ func TestVOACAPRunnerClosedForecasterLiveSafeLabelDeck(t *testing.T) {
 		SSN:            147,
 		WindowStartUTC: time.Date(2026, time.June, 9, 3, 0, 0, 0, time.UTC),
 		FrequencyMHz:   7.1,
-		ThresholdDB:    thresholdsForModeDB("FT8", DefaultConfig()).Closed,
 	})
 	if err != nil {
 		t.Fatalf("ForecastClosed() live error: %v", err)
 	}
-	if forecast.FrequencyMHz <= 0 {
+	if len(forecast.Records) == 0 {
+		t.Fatalf("live forecast missing hourly records: %+v", forecast)
+	}
+	if forecast.Records[0].FrequencyMHz <= 0 {
 		t.Fatalf("live forecast missing frequency: %+v", forecast)
 	}
 	if forecast.OutputPath == "" {
@@ -309,18 +443,20 @@ func waitUntil(t *testing.T, fn func() bool) {
 }
 
 type voacapPredictionRecordForTest struct {
-	HourUTC      int
-	FrequencyMHz float64
-	FT8SNRDB     int
+	HourUTC       int
+	FrequencyMHz  float64
+	FT8SNRDB      int
+	VOACAPSNRDBHz int
 }
 
 func testPredictionRecords(in []voacapPredictionRecordForTest) []voacap.PredictionRecord {
 	out := make([]voacap.PredictionRecord, 0, len(in))
 	for _, record := range in {
 		out = append(out, voacap.PredictionRecord{
-			HourUTC:      record.HourUTC,
-			FrequencyMHz: record.FrequencyMHz,
-			FT8SNRDB:     record.FT8SNRDB,
+			HourUTC:       record.HourUTC,
+			FrequencyMHz:  record.FrequencyMHz,
+			FT8SNRDB:      record.FT8SNRDB,
+			VOACAPSNRDBHz: record.VOACAPSNRDBHz,
 		})
 	}
 	return out

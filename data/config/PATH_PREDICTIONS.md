@@ -122,9 +122,10 @@ If the selected bucket evidence is insufficient and the optional
 `voacap_fallback.enabled` setting is true, the cluster can start a delayed
 nonblocking VOACAP lookup for the same grid-center endpoints. A cached VOACAP
 result can only replace the blank glyph with the configured closed glyph when
-the forecasted FT8-equivalent SNR is at or below the request mode's configured
-`mode_thresholds.<mode>.closed` threshold. It never replaces a normal p50
-bucket prediction.
+the current UTC hour's forecasted FT8-equivalent SNR is at or below the request
+mode's configured `mode_thresholds.<mode>.closed` threshold. Cached VOACAP
+output retains the parsed hourly records for the requested band, and it never
+replaces a normal p50 bucket prediction.
 
 ## How to Use This Information
 

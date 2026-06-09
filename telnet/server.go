@@ -3888,7 +3888,7 @@ func diagPathTag(prediction pathPrediction, havePrediction bool) string {
 		return count + "|" + reason
 	}
 	if res.Source == pathreliability.SourceVOACAPClosed {
-		return "vcap|" + strconv.Itoa(res.VOACAPFT8SNRDB) + "|s" + strconv.Itoa(res.VOACAPSSN) + "|a" + diagAgeToken(res.VOACAPAgeSec)
+		return fmt.Sprintf("vcap|%d|h%02d|s%d", res.VOACAPFT8SNRDB, res.VOACAPHourUTC, res.VOACAPSSN)
 	}
 	weightValue := res.Weight
 	if res.CapLimited {

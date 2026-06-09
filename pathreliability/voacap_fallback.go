@@ -3,7 +3,8 @@
 // mode-owned closed-threshold evaluation, VOACAP deck launch, and closed glyph
 // result construction.
 // Related docs: pathreliability/README.md,
-// data/config/PATH_PREDICTIONS.md, docs/decisions/ADR-0161-voacap-closed-only-path-fallback.md.
+// data/config/PATH_PREDICTIONS.md, docs/decisions/ADR-0161-voacap-closed-only-path-fallback.md,
+// docs/decisions/ADR-0162-voacap-hourly-forecast-window-cache.md.
 // Related tests: pathreliability/voacap_fallback_test.go,
 // telnet/path_settings_test.go.
 package pathreliability
@@ -53,20 +54,23 @@ type VOACAPClosedJob struct {
 	SSN            int
 	WindowStartUTC time.Time
 	FrequencyMHz   float64
-	ThresholdDB    float64
 
 	key      voacapCacheKey
 	delayKey voacapDelayKey
 }
 
 type VOACAPClosedForecast struct {
-	Closed        bool
+	WindowStartUTC time.Time
+	Records        []VOACAPHourlyForecast
+	OutputPath     string
+	Elapsed        time.Duration
+}
+
+type VOACAPHourlyForecast struct {
 	FT8SNRDB      int
 	VOACAPSNRDBHz int
 	HourUTC       int
 	FrequencyMHz  float64
-	OutputPath    string
-	Elapsed       time.Duration
 }
 
 type VOACAPClosedFallbackSnapshot struct {
@@ -96,15 +100,14 @@ type VOACAPClosedFallback struct {
 }
 
 type voacapCacheKey struct {
-	userCell        CellID
-	dxCell          CellID
-	band            string
-	frequencyKHz    int
-	windowStartUnix int64
-	year            int
-	month           int
-	ssn             int
-	direction       string
+	userCell     CellID
+	dxCell       CellID
+	band         string
+	frequencyKHz int
+	year         int
+	month        int
+	ssn          int
+	direction    string
 }
 
 type voacapDelayKey struct {
@@ -219,10 +222,15 @@ func (f *VOACAPClosedFallback) CheckClosed(req VOACAPClosedRequest, now time.Tim
 	if entry, ok := f.cache[key]; ok {
 		if f.cacheExpired(entry, now) {
 			delete(f.cache, key)
-		} else if f.forecastClosedForMode(entry.forecast, prepared.Mode) {
-			return f.resultFromCache(key, entry, now), true
 		} else {
-			return Result{}, false
+			record, ok := forecastRecordForHour(entry.forecast, now, f.fallback.ForecastHours)
+			if !ok {
+				delete(f.cache, key)
+			} else if f.forecastRecordClosedForMode(record, prepared.Mode) {
+				return f.resultFromCache(key, entry, record, now), true
+			} else {
+				return Result{}, false
+			}
 		}
 	}
 	if _, ok := f.inflight[key]; ok {
@@ -239,7 +247,6 @@ func (f *VOACAPClosedFallback) CheckClosed(req VOACAPClosedRequest, now time.Tim
 		SSN:            ssn,
 		WindowStartUTC: forecastWindowStart(now),
 		FrequencyMHz:   float64(key.frequencyKHz) / 1000,
-		ThresholdDB:    f.closedThresholdForMode(prepared.Mode),
 		key:            key,
 		delayKey:       delayKey,
 	}
@@ -276,23 +283,22 @@ func (f *VOACAPClosedFallback) closedThresholdForMode(mode string) float64 {
 	return thresholdsForModeDB(mode, f.cfg).Closed
 }
 
-func (f *VOACAPClosedFallback) forecastClosedForMode(forecast VOACAPClosedForecast, mode string) bool {
-	return float64(forecast.FT8SNRDB) <= f.closedThresholdForMode(mode)
+func (f *VOACAPClosedFallback) forecastRecordClosedForMode(record VOACAPHourlyForecast, mode string) bool {
+	return float64(record.FT8SNRDB) <= f.closedThresholdForMode(mode)
 }
 
 func (f *VOACAPClosedFallback) cacheKey(req VOACAPClosedRequest, ssn int, now time.Time) voacapCacheKey {
 	frequencyKHz, _ := centerFrequencyKHzForBand(req.Band, f.fallback.CenterFrequenciesMHz)
 	window := forecastWindowStart(now)
 	return voacapCacheKey{
-		userCell:        req.UserCell,
-		dxCell:          req.DXCell,
-		band:            req.Band,
-		frequencyKHz:    frequencyKHz,
-		windowStartUnix: window.Unix(),
-		year:            window.Year(),
-		month:           int(window.Month()),
-		ssn:             ssn,
-		direction:       voacapDirectionUserToDX,
+		userCell:     req.UserCell,
+		dxCell:       req.DXCell,
+		band:         req.Band,
+		frequencyKHz: frequencyKHz,
+		year:         window.Year(),
+		month:        int(window.Month()),
+		ssn:          ssn,
+		direction:    voacapDirectionUserToDX,
 	}
 }
 
@@ -351,7 +357,7 @@ func (f *VOACAPClosedFallback) runJob(ctx context.Context, job VOACAPClosedJob) 
 	f.addCacheLocked(job.key, voacapCacheEntry{forecast: forecast, storedAt: now})
 }
 
-func (f *VOACAPClosedFallback) resultFromCache(key voacapCacheKey, entry voacapCacheEntry, now time.Time) Result {
+func (f *VOACAPClosedFallback) resultFromCache(key voacapCacheKey, entry voacapCacheEntry, record VOACAPHourlyForecast, now time.Time) Result {
 	ageSec := int64(0)
 	if now.After(entry.storedAt) {
 		ageSec = int64(now.Sub(entry.storedAt).Seconds())
@@ -359,16 +365,16 @@ func (f *VOACAPClosedFallback) resultFromCache(key voacapCacheKey, entry voacapC
 	return Result{
 		Glyph:              f.cfg.GlyphSymbols.Closed,
 		Class:              classUnlikely,
-		P50DB:              float64(entry.forecast.FT8SNRDB),
+		P50DB:              float64(record.FT8SNRDB),
 		HasP50:             true,
 		P50Glyph:           f.cfg.GlyphSymbols.Closed,
 		AgeSec:             ageSec,
 		Source:             SourceVOACAPClosed,
-		VOACAPFT8SNRDB:     entry.forecast.FT8SNRDB,
+		VOACAPFT8SNRDB:     record.FT8SNRDB,
 		VOACAPSSN:          key.ssn,
 		VOACAPAgeSec:       ageSec,
-		VOACAPHourUTC:      entry.forecast.HourUTC,
-		VOACAPFrequencyMHz: entry.forecast.FrequencyMHz,
+		VOACAPHourUTC:      record.HourUTC,
+		VOACAPFrequencyMHz: record.FrequencyMHz,
 	}
 }
 
@@ -464,10 +470,11 @@ func (f VOACAPRunnerClosedForecaster) ForecastClosed(ctx context.Context, job VO
 	if err != nil {
 		return VOACAPClosedForecast{}, err
 	}
-	forecast, err := closedForecastFromRecords(records, job.Request.Band, job.ThresholdDB)
+	forecast, err := closedForecastFromRecords(records, job.Request.Band)
 	if err != nil {
 		return VOACAPClosedForecast{}, err
 	}
+	forecast.WindowStartUTC = job.WindowStartUTC.UTC()
 	forecast.OutputPath = result.OutputPath
 	forecast.Elapsed = result.Elapsed
 	return forecast, nil
@@ -501,29 +508,58 @@ func (f VOACAPRunnerClosedForecaster) buildDeck(job VOACAPClosedJob) ([]byte, er
 	})
 }
 
-func closedForecastFromRecords(records []voacap.PredictionRecord, band string, thresholdDB float64) (VOACAPClosedForecast, error) {
+func closedForecastFromRecords(records []voacap.PredictionRecord, band string) (VOACAPClosedForecast, error) {
 	band = normalizeBand(band)
-	var best voacap.PredictionRecord
-	found := false
+	byHour := make(map[int]VOACAPHourlyForecast)
+	hourOrder := make([]int, 0)
 	for _, record := range records {
 		if bandForMHz(record.FrequencyMHz) != band {
 			continue
 		}
-		if !found || record.FT8SNRDB > best.FT8SNRDB {
-			best = record
-			found = true
+		hourly := VOACAPHourlyForecast{
+			FT8SNRDB:      record.FT8SNRDB,
+			VOACAPSNRDBHz: record.VOACAPSNRDBHz,
+			HourUTC:       record.HourUTC,
+			FrequencyMHz:  record.FrequencyMHz,
+		}
+		existing, ok := byHour[record.HourUTC]
+		if !ok {
+			hourOrder = append(hourOrder, record.HourUTC)
+			byHour[record.HourUTC] = hourly
+			continue
+		}
+		if record.FT8SNRDB > existing.FT8SNRDB {
+			byHour[record.HourUTC] = hourly
 		}
 	}
-	if !found {
+	if len(hourOrder) == 0 {
 		return VOACAPClosedForecast{}, fmt.Errorf("VOACAP output has no prediction records for band %s", band)
 	}
-	return VOACAPClosedForecast{
-		Closed:        float64(best.FT8SNRDB) <= thresholdDB,
-		FT8SNRDB:      best.FT8SNRDB,
-		VOACAPSNRDBHz: best.VOACAPSNRDBHz,
-		HourUTC:       best.HourUTC,
-		FrequencyMHz:  best.FrequencyMHz,
-	}, nil
+	forecast := VOACAPClosedForecast{
+		Records: make([]VOACAPHourlyForecast, 0, len(hourOrder)),
+	}
+	for _, hour := range hourOrder {
+		forecast.Records = append(forecast.Records, byHour[hour])
+	}
+	return forecast, nil
+}
+
+func forecastRecordForHour(forecast VOACAPClosedForecast, now time.Time, horizonHours int) (VOACAPHourlyForecast, bool) {
+	now = now.UTC()
+	if !forecast.WindowStartUTC.IsZero() && horizonHours > 0 {
+		start := forecast.WindowStartUTC.UTC()
+		end := start.Add(time.Duration(horizonHours) * time.Hour)
+		if now.Before(start) || !now.Before(end) {
+			return VOACAPHourlyForecast{}, false
+		}
+	}
+	hour := now.Hour()
+	for _, record := range forecast.Records {
+		if record.HourUTC == hour {
+			return record, true
+		}
+	}
+	return VOACAPHourlyForecast{}, false
 }
 
 func forecastWindowStart(now time.Time) time.Time {

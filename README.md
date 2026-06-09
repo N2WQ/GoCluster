@@ -211,8 +211,8 @@ Path reliability glyphs:
   "<" - LOW: weak or marginal path.
   "-" - UNLIKELY: poor path.
   " " - INSUFFICIENT: not enough recent evidence.
-  "#" - CLOSED: VOACAP fallback predicts SNR at or below the mode's closed
-    threshold.
+  "#" - CLOSED: VOACAP fallback predicts the current UTC hour's SNR at or
+    below the mode's closed threshold.
   PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, INSUFFICIENT.
 
 List types:
@@ -357,7 +357,7 @@ For the mode-specific support rules, timing knobs, and decision history, see
 - `SET DIAG DEDUPE`: `<DE-DXCC>|<DE-key>|<src>|<policy>`, where `<src>` is `H` for human-class or `S` for skimmer/automated-class.
 - `SET DIAG SOURCE`: `<source>` with `MAN`, `RBN`, `RBNFT`, `PSK`, `DXS`, `UP`, or `P:<peer>` for peer-origin spots.
 - `SET DIAG CONF`: `<score>%` when the pipeline calculated a confidence percent, otherwise `--%`.
-- `SET DIAG PATH`: `n<count>|w<weight>|a<age>` for usable path evidence, or `n<count>|<reason>` for insufficient evidence (`none`, `lown`, `lowr`, `loww`, or `stale`).
+- `SET DIAG PATH`: `n<count>|w<weight>|a<age>` for usable path evidence, `n<count>|<reason>` for insufficient evidence (`none`, `lown`, `lowr`, `loww`, or `stale`), or `vcap|<snr>|h<hour>|s<ssn>` for a cached VOACAP closed fallback.
 - `SET DIAG MODE`: `<mode>|<provenance>` to show the final normalized mode and why it was assigned.
 
 Mode provenance tokens:
@@ -391,6 +391,10 @@ area:
   estimate maps to `HIGH`.
 - `a<age>` is the effective age of the selected evidence. Ages under one minute
   are seconds, then rounded up to `m` or `h`.
+- `vcap|<snr>|h<hour>|s<ssn>` means the optional VOACAP closed fallback
+  supplied the result. `<snr>` is the selected hour's integer FT8-equivalent
+  SNR, `h<hour>` is the selected UTC forecast hour, and `<ssn>` is the rounded
+  EWMA SSN generation used for the run.
 - `n<count>|none` means there was no usable selected path sample.
 - `n<count>|lown` means selected evidence existed but the selected observation count
   stayed below the configured minimum.
@@ -406,7 +410,8 @@ The cluster line keeps the spot mode/report and fixed tail columns in their
 normal positions. If the diagnostic comment is too long for the remaining
 comment space, the right edge is clipped. Read clipped path diagnostics from
 left to right; the omitted rightmost characters are display loss only, not
-different path logic.
+different path logic. For VOACAP fallback diagnostics, the selected SNR and UTC
+hour are intentionally kept near the left edge.
 
 Example readings:
 
@@ -420,6 +425,8 @@ Example readings:
 - `n19/c5/rx1|w3`: raw selected observations are shown first, capped effective
   count after `/c`, and attributed receivers after `/rx` when receiver caps
   reduced diagnostic evidence.
+- `vcap|-34|h20|s112`: VOACAP fallback selected the 20:00 UTC forecast record,
+  predicted FT8-equivalent SNR -34, and used SSN generation 112.
 - `n1|loww`: one selected observation existed, but the effective weight was
   below the minimum.
 - `n32|w1`: large selected count but low rounded effective weight. Treat this
@@ -452,7 +459,7 @@ What the classes mean to an operator:
 | `=` | `MEDIUM` | Recent evidence suggests a workable path. | Use `SET DIAG PATH`; low effective weight can still map to a usable class. |
 | `<` | `LOW` | Recent evidence suggests a weak or marginal path. | Use `SET DIAG PATH` to confirm grids, sample count, and freshness. |
 | `-` | `UNLIKELY` | Recent evidence suggests a poor path. | Check whether your grid and the DX grid are correct before treating this as a hard no. |
-| `!` | `UNLIKELY` | Bucket evidence was insufficient, but the optional VOACAP fallback predicts closed FT8 conditions. | Check `SET DIAG PATH`; VOACAP fallback never overrides sufficient bucket evidence. |
+| `!` | `UNLIKELY` | Bucket evidence was insufficient, but the optional VOACAP fallback predicts closed conditions for the current mode and path. | Check `SET DIAG PATH`; VOACAP fallback never overrides sufficient bucket evidence. |
 | blank | `INSUFFICIENT` | The cluster did not have enough usable recent evidence to rate the path. | Run `SET DIAG PATH`; common reasons are `none`, `lown`, `lowr`, `loww`, and `stale`. |
 
 Important operational notes:
@@ -482,8 +489,9 @@ Important operational notes:
   startup failures because those cells are critical to path predictions.
 - If `voacap_fallback.enabled` is true, an insufficient bucket result may start
   a delayed nonblocking VOACAP lookup. A cached fallback can only replace the
-  blank glyph with the configured closed glyph when VOACAP predicts an
-  FT8-equivalent SNR at or below `mode_thresholds.<mode>.closed`.
+  blank glyph with the configured closed glyph when the current UTC hour's
+  VOACAP record predicts an FT8-equivalent SNR at or below
+  `mode_thresholds.<mode>.closed`.
 - `PATH` filters work on the class names, not on the glyph characters.
 - `R` and `G` are solar-weather display overrides, not normal path classes.
 

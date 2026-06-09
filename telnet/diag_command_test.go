@@ -200,6 +200,22 @@ func TestDiagPathTagShowsCappedAndRawCountsWhenLimited(t *testing.T) {
 	}
 }
 
+func TestDiagPathTagShowsVOACAPSelectedHour(t *testing.T) {
+	prediction := pathPrediction{
+		result: pathreliability.Result{
+			Source:         pathreliability.SourceVOACAPClosed,
+			VOACAPFT8SNRDB: -34,
+			VOACAPHourUTC:  3,
+			VOACAPSSN:      147,
+			VOACAPAgeSec:   9,
+		},
+	}
+	got := diagPathTag(prediction, true)
+	if got != "vcap|-34|h03|s147" {
+		t.Fatalf("unexpected VOACAP path diagnostic: %q", got)
+	}
+}
+
 func TestFormatSpotForClientModeDiagComment(t *testing.T) {
 	server := NewServer(ServerOptions{}, nil)
 	client := &Client{}
