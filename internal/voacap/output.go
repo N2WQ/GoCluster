@@ -114,6 +114,10 @@ func parseMethod30FrequencyRow(line string, lineNumber int) (method30Block, erro
 	if hour < 0 || hour > 24 || math.Abs(cells[0]-float64(hour)) > 0.05 {
 		return method30Block{}, fmt.Errorf("FREQ row at line %d has invalid hour %.2f", lineNumber, cells[0])
 	}
+	if hour == 24 {
+		// VOACAP prints midnight as 24.0; downstream cache lookups use UTC 0..23.
+		hour = 0
+	}
 	frequencies := make([]float64, 0, len(cells)-2)
 	for _, cell := range cells[2:] {
 		if cell <= 0 {

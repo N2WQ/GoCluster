@@ -184,6 +184,75 @@ func TestBuildExperimentDeckUsesConfiguredHoursAndFrequencies(t *testing.T) {
 	}
 }
 
+func TestBuildPathDeckUsesConfiguredVOACAPStartHour(t *testing.T) {
+	deck, err := BuildPathDeck(PathDeckRequest{
+		Comment:              "current hour path",
+		Transmit:             DeckEndpoint{Label: "fn31", Latitude: 41.5, Longitude: -73},
+		Receive:              DeckEndpoint{Label: "jo90", Latitude: 50.5, Longitude: 19},
+		SSN:                  147,
+		Now:                  mustTime(t, "2026-06-09T17:00:00Z"),
+		ForecastHours:        8,
+		StartVOACAPHour:      17,
+		CenterFrequenciesMHz: []float64{14.1},
+	})
+	if err != nil {
+		t.Fatalf("BuildPathDeck() error: %v", err)
+	}
+	if body := string(deck); !strings.Contains(body, "TIME         17   24    1    1") {
+		t.Fatalf("deck should cover the current UTC hour through midnight:\n%s", body)
+	}
+}
+
+func TestBuildPathDeckWrapsConfiguredVOACAPStartHour(t *testing.T) {
+	deck, err := BuildPathDeck(PathDeckRequest{
+		Comment:              "wrapped path",
+		Transmit:             DeckEndpoint{Label: "fn31", Latitude: 41.5, Longitude: -73},
+		Receive:              DeckEndpoint{Label: "jo90", Latitude: 50.5, Longitude: 19},
+		SSN:                  147,
+		Now:                  mustTime(t, "2026-06-09T22:00:00Z"),
+		ForecastHours:        7,
+		StartVOACAPHour:      22,
+		CenterFrequenciesMHz: []float64{14.1},
+	})
+	if err != nil {
+		t.Fatalf("BuildPathDeck() error: %v", err)
+	}
+	if body := string(deck); !strings.Contains(body, "TIME         22    4    1    1") {
+		t.Fatalf("deck should wrap over midnight:\n%s", body)
+	}
+}
+
+func TestBuildPathDeckRejectsInvalidVOACAPStartHour(t *testing.T) {
+	_, err := BuildPathDeck(PathDeckRequest{
+		Comment:              "bad hour",
+		Transmit:             DeckEndpoint{Label: "fn31", Latitude: 41.5, Longitude: -73},
+		Receive:              DeckEndpoint{Label: "jo90", Latitude: 50.5, Longitude: 19},
+		SSN:                  147,
+		Now:                  mustTime(t, "2026-06-09T22:00:00Z"),
+		ForecastHours:        7,
+		StartVOACAPHour:      25,
+		CenterFrequenciesMHz: []float64{14.1},
+	})
+	if err == nil || !strings.Contains(err.Error(), "start VOACAP hour") {
+		t.Fatalf("BuildPathDeck() error = %v, want start hour validation", err)
+	}
+}
+
+func TestHourForUTC(t *testing.T) {
+	tests := []struct {
+		at   string
+		want int
+	}{
+		{at: "2026-06-09T00:00:00Z", want: 24},
+		{at: "2026-06-09T17:00:00Z", want: 17},
+	}
+	for _, tt := range tests {
+		if got := HourForUTC(mustTime(t, tt.at)); got != tt.want {
+			t.Fatalf("HourForUTC(%s) = %d, want %d", tt.at, got, tt.want)
+		}
+	}
+}
+
 func TestBuildPathDeckUsesDirectedEndpoints(t *testing.T) {
 	deck, err := BuildPathDeck(PathDeckRequest{
 		Comment:              "directed path",

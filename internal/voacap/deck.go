@@ -18,12 +18,15 @@ type DeckEndpoint struct {
 
 // PathDeckRequest describes one VOACAP method-30 path deck.
 type PathDeckRequest struct {
-	Comment              string
-	Transmit             DeckEndpoint
-	Receive              DeckEndpoint
-	SSN                  int
-	Now                  time.Time
-	ForecastHours        int
+	Comment       string
+	Transmit      DeckEndpoint
+	Receive       DeckEndpoint
+	SSN           int
+	Now           time.Time
+	ForecastHours int
+	// StartVOACAPHour is the optional first TIME-card hour in VOACAP's
+	// 1..24 notation. Zero keeps the legacy default start hour of 1.
+	StartVOACAPHour      int
 	CenterFrequenciesMHz []float64
 }
 
@@ -56,6 +59,14 @@ func BuildPathDeck(req PathDeckRequest) ([]byte, error) {
 	if req.ForecastHours <= 0 || req.ForecastHours > 24 {
 		return nil, fmt.Errorf("forecast hours must be between 1 and 24")
 	}
+	startHour := req.StartVOACAPHour
+	if startHour == 0 {
+		startHour = 1
+	}
+	if startHour < 1 || startHour > 24 {
+		return nil, fmt.Errorf("start VOACAP hour must be between 1 and 24")
+	}
+	endHour := endVOACAPHour(startHour, req.ForecastHours)
 	if len(req.CenterFrequenciesMHz) == 0 {
 		return nil, fmt.Errorf("center frequencies must not be empty")
 	}
@@ -86,7 +97,7 @@ func BuildPathDeck(req PathDeckRequest) ([]byte, error) {
 	fmt.Fprintf(&buf, "COMMENT    %s\n", comment)
 	fmt.Fprintln(&buf, "LINEMAX      55       number of lines-per-page")
 	fmt.Fprintln(&buf, "COEFFS    CCIR")
-	fmt.Fprintf(&buf, "TIME          1%5d    1    1\n", req.ForecastHours)
+	fmt.Fprintf(&buf, "TIME      %5d%5d    1    1\n", startHour, endHour)
 	fmt.Fprintf(&buf, "MONTH      %04d %d.00\n", now.Year(), int(now.Month()))
 	fmt.Fprintf(&buf, "SUNSPOT    %d.\n", req.SSN)
 	fmt.Fprintf(&buf, "LABEL     %-18s %-18s\n", voacapLabel(req.Transmit.Label), voacapLabel(req.Receive.Label))
@@ -104,6 +115,24 @@ func BuildPathDeck(req PathDeckRequest) ([]byte, error) {
 	fmt.Fprintln(&buf, "EXECUTE")
 	fmt.Fprintln(&buf, "QUIT")
 	return buf.Bytes(), nil
+}
+
+// HourForUTC maps a UTC instant to VOACAP's 1..24 hour notation.
+// VOACAP emits midnight as hour 24, while Go's time.Hour uses 0.
+func HourForUTC(t time.Time) int {
+	hour := t.UTC().Hour()
+	if hour == 0 {
+		return 24
+	}
+	return hour
+}
+
+func endVOACAPHour(startHour, forecastHours int) int {
+	endHour := startHour + forecastHours - 1
+	for endHour > 24 {
+		endHour -= 24
+	}
+	return endHour
 }
 
 func validEndpoint(endpoint DeckEndpoint) bool {

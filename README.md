@@ -492,6 +492,9 @@ Important operational notes:
   and `low_weight` means decayed effective weight missed the weight floor.
   VOACAP fallback outcomes are counted separately as `voacap_closed` and
   `voacap_aligned`.
+  A separate `VOACAP fallback (5m)` line appears when fallback work occurs and
+  reports stage counters such as `queued`, `success`, `cache_hit`,
+  `no_current_hour`, `open_no_p50`, and `class_mismatch`.
   These lines are written to `logging.propagation.dir`, not the system log.
 - If grids are missing, evidence is stale, too sparse, or too weak, the result
   stays `INSUFFICIENT`. When path reliability is enabled, H3 table failures are
@@ -502,7 +505,8 @@ Important operational notes:
   record predicts an FT8-equivalent SNR at or below
   `mode_thresholds.<mode>.closed`, or with a normal glyph when sparse bucket
   p50 and VOACAP map to the same path class. Sufficient bucket p50 results stay
-  authoritative.
+  authoritative. Runtime fallback decks cover the rolling UTC forecast window;
+  parsed VOACAP hour `24` is treated as UTC hour `0`.
 - `PATH` filters work on the class names, not on the glyph characters.
 - `R` and `G` are solar-weather display overrides, not normal path classes.
 

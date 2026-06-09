@@ -268,6 +268,10 @@ type Server struct {
 	pathPredCombined      atomic.Uint64                              // Predictions with sufficient combined data
 	pathPredVOACAPClosed  atomic.Uint64                              // Insufficient bucket predictions replaced by VOACAP closed fallback
 	pathPredVOACAPAligned atomic.Uint64                              // Insufficient bucket predictions replaced by VOACAP-aligned sparse p50
+	vStageClosed          atomic.Int64                               // Cached VOACAP forecasts classified as closed before final result emission
+	vStageAligned         atomic.Int64                               // Cached VOACAP forecasts aligned with sparse p50 before final result emission
+	vStageNoP50           atomic.Int64                               // Cached VOACAP open forecasts with no sparse p50 to corroborate
+	vStageMismatch        atomic.Int64                               // Cached VOACAP open forecasts whose class disagreed with sparse p50
 	pathPredInsufficient  atomic.Uint64                              // Predictions with insufficient data
 	pathPredNoSample      atomic.Uint64                              // Insufficient predictions with no samples
 	pathPredLowCount      atomic.Uint64                              // Insufficient predictions below min observation count
@@ -2863,21 +2867,26 @@ func (s *Server) PreloginAdmissionMetricSnapshot() preloginAdmissionSnapshot {
 }
 
 type pathPredictionStats struct {
-	Total         uint64
-	Derived       uint64
-	Combined      uint64
-	VOACAPClosed  uint64
-	VOACAPAligned uint64
-	Insufficient  uint64
-	NoSample      uint64
-	LowCount      uint64
-	LowReceiver   uint64
-	LowWeight     uint64
-	Stale         uint64
-	CapLimited    uint64
-	CapWouldBlock uint64
-	OverrideR     uint64
-	OverrideG     uint64
+	Total                          uint64
+	Derived                        uint64
+	Combined                       uint64
+	VOACAPClosed                   uint64
+	VOACAPAligned                  uint64
+	VOACAPFallback                 pathreliability.VOACAPFallbackStats
+	VOACAPFallbackClosedCandidate  int64
+	VOACAPFallbackAlignedCandidate int64
+	VOACAPFallbackOpenNoP50        int64
+	VOACAPFallbackClassMismatch    int64
+	Insufficient                   uint64
+	NoSample                       uint64
+	LowCount                       uint64
+	LowReceiver                    uint64
+	LowWeight                      uint64
+	Stale                          uint64
+	CapLimited                     uint64
+	CapWouldBlock                  uint64
+	OverrideR                      uint64
+	OverrideG                      uint64
 }
 
 func (s *Server) recordPathPrediction(res pathreliability.Result, userDerived, dxDerived bool) {
@@ -2929,21 +2938,28 @@ func (s *Server) PathPredictionStatsSnapshot() pathPredictionStats {
 		return pathPredictionStats{}
 	}
 	stats := pathPredictionStats{
-		Total:         s.pathPredTotal.Swap(0),
-		Derived:       s.pathPredDerived.Swap(0),
-		Combined:      s.pathPredCombined.Swap(0),
-		VOACAPClosed:  s.pathPredVOACAPClosed.Swap(0),
-		VOACAPAligned: s.pathPredVOACAPAligned.Swap(0),
-		Insufficient:  s.pathPredInsufficient.Swap(0),
-		NoSample:      s.pathPredNoSample.Swap(0),
-		LowCount:      s.pathPredLowCount.Swap(0),
-		LowReceiver:   s.pathPredLowReceiver.Swap(0),
-		LowWeight:     s.pathPredLowWeight.Swap(0),
-		Stale:         s.pathPredStale.Swap(0),
-		CapLimited:    s.pathPredCapLimited.Swap(0),
-		CapWouldBlock: s.pathPredCapWouldBlock.Swap(0),
-		OverrideR:     s.pathPredOverrideR.Swap(0),
-		OverrideG:     s.pathPredOverrideG.Swap(0),
+		Total:                          s.pathPredTotal.Swap(0),
+		Derived:                        s.pathPredDerived.Swap(0),
+		Combined:                       s.pathPredCombined.Swap(0),
+		VOACAPClosed:                   s.pathPredVOACAPClosed.Swap(0),
+		VOACAPAligned:                  s.pathPredVOACAPAligned.Swap(0),
+		VOACAPFallbackClosedCandidate:  s.vStageClosed.Swap(0),
+		VOACAPFallbackAlignedCandidate: s.vStageAligned.Swap(0),
+		VOACAPFallbackOpenNoP50:        s.vStageNoP50.Swap(0),
+		VOACAPFallbackClassMismatch:    s.vStageMismatch.Swap(0),
+		Insufficient:                   s.pathPredInsufficient.Swap(0),
+		NoSample:                       s.pathPredNoSample.Swap(0),
+		LowCount:                       s.pathPredLowCount.Swap(0),
+		LowReceiver:                    s.pathPredLowReceiver.Swap(0),
+		LowWeight:                      s.pathPredLowWeight.Swap(0),
+		Stale:                          s.pathPredStale.Swap(0),
+		CapLimited:                     s.pathPredCapLimited.Swap(0),
+		CapWouldBlock:                  s.pathPredCapWouldBlock.Swap(0),
+		OverrideR:                      s.pathPredOverrideR.Swap(0),
+		OverrideG:                      s.pathPredOverrideG.Swap(0),
+	}
+	if provider, ok := s.pathClosedFallback.(pathreliability.ClosedFallbackStatsProvider); ok {
+		stats.VOACAPFallback = provider.StatsSnapshot()
 	}
 	return stats
 }
@@ -3763,16 +3779,20 @@ func (s *Server) pathResultWithClosedFallback(res pathreliability.Result, req pa
 	}
 	cfg := s.pathPredictor.Config()
 	if pathreliability.ClosedForDB(float64(forecast.Record.FT8SNRDB), req.Mode, cfg) {
+		s.vStageClosed.Add(1)
 		return pathreliability.VOACAPClosedResult(cfg, forecast)
 	}
 	if !res.HasP50 {
+		s.vStageNoP50.Add(1)
 		return res
 	}
 	p50Class := pathreliability.ClassForDB(res.P50DB, req.Mode, cfg)
 	voacapClass := pathreliability.ClassForDB(float64(forecast.Record.FT8SNRDB), req.Mode, cfg)
 	if p50Class != voacapClass {
+		s.vStageMismatch.Add(1)
 		return res
 	}
+	s.vStageAligned.Add(1)
 	return pathreliability.VOACAPAlignedResult(res, cfg, req.Mode, forecast)
 }
 

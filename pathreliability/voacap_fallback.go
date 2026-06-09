@@ -29,6 +29,12 @@ type ClosedFallback interface {
 	CheckForecast(req VOACAPClosedRequest, now time.Time) (VOACAPCachedForecast, bool)
 }
 
+// ClosedFallbackStatsProvider exposes reset-on-snapshot stage counters for
+// optional propagation-log diagnostics without changing the lookup interface.
+type ClosedFallbackStatsProvider interface {
+	StatsSnapshot() VOACAPFallbackStats
+}
+
 type VOACAPSSNProvider interface {
 	CurrentSSN(now time.Time) (int, bool)
 }
@@ -89,6 +95,37 @@ type VOACAPClosedFallbackSnapshot struct {
 	QueueDepth      int
 }
 
+// VOACAPFallbackStats explains why fallback work did or did not emit a glyph
+// during one propagation-log interval. Final emitted glyph counts stay in the
+// telnet path prediction counters.
+type VOACAPFallbackStats struct {
+	InvalidRequest int64
+	SSNUnavailable int64
+	CacheHit       int64
+	NoCurrentHour  int64
+	DelayWait      int64
+	Inflight       int64
+	NotRunning     int64
+	QueueFull      int64
+	Queued         int64
+	RunSuccess     int64
+	RunFailure     int64
+}
+
+func (s VOACAPFallbackStats) HasActivity() bool {
+	return s.InvalidRequest != 0 ||
+		s.SSNUnavailable != 0 ||
+		s.CacheHit != 0 ||
+		s.NoCurrentHour != 0 ||
+		s.DelayWait != 0 ||
+		s.Inflight != 0 ||
+		s.NotRunning != 0 ||
+		s.QueueFull != 0 ||
+		s.Queued != 0 ||
+		s.RunSuccess != 0 ||
+		s.RunFailure != 0
+}
+
 type VOACAPClosedFallback struct {
 	cfg      Config
 	fallback VOACAPFallbackConfig
@@ -106,6 +143,18 @@ type VOACAPClosedFallback struct {
 	startOnce sync.Once
 	wg        sync.WaitGroup
 	running   atomic.Bool
+
+	statsInvalidRequest atomic.Int64
+	statsSSNUnavailable atomic.Int64
+	statsCacheHit       atomic.Int64
+	statsNoCurrentHour  atomic.Int64
+	statsDelayWait      atomic.Int64
+	statsInflight       atomic.Int64
+	statsNotRunning     atomic.Int64
+	statsQueueFull      atomic.Int64
+	statsQueued         atomic.Int64
+	statsRunSuccess     atomic.Int64
+	statsRunFailure     atomic.Int64
 }
 
 type voacapCacheKey struct {
@@ -206,6 +255,25 @@ func (f *VOACAPClosedFallback) Snapshot() VOACAPClosedFallbackSnapshot {
 	}
 }
 
+func (f *VOACAPClosedFallback) StatsSnapshot() VOACAPFallbackStats {
+	if f == nil {
+		return VOACAPFallbackStats{}
+	}
+	return VOACAPFallbackStats{
+		InvalidRequest: f.statsInvalidRequest.Swap(0),
+		SSNUnavailable: f.statsSSNUnavailable.Swap(0),
+		CacheHit:       f.statsCacheHit.Swap(0),
+		NoCurrentHour:  f.statsNoCurrentHour.Swap(0),
+		DelayWait:      f.statsDelayWait.Swap(0),
+		Inflight:       f.statsInflight.Swap(0),
+		NotRunning:     f.statsNotRunning.Swap(0),
+		QueueFull:      f.statsQueueFull.Swap(0),
+		Queued:         f.statsQueued.Swap(0),
+		RunSuccess:     f.statsRunSuccess.Swap(0),
+		RunFailure:     f.statsRunFailure.Swap(0),
+	}
+}
+
 func (f *VOACAPClosedFallback) CheckClosed(req VOACAPClosedRequest, now time.Time) (Result, bool) {
 	forecast, ok := f.CheckForecast(req, now)
 	if !ok || !f.forecastRecordClosedForMode(forecast.Record, req.Mode) {
@@ -224,10 +292,12 @@ func (f *VOACAPClosedFallback) CheckForecast(req VOACAPClosedRequest, now time.T
 	now = now.UTC()
 	prepared, ok := f.prepareRequest(req)
 	if !ok {
+		f.statsInvalidRequest.Add(1)
 		return VOACAPCachedForecast{}, false
 	}
 	ssn, ok := f.ssnProvider.CurrentSSN(now)
 	if !ok {
+		f.statsSSNUnavailable.Add(1)
 		return VOACAPCachedForecast{}, false
 	}
 	key := f.cacheKey(prepared, ssn, now)
@@ -242,19 +312,28 @@ func (f *VOACAPClosedFallback) CheckForecast(req VOACAPClosedRequest, now time.T
 		} else {
 			record, ok := forecastRecordForHour(entry.forecast, now, f.fallback.ForecastHours)
 			if !ok {
+				f.statsNoCurrentHour.Add(1)
 				delete(f.cache, key)
 			} else {
+				f.statsCacheHit.Add(1)
 				return f.cachedForecastFromCache(key, entry, record, now), true
 			}
 		}
 	}
 	if _, ok := f.inflight[key]; ok {
+		f.statsInflight.Add(1)
 		return VOACAPCachedForecast{}, false
 	}
 	if !f.delayElapsedLocked(delayKey, now) {
+		f.statsDelayWait.Add(1)
 		return VOACAPCachedForecast{}, false
 	}
-	if !f.running.Load() || len(f.queue) >= cap(f.queue) {
+	if !f.running.Load() {
+		f.statsNotRunning.Add(1)
+		return VOACAPCachedForecast{}, false
+	}
+	if len(f.queue) >= cap(f.queue) {
+		f.statsQueueFull.Add(1)
 		return VOACAPCachedForecast{}, false
 	}
 	job := VOACAPClosedJob{
@@ -267,6 +346,7 @@ func (f *VOACAPClosedFallback) CheckForecast(req VOACAPClosedRequest, now time.T
 	}
 	f.inflight[key] = struct{}{}
 	delete(f.delays, delayKey)
+	f.statsQueued.Add(1)
 	f.queue <- job
 	return VOACAPCachedForecast{}, false
 }
@@ -356,12 +436,16 @@ func (f *VOACAPClosedFallback) runJob(ctx context.Context, job VOACAPClosedJob) 
 	defer f.mu.Unlock()
 	delete(f.inflight, job.key)
 	if err != nil {
-		if ctx.Err() == nil && f.logger != nil {
-			f.logger.Printf("VOACAP closed fallback failed user_cell=%d dx_cell=%d band=%s ssn=%d: %v", job.Request.UserCell, job.Request.DXCell, job.Request.Band, job.SSN, err)
+		if ctx.Err() == nil {
+			if f.logger != nil {
+				f.logger.Printf("VOACAP closed fallback failed user_cell=%d dx_cell=%d band=%s ssn=%d: %v", job.Request.UserCell, job.Request.DXCell, job.Request.Band, job.SSN, err)
+			}
+			f.statsRunFailure.Add(1)
 		}
 		f.addDelayLocked(job.delayKey, voacapDelayEntry{firstSeen: now, lastSeen: now})
 		return
 	}
+	f.statsRunSuccess.Add(1)
 	f.addCacheLocked(job.key, voacapCacheEntry{forecast: forecast, storedAt: now})
 }
 
@@ -542,6 +626,7 @@ func (f VOACAPRunnerClosedForecaster) buildDeck(job VOACAPClosedJob) ([]byte, er
 		SSN:                  job.SSN,
 		Now:                  job.WindowStartUTC,
 		ForecastHours:        f.cfg.ForecastHours,
+		StartVOACAPHour:      voacap.HourForUTC(job.WindowStartUTC),
 		CenterFrequenciesMHz: f.cfg.CenterFrequenciesMHz,
 	})
 }

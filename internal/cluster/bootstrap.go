@@ -1526,6 +1526,31 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 						humanize.Comma(int64(stats.OverrideG)),
 					))
 				}
+				fallback := stats.VOACAPFallback
+				if fallback.HasActivity() ||
+					stats.VOACAPFallbackClosedCandidate != 0 ||
+					stats.VOACAPFallbackAlignedCandidate != 0 ||
+					stats.VOACAPFallbackOpenNoP50 != 0 ||
+					stats.VOACAPFallbackClassMismatch != 0 {
+					fileOnly(fmt.Sprintf(
+						"VOACAP fallback (5m): queued=%s success=%s failure=%s cache_hit=%s no_current_hour=%s delay_wait=%s inflight=%s queue_full=%s not_running=%s ssn_unavailable=%s invalid_request=%s closed=%s aligned=%s open_no_p50=%s class_mismatch=%s",
+						humanize.Comma(fallback.Queued),
+						humanize.Comma(fallback.RunSuccess),
+						humanize.Comma(fallback.RunFailure),
+						humanize.Comma(fallback.CacheHit),
+						humanize.Comma(fallback.NoCurrentHour),
+						humanize.Comma(fallback.DelayWait),
+						humanize.Comma(fallback.Inflight),
+						humanize.Comma(fallback.QueueFull),
+						humanize.Comma(fallback.NotRunning),
+						humanize.Comma(fallback.SSNUnavailable),
+						humanize.Comma(fallback.InvalidRequest),
+						humanize.Comma(stats.VOACAPFallbackClosedCandidate),
+						humanize.Comma(stats.VOACAPFallbackAlignedCandidate),
+						humanize.Comma(stats.VOACAPFallbackOpenNoP50),
+						humanize.Comma(stats.VOACAPFallbackClassMismatch),
+					))
+				}
 			}
 			if pathReport != nil {
 				sourceCounts := pathReport.SnapshotSources()

@@ -271,6 +271,15 @@ split: `no_sample`, `low_count`, `low_receiver`, `low_weight`, and `stale`.
 receiver-diversity gate; `low_weight` is the decayed effective-weight gate.
 VOACAP fallback outcomes are counted separately as `voacap_closed` and
 `voacap_aligned`.
+
+When the optional VOACAP fallback has activity, a separate
+`VOACAP fallback (5m)` propagation log line explains the stage path:
+`queued`, `success`, `failure`, `cache_hit`, `no_current_hour`, `delay_wait`,
+`inflight`, `queue_full`, `not_running`, `ssn_unavailable`,
+`invalid_request`, `closed`, `aligned`, `open_no_p50`, and
+`class_mismatch`. Use `Path predictions (5m)` to count final emitted glyphs.
+Use `VOACAP fallback (5m)` to explain why a fallback lookup did or did not
+emit.
 The shipped config writes these aggregate lines to `data/logs/propagation`,
 not the system log.
 

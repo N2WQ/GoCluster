@@ -2,6 +2,7 @@ package pathreliability
 
 import (
 	"context"
+	"errors"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -47,7 +48,7 @@ func TestVOACAPClosedFallbackDelaysEnqueuesAndReturnsCachedClosed(t *testing.T) 
 	if _, ok := fallback.CheckClosed(req, now.Add(15*time.Minute)); ok {
 		t.Fatalf("enqueue lookup should not synchronously return a result")
 	}
-	waitUntil(t, func() bool { return calls.Load() == 1 })
+	waitUntil(t, func() bool { return calls.Load() == 1 && fallback.Snapshot().CacheEntries == 1 })
 
 	res, ok := fallback.CheckClosed(req, now.Add(16*time.Minute))
 	if !ok {
@@ -89,7 +90,7 @@ func TestVOACAPClosedFallbackCachesOpenVerdictWithoutReturningGlyph(t *testing.T
 	if _, ok := fallback.CheckClosed(req, now); ok {
 		t.Fatalf("open enqueue should not synchronously return a result")
 	}
-	waitUntil(t, func() bool { return calls.Load() == 1 })
+	waitUntil(t, func() bool { return calls.Load() == 1 && fallback.Snapshot().CacheEntries == 1 })
 	if _, ok := fallback.CheckClosed(req, now.Add(time.Second)); ok {
 		t.Fatalf("open VOACAP verdict must not replace insufficient bucket result")
 	}
@@ -133,7 +134,7 @@ func TestVOACAPClosedFallbackReevaluatesCachedForecastPerMode(t *testing.T) {
 	if _, ok := fallback.CheckClosed(req, now); ok {
 		t.Fatalf("FT8 enqueue should not synchronously return a result")
 	}
-	waitUntil(t, func() bool { return calls.Load() == 1 })
+	waitUntil(t, func() bool { return calls.Load() == 1 && fallback.Snapshot().CacheEntries == 1 })
 	if _, ok := fallback.CheckClosed(req, now.Add(time.Second)); ok {
 		t.Fatalf("FT8 threshold should keep -14 open")
 	}
@@ -179,7 +180,7 @@ func TestVOACAPClosedFallbackReusesForecastWindowAcrossHours(t *testing.T) {
 	if _, ok := fallback.CheckClosed(req, now); ok {
 		t.Fatalf("enqueue should not synchronously return a result")
 	}
-	waitUntil(t, func() bool { return calls.Load() == 1 })
+	waitUntil(t, func() bool { return calls.Load() == 1 && fallback.Snapshot().CacheEntries == 1 })
 
 	res, ok := fallback.CheckClosed(req, now.Add(time.Second))
 	if !ok || res.VOACAPFT8SNRDB != -34 || res.VOACAPHourUTC != 20 {
@@ -223,7 +224,7 @@ func TestVOACAPClosedFallbackReusesForecastWindowAcrossMidnight(t *testing.T) {
 	if _, ok := fallback.CheckClosed(req, now); ok {
 		t.Fatalf("enqueue should not synchronously return a result")
 	}
-	waitUntil(t, func() bool { return calls.Load() == 1 })
+	waitUntil(t, func() bool { return calls.Load() == 1 && fallback.Snapshot().CacheEntries == 1 })
 
 	res, ok := fallback.CheckClosed(req, now.Add(time.Hour))
 	if !ok || res.VOACAPFT8SNRDB != -33 || res.VOACAPHourUTC != 0 {
@@ -265,7 +266,7 @@ func TestVOACAPClosedFallbackDoesNotReuseForecastOutsideHorizon(t *testing.T) {
 	if _, ok := fallback.CheckClosed(req, now); ok {
 		t.Fatalf("enqueue should not synchronously return a result")
 	}
-	waitUntil(t, func() bool { return calls.Load() == 1 })
+	waitUntil(t, func() bool { return calls.Load() == 1 && fallback.Snapshot().CacheEntries == 1 })
 	if res, ok := fallback.CheckClosed(req, now.Add(time.Second)); !ok || res.VOACAPHourUTC != 20 {
 		t.Fatalf("expected cached hour 20 result inside horizon, got ok=%v result=%+v", ok, res)
 	}
@@ -273,6 +274,102 @@ func TestVOACAPClosedFallbackDoesNotReuseForecastOutsideHorizon(t *testing.T) {
 		t.Fatalf("must not reuse same UTC hour outside forecast horizon, got %+v", res)
 	}
 	waitUntil(t, func() bool { return calls.Load() == 2 })
+}
+
+func TestVOACAPClosedFallbackStatsExplainCacheLifecycle(t *testing.T) {
+	cfg := testVOACAPFallbackConfig()
+	cfg.VOACAPFallback.DelaySeconds = 0
+	var calls atomic.Int32
+	forecaster := fakeClosedForecaster{
+		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
+			calls.Add(1)
+			return VOACAPClosedForecast{
+				WindowStartUTC: job.WindowStartUTC,
+				Records: []VOACAPHourlyForecast{
+					{FT8SNRDB: -34, HourUTC: 20, FrequencyMHz: job.FrequencyMHz},
+				},
+			}, nil
+		},
+	}
+	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
+	ctx, cancel := context.WithCancel(context.Background())
+	fallback.Start(ctx)
+	defer func() {
+		cancel()
+		fallback.Wait()
+	}()
+
+	req := testClosedRequest()
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	if _, ok := fallback.CheckForecast(req, now); ok {
+		t.Fatalf("enqueue lookup should not synchronously return a forecast")
+	}
+	waitUntil(t, func() bool { return calls.Load() == 1 && fallback.Snapshot().CacheEntries == 1 })
+	if _, ok := fallback.CheckForecast(req, now.Add(time.Second)); !ok {
+		t.Fatalf("expected cached current-hour forecast")
+	}
+
+	stats := fallback.StatsSnapshot()
+	if stats.Queued != 1 || stats.RunSuccess != 1 || stats.CacheHit != 1 {
+		t.Fatalf("unexpected lifecycle stats: %+v", stats)
+	}
+	if !stats.HasActivity() {
+		t.Fatalf("expected lifecycle stats to report activity")
+	}
+	if after := fallback.StatsSnapshot(); after.HasActivity() {
+		t.Fatalf("expected snapshot to reset stats, got %+v", after)
+	}
+}
+
+func TestVOACAPClosedFallbackStatsReportNoCurrentHour(t *testing.T) {
+	cfg := testVOACAPFallbackConfig()
+	cfg.VOACAPFallback.DelaySeconds = 0
+	fallback := newTestClosedFallback(t, cfg, fakeClosedForecaster{}, fixedSSNProvider{ssn: 112})
+
+	req := testClosedRequest()
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	key := fallback.cacheKey(req, 112, now)
+	fallback.mu.Lock()
+	fallback.addCacheLocked(key, voacapCacheEntry{
+		forecast: VOACAPClosedForecast{
+			WindowStartUTC: now,
+			Records: []VOACAPHourlyForecast{
+				{FT8SNRDB: -34, HourUTC: 21, FrequencyMHz: 14.1},
+			},
+		},
+		storedAt: now,
+	})
+	fallback.mu.Unlock()
+
+	if _, ok := fallback.CheckForecast(req, now); ok {
+		t.Fatalf("cache without current-hour record should not return a forecast")
+	}
+	stats := fallback.StatsSnapshot()
+	if stats.NoCurrentHour != 1 {
+		t.Fatalf("NoCurrentHour = %d, want 1 in stats %+v", stats.NoCurrentHour, stats)
+	}
+}
+
+func TestVOACAPClosedFallbackStatsCountRunFailuresButNotShutdown(t *testing.T) {
+	cfg := testVOACAPFallbackConfig()
+	runErr := errors.New("voacap failed")
+	fallback := newTestClosedFallback(t, cfg, fakeClosedForecaster{
+		fn: func(context.Context, VOACAPClosedJob) (VOACAPClosedForecast, error) {
+			return VOACAPClosedForecast{}, runErr
+		},
+	}, fixedSSNProvider{ssn: 112})
+
+	fallback.runJob(context.Background(), VOACAPClosedJob{Request: testClosedRequest()})
+	if stats := fallback.StatsSnapshot(); stats.RunFailure != 1 {
+		t.Fatalf("RunFailure = %d, want 1 in stats %+v", stats.RunFailure, stats)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	fallback.runJob(ctx, VOACAPClosedJob{Request: testClosedRequest()})
+	if stats := fallback.StatsSnapshot(); stats.RunFailure != 0 {
+		t.Fatalf("shutdown-canceled run should not count as failure, got %+v", stats)
+	}
 }
 
 func TestVOACAPClosedFallbackBoundsDelayMap(t *testing.T) {
@@ -338,6 +435,29 @@ func TestVOACAPRunnerClosedForecasterDeckUsesSafeLabels(t *testing.T) {
 	}
 	if !strings.Contains(text, "CIRCUIT   45.50N   079.00W    31.98N    102.04W") {
 		t.Fatalf("fallback deck should preserve grid-center coordinates:\n%s", text)
+	}
+	if !strings.Contains(text, "TIME          3   10    1    1") {
+		t.Fatalf("fallback deck should start at the job window hour:\n%s", text)
+	}
+}
+
+func TestVOACAPRunnerClosedForecasterDeckUsesWindowStartHour(t *testing.T) {
+	cfg := testVOACAPFallbackConfig().VOACAPFallback
+	forecaster := NewVOACAPRunnerClosedForecaster(cfg)
+	deck, err := forecaster.buildDeck(VOACAPClosedJob{
+		Request: VOACAPClosedRequest{
+			UserGrid: "FN05",
+			DXGrid:   "DM81XX",
+			Band:     "20m",
+		},
+		SSN:            147,
+		WindowStartUTC: time.Date(2026, time.June, 9, 17, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("buildDeck() error: %v", err)
+	}
+	if text := string(deck); !strings.Contains(text, "TIME         17   24    1    1") {
+		t.Fatalf("fallback deck should cover the current UTC hour:\n%s", text)
 	}
 }
 

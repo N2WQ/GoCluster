@@ -2,12 +2,22 @@ package telnet
 
 import (
 	"testing"
+	"time"
 
 	"dxcluster/pathreliability"
 )
 
 func TestPathPredictionStatsSnapshotSplit(t *testing.T) {
-	s := &Server{}
+	s := &Server{
+		pathClosedFallback: &statsPathClosedFallback{
+			stats: pathreliability.VOACAPFallbackStats{
+				Queued:        2,
+				RunSuccess:    1,
+				CacheHit:      3,
+				NoCurrentHour: 4,
+			},
+		},
+	}
 
 	s.recordPathPrediction(pathreliability.Result{Source: pathreliability.SourceCombined, Weight: 2}, false, false)
 	s.recordPathPrediction(pathreliability.Result{Source: pathreliability.SourceInsufficient, Weight: 0, InsufficientReason: pathreliability.InsufficientNoSample}, false, false)
@@ -18,6 +28,10 @@ func TestPathPredictionStatsSnapshotSplit(t *testing.T) {
 	s.recordPathPrediction(pathreliability.Result{Source: pathreliability.SourceCombined, Weight: 2, CapLimited: true, CapWouldBlock: true}, false, false)
 	s.recordPathPrediction(pathreliability.Result{Source: pathreliability.SourceVOACAPClosed}, false, false)
 	s.recordPathPrediction(pathreliability.Result{Source: pathreliability.SourceVOACAPAligned}, false, false)
+	s.vStageClosed.Add(1)
+	s.vStageAligned.Add(2)
+	s.vStageNoP50.Add(3)
+	s.vStageMismatch.Add(4)
 
 	stats := s.PathPredictionStatsSnapshot()
 	if stats.Total != 9 {
@@ -31,6 +45,12 @@ func TestPathPredictionStatsSnapshotSplit(t *testing.T) {
 	}
 	if stats.VOACAPAligned != 1 {
 		t.Fatalf("expected voacap aligned=1, got %d", stats.VOACAPAligned)
+	}
+	if stats.VOACAPFallback.Queued != 2 || stats.VOACAPFallback.RunSuccess != 1 || stats.VOACAPFallback.CacheHit != 3 || stats.VOACAPFallback.NoCurrentHour != 4 {
+		t.Fatalf("unexpected fallback stats: %+v", stats.VOACAPFallback)
+	}
+	if stats.VOACAPFallbackClosedCandidate != 1 || stats.VOACAPFallbackAlignedCandidate != 2 || stats.VOACAPFallbackOpenNoP50 != 3 || stats.VOACAPFallbackClassMismatch != 4 {
+		t.Fatalf("unexpected fallback stage stats: %+v", stats)
 	}
 	if stats.Insufficient != 5 {
 		t.Fatalf("expected insufficient=5, got %d", stats.Insufficient)
@@ -55,8 +75,83 @@ func TestPathPredictionStatsSnapshotSplit(t *testing.T) {
 	}
 
 	after := s.PathPredictionStatsSnapshot()
-	if after.Total != 0 || after.Combined != 0 || after.VOACAPClosed != 0 || after.VOACAPAligned != 0 || after.Insufficient != 0 || after.NoSample != 0 || after.LowCount != 0 || after.LowReceiver != 0 || after.LowWeight != 0 || after.Stale != 0 || after.CapLimited != 0 || after.CapWouldBlock != 0 || after.OverrideR != 0 || after.OverrideG != 0 {
+	if after.Total != 0 || after.Combined != 0 || after.VOACAPClosed != 0 || after.VOACAPAligned != 0 || after.VOACAPFallback.HasActivity() || after.VOACAPFallbackClosedCandidate != 0 || after.VOACAPFallbackAlignedCandidate != 0 || after.VOACAPFallbackOpenNoP50 != 0 || after.VOACAPFallbackClassMismatch != 0 || after.Insufficient != 0 || after.NoSample != 0 || after.LowCount != 0 || after.LowReceiver != 0 || after.LowWeight != 0 || after.Stale != 0 || after.CapLimited != 0 || after.CapWouldBlock != 0 || after.OverrideR != 0 || after.OverrideG != 0 {
 		t.Fatalf("expected zeroed snapshot, got %+v", after)
+	}
+}
+
+func TestPathResultWithClosedFallbackStageStats(t *testing.T) {
+	cfg := pathreliability.DefaultConfig()
+	cfg.MinObservationCount = 2
+	cfg.GlyphSymbols.Closed = "!"
+	predictor := pathreliability.NewPredictor(cfg, []string{"20m"})
+	req := pathreliability.VOACAPClosedRequest{Band: "20m", Mode: "FT8"}
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name              string
+		base              pathreliability.Result
+		forecastSNR       int
+		wantSource        pathreliability.PredictionSource
+		wantClosed        int64
+		wantAligned       int64
+		wantOpenNoP50     int64
+		wantClassMismatch int64
+	}{
+		{
+			name:        "closed",
+			base:        pathreliability.Result{Source: pathreliability.SourceInsufficient},
+			forecastSNR: -34,
+			wantSource:  pathreliability.SourceVOACAPClosed,
+			wantClosed:  1,
+		},
+		{
+			name:          "open no sparse p50",
+			base:          pathreliability.Result{Source: pathreliability.SourceInsufficient},
+			forecastSNR:   -15,
+			wantSource:    pathreliability.SourceInsufficient,
+			wantOpenNoP50: 1,
+		},
+		{
+			name:              "class mismatch",
+			base:              pathreliability.Result{Source: pathreliability.SourceInsufficient, HasP50: true, P50DB: -15},
+			forecastSNR:       -19,
+			wantSource:        pathreliability.SourceInsufficient,
+			wantClassMismatch: 1,
+		},
+		{
+			name:        "aligned",
+			base:        pathreliability.Result{Source: pathreliability.SourceInsufficient, HasP50: true, P50DB: -15},
+			forecastSNR: -15,
+			wantSource:  pathreliability.SourceVOACAPAligned,
+			wantAligned: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Server{
+				pathPredictor: predictor,
+				pathClosedFallback: fakePathClosedFallback{
+					forecast: pathreliability.VOACAPCachedForecast{
+						Record: pathreliability.VOACAPHourlyForecast{FT8SNRDB: tt.forecastSNR, HourUTC: 20, FrequencyMHz: 14.1},
+						SSN:    112,
+					},
+					ok: true,
+				},
+			}
+			got := s.pathResultWithClosedFallback(tt.base, req, now)
+			if got.Source != tt.wantSource {
+				t.Fatalf("source = %v, want %v; result=%+v", got.Source, tt.wantSource, got)
+			}
+			stats := s.PathPredictionStatsSnapshot()
+			if stats.VOACAPFallbackClosedCandidate != tt.wantClosed ||
+				stats.VOACAPFallbackAlignedCandidate != tt.wantAligned ||
+				stats.VOACAPFallbackOpenNoP50 != tt.wantOpenNoP50 ||
+				stats.VOACAPFallbackClassMismatch != tt.wantClassMismatch {
+				t.Fatalf("unexpected stage stats: %+v", stats)
+			}
+		})
 	}
 }
 
@@ -67,4 +162,18 @@ func BenchmarkRecordPathPrediction(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		s.recordPathPrediction(res, false, false)
 	}
+}
+
+type statsPathClosedFallback struct {
+	stats pathreliability.VOACAPFallbackStats
+}
+
+func (f *statsPathClosedFallback) CheckForecast(pathreliability.VOACAPClosedRequest, time.Time) (pathreliability.VOACAPCachedForecast, bool) {
+	return pathreliability.VOACAPCachedForecast{}, false
+}
+
+func (f *statsPathClosedFallback) StatsSnapshot() pathreliability.VOACAPFallbackStats {
+	stats := f.stats
+	f.stats = pathreliability.VOACAPFallbackStats{}
+	return stats
 }

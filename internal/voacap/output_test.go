@@ -79,6 +79,23 @@ func TestParseMethod30PredictionsAllowsMissingReliability(t *testing.T) {
 	}
 }
 
+func TestParseMethod30PredictionsNormalizesHour24ToUTCZero(t *testing.T) {
+	body := []byte(`
+     24.0 17.2  7.0  0.0 FREQ
+            16   -8    -  SNR
+`)
+	records, err := ParseMethod30Predictions(body)
+	if err != nil {
+		t.Fatalf("ParseMethod30Predictions() error: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("len(records) = %d, want 1", len(records))
+	}
+	if records[0].HourUTC != 0 {
+		t.Fatalf("HourUTC = %d, want UTC midnight 0", records[0].HourUTC)
+	}
+}
+
 func TestParseMethod30PredictionsRequiresSNR(t *testing.T) {
 	_, err := ParseMethod30Predictions([]byte(`
       1.0 17.2  3.6  7.0  0.0 FREQ
@@ -102,6 +119,7 @@ func FuzzParseMethod30Predictions(f *testing.F) {
 	f.Add(string(readTestdata(f, "voacap_output_method30.txt")))
 	f.Add("")
 	f.Add("1.0 17.2 3.6 7.0 0.0 FREQ\n16 -8 20 SNR\n")
+	f.Add("24.0 17.2 7.0 0.0 FREQ\n16 -8 SNR\n")
 	f.Fuzz(func(t *testing.T, body string) {
 		_, _ = ParseMethod30Predictions([]byte(body))
 	})

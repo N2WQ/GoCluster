@@ -12,6 +12,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
 | TSR-0001 | <title> | Open | YYYY-MM-DD | <area> | - | `docs/troubleshooting/TSR-0001-<slug>.md` |
+| TSR-0028 | VOACAP Fallback Current-Hour Miss | Resolved | 2026-06-09 | voacap, pathreliability, propagation logs | ADR-0164 | `docs/troubleshooting/TSR-0028-voacap-fallback-current-hour-miss.md` |
 | TSR-0027 | Support-Agent Shallow Answers | Resolved | 2026-06-07 | customgpt, supportability, actions, operations | ADR-0154 | `docs/troubleshooting/TSR-0027-support-agent-shallow-answers.md` |
 | TSR-0026 | Archive Cleanup Scan CPU Spikes | Resolved | 2026-06-06 | archive, Pebble, hot path, profiling | ADR-0151 | `docs/troubleshooting/TSR-0026-archive-cleanup-scan-cpu-spikes.md` |
 | TSR-0025 | P50 Merge CPU And Heap Pressure | Resolved | 2026-06-04 | pathreliability, retained state, hot path, profiling | ADR-0139 | `docs/troubleshooting/TSR-0025-p50-merge-cpu-and-heap-pressure.md` |

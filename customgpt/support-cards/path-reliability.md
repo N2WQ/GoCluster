@@ -22,6 +22,10 @@ inspect user-visible diagnostics:
   capped evidence, not necessarily a bad path.
 - `vcap` diagnostics are VOACAP closed fallback results; `valn` diagnostics
   are sparse bucket p50 aligned with current-hour VOACAP.
+- `Path predictions (5m)` counts final emitted `voacap_closed` and
+  `voacap_aligned` glyphs. `VOACAP fallback (5m)` explains fallback stages such
+  as queued, cache hit, no current hour, open without sparse p50, and class
+  mismatch.
 - Thresholds mix operator policy and algorithm calibration; do not retune them
   as the first normal troubleshooting step.
 - Effective YAML matters before suggesting config edits.

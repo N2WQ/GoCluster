@@ -127,8 +127,15 @@ SNR is at or below the request mode's configured
 `mode_thresholds.<mode>.closed` threshold, or it can emit a normal path glyph
 when sparse bucket p50 evidence exists and that p50 class matches the cached
 VOACAP current-hour class. Cached VOACAP output retains the parsed hourly
-records for the requested band, and it never replaces a normal sufficient p50
-bucket prediction.
+records for the requested band. Runtime fallback decks start at the current
+rolling UTC window, and parsed VOACAP hour `24` is stored as UTC hour `0`.
+The fallback never replaces a normal sufficient p50 bucket prediction.
+
+Five-minute propagation logs keep final emit counters in `Path predictions
+(5m)`: `voacap_closed` and `voacap_aligned`. When fallback work occurs, a
+separate `VOACAP fallback (5m)` line reports stage counters such as `queued`,
+`success`, `cache_hit`, `no_current_hour`, `open_no_p50`, and
+`class_mismatch`.
 
 ## How to Use This Information
 

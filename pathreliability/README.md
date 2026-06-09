@@ -131,15 +131,22 @@ the receiver-diversity gate in enforce evaluation; `low_weight`
 maps to the decayed effective weight floor. These aggregate lines are written
 to `logging.propagation.dir`. VOACAP fallback outcomes are counted separately
 as `voacap_closed` and `voacap_aligned`.
+When the fallback is active, a separate `VOACAP fallback (5m)` line reports
+stage counters such as `queued`, `success`, `cache_hit`, `no_current_hour`,
+`delay_wait`, `queue_full`, `closed`, `aligned`, `open_no_p50`, and
+`class_mismatch`. The path-prediction counters are final emitted glyphs; the
+fallback line explains why cached VOACAP work did or did not emit a glyph.
 
 When `voacap_fallback.enabled` is true, insufficient bucket results may start a
 delayed VOACAP lookup. The lookup is nonblocking in the telnet path. Cached
 VOACAP output stores one hourly record per parsed forecast hour for the
 requested band. If more than one configured center frequency maps to the same
 band and hour, the cache keeps the strongest FT8-equivalent SNR for that hour.
-Lookup selects the record matching the current UTC hour and re-evaluates it
-against the request mode, so the first mode to populate the cache does not
-decide later modes. If the selected VOACAP record is at or below
+Runtime fallback decks start at the current rolling UTC forecast window, and
+VOACAP output hour `24` is normalized to UTC hour `0`. Lookup selects the record
+matching the current UTC hour and re-evaluates it against the request mode, so
+the first mode to populate the cache does not decide later modes. If the
+selected VOACAP record is at or below
 `mode_thresholds.<mode>.closed`, the fallback can return the configured closed
 glyph. Otherwise, it can return a normal `HIGH`, `MEDIUM`, `LOW`, or
 `UNLIKELY` glyph only when the insufficient bucket result still has sparse p50
