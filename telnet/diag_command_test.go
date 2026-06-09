@@ -216,6 +216,22 @@ func TestDiagPathTagShowsVOACAPSelectedHour(t *testing.T) {
 	}
 }
 
+func TestDiagPathTagShowsVOACAPAlignedSparseP50(t *testing.T) {
+	prediction := pathPrediction{
+		result: pathreliability.Result{
+			Source:         pathreliability.SourceVOACAPAligned,
+			P50DB:          -14.5,
+			VOACAPFT8SNRDB: -15,
+			VOACAPHourUTC:  20,
+			VOACAPSSN:      112,
+		},
+	}
+	got := diagPathTag(prediction, true)
+	if got != "valn|-15/-15h20s112" {
+		t.Fatalf("unexpected VOACAP-aligned path diagnostic: %q", got)
+	}
+}
+
 func TestFormatSpotForClientModeDiagComment(t *testing.T) {
 	server := NewServer(ServerOptions{}, nil)
 	client := &Client{}

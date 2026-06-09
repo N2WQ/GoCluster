@@ -19,6 +19,10 @@ cases when bucket evidence is missing.
 
 ## Decision
 
+This ADR records the first production fallback behavior. ADR-0163 later
+extends the closed-only limitation to allow VOACAP-aligned sparse p50 normal
+glyphs while preserving the closed glyph rule below.
+
 Add an optional `path_reliability.voacap_fallback` runtime path that is disabled
 by default. When enabled, the cluster fetches SSN on the configured cadence,
 maintains an integer rounded 8-hour EWMA SSN generation, and starts a bounded

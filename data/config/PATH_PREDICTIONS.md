@@ -121,11 +121,14 @@ When you see a glyph next to a spot, here's what happened behind the scenes:
 If the selected bucket evidence is insufficient and the optional
 `voacap_fallback.enabled` setting is true, the cluster can start a delayed
 nonblocking VOACAP lookup for the same grid-center endpoints. A cached VOACAP
-result can only replace the blank glyph with the configured closed glyph when
-the current UTC hour's forecasted FT8-equivalent SNR is at or below the request
-mode's configured `mode_thresholds.<mode>.closed` threshold. Cached VOACAP
-output retains the parsed hourly records for the requested band, and it never
-replaces a normal p50 bucket prediction.
+result can replace an insufficient glyph in two cases: it can emit the
+configured closed glyph when the current UTC hour's forecasted FT8-equivalent
+SNR is at or below the request mode's configured
+`mode_thresholds.<mode>.closed` threshold, or it can emit a normal path glyph
+when sparse bucket p50 evidence exists and that p50 class matches the cached
+VOACAP current-hour class. Cached VOACAP output retains the parsed hourly
+records for the requested band, and it never replaces a normal sufficient p50
+bucket prediction.
 
 ## How to Use This Information
 
@@ -137,6 +140,8 @@ The glyphs help you prioritize. If you see:
 - **`-`**: Probably not worth your time unless it's a rare one.
 - **Closed glyph**: Optional VOACAP fallback thinks the band is closed for this
   mode and path.
+- **VOACAP-aligned normal glyph**: Bucket evidence was insufficient, but sparse
+  bucket p50 and current-hour VOACAP mapped to the same path class.
 - **Space**: No prediction available - you're on your own. Could be good or bad.
 
 ### Understanding Limitations

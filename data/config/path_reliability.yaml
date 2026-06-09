@@ -50,8 +50,9 @@ glyph_symbols:
   insufficient: " "
   closed: "#"
 
-# Optional VOACAP fallback. Disabled by default; when enabled it can only
-# replace an insufficient bucket prediction with a closed-band glyph.
+# Optional VOACAP fallback. When enabled, it can replace insufficient bucket
+# predictions only with a closed glyph or a sparse-p50 glyph whose class agrees
+# with the cached current-hour VOACAP forecast.
 voacap_fallback:
   enabled: true
   ssn_fetch_interval_seconds: 1800

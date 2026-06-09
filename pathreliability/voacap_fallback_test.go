@@ -93,6 +93,13 @@ func TestVOACAPClosedFallbackCachesOpenVerdictWithoutReturningGlyph(t *testing.T
 	if _, ok := fallback.CheckClosed(req, now.Add(time.Second)); ok {
 		t.Fatalf("open VOACAP verdict must not replace insufficient bucket result")
 	}
+	forecast, ok := fallback.CheckForecast(req, now.Add(time.Second))
+	if !ok {
+		t.Fatalf("expected cached open current-hour forecast")
+	}
+	if forecast.Record.FT8SNRDB != -20 || forecast.Record.HourUTC != 20 || forecast.SSN != 112 {
+		t.Fatalf("unexpected cached open forecast: %+v", forecast)
+	}
 	if calls.Load() != 1 {
 		t.Fatalf("open cached verdict should avoid duplicate forecast, calls=%d", calls.Load())
 	}

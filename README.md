@@ -211,6 +211,8 @@ Path reliability glyphs:
   "<" - LOW: weak or marginal path.
   "-" - UNLIKELY: poor path.
   " " - INSUFFICIENT: not enough recent evidence.
+  Bucket p50 data is authoritative; VOACAP may only replace insufficient data
+    when closed or aligned with sparse p50.
   "#" - CLOSED: VOACAP fallback predicts the current UTC hour's SNR at or
     below the mode's closed threshold.
   PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, INSUFFICIENT.
@@ -357,7 +359,7 @@ For the mode-specific support rules, timing knobs, and decision history, see
 - `SET DIAG DEDUPE`: `<DE-DXCC>|<DE-key>|<src>|<policy>`, where `<src>` is `H` for human-class or `S` for skimmer/automated-class.
 - `SET DIAG SOURCE`: `<source>` with `MAN`, `RBN`, `RBNFT`, `PSK`, `DXS`, `UP`, or `P:<peer>` for peer-origin spots.
 - `SET DIAG CONF`: `<score>%` when the pipeline calculated a confidence percent, otherwise `--%`.
-- `SET DIAG PATH`: `n<count>|w<weight>|a<age>` for usable path evidence, `n<count>|<reason>` for insufficient evidence (`none`, `lown`, `lowr`, `loww`, or `stale`), or `vcap|<snr>|h<hour>|s<ssn>` for a cached VOACAP closed fallback.
+- `SET DIAG PATH`: `n<count>|w<weight>|a<age>` for usable path evidence, `n<count>|<reason>` for insufficient evidence (`none`, `lown`, `lowr`, `loww`, or `stale`), `vcap|<snr>|h<hour>|s<ssn>` for a cached VOACAP closed fallback, or `valn|<p50>/<snr>h<hour>s<ssn>` for VOACAP-aligned sparse p50.
 - `SET DIAG MODE`: `<mode>|<provenance>` to show the final normalized mode and why it was assigned.
 
 Mode provenance tokens:
@@ -395,6 +397,9 @@ area:
   supplied the result. `<snr>` is the selected hour's integer FT8-equivalent
   SNR, `h<hour>` is the selected UTC forecast hour, and `<ssn>` is the rounded
   EWMA SSN generation used for the run.
+- `valn|<p50>/<snr>h<hour>s<ssn>` means sparse bucket p50 evidence was
+  insufficient by sample gates but aligned with the current-hour VOACAP class.
+  `<p50>` is rounded for display so the diagnostic fits the fixed-width line.
 - `n<count>|none` means there was no usable selected path sample.
 - `n<count>|lown` means selected evidence existed but the selected observation count
   stayed below the configured minimum.
@@ -427,6 +432,8 @@ Example readings:
   reduced diagnostic evidence.
 - `vcap|-34|h20|s112`: VOACAP fallback selected the 20:00 UTC forecast record,
   predicted FT8-equivalent SNR -34, and used SSN generation 112.
+- `valn|-15/-15h20s112`: sparse bucket p50 rounded to -15 dB and the 20:00
+  UTC VOACAP forecast also mapped to that same path class.
 - `n1|loww`: one selected observation existed, but the effective weight was
   below the minimum.
 - `n32|w1`: large selected count but low rounded effective weight. Treat this
@@ -455,10 +462,10 @@ What the classes mean to an operator:
 
 | Display | PATH filter value | Operator meaning | If it looks wrong |
 | --- | --- | --- | --- |
-| `>` | `HIGH` | Recent evidence suggests a favorable path. | Use `SET DIAG PATH` to see sample count, weight, and age. |
-| `=` | `MEDIUM` | Recent evidence suggests a workable path. | Use `SET DIAG PATH`; low effective weight can still map to a usable class. |
-| `<` | `LOW` | Recent evidence suggests a weak or marginal path. | Use `SET DIAG PATH` to confirm grids, sample count, and freshness. |
-| `-` | `UNLIKELY` | Recent evidence suggests a poor path. | Check whether your grid and the DX grid are correct before treating this as a hard no. |
+| `>` | `HIGH` | Recent evidence suggests a favorable path, or sparse p50 aligned with VOACAP when bucket evidence was insufficient. | Use `SET DIAG PATH` to see sample count, weight, age, or `valn` alignment. |
+| `=` | `MEDIUM` | Recent evidence suggests a workable path, or sparse p50 aligned with VOACAP when bucket evidence was insufficient. | Use `SET DIAG PATH`; low effective weight can still map to a usable class. |
+| `<` | `LOW` | Recent evidence suggests a weak or marginal path, or sparse p50 aligned with VOACAP when bucket evidence was insufficient. | Use `SET DIAG PATH` to confirm grids, sample count, freshness, or `valn` alignment. |
+| `-` | `UNLIKELY` | Recent evidence suggests a poor path, or sparse p50 aligned with VOACAP when bucket evidence was insufficient. | Check whether your grid and the DX grid are correct before treating this as a hard no. |
 | `!` | `UNLIKELY` | Bucket evidence was insufficient, but the optional VOACAP fallback predicts closed conditions for the current mode and path. | Check `SET DIAG PATH`; VOACAP fallback never overrides sufficient bucket evidence. |
 | blank | `INSUFFICIENT` | The cluster did not have enough usable recent evidence to rate the path. | Run `SET DIAG PATH`; common reasons are `none`, `lown`, `lowr`, `loww`, and `stale`. |
 
@@ -483,15 +490,19 @@ Important operational notes:
   `low_count` means the selected raw sample count missed the observation floor,
   `low_receiver` means receiver diversity missed the derived receiver gate,
   and `low_weight` means decayed effective weight missed the weight floor.
+  VOACAP fallback outcomes are counted separately as `voacap_closed` and
+  `voacap_aligned`.
   These lines are written to `logging.propagation.dir`, not the system log.
 - If grids are missing, evidence is stale, too sparse, or too weak, the result
   stays `INSUFFICIENT`. When path reliability is enabled, H3 table failures are
   startup failures because those cells are critical to path predictions.
 - If `voacap_fallback.enabled` is true, an insufficient bucket result may start
-  a delayed nonblocking VOACAP lookup. A cached fallback can only replace the
-  blank glyph with the configured closed glyph when the current UTC hour's
-  VOACAP record predicts an FT8-equivalent SNR at or below
-  `mode_thresholds.<mode>.closed`.
+  a delayed nonblocking VOACAP lookup. A cached fallback can replace the blank
+  glyph with the configured closed glyph when the current UTC hour's VOACAP
+  record predicts an FT8-equivalent SNR at or below
+  `mode_thresholds.<mode>.closed`, or with a normal glyph when sparse bucket
+  p50 and VOACAP map to the same path class. Sufficient bucket p50 results stay
+  authoritative.
 - `PATH` filters work on the class names, not on the glyph characters.
 - `R` and `G` are solar-weather display overrides, not normal path classes.
 

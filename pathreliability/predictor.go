@@ -66,6 +66,7 @@ const (
 	SourceInsufficient PredictionSource = iota
 	SourceCombined
 	SourceVOACAPClosed
+	SourceVOACAPAligned
 )
 
 // InsufficientReason describes why a prediction returned the insufficient glyph.

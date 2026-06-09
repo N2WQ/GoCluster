@@ -4,7 +4,8 @@
 // result construction.
 // Related docs: pathreliability/README.md,
 // data/config/PATH_PREDICTIONS.md, docs/decisions/ADR-0161-voacap-closed-only-path-fallback.md,
-// docs/decisions/ADR-0162-voacap-hourly-forecast-window-cache.md.
+// docs/decisions/ADR-0162-voacap-hourly-forecast-window-cache.md,
+// docs/decisions/ADR-0163-voacap-aligned-sparse-p50-fallback.md.
 // Related tests: pathreliability/voacap_fallback_test.go,
 // telnet/path_settings_test.go.
 package pathreliability
@@ -21,11 +22,11 @@ import (
 )
 
 // ClosedFallback is the nonblocking path-reliability hook for an optional
-// VOACAP fallback. Implementations return a result only when a closed verdict
-// is already cached; lookup may enqueue background work but must not run VOACAP
-// in the telnet display/filter path.
+// VOACAP fallback. Implementations return cached current-hour forecasts when
+// available; lookup may enqueue background work but must not run VOACAP in the
+// telnet display/filter path.
 type ClosedFallback interface {
-	CheckClosed(req VOACAPClosedRequest, now time.Time) (Result, bool)
+	CheckForecast(req VOACAPClosedRequest, now time.Time) (VOACAPCachedForecast, bool)
 }
 
 type VOACAPSSNProvider interface {
@@ -71,6 +72,14 @@ type VOACAPHourlyForecast struct {
 	VOACAPSNRDBHz int
 	HourUTC       int
 	FrequencyMHz  float64
+}
+
+// VOACAPCachedForecast carries the cached current-hour VOACAP record and the
+// forecast generation diagnostics needed by telnet display decisions.
+type VOACAPCachedForecast struct {
+	Record VOACAPHourlyForecast
+	SSN    int
+	AgeSec int64
 }
 
 type VOACAPClosedFallbackSnapshot struct {
@@ -198,8 +207,16 @@ func (f *VOACAPClosedFallback) Snapshot() VOACAPClosedFallbackSnapshot {
 }
 
 func (f *VOACAPClosedFallback) CheckClosed(req VOACAPClosedRequest, now time.Time) (Result, bool) {
-	if f == nil || !f.fallback.Enabled {
+	forecast, ok := f.CheckForecast(req, now)
+	if !ok || !f.forecastRecordClosedForMode(forecast.Record, req.Mode) {
 		return Result{}, false
+	}
+	return f.closedResultFromForecast(forecast), true
+}
+
+func (f *VOACAPClosedFallback) CheckForecast(req VOACAPClosedRequest, now time.Time) (VOACAPCachedForecast, bool) {
+	if f == nil || !f.fallback.Enabled {
+		return VOACAPCachedForecast{}, false
 	}
 	if now.IsZero() {
 		now = time.Now().UTC()
@@ -207,11 +224,11 @@ func (f *VOACAPClosedFallback) CheckClosed(req VOACAPClosedRequest, now time.Tim
 	now = now.UTC()
 	prepared, ok := f.prepareRequest(req)
 	if !ok {
-		return Result{}, false
+		return VOACAPCachedForecast{}, false
 	}
 	ssn, ok := f.ssnProvider.CurrentSSN(now)
 	if !ok {
-		return Result{}, false
+		return VOACAPCachedForecast{}, false
 	}
 	key := f.cacheKey(prepared, ssn, now)
 	delayKey := f.delayKey(prepared)
@@ -226,21 +243,19 @@ func (f *VOACAPClosedFallback) CheckClosed(req VOACAPClosedRequest, now time.Tim
 			record, ok := forecastRecordForHour(entry.forecast, now, f.fallback.ForecastHours)
 			if !ok {
 				delete(f.cache, key)
-			} else if f.forecastRecordClosedForMode(record, prepared.Mode) {
-				return f.resultFromCache(key, entry, record, now), true
 			} else {
-				return Result{}, false
+				return f.cachedForecastFromCache(key, entry, record, now), true
 			}
 		}
 	}
 	if _, ok := f.inflight[key]; ok {
-		return Result{}, false
+		return VOACAPCachedForecast{}, false
 	}
 	if !f.delayElapsedLocked(delayKey, now) {
-		return Result{}, false
+		return VOACAPCachedForecast{}, false
 	}
 	if !f.running.Load() || len(f.queue) >= cap(f.queue) {
-		return Result{}, false
+		return VOACAPCachedForecast{}, false
 	}
 	job := VOACAPClosedJob{
 		Request:        prepared,
@@ -253,7 +268,7 @@ func (f *VOACAPClosedFallback) CheckClosed(req VOACAPClosedRequest, now time.Tim
 	f.inflight[key] = struct{}{}
 	delete(f.delays, delayKey)
 	f.queue <- job
-	return Result{}, false
+	return VOACAPCachedForecast{}, false
 }
 
 func (f *VOACAPClosedFallback) prepareRequest(req VOACAPClosedRequest) (VOACAPClosedRequest, bool) {
@@ -276,15 +291,8 @@ func (f *VOACAPClosedFallback) prepareRequest(req VOACAPClosedRequest) (VOACAPCl
 	return req, true
 }
 
-func (f *VOACAPClosedFallback) closedThresholdForMode(mode string) float64 {
-	if f == nil {
-		return 0
-	}
-	return thresholdsForModeDB(mode, f.cfg).Closed
-}
-
 func (f *VOACAPClosedFallback) forecastRecordClosedForMode(record VOACAPHourlyForecast, mode string) bool {
-	return float64(record.FT8SNRDB) <= f.closedThresholdForMode(mode)
+	return ClosedForDB(float64(record.FT8SNRDB), mode, f.cfg)
 }
 
 func (f *VOACAPClosedFallback) cacheKey(req VOACAPClosedRequest, ssn int, now time.Time) voacapCacheKey {
@@ -357,25 +365,55 @@ func (f *VOACAPClosedFallback) runJob(ctx context.Context, job VOACAPClosedJob) 
 	f.addCacheLocked(job.key, voacapCacheEntry{forecast: forecast, storedAt: now})
 }
 
-func (f *VOACAPClosedFallback) resultFromCache(key voacapCacheKey, entry voacapCacheEntry, record VOACAPHourlyForecast, now time.Time) Result {
+func (f *VOACAPClosedFallback) cachedForecastFromCache(key voacapCacheKey, entry voacapCacheEntry, record VOACAPHourlyForecast, now time.Time) VOACAPCachedForecast {
 	ageSec := int64(0)
 	if now.After(entry.storedAt) {
 		ageSec = int64(now.Sub(entry.storedAt).Seconds())
 	}
-	return Result{
-		Glyph:              f.cfg.GlyphSymbols.Closed,
-		Class:              classUnlikely,
-		P50DB:              float64(record.FT8SNRDB),
-		HasP50:             true,
-		P50Glyph:           f.cfg.GlyphSymbols.Closed,
-		AgeSec:             ageSec,
-		Source:             SourceVOACAPClosed,
-		VOACAPFT8SNRDB:     record.FT8SNRDB,
-		VOACAPSSN:          key.ssn,
-		VOACAPAgeSec:       ageSec,
-		VOACAPHourUTC:      record.HourUTC,
-		VOACAPFrequencyMHz: record.FrequencyMHz,
+	return VOACAPCachedForecast{
+		Record: record,
+		SSN:    key.ssn,
+		AgeSec: ageSec,
 	}
+}
+
+func (f *VOACAPClosedFallback) closedResultFromForecast(forecast VOACAPCachedForecast) Result {
+	return VOACAPClosedResult(f.cfg, forecast)
+}
+
+// VOACAPClosedResult maps a cached VOACAP forecast to the closed fallback result.
+func VOACAPClosedResult(cfg Config, forecast VOACAPCachedForecast) Result {
+	return Result{
+		Glyph:              cfg.GlyphSymbols.Closed,
+		Class:              classUnlikely,
+		P50DB:              float64(forecast.Record.FT8SNRDB),
+		HasP50:             true,
+		P50Glyph:           cfg.GlyphSymbols.Closed,
+		AgeSec:             forecast.AgeSec,
+		Source:             SourceVOACAPClosed,
+		VOACAPFT8SNRDB:     forecast.Record.FT8SNRDB,
+		VOACAPSSN:          forecast.SSN,
+		VOACAPAgeSec:       forecast.AgeSec,
+		VOACAPHourUTC:      forecast.Record.HourUTC,
+		VOACAPFrequencyMHz: forecast.Record.FrequencyMHz,
+	}
+}
+
+// VOACAPAlignedResult maps sparse p50 evidence corroborated by VOACAP to a
+// normal path glyph while retaining both bucket and VOACAP diagnostics.
+func VOACAPAlignedResult(base Result, cfg Config, mode string, forecast VOACAPCachedForecast) Result {
+	class := ClassForDB(base.P50DB, mode, cfg)
+	base.Glyph = glyphForClass(class, cfg)
+	base.Class = class
+	base.P50Glyph = base.Glyph
+	base.Source = SourceVOACAPAligned
+	base.InsufficientReason = InsufficientNone
+	base.VOACAPFT8SNRDB = forecast.Record.FT8SNRDB
+	base.VOACAPSSN = forecast.SSN
+	base.VOACAPAgeSec = forecast.AgeSec
+	base.VOACAPHourUTC = forecast.Record.HourUTC
+	base.VOACAPFrequencyMHz = forecast.Record.FrequencyMHz
+	return base
 }
 
 func (f *VOACAPClosedFallback) pruneLocked(now time.Time) {

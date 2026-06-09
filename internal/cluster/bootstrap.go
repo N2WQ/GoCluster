@@ -1508,11 +1508,12 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 				stats := srv.PathPredictionStatsSnapshot()
 				if stats.Total > 0 {
 					fileOnly(fmt.Sprintf(
-						"Path predictions (5m): total=%s derived=%s combined=%s voacap_closed=%s insufficient=%s no_sample=%s low_count=%s low_receiver=%s low_weight=%s stale=%s cap_limited=%s cap_would_block=%s override_r=%s override_g=%s",
+						"Path predictions (5m): total=%s derived=%s combined=%s voacap_closed=%s voacap_aligned=%s insufficient=%s no_sample=%s low_count=%s low_receiver=%s low_weight=%s stale=%s cap_limited=%s cap_would_block=%s override_r=%s override_g=%s",
 						humanize.Comma(int64(stats.Total)),
 						humanize.Comma(int64(stats.Derived)),
 						humanize.Comma(int64(stats.Combined)),
 						humanize.Comma(int64(stats.VOACAPClosed)),
+						humanize.Comma(int64(stats.VOACAPAligned)),
 						humanize.Comma(int64(stats.Insufficient)),
 						humanize.Comma(int64(stats.NoSample)),
 						humanize.Comma(int64(stats.LowCount)),

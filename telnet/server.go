@@ -241,7 +241,7 @@ type Server struct {
 	reputationGate        *reputation.Gate                           // Optional reputation gate for login metadata
 	startTime             time.Time                                  // Process start time for uptime tokens
 	pathPredictor         *pathreliability.Predictor                 // Optional path reliability predictor
-	pathClosedFallback    pathreliability.ClosedFallback             // Optional nonblocking VOACAP closed fallback
+	pathClosedFallback    pathreliability.ClosedFallback             // Optional nonblocking VOACAP sparse-data fallback
 	pathDisplay           bool                                       // Toggle glyph rendering
 	solarWeather          *solarweather.Manager                      // Optional solar/geomagnetic override evaluator
 	noiseModel            pathreliability.NoiseModel                 // Noise class lookup
@@ -267,6 +267,7 @@ type Server struct {
 	pathPredDerived       atomic.Uint64                              // Predictions using derived user/DX grids
 	pathPredCombined      atomic.Uint64                              // Predictions with sufficient combined data
 	pathPredVOACAPClosed  atomic.Uint64                              // Insufficient bucket predictions replaced by VOACAP closed fallback
+	pathPredVOACAPAligned atomic.Uint64                              // Insufficient bucket predictions replaced by VOACAP-aligned sparse p50
 	pathPredInsufficient  atomic.Uint64                              // Predictions with insufficient data
 	pathPredNoSample      atomic.Uint64                              // Insufficient predictions with no samples
 	pathPredLowCount      atomic.Uint64                              // Insufficient predictions below min observation count
@@ -2866,6 +2867,7 @@ type pathPredictionStats struct {
 	Derived       uint64
 	Combined      uint64
 	VOACAPClosed  uint64
+	VOACAPAligned uint64
 	Insufficient  uint64
 	NoSample      uint64
 	LowCount      uint64
@@ -2897,6 +2899,8 @@ func (s *Server) recordPathPrediction(res pathreliability.Result, userDerived, d
 		s.pathPredCombined.Add(1)
 	case pathreliability.SourceVOACAPClosed:
 		s.pathPredVOACAPClosed.Add(1)
+	case pathreliability.SourceVOACAPAligned:
+		s.pathPredVOACAPAligned.Add(1)
 	default:
 		s.pathPredInsufficient.Add(1)
 		switch res.InsufficientReason {
@@ -2929,6 +2933,7 @@ func (s *Server) PathPredictionStatsSnapshot() pathPredictionStats {
 		Derived:       s.pathPredDerived.Swap(0),
 		Combined:      s.pathPredCombined.Swap(0),
 		VOACAPClosed:  s.pathPredVOACAPClosed.Swap(0),
+		VOACAPAligned: s.pathPredVOACAPAligned.Swap(0),
 		Insufficient:  s.pathPredInsufficient.Swap(0),
 		NoSample:      s.pathPredNoSample.Swap(0),
 		LowCount:      s.pathPredLowCount.Swap(0),
@@ -3752,11 +3757,23 @@ func (s *Server) pathResultWithClosedFallback(res pathreliability.Result, req pa
 	if s == nil || s.pathClosedFallback == nil || res.Source != pathreliability.SourceInsufficient {
 		return res
 	}
-	closed, ok := s.pathClosedFallback.CheckClosed(req, now)
+	forecast, ok := s.pathClosedFallback.CheckForecast(req, now)
 	if !ok {
 		return res
 	}
-	return closed
+	cfg := s.pathPredictor.Config()
+	if pathreliability.ClosedForDB(float64(forecast.Record.FT8SNRDB), req.Mode, cfg) {
+		return pathreliability.VOACAPClosedResult(cfg, forecast)
+	}
+	if !res.HasP50 {
+		return res
+	}
+	p50Class := pathreliability.ClassForDB(res.P50DB, req.Mode, cfg)
+	voacapClass := pathreliability.ClassForDB(float64(forecast.Record.FT8SNRDB), req.Mode, cfg)
+	if p50Class != voacapClass {
+		return res
+	}
+	return pathreliability.VOACAPAlignedResult(res, cfg, req.Mode, forecast)
 }
 
 func pathPredictionBand(sp *spot.Spot) string {
@@ -3889,6 +3906,10 @@ func diagPathTag(prediction pathPrediction, havePrediction bool) string {
 	}
 	if res.Source == pathreliability.SourceVOACAPClosed {
 		return fmt.Sprintf("vcap|%d|h%02d|s%d", res.VOACAPFT8SNRDB, res.VOACAPHourUTC, res.VOACAPSSN)
+	}
+	if res.Source == pathreliability.SourceVOACAPAligned {
+		p50 := strconv.FormatFloat(math.Round(res.P50DB), 'f', 0, 64)
+		return fmt.Sprintf("valn|%s/%dh%02ds%d", p50, res.VOACAPFT8SNRDB, res.VOACAPHourUTC, res.VOACAPSSN)
 	}
 	weightValue := res.Weight
 	if res.CapLimited {

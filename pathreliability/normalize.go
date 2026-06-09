@@ -68,6 +68,12 @@ func ClassForDB(db float64, mode string, cfg Config) string {
 	}
 }
 
+// ClosedForDB reports whether an FT8-equivalent SNR is at or below the
+// mode-owned closed threshold.
+func ClosedForDB(db float64, mode string, cfg Config) bool {
+	return db <= thresholdsForModeDB(mode, cfg).Closed
+}
+
 func glyphForClass(class string, cfg Config) string {
 	switch class {
 	case classHigh:

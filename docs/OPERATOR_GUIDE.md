@@ -230,10 +230,11 @@ Insufficient evidence is shown as:
 n<count>|<reason>
 ```
 
-VOACAP closed fallback results are shown as:
+VOACAP fallback results are shown as:
 
 ```text
 vcap|<snr>|h<hour>|s<ssn>
+valn|<p50>/<snr>h<hour>s<ssn>
 ```
 
 - `n<count>` is the raw selected observation count behind the displayed path
@@ -251,6 +252,9 @@ vcap|<snr>|h<hour>|s<ssn>
   supplied the result. `<snr>` is the selected hour's integer FT8-equivalent
   SNR, `h<hour>` is the selected UTC forecast hour, and `<ssn>` is the rounded
   EWMA SSN generation used for the run.
+- `valn|<p50>/<snr>h<hour>s<ssn>` means sparse bucket p50 evidence was
+  insufficient by sample gates but aligned with the current-hour VOACAP class.
+  `<p50>` is rounded for display so the diagnostic fits the fixed-width line.
 - `none` means no usable selected sample existed.
 - `lown` means selected samples existed, but their observation count was below
   the configured minimum.
@@ -265,6 +269,8 @@ The five-minute `Path predictions (5m)` propagation log uses the same reason
 split: `no_sample`, `low_count`, `low_receiver`, `low_weight`, and `stale`.
 `low_count` is the raw observation-count gate; `low_receiver` is the
 receiver-diversity gate; `low_weight` is the decayed effective-weight gate.
+VOACAP fallback outcomes are counted separately as `voacap_closed` and
+`voacap_aligned`.
 The shipped config writes these aggregate lines to `data/logs/propagation`,
 not the system log.
 
@@ -286,6 +292,8 @@ Example readings:
   after `/rx`.
 - `vcap|-34|h20|s112`: VOACAP fallback selected the 20:00 UTC forecast record,
   predicted FT8-equivalent SNR -34, and used SSN generation 112.
+- `valn|-15/-15h20s112`: sparse bucket p50 rounded to -15 dB and the 20:00
+  UTC VOACAP forecast also mapped to that same path class.
 - `n1|loww`: one selected observation existed, but the effective weight was
   below the minimum.
 - `n32|w1`: large selected count but low rounded effective weight.

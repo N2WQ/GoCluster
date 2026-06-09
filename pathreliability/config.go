@@ -44,7 +44,7 @@ type Config struct {
 	ModeThresholds                     map[string]GlyphThresholds `yaml:"mode_thresholds"`                         // per-mode glyph thresholds in FT8-equiv dB
 	GlyphThresholds                    GlyphThresholds            `yaml:"glyph_thresholds"`                        // fallback glyph thresholds in FT8-equiv dB
 	GlyphSymbols                       GlyphSymbols               `yaml:"glyph_symbols"`                           // glyph mapping for high/medium/low/unlikely/insufficient/closed
-	VOACAPFallback                     VOACAPFallbackConfig       `yaml:"voacap_fallback"`                         // optional closed-only VOACAP fallback
+	VOACAPFallback                     VOACAPFallbackConfig       `yaml:"voacap_fallback"`                         // optional VOACAP sparse-data fallback
 	NoiseOffsets                       map[string]float64         `yaml:"noise_offsets"`                           // noise class -> dB penalty
 
 	noiseModel NoiseModel
@@ -236,8 +236,8 @@ func (s *GlyphSymbols) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
-// VOACAPFallbackConfig owns the disabled-by-default, closed-only fallback from
-// insufficient bucket evidence to a cached VOACAP FT8-equivalent SNR verdict.
+// VOACAPFallbackConfig owns the optional fallback from insufficient bucket
+// evidence to cached VOACAP FT8-equivalent SNR forecasts.
 // Bounds are required even when disabled so enabling the fallback cannot create
 // process-lifetime unbounded queues or cache maps.
 type VOACAPFallbackConfig struct {

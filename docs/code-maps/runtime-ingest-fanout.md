@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `2f8b04441b4b26cb`
+- Source fingerprint: `368c2f05718613e3`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -57,6 +57,7 @@
 | `dxcluster/internal/cluster` | `dxcluster/internal/ratelimit` |
 | `dxcluster/internal/cluster` | `dxcluster/internal/schedule` |
 | `dxcluster/internal/cluster` | `dxcluster/internal/toxicity` |
+| `dxcluster/internal/cluster` | `dxcluster/internal/voacap` |
 | `dxcluster/internal/cluster` | `dxcluster/pathreliability` |
 | `dxcluster/internal/cluster` | `dxcluster/pskreporter` |
 | `dxcluster/internal/cluster` | `dxcluster/rbn` |
@@ -299,6 +300,9 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0163](docs/decisions/ADR-0163-voacap-aligned-sparse-p50-fallback.md) | Accepted | 2026-06-09 | voacap, pathreliability, operations, supportability | `path:internal/cluster, path:telnet` |
+| [ADR-0162](docs/decisions/ADR-0162-voacap-hourly-forecast-window-cache.md) | Accepted | 2026-06-09 | voacap, pathreliability, retained-state, operations | `path:telnet` |
+| [ADR-0161](docs/decisions/ADR-0161-voacap-closed-only-path-fallback.md) | Accepted | 2026-06-09 | voacap, pathreliability, config, operations | `path:internal/cluster, path:telnet` |
 | [ADR-0149](docs/decisions/ADR-0149-single-window-archive-retention.md) | Accepted | 2026-06-06 | archive, config, spot taxonomy, hot path | `area:spot, path:spot` |
 | [ADR-0148](docs/decisions/ADR-0148-post-stabilizer-shared-secondary-fanout.md) | Accepted | 2026-06-06 | internal/cluster, stabilizer, dedupe, archive, peer, hot path | `area:internal/cluster, area:peer, path:internal/cluster` |
 | [ADR-0146](docs/decisions/ADR-0146-h3-path-cell-duplicate-work-removal.md) | Accepted | 2026-06-05 | spot, internal/cluster, pathreliability, hot path | `area:internal/cluster, area:spot, path:internal/cluster, path:spot` |

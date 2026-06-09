@@ -129,20 +129,23 @@ Five-minute propagation logs split insufficient path prediction outcomes into
 `low_count` maps to the raw selected observation floor; `low_receiver` maps to
 the receiver-diversity gate in enforce evaluation; `low_weight`
 maps to the decayed effective weight floor. These aggregate lines are written
-to `logging.propagation.dir`.
+to `logging.propagation.dir`. VOACAP fallback outcomes are counted separately
+as `voacap_closed` and `voacap_aligned`.
 
 When `voacap_fallback.enabled` is true, insufficient bucket results may start a
-delayed VOACAP lookup. The lookup is nonblocking in the telnet path and can
-only return the configured closed glyph after a cached VOACAP method-30 result
-predicts FT8-equivalent SNR at or below `mode_thresholds.<mode>.closed`. Cached
+delayed VOACAP lookup. The lookup is nonblocking in the telnet path. Cached
 VOACAP output stores one hourly record per parsed forecast hour for the
 requested band. If more than one configured center frequency maps to the same
 band and hour, the cache keeps the strongest FT8-equivalent SNR for that hour.
-Lookup selects the record matching the current UTC hour and re-evaluates the
-closed verdict against the request mode, so the first mode to populate the cache
-does not decide later modes. It does not produce `HIGH`, `MEDIUM`, or `LOW`
-classes and it never overrides a sufficient bucket p50 result. For PATH
-filters, the closed glyph remains in the existing `UNLIKELY` class.
+Lookup selects the record matching the current UTC hour and re-evaluates it
+against the request mode, so the first mode to populate the cache does not
+decide later modes. If the selected VOACAP record is at or below
+`mode_thresholds.<mode>.closed`, the fallback can return the configured closed
+glyph. Otherwise, it can return a normal `HIGH`, `MEDIUM`, `LOW`, or
+`UNLIKELY` glyph only when the insufficient bucket result still has sparse p50
+evidence and that p50 class matches the VOACAP current-hour class. It never
+overrides a sufficient bucket p50 result. For PATH filters, the closed glyph
+remains in the existing `UNLIKELY` class.
 
 The shipped config currently uses:
 

@@ -230,17 +230,14 @@ func TestPathPredictionUsesVOACAPClosedFallbackOnlyWhenInsufficient(t *testing.T
 		noiseModel:    cfg.NoiseModel(),
 		nowFn:         func() time.Time { return now },
 		pathClosedFallback: fakePathClosedFallback{
-			result: pathreliability.Result{
-				Glyph:              "!",
-				Class:              "UNLIKELY",
-				HasP50:             true,
-				P50DB:              -34,
-				Source:             pathreliability.SourceVOACAPClosed,
-				VOACAPFT8SNRDB:     -34,
-				VOACAPSSN:          112,
-				VOACAPAgeSec:       3,
-				VOACAPHourUTC:      20,
-				VOACAPFrequencyMHz: 14.1,
+			forecast: pathreliability.VOACAPCachedForecast{
+				Record: pathreliability.VOACAPHourlyForecast{
+					FT8SNRDB:     -34,
+					HourUTC:      20,
+					FrequencyMHz: 14.1,
+				},
+				SSN:    112,
+				AgeSec: 3,
 			},
 			ok: true,
 		},
@@ -268,6 +265,120 @@ func TestPathPredictionUsesVOACAPClosedFallbackOnlyWhenInsufficient(t *testing.T
 	}
 }
 
+func TestPathPredictionUsesVOACAPAlignedFallbackForSparseP50Match(t *testing.T) {
+	cfg := pathreliability.DefaultConfig()
+	cfg.MinEffectiveWeight = 0.1
+	cfg.MinObservationCount = 2
+	cfg.GlyphSymbols.Closed = "!"
+	predictor := pathreliability.NewPredictor(cfg, []string{"20m"})
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	userCell := pathreliability.CellID(1)
+	dxCell := pathreliability.CellID(2)
+	predictor.Update(pathreliability.BucketCombined, userCell, dxCell, pathreliability.InvalidCell, pathreliability.InvalidCell, "20m", -15, 1, now, false)
+
+	server := &Server{
+		pathPredictor: predictor,
+		pathDisplay:   true,
+		noiseModel:    cfg.NoiseModel(),
+		nowFn:         func() time.Time { return now },
+		pathClosedFallback: fakePathClosedFallback{
+			forecast: pathreliability.VOACAPCachedForecast{
+				Record: pathreliability.VOACAPHourlyForecast{FT8SNRDB: -15, HourUTC: 20, FrequencyMHz: 14.1},
+				SSN:    112,
+			},
+			ok: true,
+		},
+	}
+	client := &Client{grid: "FN31", gridCell: userCell, noiseClass: "QUIET"}
+	sp := spot.NewSpot("DX1AA", "DE1AA", 14074, "FT8")
+	sp.BandNorm = "20m"
+	sp.DXCellID = uint16(dxCell)
+	sp.DXMetadata.Grid = "FN32"
+
+	if got := server.pathGlyphsForClient(client, sp); got != cfg.GlyphSymbols.Medium {
+		t.Fatalf("expected VOACAP-aligned sparse p50 glyph %q, got %q", cfg.GlyphSymbols.Medium, got)
+	}
+	if got := server.pathClassForClient(client, sp); got != filter.PathClassMedium {
+		t.Fatalf("expected VOACAP-aligned PATH class MEDIUM, got %q", got)
+	}
+	client.setDiagMode(diagModePath)
+	line := server.formatSpotForClient(client, sp)
+	if !strings.Contains(line, "valn|-15/-15h20s112") {
+		t.Fatalf("expected VOACAP-aligned diagnostic, got %q", line)
+	}
+}
+
+func TestPathPredictionKeepsInsufficientWhenVOACAPSparseP50Mismatch(t *testing.T) {
+	cfg := pathreliability.DefaultConfig()
+	cfg.MinEffectiveWeight = 0.1
+	cfg.MinObservationCount = 2
+	cfg.GlyphSymbols.Closed = "!"
+	predictor := pathreliability.NewPredictor(cfg, []string{"20m"})
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	userCell := pathreliability.CellID(1)
+	dxCell := pathreliability.CellID(2)
+	predictor.Update(pathreliability.BucketCombined, userCell, dxCell, pathreliability.InvalidCell, pathreliability.InvalidCell, "20m", -15, 1, now, false)
+
+	server := &Server{
+		pathPredictor: predictor,
+		pathDisplay:   true,
+		noiseModel:    cfg.NoiseModel(),
+		nowFn:         func() time.Time { return now },
+		pathClosedFallback: fakePathClosedFallback{
+			forecast: pathreliability.VOACAPCachedForecast{
+				Record: pathreliability.VOACAPHourlyForecast{FT8SNRDB: -19, HourUTC: 20, FrequencyMHz: 14.1},
+				SSN:    112,
+			},
+			ok: true,
+		},
+	}
+	client := &Client{grid: "FN31", gridCell: userCell, noiseClass: "QUIET"}
+	sp := spot.NewSpot("DX1AA", "DE1AA", 14074, "FT8")
+	sp.BandNorm = "20m"
+	sp.DXCellID = uint16(dxCell)
+	sp.DXMetadata.Grid = "FN32"
+
+	if got := server.pathGlyphsForClient(client, sp); got != cfg.GlyphSymbols.Insufficient {
+		t.Fatalf("expected sparse p50 mismatch to stay insufficient, got %q", got)
+	}
+	if got := server.pathClassForClient(client, sp); got != filter.PathClassInsufficient {
+		t.Fatalf("expected sparse p50 mismatch to stay PATH class INSUFFICIENT, got %q", got)
+	}
+}
+
+func TestPathPredictionKeepsInsufficientWhenVOACAPOpenAndNoSparseP50(t *testing.T) {
+	cfg := pathreliability.DefaultConfig()
+	cfg.MinObservationCount = 1
+	cfg.GlyphSymbols.Closed = "!"
+	predictor := pathreliability.NewPredictor(cfg, []string{"20m"})
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	server := &Server{
+		pathPredictor: predictor,
+		pathDisplay:   true,
+		noiseModel:    cfg.NoiseModel(),
+		nowFn:         func() time.Time { return now },
+		pathClosedFallback: fakePathClosedFallback{
+			forecast: pathreliability.VOACAPCachedForecast{
+				Record: pathreliability.VOACAPHourlyForecast{FT8SNRDB: -15, HourUTC: 20, FrequencyMHz: 14.1},
+				SSN:    112,
+			},
+			ok: true,
+		},
+	}
+	client := &Client{grid: "FN31", gridCell: pathreliability.CellID(1), noiseClass: "QUIET"}
+	sp := spot.NewSpot("DX1AA", "DE1AA", 14074, "FT8")
+	sp.BandNorm = "20m"
+	sp.DXCellID = 2
+	sp.DXMetadata.Grid = "FN32"
+
+	if got := server.pathGlyphsForClient(client, sp); got != cfg.GlyphSymbols.Insufficient {
+		t.Fatalf("expected no sparse p50 to stay insufficient, got %q", got)
+	}
+	if got := server.pathClassForClient(client, sp); got != filter.PathClassInsufficient {
+		t.Fatalf("expected no sparse p50 to stay PATH class INSUFFICIENT, got %q", got)
+	}
+}
+
 func TestPathPredictionBucketResultWinsOverVOACAPClosedFallback(t *testing.T) {
 	cfg := pathreliability.DefaultConfig()
 	cfg.MinEffectiveWeight = 0.1
@@ -279,7 +390,10 @@ func TestPathPredictionBucketResultWinsOverVOACAPClosedFallback(t *testing.T) {
 	dxCell := pathreliability.CellID(2)
 	predictor.Update(pathreliability.BucketCombined, userCell, dxCell, pathreliability.InvalidCell, pathreliability.InvalidCell, "20m", -12, 1, now, false)
 
-	fallback := &countingClosedFallback{result: pathreliability.Result{Source: pathreliability.SourceVOACAPClosed, Glyph: "!", Class: "UNLIKELY"}, ok: true}
+	fallback := &countingClosedFallback{forecast: pathreliability.VOACAPCachedForecast{
+		Record: pathreliability.VOACAPHourlyForecast{FT8SNRDB: -34, HourUTC: 20, FrequencyMHz: 14.1},
+		SSN:    112,
+	}, ok: true}
 	server := &Server{
 		pathPredictor:      predictor,
 		pathDisplay:        true,
@@ -302,21 +416,21 @@ func TestPathPredictionBucketResultWinsOverVOACAPClosedFallback(t *testing.T) {
 }
 
 type fakePathClosedFallback struct {
-	result pathreliability.Result
-	ok     bool
+	forecast pathreliability.VOACAPCachedForecast
+	ok       bool
 }
 
-func (f fakePathClosedFallback) CheckClosed(pathreliability.VOACAPClosedRequest, time.Time) (pathreliability.Result, bool) {
-	return f.result, f.ok
+func (f fakePathClosedFallback) CheckForecast(pathreliability.VOACAPClosedRequest, time.Time) (pathreliability.VOACAPCachedForecast, bool) {
+	return f.forecast, f.ok
 }
 
 type countingClosedFallback struct {
-	result pathreliability.Result
-	ok     bool
-	calls  int
+	forecast pathreliability.VOACAPCachedForecast
+	ok       bool
+	calls    int
 }
 
-func (f *countingClosedFallback) CheckClosed(pathreliability.VOACAPClosedRequest, time.Time) (pathreliability.Result, bool) {
+func (f *countingClosedFallback) CheckForecast(pathreliability.VOACAPClosedRequest, time.Time) (pathreliability.VOACAPCachedForecast, bool) {
 	f.calls++
-	return f.result, f.ok
+	return f.forecast, f.ok
 }

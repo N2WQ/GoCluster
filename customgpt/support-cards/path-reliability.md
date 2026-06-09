@@ -20,6 +20,8 @@ inspect user-visible diagnostics:
 
 - A blank path glyph can mean insufficient, low-count, low-weight, stale, or
   capped evidence, not necessarily a bad path.
+- `vcap` diagnostics are VOACAP closed fallback results; `valn` diagnostics
+  are sparse bucket p50 aligned with current-hour VOACAP.
 - Thresholds mix operator policy and algorithm calibration; do not retune them
   as the first normal troubleshooting step.
 - Effective YAML matters before suggesting config edits.
@@ -27,6 +29,8 @@ inspect user-visible diagnostics:
 ## Must Avoid
 
 - Do not call a blank glyph a bad path.
+- Do not call a `valn` glyph a pure VOACAP forecast; it requires sparse bucket
+  p50 and VOACAP to agree.
 - Do not recommend changing thresholds before confirming symptom, diagnostics,
   and effective YAML.
 
