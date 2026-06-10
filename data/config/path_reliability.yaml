@@ -54,7 +54,7 @@ glyph_symbols:
 # predictions only with a closed glyph or a sparse-p50 glyph whose class agrees
 # with the cached current-hour VOACAP forecast.
 voacap_fallback:
-  enabled: false
+  enabled: true
   ssn_fetch_interval_seconds: 1800
   ssn_request_timeout_seconds: 30
   ssn_ewma_half_life_seconds: 28800
@@ -73,7 +73,7 @@ voacap_fallback:
     - 24.94
     - 28.85
   # Delay fallback so fresh cluster observations have time to populate buckets.
-  delay_seconds: 900
+  delay_seconds: 600
   cache_ttl_seconds: 28800
   max_cache_entries: 50000
   max_delay_entries: 50000

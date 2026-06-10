@@ -139,8 +139,9 @@ closed fallback spots.
 Five-minute propagation logs keep final emit counters in `Path predictions
 (5m)`: `voacap_closed` and `voacap_aligned`. When fallback work occurs, a
 separate `VOACAP fallback (5m)` line reports stage counters such as `queued`,
-`success`, `cache_hit`, `no_current_hour`, `open_no_p50`, and
-`class_mismatch`.
+`success`, `cache_hit`, `no_current_hour`, `closed`, `closed_no_p50`,
+`closed_with_sparse_p50`, `closed_with_sparse_p50_class_*`, `open_no_p50`,
+and `class_mismatch`.
 
 ## How to Use This Information
 

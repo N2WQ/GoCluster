@@ -133,9 +133,13 @@ to `logging.propagation.dir`. VOACAP fallback outcomes are counted separately
 as `voacap_closed` and `voacap_aligned`.
 When the fallback is active, a separate `VOACAP fallback (5m)` line reports
 stage counters such as `queued`, `success`, `cache_hit`, `no_current_hour`,
-`delay_wait`, `queue_full`, `closed`, `aligned`, `open_no_p50`, and
-`class_mismatch`. The path-prediction counters are final emitted glyphs; the
-fallback line explains why cached VOACAP work did or did not emit a glyph.
+`delay_wait`, `queue_full`, `closed`, `closed_no_p50`,
+`closed_with_sparse_p50`, `closed_with_sparse_p50_class_*`, `aligned`,
+`open_no_p50`, and `class_mismatch`. The path-prediction counters are final
+emitted glyphs; the fallback line explains why cached VOACAP work did or did
+not emit a glyph. The closed sparse-p50 counters show when VOACAP emitted a
+closed glyph despite sparse observed p50 evidence and which p50 class that
+evidence would have mapped to.
 
 When `voacap_fallback.enabled` is true, insufficient bucket results may start a
 delayed VOACAP lookup. The lookup is nonblocking in the telnet path. Cached

@@ -278,7 +278,8 @@ When the optional VOACAP fallback has activity, a separate
 `VOACAP fallback (5m)` propagation log line explains the stage path:
 `queued`, `success`, `failure`, `cache_hit`, `no_current_hour`, `delay_wait`,
 `inflight`, `queue_full`, `not_running`, `ssn_unavailable`,
-`invalid_request`, `closed`, `aligned`, `open_no_p50`, and
+`invalid_request`, `closed`, `closed_no_p50`, `closed_with_sparse_p50`,
+`closed_with_sparse_p50_class_*`, `aligned`, `open_no_p50`, and
 `class_mismatch`. Use `Path predictions (5m)` to count final emitted glyphs.
 Use `VOACAP fallback (5m)` to explain why a fallback lookup did or did not
 emit.

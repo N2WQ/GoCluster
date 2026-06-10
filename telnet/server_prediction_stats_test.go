@@ -29,6 +29,12 @@ func TestPathPredictionStatsSnapshotSplit(t *testing.T) {
 	s.recordPathPrediction(pathreliability.Result{Source: pathreliability.SourceVOACAPClosed}, false, false)
 	s.recordPathPrediction(pathreliability.Result{Source: pathreliability.SourceVOACAPAligned}, false, false)
 	s.vStageClosed.Add(1)
+	s.vStageClosedNoP50.Add(1)
+	s.vStageClosedWithSparseP50.Add(4)
+	s.vStageClosedSparseHigh.Add(1)
+	s.vStageClosedSparseMedium.Add(1)
+	s.vStageClosedSparseLow.Add(1)
+	s.vStageClosedSparseUnlikely.Add(1)
 	s.vStageAligned.Add(2)
 	s.vStageNoP50.Add(3)
 	s.vStageMismatch.Add(4)
@@ -51,6 +57,14 @@ func TestPathPredictionStatsSnapshotSplit(t *testing.T) {
 	}
 	if stats.VOACAPFallbackClosedCandidate != 1 || stats.VOACAPFallbackAlignedCandidate != 2 || stats.VOACAPFallbackOpenNoP50 != 3 || stats.VOACAPFallbackClassMismatch != 4 {
 		t.Fatalf("unexpected fallback stage stats: %+v", stats)
+	}
+	if stats.VOACAPFallbackClosedNoP50 != 1 ||
+		stats.VOACAPFallbackClosedSparseP50 != 4 ||
+		stats.VOACAPFallbackClosedSparseHigh != 1 ||
+		stats.VOACAPFallbackClosedSparseMed != 1 ||
+		stats.VOACAPFallbackClosedSparseLow != 1 ||
+		stats.VOACAPFallbackClosedSparseUnlk != 1 {
+		t.Fatalf("unexpected closed fallback split stats: %+v", stats)
 	}
 	if stats.Insufficient != 5 {
 		t.Fatalf("expected insufficient=5, got %d", stats.Insufficient)
@@ -75,7 +89,7 @@ func TestPathPredictionStatsSnapshotSplit(t *testing.T) {
 	}
 
 	after := s.PathPredictionStatsSnapshot()
-	if after.Total != 0 || after.Combined != 0 || after.VOACAPClosed != 0 || after.VOACAPAligned != 0 || after.VOACAPFallback.HasActivity() || after.VOACAPFallbackClosedCandidate != 0 || after.VOACAPFallbackAlignedCandidate != 0 || after.VOACAPFallbackOpenNoP50 != 0 || after.VOACAPFallbackClassMismatch != 0 || after.Insufficient != 0 || after.NoSample != 0 || after.LowCount != 0 || after.LowReceiver != 0 || after.LowWeight != 0 || after.Stale != 0 || after.CapLimited != 0 || after.CapWouldBlock != 0 || after.OverrideR != 0 || after.OverrideG != 0 {
+	if after.Total != 0 || after.Combined != 0 || after.VOACAPClosed != 0 || after.VOACAPAligned != 0 || after.VOACAPFallback.HasActivity() || after.VOACAPFallbackClosedCandidate != 0 || after.VOACAPFallbackClosedNoP50 != 0 || after.VOACAPFallbackClosedSparseP50 != 0 || after.VOACAPFallbackClosedSparseHigh != 0 || after.VOACAPFallbackClosedSparseMed != 0 || after.VOACAPFallbackClosedSparseLow != 0 || after.VOACAPFallbackClosedSparseUnlk != 0 || after.VOACAPFallbackAlignedCandidate != 0 || after.VOACAPFallbackOpenNoP50 != 0 || after.VOACAPFallbackClassMismatch != 0 || after.Insufficient != 0 || after.NoSample != 0 || after.LowCount != 0 || after.LowReceiver != 0 || after.LowWeight != 0 || after.Stale != 0 || after.CapLimited != 0 || after.CapWouldBlock != 0 || after.OverrideR != 0 || after.OverrideG != 0 {
 		t.Fatalf("expected zeroed snapshot, got %+v", after)
 	}
 }
@@ -94,16 +108,59 @@ func TestPathResultWithClosedFallbackStageStats(t *testing.T) {
 		forecastSNR       int
 		wantSource        pathreliability.PredictionSource
 		wantClosed        int64
+		wantClosedNoP50   int64
+		wantClosedSparse  int64
+		wantClosedHigh    int64
+		wantClosedMed     int64
+		wantClosedLow     int64
+		wantClosedUnlk    int64
 		wantAligned       int64
 		wantOpenNoP50     int64
 		wantClassMismatch int64
 	}{
 		{
-			name:        "closed",
-			base:        pathreliability.Result{Source: pathreliability.SourceInsufficient},
-			forecastSNR: -34,
-			wantSource:  pathreliability.SourceVOACAPClosed,
-			wantClosed:  1,
+			name:            "closed",
+			base:            pathreliability.Result{Source: pathreliability.SourceInsufficient},
+			forecastSNR:     -34,
+			wantSource:      pathreliability.SourceVOACAPClosed,
+			wantClosed:      1,
+			wantClosedNoP50: 1,
+		},
+		{
+			name:             "closed with sparse high p50",
+			base:             pathreliability.Result{Source: pathreliability.SourceInsufficient, HasP50: true, P50DB: -12},
+			forecastSNR:      -34,
+			wantSource:       pathreliability.SourceVOACAPClosed,
+			wantClosed:       1,
+			wantClosedSparse: 1,
+			wantClosedHigh:   1,
+		},
+		{
+			name:             "closed with sparse medium p50",
+			base:             pathreliability.Result{Source: pathreliability.SourceInsufficient, HasP50: true, P50DB: -15},
+			forecastSNR:      -34,
+			wantSource:       pathreliability.SourceVOACAPClosed,
+			wantClosed:       1,
+			wantClosedSparse: 1,
+			wantClosedMed:    1,
+		},
+		{
+			name:             "closed with sparse low p50",
+			base:             pathreliability.Result{Source: pathreliability.SourceInsufficient, HasP50: true, P50DB: -19},
+			forecastSNR:      -34,
+			wantSource:       pathreliability.SourceVOACAPClosed,
+			wantClosed:       1,
+			wantClosedSparse: 1,
+			wantClosedLow:    1,
+		},
+		{
+			name:             "closed with sparse unlikely p50",
+			base:             pathreliability.Result{Source: pathreliability.SourceInsufficient, HasP50: true, P50DB: -24},
+			forecastSNR:      -34,
+			wantSource:       pathreliability.SourceVOACAPClosed,
+			wantClosed:       1,
+			wantClosedSparse: 1,
+			wantClosedUnlk:   1,
 		},
 		{
 			name:          "open no sparse p50",
@@ -146,6 +203,12 @@ func TestPathResultWithClosedFallbackStageStats(t *testing.T) {
 			}
 			stats := s.PathPredictionStatsSnapshot()
 			if stats.VOACAPFallbackClosedCandidate != tt.wantClosed ||
+				stats.VOACAPFallbackClosedNoP50 != tt.wantClosedNoP50 ||
+				stats.VOACAPFallbackClosedSparseP50 != tt.wantClosedSparse ||
+				stats.VOACAPFallbackClosedSparseHigh != tt.wantClosedHigh ||
+				stats.VOACAPFallbackClosedSparseMed != tt.wantClosedMed ||
+				stats.VOACAPFallbackClosedSparseLow != tt.wantClosedLow ||
+				stats.VOACAPFallbackClosedSparseUnlk != tt.wantClosedUnlk ||
 				stats.VOACAPFallbackAlignedCandidate != tt.wantAligned ||
 				stats.VOACAPFallbackOpenNoP50 != tt.wantOpenNoP50 ||
 				stats.VOACAPFallbackClassMismatch != tt.wantClassMismatch {

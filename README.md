@@ -495,7 +495,9 @@ Important operational notes:
   `voacap_aligned`.
   A separate `VOACAP fallback (5m)` line appears when fallback work occurs and
   reports stage counters such as `queued`, `success`, `cache_hit`,
-  `no_current_hour`, `open_no_p50`, and `class_mismatch`.
+  `no_current_hour`, `closed`, `closed_no_p50`,
+  `closed_with_sparse_p50`, `closed_with_sparse_p50_class_*`, `aligned`,
+  `open_no_p50`, and `class_mismatch`.
   These lines are written to `logging.propagation.dir`, not the system log.
 - If grids are missing, evidence is stale, too sparse, or too weak, the result
   stays `INSUFFICIENT`. When path reliability is enabled, H3 table failures are

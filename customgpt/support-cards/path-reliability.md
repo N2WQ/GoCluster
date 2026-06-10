@@ -28,7 +28,9 @@ inspect user-visible diagnostics:
 - `Path predictions (5m)` counts final emitted `voacap_closed` and
   `voacap_aligned` glyphs. `VOACAP fallback (5m)` explains fallback stages such
   as queued, cache hit, no current hour, open without sparse p50, and class
-  mismatch.
+  mismatch. Closed fallback stages split no-p50 from sparse-p50 cases and
+  report the sparse p50 class when VOACAP closed overrides observed sparse
+  evidence.
 - Thresholds mix operator policy and algorithm calibration; do not retune them
   as the first normal troubleshooting step.
 - Effective YAML matters before suggesting config edits.

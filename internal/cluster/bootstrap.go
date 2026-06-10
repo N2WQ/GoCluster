@@ -1529,11 +1529,17 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 				fallback := stats.VOACAPFallback
 				if fallback.HasActivity() ||
 					stats.VOACAPFallbackClosedCandidate != 0 ||
+					stats.VOACAPFallbackClosedNoP50 != 0 ||
+					stats.VOACAPFallbackClosedSparseP50 != 0 ||
+					stats.VOACAPFallbackClosedSparseHigh != 0 ||
+					stats.VOACAPFallbackClosedSparseMed != 0 ||
+					stats.VOACAPFallbackClosedSparseLow != 0 ||
+					stats.VOACAPFallbackClosedSparseUnlk != 0 ||
 					stats.VOACAPFallbackAlignedCandidate != 0 ||
 					stats.VOACAPFallbackOpenNoP50 != 0 ||
 					stats.VOACAPFallbackClassMismatch != 0 {
 					fileOnly(fmt.Sprintf(
-						"VOACAP fallback (5m): queued=%s success=%s failure=%s cache_hit=%s no_current_hour=%s delay_wait=%s inflight=%s queue_full=%s not_running=%s ssn_unavailable=%s invalid_request=%s closed=%s aligned=%s open_no_p50=%s class_mismatch=%s",
+						"VOACAP fallback (5m): queued=%s success=%s failure=%s cache_hit=%s no_current_hour=%s delay_wait=%s inflight=%s queue_full=%s not_running=%s ssn_unavailable=%s invalid_request=%s closed=%s closed_no_p50=%s closed_with_sparse_p50=%s closed_with_sparse_p50_class_high=%s closed_with_sparse_p50_class_medium=%s closed_with_sparse_p50_class_low=%s closed_with_sparse_p50_class_unlikely=%s aligned=%s open_no_p50=%s class_mismatch=%s",
 						humanize.Comma(fallback.Queued),
 						humanize.Comma(fallback.RunSuccess),
 						humanize.Comma(fallback.RunFailure),
@@ -1546,6 +1552,12 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 						humanize.Comma(fallback.SSNUnavailable),
 						humanize.Comma(fallback.InvalidRequest),
 						humanize.Comma(stats.VOACAPFallbackClosedCandidate),
+						humanize.Comma(stats.VOACAPFallbackClosedNoP50),
+						humanize.Comma(stats.VOACAPFallbackClosedSparseP50),
+						humanize.Comma(stats.VOACAPFallbackClosedSparseHigh),
+						humanize.Comma(stats.VOACAPFallbackClosedSparseMed),
+						humanize.Comma(stats.VOACAPFallbackClosedSparseLow),
+						humanize.Comma(stats.VOACAPFallbackClosedSparseUnlk),
 						humanize.Comma(stats.VOACAPFallbackAlignedCandidate),
 						humanize.Comma(stats.VOACAPFallbackOpenNoP50),
 						humanize.Comma(stats.VOACAPFallbackClassMismatch),

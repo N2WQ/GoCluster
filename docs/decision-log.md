@@ -13,6 +13,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Placeholder Title | Proposed | YYYY-MM-DD | placeholder area | - | - | `docs/decisions/ADR-0001-placeholder-slug.md` |
+| ADR-0167 | VOACAP Closed Sparse-P50 Stage Counters | Accepted | 2026-06-10 | voacap, pathreliability, operations, observability | ADR-0164 fallback-stage log contract | - | `docs/decisions/ADR-0167-voacap-closed-sparse-p50-stage-counters.md` |
 | ADR-0166 | Closed Path Filter Token | Accepted | 2026-06-09 | telnet, filter, pathreliability, voacap | ADR-0161 filter semantics | - | `docs/decisions/ADR-0166-closed-path-filter-token.md` |
 | ADR-0165 | VOACAP Ham Median Card Template | Accepted | 2026-06-09 | voacap, pathreliability, model calibration | - | - | `docs/decisions/ADR-0165-voacap-ham-median-card-template.md` |
 | ADR-0164 | VOACAP Rolling-Hour Runtime Forecast Window | Accepted | 2026-06-09 | voacap, pathreliability, operations, observability | ADR-0162 runtime deck start assumption | - | `docs/decisions/ADR-0164-voacap-rolling-hour-runtime-forecast-window.md` |
