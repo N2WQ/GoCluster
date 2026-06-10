@@ -1,6 +1,7 @@
 package telnet
 
 import (
+	"dxcluster/internal/testsupport"
 	"reflect"
 	"strings"
 	"testing"
@@ -26,9 +27,29 @@ func newTestPathPredictor() *pathreliability.Predictor {
 
 func requireH3Mappings(t *testing.T) {
 	t.Helper()
-	if err := pathreliability.InitH3MappingsFromDir("data/h3"); err != nil {
-		t.Skipf("InitH3Mappings unavailable: %v", err)
+	if err := pathreliability.InitH3MappingsFromDir(testsupport.H3TableDir(t)); err != nil {
+		t.Fatalf("InitH3Mappings failed: %v", err)
 	}
+}
+
+func requireDistinctPathCells(t *testing.T, userGrid string, dxGrid string) (pathreliability.CellID, pathreliability.CellID, pathreliability.CellID, pathreliability.CellID) {
+	t.Helper()
+	requireH3Mappings(t)
+	userCell := pathreliability.EncodeCell(userGrid)
+	dxCell := pathreliability.EncodeCell(dxGrid)
+	userCoarse := pathreliability.EncodeCoarseCell(userGrid)
+	dxCoarse := pathreliability.EncodeCoarseCell(dxGrid)
+	if userCell == pathreliability.InvalidCell || dxCell == pathreliability.InvalidCell || userCoarse == pathreliability.InvalidCell || dxCoarse == pathreliability.InvalidCell {
+		t.Fatalf("invalid H3 test cells for user=%s dx=%s: user=%d dx=%d userCoarse=%d dxCoarse=%d",
+			userGrid, dxGrid, userCell, dxCell, userCoarse, dxCoarse)
+	}
+	if userCell == dxCell {
+		t.Fatalf("test grids %s and %s collapse to the same fine H3 cell %d", userGrid, dxGrid, userCell)
+	}
+	if userCoarse == dxCoarse {
+		t.Fatalf("test grids %s and %s collapse to the same coarse H3 cell %d", userGrid, dxGrid, userCoarse)
+	}
+	return userCell, dxCell, userCoarse, dxCoarse
 }
 
 const sampleCTYPLIST = `<?xml version="1.0" encoding="UTF-8"?>
@@ -1927,7 +1948,9 @@ func TestApplyNearbyLoginStateWarnsWhenActive(t *testing.T) {
 	client.grid = grid
 	client.gridCell = pathreliability.EncodeCell(grid)
 	client.gridCoarseCell = pathreliability.EncodeCoarseCell(grid)
-	client.filter.NearbyEnabled = true
+	if err := client.filter.EnableNearby(client.gridCell, client.gridCoarseCell); err != nil {
+		t.Fatalf("EnableNearby failed: %v", err)
+	}
 
 	expectedWarning := normalizeWarningLine(nearbyLoginWarningMsg)
 	warn, changed := applyNearbyLoginState(client, nearbyLoginWarningMsg)

@@ -20,6 +20,11 @@ inspect user-visible diagnostics:
 
 - A blank path glyph can mean insufficient, low-count, low-weight, stale, or
   capped evidence, not necessarily a bad path.
+- `SET DIAG PATH` `w<weight>` is scalar evidence mass after decay and
+  path selection. Fine/coarse blends use the larger overlapping layer for
+  scalar weight rather than adding fine and coarse together; `a<age>` can
+  reflect stale local fine evidence even when coarse regional evidence is
+  fresher.
 - `vcap` diagnostics are VOACAP closed fallback results; `valn` diagnostics
   are sparse bucket p50 aligned with current-hour VOACAP. The VOACAP SNR in
   both tags is the rounded bidirectional effective SNR after receive-side noise

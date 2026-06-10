@@ -384,15 +384,18 @@ area:
   selected observations; `n1` means one selected observation; higher values
   such as `n18` or `n32` mean a larger evidence base.
 - `w<weight>` is the rounded effective weight after decay, fine/coarse sample
-  selection, receive/transmit merge, and reverse-direction discounting. It is
-  not dB, SNR, or a percent. A count can be much larger than the weight when the
-  observations are old, discounted, or weakly applicable to the exact path.
-  Weight is an evidence-strength gate; it is not the path class itself. A path
-  can show `>` in the normal path column with `w1` in the diagnostic comment
-  when the effective weight is just above the minimum and the normalized signal
-  estimate maps to `HIGH`.
+  selection, receive/transmit merge, and reverse-direction discounting. Fine
+  and coarse are overlapping evidence layers, so blended scalar weight uses the
+  larger layer instead of adding both. It is not dB, SNR, or a percent. A count
+  can be much larger than the weight when the observations are old, discounted,
+  or weakly applicable to the exact path. Weight is an evidence-strength gate;
+  it is not the path class itself. A path can show `>` in the normal path column
+  with `w1` in the diagnostic comment when the effective weight is just above
+  the minimum and the normalized signal estimate maps to `HIGH`.
 - `a<age>` is the effective age of the selected evidence. Ages under one minute
-  are seconds, then rounded up to `m` or `h`.
+  are seconds, then rounded up to `m` or `h`. Blended fine/coarse age uses local
+  fine mass plus the coarse regional complement, so stale local mass can make a
+  direction old enough to be dropped by the freshness gate.
 - `vcap|<snr>|h<hour>|s<ssn>` means the optional VOACAP closed fallback
   supplied the result. `<snr>` is the selected hour's rounded bidirectional
   FT8-equivalent SNR after receive-side noise penalty, `h<hour>` is the
@@ -484,6 +487,10 @@ Important operational notes:
 - Active p50 uses midpoint representatives for fixed SNR bins. Balanced
   weak/strong evidence uses the middle between both selected bin representatives
   instead of always choosing the weaker bin.
+- Fine/coarse scalar weight uses union semantics because the fine layer also
+  updates the coarse layer. The p50 histogram keeps the existing local-emphasis
+  shape, so this fixes evidence mass without changing the selected p50
+  distribution for eligible samples.
 - Receiver contribution caps are configured in `enforce` mode. Normal glyphs
   and PATH filters use capped receiver evidence, with the checked-in cap set to
   eight decayed effective observations per receiver per bucket.
@@ -491,7 +498,8 @@ Important operational notes:
   `no_sample`, `low_count`, `low_receiver`, `low_weight`, and `stale`;
   `low_count` means the selected raw sample count missed the observation floor,
   `low_receiver` means receiver diversity missed the derived receiver gate,
-  and `low_weight` means decayed effective weight missed the weight floor.
+  `low_weight` means decayed effective weight missed the weight floor, and
+  `stale` can increase when honest fine/coarse age drops an old local direction.
   VOACAP fallback outcomes are counted separately as `voacap_closed` and
   `voacap_aligned`.
   A separate `VOACAP fallback (5m)` line appears when fallback work occurs and

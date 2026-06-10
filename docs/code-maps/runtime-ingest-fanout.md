@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `b742e204222c0130`
+- Source fingerprint: `f63b5ff181f9e559`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -300,6 +300,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0170](docs/decisions/ADR-0170-fine-coarse-union-scalar-evidence.md) | Accepted | 2026-06-10 | pathreliability, telnet diagnostics, receiver caps, model calibration | `area:telnet, path:telnet` |
 | [ADR-0169](docs/decisions/ADR-0169-bidirectional-noise-aware-voacap-fallback.md) | Accepted | 2026-06-10 | voacap, pathreliability, operations, model calibration | `path:telnet` |
 | [ADR-0168](docs/decisions/ADR-0168-voacap-p50-cache-comparison.md) | Accepted | 2026-06-10 | voacap, pathreliability, operations, observability | `path:internal/cluster, path:telnet` |
 | [ADR-0167](docs/decisions/ADR-0167-voacap-closed-sparse-p50-stage-counters.md) | Accepted | 2026-06-10 | voacap, pathreliability, operations, observability | `path:internal/cluster, path:telnet` |

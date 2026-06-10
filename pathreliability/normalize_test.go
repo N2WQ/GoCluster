@@ -82,6 +82,24 @@ func TestMergeSamplesWeightedMetadata(t *testing.T) {
 	}
 }
 
+func TestMergeSamplesAgeUsesDirectionalWeights(t *testing.T) {
+	cfg := DefaultConfig()
+	receive := Sample{Weight: 10, AgeSec: 100, Count: 10}
+	transmit := Sample{Weight: 10, AgeSec: 10, Count: 10}
+	balanced, ok := mergeSamples(receive, transmit, cfg)
+	if !ok {
+		t.Fatalf("expected balanced merge")
+	}
+	receive.Weight = 5
+	lighterReceive, ok := mergeSamples(receive, transmit, cfg)
+	if !ok {
+		t.Fatalf("expected lighter receive merge")
+	}
+	if lighterReceive.AgeSec >= balanced.AgeSec {
+		t.Fatalf("expected lower receive weight to move age toward transmit, balanced=%d lighter=%d", balanced.AgeSec, lighterReceive.AgeSec)
+	}
+}
+
 func TestSelectSampleMinFineWeight(t *testing.T) {
 	fine := Sample{Weight: 2, AgeSec: 12, Count: 2}
 	coarse := Sample{Weight: 10, AgeSec: 30, Count: 7}
@@ -93,11 +111,11 @@ func TestSelectSampleMinFineWeight(t *testing.T) {
 	fine = Sample{Weight: 6, AgeSec: 10, Count: 3}
 	coarse = Sample{Weight: 10, AgeSec: 20, Count: 8}
 	got = SelectSample(fine, coarse, 5, 20)
-	if got.Weight != fine.Weight+coarse.Weight {
-		t.Fatalf("expected blended weight %v, got %v", fine.Weight+coarse.Weight, got.Weight)
+	if got.Weight != coarse.Weight {
+		t.Fatalf("expected blended weight to use larger fine/coarse layer %v, got %v", coarse.Weight, got.Weight)
 	}
-	if got.AgeSec != 17 {
-		t.Fatalf("expected blended effective age 17, got %d", got.AgeSec)
+	if got.AgeSec != 14 {
+		t.Fatalf("expected blended union effective age 14, got %d", got.AgeSec)
 	}
 	if got.Count != 8 {
 		t.Fatalf("expected blended count to use larger selected layer count 8, got %d", got.Count)
@@ -107,6 +125,179 @@ func TestSelectSampleMinFineWeight(t *testing.T) {
 	got = SelectSample(fine, Sample{}, 5, 20)
 	if got.Weight != fine.Weight || got.Count != fine.Count {
 		t.Fatalf("expected fine sample when coarse missing, got weight=%v count=%d", got.Weight, got.Count)
+	}
+}
+
+func TestSelectSampleUsesUnionWeightForOverlappingFineCoarse(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ReceiverContributionMode = ReceiverContributionOff
+	store := NewStore(cfg, []string{"20m"})
+	receiverCell := CellID(1)
+	senderCell := CellID(2)
+	receiverCoarse := CellID(3)
+	senderCoarse := CellID(4)
+	now := time.Unix(1_700_000_000, 0).UTC()
+
+	for i := 0; i < 6; i++ {
+		store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", -12, 1, now, ReceiverIdentityHash("K1ABC"))
+	}
+
+	fine, coarse := store.Lookup(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", now)
+	got := SelectSample(fine, coarse, cfg.MinFineWeight, cfg.FineOnlyWeight)
+	if got.Weight != coarse.Weight {
+		t.Fatalf("selected weight=%v, want coarse union weight %v", got.Weight, coarse.Weight)
+	}
+	if got.RawWeight != coarse.RawWeight {
+		t.Fatalf("selected raw weight=%v, want coarse union raw weight %v", got.RawWeight, coarse.RawWeight)
+	}
+	if got.CappedWeight != coarse.CappedWeight {
+		t.Fatalf("selected capped weight=%v, want coarse union capped weight %v", got.CappedWeight, coarse.CappedWeight)
+	}
+	if got.Count != coarse.Count {
+		t.Fatalf("selected count=%d, want coarse union count %d", got.Count, coarse.Count)
+	}
+}
+
+func TestSelectSampleWeightUnionPreservesP50Shape(t *testing.T) {
+	var fineBins snrHistogram
+	fineBins.add(snrHistogramBinIndex(18), 6)
+	fine := sampleWithBins{
+		Sample:  Sample{Weight: 6, RawWeight: 6, CappedWeight: 4, Count: 6},
+		P50DB:   18.5,
+		HasP50:  true,
+		snrBins: fineBins,
+	}
+	var coarseBins snrHistogram
+	coarseBins.add(snrHistogramBinIndex(-20), 10)
+	coarse := sampleWithBins{
+		Sample:  Sample{Weight: 10, RawWeight: 10, CappedWeight: 7, Count: 10},
+		P50DB:   -19.5,
+		HasP50:  true,
+		snrBins: coarseBins,
+	}
+
+	got := selectSampleWithDistribution(fine, coarse, 5, 20)
+	var wantBins snrHistogram
+	wantBins.addScaled(fineBins, 1)
+	wantBins.addScaled(coarseBins, 1)
+	wantP50, wantHasP50 := wantBins.p50DB()
+	if got.Weight != 10 || got.RawWeight != 10 || got.CappedWeight != 7 {
+		t.Fatalf("selected weights = %v/%v/%v, want 10/10/7", got.Weight, got.RawWeight, got.CappedWeight)
+	}
+	if got.P50DB != wantP50 || got.HasP50 != wantHasP50 {
+		t.Fatalf("p50=%v has=%v, want p50=%v has=%v", got.P50DB, got.HasP50, wantP50, wantHasP50)
+	}
+}
+
+func TestSelectSampleCappedWeightUsesConservativeMax(t *testing.T) {
+	fine := Sample{Weight: 6, CappedWeight: 6, Count: 6, CappedCount: 6, CapLimited: true}
+	coarse := Sample{Weight: 10, CappedWeight: 3, Count: 10, CappedCount: 3, CapLimited: true}
+	got := SelectSample(fine, coarse, 5, 20)
+	if got.Weight != 10 {
+		t.Fatalf("selected active weight=%v, want 10", got.Weight)
+	}
+	if got.CappedWeight != 6 {
+		t.Fatalf("selected capped weight=%v, want conservative max 6", got.CappedWeight)
+	}
+	if got.CappedCount != 6 {
+		t.Fatalf("selected capped count=%d, want max 6", got.CappedCount)
+	}
+}
+
+func TestPredictWeightUnionCanConservativelyWithholdOutsideInvariant(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ReceiverContributionMode = ReceiverContributionOff
+	cfg.MinEffectiveWeight = 3
+	cfg.MinObservationCount = 1
+	cfg.MinFineWeight = 5
+	cfg.FineOnlyWeight = 20
+	cfg.ReverseHintDiscount = 0.5
+	predictor := NewPredictor(cfg, []string{"20m"})
+	userCell := CellID(1)
+	dxCell := CellID(2)
+	userCoarse := CellID(3)
+	dxCoarse := CellID(4)
+	now := time.Unix(1_700_000_000, 0).UTC()
+
+	for i := 0; i < 5; i++ {
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -12, 1, now, false, ReceiverIdentityHash("K1ABC"))
+	}
+
+	res := predictor.Predict(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, now)
+	if res.Source != SourceInsufficient || res.InsufficientReason != InsufficientLowWeight {
+		t.Fatalf("expected conservative low-weight withholding, got source=%v reason=%v weight=%v", res.Source, res.InsufficientReason, res.Weight)
+	}
+	if res.Weight >= cfg.MinEffectiveWeight {
+		t.Fatalf("expected selected weight below tuned floor, got %v >= %v", res.Weight, cfg.MinEffectiveWeight)
+	}
+}
+
+func TestFineCoarseUnionAgeCanTripFreshnessGate(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.BandHalfLifeSec = map[string]int{"20m": 360}
+	cfg.MaxPredictionAgeHalfLifeMultiplier = 1.5
+	predictor := NewPredictor(cfg, []string{"20m"})
+
+	selected := SelectSample(
+		Sample{Weight: 5, AgeSec: 650, Count: 5},
+		Sample{Weight: 6, AgeSec: 60, Count: 6},
+		5,
+		20,
+	)
+	if selected.AgeSec <= 540 {
+		t.Fatalf("selected age=%d, want above 540s freshness gate", selected.AgeSec)
+	}
+	receive, _, dropped, _ := predictor.applyFreshnessGate(predictor.combined, "20m", selected, Sample{})
+	if !dropped || sampleHasEvidence(receive) {
+		t.Fatalf("expected union-aged fine/coarse sample to be stale-dropped, dropped=%v receive=%+v", dropped, receive)
+	}
+}
+
+func TestFineCoarseUnionAgeDirectionDropCanShiftClass(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.BandHalfLifeSec = map[string]int{"20m": 360}
+	cfg.MaxPredictionAgeHalfLifeMultiplier = 1.5
+	cfg.MinEffectiveWeight = 0.1
+	cfg.MinObservationCount = 1
+	predictor := NewPredictor(cfg, []string{"20m"})
+
+	var receiveBins snrHistogram
+	receiveBins.add(snrHistogramBinIndex(-22), 6)
+	receive := sampleWithBins{
+		Sample:  Sample{Weight: 6, AgeSec: 600, Count: 6},
+		P50DB:   -21.5,
+		HasP50:  true,
+		snrBins: receiveBins,
+	}
+	var transmitBins snrHistogram
+	transmitBins.add(snrHistogramBinIndex(10), 6)
+	transmit := sampleWithBins{
+		Sample:  Sample{Weight: 6, AgeSec: 10, Count: 6},
+		P50DB:   10.5,
+		HasP50:  true,
+		snrBins: transmitBins,
+	}
+
+	both, ok := mergeSamplesWithDistribution(receive, transmit, cfg, 0)
+	if !ok {
+		t.Fatalf("expected both directions to merge")
+	}
+	bothClass := ClassForDB(both.P50DB, "FT8", cfg)
+	receiveSample, transmitSample, dropped, _ := predictor.applyFreshnessGate(predictor.combined, "20m", receive.Sample, transmit.Sample)
+	if !dropped || sampleHasEvidence(receiveSample) {
+		t.Fatalf("expected stale receive direction to be dropped, dropped=%v receive=%+v", dropped, receiveSample)
+	}
+	transmit.Sample = transmitSample
+	afterDrop, ok := mergeSamplesWithDistribution(sampleWithBins{}, transmit, cfg, 0)
+	if !ok {
+		t.Fatalf("expected surviving transmit direction to merge")
+	}
+	afterClass := ClassForDB(afterDrop.P50DB, "FT8", cfg)
+	if bothClass == afterClass {
+		t.Fatalf("expected class shift after direction drop, both=%q after=%q p50=%v/%v", bothClass, afterClass, both.P50DB, afterDrop.P50DB)
+	}
+	if afterClass != classHigh {
+		t.Fatalf("expected surviving transmit direction to classify HIGH, got %q", afterClass)
 	}
 }
 
@@ -225,7 +416,6 @@ func TestPredictDropsOnlyStaleDirection(t *testing.T) {
 }
 
 func TestPredictStaleDropLowFreshWeightReportsStale(t *testing.T) {
-	requireH3Mappings(t)
 	cfg := DefaultConfig()
 	cfg.BandHalfLifeSec = map[string]int{"20m": 10}
 	cfg.StaleAfterHalfLifeMultiplier = 100
@@ -233,10 +423,7 @@ func TestPredictStaleDropLowFreshWeightReportsStale(t *testing.T) {
 	cfg.MinObservationCount = 1
 	cfg.MaxPredictionAgeHalfLifeMultiplier = 1
 	predictor := NewPredictor(cfg, []string{"20m"})
-	userCell := EncodeCell("FN31")
-	dxCell := EncodeCell("FN32")
-	userCoarse := EncodeCoarseCell("FN31")
-	dxCoarse := EncodeCoarseCell("FN32")
+	userCell, dxCell, userCoarse, dxCoarse := requireDistinctPathCells(t, "EM12", "IO91")
 	now := time.Now().UTC()
 
 	predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 25, 10, now.Add(-20*time.Second), false)
@@ -349,15 +536,11 @@ func TestPredictUsesCoarseWhenFineMissing(t *testing.T) {
 }
 
 func TestPredictCarriesObservationCount(t *testing.T) {
-	requireH3Mappings(t)
 	cfg := DefaultConfig()
 	cfg.MinEffectiveWeight = 0.1
 	cfg.MinObservationCount = 1
 	predictor := NewPredictor(cfg, []string{"20m"})
-	userCell := EncodeCell("FN31")
-	dxCell := EncodeCell("FN32")
-	userCoarse := EncodeCoarseCell("FN31")
-	dxCoarse := EncodeCoarseCell("FN32")
+	userCell, dxCell, userCoarse, dxCoarse := requireDistinctPathCells(t, "FN31", "DM04")
 	now := time.Now().UTC()
 
 	predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1.0, now, false)
@@ -370,15 +553,11 @@ func TestPredictCarriesObservationCount(t *testing.T) {
 }
 
 func TestPredictLowObservationCountInsufficient(t *testing.T) {
-	requireH3Mappings(t)
 	cfg := DefaultConfig()
 	cfg.MinEffectiveWeight = 0.1
 	cfg.MinObservationCount = 19
 	predictor := NewPredictor(cfg, []string{"20m"})
-	userCell := EncodeCell("FN31")
-	dxCell := EncodeCell("FN32")
-	userCoarse := EncodeCoarseCell("FN31")
-	dxCoarse := EncodeCoarseCell("FN32")
+	userCell, dxCell, userCoarse, dxCoarse := requireDistinctPathCells(t, "FN31", "IO91")
 	now := time.Now().UTC()
 
 	for i := 0; i < 3; i++ {
@@ -401,15 +580,11 @@ func TestPredictLowObservationCountInsufficient(t *testing.T) {
 }
 
 func TestPredictWithMinObservationCountCannotLowerConfiguredFloor(t *testing.T) {
-	requireH3Mappings(t)
 	cfg := DefaultConfig()
 	cfg.MinEffectiveWeight = 0.1
 	cfg.MinObservationCount = 5
 	predictor := NewPredictor(cfg, []string{"20m"})
-	userCell := EncodeCell("FN31")
-	dxCell := EncodeCell("FN32")
-	userCoarse := EncodeCoarseCell("FN31")
-	dxCoarse := EncodeCoarseCell("FN32")
+	userCell, dxCell, userCoarse, dxCoarse := requireDistinctPathCells(t, "FN31", "IO91")
 	now := time.Now().UTC()
 
 	for i := 0; i < 3; i++ {

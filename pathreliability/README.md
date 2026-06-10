@@ -173,7 +173,7 @@ The shipped config currently uses:
 - half-lives ranging from `600s` on `160m` and `80m` down to `240s` on `12m`, `10m`, and `6m`
 - `stale_after_half_life_multiplier: 3`
 - `stale_after_seconds: 1800` as the fallback purge window
-- `max_prediction_age_half_life_multiplier: 1.25` as a display/filter freshness gate
+- `max_prediction_age_half_life_multiplier: 1.5` as a display/filter freshness gate
 - `receiver_contribution_mode: enforce`
 - `receiver_fine_slots: 6`
 - `receiver_coarse_slots: 12`
@@ -191,13 +191,26 @@ For each direction, `SelectSample(...)` chooses between fine and coarse evidence
 
 - if fine is below `min_fine_weight`, coarse wins
 - if fine is above `fine_only_weight`, fine wins outright
-- otherwise, fine and coarse are blended by weight
+- otherwise, fine and coarse are blended
 
-When fine and coarse evidence are blended, the selected sample age is also a
-weighted effective age. A small fresh sample therefore cannot hide a large stale
-regional contribution.
-The selected sample count uses the larger fine/coarse layer count instead of
-summing both layers, because one report can update both resolutions.
+Fine and coarse are overlapping views in one direction: a report accepted into a
+fine bucket also updates the matching coarse bucket when both cells are valid.
+For scalar evidence mass, the blend therefore uses union semantics:
+`Weight`, `RawWeight`, `CappedWeight`, counts, and receiver-capacity fields use
+the larger fine/coarse value instead of summing both layers. This prevents a
+local report from being counted twice in weight gates and `SET DIAG PATH`.
+
+The p50 histogram deliberately keeps the existing local-emphasis shape by adding
+fine bins and coarse bins together. That makes local fine evidence count once in
+the fine layer and once inside the coarse layer's regional view. This preserves
+the active p50 distribution shape while fixing scalar evidence mass.
+
+When fine and coarse evidence are blended, selected sample age uses the fine
+weight plus the coarse complement `max(0, coarse.Weight - fine.Weight)`. Coarse
+is often fresher because regional evidence can arrive after the local fine
+bucket went quiet, so this can make the selected age older than the previous
+double-counted formula. A direction can become stale and be dropped before the
+receive/transmit merge; if one direction survives, the final p50 class can shift.
 
 After sample selection, the predictor applies the freshness gate. If selected
 evidence is older than `ceil(band_half_life * max_prediction_age_half_life_multiplier)`,

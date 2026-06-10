@@ -174,16 +174,13 @@ func TestPathPredictionStaleEvidenceIsInsufficientForDisplayAndFilter(t *testing
 }
 
 func TestPathSamplesOverrideAppliesToDisplayFilterAndDiag(t *testing.T) {
-	requireH3Mappings(t)
 	cfg := pathreliability.DefaultConfig()
 	cfg.MinEffectiveWeight = 0.1
 	cfg.MinObservationCount = 2
+	cfg.ReceiverContributionMode = pathreliability.ReceiverContributionOff
 	predictor := pathreliability.NewPredictor(cfg, []string{"20m"})
 
-	userCell := pathreliability.EncodeCell("FN31")
-	dxCell := pathreliability.EncodeCell("FN32")
-	userCoarse := pathreliability.EncodeCoarseCell("FN31")
-	dxCoarse := pathreliability.EncodeCoarseCell("FN32")
+	userCell, dxCell, userCoarse, dxCoarse := requireDistinctPathCells(t, "FN31", "IO91")
 	now := time.Now().UTC()
 	for i := 0; i < 3; i++ {
 		predictor.Update(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 10, now, false)
@@ -204,7 +201,7 @@ func TestPathSamplesOverrideAppliesToDisplayFilterAndDiag(t *testing.T) {
 	}
 	sp := spot.NewSpot("DX1AA", "DE1AA", 14074, "FT8")
 	sp.BandNorm = "20m"
-	sp.DXMetadata.Grid = "FN32"
+	sp.DXMetadata.Grid = "IO91"
 
 	if got := server.pathGlyphsForClient(client, sp); got != cfg.GlyphSymbols.Insufficient {
 		t.Fatalf("expected user path sample floor to return insufficient glyph %q, got %q", cfg.GlyphSymbols.Insufficient, got)

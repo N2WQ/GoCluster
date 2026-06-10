@@ -112,7 +112,8 @@ stale_after_half_life_multiplier: 3
 # rather than decaying into weaker glyph tiers from age alone.
 max_prediction_age_half_life_multiplier: 1.5
 
-# Minimum decayed weight required to report a glyph; below this returns glyph_symbols.insufficient.
+# Minimum decayed scalar evidence weight required to report a glyph; below this returns glyph_symbols.insufficient.
+# Fine/coarse blends use the larger overlapping layer for scalar mass, not fine+coarse.
 min_effective_weight: 0.5
 
 # Minimum raw selected observations required to report a glyph; below this returns glyph_symbols.insufficient.
@@ -130,6 +131,7 @@ receiver_max_effective_count: 8     # Max decayed effective observation count on
 receiver_max_effective_weight: 8.0  # Max capped effective weight one receiver can contribute per bucket.
 
 # Minimum fine weight required before blending fine with coarse (res-1); below this uses coarse only.
+# In the blend band, p50 bins keep local emphasis while scalar weight uses union semantics.
 min_fine_weight: 5
 
 # Minimum fine weight required to use fine only (skip coarse entirely).

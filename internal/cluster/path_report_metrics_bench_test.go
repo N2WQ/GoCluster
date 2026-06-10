@@ -5,13 +5,14 @@ import (
 	"testing"
 	"time"
 
+	"dxcluster/internal/testsupport"
 	"dxcluster/pathreliability"
 	"dxcluster/spot"
 )
 
 func BenchmarkPathReportMetricsObserve(b *testing.B) {
-	if err := pathreliability.InitH3MappingsFromDir("../../data/h3"); err != nil {
-		b.Skipf("InitH3Mappings unavailable: %v", err)
+	if err := pathreliability.InitH3MappingsFromDir(testsupport.H3TableDir(b)); err != nil {
+		b.Fatalf("InitH3Mappings unavailable: %v", err)
 	}
 	now := time.Unix(1_700_000_000, 0).UTC()
 	spots := benchmarkPathReportSpots(now)
@@ -25,8 +26,8 @@ func BenchmarkPathReportMetricsObserve(b *testing.B) {
 }
 
 func BenchmarkPathReportMetricsObserveWithCells(b *testing.B) {
-	if err := pathreliability.InitH3MappingsFromDir("../../data/h3"); err != nil {
-		b.Skipf("InitH3Mappings unavailable: %v", err)
+	if err := pathreliability.InitH3MappingsFromDir(testsupport.H3TableDir(b)); err != nil {
+		b.Fatalf("InitH3Mappings unavailable: %v", err)
 	}
 	now := time.Unix(1_700_000_000, 0).UTC()
 	spots := benchmarkPathReportSpots(now)

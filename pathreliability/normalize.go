@@ -100,7 +100,9 @@ func thresholdsForModeDB(mode string, cfg Config) GlyphThresholds {
 // SelectSample chooses or blends fine/coarse samples by confidence weight.
 // If fine is below minFineWeight, coarse wins to prevent weak fine data
 // from overriding stronger regional evidence. If fine meets fineOnlyWeight,
-// fine wins outright to preserve local detail.
+// fine wins outright to preserve local detail. In the blend band, scalar
+// evidence mass uses union semantics because fine and coarse are overlapping
+// views in one direction; p50 bins keep the existing local-emphasis shape.
 func SelectSample(fine Sample, coarse Sample, minFineWeight float64, fineOnlyWeight float64) Sample {
 	coarseCandidate := coarse
 	hasFine := sampleHasEvidence(fine)
@@ -119,19 +121,19 @@ func SelectSample(fine Sample, coarse Sample, minFineWeight float64, fineOnlyWei
 	if minFineWeight > 0 && fine.Weight < minFineWeight {
 		return coarseCandidate
 	}
-	sum := fine.Weight + coarseCandidate.Weight
-	if sum <= 0 {
+	weight := maxFloat64(fine.Weight, coarseCandidate.Weight)
+	if weight <= 0 {
 		return Sample{}
 	}
 	return Sample{
-		Weight:                 sum,
-		AgeSec:                 weightedSampleAge(fine, coarseCandidate),
+		Weight:                 weight,
+		AgeSec:                 weightedFineCoarseSampleAge(fine, coarseCandidate),
 		Count:                  maxCount(fine.Count, coarseCandidate.Count),
 		ObservationCount:       maxCount(sampleObservationCount(fine), sampleObservationCount(coarseCandidate)),
 		RawCount:               maxCount(fine.RawCount, coarseCandidate.RawCount),
-		RawWeight:              fine.RawWeight + coarseCandidate.RawWeight,
+		RawWeight:              maxFloat64(fine.RawWeight, coarseCandidate.RawWeight),
 		CappedCount:            maxCount(fine.CappedCount, coarseCandidate.CappedCount),
-		CappedWeight:           fine.CappedWeight + coarseCandidate.CappedWeight,
+		CappedWeight:           maxFloat64(fine.CappedWeight, coarseCandidate.CappedWeight),
 		CappedReceiverCount:    maxCount(fine.CappedReceiverCount, coarseCandidate.CappedReceiverCount),
 		CappedReceiverCapacity: maxCount(fine.CappedReceiverCapacity, coarseCandidate.CappedReceiverCapacity),
 		CapLimited:             fine.CapLimited || coarseCandidate.CapLimited,
@@ -182,11 +184,43 @@ func maxCount(left uint32, right uint32) uint32 {
 	return right
 }
 
+func maxFloat64(left float64, right float64) float64 {
+	if left >= right {
+		return left
+	}
+	return right
+}
+
 func saturatingAddCounts(left uint32, right uint32) uint32 {
 	if maxBucketObservationCount-left < right {
 		return maxBucketObservationCount
 	}
 	return left + right
+}
+
+func weightedFineCoarseSampleAge(fine Sample, coarse Sample) int64 {
+	fineWeight := fine.Weight
+	complementWeight := coarse.Weight - fine.Weight
+	if complementWeight < 0 {
+		complementWeight = 0
+	}
+	total := fineWeight + complementWeight
+	if total <= 0 {
+		return 0
+	}
+	fineAge := fine.AgeSec
+	if fineAge < 0 {
+		fineAge = 0
+	}
+	coarseAge := coarse.AgeSec
+	if coarseAge < 0 {
+		coarseAge = 0
+	}
+	age := (float64(fineAge)*fineWeight + float64(coarseAge)*complementWeight) / total
+	if age <= 0 {
+		return 0
+	}
+	return int64(math.Ceil(age))
 }
 
 func weightedSampleAge(left Sample, right Sample) int64 {

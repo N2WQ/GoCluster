@@ -1,6 +1,7 @@
 package pathreliability
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -131,6 +132,26 @@ func TestLoadFileReadsClosedGlyphAndVOACAPFallback(t *testing.T) {
 	}
 	if cfg.VOACAPFallback.SSNFetchIntervalSeconds != 1800 || cfg.VOACAPFallback.SSNEWMAHalfLifeSeconds != 28800 {
 		t.Fatalf("unexpected SSN fallback cadence: %+v", cfg.VOACAPFallback)
+	}
+}
+
+func TestWeightGateInvariantForShippedConfigAndDefaults(t *testing.T) {
+	assertWeightGateInvariant(t, DefaultConfig(), "default config")
+
+	cfg, err := LoadFile(filepath.Join("..", "data", "config", "path_reliability.yaml"))
+	if err != nil {
+		t.Fatalf("load shipped config: %v", err)
+	}
+	assertWeightGateInvariant(t, cfg, "shipped config")
+}
+
+func assertWeightGateInvariant(t *testing.T, cfg Config, label string) {
+	t.Helper()
+	minDirectionWeight := math.Min(cfg.MergeReceiveWeight, cfg.MergeTransmitWeight)
+	minDirectionWeight = math.Min(minDirectionWeight, cfg.ReverseHintDiscount)
+	lowerBound := cfg.MinFineWeight * minDirectionWeight
+	if cfg.MinEffectiveWeight > lowerBound {
+		t.Fatalf("%s weight gate invariant failed: min_effective_weight=%v > min_fine_weight*min_direction_weight=%v", label, cfg.MinEffectiveWeight, lowerBound)
 	}
 }
 

@@ -52,6 +52,40 @@ func TestReceiverCapShadowPreservesRawPredictionAndReportsWouldBlock(t *testing.
 	}
 }
 
+func TestReceiverCapShadowWouldBlockUsesUnionCappedWeight(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ReceiverContributionMode = ReceiverContributionShadow
+	cfg.MinEffectiveWeight = 0.5
+	cfg.MinObservationCount = 1
+	cfg.ReceiverMaxEffectiveWeight = 0.3
+	cfg.ReverseHintDiscount = 1
+	predictor := NewPredictor(cfg, []string{"20m"})
+	userCell := CellID(1)
+	dxCell := CellID(2)
+	userCoarse := CellID(3)
+	dxCoarse := CellID(4)
+	now := time.Unix(1_700_000_000, 0).UTC()
+
+	receiver := ReceiverIdentityHash("N2WQ")
+	for i := 0; i < 6; i++ {
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1, now, false, receiver)
+	}
+
+	res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, now)
+	if res.Source != SourceCombined {
+		t.Fatalf("shadow mode should keep raw prediction visible, got source=%v reason=%v", res.Source, res.InsufficientReason)
+	}
+	if res.Count != 6 {
+		t.Fatalf("expected blend-band raw count 6, got %d", res.Count)
+	}
+	if !res.CapWouldBlock {
+		t.Fatalf("expected union capped weight to trigger would-block, capped=%v", res.CappedWeight)
+	}
+	if math.Abs(res.CappedWeight-0.3) > 1e-9 {
+		t.Fatalf("capped weight=%v, want max fine/coarse capped weight 0.3", res.CappedWeight)
+	}
+}
+
 func TestReceiverCapEnforceCap8RequiresThreeReceiversAtObservationFloor(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.ReceiverContributionMode = ReceiverContributionEnforce

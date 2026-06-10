@@ -3,6 +3,7 @@ package filter
 import (
 	"testing"
 
+	"dxcluster/internal/testsupport"
 	"dxcluster/pathreliability"
 	"dxcluster/spot"
 )
@@ -983,8 +984,8 @@ func TestMatchesDefaultsToInsufficientPathClass(t *testing.T) {
 
 func requireH3Mappings(t *testing.T) {
 	t.Helper()
-	if err := pathreliability.InitH3MappingsFromDir("data/h3"); err != nil {
-		t.Skipf("InitH3Mappings unavailable: %v", err)
+	if err := pathreliability.InitH3MappingsFromDir(testsupport.H3TableDir(t)); err != nil {
+		t.Fatalf("InitH3Mappings failed: %v", err)
 	}
 }
 

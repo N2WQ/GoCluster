@@ -134,9 +134,12 @@ func TestFormatSpotForClientConfidenceDiagComment(t *testing.T) {
 }
 
 func TestFormatSpotForClientPathDiagCommentIncludesCount(t *testing.T) {
-	requireH3Mappings(t)
 	now := time.Date(2025, time.January, 7, 4, 9, 0, 0, time.UTC)
-	predictor := newTestPathPredictor()
+	cfg := pathreliability.DefaultConfig()
+	cfg.MinObservationCount = 1
+	cfg.MinEffectiveWeight = 0.1
+	cfg.ReceiverContributionMode = pathreliability.ReceiverContributionOff
+	predictor := pathreliability.NewPredictor(cfg, []string{"20m"})
 	server := NewServer(ServerOptions{
 		PathPredictor:      predictor,
 		PathDisplayEnabled: true,
@@ -145,10 +148,7 @@ func TestFormatSpotForClientPathDiagCommentIncludesCount(t *testing.T) {
 	client := &Client{grid: "FN31"}
 	client.setDiagMode(diagModePath)
 
-	userCell := pathreliability.EncodeCell("FN31")
-	dxCell := pathreliability.EncodeCell("FN32")
-	userCoarse := pathreliability.EncodeCoarseCell("FN31")
-	dxCoarse := pathreliability.EncodeCoarseCell("FN32")
+	userCell, dxCell, userCoarse, dxCoarse := requireDistinctPathCells(t, "FN31", "IO91")
 	receiver := pathreliability.ReceiverIdentityHash("W1AW")
 	predictor.UpdateWithReceiverHash(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -12, 1, now.Add(-10*time.Second), false, receiver)
 	predictor.UpdateWithReceiverHash(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -12, 1, now.Add(-5*time.Second), false, receiver)
@@ -156,7 +156,7 @@ func TestFormatSpotForClientPathDiagCommentIncludesCount(t *testing.T) {
 	sp := spot.NewSpot("K1ABC", "W1AW", 14074.0, "FT8")
 	sp.Time = now
 	sp.Band = "20m"
-	sp.DXMetadata.Grid = "FN32"
+	sp.DXMetadata.Grid = "IO91"
 	sp.Confidence = "V"
 
 	line := server.formatSpotForClient(client, sp)
@@ -168,6 +168,37 @@ func TestFormatSpotForClientPathDiagCommentIncludesCount(t *testing.T) {
 	}
 	if strings.Contains(line, "P:") {
 		t.Fatalf("expected path diagnostic without type marker or glyph, got %q", line)
+	}
+}
+
+func TestFormatSpotForClientPathDiagUsesUnionWeight(t *testing.T) {
+	now := time.Date(2025, time.January, 7, 4, 9, 0, 0, time.UTC)
+	cfg := pathreliability.DefaultConfig()
+	cfg.MinObservationCount = 1
+	cfg.ReceiverContributionMode = pathreliability.ReceiverContributionOff
+	predictor := pathreliability.NewPredictor(cfg, []string{"20m"})
+	server := NewServer(ServerOptions{
+		PathPredictor:      predictor,
+		PathDisplayEnabled: true,
+	}, nil)
+	server.nowFn = func() time.Time { return now }
+	client := &Client{grid: "FN31"}
+	client.setDiagMode(diagModePath)
+
+	userCell, dxCell, userCoarse, dxCoarse := requireDistinctPathCells(t, "FN31", "IO91")
+	for i := 0; i < 6; i++ {
+		predictor.UpdateWithReceiverHash(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -12, 1, now.Add(-5*time.Second), false, pathreliability.ReceiverIdentityHash("W1AW"))
+	}
+
+	sp := spot.NewSpot("K1ABC", "W1AW", 14074.0, "FT8")
+	sp.Time = now
+	sp.Band = "20m"
+	sp.DXMetadata.Grid = "IO91"
+	sp.Confidence = "V"
+
+	line := server.formatSpotForClient(client, sp)
+	if !strings.Contains(line, "n6|w3|") {
+		t.Fatalf("expected one-way union diagnostic weight n6|w3, got %q", line)
 	}
 }
 

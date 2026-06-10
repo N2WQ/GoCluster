@@ -244,10 +244,14 @@ valn|<p50>/<snr>h<hour>s<ssn>
   the diagnostic evidence. The raw count is the sample floor; the capped count,
   receiver count, and capped weight explain receiver-cap trust evidence.
 - `w<weight>` is the rounded effective weight after decay and path selection.
-  It is not SNR or dB. Weight is an evidence-strength gate, not the displayed
-  path class itself.
+  Fine and coarse are overlapping evidence layers, so blended scalar weight uses
+  the larger layer instead of adding both. It is not SNR or dB. Weight is an
+  evidence-strength gate, not the displayed path class itself.
 - `a<age>` is the effective age of the selected evidence. Bare numbers are
-  seconds; `m` and `h` mean minutes and hours.
+  seconds; `m` and `h` mean minutes and hours. Blended fine/coarse age uses
+  local fine mass plus the coarse regional complement; old local evidence can
+  make a direction stale even when coarse regional evidence was recently
+  refreshed.
 - `vcap|<snr>|h<hour>|s<ssn>` means the optional VOACAP closed fallback
   supplied the result. `<snr>` is the selected hour's rounded bidirectional
   FT8-equivalent SNR after receive-side noise penalty, `h<hour>` is the
@@ -270,7 +274,9 @@ valn|<p50>/<snr>h<hour>s<ssn>
 The five-minute `Path predictions (5m)` propagation log uses the same reason
 split: `no_sample`, `low_count`, `low_receiver`, `low_weight`, and `stale`.
 `low_count` is the raw observation-count gate; `low_receiver` is the
-receiver-diversity gate; `low_weight` is the decayed effective-weight gate.
+receiver-diversity gate; `low_weight` is the decayed effective-weight gate; and
+`stale` can increase when fine/coarse age drops an old local direction before
+receive/transmit merge.
 VOACAP fallback outcomes are counted separately as `voacap_closed` and
 `voacap_aligned`.
 

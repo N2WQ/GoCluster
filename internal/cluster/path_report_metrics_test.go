@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"dxcluster/internal/testsupport"
 	"dxcluster/pathreliability"
 	"dxcluster/spot"
 )
@@ -57,7 +58,7 @@ func TestPathReportMetricsObserveWithCellsUsesHydratedCells(t *testing.T) {
 	deCoarse := pathreliability.EncodeCoarseCell("FN20")
 	dxCoarse := pathreliability.EncodeCoarseCell("EM12")
 	if deCoarse == pathreliability.InvalidCell || dxCoarse == pathreliability.InvalidCell {
-		t.Skip("InitH3Mappings did not provide expected coarse cells")
+		t.Fatalf("InitH3Mappings did not provide expected coarse cells")
 	}
 
 	metrics.ObserveWithCells(s, now, deCoarse, dxCoarse)
@@ -70,11 +71,11 @@ func TestPathReportMetricsObserveWithCellsUsesHydratedCells(t *testing.T) {
 
 func requirePathReportH3Mappings(t *testing.T) {
 	t.Helper()
-	if err := pathreliability.InitH3MappingsFromDir("../../data/h3"); err != nil {
-		t.Skipf("InitH3Mappings unavailable: %v", err)
+	if err := pathreliability.InitH3MappingsFromDir(testsupport.H3TableDir(t)); err != nil {
+		t.Fatalf("InitH3Mappings unavailable: %v", err)
 	}
 	if pathreliability.EncodeCoarseCell("FN20") == pathreliability.InvalidCell {
-		t.Skip("InitH3Mappings did not provide expected coarse cell")
+		t.Fatalf("InitH3Mappings did not provide expected coarse cell")
 	}
 }
 

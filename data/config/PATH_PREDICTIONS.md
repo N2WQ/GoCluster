@@ -62,8 +62,8 @@ The half-life is band-specific because different bands change at different rates
 After about 3 half-lives (roughly 12-30 minutes depending on band), old data gets purged entirely to keep the predictions fresh.
 
 Separately, selected prediction evidence has a freshness gate. The shipped value
-is `max_prediction_age_half_life_multiplier: 1.25`, so selected evidence older
-than about 1.25 band half-lives is treated as insufficient before the final
+is `max_prediction_age_half_life_multiplier: 1.5`, so selected evidence older
+than about 1.5 band half-lives is treated as insufficient before the final
 glyph is chosen. This is a hard cutoff: a strong old opening becomes a space
 rather than fading from `>` to `=` to `<` because of age alone.
 
@@ -87,9 +87,16 @@ When you see a glyph next to a spot, here's what happened behind the scenes:
 
 2. **Decay**: Each data point gets weighted by how recent it is.
 
-3. **Blend resolutions**: Fine and coarse data get combined. If you have strong local data (fine), it dominates. If not, regional data (coarse) fills in.
+3. **Blend resolutions**: Fine and coarse data get combined. If you have
+   strong local data (fine), it dominates. If not, regional data (coarse) fills
+   in. Because fine reports also update the matching coarse bucket, scalar
+   evidence mass uses the larger fine/coarse value instead of adding both. The
+   p50 histogram still keeps the existing local-emphasis shape.
 
-4. **Check freshness**: Selected receive/transmit evidence must be recent enough for the band. Stale selected evidence is discarded.
+4. **Check freshness**: Selected receive/transmit evidence must be recent enough
+   for the band. Blended fine/coarse age uses local fine evidence plus the
+   coarse regional complement, so stale local evidence can make a direction old
+   enough to discard even when the wider region was refreshed.
 
 5. **Merge directions**: Receive and transmit paths combine (60/40 split), with the configured receive-side noise penalty applied when nonzero.
 
@@ -111,7 +118,11 @@ When you see a glyph next to a spot, here's what happened behind the scenes:
    attributed receiver slots for the configured sample floor and receiver cap.
    Five-minute propagation logs report this as `low_receiver`.
 
-9. **Check confidence**: If the combined data weight is below the minimum threshold (default 0.5), the system shows a space (insufficient data) instead of making an unreliable prediction. Five-minute propagation logs report this as `low_weight`.
+9. **Check confidence**: If the combined data weight is below the minimum
+   threshold (default 0.5), the system shows a space (insufficient data) instead
+   of making an unreliable prediction. Five-minute propagation logs report this
+   as `low_weight`. After scalar union semantics, weight diagnostics can be
+   lower than older releases that double-counted fine evidence inside coarse.
 
 10. **Map to glyph**: The selected p50 signal strength gets compared against
    mode-specific thresholds to pick the right symbol. Fixed histogram bins use
