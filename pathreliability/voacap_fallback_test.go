@@ -486,7 +486,7 @@ func TestVOACAPRunnerClosedForecasterDeckUsesSafeLabels(t *testing.T) {
 		},
 		SSN:            147,
 		WindowStartUTC: time.Date(2026, time.June, 9, 3, 0, 0, 0, time.UTC),
-	})
+	}, voacapDeckTransmit)
 	if err != nil {
 		t.Fatalf("buildDeck() error: %v", err)
 	}
@@ -516,12 +516,95 @@ func TestVOACAPRunnerClosedForecasterDeckUsesWindowStartHour(t *testing.T) {
 		},
 		SSN:            147,
 		WindowStartUTC: time.Date(2026, time.June, 9, 17, 0, 0, 0, time.UTC),
-	})
+	}, voacapDeckTransmit)
 	if err != nil {
 		t.Fatalf("buildDeck() error: %v", err)
 	}
 	if text := string(deck); !strings.Contains(text, "TIME         17   24    1    1") {
 		t.Fatalf("fallback deck should cover the current UTC hour:\n%s", text)
+	}
+}
+
+func TestVOACAPRunnerClosedForecasterDeckSupportsReceiveDirection(t *testing.T) {
+	cfg := testVOACAPFallbackConfig().VOACAPFallback
+	forecaster := NewVOACAPRunnerClosedForecaster(cfg)
+	deck, err := forecaster.buildDeck(VOACAPClosedJob{
+		Request: VOACAPClosedRequest{
+			UserGrid: "FN05",
+			DXGrid:   "DM81XX",
+			Band:     "20m",
+		},
+		SSN:            147,
+		WindowStartUTC: time.Date(2026, time.June, 9, 3, 0, 0, 0, time.UTC),
+	}, voacapDeckReceive)
+	if err != nil {
+		t.Fatalf("buildDeck() error: %v", err)
+	}
+	if text := string(deck); !strings.Contains(text, "CIRCUIT   31.98N   102.04W    45.50N    079.00W") {
+		t.Fatalf("receive-direction deck should reverse circuit coordinates:\n%s", text)
+	}
+}
+
+func TestVOACAPClosedFallbackAppliesNoiseToReceiveDirection(t *testing.T) {
+	cfg := testVOACAPFallbackConfig()
+	cfg.MergeReceiveWeight = 0.6
+	cfg.MergeTransmitWeight = 0.4
+	fallback := newTestClosedFallback(t, cfg, fakeClosedForecaster{}, fixedSSNProvider{ssn: 112})
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	key := fallback.cacheKey(testClosedRequest(), 112, now)
+	fallback.addCacheLocked(key, voacapCacheEntry{
+		storedAt: now,
+		forecast: VOACAPClosedForecast{
+			WindowStartUTC: now,
+			Records: []VOACAPHourlyForecast{
+				{
+					HourUTC:           20,
+					FrequencyMHz:      14.1,
+					ReceiveFT8SNRDB:   -10,
+					TransmitFT8SNRDB:  -20,
+					HasDirectionalSNR: true,
+				},
+			},
+		},
+	})
+
+	req := testClosedRequest()
+	req.ReceiveNoisePenaltyDB = 5
+	forecast, ok := fallback.CheckForecast(req, now)
+	if !ok {
+		t.Fatalf("expected cached directional forecast")
+	}
+	if got, want := forecast.EffectiveDB(), -17.0; got != want {
+		t.Fatalf("effective VOACAP SNR = %v, want %v", got, want)
+	}
+	if forecast.Record.FT8SNRDB != -17 {
+		t.Fatalf("rounded diagnostic SNR = %d, want -17", forecast.Record.FT8SNRDB)
+	}
+}
+
+func TestCombineDirectionalForecastsRequiresCommonHours(t *testing.T) {
+	receive := VOACAPClosedForecast{Records: []VOACAPHourlyForecast{
+		{HourUTC: 20, FrequencyMHz: 14.1, FT8SNRDB: -10, VOACAPSNRDBHz: 24},
+		{HourUTC: 21, FrequencyMHz: 14.1, FT8SNRDB: -12, VOACAPSNRDBHz: 22},
+	}}
+	transmit := VOACAPClosedForecast{Records: []VOACAPHourlyForecast{
+		{HourUTC: 20, FrequencyMHz: 14.1, FT8SNRDB: -20, VOACAPSNRDBHz: 14},
+	}}
+	combined, err := combineDirectionalForecasts(receive, transmit, "20m")
+	if err != nil {
+		t.Fatalf("combineDirectionalForecasts() error: %v", err)
+	}
+	if len(combined.Records) != 1 {
+		t.Fatalf("expected one common-hour record, got %d", len(combined.Records))
+	}
+	record := combined.Records[0]
+	if !record.HasDirectionalSNR || record.ReceiveFT8SNRDB != -10 || record.TransmitFT8SNRDB != -20 {
+		t.Fatalf("unexpected combined record: %+v", record)
+	}
+
+	_, err = combineDirectionalForecasts(receive, VOACAPClosedForecast{}, "20m")
+	if err == nil {
+		t.Fatalf("expected error with no common bidirectional hours")
 	}
 }
 

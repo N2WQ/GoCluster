@@ -123,8 +123,8 @@ func TestLoadFileReadsClosedGlyphAndVOACAPFallback(t *testing.T) {
 	if cfg.GlyphSymbols.Closed != "#" {
 		t.Fatalf("closed glyph = %q, want #", cfg.GlyphSymbols.Closed)
 	}
-	if cfg.VOACAPFallback.Enabled {
-		t.Fatalf("VOACAP fallback should be disabled in shipped config")
+	if !cfg.VOACAPFallback.Enabled {
+		t.Fatalf("VOACAP fallback should be enabled in shipped config")
 	}
 	if got := thresholdsForModeDB("FT8", cfg).Closed; got != -29 {
 		t.Fatalf("FT8 closed threshold = %v, want -29", got)

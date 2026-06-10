@@ -213,8 +213,8 @@ Path reliability glyphs:
   " " - INSUFFICIENT: not enough recent evidence.
   Bucket p50 data is authoritative; VOACAP may only replace insufficient data
     when closed or aligned with sparse p50.
-  "#" - CLOSED: VOACAP fallback predicts the current UTC hour's SNR at or
-    below the mode's closed threshold.
+  "#" - CLOSED: VOACAP fallback predicts the current UTC hour's blended,
+    noise-adjusted SNR at or below the mode's closed threshold.
   PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, CLOSED, INSUFFICIENT.
 
 List types:
@@ -394,9 +394,10 @@ area:
 - `a<age>` is the effective age of the selected evidence. Ages under one minute
   are seconds, then rounded up to `m` or `h`.
 - `vcap|<snr>|h<hour>|s<ssn>` means the optional VOACAP closed fallback
-  supplied the result. `<snr>` is the selected hour's integer FT8-equivalent
-  SNR, `h<hour>` is the selected UTC forecast hour, and `<ssn>` is the rounded
-  EWMA SSN generation used for the run.
+  supplied the result. `<snr>` is the selected hour's rounded bidirectional
+  FT8-equivalent SNR after receive-side noise penalty, `h<hour>` is the
+  selected UTC forecast hour, and `<ssn>` is the rounded EWMA SSN generation
+  used for the run.
 - `valn|<p50>/<snr>h<hour>s<ssn>` means sparse bucket p50 evidence was
   insufficient by sample gates but aligned with the current-hour VOACAP class.
   `<p50>` is rounded for display so the diagnostic fits the fixed-width line.
@@ -508,12 +509,12 @@ Important operational notes:
   startup failures because those cells are critical to path predictions.
 - If `voacap_fallback.enabled` is true, an insufficient bucket result may start
   a delayed nonblocking VOACAP lookup. A cached fallback can replace the blank
-  glyph with the configured closed glyph when the current UTC hour's VOACAP
-  record predicts an FT8-equivalent SNR at or below
-  `mode_thresholds.<mode>.closed`, or with a normal glyph when sparse bucket
-  p50 and VOACAP map to the same path class. Sufficient bucket p50 results stay
-  authoritative. Runtime fallback decks cover the rolling UTC forecast window;
-  parsed VOACAP hour `24` is treated as UTC hour `0`.
+  glyph with the configured closed glyph when the current UTC hour's blended
+  bidirectional VOACAP SNR, after the user's receive-side noise penalty, is at
+  or below `mode_thresholds.<mode>.closed`, or with a normal glyph when sparse
+  bucket p50 and VOACAP map to the same path class. Sufficient bucket p50
+  results stay authoritative. Runtime fallback decks cover the rolling UTC
+  forecast window; parsed VOACAP hour `24` is treated as UTC hour `0`.
 - `PATH` filters work on the class names, not on the glyph characters.
   `CLOSED` is a VOACAP-closed subtype of `UNLIKELY`: existing
   `PASS/REJECT PATH UNLIKELY` filters still include closed fallback spots,

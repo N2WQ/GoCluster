@@ -142,7 +142,7 @@ closed glyph despite sparse observed p50 evidence and which p50 class that
 evidence would have mapped to.
 A separate `VOACAP p50 compare (5m)` line may appear for sufficient p50
 predictions when an existing current-hour VOACAP cache record is present. It
-reports cache hit/miss counts, class agreement, stronger/weaker SNR direction,
+reports cache hit/miss counts, class agreement, stronger/weaker effective SNR,
 closed-VOACAP versus p50 class splits, and absolute SNR-delta buckets. This
 comparison is cache-only and does not enqueue VOACAP work or change emitted
 glyphs.
@@ -150,18 +150,20 @@ glyphs.
 When `voacap_fallback.enabled` is true, insufficient bucket results may start a
 delayed VOACAP lookup. The lookup is nonblocking in the telnet path. Cached
 VOACAP output stores one hourly record per parsed forecast hour for the
-requested band. If more than one configured center frequency maps to the same
-band and hour, the cache keeps the strongest FT8-equivalent SNR for that hour.
+requested band. Each cached hour carries both raw directions: DX-to-user receive
+and user-to-DX transmit. Lookup blends those directions with the same
+`merge_receive_weight` and `merge_transmit_weight` used by p50, then subtracts
+the request user's receive-side `SET NOISE` penalty from the receive leg.
 Runtime fallback decks start at the current rolling UTC forecast window, and
 VOACAP output hour `24` is normalized to UTC hour `0`. Lookup selects the record
-matching the current UTC hour and re-evaluates it against the request mode, so
-the first mode to populate the cache does not decide later modes. If the
-selected VOACAP record is at or below
+matching the current UTC hour and re-evaluates the effective blended SNR against
+the request mode, so the first mode or noise class to populate the cache does
+not decide later requests. If the effective VOACAP SNR is at or below
 `mode_thresholds.<mode>.closed`, the fallback can return the configured closed
 glyph. Otherwise, it can return a normal `HIGH`, `MEDIUM`, `LOW`, or
 `UNLIKELY` glyph only when the insufficient bucket result still has sparse p50
-evidence and that p50 class matches the VOACAP current-hour class. It never
-overrides a sufficient bucket p50 result. For PATH filters, the closed glyph is
+evidence and that p50 class matches the effective VOACAP current-hour class. It
+never overrides a sufficient bucket p50 result. For PATH filters, the closed glyph is
 visible as `CLOSED` and remains compatible with `UNLIKELY`: existing
 `PASS/REJECT PATH UNLIKELY` filters still include closed fallback spots, while
 direct `PASS/REJECT PATH CLOSED` rules target only closed fallback spots.
@@ -223,8 +225,8 @@ In enforce mode, receiver concentration is evaluated separately from this user
 sample floor.
 
 The receive-side noise table is resolved only by `SET NOISE` class. The same
-location penalty applies on every band and is subtracted from DX-to-user path
-evidence at prediction time.
+location penalty applies on every band and is subtracted from DX-to-user p50
+path evidence and the DX-to-user VOACAP fallback leg at prediction time.
 
 | Class | Quiet | Rural | Suburban | Urban | Industrial |
 | --- | ---: | ---: | ---: | ---: | ---: |

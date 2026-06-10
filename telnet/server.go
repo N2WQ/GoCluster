@@ -3718,12 +3718,13 @@ func (s *Server) pathPredictionForClient(client *Client, sp *spot.Spot) (pathPre
 	minObservationCount := effectivePathMinObservationCount(state, cfg)
 	res := s.pathPredictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, now)
 	res = s.pathResultWithClosedFallback(res, pathreliability.VOACAPClosedRequest{
-		UserCell: userCell,
-		DXCell:   dxCell,
-		UserGrid: grid,
-		DXGrid:   sp.DXMetadata.Grid,
-		Band:     band,
-		Mode:     mode,
+		UserCell:              userCell,
+		DXCell:                dxCell,
+		UserGrid:              grid,
+		DXGrid:                sp.DXMetadata.Grid,
+		Band:                  band,
+		Mode:                  mode,
+		ReceiveNoisePenaltyDB: noisePenalty,
 	}, now)
 	s.recordPathPrediction(res, state.gridDerived, sp.DXMetadata.GridDerived)
 	return pathPrediction{
@@ -3816,12 +3817,13 @@ func (s *Server) pathClassForClient(client *Client, sp *spot.Spot) string {
 	minObservationCount := effectivePathMinObservationCount(state, cfg)
 	res := s.pathPredictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, now)
 	res = s.pathResultWithClosedFallback(res, pathreliability.VOACAPClosedRequest{
-		UserCell: userCell,
-		DXCell:   dxCell,
-		UserGrid: grid,
-		DXGrid:   sp.DXMetadata.Grid,
-		Band:     band,
-		Mode:     mode,
+		UserCell:              userCell,
+		DXCell:                dxCell,
+		UserGrid:              grid,
+		DXGrid:                sp.DXMetadata.Grid,
+		Band:                  band,
+		Mode:                  mode,
+		ReceiveNoisePenaltyDB: noisePenalty,
 	}, now)
 	if res.Source == pathreliability.SourceInsufficient {
 		return filter.PathClassInsufficient
@@ -3851,7 +3853,8 @@ func (s *Server) pathResultWithClosedFallback(res pathreliability.Result, req pa
 		return res
 	}
 	cfg := s.pathPredictor.Config()
-	if pathreliability.ClosedForDB(float64(forecast.Record.FT8SNRDB), req.Mode, cfg) {
+	voacapDB := forecast.EffectiveDB()
+	if pathreliability.ClosedForDB(voacapDB, req.Mode, cfg) {
 		s.recordClosedFallbackStage(res, req.Mode, cfg)
 		return pathreliability.VOACAPClosedResult(cfg, forecast)
 	}
@@ -3860,7 +3863,7 @@ func (s *Server) pathResultWithClosedFallback(res pathreliability.Result, req pa
 		return res
 	}
 	p50Class := pathreliability.ClassForDB(res.P50DB, req.Mode, cfg)
-	voacapClass := pathreliability.ClassForDB(float64(forecast.Record.FT8SNRDB), req.Mode, cfg)
+	voacapClass := pathreliability.ClassForDB(voacapDB, req.Mode, cfg)
 	if p50Class != voacapClass {
 		s.vStageMismatch.Add(1)
 		return res
@@ -3886,7 +3889,7 @@ func (s *Server) recordVOACAPP50Compare(res pathreliability.Result, req pathreli
 	s.vP50CompareCacheHit.Add(1)
 	cfg := s.pathPredictor.Config()
 	p50Class := pathreliability.ClassForDB(res.P50DB, req.Mode, cfg)
-	voacapDB := float64(forecast.Record.FT8SNRDB)
+	voacapDB := forecast.EffectiveDB()
 	voacapClass := pathreliability.ClassForDB(voacapDB, req.Mode, cfg)
 	if p50Class == voacapClass {
 		s.vP50CompareSameClass.Add(1)

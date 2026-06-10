@@ -123,14 +123,15 @@ If the selected bucket evidence is insufficient and the optional
 `voacap_fallback.enabled` setting is true, the cluster can start a delayed
 nonblocking VOACAP lookup for the same grid-center endpoints. A cached VOACAP
 result can replace an insufficient glyph in two cases: it can emit the
-configured closed glyph when the current UTC hour's forecasted FT8-equivalent
-SNR is at or below the request mode's configured
-`mode_thresholds.<mode>.closed` threshold, or it can emit a normal path glyph
-when sparse bucket p50 evidence exists and that p50 class matches the cached
-VOACAP current-hour class. Cached VOACAP output retains the parsed hourly
-records for the requested band. Runtime fallback decks start at the current
-rolling UTC window, and parsed VOACAP hour `24` is stored as UTC hour `0`.
-The fallback never replaces a normal sufficient p50 bucket prediction.
+configured closed glyph when the current UTC hour's blended bidirectional
+FT8-equivalent SNR, after the user's receive-side noise penalty, is at or below
+the request mode's configured `mode_thresholds.<mode>.closed` threshold, or it
+can emit a normal path glyph when sparse bucket p50 evidence exists and that
+p50 class matches the cached VOACAP current-hour class. Cached VOACAP output
+retains the parsed hourly records for the requested band. Runtime fallback
+decks start at the current rolling UTC window, and parsed VOACAP hour `24` is
+stored as UTC hour `0`. The fallback never replaces a normal sufficient p50
+bucket prediction.
 For `PASS/REJECT PATH`, the closed fallback is filter-visible as `CLOSED`.
 `CLOSED` remains compatible with `UNLIKELY`, so existing `UNLIKELY` filters
 still include closed fallback spots, while direct `CLOSED` filters target only
@@ -144,8 +145,9 @@ separate `VOACAP fallback (5m)` line reports stage counters such as `queued`,
 and `class_mismatch`.
 When sufficient p50 predictions can be compared with an existing current-hour
 VOACAP cache record, `VOACAP p50 compare (5m)` reports cache hits/misses, class
-agreement, SNR direction, closed-VOACAP versus p50 class, and SNR-delta buckets.
-That comparison is cache-only and does not run VOACAP on cache misses.
+agreement, stronger/weaker effective SNR, closed-VOACAP versus p50 class, and
+SNR-delta buckets. That comparison is cache-only and does not run VOACAP on
+cache misses.
 
 ## How to Use This Information
 
@@ -156,7 +158,7 @@ The glyphs help you prioritize. If you see:
 - **`<`**: Worth trying, especially if you need that entity or grid.
 - **`-`**: Probably not worth your time unless it's a rare one.
 - **Closed glyph**: Optional VOACAP fallback thinks the band is closed for this
-  mode and path.
+  mode, path, and receive-noise setting.
 - **VOACAP-aligned normal glyph**: Bucket evidence was insufficient, but sparse
   bucket p50 and current-hour VOACAP mapped to the same path class.
 - **Space**: No prediction available - you're on your own. Could be good or bad.

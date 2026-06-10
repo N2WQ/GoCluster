@@ -249,11 +249,11 @@ valn|<p50>/<snr>h<hour>s<ssn>
 - `a<age>` is the effective age of the selected evidence. Bare numbers are
   seconds; `m` and `h` mean minutes and hours.
 - `vcap|<snr>|h<hour>|s<ssn>` means the optional VOACAP closed fallback
-  supplied the result. `<snr>` is the selected hour's integer FT8-equivalent
-  SNR, `h<hour>` is the selected UTC forecast hour, and `<ssn>` is the rounded
-  EWMA SSN generation used for the run. `PASS/REJECT PATH CLOSED` targets
-  these closed fallback spots; `UNLIKELY` PATH filters still include them for
-  compatibility.
+  supplied the result. `<snr>` is the selected hour's rounded bidirectional
+  FT8-equivalent SNR after receive-side noise penalty, `h<hour>` is the
+  selected UTC forecast hour, and `<ssn>` is the rounded EWMA SSN generation
+  used for the run. `PASS/REJECT PATH CLOSED` targets these closed fallback
+  spots; `UNLIKELY` PATH filters still include them for compatibility.
 - `valn|<p50>/<snr>h<hour>s<ssn>` means sparse bucket p50 evidence was
   insufficient by sample gates but aligned with the current-hour VOACAP class.
   `<p50>` is rounded for display so the diagnostic fits the fixed-width line.
@@ -285,7 +285,7 @@ Use `VOACAP fallback (5m)` to explain why a fallback lookup did or did not
 emit.
 When sufficient p50 predictions can be compared against an existing current-hour
 VOACAP cache record, a separate `VOACAP p50 compare (5m)` line reports cache
-hits, cache misses, class agreement, stronger/weaker SNR direction, closed
+hits, cache misses, class agreement, stronger/weaker effective SNR, closed
 VOACAP versus p50 class, and absolute SNR-delta buckets. The comparison is
 cache-only: cache misses do not run VOACAP, start delay windows, or change
 glyphs.
@@ -309,7 +309,8 @@ Example readings:
   shown first, capped effective count after `/c`, and attributed receiver count
   after `/rx`.
 - `vcap|-34|h20|s112`: VOACAP fallback selected the 20:00 UTC forecast record,
-  predicted FT8-equivalent SNR -34, and used SSN generation 112.
+  blended both directions, applied the user's receive noise penalty, rounded the
+  effective FT8-equivalent SNR to -34, and used SSN generation 112.
 - `valn|-15/-15h20s112`: sparse bucket p50 rounded to -15 dB and the 20:00
   UTC VOACAP forecast also mapped to that same path class.
 - `n1|loww`: one selected observation existed, but the effective weight was

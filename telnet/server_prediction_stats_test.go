@@ -250,6 +250,51 @@ func TestPathResultWithClosedFallbackStageStats(t *testing.T) {
 	}
 }
 
+func TestPathResultWithClosedFallbackUsesEffectiveVOACAPSNR(t *testing.T) {
+	cfg := pathreliability.DefaultConfig()
+	cfg.GlyphSymbols.Closed = "!"
+	predictor := pathreliability.NewPredictor(cfg, []string{"20m"})
+	req := pathreliability.VOACAPClosedRequest{
+		Band:                  "20m",
+		Mode:                  "FT8",
+		ReceiveNoisePenaltyDB: 5,
+	}
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	forecast := pathreliability.VOACAPCachedForecast{
+		Record: pathreliability.VOACAPHourlyForecast{
+			FT8SNRDB:          -17,
+			HourUTC:           20,
+			FrequencyMHz:      14.1,
+			ReceiveFT8SNRDB:   -10,
+			TransmitFT8SNRDB:  -20,
+			HasDirectionalSNR: true,
+		},
+		EffectiveFT8SNRDB:     -17,
+		HasEffectiveFT8SNRDB:  true,
+		ReceiveNoisePenaltyDB: 5,
+		SSN:                   112,
+	}
+	s := &Server{
+		pathPredictor: predictor,
+		pathClosedFallback: fakePathClosedFallback{
+			forecast: forecast,
+			ok:       true,
+		},
+	}
+
+	got := s.pathResultWithClosedFallback(pathreliability.Result{
+		Source: pathreliability.SourceInsufficient,
+		HasP50: true,
+		P50DB:  -17,
+	}, req, now)
+	if got.Source != pathreliability.SourceVOACAPAligned {
+		t.Fatalf("expected sparse p50 to align with effective VOACAP SNR, got %+v", got)
+	}
+	if got.VOACAPFT8SNRDB != -17 {
+		t.Fatalf("diagnostic VOACAP SNR = %d, want -17", got.VOACAPFT8SNRDB)
+	}
+}
+
 func TestPathResultWithClosedFallbackComparesSufficientP50AgainstCachedVOACAP(t *testing.T) {
 	cfg := pathreliability.DefaultConfig()
 	cfg.GlyphSymbols.Closed = "!"

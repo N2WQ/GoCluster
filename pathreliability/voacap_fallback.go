@@ -5,7 +5,8 @@
 // Related docs: pathreliability/README.md,
 // data/config/PATH_PREDICTIONS.md, docs/decisions/ADR-0161-voacap-closed-only-path-fallback.md,
 // docs/decisions/ADR-0162-voacap-hourly-forecast-window-cache.md,
-// docs/decisions/ADR-0163-voacap-aligned-sparse-p50-fallback.md.
+// docs/decisions/ADR-0163-voacap-aligned-sparse-p50-fallback.md,
+// docs/decisions/ADR-0169-bidirectional-noise-aware-voacap-fallback.md.
 // Related tests: pathreliability/voacap_fallback_test.go,
 // telnet/path_settings_test.go.
 package pathreliability
@@ -55,12 +56,13 @@ type VOACAPFallbackLogger interface {
 }
 
 type VOACAPClosedRequest struct {
-	UserCell CellID
-	DXCell   CellID
-	UserGrid string
-	DXGrid   string
-	Band     string
-	Mode     string
+	UserCell              CellID
+	DXCell                CellID
+	UserGrid              string
+	DXGrid                string
+	Band                  string
+	Mode                  string
+	ReceiveNoisePenaltyDB float64
 }
 
 type VOACAPClosedJob struct {
@@ -81,18 +83,35 @@ type VOACAPClosedForecast struct {
 }
 
 type VOACAPHourlyForecast struct {
-	FT8SNRDB      int
-	VOACAPSNRDBHz int
-	HourUTC       int
-	FrequencyMHz  float64
+	FT8SNRDB              int
+	VOACAPSNRDBHz         int
+	HourUTC               int
+	FrequencyMHz          float64
+	ReceiveFT8SNRDB       int
+	TransmitFT8SNRDB      int
+	ReceiveVOACAPSNRDBHz  int
+	TransmitVOACAPSNRDBHz int
+	HasDirectionalSNR     bool
 }
 
-// VOACAPCachedForecast carries the cached current-hour VOACAP record and the
-// forecast generation diagnostics needed by telnet display decisions.
+// VOACAPCachedForecast carries one cached current-hour VOACAP record after
+// request-specific receive-noise adjustment. Raw directional SNRs stay in
+// Record so one bounded cache entry can serve users with different noise
+// classes without multiplying retained state.
 type VOACAPCachedForecast struct {
-	Record VOACAPHourlyForecast
-	SSN    int
-	AgeSec int64
+	Record                VOACAPHourlyForecast
+	EffectiveFT8SNRDB     float64
+	HasEffectiveFT8SNRDB  bool
+	ReceiveNoisePenaltyDB float64
+	SSN                   int
+	AgeSec                int64
+}
+
+func (f VOACAPCachedForecast) EffectiveDB() float64 {
+	if f.HasEffectiveFT8SNRDB {
+		return f.EffectiveFT8SNRDB
+	}
+	return float64(f.Record.FT8SNRDB)
 }
 
 type VOACAPClosedFallbackSnapshot struct {
@@ -193,7 +212,11 @@ type voacapDelayEntry struct {
 	lastSeen  time.Time
 }
 
-const voacapDirectionUserToDX = "user_to_dx"
+const (
+	voacapDirectionBidirectional = "bidirectional"
+	voacapDeckReceive            = "receive"
+	voacapDeckTransmit           = "transmit"
+)
 
 // ErrVOACAPFallbackDisabled marks an explicit disabled-constructor call.
 var ErrVOACAPFallbackDisabled = fmt.Errorf("voacap fallback disabled")
@@ -283,7 +306,7 @@ func (f *VOACAPClosedFallback) StatsSnapshot() VOACAPFallbackStats {
 
 func (f *VOACAPClosedFallback) CheckClosed(req VOACAPClosedRequest, now time.Time) (Result, bool) {
 	forecast, ok := f.CheckForecast(req, now)
-	if !ok || !f.forecastRecordClosedForMode(forecast.Record, req.Mode) {
+	if !ok || !f.forecastClosedForMode(forecast, req.Mode) {
 		return Result{}, false
 	}
 	return f.closedResultFromForecast(forecast), true
@@ -323,7 +346,7 @@ func (f *VOACAPClosedFallback) CheckForecast(req VOACAPClosedRequest, now time.T
 				delete(f.cache, key)
 			} else {
 				f.statsCacheHit.Add(1)
-				return f.cachedForecastFromCache(key, entry, record, now), true
+				return f.cachedForecastFromCache(key, entry, record, prepared, now), true
 			}
 		}
 	}
@@ -386,7 +409,7 @@ func (f *VOACAPClosedFallback) CheckCachedForecast(req VOACAPClosedRequest, now 
 	if !ok {
 		return VOACAPCachedForecast{}, false
 	}
-	return f.cachedForecastFromCache(key, entry, record, now), true
+	return f.cachedForecastFromCache(key, entry, record, prepared, now), true
 }
 
 func (f *VOACAPClosedFallback) prepareRequest(req VOACAPClosedRequest) (VOACAPClosedRequest, bool) {
@@ -409,8 +432,8 @@ func (f *VOACAPClosedFallback) prepareRequest(req VOACAPClosedRequest) (VOACAPCl
 	return req, true
 }
 
-func (f *VOACAPClosedFallback) forecastRecordClosedForMode(record VOACAPHourlyForecast, mode string) bool {
-	return ClosedForDB(float64(record.FT8SNRDB), mode, f.cfg)
+func (f *VOACAPClosedFallback) forecastClosedForMode(forecast VOACAPCachedForecast, mode string) bool {
+	return ClosedForDB(forecast.EffectiveDB(), mode, f.cfg)
 }
 
 func (f *VOACAPClosedFallback) cacheKey(req VOACAPClosedRequest, ssn int, now time.Time) voacapCacheKey {
@@ -424,7 +447,7 @@ func (f *VOACAPClosedFallback) cacheKey(req VOACAPClosedRequest, ssn int, now ti
 		year:         window.Year(),
 		month:        int(window.Month()),
 		ssn:          ssn,
-		direction:    voacapDirectionUserToDX,
+		direction:    voacapDirectionBidirectional,
 	}
 }
 
@@ -435,7 +458,7 @@ func (f *VOACAPClosedFallback) delayKey(req VOACAPClosedRequest) voacapDelayKey 
 		dxCell:       req.DXCell,
 		band:         req.Band,
 		frequencyKHz: frequencyKHz,
-		direction:    voacapDirectionUserToDX,
+		direction:    voacapDirectionBidirectional,
 	}
 }
 
@@ -487,15 +510,20 @@ func (f *VOACAPClosedFallback) runJob(ctx context.Context, job VOACAPClosedJob) 
 	f.addCacheLocked(job.key, voacapCacheEntry{forecast: forecast, storedAt: now})
 }
 
-func (f *VOACAPClosedFallback) cachedForecastFromCache(key voacapCacheKey, entry voacapCacheEntry, record VOACAPHourlyForecast, now time.Time) VOACAPCachedForecast {
+func (f *VOACAPClosedFallback) cachedForecastFromCache(key voacapCacheKey, entry voacapCacheEntry, record VOACAPHourlyForecast, req VOACAPClosedRequest, now time.Time) VOACAPCachedForecast {
 	ageSec := int64(0)
 	if now.After(entry.storedAt) {
 		ageSec = int64(now.Sub(entry.storedAt).Seconds())
 	}
+	effective := effectiveVOACAPFT8SNRDB(record, req.ReceiveNoisePenaltyDB, f.cfg)
+	record.FT8SNRDB = int(math.Round(effective))
 	return VOACAPCachedForecast{
-		Record: record,
-		SSN:    key.ssn,
-		AgeSec: ageSec,
+		Record:                record,
+		EffectiveFT8SNRDB:     effective,
+		HasEffectiveFT8SNRDB:  true,
+		ReceiveNoisePenaltyDB: req.ReceiveNoisePenaltyDB,
+		SSN:                   key.ssn,
+		AgeSec:                ageSec,
 	}
 }
 
@@ -508,7 +536,7 @@ func VOACAPClosedResult(cfg Config, forecast VOACAPCachedForecast) Result {
 	return Result{
 		Glyph:              cfg.GlyphSymbols.Closed,
 		Class:              classUnlikely,
-		P50DB:              float64(forecast.Record.FT8SNRDB),
+		P50DB:              forecast.EffectiveDB(),
 		HasP50:             true,
 		P50Glyph:           cfg.GlyphSymbols.Closed,
 		AgeSec:             forecast.AgeSec,
@@ -536,6 +564,17 @@ func VOACAPAlignedResult(base Result, cfg Config, mode string, forecast VOACAPCa
 	base.VOACAPHourUTC = forecast.Record.HourUTC
 	base.VOACAPFrequencyMHz = forecast.Record.FrequencyMHz
 	return base
+}
+
+func effectiveVOACAPFT8SNRDB(record VOACAPHourlyForecast, receiveNoisePenaltyDB float64, cfg Config) float64 {
+	if !record.HasDirectionalSNR {
+		return float64(record.FT8SNRDB)
+	}
+	receive := float64(record.ReceiveFT8SNRDB)
+	if receiveNoisePenaltyDB > 0 {
+		receive -= receiveNoisePenaltyDB
+	}
+	return cfg.MergeReceiveWeight*receive + cfg.MergeTransmitWeight*float64(record.TransmitFT8SNRDB)
 }
 
 func (f *VOACAPClosedFallback) pruneLocked(now time.Time) {
@@ -607,40 +646,57 @@ func NewVOACAPRunnerClosedForecaster(cfg VOACAPFallbackConfig) VOACAPRunnerClose
 }
 
 func (f VOACAPRunnerClosedForecaster) ForecastClosed(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
-	deck, err := f.buildDeck(job)
+	receiveForecast, receiveResult, err := f.runDirectionalForecast(ctx, job, voacapDeckReceive)
 	if err != nil {
 		return VOACAPClosedForecast{}, err
 	}
-	outputName := fmt.Sprintf("%s_%s_%d_%d_%s_%d.out",
+	transmitForecast, transmitResult, err := f.runDirectionalForecast(ctx, job, voacapDeckTransmit)
+	if err != nil {
+		return VOACAPClosedForecast{}, err
+	}
+	forecast, err := combineDirectionalForecasts(receiveForecast, transmitForecast, job.Request.Band)
+	if err != nil {
+		return VOACAPClosedForecast{}, err
+	}
+	forecast.WindowStartUTC = job.WindowStartUTC.UTC()
+	forecast.OutputPath = receiveResult.OutputPath + ";" + transmitResult.OutputPath
+	forecast.Elapsed = receiveResult.Elapsed + transmitResult.Elapsed
+	return forecast, nil
+}
+
+func (f VOACAPRunnerClosedForecaster) runDirectionalForecast(ctx context.Context, job VOACAPClosedJob, direction string) (VOACAPClosedForecast, voacap.RunResult, error) {
+	deck, err := f.buildDeck(job, direction)
+	if err != nil {
+		return VOACAPClosedForecast{}, voacap.RunResult{}, err
+	}
+	outputName := fmt.Sprintf("%s_%s_%d_%d_%s_%d_%s.out",
 		f.cfg.OutputNamePrefix,
 		job.WindowStartUTC.Format("010215"),
 		job.Request.UserCell,
 		job.Request.DXCell,
 		job.Request.Band,
-		job.SSN)
+		job.SSN,
+		direction)
 	result, err := f.runner.Run(ctx, voacap.RunRequest{
 		Deck:       deck,
 		OutputName: outputName,
 		Timeout:    time.Duration(f.cfg.VOACAPTimeoutSeconds) * time.Second,
 	})
 	if err != nil {
-		return VOACAPClosedForecast{}, err
+		return VOACAPClosedForecast{}, result, err
 	}
 	records, err := voacap.ParseMethod30Predictions(result.Output)
 	if err != nil {
-		return VOACAPClosedForecast{}, err
+		return VOACAPClosedForecast{}, result, err
 	}
 	forecast, err := closedForecastFromRecords(records, job.Request.Band)
 	if err != nil {
-		return VOACAPClosedForecast{}, err
+		return VOACAPClosedForecast{}, result, err
 	}
-	forecast.WindowStartUTC = job.WindowStartUTC.UTC()
-	forecast.OutputPath = result.OutputPath
-	forecast.Elapsed = result.Elapsed
-	return forecast, nil
+	return forecast, result, nil
 }
 
-func (f VOACAPRunnerClosedForecaster) buildDeck(job VOACAPClosedJob) ([]byte, error) {
+func (f VOACAPRunnerClosedForecaster) buildDeck(job VOACAPClosedJob, direction string) ([]byte, error) {
 	userLat, userLon, ok := GridCenterLatLon(job.Request.UserGrid)
 	if !ok {
 		return nil, fmt.Errorf("invalid user grid %q", job.Request.UserGrid)
@@ -649,24 +705,67 @@ func (f VOACAPRunnerClosedForecaster) buildDeck(job VOACAPClosedJob) ([]byte, er
 	if !ok {
 		return nil, fmt.Errorf("invalid DX grid %q", job.Request.DXGrid)
 	}
+	transmit := voacap.DeckEndpoint{
+		Label:     "TRANSMITTER",
+		Latitude:  userLat,
+		Longitude: userLon,
+	}
+	receive := voacap.DeckEndpoint{
+		Label:     "RECEIVER",
+		Latitude:  dxLat,
+		Longitude: dxLon,
+	}
+	switch direction {
+	case voacapDeckReceive:
+		transmit.Latitude = dxLat
+		transmit.Longitude = dxLon
+		receive.Latitude = userLat
+		receive.Longitude = userLon
+	case voacapDeckTransmit:
+	default:
+		return nil, fmt.Errorf("unknown VOACAP deck direction %q", direction)
+	}
 	return voacap.BuildPathDeck(voacap.PathDeckRequest{
-		Comment: fmt.Sprintf("GoCluster VOACAP closed fallback %s %d", job.Request.Band, job.SSN),
-		Transmit: voacap.DeckEndpoint{
-			Label:     "TRANSMITTER",
-			Latitude:  userLat,
-			Longitude: userLon,
-		},
-		Receive: voacap.DeckEndpoint{
-			Label:     "RECEIVER",
-			Latitude:  dxLat,
-			Longitude: dxLon,
-		},
+		Comment:              fmt.Sprintf("GoCluster VOACAP closed fallback %s %d", job.Request.Band, job.SSN),
+		Transmit:             transmit,
+		Receive:              receive,
 		SSN:                  job.SSN,
 		Now:                  job.WindowStartUTC,
 		ForecastHours:        f.cfg.ForecastHours,
 		StartVOACAPHour:      voacap.HourForUTC(job.WindowStartUTC),
 		CenterFrequenciesMHz: f.cfg.CenterFrequenciesMHz,
 	})
+}
+
+func combineDirectionalForecasts(receiveForecast, transmitForecast VOACAPClosedForecast, band string) (VOACAPClosedForecast, error) {
+	transmitByHour := make(map[int]VOACAPHourlyForecast, len(transmitForecast.Records))
+	for _, record := range transmitForecast.Records {
+		transmitByHour[record.HourUTC] = record
+	}
+	combined := VOACAPClosedForecast{
+		Records: make([]VOACAPHourlyForecast, 0, len(receiveForecast.Records)),
+	}
+	for _, receive := range receiveForecast.Records {
+		transmit, ok := transmitByHour[receive.HourUTC]
+		if !ok {
+			continue
+		}
+		combined.Records = append(combined.Records, VOACAPHourlyForecast{
+			FT8SNRDB:              receive.FT8SNRDB,
+			VOACAPSNRDBHz:         receive.VOACAPSNRDBHz,
+			HourUTC:               receive.HourUTC,
+			FrequencyMHz:          receive.FrequencyMHz,
+			ReceiveFT8SNRDB:       receive.FT8SNRDB,
+			TransmitFT8SNRDB:      transmit.FT8SNRDB,
+			ReceiveVOACAPSNRDBHz:  receive.VOACAPSNRDBHz,
+			TransmitVOACAPSNRDBHz: transmit.VOACAPSNRDBHz,
+			HasDirectionalSNR:     true,
+		})
+	}
+	if len(combined.Records) == 0 {
+		return VOACAPClosedForecast{}, fmt.Errorf("VOACAP output has no common bidirectional prediction records for band %s", normalizeBand(band))
+	}
+	return combined, nil
 }
 
 func closedForecastFromRecords(records []voacap.PredictionRecord, band string) (VOACAPClosedForecast, error) {

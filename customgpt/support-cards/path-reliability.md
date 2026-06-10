@@ -21,7 +21,9 @@ inspect user-visible diagnostics:
 - A blank path glyph can mean insufficient, low-count, low-weight, stale, or
   capped evidence, not necessarily a bad path.
 - `vcap` diagnostics are VOACAP closed fallback results; `valn` diagnostics
-  are sparse bucket p50 aligned with current-hour VOACAP.
+  are sparse bucket p50 aligned with current-hour VOACAP. The VOACAP SNR in
+  both tags is the rounded bidirectional effective SNR after receive-side noise
+  penalty, not one raw VOACAP direction.
 - Closed fallback spots can be filtered with `PASS/REJECT PATH CLOSED`;
   existing `PASS/REJECT PATH UNLIKELY` filters still include them for
   compatibility.
@@ -33,8 +35,8 @@ inspect user-visible diagnostics:
   evidence.
 - `VOACAP p50 compare (5m)` is an opportunistic cache-only comparison for
   sufficient p50 predictions. Cache misses do not run VOACAP; cache hits report
-  class agreement, SNR direction, closed-VOACAP versus p50 class, and SNR-delta
-  buckets.
+  class agreement, stronger/weaker effective SNR, closed-VOACAP versus p50
+  class, and SNR-delta buckets.
 - Thresholds mix operator policy and algorithm calibration; do not retune them
   as the first normal troubleshooting step.
 - Effective YAML matters before suggesting config edits.

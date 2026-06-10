@@ -52,7 +52,10 @@ glyph_symbols:
 
 # Optional VOACAP fallback. When enabled, it can replace insufficient bucket
 # predictions only with a closed glyph or a sparse-p50 glyph whose class agrees
-# with the cached current-hour VOACAP forecast.
+# with the cached current-hour VOACAP forecast. Runtime VOACAP forecasts are
+# bidirectional; lookup blends DX->user receive and user->DX transmit using the
+# merge weights below, then applies the request user's receive-side noise
+# penalty to the receive leg.
 voacap_fallback:
   enabled: true
   ssn_fetch_interval_seconds: 1800

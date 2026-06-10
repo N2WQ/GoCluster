@@ -1,6 +1,7 @@
 package telnet
 
 import (
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -265,6 +266,34 @@ func TestPathPredictionUsesVOACAPClosedFallbackOnlyWhenInsufficient(t *testing.T
 	}
 }
 
+func TestPathPredictionAppliesNoiseToVOACAPFallback(t *testing.T) {
+	cfg := pathreliability.DefaultConfig()
+	cfg.MinObservationCount = 1
+	cfg.GlyphSymbols.Closed = "!"
+	predictor := pathreliability.NewPredictor(cfg, []string{"20m"})
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	server := &Server{
+		pathPredictor:      predictor,
+		pathDisplay:        true,
+		noiseModel:         cfg.NoiseModel(),
+		nowFn:              func() time.Time { return now },
+		pathClosedFallback: noiseAwarePathClosedFallback{},
+	}
+	client := &Client{
+		grid:       "FN31",
+		gridCell:   pathreliability.CellID(1),
+		noiseClass: "URBAN",
+	}
+	sp := spot.NewSpot("DX1AA", "DE1AA", 14074, "FT8")
+	sp.BandNorm = "20m"
+	sp.DXCellID = 2
+	sp.DXMetadata.Grid = "FN32"
+
+	if got := server.pathGlyphsForClient(client, sp); got != "!" {
+		t.Fatalf("expected noisy-client VOACAP fallback to close path, got %q", got)
+	}
+}
+
 func TestPathPredictionUsesVOACAPAlignedFallbackForSparseP50Match(t *testing.T) {
 	cfg := pathreliability.DefaultConfig()
 	cfg.MinEffectiveWeight = 0.1
@@ -422,6 +451,26 @@ type fakePathClosedFallback struct {
 
 func (f fakePathClosedFallback) CheckForecast(pathreliability.VOACAPClosedRequest, time.Time) (pathreliability.VOACAPCachedForecast, bool) {
 	return f.forecast, f.ok
+}
+
+type noiseAwarePathClosedFallback struct{}
+
+func (f noiseAwarePathClosedFallback) CheckForecast(req pathreliability.VOACAPClosedRequest, _ time.Time) (pathreliability.VOACAPCachedForecast, bool) {
+	effective := 0.6*(-20-req.ReceiveNoisePenaltyDB) + 0.4*(-20)
+	return pathreliability.VOACAPCachedForecast{
+		Record: pathreliability.VOACAPHourlyForecast{
+			FT8SNRDB:          int(math.Round(effective)),
+			HourUTC:           20,
+			FrequencyMHz:      14.1,
+			ReceiveFT8SNRDB:   -20,
+			TransmitFT8SNRDB:  -20,
+			HasDirectionalSNR: true,
+		},
+		EffectiveFT8SNRDB:     effective,
+		HasEffectiveFT8SNRDB:  true,
+		ReceiveNoisePenaltyDB: req.ReceiveNoisePenaltyDB,
+		SSN:                   112,
+	}, true
 }
 
 type countingClosedFallback struct {
