@@ -54,7 +54,7 @@ glyph_symbols:
 # predictions only with a closed glyph or a sparse-p50 glyph whose class agrees
 # with the cached current-hour VOACAP forecast.
 voacap_fallback:
-  enabled: true
+  enabled: false
   ssn_fetch_interval_seconds: 1800
   ssn_request_timeout_seconds: 30
   ssn_ewma_half_life_seconds: 28800
