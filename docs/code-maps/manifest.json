@@ -12,6 +12,15 @@
         "./commands",
         "./spot"
       ]
+    },
+    {
+      "id": "path-reliability-voacap",
+      "title": "Path Reliability And VOACAP",
+      "output": "docs/code-maps/path-reliability-voacap.md",
+      "packages": [
+        "./pathreliability",
+        "./internal/voacap"
+      ]
     }
   ]
 }
