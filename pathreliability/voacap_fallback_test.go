@@ -170,6 +170,107 @@ func TestVOACAPClosedFallbackCheckCachedForecastDoesNotMutateOnMiss(t *testing.T
 	}
 }
 
+func TestVOACAPClosedFallbackCheckForecastWindowReturnsRemainingDirectionalRows(t *testing.T) {
+	cfg := testVOACAPFallbackConfig()
+	cfg.MergeReceiveWeight = 0.6
+	cfg.MergeTransmitWeight = 0.4
+	cfg.VOACAPFallback.CacheTTLSeconds = int((4 * time.Hour).Seconds())
+	cfg.VOACAPFallback.ForecastHours = 4
+	fallback := newTestClosedFallback(t, cfg, fakeClosedForecaster{}, fixedSSNProvider{ssn: 112})
+
+	req := testClosedRequest()
+	req.ReceiveNoisePenaltyDB = 5
+	windowStart := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	key := fallback.cacheKey(req, 112, windowStart)
+	fallback.mu.Lock()
+	fallback.addCacheLocked(key, voacapCacheEntry{
+		forecast: VOACAPClosedForecast{
+			WindowStartUTC: windowStart,
+			Records: []VOACAPHourlyForecast{
+				{HourUTC: 20, FrequencyMHz: 14.1, ReceiveFT8SNRDB: -8, TransmitFT8SNRDB: -12, HasDirectionalSNR: true},
+				{HourUTC: 21, FrequencyMHz: 14.1, ReceiveFT8SNRDB: -10, TransmitFT8SNRDB: -20, HasDirectionalSNR: true},
+				{HourUTC: 22, FrequencyMHz: 14.1, ReceiveFT8SNRDB: -15, TransmitFT8SNRDB: -5, HasDirectionalSNR: true},
+				{HourUTC: 23, FrequencyMHz: 14.1, ReceiveFT8SNRDB: -30, TransmitFT8SNRDB: -15, HasDirectionalSNR: true},
+			},
+		},
+		storedAt: windowStart.Add(-time.Minute),
+	})
+	fallback.mu.Unlock()
+
+	window, ok := fallback.CheckForecastWindow(req, windowStart.Add(90*time.Minute))
+	if !ok {
+		t.Fatalf("expected cached forecast window")
+	}
+	if !window.WindowStartUTC.Equal(windowStart) {
+		t.Fatalf("WindowStartUTC = %s, want %s", window.WindowStartUTC, windowStart)
+	}
+	if len(window.Records) != 3 {
+		t.Fatalf("records = %d, want remaining 3: %+v", len(window.Records), window.Records)
+	}
+	first := window.Records[0]
+	if first.Record.HourUTC != 21 {
+		t.Fatalf("first returned hour = %d, want current hour 21", first.Record.HourUTC)
+	}
+	if got, want := first.ReceiveDB(), -15.0; got != want {
+		t.Fatalf("receive DB = %v, want %v", got, want)
+	}
+	if got, want := first.TransmitDB(), -20.0; got != want {
+		t.Fatalf("transmit DB = %v, want %v", got, want)
+	}
+	if got, want := first.EffectiveDB(), -17.0; got != want {
+		t.Fatalf("effective DB = %v, want %v", got, want)
+	}
+	if first.Record.FT8SNRDB != -17 {
+		t.Fatalf("rounded effective SNR = %d, want -17", first.Record.FT8SNRDB)
+	}
+	stats := fallback.StatsSnapshot()
+	if stats.CacheHit != 1 {
+		t.Fatalf("CacheHit = %d, want 1 in stats %+v", stats.CacheHit, stats)
+	}
+}
+
+func TestVOACAPClosedFallbackCheckForecastWindowDelaysAndEnqueues(t *testing.T) {
+	cfg := testVOACAPFallbackConfig()
+	cfg.VOACAPFallback.DelaySeconds = 0
+	var calls atomic.Int32
+	forecaster := fakeClosedForecaster{
+		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
+			calls.Add(1)
+			return VOACAPClosedForecast{
+				WindowStartUTC: job.WindowStartUTC,
+				Records: []VOACAPHourlyForecast{
+					{FT8SNRDB: -20, HourUTC: 20, FrequencyMHz: job.FrequencyMHz},
+					{FT8SNRDB: -18, HourUTC: 21, FrequencyMHz: job.FrequencyMHz},
+				},
+			}, nil
+		},
+	}
+	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
+	ctx, cancel := context.WithCancel(context.Background())
+	fallback.Start(ctx)
+	defer func() {
+		cancel()
+		fallback.Wait()
+	}()
+
+	req := testClosedRequest()
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	if _, ok := fallback.CheckForecastWindow(req, now); ok {
+		t.Fatalf("enqueue lookup should not synchronously return a window")
+	}
+	waitUntil(t, func() bool { return calls.Load() == 1 && fallback.Snapshot().CacheEntries == 1 })
+	window, ok := fallback.CheckForecastWindow(req, now.Add(time.Second))
+	if !ok {
+		t.Fatalf("expected cached forecast window after background run")
+	}
+	if len(window.Records) != 2 {
+		t.Fatalf("window records = %d, want 2: %+v", len(window.Records), window.Records)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("cached window should avoid duplicate forecast, calls=%d", calls.Load())
+	}
+}
+
 func TestVOACAPClosedFallbackReevaluatesCachedForecastPerMode(t *testing.T) {
 	cfg := testVOACAPFallbackConfig()
 	cfg.VOACAPFallback.DelaySeconds = 0
@@ -579,6 +680,23 @@ func TestVOACAPClosedFallbackAppliesNoiseToReceiveDirection(t *testing.T) {
 	}
 	if forecast.Record.FT8SNRDB != -17 {
 		t.Fatalf("rounded diagnostic SNR = %d, want -17", forecast.Record.FT8SNRDB)
+	}
+}
+
+func TestVOACAPFallbackBandsUseConfiguredCenterFrequencies(t *testing.T) {
+	cfg := defaultVOACAPFallbackConfig()
+	cfg.CenterFrequenciesMHz = []float64{14.1, 14.2, 7.15, 50.125, 144.2}
+	bands := VOACAPFallbackBands(cfg)
+	want := []string{"20m", "40m", "6m"}
+	if strings.Join(bands, ",") != strings.Join(want, ",") {
+		t.Fatalf("VOACAPFallbackBands() = %v, want %v", bands, want)
+	}
+	freq, ok := VOACAPFallbackCenterFrequencyMHz(cfg, "20m")
+	if !ok || freq != 14.1 {
+		t.Fatalf("20m center frequency = %v ok=%v, want 14.1 true", freq, ok)
+	}
+	if _, ok := VOACAPFallbackCenterFrequencyMHz(cfg, "2m"); ok {
+		t.Fatalf("2m should not be supported by configured VOACAP fallback frequencies")
 	}
 }
 

@@ -384,6 +384,18 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 	)
 	add("SHOW DXCC", "SHOW DXCC - Look up DXCC/ADIF and zones.", showDXCCLines)
 
+	showPropLines := helpEntryLines(
+		"SHOW PROP - Show point-to-point propagation outlook.",
+		[]string{"SHOW PROP <call|prefix|grid> [band] [mode]"},
+		[]string{"SH PROP", "SHOW/PROP", "SH/PROP"},
+		[]string{
+			"Uses your SET GRID and SET NOISE settings.",
+			"Cache-first; cold misses say computing and return immediately.",
+			"EFF is merged from RX and TX; REL uses configured thresholds.",
+		},
+	)
+	add("SHOW PROP", "SHOW PROP - Show propagation outlook.", showPropLines, "SH PROP", "SHOW/PROP", "SH/PROP")
+
 	showBuildLines := helpEntryLines(
 		"SHOW BUILD - Show binary build metadata.",
 		[]string{"SHOW BUILD"},
@@ -526,7 +538,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 	if dialect == "cc" {
 		showLines := helpEntryLines(
 			"SHOW - See SHOW subcommands.",
-			[]string{"SHOW MYDX [count|selector]", "SHOW DXCC <prefix|callsign>", "SHOW BUILD", "SHOW OWN"},
+			[]string{"SHOW MYDX [count|selector]", "SHOW DXCC <prefix|callsign>", "SHOW PROP <call|prefix|grid> [band] [mode]", "SHOW BUILD", "SHOW OWN"},
 			nil,
 			[]string{
 				"Use HELP SHOW/DX for the history alias.",
@@ -670,6 +682,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"SH/DX",
 			"SHOW MYDX",
 			"SHOW DXCC",
+			"SHOW PROP",
 			"SHOW BUILD",
 			"SHOW OWN",
 			"WHOSPOTSME",
@@ -707,7 +720,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 	} else {
 		showLines := helpEntryLines(
 			"SHOW - See SHOW subcommands.",
-			[]string{"SHOW DX [count|selector]", "SHOW MYDX [count|selector]", "SHOW DXCC <prefix|callsign>", "SHOW BUILD", "SHOW OWN"},
+			[]string{"SHOW DX [count|selector]", "SHOW MYDX [count|selector]", "SHOW DXCC <prefix|callsign>", "SHOW PROP <call|prefix|grid> [band] [mode]", "SHOW BUILD", "SHOW OWN"},
 			nil,
 			[]string{
 				"Use HELP SHOW DX for the history alias.",
@@ -802,6 +815,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"SH DX",
 			"SHOW MYDX",
 			"SHOW DXCC",
+			"SHOW PROP",
 			"SHOW BUILD",
 			"SHOW OWN",
 			"WHOSPOTSME",
@@ -839,6 +853,14 @@ func normalizeHelpTopic(dialect string, topic string) string {
 		return "SHOW BUILD"
 	case strings.HasPrefix(upper, "SHOW OWN"):
 		return "SHOW OWN"
+	case strings.HasPrefix(upper, "SHOW PROP"):
+		return "SHOW PROP"
+	case strings.HasPrefix(upper, "SHOW/PROP"):
+		return "SHOW PROP"
+	case strings.HasPrefix(upper, "SH PROP"):
+		return "SHOW PROP"
+	case strings.HasPrefix(upper, "SH/PROP"):
+		return "SHOW PROP"
 	case strings.HasPrefix(upper, "SHOW DXCC"):
 		return "SHOW DXCC"
 	case strings.HasPrefix(upper, "WHOSPOTSME"):

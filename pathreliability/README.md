@@ -168,6 +168,17 @@ visible as `CLOSED` and remains compatible with `UNLIKELY`: existing
 `PASS/REJECT PATH UNLIKELY` filters still include closed fallback spots, while
 direct `PASS/REJECT PATH CLOSED` rules target only closed fallback spots.
 
+`SHOW PROP <call|prefix|grid> [band] [mode]` exposes those cached hourly
+VOACAP records directly as a point-to-point outlook from the user's grid to the
+target. The command is cache-first and uses the same delayed nonblocking lookup
+path as fallback: a cold miss returns "computing, ask again shortly" and does
+not block the telnet session. It displays only rows already cached for the
+current UTC hour through `voacap_fallback.forecast_hours`. The displayed `RX`
+leg is DX-to-user after the requesting user's receive-noise penalty, `TX` is
+user-to-DX, `EFF` is the configured receive/transmit merge, and `REL` is the
+configured path class for the requested mode. Bucket p50 remains internal to
+the live glyph decision and is not shown in this command.
+
 The shipped config currently uses:
 
 - half-lives ranging from `600s` on `160m` and `80m` down to `240s` on `12m`, `10m`, and `6m`

@@ -2,7 +2,7 @@
 # Code Map: Path Reliability And VOACAP
 
 - Map ID: `path-reliability-voacap`
-- Source fingerprint: `60de24453b9407fa`
+- Source fingerprint: `4c0aff6409fb4400`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map path-reliability-voacap`
 - Check: `go run ./cmd/codemap check -map path-reliability-voacap`
@@ -89,6 +89,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0171](docs/decisions/ADR-0171-show-prop-voacap-outlook.md) | Accepted | 2026-06-10 | telnet, voacap, pathreliability, commands, supportability | `area:internal/voacap, area:pathreliability, path:pathreliability` |
 | [ADR-0170](docs/decisions/ADR-0170-fine-coarse-union-scalar-evidence.md) | Accepted | 2026-06-10 | pathreliability, telnet diagnostics, receiver caps, model calibration | `area:pathreliability, path:pathreliability` |
 | [ADR-0169](docs/decisions/ADR-0169-bidirectional-noise-aware-voacap-fallback.md) | Accepted | 2026-06-10 | voacap, pathreliability, operations, model calibration | `area:internal/voacap, area:pathreliability, path:pathreliability` |
 | [ADR-0168](docs/decisions/ADR-0168-voacap-p50-cache-comparison.md) | Accepted | 2026-06-10 | voacap, pathreliability, operations, observability | `area:internal/voacap, area:pathreliability, path:pathreliability` |

@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `f63b5ff181f9e559`
+- Source fingerprint: `2c2cb446b9706436`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -15,7 +15,7 @@
 | `dxcluster/internal/cluster` | `internal/cluster` | 27 | 26 |
 | `dxcluster/peer` | `peer` | 20 | 20 |
 | `dxcluster/spot` | `spot` | 32 | 23 |
-| `dxcluster/telnet` | `telnet` | 7 | 21 |
+| `dxcluster/telnet` | `telnet` | 8 | 22 |
 
 ## In-Scope Package Edges
 
@@ -272,6 +272,7 @@ Source files:
 - `telnet/login_validation.go`
 - `telnet/reuseaddr_windows.go`
 - `telnet/server.go`
+- `telnet/show_prop.go`
 
 Test files:
 - `telnet/bulletin_dedupe_test.go`
@@ -294,12 +295,14 @@ Test files:
 - `telnet/server_sender_test.go`
 - `telnet/server_spot_snapshot_test.go`
 - `telnet/server_template_test.go`
+- `telnet/show_prop_test.go`
 - `telnet/solar_command_test.go`
 
 ## Related ADRs
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0171](docs/decisions/ADR-0171-show-prop-voacap-outlook.md) | Accepted | 2026-06-10 | telnet, voacap, pathreliability, commands, supportability | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0170](docs/decisions/ADR-0170-fine-coarse-union-scalar-evidence.md) | Accepted | 2026-06-10 | pathreliability, telnet diagnostics, receiver caps, model calibration | `area:telnet, path:telnet` |
 | [ADR-0169](docs/decisions/ADR-0169-bidirectional-noise-aware-voacap-fallback.md) | Accepted | 2026-06-10 | voacap, pathreliability, operations, model calibration | `path:telnet` |
 | [ADR-0168](docs/decisions/ADR-0168-voacap-p50-cache-comparison.md) | Accepted | 2026-06-10 | voacap, pathreliability, operations, observability | `path:internal/cluster, path:telnet` |

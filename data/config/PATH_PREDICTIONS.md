@@ -160,6 +160,16 @@ agreement, stronger/weaker effective SNR, closed-VOACAP versus p50 class, and
 SNR-delta buckets. That comparison is cache-only and does not run VOACAP on
 cache misses.
 
+`SHOW PROP <call|prefix|grid> [band] [mode]` is the on-demand view of the same
+cached VOACAP horizon. It starts from your saved `SET GRID`, applies your
+`SET NOISE` receive penalty to the RX leg, merges RX and TX into `EFF`, and
+maps `EFF` to `REL` using the requested mode thresholds. It never waits for a
+new VOACAP process; a cold miss reports that it is computing and asks you to
+try again shortly. With no band, it shows each configured VOACAP fallback band.
+With no mode, it uses FT8. The row count follows
+`voacap_fallback.forecast_hours` and only includes cached current-hour-forward
+records.
+
 ## How to Use This Information
 
 ### Making Quick Decisions

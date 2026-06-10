@@ -119,6 +119,8 @@ If a duplicate is suppressed, slow clients do not see another control-queue enqu
 - `SET GRID` stores the user's Maidenhead grid for path reliability
 - `SET NOISE` stores the user's noise class; the checked-in path config applies one receive-side penalty per class
 - `SET PATHSAMPLES` stores a stricter per-user path sample floor; it cannot lower the cluster default
+- `SHOW PROP <call|prefix|grid> [band] [mode]` uses the saved grid and noise
+  class to show a cache-first point-to-point VOACAP outlook
 - `PASS NEARBY ON` requires a grid and keeps spots whose DX side or DE side falls in the user's nearby area
 
 `NEARBY` uses H3 cells:
@@ -147,5 +149,11 @@ The telnet layer asks the path predictor for a class and glyph when path display
 - a per-user `SET PATHSAMPLES` override can only require more observations than the cluster default
 - optional `R` and `G` solar-weather overrides are applied afterward
 - the insufficient state is preserved and is not replaced by solar overrides
+
+`SHOW PROP` is a command path rather than a spot-display glyph path. It resolves
+an explicit grid, gridstore callsign, or CTY-derived prefix/callsign to a target
+grid and asks the VOACAP fallback cache for the current UTC hour through the
+configured forecast horizon. Cache misses return immediately with a computing
+message. Cached rows show `EFF`, `RX`, `TX`, and `REL`; bucket p50 is not shown.
 
 For command HELP and dialect details, see [`../commands/README.md`](../commands/README.md).

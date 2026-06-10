@@ -13,6 +13,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Placeholder Title | Proposed | YYYY-MM-DD | placeholder area | - | - | `docs/decisions/ADR-0001-placeholder-slug.md` |
+| ADR-0171 | SHOW PROP VOACAP Outlook | Accepted | 2026-06-10 | telnet, voacap, pathreliability, commands, supportability | ADR-0162/ADR-0169 cached VOACAP record exposure | - | `docs/decisions/ADR-0171-show-prop-voacap-outlook.md` |
 | ADR-0170 | Fine-Coarse Union Scalar Evidence | Accepted | 2026-06-10 | pathreliability, telnet diagnostics, receiver caps, model calibration | ADR-0126/ADR-0131/ADR-0134/ADR-0139 fine-coarse scalar semantics | - | `docs/decisions/ADR-0170-fine-coarse-union-scalar-evidence.md` |
 | ADR-0169 | Bidirectional Noise-Aware VOACAP Fallback | Accepted | 2026-06-10 | voacap, pathreliability, operations, model calibration | ADR-0161 fallback semantics; ADR-0162 cache record semantics; ADR-0165 noise application; ADR-0168 comparison semantics | - | `docs/decisions/ADR-0169-bidirectional-noise-aware-voacap-fallback.md` |
 | ADR-0168 | VOACAP P50 Cache Comparison | Accepted | 2026-06-10 | voacap, pathreliability, operations, observability | ADR-0164 fallback-stage log contract; ADR-0167 closed sparse-p50 counters | ADR-0169 effective VOACAP SNR | `docs/decisions/ADR-0168-voacap-p50-cache-comparison.md` |

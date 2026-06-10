@@ -4,7 +4,7 @@
 
 Use when a telnet user or node operator asks about blank or weak path glyphs,
 path thresholds, `SET PATHSAMPLES`, `SET DIAG PATH`, receiver diversity, H3
-tables, grid handling, or noise penalties.
+tables, grid handling, noise penalties, or the `SHOW PROP` propagation outlook.
 
 ## First Safe Check
 
@@ -14,6 +14,8 @@ inspect user-visible diagnostics:
 - confirm the user's grid with `SET GRID`
 - inspect `SET PATHSAMPLES`
 - use `SET DIAG PATH` when detailed path evidence is needed
+- use `SHOW PROP <call|prefix|grid> [band] [mode]` when the question is "when
+  can I work this path?"
 - check effective path YAML and H3 table availability for operator-side issues
 
 ## Must Include
@@ -42,6 +44,9 @@ inspect user-visible diagnostics:
   sufficient p50 predictions. Cache misses do not run VOACAP; cache hits report
   class agreement, stronger/weaker effective SNR, closed-VOACAP versus p50
   class, and SNR-delta buckets.
+- `SHOW PROP` is cache-first and nonblocking. Its `EFF` column is the merged
+  bidirectional SNR, `RX` is target-to-user after `SET NOISE`, `TX` is
+  user-to-target, and `REL` is the configured path class. It does not show p50.
 - Thresholds mix operator policy and algorithm calibration; do not retune them
   as the first normal troubleshooting step.
 - Effective YAML matters before suggesting config edits.
@@ -51,6 +56,8 @@ inspect user-visible diagnostics:
 - Do not call a blank glyph a bad path.
 - Do not call a `valn` glyph a pure VOACAP forecast; it requires sparse bucket
   p50 and VOACAP to agree.
+- Do not tell users `SHOW PROP` waits for a fresh VOACAP run; cold cache misses
+  return immediately.
 - Do not recommend changing thresholds before confirming symptom, diagnostics,
   and effective YAML.
 

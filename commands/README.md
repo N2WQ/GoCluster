@@ -7,7 +7,8 @@ This directory is the source of truth for telnet command help. The public `HELP`
 - command parsing for `HELP`, `DX`, `SHOW`, `BYE`, and related aliases
 - per-dialect HELP catalogs
 - build, dedupe, and path-glyph HELP notes injected from runtime snapshots
-- history, DXCC, and build-info read paths used by `SHOW DX`, `SHOW MYDX`, `SHOW DXCC`, and `SHOW BUILD`
+- history, DXCC, propagation-outlook, and build-info read paths used by
+  `SHOW DX`, `SHOW MYDX`, `SHOW DXCC`, `SHOW PROP`, and `SHOW BUILD`
 - own-call identity display used by `SHOW OWN`
 
 ## HELP Source Of Truth
@@ -39,6 +40,7 @@ The operator-facing commands handled here are:
 - `SHOW DX`
 - `SHOW MYDX`
 - `SHOW DXCC`
+- `SHOW PROP`
 - `SHOW BUILD`
 - `SHOW OWN`
 - `WHOSPOTSME [band]`
@@ -53,7 +55,10 @@ The operator-facing commands handled here are:
 - `DIALECT`
 - `BYE`
 
-Filter mutation itself is handled in the telnet layer. This package documents those filters in HELP, but the parser for `PASS`, `REJECT`, `SHOW FILTER`, and the `cc` aliases lives under [`../telnet`](../telnet).
+Filter mutation and `SHOW PROP` execution are handled in the telnet layer.
+This package documents those commands in HELP, but the parser for `PASS`,
+`REJECT`, `SHOW FILTER`, `SHOW PROP`, and the `cc` aliases lives under
+[`../telnet`](../telnet).
 
 ## Notes For Documentation
 

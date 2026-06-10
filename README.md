@@ -22,6 +22,8 @@ Log in with your callsign, then start with:
   nearby filtering, and path hints.
 - `SET NOISE QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL`: set local receive noise
   class for path hints.
+- `SHOW PROP <call|prefix|grid> [band] [mode]`: show cached hourly propagation
+  outlook from your grid to a target.
 - `BYE`: disconnect.
 
 The sections below prioritize the telnet experience: command examples first,
@@ -39,6 +41,8 @@ build, release, and service details are later in this file and in
   `SET DIAG OFF|DEDUPE|SOURCE|CONF|PATH|MODE`.
 - To understand path hints, use `SET GRID` and `SET NOISE`, then use
   `SET DIAG PATH` on spots whose path glyphs look surprising.
+- To ask when a path may be workable, use
+  `SHOW PROP <call|prefix|grid> [band] [mode]`.
 - To confirm the baseline call used for own-call features, use `SHOW OWN`.
 - To see recent spotter countries for your baseline call, use `WHOSPOTSME [band]`.
 - To receive periodic solar summaries, use `SET SOLAR 15|30|60|OFF`.
@@ -95,6 +99,21 @@ WHOSPOTSME 20M (last 10m):
   NA:  K(3) VE(1)
 ```
 
+Ask for a cache-first point-to-point propagation outlook. Cold cache misses
+return immediately and continue in the background:
+
+```text
+> SHOW PROP IT9 20m FT8
+PROP FN31 -> JM77 target=IT9 source=cty-derived mode=FT8 band=20m noise=SUBURBAN ssn=112 hours=8
+UTC  EFF  RX   TX   REL
+18Z  -21  -22  -20  LOW
+19Z  -40  -47  -30  CLOSED
+```
+
+`EFF` is the merged effective SNR, `RX` is the target-to-you receive leg after
+your `SET NOISE` penalty, `TX` is the you-to-target transmit leg, and `REL` is
+the configured path class for the requested mode.
+
 ### Filter Examples
 
 Use comma-separated lists for multiple values. `PASS` adds to the allowlist for
@@ -145,6 +164,7 @@ SHOW DX - Alias of SHOW MYDX.
 SH DX - Alias of SHOW DX.
 SHOW MYDX - Show filtered spot history.
 SHOW DXCC - Look up DXCC/ADIF and zones.
+SHOW PROP - Show propagation outlook.
 SHOW BUILD - Show binary build metadata.
 SHOW OWN - Show own-call identity.
 WHOSPOTSME - Show recent spotter countries.
@@ -523,6 +543,12 @@ Important operational notes:
   bucket p50 and VOACAP map to the same path class. Sufficient bucket p50
   results stay authoritative. Runtime fallback decks cover the rolling UTC
   forecast window; parsed VOACAP hour `24` is treated as UTC hour `0`.
+- `SHOW PROP <call|prefix|grid> [band] [mode]` exposes the same cached rolling
+  VOACAP outlook directly. It displays current-hour-forward rows only when the
+  cache already has them; a cold miss says computing and returns immediately.
+  `EFF` is the merged bidirectional SNR, `RX` is target-to-user after the
+  user's noise penalty, `TX` is user-to-target, and `REL` is the configured path
+  class for the requested mode. It does not display bucket p50.
 - `PATH` filters work on the class names, not on the glyph characters.
   `CLOSED` is a VOACAP-closed subtype of `UNLIKELY`: existing
   `PASS/REJECT PATH UNLIKELY` filters still include closed fallback spots,

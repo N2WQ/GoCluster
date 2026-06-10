@@ -849,7 +849,9 @@ func TestHelpLineWidth(t *testing.T) {
 		p.ProcessCommandForClient("HELP PASS", "N2WQ", "", nil, "go"),
 		p.ProcessCommandForClient("HELP SHOW BUILD", "N2WQ", "", nil, "go"),
 		p.ProcessCommandForClient("HELP SHOW OWN", "N2WQ", "", nil, "go"),
+		p.ProcessCommandForClient("HELP SHOW PROP", "N2WQ", "", nil, "go"),
 		p.ProcessCommandForClient("HELP SHOW/DX", "N2WQ", "", nil, "cc"),
+		p.ProcessCommandForClient("HELP SHOW/PROP", "N2WQ", "", nil, "cc"),
 		p.ProcessCommandForClient("HELP SET/FILTER", "N2WQ", "", nil, "cc"),
 	}
 	for _, help := range helps {
@@ -897,6 +899,11 @@ func TestHelpTopicGoDialect(t *testing.T) {
 		t.Fatalf("expected SHOW OWN usage, got %q", resp)
 	}
 
+	resp = p.ProcessCommandForClient("HELP SHOW PROP", "N2WQ", "", nil, "go")
+	if !strings.Contains(resp, "Usage: SHOW PROP <call|prefix|grid> [band] [mode]") {
+		t.Fatalf("expected SHOW PROP usage, got %q", resp)
+	}
+
 	resp = p.ProcessCommandForClient("HELP WHOSPOTSME", "N2WQ", "", nil, "go")
 	if !strings.Contains(resp, "Usage: WHOSPOTSME [band]") {
 		t.Fatalf("expected WHOSPOTSME usage, got %q", resp)
@@ -941,6 +948,11 @@ func TestHelpTopicCCDialect(t *testing.T) {
 		t.Fatalf("expected SHOW OWN usage in cc, got %q", resp)
 	}
 
+	resp = p.ProcessCommandForClient("HELP SHOW/PROP", "N2WQ", "", nil, "cc")
+	if !strings.Contains(resp, "Usage: SHOW PROP <call|prefix|grid> [band] [mode]") {
+		t.Fatalf("expected SHOW PROP usage in cc, got %q", resp)
+	}
+
 	resp = p.ProcessCommandForClient("HELP WHOSPOTSME", "N2WQ", "", nil, "cc")
 	if !strings.Contains(resp, "Usage: WHOSPOTSME [band]") {
 		t.Fatalf("expected WHOSPOTSME usage in cc, got %q", resp)
@@ -959,6 +971,7 @@ func TestHelpEntriesGoDialect(t *testing.T) {
 		{"SHOW DX", []string{"SHOW DX - Alias of SHOW MYDX (stored history)", "Usage: SHOW DX [count]"}},
 		{"SHOW MYDX", []string{"SHOW MYDX - Show filtered spot history", "stored spots"}},
 		{"SHOW DXCC", []string{"SHOW DXCC - Look up DXCC/ADIF and zones", "other prefixes"}},
+		{"SHOW PROP", []string{"SHOW PROP - Show point-to-point propagation outlook", "EFF is merged from RX and TX"}},
 		{"SHOW BUILD", []string{"SHOW BUILD - Show binary build metadata", "Usage: SHOW BUILD"}},
 		{"SHOW OWN", []string{"SHOW OWN - Show your login and baseline own call", "Usage: SHOW OWN"}},
 		{"WHOSPOTSME", []string{"WHOSPOTSME - Show recent spotter countries", "Usage: WHOSPOTSME [band]"}},
@@ -993,6 +1006,7 @@ func TestHelpEntriesCCDialect(t *testing.T) {
 		{"SHOW/DX", []string{"SHOW/DX - Alias of SHOW MYDX (stored history)", "Usage: SHOW/DX [count]"}},
 		{"SHOW MYDX", []string{"SHOW MYDX - Show filtered spot history", "stored spots"}},
 		{"SHOW DXCC", []string{"SHOW DXCC - Look up DXCC/ADIF and zones", "other prefixes"}},
+		{"SHOW/PROP", []string{"SHOW PROP - Show point-to-point propagation outlook", "Aliases:", "SH/PROP"}},
 		{"SHOW BUILD", []string{"SHOW BUILD - Show binary build metadata", "Usage: SHOW BUILD"}},
 		{"SHOW OWN", []string{"SHOW OWN - Show your login and baseline own call", "Usage: SHOW OWN"}},
 		{"WHOSPOTSME", []string{"WHOSPOTSME - Show recent spotter countries", "Usage: WHOSPOTSME [band]"}},

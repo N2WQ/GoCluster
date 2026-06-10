@@ -37,6 +37,14 @@ type CachedForecastProvider interface {
 	CheckCachedForecast(req VOACAPClosedRequest, now time.Time) (VOACAPCachedForecast, bool)
 }
 
+// VOACAPForecastWindowProvider exposes the cached rolling forecast horizon for
+// on-demand operator queries. Implementations may enqueue delayed background
+// work on a miss, but must not run VOACAP synchronously in the telnet command
+// path.
+type VOACAPForecastWindowProvider interface {
+	CheckForecastWindow(req VOACAPClosedRequest, now time.Time) (VOACAPCachedForecastWindow, bool)
+}
+
 // ClosedFallbackStatsProvider exposes reset-on-snapshot stage counters for
 // optional propagation-log diagnostics without changing the lookup interface.
 type ClosedFallbackStatsProvider interface {
@@ -112,6 +120,32 @@ func (f VOACAPCachedForecast) EffectiveDB() float64 {
 		return f.EffectiveFT8SNRDB
 	}
 	return float64(f.Record.FT8SNRDB)
+}
+
+// ReceiveDB returns the target-to-user receive leg after the request-specific
+// receive-noise penalty. Non-directional legacy records fall back to EffectiveDB.
+func (f VOACAPCachedForecast) ReceiveDB() float64 {
+	if !f.Record.HasDirectionalSNR {
+		return f.EffectiveDB()
+	}
+	return float64(f.Record.ReceiveFT8SNRDB) - f.ReceiveNoisePenaltyDB
+}
+
+// TransmitDB returns the user-to-target transmit leg. Non-directional legacy
+// records fall back to EffectiveDB.
+func (f VOACAPCachedForecast) TransmitDB() float64 {
+	if !f.Record.HasDirectionalSNR {
+		return f.EffectiveDB()
+	}
+	return float64(f.Record.TransmitFT8SNRDB)
+}
+
+// VOACAPCachedForecastWindow carries cached hourly VOACAP rows from the current
+// UTC hour through the configured forecast horizon. Missing rows mean the caller
+// should report a nonblocking cold miss rather than run VOACAP synchronously.
+type VOACAPCachedForecastWindow struct {
+	WindowStartUTC time.Time
+	Records        []VOACAPCachedForecast
 }
 
 type VOACAPClosedFallbackSnapshot struct {
@@ -381,6 +415,77 @@ func (f *VOACAPClosedFallback) CheckForecast(req VOACAPClosedRequest, now time.T
 	return VOACAPCachedForecast{}, false
 }
 
+// CheckForecastWindow returns the cached rolling forecast horizon for req, or
+// queues/delays fallback work and returns false on a cache miss.
+func (f *VOACAPClosedFallback) CheckForecastWindow(req VOACAPClosedRequest, now time.Time) (VOACAPCachedForecastWindow, bool) {
+	if f == nil || !f.fallback.Enabled {
+		return VOACAPCachedForecastWindow{}, false
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	now = now.UTC()
+	prepared, ok := f.prepareRequest(req)
+	if !ok {
+		f.statsInvalidRequest.Add(1)
+		return VOACAPCachedForecastWindow{}, false
+	}
+	ssn, ok := f.ssnProvider.CurrentSSN(now)
+	if !ok {
+		f.statsSSNUnavailable.Add(1)
+		return VOACAPCachedForecastWindow{}, false
+	}
+	key := f.cacheKey(prepared, ssn, now)
+	delayKey := f.delayKey(prepared)
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.pruneLocked(now)
+	if entry, ok := f.cache[key]; ok {
+		if f.cacheExpired(entry, now) {
+			delete(f.cache, key)
+		} else {
+			records := forecastRecordsForWindow(entry.forecast, now, f.fallback.ForecastHours)
+			if len(records) == 0 {
+				f.statsNoCurrentHour.Add(1)
+				delete(f.cache, key)
+			} else {
+				f.statsCacheHit.Add(1)
+				return f.cachedForecastWindowFromCache(key, entry, records, prepared, now), true
+			}
+		}
+	}
+	if _, ok := f.inflight[key]; ok {
+		f.statsInflight.Add(1)
+		return VOACAPCachedForecastWindow{}, false
+	}
+	if !f.delayElapsedLocked(delayKey, now) {
+		f.statsDelayWait.Add(1)
+		return VOACAPCachedForecastWindow{}, false
+	}
+	if !f.running.Load() {
+		f.statsNotRunning.Add(1)
+		return VOACAPCachedForecastWindow{}, false
+	}
+	if len(f.queue) >= cap(f.queue) {
+		f.statsQueueFull.Add(1)
+		return VOACAPCachedForecastWindow{}, false
+	}
+	job := VOACAPClosedJob{
+		Request:        prepared,
+		SSN:            ssn,
+		WindowStartUTC: forecastWindowStart(now),
+		FrequencyMHz:   float64(key.frequencyKHz) / 1000,
+		key:            key,
+		delayKey:       delayKey,
+	}
+	f.inflight[key] = struct{}{}
+	delete(f.delays, delayKey)
+	f.statsQueued.Add(1)
+	f.queue <- job
+	return VOACAPCachedForecastWindow{}, false
+}
+
 func (f *VOACAPClosedFallback) CheckCachedForecast(req VOACAPClosedRequest, now time.Time) (VOACAPCachedForecast, bool) {
 	if f == nil || !f.fallback.Enabled {
 		return VOACAPCachedForecast{}, false
@@ -525,6 +630,17 @@ func (f *VOACAPClosedFallback) cachedForecastFromCache(key voacapCacheKey, entry
 		SSN:                   key.ssn,
 		AgeSec:                ageSec,
 	}
+}
+
+func (f *VOACAPClosedFallback) cachedForecastWindowFromCache(key voacapCacheKey, entry voacapCacheEntry, records []VOACAPHourlyForecast, req VOACAPClosedRequest, now time.Time) VOACAPCachedForecastWindow {
+	out := VOACAPCachedForecastWindow{
+		WindowStartUTC: entry.forecast.WindowStartUTC.UTC(),
+		Records:        make([]VOACAPCachedForecast, 0, len(records)),
+	}
+	for _, record := range records {
+		out.Records = append(out.Records, f.cachedForecastFromCache(key, entry, record, req, now))
+	}
+	return out
 }
 
 func (f *VOACAPClosedFallback) closedResultFromForecast(forecast VOACAPCachedForecast) Result {
@@ -822,6 +938,34 @@ func forecastRecordForHour(forecast VOACAPClosedForecast, now time.Time, horizon
 	return VOACAPHourlyForecast{}, false
 }
 
+func forecastRecordsForWindow(forecast VOACAPClosedForecast, now time.Time, horizonHours int) []VOACAPHourlyForecast {
+	now = now.UTC()
+	start := now.Truncate(time.Hour)
+	end := start.Add(time.Duration(horizonHours) * time.Hour)
+	if !forecast.WindowStartUTC.IsZero() && horizonHours > 0 {
+		windowStart := forecast.WindowStartUTC.UTC()
+		windowEnd := windowStart.Add(time.Duration(horizonHours) * time.Hour)
+		if now.Before(windowStart) || !now.Before(windowEnd) {
+			return nil
+		}
+		end = windowEnd
+	}
+	if horizonHours <= 0 {
+		end = start.Add(time.Hour)
+	}
+	byHour := make(map[int]VOACAPHourlyForecast, len(forecast.Records))
+	for _, record := range forecast.Records {
+		byHour[record.HourUTC] = record
+	}
+	out := make([]VOACAPHourlyForecast, 0, len(forecast.Records))
+	for at := start; at.Before(end); at = at.Add(time.Hour) {
+		if record, ok := byHour[at.Hour()]; ok {
+			out = append(out, record)
+		}
+	}
+	return out
+}
+
 func forecastWindowStart(now time.Time) time.Time {
 	if now.IsZero() {
 		now = time.Now().UTC()
@@ -837,6 +981,31 @@ func centerFrequencyKHzForBand(band string, freqs []float64) (int, bool) {
 		}
 	}
 	return 0, false
+}
+
+func VOACAPFallbackBands(cfg VOACAPFallbackConfig) []string {
+	seen := make(map[string]struct{}, len(cfg.CenterFrequenciesMHz))
+	bands := make([]string, 0, len(cfg.CenterFrequenciesMHz))
+	for _, freq := range cfg.CenterFrequenciesMHz {
+		band := bandForMHz(freq)
+		if band == "" {
+			continue
+		}
+		if _, ok := seen[band]; ok {
+			continue
+		}
+		seen[band] = struct{}{}
+		bands = append(bands, band)
+	}
+	return bands
+}
+
+func VOACAPFallbackCenterFrequencyMHz(cfg VOACAPFallbackConfig, band string) (float64, bool) {
+	khz, ok := centerFrequencyKHzForBand(band, cfg.CenterFrequenciesMHz)
+	if !ok {
+		return 0, false
+	}
+	return float64(khz) / 1000, true
 }
 
 func bandForMHz(freq float64) string {

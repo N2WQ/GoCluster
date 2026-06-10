@@ -3446,6 +3446,15 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 			continue
 		}
 
+		if resp, handled := s.handleShowPropCommand(client, line); handled {
+			if resp != "" {
+				if !s.sendClientMessage(client, resp, "show prop command response") {
+					return
+				}
+			}
+			continue
+		}
+
 		// Check for filter commands under the active dialect.
 		if resp, handled := s.filterEngine.Handle(client, line); handled {
 			if resp != "" {
