@@ -44,9 +44,14 @@ inspect user-visible diagnostics:
   sufficient p50 predictions. Cache misses do not run VOACAP; cache hits report
   class agreement, stronger/weaker effective SNR, closed-VOACAP versus p50
   class, and SNR-delta buckets.
-- `SHOW PROP` is cache-first and nonblocking. Its `EFF` column is the merged
-  bidirectional SNR, `RX` is target-to-user after `SET NOISE`, `TX` is
-  user-to-target, and `REL` is the configured path class. It does not show p50.
+- `SHOW PROP` defaults omitted mode to CW. `EFF`, `RX`, and `TX` are
+  mode-specific glyphs for the merged bidirectional path, target-to-user leg
+  after `SET NOISE`, and user-to-target leg. `REL` is the configured class for
+  the merged path. It does not show p50.
+- Empty or partial single-band `SHOW PROP` cache results enqueue a refresh
+  through the existing VOACAP fallback worker and may wait briefly. All-band
+  requests show cached rows while refreshing missing or partial bands in the
+  background.
 - Thresholds mix operator policy and algorithm calibration; do not retune them
   as the first normal troubleshooting step.
 - Effective YAML matters before suggesting config edits.
@@ -56,8 +61,9 @@ inspect user-visible diagnostics:
 - Do not call a blank glyph a bad path.
 - Do not call a `valn` glyph a pure VOACAP forecast; it requires sparse bucket
   p50 and VOACAP to agree.
-- Do not tell users `SHOW PROP` waits for a fresh VOACAP run; cold cache misses
-  return immediately.
+- Do not tell users `SHOW PROP` always returns immediately or always waits for
+  every band; single-band requests may wait briefly, while all-band requests do
+  not wait for every missing band.
 - Do not recommend changing thresholds before confirming symptom, diagnostics,
   and effective YAML.
 

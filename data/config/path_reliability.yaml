@@ -65,6 +65,8 @@ voacap_fallback:
   voacap_home: "C:\\itshfbc"
   voacap_timeout_seconds: 30
   forecast_hours: 8
+  # Max time a single-band SHOW PROP waits for a command-triggered refresh; 0 enqueues without waiting.
+  show_prop_wait_milliseconds: 750
   center_frequencies_mhz:
     - 3.75
     - 5.37

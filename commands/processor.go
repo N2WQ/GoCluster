@@ -389,9 +389,9 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 		[]string{"SHOW PROP <call|prefix|grid> [band] [mode]"},
 		[]string{"SH PROP", "SHOW/PROP", "SH/PROP"},
 		[]string{
-			"Uses your SET GRID and SET NOISE settings.",
-			"Cache-first; cold misses say computing and return immediately.",
-			"EFF is merged from RX and TX; REL uses configured thresholds.",
+			"Uses your SET GRID and SET NOISE settings; omitted mode defaults to CW.",
+			"Single-band misses may wait briefly; all-band requests refresh in the background.",
+			"EFF, RX, and TX show mode-specific glyphs; REL shows the merged class.",
 		},
 	)
 	add("SHOW PROP", "SHOW PROP - Show propagation outlook.", showPropLines, "SH PROP", "SHOW/PROP", "SH/PROP")

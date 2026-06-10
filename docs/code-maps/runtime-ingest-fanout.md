@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `2c2cb446b9706436`
+- Source fingerprint: `0c65c2cf04177f4b`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -302,7 +302,8 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
-| [ADR-0171](docs/decisions/ADR-0171-show-prop-voacap-outlook.md) | Accepted | 2026-06-10 | telnet, voacap, pathreliability, commands, supportability | `area:commands, area:telnet, path:commands, path:telnet` |
+| [ADR-0172](docs/decisions/ADR-0172-show-prop-worker-refresh-and-glyph-columns.md) | Accepted | 2026-06-10 | telnet, voacap, pathreliability, config, commands, supportability | `area:commands, area:telnet, path:commands, path:telnet` |
+| [ADR-0171](docs/decisions/ADR-0171-show-prop-voacap-outlook.md) | Superseded | 2026-06-10 | telnet, voacap, pathreliability, commands, supportability | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0170](docs/decisions/ADR-0170-fine-coarse-union-scalar-evidence.md) | Accepted | 2026-06-10 | pathreliability, telnet diagnostics, receiver caps, model calibration | `area:telnet, path:telnet` |
 | [ADR-0169](docs/decisions/ADR-0169-bidirectional-noise-aware-voacap-fallback.md) | Accepted | 2026-06-10 | voacap, pathreliability, operations, model calibration | `path:telnet` |
 | [ADR-0168](docs/decisions/ADR-0168-voacap-p50-cache-comparison.md) | Accepted | 2026-06-10 | voacap, pathreliability, operations, observability | `path:internal/cluster, path:telnet` |

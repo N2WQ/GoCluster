@@ -67,6 +67,7 @@ var requiredConfigPaths = []yamlconfig.Path{
 	{"voacap_fallback", "voacap_home"},
 	{"voacap_fallback", "voacap_timeout_seconds"},
 	{"voacap_fallback", "forecast_hours"},
+	{"voacap_fallback", "show_prop_wait_milliseconds"},
 	{"voacap_fallback", "center_frequencies_mhz"},
 	{"voacap_fallback", "delay_seconds"},
 	{"voacap_fallback", "cache_ttl_seconds"},
@@ -249,6 +250,7 @@ type VOACAPFallbackConfig struct {
 	VOACAPHome               string    `yaml:"voacap_home"`
 	VOACAPTimeoutSeconds     int       `yaml:"voacap_timeout_seconds"`
 	ForecastHours            int       `yaml:"forecast_hours"`
+	ShowPropWaitMilliseconds int       `yaml:"show_prop_wait_milliseconds"`
 	CenterFrequenciesMHz     []float64 `yaml:"center_frequencies_mhz"`
 	DelaySeconds             int       `yaml:"delay_seconds"`
 	CacheTTLSeconds          int       `yaml:"cache_ttl_seconds"`
@@ -475,6 +477,7 @@ func defaultVOACAPFallbackConfig() VOACAPFallbackConfig {
 		VOACAPHome:               `C:\itshfbc`,
 		VOACAPTimeoutSeconds:     30,
 		ForecastHours:            8,
+		ShowPropWaitMilliseconds: 750,
 		CenterFrequenciesMHz:     []float64{1.9, 3.6, 5.36, 7.1, 10.14, 14.1, 18.1, 21.15, 24.91, 28.1},
 		DelaySeconds:             900,
 		CacheTTLSeconds:          28800,
@@ -510,6 +513,9 @@ func (c *VOACAPFallbackConfig) finalize() error {
 	}
 	if c.ForecastHours <= 0 || c.ForecastHours > 24 {
 		return fmt.Errorf("voacap_fallback.forecast_hours must be between 1 and 24")
+	}
+	if c.ShowPropWaitMilliseconds < 0 || c.ShowPropWaitMilliseconds > 2000 {
+		return fmt.Errorf("voacap_fallback.show_prop_wait_milliseconds must be between 0 and 2000")
 	}
 	if len(c.CenterFrequenciesMHz) == 0 {
 		return fmt.Errorf("voacap_fallback.center_frequencies_mhz must contain at least one frequency")

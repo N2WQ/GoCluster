@@ -45,6 +45,13 @@ type VOACAPForecastWindowProvider interface {
 	CheckForecastWindow(req VOACAPClosedRequest, now time.Time) (VOACAPCachedForecastWindow, bool)
 }
 
+// VOACAPForecastWindowWaitProvider exposes a command-triggered refresh path for
+// on-demand operator queries. Implementations still use their owned worker and
+// cache; the caller may wait briefly for the worker to finish.
+type VOACAPForecastWindowWaitProvider interface {
+	CheckForecastWindowWait(req VOACAPClosedRequest, now time.Time, wait time.Duration) (VOACAPCachedForecastWindow, VOACAPForecastWindowStatus)
+}
+
 // ClosedFallbackStatsProvider exposes reset-on-snapshot stage counters for
 // optional propagation-log diagnostics without changing the lookup interface.
 type ClosedFallbackStatsProvider interface {
@@ -81,6 +88,11 @@ type VOACAPClosedJob struct {
 
 	key      voacapCacheKey
 	delayKey voacapDelayKey
+	done     chan voacapJobResult
+}
+
+type voacapJobResult struct {
+	err error
 }
 
 type VOACAPClosedForecast struct {
@@ -141,12 +153,25 @@ func (f VOACAPCachedForecast) TransmitDB() float64 {
 }
 
 // VOACAPCachedForecastWindow carries cached hourly VOACAP rows from the current
-// UTC hour through the configured forecast horizon. Missing rows mean the caller
-// should report a nonblocking cold miss rather than run VOACAP synchronously.
+// UTC hour through the configured forecast horizon. Missing rows mean callers
+// should either report a bounded refresh state or enqueue command-triggered
+// work through the owning fallback worker.
 type VOACAPCachedForecastWindow struct {
 	WindowStartUTC time.Time
 	Records        []VOACAPCachedForecast
 }
+
+// VOACAPForecastWindowStatus reports whether a window is ready, still being
+// refreshed by the fallback worker, or blocked by a bounded runtime condition.
+type VOACAPForecastWindowStatus int
+
+const (
+	VOACAPForecastWindowUnavailable VOACAPForecastWindowStatus = iota
+	VOACAPForecastWindowReady
+	VOACAPForecastWindowRefreshing
+	VOACAPForecastWindowBusy
+	VOACAPForecastWindowFailed
+)
 
 type VOACAPClosedFallbackSnapshot struct {
 	CacheEntries    int
@@ -441,19 +466,11 @@ func (f *VOACAPClosedFallback) CheckForecastWindow(req VOACAPClosedRequest, now 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.pruneLocked(now)
-	if entry, ok := f.cache[key]; ok {
-		if f.cacheExpired(entry, now) {
-			delete(f.cache, key)
-		} else {
-			records := forecastRecordsForWindow(entry.forecast, now, f.fallback.ForecastHours)
-			if len(records) == 0 {
-				f.statsNoCurrentHour.Add(1)
-				delete(f.cache, key)
-			} else {
-				f.statsCacheHit.Add(1)
-				return f.cachedForecastWindowFromCache(key, entry, records, prepared, now), true
-			}
-		}
+	if window, ok, noCurrentHour := f.cachedForecastWindowLocked(key, prepared, now); ok {
+		f.statsCacheHit.Add(1)
+		return window, true
+	} else if noCurrentHour {
+		f.statsNoCurrentHour.Add(1)
 	}
 	if _, ok := f.inflight[key]; ok {
 		f.statsInflight.Add(1)
@@ -486,6 +503,116 @@ func (f *VOACAPClosedFallback) CheckForecastWindow(req VOACAPClosedRequest, now 
 	return VOACAPCachedForecastWindow{}, false
 }
 
+// CheckForecastWindowWait returns a cached forecast window when enough
+// current-hour-forward rows are available. Empty or partial windows enqueue an
+// immediate refresh through the existing fallback worker and may wait briefly
+// for that worker to update the shared cache.
+func (f *VOACAPClosedFallback) CheckForecastWindowWait(req VOACAPClosedRequest, now time.Time, wait time.Duration) (VOACAPCachedForecastWindow, VOACAPForecastWindowStatus) {
+	if f == nil || !f.fallback.Enabled {
+		return VOACAPCachedForecastWindow{}, VOACAPForecastWindowUnavailable
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	now = now.UTC()
+	prepared, ok := f.prepareRequest(req)
+	if !ok {
+		f.statsInvalidRequest.Add(1)
+		return VOACAPCachedForecastWindow{}, VOACAPForecastWindowUnavailable
+	}
+	ssn, ok := f.ssnProvider.CurrentSSN(now)
+	if !ok {
+		f.statsSSNUnavailable.Add(1)
+		return VOACAPCachedForecastWindow{}, VOACAPForecastWindowUnavailable
+	}
+	key := f.cacheKey(prepared, ssn, now)
+	delayKey := f.delayKey(prepared)
+
+	f.mu.Lock()
+	f.pruneLocked(now)
+	window, cached, noCurrentHour := f.cachedForecastWindowLocked(key, prepared, now)
+	if cached {
+		f.statsCacheHit.Add(1)
+		if len(window.Records) >= f.fallback.ForecastHours {
+			f.mu.Unlock()
+			return window, VOACAPForecastWindowReady
+		}
+	} else if noCurrentHour {
+		f.statsNoCurrentHour.Add(1)
+	}
+	if _, ok := f.inflight[key]; ok {
+		f.statsInflight.Add(1)
+		f.mu.Unlock()
+		if cached {
+			return window, VOACAPForecastWindowRefreshing
+		}
+		return VOACAPCachedForecastWindow{}, VOACAPForecastWindowRefreshing
+	}
+	if !f.running.Load() {
+		f.statsNotRunning.Add(1)
+		f.mu.Unlock()
+		if cached {
+			return window, VOACAPForecastWindowUnavailable
+		}
+		return VOACAPCachedForecastWindow{}, VOACAPForecastWindowUnavailable
+	}
+	if len(f.queue) >= cap(f.queue) {
+		f.statsQueueFull.Add(1)
+		f.mu.Unlock()
+		if cached {
+			return window, VOACAPForecastWindowBusy
+		}
+		return VOACAPCachedForecastWindow{}, VOACAPForecastWindowBusy
+	}
+	done := make(chan voacapJobResult, 1)
+	job := VOACAPClosedJob{
+		Request:        prepared,
+		SSN:            ssn,
+		WindowStartUTC: forecastWindowStart(now),
+		FrequencyMHz:   float64(key.frequencyKHz) / 1000,
+		key:            key,
+		delayKey:       delayKey,
+		done:           done,
+	}
+	f.inflight[key] = struct{}{}
+	delete(f.delays, delayKey)
+	f.statsQueued.Add(1)
+	f.queue <- job
+	f.mu.Unlock()
+
+	if wait <= 0 {
+		if cached {
+			return window, VOACAPForecastWindowRefreshing
+		}
+		return VOACAPCachedForecastWindow{}, VOACAPForecastWindowRefreshing
+	}
+
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case result := <-done:
+		if result.err != nil {
+			if cached {
+				return window, VOACAPForecastWindowFailed
+			}
+			return VOACAPCachedForecastWindow{}, VOACAPForecastWindowFailed
+		}
+		refreshed, ok := f.checkCachedForecastWindowNoStats(prepared, key, now)
+		if !ok {
+			if cached {
+				return window, VOACAPForecastWindowFailed
+			}
+			return VOACAPCachedForecastWindow{}, VOACAPForecastWindowFailed
+		}
+		return refreshed, VOACAPForecastWindowReady
+	case <-timer.C:
+		if cached {
+			return window, VOACAPForecastWindowRefreshing
+		}
+		return VOACAPCachedForecastWindow{}, VOACAPForecastWindowRefreshing
+	}
+}
+
 func (f *VOACAPClosedFallback) CheckCachedForecast(req VOACAPClosedRequest, now time.Time) (VOACAPCachedForecast, bool) {
 	if f == nil || !f.fallback.Enabled {
 		return VOACAPCachedForecast{}, false
@@ -515,6 +642,30 @@ func (f *VOACAPClosedFallback) CheckCachedForecast(req VOACAPClosedRequest, now 
 		return VOACAPCachedForecast{}, false
 	}
 	return f.cachedForecastFromCache(key, entry, record, prepared, now), true
+}
+
+func (f *VOACAPClosedFallback) checkCachedForecastWindowNoStats(req VOACAPClosedRequest, key voacapCacheKey, now time.Time) (VOACAPCachedForecastWindow, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	window, ok, _ := f.cachedForecastWindowLocked(key, req, now)
+	return window, ok
+}
+
+func (f *VOACAPClosedFallback) cachedForecastWindowLocked(key voacapCacheKey, req VOACAPClosedRequest, now time.Time) (window VOACAPCachedForecastWindow, ok bool, noCurrentHour bool) {
+	entry, ok := f.cache[key]
+	if !ok {
+		return VOACAPCachedForecastWindow{}, false, false
+	}
+	if f.cacheExpired(entry, now) {
+		delete(f.cache, key)
+		return VOACAPCachedForecastWindow{}, false, false
+	}
+	records := forecastRecordsForWindow(entry.forecast, now, f.fallback.ForecastHours)
+	if len(records) == 0 {
+		delete(f.cache, key)
+		return VOACAPCachedForecastWindow{}, false, true
+	}
+	return f.cachedForecastWindowFromCache(key, entry, records, req, now), true, false
 }
 
 func (f *VOACAPClosedFallback) prepareRequest(req VOACAPClosedRequest) (VOACAPClosedRequest, bool) {
@@ -599,6 +750,7 @@ func (f *VOACAPClosedFallback) runJob(ctx context.Context, job VOACAPClosedJob) 
 	forecast, err := f.forecaster.ForecastClosed(ctx, job)
 	now := time.Now().UTC()
 	f.mu.Lock()
+	defer f.notifyJobDone(job, err)
 	defer f.mu.Unlock()
 	delete(f.inflight, job.key)
 	if err != nil {
@@ -613,6 +765,16 @@ func (f *VOACAPClosedFallback) runJob(ctx context.Context, job VOACAPClosedJob) 
 	}
 	f.statsRunSuccess.Add(1)
 	f.addCacheLocked(job.key, voacapCacheEntry{forecast: forecast, storedAt: now})
+}
+
+func (f *VOACAPClosedFallback) notifyJobDone(job VOACAPClosedJob, err error) {
+	if job.done == nil {
+		return
+	}
+	select {
+	case job.done <- voacapJobResult{err: err}:
+	default:
+	}
 }
 
 func (f *VOACAPClosedFallback) cachedForecastFromCache(key voacapCacheKey, entry voacapCacheEntry, record VOACAPHourlyForecast, req VOACAPClosedRequest, now time.Time) VOACAPCachedForecast {

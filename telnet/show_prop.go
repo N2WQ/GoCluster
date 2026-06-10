@@ -1,3 +1,10 @@
+// File role: Owns the telnet SHOW PROP command parser, target resolution, and
+// response formatter for on-demand VOACAP propagation outlooks.
+// Crawler notes: Start here for CW defaulting, per-band mode normalization,
+// command-triggered fallback refreshes, and EFF/RX/TX glyph-table output.
+// Related docs: telnet/README.md, docs/OPERATOR_GUIDE.md,
+// pathreliability/README.md, docs/decisions/ADR-0172-show-prop-worker-refresh-and-glyph-columns.md.
+// Related tests: telnet/show_prop_test.go.
 package telnet
 
 import (
@@ -6,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"dxcluster/cty"
 	"dxcluster/pathreliability"
@@ -29,10 +37,10 @@ type showPropTarget struct {
 }
 
 type showPropBandRows struct {
-	band      string
-	mode      string
-	records   []pathreliability.VOACAPCachedForecast
-	computing bool
+	band    string
+	mode    string
+	records []pathreliability.VOACAPCachedForecast
+	status  pathreliability.VOACAPForecastWindowStatus
 }
 
 func (s *Server) handleShowPropCommand(client *Client, line string) (string, bool) {
@@ -49,8 +57,9 @@ func (s *Server) handleShowPropCommand(client *Client, line string) (string, boo
 	if s.pathClosedFallback == nil {
 		return "VOACAP fallback is disabled.\n", true
 	}
-	provider, ok := s.pathClosedFallback.(pathreliability.VOACAPForecastWindowProvider)
-	if !ok {
+	provider, providerOK := s.pathClosedFallback.(pathreliability.VOACAPForecastWindowProvider)
+	waitProvider, waitProviderOK := s.pathClosedFallback.(pathreliability.VOACAPForecastWindowWaitProvider)
+	if !providerOK && !waitProviderOK {
 		return "VOACAP outlook is unavailable.\n", true
 	}
 
@@ -75,7 +84,7 @@ func (s *Server) handleShowPropCommand(client *Client, line string) (string, boo
 	}
 	modeRaw := strutil.NormalizeUpper(cmd.mode)
 	if modeRaw == "" {
-		modeRaw = "FT8"
+		modeRaw = "CW"
 	}
 	now := s.now()
 	noiseClass := strutil.NormalizeUpper(state.noiseClass)
@@ -85,6 +94,7 @@ func (s *Server) handleShowPropCommand(client *Client, line string) (string, boo
 	noisePenalty := s.noisePenaltyForClass(noiseClass)
 	hours := cfg.VOACAPFallback.ForecastHours
 	rows := make([]showPropBandRows, 0, len(bands))
+	singleBand := strings.TrimSpace(cmd.band) != ""
 	for _, band := range bands {
 		mode, ok := normalizeShowPropModeForBand(modeRaw, band, cfg)
 		if !ok {
@@ -99,12 +109,21 @@ func (s *Server) handleShowPropCommand(client *Client, line string) (string, boo
 			Mode:                  mode,
 			ReceiveNoisePenaltyDB: noisePenalty,
 		}
-		window, ok := provider.CheckForecastWindow(req, now)
-		if !ok {
-			rows = append(rows, showPropBandRows{band: band, mode: mode, computing: true})
+		if waitProviderOK {
+			wait := time.Duration(0)
+			if singleBand {
+				wait = time.Duration(cfg.VOACAPFallback.ShowPropWaitMilliseconds) * time.Millisecond
+			}
+			window, status := waitProvider.CheckForecastWindowWait(req, now, wait)
+			rows = append(rows, showPropBandRows{band: band, mode: mode, records: window.Records, status: status})
 			continue
 		}
-		rows = append(rows, showPropBandRows{band: band, mode: mode, records: window.Records})
+		window, ok := provider.CheckForecastWindow(req, now)
+		status := pathreliability.VOACAPForecastWindowReady
+		if !ok {
+			status = pathreliability.VOACAPForecastWindowRefreshing
+		}
+		rows = append(rows, showPropBandRows{band: band, mode: mode, records: window.Records, status: status})
 	}
 	return formatShowPropResponse(userGrid, target, cmd, modeRaw, noiseClass, hours, rows, cfg), true
 }
@@ -282,36 +301,60 @@ func formatShowPropResponse(userGrid string, target showPropTarget, cmd showProp
 		}
 	}
 	if !anyRecords && singleBand {
-		b.WriteString("Computing, ask again shortly.\n")
+		if len(rows) > 0 {
+			b.WriteString(showPropStatusMessage(rows[0].status, false))
+		} else {
+			b.WriteString("Still computing; ask again shortly.")
+		}
+		b.WriteByte('\n')
 		return b.String()
 	}
 	if singleBand {
-		b.WriteString("UTC  EFF  RX   TX   REL\n")
+		b.WriteString("UTC  EFF  RX  TX  REL\n")
 	} else {
-		b.WriteString("BAND  UTC  EFF  RX   TX   REL\n")
+		b.WriteString("BAND  UTC  EFF  RX  TX  REL\n")
 	}
 	for _, row := range rows {
-		if row.computing {
+		if len(row.records) == 0 {
+			message := showPropStatusMessage(row.status, false)
 			if singleBand {
-				b.WriteString("Computing, ask again shortly.\n")
+				b.WriteString(message)
+				b.WriteByte('\n')
 			} else {
-				fmt.Fprintf(&b, "%-5s computing, ask again shortly\n", row.band)
+				fmt.Fprintf(&b, "%-5s %s\n", row.band, message)
 			}
 			continue
 		}
 		for _, forecast := range row.records {
 			rel := showPropReliability(forecast, row.mode, cfg)
-			eff := int(math.Round(forecast.EffectiveDB()))
-			rx := int(math.Round(forecast.ReceiveDB()))
-			tx := int(math.Round(forecast.TransmitDB()))
+			eff := showPropGlyph(forecast.EffectiveDB(), row.mode, cfg)
+			rx := showPropGlyph(forecast.ReceiveDB(), row.mode, cfg)
+			tx := showPropGlyph(forecast.TransmitDB(), row.mode, cfg)
 			if singleBand {
-				fmt.Fprintf(&b, "%02dZ  %3d  %3d  %3d  %s\n", forecast.Record.HourUTC, eff, rx, tx, rel)
+				fmt.Fprintf(&b, "%02dZ  %-3s  %-2s  %-2s  %s\n", forecast.Record.HourUTC, eff, rx, tx, rel)
 			} else {
-				fmt.Fprintf(&b, "%-5s %02dZ  %3d  %3d  %3d  %s\n", row.band, forecast.Record.HourUTC, eff, rx, tx, rel)
+				fmt.Fprintf(&b, "%-5s %02dZ  %-3s  %-2s  %-2s  %s\n", row.band, forecast.Record.HourUTC, eff, rx, tx, rel)
+			}
+		}
+		if row.status != pathreliability.VOACAPForecastWindowReady {
+			message := showPropStatusMessage(row.status, true)
+			if singleBand {
+				b.WriteString(message)
+				b.WriteByte('\n')
+			} else {
+				fmt.Fprintf(&b, "%-5s %s\n", row.band, message)
 			}
 		}
 	}
 	return b.String()
+}
+
+func showPropGlyph(db float64, mode string, cfg pathreliability.Config) string {
+	rounded := float64(int(math.Round(db)))
+	if pathreliability.ClosedForDB(rounded, mode, cfg) {
+		return cfg.GlyphSymbols.Closed
+	}
+	return pathreliability.GlyphForDB(rounded, mode, cfg)
 }
 
 func showPropReliability(forecast pathreliability.VOACAPCachedForecast, mode string, cfg pathreliability.Config) string {
@@ -320,6 +363,30 @@ func showPropReliability(forecast pathreliability.VOACAPCachedForecast, mode str
 		return "CLOSED"
 	}
 	return pathreliability.ClassForDB(effective, mode, cfg)
+}
+
+func showPropStatusMessage(status pathreliability.VOACAPForecastWindowStatus, hasRecords bool) string {
+	switch status {
+	case pathreliability.VOACAPForecastWindowReady:
+		if !hasRecords {
+			return "Still computing; ask again shortly."
+		}
+		return ""
+	case pathreliability.VOACAPForecastWindowBusy:
+		return "VOACAP busy; ask again shortly."
+	case pathreliability.VOACAPForecastWindowFailed:
+		if hasRecords {
+			return "Refresh failed; showing cached rows."
+		}
+		return "VOACAP outlook failed; ask again shortly."
+	case pathreliability.VOACAPForecastWindowUnavailable:
+		return "VOACAP outlook unavailable."
+	default:
+		if hasRecords {
+			return "Refreshing; ask again shortly for full horizon."
+		}
+		return "Still computing; ask again shortly."
+	}
 }
 
 func showPropFirstSSN(rows []showPropBandRows) (int, bool) {

@@ -94,9 +94,9 @@ func TestHandleShowPropSingleBandExplicitGrid(t *testing.T) {
 	}
 	for _, want := range []string{
 		"PROP FN31 -> FN32 target=FN32 source=grid mode=FT8 band=20m noise=SUBURBAN ssn=112 hours=8",
-		"UTC  EFF  RX   TX   REL",
-		"18Z  -21  -22  -20  LOW",
-		"19Z  -40  -47  -30  CLOSED",
+		"UTC  EFF  RX  TX  REL",
+		"18Z  -    !   -   LOW",
+		"19Z  !    !   !   CLOSED",
 	} {
 		if !strings.Contains(resp, want) {
 			t.Fatalf("response missing %q:\n%s", want, resp)
@@ -118,6 +118,9 @@ func TestHandleShowPropAllBandsPartialCache(t *testing.T) {
 	now := time.Date(2026, time.June, 8, 18, 0, 0, 0, time.UTC)
 	fallback := &fakeShowPropFallback{
 		cfg: cfg,
+		statuses: map[string]pathreliability.VOACAPForecastWindowStatus{
+			"20m": pathreliability.VOACAPForecastWindowRefreshing,
+		},
 		windows: map[string]pathreliability.VOACAPCachedForecastWindow{
 			"20m": {
 				Records: []pathreliability.VOACAPCachedForecast{
@@ -139,9 +142,10 @@ func TestHandleShowPropAllBandsPartialCache(t *testing.T) {
 		t.Fatalf("SHOW PROP not handled")
 	}
 	for _, want := range []string{
-		"BAND  UTC  EFF  RX   TX   REL",
-		"40m   computing, ask again shortly",
-		"20m   18Z   -5   -5   -5  MEDIUM",
+		"BAND  UTC  EFF  RX  TX  REL",
+		"40m   Still computing; ask again shortly.",
+		"20m   18Z  =    =   =   MEDIUM",
+		"20m   Refreshing; ask again shortly for full horizon.",
 	} {
 		if !strings.Contains(resp, want) {
 			t.Fatalf("response missing %q:\n%s", want, resp)
@@ -159,9 +163,10 @@ func TestHandleShowPropColdMiss(t *testing.T) {
 	requireH3Mappings(t)
 	cfg := pathreliability.DefaultConfig()
 	cfg.VOACAPFallback.CenterFrequenciesMHz = []float64{14.1}
+	fallback := &fakeShowPropFallback{cfg: cfg}
 	server := &Server{
 		pathPredictor:      pathreliability.NewPredictor(cfg, []string{"20m"}),
-		pathClosedFallback: &fakeShowPropFallback{cfg: cfg},
+		pathClosedFallback: fallback,
 		noiseModel:         cfg.NoiseModel(),
 		nowFn:              func() time.Time { return time.Date(2026, time.June, 8, 18, 0, 0, 0, time.UTC) },
 	}
@@ -171,8 +176,14 @@ func TestHandleShowPropColdMiss(t *testing.T) {
 	if !handled {
 		t.Fatalf("SHOW PROP not handled")
 	}
-	if !strings.Contains(resp, "Computing, ask again shortly.") {
+	if !strings.Contains(resp, "Still computing; ask again shortly.") {
 		t.Fatalf("expected cold miss response, got:\n%s", resp)
+	}
+	if len(fallback.requests) != 1 || fallback.requests[0].Mode != "CW" {
+		t.Fatalf("expected omitted mode to default to CW, requests=%+v", fallback.requests)
+	}
+	if got := fallback.waits[0]; got != 750*time.Millisecond {
+		t.Fatalf("single-band wait = %s, want 750ms", got)
 	}
 }
 
@@ -271,6 +282,8 @@ func testShowPropForecast(cfg pathreliability.Config, hour int, receive int, tra
 type fakeShowPropFallback struct {
 	cfg      pathreliability.Config
 	windows  map[string]pathreliability.VOACAPCachedForecastWindow
+	statuses map[string]pathreliability.VOACAPForecastWindowStatus
+	waits    []time.Duration
 	requests []pathreliability.VOACAPClosedRequest
 }
 
@@ -285,6 +298,21 @@ func (f *fakeShowPropFallback) CheckForecastWindow(req pathreliability.VOACAPClo
 	}
 	window, ok := f.windows[req.Band]
 	return window, ok
+}
+
+func (f *fakeShowPropFallback) CheckForecastWindowWait(req pathreliability.VOACAPClosedRequest, _ time.Time, wait time.Duration) (pathreliability.VOACAPCachedForecastWindow, pathreliability.VOACAPForecastWindowStatus) {
+	f.requests = append(f.requests, req)
+	f.waits = append(f.waits, wait)
+	window, ok := f.windows[req.Band]
+	status, hasStatus := f.statuses[req.Band]
+	if !hasStatus {
+		if ok {
+			status = pathreliability.VOACAPForecastWindowReady
+		} else {
+			status = pathreliability.VOACAPForecastWindowRefreshing
+		}
+	}
+	return window, status
 }
 
 func testShowPropCTY(t *testing.T) *cty.CTYDatabase {

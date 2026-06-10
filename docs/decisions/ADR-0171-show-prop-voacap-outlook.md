@@ -1,6 +1,6 @@
 # ADR-0171: SHOW PROP VOACAP Outlook
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-06-10
 - Decision Origin: Scope Ledger v2
 
@@ -102,4 +102,5 @@ requested mode thresholds. Bucket p50 is intentionally not displayed.
   `customgpt/support-cards/path-reliability.md`
 - Related TSRs: none
 - Supersedes / superseded by: extends ADR-0162 and ADR-0169 exposure of cached
-  VOACAP forecast records
+  VOACAP forecast records; superseded by ADR-0172 for `SHOW PROP` command
+  behavior

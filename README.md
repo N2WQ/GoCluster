@@ -22,7 +22,7 @@ Log in with your callsign, then start with:
   nearby filtering, and path hints.
 - `SET NOISE QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL`: set local receive noise
   class for path hints.
-- `SHOW PROP <call|prefix|grid> [band] [mode]`: show cached hourly propagation
+- `SHOW PROP <call|prefix|grid> [band] [mode]`: show hourly propagation
   outlook from your grid to a target.
 - `BYE`: disconnect.
 
@@ -99,20 +99,23 @@ WHOSPOTSME 20M (last 10m):
   NA:  K(3) VE(1)
 ```
 
-Ask for a cache-first point-to-point propagation outlook. Cold cache misses
-return immediately and continue in the background:
+Ask for a point-to-point propagation outlook. When a single-band request is
+missing cache rows, it starts a VOACAP refresh and may wait briefly; all-band
+requests show cached rows while refreshing missing bands in the background.
+Omitted mode defaults to CW:
 
 ```text
 > SHOW PROP IT9 20m FT8
 PROP FN31 -> JM77 target=IT9 source=cty-derived mode=FT8 band=20m noise=SUBURBAN ssn=112 hours=8
-UTC  EFF  RX   TX   REL
-18Z  -21  -22  -20  LOW
-19Z  -40  -47  -30  CLOSED
+UTC  EFF  RX  TX  REL
+18Z  <    -   <   LOW
+19Z  #    #   #   CLOSED
 ```
 
-`EFF` is the merged effective SNR, `RX` is the target-to-you receive leg after
-your `SET NOISE` penalty, `TX` is the you-to-target transmit leg, and `REL` is
-the configured path class for the requested mode.
+`EFF`, `RX`, and `TX` are mode-specific path glyphs. `EFF` is the merged
+effective path, `RX` is the target-to-you receive leg after your `SET NOISE`
+penalty, `TX` is the you-to-target transmit leg, and `REL` is the configured
+class for the merged path.
 
 ### Filter Examples
 
@@ -543,12 +546,13 @@ Important operational notes:
   bucket p50 and VOACAP map to the same path class. Sufficient bucket p50
   results stay authoritative. Runtime fallback decks cover the rolling UTC
   forecast window; parsed VOACAP hour `24` is treated as UTC hour `0`.
-- `SHOW PROP <call|prefix|grid> [band] [mode]` exposes the same cached rolling
-  VOACAP outlook directly. It displays current-hour-forward rows only when the
-  cache already has them; a cold miss says computing and returns immediately.
-  `EFF` is the merged bidirectional SNR, `RX` is target-to-user after the
-  user's noise penalty, `TX` is user-to-target, and `REL` is the configured path
-  class for the requested mode. It does not display bucket p50.
+- `SHOW PROP <call|prefix|grid> [band] [mode]` exposes the same rolling VOACAP
+  outlook directly. Omitted mode defaults to CW. Empty or partial single-band
+  cache results enqueue a refresh and may wait briefly; all-band requests show
+  cached rows while refreshing missing or partial bands in the background.
+  `EFF`, `RX`, and `TX` are mode-specific path glyphs for the merged path,
+  target-to-user receive leg, and user-to-target transmit leg. `REL` is the
+  configured class for the merged path. It does not display bucket p50.
 - `PATH` filters work on the class names, not on the glyph characters.
   `CLOSED` is a VOACAP-closed subtype of `UNLIKELY`: existing
   `PASS/REJECT PATH UNLIKELY` filters still include closed fallback spots,

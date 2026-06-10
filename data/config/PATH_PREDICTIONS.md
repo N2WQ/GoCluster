@@ -161,14 +161,15 @@ SNR-delta buckets. That comparison is cache-only and does not run VOACAP on
 cache misses.
 
 `SHOW PROP <call|prefix|grid> [band] [mode]` is the on-demand view of the same
-cached VOACAP horizon. It starts from your saved `SET GRID`, applies your
+rolling VOACAP horizon. It starts from your saved `SET GRID`, applies your
 `SET NOISE` receive penalty to the RX leg, merges RX and TX into `EFF`, and
-maps `EFF` to `REL` using the requested mode thresholds. It never waits for a
-new VOACAP process; a cold miss reports that it is computing and asks you to
-try again shortly. With no band, it shows each configured VOACAP fallback band.
-With no mode, it uses FT8. The row count follows
-`voacap_fallback.forecast_hours` and only includes cached current-hour-forward
-records.
+maps `EFF`, `RX`, and `TX` to mode-specific glyphs. `REL` remains the text class
+for the requested mode and merged path. With no band, it shows each configured
+VOACAP fallback band. With no mode, it uses CW. Empty or partial single-band
+lookups enqueue a refresh through the existing VOACAP fallback worker and wait
+up to `voacap_fallback.show_prop_wait_milliseconds`; all-band requests return
+cached rows while refreshing missing or partial bands in the background. The row
+count follows `voacap_fallback.forecast_hours`.
 
 ## How to Use This Information
 

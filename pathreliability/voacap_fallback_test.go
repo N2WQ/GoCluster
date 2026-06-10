@@ -3,8 +3,10 @@ package pathreliability
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -268,6 +270,183 @@ func TestVOACAPClosedFallbackCheckForecastWindowDelaysAndEnqueues(t *testing.T) 
 	}
 	if calls.Load() != 1 {
 		t.Fatalf("cached window should avoid duplicate forecast, calls=%d", calls.Load())
+	}
+}
+
+func TestVOACAPClosedFallbackCheckForecastWindowWaitRefreshesEmptyCache(t *testing.T) {
+	cfg := testVOACAPFallbackConfig()
+	cfg.VOACAPFallback.ForecastHours = 2
+	cfg.VOACAPFallback.DelaySeconds = 900
+	var calls atomic.Int32
+	forecaster := fakeClosedForecaster{
+		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
+			calls.Add(1)
+			return VOACAPClosedForecast{
+				WindowStartUTC: job.WindowStartUTC,
+				Records: []VOACAPHourlyForecast{
+					{FT8SNRDB: -20, HourUTC: 20, FrequencyMHz: job.FrequencyMHz},
+					{FT8SNRDB: -18, HourUTC: 21, FrequencyMHz: job.FrequencyMHz},
+				},
+			}, nil
+		},
+	}
+	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
+	ctx, cancel := context.WithCancel(context.Background())
+	fallback.Start(ctx)
+	defer func() {
+		cancel()
+		fallback.Wait()
+	}()
+
+	req := testClosedRequest()
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	window, status := fallback.CheckForecastWindowWait(req, now, time.Second)
+	if status != VOACAPForecastWindowReady {
+		t.Fatalf("status = %v, want ready", status)
+	}
+	if len(window.Records) != 2 {
+		t.Fatalf("window records = %d, want 2: %+v", len(window.Records), window.Records)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("calls = %d, want 1", calls.Load())
+	}
+	if snap := fallback.Snapshot(); snap.DelayEntries != 0 || snap.InflightEntries != 0 || snap.CacheEntries != 1 {
+		t.Fatalf("unexpected snapshot after refresh: %+v", snap)
+	}
+}
+
+func TestVOACAPClosedFallbackCheckForecastWindowWaitTimeoutContinuesWorker(t *testing.T) {
+	cfg := testVOACAPFallbackConfig()
+	cfg.VOACAPFallback.ForecastHours = 2
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	var releaseOnce sync.Once
+	forecaster := fakeClosedForecaster{
+		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
+			once.Do(func() { close(started) })
+			select {
+			case <-ctx.Done():
+				return VOACAPClosedForecast{}, ctx.Err()
+			case <-release:
+			}
+			return VOACAPClosedForecast{
+				WindowStartUTC: job.WindowStartUTC,
+				Records: []VOACAPHourlyForecast{
+					{FT8SNRDB: -20, HourUTC: 20, FrequencyMHz: job.FrequencyMHz},
+					{FT8SNRDB: -18, HourUTC: 21, FrequencyMHz: job.FrequencyMHz},
+				},
+			}, nil
+		},
+	}
+	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
+	ctx, cancel := context.WithCancel(context.Background())
+	fallback.Start(ctx)
+	defer func() {
+		releaseOnce.Do(func() { close(release) })
+		cancel()
+		fallback.Wait()
+	}()
+
+	req := testClosedRequest()
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	window, status := fallback.CheckForecastWindowWait(req, now, 10*time.Millisecond)
+	if status != VOACAPForecastWindowRefreshing {
+		t.Fatalf("status = %v, want refreshing", status)
+	}
+	if len(window.Records) != 0 {
+		t.Fatalf("timeout should not return records, got %+v", window.Records)
+	}
+	<-started
+	releaseOnce.Do(func() { close(release) })
+	waitUntil(t, func() bool { return fallback.Snapshot().CacheEntries == 1 && fallback.Snapshot().InflightEntries == 0 })
+	window, ok := fallback.CheckForecastWindow(req, now)
+	if !ok || len(window.Records) != 2 {
+		t.Fatalf("expected background refresh to populate cache, ok=%v window=%+v", ok, window)
+	}
+}
+
+func TestVOACAPClosedFallbackCheckForecastWindowWaitRefreshesPartialCache(t *testing.T) {
+	cfg := testVOACAPFallbackConfig()
+	cfg.VOACAPFallback.ForecastHours = 2
+	cfg.VOACAPFallback.DelaySeconds = 900
+	var calls atomic.Int32
+	forecaster := fakeClosedForecaster{
+		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
+			calls.Add(1)
+			return VOACAPClosedForecast{
+				WindowStartUTC: job.WindowStartUTC,
+				Records: []VOACAPHourlyForecast{
+					{FT8SNRDB: -20, HourUTC: 20, FrequencyMHz: job.FrequencyMHz},
+					{FT8SNRDB: -18, HourUTC: 21, FrequencyMHz: job.FrequencyMHz},
+				},
+			}, nil
+		},
+	}
+	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
+	ctx, cancel := context.WithCancel(context.Background())
+	fallback.Start(ctx)
+	defer func() {
+		cancel()
+		fallback.Wait()
+	}()
+
+	req := testClosedRequest()
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	oldWindowStart := now.Add(-time.Hour)
+	key := fallback.cacheKey(req, 112, oldWindowStart)
+	fallback.mu.Lock()
+	fallback.addCacheLocked(key, voacapCacheEntry{
+		forecast: VOACAPClosedForecast{
+			WindowStartUTC: oldWindowStart,
+			Records: []VOACAPHourlyForecast{
+				{FT8SNRDB: -15, HourUTC: 20, FrequencyMHz: 14.1},
+			},
+		},
+		storedAt: now.Add(-time.Minute),
+	})
+	fallback.mu.Unlock()
+
+	window, status := fallback.CheckForecastWindowWait(req, now, 0)
+	if status != VOACAPForecastWindowRefreshing {
+		t.Fatalf("status = %v, want refreshing", status)
+	}
+	if len(window.Records) != 1 || window.Records[0].Record.HourUTC != 20 {
+		t.Fatalf("expected partial cached window, got %+v", window.Records)
+	}
+	waitUntil(t, func() bool { return calls.Load() == 1 && fallback.Snapshot().InflightEntries == 0 })
+	refreshed, ok := fallback.CheckForecastWindow(req, now)
+	if !ok || len(refreshed.Records) != 2 {
+		t.Fatalf("expected refreshed full window, ok=%v window=%+v", ok, refreshed)
+	}
+}
+
+func TestVOACAPClosedFallbackCheckForecastWindowWaitFailureClearsInflight(t *testing.T) {
+	cfg := testVOACAPFallbackConfig()
+	forecaster := fakeClosedForecaster{
+		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
+			return VOACAPClosedForecast{}, fmt.Errorf("forecast failed")
+		},
+	}
+	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
+	ctx, cancel := context.WithCancel(context.Background())
+	fallback.Start(ctx)
+	defer func() {
+		cancel()
+		fallback.Wait()
+	}()
+
+	req := testClosedRequest()
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	window, status := fallback.CheckForecastWindowWait(req, now, time.Second)
+	if status != VOACAPForecastWindowFailed {
+		t.Fatalf("status = %v, want failed", status)
+	}
+	if len(window.Records) != 0 {
+		t.Fatalf("failure should not return records, got %+v", window.Records)
+	}
+	if snap := fallback.Snapshot(); snap.InflightEntries != 0 || snap.DelayEntries != 1 {
+		t.Fatalf("failure should clear inflight and add delay, snapshot=%+v", snap)
 	}
 }
 

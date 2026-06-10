@@ -170,7 +170,7 @@ Log in with your callsign. Useful first commands:
 - `HELP <command>`: show command-specific help.
 - `SHOW MYDX` or `SHOW DX`: show filtered spot history.
 - `SHOW DXCC <call>`: look up DXCC/ADIF and zones.
-- `SHOW PROP <call|prefix|grid> [band] [mode]`: show cached hourly
+- `SHOW PROP <call|prefix|grid> [band] [mode]`: show hourly
   propagation outlook from your grid to a target.
 - `SHOW OWN`: show your login call and baseline own call.
 - `WHOSPOTSME [band]`: show recent spotter countries for your baseline call.
@@ -327,29 +327,30 @@ Example readings:
 
 ### Reading `SHOW PROP`
 
-`SHOW PROP <call|prefix|grid> [band] [mode]` exposes the same cached VOACAP
-forecast window used by the fallback, without waiting for VOACAP to run during
-the telnet command. If the requested band/path is cold, the command says
-computing and returns immediately; ask again after the delayed fallback worker
-has populated the cache.
+`SHOW PROP <call|prefix|grid> [band] [mode]` exposes the same rolling VOACAP
+forecast window used by the fallback. Omitted mode defaults to CW. If an
+explicit single-band request has no rows, or fewer rows than
+`voacap_fallback.forecast_hours`, the command starts a refresh through the
+existing fallback worker and waits briefly. All-band requests show cached rows
+immediately while refreshing missing or partial bands in the background.
 
 The target can be an explicit Maidenhead grid, a callsign found in the grid
 store, or a CTY-derived prefix/callsign center. With no band, the command
-queries all configured VOACAP fallback bands. With no mode, it uses `FT8`.
+queries all configured VOACAP fallback bands. With no mode, it uses `CW`.
 Rows run from the current UTC hour through the configured
 `voacap_fallback.forecast_hours` cache horizon.
 
 ```text
 PROP FN31 -> JM77 target=IT9 source=cty-derived mode=FT8 band=20m noise=SUBURBAN ssn=112 hours=8
-UTC  EFF  RX   TX   REL
-18Z  -21  -22  -20  LOW
-19Z  -40  -47  -30  CLOSED
+UTC  EFF  RX  TX  REL
+18Z  <    -   <   LOW
+19Z  #    #   #   CLOSED
 ```
 
-- `EFF` is the merged bidirectional effective SNR.
-- `RX` is the target-to-user receive leg after the user's `SET NOISE` penalty.
-- `TX` is the user-to-target transmit leg.
-- `REL` is the configured path class for the requested mode.
+- `EFF` is the merged bidirectional effective-path glyph.
+- `RX` is the target-to-user receive-leg glyph after the user's `SET NOISE` penalty.
+- `TX` is the user-to-target transmit-leg glyph.
+- `REL` is the configured path class for the requested mode and merged path.
 - Bucket p50 is intentionally not shown; sufficient bucket p50 remains
   authoritative for live spot glyphs.
 

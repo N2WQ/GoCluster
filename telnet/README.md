@@ -120,7 +120,7 @@ If a duplicate is suppressed, slow clients do not see another control-queue enqu
 - `SET NOISE` stores the user's noise class; the checked-in path config applies one receive-side penalty per class
 - `SET PATHSAMPLES` stores a stricter per-user path sample floor; it cannot lower the cluster default
 - `SHOW PROP <call|prefix|grid> [band] [mode]` uses the saved grid and noise
-  class to show a cache-first point-to-point VOACAP outlook
+  class to show a point-to-point VOACAP outlook; omitted mode defaults to CW
 - `PASS NEARBY ON` requires a grid and keeps spots whose DX side or DE side falls in the user's nearby area
 
 `NEARBY` uses H3 cells:
@@ -153,7 +153,12 @@ The telnet layer asks the path predictor for a class and glyph when path display
 `SHOW PROP` is a command path rather than a spot-display glyph path. It resolves
 an explicit grid, gridstore callsign, or CTY-derived prefix/callsign to a target
 grid and asks the VOACAP fallback cache for the current UTC hour through the
-configured forecast horizon. Cache misses return immediately with a computing
-message. Cached rows show `EFF`, `RX`, `TX`, and `REL`; bucket p50 is not shown.
+configured forecast horizon. Empty or partial single-band lookups enqueue a
+refresh through the existing VOACAP fallback worker and may wait briefly;
+all-band lookups show cached rows while refreshing missing or partial bands in
+the background. Cached rows show mode-specific glyphs for `EFF`, `RX`, and
+`TX`, plus text `REL` for the merged path class. `RX` and `TX` are per-leg
+projections on the same glyph scale, not independent live spot glyph decisions.
+Bucket p50 is not shown.
 
 For command HELP and dialect details, see [`../commands/README.md`](../commands/README.md).
