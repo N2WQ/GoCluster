@@ -142,6 +142,10 @@ separate `VOACAP fallback (5m)` line reports stage counters such as `queued`,
 `success`, `cache_hit`, `no_current_hour`, `closed`, `closed_no_p50`,
 `closed_with_sparse_p50`, `closed_with_sparse_p50_class_*`, `open_no_p50`,
 and `class_mismatch`.
+When sufficient p50 predictions can be compared with an existing current-hour
+VOACAP cache record, `VOACAP p50 compare (5m)` reports cache hits/misses, class
+agreement, SNR direction, closed-VOACAP versus p50 class, and SNR-delta buckets.
+That comparison is cache-only and does not run VOACAP on cache misses.
 
 ## How to Use This Information
 

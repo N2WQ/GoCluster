@@ -38,6 +38,21 @@ func TestPathPredictionStatsSnapshotSplit(t *testing.T) {
 	s.vStageAligned.Add(2)
 	s.vStageNoP50.Add(3)
 	s.vStageMismatch.Add(4)
+	s.vP50CompareChecked.Add(5)
+	s.vP50CompareCacheHit.Add(4)
+	s.vP50CompareCacheMiss.Add(1)
+	s.vP50CompareSameClass.Add(2)
+	s.vP50CompareP50Stronger.Add(2)
+	s.vP50CompareVOACAPStronger.Add(1)
+	s.vP50CompareEqualSNR.Add(1)
+	s.vP50CompareClosedP50High.Add(1)
+	s.vP50CompareClosedP50Med.Add(1)
+	s.vP50CompareClosedP50Low.Add(1)
+	s.vP50CompareClosedP50Unlk.Add(1)
+	s.vP50CompareDeltaAbs0To3.Add(1)
+	s.vP50CompareDeltaAbs4To9.Add(1)
+	s.vP50CompareDeltaAbs10To19.Add(1)
+	s.vP50CompareDeltaAbs20Plus.Add(1)
 
 	stats := s.PathPredictionStatsSnapshot()
 	if stats.Total != 9 {
@@ -66,6 +81,23 @@ func TestPathPredictionStatsSnapshotSplit(t *testing.T) {
 		stats.VOACAPFallbackClosedSparseUnlk != 1 {
 		t.Fatalf("unexpected closed fallback split stats: %+v", stats)
 	}
+	if stats.VOACAPP50CompareChecked != 5 ||
+		stats.VOACAPP50CompareCacheHit != 4 ||
+		stats.VOACAPP50CompareCacheMiss != 1 ||
+		stats.VOACAPP50CompareSameClass != 2 ||
+		stats.VOACAPP50CompareP50Stronger != 2 ||
+		stats.VOACAPP50CompareVOACAPStronger != 1 ||
+		stats.VOACAPP50CompareEqualSNR != 1 ||
+		stats.VOACAPP50CompareClosedP50High != 1 ||
+		stats.VOACAPP50CompareClosedP50Med != 1 ||
+		stats.VOACAPP50CompareClosedP50Low != 1 ||
+		stats.VOACAPP50CompareClosedP50Unlk != 1 ||
+		stats.VOACAPP50CompareDeltaAbs0To3 != 1 ||
+		stats.VOACAPP50CompareDeltaAbs4To9 != 1 ||
+		stats.VOACAPP50CompareDeltaAbs10To19 != 1 ||
+		stats.VOACAPP50CompareDeltaAbs20Plus != 1 {
+		t.Fatalf("unexpected VOACAP p50 compare stats: %+v", stats)
+	}
 	if stats.Insufficient != 5 {
 		t.Fatalf("expected insufficient=5, got %d", stats.Insufficient)
 	}
@@ -89,7 +121,7 @@ func TestPathPredictionStatsSnapshotSplit(t *testing.T) {
 	}
 
 	after := s.PathPredictionStatsSnapshot()
-	if after.Total != 0 || after.Combined != 0 || after.VOACAPClosed != 0 || after.VOACAPAligned != 0 || after.VOACAPFallback.HasActivity() || after.VOACAPFallbackClosedCandidate != 0 || after.VOACAPFallbackClosedNoP50 != 0 || after.VOACAPFallbackClosedSparseP50 != 0 || after.VOACAPFallbackClosedSparseHigh != 0 || after.VOACAPFallbackClosedSparseMed != 0 || after.VOACAPFallbackClosedSparseLow != 0 || after.VOACAPFallbackClosedSparseUnlk != 0 || after.VOACAPFallbackAlignedCandidate != 0 || after.VOACAPFallbackOpenNoP50 != 0 || after.VOACAPFallbackClassMismatch != 0 || after.Insufficient != 0 || after.NoSample != 0 || after.LowCount != 0 || after.LowReceiver != 0 || after.LowWeight != 0 || after.Stale != 0 || after.CapLimited != 0 || after.CapWouldBlock != 0 || after.OverrideR != 0 || after.OverrideG != 0 {
+	if after.Total != 0 || after.Combined != 0 || after.VOACAPClosed != 0 || after.VOACAPAligned != 0 || after.VOACAPFallback.HasActivity() || after.VOACAPFallbackClosedCandidate != 0 || after.VOACAPFallbackClosedNoP50 != 0 || after.VOACAPFallbackClosedSparseP50 != 0 || after.VOACAPFallbackClosedSparseHigh != 0 || after.VOACAPFallbackClosedSparseMed != 0 || after.VOACAPFallbackClosedSparseLow != 0 || after.VOACAPFallbackClosedSparseUnlk != 0 || after.VOACAPFallbackAlignedCandidate != 0 || after.VOACAPFallbackOpenNoP50 != 0 || after.VOACAPFallbackClassMismatch != 0 || after.VOACAPP50CompareChecked != 0 || after.VOACAPP50CompareCacheHit != 0 || after.VOACAPP50CompareCacheMiss != 0 || after.VOACAPP50CompareSameClass != 0 || after.VOACAPP50CompareP50Stronger != 0 || after.VOACAPP50CompareVOACAPStronger != 0 || after.VOACAPP50CompareEqualSNR != 0 || after.VOACAPP50CompareClosedP50High != 0 || after.VOACAPP50CompareClosedP50Med != 0 || after.VOACAPP50CompareClosedP50Low != 0 || after.VOACAPP50CompareClosedP50Unlk != 0 || after.VOACAPP50CompareDeltaAbs0To3 != 0 || after.VOACAPP50CompareDeltaAbs4To9 != 0 || after.VOACAPP50CompareDeltaAbs10To19 != 0 || after.VOACAPP50CompareDeltaAbs20Plus != 0 || after.Insufficient != 0 || after.NoSample != 0 || after.LowCount != 0 || after.LowReceiver != 0 || after.LowWeight != 0 || after.Stale != 0 || after.CapLimited != 0 || after.CapWouldBlock != 0 || after.OverrideR != 0 || after.OverrideG != 0 {
 		t.Fatalf("expected zeroed snapshot, got %+v", after)
 	}
 }
@@ -218,6 +250,81 @@ func TestPathResultWithClosedFallbackStageStats(t *testing.T) {
 	}
 }
 
+func TestPathResultWithClosedFallbackComparesSufficientP50AgainstCachedVOACAP(t *testing.T) {
+	cfg := pathreliability.DefaultConfig()
+	cfg.GlyphSymbols.Closed = "!"
+	predictor := pathreliability.NewPredictor(cfg, []string{"20m"})
+	req := pathreliability.VOACAPClosedRequest{Band: "20m", Mode: "FT8"}
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+
+	s := &Server{
+		pathPredictor: predictor,
+		pathClosedFallback: cacheOnlyPathClosedFallback{
+			forecast: pathreliability.VOACAPCachedForecast{
+				Record: pathreliability.VOACAPHourlyForecast{FT8SNRDB: -34, HourUTC: 20, FrequencyMHz: 14.1},
+				SSN:    112,
+			},
+			ok: true,
+		},
+	}
+	base := pathreliability.Result{Source: pathreliability.SourceCombined, HasP50: true, P50DB: -12}
+	got := s.pathResultWithClosedFallback(base, req, now)
+	if got.Source != pathreliability.SourceCombined {
+		t.Fatalf("comparison must not change emitted source, got %+v", got)
+	}
+	stats := s.PathPredictionStatsSnapshot()
+	if stats.VOACAPP50CompareChecked != 1 ||
+		stats.VOACAPP50CompareCacheHit != 1 ||
+		stats.VOACAPP50CompareCacheMiss != 0 ||
+		stats.VOACAPP50CompareP50Stronger != 1 ||
+		stats.VOACAPP50CompareClosedP50High != 1 ||
+		stats.VOACAPP50CompareDeltaAbs20Plus != 1 {
+		t.Fatalf("unexpected p50 compare stats for closed/high disagreement: %+v", stats)
+	}
+	if stats.VOACAPFallbackClosedCandidate != 0 || stats.VOACAPClosed != 0 {
+		t.Fatalf("comparison must not count fallback emissions or stages: %+v", stats)
+	}
+
+	s = &Server{
+		pathPredictor: predictor,
+		pathClosedFallback: cacheOnlyPathClosedFallback{
+			forecast: pathreliability.VOACAPCachedForecast{
+				Record: pathreliability.VOACAPHourlyForecast{FT8SNRDB: -15, HourUTC: 20, FrequencyMHz: 14.1},
+				SSN:    112,
+			},
+			ok: true,
+		},
+	}
+	base = pathreliability.Result{Source: pathreliability.SourceCombined, HasP50: true, P50DB: -15}
+	got = s.pathResultWithClosedFallback(base, req, now)
+	if got.Source != pathreliability.SourceCombined {
+		t.Fatalf("comparison must not change emitted source, got %+v", got)
+	}
+	stats = s.PathPredictionStatsSnapshot()
+	if stats.VOACAPP50CompareChecked != 1 ||
+		stats.VOACAPP50CompareCacheHit != 1 ||
+		stats.VOACAPP50CompareSameClass != 1 ||
+		stats.VOACAPP50CompareEqualSNR != 1 ||
+		stats.VOACAPP50CompareDeltaAbs0To3 != 1 {
+		t.Fatalf("unexpected p50 compare stats for matching class: %+v", stats)
+	}
+
+	s = &Server{
+		pathPredictor:      predictor,
+		pathClosedFallback: cacheOnlyPathClosedFallback{},
+	}
+	got = s.pathResultWithClosedFallback(base, req, now)
+	if got.Source != pathreliability.SourceCombined {
+		t.Fatalf("cache miss comparison must not change emitted source, got %+v", got)
+	}
+	stats = s.PathPredictionStatsSnapshot()
+	if stats.VOACAPP50CompareChecked != 1 ||
+		stats.VOACAPP50CompareCacheHit != 0 ||
+		stats.VOACAPP50CompareCacheMiss != 1 {
+		t.Fatalf("unexpected p50 compare stats for cache miss: %+v", stats)
+	}
+}
+
 func BenchmarkRecordPathPrediction(b *testing.B) {
 	s := &Server{}
 	res := pathreliability.Result{Source: pathreliability.SourceCombined, Weight: 2}
@@ -239,4 +346,17 @@ func (f *statsPathClosedFallback) StatsSnapshot() pathreliability.VOACAPFallback
 	stats := f.stats
 	f.stats = pathreliability.VOACAPFallbackStats{}
 	return stats
+}
+
+type cacheOnlyPathClosedFallback struct {
+	forecast pathreliability.VOACAPCachedForecast
+	ok       bool
+}
+
+func (f cacheOnlyPathClosedFallback) CheckForecast(pathreliability.VOACAPClosedRequest, time.Time) (pathreliability.VOACAPCachedForecast, bool) {
+	return pathreliability.VOACAPCachedForecast{}, false
+}
+
+func (f cacheOnlyPathClosedFallback) CheckCachedForecast(pathreliability.VOACAPClosedRequest, time.Time) (pathreliability.VOACAPCachedForecast, bool) {
+	return f.forecast, f.ok
 }

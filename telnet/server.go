@@ -278,6 +278,21 @@ type Server struct {
 	vStageAligned              atomic.Int64                               // Cached VOACAP forecasts aligned with sparse p50 before final result emission
 	vStageNoP50                atomic.Int64                               // Cached VOACAP open forecasts with no sparse p50 to corroborate
 	vStageMismatch             atomic.Int64                               // Cached VOACAP open forecasts whose class disagreed with sparse p50
+	vP50CompareChecked         atomic.Int64                               // Sufficient p50 results checked against existing VOACAP cache
+	vP50CompareCacheHit        atomic.Int64                               // Sufficient p50 comparisons with a current-hour VOACAP cache hit
+	vP50CompareCacheMiss       atomic.Int64                               // Sufficient p50 comparisons without a current-hour VOACAP cache hit
+	vP50CompareSameClass       atomic.Int64                               // Sufficient p50 and VOACAP cache hit mapped to the same class
+	vP50CompareP50Stronger     atomic.Int64                               // Sufficient p50 SNR was stronger than cached VOACAP SNR
+	vP50CompareVOACAPStronger  atomic.Int64                               // Cached VOACAP SNR was stronger than sufficient p50 SNR
+	vP50CompareEqualSNR        atomic.Int64                               // Sufficient p50 and cached VOACAP SNR were equal
+	vP50CompareClosedP50High   atomic.Int64                               // Cached VOACAP was closed while sufficient p50 class was HIGH
+	vP50CompareClosedP50Med    atomic.Int64                               // Cached VOACAP was closed while sufficient p50 class was MEDIUM
+	vP50CompareClosedP50Low    atomic.Int64                               // Cached VOACAP was closed while sufficient p50 class was LOW
+	vP50CompareClosedP50Unlk   atomic.Int64                               // Cached VOACAP was closed while sufficient p50 class was UNLIKELY
+	vP50CompareDeltaAbs0To3    atomic.Int64                               // Absolute p50-vs-VOACAP SNR delta was 0..3 dB
+	vP50CompareDeltaAbs4To9    atomic.Int64                               // Absolute p50-vs-VOACAP SNR delta was 4..9 dB
+	vP50CompareDeltaAbs10To19  atomic.Int64                               // Absolute p50-vs-VOACAP SNR delta was 10..19 dB
+	vP50CompareDeltaAbs20Plus  atomic.Int64                               // Absolute p50-vs-VOACAP SNR delta was >=20 dB
 	pathPredInsufficient       atomic.Uint64                              // Predictions with insufficient data
 	pathPredNoSample           atomic.Uint64                              // Insufficient predictions with no samples
 	pathPredLowCount           atomic.Uint64                              // Insufficient predictions below min observation count
@@ -2889,6 +2904,21 @@ type pathPredictionStats struct {
 	VOACAPFallbackAlignedCandidate int64
 	VOACAPFallbackOpenNoP50        int64
 	VOACAPFallbackClassMismatch    int64
+	VOACAPP50CompareChecked        int64
+	VOACAPP50CompareCacheHit       int64
+	VOACAPP50CompareCacheMiss      int64
+	VOACAPP50CompareSameClass      int64
+	VOACAPP50CompareP50Stronger    int64
+	VOACAPP50CompareVOACAPStronger int64
+	VOACAPP50CompareEqualSNR       int64
+	VOACAPP50CompareClosedP50High  int64
+	VOACAPP50CompareClosedP50Med   int64
+	VOACAPP50CompareClosedP50Low   int64
+	VOACAPP50CompareClosedP50Unlk  int64
+	VOACAPP50CompareDeltaAbs0To3   int64
+	VOACAPP50CompareDeltaAbs4To9   int64
+	VOACAPP50CompareDeltaAbs10To19 int64
+	VOACAPP50CompareDeltaAbs20Plus int64
 	Insufficient                   uint64
 	NoSample                       uint64
 	LowCount                       uint64
@@ -2965,6 +2995,21 @@ func (s *Server) PathPredictionStatsSnapshot() pathPredictionStats {
 		VOACAPFallbackAlignedCandidate: s.vStageAligned.Swap(0),
 		VOACAPFallbackOpenNoP50:        s.vStageNoP50.Swap(0),
 		VOACAPFallbackClassMismatch:    s.vStageMismatch.Swap(0),
+		VOACAPP50CompareChecked:        s.vP50CompareChecked.Swap(0),
+		VOACAPP50CompareCacheHit:       s.vP50CompareCacheHit.Swap(0),
+		VOACAPP50CompareCacheMiss:      s.vP50CompareCacheMiss.Swap(0),
+		VOACAPP50CompareSameClass:      s.vP50CompareSameClass.Swap(0),
+		VOACAPP50CompareP50Stronger:    s.vP50CompareP50Stronger.Swap(0),
+		VOACAPP50CompareVOACAPStronger: s.vP50CompareVOACAPStronger.Swap(0),
+		VOACAPP50CompareEqualSNR:       s.vP50CompareEqualSNR.Swap(0),
+		VOACAPP50CompareClosedP50High:  s.vP50CompareClosedP50High.Swap(0),
+		VOACAPP50CompareClosedP50Med:   s.vP50CompareClosedP50Med.Swap(0),
+		VOACAPP50CompareClosedP50Low:   s.vP50CompareClosedP50Low.Swap(0),
+		VOACAPP50CompareClosedP50Unlk:  s.vP50CompareClosedP50Unlk.Swap(0),
+		VOACAPP50CompareDeltaAbs0To3:   s.vP50CompareDeltaAbs0To3.Swap(0),
+		VOACAPP50CompareDeltaAbs4To9:   s.vP50CompareDeltaAbs4To9.Swap(0),
+		VOACAPP50CompareDeltaAbs10To19: s.vP50CompareDeltaAbs10To19.Swap(0),
+		VOACAPP50CompareDeltaAbs20Plus: s.vP50CompareDeltaAbs20Plus.Swap(0),
 		Insufficient:                   s.pathPredInsufficient.Swap(0),
 		NoSample:                       s.pathPredNoSample.Swap(0),
 		LowCount:                       s.pathPredLowCount.Swap(0),
@@ -3791,7 +3836,14 @@ func (s *Server) pathClassForClient(client *Client, sp *spot.Spot) string {
 }
 
 func (s *Server) pathResultWithClosedFallback(res pathreliability.Result, req pathreliability.VOACAPClosedRequest, now time.Time) pathreliability.Result {
-	if s == nil || s.pathClosedFallback == nil || res.Source != pathreliability.SourceInsufficient {
+	if s == nil || s.pathClosedFallback == nil {
+		return res
+	}
+	if res.Source == pathreliability.SourceCombined {
+		s.recordVOACAPP50Compare(res, req, now)
+		return res
+	}
+	if res.Source != pathreliability.SourceInsufficient {
 		return res
 	}
 	forecast, ok := s.pathClosedFallback.CheckForecast(req, now)
@@ -3815,6 +3867,61 @@ func (s *Server) pathResultWithClosedFallback(res pathreliability.Result, req pa
 	}
 	s.vStageAligned.Add(1)
 	return pathreliability.VOACAPAlignedResult(res, cfg, req.Mode, forecast)
+}
+
+func (s *Server) recordVOACAPP50Compare(res pathreliability.Result, req pathreliability.VOACAPClosedRequest, now time.Time) {
+	if s == nil || s.pathPredictor == nil || !res.HasP50 {
+		return
+	}
+	provider, ok := s.pathClosedFallback.(pathreliability.CachedForecastProvider)
+	if !ok {
+		return
+	}
+	s.vP50CompareChecked.Add(1)
+	forecast, ok := provider.CheckCachedForecast(req, now)
+	if !ok {
+		s.vP50CompareCacheMiss.Add(1)
+		return
+	}
+	s.vP50CompareCacheHit.Add(1)
+	cfg := s.pathPredictor.Config()
+	p50Class := pathreliability.ClassForDB(res.P50DB, req.Mode, cfg)
+	voacapDB := float64(forecast.Record.FT8SNRDB)
+	voacapClass := pathreliability.ClassForDB(voacapDB, req.Mode, cfg)
+	if p50Class == voacapClass {
+		s.vP50CompareSameClass.Add(1)
+	}
+	switch {
+	case res.P50DB > voacapDB:
+		s.vP50CompareP50Stronger.Add(1)
+	case res.P50DB < voacapDB:
+		s.vP50CompareVOACAPStronger.Add(1)
+	default:
+		s.vP50CompareEqualSNR.Add(1)
+	}
+	if pathreliability.ClosedForDB(voacapDB, req.Mode, cfg) {
+		switch p50Class {
+		case "HIGH":
+			s.vP50CompareClosedP50High.Add(1)
+		case "MEDIUM":
+			s.vP50CompareClosedP50Med.Add(1)
+		case "LOW":
+			s.vP50CompareClosedP50Low.Add(1)
+		default:
+			s.vP50CompareClosedP50Unlk.Add(1)
+		}
+	}
+	delta := math.Abs(res.P50DB - voacapDB)
+	switch {
+	case delta <= 3:
+		s.vP50CompareDeltaAbs0To3.Add(1)
+	case delta <= 9:
+		s.vP50CompareDeltaAbs4To9.Add(1)
+	case delta <= 19:
+		s.vP50CompareDeltaAbs10To19.Add(1)
+	default:
+		s.vP50CompareDeltaAbs20Plus.Add(1)
+	}
 }
 
 func (s *Server) recordClosedFallbackStage(res pathreliability.Result, mode string, cfg pathreliability.Config) {

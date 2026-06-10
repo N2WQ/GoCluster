@@ -140,6 +140,12 @@ emitted glyphs; the fallback line explains why cached VOACAP work did or did
 not emit a glyph. The closed sparse-p50 counters show when VOACAP emitted a
 closed glyph despite sparse observed p50 evidence and which p50 class that
 evidence would have mapped to.
+A separate `VOACAP p50 compare (5m)` line may appear for sufficient p50
+predictions when an existing current-hour VOACAP cache record is present. It
+reports cache hit/miss counts, class agreement, stronger/weaker SNR direction,
+closed-VOACAP versus p50 class splits, and absolute SNR-delta buckets. This
+comparison is cache-only and does not enqueue VOACAP work or change emitted
+glyphs.
 
 When `voacap_fallback.enabled` is true, insufficient bucket results may start a
 delayed VOACAP lookup. The lookup is nonblocking in the telnet path. Cached

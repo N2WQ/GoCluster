@@ -31,6 +31,10 @@ inspect user-visible diagnostics:
   mismatch. Closed fallback stages split no-p50 from sparse-p50 cases and
   report the sparse p50 class when VOACAP closed overrides observed sparse
   evidence.
+- `VOACAP p50 compare (5m)` is an opportunistic cache-only comparison for
+  sufficient p50 predictions. Cache misses do not run VOACAP; cache hits report
+  class agreement, SNR direction, closed-VOACAP versus p50 class, and SNR-delta
+  buckets.
 - Thresholds mix operator policy and algorithm calibration; do not retune them
   as the first normal troubleshooting step.
 - Effective YAML matters before suggesting config edits.

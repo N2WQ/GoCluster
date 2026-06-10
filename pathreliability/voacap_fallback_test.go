@@ -106,6 +106,70 @@ func TestVOACAPClosedFallbackCachesOpenVerdictWithoutReturningGlyph(t *testing.T
 	}
 }
 
+func TestVOACAPClosedFallbackCheckCachedForecastDoesNotMutateOnMiss(t *testing.T) {
+	cfg := testVOACAPFallbackConfig()
+	var calls atomic.Int32
+	fallback := newTestClosedFallback(t, cfg, fakeClosedForecaster{
+		fn: func(context.Context, VOACAPClosedJob) (VOACAPClosedForecast, error) {
+			calls.Add(1)
+			return VOACAPClosedForecast{}, nil
+		},
+	}, fixedSSNProvider{ssn: 112})
+
+	req := testClosedRequest()
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	if _, ok := fallback.CheckCachedForecast(req, now); ok {
+		t.Fatalf("empty cache should not return a forecast")
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("cache-only lookup must not call forecaster, calls=%d", calls.Load())
+	}
+	snap := fallback.Snapshot()
+	if snap.DelayEntries != 0 || snap.InflightEntries != 0 || snap.QueueDepth != 0 {
+		t.Fatalf("cache-only miss mutated fallback state: %+v", snap)
+	}
+	if stats := fallback.StatsSnapshot(); stats.HasActivity() {
+		t.Fatalf("cache-only miss mutated fallback stats: %+v", stats)
+	}
+
+	key := fallback.cacheKey(req, 112, now)
+	fallback.cache[key] = voacapCacheEntry{
+		forecast: VOACAPClosedForecast{
+			WindowStartUTC: forecastWindowStart(now),
+			Records: []VOACAPHourlyForecast{
+				{FT8SNRDB: -15, HourUTC: 20, FrequencyMHz: 14.1},
+			},
+		},
+		storedAt: now.Add(-time.Minute),
+	}
+	forecast, ok := fallback.CheckCachedForecast(req, now)
+	if !ok {
+		t.Fatalf("expected existing current-hour cache hit")
+	}
+	if forecast.Record.FT8SNRDB != -15 || forecast.Record.HourUTC != 20 || forecast.SSN != 112 {
+		t.Fatalf("unexpected cache-only forecast: %+v", forecast)
+	}
+	if stats := fallback.StatsSnapshot(); stats.HasActivity() {
+		t.Fatalf("cache-only hit mutated fallback stats: %+v", stats)
+	}
+
+	fallback.cache[key] = voacapCacheEntry{
+		forecast: VOACAPClosedForecast{
+			WindowStartUTC: forecastWindowStart(now),
+			Records: []VOACAPHourlyForecast{
+				{FT8SNRDB: -15, HourUTC: 20, FrequencyMHz: 14.1},
+			},
+		},
+		storedAt: now.Add(-2 * time.Hour),
+	}
+	if _, ok := fallback.CheckCachedForecast(req, now); ok {
+		t.Fatalf("expired cache entry should not return a forecast")
+	}
+	if snap := fallback.Snapshot(); snap.CacheEntries != 1 || snap.DelayEntries != 0 || snap.InflightEntries != 0 || snap.QueueDepth != 0 {
+		t.Fatalf("cache-only expired miss should not prune or enqueue: %+v", snap)
+	}
+}
+
 func TestVOACAPClosedFallbackReevaluatesCachedForecastPerMode(t *testing.T) {
 	cfg := testVOACAPFallbackConfig()
 	cfg.VOACAPFallback.DelaySeconds = 0

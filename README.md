@@ -498,6 +498,10 @@ Important operational notes:
   `no_current_hour`, `closed`, `closed_no_p50`,
   `closed_with_sparse_p50`, `closed_with_sparse_p50_class_*`, `aligned`,
   `open_no_p50`, and `class_mismatch`.
+  A separate `VOACAP p50 compare (5m)` line may appear when sufficient p50
+  predictions can be compared against an existing current-hour VOACAP cache
+  record. It is cache-only: cache misses do not run VOACAP, start delay
+  windows, or change glyphs.
   These lines are written to `logging.propagation.dir`, not the system log.
 - If grids are missing, evidence is stale, too sparse, or too weak, the result
   stays `INSUFFICIENT`. When path reliability is enabled, H3 table failures are

@@ -1563,6 +1563,26 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 						humanize.Comma(stats.VOACAPFallbackClassMismatch),
 					))
 				}
+				if stats.VOACAPP50CompareChecked != 0 {
+					fileOnly(fmt.Sprintf(
+						"VOACAP p50 compare (5m): checked=%s cache_hit=%s cache_miss=%s same_class=%s p50_stronger=%s voacap_stronger=%s equal_snr=%s voacap_closed_p50_high=%s voacap_closed_p50_medium=%s voacap_closed_p50_low=%s voacap_closed_p50_unlikely=%s delta_abs_0_3=%s delta_abs_4_9=%s delta_abs_10_19=%s delta_abs_20_plus=%s",
+						humanize.Comma(stats.VOACAPP50CompareChecked),
+						humanize.Comma(stats.VOACAPP50CompareCacheHit),
+						humanize.Comma(stats.VOACAPP50CompareCacheMiss),
+						humanize.Comma(stats.VOACAPP50CompareSameClass),
+						humanize.Comma(stats.VOACAPP50CompareP50Stronger),
+						humanize.Comma(stats.VOACAPP50CompareVOACAPStronger),
+						humanize.Comma(stats.VOACAPP50CompareEqualSNR),
+						humanize.Comma(stats.VOACAPP50CompareClosedP50High),
+						humanize.Comma(stats.VOACAPP50CompareClosedP50Med),
+						humanize.Comma(stats.VOACAPP50CompareClosedP50Low),
+						humanize.Comma(stats.VOACAPP50CompareClosedP50Unlk),
+						humanize.Comma(stats.VOACAPP50CompareDeltaAbs0To3),
+						humanize.Comma(stats.VOACAPP50CompareDeltaAbs4To9),
+						humanize.Comma(stats.VOACAPP50CompareDeltaAbs10To19),
+						humanize.Comma(stats.VOACAPP50CompareDeltaAbs20Plus),
+					))
+				}
 			}
 			if pathReport != nil {
 				sourceCounts := pathReport.SnapshotSources()

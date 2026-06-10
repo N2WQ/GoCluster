@@ -283,6 +283,12 @@ When the optional VOACAP fallback has activity, a separate
 `class_mismatch`. Use `Path predictions (5m)` to count final emitted glyphs.
 Use `VOACAP fallback (5m)` to explain why a fallback lookup did or did not
 emit.
+When sufficient p50 predictions can be compared against an existing current-hour
+VOACAP cache record, a separate `VOACAP p50 compare (5m)` line reports cache
+hits, cache misses, class agreement, stronger/weaker SNR direction, closed
+VOACAP versus p50 class, and absolute SNR-delta buckets. The comparison is
+cache-only: cache misses do not run VOACAP, start delay windows, or change
+glyphs.
 The shipped config writes these aggregate lines to `data/logs/propagation`,
 not the system log.
 

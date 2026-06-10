@@ -29,6 +29,13 @@ type ClosedFallback interface {
 	CheckForecast(req VOACAPClosedRequest, now time.Time) (VOACAPCachedForecast, bool)
 }
 
+// CachedForecastProvider exposes an observation-only cache lookup for
+// comparison diagnostics. Implementations must not enqueue VOACAP work, update
+// delay windows, or mutate fallback stage counters from this method.
+type CachedForecastProvider interface {
+	CheckCachedForecast(req VOACAPClosedRequest, now time.Time) (VOACAPCachedForecast, bool)
+}
+
 // ClosedFallbackStatsProvider exposes reset-on-snapshot stage counters for
 // optional propagation-log diagnostics without changing the lookup interface.
 type ClosedFallbackStatsProvider interface {
@@ -349,6 +356,37 @@ func (f *VOACAPClosedFallback) CheckForecast(req VOACAPClosedRequest, now time.T
 	f.statsQueued.Add(1)
 	f.queue <- job
 	return VOACAPCachedForecast{}, false
+}
+
+func (f *VOACAPClosedFallback) CheckCachedForecast(req VOACAPClosedRequest, now time.Time) (VOACAPCachedForecast, bool) {
+	if f == nil || !f.fallback.Enabled {
+		return VOACAPCachedForecast{}, false
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	now = now.UTC()
+	prepared, ok := f.prepareRequest(req)
+	if !ok {
+		return VOACAPCachedForecast{}, false
+	}
+	ssn, ok := f.ssnProvider.CurrentSSN(now)
+	if !ok {
+		return VOACAPCachedForecast{}, false
+	}
+	key := f.cacheKey(prepared, ssn, now)
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	entry, ok := f.cache[key]
+	if !ok || f.cacheExpired(entry, now) {
+		return VOACAPCachedForecast{}, false
+	}
+	record, ok := forecastRecordForHour(entry.forecast, now, f.fallback.ForecastHours)
+	if !ok {
+		return VOACAPCachedForecast{}, false
+	}
+	return f.cachedForecastFromCache(key, entry, record, now), true
 }
 
 func (f *VOACAPClosedFallback) prepareRequest(req VOACAPClosedRequest) (VOACAPClosedRequest, bool) {
