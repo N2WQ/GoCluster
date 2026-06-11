@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `a53f72abd0d1aa94`
+- Source fingerprint: `4c753639ceb17b7c`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -15,7 +15,7 @@
 | `dxcluster/internal/cluster` | `internal/cluster` | 27 | 26 |
 | `dxcluster/peer` | `peer` | 20 | 20 |
 | `dxcluster/spot` | `spot` | 32 | 23 |
-| `dxcluster/telnet` | `telnet` | 8 | 22 |
+| `dxcluster/telnet` | `telnet` | 8 | 23 |
 
 ## In-Scope Package Edges
 
@@ -289,6 +289,7 @@ Test files:
 - `telnet/server_broadcast_worker_test.go`
 - `telnet/server_filter_test.go`
 - `telnet/server_options_test.go`
+- `telnet/server_path_prediction_reuse_test.go`
 - `telnet/server_prediction_stats_test.go`
 - `telnet/server_queue_test.go`
 - `telnet/server_resilience_v4_test.go`
@@ -302,6 +303,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0176](docs/decisions/ADR-0176-path-prediction-admission-reuse.md) | Accepted | 2026-06-11 | telnet, pathreliability, voacap, hot path, observability | `area:telnet, path:telnet` |
 | [ADR-0175](docs/decisions/ADR-0175-sparse-p50-voacap-outcome-diagnostics.md) | Accepted | 2026-06-11 | pathreliability, telnet, voacap, operations, observability, supportability | `area:telnet, path:internal/cluster, path:telnet` |
 | [ADR-0174](docs/decisions/ADR-0174-beacon-rx-only-path-prediction.md) | Accepted | 2026-06-11 | pathreliability, telnet, voacap, config, operations, supportability | `area:telnet, path:internal/cluster, path:telnet` |
 | [ADR-0173](docs/decisions/ADR-0173-voacap-rel-gated-open-fallback.md) | Accepted | 2026-06-11 | voacap, pathreliability, telnet, operations, supportability | `area:telnet, path:internal/cluster, path:telnet` |

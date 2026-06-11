@@ -589,8 +589,9 @@ type clientShardSnapshot struct {
 }
 
 type spotEnvelope struct {
-	spot      *spot.Spot
-	enqueueAt time.Time
+	spot           *spot.Spot
+	enqueueAt      time.Time
+	pathPrediction *pathPrediction // Optional admission result; bounded by the per-client spot queue.
 }
 
 type controlMessage struct {
@@ -2840,6 +2841,8 @@ func (s *Server) deliverJob(job broadcastJob) {
 		if client == nil {
 			continue
 		}
+		var admissionPrediction pathPrediction
+		haveAdmissionPrediction := false
 		policyAllowed := job.allowFast
 		switch client.getDedupePolicy() {
 		case dedupePolicyMed:
@@ -2874,7 +2877,11 @@ func (s *Server) deliverJob(job broadcastJob) {
 				pathBlockAll := f != nil && f.BlockAllPathClasses
 				client.filterMu.RUnlock()
 				if pathActive && !pathBlockAll {
-					pathClass = s.pathClassForClient(client, job.spot)
+					if prediction, ok := s.computePathPredictionForClient(client, job.spot); ok {
+						pathClass = pathClassFromPrediction(prediction)
+						admissionPrediction = prediction
+						haveAdmissionPrediction = true
+					}
 				}
 				client.filterMu.RLock()
 				matches := f != nil && f.MatchesWithPath(job.spot, pathClass)
@@ -2884,7 +2891,12 @@ func (s *Server) deliverJob(job broadcastJob) {
 				}
 			}
 		}
-		client.enqueueSpot(&spotEnvelope{spot: job.spot, enqueueAt: job.enqueueAt})
+		env := &spotEnvelope{spot: job.spot, enqueueAt: job.enqueueAt}
+		if haveAdmissionPrediction {
+			prediction := admissionPrediction
+			env.pathPrediction = &prediction
+		}
+		client.enqueueSpot(env)
 	}
 }
 
@@ -3948,6 +3960,85 @@ func (s *Server) formatSpotForClientWithDiag(client *Client, sp *spot.Spot, mode
 	return base + "\n"
 }
 
+// Reuse only across the immediate admission-to-format handoff. Older queued
+// spots recompute so glyphs and diagnostics reflect current client state.
+const reusableAdmissionPathPredictionMaxAge = time.Second
+
+// formatSpotEnvelopeForClient reuses admission prediction work only after
+// proving the client and spot inputs still match the queued snapshot.
+func (s *Server) formatSpotEnvelopeForClient(client *Client, env *spotEnvelope) string {
+	if env == nil || env.spot == nil {
+		return ""
+	}
+	if s != nil && env.pathPrediction != nil && s.pathPredictionNeededForFormatting(client) {
+		if prediction, ok := s.reusablePathPredictionForClient(client, env.spot, env.pathPrediction); ok {
+			return s.formatSpotForClientWithPrediction(client, env.spot, prediction)
+		}
+	}
+	return s.formatSpotForClient(client, env.spot)
+}
+
+func (s *Server) pathPredictionNeededForFormatting(client *Client) bool {
+	if s == nil {
+		return false
+	}
+	mode := diagModeOff
+	if client != nil {
+		mode = client.getDiagMode()
+	}
+	return mode == diagModePath || (s.pathPredictor != nil && s.pathDisplay)
+}
+
+func (s *Server) formatSpotForClientWithPrediction(client *Client, sp *spot.Spot, prediction pathPrediction) string {
+	if sp == nil {
+		return ""
+	}
+	mode := diagModeOff
+	if client != nil {
+		mode = client.getDiagMode()
+	}
+	if mode != diagModeOff {
+		return s.formatSpotForClientWithDiagPrediction(client, sp, mode, prediction)
+	}
+	base := sp.FormatDXCluster()
+	if s == nil || s.pathPredictor == nil || !s.pathDisplay {
+		return base + "\n"
+	}
+	s.recordDisplayedPathPrediction(prediction)
+	glyphs := s.pathGlyphFromPrediction(prediction)
+	if glyphs != "" {
+		base = injectGlyphs(base, glyphs)
+	}
+	return base + "\n"
+}
+
+func (s *Server) formatSpotForClientWithDiagPrediction(client *Client, sp *spot.Spot, mode diagMode, prediction pathPrediction) string {
+	if sp == nil {
+		return ""
+	}
+	havePrediction := mode == diagModePath || (s != nil && s.pathPredictor != nil && s.pathDisplay)
+	if havePrediction {
+		s.recordDisplayedPathPrediction(prediction)
+	}
+	base := sp.FormatDXClusterWithComment(diagTagForSpot(client, sp, mode, prediction, havePrediction))
+	if s == nil || s.pathPredictor == nil || !s.pathDisplay {
+		return base + "\n"
+	}
+	glyphs := s.pathGlyphFromPrediction(prediction)
+	if glyphs != "" {
+		base = injectGlyphs(base, glyphs)
+	}
+	return base + "\n"
+}
+
+func (s *Server) recordDisplayedPathPrediction(prediction pathPrediction) {
+	if s == nil {
+		return
+	}
+	s.recordPathPrediction(prediction.result, prediction.userDerived, prediction.dxDerived)
+	s.recordSparseP50VOACAPTrace(prediction.sparseVOACAPTrace)
+}
+
 type pathPrediction struct {
 	result            pathreliability.Result
 	sparseVOACAPTrace sparseP50VOACAPTrace
@@ -3955,8 +4046,81 @@ type pathPrediction struct {
 	dxGrid            string
 	userCell          pathreliability.CellID
 	dxCell            pathreliability.CellID
+	userCoarseCell    pathreliability.CellID
+	dxCoarseCell      pathreliability.CellID
 	band              string
+	mode              string
+	noiseClass        string
+	minObservation    int
+	userDerived       bool
+	dxDerived         bool
+	beacon            bool
 	at                time.Time
+}
+
+// reusablePathPredictionForClient validates every mutable input that can affect
+// prediction, display counters, or diagnostics before formatting reuses admission work.
+func (s *Server) reusablePathPredictionForClient(client *Client, sp *spot.Spot, prediction *pathPrediction) (pathPrediction, bool) {
+	if s == nil || client == nil || sp == nil || prediction == nil || s.pathPredictor == nil {
+		return pathPrediction{}, false
+	}
+	cfg := s.pathPredictor.Config()
+	if !cfg.Enabled {
+		return pathPrediction{}, false
+	}
+	pred := *prediction
+	state := client.pathSnapshot()
+	grid := strings.TrimSpace(state.grid)
+	if state.gridCell == pathreliability.InvalidCell || state.gridCell != pred.userCell || !strings.EqualFold(grid, pred.grid) {
+		return pathPrediction{}, false
+	}
+	if pathreliability.EncodeCoarseCell(grid) != pred.userCoarseCell {
+		return pathPrediction{}, false
+	}
+	dxCell := pathreliability.InvalidCell
+	if sp.DXCellID != 0 {
+		dxCell = pathreliability.CellID(sp.DXCellID)
+	}
+	if dxCell == pathreliability.InvalidCell {
+		dxCell = pathreliability.EncodeCell(sp.DXMetadata.Grid)
+	}
+	if dxCell == pathreliability.InvalidCell || dxCell != pred.dxCell {
+		return pathPrediction{}, false
+	}
+	dxGrid := strings.TrimSpace(sp.DXMetadata.Grid)
+	if !strings.EqualFold(dxGrid, strings.TrimSpace(pred.dxGrid)) {
+		return pathPrediction{}, false
+	}
+	if pathreliability.EncodeCoarseCell(dxGrid) != pred.dxCoarseCell {
+		return pathPrediction{}, false
+	}
+	if pathPredictionBand(sp) != pred.band || pathPredictionMode(sp) != pred.mode {
+		return pathPrediction{}, false
+	}
+	minObservationCount := effectivePathMinObservationCount(state, cfg)
+	if sp.IsBeacon {
+		minObservationCount = effectiveBeaconPathMinObservationCount(state, cfg)
+	}
+	if minObservationCount != pred.minObservation || sp.IsBeacon != pred.beacon {
+		return pathPrediction{}, false
+	}
+	if !strings.EqualFold(strings.TrimSpace(state.noiseClass), pred.noiseClass) {
+		return pathPrediction{}, false
+	}
+	if state.gridDerived != pred.userDerived || sp.DXMetadata.GridDerived != pred.dxDerived {
+		return pathPrediction{}, false
+	}
+	now := s.now()
+	if pred.at.IsZero() || now.Before(pred.at) || now.Sub(pred.at) > reusableAdmissionPathPredictionMaxAge || !sameUTCHour(pred.at, now) {
+		return pathPrediction{}, false
+	}
+	return pred, true
+}
+
+func sameUTCHour(a, b time.Time) bool {
+	a = a.UTC()
+	b = b.UTC()
+	return a.Year() == b.Year() && a.YearDay() == b.YearDay() && a.Hour() == b.Hour()
 }
 
 func (s *Server) pathGlyphsForClient(client *Client, sp *spot.Spot) string {
@@ -3968,6 +4132,15 @@ func (s *Server) pathGlyphsForClient(client *Client, sp *spot.Spot) string {
 }
 
 func (s *Server) pathPredictionForClient(client *Client, sp *spot.Spot) (pathPrediction, bool) {
+	prediction, ok := s.computePathPredictionForClient(client, sp)
+	if !ok {
+		return pathPrediction{}, false
+	}
+	s.recordDisplayedPathPrediction(prediction)
+	return prediction, true
+}
+
+func (s *Server) computePathPredictionForClient(client *Client, sp *spot.Spot) (pathPrediction, bool) {
 	if s == nil || client == nil || sp == nil || s.pathPredictor == nil {
 		return pathPrediction{}, false
 	}
@@ -4006,10 +4179,7 @@ func (s *Server) pathPredictionForClient(client *Client, sp *spot.Spot) (pathPre
 	dxCoarse := pathreliability.EncodeCoarseCell(sp.DXMetadata.Grid)
 
 	band := pathPredictionBand(sp)
-	mode := sp.ModeNorm
-	if strings.TrimSpace(mode) == "" {
-		mode = sp.Mode
-	}
+	mode := pathPredictionMode(sp)
 	now := s.now()
 	noisePenalty := s.noisePenaltyForClass(state.noiseClass)
 	minObservationCount := effectivePathMinObservationCount(state, cfg)
@@ -4029,8 +4199,6 @@ func (s *Server) pathPredictionForClient(client *Client, sp *spot.Spot) (pathPre
 		Mode:                  mode,
 		ReceiveNoisePenaltyDB: noisePenalty,
 	}, now)
-	s.recordPathPrediction(res, state.gridDerived, sp.DXMetadata.GridDerived)
-	s.recordSparseP50VOACAPTrace(sparseTrace)
 	return pathPrediction{
 		result:            res,
 		sparseVOACAPTrace: sparseTrace,
@@ -4038,7 +4206,15 @@ func (s *Server) pathPredictionForClient(client *Client, sp *spot.Spot) (pathPre
 		dxGrid:            sp.DXMetadata.Grid,
 		userCell:          userCell,
 		dxCell:            dxCell,
+		userCoarseCell:    userCoarse,
+		dxCoarseCell:      dxCoarse,
 		band:              band,
+		mode:              mode,
+		noiseClass:        strings.TrimSpace(state.noiseClass),
+		minObservation:    minObservationCount,
+		userDerived:       state.gridDerived,
+		dxDerived:         sp.DXMetadata.GridDerived,
+		beacon:            sp.IsBeacon,
 		at:                now,
 	}, true
 }
@@ -4071,71 +4247,15 @@ func (s *Server) pathGlyphFromPrediction(prediction pathPrediction) string {
 }
 
 func (s *Server) pathClassForClient(client *Client, sp *spot.Spot) string {
-	if s == nil || client == nil || sp == nil {
+	prediction, ok := s.computePathPredictionForClient(client, sp)
+	if !ok {
 		return filter.PathClassInsufficient
 	}
-	if s.pathPredictor == nil {
-		return filter.PathClassInsufficient
-	}
-	cfg := s.pathPredictor.Config()
-	if !cfg.Enabled {
-		return filter.PathClassInsufficient
-	}
-	state := client.pathSnapshot()
-	userCell := state.gridCell
-	grid := strings.TrimSpace(state.grid)
-	if userCell == pathreliability.InvalidCell && grid != "" {
-		cell := pathreliability.EncodeCell(grid)
-		if cell != pathreliability.InvalidCell {
-			client.pathMu.Lock()
-			if client.gridCell == pathreliability.InvalidCell && strings.EqualFold(strings.TrimSpace(client.grid), grid) {
-				client.gridCell = cell
-			}
-			userCell = client.gridCell
-			client.pathMu.Unlock()
-		}
-	}
-	if userCell == pathreliability.InvalidCell {
-		return filter.PathClassInsufficient
-	}
-	dxCell := pathreliability.InvalidCell
-	if sp.DXCellID != 0 {
-		dxCell = pathreliability.CellID(sp.DXCellID)
-	}
-	if dxCell == pathreliability.InvalidCell {
-		dxCell = pathreliability.EncodeCell(sp.DXMetadata.Grid)
-	}
-	if dxCell == pathreliability.InvalidCell {
-		return filter.PathClassInsufficient
-	}
-	userCoarse := pathreliability.EncodeCoarseCell(grid)
-	dxCoarse := pathreliability.EncodeCoarseCell(sp.DXMetadata.Grid)
+	return pathClassFromPrediction(prediction)
+}
 
-	band := pathPredictionBand(sp)
-
-	mode := strings.TrimSpace(sp.ModeNorm)
-	if mode == "" {
-		mode = strings.TrimSpace(sp.Mode)
-	}
-	now := s.now()
-	noisePenalty := s.noisePenaltyForClass(state.noiseClass)
-	minObservationCount := effectivePathMinObservationCount(state, cfg)
-	var res pathreliability.Result
-	if sp.IsBeacon {
-		minObservationCount = effectiveBeaconPathMinObservationCount(state, cfg)
-		res = s.pathPredictor.PredictBeaconReceiveOnlyWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, now)
-	} else {
-		res = s.pathPredictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, now)
-	}
-	res = s.pathResultWithClosedFallback(res, pathreliability.VOACAPClosedRequest{
-		UserCell:              userCell,
-		DXCell:                dxCell,
-		UserGrid:              grid,
-		DXGrid:                sp.DXMetadata.Grid,
-		Band:                  band,
-		Mode:                  mode,
-		ReceiveNoisePenaltyDB: noisePenalty,
-	}, now)
+func pathClassFromPrediction(prediction pathPrediction) string {
+	res := prediction.result
 	if res.Source == pathreliability.SourceInsufficient {
 		return filter.PathClassInsufficient
 	}
@@ -4480,6 +4600,17 @@ func pathPredictionBand(sp *spot.Spot) string {
 		band = spot.FreqToBand(sp.Frequency)
 	}
 	return strings.TrimSpace(spot.NormalizeBand(band))
+}
+
+func pathPredictionMode(sp *spot.Spot) string {
+	if sp == nil {
+		return ""
+	}
+	mode := strings.TrimSpace(sp.ModeNorm)
+	if mode == "" {
+		mode = strings.TrimSpace(sp.Mode)
+	}
+	return mode
 }
 
 func diagTagForSpot(client *Client, sp *spot.Spot, mode diagMode, prediction pathPrediction, havePrediction bool) string {
@@ -5165,7 +5296,7 @@ func (c *Client) writerLoop() {
 		}
 		formatted := env.spot.FormatDXCluster() + "\n"
 		if c.server != nil {
-			formatted = c.server.formatSpotForClient(c, env.spot)
+			formatted = c.server.formatSpotEnvelopeForClient(c, env)
 		}
 		if normalized := normalizeOutboundLine(formatted); normalized != "" {
 			batch = append(batch, normalized...)
