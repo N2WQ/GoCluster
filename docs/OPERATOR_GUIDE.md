@@ -319,6 +319,11 @@ When the optional VOACAP fallback has activity, a separate
 Use `Path predictions (5m)` to count final emitted glyphs.
 Use `VOACAP fallback (5m)` to explain why a fallback lookup did or did not
 emit.
+Runtime VOACAP fallback decks select Method 20 below 7000 km and Method 30 at
+and above 7000 km using the same Maidenhead grid-center endpoints written to
+the VOACAP circuit. Cached records still reuse the existing fine path-cell
+granularity, so near-threshold method reuse follows the same res-2 cache
+boundary as other VOACAP fallback data.
 When sparse or no-p50 candidates are present, a separate `Sparse p50 VOACAP
 (5m)` line splits those candidates by p50 evidence (`no_p50`,
 `very_low_count`), path kind (`beacon_rx`, `non_beacon`), cache/work state

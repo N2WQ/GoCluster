@@ -115,7 +115,7 @@ func completeDecision(cfg voacap.ExperimentConfig, st *voacap.ForecastState, dec
 			}
 			return err
 		}
-		predictions, err := voacap.ParseMethod30Predictions(result.Output)
+		predictions, err := voacap.ParsePredictions(result.Output)
 		if err != nil {
 			failure := voacap.MarkForecastFailure(st, err, now)
 			printDecision(now, failure, *st, outputPath)

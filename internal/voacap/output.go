@@ -13,10 +13,10 @@ import (
 
 const ft8ReferenceBandwidthHz = 2500.0
 
-var method30NumberRE = regexp.MustCompile(`[-+]?\d+(?:\.\d+)?`)
+var predictionNumberRE = regexp.MustCompile(`[-+]?\d+(?:\.\d+)?`)
 
-// PredictionRecord is one parsed VOACAP method-30 prediction cell for an
-// experiment hour and frequency.
+// PredictionRecord is one parsed VOACAP prediction cell for an experiment hour
+// and frequency.
 type PredictionRecord struct {
 	HourUTC        int
 	FrequencyMHz   float64
@@ -32,28 +32,28 @@ func FT8EquivalentSNRDB(voacapSNRDBHz int) int {
 	return int(math.Round(float64(voacapSNRDBHz) - 10*math.Log10(ft8ReferenceBandwidthHz)))
 }
 
-// ParseMethod30Predictions extracts FREQ, SNR, and optional REL rows from
-// VOACAP method-30 text output. VOACAP prints a leading best-frequency column
-// before the configured frequency slots, so this parser skips that column and
-// returns only positive configured frequency cells.
-func ParseMethod30Predictions(output []byte) ([]PredictionRecord, error) {
+// ParsePredictions extracts FREQ, SNR, and optional REL rows from VOACAP text
+// output. VOACAP prints a leading best-frequency column before the configured
+// frequency slots, so this parser skips that column and returns only positive
+// configured frequency cells.
+func ParsePredictions(output []byte) ([]PredictionRecord, error) {
 	if len(bytes.TrimSpace(output)) == 0 {
 		return nil, errors.New("VOACAP output is empty")
 	}
 
 	var records []PredictionRecord
-	var current *method30Block
+	var current *predictionBlock
 	scanner := bufio.NewScanner(bytes.NewReader(output))
 	lineNumber := 0
 	for scanner.Scan() {
 		lineNumber++
 		line := scanner.Text()
-		switch method30RowKind(line) {
+		switch predictionRowKind(line) {
 		case "FREQ":
-			if err := appendMethod30Block(&records, current); err != nil {
+			if err := appendPredictionBlock(&records, current); err != nil {
 				return nil, err
 			}
-			block, err := parseMethod30FrequencyRow(line, lineNumber)
+			block, err := parsePredictionFrequencyRow(line, lineNumber)
 			if err != nil {
 				return nil, err
 			}
@@ -62,7 +62,7 @@ func ParseMethod30Predictions(output []byte) ([]PredictionRecord, error) {
 			if current == nil {
 				return nil, fmt.Errorf("VOACAP SNR row at line %d appears before a FREQ row", lineNumber)
 			}
-			cells, err := method30NumericCells(line)
+			cells, err := predictionNumericCells(line)
 			if err != nil {
 				return nil, fmt.Errorf("parse SNR row at line %d: %w", lineNumber, err)
 			}
@@ -72,7 +72,7 @@ func ParseMethod30Predictions(output []byte) ([]PredictionRecord, error) {
 			if current == nil {
 				return nil, fmt.Errorf("VOACAP REL row at line %d appears before a FREQ row", lineNumber)
 			}
-			cells, err := method30NumericCells(line)
+			cells, err := predictionNumericCells(line)
 			if err != nil {
 				return nil, fmt.Errorf("parse REL row at line %d: %w", lineNumber, err)
 			}
@@ -83,16 +83,22 @@ func ParseMethod30Predictions(output []byte) ([]PredictionRecord, error) {
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("scan VOACAP output: %w", err)
 	}
-	if err := appendMethod30Block(&records, current); err != nil {
+	if err := appendPredictionBlock(&records, current); err != nil {
 		return nil, err
 	}
 	if len(records) == 0 {
-		return nil, errors.New("VOACAP output did not contain method-30 FREQ/SNR prediction rows")
+		return nil, errors.New("VOACAP output did not contain FREQ/SNR prediction rows")
 	}
 	return records, nil
 }
 
-type method30Block struct {
+// ParseMethod30Predictions is retained for older experiment callers; Method 20
+// and Method 30 share the FREQ/SNR/REL row shape parsed by ParsePredictions.
+func ParseMethod30Predictions(output []byte) ([]PredictionRecord, error) {
+	return ParsePredictions(output)
+}
+
+type predictionBlock struct {
 	hour        int
 	frequencies []float64
 	freqLine    int
@@ -102,17 +108,17 @@ type method30Block struct {
 	relLine     int
 }
 
-func parseMethod30FrequencyRow(line string, lineNumber int) (method30Block, error) {
-	cells, err := method30NumericCells(line)
+func parsePredictionFrequencyRow(line string, lineNumber int) (predictionBlock, error) {
+	cells, err := predictionNumericCells(line)
 	if err != nil {
-		return method30Block{}, fmt.Errorf("parse FREQ row at line %d: %w", lineNumber, err)
+		return predictionBlock{}, fmt.Errorf("parse FREQ row at line %d: %w", lineNumber, err)
 	}
 	if len(cells) < 3 {
-		return method30Block{}, fmt.Errorf("FREQ row at line %d has %d numeric cells, want at least 3", lineNumber, len(cells))
+		return predictionBlock{}, fmt.Errorf("FREQ row at line %d has %d numeric cells, want at least 3", lineNumber, len(cells))
 	}
 	hour := int(math.Round(cells[0]))
 	if hour < 0 || hour > 24 || math.Abs(cells[0]-float64(hour)) > 0.05 {
-		return method30Block{}, fmt.Errorf("FREQ row at line %d has invalid hour %.2f", lineNumber, cells[0])
+		return predictionBlock{}, fmt.Errorf("FREQ row at line %d has invalid hour %.2f", lineNumber, cells[0])
 	}
 	if hour == 24 {
 		// VOACAP prints midnight as 24.0; downstream cache lookups use UTC 0..23.
@@ -126,12 +132,12 @@ func parseMethod30FrequencyRow(line string, lineNumber int) (method30Block, erro
 		frequencies = append(frequencies, cell)
 	}
 	if len(frequencies) == 0 {
-		return method30Block{}, fmt.Errorf("FREQ row at line %d has no positive configured frequency cells", lineNumber)
+		return predictionBlock{}, fmt.Errorf("FREQ row at line %d has no positive configured frequency cells", lineNumber)
 	}
-	return method30Block{hour: hour, frequencies: frequencies, freqLine: lineNumber}, nil
+	return predictionBlock{hour: hour, frequencies: frequencies, freqLine: lineNumber}, nil
 }
 
-func appendMethod30Block(records *[]PredictionRecord, block *method30Block) error {
+func appendPredictionBlock(records *[]PredictionRecord, block *predictionBlock) error {
 	if block == nil {
 		return nil
 	}
@@ -164,7 +170,7 @@ func appendMethod30Block(records *[]PredictionRecord, block *method30Block) erro
 	return nil
 }
 
-func method30RowKind(line string) string {
+func predictionRowKind(line string) string {
 	fields := strings.Fields(line)
 	if len(fields) == 0 {
 		return ""
@@ -177,8 +183,8 @@ func method30RowKind(line string) string {
 	}
 }
 
-func method30NumericCells(line string) ([]float64, error) {
-	matches := method30NumberRE.FindAllString(line, -1)
+func predictionNumericCells(line string) ([]float64, error) {
+	matches := predictionNumberRE.FindAllString(line, -1)
 	cells := make([]float64, 0, len(matches))
 	for _, match := range matches {
 		cell, err := strconv.ParseFloat(match, 64)

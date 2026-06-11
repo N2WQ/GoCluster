@@ -44,6 +44,10 @@ inspect user-visible diagnostics:
   values.
 - VOACAP REL is treated as reliability of VOACAP's request SNR. It is not a
   direct probability that the path is HIGH, MEDIUM, LOW, or UNLIKELY.
+- Runtime VOACAP fallback decks select Method 20 below 7000 km and Method 30 at
+  and above 7000 km from the same Maidenhead grid-center endpoints used in the
+  VOACAP circuit. Cached records still reuse the existing fine path-cell
+  granularity, so near-threshold method reuse follows the res-2 cache boundary.
 - Closed fallback spots can be filtered with `PASS/REJECT PATH CLOSED`;
   existing `PASS/REJECT PATH UNLIKELY` filters still include them for
   compatibility.

@@ -2,6 +2,7 @@ package voacap
 
 import (
 	"errors"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -201,6 +202,89 @@ func TestBuildPathDeckUsesConfiguredVOACAPStartHour(t *testing.T) {
 	}
 	if body := string(deck); !strings.Contains(body, "TIME         17   24    1    1") {
 		t.Fatalf("deck should cover the current UTC hour through midnight:\n%s", body)
+	}
+}
+
+func TestBuildPathDeckDefaultsToMethod30(t *testing.T) {
+	deck, err := BuildPathDeck(PathDeckRequest{
+		Comment:              "default method path",
+		Transmit:             DeckEndpoint{Label: "fn31", Latitude: 41.5, Longitude: -73},
+		Receive:              DeckEndpoint{Label: "jo90", Latitude: 50.5, Longitude: 19},
+		SSN:                  147,
+		Now:                  mustTime(t, "2026-06-09T17:00:00Z"),
+		ForecastHours:        8,
+		CenterFrequenciesMHz: []float64{14.1},
+	})
+	if err != nil {
+		t.Fatalf("BuildPathDeck() error: %v", err)
+	}
+	if body := string(deck); !strings.Contains(body, "METHOD       30    0") {
+		t.Fatalf("deck should preserve Method 30 as the direct-call default:\n%s", body)
+	}
+}
+
+func TestBuildPathDeckUsesExplicitMethod20(t *testing.T) {
+	deck, err := BuildPathDeck(PathDeckRequest{
+		Comment:              "method 20 path",
+		Transmit:             DeckEndpoint{Label: "fn31", Latitude: 41.5, Longitude: -73},
+		Receive:              DeckEndpoint{Label: "fn32", Latitude: 42.5, Longitude: -73},
+		SSN:                  147,
+		Now:                  mustTime(t, "2026-06-09T17:00:00Z"),
+		ForecastHours:        8,
+		CenterFrequenciesMHz: []float64{14.1},
+		Method:               PathMethodCompleteSystem,
+	})
+	if err != nil {
+		t.Fatalf("BuildPathDeck() error: %v", err)
+	}
+	if body := string(deck); !strings.Contains(body, "METHOD       20    0") {
+		t.Fatalf("deck should use explicit Method 20:\n%s", body)
+	}
+}
+
+func TestBuildPathDeckRejectsUnsupportedMethod(t *testing.T) {
+	_, err := BuildPathDeck(PathDeckRequest{
+		Comment:              "bad method",
+		Transmit:             DeckEndpoint{Label: "fn31", Latitude: 41.5, Longitude: -73},
+		Receive:              DeckEndpoint{Label: "fn32", Latitude: 42.5, Longitude: -73},
+		SSN:                  147,
+		Now:                  mustTime(t, "2026-06-09T17:00:00Z"),
+		ForecastHours:        8,
+		CenterFrequenciesMHz: []float64{14.1},
+		Method:               21,
+	})
+	if err == nil || !strings.Contains(err.Error(), "unsupported VOACAP method") {
+		t.Fatalf("BuildPathDeck() error = %v, want unsupported method validation", err)
+	}
+}
+
+func TestRecommendedPathMethodUses7000KMBoundary(t *testing.T) {
+	origin := DeckEndpoint{Label: "origin", Latitude: 0, Longitude: 0}
+	longitudeAt7000KM := pathMethodDistanceThresholdKM / earthMeanRadiusKM * 180 / math.Pi
+	tests := []struct {
+		name    string
+		lon     float64
+		want    PathMethod
+		wantMin float64
+		wantMax float64
+	}{
+		{name: "under threshold", lon: longitudeAt7000KM - 0.01, want: PathMethodCompleteSystem, wantMin: 6998, wantMax: 7000},
+		{name: "at threshold", lon: longitudeAt7000KM, want: PathMethodShortLongPathSmoothing, wantMin: 6999.999, wantMax: 7000.1},
+		{name: "over threshold", lon: longitudeAt7000KM + 0.01, want: PathMethodShortLongPathSmoothing, wantMin: 7000, wantMax: 7002},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			method, distanceKM, err := RecommendedPathMethod(origin, DeckEndpoint{Label: "target", Latitude: 0, Longitude: tt.lon})
+			if err != nil {
+				t.Fatalf("RecommendedPathMethod() error: %v", err)
+			}
+			if method != tt.want {
+				t.Fatalf("method = %d, want %d at distance %.3f", method, tt.want, distanceKM)
+			}
+			if distanceKM < tt.wantMin || distanceKM > tt.wantMax {
+				t.Fatalf("distance = %.3f, want within %.3f..%.3f", distanceKM, tt.wantMin, tt.wantMax)
+			}
+		})
 	}
 }
 

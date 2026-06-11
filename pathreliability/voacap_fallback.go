@@ -1237,7 +1237,7 @@ func (f VOACAPRunnerClosedForecaster) runDirectionalForecast(ctx context.Context
 	if err != nil {
 		return VOACAPClosedForecast{}, result, err
 	}
-	records, err := voacap.ParseMethod30Predictions(result.Output)
+	records, err := voacap.ParsePredictions(result.Output)
 	if err != nil {
 		return VOACAPClosedForecast{}, result, err
 	}
@@ -1277,6 +1277,10 @@ func (f VOACAPRunnerClosedForecaster) buildDeck(job VOACAPClosedJob, direction s
 	default:
 		return nil, fmt.Errorf("unknown VOACAP deck direction %q", direction)
 	}
+	method, _, err := voacap.RecommendedPathMethod(transmit, receive)
+	if err != nil {
+		return nil, err
+	}
 	return voacap.BuildPathDeck(voacap.PathDeckRequest{
 		Comment:              fmt.Sprintf("GoCluster VOACAP closed fallback %s %d", job.Request.Band, job.SSN),
 		Transmit:             transmit,
@@ -1286,6 +1290,7 @@ func (f VOACAPRunnerClosedForecaster) buildDeck(job VOACAPClosedJob, direction s
 		ForecastHours:        f.cfg.ForecastHours,
 		StartVOACAPHour:      voacap.HourForUTC(job.WindowStartUTC),
 		CenterFrequenciesMHz: f.cfg.CenterFrequenciesMHz,
+		Method:               method,
 	})
 }
 

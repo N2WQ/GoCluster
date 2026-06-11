@@ -170,10 +170,15 @@ and user-to-DX transmit. Lookup blends those directions with the same
 `merge_receive_weight` and `merge_transmit_weight` used by p50, then subtracts
 the request user's receive-side `SET NOISE` penalty from the receive leg.
 Runtime fallback decks start at the current rolling UTC forecast window, and
-VOACAP output hour `24` is normalized to UTC hour `0`. Lookup selects the record
-matching the current UTC hour and re-evaluates the effective blended SNR against
-the request mode, so the first mode or noise class to populate the cache does
-not decide later requests. If the effective VOACAP SNR is at or below
+VOACAP output hour `24` is normalized to UTC hour `0`. Runtime decks select
+Method 20 below 7000 km and Method 30 at and above 7000 km from the same
+Maidenhead grid-center endpoints written to the VOACAP circuit. Cached records
+still reuse the existing fine path-cell granularity, so near-threshold method
+reuse follows the same res-2 cache boundary as other VOACAP fallback data.
+Lookup selects the record matching the current UTC hour and re-evaluates the
+effective blended SNR against the request mode, so the first mode or noise
+class to populate the cache does not decide later requests. If the effective
+VOACAP SNR is at or below
 `mode_thresholds.<mode>.closed`, the fallback can return the configured closed
 glyph. Closed remains based on effective FT8-equivalent SNR50 and does not
 require VOACAP REL. Otherwise, it can return a normal `HIGH`, `MEDIUM`, `LOW`,

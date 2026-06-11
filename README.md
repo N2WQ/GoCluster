@@ -574,8 +574,11 @@ Important operational notes:
   when cached VOACAP maps to an open class and the configured request-SNR REL
   gate passes. Sufficient bucket p50 results stay authoritative. Closed still
   uses the SNR50 closed threshold and does not require REL. Runtime fallback
-  decks cover the rolling UTC forecast window; parsed VOACAP hour `24` is
-  treated as UTC hour `0`.
+  decks cover the rolling UTC forecast window and select Method 20 below
+  7000 km or Method 30 at and above 7000 km using the same Maidenhead
+  grid-center endpoints written to the VOACAP circuit; parsed VOACAP hour `24`
+  is treated as UTC hour `0`. Cached raw directional records are reused at the
+  existing fine path-cell granularity.
 - Beacon spots use RX-only path semantics. The beacon qualifier is the existing
   canonical `IsBeacon` flag, including source-class beacons, `/B` calls, known
   beacon calls, and beacon comment keywords. For those spots, transmit evidence

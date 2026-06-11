@@ -26,11 +26,11 @@ func TestFT8EquivalentSNRDB(t *testing.T) {
 	}
 }
 
-func TestParseMethod30Predictions(t *testing.T) {
+func TestParsePredictionsFromMethod30Output(t *testing.T) {
 	body := readTestdata(t, "voacap_output_method30.txt")
-	records, err := ParseMethod30Predictions(body)
+	records, err := ParsePredictions(body)
 	if err != nil {
-		t.Fatalf("ParseMethod30Predictions() error: %v", err)
+		t.Fatalf("ParsePredictions() error: %v", err)
 	}
 	if len(records) != 6 {
 		t.Fatalf("len(records) = %d, want 6", len(records))
@@ -62,14 +62,61 @@ func TestParseMethod30Predictions(t *testing.T) {
 	})
 }
 
-func TestParseMethod30PredictionsAllowsMissingReliability(t *testing.T) {
+func TestParsePredictionsFromMethod20Output(t *testing.T) {
+	body := readTestdata(t, "voacap_output_method20.txt")
+	records, err := ParsePredictions(body)
+	if err != nil {
+		t.Fatalf("ParsePredictions() error: %v", err)
+	}
+	if len(records) != 16 {
+		t.Fatalf("len(records) = %d, want 16", len(records))
+	}
+
+	assertPrediction(t, records[0], PredictionRecord{
+		HourUTC:        1,
+		FrequencyMHz:   3.6,
+		VOACAPSNRDBHz:  -7,
+		FT8SNRDB:       -41,
+		Reliability:    0.03,
+		HasReliability: true,
+	})
+	assertPrediction(t, records[1], PredictionRecord{
+		HourUTC:        1,
+		FrequencyMHz:   7.0,
+		VOACAPSNRDBHz:  17,
+		FT8SNRDB:       -17,
+		Reliability:    0.65,
+		HasReliability: true,
+	})
+	assertPrediction(t, records[8], PredictionRecord{
+		HourUTC:        2,
+		FrequencyMHz:   3.6,
+		VOACAPSNRDBHz:  -6,
+		FT8SNRDB:       -40,
+		Reliability:    0.05,
+		HasReliability: true,
+	})
+}
+
+func TestParseMethod30PredictionsCompatibilityWrapper(t *testing.T) {
+	body := readTestdata(t, "voacap_output_method30.txt")
+	records, err := ParseMethod30Predictions(body)
+	if err != nil {
+		t.Fatalf("ParseMethod30Predictions() error: %v", err)
+	}
+	if len(records) != 6 {
+		t.Fatalf("len(records) = %d, want 6", len(records))
+	}
+}
+
+func TestParsePredictionsAllowsMissingReliability(t *testing.T) {
 	body := []byte(`
       1.0 17.2  3.6  7.0  0.0 FREQ
             16   -8   20    -  SNR
 `)
-	records, err := ParseMethod30Predictions(body)
+	records, err := ParsePredictions(body)
 	if err != nil {
-		t.Fatalf("ParseMethod30Predictions() error: %v", err)
+		t.Fatalf("ParsePredictions() error: %v", err)
 	}
 	if len(records) != 2 {
 		t.Fatalf("len(records) = %d, want 2", len(records))
@@ -79,14 +126,14 @@ func TestParseMethod30PredictionsAllowsMissingReliability(t *testing.T) {
 	}
 }
 
-func TestParseMethod30PredictionsNormalizesHour24ToUTCZero(t *testing.T) {
+func TestParsePredictionsNormalizesHour24ToUTCZero(t *testing.T) {
 	body := []byte(`
      24.0 17.2  7.0  0.0 FREQ
             16   -8    -  SNR
 `)
-	records, err := ParseMethod30Predictions(body)
+	records, err := ParsePredictions(body)
 	if err != nil {
-		t.Fatalf("ParseMethod30Predictions() error: %v", err)
+		t.Fatalf("ParsePredictions() error: %v", err)
 	}
 	if len(records) != 1 {
 		t.Fatalf("len(records) = %d, want 1", len(records))
@@ -96,32 +143,33 @@ func TestParseMethod30PredictionsNormalizesHour24ToUTCZero(t *testing.T) {
 	}
 }
 
-func TestParseMethod30PredictionsRequiresSNR(t *testing.T) {
-	_, err := ParseMethod30Predictions([]byte(`
+func TestParsePredictionsRequiresSNR(t *testing.T) {
+	_, err := ParsePredictions([]byte(`
       1.0 17.2  3.6  7.0  0.0 FREQ
 `))
 	if err == nil || !strings.Contains(err.Error(), "no matching SNR row") {
-		t.Fatalf("ParseMethod30Predictions() error = %v, want missing SNR", err)
+		t.Fatalf("ParsePredictions() error = %v, want missing SNR", err)
 	}
 }
 
-func TestParseMethod30PredictionsRejectsMismatchedRows(t *testing.T) {
-	_, err := ParseMethod30Predictions([]byte(`
+func TestParsePredictionsRejectsMismatchedRows(t *testing.T) {
+	_, err := ParsePredictions([]byte(`
       1.0 17.2  3.6  7.0 10.1  0.0 FREQ
             16   -8   20    -    -  SNR
 `))
 	if err == nil || !strings.Contains(err.Error(), "want at least 4") {
-		t.Fatalf("ParseMethod30Predictions() error = %v, want mismatched SNR cells", err)
+		t.Fatalf("ParsePredictions() error = %v, want mismatched SNR cells", err)
 	}
 }
 
-func FuzzParseMethod30Predictions(f *testing.F) {
+func FuzzParsePredictions(f *testing.F) {
 	f.Add(string(readTestdata(f, "voacap_output_method30.txt")))
+	f.Add(string(readTestdata(f, "voacap_output_method20.txt")))
 	f.Add("")
 	f.Add("1.0 17.2 3.6 7.0 0.0 FREQ\n16 -8 20 SNR\n")
 	f.Add("24.0 17.2 7.0 0.0 FREQ\n16 -8 SNR\n")
 	f.Fuzz(func(t *testing.T, body string) {
-		_, _ = ParseMethod30Predictions([]byte(body))
+		_, _ = ParsePredictions([]byte(body))
 	})
 }
 

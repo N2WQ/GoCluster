@@ -147,8 +147,12 @@ the cached VOACAP class is open and the configured request-SNR REL gate passes.
 Closed fallback still uses the SNR50 closed threshold and does not require REL.
 Cached VOACAP output retains the parsed hourly records for the requested band.
 Runtime fallback decks start at the current rolling UTC window, and parsed
-VOACAP hour `24` is stored as UTC hour `0`. The fallback never replaces a
-normal sufficient p50 bucket prediction.
+VOACAP hour `24` is stored as UTC hour `0`. Runtime decks select Method 20
+below 7000 km and Method 30 at and above 7000 km using the same Maidenhead
+grid-center endpoints written to the VOACAP circuit. Cached records reuse the
+existing fine path-cell granularity, so near-threshold method reuse follows the
+same res-2 cache boundary as other VOACAP fallback data. The fallback never
+replaces a normal sufficient p50 bucket prediction.
 For beacon spots, the same fallback uses the receive-leg VOACAP SNR and
 receive-leg REL rather than the blended bidirectional effective SNR.
 For `PASS/REJECT PATH`, the closed fallback is filter-visible as `CLOSED`.

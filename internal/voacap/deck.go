@@ -16,7 +16,18 @@ type DeckEndpoint struct {
 	Longitude float64
 }
 
-// PathDeckRequest describes one VOACAP method-30 path deck.
+// PathMethod is the VOACAP prediction method written to the METHOD card.
+type PathMethod int
+
+const (
+	PathMethodCompleteSystem         PathMethod = 20
+	PathMethodShortLongPathSmoothing PathMethod = 30
+	pathMethodDistanceThresholdKM               = 7000.0
+	pathMethodDistanceEpsilonKM                 = 1e-9
+	earthMeanRadiusKM                           = 6371.0088
+)
+
+// PathDeckRequest describes one VOACAP path deck.
 type PathDeckRequest struct {
 	Comment       string
 	Transmit      DeckEndpoint
@@ -28,6 +39,9 @@ type PathDeckRequest struct {
 	// 1..24 notation. Zero keeps the legacy default start hour of 1.
 	StartVOACAPHour      int
 	CenterFrequenciesMHz []float64
+	// Method is the VOACAP METHOD card value. Zero preserves the historical
+	// Method-30 default for experiment decks and direct callers.
+	Method PathMethod
 }
 
 func BuildExperimentDeck(cfg ExperimentConfig, smoothedSSN float64, now time.Time) ([]byte, error) {
@@ -45,11 +59,12 @@ func BuildExperimentDeck(cfg ExperimentConfig, smoothedSSN float64, now time.Tim
 		Now:                  now,
 		ForecastHours:        cfg.ForecastHours,
 		CenterFrequenciesMHz: cfg.CenterFrequenciesMHz,
+		Method:               PathMethodShortLongPathSmoothing,
 	})
 }
 
-// BuildPathDeck builds a fixed-format VOACAP method-30 deck for a directed
-// path. The CIRCUIT card mirrors the working PowerShell deck generator:
+// BuildPathDeck builds a fixed-format VOACAP deck for a directed path. The
+// CIRCUIT card mirrors the working PowerShell deck generator:
 // coordinates are formatted before interpolation, then written without extra
 // field-width padding because the Windows VOACAP engine is column-sensitive.
 func BuildPathDeck(req PathDeckRequest) ([]byte, error) {
@@ -84,6 +99,13 @@ func BuildPathDeck(req PathDeckRequest) ([]byte, error) {
 	if !validEndpoint(req.Receive) {
 		return nil, fmt.Errorf("receive endpoint must have valid latitude/longitude")
 	}
+	method := req.Method
+	if method == 0 {
+		method = PathMethodShortLongPathSmoothing
+	}
+	if !validPathMethod(method) {
+		return nil, fmt.Errorf("unsupported VOACAP method %d", method)
+	}
 	if req.Now.IsZero() {
 		req.Now = time.Now().UTC()
 	}
@@ -111,10 +133,45 @@ func BuildPathDeck(req PathDeckRequest) ([]byte, error) {
 	fmt.Fprintln(&buf, "ANTENNA       1    1    2   30     0.000[default\\Isotrope     ]  0.0    0.1000")
 	fmt.Fprintln(&buf, "ANTENNA       2    2    2   30     0.000[default\\Isotrope     ]  0.0    0.0000")
 	fmt.Fprintf(&buf, "FREQUENCY %s\n", formatVOACAPFrequencySlots(req.CenterFrequenciesMHz))
-	fmt.Fprintln(&buf, "METHOD       30    0")
+	fmt.Fprintf(&buf, "METHOD %8d    0\n", method)
 	fmt.Fprintln(&buf, "EXECUTE")
 	fmt.Fprintln(&buf, "QUIT")
 	return buf.Bytes(), nil
+}
+
+// RecommendedPathMethod applies VOACAP's distance recommendation to the same
+// directed endpoints that will be written to the CIRCUIT card.
+func RecommendedPathMethod(transmit, receive DeckEndpoint) (PathMethod, float64, error) {
+	distanceKM, err := GreatCircleDistanceKM(transmit, receive)
+	if err != nil {
+		return 0, 0, err
+	}
+	if distanceKM+pathMethodDistanceEpsilonKM >= pathMethodDistanceThresholdKM {
+		return PathMethodShortLongPathSmoothing, distanceKM, nil
+	}
+	return PathMethodCompleteSystem, distanceKM, nil
+}
+
+// GreatCircleDistanceKM returns the spherical great-circle distance between
+// two deck endpoints in kilometers.
+func GreatCircleDistanceKM(a, b DeckEndpoint) (float64, error) {
+	if !validEndpoint(a) {
+		return 0, fmt.Errorf("first endpoint must have valid latitude/longitude")
+	}
+	if !validEndpoint(b) {
+		return 0, fmt.Errorf("second endpoint must have valid latitude/longitude")
+	}
+	lat1 := degreesToRadians(a.Latitude)
+	lat2 := degreesToRadians(b.Latitude)
+	dLat := degreesToRadians(b.Latitude - a.Latitude)
+	dLon := degreesToRadians(b.Longitude - a.Longitude)
+	sinLat := math.Sin(dLat / 2)
+	sinLon := math.Sin(dLon / 2)
+	h := sinLat*sinLat + math.Cos(lat1)*math.Cos(lat2)*sinLon*sinLon
+	if h > 1 {
+		h = 1
+	}
+	return 2 * earthMeanRadiusKM * math.Atan2(math.Sqrt(h), math.Sqrt(1-h)), nil
 }
 
 // HourForUTC maps a UTC instant to VOACAP's 1..24 hour notation.
@@ -144,6 +201,14 @@ func validEndpoint(endpoint DeckEndpoint) bool {
 		endpoint.Latitude <= 90 &&
 		endpoint.Longitude >= -180 &&
 		endpoint.Longitude <= 180
+}
+
+func validPathMethod(method PathMethod) bool {
+	return method == PathMethodCompleteSystem || method == PathMethodShortLongPathSmoothing
+}
+
+func degreesToRadians(degrees float64) float64 {
+	return degrees * math.Pi / 180
 }
 
 func voacapLabel(label string) string {

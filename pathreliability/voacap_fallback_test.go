@@ -911,6 +911,39 @@ func TestVOACAPRunnerClosedForecasterDeckUsesSafeLabels(t *testing.T) {
 	}
 }
 
+func TestVOACAPRunnerClosedForecasterDeckSelectsMethodByDistance(t *testing.T) {
+	cfg := testVOACAPFallbackConfig().VOACAPFallback
+	forecaster := NewVOACAPRunnerClosedForecaster(cfg)
+	tests := []struct {
+		name     string
+		userGrid string
+		dxGrid   string
+		want     string
+	}{
+		{name: "short path", userGrid: "FN31", dxGrid: "FN32", want: "METHOD       20    0"},
+		{name: "long path", userGrid: "FN31", dxGrid: "QF56", want: "METHOD       30    0"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			deck, err := forecaster.buildDeck(VOACAPClosedJob{
+				Request: VOACAPClosedRequest{
+					UserGrid: tt.userGrid,
+					DXGrid:   tt.dxGrid,
+					Band:     "20m",
+				},
+				SSN:            147,
+				WindowStartUTC: time.Date(2026, time.June, 9, 3, 0, 0, 0, time.UTC),
+			}, voacapDeckTransmit)
+			if err != nil {
+				t.Fatalf("buildDeck() error: %v", err)
+			}
+			if text := string(deck); !strings.Contains(text, tt.want) {
+				t.Fatalf("fallback deck method mismatch, want %q:\n%s", tt.want, text)
+			}
+		})
+	}
+}
+
 func TestVOACAPRunnerClosedForecasterDeckUsesWindowStartHour(t *testing.T) {
 	cfg := testVOACAPFallbackConfig().VOACAPFallback
 	forecaster := NewVOACAPRunnerClosedForecaster(cfg)
