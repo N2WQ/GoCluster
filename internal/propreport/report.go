@@ -46,18 +46,19 @@ type Result struct {
 }
 
 type reportSummary struct {
-	DateUTC            string                  `json:"date_utc"`
-	LogFile            string                  `json:"log_file"`
-	Timezone           string                  `json:"timezone"`
-	ModelContext       modelContext            `json:"model_context"`
-	Bands              []bandSummary           `json:"bands"`
-	BandGroups         map[string][]string     `json:"band_groups"`
-	CoverageMedians    map[string]coverageStat `json:"coverage_medians_by_band"`
-	PredictionsByHour  []predictionHour        `json:"predictions_by_hour"`
-	CapShadowByHour    []capShadowHour         `json:"cap_shadow_by_hour"`
-	CapP50ShadowByHour []capP50ShadowHour      `json:"cap_p50_shadow_by_hour"`
-	SourceMixByHour    []sourceMixHour         `json:"source_mix_by_hour"`
-	Thresholds         classificationThreshold `json:"thresholds"`
+	DateUTC               string                  `json:"date_utc"`
+	LogFile               string                  `json:"log_file"`
+	Timezone              string                  `json:"timezone"`
+	ModelContext          modelContext            `json:"model_context"`
+	Bands                 []bandSummary           `json:"bands"`
+	BandGroups            map[string][]string     `json:"band_groups"`
+	CoverageMedians       map[string]coverageStat `json:"coverage_medians_by_band"`
+	PredictionsByHour     []predictionHour        `json:"predictions_by_hour"`
+	SparseP50VOACAPByHour []sparseP50VOACAPHour   `json:"sparse_p50_voacap_by_hour"`
+	CapShadowByHour       []capShadowHour         `json:"cap_shadow_by_hour"`
+	CapP50ShadowByHour    []capP50ShadowHour      `json:"cap_p50_shadow_by_hour"`
+	SourceMixByHour       []sourceMixHour         `json:"source_mix_by_hour"`
+	Thresholds            classificationThreshold `json:"thresholds"`
 }
 
 type bandSummary struct {
@@ -130,6 +131,37 @@ type predictionHour struct {
 	AvgStale                       float64 `json:"avg_stale"`
 	AvgCapLimited                  float64 `json:"avg_cap_limited"`
 	AvgCapWouldBlock               float64 `json:"avg_cap_would_block"`
+}
+
+type sparseP50VOACAPHour struct {
+	Hour              string  `json:"hour"`
+	Samples           int     `json:"samples"`
+	AvgTotal          float64 `json:"avg_total"`
+	AvgNoP50          float64 `json:"avg_no_p50"`
+	AvgVeryLowCount   float64 `json:"avg_very_low_count"`
+	AvgBeaconRX       float64 `json:"avg_beacon_rx"`
+	AvgNonBeacon      float64 `json:"avg_non_beacon"`
+	AvgCacheMissTotal float64 `json:"avg_cache_miss_total"`
+	AvgCacheHit       float64 `json:"avg_cache_hit"`
+	AvgQueued         float64 `json:"avg_queued"`
+	AvgDelayed        float64 `json:"avg_delayed"`
+	AvgInflight       float64 `json:"avg_inflight"`
+	AvgInvalidRequest float64 `json:"avg_invalid_request"`
+	AvgSSNUnavailable float64 `json:"avg_ssn_unavailable"`
+	AvgNoCurrentHour  float64 `json:"avg_no_current_hour"`
+	AvgQueueFull      float64 `json:"avg_queue_full"`
+	AvgNotRunning     float64 `json:"avg_not_running"`
+	AvgDisabled       float64 `json:"avg_disabled"`
+	AvgUnavailable    float64 `json:"avg_unavailable"`
+	AvgClosed         float64 `json:"avg_closed"`
+	AvgAligned        float64 `json:"avg_aligned"`
+	AvgSparseUpgrade  float64 `json:"avg_sparse_upgrade"`
+	AvgOpenRELPass    float64 `json:"avg_open_rel_pass"`
+	AvgOpenRELFail    float64 `json:"avg_open_rel_fail"`
+	AvgNotClosed      float64 `json:"avg_not_closed"`
+	AvgRELMissing     float64 `json:"avg_rel_missing"`
+	AvgRELBelowFloor  float64 `json:"avg_rel_below_floor"`
+	AvgRELMultiTier   float64 `json:"avg_rel_multi_tier"`
 }
 
 type capShadowHour struct {
@@ -265,6 +297,35 @@ type predTotals struct {
 	CapWouldBlock               int
 }
 
+type sparseP50VOACAPTotals struct {
+	Total          int
+	NoP50          int
+	VeryLowCount   int
+	BeaconRX       int
+	NonBeacon      int
+	CacheMissTotal int
+	CacheHit       int
+	Queued         int
+	Delayed        int
+	Inflight       int
+	InvalidRequest int
+	SSNUnavailable int
+	NoCurrentHour  int
+	QueueFull      int
+	NotRunning     int
+	Disabled       int
+	Unavailable    int
+	Closed         int
+	Aligned        int
+	SparseUpgrade  int
+	OpenRELPass    int
+	OpenRELFail    int
+	NotClosed      int
+	RELMissing     int
+	RELBelowFloor  int
+	RELMultiTier   int
+}
+
 type capShadowTotals struct {
 	Total      int
 	Candidates []capShadowCandidateTotals
@@ -297,27 +358,29 @@ type capP50ShadowCandidateTotals struct {
 }
 
 var (
-	tsRe              = regexp.MustCompile(`^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}`)
-	bucketsRe         = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path buckets`)
-	weightsRe         = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path weight dist`)
-	predsRe           = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path predictions`)
-	capShadowRe       = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path cap shadow`)
-	capP50ShadowRe    = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path cap p50 shadow`)
-	sourceMixRe       = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path source mix`)
-	spottersRe        = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path unique spotters`)
-	pairsRe           = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path unique grid pairs`)
-	ge10VarRe         = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path ge10 variance`)
-	ansiRe            = regexp.MustCompile(`\x1b\[[0-9;]*m`)
-	bandBuckets       = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)\s+f=([\d,]+)\s+c=([\d,]+)`)
-	bandWeights       = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)\s+t=([\d,]+)\s+<1=([\d,]+)\s+1-2=([\d,]+)\s+2-3=([\d,]+)\s+3-5=([\d,]+)\s+5-10=([\d,]+)\s+>=10=([\d,]+)`)
-	predsFields       = regexp.MustCompile(`\b(total|derived|combined|voacap_closed|voacap_aligned|voacap_sparse_upgrade|voacap_open|beacon_rx|beacon_rx_insufficient|beacon_rx_no_sample|beacon_rx_low_count|beacon_rx_low_receiver|beacon_rx_low_weight|beacon_rx_stale|beacon_rx_voacap_closed|beacon_rx_voacap_aligned|beacon_rx_voacap_sparse_upgrade|beacon_rx_voacap_open|insufficient|no_sample|low_count|low_receiver|low_weight|stale|cap_limited|cap_would_block)=([\d,]+)`)
-	totalField        = regexp.MustCompile(`\btotal=([\d,]+)`)
-	capShadowField    = regexp.MustCompile(`\bcap(\d+)_(pass|low_count|low_receiver|low_weight|block)=([\d,]+)`)
-	capP50ShadowField = regexp.MustCompile(`\bcap(\d+)_p50_(pass_unlikely|pass_low|pass_medium|pass_high|same|stronger|weaker|to_insufficient)=([\d,]+)`)
-	sourceFields      = regexp.MustCompile(`([A-Za-z\-]+)=([\d,]+)`)
-	hourField         = regexp.MustCompile(`hour=(\d{2})`)
-	bandCounts        = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)=([\d,]+)`)
-	ge10VarFields     = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)\s+min=(\d+)\s+med=(\d+)\s+p75=(\d+)\s+max=(\d+)\s+deg=(\d)`)
+	tsRe                  = regexp.MustCompile(`^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}`)
+	bucketsRe             = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path buckets`)
+	weightsRe             = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path weight dist`)
+	predsRe               = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path predictions`)
+	sparseP50VOACAPRe     = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Sparse p50 VOACAP`)
+	capShadowRe           = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path cap shadow`)
+	capP50ShadowRe        = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path cap p50 shadow`)
+	sourceMixRe           = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path source mix`)
+	spottersRe            = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path unique spotters`)
+	pairsRe               = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path unique grid pairs`)
+	ge10VarRe             = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}).*Path ge10 variance`)
+	ansiRe                = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	bandBuckets           = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)\s+f=([\d,]+)\s+c=([\d,]+)`)
+	bandWeights           = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)\s+t=([\d,]+)\s+<1=([\d,]+)\s+1-2=([\d,]+)\s+2-3=([\d,]+)\s+3-5=([\d,]+)\s+5-10=([\d,]+)\s+>=10=([\d,]+)`)
+	predsFields           = regexp.MustCompile(`\b(total|derived|combined|voacap_closed|voacap_aligned|voacap_sparse_upgrade|voacap_open|beacon_rx|beacon_rx_insufficient|beacon_rx_no_sample|beacon_rx_low_count|beacon_rx_low_receiver|beacon_rx_low_weight|beacon_rx_stale|beacon_rx_voacap_closed|beacon_rx_voacap_aligned|beacon_rx_voacap_sparse_upgrade|beacon_rx_voacap_open|insufficient|no_sample|low_count|low_receiver|low_weight|stale|cap_limited|cap_would_block)=([\d,]+)`)
+	sparseP50VOACAPFields = regexp.MustCompile(`\b(total|no_p50|very_low_count|beacon_rx|non_beacon|cache_miss_total|cache_hit|queued|delayed|inflight|invalid_request|ssn_unavailable|no_current_hour|queue_full|not_running|disabled|unavailable|closed|aligned|sparse_upgrade|open_rel_pass|open_rel_fail|not_closed|rel_missing|rel_below_floor|rel_multi_tier)=([\d,]+)`)
+	totalField            = regexp.MustCompile(`\btotal=([\d,]+)`)
+	capShadowField        = regexp.MustCompile(`\bcap(\d+)_(pass|low_count|low_receiver|low_weight|block)=([\d,]+)`)
+	capP50ShadowField     = regexp.MustCompile(`\bcap(\d+)_p50_(pass_unlikely|pass_low|pass_medium|pass_high|same|stronger|weaker|to_insufficient)=([\d,]+)`)
+	sourceFields          = regexp.MustCompile(`([A-Za-z\-]+)=([\d,]+)`)
+	hourField             = regexp.MustCompile(`hour=(\d{2})`)
+	bandCounts            = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)=([\d,]+)`)
+	ge10VarFields         = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)\s+min=(\d+)\s+med=(\d+)\s+p75=(\d+)\s+max=(\d+)\s+deg=(\d)`)
 )
 
 func parseLog(path string) ([]string, error) {
@@ -421,6 +484,53 @@ func parsePredictionTotals(line string) (predTotals, bool) {
 	}, true
 }
 
+func parseSparseP50VOACAPTotals(line string) (sparseP50VOACAPTotals, bool) {
+	matches := sparseP50VOACAPFields.FindAllStringSubmatch(line, -1)
+	if len(matches) == 0 {
+		return sparseP50VOACAPTotals{}, false
+	}
+	values := make(map[string]int, len(matches))
+	for _, match := range matches {
+		if len(match) != 3 {
+			continue
+		}
+		values[match[1]] = parseInt(match[2])
+	}
+	for _, required := range []string{"total", "no_p50", "cache_miss_total"} {
+		if _, ok := values[required]; !ok {
+			return sparseP50VOACAPTotals{}, false
+		}
+	}
+	return sparseP50VOACAPTotals{
+		Total:          values["total"],
+		NoP50:          values["no_p50"],
+		VeryLowCount:   values["very_low_count"],
+		BeaconRX:       values["beacon_rx"],
+		NonBeacon:      values["non_beacon"],
+		CacheMissTotal: values["cache_miss_total"],
+		CacheHit:       values["cache_hit"],
+		Queued:         values["queued"],
+		Delayed:        values["delayed"],
+		Inflight:       values["inflight"],
+		InvalidRequest: values["invalid_request"],
+		SSNUnavailable: values["ssn_unavailable"],
+		NoCurrentHour:  values["no_current_hour"],
+		QueueFull:      values["queue_full"],
+		NotRunning:     values["not_running"],
+		Disabled:       values["disabled"],
+		Unavailable:    values["unavailable"],
+		Closed:         values["closed"],
+		Aligned:        values["aligned"],
+		SparseUpgrade:  values["sparse_upgrade"],
+		OpenRELPass:    values["open_rel_pass"],
+		OpenRELFail:    values["open_rel_fail"],
+		NotClosed:      values["not_closed"],
+		RELMissing:     values["rel_missing"],
+		RELBelowFloor:  values["rel_below_floor"],
+		RELMultiTier:   values["rel_multi_tier"],
+	}, true
+}
+
 func parseCapShadowTotals(line string) (capShadowTotals, bool) {
 	total := 0
 	if m := totalField.FindStringSubmatch(line); len(m) == 2 {
@@ -473,6 +583,94 @@ func parseCapShadowTotals(line string) (capShadowTotals, bool) {
 		out.Candidates = append(out.Candidates, *byCap[capValue])
 	}
 	return out, true
+}
+
+func buildSparseP50VOACAPSummary(byTS map[string]*sparseP50VOACAPTotals) []sparseP50VOACAPHour {
+	hours := make(map[int][]*sparseP50VOACAPTotals)
+	for ts, totals := range byTS {
+		tsTime, err := time.Parse("2006/01/02 15:04:05", ts)
+		if err != nil {
+			continue
+		}
+		hours[tsTime.Hour()] = append(hours[tsTime.Hour()], totals)
+	}
+	keys := make([]int, 0, len(hours))
+	for h := range hours {
+		keys = append(keys, h)
+	}
+	sort.Ints(keys)
+	summary := make([]sparseP50VOACAPHour, 0, len(keys))
+	for _, h := range keys {
+		rows := hours[h]
+		if len(rows) == 0 {
+			continue
+		}
+		var total, noP50, veryLowCount, beaconRX, nonBeacon, cacheMissTotal, cacheHit int
+		var queued, delayed, inflight, invalidRequest, ssnUnavailable, noCurrentHour int
+		var queueFull, notRunning, disabled, unavailable int
+		var closed, aligned, sparseUpgrade, openRELPass, openRELFail, notClosed int
+		var relMissing, relBelowFloor, relMultiTier int
+		for _, r := range rows {
+			total += r.Total
+			noP50 += r.NoP50
+			veryLowCount += r.VeryLowCount
+			beaconRX += r.BeaconRX
+			nonBeacon += r.NonBeacon
+			cacheMissTotal += r.CacheMissTotal
+			cacheHit += r.CacheHit
+			queued += r.Queued
+			delayed += r.Delayed
+			inflight += r.Inflight
+			invalidRequest += r.InvalidRequest
+			ssnUnavailable += r.SSNUnavailable
+			noCurrentHour += r.NoCurrentHour
+			queueFull += r.QueueFull
+			notRunning += r.NotRunning
+			disabled += r.Disabled
+			unavailable += r.Unavailable
+			closed += r.Closed
+			aligned += r.Aligned
+			sparseUpgrade += r.SparseUpgrade
+			openRELPass += r.OpenRELPass
+			openRELFail += r.OpenRELFail
+			notClosed += r.NotClosed
+			relMissing += r.RELMissing
+			relBelowFloor += r.RELBelowFloor
+			relMultiTier += r.RELMultiTier
+		}
+		count := float64(len(rows))
+		summary = append(summary, sparseP50VOACAPHour{
+			Hour:              fmt.Sprintf("%02d:00", h),
+			Samples:           len(rows),
+			AvgTotal:          float64(total) / count,
+			AvgNoP50:          float64(noP50) / count,
+			AvgVeryLowCount:   float64(veryLowCount) / count,
+			AvgBeaconRX:       float64(beaconRX) / count,
+			AvgNonBeacon:      float64(nonBeacon) / count,
+			AvgCacheMissTotal: float64(cacheMissTotal) / count,
+			AvgCacheHit:       float64(cacheHit) / count,
+			AvgQueued:         float64(queued) / count,
+			AvgDelayed:        float64(delayed) / count,
+			AvgInflight:       float64(inflight) / count,
+			AvgInvalidRequest: float64(invalidRequest) / count,
+			AvgSSNUnavailable: float64(ssnUnavailable) / count,
+			AvgNoCurrentHour:  float64(noCurrentHour) / count,
+			AvgQueueFull:      float64(queueFull) / count,
+			AvgNotRunning:     float64(notRunning) / count,
+			AvgDisabled:       float64(disabled) / count,
+			AvgUnavailable:    float64(unavailable) / count,
+			AvgClosed:         float64(closed) / count,
+			AvgAligned:        float64(aligned) / count,
+			AvgSparseUpgrade:  float64(sparseUpgrade) / count,
+			AvgOpenRELPass:    float64(openRELPass) / count,
+			AvgOpenRELFail:    float64(openRELFail) / count,
+			AvgNotClosed:      float64(notClosed) / count,
+			AvgRELMissing:     float64(relMissing) / count,
+			AvgRELBelowFloor:  float64(relBelowFloor) / count,
+			AvgRELMultiTier:   float64(relMultiTier) / count,
+		})
+	}
+	return summary
 }
 
 func parseCapP50ShadowTotals(line string) (capP50ShadowTotals, bool) {
@@ -866,6 +1064,7 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 	bucketByTS := make(map[string]map[string]int)
 	weightByTS := make(map[string]map[string]weightBins)
 	predByTS := make(map[string]*predTotals)
+	sparseP50VOACAPByTS := make(map[string]*sparseP50VOACAPTotals)
 	capShadowByTS := make(map[string]capShadowTotals)
 	capP50ShadowByTS := make(map[string]capP50ShadowTotals)
 	sourceMixByHour := make(map[int]*sourceMixHour)
@@ -903,6 +1102,13 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 			totals, ok := parsePredictionTotals(entry)
 			if ok {
 				predByTS[ts] = &totals
+			}
+		}
+		if m := sparseP50VOACAPRe.FindStringSubmatch(entry); len(m) == 2 {
+			ts := m[1]
+			totals, ok := parseSparseP50VOACAPTotals(entry)
+			if ok {
+				sparseP50VOACAPByTS[ts] = &totals
 			}
 		}
 		if m := capShadowRe.FindStringSubmatch(entry); len(m) == 2 {
@@ -1233,6 +1439,8 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 		})
 	}
 
+	sparseP50VOACAPSummary := buildSparseP50VOACAPSummary(sparseP50VOACAPByTS)
+
 	capShadowHours := make(map[int][]capShadowTotals)
 	for ts, totals := range capShadowByTS {
 		tsTime, err := time.Parse("2006/01/02 15:04:05", ts)
@@ -1406,17 +1614,18 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 	}
 
 	summary := reportSummary{
-		DateUTC:            date.Format("2006-01-02"),
-		LogFile:            logPath,
-		Timezone:           "UTC",
-		ModelContext:       buildModelContext(pathCfg, bands),
-		Bands:              summaries,
-		BandGroups:         filteredGroups,
-		CoverageMedians:    coverageMedians,
-		PredictionsByHour:  predSummary,
-		CapShadowByHour:    capShadowSummary,
-		CapP50ShadowByHour: capP50ShadowSummary,
-		SourceMixByHour:    sourceMixSummary,
+		DateUTC:               date.Format("2006-01-02"),
+		LogFile:               logPath,
+		Timezone:              "UTC",
+		ModelContext:          buildModelContext(pathCfg, bands),
+		Bands:                 summaries,
+		BandGroups:            filteredGroups,
+		CoverageMedians:       coverageMedians,
+		PredictionsByHour:     predSummary,
+		SparseP50VOACAPByHour: sparseP50VOACAPSummary,
+		CapShadowByHour:       capShadowSummary,
+		CapP50ShadowByHour:    capP50ShadowSummary,
+		SourceMixByHour:       sourceMixSummary,
 		Thresholds: classificationThreshold{
 			StrongRule: "strong if ge10_med >= p75(ge10) and f_med >= p50(f)",
 			WeakRule:   "weak if ge10_med <= p25(ge10) and f_med <= p50(f)",
@@ -1504,6 +1713,11 @@ func buildFinalReport(summary reportSummary) string {
 	b.WriteString("Prediction activity by hour (overall)\n\n")
 	b.WriteString(predictionActivitySummary(summary.PredictionsByHour))
 	b.WriteString("\n\n")
+	if len(summary.SparseP50VOACAPByHour) > 0 {
+		b.WriteString("Sparse p50/no-p50 VOACAP by hour\n\n")
+		b.WriteString(sparseP50VOACAPActivitySummary(summary.SparseP50VOACAPByHour))
+		b.WriteString("\n\n")
+	}
 	if len(summary.CapShadowByHour) > 0 {
 		b.WriteString("Receiver cap shadow by hour\n\n")
 		b.WriteString(capShadowActivitySummary(summary.CapShadowByHour))
@@ -1868,6 +2082,104 @@ func predictionActivitySummary(hours []predictionHour) string {
 	}
 	if len(capWouldBlockSample) > 0 {
 		s += fmt.Sprintf(" Hours where receiver caps would block shadow predictions: %s.", strings.Join(capWouldBlockSample, ", "))
+	}
+	return s
+}
+
+func sparseP50VOACAPActivitySummary(hours []sparseP50VOACAPHour) string {
+	if len(hours) == 0 {
+		return "No sparse p50 VOACAP diagnostic lines were present."
+	}
+	sort.Slice(hours, func(i, j int) bool { return hours[i].Hour < hours[j].Hour })
+	maxTotal := 0.0
+	var maxHour string
+	var noP50Sample []string
+	var lowCountSample []string
+	var cacheMissSample []string
+	var cacheWaitSample []string
+	var invalidSample []string
+	var notRunningSample []string
+	var closedSample []string
+	var openSample []string
+	var relFailSample []string
+	var notClosedSample []string
+	var beaconSample []string
+	for i := range hours {
+		h := &hours[i]
+		if h.AvgTotal > maxTotal {
+			maxTotal = h.AvgTotal
+			maxHour = h.Hour
+		}
+		if h.AvgNoP50 > 0 {
+			noP50Sample = append(noP50Sample, h.Hour)
+		}
+		if h.AvgVeryLowCount > 0 {
+			lowCountSample = append(lowCountSample, h.Hour)
+		}
+		if h.AvgCacheMissTotal > 0 {
+			cacheMissSample = append(cacheMissSample, h.Hour)
+		}
+		if h.AvgQueued > 0 || h.AvgDelayed > 0 || h.AvgInflight > 0 || h.AvgNoCurrentHour > 0 {
+			cacheWaitSample = append(cacheWaitSample, h.Hour)
+		}
+		if h.AvgInvalidRequest > 0 || h.AvgSSNUnavailable > 0 {
+			invalidSample = append(invalidSample, h.Hour)
+		}
+		if h.AvgQueueFull > 0 || h.AvgNotRunning > 0 || h.AvgDisabled > 0 || h.AvgUnavailable > 0 {
+			notRunningSample = append(notRunningSample, h.Hour)
+		}
+		if h.AvgClosed > 0 {
+			closedSample = append(closedSample, h.Hour)
+		}
+		if h.AvgAligned > 0 || h.AvgSparseUpgrade > 0 || h.AvgOpenRELPass > 0 {
+			openSample = append(openSample, h.Hour)
+		}
+		if h.AvgOpenRELFail > 0 || h.AvgRELMissing > 0 || h.AvgRELBelowFloor > 0 || h.AvgRELMultiTier > 0 {
+			relFailSample = append(relFailSample, h.Hour)
+		}
+		if h.AvgNotClosed > 0 {
+			notClosedSample = append(notClosedSample, h.Hour)
+		}
+		if h.AvgBeaconRX > 0 {
+			beaconSample = append(beaconSample, h.Hour)
+		}
+	}
+	if maxHour == "" {
+		return "Sparse p50 VOACAP diagnostics were present, but no activity parsed."
+	}
+	s := fmt.Sprintf("Peak sparse/no-p50 diagnostic volume occurs around %s (avg_total %.1f).", maxHour, maxTotal)
+	if len(noP50Sample) > 0 {
+		s += fmt.Sprintf(" Hours with no usable p50 candidates: %s.", strings.Join(noP50Sample, ", "))
+	}
+	if len(lowCountSample) > 0 {
+		s += fmt.Sprintf(" Hours with very-low-count p50 candidates: %s.", strings.Join(lowCountSample, ", "))
+	}
+	if len(cacheMissSample) > 0 {
+		s += fmt.Sprintf(" Hours where sparse candidates lacked a usable current-hour VOACAP cache hit: %s.", strings.Join(cacheMissSample, ", "))
+	}
+	if len(cacheWaitSample) > 0 {
+		s += fmt.Sprintf(" Hours with queued, delayed, inflight, or stale-hour VOACAP work: %s.", strings.Join(cacheWaitSample, ", "))
+	}
+	if len(invalidSample) > 0 {
+		s += fmt.Sprintf(" Hours blocked by invalid requests or missing SSN: %s.", strings.Join(invalidSample, ", "))
+	}
+	if len(notRunningSample) > 0 {
+		s += fmt.Sprintf(" Hours blocked by worker, queue, disabled, or unavailable VOACAP states: %s.", strings.Join(notRunningSample, ", "))
+	}
+	if len(closedSample) > 0 {
+		s += fmt.Sprintf(" Hours where VOACAP labeled sparse candidates closed: %s.", strings.Join(closedSample, ", "))
+	}
+	if len(openSample) > 0 {
+		s += fmt.Sprintf(" Hours where VOACAP supported open sparse candidates: %s.", strings.Join(openSample, ", "))
+	}
+	if len(relFailSample) > 0 {
+		s += fmt.Sprintf(" Hours where VOACAP open support failed REL or tier guards: %s.", strings.Join(relFailSample, ", "))
+	}
+	if len(notClosedSample) > 0 {
+		s += fmt.Sprintf(" Hours with usable VOACAP that did not classify candidates closed: %s.", strings.Join(notClosedSample, ", "))
+	}
+	if len(beaconSample) > 0 {
+		s += fmt.Sprintf(" Hours including beacon RX-only sparse diagnostics: %s.", strings.Join(beaconSample, ", "))
 	}
 	return s
 }

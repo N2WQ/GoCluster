@@ -230,6 +230,7 @@ Insufficient evidence is shown as:
 
 ```text
 n<count>|<reason>
+n<count>|<reason>|v<voacap-reason>
 ```
 
 VOACAP fallback results are shown as:
@@ -287,6 +288,13 @@ prefixes.
   the configured minimum.
 - `stale` means selected samples existed, but the selected evidence was too old
   for the band's freshness gate.
+- `v*` suffixes on insufficient diagnostics explain VOACAP state for sparse or
+  no-p50 candidates: `vq` queued, `vdly` delayed, `vinf` inflight, `vbad`
+  invalid request, `vssn` SSN unavailable, `vcur` no current-hour cache record,
+  `vqf` queue full, `vnr` worker not running, `vdis` disabled, `vun`
+  unavailable, `vrel` open forecast blocked by REL or tier guards, `vnc`
+  usable forecast that did not classify closed, and `vhit` ready cache hit with
+  no emitted fallback.
 
 The five-minute `Path predictions (5m)` propagation log uses the same reason
 split: `no_sample`, `low_count`, `low_receiver`, `low_weight`, and `stale`.
@@ -311,6 +319,15 @@ When the optional VOACAP fallback has activity, a separate
 Use `Path predictions (5m)` to count final emitted glyphs.
 Use `VOACAP fallback (5m)` to explain why a fallback lookup did or did not
 emit.
+When sparse or no-p50 candidates are present, a separate `Sparse p50 VOACAP
+(5m)` line splits those candidates by p50 evidence (`no_p50`,
+`very_low_count`), path kind (`beacon_rx`, `non_beacon`), cache/work state
+(`cache_miss_total`, `cache_hit`, `queued`, `delayed`, `inflight`,
+`invalid_request`, `ssn_unavailable`, `no_current_hour`, `queue_full`,
+`not_running`, `disabled`, `unavailable`), and outcome (`closed`, `aligned`,
+`sparse_upgrade`, `open_rel_pass`, `open_rel_fail`, `not_closed`,
+`rel_missing`, `rel_below_floor`, `rel_multi_tier`). It is diagnostic only; it
+does not change glyph decisions.
 When sufficient p50 predictions can be compared against an existing current-hour
 VOACAP cache record, a separate `VOACAP p50 compare (5m)` line reports cache
 hits, cache misses, class agreement, stronger/weaker effective SNR, closed
@@ -331,6 +348,10 @@ Example readings:
 - `n0|none`: no usable selected sample.
 - `n3|lown`: three selected observations existed, but not enough to emit a
   path class.
+- `n0|none|vdly`: no usable selected path sample, and VOACAP is still in its
+  configured delay window.
+- `n2|lown|vrel`: very sparse p50 existed, VOACAP had a usable open forecast,
+  but the REL or one-tier guard blocked an open fallback glyph.
 - `n19/c5/rx1|lowr`: nineteen raw observations existed, but only one
   attributed receiver contributed capped evidence.
 - `n19/c5/rx1|w3`: receiver caps reduced diagnostic evidence; raw count is

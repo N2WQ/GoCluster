@@ -13,6 +13,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Placeholder Title | Proposed | YYYY-MM-DD | placeholder area | - | - | `docs/decisions/ADR-0001-placeholder-slug.md` |
+| ADR-0175 | Sparse P50 VOACAP Outcome Diagnostics | Accepted | 2026-06-11 | pathreliability, telnet, voacap, operations, observability, supportability | - | - | `docs/decisions/ADR-0175-sparse-p50-voacap-outcome-diagnostics.md` |
 | ADR-0174 | Beacon RX-Only Path Prediction Semantics | Accepted | 2026-06-11 | pathreliability, telnet, voacap, config, operations, supportability | - | - | `docs/decisions/ADR-0174-beacon-rx-only-path-prediction.md` |
 | ADR-0173 | VOACAP REL-Gated Open Fallback | Accepted | 2026-06-11 | voacap, pathreliability, telnet, operations, supportability | ADR-0161/ADR-0163/ADR-0167/ADR-0168/ADR-0169 fallback and comparison semantics | - | `docs/decisions/ADR-0173-voacap-rel-gated-open-fallback.md` |
 | ADR-0172 | SHOW PROP Worker Refresh And Glyph Columns | Accepted | 2026-06-10 | telnet, voacap, pathreliability, config, commands, supportability | ADR-0171 SHOW PROP command behavior | - | `docs/decisions/ADR-0172-show-prop-worker-refresh-and-glyph-columns.md` |

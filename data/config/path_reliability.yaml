@@ -96,6 +96,8 @@ voacap_fallback:
   reliability_min_medium: 0.80
   reliability_min_low: 0.65
   reliability_min_unlikely: 0.50
+  # Sparse/no-p50 diagnostics include no usable p50 plus insufficient p50 evidence at or below this selected observation count. This does not change glyph decisions.
+  sparse_p50_diagnostic_max_observation_count: 2
 
 # Decay half-life in seconds when no per-band override applies.
 default_half_life_seconds: 420

@@ -171,6 +171,17 @@ VOACAP cache record, `VOACAP p50 compare (5m)` reports cache hits/misses, class
 agreement, stronger/weaker effective SNR, closed-VOACAP versus p50 class, and
 SNR-delta buckets. That comparison is cache-only and does not run VOACAP on
 cache misses.
+When sparse or no-p50 candidates are present, `Sparse p50 VOACAP (5m)` reports
+the diagnostic split for those candidates without changing glyph decisions:
+`no_p50`, `very_low_count`, `beacon_rx`, `non_beacon`,
+`cache_miss_total`, `cache_hit`, `queued`, `delayed`, `inflight`,
+`invalid_request`, `ssn_unavailable`, `no_current_hour`, `queue_full`,
+`not_running`, `disabled`, `unavailable`, `closed`, `aligned`,
+`sparse_upgrade`, `open_rel_pass`, `open_rel_fail`, `not_closed`,
+`rel_missing`, `rel_below_floor`, and `rel_multi_tier`.
+The `sparse_p50_diagnostic_max_observation_count` setting only defines the
+very-low-count diagnostic bucket; it does not relax p50 gates or start more
+VOACAP work.
 
 `SHOW PROP <call|prefix|grid> [band] [mode]` is the on-demand view of the same
 rolling VOACAP horizon. It starts from your saved `SET GRID`, applies your
@@ -229,6 +240,13 @@ current runtime.
 class beacons, `/B` calls, known beacon calls, and beacon comment keywords.
 Their default raw observation floor is `beacon_min_observation_count`, currently
 11, with receiver diversity derived from that floor and the receiver cap.
+
+**Sparse VOACAP suffixes**: `SET DIAG PATH` may append a `v*` suffix to an
+insufficient sparse/no-p50 diagnostic, such as `n0|none|vdly` or
+`n2|lown|vrel`. The suffix explains whether VOACAP was queued, delayed,
+inflight, invalid, missing SSN, missing the current hour, queue-full, not
+running, disabled, unavailable, blocked by REL/tier guards, or usable but not
+closed.
 
 ### Noise Environment Setup
 

@@ -171,6 +171,92 @@ func TestPathPredictionStatsSnapshotBeaconCounters(t *testing.T) {
 	}
 }
 
+func TestPathResultWithClosedFallbackTraceRecordsSparseP50VOACAP(t *testing.T) {
+	cfg := pathreliability.DefaultConfig()
+	cfg.GlyphSymbols.Closed = "!"
+	cfg.VOACAPFallback.ReliabilityGatedOpenEnabled = true
+	predictor := pathreliability.NewPredictor(cfg, []string{"20m"})
+	req := pathreliability.VOACAPClosedRequest{Band: "20m", Mode: "FT8"}
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+
+	t.Run("delayed no p50", func(t *testing.T) {
+		s := &Server{
+			pathPredictor: predictor,
+			pathClosedFallback: detailedPathClosedFallback{
+				check: pathreliability.VOACAPForecastCheck{
+					Status:    pathreliability.VOACAPForecastCheckDelayWait,
+					CacheMiss: true,
+				},
+			},
+		}
+		got, trace := s.pathResultWithClosedFallbackTrace(pathreliability.Result{
+			Source:             pathreliability.SourceInsufficient,
+			InsufficientReason: pathreliability.InsufficientNoSample,
+		}, req, now)
+		if got.Source != pathreliability.SourceInsufficient {
+			t.Fatalf("delayed lookup must not change result: %+v", got)
+		}
+		s.recordSparseP50VOACAPTrace(trace)
+		stats := s.PathPredictionStatsSnapshot().SparseP50VOACAP
+		if stats.Total != 1 || stats.NoP50 != 1 || stats.CacheMissTotal != 1 || stats.Delayed != 1 {
+			t.Fatalf("unexpected delayed sparse stats: %+v", stats)
+		}
+	})
+
+	t.Run("closed very low sparse p50", func(t *testing.T) {
+		s := &Server{
+			pathPredictor: predictor,
+			pathClosedFallback: detailedPathClosedFallback{
+				check: pathreliability.VOACAPForecastCheck{
+					Status: pathreliability.VOACAPForecastCheckReady,
+					Forecast: pathreliability.VOACAPCachedForecast{
+						Record: pathreliability.VOACAPHourlyForecast{FT8SNRDB: -34, HourUTC: 20, FrequencyMHz: 14.1},
+						SSN:    112,
+					},
+				},
+			},
+		}
+		got, trace := s.pathResultWithClosedFallbackTrace(pathreliability.Result{
+			Source:             pathreliability.SourceInsufficient,
+			HasP50:             true,
+			P50DB:              -19,
+			ObservationCount:   2,
+			InsufficientReason: pathreliability.InsufficientLowCount,
+		}, req, now)
+		if got.Source != pathreliability.SourceVOACAPClosed {
+			t.Fatalf("expected closed fallback result, got %+v", got)
+		}
+		s.recordSparseP50VOACAPTrace(trace)
+		stats := s.PathPredictionStatsSnapshot().SparseP50VOACAP
+		if stats.Total != 1 || stats.VeryLowCount != 1 || stats.CacheHit != 1 || stats.Closed != 1 {
+			t.Fatalf("unexpected closed sparse stats: %+v", stats)
+		}
+	})
+
+	t.Run("rel fail no p50", func(t *testing.T) {
+		s := &Server{
+			pathPredictor: predictor,
+			pathClosedFallback: detailedPathClosedFallback{
+				check: pathreliability.VOACAPForecastCheck{
+					Status:   pathreliability.VOACAPForecastCheckReady,
+					Forecast: forecastWithReqSNRReliability(-19, 0.60),
+				},
+			},
+		}
+		got, trace := s.pathResultWithClosedFallbackTrace(pathreliability.Result{
+			Source: pathreliability.SourceInsufficient,
+		}, req, now)
+		if got.Source != pathreliability.SourceInsufficient {
+			t.Fatalf("REL-failed no-p50 forecast must remain insufficient: %+v", got)
+		}
+		s.recordSparseP50VOACAPTrace(trace)
+		stats := s.PathPredictionStatsSnapshot().SparseP50VOACAP
+		if stats.Total != 1 || stats.OpenRELFail != 1 || stats.RELBelowFloor != 1 {
+			t.Fatalf("unexpected REL-fail sparse stats: %+v", stats)
+		}
+	})
+}
+
 func TestPathResultWithClosedFallbackStageStats(t *testing.T) {
 	cfg := pathreliability.DefaultConfig()
 	cfg.MinObservationCount = 2
@@ -644,6 +730,21 @@ func (f *statsPathClosedFallback) StatsSnapshot() pathreliability.VOACAPFallback
 	stats := f.stats
 	f.stats = pathreliability.VOACAPFallbackStats{}
 	return stats
+}
+
+type detailedPathClosedFallback struct {
+	check pathreliability.VOACAPForecastCheck
+}
+
+func (f detailedPathClosedFallback) CheckForecast(pathreliability.VOACAPClosedRequest, time.Time) (pathreliability.VOACAPCachedForecast, bool) {
+	if f.check.Status != pathreliability.VOACAPForecastCheckReady {
+		return pathreliability.VOACAPCachedForecast{}, false
+	}
+	return f.check.Forecast, true
+}
+
+func (f detailedPathClosedFallback) CheckForecastDetailed(pathreliability.VOACAPClosedRequest, time.Time) pathreliability.VOACAPForecastCheck {
+	return f.check
 }
 
 type cacheOnlyPathClosedFallback struct {

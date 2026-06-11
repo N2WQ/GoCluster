@@ -294,6 +294,56 @@ func TestDiagPathTagShowsVOACAPReliabilityGatedFallbacks(t *testing.T) {
 	}
 }
 
+func TestDiagPathTagShowsSparseVOACAPMissReason(t *testing.T) {
+	delayed := pathPrediction{
+		result: pathreliability.Result{
+			Source:             pathreliability.SourceInsufficient,
+			InsufficientReason: pathreliability.InsufficientNoSample,
+		},
+		sparseVOACAPTrace: sparseP50VOACAPTrace{
+			Active:    true,
+			NoP50:     true,
+			Status:    pathreliability.VOACAPForecastCheckDelayWait,
+			CacheMiss: true,
+		},
+	}
+	if got := diagPathTag(delayed, true); got != "n0|none|vdly" {
+		t.Fatalf("unexpected delayed sparse VOACAP diagnostic: %q", got)
+	}
+
+	staleHour := pathPrediction{
+		result: pathreliability.Result{
+			Source:             pathreliability.SourceInsufficient,
+			InsufficientReason: pathreliability.InsufficientNoSample,
+		},
+		sparseVOACAPTrace: sparseP50VOACAPTrace{
+			Active:        true,
+			NoP50:         true,
+			Status:        pathreliability.VOACAPForecastCheckDelayWait,
+			CacheMiss:     true,
+			NoCurrentHour: true,
+		},
+	}
+	if got := diagPathTag(staleHour, true); got != "n0|none|vcur" {
+		t.Fatalf("unexpected no-current-hour sparse VOACAP diagnostic: %q", got)
+	}
+
+	relFail := pathPrediction{
+		result: pathreliability.Result{
+			Source: pathreliability.SourceInsufficient,
+		},
+		sparseVOACAPTrace: sparseP50VOACAPTrace{
+			Active:  true,
+			NoP50:   true,
+			Status:  pathreliability.VOACAPForecastCheckReady,
+			Outcome: sparseP50VOACAPOutcomeOpenRELFail,
+		},
+	}
+	if got := diagPathTag(relFail, true); got != "n0|none|vrel" {
+		t.Fatalf("unexpected REL-failed sparse VOACAP diagnostic: %q", got)
+	}
+}
+
 func TestDiagPathTagShowsBeaconRXProvenance(t *testing.T) {
 	p50 := pathPrediction{
 		result: pathreliability.Result{

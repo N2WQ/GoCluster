@@ -1586,6 +1586,38 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 						humanize.Comma(stats.VOACAPFallbackReliabilityMultiTier),
 					))
 				}
+				sparse := stats.SparseP50VOACAP
+				if sparse.HasActivity() {
+					fileOnly(fmt.Sprintf(
+						"Sparse p50 VOACAP (5m): total=%s no_p50=%s very_low_count=%s beacon_rx=%s non_beacon=%s cache_miss_total=%s cache_hit=%s queued=%s delayed=%s inflight=%s invalid_request=%s ssn_unavailable=%s no_current_hour=%s queue_full=%s not_running=%s disabled=%s unavailable=%s closed=%s aligned=%s sparse_upgrade=%s open_rel_pass=%s open_rel_fail=%s not_closed=%s rel_missing=%s rel_below_floor=%s rel_multi_tier=%s",
+						humanize.Comma(sparse.Total),
+						humanize.Comma(sparse.NoP50),
+						humanize.Comma(sparse.VeryLowCount),
+						humanize.Comma(sparse.BeaconRX),
+						humanize.Comma(sparse.NonBeacon),
+						humanize.Comma(sparse.CacheMissTotal),
+						humanize.Comma(sparse.CacheHit),
+						humanize.Comma(sparse.Queued),
+						humanize.Comma(sparse.Delayed),
+						humanize.Comma(sparse.Inflight),
+						humanize.Comma(sparse.InvalidRequest),
+						humanize.Comma(sparse.SSNUnavailable),
+						humanize.Comma(sparse.NoCurrentHour),
+						humanize.Comma(sparse.QueueFull),
+						humanize.Comma(sparse.NotRunning),
+						humanize.Comma(sparse.Disabled),
+						humanize.Comma(sparse.Unavailable),
+						humanize.Comma(sparse.Closed),
+						humanize.Comma(sparse.Aligned),
+						humanize.Comma(sparse.SparseUpgrade),
+						humanize.Comma(sparse.OpenRELPass),
+						humanize.Comma(sparse.OpenRELFail),
+						humanize.Comma(sparse.NotClosed),
+						humanize.Comma(sparse.RELMissing),
+						humanize.Comma(sparse.RELBelowFloor),
+						humanize.Comma(sparse.RELMultiTier),
+					))
+				}
 				if stats.VOACAPP50CompareChecked != 0 {
 					fileOnly(fmt.Sprintf(
 						"VOACAP p50 compare (5m): checked=%s cache_hit=%s cache_miss=%s same_class=%s p50_stronger=%s voacap_stronger=%s equal_snr=%s voacap_closed_p50_high=%s voacap_closed_p50_medium=%s voacap_closed_p50_low=%s voacap_closed_p50_unlikely=%s delta_abs_0_3=%s delta_abs_4_9=%s delta_abs_10_19=%s delta_abs_20_plus=%s",

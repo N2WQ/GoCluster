@@ -150,6 +150,17 @@ reports cache hit/miss counts, class agreement, stronger/weaker effective SNR,
 closed-VOACAP versus p50 class splits, and absolute SNR-delta buckets. This
 comparison is cache-only and does not enqueue VOACAP work or change emitted
 glyphs. Beacon RX-only p50 results do not enter this bidirectional comparison.
+When sparse or no-p50 candidates are present, a separate `Sparse p50 VOACAP
+(5m)` line reports the diagnostic split for those candidates without changing
+glyph decisions: `no_p50`, `very_low_count`, `beacon_rx`, `non_beacon`,
+`cache_miss_total`, `cache_hit`, `queued`, `delayed`, `inflight`,
+`invalid_request`, `ssn_unavailable`, `no_current_hour`, `queue_full`,
+`not_running`, `disabled`, `unavailable`, `closed`, `aligned`,
+`sparse_upgrade`, `open_rel_pass`, `open_rel_fail`, `not_closed`,
+`rel_missing`, `rel_below_floor`, and `rel_multi_tier`.
+`sparse_p50_diagnostic_max_observation_count` only controls the diagnostic
+very-low-count bucket and does not relax prediction gates or enqueue additional
+VOACAP work.
 
 When `voacap_fallback.enabled` is true, insufficient bucket results may start a
 delayed VOACAP lookup. The lookup is nonblocking in the telnet path. Cached
@@ -183,6 +194,12 @@ does not apply `reverse_hint_discount`, and uses
 insufficient, VOACAP fallback classifies and REL-gates on the receive leg
 instead of the bidirectional effective SNR. Display glyphs and PATH filters use
 the same beacon RX-only result.
+`SET DIAG PATH` may append a compact sparse VOACAP suffix to insufficient
+diagnostics, such as `n0|none|vdly` or `n2|lown|vrel`. The suffix explains the
+VOACAP state for sparse/no-p50 candidates: queued, delayed, inflight, invalid
+request, missing SSN, no current-hour cache record, queue full, worker not
+running, disabled, unavailable, REL/tier guard failure, or usable VOACAP that
+did not classify the candidate closed.
 
 `SHOW PROP <call|prefix|grid> [band] [mode]` exposes those cached hourly
 VOACAP records directly as a point-to-point outlook from the user's grid to the

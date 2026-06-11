@@ -30,6 +30,12 @@ type ClosedFallback interface {
 	CheckForecast(req VOACAPClosedRequest, now time.Time) (VOACAPCachedForecast, bool)
 }
 
+// DetailedForecastProvider exposes the same nonblocking lookup with the reason
+// a current-hour forecast was not returned.
+type DetailedForecastProvider interface {
+	CheckForecastDetailed(req VOACAPClosedRequest, now time.Time) VOACAPForecastCheck
+}
+
 // CachedForecastProvider exposes an observation-only cache lookup for
 // comparison diagnostics. Implementations must not enqueue VOACAP work, update
 // delay windows, or mutate fallback stage counters from this method.
@@ -272,6 +278,57 @@ const (
 	VOACAPForecastWindowFailed
 )
 
+type VOACAPForecastCheckStatus uint8
+
+const (
+	VOACAPForecastCheckDisabled VOACAPForecastCheckStatus = iota
+	VOACAPForecastCheckReady
+	VOACAPForecastCheckInvalidRequest
+	VOACAPForecastCheckSSNUnavailable
+	VOACAPForecastCheckNoCurrentHour
+	VOACAPForecastCheckInflight
+	VOACAPForecastCheckDelayWait
+	VOACAPForecastCheckNotRunning
+	VOACAPForecastCheckQueueFull
+	VOACAPForecastCheckQueued
+	VOACAPForecastCheckUnavailable
+	VOACAPForecastCheckStatusCount
+)
+
+func (s VOACAPForecastCheckStatus) String() string {
+	switch s {
+	case VOACAPForecastCheckDisabled:
+		return "disabled"
+	case VOACAPForecastCheckReady:
+		return "ready"
+	case VOACAPForecastCheckInvalidRequest:
+		return "invalid_request"
+	case VOACAPForecastCheckSSNUnavailable:
+		return "ssn_unavailable"
+	case VOACAPForecastCheckNoCurrentHour:
+		return "no_current_hour"
+	case VOACAPForecastCheckInflight:
+		return "inflight"
+	case VOACAPForecastCheckDelayWait:
+		return "delay_wait"
+	case VOACAPForecastCheckNotRunning:
+		return "not_running"
+	case VOACAPForecastCheckQueueFull:
+		return "queue_full"
+	case VOACAPForecastCheckQueued:
+		return "queued"
+	default:
+		return "unavailable"
+	}
+}
+
+type VOACAPForecastCheck struct {
+	Forecast      VOACAPCachedForecast
+	Status        VOACAPForecastCheckStatus
+	CacheMiss     bool
+	NoCurrentHour bool
+}
+
 type VOACAPClosedFallbackSnapshot struct {
 	CacheEntries    int
 	DelayEntries    int
@@ -471,8 +528,16 @@ func (f *VOACAPClosedFallback) CheckClosed(req VOACAPClosedRequest, now time.Tim
 }
 
 func (f *VOACAPClosedFallback) CheckForecast(req VOACAPClosedRequest, now time.Time) (VOACAPCachedForecast, bool) {
-	if f == nil || !f.fallback.Enabled {
+	check := f.CheckForecastDetailed(req, now)
+	if check.Status != VOACAPForecastCheckReady {
 		return VOACAPCachedForecast{}, false
+	}
+	return check.Forecast, true
+}
+
+func (f *VOACAPClosedFallback) CheckForecastDetailed(req VOACAPClosedRequest, now time.Time) VOACAPForecastCheck {
+	if f == nil || !f.fallback.Enabled {
+		return VOACAPForecastCheck{Status: VOACAPForecastCheckDisabled}
 	}
 	if now.IsZero() {
 		now = time.Now().UTC()
@@ -481,15 +546,16 @@ func (f *VOACAPClosedFallback) CheckForecast(req VOACAPClosedRequest, now time.T
 	prepared, ok := f.prepareRequest(req)
 	if !ok {
 		f.statsInvalidRequest.Add(1)
-		return VOACAPCachedForecast{}, false
+		return VOACAPForecastCheck{Status: VOACAPForecastCheckInvalidRequest}
 	}
 	ssn, ok := f.ssnProvider.CurrentSSN(now)
 	if !ok {
 		f.statsSSNUnavailable.Add(1)
-		return VOACAPCachedForecast{}, false
+		return VOACAPForecastCheck{Status: VOACAPForecastCheckSSNUnavailable}
 	}
 	key := f.cacheKey(prepared, ssn, now)
 	delayKey := f.delayKey(prepared)
+	noCurrentHour := false
 
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -502,27 +568,31 @@ func (f *VOACAPClosedFallback) CheckForecast(req VOACAPClosedRequest, now time.T
 			if !ok {
 				f.statsNoCurrentHour.Add(1)
 				delete(f.cache, key)
+				noCurrentHour = true
 			} else {
 				f.statsCacheHit.Add(1)
-				return f.cachedForecastFromCache(key, entry, record, prepared, now), true
+				return VOACAPForecastCheck{
+					Forecast: f.cachedForecastFromCache(key, entry, record, prepared, now),
+					Status:   VOACAPForecastCheckReady,
+				}
 			}
 		}
 	}
 	if _, ok := f.inflight[key]; ok {
 		f.statsInflight.Add(1)
-		return VOACAPCachedForecast{}, false
+		return VOACAPForecastCheck{Status: VOACAPForecastCheckInflight, CacheMiss: true, NoCurrentHour: noCurrentHour}
 	}
 	if !f.delayElapsedLocked(delayKey, now) {
 		f.statsDelayWait.Add(1)
-		return VOACAPCachedForecast{}, false
+		return VOACAPForecastCheck{Status: VOACAPForecastCheckDelayWait, CacheMiss: true, NoCurrentHour: noCurrentHour}
 	}
 	if !f.running.Load() {
 		f.statsNotRunning.Add(1)
-		return VOACAPCachedForecast{}, false
+		return VOACAPForecastCheck{Status: VOACAPForecastCheckNotRunning, CacheMiss: true, NoCurrentHour: noCurrentHour}
 	}
 	if len(f.queue) >= cap(f.queue) {
 		f.statsQueueFull.Add(1)
-		return VOACAPCachedForecast{}, false
+		return VOACAPForecastCheck{Status: VOACAPForecastCheckQueueFull, CacheMiss: true, NoCurrentHour: noCurrentHour}
 	}
 	job := VOACAPClosedJob{
 		Request:        prepared,
@@ -536,7 +606,7 @@ func (f *VOACAPClosedFallback) CheckForecast(req VOACAPClosedRequest, now time.T
 	delete(f.delays, delayKey)
 	f.statsQueued.Add(1)
 	f.queue <- job
-	return VOACAPCachedForecast{}, false
+	return VOACAPForecastCheck{Status: VOACAPForecastCheckQueued, CacheMiss: true, NoCurrentHour: noCurrentHour}
 }
 
 // CheckForecastWindow returns the cached rolling forecast horizon for req, or

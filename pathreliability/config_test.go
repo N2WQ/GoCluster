@@ -145,6 +145,9 @@ func TestLoadFileReadsClosedGlyphAndVOACAPFallback(t *testing.T) {
 		cfg.VOACAPFallback.ReliabilityMinUnlikely != 0.50 {
 		t.Fatalf("unexpected REL gates in shipped config: %+v", cfg.VOACAPFallback)
 	}
+	if cfg.VOACAPFallback.SparseP50DiagnosticMaxObservationCount != 2 {
+		t.Fatalf("sparse p50 diagnostic max observation count = %d, want 2", cfg.VOACAPFallback.SparseP50DiagnosticMaxObservationCount)
+	}
 	if cfg.BeaconMinObservationCount != 11 {
 		t.Fatalf("beacon min observation count = %d, want 11", cfg.BeaconMinObservationCount)
 	}
@@ -375,6 +378,7 @@ func TestLoadFileRejectsMissingRequiredYAMLSettings(t *testing.T) {
 		{name: "voacap rel medium", path: []string{"voacap_fallback", "reliability_min_medium"}, want: "voacap_fallback.reliability_min_medium"},
 		{name: "voacap rel low", path: []string{"voacap_fallback", "reliability_min_low"}, want: "voacap_fallback.reliability_min_low"},
 		{name: "voacap rel unlikely", path: []string{"voacap_fallback", "reliability_min_unlikely"}, want: "voacap_fallback.reliability_min_unlikely"},
+		{name: "voacap sparse diagnostic count", path: []string{"voacap_fallback", "sparse_p50_diagnostic_max_observation_count"}, want: "voacap_fallback.sparse_p50_diagnostic_max_observation_count"},
 		{name: "ft4 offset", path: []string{"mode_offsets", "ft4"}, want: "mode_offsets.ft4"},
 		{name: "noise offsets", path: []string{"noise_offsets"}, want: "noise_offsets"},
 	}
@@ -510,6 +514,7 @@ func TestLoadFileRejectsInvalidVOACAPFallbackBounds(t *testing.T) {
 		{name: "invalid closed threshold ordering", body: "mode_thresholds:\n  ft8:\n    closed: -24\n", want: "mode_thresholds.ft8"},
 		{name: "rel high too large", body: "voacap_fallback:\n  reliability_min_high: 1.2\n", want: "voacap_fallback.reliability_min_high"},
 		{name: "rel ordering", body: "voacap_fallback:\n  reliability_min_high: 0.70\n  reliability_min_medium: 0.80\n", want: "reliability thresholds"},
+		{name: "sparse diagnostic count negative", body: "voacap_fallback:\n  sparse_p50_diagnostic_max_observation_count: -1\n", want: "voacap_fallback.sparse_p50_diagnostic_max_observation_count"},
 		{name: "removed closed base", body: "voacap_fallback:\n  closed_base_ft8_snr_db: -24\n", want: "voacap_fallback.closed_base_ft8_snr_db"},
 		{name: "removed closed margin", body: "voacap_fallback:\n  closed_safety_margin_db: 5\n", want: "voacap_fallback.closed_safety_margin_db"},
 	}

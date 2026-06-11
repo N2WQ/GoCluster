@@ -59,6 +59,42 @@ func TestParsePredictionTotalsWithAndWithoutStale(t *testing.T) {
 	}
 }
 
+func TestParseSparseP50VOACAPTotals(t *testing.T) {
+	line := "2026/04/20 12:00:00 Sparse p50 VOACAP (5m): total=10 no_p50=6 very_low_count=4 beacon_rx=1 non_beacon=9 cache_miss_total=3 cache_hit=7 queued=1 delayed=2 inflight=3 invalid_request=4 ssn_unavailable=5 no_current_hour=6 queue_full=7 not_running=8 disabled=9 unavailable=10 closed=11 aligned=12 sparse_upgrade=13 open_rel_pass=14 open_rel_fail=15 not_closed=16 rel_missing=17 rel_below_floor=18 rel_multi_tier=19"
+	got, ok := parseSparseP50VOACAPTotals(line)
+	if !ok {
+		t.Fatalf("expected sparse p50 VOACAP totals to parse")
+	}
+	if got.Total != 10 ||
+		got.NoP50 != 6 ||
+		got.VeryLowCount != 4 ||
+		got.BeaconRX != 1 ||
+		got.NonBeacon != 9 ||
+		got.CacheMissTotal != 3 ||
+		got.CacheHit != 7 ||
+		got.Queued != 1 ||
+		got.Delayed != 2 ||
+		got.Inflight != 3 ||
+		got.InvalidRequest != 4 ||
+		got.SSNUnavailable != 5 ||
+		got.NoCurrentHour != 6 ||
+		got.QueueFull != 7 ||
+		got.NotRunning != 8 ||
+		got.Disabled != 9 ||
+		got.Unavailable != 10 ||
+		got.Closed != 11 ||
+		got.Aligned != 12 ||
+		got.SparseUpgrade != 13 ||
+		got.OpenRELPass != 14 ||
+		got.OpenRELFail != 15 ||
+		got.NotClosed != 16 ||
+		got.RELMissing != 17 ||
+		got.RELBelowFloor != 18 ||
+		got.RELMultiTier != 19 {
+		t.Fatalf("unexpected sparse p50 VOACAP totals: %+v", got)
+	}
+}
+
 func TestParseCapShadowTotals(t *testing.T) {
 	line := "2026/04/20 12:00:00 Path cap shadow (5m): total=1,200 cap5_pass=10 cap5_low_count=20 cap5_low_receiver=25 cap5_low_weight=30 cap5_block=40 cap6_pass=50 cap6_low_count=60 cap6_low_receiver=65 cap6_low_weight=70 cap6_block=80 cap8_pass=90 cap8_low_count=100 cap8_low_receiver=105 cap8_low_weight=110 cap8_block=120"
 	got, ok := parseCapShadowTotals(line)
@@ -95,6 +131,7 @@ func TestParseCapP50ShadowTotals(t *testing.T) {
 
 func FuzzParsePathPredictionLogTotals(f *testing.F) {
 	f.Add("2026/04/20 12:00:00 Path predictions (5m): total=1,200 derived=5 combined=700 voacap_closed=20 voacap_aligned=12 voacap_sparse_upgrade=7 voacap_open=9 insufficient=500 no_sample=300 low_count=75 low_receiver=25 low_weight=50 stale=50 cap_limited=25 cap_would_block=10 beacon_rx=40 beacon_rx_insufficient=15 beacon_rx_no_sample=5 beacon_rx_low_count=4 beacon_rx_low_receiver=3 beacon_rx_low_weight=2 beacon_rx_stale=1 beacon_rx_voacap_closed=6 beacon_rx_voacap_aligned=7 beacon_rx_voacap_sparse_upgrade=8 beacon_rx_voacap_open=9 override_r=0 override_g=0")
+	f.Add("2026/04/20 12:00:00 Sparse p50 VOACAP (5m): total=10 no_p50=6 very_low_count=4 beacon_rx=1 non_beacon=9 cache_miss_total=3 cache_hit=7 queued=1 delayed=2 inflight=0 invalid_request=0 ssn_unavailable=0 no_current_hour=0 queue_full=0 not_running=0 disabled=0 unavailable=0 closed=2 aligned=1 sparse_upgrade=1 open_rel_pass=2 open_rel_fail=1 not_closed=0 rel_missing=1 rel_below_floor=0 rel_multi_tier=0")
 	f.Add("2026/04/20 12:00:00 Path cap shadow (5m): total=1,200 cap5_pass=10 cap5_low_count=20 cap5_low_receiver=25 cap5_low_weight=30 cap5_block=40 cap6_pass=50 cap6_low_count=60 cap6_low_receiver=65 cap6_low_weight=70 cap6_block=80 cap8_pass=90 cap8_low_count=100 cap8_low_receiver=105 cap8_low_weight=110 cap8_block=120")
 	f.Add("2026/04/20 12:00:00 Path cap p50 shadow (5m): total=1,200 cap5_p50_pass_unlikely=1 cap5_p50_pass_low=2 cap5_p50_pass_medium=3 cap5_p50_pass_high=4 cap5_p50_same=5 cap5_p50_stronger=6 cap5_p50_weaker=7 cap5_p50_to_insufficient=8")
 	f.Add("")
@@ -103,6 +140,7 @@ func FuzzParsePathPredictionLogTotals(f *testing.F) {
 			t.Skip()
 		}
 		_, _ = parsePredictionTotals(line)
+		_, _ = parseSparseP50VOACAPTotals(line)
 		_, _ = parseCapShadowTotals(line)
 		_, _ = parseCapP50ShadowTotals(line)
 	})
@@ -136,6 +174,50 @@ func TestPredictionActivitySummarySeparatesCountAndWeightLimits(t *testing.T) {
 	}
 	if !strings.Contains(got, "Hours with insufficient beacon RX-only p50 evidence: 02:00") {
 		t.Fatalf("expected beacon RX insufficiency summary, got %q", got)
+	}
+}
+
+func TestSparseP50VOACAPActivitySummary(t *testing.T) {
+	got := sparseP50VOACAPActivitySummary([]sparseP50VOACAPHour{
+		{
+			Hour:              "01:00",
+			AvgTotal:          10,
+			AvgNoP50:          6,
+			AvgVeryLowCount:   4,
+			AvgBeaconRX:       1,
+			AvgCacheMissTotal: 3,
+			AvgQueued:         1,
+			AvgDelayed:        2,
+			AvgClosed:         2,
+			AvgOpenRELPass:    1,
+			AvgOpenRELFail:    1,
+			AvgRELMissing:     1,
+		},
+		{
+			Hour:              "02:00",
+			AvgTotal:          5,
+			AvgInvalidRequest: 1,
+			AvgNotRunning:     1,
+			AvgNotClosed:      2,
+		},
+	})
+	for _, want := range []string{
+		"Peak sparse/no-p50 diagnostic volume occurs around 01:00",
+		"Hours with no usable p50 candidates: 01:00",
+		"Hours with very-low-count p50 candidates: 01:00",
+		"Hours where sparse candidates lacked a usable current-hour VOACAP cache hit: 01:00",
+		"Hours with queued, delayed, inflight, or stale-hour VOACAP work: 01:00",
+		"Hours blocked by invalid requests or missing SSN: 02:00",
+		"Hours blocked by worker, queue, disabled, or unavailable VOACAP states: 02:00",
+		"Hours where VOACAP labeled sparse candidates closed: 01:00",
+		"Hours where VOACAP supported open sparse candidates: 01:00",
+		"Hours where VOACAP open support failed REL or tier guards: 01:00",
+		"Hours with usable VOACAP that did not classify candidates closed: 02:00",
+		"Hours including beacon RX-only sparse diagnostics: 01:00",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected %q in sparse summary, got %q", want, got)
+		}
 	}
 }
 

@@ -311,16 +311,27 @@ type Server struct {
 	vP50CompareDeltaAbs4To9             atomic.Int64                               // Absolute p50-vs-VOACAP SNR delta was 4..9 dB
 	vP50CompareDeltaAbs10To19           atomic.Int64                               // Absolute p50-vs-VOACAP SNR delta was 10..19 dB
 	vP50CompareDeltaAbs20Plus           atomic.Int64                               // Absolute p50-vs-VOACAP SNR delta was >=20 dB
-	pathPredInsufficient                atomic.Uint64                              // Predictions with insufficient data
-	pathPredNoSample                    atomic.Uint64                              // Insufficient predictions with no samples
-	pathPredLowCount                    atomic.Uint64                              // Insufficient predictions below min observation count
-	pathPredLowReceiver                 atomic.Uint64                              // Insufficient predictions below receiver-diversity gate
-	pathPredLowWeight                   atomic.Uint64                              // Insufficient predictions below min weight
-	pathPredStale                       atomic.Uint64                              // Insufficient predictions with stale selected evidence
-	pathPredCapLimited                  atomic.Uint64                              // Predictions where receiver caps reduced diagnostic evidence
-	pathPredCapWouldBlock               atomic.Uint64                              // Shadow predictions that receiver caps would block
-	pathPredOverrideR                   atomic.Uint64                              // R overrides applied
-	pathPredOverrideG                   atomic.Uint64                              // G overrides applied
+	sparseP50VOACAPTotal                atomic.Int64                               // Sparse/no-p50 base predictions checked against VOACAP fallback
+	sparseP50VOACAPNoP50                atomic.Int64                               // Sparse diagnostics with no usable p50
+	sparseP50VOACAPVeryLowCount         atomic.Int64                               // Sparse diagnostics with very low selected observation count
+	sparseP50VOACAPBeaconRX             atomic.Int64                               // Sparse diagnostics for beacon RX-only paths
+	sparseP50VOACAPCacheMiss            atomic.Int64                               // Sparse diagnostics without a usable current-hour VOACAP cache hit
+	sparseP50VOACAPNoCurrentHour        atomic.Int64                               // Sparse diagnostics where an existing cache entry lacked the requested hour
+	sparseP50VOACAPStatus               [pathreliability.VOACAPForecastCheckStatusCount]atomic.Int64
+	sparseP50VOACAPOutcome              [sparseP50VOACAPOutcomeCount]atomic.Int64
+	sparseP50VOACAPRELMissing           atomic.Int64  // Sparse diagnostics blocked by missing VOACAP REL
+	sparseP50VOACAPRELBelow             atomic.Int64  // Sparse diagnostics blocked by below-floor VOACAP REL
+	sparseP50VOACAPRELMultiTier         atomic.Int64  // Sparse diagnostics blocked by multi-tier VOACAP disagreement
+	pathPredInsufficient                atomic.Uint64 // Predictions with insufficient data
+	pathPredNoSample                    atomic.Uint64 // Insufficient predictions with no samples
+	pathPredLowCount                    atomic.Uint64 // Insufficient predictions below min observation count
+	pathPredLowReceiver                 atomic.Uint64 // Insufficient predictions below receiver-diversity gate
+	pathPredLowWeight                   atomic.Uint64 // Insufficient predictions below min weight
+	pathPredStale                       atomic.Uint64 // Insufficient predictions with stale selected evidence
+	pathPredCapLimited                  atomic.Uint64 // Predictions where receiver caps reduced diagnostic evidence
+	pathPredCapWouldBlock               atomic.Uint64 // Shadow predictions that receiver caps would block
+	pathPredOverrideR                   atomic.Uint64 // R overrides applied
+	pathPredOverrideG                   atomic.Uint64 // G overrides applied
 }
 
 // Client represents a connected telnet client session.
@@ -2962,6 +2973,7 @@ type pathPredictionStats struct {
 	VOACAPP50CompareDeltaAbs4To9       int64
 	VOACAPP50CompareDeltaAbs10To19     int64
 	VOACAPP50CompareDeltaAbs20Plus     int64
+	SparseP50VOACAP                    sparseP50VOACAPStats
 	Insufficient                       uint64
 	NoSample                           uint64
 	LowCount                           uint64
@@ -2972,6 +2984,84 @@ type pathPredictionStats struct {
 	CapWouldBlock                      uint64
 	OverrideR                          uint64
 	OverrideG                          uint64
+}
+
+type sparseP50VOACAPOutcome uint8
+
+const (
+	sparseP50VOACAPOutcomeNone sparseP50VOACAPOutcome = iota
+	sparseP50VOACAPOutcomeClosed
+	sparseP50VOACAPOutcomeAligned
+	sparseP50VOACAPOutcomeSparseUpgrade
+	sparseP50VOACAPOutcomeOpenRELPass
+	sparseP50VOACAPOutcomeOpenRELFail
+	sparseP50VOACAPOutcomeNotClosed
+	sparseP50VOACAPOutcomeCount
+)
+
+type sparseP50VOACAPTrace struct {
+	Active        bool
+	NoP50         bool
+	VeryLowCount  bool
+	BeaconRX      bool
+	Status        pathreliability.VOACAPForecastCheckStatus
+	CacheMiss     bool
+	NoCurrentHour bool
+	Outcome       sparseP50VOACAPOutcome
+	RELMissing    bool
+	RELBelow      bool
+	RELMultiTier  bool
+}
+
+type sparseP50VOACAPStats struct {
+	Total          int64
+	NoP50          int64
+	VeryLowCount   int64
+	BeaconRX       int64
+	NonBeacon      int64
+	CacheMissTotal int64
+	CacheHit       int64
+	Queued         int64
+	Delayed        int64
+	Inflight       int64
+	InvalidRequest int64
+	SSNUnavailable int64
+	NoCurrentHour  int64
+	QueueFull      int64
+	NotRunning     int64
+	Disabled       int64
+	Unavailable    int64
+	Closed         int64
+	Aligned        int64
+	SparseUpgrade  int64
+	OpenRELPass    int64
+	OpenRELFail    int64
+	NotClosed      int64
+	RELMissing     int64
+	RELBelowFloor  int64
+	RELMultiTier   int64
+}
+
+func (s sparseP50VOACAPStats) HasActivity() bool {
+	return s.Total != 0 ||
+		s.CacheMissTotal != 0 ||
+		s.CacheHit != 0 ||
+		s.Queued != 0 ||
+		s.Delayed != 0 ||
+		s.Inflight != 0 ||
+		s.InvalidRequest != 0 ||
+		s.SSNUnavailable != 0 ||
+		s.NoCurrentHour != 0 ||
+		s.QueueFull != 0 ||
+		s.NotRunning != 0 ||
+		s.Disabled != 0 ||
+		s.Unavailable != 0 ||
+		s.Closed != 0 ||
+		s.Aligned != 0 ||
+		s.SparseUpgrade != 0 ||
+		s.OpenRELPass != 0 ||
+		s.OpenRELFail != 0 ||
+		s.NotClosed != 0
 }
 
 func (s *Server) recordPathPrediction(res pathreliability.Result, userDerived, dxDerived bool) {
@@ -3061,6 +3151,45 @@ func (s *Server) recordPathPrediction(res pathreliability.Result, userDerived, d
 	}
 }
 
+func (s *Server) recordSparseP50VOACAPTrace(trace sparseP50VOACAPTrace) {
+	if s == nil || !trace.Active {
+		return
+	}
+	s.sparseP50VOACAPTotal.Add(1)
+	if trace.NoP50 {
+		s.sparseP50VOACAPNoP50.Add(1)
+	}
+	if trace.VeryLowCount {
+		s.sparseP50VOACAPVeryLowCount.Add(1)
+	}
+	if trace.BeaconRX {
+		s.sparseP50VOACAPBeaconRX.Add(1)
+	}
+	if trace.CacheMiss {
+		s.sparseP50VOACAPCacheMiss.Add(1)
+	}
+	if trace.NoCurrentHour {
+		s.sparseP50VOACAPNoCurrentHour.Add(1)
+	}
+	status := trace.Status
+	if status >= pathreliability.VOACAPForecastCheckStatusCount {
+		status = pathreliability.VOACAPForecastCheckUnavailable
+	}
+	s.sparseP50VOACAPStatus[int(status)].Add(1)
+	if trace.Outcome > sparseP50VOACAPOutcomeNone && trace.Outcome < sparseP50VOACAPOutcomeCount {
+		s.sparseP50VOACAPOutcome[int(trace.Outcome)].Add(1)
+	}
+	if trace.RELMissing {
+		s.sparseP50VOACAPRELMissing.Add(1)
+	}
+	if trace.RELBelow {
+		s.sparseP50VOACAPRELBelow.Add(1)
+	}
+	if trace.RELMultiTier {
+		s.sparseP50VOACAPRELMultiTier.Add(1)
+	}
+}
+
 func (s *Server) PathPredictionStatsSnapshot() pathPredictionStats {
 	if s == nil {
 		return pathPredictionStats{}
@@ -3114,6 +3243,7 @@ func (s *Server) PathPredictionStatsSnapshot() pathPredictionStats {
 		VOACAPP50CompareDeltaAbs4To9:       s.vP50CompareDeltaAbs4To9.Swap(0),
 		VOACAPP50CompareDeltaAbs10To19:     s.vP50CompareDeltaAbs10To19.Swap(0),
 		VOACAPP50CompareDeltaAbs20Plus:     s.vP50CompareDeltaAbs20Plus.Swap(0),
+		SparseP50VOACAP:                    s.sparseP50VOACAPStatsSnapshot(),
 		Insufficient:                       s.pathPredInsufficient.Swap(0),
 		NoSample:                           s.pathPredNoSample.Swap(0),
 		LowCount:                           s.pathPredLowCount.Swap(0),
@@ -3127,6 +3257,59 @@ func (s *Server) PathPredictionStatsSnapshot() pathPredictionStats {
 	}
 	if provider, ok := s.pathClosedFallback.(pathreliability.ClosedFallbackStatsProvider); ok {
 		stats.VOACAPFallback = provider.StatsSnapshot()
+	}
+	return stats
+}
+
+func (s *Server) sparseP50VOACAPStatsSnapshot() sparseP50VOACAPStats {
+	if s == nil {
+		return sparseP50VOACAPStats{}
+	}
+	status := func(st pathreliability.VOACAPForecastCheckStatus) int64 {
+		idx := int(st)
+		if idx < 0 || idx >= len(s.sparseP50VOACAPStatus) {
+			idx = int(pathreliability.VOACAPForecastCheckUnavailable)
+		}
+		return s.sparseP50VOACAPStatus[idx].Swap(0)
+	}
+	outcome := func(out sparseP50VOACAPOutcome) int64 {
+		idx := int(out)
+		if idx < 0 || idx >= len(s.sparseP50VOACAPOutcome) {
+			idx = int(sparseP50VOACAPOutcomeNone)
+		}
+		return s.sparseP50VOACAPOutcome[idx].Swap(0)
+	}
+	cacheHit := status(pathreliability.VOACAPForecastCheckReady)
+	stats := sparseP50VOACAPStats{
+		Total:          s.sparseP50VOACAPTotal.Swap(0),
+		NoP50:          s.sparseP50VOACAPNoP50.Swap(0),
+		VeryLowCount:   s.sparseP50VOACAPVeryLowCount.Swap(0),
+		BeaconRX:       s.sparseP50VOACAPBeaconRX.Swap(0),
+		CacheMissTotal: s.sparseP50VOACAPCacheMiss.Swap(0),
+		CacheHit:       cacheHit,
+		Queued:         status(pathreliability.VOACAPForecastCheckQueued),
+		Delayed:        status(pathreliability.VOACAPForecastCheckDelayWait),
+		Inflight:       status(pathreliability.VOACAPForecastCheckInflight),
+		InvalidRequest: status(pathreliability.VOACAPForecastCheckInvalidRequest),
+		SSNUnavailable: status(pathreliability.VOACAPForecastCheckSSNUnavailable),
+		NoCurrentHour:  s.sparseP50VOACAPNoCurrentHour.Swap(0) + status(pathreliability.VOACAPForecastCheckNoCurrentHour),
+		QueueFull:      status(pathreliability.VOACAPForecastCheckQueueFull),
+		NotRunning:     status(pathreliability.VOACAPForecastCheckNotRunning),
+		Disabled:       status(pathreliability.VOACAPForecastCheckDisabled),
+		Unavailable:    status(pathreliability.VOACAPForecastCheckUnavailable),
+		Closed:         outcome(sparseP50VOACAPOutcomeClosed),
+		Aligned:        outcome(sparseP50VOACAPOutcomeAligned),
+		SparseUpgrade:  outcome(sparseP50VOACAPOutcomeSparseUpgrade),
+		OpenRELPass:    outcome(sparseP50VOACAPOutcomeOpenRELPass),
+		OpenRELFail:    outcome(sparseP50VOACAPOutcomeOpenRELFail),
+		NotClosed:      outcome(sparseP50VOACAPOutcomeNotClosed),
+		RELMissing:     s.sparseP50VOACAPRELMissing.Swap(0),
+		RELBelowFloor:  s.sparseP50VOACAPRELBelow.Swap(0),
+		RELMultiTier:   s.sparseP50VOACAPRELMultiTier.Swap(0),
+	}
+	stats.NonBeacon = stats.Total - stats.BeaconRX
+	if stats.NonBeacon < 0 {
+		stats.NonBeacon = 0
 	}
 	return stats
 }
@@ -3766,13 +3949,14 @@ func (s *Server) formatSpotForClientWithDiag(client *Client, sp *spot.Spot, mode
 }
 
 type pathPrediction struct {
-	result   pathreliability.Result
-	grid     string
-	dxGrid   string
-	userCell pathreliability.CellID
-	dxCell   pathreliability.CellID
-	band     string
-	at       time.Time
+	result            pathreliability.Result
+	sparseVOACAPTrace sparseP50VOACAPTrace
+	grid              string
+	dxGrid            string
+	userCell          pathreliability.CellID
+	dxCell            pathreliability.CellID
+	band              string
+	at                time.Time
 }
 
 func (s *Server) pathGlyphsForClient(client *Client, sp *spot.Spot) string {
@@ -3836,7 +4020,7 @@ func (s *Server) pathPredictionForClient(client *Client, sp *spot.Spot) (pathPre
 	} else {
 		res = s.pathPredictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, now)
 	}
-	res = s.pathResultWithClosedFallback(res, pathreliability.VOACAPClosedRequest{
+	res, sparseTrace := s.pathResultWithClosedFallbackTrace(res, pathreliability.VOACAPClosedRequest{
 		UserCell:              userCell,
 		DXCell:                dxCell,
 		UserGrid:              grid,
@@ -3846,14 +4030,16 @@ func (s *Server) pathPredictionForClient(client *Client, sp *spot.Spot) (pathPre
 		ReceiveNoisePenaltyDB: noisePenalty,
 	}, now)
 	s.recordPathPrediction(res, state.gridDerived, sp.DXMetadata.GridDerived)
+	s.recordSparseP50VOACAPTrace(sparseTrace)
 	return pathPrediction{
-		result:   res,
-		grid:     grid,
-		dxGrid:   sp.DXMetadata.Grid,
-		userCell: userCell,
-		dxCell:   dxCell,
-		band:     band,
-		at:       now,
+		result:            res,
+		sparseVOACAPTrace: sparseTrace,
+		grid:              grid,
+		dxGrid:            sp.DXMetadata.Grid,
+		userCell:          userCell,
+		dxCell:            dxCell,
+		band:              band,
+		at:                now,
 	}, true
 }
 
@@ -3963,32 +4149,56 @@ func (s *Server) pathClassForClient(client *Client, sp *spot.Spot) string {
 }
 
 func (s *Server) pathResultWithClosedFallback(res pathreliability.Result, req pathreliability.VOACAPClosedRequest, now time.Time) pathreliability.Result {
-	if s == nil || s.pathClosedFallback == nil {
-		return res
+	res, _ = s.pathResultWithClosedFallbackTrace(res, req, now)
+	return res
+}
+
+func (s *Server) pathResultWithClosedFallbackTrace(res pathreliability.Result, req pathreliability.VOACAPClosedRequest, now time.Time) (pathreliability.Result, sparseP50VOACAPTrace) {
+	if s == nil || s.pathPredictor == nil {
+		return res, sparseP50VOACAPTrace{}
+	}
+	cfg := s.pathPredictor.Config()
+	trace := sparseP50VOACAPTraceForResult(res, cfg)
+	if s.pathClosedFallback == nil {
+		if trace.Active {
+			trace.Status = pathreliability.VOACAPForecastCheckDisabled
+		}
+		return res, trace
+	}
+	if trace.Active {
+		trace.Status = pathreliability.VOACAPForecastCheckUnavailable
 	}
 	if res.Source == pathreliability.SourceCombined {
 		if res.BeaconRX {
-			return res
+			return res, trace
 		}
 		s.recordVOACAPP50Compare(res, req, now)
-		return res
+		return res, trace
 	}
 	if res.Source != pathreliability.SourceInsufficient {
-		return res
+		return res, trace
 	}
-	forecast, ok := s.pathClosedFallback.CheckForecast(req, now)
-	if !ok {
-		return res
+	check := s.checkVOACAPForecast(req, now)
+	if trace.Active {
+		trace.Status = check.Status
+		trace.CacheMiss = check.CacheMiss
+		trace.NoCurrentHour = check.NoCurrentHour
 	}
-	cfg := s.pathPredictor.Config()
+	if check.Status != pathreliability.VOACAPForecastCheckReady {
+		return res, trace
+	}
+	forecast := check.Forecast
 	if res.BeaconRX {
-		return s.pathResultWithBeaconReceiveFallback(res, req, forecast, cfg)
+		return s.pathResultWithBeaconReceiveFallback(res, req, forecast, cfg, trace)
 	}
 	voacapDB := forecast.EffectiveDB()
 	voacapClass := pathreliability.ClassForDB(voacapDB, req.Mode, cfg)
 	if pathreliability.ClosedForDB(voacapDB, req.Mode, cfg) {
 		s.recordClosedFallbackStage(res, req.Mode, cfg)
-		return pathreliability.VOACAPClosedResult(cfg, forecast)
+		if trace.Active {
+			trace.Outcome = sparseP50VOACAPOutcomeClosed
+		}
+		return pathreliability.VOACAPClosedResult(cfg, forecast), trace
 	}
 	if !res.HasP50 {
 		s.vStageNoP50.Add(1)
@@ -3996,41 +4206,126 @@ func (s *Server) pathResultWithClosedFallback(res pathreliability.Result, req pa
 			_, _, reason := pathreliability.VOACAPReqSNRReliabilityGate(forecast, voacapClass, cfg)
 			if reason == pathreliability.VOACAPReliabilityGateOK {
 				s.vStageOpenNoP50REL.Add(1)
-				return pathreliability.VOACAPOpenResult(cfg, req.Mode, forecast)
+				if trace.Active {
+					trace.Outcome = sparseP50VOACAPOutcomeOpenRELPass
+				}
+				return pathreliability.VOACAPOpenResult(cfg, req.Mode, forecast), trace
 			}
 			s.recordVOACAPReliabilityGate(reason)
+			recordSparseTraceRELFailure(&trace, reason)
+		} else if trace.Active {
+			trace.Outcome = sparseP50VOACAPOutcomeNotClosed
 		}
-		return res
+		return res, trace
 	}
 	p50Class := pathreliability.ClassForDB(res.P50DB, req.Mode, cfg)
 	if p50Class == voacapClass {
 		s.vStageAligned.Add(1)
-		return pathreliability.VOACAPAlignedResult(res, cfg, req.Mode, forecast)
+		if trace.Active {
+			trace.Outcome = sparseP50VOACAPOutcomeAligned
+		}
+		return pathreliability.VOACAPAlignedResult(res, cfg, req.Mode, forecast), trace
 	}
 	upgradeSteps := pathreliability.ClassUpgradeSteps(p50Class, voacapClass)
 	if upgradeSteps > 1 {
 		s.vStageReliabilityMultiTier.Add(1)
 		s.vStageMismatch.Add(1)
-		return res
+		if trace.Active {
+			trace.Outcome = sparseP50VOACAPOutcomeNotClosed
+			trace.RELMultiTier = true
+		}
+		return res, trace
 	}
 	if upgradeSteps == 1 && cfg.VOACAPFallback.ReliabilitySparseUpgradeEnabled {
 		_, _, reason := pathreliability.VOACAPReqSNRReliabilityGate(forecast, voacapClass, cfg)
 		if reason == pathreliability.VOACAPReliabilityGateOK {
 			s.vStageSparseUpgrade.Add(1)
-			return pathreliability.VOACAPSparseUpgradeResult(res, cfg, req.Mode, forecast)
+			if trace.Active {
+				trace.Outcome = sparseP50VOACAPOutcomeSparseUpgrade
+			}
+			return pathreliability.VOACAPSparseUpgradeResult(res, cfg, req.Mode, forecast), trace
 		}
 		s.recordVOACAPReliabilityGate(reason)
+		recordSparseTraceRELFailure(&trace, reason)
 	}
 	s.vStageMismatch.Add(1)
-	return res
+	if trace.Active && trace.Outcome == sparseP50VOACAPOutcomeNone {
+		trace.Outcome = sparseP50VOACAPOutcomeNotClosed
+	}
+	return res, trace
 }
 
-func (s *Server) pathResultWithBeaconReceiveFallback(res pathreliability.Result, req pathreliability.VOACAPClosedRequest, forecast pathreliability.VOACAPCachedForecast, cfg pathreliability.Config) pathreliability.Result {
+func (s *Server) checkVOACAPForecast(req pathreliability.VOACAPClosedRequest, now time.Time) pathreliability.VOACAPForecastCheck {
+	if s == nil || s.pathClosedFallback == nil {
+		return pathreliability.VOACAPForecastCheck{Status: pathreliability.VOACAPForecastCheckDisabled}
+	}
+	if provider, ok := s.pathClosedFallback.(pathreliability.DetailedForecastProvider); ok {
+		return provider.CheckForecastDetailed(req, now)
+	}
+	forecast, ok := s.pathClosedFallback.CheckForecast(req, now)
+	if ok {
+		return pathreliability.VOACAPForecastCheck{
+			Forecast: forecast,
+			Status:   pathreliability.VOACAPForecastCheckReady,
+		}
+	}
+	return pathreliability.VOACAPForecastCheck{Status: pathreliability.VOACAPForecastCheckUnavailable}
+}
+
+func sparseP50VOACAPTraceForResult(res pathreliability.Result, cfg pathreliability.Config) sparseP50VOACAPTrace {
+	if res.Source != pathreliability.SourceInsufficient {
+		return sparseP50VOACAPTrace{}
+	}
+	noP50 := !res.HasP50 ||
+		res.InsufficientReason == pathreliability.InsufficientNone ||
+		res.InsufficientReason == pathreliability.InsufficientNoSample
+	count := sparseP50DiagnosticObservationCount(res)
+	threshold := cfg.VOACAPFallback.SparseP50DiagnosticMaxObservationCount
+	veryLowCount := res.HasP50 && threshold > 0 && count <= uint32(threshold)
+	if !noP50 && !veryLowCount {
+		return sparseP50VOACAPTrace{}
+	}
+	return sparseP50VOACAPTrace{
+		Active:       true,
+		NoP50:        noP50,
+		VeryLowCount: veryLowCount,
+		BeaconRX:     res.BeaconRX,
+	}
+}
+
+func sparseP50DiagnosticObservationCount(res pathreliability.Result) uint32 {
+	count := res.ObservationCount
+	if count == 0 {
+		count = res.Count
+	}
+	if count == 0 {
+		count = res.RawCount
+	}
+	return count
+}
+
+func recordSparseTraceRELFailure(trace *sparseP50VOACAPTrace, reason pathreliability.VOACAPReliabilityGateReason) {
+	if trace == nil || !trace.Active {
+		return
+	}
+	trace.Outcome = sparseP50VOACAPOutcomeOpenRELFail
+	switch reason {
+	case pathreliability.VOACAPReliabilityGateBelowThreshold:
+		trace.RELBelow = true
+	default:
+		trace.RELMissing = true
+	}
+}
+
+func (s *Server) pathResultWithBeaconReceiveFallback(res pathreliability.Result, req pathreliability.VOACAPClosedRequest, forecast pathreliability.VOACAPCachedForecast, cfg pathreliability.Config, trace sparseP50VOACAPTrace) (pathreliability.Result, sparseP50VOACAPTrace) {
 	voacapDB := forecast.ReceiveDB()
 	voacapClass := pathreliability.ClassForDB(voacapDB, req.Mode, cfg)
 	if pathreliability.ClosedForDB(voacapDB, req.Mode, cfg) {
 		s.recordClosedFallbackStage(res, req.Mode, cfg)
-		return pathreliability.VOACAPBeaconClosedResult(cfg, forecast)
+		if trace.Active {
+			trace.Outcome = sparseP50VOACAPOutcomeClosed
+		}
+		return pathreliability.VOACAPBeaconClosedResult(cfg, forecast), trace
 	}
 	if !res.HasP50 {
 		s.vStageNoP50.Add(1)
@@ -4038,33 +4333,53 @@ func (s *Server) pathResultWithBeaconReceiveFallback(res pathreliability.Result,
 			_, _, reason := pathreliability.VOACAPReceiveReqSNRReliabilityGate(forecast, voacapClass, cfg)
 			if reason == pathreliability.VOACAPReliabilityGateOK {
 				s.vStageOpenNoP50REL.Add(1)
-				return pathreliability.VOACAPBeaconOpenResult(cfg, req.Mode, forecast)
+				if trace.Active {
+					trace.Outcome = sparseP50VOACAPOutcomeOpenRELPass
+				}
+				return pathreliability.VOACAPBeaconOpenResult(cfg, req.Mode, forecast), trace
 			}
 			s.recordVOACAPReliabilityGate(reason)
+			recordSparseTraceRELFailure(&trace, reason)
+		} else if trace.Active {
+			trace.Outcome = sparseP50VOACAPOutcomeNotClosed
 		}
-		return res
+		return res, trace
 	}
 	p50Class := pathreliability.ClassForDB(res.P50DB, req.Mode, cfg)
 	if p50Class == voacapClass {
 		s.vStageAligned.Add(1)
-		return pathreliability.VOACAPBeaconAlignedResult(res, cfg, req.Mode, forecast)
+		if trace.Active {
+			trace.Outcome = sparseP50VOACAPOutcomeAligned
+		}
+		return pathreliability.VOACAPBeaconAlignedResult(res, cfg, req.Mode, forecast), trace
 	}
 	upgradeSteps := pathreliability.ClassUpgradeSteps(p50Class, voacapClass)
 	if upgradeSteps > 1 {
 		s.vStageReliabilityMultiTier.Add(1)
 		s.vStageMismatch.Add(1)
-		return res
+		if trace.Active {
+			trace.Outcome = sparseP50VOACAPOutcomeNotClosed
+			trace.RELMultiTier = true
+		}
+		return res, trace
 	}
 	if upgradeSteps == 1 && cfg.VOACAPFallback.ReliabilitySparseUpgradeEnabled {
 		_, _, reason := pathreliability.VOACAPReceiveReqSNRReliabilityGate(forecast, voacapClass, cfg)
 		if reason == pathreliability.VOACAPReliabilityGateOK {
 			s.vStageSparseUpgrade.Add(1)
-			return pathreliability.VOACAPBeaconSparseUpgradeResult(res, cfg, req.Mode, forecast)
+			if trace.Active {
+				trace.Outcome = sparseP50VOACAPOutcomeSparseUpgrade
+			}
+			return pathreliability.VOACAPBeaconSparseUpgradeResult(res, cfg, req.Mode, forecast), trace
 		}
 		s.recordVOACAPReliabilityGate(reason)
+		recordSparseTraceRELFailure(&trace, reason)
 	}
 	s.vStageMismatch.Add(1)
-	return res
+	if trace.Active && trace.Outcome == sparseP50VOACAPOutcomeNone {
+		trace.Outcome = sparseP50VOACAPOutcomeNotClosed
+	}
+	return res, trace
 }
 
 func (s *Server) recordVOACAPReliabilityGate(reason pathreliability.VOACAPReliabilityGateReason) {
@@ -4280,6 +4595,9 @@ func diagPathTag(prediction pathPrediction, havePrediction bool) string {
 	if res.Source == pathreliability.SourceInsufficient {
 		reason := diagPathInsufficientReason(res.InsufficientReason)
 		tag := count + "|" + reason
+		if suffix := diagSparseVOACAPTraceSuffix(prediction.sparseVOACAPTrace); suffix != "" {
+			tag += "|" + suffix
+		}
 		if res.BeaconRX {
 			return "brx|" + tag
 		}
@@ -4321,6 +4639,45 @@ func diagPathTag(prediction pathPrediction, havePrediction bool) string {
 		return "brx|" + tag
 	}
 	return tag
+}
+
+func diagSparseVOACAPTraceSuffix(trace sparseP50VOACAPTrace) string {
+	if !trace.Active {
+		return ""
+	}
+	if trace.NoCurrentHour {
+		return "vcur"
+	}
+	switch trace.Status {
+	case pathreliability.VOACAPForecastCheckDisabled:
+		return "vdis"
+	case pathreliability.VOACAPForecastCheckInvalidRequest:
+		return "vbad"
+	case pathreliability.VOACAPForecastCheckSSNUnavailable:
+		return "vssn"
+	case pathreliability.VOACAPForecastCheckNoCurrentHour:
+		return "vcur"
+	case pathreliability.VOACAPForecastCheckInflight:
+		return "vinf"
+	case pathreliability.VOACAPForecastCheckDelayWait:
+		return "vdly"
+	case pathreliability.VOACAPForecastCheckNotRunning:
+		return "vnr"
+	case pathreliability.VOACAPForecastCheckQueueFull:
+		return "vqf"
+	case pathreliability.VOACAPForecastCheckQueued:
+		return "vq"
+	case pathreliability.VOACAPForecastCheckReady:
+		switch trace.Outcome {
+		case sparseP50VOACAPOutcomeOpenRELFail:
+			return "vrel"
+		case sparseP50VOACAPOutcomeNotClosed:
+			return "vnc"
+		case sparseP50VOACAPOutcomeNone:
+			return "vhit"
+		}
+	}
+	return "vun"
 }
 
 func diagVOACAPReliabilityPercent(res pathreliability.Result) int {

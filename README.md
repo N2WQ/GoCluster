@@ -382,7 +382,7 @@ For the mode-specific support rules, timing knobs, and decision history, see
 - `SET DIAG DEDUPE`: `<DE-DXCC>|<DE-key>|<src>|<policy>`, where `<src>` is `H` for human-class or `S` for skimmer/automated-class.
 - `SET DIAG SOURCE`: `<source>` with `MAN`, `RBN`, `RBNFT`, `PSK`, `DXS`, `UP`, or `P:<peer>` for peer-origin spots.
 - `SET DIAG CONF`: `<score>%` when the pipeline calculated a confidence percent, otherwise `--%`.
-- `SET DIAG PATH`: `n<count>|w<weight>|a<age>` for usable path evidence, `n<count>|<reason>` for insufficient evidence (`none`, `lown`, `lowr`, `loww`, or `stale`), `vcap|<snr>|h<hour>|s<ssn>` for a cached VOACAP closed fallback, `valn|<p50>/<snr>h<hour>s<ssn>` for VOACAP-aligned sparse p50, `vup|<p50>/<snr>r<rel>s<ssn>` for a REL-gated sparse p50 upgrade, or `vop|<snr>r<rel>h<hour>s<ssn>` for a REL-gated no-p50 VOACAP open fallback. Beacon RX-only path decisions add `brx|` to bucket diagnostics and `bv*` prefixes to VOACAP diagnostics.
+- `SET DIAG PATH`: `n<count>|w<weight>|a<age>` for usable path evidence, `n<count>|<reason>` for insufficient evidence (`none`, `lown`, `lowr`, `loww`, or `stale`), optional `v*` suffixes for sparse/no-p50 VOACAP state, `vcap|<snr>|h<hour>|s<ssn>` for a cached VOACAP closed fallback, `valn|<p50>/<snr>h<hour>s<ssn>` for VOACAP-aligned sparse p50, `vup|<p50>/<snr>r<rel>s<ssn>` for a REL-gated sparse p50 upgrade, or `vop|<snr>r<rel>h<hour>s<ssn>` for a REL-gated no-p50 VOACAP open fallback. Beacon RX-only path decisions add `brx|` to bucket diagnostics and `bv*` prefixes to VOACAP diagnostics.
 - `SET DIAG MODE`: `<mode>|<provenance>` to show the final normalized mode and why it was assigned.
 
 Mode provenance tokens:
@@ -436,6 +436,12 @@ area:
   used only the DX-to-user receive leg. Beacon VOACAP fallback diagnostics use
   `bvcap`, `bvaln`, `bvup`, or `bvop`; their `<snr>` and REL values come from
   the receive leg rather than the bidirectional effective VOACAP model.
+- `v*` suffixes on insufficient sparse/no-p50 diagnostics explain VOACAP state:
+  `vq` queued, `vdly` delayed, `vinf` inflight, `vbad` invalid request, `vssn`
+  SSN unavailable, `vcur` no current-hour cache record, `vqf` queue full,
+  `vnr` worker not running, `vdis` disabled, `vun` unavailable, `vrel` blocked
+  by REL or tier guards, `vnc` usable forecast but not closed, and `vhit` ready
+  cache hit with no emitted fallback.
 - `n<count>|none` means there was no usable selected path sample.
 - `n<count>|lown` means selected evidence existed but the selected observation count
   stayed below the configured minimum.
@@ -459,8 +465,12 @@ Example readings:
 - `n18|w7`: 18 selected observations, rounded effective weight 7. The age
   token may be clipped if it does not fit before the fixed tail.
 - `n0|none`: no usable selected path sample.
+- `n0|none|vdly`: no usable selected path sample, and VOACAP is still in its
+  configured delay window.
 - `n3|lown`: three selected observations existed, but the configured minimum
   sample size was not met.
+- `n2|lown|vrel`: very sparse p50 existed, VOACAP had a usable open forecast,
+  but REL or the one-tier sparse-upgrade guard blocked an open fallback glyph.
 - `n19/c5/rx1|lowr`: nineteen raw observations existed, but capped receiver
   evidence represented only one attributed receiver.
 - `n19/c5/rx1|w3`: raw selected observations are shown first, capped effective
@@ -542,6 +552,10 @@ Important operational notes:
   `closed_with_sparse_p50`, `closed_with_sparse_p50_class_*`, `aligned`,
   `open_no_p50`, `class_mismatch`, `sparse_upgrade`, `open_no_p50_rel`,
   `rel_missing`, `rel_below_floor`, and `rel_multi_tier`.
+  A separate `Sparse p50 VOACAP (5m)` line appears for sparse/no-p50 candidates
+  and splits them by p50 evidence, cache/work state, closed/open/REL outcome,
+  beacon RX-only provenance, and non-beacon provenance. It is diagnostic only
+  and does not change glyph decisions.
   A separate `VOACAP p50 compare (5m)` line may appear when sufficient p50
   predictions can be compared against an existing current-hour VOACAP cache
   record. It is cache-only: cache misses do not run VOACAP, start delay

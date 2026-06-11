@@ -83,6 +83,7 @@ var requiredConfigPaths = []yamlconfig.Path{
 	{"voacap_fallback", "reliability_min_medium"},
 	{"voacap_fallback", "reliability_min_low"},
 	{"voacap_fallback", "reliability_min_unlikely"},
+	{"voacap_fallback", "sparse_p50_diagnostic_max_observation_count"},
 	{"default_half_life_seconds"},
 	{"band_half_life_seconds"},
 	{"stale_after_seconds"},
@@ -250,29 +251,30 @@ func (s *GlyphSymbols) UnmarshalYAML(value *yaml.Node) error {
 // Bounds are required even when disabled so enabling the fallback cannot create
 // process-lifetime unbounded queues or cache maps.
 type VOACAPFallbackConfig struct {
-	Enabled                         bool      `yaml:"enabled"`
-	SSNFetchIntervalSeconds         int       `yaml:"ssn_fetch_interval_seconds"`
-	SSNRequestTimeoutSeconds        int       `yaml:"ssn_request_timeout_seconds"`
-	SSNEWMAHalfLifeSeconds          int       `yaml:"ssn_ewma_half_life_seconds"`
-	RecomputeDeltaPercent           float64   `yaml:"recompute_delta_percent"`
-	VOACAPHome                      string    `yaml:"voacap_home"`
-	VOACAPTimeoutSeconds            int       `yaml:"voacap_timeout_seconds"`
-	ForecastHours                   int       `yaml:"forecast_hours"`
-	ShowPropWaitMilliseconds        int       `yaml:"show_prop_wait_milliseconds"`
-	CenterFrequenciesMHz            []float64 `yaml:"center_frequencies_mhz"`
-	DelaySeconds                    int       `yaml:"delay_seconds"`
-	CacheTTLSeconds                 int       `yaml:"cache_ttl_seconds"`
-	MaxCacheEntries                 int       `yaml:"max_cache_entries"`
-	MaxDelayEntries                 int       `yaml:"max_delay_entries"`
-	MaxQueueDepth                   int       `yaml:"max_queue_depth"`
-	WorkerCount                     int       `yaml:"worker_count"`
-	OutputNamePrefix                string    `yaml:"output_name_prefix"`
-	ReliabilityGatedOpenEnabled     bool      `yaml:"reliability_gated_open_enabled"`
-	ReliabilitySparseUpgradeEnabled bool      `yaml:"reliability_sparse_upgrade_enabled"`
-	ReliabilityMinHigh              float64   `yaml:"reliability_min_high"`
-	ReliabilityMinMedium            float64   `yaml:"reliability_min_medium"`
-	ReliabilityMinLow               float64   `yaml:"reliability_min_low"`
-	ReliabilityMinUnlikely          float64   `yaml:"reliability_min_unlikely"`
+	Enabled                                bool      `yaml:"enabled"`
+	SSNFetchIntervalSeconds                int       `yaml:"ssn_fetch_interval_seconds"`
+	SSNRequestTimeoutSeconds               int       `yaml:"ssn_request_timeout_seconds"`
+	SSNEWMAHalfLifeSeconds                 int       `yaml:"ssn_ewma_half_life_seconds"`
+	RecomputeDeltaPercent                  float64   `yaml:"recompute_delta_percent"`
+	VOACAPHome                             string    `yaml:"voacap_home"`
+	VOACAPTimeoutSeconds                   int       `yaml:"voacap_timeout_seconds"`
+	ForecastHours                          int       `yaml:"forecast_hours"`
+	ShowPropWaitMilliseconds               int       `yaml:"show_prop_wait_milliseconds"`
+	CenterFrequenciesMHz                   []float64 `yaml:"center_frequencies_mhz"`
+	DelaySeconds                           int       `yaml:"delay_seconds"`
+	CacheTTLSeconds                        int       `yaml:"cache_ttl_seconds"`
+	MaxCacheEntries                        int       `yaml:"max_cache_entries"`
+	MaxDelayEntries                        int       `yaml:"max_delay_entries"`
+	MaxQueueDepth                          int       `yaml:"max_queue_depth"`
+	WorkerCount                            int       `yaml:"worker_count"`
+	OutputNamePrefix                       string    `yaml:"output_name_prefix"`
+	ReliabilityGatedOpenEnabled            bool      `yaml:"reliability_gated_open_enabled"`
+	ReliabilitySparseUpgradeEnabled        bool      `yaml:"reliability_sparse_upgrade_enabled"`
+	ReliabilityMinHigh                     float64   `yaml:"reliability_min_high"`
+	ReliabilityMinMedium                   float64   `yaml:"reliability_min_medium"`
+	ReliabilityMinLow                      float64   `yaml:"reliability_min_low"`
+	ReliabilityMinUnlikely                 float64   `yaml:"reliability_min_unlikely"`
+	SparseP50DiagnosticMaxObservationCount int       `yaml:"sparse_p50_diagnostic_max_observation_count"`
 }
 
 // DefaultConfig returns a safe, enabled configuration.
@@ -487,29 +489,30 @@ func (c *Config) finalize() error {
 
 func defaultVOACAPFallbackConfig() VOACAPFallbackConfig {
 	return VOACAPFallbackConfig{
-		Enabled:                         false,
-		SSNFetchIntervalSeconds:         1800,
-		SSNRequestTimeoutSeconds:        30,
-		SSNEWMAHalfLifeSeconds:          28800,
-		RecomputeDeltaPercent:           12,
-		VOACAPHome:                      `C:\itshfbc`,
-		VOACAPTimeoutSeconds:            30,
-		ForecastHours:                   8,
-		ShowPropWaitMilliseconds:        750,
-		CenterFrequenciesMHz:            []float64{1.9, 3.6, 5.36, 7.1, 10.14, 14.1, 18.1, 21.15, 24.91, 28.1},
-		DelaySeconds:                    900,
-		CacheTTLSeconds:                 28800,
-		MaxCacheEntries:                 50000,
-		MaxDelayEntries:                 50000,
-		MaxQueueDepth:                   1000,
-		WorkerCount:                     1,
-		OutputNamePrefix:                "gocluster_voacap_path",
-		ReliabilityGatedOpenEnabled:     false,
-		ReliabilitySparseUpgradeEnabled: false,
-		ReliabilityMinHigh:              0.90,
-		ReliabilityMinMedium:            0.80,
-		ReliabilityMinLow:               0.65,
-		ReliabilityMinUnlikely:          0.50,
+		Enabled:                                false,
+		SSNFetchIntervalSeconds:                1800,
+		SSNRequestTimeoutSeconds:               30,
+		SSNEWMAHalfLifeSeconds:                 28800,
+		RecomputeDeltaPercent:                  12,
+		VOACAPHome:                             `C:\itshfbc`,
+		VOACAPTimeoutSeconds:                   30,
+		ForecastHours:                          8,
+		ShowPropWaitMilliseconds:               750,
+		CenterFrequenciesMHz:                   []float64{1.9, 3.6, 5.36, 7.1, 10.14, 14.1, 18.1, 21.15, 24.91, 28.1},
+		DelaySeconds:                           900,
+		CacheTTLSeconds:                        28800,
+		MaxCacheEntries:                        50000,
+		MaxDelayEntries:                        50000,
+		MaxQueueDepth:                          1000,
+		WorkerCount:                            1,
+		OutputNamePrefix:                       "gocluster_voacap_path",
+		ReliabilityGatedOpenEnabled:            false,
+		ReliabilitySparseUpgradeEnabled:        false,
+		ReliabilityMinHigh:                     0.90,
+		ReliabilityMinMedium:                   0.80,
+		ReliabilityMinLow:                      0.65,
+		ReliabilityMinUnlikely:                 0.50,
+		SparseP50DiagnosticMaxObservationCount: 2,
 	}
 }
 
@@ -592,6 +595,9 @@ func (c *VOACAPFallbackConfig) finalize() error {
 		c.ReliabilityMinMedium >= c.ReliabilityMinLow &&
 		c.ReliabilityMinLow >= c.ReliabilityMinUnlikely) {
 		return fmt.Errorf("voacap_fallback reliability thresholds must satisfy high >= medium >= low >= unlikely")
+	}
+	if c.SparseP50DiagnosticMaxObservationCount < 0 {
+		return fmt.Errorf("voacap_fallback.sparse_p50_diagnostic_max_observation_count must be >= 0")
 	}
 	return nil
 }
