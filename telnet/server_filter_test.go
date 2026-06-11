@@ -32,9 +32,11 @@ func requireH3Mappings(t *testing.T) {
 	}
 }
 
-func requireDistinctPathCells(t *testing.T, userGrid string, dxGrid string) (pathreliability.CellID, pathreliability.CellID, pathreliability.CellID, pathreliability.CellID) {
+func requireDistinctPathCells(t *testing.T) (pathreliability.CellID, pathreliability.CellID, pathreliability.CellID, pathreliability.CellID) {
 	t.Helper()
 	requireH3Mappings(t)
+	const userGrid = "FN31"
+	const dxGrid = "IO91"
 	userCell := pathreliability.EncodeCell(userGrid)
 	dxCell := pathreliability.EncodeCell(dxGrid)
 	userCoarse := pathreliability.EncodeCoarseCell(userGrid)

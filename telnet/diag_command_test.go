@@ -148,7 +148,7 @@ func TestFormatSpotForClientPathDiagCommentIncludesCount(t *testing.T) {
 	client := &Client{grid: "FN31"}
 	client.setDiagMode(diagModePath)
 
-	userCell, dxCell, userCoarse, dxCoarse := requireDistinctPathCells(t, "FN31", "IO91")
+	userCell, dxCell, userCoarse, dxCoarse := requireDistinctPathCells(t)
 	receiver := pathreliability.ReceiverIdentityHash("W1AW")
 	predictor.UpdateWithReceiverHash(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -12, 1, now.Add(-10*time.Second), false, receiver)
 	predictor.UpdateWithReceiverHash(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -12, 1, now.Add(-5*time.Second), false, receiver)
@@ -185,7 +185,7 @@ func TestFormatSpotForClientPathDiagUsesUnionWeight(t *testing.T) {
 	client := &Client{grid: "FN31"}
 	client.setDiagMode(diagModePath)
 
-	userCell, dxCell, userCoarse, dxCoarse := requireDistinctPathCells(t, "FN31", "IO91")
+	userCell, dxCell, userCoarse, dxCoarse := requireDistinctPathCells(t)
 	for i := 0; i < 6; i++ {
 		predictor.UpdateWithReceiverHash(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -12, 1, now.Add(-5*time.Second), false, pathreliability.ReceiverIdentityHash("W1AW"))
 	}
@@ -291,6 +291,91 @@ func TestDiagPathTagShowsVOACAPReliabilityGatedFallbacks(t *testing.T) {
 	}
 	if got := diagPathTag(openNoP50, true); got != "vop|-19r75h20s112" {
 		t.Fatalf("unexpected VOACAP no-p50 open path diagnostic: %q", got)
+	}
+}
+
+func TestDiagPathTagShowsBeaconRXProvenance(t *testing.T) {
+	p50 := pathPrediction{
+		result: pathreliability.Result{
+			Source:   pathreliability.SourceCombined,
+			BeaconRX: true,
+			Weight:   11,
+			Count:    11,
+			AgeSec:   12,
+		},
+	}
+	if got := diagPathTag(p50, true); got != "brx|n11|w11|a12" {
+		t.Fatalf("unexpected beacon RX p50 diagnostic: %q", got)
+	}
+
+	insufficient := pathPrediction{
+		result: pathreliability.Result{
+			Source:             pathreliability.SourceInsufficient,
+			BeaconRX:           true,
+			Count:              10,
+			InsufficientReason: pathreliability.InsufficientLowCount,
+		},
+	}
+	if got := diagPathTag(insufficient, true); got != "brx|n10|lown" {
+		t.Fatalf("unexpected beacon RX insufficient diagnostic: %q", got)
+	}
+
+	closed := pathPrediction{
+		result: pathreliability.Result{
+			Source:         pathreliability.SourceVOACAPClosed,
+			BeaconRX:       true,
+			VOACAPFT8SNRDB: -34,
+			VOACAPHourUTC:  3,
+			VOACAPSSN:      147,
+		},
+	}
+	if got := diagPathTag(closed, true); got != "bvcap|-34|h03|s147" {
+		t.Fatalf("unexpected beacon RX VOACAP closed diagnostic: %q", got)
+	}
+
+	aligned := pathPrediction{
+		result: pathreliability.Result{
+			Source:         pathreliability.SourceVOACAPAligned,
+			BeaconRX:       true,
+			P50DB:          -14.5,
+			VOACAPFT8SNRDB: -15,
+			VOACAPHourUTC:  20,
+			VOACAPSSN:      112,
+		},
+	}
+	if got := diagPathTag(aligned, true); got != "bvaln|-15/-15h20s112" {
+		t.Fatalf("unexpected beacon RX VOACAP aligned diagnostic: %q", got)
+	}
+
+	sparseUpgrade := pathPrediction{
+		result: pathreliability.Result{
+			Source:                     pathreliability.SourceVOACAPSparseUpgrade,
+			BeaconRX:                   true,
+			P50DB:                      -19,
+			VOACAPFT8SNRDB:             -15,
+			VOACAPHourUTC:              20,
+			VOACAPSSN:                  112,
+			VOACAPReqSNRReliability:    0.84,
+			VOACAPHasReqSNRReliability: true,
+		},
+	}
+	if got := diagPathTag(sparseUpgrade, true); got != "bvup|-19/-15r84s112" {
+		t.Fatalf("unexpected beacon RX VOACAP sparse-upgrade diagnostic: %q", got)
+	}
+
+	open := pathPrediction{
+		result: pathreliability.Result{
+			Source:                     pathreliability.SourceVOACAPOpen,
+			BeaconRX:                   true,
+			VOACAPFT8SNRDB:             -19,
+			VOACAPHourUTC:              20,
+			VOACAPSSN:                  112,
+			VOACAPReqSNRReliability:    0.75,
+			VOACAPHasReqSNRReliability: true,
+		},
+	}
+	if got := diagPathTag(open, true); got != "bvop|-19r75h20s112" {
+		t.Fatalf("unexpected beacon RX VOACAP open diagnostic: %q", got)
 	}
 }
 

@@ -99,6 +99,9 @@ When you see a glyph next to a spot, here's what happened behind the scenes:
    enough to discard even when the wider region was refreshed.
 
 5. **Merge directions**: Receive and transmit paths combine (60/40 split), with the configured receive-side noise penalty applied when nonzero.
+   For beacon spots, transmit evidence is not applicable. The system uses only
+   the DX-to-user receive leg, still applies your receive-noise penalty, and
+   does not apply the one-direction reverse hint discount.
 
 6. **Apply receiver contribution caps**: The cluster tracks a bounded set of
    receiver identities per bucket. In `enforce` mode, receiver diversity and
@@ -146,6 +149,8 @@ Cached VOACAP output retains the parsed hourly records for the requested band.
 Runtime fallback decks start at the current rolling UTC window, and parsed
 VOACAP hour `24` is stored as UTC hour `0`. The fallback never replaces a
 normal sufficient p50 bucket prediction.
+For beacon spots, the same fallback uses the receive-leg VOACAP SNR and
+receive-leg REL rather than the blended bidirectional effective SNR.
 For `PASS/REJECT PATH`, the closed fallback is filter-visible as `CLOSED`.
 `CLOSED` remains compatible with `UNLIKELY`, so existing `UNLIKELY` filters
 still include closed fallback spots, while direct `CLOSED` filters target only
@@ -153,7 +158,9 @@ closed fallback spots.
 
 Five-minute propagation logs keep final emit counters in `Path predictions
 (5m)`: `voacap_closed`, `voacap_aligned`, `voacap_sparse_upgrade`, and
-`voacap_open`. When fallback work occurs, a separate `VOACAP fallback (5m)`
+`voacap_open`. Beacon paths add `beacon_rx`, `beacon_rx_insufficient`,
+`beacon_rx_<reason>`, and `beacon_rx_voacap_*` final counters. When fallback
+work occurs, a separate `VOACAP fallback (5m)`
 line reports stage counters such as `queued`, `success`, `cache_hit`,
 `no_current_hour`, `closed`, `closed_no_p50`, `closed_with_sparse_p50`,
 `closed_with_sparse_p50_class_*`, `open_no_p50`, `class_mismatch`,
@@ -218,7 +225,10 @@ prediction diagnostics can report whether the configured cap would have blocked
 the prediction. Retired candidate-cap shadow lanes are not maintained by the
 current runtime.
 
-**Beacons get capped**: The system limits how much any single beacon can dominate the data to prevent bias from loud beacons.
+**Beacon RX-only paths**: The existing beacon flag covers source
+class beacons, `/B` calls, known beacon calls, and beacon comment keywords.
+Their default raw observation floor is `beacon_min_observation_count`, currently
+11, with receiver diversity derived from that floor and the receiver cap.
 
 ### Noise Environment Setup
 

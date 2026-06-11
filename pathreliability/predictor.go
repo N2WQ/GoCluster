@@ -122,6 +122,7 @@ type Result struct {
 	CapLimited                 bool
 	CapWouldBlock              bool
 	Source                     PredictionSource
+	BeaconRX                   bool
 	InsufficientReason         InsufficientReason
 	VOACAPFT8SNRDB             int
 	VOACAPSSN                  int
@@ -147,20 +148,36 @@ func (p *Predictor) Predict(userCell, dxCell CellID, userCoarse, dxCoarse CellID
 // sample floor. Callers may pass a floor above the configured default when
 // applying stricter per-session display or filter policy.
 func (p *Predictor) PredictWithMinObservationCount(userCell, dxCell CellID, userCoarse, dxCoarse CellID, band string, mode string, noisePenalty float64, minObservationCount int, now time.Time) Result {
-	return p.predictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, now)
+	receiverMinObservationCount := 0
+	if p != nil {
+		receiverMinObservationCount = p.cfg.MinObservationCount
+	}
+	return p.predictWithSelectedEvidence(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, receiverMinObservationCount, SourceCombined, false, now, p.mergeFromStoreWithDistribution)
 }
 
-func (p *Predictor) predictWithMinObservationCount(userCell, dxCell CellID, userCoarse, dxCoarse CellID, band string, mode string, noisePenalty float64, minObservationCount int, now time.Time) Result {
+// PredictBeaconReceiveOnlyWithMinObservationCount returns a beacon path glyph
+// from the DX-to-user receive leg only. The supplied floor can raise the raw
+// observation requirement, while receiver diversity remains derived from the
+// beacon configured floor.
+func (p *Predictor) PredictBeaconReceiveOnlyWithMinObservationCount(userCell, dxCell CellID, userCoarse, dxCoarse CellID, band string, mode string, noisePenalty float64, minObservationCount int, now time.Time) Result {
+	if p == nil {
+		return Result{Glyph: "?", Source: SourceInsufficient, BeaconRX: true}
+	}
+	return p.predictWithSelectedEvidence(userCell, dxCell, userCoarse, dxCoarse, band, mode, noisePenalty, minObservationCount, p.cfg.BeaconMinObservationCount, SourceCombined, true, now, p.receiveFromStoreWithDistribution)
+}
+
+type evidenceSelector func(store *Store, userCell, dxCell CellID, userCoarse, dxCoarse CellID, band string, noisePenalty float64, now time.Time) (sampleWithBins, InsufficientReason, bool)
+
+func (p *Predictor) predictWithSelectedEvidence(userCell, dxCell CellID, userCoarse, dxCoarse CellID, band string, mode string, noisePenalty float64, minObservationCount int, receiverMinObservationCount int, source PredictionSource, beaconRX bool, now time.Time, selectEvidence evidenceSelector) Result {
 	insufficient := "?"
 	if p != nil && p.cfg.GlyphSymbols.Insufficient != "" {
 		insufficient = p.cfg.GlyphSymbols.Insufficient
 	}
 	if p == nil || !p.cfg.Enabled {
-		return Result{Glyph: insufficient, Source: SourceInsufficient}
+		return Result{Glyph: insufficient, Source: SourceInsufficient, BeaconRX: beaconRX}
 	}
 
 	modeKey := normalizeMode(mode)
-	receiverMinObservationCount := p.cfg.MinObservationCount
 	makeResult := func(sample Sample, p50DB float64, hasP50 bool, source PredictionSource, capWouldBlock bool) Result {
 		class := classUnlikely
 		glyph := p.cfg.GlyphSymbols.Unlikely
@@ -187,6 +204,7 @@ func (p *Predictor) predictWithMinObservationCount(userCell, dxCell CellID, user
 			CapLimited:       sample.CapLimited,
 			CapWouldBlock:    capWouldBlock,
 			Source:           source,
+			BeaconRX:         beaconRX,
 		}
 	}
 	makeInsufficient := func(sample Sample, p50DB float64, hasP50 bool, reason InsufficientReason, capWouldBlock bool) Result {
@@ -213,19 +231,20 @@ func (p *Predictor) predictWithMinObservationCount(userCell, dxCell CellID, user
 			CapLimited:         sample.CapLimited,
 			CapWouldBlock:      capWouldBlock,
 			Source:             SourceInsufficient,
+			BeaconRX:           beaconRX,
 			InsufficientReason: reason,
 		}
 	}
 
-	merged, reason, ok := p.mergeFromStoreWithDistribution(p.combined, userCell, dxCell, userCoarse, dxCoarse, band, noisePenalty, now)
-	if minObservationCount < p.cfg.MinObservationCount {
-		minObservationCount = p.cfg.MinObservationCount
+	merged, reason, ok := selectEvidence(p.combined, userCell, dxCell, userCoarse, dxCoarse, band, noisePenalty, now)
+	if minObservationCount < receiverMinObservationCount {
+		minObservationCount = receiverMinObservationCount
 	}
 	capWouldBlock := p.capWouldBlock(merged.Sample, receiverMinObservationCount)
 	countOK := countMeetsMinimum(sampleObservationCount(merged.Sample), minObservationCount)
 	receiverOK := p.receiverGateMeetsMinimum(merged.Sample, receiverMinObservationCount)
 	if ok && merged.Weight >= p.cfg.MinEffectiveWeight && countOK && receiverOK && merged.HasP50 {
-		return makeResult(merged.Sample, merged.P50DB, merged.HasP50, SourceCombined, capWouldBlock)
+		return makeResult(merged.Sample, merged.P50DB, merged.HasP50, source, capWouldBlock)
 	}
 	if ok {
 		if reason == InsufficientNone {
@@ -460,6 +479,42 @@ func (p *Predictor) mergeFromStoreWithDistribution(store *Store, userCell, dxCel
 		return sampleWithBins{Sample: Sample{Count: staleCount, RawCount: staleCount, CappedCount: staleCount}}, reason, false
 	}
 	return merged, reason, true
+}
+
+func (p *Predictor) receiveFromStoreWithDistribution(store *Store, userCell, dxCell CellID, userCoarse, dxCoarse CellID, band string, noisePenalty float64, now time.Time) (sampleWithBins, InsufficientReason, bool) {
+	if store == nil {
+		return sampleWithBins{}, InsufficientNoSample, false
+	}
+	rFine, rCoarse := store.lookupWithDistribution(userCell, dxCell, userCoarse, dxCoarse, band, now)
+	receive := selectSampleWithDistribution(rFine, rCoarse, p.cfg.MinFineWeight, p.cfg.FineOnlyWeight)
+
+	receiveSample, _, staleDropped, staleCount := p.applyFreshnessGate(store, band, receive.Sample, Sample{})
+	if !sampleHasEvidence(receiveSample) {
+		receive = sampleWithBins{}
+	} else {
+		receive.Sample = receiveSample
+	}
+	reason := InsufficientNone
+	if staleDropped {
+		reason = InsufficientStale
+	}
+	if !sampleHasEvidence(receive.Sample) {
+		if reason == InsufficientNone {
+			reason = InsufficientNoSample
+		}
+		return sampleWithBins{Sample: Sample{Count: staleCount, RawCount: staleCount, CappedCount: staleCount}}, reason, false
+	}
+	bins := receive.snrBins
+	if noisePenalty > 0 {
+		bins = bins.shifted(-noisePenalty)
+	}
+	p50DB, hasP50 := bins.p50DB()
+	return sampleWithBins{
+		Sample:  receive.Sample,
+		P50DB:   p50DB,
+		HasP50:  hasP50,
+		snrBins: bins,
+	}, reason, true
 }
 
 func (p *Predictor) applyFreshnessGate(store *Store, band string, receive Sample, transmit Sample) (Sample, Sample, bool, uint32) {

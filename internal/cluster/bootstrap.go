@@ -1508,7 +1508,7 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 				stats := srv.PathPredictionStatsSnapshot()
 				if stats.Total > 0 {
 					fileOnly(fmt.Sprintf(
-						"Path predictions (5m): total=%s derived=%s combined=%s voacap_closed=%s voacap_aligned=%s voacap_sparse_upgrade=%s voacap_open=%s insufficient=%s no_sample=%s low_count=%s low_receiver=%s low_weight=%s stale=%s cap_limited=%s cap_would_block=%s override_r=%s override_g=%s",
+						"Path predictions (5m): total=%s derived=%s combined=%s voacap_closed=%s voacap_aligned=%s voacap_sparse_upgrade=%s voacap_open=%s insufficient=%s no_sample=%s low_count=%s low_receiver=%s low_weight=%s stale=%s cap_limited=%s cap_would_block=%s beacon_rx=%s beacon_rx_insufficient=%s beacon_rx_no_sample=%s beacon_rx_low_count=%s beacon_rx_low_receiver=%s beacon_rx_low_weight=%s beacon_rx_stale=%s beacon_rx_voacap_closed=%s beacon_rx_voacap_aligned=%s beacon_rx_voacap_sparse_upgrade=%s beacon_rx_voacap_open=%s override_r=%s override_g=%s",
 						humanize.Comma(int64(stats.Total)),
 						humanize.Comma(int64(stats.Derived)),
 						humanize.Comma(int64(stats.Combined)),
@@ -1524,6 +1524,17 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 						humanize.Comma(int64(stats.Stale)),
 						humanize.Comma(int64(stats.CapLimited)),
 						humanize.Comma(int64(stats.CapWouldBlock)),
+						humanize.Comma(int64(stats.BeaconRX)),
+						humanize.Comma(int64(stats.BeaconRXInsufficient)),
+						humanize.Comma(int64(stats.BeaconRXNoSample)),
+						humanize.Comma(int64(stats.BeaconRXLowCount)),
+						humanize.Comma(int64(stats.BeaconRXLowReceiver)),
+						humanize.Comma(int64(stats.BeaconRXLowWeight)),
+						humanize.Comma(int64(stats.BeaconRXStale)),
+						humanize.Comma(int64(stats.BeaconRXVOACAPClosed)),
+						humanize.Comma(int64(stats.BeaconRXVOACAPAligned)),
+						humanize.Comma(int64(stats.BeaconRXVOACAPSparseUpgrade)),
+						humanize.Comma(int64(stats.BeaconRXVOACAPOpen)),
 						humanize.Comma(int64(stats.OverrideR)),
 						humanize.Comma(int64(stats.OverrideG)),
 					))

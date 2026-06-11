@@ -382,7 +382,7 @@ For the mode-specific support rules, timing knobs, and decision history, see
 - `SET DIAG DEDUPE`: `<DE-DXCC>|<DE-key>|<src>|<policy>`, where `<src>` is `H` for human-class or `S` for skimmer/automated-class.
 - `SET DIAG SOURCE`: `<source>` with `MAN`, `RBN`, `RBNFT`, `PSK`, `DXS`, `UP`, or `P:<peer>` for peer-origin spots.
 - `SET DIAG CONF`: `<score>%` when the pipeline calculated a confidence percent, otherwise `--%`.
-- `SET DIAG PATH`: `n<count>|w<weight>|a<age>` for usable path evidence, `n<count>|<reason>` for insufficient evidence (`none`, `lown`, `lowr`, `loww`, or `stale`), `vcap|<snr>|h<hour>|s<ssn>` for a cached VOACAP closed fallback, `valn|<p50>/<snr>h<hour>s<ssn>` for VOACAP-aligned sparse p50, `vup|<p50>/<snr>r<rel>s<ssn>` for a REL-gated sparse p50 upgrade, or `vop|<snr>r<rel>h<hour>s<ssn>` for a REL-gated no-p50 VOACAP open fallback.
+- `SET DIAG PATH`: `n<count>|w<weight>|a<age>` for usable path evidence, `n<count>|<reason>` for insufficient evidence (`none`, `lown`, `lowr`, `loww`, or `stale`), `vcap|<snr>|h<hour>|s<ssn>` for a cached VOACAP closed fallback, `valn|<p50>/<snr>h<hour>s<ssn>` for VOACAP-aligned sparse p50, `vup|<p50>/<snr>r<rel>s<ssn>` for a REL-gated sparse p50 upgrade, or `vop|<snr>r<rel>h<hour>s<ssn>` for a REL-gated no-p50 VOACAP open fallback. Beacon RX-only path decisions add `brx|` to bucket diagnostics and `bv*` prefixes to VOACAP diagnostics.
 - `SET DIAG MODE`: `<mode>|<provenance>` to show the final normalized mode and why it was assigned.
 
 Mode provenance tokens:
@@ -432,6 +432,10 @@ area:
   shown as percent and is not a direct HIGH/MEDIUM/LOW probability.
 - `vop|<snr>r<rel>h<hour>s<ssn>` means there was no sparse p50, but cached
   current-hour VOACAP mapped to an open class and passed the REL gate.
+- `brx|...` means the spot was marked as a beacon and the bucket p50 decision
+  used only the DX-to-user receive leg. Beacon VOACAP fallback diagnostics use
+  `bvcap`, `bvaln`, `bvup`, or `bvop`; their `<snr>` and REL values come from
+  the receive leg rather than the bidirectional effective VOACAP model.
 - `n<count>|none` means there was no usable selected path sample.
 - `n<count>|lown` means selected evidence existed but the selected observation count
   stayed below the configured minimum.
@@ -530,6 +534,8 @@ Important operational notes:
   `stale` can increase when honest fine/coarse age drops an old local direction.
   VOACAP fallback outcomes are counted separately as `voacap_closed`,
   `voacap_aligned`, `voacap_sparse_upgrade`, and `voacap_open`.
+  Beacon paths add `beacon_rx`, `beacon_rx_insufficient`,
+  `beacon_rx_<reason>`, and `beacon_rx_voacap_*` counters to the same line.
   A separate `VOACAP fallback (5m)` line appears when fallback work occurs and
   reports stage counters such as `queued`, `success`, `cache_hit`,
   `no_current_hour`, `closed`, `closed_no_p50`,
@@ -556,6 +562,13 @@ Important operational notes:
   uses the SNR50 closed threshold and does not require REL. Runtime fallback
   decks cover the rolling UTC forecast window; parsed VOACAP hour `24` is
   treated as UTC hour `0`.
+- Beacon spots use RX-only path semantics. The beacon qualifier is the existing
+  canonical `IsBeacon` flag, including source-class beacons, `/B` calls, known
+  beacon calls, and beacon comment keywords. For those spots, transmit evidence
+  is not applicable: bucket p50 uses the DX-to-user receive leg only, applies
+  `SET NOISE`, skips `reverse_hint_discount`, and uses
+  `beacon_min_observation_count`. If bucket p50 is insufficient, VOACAP
+  fallback classifies and REL-gates on the receive leg.
 - `SHOW PROP <call|prefix|grid> [band] [mode]` exposes the same rolling VOACAP
   outlook directly. Omitted mode defaults to CW. Empty or partial single-band
   cache results enqueue a refresh and may wait briefly; all-band requests show

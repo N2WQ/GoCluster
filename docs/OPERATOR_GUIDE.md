@@ -241,6 +241,10 @@ vup|<p50>/<snr>r<rel>s<ssn>
 vop|<snr>r<rel>h<hour>s<ssn>
 ```
 
+Beacon RX-only decisions add `brx|` to bucket diagnostics. Beacon VOACAP
+fallback uses the same compact shapes with `bvcap`, `bvaln`, `bvup`, or `bvop`
+prefixes.
+
 - `n<count>` is the raw selected observation count behind the displayed path
   decision in every receiver-cap mode. It is a sample-size clue, not a
   confidence percent.
@@ -270,6 +274,10 @@ vop|<snr>r<rel>h<hour>s<ssn>
   shown as percent and is not a direct HIGH/MEDIUM/LOW probability.
 - `vop|<snr>r<rel>h<hour>s<ssn>` means there was no sparse p50, but cached
   current-hour VOACAP mapped to an open class and passed the REL gate.
+- `brx|...` means the spot was marked as a beacon and the path decision used
+  only the DX-to-user receive leg. `bvcap`, `bvaln`, `bvup`, and `bvop` are the
+  equivalent beacon VOACAP fallback diagnostics; their SNR and REL fields are
+  receive-leg values, not bidirectional effective values.
 - `none` means no usable selected sample existed.
 - `lown` means selected samples existed, but their observation count was below
   the configured minimum.
@@ -288,6 +296,9 @@ receiver-diversity gate; `low_weight` is the decayed effective-weight gate; and
 receive/transmit merge.
 VOACAP fallback outcomes are counted separately as `voacap_closed`,
 `voacap_aligned`, `voacap_sparse_upgrade`, and `voacap_open`.
+Beacon spots add `beacon_rx`, `beacon_rx_insufficient`,
+`beacon_rx_<reason>`, and `beacon_rx_voacap_*` counters to the same final
+emission line.
 
 When the optional VOACAP fallback has activity, a separate
 `VOACAP fallback (5m)` propagation log line explains the stage path:

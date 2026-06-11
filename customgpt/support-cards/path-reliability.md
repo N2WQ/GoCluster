@@ -33,6 +33,10 @@ inspect user-visible diagnostics:
   no-p50 open VOACAP fallbacks. The VOACAP SNR in these tags is the rounded
   bidirectional effective SNR after receive-side noise penalty, not one raw
   VOACAP direction.
+- `brx` diagnostics mean the spot was marked as a beacon and path prediction
+  used only the DX-to-user receive leg. Beacon VOACAP fallback diagnostics use
+  `bvcap`, `bvaln`, `bvup`, or `bvop`; their SNR and REL fields are receive-leg
+  values.
 - VOACAP REL is treated as reliability of VOACAP's request SNR. It is not a
   direct probability that the path is HIGH, MEDIUM, LOW, or UNLIKELY.
 - Closed fallback spots can be filtered with `PASS/REJECT PATH CLOSED`;
@@ -40,6 +44,8 @@ inspect user-visible diagnostics:
   compatibility.
 - `Path predictions (5m)` counts final emitted `voacap_closed`,
   `voacap_aligned`, `voacap_sparse_upgrade`, and `voacap_open` glyphs.
+  Beacon final counters use `beacon_rx`, `beacon_rx_insufficient`,
+  `beacon_rx_<reason>`, and `beacon_rx_voacap_*`.
   `VOACAP fallback (5m)` explains fallback stages such as queued, cache hit, no
   current hour, open without sparse p50, class mismatch, REL missing, REL below
   floor, and multi-tier sparse-upgrade candidates. Closed fallback stages split

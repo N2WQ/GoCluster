@@ -133,6 +133,10 @@ min_effective_weight: 0.5
 # Receiver-cap enforce mode applies receiver diversity as a separate gate so this count keeps one meaning.
 min_observation_count: 21
 
+# Minimum raw DX->user receive-leg observations required to report a beacon glyph.
+# Beacon transmit evidence is not applicable, so this floor is calibrated per direction.
+beacon_min_observation_count: 11
+
 # Receiver contribution caps limit how much one receiving station can add to a
 # bucket's trust evidence. "enforce" gates glyphs and PATH filters on capped
 # evidence; "shadow" uses raw active evidence while recording whether the active

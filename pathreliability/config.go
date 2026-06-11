@@ -28,6 +28,7 @@ type Config struct {
 	MaxPredictionAgeHalfLifeMultiplier float64                    `yaml:"max_prediction_age_half_life_multiplier"` // prediction age gate = k * half-life; 0 disables
 	MinEffectiveWeight                 float64                    `yaml:"min_effective_weight"`                    // minimum decayed weight to report
 	MinObservationCount                int                        `yaml:"min_observation_count"`                   // minimum raw selected observations to report
+	BeaconMinObservationCount          int                        `yaml:"beacon_min_observation_count"`            // minimum raw receive-leg observations for beacon paths
 	ReceiverContributionMode           string                     `yaml:"receiver_contribution_mode"`              // off, shadow, or enforce receiver contribution caps
 	ReceiverFineSlots                  int                        `yaml:"receiver_fine_slots"`                     // tracked receiver slots in fine buckets
 	ReceiverCoarseSlots                int                        `yaml:"receiver_coarse_slots"`                   // tracked receiver slots in coarse buckets
@@ -89,6 +90,7 @@ var requiredConfigPaths = []yamlconfig.Path{
 	{"max_prediction_age_half_life_multiplier"},
 	{"min_effective_weight"},
 	{"min_observation_count"},
+	{"beacon_min_observation_count"},
 	{"receiver_contribution_mode"},
 	{"receiver_fine_slots"},
 	{"receiver_coarse_slots"},
@@ -285,6 +287,7 @@ func DefaultConfig() Config {
 		MaxPredictionAgeHalfLifeMultiplier: 1.25,
 		MinEffectiveWeight:                 1.0,
 		MinObservationCount:                19,
+		BeaconMinObservationCount:          11,
 		ReceiverContributionMode:           ReceiverContributionShadow,
 		ReceiverFineSlots:                  6,
 		ReceiverCoarseSlots:                12,
@@ -371,6 +374,9 @@ func (c *Config) finalize() error {
 	}
 	if c.MinObservationCount <= 0 {
 		return fmt.Errorf("min_observation_count must be > 0")
+	}
+	if c.BeaconMinObservationCount <= 0 {
+		return fmt.Errorf("beacon_min_observation_count must be > 0")
 	}
 	mode := strings.ToLower(strings.TrimSpace(c.ReceiverContributionMode))
 	switch mode {

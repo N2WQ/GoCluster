@@ -103,22 +103,33 @@ type classificationThreshold struct {
 }
 
 type predictionHour struct {
-	Hour                   string  `json:"hour"`
-	Samples                int     `json:"samples"`
-	AvgTotal               float64 `json:"avg_total"`
-	AvgCombined            float64 `json:"avg_combined"`
-	AvgVOACAPClosed        float64 `json:"avg_voacap_closed"`
-	AvgVOACAPAligned       float64 `json:"avg_voacap_aligned"`
-	AvgVOACAPSparseUpgrade float64 `json:"avg_voacap_sparse_upgrade"`
-	AvgVOACAPOpen          float64 `json:"avg_voacap_open"`
-	AvgInsufficient        float64 `json:"avg_insufficient"`
-	AvgNoSample            float64 `json:"avg_no_sample"`
-	AvgLowCount            float64 `json:"avg_low_count"`
-	AvgLowReceiver         float64 `json:"avg_low_receiver"`
-	AvgLowWeight           float64 `json:"avg_low_weight"`
-	AvgStale               float64 `json:"avg_stale"`
-	AvgCapLimited          float64 `json:"avg_cap_limited"`
-	AvgCapWouldBlock       float64 `json:"avg_cap_would_block"`
+	Hour                           string  `json:"hour"`
+	Samples                        int     `json:"samples"`
+	AvgTotal                       float64 `json:"avg_total"`
+	AvgCombined                    float64 `json:"avg_combined"`
+	AvgVOACAPClosed                float64 `json:"avg_voacap_closed"`
+	AvgVOACAPAligned               float64 `json:"avg_voacap_aligned"`
+	AvgVOACAPSparseUpgrade         float64 `json:"avg_voacap_sparse_upgrade"`
+	AvgVOACAPOpen                  float64 `json:"avg_voacap_open"`
+	AvgBeaconRX                    float64 `json:"avg_beacon_rx"`
+	AvgBeaconRXInsufficient        float64 `json:"avg_beacon_rx_insufficient"`
+	AvgBeaconRXNoSample            float64 `json:"avg_beacon_rx_no_sample"`
+	AvgBeaconRXLowCount            float64 `json:"avg_beacon_rx_low_count"`
+	AvgBeaconRXLowReceiver         float64 `json:"avg_beacon_rx_low_receiver"`
+	AvgBeaconRXLowWeight           float64 `json:"avg_beacon_rx_low_weight"`
+	AvgBeaconRXStale               float64 `json:"avg_beacon_rx_stale"`
+	AvgBeaconRXVOACAPClosed        float64 `json:"avg_beacon_rx_voacap_closed"`
+	AvgBeaconRXVOACAPAligned       float64 `json:"avg_beacon_rx_voacap_aligned"`
+	AvgBeaconRXVOACAPSparseUpgrade float64 `json:"avg_beacon_rx_voacap_sparse_upgrade"`
+	AvgBeaconRXVOACAPOpen          float64 `json:"avg_beacon_rx_voacap_open"`
+	AvgInsufficient                float64 `json:"avg_insufficient"`
+	AvgNoSample                    float64 `json:"avg_no_sample"`
+	AvgLowCount                    float64 `json:"avg_low_count"`
+	AvgLowReceiver                 float64 `json:"avg_low_receiver"`
+	AvgLowWeight                   float64 `json:"avg_low_weight"`
+	AvgStale                       float64 `json:"avg_stale"`
+	AvgCapLimited                  float64 `json:"avg_cap_limited"`
+	AvgCapWouldBlock               float64 `json:"avg_cap_would_block"`
 }
 
 type capShadowHour struct {
@@ -189,6 +200,7 @@ type modelContext struct {
 	MaxPredictionAgeByBand             map[string]int     `json:"max_prediction_age_by_band_seconds"`
 	MinEffectiveWeight                 float64            `json:"min_effective_weight"`
 	MinObservationCount                int                `json:"min_observation_count"`
+	BeaconMinObservationCount          int                `json:"beacon_min_observation_count"`
 	ReceiverContributionMode           string             `json:"receiver_contribution_mode"`
 	ReceiverFineSlots                  int                `json:"receiver_fine_slots"`
 	ReceiverCoarseSlots                int                `json:"receiver_coarse_slots"`
@@ -226,20 +238,31 @@ type weightBins struct {
 }
 
 type predTotals struct {
-	Total               int
-	Combined            int
-	VOACAPClosed        int
-	VOACAPAligned       int
-	VOACAPSparseUpgrade int
-	VOACAPOpen          int
-	Insufficient        int
-	NoSample            int
-	LowCount            int
-	LowReceiver         int
-	LowWeight           int
-	Stale               int
-	CapLimited          int
-	CapWouldBlock       int
+	Total                       int
+	Combined                    int
+	VOACAPClosed                int
+	VOACAPAligned               int
+	VOACAPSparseUpgrade         int
+	VOACAPOpen                  int
+	BeaconRX                    int
+	BeaconRXInsufficient        int
+	BeaconRXNoSample            int
+	BeaconRXLowCount            int
+	BeaconRXLowReceiver         int
+	BeaconRXLowWeight           int
+	BeaconRXStale               int
+	BeaconRXVOACAPClosed        int
+	BeaconRXVOACAPAligned       int
+	BeaconRXVOACAPSparseUpgrade int
+	BeaconRXVOACAPOpen          int
+	Insufficient                int
+	NoSample                    int
+	LowCount                    int
+	LowReceiver                 int
+	LowWeight                   int
+	Stale                       int
+	CapLimited                  int
+	CapWouldBlock               int
 }
 
 type capShadowTotals struct {
@@ -287,7 +310,7 @@ var (
 	ansiRe            = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 	bandBuckets       = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)\s+f=([\d,]+)\s+c=([\d,]+)`)
 	bandWeights       = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)\s+t=([\d,]+)\s+<1=([\d,]+)\s+1-2=([\d,]+)\s+2-3=([\d,]+)\s+3-5=([\d,]+)\s+5-10=([\d,]+)\s+>=10=([\d,]+)`)
-	predsFields       = regexp.MustCompile(`\b(total|derived|combined|voacap_closed|voacap_aligned|voacap_sparse_upgrade|voacap_open|insufficient|no_sample|low_count|low_receiver|low_weight|stale|cap_limited|cap_would_block)=([\d,]+)`)
+	predsFields       = regexp.MustCompile(`\b(total|derived|combined|voacap_closed|voacap_aligned|voacap_sparse_upgrade|voacap_open|beacon_rx|beacon_rx_insufficient|beacon_rx_no_sample|beacon_rx_low_count|beacon_rx_low_receiver|beacon_rx_low_weight|beacon_rx_stale|beacon_rx_voacap_closed|beacon_rx_voacap_aligned|beacon_rx_voacap_sparse_upgrade|beacon_rx_voacap_open|insufficient|no_sample|low_count|low_receiver|low_weight|stale|cap_limited|cap_would_block)=([\d,]+)`)
 	totalField        = regexp.MustCompile(`\btotal=([\d,]+)`)
 	capShadowField    = regexp.MustCompile(`\bcap(\d+)_(pass|low_count|low_receiver|low_weight|block)=([\d,]+)`)
 	capP50ShadowField = regexp.MustCompile(`\bcap(\d+)_p50_(pass_unlikely|pass_low|pass_medium|pass_high|same|stronger|weaker|to_insufficient)=([\d,]+)`)
@@ -370,20 +393,31 @@ func parsePredictionTotals(line string) (predTotals, bool) {
 		}
 	}
 	return predTotals{
-		Total:               values["total"],
-		Combined:            values["combined"],
-		VOACAPClosed:        values["voacap_closed"],
-		VOACAPAligned:       values["voacap_aligned"],
-		VOACAPSparseUpgrade: values["voacap_sparse_upgrade"],
-		VOACAPOpen:          values["voacap_open"],
-		Insufficient:        values["insufficient"],
-		NoSample:            values["no_sample"],
-		LowCount:            values["low_count"],
-		LowReceiver:         values["low_receiver"],
-		LowWeight:           values["low_weight"],
-		Stale:               values["stale"],
-		CapLimited:          values["cap_limited"],
-		CapWouldBlock:       values["cap_would_block"],
+		Total:                       values["total"],
+		Combined:                    values["combined"],
+		VOACAPClosed:                values["voacap_closed"],
+		VOACAPAligned:               values["voacap_aligned"],
+		VOACAPSparseUpgrade:         values["voacap_sparse_upgrade"],
+		VOACAPOpen:                  values["voacap_open"],
+		BeaconRX:                    values["beacon_rx"],
+		BeaconRXInsufficient:        values["beacon_rx_insufficient"],
+		BeaconRXNoSample:            values["beacon_rx_no_sample"],
+		BeaconRXLowCount:            values["beacon_rx_low_count"],
+		BeaconRXLowReceiver:         values["beacon_rx_low_receiver"],
+		BeaconRXLowWeight:           values["beacon_rx_low_weight"],
+		BeaconRXStale:               values["beacon_rx_stale"],
+		BeaconRXVOACAPClosed:        values["beacon_rx_voacap_closed"],
+		BeaconRXVOACAPAligned:       values["beacon_rx_voacap_aligned"],
+		BeaconRXVOACAPSparseUpgrade: values["beacon_rx_voacap_sparse_upgrade"],
+		BeaconRXVOACAPOpen:          values["beacon_rx_voacap_open"],
+		Insufficient:                values["insufficient"],
+		NoSample:                    values["no_sample"],
+		LowCount:                    values["low_count"],
+		LowReceiver:                 values["low_receiver"],
+		LowWeight:                   values["low_weight"],
+		Stale:                       values["stale"],
+		CapLimited:                  values["cap_limited"],
+		CapWouldBlock:               values["cap_would_block"],
 	}, true
 }
 
@@ -732,6 +766,7 @@ func buildModelContext(cfg pathreliability.Config, bands []string) modelContext 
 		MaxPredictionAgeByBand:             maxAgeByBand,
 		MinEffectiveWeight:                 cfg.MinEffectiveWeight,
 		MinObservationCount:                cfg.MinObservationCount,
+		BeaconMinObservationCount:          cfg.BeaconMinObservationCount,
 		ReceiverContributionMode:           cfg.ReceiverContributionMode,
 		ReceiverFineSlots:                  cfg.ReceiverFineSlots,
 		ReceiverCoarseSlots:                cfg.ReceiverCoarseSlots,
@@ -830,7 +865,7 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 
 	bucketByTS := make(map[string]map[string]int)
 	weightByTS := make(map[string]map[string]weightBins)
-	predByTS := make(map[string]predTotals)
+	predByTS := make(map[string]*predTotals)
 	capShadowByTS := make(map[string]capShadowTotals)
 	capP50ShadowByTS := make(map[string]capP50ShadowTotals)
 	sourceMixByHour := make(map[int]*sourceMixHour)
@@ -867,7 +902,7 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 			ts := m[1]
 			totals, ok := parsePredictionTotals(entry)
 			if ok {
-				predByTS[ts] = totals
+				predByTS[ts] = &totals
 			}
 		}
 		if m := capShadowRe.FindStringSubmatch(entry); len(m) == 2 {
@@ -1115,7 +1150,7 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 		summaries = append(summaries, summary)
 	}
 
-	predHours := make(map[int][]predTotals)
+	predHours := make(map[int][]*predTotals)
 	for ts, totals := range predByTS {
 		tsTime, err := time.Parse("2006/01/02 15:04:05", ts)
 		if err != nil {
@@ -1137,6 +1172,8 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 			continue
 		}
 		var total, combined, voacapClosed, voacapAligned, voacapSparseUpgrade, voacapOpen, insufficient, noSample, lowCount, lowReceiver, lowWeight, stale, capLimited, capWouldBlock int
+		var beaconRX, beaconRXInsufficient, beaconRXNoSample, beaconRXLowCount, beaconRXLowReceiver, beaconRXLowWeight, beaconRXStale int
+		var beaconRXVOACAPClosed, beaconRXVOACAPAligned, beaconRXVOACAPSparseUpgrade, beaconRXVOACAPOpen int
 		for _, r := range rows {
 			total += r.Total
 			combined += r.Combined
@@ -1144,6 +1181,17 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 			voacapAligned += r.VOACAPAligned
 			voacapSparseUpgrade += r.VOACAPSparseUpgrade
 			voacapOpen += r.VOACAPOpen
+			beaconRX += r.BeaconRX
+			beaconRXInsufficient += r.BeaconRXInsufficient
+			beaconRXNoSample += r.BeaconRXNoSample
+			beaconRXLowCount += r.BeaconRXLowCount
+			beaconRXLowReceiver += r.BeaconRXLowReceiver
+			beaconRXLowWeight += r.BeaconRXLowWeight
+			beaconRXStale += r.BeaconRXStale
+			beaconRXVOACAPClosed += r.BeaconRXVOACAPClosed
+			beaconRXVOACAPAligned += r.BeaconRXVOACAPAligned
+			beaconRXVOACAPSparseUpgrade += r.BeaconRXVOACAPSparseUpgrade
+			beaconRXVOACAPOpen += r.BeaconRXVOACAPOpen
 			insufficient += r.Insufficient
 			noSample += r.NoSample
 			lowCount += r.LowCount
@@ -1155,22 +1203,33 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 		}
 		count := len(rows)
 		predSummary = append(predSummary, predictionHour{
-			Hour:                   fmt.Sprintf("%02d:00", h),
-			Samples:                count,
-			AvgTotal:               float64(total) / float64(count),
-			AvgCombined:            float64(combined) / float64(count),
-			AvgVOACAPClosed:        float64(voacapClosed) / float64(count),
-			AvgVOACAPAligned:       float64(voacapAligned) / float64(count),
-			AvgVOACAPSparseUpgrade: float64(voacapSparseUpgrade) / float64(count),
-			AvgVOACAPOpen:          float64(voacapOpen) / float64(count),
-			AvgInsufficient:        float64(insufficient) / float64(count),
-			AvgNoSample:            float64(noSample) / float64(count),
-			AvgLowCount:            float64(lowCount) / float64(count),
-			AvgLowReceiver:         float64(lowReceiver) / float64(count),
-			AvgLowWeight:           float64(lowWeight) / float64(count),
-			AvgStale:               float64(stale) / float64(count),
-			AvgCapLimited:          float64(capLimited) / float64(count),
-			AvgCapWouldBlock:       float64(capWouldBlock) / float64(count),
+			Hour:                           fmt.Sprintf("%02d:00", h),
+			Samples:                        count,
+			AvgTotal:                       float64(total) / float64(count),
+			AvgCombined:                    float64(combined) / float64(count),
+			AvgVOACAPClosed:                float64(voacapClosed) / float64(count),
+			AvgVOACAPAligned:               float64(voacapAligned) / float64(count),
+			AvgVOACAPSparseUpgrade:         float64(voacapSparseUpgrade) / float64(count),
+			AvgVOACAPOpen:                  float64(voacapOpen) / float64(count),
+			AvgBeaconRX:                    float64(beaconRX) / float64(count),
+			AvgBeaconRXInsufficient:        float64(beaconRXInsufficient) / float64(count),
+			AvgBeaconRXNoSample:            float64(beaconRXNoSample) / float64(count),
+			AvgBeaconRXLowCount:            float64(beaconRXLowCount) / float64(count),
+			AvgBeaconRXLowReceiver:         float64(beaconRXLowReceiver) / float64(count),
+			AvgBeaconRXLowWeight:           float64(beaconRXLowWeight) / float64(count),
+			AvgBeaconRXStale:               float64(beaconRXStale) / float64(count),
+			AvgBeaconRXVOACAPClosed:        float64(beaconRXVOACAPClosed) / float64(count),
+			AvgBeaconRXVOACAPAligned:       float64(beaconRXVOACAPAligned) / float64(count),
+			AvgBeaconRXVOACAPSparseUpgrade: float64(beaconRXVOACAPSparseUpgrade) / float64(count),
+			AvgBeaconRXVOACAPOpen:          float64(beaconRXVOACAPOpen) / float64(count),
+			AvgInsufficient:                float64(insufficient) / float64(count),
+			AvgNoSample:                    float64(noSample) / float64(count),
+			AvgLowCount:                    float64(lowCount) / float64(count),
+			AvgLowReceiver:                 float64(lowReceiver) / float64(count),
+			AvgLowWeight:                   float64(lowWeight) / float64(count),
+			AvgStale:                       float64(stale) / float64(count),
+			AvgCapLimited:                  float64(capLimited) / float64(count),
+			AvgCapWouldBlock:               float64(capWouldBlock) / float64(count),
 		})
 	}
 
@@ -1482,6 +1541,7 @@ func writeModelContext(b *strings.Builder, ctx modelContext, bands []bandSummary
 		ctx.DefaultHalfLifeSec, ctx.StaleAfterSeconds, ctx.StaleAfterHalfLifeMultiplier)
 	fmt.Fprintf(b, "Min effective weight: %.2f. Min observations: %d. Min fine weight: %.2f. Reverse hint discount: %.2f.\n",
 		ctx.MinEffectiveWeight, ctx.MinObservationCount, ctx.MinFineWeight, ctx.ReverseHintDiscount)
+	fmt.Fprintf(b, "Beacon RX-only min observations: %d.\n", ctx.BeaconMinObservationCount)
 	fmt.Fprintf(b, "Receiver contribution caps: mode=%s fine_slots=%d coarse_slots=%d max_count=%d max_weight=%.2f.\n",
 		ctx.ReceiverContributionMode, ctx.ReceiverFineSlots, ctx.ReceiverCoarseSlots, ctx.ReceiverMaxEffectiveCount, ctx.ReceiverMaxEffectiveWeight)
 	fmt.Fprintf(b, "Merge weights: receive %.2f / transmit %.2f.\n", ctx.MergeReceiveWeight, ctx.MergeTransmitWeight)
@@ -1717,6 +1777,8 @@ func predictionActivitySummary(hours []predictionHour) string {
 	var voacapAlignedSample []string
 	var voacapSparseUpgradeSample []string
 	var voacapOpenSample []string
+	var beaconRXSample []string
+	var beaconRXInsufficientSample []string
 	var capWouldBlockSample []string
 	for i := range hours {
 		h := &hours[i]
@@ -1755,6 +1817,16 @@ func predictionActivitySummary(hours []predictionHour) string {
 		if h.AvgVOACAPOpen > 0 {
 			voacapOpenSample = append(voacapOpenSample, h.Hour)
 		}
+		if h.AvgBeaconRX > 0 ||
+			h.AvgBeaconRXVOACAPClosed > 0 ||
+			h.AvgBeaconRXVOACAPAligned > 0 ||
+			h.AvgBeaconRXVOACAPSparseUpgrade > 0 ||
+			h.AvgBeaconRXVOACAPOpen > 0 {
+			beaconRXSample = append(beaconRXSample, h.Hour)
+		}
+		if h.AvgBeaconRXInsufficient > 0 {
+			beaconRXInsufficientSample = append(beaconRXInsufficientSample, h.Hour)
+		}
 		if h.AvgCapWouldBlock > 0 {
 			capWouldBlockSample = append(capWouldBlockSample, h.Hour)
 		}
@@ -1787,6 +1859,12 @@ func predictionActivitySummary(hours []predictionHour) string {
 	}
 	if len(voacapOpenSample) > 0 {
 		s += fmt.Sprintf(" Hours with REL-gated VOACAP no-p50 open predictions: %s.", strings.Join(voacapOpenSample, ", "))
+	}
+	if len(beaconRXSample) > 0 {
+		s += fmt.Sprintf(" Hours with beacon RX-only path predictions: %s.", strings.Join(beaconRXSample, ", "))
+	}
+	if len(beaconRXInsufficientSample) > 0 {
+		s += fmt.Sprintf(" Hours with insufficient beacon RX-only p50 evidence: %s.", strings.Join(beaconRXInsufficientSample, ", "))
 	}
 	if len(capWouldBlockSample) > 0 {
 		s += fmt.Sprintf(" Hours where receiver caps would block shadow predictions: %s.", strings.Join(capWouldBlockSample, ", "))

@@ -152,6 +152,15 @@ func (f VOACAPCachedForecast) ReqSNRReliability() (float64, bool) {
 	return 0, false
 }
 
+// ReceiveReqSNRReliability returns VOACAP REL for the receive deck. Legacy
+// non-directional records fall back to the record-level request-SNR REL.
+func (f VOACAPCachedForecast) ReceiveReqSNRReliability() (float64, bool) {
+	if f.Record.HasDirectionalReqSNRReliability {
+		return f.Record.ReceiveReqSNRReliability, true
+	}
+	return f.ReqSNRReliability()
+}
+
 // ReceiveDB returns the target-to-user receive leg after the request-specific
 // receive-noise penalty. Non-directional legacy records fall back to EffectiveDB.
 func (f VOACAPCachedForecast) ReceiveDB() float64 {
@@ -216,6 +225,23 @@ func VOACAPReqSNRReliabilityGate(forecast VOACAPCachedForecast, class string, cf
 		return 0, 0, VOACAPReliabilityGateMissing
 	}
 	rel, ok = forecast.ReqSNRReliability()
+	if !ok {
+		return 0, threshold, VOACAPReliabilityGateMissing
+	}
+	if rel < threshold {
+		return rel, threshold, VOACAPReliabilityGateBelowThreshold
+	}
+	return rel, threshold, VOACAPReliabilityGateOK
+}
+
+// VOACAPReceiveReqSNRReliabilityGate evaluates REL on the receive leg for
+// beacon RX-only fallback semantics.
+func VOACAPReceiveReqSNRReliabilityGate(forecast VOACAPCachedForecast, class string, cfg Config) (rel float64, threshold float64, reason VOACAPReliabilityGateReason) {
+	threshold, ok := VOACAPReliabilityThresholdForClass(class, cfg)
+	if !ok {
+		return 0, 0, VOACAPReliabilityGateMissing
+	}
+	rel, ok = forecast.ReceiveReqSNRReliability()
 	if !ok {
 		return 0, threshold, VOACAPReliabilityGateMissing
 	}
@@ -902,6 +928,16 @@ func VOACAPClosedResult(cfg Config, forecast VOACAPCachedForecast) Result {
 	return res
 }
 
+// VOACAPBeaconClosedResult maps a receive-leg VOACAP forecast to the closed
+// fallback result for beacon RX-only paths.
+func VOACAPBeaconClosedResult(cfg Config, forecast VOACAPCachedForecast) Result {
+	res := VOACAPClosedResult(cfg, forecast)
+	res.BeaconRX = true
+	attachReceiveVOACAPDiagnostics(&res, forecast)
+	res.P50DB = forecast.ReceiveDB()
+	return res
+}
+
 // VOACAPAlignedResult maps sparse p50 evidence corroborated by VOACAP to a
 // normal path glyph while retaining both bucket and VOACAP diagnostics.
 func VOACAPAlignedResult(base Result, cfg Config, mode string, forecast VOACAPCachedForecast) Result {
@@ -915,6 +951,15 @@ func VOACAPAlignedResult(base Result, cfg Config, mode string, forecast VOACAPCa
 	return base
 }
 
+// VOACAPBeaconAlignedResult maps sparse beacon RX-only p50 evidence
+// corroborated by receive-leg VOACAP to a normal path glyph.
+func VOACAPBeaconAlignedResult(base Result, cfg Config, mode string, forecast VOACAPCachedForecast) Result {
+	base = VOACAPAlignedResult(base, cfg, mode, forecast)
+	base.BeaconRX = true
+	attachReceiveVOACAPDiagnostics(&base, forecast)
+	return base
+}
+
 // VOACAPSparseUpgradeResult maps sparse p50 evidence to a one-tier stronger
 // VOACAP class after the request-SNR REL gate has passed.
 func VOACAPSparseUpgradeResult(base Result, cfg Config, mode string, forecast VOACAPCachedForecast) Result {
@@ -924,6 +969,19 @@ func VOACAPSparseUpgradeResult(base Result, cfg Config, mode string, forecast VO
 	base.Source = SourceVOACAPSparseUpgrade
 	base.InsufficientReason = InsufficientNone
 	attachVOACAPDiagnostics(&base, forecast)
+	return base
+}
+
+// VOACAPBeaconSparseUpgradeResult maps sparse beacon p50 evidence to a one-tier
+// stronger receive-leg VOACAP class after the receive REL gate has passed.
+func VOACAPBeaconSparseUpgradeResult(base Result, cfg Config, mode string, forecast VOACAPCachedForecast) Result {
+	class := ClassForDB(forecast.ReceiveDB(), mode, cfg)
+	base.Glyph = glyphForClass(class, cfg)
+	base.Class = class
+	base.Source = SourceVOACAPSparseUpgrade
+	base.BeaconRX = true
+	base.InsufficientReason = InsufficientNone
+	attachReceiveVOACAPDiagnostics(&base, forecast)
 	return base
 }
 
@@ -943,6 +1001,23 @@ func VOACAPOpenResult(cfg Config, mode string, forecast VOACAPCachedForecast) Re
 	return res
 }
 
+// VOACAPBeaconOpenResult maps a no-p50 insufficient beacon result to a
+// receive-leg VOACAP class after the receive REL gate has passed.
+func VOACAPBeaconOpenResult(cfg Config, mode string, forecast VOACAPCachedForecast) Result {
+	class := ClassForDB(forecast.ReceiveDB(), mode, cfg)
+	res := Result{
+		Glyph:    glyphForClass(class, cfg),
+		Class:    class,
+		P50DB:    forecast.ReceiveDB(),
+		HasP50:   false,
+		AgeSec:   forecast.AgeSec,
+		Source:   SourceVOACAPOpen,
+		BeaconRX: true,
+	}
+	attachReceiveVOACAPDiagnostics(&res, forecast)
+	return res
+}
+
 func attachVOACAPDiagnostics(res *Result, forecast VOACAPCachedForecast) {
 	if res == nil {
 		return
@@ -953,6 +1028,21 @@ func attachVOACAPDiagnostics(res *Result, forecast VOACAPCachedForecast) {
 	res.VOACAPHourUTC = forecast.Record.HourUTC
 	res.VOACAPFrequencyMHz = forecast.Record.FrequencyMHz
 	if rel, ok := forecast.ReqSNRReliability(); ok {
+		res.VOACAPReqSNRReliability = rel
+		res.VOACAPHasReqSNRReliability = true
+	}
+}
+
+func attachReceiveVOACAPDiagnostics(res *Result, forecast VOACAPCachedForecast) {
+	if res == nil {
+		return
+	}
+	res.VOACAPFT8SNRDB = int(math.Round(forecast.ReceiveDB()))
+	res.VOACAPSSN = forecast.SSN
+	res.VOACAPAgeSec = forecast.AgeSec
+	res.VOACAPHourUTC = forecast.Record.HourUTC
+	res.VOACAPFrequencyMHz = forecast.Record.FrequencyMHz
+	if rel, ok := forecast.ReceiveReqSNRReliability(); ok {
 		res.VOACAPReqSNRReliability = rel
 		res.VOACAPHasReqSNRReliability = true
 	}

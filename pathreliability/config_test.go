@@ -145,6 +145,9 @@ func TestLoadFileReadsClosedGlyphAndVOACAPFallback(t *testing.T) {
 		cfg.VOACAPFallback.ReliabilityMinUnlikely != 0.50 {
 		t.Fatalf("unexpected REL gates in shipped config: %+v", cfg.VOACAPFallback)
 	}
+	if cfg.BeaconMinObservationCount != 11 {
+		t.Fatalf("beacon min observation count = %d, want 11", cfg.BeaconMinObservationCount)
+	}
 }
 
 func TestWeightGateInvariantForShippedConfigAndDefaults(t *testing.T) {
@@ -199,6 +202,9 @@ func TestDefaultMinObservationCount(t *testing.T) {
 	if cfg.MinObservationCount != 19 {
 		t.Fatalf("default min observation count = %v, want 19", cfg.MinObservationCount)
 	}
+	if cfg.BeaconMinObservationCount != 11 {
+		t.Fatalf("default beacon min observation count = %v, want 11", cfg.BeaconMinObservationCount)
+	}
 }
 
 func TestDefaultReceiverContributionCaps(t *testing.T) {
@@ -239,6 +245,30 @@ min_observation_count: 0
 		t.Fatalf("expected non-positive min observation count to fail")
 	}
 	if !strings.Contains(err.Error(), "min_observation_count") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadFileRequiresBeaconMinObservationCount(t *testing.T) {
+	path := writeTempConfigWithoutKey(t, "beacon_min_observation_count")
+	_, err := LoadFile(path)
+	if err == nil {
+		t.Fatalf("expected missing beacon_min_observation_count to fail")
+	}
+	if !strings.Contains(err.Error(), "beacon_min_observation_count") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadFileRejectsNonPositiveBeaconMinObservationCount(t *testing.T) {
+	path := writeTempConfigOverlay(t, `
+beacon_min_observation_count: 0
+`)
+	_, err := LoadFile(path)
+	if err == nil {
+		t.Fatalf("expected non-positive beacon min observation count to fail")
+	}
+	if !strings.Contains(err.Error(), "beacon_min_observation_count") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

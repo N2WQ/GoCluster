@@ -2,7 +2,7 @@
 # Code Map: Path Reliability And VOACAP
 
 - Map ID: `path-reliability-voacap`
-- Source fingerprint: `f53358ea92a3e8d6`
+- Source fingerprint: `5f4120fde6dcacb5`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map path-reliability-voacap`
 - Check: `go run ./cmd/codemap check -map path-reliability-voacap`
@@ -12,7 +12,7 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/internal/voacap` | `internal/voacap` | 7 | 6 |
-| `dxcluster/pathreliability` | `pathreliability` | 16 | 14 |
+| `dxcluster/pathreliability` | `pathreliability` | 16 | 15 |
 
 ## In-Scope Package Edges
 
@@ -71,6 +71,7 @@ Source files:
 
 Test files:
 - `pathreliability/active_p50_contract_test.go`
+- `pathreliability/beacon_prediction_test.go`
 - `pathreliability/compact_test.go`
 - `pathreliability/config_test.go`
 - `pathreliability/grid_test.go`
@@ -89,6 +90,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0174](docs/decisions/ADR-0174-beacon-rx-only-path-prediction.md) | Accepted | 2026-06-11 | pathreliability, telnet, voacap, config, operations, supportability | `area:internal/voacap, area:pathreliability, path:pathreliability` |
 | [ADR-0173](docs/decisions/ADR-0173-voacap-rel-gated-open-fallback.md) | Accepted | 2026-06-11 | voacap, pathreliability, telnet, operations, supportability | `area:internal/voacap, area:pathreliability, path:pathreliability` |
 | [ADR-0172](docs/decisions/ADR-0172-show-prop-worker-refresh-and-glyph-columns.md) | Accepted | 2026-06-10 | telnet, voacap, pathreliability, config, commands, supportability | `area:internal/voacap, area:pathreliability, path:pathreliability` |
 | [ADR-0171](docs/decisions/ADR-0171-show-prop-voacap-outlook.md) | Superseded | 2026-06-10 | telnet, voacap, pathreliability, commands, supportability | `area:internal/voacap, area:pathreliability, path:pathreliability` |

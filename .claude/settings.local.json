@@ -35,7 +35,8 @@
       "Bash(sed 's/.*`yaml:\"\"//')",
       "Bash(sed 's/\"\".*//')",
       "PowerShell(Get-Content 'c:\\\\src\\\\gocluster-p50-voacap-comparison\\\\data\\\\logs\\\\ingest_connections\\\\ingest_connections.log' -Tail 8; '--- system banners ---'; Select-String -Path 'c:\\\\src\\\\gocluster-p50-voacap-comparison\\\\data\\\\logs\\\\system\\\\system.log' -Pattern 'starting' | ForEach-Object {$_.Line} | Select-Object -Last 3)",
-      "PowerShell(Select-String -Path 'c:\\\\src\\\\gocluster-p50-voacap-comparison\\\\data\\\\logs\\\\system\\\\system.log' -Pattern 'starting' | ForEach-Object {$_.Line} | Select-Object -Last 3; '---'; Get-Content 'c:\\\\src\\\\gocluster-p50-voacap-comparison\\\\data\\\\logs\\\\propagation\\\\propagation.log' -Tail 3 | ForEach-Object { $_.Substring\\(0,100\\) })"
+      "PowerShell(Select-String -Path 'c:\\\\src\\\\gocluster-p50-voacap-comparison\\\\data\\\\logs\\\\system\\\\system.log' -Pattern 'starting' | ForEach-Object {$_.Line} | Select-Object -Last 3; '---'; Get-Content 'c:\\\\src\\\\gocluster-p50-voacap-comparison\\\\data\\\\logs\\\\propagation\\\\propagation.log' -Tail 3 | ForEach-Object { $_.Substring\\(0,100\\) })",
+      "Bash(git diff *)"
     ],
     "deny": [],
     "ask": [],

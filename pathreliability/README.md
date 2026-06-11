@@ -131,7 +131,9 @@ the receiver-diversity gate in enforce evaluation; `low_weight`
 maps to the decayed effective weight floor. These aggregate lines are written
 to `logging.propagation.dir`. VOACAP fallback outcomes are counted separately
 as `voacap_closed`, `voacap_aligned`, `voacap_sparse_upgrade`, and
-`voacap_open`.
+`voacap_open`. Beacon paths also emit additive `beacon_rx`,
+`beacon_rx_insufficient`, `beacon_rx_*` reason counters, and
+`beacon_rx_voacap_*` fallback counters when the spot is marked `IsBeacon`.
 When the fallback is active, a separate `VOACAP fallback (5m)` line reports
 stage counters such as `queued`, `success`, `cache_hit`, `no_current_hour`,
 `delay_wait`, `queue_full`, `closed`, `closed_no_p50`,
@@ -147,7 +149,7 @@ predictions when an existing current-hour VOACAP cache record is present. It
 reports cache hit/miss counts, class agreement, stronger/weaker effective SNR,
 closed-VOACAP versus p50 class splits, and absolute SNR-delta buckets. This
 comparison is cache-only and does not enqueue VOACAP work or change emitted
-glyphs.
+glyphs. Beacon RX-only p50 results do not enter this bidirectional comparison.
 
 When `voacap_fallback.enabled` is true, insufficient bucket results may start a
 delayed VOACAP lookup. The lookup is nonblocking in the telnet path. Cached
@@ -174,6 +176,13 @@ class. It never overrides a sufficient bucket p50 result. For PATH filters, the 
 visible as `CLOSED` and remains compatible with `UNLIKELY`: existing
 `PASS/REJECT PATH UNLIKELY` filters still include closed fallback spots, while
 direct `PASS/REJECT PATH CLOSED` rules target only closed fallback spots.
+For beacon spots, transmit evidence is not applicable. Beacon p50 prediction
+uses the DX-to-user receive leg only, applies the user's receive-noise penalty,
+does not apply `reverse_hint_discount`, and uses
+`beacon_min_observation_count` plus the derived receiver gate. If beacon p50 is
+insufficient, VOACAP fallback classifies and REL-gates on the receive leg
+instead of the bidirectional effective SNR. Display glyphs and PATH filters use
+the same beacon RX-only result.
 
 `SHOW PROP <call|prefix|grid> [band] [mode]` exposes those cached hourly
 VOACAP records directly as a point-to-point outlook from the user's grid to the
@@ -242,13 +251,17 @@ The shipped config currently uses:
 
 - `min_effective_weight: 0.5`
 - `min_observation_count: 21`
+- `beacon_min_observation_count: 11`
 - `min_fine_weight: 5`
 - `fine_only_weight: 20`
 - `reverse_hint_discount: 0.5`
 - `merge_receive_weight: 0.6`
 - `merge_transmit_weight: 0.4`
 
-If only one direction exists, the predictor still uses it, but discounts the effective weight with `reverse_hint_discount`.
+If only one direction exists for a non-beacon path, the predictor still uses it,
+but discounts the effective weight with `reverse_hint_discount`. Beacon paths
+are the exception: a missing transmit direction is not weak evidence, so the
+receive leg is used without that discount.
 
 Telnet users can set a stricter personal observation floor with
 `SET PATHSAMPLES <count>`. That setting is applied as
@@ -256,6 +269,9 @@ Telnet users can set a stricter personal observation floor with
 This floor uses the raw selected observation count in all receiver-cap modes.
 In enforce mode, receiver concentration is evaluated separately from this user
 sample floor.
+For beacon spots, the session floor is
+`max(beacon_min_observation_count, user setting)`, while receiver diversity is
+derived from the configured beacon floor.
 
 The receive-side noise table is resolved only by `SET NOISE` class. The same
 location penalty applies on every band and is subtracted from DX-to-user p50

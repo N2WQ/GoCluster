@@ -180,7 +180,7 @@ func TestPathSamplesOverrideAppliesToDisplayFilterAndDiag(t *testing.T) {
 	cfg.ReceiverContributionMode = pathreliability.ReceiverContributionOff
 	predictor := pathreliability.NewPredictor(cfg, []string{"20m"})
 
-	userCell, dxCell, userCoarse, dxCoarse := requireDistinctPathCells(t, "FN31", "IO91")
+	userCell, dxCell, userCoarse, dxCoarse := requireDistinctPathCells(t)
 	now := time.Now().UTC()
 	for i := 0; i < 3; i++ {
 		predictor.Update(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 10, now, false)
@@ -213,6 +213,61 @@ func TestPathSamplesOverrideAppliesToDisplayFilterAndDiag(t *testing.T) {
 	line := server.formatSpotForClient(client, sp)
 	if !strings.Contains(line, "n3|lown") {
 		t.Fatalf("expected low-count diagnostic from user floor, got %q", line)
+	}
+}
+
+func TestBeaconRXPathPredictionAppliesToDisplayAndFilter(t *testing.T) {
+	cfg := pathreliability.DefaultConfig()
+	cfg.MinEffectiveWeight = 0.1
+	cfg.MinObservationCount = 21
+	cfg.BeaconMinObservationCount = 11
+	cfg.ReceiverContributionMode = pathreliability.ReceiverContributionEnforce
+	cfg.ReceiverMaxEffectiveCount = 8
+	cfg.ReceiverMaxEffectiveWeight = 10
+	predictor := pathreliability.NewPredictor(cfg, []string{"20m"})
+
+	userCell, dxCell, userCoarse, dxCoarse := requireDistinctPathCells(t)
+	now := time.Now().UTC()
+	receivers := []uint64{
+		pathreliability.ReceiverIdentityHash("RX1"),
+		pathreliability.ReceiverIdentityHash("RX2"),
+	}
+	for i := 0; i < 11; i++ {
+		receiver := receivers[0]
+		if i >= 8 {
+			receiver = receivers[1]
+		}
+		predictor.UpdateWithReceiverHash(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -10, 1, now, true, receiver)
+	}
+
+	server := &Server{
+		pathPredictor: predictor,
+		pathDisplay:   true,
+		noiseModel:    cfg.NoiseModel(),
+		nowFn:         func() time.Time { return now },
+	}
+	client := &Client{
+		grid:           "FN31",
+		gridCell:       userCell,
+		gridCoarseCell: userCoarse,
+		noiseClass:     "QUIET",
+	}
+	sp := spot.NewSpot("DX1AA/B", "DE1AA", 14074, "FT8")
+	sp.BandNorm = "20m"
+	sp.DXCellID = uint16(dxCell)
+	sp.DXMetadata.Grid = "IO91"
+	sp.IsBeacon = true
+
+	if got := server.pathGlyphsForClient(client, sp); got != cfg.GlyphSymbols.High {
+		t.Fatalf("expected beacon RX display glyph %q, got %q", cfg.GlyphSymbols.High, got)
+	}
+	if got := server.pathClassForClient(client, sp); got != filter.PathClassHigh {
+		t.Fatalf("expected beacon RX PATH class HIGH, got %q", got)
+	}
+	client.setDiagMode(diagModePath)
+	line := server.formatSpotForClient(client, sp)
+	if !strings.Contains(line, "brx|n11|w11|") {
+		t.Fatalf("expected beacon RX diagnostic with 11/2 gate evidence, got %q", line)
 	}
 }
 

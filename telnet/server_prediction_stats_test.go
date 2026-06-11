@@ -146,6 +146,31 @@ func TestPathPredictionStatsSnapshotSplit(t *testing.T) {
 	}
 }
 
+func TestPathPredictionStatsSnapshotBeaconCounters(t *testing.T) {
+	s := &Server{}
+
+	s.recordPathPrediction(pathreliability.Result{Source: pathreliability.SourceCombined, BeaconRX: true}, false, false)
+	s.recordPathPrediction(pathreliability.Result{Source: pathreliability.SourceInsufficient, BeaconRX: true, InsufficientReason: pathreliability.InsufficientLowCount, Weight: 0.25}, false, false)
+	s.recordPathPrediction(pathreliability.Result{Source: pathreliability.SourceVOACAPClosed, BeaconRX: true}, false, false)
+	s.recordPathPrediction(pathreliability.Result{Source: pathreliability.SourceVOACAPAligned, BeaconRX: true}, false, false)
+	s.recordPathPrediction(pathreliability.Result{Source: pathreliability.SourceVOACAPSparseUpgrade, BeaconRX: true}, false, false)
+	s.recordPathPrediction(pathreliability.Result{Source: pathreliability.SourceVOACAPOpen, BeaconRX: true}, false, false)
+
+	stats := s.PathPredictionStatsSnapshot()
+	if stats.Total != 6 || stats.Combined != 1 || stats.Insufficient != 1 || stats.VOACAPClosed != 1 || stats.VOACAPAligned != 1 || stats.VOACAPSparseUpgrade != 1 || stats.VOACAPOpen != 1 {
+		t.Fatalf("unexpected aggregate beacon stats: %+v", stats)
+	}
+	if stats.BeaconRX != 1 ||
+		stats.BeaconRXInsufficient != 1 ||
+		stats.BeaconRXLowCount != 1 ||
+		stats.BeaconRXVOACAPClosed != 1 ||
+		stats.BeaconRXVOACAPAligned != 1 ||
+		stats.BeaconRXVOACAPSparseUpgrade != 1 ||
+		stats.BeaconRXVOACAPOpen != 1 {
+		t.Fatalf("unexpected beacon-specific stats: %+v", stats)
+	}
+}
+
 func TestPathResultWithClosedFallbackStageStats(t *testing.T) {
 	cfg := pathreliability.DefaultConfig()
 	cfg.MinObservationCount = 2
@@ -312,6 +337,86 @@ func TestPathResultWithClosedFallbackUsesEffectiveVOACAPSNR(t *testing.T) {
 	}
 	if got.VOACAPFT8SNRDB != -17 {
 		t.Fatalf("diagnostic VOACAP SNR = %d, want -17", got.VOACAPFT8SNRDB)
+	}
+}
+
+func TestPathResultWithClosedFallbackBeaconUsesReceiveLegVOACAP(t *testing.T) {
+	cfg := pathreliability.DefaultConfig()
+	cfg.VOACAPFallback.ReliabilityGatedOpenEnabled = true
+	predictor := pathreliability.NewPredictor(cfg, []string{"20m"})
+	req := pathreliability.VOACAPClosedRequest{
+		Band:                  "20m",
+		Mode:                  "FT8",
+		ReceiveNoisePenaltyDB: 5,
+	}
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	forecast := pathreliability.VOACAPCachedForecast{
+		Record: pathreliability.VOACAPHourlyForecast{
+			FT8SNRDB:                        -34,
+			HourUTC:                         20,
+			FrequencyMHz:                    14.1,
+			ReceiveFT8SNRDB:                 -10,
+			TransmitFT8SNRDB:                -34,
+			HasDirectionalSNR:               true,
+			ReceiveReqSNRReliability:        0.84,
+			TransmitReqSNRReliability:       0.10,
+			HasDirectionalReqSNRReliability: true,
+		},
+		EffectiveFT8SNRDB:     -34,
+		HasEffectiveFT8SNRDB:  true,
+		ReceiveNoisePenaltyDB: 5,
+		SSN:                   112,
+	}
+	s := &Server{
+		pathPredictor: predictor,
+		pathClosedFallback: fakePathClosedFallback{
+			forecast: forecast,
+			ok:       true,
+		},
+	}
+
+	got := s.pathResultWithClosedFallback(pathreliability.Result{
+		Source:   pathreliability.SourceInsufficient,
+		BeaconRX: true,
+	}, req, now)
+	if got.Source != pathreliability.SourceVOACAPOpen || !got.BeaconRX || got.Class != "MEDIUM" {
+		t.Fatalf("expected beacon receive-leg VOACAP open MEDIUM result, got %+v", got)
+	}
+	if got.VOACAPFT8SNRDB != -15 || got.P50DB != -15 {
+		t.Fatalf("expected receive-leg SNR diagnostics -15, got %+v", got)
+	}
+	if !got.VOACAPHasReqSNRReliability || got.VOACAPReqSNRReliability != 0.84 {
+		t.Fatalf("expected receive-leg REL diagnostics, got %+v", got)
+	}
+	stats := s.PathPredictionStatsSnapshot()
+	if stats.VOACAPFallbackOpenNoP50 != 1 || stats.VOACAPFallbackOpenNoP50REL != 1 {
+		t.Fatalf("unexpected receive-leg fallback stats: %+v", stats)
+	}
+}
+
+func TestPathResultWithClosedFallbackSkipsP50CompareForBeaconRX(t *testing.T) {
+	cfg := pathreliability.DefaultConfig()
+	predictor := pathreliability.NewPredictor(cfg, []string{"20m"})
+	req := pathreliability.VOACAPClosedRequest{Band: "20m", Mode: "FT8"}
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	s := &Server{
+		pathPredictor: predictor,
+		pathClosedFallback: cacheOnlyPathClosedFallback{
+			forecast: pathreliability.VOACAPCachedForecast{
+				Record: pathreliability.VOACAPHourlyForecast{FT8SNRDB: -34, HourUTC: 20, FrequencyMHz: 14.1},
+				SSN:    112,
+			},
+			ok: true,
+		},
+	}
+	base := pathreliability.Result{Source: pathreliability.SourceCombined, BeaconRX: true, HasP50: true, P50DB: -12}
+	got := s.pathResultWithClosedFallback(base, req, now)
+	if got.Source != pathreliability.SourceCombined || !got.BeaconRX {
+		t.Fatalf("beacon sufficient p50 should remain unchanged, got %+v", got)
+	}
+	stats := s.PathPredictionStatsSnapshot()
+	if stats.VOACAPP50CompareChecked != 0 || stats.VOACAPP50CompareCacheHit != 0 || stats.VOACAPP50CompareCacheMiss != 0 {
+		t.Fatalf("beacon RX sufficient p50 must not enter blended compare stats: %+v", stats)
 	}
 }
 
