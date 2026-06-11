@@ -68,6 +68,34 @@ func ClassForDB(db float64, mode string, cfg Config) string {
 	}
 }
 
+// ClassStrengthRank returns an ordered rank for ordinary open path classes.
+// Higher ranks are stronger; unknown classes return -1.
+func ClassStrengthRank(class string) int {
+	switch class {
+	case classHigh:
+		return 3
+	case classMedium:
+		return 2
+	case classLow:
+		return 1
+	case classUnlikely:
+		return 0
+	default:
+		return -1
+	}
+}
+
+// ClassUpgradeSteps reports how many ordinary path tiers separate two classes.
+// Positive values mean toClass is stronger than fromClass.
+func ClassUpgradeSteps(fromClass, toClass string) int {
+	from := ClassStrengthRank(fromClass)
+	to := ClassStrengthRank(toClass)
+	if from < 0 || to < 0 {
+		return 0
+	}
+	return to - from
+}
+
 // ClosedForDB reports whether an FT8-equivalent SNR is at or below the
 // mode-owned closed threshold.
 func ClosedForDB(db float64, mode string, cfg Config) bool {

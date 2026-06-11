@@ -103,20 +103,22 @@ type classificationThreshold struct {
 }
 
 type predictionHour struct {
-	Hour             string  `json:"hour"`
-	Samples          int     `json:"samples"`
-	AvgTotal         float64 `json:"avg_total"`
-	AvgCombined      float64 `json:"avg_combined"`
-	AvgVOACAPClosed  float64 `json:"avg_voacap_closed"`
-	AvgVOACAPAligned float64 `json:"avg_voacap_aligned"`
-	AvgInsufficient  float64 `json:"avg_insufficient"`
-	AvgNoSample      float64 `json:"avg_no_sample"`
-	AvgLowCount      float64 `json:"avg_low_count"`
-	AvgLowReceiver   float64 `json:"avg_low_receiver"`
-	AvgLowWeight     float64 `json:"avg_low_weight"`
-	AvgStale         float64 `json:"avg_stale"`
-	AvgCapLimited    float64 `json:"avg_cap_limited"`
-	AvgCapWouldBlock float64 `json:"avg_cap_would_block"`
+	Hour                   string  `json:"hour"`
+	Samples                int     `json:"samples"`
+	AvgTotal               float64 `json:"avg_total"`
+	AvgCombined            float64 `json:"avg_combined"`
+	AvgVOACAPClosed        float64 `json:"avg_voacap_closed"`
+	AvgVOACAPAligned       float64 `json:"avg_voacap_aligned"`
+	AvgVOACAPSparseUpgrade float64 `json:"avg_voacap_sparse_upgrade"`
+	AvgVOACAPOpen          float64 `json:"avg_voacap_open"`
+	AvgInsufficient        float64 `json:"avg_insufficient"`
+	AvgNoSample            float64 `json:"avg_no_sample"`
+	AvgLowCount            float64 `json:"avg_low_count"`
+	AvgLowReceiver         float64 `json:"avg_low_receiver"`
+	AvgLowWeight           float64 `json:"avg_low_weight"`
+	AvgStale               float64 `json:"avg_stale"`
+	AvgCapLimited          float64 `json:"avg_cap_limited"`
+	AvgCapWouldBlock       float64 `json:"avg_cap_would_block"`
 }
 
 type capShadowHour struct {
@@ -224,18 +226,20 @@ type weightBins struct {
 }
 
 type predTotals struct {
-	Total         int
-	Combined      int
-	VOACAPClosed  int
-	VOACAPAligned int
-	Insufficient  int
-	NoSample      int
-	LowCount      int
-	LowReceiver   int
-	LowWeight     int
-	Stale         int
-	CapLimited    int
-	CapWouldBlock int
+	Total               int
+	Combined            int
+	VOACAPClosed        int
+	VOACAPAligned       int
+	VOACAPSparseUpgrade int
+	VOACAPOpen          int
+	Insufficient        int
+	NoSample            int
+	LowCount            int
+	LowReceiver         int
+	LowWeight           int
+	Stale               int
+	CapLimited          int
+	CapWouldBlock       int
 }
 
 type capShadowTotals struct {
@@ -283,7 +287,7 @@ var (
 	ansiRe            = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 	bandBuckets       = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)\s+f=([\d,]+)\s+c=([\d,]+)`)
 	bandWeights       = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)\s+t=([\d,]+)\s+<1=([\d,]+)\s+1-2=([\d,]+)\s+2-3=([\d,]+)\s+3-5=([\d,]+)\s+5-10=([\d,]+)\s+>=10=([\d,]+)`)
-	predsFields       = regexp.MustCompile(`\b(total|derived|combined|voacap_closed|voacap_aligned|insufficient|no_sample|low_count|low_receiver|low_weight|stale|cap_limited|cap_would_block)=([\d,]+)`)
+	predsFields       = regexp.MustCompile(`\b(total|derived|combined|voacap_closed|voacap_aligned|voacap_sparse_upgrade|voacap_open|insufficient|no_sample|low_count|low_receiver|low_weight|stale|cap_limited|cap_would_block)=([\d,]+)`)
 	totalField        = regexp.MustCompile(`\btotal=([\d,]+)`)
 	capShadowField    = regexp.MustCompile(`\bcap(\d+)_(pass|low_count|low_receiver|low_weight|block)=([\d,]+)`)
 	capP50ShadowField = regexp.MustCompile(`\bcap(\d+)_p50_(pass_unlikely|pass_low|pass_medium|pass_high|same|stronger|weaker|to_insufficient)=([\d,]+)`)
@@ -366,18 +370,20 @@ func parsePredictionTotals(line string) (predTotals, bool) {
 		}
 	}
 	return predTotals{
-		Total:         values["total"],
-		Combined:      values["combined"],
-		VOACAPClosed:  values["voacap_closed"],
-		VOACAPAligned: values["voacap_aligned"],
-		Insufficient:  values["insufficient"],
-		NoSample:      values["no_sample"],
-		LowCount:      values["low_count"],
-		LowReceiver:   values["low_receiver"],
-		LowWeight:     values["low_weight"],
-		Stale:         values["stale"],
-		CapLimited:    values["cap_limited"],
-		CapWouldBlock: values["cap_would_block"],
+		Total:               values["total"],
+		Combined:            values["combined"],
+		VOACAPClosed:        values["voacap_closed"],
+		VOACAPAligned:       values["voacap_aligned"],
+		VOACAPSparseUpgrade: values["voacap_sparse_upgrade"],
+		VOACAPOpen:          values["voacap_open"],
+		Insufficient:        values["insufficient"],
+		NoSample:            values["no_sample"],
+		LowCount:            values["low_count"],
+		LowReceiver:         values["low_receiver"],
+		LowWeight:           values["low_weight"],
+		Stale:               values["stale"],
+		CapLimited:          values["cap_limited"],
+		CapWouldBlock:       values["cap_would_block"],
 	}, true
 }
 
@@ -1130,12 +1136,14 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 		if len(rows) == 0 {
 			continue
 		}
-		var total, combined, voacapClosed, voacapAligned, insufficient, noSample, lowCount, lowReceiver, lowWeight, stale, capLimited, capWouldBlock int
+		var total, combined, voacapClosed, voacapAligned, voacapSparseUpgrade, voacapOpen, insufficient, noSample, lowCount, lowReceiver, lowWeight, stale, capLimited, capWouldBlock int
 		for _, r := range rows {
 			total += r.Total
 			combined += r.Combined
 			voacapClosed += r.VOACAPClosed
 			voacapAligned += r.VOACAPAligned
+			voacapSparseUpgrade += r.VOACAPSparseUpgrade
+			voacapOpen += r.VOACAPOpen
 			insufficient += r.Insufficient
 			noSample += r.NoSample
 			lowCount += r.LowCount
@@ -1147,20 +1155,22 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 		}
 		count := len(rows)
 		predSummary = append(predSummary, predictionHour{
-			Hour:             fmt.Sprintf("%02d:00", h),
-			Samples:          count,
-			AvgTotal:         float64(total) / float64(count),
-			AvgCombined:      float64(combined) / float64(count),
-			AvgVOACAPClosed:  float64(voacapClosed) / float64(count),
-			AvgVOACAPAligned: float64(voacapAligned) / float64(count),
-			AvgInsufficient:  float64(insufficient) / float64(count),
-			AvgNoSample:      float64(noSample) / float64(count),
-			AvgLowCount:      float64(lowCount) / float64(count),
-			AvgLowReceiver:   float64(lowReceiver) / float64(count),
-			AvgLowWeight:     float64(lowWeight) / float64(count),
-			AvgStale:         float64(stale) / float64(count),
-			AvgCapLimited:    float64(capLimited) / float64(count),
-			AvgCapWouldBlock: float64(capWouldBlock) / float64(count),
+			Hour:                   fmt.Sprintf("%02d:00", h),
+			Samples:                count,
+			AvgTotal:               float64(total) / float64(count),
+			AvgCombined:            float64(combined) / float64(count),
+			AvgVOACAPClosed:        float64(voacapClosed) / float64(count),
+			AvgVOACAPAligned:       float64(voacapAligned) / float64(count),
+			AvgVOACAPSparseUpgrade: float64(voacapSparseUpgrade) / float64(count),
+			AvgVOACAPOpen:          float64(voacapOpen) / float64(count),
+			AvgInsufficient:        float64(insufficient) / float64(count),
+			AvgNoSample:            float64(noSample) / float64(count),
+			AvgLowCount:            float64(lowCount) / float64(count),
+			AvgLowReceiver:         float64(lowReceiver) / float64(count),
+			AvgLowWeight:           float64(lowWeight) / float64(count),
+			AvgStale:               float64(stale) / float64(count),
+			AvgCapLimited:          float64(capLimited) / float64(count),
+			AvgCapWouldBlock:       float64(capWouldBlock) / float64(count),
 		})
 	}
 
@@ -1705,8 +1715,11 @@ func predictionActivitySummary(hours []predictionHour) string {
 	var staleSample []string
 	var voacapClosedSample []string
 	var voacapAlignedSample []string
+	var voacapSparseUpgradeSample []string
+	var voacapOpenSample []string
 	var capWouldBlockSample []string
-	for _, h := range hours {
+	for i := range hours {
+		h := &hours[i]
 		if h.AvgTotal > maxTotal {
 			maxTotal = h.AvgTotal
 			maxHour = h.Hour
@@ -1736,6 +1749,12 @@ func predictionActivitySummary(hours []predictionHour) string {
 		if h.AvgVOACAPAligned > 0 {
 			voacapAlignedSample = append(voacapAlignedSample, h.Hour)
 		}
+		if h.AvgVOACAPSparseUpgrade > 0 {
+			voacapSparseUpgradeSample = append(voacapSparseUpgradeSample, h.Hour)
+		}
+		if h.AvgVOACAPOpen > 0 {
+			voacapOpenSample = append(voacapOpenSample, h.Hour)
+		}
 		if h.AvgCapWouldBlock > 0 {
 			capWouldBlockSample = append(capWouldBlockSample, h.Hour)
 		}
@@ -1762,6 +1781,12 @@ func predictionActivitySummary(hours []predictionHour) string {
 	}
 	if len(voacapAlignedSample) > 0 {
 		s += fmt.Sprintf(" Hours with VOACAP-aligned sparse p50 predictions: %s.", strings.Join(voacapAlignedSample, ", "))
+	}
+	if len(voacapSparseUpgradeSample) > 0 {
+		s += fmt.Sprintf(" Hours with REL-gated VOACAP sparse p50 upgrades: %s.", strings.Join(voacapSparseUpgradeSample, ", "))
+	}
+	if len(voacapOpenSample) > 0 {
+		s += fmt.Sprintf(" Hours with REL-gated VOACAP no-p50 open predictions: %s.", strings.Join(voacapOpenSample, ", "))
 	}
 	if len(capWouldBlockSample) > 0 {
 		s += fmt.Sprintf(" Hours where receiver caps would block shadow predictions: %s.", strings.Join(capWouldBlockSample, ", "))

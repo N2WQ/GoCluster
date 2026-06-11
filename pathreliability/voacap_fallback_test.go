@@ -735,8 +735,8 @@ func TestVOACAPClosedFallbackBoundsDelayMap(t *testing.T) {
 
 func TestClosedForecastFromRecordsBuildsHourlyWindow(t *testing.T) {
 	records := []voacapPredictionRecordForTest{
-		{HourUTC: 1, FrequencyMHz: 14.1, FT8SNRDB: -35, VOACAPSNRDBHz: 5},
-		{HourUTC: 1, FrequencyMHz: 14.2, FT8SNRDB: -32, VOACAPSNRDBHz: 8},
+		{HourUTC: 1, FrequencyMHz: 14.1, FT8SNRDB: -35, VOACAPSNRDBHz: 5, Reliability: 0.72, HasReliability: true},
+		{HourUTC: 1, FrequencyMHz: 14.2, FT8SNRDB: -32, VOACAPSNRDBHz: 8, Reliability: 0.81, HasReliability: true},
 		{HourUTC: 2, FrequencyMHz: 14.1, FT8SNRDB: -30},
 		{HourUTC: 1, FrequencyMHz: 7.1, FT8SNRDB: -10},
 	}
@@ -749,6 +749,9 @@ func TestClosedForecastFromRecordsBuildsHourlyWindow(t *testing.T) {
 	}
 	if forecast.Records[0].HourUTC != 1 || forecast.Records[0].FT8SNRDB != -32 || forecast.Records[0].VOACAPSNRDBHz != 8 {
 		t.Fatalf("hour 1 should keep the strongest same-hour SNR, got %+v", forecast.Records[0])
+	}
+	if !forecast.Records[0].HasReqSNRReliability || forecast.Records[0].ReqSNRReliability != 0.81 {
+		t.Fatalf("hour 1 should keep REL from the strongest same-hour SNR, got %+v", forecast.Records[0])
 	}
 	if forecast.Records[1].HourUTC != 2 || forecast.Records[1].FT8SNRDB != -30 {
 		t.Fatalf("hour 2 should be retained, got %+v", forecast.Records[1])
@@ -881,11 +884,11 @@ func TestVOACAPFallbackBandsUseConfiguredCenterFrequencies(t *testing.T) {
 
 func TestCombineDirectionalForecastsRequiresCommonHours(t *testing.T) {
 	receive := VOACAPClosedForecast{Records: []VOACAPHourlyForecast{
-		{HourUTC: 20, FrequencyMHz: 14.1, FT8SNRDB: -10, VOACAPSNRDBHz: 24},
+		{HourUTC: 20, FrequencyMHz: 14.1, FT8SNRDB: -10, VOACAPSNRDBHz: 24, ReqSNRReliability: 0.91, HasReqSNRReliability: true},
 		{HourUTC: 21, FrequencyMHz: 14.1, FT8SNRDB: -12, VOACAPSNRDBHz: 22},
 	}}
 	transmit := VOACAPClosedForecast{Records: []VOACAPHourlyForecast{
-		{HourUTC: 20, FrequencyMHz: 14.1, FT8SNRDB: -20, VOACAPSNRDBHz: 14},
+		{HourUTC: 20, FrequencyMHz: 14.1, FT8SNRDB: -20, VOACAPSNRDBHz: 14, ReqSNRReliability: 0.84, HasReqSNRReliability: true},
 	}}
 	combined, err := combineDirectionalForecasts(receive, transmit, "20m")
 	if err != nil {
@@ -897,6 +900,12 @@ func TestCombineDirectionalForecastsRequiresCommonHours(t *testing.T) {
 	record := combined.Records[0]
 	if !record.HasDirectionalSNR || record.ReceiveFT8SNRDB != -10 || record.TransmitFT8SNRDB != -20 {
 		t.Fatalf("unexpected combined record: %+v", record)
+	}
+	if !record.HasDirectionalReqSNRReliability || record.ReceiveReqSNRReliability != 0.91 || record.TransmitReqSNRReliability != 0.84 {
+		t.Fatalf("unexpected directional REL fields: %+v", record)
+	}
+	if rel, ok := (VOACAPCachedForecast{Record: record}).ReqSNRReliability(); !ok || rel != 0.84 {
+		t.Fatalf("effective REL = %v ok=%v, want 0.84 true", rel, ok)
 	}
 
 	_, err = combineDirectionalForecasts(receive, VOACAPClosedForecast{}, "20m")
@@ -1014,20 +1023,24 @@ func waitUntil(t *testing.T, fn func() bool) {
 }
 
 type voacapPredictionRecordForTest struct {
-	HourUTC       int
-	FrequencyMHz  float64
-	FT8SNRDB      int
-	VOACAPSNRDBHz int
+	HourUTC        int
+	FrequencyMHz   float64
+	FT8SNRDB       int
+	VOACAPSNRDBHz  int
+	Reliability    float64
+	HasReliability bool
 }
 
 func testPredictionRecords(in []voacapPredictionRecordForTest) []voacap.PredictionRecord {
 	out := make([]voacap.PredictionRecord, 0, len(in))
 	for _, record := range in {
 		out = append(out, voacap.PredictionRecord{
-			HourUTC:       record.HourUTC,
-			FrequencyMHz:  record.FrequencyMHz,
-			FT8SNRDB:      record.FT8SNRDB,
-			VOACAPSNRDBHz: record.VOACAPSNRDBHz,
+			HourUTC:        record.HourUTC,
+			FrequencyMHz:   record.FrequencyMHz,
+			FT8SNRDB:       record.FT8SNRDB,
+			VOACAPSNRDBHz:  record.VOACAPSNRDBHz,
+			Reliability:    record.Reliability,
+			HasReliability: record.HasReliability,
 		})
 	}
 	return out

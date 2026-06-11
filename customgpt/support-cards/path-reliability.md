@@ -28,18 +28,23 @@ inspect user-visible diagnostics:
   reflect stale local fine evidence even when coarse regional evidence is
   fresher.
 - `vcap` diagnostics are VOACAP closed fallback results; `valn` diagnostics
-  are sparse bucket p50 aligned with current-hour VOACAP. The VOACAP SNR in
-  both tags is the rounded bidirectional effective SNR after receive-side noise
-  penalty, not one raw VOACAP direction.
+  are sparse bucket p50 aligned with current-hour VOACAP; `vup` diagnostics
+  are REL-gated one-tier sparse p50 upgrades; `vop` diagnostics are REL-gated
+  no-p50 open VOACAP fallbacks. The VOACAP SNR in these tags is the rounded
+  bidirectional effective SNR after receive-side noise penalty, not one raw
+  VOACAP direction.
+- VOACAP REL is treated as reliability of VOACAP's request SNR. It is not a
+  direct probability that the path is HIGH, MEDIUM, LOW, or UNLIKELY.
 - Closed fallback spots can be filtered with `PASS/REJECT PATH CLOSED`;
   existing `PASS/REJECT PATH UNLIKELY` filters still include them for
   compatibility.
-- `Path predictions (5m)` counts final emitted `voacap_closed` and
-  `voacap_aligned` glyphs. `VOACAP fallback (5m)` explains fallback stages such
-  as queued, cache hit, no current hour, open without sparse p50, and class
-  mismatch. Closed fallback stages split no-p50 from sparse-p50 cases and
-  report the sparse p50 class when VOACAP closed overrides observed sparse
-  evidence.
+- `Path predictions (5m)` counts final emitted `voacap_closed`,
+  `voacap_aligned`, `voacap_sparse_upgrade`, and `voacap_open` glyphs.
+  `VOACAP fallback (5m)` explains fallback stages such as queued, cache hit, no
+  current hour, open without sparse p50, class mismatch, REL missing, REL below
+  floor, and multi-tier sparse-upgrade candidates. Closed fallback stages split
+  no-p50 from sparse-p50 cases and report the sparse p50 class when VOACAP
+  closed overrides observed sparse evidence.
 - `VOACAP p50 compare (5m)` is an opportunistic cache-only comparison for
   sufficient p50 predictions. Cache misses do not run VOACAP; cache hits report
   class agreement, stronger/weaker effective SNR, closed-VOACAP versus p50
@@ -61,6 +66,8 @@ inspect user-visible diagnostics:
 - Do not call a blank glyph a bad path.
 - Do not call a `valn` glyph a pure VOACAP forecast; it requires sparse bucket
   p50 and VOACAP to agree.
+- Do not call `vup` or `vop` a VOACAP probability result; REL is a gate on the
+  request-SNR forecast.
 - Do not tell users `SHOW PROP` always returns immediately or always waits for
   every band; single-band requests may wait briefly, while all-band requests do
   not wait for every missing band.

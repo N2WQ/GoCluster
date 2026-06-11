@@ -235,7 +235,7 @@ Path reliability glyphs:
   "-" - UNLIKELY: poor path.
   " " - INSUFFICIENT: not enough recent evidence.
   Bucket p50 data is authoritative; VOACAP may only replace insufficient data
-    when closed or aligned with sparse p50.
+    when closed, aligned with sparse p50, or REL-gated from cached VOACAP.
   "#" - CLOSED: VOACAP fallback predicts the current UTC hour's blended,
     noise-adjusted SNR at or below the mode's closed threshold.
   PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, CLOSED, INSUFFICIENT.
@@ -382,7 +382,7 @@ For the mode-specific support rules, timing knobs, and decision history, see
 - `SET DIAG DEDUPE`: `<DE-DXCC>|<DE-key>|<src>|<policy>`, where `<src>` is `H` for human-class or `S` for skimmer/automated-class.
 - `SET DIAG SOURCE`: `<source>` with `MAN`, `RBN`, `RBNFT`, `PSK`, `DXS`, `UP`, or `P:<peer>` for peer-origin spots.
 - `SET DIAG CONF`: `<score>%` when the pipeline calculated a confidence percent, otherwise `--%`.
-- `SET DIAG PATH`: `n<count>|w<weight>|a<age>` for usable path evidence, `n<count>|<reason>` for insufficient evidence (`none`, `lown`, `lowr`, `loww`, or `stale`), `vcap|<snr>|h<hour>|s<ssn>` for a cached VOACAP closed fallback, or `valn|<p50>/<snr>h<hour>s<ssn>` for VOACAP-aligned sparse p50.
+- `SET DIAG PATH`: `n<count>|w<weight>|a<age>` for usable path evidence, `n<count>|<reason>` for insufficient evidence (`none`, `lown`, `lowr`, `loww`, or `stale`), `vcap|<snr>|h<hour>|s<ssn>` for a cached VOACAP closed fallback, `valn|<p50>/<snr>h<hour>s<ssn>` for VOACAP-aligned sparse p50, `vup|<p50>/<snr>r<rel>s<ssn>` for a REL-gated sparse p50 upgrade, or `vop|<snr>r<rel>h<hour>s<ssn>` for a REL-gated no-p50 VOACAP open fallback.
 - `SET DIAG MODE`: `<mode>|<provenance>` to show the final normalized mode and why it was assigned.
 
 Mode provenance tokens:
@@ -427,6 +427,11 @@ area:
 - `valn|<p50>/<snr>h<hour>s<ssn>` means sparse bucket p50 evidence was
   insufficient by sample gates but aligned with the current-hour VOACAP class.
   `<p50>` is rounded for display so the diagnostic fits the fixed-width line.
+- `vup|<p50>/<snr>r<rel>s<ssn>` means sparse p50 was insufficient, VOACAP
+  mapped one class stronger, and the VOACAP request-SNR REL gate passed. REL is
+  shown as percent and is not a direct HIGH/MEDIUM/LOW probability.
+- `vop|<snr>r<rel>h<hour>s<ssn>` means there was no sparse p50, but cached
+  current-hour VOACAP mapped to an open class and passed the REL gate.
 - `n<count>|none` means there was no usable selected path sample.
 - `n<count>|lown` means selected evidence existed but the selected observation count
   stayed below the configured minimum.
@@ -490,10 +495,10 @@ What the classes mean to an operator:
 
 | Display | PATH filter value | Operator meaning | If it looks wrong |
 | --- | --- | --- | --- |
-| `>` | `HIGH` | Recent evidence suggests a favorable path, or sparse p50 aligned with VOACAP when bucket evidence was insufficient. | Use `SET DIAG PATH` to see sample count, weight, age, or `valn` alignment. |
-| `=` | `MEDIUM` | Recent evidence suggests a workable path, or sparse p50 aligned with VOACAP when bucket evidence was insufficient. | Use `SET DIAG PATH`; low effective weight can still map to a usable class. |
-| `<` | `LOW` | Recent evidence suggests a weak or marginal path, or sparse p50 aligned with VOACAP when bucket evidence was insufficient. | Use `SET DIAG PATH` to confirm grids, sample count, freshness, or `valn` alignment. |
-| `-` | `UNLIKELY` | Recent evidence suggests a poor path, or sparse p50 aligned with VOACAP when bucket evidence was insufficient. | Check whether your grid and the DX grid are correct before treating this as a hard no. |
+| `>` | `HIGH` | Recent evidence suggests a favorable path, or insufficient evidence was corroborated by cached VOACAP. | Use `SET DIAG PATH` to see sample count, weight, age, `valn`, `vup`, or `vop`. |
+| `=` | `MEDIUM` | Recent evidence suggests a workable path, or insufficient evidence was corroborated by cached VOACAP. | Use `SET DIAG PATH`; low effective weight can still map to a usable class. |
+| `<` | `LOW` | Recent evidence suggests a weak or marginal path, or insufficient evidence was corroborated by cached VOACAP. | Use `SET DIAG PATH` to confirm grids, sample count, freshness, `valn`, `vup`, or `vop`. |
+| `-` | `UNLIKELY` | Recent evidence suggests a poor path, or insufficient evidence was corroborated by cached VOACAP. | Check whether your grid and the DX grid are correct before treating this as a hard no. |
 | `#` | `CLOSED` | Bucket evidence was insufficient, but the optional VOACAP fallback predicts closed conditions for the current mode and path. | Check `SET DIAG PATH`; VOACAP fallback never overrides sufficient bucket evidence. |
 | blank | `INSUFFICIENT` | The cluster did not have enough usable recent evidence to rate the path. | Run `SET DIAG PATH`; common reasons are `none`, `lown`, `lowr`, `loww`, and `stale`. |
 
@@ -523,13 +528,14 @@ Important operational notes:
   `low_receiver` means receiver diversity missed the derived receiver gate,
   `low_weight` means decayed effective weight missed the weight floor, and
   `stale` can increase when honest fine/coarse age drops an old local direction.
-  VOACAP fallback outcomes are counted separately as `voacap_closed` and
-  `voacap_aligned`.
+  VOACAP fallback outcomes are counted separately as `voacap_closed`,
+  `voacap_aligned`, `voacap_sparse_upgrade`, and `voacap_open`.
   A separate `VOACAP fallback (5m)` line appears when fallback work occurs and
   reports stage counters such as `queued`, `success`, `cache_hit`,
   `no_current_hour`, `closed`, `closed_no_p50`,
   `closed_with_sparse_p50`, `closed_with_sparse_p50_class_*`, `aligned`,
-  `open_no_p50`, and `class_mismatch`.
+  `open_no_p50`, `class_mismatch`, `sparse_upgrade`, `open_no_p50_rel`,
+  `rel_missing`, `rel_below_floor`, and `rel_multi_tier`.
   A separate `VOACAP p50 compare (5m)` line may appear when sufficient p50
   predictions can be compared against an existing current-hour VOACAP cache
   record. It is cache-only: cache misses do not run VOACAP, start delay
@@ -543,9 +549,13 @@ Important operational notes:
   glyph with the configured closed glyph when the current UTC hour's blended
   bidirectional VOACAP SNR, after the user's receive-side noise penalty, is at
   or below `mode_thresholds.<mode>.closed`, or with a normal glyph when sparse
-  bucket p50 and VOACAP map to the same path class. Sufficient bucket p50
-  results stay authoritative. Runtime fallback decks cover the rolling UTC
-  forecast window; parsed VOACAP hour `24` is treated as UTC hour `0`.
+  bucket p50 and VOACAP map to the same path class. It can also emit a normal
+  open glyph when no sparse p50 exists, or upgrade sparse p50 by one class, only
+  when cached VOACAP maps to an open class and the configured request-SNR REL
+  gate passes. Sufficient bucket p50 results stay authoritative. Closed still
+  uses the SNR50 closed threshold and does not require REL. Runtime fallback
+  decks cover the rolling UTC forecast window; parsed VOACAP hour `24` is
+  treated as UTC hour `0`.
 - `SHOW PROP <call|prefix|grid> [band] [mode]` exposes the same rolling VOACAP
   outlook directly. Omitted mode defaults to CW. Empty or partial single-band
   cache results enqueue a refresh and may wait briefly; all-band requests show

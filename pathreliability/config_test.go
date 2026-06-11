@@ -136,6 +136,15 @@ func TestLoadFileReadsClosedGlyphAndVOACAPFallback(t *testing.T) {
 	if cfg.VOACAPFallback.ShowPropWaitMilliseconds != 750 {
 		t.Fatalf("show prop wait = %d, want 750", cfg.VOACAPFallback.ShowPropWaitMilliseconds)
 	}
+	if !cfg.VOACAPFallback.ReliabilityGatedOpenEnabled || !cfg.VOACAPFallback.ReliabilitySparseUpgradeEnabled {
+		t.Fatalf("expected REL-gated VOACAP open and sparse upgrade enabled in shipped config: %+v", cfg.VOACAPFallback)
+	}
+	if cfg.VOACAPFallback.ReliabilityMinHigh != 0.90 ||
+		cfg.VOACAPFallback.ReliabilityMinMedium != 0.80 ||
+		cfg.VOACAPFallback.ReliabilityMinLow != 0.65 ||
+		cfg.VOACAPFallback.ReliabilityMinUnlikely != 0.50 {
+		t.Fatalf("unexpected REL gates in shipped config: %+v", cfg.VOACAPFallback)
+	}
 }
 
 func TestWeightGateInvariantForShippedConfigAndDefaults(t *testing.T) {
@@ -330,6 +339,12 @@ func TestLoadFileRejectsMissingRequiredYAMLSettings(t *testing.T) {
 		{name: "voacap enabled", path: []string{"voacap_fallback", "enabled"}, want: "voacap_fallback.enabled"},
 		{name: "show prop wait", path: []string{"voacap_fallback", "show_prop_wait_milliseconds"}, want: "voacap_fallback.show_prop_wait_milliseconds"},
 		{name: "voacap queue depth", path: []string{"voacap_fallback", "max_queue_depth"}, want: "voacap_fallback.max_queue_depth"},
+		{name: "voacap rel open enabled", path: []string{"voacap_fallback", "reliability_gated_open_enabled"}, want: "voacap_fallback.reliability_gated_open_enabled"},
+		{name: "voacap rel sparse upgrade enabled", path: []string{"voacap_fallback", "reliability_sparse_upgrade_enabled"}, want: "voacap_fallback.reliability_sparse_upgrade_enabled"},
+		{name: "voacap rel high", path: []string{"voacap_fallback", "reliability_min_high"}, want: "voacap_fallback.reliability_min_high"},
+		{name: "voacap rel medium", path: []string{"voacap_fallback", "reliability_min_medium"}, want: "voacap_fallback.reliability_min_medium"},
+		{name: "voacap rel low", path: []string{"voacap_fallback", "reliability_min_low"}, want: "voacap_fallback.reliability_min_low"},
+		{name: "voacap rel unlikely", path: []string{"voacap_fallback", "reliability_min_unlikely"}, want: "voacap_fallback.reliability_min_unlikely"},
 		{name: "ft4 offset", path: []string{"mode_offsets", "ft4"}, want: "mode_offsets.ft4"},
 		{name: "noise offsets", path: []string{"noise_offsets"}, want: "noise_offsets"},
 	}
@@ -463,6 +478,8 @@ func TestLoadFileRejectsInvalidVOACAPFallbackBounds(t *testing.T) {
 		{name: "long output prefix", body: "voacap_fallback:\n  output_name_prefix: gocluster_voacap_path_prefix_too_long\n", want: "voacap_fallback.output_name_prefix"},
 		{name: "too many frequencies", body: "voacap_fallback:\n  center_frequencies_mhz: [1,2,3,4,5,6,7,8,9,10,11]\n", want: "voacap_fallback.center_frequencies_mhz"},
 		{name: "invalid closed threshold ordering", body: "mode_thresholds:\n  ft8:\n    closed: -24\n", want: "mode_thresholds.ft8"},
+		{name: "rel high too large", body: "voacap_fallback:\n  reliability_min_high: 1.2\n", want: "voacap_fallback.reliability_min_high"},
+		{name: "rel ordering", body: "voacap_fallback:\n  reliability_min_high: 0.70\n  reliability_min_medium: 0.80\n", want: "reliability thresholds"},
 		{name: "removed closed base", body: "voacap_fallback:\n  closed_base_ft8_snr_db: -24\n", want: "voacap_fallback.closed_base_ft8_snr_db"},
 		{name: "removed closed margin", body: "voacap_fallback:\n  closed_safety_margin_db: 5\n", want: "voacap_fallback.closed_safety_margin_db"},
 	}

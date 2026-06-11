@@ -647,7 +647,7 @@ func TestHelpPathGlyphLegendUsesConfiguredSymbols(t *testing.T) {
 		`"-" - UNLIKELY: poor path.`,
 		`" " - INSUFFICIENT: not enough recent evidence.`,
 		`Bucket p50 data is authoritative; VOACAP may only replace insufficient`,
-		`when closed or aligned with sparse p50.`,
+		`when closed, aligned with sparse p50, or REL-gated from cached VOACAP.`,
 		`"!" - CLOSED: VOACAP fallback predicts the current UTC hour's blended,`,
 		`noise-adjusted SNR at or below the mode's closed threshold.`,
 		"PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, CLOSED, INSUFFICIENT.",

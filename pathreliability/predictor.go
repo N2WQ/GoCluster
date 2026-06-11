@@ -67,6 +67,8 @@ const (
 	SourceCombined
 	SourceVOACAPClosed
 	SourceVOACAPAligned
+	SourceVOACAPSparseUpgrade
+	SourceVOACAPOpen
 )
 
 // InsufficientReason describes why a prediction returned the insufficient glyph.
@@ -102,30 +104,32 @@ func (r InsufficientReason) String() string {
 
 // Result carries merged glyph and diagnostics.
 type Result struct {
-	Glyph              string
-	Class              string
-	P50DB              float64
-	HasP50             bool
-	P50Glyph           string
-	Weight             float64
-	AgeSec             int64
-	Count              uint32
-	ObservationCount   uint32
-	RawCount           uint32
-	RawWeight          float64
-	CappedCount        uint32
-	CappedWeight       float64
-	ReceiverCount      uint32
-	ReceiverRequired   uint32
-	CapLimited         bool
-	CapWouldBlock      bool
-	Source             PredictionSource
-	InsufficientReason InsufficientReason
-	VOACAPFT8SNRDB     int
-	VOACAPSSN          int
-	VOACAPAgeSec       int64
-	VOACAPHourUTC      int
-	VOACAPFrequencyMHz float64
+	Glyph                      string
+	Class                      string
+	P50DB                      float64
+	HasP50                     bool
+	P50Glyph                   string
+	Weight                     float64
+	AgeSec                     int64
+	Count                      uint32
+	ObservationCount           uint32
+	RawCount                   uint32
+	RawWeight                  float64
+	CappedCount                uint32
+	CappedWeight               float64
+	ReceiverCount              uint32
+	ReceiverRequired           uint32
+	CapLimited                 bool
+	CapWouldBlock              bool
+	Source                     PredictionSource
+	InsufficientReason         InsufficientReason
+	VOACAPFT8SNRDB             int
+	VOACAPSSN                  int
+	VOACAPAgeSec               int64
+	VOACAPHourUTC              int
+	VOACAPFrequencyMHz         float64
+	VOACAPReqSNRReliability    float64
+	VOACAPHasReqSNRReliability bool
 }
 
 // Predict returns a single merged glyph for the path.

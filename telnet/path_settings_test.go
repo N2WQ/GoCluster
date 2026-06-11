@@ -405,6 +405,81 @@ func TestPathPredictionKeepsInsufficientWhenVOACAPOpenAndNoSparseP50(t *testing.
 	}
 }
 
+func TestPathPredictionUsesRELGatedVOACAPOpenWhenNoSparseP50(t *testing.T) {
+	cfg := pathreliability.DefaultConfig()
+	cfg.MinObservationCount = 1
+	cfg.VOACAPFallback.ReliabilityGatedOpenEnabled = true
+	predictor := pathreliability.NewPredictor(cfg, []string{"20m"})
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	server := &Server{
+		pathPredictor: predictor,
+		pathDisplay:   true,
+		noiseModel:    cfg.NoiseModel(),
+		nowFn:         func() time.Time { return now },
+		pathClosedFallback: fakePathClosedFallback{
+			forecast: forecastWithReqSNRReliability(-19, 0.75),
+			ok:       true,
+		},
+	}
+	client := &Client{grid: "FN31", gridCell: pathreliability.CellID(1), noiseClass: "QUIET"}
+	sp := spot.NewSpot("DX1AA", "DE1AA", 14074, "FT8")
+	sp.BandNorm = "20m"
+	sp.DXCellID = 2
+	sp.DXMetadata.Grid = "FN32"
+
+	if got := server.pathGlyphsForClient(client, sp); got != cfg.GlyphSymbols.Low {
+		t.Fatalf("expected REL-gated VOACAP open LOW glyph, got %q", got)
+	}
+	if got := server.pathClassForClient(client, sp); got != filter.PathClassLow {
+		t.Fatalf("expected REL-gated VOACAP open PATH class LOW, got %q", got)
+	}
+	client.setDiagMode(diagModePath)
+	line := server.formatSpotForClient(client, sp)
+	if !strings.Contains(line, "vop|-19r75h20s112") {
+		t.Fatalf("expected REL-gated VOACAP open diagnostic, got %q", line)
+	}
+}
+
+func TestPathPredictionUsesRELGatedVOACAPSparseUpgrade(t *testing.T) {
+	cfg := pathreliability.DefaultConfig()
+	cfg.MinEffectiveWeight = 0.1
+	cfg.MinObservationCount = 2
+	cfg.VOACAPFallback.ReliabilitySparseUpgradeEnabled = true
+	predictor := pathreliability.NewPredictor(cfg, []string{"20m"})
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	userCell := pathreliability.CellID(1)
+	dxCell := pathreliability.CellID(2)
+	predictor.Update(pathreliability.BucketCombined, userCell, dxCell, pathreliability.InvalidCell, pathreliability.InvalidCell, "20m", -19, 1, now, false)
+
+	server := &Server{
+		pathPredictor: predictor,
+		pathDisplay:   true,
+		noiseModel:    cfg.NoiseModel(),
+		nowFn:         func() time.Time { return now },
+		pathClosedFallback: fakePathClosedFallback{
+			forecast: forecastWithReqSNRReliability(-15, 0.84),
+			ok:       true,
+		},
+	}
+	client := &Client{grid: "FN31", gridCell: userCell, noiseClass: "QUIET"}
+	sp := spot.NewSpot("DX1AA", "DE1AA", 14074, "FT8")
+	sp.BandNorm = "20m"
+	sp.DXCellID = uint16(dxCell)
+	sp.DXMetadata.Grid = "FN32"
+
+	if got := server.pathGlyphsForClient(client, sp); got != cfg.GlyphSymbols.Medium {
+		t.Fatalf("expected REL-gated sparse p50 upgrade MEDIUM glyph, got %q", got)
+	}
+	if got := server.pathClassForClient(client, sp); got != filter.PathClassMedium {
+		t.Fatalf("expected REL-gated sparse p50 upgrade PATH class MEDIUM, got %q", got)
+	}
+	client.setDiagMode(diagModePath)
+	line := server.formatSpotForClient(client, sp)
+	if !strings.Contains(line, "vup|-19/-15r84s112") {
+		t.Fatalf("expected REL-gated sparse upgrade diagnostic, got %q", line)
+	}
+}
+
 func TestPathPredictionBucketResultWinsOverVOACAPClosedFallback(t *testing.T) {
 	cfg := pathreliability.DefaultConfig()
 	cfg.MinEffectiveWeight = 0.1

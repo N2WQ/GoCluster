@@ -12,12 +12,12 @@ import (
 )
 
 func TestParsePredictionTotalsWithAndWithoutStale(t *testing.T) {
-	withStale := "2026/04/20 12:00:00 Path predictions (5m): total=1,200 derived=5 combined=700 voacap_closed=20 voacap_aligned=12 insufficient=500 no_sample=300 low_count=75 low_receiver=25 low_weight=50 stale=50 cap_limited=25 cap_would_block=10 override_r=0 override_g=0"
+	withStale := "2026/04/20 12:00:00 Path predictions (5m): total=1,200 derived=5 combined=700 voacap_closed=20 voacap_aligned=12 voacap_sparse_upgrade=7 voacap_open=9 insufficient=500 no_sample=300 low_count=75 low_receiver=25 low_weight=50 stale=50 cap_limited=25 cap_would_block=10 override_r=0 override_g=0"
 	got, ok := parsePredictionTotals(withStale)
 	if !ok {
 		t.Fatalf("expected prediction totals to parse")
 	}
-	if got.Total != 1200 || got.Combined != 700 || got.VOACAPClosed != 20 || got.VOACAPAligned != 12 || got.Insufficient != 500 || got.NoSample != 300 || got.LowCount != 75 || got.LowReceiver != 25 || got.LowWeight != 50 || got.Stale != 50 || got.CapLimited != 25 || got.CapWouldBlock != 10 {
+	if got.Total != 1200 || got.Combined != 700 || got.VOACAPClosed != 20 || got.VOACAPAligned != 12 || got.VOACAPSparseUpgrade != 7 || got.VOACAPOpen != 9 || got.Insufficient != 500 || got.NoSample != 300 || got.LowCount != 75 || got.LowReceiver != 25 || got.LowWeight != 50 || got.Stale != 50 || got.CapLimited != 25 || got.CapWouldBlock != 10 {
 		t.Fatalf("unexpected parsed totals with stale: %+v", got)
 	}
 
@@ -40,6 +40,9 @@ func TestParsePredictionTotalsWithAndWithoutStale(t *testing.T) {
 	}
 	if got.VOACAPAligned != 0 {
 		t.Fatalf("expected legacy voacap_aligned=0, got %d", got.VOACAPAligned)
+	}
+	if got.VOACAPSparseUpgrade != 0 || got.VOACAPOpen != 0 {
+		t.Fatalf("expected legacy REL-gated VOACAP counters=0, got %+v", got)
 	}
 }
 
@@ -78,7 +81,7 @@ func TestParseCapP50ShadowTotals(t *testing.T) {
 }
 
 func FuzzParsePathPredictionLogTotals(f *testing.F) {
-	f.Add("2026/04/20 12:00:00 Path predictions (5m): total=1,200 derived=5 combined=700 voacap_closed=20 voacap_aligned=12 insufficient=500 no_sample=300 low_count=75 low_receiver=25 low_weight=50 stale=50 cap_limited=25 cap_would_block=10 override_r=0 override_g=0")
+	f.Add("2026/04/20 12:00:00 Path predictions (5m): total=1,200 derived=5 combined=700 voacap_closed=20 voacap_aligned=12 voacap_sparse_upgrade=7 voacap_open=9 insufficient=500 no_sample=300 low_count=75 low_receiver=25 low_weight=50 stale=50 cap_limited=25 cap_would_block=10 override_r=0 override_g=0")
 	f.Add("2026/04/20 12:00:00 Path cap shadow (5m): total=1,200 cap5_pass=10 cap5_low_count=20 cap5_low_receiver=25 cap5_low_weight=30 cap5_block=40 cap6_pass=50 cap6_low_count=60 cap6_low_receiver=65 cap6_low_weight=70 cap6_block=80 cap8_pass=90 cap8_low_count=100 cap8_low_receiver=105 cap8_low_weight=110 cap8_block=120")
 	f.Add("2026/04/20 12:00:00 Path cap p50 shadow (5m): total=1,200 cap5_p50_pass_unlikely=1 cap5_p50_pass_low=2 cap5_p50_pass_medium=3 cap5_p50_pass_high=4 cap5_p50_same=5 cap5_p50_stronger=6 cap5_p50_weaker=7 cap5_p50_to_insufficient=8")
 	f.Add("")
@@ -95,7 +98,7 @@ func FuzzParsePathPredictionLogTotals(f *testing.F) {
 func TestPredictionActivitySummarySeparatesCountAndWeightLimits(t *testing.T) {
 	got := predictionActivitySummary([]predictionHour{
 		{Hour: "01:00", AvgTotal: 100, AvgCombined: 20, AvgInsufficient: 80, AvgLowCount: 60, AvgLowReceiver: 5, AvgLowWeight: 10},
-		{Hour: "02:00", AvgTotal: 200, AvgCombined: 150, AvgVOACAPClosed: 4, AvgVOACAPAligned: 3, AvgInsufficient: 50, AvgLowCount: 5, AvgLowReceiver: 10, AvgLowWeight: 40},
+		{Hour: "02:00", AvgTotal: 200, AvgCombined: 150, AvgVOACAPClosed: 4, AvgVOACAPAligned: 3, AvgVOACAPSparseUpgrade: 2, AvgVOACAPOpen: 1, AvgInsufficient: 50, AvgLowCount: 5, AvgLowReceiver: 10, AvgLowWeight: 40},
 	})
 	if !strings.Contains(got, "Hours mostly count-limited: 01:00") {
 		t.Fatalf("expected count-limited summary, got %q", got)
@@ -108,6 +111,12 @@ func TestPredictionActivitySummarySeparatesCountAndWeightLimits(t *testing.T) {
 	}
 	if !strings.Contains(got, "Hours with VOACAP-aligned sparse p50 predictions: 02:00") {
 		t.Fatalf("expected VOACAP-aligned summary, got %q", got)
+	}
+	if !strings.Contains(got, "Hours with REL-gated VOACAP sparse p50 upgrades: 02:00") {
+		t.Fatalf("expected REL-gated sparse-upgrade summary, got %q", got)
+	}
+	if !strings.Contains(got, "Hours with REL-gated VOACAP no-p50 open predictions: 02:00") {
+		t.Fatalf("expected REL-gated no-p50 open summary, got %q", got)
 	}
 }
 

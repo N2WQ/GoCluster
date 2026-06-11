@@ -153,156 +153,163 @@ func dedupeKeyLabel(policy dedupePolicy) string {
 //   - BroadcastSpot() is thread-safe (uses mutex)
 //   - Each client goroutine operates independently
 type Server struct {
-	port                       int                                        // TCP port to listen on
-	welcomeMessage             string                                     // Welcome message for new connections
-	maxConnections             int                                        // Maximum concurrent client connections
-	duplicateLoginMsg          string                                     // Message sent to evicted duplicate session
-	greetingTemplate           string                                     // Post-login greeting with placeholders
-	loginPrompt                string                                     // Login prompt before callsign entry
-	loginEmptyMessage          string                                     // Message for empty callsign
-	loginInvalidMsg            string                                     // Message for invalid callsign
-	inputTooLongMsg            string                                     // Template for input length violations
-	inputInvalidMsg            string                                     // Template for invalid character violations
-	dialectWelcomeMsg          string                                     // Template for dialect welcome line
-	dialectSourceDef           string                                     // Label for default dialect source
-	dialectSourcePers          string                                     // Label for persisted dialect source
-	pathStatusMsg              string                                     // Template for path reliability status line
-	clusterCall                string                                     // Cluster/node callsign for greeting substitution
-	listener                   net.Listener                               // TCP listener
-	clients                    map[string]*Client                         // Map of callsign → Client
-	clientsMutex               sync.RWMutex                               // Protects clients map
-	shutdown                   chan struct{}                              // Shutdown coordination channel
-	stopOnce                   sync.Once                                  // Ensures Stop is idempotent
-	broadcast                  chan *broadcastPayload                     // Broadcast channel for spots (buffered, configurable)
-	broadcastWorkers           int                                        // Number of goroutines delivering spots
-	workerQueues               []chan broadcastJob                        // Per-worker job queues
-	workerQueueSize            int                                        // Capacity of each worker's queue
-	batchInterval              time.Duration                              // Broadcast batch interval; 0 means immediate
-	batchMax                   int                                        // Max jobs per batch before flush
-	writerBatchMaxBytes        int                                        // Max bytes per writer-loop flush batch
-	writerBatchWait            time.Duration                              // Max wait before flushing partial writer batch
-	metrics                    broadcastMetrics                           // Broadcast metrics counters
-	keepaliveInterval          time.Duration                              // Optional periodic CRLF to keep idle sessions alive
-	clientShardCache           atomic.Pointer[clientShardSnapshot]        // Immutable cached shard layout for broadcasts
-	shardsDirty                atomic.Bool                                // Flag to rebuild shards on client add/remove
-	rejectWorkers              int                                        // Worker count for asynchronous reject writes
-	rejectQueueSize            int                                        // Capacity of asynchronous reject queue
-	rejectWriteDeadline        time.Duration                              // Deadline for reject banner write
-	rejectQueue                chan rejectJob                             // Bounded async reject queue
-	rejectWorkerOnce           sync.Once                                  // Ensures reject workers start once
-	processor                  *commands.Processor                        // Command processor for user commands
-	handshakeMode              string                                     // Telnet IAC negotiation policy ("full", "minimal", "none")
-	transport                  string                                     // Telnet transport backend ("native" or "ziutek")
-	useZiutek                  bool                                       // True when the external telnet transport is enabled
-	wrapConnFn                 func(net.Conn) (net.Conn, net.Conn, error) // Optional transport wrapper hook for deterministic tests
-	echoMode                   string                                     // Input echo policy ("server", "local", "off")
-	clientBufferSize           int                                        // Per-client spot channel capacity
-	controlQueueSize           int                                        // Per-client control queue capacity
-	bulletinDedupe             *bulletinDedupeCache                       // Bounded duplicate suppression for WWV/WCY/announcements
-	readIdleTimeout            time.Duration                              // Read deadline for logged-in sessions (timeouts do not disconnect)
-	loginTimeout               time.Duration                              // Pre-login timeout before disconnect
-	maxPreloginSessions        int                                        // Hard cap on concurrent unauthenticated sessions
-	preloginTimeout            time.Duration                              // End-to-end timeout from accept to successful login
-	acceptRatePerIP            float64                                    // Token refill rate (tokens/sec) for pre-login admission
-	acceptBurstPerIP           int                                        // Token bucket burst size for pre-login admission
-	acceptRatePerSubnet        float64                                    // Token refill rate per subnet for pre-login admission
-	acceptBurstPerSubnet       int                                        // Token bucket burst size per subnet for pre-login admission
-	acceptRateGlobal           float64                                    // Global token refill rate for pre-login admission
-	acceptBurstGlobal          int                                        // Global token bucket burst size for pre-login admission
-	acceptRatePerASN           float64                                    // Token refill rate per ASN for pre-login admission
-	acceptBurstPerASN          int                                        // Token bucket burst size per ASN for pre-login admission
-	acceptRatePerCountry       float64                                    // Token refill rate per country for pre-login admission
-	acceptBurstPerCountry      int                                        // Token bucket burst size per country for pre-login admission
-	preloginConcPerIP          int                                        // Max concurrent pre-login sessions per source IP
-	preloginMu                 sync.Mutex                                 // Guards pre-login admission counters and token buckets
-	preloginActive             int                                        // Active unauthenticated session count
-	preloginByIP               map[string]preloginIPState                 // Admission state keyed by source IP
-	preloginBySubnet           map[string]preloginLimiterState            // Admission state keyed by /24 or /48 prefix
-	preloginByASN              map[string]preloginLimiterState            // Admission state keyed by ASN
-	preloginByCountry          map[string]preloginLimiterState            // Admission state keyed by country code
-	preloginGlobal             *rate.Limiter                              // Global admission limiter
-	preloginTrackedMax         int                                        // Max tracked IP states for bounded memory
-	preloginStateIdleTTL       time.Duration                              // Idle eviction TTL for IP admission state
-	preloginLastGC             time.Time                                  // Last opportunistic GC timestamp
-	admissionLogInterval       time.Duration                              // Interval for aggregated admission reject logs
-	admissionLogSample         float64                                    // Sample rate for per-event admission reject logs
-	admissionLogMaxLines       int                                        // Max per-event lines emitted per interval
-	admissionLogWindow         time.Time                                  // Start time for current admission log window
-	admissionLogLines          int                                        // Per-event lines emitted in current window
-	admissionLogCounts         map[string]uint64                          // Aggregated admission reject counters by reason
-	dropExtremeRate            float64                                    // Drop ratio threshold for disconnect
-	dropExtremeWindow          time.Duration                              // Window for extreme drop evaluation
-	dropExtremeMinAtt          int                                        // Minimum attempts before extreme drop disconnect
-	clientListListener         atomic.Value                               // optional func()
-	latency                    latencyMetrics                             // latency samples for delivery path
-	loginLineLimit             int                                        // Maximum bytes accepted for login/callsign input
-	commandLineLimit           int                                        // Maximum bytes accepted for post-login commands
-	filterEngine               *filterCommandEngine                       // Table-driven filter command parser/executor
-	reputationGate             *reputation.Gate                           // Optional reputation gate for login metadata
-	startTime                  time.Time                                  // Process start time for uptime tokens
-	pathPredictor              *pathreliability.Predictor                 // Optional path reliability predictor
-	pathClosedFallback         pathreliability.ClosedFallback             // Optional nonblocking VOACAP sparse-data fallback
-	pathDisplay                bool                                       // Toggle glyph rendering
-	solarWeather               *solarweather.Manager                      // Optional solar/geomagnetic override evaluator
-	noiseModel                 pathreliability.NoiseModel                 // Noise class lookup
-	gridLookup                 func(string) (string, bool, bool)          // Optional grid lookup from store
-	ctyLookup                  func() *cty.CTYDatabase                    // Optional CTY lookup for login validation and filter display
-	usLicenseCheck             func(string) bool                          // Optional US FCC ULS license checker for login validation
-	nowFn                      func() time.Time                           // Optional clock injection for deterministic tests
-	admissionGeoLookupFn       func(string, time.Time) (string, string)   // Optional prelogin geo-key lookup override for tests
-	defaultDedupePolicy        dedupePolicy                               // YAML-owned default for new user records
-	defaultDedupeSet           bool                                       // Distinguishes configured FAST from a zero-value server
-	dedupeFastEnabled          bool                                       // Fast secondary dedupe policy enabled
-	dedupeMedEnabled           bool                                       // Med secondary dedupe policy enabled
-	dedupeSlowEnabled          bool                                       // Slow secondary dedupe policy enabled
-	nearbyLoginWarning         string                                     // Warning appended when NEARBY is active
-	loginAttemptReporter       func(LoginAttemptEvent)                    // Optional file-only login-attempt reporter
-	connectionReporter         func(ConnectionEvent)                      // Optional file-only connection lifecycle reporter
-	queueDropLog               ratelimit.Counter                          // Rate-limited log counter for broadcast queue drops
-	workerDropLog              ratelimit.Counter                          // Rate-limited log counter for worker queue drops
-	clientDropLog              ratelimit.Counter                          // Rate-limited log counter for per-client drops
-	rejectDropLog              ratelimit.Counter                          // Rate-limited log counter for rejected-conn queue drops
-	loginValidationLog         ratelimit.Counter                          // Rate-limited log counter for login validation decisions
-	pathPredTotal              atomic.Uint64                              // Path predictions computed (glyphs)
-	pathPredDerived            atomic.Uint64                              // Predictions using derived user/DX grids
-	pathPredCombined           atomic.Uint64                              // Predictions with sufficient combined data
-	pathPredVOACAPClosed       atomic.Uint64                              // Insufficient bucket predictions replaced by VOACAP closed fallback
-	pathPredVOACAPAligned      atomic.Uint64                              // Insufficient bucket predictions replaced by VOACAP-aligned sparse p50
-	vStageClosed               atomic.Int64                               // Cached VOACAP forecasts classified as closed before final result emission
-	vStageClosedNoP50          atomic.Int64                               // Closed VOACAP forecasts with no sparse p50 evidence
-	vStageClosedWithSparseP50  atomic.Int64                               // Closed VOACAP forecasts with sparse p50 evidence
-	vStageClosedSparseHigh     atomic.Int64                               // Closed VOACAP forecasts with sparse p50 classified HIGH
-	vStageClosedSparseMedium   atomic.Int64                               // Closed VOACAP forecasts with sparse p50 classified MEDIUM
-	vStageClosedSparseLow      atomic.Int64                               // Closed VOACAP forecasts with sparse p50 classified LOW
-	vStageClosedSparseUnlikely atomic.Int64                               // Closed VOACAP forecasts with sparse p50 classified UNLIKELY
-	vStageAligned              atomic.Int64                               // Cached VOACAP forecasts aligned with sparse p50 before final result emission
-	vStageNoP50                atomic.Int64                               // Cached VOACAP open forecasts with no sparse p50 to corroborate
-	vStageMismatch             atomic.Int64                               // Cached VOACAP open forecasts whose class disagreed with sparse p50
-	vP50CompareChecked         atomic.Int64                               // Sufficient p50 results checked against existing VOACAP cache
-	vP50CompareCacheHit        atomic.Int64                               // Sufficient p50 comparisons with a current-hour VOACAP cache hit
-	vP50CompareCacheMiss       atomic.Int64                               // Sufficient p50 comparisons without a current-hour VOACAP cache hit
-	vP50CompareSameClass       atomic.Int64                               // Sufficient p50 and VOACAP cache hit mapped to the same class
-	vP50CompareP50Stronger     atomic.Int64                               // Sufficient p50 SNR was stronger than cached VOACAP SNR
-	vP50CompareVOACAPStronger  atomic.Int64                               // Cached VOACAP SNR was stronger than sufficient p50 SNR
-	vP50CompareEqualSNR        atomic.Int64                               // Sufficient p50 and cached VOACAP SNR were equal
-	vP50CompareClosedP50High   atomic.Int64                               // Cached VOACAP was closed while sufficient p50 class was HIGH
-	vP50CompareClosedP50Med    atomic.Int64                               // Cached VOACAP was closed while sufficient p50 class was MEDIUM
-	vP50CompareClosedP50Low    atomic.Int64                               // Cached VOACAP was closed while sufficient p50 class was LOW
-	vP50CompareClosedP50Unlk   atomic.Int64                               // Cached VOACAP was closed while sufficient p50 class was UNLIKELY
-	vP50CompareDeltaAbs0To3    atomic.Int64                               // Absolute p50-vs-VOACAP SNR delta was 0..3 dB
-	vP50CompareDeltaAbs4To9    atomic.Int64                               // Absolute p50-vs-VOACAP SNR delta was 4..9 dB
-	vP50CompareDeltaAbs10To19  atomic.Int64                               // Absolute p50-vs-VOACAP SNR delta was 10..19 dB
-	vP50CompareDeltaAbs20Plus  atomic.Int64                               // Absolute p50-vs-VOACAP SNR delta was >=20 dB
-	pathPredInsufficient       atomic.Uint64                              // Predictions with insufficient data
-	pathPredNoSample           atomic.Uint64                              // Insufficient predictions with no samples
-	pathPredLowCount           atomic.Uint64                              // Insufficient predictions below min observation count
-	pathPredLowReceiver        atomic.Uint64                              // Insufficient predictions below receiver-diversity gate
-	pathPredLowWeight          atomic.Uint64                              // Insufficient predictions below min weight
-	pathPredStale              atomic.Uint64                              // Insufficient predictions with stale selected evidence
-	pathPredCapLimited         atomic.Uint64                              // Predictions where receiver caps reduced diagnostic evidence
-	pathPredCapWouldBlock      atomic.Uint64                              // Shadow predictions that receiver caps would block
-	pathPredOverrideR          atomic.Uint64                              // R overrides applied
-	pathPredOverrideG          atomic.Uint64                              // G overrides applied
+	port                        int                                        // TCP port to listen on
+	welcomeMessage              string                                     // Welcome message for new connections
+	maxConnections              int                                        // Maximum concurrent client connections
+	duplicateLoginMsg           string                                     // Message sent to evicted duplicate session
+	greetingTemplate            string                                     // Post-login greeting with placeholders
+	loginPrompt                 string                                     // Login prompt before callsign entry
+	loginEmptyMessage           string                                     // Message for empty callsign
+	loginInvalidMsg             string                                     // Message for invalid callsign
+	inputTooLongMsg             string                                     // Template for input length violations
+	inputInvalidMsg             string                                     // Template for invalid character violations
+	dialectWelcomeMsg           string                                     // Template for dialect welcome line
+	dialectSourceDef            string                                     // Label for default dialect source
+	dialectSourcePers           string                                     // Label for persisted dialect source
+	pathStatusMsg               string                                     // Template for path reliability status line
+	clusterCall                 string                                     // Cluster/node callsign for greeting substitution
+	listener                    net.Listener                               // TCP listener
+	clients                     map[string]*Client                         // Map of callsign → Client
+	clientsMutex                sync.RWMutex                               // Protects clients map
+	shutdown                    chan struct{}                              // Shutdown coordination channel
+	stopOnce                    sync.Once                                  // Ensures Stop is idempotent
+	broadcast                   chan *broadcastPayload                     // Broadcast channel for spots (buffered, configurable)
+	broadcastWorkers            int                                        // Number of goroutines delivering spots
+	workerQueues                []chan broadcastJob                        // Per-worker job queues
+	workerQueueSize             int                                        // Capacity of each worker's queue
+	batchInterval               time.Duration                              // Broadcast batch interval; 0 means immediate
+	batchMax                    int                                        // Max jobs per batch before flush
+	writerBatchMaxBytes         int                                        // Max bytes per writer-loop flush batch
+	writerBatchWait             time.Duration                              // Max wait before flushing partial writer batch
+	metrics                     broadcastMetrics                           // Broadcast metrics counters
+	keepaliveInterval           time.Duration                              // Optional periodic CRLF to keep idle sessions alive
+	clientShardCache            atomic.Pointer[clientShardSnapshot]        // Immutable cached shard layout for broadcasts
+	shardsDirty                 atomic.Bool                                // Flag to rebuild shards on client add/remove
+	rejectWorkers               int                                        // Worker count for asynchronous reject writes
+	rejectQueueSize             int                                        // Capacity of asynchronous reject queue
+	rejectWriteDeadline         time.Duration                              // Deadline for reject banner write
+	rejectQueue                 chan rejectJob                             // Bounded async reject queue
+	rejectWorkerOnce            sync.Once                                  // Ensures reject workers start once
+	processor                   *commands.Processor                        // Command processor for user commands
+	handshakeMode               string                                     // Telnet IAC negotiation policy ("full", "minimal", "none")
+	transport                   string                                     // Telnet transport backend ("native" or "ziutek")
+	useZiutek                   bool                                       // True when the external telnet transport is enabled
+	wrapConnFn                  func(net.Conn) (net.Conn, net.Conn, error) // Optional transport wrapper hook for deterministic tests
+	echoMode                    string                                     // Input echo policy ("server", "local", "off")
+	clientBufferSize            int                                        // Per-client spot channel capacity
+	controlQueueSize            int                                        // Per-client control queue capacity
+	bulletinDedupe              *bulletinDedupeCache                       // Bounded duplicate suppression for WWV/WCY/announcements
+	readIdleTimeout             time.Duration                              // Read deadline for logged-in sessions (timeouts do not disconnect)
+	loginTimeout                time.Duration                              // Pre-login timeout before disconnect
+	maxPreloginSessions         int                                        // Hard cap on concurrent unauthenticated sessions
+	preloginTimeout             time.Duration                              // End-to-end timeout from accept to successful login
+	acceptRatePerIP             float64                                    // Token refill rate (tokens/sec) for pre-login admission
+	acceptBurstPerIP            int                                        // Token bucket burst size for pre-login admission
+	acceptRatePerSubnet         float64                                    // Token refill rate per subnet for pre-login admission
+	acceptBurstPerSubnet        int                                        // Token bucket burst size per subnet for pre-login admission
+	acceptRateGlobal            float64                                    // Global token refill rate for pre-login admission
+	acceptBurstGlobal           int                                        // Global token bucket burst size for pre-login admission
+	acceptRatePerASN            float64                                    // Token refill rate per ASN for pre-login admission
+	acceptBurstPerASN           int                                        // Token bucket burst size per ASN for pre-login admission
+	acceptRatePerCountry        float64                                    // Token refill rate per country for pre-login admission
+	acceptBurstPerCountry       int                                        // Token bucket burst size per country for pre-login admission
+	preloginConcPerIP           int                                        // Max concurrent pre-login sessions per source IP
+	preloginMu                  sync.Mutex                                 // Guards pre-login admission counters and token buckets
+	preloginActive              int                                        // Active unauthenticated session count
+	preloginByIP                map[string]preloginIPState                 // Admission state keyed by source IP
+	preloginBySubnet            map[string]preloginLimiterState            // Admission state keyed by /24 or /48 prefix
+	preloginByASN               map[string]preloginLimiterState            // Admission state keyed by ASN
+	preloginByCountry           map[string]preloginLimiterState            // Admission state keyed by country code
+	preloginGlobal              *rate.Limiter                              // Global admission limiter
+	preloginTrackedMax          int                                        // Max tracked IP states for bounded memory
+	preloginStateIdleTTL        time.Duration                              // Idle eviction TTL for IP admission state
+	preloginLastGC              time.Time                                  // Last opportunistic GC timestamp
+	admissionLogInterval        time.Duration                              // Interval for aggregated admission reject logs
+	admissionLogSample          float64                                    // Sample rate for per-event admission reject logs
+	admissionLogMaxLines        int                                        // Max per-event lines emitted per interval
+	admissionLogWindow          time.Time                                  // Start time for current admission log window
+	admissionLogLines           int                                        // Per-event lines emitted in current window
+	admissionLogCounts          map[string]uint64                          // Aggregated admission reject counters by reason
+	dropExtremeRate             float64                                    // Drop ratio threshold for disconnect
+	dropExtremeWindow           time.Duration                              // Window for extreme drop evaluation
+	dropExtremeMinAtt           int                                        // Minimum attempts before extreme drop disconnect
+	clientListListener          atomic.Value                               // optional func()
+	latency                     latencyMetrics                             // latency samples for delivery path
+	loginLineLimit              int                                        // Maximum bytes accepted for login/callsign input
+	commandLineLimit            int                                        // Maximum bytes accepted for post-login commands
+	filterEngine                *filterCommandEngine                       // Table-driven filter command parser/executor
+	reputationGate              *reputation.Gate                           // Optional reputation gate for login metadata
+	startTime                   time.Time                                  // Process start time for uptime tokens
+	pathPredictor               *pathreliability.Predictor                 // Optional path reliability predictor
+	pathClosedFallback          pathreliability.ClosedFallback             // Optional nonblocking VOACAP sparse-data fallback
+	pathDisplay                 bool                                       // Toggle glyph rendering
+	solarWeather                *solarweather.Manager                      // Optional solar/geomagnetic override evaluator
+	noiseModel                  pathreliability.NoiseModel                 // Noise class lookup
+	gridLookup                  func(string) (string, bool, bool)          // Optional grid lookup from store
+	ctyLookup                   func() *cty.CTYDatabase                    // Optional CTY lookup for login validation and filter display
+	usLicenseCheck              func(string) bool                          // Optional US FCC ULS license checker for login validation
+	nowFn                       func() time.Time                           // Optional clock injection for deterministic tests
+	admissionGeoLookupFn        func(string, time.Time) (string, string)   // Optional prelogin geo-key lookup override for tests
+	defaultDedupePolicy         dedupePolicy                               // YAML-owned default for new user records
+	defaultDedupeSet            bool                                       // Distinguishes configured FAST from a zero-value server
+	dedupeFastEnabled           bool                                       // Fast secondary dedupe policy enabled
+	dedupeMedEnabled            bool                                       // Med secondary dedupe policy enabled
+	dedupeSlowEnabled           bool                                       // Slow secondary dedupe policy enabled
+	nearbyLoginWarning          string                                     // Warning appended when NEARBY is active
+	loginAttemptReporter        func(LoginAttemptEvent)                    // Optional file-only login-attempt reporter
+	connectionReporter          func(ConnectionEvent)                      // Optional file-only connection lifecycle reporter
+	queueDropLog                ratelimit.Counter                          // Rate-limited log counter for broadcast queue drops
+	workerDropLog               ratelimit.Counter                          // Rate-limited log counter for worker queue drops
+	clientDropLog               ratelimit.Counter                          // Rate-limited log counter for per-client drops
+	rejectDropLog               ratelimit.Counter                          // Rate-limited log counter for rejected-conn queue drops
+	loginValidationLog          ratelimit.Counter                          // Rate-limited log counter for login validation decisions
+	pathPredTotal               atomic.Uint64                              // Path predictions computed (glyphs)
+	pathPredDerived             atomic.Uint64                              // Predictions using derived user/DX grids
+	pathPredCombined            atomic.Uint64                              // Predictions with sufficient combined data
+	pathPredVOACAPClosed        atomic.Uint64                              // Insufficient bucket predictions replaced by VOACAP closed fallback
+	pathPredVOACAPAligned       atomic.Uint64                              // Insufficient bucket predictions replaced by VOACAP-aligned sparse p50
+	pathPredVOACAPSparseUpgrade atomic.Uint64                              // Sparse p50 predictions upgraded one tier by REL-gated VOACAP
+	pathPredVOACAPOpen          atomic.Uint64                              // No-p50 predictions filled by REL-gated open VOACAP
+	vStageClosed                atomic.Int64                               // Cached VOACAP forecasts classified as closed before final result emission
+	vStageClosedNoP50           atomic.Int64                               // Closed VOACAP forecasts with no sparse p50 evidence
+	vStageClosedWithSparseP50   atomic.Int64                               // Closed VOACAP forecasts with sparse p50 evidence
+	vStageClosedSparseHigh      atomic.Int64                               // Closed VOACAP forecasts with sparse p50 classified HIGH
+	vStageClosedSparseMedium    atomic.Int64                               // Closed VOACAP forecasts with sparse p50 classified MEDIUM
+	vStageClosedSparseLow       atomic.Int64                               // Closed VOACAP forecasts with sparse p50 classified LOW
+	vStageClosedSparseUnlikely  atomic.Int64                               // Closed VOACAP forecasts with sparse p50 classified UNLIKELY
+	vStageAligned               atomic.Int64                               // Cached VOACAP forecasts aligned with sparse p50 before final result emission
+	vStageNoP50                 atomic.Int64                               // Cached VOACAP open forecasts with no sparse p50 to corroborate
+	vStageMismatch              atomic.Int64                               // Cached VOACAP open forecasts whose class disagreed with sparse p50
+	vStageSparseUpgrade         atomic.Int64                               // Cached VOACAP forecasts upgraded sparse p50 by one REL-gated tier
+	vStageOpenNoP50REL          atomic.Int64                               // Cached VOACAP open forecasts emitted with no p50 after REL gate
+	vStageReliabilityMissing    atomic.Int64                               // REL-gated open/upgrade candidates missing usable VOACAP REL
+	vStageReliabilityBelow      atomic.Int64                               // REL-gated open/upgrade candidates below configured REL threshold
+	vStageReliabilityMultiTier  atomic.Int64                               // Sparse p50 upgrade candidates stronger than one class tier
+	vP50CompareChecked          atomic.Int64                               // Sufficient p50 results checked against existing VOACAP cache
+	vP50CompareCacheHit         atomic.Int64                               // Sufficient p50 comparisons with a current-hour VOACAP cache hit
+	vP50CompareCacheMiss        atomic.Int64                               // Sufficient p50 comparisons without a current-hour VOACAP cache hit
+	vP50CompareSameClass        atomic.Int64                               // Sufficient p50 and VOACAP cache hit mapped to the same class
+	vP50CompareP50Stronger      atomic.Int64                               // Sufficient p50 SNR was stronger than cached VOACAP SNR
+	vP50CompareVOACAPStronger   atomic.Int64                               // Cached VOACAP SNR was stronger than sufficient p50 SNR
+	vP50CompareEqualSNR         atomic.Int64                               // Sufficient p50 and cached VOACAP SNR were equal
+	vP50CompareClosedP50High    atomic.Int64                               // Cached VOACAP was closed while sufficient p50 class was HIGH
+	vP50CompareClosedP50Med     atomic.Int64                               // Cached VOACAP was closed while sufficient p50 class was MEDIUM
+	vP50CompareClosedP50Low     atomic.Int64                               // Cached VOACAP was closed while sufficient p50 class was LOW
+	vP50CompareClosedP50Unlk    atomic.Int64                               // Cached VOACAP was closed while sufficient p50 class was UNLIKELY
+	vP50CompareDeltaAbs0To3     atomic.Int64                               // Absolute p50-vs-VOACAP SNR delta was 0..3 dB
+	vP50CompareDeltaAbs4To9     atomic.Int64                               // Absolute p50-vs-VOACAP SNR delta was 4..9 dB
+	vP50CompareDeltaAbs10To19   atomic.Int64                               // Absolute p50-vs-VOACAP SNR delta was 10..19 dB
+	vP50CompareDeltaAbs20Plus   atomic.Int64                               // Absolute p50-vs-VOACAP SNR delta was >=20 dB
+	pathPredInsufficient        atomic.Uint64                              // Predictions with insufficient data
+	pathPredNoSample            atomic.Uint64                              // Insufficient predictions with no samples
+	pathPredLowCount            atomic.Uint64                              // Insufficient predictions below min observation count
+	pathPredLowReceiver         atomic.Uint64                              // Insufficient predictions below receiver-diversity gate
+	pathPredLowWeight           atomic.Uint64                              // Insufficient predictions below min weight
+	pathPredStale               atomic.Uint64                              // Insufficient predictions with stale selected evidence
+	pathPredCapLimited          atomic.Uint64                              // Predictions where receiver caps reduced diagnostic evidence
+	pathPredCapWouldBlock       atomic.Uint64                              // Shadow predictions that receiver caps would block
+	pathPredOverrideR           atomic.Uint64                              // R overrides applied
+	pathPredOverrideG           atomic.Uint64                              // G overrides applied
 }
 
 // Client represents a connected telnet client session.
@@ -2888,47 +2895,54 @@ func (s *Server) PreloginAdmissionMetricSnapshot() preloginAdmissionSnapshot {
 }
 
 type pathPredictionStats struct {
-	Total                          uint64
-	Derived                        uint64
-	Combined                       uint64
-	VOACAPClosed                   uint64
-	VOACAPAligned                  uint64
-	VOACAPFallback                 pathreliability.VOACAPFallbackStats
-	VOACAPFallbackClosedCandidate  int64
-	VOACAPFallbackClosedNoP50      int64
-	VOACAPFallbackClosedSparseP50  int64
-	VOACAPFallbackClosedSparseHigh int64
-	VOACAPFallbackClosedSparseMed  int64
-	VOACAPFallbackClosedSparseLow  int64
-	VOACAPFallbackClosedSparseUnlk int64
-	VOACAPFallbackAlignedCandidate int64
-	VOACAPFallbackOpenNoP50        int64
-	VOACAPFallbackClassMismatch    int64
-	VOACAPP50CompareChecked        int64
-	VOACAPP50CompareCacheHit       int64
-	VOACAPP50CompareCacheMiss      int64
-	VOACAPP50CompareSameClass      int64
-	VOACAPP50CompareP50Stronger    int64
-	VOACAPP50CompareVOACAPStronger int64
-	VOACAPP50CompareEqualSNR       int64
-	VOACAPP50CompareClosedP50High  int64
-	VOACAPP50CompareClosedP50Med   int64
-	VOACAPP50CompareClosedP50Low   int64
-	VOACAPP50CompareClosedP50Unlk  int64
-	VOACAPP50CompareDeltaAbs0To3   int64
-	VOACAPP50CompareDeltaAbs4To9   int64
-	VOACAPP50CompareDeltaAbs10To19 int64
-	VOACAPP50CompareDeltaAbs20Plus int64
-	Insufficient                   uint64
-	NoSample                       uint64
-	LowCount                       uint64
-	LowReceiver                    uint64
-	LowWeight                      uint64
-	Stale                          uint64
-	CapLimited                     uint64
-	CapWouldBlock                  uint64
-	OverrideR                      uint64
-	OverrideG                      uint64
+	Total                              uint64
+	Derived                            uint64
+	Combined                           uint64
+	VOACAPClosed                       uint64
+	VOACAPAligned                      uint64
+	VOACAPSparseUpgrade                uint64
+	VOACAPOpen                         uint64
+	VOACAPFallback                     pathreliability.VOACAPFallbackStats
+	VOACAPFallbackClosedCandidate      int64
+	VOACAPFallbackClosedNoP50          int64
+	VOACAPFallbackClosedSparseP50      int64
+	VOACAPFallbackClosedSparseHigh     int64
+	VOACAPFallbackClosedSparseMed      int64
+	VOACAPFallbackClosedSparseLow      int64
+	VOACAPFallbackClosedSparseUnlk     int64
+	VOACAPFallbackAlignedCandidate     int64
+	VOACAPFallbackOpenNoP50            int64
+	VOACAPFallbackClassMismatch        int64
+	VOACAPFallbackSparseUpgrade        int64
+	VOACAPFallbackOpenNoP50REL         int64
+	VOACAPFallbackReliabilityMissing   int64
+	VOACAPFallbackReliabilityBelow     int64
+	VOACAPFallbackReliabilityMultiTier int64
+	VOACAPP50CompareChecked            int64
+	VOACAPP50CompareCacheHit           int64
+	VOACAPP50CompareCacheMiss          int64
+	VOACAPP50CompareSameClass          int64
+	VOACAPP50CompareP50Stronger        int64
+	VOACAPP50CompareVOACAPStronger     int64
+	VOACAPP50CompareEqualSNR           int64
+	VOACAPP50CompareClosedP50High      int64
+	VOACAPP50CompareClosedP50Med       int64
+	VOACAPP50CompareClosedP50Low       int64
+	VOACAPP50CompareClosedP50Unlk      int64
+	VOACAPP50CompareDeltaAbs0To3       int64
+	VOACAPP50CompareDeltaAbs4To9       int64
+	VOACAPP50CompareDeltaAbs10To19     int64
+	VOACAPP50CompareDeltaAbs20Plus     int64
+	Insufficient                       uint64
+	NoSample                           uint64
+	LowCount                           uint64
+	LowReceiver                        uint64
+	LowWeight                          uint64
+	Stale                              uint64
+	CapLimited                         uint64
+	CapWouldBlock                      uint64
+	OverrideR                          uint64
+	OverrideG                          uint64
 }
 
 func (s *Server) recordPathPrediction(res pathreliability.Result, userDerived, dxDerived bool) {
@@ -2952,6 +2966,10 @@ func (s *Server) recordPathPrediction(res pathreliability.Result, userDerived, d
 		s.pathPredVOACAPClosed.Add(1)
 	case pathreliability.SourceVOACAPAligned:
 		s.pathPredVOACAPAligned.Add(1)
+	case pathreliability.SourceVOACAPSparseUpgrade:
+		s.pathPredVOACAPSparseUpgrade.Add(1)
+	case pathreliability.SourceVOACAPOpen:
+		s.pathPredVOACAPOpen.Add(1)
 	default:
 		s.pathPredInsufficient.Add(1)
 		switch res.InsufficientReason {
@@ -2980,46 +2998,53 @@ func (s *Server) PathPredictionStatsSnapshot() pathPredictionStats {
 		return pathPredictionStats{}
 	}
 	stats := pathPredictionStats{
-		Total:                          s.pathPredTotal.Swap(0),
-		Derived:                        s.pathPredDerived.Swap(0),
-		Combined:                       s.pathPredCombined.Swap(0),
-		VOACAPClosed:                   s.pathPredVOACAPClosed.Swap(0),
-		VOACAPAligned:                  s.pathPredVOACAPAligned.Swap(0),
-		VOACAPFallbackClosedCandidate:  s.vStageClosed.Swap(0),
-		VOACAPFallbackClosedNoP50:      s.vStageClosedNoP50.Swap(0),
-		VOACAPFallbackClosedSparseP50:  s.vStageClosedWithSparseP50.Swap(0),
-		VOACAPFallbackClosedSparseHigh: s.vStageClosedSparseHigh.Swap(0),
-		VOACAPFallbackClosedSparseMed:  s.vStageClosedSparseMedium.Swap(0),
-		VOACAPFallbackClosedSparseLow:  s.vStageClosedSparseLow.Swap(0),
-		VOACAPFallbackClosedSparseUnlk: s.vStageClosedSparseUnlikely.Swap(0),
-		VOACAPFallbackAlignedCandidate: s.vStageAligned.Swap(0),
-		VOACAPFallbackOpenNoP50:        s.vStageNoP50.Swap(0),
-		VOACAPFallbackClassMismatch:    s.vStageMismatch.Swap(0),
-		VOACAPP50CompareChecked:        s.vP50CompareChecked.Swap(0),
-		VOACAPP50CompareCacheHit:       s.vP50CompareCacheHit.Swap(0),
-		VOACAPP50CompareCacheMiss:      s.vP50CompareCacheMiss.Swap(0),
-		VOACAPP50CompareSameClass:      s.vP50CompareSameClass.Swap(0),
-		VOACAPP50CompareP50Stronger:    s.vP50CompareP50Stronger.Swap(0),
-		VOACAPP50CompareVOACAPStronger: s.vP50CompareVOACAPStronger.Swap(0),
-		VOACAPP50CompareEqualSNR:       s.vP50CompareEqualSNR.Swap(0),
-		VOACAPP50CompareClosedP50High:  s.vP50CompareClosedP50High.Swap(0),
-		VOACAPP50CompareClosedP50Med:   s.vP50CompareClosedP50Med.Swap(0),
-		VOACAPP50CompareClosedP50Low:   s.vP50CompareClosedP50Low.Swap(0),
-		VOACAPP50CompareClosedP50Unlk:  s.vP50CompareClosedP50Unlk.Swap(0),
-		VOACAPP50CompareDeltaAbs0To3:   s.vP50CompareDeltaAbs0To3.Swap(0),
-		VOACAPP50CompareDeltaAbs4To9:   s.vP50CompareDeltaAbs4To9.Swap(0),
-		VOACAPP50CompareDeltaAbs10To19: s.vP50CompareDeltaAbs10To19.Swap(0),
-		VOACAPP50CompareDeltaAbs20Plus: s.vP50CompareDeltaAbs20Plus.Swap(0),
-		Insufficient:                   s.pathPredInsufficient.Swap(0),
-		NoSample:                       s.pathPredNoSample.Swap(0),
-		LowCount:                       s.pathPredLowCount.Swap(0),
-		LowReceiver:                    s.pathPredLowReceiver.Swap(0),
-		LowWeight:                      s.pathPredLowWeight.Swap(0),
-		Stale:                          s.pathPredStale.Swap(0),
-		CapLimited:                     s.pathPredCapLimited.Swap(0),
-		CapWouldBlock:                  s.pathPredCapWouldBlock.Swap(0),
-		OverrideR:                      s.pathPredOverrideR.Swap(0),
-		OverrideG:                      s.pathPredOverrideG.Swap(0),
+		Total:                              s.pathPredTotal.Swap(0),
+		Derived:                            s.pathPredDerived.Swap(0),
+		Combined:                           s.pathPredCombined.Swap(0),
+		VOACAPClosed:                       s.pathPredVOACAPClosed.Swap(0),
+		VOACAPAligned:                      s.pathPredVOACAPAligned.Swap(0),
+		VOACAPSparseUpgrade:                s.pathPredVOACAPSparseUpgrade.Swap(0),
+		VOACAPOpen:                         s.pathPredVOACAPOpen.Swap(0),
+		VOACAPFallbackClosedCandidate:      s.vStageClosed.Swap(0),
+		VOACAPFallbackClosedNoP50:          s.vStageClosedNoP50.Swap(0),
+		VOACAPFallbackClosedSparseP50:      s.vStageClosedWithSparseP50.Swap(0),
+		VOACAPFallbackClosedSparseHigh:     s.vStageClosedSparseHigh.Swap(0),
+		VOACAPFallbackClosedSparseMed:      s.vStageClosedSparseMedium.Swap(0),
+		VOACAPFallbackClosedSparseLow:      s.vStageClosedSparseLow.Swap(0),
+		VOACAPFallbackClosedSparseUnlk:     s.vStageClosedSparseUnlikely.Swap(0),
+		VOACAPFallbackAlignedCandidate:     s.vStageAligned.Swap(0),
+		VOACAPFallbackOpenNoP50:            s.vStageNoP50.Swap(0),
+		VOACAPFallbackClassMismatch:        s.vStageMismatch.Swap(0),
+		VOACAPFallbackSparseUpgrade:        s.vStageSparseUpgrade.Swap(0),
+		VOACAPFallbackOpenNoP50REL:         s.vStageOpenNoP50REL.Swap(0),
+		VOACAPFallbackReliabilityMissing:   s.vStageReliabilityMissing.Swap(0),
+		VOACAPFallbackReliabilityBelow:     s.vStageReliabilityBelow.Swap(0),
+		VOACAPFallbackReliabilityMultiTier: s.vStageReliabilityMultiTier.Swap(0),
+		VOACAPP50CompareChecked:            s.vP50CompareChecked.Swap(0),
+		VOACAPP50CompareCacheHit:           s.vP50CompareCacheHit.Swap(0),
+		VOACAPP50CompareCacheMiss:          s.vP50CompareCacheMiss.Swap(0),
+		VOACAPP50CompareSameClass:          s.vP50CompareSameClass.Swap(0),
+		VOACAPP50CompareP50Stronger:        s.vP50CompareP50Stronger.Swap(0),
+		VOACAPP50CompareVOACAPStronger:     s.vP50CompareVOACAPStronger.Swap(0),
+		VOACAPP50CompareEqualSNR:           s.vP50CompareEqualSNR.Swap(0),
+		VOACAPP50CompareClosedP50High:      s.vP50CompareClosedP50High.Swap(0),
+		VOACAPP50CompareClosedP50Med:       s.vP50CompareClosedP50Med.Swap(0),
+		VOACAPP50CompareClosedP50Low:       s.vP50CompareClosedP50Low.Swap(0),
+		VOACAPP50CompareClosedP50Unlk:      s.vP50CompareClosedP50Unlk.Swap(0),
+		VOACAPP50CompareDeltaAbs0To3:       s.vP50CompareDeltaAbs0To3.Swap(0),
+		VOACAPP50CompareDeltaAbs4To9:       s.vP50CompareDeltaAbs4To9.Swap(0),
+		VOACAPP50CompareDeltaAbs10To19:     s.vP50CompareDeltaAbs10To19.Swap(0),
+		VOACAPP50CompareDeltaAbs20Plus:     s.vP50CompareDeltaAbs20Plus.Swap(0),
+		Insufficient:                       s.pathPredInsufficient.Swap(0),
+		NoSample:                           s.pathPredNoSample.Swap(0),
+		LowCount:                           s.pathPredLowCount.Swap(0),
+		LowReceiver:                        s.pathPredLowReceiver.Swap(0),
+		LowWeight:                          s.pathPredLowWeight.Swap(0),
+		Stale:                              s.pathPredStale.Swap(0),
+		CapLimited:                         s.pathPredCapLimited.Swap(0),
+		CapWouldBlock:                      s.pathPredCapWouldBlock.Swap(0),
+		OverrideR:                          s.pathPredOverrideR.Swap(0),
+		OverrideG:                          s.pathPredOverrideG.Swap(0),
 	}
 	if provider, ok := s.pathClosedFallback.(pathreliability.ClosedFallbackStatsProvider); ok {
 		stats.VOACAPFallback = provider.StatsSnapshot()
@@ -3863,22 +3888,56 @@ func (s *Server) pathResultWithClosedFallback(res pathreliability.Result, req pa
 	}
 	cfg := s.pathPredictor.Config()
 	voacapDB := forecast.EffectiveDB()
+	voacapClass := pathreliability.ClassForDB(voacapDB, req.Mode, cfg)
 	if pathreliability.ClosedForDB(voacapDB, req.Mode, cfg) {
 		s.recordClosedFallbackStage(res, req.Mode, cfg)
 		return pathreliability.VOACAPClosedResult(cfg, forecast)
 	}
 	if !res.HasP50 {
 		s.vStageNoP50.Add(1)
+		if cfg.VOACAPFallback.ReliabilityGatedOpenEnabled {
+			_, _, reason := pathreliability.VOACAPReqSNRReliabilityGate(forecast, voacapClass, cfg)
+			if reason == pathreliability.VOACAPReliabilityGateOK {
+				s.vStageOpenNoP50REL.Add(1)
+				return pathreliability.VOACAPOpenResult(cfg, req.Mode, forecast)
+			}
+			s.recordVOACAPReliabilityGate(reason)
+		}
 		return res
 	}
 	p50Class := pathreliability.ClassForDB(res.P50DB, req.Mode, cfg)
-	voacapClass := pathreliability.ClassForDB(voacapDB, req.Mode, cfg)
-	if p50Class != voacapClass {
+	if p50Class == voacapClass {
+		s.vStageAligned.Add(1)
+		return pathreliability.VOACAPAlignedResult(res, cfg, req.Mode, forecast)
+	}
+	upgradeSteps := pathreliability.ClassUpgradeSteps(p50Class, voacapClass)
+	if upgradeSteps > 1 {
+		s.vStageReliabilityMultiTier.Add(1)
 		s.vStageMismatch.Add(1)
 		return res
 	}
-	s.vStageAligned.Add(1)
-	return pathreliability.VOACAPAlignedResult(res, cfg, req.Mode, forecast)
+	if upgradeSteps == 1 && cfg.VOACAPFallback.ReliabilitySparseUpgradeEnabled {
+		_, _, reason := pathreliability.VOACAPReqSNRReliabilityGate(forecast, voacapClass, cfg)
+		if reason == pathreliability.VOACAPReliabilityGateOK {
+			s.vStageSparseUpgrade.Add(1)
+			return pathreliability.VOACAPSparseUpgradeResult(res, cfg, req.Mode, forecast)
+		}
+		s.recordVOACAPReliabilityGate(reason)
+	}
+	s.vStageMismatch.Add(1)
+	return res
+}
+
+func (s *Server) recordVOACAPReliabilityGate(reason pathreliability.VOACAPReliabilityGateReason) {
+	if s == nil {
+		return
+	}
+	switch reason {
+	case pathreliability.VOACAPReliabilityGateBelowThreshold:
+		s.vStageReliabilityBelow.Add(1)
+	default:
+		s.vStageReliabilityMissing.Add(1)
+	}
 }
 
 func (s *Server) recordVOACAPP50Compare(res pathreliability.Result, req pathreliability.VOACAPClosedRequest, now time.Time) {
@@ -4090,12 +4149,33 @@ func diagPathTag(prediction pathPrediction, havePrediction bool) string {
 		p50 := strconv.FormatFloat(math.Round(res.P50DB), 'f', 0, 64)
 		return fmt.Sprintf("valn|%s/%dh%02ds%d", p50, res.VOACAPFT8SNRDB, res.VOACAPHourUTC, res.VOACAPSSN)
 	}
+	if res.Source == pathreliability.SourceVOACAPSparseUpgrade {
+		p50 := strconv.FormatFloat(math.Round(res.P50DB), 'f', 0, 64)
+		return fmt.Sprintf("vup|%s/%dr%02ds%d", p50, res.VOACAPFT8SNRDB, diagVOACAPReliabilityPercent(res), res.VOACAPSSN)
+	}
+	if res.Source == pathreliability.SourceVOACAPOpen {
+		return fmt.Sprintf("vop|%dr%02dh%02ds%d", res.VOACAPFT8SNRDB, diagVOACAPReliabilityPercent(res), res.VOACAPHourUTC, res.VOACAPSSN)
+	}
 	weightValue := res.Weight
 	if res.CapLimited {
 		weightValue = res.CappedWeight
 	}
 	weight := strconv.FormatInt(int64(math.Round(weightValue)), 10)
 	return count + "|w" + weight + "|a" + diagAgeToken(res.AgeSec)
+}
+
+func diagVOACAPReliabilityPercent(res pathreliability.Result) int {
+	if !res.VOACAPHasReqSNRReliability {
+		return 0
+	}
+	pct := int(math.Round(res.VOACAPReqSNRReliability * 100))
+	if pct < 0 {
+		return 0
+	}
+	if pct > 100 {
+		return 100
+	}
+	return pct
 }
 
 func diagPathCountToken(res pathreliability.Result) string {

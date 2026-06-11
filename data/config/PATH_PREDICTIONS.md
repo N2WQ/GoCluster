@@ -138,22 +138,27 @@ configured closed glyph when the current UTC hour's blended bidirectional
 FT8-equivalent SNR, after the user's receive-side noise penalty, is at or below
 the request mode's configured `mode_thresholds.<mode>.closed` threshold, or it
 can emit a normal path glyph when sparse bucket p50 evidence exists and that
-p50 class matches the cached VOACAP current-hour class. Cached VOACAP output
-retains the parsed hourly records for the requested band. Runtime fallback
-decks start at the current rolling UTC window, and parsed VOACAP hour `24` is
-stored as UTC hour `0`. The fallback never replaces a normal sufficient p50
-bucket prediction.
+p50 class matches the cached VOACAP current-hour class. It can also emit a
+normal no-p50 VOACAP open glyph, or upgrade sparse p50 by one class, only when
+the cached VOACAP class is open and the configured request-SNR REL gate passes.
+Closed fallback still uses the SNR50 closed threshold and does not require REL.
+Cached VOACAP output retains the parsed hourly records for the requested band.
+Runtime fallback decks start at the current rolling UTC window, and parsed
+VOACAP hour `24` is stored as UTC hour `0`. The fallback never replaces a
+normal sufficient p50 bucket prediction.
 For `PASS/REJECT PATH`, the closed fallback is filter-visible as `CLOSED`.
 `CLOSED` remains compatible with `UNLIKELY`, so existing `UNLIKELY` filters
 still include closed fallback spots, while direct `CLOSED` filters target only
 closed fallback spots.
 
 Five-minute propagation logs keep final emit counters in `Path predictions
-(5m)`: `voacap_closed` and `voacap_aligned`. When fallback work occurs, a
-separate `VOACAP fallback (5m)` line reports stage counters such as `queued`,
-`success`, `cache_hit`, `no_current_hour`, `closed`, `closed_no_p50`,
-`closed_with_sparse_p50`, `closed_with_sparse_p50_class_*`, `open_no_p50`,
-and `class_mismatch`.
+(5m)`: `voacap_closed`, `voacap_aligned`, `voacap_sparse_upgrade`, and
+`voacap_open`. When fallback work occurs, a separate `VOACAP fallback (5m)`
+line reports stage counters such as `queued`, `success`, `cache_hit`,
+`no_current_hour`, `closed`, `closed_no_p50`, `closed_with_sparse_p50`,
+`closed_with_sparse_p50_class_*`, `open_no_p50`, `class_mismatch`,
+`sparse_upgrade`, `open_no_p50_rel`, `rel_missing`, `rel_below_floor`, and
+`rel_multi_tier`.
 When sufficient p50 predictions can be compared with an existing current-hour
 VOACAP cache record, `VOACAP p50 compare (5m)` reports cache hits/misses, class
 agreement, stronger/weaker effective SNR, closed-VOACAP versus p50 class, and
@@ -183,6 +188,9 @@ The glyphs help you prioritize. If you see:
   mode, path, and receive-noise setting.
 - **VOACAP-aligned normal glyph**: Bucket evidence was insufficient, but sparse
   bucket p50 and current-hour VOACAP mapped to the same path class.
+- **REL-gated VOACAP normal glyph**: Bucket evidence was insufficient, but
+  cached current-hour VOACAP mapped to an open class and passed the configured
+  request-SNR REL gate. Sparse p50 can only upgrade by one class in this mode.
 - **Space**: No prediction available - you're on your own. Could be good or bad.
 
 ### Understanding Limitations

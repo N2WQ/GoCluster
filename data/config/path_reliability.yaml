@@ -85,6 +85,17 @@ voacap_fallback:
   max_queue_depth: 1000
   worker_count: 1
   output_name_prefix: "gocluster_voacap_path"
+  # Enable REL-gated ordinary VOACAP glyphs only after cached current-hour VOACAP exists.
+  # Closed fallback still uses only the FT8-equivalent SNR50 closed threshold.
+  reliability_gated_open_enabled: true
+  # Allow sparse p50 to upgrade by one glyph tier when VOACAP is stronger and REL passes.
+  reliability_sparse_upgrade_enabled: true
+  # VOACAP REL gates are reliability of the configured request SNR, not direct class probabilities.
+  # Stronger displayed classes require stronger REL evidence.
+  reliability_min_high: 0.90
+  reliability_min_medium: 0.80
+  reliability_min_low: 0.65
+  reliability_min_unlikely: 0.50
 
 # Decay half-life in seconds when no per-band override applies.
 default_half_life_seconds: 420

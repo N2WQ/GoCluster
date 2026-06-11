@@ -263,6 +263,37 @@ func TestDiagPathTagShowsVOACAPAlignedSparseP50(t *testing.T) {
 	}
 }
 
+func TestDiagPathTagShowsVOACAPReliabilityGatedFallbacks(t *testing.T) {
+	sparseUpgrade := pathPrediction{
+		result: pathreliability.Result{
+			Source:                     pathreliability.SourceVOACAPSparseUpgrade,
+			P50DB:                      -19,
+			VOACAPFT8SNRDB:             -15,
+			VOACAPHourUTC:              20,
+			VOACAPSSN:                  112,
+			VOACAPReqSNRReliability:    0.84,
+			VOACAPHasReqSNRReliability: true,
+		},
+	}
+	if got := diagPathTag(sparseUpgrade, true); got != "vup|-19/-15r84s112" {
+		t.Fatalf("unexpected VOACAP sparse-upgrade path diagnostic: %q", got)
+	}
+
+	openNoP50 := pathPrediction{
+		result: pathreliability.Result{
+			Source:                     pathreliability.SourceVOACAPOpen,
+			VOACAPFT8SNRDB:             -19,
+			VOACAPHourUTC:              20,
+			VOACAPSSN:                  112,
+			VOACAPReqSNRReliability:    0.75,
+			VOACAPHasReqSNRReliability: true,
+		},
+	}
+	if got := diagPathTag(openNoP50, true); got != "vop|-19r75h20s112" {
+		t.Fatalf("unexpected VOACAP no-p50 open path diagnostic: %q", got)
+	}
+}
+
 func TestFormatSpotForClientModeDiagComment(t *testing.T) {
 	server := NewServer(ServerOptions{}, nil)
 	client := &Client{}

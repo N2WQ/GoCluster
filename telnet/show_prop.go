@@ -325,7 +325,8 @@ func formatShowPropResponse(userGrid string, target showPropTarget, cmd showProp
 			}
 			continue
 		}
-		for _, forecast := range row.records {
+		for i := range row.records {
+			forecast := row.records[i]
 			rel := showPropReliability(forecast, row.mode, cfg)
 			eff := showPropGlyph(forecast.EffectiveDB(), row.mode, cfg)
 			rx := showPropGlyph(forecast.ReceiveDB(), row.mode, cfg)
@@ -391,7 +392,8 @@ func showPropStatusMessage(status pathreliability.VOACAPForecastWindowStatus, ha
 
 func showPropFirstSSN(rows []showPropBandRows) (int, bool) {
 	for _, row := range rows {
-		for _, forecast := range row.records {
+		for i := range row.records {
+			forecast := row.records[i]
 			if forecast.SSN > 0 {
 				return forecast.SSN, true
 			}

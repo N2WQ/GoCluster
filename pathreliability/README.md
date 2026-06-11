@@ -130,16 +130,18 @@ Five-minute propagation logs split insufficient path prediction outcomes into
 the receiver-diversity gate in enforce evaluation; `low_weight`
 maps to the decayed effective weight floor. These aggregate lines are written
 to `logging.propagation.dir`. VOACAP fallback outcomes are counted separately
-as `voacap_closed` and `voacap_aligned`.
+as `voacap_closed`, `voacap_aligned`, `voacap_sparse_upgrade`, and
+`voacap_open`.
 When the fallback is active, a separate `VOACAP fallback (5m)` line reports
 stage counters such as `queued`, `success`, `cache_hit`, `no_current_hour`,
 `delay_wait`, `queue_full`, `closed`, `closed_no_p50`,
 `closed_with_sparse_p50`, `closed_with_sparse_p50_class_*`, `aligned`,
-`open_no_p50`, and `class_mismatch`. The path-prediction counters are final
-emitted glyphs; the fallback line explains why cached VOACAP work did or did
-not emit a glyph. The closed sparse-p50 counters show when VOACAP emitted a
-closed glyph despite sparse observed p50 evidence and which p50 class that
-evidence would have mapped to.
+`open_no_p50`, `class_mismatch`, `sparse_upgrade`, `open_no_p50_rel`,
+`rel_missing`, `rel_below_floor`, and `rel_multi_tier`. The path-prediction
+counters are final emitted glyphs; the fallback line explains why cached VOACAP
+work did or did not emit a glyph. The closed sparse-p50 counters show when
+VOACAP emitted a closed glyph despite sparse observed p50 evidence and which
+p50 class that evidence would have mapped to.
 A separate `VOACAP p50 compare (5m)` line may appear for sufficient p50
 predictions when an existing current-hour VOACAP cache record is present. It
 reports cache hit/miss counts, class agreement, stronger/weaker effective SNR,
@@ -160,10 +162,15 @@ matching the current UTC hour and re-evaluates the effective blended SNR against
 the request mode, so the first mode or noise class to populate the cache does
 not decide later requests. If the effective VOACAP SNR is at or below
 `mode_thresholds.<mode>.closed`, the fallback can return the configured closed
-glyph. Otherwise, it can return a normal `HIGH`, `MEDIUM`, `LOW`, or
-`UNLIKELY` glyph only when the insufficient bucket result still has sparse p50
-evidence and that p50 class matches the effective VOACAP current-hour class. It
-never overrides a sufficient bucket p50 result. For PATH filters, the closed glyph is
+glyph. Closed remains based on effective FT8-equivalent SNR50 and does not
+require VOACAP REL. Otherwise, it can return a normal `HIGH`, `MEDIUM`, `LOW`,
+or `UNLIKELY` glyph when sparse p50 and current-hour VOACAP map to the same
+class. It can also emit a no-p50 open VOACAP glyph, or upgrade sparse p50 by
+one class, only when the cached VOACAP class is open and the configured
+request-SNR REL gate passes. For bidirectional forecasts, the retained REL gate
+uses the lower of the receive and transmit REL values. REL is reliability of
+VOACAP's configured request SNR, not a direct probability of the displayed
+class. It never overrides a sufficient bucket p50 result. For PATH filters, the closed glyph is
 visible as `CLOSED` and remains compatible with `UNLIKELY`: existing
 `PASS/REJECT PATH UNLIKELY` filters still include closed fallback spots, while
 direct `PASS/REJECT PATH CLOSED` rules target only closed fallback spots.

@@ -237,6 +237,8 @@ VOACAP fallback results are shown as:
 ```text
 vcap|<snr>|h<hour>|s<ssn>
 valn|<p50>/<snr>h<hour>s<ssn>
+vup|<p50>/<snr>r<rel>s<ssn>
+vop|<snr>r<rel>h<hour>s<ssn>
 ```
 
 - `n<count>` is the raw selected observation count behind the displayed path
@@ -263,6 +265,11 @@ valn|<p50>/<snr>h<hour>s<ssn>
 - `valn|<p50>/<snr>h<hour>s<ssn>` means sparse bucket p50 evidence was
   insufficient by sample gates but aligned with the current-hour VOACAP class.
   `<p50>` is rounded for display so the diagnostic fits the fixed-width line.
+- `vup|<p50>/<snr>r<rel>s<ssn>` means sparse p50 was insufficient, VOACAP
+  mapped one class stronger, and the VOACAP request-SNR REL gate passed. REL is
+  shown as percent and is not a direct HIGH/MEDIUM/LOW probability.
+- `vop|<snr>r<rel>h<hour>s<ssn>` means there was no sparse p50, but cached
+  current-hour VOACAP mapped to an open class and passed the REL gate.
 - `none` means no usable selected sample existed.
 - `lown` means selected samples existed, but their observation count was below
   the configured minimum.
@@ -279,8 +286,8 @@ split: `no_sample`, `low_count`, `low_receiver`, `low_weight`, and `stale`.
 receiver-diversity gate; `low_weight` is the decayed effective-weight gate; and
 `stale` can increase when fine/coarse age drops an old local direction before
 receive/transmit merge.
-VOACAP fallback outcomes are counted separately as `voacap_closed` and
-`voacap_aligned`.
+VOACAP fallback outcomes are counted separately as `voacap_closed`,
+`voacap_aligned`, `voacap_sparse_upgrade`, and `voacap_open`.
 
 When the optional VOACAP fallback has activity, a separate
 `VOACAP fallback (5m)` propagation log line explains the stage path:
@@ -288,7 +295,9 @@ When the optional VOACAP fallback has activity, a separate
 `inflight`, `queue_full`, `not_running`, `ssn_unavailable`,
 `invalid_request`, `closed`, `closed_no_p50`, `closed_with_sparse_p50`,
 `closed_with_sparse_p50_class_*`, `aligned`, `open_no_p50`, and
-`class_mismatch`. Use `Path predictions (5m)` to count final emitted glyphs.
+`class_mismatch`, plus the REL-gated counters `sparse_upgrade`,
+`open_no_p50_rel`, `rel_missing`, `rel_below_floor`, and `rel_multi_tier`.
+Use `Path predictions (5m)` to count final emitted glyphs.
 Use `VOACAP fallback (5m)` to explain why a fallback lookup did or did not
 emit.
 When sufficient p50 predictions can be compared against an existing current-hour
@@ -321,6 +330,10 @@ Example readings:
   effective FT8-equivalent SNR to -34, and used SSN generation 112.
 - `valn|-15/-15h20s112`: sparse bucket p50 rounded to -15 dB and the 20:00
   UTC VOACAP forecast also mapped to that same path class.
+- `vup|-19/-15r84s112`: sparse p50 rounded to -19 dB, VOACAP rounded to
+  -15 dB, and VOACAP REL 84% passed the one-tier upgrade gate.
+- `vop|-19r75h20s112`: no sparse p50 existed, but the 20:00 UTC VOACAP record
+  rounded to -19 dB and REL 75% passed the open fallback gate.
 - `n1|loww`: one selected observation existed, but the effective weight was
   below the minimum.
 - `n32|w1`: large selected count but low rounded effective weight.

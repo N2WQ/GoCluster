@@ -103,15 +103,20 @@ type VOACAPClosedForecast struct {
 }
 
 type VOACAPHourlyForecast struct {
-	FT8SNRDB              int
-	VOACAPSNRDBHz         int
-	HourUTC               int
-	FrequencyMHz          float64
-	ReceiveFT8SNRDB       int
-	TransmitFT8SNRDB      int
-	ReceiveVOACAPSNRDBHz  int
-	TransmitVOACAPSNRDBHz int
-	HasDirectionalSNR     bool
+	FT8SNRDB                        int
+	VOACAPSNRDBHz                   int
+	HourUTC                         int
+	FrequencyMHz                    float64
+	ReqSNRReliability               float64
+	HasReqSNRReliability            bool
+	ReceiveFT8SNRDB                 int
+	TransmitFT8SNRDB                int
+	ReceiveVOACAPSNRDBHz            int
+	TransmitVOACAPSNRDBHz           int
+	ReceiveReqSNRReliability        float64
+	TransmitReqSNRReliability       float64
+	HasDirectionalReqSNRReliability bool
+	HasDirectionalSNR               bool
 }
 
 // VOACAPCachedForecast carries one cached current-hour VOACAP record after
@@ -134,6 +139,19 @@ func (f VOACAPCachedForecast) EffectiveDB() float64 {
 	return float64(f.Record.FT8SNRDB)
 }
 
+// ReqSNRReliability returns VOACAP REL for the request SNR contract. For
+// bidirectional records, both directed decks must have REL and the conservative
+// effective value is the lower directional reliability.
+func (f VOACAPCachedForecast) ReqSNRReliability() (float64, bool) {
+	if f.Record.HasDirectionalReqSNRReliability {
+		return math.Min(f.Record.ReceiveReqSNRReliability, f.Record.TransmitReqSNRReliability), true
+	}
+	if f.Record.HasReqSNRReliability {
+		return f.Record.ReqSNRReliability, true
+	}
+	return 0, false
+}
+
 // ReceiveDB returns the target-to-user receive leg after the request-specific
 // receive-noise penalty. Non-directional legacy records fall back to EffectiveDB.
 func (f VOACAPCachedForecast) ReceiveDB() float64 {
@@ -150,6 +168,61 @@ func (f VOACAPCachedForecast) TransmitDB() float64 {
 		return f.EffectiveDB()
 	}
 	return float64(f.Record.TransmitFT8SNRDB)
+}
+
+type VOACAPReliabilityGateReason uint8
+
+const (
+	VOACAPReliabilityGateOK VOACAPReliabilityGateReason = iota
+	VOACAPReliabilityGateMissing
+	VOACAPReliabilityGateBelowThreshold
+)
+
+func (r VOACAPReliabilityGateReason) String() string {
+	switch r {
+	case VOACAPReliabilityGateOK:
+		return "ok"
+	case VOACAPReliabilityGateMissing:
+		return "missing"
+	case VOACAPReliabilityGateBelowThreshold:
+		return "below_threshold"
+	default:
+		return "unknown"
+	}
+}
+
+// VOACAPReliabilityThresholdForClass returns the YAML-owned minimum REL gate
+// for an ordinary open VOACAP class.
+func VOACAPReliabilityThresholdForClass(class string, cfg Config) (float64, bool) {
+	switch class {
+	case classHigh:
+		return cfg.VOACAPFallback.ReliabilityMinHigh, true
+	case classMedium:
+		return cfg.VOACAPFallback.ReliabilityMinMedium, true
+	case classLow:
+		return cfg.VOACAPFallback.ReliabilityMinLow, true
+	case classUnlikely:
+		return cfg.VOACAPFallback.ReliabilityMinUnlikely, true
+	default:
+		return 0, false
+	}
+}
+
+// VOACAPReqSNRReliabilityGate evaluates VOACAP REL as reliability of the
+// request-SNR contract, not as probability of a HIGH/MEDIUM/LOW class.
+func VOACAPReqSNRReliabilityGate(forecast VOACAPCachedForecast, class string, cfg Config) (rel float64, threshold float64, reason VOACAPReliabilityGateReason) {
+	threshold, ok := VOACAPReliabilityThresholdForClass(class, cfg)
+	if !ok {
+		return 0, 0, VOACAPReliabilityGateMissing
+	}
+	rel, ok = forecast.ReqSNRReliability()
+	if !ok {
+		return 0, threshold, VOACAPReliabilityGateMissing
+	}
+	if rel < threshold {
+		return rel, threshold, VOACAPReliabilityGateBelowThreshold
+	}
+	return rel, threshold, VOACAPReliabilityGateOK
 }
 
 // VOACAPCachedForecastWindow carries cached hourly VOACAP rows from the current
@@ -811,7 +884,7 @@ func (f *VOACAPClosedFallback) closedResultFromForecast(forecast VOACAPCachedFor
 
 // VOACAPClosedResult maps a cached VOACAP forecast to the closed fallback result.
 func VOACAPClosedResult(cfg Config, forecast VOACAPCachedForecast) Result {
-	return Result{
+	res := Result{
 		Glyph:              cfg.GlyphSymbols.Closed,
 		Class:              classUnlikely,
 		P50DB:              forecast.EffectiveDB(),
@@ -825,6 +898,8 @@ func VOACAPClosedResult(cfg Config, forecast VOACAPCachedForecast) Result {
 		VOACAPHourUTC:      forecast.Record.HourUTC,
 		VOACAPFrequencyMHz: forecast.Record.FrequencyMHz,
 	}
+	attachVOACAPDiagnostics(&res, forecast)
+	return res
 }
 
 // VOACAPAlignedResult maps sparse p50 evidence corroborated by VOACAP to a
@@ -836,12 +911,51 @@ func VOACAPAlignedResult(base Result, cfg Config, mode string, forecast VOACAPCa
 	base.P50Glyph = base.Glyph
 	base.Source = SourceVOACAPAligned
 	base.InsufficientReason = InsufficientNone
-	base.VOACAPFT8SNRDB = forecast.Record.FT8SNRDB
-	base.VOACAPSSN = forecast.SSN
-	base.VOACAPAgeSec = forecast.AgeSec
-	base.VOACAPHourUTC = forecast.Record.HourUTC
-	base.VOACAPFrequencyMHz = forecast.Record.FrequencyMHz
+	attachVOACAPDiagnostics(&base, forecast)
 	return base
+}
+
+// VOACAPSparseUpgradeResult maps sparse p50 evidence to a one-tier stronger
+// VOACAP class after the request-SNR REL gate has passed.
+func VOACAPSparseUpgradeResult(base Result, cfg Config, mode string, forecast VOACAPCachedForecast) Result {
+	class := ClassForDB(forecast.EffectiveDB(), mode, cfg)
+	base.Glyph = glyphForClass(class, cfg)
+	base.Class = class
+	base.Source = SourceVOACAPSparseUpgrade
+	base.InsufficientReason = InsufficientNone
+	attachVOACAPDiagnostics(&base, forecast)
+	return base
+}
+
+// VOACAPOpenResult maps a no-p50 insufficient result to an ordinary open
+// VOACAP class after the request-SNR REL gate has passed.
+func VOACAPOpenResult(cfg Config, mode string, forecast VOACAPCachedForecast) Result {
+	class := ClassForDB(forecast.EffectiveDB(), mode, cfg)
+	res := Result{
+		Glyph:  glyphForClass(class, cfg),
+		Class:  class,
+		P50DB:  forecast.EffectiveDB(),
+		HasP50: false,
+		AgeSec: forecast.AgeSec,
+		Source: SourceVOACAPOpen,
+	}
+	attachVOACAPDiagnostics(&res, forecast)
+	return res
+}
+
+func attachVOACAPDiagnostics(res *Result, forecast VOACAPCachedForecast) {
+	if res == nil {
+		return
+	}
+	res.VOACAPFT8SNRDB = forecast.Record.FT8SNRDB
+	res.VOACAPSSN = forecast.SSN
+	res.VOACAPAgeSec = forecast.AgeSec
+	res.VOACAPHourUTC = forecast.Record.HourUTC
+	res.VOACAPFrequencyMHz = forecast.Record.FrequencyMHz
+	if rel, ok := forecast.ReqSNRReliability(); ok {
+		res.VOACAPReqSNRReliability = rel
+		res.VOACAPHasReqSNRReliability = true
+	}
 }
 
 func effectiveVOACAPFT8SNRDB(record VOACAPHourlyForecast, receiveNoisePenaltyDB float64, cfg Config) float64 {
@@ -1029,15 +1143,20 @@ func combineDirectionalForecasts(receiveForecast, transmitForecast VOACAPClosedF
 			continue
 		}
 		combined.Records = append(combined.Records, VOACAPHourlyForecast{
-			FT8SNRDB:              receive.FT8SNRDB,
-			VOACAPSNRDBHz:         receive.VOACAPSNRDBHz,
-			HourUTC:               receive.HourUTC,
-			FrequencyMHz:          receive.FrequencyMHz,
-			ReceiveFT8SNRDB:       receive.FT8SNRDB,
-			TransmitFT8SNRDB:      transmit.FT8SNRDB,
-			ReceiveVOACAPSNRDBHz:  receive.VOACAPSNRDBHz,
-			TransmitVOACAPSNRDBHz: transmit.VOACAPSNRDBHz,
-			HasDirectionalSNR:     true,
+			FT8SNRDB:                        receive.FT8SNRDB,
+			VOACAPSNRDBHz:                   receive.VOACAPSNRDBHz,
+			HourUTC:                         receive.HourUTC,
+			FrequencyMHz:                    receive.FrequencyMHz,
+			ReqSNRReliability:               math.Min(receive.ReqSNRReliability, transmit.ReqSNRReliability),
+			HasReqSNRReliability:            receive.HasReqSNRReliability && transmit.HasReqSNRReliability,
+			ReceiveFT8SNRDB:                 receive.FT8SNRDB,
+			TransmitFT8SNRDB:                transmit.FT8SNRDB,
+			ReceiveVOACAPSNRDBHz:            receive.VOACAPSNRDBHz,
+			TransmitVOACAPSNRDBHz:           transmit.VOACAPSNRDBHz,
+			ReceiveReqSNRReliability:        receive.ReqSNRReliability,
+			TransmitReqSNRReliability:       transmit.ReqSNRReliability,
+			HasDirectionalReqSNRReliability: receive.HasReqSNRReliability && transmit.HasReqSNRReliability,
+			HasDirectionalSNR:               true,
 		})
 	}
 	if len(combined.Records) == 0 {
@@ -1055,10 +1174,12 @@ func closedForecastFromRecords(records []voacap.PredictionRecord, band string) (
 			continue
 		}
 		hourly := VOACAPHourlyForecast{
-			FT8SNRDB:      record.FT8SNRDB,
-			VOACAPSNRDBHz: record.VOACAPSNRDBHz,
-			HourUTC:       record.HourUTC,
-			FrequencyMHz:  record.FrequencyMHz,
+			FT8SNRDB:             record.FT8SNRDB,
+			VOACAPSNRDBHz:        record.VOACAPSNRDBHz,
+			HourUTC:              record.HourUTC,
+			FrequencyMHz:         record.FrequencyMHz,
+			ReqSNRReliability:    record.Reliability,
+			HasReqSNRReliability: record.HasReliability,
 		}
 		existing, ok := byHour[record.HourUTC]
 		if !ok {

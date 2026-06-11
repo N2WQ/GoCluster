@@ -76,6 +76,12 @@ var requiredConfigPaths = []yamlconfig.Path{
 	{"voacap_fallback", "max_queue_depth"},
 	{"voacap_fallback", "worker_count"},
 	{"voacap_fallback", "output_name_prefix"},
+	{"voacap_fallback", "reliability_gated_open_enabled"},
+	{"voacap_fallback", "reliability_sparse_upgrade_enabled"},
+	{"voacap_fallback", "reliability_min_high"},
+	{"voacap_fallback", "reliability_min_medium"},
+	{"voacap_fallback", "reliability_min_low"},
+	{"voacap_fallback", "reliability_min_unlikely"},
 	{"default_half_life_seconds"},
 	{"band_half_life_seconds"},
 	{"stale_after_seconds"},
@@ -242,23 +248,29 @@ func (s *GlyphSymbols) UnmarshalYAML(value *yaml.Node) error {
 // Bounds are required even when disabled so enabling the fallback cannot create
 // process-lifetime unbounded queues or cache maps.
 type VOACAPFallbackConfig struct {
-	Enabled                  bool      `yaml:"enabled"`
-	SSNFetchIntervalSeconds  int       `yaml:"ssn_fetch_interval_seconds"`
-	SSNRequestTimeoutSeconds int       `yaml:"ssn_request_timeout_seconds"`
-	SSNEWMAHalfLifeSeconds   int       `yaml:"ssn_ewma_half_life_seconds"`
-	RecomputeDeltaPercent    float64   `yaml:"recompute_delta_percent"`
-	VOACAPHome               string    `yaml:"voacap_home"`
-	VOACAPTimeoutSeconds     int       `yaml:"voacap_timeout_seconds"`
-	ForecastHours            int       `yaml:"forecast_hours"`
-	ShowPropWaitMilliseconds int       `yaml:"show_prop_wait_milliseconds"`
-	CenterFrequenciesMHz     []float64 `yaml:"center_frequencies_mhz"`
-	DelaySeconds             int       `yaml:"delay_seconds"`
-	CacheTTLSeconds          int       `yaml:"cache_ttl_seconds"`
-	MaxCacheEntries          int       `yaml:"max_cache_entries"`
-	MaxDelayEntries          int       `yaml:"max_delay_entries"`
-	MaxQueueDepth            int       `yaml:"max_queue_depth"`
-	WorkerCount              int       `yaml:"worker_count"`
-	OutputNamePrefix         string    `yaml:"output_name_prefix"`
+	Enabled                         bool      `yaml:"enabled"`
+	SSNFetchIntervalSeconds         int       `yaml:"ssn_fetch_interval_seconds"`
+	SSNRequestTimeoutSeconds        int       `yaml:"ssn_request_timeout_seconds"`
+	SSNEWMAHalfLifeSeconds          int       `yaml:"ssn_ewma_half_life_seconds"`
+	RecomputeDeltaPercent           float64   `yaml:"recompute_delta_percent"`
+	VOACAPHome                      string    `yaml:"voacap_home"`
+	VOACAPTimeoutSeconds            int       `yaml:"voacap_timeout_seconds"`
+	ForecastHours                   int       `yaml:"forecast_hours"`
+	ShowPropWaitMilliseconds        int       `yaml:"show_prop_wait_milliseconds"`
+	CenterFrequenciesMHz            []float64 `yaml:"center_frequencies_mhz"`
+	DelaySeconds                    int       `yaml:"delay_seconds"`
+	CacheTTLSeconds                 int       `yaml:"cache_ttl_seconds"`
+	MaxCacheEntries                 int       `yaml:"max_cache_entries"`
+	MaxDelayEntries                 int       `yaml:"max_delay_entries"`
+	MaxQueueDepth                   int       `yaml:"max_queue_depth"`
+	WorkerCount                     int       `yaml:"worker_count"`
+	OutputNamePrefix                string    `yaml:"output_name_prefix"`
+	ReliabilityGatedOpenEnabled     bool      `yaml:"reliability_gated_open_enabled"`
+	ReliabilitySparseUpgradeEnabled bool      `yaml:"reliability_sparse_upgrade_enabled"`
+	ReliabilityMinHigh              float64   `yaml:"reliability_min_high"`
+	ReliabilityMinMedium            float64   `yaml:"reliability_min_medium"`
+	ReliabilityMinLow               float64   `yaml:"reliability_min_low"`
+	ReliabilityMinUnlikely          float64   `yaml:"reliability_min_unlikely"`
 }
 
 // DefaultConfig returns a safe, enabled configuration.
@@ -469,23 +481,29 @@ func (c *Config) finalize() error {
 
 func defaultVOACAPFallbackConfig() VOACAPFallbackConfig {
 	return VOACAPFallbackConfig{
-		Enabled:                  false,
-		SSNFetchIntervalSeconds:  1800,
-		SSNRequestTimeoutSeconds: 30,
-		SSNEWMAHalfLifeSeconds:   28800,
-		RecomputeDeltaPercent:    12,
-		VOACAPHome:               `C:\itshfbc`,
-		VOACAPTimeoutSeconds:     30,
-		ForecastHours:            8,
-		ShowPropWaitMilliseconds: 750,
-		CenterFrequenciesMHz:     []float64{1.9, 3.6, 5.36, 7.1, 10.14, 14.1, 18.1, 21.15, 24.91, 28.1},
-		DelaySeconds:             900,
-		CacheTTLSeconds:          28800,
-		MaxCacheEntries:          50000,
-		MaxDelayEntries:          50000,
-		MaxQueueDepth:            1000,
-		WorkerCount:              1,
-		OutputNamePrefix:         "gocluster_voacap_path",
+		Enabled:                         false,
+		SSNFetchIntervalSeconds:         1800,
+		SSNRequestTimeoutSeconds:        30,
+		SSNEWMAHalfLifeSeconds:          28800,
+		RecomputeDeltaPercent:           12,
+		VOACAPHome:                      `C:\itshfbc`,
+		VOACAPTimeoutSeconds:            30,
+		ForecastHours:                   8,
+		ShowPropWaitMilliseconds:        750,
+		CenterFrequenciesMHz:            []float64{1.9, 3.6, 5.36, 7.1, 10.14, 14.1, 18.1, 21.15, 24.91, 28.1},
+		DelaySeconds:                    900,
+		CacheTTLSeconds:                 28800,
+		MaxCacheEntries:                 50000,
+		MaxDelayEntries:                 50000,
+		MaxQueueDepth:                   1000,
+		WorkerCount:                     1,
+		OutputNamePrefix:                "gocluster_voacap_path",
+		ReliabilityGatedOpenEnabled:     false,
+		ReliabilitySparseUpgradeEnabled: false,
+		ReliabilityMinHigh:              0.90,
+		ReliabilityMinMedium:            0.80,
+		ReliabilityMinLow:               0.65,
+		ReliabilityMinUnlikely:          0.50,
 	}
 }
 
@@ -551,6 +569,30 @@ func (c *VOACAPFallbackConfig) finalize() error {
 	}
 	if len(strings.TrimSpace(c.OutputNamePrefix)) > 24 {
 		return fmt.Errorf("voacap_fallback.output_name_prefix must be at most 24 characters")
+	}
+	if err := validateReliabilityThreshold("voacap_fallback.reliability_min_high", c.ReliabilityMinHigh); err != nil {
+		return err
+	}
+	if err := validateReliabilityThreshold("voacap_fallback.reliability_min_medium", c.ReliabilityMinMedium); err != nil {
+		return err
+	}
+	if err := validateReliabilityThreshold("voacap_fallback.reliability_min_low", c.ReliabilityMinLow); err != nil {
+		return err
+	}
+	if err := validateReliabilityThreshold("voacap_fallback.reliability_min_unlikely", c.ReliabilityMinUnlikely); err != nil {
+		return err
+	}
+	if !(c.ReliabilityMinHigh >= c.ReliabilityMinMedium &&
+		c.ReliabilityMinMedium >= c.ReliabilityMinLow &&
+		c.ReliabilityMinLow >= c.ReliabilityMinUnlikely) {
+		return fmt.Errorf("voacap_fallback reliability thresholds must satisfy high >= medium >= low >= unlikely")
+	}
+	return nil
+}
+
+func validateReliabilityThreshold(path string, value float64) error {
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 1 {
+		return fmt.Errorf("%s must be between 0 and 1", path)
 	}
 	return nil
 }

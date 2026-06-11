@@ -1508,12 +1508,14 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 				stats := srv.PathPredictionStatsSnapshot()
 				if stats.Total > 0 {
 					fileOnly(fmt.Sprintf(
-						"Path predictions (5m): total=%s derived=%s combined=%s voacap_closed=%s voacap_aligned=%s insufficient=%s no_sample=%s low_count=%s low_receiver=%s low_weight=%s stale=%s cap_limited=%s cap_would_block=%s override_r=%s override_g=%s",
+						"Path predictions (5m): total=%s derived=%s combined=%s voacap_closed=%s voacap_aligned=%s voacap_sparse_upgrade=%s voacap_open=%s insufficient=%s no_sample=%s low_count=%s low_receiver=%s low_weight=%s stale=%s cap_limited=%s cap_would_block=%s override_r=%s override_g=%s",
 						humanize.Comma(int64(stats.Total)),
 						humanize.Comma(int64(stats.Derived)),
 						humanize.Comma(int64(stats.Combined)),
 						humanize.Comma(int64(stats.VOACAPClosed)),
 						humanize.Comma(int64(stats.VOACAPAligned)),
+						humanize.Comma(int64(stats.VOACAPSparseUpgrade)),
+						humanize.Comma(int64(stats.VOACAPOpen)),
 						humanize.Comma(int64(stats.Insufficient)),
 						humanize.Comma(int64(stats.NoSample)),
 						humanize.Comma(int64(stats.LowCount)),
@@ -1537,9 +1539,14 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 					stats.VOACAPFallbackClosedSparseUnlk != 0 ||
 					stats.VOACAPFallbackAlignedCandidate != 0 ||
 					stats.VOACAPFallbackOpenNoP50 != 0 ||
-					stats.VOACAPFallbackClassMismatch != 0 {
+					stats.VOACAPFallbackClassMismatch != 0 ||
+					stats.VOACAPFallbackSparseUpgrade != 0 ||
+					stats.VOACAPFallbackOpenNoP50REL != 0 ||
+					stats.VOACAPFallbackReliabilityMissing != 0 ||
+					stats.VOACAPFallbackReliabilityBelow != 0 ||
+					stats.VOACAPFallbackReliabilityMultiTier != 0 {
 					fileOnly(fmt.Sprintf(
-						"VOACAP fallback (5m): queued=%s success=%s failure=%s cache_hit=%s no_current_hour=%s delay_wait=%s inflight=%s queue_full=%s not_running=%s ssn_unavailable=%s invalid_request=%s closed=%s closed_no_p50=%s closed_with_sparse_p50=%s closed_with_sparse_p50_class_high=%s closed_with_sparse_p50_class_medium=%s closed_with_sparse_p50_class_low=%s closed_with_sparse_p50_class_unlikely=%s aligned=%s open_no_p50=%s class_mismatch=%s",
+						"VOACAP fallback (5m): queued=%s success=%s failure=%s cache_hit=%s no_current_hour=%s delay_wait=%s inflight=%s queue_full=%s not_running=%s ssn_unavailable=%s invalid_request=%s closed=%s closed_no_p50=%s closed_with_sparse_p50=%s closed_with_sparse_p50_class_high=%s closed_with_sparse_p50_class_medium=%s closed_with_sparse_p50_class_low=%s closed_with_sparse_p50_class_unlikely=%s aligned=%s open_no_p50=%s class_mismatch=%s sparse_upgrade=%s open_no_p50_rel=%s rel_missing=%s rel_below_floor=%s rel_multi_tier=%s",
 						humanize.Comma(fallback.Queued),
 						humanize.Comma(fallback.RunSuccess),
 						humanize.Comma(fallback.RunFailure),
@@ -1561,6 +1568,11 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 						humanize.Comma(stats.VOACAPFallbackAlignedCandidate),
 						humanize.Comma(stats.VOACAPFallbackOpenNoP50),
 						humanize.Comma(stats.VOACAPFallbackClassMismatch),
+						humanize.Comma(stats.VOACAPFallbackSparseUpgrade),
+						humanize.Comma(stats.VOACAPFallbackOpenNoP50REL),
+						humanize.Comma(stats.VOACAPFallbackReliabilityMissing),
+						humanize.Comma(stats.VOACAPFallbackReliabilityBelow),
+						humanize.Comma(stats.VOACAPFallbackReliabilityMultiTier),
 					))
 				}
 				if stats.VOACAPP50CompareChecked != 0 {
