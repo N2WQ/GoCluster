@@ -289,10 +289,12 @@ prefixes.
 - `stale` means selected samples existed, but the selected evidence was too old
   for the band's freshness gate.
 - `v*` suffixes on insufficient diagnostics explain VOACAP state for sparse or
-  no-p50 candidates: `vq` queued, `vdly` delayed, `vinf` inflight, `vbad`
-  invalid request, `vssn` SSN unavailable, `vcur` no current-hour cache record,
-  `vqf` queue full, `vnr` worker not running, `vdis` disabled, `vun`
-  unavailable, `vrel` open forecast blocked by REL or tier guards, `vnc`
+  no-p50 candidates: `vq` queued, `vdly` delayed, `vinf` inflight, `vband`
+  unsupported band, `vnbnd` empty/unknown band, `vugrd` invalid user grid,
+  `vdgrd` invalid DX grid, `vucel` invalid user cell, `vdcel` invalid DX cell,
+  `vbad` other invalid request, `vssn` SSN unavailable, `vcur` no current-hour
+  cache record, `vqf` queue full, `vnr` worker not running, `vdis` disabled,
+  `vun` unavailable, `vrel` open forecast blocked by REL or tier guards, `vnc`
   usable forecast that did not classify closed, and `vhit` ready cache hit with
   no emitted fallback.
 
@@ -312,10 +314,13 @@ When the optional VOACAP fallback has activity, a separate
 `VOACAP fallback (5m)` propagation log line explains the stage path:
 `queued`, `success`, `failure`, `cache_hit`, `no_current_hour`, `delay_wait`,
 `inflight`, `queue_full`, `not_running`, `ssn_unavailable`,
-`invalid_request`, `closed`, `closed_no_p50`, `closed_with_sparse_p50`,
-`closed_with_sparse_p50_class_*`, `aligned`, `open_no_p50`, and
-`class_mismatch`, plus the REL-gated counters `sparse_upgrade`,
-`open_no_p50_rel`, `rel_missing`, `rel_below_floor`, and `rel_multi_tier`.
+`invalid_request`, split invalid-request reasons (`invalid_unsupported_band`,
+`invalid_empty_unknown_band`, `invalid_user_grid`, `invalid_dx_grid`,
+`invalid_user_cell`, `invalid_dx_cell`), `closed`, `closed_no_p50`,
+`closed_with_sparse_p50`, `closed_with_sparse_p50_class_*`, `aligned`,
+`open_no_p50`, and `class_mismatch`, plus the REL-gated counters
+`sparse_upgrade`, `open_no_p50_rel`, `rel_missing`, `rel_below_floor`, and
+`rel_multi_tier`.
 Use `Path predictions (5m)` to count final emitted glyphs.
 Use `VOACAP fallback (5m)` to explain why a fallback lookup did or did not
 emit.
@@ -328,11 +333,11 @@ When sparse or no-p50 candidates are present, a separate `Sparse p50 VOACAP
 (5m)` line splits those candidates by p50 evidence (`no_p50`,
 `very_low_count`), path kind (`beacon_rx`, `non_beacon`), cache/work state
 (`cache_miss_total`, `cache_hit`, `queued`, `delayed`, `inflight`,
-`invalid_request`, `ssn_unavailable`, `no_current_hour`, `queue_full`,
-`not_running`, `disabled`, `unavailable`), and outcome (`closed`, `aligned`,
-`sparse_upgrade`, `open_rel_pass`, `open_rel_fail`, `not_closed`,
-`rel_missing`, `rel_below_floor`, `rel_multi_tier`). It is diagnostic only; it
-does not change glyph decisions.
+`invalid_request`, split invalid-request reasons, `ssn_unavailable`,
+`no_current_hour`, `queue_full`, `not_running`, `disabled`, `unavailable`), and
+outcome (`closed`, `aligned`, `sparse_upgrade`, `open_rel_pass`,
+`open_rel_fail`, `not_closed`, `rel_missing`, `rel_below_floor`,
+`rel_multi_tier`). It is diagnostic only; it does not change glyph decisions.
 When sufficient p50 predictions can be compared against an existing current-hour
 VOACAP cache record, a separate `VOACAP p50 compare (5m)` line reports cache
 hits, cache misses, class agreement, stronger/weaker effective SNR, closed

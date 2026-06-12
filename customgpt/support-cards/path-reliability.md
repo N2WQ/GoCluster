@@ -35,9 +35,10 @@ inspect user-visible diagnostics:
   VOACAP direction.
 - Insufficient sparse/no-p50 diagnostics can add compact `v*` suffixes such as
   `n0|none|vdly` or `n2|lown|vrel` to explain VOACAP state without changing the
-  blank glyph: queued, delayed, inflight, invalid request, missing SSN, missing
-  current hour, queue full, worker not running, disabled, unavailable, REL/tier
-  guard failure, or usable VOACAP that was not closed.
+  blank glyph: queued, delayed, inflight, unsupported band, empty/unknown band,
+  invalid user/DX grid, invalid user/DX cell, missing SSN, missing current hour,
+  queue full, worker not running, disabled, unavailable, REL/tier guard failure,
+  or usable VOACAP that was not closed.
 - `brx` diagnostics mean the spot was marked as a beacon and path prediction
   used only the DX-to-user receive leg. Beacon VOACAP fallback diagnostics use
   `bvcap`, `bvaln`, `bvup`, or `bvop`; their SNR and REL fields are receive-leg
@@ -61,9 +62,9 @@ inspect user-visible diagnostics:
   no-p50 from sparse-p50 cases and report the sparse p50 class when VOACAP
   closed overrides observed sparse evidence.
 - `Sparse p50 VOACAP (5m)` focuses on the blank/sparse population and splits it
-  by no-p50 versus very-low-count p50, cache/work state, closed/open/REL
-  outcome, beacon RX-only provenance, and non-beacon provenance. It is
-  diagnostic only.
+  by no-p50 versus very-low-count p50, cache/work state, invalid-request
+  reason, closed/open/REL outcome, beacon RX-only provenance, and non-beacon
+  provenance. It is diagnostic only.
 - `VOACAP p50 compare (5m)` is an opportunistic cache-only comparison for
   sufficient p50 predictions. Cache misses do not run VOACAP; cache hits report
   class agreement, stronger/weaker effective SNR, closed-VOACAP versus p50

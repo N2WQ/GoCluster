@@ -1557,7 +1557,7 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 					stats.VOACAPFallbackReliabilityBelow != 0 ||
 					stats.VOACAPFallbackReliabilityMultiTier != 0 {
 					fileOnly(fmt.Sprintf(
-						"VOACAP fallback (5m): queued=%s success=%s failure=%s cache_hit=%s no_current_hour=%s delay_wait=%s inflight=%s queue_full=%s not_running=%s ssn_unavailable=%s invalid_request=%s closed=%s closed_no_p50=%s closed_with_sparse_p50=%s closed_with_sparse_p50_class_high=%s closed_with_sparse_p50_class_medium=%s closed_with_sparse_p50_class_low=%s closed_with_sparse_p50_class_unlikely=%s aligned=%s open_no_p50=%s class_mismatch=%s sparse_upgrade=%s open_no_p50_rel=%s rel_missing=%s rel_below_floor=%s rel_multi_tier=%s",
+						"VOACAP fallback (5m): queued=%s success=%s failure=%s cache_hit=%s no_current_hour=%s delay_wait=%s inflight=%s queue_full=%s not_running=%s ssn_unavailable=%s invalid_request=%s invalid_unsupported_band=%s invalid_empty_unknown_band=%s invalid_user_grid=%s invalid_dx_grid=%s invalid_user_cell=%s invalid_dx_cell=%s closed=%s closed_no_p50=%s closed_with_sparse_p50=%s closed_with_sparse_p50_class_high=%s closed_with_sparse_p50_class_medium=%s closed_with_sparse_p50_class_low=%s closed_with_sparse_p50_class_unlikely=%s aligned=%s open_no_p50=%s class_mismatch=%s sparse_upgrade=%s open_no_p50_rel=%s rel_missing=%s rel_below_floor=%s rel_multi_tier=%s",
 						humanize.Comma(fallback.Queued),
 						humanize.Comma(fallback.RunSuccess),
 						humanize.Comma(fallback.RunFailure),
@@ -1569,6 +1569,12 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 						humanize.Comma(fallback.NotRunning),
 						humanize.Comma(fallback.SSNUnavailable),
 						humanize.Comma(fallback.InvalidRequest),
+						humanize.Comma(fallback.InvalidUnsupportedBand),
+						humanize.Comma(fallback.InvalidEmptyUnknownBand),
+						humanize.Comma(fallback.InvalidUserGrid),
+						humanize.Comma(fallback.InvalidDXGrid),
+						humanize.Comma(fallback.InvalidUserCell),
+						humanize.Comma(fallback.InvalidDXCell),
 						humanize.Comma(stats.VOACAPFallbackClosedCandidate),
 						humanize.Comma(stats.VOACAPFallbackClosedNoP50),
 						humanize.Comma(stats.VOACAPFallbackClosedSparseP50),
@@ -1589,7 +1595,7 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 				sparse := stats.SparseP50VOACAP
 				if sparse.HasActivity() {
 					fileOnly(fmt.Sprintf(
-						"Sparse p50 VOACAP (5m): total=%s no_p50=%s very_low_count=%s beacon_rx=%s non_beacon=%s cache_miss_total=%s cache_hit=%s queued=%s delayed=%s inflight=%s invalid_request=%s ssn_unavailable=%s no_current_hour=%s queue_full=%s not_running=%s disabled=%s unavailable=%s closed=%s aligned=%s sparse_upgrade=%s open_rel_pass=%s open_rel_fail=%s not_closed=%s rel_missing=%s rel_below_floor=%s rel_multi_tier=%s",
+						"Sparse p50 VOACAP (5m): total=%s no_p50=%s very_low_count=%s beacon_rx=%s non_beacon=%s cache_miss_total=%s cache_hit=%s queued=%s delayed=%s inflight=%s invalid_request=%s invalid_unsupported_band=%s invalid_empty_unknown_band=%s invalid_user_grid=%s invalid_dx_grid=%s invalid_user_cell=%s invalid_dx_cell=%s ssn_unavailable=%s no_current_hour=%s queue_full=%s not_running=%s disabled=%s unavailable=%s closed=%s aligned=%s sparse_upgrade=%s open_rel_pass=%s open_rel_fail=%s not_closed=%s rel_missing=%s rel_below_floor=%s rel_multi_tier=%s",
 						humanize.Comma(sparse.Total),
 						humanize.Comma(sparse.NoP50),
 						humanize.Comma(sparse.VeryLowCount),
@@ -1601,6 +1607,12 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 						humanize.Comma(sparse.Delayed),
 						humanize.Comma(sparse.Inflight),
 						humanize.Comma(sparse.InvalidRequest),
+						humanize.Comma(sparse.InvalidUnsupportedBand),
+						humanize.Comma(sparse.InvalidEmptyUnknownBand),
+						humanize.Comma(sparse.InvalidUserGrid),
+						humanize.Comma(sparse.InvalidDXGrid),
+						humanize.Comma(sparse.InvalidUserCell),
+						humanize.Comma(sparse.InvalidDXCell),
 						humanize.Comma(sparse.SSNUnavailable),
 						humanize.Comma(sparse.NoCurrentHour),
 						humanize.Comma(sparse.QueueFull),

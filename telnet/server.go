@@ -318,6 +318,7 @@ type Server struct {
 	sparseP50VOACAPCacheMiss            atomic.Int64                               // Sparse diagnostics without a usable current-hour VOACAP cache hit
 	sparseP50VOACAPNoCurrentHour        atomic.Int64                               // Sparse diagnostics where an existing cache entry lacked the requested hour
 	sparseP50VOACAPStatus               [pathreliability.VOACAPForecastCheckStatusCount]atomic.Int64
+	sparseP50VOACAPInvalidReason        [pathreliability.VOACAPInvalidRequestReasonCount]atomic.Int64
 	sparseP50VOACAPOutcome              [sparseP50VOACAPOutcomeCount]atomic.Int64
 	sparseP50VOACAPRELMissing           atomic.Int64  // Sparse diagnostics blocked by missing VOACAP REL
 	sparseP50VOACAPRELBelow             atomic.Int64  // Sparse diagnostics blocked by below-floor VOACAP REL
@@ -3017,6 +3018,7 @@ type sparseP50VOACAPTrace struct {
 	VeryLowCount  bool
 	BeaconRX      bool
 	Status        pathreliability.VOACAPForecastCheckStatus
+	InvalidReason pathreliability.VOACAPInvalidRequestReason
 	CacheMiss     bool
 	NoCurrentHour bool
 	Outcome       sparseP50VOACAPOutcome
@@ -3026,32 +3028,38 @@ type sparseP50VOACAPTrace struct {
 }
 
 type sparseP50VOACAPStats struct {
-	Total          int64
-	NoP50          int64
-	VeryLowCount   int64
-	BeaconRX       int64
-	NonBeacon      int64
-	CacheMissTotal int64
-	CacheHit       int64
-	Queued         int64
-	Delayed        int64
-	Inflight       int64
-	InvalidRequest int64
-	SSNUnavailable int64
-	NoCurrentHour  int64
-	QueueFull      int64
-	NotRunning     int64
-	Disabled       int64
-	Unavailable    int64
-	Closed         int64
-	Aligned        int64
-	SparseUpgrade  int64
-	OpenRELPass    int64
-	OpenRELFail    int64
-	NotClosed      int64
-	RELMissing     int64
-	RELBelowFloor  int64
-	RELMultiTier   int64
+	Total                   int64
+	NoP50                   int64
+	VeryLowCount            int64
+	BeaconRX                int64
+	NonBeacon               int64
+	CacheMissTotal          int64
+	CacheHit                int64
+	Queued                  int64
+	Delayed                 int64
+	Inflight                int64
+	InvalidRequest          int64
+	InvalidUnsupportedBand  int64
+	InvalidEmptyUnknownBand int64
+	InvalidUserGrid         int64
+	InvalidDXGrid           int64
+	InvalidUserCell         int64
+	InvalidDXCell           int64
+	SSNUnavailable          int64
+	NoCurrentHour           int64
+	QueueFull               int64
+	NotRunning              int64
+	Disabled                int64
+	Unavailable             int64
+	Closed                  int64
+	Aligned                 int64
+	SparseUpgrade           int64
+	OpenRELPass             int64
+	OpenRELFail             int64
+	NotClosed               int64
+	RELMissing              int64
+	RELBelowFloor           int64
+	RELMultiTier            int64
 }
 
 func (s sparseP50VOACAPStats) HasActivity() bool {
@@ -3188,6 +3196,12 @@ func (s *Server) recordSparseP50VOACAPTrace(trace sparseP50VOACAPTrace) {
 		status = pathreliability.VOACAPForecastCheckUnavailable
 	}
 	s.sparseP50VOACAPStatus[int(status)].Add(1)
+	if status == pathreliability.VOACAPForecastCheckInvalidRequest {
+		reason := trace.InvalidReason
+		if reason > pathreliability.VOACAPInvalidRequestReasonNone && reason < pathreliability.VOACAPInvalidRequestReasonCount {
+			s.sparseP50VOACAPInvalidReason[int(reason)].Add(1)
+		}
+	}
 	if trace.Outcome > sparseP50VOACAPOutcomeNone && trace.Outcome < sparseP50VOACAPOutcomeCount {
 		s.sparseP50VOACAPOutcome[int(trace.Outcome)].Add(1)
 	}
@@ -3284,6 +3298,13 @@ func (s *Server) sparseP50VOACAPStatsSnapshot() sparseP50VOACAPStats {
 		}
 		return s.sparseP50VOACAPStatus[idx].Swap(0)
 	}
+	invalidReason := func(reason pathreliability.VOACAPInvalidRequestReason) int64 {
+		idx := int(reason)
+		if idx <= int(pathreliability.VOACAPInvalidRequestReasonNone) || idx >= len(s.sparseP50VOACAPInvalidReason) {
+			return 0
+		}
+		return s.sparseP50VOACAPInvalidReason[idx].Swap(0)
+	}
 	outcome := func(out sparseP50VOACAPOutcome) int64 {
 		idx := int(out)
 		if idx < 0 || idx >= len(s.sparseP50VOACAPOutcome) {
@@ -3293,31 +3314,37 @@ func (s *Server) sparseP50VOACAPStatsSnapshot() sparseP50VOACAPStats {
 	}
 	cacheHit := status(pathreliability.VOACAPForecastCheckReady)
 	stats := sparseP50VOACAPStats{
-		Total:          s.sparseP50VOACAPTotal.Swap(0),
-		NoP50:          s.sparseP50VOACAPNoP50.Swap(0),
-		VeryLowCount:   s.sparseP50VOACAPVeryLowCount.Swap(0),
-		BeaconRX:       s.sparseP50VOACAPBeaconRX.Swap(0),
-		CacheMissTotal: s.sparseP50VOACAPCacheMiss.Swap(0),
-		CacheHit:       cacheHit,
-		Queued:         status(pathreliability.VOACAPForecastCheckQueued),
-		Delayed:        status(pathreliability.VOACAPForecastCheckDelayWait),
-		Inflight:       status(pathreliability.VOACAPForecastCheckInflight),
-		InvalidRequest: status(pathreliability.VOACAPForecastCheckInvalidRequest),
-		SSNUnavailable: status(pathreliability.VOACAPForecastCheckSSNUnavailable),
-		NoCurrentHour:  s.sparseP50VOACAPNoCurrentHour.Swap(0) + status(pathreliability.VOACAPForecastCheckNoCurrentHour),
-		QueueFull:      status(pathreliability.VOACAPForecastCheckQueueFull),
-		NotRunning:     status(pathreliability.VOACAPForecastCheckNotRunning),
-		Disabled:       status(pathreliability.VOACAPForecastCheckDisabled),
-		Unavailable:    status(pathreliability.VOACAPForecastCheckUnavailable),
-		Closed:         outcome(sparseP50VOACAPOutcomeClosed),
-		Aligned:        outcome(sparseP50VOACAPOutcomeAligned),
-		SparseUpgrade:  outcome(sparseP50VOACAPOutcomeSparseUpgrade),
-		OpenRELPass:    outcome(sparseP50VOACAPOutcomeOpenRELPass),
-		OpenRELFail:    outcome(sparseP50VOACAPOutcomeOpenRELFail),
-		NotClosed:      outcome(sparseP50VOACAPOutcomeNotClosed),
-		RELMissing:     s.sparseP50VOACAPRELMissing.Swap(0),
-		RELBelowFloor:  s.sparseP50VOACAPRELBelow.Swap(0),
-		RELMultiTier:   s.sparseP50VOACAPRELMultiTier.Swap(0),
+		Total:                   s.sparseP50VOACAPTotal.Swap(0),
+		NoP50:                   s.sparseP50VOACAPNoP50.Swap(0),
+		VeryLowCount:            s.sparseP50VOACAPVeryLowCount.Swap(0),
+		BeaconRX:                s.sparseP50VOACAPBeaconRX.Swap(0),
+		CacheMissTotal:          s.sparseP50VOACAPCacheMiss.Swap(0),
+		CacheHit:                cacheHit,
+		Queued:                  status(pathreliability.VOACAPForecastCheckQueued),
+		Delayed:                 status(pathreliability.VOACAPForecastCheckDelayWait),
+		Inflight:                status(pathreliability.VOACAPForecastCheckInflight),
+		InvalidRequest:          status(pathreliability.VOACAPForecastCheckInvalidRequest),
+		InvalidUnsupportedBand:  invalidReason(pathreliability.VOACAPInvalidUnsupportedBand),
+		InvalidEmptyUnknownBand: invalidReason(pathreliability.VOACAPInvalidEmptyUnknownBand),
+		InvalidUserGrid:         invalidReason(pathreliability.VOACAPInvalidUserGrid),
+		InvalidDXGrid:           invalidReason(pathreliability.VOACAPInvalidDXGrid),
+		InvalidUserCell:         invalidReason(pathreliability.VOACAPInvalidUserCell),
+		InvalidDXCell:           invalidReason(pathreliability.VOACAPInvalidDXCell),
+		SSNUnavailable:          status(pathreliability.VOACAPForecastCheckSSNUnavailable),
+		NoCurrentHour:           s.sparseP50VOACAPNoCurrentHour.Swap(0) + status(pathreliability.VOACAPForecastCheckNoCurrentHour),
+		QueueFull:               status(pathreliability.VOACAPForecastCheckQueueFull),
+		NotRunning:              status(pathreliability.VOACAPForecastCheckNotRunning),
+		Disabled:                status(pathreliability.VOACAPForecastCheckDisabled),
+		Unavailable:             status(pathreliability.VOACAPForecastCheckUnavailable),
+		Closed:                  outcome(sparseP50VOACAPOutcomeClosed),
+		Aligned:                 outcome(sparseP50VOACAPOutcomeAligned),
+		SparseUpgrade:           outcome(sparseP50VOACAPOutcomeSparseUpgrade),
+		OpenRELPass:             outcome(sparseP50VOACAPOutcomeOpenRELPass),
+		OpenRELFail:             outcome(sparseP50VOACAPOutcomeOpenRELFail),
+		NotClosed:               outcome(sparseP50VOACAPOutcomeNotClosed),
+		RELMissing:              s.sparseP50VOACAPRELMissing.Swap(0),
+		RELBelowFloor:           s.sparseP50VOACAPRELBelow.Swap(0),
+		RELMultiTier:            s.sparseP50VOACAPRELMultiTier.Swap(0),
 	}
 	stats.NonBeacon = stats.Total - stats.BeaconRX
 	if stats.NonBeacon < 0 {
@@ -4301,6 +4328,7 @@ func (s *Server) pathResultWithClosedFallbackTrace(res pathreliability.Result, r
 	check := s.checkVOACAPForecast(req, now)
 	if trace.Active {
 		trace.Status = check.Status
+		trace.InvalidReason = check.InvalidReason
 		trace.CacheMiss = check.CacheMiss
 		trace.NoCurrentHour = check.NoCurrentHour
 	}
@@ -4783,7 +4811,7 @@ func diagSparseVOACAPTraceSuffix(trace sparseP50VOACAPTrace) string {
 	case pathreliability.VOACAPForecastCheckDisabled:
 		return "vdis"
 	case pathreliability.VOACAPForecastCheckInvalidRequest:
-		return "vbad"
+		return diagInvalidRequestReasonSuffix(trace.InvalidReason)
 	case pathreliability.VOACAPForecastCheckSSNUnavailable:
 		return "vssn"
 	case pathreliability.VOACAPForecastCheckNoCurrentHour:
@@ -4809,6 +4837,25 @@ func diagSparseVOACAPTraceSuffix(trace sparseP50VOACAPTrace) string {
 		}
 	}
 	return "vun"
+}
+
+func diagInvalidRequestReasonSuffix(reason pathreliability.VOACAPInvalidRequestReason) string {
+	switch reason {
+	case pathreliability.VOACAPInvalidUnsupportedBand:
+		return "vband"
+	case pathreliability.VOACAPInvalidEmptyUnknownBand:
+		return "vnbnd"
+	case pathreliability.VOACAPInvalidUserGrid:
+		return "vugrd"
+	case pathreliability.VOACAPInvalidDXGrid:
+		return "vdgrd"
+	case pathreliability.VOACAPInvalidUserCell:
+		return "vucel"
+	case pathreliability.VOACAPInvalidDXCell:
+		return "vdcel"
+	default:
+		return "vbad"
+	}
 }
 
 func diagVOACAPReliabilityPercent(res pathreliability.Result) int {

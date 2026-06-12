@@ -698,12 +698,133 @@ func TestVOACAPClosedFallbackDetailedStatuses(t *testing.T) {
 	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
 	req := testClosedRequest()
 
-	t.Run("invalid request", func(t *testing.T) {
-		cfg := testVOACAPFallbackConfig()
-		fallback := newTestClosedFallback(t, cfg, fakeClosedForecaster{}, fixedSSNProvider{ssn: 112})
-		got := fallback.CheckForecastDetailed(VOACAPClosedRequest{Band: "20m"}, now)
-		if got.Status != VOACAPForecastCheckInvalidRequest || got.CacheMiss {
-			t.Fatalf("unexpected invalid request status: %+v", got)
+	t.Run("invalid request reasons", func(t *testing.T) {
+		for _, tc := range []struct {
+			name   string
+			mutate func(*VOACAPClosedRequest)
+			reason VOACAPInvalidRequestReason
+			assert func(t *testing.T, stats VOACAPFallbackStats)
+		}{
+			{
+				name: "unsupported band",
+				mutate: func(req *VOACAPClosedRequest) {
+					req.Band = "2m"
+				},
+				reason: VOACAPInvalidUnsupportedBand,
+				assert: func(t *testing.T, stats VOACAPFallbackStats) {
+					t.Helper()
+					if stats.InvalidUnsupportedBand != 1 {
+						t.Fatalf("InvalidUnsupportedBand = %d, want 1 in %+v", stats.InvalidUnsupportedBand, stats)
+					}
+				},
+			},
+			{
+				name: "empty band",
+				mutate: func(req *VOACAPClosedRequest) {
+					req.Band = ""
+				},
+				reason: VOACAPInvalidEmptyUnknownBand,
+				assert: func(t *testing.T, stats VOACAPFallbackStats) {
+					t.Helper()
+					if stats.InvalidEmptyUnknownBand != 1 {
+						t.Fatalf("InvalidEmptyUnknownBand = %d, want 1 in %+v", stats.InvalidEmptyUnknownBand, stats)
+					}
+				},
+			},
+			{
+				name: "unknown band",
+				mutate: func(req *VOACAPClosedRequest) {
+					req.Band = "unknown"
+				},
+				reason: VOACAPInvalidEmptyUnknownBand,
+				assert: func(t *testing.T, stats VOACAPFallbackStats) {
+					t.Helper()
+					if stats.InvalidEmptyUnknownBand != 1 {
+						t.Fatalf("InvalidEmptyUnknownBand = %d, want 1 in %+v", stats.InvalidEmptyUnknownBand, stats)
+					}
+				},
+			},
+			{
+				name: "unknown marker band",
+				mutate: func(req *VOACAPClosedRequest) {
+					req.Band = "???"
+				},
+				reason: VOACAPInvalidEmptyUnknownBand,
+				assert: func(t *testing.T, stats VOACAPFallbackStats) {
+					t.Helper()
+					if stats.InvalidEmptyUnknownBand != 1 {
+						t.Fatalf("InvalidEmptyUnknownBand = %d, want 1 in %+v", stats.InvalidEmptyUnknownBand, stats)
+					}
+				},
+			},
+			{
+				name: "user grid",
+				mutate: func(req *VOACAPClosedRequest) {
+					req.UserGrid = "BAD"
+				},
+				reason: VOACAPInvalidUserGrid,
+				assert: func(t *testing.T, stats VOACAPFallbackStats) {
+					t.Helper()
+					if stats.InvalidUserGrid != 1 {
+						t.Fatalf("InvalidUserGrid = %d, want 1 in %+v", stats.InvalidUserGrid, stats)
+					}
+				},
+			},
+			{
+				name: "DX grid",
+				mutate: func(req *VOACAPClosedRequest) {
+					req.DXGrid = "BAD"
+				},
+				reason: VOACAPInvalidDXGrid,
+				assert: func(t *testing.T, stats VOACAPFallbackStats) {
+					t.Helper()
+					if stats.InvalidDXGrid != 1 {
+						t.Fatalf("InvalidDXGrid = %d, want 1 in %+v", stats.InvalidDXGrid, stats)
+					}
+				},
+			},
+			{
+				name: "user cell",
+				mutate: func(req *VOACAPClosedRequest) {
+					req.UserCell = InvalidCell
+				},
+				reason: VOACAPInvalidUserCell,
+				assert: func(t *testing.T, stats VOACAPFallbackStats) {
+					t.Helper()
+					if stats.InvalidUserCell != 1 {
+						t.Fatalf("InvalidUserCell = %d, want 1 in %+v", stats.InvalidUserCell, stats)
+					}
+				},
+			},
+			{
+				name: "DX cell",
+				mutate: func(req *VOACAPClosedRequest) {
+					req.DXCell = InvalidCell
+				},
+				reason: VOACAPInvalidDXCell,
+				assert: func(t *testing.T, stats VOACAPFallbackStats) {
+					t.Helper()
+					if stats.InvalidDXCell != 1 {
+						t.Fatalf("InvalidDXCell = %d, want 1 in %+v", stats.InvalidDXCell, stats)
+					}
+				},
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				cfg := testVOACAPFallbackConfig()
+				fallback := newTestClosedFallback(t, cfg, fakeClosedForecaster{}, fixedSSNProvider{ssn: 112})
+				req := testClosedRequest()
+				tc.mutate(&req)
+				got := fallback.CheckForecastDetailed(req, now)
+				if got.Status != VOACAPForecastCheckInvalidRequest || got.InvalidReason != tc.reason || got.CacheMiss {
+					t.Fatalf("unexpected invalid request status: %+v", got)
+				}
+				stats := fallback.StatsSnapshot()
+				if stats.InvalidRequest != 1 {
+					t.Fatalf("InvalidRequest = %d, want 1 in %+v", stats.InvalidRequest, stats)
+				}
+				tc.assert(t, stats)
+			})
 		}
 	})
 
@@ -815,6 +936,20 @@ func TestVOACAPClosedFallbackDetailedStatuses(t *testing.T) {
 			t.Fatalf("unexpected no-current-hour status: %+v", got)
 		}
 	})
+}
+
+func TestVOACAPClosedFallbackCheckCachedForecastInvalidRequestDoesNotRecordStats(t *testing.T) {
+	cfg := testVOACAPFallbackConfig()
+	fallback := newTestClosedFallback(t, cfg, fakeClosedForecaster{}, fixedSSNProvider{ssn: 112})
+	req := testClosedRequest()
+	req.UserCell = InvalidCell
+
+	if _, ok := fallback.CheckCachedForecast(req, time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)); ok {
+		t.Fatalf("invalid cache-only request should not return a forecast")
+	}
+	if stats := fallback.StatsSnapshot(); stats.InvalidRequest != 0 || stats.InvalidUserCell != 0 {
+		t.Fatalf("cache-only invalid request should not mutate stats: %+v", stats)
+	}
 }
 
 func TestVOACAPClosedFallbackStatsCountRunFailuresButNotShutdown(t *testing.T) {

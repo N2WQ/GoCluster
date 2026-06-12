@@ -134,34 +134,40 @@ type predictionHour struct {
 }
 
 type sparseP50VOACAPHour struct {
-	Hour              string  `json:"hour"`
-	Samples           int     `json:"samples"`
-	AvgTotal          float64 `json:"avg_total"`
-	AvgNoP50          float64 `json:"avg_no_p50"`
-	AvgVeryLowCount   float64 `json:"avg_very_low_count"`
-	AvgBeaconRX       float64 `json:"avg_beacon_rx"`
-	AvgNonBeacon      float64 `json:"avg_non_beacon"`
-	AvgCacheMissTotal float64 `json:"avg_cache_miss_total"`
-	AvgCacheHit       float64 `json:"avg_cache_hit"`
-	AvgQueued         float64 `json:"avg_queued"`
-	AvgDelayed        float64 `json:"avg_delayed"`
-	AvgInflight       float64 `json:"avg_inflight"`
-	AvgInvalidRequest float64 `json:"avg_invalid_request"`
-	AvgSSNUnavailable float64 `json:"avg_ssn_unavailable"`
-	AvgNoCurrentHour  float64 `json:"avg_no_current_hour"`
-	AvgQueueFull      float64 `json:"avg_queue_full"`
-	AvgNotRunning     float64 `json:"avg_not_running"`
-	AvgDisabled       float64 `json:"avg_disabled"`
-	AvgUnavailable    float64 `json:"avg_unavailable"`
-	AvgClosed         float64 `json:"avg_closed"`
-	AvgAligned        float64 `json:"avg_aligned"`
-	AvgSparseUpgrade  float64 `json:"avg_sparse_upgrade"`
-	AvgOpenRELPass    float64 `json:"avg_open_rel_pass"`
-	AvgOpenRELFail    float64 `json:"avg_open_rel_fail"`
-	AvgNotClosed      float64 `json:"avg_not_closed"`
-	AvgRELMissing     float64 `json:"avg_rel_missing"`
-	AvgRELBelowFloor  float64 `json:"avg_rel_below_floor"`
-	AvgRELMultiTier   float64 `json:"avg_rel_multi_tier"`
+	Hour                       string  `json:"hour"`
+	Samples                    int     `json:"samples"`
+	AvgTotal                   float64 `json:"avg_total"`
+	AvgNoP50                   float64 `json:"avg_no_p50"`
+	AvgVeryLowCount            float64 `json:"avg_very_low_count"`
+	AvgBeaconRX                float64 `json:"avg_beacon_rx"`
+	AvgNonBeacon               float64 `json:"avg_non_beacon"`
+	AvgCacheMissTotal          float64 `json:"avg_cache_miss_total"`
+	AvgCacheHit                float64 `json:"avg_cache_hit"`
+	AvgQueued                  float64 `json:"avg_queued"`
+	AvgDelayed                 float64 `json:"avg_delayed"`
+	AvgInflight                float64 `json:"avg_inflight"`
+	AvgInvalidRequest          float64 `json:"avg_invalid_request"`
+	AvgInvalidUnsupportedBand  float64 `json:"avg_invalid_unsupported_band"`
+	AvgInvalidEmptyUnknownBand float64 `json:"avg_invalid_empty_unknown_band"`
+	AvgInvalidUserGrid         float64 `json:"avg_invalid_user_grid"`
+	AvgInvalidDXGrid           float64 `json:"avg_invalid_dx_grid"`
+	AvgInvalidUserCell         float64 `json:"avg_invalid_user_cell"`
+	AvgInvalidDXCell           float64 `json:"avg_invalid_dx_cell"`
+	AvgSSNUnavailable          float64 `json:"avg_ssn_unavailable"`
+	AvgNoCurrentHour           float64 `json:"avg_no_current_hour"`
+	AvgQueueFull               float64 `json:"avg_queue_full"`
+	AvgNotRunning              float64 `json:"avg_not_running"`
+	AvgDisabled                float64 `json:"avg_disabled"`
+	AvgUnavailable             float64 `json:"avg_unavailable"`
+	AvgClosed                  float64 `json:"avg_closed"`
+	AvgAligned                 float64 `json:"avg_aligned"`
+	AvgSparseUpgrade           float64 `json:"avg_sparse_upgrade"`
+	AvgOpenRELPass             float64 `json:"avg_open_rel_pass"`
+	AvgOpenRELFail             float64 `json:"avg_open_rel_fail"`
+	AvgNotClosed               float64 `json:"avg_not_closed"`
+	AvgRELMissing              float64 `json:"avg_rel_missing"`
+	AvgRELBelowFloor           float64 `json:"avg_rel_below_floor"`
+	AvgRELMultiTier            float64 `json:"avg_rel_multi_tier"`
 }
 
 type capShadowHour struct {
@@ -298,32 +304,38 @@ type predTotals struct {
 }
 
 type sparseP50VOACAPTotals struct {
-	Total          int
-	NoP50          int
-	VeryLowCount   int
-	BeaconRX       int
-	NonBeacon      int
-	CacheMissTotal int
-	CacheHit       int
-	Queued         int
-	Delayed        int
-	Inflight       int
-	InvalidRequest int
-	SSNUnavailable int
-	NoCurrentHour  int
-	QueueFull      int
-	NotRunning     int
-	Disabled       int
-	Unavailable    int
-	Closed         int
-	Aligned        int
-	SparseUpgrade  int
-	OpenRELPass    int
-	OpenRELFail    int
-	NotClosed      int
-	RELMissing     int
-	RELBelowFloor  int
-	RELMultiTier   int
+	Total                   int
+	NoP50                   int
+	VeryLowCount            int
+	BeaconRX                int
+	NonBeacon               int
+	CacheMissTotal          int
+	CacheHit                int
+	Queued                  int
+	Delayed                 int
+	Inflight                int
+	InvalidRequest          int
+	InvalidUnsupportedBand  int
+	InvalidEmptyUnknownBand int
+	InvalidUserGrid         int
+	InvalidDXGrid           int
+	InvalidUserCell         int
+	InvalidDXCell           int
+	SSNUnavailable          int
+	NoCurrentHour           int
+	QueueFull               int
+	NotRunning              int
+	Disabled                int
+	Unavailable             int
+	Closed                  int
+	Aligned                 int
+	SparseUpgrade           int
+	OpenRELPass             int
+	OpenRELFail             int
+	NotClosed               int
+	RELMissing              int
+	RELBelowFloor           int
+	RELMultiTier            int
 }
 
 type capShadowTotals struct {
@@ -373,7 +385,7 @@ var (
 	bandBuckets           = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)\s+f=([\d,]+)\s+c=([\d,]+)`)
 	bandWeights           = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)\s+t=([\d,]+)\s+<1=([\d,]+)\s+1-2=([\d,]+)\s+2-3=([\d,]+)\s+3-5=([\d,]+)\s+5-10=([\d,]+)\s+>=10=([\d,]+)`)
 	predsFields           = regexp.MustCompile(`\b(total|derived|combined|voacap_closed|voacap_aligned|voacap_sparse_upgrade|voacap_open|beacon_rx|beacon_rx_insufficient|beacon_rx_no_sample|beacon_rx_low_count|beacon_rx_low_receiver|beacon_rx_low_weight|beacon_rx_stale|beacon_rx_voacap_closed|beacon_rx_voacap_aligned|beacon_rx_voacap_sparse_upgrade|beacon_rx_voacap_open|insufficient|no_sample|low_count|low_receiver|low_weight|stale|cap_limited|cap_would_block)=([\d,]+)`)
-	sparseP50VOACAPFields = regexp.MustCompile(`\b(total|no_p50|very_low_count|beacon_rx|non_beacon|cache_miss_total|cache_hit|queued|delayed|inflight|invalid_request|ssn_unavailable|no_current_hour|queue_full|not_running|disabled|unavailable|closed|aligned|sparse_upgrade|open_rel_pass|open_rel_fail|not_closed|rel_missing|rel_below_floor|rel_multi_tier)=([\d,]+)`)
+	sparseP50VOACAPFields = regexp.MustCompile(`\b(total|no_p50|very_low_count|beacon_rx|non_beacon|cache_miss_total|cache_hit|queued|delayed|inflight|invalid_request|invalid_unsupported_band|invalid_empty_unknown_band|invalid_user_grid|invalid_dx_grid|invalid_user_cell|invalid_dx_cell|ssn_unavailable|no_current_hour|queue_full|not_running|disabled|unavailable|closed|aligned|sparse_upgrade|open_rel_pass|open_rel_fail|not_closed|rel_missing|rel_below_floor|rel_multi_tier)=([\d,]+)`)
 	totalField            = regexp.MustCompile(`\btotal=([\d,]+)`)
 	capShadowField        = regexp.MustCompile(`\bcap(\d+)_(pass|low_count|low_receiver|low_weight|block)=([\d,]+)`)
 	capP50ShadowField     = regexp.MustCompile(`\bcap(\d+)_p50_(pass_unlikely|pass_low|pass_medium|pass_high|same|stronger|weaker|to_insufficient)=([\d,]+)`)
@@ -502,32 +514,38 @@ func parseSparseP50VOACAPTotals(line string) (sparseP50VOACAPTotals, bool) {
 		}
 	}
 	return sparseP50VOACAPTotals{
-		Total:          values["total"],
-		NoP50:          values["no_p50"],
-		VeryLowCount:   values["very_low_count"],
-		BeaconRX:       values["beacon_rx"],
-		NonBeacon:      values["non_beacon"],
-		CacheMissTotal: values["cache_miss_total"],
-		CacheHit:       values["cache_hit"],
-		Queued:         values["queued"],
-		Delayed:        values["delayed"],
-		Inflight:       values["inflight"],
-		InvalidRequest: values["invalid_request"],
-		SSNUnavailable: values["ssn_unavailable"],
-		NoCurrentHour:  values["no_current_hour"],
-		QueueFull:      values["queue_full"],
-		NotRunning:     values["not_running"],
-		Disabled:       values["disabled"],
-		Unavailable:    values["unavailable"],
-		Closed:         values["closed"],
-		Aligned:        values["aligned"],
-		SparseUpgrade:  values["sparse_upgrade"],
-		OpenRELPass:    values["open_rel_pass"],
-		OpenRELFail:    values["open_rel_fail"],
-		NotClosed:      values["not_closed"],
-		RELMissing:     values["rel_missing"],
-		RELBelowFloor:  values["rel_below_floor"],
-		RELMultiTier:   values["rel_multi_tier"],
+		Total:                   values["total"],
+		NoP50:                   values["no_p50"],
+		VeryLowCount:            values["very_low_count"],
+		BeaconRX:                values["beacon_rx"],
+		NonBeacon:               values["non_beacon"],
+		CacheMissTotal:          values["cache_miss_total"],
+		CacheHit:                values["cache_hit"],
+		Queued:                  values["queued"],
+		Delayed:                 values["delayed"],
+		Inflight:                values["inflight"],
+		InvalidRequest:          values["invalid_request"],
+		InvalidUnsupportedBand:  values["invalid_unsupported_band"],
+		InvalidEmptyUnknownBand: values["invalid_empty_unknown_band"],
+		InvalidUserGrid:         values["invalid_user_grid"],
+		InvalidDXGrid:           values["invalid_dx_grid"],
+		InvalidUserCell:         values["invalid_user_cell"],
+		InvalidDXCell:           values["invalid_dx_cell"],
+		SSNUnavailable:          values["ssn_unavailable"],
+		NoCurrentHour:           values["no_current_hour"],
+		QueueFull:               values["queue_full"],
+		NotRunning:              values["not_running"],
+		Disabled:                values["disabled"],
+		Unavailable:             values["unavailable"],
+		Closed:                  values["closed"],
+		Aligned:                 values["aligned"],
+		SparseUpgrade:           values["sparse_upgrade"],
+		OpenRELPass:             values["open_rel_pass"],
+		OpenRELFail:             values["open_rel_fail"],
+		NotClosed:               values["not_closed"],
+		RELMissing:              values["rel_missing"],
+		RELBelowFloor:           values["rel_below_floor"],
+		RELMultiTier:            values["rel_multi_tier"],
 	}, true
 }
 
@@ -606,7 +624,9 @@ func buildSparseP50VOACAPSummary(byTS map[string]*sparseP50VOACAPTotals) []spars
 			continue
 		}
 		var total, noP50, veryLowCount, beaconRX, nonBeacon, cacheMissTotal, cacheHit int
-		var queued, delayed, inflight, invalidRequest, ssnUnavailable, noCurrentHour int
+		var queued, delayed, inflight, invalidRequest, invalidUnsupportedBand int
+		var invalidEmptyUnknownBand, invalidUserGrid, invalidDXGrid, invalidUserCell, invalidDXCell int
+		var ssnUnavailable, noCurrentHour int
 		var queueFull, notRunning, disabled, unavailable int
 		var closed, aligned, sparseUpgrade, openRELPass, openRELFail, notClosed int
 		var relMissing, relBelowFloor, relMultiTier int
@@ -622,6 +642,12 @@ func buildSparseP50VOACAPSummary(byTS map[string]*sparseP50VOACAPTotals) []spars
 			delayed += r.Delayed
 			inflight += r.Inflight
 			invalidRequest += r.InvalidRequest
+			invalidUnsupportedBand += r.InvalidUnsupportedBand
+			invalidEmptyUnknownBand += r.InvalidEmptyUnknownBand
+			invalidUserGrid += r.InvalidUserGrid
+			invalidDXGrid += r.InvalidDXGrid
+			invalidUserCell += r.InvalidUserCell
+			invalidDXCell += r.InvalidDXCell
 			ssnUnavailable += r.SSNUnavailable
 			noCurrentHour += r.NoCurrentHour
 			queueFull += r.QueueFull
@@ -640,34 +666,40 @@ func buildSparseP50VOACAPSummary(byTS map[string]*sparseP50VOACAPTotals) []spars
 		}
 		count := float64(len(rows))
 		summary = append(summary, sparseP50VOACAPHour{
-			Hour:              fmt.Sprintf("%02d:00", h),
-			Samples:           len(rows),
-			AvgTotal:          float64(total) / count,
-			AvgNoP50:          float64(noP50) / count,
-			AvgVeryLowCount:   float64(veryLowCount) / count,
-			AvgBeaconRX:       float64(beaconRX) / count,
-			AvgNonBeacon:      float64(nonBeacon) / count,
-			AvgCacheMissTotal: float64(cacheMissTotal) / count,
-			AvgCacheHit:       float64(cacheHit) / count,
-			AvgQueued:         float64(queued) / count,
-			AvgDelayed:        float64(delayed) / count,
-			AvgInflight:       float64(inflight) / count,
-			AvgInvalidRequest: float64(invalidRequest) / count,
-			AvgSSNUnavailable: float64(ssnUnavailable) / count,
-			AvgNoCurrentHour:  float64(noCurrentHour) / count,
-			AvgQueueFull:      float64(queueFull) / count,
-			AvgNotRunning:     float64(notRunning) / count,
-			AvgDisabled:       float64(disabled) / count,
-			AvgUnavailable:    float64(unavailable) / count,
-			AvgClosed:         float64(closed) / count,
-			AvgAligned:        float64(aligned) / count,
-			AvgSparseUpgrade:  float64(sparseUpgrade) / count,
-			AvgOpenRELPass:    float64(openRELPass) / count,
-			AvgOpenRELFail:    float64(openRELFail) / count,
-			AvgNotClosed:      float64(notClosed) / count,
-			AvgRELMissing:     float64(relMissing) / count,
-			AvgRELBelowFloor:  float64(relBelowFloor) / count,
-			AvgRELMultiTier:   float64(relMultiTier) / count,
+			Hour:                       fmt.Sprintf("%02d:00", h),
+			Samples:                    len(rows),
+			AvgTotal:                   float64(total) / count,
+			AvgNoP50:                   float64(noP50) / count,
+			AvgVeryLowCount:            float64(veryLowCount) / count,
+			AvgBeaconRX:                float64(beaconRX) / count,
+			AvgNonBeacon:               float64(nonBeacon) / count,
+			AvgCacheMissTotal:          float64(cacheMissTotal) / count,
+			AvgCacheHit:                float64(cacheHit) / count,
+			AvgQueued:                  float64(queued) / count,
+			AvgDelayed:                 float64(delayed) / count,
+			AvgInflight:                float64(inflight) / count,
+			AvgInvalidRequest:          float64(invalidRequest) / count,
+			AvgInvalidUnsupportedBand:  float64(invalidUnsupportedBand) / count,
+			AvgInvalidEmptyUnknownBand: float64(invalidEmptyUnknownBand) / count,
+			AvgInvalidUserGrid:         float64(invalidUserGrid) / count,
+			AvgInvalidDXGrid:           float64(invalidDXGrid) / count,
+			AvgInvalidUserCell:         float64(invalidUserCell) / count,
+			AvgInvalidDXCell:           float64(invalidDXCell) / count,
+			AvgSSNUnavailable:          float64(ssnUnavailable) / count,
+			AvgNoCurrentHour:           float64(noCurrentHour) / count,
+			AvgQueueFull:               float64(queueFull) / count,
+			AvgNotRunning:              float64(notRunning) / count,
+			AvgDisabled:                float64(disabled) / count,
+			AvgUnavailable:             float64(unavailable) / count,
+			AvgClosed:                  float64(closed) / count,
+			AvgAligned:                 float64(aligned) / count,
+			AvgSparseUpgrade:           float64(sparseUpgrade) / count,
+			AvgOpenRELPass:             float64(openRELPass) / count,
+			AvgOpenRELFail:             float64(openRELFail) / count,
+			AvgNotClosed:               float64(notClosed) / count,
+			AvgRELMissing:              float64(relMissing) / count,
+			AvgRELBelowFloor:           float64(relBelowFloor) / count,
+			AvgRELMultiTier:            float64(relMultiTier) / count,
 		})
 	}
 	return summary
@@ -2098,6 +2130,7 @@ func sparseP50VOACAPActivitySummary(hours []sparseP50VOACAPHour) string {
 	var cacheMissSample []string
 	var cacheWaitSample []string
 	var invalidSample []string
+	var invalidReasonSample []string
 	var notRunningSample []string
 	var closedSample []string
 	var openSample []string
@@ -2124,6 +2157,14 @@ func sparseP50VOACAPActivitySummary(hours []sparseP50VOACAPHour) string {
 		}
 		if h.AvgInvalidRequest > 0 || h.AvgSSNUnavailable > 0 {
 			invalidSample = append(invalidSample, h.Hour)
+		}
+		if h.AvgInvalidUnsupportedBand > 0 ||
+			h.AvgInvalidEmptyUnknownBand > 0 ||
+			h.AvgInvalidUserGrid > 0 ||
+			h.AvgInvalidDXGrid > 0 ||
+			h.AvgInvalidUserCell > 0 ||
+			h.AvgInvalidDXCell > 0 {
+			invalidReasonSample = append(invalidReasonSample, h.Hour)
 		}
 		if h.AvgQueueFull > 0 || h.AvgNotRunning > 0 || h.AvgDisabled > 0 || h.AvgUnavailable > 0 {
 			notRunningSample = append(notRunningSample, h.Hour)
@@ -2162,6 +2203,9 @@ func sparseP50VOACAPActivitySummary(hours []sparseP50VOACAPHour) string {
 	}
 	if len(invalidSample) > 0 {
 		s += fmt.Sprintf(" Hours blocked by invalid requests or missing SSN: %s.", strings.Join(invalidSample, ", "))
+	}
+	if len(invalidReasonSample) > 0 {
+		s += fmt.Sprintf(" Hours with split invalid request reasons: %s.", strings.Join(invalidReasonSample, ", "))
 	}
 	if len(notRunningSample) > 0 {
 		s += fmt.Sprintf(" Hours blocked by worker, queue, disabled, or unavailable VOACAP states: %s.", strings.Join(notRunningSample, ", "))

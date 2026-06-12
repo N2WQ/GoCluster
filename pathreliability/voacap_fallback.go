@@ -295,6 +295,38 @@ const (
 	VOACAPForecastCheckStatusCount
 )
 
+type VOACAPInvalidRequestReason uint8
+
+const (
+	VOACAPInvalidRequestReasonNone VOACAPInvalidRequestReason = iota
+	VOACAPInvalidUnsupportedBand
+	VOACAPInvalidEmptyUnknownBand
+	VOACAPInvalidUserGrid
+	VOACAPInvalidDXGrid
+	VOACAPInvalidUserCell
+	VOACAPInvalidDXCell
+	VOACAPInvalidRequestReasonCount
+)
+
+func (r VOACAPInvalidRequestReason) String() string {
+	switch r {
+	case VOACAPInvalidUnsupportedBand:
+		return "invalid_unsupported_band"
+	case VOACAPInvalidEmptyUnknownBand:
+		return "invalid_empty_unknown_band"
+	case VOACAPInvalidUserGrid:
+		return "invalid_user_grid"
+	case VOACAPInvalidDXGrid:
+		return "invalid_dx_grid"
+	case VOACAPInvalidUserCell:
+		return "invalid_user_cell"
+	case VOACAPInvalidDXCell:
+		return "invalid_dx_cell"
+	default:
+		return ""
+	}
+}
+
 func (s VOACAPForecastCheckStatus) String() string {
 	switch s {
 	case VOACAPForecastCheckDisabled:
@@ -325,6 +357,7 @@ func (s VOACAPForecastCheckStatus) String() string {
 type VOACAPForecastCheck struct {
 	Forecast      VOACAPCachedForecast
 	Status        VOACAPForecastCheckStatus
+	InvalidReason VOACAPInvalidRequestReason
 	CacheMiss     bool
 	NoCurrentHour bool
 }
@@ -340,17 +373,23 @@ type VOACAPClosedFallbackSnapshot struct {
 // during one propagation-log interval. Final emitted glyph counts stay in the
 // telnet path prediction counters.
 type VOACAPFallbackStats struct {
-	InvalidRequest int64
-	SSNUnavailable int64
-	CacheHit       int64
-	NoCurrentHour  int64
-	DelayWait      int64
-	Inflight       int64
-	NotRunning     int64
-	QueueFull      int64
-	Queued         int64
-	RunSuccess     int64
-	RunFailure     int64
+	InvalidRequest          int64
+	InvalidUnsupportedBand  int64
+	InvalidEmptyUnknownBand int64
+	InvalidUserGrid         int64
+	InvalidDXGrid           int64
+	InvalidUserCell         int64
+	InvalidDXCell           int64
+	SSNUnavailable          int64
+	CacheHit                int64
+	NoCurrentHour           int64
+	DelayWait               int64
+	Inflight                int64
+	NotRunning              int64
+	QueueFull               int64
+	Queued                  int64
+	RunSuccess              int64
+	RunFailure              int64
 }
 
 func (s VOACAPFallbackStats) HasActivity() bool {
@@ -394,6 +433,7 @@ type VOACAPClosedFallback struct {
 	statsNotRunning     atomic.Int64
 	statsQueueFull      atomic.Int64
 	statsQueued         atomic.Int64
+	statsInvalidReasons [VOACAPInvalidRequestReasonCount]atomic.Int64
 	statsRunSuccess     atomic.Int64
 	statsRunFailure     atomic.Int64
 }
@@ -504,18 +544,39 @@ func (f *VOACAPClosedFallback) StatsSnapshot() VOACAPFallbackStats {
 	if f == nil {
 		return VOACAPFallbackStats{}
 	}
+	invalidReason := func(reason VOACAPInvalidRequestReason) int64 {
+		idx := int(reason)
+		if idx <= int(VOACAPInvalidRequestReasonNone) || idx >= len(f.statsInvalidReasons) {
+			return 0
+		}
+		return f.statsInvalidReasons[idx].Swap(0)
+	}
 	return VOACAPFallbackStats{
-		InvalidRequest: f.statsInvalidRequest.Swap(0),
-		SSNUnavailable: f.statsSSNUnavailable.Swap(0),
-		CacheHit:       f.statsCacheHit.Swap(0),
-		NoCurrentHour:  f.statsNoCurrentHour.Swap(0),
-		DelayWait:      f.statsDelayWait.Swap(0),
-		Inflight:       f.statsInflight.Swap(0),
-		NotRunning:     f.statsNotRunning.Swap(0),
-		QueueFull:      f.statsQueueFull.Swap(0),
-		Queued:         f.statsQueued.Swap(0),
-		RunSuccess:     f.statsRunSuccess.Swap(0),
-		RunFailure:     f.statsRunFailure.Swap(0),
+		InvalidRequest:          f.statsInvalidRequest.Swap(0),
+		InvalidUnsupportedBand:  invalidReason(VOACAPInvalidUnsupportedBand),
+		InvalidEmptyUnknownBand: invalidReason(VOACAPInvalidEmptyUnknownBand),
+		InvalidUserGrid:         invalidReason(VOACAPInvalidUserGrid),
+		InvalidDXGrid:           invalidReason(VOACAPInvalidDXGrid),
+		InvalidUserCell:         invalidReason(VOACAPInvalidUserCell),
+		InvalidDXCell:           invalidReason(VOACAPInvalidDXCell),
+		SSNUnavailable:          f.statsSSNUnavailable.Swap(0),
+		CacheHit:                f.statsCacheHit.Swap(0),
+		NoCurrentHour:           f.statsNoCurrentHour.Swap(0),
+		DelayWait:               f.statsDelayWait.Swap(0),
+		Inflight:                f.statsInflight.Swap(0),
+		NotRunning:              f.statsNotRunning.Swap(0),
+		QueueFull:               f.statsQueueFull.Swap(0),
+		Queued:                  f.statsQueued.Swap(0),
+		RunSuccess:              f.statsRunSuccess.Swap(0),
+		RunFailure:              f.statsRunFailure.Swap(0),
+	}
+}
+
+func (f *VOACAPClosedFallback) recordInvalidRequest(reason VOACAPInvalidRequestReason) {
+	f.statsInvalidRequest.Add(1)
+	idx := int(reason)
+	if idx > int(VOACAPInvalidRequestReasonNone) && idx < len(f.statsInvalidReasons) {
+		f.statsInvalidReasons[idx].Add(1)
 	}
 }
 
@@ -543,10 +604,10 @@ func (f *VOACAPClosedFallback) CheckForecastDetailed(req VOACAPClosedRequest, no
 		now = time.Now().UTC()
 	}
 	now = now.UTC()
-	prepared, ok := f.prepareRequest(req)
+	prepared, invalidReason, ok := f.prepareRequest(req)
 	if !ok {
-		f.statsInvalidRequest.Add(1)
-		return VOACAPForecastCheck{Status: VOACAPForecastCheckInvalidRequest}
+		f.recordInvalidRequest(invalidReason)
+		return VOACAPForecastCheck{Status: VOACAPForecastCheckInvalidRequest, InvalidReason: invalidReason}
 	}
 	ssn, ok := f.ssnProvider.CurrentSSN(now)
 	if !ok {
@@ -619,9 +680,9 @@ func (f *VOACAPClosedFallback) CheckForecastWindow(req VOACAPClosedRequest, now 
 		now = time.Now().UTC()
 	}
 	now = now.UTC()
-	prepared, ok := f.prepareRequest(req)
+	prepared, invalidReason, ok := f.prepareRequest(req)
 	if !ok {
-		f.statsInvalidRequest.Add(1)
+		f.recordInvalidRequest(invalidReason)
 		return VOACAPCachedForecastWindow{}, false
 	}
 	ssn, ok := f.ssnProvider.CurrentSSN(now)
@@ -684,9 +745,9 @@ func (f *VOACAPClosedFallback) CheckForecastWindowWait(req VOACAPClosedRequest, 
 		now = time.Now().UTC()
 	}
 	now = now.UTC()
-	prepared, ok := f.prepareRequest(req)
+	prepared, invalidReason, ok := f.prepareRequest(req)
 	if !ok {
-		f.statsInvalidRequest.Add(1)
+		f.recordInvalidRequest(invalidReason)
 		return VOACAPCachedForecastWindow{}, VOACAPForecastWindowUnavailable
 	}
 	ssn, ok := f.ssnProvider.CurrentSSN(now)
@@ -790,7 +851,7 @@ func (f *VOACAPClosedFallback) CheckCachedForecast(req VOACAPClosedRequest, now 
 		now = time.Now().UTC()
 	}
 	now = now.UTC()
-	prepared, ok := f.prepareRequest(req)
+	prepared, _, ok := f.prepareRequest(req)
 	if !ok {
 		return VOACAPCachedForecast{}, false
 	}
@@ -837,24 +898,27 @@ func (f *VOACAPClosedFallback) cachedForecastWindowLocked(key voacapCacheKey, re
 	return f.cachedForecastWindowFromCache(key, entry, records, req, now), true, false
 }
 
-func (f *VOACAPClosedFallback) prepareRequest(req VOACAPClosedRequest) (VOACAPClosedRequest, bool) {
-	if req.UserCell == InvalidCell || req.DXCell == InvalidCell {
-		return VOACAPClosedRequest{}, false
-	}
+func (f *VOACAPClosedFallback) prepareRequest(req VOACAPClosedRequest) (VOACAPClosedRequest, VOACAPInvalidRequestReason, bool) {
 	req.Band = normalizeBand(req.Band)
-	if req.Band == "" {
-		return VOACAPClosedRequest{}, false
+	if req.Band == "" || req.Band == "???" || req.Band == "unknown" {
+		return VOACAPClosedRequest{}, VOACAPInvalidEmptyUnknownBand, false
 	}
 	if _, ok := centerFrequencyKHzForBand(req.Band, f.fallback.CenterFrequenciesMHz); !ok {
-		return VOACAPClosedRequest{}, false
+		return VOACAPClosedRequest{}, VOACAPInvalidUnsupportedBand, false
 	}
 	if _, _, ok := GridCenterLatLon(req.UserGrid); !ok {
-		return VOACAPClosedRequest{}, false
+		return VOACAPClosedRequest{}, VOACAPInvalidUserGrid, false
 	}
 	if _, _, ok := GridCenterLatLon(req.DXGrid); !ok {
-		return VOACAPClosedRequest{}, false
+		return VOACAPClosedRequest{}, VOACAPInvalidDXGrid, false
 	}
-	return req, true
+	if req.UserCell == InvalidCell {
+		return VOACAPClosedRequest{}, VOACAPInvalidUserCell, false
+	}
+	if req.DXCell == InvalidCell {
+		return VOACAPClosedRequest{}, VOACAPInvalidDXCell, false
+	}
+	return req, VOACAPInvalidRequestReasonNone, true
 }
 
 func (f *VOACAPClosedFallback) forecastClosedForMode(forecast VOACAPCachedForecast, mode string) bool {

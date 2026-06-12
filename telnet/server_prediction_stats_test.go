@@ -255,6 +255,30 @@ func TestPathResultWithClosedFallbackTraceRecordsSparseP50VOACAP(t *testing.T) {
 			t.Fatalf("unexpected REL-fail sparse stats: %+v", stats)
 		}
 	})
+
+	t.Run("invalid request reason", func(t *testing.T) {
+		s := &Server{
+			pathPredictor: predictor,
+			pathClosedFallback: detailedPathClosedFallback{
+				check: pathreliability.VOACAPForecastCheck{
+					Status:        pathreliability.VOACAPForecastCheckInvalidRequest,
+					InvalidReason: pathreliability.VOACAPInvalidDXGrid,
+				},
+			},
+		}
+		got, trace := s.pathResultWithClosedFallbackTrace(pathreliability.Result{
+			Source:             pathreliability.SourceInsufficient,
+			InsufficientReason: pathreliability.InsufficientNoSample,
+		}, req, now)
+		if got.Source != pathreliability.SourceInsufficient {
+			t.Fatalf("invalid VOACAP request must not change result: %+v", got)
+		}
+		s.recordSparseP50VOACAPTrace(trace)
+		stats := s.PathPredictionStatsSnapshot().SparseP50VOACAP
+		if stats.Total != 1 || stats.NoP50 != 1 || stats.InvalidRequest != 1 || stats.InvalidDXGrid != 1 {
+			t.Fatalf("unexpected invalid sparse stats: %+v", stats)
+		}
+	})
 }
 
 func TestPathResultWithClosedFallbackStageStats(t *testing.T) {

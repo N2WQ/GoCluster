@@ -154,10 +154,12 @@ When sparse or no-p50 candidates are present, a separate `Sparse p50 VOACAP
 (5m)` line reports the diagnostic split for those candidates without changing
 glyph decisions: `no_p50`, `very_low_count`, `beacon_rx`, `non_beacon`,
 `cache_miss_total`, `cache_hit`, `queued`, `delayed`, `inflight`,
-`invalid_request`, `ssn_unavailable`, `no_current_hour`, `queue_full`,
-`not_running`, `disabled`, `unavailable`, `closed`, `aligned`,
-`sparse_upgrade`, `open_rel_pass`, `open_rel_fail`, `not_closed`,
-`rel_missing`, `rel_below_floor`, and `rel_multi_tier`.
+`invalid_request`, `invalid_unsupported_band`, `invalid_empty_unknown_band`,
+`invalid_user_grid`, `invalid_dx_grid`, `invalid_user_cell`, `invalid_dx_cell`,
+`ssn_unavailable`, `no_current_hour`, `queue_full`, `not_running`, `disabled`,
+`unavailable`, `closed`, `aligned`, `sparse_upgrade`, `open_rel_pass`,
+`open_rel_fail`, `not_closed`, `rel_missing`, `rel_below_floor`, and
+`rel_multi_tier`.
 `sparse_p50_diagnostic_max_observation_count` only controls the diagnostic
 very-low-count bucket and does not relax prediction gates or enqueue additional
 VOACAP work.
@@ -201,10 +203,11 @@ instead of the bidirectional effective SNR. Display glyphs and PATH filters use
 the same beacon RX-only result.
 `SET DIAG PATH` may append a compact sparse VOACAP suffix to insufficient
 diagnostics, such as `n0|none|vdly` or `n2|lown|vrel`. The suffix explains the
-VOACAP state for sparse/no-p50 candidates: queued, delayed, inflight, invalid
-request, missing SSN, no current-hour cache record, queue full, worker not
-running, disabled, unavailable, REL/tier guard failure, or usable VOACAP that
-did not classify the candidate closed.
+VOACAP state for sparse/no-p50 candidates: queued, delayed, inflight,
+unsupported band, empty/unknown band, invalid user/DX grid, invalid user/DX
+cell, missing SSN, no current-hour cache record, queue full, worker not running,
+disabled, unavailable, REL/tier guard failure, or usable VOACAP that did not
+classify the candidate closed.
 
 `SHOW PROP <call|prefix|grid> [band] [mode]` exposes those cached hourly
 VOACAP records directly as a point-to-point outlook from the user's grid to the

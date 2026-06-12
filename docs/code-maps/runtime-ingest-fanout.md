@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `4c753639ceb17b7c`
+- Source fingerprint: `3bc42a03a61100fa`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -303,6 +303,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0178](docs/decisions/ADR-0178-voacap-invalid-request-reason-diagnostics.md) | Accepted | 2026-06-12 | pathreliability, telnet, voacap, operations, observability, supportability | `area:telnet, path:internal/cluster, path:telnet` |
 | [ADR-0176](docs/decisions/ADR-0176-path-prediction-admission-reuse.md) | Accepted | 2026-06-11 | telnet, pathreliability, voacap, hot path, observability | `area:telnet, path:telnet` |
 | [ADR-0175](docs/decisions/ADR-0175-sparse-p50-voacap-outcome-diagnostics.md) | Accepted | 2026-06-11 | pathreliability, telnet, voacap, operations, observability, supportability | `area:telnet, path:internal/cluster, path:telnet` |
 | [ADR-0174](docs/decisions/ADR-0174-beacon-rx-only-path-prediction.md) | Accepted | 2026-06-11 | pathreliability, telnet, voacap, config, operations, supportability | `area:telnet, path:internal/cluster, path:telnet` |

@@ -437,11 +437,13 @@ area:
   `bvcap`, `bvaln`, `bvup`, or `bvop`; their `<snr>` and REL values come from
   the receive leg rather than the bidirectional effective VOACAP model.
 - `v*` suffixes on insufficient sparse/no-p50 diagnostics explain VOACAP state:
-  `vq` queued, `vdly` delayed, `vinf` inflight, `vbad` invalid request, `vssn`
-  SSN unavailable, `vcur` no current-hour cache record, `vqf` queue full,
-  `vnr` worker not running, `vdis` disabled, `vun` unavailable, `vrel` blocked
-  by REL or tier guards, `vnc` usable forecast but not closed, and `vhit` ready
-  cache hit with no emitted fallback.
+  `vq` queued, `vdly` delayed, `vinf` inflight, `vband` unsupported band,
+  `vnbnd` empty/unknown band, `vugrd` invalid user grid, `vdgrd` invalid DX
+  grid, `vucel` invalid user cell, `vdcel` invalid DX cell, `vbad` other
+  invalid request, `vssn` SSN unavailable, `vcur` no current-hour cache record,
+  `vqf` queue full, `vnr` worker not running, `vdis` disabled, `vun`
+  unavailable, `vrel` blocked by REL or tier guards, `vnc` usable forecast but
+  not closed, and `vhit` ready cache hit with no emitted fallback.
 - `n<count>|none` means there was no usable selected path sample.
 - `n<count>|lown` means selected evidence existed but the selected observation count
   stayed below the configured minimum.
@@ -553,9 +555,9 @@ Important operational notes:
   `open_no_p50`, `class_mismatch`, `sparse_upgrade`, `open_no_p50_rel`,
   `rel_missing`, `rel_below_floor`, and `rel_multi_tier`.
   A separate `Sparse p50 VOACAP (5m)` line appears for sparse/no-p50 candidates
-  and splits them by p50 evidence, cache/work state, closed/open/REL outcome,
-  beacon RX-only provenance, and non-beacon provenance. It is diagnostic only
-  and does not change glyph decisions.
+  and splits them by p50 evidence, cache/work state, invalid-request reason,
+  closed/open/REL outcome, beacon RX-only provenance, and non-beacon
+  provenance. It is diagnostic only and does not change glyph decisions.
   A separate `VOACAP p50 compare (5m)` line may appear when sufficient p50
   predictions can be compared against an existing current-hour VOACAP cache
   record. It is cache-only: cache misses do not run VOACAP, start delay

@@ -328,6 +328,37 @@ func TestDiagPathTagShowsSparseVOACAPMissReason(t *testing.T) {
 		t.Fatalf("unexpected no-current-hour sparse VOACAP diagnostic: %q", got)
 	}
 
+	for _, tc := range []struct {
+		name   string
+		reason pathreliability.VOACAPInvalidRequestReason
+		want   string
+	}{
+		{name: "unsupported band", reason: pathreliability.VOACAPInvalidUnsupportedBand, want: "n0|none|vband"},
+		{name: "empty unknown band", reason: pathreliability.VOACAPInvalidEmptyUnknownBand, want: "n0|none|vnbnd"},
+		{name: "user grid", reason: pathreliability.VOACAPInvalidUserGrid, want: "n0|none|vugrd"},
+		{name: "DX grid", reason: pathreliability.VOACAPInvalidDXGrid, want: "n0|none|vdgrd"},
+		{name: "user cell", reason: pathreliability.VOACAPInvalidUserCell, want: "n0|none|vucel"},
+		{name: "DX cell", reason: pathreliability.VOACAPInvalidDXCell, want: "n0|none|vdcel"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			invalid := pathPrediction{
+				result: pathreliability.Result{
+					Source:             pathreliability.SourceInsufficient,
+					InsufficientReason: pathreliability.InsufficientNoSample,
+				},
+				sparseVOACAPTrace: sparseP50VOACAPTrace{
+					Active:        true,
+					NoP50:         true,
+					Status:        pathreliability.VOACAPForecastCheckInvalidRequest,
+					InvalidReason: tc.reason,
+				},
+			}
+			if got := diagPathTag(invalid, true); got != tc.want {
+				t.Fatalf("unexpected invalid sparse VOACAP diagnostic: %q", got)
+			}
+		})
+	}
+
 	relFail := pathPrediction{
 		result: pathreliability.Result{
 			Source: pathreliability.SourceInsufficient,
