@@ -36,8 +36,8 @@ telnet:
   admission_log_sample_rate: 0.05                        # Sample rate for per-event reject logs (0..1)
   admission_log_max_reason_lines_per_interval: 20        # Max sampled reject lines emitted per interval
   # Login/message fields support the tokens documented in data/config/README.md.
-  welcome_message: ""
-  login_prompt: "login: "
+  welcome_message: "GoCluster"
+  login_prompt: "<CLUSTER> login: "
   login_greeting: |
     Hello <CALL>, this is <CLUSTER>
     Cluster: Users <USER_COUNT>  Uptime <UPTIME>

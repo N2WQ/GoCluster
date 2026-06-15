@@ -27,16 +27,15 @@ forecast_hours: 8
 
 # Center frequencies in MHz; VOACAP supports up to ten fixed-width slots.
 center_frequencies_mhz:
-  - 1.90
-  - 3.60
-  - 5.00
-  - 7.10
-  - 10.14
-  - 14.10
-  - 18.10
-  - 21.15
-  - 24.91
-  - 28.10
+  - 3.75
+  - 5.37
+  - 7.15
+  - 10.13
+  - 14.18
+  - 18.12
+  - 21.23
+  - 24.94
+  - 28.85
 
 # Persisted observer state used to suppress stale observations and repeated forecasts.
 state_path: ".tmp/voacap-ssn-forecast-state.json"
