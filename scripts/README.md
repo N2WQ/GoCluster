@@ -4,6 +4,17 @@ Tracked PowerShell scripts in this directory are operational tooling for local
 builds, release packaging, profiling, console setup, workflow checks, and Codex
 skill installation.
 
+## Operational Helpers
+
+- `watch-voacap-ssn.ps1` runs the repo-local lightweight SSN watcher
+  (`cmd/voacap_sunspot_watch`) to watch NOAA fetches, raw SSN, rounded EWMA
+  SSN, recompute delta, and recompute markers without launching VOACAP
+  forecasts. Example:
+
+  ```powershell
+  .\scripts\watch-voacap-ssn.ps1
+  ```
+
 ## Workflow Checkers
 
 - `check-yaml-doc-rigor.ps1` checks first-party runtime YAML headers and
