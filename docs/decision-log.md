@@ -13,6 +13,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Placeholder Title | Proposed | YYYY-MM-DD | placeholder area | - | - | `docs/decisions/ADR-0001-placeholder-slug.md` |
+| ADR-0183 | PSKReporter T3 Worker Budget | Accepted | 2026-06-16 | pskreporter, ingest, config, hot path, operations | - | - | `docs/decisions/ADR-0183-pskreporter-t3-worker-budget.md` |
 | ADR-0182 | VOACAP Runtime SSN State Persistence | Accepted | 2026-06-16 | voacap, pathreliability, config, retained state, operations | ADR-0161 SSN runtime behavior | - | `docs/decisions/ADR-0182-voacap-runtime-ssn-state-persistence.md` |
 | ADR-0181 | RBN Startup Retry And Console Liveness | Accepted | 2026-06-16 | rbn, ingest, dashboard, lifecycle, operations | - | - | `docs/decisions/ADR-0181-rbn-startup-retry-and-console-liveness.md` |
 | ADR-0180 | VOACAP Runtime Output Cleanup | Accepted | 2026-06-16 | voacap, pathreliability, operations, file lifecycle | ADR-0158 process-wrapper cleanup contract; ADR-0169 runtime output-file behavior | - | `docs/decisions/ADR-0180-voacap-runtime-output-cleanup.md` |

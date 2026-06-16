@@ -68,9 +68,9 @@ pskreporter:
   broker: "mqtt.pskreporter.info" # MQTT broker host.
   port: 1883                      # MQTT broker port.
   topic: "pskr/filter/v2/+/+/#"         # MQTT subscription topic; filtering happens downstream
-  workers: 8                          # 0 means automatic (uses all CPU cores, minimum 4)
+  workers: 1                          # Worker goroutines; 0 follows go_runtime.max_procs/GOMAXPROCS
   spot_channel_size: 25000            # Buffered ingest channel between MQTT and processing
-  mqtt_inbound_workers: 8             # 0 means automatic (defaults to workers)
+  mqtt_inbound_workers: 1             # MQTT dispatch workers; 0 means automatic (defaults to workers)
   mqtt_inbound_queue_depth: 4096      # 0 means automatic (defaults to workers * 256, capped)
   mqtt_qos12_enqueue_timeout_ms: 250  # QoS1/2 inbound queue timeout before disconnect (0 = immediate)
   append_spotter_ssid: true           # Append "-#" to receiver calls lacking an SSID for dedup

@@ -2,6 +2,7 @@ package pskreporter
 
 import (
 	"encoding/json"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -263,6 +264,21 @@ func TestMessageHandlerDropsOversizePayload(t *testing.T) {
 	case <-client.processing:
 		t.Fatalf("expected oversized payload to be dropped")
 	default:
+	}
+}
+
+func TestDefaultPSKReporterWorkersFollowsGOMAXPROCS(t *testing.T) {
+	old := runtime.GOMAXPROCS(0)
+	defer runtime.GOMAXPROCS(old)
+
+	runtime.GOMAXPROCS(1)
+	if got := defaultPSKReporterWorkers(); got != 1 {
+		t.Fatalf("GOMAXPROCS=1 default workers = %d, want 1", got)
+	}
+
+	runtime.GOMAXPROCS(2)
+	if got := defaultPSKReporterWorkers(); got != 2 {
+		t.Fatalf("GOMAXPROCS=2 default workers = %d, want 2", got)
 	}
 }
 

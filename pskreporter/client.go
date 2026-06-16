@@ -841,14 +841,15 @@ func (c *Client) stopWorkerPool() {
 }
 
 // Purpose: Choose a default worker count for PSKReporter ingest.
-// Key aspects: Uses NumCPU with a minimum of 4.
+// Key aspects: Follows the effective Go scheduler width for CPU-bounded hosts.
 // Upstream: startWorkerPool.
-// Downstream: runtime.NumCPU.
+// Downstream: runtime.GOMAXPROCS.
 func defaultPSKReporterWorkers() int {
-	workers := runtime.NumCPU()
-	// PSKReporter bursts are high volume; keep a minimum of 4 workers even on small CPUs.
-	if workers < 4 {
-		workers = 4
+	workers := runtime.GOMAXPROCS(0)
+	// Keep auto mode within the process CPU budget. Operators can still set
+	// pskreporter.workers explicitly when they prefer burst throughput.
+	if workers < 1 {
+		workers = 1
 	}
 	return workers
 }
