@@ -116,6 +116,25 @@ func TestWithIngestStatusLabel(t *testing.T) {
 	}
 }
 
+func TestRBNFeedFamilyLiveUsesEitherFeed(t *testing.T) {
+	cases := []struct {
+		name      string
+		rbnCWLive bool
+		rbnFTLive bool
+		want      bool
+	}{
+		{name: "both offline"},
+		{name: "cw live", rbnCWLive: true, want: true},
+		{name: "ft live", rbnFTLive: true, want: true},
+		{name: "both live", rbnCWLive: true, rbnFTLive: true, want: true},
+	}
+	for _, tc := range cases {
+		if got := rbnFeedFamilyLive(tc.rbnCWLive, tc.rbnFTLive); got != tc.want {
+			t.Fatalf("%s: expected %v, got %v", tc.name, tc.want, got)
+		}
+	}
+}
+
 func TestPSKReporterLive(t *testing.T) {
 	now := time.Date(2026, 2, 5, 9, 30, 0, 0, time.UTC)
 	if got := pskReporterLive(pskreporter.HealthSnapshot{}, now); got {

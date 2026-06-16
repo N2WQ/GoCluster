@@ -614,7 +614,10 @@ For the exact thresholds, per-mode offsets, weight rules, and shipped tables, se
 ## What The Cluster Does
 
 - Ingests spots from RBN CW/RTTY, RBN digital, PSKReporter, optional DXSummit HTTP polling, local `DX` commands, and optional peer feeds.
-- Shows enabled ingest sources in the console dashboard; DXSummit appears as `DXSUMMIT` when enabled and recently polling.
+- Shows enabled ingest sources in the console dashboard; the RBN family is live
+  when either CW/RTTY or digital RBN is connected, while source rows still show
+  each enabled feed separately. DXSummit appears as `DXSUMMIT` when enabled and
+  recently polling.
 - Normalizes callsigns, frequencies, modes, and reports before shared validation and enrichment.
 - Adds CTY metadata and optional FCC license checks where that policy applies.
 - Applies shared-ingest flood policy before primary dedupe using the shipped `floodcontrol.yaml` rails.

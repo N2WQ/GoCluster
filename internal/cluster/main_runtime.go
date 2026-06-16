@@ -1167,13 +1167,12 @@ func (r *clusterRuntime) connectRBNFeed() {
 	if r.cfg.RBN.KeepaliveSec > 0 {
 		r.rbnClient.EnableKeepalive(time.Duration(r.cfg.RBN.KeepaliveSec) * time.Second)
 	}
-	if err := r.rbnClient.Connect(); err != nil {
+	if err := r.rbnClient.ConnectWithInitialRetry(); err != nil {
 		log.Printf("Warning: Failed to connect to RBN CW/RTTY: %v", err)
 		r.logIngestConnectionEvent(ingestSourceName(r.cfg.RBN.Name, "RBN"), "failed", eventLogEndpoint(r.cfg.RBN.Host, r.cfg.RBN.Port), err.Error(), "disconnected")
-		return
 	}
 	go forwardSpots(r.rbnClient.GetSpotChannel(), r.ingestInput, "RBN-CW", r.cfg.SpotPolicy, nil)
-	log.Println("RBN CW/RTTY client feeding spots into unified dedup engine")
+	log.Println("RBN CW/RTTY client ready to forward spots into unified dedup engine")
 }
 
 func (r *clusterRuntime) connectRBNDigitalFeed() {
@@ -1186,13 +1185,12 @@ func (r *clusterRuntime) connectRBNDigitalFeed() {
 	if r.cfg.RBNDigital.KeepaliveSec > 0 {
 		r.rbnDigitalClient.EnableKeepalive(time.Duration(r.cfg.RBNDigital.KeepaliveSec) * time.Second)
 	}
-	if err := r.rbnDigitalClient.Connect(); err != nil {
+	if err := r.rbnDigitalClient.ConnectWithInitialRetry(); err != nil {
 		log.Printf("Warning: Failed to connect to RBN Digital: %v", err)
 		r.logIngestConnectionEvent(ingestSourceName(r.cfg.RBNDigital.Name, "RBN Digital"), "failed", eventLogEndpoint(r.cfg.RBNDigital.Host, r.cfg.RBNDigital.Port), err.Error(), "disconnected")
-		return
 	}
 	go forwardSpots(r.rbnDigitalClient.GetSpotChannel(), r.ingestInput, "RBN-FT", r.cfg.SpotPolicy, nil)
-	log.Println("RBN Digital (FT4/FT8) client feeding spots into unified dedup engine")
+	log.Println("RBN Digital (FT4/FT8) client ready to forward spots into unified dedup engine")
 }
 
 func (r *clusterRuntime) connectHumanTelnetFeed() {

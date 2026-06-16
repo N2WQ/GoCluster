@@ -873,7 +873,7 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 
 		rbnCWLive := rbnClient != nil && rbnClient.HealthSnapshot().Connected
 		rbnFTLive := rbnDigitalClient != nil && rbnDigitalClient.HealthSnapshot().Connected
-		rbnLive := rbnFeedsLive(rbnClient, rbnDigitalClient)
+		rbnLive := rbnFeedFamilyLive(rbnCWLive, rbnFTLive)
 		pskLive := pskReporterLive(pskSnap, now)
 		dxsummitSnap := dxsummit.HealthSnapshot{}
 		if dxsummitClient != nil {
@@ -5051,15 +5051,12 @@ func diffSourceModes(current, previous map[string]uint64, source string, modes .
 	return total
 }
 
-// Purpose: Report whether both RBN feeds are connected.
-// Key aspects: Returns false if either client is nil or disconnected.
+// Purpose: Report whether the RBN source family has any live feed.
+// Key aspects: CW/RTTY and FT feeds remain individually visible in source rows.
 // Upstream: stats ticker liveness.
-// Downstream: rbn.Client.HealthSnapshot.
-func rbnFeedsLive(rbnClient *rbn.Client, rbnDigital *rbn.Client) bool {
-	if rbnClient == nil || rbnDigital == nil {
-		return false
-	}
-	return rbnClient.HealthSnapshot().Connected && rbnDigital.HealthSnapshot().Connected
+// Downstream: withIngestStatusLabel.
+func rbnFeedFamilyLive(rbnCWLive, rbnFTLive bool) bool {
+	return rbnCWLive || rbnFTLive
 }
 
 // Purpose: Report whether PSKReporter is connected and delivering messages recently.

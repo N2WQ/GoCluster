@@ -28,11 +28,15 @@ const (
 	maxRBNDialFrequencyKHz = 3000000.0
 	rbnMaxLineLength       = 1024
 	rbnWriteDeadline       = 10 * time.Second
+	rbnReconnectInitial    = 5 * time.Second
+	rbnReconnectMax        = 60 * time.Second
 )
 
 // BadCallReporter receives parse-time callsign drops. Implementations must be
 // short and non-blocking because it runs on the telnet read loop.
 type BadCallReporter func(source, role, reason, call, deCall, dxCall, mode, detail string)
+
+type rbnDialFunc func(network, addr string) (net.Conn, error)
 
 // Client represents an RBN telnet client
 type Client struct {
@@ -49,6 +53,7 @@ type Client struct {
 	skewStore  *skew.Store
 	reconnect  chan struct{}
 	stopOnce   sync.Once
+	startOnce  sync.Once
 	writeMu    sync.Mutex
 	lastLineAt atomic.Int64
 	lastSpotAt atomic.Int64
@@ -62,6 +67,9 @@ type Client struct {
 	telnetTransport   string
 	keepaliveInterval time.Duration
 	keepaliveDone     chan struct{}
+	dial              rbnDialFunc
+	reconnectInitial  time.Duration
+	reconnectMax      time.Duration
 
 	rawChan chan<- string // optional passthrough for non-DX lines (minimal parser only)
 
@@ -183,6 +191,7 @@ func NewClient(host string, port int, callsign string, name string, skewStore *s
 		reconnect:  make(chan struct{}, 1),
 		keepSSID:   keepSSID,
 		bufferSize: bufferSize,
+		dial:       defaultRBNDial,
 	}
 }
 
@@ -295,9 +304,37 @@ func (c *Client) Connect() error {
 	if err := c.establishConnection(); err != nil {
 		return err
 	}
-	// Goroutine: monitor reconnect signals and re-establish connections.
-	go c.connectionSupervisor()
+	c.startConnectionSupervisor()
 	return nil
+}
+
+// ConnectWithInitialRetry starts supervision even when the first dial fails.
+// Key aspects: Returns the first error to the caller while bounded background
+// retry continues until a connection succeeds or Stop signals shutdown.
+// Upstream: cluster startup for enabled RBN feeds.
+// Downstream: establishConnection, connectionSupervisor goroutine.
+func (c *Client) ConnectWithInitialRetry() error {
+	c.startConnectionSupervisor()
+	if err := c.establishConnection(); err != nil {
+		c.requestReconnect(err)
+		return err
+	}
+	return nil
+}
+
+func (c *Client) startConnectionSupervisor() {
+	c.startOnce.Do(func() {
+		// Goroutine: monitor reconnect signals and re-establish connections.
+		go c.connectionSupervisor()
+	})
+}
+
+func defaultRBNDial(network, addr string) (net.Conn, error) {
+	dialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 2 * time.Minute, // OS-level keepalive to detect silent mid-path drops
+	}
+	return dialer.Dial(network, addr)
 }
 
 // Purpose: Dial the RBN feed and start login/read loops.
@@ -308,11 +345,11 @@ func (c *Client) establishConnection() error {
 	addr := net.JoinHostPort(c.host, fmt.Sprintf("%d", c.port))
 	log.Printf("%s: connecting to %s...", c.displayName(), addr)
 
-	dialer := &net.Dialer{
-		Timeout:   30 * time.Second,
-		KeepAlive: 2 * time.Minute, // OS-level keepalive to detect silent mid-path drops
+	dial := c.dial
+	if dial == nil {
+		dial = defaultRBNDial
 	}
-	conn, err := dialer.Dial("tcp", addr)
+	conn, err := dial("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", c.displayName(), err)
 	}
@@ -353,11 +390,6 @@ func (c *Client) establishConnection() error {
 // Upstream: Connect goroutine.
 // Downstream: establishConnection, requestReconnect.
 func (c *Client) connectionSupervisor() {
-	const (
-		initialDelay = 5 * time.Second
-		maxDelay     = 60 * time.Second
-	)
-
 	for {
 		select {
 		case <-c.shutdown:
@@ -366,7 +398,17 @@ func (c *Client) connectionSupervisor() {
 			if c.isShutdown() {
 				return
 			}
-			delay := initialDelay
+			delay := c.reconnectInitial
+			if delay <= 0 {
+				delay = rbnReconnectInitial
+			}
+			maxDelay := c.reconnectMax
+			if maxDelay <= 0 {
+				maxDelay = rbnReconnectMax
+			}
+			if delay > maxDelay {
+				delay = maxDelay
+			}
 
 			for {
 				if c.isShutdown() {

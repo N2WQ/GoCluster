@@ -8,6 +8,18 @@ This directory owns telnet ingest from the Reverse Beacon Network feeds and othe
 - RBN digital feed
 - optional minimal-parser telnet feeds for human or upstream cluster input
 
+## Connection Lifecycle
+
+Enabled production RBN feeds keep retrying after a startup dial or DNS failure.
+The first error is still logged and recorded as an ingest connection failure,
+but the client remains owned by the runtime, its health row stays visible, and
+bounded background reconnect attempts continue until shutdown.
+
+The console's top-level RBN source-family label is green when either the
+CW/RTTY RBN feed or the digital RBN feed is connected. The detailed ingest
+source rows remain per-feed: an operator can see one RBN feed green and the
+other red during a partial outage.
+
 ## Parsing Shape
 
 The parser is intentionally split into two stages.
