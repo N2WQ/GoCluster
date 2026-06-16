@@ -2,6 +2,9 @@ package pathreliability
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -96,6 +99,33 @@ func TestVOACAPForecastCacheStoreEnforcesMaxEntries(t *testing.T) {
 	}
 	if loaded[0].key.dxCell != 3 || loaded[1].key.dxCell != 2 {
 		t.Fatalf("loaded entries should keep newest first, got %+v", loaded)
+	}
+}
+
+func TestOpenVOACAPForecastCacheStoreRejectsEmptyPath(t *testing.T) {
+	store, err := OpenVOACAPForecastCacheStore(" \t ")
+	if err == nil {
+		_ = store.Close()
+		t.Fatalf("OpenVOACAPForecastCacheStore() succeeded, want empty-path error")
+	}
+	if err.Error() != "voacap forecast cache: path is empty" {
+		t.Fatalf("OpenVOACAPForecastCacheStore() error = %v", err)
+	}
+}
+
+func TestOpenVOACAPForecastCacheStoreRejectsNonDirectory(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "voacap-forecast-cache")
+	if err := os.WriteFile(dbPath, []byte("not a pebble db"), 0o644); err != nil {
+		t.Fatalf("write db path file: %v", err)
+	}
+
+	store, err := OpenVOACAPForecastCacheStore(dbPath)
+	if err == nil {
+		_ = store.Close()
+		t.Fatalf("OpenVOACAPForecastCacheStore() succeeded, want non-directory error")
+	}
+	if !strings.Contains(err.Error(), "exists and is not a directory") {
+		t.Fatalf("OpenVOACAPForecastCacheStore() error = %v, want non-directory error", err)
 	}
 }
 

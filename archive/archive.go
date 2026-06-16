@@ -16,6 +16,7 @@ import (
 	"dxcluster/config"
 	"dxcluster/internal/byteutil"
 	"dxcluster/internal/numutil"
+	"dxcluster/internal/pebbleutil"
 	"dxcluster/spot"
 	"dxcluster/strutil"
 
@@ -159,29 +160,11 @@ func NewWriter(cfg config.ArchiveConfig) (*Writer, error) {
 // Upstream: NewWriter.
 // Downstream: pebble.Open.
 func openArchiveDB(cfg config.ArchiveConfig) (*pebble.DB, error) {
-	path := strings.TrimSpace(cfg.DBPath)
-	if path == "" {
-		return nil, errors.New("archive: db_path is empty")
+	path, err := prepareArchiveDBDir(cfg.DBPath, cfg.AutoDeleteCorruptDB)
+	if err != nil {
+		return nil, err
 	}
-	if info, err := os.Stat(path); err == nil {
-		if !info.IsDir() {
-			if cfg.AutoDeleteCorruptDB {
-				if err := DropDB(path); err != nil {
-					return nil, fmt.Errorf("archive: delete non-directory path: %w", err)
-				}
-				log.Printf("archive: removed non-directory path at %s", path)
-			} else {
-				return nil, fmt.Errorf("archive: %s exists and is not a directory", path)
-			}
-		}
-	} else if !os.IsNotExist(err) {
-		return nil, fmt.Errorf("archive: stat path: %w", err)
-	}
-
-	if err := os.MkdirAll(path, 0o755); err != nil {
-		return nil, fmt.Errorf("archive: ensure directory: %w", err)
-	}
-	db, err := pebble.Open(path, &pebble.Options{})
+	db, err := pebbleutil.Open(path, &pebble.Options{})
 	if err == nil {
 		return db, nil
 	}
@@ -189,10 +172,11 @@ func openArchiveDB(cfg config.ArchiveConfig) (*pebble.DB, error) {
 		if err := DropDB(path); err != nil {
 			return nil, fmt.Errorf("archive: delete corrupt db: %w", err)
 		}
-		if err := os.MkdirAll(path, 0o755); err != nil {
-			return nil, fmt.Errorf("archive: ensure directory: %w", err)
+		path, err = prepareArchiveDBDir(path, false)
+		if err != nil {
+			return nil, err
 		}
-		db, err = pebble.Open(path, &pebble.Options{})
+		db, err = pebbleutil.Open(path, &pebble.Options{})
 		if err != nil {
 			return nil, fmt.Errorf("archive: open after delete: %w", err)
 		}
@@ -200,6 +184,45 @@ func openArchiveDB(cfg config.ArchiveConfig) (*pebble.DB, error) {
 		return db, nil
 	}
 	return nil, fmt.Errorf("archive: open: %w", err)
+}
+
+func prepareArchiveDBDir(path string, autoDeleteNonDirectory bool) (string, error) {
+	prepared, err := pebbleutil.PrepareDir(path)
+	if err == nil {
+		return prepared, nil
+	}
+	var notDir *pebbleutil.NotDirectoryError
+	if errors.As(err, &notDir) && autoDeleteNonDirectory {
+		if err := DropDB(notDir.Path); err != nil {
+			return "", fmt.Errorf("archive: delete non-directory path: %w", err)
+		}
+		log.Printf("archive: removed non-directory path at %s", notDir.Path)
+		prepared, err = pebbleutil.PrepareDir(notDir.Path)
+		if err == nil {
+			return prepared, nil
+		}
+	}
+	return "", archivePrepareDirError(err)
+}
+
+func archivePrepareDirError(err error) error {
+	if errors.Is(err, pebbleutil.ErrEmptyPath) {
+		return errors.New("archive: db_path is empty")
+	}
+	var notDir *pebbleutil.NotDirectoryError
+	if errors.As(err, &notDir) {
+		return fmt.Errorf("archive: %s exists and is not a directory", notDir.Path)
+	}
+	var opErr *pebbleutil.DirOpError
+	if errors.As(err, &opErr) {
+		switch opErr.Op {
+		case pebbleutil.DirOpStat:
+			return fmt.Errorf("archive: stat path: %w", opErr.Err)
+		case pebbleutil.DirOpMkdir:
+			return fmt.Errorf("archive: ensure directory: %w", opErr.Err)
+		}
+	}
+	return fmt.Errorf("archive: %w", err)
 }
 
 // Purpose: Map archive synchronous mode to Pebble write options.

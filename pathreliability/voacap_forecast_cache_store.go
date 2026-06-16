@@ -1,14 +1,20 @@
+// File role: Owns the Pebble-backed restart cache for completed VOACAP forecast
+// windows while keeping live prediction lookups memory-only.
+// Crawler notes: This store persists derived forecast records only; SSN state,
+// warm-up queues, worker lifecycle, and VOACAP runner output files live
+// elsewhere.
 package pathreliability
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"dxcluster/internal/pebbleutil"
 
 	"github.com/cockroachdb/pebble"
 )
@@ -82,25 +88,35 @@ const (
 // OpenVOACAPForecastCacheStore opens the dedicated Pebble DB for restart
 // reuse of VOACAP forecast windows.
 func OpenVOACAPForecastCacheStore(path string) (*VOACAPForecastCacheStore, error) {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return nil, errors.New("voacap forecast cache: path is empty")
+	path, err := pebbleutil.PrepareDir(path)
+	if err != nil {
+		return nil, voacapForecastCacheOpenDirError(err)
 	}
-	if info, err := os.Stat(path); err == nil {
-		if !info.IsDir() {
-			return nil, fmt.Errorf("voacap forecast cache: %s exists and is not a directory", path)
-		}
-	} else if !os.IsNotExist(err) {
-		return nil, fmt.Errorf("voacap forecast cache: stat path: %w", err)
-	}
-	if err := os.MkdirAll(path, 0o755); err != nil {
-		return nil, fmt.Errorf("voacap forecast cache: mkdir: %w", err)
-	}
-	db, err := pebble.Open(path, &pebble.Options{})
+	db, err := pebbleutil.Open(path, &pebble.Options{})
 	if err != nil {
 		return nil, fmt.Errorf("voacap forecast cache: open: %w", err)
 	}
 	return &VOACAPForecastCacheStore{path: path, db: db}, nil
+}
+
+func voacapForecastCacheOpenDirError(err error) error {
+	if errors.Is(err, pebbleutil.ErrEmptyPath) {
+		return errors.New("voacap forecast cache: path is empty")
+	}
+	var notDir *pebbleutil.NotDirectoryError
+	if errors.As(err, &notDir) {
+		return fmt.Errorf("voacap forecast cache: %s exists and is not a directory", notDir.Path)
+	}
+	var opErr *pebbleutil.DirOpError
+	if errors.As(err, &opErr) {
+		switch opErr.Op {
+		case pebbleutil.DirOpStat:
+			return fmt.Errorf("voacap forecast cache: stat path: %w", opErr.Err)
+		case pebbleutil.DirOpMkdir:
+			return fmt.Errorf("voacap forecast cache: mkdir: %w", opErr.Err)
+		}
+	}
+	return fmt.Errorf("voacap forecast cache: %w", err)
 }
 
 func (s *VOACAPForecastCacheStore) Close() error {

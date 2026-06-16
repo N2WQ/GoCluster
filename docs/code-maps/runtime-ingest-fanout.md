@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `b1342146d69c9ae9`
+- Source fingerprint: `3bde94ed9f271dbb`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -303,6 +303,8 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0184](docs/decisions/ADR-0184-voacap-forecast-cache-persistence.md) | Accepted | 2026-06-16 | voacap, pathreliability, config, retained state, operations | `path:internal/cluster, path:telnet` |
+| [ADR-0182](docs/decisions/ADR-0182-voacap-runtime-ssn-state-persistence.md) | Accepted | 2026-06-16 | voacap, pathreliability, config, retained state, operations | `path:internal/cluster` |
 | [ADR-0181](docs/decisions/ADR-0181-rbn-startup-retry-and-console-liveness.md) | Accepted | 2026-06-16 | rbn, ingest, dashboard, lifecycle, operations | `path:internal/cluster` |
 | [ADR-0178](docs/decisions/ADR-0178-voacap-invalid-request-reason-diagnostics.md) | Accepted | 2026-06-12 | pathreliability, telnet, voacap, operations, observability, supportability | `area:telnet, path:internal/cluster, path:telnet` |
 | [ADR-0176](docs/decisions/ADR-0176-path-prediction-admission-reuse.md) | Accepted | 2026-06-11 | telnet, pathreliability, voacap, hot path, observability | `area:telnet, path:telnet` |

@@ -36,7 +36,6 @@ require (
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	golang.org/x/exp v0.0.0-20230626212559-97b1e661b5df // indirect
-	golang.org/x/sys v0.38.0 // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
 	modernc.org/libc v1.61.13 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
@@ -54,6 +53,7 @@ require (
 	github.com/uber/h3-go/v4 v4.4.0
 	github.com/zeebo/xxh3 v1.0.2
 	github.com/ziutek/telnet v0.1.0
+	golang.org/x/sys v0.38.0
 	golang.org/x/term v0.35.0
 	golang.org/x/time v0.14.0
 	howett.net/plist v1.0.1
