@@ -13,6 +13,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Placeholder Title | Proposed | YYYY-MM-DD | placeholder area | - | - | `docs/decisions/ADR-0001-placeholder-slug.md` |
+| ADR-0186 | Prod Secondary Dedupe Window Alignment | Accepted | 2026-06-16 | config, dedupe, operations | - | - | `docs/decisions/ADR-0186-prod-secondary-dedupe-window-alignment.md` |
 | ADR-0185 | Shared Pebble Directory Open Helper | Accepted | 2026-06-16 | pebble, archive, voacap, pathreliability, retained state | - | - | `docs/decisions/ADR-0185-shared-pebble-directory-open-helper.md` |
 | ADR-0184 | VOACAP Forecast Cache Persistence | Accepted | 2026-06-16 | voacap, pathreliability, config, retained state, operations | ADR-0162 memory-only restart behavior | - | `docs/decisions/ADR-0184-voacap-forecast-cache-persistence.md` |
 | ADR-0183 | PSKReporter T3 Worker Budget | Accepted | 2026-06-16 | pskreporter, ingest, config, hot path, operations | - | - | `docs/decisions/ADR-0183-pskreporter-t3-worker-budget.md` |
