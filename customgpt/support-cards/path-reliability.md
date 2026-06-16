@@ -43,6 +43,11 @@ inspect user-visible diagnostics:
   effective `voacap_fallback.ssn_state_path`, startup warnings about SSN state
   restore, and NOAA fetch errors before changing path thresholds. The SSN state
   file is per-node runtime state; do not share it between running processes.
+- Completed VOACAP forecast windows persist separately in the per-node Pebble
+  cache at `voacap_fallback.forecast_cache_db_path`. Current restored records
+  become ordinary memory cache hits and bypass `voacap_fallback.delay_seconds`;
+  stale/malformed records are pruned and a missing/unavailable cache uses the
+  normal warm-up delay and queue path.
 - `brx` diagnostics mean the spot was marked as a beacon and path prediction
   used only the DX-to-user receive leg. Beacon VOACAP fallback diagnostics use
   `bvcap`, `bvaln`, `bvup`, or `bvop`; their SNR and REL fields are receive-leg

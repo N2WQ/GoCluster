@@ -415,14 +415,15 @@ type VOACAPClosedFallback struct {
 	logger      VOACAPFallbackLogger
 	queue       chan VOACAPClosedJob
 
-	mu        sync.Mutex
-	cache     map[voacapCacheKey]voacapCacheEntry
-	delays    map[voacapDelayKey]voacapDelayEntry
-	inflight  map[voacapCacheKey]struct{}
-	lastPrune time.Time
-	startOnce sync.Once
-	wg        sync.WaitGroup
-	running   atomic.Bool
+	mu                 sync.Mutex
+	cache              map[voacapCacheKey]voacapCacheEntry
+	delays             map[voacapDelayKey]voacapDelayEntry
+	inflight           map[voacapCacheKey]struct{}
+	forecastCacheStore *VOACAPForecastCacheStore
+	lastPrune          time.Time
+	startOnce          sync.Once
+	wg                 sync.WaitGroup
+	running            atomic.Bool
 
 	statsInvalidRequest atomic.Int64
 	statsSSNUnavailable atomic.Int64
@@ -524,6 +525,54 @@ func (f *VOACAPClosedFallback) Wait() {
 		return
 	}
 	f.wg.Wait()
+}
+
+// AttachForecastCacheStore hydrates current persisted forecasts into the owned
+// memory cache. Future lookups still read memory only; the store is used by
+// worker completions and closed after Wait during runtime shutdown.
+func (f *VOACAPClosedFallback) AttachForecastCacheStore(store *VOACAPForecastCacheStore, now time.Time) (VOACAPForecastCacheRestoreStats, error) {
+	var stats VOACAPForecastCacheRestoreStats
+	if f == nil || store == nil {
+		return stats, nil
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	now = now.UTC()
+	f.mu.Lock()
+	f.forecastCacheStore = store
+	f.mu.Unlock()
+
+	ssn, ok := f.ssnProvider.CurrentSSN(now)
+	if !ok {
+		stats.SSNUnavailable = true
+		return stats, nil
+	}
+	loaded, stats, err := store.loadCurrent(now, ssn, f.fallback)
+	if err != nil {
+		return stats, err
+	}
+	f.mu.Lock()
+	for i := range loaded {
+		item := &loaded[i]
+		f.addCacheLocked(item.key, item.entry)
+	}
+	f.mu.Unlock()
+	return stats, nil
+}
+
+func (f *VOACAPClosedFallback) CloseForecastCacheStore() error {
+	if f == nil {
+		return nil
+	}
+	f.mu.Lock()
+	store := f.forecastCacheStore
+	f.forecastCacheStore = nil
+	f.mu.Unlock()
+	if store == nil {
+		return nil
+	}
+	return store.Close()
 }
 
 func (f *VOACAPClosedFallback) Snapshot() VOACAPClosedFallbackSnapshot {
@@ -982,9 +1031,10 @@ func (f *VOACAPClosedFallback) worker(ctx context.Context) {
 func (f *VOACAPClosedFallback) runJob(ctx context.Context, job VOACAPClosedJob) {
 	forecast, err := f.forecaster.ForecastClosed(ctx, job)
 	now := time.Now().UTC()
+	var store *VOACAPForecastCacheStore
+	var persistEntry voacapCacheEntry
+	persistKey := job.key
 	f.mu.Lock()
-	defer f.notifyJobDone(job, err)
-	defer f.mu.Unlock()
 	delete(f.inflight, job.key)
 	if err != nil {
 		if ctx.Err() == nil {
@@ -994,10 +1044,22 @@ func (f *VOACAPClosedFallback) runJob(ctx context.Context, job VOACAPClosedJob) 
 			f.statsRunFailure.Add(1)
 		}
 		f.addDelayLocked(job.delayKey, voacapDelayEntry{firstSeen: now, lastSeen: now})
+		f.mu.Unlock()
+		f.notifyJobDone(job, err)
 		return
 	}
 	f.statsRunSuccess.Add(1)
-	f.addCacheLocked(job.key, voacapCacheEntry{forecast: forecast, storedAt: now})
+	persistEntry = voacapCacheEntry{forecast: forecast, storedAt: now}
+	f.addCacheLocked(job.key, persistEntry)
+	store = f.forecastCacheStore
+	f.mu.Unlock()
+	f.notifyJobDone(job, nil)
+
+	if store != nil {
+		if err := store.storeForecast(persistKey, persistEntry, f.fallback, now); err != nil && f.logger != nil {
+			f.logger.Printf("Warning: VOACAP forecast cache persist failed user_cell=%d dx_cell=%d band=%s ssn=%d: %v", job.Request.UserCell, job.Request.DXCell, job.Request.Band, job.SSN, err)
+		}
+	}
 }
 
 func (f *VOACAPClosedFallback) notifyJobDone(job VOACAPClosedJob, err error) {

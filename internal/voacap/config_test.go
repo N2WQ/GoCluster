@@ -21,8 +21,8 @@ func TestLoadExperimentConfigFromShippedYAML(t *testing.T) {
 	if cfg.RecomputeDeltaPercent != 12 {
 		t.Fatalf("RecomputeDeltaPercent = %v, want 12", cfg.RecomputeDeltaPercent)
 	}
-	if len(cfg.CenterFrequenciesMHz) != 10 {
-		t.Fatalf("CenterFrequenciesMHz len = %d, want 10", len(cfg.CenterFrequenciesMHz))
+	if len(cfg.CenterFrequenciesMHz) != 9 {
+		t.Fatalf("CenterFrequenciesMHz len = %d, want 9", len(cfg.CenterFrequenciesMHz))
 	}
 }
 

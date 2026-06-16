@@ -109,7 +109,7 @@ call_correction:
     # Explicit 0 is only neutral for distance weights, prior_log_min_milli,
     # advantage weighted deltas, and extra confidence deltas; thresholds,
     # smoothing, and caps must stay positive.
-    enabled: false
+    enabled: true
     weight_distance1_milli: 350
     weight_distance2_milli: 200
     weighted_smoothing_milli: 1000

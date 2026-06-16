@@ -94,4 +94,4 @@ evidence remains authoritative.
 - Related ADRs: ADR-0160, ADR-0161
 - Related TSRs: none
 - Supersedes / superseded by: supersedes ADR-0161's single best-window cache
-  value clause
+  value clause; memory-only restart behavior superseded by ADR-0184

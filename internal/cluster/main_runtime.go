@@ -285,6 +285,28 @@ func (r *clusterRuntime) loadPathReliabilityConfig() bool {
 		if err != nil {
 			return r.failStartup("VOACAP closed fallback config failed: %v", err)
 		}
+		if cacheStore, err := pathreliability.OpenVOACAPForecastCacheStore(pathCfg.VOACAPFallback.ForecastCacheDBPath); err != nil {
+			log.Printf("Warning: VOACAP forecast cache open failed (%s): %v; starting with cold memory cache", pathCfg.VOACAPFallback.ForecastCacheDBPath, err)
+		} else {
+			restoreStart := time.Now()
+			stats, restoreErr := fallback.AttachForecastCacheStore(cacheStore, restoreStart.UTC())
+			if restoreErr != nil {
+				log.Printf("Warning: VOACAP forecast cache restore failed (%s): %v; continuing with cold memory cache", cacheStore.Path(), restoreErr)
+			} else if stats.SSNUnavailable {
+				log.Printf("VOACAP forecast cache opened at %s; restore skipped because current SSN is unavailable", cacheStore.Path())
+			} else {
+				log.Printf("VOACAP forecast cache restored from %s loaded=%d pruned=%d expired=%d invalid=%d stale_generation=%d stale_window=%d overflow=%d duration=%s",
+					cacheStore.Path(),
+					stats.Loaded,
+					stats.Pruned,
+					stats.Expired,
+					stats.Invalid,
+					stats.StaleGeneration,
+					stats.StaleWindow,
+					stats.Overflow,
+					time.Since(restoreStart).Round(time.Millisecond))
+			}
+		}
 		r.voacapSSN = ssnMonitor
 		r.voacapFallback = fallback
 	}
@@ -1485,6 +1507,9 @@ func (r *clusterRuntime) close() {
 	}
 	if r.voacapFallback != nil {
 		r.voacapFallback.Wait()
+		if err := r.voacapFallback.CloseForecastCacheStore(); err != nil {
+			log.Printf("Warning: VOACAP forecast cache close failed: %v", err)
+		}
 	}
 	if r.voacapSSN != nil {
 		r.voacapSSN.Wait()

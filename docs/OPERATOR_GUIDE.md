@@ -270,8 +270,13 @@ prefixes.
   The runtime SSN monitor persists NOAA validators, the last observation, EWMA,
   and the current rounded SSN generation at
   `voacap_fallback.ssn_state_path`; a restart can reuse that SSN baseline when
-  the state file is present. VOACAP hourly forecast cache records are still
-  in-memory only and are rebuilt lazily after restart.
+  the state file is present. Completed VOACAP hourly forecast windows persist
+  in the per-node Pebble cache at `voacap_fallback.forecast_cache_db_path`.
+  On restart, records that still match the current cache schema, model
+  generation, rounded SSN generation, forecast month, TTL, and current UTC hour
+  hydrate the memory cache before workers start, so they bypass
+  `voacap_fallback.delay_seconds`. Stale or malformed cache records are pruned;
+  a missing/unavailable cache cold-starts normal delay/queue behavior.
 - `valn|<p50>/<snr>h<hour>s<ssn>` means sparse bucket p50 evidence was
   insufficient by sample gates but aligned with the current-hour VOACAP class.
   `<p50>` is rounded for display so the diagnostic fits the fixed-width line.

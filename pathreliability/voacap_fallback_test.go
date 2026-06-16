@@ -275,6 +275,168 @@ func TestVOACAPClosedFallbackCheckForecastWindowDelaysAndEnqueues(t *testing.T) 
 	}
 }
 
+func TestVOACAPClosedFallbackRestoresPersistedCurrentForecastAndBypassesDelay(t *testing.T) {
+	cfg := testVOACAPFallbackConfig()
+	cfg.VOACAPFallback.DelaySeconds = 900
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	store := openTestVOACAPForecastCacheStore(t)
+	key := testVOACAPForecastCacheKey(now, 2)
+	if err := store.storeForecast(key, testVOACAPForecastCacheEntry(now, -31, 20), cfg.VOACAPFallback, now); err != nil {
+		t.Fatalf("storeForecast() error: %v", err)
+	}
+
+	var calls atomic.Int32
+	fallback := newTestClosedFallback(t, cfg, fakeClosedForecaster{
+		fn: func(context.Context, VOACAPClosedJob) (VOACAPClosedForecast, error) {
+			calls.Add(1)
+			return VOACAPClosedForecast{}, nil
+		},
+	}, fixedSSNProvider{ssn: 112})
+	defer func() {
+		if err := fallback.CloseForecastCacheStore(); err != nil {
+			t.Fatalf("CloseForecastCacheStore() error: %v", err)
+		}
+	}()
+	stats, err := fallback.AttachForecastCacheStore(store, now)
+	if err != nil {
+		t.Fatalf("AttachForecastCacheStore() error: %v", err)
+	}
+	if stats.Loaded != 1 || stats.Pruned != 0 || stats.SSNUnavailable {
+		t.Fatalf("unexpected restore stats: %+v", stats)
+	}
+
+	got := fallback.CheckForecastDetailed(testClosedRequest(), now)
+	if got.Status != VOACAPForecastCheckReady || got.CacheMiss {
+		t.Fatalf("restored current forecast should be immediately ready, got %+v", got)
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("restored cache hit should not call forecaster, calls=%d", calls.Load())
+	}
+	snap := fallback.Snapshot()
+	if snap.DelayEntries != 0 || snap.InflightEntries != 0 || snap.QueueDepth != 0 {
+		t.Fatalf("restored cache hit should bypass warm-up state, snapshot=%+v", snap)
+	}
+	fallbackStats := fallback.StatsSnapshot()
+	if fallbackStats.CacheHit != 1 || fallbackStats.DelayWait != 0 || fallbackStats.Queued != 0 {
+		t.Fatalf("restored cache hit should report only cache hit, stats=%+v", fallbackStats)
+	}
+}
+
+func TestVOACAPClosedFallbackSkipsStalePersistedForecastAndUsesDelay(t *testing.T) {
+	cfg := testVOACAPFallbackConfig()
+	cfg.VOACAPFallback.DelaySeconds = 900
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	store := openTestVOACAPForecastCacheStore(t)
+	stale := testVOACAPForecastCacheEntry(now, -31, 21)
+	writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 2), stale, nil)
+
+	fallback := newTestClosedFallback(t, cfg, fakeClosedForecaster{}, fixedSSNProvider{ssn: 112})
+	defer func() {
+		if err := fallback.CloseForecastCacheStore(); err != nil {
+			t.Fatalf("CloseForecastCacheStore() error: %v", err)
+		}
+	}()
+	stats, err := fallback.AttachForecastCacheStore(store, now)
+	if err != nil {
+		t.Fatalf("AttachForecastCacheStore() error: %v", err)
+	}
+	if stats.Loaded != 0 || stats.StaleWindow != 1 || stats.Pruned != 1 {
+		t.Fatalf("stale restored record should be pruned, stats=%+v", stats)
+	}
+
+	got := fallback.CheckForecastDetailed(testClosedRequest(), now)
+	if got.Status != VOACAPForecastCheckDelayWait || !got.CacheMiss {
+		t.Fatalf("stale restored record should fall back to delay, got %+v", got)
+	}
+	if snap := fallback.Snapshot(); snap.DelayEntries != 1 || snap.CacheEntries != 0 {
+		t.Fatalf("delay state after stale restore mismatch: %+v", snap)
+	}
+}
+
+func TestVOACAPClosedFallbackRestoreRequiresCurrentSSN(t *testing.T) {
+	cfg := testVOACAPFallbackConfig()
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	store := openTestVOACAPForecastCacheStore(t)
+	if err := store.storeForecast(testVOACAPForecastCacheKey(now, 2), testVOACAPForecastCacheEntry(now, -31, 20), cfg.VOACAPFallback, now); err != nil {
+		t.Fatalf("storeForecast() error: %v", err)
+	}
+
+	fallback := newTestClosedFallback(t, cfg, fakeClosedForecaster{}, fixedSSNProvider{})
+	defer func() {
+		if err := fallback.CloseForecastCacheStore(); err != nil {
+			t.Fatalf("CloseForecastCacheStore() error: %v", err)
+		}
+	}()
+	stats, err := fallback.AttachForecastCacheStore(store, now)
+	if err != nil {
+		t.Fatalf("AttachForecastCacheStore() error: %v", err)
+	}
+	if !stats.SSNUnavailable || stats.Loaded != 0 || fallback.Snapshot().CacheEntries != 0 {
+		t.Fatalf("restore without SSN should not hydrate forecasts, stats=%+v snapshot=%+v", stats, fallback.Snapshot())
+	}
+	got := fallback.CheckForecastDetailed(testClosedRequest(), now)
+	if got.Status != VOACAPForecastCheckSSNUnavailable {
+		t.Fatalf("persisted forecast must not mask missing SSN, got %+v", got)
+	}
+}
+
+func TestVOACAPClosedFallbackPersistsSuccessfulWorkerForecast(t *testing.T) {
+	cfg := testVOACAPFallbackConfig()
+	cfg.VOACAPFallback.DelaySeconds = 0
+	cfg.VOACAPFallback.ForecastHours = 2
+	now := time.Now().UTC()
+	store := openTestVOACAPForecastCacheStore(t)
+
+	var calls atomic.Int32
+	forecaster := fakeClosedForecaster{
+		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
+			calls.Add(1)
+			return VOACAPClosedForecast{
+				WindowStartUTC: job.WindowStartUTC,
+				Records: []VOACAPHourlyForecast{
+					{FT8SNRDB: -20, HourUTC: now.Hour(), FrequencyMHz: job.FrequencyMHz},
+					{FT8SNRDB: -18, HourUTC: now.Add(time.Hour).Hour(), FrequencyMHz: job.FrequencyMHz},
+				},
+				OutputPath: "runtime-output-should-not-persist.out",
+				Elapsed:    time.Second,
+			}, nil
+		},
+	}
+	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
+	stats, err := fallback.AttachForecastCacheStore(store, now)
+	if err != nil {
+		t.Fatalf("AttachForecastCacheStore() error: %v", err)
+	}
+	if stats.Loaded != 0 {
+		t.Fatalf("empty store loaded unexpected entries: %+v", stats)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	fallback.Start(ctx)
+	defer func() {
+		cancel()
+		fallback.Wait()
+		if err := fallback.CloseForecastCacheStore(); err != nil {
+			t.Fatalf("CloseForecastCacheStore() error: %v", err)
+		}
+	}()
+
+	if _, ok := fallback.CheckForecastWindow(testClosedRequest(), now); ok {
+		t.Fatalf("enqueue lookup should not synchronously return a forecast")
+	}
+	waitUntil(t, func() bool { return calls.Load() == 1 && fallback.Snapshot().CacheEntries == 1 })
+
+	loaded, loadStats, err := store.loadCurrent(now, 112, cfg.VOACAPFallback)
+	if err != nil {
+		t.Fatalf("loadCurrent() error: %v", err)
+	}
+	if len(loaded) != 1 || loadStats.Loaded != 1 {
+		t.Fatalf("persisted worker forecast missing, stats=%+v loaded=%d", loadStats, len(loaded))
+	}
+	if loaded[0].entry.forecast.OutputPath != "" || loaded[0].entry.forecast.Elapsed != 0 {
+		t.Fatalf("persisted forecast should not retain runtime output metadata: %+v", loaded[0].entry.forecast)
+	}
+}
+
 func TestVOACAPClosedFallbackCheckForecastWindowWaitRefreshesEmptyCache(t *testing.T) {
 	cfg := testVOACAPFallbackConfig()
 	cfg.VOACAPFallback.ForecastHours = 2
@@ -1293,6 +1455,47 @@ func TestVOACAPRunnerClosedForecasterLiveSafeLabelDeck(t *testing.T) {
 	}
 	if forecast.OutputPath == "" {
 		t.Fatalf("live forecast missing output path: %+v", forecast)
+	}
+}
+
+func BenchmarkVOACAPClosedFallbackCheckForecastDetailedCacheHit(b *testing.B) {
+	cfg := testVOACAPFallbackConfig()
+	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	fallback, err := NewVOACAPClosedFallback(cfg, fakeClosedForecaster{}, fixedSSNProvider{ssn: 112}, nil)
+	if err != nil {
+		b.Fatalf("NewVOACAPClosedFallback() error: %v", err)
+	}
+	store, err := OpenVOACAPForecastCacheStore(b.TempDir())
+	if err != nil {
+		b.Fatalf("OpenVOACAPForecastCacheStore() error: %v", err)
+	}
+	defer func() {
+		if err := fallback.CloseForecastCacheStore(); err != nil {
+			b.Fatalf("CloseForecastCacheStore() error: %v", err)
+		}
+	}()
+	if _, err := fallback.AttachForecastCacheStore(store, now); err != nil {
+		b.Fatalf("AttachForecastCacheStore() error: %v", err)
+	}
+	req := testClosedRequest()
+	key := fallback.cacheKey(req, 112, now)
+	fallback.addCacheLocked(key, voacapCacheEntry{
+		storedAt: now,
+		forecast: VOACAPClosedForecast{
+			WindowStartUTC: forecastWindowStart(now),
+			Records: []VOACAPHourlyForecast{
+				{FT8SNRDB: -19, HourUTC: 20, FrequencyMHz: 14.1},
+			},
+		},
+	})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		got := fallback.CheckForecastDetailed(req, now)
+		if got.Status != VOACAPForecastCheckReady {
+			b.Fatalf("status = %v, want ready", got.Status)
+		}
 	}
 }
 

@@ -583,8 +583,14 @@ Important operational notes:
   existing fine path-cell granularity. The runtime SSN monitor persists NOAA
   validators, the latest observation, EWMA, and current rounded SSN generation
   to `voacap_fallback.ssn_state_path` so restarts do not cold-start the SSN
-  baseline when that state file is present. VOACAP forecast-window cache records
-  remain memory-only and are rebuilt lazily after restart.
+  baseline when that state file is present. Completed VOACAP forecast-window
+  cache records persist in the per-node Pebble DB at
+  `voacap_fallback.forecast_cache_db_path`. On restart, records that match the
+  current cache schema, model generation, rounded SSN generation, forecast
+  month, TTL, and current UTC hour hydrate the memory cache before workers
+  start, so they bypass `voacap_fallback.delay_seconds`. Stale or malformed
+  records are pruned and a missing/unavailable cache cold-starts normal
+  delay/queue behavior.
 - Beacon spots use RX-only path semantics. The beacon qualifier is the existing
   canonical `IsBeacon` flag, including source-class beacons, `/B` calls, known
   beacon calls, and beacon comment keywords. For those spots, transmit evidence
@@ -788,7 +794,7 @@ The repo root now follows a simple ownership rule:
   private ignored config in `data/config.local/`, reference inputs such as CTY,
   FCC, H3, grids, beacons, and reputation/IPinfo data, plus runtime/local state
   such as users, logs, reports, diagnostics, peer topology, RBN data, SCP data,
-  VOACAP SSN monitor state, and skew/correction data. Treat committed
+  VOACAP runtime state, and skew/correction data. Treat committed
   example/reference data differently from ignored operator-local state.
 - Domain packages such as `spot`, `peer`, `telnet`, `config`, and `pathreliability` remain reusable subsystems with their own tests and package-local docs.
 

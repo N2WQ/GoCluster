@@ -63,6 +63,9 @@ voacap_fallback:
   # Runtime SSN monitor state file. This per-node file persists NOAA validators,
   # the last observation, EWMA, and the rounded SSN generation across restarts.
   ssn_state_path: "data/voacap/ssn_state.json"
+  # Pebble cache for completed VOACAP forecast windows. This per-node cache lets
+  # current predictions survive restarts without re-entering the warm-up delay.
+  forecast_cache_db_path: "data/voacap/forecast_cache.pebble"
   ssn_ewma_half_life_seconds: 28800
   recompute_delta_percent: 12
   voacap_home: "C:\\itshfbc"

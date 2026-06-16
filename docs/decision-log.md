@@ -13,6 +13,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Placeholder Title | Proposed | YYYY-MM-DD | placeholder area | - | - | `docs/decisions/ADR-0001-placeholder-slug.md` |
+| ADR-0184 | VOACAP Forecast Cache Persistence | Accepted | 2026-06-16 | voacap, pathreliability, config, retained state, operations | ADR-0162 memory-only restart behavior | - | `docs/decisions/ADR-0184-voacap-forecast-cache-persistence.md` |
 | ADR-0183 | PSKReporter T3 Worker Budget | Accepted | 2026-06-16 | pskreporter, ingest, config, hot path, operations | - | - | `docs/decisions/ADR-0183-pskreporter-t3-worker-budget.md` |
 | ADR-0182 | VOACAP Runtime SSN State Persistence | Accepted | 2026-06-16 | voacap, pathreliability, config, retained state, operations | ADR-0161 SSN runtime behavior | - | `docs/decisions/ADR-0182-voacap-runtime-ssn-state-persistence.md` |
 | ADR-0181 | RBN Startup Retry And Console Liveness | Accepted | 2026-06-16 | rbn, ingest, dashboard, lifecycle, operations | - | - | `docs/decisions/ADR-0181-rbn-startup-retry-and-console-liveness.md` |
@@ -34,7 +35,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR-0165 | VOACAP Ham Median Card Template | Accepted | 2026-06-09 | voacap, pathreliability, model calibration | - | - | `docs/decisions/ADR-0165-voacap-ham-median-card-template.md` |
 | ADR-0164 | VOACAP Rolling-Hour Runtime Forecast Window | Accepted | 2026-06-09 | voacap, pathreliability, operations, observability | ADR-0162 runtime deck start assumption | - | `docs/decisions/ADR-0164-voacap-rolling-hour-runtime-forecast-window.md` |
 | ADR-0163 | VOACAP-Aligned Sparse P50 Fallback | Accepted | 2026-06-09 | voacap, pathreliability, operations, supportability | ADR-0161 closed-only limitation | - | `docs/decisions/ADR-0163-voacap-aligned-sparse-p50-fallback.md` |
-| ADR-0162 | VOACAP Hourly Forecast Window Cache | Accepted | 2026-06-09 | voacap, pathreliability, retained-state, operations | ADR-0161 single best-window cache value clause | ADR-0164 runtime deck start assumption; ADR-0169 bidirectional record semantics | `docs/decisions/ADR-0162-voacap-hourly-forecast-window-cache.md` |
+| ADR-0162 | VOACAP Hourly Forecast Window Cache | Accepted | 2026-06-09 | voacap, pathreliability, retained-state, operations | ADR-0161 single best-window cache value clause | ADR-0164 runtime deck start assumption; ADR-0169 bidirectional record semantics; ADR-0184 memory-only restart behavior | `docs/decisions/ADR-0162-voacap-hourly-forecast-window-cache.md` |
 | ADR-0161 | VOACAP Closed-Only Path Fallback | Accepted | 2026-06-09 | voacap, pathreliability, config, operations | - | ADR-0163 closed-only limitation; ADR-0166 filter semantics; ADR-0169 bidirectional/noise fallback | `docs/decisions/ADR-0161-voacap-closed-only-path-fallback.md` |
 | ADR-0160 | VOACAP FT8 SNR Output Contract | Accepted | 2026-06-09 | voacap, pathreliability, experiments | - | - | `docs/decisions/ADR-0160-voacap-ft8-snr-output-contract.md` |
 | ADR-0159 | VOACAP YAML-Owned SSN Forecast Experiment | Accepted | 2026-06-08 | voacap, config, experiments, process lifecycle | - | - | `docs/decisions/ADR-0159-voacap-yaml-owned-ssn-forecast-experiment.md` |

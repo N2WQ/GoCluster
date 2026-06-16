@@ -119,8 +119,14 @@ When you see a glyph next to a spot, here's what happened behind the scenes:
 Optional VOACAP fallback needs a rounded SSN generation before it can run. The
 runtime SSN monitor stores NOAA validators, the latest observation, EWMA, and
 the current rounded SSN generation in `voacap_fallback.ssn_state_path`, so a
-restart can reuse the SSN baseline. The path forecast cache itself remains
-memory-only and is rebuilt lazily after restart.
+restart can reuse the SSN baseline. Completed forecast-window records persist
+separately in the per-node Pebble cache at
+`voacap_fallback.forecast_cache_db_path`. On restart, records that still match
+the current cache schema, model generation, rounded SSN generation, forecast
+month, TTL, and current UTC hour hydrate the memory cache before VOACAP workers
+start. Those restored predictions are ordinary cache hits and do not wait for
+the warm-up delay; stale or malformed records are pruned and a
+missing/unavailable cache cold-starts normal delay/queue behavior.
 
 8. **Check receiver diversity**: In receiver-cap enforcement and cap-shadow
    candidate evaluation, the selected capped evidence must include enough live

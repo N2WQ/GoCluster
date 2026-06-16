@@ -213,9 +213,14 @@ The runtime SSN monitor persists only its continuity state at
 `voacap_fallback.ssn_state_path`: NOAA validators, last observed raw SSN, EWMA,
 and current rounded SSN generation. Missing state cold-starts the SSN monitor;
 malformed state is warned about and ignored so path reliability can still start.
-Do not share the same state file between two running cluster processes. VOACAP
-hourly forecast-window cache records remain in memory and are rebuilt lazily
-after restart.
+Do not share the same state file between two running cluster processes.
+Completed VOACAP hourly forecast-window records persist separately in the
+per-node Pebble DB at `voacap_fallback.forecast_cache_db_path`. Startup hydrates
+only records that still match the current cache schema, model generation,
+rounded SSN generation, forecast month, TTL, and current UTC hour. Hydrated
+records become ordinary memory cache hits and bypass
+`voacap_fallback.delay_seconds`; stale or malformed records are pruned and a
+missing/unavailable cache cold-starts normal delay/queue behavior.
 
 `SHOW PROP <call|prefix|grid> [band] [mode]` exposes those cached hourly
 VOACAP records directly as a point-to-point outlook from the user's grid to the
