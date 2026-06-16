@@ -15,7 +15,7 @@ Purpose:
 Required output:
 - findings first, ordered by severity
 - then confirmed fixes
-- then rerun of affected validations
+- then rerun of affected validations for the selected validation lane
 
 Review focus:
 - correctness
@@ -104,6 +104,7 @@ Example shape:
 - `go test ./...` - baseline regression check - pass
 - `go test -race ./...` - concurrency/lifecycle verification - pass
 - `go test ./internal/cluster -run TestSlowClientDropPolicy` - targeted regression - pass
+- `git diff --check` - documentation-only whitespace check - pass
 
 ## Final validation block
 The `VALIDATION` marker must end with these exact three lines:

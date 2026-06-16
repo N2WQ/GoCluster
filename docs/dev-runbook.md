@@ -7,7 +7,8 @@ only on the abbreviated baseline in `AGENTS.md`.
 ## Principles
 - Run the smallest useful check early, then broaden.
 - Use incremental validation after each meaningful slice.
-- Use the full suite before calling a Non-trivial task complete.
+- Use the full suite for the selected validation lane before calling a
+  Non-trivial task complete.
 - Report commands and results honestly.
 
 ## Baseline environment
@@ -94,8 +95,34 @@ Minimum expected sequence:
 
 Add `go vet ./...` and `staticcheck ./...` if the change touches exported/shared logic, parsing, or anything likely to affect multiple packages.
 
+### Documentation-only Markdown change
+Use this lane only when all changed files are Markdown documentation and the
+change does not touch code, config, generated artifacts, scripts, CI, schemas,
+protocol/runtime contracts, or checked-in data consumed by the runtime.
+
+Minimum expected sequence:
+1. targeted text checks for changed terms, cross-references, and required
+   workflow strings
+2. reviewer diff pass confirming the diff is documentation-only and internally
+   consistent
+3. `git diff --check`
+
+Add only the documentation checks that apply:
+- workflow-drift audit for workflow contract, runbook, template, rubric, review
+  checklist, repo-managed skill, or workflow-script documentation changes
+- support-agent routing review when operator-support topics or support-routing
+  docs changed
+- `scripts/check-yaml-doc-rigor.ps1 -CommentOnlyCompare` only for comment-only
+  checked-in first-party YAML changes; YAML content changes leave this lane
+
+Do not run `go test ./...`, `go vet ./...`, `staticcheck ./...`,
+`golangci-lint`, or `go test -race ./...` solely because Markdown changed.
+If the diff expands beyond documentation-only Markdown, switch to the relevant
+code, mixed, YAML/config, script, CI, generated-artifact, or runtime-contract
+lane and run the required checks for that lane.
+
 ### Non-trivial change
-Default full sequence:
+Default full sequence for code, mixed, or runtime-contract changes:
 1. targeted package test(s) during development
 2. `go test ./...`
 3. `go vet ./...`
@@ -189,9 +216,9 @@ Do not dump noisy compiler output into the final summary. Summarize only relevan
 
 ## Suggested execution sequence for Non-trivial work
 Example cadence:
-1. after milestone 1: targeted tests
-2. after milestone 2: targeted tests + `go test ./...`
-3. before closeout: `go vet ./...`, `staticcheck ./...`
+1. after milestone 1: targeted checks for the selected validation lane
+2. after milestone 2: targeted checks plus the broader lane checks
+3. before closeout: final lane-required checks
 4. final if applicable: `go test -race ./...`, fuzz, benchmark, pprof
 
 ## Reporting format
@@ -205,3 +232,4 @@ Example:
 - `go test ./internal/cluster -run TestSlowClientDropPolicy` - targeted drop-policy regression - pass - incremental
 - `go test ./...` - baseline regression suite - pass - final
 - `go test -race ./...` - lifecycle/concurrency verification - pass - final
+- `git diff --check` - documentation-only whitespace check - pass - final

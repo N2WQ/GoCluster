@@ -13,6 +13,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Placeholder Title | Proposed | YYYY-MM-DD | placeholder area | - | - | `docs/decisions/ADR-0001-placeholder-slug.md` |
+| ADR-0179 | Documentation-Only Validation Lane | Accepted | 2026-06-15 | workflow, validation, docs, Codex | - | - | `docs/decisions/ADR-0179-documentation-only-validation-lane.md` |
 | ADR-0178 | VOACAP Invalid Request Reason Diagnostics | Accepted | 2026-06-12 | pathreliability, telnet, voacap, operations, observability, supportability | ADR-0175 aggregate invalid_request wording | - | `docs/decisions/ADR-0178-voacap-invalid-request-reason-diagnostics.md` |
 | ADR-0177 | Distance-Selected VOACAP Method | Accepted | 2026-06-11 | voacap, pathreliability, operations, model calibration | ADR-0165/ADR-0169 Method-30-only runtime wording | - | `docs/decisions/ADR-0177-distance-selected-voacap-method.md` |
 | ADR-0176 | Path Prediction Admission Reuse | Accepted | 2026-06-11 | telnet, pathreliability, voacap, hot path, observability | - | - | `docs/decisions/ADR-0176-path-prediction-admission-reuse.md` |

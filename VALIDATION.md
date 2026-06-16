@@ -49,11 +49,13 @@ distinct slice-by-slice implementation plan, architecture framing, and required
 pre-code audits for the task type. Otherwise score `0`.
 
 ### 5) Verification and review discipline
-Score `1` only if tests and required checks were actually run and reported
-honestly, incrementally when required, and a `Review Pass` occurred before
-closeout. Triggered leak-detection evidence must distinguish static reasoning,
-local test/race evidence, profile evidence, and runtime confirmation. Otherwise
-score `0`.
+Score `1` only if the validation lane was identified, lane-required checks were
+actually run and reported honestly, incrementally when required, and a `Review
+Pass` occurred before closeout. Documentation-only Markdown changes may satisfy
+this item with documentation review, targeted text checks, and `git diff
+--check` when the documented lane criteria are met. Triggered leak-detection
+evidence must distinguish static reasoning, local test/race evidence, profile
+evidence, and runtime confirmation. Otherwise score `0`.
 
 ### 6) Documentation, decision memory, and traceability
 Score `1` only if README/doc review status, decision-memory handling,
@@ -79,6 +81,7 @@ happened:
 13. Codex omitted `SCOPE ADVERSARIAL REVIEW` before presenting the approval token for a Non-trivial Scope Ledger.
 14. Codex claimed code-walk, blast-radius, or leak-detection coverage from tools or profiles that were not actually run or inspected.
 15. Codex approved or executed a broad refactor-shaped Scope Ledger without slice-level objective, blast-radius boundary, production-safe stopping point, targeted checks, and per-slice validation evidence.
+16. Codex treated a mixed code/config/script/CI/generated-artifact/runtime-contract diff as documentation-only validation.
 
 ## Waivers
 Waivers are allowed only when explicit, narrowly scoped, and time-bounded.

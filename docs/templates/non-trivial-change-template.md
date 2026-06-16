@@ -93,6 +93,7 @@ that approval.
 - README impact: Required | Not required - <one sentence>
 - Support-agent docs impact: Required | Not required - <one sentence>
 - ADR/TSR pre-read: <relevant refs | No relevant ADR found; No relevant TSR found>
+- validation lane: documentation-only Markdown | code/mixed/runtime-contract | other - <reason>
 - checker plan:
 
 ### IMPLEMENTATION
@@ -137,6 +138,7 @@ If no material findings:
 - README impact:
 - Support-agent docs impact:
 - verification commands and results:
+- validation lane:
 - ADR handling outcome:
 - Decision refs:
 

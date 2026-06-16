@@ -5,8 +5,9 @@
 
 ## Validation
 
-- [ ] `go test ./...`
-- [ ] `golangci-lint run ./...`
+- [ ] Docs-only Markdown: targeted text/review checks plus `git diff --check`
+- [ ] Code/mixed/runtime-contract: `go test ./...`
+- [ ] Code/mixed/runtime-contract: `golangci-lint run ./...`
 
 ## Comment Policy (Required)
 

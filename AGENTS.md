@@ -43,6 +43,11 @@ Token efficiency changes reporting shape only. It does not reduce required
 discovery, approval, implementation discipline, validation, review, ADR
 handling, or traceability.
 
+Validation is proportional to the touched surface. Documentation-only Markdown
+changes do not require Go code validation unless they also change code, config,
+generated artifacts, scripts, CI, schemas, protocol/runtime contracts, or
+checked-in data consumed by the runtime.
+
 ## Initial Review Mode
 When the user asks what existing code does and has not asked for changes:
 - read the relevant code first
@@ -163,6 +168,9 @@ delta, or final disposition.
 - Use benchmarks and pprof for hot-path or performance claims.
 - Report missing tools, skipped checks, and failed checks as validation gaps
   unless explicitly waived.
+- Use the documentation-only validation lane from `docs/dev-runbook.md` for
+  Markdown-only documentation changes that do not touch code, config, generated
+  artifacts, scripts, CI, schemas, protocol/runtime contracts, or runtime data.
 - Review the current diff as a reviewer before final closeout.
 - Inspect `git diff --name-only` and touched files directly before final
   closeout for implementation work.

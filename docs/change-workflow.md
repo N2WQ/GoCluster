@@ -18,6 +18,12 @@ Token efficiency changes reporting shape only. It does not reduce required
 discovery, approval, implementation discipline, validation, review, ADR
 handling, or traceability.
 
+Validation is proportional to the touched surface. Documentation-only Markdown
+changes have their own validation lane: use documentation review, targeted text
+checks, and whitespace/diff checks instead of Go code validation, unless the
+change also touches code, config, generated artifacts, scripts, CI, schemas,
+protocol/runtime contracts, or checked-in data consumed by the runtime.
+
 Keep the workflow additive, not repetitive:
 - later sections may reference earlier evidence instead of restating it
 - only restate facts when the later section adds a new conclusion, delta, or
@@ -125,12 +131,12 @@ The recommendation is advisory. Raise it if discovery reveals hidden blast
 radius; do not lower it by skipping required workflow artifacts, skill audits,
 dependency rigor, validation, review, or traceability.
 
-Before code, explicitly identify:
+Before implementation, explicitly identify:
 - impacted contracts, or `No contract changes`
 - user-visible behavior changes, or `No user-visible behavior changes`
 - README impact: `Required` or `Not required`
 - Support-agent docs impact: `Required` or `Not required`
-- checker set and validation command order
+- validation lane, checker set, and validation command order
 
 In the compact template, these are reported under the `DESIGN` marker.
 
@@ -390,9 +396,20 @@ user-visible change, say so explicitly.
 
 ## Testing and checker discipline
 Use `docs/dev-runbook.md` as the required checker source for Non-trivial
-closeout. The list below is the minimum baseline, not the full command set.
+closeout. Select the validation lane from the touched surface before choosing
+commands.
 
-At minimum:
+Documentation-only Markdown lane:
+- eligible only when the diff changes Markdown documentation and no code,
+  config, generated artifact, script, CI, schema, protocol/runtime contract, or
+  runtime-consumed data
+- minimum checks are targeted text checks for the changed workflow/domain terms,
+  reviewer diff pass, and `git diff --check`
+- add repository-specific documentation checks only when they apply, such as
+  support-agent routing review or workflow-drift audit
+- do not run Go validation solely because a Markdown file changed
+
+Code, mixed, or runtime-contract lane minimum:
 - `go test ./...`
 - `go vet ./...`
 - `staticcheck ./...`
@@ -407,6 +424,10 @@ Rules:
 - report commands and results honestly
 - add regression tests for changed behavior when feasible
 - explain why any test was not added
+- if a documentation-only change later expands into code, config, generated
+  artifact, script, CI, schema, protocol/runtime contract, or runtime-data
+  changes, reclassify the validation lane and run the required code or mixed
+  checks before closeout
 
 ## Performance evidence
 Required when behavior touches hot paths, fan-out, queueing, parsing, allocation pressure, timers, or lock contention.
@@ -480,7 +501,7 @@ Use `docs/decision-memory.md` for the detailed rules.
 
 ## Completion requirements
 A Non-trivial task is not complete until:
-- code is implemented
+- the approved code or documentation change is implemented
 - checks are run
 - Review Pass is done
 - docs are reviewed
