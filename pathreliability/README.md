@@ -209,6 +209,14 @@ cell, missing SSN, no current-hour cache record, queue full, worker not running,
 disabled, unavailable, REL/tier guard failure, or usable VOACAP that did not
 classify the candidate closed.
 
+The runtime SSN monitor persists only its continuity state at
+`voacap_fallback.ssn_state_path`: NOAA validators, last observed raw SSN, EWMA,
+and current rounded SSN generation. Missing state cold-starts the SSN monitor;
+malformed state is warned about and ignored so path reliability can still start.
+Do not share the same state file between two running cluster processes. VOACAP
+hourly forecast-window cache records remain in memory and are rebuilt lazily
+after restart.
+
 `SHOW PROP <call|prefix|grid> [band] [mode]` exposes those cached hourly
 VOACAP records directly as a point-to-point outlook from the user's grid to the
 target. Omitted mode defaults to CW. Empty or partial single-band command

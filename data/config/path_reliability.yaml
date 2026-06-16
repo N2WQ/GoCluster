@@ -60,6 +60,9 @@ voacap_fallback:
   enabled: true
   ssn_fetch_interval_seconds: 1800
   ssn_request_timeout_seconds: 30
+  # Runtime SSN monitor state file. This per-node file persists NOAA validators,
+  # the last observation, EWMA, and the rounded SSN generation across restarts.
+  ssn_state_path: "data/voacap/ssn_state.json"
   ssn_ewma_half_life_seconds: 28800
   recompute_delta_percent: 12
   voacap_home: "C:\\itshfbc"

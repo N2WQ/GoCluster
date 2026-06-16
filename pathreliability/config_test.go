@@ -133,6 +133,9 @@ func TestLoadFileReadsClosedGlyphAndVOACAPFallback(t *testing.T) {
 	if cfg.VOACAPFallback.SSNFetchIntervalSeconds != 1800 || cfg.VOACAPFallback.SSNEWMAHalfLifeSeconds != 28800 {
 		t.Fatalf("unexpected SSN fallback cadence: %+v", cfg.VOACAPFallback)
 	}
+	if cfg.VOACAPFallback.SSNStatePath != "data/voacap/ssn_state.json" {
+		t.Fatalf("SSN state path = %q, want data/voacap/ssn_state.json", cfg.VOACAPFallback.SSNStatePath)
+	}
 	if cfg.VOACAPFallback.ShowPropWaitMilliseconds != 750 {
 		t.Fatalf("show prop wait = %d, want 750", cfg.VOACAPFallback.ShowPropWaitMilliseconds)
 	}
@@ -370,6 +373,7 @@ func TestLoadFileRejectsMissingRequiredYAMLSettings(t *testing.T) {
 		{name: "fallback closed threshold", path: []string{"glyph_thresholds", "closed"}, want: "glyph_thresholds.closed"},
 		{name: "ft8 closed threshold", path: []string{"mode_thresholds", "ft8", "closed"}, want: "mode_thresholds.ft8"},
 		{name: "voacap enabled", path: []string{"voacap_fallback", "enabled"}, want: "voacap_fallback.enabled"},
+		{name: "voacap ssn state path", path: []string{"voacap_fallback", "ssn_state_path"}, want: "voacap_fallback.ssn_state_path"},
 		{name: "show prop wait", path: []string{"voacap_fallback", "show_prop_wait_milliseconds"}, want: "voacap_fallback.show_prop_wait_milliseconds"},
 		{name: "voacap queue depth", path: []string{"voacap_fallback", "max_queue_depth"}, want: "voacap_fallback.max_queue_depth"},
 		{name: "voacap rel open enabled", path: []string{"voacap_fallback", "reliability_gated_open_enabled"}, want: "voacap_fallback.reliability_gated_open_enabled"},
@@ -509,6 +513,7 @@ func TestLoadFileRejectsInvalidVOACAPFallbackBounds(t *testing.T) {
 		{name: "cache entries", body: "voacap_fallback:\n  max_cache_entries: 0\n", want: "voacap_fallback.max_cache_entries"},
 		{name: "show prop wait negative", body: "voacap_fallback:\n  show_prop_wait_milliseconds: -1\n", want: "voacap_fallback.show_prop_wait_milliseconds"},
 		{name: "show prop wait too high", body: "voacap_fallback:\n  show_prop_wait_milliseconds: 2001\n", want: "voacap_fallback.show_prop_wait_milliseconds"},
+		{name: "empty ssn state path", body: "voacap_fallback:\n  ssn_state_path: \"\"\n", want: "voacap_fallback.ssn_state_path"},
 		{name: "long output prefix", body: "voacap_fallback:\n  output_name_prefix: gocluster_voacap_path_prefix_too_long\n", want: "voacap_fallback.output_name_prefix"},
 		{name: "too many frequencies", body: "voacap_fallback:\n  center_frequencies_mhz: [1,2,3,4,5,6,7,8,9,10,11]\n", want: "voacap_fallback.center_frequencies_mhz"},
 		{name: "invalid closed threshold ordering", body: "mode_thresholds:\n  ft8:\n    closed: -24\n", want: "mode_thresholds.ft8"},

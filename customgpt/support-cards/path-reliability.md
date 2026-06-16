@@ -39,6 +39,10 @@ inspect user-visible diagnostics:
   invalid user/DX grid, invalid user/DX cell, missing SSN, missing current hour,
   queue full, worker not running, disabled, unavailable, REL/tier guard failure,
   or usable VOACAP that was not closed.
+- `vssn` means the VOACAP fallback had no current rounded SSN generation. Check
+  effective `voacap_fallback.ssn_state_path`, startup warnings about SSN state
+  restore, and NOAA fetch errors before changing path thresholds. The SSN state
+  file is per-node runtime state; do not share it between running processes.
 - `brx` diagnostics mean the spot was marked as a beacon and path prediction
   used only the DX-to-user receive leg. Beacon VOACAP fallback diagnostics use
   `bvcap`, `bvaln`, `bvup`, or `bvop`; their SNR and REL fields are receive-leg

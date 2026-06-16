@@ -2,7 +2,7 @@
 # Code Map: Path Reliability And VOACAP
 
 - Map ID: `path-reliability-voacap`
-- Source fingerprint: `efaf878e44a52412`
+- Source fingerprint: `313ad3b22c4b9c3d`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map path-reliability-voacap`
 - Check: `go run ./cmd/codemap check -map path-reliability-voacap`
@@ -11,7 +11,7 @@
 
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
-| `dxcluster/internal/voacap` | `internal/voacap` | 7 | 6 |
+| `dxcluster/internal/voacap` | `internal/voacap` | 9 | 6 |
 | `dxcluster/pathreliability` | `pathreliability` | 16 | 15 |
 
 ## In-Scope Package Edges
@@ -33,6 +33,7 @@
 ### `dxcluster/internal/voacap`
 
 Source files:
+- `internal/voacap/atomic_replace_windows.go`
 - `internal/voacap/config.go`
 - `internal/voacap/deck.go`
 - `internal/voacap/forecast_state.go`
@@ -40,6 +41,7 @@ Source files:
 - `internal/voacap/runner.go`
 - `internal/voacap/sunspot.go`
 - `internal/voacap/sunspot_monitor.go`
+- `internal/voacap/sunspot_monitor_state.go`
 
 Test files:
 - `internal/voacap/config_test.go`
@@ -90,6 +92,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0182](docs/decisions/ADR-0182-voacap-runtime-ssn-state-persistence.md) | Accepted | 2026-06-16 | voacap, pathreliability, config, retained state, operations | `area:internal/voacap, area:pathreliability, path:internal/voacap, path:pathreliability` |
 | [ADR-0180](docs/decisions/ADR-0180-voacap-runtime-output-cleanup.md) | Accepted | 2026-06-16 | voacap, pathreliability, operations, file lifecycle | `area:internal/voacap, area:pathreliability, path:internal/voacap, path:pathreliability` |
 | [ADR-0178](docs/decisions/ADR-0178-voacap-invalid-request-reason-diagnostics.md) | Accepted | 2026-06-12 | pathreliability, telnet, voacap, operations, observability, supportability | `area:internal/voacap, area:pathreliability, path:pathreliability` |
 | [ADR-0177](docs/decisions/ADR-0177-distance-selected-voacap-method.md) | Accepted | 2026-06-11 | voacap, pathreliability, operations, model calibration | `area:internal/voacap, area:pathreliability, path:internal/voacap, path:pathreliability` |

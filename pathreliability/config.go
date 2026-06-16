@@ -63,6 +63,7 @@ var requiredConfigPaths = []yamlconfig.Path{
 	{"voacap_fallback", "enabled"},
 	{"voacap_fallback", "ssn_fetch_interval_seconds"},
 	{"voacap_fallback", "ssn_request_timeout_seconds"},
+	{"voacap_fallback", "ssn_state_path"},
 	{"voacap_fallback", "ssn_ewma_half_life_seconds"},
 	{"voacap_fallback", "recompute_delta_percent"},
 	{"voacap_fallback", "voacap_home"},
@@ -254,6 +255,7 @@ type VOACAPFallbackConfig struct {
 	Enabled                                bool      `yaml:"enabled"`
 	SSNFetchIntervalSeconds                int       `yaml:"ssn_fetch_interval_seconds"`
 	SSNRequestTimeoutSeconds               int       `yaml:"ssn_request_timeout_seconds"`
+	SSNStatePath                           string    `yaml:"ssn_state_path"`
 	SSNEWMAHalfLifeSeconds                 int       `yaml:"ssn_ewma_half_life_seconds"`
 	RecomputeDeltaPercent                  float64   `yaml:"recompute_delta_percent"`
 	VOACAPHome                             string    `yaml:"voacap_home"`
@@ -492,6 +494,7 @@ func defaultVOACAPFallbackConfig() VOACAPFallbackConfig {
 		Enabled:                                false,
 		SSNFetchIntervalSeconds:                1800,
 		SSNRequestTimeoutSeconds:               30,
+		SSNStatePath:                           "data/voacap/ssn_state.json",
 		SSNEWMAHalfLifeSeconds:                 28800,
 		RecomputeDeltaPercent:                  12,
 		VOACAPHome:                             `C:\itshfbc`,
@@ -525,6 +528,10 @@ func (c *VOACAPFallbackConfig) finalize() error {
 	}
 	if c.SSNRequestTimeoutSeconds <= 0 {
 		return fmt.Errorf("voacap_fallback.ssn_request_timeout_seconds must be > 0")
+	}
+	c.SSNStatePath = strings.TrimSpace(c.SSNStatePath)
+	if c.Enabled && c.SSNStatePath == "" {
+		return fmt.Errorf("voacap_fallback.ssn_state_path must not be empty when enabled")
 	}
 	if c.SSNEWMAHalfLifeSeconds <= 0 {
 		return fmt.Errorf("voacap_fallback.ssn_ewma_half_life_seconds must be > 0")

@@ -25,6 +25,7 @@ data/reputation
 data/scp
 data/skm_correction/
 data/users
+data/voacap/
 cmd/rbn_backtest/data/
 # *.db
 # *.sqlite

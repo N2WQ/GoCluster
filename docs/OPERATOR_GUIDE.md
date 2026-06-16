@@ -267,6 +267,11 @@ prefixes.
   selected UTC forecast hour, and `<ssn>` is the rounded EWMA SSN generation
   used for the run. `PASS/REJECT PATH CLOSED` targets these closed fallback
   spots; `UNLIKELY` PATH filters still include them for compatibility.
+  The runtime SSN monitor persists NOAA validators, the last observation, EWMA,
+  and the current rounded SSN generation at
+  `voacap_fallback.ssn_state_path`; a restart can reuse that SSN baseline when
+  the state file is present. VOACAP hourly forecast cache records are still
+  in-memory only and are rebuilt lazily after restart.
 - `valn|<p50>/<snr>h<hour>s<ssn>` means sparse bucket p50 evidence was
   insufficient by sample gates but aligned with the current-hour VOACAP class.
   `<p50>` is rounded for display so the diagnostic fits the fixed-width line.

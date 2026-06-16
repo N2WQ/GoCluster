@@ -116,6 +116,12 @@ When you see a glyph next to a spot, here's what happened behind the scenes:
    their own view stricter with `SET PATHSAMPLES <count>`, but cannot lower the
    cluster default. Five-minute propagation logs report this as `low_count`.
 
+Optional VOACAP fallback needs a rounded SSN generation before it can run. The
+runtime SSN monitor stores NOAA validators, the latest observation, EWMA, and
+the current rounded SSN generation in `voacap_fallback.ssn_state_path`, so a
+restart can reuse the SSN baseline. The path forecast cache itself remains
+memory-only and is rebuilt lazily after restart.
+
 8. **Check receiver diversity**: In receiver-cap enforcement and cap-shadow
    candidate evaluation, the selected capped evidence must include enough live
    attributed receiver slots for the configured sample floor and receiver cap.

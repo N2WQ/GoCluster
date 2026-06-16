@@ -580,7 +580,11 @@ Important operational notes:
   7000 km or Method 30 at and above 7000 km using the same Maidenhead
   grid-center endpoints written to the VOACAP circuit; parsed VOACAP hour `24`
   is treated as UTC hour `0`. Cached raw directional records are reused at the
-  existing fine path-cell granularity.
+  existing fine path-cell granularity. The runtime SSN monitor persists NOAA
+  validators, the latest observation, EWMA, and current rounded SSN generation
+  to `voacap_fallback.ssn_state_path` so restarts do not cold-start the SSN
+  baseline when that state file is present. VOACAP forecast-window cache records
+  remain memory-only and are rebuilt lazily after restart.
 - Beacon spots use RX-only path semantics. The beacon qualifier is the existing
   canonical `IsBeacon` flag, including source-class beacons, `/B` calls, known
   beacon calls, and beacon comment keywords. For those spots, transmit evidence
@@ -784,8 +788,8 @@ The repo root now follows a simple ownership rule:
   private ignored config in `data/config.local/`, reference inputs such as CTY,
   FCC, H3, grids, beacons, and reputation/IPinfo data, plus runtime/local state
   such as users, logs, reports, diagnostics, peer topology, RBN data, SCP data,
-  and skew/correction data. Treat committed example/reference data differently
-  from ignored operator-local state.
+  VOACAP SSN monitor state, and skew/correction data. Treat committed
+  example/reference data differently from ignored operator-local state.
 - Domain packages such as `spot`, `peer`, `telnet`, `config`, and `pathreliability` remain reusable subsystems with their own tests and package-local docs.
 
 Historical analysis notes and protocol reference material live under [`docs/archive/analysis`](docs/archive/analysis) and [`docs/reference`](docs/reference) rather than competing with the live binary at the repo root.

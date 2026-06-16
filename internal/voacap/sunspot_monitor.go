@@ -17,16 +17,22 @@ type sunspotHTTPClient interface {
 	Do(*http.Request) (*http.Response, error)
 }
 
+type sunspotMonitorLogger interface {
+	Printf(format string, args ...any)
+}
+
 // SunspotMonitorConfig owns the runtime NOAA SSN polling cadence and the EWMA
 // generation threshold used by path-reliability VOACAP fallback keys.
 type SunspotMonitorConfig struct {
 	URL                string
 	FetchInterval      time.Duration
 	RequestTimeout     time.Duration
+	StatePath          string
 	EWMAHalfLife       time.Duration
 	RecomputeThreshold float64
 	MaxResponseBytes   int64
 	HTTPClient         sunspotHTTPClient
+	Logger             sunspotMonitorLogger
 }
 
 // SunspotMonitorSnapshot is a point-in-time view of the monitor's retained
@@ -159,6 +165,9 @@ func (m *SunspotMonitor) Poll(ctx context.Context, now time.Time) error {
 	}
 	if result.notModified {
 		m.storeFetchHeaders(now, result)
+		if err := m.saveState(); err != nil {
+			return err
+		}
 		m.clearLastError()
 		return nil
 	}
@@ -173,6 +182,9 @@ func (m *SunspotMonitor) Poll(ctx context.Context, now time.Time) error {
 		return err
 	}
 	m.storeFetchHeaders(now, result)
+	if err := m.saveState(); err != nil {
+		return err
+	}
 	return nil
 }
 

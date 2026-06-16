@@ -267,11 +267,18 @@ func (r *clusterRuntime) loadPathReliabilityConfig() bool {
 		ssnMonitor, err := voacap.NewSunspotMonitor(voacap.SunspotMonitorConfig{
 			FetchInterval:      time.Duration(pathCfg.VOACAPFallback.SSNFetchIntervalSeconds) * time.Second,
 			RequestTimeout:     time.Duration(pathCfg.VOACAPFallback.SSNRequestTimeoutSeconds) * time.Second,
+			StatePath:          pathCfg.VOACAPFallback.SSNStatePath,
 			EWMAHalfLife:       time.Duration(pathCfg.VOACAPFallback.SSNEWMAHalfLifeSeconds) * time.Second,
 			RecomputeThreshold: pathCfg.VOACAPFallback.RecomputeDeltaPercent / 100,
+			Logger:             log.Default(),
 		})
 		if err != nil {
 			return r.failStartup("VOACAP SSN monitor config failed: %v", err)
+		}
+		if restored, err := ssnMonitor.LoadState(); err != nil {
+			log.Printf("Warning: VOACAP SSN state restore failed (%s): %v; starting cold", pathCfg.VOACAPFallback.SSNStatePath, err)
+		} else if restored {
+			log.Printf("VOACAP SSN state restored from %s", pathCfg.VOACAPFallback.SSNStatePath)
 		}
 		forecaster := pathreliability.NewVOACAPRunnerClosedForecaster(pathCfg.VOACAPFallback)
 		fallback, err := pathreliability.NewVOACAPClosedFallback(pathCfg, forecaster, ssnMonitor, log.Default())
