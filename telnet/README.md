@@ -159,6 +159,7 @@ all-band lookups show cached rows while refreshing missing or partial bands in
 the background. Cached rows show mode-specific glyphs for `EFF`, `RX`, and
 `TX`, plus text `REL` for the merged path class. `RX` and `TX` are per-leg
 projections on the same glyph scale, not independent live spot glyph decisions.
-Bucket p50 is not shown.
+Rows whose `REL` prediction is `UNLIKELY` or `CLOSED` are hidden. Bucket p50 is
+not shown.
 
 For command HELP and dialect details, see [`../commands/README.md`](../commands/README.md).

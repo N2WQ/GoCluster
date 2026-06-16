@@ -81,7 +81,8 @@ inspect user-visible diagnostics:
 - `SHOW PROP` defaults omitted mode to CW. `EFF`, `RX`, and `TX` are
   mode-specific glyphs for the merged bidirectional path, target-to-user leg
   after `SET NOISE`, and user-to-target leg. `REL` is the configured class for
-  the merged path. It does not show p50.
+  the merged path. It only shows rows whose `REL` prediction is `HIGH`,
+  `MEDIUM`, or `LOW`; it does not show p50.
 - Empty or partial single-band `SHOW PROP` cache results enqueue a refresh
   through the existing VOACAP fallback worker and may wait briefly. All-band
   requests show cached rows while refreshing missing or partial bands in the

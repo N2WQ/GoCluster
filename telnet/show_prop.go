@@ -22,6 +22,7 @@ import (
 )
 
 const showPropUsage = "Usage: SHOW PROP <call|prefix|grid> [band] [mode]\n"
+const showPropNoOpenRowsMessage = "No HIGH/MEDIUM/LOW rows in current forecast window."
 
 type showPropCommand struct {
 	target string
@@ -294,9 +295,18 @@ func formatShowPropResponse(userGrid string, target showPropTarget, cmd showProp
 	b.WriteByte('\n')
 	singleBand := strings.TrimSpace(cmd.band) != ""
 	anyRecords := false
+	anyOpenRecords := false
 	for _, row := range rows {
 		if len(row.records) > 0 {
 			anyRecords = true
+		}
+		for i := range row.records {
+			if showPropOpenReliability(showPropReliability(row.records[i], row.mode, cfg)) {
+				anyOpenRecords = true
+				break
+			}
+		}
+		if anyRecords && anyOpenRecords {
 			break
 		}
 	}
@@ -307,6 +317,15 @@ func formatShowPropResponse(userGrid string, target showPropTarget, cmd showProp
 			b.WriteString("Still computing; ask again shortly.")
 		}
 		b.WriteByte('\n')
+		return b.String()
+	}
+	if anyRecords && !anyOpenRecords && singleBand {
+		b.WriteString(showPropNoOpenRowsMessage)
+		b.WriteByte('\n')
+		if len(rows) > 0 && rows[0].status != pathreliability.VOACAPForecastWindowReady {
+			b.WriteString(showPropStatusMessage(rows[0].status, true))
+			b.WriteByte('\n')
+		}
 		return b.String()
 	}
 	if singleBand {
@@ -325,9 +344,14 @@ func formatShowPropResponse(userGrid string, target showPropTarget, cmd showProp
 			}
 			continue
 		}
+		openRecords := 0
 		for i := range row.records {
 			forecast := row.records[i]
 			rel := showPropReliability(forecast, row.mode, cfg)
+			if !showPropOpenReliability(rel) {
+				continue
+			}
+			openRecords++
 			eff := showPropGlyph(forecast.EffectiveDB(), row.mode, cfg)
 			rx := showPropGlyph(forecast.ReceiveDB(), row.mode, cfg)
 			tx := showPropGlyph(forecast.TransmitDB(), row.mode, cfg)
@@ -335,6 +359,14 @@ func formatShowPropResponse(userGrid string, target showPropTarget, cmd showProp
 				fmt.Fprintf(&b, "%02dZ  %-3s  %-2s  %-2s  %s\n", forecast.Record.HourUTC, eff, rx, tx, rel)
 			} else {
 				fmt.Fprintf(&b, "%-5s %02dZ  %-3s  %-2s  %-2s  %s\n", row.band, forecast.Record.HourUTC, eff, rx, tx, rel)
+			}
+		}
+		if openRecords == 0 {
+			if singleBand {
+				b.WriteString(showPropNoOpenRowsMessage)
+				b.WriteByte('\n')
+			} else {
+				fmt.Fprintf(&b, "%-5s %s\n", row.band, showPropNoOpenRowsMessage)
 			}
 		}
 		if row.status != pathreliability.VOACAPForecastWindowReady {
@@ -348,6 +380,15 @@ func formatShowPropResponse(userGrid string, target showPropTarget, cmd showProp
 		}
 	}
 	return b.String()
+}
+
+func showPropOpenReliability(rel string) bool {
+	switch rel {
+	case "HIGH", "MEDIUM", "LOW":
+		return true
+	default:
+		return false
+	}
 }
 
 func showPropGlyph(db float64, mode string, cfg pathreliability.Config) string {

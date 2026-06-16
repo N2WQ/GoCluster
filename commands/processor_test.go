@@ -971,7 +971,7 @@ func TestHelpEntriesGoDialect(t *testing.T) {
 		{"SHOW DX", []string{"SHOW DX - Alias of SHOW MYDX (stored history)", "Usage: SHOW DX [count]"}},
 		{"SHOW MYDX", []string{"SHOW MYDX - Show filtered spot history", "stored spots"}},
 		{"SHOW DXCC", []string{"SHOW DXCC - Look up DXCC/ADIF and zones", "other prefixes"}},
-		{"SHOW PROP", []string{"SHOW PROP - Show point-to-point propagation outlook", "omitted mode defaults to CW", "EFF, RX, and TX show mode-specific glyphs"}},
+		{"SHOW PROP", []string{"SHOW PROP - Show point-to-point propagation outlook", "omitted mode defaults to CW", "EFF, RX, and TX show mode-specific glyphs", "Only rows with REL HIGH, MEDIUM, or LOW are shown"}},
 		{"SHOW BUILD", []string{"SHOW BUILD - Show binary build metadata", "Usage: SHOW BUILD"}},
 		{"SHOW OWN", []string{"SHOW OWN - Show your login and baseline own call", "Usage: SHOW OWN"}},
 		{"WHOSPOTSME", []string{"WHOSPOTSME - Show recent spotter countries", "Usage: WHOSPOTSME [band]"}},

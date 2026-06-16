@@ -102,20 +102,22 @@ WHOSPOTSME 20M (last 10m):
 Ask for a point-to-point propagation outlook. When a single-band request is
 missing cache rows, it starts a VOACAP refresh and may wait briefly; all-band
 requests show cached rows while refreshing missing bands in the background.
-Omitted mode defaults to CW:
+Omitted mode defaults to CW. Rows whose `REL` prediction is `UNLIKELY` or
+`CLOSED` are hidden:
 
 ```text
 > SHOW PROP IT9 20m FT8
 PROP FN31 -> JM77 target=IT9 source=cty-derived mode=FT8 band=20m noise=SUBURBAN ssn=112 hours=8
 UTC  EFF  RX  TX  REL
 18Z  <    -   <   LOW
-19Z  #    #   #   CLOSED
 ```
 
 `EFF`, `RX`, and `TX` are mode-specific path glyphs. `EFF` is the merged
 effective path, `RX` is the target-to-you receive leg after your `SET NOISE`
 penalty, `TX` is the you-to-target transmit leg, and `REL` is the configured
-class for the merged path.
+class for the merged path. If all cached rows are `UNLIKELY` or `CLOSED`, the
+command reports that there are no `HIGH`/`MEDIUM`/`LOW` rows in the current
+forecast window.
 
 ### Filter Examples
 
@@ -604,7 +606,8 @@ Important operational notes:
   cached rows while refreshing missing or partial bands in the background.
   `EFF`, `RX`, and `TX` are mode-specific path glyphs for the merged path,
   target-to-user receive leg, and user-to-target transmit leg. `REL` is the
-  configured class for the merged path. It does not display bucket p50.
+  configured class for the merged path. Rows whose `REL` prediction is
+  `UNLIKELY` or `CLOSED` are hidden, and bucket p50 is not displayed.
 - `PATH` filters work on the class names, not on the glyph characters.
   `CLOSED` is a VOACAP-closed subtype of `UNLIKELY`: existing
   `PASS/REJECT PATH UNLIKELY` filters still include closed fallback spots,

@@ -59,6 +59,8 @@ Filter mutation and `SHOW PROP` execution are handled in the telnet layer.
 This package documents those commands in HELP, but the parser for `PASS`,
 `REJECT`, `SHOW FILTER`, `SHOW PROP`, and the `cc` aliases lives under
 [`../telnet`](../telnet).
+`SHOW PROP` HELP should stay aligned with the telnet formatter: the command
+shows only rows whose `REL` prediction is `HIGH`, `MEDIUM`, or `LOW`.
 
 ## Notes For Documentation
 

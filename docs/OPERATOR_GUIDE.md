@@ -403,19 +403,22 @@ The target can be an explicit Maidenhead grid, a callsign found in the grid
 store, or a CTY-derived prefix/callsign center. With no band, the command
 queries all configured VOACAP fallback bands. With no mode, it uses `CW`.
 Rows run from the current UTC hour through the configured
-`voacap_fallback.forecast_hours` cache horizon.
+`voacap_fallback.forecast_hours` cache horizon, but only rows whose `REL`
+prediction is `HIGH`, `MEDIUM`, or `LOW` are displayed.
 
 ```text
 PROP FN31 -> JM77 target=IT9 source=cty-derived mode=FT8 band=20m noise=SUBURBAN ssn=112 hours=8
 UTC  EFF  RX  TX  REL
 18Z  <    -   <   LOW
-19Z  #    #   #   CLOSED
 ```
 
 - `EFF` is the merged bidirectional effective-path glyph.
 - `RX` is the target-to-user receive-leg glyph after the user's `SET NOISE` penalty.
 - `TX` is the user-to-target transmit-leg glyph.
 - `REL` is the configured path class for the requested mode and merged path.
+- Rows whose `REL` prediction is `UNLIKELY` or `CLOSED` are hidden. If every
+  cached row is hidden, the command reports that there are no
+  `HIGH`/`MEDIUM`/`LOW` rows in the current forecast window.
 - Bucket p50 is intentionally not shown; sufficient bucket p50 remains
   authoritative for live spot glyphs.
 

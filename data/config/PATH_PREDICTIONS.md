@@ -210,7 +210,8 @@ VOACAP fallback band. With no mode, it uses CW. Empty or partial single-band
 lookups enqueue a refresh through the existing VOACAP fallback worker and wait
 up to `voacap_fallback.show_prop_wait_milliseconds`; all-band requests return
 cached rows while refreshing missing or partial bands in the background. The row
-count follows `voacap_fallback.forecast_hours`.
+count follows `voacap_fallback.forecast_hours`, but rows whose `REL` prediction
+is `UNLIKELY` or `CLOSED` are hidden.
 
 ## How to Use This Information
 

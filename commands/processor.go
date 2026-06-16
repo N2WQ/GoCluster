@@ -392,6 +392,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"Uses your SET GRID and SET NOISE settings; omitted mode defaults to CW.",
 			"Single-band misses may wait briefly; all-band requests refresh in the background.",
 			"EFF, RX, and TX show mode-specific glyphs; REL shows the merged class.",
+			"Only rows with REL HIGH, MEDIUM, or LOW are shown.",
 		},
 	)
 	add("SHOW PROP", "SHOW PROP - Show propagation outlook.", showPropLines, "SH PROP", "SHOW/PROP", "SH/PROP")

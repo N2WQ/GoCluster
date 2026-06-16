@@ -75,7 +75,8 @@ func TestHandleShowPropSingleBandExplicitGrid(t *testing.T) {
 			"20m": {
 				Records: []pathreliability.VOACAPCachedForecast{
 					testShowPropForecast(cfg, 18, -10, -20, noisePenalty),
-					testShowPropForecast(cfg, 19, -35, -30, noisePenalty),
+					testShowPropForecast(cfg, 19, -20, -25, noisePenalty),
+					testShowPropForecast(cfg, 20, -35, -30, noisePenalty),
 				},
 			},
 		},
@@ -96,10 +97,14 @@ func TestHandleShowPropSingleBandExplicitGrid(t *testing.T) {
 		"PROP FN31 -> FN32 target=FN32 source=grid mode=FT8 band=20m noise=SUBURBAN ssn=112 hours=8",
 		"UTC  EFF  RX  TX  REL",
 		"18Z  -    !   -   LOW",
-		"19Z  !    !   !   CLOSED",
 	} {
 		if !strings.Contains(resp, want) {
 			t.Fatalf("response missing %q:\n%s", want, resp)
+		}
+	}
+	for _, hidden := range []string{"19Z", "20Z", "UNLIKELY", "CLOSED"} {
+		if strings.Contains(resp, hidden) {
+			t.Fatalf("response contains hidden row marker %q:\n%s", hidden, resp)
 		}
 	}
 	if len(fallback.requests) != 1 {
@@ -156,6 +161,88 @@ func TestHandleShowPropAllBandsPartialCache(t *testing.T) {
 	}
 	if fallback.requests[0].Band != "40m" || fallback.requests[1].Band != "20m" {
 		t.Fatalf("unexpected band request order: %+v", fallback.requests)
+	}
+}
+
+func TestHandleShowPropSingleBandSuppressesAllClosedAndUnlikely(t *testing.T) {
+	requireH3Mappings(t)
+	cfg := pathreliability.DefaultConfig()
+	cfg.VOACAPFallback.CenterFrequenciesMHz = []float64{14.1}
+	fallback := &fakeShowPropFallback{
+		cfg: cfg,
+		windows: map[string]pathreliability.VOACAPCachedForecastWindow{
+			"20m": {
+				Records: []pathreliability.VOACAPCachedForecast{
+					testShowPropForecast(cfg, 18, -25, -25, 0),
+					testShowPropForecast(cfg, 19, -35, -35, 0),
+				},
+			},
+		},
+	}
+	server := &Server{
+		pathPredictor:      pathreliability.NewPredictor(cfg, []string{"20m"}),
+		pathClosedFallback: fallback,
+		noiseModel:         cfg.NoiseModel(),
+		nowFn:              func() time.Time { return time.Date(2026, time.June, 8, 18, 0, 0, 0, time.UTC) },
+	}
+	client := testShowPropClient("FN31", "QUIET")
+
+	resp, handled := server.handleShowPropCommand(client, "SHOW PROP FN32 20m FT8")
+	if !handled {
+		t.Fatalf("SHOW PROP not handled")
+	}
+	if !strings.Contains(resp, showPropNoOpenRowsMessage) {
+		t.Fatalf("expected no-open-rows message, got:\n%s", resp)
+	}
+	for _, hidden := range []string{"UTC  EFF", "18Z", "19Z", "UNLIKELY", "CLOSED"} {
+		if strings.Contains(resp, hidden) {
+			t.Fatalf("response contains hidden row marker %q:\n%s", hidden, resp)
+		}
+	}
+}
+
+func TestHandleShowPropAllBandsSuppressesClosedAndUnlikelyPerBand(t *testing.T) {
+	requireH3Mappings(t)
+	cfg := pathreliability.DefaultConfig()
+	cfg.VOACAPFallback.CenterFrequenciesMHz = []float64{7.15, 14.1}
+	fallback := &fakeShowPropFallback{
+		cfg: cfg,
+		windows: map[string]pathreliability.VOACAPCachedForecastWindow{
+			"40m": {
+				Records: []pathreliability.VOACAPCachedForecast{
+					testShowPropForecast(cfg, 18, -16, -16, 0),
+				},
+			},
+			"20m": {
+				Records: []pathreliability.VOACAPCachedForecast{
+					testShowPropForecast(cfg, 18, -8, -8, 0),
+				},
+			},
+		},
+	}
+	server := &Server{
+		pathPredictor:      pathreliability.NewPredictor(cfg, []string{"20m", "40m"}),
+		pathClosedFallback: fallback,
+		noiseModel:         cfg.NoiseModel(),
+		nowFn:              func() time.Time { return time.Date(2026, time.June, 8, 18, 0, 0, 0, time.UTC) },
+	}
+	client := testShowPropClient("FN31", "QUIET")
+
+	resp, handled := server.handleShowPropCommand(client, "SHOW PROP FN32 CW")
+	if !handled {
+		t.Fatalf("SHOW PROP not handled")
+	}
+	for _, want := range []string{
+		"BAND  UTC  EFF  RX  TX  REL",
+		"40m   " + showPropNoOpenRowsMessage,
+		"20m   18Z  -    -   -   LOW",
+	} {
+		if !strings.Contains(resp, want) {
+			t.Fatalf("response missing %q:\n%s", want, resp)
+		}
+	}
+	if strings.Contains(resp, "UNLIKELY") || strings.Contains(resp, "CLOSED") {
+		t.Fatalf("response includes hidden reliability class:\n%s", resp)
 	}
 }
 

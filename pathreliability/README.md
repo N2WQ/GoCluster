@@ -229,11 +229,12 @@ lookups enqueue an immediate refresh through the existing fallback worker and
 wait up to `voacap_fallback.show_prop_wait_milliseconds`; all-band requests
 show cached rows immediately while refreshing missing or partial bands in the
 background. Rows run from the current UTC hour through
-`voacap_fallback.forecast_hours`. The displayed `RX` glyph is DX-to-user after
-the requesting user's receive-noise penalty, `TX` is user-to-DX, `EFF` is the
-configured receive/transmit merge glyph, and `REL` is the configured path class
-for the requested mode and merged path. Bucket p50 remains internal to the live
-glyph decision and is not shown in this command.
+`voacap_fallback.forecast_hours`, but only rows whose `REL` prediction is
+`HIGH`, `MEDIUM`, or `LOW` are displayed. The displayed `RX` glyph is
+DX-to-user after the requesting user's receive-noise penalty, `TX` is
+user-to-DX, `EFF` is the configured receive/transmit merge glyph, and `REL` is
+the configured path class for the requested mode and merged path. Bucket p50
+remains internal to the live glyph decision and is not shown in this command.
 
 The shipped config currently uses:
 
