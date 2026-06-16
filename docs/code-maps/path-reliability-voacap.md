@@ -2,7 +2,7 @@
 # Code Map: Path Reliability And VOACAP
 
 - Map ID: `path-reliability-voacap`
-- Source fingerprint: `62dce2cc4732834f`
+- Source fingerprint: `efaf878e44a52412`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map path-reliability-voacap`
 - Check: `go run ./cmd/codemap check -map path-reliability-voacap`
@@ -90,6 +90,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0180](docs/decisions/ADR-0180-voacap-runtime-output-cleanup.md) | Accepted | 2026-06-16 | voacap, pathreliability, operations, file lifecycle | `area:internal/voacap, area:pathreliability, path:internal/voacap, path:pathreliability` |
 | [ADR-0178](docs/decisions/ADR-0178-voacap-invalid-request-reason-diagnostics.md) | Accepted | 2026-06-12 | pathreliability, telnet, voacap, operations, observability, supportability | `area:internal/voacap, area:pathreliability, path:pathreliability` |
 | [ADR-0177](docs/decisions/ADR-0177-distance-selected-voacap-method.md) | Accepted | 2026-06-11 | voacap, pathreliability, operations, model calibration | `area:internal/voacap, area:pathreliability, path:internal/voacap, path:pathreliability` |
 | [ADR-0176](docs/decisions/ADR-0176-path-prediction-admission-reuse.md) | Accepted | 2026-06-11 | telnet, pathreliability, voacap, hot path, observability | `area:internal/voacap, area:pathreliability` |

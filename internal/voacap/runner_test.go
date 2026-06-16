@@ -2,6 +2,7 @@ package voacap
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -34,6 +35,37 @@ func TestRunnerSuccessRemovesStaleOutputAndReadsNewOutput(t *testing.T) {
 	}
 	if result.OutputPath != outputPath {
 		t.Fatalf("OutputPath = %q, want %q", result.OutputPath, outputPath)
+	}
+	onDisk, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("read output left on disk: %v", err)
+	}
+	if string(onDisk) != string(result.Output) || strings.Contains(string(onDisk), "stale") {
+		t.Fatalf("on-disk output = %q, want fresh output bytes %q", onDisk, result.Output)
+	}
+}
+
+func TestRunnerRemovesOutputAfterReadWhenRequested(t *testing.T) {
+	r := testRunner(t, "success")
+	outputPath := filepath.Join(r.RunDir, "cleanup.out")
+
+	result, err := r.Run(context.Background(), RunRequest{
+		Deck:                  []byte("deck"),
+		OutputName:            "cleanup.out",
+		Timeout:               5 * time.Second,
+		RemoveOutputAfterRead: true,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if got := string(result.Output); !strings.Contains(got, "fake voacap output") {
+		t.Fatalf("output = %q, want fake output", got)
+	}
+	if result.OutputPath != outputPath {
+		t.Fatalf("OutputPath = %q, want %q", result.OutputPath, outputPath)
+	}
+	if _, err := os.Stat(outputPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("output file should be removed after read, stat err=%v", err)
 	}
 }
 

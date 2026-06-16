@@ -1294,9 +1294,10 @@ func (f VOACAPRunnerClosedForecaster) runDirectionalForecast(ctx context.Context
 		job.SSN,
 		direction)
 	result, err := f.runner.Run(ctx, voacap.RunRequest{
-		Deck:       deck,
-		OutputName: outputName,
-		Timeout:    time.Duration(f.cfg.VOACAPTimeoutSeconds) * time.Second,
+		Deck:                  deck,
+		OutputName:            outputName,
+		Timeout:               time.Duration(f.cfg.VOACAPTimeoutSeconds) * time.Second,
+		RemoveOutputAfterRead: true,
 	})
 	if err != nil {
 		return VOACAPClosedForecast{}, result, err

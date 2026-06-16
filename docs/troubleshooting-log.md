@@ -12,6 +12,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
 | TSR-0001 | <title> | Open | YYYY-MM-DD | <area> | - | `docs/troubleshooting/TSR-0001-<slug>.md` |
+| TSR-0030 | VOACAP Runtime Output File Retention | Resolved | 2026-06-16 | voacap, pathreliability, file lifecycle, operations | ADR-0180 | `docs/troubleshooting/TSR-0030-voacap-runtime-output-file-retention.md` |
 | TSR-0029 | H3-Backed Tests Skipped From Package CWD | Resolved | 2026-06-10 | pathreliability, telnet, filter, tests | - | `docs/troubleshooting/TSR-0029-h3-backed-tests-skipped-from-package-cwd.md` |
 | TSR-0028 | VOACAP Fallback Current-Hour Miss | Resolved | 2026-06-09 | voacap, pathreliability, propagation logs | ADR-0164 | `docs/troubleshooting/TSR-0028-voacap-fallback-current-hour-miss.md` |
 | TSR-0027 | Support-Agent Shallow Answers | Resolved | 2026-06-07 | customgpt, supportability, actions, operations | ADR-0154 | `docs/troubleshooting/TSR-0027-support-agent-shallow-answers.md` |

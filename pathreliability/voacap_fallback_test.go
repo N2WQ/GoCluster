@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1119,6 +1121,59 @@ func TestVOACAPRunnerClosedForecasterDeckSupportsReceiveDirection(t *testing.T) 
 	}
 }
 
+func TestVOACAPRunnerClosedForecasterRemovesDirectionalOutputAfterRead(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin_win")
+	runDir := filepath.Join(home, "run")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin: %v", err)
+	}
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		t.Fatalf("mkdir run: %v", err)
+	}
+	source := filepath.Join(home, "fake_voacap.go")
+	engine := filepath.Join(binDir, "Voacapw.exe")
+	if err := os.WriteFile(source, []byte(fakeCleanupVOACAPEngineSource), 0o644); err != nil {
+		t.Fatalf("write fake engine source: %v", err)
+	}
+	buildCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(buildCtx, "go", "build", "-o", engine, source)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build fake engine: %v\n%s", err, out)
+	}
+
+	cfg := testVOACAPFallbackConfig().VOACAPFallback
+	cfg.VOACAPHome = home
+	cfg.VOACAPTimeoutSeconds = 5
+	cfg.ForecastHours = 2
+	cfg.OutputNamePrefix = "gocluster_cleanup"
+	cfg.CenterFrequenciesMHz = []float64{14.1}
+	forecaster := NewVOACAPRunnerClosedForecaster(cfg)
+	forecast, result, err := forecaster.runDirectionalForecast(context.Background(), VOACAPClosedJob{
+		Request: VOACAPClosedRequest{
+			UserGrid: "FN31",
+			DXGrid:   "FN32",
+			Band:     "20m",
+		},
+		SSN:            112,
+		WindowStartUTC: time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC),
+		FrequencyMHz:   14.1,
+	}, voacapDeckTransmit)
+	if err != nil {
+		t.Fatalf("runDirectionalForecast() error: %v", err)
+	}
+	if len(result.Output) == 0 {
+		t.Fatalf("expected in-memory VOACAP output bytes")
+	}
+	if len(forecast.Records) != 1 || forecast.Records[0].HourUTC != 20 || forecast.Records[0].FrequencyMHz != 14.1 {
+		t.Fatalf("unexpected parsed forecast: %+v", forecast)
+	}
+	if _, err := os.Stat(result.OutputPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("runtime fallback output should be removed after read, stat err=%v", err)
+	}
+}
+
 func TestVOACAPClosedFallbackAppliesNoiseToReceiveDirection(t *testing.T) {
 	cfg := testVOACAPFallbackConfig()
 	cfg.MergeReceiveWeight = 0.6
@@ -1312,6 +1367,29 @@ func waitUntil(t *testing.T, fn func() bool) {
 	}
 	t.Fatal("condition was not met before deadline")
 }
+
+const fakeCleanupVOACAPEngineSource = `package main
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+)
+
+func main() {
+	if len(os.Args) != 5 {
+		fmt.Fprintf(os.Stderr, "unexpected args: %v", os.Args)
+		os.Exit(3)
+	}
+	home := os.Args[2]
+	outputName := os.Args[4]
+	output := " 20.0 0.0 14.1 FREQ\n 0.0 10.0 SNR\n 0.0 0.80 REL\n"
+	if err := os.WriteFile(filepath.Join(home, "run", outputName), []byte(output), 0o644); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(5)
+	}
+}
+`
 
 type voacapPredictionRecordForTest struct {
 	HourUTC        int

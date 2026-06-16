@@ -42,6 +42,9 @@ type RunRequest struct {
 	Deck       []byte
 	OutputName string
 	Timeout    time.Duration
+	// RemoveOutputAfterRead deletes the .out file after Output is copied into memory.
+	// Leave it false for experiment commands that intentionally keep artifacts.
+	RemoveOutputAfterRead bool
 }
 
 type RunResult struct {
@@ -140,12 +143,18 @@ func (r Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 	if len(output) == 0 {
 		return RunResult{OutputPath: outputPath, Elapsed: elapsed, ExitCode: exitCode(cmd)}, fmt.Errorf("VOACAP output is empty: %s", outputPath)
 	}
-	return RunResult{
+	result := RunResult{
 		OutputPath: outputPath,
 		Output:     output,
 		Elapsed:    elapsed,
 		ExitCode:   exitCode(cmd),
-	}, nil
+	}
+	if req.RemoveOutputAfterRead {
+		if err := os.Remove(outputPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return result, fmt.Errorf("remove VOACAP output after read: %w", err)
+		}
+	}
+	return result, nil
 }
 
 func (r Runner) withDefaults() Runner {
