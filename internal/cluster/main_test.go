@@ -2576,6 +2576,7 @@ func TestBuildOverviewLinesIncludesRecentSupportByBand(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 		"N2WQ-2",
 		false,
 		false,

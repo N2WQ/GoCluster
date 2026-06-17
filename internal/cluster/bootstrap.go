@@ -661,7 +661,7 @@ func formatTopCounterSummary(counts map[string]uint64, limit int) string {
 // Key aspects: Uses a ticker, diff counters, and optional secondary dedupe stats.
 // Upstream: main stats goroutine.
 // Downstream: tracker accessors, loadFCCSnapshot, and UI/log output.
-func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestStats *ingestValidator, dedup *dedup.Deduplicator, secondaryFast *dedup.SecondaryDeduper, secondaryMed *dedup.SecondaryDeduper, secondarySlow *dedup.SecondaryDeduper, secondaryStage *atomic.Uint64, buf *buffer.RingBuffer, ctyLookup func() *cty.CTYDatabase, metaCache *callMetaCache, ctyState *ctyRefreshState, recentBandStore spot.RecentSupportStore, signalResolver *spot.SignalResolver, telnetSrv *telnet.Server, dash ui.Surface, gridStats *gridMetrics, gridDB *gridStoreHandle, fccDBPath string, pathPredictor *pathreliability.Predictor, modeAssigner *spot.ModeAssigner, toxicityClassifier *toxicity.Classifier, rbnClient *rbn.Client, rbnDigitalClient *rbn.Client, pskrClient *pskreporter.Client, dxsummitClient *dxsummit.Client, pskrPathOnly *pathOnlyStats, peerManager *peer.Manager, clusterCall string, skewPath string, ingestSourceCfg dashboardIngestSourceConfig) {
+func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestStats *ingestValidator, dedup *dedup.Deduplicator, secondaryFast *dedup.SecondaryDeduper, secondaryMed *dedup.SecondaryDeduper, secondarySlow *dedup.SecondaryDeduper, secondaryStage *atomic.Uint64, buf *buffer.RingBuffer, ctyLookup func() *cty.CTYDatabase, metaCache *callMetaCache, ctyState *ctyRefreshState, recentBandStore spot.RecentSupportStore, signalResolver *spot.SignalResolver, telnetSrv *telnet.Server, dash ui.Surface, gridStats *gridMetrics, gridDB *gridStoreHandle, fccDBPath string, pathPredictor *pathreliability.Predictor, voacapSSN pathreliability.VOACAPSSNProvider, modeAssigner *spot.ModeAssigner, toxicityClassifier *toxicity.Classifier, rbnClient *rbn.Client, rbnDigitalClient *rbn.Client, pskrClient *pskreporter.Client, dxsummitClient *dxsummit.Client, pskrPathOnly *pathOnlyStats, peerManager *peer.Manager, clusterCall string, skewPath string, ingestSourceCfg dashboardIngestSourceConfig) {
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
@@ -903,7 +903,7 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 
 		if dash != nil {
 			dash.SetStats(lines)
-			overviewLines := buildOverviewLines(tracker, dedup, secondaryFast, secondaryMed, secondarySlow, metaCache, recentBandStore, ctyState, fccSnap, gridStats, gridDB, pathPredictor, modeAssigner, telnetSrv, clusterCall,
+			overviewLines := buildOverviewLines(tracker, dedup, secondaryFast, secondaryMed, secondarySlow, metaCache, recentBandStore, ctyState, fccSnap, gridStats, gridDB, pathPredictor, voacapSSN, modeAssigner, telnetSrv, clusterCall,
 				rbnLive, pskLive, p92Live,
 				ingestSources,
 				combinedRBN, rbnCW, rbnRTTY, rbnFT8, rbnFT4, rbnFT2,
@@ -4269,6 +4269,7 @@ func buildOverviewLines(
 	gridStats *gridMetrics,
 	gridDB *gridStoreHandle,
 	pathPredictor *pathreliability.Predictor,
+	voacapSSN pathreliability.VOACAPSSNProvider,
 	modeAssigner *spot.ModeAssigner,
 	telnetSrv *telnet.Server,
 	clusterCall string,
@@ -4360,6 +4361,7 @@ func buildOverviewLines(
 			skewTime = formatDateShortZ(info.ModTime())
 		}
 	}
+	voacapSSNLabel := formatVOACAPSSNLabel(voacapSSN, now)
 
 	primaryDupPct := "n/a"
 	if dedup != nil {
@@ -4414,7 +4416,7 @@ func buildOverviewLines(
 	lines = append(lines, cacheBars...)
 	lines = append(lines,
 		"",
-		fmt.Sprintf("[yellow]CTY[-]: %s  [yellow]FCC[-]: %s  [yellow]Skew[-]: %s", ctyTime, fccTime, skewTime),
+		fmt.Sprintf("[yellow]CTY[-]: %s  [yellow]FCC[-]: %s  [yellow]Skew[-]: %s  [yellow]VOACAP SSN[-]: %s", ctyTime, fccTime, skewTime, voacapSSNLabel),
 		"PATH PREDICTIONS",
 	)
 	lines = append(lines, formatPathLines(pathPredictor, now)...)
@@ -4423,6 +4425,17 @@ func buildOverviewLines(
 	lines = append(lines, "NETWORK")
 	lines = append(lines, formatNetworkLines(telnetSrv, clientList)...)
 	return lines
+}
+
+func formatVOACAPSSNLabel(provider pathreliability.VOACAPSSNProvider, now time.Time) string {
+	if provider == nil {
+		return "n/a"
+	}
+	ssn, ok := provider.CurrentSSN(now)
+	if !ok {
+		return "n/a"
+	}
+	return fmt.Sprintf("%d", ssn)
 }
 
 type dashboardIngestSourceConfig struct {

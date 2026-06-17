@@ -214,6 +214,8 @@ The runtime SSN monitor persists only its continuity state at
 and current rounded SSN generation. Missing state cold-starts the SSN monitor;
 malformed state is warned about and ignored so path reliability can still start.
 Do not share the same state file between two running cluster processes.
+The local Overview page displays that current rounded generation as
+`VOACAP SSN: <integer|n/a>` when the interactive console is enabled.
 Completed VOACAP hourly forecast-window records persist separately in the
 per-node Pebble DB at `voacap_fallback.forecast_cache_db_path`. Startup hydrates
 only records that still match the current cache schema, model generation,

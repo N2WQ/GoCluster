@@ -81,7 +81,7 @@ func TestFormatIngestLineIncludesFT2AndCommaAwareWidths(t *testing.T) {
 
 func TestBuildOverviewLinesIncludesFT2IngestRates(t *testing.T) {
 	lines := buildOverviewLines(
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		"N2WQ-2",
 		true, true, false,
 		nil,
@@ -103,6 +103,48 @@ func TestBuildOverviewLinesIncludesFT2IngestRates(t *testing.T) {
 			t.Fatalf("expected overview lines to include %q, got %v", want, lines)
 		}
 	}
+}
+
+func TestBuildOverviewLinesIncludesVOACAPSSN(t *testing.T) {
+	lines := buildOverviewLinesForStatsTest(fixedOverviewSSNProvider{ssn: 112, ok: true})
+	joined := strings.Join(lines, "\n")
+	want := "[yellow]CTY[-]: n/a  [yellow]FCC[-]: n/a  [yellow]Skew[-]: n/a  [yellow]VOACAP SSN[-]: 112"
+	if !strings.Contains(joined, want) {
+		t.Fatalf("expected overview lines to include %q, got %v", want, lines)
+	}
+
+	lines = buildOverviewLinesForStatsTest(fixedOverviewSSNProvider{})
+	joined = strings.Join(lines, "\n")
+	want = "[yellow]CTY[-]: n/a  [yellow]FCC[-]: n/a  [yellow]Skew[-]: n/a  [yellow]VOACAP SSN[-]: n/a"
+	if !strings.Contains(joined, want) {
+		t.Fatalf("expected unavailable VOACAP SSN to render as %q, got %v", want, lines)
+	}
+}
+
+type fixedOverviewSSNProvider struct {
+	ssn int
+	ok  bool
+}
+
+func (p fixedOverviewSSNProvider) CurrentSSN(time.Time) (int, bool) {
+	return p.ssn, p.ok
+}
+
+func buildOverviewLinesForStatsTest(voacapSSN fixedOverviewSSNProvider) []string {
+	return buildOverviewLines(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, voacapSSN, nil, nil,
+		"N2WQ-2",
+		false, false, false,
+		nil,
+		0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0,
+		0,
+		0, 0, 0, 0,
+		"[yellow]Path[-]: n/a",
+		"",
+		nil,
+		"n/a",
+	)
 }
 
 func TestWithIngestStatusLabel(t *testing.T) {

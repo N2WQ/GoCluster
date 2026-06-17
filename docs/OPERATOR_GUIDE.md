@@ -152,6 +152,11 @@ cd /opt/gocluster
 DXC_CONFIG_PATH=/opt/gocluster/data/config.local ./gocluster
 ```
 
+On the Overview page, the Caches & Data Freshness footer includes CTY, FCC, and
+skew dates plus `VOACAP SSN: <integer|n/a>`. The integer is the rounded current
+SSN generation used for VOACAP forecast cache keys and deck generation; `n/a`
+means the runtime has no initialized VOACAP SSN generation.
+
 After inspection, set `ui.mode` back to `headless` before returning to
 unattended service mode.
 

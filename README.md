@@ -630,7 +630,8 @@ For the exact thresholds, per-mode offsets, weight rules, and shipped tables, se
 - Shows enabled ingest sources in the console dashboard; the RBN family is live
   when either CW/RTTY or digital RBN is connected, while source rows still show
   each enabled feed separately. DXSummit appears as `DXSUMMIT` when enabled and
-  recently polling.
+  recently polling. The Overview freshness line also shows `VOACAP SSN:
+  <integer|n/a>` for the rounded current SSN generation used by VOACAP.
 - Normalizes callsigns, frequencies, modes, and reports before shared validation and enrichment.
 - Adds CTY metadata and optional FCC license checks where that policy applies.
 - Applies shared-ingest flood policy before primary dedupe using the shipped `floodcontrol.yaml` rails.

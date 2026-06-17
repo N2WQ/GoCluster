@@ -1350,6 +1350,7 @@ func (r *clusterRuntime) startMonitors() {
 		r.gridStoreHandle,
 		r.cfg.FCCULS.DBPath,
 		r.pathPredictor,
+		r.voacapSSN,
 		r.modeAssigner,
 		r.toxicityClassifier,
 		r.rbnClient,

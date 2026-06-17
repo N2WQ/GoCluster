@@ -38,7 +38,7 @@ const (
 		"[lightgray]Custom SCP[-]: -- (R) / -- (S)\n" +
 		"[lightgray]160m[-]: --  [lightgray]80m[-]: --  [lightgray]40m[-]: --  [lightgray]20m[-]: --\n" +
 		"\n" +
-		"[lightgray]CTY[-]: --  [lightgray]FCC[-]: --  [lightgray]Skew[-]: --"
+		"[lightgray]CTY[-]: --  [lightgray]FCC[-]: --  [lightgray]Skew[-]: --  [lightgray]VOACAP SSN[-]: --"
 	placeholderPath               = "[lightgray]Path pairs[-]: -- (L2) / -- (L1)\n[lightgray]160m[-]: -- / --   [lightgray]80m[-]: -- / --"
 	placeholderIngestSources      = "[lightgray]Ingest[-]: -- / 4 connected\n\n(none)"
 	placeholderNetwork            = "[lightgray]Telnet[-]: -- clients   [lightgray]Drops[-]: Q-- C-- W--"

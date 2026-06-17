@@ -43,6 +43,8 @@ inspect user-visible diagnostics:
   effective `voacap_fallback.ssn_state_path`, startup warnings about SSN state
   restore, and NOAA fetch errors before changing path thresholds. The SSN state
   file is per-node runtime state; do not share it between running processes.
+  The local Overview page shows `VOACAP SSN: <integer|n/a>` for that rounded
+  generation when `tview-v2` is enabled.
 - Completed VOACAP forecast windows persist separately in the per-node Pebble
   cache at `voacap_fallback.forecast_cache_db_path`. Current restored records
   become ordinary memory cache hits and bypass `voacap_fallback.delay_seconds`;

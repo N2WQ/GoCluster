@@ -13,6 +13,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Placeholder Title | Proposed | YYYY-MM-DD | placeholder area | - | - | `docs/decisions/ADR-0001-placeholder-slug.md` |
+| ADR-0190 | VOACAP SSN Overview Visibility | Accepted | 2026-06-17 | ui/tview-v2, stats, voacap, pathreliability, operations | ADR-0182 operator diagnostics visibility | - | `docs/decisions/ADR-0190-voacap-ssn-overview-visibility.md` |
 | ADR-0189 | Tview V2 Pipeline Console Simplification | Accepted | 2026-06-17 | ui/tview-v2, stats, operations, supportability | ADR-0040 pipeline detail rows; ADR-0060 FT Burst dashboard observability | - | `docs/decisions/ADR-0189-tview-v2-pipeline-console-simplification.md` |
 | ADR-0188 | Local Console Mode Retirement | Accepted | 2026-06-17 | ui, config, operations, supportability | - | - | `docs/decisions/ADR-0188-local-console-mode-retirement.md` |
 | ADR-0187 | SHOW PROP Open Row Display | Accepted | 2026-06-16 | telnet, pathreliability, voacap, commands, supportability | ADR-0172 display-all cached rows behavior | - | `docs/decisions/ADR-0187-show-prop-open-row-display.md` |
