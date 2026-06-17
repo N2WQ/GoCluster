@@ -4624,11 +4624,11 @@ func formatPathLines(predictor *pathreliability.Predictor, now time.Time) []stri
 	)
 	lines := make([]string, 0, 1)
 	if predictor == nil || !predictor.Config().Enabled {
-		lines = append(lines, "[yellow]Path pairs[-]: n/a")
+		lines = append(lines, "[yellow]H3 path pairs[-]: n/a")
 		return lines
 	}
 	stats := predictor.Stats(now)
-	lines = append(lines, fmt.Sprintf("[yellow]Path pairs[-]: %s (L2) / %s (L1)",
+	lines = append(lines, fmt.Sprintf("[yellow]H3 path pairs[-]: %s (L2) / %s (L1)",
 		humanize.Comma(int64(stats.CombinedFine)),
 		humanize.Comma(int64(stats.CombinedCoarse)),
 	))

@@ -98,9 +98,9 @@ voacap_fallback:
   reliability_sparse_upgrade_enabled: true
   # VOACAP REL gates are reliability of the configured request SNR, not direct class probabilities.
   # Stronger displayed classes require stronger REL evidence.
-  reliability_min_high: 0.90
-  reliability_min_medium: 0.80
-  reliability_min_low: 0.65
+  reliability_min_high: 0.85
+  reliability_min_medium: 0.75
+  reliability_min_low: 0.60
   reliability_min_unlikely: 0.50
   # Sparse/no-p50 diagnostics include no usable p50 plus insufficient p50 evidence at or below this selected observation count. This does not change glyph decisions.
   sparse_p50_diagnostic_max_observation_count: 2

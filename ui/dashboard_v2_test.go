@@ -107,7 +107,7 @@ func TestOverviewPathPaneGrowsToFitBandBuckets(t *testing.T) {
 		"CACHES & DATA FRESHNESS",
 		"Grid: ok",
 		"PATH PREDICTIONS",
-		"Path pairs: 100 / 200",
+		"H3 path pairs: 100 / 200",
 		"",
 		"160m: 1 / 2   80m: 3 / 4   40m: 5 / 6   30m: 7 / 8",
 		"20m: 9 / 10   17m: 11 / 12 15m: 13 / 14 12m: 15 / 16",
@@ -130,7 +130,7 @@ func TestOverviewPathPaneGrowsToFitBandBuckets(t *testing.T) {
 
 	got := d.overviewPath.GetText(true)
 	for _, want := range []string{
-		"Path pairs: 100 / 200",
+		"H3 path pairs: 100 / 200",
 		"160m: 1 / 2",
 		"20m: 9 / 10",
 		"10m: 17 / 18",
@@ -187,7 +187,7 @@ func TestOverviewCachesPaneResizesToContentHeight(t *testing.T) {
 		"",
 		"CTY: now",
 		"PATH PREDICTIONS",
-		"Path pairs: 100 / 200",
+		"H3 path pairs: 100 / 200",
 		"NETWORK",
 		"Telnet: ok",
 	}

@@ -169,7 +169,7 @@ func benchmarkOverviewLines() []string {
 		"",
 		"CTY: 2026-06-04  FCC: 2026-06-04  Skew: 2026-06-04",
 		"PATH PREDICTIONS",
-		"Path pairs: 100 (L2) / 200 (L1)",
+		"H3 path pairs: 100 (L2) / 200 (L1)",
 		"",
 		"160m: 1 / 2   80m: 3 / 4   40m: 5 / 6   30m: 7 / 8",
 		"20m: 9 / 10   17m: 11 / 12  15m: 13 / 14  12m: 15 / 16",
