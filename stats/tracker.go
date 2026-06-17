@@ -17,12 +17,6 @@ type StabilizerGlyphTurnStat struct {
 	Samples      uint64
 }
 
-// FTBurstSpanStat describes average observed burst span for one FT mode.
-type FTBurstSpanStat struct {
-	AverageSpan time.Duration
-	Samples     uint64
-}
-
 // Tracker tracks spot statistics by source
 type Tracker struct {
 	// counters live in sync.Map + atomic.Uint64 so per-spot increments don't fight over a mutex
@@ -68,11 +62,6 @@ type Tracker struct {
 	temporalBypass       atomic.Uint64
 	temporalPathSwitches atomic.Uint64
 	temporalLatency      sync.Map // string(bucket) -> *atomic.Uint64
-	ftBurstActive        atomic.Int64
-	ftBurstReleased      atomic.Uint64
-	ftBurstOverflow      atomic.Uint64
-	ftBurstSpanTotalMs   sync.Map // string(mode) -> *atomic.Uint64
-	ftBurstSpanSamples   sync.Map // string(mode) -> *atomic.Uint64
 }
 
 // NewTracker creates a new stats tracker with a start timestamp.
@@ -235,23 +224,12 @@ func (t *Tracker) Reset() {
 		t.temporalLatency.Delete(key)
 		return true
 	})
-	t.ftBurstSpanTotalMs.Range(func(key, _ any) bool {
-		t.ftBurstSpanTotalMs.Delete(key)
-		return true
-	})
-	t.ftBurstSpanSamples.Range(func(key, _ any) bool {
-		t.ftBurstSpanSamples.Delete(key)
-		return true
-	})
 	t.temporalPending.Store(0)
 	t.temporalCommitted.Store(0)
 	t.temporalFallback.Store(0)
 	t.temporalAbstain.Store(0)
 	t.temporalBypass.Store(0)
 	t.temporalPathSwitches.Store(0)
-	t.ftBurstActive.Store(0)
-	t.ftBurstReleased.Store(0)
-	t.ftBurstOverflow.Store(0)
 	t.corrAppliedReasons.Range(func(key, _ any) bool {
 		t.corrAppliedReasons.Delete(key)
 		return true
@@ -684,50 +662,6 @@ func (t *Tracker) IncrementTemporalPathSwitch() {
 	t.temporalPathSwitches.Add(1)
 }
 
-// SetFTBurstActive records the current number of active FT corroboration bursts.
-func (t *Tracker) SetFTBurstActive(active int64) {
-	if t == nil {
-		return
-	}
-	if active < 0 {
-		active = 0
-	}
-	t.ftBurstActive.Store(active)
-}
-
-// IncrementFTBurstReleased records one completed FT corroboration burst release.
-func (t *Tracker) IncrementFTBurstReleased() {
-	if t == nil {
-		return
-	}
-	t.ftBurstReleased.Add(1)
-}
-
-// IncrementFTBurstOverflowRelease records one fail-open FT spot release caused by
-// pending bounds.
-func (t *Tracker) IncrementFTBurstOverflowRelease() {
-	if t == nil {
-		return
-	}
-	t.ftBurstOverflow.Add(1)
-}
-
-// ObserveFTBurstSpan records one released FT burst span for the given mode.
-func (t *Tracker) ObserveFTBurstSpan(mode string, span time.Duration) {
-	if t == nil {
-		return
-	}
-	mode = strutil.NormalizeUpper(mode)
-	if mode == "" {
-		mode = "UNKNOWN"
-	}
-	if span < 0 {
-		span = 0
-	}
-	addCounterBy(&t.ftBurstSpanTotalMs, mode, uint64(span.Milliseconds()))
-	incrementCounter(&t.ftBurstSpanSamples, mode)
-}
-
 // ObserveTemporalCommitLatency records one temporal decision latency bucket.
 func (t *Tracker) ObserveTemporalCommitLatency(latency time.Duration) {
 	if t == nil {
@@ -759,51 +693,6 @@ func (t *Tracker) TemporalPending() int64 {
 		return 0
 	}
 	return t.temporalPending.Load()
-}
-
-// FTBurstActive returns current active FT burst count.
-func (t *Tracker) FTBurstActive() int64 {
-	if t == nil {
-		return 0
-	}
-	return t.ftBurstActive.Load()
-}
-
-// FTBurstReleased returns total released FT burst count.
-func (t *Tracker) FTBurstReleased() uint64 {
-	if t == nil {
-		return 0
-	}
-	return t.ftBurstReleased.Load()
-}
-
-// FTBurstOverflowRelease returns FT fail-open releases caused by pending bounds.
-func (t *Tracker) FTBurstOverflowRelease() uint64 {
-	if t == nil {
-		return 0
-	}
-	return t.ftBurstOverflow.Load()
-}
-
-// FTBurstSpanStats returns average released FT burst span by mode.
-func (t *Tracker) FTBurstSpanStats() map[string]FTBurstSpanStat {
-	if t == nil {
-		return map[string]FTBurstSpanStat{}
-	}
-	totals := snapshotCounterMap(&t.ftBurstSpanTotalMs)
-	samples := snapshotCounterMap(&t.ftBurstSpanSamples)
-	out := make(map[string]FTBurstSpanStat, len(totals))
-	for mode, total := range totals {
-		sampleCount := samples[mode]
-		if sampleCount == 0 {
-			continue
-		}
-		out[mode] = FTBurstSpanStat{
-			AverageSpan: time.Duration(total/sampleCount) * time.Millisecond,
-			Samples:     sampleCount,
-		}
-	}
-	return out
 }
 
 // TemporalCommitted returns committed temporal apply count.

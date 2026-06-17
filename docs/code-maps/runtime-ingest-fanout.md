@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `d129dbbb9811e0d8`
+- Source fingerprint: `7e03b5225666d5ea`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -300,6 +300,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0189](docs/decisions/ADR-0189-tview-v2-pipeline-console-simplification.md) | Accepted | 2026-06-17 | ui/tview-v2, stats, operations, supportability | `path:internal/cluster` |
 | [ADR-0188](docs/decisions/ADR-0188-local-console-mode-retirement.md) | Accepted | 2026-06-17 | ui, config, operations, supportability | `path:internal/cluster` |
 | [ADR-0187](docs/decisions/ADR-0187-show-prop-open-row-display.md) | Accepted | 2026-06-16 | telnet, pathreliability, voacap, commands, supportability | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0184](docs/decisions/ADR-0184-voacap-forecast-cache-persistence.md) | Accepted | 2026-06-16 | voacap, pathreliability, config, retained state, operations | `path:internal/cluster, path:telnet` |

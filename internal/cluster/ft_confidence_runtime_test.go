@@ -17,7 +17,7 @@ func newTestFTOutputPipeline(cfg config.CallCorrectionConfig, rb *buffer.RingBuf
 		correctionCfg:     cfg,
 		ctyLookup:         func() *cty.CTYDatabase { return nil },
 		temporal:          newRuntimeTemporalController(cfg),
-		ftConfidence:      newFTConfidenceController(cfg, nil),
+		ftConfidence:      newFTConfidenceController(cfg),
 		ftRecentBandStore: newFTRecentBandStore(cfg),
 	}
 }
@@ -87,7 +87,7 @@ func TestOutputPipelineFTBurstUsesConfiguredThresholdsAndTiming(t *testing.T) {
 		FT8QuietGapSeconds: 7,
 		FT8HardCapSeconds:  14,
 	}
-	controller := newFTConfidenceController(cfg, nil)
+	controller := newFTConfidenceController(cfg)
 	base := time.Unix(1_700_000_000, 0).UTC()
 	firstCtx := outputSpotContext{spot: spot.NewSpot("K1CFG", "N0AAA", 14074.1, "FT8"), modeUpper: "FT8"}
 	if held, uniqueCount := controller.Observe(base, firstCtx); !held || uniqueCount != 1 {
@@ -221,7 +221,7 @@ func TestBuildFTConfidenceKeyUsesBurstKeying(t *testing.T) {
 }
 
 func TestFTConfidenceControllerExtendsDueWithinBurst(t *testing.T) {
-	controller := newFTConfidenceController(config.CallCorrectionConfig{}, nil)
+	controller := newFTConfidenceController(config.CallCorrectionConfig{})
 	base := time.Unix(1_700_000_000, 0).UTC()
 	timing := ftTestBurstTiming(t)
 
@@ -257,7 +257,7 @@ func TestFTConfidenceControllerExtendsDueWithinBurst(t *testing.T) {
 }
 
 func TestFTConfidenceControllerFlushesOnHardCap(t *testing.T) {
-	controller := newFTConfidenceController(config.CallCorrectionConfig{}, nil)
+	controller := newFTConfidenceController(config.CallCorrectionConfig{})
 	base := time.Unix(1_700_000_000, 0).UTC()
 	timing := ftTestBurstTiming(t)
 
@@ -280,7 +280,7 @@ func TestFTConfidenceControllerFlushesOnHardCap(t *testing.T) {
 }
 
 func TestFTConfidenceControllerStartsNewBurstAfterQuietGap(t *testing.T) {
-	controller := newFTConfidenceController(config.CallCorrectionConfig{}, nil)
+	controller := newFTConfidenceController(config.CallCorrectionConfig{})
 	base := time.Unix(1_700_000_000, 0).UTC()
 	timing := ftTestBurstTiming(t)
 
@@ -302,7 +302,7 @@ func TestFTConfidenceControllerStartsNewBurstAfterQuietGap(t *testing.T) {
 }
 
 func TestFTConfidenceControllerIgnoresObservedTimeForPSKReporterBursting(t *testing.T) {
-	controller := newFTConfidenceController(config.CallCorrectionConfig{}, nil)
+	controller := newFTConfidenceController(config.CallCorrectionConfig{})
 	base := time.Unix(1_700_000_000, 0).UTC()
 	timing := ftTestBurstTiming(t)
 
@@ -328,7 +328,7 @@ func TestFTConfidenceControllerIgnoresObservedTimeForPSKReporterBursting(t *test
 }
 
 func TestFTConfidenceControllerAllowsCrossSourceBurstCorroboration(t *testing.T) {
-	controller := newFTConfidenceController(config.CallCorrectionConfig{}, nil)
+	controller := newFTConfidenceController(config.CallCorrectionConfig{})
 	base := time.Unix(1_700_000_000, 0).UTC()
 	timing := ftTestBurstTiming(t)
 
@@ -405,7 +405,7 @@ func TestFTConfidenceHeapOrdersByDueThenSequence(t *testing.T) {
 }
 
 func TestFTConfidenceControllerDrainClearsPendingStateAfterReschedule(t *testing.T) {
-	controller := newFTConfidenceController(config.CallCorrectionConfig{}, nil)
+	controller := newFTConfidenceController(config.CallCorrectionConfig{})
 	base := time.Unix(1_700_000_000, 0).UTC()
 
 	first := spot.NewSpot("K1CLR", "N0AAA", 14074.0, "FT8")
@@ -464,7 +464,7 @@ func BenchmarkFTConfidenceControllerObserveAndDrain(b *testing.B) {
 
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		controller := newFTConfidenceController(config.CallCorrectionConfig{}, nil)
+		controller := newFTConfidenceController(config.CallCorrectionConfig{})
 
 		first := spot.NewSpot("K1BENCH", "N0AAA", 14074.1, "FT8")
 		first.Time = baseTime

@@ -11,7 +11,6 @@ import (
 	"dxcluster/config"
 	"dxcluster/cty"
 	"dxcluster/spot"
-	"dxcluster/stats"
 	"dxcluster/strutil"
 )
 
@@ -201,7 +200,6 @@ type ftConfidenceController struct {
 	maxPendingSpots  int
 	pendingSpots     int
 	policy           ftConfidencePolicy
-	tracker          *stats.Tracker
 	pending          map[ftConfidenceKey]*ftConfidencePendingGroup
 	queue            ftConfidenceHeap
 	dueScratch       []ftConfidenceItem
@@ -262,18 +260,16 @@ func newFTConfidencePolicy(cfg config.CallCorrectionConfig) ftConfidencePolicy {
 // newFTConfidenceController creates the FT burst controller even when few FT
 // modes are active; mode-specific gating happens in Observe so the output
 // pipeline has one consistent stage boundary.
-func newFTConfidenceController(cfg config.CallCorrectionConfig, tracker *stats.Tracker) *ftConfidenceController {
+func newFTConfidenceController(cfg config.CallCorrectionConfig) *ftConfidenceController {
 	controller := &ftConfidenceController{
 		enabled:          true,
 		maxPendingGroups: ftConfidenceMaxPendingGroups,
 		maxPendingSpots:  ftConfidenceMaxPendingSpots,
 		policy:           newFTConfidencePolicy(cfg),
-		tracker:          tracker,
 		pending:          make(map[ftConfidenceKey]*ftConfidencePendingGroup),
 		queue:            make(ftConfidenceHeap, 0, 4),
 		dueScratch:       make([]ftConfidenceItem, 0, 4),
 	}
-	controller.reportActiveBursts()
 	return controller
 }
 
@@ -310,7 +306,6 @@ func (c *ftConfidenceController) Observe(now time.Time, ctx outputSpotContext) (
 			}
 		}
 		if c.maxPendingSpots > 0 && c.pendingSpots >= c.maxPendingSpots {
-			c.reportOverflowRelease()
 			return false, uniqueCount
 		}
 		group.contexts = append(group.contexts, newFTConfidencePendingContext(ctx))
@@ -327,11 +322,9 @@ func (c *ftConfidenceController) Observe(now time.Time, ctx outputSpotContext) (
 	}
 
 	if c.maxPendingGroups > 0 && len(c.pending) >= c.maxPendingGroups {
-		c.reportOverflowRelease()
 		return false, 1
 	}
 	if c.maxPendingSpots > 0 && c.pendingSpots >= c.maxPendingSpots {
-		c.reportOverflowRelease()
 		return false, 1
 	}
 
@@ -354,7 +347,6 @@ func (c *ftConfidenceController) Observe(now time.Time, ctx outputSpotContext) (
 	c.pushDueItem(group)
 	c.seq++
 	c.pendingSpots++
-	c.reportActiveBursts()
 	return true, 1
 }
 
@@ -388,10 +380,8 @@ func (c *ftConfidenceController) Drain(now time.Time, force bool) []*ftConfidenc
 		if c.pendingSpots < 0 {
 			c.pendingSpots = 0
 		}
-		c.reportBurstRelease(group)
 		out = append(out, group)
 	}
-	c.reportActiveBursts()
 	return out
 }
 
@@ -499,28 +489,6 @@ func (c *ftConfidenceController) advanceGroupDue(group *ftConfidencePendingGroup
 	group.seq = c.seq
 	c.pushDueItem(group)
 	c.seq++
-}
-
-func (c *ftConfidenceController) reportActiveBursts() {
-	if c == nil || c.tracker == nil {
-		return
-	}
-	c.tracker.SetFTBurstActive(int64(len(c.pending)))
-}
-
-func (c *ftConfidenceController) reportOverflowRelease() {
-	if c == nil || c.tracker == nil {
-		return
-	}
-	c.tracker.IncrementFTBurstOverflowRelease()
-}
-
-func (c *ftConfidenceController) reportBurstRelease(group *ftConfidencePendingGroup) {
-	if c == nil || c.tracker == nil || group == nil {
-		return
-	}
-	c.tracker.IncrementFTBurstReleased()
-	c.tracker.ObserveFTBurstSpan(group.key.mode, group.lastSeen.Sub(group.firstSeen))
 }
 
 func ftConfidenceFrequencyKey(freqKHz float64) int64 {

@@ -32,13 +32,7 @@ const (
 	placeholderPipeline = "[lightgray]Primary Dedupe[-]: -- | [lightgray]Secondary[-]: F-- M-- S--\n" +
 		"[lightgray]Corrections[-]: -- | [lightgray]Unlicensed[-]: -- | [lightgray]Harmonics[-]: -- | [lightgray]Reputation[-]: --\n" +
 		"\n" +
-		"[lightgray]Resolver[-]: --\n" +
-		"[lightgray]Resolver Pressure[-]: --\n" +
-		"\n" +
-		"[lightgray]Stabilizer[-]: --\n" +
-		"[lightgray]Stabilizer Glyph[-]: --\n" +
-		"\n" +
-		"[lightgray]Temporal[-]: --"
+		"[lightgray]Stabilizer Glyph[-]: --"
 	placeholderCaches = "[lightgray]Grid cache[-]:  [[white:white]   [black:white]326,629[-:-]   [-:-]░░░░] 98.5%  |  [lightgray]Meta[-]: [[white:white]  [black:white] 5,479[-:-]  [-:-]] 99.5%\n" +
 		"\n" +
 		"[lightgray]Custom SCP[-]: -- (R) / -- (S)\n" +
@@ -551,7 +545,7 @@ func (d *DashboardV2) SetStats(lines []string) {
 		return
 	}
 	d.statsMu.Lock()
-	d.statsLines = append(d.statsLines[:0], lines...)
+	d.statsLines = appendFilteredOverviewLines(d.statsLines[:0], lines)
 	d.statsMu.Unlock()
 	d.scheduler.Schedule("snapshot", d.snapshotFrameFn)
 }
@@ -675,6 +669,7 @@ func joinOverviewSectionWithHeight(lines []string, startMarker, endMarker string
 }
 
 func joinLinesWithHeight(lines []string, minHeight int) (string, int) {
+	lines = appendFilteredOverviewLines(nil, lines)
 	if len(lines) == 0 {
 		return "", 0
 	}
@@ -683,6 +678,37 @@ func joinLinesWithHeight(lines []string, minHeight int) (string, int) {
 		height = minHeight
 	}
 	return strings.Join(lines, "\n"), height
+}
+
+func appendFilteredOverviewLines(dst []string, lines []string) []string {
+	for _, line := range lines {
+		if isRemovedOverviewPipelineLine(line) {
+			continue
+		}
+		dst = append(dst, line)
+	}
+	return dst
+}
+
+func isRemovedOverviewPipelineLine(line string) bool {
+	line = strings.TrimSpace(line)
+	for _, prefix := range []string{
+		"[yellow]Resolver[-]:",
+		"Resolver:",
+		"[yellow]Resolver Pressure[-]:",
+		"Resolver Pressure:",
+		"[yellow]Stabilizer[-]:",
+		"Stabilizer:",
+		"[yellow]Temporal[-]:",
+		"Temporal:",
+		"[yellow]FT Burst[-]:",
+		"FT Burst:",
+	} {
+		if strings.HasPrefix(line, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func (d *DashboardV2) AppendDropped(line string) {
@@ -1084,19 +1110,8 @@ PIPELINE METRICS (PLAIN ENGLISH)
   Primary Dedupe: Duplicate suppression at the main ingest gate.
   Secondary F/M/S: Broadcast dedupe output by policy (fast/med/slow).
   Corrections/Unlicensed/Harmonics/Reputation: Cumulative totals since process start.
-  Resolver C/P/U/S: Current resolver state counts (confident/probable/uncertain/split).
-  Resolver Pressure:
-    pressure: how often candidate/reporter caps were hit.
-    evict: how many entries were evicted because of those caps.
-    hw: highest candidate/reporter occupancy seen.
-  Stabilizer H/I/D/S/O:
-    H held for delay, I immediate release (correction-eligible modes only),
-    D released after delay, S suppressed on timeout, O overflow fail-open release.
   Stabilizer Glyph:
     average stabilizer delay turns by glyph (ordered ? / S / P / V / C).
-  Temporal:
-    pending currently waiting, committed accepted by temporal decoder,
-    fallback/abstain/bypass are non-commit outcomes.
 `, accentTag, accentReset, accentTag, accentReset, accentTag, accentReset, accentTag, accentReset, accentTag, accentReset)))
 	help.SetBorder(true).SetTitle("Help")
 	help.SetBorderColor(uiBorderColor)

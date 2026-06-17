@@ -41,6 +41,7 @@ func TestUpdateEventsOverviewBoxesMatchesOverviewSummary(t *testing.T) {
 		"Stabilizer: ok",
 		"Stabilizer Glyph: ok",
 		"Temporal: ok",
+		"FT Burst: ok",
 		"CACHES & DATA FRESHNESS",
 		"Grid: ok",
 		"PATH PREDICTIONS",
@@ -74,8 +75,14 @@ func TestUpdateEventsOverviewBoxesMatchesOverviewSummary(t *testing.T) {
 	if got, want := d.eventsPipeline.GetText(true), d.overviewPipeline.GetText(true); got != want {
 		t.Fatalf("events pipeline mismatch: got %q want %q", got, want)
 	}
-	if got := d.overviewPipeline.GetText(true); !strings.Contains(got, "Temporal: ok") {
-		t.Fatalf("expected pipeline section to include temporal line, got %q", got)
+	gotPipeline := d.overviewPipeline.GetText(true)
+	if !strings.Contains(gotPipeline, "Stabilizer Glyph: ok") {
+		t.Fatalf("expected pipeline section to keep stabilizer glyph line, got %q", gotPipeline)
+	}
+	for _, removed := range []string{"Resolver: ok", "Resolver Pressure: ok", "Stabilizer: ok", "Temporal: ok", "FT Burst: ok"} {
+		if strings.Contains(gotPipeline, removed) {
+			t.Fatalf("expected pipeline section to remove %q, got %q", removed, gotPipeline)
+		}
 	}
 }
 

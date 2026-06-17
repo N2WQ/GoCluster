@@ -187,7 +187,7 @@ func newOutputPipeline(
 		toxicityClassifier:     toxicityClassifier,
 		secondaryActive:        secondaryFast != nil || secondaryMed != nil || secondarySlow != nil,
 		temporal:               newRuntimeTemporalController(correctionCfg),
-		ftConfidence:           newFTConfidenceController(correctionCfg, tracker),
+		ftConfidence:           newFTConfidenceController(correctionCfg),
 		ftRecentBandStore:      newFTRecentBandStore(correctionCfg),
 	}
 	pipeline.stabilizerEnabled = telnet != nil && correctionCfg.Enabled && correctionCfg.StabilizerEnabled && recentBandStore != nil

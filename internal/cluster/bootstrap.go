@@ -626,37 +626,6 @@ func formatToxicitySummary(classifier *toxicity.Classifier) string {
 	)
 }
 
-func formatFTBurstSummary(tracker *stats.Tracker) string {
-	if tracker == nil {
-		return "FT Burst: n/a"
-	}
-	parts := []string{
-		fmt.Sprintf("active %s", humanize.Comma(tracker.FTBurstActive())),
-		fmt.Sprintf("released %s", humanize.Comma(int64(tracker.FTBurstReleased()))),
-		fmt.Sprintf("overflow %s", humanize.Comma(int64(tracker.FTBurstOverflowRelease()))),
-	}
-	spanStats := tracker.FTBurstSpanStats()
-	if len(spanStats) == 0 {
-		parts = append(parts, "avg n/a")
-		return "FT Burst: " + strings.Join(parts, " | ")
-	}
-	order := []string{"FT8", "FT4", "FT2"}
-	spanParts := make([]string, 0, len(order))
-	for _, mode := range order {
-		stat, ok := spanStats[mode]
-		if !ok || stat.Samples == 0 {
-			continue
-		}
-		spanParts = append(spanParts, fmt.Sprintf("%s %s", mode, formatDurationShort(stat.AverageSpan)))
-	}
-	if len(spanParts) == 0 {
-		parts = append(parts, "avg n/a")
-	} else {
-		parts = append(parts, "avg "+strings.Join(spanParts, ", "))
-	}
-	return "FT Burst: " + strings.Join(parts, " | ")
-}
-
 func formatTopCounterSummary(counts map[string]uint64, limit int) string {
 	if len(counts) == 0 {
 		return "none"
@@ -942,8 +911,6 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 				p92Total,
 				totalCorrections, totalUnlicensed, totalHarmonics, reputationTotal,
 				pathOnlyLine,
-				resolverLine,
-				resolverPressureLine,
 				skewPath,
 				&mem,
 				gcP99Label,
@@ -4312,8 +4279,6 @@ func buildOverviewLines(
 	p92Total uint64,
 	totalCorrections, totalUnlicensed, totalHarmonics, reputationTotal uint64,
 	pathOnlyLine string,
-	resolverLine string,
-	resolverPressureLine string,
 	skewPath string,
 	mem *runtime.MemStats,
 	gcP99Label string,
@@ -4443,14 +4408,7 @@ func buildOverviewLines(
 		),
 		fmt.Sprintf("[yellow]Flood[-]: %s", strings.TrimPrefix(formatFloodSummary(tracker), "Flood: ")),
 		"",
-		fmt.Sprintf("[yellow]Resolver[-]: %s", strings.TrimPrefix(resolverLine, "Resolver: ")),
-		fmt.Sprintf("[yellow]Resolver Pressure[-]: %s", strings.TrimPrefix(resolverPressureLine, "Resolver Pressure: ")),
-		"",
-		fmt.Sprintf("[yellow]Stabilizer[-]: %s", strings.TrimPrefix(formatStabilizerSummary(tracker), "Stabilizer: ")),
 		fmt.Sprintf("[yellow]Stabilizer Glyph[-]: %s", strings.TrimPrefix(formatStabilizerGlyphSummary(tracker), "Stabilizer Glyph: ")),
-		"",
-		fmt.Sprintf("[yellow]Temporal[-]: %s", strings.TrimPrefix(formatTemporalSummary(tracker), "Temporal: ")),
-		fmt.Sprintf("[yellow]FT Burst[-]: %s", strings.TrimPrefix(formatFTBurstSummary(tracker), "FT Burst: ")),
 		"CACHES & DATA FRESHNESS",
 	)
 	lines = append(lines, cacheBars...)

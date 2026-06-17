@@ -90,8 +90,6 @@ func TestBuildOverviewLinesIncludesFT2IngestRates(t *testing.T) {
 		0,
 		0, 0, 0, 0,
 		"[yellow]Path[-]: n/a",
-		"Resolver: n/a",
-		"Resolver Pressure: n/a",
 		"",
 		nil,
 		"n/a",
