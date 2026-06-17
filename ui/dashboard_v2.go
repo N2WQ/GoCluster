@@ -29,38 +29,26 @@ const (
 		"[lightgray]PSK[-]: -- | [lightgray]CW[-] -- | [lightgray]RTTY[-] -- | [lightgray]FT8[-] -- | [lightgray]FT4[-] -- | [lightgray]FT2[-] -- | [lightgray]MSK[-] -- | [lightgray]PSK[-] --\n" +
 		"[lightgray]P92[-]: --\n" +
 		"[lightgray]Path[-]: -- (U) / -- (S) / -- (N) / -- (G) / -- (H) / -- (B) / -- (M)"
-	placeholderPipeline = "[lightgray]Primary Dedupe[-]: -- | [lightgray]Secondary[-]: F-- M-- S--\n" +
-		"[lightgray]Corrections[-]: -- | [lightgray]Unlicensed[-]: -- | [lightgray]Harmonics[-]: -- | [lightgray]Reputation[-]: --\n" +
-		"\n" +
-		"[lightgray]Resolver[-]: --\n" +
-		"[lightgray]Resolver Pressure[-]: --\n" +
-		"\n" +
-		"[lightgray]Stabilizer[-]: --\n" +
-		"[lightgray]Stabilizer Glyph[-]: --\n" +
-		"\n" +
-		"[lightgray]Temporal[-]: --"
 	placeholderCaches = "[lightgray]Grid cache[-]:  [[white:white]   [black:white]326,629[-:-]   [-:-]░░░░] 98.5%  |  [lightgray]Meta[-]: [[white:white]  [black:white] 5,479[-:-]  [-:-]] 99.5%\n" +
 		"\n" +
 		"[lightgray]Custom SCP[-]: -- (R) / -- (S)\n" +
 		"[lightgray]160m[-]: --  [lightgray]80m[-]: --  [lightgray]40m[-]: --  [lightgray]20m[-]: --\n" +
 		"\n" +
-		"[lightgray]CTY[-]: --  [lightgray]FCC[-]: --  [lightgray]Skew[-]: --"
-	placeholderPath               = "[lightgray]Path pairs[-]: -- (L2) / -- (L1)\n[lightgray]160m[-]: -- / --   [lightgray]80m[-]: -- / --"
-	placeholderIngestSources      = "[lightgray]Ingest[-]: -- / 4 connected\n\n(none)"
-	placeholderNetwork            = "[lightgray]Telnet[-]: -- clients   [lightgray]Drops[-]: Q-- C-- W--"
-	placeholderValidation         = "CTY drop: --"
-	placeholderUnlicensed         = "Unlicensed drop: --"
-	placeholderCorrected          = "Corrected: --"
-	placeholderHarmonics          = "Harmonics: --"
-	placeholderEvents             = "No events yet."
-	streamPanelMaxLines           = 200
-	overviewPipelineDefaultHeight = 9
-	overviewPipelineMinHeight     = 4
-	overviewCachesDefaultHeight   = 9
-	overviewCachesMinHeight       = 3
-	overviewPathMinHeight         = 3
-	overviewSourcesDefaultHeight  = 5
-	overviewSourcesMinHeight      = 3
+		"[lightgray]CTY[-]: --  [lightgray]FCC[-]: --  [lightgray]Skew[-]: --  [lightgray]EWMA[-]: --@--"
+	placeholderPath              = "[lightgray]VOACAP[-]: -- cached / -- delayed / -- inflight / -- queued\n[lightgray]H3 path pairs[-]: -- (L2) / -- (L1)\n[lightgray]160m[-]: -- / --   [lightgray]80m[-]: -- / --"
+	placeholderIngestSources     = "[lightgray]Ingest[-]: -- / 4 connected\n\n(none)"
+	placeholderNetwork           = "[lightgray]Telnet[-]: -- clients   [lightgray]Drops[-]: Q-- C-- W--"
+	placeholderValidation        = "CTY drop: --"
+	placeholderUnlicensed        = "Unlicensed drop: --"
+	placeholderCorrected         = "Corrected: --"
+	placeholderHarmonics         = "Harmonics: --"
+	placeholderEvents            = "No events yet."
+	streamPanelMaxLines          = 200
+	overviewCachesDefaultHeight  = 9
+	overviewCachesMinHeight      = 3
+	overviewPathMinHeight        = 4
+	overviewSourcesDefaultHeight = 5
+	overviewSourcesMinHeight     = 3
 )
 
 var (
@@ -93,7 +81,6 @@ type DashboardV2 struct {
 	overviewHdr       *tview.TextView
 	overviewMem       *tview.TextView
 	overviewIngest    *tview.TextView
-	overviewPipeline  *tview.TextView
 	overviewCaches    *tview.TextView
 	overviewPath      *tview.TextView
 	overviewSources   *tview.TextView
@@ -105,14 +92,12 @@ type DashboardV2 struct {
 	ingestUnlicensed  *streamPanel
 	pipelineRoot      *tview.Flex
 	pipelineHdr       *tview.TextView
-	pipelineQuality   *tview.TextView
 	pipelineCorrected *streamPanel
 	pipelineHarmonics *streamPanel
 	eventsRoot        *tview.Flex
 	eventsHdr         *tview.TextView
 	eventsMem         *tview.TextView
 	eventsIngest      *tview.TextView
-	eventsPipeline    *tview.TextView
 	eventsStream      *streamPanel
 
 	overviewGroup focusGroup
@@ -135,10 +120,9 @@ type DashboardV2 struct {
 	eventsFrameFn     func()
 	networkFrameFn    func()
 
-	overviewPipelineHeight int
-	overviewCachesHeight   int
-	overviewPathHeight     int
-	overviewSourcesHeight  int
+	overviewCachesHeight  int
+	overviewPathHeight    int
+	overviewSourcesHeight int
 }
 
 // NewDashboardV2 constructs the v2 dashboard if enabled.
@@ -160,18 +144,17 @@ func NewDashboardV2(cfg config.UIConfig, enable bool) *DashboardV2 {
 
 	metrics := NewMetrics()
 	d := &DashboardV2{
-		app:                    app,
-		pages:                  pages,
-		ctx:                    ctx,
-		cancel:                 cancel,
-		ready:                  ready,
-		pageOrder:              cfg.V2.Pages,
-		metrics:                metrics,
-		pagePresent:            make(map[string]bool),
-		overviewPipelineHeight: overviewPipelineDefaultHeight,
-		overviewCachesHeight:   overviewCachesDefaultHeight,
-		overviewPathHeight:     overviewPathMinHeight,
-		overviewSourcesHeight:  overviewSourcesDefaultHeight,
+		app:                   app,
+		pages:                 pages,
+		ctx:                   ctx,
+		cancel:                cancel,
+		ready:                 ready,
+		pageOrder:             cfg.V2.Pages,
+		metrics:               metrics,
+		pagePresent:           make(map[string]bool),
+		overviewCachesHeight:  overviewCachesDefaultHeight,
+		overviewPathHeight:    overviewPathMinHeight,
+		overviewSourcesHeight: overviewSourcesDefaultHeight,
 	}
 
 	eventBufferOpts := streamPanelOptionsFromConfig(cfg.V2.EventBuffer, streamPanelMaxLines)
@@ -180,7 +163,6 @@ func NewDashboardV2(cfg config.UIConfig, enable bool) *DashboardV2 {
 	d.overviewHdr = newBoxedTextView("Overview")
 	d.overviewMem = newBoxedTextView("Memory / GC")
 	d.overviewIngest = newBoxedTextView("Ingest Rates (per min)")
-	d.overviewPipeline = newBoxedTextView("Pipeline Quality")
 	d.overviewCaches = newBoxedTextView("Caches & Data Freshness")
 	d.overviewPath = newBoxedTextView("Path Predictions")
 	d.overviewSources = newBoxedTextView("Ingest Sources")
@@ -195,8 +177,6 @@ func NewDashboardV2(cfg config.UIConfig, enable bool) *DashboardV2 {
 		AddItem(newSpacer(), 1, 0, false)
 	addOverviewTopSections(d.overviewRoot, d.overviewIngest)
 	d.overviewRoot.
-		AddItem(newSpacer(), 1, 0, false).
-		AddItem(d.overviewPipeline, overviewPipelineDefaultHeight, 0, false).
 		AddItem(newSpacer(), 1, 0, false).
 		AddItem(d.overviewCaches, overviewCachesDefaultHeight, 0, false).
 		AddItem(newSpacer(), 1, 0, false).
@@ -220,14 +200,11 @@ func NewDashboardV2(cfg config.UIConfig, enable bool) *DashboardV2 {
 		AddItem(d.ingestUnlicensed.Primitive(), 28, 0, false)
 
 	d.pipelineHdr = newBoxedTextView("Overview")
-	d.pipelineQuality = newBoxedTextView("Pipeline Quality")
 	d.pipelineCorrected = newStreamPanelWithOptions("Corrected", eventBufferOpts, true)
 	d.pipelineHarmonics = newStreamPanelWithOptions("Harmonics", eventBufferOpts, true)
 	d.seedPipelinePlaceholders()
 	d.pipelineRoot = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(d.pipelineHdr, 3, 0, false).
-		AddItem(newSpacer(), 1, 0, false).
-		AddItem(d.pipelineQuality, overviewPipelineDefaultHeight, 0, false).
 		AddItem(newSpacer(), 1, 0, false).
 		AddItem(d.pipelineCorrected.Primitive(), 28, 0, false).
 		AddItem(newSpacer(), 1, 0, false).
@@ -236,7 +213,6 @@ func NewDashboardV2(cfg config.UIConfig, enable bool) *DashboardV2 {
 	d.eventsHdr = newBoxedTextView("Overview")
 	d.eventsMem = newBoxedTextView("Memory / GC")
 	d.eventsIngest = newBoxedTextView("Ingest Rates (per min)")
-	d.eventsPipeline = newBoxedTextView("Pipeline Quality")
 	d.eventsStream = newStreamPanelWithOptions("Events", debugBufferOpts, false)
 	d.seedEventsPlaceholders()
 	d.eventsRoot = tview.NewFlex().SetDirection(tview.FlexRow).
@@ -245,8 +221,6 @@ func NewDashboardV2(cfg config.UIConfig, enable bool) *DashboardV2 {
 		AddItem(d.eventsMem, 3, 0, false).
 		AddItem(newSpacer(), 1, 0, false).
 		AddItem(d.eventsIngest, 6, 0, false).
-		AddItem(newSpacer(), 1, 0, false).
-		AddItem(d.eventsPipeline, overviewPipelineDefaultHeight, 0, false).
 		AddItem(newSpacer(), 1, 0, false).
 		AddItem(d.eventsStream.Primitive(), 0, 1, false)
 
@@ -592,20 +566,18 @@ func (d *DashboardV2) renderSnapshot() {
 }
 
 type dashboardSnapshot struct {
-	GeneratedAt    time.Time
-	HasContent     bool
-	Header         string
-	Memory         string
-	Ingest         string
-	Pipeline       string
-	Caches         string
-	Path           string
-	Sources        string
-	Network        string
-	PipelineHeight int
-	CachesHeight   int
-	PathHeight     int
-	SourcesHeight  int
+	GeneratedAt   time.Time
+	HasContent    bool
+	Header        string
+	Memory        string
+	Ingest        string
+	Caches        string
+	Path          string
+	Sources       string
+	Network       string
+	CachesHeight  int
+	PathHeight    int
+	SourcesHeight int
 }
 
 func cloneSnapshot(src Snapshot) *dashboardSnapshot {
@@ -624,8 +596,7 @@ func buildDashboardSnapshot(generatedAt time.Time, lines []string) *dashboardSna
 	if len(lines) > 2 {
 		snap.Memory = lines[2]
 	}
-	snap.Ingest = joinOverviewSection(lines, "INGEST RATES (per min)", "PIPELINE QUALITY")
-	snap.Pipeline, snap.PipelineHeight = joinOverviewSectionWithHeight(lines, "PIPELINE QUALITY", "CACHES & DATA FRESHNESS", overviewPipelineMinHeight)
+	snap.Ingest = joinOverviewSection(lines, "INGEST RATES (per min)", "CACHES & DATA FRESHNESS")
 
 	cacheIdx := -1
 	pathIdx := -1
@@ -668,10 +639,6 @@ func joinOverviewSection(lines []string, startMarker, endMarker string) string {
 		return ""
 	}
 	return strings.Join(section, "\n")
-}
-
-func joinOverviewSectionWithHeight(lines []string, startMarker, endMarker string, minHeight int) (string, int) {
-	return joinLinesWithHeight(overviewSectionLines(lines, startMarker, endMarker), minHeight)
 }
 
 func joinLinesWithHeight(lines []string, minHeight int) (string, int) {
@@ -791,13 +758,6 @@ func (d *DashboardV2) updateOverviewSnapshot(snap *dashboardSnapshot) {
 	if snap.Ingest != "" {
 		setBoxText(d.overviewIngest, snap.Ingest)
 	}
-	if snap.Pipeline != "" {
-		setBoxText(d.overviewPipeline, snap.Pipeline)
-		if d.overviewRoot != nil && snap.PipelineHeight > 0 && snap.PipelineHeight != d.overviewPipelineHeight {
-			d.overviewRoot.ResizeItem(d.overviewPipeline, snap.PipelineHeight, 0)
-			d.overviewPipelineHeight = snap.PipelineHeight
-		}
-	}
 	if snap.Caches != "" {
 		setBoxText(d.overviewCaches, snap.Caches)
 		if d.overviewRoot != nil && snap.CachesHeight > 0 && snap.CachesHeight != d.overviewCachesHeight {
@@ -845,9 +805,6 @@ func (d *DashboardV2) updatePipelineSnapshot(snap *dashboardSnapshot) {
 		return
 	}
 	setBoxText(d.pipelineHdr, snap.Header)
-	if snap.Pipeline != "" {
-		setBoxText(d.pipelineQuality, snap.Pipeline)
-	}
 }
 
 func (d *DashboardV2) updateEventsOverviewBoxes(lines []string) {
@@ -866,16 +823,12 @@ func (d *DashboardV2) updateEventsOverviewSnapshot(snap *dashboardSnapshot) {
 	if snap.Ingest != "" {
 		setBoxText(d.eventsIngest, snap.Ingest)
 	}
-	if snap.Pipeline != "" {
-		setBoxText(d.eventsPipeline, snap.Pipeline)
-	}
 }
 
 func (d *DashboardV2) seedOverviewPlaceholders() {
 	setBoxText(d.overviewHdr, placeholderHeader)
 	setBoxText(d.overviewMem, placeholderMem)
 	setBoxText(d.overviewIngest, placeholderIngest)
-	setBoxText(d.overviewPipeline, placeholderPipeline)
 	setBoxText(d.overviewCaches, placeholderCaches)
 	setBoxText(d.overviewPath, placeholderPath)
 	setBoxText(d.overviewSources, placeholderIngestSources)
@@ -889,7 +842,6 @@ func (d *DashboardV2) seedEventsPlaceholders() {
 	setBoxText(d.eventsHdr, placeholderHeader)
 	setBoxText(d.eventsMem, placeholderMem)
 	setBoxText(d.eventsIngest, placeholderIngest)
-	setBoxText(d.eventsPipeline, placeholderPipeline)
 	d.eventsStream.SetText(placeholderEvents)
 }
 
@@ -904,13 +856,16 @@ func (d *DashboardV2) seedIngestPlaceholders() {
 }
 
 func (d *DashboardV2) seedPipelinePlaceholders() {
-	if d == nil || d.pipelineHdr == nil || d.pipelineQuality == nil {
+	if d == nil {
 		return
 	}
 	setBoxText(d.pipelineHdr, placeholderHeader)
-	setBoxText(d.pipelineQuality, placeholderPipeline)
-	d.pipelineCorrected.SetText(placeholderCorrected)
-	d.pipelineHarmonics.SetText(placeholderHarmonics)
+	if d.pipelineCorrected != nil {
+		d.pipelineCorrected.SetText(placeholderCorrected)
+	}
+	if d.pipelineHarmonics != nil {
+		d.pipelineHarmonics.SetText(placeholderHarmonics)
+	}
 }
 
 func setBoxText(tv *tview.TextView, text string) {
@@ -1079,24 +1034,6 @@ NAVIGATION
 
 SCROLLING
   ↑/↓ or k/j Scroll   PageUp/Down Fast scroll   Home/End Top/Bottom
-
-PIPELINE METRICS (PLAIN ENGLISH)
-  Primary Dedupe: Duplicate suppression at the main ingest gate.
-  Secondary F/M/S: Broadcast dedupe output by policy (fast/med/slow).
-  Corrections/Unlicensed/Harmonics/Reputation: Cumulative totals since process start.
-  Resolver C/P/U/S: Current resolver state counts (confident/probable/uncertain/split).
-  Resolver Pressure:
-    pressure: how often candidate/reporter caps were hit.
-    evict: how many entries were evicted because of those caps.
-    hw: highest candidate/reporter occupancy seen.
-  Stabilizer H/I/D/S/O:
-    H held for delay, I immediate release (correction-eligible modes only),
-    D released after delay, S suppressed on timeout, O overflow fail-open release.
-  Stabilizer Glyph:
-    average stabilizer delay turns by glyph (ordered ? / S / P / V / C).
-  Temporal:
-    pending currently waiting, committed accepted by temporal decoder,
-    fallback/abstain/bypass are non-commit outcomes.
 `, accentTag, accentReset, accentTag, accentReset, accentTag, accentReset, accentTag, accentReset, accentTag, accentReset)))
 	help.SetBorder(true).SetTitle("Help")
 	help.SetBorderColor(uiBorderColor)

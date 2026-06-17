@@ -2,7 +2,7 @@
 # Code Map: Path Reliability And VOACAP
 
 - Map ID: `path-reliability-voacap`
-- Source fingerprint: `d2f19703a717fee2`
+- Source fingerprint: `96eefa5e63461e10`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map path-reliability-voacap`
 - Check: `go run ./cmd/codemap check -map path-reliability-voacap`
@@ -95,6 +95,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0188](docs/decisions/ADR-0188-overview-v2-simplified-path-status.md) | Accepted | 2026-06-17 | ui/tview-v2, dashboard, voacap, pathreliability, operations | `area:internal/voacap, area:pathreliability, path:internal/voacap, path:pathreliability` |
 | [ADR-0187](docs/decisions/ADR-0187-show-prop-open-row-display.md) | Accepted | 2026-06-16 | telnet, pathreliability, voacap, commands, supportability | `area:internal/voacap, area:pathreliability, path:pathreliability` |
 | [ADR-0185](docs/decisions/ADR-0185-shared-pebble-directory-open-helper.md) | Accepted | 2026-06-16 | pebble, archive, voacap, pathreliability, retained state | `area:internal/voacap, area:pathreliability, path:pathreliability` |
 | [ADR-0184](docs/decisions/ADR-0184-voacap-forecast-cache-persistence.md) | Accepted | 2026-06-16 | voacap, pathreliability, config, retained state, operations | `area:internal/voacap, area:pathreliability, path:pathreliability` |

@@ -14,6 +14,8 @@ import (
 
 	"dxcluster/config"
 	"dxcluster/cty"
+	"dxcluster/internal/voacap"
+	"dxcluster/pathreliability"
 	"dxcluster/spot"
 	"dxcluster/stats"
 	"dxcluster/telnet"
@@ -2564,16 +2566,14 @@ func TestBuildOverviewLinesIncludesRecentSupportByBand(t *testing.T) {
 	lines := buildOverviewLines(
 		nil,
 		nil,
-		nil,
-		nil,
-		nil,
-		nil,
 		recentBandStore,
 		nil,
 		nil,
 		nil,
 		nil,
 		nil,
+		voacap.SunspotMonitorSnapshot{},
+		pathreliability.VOACAPClosedFallbackSnapshot{},
 		nil,
 		nil,
 		"N2WQ-2",
@@ -2596,13 +2596,7 @@ func TestBuildOverviewLinesIncludesRecentSupportByBand(t *testing.T) {
 		0,
 		0,
 		0,
-		0,
-		0,
-		0,
-		0,
 		"Path: n/a",
-		"Resolver: n/a",
-		"Resolver Pressure: n/a",
 		"",
 		nil,
 		"n/a",

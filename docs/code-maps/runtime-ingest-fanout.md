@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `c612c5dec7275f5e`
+- Source fingerprint: `5e585a37e4ad7488`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -303,6 +303,8 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0189](docs/decisions/ADR-0189-tview-v2-pipeline-quality-retirement.md) | Accepted | 2026-06-17 | ui/tview-v2, dashboard, stats, operations | `path:internal/cluster` |
+| [ADR-0188](docs/decisions/ADR-0188-overview-v2-simplified-path-status.md) | Accepted | 2026-06-17 | ui/tview-v2, dashboard, voacap, pathreliability, operations | `path:internal/cluster` |
 | [ADR-0187](docs/decisions/ADR-0187-show-prop-open-row-display.md) | Accepted | 2026-06-16 | telnet, pathreliability, voacap, commands, supportability | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0184](docs/decisions/ADR-0184-voacap-forecast-cache-persistence.md) | Accepted | 2026-06-16 | voacap, pathreliability, config, retained state, operations | `path:internal/cluster, path:telnet` |
 | [ADR-0182](docs/decisions/ADR-0182-voacap-runtime-ssn-state-persistence.md) | Accepted | 2026-06-16 | voacap, pathreliability, config, retained state, operations | `path:internal/cluster` |

@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"dxcluster/dxsummit"
+	"dxcluster/internal/voacap"
+	"dxcluster/pathreliability"
 	"dxcluster/pskreporter"
 	"dxcluster/spot"
 )
@@ -79,19 +81,59 @@ func TestFormatIngestLineIncludesFT2AndCommaAwareWidths(t *testing.T) {
 	}
 }
 
+func TestFormatSunspotEWMAStatusRoundsIntegerAndTimestamp(t *testing.T) {
+	got := formatSunspotEWMAStatus(voacap.SunspotMonitorSnapshot{
+		EWMA:              112.6,
+		EWMAInitialized:   true,
+		LastObservedAtUTC: time.Date(2026, 6, 17, 14, 5, 30, 0, time.UTC),
+	})
+	want := "[yellow]EWMA[-]: 113@06-17 14:05Z"
+	if got != want {
+		t.Fatalf("unexpected SSN status:\ngot  %q\nwant %q", got, want)
+	}
+}
+
+func TestFormatSunspotEWMAStatusUnavailable(t *testing.T) {
+	if got := formatSunspotEWMAStatus(voacap.SunspotMonitorSnapshot{}); got != "[yellow]EWMA[-]: n/a" {
+		t.Fatalf("unexpected unavailable SSN status %q", got)
+	}
+}
+
+func TestFormatVOACAPFallbackLine(t *testing.T) {
+	got := formatVOACAPFallbackLine(pathreliability.VOACAPClosedFallbackSnapshot{
+		CacheEntries:    12345,
+		DelayEntries:    3,
+		InflightEntries: 1,
+		QueueDepth:      0,
+	})
+	want := "[yellow]VOACAP[-]: 12,345 cached / 3 delayed / 1 inflight / 0 queued"
+	if got != want {
+		t.Fatalf("unexpected VOACAP line:\ngot  %q\nwant %q", got, want)
+	}
+}
+
 func TestBuildOverviewLinesIncludesFT2IngestRates(t *testing.T) {
 	lines := buildOverviewLines(
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil, nil, nil,
+		voacap.SunspotMonitorSnapshot{
+			EWMA:              98.4,
+			EWMAInitialized:   true,
+			LastObservedAtUTC: time.Date(2026, 6, 17, 15, 4, 0, 0, time.UTC),
+		},
+		pathreliability.VOACAPClosedFallbackSnapshot{
+			CacheEntries:    12345,
+			DelayEntries:    3,
+			InflightEntries: 1,
+			QueueDepth:      0,
+		},
+		nil, nil,
 		"N2WQ-2",
 		true, true, false,
 		nil,
 		2420, 1337, 0, 981, 102, 18,
 		24711, 314, 0, 23651, 724, 336, 0, 0,
 		0,
-		0, 0, 0, 0,
 		"[yellow]Path[-]: n/a",
-		"Resolver: n/a",
-		"Resolver Pressure: n/a",
 		"",
 		nil,
 		"n/a",
@@ -100,6 +142,9 @@ func TestBuildOverviewLinesIncludesFT2IngestRates(t *testing.T) {
 	for _, want := range []string{
 		"[green]RBN[-]: 2,420  | [yellow]CW[-] 1,337 | [yellow]RTTY[-] 0     | [yellow]FT8[-] 981    | [yellow]FT4[-] 102    | [yellow]FT2[-] 18",
 		"[green]PSK[-]: 24,711 | [yellow]CW[-] 314   | [yellow]RTTY[-] 0     | [yellow]FT8[-] 23,651 | [yellow]FT4[-] 724    | [yellow]FT2[-] 336    | [yellow]MSK[-] 0    | [yellow]PSK[-] 0",
+		"[yellow]CTY[-]: n/a  [yellow]FCC[-]: n/a  [yellow]Skew[-]: n/a  [yellow]EWMA[-]: 98@06-17 15:04Z",
+		"[yellow]VOACAP[-]: 12,345 cached / 3 delayed / 1 inflight / 0 queued",
+		"[yellow]H3 path pairs[-]: n/a",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("expected overview lines to include %q, got %v", want, lines)

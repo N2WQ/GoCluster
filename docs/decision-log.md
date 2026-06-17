@@ -13,6 +13,8 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Placeholder Title | Proposed | YYYY-MM-DD | placeholder area | - | - | `docs/decisions/ADR-0001-placeholder-slug.md` |
+| ADR-0189 | tview-v2 Pipeline Quality Retirement | Accepted | 2026-06-17 | ui/tview-v2, dashboard, stats, operations | ADR-0188 Pipeline/Events preservation clause | - | `docs/decisions/ADR-0189-tview-v2-pipeline-quality-retirement.md` |
+| ADR-0188 | Overview v2 Simplified Path Status | Accepted | 2026-06-17 | ui/tview-v2, dashboard, voacap, pathreliability, operations | ADR-0040 Overview Pipeline Quality and Path Predictions rows | ADR-0189 (Pipeline/Events preservation clause) | `docs/decisions/ADR-0188-overview-v2-simplified-path-status.md` |
 | ADR-0187 | SHOW PROP Open Row Display | Accepted | 2026-06-16 | telnet, pathreliability, voacap, commands, supportability | ADR-0172 display-all cached rows behavior | - | `docs/decisions/ADR-0187-show-prop-open-row-display.md` |
 | ADR-0186 | Prod Secondary Dedupe Window Alignment | Accepted | 2026-06-16 | config, dedupe, operations | - | - | `docs/decisions/ADR-0186-prod-secondary-dedupe-window-alignment.md` |
 | ADR-0185 | Shared Pebble Directory Open Helper | Accepted | 2026-06-16 | pebble, archive, voacap, pathreliability, retained state | - | - | `docs/decisions/ADR-0185-shared-pebble-directory-open-helper.md` |
@@ -166,7 +168,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR-0037 | Replay Resolver-Only Artifact Schema | Accepted | 2026-02-26 | cmd/rbn_replay, replay artifacts, replay history | ADR-0024 | - | `docs/decisions/ADR-0037-replay-resolver-only-artifacts.md` |
 | ADR-0038 | Fixed-Lag Temporal Decoder for Resolver-Primary Runtime/Replay Parity | Accepted | 2026-02-27 | internal/correctionflow, main output pipeline, cmd/rbn_replay, config, stats | - | - | `docs/decisions/ADR-0038-fixed-lag-temporal-decoder-main-replay-parity.md` |
 | ADR-0039 | Custom SCP Runtime Evidence and Shared Pebble Resilience Helper | Accepted | 2026-02-27 | main output pipeline, spot/correction, config, persistence | - | - | `docs/decisions/ADR-0039-custom-scp-runtime-evidence-and-shared-pebble-resilience.md` |
-| ADR-0040 | Overview v2 Observability Contract Refresh | Accepted | 2026-02-27 | ui/tview-v2, main stats assembly | - | - | `docs/decisions/ADR-0040-overview-v2-observability-contract-refresh.md` |
+| ADR-0040 | Overview v2 Observability Contract Refresh | Accepted | 2026-02-27 | ui/tview-v2, main stats assembly | - | ADR-0188 (Overview Pipeline/Path rows) | `docs/decisions/ADR-0040-overview-v2-observability-contract-refresh.md` |
 | ADR-0041 | Tier-A Prelogin Admission Gate for Telnet DoS Resilience | Accepted | 2026-02-27 | telnet/session admission, config, main network observability | - | - | `docs/decisions/ADR-0041-telnet-tier-a-prelogin-admission-gate.md` |
 | ADR-0042 | Telnet Reject Workers, Immutable Shard Cache, and Writer Micro-Batching | Accepted | 2026-02-27 | telnet/accept path, fan-out cache, writer loop, config | - | - | `docs/decisions/ADR-0042-telnet-reject-workers-and-writer-microbatching.md` |
 | ADR-0043 | Custom SCP Admission Restricted to V Confidence | Accepted | 2026-02-28 | spot/custom_scp, main output pipeline, confidence semantics | ADR-0039 (admission policy refinement) | - | `docs/decisions/ADR-0043-custom-scp-v-only-admission.md` |

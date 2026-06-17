@@ -36,6 +36,7 @@ import (
 	"dxcluster/internal/ratelimit"
 	"dxcluster/internal/schedule"
 	"dxcluster/internal/toxicity"
+	"dxcluster/internal/voacap"
 	"dxcluster/pathreliability"
 	"dxcluster/peer"
 	"dxcluster/pskreporter"
@@ -503,19 +504,6 @@ func formatStabilizerSummary(tracker *stats.Tracker) string {
 	)
 }
 
-func formatFloodSummary(tracker *stats.Tracker) string {
-	if tracker == nil {
-		return "Flood: n/a"
-	}
-	return fmt.Sprintf(
-		"Flood: %s (O) / %s (S) / %s (D) / %s (X)",
-		humanize.Comma(int64(tracker.FloodObserved())),
-		humanize.Comma(int64(tracker.FloodSuppressed())),
-		humanize.Comma(int64(tracker.FloodDropped())),
-		humanize.Comma(int64(tracker.FloodOverflow())),
-	)
-}
-
 func formatStabilizerGlyphSummary(tracker *stats.Tracker) string {
 	if tracker == nil {
 		return "Stabilizer Glyph: n/a"
@@ -626,37 +614,6 @@ func formatToxicitySummary(classifier *toxicity.Classifier) string {
 	)
 }
 
-func formatFTBurstSummary(tracker *stats.Tracker) string {
-	if tracker == nil {
-		return "FT Burst: n/a"
-	}
-	parts := []string{
-		fmt.Sprintf("active %s", humanize.Comma(tracker.FTBurstActive())),
-		fmt.Sprintf("released %s", humanize.Comma(int64(tracker.FTBurstReleased()))),
-		fmt.Sprintf("overflow %s", humanize.Comma(int64(tracker.FTBurstOverflowRelease()))),
-	}
-	spanStats := tracker.FTBurstSpanStats()
-	if len(spanStats) == 0 {
-		parts = append(parts, "avg n/a")
-		return "FT Burst: " + strings.Join(parts, " | ")
-	}
-	order := []string{"FT8", "FT4", "FT2"}
-	spanParts := make([]string, 0, len(order))
-	for _, mode := range order {
-		stat, ok := spanStats[mode]
-		if !ok || stat.Samples == 0 {
-			continue
-		}
-		spanParts = append(spanParts, fmt.Sprintf("%s %s", mode, formatDurationShort(stat.AverageSpan)))
-	}
-	if len(spanParts) == 0 {
-		parts = append(parts, "avg n/a")
-	} else {
-		parts = append(parts, "avg "+strings.Join(spanParts, ", "))
-	}
-	return "FT Burst: " + strings.Join(parts, " | ")
-}
-
 func formatTopCounterSummary(counts map[string]uint64, limit int) string {
 	if len(counts) == 0 {
 		return "none"
@@ -692,7 +649,7 @@ func formatTopCounterSummary(counts map[string]uint64, limit int) string {
 // Key aspects: Uses a ticker, diff counters, and optional secondary dedupe stats.
 // Upstream: main stats goroutine.
 // Downstream: tracker accessors, loadFCCSnapshot, and UI/log output.
-func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestStats *ingestValidator, dedup *dedup.Deduplicator, secondaryFast *dedup.SecondaryDeduper, secondaryMed *dedup.SecondaryDeduper, secondarySlow *dedup.SecondaryDeduper, secondaryStage *atomic.Uint64, buf *buffer.RingBuffer, ctyLookup func() *cty.CTYDatabase, metaCache *callMetaCache, ctyState *ctyRefreshState, recentBandStore spot.RecentSupportStore, signalResolver *spot.SignalResolver, telnetSrv *telnet.Server, dash ui.Surface, gridStats *gridMetrics, gridDB *gridStoreHandle, fccDBPath string, pathPredictor *pathreliability.Predictor, modeAssigner *spot.ModeAssigner, toxicityClassifier *toxicity.Classifier, rbnClient *rbn.Client, rbnDigitalClient *rbn.Client, pskrClient *pskreporter.Client, dxsummitClient *dxsummit.Client, pskrPathOnly *pathOnlyStats, peerManager *peer.Manager, clusterCall string, skewPath string, ingestSourceCfg dashboardIngestSourceConfig) {
+func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestStats *ingestValidator, dedup *dedup.Deduplicator, secondaryFast *dedup.SecondaryDeduper, secondaryMed *dedup.SecondaryDeduper, secondarySlow *dedup.SecondaryDeduper, secondaryStage *atomic.Uint64, buf *buffer.RingBuffer, ctyLookup func() *cty.CTYDatabase, metaCache *callMetaCache, ctyState *ctyRefreshState, recentBandStore spot.RecentSupportStore, signalResolver *spot.SignalResolver, telnetSrv *telnet.Server, dash ui.Surface, gridStats *gridMetrics, gridDB *gridStoreHandle, fccDBPath string, pathPredictor *pathreliability.Predictor, voacapSSN *voacap.SunspotMonitor, voacapFallback *pathreliability.VOACAPClosedFallback, modeAssigner *spot.ModeAssigner, toxicityClassifier *toxicity.Classifier, rbnClient *rbn.Client, rbnDigitalClient *rbn.Client, pskrClient *pskreporter.Client, dxsummitClient *dxsummit.Client, pskrPathOnly *pathOnlyStats, peerManager *peer.Manager, clusterCall string, skewPath string, ingestSourceCfg dashboardIngestSourceConfig) {
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
@@ -934,16 +891,21 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 
 		if dash != nil {
 			dash.SetStats(lines)
-			overviewLines := buildOverviewLines(tracker, dedup, secondaryFast, secondaryMed, secondarySlow, metaCache, recentBandStore, ctyState, fccSnap, gridStats, gridDB, pathPredictor, modeAssigner, telnetSrv, clusterCall,
+			var ssnSnapshot voacap.SunspotMonitorSnapshot
+			if voacapSSN != nil {
+				ssnSnapshot = voacapSSN.Snapshot()
+			}
+			var voacapFallbackSnapshot pathreliability.VOACAPClosedFallbackSnapshot
+			if voacapFallback != nil {
+				voacapFallbackSnapshot = voacapFallback.Snapshot()
+			}
+			overviewLines := buildOverviewLines(tracker, metaCache, recentBandStore, ctyState, fccSnap, gridStats, gridDB, pathPredictor, ssnSnapshot, voacapFallbackSnapshot, modeAssigner, telnetSrv, clusterCall,
 				rbnLive, pskLive, p92Live,
 				ingestSources,
 				combinedRBN, rbnCW, rbnRTTY, rbnFT8, rbnFT4, rbnFT2,
 				pskTotal, pskCW, pskRTTY, pskFT8, pskFT4, pskFT2, pskMSK144, psk31_63,
 				p92Total,
-				totalCorrections, totalUnlicensed, totalHarmonics, reputationTotal,
 				pathOnlyLine,
-				resolverLine,
-				resolverPressureLine,
 				skewPath,
 				&mem,
 				gcP99Label,
@@ -4173,14 +4135,6 @@ func formatDateShortZ(t time.Time) string {
 	return t.UTC().Format("2006-01-02")
 }
 
-func formatPercent(numer, denom uint64) string {
-	if denom == 0 {
-		return "n/a"
-	}
-	pct := float64(numer) / float64(denom) * 100
-	return fmt.Sprintf("%.1f%%", pct)
-}
-
 func percentValue(numer, denom uint64) float64 {
 	if denom == 0 {
 		return 0
@@ -4291,10 +4245,6 @@ func buildBarSegment(start, end, filled int) string {
 
 func buildOverviewLines(
 	tracker *stats.Tracker,
-	dedup *dedup.Deduplicator,
-	secondaryFast *dedup.SecondaryDeduper,
-	secondaryMed *dedup.SecondaryDeduper,
-	secondarySlow *dedup.SecondaryDeduper,
 	metaCache *callMetaCache,
 	recentBandStore spot.RecentSupportStore,
 	ctyState *ctyRefreshState,
@@ -4302,6 +4252,8 @@ func buildOverviewLines(
 	gridStats *gridMetrics,
 	gridDB *gridStoreHandle,
 	pathPredictor *pathreliability.Predictor,
+	ssnSnapshot voacap.SunspotMonitorSnapshot,
+	voacapFallbackSnapshot pathreliability.VOACAPClosedFallbackSnapshot,
 	modeAssigner *spot.ModeAssigner,
 	telnetSrv *telnet.Server,
 	clusterCall string,
@@ -4310,10 +4262,7 @@ func buildOverviewLines(
 	rbnTotal, rbnCW, rbnRTTY, rbnFT8, rbnFT4, rbnFT2 uint64,
 	pskTotal, pskCW, pskRTTY, pskFT8, pskFT4, pskFT2, pskMSK144, psk31_63 uint64,
 	p92Total uint64,
-	totalCorrections, totalUnlicensed, totalHarmonics, reputationTotal uint64,
 	pathOnlyLine string,
-	resolverLine string,
-	resolverPressureLine string,
 	skewPath string,
 	mem *runtime.MemStats,
 	gcP99Label string,
@@ -4396,22 +4345,6 @@ func buildOverviewLines(
 		}
 	}
 
-	primaryDupPct := "n/a"
-	if dedup != nil {
-		processed, duplicates, _ := dedup.GetStats()
-		if processed > 0 && duplicates <= processed {
-			primaryDupPct = formatPercent(duplicates, processed)
-		}
-	}
-	secondarySummary := "F-- M-- S--"
-	if secondaryFast != nil || secondaryMed != nil || secondarySlow != nil {
-		secondarySummary = fmt.Sprintf("F%s M%s S%s",
-			formatSecondaryPercent(secondaryFast),
-			formatSecondaryPercent(secondaryMed),
-			formatSecondaryPercent(secondarySlow),
-		)
-	}
-
 	var clientList []string
 	if telnetSrv != nil {
 		clientList = telnetSrv.ListClientCallsigns()
@@ -4433,33 +4366,15 @@ func buildOverviewLines(
 		pskLine,
 		fmt.Sprintf("%s: %s", withIngestStatusLabel("P92", p92Live), humanize.Comma(int64(p92Total))),
 		pathOnlyLine,
-		"PIPELINE QUALITY",
-		fmt.Sprintf("[yellow]Primary Dedupe[-]: %s | [yellow]Secondary[-]: %s", primaryDupPct, secondarySummary),
-		fmt.Sprintf("[yellow]Corrections[-]: %s | [yellow]Unlicensed[-]: %s | [yellow]Harmonics[-]: %s | [yellow]Reputation[-]: %s",
-			humanize.Comma(int64(totalCorrections)),
-			humanize.Comma(int64(totalUnlicensed)),
-			humanize.Comma(int64(totalHarmonics)),
-			humanize.Comma(int64(reputationTotal)),
-		),
-		fmt.Sprintf("[yellow]Flood[-]: %s", strings.TrimPrefix(formatFloodSummary(tracker), "Flood: ")),
-		"",
-		fmt.Sprintf("[yellow]Resolver[-]: %s", strings.TrimPrefix(resolverLine, "Resolver: ")),
-		fmt.Sprintf("[yellow]Resolver Pressure[-]: %s", strings.TrimPrefix(resolverPressureLine, "Resolver Pressure: ")),
-		"",
-		fmt.Sprintf("[yellow]Stabilizer[-]: %s", strings.TrimPrefix(formatStabilizerSummary(tracker), "Stabilizer: ")),
-		fmt.Sprintf("[yellow]Stabilizer Glyph[-]: %s", strings.TrimPrefix(formatStabilizerGlyphSummary(tracker), "Stabilizer Glyph: ")),
-		"",
-		fmt.Sprintf("[yellow]Temporal[-]: %s", strings.TrimPrefix(formatTemporalSummary(tracker), "Temporal: ")),
-		fmt.Sprintf("[yellow]FT Burst[-]: %s", strings.TrimPrefix(formatFTBurstSummary(tracker), "FT Burst: ")),
 		"CACHES & DATA FRESHNESS",
 	)
 	lines = append(lines, cacheBars...)
 	lines = append(lines,
 		"",
-		fmt.Sprintf("[yellow]CTY[-]: %s  [yellow]FCC[-]: %s  [yellow]Skew[-]: %s", ctyTime, fccTime, skewTime),
+		fmt.Sprintf("[yellow]CTY[-]: %s  [yellow]FCC[-]: %s  [yellow]Skew[-]: %s  %s", ctyTime, fccTime, skewTime, formatSunspotEWMAStatus(ssnSnapshot)),
 		"PATH PREDICTIONS",
 	)
-	lines = append(lines, formatPathLines(pathPredictor, now)...)
+	lines = append(lines, formatPathLines(pathPredictor, now, voacapFallbackSnapshot)...)
 	lines = append(lines, "INGEST SOURCES")
 	lines = append(lines, formatIngestSourceLines(ingestSources)...)
 	lines = append(lines, "NETWORK")
@@ -4647,17 +4562,38 @@ func withIngestStatusLabel(label string, live bool) string {
 	return fmt.Sprintf("[red]%s[-]", label)
 }
 
-func formatPathLines(predictor *pathreliability.Predictor, now time.Time) []string {
+func formatSunspotEWMAStatus(snapshot voacap.SunspotMonitorSnapshot) string {
+	if !snapshot.EWMAInitialized {
+		return "[yellow]EWMA[-]: n/a"
+	}
+	observed := "time unknown"
+	if !snapshot.LastObservedAtUTC.IsZero() {
+		observed = snapshot.LastObservedAtUTC.UTC().Format("01-02 15:04Z")
+	}
+	return fmt.Sprintf("[yellow]EWMA[-]: %d@%s", int(math.Round(snapshot.EWMA)), observed)
+}
+
+func formatVOACAPFallbackLine(snapshot pathreliability.VOACAPClosedFallbackSnapshot) string {
+	return fmt.Sprintf("[yellow]VOACAP[-]: %s cached / %s delayed / %s inflight / %s queued",
+		humanize.Comma(int64(snapshot.CacheEntries)),
+		humanize.Comma(int64(snapshot.DelayEntries)),
+		humanize.Comma(int64(snapshot.InflightEntries)),
+		humanize.Comma(int64(snapshot.QueueDepth)),
+	)
+}
+
+func formatPathLines(predictor *pathreliability.Predictor, now time.Time, voacapFallbackSnapshot pathreliability.VOACAPClosedFallbackSnapshot) []string {
 	const (
 		colsPerRow = 4
 	)
-	lines := make([]string, 0, 1)
+	lines := make([]string, 0, 2)
+	lines = append(lines, formatVOACAPFallbackLine(voacapFallbackSnapshot))
 	if predictor == nil || !predictor.Config().Enabled {
-		lines = append(lines, "[yellow]Path pairs[-]: n/a")
+		lines = append(lines, "[yellow]H3 path pairs[-]: n/a")
 		return lines
 	}
 	stats := predictor.Stats(now)
-	lines = append(lines, fmt.Sprintf("[yellow]Path pairs[-]: %s (L2) / %s (L1)",
+	lines = append(lines, fmt.Sprintf("[yellow]H3 path pairs[-]: %s (L2) / %s (L1)",
 		humanize.Comma(int64(stats.CombinedFine)),
 		humanize.Comma(int64(stats.CombinedCoarse)),
 	))
@@ -4909,17 +4845,6 @@ func clientListColumnsPerRow(colWidth int) int {
 		cols = maxCols
 	}
 	return cols
-}
-
-func formatSecondaryPercent(d *dedup.SecondaryDeduper) string {
-	if d == nil {
-		return "--"
-	}
-	processed, duplicates, _ := d.GetStats()
-	if processed == 0 || duplicates > processed {
-		return "0%"
-	}
-	return fmt.Sprintf("%.0f%%", float64(processed-duplicates)/float64(processed)*100)
 }
 
 // wwvKindFromLine tags non-DX lines coming from human/relay telnet ingest.

@@ -33,14 +33,6 @@ func TestUpdateEventsOverviewBoxesMatchesOverviewSummary(t *testing.T) {
 		"PSK: 2",
 		"P92: 3",
 		"Path: 4",
-		"PIPELINE QUALITY",
-		"Primary: ok",
-		"Corrections: ok",
-		"Resolver: ok",
-		"Resolver Pressure: ok",
-		"Stabilizer: ok",
-		"Stabilizer Glyph: ok",
-		"Temporal: ok",
 		"CACHES & DATA FRESHNESS",
 		"Grid: ok",
 		"PATH PREDICTIONS",
@@ -49,14 +41,12 @@ func TestUpdateEventsOverviewBoxesMatchesOverviewSummary(t *testing.T) {
 		"Telnet: ok",
 	}
 	d := &DashboardV2{
-		overviewHdr:      newBoxedTextView("Overview"),
-		overviewMem:      newBoxedTextView("Memory / GC"),
-		overviewIngest:   newBoxedTextView("Ingest Rates (per min)"),
-		overviewPipeline: newBoxedTextView("Pipeline Quality"),
-		eventsHdr:        newBoxedTextView("Overview"),
-		eventsMem:        newBoxedTextView("Memory / GC"),
-		eventsIngest:     newBoxedTextView("Ingest Rates (per min)"),
-		eventsPipeline:   newBoxedTextView("Pipeline Quality"),
+		overviewHdr:    newBoxedTextView("Overview"),
+		overviewMem:    newBoxedTextView("Memory / GC"),
+		overviewIngest: newBoxedTextView("Ingest Rates (per min)"),
+		eventsHdr:      newBoxedTextView("Overview"),
+		eventsMem:      newBoxedTextView("Memory / GC"),
+		eventsIngest:   newBoxedTextView("Ingest Rates (per min)"),
 	}
 
 	d.updateOverviewBoxes(lines)
@@ -71,12 +61,6 @@ func TestUpdateEventsOverviewBoxesMatchesOverviewSummary(t *testing.T) {
 	if got, want := d.eventsIngest.GetText(true), d.overviewIngest.GetText(true); got != want {
 		t.Fatalf("events ingest mismatch: got %q want %q", got, want)
 	}
-	if got, want := d.eventsPipeline.GetText(true), d.overviewPipeline.GetText(true); got != want {
-		t.Fatalf("events pipeline mismatch: got %q want %q", got, want)
-	}
-	if got := d.overviewPipeline.GetText(true); !strings.Contains(got, "Temporal: ok") {
-		t.Fatalf("expected pipeline section to include temporal line, got %q", got)
-	}
 }
 
 func TestOverviewPathPaneGrowsToFitBandBuckets(t *testing.T) {
@@ -89,18 +73,11 @@ func TestOverviewPathPaneGrowsToFitBandBuckets(t *testing.T) {
 		"PSK: 2",
 		"P92: 3",
 		"Path: 4",
-		"PIPELINE QUALITY",
-		"Primary: ok",
-		"Corrections: ok",
-		"Resolver: ok",
-		"Resolver Pressure: ok",
-		"Stabilizer: ok",
-		"Stabilizer Glyph: ok",
-		"Temporal: ok",
 		"CACHES & DATA FRESHNESS",
 		"Grid: ok",
 		"PATH PREDICTIONS",
-		"Path pairs: 100 / 200",
+		"VOACAP: 12 cached / 3 delayed / 1 inflight / 0 queued",
+		"H3 path pairs: 100 / 200",
 		"",
 		"160m: 1 / 2   80m: 3 / 4   40m: 5 / 6   30m: 7 / 8",
 		"20m: 9 / 10   17m: 11 / 12 15m: 13 / 14 12m: 15 / 16",
@@ -123,7 +100,8 @@ func TestOverviewPathPaneGrowsToFitBandBuckets(t *testing.T) {
 
 	got := d.overviewPath.GetText(true)
 	for _, want := range []string{
-		"Path pairs: 100 / 200",
+		"VOACAP: 12 cached / 3 delayed / 1 inflight / 0 queued",
+		"H3 path pairs: 100 / 200",
 		"160m: 1 / 2",
 		"20m: 9 / 10",
 		"10m: 17 / 18",
@@ -165,14 +143,6 @@ func TestOverviewCachesPaneResizesToContentHeight(t *testing.T) {
 		"PSK: 2",
 		"P92: 3",
 		"Path: 4",
-		"PIPELINE QUALITY",
-		"Primary: ok",
-		"Corrections: ok",
-		"Resolver: ok",
-		"Resolver Pressure: ok",
-		"Stabilizer: ok",
-		"Stabilizer Glyph: ok",
-		"Temporal: ok",
 		"CACHES & DATA FRESHNESS",
 		"Grid: 1",
 		"Meta: 2",
@@ -180,7 +150,7 @@ func TestOverviewCachesPaneResizesToContentHeight(t *testing.T) {
 		"",
 		"CTY: now",
 		"PATH PREDICTIONS",
-		"Path pairs: 100 / 200",
+		"H3 path pairs: 100 / 200",
 		"NETWORK",
 		"Telnet: ok",
 	}
@@ -246,14 +216,6 @@ func TestRenderSnapshotUpdatesOnlyActivePage(t *testing.T) {
 		"PSK: 2",
 		"P92: 3",
 		"Path: 4",
-		"PIPELINE QUALITY",
-		"Primary: ok",
-		"Corrections: ok",
-		"Resolver: ok",
-		"Resolver Pressure: ok",
-		"Stabilizer: ok",
-		"Stabilizer Glyph: ok",
-		"Temporal: ok",
 		"CACHES & DATA FRESHNESS",
 		"Grid: ok",
 		"PATH PREDICTIONS",
@@ -262,15 +224,14 @@ func TestRenderSnapshotUpdatesOnlyActivePage(t *testing.T) {
 		"Telnet: ok",
 	}
 	d := &DashboardV2{
-		overviewHdr:      newBoxedTextView("Overview"),
-		overviewIngest:   newBoxedTextView("Ingest Rates (per min)"),
-		overviewPipeline: newBoxedTextView("Pipeline Quality"),
-		overviewMem:      newBoxedTextView("Memory / GC"),
-		overviewCaches:   newBoxedTextView("Caches & Data Freshness"),
-		overviewPath:     newBoxedTextView("Path Predictions"),
-		overviewNetwork:  newBoxedTextView("Network"),
-		ingestHdr:        newBoxedTextView("Overview"),
-		ingestIngest:     newBoxedTextView("Ingest Rates (per min)"),
+		overviewHdr:     newBoxedTextView("Overview"),
+		overviewIngest:  newBoxedTextView("Ingest Rates (per min)"),
+		overviewMem:     newBoxedTextView("Memory / GC"),
+		overviewCaches:  newBoxedTextView("Caches & Data Freshness"),
+		overviewPath:    newBoxedTextView("Path Predictions"),
+		overviewNetwork: newBoxedTextView("Network"),
+		ingestHdr:       newBoxedTextView("Overview"),
+		ingestIngest:    newBoxedTextView("Ingest Rates (per min)"),
 	}
 	d.snapshot.Store(cloneSnapshot(Snapshot{OverviewLines: lines}))
 	d.activePage.Store("ingest")
@@ -368,8 +329,6 @@ func TestSetStatsAndSetSnapshotCoalesceToOneFrame(t *testing.T) {
 		"Heap: 1 MiB",
 		"INGEST RATES (per min)",
 		"RBN: 1",
-		"PIPELINE QUALITY",
-		"Primary: ok",
 		"CACHES & DATA FRESHNESS",
 		"Grid: ok",
 		"PATH PREDICTIONS",
@@ -378,15 +337,14 @@ func TestSetStatsAndSetSnapshotCoalesceToOneFrame(t *testing.T) {
 		"Telnet: ok",
 	}
 	d := &DashboardV2{
-		overviewHdr:      newBoxedTextView("Overview"),
-		overviewIngest:   newBoxedTextView("Ingest Rates (per min)"),
-		overviewPipeline: newBoxedTextView("Pipeline Quality"),
-		overviewMem:      newBoxedTextView("Memory / GC"),
-		overviewCaches:   newBoxedTextView("Caches & Data Freshness"),
-		overviewPath:     newBoxedTextView("Path Predictions"),
-		overviewSources:  newBoxedTextView("Ingest Sources"),
-		overviewNetwork:  newBoxedTextView("Network"),
-		scheduler:        newFrameScheduler(nil, 60, 50*time.Millisecond, nil),
+		overviewHdr:     newBoxedTextView("Overview"),
+		overviewIngest:  newBoxedTextView("Ingest Rates (per min)"),
+		overviewMem:     newBoxedTextView("Memory / GC"),
+		overviewCaches:  newBoxedTextView("Caches & Data Freshness"),
+		overviewPath:    newBoxedTextView("Path Predictions"),
+		overviewSources: newBoxedTextView("Ingest Sources"),
+		overviewNetwork: newBoxedTextView("Network"),
+		scheduler:       newFrameScheduler(nil, 60, 50*time.Millisecond, nil),
 	}
 	d.snapshotFrameFn = func() {}
 
