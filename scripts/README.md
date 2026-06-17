@@ -26,6 +26,9 @@ skill installation.
   package metadata and ADR records.
 - `check-code-maps.ps1` verifies checked-in Markdown code maps are fresh without
   modifying files. Use this in CI and release freshness gates.
+- `check-troubleshooting-records.ps1` verifies troubleshooting-log rows and
+  `docs/troubleshooting/TSR-*.md` records stay link-complete, status-aligned,
+  ADR-linked, and readable through the required `RCA Summary` block.
 - `check-support-agent.ps1` verifies the custom GPT support-agent deployment
   bundle, support-route contracts, bounded support search, routing docs, local
   Worker behavior, and optional deployed Worker health without printing bearer

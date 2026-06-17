@@ -4,6 +4,25 @@
 - Date opened: 2026-06-16
 - Status date: 2026-06-16
 
+## RCA Summary
+
+- What happened: The console could show the RBN family red while one RBN feed
+  was ingesting spots, and a launch-time failure for the other feed could stay
+  offline until process restart.
+- Why: The top-level RBN label required both CW/RTTY and digital feeds to be
+  connected, and first-dial failures returned before starting reconnect
+  supervision or the spot forwarder.
+- What fixed it: ADR-0181 added `ConnectWithInitialRetry`, starts reconnect
+  supervision and forwarders for enabled production RBN clients, and makes the
+  family label green when either RBN feed is connected while preserving
+  per-feed rows.
+- How we know: Source inspection found first-dial early return before
+  supervision and AND semantics in `rbnFeedsLive`; `rbn/client_test.go` and
+  `internal/cluster/main_stats_test.go` validate retry and liveness behavior.
+- Operator/support answer: For RBN red states, check per-feed rows and startup
+  connection logs; after this fix, enabled feeds should keep bounded retrying
+  even after launch-time DNS or dial failures.
+
 ## Trigger
 
 The operator reported that the UI console showed RBN red while RBN CW and FT

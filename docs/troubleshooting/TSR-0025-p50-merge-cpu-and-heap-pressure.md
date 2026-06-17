@@ -4,6 +4,26 @@
 - Date opened: 2026-06-04
 - Status date: 2026-06-04
 
+## RCA Summary
+
+- What happened: Production CPU rose sharply after the active p50 branch merged
+  into main, and overnight profiling showed the process running close to its
+  memory limit.
+- Why: The p50 merge retained both raw and capped SNR histograms in every path
+  bucket, reducing heap headroom enough to plausibly drive GC pressure under a
+  tight `GOMEMLIMIT`; path reporting metrics also allocated on observation.
+- What fixed it: ADR-0139 retained only the active p50 histogram lane for the
+  configured receiver-contribution mode and removed allocation from path report
+  metric keys. ADR-0143 separately records later Custom SCP allocation
+  cleanup that was not the p50 root cause.
+- How we know: CPU profiles did not show a p50 busy loop, heap profiles tied
+  retained memory to path buckets, local retained-size evidence dropped bucket
+  size from 640 to 440 bytes, and metrics benchmarks went from 24 B/op and 2
+  allocs/op to 0 B/op and 0 allocs/op.
+- Operator/support answer: Treat higher `GOMEMLIMIT` as temporary headroom, not
+  the durable fix; the durable p50 remediation is active-lane retention plus
+  allocation-free report metrics.
+
 ## Trigger
 
 Production cluster CPU rose sharply after the p50 branch was merged into main.

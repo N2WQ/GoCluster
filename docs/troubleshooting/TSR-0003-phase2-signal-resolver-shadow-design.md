@@ -9,6 +9,24 @@ Trigger Source: Chat request
 Led To ADR(s): ADR-0022
 Tags: call-correction, resolver, shadow-mode, architecture
 
+## RCA Summary
+
+- What happened: Phase 2 introduced a shadow signal resolver, then live shadow
+  review showed sustained cap pressure (`dCcap`, `dR`) in dense same-frequency
+  clusters.
+- Why: The original shadow defaults capped candidates and reporters too tightly
+  and used hard drop-on-cap behavior, which lost evidence and biased snapshots
+  toward first-seen entries.
+- What fixed it: Phase 2.1 raised the internal caps, replaced ordinary cap
+  drops with deterministic owner-goroutine eviction, and added explicit
+  pressure, eviction, and high-water metrics.
+- How we know: Runtime resolver counters exposed cap pressure without queue
+  saturation, and the Phase 2.1 test/race/static analysis suite validated the
+  bounded shadow path.
+- Operator/support answer: This TSR remains open as the Phase 2 shadow-design
+  tracker; the cap-pressure finding has a Phase 2.1 mitigation, while cutover
+  remains gated by resolver quality, pressure, and disagreement evidence.
+
 ## Triggering Request
 
 - Request date: 2026-02-23

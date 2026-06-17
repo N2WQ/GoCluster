@@ -4,6 +4,23 @@
 - Date opened: 2026-03-27
 - Status date: 2026-03-27
 
+## RCA Summary
+
+- What happened: Spots containing `FT2` could enter some paths but were not
+  consistently parsed, filtered, or documented as an explicit supported mode.
+- Why: The shared human-style comment parser and operator-facing mode/filter
+  surfaces lacked `FT2`, while PSKReporter could already preserve explicit
+  configured mode strings.
+- What fixed it: ADR-0055 added `FT2` to the shared parser token table, filter
+  supported modes, CC mode shortcuts, help/usage text, and PSKReporter
+  regression coverage.
+- How we know: Source inspection showed parser/operator-surface gaps, and
+  tests covered manual DX, human telnet parsing, PSKReporter, filters, commands,
+  and telnet usage behavior.
+- Operator/support answer: If `FT2` behaves inconsistently, check both the
+  shared parser and MODE/filter/help surfaces; PSKReporter config support alone
+  is not enough.
+
 ## Trigger
 A deployed node began surfacing spots containing `FT2`, prompting investigation into where the mode could enter the system and whether the cluster should support it explicitly.
 

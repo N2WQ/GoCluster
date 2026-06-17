@@ -4,6 +4,23 @@
 - Date opened: 2026-04-26
 - Status date: 2026-04-26
 
+## RCA Summary
+
+- What happened: RBN history rows with nonblank RF mode were admitted even when
+  the RBN spot-class field represented classes such as `DX` rather than the
+  intended skimmer observation classes.
+- Why: The implementation modeled `tx_mode` as RF mode but ignored the separate
+  RBN `mode` spot-class field, so admission used RF-mode presence instead of
+  class acceptance.
+- What fixed it: ADR-0087 added an RBN spot-class model, admitting `CQ`,
+  `BEACON`, and `NCDXF B`, dropping `DX`/blank/unknown, and tagging accepted
+  beacon classes.
+- How we know: CSV field inspection, observed class values, parser review, and
+  RBN/replay/rebuilt-replay tests validated the class contract.
+- Operator/support answer: When RBN mode looks wrong, distinguish RF
+  `tx_mode` from RBN spot class `mode`; do not treat the two fields as
+  interchangeable.
+
 ## Trigger
 RBN history data showed two fields containing the word "mode". The CSV `tx_mode` field carries the RF/transmission mode such as `CW` or `RTTY`, while the CSV `mode` field carries spot classes such as `CQ`, `DX`, `BEACON`, and `NCDXF B`.
 

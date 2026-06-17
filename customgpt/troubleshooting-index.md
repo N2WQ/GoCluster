@@ -21,8 +21,8 @@ then cite the underlying repo docs or TSRs.
 - For spot-output issues, check per-user telnet state before assuming ingest
   failure.
 - For old incidents, route to [docs/troubleshooting-log.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/troubleshooting-log.md) and the matching
-  TSR, then verify current docs or code before treating the TSR as current
-  behavior.
+  TSR. Use the TSR `RCA Summary` as the first-pass explanation, then verify
+  current docs or code before treating the TSR as current behavior.
 - Do not invent config keys, command syntax, error messages, source behavior, or
   default values.
 

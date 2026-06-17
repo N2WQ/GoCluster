@@ -4,6 +4,23 @@
 - Date opened: 2026-05-10
 - Status date: 2026-05-10
 
+## RCA Summary
+
+- What happened: Under receiver-cap enforcement, path p50 glyphs stayed too
+  conservative because newer strong receiver reports could not enter capped
+  evidence after earlier weak reports filled the cap.
+- Why: Receiver slot count was treated as a lifetime `uint32` admission cap
+  while capped weight and SNR evidence decayed over time.
+- What fixed it: ADR-0130 made receiver slot count and bucket capped count
+  decay with capped weight, admitting new reports fractionally when partial
+  capacity remains.
+- How we know: Targeted reproductions showed shadow/raw evidence improving
+  while enforce/capped p50 stayed weak, and `pathreliability/receiver_test.go`
+  validated newer strong evidence admission after decay.
+- Operator/support answer: If enforce-mode p50 looks frozen on old weak
+  receivers, check whether capped count decay is active; shadow mode is the
+  short-term diagnostic fallback.
+
 ## Trigger
 
 Operator audit reported that path reliability p50 glyphs looked too

@@ -4,6 +4,25 @@
 - Date opened: 2026-04-08
 - Status date: 2026-04-08
 
+## RCA Summary
+
+- What happened: FT `P` and `V` tags were still absent after the slot-aware
+  timing model from ADR-0059 was implemented.
+- Why: PSKReporter observed times and RBN minute-only timestamps did not form a
+  stable shared slot identity, so same-event corroborators still fragmented
+  across slot keys; FT spots also reached resolver placeholder confidence before
+  the FT burst rail.
+- What fixed it: ADR-0060 replaced slot identity with bounded arrival-burst
+  clustering, tuned mode-specific quiet gaps and hard caps, bypassed
+  resolver/temporal placeholder confidence for FT modes, enabled cross-source
+  corroboration, and added FT burst observability.
+- How we know: Live samples still had `P=0`/`V=0`, exact FT groups were present,
+  and replay-style simulation showed a bounded arrival-burst model would
+  produce practical corroboration.
+- Operator/support answer: For current FT corroboration issues, inspect burst
+  clustering counters and source timing behavior, not the superseded slot-anchor
+  model.
+
 ## Trigger
 Operators reported that FT `P` and `V` tags were still absent after the slot-aware corroboration model from ADR-0059 had been implemented.
 

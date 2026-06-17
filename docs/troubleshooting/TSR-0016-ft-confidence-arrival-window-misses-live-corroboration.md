@@ -1,8 +1,25 @@
 # TSR-0016 - FT Confidence Arrival Window Misses Live Corroboration
 
-- Status: Resolved
+- Status: Superseded
 - Date opened: 2026-04-08
 - Status date: 2026-04-08
+
+## RCA Summary
+
+- What happened: FT output still showed essentially no `P` or `V` glyphs after
+  PSKReporter frequency canonicalization made dial frequencies consistent.
+- Why: The fixed two-second arrival hold was too short for real multi-spotter
+  FT decode-arrival dispersion, and RBN digital timestamps lacked second-level
+  slot precision.
+- What fixed it: ADR-0059 introduced slot-aware grouping with mode-specific
+  slot grace windows, but that approach was later superseded by TSR-0017 and
+  ADR-0060 when live evidence showed slot anchors still fragmented events.
+- How we know: Live samples showed large exact FT groups spread over 15-20
+  seconds, source inspection found the fixed two-second due time, and tests
+  covered the slot-aware timing change before supersession.
+- Operator/support answer: Treat this record as historical context for the
+  rejected slot-aware FT timing step; use TSR-0017/ADR-0060 for the current FT
+  burst-clustering model.
 
 ## Trigger
 Operators reported that FT `P`/`V` confidence tags were still absent after PSKReporter FT frequency canonicalization had been implemented.

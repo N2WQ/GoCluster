@@ -4,6 +4,24 @@
 - Date opened: 2026-06-16
 - Status date: 2026-06-16
 
+## RCA Summary
+
+- What happened: Runtime VOACAP fallback left successful `.out` files in the
+  shared run directory after parsing them into memory, causing unbounded
+  long-running disk growth.
+- Why: The generic runner removed stale output before a run and read the new
+  output file, but had no post-read cleanup contract; runtime fallback no
+  longer needed the file after copying bytes into `RunResult.Output`.
+- What fixed it: ADR-0180 added `RunRequest.RemoveOutputAfterRead`, kept the
+  generic default artifact-retention behavior, enabled cleanup for runtime
+  fallback, and made cleanup failure visible as a run error.
+- How we know: Source inspection separated runtime fallback from experiment
+  commands that intentionally use `OutputPath`, and tests cover both default
+  runner retention and runtime fallback cleanup.
+- Operator/support answer: For growing VOACAP run directories, distinguish
+  runtime fallback outputs from intentional experiment artifacts; this fix does
+  not delete files accumulated before deployment.
+
 ## Trigger
 
 The user reported that VOACAP `.out` files were not cleaned up after the

@@ -4,6 +4,23 @@
 - Date opened: 2026-05-11
 - Status date: 2026-05-11
 
+## RCA Summary
+
+- What happened: Receiver-cap enforce mode produced too many `low_count`
+  failures even when raw path data volume was high.
+- Why: One numeric gate combined two meanings: raw selected observation count
+  and capped receiver-trust count. In enforce mode, decayed capped count could
+  fall below `min_observation_count` even when raw evidence and receiver
+  diversity were adequate.
+- What fixed it: ADR-0134 kept raw selected observation count as the
+  `min_observation_count` input and introduced a separate receiver-diversity
+  gate with `low_receiver`/`lowr` diagnostics.
+- How we know: Source inspection traced `merged.Count` and capped sample count
+  behavior, and receiver/telnet/propreport tests validated the separated gates.
+- Operator/support answer: For enforce-mode `low_count` reports, distinguish
+  raw sample floor from receiver diversity; `lowr` now identifies the receiver
+  trust gate separately.
+
 ## Trigger
 
 Operator review found that capped evidence failed the count gate often under

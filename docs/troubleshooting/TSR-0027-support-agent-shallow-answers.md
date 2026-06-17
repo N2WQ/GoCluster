@@ -4,6 +4,27 @@
 - Date opened: 2026-06-07
 - Status date: 2026-06-07
 
+## RCA Summary
+
+- What happened: The support-agent action was reachable, but answers to Windows
+  startup troubleshooting stayed generic and repeatedly asked for logs instead
+  of giving a concrete Windows diagnostic sequence.
+- Why: Retrieval worked, but the repository lacked a durable answer-quality
+  contract: route specificity, support cards, `must_include`/`must_avoid`
+  obligations, eval prompts, release smoke checks, and deployment runbook steps
+  were underspecified.
+- What fixed it: ADR-0154 added the support-agent quality contract, route and
+  coverage docs, support cards, `/support-route`, bounded `/search`, smoke and
+  eval scripts, Worker CORS diagnostics, and agent-instruction/schema updates
+  that make route contracts the first retrieval step.
+- How we know: The original transcript reproduced shallow answers; later
+  deterministic support-agent retrieval evals passed 18/18, and live
+  `gpt-5-nano` answer evals passed 18/18 after the route/card contract was in
+  place.
+- Operator/support answer: If support answers are shallow, do not stop at
+  "retrieval works"; verify the selected route card, required sources,
+  `must_include` obligations, and live-answer eval output.
+
 ## Trigger
 
 A support-agent transcript showed the repository action working in the browser,

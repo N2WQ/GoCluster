@@ -4,6 +4,23 @@
 - Date opened: 2026-06-06
 - Status date: 2026-06-06
 
+## RCA Summary
+
+- What happened: Scheduled archive cleanup caused recurring CPU spikes on the
+  small production instance.
+- Why: Cleanup still iterated expired timestamp-ordered Pebble keys and deleted
+  them one at a time even though ADR-0149 had reduced retention to a single
+  timestamp cutoff.
+- What fixed it: ADR-0151 changed cleanup to probe the oldest key and use a
+  Pebble `DeleteRange(start, end)` tombstone for the expired timestamp range;
+  obsolete cleanup batch YAML keys are now rejected.
+- How we know: Source inspection showed timestamp-ordered `s|` keys and
+  per-key delete batching, and archive/config tests plus
+  `BenchmarkCleanupOnceRangeDeleteLargeExpired` validated the range-delete
+  path.
+- Operator/support answer: For cleanup CPU spikes, check whether archive range
+  deletion is active and remove obsolete cleanup batch settings.
+
 ## Trigger
 
 Production profiling on the long-running cluster showed recurring CPU spikes

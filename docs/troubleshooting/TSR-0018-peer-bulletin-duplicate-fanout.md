@@ -9,6 +9,20 @@ Trigger Source: Chat request
 Led To ADR(s): ADR-0063
 Tags: peering, bulletins, dedupe, bounded-state
 
+## RCA Summary
+
+- What happened: Telnet users saw repeated WWV/WCY and `TO ALL` announcement
+  bulletins when peers delivered the same control-plane message through
+  multiple paths.
+- Why: Bulletins bypassed the spot dedupe pipeline, peer-level keys were raw
+  and hop-sensitive, and telnet bulletin fan-out had no duplicate suppression.
+- What fixed it: ADR-0063 added configurable bounded telnet bulletin dedupe and
+  changed peer WWV/WCY/PC93 keys to canonical payload fields.
+- How we know: Source inspection separated bulletin fan-out from spot dedupe,
+  and config, peer, and telnet tests validated suppression and keying behavior.
+- Operator/support answer: For repeated bulletins, check the telnet bulletin
+  dedupe counters and canonical peer keys before investigating spot dedupe.
+
 ## Triggering Request
 - Request date: 2026-04-19
 - Request summary: Review why announcements, WWV, and WCY messages repeat to telnet users as they arrive from peers, then implement an effective dedupe solution.

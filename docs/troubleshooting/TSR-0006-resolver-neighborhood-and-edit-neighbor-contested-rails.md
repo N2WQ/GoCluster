@@ -9,6 +9,25 @@ Trigger Source: Chat request
 Led To ADR(s): ADR-0033
 Tags: resolver-primary, neighborhood, stabilizer, suppression, replay-parity
 
+## RCA Summary
+
+- What happened: One-character similar calls could still leak through
+  resolver-primary output under adjacent-bucket, timing, and contested-neighbor
+  conditions.
+- Why: Resolver-primary lacked explicit adjacent-bucket competition and
+  resolver-contested edit-neighbor rails; runtime and replay also did not share
+  enough policy evidence to explain the decisions the same way.
+- What fixed it: ADR-0033 added shared resolver neighborhood selection,
+  contested edit-neighbor stabilizer delay and telnet suppression rails,
+  rollout feature gates, and replay/runtime reason counters.
+- How we know: Neighborhood winner/split tests, stabilizer tests, telnet
+  suppressor tests, config tests, replay metric tests, and the full
+  test/vet/staticcheck/race suite covered the new shared policy.
+- Operator/support answer: When similar one-character calls leak or disappear,
+  inspect resolver neighborhood reasons, `edit_neighbor_contested` delay
+  reasons, and replay counters before assuming ordinary family suppression is
+  responsible.
+
 ## Triggering Request
 
 - Request date: 2026-02-26

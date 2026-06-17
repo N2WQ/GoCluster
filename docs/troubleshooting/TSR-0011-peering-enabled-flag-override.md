@@ -9,6 +9,21 @@ Trigger Source: Chat request
 Led To ADR(s): ADR-0047
 Tags: peering, config, outbound sessions
 
+## RCA Summary
+
+- What happened: Peers configured with `enabled: false` were still dialed and
+  produced repeated DNS/reconnect noise.
+- Why: Config normalization treated host+port as an implicit enable signal and
+  overwrote the disabled state before the peer manager checked it.
+- What fixed it: ADR-0047 made outbound peer activation explicit; host and port
+  no longer imply `enabled: true`.
+- How we know: Source inspection showed the peer manager respected `Enabled`
+  and config normalization flipped it; targeted config tests and full checks
+  validated the new contract.
+- Operator/support answer: For unwanted outbound peer dialing, check the
+  effective `peering.peers[].enabled` value first; host/port alone should not
+  start dialing.
+
 ## Triggering Request
 - Request date: 2026-03-03
 - Request summary: Disabled placeholder peers were still being dialed repeatedly.

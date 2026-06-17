@@ -4,6 +4,24 @@
 - Date opened: 2026-06-09
 - Status date: 2026-06-09
 
+## RCA Summary
+
+- What happened: Live propagation logs showed combined path predictions but no
+  VOACAP closed or aligned fallback glyphs after path diagnostics were enabled.
+- Why: Runtime decks always requested VOACAP hours `1..forecast_hours`, while
+  the fallback cache looked up the current UTC hour; at 17:00 UTC, for example,
+  the cache had no current-hour record to use.
+- What fixed it: ADR-0164 made runtime fallback decks start at the current UTC
+  window, normalize VOACAP hour `24` to UTC hour `0`, and expose reset-on-
+  snapshot stage counters for queue/cache/current-hour/final decision gates.
+- How we know: Live output files contained hours `1..8`, source inspection
+  found fixed `TIME` card generation and current-hour lookup, and tests covered
+  deck start hour, midnight normalization, cache-stage counters, and telnet
+  decision counters.
+- Operator/support answer: If VOACAP fallback appears idle, check the stage
+  counters for `no current hour` and verify the runtime deck window matches the
+  current UTC hour.
+
 ## Trigger
 
 Live propagation logs showed `combined` path predictions but

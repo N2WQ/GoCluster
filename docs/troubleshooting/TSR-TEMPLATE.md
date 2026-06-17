@@ -1,6 +1,6 @@
 # TSR-XXXX - <Short Troubleshooting Title>
 
-Status: Open | Monitoring | Resolved | Closed
+Status: Open | Monitoring | Resolved | Superseded | Closed
 Date Opened: YYYY-MM-DD
 Date Resolved: YYYY-MM-DD | n/a
 Owner: <name or role>
@@ -8,6 +8,13 @@ Technical Area: <component/package>
 Trigger Source: Chat request | Incident alert | Operator report | Other
 Led To ADR(s): ADR-XXXX | none
 Tags: <optional comma-separated tags>
+
+## RCA Summary
+- What happened:
+- Why:
+- What fixed it:
+- How we know:
+- Operator/support answer:
 
 ## Triggering Request
 - Request date:

@@ -91,6 +91,12 @@ Use `docs/templates/adr-template.md`.
 - Status: Open | Resolved | Superseded
 - Date opened
 - Date resolved or current status date
+- RCA Summary:
+  - What happened
+  - Why
+  - What fixed it
+  - How we know
+  - Operator/support answer
 - Trigger
 - Symptoms and impact
 - Hypotheses tested
@@ -122,3 +128,6 @@ Whenever a new ADR or TSR is created:
 - add it to the relevant log file
 - keep the newest entries at the top unless the repo already uses a different convention
 - include status, date, component, and one-line summary
+- for TSRs, run `scripts/check-troubleshooting-records.ps1` after adding or
+  editing a troubleshooting record, the TSR template, or the troubleshooting
+  index

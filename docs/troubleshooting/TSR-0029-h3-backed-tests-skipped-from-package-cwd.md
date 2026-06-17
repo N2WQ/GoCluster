@@ -4,6 +4,25 @@
 - Date opened: 2026-06-10
 - Status date: 2026-06-10
 
+## RCA Summary
+
+- What happened: Standard package tests reported green while H3-backed
+  path/telnet/filter tests skipped because they could not find checked-in H3
+  fixtures from the package working directory.
+- Why: Test helpers assumed the process working directory was the repository
+  root; Go runs package tests from package directories, and skip-on-missing
+  hid both the path bug and stale geometry assumptions.
+- What fixed it: Tests now resolve the repo root by walking to `go.mod`, fail
+  when checked-in H3 fixtures are missing, use distinct H3 grids for directed
+  evidence tests, and isolate receiver-cap behavior where unrelated.
+- How we know: Package test runs reproduced missing `data/h3` skips, compiled
+  binaries run from repo root exposed stale assertions, and updated tests cover
+  normalize, receiver, telnet diagnostics, path settings, server filters, and
+  nearby filters.
+- Operator/support answer: Treat this as validation hardening, not a runtime H3
+  production regression; production startup validation remains covered by the
+  existing H3 table contract.
+
 ## Trigger
 
 Review of the fine/coarse union scalar evidence patch found that `go test

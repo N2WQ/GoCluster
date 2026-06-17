@@ -9,6 +9,24 @@ Trigger Source: Chat request
 Led To ADR(s): ADR-0056
 Tags: self-spot, stabilizer, temporal, confidence, custom_scp
 
+## RCA Summary
+
+- What happened: Local operator self-spots could appear delayed or
+  out-of-sequence in telnet output and were not guaranteed to carry `V`
+  confidence.
+- Why: Runtime treated local self-spots like ordinary local manual spots, so
+  resolver, temporal hold, and stabilizer paths could delay them before fan-out.
+- What fixed it: ADR-0056 made non-test local `DX` self-spots
+  operator-authoritative: they bypass resolver mutation, temporal hold, and
+  telnet stabilizer delay, are forced to `V`, and can enter `custom_scp` through
+  the existing V-only rail.
+- How we know: Code tracing followed `handleDX()` through the output pipeline,
+  and targeted `spot`, `main`, and `peer` tests validated the bypass,
+  confidence, custom SCP, and peer-publish behavior.
+- Operator/support answer: For local self-spot delay reports, distinguish
+  operator self-spots from other local manual spots; self-spots should be
+  immediate and `V` after ADR-0056.
+
 ## Trigger
 - Request date: 2026-03-27
 - Request summary: operator reported delayed/out-of-sequence local self-spots on 10m SSB and requested that self-spots be immediate, peer-published, shown to telnet users without delay, emitted as `V`, and admitted to `custom_scp`.

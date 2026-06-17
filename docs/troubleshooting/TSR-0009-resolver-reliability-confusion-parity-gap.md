@@ -9,6 +9,24 @@ Trigger Source: Chat request
 Led To ADR(s): ADR-0036
 Tags: resolver-primary, replay-parity, spotter-reliability, confusion-model
 
+## RCA Summary
+
+- What happened: Resolver-primary paths were not consistently using spotter
+  reliability and confusion-model inputs, and resolver winner selection ignored
+  confusion evidence in top-tier ties.
+- Why: Shared-flow refactors expanded the runtime/replay/rebuilt replay
+  argument surfaces but did not preserve complete reliability/confusion wiring;
+  confusion scoring also remained only in legacy correction ranking.
+- What fixed it: ADR-0036 restored reliability/confusion inputs across
+  runtime, replay, and rebuilt replay, then applied confusion-model scoring only
+  within tied resolver winner cohorts with deterministic fallback.
+- How we know: Source inspection covered all resolver-primary entry points, new
+  signal-resolver tests covered enabled/disabled tie-break behavior, and the
+  full test/vet/staticcheck/race suite passed.
+- Operator/support answer: For resolver-primary replay/runtime drift or
+  unexpected tied winners, verify reliability/confusion parity wiring and the
+  effective confusion-model weight before changing correction gates.
+
 ## Triggering Request
 
 - Request date: 2026-02-26

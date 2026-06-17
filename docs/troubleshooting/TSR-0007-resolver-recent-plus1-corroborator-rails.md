@@ -9,6 +9,24 @@ Trigger Source: Chat request
 Led To ADR(s): ADR-0034
 Tags: resolver-primary, recent-band, one-short, replay-parity
 
+## RCA Summary
+
+- What happened: Resolver-primary rejected some likely-correct winners that
+  were exactly one report short of `min_reports`, even when recent same-band
+  corroboration was strong.
+- Why: The strict min-reports gate had no bounded resolver-native way to use
+  recent corroboration, because the older broad recent-band bonus had been
+  deferred for score-inflation risk.
+- What fixed it: ADR-0034 added a conservative one-short `recent_plus1` rail
+  with proximity, support, subject-weaker, contested-neighbor, config, and
+  telemetry guards.
+- How we know: Runtime apply/reject tests, replay counter tests, config
+  defaults/sanitization checks, and the full test/vet/staticcheck/race suite
+  validated the shared gate behavior.
+- Operator/support answer: For one-short resolver misses, look at
+  `resolver_applied_recent_plus1` and `resolver_recent_plus1_reject_*` reasons
+  before broadening min-report or recent-band thresholds.
+
 ## Triggering Request
 
 - Request date: 2026-02-26

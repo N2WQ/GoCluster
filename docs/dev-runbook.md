@@ -112,6 +112,9 @@ Add only the documentation checks that apply:
   checklist, repo-managed skill, or workflow-script documentation changes
 - support-agent routing review when operator-support topics or support-routing
   docs changed
+- `scripts/check-troubleshooting-records.ps1` for troubleshooting record,
+  `docs/troubleshooting/TSR-TEMPLATE.md`, or `docs/troubleshooting-log.md`
+  changes
 - `scripts/check-yaml-doc-rigor.ps1 -CommentOnlyCompare` only for comment-only
   checked-in first-party YAML changes; YAML content changes leave this lane
 

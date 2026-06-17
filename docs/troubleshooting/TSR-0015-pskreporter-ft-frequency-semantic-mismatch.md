@@ -4,6 +4,23 @@
 - Date opened: 2026-04-08
 - Status date: 2026-04-08
 
+## RCA Summary
+
+- What happened: FT `P`/`V` corroboration did not appear in live traffic even
+  after the FT confidence rail was enabled.
+- Why: PSKReporter FT spots used observed RF frequencies, while RBN digital and
+  the mode-seed table used canonical dial frequencies; this split identical FT
+  events across different keys.
+- What fixed it: ADR-0058 added a shared FT dial-frequency registry,
+  canonicalized PSKReporter FT2/FT4/FT8 operational frequencies at ingest, and
+  preserved raw observed RF separately for archive use.
+- How we know: Live telnet probing ruled out client filters, source inspection
+  found direct use of the PSKReporter frequency field, and tests covered FT
+  frequency mapping, ingest, and archive preservation.
+- Operator/support answer: For missing FT corroboration, first check whether
+  PSKReporter FT frequencies are canonical dial frequencies; nearby observed RF
+  values fragment corroboration.
+
 ## Trigger
 Operators reported that FT `P`/`V` corroboration glyphs were not appearing in live traffic even after the bounded FT-confidence rail was enabled.
 

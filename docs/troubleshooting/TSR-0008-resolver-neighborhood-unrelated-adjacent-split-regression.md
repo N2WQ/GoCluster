@@ -9,6 +9,23 @@ Trigger Source: Chat request
 Led To ADR(s): ADR-0035
 Tags: resolver-primary, neighborhood, replay-regression, split-gating
 
+## RCA Summary
+
+- What happened: After resolver-neighborhood rollout, replay recall/stability
+  regressed and `neighborhood_conflict_split` increased for unrelated adjacent
+  bucket winners.
+- Why: Neighborhood arbitration admitted winners that were not comparable to
+  the emitted subject call, so unrelated adjacent buckets could force `split`.
+- What fixed it: ADR-0035 made neighborhood arbitration subject-anchored and
+  comparability-gated, with exclusion counters for unrelated, distance, and
+  missing-anchor cases.
+- How we know: Code inspection, replay deltas, new comparability tests, replay
+  metric tests, and compare-script columns showed why candidates were included
+  or excluded.
+- Operator/support answer: If neighborhood conflicts rise after enabling
+  resolver neighborhood behavior, check the exclusion counters before treating
+  all adjacent-bucket conflicts as real competing signal identities.
+
 ## Triggering Request
 
 - Request date: 2026-02-26

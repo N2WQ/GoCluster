@@ -9,6 +9,22 @@ Trigger Source: Chat request
 Led To ADR(s): ADR-0032
 Tags: call-correction, resolver-primary, truncation, confidence-glyph
 
+## RCA Summary
+
+- What happened: Resolver-primary missed some truncation-family corrections and
+  could show `V` for contested `split` or `uncertain` evidence.
+- Why: Final resolver-primary gate logic had drifted from legacy
+  family-policy rails, and confidence glyph mapping treated contested resolver
+  states too optimistically.
+- What fixed it: ADR-0032 added a shared family-sensitive gate evaluator for
+  resolver-primary and downgraded contested `split`/`uncertain` states to
+  conservative `P` or `?` glyphs.
+- How we know: Tests covered the resolver confidence glyph mapping, winner
+  application, max edit distance, distance-3 rails, and truncation-family parity.
+- Operator/support answer: For resolver-primary family misses or dual-`V`
+  contested variants, check whether the family-gate parity and conservative
+  glyph rules from ADR-0032 are active before tuning correction thresholds.
+
 ## Triggering Request
 
 - Request date: 2026-02-26

@@ -9,6 +9,22 @@ Trigger Source: Chat request
 Led To ADR(s): ADR-0026
 Tags: resolver, cutover, rollback, call-correction
 
+## RCA Summary
+
+- What happened: The resolver existed only in shadow mode, so production could
+  not safely make it authoritative or roll it back in process.
+- Why: Phase 2 intentionally blocked correction cutover to protect bounded
+  resource and behavior-risk requirements until comparison evidence existed.
+- What fixed it: ADR-0026 added `call_correction.resolver_mode` with `shadow`
+  as the default and `primary` as the explicit cutover mode, preserving legacy
+  comparison visibility.
+- How we know: Config default tests, resolver-primary integration checks, and
+  the full test/vet/staticcheck/race suite validated that default production
+  behavior stayed shadow-only.
+- Operator/support answer: Use `resolver_mode=shadow` as the rollback lever if
+  primary trials show sustained disagreement, pressure, or correction
+  regression.
+
 ## Triggering Request
 
 - Request date: 2026-02-25

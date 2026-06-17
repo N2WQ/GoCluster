@@ -4,6 +4,21 @@
 - Date opened: 2026-05-23
 - Status date: 2026-05-23
 
+## RCA Summary
+
+- What happened: Custom SCP retained-state tests failed after fixed April 2026
+  observations aged beyond the configured 30-day horizon.
+- Why: The tests used absolute timestamps for data that was supposed to be
+  fresh relative to `time.Now().UTC()`, while production correctly drops stale
+  observations before mutating retained state.
+- What fixed it: ADR-0136 changed tests to use current-relative UTC fixtures
+  that preserve intended fresh/stale ordering inside the active horizon.
+- How we know: Targeted `go test ./spot` reproduced empty retained-state
+  failures, and source inspection showed `recordObservation` returning early
+  for stale `seenAt` values.
+- Operator/support answer: This was validation-only fixture drift, not a
+  production retention regression; production horizon behavior stayed correct.
+
 ## Trigger
 `go test ./spot` failed in Custom SCP retained-state tests after fixed April
 2026 observation fixtures aged past their configured 30-day horizon.

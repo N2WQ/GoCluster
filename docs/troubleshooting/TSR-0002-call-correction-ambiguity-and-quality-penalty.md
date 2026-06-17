@@ -9,6 +9,24 @@ Trigger Source: Chat request
 Led To ADR(s): ADR-0021
 Tags: call-correction, ambiguity, quality-anchors, deterministic-behavior
 
+## RCA Summary
+
+- What happened: Near-frequency call variants could produce contradictory
+  correction outcomes, and the layered correction rails were hard to reason
+  about.
+- Why: Correction was decided per incoming spot, so locally valid winners could
+  conflict under split evidence; quality updates also penalized non-winners
+  broadly enough to reinforce the wrong local winner.
+- What fixed it: ADR-0021 added the conservative `ambiguous_multi_signal`
+  rejection and skipped quality decrements for independently validated
+  non-winners.
+- How we know: Source review traced the per-spot decision path and quality
+  penalty update; targeted `spot/correction_test.go` coverage and `go test
+  ./spot` validated the new guard.
+- Operator/support answer: Treat contradictory near-frequency variants as a
+  split-evidence ambiguity case; inspect `CorrGate` rejection reasons for
+  `ambiguous_multi_signal` before tuning broader correction rails.
+
 ## Triggering Request
 - Request date: 2026-02-23
 - Request summary: Re-evaluate the entire call-processing method after observing contradictory call outcomes (for example DL6LD vs DL6LN on the same frequency) and rising complexity from one-off rails.

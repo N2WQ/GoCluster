@@ -4,6 +4,22 @@
 - Date opened: 2026-04-22
 - Status date: 2026-04-22
 
+## RCA Summary
+
+- What happened: `PASS MODE UNKNOWN` looked like it replaced the MODE filter,
+  but `SHOW FILTER` still displayed the default full allowlist.
+- Why: MODE PASS/REJECT commands are additive, and default sessions already
+  allow `UNKNOWN`; the command response sounded like exact replacement even
+  though matching was working.
+- What fixed it: MODE and EVENT feedback now reports enabled/rejected modes,
+  effective lists, and warnings when `UNKNOWN` or no-event spots are hidden.
+- How we know: Unit tests showed `UNKNOWN` matching worked, direct telnet
+  testing reproduced the confusing display, and source inspection confirmed
+  additive `filter.SetMode(mode, true)` semantics.
+- Operator/support answer: Treat this as an operator-feedback issue, not a
+  filter-matching bug; use effective MODE display to explain what is actually
+  enabled.
+
 ## Trigger
 
 An operator tried `PASS MODE UNKNOWN` while investigating blank-mode spots. The command response implied a narrow MODE setting, but live `SHOW FILTER` still showed the full default mode allowlist.

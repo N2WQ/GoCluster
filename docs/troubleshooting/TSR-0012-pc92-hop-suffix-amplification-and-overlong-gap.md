@@ -9,6 +9,23 @@ Trigger Source: Chat request
 Led To ADR(s): ADR-0050
 Tags: peering, pc92, loop suppression, observability
 
+## RCA Summary
+
+- What happened: Relayed `PC92` topology frames could grow repeated hop suffixes
+  such as `^H95^H94...`, increasing overlong-line risk and noisy topology
+  churn.
+- Why: Local parse/encode appended a new hop without canonicalizing existing
+  hop fields, and raw hop-bearing dedupe keys allowed each route variant
+  through.
+- What fixed it: ADR-0050 made forwarding canonicalize to one trailing hop,
+  dedupe `PC92` semantically before topology enqueue, and emit bounded
+  reason-coded overlong diagnostics.
+- How we know: A local repro showed suffix accumulation; peer parser/encoder,
+  keying, handle-frame tests, and hop-suffix fuzzing validated the fix.
+- Operator/support answer: For peer "long file" or overlong `PC92` reports,
+  inspect relayed lines for stacked hop markers and confirm semantic `PC92`
+  dedupe plus canonical hop encoding are active.
+
 ## Triggering Request
 - Request date: 2026-03-05
 - Request summary: Review peering code for root cause of remote "long file" errors showing `PC92` lines with repeated hop markers (`^H95^H94^H93...`).

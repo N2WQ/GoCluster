@@ -9,6 +9,21 @@ Trigger Source: Chat request
 Led To ADR(s): ADR-0046
 Tags: stabilizer, confidence-glyphs, main-replay-parity
 
+## RCA Summary
+
+- What happened: Runtime stats showed `V` glyph spots accumulating stabilizer
+  delayed turns even though high-confidence spots were intended to pass without
+  delay.
+- Why: The shared stabilizer policy applied ambiguity, edit-neighbor, and
+  non-recent delay rails before checking an explicit confidence-glyph allowlist.
+- What fixed it: ADR-0046 scoped stabilizer delay eligibility to `?`, `S`, and
+  `P`; `V` and `C` now pass through delay and retry checks.
+- How we know: Source tracing rejected the stats-only hypothesis, and targeted
+  stabilizer/main tests validated the shared helper behavior.
+- Operator/support answer: If `V` delay counters appear after this fix, inspect
+  whether the shared stabilizer helper is in use and whether the counters are
+  from old logs or a different confidence path.
+
 ## Triggering Request
 - Request date: 2026-03-01
 - Request summary: verify whether `V` spots were being delayed after seeing high average `V` stabilizer turns in runtime stats; enforce intended behavior where only `?`, `S`, and `P` are delay-eligible.
