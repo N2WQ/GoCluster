@@ -216,6 +216,10 @@ malformed state is warned about and ignored so path reliability can still start.
 Do not share the same state file between two running cluster processes.
 The local Overview page displays that current rounded generation as
 `VOACAP SSN: <integer|n/a>` when the interactive console is enabled.
+The Overview Path Predictions panel also displays
+`VOACAP cache: <cache> (C) / <delay> (D) / <inflight> (I) / <queue> (Q)` using
+the existing in-memory fallback snapshot counters; it does not add a second
+cache or count distinct path pairs.
 Completed VOACAP hourly forecast-window records persist separately in the
 per-node Pebble DB at `voacap_fallback.forecast_cache_db_path`. Startup hydrates
 only records that still match the current cache schema, model generation,

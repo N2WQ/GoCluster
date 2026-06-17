@@ -661,7 +661,7 @@ func formatTopCounterSummary(counts map[string]uint64, limit int) string {
 // Key aspects: Uses a ticker, diff counters, and optional secondary dedupe stats.
 // Upstream: main stats goroutine.
 // Downstream: tracker accessors, loadFCCSnapshot, and UI/log output.
-func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestStats *ingestValidator, dedup *dedup.Deduplicator, secondaryFast *dedup.SecondaryDeduper, secondaryMed *dedup.SecondaryDeduper, secondarySlow *dedup.SecondaryDeduper, secondaryStage *atomic.Uint64, buf *buffer.RingBuffer, ctyLookup func() *cty.CTYDatabase, metaCache *callMetaCache, ctyState *ctyRefreshState, recentBandStore spot.RecentSupportStore, signalResolver *spot.SignalResolver, telnetSrv *telnet.Server, dash ui.Surface, gridStats *gridMetrics, gridDB *gridStoreHandle, fccDBPath string, pathPredictor *pathreliability.Predictor, voacapSSN pathreliability.VOACAPSSNProvider, modeAssigner *spot.ModeAssigner, toxicityClassifier *toxicity.Classifier, rbnClient *rbn.Client, rbnDigitalClient *rbn.Client, pskrClient *pskreporter.Client, dxsummitClient *dxsummit.Client, pskrPathOnly *pathOnlyStats, peerManager *peer.Manager, clusterCall string, skewPath string, ingestSourceCfg dashboardIngestSourceConfig) {
+func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestStats *ingestValidator, dedup *dedup.Deduplicator, secondaryFast *dedup.SecondaryDeduper, secondaryMed *dedup.SecondaryDeduper, secondarySlow *dedup.SecondaryDeduper, secondaryStage *atomic.Uint64, buf *buffer.RingBuffer, ctyLookup func() *cty.CTYDatabase, metaCache *callMetaCache, ctyState *ctyRefreshState, recentBandStore spot.RecentSupportStore, signalResolver *spot.SignalResolver, telnetSrv *telnet.Server, dash ui.Surface, gridStats *gridMetrics, gridDB *gridStoreHandle, fccDBPath string, pathPredictor *pathreliability.Predictor, voacapSSN pathreliability.VOACAPSSNProvider, voacapFallback voacapFallbackSnapshotProvider, modeAssigner *spot.ModeAssigner, toxicityClassifier *toxicity.Classifier, rbnClient *rbn.Client, rbnDigitalClient *rbn.Client, pskrClient *pskreporter.Client, dxsummitClient *dxsummit.Client, pskrPathOnly *pathOnlyStats, peerManager *peer.Manager, clusterCall string, skewPath string, ingestSourceCfg dashboardIngestSourceConfig) {
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
@@ -903,7 +903,7 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 
 		if dash != nil {
 			dash.SetStats(lines)
-			overviewLines := buildOverviewLines(tracker, dedup, secondaryFast, secondaryMed, secondarySlow, metaCache, recentBandStore, ctyState, fccSnap, gridStats, gridDB, pathPredictor, voacapSSN, modeAssigner, telnetSrv, clusterCall,
+			overviewLines := buildOverviewLines(tracker, dedup, secondaryFast, secondaryMed, secondarySlow, metaCache, recentBandStore, ctyState, fccSnap, gridStats, gridDB, pathPredictor, voacapSSN, voacapFallback, modeAssigner, telnetSrv, clusterCall,
 				rbnLive, pskLive, p92Live,
 				ingestSources,
 				combinedRBN, rbnCW, rbnRTTY, rbnFT8, rbnFT4, rbnFT2,
@@ -4270,6 +4270,7 @@ func buildOverviewLines(
 	gridDB *gridStoreHandle,
 	pathPredictor *pathreliability.Predictor,
 	voacapSSN pathreliability.VOACAPSSNProvider,
+	voacapFallback voacapFallbackSnapshotProvider,
 	modeAssigner *spot.ModeAssigner,
 	telnetSrv *telnet.Server,
 	clusterCall string,
@@ -4419,7 +4420,7 @@ func buildOverviewLines(
 		fmt.Sprintf("[yellow]CTY[-]: %s  [yellow]FCC[-]: %s  [yellow]Skew[-]: %s  [yellow]VOACAP SSN[-]: %s", ctyTime, fccTime, skewTime, voacapSSNLabel),
 		"PATH PREDICTIONS",
 	)
-	lines = append(lines, formatPathLines(pathPredictor, now)...)
+	lines = append(lines, formatPathLines(pathPredictor, voacapFallback, now)...)
 	lines = append(lines, "INGEST SOURCES")
 	lines = append(lines, formatIngestSourceLines(ingestSources)...)
 	lines = append(lines, "NETWORK")
@@ -4618,11 +4619,16 @@ func withIngestStatusLabel(label string, live bool) string {
 	return fmt.Sprintf("[red]%s[-]", label)
 }
 
-func formatPathLines(predictor *pathreliability.Predictor, now time.Time) []string {
+type voacapFallbackSnapshotProvider interface {
+	Snapshot() pathreliability.VOACAPClosedFallbackSnapshot
+}
+
+func formatPathLines(predictor *pathreliability.Predictor, voacapFallback voacapFallbackSnapshotProvider, now time.Time) []string {
 	const (
 		colsPerRow = 4
 	)
-	lines := make([]string, 0, 1)
+	lines := make([]string, 0, 2)
+	lines = append(lines, formatVOACAPCacheLine(voacapFallback))
 	if predictor == nil || !predictor.Config().Enabled {
 		lines = append(lines, "[yellow]H3 path pairs[-]: n/a")
 		return lines
@@ -4694,6 +4700,19 @@ func formatPathLines(predictor *pathreliability.Predictor, now time.Time) []stri
 		lines = append(lines, b.String())
 	}
 	return lines
+}
+
+func formatVOACAPCacheLine(provider voacapFallbackSnapshotProvider) string {
+	if provider == nil {
+		return "[yellow]VOACAP cache[-]: n/a"
+	}
+	snap := provider.Snapshot()
+	return fmt.Sprintf("[yellow]VOACAP cache[-]: %s (C) / %s (D) / %s (I) / %s (Q)",
+		humanize.Comma(int64(snap.CacheEntries)),
+		humanize.Comma(int64(snap.DelayEntries)),
+		humanize.Comma(int64(snap.InflightEntries)),
+		humanize.Comma(int64(snap.QueueDepth)),
+	)
 }
 
 func formatRecentSupportByBandLines(store spot.RecentSupportStore, now time.Time, maxBands int) []string {

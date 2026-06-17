@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"dxcluster/dxsummit"
+	"dxcluster/pathreliability"
 	"dxcluster/pskreporter"
 	"dxcluster/spot"
 )
@@ -81,7 +82,7 @@ func TestFormatIngestLineIncludesFT2AndCommaAwareWidths(t *testing.T) {
 
 func TestBuildOverviewLinesIncludesFT2IngestRates(t *testing.T) {
 	lines := buildOverviewLines(
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		"N2WQ-2",
 		true, true, false,
 		nil,
@@ -130,9 +131,17 @@ func (p fixedOverviewSSNProvider) CurrentSSN(time.Time) (int, bool) {
 	return p.ssn, p.ok
 }
 
+type fixedOverviewVOACAPFallbackProvider struct {
+	snapshot pathreliability.VOACAPClosedFallbackSnapshot
+}
+
+func (p fixedOverviewVOACAPFallbackProvider) Snapshot() pathreliability.VOACAPClosedFallbackSnapshot {
+	return p.snapshot
+}
+
 func buildOverviewLinesForStatsTest(voacapSSN fixedOverviewSSNProvider) []string {
 	return buildOverviewLines(
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, voacapSSN, nil, nil,
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, voacapSSN, nil, nil, nil,
 		"N2WQ-2",
 		false, false, false,
 		nil,
@@ -145,6 +154,32 @@ func buildOverviewLinesForStatsTest(voacapSSN fixedOverviewSSNProvider) []string
 		nil,
 		"n/a",
 	)
+}
+
+func TestFormatPathLinesIncludesVOACAPCacheSnapshot(t *testing.T) {
+	provider := fixedOverviewVOACAPFallbackProvider{
+		snapshot: pathreliability.VOACAPClosedFallbackSnapshot{
+			CacheEntries:    1234,
+			DelayEntries:    56,
+			InflightEntries: 7,
+			QueueDepth:      8,
+		},
+	}
+	lines := formatPathLines(nil, provider, time.Now().UTC())
+	joined := strings.Join(lines, "\n")
+	want := "[yellow]VOACAP cache[-]: 1,234 (C) / 56 (D) / 7 (I) / 8 (Q)"
+	if !strings.Contains(joined, want) {
+		t.Fatalf("expected VOACAP cache line %q, got %v", want, lines)
+	}
+	if !strings.Contains(joined, "[yellow]H3 path pairs[-]: n/a") {
+		t.Fatalf("expected H3 path pairs fallback, got %v", lines)
+	}
+
+	lines = formatPathLines(nil, nil, time.Now().UTC())
+	joined = strings.Join(lines, "\n")
+	if !strings.Contains(joined, "[yellow]VOACAP cache[-]: n/a") {
+		t.Fatalf("expected nil VOACAP fallback to render n/a, got %v", lines)
+	}
 }
 
 func TestWithIngestStatusLabel(t *testing.T) {

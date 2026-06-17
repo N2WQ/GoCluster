@@ -156,6 +156,11 @@ On the Overview page, the Caches & Data Freshness footer includes CTY, FCC, and
 skew dates plus `VOACAP SSN: <integer|n/a>`. The integer is the rounded current
 SSN generation used for VOACAP forecast cache keys and deck generation; `n/a`
 means the runtime has no initialized VOACAP SSN generation.
+The Path Predictions panel also shows the same fallback snapshot as
+`VOACAP cache: <cache> (C) / <delay> (D) / <inflight> (I) / <queue> (Q)`
+before the H3 path-pair counts. These are the existing in-memory fallback cache
+entries, delayed lookups, inflight jobs, and queued jobs from the current
+process.
 
 After inspection, set `ui.mode` back to `headless` before returning to
 unattended service mode.

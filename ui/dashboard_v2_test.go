@@ -107,6 +107,7 @@ func TestOverviewPathPaneGrowsToFitBandBuckets(t *testing.T) {
 		"CACHES & DATA FRESHNESS",
 		"Grid: ok",
 		"PATH PREDICTIONS",
+		"VOACAP cache: 10 (C) / 2 (D) / 1 (I) / 0 (Q)",
 		"H3 path pairs: 100 / 200",
 		"",
 		"160m: 1 / 2   80m: 3 / 4   40m: 5 / 6   30m: 7 / 8",
@@ -130,6 +131,7 @@ func TestOverviewPathPaneGrowsToFitBandBuckets(t *testing.T) {
 
 	got := d.overviewPath.GetText(true)
 	for _, want := range []string{
+		"VOACAP cache: 10 (C) / 2 (D) / 1 (I) / 0 (Q)",
 		"H3 path pairs: 100 / 200",
 		"160m: 1 / 2",
 		"20m: 9 / 10",
@@ -187,6 +189,7 @@ func TestOverviewCachesPaneResizesToContentHeight(t *testing.T) {
 		"",
 		"CTY: now",
 		"PATH PREDICTIONS",
+		"VOACAP cache: n/a",
 		"H3 path pairs: 100 / 200",
 		"NETWORK",
 		"Telnet: ok",

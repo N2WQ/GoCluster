@@ -169,6 +169,7 @@ func benchmarkOverviewLines() []string {
 		"",
 		"CTY: 2026-06-04  FCC: 2026-06-04  Skew: 2026-06-04",
 		"PATH PREDICTIONS",
+		"VOACAP cache: 10 (C) / 2 (D) / 1 (I) / 0 (Q)",
 		"H3 path pairs: 100 (L2) / 200 (L1)",
 		"",
 		"160m: 1 / 2   80m: 3 / 4   40m: 5 / 6   30m: 7 / 8",

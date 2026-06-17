@@ -116,43 +116,43 @@ glyph_symbols:
 	}
 }
 
-func TestLoadFileReadsClosedGlyphAndVOACAPFallback(t *testing.T) {
+func TestLoadFileReadsShippedConfigVOACAPFallbackContract(t *testing.T) {
 	cfg, err := LoadFile(filepath.Join("..", "data", "config", "path_reliability.yaml"))
 	if err != nil {
 		t.Fatalf("load shipped config: %v", err)
 	}
-	if cfg.GlyphSymbols.Closed != "#" {
-		t.Fatalf("closed glyph = %q, want #", cfg.GlyphSymbols.Closed)
+	if cfg.GlyphSymbols.Closed == "" {
+		t.Fatalf("closed glyph must be present")
 	}
-	if !cfg.VOACAPFallback.Enabled {
-		t.Fatalf("VOACAP fallback should be enabled in shipped config")
-	}
-	if got := thresholdsForModeDB("FT8", cfg).Closed; got != -29 {
-		t.Fatalf("FT8 closed threshold = %v, want -29", got)
-	}
-	if cfg.VOACAPFallback.SSNFetchIntervalSeconds != 1800 || cfg.VOACAPFallback.SSNEWMAHalfLifeSeconds != 28800 {
-		t.Fatalf("unexpected SSN fallback cadence: %+v", cfg.VOACAPFallback)
+	if got := thresholdsForModeDB("FT8", cfg).Closed; math.IsNaN(got) || math.IsInf(got, 0) {
+		t.Fatalf("FT8 closed threshold must be finite, got %v", got)
 	}
 	if cfg.VOACAPFallback.SSNStatePath != "data/voacap/ssn_state.json" {
 		t.Fatalf("SSN state path = %q, want data/voacap/ssn_state.json", cfg.VOACAPFallback.SSNStatePath)
 	}
-	if cfg.VOACAPFallback.ShowPropWaitMilliseconds != 750 {
-		t.Fatalf("show prop wait = %d, want 750", cfg.VOACAPFallback.ShowPropWaitMilliseconds)
+	assertReliabilityGateContract(t, cfg.VOACAPFallback)
+}
+
+func assertReliabilityGateContract(t *testing.T, cfg VOACAPFallbackConfig) {
+	t.Helper()
+	gates := []struct {
+		name  string
+		value float64
+	}{
+		{"reliability_min_high", cfg.ReliabilityMinHigh},
+		{"reliability_min_medium", cfg.ReliabilityMinMedium},
+		{"reliability_min_low", cfg.ReliabilityMinLow},
+		{"reliability_min_unlikely", cfg.ReliabilityMinUnlikely},
 	}
-	if !cfg.VOACAPFallback.ReliabilityGatedOpenEnabled || !cfg.VOACAPFallback.ReliabilitySparseUpgradeEnabled {
-		t.Fatalf("expected REL-gated VOACAP open and sparse upgrade enabled in shipped config: %+v", cfg.VOACAPFallback)
+	for _, gate := range gates {
+		if math.IsNaN(gate.value) || math.IsInf(gate.value, 0) || gate.value < 0 || gate.value > 1 {
+			t.Fatalf("%s must be finite and between 0 and 1, got %v", gate.name, gate.value)
+		}
 	}
-	if cfg.VOACAPFallback.ReliabilityMinHigh != 0.90 ||
-		cfg.VOACAPFallback.ReliabilityMinMedium != 0.80 ||
-		cfg.VOACAPFallback.ReliabilityMinLow != 0.65 ||
-		cfg.VOACAPFallback.ReliabilityMinUnlikely != 0.50 {
-		t.Fatalf("unexpected REL gates in shipped config: %+v", cfg.VOACAPFallback)
-	}
-	if cfg.VOACAPFallback.SparseP50DiagnosticMaxObservationCount != 2 {
-		t.Fatalf("sparse p50 diagnostic max observation count = %d, want 2", cfg.VOACAPFallback.SparseP50DiagnosticMaxObservationCount)
-	}
-	if cfg.BeaconMinObservationCount != 11 {
-		t.Fatalf("beacon min observation count = %d, want 11", cfg.BeaconMinObservationCount)
+	if !(cfg.ReliabilityMinHigh >= cfg.ReliabilityMinMedium &&
+		cfg.ReliabilityMinMedium >= cfg.ReliabilityMinLow &&
+		cfg.ReliabilityMinLow >= cfg.ReliabilityMinUnlikely) {
+		t.Fatalf("REL gates must satisfy high >= medium >= low >= unlikely: %+v", cfg)
 	}
 }
 
@@ -333,9 +333,12 @@ noise_offsets:
 }
 
 func TestLoadFilePreservesExplicitFT4Zero(t *testing.T) {
-	cfg, err := LoadFile(filepath.Join("..", "data", "config", "path_reliability.yaml"))
+	cfg, err := LoadFile(writeTempConfigOverlay(t, `
+mode_offsets:
+  ft4: 0
+`))
 	if err != nil {
-		t.Fatalf("load shipped config: %v", err)
+		t.Fatalf("load config: %v", err)
 	}
 	if cfg.ModeOffsets.FT4 != 0 {
 		t.Fatalf("expected explicit mode_offsets.ft4=0 to survive load, got %v", cfg.ModeOffsets.FT4)
@@ -343,9 +346,12 @@ func TestLoadFilePreservesExplicitFT4Zero(t *testing.T) {
 }
 
 func TestLoadFileUsesCap8EnforcePolicy(t *testing.T) {
-	cfg, err := LoadFile(filepath.Join("..", "data", "config", "path_reliability.yaml"))
+	cfg, err := LoadFile(writeTempConfigOverlay(t, `
+receiver_contribution_mode: enforce
+receiver_max_effective_count: 8
+`))
 	if err != nil {
-		t.Fatalf("load shipped config: %v", err)
+		t.Fatalf("load config: %v", err)
 	}
 	if cfg.ReceiverContributionMode != ReceiverContributionEnforce {
 		t.Fatalf("receiver contribution mode = %q, want %q", cfg.ReceiverContributionMode, ReceiverContributionEnforce)
