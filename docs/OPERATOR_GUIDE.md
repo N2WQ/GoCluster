@@ -34,7 +34,7 @@ For a real node:
 
 Review normal deployment/runtime files before first run:
 
-- `app.yaml`: server node ID, console/headless mode, and logging paths.
+- `app.yaml`: server node ID, `headless` or `tview-v2` local UI mode, and logging paths.
 - `runtime.yaml`: telnet port, default filters, buffers, and Go runtime controls.
 - `ingest.yaml`: RBN, PSKReporter, DXSummit, and human/manual ingest settings.
 - `peering.yaml`: only if this node connects to peer clusters.
@@ -144,8 +144,7 @@ journalctl -u gocluster -f
 
 The interactive local console requires the process to run in a real terminal.
 For console inspection, stop the service, edit `app.yaml` in the private config
-directory, change `ui.mode` to `ansi` or `tview-v2`, then run the binary
-manually:
+directory, change `ui.mode` to `tview-v2`, then run the binary manually:
 
 ```sh
 sudo systemctl stop gocluster

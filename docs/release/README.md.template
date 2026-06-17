@@ -91,8 +91,8 @@ available with:
 journalctl -u gocluster -f
 ```
 
-The interactive local console requires running the process in a real terminal,
-not as a normal unattended service.
+The interactive local console requires `ui.mode: tview-v2` and a real terminal,
+not a normal unattended service.
 
 Propagation/path aggregate logs are written to `logging.propagation.dir`
 (`data/logs/propagation` in the shipped config), not to the system log. The

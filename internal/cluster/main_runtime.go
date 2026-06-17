@@ -324,26 +324,14 @@ func (r *clusterRuntime) configureSurface() {
 	switch uiMode {
 	case "headless":
 		log.Printf("UI disabled (mode=headless)")
-	case "tview":
-		if !renderAllowed {
-			log.Printf("UI disabled (tview requires an interactive console)")
-		} else {
-			r.surface = newDashboard(r.cfg.UI, true)
-		}
 	case "tview-v2":
 		if !renderAllowed {
 			log.Printf("UI disabled (tview-v2 requires an interactive console)")
 		} else {
 			r.surface = ui.NewDashboardV2(r.cfg.UI, true)
 		}
-	case "ansi":
-		if !renderAllowed {
-			log.Printf("UI disabled (ansi renderer requires an interactive console)")
-		} else {
-			r.surface = newANSIConsole(r.cfg.UI, renderAllowed)
-		}
 	default:
-		log.Printf("UI mode %q not recognized; defaulting to headless", uiMode)
+		log.Printf("UI disabled (unsupported mode=%q)", uiMode)
 	}
 
 	if r.surface != nil {

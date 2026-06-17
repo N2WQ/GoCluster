@@ -679,7 +679,7 @@ with `DXC_CONFIG_PATH` pointing at the directory.
 
 Review normal deployment/runtime files before first run:
 
-- `app.yaml`: set `server.node_id`, choose local UI mode, and confirm log paths.
+- `app.yaml`: set `server.node_id`, choose `headless` or `tview-v2` local UI mode, and confirm log paths.
 - `runtime.yaml`: confirm telnet port, filter defaults, buffers, and Go runtime controls.
 - `ingest.yaml`: configure RBN, PSKReporter, DXSummit, and local/human ingest settings.
 - `peering.yaml`: edit only if this node peers with other clusters.
@@ -743,8 +743,10 @@ runtime data such as `data/cty`, `data/h3`, `data/peers/topology.db`, and
 There is not currently a published Linux ready-to-run release asset.
 
 For unattended Linux operation, use a private config directory and set
-`ui.mode: headless` in that config's `app.yaml`. The interactive local console
-requires a real terminal and is not shown by a normal `systemd` service. See
+`ui.mode: headless` in that config's `app.yaml`. For manual console inspection,
+use `ui.mode: tview-v2` in a real terminal; legacy `ansi` and `tview` modes are
+not supported. The interactive local console is not shown by a normal `systemd`
+service. See
 [`docs/OPERATOR_GUIDE.md`](docs/OPERATOR_GUIDE.md) for the complete service
 account, unit-file, and operational command sequence.
 

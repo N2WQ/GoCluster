@@ -399,22 +399,10 @@ type ReputationConfig struct {
 	ReputationDir      string  `yaml:"reputation_dir"`
 }
 
-// UIConfig controls the optional local console UI. The legacy TUI uses tview;
-// the lean ANSI mode uses fixed buffers and ANSI escape codes. Mode must be
-// one of ansi, tview, tview-v2, or headless (disables the local UI).
+// UIConfig controls the optional local console UI.
 type UIConfig struct {
-	// Mode selects the UI renderer: "ansi", "tview", "tview-v2", or "headless".
+	// Mode selects the local UI renderer: "tview-v2" or "headless".
 	Mode string `yaml:"mode"`
-	// RefreshMS controls the ANSI render cadence; ignored by tview. 0 disables
-	// periodic renders (events will still be buffered).
-	RefreshMS int `yaml:"refresh_ms"`
-	// Color enables simple ANSI coloring for marked-up lines; when false the
-	// markup tokens are stripped.
-	Color bool `yaml:"color"`
-	// ClearScreen is ignored by the ANSI renderer (kept for compatibility).
-	ClearScreen bool `yaml:"clear_screen"`
-	// PaneLines sets tview pane heights (ANSI uses a fixed layout).
-	PaneLines UIPaneLines `yaml:"pane_lines"`
 	// V2 configures the page-based tview renderer when ui.mode = tview-v2.
 	V2 UIV2Config `yaml:"v2"`
 }
@@ -464,15 +452,6 @@ type PropagationLoggingConfig struct {
 type PropReportConfig struct {
 	Enabled    bool   `yaml:"enabled"`
 	RefreshUTC string `yaml:"refresh_utc"`
-}
-
-// UIPaneLines bounds history depth for ANSI and visible pane heights for tview.
-type UIPaneLines struct {
-	Stats      int `yaml:"stats"`
-	Calls      int `yaml:"calls"`
-	Unlicensed int `yaml:"unlicensed"`
-	Harmonics  int `yaml:"harmonics"`
-	System     int `yaml:"system"`
 }
 
 // UIV2Config controls the page-based tview UI.
@@ -1404,8 +1383,6 @@ type loadRawPresence struct {
 	hasFT4HardCapSeconds                            bool
 	hasFT2QuietGapSeconds                           bool
 	hasFT2HardCapSeconds                            bool
-	hasUIColor                                      bool
-	hasUIClearScreen                                bool
 	hasTelnetBulletinDedupeWindow                   bool
 	hasTelnetBulletinDedupeMaxEntries               bool
 	hasLoggingDropDedupeWindow                      bool
@@ -1479,8 +1456,6 @@ func captureLoadRawPresence(raw map[string]any) loadRawPresence {
 		hasFT4HardCapSeconds:                            yamlKeyPresent(raw, "call_correction", "ft4_hard_cap_seconds"),
 		hasFT2QuietGapSeconds:                           yamlKeyPresent(raw, "call_correction", "ft2_quiet_gap_seconds"),
 		hasFT2HardCapSeconds:                            yamlKeyPresent(raw, "call_correction", "ft2_hard_cap_seconds"),
-		hasUIColor:                                      yamlKeyPresent(raw, "ui", "color"),
-		hasUIClearScreen:                                yamlKeyPresent(raw, "ui", "clear_screen"),
 		hasTelnetBulletinDedupeWindow:                   yamlKeyPresent(raw, "telnet", "bulletin_dedupe_window_seconds"),
 		hasTelnetBulletinDedupeMaxEntries:               yamlKeyPresent(raw, "telnet", "bulletin_dedupe_max_entries"),
 		hasLoggingDropDedupeWindow:                      yamlKeyPresent(raw, "logging", "drop_dedupe_window_seconds"),
@@ -1604,7 +1579,7 @@ func LoadWithDiagnostics(path string) (*Config, LoadDiagnostics, error) {
 		fmt.Printf("Warning: dedup.secondary_window_seconds and dedup.secondary_prefer_stronger_snr are deprecated and ignored; use secondary_fast_* / secondary_med_* / secondary_slow_* instead.\n")
 	}
 
-	if err := normalizeUIConfig(&cfg, raw, presence); err != nil {
+	if err := normalizeUIConfig(&cfg, raw); err != nil {
 		return nil, diagnostics, err
 	}
 	if err := normalizeLoggingAndPropReportConfig(&cfg, presence); err != nil {
@@ -1653,46 +1628,13 @@ func LoadWithDiagnostics(path string) (*Config, LoadDiagnostics, error) {
 	return &cfg, diagnostics, nil
 }
 
-func normalizeUIConfig(cfg *Config, raw map[string]any, presence loadRawPresence) error {
-	// UI defaults stay YAML-driven and deterministic; omitted booleans must not
-	// behave like explicit false values.
+func normalizeUIConfig(cfg *Config, raw map[string]any) error {
 	uiMode := strings.ToLower(strings.TrimSpace(cfg.UI.Mode))
-	if uiMode == "" {
-		uiMode = "ansi"
-	}
 	switch uiMode {
-	case "ansi", "tview", "tview-v2", "headless":
+	case "tview-v2", "headless":
 		cfg.UI.Mode = uiMode
-	case "none":
-		cfg.UI.Mode = "headless"
-	case "auto", "ansi_poc":
-		cfg.UI.Mode = "ansi"
 	default:
-		return fmt.Errorf("invalid ui.mode %q: must be ansi, tview, tview-v2, or headless", cfg.UI.Mode)
-	}
-	if cfg.UI.RefreshMS < 0 {
-		return fmt.Errorf("invalid ui.refresh_ms %d (must be >= 0)", cfg.UI.RefreshMS)
-	}
-	if cfg.UI.PaneLines.Stats <= 0 {
-		cfg.UI.PaneLines.Stats = 8
-	}
-	if cfg.UI.PaneLines.Calls <= 0 {
-		cfg.UI.PaneLines.Calls = 20
-	}
-	if cfg.UI.PaneLines.Unlicensed <= 0 {
-		cfg.UI.PaneLines.Unlicensed = 20
-	}
-	if cfg.UI.PaneLines.Harmonics <= 0 {
-		cfg.UI.PaneLines.Harmonics = 20
-	}
-	if cfg.UI.PaneLines.System <= 0 {
-		cfg.UI.PaneLines.System = 40
-	}
-	if !presence.hasUIColor {
-		cfg.UI.Color = true
-	}
-	if !presence.hasUIClearScreen {
-		cfg.UI.ClearScreen = true
+		return fmt.Errorf("invalid ui.mode %q: must be headless or tview-v2", cfg.UI.Mode)
 	}
 	return normalizeUIV2(&cfg.UI, raw)
 }
@@ -3527,16 +3469,10 @@ func (c *Config) Print() {
 			c.Reputation.IPv6BucketSize,
 			c.Reputation.IPv6BucketRefillPerSec)
 	}
-	fmt.Printf("UI: mode=%s refresh=%dms color=%t clear_screen=%t panes(stats=%d calls=%d unlicensed=%d harm=%d system=%d)\n",
+	fmt.Printf("UI: mode=%s v2_pages=%s target_fps=%d\n",
 		c.UI.Mode,
-		c.UI.RefreshMS,
-		c.UI.Color,
-		c.UI.ClearScreen,
-		c.UI.PaneLines.Stats,
-		c.UI.PaneLines.Calls,
-		c.UI.PaneLines.Unlicensed,
-		c.UI.PaneLines.Harmonics,
-		c.UI.PaneLines.System)
+		strings.Join(c.UI.V2.Pages, ","),
+		c.UI.V2.TargetFPS)
 	if c.Logging.Enabled {
 		fmt.Printf("Logging: enabled (dir=%s retention_days=%d drop_dedupe_window_seconds=%d)\n", c.Logging.Dir, c.Logging.RetentionDays, c.Logging.DropDedupeWindowSeconds)
 	} else {

@@ -143,10 +143,6 @@ func containsDiagnostic(messages []string, needle string) bool {
 
 func TestLoadPreservesDocumentedZeroSentinels(t *testing.T) {
 	dir := testConfigDir(t)
-	writeTestConfigOverlay(t, dir, "app.yaml", `
-ui:
-  refresh_ms: 0
-`)
 	writeTestConfigOverlay(t, dir, "runtime.yaml", `
 telnet:
   broadcast_batch_interval_ms: 0
@@ -169,9 +165,6 @@ peering:
 	cfg, err := Load(dir)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
-	}
-	if cfg.UI.RefreshMS != 0 {
-		t.Fatalf("ui.refresh_ms = %d, want 0", cfg.UI.RefreshMS)
 	}
 	if cfg.Telnet.BroadcastBatchIntervalMS != 0 {
 		t.Fatalf("telnet.broadcast_batch_interval_ms = %d, want 0", cfg.Telnet.BroadcastBatchIntervalMS)

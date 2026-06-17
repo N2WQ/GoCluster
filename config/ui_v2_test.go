@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -84,5 +85,67 @@ func TestLoadUIV2EventsPageAllowed(t *testing.T) {
 	}
 	if cfg.UI.V2.Pages[1] != "events" {
 		t.Fatalf("expected events page, got %q", cfg.UI.V2.Pages[1])
+	}
+}
+
+func TestLoadUIHeadlessModeAllowed(t *testing.T) {
+	dir := testConfigDir(t)
+	writeRequiredFloodControlFile(t, dir)
+	writeTestConfigOverlay(t, dir, "app.yaml", `
+ui:
+  mode: headless
+`)
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.UI.Mode != "headless" {
+		t.Fatalf("expected ui.mode=headless, got %q", cfg.UI.Mode)
+	}
+}
+
+func TestLoadRejectsLegacyUIModes(t *testing.T) {
+	for _, mode := range []string{"ansi", "tview", "auto", "ansi_poc", "none"} {
+		t.Run(mode, func(t *testing.T) {
+			dir := testConfigDir(t)
+			writeRequiredFloodControlFile(t, dir)
+			writeTestConfigOverlay(t, dir, "app.yaml", `
+ui:
+  mode: `+mode+`
+`)
+			_, err := Load(dir)
+			if err == nil {
+				t.Fatalf("expected ui.mode=%s to fail", mode)
+			}
+			if !strings.Contains(err.Error(), "invalid ui.mode") || !strings.Contains(err.Error(), "headless or tview-v2") {
+				t.Fatalf("expected legacy ui.mode migration error, got %v", err)
+			}
+		})
+	}
+}
+
+func TestLoadWarnsAndIgnoresLegacyUIKeys(t *testing.T) {
+	dir := testConfigDir(t)
+	writeRequiredFloodControlFile(t, dir)
+	writeTestConfigOverlay(t, dir, "app.yaml", `
+ui:
+  mode: headless
+  refresh_ms: 300
+  color: true
+  clear_screen: true
+  pane_lines:
+    stats: 10
+`)
+	cfg, diagnostics, err := LoadWithDiagnostics(dir)
+	if err != nil {
+		t.Fatalf("LoadWithDiagnostics() error: %v", err)
+	}
+	if cfg.UI.Mode != "headless" {
+		t.Fatalf("expected ui.mode=headless, got %q", cfg.UI.Mode)
+	}
+	for _, key := range []string{"ui.refresh_ms", "ui.color", "ui.clear_screen", "ui.pane_lines"} {
+		if !containsDiagnostic(diagnostics.Warnings, key) {
+			t.Fatalf("expected warning for %s, got %#v", key, diagnostics.Warnings)
+		}
 	}
 }

@@ -14,16 +14,7 @@ stats:
 
 # Local console UI (applies only to the process console, not telnet clients)
 ui:
-  mode: "tview-v2"    # ansi | tview | tview-v2 | headless
-  refresh_ms: 300     # ANSI redraw cadence; 0 disables redraws
-  color: true         # Enable simple ANSI colors for marked-up lines
-  clear_screen: true  # Clear the screen each frame (set false to append)
-  pane_lines:
-    stats: 10         # Lines retained in the stats block
-    calls: 9          # Corrected calls history
-    unlicensed: 9     # Unlicensed drops history
-    harmonics: 9      # Harmonic drops history
-    system: 9         # System log history
+  mode: "tview-v2"    # tview-v2 | headless
   v2:
     pages: [overview, ingest, pipeline, events]  # Enabled pages + order
     target_fps: 15                   # Max UI refresh rate

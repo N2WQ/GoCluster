@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `c612c5dec7275f5e`
+- Source fingerprint: `d129dbbb9811e0d8`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,7 +12,7 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 1 | 2 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 27 | 26 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 25 | 25 |
 | `dxcluster/peer` | `peer` | 20 | 20 |
 | `dxcluster/spot` | `spot` | 32 | 23 |
 | `dxcluster/telnet` | `telnet` | 8 | 23 |
@@ -101,11 +101,9 @@ Test files:
 Source files:
 - `internal/cluster/activity_monitor.go`
 - `internal/cluster/adaptive_refresher.go`
-- `internal/cluster/ansi_console.go`
 - `internal/cluster/bootstrap.go`
 - `internal/cluster/call_meta_cache.go`
 - `internal/cluster/cty_filters.go`
-- `internal/cluster/dashboard.go`
 - `internal/cluster/drop_log_dedupe.go`
 - `internal/cluster/dropped_call_log.go`
 - `internal/cluster/event_file_log.go`
@@ -128,7 +126,6 @@ Source files:
 - `internal/cluster/temporal_runtime.go`
 
 Test files:
-- `internal/cluster/ansi_console_test.go`
 - `internal/cluster/drop_log_dedupe_test.go`
 - `internal/cluster/dropped_call_log_test.go`
 - `internal/cluster/event_file_log_test.go`
@@ -303,6 +300,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0188](docs/decisions/ADR-0188-local-console-mode-retirement.md) | Accepted | 2026-06-17 | ui, config, operations, supportability | `path:internal/cluster` |
 | [ADR-0187](docs/decisions/ADR-0187-show-prop-open-row-display.md) | Accepted | 2026-06-16 | telnet, pathreliability, voacap, commands, supportability | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0184](docs/decisions/ADR-0184-voacap-forecast-cache-persistence.md) | Accepted | 2026-06-16 | voacap, pathreliability, config, retained state, operations | `path:internal/cluster, path:telnet` |
 | [ADR-0182](docs/decisions/ADR-0182-voacap-runtime-ssn-state-persistence.md) | Accepted | 2026-06-16 | voacap, pathreliability, config, retained state, operations | `path:internal/cluster` |
