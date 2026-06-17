@@ -8,11 +8,22 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 - Add one row per ADR to the table below.
 - Do not delete old ADR rows; mark status as `Superseded`/`Deprecated` when needed.
 
+## Index Notes
+
+- `ADR-0001` is a reserved placeholder only. No ADR file exists for that
+  number, and the first real checked-in ADR file is `ADR-0002`.
+- `ADR-0150` is an intentionally unused numeric gap between `ADR-0149` and
+  `ADR-0151`. It is not a missing accepted decision.
+- `ADR-0022` remains `Proposed` as a historical signal-resolver shadow-mode
+  planning record. Do not treat it as the current runtime contract unless a
+  later accepted ADR explicitly adopts or supersedes that proposal.
+
 ## ADR Index
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| ADR-0001 | Placeholder Title | Proposed | YYYY-MM-DD | placeholder area | - | - | `docs/decisions/ADR-0001-placeholder-slug.md` |
+| ADR-0001 | Reserved Placeholder | Unused | - | index hygiene | - | - | No ADR file; first real ADR is `docs/decisions/ADR-0002-ui-v2-render-pipeline.md` |
+| ADR-0192 | ADR Reader Guide And Current Contract Map | Accepted | 2026-06-17 | docs, ADR, supportability, pathreliability, voacap | - | - | `docs/decisions/ADR-0192-adr-reader-guide-and-current-contract-map.md` |
 | ADR-0191 | VOACAP Cache Overview Counters | Accepted | 2026-06-17 | ui/tview-v2, stats, voacap, pathreliability, operations | ADR-0190 operator diagnostics visibility | - | `docs/decisions/ADR-0191-voacap-cache-overview-counters.md` |
 | ADR-0190 | VOACAP SSN Overview Visibility | Accepted | 2026-06-17 | ui/tview-v2, stats, voacap, pathreliability, operations | ADR-0182 operator diagnostics visibility | - | `docs/decisions/ADR-0190-voacap-ssn-overview-visibility.md` |
 | ADR-0189 | Tview V2 Pipeline Console Simplification | Accepted | 2026-06-17 | ui/tview-v2, stats, operations, supportability | ADR-0040 pipeline detail rows; ADR-0060 FT Burst dashboard observability | - | `docs/decisions/ADR-0189-tview-v2-pipeline-console-simplification.md` |
