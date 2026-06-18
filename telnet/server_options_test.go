@@ -30,6 +30,29 @@ func TestNormalizeServerOptionsBroadcastBatchIntervalDefaultAndExplicitZero(t *t
 	}
 }
 
+func TestNormalizeServerOptionsAutoReadPauseBounds(t *testing.T) {
+	disabled := normalizeServerOptions(ServerOptions{})
+	if disabled.AutoReadPauseMinRows != 0 || disabled.AutoReadPauseDuration != 0 {
+		t.Fatalf("default auto read pause = rows:%d duration:%s, want disabled", disabled.AutoReadPauseMinRows, disabled.AutoReadPauseDuration)
+	}
+
+	configured := normalizeServerOptions(ServerOptions{
+		AutoReadPauseMinRows:  10,
+		AutoReadPauseDuration: 30 * time.Second,
+	})
+	if configured.AutoReadPauseMinRows != 10 || configured.AutoReadPauseDuration != 30*time.Second {
+		t.Fatalf("configured auto read pause = rows:%d duration:%s, want rows:10 duration:30s", configured.AutoReadPauseMinRows, configured.AutoReadPauseDuration)
+	}
+
+	capped := normalizeServerOptions(ServerOptions{
+		AutoReadPauseMinRows:  999,
+		AutoReadPauseDuration: time.Hour,
+	})
+	if capped.AutoReadPauseMinRows != maxAutoReadPauseRows || capped.AutoReadPauseDuration != maxAutoReadPauseDuration {
+		t.Fatalf("capped auto read pause = rows:%d duration:%s, want rows:%d duration:%s", capped.AutoReadPauseMinRows, capped.AutoReadPauseDuration, maxAutoReadPauseRows, maxAutoReadPauseDuration)
+	}
+}
+
 func TestNormalizeServerOptionsDefaultDedupePolicy(t *testing.T) {
 	defaulted := normalizeServerOptions(ServerOptions{})
 	if defaulted.DefaultDedupePolicy != filter.DedupePolicySlow {

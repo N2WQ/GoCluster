@@ -2669,7 +2669,7 @@ func TestFormatRecentSupportByBandLinesIncludesCustomSCPStaticCalls(t *testing.T
 		_ = store.Close()
 	})
 
-	now := time.Date(2026, 4, 19, 12, 0, 0, 0, time.UTC)
+	now := time.Now().UTC().Truncate(time.Second)
 	record := func(call, band, spotter string, minutesAgo int) {
 		store.RecordSpot(&spot.Spot{
 			DXCall:     call,

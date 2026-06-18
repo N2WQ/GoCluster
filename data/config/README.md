@@ -103,7 +103,7 @@ Loader behavior:
 - Extra YAML keys are logged as `Config warning` messages in the system log and ignored after logging is configured. If fatal config load errors happen before the configured system log can be opened, startup writes an explicit fallback message and the diagnostics to the default process logger. Known removed migration keys still fail startup with migration hints, such as removed archive cleanup keys, removed archive Pebble compatibility keys, legacy PSKReporter mode-routing keys, and removed path-reliability clamp/legacy threshold keys.
 - When `path_reliability.enabled` is true, `h3_table_path` must contain valid `res1.bin` and `res2.bin` tables. Missing, malformed, or wrong-sized H3 tables fail startup because H3 cells are critical to path predictions.
 - Gridstore startup open failures are logged to the system log. Corruption opens a checkpoint-restore path and the process temporarily runs without grid persistence while recovery proceeds; non-corruption open failures abort startup.
-- Documented zero values are meaningful. For example, `telnet.broadcast_batch_interval_ms: 0` means immediate delivery, and `*_keepalive_seconds: 0` means the keepalive is disabled.
+- Documented zero values are meaningful. For example, `telnet.broadcast_batch_interval_ms: 0` means immediate delivery, `telnet.auto_read_pause_min_rows: 0` or `telnet.auto_read_pause_seconds: 0` disables automatic read pause, and `*_keepalive_seconds: 0` means the keepalive is disabled.
 - `go_runtime.memory_limit_mib`, `go_runtime.gc_percent`, and `go_runtime.max_procs` apply the same process-wide Go runtime controls as `GOMEMLIMIT`, `GOGC`, and `GOMAXPROCS` without requiring a wrapper script. Set any value to `0` to leave the Go runtime or environment-provided value unchanged.
 - `pskreporter.workers: 0` follows the effective `go_runtime.max_procs` / `GOMAXPROCS` scheduler width; set a positive value only when you deliberately want wider PSKReporter burst processing than the process CPU budget.
 - `openai.yaml` is optional for server startup and `prop_report -no-llm`. When propagation-report LLM generation is enabled, the file is required and validated at that tool boundary. Secret values must not be logged or committed.
@@ -162,6 +162,19 @@ Telnet message tokens (usable in `runtime.yaml`):
 Input behavior:
 - Human telnet input is normalized to uppercase as it is read; the echoed characters are uppercase as well.
 - Telnet IAC negotiation bytes (including subnegotiation) are stripped from input before validation.
+
+Read-pause behavior:
+- `telnet.auto_read_pause_min_rows` is the rendered command-output row count
+  that starts a temporary live-spot pause; blank separator rows count, while the
+  final trailing newline does not.
+- `telnet.auto_read_pause_seconds` is how long live spot lines are suppressed
+  after long command output.
+- Set either read-pause value to `0` to disable the feature.
+- The shipped values are `10` rows and `30` seconds so commands such as
+  `SHOW PROP`, `WHOSPOTSME`, and long `HELP` output can be read before live
+  spots resume.
+- Read pause suppresses live spot lines only; bulletins, talks, command
+  replies, errors, keepalives, and close messages continue on the control path.
 
 Bulletin behavior:
 - `telnet.bulletin_dedupe_window_seconds` suppresses identical WWV, WCY, and `TO ALL` announcement lines across all bulletin sources before they enter client control queues.

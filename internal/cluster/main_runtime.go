@@ -1065,6 +1065,8 @@ func (r *clusterRuntime) buildTelnetServerOptions() telnet.ServerOptions {
 		WorkerQueue:               r.cfg.Telnet.WorkerQueue,
 		ClientBuffer:              r.cfg.Telnet.ClientBuffer,
 		ControlQueue:              r.cfg.Telnet.ControlQueueSize,
+		AutoReadPauseMinRows:      r.cfg.Telnet.AutoReadPauseMinRows,
+		AutoReadPauseDuration:     time.Duration(r.cfg.Telnet.AutoReadPauseSeconds) * time.Second,
 		BulletinDedupeWindow:      time.Duration(r.cfg.Telnet.BulletinDedupeWindowSeconds) * time.Second,
 		BulletinDedupeMaxEntries:  r.cfg.Telnet.BulletinDedupeMaxEntries,
 		BroadcastBatchInterval:    time.Duration(r.cfg.Telnet.BroadcastBatchIntervalMS) * time.Millisecond,

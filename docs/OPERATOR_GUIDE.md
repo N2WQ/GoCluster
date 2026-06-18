@@ -183,6 +183,8 @@ Log in with your callsign. Useful first commands:
   propagation outlook from your grid to a target.
 - `SHOW OWN`: show your login call and baseline own call.
 - `WHOSPOTSME [band]`: show recent spotter countries for your baseline call.
+- `SHOW HOLD`: show automatic read-pause status after long command output.
+- `RESUME`: end the automatic read pause and resume live spots immediately.
 - `SET GRID <grid>`: set your 4-6 character Maidenhead grid.
 - `SET NOISE QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL`: set receive noise class.
 - `SET PATHSAMPLES <count|DEFAULT>`: require more path samples than the cluster default, or clear your personal override.
@@ -201,6 +203,12 @@ Log in with your callsign. Useful first commands:
 
 The top-level repository README contains the generated default `HELP` output.
 That block is checked against the command processor in tests.
+
+Long command output can temporarily pause live spot lines so users have time to
+read the response. The shipped config starts that pause at `10` rendered rows
+for `30` seconds. Missed live spots are not buffered or replayed; control
+traffic such as bulletins, talks, command replies, errors, and close messages
+continues.
 
 Numeric SSIDs on the spotted DX call are removed regardless of ingest source.
 For example, a new DX call of `K1ABC-2` is materialized and displayed as

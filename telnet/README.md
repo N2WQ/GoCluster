@@ -114,6 +114,35 @@ The telnet server applies a separate all-source duplicate guard before those lin
 
 If a duplicate is suppressed, slow clients do not see another control-queue enqueue. Unique bulletins still use the normal control queue, where a full queue disconnects the client.
 
+## Auto Read Pause
+
+Long command responses can temporarily pause live spot lines so users have time
+to read the response before the live stream scrolls it away. The shipped config
+uses `telnet.auto_read_pause_min_rows: 10` and
+`telnet.auto_read_pause_seconds: 30`.
+
+- The threshold counts rendered output rows, not bytes.
+- Blank separator rows inside command output count because they scroll the
+  terminal.
+- The final trailing newline does not add an extra row.
+- Live spot lines are suppressed during the pause and are not buffered or
+  replayed.
+- Command replies, errors, bulletins, announcements, talks, keepalives, and
+  close messages stay on the control path and continue to send.
+- Suppressed live spots do not count as slow-client queue drops and do not
+  trigger extreme-drop disconnect policy.
+
+When a pause starts, the command response gets a footer:
+
+```text
+Live spots paused for 30s after 14 output rows. Type RESUME to resume now.
+Missed spots are not replayed.
+```
+
+Users can type `SHOW HOLD` to see remaining pause time and the suppressed spot
+count. `RESUME` ends the pause immediately and discards any stale spot envelopes
+queued before the resume point so old spots are not replayed.
+
 ## Grid, Noise, And Nearby
 
 - `SET GRID` stores the user's Maidenhead grid for path reliability

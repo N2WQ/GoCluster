@@ -145,6 +145,8 @@ func TestLoadPreservesDocumentedZeroSentinels(t *testing.T) {
 	dir := testConfigDir(t)
 	writeTestConfigOverlay(t, dir, "runtime.yaml", `
 telnet:
+  auto_read_pause_min_rows: 0
+  auto_read_pause_seconds: 0
   broadcast_batch_interval_ms: 0
   keepalive_seconds: 0
 `)
@@ -171,6 +173,12 @@ peering:
 	}
 	if cfg.Telnet.KeepaliveSeconds != 0 {
 		t.Fatalf("telnet.keepalive_seconds = %d, want 0", cfg.Telnet.KeepaliveSeconds)
+	}
+	if cfg.Telnet.AutoReadPauseMinRows != 0 {
+		t.Fatalf("telnet.auto_read_pause_min_rows = %d, want 0", cfg.Telnet.AutoReadPauseMinRows)
+	}
+	if cfg.Telnet.AutoReadPauseSeconds != 0 {
+		t.Fatalf("telnet.auto_read_pause_seconds = %d, want 0", cfg.Telnet.AutoReadPauseSeconds)
 	}
 	if cfg.RBN.KeepaliveSec != 0 || cfg.RBNDigital.KeepaliveSec != 0 || cfg.HumanTelnet.KeepaliveSec != 0 {
 		t.Fatalf("feed keepalives = rbn:%d rbn_digital:%d human:%d, want all 0", cfg.RBN.KeepaliveSec, cfg.RBNDigital.KeepaliveSec, cfg.HumanTelnet.KeepaliveSec)
