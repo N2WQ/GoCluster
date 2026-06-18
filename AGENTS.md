@@ -32,6 +32,10 @@ maintainability, and operational correctness are.
 - Never hide uncertainty behind confident language.
 - Before claiming a patch is implemented, tested, or improved, verify it
   against the current workspace state and actual command output.
+- Before reporting progress, implementation status, validation, performance, or
+  science/model claims, check each material claim against current-session
+  evidence and label unknown, skipped, failed, inferred, or stale evidence
+  explicitly.
 - Do not give file/line-level implementation summaries unless those files were
   actually inspected in the current workspace state.
 - When a trigger points to a referenced doc or skill, open that doc or skill
@@ -172,6 +176,10 @@ delta, or final disposition.
   Markdown-only documentation changes that do not touch code, config, generated
   artifacts, scripts, CI, schemas, protocol/runtime contracts, or runtime data.
 - Review the current diff as a reviewer before final closeout.
+- For high-risk Non-trivial slices, perform a fresh verification pass before
+  final closeout. Use an independent verifier only when the active environment
+  and user authorization support it; otherwise reset reviewer context and
+  re-check the approved scope, current diff, evidence, and claims yourself.
 - Inspect `git diff --name-only` and touched files directly before final
   closeout for implementation work.
 - Every Non-trivial task requires ADR handling under `docs/decision-memory.md`.
@@ -194,6 +202,7 @@ Auto-fail conditions triggered: no | yes (<conditions>)
 - Validation commands: `docs/dev-runbook.md`
 - Domain behavior and operational contracts: `docs/domain-contract.md`
 - Decision memory: `docs/decision-memory.md`
+- Agent lesson memory: `docs/agent-lessons/README.md`
 - Non-trivial response template: `docs/templates/non-trivial-change-template.md`
 - ADR template: `docs/templates/adr-template.md`
 - TSR template: `docs/templates/tsr-template.md`

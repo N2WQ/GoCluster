@@ -108,4 +108,17 @@ it does not approve scope or waive validation.
 5. Let Codex execute under `AGENTS.md`, including validation, review,
    traceability, and documentation duties.
 
+For high-risk work, expect closeout to include a fresh verifier pass. If the
+active environment and your approval support independent verifier agents, Codex
+may use one; otherwise it should perform a fresh self-verification pass before
+closing out. Either way, claims about validation, performance, latency, p99,
+memory, path/VOACAP science, or call-correction quality should point to the
+current source, command output, measurements, runtime captures, or ADR/TSR
+records used as evidence.
+
+Recurring model or workflow lessons belong in `docs/agent-lessons/README.md`
+only when the approved scope includes that maintenance. Those lessons are
+operational memory for future agents, not replacements for ADRs, TSRs, tests, or
+runtime contracts.
+
 If you only want explanation or review of existing code, say that explicitly and keep the request non-mutating.

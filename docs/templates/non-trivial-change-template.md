@@ -93,6 +93,7 @@ that approval.
 - README impact: Required | Not required - <one sentence>
 - Support-agent docs impact: Required | Not required - <one sentence>
 - ADR/TSR pre-read: <relevant refs | No relevant ADR found; No relevant TSR found>
+- claim evidence plan: <how progress/validation/performance/science claims will be grounded | N/A - reason>
 - validation lane: documentation-only Markdown | code/mixed/runtime-contract | other - <reason>
 - checker plan:
 
@@ -111,6 +112,7 @@ For each slice:
 - findings by severity:
 - confirmed fixes:
 - rerun checks:
+- fresh verifier pass: <independent verifier | fresh self-verification | N/A - reason>
 
 If no material findings:
 - `Review Pass findings: none material`
@@ -124,6 +126,8 @@ If no material findings:
 - Go crawler-entry audit: PASS|FAIL|N/A - note
 - Concurrency, backpressure, and resource bounds: PASS|FAIL|N/A - note
 - Leak-detection evidence: PASS|FAIL|N/A - note
+- Fresh verification and claim evidence: PASS|FAIL|N/A - note
+- Anti-speculative implementation guard: PASS|FAIL|N/A - note
 - Verification and checker discipline: PASS|FAIL|N/A - note
 - Documentation, decision memory, and traceability: PASS|FAIL|N/A - note
 - Workflow-drift audit: PASS|FAIL|N/A - note
@@ -137,6 +141,8 @@ If no material findings:
 - user impact and determinism:
 - README impact:
 - Support-agent docs impact:
+- fresh verifier outcome:
+- claim evidence:
 - verification commands and results:
 - validation lane:
 - ADR handling outcome:

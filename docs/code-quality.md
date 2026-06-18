@@ -7,6 +7,9 @@ Commercial-grade from the first draft. Do not write simple code that needs harde
 
 - Prefer the smallest correct change that satisfies the approved scope, preserves bounded-resource contracts, and has validation proportional to risk.
 - Do not add speculative features, abstractions, or refactors that are not required by the approved scope.
+- Do not add compatibility shims, fallback paths, feature flags, generic helper
+  layers, or future-proof hooks unless they are required by the approved scope
+  and validated at the same risk level as the behavior they affect.
 - Correctness over speed. No races, leaks, unbounded resources, or silent contract drift.
 - Use context cancellation plus explicit deadlines and idle/stall timeouts on all long-lived network I/O.
 - For non-trivial changes, define architecture before code: concurrency model, backpressure strategy, failure/recovery modes, resource bounds, and shutdown sequencing.
@@ -59,6 +62,22 @@ On hot paths, generic helper reuse is subordinate to runtime shape.
 - If the path is dominated by single-item overflow or single-item correction, default to in-place single-victim logic unless measurements justify a more abstract design.
 - Any new shared helper introduced on a hot path must prove zero or near-zero allocation with targeted benchmarks before it is considered acceptable.
 - Performance claims require measurements. Do not infer success from code shape alone.
+
+## Scientific And Model Claims
+Path reliability, p50, propagation, VOACAP, call-correction, confidence, and
+contest-utility behavior must stay scientifically grounded.
+
+- Name the model assumption or contract being changed or relied on.
+- Tie behavior claims to current source, tests, replay/evaluation evidence,
+  benchmark/profile data, runtime captures, or accepted ADR/TSR records.
+- State remaining uncertainty when evidence is indirect, sampled, stale, or
+  missing.
+- Do not present plausible reasoning, comments, old ADRs, or generated maps as
+  proof of current runtime behavior without checking the current source and
+  relevant validation.
+- Do not claim lower latency, lower allocation, better p99, better prediction
+  quality, or better call accuracy without the matching measurements or
+  evaluation evidence.
 
 ## Bounded Retained State
 Bounded retained state is mandatory.

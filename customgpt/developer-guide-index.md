@@ -14,6 +14,7 @@ workflow rules.
 - Use [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md) and [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md) before planning changes.
 - Use [docs/decision-log.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/decision-log.md) and [docs/troubleshooting-log.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/troubleshooting-log.md) before changing
   behavior with decision history.
+- Use [docs/agent-lessons/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/agent-lessons/README.md) only for recurring model/workflow lessons; verify any implementation claim against workflow docs, source, tests, and ADR/TSR records.
 - For dependency visualization or graph-backed code understanding, route to
   [docs/code-maps/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/code-maps/README.md) and current source. The support agent
   cannot run local graph tools, so use Markdown code-map summaries when they
@@ -72,6 +73,7 @@ workflow rules.
 | Operator-visible behavior | [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md), package README, HELP/docs tests |
 | Decisions or reversals | [docs/decision-memory.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/decision-memory.md), [docs/decision-log.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/decision-log.md) |
 | Troubleshooting or incident learnings | [docs/decision-memory.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/decision-memory.md), [docs/troubleshooting-log.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/troubleshooting-log.md) |
+| Recurring model or workflow lessons | [docs/agent-lessons/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/agent-lessons/README.md), [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md) |
 
 ## Validation
 
@@ -87,6 +89,8 @@ Non-trivial compliance rubric.
 - Use code-walk, blast-radius, and leak-detection workflow routing in
   `docs/change-workflow.md` and `docs/dev-runbook.md` when the question is
   about understanding code paths, impact analysis, or lifecycle/resource leaks.
+- For high-risk changes, expect a fresh verifier pass and evidence-backed
+  progress, validation, performance, and science/model claims.
 - For graph-backed dependency questions, explain that custom GPT can retrieve
   Markdown code maps and source but cannot run local `goda`, Graphviz, `gopls`,
   or `callgraph`.
