@@ -69,6 +69,7 @@ const (
 	SourceVOACAPAligned
 	SourceVOACAPSparseUpgrade
 	SourceVOACAPOpen
+	SourceNative160
 )
 
 // InsufficientReason describes why a prediction returned the insufficient glyph.
@@ -131,6 +132,13 @@ type Result struct {
 	VOACAPFrequencyMHz         float64
 	VOACAPReqSNRReliability    float64
 	VOACAPHasReqSNRReliability bool
+	Native160Checked           bool
+	Native160Emitted           bool
+	Native160DisplayDisabled   bool
+	Native160Unknown           bool
+	Native160DaylightFraction  float64
+	Native160CivilDarkFraction float64
+	Native160CivilTwilightDeg  float64
 }
 
 // Predict returns a single merged glyph for the path.

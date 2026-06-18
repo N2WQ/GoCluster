@@ -270,6 +270,8 @@ type Server struct {
 	pathPredVOACAPAligned               atomic.Uint64                              // Insufficient bucket predictions replaced by VOACAP-aligned sparse p50
 	pathPredVOACAPSparseUpgrade         atomic.Uint64                              // Sparse p50 predictions upgraded one tier by REL-gated VOACAP
 	pathPredVOACAPOpen                  atomic.Uint64                              // No-p50 predictions filled by REL-gated open VOACAP
+	pathPredNative160Low                atomic.Uint64                              // Insufficient 160m predictions filled by native darkness LOW fallback
+	pathPredNative160Unlikely           atomic.Uint64                              // Insufficient 160m predictions filled by native darkness UNLIKELY fallback
 	pathPredBeaconRX                    atomic.Uint64                              // Beacon predictions emitted from receive-leg p50 evidence
 	pathPredBeaconRXInsufficient        atomic.Uint64                              // Beacon receive-leg p50 predictions left insufficient
 	pathPredBeaconRXNoSample            atomic.Uint64                              // Beacon receive-leg predictions with no samples
@@ -323,6 +325,16 @@ type Server struct {
 	sparseP50VOACAPRELMissing           atomic.Int64  // Sparse diagnostics blocked by missing VOACAP REL
 	sparseP50VOACAPRELBelow             atomic.Int64  // Sparse diagnostics blocked by below-floor VOACAP REL
 	sparseP50VOACAPRELMultiTier         atomic.Int64  // Sparse diagnostics blocked by multi-tier VOACAP disagreement
+	native160Candidate                  atomic.Int64  // Native 160m fallback candidates evaluated
+	native160Emitted                    atomic.Int64  // Native 160m fallback candidates emitted
+	native160Low                        atomic.Int64  // Native 160m fallback LOW emissions
+	native160Unlikely                   atomic.Int64  // Native 160m fallback UNLIKELY emissions
+	native160NotDark                    atomic.Int64  // Native 160m candidates below display thresholds
+	native160Unknown                    atomic.Int64  // Native 160m candidates with unusable geometry
+	native160DisplayDisabled            atomic.Int64  // Native 160m candidates blocked by display_enabled=false
+	native160DarkGE50                   atomic.Int64  // Native 160m candidates with civil darkness >= 50%
+	native160DarkGE75                   atomic.Int64  // Native 160m candidates with civil darkness >= 75%
+	native160DarkGE90                   atomic.Int64  // Native 160m candidates with civil darkness >= 90%
 	pathPredInsufficient                atomic.Uint64 // Predictions with insufficient data
 	pathPredNoSample                    atomic.Uint64 // Insufficient predictions with no samples
 	pathPredLowCount                    atomic.Uint64 // Insufficient predictions below min observation count
@@ -2944,6 +2956,8 @@ type pathPredictionStats struct {
 	VOACAPAligned                      uint64
 	VOACAPSparseUpgrade                uint64
 	VOACAPOpen                         uint64
+	Native160Low                       uint64
+	Native160Unlikely                  uint64
 	BeaconRX                           uint64
 	BeaconRXInsufficient               uint64
 	BeaconRXNoSample                   uint64
@@ -2987,6 +3001,7 @@ type pathPredictionStats struct {
 	VOACAPP50CompareDeltaAbs10To19     int64
 	VOACAPP50CompareDeltaAbs20Plus     int64
 	SparseP50VOACAP                    sparseP50VOACAPStats
+	Native160                          native160FallbackStats
 	Insufficient                       uint64
 	NoSample                           uint64
 	LowCount                           uint64
@@ -2997,6 +3012,32 @@ type pathPredictionStats struct {
 	CapWouldBlock                      uint64
 	OverrideR                          uint64
 	OverrideG                          uint64
+}
+
+type native160FallbackStats struct {
+	Candidate       int64
+	Emitted         int64
+	Low             int64
+	Unlikely        int64
+	NotDark         int64
+	Unknown         int64
+	DisplayDisabled int64
+	DarkGE50        int64
+	DarkGE75        int64
+	DarkGE90        int64
+}
+
+func (s native160FallbackStats) HasActivity() bool {
+	return s.Candidate != 0 ||
+		s.Emitted != 0 ||
+		s.Low != 0 ||
+		s.Unlikely != 0 ||
+		s.NotDark != 0 ||
+		s.Unknown != 0 ||
+		s.DisplayDisabled != 0 ||
+		s.DarkGE50 != 0 ||
+		s.DarkGE75 != 0 ||
+		s.DarkGE90 != 0
 }
 
 type sparseP50VOACAPOutcome uint8
@@ -3098,6 +3139,7 @@ func (s *Server) recordPathPrediction(res pathreliability.Result, userDerived, d
 	if res.CapWouldBlock {
 		s.pathPredCapWouldBlock.Add(1)
 	}
+	s.recordNative160Evaluation(res)
 	switch res.Source {
 	case pathreliability.SourceCombined:
 		s.pathPredCombined.Add(1)
@@ -3123,6 +3165,12 @@ func (s *Server) recordPathPrediction(res pathreliability.Result, userDerived, d
 		s.pathPredVOACAPOpen.Add(1)
 		if res.BeaconRX {
 			s.pathPredBeaconRXVOACAPOpen.Add(1)
+		}
+	case pathreliability.SourceNative160:
+		if res.Class == filter.PathClassLow {
+			s.pathPredNative160Low.Add(1)
+		} else {
+			s.pathPredNative160Unlikely.Add(1)
 		}
 	default:
 		s.pathPredInsufficient.Add(1)
@@ -3168,6 +3216,42 @@ func (s *Server) recordPathPrediction(res pathreliability.Result, userDerived, d
 				}
 			}
 		}
+	}
+}
+
+func (s *Server) recordNative160Evaluation(res pathreliability.Result) {
+	if s == nil || !res.Native160Checked {
+		return
+	}
+	s.native160Candidate.Add(1)
+	if !res.Native160Unknown {
+		if res.Native160CivilDarkFraction >= 0.50 {
+			s.native160DarkGE50.Add(1)
+		}
+		if res.Native160CivilDarkFraction >= 0.75 {
+			s.native160DarkGE75.Add(1)
+		}
+		if res.Native160CivilDarkFraction >= 0.90 {
+			s.native160DarkGE90.Add(1)
+		}
+	}
+	if res.Native160Unknown {
+		s.native160Unknown.Add(1)
+		return
+	}
+	if res.Native160DisplayDisabled {
+		s.native160DisplayDisabled.Add(1)
+		return
+	}
+	if !res.Native160Emitted {
+		s.native160NotDark.Add(1)
+		return
+	}
+	s.native160Emitted.Add(1)
+	if res.Class == filter.PathClassLow {
+		s.native160Low.Add(1)
+	} else {
+		s.native160Unlikely.Add(1)
 	}
 }
 
@@ -3228,6 +3312,8 @@ func (s *Server) PathPredictionStatsSnapshot() pathPredictionStats {
 		VOACAPAligned:                      s.pathPredVOACAPAligned.Swap(0),
 		VOACAPSparseUpgrade:                s.pathPredVOACAPSparseUpgrade.Swap(0),
 		VOACAPOpen:                         s.pathPredVOACAPOpen.Swap(0),
+		Native160Low:                       s.pathPredNative160Low.Swap(0),
+		Native160Unlikely:                  s.pathPredNative160Unlikely.Swap(0),
 		BeaconRX:                           s.pathPredBeaconRX.Swap(0),
 		BeaconRXInsufficient:               s.pathPredBeaconRXInsufficient.Swap(0),
 		BeaconRXNoSample:                   s.pathPredBeaconRXNoSample.Swap(0),
@@ -3270,16 +3356,28 @@ func (s *Server) PathPredictionStatsSnapshot() pathPredictionStats {
 		VOACAPP50CompareDeltaAbs10To19:     s.vP50CompareDeltaAbs10To19.Swap(0),
 		VOACAPP50CompareDeltaAbs20Plus:     s.vP50CompareDeltaAbs20Plus.Swap(0),
 		SparseP50VOACAP:                    s.sparseP50VOACAPStatsSnapshot(),
-		Insufficient:                       s.pathPredInsufficient.Swap(0),
-		NoSample:                           s.pathPredNoSample.Swap(0),
-		LowCount:                           s.pathPredLowCount.Swap(0),
-		LowReceiver:                        s.pathPredLowReceiver.Swap(0),
-		LowWeight:                          s.pathPredLowWeight.Swap(0),
-		Stale:                              s.pathPredStale.Swap(0),
-		CapLimited:                         s.pathPredCapLimited.Swap(0),
-		CapWouldBlock:                      s.pathPredCapWouldBlock.Swap(0),
-		OverrideR:                          s.pathPredOverrideR.Swap(0),
-		OverrideG:                          s.pathPredOverrideG.Swap(0),
+		Native160: native160FallbackStats{
+			Candidate:       s.native160Candidate.Swap(0),
+			Emitted:         s.native160Emitted.Swap(0),
+			Low:             s.native160Low.Swap(0),
+			Unlikely:        s.native160Unlikely.Swap(0),
+			NotDark:         s.native160NotDark.Swap(0),
+			Unknown:         s.native160Unknown.Swap(0),
+			DisplayDisabled: s.native160DisplayDisabled.Swap(0),
+			DarkGE50:        s.native160DarkGE50.Swap(0),
+			DarkGE75:        s.native160DarkGE75.Swap(0),
+			DarkGE90:        s.native160DarkGE90.Swap(0),
+		},
+		Insufficient:  s.pathPredInsufficient.Swap(0),
+		NoSample:      s.pathPredNoSample.Swap(0),
+		LowCount:      s.pathPredLowCount.Swap(0),
+		LowReceiver:   s.pathPredLowReceiver.Swap(0),
+		LowWeight:     s.pathPredLowWeight.Swap(0),
+		Stale:         s.pathPredStale.Swap(0),
+		CapLimited:    s.pathPredCapLimited.Swap(0),
+		CapWouldBlock: s.pathPredCapWouldBlock.Swap(0),
+		OverrideR:     s.pathPredOverrideR.Swap(0),
+		OverrideG:     s.pathPredOverrideG.Swap(0),
 	}
 	if provider, ok := s.pathClosedFallback.(pathreliability.ClosedFallbackStatsProvider); ok {
 		stats.VOACAPFallback = provider.StatsSnapshot()
@@ -4306,15 +4404,6 @@ func (s *Server) pathResultWithClosedFallbackTrace(res pathreliability.Result, r
 	}
 	cfg := s.pathPredictor.Config()
 	trace := sparseP50VOACAPTraceForResult(res, cfg)
-	if s.pathClosedFallback == nil {
-		if trace.Active {
-			trace.Status = pathreliability.VOACAPForecastCheckDisabled
-		}
-		return res, trace
-	}
-	if trace.Active {
-		trace.Status = pathreliability.VOACAPForecastCheckUnavailable
-	}
 	if res.Source == pathreliability.SourceCombined {
 		if res.BeaconRX {
 			return res, trace
@@ -4325,6 +4414,15 @@ func (s *Server) pathResultWithClosedFallbackTrace(res pathreliability.Result, r
 	if res.Source != pathreliability.SourceInsufficient {
 		return res, trace
 	}
+	if s.pathClosedFallback == nil {
+		if trace.Active {
+			trace.Status = pathreliability.VOACAPForecastCheckDisabled
+		}
+		return pathreliability.Native160FallbackResult(res, cfg, req, now), trace
+	}
+	if trace.Active {
+		trace.Status = pathreliability.VOACAPForecastCheckUnavailable
+	}
 	check := s.checkVOACAPForecast(req, now)
 	if trace.Active {
 		trace.Status = check.Status
@@ -4333,7 +4431,7 @@ func (s *Server) pathResultWithClosedFallbackTrace(res pathreliability.Result, r
 		trace.NoCurrentHour = check.NoCurrentHour
 	}
 	if check.Status != pathreliability.VOACAPForecastCheckReady {
-		return res, trace
+		return pathreliability.Native160FallbackResult(res, cfg, req, now), trace
 	}
 	forecast := check.Forecast
 	if res.BeaconRX {
@@ -4788,6 +4886,12 @@ func diagPathTag(prediction pathPrediction, havePrediction bool) string {
 		}
 		return fmt.Sprintf("vop|%dr%02dh%02ds%d", res.VOACAPFT8SNRDB, diagVOACAPReliabilityPercent(res), res.VOACAPHourUTC, res.VOACAPSSN)
 	}
+	if res.Source == pathreliability.SourceNative160 {
+		if res.BeaconRX {
+			return fmt.Sprintf("bn160|d%02d", diagFractionPercent(res.Native160CivilDarkFraction))
+		}
+		return fmt.Sprintf("n160|d%02d", diagFractionPercent(res.Native160CivilDarkFraction))
+	}
 	weightValue := res.Weight
 	if res.CapLimited {
 		weightValue = res.CappedWeight
@@ -4863,6 +4967,17 @@ func diagVOACAPReliabilityPercent(res pathreliability.Result) int {
 		return 0
 	}
 	pct := int(math.Round(res.VOACAPReqSNRReliability * 100))
+	if pct < 0 {
+		return 0
+	}
+	if pct > 100 {
+		return 100
+	}
+	return pct
+}
+
+func diagFractionPercent(value float64) int {
+	pct := int(math.Round(value * 100))
 	if pct < 0 {
 		return 0
 	}

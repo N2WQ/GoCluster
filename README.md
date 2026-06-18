@@ -238,6 +238,8 @@ Path reliability glyphs:
   " " - INSUFFICIENT: not enough recent evidence.
   Bucket p50 data is authoritative; VOACAP may only replace insufficient data
     when closed, aligned with sparse p50, or REL-gated from cached VOACAP.
+  Native 160m fallback may fill insufficient 160m data with LOW or UNLIKELY
+    when enough of the path is darker than civil twilight.
   "#" - CLOSED: VOACAP fallback predicts the current UTC hour's blended,
     noise-adjusted SNR at or below the mode's closed threshold.
   PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, CLOSED, INSUFFICIENT.
@@ -484,6 +486,8 @@ Example readings:
   predicted FT8-equivalent SNR -34, and used SSN generation 112.
 - `valn|-15/-15h20s112`: sparse bucket p50 rounded to -15 dB and the 20:00
   UTC VOACAP forecast also mapped to that same path class.
+- `n160|d82`: native 160m fallback filled an insufficient 160m result using an
+  82% civil-dark path fraction. Beacon receive-only paths use `bn160|d82`.
 - `n1|loww`: one selected observation existed, but the effective weight was
   below the minimum.
 - `n32|w1`: large selected count but low rounded effective weight. Treat this
@@ -548,6 +552,8 @@ Important operational notes:
   `stale` can increase when honest fine/coarse age drops an old local direction.
   VOACAP fallback outcomes are counted separately as `voacap_closed`,
   `voacap_aligned`, `voacap_sparse_upgrade`, and `voacap_open`.
+  Native 160m darkness fallback emissions are counted as `native160_low` and
+  `native160_unlikely`.
   Beacon paths add `beacon_rx`, `beacon_rx_insufficient`,
   `beacon_rx_<reason>`, and `beacon_rx_voacap_*` counters to the same line.
   A separate `VOACAP fallback (5m)` line appears when fallback work occurs and
@@ -560,6 +566,9 @@ Important operational notes:
   and splits them by p50 evidence, cache/work state, invalid-request reason,
   closed/open/REL outcome, beacon RX-only provenance, and non-beacon
   provenance. It is diagnostic only and does not change glyph decisions.
+  A separate `Native 160m fallback (5m)` line appears when insufficient 160m
+  candidates are evaluated and reports candidates, emissions, class splits,
+  not-dark, unknown, display-disabled, and civil-darkness threshold buckets.
   A separate `VOACAP p50 compare (5m)` line may appear when sufficient p50
   predictions can be compared against an existing current-hour VOACAP cache
   record. It is cache-only: cache misses do not run VOACAP, start delay
@@ -593,6 +602,11 @@ Important operational notes:
   start, so they bypass `voacap_fallback.delay_seconds`. Stale or malformed
   records are pruned and a missing/unavailable cache cold-starts normal
   delay/queue behavior.
+- If `native_160m_fallback.enabled` is true, an insufficient 160m bucket result
+  can be filled by exact solar path geometry when no usable current-hour VOACAP
+  result has precedence. It can emit only `LOW` or `UNLIKELY` from the fraction
+  of the path darker than civil twilight. It is an opportunity proxy, not an
+  SNR or probability model, and sufficient p50 remains authoritative.
 - Beacon spots use RX-only path semantics. The beacon qualifier is the existing
   canonical `IsBeacon` flag, including source-class beacons, `/B` calls, known
   beacon calls, and beacon comment keywords. For those spots, transmit evidence

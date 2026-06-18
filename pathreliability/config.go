@@ -45,6 +45,7 @@ type Config struct {
 	ModeThresholds                     map[string]GlyphThresholds `yaml:"mode_thresholds"`                         // per-mode glyph thresholds in FT8-equiv dB
 	GlyphThresholds                    GlyphThresholds            `yaml:"glyph_thresholds"`                        // fallback glyph thresholds in FT8-equiv dB
 	GlyphSymbols                       GlyphSymbols               `yaml:"glyph_symbols"`                           // glyph mapping for high/medium/low/unlikely/insufficient/closed
+	Native160Fallback                  Native160FallbackConfig    `yaml:"native_160m_fallback"`                    // optional solar-darkness fallback for 160m insufficient p50
 	VOACAPFallback                     VOACAPFallbackConfig       `yaml:"voacap_fallback"`                         // optional VOACAP sparse-data fallback
 	NoiseOffsets                       map[string]float64         `yaml:"noise_offsets"`                           // noise class -> dB penalty
 
@@ -60,6 +61,11 @@ var requiredConfigPaths = []yamlconfig.Path{
 	{"glyph_symbols", "unlikely"},
 	{"glyph_symbols", "insufficient"},
 	{"glyph_symbols", "closed"},
+	{"native_160m_fallback", "enabled"},
+	{"native_160m_fallback", "display_enabled"},
+	{"native_160m_fallback", "civil_twilight_degrees"},
+	{"native_160m_fallback", "unlikely_min_civil_dark_fraction"},
+	{"native_160m_fallback", "low_min_civil_dark_fraction"},
 	{"voacap_fallback", "enabled"},
 	{"voacap_fallback", "ssn_fetch_interval_seconds"},
 	{"voacap_fallback", "ssn_request_timeout_seconds"},
@@ -206,6 +212,17 @@ type GlyphSymbols struct {
 	Closed       string `yaml:"closed"`
 }
 
+// Native160FallbackConfig owns the experimental solar-darkness fallback for
+// 160m paths where p50 evidence is insufficient and VOACAP has no usable
+// current-hour result.
+type Native160FallbackConfig struct {
+	Enabled                      bool    `yaml:"enabled"`
+	DisplayEnabled               bool    `yaml:"display_enabled"`
+	CivilTwilightDegrees         float64 `yaml:"civil_twilight_degrees"`
+	UnlikelyMinCivilDarkFraction float64 `yaml:"unlikely_min_civil_dark_fraction"`
+	LowMinCivilDarkFraction      float64 `yaml:"low_min_civil_dark_fraction"`
+}
+
 // UnmarshalYAML enforces single printable ASCII glyphs. Unknown keys are
 // ignored here after the loader has reported warning-only startup diagnostics.
 func (s *GlyphSymbols) UnmarshalYAML(value *yaml.Node) error {
@@ -342,8 +359,9 @@ func DefaultConfig() Config {
 			Insufficient: "?",
 			Closed:       "!",
 		},
-		VOACAPFallback: defaultVOACAPFallbackConfig(),
-		NoiseOffsets:   defaultNoiseOffsets(),
+		Native160Fallback: defaultNative160FallbackConfig(),
+		VOACAPFallback:    defaultVOACAPFallbackConfig(),
+		NoiseOffsets:      defaultNoiseOffsets(),
 	}
 	cfg.buildCaches()
 	return cfg
@@ -480,14 +498,56 @@ func (c *Config) finalize() error {
 	if err := c.VOACAPFallback.finalize(); err != nil {
 		return err
 	}
+	if err := c.Native160Fallback.finalize(); err != nil {
+		return err
+	}
 	if c.VOACAPFallback.Enabled && !c.Enabled {
 		return fmt.Errorf("voacap_fallback.enabled requires path reliability enabled")
+	}
+	if c.Native160Fallback.Enabled && !c.Enabled {
+		return fmt.Errorf("native_160m_fallback.enabled requires path reliability enabled")
 	}
 	if err := validateNoiseOffsets(c.NoiseOffsets); err != nil {
 		return err
 	}
 	c.NoiseOffsets = normalizeNoiseOffsets(c.NoiseOffsets, nil)
 	c.buildCaches()
+	return nil
+}
+
+func defaultNative160FallbackConfig() Native160FallbackConfig {
+	return Native160FallbackConfig{
+		Enabled:                      false,
+		DisplayEnabled:               false,
+		CivilTwilightDegrees:         6,
+		UnlikelyMinCivilDarkFraction: 0.50,
+		LowMinCivilDarkFraction:      0.75,
+	}
+}
+
+func (c *Native160FallbackConfig) finalize() error {
+	if c == nil {
+		return nil
+	}
+	if err := validateNative160Fraction("native_160m_fallback.unlikely_min_civil_dark_fraction", c.UnlikelyMinCivilDarkFraction); err != nil {
+		return err
+	}
+	if err := validateNative160Fraction("native_160m_fallback.low_min_civil_dark_fraction", c.LowMinCivilDarkFraction); err != nil {
+		return err
+	}
+	if c.LowMinCivilDarkFraction < c.UnlikelyMinCivilDarkFraction {
+		return fmt.Errorf("native_160m_fallback low threshold must be >= unlikely threshold")
+	}
+	if math.IsNaN(c.CivilTwilightDegrees) || math.IsInf(c.CivilTwilightDegrees, 0) || c.CivilTwilightDegrees < 0 || c.CivilTwilightDegrees > 18 {
+		return fmt.Errorf("native_160m_fallback.civil_twilight_degrees must be between 0 and 18")
+	}
+	return nil
+}
+
+func validateNative160Fraction(path string, value float64) error {
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 1 {
+		return fmt.Errorf("%s must be between 0 and 1", path)
+	}
 	return nil
 }
 

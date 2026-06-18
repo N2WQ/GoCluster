@@ -130,6 +130,14 @@ func TestLoadFileReadsShippedConfigVOACAPFallbackContract(t *testing.T) {
 	if cfg.VOACAPFallback.SSNStatePath != "data/voacap/ssn_state.json" {
 		t.Fatalf("SSN state path = %q, want data/voacap/ssn_state.json", cfg.VOACAPFallback.SSNStatePath)
 	}
+	if !cfg.Native160Fallback.Enabled || !cfg.Native160Fallback.DisplayEnabled {
+		t.Fatalf("native 160m fallback must be explicitly enabled for experiment config: %+v", cfg.Native160Fallback)
+	}
+	if cfg.Native160Fallback.CivilTwilightDegrees != 6 ||
+		cfg.Native160Fallback.UnlikelyMinCivilDarkFraction != 0.50 ||
+		cfg.Native160Fallback.LowMinCivilDarkFraction != 0.75 {
+		t.Fatalf("unexpected native 160m fallback contract: %+v", cfg.Native160Fallback)
+	}
 	assertReliabilityGateContract(t, cfg.VOACAPFallback)
 }
 
@@ -539,6 +547,52 @@ func TestLoadFileRejectsInvalidVOACAPFallbackBounds(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("expected error to mention %s, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
+func TestLoadFileRejectsInvalidNative160FallbackBounds(t *testing.T) {
+	tests := []struct {
+		name    string
+		overlay string
+		want    string
+	}{
+		{
+			name: "civil twilight too high",
+			overlay: `
+native_160m_fallback:
+  civil_twilight_degrees: 30
+`,
+			want: "civil_twilight_degrees",
+		},
+		{
+			name: "low below unlikely",
+			overlay: `
+native_160m_fallback:
+  unlikely_min_civil_dark_fraction: 0.80
+  low_min_civil_dark_fraction: 0.75
+`,
+			want: "low threshold",
+		},
+		{
+			name: "fraction out of range",
+			overlay: `
+native_160m_fallback:
+  unlikely_min_civil_dark_fraction: -0.1
+`,
+			want: "unlikely_min_civil_dark_fraction",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeTempConfigOverlay(t, tt.overlay)
+			_, err := LoadFile(path)
+			if err == nil {
+				t.Fatalf("expected invalid native 160m config to fail")
+			}
+			if !strings.Contains(strings.ToLower(err.Error()), strings.ToLower(tt.want)) {
+				t.Fatalf("error = %v, want %q", err, tt.want)
 			}
 		})
 	}

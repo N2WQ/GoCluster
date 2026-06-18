@@ -2,7 +2,7 @@
 # Code Map: Path Reliability And VOACAP
 
 - Map ID: `path-reliability-voacap`
-- Source fingerprint: `9ef86de9eeea20ec`
+- Source fingerprint: `e39325921edad40e`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map path-reliability-voacap`
 - Check: `go run ./cmd/codemap check -map path-reliability-voacap`
@@ -11,14 +11,19 @@
 
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
+| `dxcluster/internal/solarpath` | `internal/solarpath` | 3 | 1 |
 | `dxcluster/internal/voacap` | `internal/voacap` | 9 | 6 |
-| `dxcluster/pathreliability` | `pathreliability` | 17 | 16 |
+| `dxcluster/pathreliability` | `pathreliability` | 18 | 18 |
+| `dxcluster/solarweather` | `solarweather` | 9 | 8 |
 
 ## In-Scope Package Edges
 
 | From | Imports |
 |---|---|
+| `dxcluster/pathreliability` | `dxcluster/internal/solarpath` |
 | `dxcluster/pathreliability` | `dxcluster/internal/voacap` |
+| `dxcluster/solarweather` | `dxcluster/internal/solarpath` |
+| `dxcluster/solarweather` | `dxcluster/pathreliability` |
 
 ## Direct Repo Dependencies Outside Scope
 
@@ -28,8 +33,21 @@
 | `dxcluster/pathreliability` | `dxcluster/internal/pebbleutil` |
 | `dxcluster/pathreliability` | `dxcluster/internal/yamlconfig` |
 | `dxcluster/pathreliability` | `dxcluster/strutil` |
+| `dxcluster/solarweather` | `dxcluster/internal/logutil` |
+| `dxcluster/solarweather` | `dxcluster/internal/yamlconfig` |
+| `dxcluster/solarweather` | `dxcluster/strutil` |
 
 ## Package Files
+
+### `dxcluster/internal/solarpath`
+
+Source files:
+- `internal/solarpath/exposure.go`
+- `internal/solarpath/sun.go`
+- `internal/solarpath/vector.go`
+
+Test files:
+- `internal/solarpath/exposure_test.go`
 
 ### `dxcluster/internal/voacap`
 
@@ -64,6 +82,7 @@ Source files:
 - `pathreliability/maidenhead.go`
 - `pathreliability/mode_policy.go`
 - `pathreliability/modes.go`
+- `pathreliability/native160_fallback.go`
 - `pathreliability/noise.go`
 - `pathreliability/normalize.go`
 - `pathreliability/predictor.go`
@@ -80,6 +99,8 @@ Test files:
 - `pathreliability/config_test.go`
 - `pathreliability/grid_test.go`
 - `pathreliability/h3map_test.go`
+- `pathreliability/native160_fallback_test.go`
+- `pathreliability/native160_solar_bench_test.go`
 - `pathreliability/noise_test.go`
 - `pathreliability/normalize_test.go`
 - `pathreliability/receiver_test.go`
@@ -91,10 +112,35 @@ Test files:
 - `pathreliability/voacap_fallback_test.go`
 - `pathreliability/voacap_forecast_cache_store_test.go`
 
+### `dxcluster/solarweather`
+
+Source files:
+- `solarweather/bands.go`
+- `solarweather/config.go`
+- `solarweather/dipole.go`
+- `solarweather/fetch.go`
+- `solarweather/gate.go`
+- `solarweather/gate_cache.go`
+- `solarweather/manager.go`
+- `solarweather/sun.go`
+- `solarweather/vector.go`
+
+Test files:
+- `solarweather/archive_compare_test.go`
+- `solarweather/config_test.go`
+- `solarweather/fetch_test.go`
+- `solarweather/gate_bench_test.go`
+- `solarweather/gate_test.go`
+- `solarweather/override_test.go`
+- `solarweather/summary_test.go`
+- `solarweather/vector_test.go`
+
 ## Related ADRs
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0194](docs/decisions/ADR-0194-native-160m-solar-darkness-fallback.md) | Accepted | 2026-06-18 | pathreliability, solarweather, telnet, config, operations, experiments | `area:pathreliability, area:solarweather, path:internal/solarpath, path:pathreliability` |
+| [ADR-0192](docs/decisions/ADR-0192-adr-reader-guide-and-current-contract-map.md) | Accepted | 2026-06-17 | docs, ADR, supportability, pathreliability, voacap | `area:internal/voacap, area:pathreliability` |
 | [ADR-0191](docs/decisions/ADR-0191-voacap-cache-overview-counters.md) | Accepted | 2026-06-17 | ui/tview-v2, stats, voacap, pathreliability, operations | `area:internal/voacap, area:pathreliability, path:pathreliability` |
 | [ADR-0190](docs/decisions/ADR-0190-voacap-ssn-overview-visibility.md) | Accepted | 2026-06-17 | ui/tview-v2, stats, voacap, pathreliability, operations | `area:internal/voacap, area:pathreliability, path:internal/voacap, path:pathreliability` |
 | [ADR-0187](docs/decisions/ADR-0187-show-prop-open-row-display.md) | Accepted | 2026-06-16 | telnet, pathreliability, voacap, commands, supportability | `area:internal/voacap, area:pathreliability, path:pathreliability` |
@@ -123,7 +169,7 @@ Test files:
 | [ADR-0160](docs/decisions/ADR-0160-voacap-ft8-snr-output-contract.md) | Accepted | 2026-06-09 | voacap, pathreliability, experiments | `area:internal/voacap, area:pathreliability, path:internal/voacap` |
 | [ADR-0159](docs/decisions/ADR-0159-voacap-yaml-owned-ssn-forecast-experiment.md) | Accepted | 2026-06-08 | voacap, config, experiments, process lifecycle | `area:internal/voacap, path:internal/voacap` |
 | [ADR-0158](docs/decisions/ADR-0158-voacap-process-wrapper-experiment.md) | Accepted | 2026-06-08 | voacap, experiments, process lifecycle | `area:internal/voacap, path:internal/voacap` |
-| [ADR-0157](docs/decisions/ADR-0157-voacap-ssn-moving-average-experiment.md) | Accepted | 2026-06-08 | voacap, solarweather, experiments | `area:internal/voacap, path:internal/voacap` |
+| [ADR-0157](docs/decisions/ADR-0157-voacap-ssn-moving-average-experiment.md) | Accepted | 2026-06-08 | voacap, solarweather, experiments | `area:internal/voacap, area:solarweather, path:internal/voacap, path:solarweather` |
 | [ADR-0153](docs/decisions/ADR-0153-startup-config-diagnostics-and-gridstore-logging.md) | Accepted | 2026-06-07 | config, startup, pathreliability, gridstore, operations | `area:pathreliability, path:pathreliability` |
 | [ADR-0146](docs/decisions/ADR-0146-h3-path-cell-duplicate-work-removal.md) | Accepted | 2026-06-05 | spot, internal/cluster, pathreliability, hot path | `area:pathreliability, path:pathreliability` |
 | [ADR-0139](docs/decisions/ADR-0139-active-path-p50-histogram-lane-retention.md) | Accepted | 2026-06-04 | pathreliability, retained state, hot path, reports | `area:pathreliability, path:pathreliability` |
@@ -148,7 +194,7 @@ Test files:
 | [ADR-0085](docs/decisions/ADR-0085-path-reliability-min-observation-count.md) | Accepted | 2026-04-26 | pathreliability, config, telnet diagnostics | `area:pathreliability` |
 | [ADR-0084](docs/decisions/ADR-0084-set-diag-modes-and-path-count.md) | Accepted | 2026-04-26 | telnet diagnostics, pathreliability | `area:pathreliability, path:pathreliability` |
 | [ADR-0069](docs/decisions/ADR-0069-single-spot-taxonomy-yaml.md) | Accepted | 2026-04-22 | spot, config, filter, telnet, pskreporter, pathreliability | `area:pathreliability` |
-| [ADR-0067](docs/decisions/ADR-0067-centralized-yaml-settings-enforcement.md) | Accepted | 2026-04-22 | config, pathreliability, solarweather, spot, runtime, reports | `area:pathreliability, path:pathreliability` |
+| [ADR-0067](docs/decisions/ADR-0067-centralized-yaml-settings-enforcement.md) | Accepted | 2026-04-22 | config, pathreliability, solarweather, spot, runtime, reports | `area:pathreliability, area:solarweather, path:pathreliability, path:solarweather` |
 | [ADR-0065](docs/decisions/ADR-0065-path-reliability-freshness-gate.md) | Accepted | 2026-04-20 | pathreliability, telnet, reports, config | `area:pathreliability, path:pathreliability` |
 | [ADR-0064](docs/decisions/ADR-0064-band-specific-path-noise-penalties.md) | Superseded | 2026-04-20 | pathreliability, telnet, config | `area:pathreliability, path:pathreliability` |
 

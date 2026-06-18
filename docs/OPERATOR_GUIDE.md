@@ -328,6 +328,10 @@ VOACAP fallback outcomes are counted separately as `voacap_closed`,
 Beacon spots add `beacon_rx`, `beacon_rx_insufficient`,
 `beacon_rx_<reason>`, and `beacon_rx_voacap_*` counters to the same final
 emission line.
+Native 160m darkness fallback emissions add `native160_low` and
+`native160_unlikely` to the same line. These are conservative LOW/UNLIKELY
+fills for insufficient 160m p50 when no usable current-hour VOACAP result has
+precedence.
 
 When the optional VOACAP fallback has activity, a separate
 `VOACAP fallback (5m)` propagation log line explains the stage path:
@@ -357,6 +361,10 @@ When sparse or no-p50 candidates are present, a separate `Sparse p50 VOACAP
 outcome (`closed`, `aligned`, `sparse_upgrade`, `open_rel_pass`,
 `open_rel_fail`, `not_closed`, `rel_missing`, `rel_below_floor`,
 `rel_multi_tier`). It is diagnostic only; it does not change glyph decisions.
+When native 160m fallback evaluates candidates, `Native 160m fallback (5m)`
+reports `candidates`, `emitted`, class splits, `not_dark`, `unknown`,
+`display_disabled`, and civil-darkness buckets `dark_ge_50`, `dark_ge_75`, and
+`dark_ge_90`.
 When sufficient p50 predictions can be compared against an existing current-hour
 VOACAP cache record, a separate `VOACAP p50 compare (5m)` line reports cache
 hits, cache misses, class agreement, stronger/weaker effective SNR, closed
@@ -395,6 +403,8 @@ Example readings:
   -15 dB, and VOACAP REL 84% passed the one-tier upgrade gate.
 - `vop|-19r75h20s112`: no sparse p50 existed, but the 20:00 UTC VOACAP record
   rounded to -19 dB and REL 75% passed the open fallback gate.
+- `n160|d82`: native 160m fallback filled an insufficient 160m result using an
+  82% civil-dark path fraction. Beacon receive-only paths use `bn160|d82`.
 - `n1|loww`: one selected observation existed, but the effective weight was
   below the minimum.
 - `n32|w1`: large selected count but low rounded effective weight.

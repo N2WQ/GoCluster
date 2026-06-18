@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"dxcluster/filter"
 	"dxcluster/pathreliability"
 )
 
@@ -277,6 +278,63 @@ func TestPathResultWithClosedFallbackTraceRecordsSparseP50VOACAP(t *testing.T) {
 		stats := s.PathPredictionStatsSnapshot().SparseP50VOACAP
 		if stats.Total != 1 || stats.NoP50 != 1 || stats.InvalidRequest != 1 || stats.InvalidDXGrid != 1 {
 			t.Fatalf("unexpected invalid sparse stats: %+v", stats)
+		}
+	})
+}
+
+func TestPathResultWithClosedFallbackTraceUsesNative160WhenVOACAPUnavailable(t *testing.T) {
+	cfg := pathreliability.DefaultConfig()
+	cfg.Native160Fallback.Enabled = true
+	cfg.Native160Fallback.DisplayEnabled = true
+	predictor := pathreliability.NewPredictor(cfg, []string{"160m"})
+	req := pathreliability.VOACAPClosedRequest{
+		UserGrid: "FN31",
+		DXGrid:   "QF56",
+		Band:     "160m",
+		Mode:     "FT8",
+	}
+	now := time.Date(2026, time.June, 18, 12, 0, 0, 0, time.UTC)
+	base := pathreliability.Result{
+		Glyph:              cfg.GlyphSymbols.Insufficient,
+		Source:             pathreliability.SourceInsufficient,
+		InsufficientReason: pathreliability.InsufficientNoSample,
+	}
+
+	t.Run("no voacap fallback", func(t *testing.T) {
+		s := &Server{pathPredictor: predictor}
+		got, trace := s.pathResultWithClosedFallbackTrace(base, req, now)
+		if got.Source != pathreliability.SourceNative160 || got.Class != filter.PathClassLow {
+			t.Fatalf("expected native 160 LOW fallback, got %+v", got)
+		}
+		if !trace.Active {
+			t.Fatalf("expected sparse VOACAP trace to remain active")
+		}
+		s.recordPathPrediction(got, false, false)
+		stats := s.PathPredictionStatsSnapshot()
+		if stats.Native160Low != 1 || stats.Native160.Candidate != 1 || stats.Native160.Emitted != 1 || stats.Native160.Low != 1 {
+			t.Fatalf("unexpected native 160 stats: %+v", stats)
+		}
+	})
+
+	t.Run("voacap ready keeps precedence", func(t *testing.T) {
+		s := &Server{
+			pathPredictor: predictor,
+			pathClosedFallback: detailedPathClosedFallback{
+				check: pathreliability.VOACAPForecastCheck{
+					Status: pathreliability.VOACAPForecastCheckReady,
+					Forecast: pathreliability.VOACAPCachedForecast{
+						Record: pathreliability.VOACAPHourlyForecast{FT8SNRDB: -34, HourUTC: 12, FrequencyMHz: 1.9},
+						SSN:    112,
+					},
+				},
+			},
+		}
+		got, _ := s.pathResultWithClosedFallbackTrace(base, req, now)
+		if got.Source != pathreliability.SourceVOACAPClosed {
+			t.Fatalf("ready VOACAP closed result must keep precedence, got %+v", got)
+		}
+		if got.Native160Checked {
+			t.Fatalf("native 160 must not run when VOACAP is ready: %+v", got)
 		}
 	})
 }

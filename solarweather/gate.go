@@ -4,6 +4,7 @@ import (
 	"math"
 	"time"
 
+	"dxcluster/internal/solarpath"
 	"dxcluster/pathreliability"
 	"dxcluster/strutil"
 )
@@ -125,102 +126,12 @@ func gridVector(grid string) (Vec3, bool) {
 // returns unknown for antipodal or degenerate paths rather than forcing a false
 // precision into support output.
 func daylightFraction(a, b, sun Vec3, cfg Config) (float64, bool, bool) {
-	D := angleBetween(a, b)
-	if D <= cfg.Daylight.DSmallRad {
-		return sunlitTest(a, sun, cfg), false, false
-	}
-	if D >= cfg.Daylight.DAntipodalRad {
-		return 0, false, true
-	}
-	cross := a.Cross(b)
-	if cross.Norm() <= cfg.Daylight.CrossNormTiny {
-		return 0, false, true
-	}
-	pathNormal := cross.Normalize()
-	crossTerm := pathNormal.Cross(sun)
-	if crossTerm.Norm() <= cfg.Daylight.CrossNormTiny {
-		if cfg.Sun.TwilightDegrees > 0 {
-			return 1.0, false, false
-		}
-		return 0.5, true, false
-	}
-	intersect := crossTerm.Normalize()
-	candidates := []Vec3{intersect, intersect.Mul(-1)}
-	intersections := make([]Vec3, 0, 2)
-	eps := math.Max(cfg.Daylight.EpsBaseRad, cfg.Daylight.EpsScale*D)
-	for _, c := range candidates {
-		d1 := angleBetween(a, c)
-		d2 := angleBetween(c, b)
-		if math.Abs((d1+d2)-D) <= eps {
-			intersections = append(intersections, c)
-		}
-	}
-	if len(intersections) == 0 {
-		mid := slerp(a, b, 0.5).Normalize()
-		if sunlitTest(mid, sun, cfg) > 0 {
-			return 1.0, false, false
-		}
-		return 0.0, false, false
-	}
-	if len(intersections) == 1 {
-		c := intersections[0]
-		d1 := angleBetween(a, c)
-		segments := [][2]Vec3{{a, c}, {c, b}}
-		lengths := []float64{d1, D - d1}
-		lit := 0.0
-		for i, seg := range segments {
-			if lengths[i] <= 0 {
-				continue
-			}
-			mid := slerp(seg[0], seg[1], 0.5).Normalize()
-			if sunlitTest(mid, sun, cfg) > 0 {
-				lit += lengths[i]
-			}
-		}
-		if D <= 0 {
-			return 0, false, false
-		}
-		return clamp(lit/D, 0, 1), false, false
-	}
-	c1 := intersections[0]
-	c2 := intersections[1]
-	d1 := angleBetween(a, c1)
-	d2 := angleBetween(a, c2)
-	if d2 < d1 {
-		c1, c2 = c2, c1
-		d1, d2 = d2, d1
-	}
-	segments := [][2]Vec3{
-		{a, c1},
-		{c1, c2},
-		{c2, b},
-	}
-	lengths := []float64{d1, d2 - d1, D - d2}
-	lit := 0.0
-	for i, seg := range segments {
-		if lengths[i] <= 0 {
-			continue
-		}
-		mid := slerp(seg[0], seg[1], 0.5).Normalize()
-		if sunlitTest(mid, sun, cfg) > 0 {
-			lit += lengths[i]
-		}
-	}
-	if D <= 0 {
-		return 0, false, false
-	}
-	return clamp(lit/D, 0, 1), false, false
-}
-
-func sunlitTest(p, sun Vec3, cfg Config) float64 {
-	threshold := 0.0
-	if cfg.Sun.TwilightDegrees > 0 {
-		threshold = -math.Sin(degToRad(cfg.Sun.TwilightDegrees))
-	}
-	if p.Dot(sun) > threshold {
-		return 1
-	}
-	return 0
+	threshold := solarpath.LitThresholdForTwilight(cfg.Sun.TwilightDegrees)
+	return solarpath.FractionAboveThreshold(a, b, sun, threshold, solarpath.Tolerances{
+		CrossNormTiny: cfg.Daylight.CrossNormTiny,
+		DSmallRad:     cfg.Daylight.DSmallRad,
+		DAntipodalRad: cfg.Daylight.DAntipodalRad,
+	})
 }
 
 // applyDaylightHysteresis keeps daylight gating stable near the terminator where

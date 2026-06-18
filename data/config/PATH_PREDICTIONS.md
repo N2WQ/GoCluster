@@ -172,9 +172,18 @@ For `PASS/REJECT PATH`, the closed fallback is filter-visible as `CLOSED`.
 still include closed fallback spots, while direct `CLOSED` filters target only
 closed fallback spots.
 
+The experimental native 160m fallback covers the gap where p50 evidence is
+insufficient and VOACAP has no usable current-hour result for 160m. It measures
+the exact fraction of the great-circle path darker than civil twilight
+(`native_160m_fallback.civil_twilight_degrees`, shipped as 6 degrees). It can
+emit only `LOW` or `UNLIKELY`, never `HIGH` or `MEDIUM`, and never replaces a
+sufficient p50 result. It is an opportunity proxy, not an SNR or probability
+model.
+
 Five-minute propagation logs keep final emit counters in `Path predictions
 (5m)`: `voacap_closed`, `voacap_aligned`, `voacap_sparse_upgrade`, and
-`voacap_open`. Beacon paths add `beacon_rx`, `beacon_rx_insufficient`,
+`voacap_open`, plus `native160_low` and `native160_unlikely` for native 160m
+fallback emissions. Beacon paths add `beacon_rx`, `beacon_rx_insufficient`,
 `beacon_rx_<reason>`, and `beacon_rx_voacap_*` final counters. When fallback
 work occurs, a separate `VOACAP fallback (5m)`
 line reports stage counters such as `queued`, `success`, `cache_hit`,
@@ -200,6 +209,10 @@ the diagnostic split for those candidates without changing glyph decisions:
 The `sparse_p50_diagnostic_max_observation_count` setting only defines the
 very-low-count diagnostic bucket; it does not relax p50 gates or start more
 VOACAP work.
+When native 160m fallback evaluates candidates, `Native 160m fallback (5m)`
+reports `candidates`, `emitted`, class splits, `not_dark`, `unknown`,
+`display_disabled`, and fixed darkness buckets `dark_ge_50`, `dark_ge_75`, and
+`dark_ge_90`.
 
 `SHOW PROP <call|prefix|grid> [band] [mode]` is the on-demand view of the same
 rolling VOACAP horizon. It starts from your saved `SET GRID`, applies your
@@ -228,6 +241,9 @@ The glyphs help you prioritize. If you see:
 - **REL-gated VOACAP normal glyph**: Bucket evidence was insufficient, but
   cached current-hour VOACAP mapped to an open class and passed the configured
   request-SNR REL gate. Sparse p50 can only upgrade by one class in this mode.
+- **Native 160m normal glyph**: Bucket evidence was insufficient on 160m, no
+  usable current-hour VOACAP result had precedence, and civil-dark path
+  fraction crossed the configured native 160m threshold.
 - **Space**: No prediction available - you're on your own. Could be good or bad.
 
 ### Understanding Limitations

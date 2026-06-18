@@ -131,7 +131,8 @@ the receiver-diversity gate in enforce evaluation; `low_weight`
 maps to the decayed effective weight floor. These aggregate lines are written
 to `logging.propagation.dir`. VOACAP fallback outcomes are counted separately
 as `voacap_closed`, `voacap_aligned`, `voacap_sparse_upgrade`, and
-`voacap_open`. Beacon paths also emit additive `beacon_rx`,
+`voacap_open`. Native 160m darkness fallback emissions are counted as
+`native160_low` and `native160_unlikely`. Beacon paths also emit additive `beacon_rx`,
 `beacon_rx_insufficient`, `beacon_rx_*` reason counters, and
 `beacon_rx_voacap_*` fallback counters when the spot is marked `IsBeacon`.
 When the fallback is active, a separate `VOACAP fallback (5m)` line reports
@@ -163,6 +164,11 @@ glyph decisions: `no_p50`, `very_low_count`, `beacon_rx`, `non_beacon`,
 `sparse_p50_diagnostic_max_observation_count` only controls the diagnostic
 very-low-count bucket and does not relax prediction gates or enqueue additional
 VOACAP work.
+When native 160m fallback evaluates insufficient 160m candidates, a separate
+`Native 160m fallback (5m)` line reports candidate, emitted, class, not-dark,
+unknown, display-disabled, and fixed civil-darkness threshold buckets. Native
+160m fallback is an opportunity proxy: it can emit only `LOW` or `UNLIKELY`,
+never replaces sufficient p50, and yields to usable current-hour VOACAP.
 
 When `voacap_fallback.enabled` is true, insufficient bucket results may start a
 delayed VOACAP lookup. The lookup is nonblocking in the telnet path. Cached

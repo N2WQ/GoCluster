@@ -19,6 +19,8 @@
       "output": "docs/code-maps/path-reliability-voacap.md",
       "packages": [
         "./pathreliability",
+        "./internal/solarpath",
+        "./solarweather",
         "./internal/voacap"
       ]
     }

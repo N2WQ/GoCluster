@@ -40,6 +40,9 @@ current source/tests.
   [ADR-0174](ADR-0174-beacon-rx-only-path-prediction.md).
 - Admission reuse between p50 path prediction and VOACAP sparse diagnostics is
   in [ADR-0176](ADR-0176-path-prediction-admission-reuse.md).
+- Native 160m solar-darkness fallback for insufficient p50 and unavailable
+  VOACAP coverage is in
+  [ADR-0194](ADR-0194-native-160m-solar-darkness-fallback.md).
 
 ## Active VOACAP Chain
 

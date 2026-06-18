@@ -50,6 +50,16 @@ glyph_symbols:
   insufficient: " "
   closed: "#"
 
+# Experimental native 160m fallback. This does not predict SNR; it only fills
+# insufficient 160m p50 paths with conservative LOW/UNLIKELY glyphs when enough
+# of the great-circle path is darker than civil twilight.
+native_160m_fallback:
+  enabled: true
+  display_enabled: true
+  civil_twilight_degrees: 6
+  unlikely_min_civil_dark_fraction: 0.50
+  low_min_civil_dark_fraction: 0.75
+
 # Optional VOACAP fallback. When enabled, it can replace insufficient bucket
 # predictions only with a closed glyph or a sparse-p50 glyph whose class agrees
 # with the cached current-hour VOACAP forecast. Runtime VOACAP forecasts are
