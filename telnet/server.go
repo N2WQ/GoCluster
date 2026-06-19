@@ -198,6 +198,8 @@ type Server struct {
 	echoMode                            string                                     // Input echo policy ("server", "local", "off")
 	clientBufferSize                    int                                        // Per-client spot channel capacity
 	controlQueueSize                    int                                        // Per-client control queue capacity
+	autoReadPauseMinRows                int                                        // Rendered command rows that trigger temporary spot suppression
+	autoReadPauseDuration               time.Duration                              // Duration of temporary spot suppression after long command output
 	bulletinDedupe                      *bulletinDedupeCache                       // Bounded duplicate suppression for WWV/WCY/announcements
 	readIdleTimeout                     time.Duration                              // Read deadline for logged-in sessions (timeouts do not disconnect)
 	loginTimeout                        time.Duration                              // Pre-login timeout before disconnect
@@ -373,6 +375,9 @@ type Client struct {
 	controlChan             chan controlMessage    // Buffered channel for control/bulletin delivery
 	done                    chan struct{}          // Closed to stop writer and prevent new enqueues
 	closeOnce               sync.Once              // Ensures close logic runs once
+	readPauseUntilUnixNano  atomic.Int64           // Auto read-pause deadline; checked lazily, no timer/goroutine
+	readPauseDiscardBefore  atomic.Int64           // Drop queued spot envelopes at/before this enqueue timestamp
+	readPauseSuppressed     atomic.Uint64          // Spots suppressed by the current or most recent read pause
 	echoInput               bool                   // True when we should echo typed characters back to the client
 	dialect                 DialectName            // Active command dialect for filter commands
 	grid                    string                 // User grid (4+ chars) for path reliability
@@ -1855,6 +1860,8 @@ const (
 	defaultControlQueueSize       = 32
 	defaultWorkerQueueSize        = 128
 	defaultSendDeadline           = 2 * time.Second
+	maxAutoReadPauseDuration      = 5 * time.Minute
+	maxAutoReadPauseRows          = 500
 	defaultRejectWorkers          = 2
 	defaultRejectQueueSize        = 1024
 	defaultRejectWriteDeadline    = 500 * time.Millisecond
@@ -1936,6 +1943,8 @@ type ServerOptions struct {
 	WorkerQueue               int
 	ClientBuffer              int
 	ControlQueue              int
+	AutoReadPauseMinRows      int
+	AutoReadPauseDuration     time.Duration
 	BulletinDedupeWindow      time.Duration
 	BulletinDedupeMaxEntries  int
 	BroadcastBatchInterval    time.Duration
@@ -2026,6 +2035,8 @@ func NewServer(opts ServerOptions, processor *commands.Processor) *Server {
 		keepaliveInterval:     time.Duration(config.KeepaliveSeconds) * time.Second,
 		clientBufferSize:      config.ClientBuffer,
 		controlQueueSize:      config.ControlQueue,
+		autoReadPauseMinRows:  config.AutoReadPauseMinRows,
+		autoReadPauseDuration: config.AutoReadPauseDuration,
 		bulletinDedupe:        newBulletinDedupeCache(config.BulletinDedupeWindow, config.BulletinDedupeMaxEntries),
 		handshakeMode:         config.HandshakeMode,
 		transport:             config.Transport,
@@ -2122,6 +2133,18 @@ func normalizeServerOptions(opts ServerOptions) ServerOptions {
 	}
 	if config.ControlQueue <= 0 {
 		config.ControlQueue = defaultControlQueueSize
+	}
+	if config.AutoReadPauseMinRows < 0 {
+		config.AutoReadPauseMinRows = 0
+	}
+	if config.AutoReadPauseMinRows > maxAutoReadPauseRows {
+		config.AutoReadPauseMinRows = maxAutoReadPauseRows
+	}
+	if config.AutoReadPauseDuration < 0 {
+		config.AutoReadPauseDuration = 0
+	}
+	if config.AutoReadPauseDuration > maxAutoReadPauseDuration {
+		config.AutoReadPauseDuration = maxAutoReadPauseDuration
 	}
 	if config.BroadcastBatchInterval <= 0 && !config.BroadcastBatchIntervalSet {
 		config.BroadcastBatchInterval = defaultBroadcastBatchInterval
@@ -3844,10 +3867,19 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 			continue
 		}
 
+		if resp, handled := s.handleReadPauseCommand(client, line); handled {
+			if resp != "" {
+				if !s.sendCommandResponse(client, resp, "read pause command response") {
+					return
+				}
+			}
+			continue
+		}
+
 		// Dialect selection is handled before filter commands.
 		if resp, handled := s.handleDialectCommand(client, line); handled {
 			if resp != "" {
-				if !s.sendClientMessage(client, resp, "dialect command response") {
+				if !s.sendCommandResponse(client, resp, "dialect command response") {
 					return
 				}
 			}
@@ -3856,7 +3888,7 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 
 		if resp, handled := s.handlePathSettingsCommand(client, line); handled {
 			if resp != "" {
-				if !s.sendClientMessage(client, resp, "path command response") {
+				if !s.sendCommandResponse(client, resp, "path command response") {
 					return
 				}
 			}
@@ -3865,7 +3897,7 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 
 		if resp, handled := s.handleDedupeCommand(client, line); handled {
 			if resp != "" {
-				if !s.sendClientMessage(client, resp, "dedupe command response") {
+				if !s.sendCommandResponse(client, resp, "dedupe command response") {
 					return
 				}
 			}
@@ -3874,7 +3906,7 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 
 		if resp, handled := s.handleDiagCommand(client, line); handled {
 			if resp != "" {
-				if !s.sendClientMessage(client, resp, "diag command response") {
+				if !s.sendCommandResponse(client, resp, "diag command response") {
 					return
 				}
 			}
@@ -3883,7 +3915,7 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 
 		if resp, handled := s.handleSolarCommand(client, line); handled {
 			if resp != "" {
-				if !s.sendClientMessage(client, resp, "solar command response") {
+				if !s.sendCommandResponse(client, resp, "solar command response") {
 					return
 				}
 			}
@@ -3892,7 +3924,7 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 
 		if resp, handled := s.handleShowPropCommand(client, line); handled {
 			if resp != "" {
-				if !s.sendClientMessage(client, resp, "show prop command response") {
+				if !s.sendCommandResponse(client, resp, "show prop command response") {
 					return
 				}
 			}
@@ -3902,7 +3934,7 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 		// Check for filter commands under the active dialect.
 		if resp, handled := s.filterEngine.Handle(client, line); handled {
 			if resp != "" {
-				if !s.sendClientMessage(client, resp, "filter command response") {
+				if !s.sendCommandResponse(client, resp, "filter command response") {
 					return
 				}
 			}
@@ -3948,7 +3980,7 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 
 		// Send response
 		if response != "" {
-			if !s.sendClientMessage(client, response, "command response") {
+			if !s.sendCommandResponse(client, response, "command response") {
 				return
 			}
 		}
@@ -5450,6 +5482,159 @@ func normalizeWarningLine(line string) string {
 	return trimmed + "\n"
 }
 
+func renderedOutputRows(message string) int {
+	if message == "" {
+		return 0
+	}
+	normalized := strings.ReplaceAll(message, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+	normalized = strings.TrimSuffix(normalized, "\n")
+	if normalized == "" {
+		return 0
+	}
+	return strings.Count(normalized, "\n") + 1
+}
+
+func appendReadPauseFooter(message string, footer string) string {
+	if strings.TrimSpace(footer) == "" {
+		return message
+	}
+	if message == "" {
+		return footer
+	}
+	if strings.HasSuffix(message, "\n") {
+		return message + footer
+	}
+	return message + "\n" + footer
+}
+
+func durationCeilSeconds(d time.Duration) int {
+	if d <= 0 {
+		return 0
+	}
+	return int((d + time.Second - 1) / time.Second)
+}
+
+func (s *Server) autoReadPauseEnabled() bool {
+	return s != nil && s.autoReadPauseMinRows > 0 && s.autoReadPauseDuration > 0
+}
+
+func (s *Server) maybeApplyAutoReadPause(client *Client, message string) string {
+	if !s.autoReadPauseEnabled() || client == nil {
+		return message
+	}
+	rows := renderedOutputRows(message)
+	if rows < s.autoReadPauseMinRows {
+		return message
+	}
+	duration := s.autoReadPauseDuration
+	client.startAutoReadPause(s.now(), duration)
+	footer := fmt.Sprintf(
+		"Live spots paused for %ds after %d output rows. Type RESUME to resume now.\nMissed spots are not replayed.\n",
+		durationCeilSeconds(duration),
+		rows,
+	)
+	return appendReadPauseFooter(message, footer)
+}
+
+func (s *Server) sendCommandResponse(client *Client, message string, purpose string) bool {
+	if message == "" {
+		return true
+	}
+	return s.sendClientMessage(client, s.maybeApplyAutoReadPause(client, message), purpose)
+}
+
+func (s *Server) handleReadPauseCommand(client *Client, line string) (string, bool) {
+	upper := strutil.NormalizeUpper(line)
+	now := s.now()
+	switch upper {
+	case "RESUME":
+		active, suppressed := client.resumeReadPause(now)
+		if active {
+			return fmt.Sprintf("Live spots resumed. Suppressed spots: %d.\n", suppressed), true
+		}
+		if suppressed > 0 {
+			return fmt.Sprintf("Live spots were not paused. Suppressed spots in last pause: %d.\n", suppressed), true
+		}
+		return "Live spots were not paused.\n", true
+	case "SHOW HOLD":
+		active, remaining, suppressed := client.readPauseStatus(now)
+		if active {
+			return fmt.Sprintf("Live spots auto-paused for %ds more. Suppressed spots: %d.\n", durationCeilSeconds(remaining), suppressed), true
+		}
+		if suppressed > 0 {
+			return fmt.Sprintf("Live spots are not paused. Suppressed spots in last pause: %d.\n", suppressed), true
+		}
+		return "Live spots are not paused.\n", true
+	default:
+		return "", false
+	}
+}
+
+func (c *Client) startAutoReadPause(now time.Time, duration time.Duration) {
+	if c == nil || duration <= 0 {
+		return
+	}
+	now = now.UTC()
+	nowNanos := now.UnixNano()
+	if c.readPauseUntilUnixNano.Load() <= nowNanos {
+		c.readPauseSuppressed.Store(0)
+	}
+	until := now.Add(duration).UnixNano()
+	c.readPauseUntilUnixNano.Store(until)
+	c.readPauseDiscardBefore.Store(until)
+}
+
+func (c *Client) readPauseStatus(now time.Time) (active bool, remaining time.Duration, suppressed uint64) {
+	if c == nil {
+		return false, 0, 0
+	}
+	now = now.UTC()
+	until := c.readPauseUntilUnixNano.Load()
+	if until > now.UnixNano() {
+		remaining = time.Unix(0, until).UTC().Sub(now)
+		active = remaining > 0
+	}
+	return active, remaining, c.readPauseSuppressed.Load()
+}
+
+func (c *Client) resumeReadPause(now time.Time) (active bool, suppressed uint64) {
+	if c == nil {
+		return false, 0
+	}
+	now = now.UTC()
+	nowNanos := now.UnixNano()
+	previousUntil := c.readPauseUntilUnixNano.Swap(0)
+	c.readPauseDiscardBefore.Store(nowNanos)
+	return previousUntil > nowNanos, c.readPauseSuppressed.Swap(0)
+}
+
+func (c *Client) suppressSpotForReadPause(env *spotEnvelope, now time.Time) bool {
+	if c == nil {
+		return false
+	}
+	now = now.UTC()
+	nowNanos := now.UnixNano()
+	if until := c.readPauseUntilUnixNano.Load(); until > nowNanos {
+		c.readPauseSuppressed.Add(1)
+		return true
+	}
+
+	cutoff := c.readPauseDiscardBefore.Load()
+	if cutoff <= 0 {
+		return false
+	}
+	enqueueNanos := nowNanos
+	if env != nil && !env.enqueueAt.IsZero() {
+		enqueueNanos = env.enqueueAt.UTC().UnixNano()
+	}
+	if enqueueNanos <= cutoff {
+		c.readPauseSuppressed.Add(1)
+		return true
+	}
+	return false
+}
+
 // writerLoop serializes all outbound traffic to the client and enforces
 // control-before-spot priority. It micro-batches writes to reduce flush churn
 // while preserving deterministic ordering and close-after-control semantics.
@@ -5485,6 +5670,13 @@ func (c *Client) writerLoop() {
 
 	appendSpot := func(env *spotEnvelope) {
 		if env == nil || env.spot == nil {
+			return
+		}
+		now := time.Now().UTC()
+		if c.server != nil {
+			now = c.server.now()
+		}
+		if c.suppressSpotForReadPause(env, now) {
 			return
 		}
 		formatted := env.spot.FormatDXCluster() + "\n"
@@ -5706,10 +5898,20 @@ func (c *Client) enqueueSpot(env *spotEnvelope) {
 	if c == nil || env == nil || env.spot == nil {
 		return
 	}
+	now := time.Now().UTC()
+	if c.server != nil {
+		now = c.server.now()
+	}
+	if env.enqueueAt.IsZero() {
+		env.enqueueAt = now
+	}
 	select {
 	case <-c.done:
 		return
 	default:
+	}
+	if c.suppressSpotForReadPause(env, now) {
+		return
 	}
 	dropped := false
 	select {
@@ -5733,7 +5935,7 @@ func (c *Client) enqueueSpot(env *spotEnvelope) {
 		if minAttempts <= 0 {
 			minAttempts = defaultDropExtremeMinAttempts
 		}
-		attempts, drops := c.dropWindow.record(time.Now().UTC(), dropped)
+		attempts, drops := c.dropWindow.record(now, dropped)
 		if attempts > 0 && attempts >= uint64(minAttempts) {
 			rate := float64(drops) / float64(attempts)
 			if rate >= c.server.dropExtremeRate {

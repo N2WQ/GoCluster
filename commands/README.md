@@ -44,6 +44,8 @@ The operator-facing commands handled here are:
 - `SHOW BUILD`
 - `SHOW OWN`
 - `WHOSPOTSME [band]`
+- `SHOW HOLD`
+- `RESUME`
 - `SHOW DEDUPE`
 - `SET DEDUPE`
 - `SET DIAG`
@@ -55,9 +57,9 @@ The operator-facing commands handled here are:
 - `DIALECT`
 - `BYE`
 
-Filter mutation and `SHOW PROP` execution are handled in the telnet layer.
-This package documents those commands in HELP, but the parser for `PASS`,
-`REJECT`, `SHOW FILTER`, `SHOW PROP`, and the `cc` aliases lives under
+Filter mutation, `SHOW PROP` execution, and read-pause state are handled in the telnet layer.
+This package documents those commands in HELP, but the parsers for `PASS`,
+`REJECT`, `SHOW FILTER`, `SHOW PROP`, `SHOW HOLD`, `RESUME`, and the `cc` aliases live under
 [`../telnet`](../telnet).
 `SHOW PROP` HELP should stay aligned with the telnet formatter: the command
 shows only rows whose `REL` prediction is `HIGH`, `MEDIUM`, or `LOW`.

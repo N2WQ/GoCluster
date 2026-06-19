@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `8e572740cefb9e61`
+- Source fingerprint: `6d9c8bfef9d2660a`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -15,7 +15,7 @@
 | `dxcluster/internal/cluster` | `internal/cluster` | 25 | 25 |
 | `dxcluster/peer` | `peer` | 20 | 20 |
 | `dxcluster/spot` | `spot` | 32 | 23 |
-| `dxcluster/telnet` | `telnet` | 8 | 23 |
+| `dxcluster/telnet` | `telnet` | 8 | 24 |
 
 ## In-Scope Package Edges
 
@@ -282,6 +282,7 @@ Test files:
 - `telnet/latency_test.go`
 - `telnet/path_settings_test.go`
 - `telnet/prelogin_gate_test.go`
+- `telnet/read_pause_test.go`
 - `telnet/readline_test.go`
 - `telnet/server_broadcast_worker_test.go`
 - `telnet/server_filter_test.go`
@@ -300,7 +301,10 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
-| [ADR-0194](docs/decisions/ADR-0194-native-160m-solar-darkness-fallback.md) | Accepted | 2026-06-18 | pathreliability, solarweather, telnet, config, operations, experiments | `area:telnet, path:telnet` |
+| [ADR-0198](docs/decisions/ADR-0198-160m-merge-readiness-cleanup.md) | Accepted | 2026-06-19 | workflow, docs, tests, code maps, pathreliability, custom_scp | `path:internal/cluster` |
+| [ADR-0197](docs/decisions/ADR-0197-native-160m-closed-solar-proxy.md) | Accepted | 2026-06-19 | pathreliability, telnet, config, operations, supportability, experiments | `area:telnet, path:telnet` |
+| [ADR-0196](docs/decisions/ADR-0196-native-160m-solar-darkness-fallback.md) | Superseded | 2026-06-18 | pathreliability, solarweather, telnet, config, operations, experiments | `area:telnet, path:telnet` |
+| [ADR-0195](docs/decisions/ADR-0195-telnet-auto-read-pause.md) | Accepted | 2026-06-18 | telnet, commands, config, queues, supportability | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0191](docs/decisions/ADR-0191-voacap-cache-overview-counters.md) | Accepted | 2026-06-17 | ui/tview-v2, stats, voacap, pathreliability, operations | `path:internal/cluster` |
 | [ADR-0190](docs/decisions/ADR-0190-voacap-ssn-overview-visibility.md) | Accepted | 2026-06-17 | ui/tview-v2, stats, voacap, pathreliability, operations | `path:internal/cluster` |
 | [ADR-0189](docs/decisions/ADR-0189-tview-v2-pipeline-console-simplification.md) | Accepted | 2026-06-17 | ui/tview-v2, stats, operations, supportability | `path:internal/cluster` |

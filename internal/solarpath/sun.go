@@ -1,7 +1,7 @@
 // File role: Owns subsolar point and ECEF sun-vector calculation.
 // Crawler notes: Used by shared solar exposure math, R/G gates, and native
 // 160m darkness fallback.
-// Related docs: docs/decisions/ADR-0194-native-160m-solar-darkness-fallback.md.
+// Related docs: docs/decisions/ADR-0196-native-160m-solar-darkness-fallback.md.
 package solarpath
 
 import (

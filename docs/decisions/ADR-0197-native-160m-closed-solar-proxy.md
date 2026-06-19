@@ -1,4 +1,4 @@
-# ADR-0195: Native 160m Closed Solar Proxy
+# ADR-0197: Native 160m Closed Solar Proxy
 
 - Status: Accepted
 - Date: 2026-06-19
@@ -6,7 +6,7 @@
 
 ## Context
 
-ADR-0194 added native 160m solar-darkness fallback only for the gap where p50
+ADR-0196 added native 160m solar-darkness fallback only for the gap where p50
 evidence is insufficient and VOACAP has no usable current-hour result. The
 first fallback emitted only `LOW` or `UNLIKELY`, which left daylit or
 low-darkness 160m paths indistinguishable from ordinary blank insufficiency.
@@ -86,4 +86,4 @@ cards, and generated code-map refresh.
 - Related tests: `pathreliability/native160_fallback_test.go`; `pathreliability/config_test.go`; `telnet/server_prediction_stats_test.go`; `telnet/diag_command_test.go`; `internal/propreport/report_test.go`
 - Related docs: `README.md`; `data/config/PATH_PREDICTIONS.md`; `pathreliability/README.md`; `docs/OPERATOR_GUIDE.md`; `customgpt/support-cards/path-reliability.md`
 - Related TSRs: -
-- Supersedes / superseded by: Supersedes ADR-0194
+- Supersedes / superseded by: Supersedes ADR-0196

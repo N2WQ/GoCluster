@@ -42,9 +42,9 @@ current source/tests.
   in [ADR-0176](ADR-0176-path-prediction-admission-reuse.md).
 - Native 160m solar-darkness fallback for insufficient p50 and unavailable
   VOACAP coverage is currently in
-  [ADR-0195](ADR-0195-native-160m-closed-solar-proxy.md), which supersedes
+  [ADR-0197](ADR-0197-native-160m-closed-solar-proxy.md), which supersedes
   the LOW/UNLIKELY-only experiment contract in
-  [ADR-0194](ADR-0194-native-160m-solar-darkness-fallback.md).
+  [ADR-0196](ADR-0196-native-160m-solar-darkness-fallback.md).
 
 ## Active VOACAP Chain
 

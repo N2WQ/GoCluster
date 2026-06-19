@@ -41,6 +41,11 @@ correct.
   `time.Now().UTC()` and returns before mutation when `seenAt` is stale.
 - The failing tests used April 11-12, 2026 observations with 30-day horizons;
   on 2026-05-23 those observations are older than the active horizon.
+- 2026-06-19 recurrence: `go test ./internal/cluster -run
+  TestFormatRecentSupportByBandLinesIncludesCustomSCPStaticCalls -count=1 -v`
+  reproduced the same fixture-drift class in the dashboard support-summary
+  test. The fixture used fixed April 2026 observations with a 60-day horizon;
+  those observations aged out before Custom SCP retained them.
 
 ## Root cause or best current explanation
 The tests used absolute dates for data that was meant to be fresh relative to

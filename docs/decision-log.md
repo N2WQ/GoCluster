@@ -23,8 +23,11 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Reserved Placeholder | Unused | - | index hygiene | - | - | No ADR file; first real ADR is `docs/decisions/ADR-0002-ui-v2-render-pipeline.md` |
-| ADR-0195 | Native 160m Closed Solar Proxy | Accepted | 2026-06-19 | pathreliability, telnet, config, operations, supportability, experiments | ADR-0194 LOW/UNLIKELY-only native 160m contract | - | `docs/decisions/ADR-0195-native-160m-closed-solar-proxy.md` |
-| ADR-0194 | Native 160m Solar Darkness Fallback | Superseded | 2026-06-18 | pathreliability, solarweather, telnet, config, operations, experiments | - | ADR-0195 | `docs/decisions/ADR-0194-native-160m-solar-darkness-fallback.md` |
+| ADR-0198 | 160m Merge Readiness Cleanup | Accepted | 2026-06-19 | workflow, docs, tests, code maps, pathreliability, custom_scp | - | - | `docs/decisions/ADR-0198-160m-merge-readiness-cleanup.md` |
+| ADR-0197 | Native 160m Closed Solar Proxy | Accepted | 2026-06-19 | pathreliability, telnet, config, operations, supportability, experiments | ADR-0196 LOW/UNLIKELY-only native 160m contract | - | `docs/decisions/ADR-0197-native-160m-closed-solar-proxy.md` |
+| ADR-0196 | Native 160m Solar Darkness Fallback | Superseded | 2026-06-18 | pathreliability, solarweather, telnet, config, operations, experiments | - | ADR-0197 | `docs/decisions/ADR-0196-native-160m-solar-darkness-fallback.md` |
+| ADR-0195 | Telnet Auto Read Pause | Accepted | 2026-06-18 | telnet, commands, config, queues, supportability | - | - | `docs/decisions/ADR-0195-telnet-auto-read-pause.md` |
+| ADR-0194 | LLM Workflow Verification And Claim Evidence | Accepted | 2026-06-18 | workflow, Codex, validation, agent-memory | - | - | `docs/decisions/ADR-0194-llm-workflow-verification-and-claim-evidence.md` |
 | ADR-0193 | TSR RCA Summary And Checker Contract | Accepted | 2026-06-17 | decision-memory, troubleshooting, supportability, workflow | - | - | `docs/decisions/ADR-0193-tsr-rca-summary-checker.md` |
 | ADR-0192 | ADR Reader Guide And Current Contract Map | Accepted | 2026-06-17 | docs, ADR, supportability, pathreliability, voacap | - | - | `docs/decisions/ADR-0192-adr-reader-guide-and-current-contract-map.md` |
 | ADR-0191 | VOACAP Cache Overview Counters | Accepted | 2026-06-17 | ui/tview-v2, stats, voacap, pathreliability, operations | ADR-0190 operator diagnostics visibility | - | `docs/decisions/ADR-0191-voacap-cache-overview-counters.md` |

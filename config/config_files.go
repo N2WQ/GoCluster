@@ -225,6 +225,8 @@ var runtimeAllowZeroSettings = map[string]struct{}{
 	"telnet.broadcast_batch_interval_ms":                                       {},
 	"telnet.keepalive_seconds":                                                 {},
 	"telnet.admission_log_sample_rate":                                         {},
+	"telnet.auto_read_pause_min_rows":                                          {},
+	"telnet.auto_read_pause_seconds":                                           {},
 	"telnet.bulletin_dedupe_window_seconds":                                    {},
 	"logging.drop_dedupe_window_seconds":                                       {},
 	"logging.dropped_calls.dedupe_window_seconds":                              {},

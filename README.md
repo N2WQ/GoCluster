@@ -45,6 +45,8 @@ build, release, and service details are later in this file and in
   `SHOW PROP <call|prefix|grid> [band] [mode]`.
 - To confirm the baseline call used for own-call features, use `SHOW OWN`.
 - To see recent spotter countries for your baseline call, use `WHOSPOTSME [band]`.
+- After long command output, live spots pause briefly; use `SHOW HOLD` or
+  `RESUME` to inspect or end that pause.
 - To receive periodic solar summaries, use `SET SOLAR 15|30|60|OFF`.
 
 New DX spots are materialized and displayed without trailing numeric SSIDs on
@@ -119,6 +121,13 @@ class for the merged path. If all cached rows are `UNLIKELY` or `CLOSED`, the
 command reports that there are no `HIGH`/`MEDIUM`/`LOW` rows in the current
 forecast window.
 
+Long command responses also append a short read-pause footer:
+
+```text
+Live spots paused for 30s after 14 output rows. Type RESUME to resume now.
+Missed spots are not replayed.
+```
+
 ### Filter Examples
 
 Use comma-separated lists for multiple values. `PASS` adds to the allowlist for
@@ -173,6 +182,8 @@ SHOW PROP - Show propagation outlook.
 SHOW BUILD - Show binary build metadata.
 SHOW OWN - Show own-call identity.
 WHOSPOTSME - Show recent spotter countries.
+SHOW HOLD - Show read-pause status.
+RESUME - End automatic read pause.
 SHOW DEDUPE - Show dedupe policy.
 SET DEDUPE - Select dedupe policy.
 SET DIAG - Select diagnostic comments.

@@ -10,6 +10,9 @@ only on the abbreviated baseline in `AGENTS.md`.
 - Use the full suite for the selected validation lane before calling a
   Non-trivial task complete.
 - Report commands and results honestly.
+- Ground validation, performance, and science/model claims in the command
+  output, benchmark/profile data, runtime captures, source inspection, or
+  decision records actually inspected in the current session.
 
 ## Baseline environment
 Expected Go toolchain:
@@ -110,6 +113,8 @@ Minimum expected sequence:
 Add only the documentation checks that apply:
 - workflow-drift audit for workflow contract, runbook, template, rubric, review
   checklist, repo-managed skill, or workflow-script documentation changes
+- fresh verifier and claim-evidence text checks when workflow docs change those
+  requirements
 - support-agent routing review when operator-support topics or support-routing
   docs changed
 - `scripts/check-troubleshooting-records.ps1` for troubleshooting record,

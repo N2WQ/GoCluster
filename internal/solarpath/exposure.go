@@ -1,7 +1,7 @@
 // File role: Owns exact great-circle solar exposure calculations.
 // Crawler notes: Start here for daylight and civil-darkness fractions used by
 // solarweather gates and native 160m fallback.
-// Related docs: docs/decisions/ADR-0194-native-160m-solar-darkness-fallback.md.
+// Related docs: docs/decisions/ADR-0196-native-160m-solar-darkness-fallback.md.
 package solarpath
 
 import "math"

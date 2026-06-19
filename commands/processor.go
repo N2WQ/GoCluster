@@ -425,6 +425,26 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 	)
 	add("WHOSPOTSME", "WHOSPOTSME - Show recent spotter countries.", whoSpotsMeLines)
 
+	showHoldLines := helpEntryLines(
+		"SHOW HOLD - Show read-pause status.",
+		[]string{"SHOW HOLD"},
+		nil,
+		[]string{
+			"Shows remaining automatic pause time and suppressed spot count.",
+		},
+	)
+	add("SHOW HOLD", "SHOW HOLD - Show read-pause status.", showHoldLines)
+
+	resumeLines := helpEntryLines(
+		"RESUME - End the automatic read pause.",
+		[]string{"RESUME"},
+		nil,
+		[]string{
+			"Live spots resume immediately; missed spots are not replayed.",
+		},
+	)
+	add("RESUME", "RESUME - End automatic read pause.", resumeLines)
+
 	showDedupeLines := helpEntryLines(
 		"SHOW DEDUPE - Show your broadcast dedupe policy.",
 		[]string{"SHOW DEDUPE"},
@@ -687,6 +707,8 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"SHOW BUILD",
 			"SHOW OWN",
 			"WHOSPOTSME",
+			"SHOW HOLD",
+			"RESUME",
 			"SHOW DEDUPE",
 			"SET DEDUPE",
 			"SET DIAG",
@@ -820,6 +842,8 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"SHOW BUILD",
 			"SHOW OWN",
 			"WHOSPOTSME",
+			"SHOW HOLD",
+			"RESUME",
 			"SHOW DEDUPE",
 			"SET DEDUPE",
 			"SET DIAG",
@@ -866,6 +890,10 @@ func normalizeHelpTopic(dialect string, topic string) string {
 		return "SHOW DXCC"
 	case strings.HasPrefix(upper, "WHOSPOTSME"):
 		return "WHOSPOTSME"
+	case strings.HasPrefix(upper, "SHOW HOLD"):
+		return "SHOW HOLD"
+	case strings.HasPrefix(upper, "RESUME"):
+		return "RESUME"
 	case strings.HasPrefix(upper, "SHOW MYDX"):
 		return "SHOW MYDX"
 	case strings.HasPrefix(upper, "SHOW DEDUPE"):

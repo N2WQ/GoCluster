@@ -293,7 +293,7 @@ func phase1RunArchiveSolarComparison(opts phase1ArchiveCompareOptions) (phase1Ar
 
 		sun := SunVectorECEF(rec.At)
 		analytic := phase1AnalyticExposure(deVec, dxVec, sun, horizonCfg, civilCfg)
-		sample9 := phase1SampleExposure(deVec, dxVec, sun, 9)
+		sample9 := phase1Sample9Exposure(deVec, dxVec, sun)
 		stats.observe(analytic, sample9)
 		if analytic.Unknown {
 			report.Unknown++
@@ -586,12 +586,8 @@ func phase1NormalizeBand(label string) string {
 	}{
 		{old: "meters", new: "m"},
 		{old: "meter", new: "m"},
-		{old: "metres", new: "m"},
-		{old: "metre", new: "m"},
 		{old: "centimeters", new: "cm"},
 		{old: "centimeter", new: "cm"},
-		{old: "centimetres", new: "cm"},
-		{old: "centimetre", new: "cm"},
 	}
 	for _, replacement := range replacements {
 		cleaned = strings.ReplaceAll(cleaned, replacement.old, replacement.new)

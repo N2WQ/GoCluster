@@ -37,6 +37,13 @@ Missing required evidence is a workflow failure, not a style issue. If Codex
 cannot complete a required evidence marker from inspected workspace evidence,
 stop and report what is missing.
 
+Progress, implementation, validation, performance, and science/model claims must
+be grounded in current-session evidence. Before reporting a material claim,
+check whether it is backed by inspected source, command output, test results,
+benchmark/profile data, runtime captures, ADR/TSR records, or documented
+operator contracts. Label skipped, failed, stale, inferred, or unknown evidence
+instead of smoothing it into a success claim.
+
 ## IDE context discipline
 When using the Codex VS Code extension:
 - Prefer the user's open files as the primary context.
@@ -92,6 +99,23 @@ Minimum discovery:
 Ask product or semantic questions only after discoverable code facts have been
 checked. If a fact cannot be established from inspection, say
 `Unknown from inspected code` and name what should be inspected next.
+
+### Progress and claim evidence
+Before progress updates, implementation summaries, closeout claims, or
+performance/science/model conclusions, classify each material claim as one of:
+
+- confirmed by current-session source or documentation inspection
+- confirmed by current-session command output, tests, benchmark/profile data, or
+  runtime capture
+- inferred from inspected evidence, with the inference named
+- stale or memory-derived, with the source and staleness risk named
+- unknown, skipped, failed, or blocked
+
+Do not claim runtime improvement from code shape alone. Do not claim scientific
+or model correctness from plausible reasoning alone. Path, call-correction,
+VOACAP, p50, propagation, and operator-diagnostic claims need the relevant
+model assumption, evidence source, and remaining uncertainty stated when they
+affect behavior or conclusions.
 
 ### Scope adversarial review before approval
 Required before presenting the exact approval token for every Non-trivial Scope
@@ -375,6 +399,19 @@ Rules:
 - do not combine multiple uncertain changes into one slice
 - keep the first slice easy to verify
 
+### Anti-speculative implementation guard
+Implement only the approved behavior and the smallest support structure needed
+to make it correct, bounded, testable, and reviewable. Do not add unapproved
+abstractions, compatibility shims, fallback paths, feature flags, generic helper
+layers, broad cleanup, or "future-proof" hooks because they seem likely to help
+later.
+
+If a new abstraction, fallback, or compatibility path becomes necessary during a
+slice, stop and classify it as covered by the approved ledger, explicitly out of
+scope, or requiring a revised ledger. Hot-path and retained-state abstractions
+must satisfy the existing benchmark, profile, and bounded-state evidence rules
+before any improvement claim is made.
+
 ## Architecture Note
 Mandatory for every Non-trivial change before code.
 
@@ -428,6 +465,30 @@ Rules:
   artifact, script, CI, schema, protocol/runtime contract, or runtime-data
   changes, reclassify the validation lane and run the required code or mixed
   checks before closeout
+
+## Fresh verification pass
+Before final closeout for high-risk Non-trivial work, perform a fresh verifier
+pass after implementation and the ordinary Review Pass. High-risk work includes
+config/schema/protocol/parser changes, user-visible or operator-visible
+behavior, shared interfaces, retained state, concurrency/lifecycle, queues, hot
+paths, production-impacting fixes, and scientific/model behavior such as
+call-correction, path reliability, p50, propagation, or VOACAP semantics.
+
+Use an independent verifier only when the active environment and user
+authorization explicitly support parallel or delegated agent work. Otherwise,
+perform a fresh self-verification pass by resetting reviewer context and
+checking:
+
+- approved Scope Ledger items against the diff
+- contract, ADR/TSR, support-agent, and documentation impact
+- validation commands and outputs against the selected lane
+- benchmark/profile/runtime evidence against performance or science/model
+  claims
+- hidden speculative abstractions, fallbacks, or out-of-scope cleanup
+
+Report the verifier result in `REVIEW`, `SELF-AUDIT`, and `CLOSEOUT`. If the
+fresh verifier finds a material gap, fix it within approved scope, revise the
+Scope Ledger, or report the blocker instead of closing out.
 
 ## Performance evidence
 Required when behavior touches hot paths, fan-out, queueing, parsing, allocation pressure, timers, or lock contention.
@@ -498,6 +559,17 @@ Every Non-trivial task requires ADR handling:
 Use `decision-memory-audit` when available.
 
 Use `docs/decision-memory.md` for the detailed rules.
+
+## Agent lesson memory
+Use `docs/agent-lessons/README.md` for recurring model/workflow lessons that
+help future agents avoid repeated process mistakes. Agent lessons are not ADRs,
+TSRs, runtime contracts, validation proof, or support-agent answer sources by
+themselves. They must point back to the authoritative workflow, source, tests,
+ADR/TSR, or validation evidence they summarize.
+
+Only add or update agent lessons when the approved scope includes workflow or
+agent-memory maintenance. Runtime, protocol, config, operational, scientific,
+or troubleshooting decisions still require the normal ADR/TSR path.
 
 ## Completion requirements
 A Non-trivial task is not complete until:

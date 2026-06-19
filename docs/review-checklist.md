@@ -11,11 +11,29 @@ Purpose:
 - switch from implementer mode to reviewer mode
 - find hidden regressions, edge cases, and missing tests
 - verify that the diff matches the approved scope
+- verify that material progress, validation, performance, and science/model
+  claims match current evidence
 
 Required output:
 - findings first, ordered by severity
 - then confirmed fixes
 - then rerun of affected validations for the selected validation lane
+- then fresh verifier outcome when the task is high-risk
+
+## Fresh Verifier Pass
+For high-risk Non-trivial work, perform a fresh verifier pass after the Review
+Pass and before final closeout.
+
+Use an independent verifier only when the active environment and user
+authorization support delegated or parallel agent work. Otherwise, perform a
+fresh self-verification pass by resetting reviewer context and re-checking the
+approved scope, current diff, evidence, validation lane, ADR/TSR impact, and
+claim wording.
+
+The verifier pass must fail the closeout if implementation, validation,
+performance, scientific/model, or operator-facing claims are not supported by
+current-session source inspection, command output, tests, benchmark/profile
+data, runtime evidence, or decision records.
 
 Review focus:
 - correctness
@@ -33,6 +51,10 @@ Review focus:
 - backpressure, queue, drop, and disconnect semantics
 - memory/allocation risks
 - performance regressions
+- unsupported performance, latency, p99, memory, scientific, model, path,
+  VOACAP, p50, propagation, or call-correction claims
+- speculative abstractions, compatibility shims, fallback paths, feature flags,
+  broad cleanup, or future-proof hooks outside the approved scope
 - maintainability and readability
 - missing tests
 - documentation gaps
@@ -66,6 +88,8 @@ After the Review Pass, produce a Self-Audit with pass/fail for each category bel
 - Go comment intent audit
 - Concurrency, backpressure, and resource bounds
 - Leak-detection evidence
+- Fresh verification and claim evidence
+- Anti-speculative implementation guard
 - Verification and checker discipline
 - Documentation, decision memory, and traceability
 - Validation block completeness

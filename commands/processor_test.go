@@ -855,6 +855,8 @@ func TestHelpLineWidth(t *testing.T) {
 		p.ProcessCommandForClient("HELP SHOW BUILD", "N2WQ", "", nil, "go"),
 		p.ProcessCommandForClient("HELP SHOW OWN", "N2WQ", "", nil, "go"),
 		p.ProcessCommandForClient("HELP SHOW PROP", "N2WQ", "", nil, "go"),
+		p.ProcessCommandForClient("HELP SHOW HOLD", "N2WQ", "", nil, "go"),
+		p.ProcessCommandForClient("HELP RESUME", "N2WQ", "", nil, "go"),
 		p.ProcessCommandForClient("HELP SHOW/DX", "N2WQ", "", nil, "cc"),
 		p.ProcessCommandForClient("HELP SHOW/PROP", "N2WQ", "", nil, "cc"),
 		p.ProcessCommandForClient("HELP SET/FILTER", "N2WQ", "", nil, "cc"),
@@ -913,6 +915,16 @@ func TestHelpTopicGoDialect(t *testing.T) {
 	if !strings.Contains(resp, "Usage: WHOSPOTSME [band]") {
 		t.Fatalf("expected WHOSPOTSME usage, got %q", resp)
 	}
+
+	resp = p.ProcessCommandForClient("HELP SHOW HOLD", "N2WQ", "", nil, "go")
+	if !strings.Contains(resp, "Usage: SHOW HOLD") {
+		t.Fatalf("expected SHOW HOLD usage, got %q", resp)
+	}
+
+	resp = p.ProcessCommandForClient("HELP RESUME", "N2WQ", "", nil, "go")
+	if !strings.Contains(resp, "Usage: RESUME") {
+		t.Fatalf("expected RESUME usage, got %q", resp)
+	}
 }
 
 func TestHelpTopicCCDialect(t *testing.T) {
@@ -962,6 +974,16 @@ func TestHelpTopicCCDialect(t *testing.T) {
 	if !strings.Contains(resp, "Usage: WHOSPOTSME [band]") {
 		t.Fatalf("expected WHOSPOTSME usage in cc, got %q", resp)
 	}
+
+	resp = p.ProcessCommandForClient("HELP SHOW HOLD", "N2WQ", "", nil, "cc")
+	if !strings.Contains(resp, "Usage: SHOW HOLD") {
+		t.Fatalf("expected SHOW HOLD usage in cc, got %q", resp)
+	}
+
+	resp = p.ProcessCommandForClient("HELP RESUME", "N2WQ", "", nil, "cc")
+	if !strings.Contains(resp, "Usage: RESUME") {
+		t.Fatalf("expected RESUME usage in cc, got %q", resp)
+	}
 }
 
 func TestHelpEntriesGoDialect(t *testing.T) {
@@ -980,6 +1002,8 @@ func TestHelpEntriesGoDialect(t *testing.T) {
 		{"SHOW BUILD", []string{"SHOW BUILD - Show binary build metadata", "Usage: SHOW BUILD"}},
 		{"SHOW OWN", []string{"SHOW OWN - Show your login and baseline own call", "Usage: SHOW OWN"}},
 		{"WHOSPOTSME", []string{"WHOSPOTSME - Show recent spotter countries", "Usage: WHOSPOTSME [band]"}},
+		{"SHOW HOLD", []string{"SHOW HOLD - Show read-pause status", "Usage: SHOW HOLD"}},
+		{"RESUME", []string{"RESUME - End the automatic read pause", "Usage: RESUME"}},
 		{"SHOW DEDUPE", []string{"SHOW DEDUPE - Show your broadcast dedupe policy", "FAST = short window", "CQ zones"}},
 		{"SET DEDUPE", []string{"SET DEDUPE - Select broadcast dedupe policy", "FAST = short window", "CQ zones"}},
 		{"SET DIAG", []string{"SET DIAG - Select diagnostic comments", "Usage: SET DIAG <OFF|DEDUPE|SOURCE|CONF|PATH|MODE>"}},
@@ -1015,6 +1039,8 @@ func TestHelpEntriesCCDialect(t *testing.T) {
 		{"SHOW BUILD", []string{"SHOW BUILD - Show binary build metadata", "Usage: SHOW BUILD"}},
 		{"SHOW OWN", []string{"SHOW OWN - Show your login and baseline own call", "Usage: SHOW OWN"}},
 		{"WHOSPOTSME", []string{"WHOSPOTSME - Show recent spotter countries", "Usage: WHOSPOTSME [band]"}},
+		{"SHOW HOLD", []string{"SHOW HOLD - Show read-pause status", "Usage: SHOW HOLD"}},
+		{"RESUME", []string{"RESUME - End the automatic read pause", "Usage: RESUME"}},
 		{"SHOW DEDUPE", []string{"SHOW DEDUPE - Show your broadcast dedupe policy", "FAST = short window", "CQ zones"}},
 		{"SET DEDUPE", []string{"SET DEDUPE - Select broadcast dedupe policy", "FAST = short window", "CQ zones"}},
 		{"SET DIAG", []string{"SET DIAG - Select diagnostic comments", "Usage: SET DIAG <OFF|DEDUPE|SOURCE|CONF|PATH|MODE>"}},

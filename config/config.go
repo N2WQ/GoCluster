@@ -232,6 +232,12 @@ type TelnetConfig struct {
 	ClientBuffer     int    `yaml:"client_buffer_size"`
 	// ControlQueueSize bounds per-client control output (bulletins, prompts, keepalives).
 	ControlQueueSize int `yaml:"control_queue_size"`
+	// AutoReadPauseMinRows starts a short spot-suppression window after command output reaches this many rendered rows.
+	// Set to 0 to disable automatic read pause.
+	AutoReadPauseMinRows int `yaml:"auto_read_pause_min_rows"`
+	// AutoReadPauseSeconds controls how long live spot lines are suppressed after long command output.
+	// Set to 0 to disable automatic read pause.
+	AutoReadPauseSeconds int `yaml:"auto_read_pause_seconds"`
 	// BulletinDedupeWindowSeconds suppresses repeated WWV/WCY/announcement lines across all bulletin sources.
 	// Set to 0 to disable bulletin dedupe.
 	BulletinDedupeWindowSeconds int `yaml:"bulletin_dedupe_window_seconds"`
@@ -2650,6 +2656,18 @@ func normalizeTelnetConfig(cfg *Config, presence loadRawPresence) error {
 	if cfg.Telnet.ControlQueueSize <= 0 {
 		cfg.Telnet.ControlQueueSize = 32
 	}
+	if cfg.Telnet.AutoReadPauseMinRows < 0 {
+		return fmt.Errorf("invalid telnet.auto_read_pause_min_rows %d (must be >= 0)", cfg.Telnet.AutoReadPauseMinRows)
+	}
+	if cfg.Telnet.AutoReadPauseMinRows > 500 {
+		return fmt.Errorf("invalid telnet.auto_read_pause_min_rows %d (must be <= 500)", cfg.Telnet.AutoReadPauseMinRows)
+	}
+	if cfg.Telnet.AutoReadPauseSeconds < 0 {
+		return fmt.Errorf("invalid telnet.auto_read_pause_seconds %d (must be >= 0)", cfg.Telnet.AutoReadPauseSeconds)
+	}
+	if cfg.Telnet.AutoReadPauseSeconds > 300 {
+		return fmt.Errorf("invalid telnet.auto_read_pause_seconds %d (must be <= 300)", cfg.Telnet.AutoReadPauseSeconds)
+	}
 	if cfg.Telnet.BulletinDedupeWindowSeconds < 0 {
 		return fmt.Errorf("invalid telnet.bulletin_dedupe_window_seconds %d (must be >= 0)", cfg.Telnet.BulletinDedupeWindowSeconds)
 	}
@@ -3426,6 +3444,9 @@ func (c *Config) Print() {
 		c.Telnet.RejectWorkers,
 		c.Telnet.RejectQueueSize,
 		c.Telnet.RejectWriteDeadlineMS)
+	fmt.Printf("Telnet read pause: min_rows=%d seconds=%d\n",
+		c.Telnet.AutoReadPauseMinRows,
+		c.Telnet.AutoReadPauseSeconds)
 	fmt.Printf("Telnet bulletins: dedupe_window=%ds dedupe_max_entries=%d\n",
 		c.Telnet.BulletinDedupeWindowSeconds,
 		c.Telnet.BulletinDedupeMaxEntries)

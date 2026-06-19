@@ -185,7 +185,7 @@ func BenchmarkSolarWeatherDarknessAlternatives(b *testing.B) {
 		b.ReportAllocs()
 		var exposure phase1SolarExposure
 		for i := 0; i < b.N; i++ {
-			exposure = phase1SampleExposure(userVec, dxVec, sunVecs[i&1023], 9)
+			exposure = phase1Sample9Exposure(userVec, dxVec, sunVecs[i&1023])
 		}
 		phase1ExposureSink = exposure
 	})
@@ -195,7 +195,7 @@ func BenchmarkSolarWeatherDarknessAlternatives(b *testing.B) {
 		var exposure phase1SolarExposure
 		for i := 0; i < b.N; i++ {
 			idx := i & 1023
-			exposure = phase1SampleExposure(userVec, dxVec, SunVectorECEF(times[idx]), 9)
+			exposure = phase1Sample9Exposure(userVec, dxVec, SunVectorECEF(times[idx]))
 		}
 		phase1ExposureSink = exposure
 	})
@@ -239,7 +239,7 @@ func TestPhase1AnalyticVsSample9Corpus(t *testing.T) {
 		for _, now := range times {
 			sun := SunVectorECEF(now)
 			analytic := phase1AnalyticExposure(a, b, sun, cfgHorizon, cfgCivil)
-			sampled := phase1SampleExposure(a, b, sun, 9)
+			sampled := phase1Sample9Exposure(a, b, sun)
 			stats.observe(analytic, sampled)
 		}
 	}
@@ -398,10 +398,8 @@ func phase1AnalyticLitFraction(a, b, axis Vec3, threshold float64, cfg Config) (
 	return clamp(overlap/math.Abs(delta), 0, 1), false
 }
 
-func phase1SampleExposure(a, b, sun Vec3, samples int) phase1SolarExposure {
-	if samples < 2 {
-		samples = 2
-	}
+func phase1Sample9Exposure(a, b, sun Vec3) phase1SolarExposure {
+	const samples = 9
 	civilThreshold := -math.Sin(degToRad(6))
 	exposure := phase1SolarExposure{
 		MinElevationDeg: math.Inf(1),

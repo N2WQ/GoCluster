@@ -1,7 +1,7 @@
 // File role: Owns shared allocation-free vector helpers for solar path geometry.
 // Crawler notes: Start here for Vec3 math used by R/G daylight gates and native
 // 160m darkness fallback.
-// Related docs: docs/decisions/ADR-0194-native-160m-solar-darkness-fallback.md.
+// Related docs: docs/decisions/ADR-0196-native-160m-solar-darkness-fallback.md.
 package solarpath
 
 import "math"

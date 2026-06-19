@@ -1,8 +1,8 @@
 // File role: Owns native 160m solar-darkness fallback result construction.
 // Crawler notes: This fallback is conservative and never replaces sufficient
 // p50 or a usable current-hour VOACAP fallback result.
-// Related docs: docs/decisions/ADR-0194-native-160m-solar-darkness-fallback.md;
-// docs/decisions/ADR-0195-native-160m-closed-solar-proxy.md.
+// Related docs: docs/decisions/ADR-0196-native-160m-solar-darkness-fallback.md;
+// docs/decisions/ADR-0197-native-160m-closed-solar-proxy.md.
 package pathreliability
 
 import (
