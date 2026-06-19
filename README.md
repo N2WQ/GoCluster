@@ -530,6 +530,23 @@ At a high level, the cluster:
    closed VOACAP fallback and native 160m low-darkness fallback results use the
    separate `CLOSED` filter value
 
+How path tags are chosen:
+
+1. If there is enough recent observed path evidence, the cluster uses the
+   observed median SNR, also called p50.
+2. If p50 evidence is insufficient and VOACAP is usable for the request, the
+   cluster can use cached current-hour VOACAP when the band is covered and the
+   configured REL gate passes for open-path fallbacks. Closed VOACAP fallback
+   uses the closed SNR threshold and does not require REL.
+3. If p50 is insufficient, VOACAP has no usable current-hour result, and the
+   band is 160m, the native 160m fallback checks how much of the path is in
+   civil darkness and can emit only `CLOSED`, `LOW`, or `UNLIKELY`.
+4. Otherwise the tag stays blank, meaning `INSUFFICIENT`.
+
+VOACAP forecast work is keyed by the rounded EWMA SSN generation. The shipped
+config recomputes forecasts when the EWMA SSN changes by more than
+`voacap_fallback.recompute_delta_percent`, currently `12`.
+
 What the classes mean to an operator:
 
 | Display | PATH filter value | Operator meaning | If it looks wrong |

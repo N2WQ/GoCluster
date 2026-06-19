@@ -147,6 +147,24 @@ missing/unavailable cache cold-starts normal delay/queue behavior.
    use the average of both representatives so balanced weak/strong evidence
    reflects the typical middle.
 
+### How Path Tags Are Chosen
+
+The displayed tag follows a simple precedence order:
+
+1. **Enough observed evidence**: Use the observed median SNR, also called p50.
+2. **Not enough p50, but VOACAP is usable**: Use cached current-hour VOACAP
+   when the request is on a supported fallback band and the open-path REL gate
+   passes. Closed VOACAP fallback uses the closed SNR threshold and does not
+   need REL.
+3. **Not enough p50, no usable VOACAP, and 160m**: Use native 160m fallback,
+   which traces the path through civil darkness and can emit only `CLOSED`,
+   `LOW`, or `UNLIKELY`.
+4. **Everything else**: Leave the tag blank as insufficient data.
+
+VOACAP forecast work is keyed by the rounded EWMA SSN generation. The checked-in
+default recomputes forecasts when the EWMA SSN changes by more than
+`voacap_fallback.recompute_delta_percent`, currently `12`.
+
 If the selected bucket evidence is insufficient and the optional
 `voacap_fallback.enabled` setting is true, the cluster can start a delayed
 nonblocking VOACAP lookup for the same grid-center endpoints. A cached VOACAP
