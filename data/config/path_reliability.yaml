@@ -51,12 +51,14 @@ glyph_symbols:
   closed: "#"
 
 # Experimental native 160m fallback. This does not predict SNR; it only fills
-# insufficient 160m p50 paths with conservative LOW/UNLIKELY glyphs when enough
-# of the great-circle path is darker than civil twilight.
+# insufficient 160m p50 paths with conservative CLOSED/LOW/UNLIKELY proxy
+# glyphs when civil-dark path geometry crosses the configured thresholds.
 native_160m_fallback:
   enabled: true
   display_enabled: true
   civil_twilight_degrees: 6
+  # CLOSED is a solar-darkness proxy only; the blank middle band starts above this value.
+  closed_max_civil_dark_fraction: 0.25
   unlikely_min_civil_dark_fraction: 0.50
   low_min_civil_dark_fraction: 0.75
 

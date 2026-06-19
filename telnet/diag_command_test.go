@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"dxcluster/filter"
 	"dxcluster/pathreliability"
 	"dxcluster/spot"
 )
@@ -291,6 +292,31 @@ func TestDiagPathTagShowsVOACAPReliabilityGatedFallbacks(t *testing.T) {
 	}
 	if got := diagPathTag(openNoP50, true); got != "vop|-19r75h20s112" {
 		t.Fatalf("unexpected VOACAP no-p50 open path diagnostic: %q", got)
+	}
+}
+
+func TestDiagPathTagShowsNative160Closed(t *testing.T) {
+	closed := pathPrediction{
+		result: pathreliability.Result{
+			Source:                     pathreliability.SourceNative160,
+			Class:                      filter.PathClassClosed,
+			Native160CivilDarkFraction: 0.12,
+		},
+	}
+	if got := diagPathTag(closed, true); got != "n160c|d12" {
+		t.Fatalf("unexpected native 160 closed diagnostic: %q", got)
+	}
+
+	beaconClosed := pathPrediction{
+		result: pathreliability.Result{
+			Source:                     pathreliability.SourceNative160,
+			Class:                      filter.PathClassClosed,
+			BeaconRX:                   true,
+			Native160CivilDarkFraction: 0.05,
+		},
+	}
+	if got := diagPathTag(beaconClosed, true); got != "bn160c|d05" {
+		t.Fatalf("unexpected beacon native 160 closed diagnostic: %q", got)
 	}
 }
 

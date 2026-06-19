@@ -6,6 +6,7 @@ import (
 
 	"dxcluster/filter"
 	"dxcluster/pathreliability"
+	"dxcluster/solarweather"
 )
 
 func TestPathPredictionStatsSnapshotSplit(t *testing.T) {
@@ -316,6 +317,32 @@ func TestPathResultWithClosedFallbackTraceUsesNative160WhenVOACAPUnavailable(t *
 		}
 	})
 
+	t.Run("no voacap fallback native closed", func(t *testing.T) {
+		s := &Server{pathPredictor: predictor}
+		closedReq := req
+		closedReq.DXGrid = "FN20"
+		got, trace := s.pathResultWithClosedFallbackTrace(base, closedReq, time.Date(2026, time.June, 18, 16, 0, 0, 0, time.UTC))
+		if got.Source != pathreliability.SourceNative160 || got.Class != filter.PathClassClosed {
+			t.Fatalf("expected native 160 CLOSED fallback, got %+v", got)
+		}
+		if pathClassFromPrediction(pathPrediction{result: got}) != filter.PathClassClosed {
+			t.Fatalf("native closed must map to PATH CLOSED, got %+v", got)
+		}
+		if !trace.Active {
+			t.Fatalf("expected sparse VOACAP trace to remain active")
+		}
+		s.recordPathPrediction(got, false, false)
+		stats := s.PathPredictionStatsSnapshot()
+		if stats.Native160Closed != 1 ||
+			stats.Native160.Candidate != 1 ||
+			stats.Native160.Emitted != 1 ||
+			stats.Native160.Closed != 1 ||
+			stats.Native160.DarkLEClosed != 1 ||
+			stats.Native160.NotDark != 0 {
+			t.Fatalf("unexpected native 160 closed stats: %+v", stats)
+		}
+	})
+
 	t.Run("voacap ready keeps precedence", func(t *testing.T) {
 		s := &Server{
 			pathPredictor: predictor,
@@ -337,6 +364,27 @@ func TestPathResultWithClosedFallbackTraceUsesNative160WhenVOACAPUnavailable(t *
 			t.Fatalf("native 160 must not run when VOACAP is ready: %+v", got)
 		}
 	})
+}
+
+func TestPathGlyphFromPredictionDoesNotSolarOverrideNativeClosed(t *testing.T) {
+	cfg := pathreliability.DefaultConfig()
+	cfg.GlyphSymbols.Closed = "#"
+	server := &Server{
+		solarWeather: solarweather.NewManager(solarweather.Config{Enabled: true}, nil),
+	}
+	prediction := pathPrediction{
+		result: pathreliability.Result{
+			Source: pathreliability.SourceNative160,
+			Class:  filter.PathClassClosed,
+			Glyph:  cfg.GlyphSymbols.Closed,
+		},
+	}
+	if got := server.pathGlyphFromPrediction(prediction); got != cfg.GlyphSymbols.Closed {
+		t.Fatalf("native closed glyph = %q, want closed glyph %q", got, cfg.GlyphSymbols.Closed)
+	}
+	if stats := server.PathPredictionStatsSnapshot(); stats.OverrideR != 0 || stats.OverrideG != 0 {
+		t.Fatalf("native closed must not enter R/G override path, got stats %+v", stats)
+	}
 }
 
 func TestPathResultWithClosedFallbackStageStats(t *testing.T) {

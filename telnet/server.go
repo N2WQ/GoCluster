@@ -270,6 +270,7 @@ type Server struct {
 	pathPredVOACAPAligned               atomic.Uint64                              // Insufficient bucket predictions replaced by VOACAP-aligned sparse p50
 	pathPredVOACAPSparseUpgrade         atomic.Uint64                              // Sparse p50 predictions upgraded one tier by REL-gated VOACAP
 	pathPredVOACAPOpen                  atomic.Uint64                              // No-p50 predictions filled by REL-gated open VOACAP
+	pathPredNative160Closed             atomic.Uint64                              // Insufficient 160m predictions filled by native darkness CLOSED fallback
 	pathPredNative160Low                atomic.Uint64                              // Insufficient 160m predictions filled by native darkness LOW fallback
 	pathPredNative160Unlikely           atomic.Uint64                              // Insufficient 160m predictions filled by native darkness UNLIKELY fallback
 	pathPredBeaconRX                    atomic.Uint64                              // Beacon predictions emitted from receive-leg p50 evidence
@@ -327,11 +328,13 @@ type Server struct {
 	sparseP50VOACAPRELMultiTier         atomic.Int64  // Sparse diagnostics blocked by multi-tier VOACAP disagreement
 	native160Candidate                  atomic.Int64  // Native 160m fallback candidates evaluated
 	native160Emitted                    atomic.Int64  // Native 160m fallback candidates emitted
+	native160Closed                     atomic.Int64  // Native 160m fallback CLOSED emissions
 	native160Low                        atomic.Int64  // Native 160m fallback LOW emissions
 	native160Unlikely                   atomic.Int64  // Native 160m fallback UNLIKELY emissions
 	native160NotDark                    atomic.Int64  // Native 160m candidates below display thresholds
 	native160Unknown                    atomic.Int64  // Native 160m candidates with unusable geometry
 	native160DisplayDisabled            atomic.Int64  // Native 160m candidates blocked by display_enabled=false
+	native160DarkLEClosed               atomic.Int64  // Native 160m candidates at or below the configured closed threshold
 	native160DarkGE50                   atomic.Int64  // Native 160m candidates with civil darkness >= 50%
 	native160DarkGE75                   atomic.Int64  // Native 160m candidates with civil darkness >= 75%
 	native160DarkGE90                   atomic.Int64  // Native 160m candidates with civil darkness >= 90%
@@ -2956,6 +2959,7 @@ type pathPredictionStats struct {
 	VOACAPAligned                      uint64
 	VOACAPSparseUpgrade                uint64
 	VOACAPOpen                         uint64
+	Native160Closed                    uint64
 	Native160Low                       uint64
 	Native160Unlikely                  uint64
 	BeaconRX                           uint64
@@ -3017,11 +3021,13 @@ type pathPredictionStats struct {
 type native160FallbackStats struct {
 	Candidate       int64
 	Emitted         int64
+	Closed          int64
 	Low             int64
 	Unlikely        int64
 	NotDark         int64
 	Unknown         int64
 	DisplayDisabled int64
+	DarkLEClosed    int64
 	DarkGE50        int64
 	DarkGE75        int64
 	DarkGE90        int64
@@ -3030,11 +3036,13 @@ type native160FallbackStats struct {
 func (s native160FallbackStats) HasActivity() bool {
 	return s.Candidate != 0 ||
 		s.Emitted != 0 ||
+		s.Closed != 0 ||
 		s.Low != 0 ||
 		s.Unlikely != 0 ||
 		s.NotDark != 0 ||
 		s.Unknown != 0 ||
 		s.DisplayDisabled != 0 ||
+		s.DarkLEClosed != 0 ||
 		s.DarkGE50 != 0 ||
 		s.DarkGE75 != 0 ||
 		s.DarkGE90 != 0
@@ -3167,9 +3175,12 @@ func (s *Server) recordPathPrediction(res pathreliability.Result, userDerived, d
 			s.pathPredBeaconRXVOACAPOpen.Add(1)
 		}
 	case pathreliability.SourceNative160:
-		if res.Class == filter.PathClassLow {
+		switch res.Class {
+		case filter.PathClassClosed:
+			s.pathPredNative160Closed.Add(1)
+		case filter.PathClassLow:
 			s.pathPredNative160Low.Add(1)
-		} else {
+		default:
 			s.pathPredNative160Unlikely.Add(1)
 		}
 	default:
@@ -3225,6 +3236,9 @@ func (s *Server) recordNative160Evaluation(res pathreliability.Result) {
 	}
 	s.native160Candidate.Add(1)
 	if !res.Native160Unknown {
+		if res.Native160CivilDarkFraction <= res.Native160ClosedMaxDarkFrac {
+			s.native160DarkLEClosed.Add(1)
+		}
 		if res.Native160CivilDarkFraction >= 0.50 {
 			s.native160DarkGE50.Add(1)
 		}
@@ -3248,9 +3262,12 @@ func (s *Server) recordNative160Evaluation(res pathreliability.Result) {
 		return
 	}
 	s.native160Emitted.Add(1)
-	if res.Class == filter.PathClassLow {
+	switch res.Class {
+	case filter.PathClassClosed:
+		s.native160Closed.Add(1)
+	case filter.PathClassLow:
 		s.native160Low.Add(1)
-	} else {
+	default:
 		s.native160Unlikely.Add(1)
 	}
 }
@@ -3312,6 +3329,7 @@ func (s *Server) PathPredictionStatsSnapshot() pathPredictionStats {
 		VOACAPAligned:                      s.pathPredVOACAPAligned.Swap(0),
 		VOACAPSparseUpgrade:                s.pathPredVOACAPSparseUpgrade.Swap(0),
 		VOACAPOpen:                         s.pathPredVOACAPOpen.Swap(0),
+		Native160Closed:                    s.pathPredNative160Closed.Swap(0),
 		Native160Low:                       s.pathPredNative160Low.Swap(0),
 		Native160Unlikely:                  s.pathPredNative160Unlikely.Swap(0),
 		BeaconRX:                           s.pathPredBeaconRX.Swap(0),
@@ -3359,11 +3377,13 @@ func (s *Server) PathPredictionStatsSnapshot() pathPredictionStats {
 		Native160: native160FallbackStats{
 			Candidate:       s.native160Candidate.Swap(0),
 			Emitted:         s.native160Emitted.Swap(0),
+			Closed:          s.native160Closed.Swap(0),
 			Low:             s.native160Low.Swap(0),
 			Unlikely:        s.native160Unlikely.Swap(0),
 			NotDark:         s.native160NotDark.Swap(0),
 			Unknown:         s.native160Unknown.Swap(0),
 			DisplayDisabled: s.native160DisplayDisabled.Swap(0),
+			DarkLEClosed:    s.native160DarkLEClosed.Swap(0),
 			DarkGE50:        s.native160DarkGE50.Swap(0),
 			DarkGE75:        s.native160DarkGE75.Swap(0),
 			DarkGE90:        s.native160DarkGE90.Swap(0),
@@ -4346,7 +4366,9 @@ func (s *Server) computePathPredictionForClient(client *Client, sp *spot.Spot) (
 
 func (s *Server) pathGlyphFromPrediction(prediction pathPrediction) string {
 	res := prediction.result
-	if res.Source == pathreliability.SourceInsufficient || res.Source == pathreliability.SourceVOACAPClosed {
+	if res.Source == pathreliability.SourceInsufficient ||
+		res.Source == pathreliability.SourceVOACAPClosed ||
+		res.Class == filter.PathClassClosed {
 		return res.Glyph
 	}
 	g := res.Glyph
@@ -4385,6 +4407,9 @@ func pathClassFromPrediction(prediction pathPrediction) string {
 		return filter.PathClassInsufficient
 	}
 	if res.Source == pathreliability.SourceVOACAPClosed {
+		return filter.PathClassClosed
+	}
+	if res.Class == filter.PathClassClosed {
 		return filter.PathClassClosed
 	}
 	if res.Class == "" {
@@ -4887,6 +4912,12 @@ func diagPathTag(prediction pathPrediction, havePrediction bool) string {
 		return fmt.Sprintf("vop|%dr%02dh%02ds%d", res.VOACAPFT8SNRDB, diagVOACAPReliabilityPercent(res), res.VOACAPHourUTC, res.VOACAPSSN)
 	}
 	if res.Source == pathreliability.SourceNative160 {
+		if res.Class == filter.PathClassClosed {
+			if res.BeaconRX {
+				return fmt.Sprintf("bn160c|d%02d", diagFractionPercent(res.Native160CivilDarkFraction))
+			}
+			return fmt.Sprintf("n160c|d%02d", diagFractionPercent(res.Native160CivilDarkFraction))
+		}
 		if res.BeaconRX {
 			return fmt.Sprintf("bn160|d%02d", diagFractionPercent(res.Native160CivilDarkFraction))
 		}

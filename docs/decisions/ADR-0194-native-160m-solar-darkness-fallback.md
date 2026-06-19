@@ -1,6 +1,6 @@
 # ADR-0194: Native 160m Solar Darkness Fallback
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-06-18
 - Decision Origin: Design
 
@@ -33,6 +33,10 @@ claim to model SNR or probability.
 Add compact diagnostics (`n160|dNN`, `bn160|dNN`) and five-minute aggregate
 counters so the on-air run can compare candidate volume, emissions, not-dark,
 unknown, display-disabled, and fixed civil-darkness buckets.
+
+Superseded note: ADR-0195 keeps the same p50 -> VOACAP -> native 160m
+precedence but adds native 160m `CLOSED` for the low-darkness solar proxy
+bucket.
 
 ## Alternatives considered
 
@@ -77,4 +81,4 @@ unknown, display-disabled, and fixed civil-darkness buckets.
 - Related tests: `internal/solarpath/exposure_test.go`; `pathreliability/native160_fallback_test.go`; `telnet/server_prediction_stats_test.go`
 - Related docs: `data/config/PATH_PREDICTIONS.md`; `pathreliability/README.md`; `docs/OPERATOR_GUIDE.md`; `customgpt/support-cards/path-reliability.md`
 - Related TSRs: -
-- Supersedes / superseded by: -
+- Supersedes / superseded by: Superseded by ADR-0195

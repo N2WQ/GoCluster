@@ -33,9 +33,13 @@ inspect user-visible diagnostics:
   no-p50 open VOACAP fallbacks. The VOACAP SNR in these tags is the rounded
   bidirectional effective SNR after receive-side noise penalty, not one raw
   VOACAP direction.
-- `n160|dNN` means native 160m fallback filled an insufficient 160m result from
-  civil-dark path fraction `NN`. It is not SNR and can only emit LOW or
-  UNLIKELY. Beacon receive-only native 160m diagnostics use `bn160|dNN`.
+- `n160c|dNN` means native 160m fallback classified an insufficient 160m result
+  as `CLOSED` from civil-dark path fraction `NN`. It is a solar-darkness proxy,
+  not a VOACAP SNR result. Beacon receive-only native 160m closed diagnostics
+  use `bn160c|dNN`.
+- `n160|dNN` means native 160m fallback filled an insufficient 160m result as
+  `LOW` or `UNLIKELY` from civil-dark path fraction `NN`. It is not SNR.
+  Beacon receive-only native 160m diagnostics use `bn160|dNN`.
 - Insufficient sparse/no-p50 diagnostics can add compact `v*` suffixes such as
   `n0|none|vdly` or `n2|lown|vrel` to explain VOACAP state without changing the
   blank glyph: queued, delayed, inflight, unsupported band, empty/unknown band,
@@ -67,10 +71,11 @@ inspect user-visible diagnostics:
   granularity, so near-threshold method reuse follows the res-2 cache boundary.
 - Closed fallback spots can be filtered with `PASS/REJECT PATH CLOSED`;
   existing `PASS/REJECT PATH UNLIKELY` filters still include them for
-  compatibility.
+  compatibility. Native 160m `CLOSED` is a low-darkness solar proxy; VOACAP
+  `CLOSED` is an SNR threshold result.
 - `Path predictions (5m)` counts final emitted `voacap_closed`,
   `voacap_aligned`, `voacap_sparse_upgrade`, `voacap_open`,
-  `native160_low`, and `native160_unlikely` glyphs.
+  `native160_closed`, `native160_low`, and `native160_unlikely` glyphs.
   Beacon final counters use `beacon_rx`, `beacon_rx_insufficient`,
   `beacon_rx_<reason>`, and `beacon_rx_voacap_*`.
   `VOACAP fallback (5m)` explains fallback stages such as queued, cache hit, no
@@ -83,8 +88,8 @@ inspect user-visible diagnostics:
   reason, closed/open/REL outcome, beacon RX-only provenance, and non-beacon
   provenance. It is diagnostic only.
 - `Native 160m fallback (5m)` focuses on insufficient 160m candidates and
-  splits candidates, emissions, LOW/UNLIKELY, not-dark, unknown,
-  display-disabled, and fixed civil-darkness buckets.
+  splits candidates, emissions, CLOSED/LOW/UNLIKELY, not-dark, unknown,
+  display-disabled, `dark_le_closed`, and fixed civil-darkness buckets.
 - `VOACAP p50 compare (5m)` is an opportunistic cache-only comparison for
   sufficient p50 predictions. Cache misses do not run VOACAP; cache hits report
   class agreement, stronger/weaker effective SNR, closed-VOACAP versus p50

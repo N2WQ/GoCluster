@@ -112,6 +112,7 @@ type predictionHour struct {
 	AvgVOACAPAligned               float64 `json:"avg_voacap_aligned"`
 	AvgVOACAPSparseUpgrade         float64 `json:"avg_voacap_sparse_upgrade"`
 	AvgVOACAPOpen                  float64 `json:"avg_voacap_open"`
+	AvgNative160Closed             float64 `json:"avg_native160_closed"`
 	AvgNative160Low                float64 `json:"avg_native160_low"`
 	AvgNative160Unlikely           float64 `json:"avg_native160_unlikely"`
 	AvgBeaconRX                    float64 `json:"avg_beacon_rx"`
@@ -284,6 +285,7 @@ type predTotals struct {
 	VOACAPAligned               int
 	VOACAPSparseUpgrade         int
 	VOACAPOpen                  int
+	Native160Closed             int
 	Native160Low                int
 	Native160Unlikely           int
 	BeaconRX                    int
@@ -388,7 +390,7 @@ var (
 	ansiRe                = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 	bandBuckets           = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)\s+f=([\d,]+)\s+c=([\d,]+)`)
 	bandWeights           = regexp.MustCompile(`(\d+\.?\d*cm|\d+m)\s+t=([\d,]+)\s+<1=([\d,]+)\s+1-2=([\d,]+)\s+2-3=([\d,]+)\s+3-5=([\d,]+)\s+5-10=([\d,]+)\s+>=10=([\d,]+)`)
-	predsFields           = regexp.MustCompile(`\b(total|derived|combined|voacap_closed|voacap_aligned|voacap_sparse_upgrade|voacap_open|native160_low|native160_unlikely|beacon_rx|beacon_rx_insufficient|beacon_rx_no_sample|beacon_rx_low_count|beacon_rx_low_receiver|beacon_rx_low_weight|beacon_rx_stale|beacon_rx_voacap_closed|beacon_rx_voacap_aligned|beacon_rx_voacap_sparse_upgrade|beacon_rx_voacap_open|insufficient|no_sample|low_count|low_receiver|low_weight|stale|cap_limited|cap_would_block)=([\d,]+)`)
+	predsFields           = regexp.MustCompile(`\b(total|derived|combined|voacap_closed|voacap_aligned|voacap_sparse_upgrade|voacap_open|native160_closed|native160_low|native160_unlikely|beacon_rx|beacon_rx_insufficient|beacon_rx_no_sample|beacon_rx_low_count|beacon_rx_low_receiver|beacon_rx_low_weight|beacon_rx_stale|beacon_rx_voacap_closed|beacon_rx_voacap_aligned|beacon_rx_voacap_sparse_upgrade|beacon_rx_voacap_open|insufficient|no_sample|low_count|low_receiver|low_weight|stale|cap_limited|cap_would_block)=([\d,]+)`)
 	sparseP50VOACAPFields = regexp.MustCompile(`\b(total|no_p50|very_low_count|beacon_rx|non_beacon|cache_miss_total|cache_hit|queued|delayed|inflight|invalid_request|invalid_unsupported_band|invalid_empty_unknown_band|invalid_user_grid|invalid_dx_grid|invalid_user_cell|invalid_dx_cell|ssn_unavailable|no_current_hour|queue_full|not_running|disabled|unavailable|closed|aligned|sparse_upgrade|open_rel_pass|open_rel_fail|not_closed|rel_missing|rel_below_floor|rel_multi_tier)=([\d,]+)`)
 	totalField            = regexp.MustCompile(`\btotal=([\d,]+)`)
 	capShadowField        = regexp.MustCompile(`\bcap(\d+)_(pass|low_count|low_receiver|low_weight|block)=([\d,]+)`)
@@ -478,6 +480,7 @@ func parsePredictionTotals(line string) (predTotals, bool) {
 		VOACAPAligned:               values["voacap_aligned"],
 		VOACAPSparseUpgrade:         values["voacap_sparse_upgrade"],
 		VOACAPOpen:                  values["voacap_open"],
+		Native160Closed:             values["native160_closed"],
 		Native160Low:                values["native160_low"],
 		Native160Unlikely:           values["native160_unlikely"],
 		BeaconRX:                    values["beacon_rx"],
@@ -1415,7 +1418,7 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 		if len(rows) == 0 {
 			continue
 		}
-		var total, combined, voacapClosed, voacapAligned, voacapSparseUpgrade, voacapOpen, native160Low, native160Unlikely, insufficient, noSample, lowCount, lowReceiver, lowWeight, stale, capLimited, capWouldBlock int
+		var total, combined, voacapClosed, voacapAligned, voacapSparseUpgrade, voacapOpen, native160Closed, native160Low, native160Unlikely, insufficient, noSample, lowCount, lowReceiver, lowWeight, stale, capLimited, capWouldBlock int
 		var beaconRX, beaconRXInsufficient, beaconRXNoSample, beaconRXLowCount, beaconRXLowReceiver, beaconRXLowWeight, beaconRXStale int
 		var beaconRXVOACAPClosed, beaconRXVOACAPAligned, beaconRXVOACAPSparseUpgrade, beaconRXVOACAPOpen int
 		for _, r := range rows {
@@ -1425,6 +1428,7 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 			voacapAligned += r.VOACAPAligned
 			voacapSparseUpgrade += r.VOACAPSparseUpgrade
 			voacapOpen += r.VOACAPOpen
+			native160Closed += r.Native160Closed
 			native160Low += r.Native160Low
 			native160Unlikely += r.Native160Unlikely
 			beaconRX += r.BeaconRX
@@ -1457,6 +1461,7 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 			AvgVOACAPAligned:               float64(voacapAligned) / float64(count),
 			AvgVOACAPSparseUpgrade:         float64(voacapSparseUpgrade) / float64(count),
 			AvgVOACAPOpen:                  float64(voacapOpen) / float64(count),
+			AvgNative160Closed:             float64(native160Closed) / float64(count),
 			AvgNative160Low:                float64(native160Low) / float64(count),
 			AvgNative160Unlikely:           float64(native160Unlikely) / float64(count),
 			AvgBeaconRX:                    float64(beaconRX) / float64(count),
@@ -2074,7 +2079,7 @@ func predictionActivitySummary(hours []predictionHour) string {
 		if h.AvgVOACAPOpen > 0 {
 			voacapOpenSample = append(voacapOpenSample, h.Hour)
 		}
-		if h.AvgNative160Low > 0 || h.AvgNative160Unlikely > 0 {
+		if h.AvgNative160Closed > 0 || h.AvgNative160Low > 0 || h.AvgNative160Unlikely > 0 {
 			native160Sample = append(native160Sample, h.Hour)
 		}
 		if h.AvgBeaconRX > 0 ||

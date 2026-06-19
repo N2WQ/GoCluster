@@ -12,13 +12,16 @@ import (
 )
 
 func TestParsePredictionTotalsWithAndWithoutStale(t *testing.T) {
-	withStale := "2026/04/20 12:00:00 Path predictions (5m): total=1,200 derived=5 combined=700 voacap_closed=20 voacap_aligned=12 voacap_sparse_upgrade=7 voacap_open=9 insufficient=500 no_sample=300 low_count=75 low_receiver=25 low_weight=50 stale=50 cap_limited=25 cap_would_block=10 beacon_rx=40 beacon_rx_insufficient=15 beacon_rx_no_sample=5 beacon_rx_low_count=4 beacon_rx_low_receiver=3 beacon_rx_low_weight=2 beacon_rx_stale=1 beacon_rx_voacap_closed=6 beacon_rx_voacap_aligned=7 beacon_rx_voacap_sparse_upgrade=8 beacon_rx_voacap_open=9 override_r=0 override_g=0"
+	withStale := "2026/04/20 12:00:00 Path predictions (5m): total=1,200 derived=5 combined=700 voacap_closed=20 voacap_aligned=12 voacap_sparse_upgrade=7 voacap_open=9 native160_closed=3 native160_low=4 native160_unlikely=5 insufficient=500 no_sample=300 low_count=75 low_receiver=25 low_weight=50 stale=50 cap_limited=25 cap_would_block=10 beacon_rx=40 beacon_rx_insufficient=15 beacon_rx_no_sample=5 beacon_rx_low_count=4 beacon_rx_low_receiver=3 beacon_rx_low_weight=2 beacon_rx_stale=1 beacon_rx_voacap_closed=6 beacon_rx_voacap_aligned=7 beacon_rx_voacap_sparse_upgrade=8 beacon_rx_voacap_open=9 override_r=0 override_g=0"
 	got, ok := parsePredictionTotals(withStale)
 	if !ok {
 		t.Fatalf("expected prediction totals to parse")
 	}
 	if got.Total != 1200 || got.Combined != 700 || got.VOACAPClosed != 20 || got.VOACAPAligned != 12 || got.VOACAPSparseUpgrade != 7 || got.VOACAPOpen != 9 || got.Insufficient != 500 || got.NoSample != 300 || got.LowCount != 75 || got.LowReceiver != 25 || got.LowWeight != 50 || got.Stale != 50 || got.CapLimited != 25 || got.CapWouldBlock != 10 {
 		t.Fatalf("unexpected parsed totals with stale: %+v", got)
+	}
+	if got.Native160Closed != 3 || got.Native160Low != 4 || got.Native160Unlikely != 5 {
+		t.Fatalf("unexpected native 160 parsed totals: %+v", got)
 	}
 	if got.BeaconRX != 40 ||
 		got.BeaconRXInsufficient != 15 ||
@@ -136,7 +139,7 @@ func TestParseCapP50ShadowTotals(t *testing.T) {
 }
 
 func FuzzParsePathPredictionLogTotals(f *testing.F) {
-	f.Add("2026/04/20 12:00:00 Path predictions (5m): total=1,200 derived=5 combined=700 voacap_closed=20 voacap_aligned=12 voacap_sparse_upgrade=7 voacap_open=9 insufficient=500 no_sample=300 low_count=75 low_receiver=25 low_weight=50 stale=50 cap_limited=25 cap_would_block=10 beacon_rx=40 beacon_rx_insufficient=15 beacon_rx_no_sample=5 beacon_rx_low_count=4 beacon_rx_low_receiver=3 beacon_rx_low_weight=2 beacon_rx_stale=1 beacon_rx_voacap_closed=6 beacon_rx_voacap_aligned=7 beacon_rx_voacap_sparse_upgrade=8 beacon_rx_voacap_open=9 override_r=0 override_g=0")
+	f.Add("2026/04/20 12:00:00 Path predictions (5m): total=1,200 derived=5 combined=700 voacap_closed=20 voacap_aligned=12 voacap_sparse_upgrade=7 voacap_open=9 native160_closed=3 native160_low=4 native160_unlikely=5 insufficient=500 no_sample=300 low_count=75 low_receiver=25 low_weight=50 stale=50 cap_limited=25 cap_would_block=10 beacon_rx=40 beacon_rx_insufficient=15 beacon_rx_no_sample=5 beacon_rx_low_count=4 beacon_rx_low_receiver=3 beacon_rx_low_weight=2 beacon_rx_stale=1 beacon_rx_voacap_closed=6 beacon_rx_voacap_aligned=7 beacon_rx_voacap_sparse_upgrade=8 beacon_rx_voacap_open=9 override_r=0 override_g=0")
 	f.Add("2026/04/20 12:00:00 Sparse p50 VOACAP (5m): total=10 no_p50=6 very_low_count=4 beacon_rx=1 non_beacon=9 cache_miss_total=3 cache_hit=7 queued=1 delayed=2 inflight=0 invalid_request=0 ssn_unavailable=0 no_current_hour=0 queue_full=0 not_running=0 disabled=0 unavailable=0 closed=2 aligned=1 sparse_upgrade=1 open_rel_pass=2 open_rel_fail=1 not_closed=0 rel_missing=1 rel_below_floor=0 rel_multi_tier=0")
 	f.Add("2026/04/20 12:00:00 Sparse p50 VOACAP (5m): total=10 no_p50=6 very_low_count=4 beacon_rx=1 non_beacon=9 cache_miss_total=3 cache_hit=7 queued=1 delayed=2 inflight=0 invalid_request=6 invalid_unsupported_band=1 invalid_empty_unknown_band=1 invalid_user_grid=1 invalid_dx_grid=1 invalid_user_cell=1 invalid_dx_cell=1 ssn_unavailable=0 no_current_hour=0 queue_full=0 not_running=0 disabled=0 unavailable=0 closed=2 aligned=1 sparse_upgrade=1 open_rel_pass=2 open_rel_fail=1 not_closed=0 rel_missing=1 rel_below_floor=0 rel_multi_tier=0")
 	f.Add("2026/04/20 12:00:00 Path cap shadow (5m): total=1,200 cap5_pass=10 cap5_low_count=20 cap5_low_receiver=25 cap5_low_weight=30 cap5_block=40 cap6_pass=50 cap6_low_count=60 cap6_low_receiver=65 cap6_low_weight=70 cap6_block=80 cap8_pass=90 cap8_low_count=100 cap8_low_receiver=105 cap8_low_weight=110 cap8_block=120")
@@ -156,7 +159,7 @@ func FuzzParsePathPredictionLogTotals(f *testing.F) {
 func TestPredictionActivitySummarySeparatesCountAndWeightLimits(t *testing.T) {
 	got := predictionActivitySummary([]predictionHour{
 		{Hour: "01:00", AvgTotal: 100, AvgCombined: 20, AvgInsufficient: 80, AvgLowCount: 60, AvgLowReceiver: 5, AvgLowWeight: 10},
-		{Hour: "02:00", AvgTotal: 200, AvgCombined: 150, AvgVOACAPClosed: 4, AvgVOACAPAligned: 3, AvgVOACAPSparseUpgrade: 2, AvgVOACAPOpen: 1, AvgBeaconRX: 6, AvgBeaconRXInsufficient: 2, AvgInsufficient: 50, AvgLowCount: 5, AvgLowReceiver: 10, AvgLowWeight: 40},
+		{Hour: "02:00", AvgTotal: 200, AvgCombined: 150, AvgVOACAPClosed: 4, AvgVOACAPAligned: 3, AvgVOACAPSparseUpgrade: 2, AvgVOACAPOpen: 1, AvgNative160Closed: 1, AvgBeaconRX: 6, AvgBeaconRXInsufficient: 2, AvgInsufficient: 50, AvgLowCount: 5, AvgLowReceiver: 10, AvgLowWeight: 40},
 	})
 	if !strings.Contains(got, "Hours mostly count-limited: 01:00") {
 		t.Fatalf("expected count-limited summary, got %q", got)
@@ -175,6 +178,9 @@ func TestPredictionActivitySummarySeparatesCountAndWeightLimits(t *testing.T) {
 	}
 	if !strings.Contains(got, "Hours with REL-gated VOACAP no-p50 open predictions: 02:00") {
 		t.Fatalf("expected REL-gated no-p50 open summary, got %q", got)
+	}
+	if !strings.Contains(got, "Hours with native 160m darkness fallback predictions: 02:00") {
+		t.Fatalf("expected native 160 summary, got %q", got)
 	}
 	if !strings.Contains(got, "Hours with beacon RX-only path predictions: 02:00") {
 		t.Fatalf("expected beacon RX summary, got %q", got)

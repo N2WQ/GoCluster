@@ -64,6 +64,7 @@ var requiredConfigPaths = []yamlconfig.Path{
 	{"native_160m_fallback", "enabled"},
 	{"native_160m_fallback", "display_enabled"},
 	{"native_160m_fallback", "civil_twilight_degrees"},
+	{"native_160m_fallback", "closed_max_civil_dark_fraction"},
 	{"native_160m_fallback", "unlikely_min_civil_dark_fraction"},
 	{"native_160m_fallback", "low_min_civil_dark_fraction"},
 	{"voacap_fallback", "enabled"},
@@ -219,6 +220,7 @@ type Native160FallbackConfig struct {
 	Enabled                      bool    `yaml:"enabled"`
 	DisplayEnabled               bool    `yaml:"display_enabled"`
 	CivilTwilightDegrees         float64 `yaml:"civil_twilight_degrees"`
+	ClosedMaxCivilDarkFraction   float64 `yaml:"closed_max_civil_dark_fraction"`
 	UnlikelyMinCivilDarkFraction float64 `yaml:"unlikely_min_civil_dark_fraction"`
 	LowMinCivilDarkFraction      float64 `yaml:"low_min_civil_dark_fraction"`
 }
@@ -520,6 +522,7 @@ func defaultNative160FallbackConfig() Native160FallbackConfig {
 		Enabled:                      false,
 		DisplayEnabled:               false,
 		CivilTwilightDegrees:         6,
+		ClosedMaxCivilDarkFraction:   0.25,
 		UnlikelyMinCivilDarkFraction: 0.50,
 		LowMinCivilDarkFraction:      0.75,
 	}
@@ -529,6 +532,9 @@ func (c *Native160FallbackConfig) finalize() error {
 	if c == nil {
 		return nil
 	}
+	if err := validateNative160Fraction("native_160m_fallback.closed_max_civil_dark_fraction", c.ClosedMaxCivilDarkFraction); err != nil {
+		return err
+	}
 	if err := validateNative160Fraction("native_160m_fallback.unlikely_min_civil_dark_fraction", c.UnlikelyMinCivilDarkFraction); err != nil {
 		return err
 	}
@@ -537,6 +543,9 @@ func (c *Native160FallbackConfig) finalize() error {
 	}
 	if c.LowMinCivilDarkFraction < c.UnlikelyMinCivilDarkFraction {
 		return fmt.Errorf("native_160m_fallback low threshold must be >= unlikely threshold")
+	}
+	if c.UnlikelyMinCivilDarkFraction < c.ClosedMaxCivilDarkFraction {
+		return fmt.Errorf("native_160m_fallback unlikely threshold must be >= closed threshold")
 	}
 	if math.IsNaN(c.CivilTwilightDegrees) || math.IsInf(c.CivilTwilightDegrees, 0) || c.CivilTwilightDegrees < 0 || c.CivilTwilightDegrees > 18 {
 		return fmt.Errorf("native_160m_fallback.civil_twilight_degrees must be between 0 and 18")

@@ -648,10 +648,13 @@ func TestHelpPathGlyphLegendUsesConfiguredSymbols(t *testing.T) {
 		`" " - INSUFFICIENT: not enough recent evidence.`,
 		`Bucket p50 data is authoritative; VOACAP may only replace insufficient`,
 		`when closed, aligned with sparse p50, or REL-gated from cached VOACAP.`,
-		`Native 160m fallback may fill insufficient 160m data with LOW or`,
-		`when enough of the path is darker than civil twilight.`,
-		`"!" - CLOSED: VOACAP fallback predicts the current UTC hour's blended,`,
-		`noise-adjusted SNR at or below the mode's closed threshold.`,
+		`Native 160m fallback may fill insufficient 160m data with CLOSED`,
+		`UNLIKELY from civil-dark path fraction`,
+		`VOACAP has no usable`,
+		`current-hour result.`,
+		`"!" - CLOSED: VOACAP fallback predicts closed SNR`,
+		`native 160m fallback`,
+		`marks a low-darkness 160m path`,
 		"PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, CLOSED, INSUFFICIENT.",
 	} {
 		if !strings.Contains(resp, want) {

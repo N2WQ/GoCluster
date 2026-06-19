@@ -1162,8 +1162,8 @@ func pathGlyphHelpLines(cfg PathGlyphHelpConfig) []string {
 		fmt.Sprintf("%s - UNLIKELY: poor path.", quoteHelpGlyph(cfg.Unlikely)),
 		fmt.Sprintf("%s - INSUFFICIENT: not enough recent evidence.", quoteHelpGlyph(cfg.Insufficient)),
 		"Bucket p50 data is authoritative; VOACAP may only replace insufficient data when closed, aligned with sparse p50, or REL-gated from cached VOACAP.",
-		"Native 160m fallback may fill insufficient 160m data with LOW or UNLIKELY when enough of the path is darker than civil twilight.",
-		fmt.Sprintf("%s - CLOSED: VOACAP fallback predicts the current UTC hour's blended, noise-adjusted SNR at or below the mode's closed threshold.", quoteHelpGlyph(cfg.Closed)),
+		"Native 160m fallback may fill insufficient 160m data with CLOSED, LOW, or UNLIKELY from civil-dark path fraction when VOACAP has no usable current-hour result.",
+		fmt.Sprintf("%s - CLOSED: VOACAP fallback predicts closed SNR, or native 160m fallback marks a low-darkness 160m path as a solar proxy.", quoteHelpGlyph(cfg.Closed)),
 		"PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, CLOSED, INSUFFICIENT.",
 	} {
 		lines = append(lines, wrapTextLines(note, helpMaxWidth, "    ")...)

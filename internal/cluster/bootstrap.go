@@ -1475,7 +1475,7 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 				stats := srv.PathPredictionStatsSnapshot()
 				if stats.Total > 0 {
 					fileOnly(fmt.Sprintf(
-						"Path predictions (5m): total=%s derived=%s combined=%s voacap_closed=%s voacap_aligned=%s voacap_sparse_upgrade=%s voacap_open=%s native160_low=%s native160_unlikely=%s insufficient=%s no_sample=%s low_count=%s low_receiver=%s low_weight=%s stale=%s cap_limited=%s cap_would_block=%s beacon_rx=%s beacon_rx_insufficient=%s beacon_rx_no_sample=%s beacon_rx_low_count=%s beacon_rx_low_receiver=%s beacon_rx_low_weight=%s beacon_rx_stale=%s beacon_rx_voacap_closed=%s beacon_rx_voacap_aligned=%s beacon_rx_voacap_sparse_upgrade=%s beacon_rx_voacap_open=%s override_r=%s override_g=%s",
+						"Path predictions (5m): total=%s derived=%s combined=%s voacap_closed=%s voacap_aligned=%s voacap_sparse_upgrade=%s voacap_open=%s native160_closed=%s native160_low=%s native160_unlikely=%s insufficient=%s no_sample=%s low_count=%s low_receiver=%s low_weight=%s stale=%s cap_limited=%s cap_would_block=%s beacon_rx=%s beacon_rx_insufficient=%s beacon_rx_no_sample=%s beacon_rx_low_count=%s beacon_rx_low_receiver=%s beacon_rx_low_weight=%s beacon_rx_stale=%s beacon_rx_voacap_closed=%s beacon_rx_voacap_aligned=%s beacon_rx_voacap_sparse_upgrade=%s beacon_rx_voacap_open=%s override_r=%s override_g=%s",
 						humanize.Comma(int64(stats.Total)),
 						humanize.Comma(int64(stats.Derived)),
 						humanize.Comma(int64(stats.Combined)),
@@ -1483,6 +1483,7 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 						humanize.Comma(int64(stats.VOACAPAligned)),
 						humanize.Comma(int64(stats.VOACAPSparseUpgrade)),
 						humanize.Comma(int64(stats.VOACAPOpen)),
+						humanize.Comma(int64(stats.Native160Closed)),
 						humanize.Comma(int64(stats.Native160Low)),
 						humanize.Comma(int64(stats.Native160Unlikely)),
 						humanize.Comma(int64(stats.Insufficient)),
@@ -1602,14 +1603,16 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 				native160 := stats.Native160
 				if native160.HasActivity() {
 					fileOnly(fmt.Sprintf(
-						"Native 160m fallback (5m): candidates=%s emitted=%s low=%s unlikely=%s not_dark=%s unknown=%s display_disabled=%s dark_ge_50=%s dark_ge_75=%s dark_ge_90=%s",
+						"Native 160m fallback (5m): candidates=%s emitted=%s closed=%s low=%s unlikely=%s not_dark=%s unknown=%s display_disabled=%s dark_le_closed=%s dark_ge_50=%s dark_ge_75=%s dark_ge_90=%s",
 						humanize.Comma(native160.Candidate),
 						humanize.Comma(native160.Emitted),
+						humanize.Comma(native160.Closed),
 						humanize.Comma(native160.Low),
 						humanize.Comma(native160.Unlikely),
 						humanize.Comma(native160.NotDark),
 						humanize.Comma(native160.Unknown),
 						humanize.Comma(native160.DisplayDisabled),
+						humanize.Comma(native160.DarkLEClosed),
 						humanize.Comma(native160.DarkGE50),
 						humanize.Comma(native160.DarkGE75),
 						humanize.Comma(native160.DarkGE90),

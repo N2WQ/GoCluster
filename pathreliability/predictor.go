@@ -139,6 +139,7 @@ type Result struct {
 	Native160DaylightFraction  float64
 	Native160CivilDarkFraction float64
 	Native160CivilTwilightDeg  float64
+	Native160ClosedMaxDarkFrac float64
 }
 
 // Predict returns a single merged glyph for the path.

@@ -238,10 +238,11 @@ Path reliability glyphs:
   " " - INSUFFICIENT: not enough recent evidence.
   Bucket p50 data is authoritative; VOACAP may only replace insufficient data
     when closed, aligned with sparse p50, or REL-gated from cached VOACAP.
-  Native 160m fallback may fill insufficient 160m data with LOW or UNLIKELY
-    when enough of the path is darker than civil twilight.
-  "#" - CLOSED: VOACAP fallback predicts the current UTC hour's blended,
-    noise-adjusted SNR at or below the mode's closed threshold.
+  Native 160m fallback may fill insufficient 160m data with CLOSED, LOW, or
+    UNLIKELY from civil-dark path fraction when VOACAP has no usable
+    current-hour result.
+  "#" - CLOSED: VOACAP fallback predicts closed SNR, or native 160m fallback
+    marks a low-darkness 160m path as a solar proxy.
   PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, CLOSED, INSUFFICIENT.
 
 List types:
@@ -486,8 +487,12 @@ Example readings:
   predicted FT8-equivalent SNR -34, and used SSN generation 112.
 - `valn|-15/-15h20s112`: sparse bucket p50 rounded to -15 dB and the 20:00
   UTC VOACAP forecast also mapped to that same path class.
-- `n160|d82`: native 160m fallback filled an insufficient 160m result using an
-  82% civil-dark path fraction. Beacon receive-only paths use `bn160|d82`.
+- `n160c|d12`: native 160m fallback classified an insufficient 160m result as
+  `CLOSED` from a 12% civil-dark path fraction. Beacon receive-only paths use
+  `bn160c|d12`.
+- `n160|d82`: native 160m fallback filled an insufficient 160m result as
+  `LOW` or `UNLIKELY` from an 82% civil-dark path fraction. Beacon receive-only
+  paths use `bn160|d82`.
 - `n1|loww`: one selected observation existed, but the effective weight was
   below the minimum.
 - `n32|w1`: large selected count but low rounded effective weight. Treat this
@@ -511,7 +516,8 @@ At a high level, the cluster:
 6. resolves your selected noise class on the receive side; the checked-in table
    applies one scalar dB penalty per class
 7. maps the result to `HIGH`, `MEDIUM`, `LOW`, `UNLIKELY`, or `INSUFFICIENT`;
-   VOACAP closed fallback results use the separate `CLOSED` filter value
+   closed VOACAP fallback and native 160m low-darkness fallback results use the
+   separate `CLOSED` filter value
 
 What the classes mean to an operator:
 
@@ -521,7 +527,7 @@ What the classes mean to an operator:
 | `=` | `MEDIUM` | Recent evidence suggests a workable path, or insufficient evidence was corroborated by cached VOACAP. | Use `SET DIAG PATH`; low effective weight can still map to a usable class. |
 | `<` | `LOW` | Recent evidence suggests a weak or marginal path, or insufficient evidence was corroborated by cached VOACAP. | Use `SET DIAG PATH` to confirm grids, sample count, freshness, `valn`, `vup`, or `vop`. |
 | `-` | `UNLIKELY` | Recent evidence suggests a poor path, or insufficient evidence was corroborated by cached VOACAP. | Check whether your grid and the DX grid are correct before treating this as a hard no. |
-| `#` | `CLOSED` | Bucket evidence was insufficient, but the optional VOACAP fallback predicts closed conditions for the current mode and path. | Check `SET DIAG PATH`; VOACAP fallback never overrides sufficient bucket evidence. |
+| `#` | `CLOSED` | Bucket evidence was insufficient, and either VOACAP predicts closed conditions or native 160m fallback classified a low-darkness path as closed. | Check `SET DIAG PATH`; fallback never overrides sufficient bucket evidence. |
 | blank | `INSUFFICIENT` | The cluster did not have enough usable recent evidence to rate the path. | Run `SET DIAG PATH`; common reasons are `none`, `lown`, `lowr`, `loww`, and `stale`. |
 
 Important operational notes:
@@ -552,8 +558,8 @@ Important operational notes:
   `stale` can increase when honest fine/coarse age drops an old local direction.
   VOACAP fallback outcomes are counted separately as `voacap_closed`,
   `voacap_aligned`, `voacap_sparse_upgrade`, and `voacap_open`.
-  Native 160m darkness fallback emissions are counted as `native160_low` and
-  `native160_unlikely`.
+  Native 160m darkness fallback emissions are counted as `native160_closed`,
+  `native160_low`, and `native160_unlikely`.
   Beacon paths add `beacon_rx`, `beacon_rx_insufficient`,
   `beacon_rx_<reason>`, and `beacon_rx_voacap_*` counters to the same line.
   A separate `VOACAP fallback (5m)` line appears when fallback work occurs and
@@ -567,8 +573,9 @@ Important operational notes:
   closed/open/REL outcome, beacon RX-only provenance, and non-beacon
   provenance. It is diagnostic only and does not change glyph decisions.
   A separate `Native 160m fallback (5m)` line appears when insufficient 160m
-  candidates are evaluated and reports candidates, emissions, class splits,
-  not-dark, unknown, display-disabled, and civil-darkness threshold buckets.
+  candidates are evaluated and reports candidates, emissions, CLOSED/LOW/
+  UNLIKELY class splits, not-dark, unknown, display-disabled,
+  `dark_le_closed`, and civil-darkness threshold buckets.
   A separate `VOACAP p50 compare (5m)` line may appear when sufficient p50
   predictions can be compared against an existing current-hour VOACAP cache
   record. It is cache-only: cache misses do not run VOACAP, start delay
@@ -604,9 +611,12 @@ Important operational notes:
   delay/queue behavior.
 - If `native_160m_fallback.enabled` is true, an insufficient 160m bucket result
   can be filled by exact solar path geometry when no usable current-hour VOACAP
-  result has precedence. It can emit only `LOW` or `UNLIKELY` from the fraction
-  of the path darker than civil twilight. It is an opportunity proxy, not an
-  SNR or probability model, and sufficient p50 remains authoritative.
+  result has precedence. It can emit only `CLOSED`, `LOW`, or `UNLIKELY` from
+  the fraction of the path darker than civil twilight: at or below
+  `closed_max_civil_dark_fraction` maps to `CLOSED`, above that and below
+  `unlikely_min_civil_dark_fraction` stays blank, then the unlikely/low
+  thresholds emit `UNLIKELY` or `LOW`. It is an opportunity proxy, not an SNR
+  or probability model, and sufficient p50 remains authoritative.
 - Beacon spots use RX-only path semantics. The beacon qualifier is the existing
   canonical `IsBeacon` flag, including source-class beacons, `/B` calls, known
   beacon calls, and beacon comment keywords. For those spots, transmit evidence
@@ -623,10 +633,10 @@ Important operational notes:
   configured class for the merged path. Rows whose `REL` prediction is
   `UNLIKELY` or `CLOSED` are hidden, and bucket p50 is not displayed.
 - `PATH` filters work on the class names, not on the glyph characters.
-  `CLOSED` is a VOACAP-closed subtype of `UNLIKELY`: existing
+  `CLOSED` is compatible with `UNLIKELY` for fallback filtering: existing
   `PASS/REJECT PATH UNLIKELY` filters still include closed fallback spots,
   while direct `PASS/REJECT PATH CLOSED` rules can pass or reject only closed
-  fallback spots.
+  fallback spots from VOACAP or native 160m low-darkness fallback.
 - `R` and `G` are solar-weather display overrides, not normal path classes.
 
 If solar-weather support is enabled, a normal path glyph can be replaced by:

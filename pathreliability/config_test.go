@@ -134,6 +134,7 @@ func TestLoadFileReadsShippedConfigVOACAPFallbackContract(t *testing.T) {
 		t.Fatalf("native 160m fallback must be explicitly enabled for experiment config: %+v", cfg.Native160Fallback)
 	}
 	if cfg.Native160Fallback.CivilTwilightDegrees != 6 ||
+		cfg.Native160Fallback.ClosedMaxCivilDarkFraction != 0.25 ||
 		cfg.Native160Fallback.UnlikelyMinCivilDarkFraction != 0.50 ||
 		cfg.Native160Fallback.LowMinCivilDarkFraction != 0.75 {
 		t.Fatalf("unexpected native 160m fallback contract: %+v", cfg.Native160Fallback)
@@ -398,6 +399,7 @@ func TestLoadFileRejectsMissingRequiredYAMLSettings(t *testing.T) {
 		{name: "voacap rel low", path: []string{"voacap_fallback", "reliability_min_low"}, want: "voacap_fallback.reliability_min_low"},
 		{name: "voacap rel unlikely", path: []string{"voacap_fallback", "reliability_min_unlikely"}, want: "voacap_fallback.reliability_min_unlikely"},
 		{name: "voacap sparse diagnostic count", path: []string{"voacap_fallback", "sparse_p50_diagnostic_max_observation_count"}, want: "voacap_fallback.sparse_p50_diagnostic_max_observation_count"},
+		{name: "native 160 closed threshold", path: []string{"native_160m_fallback", "closed_max_civil_dark_fraction"}, want: "native_160m_fallback.closed_max_civil_dark_fraction"},
 		{name: "ft4 offset", path: []string{"mode_offsets", "ft4"}, want: "mode_offsets.ft4"},
 		{name: "noise offsets", path: []string{"noise_offsets"}, want: "noise_offsets"},
 	}
@@ -558,6 +560,23 @@ func TestLoadFileRejectsInvalidNative160FallbackBounds(t *testing.T) {
 		overlay string
 		want    string
 	}{
+		{
+			name: "closed fraction out of range",
+			overlay: `
+native_160m_fallback:
+  closed_max_civil_dark_fraction: -0.1
+`,
+			want: "closed_max_civil_dark_fraction",
+		},
+		{
+			name: "unlikely below closed",
+			overlay: `
+native_160m_fallback:
+  closed_max_civil_dark_fraction: 0.60
+  unlikely_min_civil_dark_fraction: 0.50
+`,
+			want: "unlikely threshold",
+		},
 		{
 			name: "civil twilight too high",
 			overlay: `

@@ -51,6 +51,7 @@ const (
 	classMedium   = "MEDIUM"
 	classLow      = "LOW"
 	classUnlikely = "UNLIKELY"
+	classClosed   = "CLOSED"
 )
 
 // ClassForDB maps an FT8-equivalent SNR quantile to the threshold class name.
@@ -110,6 +111,8 @@ func glyphForClass(class string, cfg Config) string {
 		return cfg.GlyphSymbols.Medium
 	case classLow:
 		return cfg.GlyphSymbols.Low
+	case classClosed:
+		return cfg.GlyphSymbols.Closed
 	default:
 		return cfg.GlyphSymbols.Unlikely
 	}

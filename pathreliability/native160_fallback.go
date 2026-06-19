@@ -1,7 +1,8 @@
 // File role: Owns native 160m solar-darkness fallback result construction.
 // Crawler notes: This fallback is conservative and never replaces sufficient
 // p50 or a usable current-hour VOACAP fallback result.
-// Related docs: docs/decisions/ADR-0194-native-160m-solar-darkness-fallback.md.
+// Related docs: docs/decisions/ADR-0194-native-160m-solar-darkness-fallback.md;
+// docs/decisions/ADR-0195-native-160m-closed-solar-proxy.md.
 package pathreliability
 
 import (
@@ -12,7 +13,8 @@ import (
 )
 
 // Native160FallbackResult evaluates the experimental solar-darkness fallback.
-// It never changes sufficient p50 results and only emits LOW/UNLIKELY classes.
+// It never changes sufficient p50 results and emits only CLOSED/LOW/UNLIKELY
+// proxy classes from civil-dark path geometry.
 func Native160FallbackResult(base Result, cfg Config, req VOACAPClosedRequest, now time.Time) Result {
 	if base.Source != SourceInsufficient || !cfg.Native160Fallback.Enabled || normalizeBand(req.Band) != "160m" {
 		return base
@@ -20,6 +22,7 @@ func Native160FallbackResult(base Result, cfg Config, req VOACAPClosedRequest, n
 	res := base
 	res.Native160Checked = true
 	res.Native160CivilTwilightDeg = cfg.Native160Fallback.CivilTwilightDegrees
+	res.Native160ClosedMaxDarkFrac = cfg.Native160Fallback.ClosedMaxCivilDarkFraction
 
 	userLat, userLon, ok := GridCenterLatLon(strings.TrimSpace(req.UserGrid))
 	if !ok {
@@ -52,6 +55,8 @@ func Native160FallbackResult(base Result, cfg Config, req VOACAPClosedRequest, n
 
 	var class string
 	switch {
+	case exposure.CivilDarkFraction <= cfg.Native160Fallback.ClosedMaxCivilDarkFraction:
+		class = classClosed
 	case exposure.CivilDarkFraction >= cfg.Native160Fallback.LowMinCivilDarkFraction:
 		class = classLow
 	case exposure.CivilDarkFraction >= cfg.Native160Fallback.UnlikelyMinCivilDarkFraction:

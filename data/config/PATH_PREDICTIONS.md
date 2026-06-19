@@ -14,7 +14,9 @@ Here's what each symbol means:
 - **`=`** (equals) = **Medium** - Moderate path. Definitely workable with good technique.
 - **`<`** (less-than) = **Low** - Weak path. It'll take patience, but it's possible.
 - **`-`** (dash) = **Unlikely** - Very difficult path. Marginal conditions, but don't rule it out completely.
-- **configured closed glyph** = **Closed** - Optional VOACAP fallback predicts the current UTC hour is at or below the closed threshold for this mode and path.
+- **configured closed glyph** = **Closed** - Optional VOACAP fallback predicts
+  the current UTC hour is at or below the closed threshold, or native 160m
+  fallback emits the low-darkness solar proxy bucket.
 - **` `** (space) = **Insufficient data** - The system doesn't have enough information yet to make a prediction.
 
 These symbols are mode-specific, meaning the same path might show `>` for FT8 but `=` for CW, because the thresholds are calibrated differently for each mode's sensitivity.
@@ -176,14 +178,19 @@ The experimental native 160m fallback covers the gap where p50 evidence is
 insufficient and VOACAP has no usable current-hour result for 160m. It measures
 the exact fraction of the great-circle path darker than civil twilight
 (`native_160m_fallback.civil_twilight_degrees`, shipped as 6 degrees). It can
-emit only `LOW` or `UNLIKELY`, never `HIGH` or `MEDIUM`, and never replaces a
-sufficient p50 result. It is an opportunity proxy, not an SNR or probability
+emit only `CLOSED`, `LOW`, or `UNLIKELY`, never `HIGH` or `MEDIUM`, and never
+replaces a sufficient p50 result. At or below
+`native_160m_fallback.closed_max_civil_dark_fraction` it emits `CLOSED`; above
+that and below `unlikely_min_civil_dark_fraction` it stays blank; then
+`unlikely_min_civil_dark_fraction` and `low_min_civil_dark_fraction` emit
+`UNLIKELY` and `LOW`. It is an opportunity proxy, not an SNR or probability
 model.
 
 Five-minute propagation logs keep final emit counters in `Path predictions
 (5m)`: `voacap_closed`, `voacap_aligned`, `voacap_sparse_upgrade`, and
-`voacap_open`, plus `native160_low` and `native160_unlikely` for native 160m
-fallback emissions. Beacon paths add `beacon_rx`, `beacon_rx_insufficient`,
+`voacap_open`, plus `native160_closed`, `native160_low`, and
+`native160_unlikely` for native 160m fallback emissions. Beacon paths add
+`beacon_rx`, `beacon_rx_insufficient`,
 `beacon_rx_<reason>`, and `beacon_rx_voacap_*` final counters. When fallback
 work occurs, a separate `VOACAP fallback (5m)`
 line reports stage counters such as `queued`, `success`, `cache_hit`,
@@ -211,8 +218,8 @@ very-low-count diagnostic bucket; it does not relax p50 gates or start more
 VOACAP work.
 When native 160m fallback evaluates candidates, `Native 160m fallback (5m)`
 reports `candidates`, `emitted`, class splits, `not_dark`, `unknown`,
-`display_disabled`, and fixed darkness buckets `dark_ge_50`, `dark_ge_75`, and
-`dark_ge_90`.
+`display_disabled`, `dark_le_closed`, and fixed darkness buckets `dark_ge_50`,
+`dark_ge_75`, and `dark_ge_90`.
 
 `SHOW PROP <call|prefix|grid> [band] [mode]` is the on-demand view of the same
 rolling VOACAP horizon. It starts from your saved `SET GRID`, applies your
@@ -241,9 +248,10 @@ The glyphs help you prioritize. If you see:
 - **REL-gated VOACAP normal glyph**: Bucket evidence was insufficient, but
   cached current-hour VOACAP mapped to an open class and passed the configured
   request-SNR REL gate. Sparse p50 can only upgrade by one class in this mode.
-- **Native 160m normal glyph**: Bucket evidence was insufficient on 160m, no
+- **Native 160m fallback glyph**: Bucket evidence was insufficient on 160m, no
   usable current-hour VOACAP result had precedence, and civil-dark path
-  fraction crossed the configured native 160m threshold.
+  fraction crossed a configured native 160m threshold. Very low civil-dark
+  fraction emits `CLOSED`; sufficient darkness emits `UNLIKELY` or `LOW`.
 - **Space**: No prediction available - you're on your own. Could be good or bad.
 
 ### Understanding Limitations
