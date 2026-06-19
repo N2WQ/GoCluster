@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -241,6 +242,10 @@ func (r *clusterRuntime) logConfigDiagnostics() {
 	}
 }
 
+func voacapFallbackSupportedOnGOOS(goos string) bool {
+	return goos == "windows"
+}
+
 func (r *clusterRuntime) loadPathReliabilityConfig() bool {
 	pathCfg := r.cfg.PathReliability
 	allowedBands, allowedBandSet := normalizeAllowedBands(pathCfg.AllowedBands)
@@ -261,6 +266,10 @@ func (r *clusterRuntime) loadPathReliabilityConfig() bool {
 	r.allowedBandSet = allowedBandSet
 	r.pathPredictor = pathPredictor
 	if pathCfg.VOACAPFallback.Enabled {
+		if !voacapFallbackSupportedOnGOOS(runtime.GOOS) {
+			log.Printf("VOACAP fallback disabled: runtime VOACAP execution is supported only on Windows (goos=%s)", runtime.GOOS)
+			return true
+		}
 		if err := voacap.NewRunner(pathCfg.VOACAPFallback.VOACAPHome).Validate(); err != nil {
 			return r.failStartup("VOACAP fallback validation failed: %v", err)
 		}

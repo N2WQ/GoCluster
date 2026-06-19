@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `5c8f0c9b69c989df`
+- Source fingerprint: `56ed0aeba36b9d11`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -301,6 +301,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0200](docs/decisions/ADR-0200-voacap-unsupported-platform-startup-skip.md) | Accepted | 2026-06-19 | startup, voacap, pathreliability, operations, supportability | `path:internal/cluster` |
 | [ADR-0198](docs/decisions/ADR-0198-160m-merge-readiness-cleanup.md) | Accepted | 2026-06-19 | workflow, docs, tests, code maps, pathreliability, custom_scp | `path:internal/cluster` |
 | [ADR-0197](docs/decisions/ADR-0197-native-160m-closed-solar-proxy.md) | Accepted | 2026-06-19 | pathreliability, telnet, config, operations, supportability, experiments | `area:telnet, path:telnet` |
 | [ADR-0196](docs/decisions/ADR-0196-native-160m-solar-darkness-fallback.md) | Superseded | 2026-06-18 | pathreliability, solarweather, telnet, config, operations, experiments | `area:telnet, path:telnet` |

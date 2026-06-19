@@ -172,8 +172,10 @@ buckets. Native 160m fallback is an opportunity proxy: it can emit only
 usable current-hour VOACAP. `CLOSED` is the low-darkness solar proxy bucket, not
 a VOACAP SNR result.
 
-When `voacap_fallback.enabled` is true, insufficient bucket results may start a
-delayed VOACAP lookup. The lookup is nonblocking in the telnet path. Cached
+When `voacap_fallback.enabled` is true on Windows, insufficient bucket results
+may start a delayed VOACAP lookup. Linux and other non-Windows builds log that
+runtime VOACAP execution is unsupported and leave the fallback provider
+disabled at startup. The lookup is nonblocking in the telnet path. Cached
 VOACAP output stores one hourly record per parsed forecast hour for the
 requested band. Each cached hour carries both raw directions: DX-to-user receive
 and user-to-DX transmit. Lookup blends those directions with the same
@@ -229,6 +231,8 @@ The Overview Path Predictions panel also displays
 `VOACAP cache: <cache> (C) / <delay> (D) / <inflight> (I) / <queue> (Q)` using
 the existing in-memory fallback snapshot counters; it does not add a second
 cache or count distinct path pairs.
+On non-Windows builds those Overview VOACAP values stay `n/a` because the
+fallback provider is not started.
 Completed VOACAP hourly forecast-window records persist separately in the
 per-node Pebble DB at `voacap_fallback.forecast_cache_db_path`. Startup hydrates
 only records that still match the current cache schema, model generation,
@@ -239,7 +243,8 @@ missing/unavailable cache cold-starts normal delay/queue behavior.
 
 `SHOW PROP <call|prefix|grid> [band] [mode]` exposes those cached hourly
 VOACAP records directly as a point-to-point outlook from the user's grid to the
-target. Omitted mode defaults to CW. Empty or partial single-band command
+target when the fallback provider is running. Omitted mode defaults to CW.
+Empty or partial single-band command
 lookups enqueue an immediate refresh through the existing fallback worker and
 wait up to `voacap_fallback.show_prop_wait_milliseconds`; all-band requests
 show cached rows immediately while refreshing missing or partial bands in the

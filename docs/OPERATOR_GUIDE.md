@@ -162,6 +162,11 @@ before the H3 path-pair counts. These are the existing in-memory fallback cache
 entries, delayed lookups, inflight jobs, and queued jobs from the current
 process.
 
+VOACAP fallback is a Windows-only runtime feature because it launches the
+Windows VOACAP engine. Linux startup skips VOACAP validation and logs that the
+fallback is disabled, so the cluster can still run with path reliability,
+native 160m fallback, and ordinary p50 predictions.
+
 After inspection, set `ui.mode` back to `headless` before returning to
 unattended service mode.
 
@@ -437,6 +442,9 @@ explicit single-band request has no rows, or fewer rows than
 existing fallback worker and waits briefly. All-band requests show cached rows
 immediately while refreshing missing or partial bands in the background.
 
+On Linux and other non-Windows builds the VOACAP fallback provider is not
+started, so `SHOW PROP` reports that VOACAP fallback is disabled.
+
 The target can be an explicit Maidenhead grid, a callsign found in the grid
 store, or a CTY-derived prefix/callsign center. With no band, the command
 queries all configured VOACAP fallback bands. With no mode, it uses `CW`.
@@ -489,6 +497,10 @@ Common startup failures are usually config-path or config-content issues:
 - When path reliability is enabled, `data.h3_table_path` must contain valid
   `res1.bin` and `res2.bin` H3 tables. Missing or malformed H3 tables fail
   startup because path predictions depend on those cells.
+- On Linux and other non-Windows builds, `voacap_fallback.enabled: true` does
+  not fail startup only because the Windows VOACAP engine is unavailable.
+  Startup logs that the VOACAP fallback is disabled and continues without the
+  VOACAP SSN monitor, worker, or forecast cache.
 - Gridstore startup open failures are written to the system log. Corruption
   starts checkpoint recovery and runs temporarily without persistence; other
   open failures abort startup.

@@ -2,7 +2,7 @@
 # Code Map: Path Reliability And VOACAP
 
 - Map ID: `path-reliability-voacap`
-- Source fingerprint: `0581a24089ed456a`
+- Source fingerprint: `bb1487a4a650bbcf`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map path-reliability-voacap`
 - Check: `go run ./cmd/codemap check -map path-reliability-voacap`
@@ -139,6 +139,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0200](docs/decisions/ADR-0200-voacap-unsupported-platform-startup-skip.md) | Accepted | 2026-06-19 | startup, voacap, pathreliability, operations, supportability | `area:internal/voacap, area:pathreliability, path:pathreliability` |
 | [ADR-0198](docs/decisions/ADR-0198-160m-merge-readiness-cleanup.md) | Accepted | 2026-06-19 | workflow, docs, tests, code maps, pathreliability, custom_scp | `area:pathreliability, path:solarweather` |
 | [ADR-0197](docs/decisions/ADR-0197-native-160m-closed-solar-proxy.md) | Accepted | 2026-06-19 | pathreliability, telnet, config, operations, supportability, experiments | `area:pathreliability, path:pathreliability` |
 | [ADR-0196](docs/decisions/ADR-0196-native-160m-solar-darkness-fallback.md) | Superseded | 2026-06-18 | pathreliability, solarweather, telnet, config, operations, experiments | `area:pathreliability, area:solarweather, path:internal/solarpath, path:pathreliability` |

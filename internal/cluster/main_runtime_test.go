@@ -11,6 +11,24 @@ import (
 	"dxcluster/config"
 )
 
+func TestVOACAPFallbackSupportedOnGOOS(t *testing.T) {
+	tests := []struct {
+		goos string
+		want bool
+	}{
+		{goos: "windows", want: true},
+		{goos: "linux", want: false},
+		{goos: "darwin", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.goos, func(t *testing.T) {
+			if got := voacapFallbackSupportedOnGOOS(tt.goos); got != tt.want {
+				t.Fatalf("voacapFallbackSupportedOnGOOS(%q) = %v, want %v", tt.goos, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestInitializeGridStoreLogsStartupErrorOnOpenFailure(t *testing.T) {
 	var logs bytes.Buffer
 	oldOutput := log.Writer()

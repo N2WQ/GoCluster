@@ -22,11 +22,15 @@ journalctl -u gocluster -n 200 --no-pager
 - `journalctl` shows startup stderr/stdout and early config diagnostics.
 - Confirm `WorkingDirectory`, `ExecStart`, `DXC_CONFIG_PATH`, file ownership,
   and `ui.mode: headless`.
+- On Linux, a startup log saying `VOACAP fallback disabled` is the expected
+  unsupported-platform skip, not the service-start failure reason.
 
 ## Must Avoid
 
 - Do not use Windows PowerShell commands for Linux service failure.
 - Do not diagnose without service logs and unit context.
+- Do not tell Linux operators to install `Voacapw.exe` to make the cluster
+  launch; runtime VOACAP is Windows-only.
 
 ## Sources
 

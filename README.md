@@ -596,7 +596,10 @@ Important operational notes:
   stays `INSUFFICIENT`. When path reliability is enabled, H3 table failures are
   startup failures because those cells are critical to path predictions.
 - If `voacap_fallback.enabled` is true, an insufficient bucket result may start
-  a delayed nonblocking VOACAP lookup. A cached fallback can replace the blank
+  a delayed nonblocking VOACAP lookup on Windows, where the runtime VOACAP
+  engine is supported. On Linux and other non-Windows builds, startup logs that
+  the VOACAP fallback is disabled and the cluster continues without VOACAP
+  worker/cache support. On Windows, a cached fallback can replace the blank
   glyph with the configured closed glyph when the current UTC hour's blended
   bidirectional VOACAP SNR, after the user's receive-side noise penalty, is at
   or below `mode_thresholds.<mode>.closed`, or with a normal glyph when sparse
@@ -669,6 +672,8 @@ For the exact thresholds, per-mode offsets, weight rules, and shipped tables, se
   <integer|n/a>` for the rounded current SSN generation used by VOACAP. The
   Overview path panel shows existing VOACAP fallback work state as
   `VOACAP cache: <cache> (C) / <delay> (D) / <inflight> (I) / <queue> (Q)`.
+  On non-Windows builds those VOACAP values stay `n/a` because the fallback
+  provider is not started.
 - Normalizes callsigns, frequencies, modes, and reports before shared validation and enrichment.
 - Adds CTY metadata and optional FCC license checks where that policy applies.
 - Applies shared-ingest flood policy before primary dedupe using the shipped `floodcontrol.yaml` rails.
@@ -779,6 +784,9 @@ Deploy the Linux binary together with a complete config directory and required
 runtime data such as `data/cty`, `data/h3`, `data/peers/topology.db`, and
 `data/skm_correction/rbnskew.json` when those inputs are used by your config.
 There is not currently a published Linux ready-to-run release asset.
+Runtime VOACAP execution uses the Windows VOACAP engine. On Linux and other
+non-Windows builds, startup logs that the VOACAP fallback is disabled and the
+cluster continues without the VOACAP SSN monitor, worker, or forecast cache.
 
 For unattended Linux operation, use a private config directory and set
 `ui.mode: headless` in that config's `app.yaml`. For manual console inspection,

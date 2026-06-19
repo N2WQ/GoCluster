@@ -23,6 +23,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Reserved Placeholder | Unused | - | index hygiene | - | - | No ADR file; first real ADR is `docs/decisions/ADR-0002-ui-v2-render-pipeline.md` |
+| ADR-0200 | VOACAP Unsupported-Platform Startup Skip | Accepted | 2026-06-19 | startup, voacap, pathreliability, operations, supportability | - | - | `docs/decisions/ADR-0200-voacap-unsupported-platform-startup-skip.md` |
 | ADR-0199 | Subagent Delegation Boundaries | Accepted | 2026-06-19 | workflow, Codex, validation, supportability | - | - | `docs/decisions/ADR-0199-subagent-delegation-boundaries.md` |
 | ADR-0198 | 160m Merge Readiness Cleanup | Accepted | 2026-06-19 | workflow, docs, tests, code maps, pathreliability, custom_scp | - | - | `docs/decisions/ADR-0198-160m-merge-readiness-cleanup.md` |
 | ADR-0197 | Native 160m Closed Solar Proxy | Accepted | 2026-06-19 | pathreliability, telnet, config, operations, supportability, experiments | ADR-0196 LOW/UNLIKELY-only native 160m contract | - | `docs/decisions/ADR-0197-native-160m-closed-solar-proxy.md` |

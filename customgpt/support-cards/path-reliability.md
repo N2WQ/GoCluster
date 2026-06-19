@@ -54,6 +54,10 @@ inspect user-visible diagnostics:
   generation when `tview-v2` is enabled. Its Path Predictions panel also shows
   `VOACAP cache: <cache> (C) / <delay> (D) / <inflight> (I) / <queue> (Q)`
   from the existing fallback snapshot counters.
+- Runtime VOACAP execution is Windows-only. On Linux and other non-Windows
+  builds, startup logs that the VOACAP fallback is disabled; `SHOW PROP`
+  reports that VOACAP fallback is disabled, sparse/no-p50 diagnostics can show
+  `vdis`, and the Overview VOACAP fields remain `n/a`.
 - Completed VOACAP forecast windows persist separately in the per-node Pebble
   cache at `voacap_fallback.forecast_cache_db_path`. Current restored records
   become ordinary memory cache hits and bypass `voacap_fallback.delay_seconds`;
