@@ -1,0 +1,16 @@
+name = "gocluster-web-terminal"
+main = "src/worker.js"
+compatibility_date = "2026-06-19"
+workers_dev = true
+
+[assets]
+directory = "./public"
+not_found_handling = "single-page-application"
+
+[vars]
+# Set CLUSTER_HOST as a Worker variable for the public, non-Cloudflare,
+# non-private hostname of the live GoCluster telnet listener.
+CLUSTER_PORT = "8300"
+UPSTREAM_TLS = "off"
+ALLOWED_ORIGINS = "http://localhost:8787,https://www.n2wq.com"
+WS_MAX_MESSAGE_BYTES = "512"

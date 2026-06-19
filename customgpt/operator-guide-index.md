@@ -14,6 +14,7 @@ existing operator-facing docs.
 | Run under `systemd` | [docs/OPERATOR_GUIDE.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/OPERATOR_GUIDE.md), [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md) |
 | View logs and health | [docs/OPERATOR_GUIDE.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/OPERATOR_GUIDE.md), [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md) |
 | Find file-only event logs | [data/config/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/config/README.md), [docs/OPERATOR_GUIDE.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/OPERATOR_GUIDE.md), [docs/decisions/ADR-0093-file-only-connection-and-gate-event-logs.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/decisions/ADR-0093-file-only-connection-and-gate-event-logs.md) |
+| Deploy the browser web terminal prototype | [cloudflare/web-terminal/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/cloudflare/web-terminal/README.md), [docs/decisions/ADR-0201-browser-web-terminal-prototype.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/decisions/ADR-0201-browser-web-terminal-prototype.md) |
 
 ## Config
 
@@ -31,6 +32,7 @@ existing operator-facing docs.
 | Need | Start here |
 | --- | --- |
 | Connect and log in | [docs/OPERATOR_GUIDE.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/OPERATOR_GUIDE.md), [telnet/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md) |
+| Use the browser terminal prototype | [cloudflare/web-terminal/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/cloudflare/web-terminal/README.md), [telnet/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md) |
 | Find available commands | [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md), [commands/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/commands/README.md) |
 | Get command-specific help | [commands/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/commands/README.md) |
 | Understand dialects | [commands/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/commands/README.md) |
@@ -75,6 +77,7 @@ Start with [customgpt/troubleshooting-index.md](https://raw.githubusercontent.co
 | Startup or config load failure | [customgpt/troubleshooting-index.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/customgpt/troubleshooting-index.md), [data/config/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/config/README.md) |
 | Linux service failure | [customgpt/troubleshooting-index.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/customgpt/troubleshooting-index.md), [docs/OPERATOR_GUIDE.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/OPERATOR_GUIDE.md) |
 | Telnet cannot connect | [customgpt/troubleshooting-index.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/customgpt/troubleshooting-index.md), [docs/OPERATOR_GUIDE.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/OPERATOR_GUIDE.md), [telnet/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md) |
+| Browser terminal cannot connect | [customgpt/troubleshooting-index.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/customgpt/troubleshooting-index.md), [cloudflare/web-terminal/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/cloudflare/web-terminal/README.md) |
 | Missing spots after login | [customgpt/troubleshooting-index.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/customgpt/troubleshooting-index.md), [telnet/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md), [data/config/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/config/README.md) |
 | Surprising mode, confidence, or path glyph | [customgpt/troubleshooting-index.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/customgpt/troubleshooting-index.md), [docs/OPERATOR_GUIDE.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/OPERATOR_GUIDE.md), package README |
 | Source-specific missing spots | [customgpt/troubleshooting-index.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/customgpt/troubleshooting-index.md), [rbn/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/rbn/README.md), [pskreporter/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/pskreporter/README.md), [dxsummit/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/dxsummit/README.md), [peer/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/peer/README.md) |

@@ -1,0 +1,12 @@
+{
+  "name": "gocluster-web-terminal",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/vendor-xterm.mjs && node scripts/check-static.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@xterm/xterm": "5.5.0"
+  }
+}

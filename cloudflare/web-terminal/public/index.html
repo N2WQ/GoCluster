@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GoCluster Web Terminal</title>
+    <link rel="stylesheet" href="/vendor/xterm.css">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body data-connection="connecting">
+    <main class="terminal-shell">
+      <header class="toolbar">
+        <div class="brand">
+          <span class="brand-mark">N2WQ</span>
+          <span class="brand-subtitle">GoCluster</span>
+        </div>
+        <div class="actions">
+          <span id="status-text" class="status">connecting</span>
+          <button id="reconnect" type="button">Reconnect</button>
+          <button id="disconnect" type="button">Disconnect</button>
+          <button id="clear" type="button">Clear</button>
+        </div>
+      </header>
+      <section id="terminal" class="terminal" aria-label="GoCluster terminal"></section>
+    </main>
+    <script src="/vendor/xterm.js"></script>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

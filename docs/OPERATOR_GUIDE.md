@@ -178,6 +178,13 @@ Connect to the configured telnet port from `runtime.yaml`:
 telnet localhost 8300
 ```
 
+The browser terminal prototype in
+[`cloudflare/web-terminal/README.md`](../cloudflare/web-terminal/README.md)
+serves the same terminal UX through a Cloudflare Worker at `/ws`. It is a
+separate deployment from the GoCluster process: configure the Worker target
+host/port and route `www.n2wq.com` through Cloudflare before treating it as a
+live browser endpoint.
+
 Log in with your callsign. Useful first commands:
 
 - `HELP`: show the command list.

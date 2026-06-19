@@ -11,6 +11,12 @@ setup, the shipped port is `8300`:
 telnet localhost 8300
 ```
 
+For a browser-hosted version of the same terminal experience, see the Phase 0
+Cloudflare prototype in
+[`cloudflare/web-terminal/README.md`](cloudflare/web-terminal/README.md). It
+serves a static Xterm.js page and proxies `/ws` WebSocket sessions to the
+existing telnet listener through a Cloudflare Worker.
+
 Log in with your callsign, then start with:
 
 - `HELP`: show the command list.

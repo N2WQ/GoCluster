@@ -1,6 +1,8 @@
 # Build artifacts
 .tmp/
+.wrangler/
 ready_to_run/
+node_modules/
 gocluster-windows-amd64.zip
 *.exe
 *.dll
