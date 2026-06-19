@@ -99,6 +99,28 @@ The proposed ledger should also include a `Reasoning budget` recommendation.
 Use it as Codex's target reasoning-level suggestion for the next execution turn;
 it does not approve scope or waive validation.
 
+## Use subagents deliberately
+
+Subagents are useful when they make the workflow more rigorous, not faster at
+the expense of control. They are allowed only when the active environment and
+your authorization support delegated or parallel agent work.
+
+Before `Approved vN`, subagents should be read-only explorers. Good uses are
+code-walk evidence, blast-radius review, config or decision-memory review,
+independent adversarial review of the proposed scope, and other evidence
+gathering. They should not edit files, draft diffs, run formatters, create
+generated artifacts, or run full validation suites before approval.
+
+After `Approved vN`, worker subagents should be used only for approved,
+disjoint slices. A worker assignment should name the approved version, slice,
+allowed paths, forbidden paths, stopping point, targeted checks, and when to
+stop for hidden blast radius or uncertainty.
+
+For high-risk closeout, a read-only fresh-verifier explorer can independently
+check the diff, validation evidence, ADR/TSR impact, support-agent impact, and
+claim wording. Codex still owns integration, final validation claims,
+traceability, and the final response.
+
 ## Practical loop
 
 1. Ask for plan-only analysis.
@@ -109,12 +131,12 @@ it does not approve scope or waive validation.
    traceability, and documentation duties.
 
 For high-risk work, expect closeout to include a fresh verifier pass. If the
-active environment and your approval support independent verifier agents, Codex
-may use one; otherwise it should perform a fresh self-verification pass before
-closing out. Either way, claims about validation, performance, latency, p99,
-memory, path/VOACAP science, or call-correction quality should point to the
-current source, command output, measurements, runtime captures, or ADR/TSR
-records used as evidence.
+active environment and your approval support delegated or parallel agent work,
+Codex may use a read-only fresh-verifier explorer; otherwise it should perform
+a fresh self-verification pass before closing out. Either way, claims about
+validation, performance, latency, p99, memory, path/VOACAP science, or
+call-correction quality should point to the current source, command output,
+measurements, runtime captures, or ADR/TSR records used as evidence.
 
 Recurring model or workflow lessons belong in `docs/agent-lessons/README.md`
 only when the approved scope includes that maintenance. Those lessons are

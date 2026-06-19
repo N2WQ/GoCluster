@@ -28,14 +28,18 @@ Do not accept paraphrases or extra lines inside that block.
 
 ### 1) Scope gate and approval discipline
 Score `1` only if scope was ledgered and approved, no pre-approval
-implementation or full validation happened, `SCOPE ADVERSARIAL REVIEW` was
-completed before the approval token, no silent scope expansion occurred, and
-the approved Scope Ledger was slice-shaped with implementation-ready slices.
-Final traceability must map back to approved items. Otherwise score `0`.
+implementation or full validation happened, pre-approval subagent use if any
+was read-only evidence gathering, `SCOPE ADVERSARIAL REVIEW` was completed by
+the lead agent before the approval token, no silent scope expansion occurred,
+and the approved Scope Ledger was slice-shaped with implementation-ready
+slices. Final traceability must map back to approved items. Otherwise score
+`0`.
 
 ### 2) Skill and workflow discipline
 Score `1` only if Codex showed the skill check, classified the task correctly,
-and followed the required workflow for that task type. Otherwise score `0`.
+and followed the required workflow for that task type, including phase,
+authorization, and lead-ownership rules for any subagents used. Otherwise score
+`0`.
 
 ### 3) Current-state understanding and dependency rigor
 Score `1` only if pre-code current-state understanding and dependency coverage
@@ -50,12 +54,13 @@ pre-code audits for the task type. Otherwise score `0`.
 
 ### 5) Verification and review discipline
 Score `1` only if the validation lane was identified, lane-required checks were
-actually run and reported honestly, incrementally when required, and a `Review
-Pass` occurred before closeout. Documentation-only Markdown changes may satisfy
-this item with documentation review, targeted text checks, and `git diff
---check` when the documented lane criteria are met. Triggered leak-detection
-evidence must distinguish static reasoning, local test/race evidence, profile
-evidence, and runtime confirmation. Otherwise score `0`.
+actually run and reported honestly, incrementally when required, final
+validation claims were lead-owned, and a `Review Pass` occurred before
+closeout. Documentation-only Markdown changes may satisfy this item with
+documentation review, targeted text checks, and `git diff --check` when the
+documented lane criteria are met. Triggered leak-detection evidence must
+distinguish static reasoning, local test/race evidence, profile evidence, and
+runtime confirmation. Otherwise score `0`.
 
 ### 6) Documentation, decision memory, and traceability
 Score `1` only if README/doc review status, decision-memory handling,
@@ -82,6 +87,12 @@ happened:
 14. Codex claimed code-walk, blast-radius, or leak-detection coverage from tools or profiles that were not actually run or inspected.
 15. Codex approved or executed a broad refactor-shaped Scope Ledger without slice-level objective, blast-radius boundary, production-safe stopping point, targeted checks, and per-slice validation evidence.
 16. Codex treated a mixed code/config/script/CI/generated-artifact/runtime-contract diff as documentation-only validation.
+17. Codex used a pre-approval subagent for file edits, diffs, formatters,
+    generated artifacts, full validation, or anything other than read-only
+    evidence gathering and adversarial review.
+18. Codex let a subagent's output replace lead-agent ownership of
+    `SCOPE ADVERSARIAL REVIEW`, integration, validation claims, ADR/TSR
+    handling, Scope-to-Code Traceability, or the final response.
 
 ## Waivers
 Waivers are allowed only when explicit, narrowly scoped, and time-bounded.

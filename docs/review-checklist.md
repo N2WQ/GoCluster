@@ -24,16 +24,20 @@ Required output:
 For high-risk Non-trivial work, perform a fresh verifier pass after the Review
 Pass and before final closeout.
 
-Use an independent verifier only when the active environment and user
-authorization support delegated or parallel agent work. Otherwise, perform a
-fresh self-verification pass by resetting reviewer context and re-checking the
-approved scope, current diff, evidence, validation lane, ADR/TSR impact, and
-claim wording.
+Use a read-only fresh-verifier explorer only when the active environment and
+user authorization support delegated or parallel agent work. Otherwise, perform
+a fresh self-verification pass by resetting reviewer context and re-checking
+the approved scope, current diff, evidence, validation lane, ADR/TSR impact,
+and claim wording.
 
 The verifier pass must fail the closeout if implementation, validation,
 performance, scientific/model, or operator-facing claims are not supported by
 current-session source inspection, command output, tests, benchmark/profile
 data, runtime evidence, or decision records.
+
+Fresh-verifier explorer findings are evidence only. The lead agent owns the
+final Review Pass, integration of any fixes, validation claims, ADR/TSR
+handling, Scope-to-Code Traceability, and closeout wording.
 
 Review focus:
 - correctness
@@ -58,6 +62,8 @@ Review focus:
 - maintainability and readability
 - missing tests
 - documentation gaps
+- subagent assignments, if used, stayed within approved phase, write scope,
+  allowed actions, and lead-owned disposition
 - support-agent routing drift when operator docs or operator-visible behavior changed
 - new or materially changed support-critical Go entry/integration files have
   crawler-entry comments where package/file ownership, related docs/tests, or
@@ -89,6 +95,7 @@ After the Review Pass, produce a Self-Audit with pass/fail for each category bel
 - Concurrency, backpressure, and resource bounds
 - Leak-detection evidence
 - Fresh verification and claim evidence
+- Subagent use and lead ownership
 - Anti-speculative implementation guard
 - Verification and checker discipline
 - Documentation, decision memory, and traceability

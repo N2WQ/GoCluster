@@ -20,6 +20,9 @@ restating unchanged facts.
 - Skill check: selected <skill> | none applicable
 - Classification: Non-trivial
 - Ledger status: Approved vN found: no
+- Subagent authorization: none | supported by <environment/user basis>
+- Pre-approval subagents: none | read-only explorer/adversarial-review
+  explorer - <purpose and allowed actions>
 
 ### DISCOVERY
 - entrypoints/surfaces:
@@ -27,6 +30,7 @@ restating unchanged facts.
 - persisted/config/archive/schema:
 - user-visible/help/docs:
 - existing tests:
+- subagent evidence: <none | agent role/purpose/findings used as evidence>
 - unknowns:
 
 ### SCOPE
@@ -47,6 +51,7 @@ restating unchanged facts.
 
 ### SCOPE ADVERSARIAL REVIEW
 - question: What edge case would make this scope unsafe or incomplete?
+- adversarial-review explorer: none | used - <findings and lead disposition>
 - applicable edge areas:
 - gaps found: none | <items>
 - disposition: nothing material found | revise ledger to v<N+1>
@@ -69,6 +74,9 @@ that approval.
 - Classification: Non-trivial
 - Ledger status: Approved vN found: yes
 - Approved scope version:
+- Subagent authorization: none | supported by <environment/user basis>
+- Subagent phase/use: none | pre-approval explorer | post-approval worker |
+  fresh-verifier explorer - <lead-owned disposition>
 
 ### PREFLIGHT
 - Git preflight: branch=<name>; worktree=<clean|dirty acknowledged>; rollback=<hash/tag/branch>
@@ -78,6 +86,10 @@ that approval.
 - current flow:
 - code-walk evidence: <commands/files/ADRs inspected | N/A - reason>
 - implementation plan:
+- subagent plan: none | <worker/fresh-verifier roles; approved scope version;
+  slice name/objective; base revision or integration point; allowed paths;
+  forbidden paths; production-safe stopping point; targeted checks; expected
+  output/changed paths; stop conditions; lead verification>
 - contracts: changed | unchanged
 - user-visible behavior: changed | unchanged
 - operator-visible behavior: changed | unchanged | N/A
@@ -103,6 +115,10 @@ For each slice:
 - objective:
 - files:
 - blast-radius boundary:
+- subagent use: none | <worker role; approved scope version; slice; base
+  revision or integration point; allowed paths; forbidden paths; production-safe
+  stopping point; targeted checks; expected output/changed paths; stop
+  conditions>
 - checks:
 - result:
 - next-slice gate: passed | blocked - reason
@@ -112,7 +128,8 @@ For each slice:
 - findings by severity:
 - confirmed fixes:
 - rerun checks:
-- fresh verifier pass: <independent verifier | fresh self-verification | N/A - reason>
+- fresh verifier pass: <fresh-verifier explorer | fresh self-verification | N/A - reason>
+- subagent lead verification: PASS|FAIL|N/A - note
 
 If no material findings:
 - `Review Pass findings: none material`
@@ -127,6 +144,7 @@ If no material findings:
 - Concurrency, backpressure, and resource bounds: PASS|FAIL|N/A - note
 - Leak-detection evidence: PASS|FAIL|N/A - note
 - Fresh verification and claim evidence: PASS|FAIL|N/A - note
+- Subagent use and lead ownership: PASS|FAIL|N/A - note
 - Anti-speculative implementation guard: PASS|FAIL|N/A - note
 - Verification and checker discipline: PASS|FAIL|N/A - note
 - Documentation, decision memory, and traceability: PASS|FAIL|N/A - note
@@ -142,6 +160,7 @@ If no material findings:
 - README impact:
 - Support-agent docs impact:
 - fresh verifier outcome:
+- subagent use and lead-owned disposition:
 - claim evidence:
 - verification commands and results:
 - validation lane:
@@ -155,6 +174,7 @@ For every Scope Ledger item that was `Agreed` or `Pending` at the start of imple
 - tests/checks:
 - docs/comments:
 - support-agent docs:
+- subagent outputs:
 - decision refs:
 
 ### VALIDATION

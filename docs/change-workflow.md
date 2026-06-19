@@ -136,6 +136,64 @@ not present the approval token for the current ledger version. Create the next
 `Proposed Scope Ledger vN`, repeat `SCOPE ADVERSARIAL REVIEW`, and continue
 until the disposition is exactly `nothing material found`.
 
+### Subagent use
+Use subagents only when the active environment and user authorization support
+delegated or parallel agent work. Record the authorization basis, phase, allowed
+actions, expected output, and lead-agent verification in the applicable evidence
+marker.
+
+Subagent output improves evidence; it never transfers gate ownership. The lead
+Codex agent still owns Scope Ledger disposition, `SCOPE ADVERSARIAL REVIEW`,
+integration, Review Pass, validation claims, ADR/TSR handling, Scope-to-Code
+Traceability, and the final response.
+
+#### Pre-approval explorers
+Before exact `Approved vN`, subagents must be read-only explorers. Allowed
+purposes include code-walk evidence, blast-radius review, config-contract
+review, decision-memory review, lifecycle or leak review, retained-state review,
+hot-path review, docs/support impact review, and independent adversarial review
+of `Proposed Scope Ledger vN`.
+
+Pre-approval subagents must not edit files, propose diffs, run formatters,
+create generated artifacts, run full checker suites, or otherwise weaken the
+pre-approval no-change boundary. If a pre-approval explorer finds a material
+gap, the lead agent must revise the Scope Ledger and repeat
+`SCOPE ADVERSARIAL REVIEW` before presenting the approval token.
+
+#### Post-approval workers
+Post-approval worker subagents are allowed only after exact `Approved vN` and
+only for approved, disjoint implementation slices. Each worker assignment must
+name:
+
+- approved scope version
+- slice name and objective
+- base revision or current integration point
+- allowed files, packages, or docs
+- forbidden files, packages, or docs
+- production-safe stopping point
+- targeted checks the worker may run
+- expected output and changed paths
+- stop conditions for hidden blast radius, overlap, failed assumptions, or
+  scope uncertainty
+
+Workers must assume other agents may also be active in the codebase. They must
+not revert, overwrite, or broaden another agent's work. If write scopes overlap,
+or if a worker discovers a required change outside its assignment, the worker
+must stop and report the blocker. The lead agent owns integration and final
+validation.
+
+#### Fresh-verifier explorers
+For high-risk Non-trivial work, prefer a read-only fresh-verifier explorer when
+the environment and user authorization support it. A fresh-verifier explorer
+checks the approved scope against the diff, validation evidence, ADR/TSR and
+support-agent impact, claim wording, and hidden out-of-scope work. It reports
+findings only; it does not edit.
+
+Final validation remains lead-owned. Avoid parallel full-suite validation in the
+same checkout unless validation is isolated by worktree and cache. If parallel
+validation causes Go cache or export-data errors, clean the Go cache and rerun
+the suite sequentially before closeout.
+
 ### Reasoning budget recommendation
 Every Proposed Scope Ledger must recommend the lowest reasoning level expected
 to satisfy the workflow without skipping required artifacts:
@@ -474,10 +532,10 @@ behavior, shared interfaces, retained state, concurrency/lifecycle, queues, hot
 paths, production-impacting fixes, and scientific/model behavior such as
 call-correction, path reliability, p50, propagation, or VOACAP semantics.
 
-Use an independent verifier only when the active environment and user
-authorization explicitly support parallel or delegated agent work. Otherwise,
-perform a fresh self-verification pass by resetting reviewer context and
-checking:
+Use a read-only fresh-verifier explorer only when the active environment and
+user authorization explicitly support parallel or delegated agent work.
+Otherwise, perform a fresh self-verification pass by resetting reviewer context
+and checking:
 
 - approved Scope Ledger items against the diff
 - contract, ADR/TSR, support-agent, and documentation impact

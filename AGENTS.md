@@ -100,6 +100,23 @@ When the user asks what existing code does and has not asked for changes:
   `docs/code-quality.md` and `docs/change-workflow.md`, then report the Go
   comment intent audit.
 
+## Subagent Use
+- Use subagents only when the active environment and user authorization support
+  delegated or parallel agent work.
+- Before exact `Approved vN`, subagents must be read-only explorers or
+  adversarial-review helpers. They may gather evidence and challenge scope, but
+  they must not edit files, propose diffs, run formatters, create generated
+  artifacts, or run full validation suites.
+- Post-approval worker subagents are allowed only for approved, disjoint Scope
+  Ledger slices with explicit allowed paths, forbidden paths, stopping point,
+  targeted checks, and stop-on-hidden-blast-radius instructions.
+- For high-risk closeout, prefer a read-only fresh-verifier explorer when
+  supported.
+- Subagent findings are evidence only. The lead Codex agent owns scope
+  disposition, `SCOPE ADVERSARIAL REVIEW`, integration, final Review Pass,
+  validation claims, ADR/TSR handling, Scope-to-Code Traceability, and the
+  final response.
+
 ## Task Gates
 - Before every change, classify the task and confirm current Scope Ledger
   version/status.
@@ -177,9 +194,10 @@ delta, or final disposition.
   artifacts, scripts, CI, schemas, protocol/runtime contracts, or runtime data.
 - Review the current diff as a reviewer before final closeout.
 - For high-risk Non-trivial slices, perform a fresh verification pass before
-  final closeout. Use an independent verifier only when the active environment
-  and user authorization support it; otherwise reset reviewer context and
-  re-check the approved scope, current diff, evidence, and claims yourself.
+  final closeout. Use a read-only fresh-verifier explorer only when the active
+  environment and user authorization support it; otherwise reset reviewer
+  context and re-check the approved scope, current diff, evidence, and claims
+  yourself.
 - Inspect `git diff --name-only` and touched files directly before final
   closeout for implementation work.
 - Every Non-trivial task requires ADR handling under `docs/decision-memory.md`.

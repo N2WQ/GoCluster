@@ -115,6 +115,10 @@ Add only the documentation checks that apply:
   checklist, repo-managed skill, or workflow-script documentation changes
 - fresh verifier and claim-evidence text checks when workflow docs change those
   requirements
+- subagent-use text checks when workflow docs change delegated or parallel
+  agent rules, including `Approved vN`, `SCOPE ADVERSARIAL REVIEW`,
+  `fresh-verifier explorer`, allowed actions, lead ownership, and stop
+  conditions
 - support-agent routing review when operator-support topics or support-routing
   docs changed
 - `scripts/check-troubleshooting-records.ps1` for troubleshooting record,
@@ -228,6 +232,11 @@ Example cadence:
 2. after milestone 2: targeted checks plus the broader lane checks
 3. before closeout: final lane-required checks
 4. final if applicable: `go test -race ./...`, fuzz, benchmark, pprof
+
+When full-suite Go validation is required, keep final validation lead-owned and
+sequential unless isolated worktrees and caches are intentionally used. If
+parallel validation causes Go cache or export-data errors, run
+`go clean -cache -testcache` and rerun the affected suite sequentially.
 
 ## Reporting format
 In the final summary, list each command with:

@@ -41,6 +41,7 @@ linking or citing these docs over duplicating their content here.
 | Peer behavior | [peer/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/peer/README.md) | `docs/decisions/` |
 | Repo layout | [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md) | package READMEs, [scripts/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/scripts/README.md), [data/config/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/config/README.md), [data/h3/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/h3/README.md) |
 | Developer workflow | [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md) | [docs/WORKING_WITH_CODEX.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/WORKING_WITH_CODEX.md), [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md) |
+| Subagent delegation workflow | [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md) | [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), [docs/WORKING_WITH_CODEX.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/WORKING_WITH_CODEX.md), [docs/review-checklist.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/review-checklist.md) |
 | Agent lesson memory | [docs/agent-lessons/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/agent-lessons/README.md) | [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md), [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), [docs/decision-memory.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/decision-memory.md) |
 | Code walking, blast-radius, and leak-detection workflow | [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md) | [docs/dev-runbook.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/dev-runbook.md), `codex-skills/` |
 | Dependency visualization and code-map summaries | [docs/code-maps/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/code-maps/README.md) | [docs/dev-runbook.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/dev-runbook.md), [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), `codex-skills/` |
@@ -63,6 +64,11 @@ linking or citing these docs over duplicating their content here.
   package README before using code.
 - For developer behavior, route to [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md) and the workflow docs before
   implementation advice.
+- For subagent or delegation questions, route to the Subagent Use rules in
+  [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md)
+  and [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md);
+  emphasize that subagent findings are evidence and the lead Codex agent owns
+  approval gates, integration, validation claims, traceability, and closeout.
 - For recurring model or workflow lessons, route to [docs/agent-lessons/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/agent-lessons/README.md),
   then verify any implementation claim against workflow docs, source, tests,
   and ADR/TSR records.
