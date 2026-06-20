@@ -250,10 +250,10 @@ Path reliability glyphs:
   Bucket p50 data is authoritative; VOACAP may only replace insufficient data
     when closed, aligned with sparse p50, or REL-gated from cached VOACAP.
   Native 160m fallback may fill insufficient 160m data with CLOSED, LOW, or
-    UNLIKELY from civil-dark path fraction when VOACAP has no usable
-    current-hour result.
+    UNLIKELY from endpoint sunlight/twilight first, then civil-dark path
+    fraction.
   "#" - CLOSED: VOACAP fallback predicts closed SNR, or native 160m fallback
-    marks a low-darkness 160m path as a solar proxy.
+    marks endpoint daylight or a low-darkness 160m path as a solar proxy.
   PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, CLOSED, INSUFFICIENT.
 
 List types:
@@ -498,12 +498,18 @@ Example readings:
   predicted FT8-equivalent SNR -34, and used SSN generation 112.
 - `valn|-15/-15h20s112`: sparse bucket p50 rounded to -15 dB and the 20:00
   UTC VOACAP forecast also mapped to that same path class.
-- `n160c|d12`: native 160m fallback classified an insufficient 160m result as
-  `CLOSED` from a 12% civil-dark path fraction. Beacon receive-only paths use
-  `bn160c|d12`.
+- `n160c|uD|d82`: native 160m fallback classified an insufficient 160m result
+  as `CLOSED` because the user endpoint was in daylight. `xD` means DX endpoint
+  daylight and `bD` means both endpoints. Beacon receive-only paths use
+  `bn160c|...`.
+- `n160c|d12`: no endpoint token means native 160m `CLOSED` came from the
+  whole-path civil-dark fraction, not an endpoint daylight veto.
+- `n160|xT|d54`: native 160m fallback classified an insufficient 160m result
+  as `UNLIKELY` because the DX endpoint was in civil twilight. `uT` means user
+  endpoint twilight and `bT` means both endpoints.
 - `n160|d82`: native 160m fallback filled an insufficient 160m result as
-  `LOW` or `UNLIKELY` from an 82% civil-dark path fraction. Beacon receive-only
-  paths use `bn160|d82`.
+  `LOW` or `UNLIKELY` from an 82% civil-dark path fraction after both endpoints
+  were dark. Beacon receive-only paths use `bn160|d82`.
 - `n1|loww`: one selected observation existed, but the effective weight was
   below the minimum.
 - `n32|w1`: large selected count but low rounded effective weight. Treat this
@@ -603,7 +609,8 @@ Important operational notes:
   A separate `Native 160m fallback (5m)` line appears when insufficient 160m
   candidates are evaluated and reports candidates, emissions, CLOSED/LOW/
   UNLIKELY class splits, not-dark, unknown, display-disabled,
-  `dark_le_closed`, and civil-darkness threshold buckets.
+  endpoint daylight/twilight outcomes, `dark_le_closed`, and civil-darkness
+  threshold buckets.
   A separate `VOACAP p50 compare (5m)` line may appear when sufficient p50
   predictions can be compared against an existing current-hour VOACAP cache
   record. It is cache-only: cache misses do not run VOACAP, start delay
@@ -642,10 +649,12 @@ Important operational notes:
   delay/queue behavior.
 - If `native_160m_fallback.enabled` is true, an insufficient 160m bucket result
   can be filled by exact solar path geometry when no usable current-hour VOACAP
-  result has precedence. It can emit only `CLOSED`, `LOW`, or `UNLIKELY` from
-  the fraction of the path darker than civil twilight: at or below
-  `closed_max_civil_dark_fraction` maps to `CLOSED`, above that and below
-  `unlikely_min_civil_dark_fraction` stays blank, then the unlikely/low
+  result has precedence. It can emit only `CLOSED`, `LOW`, or `UNLIKELY`.
+  Endpoint state is checked first: either endpoint above the horizon emits
+  `CLOSED`, and either endpoint in civil twilight emits `UNLIKELY`. Only after
+  both endpoints are civil-dark does the whole-path civil-dark fraction apply:
+  at or below `closed_max_civil_dark_fraction` maps to `CLOSED`, above that and
+  below `unlikely_min_civil_dark_fraction` stays blank, then the unlikely/low
   thresholds emit `UNLIKELY` or `LOW`. It is an opportunity proxy, not an SNR
   or probability model, and sufficient p50 remains authoritative.
 - Beacon spots use RX-only path semantics. The beacon qualifier is the existing

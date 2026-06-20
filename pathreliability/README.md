@@ -166,11 +166,14 @@ very-low-count bucket and does not relax prediction gates or enqueue additional
 VOACAP work.
 When native 160m fallback evaluates insufficient 160m candidates, a separate
 `Native 160m fallback (5m)` line reports candidate, emitted, class, not-dark,
-unknown, display-disabled, `dark_le_closed`, and fixed civil-darkness threshold
-buckets. Native 160m fallback is an opportunity proxy: it can emit only
-`CLOSED`, `LOW`, or `UNLIKELY`, never replaces sufficient p50, and yields to
-usable current-hour VOACAP. `CLOSED` is the low-darkness solar proxy bucket, not
-a VOACAP SNR result.
+unknown, display-disabled, endpoint daylight/twilight outcome counters,
+`dark_le_closed`, and fixed civil-darkness threshold buckets. Native 160m
+fallback is an opportunity proxy: it can emit only `CLOSED`, `LOW`, or
+`UNLIKELY`, never replaces sufficient p50, and yields to usable current-hour
+VOACAP. Endpoint daylight emits `CLOSED`; endpoint civil twilight emits
+`UNLIKELY`; whole-path civil-dark fraction is only the secondary score after
+both endpoints are dark. `CLOSED` is a solar-darkness proxy bucket, not a VOACAP
+SNR result.
 
 When `voacap_fallback.enabled` is true on Windows, insufficient bucket results
 may start a delayed VOACAP lookup. Linux and other non-Windows builds log that

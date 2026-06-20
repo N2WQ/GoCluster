@@ -136,6 +136,10 @@ type Result struct {
 	Native160Emitted           bool
 	Native160DisplayDisabled   bool
 	Native160Unknown           bool
+	Native160UserDaylight      bool
+	Native160DXDaylight        bool
+	Native160UserTwilight      bool
+	Native160DXTwilight        bool
 	Native160DaylightFraction  float64
 	Native160CivilDarkFraction float64
 	Native160CivilTwilightDeg  float64

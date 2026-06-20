@@ -52,7 +52,8 @@ glyph_symbols:
 
 # Experimental native 160m fallback. This does not predict SNR; it only fills
 # insufficient 160m p50 paths with conservative CLOSED/LOW/UNLIKELY proxy
-# glyphs when civil-dark path geometry crosses the configured thresholds.
+# glyphs. Endpoint daylight/twilight gates first; civil-dark path fraction is
+# the secondary score after both endpoints are dark.
 native_160m_fallback:
   enabled: true
   display_enabled: true

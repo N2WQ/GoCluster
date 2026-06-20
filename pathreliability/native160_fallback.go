@@ -14,7 +14,7 @@ import (
 
 // Native160FallbackResult evaluates the experimental solar-darkness fallback.
 // It never changes sufficient p50 results and emits only CLOSED/LOW/UNLIKELY
-// proxy classes from civil-dark path geometry.
+// proxy classes from endpoint state first, then civil-dark path geometry.
 func Native160FallbackResult(base Result, cfg Config, req VOACAPClosedRequest, now time.Time) Result {
 	if base.Source != SourceInsufficient || !cfg.Native160Fallback.Enabled || normalizeBand(req.Band) != "160m" {
 		return base
@@ -29,16 +29,29 @@ func Native160FallbackResult(base Result, cfg Config, req VOACAPClosedRequest, n
 		res.Native160Unknown = true
 		return res
 	}
+	userVec := solarpath.LatLonToVec(userLat, userLon).Normalize()
 	dxLat, dxLon, ok := GridCenterLatLon(strings.TrimSpace(req.DXGrid))
 	if !ok {
 		res.Native160Unknown = true
 		return res
 	}
+	dxVec := solarpath.LatLonToVec(dxLat, dxLon).Normalize()
+	sun := solarpath.SunVectorECEF(now)
+	res.Native160UserDaylight, res.Native160UserTwilight = native160EndpointSolarState(
+		userVec,
+		sun,
+		cfg.Native160Fallback.CivilTwilightDegrees,
+	)
+	res.Native160DXDaylight, res.Native160DXTwilight = native160EndpointSolarState(
+		dxVec,
+		sun,
+		cfg.Native160Fallback.CivilTwilightDegrees,
+	)
 
 	exposure := solarpath.SolarExposure(
-		solarpath.LatLonToVec(userLat, userLon).Normalize(),
-		solarpath.LatLonToVec(dxLat, dxLon).Normalize(),
-		solarpath.SunVectorECEF(now),
+		userVec,
+		dxVec,
+		sun,
 		cfg.Native160Fallback.CivilTwilightDegrees,
 		solarpath.Tolerances{
 			CrossNormTiny: 1e-12,
@@ -53,15 +66,8 @@ func Native160FallbackResult(base Result, cfg Config, req VOACAPClosedRequest, n
 		return res
 	}
 
-	var class string
-	switch {
-	case exposure.CivilDarkFraction <= cfg.Native160Fallback.ClosedMaxCivilDarkFraction:
-		class = classClosed
-	case exposure.CivilDarkFraction >= cfg.Native160Fallback.LowMinCivilDarkFraction:
-		class = classLow
-	case exposure.CivilDarkFraction >= cfg.Native160Fallback.UnlikelyMinCivilDarkFraction:
-		class = classUnlikely
-	default:
+	class := native160FallbackClass(res, cfg, exposure.CivilDarkFraction)
+	if class == "" {
 		return res
 	}
 	if !cfg.Native160Fallback.DisplayEnabled {
@@ -73,4 +79,32 @@ func Native160FallbackResult(base Result, cfg Config, req VOACAPClosedRequest, n
 	res.Glyph = glyphForClass(class, cfg)
 	res.Native160Emitted = true
 	return res
+}
+
+func native160FallbackClass(res Result, cfg Config, civilDarkFraction float64) string {
+	switch {
+	case res.Native160UserDaylight || res.Native160DXDaylight:
+		return classClosed
+	case res.Native160UserTwilight || res.Native160DXTwilight:
+		return classUnlikely
+	case civilDarkFraction <= cfg.Native160Fallback.ClosedMaxCivilDarkFraction:
+		return classClosed
+	case civilDarkFraction >= cfg.Native160Fallback.LowMinCivilDarkFraction:
+		return classLow
+	case civilDarkFraction >= cfg.Native160Fallback.UnlikelyMinCivilDarkFraction:
+		return classUnlikely
+	default:
+		return ""
+	}
+}
+
+func native160EndpointSolarState(point, sun solarpath.Vec3, civilTwilightDeg float64) (daylight, twilight bool) {
+	dot := point.Dot(sun)
+	if dot > solarpath.SunElevationThreshold(0) {
+		return true, false
+	}
+	if dot > solarpath.LitThresholdForTwilight(civilTwilightDeg) {
+		return false, true
+	}
+	return false, false
 }

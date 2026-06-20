@@ -3,6 +3,8 @@ package pathreliability
 import (
 	"testing"
 	"time"
+
+	"dxcluster/internal/solarpath"
 )
 
 func TestNative160FallbackResultEmitsConservativeClass(t *testing.T) {
@@ -11,11 +13,11 @@ func TestNative160FallbackResultEmitsConservativeClass(t *testing.T) {
 	cfg.Native160Fallback.DisplayEnabled = true
 	req := VOACAPClosedRequest{
 		UserGrid: "FN31",
-		DXGrid:   "QF56",
+		DXGrid:   "FN20",
 		Band:     "160m",
 		Mode:     "FT8",
 	}
-	now := time.Date(2026, time.June, 18, 12, 0, 0, 0, time.UTC)
+	now := time.Date(2026, time.June, 18, 4, 0, 0, 0, time.UTC)
 	base := Result{Glyph: cfg.GlyphSymbols.Insufficient, Source: SourceInsufficient, InsufficientReason: InsufficientNoSample}
 	got := Native160FallbackResult(base, cfg, req, now)
 	if !got.Native160Checked || got.Native160Unknown {
@@ -26,6 +28,9 @@ func TestNative160FallbackResultEmitsConservativeClass(t *testing.T) {
 	}
 	if got.Class != classLow || got.Glyph != cfg.GlyphSymbols.Low {
 		t.Fatalf("class/glyph = %q/%q, want LOW/%q", got.Class, got.Glyph, cfg.GlyphSymbols.Low)
+	}
+	if got.Native160UserDaylight || got.Native160DXDaylight || got.Native160UserTwilight || got.Native160DXTwilight {
+		t.Fatalf("expected both endpoints civil-dark for LOW path, got %+v", got)
 	}
 	if got.Native160CivilDarkFraction < cfg.Native160Fallback.LowMinCivilDarkFraction {
 		t.Fatalf("dark fraction %.3f below LOW threshold", got.Native160CivilDarkFraction)
@@ -51,57 +56,98 @@ func TestNative160FallbackResultEmitsClosedForDaylitPath(t *testing.T) {
 	if got.Source != SourceNative160 || got.Class != classClosed || got.Glyph != cfg.GlyphSymbols.Closed {
 		t.Fatalf("class/glyph = %v/%q/%q, want native CLOSED/%q", got.Source, got.Class, got.Glyph, cfg.GlyphSymbols.Closed)
 	}
-	if got.Native160CivilDarkFraction > cfg.Native160Fallback.ClosedMaxCivilDarkFraction {
-		t.Fatalf("dark fraction %.3f above CLOSED threshold %.3f", got.Native160CivilDarkFraction, cfg.Native160Fallback.ClosedMaxCivilDarkFraction)
+	if !got.Native160UserDaylight && !got.Native160DXDaylight {
+		t.Fatalf("expected endpoint daylight veto, got %+v", got)
 	}
 }
 
-func TestNative160FallbackResultLeavesMiddleBandBlank(t *testing.T) {
+func TestNative160FallbackClassLeavesMiddleBandBlank(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.Native160Fallback.Enabled = true
-	cfg.Native160Fallback.DisplayEnabled = true
 	cfg.Native160Fallback.ClosedMaxCivilDarkFraction = 0.25
 	cfg.Native160Fallback.UnlikelyMinCivilDarkFraction = 0.95
 	cfg.Native160Fallback.LowMinCivilDarkFraction = 1.0
-	req := VOACAPClosedRequest{
-		UserGrid: "FN31",
-		DXGrid:   "QF56",
-		Band:     "160m",
-		Mode:     "FT8",
-	}
-	now := time.Date(2026, time.June, 18, 12, 0, 0, 0, time.UTC)
-	base := Result{Glyph: cfg.GlyphSymbols.Insufficient, Source: SourceInsufficient, InsufficientReason: InsufficientNoSample}
-	got := Native160FallbackResult(base, cfg, req, now)
-	if !got.Native160Checked || got.Native160Unknown {
-		t.Fatalf("expected checked known native 160m result: %+v", got)
-	}
-	if got.Native160CivilDarkFraction <= cfg.Native160Fallback.ClosedMaxCivilDarkFraction ||
-		got.Native160CivilDarkFraction >= cfg.Native160Fallback.UnlikelyMinCivilDarkFraction {
-		t.Fatalf("test path dark fraction %.3f is not in the deliberate blank band", got.Native160CivilDarkFraction)
-	}
-	if got.Source != SourceInsufficient || got.Native160Emitted {
-		t.Fatalf("middle band must stay blank/insufficient, got %+v", got)
+	if got := native160FallbackClass(Result{}, cfg, 0.50); got != "" {
+		t.Fatalf("middle band class = %q, want blank", got)
 	}
 }
 
-func TestNative160FallbackResultEmitsUnlikelyBetweenThresholds(t *testing.T) {
+func TestNative160FallbackClassEmitsUnlikelyBetweenThresholds(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.Native160Fallback.Enabled = true
-	cfg.Native160Fallback.DisplayEnabled = true
 	cfg.Native160Fallback.ClosedMaxCivilDarkFraction = 0.25
 	cfg.Native160Fallback.UnlikelyMinCivilDarkFraction = 0.50
 	cfg.Native160Fallback.LowMinCivilDarkFraction = 1.0
-	req := VOACAPClosedRequest{
-		UserGrid: "FN31",
-		DXGrid:   "QF56",
-		Band:     "160m",
-		Mode:     "FT8",
+	if got := native160FallbackClass(Result{}, cfg, 0.75); got != classUnlikely {
+		t.Fatalf("class = %q, want UNLIKELY", got)
 	}
-	now := time.Date(2026, time.June, 18, 12, 0, 0, 0, time.UTC)
-	base := Result{Glyph: cfg.GlyphSymbols.Insufficient, Source: SourceInsufficient, InsufficientReason: InsufficientNoSample}
-	got := Native160FallbackResult(base, cfg, req, now)
-	if got.Source != SourceNative160 || got.Class != classUnlikely || got.Glyph != cfg.GlyphSymbols.Unlikely {
-		t.Fatalf("expected native UNLIKELY fallback, got %+v", got)
+}
+
+func TestNative160FallbackClassEndpointStateWinsBeforePathDarkness(t *testing.T) {
+	cfg := DefaultConfig()
+	tests := []struct {
+		name string
+		res  Result
+		want string
+	}{
+		{
+			name: "user daylight closes dark path",
+			res:  Result{Native160UserDaylight: true},
+			want: classClosed,
+		},
+		{
+			name: "dx daylight closes dark path",
+			res:  Result{Native160DXDaylight: true},
+			want: classClosed,
+		},
+		{
+			name: "user twilight caps dark path at unlikely",
+			res:  Result{Native160UserTwilight: true},
+			want: classUnlikely,
+		},
+		{
+			name: "dx twilight caps dark path at unlikely",
+			res:  Result{Native160DXTwilight: true},
+			want: classUnlikely,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := native160FallbackClass(tt.res, cfg, 1.0); got != tt.want {
+				t.Fatalf("class = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNative160EndpointSolarState(t *testing.T) {
+	sun := solarpath.LatLonToVec(0, 0).Normalize()
+	tests := []struct {
+		name         string
+		point        solarpath.Vec3
+		wantDaylight bool
+		wantTwilight bool
+	}{
+		{
+			name:         "above horizon",
+			point:        solarpath.LatLonToVec(0, 0).Normalize(),
+			wantDaylight: true,
+		},
+		{
+			name:         "civil twilight below horizon",
+			point:        solarpath.LatLonToVec(0, 92).Normalize(),
+			wantTwilight: true,
+		},
+		{
+			name:  "civil dark",
+			point: solarpath.LatLonToVec(0, 100).Normalize(),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotDaylight, gotTwilight := native160EndpointSolarState(tt.point, sun, 6)
+			if gotDaylight != tt.wantDaylight || gotTwilight != tt.wantTwilight {
+				t.Fatalf("state daylight=%v twilight=%v, want daylight=%v twilight=%v", gotDaylight, gotTwilight, tt.wantDaylight, tt.wantTwilight)
+			}
+		})
 	}
 }
 

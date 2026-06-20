@@ -173,6 +173,39 @@ func TestPathPredictionStatsSnapshotBeaconCounters(t *testing.T) {
 	}
 }
 
+func TestPathPredictionStatsSnapshotNative160EndpointCounters(t *testing.T) {
+	s := &Server{}
+	s.recordPathPrediction(pathreliability.Result{
+		Source:                     pathreliability.SourceNative160,
+		Class:                      filter.PathClassClosed,
+		Native160Checked:           true,
+		Native160Emitted:           true,
+		Native160UserDaylight:      true,
+		Native160CivilDarkFraction: 0.82,
+		Native160ClosedMaxDarkFrac: 0.25,
+	}, false, false)
+	s.recordPathPrediction(pathreliability.Result{
+		Source:                     pathreliability.SourceNative160,
+		Class:                      filter.PathClassUnlikely,
+		Native160Checked:           true,
+		Native160Emitted:           true,
+		Native160DXTwilight:        true,
+		Native160CivilDarkFraction: 0.90,
+		Native160ClosedMaxDarkFrac: 0.25,
+	}, false, false)
+
+	stats := s.PathPredictionStatsSnapshot()
+	if stats.Native160Closed != 1 || stats.Native160Unlikely != 1 {
+		t.Fatalf("unexpected native 160 aggregate class stats: %+v", stats)
+	}
+	if stats.Native160.EndpointDaylightClosed != 1 || stats.Native160.EndpointTwilightUnlikely != 1 {
+		t.Fatalf("unexpected native 160 endpoint stats: %+v", stats.Native160)
+	}
+	if stats.Native160.DarkGE75 != 2 || stats.Native160.DarkGE90 != 1 {
+		t.Fatalf("unexpected native 160 dark bucket stats: %+v", stats.Native160)
+	}
+}
+
 func TestPathResultWithClosedFallbackTraceRecordsSparseP50VOACAP(t *testing.T) {
 	cfg := pathreliability.DefaultConfig()
 	cfg.GlyphSymbols.Closed = "!"
@@ -290,11 +323,11 @@ func TestPathResultWithClosedFallbackTraceUsesNative160WhenVOACAPUnavailable(t *
 	predictor := pathreliability.NewPredictor(cfg, []string{"160m"})
 	req := pathreliability.VOACAPClosedRequest{
 		UserGrid: "FN31",
-		DXGrid:   "QF56",
+		DXGrid:   "FN20",
 		Band:     "160m",
 		Mode:     "FT8",
 	}
-	now := time.Date(2026, time.June, 18, 12, 0, 0, 0, time.UTC)
+	now := time.Date(2026, time.June, 18, 4, 0, 0, 0, time.UTC)
 	base := pathreliability.Result{
 		Glyph:              cfg.GlyphSymbols.Insufficient,
 		Source:             pathreliability.SourceInsufficient,
@@ -337,6 +370,7 @@ func TestPathResultWithClosedFallbackTraceUsesNative160WhenVOACAPUnavailable(t *
 			stats.Native160.Candidate != 1 ||
 			stats.Native160.Emitted != 1 ||
 			stats.Native160.Closed != 1 ||
+			stats.Native160.EndpointDaylightClosed != 1 ||
 			stats.Native160.DarkLEClosed != 1 ||
 			stats.Native160.NotDark != 0 {
 			t.Fatalf("unexpected native 160 closed stats: %+v", stats)

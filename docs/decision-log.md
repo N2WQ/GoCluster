@@ -23,10 +23,11 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Reserved Placeholder | Unused | - | index hygiene | - | - | No ADR file; first real ADR is `docs/decisions/ADR-0002-ui-v2-render-pipeline.md` |
+| ADR-0201 | Native 160m Endpoint Daylight Gate | Accepted | 2026-06-20 | pathreliability, telnet, config, operations, supportability, experiments | ADR-0197 native 160m whole-path-only classification order | - | `docs/decisions/ADR-0201-native-160m-endpoint-daylight-gate.md` |
 | ADR-0200 | VOACAP Unsupported-Platform Startup Skip | Accepted | 2026-06-19 | startup, voacap, pathreliability, operations, supportability | - | - | `docs/decisions/ADR-0200-voacap-unsupported-platform-startup-skip.md` |
 | ADR-0199 | Subagent Delegation Boundaries | Accepted | 2026-06-19 | workflow, Codex, validation, supportability | - | - | `docs/decisions/ADR-0199-subagent-delegation-boundaries.md` |
 | ADR-0198 | 160m Merge Readiness Cleanup | Accepted | 2026-06-19 | workflow, docs, tests, code maps, pathreliability, custom_scp | - | - | `docs/decisions/ADR-0198-160m-merge-readiness-cleanup.md` |
-| ADR-0197 | Native 160m Closed Solar Proxy | Accepted | 2026-06-19 | pathreliability, telnet, config, operations, supportability, experiments | ADR-0196 LOW/UNLIKELY-only native 160m contract | - | `docs/decisions/ADR-0197-native-160m-closed-solar-proxy.md` |
+| ADR-0197 | Native 160m Closed Solar Proxy | Superseded | 2026-06-19 | pathreliability, telnet, config, operations, supportability, experiments | ADR-0196 LOW/UNLIKELY-only native 160m contract | ADR-0201 | `docs/decisions/ADR-0197-native-160m-closed-solar-proxy.md` |
 | ADR-0196 | Native 160m Solar Darkness Fallback | Superseded | 2026-06-18 | pathreliability, solarweather, telnet, config, operations, experiments | - | ADR-0197 | `docs/decisions/ADR-0196-native-160m-solar-darkness-fallback.md` |
 | ADR-0195 | Telnet Auto Read Pause | Accepted | 2026-06-18 | telnet, commands, config, queues, supportability | - | - | `docs/decisions/ADR-0195-telnet-auto-read-pause.md` |
 | ADR-0194 | LLM Workflow Verification And Claim Evidence | Accepted | 2026-06-18 | workflow, Codex, validation, agent-memory | - | - | `docs/decisions/ADR-0194-llm-workflow-verification-and-claim-evidence.md` |

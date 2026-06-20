@@ -649,12 +649,13 @@ func TestHelpPathGlyphLegendUsesConfiguredSymbols(t *testing.T) {
 		`Bucket p50 data is authoritative; VOACAP may only replace insufficient`,
 		`when closed, aligned with sparse p50, or REL-gated from cached VOACAP.`,
 		`Native 160m fallback may fill insufficient 160m data with CLOSED`,
-		`UNLIKELY from civil-dark path fraction`,
-		`VOACAP has no usable`,
-		`current-hour result.`,
+		`UNLIKELY from endpoint sunlight/twilight first`,
+		`then civil-dark path`,
+		`fraction.`,
 		`"!" - CLOSED: VOACAP fallback predicts closed SNR`,
 		`native 160m fallback`,
-		`marks a low-darkness 160m path`,
+		`marks endpoint daylight`,
+		`or a low-darkness 160m path`,
 		"PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, CLOSED, INSUFFICIENT.",
 	} {
 		if !strings.Contains(resp, want) {

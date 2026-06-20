@@ -1,6 +1,6 @@
 # ADR-0197: Native 160m Closed Solar Proxy
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-06-19
 - Decision Origin: Design
 
@@ -86,4 +86,4 @@ cards, and generated code-map refresh.
 - Related tests: `pathreliability/native160_fallback_test.go`; `pathreliability/config_test.go`; `telnet/server_prediction_stats_test.go`; `telnet/diag_command_test.go`; `internal/propreport/report_test.go`
 - Related docs: `README.md`; `data/config/PATH_PREDICTIONS.md`; `pathreliability/README.md`; `docs/OPERATOR_GUIDE.md`; `customgpt/support-cards/path-reliability.md`
 - Related TSRs: -
-- Supersedes / superseded by: Supersedes ADR-0196
+- Supersedes / superseded by: Supersedes ADR-0196; superseded by ADR-0201

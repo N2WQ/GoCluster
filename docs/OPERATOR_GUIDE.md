@@ -307,13 +307,19 @@ prefixes.
   shown as percent and is not a direct HIGH/MEDIUM/LOW probability.
 - `vop|<snr>r<rel>h<hour>s<ssn>` means there was no sparse p50, but cached
   current-hour VOACAP mapped to an open class and passed the REL gate.
-- `n160c|dNN` means native 160m fallback classified an insufficient 160m result
-  as `CLOSED` from civil-dark path fraction `NN`. This is a solar-darkness
-  proxy, not a VOACAP SNR result. Beacon receive-only native 160m closed
-  diagnostics use `bn160c|dNN`.
+- `n160c|uD|dNN` means native 160m fallback classified an insufficient 160m
+  result as `CLOSED` because the user endpoint was in daylight. `xD` means DX
+  endpoint daylight and `bD` means both endpoints. This is a solar-darkness
+  proxy, not a VOACAP SNR result. Beacon receive-only native 160m diagnostics
+  use the same suffixes with `bn160c`.
+- `n160c|dNN` means no endpoint token was needed; native 160m `CLOSED` came
+  from whole-path civil-dark fraction `NN`.
+- `n160|xT|dNN` means native 160m fallback classified an insufficient 160m
+  result as `UNLIKELY` because the DX endpoint was in civil twilight. `uT`
+  means user endpoint twilight and `bT` means both endpoints.
 - `n160|dNN` means native 160m fallback filled an insufficient 160m result as
-  `LOW` or `UNLIKELY` from civil-dark path fraction `NN`. Beacon receive-only
-  native 160m diagnostics use `bn160|dNN`.
+  `LOW` or `UNLIKELY` from civil-dark path fraction `NN` after both endpoints
+  were dark. Beacon receive-only native 160m diagnostics use `bn160|dNN`.
 - `brx|...` means the spot was marked as a beacon and the path decision used
   only the DX-to-user receive leg. `bvcap`, `bvaln`, `bvup`, and `bvop` are the
   equivalent beacon VOACAP fallback diagnostics; their SNR and REL fields are
@@ -383,8 +389,9 @@ outcome (`closed`, `aligned`, `sparse_upgrade`, `open_rel_pass`,
 `rel_multi_tier`). It is diagnostic only; it does not change glyph decisions.
 When native 160m fallback evaluates candidates, `Native 160m fallback (5m)`
 reports `candidates`, `emitted`, class splits, `not_dark`, `unknown`,
-`display_disabled`, `dark_le_closed`, and civil-darkness buckets `dark_ge_50`,
-`dark_ge_75`, and `dark_ge_90`.
+`display_disabled`, endpoint daylight/twilight outcome counters,
+`dark_le_closed`, and civil-darkness buckets `dark_ge_50`, `dark_ge_75`, and
+`dark_ge_90`.
 When sufficient p50 predictions can be compared against an existing current-hour
 VOACAP cache record, a separate `VOACAP p50 compare (5m)` line reports cache
 hits, cache misses, class agreement, stronger/weaker effective SNR, closed
@@ -423,12 +430,17 @@ Example readings:
   -15 dB, and VOACAP REL 84% passed the one-tier upgrade gate.
 - `vop|-19r75h20s112`: no sparse p50 existed, but the 20:00 UTC VOACAP record
   rounded to -19 dB and REL 75% passed the open fallback gate.
-- `n160c|d12`: native 160m fallback classified an insufficient 160m result as
-  `CLOSED` from a 12% civil-dark path fraction. Beacon receive-only paths use
-  `bn160c|d12`.
+- `n160c|uD|d82`: native 160m fallback classified an insufficient 160m result
+  as `CLOSED` because the user endpoint was in daylight. `xD` means DX endpoint
+  daylight and `bD` means both endpoints.
+- `n160c|d12`: no endpoint token means native 160m `CLOSED` came from the
+  whole-path civil-dark fraction.
+- `n160|xT|d54`: native 160m fallback classified an insufficient 160m result
+  as `UNLIKELY` because the DX endpoint was in civil twilight. `uT` means user
+  endpoint twilight and `bT` means both endpoints.
 - `n160|d82`: native 160m fallback filled an insufficient 160m result as
-  `LOW` or `UNLIKELY` from an 82% civil-dark path fraction. Beacon receive-only
-  paths use `bn160|d82`.
+  `LOW` or `UNLIKELY` from an 82% civil-dark path fraction after both endpoints
+  were dark. Beacon receive-only paths use `bn160|d82`.
 - `n1|loww`: one selected observation existed, but the effective weight was
   below the minimum.
 - `n32|w1`: large selected count but low rounded effective weight.

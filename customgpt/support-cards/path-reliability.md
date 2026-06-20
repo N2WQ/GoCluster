@@ -33,13 +33,20 @@ inspect user-visible diagnostics:
   no-p50 open VOACAP fallbacks. The VOACAP SNR in these tags is the rounded
   bidirectional effective SNR after receive-side noise penalty, not one raw
   VOACAP direction.
-- `n160c|dNN` means native 160m fallback classified an insufficient 160m result
-  as `CLOSED` from civil-dark path fraction `NN`. It is a solar-darkness proxy,
-  not a VOACAP SNR result. Beacon receive-only native 160m closed diagnostics
-  use `bn160c|dNN`.
+- `n160c|uD|dNN` means native 160m fallback classified an insufficient 160m
+  result as `CLOSED` because the user endpoint was in daylight. `xD` means DX
+  endpoint daylight and `bD` means both endpoints. This is a solar-darkness
+  proxy, not a VOACAP SNR result. Beacon receive-only native 160m diagnostics
+  use the same suffixes with `bn160c`.
+- `n160c|dNN` means no endpoint token was needed; native 160m `CLOSED` came
+  from whole-path civil-dark fraction `NN`.
+- `n160|xT|dNN` means native 160m fallback classified an insufficient 160m
+  result as `UNLIKELY` because the DX endpoint was in civil twilight. `uT`
+  means user endpoint twilight and `bT` means both endpoints.
 - `n160|dNN` means native 160m fallback filled an insufficient 160m result as
-  `LOW` or `UNLIKELY` from civil-dark path fraction `NN`. It is not SNR.
-  Beacon receive-only native 160m diagnostics use `bn160|dNN`.
+  `LOW` or `UNLIKELY` from civil-dark path fraction `NN` after both endpoints
+  were dark. It is not SNR. Beacon receive-only native 160m diagnostics use
+  `bn160|dNN`.
 - Insufficient sparse/no-p50 diagnostics can add compact `v*` suffixes such as
   `n0|none|vdly` or `n2|lown|vrel` to explain VOACAP state without changing the
   blank glyph: queued, delayed, inflight, unsupported band, empty/unknown band,
@@ -93,7 +100,8 @@ inspect user-visible diagnostics:
   provenance. It is diagnostic only.
 - `Native 160m fallback (5m)` focuses on insufficient 160m candidates and
   splits candidates, emissions, CLOSED/LOW/UNLIKELY, not-dark, unknown,
-  display-disabled, `dark_le_closed`, and fixed civil-darkness buckets.
+  display-disabled, endpoint daylight/twilight outcomes, `dark_le_closed`, and
+  fixed civil-darkness buckets.
 - `VOACAP p50 compare (5m)` is an opportunistic cache-only comparison for
   sufficient p50 predictions. Cache misses do not run VOACAP; cache hits report
   class agreement, stronger/weaker effective SNR, closed-VOACAP versus p50

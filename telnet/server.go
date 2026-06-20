@@ -336,6 +336,8 @@ type Server struct {
 	native160NotDark                    atomic.Int64  // Native 160m candidates below display thresholds
 	native160Unknown                    atomic.Int64  // Native 160m candidates with unusable geometry
 	native160DisplayDisabled            atomic.Int64  // Native 160m candidates blocked by display_enabled=false
+	native160EndpointDaylightClosed     atomic.Int64  // Native 160m CLOSED emissions caused by endpoint daylight
+	native160EndpointTwilightUnlikely   atomic.Int64  // Native 160m UNLIKELY emissions caused by endpoint twilight
 	native160DarkLEClosed               atomic.Int64  // Native 160m candidates at or below the configured closed threshold
 	native160DarkGE50                   atomic.Int64  // Native 160m candidates with civil darkness >= 50%
 	native160DarkGE75                   atomic.Int64  // Native 160m candidates with civil darkness >= 75%
@@ -3042,18 +3044,20 @@ type pathPredictionStats struct {
 }
 
 type native160FallbackStats struct {
-	Candidate       int64
-	Emitted         int64
-	Closed          int64
-	Low             int64
-	Unlikely        int64
-	NotDark         int64
-	Unknown         int64
-	DisplayDisabled int64
-	DarkLEClosed    int64
-	DarkGE50        int64
-	DarkGE75        int64
-	DarkGE90        int64
+	Candidate                int64
+	Emitted                  int64
+	Closed                   int64
+	Low                      int64
+	Unlikely                 int64
+	NotDark                  int64
+	Unknown                  int64
+	DisplayDisabled          int64
+	EndpointDaylightClosed   int64
+	EndpointTwilightUnlikely int64
+	DarkLEClosed             int64
+	DarkGE50                 int64
+	DarkGE75                 int64
+	DarkGE90                 int64
 }
 
 func (s native160FallbackStats) HasActivity() bool {
@@ -3065,6 +3069,8 @@ func (s native160FallbackStats) HasActivity() bool {
 		s.NotDark != 0 ||
 		s.Unknown != 0 ||
 		s.DisplayDisabled != 0 ||
+		s.EndpointDaylightClosed != 0 ||
+		s.EndpointTwilightUnlikely != 0 ||
 		s.DarkLEClosed != 0 ||
 		s.DarkGE50 != 0 ||
 		s.DarkGE75 != 0 ||
@@ -3288,10 +3294,16 @@ func (s *Server) recordNative160Evaluation(res pathreliability.Result) {
 	switch res.Class {
 	case filter.PathClassClosed:
 		s.native160Closed.Add(1)
+		if res.Native160UserDaylight || res.Native160DXDaylight {
+			s.native160EndpointDaylightClosed.Add(1)
+		}
 	case filter.PathClassLow:
 		s.native160Low.Add(1)
 	default:
 		s.native160Unlikely.Add(1)
+		if res.Native160UserTwilight || res.Native160DXTwilight {
+			s.native160EndpointTwilightUnlikely.Add(1)
+		}
 	}
 }
 
@@ -3398,18 +3410,20 @@ func (s *Server) PathPredictionStatsSnapshot() pathPredictionStats {
 		VOACAPP50CompareDeltaAbs20Plus:     s.vP50CompareDeltaAbs20Plus.Swap(0),
 		SparseP50VOACAP:                    s.sparseP50VOACAPStatsSnapshot(),
 		Native160: native160FallbackStats{
-			Candidate:       s.native160Candidate.Swap(0),
-			Emitted:         s.native160Emitted.Swap(0),
-			Closed:          s.native160Closed.Swap(0),
-			Low:             s.native160Low.Swap(0),
-			Unlikely:        s.native160Unlikely.Swap(0),
-			NotDark:         s.native160NotDark.Swap(0),
-			Unknown:         s.native160Unknown.Swap(0),
-			DisplayDisabled: s.native160DisplayDisabled.Swap(0),
-			DarkLEClosed:    s.native160DarkLEClosed.Swap(0),
-			DarkGE50:        s.native160DarkGE50.Swap(0),
-			DarkGE75:        s.native160DarkGE75.Swap(0),
-			DarkGE90:        s.native160DarkGE90.Swap(0),
+			Candidate:                s.native160Candidate.Swap(0),
+			Emitted:                  s.native160Emitted.Swap(0),
+			Closed:                   s.native160Closed.Swap(0),
+			Low:                      s.native160Low.Swap(0),
+			Unlikely:                 s.native160Unlikely.Swap(0),
+			NotDark:                  s.native160NotDark.Swap(0),
+			Unknown:                  s.native160Unknown.Swap(0),
+			DisplayDisabled:          s.native160DisplayDisabled.Swap(0),
+			EndpointDaylightClosed:   s.native160EndpointDaylightClosed.Swap(0),
+			EndpointTwilightUnlikely: s.native160EndpointTwilightUnlikely.Swap(0),
+			DarkLEClosed:             s.native160DarkLEClosed.Swap(0),
+			DarkGE50:                 s.native160DarkGE50.Swap(0),
+			DarkGE75:                 s.native160DarkGE75.Swap(0),
+			DarkGE90:                 s.native160DarkGE90.Swap(0),
 		},
 		Insufficient:  s.pathPredInsufficient.Swap(0),
 		NoSample:      s.pathPredNoSample.Swap(0),
@@ -4946,14 +4960,14 @@ func diagPathTag(prediction pathPrediction, havePrediction bool) string {
 	if res.Source == pathreliability.SourceNative160 {
 		if res.Class == filter.PathClassClosed {
 			if res.BeaconRX {
-				return fmt.Sprintf("bn160c|d%02d", diagFractionPercent(res.Native160CivilDarkFraction))
+				return native160DiagPathTag("bn160c", res)
 			}
-			return fmt.Sprintf("n160c|d%02d", diagFractionPercent(res.Native160CivilDarkFraction))
+			return native160DiagPathTag("n160c", res)
 		}
 		if res.BeaconRX {
-			return fmt.Sprintf("bn160|d%02d", diagFractionPercent(res.Native160CivilDarkFraction))
+			return native160DiagPathTag("bn160", res)
 		}
-		return fmt.Sprintf("n160|d%02d", diagFractionPercent(res.Native160CivilDarkFraction))
+		return native160DiagPathTag("n160", res)
 	}
 	weightValue := res.Weight
 	if res.CapLimited {
@@ -4965,6 +4979,40 @@ func diagPathTag(prediction pathPrediction, havePrediction bool) string {
 		return "brx|" + tag
 	}
 	return tag
+}
+
+func native160DiagPathTag(prefix string, res pathreliability.Result) string {
+	dark := diagFractionPercent(res.Native160CivilDarkFraction)
+	if token := native160EndpointDiagToken(res); token != "" {
+		return fmt.Sprintf("%s|%s|d%02d", prefix, token, dark)
+	}
+	return fmt.Sprintf("%s|d%02d", prefix, dark)
+}
+
+func native160EndpointDiagToken(res pathreliability.Result) string {
+	userDaylight := res.Native160UserDaylight
+	dxDaylight := res.Native160DXDaylight
+	switch {
+	case userDaylight && dxDaylight:
+		return "bD"
+	case userDaylight:
+		return "uD"
+	case dxDaylight:
+		return "xD"
+	}
+
+	userTwilight := res.Native160UserTwilight
+	dxTwilight := res.Native160DXTwilight
+	switch {
+	case userTwilight && dxTwilight:
+		return "bT"
+	case userTwilight:
+		return "uT"
+	case dxTwilight:
+		return "xT"
+	default:
+		return ""
+	}
 }
 
 func diagSparseVOACAPTraceSuffix(trace sparseP50VOACAPTrace) string {

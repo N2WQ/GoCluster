@@ -1603,7 +1603,7 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 				native160 := stats.Native160
 				if native160.HasActivity() {
 					fileOnly(fmt.Sprintf(
-						"Native 160m fallback (5m): candidates=%s emitted=%s closed=%s low=%s unlikely=%s not_dark=%s unknown=%s display_disabled=%s dark_le_closed=%s dark_ge_50=%s dark_ge_75=%s dark_ge_90=%s",
+						"Native 160m fallback (5m): candidates=%s emitted=%s closed=%s low=%s unlikely=%s not_dark=%s unknown=%s display_disabled=%s endpoint_daylight_closed=%s endpoint_twilight_unlikely=%s dark_le_closed=%s dark_ge_50=%s dark_ge_75=%s dark_ge_90=%s",
 						humanize.Comma(native160.Candidate),
 						humanize.Comma(native160.Emitted),
 						humanize.Comma(native160.Closed),
@@ -1612,6 +1612,8 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 						humanize.Comma(native160.NotDark),
 						humanize.Comma(native160.Unknown),
 						humanize.Comma(native160.DisplayDisabled),
+						humanize.Comma(native160.EndpointDaylightClosed),
+						humanize.Comma(native160.EndpointTwilightUnlikely),
 						humanize.Comma(native160.DarkLEClosed),
 						humanize.Comma(native160.DarkGE50),
 						humanize.Comma(native160.DarkGE75),

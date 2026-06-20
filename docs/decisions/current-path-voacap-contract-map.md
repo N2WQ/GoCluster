@@ -42,8 +42,11 @@ current source/tests.
   in [ADR-0176](ADR-0176-path-prediction-admission-reuse.md).
 - Native 160m solar-darkness fallback for insufficient p50 and unavailable
   VOACAP coverage is currently in
-  [ADR-0197](ADR-0197-native-160m-closed-solar-proxy.md), which supersedes
-  the LOW/UNLIKELY-only experiment contract in
+  [ADR-0201](ADR-0201-native-160m-endpoint-daylight-gate.md), which makes
+  endpoint daylight/twilight the first gate before whole-path darkness. It
+  supersedes the whole-path-only classification order in
+  [ADR-0197](ADR-0197-native-160m-closed-solar-proxy.md), which had already
+  superseded the LOW/UNLIKELY-only experiment contract in
   [ADR-0196](ADR-0196-native-160m-solar-darkness-fallback.md).
 
 ## Active VOACAP Chain

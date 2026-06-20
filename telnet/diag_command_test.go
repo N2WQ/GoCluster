@@ -320,6 +320,54 @@ func TestDiagPathTagShowsNative160Closed(t *testing.T) {
 	}
 }
 
+func TestDiagPathTagShowsNative160EndpointReason(t *testing.T) {
+	tests := []struct {
+		name string
+		res  pathreliability.Result
+		want string
+	}{
+		{
+			name: "user daylight closed",
+			res: pathreliability.Result{
+				Source:                     pathreliability.SourceNative160,
+				Class:                      filter.PathClassClosed,
+				Native160UserDaylight:      true,
+				Native160CivilDarkFraction: 0.82,
+			},
+			want: "n160c|uD|d82",
+		},
+		{
+			name: "dx twilight unlikely",
+			res: pathreliability.Result{
+				Source:                     pathreliability.SourceNative160,
+				Class:                      filter.PathClassUnlikely,
+				Native160DXTwilight:        true,
+				Native160CivilDarkFraction: 0.54,
+			},
+			want: "n160|xT|d54",
+		},
+		{
+			name: "beacon both daylight closed",
+			res: pathreliability.Result{
+				Source:                     pathreliability.SourceNative160,
+				Class:                      filter.PathClassClosed,
+				BeaconRX:                   true,
+				Native160UserDaylight:      true,
+				Native160DXDaylight:        true,
+				Native160CivilDarkFraction: 0.05,
+			},
+			want: "bn160c|bD|d05",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := diagPathTag(pathPrediction{result: tt.res}, true); got != tt.want {
+				t.Fatalf("unexpected native 160 endpoint diagnostic: %q", got)
+			}
+		})
+	}
+}
+
 func TestDiagPathTagShowsSparseVOACAPMissReason(t *testing.T) {
 	delayed := pathPrediction{
 		result: pathreliability.Result{
