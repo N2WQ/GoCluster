@@ -117,28 +117,36 @@ If there are no material findings, say:
 - `Review Pass findings: none material`
 
 ## Self-Audit
-After the Review Pass, produce a Self-Audit with pass/fail for each category below.
+After the Review Pass, produce a fail-closed Self-Audit for the categories below.
 
 ### Required categories
-- Scope and dependency coverage
-- Code-walk and blast-radius evidence
-- Contract, config, and protocol correctness
-- YAML comment/header audit
-- Go comment intent audit
-- Go crawler-entry audit
-- Concurrency, backpressure, and resource bounds
-- Leak-detection evidence
-- Fresh verification and claim evidence
-- Independent-agent/subagent use and lead ownership
-- Anti-speculative implementation guard
-- Verification and checker discipline
-- Documentation, decision memory, and traceability
-- Workflow-drift audit
-- Validation block completeness
+- SA1 Scope and dependency coverage
+- SA2 Code-walk and blast-radius evidence
+- SA3 Contract, config, and protocol correctness
+- SA4 YAML comment/header audit
+- SA5 Go comment intent audit
+- SA6 Go crawler-entry audit
+- SA7 Concurrency, backpressure, and resource bounds
+- SA8 Leak-detection evidence
+- SA9 Fresh verification and claim evidence
+- SA10 Independent-agent/subagent use and lead ownership
+- SA11 Anti-speculative implementation guard
+- SA12 Verification and checker discipline
+- SA13 Documentation, decision memory, and traceability
+- SA14 Workflow-drift audit
+- SA15 Validation block completeness
+
+These IDs and labels are canonical for executor workflow reporting. Specialist
+skills may retain label-based evidence until a separately approved migration;
+the lead maps that evidence to SA IDs at closeout.
 
 ### Self-Audit rules
-- Use `PASS`, `FAIL`, or `N/A` only.
-- `N/A` is allowed only when the category truly does not apply.
+- Start with an applicability manifest that classifies every SA1-SA15 ID
+  exactly once as applicable or not applicable.
+- Applicable IDs require a `PASS` or `FAIL` result. Not-applicable IDs replace
+  individual `N/A` rows and require an unambiguous reason; IDs with the same
+  reason may be grouped.
+- Missing, unknown, or duplicate IDs fail the Self-Audit.
 - Every `FAIL` must include a short explanation and next action.
 - Do not hide uncertainty. If evidence is incomplete, fail the category.
 - Use one short note per grouped category. Reference earlier review evidence when
@@ -147,15 +155,14 @@ After the Review Pass, produce a Self-Audit with pass/fail for each category bel
   source or reported gap/waiver. Do not silently lead-fill `PASS` after an
   independent review is unsupported, not authorized/not requested, prohibited,
   failed, timed out, missing, or stale.
-- Command-backed `Concurrency, backpressure, and resource bounds` or
-  `Leak-detection evidence` rows must reference the captured excerpt in
+- Command-backed SA7 or SA8 results must reference the captured excerpt in
   `Verification command reporting`. Do not paste the same excerpt again in
   Self-Audit; if the required excerpt is missing, failed, timed out, stale,
   cached without usable output, or waived, report that status instead of
   scoring the row as `PASS`.
-- The lead agent owns the final PASS/FAIL/N/A disposition for every row. The
-  Independent-agent/subagent use and lead ownership row is final-scored by the
-  lead from independent evidence/status plus the lead's own gate checks.
+- The lead agent owns the final PASS/FAIL/applicability disposition for every
+  ID. SA10 is final-scored by the lead from independent evidence/status plus
+  the lead's own gate checks.
 
 ## Closeout evidence
 Every Non-trivial task must end with the template's `CLOSEOUT`,

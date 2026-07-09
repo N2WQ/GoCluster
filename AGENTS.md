@@ -48,59 +48,36 @@ discovery, approval, implementation discipline, validation, review, ADR
 handling, or traceability.
 
 Validation is proportional to the touched surface. Documentation-only Markdown
-changes do not require Go code validation unless they also change code, config,
-generated artifacts, scripts, CI, schemas, protocol/runtime contracts, or
-checked-in data consumed by the runtime.
+changes do not require Go code validation unless they also change code, runtime
+config, generated artifacts, scripts, CI, schemas, protocol/runtime contracts,
+or checked-in data consumed by the runtime.
 
 ## Initial Review Mode
-When the user asks what existing code does and has not asked for changes:
-- read the relevant code first
-- follow the call chain at least one level up or down where material
-- ground the explanation in concrete identifiers and file paths
-- if something is unclear, say `Unknown from inspected code` and name exactly
-  what should be inspected next
-- do not propose changes unless the user asks for changes
+For explanation-only requests, inspect current source first, follow the material
+call chain at least one level, cite concrete identifiers/files, and use
+`Unknown from inspected code` with the next-read target instead of guessing.
+Do not propose changes unless asked.
 
 ## Skill Check
-- Before free-form work, check whether a repo-managed, runtime/system, or
-  explicitly available plugin skill clearly matches the task.
+- Before free-form work, select the smallest matching repo-managed,
+  runtime/system, or explicitly available plugin skill set.
 - Emit exactly one skill marker: `Skill check: selected <skill>` or
   `Skill check: none applicable`.
-- `codex-skills/` is the canonical gocluster project skill source. Do not
-  require or assume copied user-level skills for gocluster work.
-- Repo-managed skills under `codex-skills/` count as available when their
-  trigger matches; they are authoritative for this repository. User-level
-  skills do not override repo-managed skills and are outside the gocluster
-  contract unless the task is explicitly user-specific.
-- Explanation-only code-understanding skills are not required for feature work
-  unless the user asks for explanation, but feature work still requires
-  targeted current-code discovery before planning.
-- Use triggered audit skills before implementation when available:
-  `decision-memory-audit` for Non-trivial ADR/TSR pre-read, ADR/stub choice,
-  index maintenance, final decision refs, and Scope-to-Code Traceability;
-  `workflow-contract-audit` for edits to Codex workflow contracts, validation
-  rules, runbooks, review checklists, repo-managed skills, or workflow scripts;
-  `scope-ledger-adversarial-review` for independent read-only challenge of a
-  Proposed Scope Ledger before approval when independent agents are supported,
-  tool/user authorization permits spawning, and not explicitly prohibited;
-  `go-code-walk` for unfamiliar or cross-package current-state discovery;
-  `go-blast-radius-audit` for uncertain blast radius, shared interfaces,
-  semantic call/reference impact, or dependency/test impact analysis;
-  `go-code-quality-review` for independent read-only review of newly written
-  Go implementation code before final closeout when independent agents are
-  supported, tool/user authorization permits spawning, and not explicitly
-  prohibited;
-  `go-connection-lifecycle-audit` for long-lived connection, reconnect,
-  retry/backoff, keepalive, deadline, silent-stall, source liveness, or
-  operator-visible connection diagnostics work;
-  `go-leak-detection` for goroutine, timer, channel, socket, file-handle,
-  heap-retention, shutdown, lifecycle, or long-running leak concerns;
-  `go-retained-state-audit` for retained server-lifetime state, maps, caches,
-  interners, pools, indexes, or cleanup/eviction behavior;
-  `go-config-contract-audit` for YAML/config loaders/schema/defaults/operator
-  settings/reference tables/tool or secret config; `go-hotpath-design` for Go
-  hot paths, allocation-sensitive runtime paths, fan-out, queues, parsing
-  loops, or optimization claims.
+- `codex-skills/` is the authoritative project bundle; matching repo skills
+  count as available. Do not require copied user-level skills or let them
+  override repo rules unless the task is explicitly user-specific.
+- Trigger routing: `decision-memory-audit` for every Non-trivial ADR/TSR and
+  traceability path; `workflow-contract-audit` for workflow/rubric/runbook/
+  skill/script work; `scope-ledger-adversarial-review` before Non-trivial
+  approval; `go-code-walk` for unfamiliar/cross-package discovery;
+  `go-blast-radius-audit` for uncertain shared or semantic impact; and
+  `go-code-quality-review` after Non-trivial Go implementation.
+- Risk routing: `go-connection-lifecycle-audit` for connection liveness,
+  recovery, deadlines, and diagnostics; `go-leak-detection` for lifecycle or
+  resource leaks; `go-retained-state-audit` for server-lifetime state and
+  eviction; `go-config-contract-audit` for YAML/loaders/schema/defaults; and
+  `go-hotpath-design` for allocation-sensitive paths, fan-out, queues, parsing,
+  or optimization claims. Compose only the applicable set.
 - When touching checked-in first-party YAML, apply the header/key-comment
   standard in `data/config/README.md` and report the YAML comment/header audit.
 - When touching support-critical Go, apply the Go comment intent standard in
@@ -108,67 +85,31 @@ When the user asks what existing code does and has not asked for changes:
   comment intent audit.
 
 ## Subagent Use
-- Use independent agents when the active environment supports delegated or
-  parallel agent work, the active tool policy and user/session authorization
-  permit spawning them, and the user has not explicitly prohibited
-  independent-agent use.
-- The repository owner has made an explicit standing request to use subagents by
-  default in this repo. When subagent tooling is supported and active
-  tool/session policy permits it, do not report `not authorized/not requested`
-  merely because the current task prompt does not repeat the request. This does
-  not override `Approved vN`, read-only pre-approval limits, worker slice gates,
-  tool-policy limits, or an explicit user prohibition.
-- Repository policy, this file, or prior ADR language does not override active
-  tool/session policy. If the active platform requires authorization beyond
-  this repo's standing request and that authorization is absent, report
-  `not authorized/not requested`; do not treat it as `unsupported` or
-  `explicitly prohibited`.
-- Evaluate subagent authorization separately for each phase/use. Exact
-  `Approved vN` approves scope; it is not by itself an explicit subagent
-  request when the active platform requires one.
-- Independent agents are separate from the lead Codex agent and have their own
-  context windows. Treat that independence as useful adversarial evidence and
-  also as a coordination risk that requires explicit lead disposition.
-- When the active Codex platform exposes typed subagents, spawn read-only
-  independent review roles as `explorer` agents. Reserve `worker` agents for
-  approved post-approval implementation slices with explicit write scope.
-- Before exact `Approved vN`, subagents must be read-only explorers or
-  adversarial-review helpers. They may gather evidence and challenge scope, but
-  they must not edit files, propose diffs, run formatters, create generated
-  artifacts, or run full validation suites.
-- For Non-trivial Scope Ledgers, use an independent
-  `scope-ledger-adversarial-review` explorer before presenting the approval
-  token when supported, authorized, and not explicitly prohibited. If
-  unsupported, not authorized/not requested, failed, timed out, or prohibited,
-  report that evidence status.
-- Post-approval worker subagents are allowed only for approved, disjoint Scope
-  Ledger slices with explicit allowed paths, forbidden paths, stopping point,
-  targeted checks, and stop-on-hidden-blast-radius instructions.
-- For Non-trivial Go implementation work, use an independent
-  `go-code-quality-review` explorer after code is written and before final
-  closeout when supported, authorized, and not explicitly prohibited. If
-  unsupported, not authorized/not requested, failed, timed out, or prohibited,
-  report that evidence status.
-- For high-risk closeout, use a read-only fresh-verifier explorer when
-  supported, authorized, and not explicitly prohibited.
-- Subagent findings are evidence only. The lead Codex agent owns scope
-  disposition, `SCOPE ADVERSARIAL REVIEW`, integration, final Review Pass,
-  validation claims, ADR/TSR handling, Scope-to-Code Traceability, and the
-  final response.
-- For Non-trivial SELF-AUDIT, independently reviewed high-risk categories must
-  use the independent review evidence available for that phase. The lead agent
-  may not silently turn unsupported, not authorized/not requested, failed,
-  timed-out, prohibited, missing, or stale independent evidence into `PASS`;
-  use `FAIL`, an explicit gap/waiver, or `N/A` only when the category truly
-  does not apply. `go-code-quality-review` scores only rows it can inspect at
-  its post-Go-code phase. A high-risk closeout fresh-verifier explorer supplies
-  later independent evidence, including Fresh verification and claim evidence,
-  after final validation evidence exists. Lead ownership remains mandatory for
-  every final score and validation claim.
+- Use independent agents under the detailed phase rules in
+  `docs/change-workflow.md` when supported, active tool/session policy permits,
+  and the user has not prohibited them. The owner's standing request means a
+  repeated task-level request is unnecessary; repo text never overrides active
+  policy. Report `unsupported`, `not authorized/not requested`, `explicitly
+  prohibited`, `failed`, or `timed out` accurately for each use.
+- Independent review roles are read-only `explorer` agents. Before exact
+  `Approved vN`, they may gather evidence and challenge scope but must not edit,
+  propose diffs, format, generate artifacts, or run full suites. Use
+  `scope-ledger-adversarial-review` before Non-trivial approval when available.
+- `worker` agents are post-approval only and require approved disjoint slices,
+  allowed and forbidden paths, stopping points, targeted checks, expected
+  output, and stop-on-hidden-blast-radius instructions.
+- Use `go-code-quality-review` after Non-trivial Go implementation and a
+  read-only fresh verifier for high-risk closeout when available. Missing or
+  stale required independent evidence is a reported gap/waiver, not a lead-filled
+  `PASS`; phase-inapplicable evidence may be `N/A`.
+- Findings are evidence only. The lead owns Scope Ledger disposition,
+  `SCOPE ADVERSARIAL REVIEW`, integration, Review Pass, every SELF-AUDIT score,
+  validation claims, ADR/TSR handling, Scope-to-Code Traceability, and the final
+  response.
 
 ## Task Gates
 - Before every change, classify the task and confirm current Scope Ledger
-  version/status.
+  version/status. Report `Scope Ledger: N/A - Small` for Small work.
 - Default to Non-trivial unless the task is clearly Small.
 - Small work must be localized, low blast radius, and free of protocol,
   compatibility, concurrency, lifecycle, queue, timeout, shutdown,
@@ -206,19 +147,9 @@ full checker suites.
 
 ## Mandatory Evidence Markers
 Use `docs/templates/non-trivial-change-template.md` for the exact compact
-marker shape. Required Non-trivial markers are:
-- `GATE`
-- `DISCOVERY`
-- `SCOPE`
-- `SCOPE ADVERSARIAL REVIEW`
-- `PREFLIGHT`
-- `DESIGN`
-- `IMPLEMENTATION`
-- `REVIEW`
-- `SELF-AUDIT`
-- `CLOSEOUT`
-- `TRACEABILITY`
-- `VALIDATION`
+marker shape. Required Non-trivial markers are `GATE`, `DISCOVERY`, `SCOPE`,
+`SCOPE ADVERSARIAL REVIEW`, `PREFLIGHT`, `DESIGN`, `IMPLEMENTATION`, `REVIEW`,
+`SELF-AUDIT`, `CLOSEOUT`, `TRACEABILITY`, and `VALIDATION`.
 
 Codex must treat every required marker as an execution gate. If a required
 marker cannot be completed from inspected workspace evidence, stop and report
@@ -230,38 +161,17 @@ facts. Only repeat information when the later marker adds a new conclusion,
 delta, or final disposition.
 
 ## Required Closeout Rules
-- For Non-trivial closeout, use `docs/dev-runbook.md` as the required checker
-  source.
-- Run `go test -race ./...` for concurrency, lifecycle, queues, cancellation,
-  timers, long-lived connections, or shared mutable state.
-- For command-backed concurrency, lifecycle, queue, timer, shutdown,
-  shared-state, or leak-detection validation claims, include a short captured
-  transcript excerpt in the `Verification command reporting` evidence. Let
-  `SELF-AUDIT` and `CLOSEOUT` reference that evidence; do not change the final
-  exact 3-line validation block.
-- Use fuzzing for parser/protocol changes.
-- Use benchmarks and pprof for hot-path or performance claims.
-- Report missing tools, skipped checks, and failed checks as validation gaps
-  unless explicitly waived.
-- Use the documentation-only validation lane from `docs/dev-runbook.md` for
-  Markdown-only documentation changes that do not touch code, config, generated
-  artifacts, scripts, CI, schemas, protocol/runtime contracts, or runtime data.
-- Use the workflow/skill-doc lane from `docs/dev-runbook.md` for workflow docs
-  or repo-managed skill changes, especially when the diff includes repo skill
-  metadata YAML such as `codex-skills/**/agents/openai.yaml`.
-- Review the current diff as a reviewer before final closeout.
-- For high-risk Non-trivial slices, perform a fresh verification pass before
-  final closeout. Use a read-only fresh-verifier explorer when the active
-  environment supports it, tool/user authorization permits spawning, and
-  independent-agent use is not explicitly prohibited; otherwise reset reviewer
-  context and re-check the approved scope, current diff, evidence, and claims
-  yourself. Report unsupported, not authorized/not requested, prohibited,
-  failed, or timed-out independent review as an evidence gap unless waived.
-- Inspect `git diff --name-only` and touched files directly before final
-  closeout for implementation work.
-- Every Non-trivial task requires ADR handling under `docs/decision-memory.md`.
-- When editing workflow docs or repo-managed skills, perform the
-  workflow-drift audit defined in `docs/change-workflow.md`.
+- Use `docs/dev-runbook.md` as the Non-trivial checker source and select its
+  touched-surface lane. Markdown-only and workflow/skill-doc work use their
+  dedicated lanes; code, runtime config, scripts, CI, generated artifacts,
+  schemas, runtime data, or runtime contracts leave those lanes.
+- Apply triggered evidence: `go test -race ./...` for concurrency/lifecycle/
+  shared-state work, fuzzing for parser/protocol changes, and benchmarks plus
+  pprof for performance claims. Report missing, skipped, or failed checks.
+- Keep the required short command excerpt once in `Verification command
+  reporting`; later markers reference it. Review the current diff and touched
+  files directly, perform high-risk fresh verification, satisfy ADR/TSR and
+  workflow-drift duties, and report independent-review gaps honestly.
 - Final Non-trivial responses must apply `VALIDATION.md` and include this exact
   3-line block:
 

@@ -21,8 +21,9 @@ handling, or traceability.
 Validation is proportional to the touched surface. Documentation-only Markdown
 changes have their own validation lane: use documentation review, targeted text
 checks, and whitespace/diff checks instead of Go code validation, unless the
-change also touches code, config, generated artifacts, scripts, CI, schemas,
-protocol/runtime contracts, or checked-in data consumed by the runtime.
+change also touches code, runtime config, generated artifacts, scripts, CI,
+schemas, protocol/runtime contracts, or checked-in data consumed by the
+runtime.
 Workflow or repo-managed skill documentation changes that also touch skill
 metadata YAML use the workflow/skill-doc lane in `docs/dev-runbook.md`; do not
 mislabel them as documentation-only Markdown.
@@ -76,7 +77,8 @@ When in doubt, choose Non-trivial.
 
 ## Approval and pre-code gates
 Required before every change:
-- confirm the current Scope Ledger version and the status of each item
+- confirm the current Scope Ledger version and the status of each item; use
+  `Scope Ledger: N/A - Small` for Small work
 - classify the task as Small or Non-trivial
 - record `Skill check: selected <skill>` or `Skill check: none applicable`
 
@@ -278,7 +280,8 @@ the suite sequentially before closeout.
 ### Reasoning budget recommendation
 Every Proposed Scope Ledger must recommend the lowest reasoning level expected
 to satisfy the workflow without skipping required artifacts:
-- `low`: clearly Small, localized, low-risk work, or read-only explanation
+- `low`: narrow Non-trivial work with known, localized blast radius and a
+  direct validation path
 - `medium`: ordinary Non-trivial work with known blast radius, docs-only
   workflow changes, or localized implementation with clear tests
 - `high`: Full-rigor work, config/schema/protocol/parser changes,
@@ -344,6 +347,9 @@ Audit requirements:
 - verify that skill triggers, validation rules, runbook commands, and review
   expectations do not contradict each other
 - run targeted text checks for the key workflow phrases touched by the change
+- run `scripts/check-workflow-contract.ps1` for mechanical Codex contract
+  coherence; it cannot prove conversational approval and does not replace the
+  human workflow-drift review
 - report the audit result in the final summary
 
 ## Git preflight
@@ -492,17 +498,7 @@ Required when a task adds or edits checked-in first-party YAML, especially
 `data/config/*.yaml`.
 
 Use `data/config/README.md` as the source of truth for YAML file headers and
-key-comment standards. Verify:
-- checked-in `data/config/*.yaml` files keep the exact five-line header
-- new or changed YAML keys explain purpose when units, sentinel values,
-  ownership, side effects, runtime consequences, or safe-edit boundaries are
-  non-obvious
-- obvious true/false toggles are not comment-noised unless side effects are
-  non-obvious
-- repeated list/table schemas document the first occurrence or use a field
-  guide instead of duplicating comments on every row
-- YAML comments remain local context only, not schema, defaults, or runtime
-  proof when code or docs disagree
+key-comment standards. Report the template's YAML comment/header audit.
 
 Run `scripts/check-yaml-doc-rigor.ps1` for mechanical checks. Use
 `-CommentOnlyCompare` when the intended YAML change is comment-only. Treat
@@ -515,21 +511,8 @@ pipelines, telnet/user-facing behavior, retained state, caches, queues, timers,
 goroutine lifecycle, hot paths, logging/metrics/diagnostics, replay/profiling
 tools, exported/shared APIs, or code the support agent is likely to inspect.
 
-Use `docs/code-quality.md` as the source of truth for Go comment intent. Verify:
-- new or materially changed support-critical package entry files, subsystem
-  integration files, replay/tool entry points, and support-critical leaf files
-  have a concise crawler-entry comment when package/file ownership is not
-  obvious from an existing package comment or README
-- comments explain intent/why, ownership, invariants, resource bounds, and
-  troubleshooting meaning where those are not obvious from local code
-- drop, delay, overflow, fail-open/fail-closed, cleanup, and lifecycle paths are
-  discoverable from nearby comments when they affect operators or support
-- retained-state comments identify the cap, expiry, cleanup coupling, or
-  bounded-lifetime proof required by the retained-state standard
-- comments do not mechanically restate assignments, simple booleans, or every
-  repeated branch once the pattern has been explained
-- comments do not drift from code, tests, config, docs, ADRs, or support-agent
-  routing docs
+Use `docs/code-quality.md` as the source of truth for Go comment intent. Report
+the template's Go comment intent and crawler-entry audits.
 
 Run `scripts/check-go-crawler-entry-comments.ps1 -ChangedOnly -FailOnMissing`
 when adding or materially changing support-critical Go files. For comment-only
@@ -586,8 +569,8 @@ commands.
 
 Documentation-only Markdown lane:
 - eligible only when the diff changes Markdown documentation and no code,
-  config, generated artifact, script, CI, schema, protocol/runtime contract, or
-  runtime-consumed data
+  runtime config, generated artifact, script, CI, schema, protocol/runtime
+  contract, or runtime-consumed data
 - minimum checks are targeted text checks for the changed workflow/domain terms,
   reviewer diff pass, and `git diff --check`
 - add repository-specific documentation checks only when they apply, such as
@@ -632,10 +615,10 @@ Rules:
 - report commands and results honestly
 - add regression tests for changed behavior when feasible
 - explain why any test was not added
-- if a documentation-only change later expands into code, config, generated
-  artifact, script, CI, schema, protocol/runtime contract, or runtime-data
-  changes, reclassify the validation lane and run the required code or mixed
-  checks before closeout
+- if a documentation-only change later expands into code, runtime config,
+  generated artifact, script, CI, schema, protocol/runtime contract, or
+  runtime-data changes, reclassify the validation lane and run the required
+  code or mixed checks before closeout
 
 ## Fresh verification pass
 Before final closeout for high-risk Non-trivial work, perform a fresh verifier

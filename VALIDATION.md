@@ -67,7 +67,9 @@ pre-code audits for the task type. Otherwise score `0`.
 Score `1` only if the validation lane was identified, lane-required checks were
 actually run and reported honestly, incrementally when required, final
 validation claims were lead-owned, and a `Review Pass` occurred before
-closeout. Documentation-only Markdown changes may satisfy this item with
+closeout. The Self-Audit applicability manifest must classify SA1-SA15 exactly
+once, with evidence for every applicable ID and a reason for every inapplicable
+ID. Documentation-only Markdown changes may satisfy this item with
 documentation review, targeted text checks, and `git diff --check` when the
 documented lane criteria are met. Workflow or repo-managed skill documentation
 changes that include skill metadata must use the workflow/skill-doc lane rather
@@ -115,7 +117,7 @@ happened:
     explicitly treated as a status, gap, or waiver.
 15. Codex claimed code-walk, blast-radius, or leak-detection coverage from tools or profiles that were not actually run or inspected.
 16. Codex approved or executed a broad refactor-shaped Scope Ledger without slice-level objective, blast-radius boundary, production-safe stopping point, targeted checks, and per-slice validation evidence.
-17. Codex treated a mixed code/config/script/CI/generated-artifact/runtime-contract diff as documentation-only validation.
+17. Codex treated a mixed code/runtime-config/script/CI/generated-artifact/runtime-contract diff as documentation-only validation.
 18. Codex used a pre-approval subagent for file edits, diffs, formatters,
     generated artifacts, full validation, or anything other than read-only
     evidence gathering and adversarial review.

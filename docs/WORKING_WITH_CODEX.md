@@ -104,7 +104,9 @@ No code, diffs, or full validation should happen before that approval.
 Before that ledger, Codex should inspect the relevant current code path so the scope is grounded in actual entry points, state, tests, and user-visible behavior.
 The proposed ledger should also include a `Reasoning budget` recommendation.
 Use it as Codex's target reasoning-level suggestion for the next execution turn;
-it does not approve scope or waive validation.
+`low` means narrow Non-trivial work with known localized blast radius and a
+direct validation path. The recommendation does not approve scope or waive
+validation.
 
 ## Use independent agents deliberately
 

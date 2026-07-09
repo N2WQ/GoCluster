@@ -153,31 +153,21 @@ If no material findings:
 - `Review Pass findings: none material`
 
 ### SELF-AUDIT
-Use the independent review evidence required for the phase before assigning
-PASS to high-risk rows. If independent evidence is unsupported, not
-authorized/not requested, prohibited, failed, timed out, missing, or stale,
-report `FAIL`, an explicit gap/waiver, or `N/A` only when the category truly
-does not apply. Command-backed concurrency and leak-detection rows reference
-the `REVIEW` verification command evidence instead of repeating excerpts. The
-lead agent owns every final row disposition.
+Use the canonical SA1-SA15 mapping in `docs/review-checklist.md`.
 
-- Scope and dependency coverage: PASS|FAIL|N/A - note
-- Code-walk and blast-radius evidence: PASS|FAIL|N/A - note
-- Contract, config, and protocol correctness: PASS|FAIL|N/A - note
-- YAML comment/header audit: PASS|FAIL|N/A - note
-- Go comment intent audit: PASS|FAIL|N/A - note
-- Go crawler-entry audit: PASS|FAIL|N/A - note
-- Concurrency, backpressure, and resource bounds: PASS|FAIL|N/A - note,
-  reference `REVIEW` verification command evidence when command-backed
-- Leak-detection evidence: PASS|FAIL|N/A - note, reference `REVIEW`
-  verification command evidence when command-backed
-- Fresh verification and claim evidence: PASS|FAIL|N/A - note
-- Independent-agent/subagent use and lead ownership: PASS|FAIL|N/A - note
-- Anti-speculative implementation guard: PASS|FAIL|N/A - note
-- Verification and checker discipline: PASS|FAIL|N/A - note
-- Documentation, decision memory, and traceability: PASS|FAIL|N/A - note
-- Workflow-drift audit: PASS|FAIL|N/A - note
-- Validation block completeness: PASS|FAIL|N/A - note
+- Applicability manifest:
+  - applicable: <SA IDs>
+  - not applicable: <SA IDs> - <shared reason; repeat for different reasons>
+- Results:
+  - <applicable SA ID>: PASS|FAIL - <evidence note or earlier-marker reference>
+
+Classify every SA1-SA15 ID exactly once. The manifest replaces individual
+`N/A` rows; missing, unknown, or duplicate IDs fail the Self-Audit. Applicable
+IDs require results. Required independent evidence that is unsupported, not
+authorized/not requested, prohibited, failed, timed out, missing, or stale is a
+`FAIL` or explicit gap/waiver, not an omission. SA7 and SA8 reference `REVIEW`
+verification command evidence when command-backed. The lead owns every final
+disposition.
 
 ### CLOSEOUT
 - summary:

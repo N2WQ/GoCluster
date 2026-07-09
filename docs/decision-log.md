@@ -25,6 +25,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Reserved Placeholder | Unused | - | index hygiene | - | - | No ADR file; first real ADR is `docs/decisions/ADR-0002-ui-v2-render-pipeline.md` |
+| ADR-0213 | Sol-Aware Token-Efficient Codex Workflow | Accepted | 2026-07-09 | workflow, Codex, validation, token-efficiency | ADR-0092 and ADR-0194 (extends) | - | `docs/decisions/ADR-0213-sol-aware-token-efficient-codex-workflow.md` |
 | ADR-0212 | AGENTS TSR Template Pointer | Accepted | 2026-07-09 | workflow, Codex, decision-memory | - | - | `docs/decisions/ADR-0212-agents-tsr-template-pointer.md` |
 | ADR-0211 | Standing Subagent Request | Accepted | 2026-07-09 | workflow, Codex, validation, review, subagents | ADR-0205 authorization semantics | - | `docs/decisions/ADR-0211-standing-subagent-request.md` |
 | ADR-0210 | Executor-Aware Workflow Skill Doc Runbook Lane | Accepted | 2026-07-09 | workflow, Codex, Fable, validation, runbook | - | - | `docs/decisions/ADR-0210-executor-aware-workflow-skill-doc-runbook-lane.md` |
