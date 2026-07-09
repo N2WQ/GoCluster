@@ -7,6 +7,7 @@ import (
 
 	"dxcluster/dedup"
 	"dxcluster/filter"
+	"dxcluster/pathreliability"
 	"dxcluster/spot"
 )
 
@@ -169,6 +170,94 @@ func TestBroadcastRespectsDedupePolicyWindows(t *testing.T) {
 	assertNoExtraSpots(t, fastClient.spotChan)
 	assertNoExtraSpots(t, medClient.spotChan)
 	assertNoExtraSpots(t, slowClient.spotChan)
+}
+
+func TestNearbyEffectiveDedupeUsesFastForBroadcast(t *testing.T) {
+	requireH3Mappings(t)
+	server := NewServer(ServerOptions{
+		DedupeFastEnabled: true,
+		DedupeMedEnabled:  true,
+		DedupeSlowEnabled: true,
+	}, nil)
+
+	client := &Client{
+		callsign: "SLOW1",
+		filter:   filter.NewFilter(),
+		spotChan: make(chan *spotEnvelope, 1),
+	}
+	client.setDedupePolicy(dedupePolicySlow)
+	userFine := pathreliability.EncodeCell("FN31")
+	userCoarse := pathreliability.EncodeCoarseCell("FN31")
+	if err := client.filter.EnableNearby(userFine, userCoarse); err != nil {
+		t.Fatalf("EnableNearby failed: %v", err)
+	}
+
+	sp := spot.NewSpot("DXAAA", "DEBBB", 14030.0, "CW")
+	sp.DXMetadata.Grid = "FN31"
+	sp.DEMetadata.Grid = "FN31"
+
+	server.deliverJob(broadcastJob{
+		spot:      sp,
+		allowFast: true,
+		allowMed:  false,
+		allowSlow: false,
+		clients:   []*Client{client},
+		enqueueAt: time.Now().UTC(),
+	})
+
+	if got := drainSpotCount(t, client.spotChan, 1); got != 1 {
+		t.Fatalf("expected nearby saved-SLOW client to receive FAST-only spot, got %d", got)
+	}
+	if got := client.getDedupePolicy(); got != dedupePolicySlow {
+		t.Fatalf("expected saved policy to remain SLOW, got %v", got)
+	}
+}
+
+func TestEffectiveDedupePolicyRequiresUsableNearbyState(t *testing.T) {
+	server := NewServer(ServerOptions{
+		DedupeFastEnabled: true,
+		DedupeMedEnabled:  true,
+		DedupeSlowEnabled: true,
+	}, nil)
+	client := &Client{
+		callsign: "SLOW1",
+		filter:   filter.NewFilter(),
+	}
+	client.setDedupePolicy(dedupePolicySlow)
+	client.filter.NearbyEnabled = true
+
+	if got := server.effectiveDedupePolicyForClient(client); got != dedupePolicySlow {
+		t.Fatalf("expected inactive stored NEARBY to keep SLOW effective policy, got %v", got)
+	}
+	status := server.formatDedupeStatus(client)
+	if strings.Contains(status, "NEARBY effective") {
+		t.Fatalf("did not expect inactive stored NEARBY to change status, got %q", status)
+	}
+}
+
+func TestNearbyEffectiveDedupeFallsBackWhenFastDisabled(t *testing.T) {
+	requireH3Mappings(t)
+	server := NewServer(ServerOptions{
+		DedupeFastEnabled: false,
+		DedupeMedEnabled:  true,
+		DedupeSlowEnabled: true,
+	}, nil)
+	client := &Client{
+		callsign: "SLOW1",
+		filter:   filter.NewFilter(),
+	}
+	client.setDedupePolicy(dedupePolicySlow)
+	if err := client.filter.EnableNearby(pathreliability.EncodeCell("FN31"), pathreliability.EncodeCoarseCell("FN31")); err != nil {
+		t.Fatalf("EnableNearby failed: %v", err)
+	}
+
+	if got := server.effectiveDedupePolicyForClient(client); got != dedupePolicyMed {
+		t.Fatalf("expected FAST-disabled NEARBY fallback to MED, got %v", got)
+	}
+	status := server.formatDedupeStatus(client)
+	if !strings.Contains(status, "NEARBY effective MED") {
+		t.Fatalf("expected status to report MED fallback, got %q", status)
+	}
 }
 
 func drainSpotCount(t *testing.T, ch <-chan *spotEnvelope, want int) int {

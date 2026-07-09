@@ -512,6 +512,8 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 		nil,
 		[]string{
 			"Requires SET GRID. Uses H3 L1 on 160/80/60m and L2 on all other bands.",
+			"While usable NEARBY is active, spot delivery uses the least-suppressive available dedupe lane.",
+			"SHOW DEDUPE reports when NEARBY changes the effective dedupe lane.",
 			"Location filters are suspended while NEARBY is ON.",
 			"Setting location filters while NEARBY is ON is rejected with a warning.",
 			"NEARBY state persists across sessions and shows a login warning when active.",
@@ -1204,6 +1206,8 @@ func dedupeHelpNotes(cfg DedupeHelpConfig, includeFallbackNote bool) []string {
 		notes := []string{
 			"FAST = short window; MED = medium window; SLOW = long window.",
 			"FAST/MED use 2-character grid squares; SLOW uses CQ zones.",
+			"Usable NEARBY temporarily uses the least-suppressive available lane without changing SET DEDUPE.",
+			"SHOW DEDUPE reports the temporary lane when it differs from the saved policy.",
 		}
 		if includeFallbackNote {
 			notes = append(notes, "If a policy is disabled, the nearest available is chosen.")
@@ -1217,6 +1221,8 @@ func dedupeHelpNotes(cfg DedupeHelpConfig, includeFallbackNote bool) []string {
 		formatDedupePolicyNote("FAST", cfg.FastWindowSeconds, "DE grid2"),
 		formatDedupePolicyNote("MED", cfg.MedWindowSeconds, "DE grid2"),
 		formatDedupePolicyNote("SLOW", cfg.SlowWindowSeconds, "DE CQ zone"),
+		"Usable NEARBY temporarily uses the least-suppressive available lane without changing SET DEDUPE.",
+		"SHOW DEDUPE reports the temporary lane when it differs from the saved policy.",
 	}
 	if includeFallbackNote {
 		notes = append(notes, "If a policy is disabled, the nearest available is chosen.")

@@ -99,6 +99,38 @@ func TestFormatSpotForClientDedupeDiagComment(t *testing.T) {
 	}
 }
 
+func TestFormatSpotForClientDedupeDiagUsesNearbyEffectivePolicy(t *testing.T) {
+	requireH3Mappings(t)
+	server := NewServer(ServerOptions{
+		DedupeFastEnabled: true,
+		DedupeMedEnabled:  true,
+		DedupeSlowEnabled: true,
+	}, nil)
+	client := &Client{filter: filter.NewFilter()}
+	client.setDedupePolicy(dedupePolicySlow)
+	client.setDiagMode(diagModeDedupe)
+	if err := client.filter.EnableNearby(pathreliability.EncodeCell("FN31"), pathreliability.EncodeCoarseCell("FN31")); err != nil {
+		t.Fatalf("EnableNearby failed: %v", err)
+	}
+
+	sp := spot.NewSpot("LZ2BE", "M9PSY-#", 14024.6, "CW")
+	sp.Time = time.Date(2025, time.January, 7, 4, 9, 0, 0, time.UTC)
+	sp.SourceType = spot.SourceRBN
+	sp.DEMetadata.ADIF = 291
+	sp.DEMetadata.CQZone = 5
+	sp.DEMetadata.Grid = "FN31"
+	sp.DXMetadata.Grid = "FN31"
+	sp.Comment = "ORIG"
+
+	line := server.formatSpotForClient(client, sp)
+	if !strings.Contains(line, "291|FN|S|F") {
+		t.Fatalf("expected NEARBY effective FAST diagnostic tag, got %q", line)
+	}
+	if strings.Contains(line, "291|05|S|S") {
+		t.Fatalf("did not expect saved SLOW diagnostic tag while NEARBY effective policy is FAST, got %q", line)
+	}
+}
+
 func TestFormatSpotForClientSourceDiagPeerNode(t *testing.T) {
 	server := NewServer(ServerOptions{}, nil)
 	client := &Client{}

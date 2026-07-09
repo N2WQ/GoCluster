@@ -277,8 +277,8 @@ Supported bands:
 The cluster already removes upstream duplicates before spots reach users.
 `SET DEDUPE` controls the second, operator-facing dedupe stage that decides how
 aggressively repeated live spots are hidden in your telnet feed. `SHOW DEDUPE`
-shows the active policy and whether `FAST`, `MED`, and `SLOW` are enabled
-server-side.
+shows the saved policy, whether usable `NEARBY` changes the temporary effective
+policy, and whether `FAST`, `MED`, and `SLOW` are enabled server-side.
 
 Separately, shared-ingest flood control is configured in [`data/config/floodcontrol.yaml`](data/config/floodcontrol.yaml). That stage runs before primary dedupe, is not per-user, and can `observe`, `suppress`, or `drop` by actor rail. The shipped file starts in `observe` mode on every rail, but the file itself is required at startup.
 
@@ -297,6 +297,7 @@ In plain terms:
 - `SLOW` suppresses more repeats because CQ zone is broader than a 2-character grid square.
 - New users use the operator-configured `dedup.default_policy` from `data/config/dedupe.yaml`; the shipped default is `SLOW`.
 - If you request a disabled policy, the server automatically chooses an enabled policy and tells you what it picked.
+- When usable `PASS NEARBY ON` is active, your telnet feed temporarily uses the least-suppressive available policy, normally `FAST`. Your saved `SET DEDUPE` policy is not changed and resumes when `NEARBY` is off or inactive.
 
 WWV, WCY, and `TO ALL` announcement bulletins have a separate server-wide duplicate guard because they are delivered as telnet control traffic rather than spots. The shipped `runtime.yaml` suppresses identical bulletin lines for `600s` across peer and relay sources; set `telnet.bulletin_dedupe_window_seconds: 0` to disable that behavior.
 
@@ -363,6 +364,7 @@ Band handling is intentionally simple:
 - While `NEARBY` is on, the regular location filters are suspended: `DXGRID2`, `DEGRID2`, `DXCONT`, `DECONT`, `DXZONE`, `DEZONE`, `DXDXCC`, and `DEDXCC`.
 - Attempts to change those filters while `NEARBY` is on are rejected with a warning.
 - `PASS NEARBY OFF` restores the saved location-filter state from before `NEARBY` was enabled.
+- While `NEARBY` has usable grid-backed cells, spot delivery temporarily uses the least-suppressive available dedupe policy so nearby repeats are less likely to be hidden. `SHOW DEDUPE` reports the temporary lane when it differs from the saved policy, and `SET DIAG DEDUPE` uses the temporary lane for its compact key and policy tag.
 
 `NEARBY` persists across logins. The login greeting warns you when it is active,
 and `SHOW FILTER` includes the current `NEARBY` state. If your stored grid is

@@ -276,6 +276,30 @@ the local package. Otherwise use Full rigor and report:
 radius-audit` is triggered — report its compact result before
 implementation.
 
+## YAML documentation rigor
+
+Required when adding or editing checked-in first-party YAML, especially
+`data/config/*.yaml`. Use `data/config/README.md` (shared with Codex) as the
+source of truth for YAML file headers and key-comment standards. Verify:
+
+- checked-in `data/config/*.yaml` files keep the exact five-line header
+  (`Purpose`/`Ownership`/`Runtime behavior`/`Safe edits`/`Source`)
+- new or changed keys explain purpose when units, sentinel values,
+  ownership, side effects, runtime consequences, or safe-edit boundaries are
+  non-obvious
+- obvious boolean toggles are not comment-noised unless side effects are
+  non-obvious
+- repeated list/table schemas document the first occurrence rather than
+  duplicating comments on every row
+
+Run `scripts/check-yaml-doc-rigor.ps1` (shared with Codex) for mechanical
+checks; use `-CommentOnlyCompare` when the intended change is comment-only.
+Score SELF-AUDIT row 4 (`YAML comment/header audit`) `N/A` only when no
+checked-in first-party YAML changed. `.claude/agents/**/*.md` and
+`.claude/skills/**/SKILL.md` frontmatter is not first-party runtime config
+and is not subject to this standard — see the workflow-contract lane's
+metadata/body sync check instead.
+
 ## Testing and checker discipline
 
 Use `docs/dev-runbook.md` as the required checker source (shared with

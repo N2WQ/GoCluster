@@ -1872,6 +1872,7 @@ func TestPassNearbyOnOff(t *testing.T) {
 	requireH3Mappings(t)
 	client := newTestClient()
 	engine := newFilterCommandEngine()
+	client.setDedupePolicy(dedupePolicySlow)
 
 	grid := "FN31"
 	client.grid = grid
@@ -1888,6 +1889,9 @@ func TestPassNearbyOnOff(t *testing.T) {
 	if !client.filter.NearbyActive() {
 		t.Fatalf("expected nearby filter to be enabled")
 	}
+	if got := client.getDedupePolicy(); got != dedupePolicySlow {
+		t.Fatalf("expected PASS NEARBY ON to keep saved dedupe policy SLOW, got %v", got)
+	}
 
 	resp, handled = engine.Handle(client, "PASS NEARBY OFF")
 	if !handled {
@@ -1898,6 +1902,9 @@ func TestPassNearbyOnOff(t *testing.T) {
 	}
 	if client.filter.NearbyActive() {
 		t.Fatalf("expected nearby filter to be disabled")
+	}
+	if got := client.getDedupePolicy(); got != dedupePolicySlow {
+		t.Fatalf("expected PASS NEARBY OFF to keep saved dedupe policy SLOW, got %v", got)
 	}
 }
 

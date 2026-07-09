@@ -481,6 +481,19 @@ func (c *Client) getDedupePolicy() dedupePolicy {
 	return dedupePolicy(c.dedupePolicy.Load())
 }
 
+func (c *Client) nearbyFilterInEffect() bool {
+	if c == nil {
+		return false
+	}
+	c.filterMu.RLock()
+	defer c.filterMu.RUnlock()
+	f := c.filter
+	if f == nil || !f.NearbyEnabled {
+		return false
+	}
+	return f.NearbyUserFine != pathreliability.InvalidCell && f.NearbyUserCoarse != pathreliability.InvalidCell
+}
+
 func (c *Client) setDiagMode(mode diagMode) {
 	if c == nil {
 		return
@@ -1660,14 +1673,32 @@ func (s *Server) effectiveDefaultDedupePolicy() dedupePolicy {
 	return s.resolveDedupePolicy(s.defaultDedupePolicyValue())
 }
 
+// effectiveDedupePolicyForClient keeps the persisted SET DEDUPE choice intact
+// while temporarily using the least-suppressive lane for grid-backed NEARBY
+// filtering. Stored NEARBY state without usable cells does not change policy.
+func (s *Server) effectiveDedupePolicyForClient(client *Client) dedupePolicy {
+	if client == nil {
+		return dedupePolicyFast
+	}
+	policy := client.getDedupePolicy()
+	if client.nearbyFilterInEffect() {
+		return s.resolveDedupePolicy(dedupePolicyFast)
+	}
+	return policy
+}
+
 func (s *Server) formatDedupeStatus(client *Client) string {
 	if client == nil {
 		return ""
 	}
-	policy := client.getDedupePolicy().label()
-	keyLabel := dedupeKeyLabel(client.getDedupePolicy())
+	savedPolicy := client.getDedupePolicy()
+	effectivePolicy := s.effectiveDedupePolicyForClient(client)
+	policyText := fmt.Sprintf("%s (%s)", savedPolicy.label(), dedupeKeyLabel(savedPolicy))
+	if effectivePolicy != savedPolicy {
+		policyText = fmt.Sprintf("%s; NEARBY effective %s (%s)", policyText, effectivePolicy.label(), dedupeKeyLabel(effectivePolicy))
+	}
 	if !s.dedupeFastEnabled && !s.dedupeMedEnabled && !s.dedupeSlowEnabled {
-		return fmt.Sprintf("Dedupe: %s (%s) (secondary disabled)\n", policy, keyLabel)
+		return fmt.Sprintf("Dedupe: %s (secondary disabled)\n", policyText)
 	}
 	fastLabel := "off"
 	if s.dedupeFastEnabled {
@@ -1681,7 +1712,7 @@ func (s *Server) formatDedupeStatus(client *Client) string {
 	if s.dedupeSlowEnabled {
 		slowLabel = "on"
 	}
-	return fmt.Sprintf("Dedupe: %s (%s) (fast=%s med=%s slow=%s)\n", policy, keyLabel, fastLabel, medLabel, slowLabel)
+	return fmt.Sprintf("Dedupe: %s (fast=%s med=%s slow=%s)\n", policyText, fastLabel, medLabel, slowLabel)
 }
 
 func (s *Server) handleDiagCommand(client *Client, line string) (string, bool) {
@@ -2885,7 +2916,7 @@ func (s *Server) deliverJob(job broadcastJob) {
 		var admissionPrediction pathPrediction
 		haveAdmissionPrediction := false
 		policyAllowed := job.allowFast
-		switch client.getDedupePolicy() {
+		switch s.effectiveDedupePolicyForClient(client) {
 		case dedupePolicyMed:
 			policyAllowed = job.allowMed
 		case dedupePolicySlow:
@@ -4135,7 +4166,7 @@ func (s *Server) formatSpotForClientWithDiag(client *Client, sp *spot.Spot, mode
 	if mode == diagModePath || (s != nil && s.pathPredictor != nil && s.pathDisplay) {
 		prediction, havePrediction = s.pathPredictionForClient(client, sp)
 	}
-	base := sp.FormatDXClusterWithComment(diagTagForSpot(client, sp, mode, prediction, havePrediction))
+	base := sp.FormatDXClusterWithComment(s.diagTagForSpot(client, sp, mode, prediction, havePrediction))
 	if s == nil || s.pathPredictor == nil || !s.pathDisplay {
 		return base + "\n"
 	}
@@ -4211,7 +4242,7 @@ func (s *Server) formatSpotForClientWithDiagPrediction(client *Client, sp *spot.
 	if havePrediction {
 		s.recordDisplayedPathPrediction(prediction)
 	}
-	base := sp.FormatDXClusterWithComment(diagTagForSpot(client, sp, mode, prediction, havePrediction))
+	base := sp.FormatDXClusterWithComment(s.diagTagForSpot(client, sp, mode, prediction, havePrediction))
 	if s == nil || s.pathPredictor == nil || !s.pathDisplay {
 		return base + "\n"
 	}
@@ -4810,7 +4841,7 @@ func pathPredictionMode(sp *spot.Spot) string {
 	return mode
 }
 
-func diagTagForSpot(client *Client, sp *spot.Spot, mode diagMode, prediction pathPrediction, havePrediction bool) string {
+func (s *Server) diagTagForSpot(client *Client, sp *spot.Spot, mode diagMode, prediction pathPrediction, havePrediction bool) string {
 	if client == nil || sp == nil {
 		return ""
 	}
@@ -4824,31 +4855,35 @@ func diagTagForSpot(client *Client, sp *spot.Spot, mode diagMode, prediction pat
 	case diagModeMode:
 		return diagModeTag(sp)
 	default:
-		return diagDedupeTag(client, sp)
+		return s.diagDedupeTag(client, sp)
 	}
 }
 
-func diagDedupeTag(client *Client, sp *spot.Spot) string {
+func (s *Server) diagDedupeTag(client *Client, sp *spot.Spot) string {
 	dedxcc := "0"
 	if sp.DEMetadata.ADIF > 0 {
 		dedxcc = strconv.Itoa(sp.DEMetadata.ADIF)
 	}
-	keyToken := diagDedupeKeyToken(client.getDedupePolicy(), sp)
+	policy := client.getDedupePolicy()
+	if s != nil {
+		policy = s.effectiveDedupePolicyForClient(client)
+	}
+	keyToken := diagDedupeKeyToken(policy, sp)
 	if keyToken == "" {
 		keyToken = "--"
 	}
 	source := diagDedupeSourceClass(sp)
-	policy := diagPolicyToken(client.getDedupePolicy())
+	policyToken := diagPolicyToken(policy)
 
 	var b strings.Builder
-	b.Grow(len(dedxcc) + len(keyToken) + len(source) + len(policy) + 3)
+	b.Grow(len(dedxcc) + len(keyToken) + len(source) + len(policyToken) + 3)
 	b.WriteString(dedxcc)
 	b.WriteByte('|')
 	b.WriteString(keyToken)
 	b.WriteByte('|')
 	b.WriteString(source)
 	b.WriteByte('|')
-	b.WriteString(policy)
+	b.WriteString(policyToken)
 	return b.String()
 }
 

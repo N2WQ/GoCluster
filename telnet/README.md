@@ -88,7 +88,7 @@ The telnet server exposes per-user dedupe policy control through `SHOW DEDUPE` a
 
 - new users default to `dedup.default_policy` from the active config directory; the shipped default is `SLOW`
 - the selected policy is persisted per callsign
-- `SHOW DEDUPE` reports the active policy and whether `FAST`, `MED`, and `SLOW` are enabled server-side
+- `SHOW DEDUPE` reports the saved policy, whether usable `NEARBY` changes the temporary effective policy, and whether `FAST`, `MED`, and `SLOW` are enabled server-side
 - if a user requests a disabled policy, the server falls back to an enabled one and reports that in the response
 
 Policy windows come from the active `dedup.secondary_*_window_seconds` values
@@ -99,6 +99,8 @@ in `data/config/dedupe.yaml`:
 - `SLOW`: longest configured window, keyed by band + DE DXCC + DE CQ zone + DX call
 
 This is why `SLOW` suppresses more repeats from one region than `FAST` or `MED`: CQ zone is broader than a 2-character grid square.
+
+When usable `PASS NEARBY ON` is active, telnet spot delivery temporarily uses the least-suppressive available policy, normally `FAST`. The saved `SET DEDUPE` policy is not rewritten, and it resumes when `NEARBY` is off or inactive. `SHOW DEDUPE` reports the temporary lane when it differs from the saved policy. `SET DIAG DEDUPE` uses the same temporary effective policy for its compact key and policy tag.
 
 ## Bulletin Dedupe
 
@@ -162,6 +164,7 @@ While `NEARBY` is active:
 - the regular location filters are suspended
 - attempts to change `DXGRID2`, `DEGRID2`, `DXCONT`, `DECONT`, `DXZONE`, `DEZONE`, `DXDXCC`, and `DEDXCC` are rejected with a warning
 - `SHOW FILTER` reports `NEARBY: ON (location filters suspended)`
+- spot delivery uses the least-suppressive available dedupe policy while usable grid-backed cells are present
 
 When `PASS NEARBY OFF` is used, the telnet layer restores the saved location-filter snapshot that existed before `NEARBY` was enabled.
 
