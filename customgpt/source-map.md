@@ -69,10 +69,11 @@ linking or citing these docs over duplicating their content here.
   Subagent Use rules in
   [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md)
   and [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md);
-  emphasize that independent agents should be used when supported, authorized
-  by active tool/user policy, and not explicitly prohibited. If the platform
-  requires an explicit subagent/delegation request and it is absent, report
-  `not authorized/not requested`. `scope-ledger-adversarial-review`,
+  emphasize that the repo owner has made a standing request for default
+  subagent use when supported, active tool/session policy permits it, and the
+  user has not explicitly prohibited it. Do not report
+  `not authorized/not requested` merely because the current task prompt omits a
+  repeated subagent request. `scope-ledger-adversarial-review`,
   `go-code-quality-review`, and fresh-verifier explorers are read-only findings
   sources, high-risk SELF-AUDIT rows should cite independent evidence when
   available, and the lead Codex agent owns approval gates, integration, final

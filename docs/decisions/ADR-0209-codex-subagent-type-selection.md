@@ -3,6 +3,9 @@
 - Status: Accepted
 - Date: 2026-07-09
 - Decision Origin: Design
+- Supersession note: ADR-0211 supersedes this ADR's authorization-semantics
+  reference to ADR-0205; the explorer/worker type-selection decision remains
+  accepted.
 
 ## Context
 
@@ -34,9 +37,9 @@ independent review roles as `explorer` agents:
    with explicit write scope, allowed paths, forbidden paths, stopping
    conditions, targeted checks, and lead-owned integration.
 
-This decision does not change ADR-0205 authorization semantics. If the active
-platform requires an explicit subagent request and that request is absent, the
-status remains `not authorized/not requested`.
+This decision does not own authorization semantics. ADR-0211 supersedes the
+ADR-0205 request-absence rule with the standing repository-owner request; this
+ADR continues to own only the Codex explorer/worker type selection.
 
 ## Alternatives considered
 

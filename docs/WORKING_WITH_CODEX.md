@@ -116,11 +116,12 @@ prohibit them.
 
 Some Codex surfaces expose a subagent tool but allow spawning only after you
 explicitly ask for subagents, delegation, or parallel agent work. In those
-surfaces, this repository's default-on policy does not self-authorize spawning.
-Codex should report `not authorized/not requested` until the active
-user/session/tool policy permits subagent use. Exact `Approved vN` approves the
-scope; it is not by itself an explicit subagent request when the active
-platform requires one.
+surfaces, this repository records the owner's standing request to use subagents
+by default. Codex should not report `not authorized/not requested` merely
+because the current task prompt does not repeat that request. You can still
+explicitly prohibit subagents for a chat or task, and active tool/session policy
+can still block spawning. Exact `Approved vN` approves the scope; it is not by
+itself permission for worker subagents outside the approved slice gates.
 
 An independent agent is separate from the lead Codex agent and has its own
 context window. That independence helps catch lead-agent anchoring and stale

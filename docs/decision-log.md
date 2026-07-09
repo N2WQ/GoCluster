@@ -25,12 +25,13 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Reserved Placeholder | Unused | - | index hygiene | - | - | No ADR file; first real ADR is `docs/decisions/ADR-0002-ui-v2-render-pipeline.md` |
+| ADR-0211 | Standing Subagent Request | Accepted | 2026-07-09 | workflow, Codex, validation, review, subagents | ADR-0205 authorization semantics | - | `docs/decisions/ADR-0211-standing-subagent-request.md` |
 | ADR-0210 | Executor-Aware Workflow Skill Doc Runbook Lane | Accepted | 2026-07-09 | workflow, Codex, Fable, validation, runbook | - | - | `docs/decisions/ADR-0210-executor-aware-workflow-skill-doc-runbook-lane.md` |
 | ADR-0209 | Codex Subagent Type Selection | Accepted | 2026-07-09 | workflow, Codex, validation, review, subagents | ADR-0202 default-on review roles; ADR-0205 authorization state | - | `docs/decisions/ADR-0209-codex-subagent-type-selection.md` |
 | ADR-0208 | Fable Workflow Gap Corrections | Accepted | 2026-07-09 | workflow, Fable, decision-memory, skills | - | - | `docs/decisions/ADR-0208-fable-workflow-gap-corrections.md` |
 | ADR-0207 | NEARBY Effective Fast Dedupe | Accepted | 2026-07-09 | telnet, dedupe, filters, diagnostics, supportability | - | - | `docs/decisions/ADR-0207-nearby-effective-fast-dedupe.md` |
 | ADR-0206 | Fable-Native Workflow Contract Architecture | Accepted | 2026-07-09 | workflow, Fable, Claude Code, validation, review, skills | - | - | `docs/decisions/ADR-0206-fable-native-workflow-contract-architecture.md` |
-| ADR-0205 | Subagent Authorization State | Accepted | 2026-07-09 | workflow, Codex, validation, review | ADR-0202 default-on independent-agent behavior | - | `docs/decisions/ADR-0205-subagent-authorization-state.md` |
+| ADR-0205 | Subagent Authorization State | Superseded | 2026-07-09 | workflow, Codex, validation, review | ADR-0202 default-on independent-agent behavior | ADR-0211 | `docs/decisions/ADR-0205-subagent-authorization-state.md` |
 | ADR-0204 | Captured Validation Evidence For High-Risk Claims | Accepted | 2026-07-09 | workflow, Codex, validation, review | ADR-0194 claim-evidence requirements; ADR-0203 SELF-AUDIT evidence requirements | - | `docs/decisions/ADR-0204-captured-validation-evidence-for-high-risk-claims.md` |
 | ADR-0203 | Independent SELF-AUDIT Scoring Evidence | Accepted | 2026-07-09 | workflow, Codex, validation, review | ADR-0202 review-agent evidence model | - | `docs/decisions/ADR-0203-independent-self-audit-scoring-evidence.md` |
 | ADR-0202 | Default-On Independent Review Agents | Accepted | 2026-07-09 | workflow, Codex, validation, skills, review | ADR-0199 subagent optionality | - | `docs/decisions/ADR-0202-default-on-independent-review-agents.md` |

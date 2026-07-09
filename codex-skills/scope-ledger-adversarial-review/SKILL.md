@@ -21,9 +21,10 @@ agent context; it does not transfer gate ownership away from the lead agent.
      spawning, and the user has not explicitly prohibited independent-agent
      use, use an independent explorer for this review.
    - If the active platform requires an explicit user request for subagents,
-     delegation, or parallel agent work and that request is absent, report
-     `not authorized/not requested`; repository policy does not self-authorize
-     spawning.
+     delegation, or parallel agent work, this repo's standing owner request
+     satisfies that prerequisite when active tool/session policy permits it.
+     Do not report `not authorized/not requested` merely because the current
+     task prompt does not repeat the request.
 
 2. Inspect the proposed scope and its evidence.
    - Read the proposed Scope Ledger, Current-State Discovery, relevant

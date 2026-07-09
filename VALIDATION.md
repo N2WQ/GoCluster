@@ -36,8 +36,11 @@ implementation-ready slices. Final traceability must map back to approved
 items. Unsupported, not authorized/not requested, explicitly prohibited,
 failed, or timed-out independent review must be reported as evidence status or
 a waiver. If the active platform requires an explicit user request before
-subagents can be spawned, missing user authorization must be reported as `not
-authorized/not requested`, not as `unsupported` or `explicitly prohibited`.
+subagents can be spawned, missing user authorization must be reported as
+`not authorized/not requested`, not as `unsupported` or `explicitly prohibited`;
+the current task prompt omitting a repeated subagent request is not missing
+authorization when the active tool/session policy permits this repo's standing
+subagent request.
 Otherwise score `0`.
 
 ### 2) Skill and workflow discipline
@@ -46,7 +49,8 @@ and followed the required workflow for that task type, including phase,
 support/authorization/prohibition status, allowed actions, and lead-ownership
 rules for any independent agents or subagents used. Repository workflow text
 does not self-authorize subagent spawning when the active platform requires an
-explicit user request. Otherwise score `0`.
+explicit user request, except for this repo's standing owner request when
+active tool/session policy permits it. Otherwise score `0`.
 
 ### 3) Current-state understanding and dependency rigor
 Score `1` only if pre-code current-state understanding and dependency coverage

@@ -54,10 +54,11 @@ workflow rules.
   are not approval-ready.
 - Config, protocol, parser, concurrency, queue, retained-state, hot-path, or
   operator-visible changes are normally Non-trivial.
-- Independent agents should be used when supported, authorized by active
-  tool/user policy, and not explicitly prohibited. If the platform requires an
-  explicit subagent/delegation request and it is absent, report
-  `not authorized/not requested`. `scope-ledger-adversarial-review` challenges
+- Independent agents should be used by default under the repo owner's standing
+  request when supported, permitted by active tool/session policy, and not
+  explicitly prohibited. Do not report `not authorized/not requested` merely
+  because the current task prompt omits a repeated subagent request.
+  `scope-ledger-adversarial-review` challenges
   Non-trivial Scope Ledgers before approval, `go-code-quality-review` reviews
   Non-trivial Go implementation diffs and applicable SELF-AUDIT evidence before
   closeout, post-approval workers require approved disjoint slices, and

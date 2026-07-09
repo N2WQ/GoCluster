@@ -112,11 +112,17 @@ When the user asks what existing code does and has not asked for changes:
   parallel agent work, the active tool policy and user/session authorization
   permit spawning them, and the user has not explicitly prohibited
   independent-agent use.
-- Repository policy, this file, or prior ADR language does not by itself
-  authorize spawning subagents when the active platform requires an explicit
-  user request for subagents, delegation, or parallel agent work. If that
-  request is absent, report `not authorized/not requested`; do not treat it as
-  `unsupported` or `explicitly prohibited`.
+- The repository owner has made an explicit standing request to use subagents by
+  default in this repo. When subagent tooling is supported and active
+  tool/session policy permits it, do not report `not authorized/not requested`
+  merely because the current task prompt does not repeat the request. This does
+  not override `Approved vN`, read-only pre-approval limits, worker slice gates,
+  tool-policy limits, or an explicit user prohibition.
+- Repository policy, this file, or prior ADR language does not override active
+  tool/session policy. If the active platform requires authorization beyond
+  this repo's standing request and that authorization is absent, report
+  `not authorized/not requested`; do not treat it as `unsupported` or
+  `explicitly prohibited`.
 - Evaluate subagent authorization separately for each phase/use. Exact
   `Approved vN` approves scope; it is not by itself an explicit subagent
   request when the active platform requires one.

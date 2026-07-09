@@ -154,9 +154,17 @@ use. Record the support/authorization/prohibition status, phase, allowed
 actions, expected output, and lead-agent verification in the applicable
 evidence marker.
 
-Repository policy, `AGENTS.md`, or prior ADR language cannot self-authorize
-subagent spawning when the active platform requires an explicit user request for
-subagents, delegation, or parallel agent work. If that request is absent, report
+The repository owner has made an explicit standing request to use subagents by
+default in this repo. When subagent tooling is supported and active
+tool/session policy permits that standing request, do not report
+`not authorized/not requested` merely because the current task prompt does not
+repeat a subagent, delegation, or parallel-agent request. This standing request
+is authorization only; it is not Scope Ledger approval and does not expand any
+phase gate.
+
+Repository policy, `AGENTS.md`, or prior ADR language cannot override active
+tool/session policy. If the active platform requires authorization beyond this
+repo's standing request and that authorization is absent, report
 `not authorized/not requested`; do not collapse it into `unsupported` or
 `explicitly prohibited`.
 

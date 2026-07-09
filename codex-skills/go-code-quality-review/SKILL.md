@@ -27,9 +27,10 @@ fresh-verification evidence before that evidence exists.
      spawning, and the user has not explicitly prohibited independent-agent
      use, use an independent explorer for this review.
    - If the active platform requires an explicit user request for subagents,
-     delegation, or parallel agent work and that request is absent, report
-     `not authorized/not requested`; repository policy does not self-authorize
-     spawning.
+     delegation, or parallel agent work, this repo's standing owner request
+     satisfies that prerequisite when active tool/session policy permits it.
+     Do not report `not authorized/not requested` merely because the current
+     task prompt does not repeat the request.
    - Do not trigger this skill for documentation-only Markdown changes unless
      the diff also changes Go code or a runtime/code contract.
 
