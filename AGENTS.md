@@ -134,6 +134,16 @@ When the user asks what existing code does and has not asked for changes:
   disposition, `SCOPE ADVERSARIAL REVIEW`, integration, final Review Pass,
   validation claims, ADR/TSR handling, Scope-to-Code Traceability, and the
   final response.
+- For Non-trivial SELF-AUDIT, independently reviewed high-risk categories must
+  use the independent review evidence available for that phase. The lead agent
+  may not silently turn unsupported, failed, timed-out, prohibited, missing, or
+  stale independent evidence into `PASS`; use `FAIL`, an explicit gap/waiver,
+  or `N/A` only when the category truly does not apply. `go-code-quality-review`
+  scores only rows it can inspect at its post-Go-code phase. A high-risk
+  closeout fresh-verifier explorer supplies later independent evidence,
+  including Fresh verification and claim evidence, after final validation
+  evidence exists. Lead ownership remains mandatory for every final score and
+  validation claim.
 
 ## Task Gates
 - Before every change, classify the task and confirm current Scope Ledger
@@ -203,6 +213,11 @@ delta, or final disposition.
   source.
 - Run `go test -race ./...` for concurrency, lifecycle, queues, cancellation,
   timers, long-lived connections, or shared mutable state.
+- For command-backed concurrency, lifecycle, queue, timer, shutdown,
+  shared-state, or leak-detection validation claims, include a short captured
+  transcript excerpt in the `Verification command reporting` evidence. Let
+  `SELF-AUDIT` and `CLOSEOUT` reference that evidence; do not change the final
+  exact 3-line validation block.
 - Use fuzzing for parser/protocol changes.
 - Use benchmarks and pprof for hot-path or performance claims.
 - Report missing tools, skipped checks, and failed checks as validation gaps
@@ -210,6 +225,9 @@ delta, or final disposition.
 - Use the documentation-only validation lane from `docs/dev-runbook.md` for
   Markdown-only documentation changes that do not touch code, config, generated
   artifacts, scripts, CI, schemas, protocol/runtime contracts, or runtime data.
+- Use the workflow/skill-doc lane from `docs/dev-runbook.md` for workflow docs
+  or repo-managed skill changes, especially when the diff includes repo skill
+  metadata YAML such as `codex-skills/**/agents/openai.yaml`.
 - Review the current diff as a reviewer before final closeout.
 - For high-risk Non-trivial slices, perform a fresh verification pass before
   final closeout. Use a read-only fresh-verifier explorer when the active

@@ -1,6 +1,6 @@
 ---
 name: go-code-quality-review
-description: "Use for independent read-only review of newly written gocluster Go implementation code before final closeout. Trigger after Go code changes in Non-trivial tasks when the environment supports independent agents unless the user explicitly prohibits independent-agent use."
+description: "Use for independent read-only review of newly written gocluster Go implementation code and applicable SELF-AUDIT evidence before final closeout. Trigger after Go code changes in Non-trivial tasks when the environment supports independent agents unless the user explicitly prohibits independent-agent use."
 ---
 
 # Go Code Quality Review
@@ -12,6 +12,10 @@ the diff against GoCluster's code-quality, workflow, validation, and
 operational standards. The review is independent evidence from a separate agent
 context; the lead agent still owns fixes, validation claims, traceability, and
 the final response.
+
+The reviewer also supplies PASS/FAIL/N/A evidence for applicable SELF-AUDIT
+rows it can inspect at this phase. It does not final-score later
+fresh-verification evidence before that evidence exists.
 
 ## Workflow
 
@@ -51,10 +55,32 @@ the final response.
    - Check whether targeted tests, `go test`, `go vet`, `staticcheck`,
      `golangci-lint`, race checks, fuzzing, benchmarks, or pprof were required
      and reported.
+   - For command-backed concurrency, lifecycle, queue, timer, shutdown,
+     shared-state, or leak-detection claims, check that the lead supplied the
+     short captured excerpt required by `docs/review-checklist.md`
+     `Verification command reporting`. A bare PASS/FAIL line is not sufficient
+     for these high-risk claims.
+   - Do not generate or run transcript evidence for the lead agent. Report
+     missing, stale, skipped, failed, timed-out, cached-without-usable-output,
+     partial, or waived excerpts as evidence status.
    - Do not run final validation for the lead agent; identify missing or stale
      evidence instead.
 
-5. Report findings first.
+5. Report applicable SELF-AUDIT evidence.
+   - Score only rows supported by evidence available at this post-code phase.
+   - Include, at minimum when applicable: Scope and dependency coverage;
+     Code-walk and blast-radius evidence; Contract, config, and protocol
+     correctness; YAML comment/header audit for first-party YAML; Go comment
+     intent audit; Go crawler-entry audit; Concurrency, backpressure, and
+     resource bounds; Leak-detection evidence; Anti-speculative implementation
+     guard; and Verification and checker discipline.
+   - Mark Fresh verification and claim evidence as `N/A - not yet run` or
+     partial evidence when a later fresh-verifier pass is required. Do not
+     present this review as final authority for that row.
+   - If an applicable row cannot be scored from inspected evidence, report
+     `FAIL` or a clear evidence gap rather than inferring `PASS`.
+
+6. Report findings first.
    - Order findings by severity.
    - Include file paths and line references when inspected.
    - Separate material findings, non-blocking observations, and remaining
@@ -65,6 +91,8 @@ the final response.
 ## Output Expectations
 
 - Include a compact `Go code quality review` result.
+- Include a compact `SELF-AUDIT evidence` section for applicable rows inspected
+  by this reviewer.
 - If there are no material findings, say `Go code quality review findings:
   none material`.
 - The lead agent must disposition findings, make any fixes within approved

@@ -40,6 +40,12 @@ Fresh-verifier explorer findings are evidence only. The lead agent owns the
 final Review Pass, integration of any fixes, validation claims, ADR/TSR
 handling, Scope-to-Code Traceability, and closeout wording.
 
+For high-risk workflow, runbook, rubric, template, or repo-managed skill
+changes where `go-code-quality-review` is not applicable, use the existing
+fresh-verifier explorer role with a prompt to independently score applicable
+SELF-AUDIT rows. This specializes the fresh-verifier role; it does not create a
+new review role.
+
 ## Go Code Quality Review
 
 For Non-trivial Go implementation work, use an independent
@@ -55,6 +61,10 @@ run formatters, create generated artifacts, or run broad/full validation
 suites. If the explorer is unsupported, prohibited, failed, or timed out, report
 that status in the Review Pass and Self-Audit; for high-risk Go work, treat it
 as a review/validation gap unless explicitly waived.
+
+The Go quality explorer must score only the SELF-AUDIT rows it can inspect at
+its post-code phase. It must not final-score Fresh verification and claim
+evidence when a later fresh-verifier pass has not yet happened.
 
 Review focus:
 - correctness
@@ -111,7 +121,9 @@ After the Review Pass, produce a Self-Audit with pass/fail for each category bel
 - Scope and dependency coverage
 - Code-walk and blast-radius evidence
 - Contract, config, and protocol correctness
+- YAML comment/header audit
 - Go comment intent audit
+- Go crawler-entry audit
 - Concurrency, backpressure, and resource bounds
 - Leak-detection evidence
 - Fresh verification and claim evidence
@@ -119,6 +131,7 @@ After the Review Pass, produce a Self-Audit with pass/fail for each category bel
 - Anti-speculative implementation guard
 - Verification and checker discipline
 - Documentation, decision memory, and traceability
+- Workflow-drift audit
 - Validation block completeness
 
 ### Self-Audit rules
@@ -128,6 +141,19 @@ After the Review Pass, produce a Self-Audit with pass/fail for each category bel
 - Do not hide uncertainty. If evidence is incomplete, fail the category.
 - Use one short note per grouped category. Reference earlier review evidence when
   that already establishes the point.
+- Independently reviewed high-risk rows must cite the independent evidence
+  source or reported gap/waiver. Do not silently lead-fill `PASS` after an
+  independent review is unsupported, prohibited, failed, timed out, missing, or
+  stale.
+- Command-backed `Concurrency, backpressure, and resource bounds` or
+  `Leak-detection evidence` rows must reference the captured excerpt in
+  `Verification command reporting`. Do not paste the same excerpt again in
+  Self-Audit; if the required excerpt is missing, failed, timed out, stale,
+  cached without usable output, or waived, report that status instead of
+  scoring the row as `PASS`.
+- The lead agent owns the final PASS/FAIL/N/A disposition for every row. The
+  Independent-agent/subagent use and lead ownership row is final-scored by the
+  lead from independent evidence/status plus the lead's own gate checks.
 
 ## Closeout evidence
 Every Non-trivial task must end with the template's `CLOSEOUT`,
@@ -151,9 +177,30 @@ For each major command, report:
 - result
 - whether it was incremental or final
 
+This section is the single canonical location for captured validation command
+excerpts. Later `SELF-AUDIT` and `CLOSEOUT` entries should reference this
+section by name instead of repeating excerpts.
+
+For command-backed high-risk concurrency, lifecycle, queue, timer, shutdown,
+shared-state, or leak-detection claims, include a short captured transcript
+excerpt here. The excerpt must show enough current-session output to support
+the claim:
+- command or evidence source
+- target scope
+- pass, fail, timeout, skip, cached, partial, or waived status
+- the key line(s) that prove the result, profile/trace finding, or failure mode
+- whether the result was incremental or final
+
+Do not paste full logs, environment dumps, secrets, tokens, credentials,
+private hostnames, unnecessary user data, or large runtime traces. Redact
+sensitive content and say what was redacted. Static source reasoning remains
+allowed, but label it as static reasoning and name the inspected files instead
+of presenting it as command-backed validation.
+
 Example shape:
 - `go test ./...` - baseline regression check - pass
-- `go test -race ./...` - concurrency/lifecycle verification - pass
+- `go test -race ./...` - concurrency/lifecycle verification - pass - final;
+  excerpt: `ok  github.com/N2WQ/GoCluster/internal/cluster  ...`
 - `go test ./internal/cluster -run TestSlowClientDropPolicy` - targeted regression - pass
 - `git diff --check` - documentation-only whitespace check - pass
 

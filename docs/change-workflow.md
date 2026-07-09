@@ -23,6 +23,9 @@ changes have their own validation lane: use documentation review, targeted text
 checks, and whitespace/diff checks instead of Go code validation, unless the
 change also touches code, config, generated artifacts, scripts, CI, schemas,
 protocol/runtime contracts, or checked-in data consumed by the runtime.
+Workflow or repo-managed skill documentation changes that also touch skill
+metadata YAML use the workflow/skill-doc lane in `docs/dev-runbook.md`; do not
+mislabel them as documentation-only Markdown.
 
 Keep the workflow additive, not repetitive:
 - later sections may reference earlier evidence instead of restating it
@@ -43,6 +46,13 @@ check whether it is backed by inspected source, command output, test results,
 benchmark/profile data, runtime captures, ADR/TSR records, or documented
 operator contracts. Label skipped, failed, stale, inferred, or unknown evidence
 instead of smoothing it into a success claim.
+
+For command-backed concurrency, lifecycle, queue, timer, shutdown, shared-state,
+or leak-detection claims, capture a short transcript excerpt in
+`docs/review-checklist.md` `Verification command reporting`. Later
+`SELF-AUDIT` and `CLOSEOUT` entries reference that evidence by marker name
+instead of repasting it. Static source reasoning remains valid when labeled as
+static reasoning with the inspected files named.
 
 ## IDE context discipline
 When using the Codex VS Code extension:
@@ -202,8 +212,17 @@ when independent agents are supported and not explicitly prohibited. The
 explorer checks the approved scope against the Go diff, `docs/code-quality.md`,
 review expectations, validation lane, comment intent, bounded state,
 lifecycle/concurrency/resource ownership, anti-speculative implementation, and
-claim evidence. It reports findings only; it does not edit, propose diffs, run
-formatters, create generated artifacts, or run broad/full validation suites.
+claim evidence available at that phase. It also reports PASS/FAIL/N/A evidence
+for the applicable SELF-AUDIT rows it can inspect at that phase. It reports
+findings only; it does not edit, propose diffs, run formatters, create
+generated artifacts, or run broad/full validation suites.
+
+The Go quality explorer must not final-score late closeout evidence that does
+not exist yet. If a later fresh-verifier pass is required, the Go quality
+explorer may mark Fresh verification and claim evidence as `N/A - not yet run`
+or report partial evidence only; the fresh-verifier explorer supplies the later
+independent evidence for that row after Review Pass and final validation
+evidence exist.
 
 If the Go quality explorer is unsupported, explicitly prohibited, fails, or
 times out, report that evidence status in `REVIEW`, `SELF-AUDIT`, and
@@ -215,8 +234,12 @@ For high-risk Non-trivial work, use a read-only fresh-verifier explorer when
 the environment supports independent agents and the user has not explicitly
 prohibited independent-agent use. A fresh-verifier explorer checks the approved
 scope against the diff, validation evidence, ADR/TSR and support-agent impact,
-claim wording, and hidden out-of-scope work. It reports findings only; it does
-not edit.
+claim wording, and hidden out-of-scope work. For high-risk workflow, runbook,
+rubric, template, or repo-managed skill changes where `go-code-quality-review`
+is not applicable, use the same fresh-verifier explorer role with an explicit
+prompt to independently score the applicable SELF-AUDIT rows. This reuses the
+fresh-verifier role instead of adding another independent-review role. It
+reports findings only; it does not edit.
 
 Final validation remains lead-owned. Avoid parallel full-suite validation in the
 same checkout unless validation is isolated by worktree and cache. If parallel
@@ -402,6 +425,12 @@ lifecycle, retained heap, or pprof/trace leak evidence. Distinguish static
 reasoning, local test/race evidence, profile evidence, and long-running runtime
 confirmation.
 
+Command-backed leak-detection evidence must include the captured excerpt
+required by `Verification command reporting`, such as the targeted test/race
+result, profile command and key line, trace finding, or runtime capture status.
+Do not convert a static-only audit into a runtime-confirmed or profile-backed
+claim.
+
 ### Connection lifecycle audit
 Use `go-connection-lifecycle-audit` when work touches or investigates
 long-lived inbound or outbound connection behavior, reconnect, retry/backoff,
@@ -536,6 +565,24 @@ Documentation-only Markdown lane:
   support-agent routing review or workflow-drift audit
 - do not run Go validation solely because a Markdown file changed
 
+Workflow/skill-doc lane:
+- use when workflow contracts, validation rules, runbooks, review checklists,
+  templates, Codex guidance, or repo-managed skills change, especially when the
+  diff includes repo skill metadata YAML such as
+  `codex-skills/**/agents/openai.yaml`
+- minimum checks are targeted text checks for the changed workflow terms,
+  workflow-drift audit, reviewer diff pass, and `git diff --check`
+- after repo skill edits, run `scripts/verify-codex-skills.ps1`
+- when repo skill metadata YAML changes, report `YAML comment/header audit:
+  N/A` for the `data/config/README.md` runtime-config header standard unless a
+  stricter local skill-metadata standard applies; replace it with a
+  metadata/body sync check, manifest/frontmatter consistency check, and the
+  repo skill verifier
+- do not run Go validation solely because workflow docs or repo skill metadata
+  changed; if the diff expands into Go code, runtime config, scripts, CI,
+  schema, generated artifacts, or protocol/runtime contracts, switch to the
+  relevant lane
+
 Code, mixed, or runtime-contract lane minimum:
 - `go test ./...`
 - `go vet ./...`
@@ -545,6 +592,11 @@ Also required when applicable:
 - `go test -race ./...` for concurrency/lifecycle
 - fuzzing for parser/protocol work
 - benchmarks and profiling for hot paths
+
+When a race, profile, trace, or runtime command is used to support high-risk
+concurrency or leak-detection claims, record the short captured excerpt once in
+`REVIEW` verification command evidence and reference it from `SELF-AUDIT` and
+`CLOSEOUT`.
 
 Rules:
 - run checks incrementally

@@ -23,6 +23,8 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Reserved Placeholder | Unused | - | index hygiene | - | - | No ADR file; first real ADR is `docs/decisions/ADR-0002-ui-v2-render-pipeline.md` |
+| ADR-0204 | Captured Validation Evidence For High-Risk Claims | Accepted | 2026-07-09 | workflow, Codex, validation, review | ADR-0194 claim-evidence requirements; ADR-0203 SELF-AUDIT evidence requirements | - | `docs/decisions/ADR-0204-captured-validation-evidence-for-high-risk-claims.md` |
+| ADR-0203 | Independent SELF-AUDIT Scoring Evidence | Accepted | 2026-07-09 | workflow, Codex, validation, review | ADR-0202 review-agent evidence model | - | `docs/decisions/ADR-0203-independent-self-audit-scoring-evidence.md` |
 | ADR-0202 | Default-On Independent Review Agents | Accepted | 2026-07-09 | workflow, Codex, validation, skills, review | ADR-0199 subagent optionality | - | `docs/decisions/ADR-0202-default-on-independent-review-agents.md` |
 | ADR-0201 | Native 160m Endpoint Daylight Gate | Accepted | 2026-06-20 | pathreliability, telnet, config, operations, supportability, experiments | ADR-0197 native 160m whole-path-only classification order | - | `docs/decisions/ADR-0201-native-160m-endpoint-daylight-gate.md` |
 | ADR-0200 | VOACAP Unsupported-Platform Startup Skip | Accepted | 2026-06-19 | startup, voacap, pathreliability, operations, supportability | - | - | `docs/decisions/ADR-0200-voacap-unsupported-platform-startup-skip.md` |

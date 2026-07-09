@@ -13,6 +13,11 @@ only on the abbreviated baseline in `AGENTS.md`.
 - Ground validation, performance, and science/model claims in the command
   output, benchmark/profile data, runtime captures, source inspection, or
   decision records actually inspected in the current session.
+- For command-backed concurrency, lifecycle, queue, timer, shutdown,
+  shared-state, or leak-detection claims, preserve a short captured transcript
+  excerpt in the `Verification command reporting` evidence. Redact secrets,
+  tokens, credentials, private hostnames, environment dumps, unnecessary user
+  data, and large traces; state that redaction happened.
 
 ## Baseline environment
 Expected Go toolchain:
@@ -88,6 +93,10 @@ Use the narrowest evidence that answers the leak question:
 
 State the evidence level reached: static reasoning, local test/race evidence,
 profile evidence, or runtime-confirmed long-running/load evidence.
+When the evidence level is backed by a command, profile, trace, or runtime
+capture, report a short excerpt that shows the command or source, target scope,
+result status, and key pass/fail/profile line. Static reasoning is allowed, but
+label it as static reasoning and name the inspected files.
 
 ## Default command set by task type
 
@@ -133,6 +142,40 @@ Do not run `go test ./...`, `go vet ./...`, `staticcheck ./...`,
 If the diff expands beyond documentation-only Markdown, switch to the relevant
 code, mixed, YAML/config, script, CI, generated-artifact, or runtime-contract
 lane and run the required checks for that lane.
+
+### Workflow/skill-doc change
+Use this lane when the diff changes workflow contracts, validation rules,
+runbooks, review checklists, templates, Codex guidance, or repo-managed skills.
+This lane is distinct from Documentation-only Markdown when the diff includes
+repo skill metadata YAML such as `codex-skills/**/agents/openai.yaml`.
+
+Minimum expected sequence:
+1. targeted text checks for changed workflow terms, cross-references, required
+   evidence markers, and exact workflow strings
+2. workflow-drift audit against `AGENTS.md`, `docs/change-workflow.md`,
+   `VALIDATION.md`, review checklist, template, runbook, and repo skills as
+   applicable
+3. reviewer diff pass confirming the diff is internally consistent and stays
+   within the approved workflow/documentation/skill scope
+4. `git diff --check`
+
+Add the checks that apply:
+- `scripts/verify-codex-skills.ps1` after any repo-managed skill edit
+- metadata/body sync review when `codex-skills/**/agents/openai.yaml` changes
+- explicit YAML comment/header audit disposition when repo skill metadata YAML
+  changes: the `data/config/README.md` five-line runtime-config header standard
+  is `N/A` for repo skill metadata unless a stricter local skill-metadata
+  standard applies; replace it with metadata/body sync, frontmatter/manifest
+  consistency, and the repo skill verifier
+- fresh-verifier explorer for high-risk workflow or skill changes when
+  independent agents are supported and not explicitly prohibited
+- support-agent routing review when developer/support routing docs changed
+
+Do not run `go test ./...`, `go vet ./...`, `staticcheck ./...`,
+`golangci-lint`, or `go test -race ./...` solely because workflow docs or repo
+skill metadata changed. If the diff expands into Go code, runtime config,
+scripts, CI, generated artifacts, schemas, checked-in runtime data, or
+protocol/runtime contracts, switch to the relevant lane.
 
 ### Non-trivial change
 Default full sequence for code, mixed, or runtime-contract changes:
@@ -191,6 +234,11 @@ Command:
 
 If the repo has a narrower stable race target, it may be added in addition to, not instead of, the full run unless a temporary waiver is explicitly granted.
 
+When reporting a race check as concurrency or lifecycle evidence, include the
+captured command excerpt required by `docs/review-checklist.md` `Verification
+command reporting`. A bare `PASS` or `go test -race ./... - pass` line is not
+enough for high-risk command-backed concurrency claims.
+
 ## Benchmark guidance
 Benchmarks are expected for hot-path changes such as:
 - fan-out/broadcast
@@ -245,6 +293,13 @@ In the final summary, list each command with:
 - why it was run
 - result
 - whether it was incremental or final
+
+For command-backed concurrency, lifecycle, queue, timer, shutdown,
+shared-state, or leak-detection claims, this reporting belongs in the
+`REVIEW` marker's `Verification command reporting` evidence and must include a
+short captured excerpt. `SELF-AUDIT` and `CLOSEOUT` should reference that
+evidence instead of pasting the excerpt again. Keep the final `VALIDATION`
+marker as the exact three-line block required by `VALIDATION.md`.
 
 Example:
 - `go test ./internal/cluster -run TestSlowClientDropPolicy` - targeted drop-policy regression - pass - incremental

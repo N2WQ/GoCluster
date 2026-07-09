@@ -54,12 +54,22 @@ heap growth.
    - Profile evidence: pprof/trace/goroutine/OS samples reviewed.
    - Runtime confirmation: comparable long-running or load/churn capture shows
      stable goroutine, heap, handle, socket, and queue trends.
+   - For command-backed local test/race, profile, trace, or runtime evidence,
+     require a short captured transcript excerpt in
+     `docs/review-checklist.md` `Verification command reporting`. The excerpt
+     must show the command or evidence source, target scope, status, and key
+     pass/fail/profile line. Do not paste full logs, secrets, tokens,
+     credentials, environment dumps, private hostnames, unnecessary user data,
+     or large traces; redact and say so.
 
 ## Output Expectations
 
 - Include a `Leak-detection audit` section when this skill triggers.
 - Name the leak class, owner, cancellation/close path, tests, profiles, and
   remaining evidence gaps.
+- For command-backed evidence, reference the captured `Verification command
+  reporting` excerpt. For static-only evidence, label it as static reasoning and
+  name the inspected files.
 - Do not claim "no leak" unless the relevant evidence level was actually
   performed.
 - Say "locally validated, not runtime-confirmed" when pprof or long-running

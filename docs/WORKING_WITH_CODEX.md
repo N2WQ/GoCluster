@@ -58,7 +58,10 @@ Use goda/Graphviz locally to inspect dependencies, but report the important edge
 For goroutine, timer, channel, socket, file-handle, shutdown, retained-heap, or
 long-running lifecycle concerns, ask Codex to include a `Leak-detection audit`.
 The audit should distinguish static source reasoning, local test/race evidence,
-profile evidence, and runtime confirmation.
+profile evidence, and runtime confirmation. When Codex claims command-backed
+concurrency or leak-detection validation, expect a short captured command
+excerpt in the `REVIEW` marker's `Verification command reporting` evidence, not
+only a bare `PASS` line.
 
 For config, YAML, loader, or defaulting work, ask Codex to include a
 `Config Contract Audit`. The audit should show which YAML files are touched,
@@ -139,6 +142,14 @@ check the diff, validation evidence, ADR/TSR impact, support-agent impact, and
 claim wording. Codex still owns integration, final validation claims,
 traceability, and the final response.
 
+For SELF-AUDIT scoring, independent reviewers should provide evidence for the
+riskiest applicable rows instead of the lead agent grading those rows from
+memory. `go-code-quality-review` scores only rows it can inspect after Go code
+is written; it should not final-score later fresh-verification evidence before
+that evidence exists. For high-risk workflow or skill-doc closeout, Codex can
+use the existing fresh-verifier role with a prompt to score the applicable
+SELF-AUDIT rows. The final PASS/FAIL/N/A disposition remains lead-owned.
+
 ## Practical loop
 
 1. Ask for plan-only analysis.
@@ -155,7 +166,13 @@ otherwise it should perform a fresh self-verification pass before closing out.
 Either way, claims about validation, performance, latency, p99, memory,
 path/VOACAP science, or call-correction quality should point to the current
 source, command output, measurements, runtime captures, or ADR/TSR records used
-as evidence.
+as evidence. `SELF-AUDIT` and `CLOSEOUT` should reference the earlier
+verification evidence instead of repasting command excerpts, and the final
+`VALIDATION` marker should remain the exact three-line block.
+
+For workflow or repo-managed skill documentation changes, use the
+workflow/skill-doc lane in `docs/dev-runbook.md`; do not call a diff
+Markdown-only when it also changes repo skill metadata YAML.
 
 Recurring model or workflow lessons belong in `docs/agent-lessons/README.md`
 only when the approved scope includes that maintenance. Those lessons are

@@ -57,9 +57,10 @@ workflow rules.
 - Independent agents should be used when supported unless explicitly
   prohibited. `scope-ledger-adversarial-review` challenges Non-trivial Scope
   Ledgers before approval, `go-code-quality-review` reviews Non-trivial Go
-  implementation diffs before closeout, post-approval workers require approved
-  disjoint slices, and fresh-verifier explorers are read-only; the lead agent
-  owns gates, integration, validation claims, and closeout.
+  implementation diffs and applicable SELF-AUDIT evidence before closeout,
+  post-approval workers require approved disjoint slices, and fresh-verifier
+  explorers are read-only closeout reviewers; the lead agent owns gates,
+  integration, final SELF-AUDIT disposition, validation claims, and closeout.
 - Workflow-doc or repo-managed skill edits require the workflow-drift audit in
   [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md).
 
@@ -68,7 +69,7 @@ workflow rules.
 | Change area | Required routing |
 | --- | --- |
 | Broad refactor proposal or unsliced Scope Ledger | [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), [docs/templates/non-trivial-change-template.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/templates/non-trivial-change-template.md), [VALIDATION.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/VALIDATION.md) |
-| Independent-agent, subagent, parallel delegation, or fresh-verifier use | [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md), [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), [docs/review-checklist.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/review-checklist.md), [docs/WORKING_WITH_CODEX.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/WORKING_WITH_CODEX.md) |
+| Independent-agent, SELF-AUDIT, subagent, parallel delegation, or fresh-verifier use | [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md), [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), [docs/review-checklist.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/review-checklist.md), [docs/WORKING_WITH_CODEX.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/WORKING_WITH_CODEX.md), [VALIDATION.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/VALIDATION.md) |
 | Unfamiliar or cross-package Go behavior | [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), [docs/dev-runbook.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/dev-runbook.md), package README, crawler-entry source comments |
 | Uncertain blast radius, shared APIs, semantic callers, package/test impact | [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), [docs/dev-runbook.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/dev-runbook.md) |
 | Dependency visualization, package graph summaries, or support-agent code maps | [docs/code-maps/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/code-maps/README.md), [docs/dev-runbook.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/dev-runbook.md), [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md) |
@@ -98,6 +99,9 @@ Non-trivial compliance rubric.
 - Use code-walk, blast-radius, and leak-detection workflow routing in
   `docs/change-workflow.md` and `docs/dev-runbook.md` when the question is
   about understanding code paths, impact analysis, or lifecycle/resource leaks.
+- Command-backed concurrency and leak-detection claims need short captured
+  excerpts in `docs/review-checklist.md` `Verification command reporting`;
+  SELF-AUDIT and CLOSEOUT should reference that evidence.
 - For high-risk changes, expect a fresh verifier pass and evidence-backed
   progress, validation, performance, and science/model claims.
 - For graph-backed dependency questions, explain that custom GPT can retrieve

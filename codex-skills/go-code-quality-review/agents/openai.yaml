@@ -1,4 +1,4 @@
 interface:
   display_name: "Go Code Quality Review"
-  short_description: "Review Go diffs for workflow quality"
-  default_prompt: "Use $go-code-quality-review to independently review a Go implementation diff before closeout."
+  short_description: "Review Go diffs and SELF-AUDIT evidence"
+  default_prompt: "Use $go-code-quality-review to independently review a Go implementation diff and applicable SELF-AUDIT evidence before closeout."

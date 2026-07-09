@@ -15,8 +15,8 @@ Repo-authoritative skills:
   `goda`/Graphviz dependency visualization and support-agent-readable code maps
   when useful
 - `go-code-quality-review` - independently reviews newly written Go
-  implementation diffs against scope, code-quality, validation, and
-  operational standards before closeout
+  implementation diffs and applicable SELF-AUDIT evidence against scope,
+  code-quality, validation, and operational standards before closeout
 - `go-code-walk` - walks unfamiliar code paths with source, semantic tools, and
   optional dependency visualization
 - `go-connection-lifecycle-audit` - audits reconnect, retry/backoff,

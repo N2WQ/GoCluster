@@ -1,4 +1,4 @@
 interface:
   display_name: "Go Leak Detection"
-  short_description: "Investigate goroutine, handle, socket, and heap leaks"
-  default_prompt: "Investigate leak risk in the Go code path using lifecycle tests, race checks, pprof, trace, retained-state evidence, and runtime profile captures; distinguish local evidence from runtime confirmation."
+  short_description: "Investigate leaks with labeled and captured evidence"
+  default_prompt: "Investigate leak risk in the Go code path using static reasoning, lifecycle tests, race checks, pprof, trace, retained-state evidence, and runtime profile captures; distinguish local evidence from runtime confirmation and require captured excerpts for command-backed claims."

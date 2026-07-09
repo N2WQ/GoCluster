@@ -59,12 +59,22 @@ actually run and reported honestly, incrementally when required, final
 validation claims were lead-owned, and a `Review Pass` occurred before
 closeout. Documentation-only Markdown changes may satisfy this item with
 documentation review, targeted text checks, and `git diff --check` when the
-documented lane criteria are met. Triggered leak-detection evidence must
-distinguish static reasoning, local test/race evidence, profile evidence, and
-runtime confirmation. Non-trivial Go implementation work must include an
-independent `go-code-quality-review` result when independent agents are
-supported and not explicitly prohibited, or report unsupported, prohibited,
-failed, timed-out, or waived status. Otherwise score `0`.
+documented lane criteria are met. Workflow or repo-managed skill documentation
+changes that include skill metadata must use the workflow/skill-doc lane rather
+than the Markdown-only lane. Triggered leak-detection evidence must distinguish
+static reasoning, local test/race evidence, profile evidence, and runtime
+confirmation. Command-backed concurrency, lifecycle, queue, timer, shutdown,
+shared-state, or leak-detection validation claims must include a short captured
+excerpt in `docs/review-checklist.md` `Verification command reporting`;
+`SELF-AUDIT` and `CLOSEOUT` should reference that evidence instead of
+duplicating it. Non-trivial Go implementation work must include an independent
+`go-code-quality-review` result with SELF-AUDIT evidence for applicable rows it
+can inspect at its phase when independent agents are supported and not
+explicitly prohibited, or report unsupported, prohibited, failed, timed-out, or
+waived status. High-risk closeout requiring a fresh-verifier pass must include
+fresh-verifier evidence for later rows such as Fresh verification and claim
+evidence; earlier Go quality review cannot substitute for evidence that did not
+exist yet. Otherwise score `0`.
 
 ### 6) Documentation, decision memory, and traceability
 Score `1` only if README/doc review status, decision-memory handling,
@@ -95,10 +105,20 @@ happened:
 18. Codex used a pre-approval subagent for file edits, diffs, formatters,
     generated artifacts, full validation, or anything other than read-only
     evidence gathering and adversarial review.
-19. Codex omitted required independent `go-code-quality-review` for Non-trivial Go implementation work when independent agents were supported and not explicitly prohibited, unless the omission was reported as failed/timed-out and explicitly treated as a gap or waiver.
+19. Codex omitted required independent `go-code-quality-review` or its
+    applicable SELF-AUDIT evidence for Non-trivial Go implementation work when
+    independent agents were supported and not explicitly prohibited, unless the
+    omission was reported as unsupported/prohibited/failed/timed-out and
+    explicitly treated as a gap or waiver.
 20. Codex let a subagent's output replace lead-agent ownership of
     `SCOPE ADVERSARIAL REVIEW`, integration, validation claims, ADR/TSR
-    handling, Scope-to-Code Traceability, or the final response.
+    handling, Scope-to-Code Traceability, SELF-AUDIT final disposition, or the
+    final response.
+21. Codex claimed command-backed concurrency, lifecycle, queue, timer,
+    shutdown, shared-state, or leak-detection validation evidence without a
+    captured excerpt in `Verification command reporting`, unless the omission
+    was explicitly reported as skipped, failed, timed-out, stale, cached without
+    usable output, partial, waived, or a validation gap.
 
 ## Waivers
 Waivers are allowed only when explicit, narrowly scoped, and time-bounded.
