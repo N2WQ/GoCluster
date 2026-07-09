@@ -219,7 +219,8 @@ lead-owned.
 Every Non-trivial plan should recommend the lowest reasoning level expected
 to satisfy the workflow without skipping required artifacts:
 
-- `low`: clearly Small, localized, low-risk work, or read-only explanation
+- `low`: narrow Non-trivial work with known, localized blast radius and a
+  direct validation path
 - `medium`: ordinary Non-trivial work with known blast radius, docs-only
   workflow changes, or localized implementation with clear tests
 - `high`: config/schema/protocol/parser changes, user-visible behavior,
@@ -336,7 +337,7 @@ already defines the required coverage. Run `scripts/check-go-crawler-entry-
 comments.ps1 -ChangedOnly -FailOnMissing` (shared with Codex) when adding or
 materially changing support-critical Go files. For comment-only Go changes,
 include a reviewer diff pass confirming the non-comment Go diff is empty.
-Score SELF-AUDIT row 6 (`Go crawler-entry audit`) `N/A` only when no
+Score SA6 (`Go crawler-entry audit`) `N/A` only when no
 support-critical Go file was added or materially changed.
 
 ## YAML documentation rigor
@@ -357,7 +358,7 @@ source of truth for YAML file headers and key-comment standards. Verify:
 
 Run `scripts/check-yaml-doc-rigor.ps1` (shared with Codex) for mechanical
 checks; use `-CommentOnlyCompare` when the intended change is comment-only.
-Score SELF-AUDIT row 4 (`YAML comment/header audit`) `N/A` only when no
+Score SA4 (`YAML comment/header audit`) `N/A` only when no
 checked-in first-party YAML changed. `.claude/agents/**/*.md` and
 `.claude/skills/**/SKILL.md` frontmatter is not first-party runtime config
 and is not subject to this standard — see the workflow-contract lane's
@@ -369,8 +370,8 @@ Use `docs/dev-runbook.md` as the required checker source (shared with
 Codex). Select the validation lane from the touched surface:
 
 - **Documentation-only Markdown lane**: all changed files are Markdown and
-  the diff touches no code, config, generated artifact, script, CI, schema,
-  protocol/runtime contract, or runtime-consumed data.
+  the diff touches no code, runtime config, generated artifact, script, CI,
+  schema, protocol/runtime contract, or runtime-consumed data.
 - **Workflow-contract lane**: the diff changes `CLAUDE.md`, this doc, the
   review checklist, validation rubric, templates, or `.claude/agents|
   skills/*` — including `.claude/agents/*.md` frontmatter, which is

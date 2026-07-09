@@ -98,40 +98,49 @@ category below.
 
 ### Required categories
 
-1. Scope and dependency coverage
-2. Code-walk and blast-radius evidence
-3. Contract, config, and protocol correctness
-4. YAML comment/header audit
-5. Go comment intent audit
-6. Go crawler-entry audit
-7. Concurrency, backpressure, and resource bounds
-8. Leak-detection evidence
-9. Fresh verification and claim evidence
-10. Independent-agent/subagent use and lead ownership
-11. Anti-speculative implementation guard
-12. Verification and checker discipline
-13. Documentation, decision memory, and traceability
-14. Workflow-drift audit
-15. Validation block completeness
+- SA1 Scope and dependency coverage
+- SA2 Code-walk and blast-radius evidence
+- SA3 Contract, config, and protocol correctness
+- SA4 YAML comment/header audit
+- SA5 Go comment intent audit
+- SA6 Go crawler-entry audit
+- SA7 Concurrency, backpressure, and resource bounds
+- SA8 Leak-detection evidence
+- SA9 Fresh verification and claim evidence
+- SA10 Independent-agent/subagent use and lead ownership
+- SA11 Anti-speculative implementation guard
+- SA12 Verification and checker discipline
+- SA13 Documentation, decision memory, and traceability
+- SA14 Workflow-drift audit
+- SA15 Validation block completeness
+
+These IDs and labels are canonical for Fable closeout reporting and match
+Codex's `docs/review-checklist.md` numbering exactly, so the two contracts
+stay legible side by side.
 
 ### Self-Audit rules
 
-- Use `PASS`, `FAIL`, or `N/A` only. `N/A` is allowed only when the category
-  truly does not apply.
+- Start with an applicability manifest that classifies every SA1-SA15 ID
+  exactly once as applicable or not applicable.
+- Applicable IDs require a `PASS` or `FAIL` result. Not-applicable IDs
+  replace individual `N/A` rows and require an unambiguous reason; IDs with
+  the same reason may be grouped.
+- Missing, unknown, or duplicate IDs fail the Self-Audit.
 - Every `FAIL` must include a short explanation and next action.
 - Do not hide uncertainty — if evidence is incomplete, fail the category.
-- Use one short note per category; reference earlier review evidence when
-  that already establishes the point.
-- Independently reviewed high-risk rows (7, 8, 9 in particular) must cite
-  the independent evidence source or a reported gap/waiver. Do not silently
-  lead-fill `PASS` after independent review is unsupported, `not authorized/
-  not requested`, prohibited, failed, timed out, missing, or stale.
-- Command-backed rows 7 and 8 must reference the captured excerpt in
+- Use one short note per grouped category; reference earlier review evidence
+  when that already establishes the point.
+- Independently reviewed high-risk IDs (SA7, SA8, SA9 in particular) must
+  cite the independent evidence source or a reported gap/waiver. Do not
+  silently lead-fill `PASS` after independent review is unsupported, `not
+  authorized/not requested`, prohibited, failed, timed out, missing, or
+  stale.
+- Command-backed SA7 and SA8 results must reference the captured excerpt in
   Verification Command Reporting below rather than repeating it.
-- Row 10 (Independent-agent/subagent use and lead ownership) is always
-  lead-scored, synthesized from independent-agent status plus the lead's own
-  gate checks — it is not a row an independent reviewer scores about itself.
-- The lead agent owns every final row disposition.
+- The lead agent owns every final PASS/FAIL/applicability disposition. SA10
+  (Independent-agent/subagent use and lead ownership) is always lead-scored,
+  synthesized from independent-agent status plus the lead's own gate checks —
+  it is not an ID an independent reviewer scores about itself.
 
 ## Verification Command Reporting
 
@@ -154,7 +163,7 @@ markers reference this section by command name instead.
 Example shape:
 
 - `go test -race ./...` - concurrency/lifecycle verification - pass -
-  final - `ok  	internal/cluster	2.34s`
+  final - `ok  internal/cluster  2.34s`
 
 ## Closeout Evidence
 

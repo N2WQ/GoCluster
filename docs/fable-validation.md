@@ -133,7 +133,7 @@ following happened:
 16. Fable requested approval for or executed a broad, non-slice-shaped plan
     without slice-level objective, blast-radius boundary, production-safe
     stopping point, targeted checks, and per-slice validation evidence.
-17. Fable treated a mixed code/config/script/CI/generated-artifact/
+17. Fable treated a mixed code/runtime-config/script/CI/generated-artifact/
     runtime-contract diff as documentation-only or workflow-contract-lane
     validation.
 18. Fable used a pre-approval subagent for file edits, diffs, formatters,

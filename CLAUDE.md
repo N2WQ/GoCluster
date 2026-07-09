@@ -79,7 +79,8 @@ When the user asks what existing code does and has not asked for changes:
 
 ## Task Gates
 
-- Before every change, classify the task as Small or Non-trivial.
+- Before every change, classify the task as Small or Non-trivial. Report
+  `Plan: N/A - Small` for Small work.
 - Default to Non-trivial unless the task is clearly small, localized, and free
   of protocol, compatibility, concurrency, lifecycle, queue, timeout,
   shutdown, shared-interface, or user-visible behavior changes.
@@ -99,8 +100,9 @@ For Non-trivial work:
 - use `EnterPlanMode` before any `Write`/`Edit`/mutating `Bash` call
 - the plan must include current-state discovery, a slice-shaped scope, and a
   reasoning-budget recommendation (shape defined in `docs/fable-workflow.md`)
-- use an independent adversarial pass on the plan before requesting approval
-  when independent agents are supported and authorized (see Subagent Use)
+- perform and report `SCOPE ADVERSARIAL REVIEW` before requesting approval,
+  using an independent adversarial pass when independent agents are
+  supported and authorized (see Subagent Use)
 - request approval via `ExitPlanMode`; do not treat discussion, "go ahead," or
   any implied consent as approval — only the harness's actual approval signal
   counts
