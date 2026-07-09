@@ -282,4 +282,4 @@ Auto-fail conditions triggered: no | yes (<conditions>)
 - Agent lesson memory: `docs/agent-lessons/README.md`
 - Non-trivial response template: `docs/templates/non-trivial-change-template.md`
 - ADR template: `docs/templates/adr-template.md`
-- TSR template: `docs/templates/tsr-template.md`
+- TSR template: `docs/troubleshooting/TSR-TEMPLATE.md`
