@@ -122,6 +122,22 @@ side:
 - The contract is architecturally sound but undogfooded at closeout — no
   real Non-trivial task has exercised it yet. A follow-up dogfood ledger is
   recommended before full reliance.
+- A post-closeout systematic section-by-section audit against
+  `docs/change-workflow.md` (prompted by two discovery gaps found via direct
+  user challenge: an ungitignored `.claude/` tree and an unread `data/
+  config/README.md`) found 8 further real gaps — content silently dropped
+  during porting rather than deliberately scoped out — and fixed them:
+  Skill Check discipline, Go Comment Intent Rigor's trigger/checker linkage,
+  Config Contract Audit's dependency-rigor trigger, `go-leak-detection`'s
+  captured-excerpt cross-reference, the domain science-claims paragraph and
+  high-risk trigger list, the "missing evidence is a workflow failure"
+  framing, support-agent sync's itemized trigger list, and the
+  additive-not-repetitive compression discipline. Three minor items (IDE
+  context discipline, Requirements & Edge Cases Note, Implementation
+  Plan/slicing milestone rules) were identified and explicitly deferred
+  rather than silently dropped. This pattern — confident claims built on
+  unread or half-remembered source files — is the specific risk the
+  recommended dogfood ledger should stress-test directly, not assume fixed.
 - `.claude/agents/*.md` frontmatter (`name`/`description`/`tools`/`model`)
   reflects this session's best understanding of Claude Code subagent
   conventions; it has not been externally verified against authoritative

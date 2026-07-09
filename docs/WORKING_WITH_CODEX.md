@@ -127,6 +127,11 @@ context window. That independence helps catch lead-agent anchoring and stale
 self-review, but it also means Codex must explicitly disposition the independent
 agent's findings against the approved scope and current workspace evidence.
 
+When Codex has typed subagents available, read-only independent review roles
+should be spawned as `explorer` agents. `worker` agents are for approved
+post-approval implementation slices with explicit file ownership and write
+scope.
+
 Before `Approved vN`, subagents should be read-only explorers. Good uses are
 code-walk evidence, blast-radius review, config or decision-memory review,
 independent adversarial review of the proposed scope, and other evidence

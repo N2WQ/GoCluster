@@ -170,6 +170,12 @@ it reduces lead-agent anchoring and stale self-review. It is also a coordination
 risk: every independent finding must be dispositioned by the lead agent against
 the approved workflow gates and current workspace evidence.
 
+When the active Codex platform exposes typed subagents, spawn read-only
+independent review roles as `explorer` agents. This includes
+`scope-ledger-adversarial-review`, `go-code-quality-review`, and
+fresh-verifier roles. Reserve `worker` agents for post-approval implementation
+slices with explicit write scope, approved paths, and stopping conditions.
+
 Subagent output improves evidence; it never transfers gate ownership. The lead
 Codex agent still owns Scope Ledger disposition, `SCOPE ADVERSARIAL REVIEW`,
 integration, Review Pass, validation claims, ADR/TSR handling, Scope-to-Code

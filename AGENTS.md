@@ -123,6 +123,9 @@ When the user asks what existing code does and has not asked for changes:
 - Independent agents are separate from the lead Codex agent and have their own
   context windows. Treat that independence as useful adversarial evidence and
   also as a coordination risk that requires explicit lead disposition.
+- When the active Codex platform exposes typed subagents, spawn read-only
+  independent review roles as `explorer` agents. Reserve `worker` agents for
+  approved post-approval implementation slices with explicit write scope.
 - Before exact `Approved vN`, subagents must be read-only explorers or
   adversarial-review helpers. They may gather evidence and challenge scope, but
   they must not edit files, propose diffs, run formatters, create generated
