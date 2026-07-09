@@ -100,6 +100,6 @@ not explicitly prohibited:
   `customgpt/source-map.md`, `customgpt/developer-guide-index.md`,
   `customgpt/common-questions.md`
 - Related ADRs: ADR-0119, ADR-0144, ADR-0156, ADR-0194, ADR-0199,
-  ADR-0203
+  ADR-0203, ADR-0205
 - Related TSRs: none
 - Supersedes / superseded by: extends ADR-0199 default behavior

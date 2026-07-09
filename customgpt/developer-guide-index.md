@@ -54,13 +54,16 @@ workflow rules.
   are not approval-ready.
 - Config, protocol, parser, concurrency, queue, retained-state, hot-path, or
   operator-visible changes are normally Non-trivial.
-- Independent agents should be used when supported unless explicitly
-  prohibited. `scope-ledger-adversarial-review` challenges Non-trivial Scope
-  Ledgers before approval, `go-code-quality-review` reviews Non-trivial Go
-  implementation diffs and applicable SELF-AUDIT evidence before closeout,
-  post-approval workers require approved disjoint slices, and fresh-verifier
-  explorers are read-only closeout reviewers; the lead agent owns gates,
-  integration, final SELF-AUDIT disposition, validation claims, and closeout.
+- Independent agents should be used when supported, authorized by active
+  tool/user policy, and not explicitly prohibited. If the platform requires an
+  explicit subagent/delegation request and it is absent, report
+  `not authorized/not requested`. `scope-ledger-adversarial-review` challenges
+  Non-trivial Scope Ledgers before approval, `go-code-quality-review` reviews
+  Non-trivial Go implementation diffs and applicable SELF-AUDIT evidence before
+  closeout, post-approval workers require approved disjoint slices, and
+  fresh-verifier explorers are read-only closeout reviewers; the lead agent
+  owns gates, integration, final SELF-AUDIT disposition, validation claims, and
+  closeout.
 - Workflow-doc or repo-managed skill edits require the workflow-drift audit in
   [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md).
 

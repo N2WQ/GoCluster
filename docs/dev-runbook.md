@@ -127,8 +127,10 @@ Add only the documentation checks that apply:
 - subagent-use text checks when workflow docs change delegated or parallel
   agent rules, including `Approved vN`, `SCOPE ADVERSARIAL REVIEW`,
   `scope-ledger-adversarial-review`, `go-code-quality-review`,
-  `fresh-verifier explorer`, independent-agent support/prohibition status,
-  separate context windows, allowed actions, lead ownership, and stop conditions
+  `fresh-verifier explorer`, independent-agent
+  support/authorization/prohibition status, `not authorized/not requested`,
+  separate context windows, allowed actions, lead ownership, and stop
+  conditions
 - support-agent routing review when operator-support topics or support-routing
   docs changed
 - `scripts/check-troubleshooting-records.ps1` for troubleshooting record,
@@ -168,7 +170,9 @@ Add the checks that apply:
   standard applies; replace it with metadata/body sync, frontmatter/manifest
   consistency, and the repo skill verifier
 - fresh-verifier explorer for high-risk workflow or skill changes when
-  independent agents are supported and not explicitly prohibited
+  independent agents are supported, authorized, and not explicitly prohibited;
+  otherwise report unsupported, not authorized/not requested, prohibited,
+  failed, timed-out, or waived status
 - support-agent routing review when developer/support routing docs changed
 
 Do not run `go test ./...`, `go vet ./...`, `staticcheck ./...`,

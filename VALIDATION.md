@@ -33,14 +33,20 @@ agents were read-only evidence gathering, `SCOPE ADVERSARIAL REVIEW` was
 completed by the lead agent before the approval token, no silent scope
 expansion occurred, and the approved Scope Ledger was slice-shaped with
 implementation-ready slices. Final traceability must map back to approved
-items. Unsupported, explicitly prohibited, failed, or timed-out independent
-review must be reported as evidence status or a waiver. Otherwise score `0`.
+items. Unsupported, not authorized/not requested, explicitly prohibited,
+failed, or timed-out independent review must be reported as evidence status or
+a waiver. If the active platform requires an explicit user request before
+subagents can be spawned, missing user authorization must be reported as `not
+authorized/not requested`, not as `unsupported` or `explicitly prohibited`.
+Otherwise score `0`.
 
 ### 2) Skill and workflow discipline
 Score `1` only if Codex showed the skill check, classified the task correctly,
 and followed the required workflow for that task type, including phase,
-support/prohibition status, allowed actions, and lead-ownership rules for any
-independent agents or subagents used. Otherwise score `0`.
+support/authorization/prohibition status, allowed actions, and lead-ownership
+rules for any independent agents or subagents used. Repository workflow text
+does not self-authorize subagent spawning when the active platform requires an
+explicit user request. Otherwise score `0`.
 
 ### 3) Current-state understanding and dependency rigor
 Score `1` only if pre-code current-state understanding and dependency coverage
@@ -69,12 +75,12 @@ excerpt in `docs/review-checklist.md` `Verification command reporting`;
 `SELF-AUDIT` and `CLOSEOUT` should reference that evidence instead of
 duplicating it. Non-trivial Go implementation work must include an independent
 `go-code-quality-review` result with SELF-AUDIT evidence for applicable rows it
-can inspect at its phase when independent agents are supported and not
-explicitly prohibited, or report unsupported, prohibited, failed, timed-out, or
-waived status. High-risk closeout requiring a fresh-verifier pass must include
-fresh-verifier evidence for later rows such as Fresh verification and claim
-evidence; earlier Go quality review cannot substitute for evidence that did not
-exist yet. Otherwise score `0`.
+can inspect at its phase when independent agents are supported, authorized, and
+not explicitly prohibited, or report unsupported, not authorized/not requested,
+prohibited, failed, timed-out, or waived status. High-risk closeout requiring a
+fresh-verifier pass must include fresh-verifier evidence for later rows such as
+Fresh verification and claim evidence; earlier Go quality review cannot
+substitute for evidence that did not exist yet. Otherwise score `0`.
 
 ### 6) Documentation, decision memory, and traceability
 Score `1` only if README/doc review status, decision-memory handling,
@@ -98,7 +104,11 @@ happened:
 11. Codex introduced or preserved a runtime fallback for a YAML-owned setting without explicitly documenting and approving that exception.
 12. Codex changed documented zero/false sentinel behavior without consumer-level regression tests.
 13. Codex omitted `SCOPE ADVERSARIAL REVIEW` before presenting the approval token for a Non-trivial Scope Ledger.
-14. Codex omitted required independent `scope-ledger-adversarial-review` before presenting the approval token when independent agents were supported and not explicitly prohibited, unless the omission was reported as failed/timed-out and explicitly treated as a gap or waiver.
+14. Codex omitted required independent `scope-ledger-adversarial-review`
+    before presenting the approval token when independent agents were supported,
+    authorized, and not explicitly prohibited, unless the omission was reported
+    as unsupported/not authorized/not requested/prohibited/failed/timed-out and
+    explicitly treated as a status, gap, or waiver.
 15. Codex claimed code-walk, blast-radius, or leak-detection coverage from tools or profiles that were not actually run or inspected.
 16. Codex approved or executed a broad refactor-shaped Scope Ledger without slice-level objective, blast-radius boundary, production-safe stopping point, targeted checks, and per-slice validation evidence.
 17. Codex treated a mixed code/config/script/CI/generated-artifact/runtime-contract diff as documentation-only validation.
@@ -107,9 +117,10 @@ happened:
     evidence gathering and adversarial review.
 19. Codex omitted required independent `go-code-quality-review` or its
     applicable SELF-AUDIT evidence for Non-trivial Go implementation work when
-    independent agents were supported and not explicitly prohibited, unless the
-    omission was reported as unsupported/prohibited/failed/timed-out and
-    explicitly treated as a gap or waiver.
+    independent agents were supported, authorized, and not explicitly
+    prohibited, unless the omission was reported as unsupported/not
+    authorized/not requested/prohibited/failed/timed-out and explicitly treated
+    as a status, gap, or waiver.
 20. Codex let a subagent's output replace lead-agent ownership of
     `SCOPE ADVERSARIAL REVIEW`, integration, validation claims, ADR/TSR
     handling, Scope-to-Code Traceability, SELF-AUDIT final disposition, or the

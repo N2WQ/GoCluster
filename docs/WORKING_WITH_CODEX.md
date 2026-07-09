@@ -106,8 +106,17 @@ it does not approve scope or waive validation.
 
 Independent agents are useful when they make the workflow more rigorous, not
 faster at the expense of control. When the active environment supports
-delegated or parallel agent work, Codex should use independent agents unless
-you explicitly prohibit them.
+delegated or parallel agent work and active tool/user authorization permits
+spawning them, Codex should use independent agents unless you explicitly
+prohibit them.
+
+Some Codex surfaces expose a subagent tool but allow spawning only after you
+explicitly ask for subagents, delegation, or parallel agent work. In those
+surfaces, this repository's default-on policy does not self-authorize spawning.
+Codex should report `not authorized/not requested` until the active
+user/session/tool policy permits subagent use. Exact `Approved vN` approves the
+scope; it is not by itself an explicit subagent request when the active
+platform requires one.
 
 An independent agent is separate from the lead Codex agent and has its own
 context window. That independence helps catch lead-agent anchoring and stale
@@ -122,9 +131,10 @@ generated artifacts, or run full validation suites before approval.
 
 For Non-trivial Scope Ledgers, expect Codex to use an independent
 `scope-ledger-adversarial-review` explorer before presenting the approval token
-when independent agents are supported and not explicitly prohibited. If the
-explorer is unavailable, fails, times out, or you prohibit independent agents,
-Codex should say that directly.
+when independent agents are supported, authorized, and not explicitly
+prohibited. If the explorer is unsupported, not authorized/not requested,
+fails, times out, or you prohibit independent agents, Codex should say that
+directly.
 
 After `Approved vN`, worker subagents should be used only for approved,
 disjoint slices. A worker assignment should name the approved version, slice,
@@ -133,9 +143,9 @@ stop for hidden blast radius or uncertainty.
 
 For Non-trivial Go implementation work, expect Codex to use an independent
 `go-code-quality-review` explorer after code is written and before final
-closeout when independent agents are supported and not explicitly prohibited.
-That reviewer should be read-only and findings-only; Codex still owns fixes,
-validation claims, traceability, and the final response.
+closeout when independent agents are supported, authorized, and not explicitly
+prohibited. That reviewer should be read-only and findings-only; Codex still
+owns fixes, validation claims, traceability, and the final response.
 
 For high-risk closeout, a read-only fresh-verifier explorer can independently
 check the diff, validation evidence, ADR/TSR impact, support-agent impact, and
@@ -160,15 +170,16 @@ SELF-AUDIT rows. The final PASS/FAIL/N/A disposition remains lead-owned.
    traceability, and documentation duties.
 
 For high-risk work, expect closeout to include a fresh verifier pass. If the
-active environment supports independent agents and you have not explicitly
-prohibited them, Codex should use a read-only fresh-verifier explorer;
-otherwise it should perform a fresh self-verification pass before closing out.
-Either way, claims about validation, performance, latency, p99, memory,
-path/VOACAP science, or call-correction quality should point to the current
-source, command output, measurements, runtime captures, or ADR/TSR records used
-as evidence. `SELF-AUDIT` and `CLOSEOUT` should reference the earlier
-verification evidence instead of repasting command excerpts, and the final
-`VALIDATION` marker should remain the exact three-line block.
+active environment supports independent agents, tool/user authorization permits
+spawning, and you have not explicitly prohibited them, Codex should use a
+read-only fresh-verifier explorer; otherwise it should report the status and
+perform a fresh self-verification pass before closing out. Either way, claims
+about validation, performance, latency, p99, memory, path/VOACAP science, or
+call-correction quality should point to the current source, command output,
+measurements, runtime captures, or ADR/TSR records used as evidence.
+`SELF-AUDIT` and `CLOSEOUT` should reference the earlier verification evidence
+instead of repasting command excerpts, and the final `VALIDATION` marker should
+remain the exact three-line block.
 
 For workflow or repo-managed skill documentation changes, use the
 workflow/skill-doc lane in `docs/dev-runbook.md`; do not call a diff

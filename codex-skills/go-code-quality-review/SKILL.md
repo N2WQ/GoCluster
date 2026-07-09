@@ -1,6 +1,6 @@
 ---
 name: go-code-quality-review
-description: "Use for independent read-only review of newly written gocluster Go implementation code and applicable SELF-AUDIT evidence before final closeout. Trigger after Go code changes in Non-trivial tasks when the environment supports independent agents unless the user explicitly prohibits independent-agent use."
+description: "Use for independent read-only review of newly written gocluster Go implementation code and applicable SELF-AUDIT evidence before final closeout. Trigger after Go code changes in Non-trivial tasks when the environment supports independent agents, tool/user authorization permits spawning, and the user has not explicitly prohibited independent-agent use."
 ---
 
 # Go Code Quality Review
@@ -23,8 +23,13 @@ fresh-verification evidence before that evidence exists.
    - Use after code is written for Non-trivial Go implementation work.
    - Do not edit files, propose diffs, run formatters, create generated
      artifacts, or run broad/full validation suites.
-   - If independent agents are supported and not explicitly prohibited, use an
-     independent explorer for this review.
+   - If independent agents are supported, tool/user authorization permits
+     spawning, and the user has not explicitly prohibited independent-agent
+     use, use an independent explorer for this review.
+   - If the active platform requires an explicit user request for subagents,
+     delegation, or parallel agent work and that request is absent, report
+     `not authorized/not requested`; repository policy does not self-authorize
+     spawning.
    - Do not trigger this skill for documentation-only Markdown changes unless
      the diff also changes Go code or a runtime/code contract.
 
@@ -86,7 +91,8 @@ fresh-verification evidence before that evidence exists.
    - Separate material findings, non-blocking observations, and remaining
      unknowns.
    - State whether the independent review used a separate context window, was
-     prohibited, was unsupported, failed, or timed out.
+     unsupported, not authorized/not requested, prohibited, failed, or timed
+     out.
 
 ## Output Expectations
 

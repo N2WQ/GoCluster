@@ -20,11 +20,12 @@ restating unchanged facts.
 - Skill check: selected <skill> | none applicable
 - Classification: Non-trivial
 - Ledger status: Approved vN found: no
-- Independent-agent status: supported and not prohibited | unsupported |
-  explicitly prohibited | failed/timed out - <details>
+- Independent-agent status: supported, authorized, and not prohibited |
+  unsupported | not authorized/not requested | explicitly prohibited |
+  failed/timed out - <details>
 - Pre-approval independent agents: scope-ledger-adversarial-review used |
-  unavailable/prohibited/failed/timed out - <evidence status>; other
-  read-only explorers - <purpose and allowed actions>
+  unsupported/not authorized/not requested/prohibited/failed/timed out -
+  <evidence status>; other read-only explorers - <purpose and allowed actions>
 
 ### DISCOVERY
 - entrypoints/surfaces:
@@ -33,7 +34,8 @@ restating unchanged facts.
 - user-visible/help/docs:
 - existing tests:
 - independent-agent evidence: <none | agent role/purpose/findings used as
-  evidence | unavailable/prohibited/failed/timed out - status>
+  evidence | unsupported/not authorized/not requested/prohibited/failed/timed
+  out - status>
 - unknowns:
 
 ### SCOPE
@@ -55,8 +57,8 @@ restating unchanged facts.
 ### SCOPE ADVERSARIAL REVIEW
 - question: What edge case would make this scope unsafe or incomplete?
 - scope-ledger-adversarial-review: used - <findings and lead disposition> |
-  unavailable/prohibited/failed/timed out - <evidence status and lead
-  disposition>
+  unsupported/not authorized/not requested/prohibited/failed/timed out -
+  <evidence status and lead disposition>
 - applicable edge areas:
 - gaps found: none | <items>
 - disposition: nothing material found | revise ledger to v<N+1>
@@ -79,8 +81,9 @@ that approval.
 - Classification: Non-trivial
 - Ledger status: Approved vN found: yes
 - Approved scope version:
-- Independent-agent status: supported and not prohibited | unsupported |
-  explicitly prohibited | failed/timed out - <details>
+- Independent-agent status: supported, authorized, and not prohibited |
+  unsupported | not authorized/not requested | explicitly prohibited |
+  failed/timed out - <details>
 - Independent-agent phase/use: none | pre-approval explorer | post-approval
   worker | go-code-quality-review explorer | fresh-verifier explorer -
   <lead-owned disposition>
@@ -138,7 +141,8 @@ For each slice:
 - confirmed fixes:
 - rerun checks:
 - go-code-quality-review: used - <findings and lead disposition> |
-  N/A - no Go implementation | unavailable/prohibited/failed/timed out -
+  N/A - no Go implementation |
+  unsupported/not authorized/not requested/prohibited/failed/timed out -
   <evidence status and lead disposition>
 - fresh verifier pass: <fresh-verifier explorer | fresh self-verification | N/A - reason>
 - subagent lead verification: PASS|FAIL|N/A - note
@@ -150,11 +154,12 @@ If no material findings:
 
 ### SELF-AUDIT
 Use the independent review evidence required for the phase before assigning
-PASS to high-risk rows. If independent evidence is unsupported, prohibited,
-failed, timed out, missing, or stale, report `FAIL`, an explicit gap/waiver, or
-`N/A` only when the category truly does not apply. Command-backed concurrency
-and leak-detection rows reference the `REVIEW` verification command evidence
-instead of repeating excerpts. The lead agent owns every final row disposition.
+PASS to high-risk rows. If independent evidence is unsupported, not
+authorized/not requested, prohibited, failed, timed out, missing, or stale,
+report `FAIL`, an explicit gap/waiver, or `N/A` only when the category truly
+does not apply. Command-backed concurrency and leak-detection rows reference
+the `REVIEW` verification command evidence instead of repeating excerpts. The
+lead agent owns every final row disposition.
 
 - Scope and dependency coverage: PASS|FAIL|N/A - note
 - Code-walk and blast-radius evidence: PASS|FAIL|N/A - note

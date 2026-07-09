@@ -81,14 +81,15 @@ When the user asks what existing code does and has not asked for changes:
   `workflow-contract-audit` for edits to Codex workflow contracts, validation
   rules, runbooks, review checklists, repo-managed skills, or workflow scripts;
   `scope-ledger-adversarial-review` for independent read-only challenge of a
-  Proposed Scope Ledger before approval when independent agents are supported
-  and not explicitly prohibited;
+  Proposed Scope Ledger before approval when independent agents are supported,
+  tool/user authorization permits spawning, and not explicitly prohibited;
   `go-code-walk` for unfamiliar or cross-package current-state discovery;
   `go-blast-radius-audit` for uncertain blast radius, shared interfaces,
   semantic call/reference impact, or dependency/test impact analysis;
   `go-code-quality-review` for independent read-only review of newly written
   Go implementation code before final closeout when independent agents are
-  supported and not explicitly prohibited;
+  supported, tool/user authorization permits spawning, and not explicitly
+  prohibited;
   `go-connection-lifecycle-audit` for long-lived connection, reconnect,
   retry/backoff, keepalive, deadline, silent-stall, source liveness, or
   operator-visible connection diagnostics work;
@@ -108,8 +109,17 @@ When the user asks what existing code does and has not asked for changes:
 
 ## Subagent Use
 - Use independent agents when the active environment supports delegated or
-  parallel agent work unless the user explicitly prohibits independent-agent
-  use.
+  parallel agent work, the active tool policy and user/session authorization
+  permit spawning them, and the user has not explicitly prohibited
+  independent-agent use.
+- Repository policy, this file, or prior ADR language does not by itself
+  authorize spawning subagents when the active platform requires an explicit
+  user request for subagents, delegation, or parallel agent work. If that
+  request is absent, report `not authorized/not requested`; do not treat it as
+  `unsupported` or `explicitly prohibited`.
+- Evaluate subagent authorization separately for each phase/use. Exact
+  `Approved vN` approves scope; it is not by itself an explicit subagent
+  request when the active platform requires one.
 - Independent agents are separate from the lead Codex agent and have their own
   context windows. Treat that independence as useful adversarial evidence and
   also as a coordination risk that requires explicit lead disposition.
@@ -119,31 +129,33 @@ When the user asks what existing code does and has not asked for changes:
   artifacts, or run full validation suites.
 - For Non-trivial Scope Ledgers, use an independent
   `scope-ledger-adversarial-review` explorer before presenting the approval
-  token when supported and not explicitly prohibited. If unavailable, failed,
-  timed out, or prohibited, report that evidence status.
+  token when supported, authorized, and not explicitly prohibited. If
+  unsupported, not authorized/not requested, failed, timed out, or prohibited,
+  report that evidence status.
 - Post-approval worker subagents are allowed only for approved, disjoint Scope
   Ledger slices with explicit allowed paths, forbidden paths, stopping point,
   targeted checks, and stop-on-hidden-blast-radius instructions.
 - For Non-trivial Go implementation work, use an independent
   `go-code-quality-review` explorer after code is written and before final
-  closeout when supported and not explicitly prohibited. If unavailable,
-  failed, timed out, or prohibited, report that evidence status.
+  closeout when supported, authorized, and not explicitly prohibited. If
+  unsupported, not authorized/not requested, failed, timed out, or prohibited,
+  report that evidence status.
 - For high-risk closeout, use a read-only fresh-verifier explorer when
-  supported and not explicitly prohibited.
+  supported, authorized, and not explicitly prohibited.
 - Subagent findings are evidence only. The lead Codex agent owns scope
   disposition, `SCOPE ADVERSARIAL REVIEW`, integration, final Review Pass,
   validation claims, ADR/TSR handling, Scope-to-Code Traceability, and the
   final response.
 - For Non-trivial SELF-AUDIT, independently reviewed high-risk categories must
   use the independent review evidence available for that phase. The lead agent
-  may not silently turn unsupported, failed, timed-out, prohibited, missing, or
-  stale independent evidence into `PASS`; use `FAIL`, an explicit gap/waiver,
-  or `N/A` only when the category truly does not apply. `go-code-quality-review`
-  scores only rows it can inspect at its post-Go-code phase. A high-risk
-  closeout fresh-verifier explorer supplies later independent evidence,
-  including Fresh verification and claim evidence, after final validation
-  evidence exists. Lead ownership remains mandatory for every final score and
-  validation claim.
+  may not silently turn unsupported, not authorized/not requested, failed,
+  timed-out, prohibited, missing, or stale independent evidence into `PASS`;
+  use `FAIL`, an explicit gap/waiver, or `N/A` only when the category truly
+  does not apply. `go-code-quality-review` scores only rows it can inspect at
+  its post-Go-code phase. A high-risk closeout fresh-verifier explorer supplies
+  later independent evidence, including Fresh verification and claim evidence,
+  after final validation evidence exists. Lead ownership remains mandatory for
+  every final score and validation claim.
 
 ## Task Gates
 - Before every change, classify the task and confirm current Scope Ledger
@@ -231,9 +243,10 @@ delta, or final disposition.
 - Review the current diff as a reviewer before final closeout.
 - For high-risk Non-trivial slices, perform a fresh verification pass before
   final closeout. Use a read-only fresh-verifier explorer when the active
-  environment supports it and independent-agent use is not explicitly
-  prohibited; otherwise reset reviewer context and re-check the approved scope,
-  current diff, evidence, and claims yourself. Report unsupported, prohibited,
+  environment supports it, tool/user authorization permits spawning, and
+  independent-agent use is not explicitly prohibited; otherwise reset reviewer
+  context and re-check the approved scope, current diff, evidence, and claims
+  yourself. Report unsupported, not authorized/not requested, prohibited,
   failed, or timed-out independent review as an evidence gap unless waived.
 - Inspect `git diff --name-only` and touched files directly before final
   closeout for implementation work.

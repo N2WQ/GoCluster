@@ -108,5 +108,6 @@ and the final response.
   - `customgpt/source-map.md`
   - `customgpt/developer-guide-index.md`
   - `customgpt/common-questions.md`
+- Related ADRs: ADR-0202, ADR-0205
 - Related TSRs: none
 - Supersedes / superseded by: none

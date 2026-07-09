@@ -1,6 +1,6 @@
 ---
 name: scope-ledger-adversarial-review
-description: "Use for independent read-only adversarial review of a gocluster Proposed Scope Ledger before approval. Trigger for Non-trivial Scope Ledgers when the environment supports independent agents unless the user explicitly prohibits independent-agent use."
+description: "Use for independent read-only adversarial review of a gocluster Proposed Scope Ledger before approval. Trigger for Non-trivial Scope Ledgers when the environment supports independent agents, tool/user authorization permits spawning, and the user has not explicitly prohibited independent-agent use."
 ---
 
 # Scope Ledger Adversarial Review
@@ -17,8 +17,13 @@ agent context; it does not transfer gate ownership away from the lead agent.
    - This skill is pre-approval only.
    - Do not edit files, propose diffs, run formatters, create generated
      artifacts, or run full checker suites.
-   - If independent agents are supported and not explicitly prohibited, use an
-     independent explorer for this review.
+   - If independent agents are supported, tool/user authorization permits
+     spawning, and the user has not explicitly prohibited independent-agent
+     use, use an independent explorer for this review.
+   - If the active platform requires an explicit user request for subagents,
+     delegation, or parallel agent work and that request is absent, report
+     `not authorized/not requested`; repository policy does not self-authorize
+     spawning.
 
 2. Inspect the proposed scope and its evidence.
    - Read the proposed Scope Ledger, Current-State Discovery, relevant
@@ -50,7 +55,8 @@ agent context; it does not transfer gate ownership away from the lead agent.
 6. Report only findings and evidence.
    - Name inspected files, commands, and unknowns.
    - State whether the review used an independent agent with a separate context
-     window, was prohibited, was unsupported, failed, or timed out.
+     window, was unsupported, not authorized/not requested, prohibited, failed,
+     or timed out.
    - The lead agent must disposition findings and owns the official
      `SCOPE ADVERSARIAL REVIEW`.
 
@@ -58,6 +64,6 @@ agent context; it does not transfer gate ownership away from the lead agent.
 
 - Include a compact `Scope adversarial review` result.
 - Lead disposition must be explicit for every material finding.
-- If the independent review is unavailable, failed, timed out, or explicitly
-  prohibited, report that as an evidence gap or waiver instead of silently
-  substituting ordinary self-review.
+- If the independent review is unsupported, not authorized/not requested,
+  failed, timed out, or explicitly prohibited, report that as an evidence
+  status, gap, or waiver instead of silently substituting ordinary self-review.

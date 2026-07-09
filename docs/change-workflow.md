@@ -148,9 +148,21 @@ until the disposition is exactly `nothing material found`.
 
 ### Subagent use
 Use independent agents when the active environment supports delegated or
-parallel agent work unless the user explicitly prohibits independent-agent use.
-Record the support/prohibition status, phase, allowed actions, expected output,
-and lead-agent verification in the applicable evidence marker.
+parallel agent work, active tool policy and user/session authorization permit
+spawning them, and the user has not explicitly prohibited independent-agent
+use. Record the support/authorization/prohibition status, phase, allowed
+actions, expected output, and lead-agent verification in the applicable
+evidence marker.
+
+Repository policy, `AGENTS.md`, or prior ADR language cannot self-authorize
+subagent spawning when the active platform requires an explicit user request for
+subagents, delegation, or parallel agent work. If that request is absent, report
+`not authorized/not requested`; do not collapse it into `unsupported` or
+`explicitly prohibited`.
+
+Evaluate authorization per subagent use and phase. Exact `Approved vN` approves
+scope; it is not by itself an explicit subagent request when the active
+platform requires one.
 
 Independent agents are separate from the lead Codex agent and have their own
 context windows. That separate context is useful for adversarial review because
@@ -171,11 +183,12 @@ hot-path review, docs/support impact review, and independent adversarial review
 of `Proposed Scope Ledger vN`.
 
 For every Non-trivial Scope Ledger, use `scope-ledger-adversarial-review` as an
-independent read-only explorer when independent agents are supported and not
-explicitly prohibited. If the independent explorer is unsupported, explicitly
-prohibited, fails, or times out, report that evidence status in
-`SCOPE ADVERSARIAL REVIEW`; high-risk scope should treat missing independent
-review as a gap unless the user explicitly waives it.
+independent read-only explorer when independent agents are supported,
+authorized, and not explicitly prohibited. If the independent explorer is
+unsupported, not authorized/not requested, explicitly prohibited, fails, or
+times out, report that evidence status in `SCOPE ADVERSARIAL REVIEW`;
+high-risk scope should treat missing independent review as a gap unless the
+user explicitly waives it.
 
 Pre-approval subagents must not edit files, propose diffs, run formatters,
 create generated artifacts, run full checker suites, or otherwise weaken the
@@ -208,14 +221,14 @@ validation.
 #### Post-code Go quality explorers
 For Non-trivial Go implementation work, use `go-code-quality-review` as an
 independent read-only explorer after code is written and before final closeout
-when independent agents are supported and not explicitly prohibited. The
-explorer checks the approved scope against the Go diff, `docs/code-quality.md`,
-review expectations, validation lane, comment intent, bounded state,
-lifecycle/concurrency/resource ownership, anti-speculative implementation, and
-claim evidence available at that phase. It also reports PASS/FAIL/N/A evidence
-for the applicable SELF-AUDIT rows it can inspect at that phase. It reports
-findings only; it does not edit, propose diffs, run formatters, create
-generated artifacts, or run broad/full validation suites.
+when independent agents are supported, authorized, and not explicitly
+prohibited. The explorer checks the approved scope against the Go diff,
+`docs/code-quality.md`, review expectations, validation lane, comment intent,
+bounded state, lifecycle/concurrency/resource ownership, anti-speculative
+implementation, and claim evidence available at that phase. It also reports
+PASS/FAIL/N/A evidence for the applicable SELF-AUDIT rows it can inspect at
+that phase. It reports findings only; it does not edit, propose diffs, run
+formatters, create generated artifacts, or run broad/full validation suites.
 
 The Go quality explorer must not final-score late closeout evidence that does
 not exist yet. If a later fresh-verifier pass is required, the Go quality
@@ -224,20 +237,22 @@ or report partial evidence only; the fresh-verifier explorer supplies the later
 independent evidence for that row after Review Pass and final validation
 evidence exist.
 
-If the Go quality explorer is unsupported, explicitly prohibited, fails, or
-times out, report that evidence status in `REVIEW`, `SELF-AUDIT`, and
-`CLOSEOUT`. For high-risk Go implementation work, missing independent review is
-a validation/review gap unless the user explicitly waives it.
+If the Go quality explorer is unsupported, not authorized/not requested,
+explicitly prohibited, fails, or times out, report that evidence status in
+`REVIEW`, `SELF-AUDIT`, and `CLOSEOUT`. For high-risk Go implementation work,
+missing independent review is a validation/review gap unless the user
+explicitly waives it.
 
 #### Fresh-verifier explorers
 For high-risk Non-trivial work, use a read-only fresh-verifier explorer when
-the environment supports independent agents and the user has not explicitly
-prohibited independent-agent use. A fresh-verifier explorer checks the approved
-scope against the diff, validation evidence, ADR/TSR and support-agent impact,
-claim wording, and hidden out-of-scope work. For high-risk workflow, runbook,
-rubric, template, or repo-managed skill changes where `go-code-quality-review`
-is not applicable, use the same fresh-verifier explorer role with an explicit
-prompt to independently score the applicable SELF-AUDIT rows. This reuses the
+the environment supports independent agents, tool/user authorization permits
+spawning, and the user has not explicitly prohibited independent-agent use. A
+fresh-verifier explorer checks the approved scope against the diff, validation
+evidence, ADR/TSR and support-agent impact, claim wording, and hidden
+out-of-scope work. For high-risk workflow, runbook, rubric, template, or
+repo-managed skill changes where `go-code-quality-review` is not applicable,
+use the same fresh-verifier explorer role with an explicit prompt to
+independently score the applicable SELF-AUDIT rows. This reuses the
 fresh-verifier role instead of adding another independent-review role. It
 reports findings only; it does not edit.
 
@@ -617,9 +632,9 @@ paths, production-impacting fixes, and scientific/model behavior such as
 call-correction, path reliability, p50, propagation, or VOACAP semantics.
 
 Use a read-only fresh-verifier explorer when the active environment supports
-independent agents and the user has not explicitly prohibited independent-agent
-use. Otherwise, perform a fresh self-verification pass by resetting reviewer
-context and checking:
+independent agents, tool/user authorization permits spawning, and the user has
+not explicitly prohibited independent-agent use. Otherwise, perform a fresh
+self-verification pass by resetting reviewer context and checking:
 
 - approved Scope Ledger items against the diff
 - contract, ADR/TSR, support-agent, and documentation impact

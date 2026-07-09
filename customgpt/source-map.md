@@ -69,12 +69,14 @@ linking or citing these docs over duplicating their content here.
   Subagent Use rules in
   [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md)
   and [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md);
-  emphasize that independent agents should be used when supported unless
-  explicitly prohibited, that `scope-ledger-adversarial-review`,
+  emphasize that independent agents should be used when supported, authorized
+  by active tool/user policy, and not explicitly prohibited. If the platform
+  requires an explicit subagent/delegation request and it is absent, report
+  `not authorized/not requested`. `scope-ledger-adversarial-review`,
   `go-code-quality-review`, and fresh-verifier explorers are read-only findings
-  sources, that high-risk SELF-AUDIT rows should cite independent evidence when
-  available, and that the lead Codex agent owns approval gates, integration,
-  final SELF-AUDIT disposition, validation claims, traceability, and closeout.
+  sources, high-risk SELF-AUDIT rows should cite independent evidence when
+  available, and the lead Codex agent owns approval gates, integration, final
+  SELF-AUDIT disposition, validation claims, traceability, and closeout.
 - For recurring model or workflow lessons, route to [docs/agent-lessons/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/agent-lessons/README.md),
   then verify any implementation claim against workflow docs, source, tests,
   and ADR/TSR records.
