@@ -147,16 +147,22 @@ lane and run the required checks for that lane.
 
 ### Workflow/skill-doc change
 Use this lane when the diff changes workflow contracts, validation rules,
-runbooks, review checklists, templates, Codex guidance, or repo-managed skills.
+runbooks, review checklists, templates, Codex guidance, Fable guidance,
+repo-managed Codex skills, or Fable `.claude/agents|skills/*` definitions.
 This lane is distinct from Documentation-only Markdown when the diff includes
-repo skill metadata YAML such as `codex-skills/**/agents/openai.yaml`.
+structured workflow metadata such as `codex-skills/**/agents/openai.yaml` or
+`.claude/agents/*.md` frontmatter.
 
 Minimum expected sequence:
 1. targeted text checks for changed workflow terms, cross-references, required
    evidence markers, and exact workflow strings
-2. workflow-drift audit against `AGENTS.md`, `docs/change-workflow.md`,
-   `VALIDATION.md`, review checklist, template, runbook, and repo skills as
-   applicable
+2. workflow-drift audit against the applicable executor surfaces:
+   `AGENTS.md`, `docs/change-workflow.md`, `VALIDATION.md`,
+   `docs/review-checklist.md`, `docs/templates/non-trivial-change-template.md`,
+   and `codex-skills/**` for Codex; `CLAUDE.md`, `docs/fable-workflow.md`,
+   `docs/fable-review-checklist.md`, `docs/fable-validation.md`,
+   `docs/templates/fable-non-trivial-change-template.md`, `.claude/agents/*.md`,
+   and `.claude/skills/**/SKILL.md` for Fable
 3. reviewer diff pass confirming the diff is internally consistent and stays
    within the approved workflow/documentation/skill scope
 4. `git diff --check`
@@ -164,11 +170,17 @@ Minimum expected sequence:
 Add the checks that apply:
 - `scripts/verify-codex-skills.ps1` after any repo-managed skill edit
 - metadata/body sync review when `codex-skills/**/agents/openai.yaml` changes
+- Fable agent frontmatter/tool-grant review when `.claude/agents/*.md` changes,
+  confirming names, descriptions, models, and tool grants match the read-only or
+  worker boundaries in `CLAUDE.md` and `docs/fable-workflow.md`
+- Fable skill frontmatter/body review when `.claude/skills/**/SKILL.md` changes,
+  confirming trigger descriptions, skill names, and referenced workflow docs
+  stay coherent
 - explicit YAML comment/header audit disposition when repo skill metadata YAML
-  changes: the `data/config/README.md` five-line runtime-config header standard
-  is `N/A` for repo skill metadata unless a stricter local skill-metadata
-  standard applies; replace it with metadata/body sync, frontmatter/manifest
-  consistency, and the repo skill verifier
+  or Fable workflow frontmatter changes: the `data/config/README.md` five-line
+  runtime-config header standard is `N/A` unless a stricter local metadata
+  standard applies; replace it with metadata/body sync, frontmatter/manifest or
+  tool-grant consistency, and the relevant repo skill or Fable workflow review
 - fresh-verifier explorer for high-risk workflow or skill changes when
   independent agents are supported, authorized, and not explicitly prohibited;
   otherwise report unsupported, not authorized/not requested, prohibited,
