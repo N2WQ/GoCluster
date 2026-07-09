@@ -99,11 +99,17 @@ The proposed ledger should also include a `Reasoning budget` recommendation.
 Use it as Codex's target reasoning-level suggestion for the next execution turn;
 it does not approve scope or waive validation.
 
-## Use subagents deliberately
+## Use independent agents deliberately
 
-Subagents are useful when they make the workflow more rigorous, not faster at
-the expense of control. They are allowed only when the active environment and
-your authorization support delegated or parallel agent work.
+Independent agents are useful when they make the workflow more rigorous, not
+faster at the expense of control. When the active environment supports
+delegated or parallel agent work, Codex should use independent agents unless
+you explicitly prohibit them.
+
+An independent agent is separate from the lead Codex agent and has its own
+context window. That independence helps catch lead-agent anchoring and stale
+self-review, but it also means Codex must explicitly disposition the independent
+agent's findings against the approved scope and current workspace evidence.
 
 Before `Approved vN`, subagents should be read-only explorers. Good uses are
 code-walk evidence, blast-radius review, config or decision-memory review,
@@ -111,10 +117,22 @@ independent adversarial review of the proposed scope, and other evidence
 gathering. They should not edit files, draft diffs, run formatters, create
 generated artifacts, or run full validation suites before approval.
 
+For Non-trivial Scope Ledgers, expect Codex to use an independent
+`scope-ledger-adversarial-review` explorer before presenting the approval token
+when independent agents are supported and not explicitly prohibited. If the
+explorer is unavailable, fails, times out, or you prohibit independent agents,
+Codex should say that directly.
+
 After `Approved vN`, worker subagents should be used only for approved,
 disjoint slices. A worker assignment should name the approved version, slice,
 allowed paths, forbidden paths, stopping point, targeted checks, and when to
 stop for hidden blast radius or uncertainty.
+
+For Non-trivial Go implementation work, expect Codex to use an independent
+`go-code-quality-review` explorer after code is written and before final
+closeout when independent agents are supported and not explicitly prohibited.
+That reviewer should be read-only and findings-only; Codex still owns fixes,
+validation claims, traceability, and the final response.
 
 For high-risk closeout, a read-only fresh-verifier explorer can independently
 check the diff, validation evidence, ADR/TSR impact, support-agent impact, and
@@ -131,12 +149,13 @@ traceability, and the final response.
    traceability, and documentation duties.
 
 For high-risk work, expect closeout to include a fresh verifier pass. If the
-active environment and your approval support delegated or parallel agent work,
-Codex may use a read-only fresh-verifier explorer; otherwise it should perform
-a fresh self-verification pass before closing out. Either way, claims about
-validation, performance, latency, p99, memory, path/VOACAP science, or
-call-correction quality should point to the current source, command output,
-measurements, runtime captures, or ADR/TSR records used as evidence.
+active environment supports independent agents and you have not explicitly
+prohibited them, Codex should use a read-only fresh-verifier explorer;
+otherwise it should perform a fresh self-verification pass before closing out.
+Either way, claims about validation, performance, latency, p99, memory,
+path/VOACAP science, or call-correction quality should point to the current
+source, command output, measurements, runtime captures, or ADR/TSR records used
+as evidence.
 
 Recurring model or workflow lessons belong in `docs/agent-lessons/README.md`
 only when the approved scope includes that maintenance. Those lessons are

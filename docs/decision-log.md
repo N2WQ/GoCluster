@@ -23,6 +23,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Reserved Placeholder | Unused | - | index hygiene | - | - | No ADR file; first real ADR is `docs/decisions/ADR-0002-ui-v2-render-pipeline.md` |
+| ADR-0202 | Default-On Independent Review Agents | Accepted | 2026-07-09 | workflow, Codex, validation, skills, review | ADR-0199 subagent optionality | - | `docs/decisions/ADR-0202-default-on-independent-review-agents.md` |
 | ADR-0201 | Native 160m Endpoint Daylight Gate | Accepted | 2026-06-20 | pathreliability, telnet, config, operations, supportability, experiments | ADR-0197 native 160m whole-path-only classification order | - | `docs/decisions/ADR-0201-native-160m-endpoint-daylight-gate.md` |
 | ADR-0200 | VOACAP Unsupported-Platform Startup Skip | Accepted | 2026-06-19 | startup, voacap, pathreliability, operations, supportability | - | - | `docs/decisions/ADR-0200-voacap-unsupported-platform-startup-skip.md` |
 | ADR-0199 | Subagent Delegation Boundaries | Accepted | 2026-06-19 | workflow, Codex, validation, supportability | - | - | `docs/decisions/ADR-0199-subagent-delegation-boundaries.md` |

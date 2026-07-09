@@ -80,9 +80,15 @@ When the user asks what existing code does and has not asked for changes:
   index maintenance, final decision refs, and Scope-to-Code Traceability;
   `workflow-contract-audit` for edits to Codex workflow contracts, validation
   rules, runbooks, review checklists, repo-managed skills, or workflow scripts;
+  `scope-ledger-adversarial-review` for independent read-only challenge of a
+  Proposed Scope Ledger before approval when independent agents are supported
+  and not explicitly prohibited;
   `go-code-walk` for unfamiliar or cross-package current-state discovery;
   `go-blast-radius-audit` for uncertain blast radius, shared interfaces,
   semantic call/reference impact, or dependency/test impact analysis;
+  `go-code-quality-review` for independent read-only review of newly written
+  Go implementation code before final closeout when independent agents are
+  supported and not explicitly prohibited;
   `go-connection-lifecycle-audit` for long-lived connection, reconnect,
   retry/backoff, keepalive, deadline, silent-stall, source liveness, or
   operator-visible connection diagnostics work;
@@ -101,17 +107,29 @@ When the user asks what existing code does and has not asked for changes:
   comment intent audit.
 
 ## Subagent Use
-- Use subagents only when the active environment and user authorization support
-  delegated or parallel agent work.
+- Use independent agents when the active environment supports delegated or
+  parallel agent work unless the user explicitly prohibits independent-agent
+  use.
+- Independent agents are separate from the lead Codex agent and have their own
+  context windows. Treat that independence as useful adversarial evidence and
+  also as a coordination risk that requires explicit lead disposition.
 - Before exact `Approved vN`, subagents must be read-only explorers or
   adversarial-review helpers. They may gather evidence and challenge scope, but
   they must not edit files, propose diffs, run formatters, create generated
   artifacts, or run full validation suites.
+- For Non-trivial Scope Ledgers, use an independent
+  `scope-ledger-adversarial-review` explorer before presenting the approval
+  token when supported and not explicitly prohibited. If unavailable, failed,
+  timed out, or prohibited, report that evidence status.
 - Post-approval worker subagents are allowed only for approved, disjoint Scope
   Ledger slices with explicit allowed paths, forbidden paths, stopping point,
   targeted checks, and stop-on-hidden-blast-radius instructions.
-- For high-risk closeout, prefer a read-only fresh-verifier explorer when
-  supported.
+- For Non-trivial Go implementation work, use an independent
+  `go-code-quality-review` explorer after code is written and before final
+  closeout when supported and not explicitly prohibited. If unavailable,
+  failed, timed out, or prohibited, report that evidence status.
+- For high-risk closeout, use a read-only fresh-verifier explorer when
+  supported and not explicitly prohibited.
 - Subagent findings are evidence only. The lead Codex agent owns scope
   disposition, `SCOPE ADVERSARIAL REVIEW`, integration, final Review Pass,
   validation claims, ADR/TSR handling, Scope-to-Code Traceability, and the
@@ -194,10 +212,11 @@ delta, or final disposition.
   artifacts, scripts, CI, schemas, protocol/runtime contracts, or runtime data.
 - Review the current diff as a reviewer before final closeout.
 - For high-risk Non-trivial slices, perform a fresh verification pass before
-  final closeout. Use a read-only fresh-verifier explorer only when the active
-  environment and user authorization support it; otherwise reset reviewer
-  context and re-check the approved scope, current diff, evidence, and claims
-  yourself.
+  final closeout. Use a read-only fresh-verifier explorer when the active
+  environment supports it and independent-agent use is not explicitly
+  prohibited; otherwise reset reviewer context and re-check the approved scope,
+  current diff, evidence, and claims yourself. Report unsupported, prohibited,
+  failed, or timed-out independent review as an evidence gap unless waived.
 - Inspect `git diff --name-only` and touched files directly before final
   closeout for implementation work.
 - Every Non-trivial task requires ADR handling under `docs/decision-memory.md`.

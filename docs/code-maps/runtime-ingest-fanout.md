@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `56ed0aeba36b9d11`
+- Source fingerprint: `c1105988f768e8a6`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -301,9 +301,10 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0201](docs/decisions/ADR-0201-native-160m-endpoint-daylight-gate.md) | Accepted | 2026-06-20 | pathreliability, telnet, config, operations, supportability, experiments | `area:telnet, path:telnet` |
 | [ADR-0200](docs/decisions/ADR-0200-voacap-unsupported-platform-startup-skip.md) | Accepted | 2026-06-19 | startup, voacap, pathreliability, operations, supportability | `path:internal/cluster` |
 | [ADR-0198](docs/decisions/ADR-0198-160m-merge-readiness-cleanup.md) | Accepted | 2026-06-19 | workflow, docs, tests, code maps, pathreliability, custom_scp | `path:internal/cluster` |
-| [ADR-0197](docs/decisions/ADR-0197-native-160m-closed-solar-proxy.md) | Accepted | 2026-06-19 | pathreliability, telnet, config, operations, supportability, experiments | `area:telnet, path:telnet` |
+| [ADR-0197](docs/decisions/ADR-0197-native-160m-closed-solar-proxy.md) | Superseded | 2026-06-19 | pathreliability, telnet, config, operations, supportability, experiments | `area:telnet, path:telnet` |
 | [ADR-0196](docs/decisions/ADR-0196-native-160m-solar-darkness-fallback.md) | Superseded | 2026-06-18 | pathreliability, solarweather, telnet, config, operations, experiments | `area:telnet, path:telnet` |
 | [ADR-0195](docs/decisions/ADR-0195-telnet-auto-read-pause.md) | Accepted | 2026-06-18 | telnet, commands, config, queues, supportability | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0191](docs/decisions/ADR-0191-voacap-cache-overview-counters.md) | Accepted | 2026-06-17 | ui/tview-v2, stats, voacap, pathreliability, operations | `path:internal/cluster` |

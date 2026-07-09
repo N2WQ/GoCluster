@@ -14,6 +14,9 @@ Repo-authoritative skills:
 - `go-blast-radius-audit` - maps blast radius, including optional
   `goda`/Graphviz dependency visualization and support-agent-readable code maps
   when useful
+- `go-code-quality-review` - independently reviews newly written Go
+  implementation diffs against scope, code-quality, validation, and
+  operational standards before closeout
 - `go-code-walk` - walks unfamiliar code paths with source, semantic tools, and
   optional dependency visualization
 - `go-connection-lifecycle-audit` - audits reconnect, retry/backoff,
@@ -28,6 +31,8 @@ Repo-authoritative skills:
 - `security-best-practices` - explicit security best-practice review support
 - `security-threat-model` - repository-grounded threat modeling support
 - `sentry`
+- `scope-ledger-adversarial-review` - independently challenges Non-trivial
+  Scope Ledgers before approval
 - `workflow-contract-audit` - checks Codex workflow, validation, runbook,
   template, skill, and workflow-script edits for contract drift
 

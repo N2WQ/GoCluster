@@ -28,18 +28,19 @@ Do not accept paraphrases or extra lines inside that block.
 
 ### 1) Scope gate and approval discipline
 Score `1` only if scope was ledgered and approved, no pre-approval
-implementation or full validation happened, pre-approval subagent use if any
-was read-only evidence gathering, `SCOPE ADVERSARIAL REVIEW` was completed by
-the lead agent before the approval token, no silent scope expansion occurred,
-and the approved Scope Ledger was slice-shaped with implementation-ready
-slices. Final traceability must map back to approved items. Otherwise score
-`0`.
+implementation or full validation happened, required pre-approval independent
+agents were read-only evidence gathering, `SCOPE ADVERSARIAL REVIEW` was
+completed by the lead agent before the approval token, no silent scope
+expansion occurred, and the approved Scope Ledger was slice-shaped with
+implementation-ready slices. Final traceability must map back to approved
+items. Unsupported, explicitly prohibited, failed, or timed-out independent
+review must be reported as evidence status or a waiver. Otherwise score `0`.
 
 ### 2) Skill and workflow discipline
 Score `1` only if Codex showed the skill check, classified the task correctly,
 and followed the required workflow for that task type, including phase,
-authorization, and lead-ownership rules for any subagents used. Otherwise score
-`0`.
+support/prohibition status, allowed actions, and lead-ownership rules for any
+independent agents or subagents used. Otherwise score `0`.
 
 ### 3) Current-state understanding and dependency rigor
 Score `1` only if pre-code current-state understanding and dependency coverage
@@ -60,7 +61,10 @@ closeout. Documentation-only Markdown changes may satisfy this item with
 documentation review, targeted text checks, and `git diff --check` when the
 documented lane criteria are met. Triggered leak-detection evidence must
 distinguish static reasoning, local test/race evidence, profile evidence, and
-runtime confirmation. Otherwise score `0`.
+runtime confirmation. Non-trivial Go implementation work must include an
+independent `go-code-quality-review` result when independent agents are
+supported and not explicitly prohibited, or report unsupported, prohibited,
+failed, timed-out, or waived status. Otherwise score `0`.
 
 ### 6) Documentation, decision memory, and traceability
 Score `1` only if README/doc review status, decision-memory handling,
@@ -84,13 +88,15 @@ happened:
 11. Codex introduced or preserved a runtime fallback for a YAML-owned setting without explicitly documenting and approving that exception.
 12. Codex changed documented zero/false sentinel behavior without consumer-level regression tests.
 13. Codex omitted `SCOPE ADVERSARIAL REVIEW` before presenting the approval token for a Non-trivial Scope Ledger.
-14. Codex claimed code-walk, blast-radius, or leak-detection coverage from tools or profiles that were not actually run or inspected.
-15. Codex approved or executed a broad refactor-shaped Scope Ledger without slice-level objective, blast-radius boundary, production-safe stopping point, targeted checks, and per-slice validation evidence.
-16. Codex treated a mixed code/config/script/CI/generated-artifact/runtime-contract diff as documentation-only validation.
-17. Codex used a pre-approval subagent for file edits, diffs, formatters,
+14. Codex omitted required independent `scope-ledger-adversarial-review` before presenting the approval token when independent agents were supported and not explicitly prohibited, unless the omission was reported as failed/timed-out and explicitly treated as a gap or waiver.
+15. Codex claimed code-walk, blast-radius, or leak-detection coverage from tools or profiles that were not actually run or inspected.
+16. Codex approved or executed a broad refactor-shaped Scope Ledger without slice-level objective, blast-radius boundary, production-safe stopping point, targeted checks, and per-slice validation evidence.
+17. Codex treated a mixed code/config/script/CI/generated-artifact/runtime-contract diff as documentation-only validation.
+18. Codex used a pre-approval subagent for file edits, diffs, formatters,
     generated artifacts, full validation, or anything other than read-only
     evidence gathering and adversarial review.
-18. Codex let a subagent's output replace lead-agent ownership of
+19. Codex omitted required independent `go-code-quality-review` for Non-trivial Go implementation work when independent agents were supported and not explicitly prohibited, unless the omission was reported as failed/timed-out and explicitly treated as a gap or waiver.
+20. Codex let a subagent's output replace lead-agent ownership of
     `SCOPE ADVERSARIAL REVIEW`, integration, validation claims, ADR/TSR
     handling, Scope-to-Code Traceability, or the final response.
 

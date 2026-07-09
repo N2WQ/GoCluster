@@ -20,7 +20,8 @@ scripts that enforce the workflow.
    - Validation rubric: `VALIDATION.md`
    - Review and checker sources: `docs/review-checklist.md`,
      `docs/dev-runbook.md`, `docs/code-quality.md`
-   - Repo skills: `codex-skills/**/SKILL.md` and `agents/openai.yaml`
+   - Repo skills: `codex-skills/README.md`, `codex-skills/**/SKILL.md`, and
+     `agents/openai.yaml`
    - Workflow scripts and script docs under `scripts/`
 
 2. Preserve exact operational strings.

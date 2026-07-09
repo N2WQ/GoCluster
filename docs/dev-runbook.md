@@ -117,8 +117,9 @@ Add only the documentation checks that apply:
   requirements
 - subagent-use text checks when workflow docs change delegated or parallel
   agent rules, including `Approved vN`, `SCOPE ADVERSARIAL REVIEW`,
-  `fresh-verifier explorer`, allowed actions, lead ownership, and stop
-  conditions
+  `scope-ledger-adversarial-review`, `go-code-quality-review`,
+  `fresh-verifier explorer`, independent-agent support/prohibition status,
+  separate context windows, allowed actions, lead ownership, and stop conditions
 - support-agent routing review when operator-support topics or support-routing
   docs changed
 - `scripts/check-troubleshooting-records.ps1` for troubleshooting record,

@@ -137,10 +137,16 @@ not present the approval token for the current ledger version. Create the next
 until the disposition is exactly `nothing material found`.
 
 ### Subagent use
-Use subagents only when the active environment and user authorization support
-delegated or parallel agent work. Record the authorization basis, phase, allowed
-actions, expected output, and lead-agent verification in the applicable evidence
-marker.
+Use independent agents when the active environment supports delegated or
+parallel agent work unless the user explicitly prohibits independent-agent use.
+Record the support/prohibition status, phase, allowed actions, expected output,
+and lead-agent verification in the applicable evidence marker.
+
+Independent agents are separate from the lead Codex agent and have their own
+context windows. That separate context is useful for adversarial review because
+it reduces lead-agent anchoring and stale self-review. It is also a coordination
+risk: every independent finding must be dispositioned by the lead agent against
+the approved workflow gates and current workspace evidence.
 
 Subagent output improves evidence; it never transfers gate ownership. The lead
 Codex agent still owns Scope Ledger disposition, `SCOPE ADVERSARIAL REVIEW`,
@@ -153,6 +159,13 @@ purposes include code-walk evidence, blast-radius review, config-contract
 review, decision-memory review, lifecycle or leak review, retained-state review,
 hot-path review, docs/support impact review, and independent adversarial review
 of `Proposed Scope Ledger vN`.
+
+For every Non-trivial Scope Ledger, use `scope-ledger-adversarial-review` as an
+independent read-only explorer when independent agents are supported and not
+explicitly prohibited. If the independent explorer is unsupported, explicitly
+prohibited, fails, or times out, report that evidence status in
+`SCOPE ADVERSARIAL REVIEW`; high-risk scope should treat missing independent
+review as a gap unless the user explicitly waives it.
 
 Pre-approval subagents must not edit files, propose diffs, run formatters,
 create generated artifacts, run full checker suites, or otherwise weaken the
@@ -182,12 +195,28 @@ or if a worker discovers a required change outside its assignment, the worker
 must stop and report the blocker. The lead agent owns integration and final
 validation.
 
+#### Post-code Go quality explorers
+For Non-trivial Go implementation work, use `go-code-quality-review` as an
+independent read-only explorer after code is written and before final closeout
+when independent agents are supported and not explicitly prohibited. The
+explorer checks the approved scope against the Go diff, `docs/code-quality.md`,
+review expectations, validation lane, comment intent, bounded state,
+lifecycle/concurrency/resource ownership, anti-speculative implementation, and
+claim evidence. It reports findings only; it does not edit, propose diffs, run
+formatters, create generated artifacts, or run broad/full validation suites.
+
+If the Go quality explorer is unsupported, explicitly prohibited, fails, or
+times out, report that evidence status in `REVIEW`, `SELF-AUDIT`, and
+`CLOSEOUT`. For high-risk Go implementation work, missing independent review is
+a validation/review gap unless the user explicitly waives it.
+
 #### Fresh-verifier explorers
-For high-risk Non-trivial work, prefer a read-only fresh-verifier explorer when
-the environment and user authorization support it. A fresh-verifier explorer
-checks the approved scope against the diff, validation evidence, ADR/TSR and
-support-agent impact, claim wording, and hidden out-of-scope work. It reports
-findings only; it does not edit.
+For high-risk Non-trivial work, use a read-only fresh-verifier explorer when
+the environment supports independent agents and the user has not explicitly
+prohibited independent-agent use. A fresh-verifier explorer checks the approved
+scope against the diff, validation evidence, ADR/TSR and support-agent impact,
+claim wording, and hidden out-of-scope work. It reports findings only; it does
+not edit.
 
 Final validation remains lead-owned. Avoid parallel full-suite validation in the
 same checkout unless validation is isolated by worktree and cache. If parallel
@@ -246,11 +275,14 @@ checklist, Codex guidance, or repo-managed skill, including:
 - `AGENTS.md`
 - `VALIDATION.md`
 - `docs/change-workflow.md`
+- `docs/templates/non-trivial-change-template.md`
 - `docs/review-checklist.md`
 - `docs/dev-runbook.md`
 - `docs/code-quality.md`
 - `docs/WORKING_WITH_CODEX.md`
 - `codex-skills/**/SKILL.md`
+- `codex-skills/**/agents/openai.yaml`
+- `codex-skills/README.md`
 
 Use `workflow-contract-audit` when available.
 
@@ -532,10 +564,10 @@ behavior, shared interfaces, retained state, concurrency/lifecycle, queues, hot
 paths, production-impacting fixes, and scientific/model behavior such as
 call-correction, path reliability, p50, propagation, or VOACAP semantics.
 
-Use a read-only fresh-verifier explorer only when the active environment and
-user authorization explicitly support parallel or delegated agent work.
-Otherwise, perform a fresh self-verification pass by resetting reviewer context
-and checking:
+Use a read-only fresh-verifier explorer when the active environment supports
+independent agents and the user has not explicitly prohibited independent-agent
+use. Otherwise, perform a fresh self-verification pass by resetting reviewer
+context and checking:
 
 - approved Scope Ledger items against the diff
 - contract, ADR/TSR, support-agent, and documentation impact

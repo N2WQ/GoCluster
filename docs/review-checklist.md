@@ -24,11 +24,12 @@ Required output:
 For high-risk Non-trivial work, perform a fresh verifier pass after the Review
 Pass and before final closeout.
 
-Use a read-only fresh-verifier explorer only when the active environment and
-user authorization support delegated or parallel agent work. Otherwise, perform
-a fresh self-verification pass by resetting reviewer context and re-checking
-the approved scope, current diff, evidence, validation lane, ADR/TSR impact,
-and claim wording.
+Use a read-only fresh-verifier explorer when the active environment supports
+independent agents and the user has not explicitly prohibited independent-agent
+use. Otherwise, perform a fresh self-verification pass by resetting reviewer
+context and re-checking the approved scope, current diff, evidence, validation
+lane, ADR/TSR impact, and claim wording. Report unsupported, prohibited,
+failed, or timed-out independent review as evidence status.
 
 The verifier pass must fail the closeout if implementation, validation,
 performance, scientific/model, or operator-facing claims are not supported by
@@ -38,6 +39,22 @@ data, runtime evidence, or decision records.
 Fresh-verifier explorer findings are evidence only. The lead agent owns the
 final Review Pass, integration of any fixes, validation claims, ADR/TSR
 handling, Scope-to-Code Traceability, and closeout wording.
+
+## Go Code Quality Review
+
+For Non-trivial Go implementation work, use an independent
+`go-code-quality-review` explorer after code is written and before final
+closeout when independent agents are supported and not explicitly prohibited.
+The explorer has its own context window and reviews the Go diff against the
+approved scope, code-quality rules, validation lane, comment intent, bounded
+state, lifecycle/resource ownership, anti-speculative implementation, and
+claim evidence.
+
+The Go quality explorer reports findings only. It must not edit, propose diffs,
+run formatters, create generated artifacts, or run broad/full validation
+suites. If the explorer is unsupported, prohibited, failed, or timed out, report
+that status in the Review Pass and Self-Audit; for high-risk Go work, treat it
+as a review/validation gap unless explicitly waived.
 
 Review focus:
 - correctness
@@ -64,6 +81,9 @@ Review focus:
 - documentation gaps
 - subagent assignments, if used, stayed within approved phase, write scope,
   allowed actions, and lead-owned disposition
+- independent pre-code and post-code explorers were used when supported and
+  not explicitly prohibited, or their unavailable/prohibited/failed/timed-out
+  status was reported
 - support-agent routing drift when operator docs or operator-visible behavior changed
 - new or materially changed support-critical Go entry/integration files have
   crawler-entry comments where package/file ownership, related docs/tests, or
@@ -95,7 +115,7 @@ After the Review Pass, produce a Self-Audit with pass/fail for each category bel
 - Concurrency, backpressure, and resource bounds
 - Leak-detection evidence
 - Fresh verification and claim evidence
-- Subagent use and lead ownership
+- Independent-agent/subagent use and lead ownership
 - Anti-speculative implementation guard
 - Verification and checker discipline
 - Documentation, decision memory, and traceability
