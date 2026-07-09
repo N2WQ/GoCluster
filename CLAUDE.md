@@ -65,6 +65,18 @@ When the user asks what existing code does and has not asked for changes:
   what should be inspected next
 - do not propose changes unless the user asks for changes
 
+## Skill Check
+
+- Before free-form Non-trivial work, check whether an applicable
+  `.claude/skills/*` audit clearly matches the task.
+- Emit exactly one skill marker: `Skill check: selected <skill>` or
+  `Skill check: none applicable`.
+- `.claude/skills/*` is the canonical gocluster Fable skill source; it does
+  not require or assume copied user-level skills.
+- Explanation-only work does not require a skill unless the user asks for
+  explanation, but feature work still requires targeted current-state
+  discovery before planning.
+
 ## Task Gates
 
 - Before every change, classify the task as Small or Non-trivial.
@@ -112,6 +124,15 @@ For Non-trivial work:
 - Independent agents are separate from the lead Fable agent with their own
   context window. Treat their output as evidence, not as a transfer of gate
   ownership — the lead agent always owns final disposition.
+- `fable-scope-adversary`, `fable-code-reviewer`, and `fable-fresh-verifier`
+  already are Fable's explorer-equivalent roles: read-only via tool grant
+  (no `Edit`/`Write`), with specialist behavior fused into each agent's own
+  prompt rather than layered separately — the same pattern Codex's
+  `explorer` type plus a repo-managed skill produces. Post-approval workers
+  are a different category: spawn them via the `general-purpose` agent type,
+  since none of the three read-only agents can write; brief them with the
+  same file-ownership, stopping-point, and targeted-checks detail
+  `docs/fable-workflow.md`'s Post-approval workers section requires.
 - Before `ExitPlanMode` approval, independent agents must be read-only:
   `fable-scope-adversary` challenges the plan; it must not edit files,
   propose diffs, or run mutating commands.

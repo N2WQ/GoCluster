@@ -106,7 +106,10 @@ Use `docs/templates/adr-template.md`.
 - Why an ADR was or was not required
 - Links
 
-Use `docs/templates/tsr-template.md`.
+Use `docs/troubleshooting/TSR-TEMPLATE.md` (not `docs/templates/tsr-template.md`,
+an unused legacy template — note the required-fields list above, including
+the `RCA Summary` sub-bullets, already matches `TSR-TEMPLATE.md` exactly,
+not the unused file).
 
 ## Immutability and supersession
 - Do not rewrite the history of accepted ADRs.

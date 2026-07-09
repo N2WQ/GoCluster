@@ -59,6 +59,11 @@ carries no workflow-marker vocabulary to translate.
    - Profile evidence: pprof/trace/goroutine/OS samples reviewed.
    - Runtime confirmation: comparable long-running or load/churn capture
      shows stable goroutine, heap, handle, socket, and queue trends.
+   - Command-backed evidence (local test, profile, or runtime confirmation)
+     must include the captured excerpt required by `docs/fable-review-
+     checklist.md`'s Verification Command Reporting. Do not convert a
+     static-only audit into a runtime-confirmed or profile-backed claim
+     without it.
 
 ## Output Expectations
 

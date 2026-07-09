@@ -24,6 +24,16 @@ Token efficiency changes reporting shape only. It does not reduce required
 discovery, approval, implementation discipline, validation, review, ADR
 handling, or traceability.
 
+Keep the workflow additive, not repetitive: later sections may reference
+earlier evidence instead of restating it; report each validation result once
+and reference it by section/row name afterward; use one-line `N/A - reason`
+entries for non-triggered areas. Full rigor means full work, not full prose.
+
+Missing required evidence is a workflow failure, not a style issue. If a
+required SELF-AUDIT row, plan field, or closeout section cannot be completed
+from inspected workspace evidence, stop and report what is missing — do not
+smooth it into a passing claim.
+
 ## Task classification
 
 ### Small
@@ -63,9 +73,19 @@ Minimum discovery:
 - user-visible/operator-visible output and HELP/docs surfaces
 - existing tests for the affected behavior
 - the mandatory decision-memory pre-read (see Decision-Memory Handling below)
+- when a relevant generated code map exists under `docs/code-maps/`, check
+  freshness, read it during discovery, and verify conclusions against
+  current source, tests, config, and ADRs before planning or editing —
+  generated maps are first-pass orientation, not proof of runtime behavior
 
 If a fact cannot be established from inspection, say `Unknown from inspected
 code` and name what should be inspected next.
+
+Do not claim runtime improvement from code shape alone. Do not claim
+scientific or model correctness from plausible reasoning alone. Path,
+call-correction, VOACAP, p50, propagation, and operator-diagnostic claims
+need the relevant model assumption, evidence source, and remaining
+uncertainty stated when they affect behavior or conclusions.
 
 ## Plan Mode approval mechanics
 
@@ -140,7 +160,11 @@ docs/support impact review, and adversarial review of the plan
 ### Post-approval workers
 
 After `ExitPlanMode` approval, worker subagents are allowed only for
-approved, disjoint implementation slices. Each worker assignment must name:
+approved, disjoint implementation slices. Spawn workers via the
+`general-purpose` agent type — none of the three read-only explorer-
+equivalent agents (`fable-scope-adversary`, `fable-code-reviewer`,
+`fable-fresh-verifier`) can write, so a worker is never one of those three.
+Each worker assignment must name:
 approved plan version, slice name/objective, base revision or integration
 point, allowed files/packages/docs, forbidden files/packages/docs,
 production-safe stopping point, targeted checks, expected output/changed
@@ -172,6 +196,12 @@ out, report that status. For high-risk Go work, missing independent review
 is a review/validation gap unless explicitly waived.
 
 ### Fresh-verifier explorer
+
+High-risk work includes config/schema/protocol/parser changes, user-visible
+or operator-visible behavior, shared interfaces, retained state,
+concurrency/lifecycle, queues, hot paths, production-impacting fixes, and
+scientific/model behavior such as call-correction, path reliability, p50,
+propagation, or VOACAP semantics.
 
 For high-risk Non-trivial work, use `fable-fresh-verifier` after the Review
 Pass and before final closeout when independent agents are supported and
@@ -254,6 +284,14 @@ Substantive ADR/TSR rules — required fields, full-ADR vs. stub criteria,
 immutability, index maintenance — are defined in `docs/decision-memory.md`
 and are shared with Codex; do not fork them.
 
+Use `docs/templates/adr-template.md` for new ADRs and `docs/troubleshooting/
+TSR-TEMPLATE.md` for new TSRs — these are the templates actually matched by
+current practice and by `scripts/check-troubleshooting-records.ps1`'s
+required `## RCA Summary` check. Two other files share similar names
+(`docs/decisions/ADR-TEMPLATE.md`, `docs/templates/tsr-template.md`) but are
+stale and unused; do not use them even though other shared docs may still
+cite them by mistake.
+
 Fable-specific integration: perform the mandatory pre-read (`docs/decision-
 log.md`, `docs/troubleshooting-log.md`, relevant ADRs/TSRs) during Current-
 State Discovery, before the plan is written. Every Non-trivial task ends
@@ -275,6 +313,31 @@ the local package. Otherwise use Full rigor and report:
 <list>`. Full rigor is also required whenever `.claude/skills/go-blast-
 radius-audit` is triggered — report its compact result before
 implementation.
+
+## Config contract audit
+
+Required when a task touches YAML files, config structs, config loaders,
+normalizers, runtime defaults, reference tables, operator settings, or
+optional tool/secret config. Config/schema changes require Full dependency
+rigor unless strictly local test fixture changes. Use
+`.claude/skills/go-config-contract-audit` for the full procedure; it must
+distinguish YAML-owned operator settings from validation constants,
+algorithm constants, compatibility boundaries, and test fixtures.
+
+## Go comment intent rigor
+
+Required when a task adds or edits support-critical Go, including runtime
+pipelines, telnet/user-facing behavior, retained state, caches, queues,
+timers, goroutine lifecycle, hot paths, logging/metrics/diagnostics,
+replay/profiling tools, exported/shared APIs, or code the support agent is
+likely to inspect. Use `docs/code-quality.md` (shared with Codex) as the
+source of truth for Go comment intent — its Go Comment Intent section
+already defines the required coverage. Run `scripts/check-go-crawler-entry-
+comments.ps1 -ChangedOnly -FailOnMissing` (shared with Codex) when adding or
+materially changing support-critical Go files. For comment-only Go changes,
+include a reviewer diff pass confirming the non-comment Go diff is empty.
+Score SELF-AUDIT row 6 (`Go crawler-entry audit`) `N/A` only when no
+support-critical Go file was added or materially changed.
 
 ## YAML documentation rigor
 
@@ -327,10 +390,20 @@ whether incremental or final.
 
 For every Non-trivial task, explicitly state `README impact: Required |
 Not required` and `Support-agent docs impact: Required | Not required`,
-each with one sentence of reasoning. Support-agent docs impact is Required
-whenever operator-visible behavior, user-facing commands, config surfaces,
-or troubleshooting behavior changes — see `customgpt/` for the shared
-routing layer.
+each with one sentence of reasoning.
+
+Support-agent docs impact is `Required` when a change adds, removes,
+renames, or materially changes any operator-support topic, including:
+operator-visible behavior or output; user-facing commands, HELP, filters,
+modes, EVENT families, glyphs, or diagnostics; YAML/config surfaces,
+defaults, sentinel values, or startup validation; logging, observability,
+troubleshooting, startup, service, or deployment behavior; source, ingest,
+peer, or connection behavior that support may be asked to explain.
+
+`customgpt/` is the shared routing layer with Codex. Updating it for
+Fable-specific routing is currently out of scope (see `ADR-0206`) — report
+`Support-agent docs impact: Required, deferred per ADR-0206` rather than
+silently marking it Not required when a trigger applies.
 
 ## Completion requirements
 

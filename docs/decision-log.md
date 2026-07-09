@@ -4,7 +4,9 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 ## How To Use
 
-- Create new ADRs in `docs/decisions/` using `ADR-TEMPLATE.md`.
+- Create new ADRs in `docs/decisions/` using `docs/templates/adr-template.md`
+  (not `docs/decisions/ADR-TEMPLATE.md`, an unused legacy template with a
+  different field shape).
 - Add one row per ADR to the table below.
 - Do not delete old ADR rows; mark status as `Superseded`/`Deprecated` when needed.
 
@@ -23,6 +25,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Reserved Placeholder | Unused | - | index hygiene | - | - | No ADR file; first real ADR is `docs/decisions/ADR-0002-ui-v2-render-pipeline.md` |
+| ADR-0208 | Fable Workflow Gap Corrections | Accepted | 2026-07-09 | workflow, Fable, decision-memory, skills | - | - | `docs/decisions/ADR-0208-fable-workflow-gap-corrections.md` |
 | ADR-0207 | NEARBY Effective Fast Dedupe | Accepted | 2026-07-09 | telnet, dedupe, filters, diagnostics, supportability | - | - | `docs/decisions/ADR-0207-nearby-effective-fast-dedupe.md` |
 | ADR-0206 | Fable-Native Workflow Contract Architecture | Accepted | 2026-07-09 | workflow, Fable, Claude Code, validation, review, skills | - | - | `docs/decisions/ADR-0206-fable-native-workflow-contract-architecture.md` |
 | ADR-0205 | Subagent Authorization State | Accepted | 2026-07-09 | workflow, Codex, validation, review | ADR-0202 default-on independent-agent behavior | - | `docs/decisions/ADR-0205-subagent-authorization-state.md` |
