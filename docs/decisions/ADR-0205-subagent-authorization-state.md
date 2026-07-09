@@ -105,7 +105,7 @@ When authorization exists, keep the role requirements from ADR-0202:
   `codex-skills/go-code-quality-review/SKILL.md`,
   `customgpt/source-map.md`, `customgpt/developer-guide-index.md`,
   `customgpt/common-questions.md`
-- Related ADRs: ADR-0199, ADR-0202, ADR-0203, ADR-0204
+- Related ADRs: ADR-0199, ADR-0202, ADR-0203, ADR-0204, ADR-0206
 - Related TSRs: none
 - Supersedes / superseded by: clarifies ADR-0202 default-on independent-agent
   behavior with ADR-0199's authorization prerequisite

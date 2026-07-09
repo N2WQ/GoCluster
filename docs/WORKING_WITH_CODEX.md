@@ -1,9 +1,13 @@
 # Working with Codex in `gocluster`
 
-Audience: the human operator working with Codex. For Codex's executor-facing rules, use `AGENTS.md`.
+Audience: the human operator working with Codex. For Codex's executor-facing
+rules, use `AGENTS.md`. For Claude-based agents ("Fable"), use `CLAUDE.md` —
+a parallel contract, not a pointer to this one.
 
-`AGENTS.md` is the repo's executor contract. `CLAUDE.md` should not be treated
-as a second competing workflow source for this repository.
+`AGENTS.md` is Codex's executor contract; `CLAUDE.md` is Fable's. Both govern
+this repository and share the same codebase-level standards. They are not
+competing sources for the same executor, and neither should be merged into
+the other.
 
 Use two layers:
 

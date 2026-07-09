@@ -38,7 +38,9 @@ cmd/rbn_backtest/data/
 cmd/daily_analysis/.env
 data/config.local/
 data/config/openai.yaml
-.claude/
+.claude/*
+!.claude/agents/
+!.claude/skills/
 .vscode/
 NUL
 data/cty/cty.plist.status.json
