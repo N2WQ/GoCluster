@@ -22,6 +22,20 @@ skill installation.
   Map. It cannot prove that conversational approval occurred.
 - `test-workflow-contract.ps1` runs positive and negative temporary fixtures
   against the workflow-contract checker.
+- `run-workflow-eval.ps1` validates, plans, captures, and aggregates the bounded
+  Codex workflow evaluation in `docs/workflow-eval-cases.json`. Live actions
+  require `-AllowLiveCalls`, immutable external templates, and a sentinel-owned
+  output root. Each invocation uses a fresh disposable clone and retains full
+  JSONL, stderr, message, token, tool, and mutation evidence outside the repo.
+  The 38 single-turn runs are ephemeral. E10 uses six persistent Codex sessions
+  so the exact approval is a separate user turn; those sessions remain in the
+  user's normal Codex history and can retain prompts, repository excerpts, tool
+  output, or sensitive content before output scanning detects it. The runner
+  does not read, copy, edit, or delete Codex authentication or session stores.
+- `test-workflow-eval.ps1` checks manifest and generated-Markdown parity,
+  full-stream parsing, token math, malformed/missing/duplicate JSONL events,
+  unsafe paths, bounded planning, and sentinel enforcement without invoking a
+  model.
 - `check-yaml-doc-rigor.ps1` checks first-party runtime YAML headers and
   comment-only YAML scope.
 - `check-go-crawler-entry-comments.ps1` checks changed support-critical Go files
