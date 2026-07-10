@@ -1,7 +1,11 @@
 # docs/templates/non-trivial-change-template.md
 
-Use this exact Codex evidence-ledger shape for Non-trivial tasks unless the
+Use this exact Codex evidence-ledger shape for Non-trivial changes unless the
 user explicitly requests a different reporting shape.
+
+This template applies only to Non-trivial changes. Read-only explanation,
+review, audit, diagnosis, prioritization, and requested recommendations follow
+the read-only route in `AGENTS.md` and `docs/change-workflow.md`.
 
 The ledger is strict but compact. Token efficiency changes reporting shape only;
 it does not reduce required discovery, approval, dependency rigor, validation,
@@ -17,17 +21,19 @@ restating unchanged facts.
 ## Phase A: Approval Packet
 
 ### GATE
-- Skill check: selected <skill> | none applicable
+- Skill marker: emit exactly one of these standalone lines for this assistant turn:
+  - Skill check: selected <skill>
+  - Skill check: none applicable
 - Classification: Non-trivial
 - Ledger status: Approved vN found: no
-- Independent-agent status: supported, authorized, and not prohibited |
-  unsupported | not authorized/not requested | explicitly prohibited |
-  failed/timed out - <details>
-- Pre-approval independent agents: scope-ledger-adversarial-review used |
-  unsupported/not authorized/not requested/prohibited/failed/timed out -
-  <evidence status>; parallel-discovery explorers, scientific-model-oracle,
-  requirements-ambiguity-review, design-challenger, or other read-only
-  explorers - <trigger/status, purpose, allowed actions, lead disposition>
+- Independent-agent status: completed | unsupported |
+  not authorized/not requested | explicitly prohibited | failed | timed out |
+  inconclusive
+- Independent-agent detail: <none | context, failure, or timeout detail>
+- Independent-agent role outcome: used | N/A
+- Waiver disposition: none | <scope, owner, mitigation, expiry>
+- Pre-approval independent agents: <role; status; detail; purpose; allowed
+  actions; lead disposition>
 
 ### DISCOVERY
 - entrypoints/surfaces:
@@ -35,17 +41,18 @@ restating unchanged facts.
 - persisted/config/archive/schema:
 - user-visible/help/docs:
 - existing tests:
-- independent-agent evidence: <none | agent role/purpose/findings used as
-  evidence | unsupported/not authorized/not requested/prohibited/failed/timed
-  out - status>
+- independent-agent evidence: <none | role; canonical status; detail; purpose;
+  findings used as evidence; lead disposition>
 - parallel-discovery evidence: <N/A - reason | shared revision/worktree;
   bounded lanes; inspected evidence; conflicts/failures; lead synthesis>
-- scientific-model-oracle: <N/A - reason | used/status; model-contract sheet;
-  normative conflicts/unknowns; lead disposition>
-- requirements-ambiguity-review: <N/A - reason | used/status; ambiguity
-  register; resolved/delegated/blocking items; lead disposition>
-- design-challenger: <N/A - reason | used/status; context-isolation status;
-  alternatives; selected/rejected reasoning; lead disposition>
+- scientific-model-oracle: <N/A - reason | canonical status; detail; role
+  outcome; model-contract sheet; normative conflicts/unknowns; lead disposition>
+- requirements-ambiguity-review: <N/A - reason | canonical status; detail;
+  role outcome; ambiguity register; resolved/delegated/blocking items; lead
+  disposition>
+- design-challenger: <N/A - reason | canonical status; detail; role outcome;
+  context-isolation evidence; alternatives; selected/rejected reasoning; lead
+  disposition>
 - unknowns:
 
 ### SCOPE
@@ -53,6 +60,11 @@ restating unchanged facts.
 - Objective:
 - In scope:
   - [Agreed|Pending|Rejected|Deferred] item
+- Status authority:
+  - `Agreed`: fully specified, approval-eligible, executable, and traceable
+  - `Pending`: unresolved; blocks presentation or use of the approval token
+  - `Rejected`: explicitly excluded
+  - `Deferred`: excluded from the current implementation cycle
 - Out of scope:
 - Slice plan:
   - slice:
@@ -66,15 +78,17 @@ restating unchanged facts.
 
 ### SCOPE ADVERSARIAL REVIEW
 - question: What edge case would make this scope unsafe or incomplete?
-- scope-ledger-adversarial-review: used - <findings and lead disposition> |
-  unsupported/not authorized/not requested/prohibited/failed/timed out -
-  <evidence status and lead disposition>
+- scope-ledger-adversarial-review: <canonical status; detail; role outcome;
+  findings; evidence gap/waiver; lead disposition>
 - applicable edge areas:
 - gaps found: none | <items>
 - disposition: nothing material found | revise ledger to v<N+1>
 
 If material gaps are found, do not present the approval token for the current
 version. Produce the revised Scope Ledger and repeat this review.
+
+Do not present the approval token while any item or implementation slice is
+`Pending`.
 
 Stop here and wait for the exact approval token:
 `Approved vN`
@@ -87,13 +101,18 @@ that approval.
 ## Phase B: Execution Ledger
 
 ### GATE
-- Skill check: selected <skill> | none applicable
+- Skill marker: emit exactly one of these standalone lines for this assistant turn:
+  - Skill check: selected <skill>
+  - Skill check: none applicable
 - Classification: Non-trivial
 - Ledger status: Approved vN found: yes
 - Approved scope version:
-- Independent-agent status: supported, authorized, and not prohibited |
-  unsupported | not authorized/not requested | explicitly prohibited |
-  failed/timed out - <details>
+- Independent-agent status: completed | unsupported |
+  not authorized/not requested | explicitly prohibited | failed | timed out |
+  inconclusive
+- Independent-agent detail: <none | context, failure, or timeout detail>
+- Independent-agent role outcome: used | N/A
+- Waiver disposition: none | <scope, owner, mitigation, expiry>
 - Independent-agent phase/use: none | parallel-discovery explorer |
   scientific-model-oracle | requirements-ambiguity-review |
   design-challenger | post-approval worker | test-strategy-adversary |
@@ -129,11 +148,12 @@ that approval.
 - Support-agent docs impact: Required | Not required - <one sentence>
 - ADR/TSR pre-read: <relevant refs | No relevant ADR found; No relevant TSR found>
 - claim evidence plan: <how progress/validation/performance/science claims will be grounded | N/A - reason>
-- validation lane: documentation-only Markdown | workflow/skill-doc |
+- validation lane selected from touched surface, not task size:
+  documentation-only Markdown | workflow/skill-doc |
   code/mixed/runtime-contract | other - <reason>
-- test-strategy-adversary: <N/A - reason | used/status; contract-to-test
-  matrix; false-green risks; findings and lead disposition; repeated-pass
-  status>
+- test-strategy-adversary: <N/A - reason | canonical status; detail; role
+  outcome; contract-to-test matrix; false-green risks; findings and lead
+  disposition; repeated-pass status>
 - checker plan:
 
 ### IMPLEMENTATION
@@ -155,11 +175,10 @@ For each slice:
 - findings by severity:
 - confirmed fixes:
 - rerun checks:
-- go-code-quality-review: used - <findings and lead disposition> |
-  N/A - no Go implementation |
-  unsupported/not authorized/not requested/prohibited/failed/timed out -
-  <evidence status and lead disposition>
-- fresh verifier pass: <fresh-verifier explorer | fresh self-verification | N/A - reason>
+- go-code-quality-review: <canonical status; detail; role outcome; findings;
+  evidence gap/waiver; lead disposition | N/A - no Go implementation>
+- fresh verifier pass: <canonical status; detail; role outcome; findings;
+  evidence gap/waiver; lead disposition | N/A - reason>
 - subagent lead verification: PASS|FAIL|N/A - note
 - verification command evidence: <captured excerpts required by
   `docs/review-checklist.md` Verification command reporting | N/A - reason>
@@ -178,8 +197,9 @@ Use the canonical SA1-SA15 mapping in `docs/review-checklist.md`.
 
 Classify every SA1-SA15 ID exactly once. The manifest replaces individual
 `N/A` rows; missing, unknown, or duplicate IDs fail the Self-Audit. Applicable
-IDs require results. Required independent evidence that is unsupported, not
-authorized/not requested, prohibited, failed, timed out, missing, or stale is a
+IDs require results. Required independent evidence whose canonical status is
+unsupported, not authorized/not requested, explicitly prohibited, failed,
+timed out, or inconclusive, or that is missing or stale, is a
 `FAIL` or explicit gap/waiver, not an omission. SA7 and SA8 reference `REVIEW`
 verification command evidence when command-backed. The lead owns every final
 disposition.
@@ -202,7 +222,7 @@ disposition.
 - Decision refs:
 
 ### TRACEABILITY
-For every Scope Ledger item that was `Agreed` or `Pending` at the start of implementation:
+For every Scope Ledger item that was `Agreed` at the start of implementation:
 - ledger item:
 - locations:
 - tests/checks:

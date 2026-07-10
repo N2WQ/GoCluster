@@ -3,7 +3,8 @@
 This document is written for Codex. When `AGENTS.md` sends you here, read the
 applicable sections before code.
 
-It defines the full workflow for Non-trivial tasks and the deeper rules behind `AGENTS.md`.
+It defines the full workflow for read-only work and Non-trivial changes, plus
+the deeper rules behind `AGENTS.md`.
 
 ## Core principle
 For Non-trivial work, do not go directly from idea to code. Move through:
@@ -18,15 +19,18 @@ Token efficiency changes reporting shape only. It does not reduce required
 discovery, approval, implementation discipline, validation, review, ADR
 handling, or traceability.
 
-Validation is proportional to the touched surface. Documentation-only Markdown
-changes have their own validation lane: use documentation review, targeted text
-checks, and whitespace/diff checks instead of Go code validation, unless the
-change also touches code, runtime config, generated artifacts, scripts, CI,
-schemas, protocol/runtime contracts, or checked-in data consumed by the
-runtime.
-Workflow or repo-managed skill documentation changes that also touch skill
-metadata YAML use the workflow/skill-doc lane in `docs/dev-runbook.md`; do not
-mislabel them as documentation-only Markdown.
+Task classification controls approval rigor; touched surface controls
+validation. Select the lane in this order:
+1. code, runtime config, generated artifacts, scripts, CI, schemas,
+   protocol/runtime contracts, or runtime-consumed data use their applicable
+   code/config/script/mixed lane
+2. workflow contracts, executor guidance, runbooks, rubrics, templates, and
+   repo-managed skills use the workflow/skill-doc lane, even when Markdown-only
+3. other all-Markdown documentation uses the documentation-only Markdown lane
+
+Structured workflow metadata adds metadata/body and verifier checks within the
+workflow/skill-doc lane; it does not select task size or make runtime-YAML
+header rules applicable.
 
 Keep the workflow additive, not repetitive:
 - later sections may reference earlier evidence instead of restating it
@@ -63,6 +67,30 @@ When using the Codex VS Code extension:
 - If Auto Context is available and on, still name the critical files explicitly in your analysis so the user can verify you are looking in the right place.
 
 ## Task classification
+### Read-only review/audit
+Use this route when the user requests non-mutating explanation, review, audit,
+diagnosis, prioritization, or recommendations. It is separate from Small and
+Non-trivial change classification.
+
+Required evidence remains proportional to the question:
+- inspect current source and authoritative documents before claiming behavior
+- follow material caller/callee or cross-document routes where relevant
+- separate confirmed facts, assumptions, proposals, and unknowns
+- ground material claims in current-session evidence
+- use bounded read-only independent explorers for broad multi-domain audits
+  when the normal trigger applies
+
+Do not edit files, propose diffs, run formatters, generate artifacts, use
+implementation workers, or run broad/full validation merely to simulate a
+change closeout. Read-only work does not use a Scope Ledger, `Approved vN`,
+change-only evidence markers, a change-validation lane, Scope-to-Code
+Traceability, or the Non-trivial validation score.
+
+Findings, priorities, and requested recommendations are evidence, not latent
+approved scope. If the conversation transitions to implementation, stop before
+the first mutation or proposed diff, classify the change as Small or
+Non-trivial, and enter the applicable approval gate.
+
 ### Small
 A task is Small only if it is tightly localized and does not change contracts, concurrency/lifecycle, operational behavior, or shared interfaces.
 
@@ -87,11 +115,21 @@ For Non-trivial changes:
 - record `Ledger status: Approved vN found: yes/no`
 - do not treat discussion, "please implement", "go ahead", or any non-exact wording as approval
 - every scope change after approval requires a new ledger version
+- only `Agreed` items and slices are approval-eligible, executable, and
+  traceable
+- `Pending` means unresolved and blocks presentation or use of the approval
+  token; resolve it to `Agreed`, `Rejected`, or `Deferred` first
+- `Rejected` is explicitly excluded and `Deferred` is excluded from the
+  current implementation cycle
 - broad refactor-shaped Scope Ledger items are not approval-ready; split them
   into independently coded, tested, and reviewed slices before presenting the
   approval token
 - before showing the approval token, perform `SCOPE ADVERSARIAL REVIEW`; if it
   finds a material gap, revise the Scope Ledger version and repeat the review
+
+If a `Pending`, `Rejected`, or `Deferred` item becomes necessary after
+approval, stop, create a new ledger version, repeat `SCOPE ADVERSARIAL REVIEW`,
+and obtain exact reapproval before implementation.
 
 ### Current-State Discovery before Scope Ledger
 Before proposing or confirming a Non-trivial Scope Ledger, perform a targeted
@@ -170,9 +208,13 @@ failure modes, compatibility/migration effects, validation obligations, user
 choices, and rejection reasons. It does not choose product policy, approve
 scope, or replace `scope-ledger-adversarial-review`.
 
-Report used, unsupported, not authorized/not requested, prohibited, failed,
-timed-out, or inconclusive status for each triggered role. A lead-only fallback
-must not be labeled independent evidence.
+Report one canonical independent-agent status for each triggered role:
+`completed`, `unsupported`, `not authorized/not requested`, `explicitly
+prohibited`, `failed`, `timed out`, or `inconclusive`. Record `used` only as a
+role outcome when status is `completed`; record `waived` separately as a
+disposition; put contamination, missing-context, failure, or timeout explanation
+in a detail field. A lead-only fallback must not be labeled independent
+evidence.
 
 ### Progress and claim evidence
 Before progress updates, implementation summaries, closeout claims, or
@@ -656,6 +698,8 @@ Documentation-only Markdown lane:
 - eligible only when the diff changes Markdown documentation and no code,
   runtime config, generated artifact, script, CI, schema, protocol/runtime
   contract, or runtime-consumed data
+- excludes workflow contracts, executor guidance, runbooks, rubrics,
+  templates, and repo-managed skills, which use the workflow/skill-doc lane
 - minimum checks are targeted text checks for the changed workflow/domain terms,
   reviewer diff pass, and `git diff --check`
 - add repository-specific documentation checks only when they apply, such as
@@ -664,8 +708,8 @@ Documentation-only Markdown lane:
 
 Workflow/skill-doc lane:
 - use when workflow contracts, validation rules, runbooks, review checklists,
-  templates, Codex guidance, or repo-managed skills change, especially when the
-  diff includes repo skill metadata YAML such as
+  templates, executor guidance, or repo-managed skills change, including
+  Markdown-only changes and repo skill metadata YAML such as
   `codex-skills/**/agents/openai.yaml`
 - minimum checks are targeted text checks for the changed workflow terms,
   workflow-drift audit, reviewer diff pass, and `git diff --check`
@@ -751,7 +795,7 @@ Review and update when applicable:
 - ADR/TSR records
 - test names and descriptions for operator-facing behavior
 
-For every Non-trivial task, explicitly say:
+For every Non-trivial change, explicitly say:
 - `README impact: Required`
 - or `README impact: Not required`
 with one sentence of reasoning
@@ -791,7 +835,7 @@ Required rigor does not imply a long narrative. Reuse earlier evidence by
 reference where possible.
 
 ## Decision-memory requirement
-Every Non-trivial task requires ADR handling:
+Every Non-trivial change requires ADR handling:
 - full ADR when a durable decision changed
 - lightweight ADR stub when no durable decision changed
 
@@ -811,7 +855,7 @@ agent-memory maintenance. Runtime, protocol, config, operational, scientific,
 or troubleshooting decisions still require the normal ADR/TSR path.
 
 ## Completion requirements
-A Non-trivial task is not complete until:
+A Non-trivial change is not complete until:
 - the approved code or documentation change is implemented
 - checks are run
 - Review Pass is done

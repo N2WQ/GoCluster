@@ -14,6 +14,13 @@ Use two layers:
 - Use planning conversation to settle intent, scope, risks, and edge cases.
 - Use `AGENTS.md` as the compact execution contract once you want implementation to start.
 
+Non-mutating explanation, review, audit, diagnosis, prioritization, and
+requested recommendations use the read-only route. They still require current
+source and honest evidence, but they do not require a Scope Ledger, approval
+token, implementation ledger, or change-validation score. If you later ask for
+implementation, Codex must stop and enter the Small or Non-trivial change gate
+before editing or proposing a diff.
+
 `AGENTS.md` intentionally stays compact so it can be kept in context. Its
 Document Map points to the detailed workflow, code-quality, validation, review,
 decision-memory, and command rules. Compact does not mean optional: Codex must
@@ -101,6 +108,10 @@ a `Slice plan` whose slices are small enough to code, test, and review
 independently before the next slice starts.
 
 No code, diffs, or full validation should happen before that approval.
+Only `Agreed` items are approved for implementation. `Pending` blocks the
+approval token; `Rejected` and `Deferred` stay outside the implementation
+cycle. A later need for one of those items requires a revised ledger and exact
+reapproval.
 Before that ledger, Codex should inspect the relevant current code path so the scope is grounded in actual entry points, state, tests, and user-visible behavior.
 The proposed ledger should also include a `Reasoning budget` recommendation.
 Use it as Codex's target reasoning-level suggestion for the next execution turn;
@@ -167,9 +178,8 @@ than independent.
 For Non-trivial Scope Ledgers, expect Codex to use an independent
 `scope-ledger-adversarial-review` explorer before presenting the approval token
 when independent agents are supported, authorized, and not explicitly
-prohibited. If the explorer is unsupported, not authorized/not requested,
-fails, times out, or you prohibit independent agents, Codex should say that
-directly.
+prohibited. Codex should record one canonical independent-agent status, a
+separate explanatory detail, and any separate waiver disposition.
 
 After `Approved vN`, worker subagents should be used only for approved,
 disjoint slices. A worker assignment should name the approved version, slice,
@@ -223,12 +233,14 @@ instead of repasting command excerpts, and the final `VALIDATION` marker should
 remain the exact three-line block.
 
 For workflow or repo-managed skill documentation changes, use the
-workflow/skill-doc lane in `docs/dev-runbook.md`; do not call a diff
-Markdown-only when it also changes repo skill metadata YAML.
+workflow/skill-doc lane in `docs/dev-runbook.md`, even when every changed file
+is Markdown. Structured workflow metadata adds metadata-specific checks. Task
+size controls approval; touched surface controls validation commands.
 
 Recurring model or workflow lessons belong in `docs/agent-lessons/README.md`
 only when the approved scope includes that maintenance. Those lessons are
 operational memory for future agents, not replacements for ADRs, TSRs, tests, or
 runtime contracts.
 
-If you only want explanation or review of existing code, say that explicitly and keep the request non-mutating.
+If you only want explanation, review, audit, diagnosis, prioritization, or
+recommendations, say that explicitly and keep the request non-mutating.

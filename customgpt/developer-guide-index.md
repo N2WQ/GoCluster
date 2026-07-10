@@ -47,11 +47,20 @@ workflow rules.
 
 ## Workflow
 
+- Non-mutating explanation, review, audit, diagnosis, prioritization, and
+  requested recommendations use the read-only route in
+  [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md)
+  and [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md).
+  Findings are not approved implementation scope; a later mutation enters the
+  Small or Non-trivial change gate before editing.
 - Small vs Non-trivial classification is owned by [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md) and
   [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md).
-- Non-trivial work requires a Scope Ledger and exact `Approved vN` before code.
+- Non-trivial changes require a Scope Ledger and exact `Approved vN` before code.
 - Non-trivial Scope Ledgers must be slice-shaped; broad refactor-shaped ledgers
   are not approval-ready.
+- Only `Agreed` Scope Ledger items are approval-eligible and executable.
+  `Pending` blocks approval; `Rejected` and `Deferred` remain outside the
+  implementation cycle.
 - Config, protocol, parser, concurrency, queue, retained-state, hot-path, or
   operator-visible changes are normally Non-trivial.
 - Independent agents should be used by default under the repo owner's standing
@@ -68,6 +77,9 @@ workflow rules.
   integration, final SELF-AUDIT disposition, validation claims, and closeout.
 - Workflow-doc or repo-managed skill edits require the workflow-drift audit in
   [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md).
+- Task size controls approval rigor; touched surface controls validation.
+  Workflow/guidance/skill changes use the workflow/skill-doc lane, while other
+  all-Markdown documentation uses the documentation-only lane.
 
 ## Audits And Risk Areas
 

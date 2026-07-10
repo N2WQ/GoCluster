@@ -27,11 +27,9 @@ execution, validation claims, and disposition with the lead.
 4. Provide the approved ledger, detailed design, normative contracts, relevant
    ADRs/TSRs, oracle and ambiguity results, current tests, and proposed checker
    plan. Do not provide a completed implementation or intended test answers.
-5. Mark ordinary self-review as `inconclusive - no independent context`; do
-   not count it as the required independent pass. Report the agent status
-   accurately as `completed`, `unsupported`, `not authorized/not requested`,
-   `explicitly prohibited`, `failed`, `timed out`, or
-   `inconclusive - no independent context`.
+5. Mark ordinary self-review status `inconclusive`, put `no independent
+   context` in the status detail, and do not count it as the required
+   independent pass.
 
 Do not edit files, write tests, propose diffs, format files, generate artifacts,
 or run final or broad validation suites.
@@ -86,7 +84,14 @@ and the matrix is adequate. Require another independent pass after material
 matrix changes. Checker-only details may update `DESIGN`, but must not smuggle
 new behavior into the approved scope.
 
-Return a compact `Test strategy adversarial review` with agent status, evidence
-inspected, the matrix, findings, unknowns, and required lead actions. Do not
+Return a compact `Test strategy adversarial review` with:
+
+- Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive
+- Status detail: none | no independent context | <failure or timeout detail>
+- Role outcome: used when status is completed | N/A
+- Waiver disposition: none | <scope, owner, mitigation, expiry>
+- evidence inspected, the matrix, findings, unknowns, and required lead actions.
+
+Do not
 write the tests, execute final validation, review implementation quality, or
 replace the post-implementation code-quality reviewer or fresh verifier.

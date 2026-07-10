@@ -49,12 +49,23 @@ try {
     "docs/review-checklist.md",
     "docs/dev-runbook.md",
     "docs/WORKING_WITH_CODEX.md",
+    "docs/workflow-eval-cases.md",
     "docs/domain-contract.md",
     "docs/decision-memory.md",
     "docs/agent-lessons/README.md",
     "docs/templates/non-trivial-change-template.md",
     "docs/templates/adr-template.md",
-    "docs/troubleshooting/TSR-TEMPLATE.md"
+    "docs/troubleshooting/TSR-TEMPLATE.md",
+    "scripts/README.md",
+    "customgpt/developer-guide-index.md",
+    "customgpt/source-map.md",
+    "customgpt/common-questions.md",
+    "codex-skills/requirements-ambiguity-review/SKILL.md",
+    "codex-skills/scientific-model-oracle/SKILL.md",
+    "codex-skills/design-challenger/SKILL.md",
+    "codex-skills/test-strategy-adversary/SKILL.md",
+    "codex-skills/go-code-quality-review/SKILL.md",
+    "codex-skills/scope-ledger-adversarial-review/SKILL.md"
   )
   foreach ($file in $requiredFiles) {
     Copy-RepoFile $file
@@ -88,6 +99,65 @@ try {
   $originalAgents = Get-Content -LiteralPath $agentsPath -Raw
   Set-Content -LiteralPath $agentsPath -Value ($originalAgents.Replace("test-strategy-adversary", "REMOVED_TEST_STRATEGY_ROLE")) -NoNewline
   Invoke-Checker 1 "missing pre-code role routing"
+
+  Set-Content -LiteralPath $agentsPath -Value ($originalAgents.Replace("## Read-only Review/Audit Mode", "## REMOVED Read-only Review/Audit Mode")) -NoNewline
+  Invoke-Checker 1 "missing read-only route"
+
+  Set-Content -LiteralPath $agentsPath -Value ($originalAgents.Replace("Before any later mutation or proposed diff,", "Before an unspecified later action,")) -NoNewline
+  Invoke-Checker 1 "missing read-only transition boundary"
+
+  Set-Content -LiteralPath $agentsPath -Value $originalAgents -NoNewline
+
+  $runbookPath = Join-Path $fixtureRoot "docs/dev-runbook.md"
+  $originalRunbook = Get-Content -LiteralPath $runbookPath -Raw
+  Set-Content -LiteralPath $runbookPath -Value ($originalRunbook.Replace("### Small code change", "### Small change")) -NoNewline
+  Invoke-Checker 1 "Small commands are not scoped to code"
+
+  Set-Content -LiteralPath $runbookPath -Value ($originalRunbook.Replace("Workflow contracts, executor guidance, runbooks, rubrics, templates, and", "Some workflow documents and")) -NoNewline
+  Invoke-Checker 1 "workflow Markdown lane precedence removed"
+
+  Set-Content -LiteralPath $runbookPath -Value ($originalRunbook.Replace("### Script-only change", "### Unspecified change")) -NoNewline
+  Invoke-Checker 1 "script-only lane removed"
+
+  Set-Content -LiteralPath $runbookPath -Value ($originalRunbook.Replace("Do not infer Go validation from the script extension or from a script that merely checks", "Infer Go validation from every changed script and workflow checker")) -NoNewline
+  Invoke-Checker 1 "script-only lane incorrectly infers Go validation"
+
+  Set-Content -LiteralPath $runbookPath -Value $originalRunbook -NoNewline
+
+  Set-Content -LiteralPath $templatePath -Value ($originalTemplate.Replace("Do not present the approval token while any item or implementation slice is", "The approval token may be presented while an item is")) -NoNewline
+  Invoke-Checker 1 "Pending blocks approval"
+
+  Set-Content -LiteralPath $templatePath -Value ($originalTemplate.Replace("For every Scope Ledger item that was ``Agreed`` at the start of implementation:", "For every Scope Ledger item that was ``Agreed`` or ``Pending`` at the start of implementation:")) -NoNewline
+  Invoke-Checker 1 "traceability is Agreed-only"
+
+  Set-Content -LiteralPath $templatePath -Value $originalTemplate -NoNewline
+
+  Set-Content -LiteralPath $templatePath -Value ($originalTemplate.Replace("  - Skill check: selected <skill>", "  - Skill check: selected <skill>`n  - Skill check: selected <skill>")) -NoNewline
+  Invoke-Checker 1 "duplicate standalone skill marker field"
+
+  Set-Content -LiteralPath $templatePath -Value $originalTemplate -NoNewline
+
+  Set-Content -LiteralPath $templatePath -Value ($originalTemplate.Replace("failed | timed out |", "failed/timed out |")) -NoNewline
+  Invoke-Checker 1 "combined template status alias rejected"
+
+  Set-Content -LiteralPath $templatePath -Value $originalTemplate -NoNewline
+
+  $canonicalStatus = "- Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive"
+  $statusMutations = @(
+    @{ Path = "codex-skills/requirements-ambiguity-review/SKILL.md"; Replacement = "- Agent status: used | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive"; Label = "used is not an agent status" },
+    @{ Path = "codex-skills/scientific-model-oracle/SKILL.md"; Replacement = "- Agent status: independent | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive"; Label = "independent is not an agent status" },
+    @{ Path = "codex-skills/design-challenger/SKILL.md"; Replacement = "- Agent status: completed | unsupported | not authorized/not requested | prohibited | failed | timed out | inconclusive"; Label = "prohibited alias rejected" },
+    @{ Path = "codex-skills/test-strategy-adversary/SKILL.md"; Replacement = "- Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed-out | inconclusive"; Label = "timed-out alias rejected" },
+    @{ Path = "codex-skills/go-code-quality-review/SKILL.md"; Replacement = "- Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed/timed out | inconclusive"; Label = "combined failure alias rejected" },
+    @{ Path = "codex-skills/scope-ledger-adversarial-review/SKILL.md"; Replacement = "- Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive - no independent context"; Label = "status reason must be separate" }
+  )
+  foreach ($mutation in $statusMutations) {
+    $skillPath = Join-Path $fixtureRoot $mutation.Path
+    $originalSkill = Get-Content -LiteralPath $skillPath -Raw
+    Set-Content -LiteralPath $skillPath -Value ($originalSkill.Replace($canonicalStatus, $mutation.Replacement)) -NoNewline
+    Invoke-Checker 1 $mutation.Label
+    Set-Content -LiteralPath $skillPath -Value $originalSkill -NoNewline
+  }
 
   & $engine -NoProfile -File $checker -RepoRoot $repoRoot
   if ($LASTEXITCODE -ne 0) {

@@ -55,14 +55,17 @@ agent context; it does not transfer gate ownership away from the lead agent.
 
 6. Report only findings and evidence.
    - Name inspected files, commands, and unknowns.
-   - State whether the review used an independent agent with a separate context
-     window, was unsupported, not authorized/not requested, prohibited, failed,
-     or timed out.
+   - Report the canonical agent status and separate status detail, role
+     outcome, and waiver disposition.
    - The lead agent must disposition findings and owns the official
      `SCOPE ADVERSARIAL REVIEW`.
 
 ## Output Expectations
 
+- Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive
+- Status detail: none | no independent context | <failure or timeout detail>
+- Role outcome: used when status is completed | N/A
+- Waiver disposition: none | <scope, owner, mitigation, expiry>
 - Include a compact `Scope adversarial review` result.
 - Lead disposition must be explicit for every material finding.
 - If the independent review is unsupported, not authorized/not requested,

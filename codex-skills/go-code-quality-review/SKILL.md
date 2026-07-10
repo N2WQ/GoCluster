@@ -91,11 +91,15 @@ fresh-verification evidence before that evidence exists.
    - Include file paths and line references when inspected.
    - Separate material findings, non-blocking observations, and remaining
      unknowns.
-   - State whether the independent review used a separate context window, was
-     unsupported, not authorized/not requested, prohibited, failed, or timed
-     out.
+   - Report the canonical agent status and separate status detail, role
+     outcome, and waiver disposition.
 
 ## Output Expectations
+
+- Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive
+- Status detail: none | no independent context | <failure or timeout detail>
+- Role outcome: used when status is completed | N/A
+- Waiver disposition: none | <scope, owner, mitigation, expiry>
 
 - Include a compact `Go code quality review` result.
 - Include a compact `SELF-AUDIT evidence` section for applicable rows inspected

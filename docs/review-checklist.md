@@ -1,8 +1,18 @@
 # docs/review-checklist.md
 
-This document defines the mandatory review posture for Non-trivial Codex tasks.
+This document defines review posture for read-only Codex work and the mandatory
+Review Pass for Non-trivial changes.
 The compact output shape is owned by
 `docs/templates/non-trivial-change-template.md`.
+
+## Read-only Review/Audit Evidence
+For non-mutating explanation, review, audit, diagnosis, prioritization, or
+requested recommendations, report findings grounded in inspected current
+source and documents. Separate facts, assumptions, proposals, and unknowns;
+include applicable independent evidence and its status. Do not emit
+change-only approval, implementation, traceability, SELF-AUDIT, or validation
+score evidence. If implementation becomes necessary, stop and enter the Small
+or Non-trivial change gate before any mutation or proposed diff.
 
 ## Pre-Code Independent Evidence
 Before reviewing implementation, verify that every triggered pre-code role ran
@@ -20,7 +30,7 @@ lead-dispositioned:
 - `test-strategy-adversary` produced a contract-to-test matrix after `DESIGN`
   and before implementation, with any scope gap routed through reapproval
 
-Missing, failed, timed-out, contaminated, or inconclusive independent evidence
+Missing, failed, timed out, contaminated, or inconclusive independent evidence
 is a reported gap/waiver, not a lead-filled PASS. Map these checks to SA1-SA3,
 SA9-SA12, and SA13 as applicable; the lead owns every final disposition.
 
@@ -49,8 +59,8 @@ independent agents, tool/user authorization permits spawning, and the user has
 not explicitly prohibited independent-agent use. Otherwise, perform a fresh
 self-verification pass by resetting reviewer context and re-checking the
 approved scope, current diff, evidence, validation lane, ADR/TSR impact, and
-claim wording. Report unsupported, not authorized/not requested, prohibited,
-failed, or timed-out independent review as evidence status.
+claim wording. Report one canonical independent-agent status with separate
+detail and waiver disposition.
 
 The verifier pass must fail the closeout if implementation, validation,
 performance, scientific/model, or operator-facing claims are not supported by
@@ -80,9 +90,10 @@ anti-speculative implementation, and claim evidence.
 The Go quality explorer reports findings only. It must not edit, propose diffs,
 run formatters, create generated artifacts, or run broad/full validation
 suites. If the explorer is unsupported, not authorized/not requested,
-prohibited, failed, or timed out, report that status in the Review Pass and
-Self-Audit; for high-risk Go work, treat it as a review/validation gap unless
-explicitly waived.
+explicitly prohibited, failed, timed out, or inconclusive, report that
+canonical status with separate detail and waiver disposition in the Review Pass
+and Self-Audit; for high-risk Go work, treat it as a review/validation gap
+unless explicitly waived.
 
 The Go quality explorer must score only the SELF-AUDIT rows it can inspect at
 its post-code phase. It must not final-score Fresh verification and claim
@@ -114,8 +125,8 @@ Review focus:
 - subagent assignments, if used, stayed within approved phase, write scope,
   allowed actions, and lead-owned disposition
 - independent pre-code and post-code explorers were used when supported,
-  authorized, and not explicitly prohibited, or their unsupported/not
-  authorized/not requested/prohibited/failed/timed-out status was reported
+  authorized, and not explicitly prohibited, or their canonical status,
+  detail, and waiver disposition were reported
 - scientific/model sources, ambiguity resolutions, design alternatives, and
   test falsifiability evidence match the approved scope and current diff
 - support-agent routing drift when operator docs or operator-visible behavior changed
@@ -175,8 +186,8 @@ the lead maps that evidence to SA IDs at closeout.
   that already establishes the point.
 - Independently reviewed high-risk rows must cite the independent evidence
   source or reported gap/waiver. Do not silently lead-fill `PASS` after an
-  independent review is unsupported, not authorized/not requested, prohibited,
-  failed, timed out, missing, or stale.
+  independent review is unsupported, not authorized/not requested, explicitly
+  prohibited, failed, timed out, inconclusive, missing, or stale.
 - Command-backed SA7 or SA8 results must reference the captured excerpt in
   `Verification command reporting`. Do not paste the same excerpt again in
   Self-Audit; if the required excerpt is missing, failed, timed out, stale,
@@ -187,12 +198,13 @@ the lead maps that evidence to SA IDs at closeout.
   the lead's own gate checks.
 
 ## Closeout evidence
-Every Non-trivial task must end with the template's `CLOSEOUT`,
+Every Non-trivial change must end with the template's `CLOSEOUT`,
 `TRACEABILITY`, and `VALIDATION` markers. Keep the closeout concise and refer
 to earlier markers instead of repeating evidence.
 
 ## Scope-to-Code Traceability
-Map every Scope Ledger item with status `Agreed` or `Pending` as of the start of the implementation cycle to:
+Map every Scope Ledger item with status `Agreed` as of the start of the
+implementation cycle to:
 - code locations
 - tests
 - docs/comments updated
@@ -200,6 +212,11 @@ Map every Scope Ledger item with status `Agreed` or `Pending` as of the start of
 - decision refs if applicable
 
 No omissions allowed.
+
+`Pending` is unresolved and must not exist at implementation start. `Rejected`
+and `Deferred` items are outside the implementation cycle and are not mapped as
+implemented scope. If one becomes necessary, require a new ledger version,
+repeated adversarial review, and exact reapproval.
 
 ## Verification command reporting
 For each major command, report:

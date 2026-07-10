@@ -29,12 +29,10 @@ disposition with the lead.
 4. Provide confirmed requirements, constraints, current-state evidence,
    relevant ADRs/TSRs, and resolved semantics. Withhold the lead's preferred
    solution, draft plan, and intended diff.
-5. Mark the result `inconclusive - context contaminated` if inherited context
-   exposes the lead's preferred design or conclusions. Do not count it as the
-   required independent challenge.
-6. Report the agent status accurately as `completed`, `unsupported`,
-   `not authorized/not requested`, `explicitly prohibited`, `failed`,
-   `timed out`, or `inconclusive - context contaminated`.
+5. Mark the status `inconclusive` if inherited context exposes the lead's
+   preferred design or conclusions, and put `context contaminated` in the
+   status detail. Do not count it as the required independent challenge.
+6. Report one canonical agent status.
 
 Do not edit files, propose diffs, format files, generate artifacts, or run
 broad checker suites.
@@ -65,7 +63,10 @@ broad checker suites.
 
 Return a compact `Design challenge` containing:
 
-- independence and agent status;
+- Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive
+- Status detail: none | context contaminated | <failure or timeout detail>
+- Role outcome: used when status is completed | N/A
+- Waiver disposition: none | <scope, owner, mitigation, expiry>
 - evidence inspected and unknowns;
 - the compared approaches and smallest-safe recommendation;
 - material risks, user choices, and validation obligations;

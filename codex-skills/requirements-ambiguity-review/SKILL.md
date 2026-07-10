@@ -72,9 +72,10 @@ design the solution, or own the Scope Ledger.
 
 Return:
 
-- `Requirements ambiguity review status`: independent, unsupported, not
-  authorized/not requested, explicitly prohibited, failed, timed out, or
-  `inconclusive - no independent context`;
+- Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive
+- Status detail: none | no independent context | <failure or timeout detail>
+- Role outcome: used when status is completed | N/A
+- Waiver disposition: none | <scope, owner, mitigation, expiry>
 - the ambiguity register;
 - blocking unresolved semantics;
 - implementation-only uncertainties delegated to design, with rationale;

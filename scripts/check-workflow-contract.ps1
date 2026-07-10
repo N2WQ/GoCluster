@@ -74,7 +74,25 @@ $workflow = Get-RepoText "docs/change-workflow.md"
 $template = Get-RepoText "docs/templates/non-trivial-change-template.md"
 $validation = Get-RepoText "VALIDATION.md"
 $review = Get-RepoText "docs/review-checklist.md"
+$runbook = Get-RepoText "docs/dev-runbook.md"
 $working = Get-RepoText "docs/WORKING_WITH_CODEX.md"
+$evalCases = Get-RepoText "docs/workflow-eval-cases.md"
+$scriptsReadme = Get-RepoText "scripts/README.md"
+$developerGuide = Get-RepoText "customgpt/developer-guide-index.md"
+$sourceMap = Get-RepoText "customgpt/source-map.md"
+$commonQuestions = Get-RepoText "customgpt/common-questions.md"
+$skillStatusPaths = @(
+  "codex-skills/requirements-ambiguity-review/SKILL.md",
+  "codex-skills/scientific-model-oracle/SKILL.md",
+  "codex-skills/design-challenger/SKILL.md",
+  "codex-skills/test-strategy-adversary/SKILL.md",
+  "codex-skills/go-code-quality-review/SKILL.md",
+  "codex-skills/scope-ledger-adversarial-review/SKILL.md"
+)
+$skillStatusText = @{}
+foreach ($path in $skillStatusPaths) {
+  $skillStatusText[$path] = Get-RepoText $path
+}
 
 $requiredAgentText = @(
   "Approved vN",
@@ -86,6 +104,81 @@ $requiredAgentText = @(
 )
 foreach ($required in $requiredAgentText) {
   Require-Text "AGENTS.md" $agents $required
+}
+
+Require-Text "AGENTS.md" $agents "Emit exactly one standalone skill marker per assistant turn"
+$selectedMarkerCount = ([regex]::Matches($template, "(?m)^  - Skill check: selected <skill>$")).Count
+$noneMarkerCount = ([regex]::Matches($template, "(?m)^  - Skill check: none applicable$")).Count
+if ($selectedMarkerCount -ne 2 -or $noneMarkerCount -ne 2) {
+  Add-Failure "docs/templates/non-trivial-change-template.md must contain each exact standalone skill-marker alternative twice; selected=$selectedMarkerCount none=$noneMarkerCount"
+}
+
+$canonicalAgentStatus = "- Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive"
+foreach ($path in $skillStatusPaths) {
+  Require-Line $path $skillStatusText[$path] $canonicalAgentStatus
+}
+Require-Text "docs/templates/non-trivial-change-template.md" $template "- Independent-agent status: completed | unsupported |"
+Require-Text "docs/templates/non-trivial-change-template.md" $template "- Waiver disposition: none | <scope, owner, mitigation, expiry>"
+$forbiddenTemplateStatusText = @(
+  "Independent-agent status: supported, authorized, and not prohibited",
+  "failed/timed out",
+  "unsupported/not authorized/not requested/prohibited",
+  "used/status",
+  "inconclusive - no independent context",
+  "inconclusive - context contaminated"
+)
+foreach ($forbidden in $forbiddenTemplateStatusText) {
+  if ($template.Contains($forbidden)) {
+    Add-Failure "docs/templates/non-trivial-change-template.md contains noncanonical report-field status text: $forbidden"
+  }
+}
+
+$readOnlyContract = @(
+  @{ Path = "AGENTS.md"; Text = $agents; Required = "## Read-only Review/Audit Mode" },
+  @{ Path = "AGENTS.md"; Text = $agents; Required = "Before any later mutation or proposed diff," },
+  @{ Path = "docs/change-workflow.md"; Text = $workflow; Required = "### Read-only review/audit" },
+  @{ Path = "docs/change-workflow.md"; Text = $workflow; Required = "Findings, priorities, and requested recommendations are evidence, not latent" },
+  @{ Path = "VALIDATION.md"; Text = $validation; Required = "Use this scorecard after any Non-trivial Codex change" },
+  @{ Path = "docs/templates/non-trivial-change-template.md"; Text = $template; Required = "This template applies only to Non-trivial changes." },
+  @{ Path = "docs/review-checklist.md"; Text = $review; Required = "## Read-only Review/Audit Evidence" },
+  @{ Path = "docs/WORKING_WITH_CODEX.md"; Text = $working; Required = "Non-mutating explanation, review, audit, diagnosis, prioritization, and" },
+  @{ Path = "docs/workflow-eval-cases.md"; Text = $evalCases; Required = "### E1 Read-Only Explanation And Audit Route" },
+  @{ Path = "scripts/README.md"; Text = $scriptsReadme; Required = "read-only route and transition boundary" },
+  @{ Path = "customgpt/developer-guide-index.md"; Text = $developerGuide; Required = "Non-mutating explanation, review, audit, diagnosis, prioritization, and" },
+  @{ Path = "customgpt/source-map.md"; Text = $sourceMap; Required = "Read-only review, audit, diagnosis, and transition to implementation" },
+  @{ Path = "customgpt/common-questions.md"; Text = $commonQuestions; Required = "When does read-only review or audit avoid change approval" }
+)
+foreach ($entry in $readOnlyContract) {
+  Require-Text $entry.Path $entry.Text $entry.Required
+}
+
+$laneContract = @(
+  @{ Path = "AGENTS.md"; Text = $agents; Required = "Task classification controls approval rigor; touched surface controls" },
+  @{ Path = "docs/change-workflow.md"; Text = $workflow; Required = "Task classification controls approval rigor; touched surface controls" },
+  @{ Path = "docs/change-workflow.md"; Text = $workflow; Required = "repo-managed skills use the workflow/skill-doc lane, even when Markdown-only" },
+  @{ Path = "docs/dev-runbook.md"; Text = $runbook; Required = "Task classification controls approval rigor; touched surface controls" },
+  @{ Path = "docs/dev-runbook.md"; Text = $runbook; Required = "### Small code change" },
+  @{ Path = "docs/dev-runbook.md"; Text = $runbook; Required = "Workflow contracts, executor guidance, runbooks, rubrics, templates, and" },
+  @{ Path = "docs/dev-runbook.md"; Text = $runbook; Required = "### Script-only change" },
+  @{ Path = "docs/dev-runbook.md"; Text = $runbook; Required = "Do not infer Go validation from the script extension or from a script that merely checks" },
+  @{ Path = "docs/dev-runbook.md"; Text = $runbook; Required = "### Non-trivial code, mixed, or runtime-contract change" },
+  @{ Path = "VALIDATION.md"; Text = $validation; Required = "use the workflow/skill-doc lane even when Markdown-only" },
+  @{ Path = "docs/WORKING_WITH_CODEX.md"; Text = $working; Required = "size controls approval; touched surface controls validation commands." }
+)
+foreach ($entry in $laneContract) {
+  Require-Text $entry.Path $entry.Text $entry.Required
+}
+
+$scopeStatusContract = @(
+  @{ Path = "AGENTS.md"; Text = $agents; Required = "treat only ``Agreed`` items and slices as approval-eligible, executable, and" },
+  @{ Path = "docs/change-workflow.md"; Text = $workflow; Required = "``Pending`` means unresolved and blocks presentation or use of the approval" },
+  @{ Path = "docs/templates/non-trivial-change-template.md"; Text = $template; Required = "Do not present the approval token while any item or implementation slice is" },
+  @{ Path = "docs/templates/non-trivial-change-template.md"; Text = $template; Required = "For every Scope Ledger item that was ``Agreed`` at the start of implementation:" },
+  @{ Path = "docs/review-checklist.md"; Text = $review; Required = "Map every Scope Ledger item with status ``Agreed`` as of the start of the" },
+  @{ Path = "VALIDATION.md"; Text = $validation; Required = "no ``Pending`` item remained when approval was presented or" }
+)
+foreach ($entry in $scopeStatusContract) {
+  Require-Text $entry.Path $entry.Text $entry.Required
 }
 
 $preCodeRoles = @(
@@ -171,7 +264,7 @@ if ($mapStart -lt 0) {
   }
 }
 
-Write-Host "INFO static contract checks cannot prove conversational Approved vN evidence."
+Write-Host "INFO static contract checks cannot prove conversational Approved vN evidence, route transitions, or genuine agent independence."
 if ($failures.Count -gt 0) {
   Write-Host "FAIL workflow contract check found $($failures.Count) issue(s)."
   exit 1

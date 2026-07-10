@@ -19,11 +19,20 @@ skill installation.
 
 - `check-workflow-contract.ps1` verifies mechanical coherence of the Codex
   workflow's exact strings, pre-code independent-role routing, evidence
-  markers, validation block, and Document Map. It cannot prove that
-  conversational approval or genuine agent independence occurred.
+  markers, validation block, read-only route and transition boundary, and
+  touched-surface validation precedence. It checks Agreed-only approval and
+  traceability semantics plus exact per-turn skill-marker and canonical
+  independent-agent status fields. It requires an explicit script-only lane
+  that does not infer Go validation from workflow-checker script changes. It
+  also verifies the Document Map. It
+  cannot prove that conversational approval, a conversational route transition,
+  or genuine agent independence occurred.
 - `test-workflow-contract.ps1` runs positive and negative temporary fixtures
-  against the workflow-contract checker, including missing pre-code role
-  routing.
+  against the workflow-contract checker, including missing pre-code role and
+  read-only-route transition routing plus invalid validation-lane precedence.
+  Fixtures also reject Pending approval and Pending implementation
+  traceability, a missing or Go-inferred script-only lane, duplicate marker
+  fields, and noncanonical status-field aliases.
 - `check-yaml-doc-rigor.ps1` checks first-party runtime YAML headers and
   comment-only YAML scope.
 - `check-go-crawler-entry-comments.ps1` checks changed support-critical Go files

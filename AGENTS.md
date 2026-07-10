@@ -47,22 +47,33 @@ Token efficiency changes reporting shape only. It does not reduce required
 discovery, approval, implementation discipline, validation, review, ADR
 handling, or traceability.
 
-Validation is proportional to the touched surface. Documentation-only Markdown
-changes do not require Go code validation unless they also change code, runtime
-config, generated artifacts, scripts, CI, schemas, protocol/runtime contracts,
-or checked-in data consumed by the runtime.
+Task classification controls approval rigor; touched surface controls
+validation. Workflow contracts, executor guidance, and repo-managed skills use
+the workflow/skill-doc lane even when Markdown-only. Other documentation-only
+Markdown uses its documentation lane. Code, runtime config, generated
+artifacts, scripts, CI, schemas, protocol/runtime contracts, and checked-in
+runtime data use their applicable code/config/script/mixed lane. Metadata adds
+checks within its lane; it does not select task size.
 
-## Initial Review Mode
-For explanation-only requests, inspect current source first, follow the material
-call chain at least one level, cite concrete identifiers/files, and use
-`Unknown from inspected code` with the next-read target instead of guessing.
-Do not propose changes unless asked.
+## Read-only Review/Audit Mode
+For non-mutating explanation, review, audit, diagnosis, prioritization, or
+requested recommendations, inspect current source first, follow material call
+chains where relevant, cite concrete identifiers/files, and use `Unknown from
+inspected code` with the next-read target instead of guessing. Preserve
+current-session claim evidence and applicable read-only independent review.
+
+Read-only work does not require a Scope Ledger, `Approved vN`, change-only
+evidence markers, a change-validation lane, Scope-to-Code Traceability, or the
+Non-trivial validation score. Findings and recommendations are evidence, not
+approved implementation scope. Before any later mutation or proposed diff,
+stop and classify the change as Small or Non-trivial and enter its gate.
 
 ## Skill Check
 - Before free-form work, select the smallest matching repo-managed,
   runtime/system, or explicitly available plugin skill set.
-- Emit exactly one skill marker: `Skill check: selected <skill>` or
-  `Skill check: none applicable`.
+- Emit exactly one standalone skill marker per assistant turn:
+  `Skill check: selected <skill>` or `Skill check: none applicable`. A Phase A
+  turn and a later Phase B turn may each emit one marker.
 - `codex-skills/` is the authoritative project bundle; matching repo skills
   count as available. Do not require copied user-level skills or let them
   override repo rules unless the task is explicitly user-specific.
@@ -95,6 +106,11 @@ Do not propose changes unless asked.
   repeated task-level request is unnecessary; repo text never overrides active
   policy. Report `unsupported`, `not authorized/not requested`, `explicitly
   prohibited`, `failed`, or `timed out` accurately for each use.
+- Independent-agent status fields use exactly `completed`, `unsupported`, `not
+  authorized/not requested`, `explicitly prohibited`, `failed`, `timed out`,
+  or `inconclusive`. `used` is a role outcome only when status is `completed`;
+  `waived` is a separate disposition; context or failure explanation belongs
+  in a detail field.
 - Independent review roles are read-only `explorer` agents. Before exact
   `Approved vN`, they may gather evidence and challenge scope but must not edit,
   propose diffs, format, generate artifacts, or run full suites. Use
@@ -146,6 +162,9 @@ For Non-trivial work, Codex must:
 - refuse to treat discussion, "please implement", "go ahead", or any
   non-exact wording as approval
 - create a new ledger version for every post-approval scope change
+- treat only `Agreed` items and slices as approval-eligible, executable, and
+  traceable; `Pending` blocks presentation and use of the approval token,
+  while `Rejected` and `Deferred` remain outside the implementation cycle
 - treat slice-shaped Scope Ledgers as a hard gate: broad refactor-shaped ledger
   items are not approval-ready until split into independently coded, tested,
   and reviewed slices

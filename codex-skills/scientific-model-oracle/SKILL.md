@@ -72,9 +72,10 @@ scientific or conceptual error.
 
 Return a `Scientific/model oracle` sheet containing:
 
-- oracle status: independent, unsupported, not authorized/not requested,
-  explicitly prohibited, failed, timed out, or
-  `inconclusive - no independent context`;
+- Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive
+- Status detail: none | no independent context | <failure or timeout detail>
+- Role outcome: used when status is completed | N/A
+- Waiver disposition: none | <scope, owner, mitigation, expiry>
 - normative question and source hierarchy;
 - definitions, units, domains, boundaries, interpolation, rounding, and
   tolerances;

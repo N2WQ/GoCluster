@@ -8,7 +8,7 @@ only on the abbreviated baseline in `AGENTS.md`.
 - Run the smallest useful check early, then broaden.
 - Use incremental validation after each meaningful slice.
 - Use the full suite for the selected validation lane before calling a
-  Non-trivial task complete.
+  Non-trivial change complete.
 - Report commands and results honestly.
 - Ground validation, performance, and science/model claims in the command
   output, benchmark/profile data, runtime captures, source inspection, or
@@ -100,7 +100,16 @@ label it as static reasoning and name the inspected files.
 
 ## Default command set by task type
 
-### Small change
+Task classification controls approval rigor; touched surface controls
+validation commands. Select the applicable lane before using the command sets
+below. Workflow contracts, executor guidance, and repo-managed skills use the
+workflow/skill-doc lane even when Markdown-only. Other all-Markdown
+documentation uses the documentation-only lane. Code, config, scripts, CI,
+schemas, generated artifacts, runtime data, and runtime contracts use their
+applicable code/config/script/mixed lane. Structured workflow metadata adds
+checks within the workflow lane; it does not select task size.
+
+### Small code change
 Minimum expected sequence:
 1. targeted test if available
 2. `go test ./...`
@@ -111,6 +120,8 @@ Add `go vet ./...` and `staticcheck ./...` if the change touches exported/shared
 Use this lane only when all changed files are Markdown documentation and the
 change does not touch code, config, generated artifacts, scripts, CI, schemas,
 protocol/runtime contracts, or checked-in data consumed by the runtime.
+Workflow contracts, executor guidance, runbooks, rubrics, templates, and
+repo-managed skills are excluded; they use the workflow/skill-doc lane.
 
 Minimum expected sequence:
 1. targeted text checks for changed terms, cross-references, and required
@@ -151,9 +162,9 @@ lane and run the required checks for that lane.
 Use this lane when the diff changes workflow contracts, validation rules,
 runbooks, review checklists, templates, Codex guidance, Fable guidance,
 repo-managed Codex skills, or Fable `.claude/agents|skills/*` definitions.
-This lane is distinct from Documentation-only Markdown when the diff includes
-structured workflow metadata such as `codex-skills/**/agents/openai.yaml` or
-`.claude/agents/*.md` frontmatter.
+This lane also applies when those surfaces are Markdown-only. Structured
+workflow metadata such as `codex-skills/**/agents/openai.yaml` or
+`.claude/agents/*.md` frontmatter adds metadata-specific checks below.
 
 Minimum expected sequence:
 1. targeted text checks for changed workflow terms, cross-references, required
@@ -189,8 +200,8 @@ Add the checks that apply:
   tool-grant consistency, and the relevant repo skill or Fable workflow review
 - fresh-verifier explorer for high-risk workflow or skill changes when
   independent agents are supported, authorized, and not explicitly prohibited;
-  otherwise report unsupported, not authorized/not requested, prohibited,
-  failed, timed-out, or waived status
+  otherwise report the canonical independent-agent status, a separate detail,
+  and any separate waiver disposition
 - support-agent routing review when developer/support routing docs changed
 
 Do not run `go test ./...`, `go vet ./...`, `staticcheck ./...`,
@@ -199,7 +210,25 @@ skill metadata changed. If the diff expands into Go code, runtime config,
 scripts, CI, generated artifacts, schemas, checked-in runtime data, or
 protocol/runtime contracts, switch to the relevant lane.
 
-### Non-trivial change
+### Script-only change
+Use this lane when the diff changes scripts but does not change Go code,
+runtime config, CI, generated artifacts, schemas, checked-in runtime data, or
+protocol/runtime contracts. Task size still controls whether approval is Small
+or Non-trivial.
+
+Minimum expected sequence:
+1. parse or syntax-check each changed script with its native engine
+2. run the narrow positive and negative fixture tests owned by the script
+3. review script documentation, failure behavior, and changed command output
+4. run `git diff --check`
+
+Add only checks invoked or governed by the changed script. Do not infer Go
+validation from the script extension or from a script that merely checks
+workflow text. Run Go commands only when the script change modifies Go build,
+test, generation, or runtime behavior, and then run the commands whose behavior
+or outputs can change.
+
+### Non-trivial code, mixed, or runtime-contract change
 Default full sequence for code, mixed, or runtime-contract changes:
 1. targeted package test(s) during development
 2. `go test ./...`
