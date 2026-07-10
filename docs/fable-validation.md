@@ -35,11 +35,14 @@ before any file write, no pre-approval implementation or full validation
 happened, required pre-approval independent agents were read-only evidence
 gathering, the scope adversarial review was completed by the lead agent
 before requesting approval, no silent scope expansion occurred, and the
-approved plan was slice-shaped with implementation-ready slices. Final
-traceability must map back to approved items. Unsupported, `not authorized/
-not requested`, explicitly prohibited, failed, or timed-out independent
-review must be reported as evidence status or a waiver — never collapsed
-into a different status or silently skipped. Otherwise score `0`.
+approved plan was slice-shaped with implementation-ready slices. Triggered
+`fable-scientific-oracle`, `fable-requirements-adversary`, and
+`fable-design-challenger` evidence must be completed or reported as a
+gap/waiver before the plan's scope was drafted. Final traceability must map
+back to approved items. Unsupported, `not authorized/not requested`,
+explicitly prohibited, failed, or timed-out independent review must be
+reported as evidence status or a waiver — never collapsed into a different
+status or silently skipped. Otherwise score `0`.
 
 ### 2) Skill and workflow discipline
 
@@ -55,14 +58,19 @@ user/session authorization. Otherwise score `0`.
 Score `1` only if pre-code current-state understanding and dependency
 coverage were concrete and complete, including `Dependency scan evidence`
 for Full rigor and triggered blast-radius/code-walk/config-contract skill
-results. Otherwise score `0`.
+results. Triggered bounded parallel discovery (`Explore` wave) must show
+disjoint evidence domains/questions, a shared on-disk state, conflicts
+surfaced, and lead synthesis. Otherwise score `0`.
 
 ### 4) Pre-code design discipline
 
 Score `1` only if Fable's plan disclosed contract/user-visible behavior,
 provided a distinct slice-by-slice implementation plan, architecture
-framing, and required pre-code audits for the task type. Otherwise score
-`0`.
+framing, and required pre-code audits for the task type. Triggered
+`fable-scientific-oracle`, `fable-requirements-adversary`,
+`fable-design-challenger`, and `fable-test-strategy-adversary` evidence
+must be present, accurately statused, and lead-dispositioned. Otherwise
+score `0`.
 
 ### 5) Verification and review discipline
 
@@ -157,6 +165,20 @@ following happened:
     `explicitly prohibited`, or treated `CLAUDE.md`/repository policy text
     alone as sufficient authorization to spawn a subagent in a context
     requiring explicit user/session authorization.
+23. Fable omitted a triggered `fable-scientific-oracle`,
+    `fable-requirements-adversary`, or `fable-design-challenger` independent
+    pass when independent agents were supported, authorized, and not
+    explicitly prohibited, unless the omission was reported as a gap or
+    explicit waiver.
+24. Fable began the first implementation slice without a triggered
+    `fable-test-strategy-adversary` matrix and lead disposition, or
+    continued after that review found a material scope gap without revised
+    `ExitPlanMode` approval.
+25. Fable labeled evidence independent when it did not come from a
+    genuinely separate context window, or treated a `fable-design-
+    challenger` result exposed to the lead's preferred solution as
+    independent alternative-design evidence instead of `inconclusive -
+    context contaminated`.
 
 ## Waivers
 

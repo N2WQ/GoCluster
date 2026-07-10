@@ -7,6 +7,30 @@ counterpart to `docs/review-checklist.md` (Codex) — same 15-category risk
 taxonomy, so the two contracts stay legible side by side, scored through
 different mechanisms.
 
+## Pre-Code Independent Evidence
+
+Before reviewing implementation, verify that every triggered pre-code role
+ran in a fresh separate read-only context, reported an accurate status, and
+was lead-dispositioned:
+
+- the bounded parallel-discovery `Explore` wave synthesized disjoint
+  evidence and kept conflicts visible
+- `fable-scientific-oracle` established normative model evidence or blocked
+  design/scope on unresolved sources
+- `fable-requirements-adversary` actively searched for semantic forks and
+  blocked the plan's scope on unresolved material semantics
+- `fable-design-challenger` received a neutral packet without the lead's
+  preferred solution and reported alternative-design evidence before the
+  plan's scope was drafted
+- `fable-test-strategy-adversary` produced a contract-to-test matrix after
+  `DESIGN` and before implementation, with any scope gap routed through
+  revised-plan reapproval
+
+Missing, failed, timed-out, contaminated, or inconclusive independent
+evidence is a reported gap/waiver, not a lead-filled PASS. Map these checks
+to SA1 through SA3, SA9 through SA12, and SA13 as applicable; the lead owns
+every final disposition.
+
 ## Review Pass
 
 The Review Pass happens after implementation and before final closeout.

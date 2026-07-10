@@ -28,6 +28,9 @@ request approval until every required piece below is present.
 - Pre-approval independent agent: `fable-scope-adversary` used - <read-only
   confirmation, no edits/diffs/formatters/full validation> | unsupported/
   `not authorized/not requested`/failed/timed out - <evidence status>
+- Pre-plan independent evidence: `fable-scientific-oracle`/
+  `fable-requirements-adversary`/`fable-design-challenger` - <N/A - not
+  triggered | used - status per role> (see DISCOVERY for detail)
 
 ### DISCOVERY
 
@@ -41,6 +44,23 @@ request approval until every required piece below is present.
 - independent-agent evidence: <none | role/purpose/findings used as evidence
   | unsupported/`not authorized/not requested`/prohibited/failed/timed out -
   status>
+- bounded parallel discovery: <N/A - single evidence domain | used - evidence
+  domains/questions, `Explore` findings, conflicts, lead synthesis |
+  unsupported/`not authorized/not requested`/prohibited/failed/timed out -
+  status>
+- scientific/model oracle: <N/A - not triggered, reason | used -
+  `fable-scientific-oracle` status; normative findings; lead disposition |
+  unsupported/`not authorized/not requested`/prohibited/failed/timed
+  out/`inconclusive - no independent context` - status>
+- requirements ambiguity review: <N/A - not triggered, reason | used -
+  `fable-requirements-adversary` status; ambiguity register summary; lead
+  disposition | unsupported/`not authorized/not requested`/prohibited/
+  failed/timed out/`inconclusive - no independent context` - status>
+- design challenge: <N/A - not triggered, reason | used -
+  `fable-design-challenger` status; compared approaches; smallest-safe
+  recommendation; lead disposition | unsupported/`not authorized/not
+  requested`/prohibited/failed/timed out/`inconclusive - context
+  contaminated` - status>
 - unknowns:
 
 ### SCOPE
@@ -90,9 +110,11 @@ Written after implementation, once the approved plan's slices are complete.
 - Independent-agent status: supported, authorized, and not prohibited |
   unsupported | `not authorized/not requested` | explicitly prohibited |
   failed/timed out - <details>
-- Independent-agent phase/use: none | pre-approval explorer | post-approval
-  worker | `fable-code-reviewer` | `fable-fresh-verifier` - <lead-owned
-  disposition>
+- Independent-agent phase/use: none | pre-approval explorer |
+  parallel-discovery | `fable-scientific-oracle` |
+  `fable-requirements-adversary` | `fable-design-challenger` |
+  post-approval worker | `fable-test-strategy-adversary` |
+  `fable-code-reviewer` | `fable-fresh-verifier` - <lead-owned disposition>
 
 ### PREFLIGHT
 
@@ -121,6 +143,11 @@ Written after implementation, once the approved plan's slices are complete.
 - validation lane: documentation-only Markdown | workflow-contract |
   code/mixed/runtime-contract | other - <reason>
 - checker plan:
+- `fable-test-strategy-adversary`: <N/A - not triggered, reason | used -
+  status; contract-to-test matrix summary; false-green risks; findings and
+  lead disposition; repeated-pass status if matrix changed materially |
+  unsupported/`not authorized/not requested`/prohibited/failed/timed out -
+  status>
 
 ### IMPLEMENTATION
 

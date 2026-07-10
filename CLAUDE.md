@@ -97,6 +97,11 @@ When the user asks what existing code does and has not asked for changes:
 For Non-trivial work:
 
 - perform targeted current-state discovery before proposing a plan
+- perform and disposition triggered pre-plan independent evidence —
+  bounded parallel discovery, scientific/model oracle, requirements
+  ambiguity review, design challenge — before drafting the plan's scope;
+  unresolved material semantics or model evidence block it (see
+  `docs/fable-workflow.md`)
 - use `EnterPlanMode` before any `Write`/`Edit`/mutating `Bash` call
 - the plan must include current-state discovery, a slice-shaped scope, and a
   reasoning-budget recommendation (shape defined in `docs/fable-workflow.md`)
@@ -126,22 +131,31 @@ For Non-trivial work:
 - Independent agents are separate from the lead Fable agent with their own
   context window. Treat their output as evidence, not as a transfer of gate
   ownership — the lead agent always owns final disposition.
-- `fable-scope-adversary`, `fable-code-reviewer`, and `fable-fresh-verifier`
-  already are Fable's explorer-equivalent roles: read-only via tool grant
-  (no `Edit`/`Write`), with specialist behavior fused into each agent's own
-  prompt rather than layered separately — the same pattern Codex's
-  `explorer` type plus a repo-managed skill produces. Post-approval workers
-  are a different category: spawn them via the `general-purpose` agent type,
-  since none of the three read-only agents can write; brief them with the
-  same file-ownership, stopping-point, and targeted-checks detail
+- `fable-scope-adversary`, `fable-code-reviewer`, `fable-fresh-verifier`,
+  `fable-scientific-oracle`, `fable-requirements-adversary`,
+  `fable-design-challenger`, and `fable-test-strategy-adversary` are Fable's
+  explorer-equivalent roles: read-only via tool grant (no `Edit`/`Write`),
+  with specialist behavior fused into each agent's own prompt rather than
+  layered separately — the same pattern Codex's `explorer` type plus a
+  repo-managed skill produces. Post-approval workers are a different
+  category: spawn them via the `general-purpose` agent type, since none of
+  the seven read-only agents can write; brief them with the same
+  file-ownership, stopping-point, and targeted-checks detail
   `docs/fable-workflow.md`'s Post-approval workers section requires.
 - Before `ExitPlanMode` approval, independent agents must be read-only:
-  `fable-scope-adversary` challenges the plan; it must not edit files,
-  propose diffs, or run mutating commands.
+  `fable-scientific-oracle`, `fable-requirements-adversary`, and
+  `fable-design-challenger` gather pre-plan evidence in that order (plus a
+  bounded `Explore` parallel-discovery wave for Full-rigor discovery with
+  separable evidence domains), and `fable-scope-adversary` then challenges
+  the drafted plan. None may edit files, propose diffs, or run mutating
+  commands. See `docs/fable-workflow.md`'s Pre-plan independent evidence
+  section for phase and trigger detail.
 - After approval, `fable-code-reviewer` (Go implementation work only) and
   `fable-fresh-verifier` (high-risk closeout, including workflow-contract-only
   changes) provide independent evidence for the riskiest SELF-AUDIT-equivalent
-  rows. See `docs/fable-review-checklist.md`.
+  rows; `fable-test-strategy-adversary` runs after detailed `DESIGN` and
+  before the first implementation slice to review test falsifiability. See
+  `docs/fable-review-checklist.md` and `docs/fable-workflow.md`.
 - Report unsupported, `not authorized/not requested`, explicitly prohibited,
   failed, or timed-out independent review as an evidence status — never
   silently substitute self-review without saying so.
@@ -152,9 +166,11 @@ For Non-trivial work:
   state, config contracts, hot-path design, blast radius, code walking) are
   Claude **Skills** under `.claude/skills/*` — in-context knowledge, triggered
   by task shape, no independent context window.
-- The three independent-review roles (`fable-scope-adversary`,
-  `fable-code-reviewer`, `fable-fresh-verifier`) are Claude **subagents**
-  under `.claude/agents/*.md` — genuinely separate context windows, with
+- The seven independent-review roles (`fable-scope-adversary`,
+  `fable-code-reviewer`, `fable-fresh-verifier`, `fable-scientific-oracle`,
+  `fable-requirements-adversary`, `fable-design-challenger`,
+  `fable-test-strategy-adversary`) are Claude **subagents** under
+  `.claude/agents/*.md` — genuinely separate context windows, with
   `Edit`/`Write` withheld at the agent-definition tool-grant level, not
   merely by instruction. Their `Bash` grant is not command-restricted, so
   avoiding mutating commands (`git commit`, formatters, etc.) is still an

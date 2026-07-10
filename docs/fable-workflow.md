@@ -87,6 +87,89 @@ call-correction, VOACAP, p50, propagation, and operator-diagnostic claims
 need the relevant model assumption, evidence source, and remaining
 uncertainty stated when they affect behavior or conclusions.
 
+## Pre-plan independent evidence
+
+For Non-trivial work, after Current-State Discovery and before the plan's
+scope is drafted, use these bounded independent-evidence steps in order.
+Each is separate from `fable-scope-adversary`, which reviews the drafted
+plan afterward — these steps exist to keep semantics and architecture from
+hardening into a plan in the first place.
+
+### Bounded parallel discovery
+
+For Full-rigor discovery with at least two separable evidence domains (for
+example: source behavior vs. config/schema surface, or Go implementation
+vs. YAML/data contract), spawn 2-3 `Explore` agents in a single message so
+they see the same on-disk state. Give each a distinct, bounded,
+locate-oriented question, an evidence contract (what to return), and a stop
+condition — matching `Explore`'s own scope ("locating code... where is X
+defined... which files reference Y"), not open-ended analysis or
+adversarial review; set the search-breadth hint (`quick`/`medium`/`very
+thorough`) per question. Synthesize the results yourself, surface any
+conflicts, and disposition them before drafting the plan — `Explore` output
+is evidence, not a decision.
+
+Use one of the three roles below, not `Explore`, for anything requiring
+adversarial or normative judgment rather than fact-finding.
+
+### Scientific/model oracle
+
+Trigger: VOACAP, propagation, p50, path reliability, call correction,
+geographic/grid conversions, band/frequency mappings, units, interpolation,
+thresholds, classifications, scientific diagnostics, confidence wording, or
+any change whose correctness depends on a scientific model. Do not trigger
+for purely mechanical work that cannot change model inputs, outputs,
+semantics, or claims.
+
+Spawn `fable-scientific-oracle` before requirements-ambiguity review,
+design, or the plan's scope, when independent agents are supported and
+authorized. It establishes a model contract independently of the
+implementation under assessment — source hierarchy, units, boundaries,
+provenance-independent golden vectors, and bounded claims — grounded in the
+same "Scientific And Model Claims" standard `docs/code-quality.md` already
+defines. Missing or conflicting normative evidence blocks the plan's scope
+until resolved.
+
+### Requirements ambiguity review
+
+Trigger: filters or Boolean precedence, defaults or sentinels,
+authentication or admission, reputation or correction gates, failure
+behavior, thresholds, classifications, diagnostics, compatibility,
+user-visible behavior, or test oracles that may admit materially different
+semantic interpretations.
+
+Spawn `fable-requirements-adversary` after Current-State Discovery and any
+triggered scientific-oracle evidence, before the plan's scope is drafted,
+when independent agents are supported and authorized. It produces an
+ambiguity register; unresolved material semantics block the plan's scope
+until the user or documented authority resolves them.
+
+### Design challenger
+
+Trigger: two or more viable architectures may differ in ownership, retained
+state, lifecycle, queues, compatibility, migration, persistence, shared
+interfaces, algorithms, or other high-risk design choices. Do not trigger
+for Small or mechanical work, a single safe implementation path, or
+behavior already fixed by an accepted contract.
+
+Spawn `fable-design-challenger` after scientific-oracle and requirements-
+adversary evidence is resolved, before you draft the plan, when independent
+agents are supported and authorized. Assemble a neutral fact-and-constraint
+packet — confirmed requirements, current-state evidence, relevant ADRs/
+TSRs, resolved semantics — and withhold your own preferred solution, draft
+plan, and intended diff from the spawn prompt. This is a self-reported,
+instruction-level constraint, not a mechanically enforced one: if the
+agent's inherited context exposes your preferred design anyway, its result
+must be reported as `inconclusive - context contaminated`, not counted as
+independent evidence. Disposition every material finding before drafting
+the plan's scope.
+
+For all three roles above and the parallel-discovery wave, report the
+independent-agent status honestly (used / unsupported / `not authorized/not
+requested` / explicitly prohibited / failed / timed out / `inconclusive -
+no independent context` / `inconclusive - context contaminated`, as
+applicable) in the plan's Current-State Discovery section.
+
 ## Plan Mode approval mechanics
 
 This replaces Codex's `Proposed Scope Ledger vN` / exact-token approval with
@@ -94,9 +177,12 @@ a harness-level gate:
 
 - Use `EnterPlanMode` before any `Write`, `Edit`, or mutating `Bash` call for
   Non-trivial work — code or workflow-contract Markdown alike.
-- The plan file must contain: Current-State Discovery findings, a
-  slice-shaped scope (see Slice-Shaped Hard Gate below), explicit in-scope
-  and out-of-scope items, and a reasoning-budget recommendation.
+- The plan file must contain: Current-State Discovery findings, triggered
+  pre-plan independent evidence (parallel discovery, scientific/model
+  oracle, requirements ambiguity, design challenge) dispositioned per the
+  section above, a slice-shaped scope (see Slice-Shaped Hard Gate below),
+  explicit in-scope and out-of-scope items, and a reasoning-budget
+  recommendation.
 - Before requesting approval, run the independent adversarial pass (see
   Subagent Use) when independent agents are supported and authorized. If it
   finds material gaps, revise the plan before calling `ExitPlanMode`.
@@ -154,17 +240,23 @@ grant `Edit`/`Write` in the agent definition for this phase — enforce it at
 the tool-grant level, not by instruction alone. Allowed purposes: code-walk
 evidence, blast-radius review, config-contract review, decision-memory
 review, lifecycle or leak review, retained-state review, hot-path review,
-docs/support impact review, and adversarial review of the plan
-(`fable-scope-adversary`).
+docs/support impact review, bounded parallel discovery (`Explore`),
+scientific/model oracle evidence (`fable-scientific-oracle`), requirements
+ambiguity review (`fable-requirements-adversary`), design challenge
+(`fable-design-challenger`), and adversarial review of the drafted plan
+(`fable-scope-adversary`) — see Pre-plan independent evidence above for
+phase and trigger detail.
 
 ### Post-approval workers
 
 After `ExitPlanMode` approval, worker subagents are allowed only for
 approved, disjoint implementation slices. Spawn workers via the
-`general-purpose` agent type — none of the three read-only explorer-
+`general-purpose` agent type — none of the seven read-only explorer-
 equivalent agents (`fable-scope-adversary`, `fable-code-reviewer`,
-`fable-fresh-verifier`) can write, so a worker is never one of those three.
-Each worker assignment must name:
+`fable-fresh-verifier`, `fable-scientific-oracle`,
+`fable-requirements-adversary`, `fable-design-challenger`,
+`fable-test-strategy-adversary`) can write, so a worker is never one of
+those seven. Each worker assignment must name:
 approved plan version, slice name/objective, base revision or integration
 point, allowed files/packages/docs, forbidden files/packages/docs,
 production-safe stopping point, targeted checks, expected output/changed
@@ -174,6 +266,29 @@ under `AGENTS.md` in the same repository — may be active; do not revert,
 overwrite, or broaden another agent's work. If write scopes overlap or a
 worker discovers a required out-of-assignment change, it must stop and
 report the blocker.
+
+### Pre-implementation test-strategy explorer
+
+Trigger: parser or protocol behavior, configuration/default/schema
+semantics, concurrency or lifecycle, retained state, compatibility,
+operator-visible classifications, performance claims, scientific/model
+behavior, implementation-mirroring fixtures, or workflow/checker changes
+with false-green risk. Do not trigger for localized documentation-only work
+or mechanical changes whose accepted checks directly prove the unchanged
+contract.
+
+After `ExitPlanMode` approval and a detailed `DESIGN`, but before the first
+`IMPLEMENTATION` slice begins, spawn `fable-test-strategy-adversary` when
+independent agents are supported and authorized. Provide the approved plan,
+detailed design, normative contracts, relevant ADR/TSR and oracle/ambiguity
+results, current tests, and the proposed checker plan — not a completed
+implementation or intended test answers. It returns a contract-to-test
+matrix classifying every finding as `covered`, `checker-only refinement`,
+`material scope or behavior gap`, or `normative evidence conflict`. A
+`material scope or behavior gap` requires a revised plan, a repeated
+`fable-scope-adversary` pass, and exact `ExitPlanMode` reapproval before
+implementation continues; block the first slice until findings are
+dispositioned and the matrix is adequate.
 
 ### Post-code Go quality explorer
 
