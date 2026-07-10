@@ -1,6 +1,6 @@
 # ADR-0214: Repeatable Codex Workflow Evaluation
 
-- Status: Proposed
+- Status: Deprecated
 - Date: 2026-07-09
 - Decision Origin: Design
 
@@ -18,7 +18,13 @@ validation, review, decision memory, traceability, or claim evidence.
 
 ## Decision
 
-Add a repository-managed, fail-closed evaluation harness with these properties:
+Deprecated without replacement. The repository-managed executable evaluation
+harness was removed after two post-call processing failures produced no
+comparable scored runs. ADR-0213 remains the governing token-efficiency
+decision, and its manual six-case corpus remains in
+`docs/workflow-eval-cases.md`.
+
+The following properties describe the abandoned prototype:
 
 - compare immutable repository commits in independent disposable clones;
 - use one canonical machine-readable case manifest;
@@ -37,9 +43,10 @@ Add a repository-managed, fail-closed evaluation harness with these properties:
   lineage, verified prior usage, and read-only predecessor templates;
 - treat missing, disputed, unsafe, or non-comparable evidence as inconclusive.
 
-The initial comparison uses baseline `f6b1a4f` and candidate `2407837`.
-`docs/workflow-eval-cases.json` owns the corpus. The generated Markdown view is
-not an independent source of case behavior.
+The abandoned prototype would have compared baseline `f6b1a4f` with candidate
+`2407837`. Its deleted JSON manifest was the prototype's canonical corpus; it
+is no longer an active repository dependency. ADR-0213's restored manual
+six-case corpus in `docs/workflow-eval-cases.md` remains active.
 
 Total tokens are defined as input plus output. Cached input and reasoning output
 are reported subsets and are not added again. Eligibility for a future contract
@@ -84,6 +91,11 @@ workflow-benefit claim can be calculated. No workflow-contract revision is
 justified by this attempt. Both invalid answers remain excluded from blind
 packets, semantic scores, paired reductions, and eligibility math.
 
+The executable runner, its synthetic test script, and its generated JSON case
+manifest were subsequently removed. Their exact historical versions remain
+recoverable from commits `960f06f` and `852f685`. The external temporary
+evidence roots were not changed or deleted during repository retirement.
+
 ## Alternatives considered
 
 1. Continue using one-off manual Codex commands.
@@ -101,7 +113,7 @@ packets, semantic scores, paired reductions, and eligibility math.
 
 ## Consequences
 
-### Benefits
+### Historical intended benefits
 
 - Produces inspectable full-stream evidence instead of last-message proxies.
 - Makes filesystem safety, case coverage, scoring, and resource limits
@@ -118,29 +130,26 @@ packets, semantic scores, paired reductions, and eligibility math.
 - A post-call harness failure can consume quota without producing a comparable
   metric. Durable pre-launch reservations make this visible and fail closed but
   cannot recover the lost observation.
-- Six E10 sessions remain in normal Codex history. They may retain prompts,
-  repository excerpts, tool output, or sensitive content before the harness can
-  detect secret-like output; the runner never reads, copies, edits, or deletes
-  Codex authentication or session stores.
+- The design would have retained six E10 sessions in normal Codex history, with
+  possible prompt, repository-excerpt, tool-output, or sensitive-content
+  retention before scanning. Neither failed attempt reached E10, so those six
+  sessions were never created.
 
 ### Operational impact
 
 - No Go runtime, protocol, parser, config, telnet, queue, persistence, or
   operator-command behavior changes.
-- Evaluation tasks run only in external disposable clones.
-- Restart lineage and a full predecessor inventory are retained outside the
-  repository. The predecessor is rechecked before every phase and is never a
-  cleanup target.
-- E10 creates at most six persistent, content-bearing Codex sessions, one for
-  each baseline/candidate repetition. Run evidence is reserved before each call
-  and failed planning turns are not retried or restarted.
+- No repository evaluation script invokes Codex or creates evaluation sessions.
+- Historical external evidence remains outside the repository and is not an
+  active workflow dependency.
 - Source-repository model settings and workflow contracts remain unchanged.
 
 ## Links
 
 - Related issues/PRs/commits:
-- Related tests: `scripts/test-workflow-eval.ps1`
-- Related docs: `docs/workflow-eval-cases.json`,
-  `docs/workflow-eval-cases.md`, `scripts/README.md`
+- Related tests: none; executable prototype removed
+- Related docs: `docs/workflow-eval-cases.md`,
+  `docs/decisions/ADR-0213-sol-aware-token-efficient-codex-workflow.md`
 - Related TSRs: none
-- Supersedes / superseded by: extends ADR-0213
+- Supersedes / superseded by: deprecated without replacement; ADR-0213 remains
+  governing
