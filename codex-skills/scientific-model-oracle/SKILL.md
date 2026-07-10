@@ -16,14 +16,7 @@ scientific or conceptual error.
 1. Confirm independence and phase.
    - Run after initial Current-State Discovery and before requirements
      ambiguity review, design, or Scope Ledger publication.
-   - Have the orchestration layer invoke this skill in a fresh, separate,
-     read-only independent context. Prefer a typed `explorer` when the platform
-     exposes one; otherwise use a supported generic independent agent with
-     explicit read-only and findings-only constraints.
-   - Do not claim that loading this skill in the lead context creates
-     independence.
-   - Do not edit files, propose diffs, format, generate artifacts, or run broad
-     checker suites.
+   - Apply the independent-review contract in `AGENTS.md` `Subagent Use`.
 
 2. Define the normative question.
    - State the model behavior or scientific claim being evaluated.
@@ -72,10 +65,7 @@ scientific or conceptual error.
 
 Return a `Scientific/model oracle` sheet containing:
 
-- Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive
-- Status detail: none | no independent context | <failure or timeout detail>
-- Role outcome: used when status is completed | N/A
-- Waiver disposition: none | <scope, owner, mitigation, expiry>
+- the canonical four-field independent-result envelope from `AGENTS.md`;
 - normative question and source hierarchy;
 - definitions, units, domains, boundaries, interpolation, rounding, and
   tolerances;
@@ -85,5 +75,4 @@ Return a `Scientific/model oracle` sheet containing:
 - conflicts, missing authority, blocking gaps, and remaining unknowns;
 - inspected evidence and a reminder that the lead owns every disposition.
 
-Report missing or non-independent evidence as a gap. Never substitute an
-ordinary self-review while labeling it independent.
+Report missing or non-independent evidence as a gap.

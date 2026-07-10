@@ -13,11 +13,8 @@ only on the abbreviated baseline in `AGENTS.md`.
 - Ground validation, performance, and science/model claims in the command
   output, benchmark/profile data, runtime captures, source inspection, or
   decision records actually inspected in the current session.
-- For command-backed concurrency, lifecycle, queue, timer, shutdown,
-  shared-state, or leak-detection claims, preserve a short captured transcript
-  excerpt in the `Verification command reporting` evidence. Redact secrets,
-  tokens, credentials, private hostnames, environment dumps, unnecessary user
-  data, and large traces; state that redaction happened.
+- Report commands through the canonical `Verification command reporting`
+  contract in `docs/review-checklist.md`.
 
 ## Baseline environment
 Expected Go toolchain:
@@ -49,54 +46,11 @@ Missing optional tools should be reported only as conditional evidence gaps for
 the workflow that needed them. Their absence does not block ordinary Go
 implementation, review, or validation.
 
-## Tool-assisted investigation
+## Triggered investigation recipes
 
-### Code-walk examples
-Use semantic tools when source walking needs more than text search:
-- `gopls definition <file:line:col>`
-- `gopls references -d <file:line:col>`
-- `gopls implementation <file:line:col>`
-- `gopls call_hierarchy <file:line:col>`
-- `callgraph -algo rta -test ./...`
-- `callgraph -algo vta -test ./...`
-
-Report the files and commands inspected. Summarize callgraph output; do not
-paste large graphs into the final response.
-
-### Blast-radius examples
-Use package and contract searches to decide scope and validation impact:
-- `go list -deps -test -json ./...`
-- `go list -deps -test -json ./... | jq <filter>`
-- `rg <symbol-or-contract>`
-- `yq <expression> <yaml-file>`
-- `goda graph ./internal/cluster ./telnet | dot -Tsvg -o .\tmp\cluster-telnet.svg`
-- `goda tree ./internal/cluster`
-
-If optional graph or structural-search tools are unavailable, state which
-question remains less certain and whether existing required tools were enough
-for the approved scope.
-
-When a dependency graph should help the custom GPT support agent later, capture
-the durable conclusion in a small Markdown code map under `docs/code-maps/`.
-Do not rely on SVG/PNG output as the support agent's only evidence.
-
-### Leak-detection examples
-Use the narrowest evidence that answers the leak question:
-- targeted lifecycle tests for start/stop, reconnect, churn, slow clients, and
-  shutdown
-- `go test -race ./...` when concurrency/lifecycle rules require it
-- `go test <pkg> -run <test> -memprofile mem.out -blockprofile block.out -mutexprofile mutex.out -trace trace.out`
-- `go tool pprof -top mem.out`
-- `go tool trace trace.out`
-- `scripts/run-with-profiling.ps1` for local runtime CPU, heap, allocs, block,
-  mutex, goroutine, trace, retained-state, and OS process captures
-
-State the evidence level reached: static reasoning, local test/race evidence,
-profile evidence, or runtime-confirmed long-running/load evidence.
-When the evidence level is backed by a command, profile, trace, or runtime
-capture, report a short excerpt that shows the command or source, target scope,
-result status, and key pass/fail/profile line. Static reasoning is allowed, but
-label it as static reasoning and name the inspected files.
+When semantic navigation, blast-radius analysis, leak evidence, fuzzing, race
+checks, benchmarks, profiling, or escape analysis is triggered, use
+`docs/runbooks/codex-triggered-validation-tools.md` for command recipes.
 
 ## Default command set by task type
 
@@ -169,10 +123,8 @@ workflow metadata such as `codex-skills/**/agents/openai.yaml` or
 Minimum expected sequence:
 1. targeted text checks for changed workflow terms, cross-references, required
    evidence markers, and exact workflow strings
-2. workflow-drift audit against the applicable executor surfaces:
-   `AGENTS.md`, `docs/change-workflow.md`, `VALIDATION.md`,
-   `docs/review-checklist.md`, `docs/templates/non-trivial-change-template.md`,
-   and `codex-skills/**` for Codex; `CLAUDE.md`, `docs/fable-workflow.md`,
+2. workflow-drift audit against the applicable executor surfaces. Codex uses
+   `docs/runbooks/codex-workflow-checks.md`; Fable uses `CLAUDE.md`, `docs/fable-workflow.md`,
    `docs/fable-review-checklist.md`, `docs/fable-validation.md`,
    `docs/templates/fable-non-trivial-change-template.md`, `.claude/agents/*.md`,
    and `.claude/skills/**/SKILL.md` for Fable
@@ -180,13 +132,8 @@ Minimum expected sequence:
    within the approved workflow/documentation/skill scope
 4. `git diff --check`
 
-Add the checks that apply:
-- `scripts/verify-codex-skills.ps1` after any repo-managed skill edit
-- metadata/body sync review when `codex-skills/**/agents/openai.yaml` changes
-- positive and non-trigger/refusal forward tests in fresh read-only contexts
-  when new independent specialist skills are introduced; verify phase,
-  required output fields, read-only behavior, status reporting, and lead
-  ownership without claiming measured effectiveness
+Add the applicable Codex checks from `docs/runbooks/codex-workflow-checks.md`,
+or the Fable checks below:
 - Fable agent frontmatter/tool-grant review when `.claude/agents/*.md` changes,
   confirming names, descriptions, models, and tool grants match the read-only or
   worker boundaries in `CLAUDE.md` and `docs/fable-workflow.md`
@@ -258,74 +205,6 @@ Examples:
 - `go test ./internal/parser -run TestRejectsMalformedControlBytes`
 - `go test ./... -run TestGracefulShutdown`
 
-## Fuzz guidance
-Use fuzzing for parser/protocol work where malformed or adversarial input matters.
-
-Examples:
-- `go test ./internal/parser -fuzz=FuzzLineParser -fuzztime=10s`
-- `go test ./... -fuzz=FuzzCommandDecoder -fuzztime=10s`
-
-Rules:
-- keep fuzz inputs bounded
-- seed with real malformed cases when available
-- report fuzz command and result
-
-## Race guidance
-Race checks are mandatory when touching:
-- goroutines
-- channels
-- queue ownership
-- timers/tickers
-- connection lifecycle
-- cancellation/shutdown
-- shared mutable state
-
-Command:
-- `go test -race ./...`
-
-If the repo has a narrower stable race target, it may be added in addition to, not instead of, the full run unless a temporary waiver is explicitly granted.
-
-When reporting a race check as concurrency or lifecycle evidence, include the
-captured command excerpt required by `docs/review-checklist.md` `Verification
-command reporting`. A bare `PASS` or `go test -race ./... - pass` line is not
-enough for high-risk command-backed concurrency claims.
-
-## Benchmark guidance
-Benchmarks are expected for hot-path changes such as:
-- fan-out/broadcast
-- parser loops
-- allocation-sensitive handlers
-- queue operations
-- lock-contention-sensitive paths
-
-Examples:
-- `go test ./internal/parser -bench . -benchmem`
-- `go test ./internal/cluster -bench BenchmarkBroadcast -benchmem`
-
-Report:
-- ns/op
-- allocs/op
-- bytes/op
-- before/after comparison when claiming improvement
-
-## Profiling guidance
-Use pprof when:
-- benchmark numbers regress or surprise you
-- lock contention is suspected
-- memory growth or retention is in question
-- CPU cost of a hot path changed materially
-
-Examples:
-- `go test ./internal/cluster -bench BenchmarkBroadcast -benchmem -cpuprofile cpu.out -memprofile mem.out`
-- `go tool pprof -top cpu.out`
-- `go tool pprof -top mem.out`
-
-## Escape-analysis spot checks
-Use when allocations or ownership are unclear:
-- `go test ./... -gcflags=all=-m`
-
-Do not dump noisy compiler output into the final summary. Summarize only relevant findings.
-
 ## Suggested execution sequence for Non-trivial work
 Example cadence:
 1. after milestone 1: targeted checks for the selected validation lane
@@ -339,21 +218,6 @@ parallel validation causes Go cache or export-data errors, run
 `go clean -cache -testcache` and rerun the affected suite sequentially.
 
 ## Reporting format
-In the final summary, list each command with:
-- command
-- why it was run
-- result
-- whether it was incremental or final
-
-For command-backed concurrency, lifecycle, queue, timer, shutdown,
-shared-state, or leak-detection claims, this reporting belongs in the
-`REVIEW` marker's `Verification command reporting` evidence and must include a
-short captured excerpt. `SELF-AUDIT` and `CLOSEOUT` should reference that
-evidence instead of pasting the excerpt again. Keep the final `VALIDATION`
-marker as the exact three-line block required by `VALIDATION.md`.
-
-Example:
-- `go test ./internal/cluster -run TestSlowClientDropPolicy` - targeted drop-policy regression - pass - incremental
-- `go test ./...` - baseline regression suite - pass - final
-- `go test -race ./...` - lifecycle/concurrency verification - pass - final
-- `git diff --check` - documentation-only whitespace check - pass - final
+Use `docs/review-checklist.md` `Verification command reporting`; later markers
+reference that evidence rather than repeating it. The final marker uses the
+exact block owned by `VALIDATION.md`.

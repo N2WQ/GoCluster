@@ -14,28 +14,18 @@ disposition with the lead.
 
 ## Establish Independence
 
+Apply the independent-review contract in `AGENTS.md` `Subagent Use`.
+
 1. Run after the lead prepares a neutral fact-and-constraint packet from
    Current-State Discovery and any triggered scientific-model oracle or
    requirements-ambiguity review. Run before drafting the Proposed Scope
    Ledger.
-2. Execute in a fresh, separate agent context. Loading this skill in the
-   lead's context does not create independent evidence.
-3. Use a typed read-only `explorer` when the platform exposes one. Otherwise,
-   use a supported independent agent with explicit read-only and findings-only
-   instructions.
-   If the active platform requires an explicit request for delegation, the
-   repository owner's standing request satisfies it when current tool and
-   session policy permit spawning.
-4. Provide confirmed requirements, constraints, current-state evidence,
+2. Provide confirmed requirements, constraints, current-state evidence,
    relevant ADRs/TSRs, and resolved semantics. Withhold the lead's preferred
    solution, draft plan, and intended diff.
-5. Mark the status `inconclusive` if inherited context exposes the lead's
+3. Mark the status `inconclusive` if inherited context exposes the lead's
    preferred design or conclusions, and put `context contaminated` in the
    status detail. Do not count it as the required independent challenge.
-6. Report one canonical agent status.
-
-Do not edit files, propose diffs, format files, generate artifacts, or run
-broad checker suites.
 
 ## Challenge the Design Space
 
@@ -63,10 +53,7 @@ broad checker suites.
 
 Return a compact `Design challenge` containing:
 
-- Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive
-- Status detail: none | context contaminated | <failure or timeout detail>
-- Role outcome: used when status is completed | N/A
-- Waiver disposition: none | <scope, owner, mitigation, expiry>
+- the canonical four-field independent-result envelope from `AGENTS.md`;
 - evidence inspected and unknowns;
 - the compared approaches and smallest-safe recommendation;
 - material risks, user choices, and validation obligations;

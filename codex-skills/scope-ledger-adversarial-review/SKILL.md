@@ -15,16 +15,7 @@ agent context; it does not transfer gate ownership away from the lead agent.
 
 1. Confirm the phase boundary.
    - This skill is pre-approval only.
-   - Do not edit files, propose diffs, run formatters, create generated
-     artifacts, or run full checker suites.
-   - If independent agents are supported, tool/user authorization permits
-     spawning, and the user has not explicitly prohibited independent-agent
-     use, use an independent explorer for this review.
-   - If the active platform requires an explicit user request for subagents,
-     delegation, or parallel agent work, this repo's standing owner request
-     satisfies that prerequisite when active tool/session policy permits it.
-     Do not report `not authorized/not requested` merely because the current
-     task prompt does not repeat the request.
+   - Apply the independent-review contract in `AGENTS.md` `Subagent Use`.
 
 2. Inspect the proposed scope and its evidence.
    - Read the proposed Scope Ledger, Current-State Discovery, relevant
@@ -62,10 +53,7 @@ agent context; it does not transfer gate ownership away from the lead agent.
 
 ## Output Expectations
 
-- Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive
-- Status detail: none | no independent context | <failure or timeout detail>
-- Role outcome: used when status is completed | N/A
-- Waiver disposition: none | <scope, owner, mitigation, expiry>
+- the canonical four-field independent-result envelope from `AGENTS.md`;
 - Include a compact `Scope adversarial review` result.
 - Lead disposition must be explicit for every material finding.
 - If the independent review is unsupported, not authorized/not requested,

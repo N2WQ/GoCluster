@@ -47,26 +47,13 @@ Token efficiency changes reporting shape only. It does not reduce required
 discovery, approval, implementation discipline, validation, review, ADR
 handling, or traceability.
 
-Task classification controls approval rigor; touched surface controls
-validation. Workflow contracts, executor guidance, and repo-managed skills use
-the workflow/skill-doc lane even when Markdown-only. Other documentation-only
-Markdown uses its documentation lane. Code, runtime config, generated
-artifacts, scripts, CI, schemas, protocol/runtime contracts, and checked-in
-runtime data use their applicable code/config/script/mixed lane. Metadata adds
-checks within its lane; it does not select task size.
+Task classification controls approval rigor; `docs/dev-runbook.md` owns
+touched-surface validation-lane selection.
 
 ## Read-only Review/Audit Mode
-For non-mutating explanation, review, audit, diagnosis, prioritization, or
-requested recommendations, inspect current source first, follow material call
-chains where relevant, cite concrete identifiers/files, and use `Unknown from
-inspected code` with the next-read target instead of guessing. Preserve
-current-session claim evidence and applicable read-only independent review.
-
-Read-only work does not require a Scope Ledger, `Approved vN`, change-only
-evidence markers, a change-validation lane, Scope-to-Code Traceability, or the
-Non-trivial validation score. Findings and recommendations are evidence, not
-approved implementation scope. Before any later mutation or proposed diff,
-stop and classify the change as Small or Non-trivial and enter its gate.
+Use the detailed read-only route in `docs/change-workflow.md`. Findings are
+evidence, not approved scope; any later mutation must first enter its Small or
+Non-trivial gate.
 
 ## Skill Check
 - Before free-form work, select the smallest matching repo-managed,
@@ -100,17 +87,22 @@ stop and classify the change as Small or Non-trivial and enter its gate.
   comment intent audit.
 
 ## Subagent Use
+- The common independent-review contract is owned here. Independent reviewers
+  run in a fresh, separate, read-only, findings-only context; loading a skill
+  in the lead context is not independent. They do not edit, propose diffs,
+  format, generate artifacts, or run broad/final suites. Findings are evidence;
+  the lead retains every disposition and final claim.
+- Start each independent result with exactly:
+  - `Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive`
+  - `Status detail: none | no independent context | context contaminated | <failure or timeout detail>`
+  - `Role outcome: used when status is completed | N/A`
+  - `Waiver disposition: none | <scope, owner, mitigation, expiry>`
 - Use independent agents under the detailed phase rules in
   `docs/change-workflow.md` when supported, active tool/session policy permits,
   and the user has not prohibited them. The owner's standing request means a
   repeated task-level request is unnecessary; repo text never overrides active
   policy. Report `unsupported`, `not authorized/not requested`, `explicitly
   prohibited`, `failed`, or `timed out` accurately for each use.
-- Independent-agent status fields use exactly `completed`, `unsupported`, `not
-  authorized/not requested`, `explicitly prohibited`, `failed`, `timed out`,
-  or `inconclusive`. `used` is a role outcome only when status is `completed`;
-  `waived` is a separate disposition; context or failure explanation belongs
-  in a detail field.
 - Independent review roles are read-only `explorer` agents. Before exact
   `Approved vN`, they may gather evidence and challenge scope but must not edit,
   propose diffs, format, generate artifacts, or run full suites. Use
@@ -162,9 +154,8 @@ For Non-trivial work, Codex must:
 - refuse to treat discussion, "please implement", "go ahead", or any
   non-exact wording as approval
 - create a new ledger version for every post-approval scope change
-- treat only `Agreed` items and slices as approval-eligible, executable, and
-  traceable; `Pending` blocks presentation and use of the approval token,
-  while `Rejected` and `Deferred` remain outside the implementation cycle
+- apply the fail-closed Scope Ledger statuses owned by
+  `docs/change-workflow.md`; only `Agreed` items are executable
 - treat slice-shaped Scope Ledgers as a hard gate: broad refactor-shaped ledger
   items are not approval-ready until split into independently coded, tested,
   and reviewed slices
@@ -176,10 +167,8 @@ Before exact approval, do not edit files, propose diffs, run formatters, or run
 full checker suites.
 
 ## Mandatory Evidence Markers
-Use `docs/templates/non-trivial-change-template.md` for the exact compact
-marker shape. Required Non-trivial markers are `GATE`, `DISCOVERY`, `SCOPE`,
-`SCOPE ADVERSARIAL REVIEW`, `PREFLIGHT`, `DESIGN`, `IMPLEMENTATION`, `REVIEW`,
-`SELF-AUDIT`, `CLOSEOUT`, `TRACEABILITY`, and `VALIDATION`.
+Use `docs/templates/non-trivial-change-template.md` for the exact required
+marker set, ordering, phase placement, and compact evidence shape.
 
 Codex must treat every required marker as an execution gate. If a required
 marker cannot be completed from inspected workspace evidence, stop and report
@@ -202,14 +191,8 @@ delta, or final disposition.
   reporting`; later markers reference it. Review the current diff and touched
   files directly, perform high-risk fresh verification, satisfy ADR/TSR and
   workflow-drift duties, and report independent-review gaps honestly.
-- Final Non-trivial responses must apply `VALIDATION.md` and include this exact
-  3-line block:
-
-```text
-Validation Score: X/6
-Failed items: none | <comma-separated failed item numbers/names>
-Auto-fail conditions triggered: no | yes (<conditions>)
-```
+- Final Non-trivial responses must end with the exact block owned by
+  `VALIDATION.md`.
 
 ## Document Map
 - Workflow and dependency rigor: `docs/change-workflow.md`

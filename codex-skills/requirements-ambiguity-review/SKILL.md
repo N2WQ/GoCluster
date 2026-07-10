@@ -16,14 +16,7 @@ design the solution, or own the Scope Ledger.
 1. Confirm independence and phase.
    - Run after Current-State Discovery and applicable scientific/model evidence
      but before publishing a Proposed Scope Ledger.
-   - Have the orchestration layer invoke this skill in a fresh, separate,
-     read-only independent context. Prefer a typed `explorer` when the platform
-     exposes one; otherwise use a supported generic independent agent with
-     explicit read-only and findings-only constraints.
-   - Do not claim that loading this skill in the lead context creates
-     independence.
-   - Do not edit files, propose diffs, format, generate artifacts, or run broad
-     checker suites.
+   - Apply the independent-review contract in `AGENTS.md` `Subagent Use`.
 
 2. Build a neutral evidence packet.
    - Inspect the user request, Current-State Discovery, domain and operator
@@ -72,15 +65,11 @@ design the solution, or own the Scope Ledger.
 
 Return:
 
-- Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive
-- Status detail: none | no independent context | <failure or timeout detail>
-- Role outcome: used when status is completed | N/A
-- Waiver disposition: none | <scope, owner, mitigation, expiry>
+- the canonical four-field independent-result envelope from `AGENTS.md`;
 - the ambiguity register;
 - blocking unresolved semantics;
 - implementation-only uncertainties delegated to design, with rationale;
 - inspected evidence and remaining unknowns;
 - a reminder that the lead owns every disposition and the Scope Ledger.
 
-Report missing or non-independent evidence as a gap. Never substitute an
-ordinary self-review while labeling it independent.
+Report missing or non-independent evidence as a gap.

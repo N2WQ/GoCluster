@@ -14,25 +14,17 @@ execution, validation claims, and disposition with the lead.
 
 ## Establish the Gate
 
+Apply the independent-review contract in `AGENTS.md` `Subagent Use`.
+
 1. Require exact approval of the current Scope Ledger and a detailed `DESIGN`
    before starting. Run before any implementation slice begins.
-2. Execute in a fresh, separate agent context. Loading this skill in the
-   lead's context does not create independent evidence.
-3. Use a typed read-only `explorer` when the platform exposes one. Otherwise,
-   use a supported independent agent with explicit read-only and findings-only
-   instructions.
-   If the active platform requires an explicit request for delegation, the
-   repository owner's standing request satisfies it when current tool and
-   session policy permit spawning.
-4. Provide the approved ledger, detailed design, normative contracts, relevant
+2. Provide the approved ledger, detailed design, normative contracts, relevant
    ADRs/TSRs, oracle and ambiguity results, current tests, and proposed checker
    plan. Do not provide a completed implementation or intended test answers.
-5. Mark ordinary self-review status `inconclusive`, put `no independent
+3. Mark ordinary self-review status `inconclusive`, put `no independent
    context` in the status detail, and do not count it as the required
    independent pass.
 
-Do not edit files, write tests, propose diffs, format files, generate artifacts,
-or run final or broad validation suites.
 
 ## Build the Contract-to-Test Matrix
 
@@ -86,10 +78,7 @@ new behavior into the approved scope.
 
 Return a compact `Test strategy adversarial review` with:
 
-- Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive
-- Status detail: none | no independent context | <failure or timeout detail>
-- Role outcome: used when status is completed | N/A
-- Waiver disposition: none | <scope, owner, mitigation, expiry>
+- the canonical four-field independent-result envelope from `AGENTS.md`;
 - evidence inspected, the matrix, findings, unknowns, and required lead actions.
 
 Do not

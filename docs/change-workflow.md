@@ -19,18 +19,8 @@ Token efficiency changes reporting shape only. It does not reduce required
 discovery, approval, implementation discipline, validation, review, ADR
 handling, or traceability.
 
-Task classification controls approval rigor; touched surface controls
-validation. Select the lane in this order:
-1. code, runtime config, generated artifacts, scripts, CI, schemas,
-   protocol/runtime contracts, or runtime-consumed data use their applicable
-   code/config/script/mixed lane
-2. workflow contracts, executor guidance, runbooks, rubrics, templates, and
-   repo-managed skills use the workflow/skill-doc lane, even when Markdown-only
-3. other all-Markdown documentation uses the documentation-only Markdown lane
-
-Structured workflow metadata adds metadata/body and verifier checks within the
-workflow/skill-doc lane; it does not select task size or make runtime-YAML
-header rules applicable.
+Task classification controls approval rigor. `docs/dev-runbook.md` owns
+touched-surface lane precedence and structured-metadata additions.
 
 Keep the workflow additive, not repetitive:
 - later sections may reference earlier evidence instead of restating it
@@ -111,9 +101,8 @@ Required before every change:
 - record `Skill check: selected <skill>` or `Skill check: none applicable`
 
 For Non-trivial changes:
-- do not edit files, propose diffs, run formatters, or run full checker suites until the user has replied with the exact approval token: `Approved vN`
+- apply the exact approval and no-write authority owned by `AGENTS.md`
 - record `Ledger status: Approved vN found: yes/no`
-- do not treat discussion, "please implement", "go ahead", or any non-exact wording as approval
 - every scope change after approval requires a new ledger version
 - only `Agreed` items and slices are approval-eligible, executable, and
   traceable

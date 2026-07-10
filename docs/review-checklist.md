@@ -253,8 +253,4 @@ Example shape:
 - `git diff --check` - documentation-only whitespace check - pass
 
 ## Final validation block
-The `VALIDATION` marker must end with these exact three lines:
-
-Validation Score: X/6
-Failed items: none | <comma-separated failed item numbers/names>
-Auto-fail conditions triggered: no | yes (<conditions>)
+The `VALIDATION` marker must end with the exact block owned by `VALIDATION.md`.

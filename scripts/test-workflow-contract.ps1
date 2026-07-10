@@ -78,8 +78,11 @@ try {
   Set-Content -LiteralPath $templatePath -Value ($originalTemplate.Replace("### TRACEABILITY", "### REMOVED_TRACEABILITY")) -NoNewline
   Invoke-Checker 1 "missing marker"
 
-  Set-Content -LiteralPath $templatePath -Value ($originalTemplate.Replace("Validation Score: X/6", "Validation Result: X/6")) -NoNewline
+  $validationPath = Join-Path $fixtureRoot "VALIDATION.md"
+  $originalValidation = Get-Content -LiteralPath $validationPath -Raw
+  Set-Content -LiteralPath $validationPath -Value ($originalValidation.Replace("Validation Score: X/6", "Validation Result: X/6")) -NoNewline
   Invoke-Checker 1 "mismatched validation label"
+  Set-Content -LiteralPath $validationPath -Value $originalValidation -NoNewline
 
   Set-Content -LiteralPath $templatePath -Value $originalTemplate -NoNewline
   Remove-Item -LiteralPath (Join-Path $fixtureRoot "docs/code-quality.md")
@@ -103,7 +106,7 @@ try {
   Set-Content -LiteralPath $agentsPath -Value ($originalAgents.Replace("## Read-only Review/Audit Mode", "## REMOVED Read-only Review/Audit Mode")) -NoNewline
   Invoke-Checker 1 "missing read-only route"
 
-  Set-Content -LiteralPath $agentsPath -Value ($originalAgents.Replace("Before any later mutation or proposed diff,", "Before an unspecified later action,")) -NoNewline
+  Set-Content -LiteralPath $agentsPath -Value ($originalAgents.Replace("any later mutation must first enter its Small or", "a later mutation may proceed without a gate")) -NoNewline
   Invoke-Checker 1 "missing read-only transition boundary"
 
   Set-Content -LiteralPath $agentsPath -Value $originalAgents -NoNewline
@@ -119,7 +122,7 @@ try {
   Set-Content -LiteralPath $runbookPath -Value ($originalRunbook.Replace("### Script-only change", "### Unspecified change")) -NoNewline
   Invoke-Checker 1 "script-only lane removed"
 
-  Set-Content -LiteralPath $runbookPath -Value ($originalRunbook.Replace("Do not infer Go validation from the script extension or from a script that merely checks", "Infer Go validation from every changed script and workflow checker")) -NoNewline
+  Set-Content -LiteralPath $runbookPath -Value ($originalRunbook.Replace("Do not infer Go", "Infer Go")) -NoNewline
   Invoke-Checker 1 "script-only lane incorrectly infers Go validation"
 
   Set-Content -LiteralPath $runbookPath -Value $originalRunbook -NoNewline
@@ -142,17 +145,17 @@ try {
 
   Set-Content -LiteralPath $templatePath -Value $originalTemplate -NoNewline
 
-  $canonicalStatus = "- Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive"
+  $canonicalStatus = "  - ``Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive``"
   $statusMutations = @(
-    @{ Path = "codex-skills/requirements-ambiguity-review/SKILL.md"; Replacement = "- Agent status: used | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive"; Label = "used is not an agent status" },
-    @{ Path = "codex-skills/scientific-model-oracle/SKILL.md"; Replacement = "- Agent status: independent | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive"; Label = "independent is not an agent status" },
-    @{ Path = "codex-skills/design-challenger/SKILL.md"; Replacement = "- Agent status: completed | unsupported | not authorized/not requested | prohibited | failed | timed out | inconclusive"; Label = "prohibited alias rejected" },
-    @{ Path = "codex-skills/test-strategy-adversary/SKILL.md"; Replacement = "- Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed-out | inconclusive"; Label = "timed-out alias rejected" },
-    @{ Path = "codex-skills/go-code-quality-review/SKILL.md"; Replacement = "- Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed/timed out | inconclusive"; Label = "combined failure alias rejected" },
-    @{ Path = "codex-skills/scope-ledger-adversarial-review/SKILL.md"; Replacement = "- Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive - no independent context"; Label = "status reason must be separate" }
+    @{ Replacement = "  - ``Agent status: used | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive``"; Label = "used is not an agent status" },
+    @{ Replacement = "  - ``Agent status: independent | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive``"; Label = "independent is not an agent status" },
+    @{ Replacement = "  - ``Agent status: completed | unsupported | not authorized/not requested | prohibited | failed | timed out | inconclusive``"; Label = "prohibited alias rejected" },
+    @{ Replacement = "  - ``Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed-out | inconclusive``"; Label = "timed-out alias rejected" },
+    @{ Replacement = "  - ``Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed/timed out | inconclusive``"; Label = "combined failure alias rejected" },
+    @{ Replacement = "  - ``Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive - no independent context``"; Label = "status reason must be separate" }
   )
   foreach ($mutation in $statusMutations) {
-    $skillPath = Join-Path $fixtureRoot $mutation.Path
+    $skillPath = $agentsPath
     $originalSkill = Get-Content -LiteralPath $skillPath -Raw
     Set-Content -LiteralPath $skillPath -Value ($originalSkill.Replace($canonicalStatus, $mutation.Replacement)) -NoNewline
     Invoke-Checker 1 $mutation.Label

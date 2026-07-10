@@ -21,16 +21,7 @@ fresh-verification evidence before that evidence exists.
 
 1. Confirm the phase boundary.
    - Use after code is written for Non-trivial Go implementation work.
-   - Do not edit files, propose diffs, run formatters, create generated
-     artifacts, or run broad/full validation suites.
-   - If independent agents are supported, tool/user authorization permits
-     spawning, and the user has not explicitly prohibited independent-agent
-     use, use an independent explorer for this review.
-   - If the active platform requires an explicit user request for subagents,
-     delegation, or parallel agent work, this repo's standing owner request
-     satisfies that prerequisite when active tool/session policy permits it.
-     Do not report `not authorized/not requested` merely because the current
-     task prompt does not repeat the request.
+   - Apply the independent-review contract in `AGENTS.md` `Subagent Use`.
    - Do not trigger this skill for documentation-only Markdown changes unless
      the diff also changes Go code or a runtime/code contract.
 
@@ -91,15 +82,12 @@ fresh-verification evidence before that evidence exists.
    - Include file paths and line references when inspected.
    - Separate material findings, non-blocking observations, and remaining
      unknowns.
-   - Report the canonical agent status and separate status detail, role
-     outcome, and waiver disposition.
+   - Report the canonical independent-result envelope.
 
 ## Output Expectations
 
-- Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive
-- Status detail: none | no independent context | <failure or timeout detail>
-- Role outcome: used when status is completed | N/A
-- Waiver disposition: none | <scope, owner, mitigation, expiry>
+- Start with the canonical four-field independent-result envelope from
+  `AGENTS.md`.
 
 - Include a compact `Go code quality review` result.
 - Include a compact `SELF-AUDIT evidence` section for applicable rows inspected

@@ -60,11 +60,8 @@ restating unchanged facts.
 - Objective:
 - In scope:
   - [Agreed|Pending|Rejected|Deferred] item
-- Status authority:
-  - `Agreed`: fully specified, approval-eligible, executable, and traceable
-  - `Pending`: unresolved; blocks presentation or use of the approval token
-  - `Rejected`: explicitly excluded
-  - `Deferred`: excluded from the current implementation cycle
+- Status authority: use the fail-closed definitions in
+  `docs/change-workflow.md`; only `Agreed` items enter implementation
 - Out of scope:
 - Slice plan:
   - slice:
@@ -232,6 +229,4 @@ For every Scope Ledger item that was `Agreed` at the start of implementation:
 - decision refs:
 
 ### VALIDATION
-Validation Score: X/6
-Failed items: none | <comma-separated failed item numbers/names>
-Auto-fail conditions triggered: no | yes (<conditions>)
+End with the exact three-line block owned by `VALIDATION.md`.

@@ -115,8 +115,9 @@ if ($selectedMarkerCount -ne 2 -or $noneMarkerCount -ne 2) {
 
 $canonicalAgentStatus = "- Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive"
 foreach ($path in $skillStatusPaths) {
-  Require-Line $path $skillStatusText[$path] $canonicalAgentStatus
+  Require-Text $path $skillStatusText[$path] "canonical four-field independent-result envelope"
 }
+Require-Line "AGENTS.md" $agents "  - ``Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive``"
 Require-Text "docs/templates/non-trivial-change-template.md" $template "- Independent-agent status: completed | unsupported |"
 Require-Text "docs/templates/non-trivial-change-template.md" $template "- Waiver disposition: none | <scope, owner, mitigation, expiry>"
 $forbiddenTemplateStatusText = @(
@@ -135,7 +136,7 @@ foreach ($forbidden in $forbiddenTemplateStatusText) {
 
 $readOnlyContract = @(
   @{ Path = "AGENTS.md"; Text = $agents; Required = "## Read-only Review/Audit Mode" },
-  @{ Path = "AGENTS.md"; Text = $agents; Required = "Before any later mutation or proposed diff," },
+  @{ Path = "AGENTS.md"; Text = $agents; Required = "any later mutation must first enter its Small or" },
   @{ Path = "docs/change-workflow.md"; Text = $workflow; Required = "### Read-only review/audit" },
   @{ Path = "docs/change-workflow.md"; Text = $workflow; Required = "Findings, priorities, and requested recommendations are evidence, not latent" },
   @{ Path = "VALIDATION.md"; Text = $validation; Required = "Use this scorecard after any Non-trivial Codex change" },
@@ -153,14 +154,13 @@ foreach ($entry in $readOnlyContract) {
 }
 
 $laneContract = @(
-  @{ Path = "AGENTS.md"; Text = $agents; Required = "Task classification controls approval rigor; touched surface controls" },
-  @{ Path = "docs/change-workflow.md"; Text = $workflow; Required = "Task classification controls approval rigor; touched surface controls" },
-  @{ Path = "docs/change-workflow.md"; Text = $workflow; Required = "repo-managed skills use the workflow/skill-doc lane, even when Markdown-only" },
+  @{ Path = "AGENTS.md"; Text = $agents; Required = "``docs/dev-runbook.md`` owns" },
+  @{ Path = "docs/change-workflow.md"; Text = $workflow; Required = "``docs/dev-runbook.md`` owns" },
   @{ Path = "docs/dev-runbook.md"; Text = $runbook; Required = "Task classification controls approval rigor; touched surface controls" },
   @{ Path = "docs/dev-runbook.md"; Text = $runbook; Required = "### Small code change" },
   @{ Path = "docs/dev-runbook.md"; Text = $runbook; Required = "Workflow contracts, executor guidance, runbooks, rubrics, templates, and" },
   @{ Path = "docs/dev-runbook.md"; Text = $runbook; Required = "### Script-only change" },
-  @{ Path = "docs/dev-runbook.md"; Text = $runbook; Required = "Do not infer Go validation from the script extension or from a script that merely checks" },
+  @{ Path = "docs/dev-runbook.md"; Text = $runbook; Required = "Do not infer Go" },
   @{ Path = "docs/dev-runbook.md"; Text = $runbook; Required = "### Non-trivial code, mixed, or runtime-contract change" },
   @{ Path = "VALIDATION.md"; Text = $validation; Required = "use the workflow/skill-doc lane even when Markdown-only" },
   @{ Path = "docs/WORKING_WITH_CODEX.md"; Text = $working; Required = "size controls approval; touched surface controls validation commands." }
@@ -170,7 +170,7 @@ foreach ($entry in $laneContract) {
 }
 
 $scopeStatusContract = @(
-  @{ Path = "AGENTS.md"; Text = $agents; Required = "treat only ``Agreed`` items and slices as approval-eligible, executable, and" },
+  @{ Path = "AGENTS.md"; Text = $agents; Required = "only ``Agreed`` items are executable" },
   @{ Path = "docs/change-workflow.md"; Text = $workflow; Required = "``Pending`` means unresolved and blocks presentation or use of the approval" },
   @{ Path = "docs/templates/non-trivial-change-template.md"; Text = $template; Required = "Do not present the approval token while any item or implementation slice is" },
   @{ Path = "docs/templates/non-trivial-change-template.md"; Text = $template; Required = "For every Scope Ledger item that was ``Agreed`` at the start of implementation:" },
@@ -214,9 +214,9 @@ $markers = @(
   "VALIDATION"
 )
 foreach ($marker in $markers) {
-  Require-Text "AGENTS.md" $agents "``$marker``"
   Require-Line "docs/templates/non-trivial-change-template.md" $template "### $marker"
 }
+Require-Text "AGENTS.md" $agents "exact required`nmarker set, ordering, phase placement"
 
 foreach ($number in 1..15) {
   $id = "SA$number"
@@ -236,14 +236,17 @@ Validation Score: X/6
 Failed items: none | <comma-separated failed item numbers/names>
 Auto-fail conditions triggered: no | yes (<conditions>)
 "@.Trim()
+$normalizedValidationBlock = $validationBlock.Replace("`r", "")
+if (-not $validation.Replace("`r", "").Contains($normalizedValidationBlock)) {
+  Add-Failure "VALIDATION.md missing exact canonical validation block"
+}
 foreach ($entry in @(
   @{ Path = "AGENTS.md"; Text = $agents },
   @{ Path = "docs/templates/non-trivial-change-template.md"; Text = $template },
-  @{ Path = "VALIDATION.md"; Text = $validation },
   @{ Path = "docs/review-checklist.md"; Text = $review }
-)) {
-  Require-Text $entry.Path $entry.Text $validationBlock
-}
+)) { Require-Text $entry.Path $entry.Text "VALIDATION.md" }
+$validationCopies = @($agents,$template,$validation,$review | Where-Object { $_.Replace("`r", "").Contains($normalizedValidationBlock) }).Count
+if ($validationCopies -ne 1) { Add-Failure "exact validation block must have one owner; found $validationCopies" }
 
 $mapHeading = "## Document Map"
 $mapStart = $agents.IndexOf($mapHeading, [System.StringComparison]::Ordinal)
