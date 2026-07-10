@@ -25,6 +25,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Reserved Placeholder | Unused | - | index hygiene | - | - | No ADR file; first real ADR is `docs/decisions/ADR-0002-ui-v2-render-pipeline.md` |
+| ADR-0220 | Codex Natural-Owner Workflow Deduplication | Proposed | 2026-07-10 | workflow, Codex, validation, skills, context efficiency | ADR-0092/ADR-0194/ADR-0210/ADR-0213/ADR-0219 (extends) | - | `docs/decisions/ADR-0220-codex-natural-owner-workflow-deduplication.md` |
 | ADR-0219 | Codex Workflow Coherence | Accepted | 2026-07-10 | workflow, Codex, validation, approval, skills | ADR-0092/ADR-0119/ADR-0144/ADR-0179/ADR-0194/ADR-0199/ADR-0202/ADR-0203/ADR-0204/ADR-0210/ADR-0211/ADR-0213/ADR-0216 (extends and clarifies) | - | `docs/decisions/ADR-0219-codex-workflow-coherence.md` |
 | ADR-0218 | Multi Human Upstream Telnet Registry | Accepted | 2026-07-10 | config, rbn, ingest, dashboard, lifecycle, operations | ADR-0181 (extends lifecycle) | - | `docs/decisions/ADR-0218-multi-human-upstream-telnet-registry.md` |
 | ADR-0217 | Fable Pre-Code Independent Evidence | Accepted | 2026-07-09 | workflow, Fable, agents, independent evidence | ADR-0206/ADR-0216 (Fable-native port) | - | `docs/decisions/ADR-0217-fable-pre-code-independent-evidence.md` |

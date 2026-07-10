@@ -17,6 +17,13 @@ skill installation.
 
 ## Workflow Checkers
 
+- `measure-codex-workflow-context.ps1` compares fixed Codex instruction-path
+  manifests at immutable Git revisions using deterministic words, characters,
+  and UTF-8 bytes. It is a context-footprint proxy, not model-token evidence.
+- `test-measure-codex-workflow-context.ps1` exercises the measurement script in
+  a disposable Git repository and proves dirty worktree bytes cannot alter a
+  pinned candidate comparison.
+
 - `check-workflow-contract.ps1` verifies mechanical coherence of the Codex
   workflow's exact strings, pre-code independent-role routing, evidence
   markers, validation block, read-only route and transition boundary, and
