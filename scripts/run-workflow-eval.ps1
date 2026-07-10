@@ -36,7 +36,7 @@
 
 [CmdletBinding()]
 Param(
-  [ValidateSet("Validate", "GenerateDocs", "ParseJsonl", "Plan", "InspectState", "InspectContent", "ValidateScores", "Pilot", "Repeat", "Aggregate")]
+  [ValidateSet("Validate", "GenerateDocs", "ParseJsonl", "Plan", "InspectState", "InspectContent", "CreateInventory", "ValidateRestart", "InspectAccounting", "ReserveTest", "ValidateScores", "Pilot", "Repeat", "Aggregate")]
   [string]$Action = "Validate",
   [string]$ManifestPath = "",
   [string]$MarkdownPath = "",
@@ -55,6 +55,8 @@ Param(
   [string]$PlanPhase = "Pilot",
   [ValidateRange(1, 3)]
   [int]$Repetition = 1,
+  [ValidateRange(1, 2)]
+  [int]$Turn = 1,
   [ValidateRange(1, 60)]
   [int]$MaxActualInvocations = 50,
   [ValidateRange(1, 32000000)]
@@ -75,6 +77,8 @@ Param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+$env:GIT_OPTIONAL_LOCKS = "0"
+$script:restartContext = $null
 
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 if ($ManifestPath -eq "") { $ManifestPath = Join-Path $repoRoot "docs/workflow-eval-cases.json" }
@@ -92,6 +96,27 @@ function Write-Utf8NoBom {
   $parent = Split-Path -Parent $Path
   if ($parent -ne "") { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
   [IO.File]::WriteAllText($Path, $Text, [Text.UTF8Encoding]::new($false))
+}
+
+function Write-NewUtf8NoBom {
+  Param([string]$Path, [string]$Text)
+  $parent = Split-Path -Parent $Path
+  if ($parent -ne "") { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
+  $bytes = [Text.UTF8Encoding]::new($false).GetBytes($Text)
+  $stream = [IO.File]::Open($Path, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+  try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
+}
+
+function Replace-Utf8NoBomAtomic {
+  Param([string]$Path, [string]$Text)
+  $parent = Split-Path -Parent $Path
+  $temporary = Join-Path $parent (".workflow-eval-replace-" + [guid]::NewGuid().ToString("N") + ".tmp")
+  try {
+    Write-NewUtf8NoBom $temporary $Text
+    [IO.File]::Move($temporary, $Path, $true)
+  } finally {
+    if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force }
+  }
 }
 
 function Assert-SafeRelativePath {
@@ -394,6 +419,84 @@ function Get-CheckoutContentHash {
   return [pscustomobject]@{ file_count = $records.Count; sha256 = Get-Sha256Text ($records -join "`n") }
 }
 
+function Get-DeterministicInventoryText {
+  Param([string]$Root)
+  $resolved = (Resolve-Path -LiteralPath $Root).Path
+  Assert-NoReparseAbsolutePath $resolved "inventory root"
+  Assert-NoDescendantReparse $resolved "inventory root"
+  $records = [Collections.Generic.List[string]]::new()
+  foreach ($file in Get-ChildItem -LiteralPath $resolved -File -Recurse -Force) {
+    $relative = [IO.Path]::GetRelativePath($resolved, $file.FullName).Replace("\", "/")
+    $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    $records.Add("$relative|$($file.Length)|$hash")
+  }
+  $values = $records.ToArray()
+  [Array]::Sort($values, [StringComparer]::Ordinal)
+  return ($values -join "`n")
+}
+
+function Assert-ExactPropertySet {
+  Param($Object, [string[]]$Names, [string]$Label)
+  $actual = @($Object.PSObject.Properties.Name | Sort-Object)
+  $expected = @($Names | Sort-Object)
+  if ($actual.Count -ne $expected.Count -or (Compare-Object $expected $actual)) { throw "$Label has unknown or missing fields" }
+}
+
+function Assert-RestartLineage {
+  Param($Templates, [string]$Root)
+  if ($null -eq $Templates.PSObject.Properties["restart"]) { return $null }
+  if ($MaxActualInvocations -ne 51 -or $MaxInputTokens -ne 32000000 -or $MaxOutputTokens -ne 300000) {
+    throw "restart actions require exact cumulative caps 51/32000000/300000"
+  }
+  $restart = $Templates.restart
+  Assert-ExactPropertySet $restart @("predecessor_root","predecessor_run_id","predecessor_manifest_path","predecessor_manifest_sha256","prior_actual_invocations","prior_usage","invalid_jsonl_path","invalid_stdout_sha256","inventory_path","inventory_sha256","exclusion_reason","cumulative_caps") "restart"
+  Assert-ExactPropertySet $restart.prior_usage @("input_tokens","cached_input_tokens","output_tokens","reasoning_output_tokens","total_tokens") "restart prior_usage"
+  Assert-ExactPropertySet $restart.cumulative_caps @("actual_invocations","input_tokens","output_tokens") "restart cumulative_caps"
+  if ([int]$restart.prior_actual_invocations -ne 1 -or [long]$restart.prior_usage.input_tokens -ne 743297 -or [long]$restart.prior_usage.cached_input_tokens -ne 659968 -or [long]$restart.prior_usage.output_tokens -ne 5857 -or [long]$restart.prior_usage.reasoning_output_tokens -ne 1813 -or [long]$restart.prior_usage.total_tokens -ne 749154) { throw "restart prior usage differs from the Approved v13 facts" }
+  if ([int]$restart.cumulative_caps.actual_invocations -ne 51 -or [long]$restart.cumulative_caps.input_tokens -ne 32000000 -or [long]$restart.cumulative_caps.output_tokens -ne 300000) { throw "restart cumulative caps are invalid" }
+  if ([string]::IsNullOrWhiteSpace([string]$restart.exclusion_reason)) { throw "restart exclusion_reason is required" }
+
+  $predecessorRoot = Assert-SentinelRoot ([string]$restart.predecessor_root)
+  if ($predecessorRoot.Equals($Root, [StringComparison]::OrdinalIgnoreCase)) { throw "restart predecessor and new root must differ" }
+  $predecessorManifestPath = (Resolve-Path -LiteralPath $restart.predecessor_manifest_path).Path
+  $expectedPredecessorManifest = Join-Path $predecessorRoot "template-manifest.json"
+  if (-not $predecessorManifestPath.Equals($expectedPredecessorManifest, [StringComparison]::OrdinalIgnoreCase)) { throw "restart predecessor manifest path is invalid" }
+  if ((Get-FileHash -LiteralPath $predecessorManifestPath -Algorithm SHA256).Hash.ToLowerInvariant() -ne [string]$restart.predecessor_manifest_sha256) { throw "restart predecessor manifest hash mismatch" }
+  $predecessor = Get-Content -LiteralPath $predecessorManifestPath -Raw | ConvertFrom-Json -Depth 100
+  $predecessorSentinel = Get-Content -LiteralPath (Join-Path $predecessorRoot ".workflow-eval-sentinel.json") -Raw | ConvertFrom-Json
+  if ($predecessor.run_id -ne $restart.predecessor_run_id -or $predecessorSentinel.run_id -ne $restart.predecessor_run_id) { throw "restart predecessor run_id mismatch" }
+  if ($null -ne $predecessor.PSObject.Properties["restart"]) { throw "restart predecessor may not itself be a restart" }
+  $expectedTop = @($predecessor.PSObject.Properties.Name) + "restart"
+  if (@($Templates.PSObject.Properties.Name).Count -ne $expectedTop.Count -or (Compare-Object ($expectedTop | Sort-Object) (@($Templates.PSObject.Properties.Name) | Sort-Object))) { throw "derived manifest has an unknown top-level delta" }
+  foreach ($property in $predecessor.PSObject.Properties.Name) {
+    if ($property -eq "run_id") { continue }
+    if (($predecessor.$property | ConvertTo-Json -Depth 100 -Compress) -cne ($Templates.$property | ConvertTo-Json -Depth 100 -Compress)) { throw "derived manifest changed predecessor field: $property" }
+  }
+  if ($Templates.run_id -eq $predecessor.run_id) { throw "derived manifest must use a new run_id" }
+
+  $inventoryPath = (Resolve-Path -LiteralPath $restart.inventory_path).Path
+  Assert-DirectChildPath $Root $inventoryPath "restart inventory"
+  Assert-NoReparseAbsolutePath $inventoryPath "restart inventory"
+  if ((Get-FileHash -LiteralPath $inventoryPath -Algorithm SHA256).Hash.ToLowerInvariant() -ne [string]$restart.inventory_sha256) { throw "restart inventory hash mismatch" }
+  $boundInventory = (Get-Content -LiteralPath $inventoryPath -Raw).Replace("`r`n", "`n").TrimEnd("`n")
+  if ((Get-DeterministicInventoryText $predecessorRoot) -cne $boundInventory) { throw "restart predecessor inventory drift detected" }
+
+  $invalidJsonl = (Resolve-Path -LiteralPath $restart.invalid_jsonl_path).Path
+  $predecessorPrefix = $predecessorRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+  if (-not $invalidJsonl.StartsWith($predecessorPrefix, [StringComparison]::OrdinalIgnoreCase)) { throw "invalid JSONL must be inside predecessor root" }
+  Assert-NoReparseAbsolutePath $invalidJsonl "invalid predecessor JSONL"
+  if ((Get-FileHash -LiteralPath $invalidJsonl -Algorithm SHA256).Hash.ToLowerInvariant() -ne [string]$restart.invalid_stdout_sha256) { throw "invalid predecessor stdout hash mismatch" }
+  $parsed = Convert-JsonlStream $invalidJsonl
+  foreach ($name in @("input_tokens","cached_input_tokens","output_tokens","reasoning_output_tokens","total_tokens")) {
+    if ([long]$parsed.usage.$name -ne [long]$restart.prior_usage.$name) { throw "invalid predecessor usage mismatch: $name" }
+  }
+  foreach ($template in @($Templates.templates)) {
+    $templatePath = (Resolve-Path -LiteralPath $template.path).Path
+    if (-not $templatePath.StartsWith($predecessorPrefix, [StringComparison]::OrdinalIgnoreCase)) { throw "restart template is outside predecessor root" }
+  }
+  return [pscustomobject]@{ predecessor_root=$predecessorRoot; prior_actual_invocations=[int]$restart.prior_actual_invocations; prior_usage=$restart.prior_usage; cumulative_caps=$restart.cumulative_caps }
+}
+
 function Read-TemplateManifest {
   Param([string]$Root)
   if ($TemplateManifest -eq "") { throw "TemplateManifest is required" }
@@ -421,6 +524,7 @@ function Read-TemplateManifest {
     if ($treeHash.file_count -ne $entry[0].file_count -or $treeHash.sha256 -ne $entry[0].working_tree_sha256) { throw "$name working tree differs from frozen manifest" }
     if (Test-Path -LiteralPath (Join-Path $entry[0].path "docs/decisions/ADR-9999-workflow-eval-fixture.md")) { throw "reserved ADR-9999 already exists in $name template" }
   }
+  $script:restartContext = Assert-RestartLineage $templates $Root
   return $templates
 }
 
@@ -459,8 +563,74 @@ function New-DisposableClone {
   if ($actualContent.file_count -ne $expectedContent.file_count -or $actualContent.sha256 -ne $expectedContent.sha256) { throw "fresh clone bytes differ from template" }
 }
 
+function Get-ReservationPath {
+  Param([string]$Root,[string]$RunId,[int]$TurnNumber)
+  return (Join-Path $Root ".workflow-eval-invocation-$RunId-turn$TurnNumber.json")
+}
+
+function Read-Reservations {
+  Param([string]$Root)
+  $result=[Collections.Generic.List[object]]::new();$identities=@{}
+  foreach($file in Get-ChildItem -LiteralPath $Root -File -Filter ".workflow-eval-invocation-*" -Force){
+    if($file.Extension-ne".json"){throw "invocation reservation has an unexpected extension: $($file.Name)"}
+    Assert-DirectChildPath $Root $file.FullName "invocation reservation";Assert-NoReparseAbsolutePath $file.FullName "invocation reservation"
+    $value=Get-Content -LiteralPath $file.FullName -Raw|ConvertFrom-Json -Depth 20
+    $required=@("schema_version","reservation_id","run_id","case_id","variant","repetition","turn","status","reserved_utc")
+    if($value.status-eq"launched"){$required+=@("launched_utc")}elseif($value.status-eq"completed"){$required+=@("launched_utc","usage")}elseif($value.status-ne"reserved"){throw "reservation has invalid status: $($file.Name)"}
+    Assert-ExactPropertySet $value $required "reservation $($file.Name)"
+    if($value.schema_version-ne1-or$value.case_id-notmatch"^E(?:[1-9]|10)$"-or$value.variant-notin@("baseline","candidate")-or[int]$value.repetition-notin1..3-or[int]$value.turn-notin1..2){throw "reservation identity is invalid: $($file.Name)"}
+    $expectedRun="$($value.case_id)-r$($value.repetition)-$($value.variant)";$expectedPath=Get-ReservationPath $Root $expectedRun ([int]$value.turn)
+    if($value.run_id-ne$expectedRun-or-not$file.FullName.Equals($expectedPath,[StringComparison]::OrdinalIgnoreCase)){throw "reservation filename/identity mismatch: $($file.Name)"}
+    if([int]$value.turn-eq2-and$value.case_id-ne"E10"){throw "only E10 may reserve turn 2"}
+    $identity="$($value.run_id)|$($value.turn)";if($identities.ContainsKey($identity)){throw "duplicate invocation reservation: $identity"};$identities[$identity]=$true
+    if($value.status-eq"completed"){
+      Assert-ExactPropertySet $value.usage @("input_tokens","cached_input_tokens","uncached_input_tokens","output_tokens","reasoning_output_tokens","total_tokens") "reservation usage"
+      foreach($name in @("input_tokens","cached_input_tokens","uncached_input_tokens","output_tokens","reasoning_output_tokens","total_tokens")){if([long]$value.usage.$name-lt0){throw "reservation usage is negative"}}
+      if([long]$value.usage.cached_input_tokens-gt[long]$value.usage.input_tokens-or[long]$value.usage.reasoning_output_tokens-gt[long]$value.usage.output_tokens-or[long]$value.usage.uncached_input_tokens-ne([long]$value.usage.input_tokens-[long]$value.usage.cached_input_tokens)-or[long]$value.usage.total_tokens-ne([long]$value.usage.input_tokens+[long]$value.usage.output_tokens)){throw "reservation usage arithmetic is invalid"}
+    }
+    $result.Add($value)
+  }
+  return @($result)
+}
+
+function Get-ReservationAccounting {
+  Param([string]$Root)
+  $invocations=if($null-ne$script:restartContext){[int]$script:restartContext.prior_actual_invocations}else{0};$input=if($null-ne$script:restartContext){[long]$script:restartContext.prior_usage.input_tokens}else{0};$output=if($null-ne$script:restartContext){[long]$script:restartContext.prior_usage.output_tokens}else{0};$unknown=0
+  foreach($reservation in @(Read-Reservations $Root)){$invocations++;if($reservation.status-eq"completed"){$input+=[long]$reservation.usage.input_tokens;$output+=[long]$reservation.usage.output_tokens}else{$unknown++}}
+  return [pscustomobject]@{invocations=$invocations;input_tokens=$input;output_tokens=$output;unknown_usage=$unknown}
+}
+
+function New-InvocationReservation {
+  Param([string]$Root,[string]$RunId,[string]$Case,[string]$VariantName,[int]$Repeat,[int]$TurnNumber)
+  $accounting=Get-ReservationAccounting $Root
+  if($accounting.unknown_usage-ne0){throw "an earlier invocation has unknown usage; no later call is allowed"}
+  if(($accounting.invocations+1)-gt$MaxActualInvocations-or($accounting.input_tokens+2000000)-gt$MaxInputTokens-or($accounting.output_tokens+50000)-gt$MaxOutputTokens){throw "cumulative invocation/token cap refuses another call"}
+  $path=Get-ReservationPath $Root $RunId $TurnNumber
+  Assert-DirectChildPath $Root $path "invocation reservation"
+  if(Test-Path -LiteralPath $path){throw "invocation reservation already exists"}
+  $value=[ordered]@{schema_version=1;reservation_id=[guid]::NewGuid().ToString("N");run_id=$RunId;case_id=$Case;variant=$VariantName;repetition=$Repeat;turn=$TurnNumber;status="reserved";reserved_utc=[DateTime]::UtcNow.ToString("o")}
+  Write-NewUtf8NoBom $path ($value|ConvertTo-Json -Depth 10)
+  return $path
+}
+
+function Set-ReservationLaunched {
+  Param([string]$Path)
+  $value=Get-Content -LiteralPath $Path -Raw|ConvertFrom-Json -Depth 20
+  if($value.status-ne"reserved"){throw "reservation is not reserved"}
+  $value|Add-Member -NotePropertyName launched_utc -NotePropertyValue ([DateTime]::UtcNow.ToString("o"));$value.status="launched"
+  Replace-Utf8NoBomAtomic $Path ($value|ConvertTo-Json -Depth 10)
+}
+
+function Complete-InvocationReservation {
+  Param([string]$Path,$Usage)
+  $value=Get-Content -LiteralPath $Path -Raw|ConvertFrom-Json -Depth 20
+  if($value.status-ne"launched"){throw "reservation is not launched"}
+  $value|Add-Member -NotePropertyName usage -NotePropertyValue $Usage;$value.status="completed"
+  Replace-Utf8NoBomAtomic $Path ($value|ConvertTo-Json -Depth 20)
+}
+
 function Invoke-CodexProcess {
-  Param([string]$Checkout, [string]$Sandbox, [string]$Prompt, [string]$SessionId = "", [int]$TimeoutSeconds = 900, [switch]$PersistentSession)
+  Param([string]$Checkout, [string]$Sandbox, [string]$Prompt, [string]$ReservationPath, [string]$SessionId = "", [int]$TimeoutSeconds = 900, [switch]$PersistentSession)
   if ($Model -ne "gpt-5.6-sol" -or $ReasoningEffort -ne "medium") { throw "live comparisons require gpt-5.6-sol at medium effort" }
   $configArgs = @(
     "-c", "model_reasoning_effort=`"medium`"",
@@ -493,6 +663,10 @@ function Invoke-CodexProcess {
   $process = [Diagnostics.Process]::new(); $process.StartInfo = $psi
   $started = [DateTime]::UtcNow
   if (-not $process.Start()) { throw "failed to start Codex" }
+  try { Set-ReservationLaunched $ReservationPath } catch {
+    try { $process.Kill($true);$process.WaitForExit() } catch { }
+    throw
+  }
   $stdoutTask = $process.StandardOutput.ReadToEndAsync(); $stderrTask = $process.StandardError.ReadToEndAsync()
   $process.StandardInput.Write($Prompt); $process.StandardInput.Close()
   $finished = $process.WaitForExit($TimeoutSeconds * 1000); $timedOut = -not $finished
@@ -608,12 +782,13 @@ function Invoke-EvaluationRun {
     $started = [DateTime]::UtcNow
     $firstParsed=$null;$secondParsed=$null;$second=$null;$parseErrors=[Collections.Generic.List[string]]::new()
     $hasApproval = $null -ne $case.PSObject.Properties["approval_prompt"]
-    $first = Invoke-CodexProcess $clone $case.sandbox ($Manifest.common_prompt_prefix + "`n`n" + $case.prompt) "" ($PerRunTimeoutMinutes * 60) -PersistentSession:$hasApproval
+    $firstReservation=New-InvocationReservation $Root $runId $case.id $Slot.variant ([int]$Slot.repetition) 1
+    $first = Invoke-CodexProcess $clone $case.sandbox ($Manifest.common_prompt_prefix + "`n`n" + $case.prompt) $firstReservation "" ($PerRunTimeoutMinutes * 60) -PersistentSession:$hasApproval
     $firstSecrets=@(Get-SecretMatches ($first.stdout+"`n"+$first.stderr))
     if($firstSecrets.Count-eq0){
       Write-Utf8NoBom (Join-Path $runDir "turn-1.stdout.jsonl") $first.stdout
       Write-Utf8NoBom (Join-Path $runDir "turn-1.stderr.raw.txt") $first.stderr
-      try { $firstParsed=Convert-JsonlStream (Join-Path $runDir "turn-1.stdout.jsonl") } catch { $parseErrors.Add($_.Exception.Message) }
+      try {$firstParsed=Convert-JsonlStream (Join-Path $runDir "turn-1.stdout.jsonl");Complete-InvocationReservation $firstReservation $firstParsed.usage} catch { $parseErrors.Add($_.Exception.Message) }
     }else{Write-Utf8NoBom (Join-Path $runDir "turn-1.secret-blocked.txt") "Raw output withheld because secret patterns were detected.";$parseErrors.Add("turn 1 contained secret-like output")}
 
     $preapprovalFailures=@();$preapprovalMutations=@()
@@ -622,12 +797,13 @@ function Invoke-EvaluationRun {
       $preapprovalFailures = @($case.mechanical.preapproval_required_text | Where-Object { -not $firstParsed.transcript.Contains($_) })
       if ($first.exit_code -eq 0 -and -not $first.timed_out -and $preapprovalMutations.Count -eq 0 -and $preapprovalFailures.Count -eq 0) {
         $remaining = [Math]::Max(1, ($PerRunTimeoutMinutes * 60) - [int]([DateTime]::UtcNow - $started).TotalSeconds)
-        $second = Invoke-CodexProcess $clone $case.sandbox $case.approval_prompt $firstParsed.thread_id $remaining -PersistentSession
+        $secondReservation=New-InvocationReservation $Root $runId $case.id $Slot.variant ([int]$Slot.repetition) 2
+        $second = Invoke-CodexProcess $clone $case.sandbox $case.approval_prompt $secondReservation $firstParsed.thread_id $remaining -PersistentSession
         $secondSecrets=@(Get-SecretMatches ($second.stdout+"`n"+$second.stderr))
         if($secondSecrets.Count-eq0){
           Write-Utf8NoBom (Join-Path $runDir "turn-2.stdout.jsonl") $second.stdout
           Write-Utf8NoBom (Join-Path $runDir "turn-2.stderr.raw.txt") $second.stderr
-          try { $secondParsed=Convert-JsonlStream (Join-Path $runDir "turn-2.stdout.jsonl");if($secondParsed.thread_id-ne$firstParsed.thread_id){throw "resumed turn thread_id differs from approval-planning turn"} } catch { $parseErrors.Add($_.Exception.Message) }
+          try {$secondParsed=Convert-JsonlStream (Join-Path $runDir "turn-2.stdout.jsonl");if($secondParsed.thread_id-ne$firstParsed.thread_id){throw "resumed turn thread_id differs from approval-planning turn"};Complete-InvocationReservation $secondReservation $secondParsed.usage} catch { $parseErrors.Add($_.Exception.Message) }
         }else{Write-Utf8NoBom (Join-Path $runDir "turn-2.secret-blocked.txt") "Raw output withheld because secret patterns were detected.";$parseErrors.Add("turn 2 contained secret-like output")}
       } else {
         $parseErrors.Add("preapproval turn failed or mutated before exact approval")
@@ -647,7 +823,7 @@ function Invoke-EvaluationRun {
     $eventTypes = @($parsedValues | ForEach-Object { $_.event_types })
     $skillCount = ([regex]::Matches($transcript, "(?m)^Skill check: (?:selected .+|none applicable)\s*$" )).Count
     $missingText = @($case.mechanical.required_text | Where-Object { -not $transcript.Contains($_) })
-    $networkViolations = if ($parsedValues.Count -eq 0) { @() } else { @(Get-NetworkViolations ([pscustomobject]@{tool_events=$toolEvents;event_types=$eventTypes})) }
+    $networkViolations = @(if ($parsedValues.Count -eq 0) { @() } else { Get-NetworkViolations ([pscustomobject]@{tool_events=$toolEvents;event_types=$eventTypes}) })
     $rawForScan = $first.stdout + "`n" + $first.stderr + $(if($null-ne$second){"`n"+$second.stdout+"`n"+$second.stderr}else{""})
     $secretMatches = @(Get-SecretMatches $rawForScan)
     $exitOk = $first.exit_code -eq 0 -and -not $first.timed_out -and (-not $hasApproval -or ($null-ne$second -and $second.exit_code-eq0 -and -not$second.timed_out))
@@ -696,10 +872,11 @@ function Invoke-EvaluationRun {
 
 function Get-ExistingUsage {
   Param([string]$Root)
+  if($null-ne$script:restartContext-or@(Get-ChildItem -LiteralPath $Root -File -Filter ".workflow-eval-invocation-*.json" -ErrorAction SilentlyContinue).Count-gt0){return Get-ReservationAccounting $Root}
   $files=@(Get-ChildItem -LiteralPath (Join-Path $Root "runs") -Filter metrics.json -File -Recurse -ErrorAction SilentlyContinue)
   $input=[long]0; $output=[long]0; $invocations=0
   foreach($file in $files){$metric=Get-Content -LiteralPath $file.FullName -Raw|ConvertFrom-Json -Depth 30;$invocations+=[int]$metric.invocation_count;if($null-ne$metric.usage){$input+=[long]$metric.usage.input_tokens;$output+=[long]$metric.usage.output_tokens}}
-  return [pscustomobject]@{invocations=$invocations;input_tokens=$input;output_tokens=$output}
+  return [pscustomobject]@{invocations=$invocations;input_tokens=$input;output_tokens=$output;unknown_usage=0}
 }
 
 function Assert-PilotSemanticGate {
@@ -795,6 +972,21 @@ switch($Action){
   "Plan"{(New-RunSchedule $manifest $PlanPhase)|ConvertTo-Json -Depth 10}
   "InspectState"{if($StateRoot-eq""){throw "InspectState requires -StateRoot"};Assert-NoDescendantReparse $StateRoot "state root";(Get-RepoState $StateRoot)|ConvertTo-Json -Depth 20}
   "InspectContent"{if($StateRoot-eq""){throw "InspectContent requires -StateRoot"};Assert-NoDescendantReparse $StateRoot "content root";(Get-CheckoutContentHash $StateRoot)|ConvertTo-Json -Depth 10}
+  "CreateInventory"{
+    $root=Assert-SentinelRoot $RunRoot;if($StateRoot-eq""-or$OutputPath-eq""){throw "CreateInventory requires -StateRoot and -OutputPath"}
+    $full=[IO.Path]::GetFullPath($OutputPath);Assert-DirectChildPath $root $full "restart inventory";if(Test-Path -LiteralPath $full){throw "restart inventory already exists"}
+    $text=Get-DeterministicInventoryText $StateRoot;Write-NewUtf8NoBom $full $text
+    [pscustomobject]@{path=$full;sha256=(Get-FileHash -LiteralPath $full -Algorithm SHA256).Hash.ToLowerInvariant();file_count=if($text-eq""){0}else{@($text-split"`n").Count}}|ConvertTo-Json
+  }
+  {$_-in@("ValidateRestart","InspectAccounting","ReserveTest")} {
+    $root=Assert-SentinelRoot $RunRoot;if($TemplateManifest-eq""){throw "$Action requires -TemplateManifest"}
+    $full=(Resolve-Path -LiteralPath $TemplateManifest).Path;if(-not$full.Equals((Join-Path $root "template-manifest.json"),[StringComparison]::OrdinalIgnoreCase)){throw "TemplateManifest must be the sentinel root manifest"}
+    $templates=Get-Content -LiteralPath $full -Raw|ConvertFrom-Json -Depth 100;$sentinel=Get-Content -LiteralPath (Join-Path $root ".workflow-eval-sentinel.json") -Raw|ConvertFrom-Json
+    if($templates.run_id-ne$sentinel.run_id){throw "template manifest and sentinel run_id differ"};$script:restartContext=Assert-RestartLineage $templates $root
+    if($Action-eq"ValidateRestart"){Write-Host "PASS restart lineage and predecessor inventory are valid."}
+    elseif($Action-eq"InspectAccounting"){Get-ReservationAccounting $root|ConvertTo-Json}
+    else{if($CaseId-eq""){throw "ReserveTest requires -CaseId"};$runId="$CaseId-r$Repetition-$Variant";New-InvocationReservation $root $runId $CaseId $Variant $Repetition $Turn}
+  }
   "ValidateScores"{$root=Assert-SentinelRoot $RunRoot;Assert-PilotSemanticGate $SemanticGatePath $root $ExpectedPacketCount;Write-Host "PASS semantic score gate is complete and bound to the packet set."}
   {$_-in@("Pilot","Repeat")} {
     if(-not$AllowLiveCalls){throw "$Action requires -AllowLiveCalls"}
@@ -805,5 +997,5 @@ switch($Action){
     $schedule=New-RunSchedule $manifest $Action
     $results=Invoke-Schedule $manifest $templates $schedule $root;Write-Utf8NoBom (Join-Path $root ("batch-"+$Action.ToLowerInvariant()+".json")) ($results|ConvertTo-Json -Depth 50);Write-Host "PASS $Action completed $($results.Count) scheduled runs."
   }
-  "Aggregate"{$root=Assert-SentinelRoot $RunRoot;$summary=Get-AggregateReport $root $SemanticGatePath;$json=$summary|ConvertTo-Json -Depth 50;$path=if($OutputPath-ne""){$OutputPath}else{Join-Path $root "aggregate.json"};$full=[IO.Path]::GetFullPath($path);if(-not$full.StartsWith($root.TrimEnd([IO.Path]::DirectorySeparatorChar)+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){throw "aggregate output must be inside RunRoot"};if(Test-Path -LiteralPath $full){Assert-NoReparseAbsolutePath $full "aggregate output"};Write-Utf8NoBom $full $json;$json}
+  "Aggregate"{$root=Assert-SentinelRoot $RunRoot;if($TemplateManifest-ne""){Read-TemplateManifest $root|Out-Null}elseif(Test-Path -LiteralPath (Join-Path $root "template-manifest.json")){throw "Aggregate requires -TemplateManifest for frozen/restart validation"};$summary=Get-AggregateReport $root $SemanticGatePath;$json=$summary|ConvertTo-Json -Depth 50;$path=if($OutputPath-ne""){$OutputPath}else{Join-Path $root "aggregate.json"};$full=[IO.Path]::GetFullPath($path);if(-not$full.StartsWith($root.TrimEnd([IO.Path]::DirectorySeparatorChar)+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){throw "aggregate output must be inside RunRoot"};if(Test-Path -LiteralPath $full){Assert-NoReparseAbsolutePath $full "aggregate output"};Write-Utf8NoBom $full $json;$json}
 }

@@ -32,6 +32,11 @@ skill installation.
   user's normal Codex history and can retain prompts, repository excerpts, tool
   output, or sensitive content before output scanning detects it. The runner
   does not read, copy, edit, or delete Codex authentication or session stores.
+  Restart runs require a hash-bound predecessor inventory and exact derived
+  manifest. Per-turn reservations are written before process launch so call and
+  token caps remain enforceable even when postprocessing cannot write metrics.
+  Predecessor templates are read with optional Git locks disabled and are
+  re-inventoried before each evaluation phase.
 - `test-workflow-eval.ps1` checks manifest and generated-Markdown parity,
   full-stream parsing, token math, malformed/missing/duplicate JSONL events,
   unsafe paths, bounded planning, and sentinel enforcement without invoking a

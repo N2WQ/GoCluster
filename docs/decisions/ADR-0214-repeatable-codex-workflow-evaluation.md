@@ -31,6 +31,10 @@ Add a repository-managed, fail-closed evaluation harness with these properties:
 - use mechanical checks plus two independent blind semantic scores;
 - compare matched case/repetition pairs rather than pooled unrelated totals;
 - enforce hard invocation, token, output, timeout, and batch-duration limits;
+- reserve every invocation before process launch so failures after a call cannot
+  evade cumulative accounting;
+- bind any restart to a deterministic predecessor inventory, exact manifest
+  lineage, verified prior usage, and read-only predecessor templates;
 - treat missing, disputed, unsafe, or non-comparable evidence as inconclusive.
 
 The initial comparison uses baseline `f6b1a4f` and candidate `2407837`.
@@ -51,10 +55,34 @@ the workflow automatically.
 
 ## Evaluation Result
 
-Pending implementation, synthetic validation, independent safety review, and
-the bounded live evaluation. This section must be replaced with exact observed
-evidence or an explicit inconclusive/blocked disposition before the ADR is
-accepted.
+The V10 pilot attempt is invalid and excluded from comparison metrics. Its first
+E1 candidate call completed, but PowerShell strict-mode postprocessing failed
+before a metric or blind packet was written. The exclusion was frozen before
+the answer was viewed or semantically scored. The preserved JSONL reports
+743,297 input tokens, including 659,968 cached input tokens, 5,857 output
+tokens, and 1,813 reasoning-output tokens. Its total input-plus-output usage is
+749,154 tokens, and its raw JSONL SHA-256 is
+`562521ffdf684535afb0f81d476fe3ee57ad499782796e7769cf59d986e93f8a`.
+
+V13 performed one clean-restart call after synthetic validation, exact lineage
+validation, and an independent pre-live `PASS`. Its durable reservation records
+406,311 input tokens, including 357,376 cached input tokens, 3,576 output
+tokens, and 893 reasoning-output tokens. The input-plus-output total is 409,887
+tokens. Postprocessing then stopped on a second PowerShell strict-mode
+scalarization defect: an empty network-violation result became `$null` before
+the rigor expression read `.Count`. No metric or blind packet was written.
+
+The V13 no-retry rule stopped all later calls. Cumulative accounting is two
+calls, 1,149,608 input tokens, and 9,433 output tokens, with no unknown usage.
+The defect was reproduced without a model call, corrected by wrapping the
+conditional result as an array, and verified by captured-stream replay plus the
+full synthetic suite.
+
+The evaluation result is **inconclusive**. There are zero comparable scored
+runs, so no baseline/candidate token reduction, rigor-preservation result, or
+workflow-benefit claim can be calculated. No workflow-contract revision is
+justified by this attempt. Both invalid answers remain excluded from blind
+packets, semantic scores, paired reductions, and eligibility math.
 
 ## Alternatives considered
 
@@ -87,6 +115,9 @@ accepted.
 - Candidate-specific vocabulary can weaken perfect scorer blinding.
 - Live runs consume substantial model quota and wall time.
 - Codex JSONL event shapes may evolve across CLI versions.
+- A post-call harness failure can consume quota without producing a comparable
+  metric. Durable pre-launch reservations make this visible and fail closed but
+  cannot recover the lost observation.
 - Six E10 sessions remain in normal Codex history. They may retain prompts,
   repository excerpts, tool output, or sensitive content before the harness can
   detect secret-like output; the runner never reads, copies, edits, or deletes
@@ -97,6 +128,9 @@ accepted.
 - No Go runtime, protocol, parser, config, telnet, queue, persistence, or
   operator-command behavior changes.
 - Evaluation tasks run only in external disposable clones.
+- Restart lineage and a full predecessor inventory are retained outside the
+  repository. The predecessor is rechecked before every phase and is never a
+  cleanup target.
 - E10 creates at most six persistent, content-bearing Codex sessions, one for
   each baseline/candidate repetition. Run evidence is reserved before each call
   and failed planning turns are not retried or restarted.
