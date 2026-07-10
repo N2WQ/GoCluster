@@ -692,10 +692,13 @@ For the exact thresholds, per-mode offsets, weight rules, and shipped tables, se
 
 ## What The Cluster Does
 
-- Ingests spots from RBN CW/RTTY, RBN digital, PSKReporter, optional DXSummit HTTP polling, local `DX` commands, and optional peer feeds.
+- Ingests spots from RBN CW/RTTY, RBN digital, PSKReporter, optional DXSummit HTTP polling, any enabled human/upstream telnet feeds, local `DX` commands, and optional peer feeds.
 - Shows enabled ingest sources in the console dashboard; the RBN family is live
   when either CW/RTTY or digital RBN is connected, while source rows still show
-  each enabled feed separately. DXSummit appears as `DXSUMMIT` when enabled and
+  each enabled feed separately. Every enabled human/upstream connection appears
+  as `HUMAN/<name>` in YAML order and contributes one item to the connected /
+  enabled count. The scrollable source pane retains every entry and shows at
+  most ten rows at once. DXSummit appears as `DXSUMMIT` when enabled and
   recently polling. The Overview freshness line also shows `VOACAP SSN:
   <integer|n/a>` for the rounded current SSN generation used by VOACAP. The
   Overview path panel shows existing VOACAP fallback work state as
@@ -752,7 +755,7 @@ Review normal deployment/runtime files before first run:
 
 - `app.yaml`: set `server.node_id`, choose `headless` or `tview-v2` local UI mode, and confirm log paths.
 - `runtime.yaml`: confirm telnet port, filter defaults, buffers, and Go runtime controls.
-- `ingest.yaml`: configure RBN, PSKReporter, DXSummit, and local/human ingest settings.
+- `ingest.yaml`: configure RBN, PSKReporter, DXSummit, and human/upstream telnet ingest settings.
 - `peering.yaml`: edit only if this node peers with other clusters.
 - `reputation.yaml`: edit only if IPinfo/Cymru reputation enrichment is enabled.
 - `solarweather.yaml`: edit only if solar/geomagnetic path overrides are enabled.
@@ -777,6 +780,13 @@ node: change `server.node_id` in `app.yaml` from `N0CALL-1`, change the RBN
 login callsigns in `ingest.yaml` from `N0CALL-1`, and update any private
 upstream telnet `host` and login fields you enable. If peering is enabled,
 also replace peer hosts, login callsigns, and passwords in `peering.yaml`.
+
+`human_telnet` normally uses an ordered YAML sequence, like the peer registry
+in `peering.yaml`. Define zero to 64 complete entries; each has its own
+`enabled`, `name`, endpoint, login, transport, queue, keepalive, and SSID
+settings. Enabled entries connect and retry independently, so one unavailable
+upstream does not block the others. The historical single mapping remains
+accepted as a one-entry compatibility form.
 
 ## Build And Service Notes
 

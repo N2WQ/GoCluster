@@ -1,3 +1,11 @@
+// File role: Adapts ingest-client health snapshots into transition logs and
+// file-only connection events for the live cluster runtime.
+// Crawler notes: Start here for source-specific health identities, idle rules,
+// and per-human-upstream connection status; construction lives in
+// main_runtime.go and dashboard rendering lives in bootstrap.go.
+// Related docs: docs/domain-contract.md, rbn/README.md.
+// Related tests: internal/cluster/ingest_health_test.go,
+// internal/cluster/main_stats_test.go.
 package cluster
 
 import (
@@ -43,6 +51,7 @@ type ingestHealthSnapshot struct {
 }
 
 type ingestHealthSource struct {
+	id       string
 	name     string
 	endpoint string
 	snapshot func() ingestHealthSnapshot
@@ -78,7 +87,8 @@ func startIngestHealthMonitorWithReporter(ctx context.Context, sources []ingestH
 					}
 					snap := source.snapshot()
 					idle := ingestIsIdle(snap, now)
-					state := states[source.name]
+					stateKey := ingestHealthSourceStateKey(source)
+					state := states[stateKey]
 					if !state.initialized || state.connected != snap.Connected || state.idle != idle {
 						log.Printf("%s%s", ingestHealthLogPrefix, formatIngestHealthLine(source.name, snap, idle, now))
 						if reporter != nil {
@@ -90,7 +100,7 @@ func startIngestHealthMonitorWithReporter(ctx context.Context, sources []ingestH
 							}
 							reporter(source.name, action, source.endpoint, reason, ingestStateLabel(idle))
 						}
-						states[source.name] = ingestHealthState{
+						states[stateKey] = ingestHealthState{
 							connected:   snap.Connected,
 							idle:        idle,
 							initialized: true,
@@ -100,6 +110,13 @@ func startIngestHealthMonitorWithReporter(ctx context.Context, sources []ingestH
 			}
 		}
 	}()
+}
+
+func ingestHealthSourceStateKey(source ingestHealthSource) string {
+	if source.id != "" {
+		return source.id
+	}
+	return source.name
 }
 
 func ingestStateLabel(idle bool) string {
@@ -195,8 +212,9 @@ func formatIngestHealthLine(name string, snap ingestHealthSnapshot, idle bool, n
 	return b.String()
 }
 
-func rbnHealthSource(name string, client *rbn.Client) ingestHealthSource {
+func rbnHealthSourceWithID(id, name string, client *rbn.Client) ingestHealthSource {
 	return ingestHealthSource{
+		id:       id,
 		name:     name,
 		endpoint: client.Endpoint(),
 		snapshot: func() ingestHealthSnapshot {
@@ -218,6 +236,7 @@ func rbnHealthSource(name string, client *rbn.Client) ingestHealthSource {
 
 func pskReporterHealthSource(name string, client *pskreporter.Client) ingestHealthSource {
 	return ingestHealthSource{
+		id:       "pskreporter",
 		name:     name,
 		endpoint: client.Endpoint(),
 		snapshot: func() ingestHealthSnapshot {
@@ -253,6 +272,7 @@ func pskReporterHealthSource(name string, client *pskreporter.Client) ingestHeal
 
 func dxsummitHealthSource(name string, client *dxsummit.Client) ingestHealthSource {
 	return ingestHealthSource{
+		id:       "dxsummit",
 		name:     name,
 		endpoint: client.Endpoint(),
 		snapshot: func() ingestHealthSnapshot {

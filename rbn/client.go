@@ -5,6 +5,7 @@ package rbn
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -28,6 +29,7 @@ const (
 	maxRBNDialFrequencyKHz = 3000000.0
 	rbnMaxLineLength       = 1024
 	rbnWriteDeadline       = 10 * time.Second
+	rbnLoginDelay          = 2 * time.Second
 	rbnReconnectInitial    = 5 * time.Second
 	rbnReconnectMax        = 60 * time.Second
 )
@@ -36,7 +38,34 @@ const (
 // short and non-blocking because it runs on the telnet read loop.
 type BadCallReporter func(source, role, reason, call, deCall, dxCall, mode, detail string)
 
-type rbnDialFunc func(network, addr string) (net.Conn, error)
+type rbnDialFunc func(ctx context.Context, network, addr string) (net.Conn, error)
+
+// connectionGeneration owns every transport-dependent object for one dial.
+// Cleanup must operate on this value, never on Client-wide connection fields,
+// so a stale reader or keepalive cannot close a replacement connection.
+type connectionGeneration struct {
+	conn   net.Conn
+	reader *bufio.Reader
+	writer *bufio.Writer
+
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	writeMu   sync.Mutex
+	closeOnce sync.Once
+	workers   sync.WaitGroup
+	failure   chan error
+}
+
+func (g *connectionGeneration) close() {
+	if g == nil {
+		return
+	}
+	g.cancel()
+	g.closeOnce.Do(func() {
+		_ = g.conn.Close()
+	})
+}
 
 // Client represents an RBN telnet client
 type Client struct {
@@ -44,17 +73,9 @@ type Client struct {
 	port       int
 	callsign   string
 	name       string
-	conn       net.Conn
-	reader     *bufio.Reader
-	writer     *bufio.Writer
 	connected  atomic.Bool
-	shutdown   chan struct{}
 	spotChan   chan *spot.Spot
 	skewStore  *skew.Store
-	reconnect  chan struct{}
-	stopOnce   sync.Once
-	startOnce  sync.Once
-	writeMu    sync.Mutex
 	lastLineAt atomic.Int64
 	lastSpotAt atomic.Int64
 	spotDrops  atomic.Uint64
@@ -66,10 +87,24 @@ type Client struct {
 
 	telnetTransport   string
 	keepaliveInterval time.Duration
-	keepaliveDone     chan struct{}
 	dial              rbnDialFunc
+	loginDelay        time.Duration
 	reconnectInitial  time.Duration
 	reconnectMax      time.Duration
+
+	// lifecycleMu serializes Start/Stop and active generation replacement.
+	// supervisor is the only dial/login/read/retry owner; Stop may only cancel
+	// it and close the currently published generation to unblock network I/O.
+	lifecycleMu sync.Mutex
+	ctx         context.Context
+	cancel      context.CancelFunc
+	active      *connectionGeneration
+	started     bool
+	stopped     bool
+	parentStop  func() bool
+	workers     sync.WaitGroup
+	stopOnce    sync.Once
+	spotsOnce   sync.Once
 
 	rawChan chan<- string // optional passthrough for non-DX lines (minimal parser only)
 
@@ -185,13 +220,14 @@ func NewClient(host string, port int, callsign string, name string, skewStore *s
 		port:       port,
 		callsign:   callsign,
 		name:       name,
-		shutdown:   make(chan struct{}),
 		spotChan:   make(chan *spot.Spot, bufferSize),
 		skewStore:  skewStore,
-		reconnect:  make(chan struct{}, 1),
 		keepSSID:   keepSSID,
 		bufferSize: bufferSize,
 		dial:       defaultRBNDial,
+		loginDelay: rbnLoginDelay,
+		ctx:        context.Background(),
+		cancel:     func() {},
 	}
 }
 
@@ -296,52 +332,87 @@ func extractCallAndFreq(tok spotToken) (string, float64, bool) {
 	return callPart, freq, ok
 }
 
-// Connect establishes the initial RBN connection and starts supervision.
-// Key aspects: First dial is synchronous; reconnects happen in background.
+// Connect starts supervision and waits for the first dial result.
+// Key aspects: A first-attempt failure terminates this lifecycle; after a
+// successful first dial, mid-stream failures continue to reconnect.
 // Upstream: main.go startup.
-// Downstream: establishConnection, connectionSupervisor goroutine.
+// Downstream: start, connectionSupervisor goroutine.
 func (c *Client) Connect() error {
-	if err := c.establishConnection(); err != nil {
-		return err
-	}
-	c.startConnectionSupervisor()
-	return nil
+	return c.start(context.Background(), false, true)
 }
 
 // ConnectWithInitialRetry starts supervision even when the first dial fails.
 // Key aspects: Returns the first error to the caller while bounded background
 // retry continues until a connection succeeds or Stop signals shutdown.
 // Upstream: cluster startup for enabled RBN feeds.
-// Downstream: establishConnection, connectionSupervisor goroutine.
+// Downstream: start, connectionSupervisor goroutine.
 func (c *Client) ConnectWithInitialRetry() error {
-	c.startConnectionSupervisor()
-	if err := c.establishConnection(); err != nil {
-		c.requestReconnect(err)
-		return err
+	return c.start(context.Background(), true, true)
+}
+
+// Start begins cancellable connection supervision without waiting for a dial.
+// Initial and mid-stream failures retry until ctx is canceled or Stop is
+// called. Canceling ctx has the same joined-shutdown semantics as Stop.
+func (c *Client) Start(ctx context.Context) error {
+	return c.start(ctx, true, false)
+}
+
+var errClientAlreadyStarted = errors.New("RBN client already started")
+
+func (c *Client) start(parent context.Context, retryInitial, waitFirst bool) error {
+	if c == nil {
+		return errors.New("nil RBN client")
 	}
-	return nil
+	if parent == nil {
+		return errors.New("nil RBN client context")
+	}
+
+	var first chan error
+	if waitFirst {
+		first = make(chan error, 1)
+	}
+
+	c.lifecycleMu.Lock()
+	if c.stopped {
+		c.lifecycleMu.Unlock()
+		return context.Canceled
+	}
+	if c.started {
+		c.lifecycleMu.Unlock()
+		return errClientAlreadyStarted
+	}
+	clientCtx, cancel := context.WithCancel(parent)
+	retainCancel := false
+	defer func() {
+		if !retainCancel {
+			cancel()
+		}
+	}()
+	c.ctx, c.cancel = clientCtx, cancel
+	retainCancel = true
+	c.started = true
+	c.workers.Add(1)
+	c.parentStop = context.AfterFunc(parent, c.Stop)
+	c.lifecycleMu.Unlock()
+
+	go c.connectionSupervisor(clientCtx, retryInitial, first)
+	if first == nil {
+		return nil
+	}
+	return <-first
 }
 
-func (c *Client) startConnectionSupervisor() {
-	c.startOnce.Do(func() {
-		// Goroutine: monitor reconnect signals and re-establish connections.
-		go c.connectionSupervisor()
-	})
-}
-
-func defaultRBNDial(network, addr string) (net.Conn, error) {
+func defaultRBNDial(ctx context.Context, network, addr string) (net.Conn, error) {
 	dialer := &net.Dialer{
 		Timeout:   30 * time.Second,
 		KeepAlive: 2 * time.Minute, // OS-level keepalive to detect silent mid-path drops
 	}
-	return dialer.Dial(network, addr)
+	return dialer.DialContext(ctx, network, addr)
 }
 
-// Purpose: Dial the RBN feed and start login/read loops.
-// Key aspects: Wraps in telnet transport as configured and spawns goroutines.
-// Upstream: Connect and reconnect loop.
-// Downstream: handleLogin, keepaliveLoop, readLoop goroutines.
-func (c *Client) establishConnection() error {
+// dialGeneration builds but does not publish one complete connection
+// generation. The caller either installs it atomically or closes it.
+func (c *Client) dialGeneration(ctx context.Context) (*connectionGeneration, error) {
 	addr := net.JoinHostPort(c.host, fmt.Sprintf("%d", c.port))
 	log.Printf("%s: connecting to %s...", c.displayName(), addr)
 
@@ -349,9 +420,13 @@ func (c *Client) establishConnection() error {
 	if dial == nil {
 		dial = defaultRBNDial
 	}
-	conn, err := dial("tcp", addr)
+	conn, err := dial(ctx, "tcp", addr)
 	if err != nil {
-		return fmt.Errorf("failed to connect to %s: %w", c.displayName(), err)
+		return nil, fmt.Errorf("failed to connect to %s: %w", c.displayName(), err)
+	}
+	if err := ctx.Err(); err != nil {
+		_ = conn.Close()
+		return nil, err
 	}
 
 	readerConn := conn
@@ -359,110 +434,116 @@ func (c *Client) establishConnection() error {
 	if c.useZiutekTelnet() {
 		tconn, err := ztelnet.NewConn(conn)
 		if err != nil {
-			conn.Close()
-			return fmt.Errorf("failed to wrap telnet connection for %s: %w", c.displayName(), err)
+			_ = conn.Close()
+			return nil, fmt.Errorf("failed to wrap telnet connection for %s: %w", c.displayName(), err)
 		}
 		readerConn = tconn
 		writerConn = tconn
 	}
 
-	c.conn = conn
-	c.reader = bufio.NewReader(readerConn)
-	c.writer = bufio.NewWriter(writerConn)
-	c.connected.Store(true)
-	c.keepaliveDone = make(chan struct{})
-
-	log.Printf("%s: connection established", c.displayName())
-
-	// Start login sequence and stream reader for this connection.
-	go c.handleLogin()
-	if c.keepaliveInterval > 0 {
-		// Goroutine: emit periodic keepalives for upstream connection.
-		go c.keepaliveLoop()
+	genCtx, cancel := context.WithCancel(ctx)
+	retainCancel := false
+	defer func() {
+		if !retainCancel {
+			cancel()
+		}
+	}()
+	gen := &connectionGeneration{
+		conn:    conn,
+		reader:  bufio.NewReader(readerConn),
+		writer:  bufio.NewWriter(writerConn),
+		ctx:     genCtx,
+		cancel:  cancel,
+		failure: make(chan error, 1),
 	}
-	// Goroutine: read and parse incoming lines from the server.
-	go c.readLoop()
+	retainCancel = true
+	return gen, nil
+}
+
+// connectionSupervisor is the sole owner of dial, login, read, retry, and
+// generation replacement. That serialization prevents overlapping readers and
+// gives Stop one bounded goroutine tree to join.
+func (c *Client) connectionSupervisor(ctx context.Context, retryInitial bool, first chan<- error) {
+	defer c.workers.Done()
+	firstAttempt := true
+	retryAttempt := 0
+	for {
+		gen, err := c.dialGeneration(ctx)
+		if err == nil {
+			err = c.installGeneration(gen)
+		}
+		if firstAttempt && first != nil {
+			first <- err
+			close(first)
+		}
+		if err != nil {
+			if c.isShutdown() || (firstAttempt && !retryInitial) {
+				return
+			}
+			delay := c.retryDelay(retryAttempt)
+			log.Printf("%s: connection failed: %v (retry in %s)", c.displayName(), err, delay)
+			if !c.waitRetry(ctx, delay) {
+				return
+			}
+			retryAttempt++
+			firstAttempt = false
+			continue
+		}
+
+		firstAttempt = false
+		retryAttempt = 0
+		log.Printf("%s: connection established", c.displayName())
+		err = c.serveGeneration(gen)
+		c.retireGeneration(gen)
+		if c.isShutdown() {
+			return
+		}
+		delay := c.retryDelay(retryAttempt)
+		log.Printf("%s: connection lost: %v (retry in %s)", c.displayName(), err, delay)
+		if !c.waitRetry(ctx, delay) {
+			return
+		}
+		retryAttempt++
+	}
+}
+
+func (c *Client) installGeneration(gen *connectionGeneration) error {
+	c.lifecycleMu.Lock()
+	defer c.lifecycleMu.Unlock()
+	if c.stopped || c.ctx.Err() != nil {
+		gen.close()
+		return context.Canceled
+	}
+	c.active = gen
+	c.connected.Store(true)
 	return nil
 }
 
-// Purpose: Supervise connection lifecycle and handle reconnects.
-// Key aspects: Uses backoff and honors shutdown signals.
-// Upstream: Connect goroutine.
-// Downstream: establishConnection, requestReconnect.
-func (c *Client) connectionSupervisor() {
-	for {
-		select {
-		case <-c.shutdown:
-			return
-		case <-c.reconnect:
-			if c.isShutdown() {
-				return
-			}
-			delay := c.reconnectInitial
-			if delay <= 0 {
-				delay = rbnReconnectInitial
-			}
-			maxDelay := c.reconnectMax
-			if maxDelay <= 0 {
-				maxDelay = rbnReconnectMax
-			}
-			if delay > maxDelay {
-				delay = maxDelay
-			}
-
-			for {
-				if c.isShutdown() {
-					return
-				}
-				log.Printf("%s: attempting reconnect...", c.displayName())
-				if err := c.establishConnection(); err != nil {
-					log.Printf("%s: reconnect failed: %v (retry in %s)", c.displayName(), err, delay)
-					timer := time.NewTimer(delay)
-					select {
-					case <-timer.C:
-					case <-c.shutdown:
-						timer.Stop()
-						return
-					}
-					delay *= 2
-					if delay > maxDelay {
-						delay = maxDelay
-					}
-					continue
-				}
-				break
-			}
-		}
+func (c *Client) handleLogin(gen *connectionGeneration) error {
+	delay := c.loginDelay
+	if delay <= 0 {
+		delay = rbnLoginDelay
 	}
-}
-
-// Purpose: Perform the RBN login sequence after connecting.
-// Key aspects: Waits briefly for prompt; sends callsign with CRLF.
-// Upstream: establishConnection goroutine.
-// Downstream: writer.WriteString/Flush.
-func (c *Client) handleLogin() {
-	// Wait for login prompt and respond with callsign
-	time.Sleep(2 * time.Second)
-
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-gen.ctx.Done():
+		return gen.ctx.Err()
+	case <-timer.C:
+	}
 	if c.name != "" {
 		log.Printf("Logging in to %s as %s", c.name, c.callsign)
 	} else {
 		log.Printf("Logging in to RBN as %s", c.callsign)
 	}
 	// Use CRLF for telnet-style compatibility with RBN servers.
-	if err := c.writeStringLine(c.callsign + "\r\n"); err != nil {
-		if c.isShutdown() {
-			return
-		}
-		log.Printf("%s: login write failed: %v", c.displayName(), err)
-		c.requestReconnect(err)
-	}
+	return c.writeStringLine(gen, c.callsign+"\r\n")
 }
 
 // readLineBounded reads a single line with a hard cap to avoid unbounded buffers.
 // It discards overlong lines and returns errLineTooLong so callers can continue safely.
-func (c *Client) readLineBounded(maxLen int) (string, error) {
-	if c == nil || c.reader == nil {
+func readLineBounded(reader *bufio.Reader, maxLen int) (string, error) {
+	if reader == nil {
 		return "", io.EOF
 	}
 	if maxLen <= 0 {
@@ -470,7 +551,7 @@ func (c *Client) readLineBounded(maxLen int) (string, error) {
 	}
 	buf := make([]byte, 0, maxLen)
 	for {
-		chunk, err := c.reader.ReadSlice('\n')
+		chunk, err := reader.ReadSlice('\n')
 		if err == nil {
 			if len(buf)+len(chunk) > maxLen {
 				return "", errLineTooLong{length: len(buf) + len(chunk)}
@@ -480,7 +561,7 @@ func (c *Client) readLineBounded(maxLen int) (string, error) {
 		}
 		if errors.Is(err, bufio.ErrBufferFull) {
 			if len(buf)+len(chunk) > maxLen {
-				if discardErr := c.discardLineRemainder(); discardErr != nil {
+				if discardErr := discardLineRemainder(reader); discardErr != nil {
 					return "", discardErr
 				}
 				return "", errLineTooLong{length: len(buf) + len(chunk)}
@@ -492,12 +573,12 @@ func (c *Client) readLineBounded(maxLen int) (string, error) {
 	}
 }
 
-func (c *Client) discardLineRemainder() error {
-	if c == nil || c.reader == nil {
+func discardLineRemainder(reader *bufio.Reader) error {
+	if reader == nil {
 		return io.EOF
 	}
 	for {
-		_, err := c.reader.ReadSlice('\n')
+		_, err := reader.ReadSlice('\n')
 		if err == nil {
 			return nil
 		}
@@ -508,80 +589,55 @@ func (c *Client) discardLineRemainder() error {
 	}
 }
 
-// Purpose: Read and parse incoming lines from the RBN connection.
-// Key aspects: Uses read deadlines; triggers reconnect on errors.
-// Upstream: establishConnection goroutine.
-// Downstream: parseSpot, requestReconnect, raw passthrough.
-func (c *Client) readLoop() {
+func (c *Client) serveGeneration(gen *connectionGeneration) (err error) {
 	// Guard the ingest goroutine so malformed input cannot crash the process.
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("%s: panic in read loop: %v\n%s", c.displayName(), r, debug.Stack())
-			c.requestReconnect(fmt.Errorf("panic: %v", r))
+			err = fmt.Errorf("panic: %v", r)
 		}
 	}()
-	defer func() {
-		c.connected.Store(false)
-		if c.keepaliveDone != nil {
-			close(c.keepaliveDone)
-		}
-		if c.conn != nil {
-			c.conn.Close()
-		}
-	}()
+	if err := c.handleLogin(gen); err != nil {
+		return fmt.Errorf("login write failed: %w", err)
+	}
+	if c.keepaliveInterval > 0 {
+		gen.workers.Add(1)
+		go c.keepaliveLoop(gen)
+	}
 
 	for {
-		select {
-		case <-c.shutdown:
-			log.Println("RBN client shutting down")
-			return
-		default:
-			// Set read timeout
-			if err := c.conn.SetReadDeadline(time.Now().UTC().Add(5 * time.Minute)); err != nil {
-				if c.isShutdown() {
-					return
-				}
-				log.Printf("%s: failed to set read deadline: %v", c.displayName(), err)
-				c.requestReconnect(err)
-				return
-			}
-
-			line, err := c.readLineBounded(rbnMaxLineLength)
-			if err != nil {
-				var tooLong errLineTooLong
-				if errors.As(err, &tooLong) {
-					log.Printf("%s: dropping overlong line (%d bytes)", c.displayName(), tooLong.length)
-					continue
-				}
-				if c.isShutdown() {
-					return
-				}
-				log.Printf("%s: read error: %v", c.displayName(), err)
-				c.requestReconnect(err)
-				return
-			}
-
-			now := time.Now().UTC()
-			line = strings.TrimSpace(line)
-
-			// Skip empty lines
-			if line == "" {
+		if err := gen.conn.SetReadDeadline(time.Now().UTC().Add(5 * time.Minute)); err != nil {
+			return err
+		}
+		line, readErr := readLineBounded(gen.reader, rbnMaxLineLength)
+		if readErr != nil {
+			var tooLong errLineTooLong
+			if errors.As(readErr, &tooLong) {
+				log.Printf("%s: dropping overlong line (%d bytes)", c.displayName(), tooLong.length)
 				continue
 			}
-			c.lastLineAt.Store(now.UnixNano())
-
-			// Log and parse DX spots
-			if strings.HasPrefix(line, "DX de") {
-				c.parseSpot(line)
-				continue
+			select {
+			case failure := <-gen.failure:
+				return failure
+			default:
+				return readErr
 			}
+		}
 
-			// In minimal mode, forward any non-DX lines (e.g., WCY/WWV) to the raw passthrough.
-			if c.minimalParse && c.rawChan != nil {
-				select {
-				case c.rawChan <- line:
-				default:
-				}
+		now := time.Now().UTC()
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		c.lastLineAt.Store(now.UnixNano())
+		if strings.HasPrefix(line, "DX de") {
+			c.parseSpot(line)
+			continue
+		}
+		if c.minimalParse && c.rawChan != nil {
+			select {
+			case c.rawChan <- line:
+			default:
 			}
 		}
 	}
@@ -990,18 +1046,36 @@ func (c *Client) badCallSource() string {
 	return "RBN"
 }
 
-// Stop stops the RBN client and closes connections.
-// Key aspects: Signals shutdown once and closes the underlying conn.
+// Stop cancels and joins the complete client goroutine tree.
+// The spot channel closes only after the supervisor and every generation
+// worker have stopped, so downstream range loops never race a producer.
 // Upstream: main.go shutdown.
-// Downstream: conn.Close, shutdown channel.
+// Downstream: active generation close, worker join, spot channel close.
 func (c *Client) Stop() {
+	if c == nil {
+		return
+	}
 	log.Printf("Stopping %s client...", c.displayName())
 	c.stopOnce.Do(func() {
-		close(c.shutdown)
+		c.lifecycleMu.Lock()
+		c.stopped = true
+		c.cancel()
+		parentStop := c.parentStop
+		active := c.active
+		c.connected.Store(false)
+		c.lifecycleMu.Unlock()
+
+		if parentStop != nil {
+			parentStop()
+		}
+		if active != nil {
+			active.close()
+		}
+		c.workers.Wait()
+		c.spotsOnce.Do(func() {
+			close(c.spotChan)
+		})
 	})
-	if c.conn != nil {
-		c.conn.Close()
-	}
 }
 
 // Purpose: Report whether shutdown has been signaled.
@@ -1009,29 +1083,80 @@ func (c *Client) Stop() {
 // Upstream: readLoop, connectionSupervisor, requestReconnect.
 // Downstream: None.
 func (c *Client) isShutdown() bool {
+	return c == nil || c.ctx.Err() != nil
+}
+
+func (c *Client) retireGeneration(gen *connectionGeneration) {
+	if gen == nil {
+		return
+	}
+	gen.close()
+	gen.workers.Wait()
+
+	c.lifecycleMu.Lock()
+	if c.active == gen {
+		c.active = nil
+		c.connected.Store(false)
+	}
+	c.lifecycleMu.Unlock()
+}
+
+func (c *Client) waitRetry(ctx context.Context, delay time.Duration) bool {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
 	select {
-	case <-c.shutdown:
+	case <-timer.C:
 		return true
-	default:
+	case <-ctx.Done():
 		return false
 	}
 }
 
-// Purpose: Signal the reconnect supervisor to re-dial.
-// Key aspects: Non-blocking send; logs reason once.
-// Upstream: readLoop error paths.
-// Downstream: connectionSupervisor.
-func (c *Client) requestReconnect(reason error) {
-	if c.isShutdown() {
-		return
+// retryDelay returns deterministic endpoint/attempt jitter while preserving
+// hard configured bounds. Determinism avoids synchronized reconnect storms
+// without adding shared RNG state or making shutdown tests probabilistic.
+func (c *Client) retryDelay(attempt int) time.Duration {
+	initial := c.reconnectInitial
+	if initial <= 0 {
+		initial = rbnReconnectInitial
 	}
-	if reason != nil {
-		log.Printf("%s: scheduling reconnect after error: %v", c.displayName(), reason)
+	maximum := c.reconnectMax
+	if maximum <= 0 {
+		maximum = rbnReconnectMax
 	}
-	select {
-	case c.reconnect <- struct{}{}:
-	default:
+	if initial > maximum {
+		initial = maximum
 	}
+	if initial == maximum {
+		return initial
+	}
+
+	base := initial
+	for i := 0; i < attempt && base < maximum; i++ {
+		if base > maximum/2 {
+			base = maximum
+			break
+		}
+		base *= 2
+	}
+	window := base / 5
+	low := base
+	if base == maximum && window > 0 {
+		low = maximum - window
+	} else if remaining := maximum - base; window > remaining {
+		window = remaining
+	}
+	if window <= 0 {
+		return base
+	}
+	hash := uint64(1469598103934665603)
+	for _, b := range []byte(c.Endpoint()) {
+		hash ^= uint64(b)
+		hash *= 1099511628211
+	}
+	hash ^= uint64(attempt + 1)
+	hash *= 1099511628211
+	return low + time.Duration(hash%uint64(window)) + 1
 }
 
 // Purpose: Return a human-friendly name for logging.
@@ -1055,51 +1180,49 @@ func (c *Client) Endpoint() string {
 	return net.JoinHostPort(c.host, fmt.Sprintf("%d", c.port))
 }
 
-// Purpose: Send periodic CRLF keepalives to upstream telnet feed.
-// Key aspects: Stops on shutdown or connection teardown.
-// Upstream: establishConnection goroutine when keepalive enabled.
-// Downstream: writer.WriteString/Flush.
-func (c *Client) keepaliveLoop() {
+// keepaliveLoop belongs to one generation. A failed write closes only that
+// generation, which unblocks its supervisor-owned reader and starts retry.
+func (c *Client) keepaliveLoop(gen *connectionGeneration) {
+	defer gen.workers.Done()
 	ticker := time.NewTicker(c.keepaliveInterval)
 	defer ticker.Stop()
 	for {
 		select {
-		case <-c.shutdown:
-			return
-		case <-c.keepaliveDone:
+		case <-gen.ctx.Done():
 			return
 		case <-ticker.C:
-			if err := c.writeStringLine("\r\n"); err != nil {
-				if c.isShutdown() {
-					return
-				}
+			if err := c.writeStringLine(gen, "\r\n"); err != nil {
 				log.Printf("%s: keepalive write failed: %v", c.displayName(), err)
-				c.requestReconnect(err)
+				select {
+				case gen.failure <- err:
+				default:
+				}
+				gen.close()
 				return
 			}
 		}
 	}
 }
 
-func (c *Client) writeStringLine(line string) error {
-	if c == nil {
+func (c *Client) writeStringLine(gen *connectionGeneration, line string) error {
+	if c == nil || gen == nil {
 		return errors.New("nil RBN client")
 	}
-	c.writeMu.Lock()
-	defer c.writeMu.Unlock()
-	if c.conn == nil || c.writer == nil {
+	gen.writeMu.Lock()
+	defer gen.writeMu.Unlock()
+	if gen.conn == nil || gen.writer == nil {
 		return errors.New("RBN connection not initialized")
 	}
-	if err := c.conn.SetWriteDeadline(time.Now().UTC().Add(rbnWriteDeadline)); err != nil {
+	if err := gen.conn.SetWriteDeadline(time.Now().UTC().Add(rbnWriteDeadline)); err != nil {
 		return err
 	}
 	defer func() {
-		if err := c.conn.SetWriteDeadline(time.Time{}); err != nil && !c.isShutdown() {
+		if err := gen.conn.SetWriteDeadline(time.Time{}); err != nil && gen.ctx.Err() == nil {
 			log.Printf("%s: failed to clear write deadline: %v", c.displayName(), err)
 		}
 	}()
-	if _, err := c.writer.WriteString(line); err != nil {
+	if _, err := gen.writer.WriteString(line); err != nil {
 		return err
 	}
-	return c.writer.Flush()
+	return gen.writer.Flush()
 }

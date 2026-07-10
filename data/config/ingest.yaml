@@ -36,17 +36,29 @@ rbn_digital:
   keepalive_seconds: 180          # Periodic CRLF to keep idle connections alive (0 disables)
   keep_ssid_suffix: true          # When false, telnet/archive/filters use stripped DE calls
 
-# Optional human/relay telnet ingest (POC or upstream cluster)
+# Optional human/relay telnet ingest (POC or upstream cluster).
+# Ordered registry: 0..64 complete entries; all fields remain required when disabled.
+# Names are case-insensitively unique. slot_buffer is 1..64000 per entry and
+# the enabled-entry sum must not exceed 64000. Each enabled entry retries independently.
 human_telnet:
-  enabled: false
-  name: "HUMAN-SPOTS"
-  host: "upstream.example.invalid"
-  port: 7300
-  callsign: "N0CALL-2"         # Change this to your callsign or upstream ID.
-  telnet_transport: "ziutek"   # Telnet parser/negotiation backend: native or ziutek
-  slot_buffer: 1000            # Buffer depth between telnet reader and pipeline
-  keepalive_seconds: 180       # Periodic CRLF to keep idle connections alive (0 disables)
-  keep_ssid_suffix: true       # When false, telnet/archive/filters use stripped DE calls
+  - enabled: false
+    name: "UPSTREAM-1"
+    host: "upstream1.example.invalid"
+    port: 7300
+    callsign: "N0CALL-2"         # Change this to your callsign or upstream ID.
+    telnet_transport: "ziutek"   # Telnet parser/negotiation backend: native or ziutek
+    slot_buffer: 1000            # Buffer depth between telnet reader and pipeline
+    keepalive_seconds: 180       # Periodic CRLF to keep idle connections alive (0 disables)
+    keep_ssid_suffix: true       # When false, telnet/archive/filters use stripped DE calls
+  - enabled: false
+    name: "UPSTREAM-2"
+    host: "upstream2.example.invalid"
+    port: 7300
+    callsign: "N0CALL-3"
+    telnet_transport: "ziutek"
+    slot_buffer: 1000
+    keepalive_seconds: 180
+    keep_ssid_suffix: true
 
 # Optional DXSummit HTTP ingest (HF/VHF/UHF spot polling)
 dxsummit:

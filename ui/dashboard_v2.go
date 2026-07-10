@@ -55,6 +55,7 @@ const (
 	overviewPathMinHeight         = 3
 	overviewSourcesDefaultHeight  = 5
 	overviewSourcesMinHeight      = 3
+	overviewSourcesMaxHeight      = 10
 )
 
 var (
@@ -649,6 +650,11 @@ func buildDashboardSnapshot(generatedAt time.Time, lines []string) *dashboardSna
 	}
 	if sourceIdx >= 0 && networkIdx > sourceIdx+1 {
 		snap.Sources, snap.SourcesHeight = joinLinesWithHeight(lines[sourceIdx+1:networkIdx], overviewSourcesMinHeight)
+		if snap.SourcesHeight > overviewSourcesMaxHeight {
+			// Keep every source in the scrollable TextView while bounding the
+			// visible pane so a large upstream set cannot consume the overview.
+			snap.SourcesHeight = overviewSourcesMaxHeight
+		}
 	}
 	if networkIdx >= 0 && len(lines) > networkIdx+1 {
 		snap.Network = strings.Join(lines[networkIdx+1:], "\n")

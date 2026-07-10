@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"dxcluster/internal/yamlconfig"
+
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -168,7 +170,7 @@ func removedRuntimeKeyDiagnostics(raw map[string]any) []string {
 		"pskreporter.modes",
 		"pskreporter.path_only_modes",
 	}
-	diagnostics := make([]string, 0)
+	diagnostics := make([]string, 0, 4)
 	for _, path := range removed {
 		parts := strings.Split(path, ".")
 		if yamlKeyPresent(raw, parts...) {
@@ -220,7 +222,6 @@ var runtimeAllowZeroSettings = map[string]struct{}{
 	"go_runtime.max_procs":                                                     {},
 	"rbn.keepalive_seconds":                                                    {},
 	"rbn_digital.keepalive_seconds":                                            {},
-	"human_telnet.keepalive_seconds":                                           {},
 	"telnet.broadcast_workers":                                                 {},
 	"telnet.broadcast_batch_interval_ms":                                       {},
 	"telnet.keepalive_seconds":                                                 {},
@@ -279,10 +280,112 @@ var runtimeAllowNegativeSettings = map[string]struct{}{
 }
 
 func mergedRuntimePresenceDiagnostics(raw map[string]any) []string {
-	diagnostics := make([]string, 0)
+	diagnostics := make([]string, 0, 4)
 	collectStructPresenceDiagnostics(raw, reflect.TypeOf(Config{}), nil, &diagnostics)
+	diagnostics = append(diagnostics, humanTelnetPresenceDiagnostics(raw)...)
 	sort.Strings(diagnostics)
 	return diagnostics
+}
+
+var humanTelnetRequiredKeys = []string{
+	"enabled",
+	"host",
+	"port",
+	"callsign",
+	"name",
+	"telnet_transport",
+	"keep_ssid_suffix",
+	"slot_buffer",
+	"keepalive_seconds",
+}
+
+func humanTelnetPresenceDiagnostics(raw map[string]any) []string {
+	rawRegistry, present := raw["human_telnet"]
+	if !present || rawRegistry == nil {
+		// The generic tree walk reports a missing or null top-level setting.
+		return nil
+	}
+
+	var entries []any
+	switch typed := rawRegistry.(type) {
+	case map[string]any:
+		entries = []any{typed}
+	case []any:
+		entries = typed
+	default:
+		return []string{`required YAML setting "human_telnet" must be a mapping or sequence`}
+	}
+
+	diagnostics := make([]string, 0)
+	for i, rawEntry := range entries {
+		path := fmt.Sprintf("human_telnet[%d]", i)
+		entry, ok := rawEntry.(map[string]any)
+		if !ok {
+			if rawEntry == nil {
+				diagnostics = append(diagnostics, fmt.Sprintf("required YAML setting %q must not be null", path))
+			} else {
+				diagnostics = append(diagnostics, fmt.Sprintf("required YAML setting %q must be a mapping", path))
+			}
+			continue
+		}
+		for _, key := range humanTelnetRequiredKeys {
+			fieldPath := path + "." + key
+			value, exists := entry[key]
+			if !exists {
+				diagnostics = append(diagnostics, fmt.Sprintf("required YAML setting %q is missing", fieldPath))
+			} else if value == nil {
+				diagnostics = append(diagnostics, fmt.Sprintf("required YAML setting %q must not be null", fieldPath))
+			}
+		}
+	}
+	return diagnostics
+}
+
+func legacyHumanTelnetUnknownFieldDiagnostics(source string, data []byte) ([]yamlconfig.Diagnostic, error) {
+	var doc yaml.Node
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	if err := decoder.Decode(&doc); err != nil {
+		return nil, err
+	}
+	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+		return nil, nil
+	}
+	root := doc.Content[0]
+	var registry *yaml.Node
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		if root.Content[i].Value == "human_telnet" {
+			registry = root.Content[i+1]
+			break
+		}
+	}
+	if registry == nil || registry.Kind != yaml.MappingNode {
+		// Sequences are handled by the shared reflection-based walker.
+		return nil, nil
+	}
+
+	known := make(map[string]struct{})
+	rbnType := reflect.TypeOf(RBNConfig{})
+	for i := 0; i < rbnType.NumField(); i++ {
+		if key, ok := yamlFieldName(rbnType.Field(i)); ok {
+			known[key] = struct{}{}
+		}
+	}
+
+	diagnostics := make([]yamlconfig.Diagnostic, 0)
+	for i := 0; i+1 < len(registry.Content); i += 2 {
+		key := registry.Content[i].Value
+		if _, ok := known[key]; ok {
+			continue
+		}
+		path := "human_telnet[0]." + key
+		diagnostics = append(diagnostics, yamlconfig.Diagnostic{
+			Severity: yamlconfig.DiagnosticWarning,
+			Source:   source,
+			Path:     path,
+			Message:  fmt.Sprintf("extra YAML key %q is ignored", path),
+		})
+	}
+	return diagnostics, nil
 }
 
 func collectStructPresenceDiagnostics(raw map[string]any, t reflect.Type, prefix []string, diagnostics *[]string) {

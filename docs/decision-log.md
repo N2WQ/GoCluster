@@ -25,6 +25,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Reserved Placeholder | Unused | - | index hygiene | - | - | No ADR file; first real ADR is `docs/decisions/ADR-0002-ui-v2-render-pipeline.md` |
+| ADR-0218 | Multi Human Upstream Telnet Registry | Accepted | 2026-07-10 | config, rbn, ingest, dashboard, lifecycle, operations | ADR-0181 (extends lifecycle) | - | `docs/decisions/ADR-0218-multi-human-upstream-telnet-registry.md` |
 | ADR-0217 | Fable Pre-Code Independent Evidence | Accepted | 2026-07-09 | workflow, Fable, agents, independent evidence | ADR-0206/ADR-0216 (Fable-native port) | - | `docs/decisions/ADR-0217-fable-pre-code-independent-evidence.md` |
 | ADR-0216 | Codex Pre-Code Independent Evidence | Accepted | 2026-07-09 | workflow, Codex, skills, independent evidence | ADR-0202/ADR-0203 (extends pre-code roles) | - | `docs/decisions/ADR-0216-codex-pre-code-independent-evidence.md` |
 | ADR-0215 | Fable Workflow Token-Optimization Port | Accepted | 2026-07-09 | workflow, Fable, validation, skills | ADR-0213 (parallels) | - | `docs/decisions/ADR-0215-fable-workflow-token-optimization-port.md` |

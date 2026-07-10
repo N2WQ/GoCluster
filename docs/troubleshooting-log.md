@@ -11,6 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0032 | Single Human Upstream Telnet Config | Resolved | 2026-07-10 | config, rbn, ingest, dashboard, lifecycle, operations | ADR-0218 | `docs/troubleshooting/TSR-0032-single-human-upstream-telnet-config.md` |
 | TSR-0031 | RBN Startup Retry And Console Liveness | Resolved | 2026-06-16 | rbn, ingest, dashboard, lifecycle, operations | ADR-0181 | `docs/troubleshooting/TSR-0031-rbn-startup-retry-and-console-liveness.md` |
 | TSR-0030 | VOACAP Runtime Output File Retention | Resolved | 2026-06-16 | voacap, pathreliability, file lifecycle, operations | ADR-0180 | `docs/troubleshooting/TSR-0030-voacap-runtime-output-file-retention.md` |
 | TSR-0029 | H3-Backed Tests Skipped From Package CWD | Resolved | 2026-06-10 | pathreliability, telnet, filter, tests | - | `docs/troubleshooting/TSR-0029-h3-backed-tests-skipped-from-package-cwd.md` |

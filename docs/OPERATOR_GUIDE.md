@@ -57,6 +57,13 @@ login callsigns in `ingest.yaml` from `N0CALL-1`, and update any private
 upstream telnet `host` and login fields you enable. If peering is enabled,
 also replace peer hosts, login callsigns, and passwords in `peering.yaml`.
 
+For human/upstream telnet ingest, use the ordered `human_telnet` list in
+`ingest.yaml`. You may define zero to 64 complete entries. Keep each name
+unique without regard to case, and keep every field present even on disabled
+entries. Each enabled entry owns an independent connection and bounded retry
+lifecycle, so an unavailable server stays red and retrying without holding up
+the other upstreams. The older single-map shape still loads as one entry.
+
 ## Run On Windows
 
 From the extracted `ready_to_run` directory:
@@ -517,5 +524,12 @@ Common startup failures are usually config-path or config-content issues:
   starts checkpoint recovery and runs temporarily without persistence; other
   open failures abort startup.
 - The default config directory is `data/config` when `DXC_CONFIG_PATH` is not set.
+
+The Overview `Ingest Sources` panel shows every enabled human/upstream server
+as `HUMAN/<name>` in `ingest.yaml` order. Green means that server currently has
+a TCP connection; red means disconnected/retrying. Each server contributes one
+to the enabled count and, while connected, one to the connected count. The pane
+shows at most ten rows but is scrollable, so entries beyond the visible window
+remain discoverable.
 
 For config loader details, see `data/config/README.md`.

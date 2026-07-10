@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `d3ee7c6dc1ae210e`
+- Source fingerprint: `49f837b8dd392fee`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,7 +12,7 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 1 | 2 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 25 | 25 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 25 | 26 |
 | `dxcluster/peer` | `peer` | 20 | 20 |
 | `dxcluster/spot` | `spot` | 32 | 23 |
 | `dxcluster/telnet` | `telnet` | 8 | 24 |
@@ -133,6 +133,7 @@ Test files:
 - `internal/cluster/gc_window_test.go`
 - `internal/cluster/go_runtime_tuning_test.go`
 - `internal/cluster/grid_lookup_test.go`
+- `internal/cluster/human_telnet_runtime_test.go`
 - `internal/cluster/ingest_validation_test.go`
 - `internal/cluster/logging_test.go`
 - `internal/cluster/main_runtime_test.go`
@@ -301,6 +302,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0218](docs/decisions/ADR-0218-multi-human-upstream-telnet-registry.md) | Accepted | 2026-07-10 | config, rbn, ingest, dashboard, lifecycle, operations | `path:internal/cluster` |
 | [ADR-0207](docs/decisions/ADR-0207-nearby-effective-fast-dedupe.md) | Accepted | 2026-07-09 | telnet, dedupe, filters, diagnostics, supportability | `area:telnet, path:commands, path:telnet` |
 | [ADR-0201](docs/decisions/ADR-0201-native-160m-endpoint-daylight-gate.md) | Accepted | 2026-06-20 | pathreliability, telnet, config, operations, supportability, experiments | `area:telnet, path:telnet` |
 | [ADR-0200](docs/decisions/ADR-0200-voacap-unsupported-platform-startup-skip.md) | Accepted | 2026-06-19 | startup, voacap, pathreliability, operations, supportability | `path:internal/cluster` |

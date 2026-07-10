@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -308,6 +309,83 @@ func TestFormatIngestSourceLinesNoEnabledSources(t *testing.T) {
 	}
 	if !strings.Contains(joined, "(none enabled)") {
 		t.Fatalf("expected none enabled marker in %q", joined)
+	}
+}
+
+func TestFormatIngestSourceLinesCountsAndDisplaysEveryHumanFeed(t *testing.T) {
+	sources := make([]dashboardIngestSource, 0, 66)
+	sources = append(sources,
+		dashboardIngestSource{Label: "RBN", Enabled: true, Connected: true},
+		dashboardIngestSource{Label: "RBN-FT", Enabled: true, Connected: false},
+	)
+	for i := 0; i < 64; i++ {
+		sources = append(sources, dashboardIngestSource{
+			Label:     fmt.Sprintf("HUMAN/UP%02d", i),
+			Enabled:   true,
+			Connected: i%2 == 0,
+		})
+	}
+
+	lines := formatIngestSourceLines(sources)
+	joined := strings.Join(lines, "\n")
+	if got, want := lines[0], "[yellow]Ingest[-]: 33 / 66 connected"; got != want {
+		t.Fatalf("summary = %q, want %q", got, want)
+	}
+	if strings.Contains(joined, "... +") {
+		t.Fatalf("ingest source list was truncated: %q", joined)
+	}
+	last := -1
+	for i := 0; i < 64; i++ {
+		label := fmt.Sprintf("HUMAN/UP%02d", i)
+		if count := strings.Count(joined, label); count != 1 {
+			t.Fatalf("%s count = %d, want 1", label, count)
+		}
+		idx := strings.Index(joined, label)
+		if idx <= last {
+			t.Fatalf("%s appears out of YAML order", label)
+		}
+		last = idx
+	}
+}
+
+func TestDashboardIngestSourcesKeepsHumanFeedsDistinctFromBuiltins(t *testing.T) {
+	cfg := dashboardIngestSourceConfig{
+		RBNEnabled:         true,
+		RBNDigitalEnabled:  true,
+		PSKReporterEnabled: true,
+		DXSummitEnabled:    true,
+	}
+	humans := []dashboardIngestSource{
+		{Label: "HUMAN/RBN", Enabled: true, Connected: true},
+		{Label: "HUMAN/BACKUP", Enabled: true, Connected: false},
+	}
+	sources := dashboardIngestSources(cfg, true, false, true, true, false, 0, nil, humans...)
+
+	wantLabels := []string{"RBN", "RBN-FT", "HUMAN/RBN", "HUMAN/BACKUP", "PSKReporter", "DXSUMMIT", "Peers"}
+	if len(sources) != len(wantLabels) {
+		t.Fatalf("source count = %d, want %d", len(sources), len(wantLabels))
+	}
+	for i, want := range wantLabels {
+		if sources[i].Label != want {
+			t.Fatalf("source[%d] label = %q, want %q", i, sources[i].Label, want)
+		}
+	}
+	if !sources[2].Connected || sources[3].Connected {
+		t.Fatalf("human connection states = %v/%v, want true/false", sources[2].Connected, sources[3].Connected)
+	}
+}
+
+func TestIngestHealthStateKeySeparatesIdentityFromDisplayLabel(t *testing.T) {
+	human := ingestHealthSource{id: "human:foo", name: "HUMAN/Foo"}
+	builtin := ingestHealthSource{id: "rbn:cw", name: "human:foo"}
+	if got := ingestHealthSourceStateKey(human); got != "human:foo" {
+		t.Fatalf("human state key = %q", got)
+	}
+	if got := ingestHealthSourceStateKey(builtin); got != "rbn:cw" {
+		t.Fatalf("builtin state key = %q", got)
+	}
+	if ingestHealthSourceStateKey(human) == ingestHealthSourceStateKey(builtin) {
+		t.Fatal("human and builtin health identities collided")
 	}
 }
 

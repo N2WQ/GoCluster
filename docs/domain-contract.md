@@ -51,6 +51,26 @@ pressure.
   ingest, peer hop suffix handling, source stats, queues, forwarding policy, or
   YAML/config behavior.
 
+## Human/upstream telnet registry
+
+- `human_telnet` is an ordered registry of zero to 64 complete entries; the
+  historical single mapping is a one-entry compatibility form.
+- Enabled entries connect and retry independently through the shared RBN
+  telnet client lifecycle. One failed upstream must not delay or stop another.
+- Each client keeps its own bounded spot queue. Individual `slot_buffer` values
+  are `1..64000`; enabled entries have a combined maximum of `64000`.
+- Config names are safe, case-preserving identifiers and case-insensitively
+  unique. They become the spot `SourceNode` and console label
+  `HUMAN/<name>`.
+- Every enabled entry contributes one to the dashboard enabled count and only
+  contributes to connected while its TCP generation is connected. Rows retain
+  YAML order, are never collapsed into an aggregate Human row, and remain
+  scroll-discoverable behind a ten-row visible pane bound.
+- Human feeds preserve the existing minimal parser, `UPSTREAM` classification,
+  shared dedupe/flood pipeline, and nonblocking raw announcement behavior.
+- Runtime shutdown cancels every client, joins all spot producers, closes the
+  shared raw channel once, and then joins the raw consumer.
+
 ## Output buffering
 
 - Use bounded per-connection queues.

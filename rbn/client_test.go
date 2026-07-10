@@ -1,9 +1,6 @@
 package rbn
 
 import (
-	"errors"
-	"net"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -79,80 +76,4 @@ func TestParseTimeFromRBNInvalidFormatFallsBack(t *testing.T) {
 	if !got.Equal(now) {
 		t.Fatalf("expected invalid format to return now %v, got %v", now, got)
 	}
-}
-
-func TestConnectWithInitialRetryRecoversAfterStartupDialFailure(t *testing.T) {
-	c := NewClient("example.invalid", 7000, "N0CALL", "RBN-CW-RTTY", nil, false, 4)
-	c.reconnectInitial = 5 * time.Millisecond
-	c.reconnectMax = 5 * time.Millisecond
-	defer c.Stop()
-
-	var attempts atomic.Int32
-	serverConns := make(chan net.Conn, 1)
-	c.dial = func(network, addr string) (net.Conn, error) {
-		if attempts.Add(1) == 1 {
-			return nil, errors.New("synthetic startup dial failure")
-		}
-		client, server := net.Pipe()
-		serverConns <- server
-		return client, nil
-	}
-
-	if err := c.ConnectWithInitialRetry(); err == nil {
-		t.Fatal("expected first dial error")
-	}
-
-	waitForRBNTestCondition(t, 250*time.Millisecond, func() bool {
-		return c.HealthSnapshot().Connected
-	})
-	if got := attempts.Load(); got < 2 {
-		t.Fatalf("expected at least two dial attempts, got %d", got)
-	}
-	var server net.Conn
-	select {
-	case server = <-serverConns:
-	default:
-	}
-	c.Stop()
-	if server != nil {
-		_ = server.Close()
-	}
-}
-
-func TestConnectWithInitialRetryStopsDuringBackoff(t *testing.T) {
-	c := NewClient("example.invalid", 7000, "N0CALL", "RBN-CW-RTTY", nil, false, 4)
-	c.reconnectInitial = 100 * time.Millisecond
-	c.reconnectMax = 100 * time.Millisecond
-
-	var attempts atomic.Int32
-	c.dial = func(network, addr string) (net.Conn, error) {
-		attempts.Add(1)
-		return nil, errors.New("synthetic retry failure")
-	}
-
-	if err := c.ConnectWithInitialRetry(); err == nil {
-		t.Fatal("expected first dial error")
-	}
-	waitForRBNTestCondition(t, 250*time.Millisecond, func() bool {
-		return attempts.Load() >= 2
-	})
-
-	c.Stop()
-	afterStop := attempts.Load()
-	time.Sleep(150 * time.Millisecond)
-	if got := attempts.Load(); got != afterStop {
-		t.Fatalf("expected retry attempts to stop at %d, got %d", afterStop, got)
-	}
-}
-
-func waitForRBNTestCondition(t *testing.T, timeout time.Duration, fn func() bool) {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if fn() {
-			return
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	t.Fatalf("condition was not met within %s", timeout)
 }

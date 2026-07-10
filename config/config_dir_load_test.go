@@ -156,7 +156,15 @@ rbn:
 rbn_digital:
   keepalive_seconds: 0
 human_telnet:
-  keepalive_seconds: 0
+  - enabled: false
+    host: "upstream.example.invalid"
+    port: 7300
+    callsign: "N0CALL-2"
+    name: "UPSTREAM"
+    telnet_transport: "ziutek"
+    keep_ssid_suffix: true
+    slot_buffer: 1000
+    keepalive_seconds: 0
 `)
 	writeTestConfigOverlay(t, dir, "peering.yaml", `
 peering:
@@ -180,8 +188,11 @@ peering:
 	if cfg.Telnet.AutoReadPauseSeconds != 0 {
 		t.Fatalf("telnet.auto_read_pause_seconds = %d, want 0", cfg.Telnet.AutoReadPauseSeconds)
 	}
-	if cfg.RBN.KeepaliveSec != 0 || cfg.RBNDigital.KeepaliveSec != 0 || cfg.HumanTelnet.KeepaliveSec != 0 {
-		t.Fatalf("feed keepalives = rbn:%d rbn_digital:%d human:%d, want all 0", cfg.RBN.KeepaliveSec, cfg.RBNDigital.KeepaliveSec, cfg.HumanTelnet.KeepaliveSec)
+	if len(cfg.HumanTelnet) != 1 {
+		t.Fatalf("human_telnet entries = %d, want 1", len(cfg.HumanTelnet))
+	}
+	if cfg.RBN.KeepaliveSec != 0 || cfg.RBNDigital.KeepaliveSec != 0 || cfg.HumanTelnet[0].KeepaliveSec != 0 {
+		t.Fatalf("feed keepalives = rbn:%d rbn_digital:%d human:%d, want all 0", cfg.RBN.KeepaliveSec, cfg.RBNDigital.KeepaliveSec, cfg.HumanTelnet[0].KeepaliveSec)
 	}
 	if cfg.Peering.KeepaliveSeconds != 0 || cfg.Peering.ConfigSeconds != 0 {
 		t.Fatalf("peering timers = keepalive:%d config:%d, want both 0", cfg.Peering.KeepaliveSeconds, cfg.Peering.ConfigSeconds)

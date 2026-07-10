@@ -50,6 +50,11 @@ const (
 	PeeringPeerDirectionInbound = "inbound"
 	// PeeringPeerDirectionBoth permits inbound and outbound connections for a peer.
 	PeeringPeerDirectionBoth = "both"
+	// MaxHumanTelnetServers bounds configured human/upstream connections.
+	MaxHumanTelnetServers = 64
+	// MaxHumanTelnetSlotBuffer bounds both an individual human/upstream queue
+	// and the aggregate queue capacity across enabled entries.
+	MaxHumanTelnetSlotBuffer = 64000
 )
 
 // Purpose: Normalize and validate the telnet transport setting.
@@ -136,7 +141,7 @@ type Config struct {
 	PropReport          PropReportConfig     `yaml:"prop_report"`
 	RBN                 RBNConfig            `yaml:"rbn"`
 	RBNDigital          RBNConfig            `yaml:"rbn_digital"`
-	HumanTelnet         RBNConfig            `yaml:"human_telnet"`
+	HumanTelnet         HumanTelnetRegistry  `yaml:"human_telnet"`
 	PSKReporter         PSKReporterConfig    `yaml:"pskreporter"`
 	DXSummit            DXSummitConfig       `yaml:"dxsummit"`
 	Archive             ArchiveConfig        `yaml:"archive"`
@@ -567,6 +572,37 @@ type RBNConfig struct {
 	KeepSSIDSuffix  bool   `yaml:"keep_ssid_suffix"`  // when false, compute stripped DE calls for telnet/archive/filters
 	SlotBuffer      int    `yaml:"slot_buffer"`       // size of ingest slot buffer between telnet reader and pipeline
 	KeepaliveSec    int    `yaml:"keepalive_seconds"` // optional periodic CRLF to keep idle sessions alive (0 disables)
+}
+
+// HumanTelnetRegistry is the ordered set of human/upstream telnet sources.
+// YAML accepts the current sequence form and the legacy single mapping form;
+// legacy input is represented as a one-entry registry after loading.
+type HumanTelnetRegistry []RBNConfig
+
+// UnmarshalYAML preserves compatibility with the historical single
+// human_telnet mapping while making a sequence the canonical representation.
+func (r *HumanTelnetRegistry) UnmarshalYAML(node *yaml.Node) error {
+	if node == nil {
+		return fmt.Errorf("human_telnet must be a mapping or sequence")
+	}
+	switch node.Kind {
+	case yaml.MappingNode:
+		var entry RBNConfig
+		if err := node.Decode(&entry); err != nil {
+			return err
+		}
+		*r = HumanTelnetRegistry{entry}
+		return nil
+	case yaml.SequenceNode:
+		var entries []RBNConfig
+		if err := node.Decode(&entries); err != nil {
+			return err
+		}
+		*r = HumanTelnetRegistry(entries)
+		return nil
+	default:
+		return fmt.Errorf("human_telnet must be a mapping or sequence")
+	}
 }
 
 // PSKReporterConfig contains PSKReporter MQTT settings
@@ -1787,17 +1823,11 @@ func normalizeFeedConfig(cfg *Config, presence loadRawPresence) {
 	if cfg.RBNDigital.SlotBuffer <= 0 {
 		cfg.RBNDigital.SlotBuffer = cfg.RBN.SlotBuffer
 	}
-	if cfg.HumanTelnet.SlotBuffer <= 0 {
-		cfg.HumanTelnet.SlotBuffer = 1000
-	}
 	if cfg.RBN.KeepaliveSec < 0 {
 		cfg.RBN.KeepaliveSec = 0
 	}
 	if cfg.RBNDigital.KeepaliveSec < 0 {
 		cfg.RBNDigital.KeepaliveSec = 0
-	}
-	if cfg.HumanTelnet.KeepaliveSec < 0 {
-		cfg.HumanTelnet.KeepaliveSec = 0
 	}
 	if cfg.PSKReporter.Workers < 0 {
 		cfg.PSKReporter.Workers = 0
@@ -2820,12 +2850,93 @@ func normalizeFeedTransportConfig(cfg *Config) error {
 	} else {
 		return fmt.Errorf("invalid rbn_digital.telnet_transport %q (expected %q or %q)", cfg.RBNDigital.TelnetTransport, TelnetTransportNative, TelnetTransportZiutek)
 	}
-	if transport, ok := normalizeTelnetTransport(cfg.HumanTelnet.TelnetTransport); ok {
-		cfg.HumanTelnet.TelnetTransport = transport
-	} else {
-		return fmt.Errorf("invalid human_telnet.telnet_transport %q (expected %q or %q)", cfg.HumanTelnet.TelnetTransport, TelnetTransportNative, TelnetTransportZiutek)
+	return normalizeHumanTelnetConfig(cfg.HumanTelnet)
+}
+
+type humanTelnetIdentity struct {
+	host     string
+	port     int
+	callsign string
+}
+
+func normalizeHumanTelnetConfig(registry HumanTelnetRegistry) error {
+	seenNames := make(map[string]int, len(registry))
+	seenIdentities := make(map[humanTelnetIdentity]int, len(registry))
+	aggregateSlotBuffer := 0
+	if len(registry) > MaxHumanTelnetServers {
+		return fmt.Errorf("invalid human_telnet: %d entries exceeds maximum %d", len(registry), MaxHumanTelnetServers)
+	}
+	for i := range registry {
+		entry := &registry[i]
+		entry.Name = strings.TrimSpace(entry.Name)
+		if !validHumanTelnetName(entry.Name) {
+			return fmt.Errorf("invalid human_telnet[%d].name %q (must match [A-Za-z0-9][A-Za-z0-9._-]{0,31})", i, entry.Name)
+		}
+		nameKey := strings.ToLower(entry.Name)
+		if previous, exists := seenNames[nameKey]; exists {
+			return fmt.Errorf("invalid human_telnet[%d].name %q: case-insensitive duplicate of human_telnet[%d]", i, entry.Name, previous)
+		}
+		seenNames[nameKey] = i
+
+		entry.Host = strings.TrimSpace(entry.Host)
+		if entry.Host == "" {
+			return fmt.Errorf("invalid human_telnet[%d].host: must not be empty", i)
+		}
+		if entry.Port <= 0 {
+			return fmt.Errorf("invalid human_telnet[%d].port %d (must be > 0)", i, entry.Port)
+		}
+		entry.Callsign = strutil.NormalizeUpper(entry.Callsign)
+		if entry.Callsign == "" {
+			return fmt.Errorf("invalid human_telnet[%d].callsign: must not be empty", i)
+		}
+		if strings.TrimSpace(entry.TelnetTransport) == "" {
+			return fmt.Errorf("invalid human_telnet[%d].telnet_transport: must not be empty", i)
+		}
+		if entry.SlotBuffer < 1 || entry.SlotBuffer > MaxHumanTelnetSlotBuffer {
+			return fmt.Errorf("invalid human_telnet[%d].slot_buffer %d (must be between 1 and %d)", i, entry.SlotBuffer, MaxHumanTelnetSlotBuffer)
+		}
+		if entry.KeepaliveSec < 0 {
+			return fmt.Errorf("invalid human_telnet[%d].keepalive_seconds %d (must be >= 0)", i, entry.KeepaliveSec)
+		}
+		if transport, ok := normalizeTelnetTransport(entry.TelnetTransport); ok {
+			entry.TelnetTransport = transport
+		} else {
+			return fmt.Errorf("invalid human_telnet[%d].telnet_transport %q (expected %q or %q)", i, entry.TelnetTransport, TelnetTransportNative, TelnetTransportZiutek)
+		}
+
+		identity := humanTelnetIdentity{
+			host:     strings.ToLower(entry.Host),
+			port:     entry.Port,
+			callsign: entry.Callsign,
+		}
+		if previous, exists := seenIdentities[identity]; exists {
+			return fmt.Errorf("invalid human_telnet[%d]: duplicate host/port/callsign identity also used by human_telnet[%d]", i, previous)
+		}
+		seenIdentities[identity] = i
+		if entry.Enabled {
+			if aggregateSlotBuffer > MaxHumanTelnetSlotBuffer-entry.SlotBuffer {
+				return fmt.Errorf("invalid human_telnet: enabled slot_buffer aggregate exceeds %d", MaxHumanTelnetSlotBuffer)
+			}
+			aggregateSlotBuffer += entry.SlotBuffer
+		}
 	}
 	return nil
+}
+
+func validHumanTelnetName(name string) bool {
+	if len(name) < 1 || len(name) > 32 || !asciiLetterOrDigit(name[0]) {
+		return false
+	}
+	for i := 1; i < len(name); i++ {
+		if !asciiLetterOrDigit(name[i]) && name[i] != '.' && name[i] != '_' && name[i] != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+func asciiLetterOrDigit(ch byte) bool {
+	return ch >= 'A' && ch <= 'Z' || ch >= 'a' && ch <= 'z' || ch >= '0' && ch <= '9'
 }
 
 func normalizePeeringConfig(cfg *Config) error {
@@ -3388,6 +3499,11 @@ func loadConfigDir(path string) (loadedConfigDir, LoadDiagnostics, error) {
 			return loadedConfigDir{}, diagnostics, fmt.Errorf("failed to inspect config file %q: %w", file, err)
 		}
 		diagnostics.appendYAMLDiagnostics(unknown)
+		legacyHumanUnknown, err := legacyHumanTelnetUnknownFieldDiagnostics(file, data)
+		if err != nil {
+			return loadedConfigDir{}, diagnostics, fmt.Errorf("failed to inspect legacy human telnet config file %q: %w", file, err)
+		}
+		diagnostics.appendYAMLDiagnostics(legacyHumanUnknown)
 		merged = mergeYAMLMaps(merged, doc)
 	}
 	return loadedConfigDir{
@@ -3540,14 +3656,18 @@ func (c *Config) Print() {
 			c.RBNDigital.SlotBuffer,
 			c.RBNDigital.KeepaliveSec)
 	}
-	if c.HumanTelnet.Enabled {
-		fmt.Printf("Human/relay telnet: %s:%d (as %s, transport=%s slot_buffer=%d keepalive=%ds)\n",
-			c.HumanTelnet.Host,
-			c.HumanTelnet.Port,
-			c.HumanTelnet.Callsign,
-			c.HumanTelnet.TelnetTransport,
-			c.HumanTelnet.SlotBuffer,
-			c.HumanTelnet.KeepaliveSec)
+	for _, human := range c.HumanTelnet {
+		if !human.Enabled {
+			continue
+		}
+		fmt.Printf("Human/relay telnet %s: %s:%d (as %s, transport=%s slot_buffer=%d keepalive=%ds)\n",
+			human.Name,
+			human.Host,
+			human.Port,
+			human.Callsign,
+			human.TelnetTransport,
+			human.SlotBuffer,
+			human.KeepaliveSec)
 	}
 	if c.DXSummit.Enabled {
 		fmt.Printf("DXSummit: %s (poll=%ds max_records=%d lookback=%ds bands=%s buffer=%d timeout=%dms)\n",

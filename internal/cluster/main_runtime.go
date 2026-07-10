@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -145,13 +146,28 @@ type clusterRuntime struct {
 	pathReport        *pathReportMetrics
 	pskrPathOnlyStats *pathOnlyStats
 
-	rbnClient         *rbn.Client
-	rbnDigitalClient  *rbn.Client
-	humanTelnetClient *rbn.Client
+	rbnClient        *rbn.Client
+	rbnDigitalClient *rbn.Client
+
+	humanTelnetFeeds   []humanTelnetFeed
+	humanTelnetCancel  context.CancelFunc
+	humanTelnetRaw     chan string
+	humanTelnetSpotsWG sync.WaitGroup
+	humanTelnetRawWG   sync.WaitGroup
+	humanTelnetStop    sync.Once
 
 	dxsummitClient *dxsummit.Client
 	pskrClient     *pskreporter.Client
 	pskrTopics     []string
+}
+
+// humanTelnetFeed binds one validated config entry to its live client and
+// collision-proof operator/health identities. The slice order is YAML order.
+type humanTelnetFeed struct {
+	config config.RBNConfig
+	id     string
+	label  string
+	client *rbn.Client
 }
 
 func newClusterRuntime(versionInfo BuildInfo, cfg *config.Config, configSource string, diagnostics config.LoadDiagnostics) *clusterRuntime {
@@ -1180,7 +1196,7 @@ func (r *clusterRuntime) startOutputPipeline() {
 func (r *clusterRuntime) connectFeeds() {
 	r.connectRBNFeed()
 	r.connectRBNDigitalFeed()
-	r.connectHumanTelnetFeed()
+	r.connectHumanTelnetFeeds()
 	r.connectDXSummitFeed()
 	r.connectPSKReporterFeed()
 }
@@ -1221,39 +1237,73 @@ func (r *clusterRuntime) connectRBNDigitalFeed() {
 	log.Println("RBN Digital (FT4/FT8) client ready to forward spots into unified dedup engine")
 }
 
-func (r *clusterRuntime) connectHumanTelnetFeed() {
-	if !r.cfg.HumanTelnet.Enabled {
+func (r *clusterRuntime) connectHumanTelnetFeeds() {
+	enabled := 0
+	for _, feedCfg := range r.cfg.HumanTelnet {
+		if feedCfg.Enabled {
+			enabled++
+		}
+	}
+	if enabled == 0 {
 		return
 	}
-	rawPassthrough := make(chan string, 256)
-	go r.forwardHumanPassthrough(rawPassthrough)
 
-	r.humanTelnetClient = rbn.NewClient(r.cfg.HumanTelnet.Host, r.cfg.HumanTelnet.Port, r.cfg.HumanTelnet.Callsign, r.cfg.HumanTelnet.Name, r.skewStore, r.cfg.HumanTelnet.KeepSSIDSuffix, r.cfg.HumanTelnet.SlotBuffer)
-	r.humanTelnetClient.SetBadCallReporter(r.reportBadCallDrop)
-	r.humanTelnetClient.SetTelnetTransport(r.cfg.HumanTelnet.TelnetTransport)
-	r.humanTelnetClient.UseMinimalParser()
-	r.humanTelnetClient.SetRawPassthrough(rawPassthrough)
-	if r.cfg.HumanTelnet.KeepaliveSec > 0 {
-		// Prevent idle disconnects on upstream telnet feeds by sending periodic CRLF.
-		r.humanTelnetClient.EnableKeepalive(time.Duration(r.cfg.HumanTelnet.KeepaliveSec) * time.Second)
-	}
-	if err := r.humanTelnetClient.Connect(); err != nil {
-		log.Printf("Warning: Failed to connect to human/relay telnet feed: %v", err)
-		r.logIngestConnectionEvent(ingestSourceName(r.cfg.HumanTelnet.Name, "Human Telnet"), "failed", eventLogEndpoint(r.cfg.HumanTelnet.Host, r.cfg.HumanTelnet.Port), err.Error(), "disconnected")
-		return
-	}
-	go forwardSpots(r.humanTelnetClient.GetSpotChannel(), r.ingestInput, "HUMAN-TELNET", r.cfg.SpotPolicy, func(sp *spot.Spot) {
-		sp.IsHuman = true
-		sp.SourceType = spot.SourceUpstream
-		if strings.TrimSpace(sp.SourceNode) == "" {
-			sp.SourceNode = "HUMAN-TELNET"
+	feedCtx, cancel := newHumanTelnetContext(r.ctx)
+	r.humanTelnetCancel = cancel
+	r.humanTelnetRaw = make(chan string, 256)
+	r.humanTelnetRawWG.Add(1)
+	go func() {
+		defer r.humanTelnetRawWG.Done()
+		r.forwardHumanPassthrough(r.humanTelnetRaw)
+	}()
+
+	r.humanTelnetFeeds = make([]humanTelnetFeed, 0, enabled)
+	for _, feedCfg := range r.cfg.HumanTelnet {
+		if !feedCfg.Enabled {
+			continue
 		}
-		if strings.TrimSpace(sp.Mode) == "" {
-			sp.Mode = "RTTY" // temporary default until mode parser is added
-			sp.EnsureNormalized()
+		client := rbn.NewClient(feedCfg.Host, feedCfg.Port, feedCfg.Callsign, feedCfg.Name, r.skewStore, feedCfg.KeepSSIDSuffix, feedCfg.SlotBuffer)
+		client.SetBadCallReporter(r.reportBadCallDrop)
+		client.SetTelnetTransport(feedCfg.TelnetTransport)
+		client.UseMinimalParser()
+		client.SetRawPassthrough(r.humanTelnetRaw)
+		if feedCfg.KeepaliveSec > 0 {
+			client.EnableKeepalive(time.Duration(feedCfg.KeepaliveSec) * time.Second)
 		}
-	})
-	log.Println("Human/relay telnet client feeding spots into unified dedup engine")
+
+		feed := humanTelnetFeed{
+			config: feedCfg,
+			id:     "human:" + strings.ToLower(feedCfg.Name),
+			label:  "HUMAN/" + feedCfg.Name,
+			client: client,
+		}
+		r.humanTelnetFeeds = append(r.humanTelnetFeeds, feed)
+		r.humanTelnetSpotsWG.Add(1)
+		go func(feed humanTelnetFeed) {
+			defer r.humanTelnetSpotsWG.Done()
+			forwardSpots(feed.client.GetSpotChannel(), r.ingestInput, feed.label, r.cfg.SpotPolicy, func(sp *spot.Spot) {
+				sp.IsHuman = true
+				sp.SourceType = spot.SourceUpstream
+				if strings.TrimSpace(sp.SourceNode) == "" {
+					sp.SourceNode = feed.config.Name
+				}
+				if strings.TrimSpace(sp.Mode) == "" {
+					sp.Mode = "RTTY" // Preserve the existing human-feed fallback.
+					sp.EnsureNormalized()
+				}
+			})
+		}(feed)
+		if err := client.Start(feedCtx); err != nil {
+			log.Printf("Warning: failed to start %s client: %v", feed.label, err)
+		}
+		log.Printf("%s client ready to feed spots from %s into the unified dedup engine", feed.label, client.Endpoint())
+	}
+}
+
+// newHumanTelnetContext returns cancellation ownership to clusterRuntime,
+// which cancels every feed before joining individual clients during shutdown.
+func newHumanTelnetContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return context.WithCancel(parent)
 }
 
 func (r *clusterRuntime) forwardHumanPassthrough(rawPassthrough <-chan string) {
@@ -1269,6 +1319,25 @@ func (r *clusterRuntime) forwardHumanPassthrough(rawPassthrough <-chan string) {
 			r.telnetServer.BroadcastAnnouncement(announcement)
 		}
 	}
+}
+
+// stopHumanTelnetFeeds owns the shared producer/consumer shutdown sequence.
+// All clients stop before the shared raw channel is closed, so no producer can
+// race the single close and the passthrough worker is joined deterministically.
+func (r *clusterRuntime) stopHumanTelnetFeeds() {
+	r.humanTelnetStop.Do(func() {
+		if r.humanTelnetCancel != nil {
+			r.humanTelnetCancel()
+		}
+		for i := range r.humanTelnetFeeds {
+			r.humanTelnetFeeds[i].client.Stop()
+		}
+		r.humanTelnetSpotsWG.Wait()
+		if r.humanTelnetRaw != nil {
+			close(r.humanTelnetRaw)
+		}
+		r.humanTelnetRawWG.Wait()
+	})
 }
 
 func (r *clusterRuntime) connectDXSummitFeed() {
@@ -1321,15 +1390,16 @@ func (r *clusterRuntime) connectPSKReporterFeed() {
 }
 
 func (r *clusterRuntime) startMonitors() {
-	ingestSources := make([]ingestHealthSource, 0, 5)
+	ingestSources := make([]ingestHealthSource, 0, 4+len(r.humanTelnetFeeds))
 	if r.rbnClient != nil {
-		ingestSources = append(ingestSources, rbnHealthSource(ingestSourceName(r.cfg.RBN.Name, "RBN"), r.rbnClient))
+		ingestSources = append(ingestSources, rbnHealthSourceWithID("rbn:cw", ingestSourceName(r.cfg.RBN.Name, "RBN"), r.rbnClient))
 	}
 	if r.rbnDigitalClient != nil {
-		ingestSources = append(ingestSources, rbnHealthSource(ingestSourceName(r.cfg.RBNDigital.Name, "RBN Digital"), r.rbnDigitalClient))
+		ingestSources = append(ingestSources, rbnHealthSourceWithID("rbn:digital", ingestSourceName(r.cfg.RBNDigital.Name, "RBN Digital"), r.rbnDigitalClient))
 	}
-	if r.humanTelnetClient != nil {
-		ingestSources = append(ingestSources, rbnHealthSource(ingestSourceName(r.cfg.HumanTelnet.Name, "Human Telnet"), r.humanTelnetClient))
+	for i := range r.humanTelnetFeeds {
+		feed := &r.humanTelnetFeeds[i]
+		ingestSources = append(ingestSources, rbnHealthSourceWithID(feed.id, feed.label, feed.client))
 	}
 	if r.dxsummitClient != nil {
 		ingestSources = append(ingestSources, dxsummitHealthSource(ingestSourceName(r.cfg.DXSummit.Name, dxsummit.SourceNode), r.dxsummitClient))
@@ -1367,6 +1437,7 @@ func (r *clusterRuntime) startMonitors() {
 		r.toxicityClassifier,
 		r.rbnClient,
 		r.rbnDigitalClient,
+		r.humanTelnetFeeds,
 		r.pskrClient,
 		r.dxsummitClient,
 		r.pskrPathOnlyStats,
@@ -1396,8 +1467,9 @@ func (r *clusterRuntime) logStartup() {
 		}
 		log.Printf("Receiving digital mode spots from PSKReporter (topics: %s)...", topicList)
 	}
-	if r.cfg.HumanTelnet.Enabled {
-		log.Printf("Receiving human/relay spots from %s:%d...", r.cfg.HumanTelnet.Host, r.cfg.HumanTelnet.Port)
+	for i := range r.humanTelnetFeeds {
+		feed := &r.humanTelnetFeeds[i]
+		log.Printf("Receiving human/relay spots from %s at %s...", feed.label, feed.client.Endpoint())
 	}
 	if r.cfg.DXSummit.Enabled {
 		log.Printf("Receiving DXSummit HTTP spots every %d seconds...", r.cfg.DXSummit.PollIntervalSeconds)
@@ -1468,6 +1540,7 @@ func (r *clusterRuntime) shutdown() {
 	if r.rbnDigitalClient != nil {
 		r.rbnDigitalClient.Stop()
 	}
+	r.stopHumanTelnetFeeds()
 	if r.pskrClient != nil {
 		r.pskrClient.Stop()
 	}

@@ -661,7 +661,7 @@ func formatTopCounterSummary(counts map[string]uint64, limit int) string {
 // Key aspects: Uses a ticker, diff counters, and optional secondary dedupe stats.
 // Upstream: main stats goroutine.
 // Downstream: tracker accessors, loadFCCSnapshot, and UI/log output.
-func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestStats *ingestValidator, dedup *dedup.Deduplicator, secondaryFast *dedup.SecondaryDeduper, secondaryMed *dedup.SecondaryDeduper, secondarySlow *dedup.SecondaryDeduper, secondaryStage *atomic.Uint64, buf *buffer.RingBuffer, ctyLookup func() *cty.CTYDatabase, metaCache *callMetaCache, ctyState *ctyRefreshState, recentBandStore spot.RecentSupportStore, signalResolver *spot.SignalResolver, telnetSrv *telnet.Server, dash ui.Surface, gridStats *gridMetrics, gridDB *gridStoreHandle, fccDBPath string, pathPredictor *pathreliability.Predictor, voacapSSN pathreliability.VOACAPSSNProvider, voacapFallback voacapFallbackSnapshotProvider, modeAssigner *spot.ModeAssigner, toxicityClassifier *toxicity.Classifier, rbnClient *rbn.Client, rbnDigitalClient *rbn.Client, pskrClient *pskreporter.Client, dxsummitClient *dxsummit.Client, pskrPathOnly *pathOnlyStats, peerManager *peer.Manager, clusterCall string, skewPath string, ingestSourceCfg dashboardIngestSourceConfig) {
+func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestStats *ingestValidator, dedup *dedup.Deduplicator, secondaryFast *dedup.SecondaryDeduper, secondaryMed *dedup.SecondaryDeduper, secondarySlow *dedup.SecondaryDeduper, secondaryStage *atomic.Uint64, buf *buffer.RingBuffer, ctyLookup func() *cty.CTYDatabase, metaCache *callMetaCache, ctyState *ctyRefreshState, recentBandStore spot.RecentSupportStore, signalResolver *spot.SignalResolver, telnetSrv *telnet.Server, dash ui.Surface, gridStats *gridMetrics, gridDB *gridStoreHandle, fccDBPath string, pathPredictor *pathreliability.Predictor, voacapSSN pathreliability.VOACAPSSNProvider, voacapFallback voacapFallbackSnapshotProvider, modeAssigner *spot.ModeAssigner, toxicityClassifier *toxicity.Classifier, rbnClient *rbn.Client, rbnDigitalClient *rbn.Client, humanTelnetFeeds []humanTelnetFeed, pskrClient *pskreporter.Client, dxsummitClient *dxsummit.Client, pskrPathOnly *pathOnlyStats, peerManager *peer.Manager, clusterCall string, skewPath string, ingestSourceCfg dashboardIngestSourceConfig) {
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
@@ -859,7 +859,8 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 			peerSSIDs = peerManager.ActiveSessionSSIDs()
 		}
 		p92Live := peerSessions > 0
-		ingestSources := dashboardIngestSources(ingestSourceCfg, rbnCWLive, rbnFTLive, pskLive, dxsummitLive, p92Live, peerSessions, peerSSIDs)
+		humanSources := dashboardHumanIngestSources(humanTelnetFeeds)
+		ingestSources := dashboardIngestSources(ingestSourceCfg, rbnCWLive, rbnFTLive, pskLive, dxsummitLive, p92Live, peerSessions, peerSSIDs, humanSources...)
 
 		lines := make([]string, 0, 11)
 		lines = append(lines,
@@ -4497,6 +4498,7 @@ func dashboardIngestSources(
 	rbnCWLive, rbnFTLive, pskLive, dxsummitLive, p92Live bool,
 	peerSessions int,
 	peerSSIDs []string,
+	humanSources ...dashboardIngestSource,
 ) []dashboardIngestSource {
 	peerDetails := []string(nil)
 	if p92Live {
@@ -4506,13 +4508,32 @@ func dashboardIngestSources(
 			peerDetails = append(peerDetails, fmt.Sprintf("Peers (%d)", peerSessions))
 		}
 	}
-	return []dashboardIngestSource{
-		{Label: "RBN", Enabled: cfg.RBNEnabled, Connected: rbnCWLive},
-		{Label: "RBN-FT", Enabled: cfg.RBNDigitalEnabled, Connected: rbnFTLive},
-		{Label: "PSKReporter", Enabled: cfg.PSKReporterEnabled, Connected: pskLive},
-		{Label: dxsummit.SourceNode, Enabled: cfg.DXSummitEnabled, Connected: dxsummitLive},
-		{Label: "Peers", Enabled: cfg.PeeringEnabled, Connected: p92Live, Details: peerDetails},
+	sources := make([]dashboardIngestSource, 0, 2+len(humanSources)+3)
+	sources = append(sources,
+		dashboardIngestSource{Label: "RBN", Enabled: cfg.RBNEnabled, Connected: rbnCWLive},
+		dashboardIngestSource{Label: "RBN-FT", Enabled: cfg.RBNDigitalEnabled, Connected: rbnFTLive},
+	)
+	sources = append(sources, humanSources...)
+	sources = append(sources,
+		dashboardIngestSource{Label: "PSKReporter", Enabled: cfg.PSKReporterEnabled, Connected: pskLive},
+		dashboardIngestSource{Label: dxsummit.SourceNode, Enabled: cfg.DXSummitEnabled, Connected: dxsummitLive},
+		dashboardIngestSource{Label: "Peers", Enabled: cfg.PeeringEnabled, Connected: p92Live, Details: peerDetails},
+	)
+	return sources
+}
+
+func dashboardHumanIngestSources(feeds []humanTelnetFeed) []dashboardIngestSource {
+	sources := make([]dashboardIngestSource, 0, len(feeds))
+	for i := range feeds {
+		feed := &feeds[i]
+		connected := feed.client != nil && feed.client.HealthSnapshot().Connected
+		sources = append(sources, dashboardIngestSource{
+			Label:     feed.label,
+			Enabled:   true,
+			Connected: connected,
+		})
 	}
+	return sources
 }
 
 func formatIngestSourceLines(sources []dashboardIngestSource) []string {
@@ -4544,7 +4565,42 @@ func formatIngestSourceLines(sources []dashboardIngestSource) []string {
 		lines = append(lines, "")
 		return lines
 	}
-	lines = append(lines, formatClientListLines(entries)...)
+	lines = append(lines, formatIngestSourceListLines(entries)...)
+	return lines
+}
+
+// formatIngestSourceListLines emits every enabled ingest identity. Unlike the
+// network-client list, it never truncates: the console's scrollable Ingest
+// Sources panel is the bounded viewport for large configured registries.
+func formatIngestSourceListLines(entries []string) []string {
+	if len(entries) == 0 {
+		return []string{""}
+	}
+	colWidth := 1
+	for _, entry := range entries {
+		if width := visibleLen(entry); width > colWidth {
+			colWidth = width
+		}
+	}
+	colWidth += 2
+	colsPerRow := clientListColumnsPerRow(colWidth)
+	lines := make([]string, 0, 1+(len(entries)+colsPerRow-1)/colsPerRow)
+	lines = append(lines, "")
+	for start := 0; start < len(entries); start += colsPerRow {
+		end := start + colsPerRow
+		if end > len(entries) {
+			end = len(entries)
+		}
+		var b strings.Builder
+		for i := start; i < end; i++ {
+			if i < end-1 {
+				b.WriteString(padRight(entries[i], colWidth))
+			} else {
+				b.WriteString(entries[i])
+			}
+		}
+		lines = append(lines, b.String())
+	}
 	return lines
 }
 

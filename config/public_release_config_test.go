@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -20,8 +21,18 @@ func TestCheckedInPublicConfigLoads(t *testing.T) {
 	if cfg.RBN.Callsign != "N0CALL-1" || cfg.RBNDigital.Callsign != "N0CALL-1" {
 		t.Fatalf("RBN callsigns = %q/%q, want public example callsign", cfg.RBN.Callsign, cfg.RBNDigital.Callsign)
 	}
-	if cfg.HumanTelnet.Host != "upstream.example.invalid" || cfg.HumanTelnet.Callsign != "N0CALL-2" {
-		t.Fatalf("human_telnet = %q/%q, want public example endpoint", cfg.HumanTelnet.Host, cfg.HumanTelnet.Callsign)
+	if len(cfg.HumanTelnet) != 2 {
+		t.Fatalf("human_telnet entries = %d, want 2 public examples", len(cfg.HumanTelnet))
+	}
+	for i, human := range cfg.HumanTelnet {
+		if human.Enabled {
+			t.Fatalf("human_telnet[%d] is enabled in public config", i)
+		}
+		wantHost := fmt.Sprintf("upstream%d.example.invalid", i+1)
+		wantCallsign := fmt.Sprintf("N0CALL-%d", i+2)
+		if human.Host != wantHost || human.Callsign != wantCallsign {
+			t.Fatalf("human_telnet[%d] = %q/%q, want %q/%q", i, human.Host, human.Callsign, wantHost, wantCallsign)
+		}
 	}
 	if cfg.Peering.LocalCallsign != "N0CALL-1" {
 		t.Fatalf("peering.local_callsign = %q, want public example callsign", cfg.Peering.LocalCallsign)
@@ -78,7 +89,7 @@ func TestCheckedInPublicConfigTextBackstops(t *testing.T) {
 
 	assertConfigLinesMatch(t, app, `^\s*node_id:\s*`, `^\s*node_id:\s*"N0CALL-\d+"\s*(#.*)?$`, "app.yaml node_id")
 	assertConfigLinesMatch(t, ingest, `^\s*callsign:\s*`, `^\s*callsign:\s*"N0CALL-\d+"\s*(#.*)?$`, "ingest.yaml callsign")
-	assertConfigLinesMatch(t, ingest, `^\s*host:\s*`, `^\s*host:\s*"(telnet\.reversebeacon\.net|upstream\.example\.invalid)"\s*(#.*)?$`, "ingest.yaml host")
+	assertConfigLinesMatch(t, ingest, `^\s*host:\s*`, `^\s*host:\s*"(telnet\.reversebeacon\.net|upstream\d+\.example\.invalid)"\s*(#.*)?$`, "ingest.yaml host")
 	assertConfigLinesMatch(t, peering, `^\s*enabled:\s*`, `^\s*enabled:\s*false\s*(#.*)?$`, "peering.yaml enabled")
 	assertConfigLinesMatch(t, peering, `^\s*host:\s*`, `^\s*host:\s*"peer\d+\.example\.invalid"\s*(#.*)?$`, "peering.yaml host")
 	assertConfigLinesMatch(t, peering, `^\s*password:\s*`, `^\s*password:\s*""\s*(#.*)?$`, "peering.yaml password")
