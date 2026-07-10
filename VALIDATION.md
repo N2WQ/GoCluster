@@ -32,11 +32,13 @@ implementation or full validation happened, required pre-approval independent
 agents were read-only evidence gathering, `SCOPE ADVERSARIAL REVIEW` was
 completed by the lead agent before the approval token, no silent scope
 expansion occurred, and the approved Scope Ledger was slice-shaped with
-implementation-ready slices. Final traceability must map back to approved
+implementation-ready slices. Triggered scientific/model, requirements-
+ambiguity, and design-challenger evidence must be completed or reported as a
+gap/waiver before the Scope Ledger. Final traceability must map back to approved
 items. Unsupported, not authorized/not requested, explicitly prohibited,
-failed, or timed-out independent review must be reported as evidence status or
-a waiver. If the active platform requires an explicit user request before
-subagents can be spawned, missing user authorization must be reported as
+failed, timed-out, or inconclusive independent review must be reported as
+evidence status or a waiver. If the active platform requires an explicit user
+request before subagents can be spawned, missing user authorization must be reported as
 `not authorized/not requested`, not as `unsupported` or `explicitly prohibited`;
 the current task prompt omitting a repeated subagent request is not missing
 authorization when the active tool/session policy permits this repo's standing
@@ -56,12 +58,17 @@ active tool/session policy permits it. Otherwise score `0`.
 Score `1` only if pre-code current-state understanding and dependency coverage
 were concrete and complete for the task, including `Dependency scan evidence`
 for Full rigor, triggered code-walk evidence, triggered blast-radius audit, and
-`Config Contract Audit` for config/schema work. Otherwise score `0`.
+`Config Contract Audit` for config/schema work. Triggered bounded parallel
+discovery must show disjoint lanes, a common revision/worktree snapshot,
+conflicts/failures, and lead synthesis. Otherwise score `0`.
 
 ### 4) Pre-code design discipline
 Score `1` only if Codex disclosed contract/user-visible behavior, provided a
 distinct slice-by-slice implementation plan, architecture framing, and required
-pre-code audits for the task type. Otherwise score `0`.
+pre-code audits for the task type. Triggered `scientific-model-oracle`,
+`requirements-ambiguity-review`, `design-challenger`, and
+`test-strategy-adversary` evidence must be present, accurately statused, and
+lead-dispositioned. Otherwise score `0`.
 
 ### 5) Verification and review discipline
 Score `1` only if the validation lane was identified, lane-required checks were
@@ -136,6 +143,18 @@ happened:
     captured excerpt in `Verification command reporting`, unless the omission
     was explicitly reported as skipped, failed, timed-out, stale, cached without
     usable output, partial, waived, or a validation gap.
+22. Codex proposed or implemented scope while material scientific/model evidence
+    or requirements ambiguity remained unresolved.
+23. Codex omitted a triggered `scientific-model-oracle`,
+    `requirements-ambiguity-review`, or `design-challenger` independent pass
+    when independent agents were supported, authorized, and not explicitly
+    prohibited, unless the omission was reported as a gap or explicit waiver.
+24. Codex began the first implementation slice without a triggered
+    `test-strategy-adversary` matrix and lead disposition, or continued after
+    that review found a material scope gap without revised approval.
+25. Codex labeled evidence independent when it did not come from a separate
+    context, or treated a design challenger exposed to the lead's preferred
+    solution as independent alternative-design evidence.
 
 ## Waivers
 Waivers are allowed only when explicit, narrowly scoped, and time-bounded.

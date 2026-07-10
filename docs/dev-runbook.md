@@ -127,7 +127,9 @@ Add only the documentation checks that apply:
 - subagent-use text checks when workflow docs change delegated or parallel
   agent rules, including `Approved vN`, `SCOPE ADVERSARIAL REVIEW`,
   `scope-ledger-adversarial-review`, `go-code-quality-review`,
-  `fresh-verifier explorer`, independent-agent
+  `fresh-verifier explorer`, `parallel-discovery`,
+  `scientific-model-oracle`, `requirements-ambiguity-review`,
+  `design-challenger`, `test-strategy-adversary`, independent-agent
   support/authorization/prohibition status, `not authorized/not requested`,
   separate context windows, allowed actions, lead ownership, and stop
   conditions
@@ -170,6 +172,10 @@ Minimum expected sequence:
 Add the checks that apply:
 - `scripts/verify-codex-skills.ps1` after any repo-managed skill edit
 - metadata/body sync review when `codex-skills/**/agents/openai.yaml` changes
+- positive and non-trigger/refusal forward tests in fresh read-only contexts
+  when new independent specialist skills are introduced; verify phase,
+  required output fields, read-only behavior, status reporting, and lead
+  ownership without claiming measured effectiveness
 - Fable agent frontmatter/tool-grant review when `.claude/agents/*.md` changes,
   confirming names, descriptions, models, and tool grants match the read-only or
   worker boundaries in `CLAUDE.md` and `docs/fable-workflow.md`

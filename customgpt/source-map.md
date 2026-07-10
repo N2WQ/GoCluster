@@ -42,6 +42,7 @@ linking or citing these docs over duplicating their content here.
 | Repo layout | [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md) | package READMEs, [scripts/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/scripts/README.md), [data/config/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/config/README.md), [data/h3/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/h3/README.md) |
 | Developer workflow | [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md) | [docs/WORKING_WITH_CODEX.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/WORKING_WITH_CODEX.md), [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md) |
 | Independent-agent, SELF-AUDIT, and subagent delegation workflow | [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md) | [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), [docs/WORKING_WITH_CODEX.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/WORKING_WITH_CODEX.md), [docs/review-checklist.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/review-checklist.md), [VALIDATION.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/VALIDATION.md), `codex-skills/` |
+| Codex parallel discovery, requirements ambiguity, scientific/model oracle, design challenge, and test strategy | [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md) | [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md), [docs/WORKING_WITH_CODEX.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/WORKING_WITH_CODEX.md), [docs/templates/non-trivial-change-template.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/templates/non-trivial-change-template.md), `codex-skills/` |
 | Agent lesson memory | [docs/agent-lessons/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/agent-lessons/README.md) | [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md), [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), [docs/decision-memory.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/decision-memory.md) |
 | Code walking, blast-radius, and leak-detection workflow | [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md) | [docs/dev-runbook.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/dev-runbook.md), `codex-skills/` |
 | Dependency visualization and code-map summaries | [docs/code-maps/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/code-maps/README.md) | [docs/dev-runbook.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/dev-runbook.md), [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), `codex-skills/` |
@@ -73,9 +74,11 @@ linking or citing these docs over duplicating their content here.
   subagent use when supported, active tool/session policy permits it, and the
   user has not explicitly prohibited it. Do not report
   `not authorized/not requested` merely because the current task prompt omits a
-  repeated subagent request. `scope-ledger-adversarial-review`,
+  repeated subagent request. `requirements-ambiguity-review`,
+  `scientific-model-oracle`, `design-challenger`,
+  `scope-ledger-adversarial-review`, `test-strategy-adversary`,
   `go-code-quality-review`, and fresh-verifier explorers are read-only findings
-  sources, high-risk SELF-AUDIT rows should cite independent evidence when
+  sources. High-risk SELF-AUDIT rows should cite independent evidence when
   available, and the lead Codex agent owns approval gates, integration, final
   SELF-AUDIT disposition, validation claims, traceability, and closeout.
 - For recurring model or workflow lessons, route to [docs/agent-lessons/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/agent-lessons/README.md),

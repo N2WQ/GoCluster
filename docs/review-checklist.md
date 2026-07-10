@@ -4,6 +4,26 @@ This document defines the mandatory review posture for Non-trivial Codex tasks.
 The compact output shape is owned by
 `docs/templates/non-trivial-change-template.md`.
 
+## Pre-Code Independent Evidence
+Before reviewing implementation, verify that every triggered pre-code role ran
+in a fresh separate read-only context, reported an accurate status, and was
+lead-dispositioned:
+
+- bounded parallel-discovery explorers synthesized disjoint evidence and kept
+  conflicts visible
+- `scientific-model-oracle` established normative model evidence or blocked
+  design/scope on unresolved sources
+- `requirements-ambiguity-review` actively searched for semantic forks and
+  blocked the Scope Ledger on unresolved material semantics
+- `design-challenger` received a neutral packet without the lead's preferred
+  solution and reported alternative-design evidence before the Scope Ledger
+- `test-strategy-adversary` produced a contract-to-test matrix after `DESIGN`
+  and before implementation, with any scope gap routed through reapproval
+
+Missing, failed, timed-out, contaminated, or inconclusive independent evidence
+is a reported gap/waiver, not a lead-filled PASS. Map these checks to SA1-SA3,
+SA9-SA12, and SA13 as applicable; the lead owns every final disposition.
+
 ## Review Pass
 The Review Pass happens after implementation and before final closeout.
 
@@ -96,6 +116,8 @@ Review focus:
 - independent pre-code and post-code explorers were used when supported,
   authorized, and not explicitly prohibited, or their unsupported/not
   authorized/not requested/prohibited/failed/timed-out status was reported
+- scientific/model sources, ambiguity resolutions, design alternatives, and
+  test falsifiability evidence match the approved scope and current diff
 - support-agent routing drift when operator docs or operator-visible behavior changed
 - new or materially changed support-critical Go entry/integration files have
   crawler-entry comments where package/file ownership, related docs/tests, or

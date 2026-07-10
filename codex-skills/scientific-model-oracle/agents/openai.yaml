@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scientific Model Oracle"
+  short_description: "Establish independent scientific model truth"
+  default_prompt: "Use $scientific-model-oracle to establish normative model evidence before design and scope."

@@ -112,6 +112,68 @@ Ask product or semantic questions only after discoverable code facts have been
 checked. If a fact cannot be established from inspection, say
 `Unknown from inspected code` and name what should be inspected next.
 
+#### Bounded parallel discovery
+Use one initial `parallel-discovery` wave of 2-3 read-only independent agents
+when Full-rigor discovery has at least two separable evidence domains, behavior
+is unfamiliar or cross-package, or shared interfaces make blast radius
+uncertain. Do not fan out Small/local work, one known authoritative path,
+mechanical documentation, or substantially overlapping questions.
+
+Give every agent the same base revision and dirty-worktree snapshot. Assign a
+distinct bounded question and require inspected paths/identifiers, commands,
+facts, assumptions, unknowns, confidence, and stop conditions. Keep conflicts
+visible until the lead verifies and dispositions them. A partial failure may be
+completed by the lead only when the failure status is reported; missing
+normative scientific evidence remains a hard stop. A second wave requires
+explicit lead justification, and hidden scope requires a revised ledger.
+
+#### Pre-ledger independent specialist evidence
+Use fresh separate read-only independent-agent contexts for the roles below.
+When typed subagents are exposed, select `explorer`; otherwise use the
+platform-supported independent agent with explicit read-only/findings-only
+constraints. A repo-managed skill supplies specialist instructions but does
+not by itself prove independence.
+
+Use `scientific-model-oracle` before design and Scope Ledger drafting when work
+changes or materially relies on scientific/model semantics or claims. Require a
+model-contract sheet covering authoritative sources, accepted ADR/domain
+assumptions, definitions, units and bases, valid/invalid/sentinel domains,
+boundaries, interpolation/rounding/tolerances, provenance-independent golden
+vectors, classifications, uncertainty/calibration limits, and the strongest
+supported and unsupported claims. Current implementation and tests are
+observations, never sole normative sources. Missing or conflicting normative
+evidence blocks design and scope for explicit user/ADR resolution.
+
+Use `requirements-ambiguity-review` after discovery and relevant model/decision
+evidence but before design challenge or Scope Ledger drafting. Trigger it when
+semantic-risk surfaces such as Boolean/filter precedence, defaults/sentinels,
+authentication/admission, reputation or correction gates, failure/retry/drop
+behavior, thresholds/classifications/diagnostics, compatibility, or test
+oracles are not demonstrably single-valued. The reviewer must actively search
+for competing interpretations rather than depend on the lead noticing them.
+Require an ambiguity register with the requirement, confirmed facts,
+interpretations, edge examples, affected contracts/surfaces/tests, decision
+owner, and resolution status. It must not choose policy or design. Unresolved
+material product/operator/model semantics block the Scope Ledger; implementation
+detail uncertainty may be delegated to `DESIGN` only with rationale.
+
+Use `design-challenger` after the neutral, semantically resolved fact packet and
+before Scope Ledger drafting when there are competing ownership/state/lifecycle/
+queue models, new fallback/compatibility/migration/persistence/cache semantics,
+ambiguous protocol/config/schema design, cross-package/shared-interface
+architecture, or algorithms with materially different operational effects.
+Prefer a non-inheriting context; otherwise spawn before the lead states a
+preferred solution. If the challenger can see that preference, report its
+evidence as inconclusive rather than independent. Require viable alternatives,
+the smallest safe approach, invariants/ownership, operational consequences,
+failure modes, compatibility/migration effects, validation obligations, user
+choices, and rejection reasons. It does not choose product policy, approve
+scope, or replace `scope-ledger-adversarial-review`.
+
+Report used, unsupported, not authorized/not requested, prohibited, failed,
+timed-out, or inconclusive status for each triggered role. A lead-only fallback
+must not be labeled independent evidence.
+
 ### Progress and claim evidence
 Before progress updates, implementation summaries, closeout claims, or
 performance/science/model conclusions, classify each material claim as one of:
@@ -182,9 +244,11 @@ the approved workflow gates and current workspace evidence.
 
 When the active Codex platform exposes typed subagents, spawn read-only
 independent review roles as `explorer` agents. This includes
-`scope-ledger-adversarial-review`, `go-code-quality-review`, and
-fresh-verifier roles. Reserve `worker` agents for post-approval implementation
-slices with explicit write scope, approved paths, and stopping conditions.
+`requirements-ambiguity-review`, `scientific-model-oracle`,
+`design-challenger`, `scope-ledger-adversarial-review`,
+`test-strategy-adversary`, `go-code-quality-review`, and fresh-verifier roles.
+Reserve `worker` agents for post-approval implementation slices with explicit
+write scope, approved paths, and stopping conditions.
 
 Subagent output improves evidence; it never transfers gate ownership. The lead
 Codex agent still owns Scope Ledger disposition, `SCOPE ADVERSARIAL REVIEW`,
@@ -195,8 +259,9 @@ Traceability, and the final response.
 Before exact `Approved vN`, subagents must be read-only explorers. Allowed
 purposes include code-walk evidence, blast-radius review, config-contract
 review, decision-memory review, lifecycle or leak review, retained-state review,
-hot-path review, docs/support impact review, and independent adversarial review
-of `Proposed Scope Ledger vN`.
+hot-path review, docs/support impact review, bounded parallel discovery,
+scientific/model oracle evidence, requirements ambiguity review, design
+challenge, and independent adversarial review of `Proposed Scope Ledger vN`.
 
 For every Non-trivial Scope Ledger, use `scope-ledger-adversarial-review` as an
 independent read-only explorer when independent agents are supported,
@@ -233,6 +298,26 @@ not revert, overwrite, or broaden another agent's work. If write scopes overlap,
 or if a worker discovers a required change outside its assignment, the worker
 must stop and report the blocker. The lead agent owns integration and final
 validation.
+
+#### Pre-code test-strategy explorers
+After exact approval and completion of the detailed `DESIGN`, use
+`test-strategy-adversary` in a fresh read-only independent context before the
+first implementation slice when the change touches parser/protocol behavior,
+config/schema/default/sentinel semantics, concurrency/lifecycle/shutdown/
+queues/timers/shared state, retained state/resource bounds, fallback/
+compatibility/migration, operator-visible classifications, hot-path or
+performance claims, scientific/model behavior, mirrored fixtures, or workflow/
+checker behavior susceptible to a false green.
+
+Require a contract-to-test matrix containing the contract/invariant, failure or
+boundary case, stimulus/fault, observable result, evidence level, false-green
+risk, exact checker/evidence, and owning package/test. The review is findings
+only: it does not write tests, run final validation, or replace Go quality or
+fresh verification. It blocks the first slice until the lead dispositions every
+finding. A behavior, file, scope, or slice gap requires a revised Scope Ledger,
+repeated `SCOPE ADVERSARIAL REVIEW`, and exact reapproval. Checker-detail changes
+inside approved scope update `DESIGN`; a materially changed matrix receives a
+new independent pass.
 
 #### Post-code Go quality explorers
 For Non-trivial Go implementation work, use `go-code-quality-review` as an

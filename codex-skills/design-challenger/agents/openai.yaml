@@ -1,0 +1,4 @@
+interface:
+  display_name: "Design Challenger"
+  short_description: "Challenge designs before scope commitment"
+  default_prompt: "Use $design-challenger to independently identify viable designs before drafting the Scope Ledger."

@@ -48,6 +48,7 @@ try {
     "docs/code-quality.md",
     "docs/review-checklist.md",
     "docs/dev-runbook.md",
+    "docs/WORKING_WITH_CODEX.md",
     "docs/domain-contract.md",
     "docs/decision-memory.md",
     "docs/agent-lessons/README.md",
@@ -81,6 +82,12 @@ try {
 
   Set-Content -LiteralPath $reviewPath -Value ($originalReview + "`n- SA15 Duplicate validation block completeness`n") -NoNewline
   Invoke-Checker 1 "duplicate SELF-AUDIT ID"
+
+  Set-Content -LiteralPath $reviewPath -Value $originalReview -NoNewline
+  $agentsPath = Join-Path $fixtureRoot "AGENTS.md"
+  $originalAgents = Get-Content -LiteralPath $agentsPath -Raw
+  Set-Content -LiteralPath $agentsPath -Value ($originalAgents.Replace("test-strategy-adversary", "REMOVED_TEST_STRATEGY_ROLE")) -NoNewline
+  Invoke-Checker 1 "missing pre-code role routing"
 
   & $engine -NoProfile -File $checker -RepoRoot $repoRoot
   if ($LASTEXITCODE -ne 0) {

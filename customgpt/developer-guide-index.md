@@ -58,13 +58,14 @@ workflow rules.
   request when supported, permitted by active tool/session policy, and not
   explicitly prohibited. Do not report `not authorized/not requested` merely
   because the current task prompt omits a repeated subagent request.
-  `scope-ledger-adversarial-review` challenges
-  Non-trivial Scope Ledgers before approval, `go-code-quality-review` reviews
-  Non-trivial Go implementation diffs and applicable SELF-AUDIT evidence before
-  closeout, post-approval workers require approved disjoint slices, and
-  fresh-verifier explorers are read-only closeout reviewers; the lead agent
-  owns gates, integration, final SELF-AUDIT disposition, validation claims, and
-  closeout.
+  `requirements-ambiguity-review`, `scientific-model-oracle`, and
+  `design-challenger` provide pre-ledger evidence;
+  `scope-ledger-adversarial-review` challenges the resulting Scope Ledger;
+  `test-strategy-adversary` checks falsifiability after `DESIGN` and before
+  implementation; `go-code-quality-review` reviews Non-trivial Go diffs;
+  post-approval workers require approved disjoint slices; and fresh-verifier
+  explorers are read-only closeout reviewers. The lead agent owns gates,
+  integration, final SELF-AUDIT disposition, validation claims, and closeout.
 - Workflow-doc or repo-managed skill edits require the workflow-drift audit in
   [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md).
 
@@ -74,6 +75,7 @@ workflow rules.
 | --- | --- |
 | Broad refactor proposal or unsliced Scope Ledger | [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), [docs/templates/non-trivial-change-template.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/templates/non-trivial-change-template.md), [VALIDATION.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/VALIDATION.md) |
 | Independent-agent, SELF-AUDIT, subagent, parallel delegation, or fresh-verifier use | [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md), [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), [docs/review-checklist.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/review-checklist.md), [docs/WORKING_WITH_CODEX.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/WORKING_WITH_CODEX.md), [VALIDATION.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/VALIDATION.md) |
+| Requirements ambiguity, scientific/model oracle, design challenge, or test-strategy review | [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), [docs/templates/non-trivial-change-template.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/templates/non-trivial-change-template.md), `codex-skills/` |
 | Unfamiliar or cross-package Go behavior | [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), [docs/dev-runbook.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/dev-runbook.md), package README, crawler-entry source comments |
 | Uncertain blast radius, shared APIs, semantic callers, package/test impact | [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), [docs/dev-runbook.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/dev-runbook.md) |
 | Dependency visualization, package graph summaries, or support-agent code maps | [docs/code-maps/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/code-maps/README.md), [docs/dev-runbook.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/dev-runbook.md), [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md) |

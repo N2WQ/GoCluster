@@ -25,7 +25,9 @@ restating unchanged facts.
   failed/timed out - <details>
 - Pre-approval independent agents: scope-ledger-adversarial-review used |
   unsupported/not authorized/not requested/prohibited/failed/timed out -
-  <evidence status>; other read-only explorers - <purpose and allowed actions>
+  <evidence status>; parallel-discovery explorers, scientific-model-oracle,
+  requirements-ambiguity-review, design-challenger, or other read-only
+  explorers - <trigger/status, purpose, allowed actions, lead disposition>
 
 ### DISCOVERY
 - entrypoints/surfaces:
@@ -36,6 +38,14 @@ restating unchanged facts.
 - independent-agent evidence: <none | agent role/purpose/findings used as
   evidence | unsupported/not authorized/not requested/prohibited/failed/timed
   out - status>
+- parallel-discovery evidence: <N/A - reason | shared revision/worktree;
+  bounded lanes; inspected evidence; conflicts/failures; lead synthesis>
+- scientific-model-oracle: <N/A - reason | used/status; model-contract sheet;
+  normative conflicts/unknowns; lead disposition>
+- requirements-ambiguity-review: <N/A - reason | used/status; ambiguity
+  register; resolved/delegated/blocking items; lead disposition>
+- design-challenger: <N/A - reason | used/status; context-isolation status;
+  alternatives; selected/rejected reasoning; lead disposition>
 - unknowns:
 
 ### SCOPE
@@ -84,9 +94,11 @@ that approval.
 - Independent-agent status: supported, authorized, and not prohibited |
   unsupported | not authorized/not requested | explicitly prohibited |
   failed/timed out - <details>
-- Independent-agent phase/use: none | pre-approval explorer | post-approval
-  worker | go-code-quality-review explorer | fresh-verifier explorer -
-  <lead-owned disposition>
+- Independent-agent phase/use: none | parallel-discovery explorer |
+  scientific-model-oracle | requirements-ambiguity-review |
+  design-challenger | post-approval worker | test-strategy-adversary |
+  go-code-quality-review explorer | fresh-verifier explorer - <lead-owned
+  disposition>
 
 ### PREFLIGHT
 - Git preflight: branch=<name>; worktree=<clean|dirty acknowledged>; rollback=<hash/tag/branch>
@@ -119,6 +131,9 @@ that approval.
 - claim evidence plan: <how progress/validation/performance/science claims will be grounded | N/A - reason>
 - validation lane: documentation-only Markdown | workflow/skill-doc |
   code/mixed/runtime-contract | other - <reason>
+- test-strategy-adversary: <N/A - reason | used/status; contract-to-test
+  matrix; false-green risks; findings and lead disposition; repeated-pass
+  status>
 - checker plan:
 
 ### IMPLEMENTATION

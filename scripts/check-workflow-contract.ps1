@@ -70,9 +70,11 @@ function Require-Line {
 }
 
 $agents = Get-RepoText "AGENTS.md"
+$workflow = Get-RepoText "docs/change-workflow.md"
 $template = Get-RepoText "docs/templates/non-trivial-change-template.md"
 $validation = Get-RepoText "VALIDATION.md"
 $review = Get-RepoText "docs/review-checklist.md"
+$working = Get-RepoText "docs/WORKING_WITH_CODEX.md"
 
 $requiredAgentText = @(
   "Approved vN",
@@ -84,6 +86,24 @@ $requiredAgentText = @(
 )
 foreach ($required in $requiredAgentText) {
   Require-Text "AGENTS.md" $agents $required
+}
+
+$preCodeRoles = @(
+  "parallel-discovery",
+  "requirements-ambiguity-review",
+  "scientific-model-oracle",
+  "design-challenger",
+  "test-strategy-adversary"
+)
+foreach ($role in $preCodeRoles) {
+  Require-Text "AGENTS.md" $agents $role
+  Require-Text "docs/change-workflow.md" $workflow $role
+  Require-Text "docs/templates/non-trivial-change-template.md" $template $role
+}
+foreach ($role in $preCodeRoles | Where-Object { $_ -ne "parallel-discovery" }) {
+  Require-Text "VALIDATION.md" $validation $role
+  Require-Text "docs/review-checklist.md" $review $role
+  Require-Text "docs/WORKING_WITH_CODEX.md" $working $role
 }
 
 $markers = @(

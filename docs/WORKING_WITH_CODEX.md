@@ -141,6 +141,29 @@ independent adversarial review of the proposed scope, and other evidence
 gathering. They should not edit files, draft diffs, run formatters, create
 generated artifacts, or run full validation suites before approval.
 
+For Full-rigor discovery with two or more separable evidence domains, expect one
+bounded wave of two or three parallel read-only explorers, each with a distinct
+question and the same revision/worktree snapshot. Codex must synthesize their
+evidence, preserve conflicts and failures, and avoid fan-out when the agents
+would inspect the same surface for the same purpose.
+
+Before drafting the Scope Ledger, Codex should also use the applicable
+specialist roles:
+
+- `scientific-model-oracle` establishes normative sources, units, boundaries,
+  independently derived golden vectors, uncertainty, and claim limits; missing
+  or conflicting normative evidence blocks design
+- `requirements-ambiguity-review` actively searches semantic-risk surfaces for
+  competing interpretations and asks you to resolve material product/operator
+  ambiguity before scope hardens
+- `design-challenger` receives a neutral, resolved evidence packet and explores
+  viable alternatives before Codex records a preferred design
+
+These skills provide specialist instructions; independence still requires a
+separate read-only agent context. If the design challenger has already seen the
+lead's preferred solution, Codex must call that evidence inconclusive rather
+than independent.
+
 For Non-trivial Scope Ledgers, expect Codex to use an independent
 `scope-ledger-adversarial-review` explorer before presenting the approval token
 when independent agents are supported, authorized, and not explicitly
@@ -152,6 +175,12 @@ After `Approved vN`, worker subagents should be used only for approved,
 disjoint slices. A worker assignment should name the approved version, slice,
 allowed paths, forbidden paths, stopping point, targeted checks, and when to
 stop for hidden blast radius or uncertainty.
+
+After detailed `DESIGN` and before the first implementation slice, expect a
+triggered `test-strategy-adversary` to produce a contract-to-test matrix that
+identifies failure stimuli, observables, required evidence, and false-green
+risks. Material behavior or scope gaps return to a revised Scope Ledger and
+approval; checker-only refinements may remain in `DESIGN`.
 
 For Non-trivial Go implementation work, expect Codex to use an independent
 `go-code-quality-review` explorer after code is written and before final

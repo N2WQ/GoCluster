@@ -5,6 +5,8 @@ checkout should use these skill files directly instead of copying them into a
 user-level Codex skills directory.
 
 Repo-authoritative skills:
+- `design-challenger` - independently compares viable designs from a neutral,
+  semantically resolved evidence packet before the Scope Ledger
 - `decision-memory-audit` - ADR/TSR pre-read, record choice, indexes, decision
   refs, and Scope-to-Code Traceability for Non-trivial work
 - `explain-code` - grounded explanation of existing code without changes
@@ -28,11 +30,17 @@ Repo-authoritative skills:
 - `go-retained-state-audit`
 - `initial-review` - concise code-understanding review without implementation
 - `pprof-impact-review`
+- `requirements-ambiguity-review` - independently searches for unresolved
+  product/operator semantics before scope hardens
 - `security-best-practices` - explicit security best-practice review support
 - `security-threat-model` - repository-grounded threat modeling support
+- `scientific-model-oracle` - establishes normative model contracts, golden
+  vectors, uncertainty, and supportable scientific claims before design
 - `sentry`
 - `scope-ledger-adversarial-review` - independently challenges Non-trivial
   Scope Ledgers before approval
+- `test-strategy-adversary` - independently checks whether the planned evidence
+  can falsify a broken design before implementation
 - `workflow-contract-audit` - checks Codex workflow, validation, runbook,
   template, skill, and workflow-script edits for contract drift
 

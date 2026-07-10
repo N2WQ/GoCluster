@@ -69,9 +69,13 @@ Do not propose changes unless asked.
 - Trigger routing: `decision-memory-audit` for every Non-trivial ADR/TSR and
   traceability path; `workflow-contract-audit` for workflow/rubric/runbook/
   skill/script work; `scope-ledger-adversarial-review` before Non-trivial
-  approval; `go-code-walk` for unfamiliar/cross-package discovery;
-  `go-blast-radius-audit` for uncertain shared or semantic impact; and
-  `go-code-quality-review` after Non-trivial Go implementation.
+  approval; `requirements-ambiguity-review` for unresolved material semantics;
+  `scientific-model-oracle` for scientific/model contracts; `design-challenger`
+  for genuine pre-ledger design forks; `test-strategy-adversary` after
+  `DESIGN` when falsifiability is non-obvious; `go-code-walk` for unfamiliar/
+  cross-package discovery; `go-blast-radius-audit` for uncertain shared or
+  semantic impact; and `go-code-quality-review` after Non-trivial Go
+  implementation.
 - Risk routing: `go-connection-lifecycle-audit` for connection liveness,
   recovery, deadlines, and diagnostics; `go-leak-detection` for lifecycle or
   resource leaks; `go-retained-state-audit` for server-lifetime state and
@@ -95,6 +99,10 @@ Do not propose changes unless asked.
   `Approved vN`, they may gather evidence and challenge scope but must not edit,
   propose diffs, format, generate artifacts, or run full suites. Use
   `scope-ledger-adversarial-review` before Non-trivial approval when available.
+- For Full-rigor discovery with at least two separable evidence domains, use a
+  bounded `parallel-discovery` wave of 2-3 read-only independent agents.
+  Triggered ambiguity, scientific/model, and design evidence must be resolved
+  or dispositioned before proposing the Scope Ledger.
 - `worker` agents are post-approval only and require approved disjoint slices,
   allowed and forbidden paths, stopping points, targeted checks, expected
   output, and stop-on-hidden-blast-radius instructions.
@@ -125,6 +133,9 @@ Do not propose changes unless asked.
 For Non-trivial work, Codex must:
 - perform targeted Current-State Discovery before proposing or confirming a
   Scope Ledger
+- perform and disposition triggered `requirements-ambiguity-review`,
+  `scientific-model-oracle`, and `design-challenger` evidence before proposing
+  the Scope Ledger; unresolved material semantics or model evidence block it
 - produce `Proposed Scope Ledger vN` with a compact `Reasoning budget`
   recommendation
 - perform and report `SCOPE ADVERSARIAL REVIEW` before showing the approval

@@ -18,10 +18,12 @@ skill installation.
 ## Workflow Checkers
 
 - `check-workflow-contract.ps1` verifies mechanical coherence of the Codex
-  workflow's exact strings, evidence markers, validation block, and Document
-  Map. It cannot prove that conversational approval occurred.
+  workflow's exact strings, pre-code independent-role routing, evidence
+  markers, validation block, and Document Map. It cannot prove that
+  conversational approval or genuine agent independence occurred.
 - `test-workflow-contract.ps1` runs positive and negative temporary fixtures
-  against the workflow-contract checker.
+  against the workflow-contract checker, including missing pre-code role
+  routing.
 - `check-yaml-doc-rigor.ps1` checks first-party runtime YAML headers and
   comment-only YAML scope.
 - `check-go-crawler-entry-comments.ps1` checks changed support-critical Go files

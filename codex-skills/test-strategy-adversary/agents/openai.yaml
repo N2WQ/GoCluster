@@ -1,0 +1,4 @@
+interface:
+  display_name: "Test Strategy Adversary"
+  short_description: "Challenge whether tests can falsify design"
+  default_prompt: "Use $test-strategy-adversary to independently test whether the approved design has a falsifiable verification strategy."
