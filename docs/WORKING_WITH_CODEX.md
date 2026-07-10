@@ -127,89 +127,29 @@ delegated or parallel agent work and active tool/user authorization permits
 spawning them, Codex should use independent agents unless you explicitly
 prohibit them.
 
-Some Codex surfaces expose a subagent tool but allow spawning only after you
-explicitly ask for subagents, delegation, or parallel agent work. In those
-surfaces, this repository records the owner's standing request to use subagents
-by default. Codex should not report `not authorized/not requested` merely
-because the current task prompt does not repeat that request. You can still
-explicitly prohibit subagents for a chat or task, and active tool/session policy
-can still block spawning. Exact `Approved vN` approves the scope; it is not by
-itself permission for worker subagents outside the approved slice gates.
+The executor contract in `AGENTS.md` owns authorization, phase boundaries,
+worker limits, the common independent-review result envelope, and required
+roles. `docs/change-workflow.md` owns the detailed read-only route, discovery
+wave, assignment, and disposition rules. The specialist skill files contain
+only their role-specific method and artifact.
 
-An independent agent is separate from the lead Codex agent and has its own
-context window. That independence helps catch lead-agent anchoring and stale
-self-review, but it also means Codex must explicitly disposition the independent
-agent's findings against the approved scope and current workspace evidence.
+The required specialist sequence is
+`requirements-ambiguity-review`, `scientific-model-oracle`, and
+`design-challenger` before scope where triggered;
+`scope-ledger-adversarial-review` before approval; and
+`test-strategy-adversary` after design. See the canonical contracts for the
+conditions and artifacts.
 
-When Codex has typed subagents available, read-only independent review roles
-should be spawned as `explorer` agents. `worker` agents are for approved
-post-approval implementation slices with explicit file ownership and write
-scope.
+As an operator, the important controls are simple:
 
-Before `Approved vN`, subagents should be read-only explorers. Good uses are
-code-walk evidence, blast-radius review, config or decision-memory review,
-independent adversarial review of the proposed scope, and other evidence
-gathering. They should not edit files, draft diffs, run formatters, create
-generated artifacts, or run full validation suites before approval.
-
-For Full-rigor discovery with two or more separable evidence domains, expect one
-bounded wave of two or three parallel read-only explorers, each with a distinct
-question and the same revision/worktree snapshot. Codex must synthesize their
-evidence, preserve conflicts and failures, and avoid fan-out when the agents
-would inspect the same surface for the same purpose.
-
-Before drafting the Scope Ledger, Codex should also use the applicable
-specialist roles:
-
-- `scientific-model-oracle` establishes normative sources, units, boundaries,
-  independently derived golden vectors, uncertainty, and claim limits; missing
-  or conflicting normative evidence blocks design
-- `requirements-ambiguity-review` actively searches semantic-risk surfaces for
-  competing interpretations and asks you to resolve material product/operator
-  ambiguity before scope hardens
-- `design-challenger` receives a neutral, resolved evidence packet and explores
-  viable alternatives before Codex records a preferred design
-
-These skills provide specialist instructions; independence still requires a
-separate read-only agent context. If the design challenger has already seen the
-lead's preferred solution, Codex must call that evidence inconclusive rather
-than independent.
-
-For Non-trivial Scope Ledgers, expect Codex to use an independent
-`scope-ledger-adversarial-review` explorer before presenting the approval token
-when independent agents are supported, authorized, and not explicitly
-prohibited. Codex should record one canonical independent-agent status, a
-separate explanatory detail, and any separate waiver disposition.
-
-After `Approved vN`, worker subagents should be used only for approved,
-disjoint slices. A worker assignment should name the approved version, slice,
-allowed paths, forbidden paths, stopping point, targeted checks, and when to
-stop for hidden blast radius or uncertainty.
-
-After detailed `DESIGN` and before the first implementation slice, expect a
-triggered `test-strategy-adversary` to produce a contract-to-test matrix that
-identifies failure stimuli, observables, required evidence, and false-green
-risks. Material behavior or scope gaps return to a revised Scope Ledger and
-approval; checker-only refinements may remain in `DESIGN`.
-
-For Non-trivial Go implementation work, expect Codex to use an independent
-`go-code-quality-review` explorer after code is written and before final
-closeout when independent agents are supported, authorized, and not explicitly
-prohibited. That reviewer should be read-only and findings-only; Codex still
-owns fixes, validation claims, traceability, and the final response.
-
-For high-risk closeout, a read-only fresh-verifier explorer can independently
-check the diff, validation evidence, ADR/TSR impact, support-agent impact, and
-claim wording. Codex still owns integration, final validation claims,
-traceability, and the final response.
-
-For SELF-AUDIT scoring, independent reviewers should provide evidence for the
-riskiest applicable rows instead of the lead agent grading those rows from
-memory. `go-code-quality-review` scores only rows it can inspect after Go code
-is written; it should not final-score later fresh-verification evidence before
-that evidence exists. For high-risk workflow or skill-doc closeout, Codex can
-use the existing fresh-verifier role with a prompt to score the applicable
-SELF-AUDIT rows. The final PASS/FAIL/N/A disposition remains lead-owned.
+- You may prohibit subagents for a task even when the repo normally requests
+  them.
+- Before exact approval, independent agents gather or challenge evidence but
+  do not edit; after approval, workers receive bounded, disjoint slices.
+- Codex must disposition independent findings rather than treating them as
+  automatic decisions or validation.
+- High-risk closeout should include a fresh read-only verification pass when
+  the active environment supports it.
 
 ## Practical loop
 

@@ -31,9 +31,7 @@ function Get-GitBlobBytes {
   $spec = "${Revision}:$Path"
   $start = [System.Diagnostics.ProcessStartInfo]::new("git")
   $start.WorkingDirectory = $RepoRoot
-  $start.ArgumentList.Add("cat-file")
-  $start.ArgumentList.Add("blob")
-  $start.ArgumentList.Add($spec)
+  $start.Arguments = "cat-file blob `"$spec`""
   $start.RedirectStandardOutput = $true
   $start.RedirectStandardError = $true
   $start.UseShellExecute = $false

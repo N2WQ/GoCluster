@@ -79,6 +79,14 @@ $forbiddenPatterns = @(
     @{ Label = "USERPROFILE Codex skills path"; Pattern = "USERPROFILE.*\.codex.*skills" },
     @{ Label = "user-home Codex wording"; Pattern = ("local Codex " + "home") }
 )
+$independentSpecialists = @(
+    "design-challenger",
+    "go-code-quality-review",
+    "requirements-ambiguity-review",
+    "scientific-model-oracle",
+    "scope-ledger-adversarial-review",
+    "test-strategy-adversary"
+)
 
 foreach ($skill in $Skills) {
     $skillDir = Join-Path $sourceRoot $skill
@@ -115,6 +123,15 @@ foreach ($skill in $Skills) {
 
     if ([string]::IsNullOrWhiteSpace($description)) {
         Add-Failure -Failures $failures -Message "[$skill] missing front matter description"
+    }
+
+    if ($independentSpecialists -contains $skill) {
+        if ($content -notmatch 'independent-review contract in `AGENTS\.md`') {
+            Add-Failure -Failures $failures -Message "[$skill] missing canonical independent-review contract reference to AGENTS.md"
+        }
+        if ($content -match '(?m)^\s*-?\s*Agent status:') {
+            Add-Failure -Failures $failures -Message "[$skill] duplicates the AGENTS.md-owned Agent status field"
+        }
     }
 
     $agentFile = Join-Path $skillDir "agents\openai.yaml"

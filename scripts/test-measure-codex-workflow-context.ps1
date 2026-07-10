@@ -2,9 +2,9 @@
 .SYNOPSIS
   Test deterministic Codex context measurement against temporary Git objects.
 .DESCRIPTION
-  Builds baseline/candidate commits containing the production manifest paths,
-  verifies a shrinking candidate passes, and verifies dirty worktree changes do
-  not affect pinned-revision measurement.
+  Builds baseline/candidate commits containing the production manifest paths.
+  Exercises the success gate, pinned-revision isolation, missing and invalid
+  blobs, candidate-only components, and the fixed reduction threshold.
 .NOTES
   Side effects: creates and removes one temporary Git repository.
 #>
@@ -12,6 +12,26 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $script = Join-Path $PSScriptRoot 'measure-codex-workflow-context.ps1'
 $root = Join-Path ([IO.Path]::GetTempPath()) ('gocluster-context-' + [guid]::NewGuid().ToString('N'))
+
+function Invoke-Measurement {
+  Param([string]$Baseline, [string]$Candidate)
+  $hostExe = (Get-Process -Id $PID).Path
+  $priorPreference = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    $output = & $hostExe -NoProfile -ExecutionPolicy Bypass -File $script -BaselineRevision $Baseline -CandidateRevision $Candidate -RepoRoot $root 2>&1
+  } finally {
+    $ErrorActionPreference = $priorPreference
+  }
+  return @{ ExitCode=$LASTEXITCODE; Output=($output -join "`n") }
+}
+
+function Assert-Exit {
+  Param([hashtable]$Result, [int]$Expected, [string]$Label, [string]$Pattern='')
+  if ($Result.ExitCode -ne $Expected) { throw "$Label exit=$($Result.ExitCode), expected=$Expected`n$($Result.Output)" }
+  if ($Pattern -and $Result.Output -notmatch $Pattern) { throw "$Label missing output pattern '$Pattern'`n$($Result.Output)" }
+}
+
 try {
   New-Item -ItemType Directory -Path $root | Out-Null
   git -C $root init -q
@@ -27,11 +47,35 @@ try {
   foreach($path in @('docs/runbooks/codex-workflow-checks.md','docs/runbooks/codex-triggered-validation-tools.md')){$target=Join-Path $root $path; New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null; Set-Content -LiteralPath $target -Value "route only`n" -NoNewline}
   git -C $root add .; git -C $root commit -qm candidate
   $candidate=(git -C $root rev-parse HEAD).Trim()
-  & $script -BaselineRevision $baseline -CandidateRevision $candidate -RepoRoot $root | Out-Host
-  if($LASTEXITCODE -ne 0){throw 'shrinking candidate should pass'}
+  Assert-Exit (Invoke-Measurement $baseline $candidate) 0 'shrinking candidate' 'gate: PASS'
+
   Set-Content -LiteralPath (Join-Path $root 'AGENTS.md') -Value ('dirty growth ' * 1000) -NoNewline
-  & $script -BaselineRevision $baseline -CandidateRevision $candidate -RepoRoot $root | Out-Null
-  if($LASTEXITCODE -ne 0){throw 'pinned candidate must ignore dirty worktree'}
+  Assert-Exit (Invoke-Measurement $baseline $candidate) 0 'pinned candidate isolation' 'gate: PASS'
+
+  git -C $root reset --hard -q $candidate
+  git -C $root rm -q AGENTS.md
+  git -C $root commit -qm missing-path
+  $missing=(git -C $root rev-parse HEAD).Trim()
+  Assert-Exit (Invoke-Measurement $baseline $missing) 1 'missing manifest path' 'cannot read Git blob'
+
+  git -C $root reset --hard -q $candidate
+  [IO.File]::WriteAllBytes((Join-Path $root 'AGENTS.md'), [byte[]](0xC3,0x28))
+  git -C $root add AGENTS.md; git -C $root commit -qm invalid-utf8
+  $invalid=(git -C $root rev-parse HEAD).Trim()
+  Assert-Exit (Invoke-Measurement $baseline $invalid) 1 'invalid UTF-8 blob' 'Unable to translate bytes'
+
+  git -C $root reset --hard -q $candidate
+  Set-Content -LiteralPath (Join-Path $root 'docs/runbooks/codex-workflow-checks.md') -Value ('candidate only growth ' * 2000) -NoNewline
+  git -C $root add .; git -C $root commit -qm candidate-component-growth
+  $componentGrowth=(git -C $root rev-parse HEAD).Trim()
+  Assert-Exit (Invoke-Measurement $baseline $componentGrowth) 1 'candidate-only component growth' 'gate: FAIL'
+
+  git -C $root reset --hard -q $baseline
+  foreach($path in @('docs/runbooks/codex-workflow-checks.md','docs/runbooks/codex-triggered-validation-tools.md')){$target=Join-Path $root $path; New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null; Set-Content -LiteralPath $target -Value "route only`n" -NoNewline}
+  git -C $root add .; git -C $root commit -qm below-threshold
+  $belowThreshold=(git -C $root rev-parse HEAD).Trim()
+  Assert-Exit (Invoke-Measurement $baseline $belowThreshold) 1 'fixed reduction threshold' 'gate: FAIL'
+
   Write-Host 'PASS deterministic context measurement fixtures'
 } finally {
   if(Test-Path $root){Remove-Item -LiteralPath $root -Recurse -Force}

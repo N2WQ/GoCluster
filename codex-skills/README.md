@@ -44,6 +44,10 @@ Repo-authoritative skills:
 - `workflow-contract-audit` - checks Codex workflow, validation, runbook,
   template, skill, and workflow-script edits for contract drift
 
+The common independent-review contract and result envelope for specialist
+skills are owned once in `AGENTS.md`. Each specialist skill keeps only its
+trigger, phase-specific method, and artifact requirements.
+
 Intentionally not vendored as project skills:
 - Codex runtime/system skills; those are provided by the Codex environment.
 - `openai-docs`; current OpenAI product guidance should come from live official
