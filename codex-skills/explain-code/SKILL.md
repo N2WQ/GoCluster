@@ -1,123 +1,216 @@
 ---
+
 name: explain-code
-description: Explain existing code grounded in inspected repository source in plain English, focused on runtime behavior and observable effects without implementation changes.
----
+description: Explain, trace, or deeply review existing code using inspected repository evidence without implementing changes. Use for code-understanding requests unless the user explicitly asks only for a concise, brief, quick, high-level, or initial overview. This skill explicitly owns thorough reviews, comprehensive explanations, audits, diagnosis, correctness analysis, architecture assessment, risk analysis, execution tracing, concurrency analysis, lifecycle analysis, and full subsystem understanding.
 
-# skills/explain-code/skill.md — Explain Existing Code (Grounded, Plain English)
+# Explain Existing Code
 
-## PURPOSE
-Provide code explanations that are strictly grounded in the repository source, written in plain English, focusing on runtime behavior and observable effects. This skill is for understanding code, not changing it.
+## Purpose
 
-## WHEN TO USE (TRIGGERS)
-Use this skill when the user asks any of the following and does not explicitly request implementation changes:
-- “Explain what this code does”
-- “How does this method work?”
-- “Walk me through this file/package”
-- “Help me understand the flow”
-- “Review this code to understand it”
+Explain, trace, or deeply review existing code using inspected repository
+evidence, focusing on runtime behavior, ownership, state, side effects,
+invariants, failure paths, and observable effects.
 
-If the user asks to modify, optimize, refactor, or implement features, do not use this skill; use the full delivery workflow in AGENTS.md.
+This skill is for understanding and evaluating current code. It does not
+authorize implementation changes.
 
-## NON-NEGOTIABLE RULES (GROUNDING)
-1) Read the code first.
-- Open and read the exact file(s) referenced by the user.
-- If the user referenced only a symbol (function/method/type), locate it and open the defining file.
-- Follow the call chain at least one level: the target function/method and its primary callees that determine behavior (not every helper).
-- If runtime behavior depends on interfaces, configuration, or injected dependencies, open the defining interface/type and the primary implementation used in the relevant wiring path.
+## Routing Boundary
 
-2) No speculation.
-- If something cannot be concluded from inspected code, state: `Unknown from inspected code`.
-- Then name exactly what to inspect next (specific files/functions) to resolve it.
+Use this skill when the user asks to understand, explain, trace, review, audit,
+or diagnose existing code and does not request implementation.
 
-3) Evidence is required.
-- Reference concrete identifiers (functions, methods, structs, fields, constants).
-- Cite code locations using file paths and, when available, line ranges.
+This skill explicitly applies to requests such as:
 
-4) If code is not accessible, stop and request it.
-- If the assistant cannot access the repository view or the user has not provided the code, do not explain from memory or typical patterns.
-- Ask for the specific file(s) or snippet(s) needed.
+* “Explain how this method works.”
+* “Walk me through this file or package.”
+* “Help me understand the flow.”
+* “Review this code to understand it.”
+* “Thoroughly review this subsystem.”
+* “Give me a comprehensive explanation.”
+* “Audit this code for correctness.”
+* “Assess the architecture and risks.”
+* “Trace all important execution paths.”
+* “Diagnose why this behavior occurs.”
+* “Review the concurrency and shutdown behavior.”
+* “Identify weaknesses or unknowns in the current design.”
 
-## OUTPUT FORMAT (DEFAULT)
-First response should be concise unless the user asks for a deep dive.
+Do not use `initial-review` when the user requests:
 
-Start with a one-line evidence note:
-- `Read:` <file:lines or file + identifiers actually inspected>
+* a thorough, comprehensive, detailed, or deep review;
+* an audit or diagnosis;
+* correctness, architecture, security, performance, concurrency, lifecycle, or
+  risk analysis;
+* a full trace, all branches, edge cases, failure paths, or subsystem
+  understanding.
 
-Then produce sections in this order:
+Use `initial-review` only when the user explicitly requests a concise, brief,
+quick, high-level, or initial orientation.
 
-1) Purpose (1–2 sentences)
-- What this code is for in the system.
+If the user requests modification, optimization, refactoring, or
+implementation, enter the applicable change workflow in `AGENTS.md` instead.
 
-2) Step-by-step runtime behavior
-- Explain in execution order.
-- Name key branches/conditions and what triggers them.
-- For loops, call out what advances the loop and what terminates it.
-- For error paths, state the observable behavior (return value, log, disconnect, retry, drop).
+## Evidence and Grounding
 
-3) Side effects and interactions
-- Network I/O: reads/writes, deadlines/timeouts, disconnect triggers.
-- Concurrency: goroutines started, ownership, channels/queues, locks.
-- State: shared state mutated, caches, globals, metrics/logs emitted, timers/tickers.
+### Read the code first
 
-4) Inputs, assumptions, invariants
-- Expected input shape and validation.
-- Invariants the code relies on (explicit or implicit).
-- Config flags/limits that change behavior.
+* Open and read the exact files referenced by the user.
+* If the user references a symbol, locate and inspect its definition.
+* Follow the execution and ownership path as far as necessary to answer the
+  requested depth correctly.
+* Inspect primary callers, callees, interfaces, configuration, injected
+  dependencies, state owners, tests, and wiring when they materially determine
+  behavior.
+* Do not stop at one call-chain level when deeper inspection is necessary for
+  correctness or when the user requested a thorough review.
 
-5) Unknowns (only if needed)
-- Bulleted list of `Unknown from inspected code:` items with exact next-read pointers.
+### Separate evidence from uncertainty
 
-6) Clarifying questions (only if needed)
-- Up to 3 short questions as plain sentences (not bullets).
-- Only ask questions required to determine runtime behavior or intended semantics.
+* Present behavior directly established by inspected code as observed current
+  behavior.
+* If something cannot be established from inspected evidence, label it
+  `Unknown from inspected code`.
+* Name the specific files, functions, tests, configuration, runtime evidence,
+  or external authority needed to resolve the unknown.
+* Do not convert assumptions or typical implementation patterns into facts.
 
-## BREVITY RULES
-- Default target: <= 250 words for the first explanation.
-- Expand only if the user asks for a deeper dive (“deep dive”, “full trace”, “edge cases”, “all branches”, “full analysis”).
-- If more detail is required to be correct, say so and propose a split: “I can explain X now, then Y next.”
+### Cite evidence
 
-## DEPTH LEVELS
-### Level 1 (Default)
-- Concise purpose + key flow + major side effects + key assumptions.
-- One level of call chain.
+* Reference concrete functions, methods, types, fields, constants, tests, and
+  configuration.
+* Cite file paths and line ranges when available.
+* Use the nearest identifiable function, type, or block when exact line ranges
+  are unavailable.
 
-### Level 2 (On Request: “deep dive” / “full trace”)
-- Enumerate main branches and error paths.
-- Two levels of call chain where needed for correctness.
-- Include edge-case behavior that is visible to clients/operators (drops, disconnect reasons, retries, ordering).
+### Stop when evidence is unavailable
 
-### Level 3 (On Request: “audit” / “correctness” / “concurrency”)
-- Concurrency and lifecycle: goroutine ownership, cancellation propagation, shutdown sequencing.
-- Backpressure/queue semantics where applicable.
-- Determinism and ordering guarantees.
-- List explicit invariants and how they are maintained.
+If the repository or required code is inaccessible, request the specific file,
+symbol, or snippet needed. Do not explain from memory or generic patterns.
 
-## WHAT NOT TO DO
-- Do not propose refactors, optimizations, or “where to edit” unless the user explicitly asks for changes.
-- Do not generalize based on typical designs (“probably”, “usually”, “likely”) without code evidence.
-- Do not claim tests were run or behavior was validated unless it was actually performed and observed.
-- Do not summarize a package by skimming filenames only; read the code.
+## Depth Selection
 
-## EXAMPLES (STYLE, NOT CONTENT)
+Infer the required depth from the user’s request. Do not require the user to use
+a specific phrase or request a second pass when the original request already
+requires deeper analysis.
 
-### Example: function explanation (Level 1)
-Read: `pkg/conn/writer.go: WriterLoop(), enqueueControl(), enqueueSpot()`
+### Concise explanation
 
-Purpose: This implements the per-connection write loop and bounded enqueue logic for control vs spot messages.
+Use when the user asks a straightforward explanation without requesting a
+brief initial overview or a deep review.
 
-Step-by-step runtime behavior: WriterLoop() blocks on the control queue first, then drains spots when control is empty. enqueueControl() pushes into the control queue and returns an error if full; enqueueSpot() drops the incoming spot when the spot queue is full.
+Cover:
 
-Side effects and interactions: WriterLoop() performs net.Conn writes and applies SetWriteDeadline() before each flush. It logs disconnect reasons on write timeout and closes the connection.
+* purpose;
+* primary execution flow;
+* major side effects;
+* principal inputs and invariants;
+* material unknowns.
 
-Inputs, assumptions, invariants: Assumes a single writer goroutine owns the net.Conn. Queue capacities are fixed at construction and never grow.
+### Detailed explanation
 
-### Example: unknown handling
-Unknown from inspected code: whether the connection uses an idle timeout on reads. Next inspect: `pkg/conn/reader.go: readLoop()` and connection setup in `pkg/server/accept.go: handleConn()`.
+Use when the request asks for detail, execution tracing, branches, error paths,
+edge cases, or full flow.
 
-## COMPLETION CHECK (INTERNAL)
+Cover:
+
+* entry points and material callers;
+* execution order;
+* important branches and termination conditions;
+* validation and normalization;
+* error, retry, timeout, drop, disconnect, and recovery behavior;
+* state transitions and observable effects;
+* material tests and configuration;
+* unresolved evidence.
+
+### Thorough review or audit
+
+Use automatically when the user asks for a thorough, comprehensive, deep,
+architectural, diagnostic, correctness, risk, concurrency, lifecycle,
+performance, or security review.
+
+Inspect and report all applicable areas:
+
+* entry points and ownership boundaries;
+* complete material execution paths;
+* state mutation and persistence;
+* goroutine, channel, queue, lock, cancellation, and shutdown ownership;
+* bounded-resource and backpressure behavior;
+* validation, defaults, sentinels, malformed inputs, and boundary conditions;
+* normal, overload, failure, recovery, and shutdown paths;
+* protocol, compatibility, operator, configuration, and persistence contracts;
+* assumptions and invariants;
+* relevant tests and gaps in test coverage;
+* concrete risks, contradictory evidence, and unresolved unknowns;
+* confidence appropriate to the inspected evidence.
+
+Do not impose a five-bullet structure, 250-word ceiling, three-risk limit, or
+mandatory clarifying question on a thorough review.
+
+## Recommended Output Structure
+
+Adapt the structure to the request rather than forcing irrelevant sections.
+
+For a normal explanation, prefer:
+
+1. Evidence inspected.
+2. Purpose.
+3. Runtime behavior.
+4. State and side effects.
+5. Inputs and invariants.
+6. Failure paths and edge cases, when material.
+7. Unknowns and next evidence, when material.
+
+For a thorough review, organize findings by the system’s natural execution,
+ownership, risk, or architectural structure. Include enough evidence and
+explanation to support material conclusions.
+
+Do not use a fixed heading count, bullet count, word ceiling, risk limit, or
+mandatory final question.
+
+## Inference Rules
+
+* Do not generalize from typical designs as though the behavior were observed.
+* Clearly distinguish direct evidence from inference.
+* A conclusion supported by multiple inspected facts may be labeled as an
+  inference, with the supporting evidence identified.
+* Competing explanations may be presented when current evidence does not
+  distinguish them.
+* State what additional evidence would confirm or disprove a material
+  inference.
+* Do not use unsupported terms such as “probably,” “usually,” or “likely”
+  without identifying the evidence and uncertainty supporting them.
+
+## Change Boundary
+
+* Do not propose refactors, optimizations, patches, or edit locations unless the
+  user explicitly asks for recommendations or changes.
+* A request to identify current risks or weaknesses does not itself authorize
+  implementation.
+* Do not modify repository files.
+* Do not claim tests were run, runtime behavior was observed, or performance was
+  measured unless that work was actually performed.
+
+## Clarifying Questions
+
+Ask a question only when missing information prevents a correct or materially
+useful analysis.
+
+Do not ask a question merely because a question is customary, because another
+code path could be explored, or because the response could be split into later
+turns.
+
+When the repository provides enough evidence, complete the requested
+explanation or review in the current response.
+
+## Completion Check
+
 Before responding, confirm:
-- I actually read the code I’m describing.
-- I cited identifiers and file locations.
-- I did not guess; unknowns are labeled with next-read pointers.
-- I did not propose changes unless asked.
-- I stayed within the default brevity target unless the user requested depth.
+
+* The relevant current code was actually inspected.
+* The depth matches the user’s original request.
+* Material execution and ownership paths were followed far enough for the
+  conclusions made.
+* Facts, inferences, assumptions, and unknowns are distinguishable.
+* Material claims cite repository evidence.
+* Tests or runtime behavior are not claimed without observation.
+* No implementation change was proposed or performed without user authority.
+* A thorough request was not compressed into the `initial-review` format.
