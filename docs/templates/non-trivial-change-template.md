@@ -4,6 +4,10 @@ These examples help present material information. They are not mandatory
 headings, field counts, marker order, or checker-enforced response formats.
 Omit irrelevant fields and do not print `N/A` merely to complete a template.
 
+The explicit authorization instruction is not optional. Every Proposed Scope
+Ledger presented for approval must end with the exact matching approval token
+the user must provide before mutation may begin.
+
 ## Approval Packet
 
 ```text
@@ -16,9 +20,27 @@ Boundaries: <explicit exclusions and stop conditions>
 Material risks: <only applicable risks>
 Validation plan: <touched-surface commands or evidence>
 Scope challenge: <material finding and disposition, or none>
+
+Exact authorization required before implementation: Approved vN
 ```
 
-Only exact `Approved vN` for that ledger authorizes Non-trivial mutation.
+The material fields may be organized differently when another structure
+communicates the scope more clearly. The final authorization instruction must
+still appear verbatim with the ledger’s actual version number.
+
+Only the exact matching `Approved vN` authorizes Non-trivial mutation.
+
+Discussion, recommendations, questions, agreement with individual findings,
+requests to continue planning, or approval of another ledger version do not
+authorize implementation.
+
+When material evidence changes authority, scope, accepted risk, boundaries, or
+required validation, present a revised ledger with a new version and end it
+with the corresponding authorization instruction:
+
+```text
+Exact authorization required before implementation: Approved vN
+```
 
 Decompose work when real rollback, ownership, uncertainty, or validation
 boundaries exist. A bounded coherent change may remain one slice. Broad
@@ -35,7 +57,9 @@ Evidence: <targeted result>
 Material discovery: <scope-relevant delta, if any>
 ```
 
-Stop for revised approval if material discovery exceeds agreed scope.
+Stop for revised approval if material discovery exceeds agreed scope or
+materially changes authority, accepted risk, boundaries, or required
+validation.
 
 ## Closeout
 
