@@ -43,15 +43,13 @@ Before Non-trivial mutation:
    decision history. Before proposing scope, resolve material unknowns that
    could invalidate the approach using the smallest safe read-only proof.
    Expose unresolved assumptions.
-2. Resolve every material semantic or product-policy ambiguity through the
-   Semantic Decision Gate below.
-3. Resolve every triggered scientific or model question through the Scientific
-   Independence Gate below.
-4. Propose a versioned Scope Ledger containing the objective, agreed scope,
+2. Satisfy every triggered semantic, product-policy, scientific, and model gate
+   below.
+3. Propose a versioned Scope Ledger containing the objective, agreed scope,
    boundaries, material risks or unknowns, and validation plan.
-5. Challenge the scope before approval. Revise and reapprove it when new
+4. Challenge the scope before approval. Revise and reapprove it when new
    evidence materially changes authority, scope, risk, or validation.
-6. Wait for the exact token `Approved vN` matching that ledger.
+5. Wait for the exact token `Approved vN` matching that ledger.
 
 Only exact `Approved vN` authorizes the matching agreed scope. Discussion,
 requests to proceed, or approval of a different version do not authorize
@@ -74,213 +72,54 @@ is required.
 
 ## Semantic Decision Gate
 
-A material semantic or product-policy ambiguity exists when two or more
-plausible interpretations would change user-visible or operator-visible
-behavior, compatibility, safety, ordering, persistence, failure handling,
-classification, defaults, thresholds, or expected test results.
+When materially different interpretations would change observable behavior,
+compatibility, safety, persistence, ordering, classification, failure handling,
+defaults, thresholds, or expected tests, Codex must run
+`requirements-ambiguity-review`.
 
-Codex may analyze the interpretations, explain consequences, and recommend one
-under explicit assumptions. A recommendation does not resolve the ambiguity.
+Codex may analyze and recommend, but a recommendation does not resolve product
+policy. The ambiguity is resolved only by explicit user selection, controlling
+authority, or evidence that eliminates every competing material interpretation.
 
-A material semantic ambiguity is resolved only when:
+Until resolved, Codex must not select concrete architecture, present an
+unconditional Scope Ledger, display `Approved vN`, state that planning is
+approval-ready, or begin mutation. Requests to analyze, determine, recommend,
+review, compare, plan, propose, continue, or proceed do not themselves resolve
+the ambiguity.
 
-1. the user explicitly selects or approves an interpretation;
-2. a current authoritative repository contract unambiguously selects it;
-3. a governing normative authority selects it; or
-4. current evidence disproves every competing material interpretation.
-
-Requests to analyze, determine, recommend, review, compare, plan, or propose do
-not constitute policy selection.
-
-These examples are advice requests, not semantic authorization:
-
-* `Determine what this should mean.`
-* `Recommend the best behavior.`
-* `Plan the change.`
-* `What would you do?`
-* `Continue.`
-
-These examples explicitly resolve policy:
-
-* `I choose interpretation A.`
-* `Use session-authority ordering.`
-* `Approved: replacement invalidates every old save not yet committed.`
-* `Define newer as the currently authoritative registered session.`
-
-When material semantics remain unresolved, Codex must:
-
-* report the competing interpretations and consequences;
-* provide any conditional recommendation;
-* state architecture-neutral invariants only;
-* identify the user or authority that owns the decision;
-* end with the exact decision required from the user.
-
-While the ambiguity remains unresolved, Codex must not:
-
-* call one interpretation correct, selected, decided, required, or the contract;
-* select or recommend a concrete architecture or mechanism;
-* draft an unconditional Proposed Scope Ledger;
-* display an `Approved vN` token;
-* state that planning is approval-ready;
-* begin mutation.
-
-After explicit semantic resolution, Codex records the selected interpretation
-and its authority source, then performs any triggered design challenge and
-falsifiability analysis before presenting a Proposed Scope Ledger.
+The skill owns ambiguity discovery, interpretation comparison, conditional
+recommendations, architecture-neutral constraints, exact decision requests, and
+reporting.
 
 ## Scientific Independence Gate
 
-A scientific or model review requires separate non-steered evidence when the
-credibility of the result materially depends on deriving the normative contract
-outside the lead's implementation context.
+When `scientific-model-oracle` determines that the credibility of a material
+scientific or model claim requires separate non-steered evidence, Codex must
+obtain that review when active platform support permits.
 
-This gate applies when the `scientific-model-oracle` determines that separate
-review is required, including consequential questions involving:
+The independent reviewer must not receive the lead's preferred conclusion,
+intended implementation, draft Scope Ledger, or implementation-derived expected
+values. The lead must verify and disposition the independent findings and
+retain all product-policy, scope, design, approval, implementation, validation,
+and final-response authority.
 
-* scientific or mathematical model semantics;
-* operational prediction;
-* classification or ranking;
-* thresholds and boundaries;
-* confidence or probability claims;
-* calibration or tolerances;
-* correction or scoring behavior;
-* externally visible scientific claims;
-* implementation-derived expected values;
-* disputed or materially uncertain normative sources.
+A governed response must disclose whether independent review actually occurred.
+A fresh lead pass, inherited-context review, or reviewer shown the preferred
+answer must not be described as independent.
 
-When this gate applies, Codex must use a separate non-steered read-only reviewer
-when active platform support permits.
+If required independent review is unavailable, Codex must disclose the
+limitation, identify and reduce the affected claims, and obtain explicit user
+acceptance before issuing a verdict or Scope Ledger whose credibility depends
+on independence.
 
-The reviewer must receive a neutral evidence packet containing only what is
-needed to derive the contract independently, such as:
+A scientific recommendation does not select product policy. Any remaining
+material product-policy choice enters the Semantic Decision Gate before design,
+Scope Ledger publication, or mutation.
 
-* the neutral scientific or model question;
-* confirmed product objectives;
-* operating domain and units;
-* authoritative source candidates;
-* current behavior only when clearly labeled as observational evidence;
-* unresolved questions and known constraints.
-
-The neutral evidence packet must not include:
-
-* the lead's preferred answer;
-* the intended implementation;
-* a draft Scope Ledger;
-* implementation-derived expected values;
-* golden vectors copied from current tests or fixtures;
-* wording designed to steer the reviewer toward the lead's conclusion.
-
-The lead must verify the independent review's material evidence, resolve
-conflicts, and retain authority over final synthesis. Independent findings do
-not transfer product-policy, scope, design, approval, implementation, or
-validation authority.
-
-### Required Independence Disclosure
-
-Any scientific or model response governed by this gate must explicitly state:
-
-* whether a separate non-steered reviewer was actually used;
-* whether the result is independent, separately reviewed, or lead-owned;
-* the neutral question and material evidence supplied to the reviewer;
-* whether the reviewer saw the lead's preferred conclusion or intended design;
-* the reviewer's material findings;
-* material agreement or disagreement with the lead;
-* how the lead dispositioned disagreements;
-* remaining uncertainty and confidence limits.
-
-Do not describe a fresh lead pass, a second pass in the same inherited context,
-or a reviewer shown the preferred answer as independent.
-
-### When Independent Review Is Unavailable
-
-If separate non-steered review is required but unavailable, Codex must:
-
-* disclose that limitation before issuing a verdict;
-* identify which claims are affected by correlated reasoning risk;
-* perform only a clearly labeled lead-owned derivation;
-* reduce confidence where independence could materially change the result;
-* avoid presenting the result as an independently established normative
-  contract;
-* state what separate evidence is still required.
-
-Codex must not issue an unqualified final scientific verdict, calibrated
-threshold recommendation, confidence claim, normative contract, or
-scientifically grounded Scope Ledger unless one of the following occurs:
-
-1. the required separate review is completed;
-2. authoritative evidence makes independent derivation unnecessary because no
-   material interpretation remains open; or
-3. the user explicitly accepts a limited lead-owned analysis after being told
-   the independence limitation and affected claims.
-
-Examples of explicit user acceptance include:
-
-* `Proceed with a lead-owned scientific analysis despite the missing independent review.`
-* `I accept the independence limitation for this review.`
-* `Use the lead-owned result as provisional evidence only.`
-
-A request to continue, analyze, recommend, review, or plan does not constitute
-acceptance of the independence limitation.
-
-### Scientific Recommendation Versus Product Policy
-
-The scientific reviewer may:
-
-* rank competing scientific or model contracts;
-* recommend the strongest evidence-supported contract;
-* reject unsupported scientific claims;
-* narrow confidence, accuracy, probability, or operational-prediction claims;
-* define independent golden vectors and tolerances;
-* identify calibration or normative evidence still required.
-
-A scientific recommendation does not itself select product policy.
-
-When scientific evidence is clear but product behavior may intentionally differ,
-Codex must state both separately:
-
-```text
-Scientific recommendation: <evidence-supported contract or claim>
-
-Product-policy decision required: <whether to adopt it or intentionally use a
-different behavior with documented limitations>
-```
-
-If product policy remains materially open, route the decision through the
-Semantic Decision Gate before design or Scope Ledger publication.
-
-### Scientific Scope Gate
-
-While required independent review remains incomplete or materially unresolved,
-Codex must not:
-
-* present an independently established scientific verdict;
-* state that thresholds, classifications, probabilities, tolerances, confidence,
-  or model outputs are scientifically validated;
-* derive implementation expectations solely from current code or tests;
-* produce an unconditional Scope Ledger whose behavior depends on the unresolved
-  scientific contract;
-* display an implementation approval token for that unresolved contract;
-* begin mutation.
-
-Codex may still report:
-
-* current observed behavior;
-* source hierarchy;
-* preliminary lead-owned analysis;
-* uncertainty and evidence gaps;
-* provisional golden vectors clearly labeled as non-independent;
-* the exact independent evidence or user acceptance required to proceed.
-
-After the gate is satisfied, Codex records:
-
-* the independence status;
-* the controlling normative evidence;
-* the established scientific contract and bounded uncertainty;
-* any remaining product-policy decision;
-* the authority source for each resolved element.
-
-Triggered requirements ambiguity, design challenge, falsifiability analysis, and
-Scope Ledger work may then proceed.
+The skill owns independence triggers, neutral evidence packets, source
+hierarchy, normative derivation, competing-contract comparison, confidence,
+golden vectors, claim boundaries, unavailable-review handling, and detailed
+reporting.
 
 ## Risk Routing
 
