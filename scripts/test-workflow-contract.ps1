@@ -53,6 +53,9 @@ try {
     "AGENTS.md", "VALIDATION.md", "docs/change-workflow.md",
     "docs/code-quality.md", "docs/domain-contract.md", "docs/review-checklist.md", "docs/dev-runbook.md",
     "docs/WORKING_WITH_CODEX.md", "docs/decision-memory.md",
+    "docs/decision-log.md",
+    "docs/decisions/ADR-0221-codex-authority-and-evidence-workflow.md",
+    "docs/decisions/ADR-0222-corrective-codex-authority-and-validation.md",
     "docs/templates/non-trivial-change-template.md",
     "docs/runbooks/codex-workflow-checks.md",
     "docs/runbooks/codex-triggered-validation-tools.md",
@@ -61,6 +64,34 @@ try {
 
   Invoke-Fixture 0 "PASS Codex workflow static invariants passed." "positive contract"
   Invoke-SkillFixture 0 "PASS all requested repo skills verified." "positive skill methods"
+
+  $original = Replace-Once "AGENTS.md" "lowest`n   sufficient target reasoning level" "target model effort"
+  Invoke-Fixture 1 "reasoning recommendation missing" "reasoning recommendation remains reachable"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "AGENTS.md") -Value $original -NoNewline
+
+  $original = Replace-Once "docs/templates/non-trivial-change-template.md" "Target reasoning:" "Recommended model effort:"
+  Invoke-Fixture 0 "PASS Codex workflow static invariants passed." "reasoning narration remains flexible"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/templates/non-trivial-change-template.md") -Value $original -NoNewline
+
+  foreach ($case in @(
+    @{ From="runtime config"; To="runtime settings"; Expected="sensitive Small exclusion missing: runtime config"; Label="runtime config cannot be Small" },
+    @{ From="parser behavior"; To="text handling"; Expected="sensitive Small exclusion missing: parser"; Label="parser behavior cannot be Small" },
+    @{ From="authentication or admission"; To="access handling"; Expected="sensitive Small exclusion missing: authentication/admission"; Label="authentication cannot be Small" },
+    @{ From="persisted state"; To="stored information"; Expected="sensitive Small exclusion missing: persisted state"; Label="persisted state cannot be Small" },
+    @{ From="scientific/model semantics; hot-path behavior"; To="domain behavior; optimized code"; Expected="sensitive Small exclusion missing: scientific/model"; Label="model semantics cannot be Small" }
+  )) {
+    $original = Replace-Once "AGENTS.md" $case.From $case.To
+    Invoke-Fixture 1 $case.Expected $case.Label
+    Set-Content -LiteralPath (Join-Path $fixtureRoot "AGENTS.md") -Value $original -NoNewline
+  }
+
+  $original = Replace-Once "AGENTS.md" "provides standing authorization for subagent use" "may provide task authorization for subagent use"
+  Invoke-Fixture 1 "standing subagent authorization missing" "standing authorization remains reachable"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "AGENTS.md") -Value $original -NoNewline
+
+  $original = Replace-Once "AGENTS.md" "This authorization does not require subagents," "This authorization requires subagents,"
+  Invoke-Fixture 1 "standing authorization non-default boundary missing" "standing authorization does not force use"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "AGENTS.md") -Value $original -NoNewline
 
   $original = Replace-Once "AGENTS.md" 'Only exact `Approved vN` authorizes the matching agreed scope.' 'Discussion or requests to proceed authorize the matching agreed scope.'
   Invoke-Fixture 1 "approval authority route missing" "approval cannot be loosened"
@@ -75,14 +106,37 @@ try {
   Invoke-Fixture 1 "uncertainty High-risk route missing" "uncertainty cannot silently remain Standard"
   Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/change-workflow.md") -Value $original -NoNewline
 
+  $sharedImpact = "Changes to multiple production`npackages also trigger independent Go review when shared behavior, ownership,`ninterfaces, contracts, or meaningful cross-package uncertainty are affected."
+  $original = Replace-Once "docs/change-workflow.md" $sharedImpact "Changes to multiple production packages always trigger independent Go review."
+  Invoke-Fixture 1 "shared-impact multiple-package review trigger missing" "multiple-package review requires shared impact"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/change-workflow.md") -Value $original -NoNewline
+
+  foreach ($case in @(
+    @{ From='1. `go test ./...`;'; To='1. targeted tests only;'; Expected='production-Go final lane command missing: go test ./...'; Label='production Go requires full tests' },
+    @{ From='2. `go vet ./...`;'; To='2. optional vet;'; Expected='production-Go final lane command missing: go vet ./...'; Label='production Go requires vet' },
+    @{ From='3. `staticcheck ./...`;'; To='3. optional static analysis;'; Expected='production-Go final lane command missing: staticcheck ./...'; Label='production Go requires staticcheck' },
+    @{ From='4. `golangci-lint run ./... --config=.golangci.yaml`.'; To='4. optional lint.'; Expected='production-Go final lane command missing: golangci-lint run ./... --config=.golangci.yaml'; Label='production Go requires configured lint' }
+  )) {
+    $original = Replace-Once "docs/dev-runbook.md" $case.From $case.To
+    Invoke-Fixture 1 $case.Expected $case.Label
+    Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/dev-runbook.md") -Value $original -NoNewline
+  }
+
+  $original = Replace-Once "docs/dev-runbook.md" "Fable's code/mixed/runtime-contract lane remains defined" "Fable may choose a narrower lane"
+  Invoke-Fixture 1 "shared Fable validation lane changed" "shared Fable validation lane preserved"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/dev-runbook.md") -Value $original -NoNewline
+
+  $original = Replace-Once "docs/code-quality.md" "provenance-independent golden vectors" "implementation-derived expected values"
+  Invoke-Fixture 1 "shared scientific obligation missing: provenance-independent golden vectors" "shared Fable scientific obligation preserved"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/code-quality.md") -Value $original -NoNewline
+
   $templatePath = Join-Path $fixtureRoot "docs/templates/non-trivial-change-template.md"
   $baseTemplate = Get-Content -LiteralPath $templatePath -Raw
   foreach ($case in @(
     @{ Text="`nSkill check: selected anything`n"; Expected="retired skill marker remains"; Label="skill marker retired" },
     @{ Text="`nValidation Score: 6/6`n"; Expected="retired numeric validation score remains"; Label="numeric score retired" },
     @{ Text="`nSA1 PASS`n"; Expected="retired SA taxonomy remains"; Label="SA taxonomy retired" },
-    @{ Text="`nSELF-AUDIT`n"; Expected="retired Self-Audit reporting remains"; Label="Self-Audit reporting retired" },
-    @{ Text="`nReasoning budget: high`n"; Expected="retired reasoning-budget field remains"; Label="reasoning field retired" }
+    @{ Text="`nSELF-AUDIT`n"; Expected="retired Self-Audit reporting remains"; Label="Self-Audit reporting retired" }
   )) {
     Set-Content -LiteralPath $templatePath -Value ($baseTemplate + $case.Text) -NoNewline
     Invoke-Fixture 1 $case.Expected $case.Label
@@ -108,6 +162,16 @@ try {
   $original=Replace-Once $scopeSkillPath "Do not trigger for every Non-trivial ledger." "Trigger for every Non-trivial ledger."
   Invoke-SkillFixture 1 "missing preserved trigger or method invariant: Do not trigger for every" "scope specialist cannot become default"
   Set-Content -LiteralPath (Join-Path $fixtureRoot $scopeSkillPath) -Value $original -NoNewline
+
+  $leakSkillPath = Join-Path $fixtureRoot "codex-skills/go-leak-detection/SKILL.md"
+  $original = Get-Content -LiteralPath $leakSkillPath -Raw
+  Set-Content -LiteralPath $leakSkillPath -Value ($original + "`nVerification command reporting`n") -NoNewline
+  Invoke-SkillFixture 1 "obsolete command-evidence reference" "obsolete specialist integration cannot return"
+  Set-Content -LiteralPath $leakSkillPath -Value $original -NoNewline
+
+  $original = Replace-Once "docs/decisions/ADR-0221-codex-authority-and-evidence-workflow.md" "Selective supersession: ADR-0222" "Historical note: ADR-0222"
+  Invoke-Fixture 1 "ADR-0221 selective reciprocal note missing" "ADR selective link remains reciprocal"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/decisions/ADR-0221-codex-authority-and-evidence-workflow.md") -Value $original -NoNewline
 
   Invoke-Fixture 1 "protected Fable or release path changed: CLAUDE.md" "Fable path protected" @("CLAUDE.md")
   Invoke-Fixture 1 "protected Fable or release path changed: scripts/create-release.ps1" "release script protected" @("scripts/create-release.ps1")

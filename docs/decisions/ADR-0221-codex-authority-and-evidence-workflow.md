@@ -3,6 +3,10 @@
 - Status: Accepted
 - Date: 2026-07-10
 - Decision Origin: Design
+- Selective supersession: ADR-0222 narrows the reasoning-budget,
+  sensitive-surface classification, production-Go validation, shared-Fable,
+  standing-authorization, specialist-integration, and Go-review-trigger
+  clauses. All other ADR-0221 decisions remain accepted.
 
 ## Context
 
@@ -119,5 +123,5 @@ risks.
   `scripts/measure-codex-workflow-context.ps1`,
   `scripts/test-measure-codex-workflow-context.ps1`
 - Related TSRs: none
-- Supersedes / superseded by: supersedes the prior ADRs as classified above
-
+- Supersedes / superseded by: supersedes the prior ADRs as classified above;
+  selectively superseded by ADR-0222 for the clauses named above

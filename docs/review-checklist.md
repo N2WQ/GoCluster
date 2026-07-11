@@ -31,11 +31,13 @@ for deeper domain review.
 ## Go Review Trigger
 
 Independent Go code-quality review is required only for High-risk or
-substantial Go implementation. Substantial applies when more than one
-production package changes, a shared or exported interface changes, an
-algorithm or state machine changes materially, a production file is
-substantially rewritten, or meaningful uncertainty remains. Line count alone
-does not determine substantiality.
+substantial Go implementation. Multiple production packages trigger
+independent review when shared behavior, ownership, interfaces, contracts, or
+meaningful cross-package uncertainty are affected. High-risk classification,
+shared or exported interface changes, material algorithm or state-machine
+changes, substantial production-file rewrites, and meaningful residual
+uncertainty are independent triggers. Line count alone does not determine
+substantiality.
 
 Standard Non-trivial Go work receives a disciplined lead review. When an
 independent reviewer is used, it is read-only findings evidence; the lead owns

@@ -95,17 +95,27 @@ cross-package behavior can be affected.
 
 ## Non-trivial Code, Config, Or Mixed Change
 
-Select commands from the actual surface:
+For Codex, every Non-trivial change that touches production Go runs targeted
+package tests during implementation and this complete baseline once on the
+final relevant state. Fable's code/mixed/runtime-contract lane remains defined
+by `docs/fable-workflow.md` and uses the same complete baseline:
 
-1. targeted package tests during implementation;
-2. `go test ./...` when repository-wide Go behavior can be affected;
-3. `go vet ./...`, `staticcheck ./...`, and the configured linter when shared,
-   exported, parsing, or cross-package behavior warrants them;
-4. config/YAML rigor checks for first-party runtime configuration;
-5. comment-intent checks for support-critical Go;
-6. `go test -race ./...` for concurrency, lifecycle, or shared state;
-7. fuzzing for parser or protocol changes;
-8. benchmarks and pprof for performance claims.
+1. `go test ./...`;
+2. `go vet ./...`;
+3. `staticcheck ./...`;
+4. `golangci-lint run ./... --config=.golangci.yaml`.
+
+Add as applicable:
+
+- config/YAML rigor checks for first-party runtime configuration;
+- comment-intent checks for support-critical Go;
+- `go test -race ./...` for concurrency, lifecycle, or shared state;
+- fuzzing for parser or protocol changes;
+- benchmarks and pprof for performance claims.
+
+For Codex Non-trivial config or mixed changes with no production Go diff,
+select the commands required by the actual non-Go surface rather than inferring
+Go tests. Fable continues to follow its own lane definition.
 
 Run only commands relevant to the changed behavior. Report unavailable required
 tools and failed or skipped checks rather than substituting a pass.

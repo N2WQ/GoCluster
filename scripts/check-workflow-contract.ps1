@@ -73,6 +73,9 @@ $requiredFiles = @(
   "docs/runbooks/codex-workflow-checks.md",
   "docs/runbooks/codex-triggered-validation-tools.md",
   "docs/workflow-eval-cases.md",
+  "docs/decision-log.md",
+  "docs/decisions/ADR-0221-codex-authority-and-evidence-workflow.md",
+  "docs/decisions/ADR-0222-corrective-codex-authority-and-validation.md",
   "codex-skills/README.md",
   "scripts/README.md"
 )
@@ -82,7 +85,11 @@ foreach ($path in $requiredFiles) { $text[$path] = Get-RepoText $path }
 $agents = $text["AGENTS.md"]
 $workflow = $text["docs/change-workflow.md"]
 $runbook = $text["docs/dev-runbook.md"]
+$codeQuality = $text["docs/code-quality.md"]
 $decisionMemory = $text["docs/decision-memory.md"]
+$adr0221 = $text["docs/decisions/ADR-0221-codex-authority-and-evidence-workflow.md"]
+$adr0222 = $text["docs/decisions/ADR-0222-corrective-codex-authority-and-validation.md"]
+$decisionLog = $text["docs/decision-log.md"]
 
 Require-Text "AGENTS.md" $agents 'Only exact `Approved vN` authorizes the matching agreed scope.' "approval authority route missing"
 Require-Text "AGENTS.md" $agents "Only explicitly agreed items are executable." "agreed-scope authority missing"
@@ -94,6 +101,30 @@ Require-Pattern "AGENTS.md" $agents 'Broad\s+refactor-shaped scope is not approv
 Require-Pattern "AGENTS.md" $agents 'never claim a check or behavior\s+that was not actually observed' "claim-evidence rule missing"
 Require-Text "AGENTS.md" $agents "High-risk work requires a fresh final verification pass." "high-risk fresh verification missing"
 
+$agentRoutes = Get-MarkdownSection $agents "## Work Routes"
+foreach ($concept in @(
+  @{ Pattern='runtime config'; Label='runtime config' },
+  @{ Pattern='schema'; Label='schema' },
+  @{ Pattern='default'; Label='default' },
+  @{ Pattern='sentinel'; Label='sentinel' },
+  @{ Pattern='parser'; Label='parser' },
+  @{ Pattern='authentication|admission'; Label='authentication/admission' },
+  @{ Pattern='persisted state'; Label='persisted state' },
+  @{ Pattern='scientific/model'; Label='scientific/model' },
+  @{ Pattern='hot-path'; Label='hot path' },
+  @{ Pattern='shared contracts'; Label='shared contracts' },
+  @{ Pattern='operator-visible'; Label='operator-visible behavior' },
+  @{ Pattern='durable decisions'; Label='durable decisions' }
+)) { Require-Pattern "AGENTS.md#Work Routes" $agentRoutes $concept.Pattern "sensitive Small exclusion missing: $($concept.Label)" }
+
+$agentAuthority = Get-MarkdownSection $agents "## Non-trivial Authority"
+Require-Pattern "AGENTS.md#Non-trivial Authority" $agentAuthority '(?s)lowest\s+sufficient target reasoning level.*rationale.*escalation.*user may override' "reasoning recommendation missing"
+Require-Pattern "AGENTS.md#Non-trivial Authority" $agentAuthority '(?s)State it once before\s+approval.*do not repeat' "reasoning recommendation repetition boundary missing"
+
+$agentRisk = Get-MarkdownSection $agents "## Risk Routing"
+Require-Pattern "AGENTS.md#Risk Routing" $agentRisk '(?s)standing authorization.*active platform policy permits' "standing subagent authorization missing"
+Require-Pattern "AGENTS.md#Risk Routing" $agentRisk '(?s)authorization does not require subagents.*expand scope.*bypass approval' "standing authorization non-default boundary missing"
+
 Require-Pattern "docs/change-workflow.md" $workflow 'Only exact `Approved vN` for the current ledger authorizes Non-trivial\s+mutation\.' "detailed approval route missing"
 Require-Pattern "docs/change-workflow.md" $workflow 'Only explicitly\s+agreed items may be implemented\.' "detailed agreed-scope rule missing"
 Require-Text "docs/change-workflow.md" $workflow "Standard and High-risk are internal routes." "internal risk-routing rule missing"
@@ -101,6 +132,13 @@ Require-Pattern "docs/change-workflow.md" $workflow 'Uncertainty that could affe
 Require-Text "docs/change-workflow.md" $workflow "Line count alone does not determine substantiality." "substantial-Go rule missing"
 Require-Text "docs/change-workflow.md" $workflow "Retained specialist skills preserve their unique engineering methods" "specialist-method preservation missing"
 Require-Pattern "docs/change-workflow.md" $workflow 'Run the complete\s+selected lane once on the final relevant state\.' "final-lane rule missing"
+
+$workflowClassification = Get-MarkdownSection $workflow "## Change Classification"
+foreach ($concept in @('runtime config','schema','default','sentinel','parser','authentication|admission','persisted state','scientific/model','hot-path','shared\s+contracts','operator-visible','durable decisions')) {
+  Require-Pattern "docs/change-workflow.md#Change Classification" $workflowClassification $concept "detailed sensitive Small exclusion missing: $concept"
+}
+$workflowScope = Get-MarkdownSection $workflow "### Scope"
+Require-Pattern "docs/change-workflow.md#Scope" $workflowScope '(?s)lowest\s+sufficient target reasoning level.*rationale.*escalation.*user may override' "detailed reasoning recommendation missing"
 
 $standard = Get-MarkdownSection $workflow "### Standard"
 if ($standard -eq "") { Add-Failure "Standard routing section missing" }
@@ -119,10 +157,39 @@ foreach ($required in @(
   "Code walk",
   "Blast-radius audit"
 )) { Require-Text "docs/change-workflow.md#High-risk" $highRisk $required "positive specialist trigger missing: $required" }
+Require-Pattern "docs/change-workflow.md#High-risk" $highRisk '(?s)multiple production\s+packages.*shared behavior.*ownership.*interfaces.*contracts.*cross-package uncertainty' "shared-impact multiple-package review trigger missing"
+
+$subagents = Get-MarkdownSection $workflow "## Subagents When Used"
+Require-Pattern "docs/change-workflow.md#Subagents" $subagents '(?s)standing authorization.*active platform policy permits' "detailed standing authorization missing"
+Require-Pattern "docs/change-workflow.md#Subagents" $subagents '(?s)does not\s+require use.*expand scope.*bypass approval' "detailed standing authorization boundary missing"
 
 Require-Text "docs/dev-runbook.md" $runbook "Task classification controls approval; touched surface and engineering risk`n  control validation." "runbook lane authority missing"
 Require-Text "docs/dev-runbook.md" $runbook "Do not run Go validation solely because workflow Markdown" "workflow lane incorrectly permits inferred Go validation"
 Require-Text "docs/dev-runbook.md" $runbook "Fable's existing contract`nremains owned by" "shared runbook Fable preservation missing"
+
+$productionGo = Get-MarkdownSection $runbook "## Non-trivial Code, Config, Or Mixed Change"
+Require-Pattern "docs/dev-runbook.md#Non-trivial production Go" $productionGo 'every Non-trivial change that touches production Go' "production-Go final lane trigger missing"
+Require-Pattern "docs/dev-runbook.md#Non-trivial production Go" $productionGo '(?s)Fable''s code/mixed/runtime-contract lane remains defined.*uses the same complete baseline' "shared Fable validation lane changed"
+foreach ($command in @('go test ./...','go vet ./...','staticcheck ./...','golangci-lint run ./... --config=.golangci.yaml')) {
+  Require-Text "docs/dev-runbook.md#Non-trivial production Go" $productionGo $command "production-Go final lane command missing: $command"
+}
+Require-Pattern "docs/dev-runbook.md#Non-trivial production Go" $productionGo 'complete baseline once on the\s+final relevant state' "production-Go final-once rule missing"
+
+$networkQuality = Get-MarkdownSection $codeQuality "## Network And Lifecycle"
+Require-Pattern "docs/code-quality.md#Network" $networkQuality '(?s)context cancellation.*deadlines.*idle/stall timeouts' "shared network/lifecycle obligation changed"
+$retainedQuality = Get-MarkdownSection $codeQuality "## Bounded Retained State"
+foreach ($concept in @('cardinality cap','expiry','ownership-coupled deletion','reference-counted reclamation','bounded by another structure')) {
+  Require-Pattern "docs/code-quality.md#Bounded Retained State" $retainedQuality $concept "shared retained-state obligation missing: $concept"
+}
+$hotQuality = Get-MarkdownSection $codeQuality "## Hot Paths And Performance"
+foreach ($concept in @('single-victim','zero or near-zero allocation','Performance claims require measurements')) {
+  Require-Text "docs/code-quality.md#Hot Paths" $hotQuality $concept "shared hot-path obligation missing: $concept"
+}
+$modelQuality = Get-MarkdownSection $codeQuality "## Scientific And Model Claims"
+foreach ($concept in @('definitions','units','boundaries','provenance-independent golden vectors','remaining uncertainty')) {
+  Require-Text "docs/code-quality.md#Scientific" $modelQuality $concept "shared scientific obligation missing: $concept"
+}
+Require-Pattern "docs/code-quality.md" $codeQuality '## Support-critical Comments \(Go Comment Intent\)' "shared Go Comment Intent route missing"
 
 $codexDecision = Get-MarkdownSection $decisionMemory "## Codex Application"
 if ($codexDecision -eq "") { Add-Failure "Codex decision-memory section missing" }
@@ -153,13 +220,24 @@ $retiredPatterns = @(
   @{ Pattern = '\bSA(?:[1-9]|1[0-5])\b'; Label = "retired SA taxonomy remains" },
   @{ Pattern = 'SELF-AUDIT'; Label = "retired Self-Audit reporting remains" },
   @{ Pattern = 'Ledger status: Approved'; Label = "retired ledger-status echo remains" },
-  @{ Pattern = 'Reasoning budget:'; Label = "retired reasoning-budget field remains" },
   @{ Pattern = 'canonical four-field independent-result envelope'; Label = "retired agent result envelope remains" }
 )
 foreach ($path in $activeCodexPaths | Sort-Object -Unique) {
   $content = if ($text.ContainsKey($path)) { $text[$path] } else { Get-RepoText $path }
   foreach ($retired in $retiredPatterns) { Forbid-Pattern $path $content $retired.Pattern $retired.Label }
 }
+
+foreach ($path in $activeCodexPaths | Where-Object { $_ -like 'codex-skills/*' } | Sort-Object -Unique) {
+  $content = if ($text.ContainsKey($path)) { $text[$path] } else { Get-RepoText $path }
+  Forbid-Pattern $path $content 'Verification command reporting' "obsolete command-evidence reference remains"
+  Forbid-Pattern $path $content 'workflow markers' "obsolete workflow-marker reference remains"
+  Forbid-Pattern $path $content '`DESIGN`' "obsolete DESIGN-marker reference remains"
+}
+
+Require-Pattern "ADR-0221" $adr0221 '(?s)Status: Accepted.*Selective supersession: ADR-0222.*All other ADR-0221 decisions remain accepted' "ADR-0221 selective reciprocal note missing"
+Require-Pattern "ADR-0222" $adr0222 '(?s)Status: Accepted.*Selectively supersede ADR-0221 only as follows' "ADR-0222 selective authority missing"
+Require-Pattern "docs/decision-log.md" $decisionLog '(?m)^\| ADR-0222 \|.*\| Accepted \|.*ADR-0221 \(selected clauses\)' "ADR-0222 decision-index row missing"
+Require-Pattern "docs/decision-log.md" $decisionLog '(?m)^\| ADR-0221 \|.*\| Accepted \|.*\| ADR-0222 \(selected clauses\) \|' "ADR-0221 reciprocal decision-index link missing"
 
 Require-Text "docs/workflow-eval-cases.md" $text["docs/workflow-eval-cases.md"] "optional, non-authoritative" "workflow evaluation cases are not marked optional"
 

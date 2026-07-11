@@ -15,6 +15,7 @@ Agreed scope: <bounded items>
 Boundaries: <explicit exclusions and stop conditions>
 Material risks: <only applicable risks>
 Validation plan: <touched-surface commands or evidence>
+Target reasoning: <lowest sufficient level, rationale, and escalation condition; user-overridable>
 Scope challenge: <material finding and disposition, or none>
 ```
 

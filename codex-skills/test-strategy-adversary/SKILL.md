@@ -17,8 +17,9 @@ execution, validation claims, and disposition with the lead.
 Use a separate read-only reviewer only when independence materially reduces
 false-green risk.
 
-1. Require exact approval of the current Scope Ledger and a detailed `DESIGN`
-   before starting. Run before any implementation slice begins.
+1. Require exact approval of the current Scope Ledger and an implementation
+   design detailed enough to derive falsifiable checks. Run before any
+   implementation slice begins.
 2. Provide the approved ledger, detailed design, normative contracts, relevant
    ADRs/TSRs, oracle and ambiguity results, current tests, and proposed checker
    plan. Do not provide a completed implementation or intended test answers.
@@ -65,8 +66,8 @@ false-green risk.
 Classify every finding:
 
 - `covered` by a falsifiable planned check;
-- `checker-only refinement` that may update `DESIGN` without changing approved
-  behavior or scope;
+- `checker-only refinement` that may update the implementation design or
+  planned checks without changing approved behavior or scope;
 - `material scope or behavior gap` requiring a revised Scope Ledger, repeated
   scope adversarial review, and exact reapproval;
 - `normative evidence conflict` that blocks implementation pending resolution.

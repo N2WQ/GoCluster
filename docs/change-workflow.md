@@ -16,8 +16,11 @@ changes, enter the Small or Non-trivial route before editing.
 
 Small work is localized, low blast radius, and does not change protocol,
 compatibility, concurrency, lifecycle, queues, shutdown, shared interfaces, or
-material user-visible behavior. Anything else, including uncertain impact, is
-Non-trivial.
+material user-visible behavior. It also cannot change runtime config, schema,
+default, or sentinel semantics; parser behavior; authentication or admission;
+persisted state; scientific/model semantics; hot-path behavior; shared
+contracts; material operator-visible behavior; or durable decisions. Anything
+else, including uncertain impact, is Non-trivial.
 
 Task classification controls approval. Touched surface and engineering risk
 control validation. A documentation or workflow change does not require Go
@@ -41,7 +44,10 @@ genuinely disjoint, material questions when its coordination cost is justified.
 ### Scope
 
 A Proposed Scope Ledger identifies its version, objective, agreed items,
-boundaries, material risks or unknowns, and validation plan. Only explicitly
+boundaries, material risks or unknowns, validation plan, and the lowest
+sufficient target reasoning level with a concise rationale and escalation
+condition. The user may override the recommendation. Present it once before
+approval and do not repeat it during execution or closeout. Only explicitly
 agreed items may be implemented.
 
 Before presenting the approval token, the lead asks what edge case, dependency,
@@ -86,11 +92,13 @@ Load a specialist only for its concrete positive trigger:
 | Blast-radius audit | Shared or semantic impact remains uncertain | Text search already establishes a local bounded impact |
 | Config, lifecycle, leaks, retained state, hot path | The touched surface matches the skill's engineering risk | The task is generally important |
 
-Substantial Go applies when any of these is true: High-risk classification;
-more than one production package changes; a shared or exported interface
-changes; an algorithm or state machine changes materially; a production file
-is substantially rewritten; or meaningful uncertainty remains after
-implementation. Line count alone does not determine substantiality.
+Substantial Go applies when any of these is true: High-risk classification; a
+shared or exported interface changes; an algorithm or state machine changes
+materially; a production file is substantially rewritten; or meaningful
+uncertainty remains after implementation. Changes to multiple production
+packages also trigger independent Go review when shared behavior, ownership,
+interfaces, contracts, or meaningful cross-package uncertainty are affected.
+Line count alone does not determine substantiality.
 
 Retained specialist skills preserve their unique engineering methods and
 failure checks. Trigger narrowing, reporting simplification, or optional
@@ -100,8 +108,11 @@ code-path walking, blast-radius analysis, or domain engineering checks.
 
 ## Subagents When Used
 
-Subagents are optional risk tools, not workflow stages. Active platform and user
-authority still apply.
+Subagents are optional risk tools, not workflow stages. The repository owner
+provides standing authorization when active platform policy permits, so a task
+prompt need not repeat that authorization. Standing authorization does not
+require use, expand scope, bypass approval, authorize pre-approval edits, or
+transfer lead authority.
 
 - Before approval, an agent may inspect and report findings but may not edit,
   propose diffs, format, generate artifacts, or run closeout suites.

@@ -35,13 +35,19 @@ $forbiddenPatterns = @(
   @{ Label="USERPROFILE Codex skills path"; Pattern="USERPROFILE.*\.codex.*skills" },
   @{ Label="user-home Codex wording"; Pattern="local Codex home" }
 )
+$obsoleteIntegrationPatterns = @(
+  @{ Label="obsolete command-evidence reference"; Pattern="Verification command reporting" },
+  @{ Label="obsolete workflow-marker reference"; Pattern="workflow markers" },
+  @{ Label="obsolete DESIGN-marker reference"; Pattern='`DESIGN`' }
+)
 $specialistInvariants = @{
   "requirements-ambiguity-review" = @("Do not trigger merely", "ambiguity register", "do not choose product policy", "lead agent")
   "scientific-model-oracle" = @("Do not trigger", "source hierarchy", "independent golden vectors", "Do not choose architecture", "lead agent")
   "design-challenger" = @("Do not trigger", "at least two viable approaches", "Do not approve scope", "lead")
-  "scope-ledger-adversarial-review" = @("Do not trigger for every", "What edge case would make this scope unsafe or incomplete?", "Requires revised Scope Ledger", "lead agent")
-  "test-strategy-adversary" = @("Do not trigger", "Build the Contract-to-Test Matrix", "False-green risk", "Do not", "lead")
-  "go-code-quality-review" = @("Do not trigger for every", "Review GoCluster code-quality standards", "Do not run final validation", "lead")
+  "scope-ledger-adversarial-review" = @("Do not trigger for every", "What edge case would make this scope unsafe or incomplete?", "approval, discovery, scope", "Requires revised Scope Ledger", "lead agent")
+  "test-strategy-adversary" = @("Do not trigger", "design detailed enough to derive falsifiable checks", "Build the Contract-to-Test Matrix", "False-green risk", "Do not", "lead")
+  "go-code-quality-review" = @("Do not trigger for every", "multiple production packages with shared impact", "Review GoCluster code-quality standards", "Command Evidence", "Do not run final validation", "lead")
+  "go-leak-detection" = @("Command Evidence", 'Do not claim "no leak"')
   "go-code-walk" = @("unfamiliar or cross-package", "Walk one material level up and down", "Unknown from inspected code")
   "go-blast-radius-audit" = @("uncertain blast radius", "Map semantic callers and callees", "not concrete runtime proof")
   "decision-memory-audit" = @("Do not trigger merely", "durable decision changes", "Preserve accepted history")
@@ -109,6 +115,9 @@ foreach ($skill in $Skills) {
     $fileText = Get-Content -LiteralPath $file.FullName -Raw
     foreach ($forbidden in $forbiddenPatterns) {
       if ($fileText -match $forbidden.Pattern) { Add-Failure "[$skill] stale $($forbidden.Label): $($file.Name)" }
+    }
+    foreach ($obsolete in $obsoleteIntegrationPatterns) {
+      if ($fileText -match [regex]::Escape($obsolete.Pattern)) { Add-Failure "[$skill] $($obsolete.Label): $($file.Name)" }
     }
   }
 

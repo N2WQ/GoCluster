@@ -1,6 +1,6 @@
 ---
 name: go-code-quality-review
-description: "Use for read-only review of newly written gocluster Go implementation when the work is High-risk or substantial: multiple production packages, shared/exported interfaces, material algorithms or state machines, substantial rewrites, or meaningful residual uncertainty. Do not trigger for every Non-trivial Go edit."
+description: "Use for read-only review of newly written gocluster Go implementation when the work is High-risk or substantial: shared/exported interfaces, material algorithms or state machines, substantial rewrites, meaningful residual uncertainty, or multiple production packages with shared impact or cross-package uncertainty. Do not trigger for every Non-trivial Go edit."
 ---
 
 # Go Code Quality Review
@@ -49,10 +49,10 @@ the final response.
      `golangci-lint`, race checks, fuzzing, benchmarks, or pprof were required
      and reported.
    - For command-backed concurrency, lifecycle, queue, timer, shutdown,
-     shared-state, or leak-detection claims, check that the lead supplied the
-     short captured excerpt required by `docs/review-checklist.md`
-     `Verification command reporting`. A bare PASS/FAIL line is not sufficient
-     for these high-risk claims.
+     shared-state, or leak-detection claims, apply `docs/review-checklist.md`
+     `Command Evidence`: check the command, scope, observed result, and the
+     rationale or minimal excerpt required for a high-risk claim. A bare
+     PASS/FAIL line is not sufficient for these claims.
    - Do not generate or run transcript evidence for the lead agent. Report
      missing, stale, skipped, failed, timed-out, cached-without-usable-output,
      partial, or waived excerpts as evidence status.

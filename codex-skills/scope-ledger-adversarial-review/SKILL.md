@@ -18,8 +18,8 @@ materially reduces risk, but it does not transfer gate ownership.
    - If a separate reviewer is used, keep it read-only and findings-only.
 
 2. Inspect the proposed scope and its evidence.
-   - Read the proposed Scope Ledger, Current-State Discovery, relevant
-     workflow markers, and cited code/docs/tests/ADRs when needed.
+   - Read the proposed Scope Ledger and relevant approval, discovery, scope,
+     validation, code, documentation, test, and decision evidence.
    - Treat generated maps, prior summaries, and other agents' outputs as
      evidence to verify, not proof by themselves.
 

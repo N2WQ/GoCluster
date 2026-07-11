@@ -28,9 +28,12 @@ applicable change route first.
 
 Classify mutations as Small or Non-trivial. Small means localized, low blast
 radius, and no protocol, compatibility, concurrency, lifecycle, queue,
-shutdown, shared-interface, or material user-visible behavior change. If that
-is not clearly true, the work is Non-trivial. Stop and reclassify if discovery
-expands the impact.
+shutdown, shared-interface, or material user-visible behavior change. Small
+also cannot change runtime config, schema, default, or sentinel semantics;
+parser behavior; authentication or admission; persisted state;
+scientific/model semantics; hot-path behavior; shared contracts; material
+operator-visible behavior; or durable decisions. If that is not clearly true,
+the work is Non-trivial. Stop and reclassify if discovery expands the impact.
 
 ## Non-trivial Authority
 
@@ -39,7 +42,10 @@ Before Non-trivial mutation:
 1. Inspect the relevant current implementation, contracts, tests, docs, and
    decision history.
 2. Propose a versioned Scope Ledger containing the objective, agreed scope,
-   boundaries, material risks or unknowns, and validation plan.
+   boundaries, material risks or unknowns, validation plan, and the lowest
+   sufficient target reasoning level with a concise rationale and escalation
+   condition. The user may override that recommendation. State it once before
+   approval; do not repeat it during implementation or closeout.
 3. Challenge the scope for missing edge cases, dependencies, and unsafe
    assumptions; revise it when material gaps exist.
 4. Wait for the exact token `Approved vN` matching that ledger.
@@ -64,11 +70,14 @@ impact, concurrency or lifecycle, retained state, config contracts, hot paths,
 or meaningful residual uncertainty. Load only the matching skill or document
 section; do not run specialists or independent agents by default.
 
-When independent review materially reduces a triggered risk, it is evidence,
-not transferred authority. Pre-approval agents are read-only. Post-approval
-workers require an approved disjoint scope, targeted checks, and stop
-conditions. The lead owns scope, decisions, integration, validation claims,
-and the final response.
+The repository owner provides standing authorization for subagent use when
+active platform policy permits. This authorization does not require subagents,
+expand scope, bypass approval, authorize pre-approval edits, or transfer lead
+authority. When independent review materially reduces a triggered risk, it is
+evidence, not transferred authority. Pre-approval agents are read-only.
+Post-approval workers require an approved disjoint scope, targeted checks, and
+stop conditions. The lead owns scope, decisions, integration, validation
+claims, and the final response.
 
 High-risk work requires a fresh final verification pass. An independent context
 is conditional on value, support, and authority; otherwise the lead performs a

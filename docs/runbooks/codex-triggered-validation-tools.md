@@ -19,8 +19,8 @@ conclusions in Markdown code maps, not generated images alone.
 
 Use the narrowest applicable targeted lifecycle tests, race checks, profiles,
 traces, or `scripts/run-with-profiling.ps1`. State whether evidence is static,
-test/race, profile, or runtime-confirmed and preserve the required short command
-excerpt.
+test/race, profile, or runtime-confirmed and preserve the material command
+evidence required by `docs/review-checklist.md`.
 
 ## Triggered command families
 
