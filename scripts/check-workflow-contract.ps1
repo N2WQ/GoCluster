@@ -60,6 +60,15 @@ function Get-MarkdownSection([string]$Text, [string]$Heading) {
   return $match.Groups[1].Value
 }
 
+function Get-PatternGroup([string]$Path, [string]$Text, [string]$Pattern, [string]$Group, [string]$Label) {
+  $match = [regex]::Match($Text, $Pattern)
+  if (-not $match.Success) {
+    Add-Failure "$Label [$Path]"
+    return ""
+  }
+  return $match.Groups[$Group].Value
+}
+
 $requiredFiles = @(
   "AGENTS.md",
   "VALIDATION.md",
@@ -102,6 +111,7 @@ Require-Pattern "AGENTS.md" $agents 'never claim a check or behavior\s+that was 
 Require-Text "AGENTS.md" $agents "High-risk work requires a fresh final verification pass." "high-risk fresh verification missing"
 
 $agentRoutes = Get-MarkdownSection $agents "## Work Routes"
+$agentSmallExclusions = Get-PatternGroup "AGENTS.md#Work Routes" $agentRoutes '(?is)Small\s+(?:also\s+)?(?:cannot|must not)\s+change(?<excluded>.*?)(?:If that|Stop and reclassify)' "excluded" "sensitive Small exclusion relationship missing"
 foreach ($concept in @(
   @{ Pattern='runtime config'; Label='runtime config' },
   @{ Pattern='schema'; Label='schema' },
@@ -115,7 +125,7 @@ foreach ($concept in @(
   @{ Pattern='shared contracts'; Label='shared contracts' },
   @{ Pattern='operator-visible'; Label='operator-visible behavior' },
   @{ Pattern='durable decisions'; Label='durable decisions' }
-)) { Require-Pattern "AGENTS.md#Work Routes" $agentRoutes $concept.Pattern "sensitive Small exclusion missing: $($concept.Label)" }
+)) { Require-Pattern "AGENTS.md#Work Routes" $agentSmallExclusions $concept.Pattern "sensitive Small exclusion missing: $($concept.Label)" }
 
 $agentAuthority = Get-MarkdownSection $agents "## Non-trivial Authority"
 Require-Pattern "AGENTS.md#Non-trivial Authority" $agentAuthority '(?s)lowest\s+sufficient target reasoning level.*rationale.*escalation.*user may override' "reasoning recommendation missing"
@@ -123,7 +133,17 @@ Require-Pattern "AGENTS.md#Non-trivial Authority" $agentAuthority '(?s)State it 
 
 $agentRisk = Get-MarkdownSection $agents "## Risk Routing"
 Require-Pattern "AGENTS.md#Risk Routing" $agentRisk '(?s)standing authorization.*active platform policy permits' "standing subagent authorization missing"
-Require-Pattern "AGENTS.md#Risk Routing" $agentRisk '(?s)authorization does not require subagents.*expand scope.*bypass approval' "standing authorization non-default boundary missing"
+$agentAuthorizationLimits = Get-PatternGroup "AGENTS.md#Risk Routing" $agentRisk '(?is)This authorization\s+(?:does not|must not)(?<limits>.*?)(?:\.\s|$)' "limits" "standing authorization negation relationship missing"
+foreach ($concept in @(
+  @{ Pattern='require\s+subagents'; Label='require subagents' },
+  @{ Pattern='expand\s+scope'; Label='expand scope' },
+  @{ Pattern='bypass\s+approval'; Label='bypass approval' },
+  @{ Pattern='authorize\s+pre-approval\s+edits'; Label='authorize pre-approval edits' },
+  @{ Pattern='transfer\s+lead\s+authority'; Label='transfer lead authority' }
+)) {
+  Require-Pattern "AGENTS.md#Risk Routing" $agentAuthorizationLimits $concept.Pattern "standing authorization prohibition missing: $($concept.Label)"
+}
+Forbid-Pattern "AGENTS.md#Risk Routing" $agentAuthorizationLimits '(?i)\b(?:does|may|can|will)\s+(?:require\s+subagents|expand\s+scope|bypass\s+approval|authorize\s+pre-approval\s+edits|transfer\s+lead\s+authority)' "standing authorization contains a positive inversion"
 
 Require-Pattern "docs/change-workflow.md" $workflow 'Only exact `Approved vN` for the current ledger authorizes Non-trivial\s+mutation\.' "detailed approval route missing"
 Require-Pattern "docs/change-workflow.md" $workflow 'Only explicitly\s+agreed items may be implemented\.' "detailed agreed-scope rule missing"
@@ -134,8 +154,9 @@ Require-Text "docs/change-workflow.md" $workflow "Retained specialist skills pre
 Require-Pattern "docs/change-workflow.md" $workflow 'Run the complete\s+selected lane once on the final relevant state\.' "final-lane rule missing"
 
 $workflowClassification = Get-MarkdownSection $workflow "## Change Classification"
+$workflowSmallExclusions = Get-PatternGroup "docs/change-workflow.md#Change Classification" $workflowClassification '(?is)(?:Small|It)\s+(?:also\s+)?(?:cannot|must not)\s+change(?<excluded>.*?)(?:Anything\s+else|If that)' "excluded" "detailed sensitive Small exclusion relationship missing"
 foreach ($concept in @('runtime config','schema','default','sentinel','parser','authentication|admission','persisted state','scientific/model','hot-path','shared\s+contracts','operator-visible','durable decisions')) {
-  Require-Pattern "docs/change-workflow.md#Change Classification" $workflowClassification $concept "detailed sensitive Small exclusion missing: $concept"
+  Require-Pattern "docs/change-workflow.md#Change Classification" $workflowSmallExclusions $concept "detailed sensitive Small exclusion missing: $concept"
 }
 $workflowScope = Get-MarkdownSection $workflow "### Scope"
 Require-Pattern "docs/change-workflow.md#Scope" $workflowScope '(?s)lowest\s+sufficient target reasoning level.*rationale.*escalation.*user may override' "detailed reasoning recommendation missing"
@@ -161,7 +182,17 @@ Require-Pattern "docs/change-workflow.md#High-risk" $highRisk '(?s)multiple prod
 
 $subagents = Get-MarkdownSection $workflow "## Subagents When Used"
 Require-Pattern "docs/change-workflow.md#Subagents" $subagents '(?s)standing authorization.*active platform policy permits' "detailed standing authorization missing"
-Require-Pattern "docs/change-workflow.md#Subagents" $subagents '(?s)does not\s+require use.*expand scope.*bypass approval' "detailed standing authorization boundary missing"
+$workflowAuthorizationLimits = Get-PatternGroup "docs/change-workflow.md#Subagents" $subagents '(?is)Standing authorization\s+(?:does not|must not)(?<limits>.*?)(?:\.\s|$)' "limits" "detailed standing authorization negation relationship missing"
+foreach ($concept in @(
+  @{ Pattern='require\s+use'; Label='require use' },
+  @{ Pattern='expand\s+scope'; Label='expand scope' },
+  @{ Pattern='bypass\s+approval'; Label='bypass approval' },
+  @{ Pattern='authorize\s+pre-approval\s+edits'; Label='authorize pre-approval edits' },
+  @{ Pattern='transfer\s+lead\s+authority'; Label='transfer lead authority' }
+)) {
+  Require-Pattern "docs/change-workflow.md#Subagents" $workflowAuthorizationLimits $concept.Pattern "detailed standing authorization prohibition missing: $($concept.Label)"
+}
+Forbid-Pattern "docs/change-workflow.md#Subagents" $workflowAuthorizationLimits '(?i)\b(?:does|may|can|will)\s+(?:require\s+use|expand\s+scope|bypass\s+approval|authorize\s+pre-approval\s+edits|transfer\s+lead\s+authority)' "detailed standing authorization contains a positive inversion"
 
 Require-Text "docs/dev-runbook.md" $runbook "Task classification controls approval; touched surface and engineering risk`n  control validation." "runbook lane authority missing"
 Require-Text "docs/dev-runbook.md" $runbook "Do not run Go validation solely because workflow Markdown" "workflow lane incorrectly permits inferred Go validation"
@@ -227,7 +258,9 @@ foreach ($path in $activeCodexPaths | Sort-Object -Unique) {
   foreach ($retired in $retiredPatterns) { Forbid-Pattern $path $content $retired.Pattern $retired.Label }
 }
 
-foreach ($path in $activeCodexPaths | Where-Object { $_ -like 'codex-skills/*' } | Sort-Object -Unique) {
+$obsoleteReferencePaths = @($activeCodexPaths | Where-Object { $_ -like 'codex-skills/*' })
+$obsoleteReferencePaths += "docs/runbooks/codex-triggered-validation-tools.md"
+foreach ($path in $obsoleteReferencePaths | Sort-Object -Unique) {
   $content = if ($text.ContainsKey($path)) { $text[$path] } else { Get-RepoText $path }
   Forbid-Pattern $path $content 'Verification command reporting' "obsolete command-evidence reference remains"
   Forbid-Pattern $path $content 'workflow markers' "obsolete workflow-marker reference remains"

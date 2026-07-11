@@ -54,8 +54,8 @@ the final response.
      rationale or minimal excerpt required for a high-risk claim. A bare
      PASS/FAIL line is not sufficient for these claims.
    - Do not generate or run transcript evidence for the lead agent. Report
-     missing, stale, skipped, failed, timed-out, cached-without-usable-output,
-     partial, or waived excerpts as evidence status.
+     missing, stale, skipped, failed, timed-out, partial, or waived evidence
+     accurately.
    - Do not run final validation for the lead agent; identify missing or stale
      evidence instead.
 

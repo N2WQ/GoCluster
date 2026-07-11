@@ -73,6 +73,22 @@ try {
   Invoke-Fixture 0 "PASS Codex workflow static invariants passed." "reasoning narration remains flexible"
   Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/templates/non-trivial-change-template.md") -Value $original -NoNewline
 
+  $original = Replace-Once "AGENTS.md" "Small`nalso cannot change" "Small may change"
+  Invoke-Fixture 1 "sensitive Small exclusion relationship missing" "AGENTS sensitive exclusion rejects inversion"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "AGENTS.md") -Value $original -NoNewline
+
+  $original = Replace-Once "docs/change-workflow.md" "It also cannot change" "It may change"
+  Invoke-Fixture 1 "detailed sensitive Small exclusion relationship missing" "workflow sensitive exclusion rejects inversion"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/change-workflow.md") -Value $original -NoNewline
+
+  $original = Replace-Once "AGENTS.md" "Small`nalso cannot change" "Small must not change"
+  Invoke-Fixture 0 "PASS Codex workflow static invariants passed." "AGENTS sensitive exclusion allows equivalent wording"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "AGENTS.md") -Value $original -NoNewline
+
+  $original = Replace-Once "docs/change-workflow.md" "It also cannot change" "It must not change"
+  Invoke-Fixture 0 "PASS Codex workflow static invariants passed." "workflow sensitive exclusion allows equivalent wording"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/change-workflow.md") -Value $original -NoNewline
+
   foreach ($case in @(
     @{ From="runtime config"; To="runtime settings"; Expected="sensitive Small exclusion missing: runtime config"; Label="runtime config cannot be Small" },
     @{ From="parser behavior"; To="text handling"; Expected="sensitive Small exclusion missing: parser"; Label="parser behavior cannot be Small" },
@@ -90,8 +106,27 @@ try {
   Set-Content -LiteralPath (Join-Path $fixtureRoot "AGENTS.md") -Value $original -NoNewline
 
   $original = Replace-Once "AGENTS.md" "This authorization does not require subagents," "This authorization requires subagents,"
-  Invoke-Fixture 1 "standing authorization non-default boundary missing" "standing authorization does not force use"
+  Invoke-Fixture 1 "standing authorization negation relationship missing" "standing authorization does not force use"
   Set-Content -LiteralPath (Join-Path $fixtureRoot "AGENTS.md") -Value $original -NoNewline
+
+  $original = Replace-Once "AGENTS.md" "This authorization does not" "This authorization must not"
+  Invoke-Fixture 0 "PASS Codex workflow static invariants passed." "AGENTS standing limits allow equivalent wording"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "AGENTS.md") -Value $original -NoNewline
+
+  $original = Replace-Once "docs/change-workflow.md" "Standing authorization does not" "Standing authorization must not"
+  Invoke-Fixture 0 "PASS Codex workflow static invariants passed." "workflow standing limits allow equivalent wording"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/change-workflow.md") -Value $original -NoNewline
+
+  foreach ($case in @(
+    @{ Path="AGENTS.md"; From="expand scope"; To="does expand scope"; Expected="standing authorization contains a positive inversion"; Label="AGENTS standing authorization cannot expand scope" },
+    @{ Path="docs/change-workflow.md"; From="bypass approval"; To="does bypass approval"; Expected="detailed standing authorization contains a positive inversion"; Label="workflow standing authorization cannot bypass approval" },
+    @{ Path="AGENTS.md"; From="authorize pre-approval edits"; To="does authorize pre-approval edits"; Expected="standing authorization contains a positive inversion"; Label="AGENTS standing authorization cannot authorize preapproval edits" },
+    @{ Path="docs/change-workflow.md"; From="transfer lead authority"; To="does transfer lead authority"; Expected="detailed standing authorization contains a positive inversion"; Label="workflow standing authorization cannot transfer lead authority" }
+  )) {
+    $original = Replace-Once $case.Path $case.From $case.To
+    Invoke-Fixture 1 $case.Expected $case.Label
+    Set-Content -LiteralPath (Join-Path $fixtureRoot $case.Path) -Value $original -NoNewline
+  }
 
   $original = Replace-Once "AGENTS.md" 'Only exact `Approved vN` authorizes the matching agreed scope.' 'Discussion or requests to proceed authorize the matching agreed scope.'
   Invoke-Fixture 1 "approval authority route missing" "approval cannot be loosened"
@@ -168,6 +203,11 @@ try {
   Set-Content -LiteralPath $leakSkillPath -Value ($original + "`nVerification command reporting`n") -NoNewline
   Invoke-SkillFixture 1 "obsolete command-evidence reference" "obsolete specialist integration cannot return"
   Set-Content -LiteralPath $leakSkillPath -Value $original -NoNewline
+
+  $recipePath = "docs/runbooks/codex-triggered-validation-tools.md"
+  $original = Replace-Once $recipePath "material command`nevidence required by" '`Verification command reporting` required by'
+  Invoke-Fixture 1 "obsolete command-evidence reference remains" "obsolete validation-recipe integration cannot return"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot $recipePath) -Value $original -NoNewline
 
   $original = Replace-Once "docs/decisions/ADR-0221-codex-authority-and-evidence-workflow.md" "Selective supersession: ADR-0222" "Historical note: ADR-0222"
   Invoke-Fixture 1 "ADR-0221 selective reciprocal note missing" "ADR selective link remains reciprocal"

@@ -7,12 +7,14 @@
 ## Context
 
 ADR-0221 established a substantially smaller Codex authority-and-evidence
-workflow. Review of its implementation found bounded defects rather than a
-failure of that architecture: the reasoning recommendation was prohibited,
-sensitive work could enter Small, production-Go final validation became
-conditional, shared documents changed Fable obligations, standing subagent
-authorization disappeared, specialist routes referenced retired artifacts,
-and the multiple-package review trigger was broader than necessary.
+workflow. Review of its implementation found six bounded defects rather than a
+failure of that architecture: the reasoning recommendation was prohibited;
+sensitive work could enter Small; production-Go final validation became
+conditional; shared documents changed Fable obligations; standing subagent
+authorization disappeared; and specialist routes referenced retired artifacts.
+Separately, the repository owner approved a refinement that narrows the
+multiple-package review trigger to shared impact or meaningful cross-package
+uncertainty; that refinement was not established as an implementation defect.
 
 The correction must restore rigor and cross-executor boundaries without
 restoring reporting choreography, default specialists, repeated suites,
