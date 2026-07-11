@@ -16,8 +16,9 @@ design the solution, or own the Scope Ledger.
 1. Confirm the phase and review mode.
    - Run after Current-State Discovery and applicable scientific/model evidence
      but before publishing a Proposed Scope Ledger.
-   - Use a separate read-only reviewer only when independence materially
-     reduces ambiguity risk; the method also supports lead-owned analysis.
+   - Use a separate non-steered read-only reviewer when same-context reasoning
+     would compromise the credibility of the ambiguity findings. Otherwise the
+     method supports lead-owned analysis.
 
 2. Build a neutral evidence packet.
    - Inspect the user request, Current-State Discovery, domain and operator

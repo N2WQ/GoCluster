@@ -56,6 +56,7 @@ try {
     "docs/decision-log.md",
     "docs/decisions/ADR-0221-codex-authority-and-evidence-workflow.md",
     "docs/decisions/ADR-0222-corrective-codex-authority-and-validation.md",
+    "docs/decisions/ADR-0223-bounded-specialist-context-and-independent-evidence.md",
     "docs/templates/non-trivial-change-template.md",
     "docs/runbooks/codex-workflow-checks.md",
     "docs/runbooks/codex-triggered-validation-tools.md",
@@ -161,12 +162,25 @@ try {
   Invoke-Fixture 1 "Standard route does not reject default specialists" "Standard rejects default specialists"
   Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/change-workflow.md") -Value $original -NoNewline
 
+  $original = Replace-Once "AGENTS.md" "use a bounded`nsubagent when supported" "keep the investigation`nlead-owned when supported"
+  Invoke-Fixture 1 "positive context-partitioning route missing" "valuable context partitioning routes to bounded subagent"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "AGENTS.md") -Value $original -NoNewline
+
+  $original = Replace-Once "AGENTS.md" "A`nfresh lead pass is not independent review." "A`nfresh lead pass is independent review."
+  Invoke-Fixture 1 "fresh lead pass incorrectly substitutes for independent review" "fresh lead pass is not independent review"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "AGENTS.md") -Value $original -NoNewline
+
+  $requiredIndependence = "When required independent`ncontext is unavailable, pause or proceed only with explicit user approval and`nclearly limit the affected claim."
+  $original = Replace-Once "docs/change-workflow.md" $requiredIndependence "When required independent context is unavailable, the lead may silently substitute its own review."
+  Invoke-Fixture 1 "required independent evidence substitution boundary missing" "required independence cannot be silently replaced"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/change-workflow.md") -Value $original -NoNewline
+
   $original = Replace-Once "docs/change-workflow.md" "Uncertainty that could affect safety,`nscope, validation, or compatibility is High-risk until resolved." "Uncertainty may remain Standard."
   Invoke-Fixture 1 "uncertainty High-risk route missing" "uncertainty cannot silently remain Standard"
   Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/change-workflow.md") -Value $original -NoNewline
 
-  $sharedImpact = "Changes to multiple production`npackages also trigger independent Go review when shared behavior, ownership,`ninterfaces, contracts, or meaningful cross-package uncertainty are affected."
-  $original = Replace-Once "docs/change-workflow.md" $sharedImpact "Changes to multiple production packages always trigger independent Go review."
+  $sharedImpact = "Changes to multiple production`npackages also trigger the Go code-quality review method when shared behavior,`nownership, interfaces, contracts, or meaningful cross-package uncertainty are`naffected."
+  $original = Replace-Once "docs/change-workflow.md" $sharedImpact "Changes to multiple production packages always trigger the Go code-quality review method."
   Invoke-Fixture 1 "shared-impact multiple-package review trigger missing" "multiple-package review requires shared impact"
   Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/change-workflow.md") -Value $original -NoNewline
 
@@ -236,6 +250,10 @@ try {
   $original = Replace-Once "docs/decisions/ADR-0221-codex-authority-and-evidence-workflow.md" "Selective supersession: ADR-0222" "Historical note: ADR-0222"
   Invoke-Fixture 1 "ADR-0221 selective reciprocal note missing" "ADR selective link remains reciprocal"
   Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/decisions/ADR-0221-codex-authority-and-evidence-workflow.md") -Value $original -NoNewline
+
+  $original = Replace-Once "docs/decisions/ADR-0223-bounded-specialist-context-and-independent-evidence.md" "It`nselectively supersedes ADR-0222 Decision 7's interpretation" "It`nis related to ADR-0222 Decision 7's interpretation"
+  Invoke-Fixture 1 "ADR-0223 selective authority missing" "ADR-0223 selective authority remains explicit"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/decisions/ADR-0223-bounded-specialist-context-and-independent-evidence.md") -Value $original -NoNewline
 
   Invoke-Fixture 1 "protected Fable or release path changed: CLAUDE.md" "Fable path protected" @("CLAUDE.md")
   Invoke-Fixture 1 "protected Fable or release path changed: scripts/create-release.ps1" "release script protected" @("scripts/create-release.ps1")

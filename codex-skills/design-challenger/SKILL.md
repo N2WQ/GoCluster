@@ -14,8 +14,9 @@ disposition with the lead.
 
 ## Establish Neutrality
 
-Use a separate read-only reviewer only when independence materially reduces
-anchoring risk.
+Use a separate non-steered read-only reviewer when credible design comparison
+depends on reasoning outside the lead's accumulated assumptions. Otherwise the
+method may remain lead-owned.
 
 1. Run after the lead prepares a neutral fact-and-constraint packet from
    Current-State Discovery and any triggered scientific-model oracle or

@@ -14,8 +14,9 @@ execution, validation claims, and disposition with the lead.
 
 ## Establish the Gate
 
-Use a separate read-only reviewer only when independence materially reduces
-false-green risk.
+Use a separate non-steered read-only reviewer when credible falsifiability
+evidence depends on reasoning outside the implementation context. Otherwise the
+method may remain lead-owned.
 
 1. Require exact approval of the current Scope Ledger and an implementation
    design detailed enough to derive falsifiable checks. Run before any

@@ -74,14 +74,23 @@ The repository owner provides standing authorization for subagent use when
 active platform policy permits. This authorization does not require subagents,
 expand scope, bypass approval, authorize pre-approval edits, or transfer lead
 authority. When independent review materially reduces a triggered risk, it is
-evidence, not transferred authority. Pre-approval agents are read-only.
-Post-approval workers require an approved disjoint scope, targeted checks, and
-stop conditions. The lead owns scope, decisions, integration, validation
-claims, and the final response.
+evidence, not transferred authority. Localized, already-bounded, directly
+falsifiable specialist work may remain lead-owned. When a triggered specialist
+investigation materially benefits from context partitioning, use a bounded
+subagent when supported. Require a separate non-steered context only when
+same-context reasoning would compromise the credibility of the evidence. A
+fresh lead pass is not independent review.
 
-High-risk work requires a fresh final verification pass. An independent context
-is conditional on value, support, and authority; otherwise the lead performs a
-genuinely fresh pass.
+Pre-approval agents are read-only. Post-approval workers require an approved
+disjoint scope, targeted checks, and stop conditions. The lead verifies
+material evidence, dispositions findings, and owns scope, decisions,
+integration, validation claims, and the final response without duplicating the
+complete delegated investigation.
+
+High-risk work requires a fresh final verification pass, which may be
+lead-owned. Use an independent context when the credibility of required
+evidence depends on separation; lead-owned verification must not be described
+as independent.
 
 ## Implementation And Closeout
 

@@ -54,11 +54,14 @@ Examples include unresolved semantics, scientific/model authority, a genuine
 design fork, unclear test falsifiability, uncertain blast radius, substantial
 Go implementation, lifecycle, leaks, retained state, config, or hot paths.
 
-When an independent agent is useful, it supplies findings only. Pre-approval
-agents remain read-only, post-approval workers need approved disjoint scope and
-stop conditions, and Codex retains final ownership. High-risk closeout receives
-a fresh verification pass, using an independent context only when useful and
-available.
+Localized specialist work may remain lead-owned. When context partitioning
+materially improves a triggered investigation, Codex uses a bounded subagent
+when supported. A separate non-steered context is required only when evidence
+credibility depends on independence; a fresh lead pass is not independent
+review. Pre-approval agents remain read-only, post-approval workers need
+approved disjoint scope and stop conditions, and Codex retains final ownership.
+High-risk closeout still receives a fresh verification pass, which may be
+lead-owned.
 
 ## Validation And Closeout
 

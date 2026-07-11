@@ -3,6 +3,9 @@
 - Status: Accepted
 - Date: 2026-07-10
 - Decision Origin: Design
+- Selective supersession: ADR-0223 supersedes Decision 7's interpretation that
+  every Go-review method trigger requires a separate independent reviewer. All
+  other ADR-0222 decisions remain accepted.
 
 ## Context
 
@@ -103,4 +106,5 @@ standing-authorization principle.
 - Related checks: `scripts/check-workflow-contract.ps1`,
   `scripts/test-workflow-contract.ps1`, `scripts/verify-codex-skills.ps1`
 - Related TSRs: none
-- Supersedes / superseded by: selectively supersedes ADR-0221
+- Supersedes / superseded by: selectively supersedes ADR-0221; Decision 7 is
+  selectively superseded by ADR-0223

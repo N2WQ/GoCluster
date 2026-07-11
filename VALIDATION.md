@@ -32,9 +32,11 @@ protocol changes, and benchmarks plus profiles for performance claims. These
 are triggered by the engineering surface, not by task size or reporting
 category.
 
-High-risk work requires a fresh final verification pass. Independent review is
-conditional; a genuinely fresh lead pass is acceptable. Independent findings
-remain evidence and never replace lead ownership.
+High-risk work requires a fresh final verification pass, which may be
+lead-owned. A fresh lead pass is not independent review. When required evidence
+depends on a separate non-steered context, lead-owned review is not an
+equivalent substitute. Independent findings remain evidence and never replace
+lead ownership.
 
 ## Reporting
 

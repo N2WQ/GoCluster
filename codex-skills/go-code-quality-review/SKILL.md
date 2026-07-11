@@ -9,9 +9,10 @@ description: "Use for read-only review of newly written gocluster Go implementat
 
 Use this skill after Go implementation work and before final closeout to review
 the diff against GoCluster's code-quality, workflow, validation, and
-operational standards. A separate reviewer is conditional on value, support,
-and authority; the lead still owns fixes, validation claims, traceability, and
-the final response.
+operational standards. Use a separate non-steered reviewer when credible review
+evidence depends on reasoning outside the implementation context. Otherwise the
+method may remain lead-owned. The lead still owns fixes, validation claims,
+traceability, and the final response.
 
 ## Workflow
 

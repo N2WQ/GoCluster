@@ -1,6 +1,6 @@
 ---
 name: scope-ledger-adversarial-review
-description: "Use for read-only adversarial review of a Proposed Scope Ledger when scope is High-risk, uncertain, disputed, difficult to reverse, or leaves material residual uncertainty. Do not trigger for every Non-trivial ledger. Independence is conditional on value, support, and authority."
+description: "Use for read-only adversarial review of a Proposed Scope Ledger when scope is High-risk, uncertain, disputed, difficult to reverse, or leaves material residual uncertainty. Do not trigger for every Non-trivial ledger."
 ---
 
 # Scope Ledger Adversarial Review
@@ -8,8 +8,10 @@ description: "Use for read-only adversarial review of a Proposed Scope Ledger wh
 ## Overview
 
 Use this skill to challenge a `Proposed Scope Ledger vN` before the lead agent
-presents the approval token. A separate context is useful when independence
-materially reduces risk, but it does not transfer gate ownership.
+presents the approval token. Use a separate non-steered context when credible
+adversarial evidence depends on reasoning outside the lead's accumulated
+assumptions. Otherwise the method may remain lead-owned. Separation never
+transfers gate ownership.
 
 ## Workflow
 

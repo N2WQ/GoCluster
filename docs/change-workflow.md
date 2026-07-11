@@ -96,14 +96,15 @@ Substantial Go applies when any of these is true: High-risk classification; a
 shared or exported interface changes; an algorithm or state machine changes
 materially; a production file is substantially rewritten; or meaningful
 uncertainty remains after implementation. Changes to multiple production
-packages also trigger independent Go review when shared behavior, ownership,
-interfaces, contracts, or meaningful cross-package uncertainty are affected.
+packages also trigger the Go code-quality review method when shared behavior,
+ownership, interfaces, contracts, or meaningful cross-package uncertainty are
+affected.
 Line count alone does not determine substantiality.
 
 Retained specialist skills preserve their unique engineering methods and
-failure checks. Trigger narrowing, reporting simplification, or optional
-independence must not remove normative model derivation, independent golden
-vectors, ambiguity analysis, design comparison, falsifiability analysis,
+failure checks. Trigger narrowing, reporting simplification, or execution
+context selection must not remove normative model derivation, independent
+golden vectors, ambiguity analysis, design comparison, falsifiability analysis,
 code-path walking, blast-radius analysis, or domain engineering checks.
 
 ## Subagents When Used
@@ -113,6 +114,21 @@ provides standing authorization when active platform policy permits, so a task
 prompt need not repeat that authorization. Standing authorization does not
 require use, expand scope, bypass approval, authorize pre-approval edits, or
 transfer lead authority.
+
+Use the lead for localized, already-understood specialist work where delegation
+adds little value. When a triggered specialist investigation materially
+benefits from context partitioning, use a bounded subagent when supported so
+broad evidence or specialist reasoning does not unnecessarily consume or
+contaminate the lead context. Require a separate non-steered context only when
+same-context reasoning would compromise the credibility of the evidence.
+
+When preferred delegation is unavailable, the lead may perform a genuinely
+fresh pass and must not describe it as independent. When required independent
+context is unavailable, pause or proceed only with explicit user approval and
+clearly limit the affected claim. The lead verifies material evidence,
+dispositions findings, resolves conflicts, and retains all workflow authority
+without duplicating the complete delegated investigation. No execution-mode
+field or routine narration is required.
 
 - Before approval, an agent may inspect and report findings but may not edit,
   propose diffs, format, generate artifacts, or run closeout suites.
@@ -147,8 +163,10 @@ invalidate broader results, including shared behavior, build configuration,
 interfaces, concurrency, or cross-package contracts.
 
 High-risk work receives a fresh final verification pass against the approved
-scope, final diff, selected validation, claims, and decision disposition. An
-independent context is conditional; a genuinely fresh lead pass is valid.
+scope, final diff, selected validation, claims, and decision disposition. That
+pass may be lead-owned. A fresh lead pass is not independent review; use a
+separate non-steered context when the credibility of required evidence depends
+on independence.
 
 Report material commands and results once. Include rationale or excerpts only
 for failures, skips, waivers, surprising behavior, high-risk command-backed

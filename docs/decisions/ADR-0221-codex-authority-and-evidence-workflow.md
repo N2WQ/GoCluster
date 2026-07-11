@@ -6,7 +6,9 @@
 - Selective supersession: ADR-0222 narrows the reasoning-budget,
   sensitive-surface classification, production-Go validation, shared-Fable,
   standing-authorization, specialist-integration, and Go-review-trigger
-  clauses. All other ADR-0221 decisions remain accepted.
+  clauses. ADR-0223 refines Decision 2 by separating specialist triggering,
+  context selection, and independent-evidence requirements. All other ADR-0221
+  decisions remain accepted.
 
 ## Context
 
@@ -124,4 +126,5 @@ risks.
   `scripts/test-measure-codex-workflow-context.ps1`
 - Related TSRs: none
 - Supersedes / superseded by: supersedes the prior ADRs as classified above;
-  selectively superseded by ADR-0222 for the clauses named above
+  selectively superseded by ADR-0222 for the clauses named above and refined by
+  ADR-0223 for Decision 2

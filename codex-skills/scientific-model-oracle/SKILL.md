@@ -16,8 +16,10 @@ scientific or conceptual error.
 1. Confirm the phase and review mode.
    - Run after initial Current-State Discovery and before requirements
      ambiguity review, design, or Scope Ledger publication.
-   - Use a separate read-only reviewer when independence materially improves
-     normative confidence; do not make independence a default workflow stage.
+   - Use a separate non-steered read-only reviewer when the credibility of the
+     normative contract depends on reasoning outside the lead's accumulated
+     assumptions. Otherwise the method may remain lead-owned; do not make
+     independence a default workflow stage.
 
 2. Define the normative question.
    - State the model behavior or scientific claim being evaluated.

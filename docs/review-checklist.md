@@ -28,26 +28,26 @@ Review the actual final diff and touched files for:
 Use only the applicable sections of `docs/code-quality.md` and triggered skills
 for deeper domain review.
 
-## Go Review Trigger
+## Go Review Method Trigger
 
-Independent Go code-quality review is required only for High-risk or
-substantial Go implementation. Multiple production packages trigger
-independent review when shared behavior, ownership, interfaces, contracts, or
-meaningful cross-package uncertainty are affected. High-risk classification,
-shared or exported interface changes, material algorithm or state-machine
-changes, substantial production-file rewrites, and meaningful residual
-uncertainty are independent triggers. Line count alone does not determine
-substantiality.
+The Go code-quality review method is required only for High-risk or substantial
+Go implementation. Multiple production packages trigger the method when shared
+behavior, ownership, interfaces, contracts, or meaningful cross-package
+uncertainty are affected. High-risk classification, shared or exported
+interface changes, material algorithm or state-machine changes, substantial
+production-file rewrites, and meaningful residual uncertainty are method
+triggers. Line count alone does not determine substantiality.
 
 Standard Non-trivial Go work receives a disciplined lead review. When an
-independent reviewer is used, it is read-only findings evidence; the lead owns
-fixes, reruns, integration, and final claims.
+independent context is required because same-context reasoning would compromise
+evidence credibility, the reviewer is read-only and findings-only. The lead
+owns evidence verification, fixes, reruns, integration, and final claims.
 
 ## Fresh Verification And Invalidation
 
 High-risk work receives a fresh final pass over the approved scope, final diff,
-selected validation, claim wording, and decision disposition. Independence is
-conditional; a fresh lead pass is valid.
+selected validation, claim wording, and decision disposition. The fresh pass
+may be lead-owned, but it must not be described as independent review.
 
 When review causes changes:
 
