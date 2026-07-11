@@ -69,6 +69,10 @@ function Get-PatternGroup([string]$Path, [string]$Text, [string]$Pattern, [strin
   return $match.Groups[$Group].Value
 }
 
+function Normalize-RelationshipText([string]$Text) {
+  return ([regex]::Replace($Text, '\s+', ' ')).Trim()
+}
+
 $requiredFiles = @(
   "AGENTS.md",
   "VALIDATION.md",
@@ -154,11 +158,13 @@ $agentAuthorizationPositive = '(?i)\b(?:(?:does|may|can|could|might|will|shall|m
 Forbid-Pattern "AGENTS.md#Risk Routing" $agentAuthorizationLimits $agentAuthorizationPositive "standing authorization contains a positive inversion"
 Forbid-Pattern "AGENTS.md#Risk Routing" $agentAuthorizationLimits $prohibitionContrast "standing authorization contains a positive inversion"
 $agentContextRoute = Get-PatternGroup "AGENTS.md#Risk Routing" $agentRisk '(?is)(?<route>When a triggered specialist\s+investigation materially benefits from context partitioning,.*?)(?:\n\n|$)' "route" "positive context-partitioning route missing"
+$agentContextRoute = Normalize-RelationshipText $agentContextRoute
 $positiveBoundedSubagent = '(?i)\b(?:use\s+a|delegate(?:\s+the investigation)?\s+to\s+a)\s+bounded\s+subagent\b.*\b(?:supported|platform supports)\b'
-$negativeBoundedSubagent = '(?i)\b(?:do not|never|must not|cannot|should not)\s+(?:use\s+a|delegate(?:\s+the investigation)?\s+to\s+a)\s+bounded\s+subagent\b'
+$negativeBoundedSubagent = '(?i)\b(?:(?:do not|never|must not|cannot|should not|may not|need not)\s+(?:use\s+a|delegate(?:\s+the investigation)?\s+to\s+a)|(?:the lead\s+)?is not required to\s+(?:use\s+a|delegate(?:\s+the investigation)?\s+to\s+a))\s+bounded\s+subagent\b.*?\b(?:when supported|when the platform supports it)\b'
 Require-Pattern "AGENTS.md#Context Routing" $agentContextRoute $positiveBoundedSubagent "positive context-partitioning route missing"
 Forbid-Pattern "AGENTS.md#Context Routing" $agentContextRoute $negativeBoundedSubagent "positive context-partitioning route contains a negative inversion"
 $agentFreshLead = Get-PatternGroup "AGENTS.md#Risk Routing" $agentRisk '(?is)(?<fresh>Require a separate non-steered context.*?fresh lead (?:pass|review).*?)(?:\n\n|$)' "fresh" "fresh lead review relationship missing"
+$agentFreshLead = Normalize-RelationshipText $agentFreshLead
 $freshLeadNotIndependent = '(?i)(?:fresh lead (?:pass|review)|fresh pass).*?(?:is not\s+independent review|does not constitute\s+independent review|must not be (?:described|reported) as\s+independent review|must not describe it as independent)'
 $freshLeadReclassified = '(?i)(?:fresh lead (?:pass|review)|fresh pass).*?(?:\bis\b|constitutes|counts as|may be (?:described|reported) as|can be (?:described|reported) as)\s+independent review'
 Require-Pattern "AGENTS.md#Fresh Lead Review" $agentFreshLead $freshLeadNotIndependent "fresh lead pass incorrectly substitutes for independent review"
@@ -217,13 +223,15 @@ $workflowAuthorizationPositive = '(?i)\b(?:(?:does|may|can|could|might|will|shal
 Forbid-Pattern "docs/change-workflow.md#Subagents" $workflowAuthorizationLimits $workflowAuthorizationPositive "detailed standing authorization contains a positive inversion"
 Forbid-Pattern "docs/change-workflow.md#Subagents" $workflowAuthorizationLimits $prohibitionContrast "detailed standing authorization contains a positive inversion"
 $workflowContextRoute = Get-PatternGroup "docs/change-workflow.md#Subagents" $subagents '(?is)(?<route>When a triggered specialist investigation materially\s+benefits from context partitioning,.*?)(?:\n\n|$)' "route" "detailed positive context-partitioning route missing"
+$workflowContextRoute = Normalize-RelationshipText $workflowContextRoute
 Require-Pattern "docs/change-workflow.md#Context Routing" $workflowContextRoute $positiveBoundedSubagent "detailed positive context-partitioning route missing"
 Forbid-Pattern "docs/change-workflow.md#Context Routing" $workflowContextRoute $negativeBoundedSubagent "detailed positive context-partitioning route contains a negative inversion"
 $workflowFallback = Get-PatternGroup "docs/change-workflow.md#Subagents" $subagents '(?is)(?<fallback>When preferred delegation is unavailable,.*?)(?:\n\n|$)' "fallback" "preferred-delegation fallback relationship missing"
+$workflowFallback = Normalize-RelationshipText $workflowFallback
 Require-Pattern "docs/change-workflow.md#Fresh Lead Review" $workflowFallback $freshLeadNotIndependent "detailed fresh lead pass incorrectly substitutes for independent review"
 Forbid-Pattern "docs/change-workflow.md#Fresh Lead Review" $workflowFallback $freshLeadReclassified "detailed fresh lead pass contains a positive independent-review inversion"
 $requiredIndependenceBoundary = '(?is)\b(?:when|if)\s+required independent context\s+(?:is unavailable|cannot be obtained).*?\b(?:pause|stop)\b.*?\b(?:explicit user approval|user explicitly approves)\b.*?\blimit\w*\b.*?\bclaim\b'
-$silentLeadSubstitution = '(?i)(?:(?:the )?lead(?:-owned review)?\s+(?:may|can).*?(?:silently\s+)?substitut|lead-owned review\s+is\s+an equivalent substitute)'
+$silentLeadSubstitution = '(?i)(?:(?:the )?lead(?:-owned review)?\s+(?:may|can)\s+(?!not\b)(?:silently\s+)?(?:substitut\w*|replace|stand in for)|(?:the )?lead(?:-owned review)?\s+is\s+(?!not\b)(?:allowed|permitted|authorized)\s+to\s+(?:substitut\w*|replace|stand in for)|lead-owned review\s+is\s+an equivalent substitute)'
 Require-Pattern "docs/change-workflow.md#Required Independence" $workflowFallback $requiredIndependenceBoundary "required independent evidence substitution boundary missing"
 Forbid-Pattern "docs/change-workflow.md#Required Independence" $workflowFallback $silentLeadSubstitution "required independent evidence boundary permits lead substitution"
 
