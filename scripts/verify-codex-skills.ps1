@@ -87,8 +87,30 @@ $independentSpecialists = @(
     "scope-ledger-adversarial-review",
     "test-strategy-adversary"
 )
+$selectedIndependentSpecialists = @($Skills | Where-Object { $independentSpecialists -contains $_ })
+if ($selectedIndependentSpecialists.Count -gt 0) {
+    $agentsPath = Join-Path $repoRoot "AGENTS.md"
+    if (-not (Test-Path -LiteralPath $agentsPath -PathType Leaf)) {
+        Add-Failure -Failures $failures -Message "missing canonical independent-review owner: AGENTS.md"
+    } else {
+        $agentsContent = Get-Content -LiteralPath $agentsPath -Raw
+        $canonicalFields = @(
+            "Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive",
+            "Status detail: none | no independent context | context contaminated | <failure or timeout detail>",
+            "Role outcome: used when status is completed | N/A",
+            "Waiver disposition: none | <scope, owner, mitigation, expiry>"
+        )
+        foreach ($field in $canonicalFields) {
+            $count = ([regex]::Matches($agentsContent, [regex]::Escape($field))).Count
+            if ($count -ne 1) {
+                Add-Failure -Failures $failures -Message "AGENTS.md must own canonical independent-review field exactly once: $field (found $count)"
+            }
+        }
+    }
+}
 
 foreach ($skill in $Skills) {
+    $failureCountBeforeSkill = $failures.Count
     $skillDir = Join-Path $sourceRoot $skill
     if (-not (Test-Path -LiteralPath $skillDir)) {
         Add-Failure -Failures $failures -Message "[$skill] missing repo source: $skillDir"
@@ -129,8 +151,13 @@ foreach ($skill in $Skills) {
         if ($content -notmatch 'independent-review contract in `AGENTS\.md`') {
             Add-Failure -Failures $failures -Message "[$skill] missing canonical independent-review contract reference to AGENTS.md"
         }
-        if ($content -match '(?m)^\s*-?\s*Agent status:') {
-            Add-Failure -Failures $failures -Message "[$skill] duplicates the AGENTS.md-owned Agent status field"
+        if ($content -notmatch 'canonical four-field independent-result envelope from\s+`AGENTS\.md`') {
+            Add-Failure -Failures $failures -Message "[$skill] missing canonical four-field result-envelope reference to AGENTS.md"
+        }
+        foreach ($fieldName in @('Agent status', 'Status detail', 'Role outcome', 'Waiver disposition')) {
+            if ($content -match "(?m)^\s*-?\s*$([regex]::Escape($fieldName)):") {
+                Add-Failure -Failures $failures -Message "[$skill] duplicates the AGENTS.md-owned $fieldName field"
+            }
         }
     }
 
@@ -165,7 +192,9 @@ foreach ($skill in $Skills) {
         }
     }
 
-    Write-Host "PASS [$skill] repo skill metadata checked."
+    if ($failures.Count -eq $failureCountBeforeSkill) {
+        Write-Host "PASS [$skill] repo skill metadata and canonical routes checked."
+    }
 }
 
 if ($failures.Count -gt 0) {
