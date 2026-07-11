@@ -75,6 +75,8 @@ $template = Get-RepoText "docs/templates/non-trivial-change-template.md"
 $validation = Get-RepoText "VALIDATION.md"
 $review = Get-RepoText "docs/review-checklist.md"
 $runbook = Get-RepoText "docs/dev-runbook.md"
+$workflowChecks = Get-RepoText "docs/runbooks/codex-workflow-checks.md"
+$triggeredTools = Get-RepoText "docs/runbooks/codex-triggered-validation-tools.md"
 $working = Get-RepoText "docs/WORKING_WITH_CODEX.md"
 $evalCases = Get-RepoText "docs/workflow-eval-cases.md"
 $scriptsReadme = Get-RepoText "scripts/README.md"
@@ -93,6 +95,10 @@ $skillStatusText = @{}
 foreach ($path in $skillStatusPaths) {
   $skillStatusText[$path] = Get-RepoText $path
 }
+
+$ownerText = "The common independent-review contract is owned here."
+$ownerCount = ([regex]::Matches((@($agents,$workflow) + @($skillStatusText.Values) -join "`n"), [regex]::Escape($ownerText))).Count
+if ($ownerCount -ne 1) { Add-Failure "common independent-review contract must have exactly one owner; found $ownerCount" }
 
 $requiredAgentText = @(
   "Approved vN",
@@ -116,6 +122,17 @@ if ($selectedMarkerCount -ne 2 -or $noneMarkerCount -ne 2) {
 $canonicalAgentStatus = "- Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive"
 foreach ($path in $skillStatusPaths) {
   Require-Text $path $skillStatusText[$path] "canonical four-field independent-result envelope"
+}
+$specialistRequirements = @{
+  "codex-skills/design-challenger/SKILL.md" = @("Trigger when two or more viable architectures", "Run before drafting the Proposed Scope", "Do not approve scope", "disposition with the lead")
+  "codex-skills/go-code-quality-review/SKILL.md" = @("Trigger after Go code changes", "Use after code is written", "Do not run final validation", "lead agent still owns fixes")
+  "codex-skills/requirements-ambiguity-review/SKILL.md" = @("Trigger when filters or Boolean precedence", "before publishing a Proposed Scope Ledger", "do not choose product policy", "lead owns every disposition")
+  "codex-skills/scientific-model-oracle/SKILL.md" = @("Trigger for VOACAP", "before requirements", "Do not choose architecture", "lead owns every disposition")
+  "codex-skills/scope-ledger-adversarial-review/SKILL.md" = @("Trigger for Non-trivial Scope Ledgers", "This skill is pre-approval only.", "Report only findings", "lead agent must disposition")
+  "codex-skills/test-strategy-adversary/SKILL.md" = @("Trigger for parser or protocol behavior", "before the first implementation slice", "Do not`nwrite the tests", "Leave test ownership")
+}
+foreach ($path in $specialistRequirements.Keys) {
+  foreach ($required in $specialistRequirements[$path]) { Require-Text $path $skillStatusText[$path] $required }
 }
 Require-Line "AGENTS.md" $agents "  - ``Agent status: completed | unsupported | not authorized/not requested | explicitly prohibited | failed | timed out | inconclusive``"
 Require-Text "docs/templates/non-trivial-change-template.md" $template "- Independent-agent status: completed | unsupported |"
@@ -176,6 +193,8 @@ $scopeStatusContract = @(
   @{ Path = "docs/templates/non-trivial-change-template.md"; Text = $template; Required = "For every Scope Ledger item that was ``Agreed`` at the start of implementation:" },
   @{ Path = "docs/review-checklist.md"; Text = $review; Required = "Map every Scope Ledger item with status ``Agreed`` as of the start of the" },
   @{ Path = "VALIDATION.md"; Text = $validation; Required = "no ``Pending`` item remained when approval was presented or" }
+  @{ Path = "docs/change-workflow.md"; Text = $workflow; Required = "``Rejected`` is explicitly excluded and ``Deferred`` is excluded from the" }
+  @{ Path = "docs/change-workflow.md"; Text = $workflow; Required = "If a ``Pending``, ``Rejected``, or ``Deferred`` item becomes necessary after" }
 )
 foreach ($entry in $scopeStatusContract) {
   Require-Text $entry.Path $entry.Text $entry.Required
@@ -213,8 +232,10 @@ $markers = @(
   "TRACEABILITY",
   "VALIDATION"
 )
-foreach ($marker in $markers) {
-  Require-Line "docs/templates/non-trivial-change-template.md" $template "### $marker"
+$expectedMarkerSequence = @("GATE", "DISCOVERY", "SCOPE", "SCOPE ADVERSARIAL REVIEW", "GATE", "PREFLIGHT", "DESIGN", "IMPLEMENTATION", "REVIEW", "SELF-AUDIT", "CLOSEOUT", "TRACEABILITY", "VALIDATION")
+$actualMarkerSequence = @([regex]::Matches($template, "(?m)^### (.+)$") | ForEach-Object { $_.Groups[1].Value } | Where-Object { $markers -contains $_ })
+if (($actualMarkerSequence -join "`n") -ne ($expectedMarkerSequence -join "`n")) {
+  Add-Failure "docs/templates/non-trivial-change-template.md required marker count/order drifted: found $($actualMarkerSequence -join ' -> ')"
 }
 Require-Text "AGENTS.md" $agents "exact required`nmarker set, ordering, phase placement"
 
@@ -237,16 +258,21 @@ Failed items: none | <comma-separated failed item numbers/names>
 Auto-fail conditions triggered: no | yes (<conditions>)
 "@.Trim()
 $normalizedValidationBlock = $validationBlock.Replace("`r", "")
-if (-not $validation.Replace("`r", "").Contains($normalizedValidationBlock)) {
-  Add-Failure "VALIDATION.md missing exact canonical validation block"
-}
+$validationOccurrences = ([regex]::Matches($validation.Replace("`r", ""), [regex]::Escape($normalizedValidationBlock))).Count
+if ($validationOccurrences -ne 1) { Add-Failure "VALIDATION.md must contain the canonical validation block exactly once; found $validationOccurrences" }
 foreach ($entry in @(
   @{ Path = "AGENTS.md"; Text = $agents },
   @{ Path = "docs/templates/non-trivial-change-template.md"; Text = $template },
   @{ Path = "docs/review-checklist.md"; Text = $review }
 )) { Require-Text $entry.Path $entry.Text "VALIDATION.md" }
-$validationCopies = @($agents,$template,$validation,$review | Where-Object { $_.Replace("`r", "").Contains($normalizedValidationBlock) }).Count
-if ($validationCopies -ne 1) { Add-Failure "exact validation block must have one owner; found $validationCopies" }
+$validationCopies = 0
+foreach ($text in @($agents,$template,$validation,$review)) { $validationCopies += ([regex]::Matches($text.Replace("`r", ""), [regex]::Escape($normalizedValidationBlock))).Count }
+if ($validationCopies -ne 1) { Add-Failure "exact validation block must occur once across contract surfaces; found $validationCopies" }
+
+Require-Text "docs/dev-runbook.md" $runbook "docs/runbooks/codex-workflow-checks.md"
+Require-Text "docs/dev-runbook.md" $runbook "docs/runbooks/codex-triggered-validation-tools.md"
+Require-Text "docs/runbooks/codex-workflow-checks.md" $workflowChecks "It does not select a validation lane"
+Require-Text "docs/runbooks/codex-triggered-validation-tools.md" $triggeredTools "Open this recipe only after ``docs/dev-runbook.md`` or a triggered audit requires"
 
 $mapHeading = "## Document Map"
 $mapStart = $agents.IndexOf($mapHeading, [System.StringComparison]::Ordinal)

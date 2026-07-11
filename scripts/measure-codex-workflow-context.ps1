@@ -74,6 +74,11 @@ foreach ($skill in $skills) {
   $path = "codex-skills/$skill/SKILL.md"
   $manifests += @{ Name="skill-$skill"; Baseline=@('AGENTS.md',$path); Candidate=@('AGENTS.md',$path) }
 }
+$manifestProjection = ($manifests | ForEach-Object { "$($_.Name)|B:$($_.Baseline -join ',')|C:$($_.Candidate -join ',')" }) -join "`n"
+$sha256 = [Security.Cryptography.SHA256]::Create()
+try { $manifestHash = ([BitConverter]::ToString($sha256.ComputeHash([Text.Encoding]::UTF8.GetBytes($manifestProjection)))).Replace('-','').ToLowerInvariant() } finally { $sha256.Dispose() }
+$expectedManifestHash = 'b673d748c102dd07f5d6728027b4b952f0239d1a6e443d033ac8d1ca06e96dd8'
+if ($manifestHash -ne $expectedManifestHash) { throw "frozen manifest order/content changed: $manifestHash" }
 
 $rows = @()
 foreach ($manifest in $manifests) {

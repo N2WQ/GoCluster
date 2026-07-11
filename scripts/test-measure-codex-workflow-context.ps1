@@ -14,12 +14,12 @@ $script = Join-Path $PSScriptRoot 'measure-codex-workflow-context.ps1'
 $root = Join-Path ([IO.Path]::GetTempPath()) ('gocluster-context-' + [guid]::NewGuid().ToString('N'))
 
 function Invoke-Measurement {
-  Param([string]$Baseline, [string]$Candidate)
+  Param([string]$Baseline, [string]$Candidate, [string]$ScriptPath=$script)
   $hostExe = (Get-Process -Id $PID).Path
   $priorPreference = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'
   try {
-    $output = & $hostExe -NoProfile -ExecutionPolicy Bypass -File $script -BaselineRevision $Baseline -CandidateRevision $Candidate -RepoRoot $root 2>&1
+    $output = & $hostExe -NoProfile -ExecutionPolicy Bypass -File $ScriptPath -BaselineRevision $Baseline -CandidateRevision $Candidate -RepoRoot $root 2>&1
   } finally {
     $ErrorActionPreference = $priorPreference
   }
@@ -75,6 +75,11 @@ try {
   git -C $root add .; git -C $root commit -qm below-threshold
   $belowThreshold=(git -C $root rev-parse HEAD).Trim()
   Assert-Exit (Invoke-Measurement $baseline $belowThreshold) 1 'fixed reduction threshold' 'gate: FAIL'
+
+  $mutatedScript = Join-Path $root 'measure-reordered.ps1'
+  $scriptText = [IO.File]::ReadAllText($script).Replace("Name='always'", "Name='manifest-swap'").Replace("Name='planning'", "Name='always'").Replace("Name='manifest-swap'", "Name='planning'")
+  [IO.File]::WriteAllText($mutatedScript, $scriptText, [Text.UTF8Encoding]::new($false))
+  Assert-Exit (Invoke-Measurement $baseline $candidate $mutatedScript) 1 'frozen manifest order' 'frozen manifest order/content changed'
 
   Write-Host 'PASS deterministic context measurement fixtures'
 } finally {

@@ -48,6 +48,8 @@ try {
     "docs/code-quality.md",
     "docs/review-checklist.md",
     "docs/dev-runbook.md",
+    "docs/runbooks/codex-workflow-checks.md",
+    "docs/runbooks/codex-triggered-validation-tools.md",
     "docs/WORKING_WITH_CODEX.md",
     "docs/workflow-eval-cases.md",
     "docs/domain-contract.md",
@@ -78,10 +80,19 @@ try {
   Set-Content -LiteralPath $templatePath -Value ($originalTemplate.Replace("### TRACEABILITY", "### REMOVED_TRACEABILITY")) -NoNewline
   Invoke-Checker 1 "missing marker"
 
+  Set-Content -LiteralPath $templatePath -Value ($originalTemplate.Replace("### TRACEABILITY", "### REVIEW`n### TRACEABILITY")) -NoNewline
+  Invoke-Checker 1 "duplicate marker"
+
+  Set-Content -LiteralPath $templatePath -Value ($originalTemplate.Replace("### TRACEABILITY", "### VALIDATION_MOVED").Replace("### VALIDATION", "### TRACEABILITY").Replace("### VALIDATION_MOVED", "### VALIDATION")) -NoNewline
+  Invoke-Checker 1 "reordered markers"
+
   $validationPath = Join-Path $fixtureRoot "VALIDATION.md"
   $originalValidation = Get-Content -LiteralPath $validationPath -Raw
   Set-Content -LiteralPath $validationPath -Value ($originalValidation.Replace("Validation Score: X/6", "Validation Result: X/6")) -NoNewline
   Invoke-Checker 1 "mismatched validation label"
+
+  Set-Content -LiteralPath $validationPath -Value ($originalValidation + "`nValidation Score: X/6`nFailed items: none | <comma-separated failed item numbers/names>`nAuto-fail conditions triggered: no | yes (<conditions>)`n") -NoNewline
+  Invoke-Checker 1 "duplicate canonical validation block"
   Set-Content -LiteralPath $validationPath -Value $originalValidation -NoNewline
 
   Set-Content -LiteralPath $templatePath -Value $originalTemplate -NoNewline
@@ -111,6 +122,22 @@ try {
 
   Set-Content -LiteralPath $agentsPath -Value $originalAgents -NoNewline
 
+  Set-Content -LiteralPath $agentsPath -Value ($originalAgents.Replace("Approved vN", "Approved approximately")) -NoNewline
+  Invoke-Checker 1 "approval token mutation"
+
+  Set-Content -LiteralPath $agentsPath -Value $originalAgents -NoNewline
+  $workflowPath = Join-Path $fixtureRoot "docs/change-workflow.md"
+  $originalWorkflow = Get-Content -LiteralPath $workflowPath -Raw
+  Set-Content -LiteralPath $workflowPath -Value ($originalWorkflow + "`nThe common independent-review contract is owned here.`n") -NoNewline
+  Invoke-Checker 1 "competing independent-review owner"
+
+  Set-Content -LiteralPath $workflowPath -Value ($originalWorkflow.Replace("``Rejected`` is explicitly excluded", "``Rejected`` may be implemented")) -NoNewline
+  Invoke-Checker 1 "Rejected status transition weakened"
+
+  Set-Content -LiteralPath $workflowPath -Value ($originalWorkflow.Replace("``Deferred`` item becomes necessary", "item becomes necessary")) -NoNewline
+  Invoke-Checker 1 "Deferred status transition weakened"
+  Set-Content -LiteralPath $workflowPath -Value $originalWorkflow -NoNewline
+
   $runbookPath = Join-Path $fixtureRoot "docs/dev-runbook.md"
   $originalRunbook = Get-Content -LiteralPath $runbookPath -Raw
   Set-Content -LiteralPath $runbookPath -Value ($originalRunbook.Replace("### Small code change", "### Small change")) -NoNewline
@@ -127,6 +154,18 @@ try {
 
   Set-Content -LiteralPath $runbookPath -Value $originalRunbook -NoNewline
 
+  $checksPath = Join-Path $fixtureRoot "docs/runbooks/codex-workflow-checks.md"
+  $originalChecks = Get-Content -LiteralPath $checksPath -Raw
+  Set-Content -LiteralPath $checksPath -Value ($originalChecks.Replace("It does not select a validation lane", "It selects a validation lane")) -NoNewline
+  Invoke-Checker 1 "Codex component selects a lane"
+  Set-Content -LiteralPath $checksPath -Value $originalChecks -NoNewline
+
+  $toolsPath = Join-Path $fixtureRoot "docs/runbooks/codex-triggered-validation-tools.md"
+  $originalTools = Get-Content -LiteralPath $toolsPath -Raw
+  Set-Content -LiteralPath $toolsPath -Value ($originalTools.Replace("Open this recipe only after ``docs/dev-runbook.md`` or a triggered audit requires", "Open this recipe unconditionally before work requires")) -NoNewline
+  Invoke-Checker 1 "triggered recipes become unconditional"
+  Set-Content -LiteralPath $toolsPath -Value $originalTools -NoNewline
+
   Set-Content -LiteralPath $templatePath -Value ($originalTemplate.Replace("Do not present the approval token while any item or implementation slice is", "The approval token may be presented while an item is")) -NoNewline
   Invoke-Checker 1 "Pending blocks approval"
 
@@ -134,6 +173,20 @@ try {
   Invoke-Checker 1 "traceability is Agreed-only"
 
   Set-Content -LiteralPath $templatePath -Value $originalTemplate -NoNewline
+
+  $specialistPath = Join-Path $fixtureRoot "codex-skills/design-challenger/SKILL.md"
+  $originalSpecialist = Get-Content -LiteralPath $specialistPath -Raw
+  foreach ($mutation in @(
+    @{ From="Trigger when two or more viable architectures"; To="Consider when architectures"; Label="specialist trigger mutation" },
+    @{ From="Run before drafting the Proposed Scope"; To="Run at any phase before scope"; Label="specialist phase mutation" },
+    @{ From="Do not approve scope"; To="Approve scope"; Label="specialist refusal mutation" },
+    @{ From="disposition with the lead"; To="disposition with the reviewer"; Label="specialist lead-ownership mutation" },
+    @{ From="canonical four-field independent-result envelope"; To="independent result"; Label="specialist stale canonical route" }
+  )) {
+    Set-Content -LiteralPath $specialistPath -Value ($originalSpecialist.Replace($mutation.From,$mutation.To)) -NoNewline
+    Invoke-Checker 1 $mutation.Label
+  }
+  Set-Content -LiteralPath $specialistPath -Value $originalSpecialist -NoNewline
 
   Set-Content -LiteralPath $templatePath -Value ($originalTemplate.Replace("  - Skill check: selected <skill>", "  - Skill check: selected <skill>`n  - Skill check: selected <skill>")) -NoNewline
   Invoke-Checker 1 "duplicate standalone skill marker field"
