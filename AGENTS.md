@@ -40,14 +40,16 @@ the work is Non-trivial. Stop and reclassify if discovery expands the impact.
 Before Non-trivial mutation:
 
 1. Inspect the relevant current implementation, contracts, tests, docs, and
-   decision history.
+   decision history. Before proposing scope, resolve material unknowns that
+   could invalidate the approach using the smallest safe read-only proof.
+   Expose unresolved assumptions.
 2. Propose a versioned Scope Ledger containing the objective, agreed scope,
    boundaries, material risks or unknowns, validation plan, and the lowest
    sufficient target reasoning level with a concise rationale and escalation
    condition. The user may override that recommendation. State it once before
    approval; do not repeat it during implementation or closeout.
-3. Challenge the scope for missing edge cases, dependencies, and unsafe
-   assumptions; revise it when material gaps exist.
+3. Challenge the scope before approval. Revise and reapprove it when new
+   evidence materially changes authority, scope, risk, or validation.
 4. Wait for the exact token `Approved vN` matching that ledger.
 
 Only exact `Approved vN` authorizes the matching agreed scope. Discussion,

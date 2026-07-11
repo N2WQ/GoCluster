@@ -37,6 +37,11 @@ Inspect enough current evidence to establish:
 - compatibility, operator, resource, and validation consequences;
 - facts, assumptions, and unresolved unknowns.
 
+Before proposing scope, use the smallest safe read-only proof to resolve an
+unknown that could invalidate the approach or materially change scope. If it
+cannot be resolved safely, carry it as an explicit assumption or unknown; do
+not present an assumed mechanism as current fact.
+
 Use code maps and generated graphs only as orientation. Verify material
 conclusions against current source and tests. Use parallel discovery only for
 genuinely disjoint, material questions when its coordination cost is justified.
@@ -50,10 +55,11 @@ condition. The user may override the recommendation. Present it once before
 approval and do not repeat it during execution or closeout. Only explicitly
 agreed items may be implemented.
 
-Before presenting the approval token, the lead asks what edge case, dependency,
-or assumption could make the scope unsafe or incomplete. Revise the ledger when
-the answer exposes a material gap. Independent scope review is appropriate only
-for High-risk, uncertain, disputed, difficult-to-reverse, or materially
+Challenge the proposed scope before approval. New evidence requires a revised
+ledger and exact reapproval when it materially changes what is authorized,
+scope boundaries, accepted risk, or required validation. Wording-only changes
+do not require a new version. Independent scope review is appropriate only for
+High-risk, uncertain, disputed, difficult-to-reverse, or materially
 consequential scope.
 
 Decompose work when real rollback, ownership, uncertainty, or validation
