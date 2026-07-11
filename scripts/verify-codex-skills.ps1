@@ -88,10 +88,12 @@ $independentSpecialists = @(
     "test-strategy-adversary"
 )
 $selectedIndependentSpecialists = @($Skills | Where-Object { $independentSpecialists -contains $_ })
+$canonicalOwnerValid = $true
 if ($selectedIndependentSpecialists.Count -gt 0) {
     $agentsPath = Join-Path $repoRoot "AGENTS.md"
     if (-not (Test-Path -LiteralPath $agentsPath -PathType Leaf)) {
         Add-Failure -Failures $failures -Message "missing canonical independent-review owner: AGENTS.md"
+        $canonicalOwnerValid = $false
     } else {
         $agentsContent = Get-Content -LiteralPath $agentsPath -Raw
         $canonicalFields = @(
@@ -104,6 +106,7 @@ if ($selectedIndependentSpecialists.Count -gt 0) {
             $count = ([regex]::Matches($agentsContent, [regex]::Escape($field))).Count
             if ($count -ne 1) {
                 Add-Failure -Failures $failures -Message "AGENTS.md must own canonical independent-review field exactly once: $field (found $count)"
+                $canonicalOwnerValid = $false
             }
         }
     }
@@ -192,7 +195,7 @@ foreach ($skill in $Skills) {
         }
     }
 
-    if ($failures.Count -eq $failureCountBeforeSkill) {
+    if ($failures.Count -eq $failureCountBeforeSkill -and (-not ($independentSpecialists -contains $skill) -or $canonicalOwnerValid)) {
         Write-Host "PASS [$skill] repo skill metadata and canonical routes checked."
     }
 }
