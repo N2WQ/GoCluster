@@ -1,6 +1,6 @@
 # ADR-0220: Codex Natural-Owner Workflow Deduplication
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-07-10
 - Decision Origin: Design
 
