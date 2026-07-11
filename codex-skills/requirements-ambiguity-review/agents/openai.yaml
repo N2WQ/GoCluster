@@ -1,4 +1,0 @@
-interface:
-  display_name: "Requirements Ambiguity Review"
-  short_description: "Surface material semantic ambiguity early"
-  default_prompt: "Use this skill only when current evidence leaves material semantics genuinely multi-valued."
