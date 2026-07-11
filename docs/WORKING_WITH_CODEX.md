@@ -24,9 +24,8 @@ Non-trivial. Uncertain work is Non-trivial.
 
 Codex first inspects the current affected state and presents a bounded
 `Proposed Scope Ledger vN`. It challenges that scope for missing dependencies
-and edge cases. The ledger recommends the lowest sufficient reasoning level
-once, with a short rationale and escalation condition; you may override it.
-Mutation begins only after you reply with the exact matching token:
+and edge cases. Mutation begins only after you reply with the exact matching
+token:
 
 ```text
 Approved vN

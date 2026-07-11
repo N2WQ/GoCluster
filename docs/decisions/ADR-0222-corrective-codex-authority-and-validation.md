@@ -4,8 +4,9 @@
 - Date: 2026-07-10
 - Decision Origin: Design
 - Selective supersession: ADR-0223 supersedes Decision 7's interpretation that
-  every Go-review method trigger requires a separate independent reviewer. All
-  other ADR-0222 decisions remain accepted.
+  every Go-review method trigger requires a separate independent reviewer.
+  ADR-0225 supersedes Decision 1's target reasoning recommendation. All other
+  ADR-0222 decisions remain accepted.
 
 ## Context
 

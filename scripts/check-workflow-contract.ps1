@@ -90,6 +90,8 @@ $requiredFiles = @(
   "docs/decisions/ADR-0221-codex-authority-and-evidence-workflow.md",
   "docs/decisions/ADR-0222-corrective-codex-authority-and-validation.md",
   "docs/decisions/ADR-0223-bounded-specialist-context-and-independent-evidence.md",
+  "docs/decisions/ADR-0224-evidence-before-scope-and-material-reapproval.md",
+  "docs/decisions/ADR-0225-remove-codex-target-reasoning-recommendation.md",
   "codex-skills/README.md",
   "scripts/README.md"
 )
@@ -104,7 +106,10 @@ $decisionMemory = $text["docs/decision-memory.md"]
 $adr0221 = $text["docs/decisions/ADR-0221-codex-authority-and-evidence-workflow.md"]
 $adr0222 = $text["docs/decisions/ADR-0222-corrective-codex-authority-and-validation.md"]
 $adr0223 = $text["docs/decisions/ADR-0223-bounded-specialist-context-and-independent-evidence.md"]
+$adr0224 = $text["docs/decisions/ADR-0224-evidence-before-scope-and-material-reapproval.md"]
+$adr0225 = $text["docs/decisions/ADR-0225-remove-codex-target-reasoning-recommendation.md"]
 $adr0223Decision = Get-MarkdownSection $adr0223 "## Decision"
+$adr0225Decision = Get-MarkdownSection $adr0225 "## Decision"
 $decisionLog = $text["docs/decision-log.md"]
 
 Require-Text "AGENTS.md" $agents 'Only exact `Approved vN` authorizes the matching agreed scope.' "approval authority route missing"
@@ -137,10 +142,6 @@ foreach ($concept in @(
 )) { Require-Pattern "AGENTS.md#Work Routes" $agentSmallExclusions $concept.Pattern "sensitive Small exclusion missing: $($concept.Label)" }
 Forbid-Pattern "AGENTS.md#Work Routes" $agentSmallExclusions $positiveSensitiveChange "sensitive Small exclusion contains a positive inversion"
 Forbid-Pattern "AGENTS.md#Work Routes" $agentSmallExclusions $prohibitionContrast "sensitive Small exclusion contains a positive inversion"
-
-$agentAuthority = Get-MarkdownSection $agents "## Non-trivial Authority"
-Require-Pattern "AGENTS.md#Non-trivial Authority" $agentAuthority '(?s)lowest\s+sufficient target reasoning level.*rationale.*escalation.*user may override' "reasoning recommendation missing"
-Require-Pattern "AGENTS.md#Non-trivial Authority" $agentAuthority '(?s)State it once before\s+approval.*do not repeat' "reasoning recommendation repetition boundary missing"
 
 $agentRisk = Get-MarkdownSection $agents "## Risk Routing"
 Require-Pattern "AGENTS.md#Risk Routing" $agentRisk '(?s)standing authorization.*active platform policy permits' "standing subagent authorization missing"
@@ -185,9 +186,6 @@ foreach ($concept in @('runtime config','schema','default','sentinel','parser','
 }
 Forbid-Pattern "docs/change-workflow.md#Change Classification" $workflowSmallExclusions $positiveSensitiveChange "detailed sensitive Small exclusion contains a positive inversion"
 Forbid-Pattern "docs/change-workflow.md#Change Classification" $workflowSmallExclusions $prohibitionContrast "detailed sensitive Small exclusion contains a positive inversion"
-$workflowScope = Get-MarkdownSection $workflow "### Scope"
-Require-Pattern "docs/change-workflow.md#Scope" $workflowScope '(?s)lowest\s+sufficient target reasoning level.*rationale.*escalation.*user may override' "detailed reasoning recommendation missing"
-
 $standard = Get-MarkdownSection $workflow "### Standard"
 if ($standard -eq "") { Add-Failure "Standard routing section missing" }
 Require-Text "docs/change-workflow.md#Standard" $standard "Do not invoke specialists, parallel discovery, or`nindependent agents merely because work is Non-trivial." "Standard route does not reject default specialists"
@@ -292,7 +290,8 @@ $retiredPatterns = @(
   @{ Pattern = '\bSA(?:[1-9]|1[0-5])\b'; Label = "retired SA taxonomy remains" },
   @{ Pattern = 'SELF-AUDIT'; Label = "retired Self-Audit reporting remains" },
   @{ Pattern = 'Ledger status: Approved'; Label = "retired ledger-status echo remains" },
-  @{ Pattern = 'canonical four-field independent-result envelope'; Label = "retired agent result envelope remains" }
+  @{ Pattern = 'canonical four-field independent-result envelope'; Label = "retired agent result envelope remains" },
+  @{ Pattern = '(?i)\b(?:lowest\s+sufficient\s+(?:target\s+)?reasoning\s+(?:level|effort)|target\s+reasoning\s*:|reasoning\s+budget\s*:|(?:target|recommended)\s+model\s+effort\s*:)'; Label = "retired target-reasoning requirement remains" }
 )
 foreach ($path in $activeCodexPaths | Sort-Object -Unique) {
   $content = if ($text.ContainsKey($path)) { $text[$path] } else { Get-RepoText $path }
@@ -312,10 +311,14 @@ Require-Pattern "ADR-0221" $adr0221 '(?s)Status: Accepted.*Selective supersessio
 Require-Pattern "ADR-0221" $adr0221 '(?s)ADR-0223 refines Decision 2.*specialist triggering.*context selection.*independent-evidence requirements' "ADR-0221 ADR-0223 reciprocal note missing"
 Require-Pattern "ADR-0222" $adr0222 '(?s)Status: Accepted.*Selectively supersede ADR-0221 only as follows' "ADR-0222 selective authority missing"
 Require-Pattern "ADR-0222" $adr0222 '(?s)ADR-0223 supersedes Decision 7.*separate independent reviewer' "ADR-0222 ADR-0223 reciprocal note missing"
+Require-Pattern "ADR-0222" $adr0222 '(?s)ADR-0225 supersedes Decision 1.*target reasoning recommendation' "ADR-0222 ADR-0225 reciprocal note missing"
 Require-Pattern "ADR-0223#Decision" $adr0223Decision '(?s)selectively refines ADR-0221 Decision 2.*selectively supersedes ADR-0222 Decision 7' "ADR-0223 selective authority missing"
+Require-Pattern "ADR-0224" $adr0224 '(?s)Status: Accepted.*refines ADR-0221.*current-evidence and planning' "ADR-0224 refinement authority missing"
+Require-Pattern "ADR-0225#Decision" $adr0225Decision '(?s)selectively supersedes ADR-0222 Decision 1.*does not change.*exact.*Approved vN.*Fable' "ADR-0225 selective authority missing"
+Require-Pattern "docs/decision-log.md" $decisionLog '(?m)^\| ADR-0225 \|.*\| Accepted \|.*\| ADR-0222 Decision 1 \| - \|' "ADR-0225 decision-index row missing"
 Require-Pattern "docs/decision-log.md" $decisionLog '(?m)^\| ADR-0223 \|.*\| Accepted \|.*\| ADR-0221 Decision 2 \(refines\); ADR-0222 Decision 7 \| - \|' "ADR-0223 decision-index row missing"
-Require-Pattern "docs/decision-log.md" $decisionLog '(?m)^\| ADR-0222 \|.*\| Accepted \|.*ADR-0221 \(selected clauses\).*\| ADR-0223 \(Decision 7\) \|' "ADR-0222 decision-index reciprocal link missing"
-Require-Pattern "docs/decision-log.md" $decisionLog '(?m)^\| ADR-0221 \|.*\| Accepted \|.*\| ADR-0222 \(selected clauses\); ADR-0223 \(refines Decision 2\) \|' "ADR-0221 reciprocal decision-index link missing"
+Require-Pattern "docs/decision-log.md" $decisionLog '(?m)^\| ADR-0222 \|.*\| Accepted \|.*ADR-0221 \(selected clauses\).*\| (?=[^|\r\n]*ADR-0223 \(Decision 7\))(?=[^|\r\n]*ADR-0225 \(Decision 1\))[^|\r\n]*\|' "ADR-0222 decision-index reciprocal link missing"
+Require-Pattern "docs/decision-log.md" $decisionLog '(?m)^\| ADR-0221 \|.*\| Accepted \|.*\| (?=[^|\r\n]*ADR-0222 \(selected clauses\))(?=[^|\r\n]*ADR-0223 \(refines Decision 2\))(?=[^|\r\n]*ADR-0224 \(refines evidence/planning\))[^|\r\n]*\|' "ADR-0221 reciprocal decision-index link missing"
 
 Require-Text "docs/workflow-eval-cases.md" $text["docs/workflow-eval-cases.md"] "optional, non-authoritative" "workflow evaluation cases are not marked optional"
 

@@ -70,6 +70,8 @@ try {
     "docs/decisions/ADR-0221-codex-authority-and-evidence-workflow.md",
     "docs/decisions/ADR-0222-corrective-codex-authority-and-validation.md",
     "docs/decisions/ADR-0223-bounded-specialist-context-and-independent-evidence.md",
+    "docs/decisions/ADR-0224-evidence-before-scope-and-material-reapproval.md",
+    "docs/decisions/ADR-0225-remove-codex-target-reasoning-recommendation.md",
     "docs/templates/non-trivial-change-template.md",
     "docs/runbooks/codex-workflow-checks.md",
     "docs/runbooks/codex-triggered-validation-tools.md",
@@ -79,13 +81,14 @@ try {
   Invoke-Fixture 0 "PASS Codex workflow static invariants passed." "positive contract"
   Invoke-SkillFixture 0 "PASS all requested repo skills verified." "positive skill methods"
 
-  $original = Replace-Once "AGENTS.md" "lowest`n   sufficient target reasoning level" "target model effort"
-  Invoke-Fixture 1 "reasoning recommendation missing" "reasoning recommendation remains reachable"
-  Set-Content -LiteralPath (Join-Path $fixtureRoot "AGENTS.md") -Value $original -NoNewline
-
-  $original = Replace-Once "docs/templates/non-trivial-change-template.md" "Target reasoning:" "Recommended model effort:"
-  Invoke-Fixture 0 "PASS Codex workflow static invariants passed." "reasoning narration remains flexible"
-  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/templates/non-trivial-change-template.md") -Value $original -NoNewline
+  foreach ($case in @(
+    @{ Text="Target reasoning: low (lowest sufficient)."; Label="target reasoning requirement cannot return" },
+    @{ Text="Recommended model effort: low."; Label="replacement model-effort field cannot return" }
+  )) {
+    $original = Replace-Once "docs/templates/non-trivial-change-template.md" "Scope challenge:" "$($case.Text)`nScope challenge:"
+    Invoke-Fixture 1 "retired target-reasoning requirement remains" $case.Label
+    Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/templates/non-trivial-change-template.md") -Value $original -NoNewline
+  }
 
   $original = Replace-Once "AGENTS.md" "Small`nalso cannot change" "Small may change"
   Invoke-Fixture 1 "sensitive Small exclusion relationship missing" "AGENTS sensitive exclusion rejects inversion"
@@ -352,8 +355,24 @@ try {
   Invoke-Fixture 1 "ADR-0223 selective authority missing" "ADR-0223 selective authority remains explicit"
   Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/decisions/ADR-0223-bounded-specialist-context-and-independent-evidence.md") -Value $original -NoNewline
 
+  $original = Replace-Once "docs/decisions/ADR-0222-corrective-codex-authority-and-validation.md" "ADR-0225 supersedes Decision 1's target reasoning recommendation." "ADR-0225 is related to Decision 1's former recommendation."
+  Invoke-Fixture 1 "ADR-0222 ADR-0225 reciprocal note missing" "ADR-0222 records ADR-0225 supersession"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/decisions/ADR-0222-corrective-codex-authority-and-validation.md") -Value $original -NoNewline
+
+  $original = Replace-Once "docs/decisions/ADR-0225-remove-codex-target-reasoning-recommendation.md" "1. This decision selectively supersedes ADR-0222 Decision 1." "1. This decision is related to ADR-0222 Decision 1."
+  Invoke-Fixture 1 "ADR-0225 selective authority missing" "ADR-0225 selective authority remains explicit"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/decisions/ADR-0225-remove-codex-target-reasoning-recommendation.md") -Value $original -NoNewline
+
+  $original = Replace-Once "docs/decision-log.md" 'ADR-0222 Decision 1 | - | `docs/decisions/ADR-0225-remove-codex-target-reasoning-recommendation.md`' 'ADR-0222 | - | `docs/decisions/ADR-0225-remove-codex-target-reasoning-recommendation.md`'
+  Invoke-Fixture 1 "ADR-0225 decision-index row missing" "ADR-0225 decision-index supersession remains explicit"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/decision-log.md") -Value $original -NoNewline
+
   $original = Replace-Once "docs/decision-log.md" "ADR-0223 (refines Decision 2)" "ADR-0223 Decision 2"
   Invoke-Fixture 1 "ADR-0221 reciprocal decision-index link missing" "ADR-0221 refinement direction remains explicit"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/decision-log.md") -Value $original -NoNewline
+
+  $original = Replace-Once "docs/decision-log.md" "ADR-0224 (refines evidence/planning)" "ADR-0224 (refines evidence/planning); ADR-0999 (additional refinement)"
+  Invoke-Fixture 0 "PASS Codex workflow static invariants passed." "ADR-0221 reciprocal link allows additional refinements"
   Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/decision-log.md") -Value $original -NoNewline
 
   $original = Replace-Once "docs/decision-log.md" "ADR-0221 Decision 2 (refines); ADR-0222 Decision 7" "ADR-0221 Decision 2; ADR-0222 Decision 7"

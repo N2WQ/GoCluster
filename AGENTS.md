@@ -44,10 +44,7 @@ Before Non-trivial mutation:
    could invalidate the approach using the smallest safe read-only proof.
    Expose unresolved assumptions.
 2. Propose a versioned Scope Ledger containing the objective, agreed scope,
-   boundaries, material risks or unknowns, validation plan, and the lowest
-   sufficient target reasoning level with a concise rationale and escalation
-   condition. The user may override that recommendation. State it once before
-   approval; do not repeat it during implementation or closeout.
+   boundaries, material risks or unknowns, and validation plan.
 3. Challenge the scope before approval. Revise and reapprove it when new
    evidence materially changes authority, scope, risk, or validation.
 4. Wait for the exact token `Approved vN` matching that ledger.

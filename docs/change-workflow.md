@@ -49,10 +49,7 @@ genuinely disjoint, material questions when its coordination cost is justified.
 ### Scope
 
 A Proposed Scope Ledger identifies its version, objective, agreed items,
-boundaries, material risks or unknowns, validation plan, and the lowest
-sufficient target reasoning level with a concise rationale and escalation
-condition. The user may override the recommendation. Present it once before
-approval and do not repeat it during execution or closeout. Only explicitly
+boundaries, material risks or unknowns, and validation plan. Only explicitly
 agreed items may be implemented.
 
 Challenge the proposed scope before approval. New evidence requires a revised
