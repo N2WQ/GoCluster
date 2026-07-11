@@ -76,9 +76,9 @@ down cleanly, and tells operators what happened.
 
 ## Output Expectations
 
-- Include a `Connection lifecycle audit` section when this skill triggers.
 - State the owner, state machine, failure modes, retry/backoff contract,
   operator-visible diagnostics, tests, and remaining evidence gaps.
+- Do not require a fixed report heading.
 - Do not claim reconnect behavior is fixed unless initial failure, mid-stream
   drop, and shutdown/retry interactions were actually tested or explicitly
   scoped out.

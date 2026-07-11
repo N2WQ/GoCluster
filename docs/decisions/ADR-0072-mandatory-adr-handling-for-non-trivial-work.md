@@ -3,6 +3,8 @@
 - Status: Accepted
 - Date: 2026-04-23
 - Decision Origin: Design
+- Supersession note: ADR-0221 supersedes this decision's mandatory no-change
+  ADR application for Codex only. Fable's existing application remains active.
 
 ## Context
 The workflow now requires durable decision memory for every Non-trivial task.
@@ -46,4 +48,4 @@ decision, the task still gets the lightweight ADR stub.
 - Related tests:
 - Related docs: `AGENTS.md`, `docs/decision-memory.md`, `docs/change-workflow.md`, `docs/templates/non-trivial-change-template.md`, `docs/review-checklist.md`
 - Related TSRs:
-- Supersedes / superseded by:
+- Supersedes / superseded by: Codex application selectively superseded by ADR-0221

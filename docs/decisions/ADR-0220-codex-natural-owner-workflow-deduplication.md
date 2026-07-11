@@ -1,6 +1,6 @@
 # ADR-0220: Codex Natural-Owner Workflow Deduplication
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-07-10
 - Decision Origin: Design
 
@@ -87,4 +87,4 @@ risks.
   `docs/templates/non-trivial-change-template.md`, `codex-skills/`
 - Related ADRs: ADR-0092, ADR-0194, ADR-0210, ADR-0213, ADR-0214, ADR-0219
 - Related TSRs: none
-- Supersedes / superseded by: extends the related accepted workflow decisions
+- Supersedes / superseded by: superseded by ADR-0221

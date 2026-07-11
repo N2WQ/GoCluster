@@ -69,10 +69,8 @@ approved or implementation continues. It complements dependency rigor in
 
 ## Output Expectations
 
-- Include a `Blast-radius audit` section for Non-trivial work when this skill
-  triggers.
-- Record commands/steps used and reviewed files/packages in the existing
-  `Dependency scan evidence` line when Full rigor applies.
+- Report commands or steps used, reviewed files or packages, material impact,
+  and unknowns without requiring a fixed heading or dependency-evidence field.
 - State optional missing tools separately from required missing tools.
 - Do not claim exhaustive blast-radius coverage from text search alone when
   semantic callers, interfaces, config, or support docs are material.

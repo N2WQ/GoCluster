@@ -1,6 +1,6 @@
 # ADR-0216: Codex Pre-Code Independent Evidence
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-07-09
 - Decision Origin: Design
 
@@ -103,4 +103,4 @@ tasks after forward-testing.
   ADR-0204, ADR-0209, ADR-0211, ADR-0213; ADR-0214 (deprecated historical
   evaluation context)
 - Related TSRs: none
-- Supersedes / superseded by:
+- Supersedes / superseded by: superseded by ADR-0221

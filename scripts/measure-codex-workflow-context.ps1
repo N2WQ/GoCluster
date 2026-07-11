@@ -1,42 +1,43 @@
 <#
 .SYNOPSIS
-  Compare deterministic Codex instruction-context manifests between revisions.
+  Report deterministic Codex instruction-context deltas between revisions.
 .DESCRIPTION
-  Reads strict UTF-8 Git blobs from immutable baseline and candidate revisions,
-  then reports words, characters, UTF-8 bytes, and fixed adoption gates. This
-  is a context-footprint proxy, not model-token or effectiveness evidence.
+  Reads strict UTF-8 Git blobs from immutable revisions and reports each
+  declared scenario independently. Results are informational context-footprint
+  proxies, not adoption gates, billed tokens, reasoning usage, or quality proof.
 .PARAMETER BaselineRevision
   Immutable baseline Git revision.
 .PARAMETER CandidateRevision
   Immutable candidate Git revision.
 .PARAMETER RepoRoot
-  Repository root. Defaults to the parent of this script directory.
-.NOTES
-  Side effects: none. The script reads Git objects only.
+  Repository root.
+.PARAMETER AsJson
+  Emit machine-readable JSON instead of a table.
 #>
+
 [CmdletBinding()]
 Param(
   [Parameter(Mandatory)][string]$BaselineRevision,
   [Parameter(Mandatory)][string]$CandidateRevision,
-  [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+  [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path,
+  [switch]$AsJson
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
-$utf8 = [System.Text.UTF8Encoding]::new($false, $true)
+$utf8 = [Text.UTF8Encoding]::new($false, $true)
 $wordPattern = '[\p{L}\p{N}_]+(?:[-/][\p{L}\p{N}_]+)*'
 
-function Get-GitBlobBytes {
-  Param([string]$Revision, [string]$Path)
+function Get-GitBlobBytes([string]$Revision, [string]$Path) {
   $spec = "${Revision}:$Path"
-  $start = [System.Diagnostics.ProcessStartInfo]::new("git")
+  $start = [Diagnostics.ProcessStartInfo]::new("git")
   $start.WorkingDirectory = $RepoRoot
   $start.Arguments = "cat-file blob `"$spec`""
   $start.RedirectStandardOutput = $true
   $start.RedirectStandardError = $true
   $start.UseShellExecute = $false
-  $process = [System.Diagnostics.Process]::Start($start)
-  $memory = [System.IO.MemoryStream]::new()
+  $process = [Diagnostics.Process]::Start($start)
+  $memory = [IO.MemoryStream]::new()
   $process.StandardOutput.BaseStream.CopyTo($memory)
   $errorText = $process.StandardError.ReadToEnd()
   $process.WaitForExit()
@@ -44,61 +45,68 @@ function Get-GitBlobBytes {
   return $memory.ToArray()
 }
 
-function Measure-Paths {
-  Param([string]$Revision, [string[]]$Paths)
-  if ($Paths.Count -eq 0 -or (@($Paths | Sort-Object -Unique).Count -ne $Paths.Count)) {
-    throw "manifest paths must be non-empty and unique"
+function Measure-Paths([string]$Revision, [string[]]$Paths) {
+  if ($Paths.Count -eq 0 -or @($Paths | Sort-Object -Unique).Count -ne $Paths.Count) {
+    throw "scenario paths must be non-empty and unique"
   }
-  [long]$bytes = 0; [long]$characters = 0; [long]$words = 0
+  [long]$bytes=0; [long]$characters=0; [long]$words=0
   foreach ($path in $Paths) {
     $blob = Get-GitBlobBytes $Revision $path
-    $text = $utf8.GetString($blob)
-    if ($text.Length -gt 0 -and $text[0] -eq [char]0xFEFF) { $text = $text.Substring(1) }
+    $value = $utf8.GetString($blob)
+    if ($value.Length -gt 0 -and $value[0] -eq [char]0xFEFF) { $value = $value.Substring(1) }
     $bytes += $blob.LongLength
-    $characters += $text.Length
-    $words += [regex]::Matches($text, $wordPattern).Count
+    $characters += $value.Length
+    $words += [regex]::Matches($value, $wordPattern).Count
   }
   return @{ Words=$words; Characters=$characters; Bytes=$bytes }
 }
 
-$core = @('AGENTS.md','docs/change-workflow.md','docs/templates/non-trivial-change-template.md','docs/review-checklist.md','VALIDATION.md','docs/dev-runbook.md')
-$skills = @('design-challenger','go-code-quality-review','requirements-ambiguity-review','scientific-model-oracle','scope-ledger-adversarial-review','test-strategy-adversary')
-$manifests = @(
-  @{ Name='always'; Baseline=@('AGENTS.md'); Candidate=@('AGENTS.md') },
-  @{ Name='planning'; Baseline=@('AGENTS.md','docs/change-workflow.md','docs/templates/non-trivial-change-template.md'); Candidate=@('AGENTS.md','docs/change-workflow.md','docs/templates/non-trivial-change-template.md') },
-  @{ Name='full-core'; Baseline=$core; Candidate=$core },
-  @{ Name='codex-workflow'; Baseline=$core; Candidate=$core + @('docs/runbooks/codex-workflow-checks.md') },
-  @{ Name='triggered'; Baseline=$core; Candidate=$core + @('docs/runbooks/codex-workflow-checks.md','docs/runbooks/codex-triggered-validation-tools.md') }
+$standardPlanning = @('AGENTS.md','docs/change-workflow.md','docs/templates/non-trivial-change-template.md')
+$standardExecution = @('AGENTS.md','docs/change-workflow.md','docs/code-quality.md','docs/review-checklist.md','VALIDATION.md','docs/dev-runbook.md')
+$highRiskPlanning = $standardPlanning + @('codex-skills/README.md')
+$highRiskExecution = $standardExecution + @('codex-skills/README.md','docs/runbooks/codex-triggered-validation-tools.md')
+$skillNames = @(
+  'decision-memory-audit','workflow-contract-audit',
+  'requirements-ambiguity-review','scientific-model-oracle',
+  'design-challenger','scope-ledger-adversarial-review',
+  'test-strategy-adversary','go-code-quality-review','go-code-walk',
+  'go-blast-radius-audit','go-config-contract-audit',
+  'go-connection-lifecycle-audit','go-leak-detection',
+  'go-retained-state-audit','pprof-impact-review'
 )
-foreach ($skill in $skills) {
-  $path = "codex-skills/$skill/SKILL.md"
-  $manifests += @{ Name="skill-$skill"; Baseline=@('AGENTS.md',$path); Candidate=@('AGENTS.md',$path) }
+$scenarios = @(
+  @{ Name='always-loaded'; Paths=@('AGENTS.md') },
+  @{ Name='standard-planning'; Paths=$standardPlanning },
+  @{ Name='standard-execution-closeout'; Paths=$standardExecution },
+  @{ Name='high-risk-planning'; Paths=$highRiskPlanning },
+  @{ Name='high-risk-execution-closeout'; Paths=$highRiskExecution }
+)
+foreach ($skill in $skillNames) {
+  $scenarios += @{ Name="specialist-$skill"; Paths=@('AGENTS.md',"codex-skills/$skill/SKILL.md") }
 }
-$manifestProjection = ($manifests | ForEach-Object { "$($_.Name)|B:$($_.Baseline -join ',')|C:$($_.Candidate -join ',')" }) -join "`n"
-$sha256 = [Security.Cryptography.SHA256]::Create()
-try { $manifestHash = ([BitConverter]::ToString($sha256.ComputeHash([Text.Encoding]::UTF8.GetBytes($manifestProjection)))).Replace('-','').ToLowerInvariant() } finally { $sha256.Dispose() }
-$expectedManifestHash = 'b673d748c102dd07f5d6728027b4b952f0239d1a6e443d033ac8d1ca06e96dd8'
-if ($manifestHash -ne $expectedManifestHash) { throw "frozen manifest order/content changed: $manifestHash" }
 
-$rows = @()
-foreach ($manifest in $manifests) {
-  $before = Measure-Paths $BaselineRevision $manifest.Baseline
-  $after = Measure-Paths $CandidateRevision $manifest.Candidate
-  if ($before.Words -eq 0 -or $before.Bytes -eq 0) { throw "zero baseline in $($manifest.Name)" }
-  $wordReduction = 100.0 * ($before.Words - $after.Words) / $before.Words
-  $byteReduction = 100.0 * ($before.Bytes - $after.Bytes) / $before.Bytes
-  $rows += [pscustomobject]@{
-    Manifest=$manifest.Name; BaselineWords=$before.Words; CandidateWords=$after.Words
-    WordReductionPct=$wordReduction; BaselineBytes=$before.Bytes; CandidateBytes=$after.Bytes
-    ByteReductionPct=$byteReduction; CandidateCharacters=$after.Characters
+$names = @($scenarios | ForEach-Object { $_.Name })
+if (@($names | Sort-Object -Unique).Count -ne $names.Count) { throw "scenario names must be unique" }
+
+$rows = foreach ($scenario in $scenarios) {
+  $before = Measure-Paths $BaselineRevision $scenario.Paths
+  $after = Measure-Paths $CandidateRevision $scenario.Paths
+  [pscustomobject]@{
+    Scenario = $scenario.Name
+    BaselineWords = $before.Words
+    CandidateWords = $after.Words
+    WordDelta = $after.Words - $before.Words
+    BaselineBytes = $before.Bytes
+    CandidateBytes = $after.Bytes
+    ByteDelta = $after.Bytes - $before.Bytes
+    CandidateCharacters = $after.Characters
   }
 }
-$meanWords = ($rows | Measure-Object WordReductionPct -Average).Average
-$meanBytes = ($rows | Measure-Object ByteReductionPct -Average).Average
-$growth = @($rows | Where-Object { $_.CandidateWords -gt $_.BaselineWords -or $_.CandidateBytes -gt $_.BaselineBytes })
-$skillFailure = @($rows | Where-Object { $_.Manifest -like 'skill-*' -and ($_.CandidateWords -ge $_.BaselineWords -or $_.CandidateBytes -ge $_.BaselineBytes) })
-$passed = $growth.Count -eq 0 -and $skillFailure.Count -eq 0 -and $meanWords -ge 5.0 -and $meanBytes -ge 5.0
-$rows | Format-Table -AutoSize
-Write-Host ("Mean reductions: words={0:N3}% bytes={1:N3}%" -f $meanWords,$meanBytes)
-Write-Host "Deterministic context-footprint gate: $(if($passed){'PASS'}else{'FAIL'})"
-if (-not $passed) { exit 1 }
+
+if ($AsJson) {
+  $rows | ConvertTo-Json -Depth 3
+} else {
+  $rows | Format-Table -AutoSize
+  Write-Host "INFO context-footprint results are informational; growth or reduction does not decide whether a rule is useful."
+}
+exit 0

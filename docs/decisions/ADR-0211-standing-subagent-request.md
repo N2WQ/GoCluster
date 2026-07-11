@@ -1,6 +1,6 @@
 # ADR-0211: Standing Subagent Request
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-07-09
 - Decision Origin: Design
 
@@ -94,4 +94,4 @@ and ADR-0209's explorer/worker type selection remain in force.
   `customgpt/source-map.md`, `customgpt/developer-guide-index.md`
 - Related ADRs: ADR-0199, ADR-0202, ADR-0205, ADR-0209
 - Related TSRs: none
-- Supersedes / superseded by: supersedes ADR-0205 authorization semantics
+- Supersedes / superseded by: superseded by ADR-0221

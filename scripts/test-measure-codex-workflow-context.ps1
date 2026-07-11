@@ -1,35 +1,27 @@
 <#
 .SYNOPSIS
-  Test deterministic Codex context measurement against temporary Git objects.
-.DESCRIPTION
-  Builds baseline/candidate commits containing the production manifest paths.
-  Exercises the success gate, pinned-revision isolation, missing and invalid
-  blobs, candidate-only components, and the fixed reduction threshold.
-.NOTES
-  Side effects: creates and removes one temporary Git repository.
+  Test informational Codex context measurement against immutable Git objects.
 #>
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $script = Join-Path $PSScriptRoot 'measure-codex-workflow-context.ps1'
 $root = Join-Path ([IO.Path]::GetTempPath()) ('gocluster-context-' + [guid]::NewGuid().ToString('N'))
+$engine = (Get-Process -Id $PID).Path
 
-function Invoke-Measurement {
-  Param([string]$Baseline, [string]$Candidate, [string]$ScriptPath=$script)
-  $hostExe = (Get-Process -Id $PID).Path
-  $priorPreference = $ErrorActionPreference
-  $ErrorActionPreference = 'Continue'
-  try {
-    $output = & $hostExe -NoProfile -ExecutionPolicy Bypass -File $ScriptPath -BaselineRevision $Baseline -CandidateRevision $Candidate -RepoRoot $root 2>&1
-  } finally {
-    $ErrorActionPreference = $priorPreference
-  }
-  return @{ ExitCode=$LASTEXITCODE; Output=($output -join "`n") }
+function Invoke-Measurement([string]$Baseline, [string]$Candidate, [switch]$Json) {
+  $args = @('-NoProfile','-File',$script,'-BaselineRevision',$Baseline,'-CandidateRevision',$Candidate,'-RepoRoot',$root)
+  if ($Json) { $args += '-AsJson' }
+  $priorPreference=$ErrorActionPreference
+  $ErrorActionPreference='Continue'
+  try { $output = (& $engine @args 2>&1 | Out-String) } finally { $ErrorActionPreference=$priorPreference }
+  return @{ ExitCode=$LASTEXITCODE; Output=$output }
 }
 
-function Assert-Exit {
-  Param([hashtable]$Result, [int]$Expected, [string]$Label, [string]$Pattern='')
-  if ($Result.ExitCode -ne $Expected) { throw "$Label exit=$($Result.ExitCode), expected=$Expected`n$($Result.Output)" }
-  if ($Pattern -and $Result.Output -notmatch $Pattern) { throw "$Label missing output pattern '$Pattern'`n$($Result.Output)" }
+function Assert-Result([hashtable]$Result, [int]$Exit, [string]$Pattern, [string]$Label) {
+  if ($Result.ExitCode -ne $Exit) { throw "$Label exit=$($Result.ExitCode), expected=$Exit`n$($Result.Output)" }
+  if ($Pattern -and $Result.Output -notmatch $Pattern) { throw "$Label missing '$Pattern'`n$($Result.Output)" }
+  Write-Host "PASS $Label"
 }
 
 try {
@@ -37,51 +29,62 @@ try {
   git -C $root init -q
   git -C $root config user.email test@example.invalid
   git -C $root config user.name test
-  $paths=@('AGENTS.md','docs/change-workflow.md','docs/templates/non-trivial-change-template.md','docs/review-checklist.md','VALIDATION.md','docs/dev-runbook.md')
-  $skills=@('design-challenger','go-code-quality-review','requirements-ambiguity-review','scientific-model-oracle','scope-ledger-adversarial-review','test-strategy-adversary')
-  $paths += $skills | ForEach-Object { "codex-skills/$_/SKILL.md" }
-  foreach($path in $paths){$target=Join-Path $root $path; New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null; Set-Content -LiteralPath $target -Value (('baseline words ' * 80) + "`n") -NoNewline}
+
+  $core=@('AGENTS.md','docs/change-workflow.md','docs/templates/non-trivial-change-template.md','docs/code-quality.md','docs/review-checklist.md','VALIDATION.md','docs/dev-runbook.md','codex-skills/README.md','docs/runbooks/codex-triggered-validation-tools.md')
+  $skills=@('decision-memory-audit','workflow-contract-audit','requirements-ambiguity-review','scientific-model-oracle','design-challenger','scope-ledger-adversarial-review','test-strategy-adversary','go-code-quality-review','go-code-walk','go-blast-radius-audit','go-config-contract-audit','go-connection-lifecycle-audit','go-leak-detection','go-retained-state-audit','pprof-impact-review')
+  $paths=$core + @($skills | ForEach-Object { "codex-skills/$_/SKILL.md" })
+
+  $weight=1
+  foreach($path in $paths) {
+    $target=Join-Path $root $path
+    New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null
+    Set-Content -LiteralPath $target -Value ('word ' * $weight) -NoNewline
+    $weight++
+  }
   git -C $root add .; git -C $root commit -qm baseline
   $baseline=(git -C $root rev-parse HEAD).Trim()
-  foreach($path in $paths){Set-Content -LiteralPath (Join-Path $root $path) -Value (('short words ' * 20) + "`n") -NoNewline}
-  foreach($path in @('docs/runbooks/codex-workflow-checks.md','docs/runbooks/codex-triggered-validation-tools.md')){$target=Join-Path $root $path; New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null; Set-Content -LiteralPath $target -Value "route only`n" -NoNewline}
-  git -C $root add .; git -C $root commit -qm candidate
-  $candidate=(git -C $root rev-parse HEAD).Trim()
-  Assert-Exit (Invoke-Measurement $baseline $candidate) 0 'shrinking candidate' 'gate: PASS'
 
-  Set-Content -LiteralPath (Join-Path $root 'AGENTS.md') -Value ('dirty growth ' * 1000) -NoNewline
-  Assert-Exit (Invoke-Measurement $baseline $candidate) 0 'pinned candidate isolation' 'gate: PASS'
+  foreach($path in $paths) {
+    $current=Get-Content -Raw -LiteralPath (Join-Path $root $path)
+    Set-Content -LiteralPath (Join-Path $root $path) -Value ($current + $current) -NoNewline
+  }
+  git -C $root add .; git -C $root commit -qm growth
+  $growth=(git -C $root rev-parse HEAD).Trim()
 
-  git -C $root reset --hard -q $candidate
-  git -C $root rm -q AGENTS.md
-  git -C $root commit -qm missing-path
+  $result=Invoke-Measurement $baseline $growth -Json
+  Assert-Result $result 0 '"Scenario"' 'growth remains informational'
+  $jsonStart=$result.Output.IndexOf('[')
+  $jsonEnd=$result.Output.LastIndexOf(']')
+  if($jsonStart -lt 0 -or $jsonEnd -lt $jsonStart){throw "measurement JSON not found`n$($result.Output)"}
+  $rows=$result.Output.Substring($jsonStart,$jsonEnd-$jsonStart+1) | ConvertFrom-Json
+  foreach($name in @('always-loaded','standard-planning','standard-execution-closeout','high-risk-planning','high-risk-execution-closeout')) {
+    if ($rows.Scenario -notcontains $name) { throw "missing scenario $name`n$($result.Output)" }
+  }
+  foreach($skill in $skills) {
+    if ($rows.Scenario -notcontains "specialist-$skill") { throw "missing specialist scenario $skill" }
+  }
+  foreach($row in $rows) {
+    if ($row.CandidateWords -ne 2 * $row.BaselineWords) { throw "incorrect word total for $($row.Scenario)" }
+    if ($row.WordDelta -ne $row.BaselineWords) { throw "incorrect word delta for $($row.Scenario)" }
+  }
+  if ($result.Output -match 'gate:|Mean reduction|threshold') { throw 'diagnostic output contains an adoption gate' }
+  Write-Host 'PASS exact per-scenario totals'
+
+  Set-Content -LiteralPath (Join-Path $root 'AGENTS.md') -Value ('dirty ' * 1000) -NoNewline
+  Assert-Result (Invoke-Measurement $baseline $growth) 0 'informational' 'dirty worktree cannot affect pinned revisions'
+
+  git -C $root reset --hard -q $growth
+  git -C $root rm -q AGENTS.md; git -C $root commit -qm missing
   $missing=(git -C $root rev-parse HEAD).Trim()
-  Assert-Exit (Invoke-Measurement $baseline $missing) 1 'missing manifest path' 'cannot read Git blob'
+  Assert-Result (Invoke-Measurement $baseline $missing) 1 'cannot read Git blob' 'missing blob fails'
 
-  git -C $root reset --hard -q $candidate
+  git -C $root reset --hard -q $growth
   [IO.File]::WriteAllBytes((Join-Path $root 'AGENTS.md'), [byte[]](0xC3,0x28))
-  git -C $root add AGENTS.md; git -C $root commit -qm invalid-utf8
+  git -C $root add AGENTS.md; git -C $root commit -qm invalid
   $invalid=(git -C $root rev-parse HEAD).Trim()
-  Assert-Exit (Invoke-Measurement $baseline $invalid) 1 'invalid UTF-8 blob' 'Unable to translate bytes'
+  Assert-Result (Invoke-Measurement $baseline $invalid) 1 'Unable to translate bytes' 'invalid UTF-8 fails'
 
-  git -C $root reset --hard -q $candidate
-  Set-Content -LiteralPath (Join-Path $root 'docs/runbooks/codex-workflow-checks.md') -Value ('candidate only growth ' * 2000) -NoNewline
-  git -C $root add .; git -C $root commit -qm candidate-component-growth
-  $componentGrowth=(git -C $root rev-parse HEAD).Trim()
-  Assert-Exit (Invoke-Measurement $baseline $componentGrowth) 1 'candidate-only component growth' 'gate: FAIL'
-
-  git -C $root reset --hard -q $baseline
-  foreach($path in @('docs/runbooks/codex-workflow-checks.md','docs/runbooks/codex-triggered-validation-tools.md')){$target=Join-Path $root $path; New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null; Set-Content -LiteralPath $target -Value "route only`n" -NoNewline}
-  git -C $root add .; git -C $root commit -qm below-threshold
-  $belowThreshold=(git -C $root rev-parse HEAD).Trim()
-  Assert-Exit (Invoke-Measurement $baseline $belowThreshold) 1 'fixed reduction threshold' 'gate: FAIL'
-
-  $mutatedScript = Join-Path $root 'measure-reordered.ps1'
-  $scriptText = [IO.File]::ReadAllText($script).Replace("Name='always'", "Name='manifest-swap'").Replace("Name='planning'", "Name='always'").Replace("Name='manifest-swap'", "Name='planning'")
-  [IO.File]::WriteAllText($mutatedScript, $scriptText, [Text.UTF8Encoding]::new($false))
-  Assert-Exit (Invoke-Measurement $baseline $candidate $mutatedScript) 1 'frozen manifest order' 'frozen manifest order/content changed'
-
-  Write-Host 'PASS deterministic context measurement fixtures'
+  Write-Host 'PASS informational context measurement fixtures'
 } finally {
   if(Test-Path $root){Remove-Item -LiteralPath $root -Recurse -Force}
 }

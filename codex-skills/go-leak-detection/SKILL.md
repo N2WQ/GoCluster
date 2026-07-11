@@ -64,9 +64,9 @@ heap growth.
 
 ## Output Expectations
 
-- Include a `Leak-detection audit` section when this skill triggers.
 - Name the leak class, owner, cancellation/close path, tests, profiles, and
   remaining evidence gaps.
+- Do not require a fixed report heading.
 - For command-backed evidence, reference the captured `Verification command
   reporting` excerpt. For static-only evidence, label it as static reasoning and
   name the inspected files.

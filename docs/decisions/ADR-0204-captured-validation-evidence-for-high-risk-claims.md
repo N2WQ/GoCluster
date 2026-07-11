@@ -1,6 +1,6 @@
 # ADR-0204: Captured Validation Evidence For High-Risk Claims
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-07-09
 - Decision Origin: Design
 
@@ -108,5 +108,4 @@ Require captured evidence for command-backed high-risk validation claims:
   `customgpt/common-questions.md`
 - Related ADRs: ADR-0194, ADR-0199, ADR-0202, ADR-0203
 - Related TSRs: none
-- Supersedes / superseded by: extends ADR-0194 claim-evidence requirements
-  and ADR-0203 SELF-AUDIT evidence requirements
+- Supersedes / superseded by: superseded by ADR-0221; ADR-0194 remains accepted

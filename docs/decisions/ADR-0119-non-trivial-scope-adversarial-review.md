@@ -1,6 +1,6 @@
 # ADR-0119: Non-trivial Scope Adversarial Review
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-05-06
 - Decision Origin: Design
 
@@ -65,4 +65,4 @@ Non-trivial template, and the validation rubric.
   - `AGENTS.md`
   - `docs/change-workflow.md`
 - Related TSRs: none
-- Supersedes / superseded by: none
+- Supersedes / superseded by: superseded by ADR-0221

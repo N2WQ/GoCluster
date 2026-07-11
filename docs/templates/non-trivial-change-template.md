@@ -1,232 +1,52 @@
-# docs/templates/non-trivial-change-template.md
+# Optional Non-trivial Change Examples
 
-Use this exact Codex evidence-ledger shape for Non-trivial changes unless the
-user explicitly requests a different reporting shape.
+These examples help present material information. They are not mandatory
+headings, field counts, marker order, or checker-enforced response formats.
+Omit irrelevant fields and do not print `N/A` merely to complete a template.
 
-This template applies only to Non-trivial changes. Read-only explanation,
-review, audit, diagnosis, prioritization, and requested recommendations follow
-the read-only route in `AGENTS.md` and `docs/change-workflow.md`.
+## Approval Packet
 
-The ledger is strict but compact. Token efficiency changes reporting shape only;
-it does not reduce required discovery, approval, dependency rigor, validation,
-review, ADR handling, or traceability.
+```text
+Proposed Scope Ledger vN
 
-If a required marker cannot be completed from inspected workspace evidence,
-Codex must stop and report the missing evidence instead of continuing. Omit
-untriggered optional details instead of filling them with placeholder text.
+Current state: <material evidence and unknowns>
+Objective: <intended outcome>
+Agreed scope: <bounded items>
+Boundaries: <explicit exclusions and stop conditions>
+Material risks: <only applicable risks>
+Validation plan: <touched-surface commands or evidence>
+Scope challenge: <material finding and disposition, or none>
+```
 
-Later markers may reference earlier evidence by marker name instead of
-restating unchanged facts.
+Only exact `Approved vN` for that ledger authorizes Non-trivial mutation.
 
-## Phase A: Approval Packet
+Decompose work when real rollback, ownership, uncertainty, or validation
+boundaries exist. A bounded coherent change may remain one slice. Broad
+refactor-shaped scope is not approval-ready, but no fixed per-slice schema is
+required.
 
-### GATE
-- Skill marker: emit exactly one of these standalone lines for this assistant turn:
-  - Skill check: selected <skill>
-  - Skill check: none applicable
-- Classification: Non-trivial
-- Ledger status: Approved vN found: no
-- Independent-agent status: completed | unsupported |
-  not authorized/not requested | explicitly prohibited | failed | timed out |
-  inconclusive
-- Independent-agent detail: <none | context, failure, or timeout detail>
-- Independent-agent role outcome: used | N/A
-- Waiver disposition: none | <scope, owner, mitigation, expiry>
-- Pre-approval independent agents: <role; status; detail; purpose; allowed
-  actions; lead disposition>
+## Implementation Update
 
-### DISCOVERY
-- entrypoints/surfaces:
-- caller/callee flow:
-- persisted/config/archive/schema:
-- user-visible/help/docs:
-- existing tests:
-- independent-agent evidence: <none | role; canonical status; detail; purpose;
-  findings used as evidence; lead disposition>
-- parallel-discovery evidence: <N/A - reason | shared revision/worktree;
-  bounded lanes; inspected evidence; conflicts/failures; lead synthesis>
-- scientific-model-oracle: <N/A - reason | canonical status; detail; role
-  outcome; model-contract sheet; normative conflicts/unknowns; lead disposition>
-- requirements-ambiguity-review: <N/A - reason | canonical status; detail;
-  role outcome; ambiguity register; resolved/delegated/blocking items; lead
-  disposition>
-- design-challenger: <N/A - reason | canonical status; detail; role outcome;
-  context-isolation evidence; alternatives; selected/rejected reasoning; lead
-  disposition>
-- unknowns:
+Use only when an update is useful:
 
-### SCOPE
-- Proposed Scope Ledger vN
-- Objective:
-- In scope:
-  - [Agreed|Pending|Rejected|Deferred] item
-- Status authority: use the fail-closed definitions in
-  `docs/change-workflow.md`; only `Agreed` items enter implementation
-- Out of scope:
-- Slice plan:
-  - slice:
-  - objective:
-  - bounded files/packages/docs:
-  - blast-radius boundary:
-  - production-safe stopping point:
-  - targeted checks before next slice:
-- Risks requiring attention:
-- Reasoning budget: <low|medium|high|xhigh> (lowest sufficient). Rationale: <one sentence>; escalation trigger: <one phrase or "none expected">.
+```text
+Implemented: <approved item or coherent unit>
+Evidence: <targeted result>
+Material discovery: <scope-relevant delta, if any>
+```
 
-### SCOPE ADVERSARIAL REVIEW
-- question: What edge case would make this scope unsafe or incomplete?
-- scope-ledger-adversarial-review: <canonical status; detail; role outcome;
-  findings; evidence gap/waiver; lead disposition>
-- applicable edge areas:
-- gaps found: none | <items>
-- disposition: nothing material found | revise ledger to v<N+1>
+Stop for revised approval if material discovery exceeds agreed scope.
 
-If material gaps are found, do not present the approval token for the current
-version. Produce the revised Scope Ledger and repeat this review.
+## Closeout
 
-Do not present the approval token while any item or implementation slice is
-`Pending`.
+```text
+Outcome: <what changed>
+Material findings or gaps: <only applicable findings>
+Validation: <commands and observed results>
+Traceability: <approved item -> implementation -> validation>
+Decision: <ADR/TSR reference when durable, otherwise concise disposition>
+```
 
-Stop here and wait for the exact approval token:
-`Approved vN`
-
-No code, diffs, file writes, formatters, or full validation commands before
-that approval.
-
----
-
-## Phase B: Execution Ledger
-
-### GATE
-- Skill marker: emit exactly one of these standalone lines for this assistant turn:
-  - Skill check: selected <skill>
-  - Skill check: none applicable
-- Classification: Non-trivial
-- Ledger status: Approved vN found: yes
-- Approved scope version:
-- Independent-agent status: completed | unsupported |
-  not authorized/not requested | explicitly prohibited | failed | timed out |
-  inconclusive
-- Independent-agent detail: <none | context, failure, or timeout detail>
-- Independent-agent role outcome: used | N/A
-- Waiver disposition: none | <scope, owner, mitigation, expiry>
-- Independent-agent phase/use: none | parallel-discovery explorer |
-  scientific-model-oracle | requirements-ambiguity-review |
-  design-challenger | post-approval worker | test-strategy-adversary |
-  go-code-quality-review explorer | fresh-verifier explorer - <lead-owned
-  disposition>
-
-### PREFLIGHT
-- Git preflight: branch=<name>; worktree=<clean|dirty acknowledged>; rollback=<hash/tag/branch>
-- Dirty files not owned by this task:
-
-### DESIGN
-- current flow:
-- code-walk evidence: <commands/files/ADRs inspected | N/A - reason>
-- implementation plan:
-- independent-agent plan: none | <worker/go-code-quality-review/fresh-verifier
-  roles; approved scope version; slice name/objective; base revision or
-  integration point; allowed paths; forbidden paths; production-safe stopping
-  point; targeted checks; expected output/changed paths or findings-only
-  output; stop conditions; lead verification>
-- contracts: changed | unchanged
-- user-visible behavior: changed | unchanged
-- operator-visible behavior: changed | unchanged | N/A
-- dependency rigor: Light | Full
-- dependency scan evidence: <required for Full rigor>
-- blast-radius audit: <result | N/A - reason>
-- triggered audits: Config Contract Audit | Retained-State Audit | Performance evidence | Decision-memory audit | Workflow-drift audit | none
-- connection lifecycle audit: <result | N/A - reason>
-- leak-detection audit: <result | N/A - reason>
-- YAML comment/header audit: PASS|FAIL|N/A - note
-- Go comment intent audit: PASS|FAIL|N/A - note
-- Go crawler-entry audit: PASS|FAIL|N/A - note
-- README impact: Required | Not required - <one sentence>
-- Support-agent docs impact: Required | Not required - <one sentence>
-- ADR/TSR pre-read: <relevant refs | No relevant ADR found; No relevant TSR found>
-- claim evidence plan: <how progress/validation/performance/science claims will be grounded | N/A - reason>
-- validation lane selected from touched surface, not task size:
-  documentation-only Markdown | workflow/skill-doc |
-  code/mixed/runtime-contract | other - <reason>
-- test-strategy-adversary: <N/A - reason | canonical status; detail; role
-  outcome; contract-to-test matrix; false-green risks; findings and lead
-  disposition; repeated-pass status>
-- checker plan:
-
-### IMPLEMENTATION
-For each slice:
-- slice:
-- objective:
-- files:
-- blast-radius boundary:
-- subagent use: none | <worker role; approved scope version; slice; base
-  revision or integration point; allowed paths; forbidden paths; production-safe
-  stopping point; targeted checks; expected output/changed paths; stop
-  conditions>
-- checks:
-- result:
-- next-slice gate: passed | blocked - reason
-- remaining risk:
-
-### REVIEW
-- findings by severity:
-- confirmed fixes:
-- rerun checks:
-- go-code-quality-review: <canonical status; detail; role outcome; findings;
-  evidence gap/waiver; lead disposition | N/A - no Go implementation>
-- fresh verifier pass: <canonical status; detail; role outcome; findings;
-  evidence gap/waiver; lead disposition | N/A - reason>
-- subagent lead verification: PASS|FAIL|N/A - note
-- verification command evidence: <captured excerpts required by
-  `docs/review-checklist.md` Verification command reporting | N/A - reason>
-
-If no material findings:
-- `Review Pass findings: none material`
-
-### SELF-AUDIT
-Use the canonical SA1-SA15 mapping in `docs/review-checklist.md`.
-
-- Applicability manifest:
-  - applicable: <SA IDs>
-  - not applicable: <SA IDs> - <shared reason; repeat for different reasons>
-- Results:
-  - <applicable SA ID>: PASS|FAIL - <evidence note or earlier-marker reference>
-
-Classify every SA1-SA15 ID exactly once. The manifest replaces individual
-`N/A` rows; missing, unknown, or duplicate IDs fail the Self-Audit. Applicable
-IDs require results. Required independent evidence whose canonical status is
-unsupported, not authorized/not requested, explicitly prohibited, failed,
-timed out, or inconclusive, or that is missing or stale, is a
-`FAIL` or explicit gap/waiver, not an omission. SA7 and SA8 reference `REVIEW`
-verification command evidence when command-backed. The lead owns every final
-disposition.
-
-### CLOSEOUT
-- summary:
-- tradeoffs:
-- risks and mitigations:
-- contracts and compatibility:
-- user impact and determinism:
-- README impact:
-- Support-agent docs impact:
-- fresh verifier outcome:
-- independent-agent use and lead-owned disposition:
-- claim evidence:
-- verification commands and results: <reference `REVIEW` verification command
-  evidence; do not repeat captured excerpts>
-- validation lane:
-- ADR handling outcome:
-- Decision refs:
-
-### TRACEABILITY
-For every Scope Ledger item that was `Agreed` at the start of implementation:
-- ledger item:
-- locations:
-- tests/checks:
-- docs/comments:
-- support-agent docs:
-- independent-agent outputs:
-- decision refs:
-
-### VALIDATION
-End with the exact three-line block owned by `VALIDATION.md`.
+Record evidence once. Explain failures, skips, waivers, residual risks, and
+high-risk evidence; do not enumerate successful but irrelevant process
+categories.

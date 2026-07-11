@@ -1,6 +1,6 @@
 # ADR-0203: Independent SELF-AUDIT Scoring Evidence
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-07-09
 - Decision Origin: Design
 
@@ -122,4 +122,4 @@ frontmatter/manifest consistency, and `scripts/verify-codex-skills.ps1`.
   `customgpt/common-questions.md`
 - Related ADRs: ADR-0144, ADR-0179, ADR-0194, ADR-0199, ADR-0202
 - Related TSRs: none
-- Supersedes / superseded by: extends ADR-0202 review-agent evidence model
+- Supersedes / superseded by: superseded by ADR-0221

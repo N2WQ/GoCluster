@@ -25,9 +25,9 @@ not a single flat current-state specification.
   unless a later accepted ADR explicitly adopts it.
 - `Superseded` and `Deprecated` records are decision history. They explain why
   the current design changed but should not be treated as active contracts.
-- Lightweight ADR stubs that say `No durable decision change` exist for
-  traceability. They record that a Non-trivial task happened without creating a
-  new runtime, protocol, config, or operational contract.
+- Historical lightweight no-change stubs remain valid records of the workflow
+  that created them. Codex no longer creates them by default; Fable retains its
+  current ADR-handling rule until separately changed.
 
 ## Known Index Hygiene
 

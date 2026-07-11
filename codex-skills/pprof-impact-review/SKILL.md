@@ -41,6 +41,8 @@ Use this skill for repo-local performance evidence review when multiple profile 
 
 ## Output expectations
 
+Do not require a fixed report heading or workflow envelope.
+
 - Use absolute timestamps.
 - Mention process age or restart context when it affects interpretation.
 - Do not claim runtime confirmation from microbenchmarks alone.

@@ -1,136 +1,72 @@
-# docs/decision-memory.md
+# Decision Memory
 
-This document defines how to preserve durable architectural and troubleshooting knowledge.
+ADRs preserve durable architecture, operations, scientific, and workflow
+decisions. TSRs preserve durable troubleshooting evidence and incident
+learning. They are not task-administration logs.
 
-## Purpose
-Use ADRs and TSRs to preserve decisions, tradeoffs, reversals, and incident-driven learning so that future work does not re-debate settled issues or erase important context.
+## Canonical Locations
 
-## Canonical locations
-- ADR files: `docs/decisions/`
+- ADRs: `docs/decisions/`
 - ADR index: `docs/decision-log.md`
-- Troubleshooting records: `docs/troubleshooting/`
-- Troubleshooting index: `docs/troubleshooting-log.md`
+- TSRs: `docs/troubleshooting/`
+- TSR index: `docs/troubleshooting-log.md`
+- Templates: `docs/templates/adr-template.md` and
+  `docs/troubleshooting/TSR-TEMPLATE.md`
 
-## Mandatory pre-read
-For every Non-trivial task and every troubleshooting task:
-1. read `docs/decision-log.md`
-2. read `docs/troubleshooting-log.md`
-3. open the ADRs/TSRs relevant to the affected component
-4. if none apply, state:
-   - `No relevant ADR found`
-   - and/or `No relevant TSR found`
+Search the indexes for the affected component or decision chain and open the
+relevant records. Do not read every ADR and TSR for unrelated work. Current
+source, tests, runtime contracts, and operator documentation remain the final
+evidence for current behavior.
 
-## ADR handling for Non-trivial work
-Every Non-trivial task must end with one of:
-- a new ADR
-- an updated ADR
-- a lightweight ADR stub recording `No durable decision change`
+## Codex Application
 
-This makes ADR handling mandatory even when the task does not introduce a new
-durable design decision.
+Every Non-trivial Codex closeout considers and states the decision disposition.
+Create or update an ADR only when a durable decision changes. Create or update a
+TSR when troubleshooting produces durable evidence, root cause, or operational
+learning. When neither applies, record the disposition in the closeout without
+creating a file solely to document the task.
 
-## When a full ADR is required
-Create or update a full ADR when a Non-trivial change affects any of:
-- protocol or compatibility
-- parser behavior
-- concurrency model
-- backpressure, queue, drop, or disconnect policy
-- deadlines, retries, or shutdown behavior
-- resource bounds
-- reliability or observability contracts
-- shared component behavior used by multiple packages
-- operational mode selection with user-visible or operator-visible impact
+## Fable Application
 
-If none of those changed, create a lightweight ADR stub instead of a full ADR.
-The stub should record:
-- task/date/scope
-- summary of what changed
-- `No durable decision change`
-- links to relevant code/tests/docs when applicable
+Fable continues to follow `CLAUDE.md`: every Non-trivial Fable task uses a new
+ADR, updated ADR, or lightweight ADR stub. This Codex workflow change does not
+alter that requirement. Fable retains its existing templates, indexes, review,
+validation, and reporting semantics until separately approved.
 
-Keep lightweight no-durable-change stubs short. They preserve traceability; they
-are not a substitute for a full ADR when a durable decision changed.
+## Durable ADR Triggers
 
-## When a TSR is required
-Create or update a TSR when:
-- the task originates from debugging, production triage, or failure analysis
-- a bug or incident required hypothesis testing or root-cause analysis
-- troubleshooting produced durable system insight even before a final fix landed
+Create or supersede an ADR for durable decisions involving:
 
-If troubleshooting leads to a durable decision change:
-1. create/update the TSR first
-2. then create/update the ADR
-3. cross-link both
+- protocol, parser, compatibility, or operator-visible behavior;
+- concurrency, lifecycle, shutdown, deadlines, retry, backpressure, queues,
+  drops, or disconnect policy;
+- resource bounds, persistence, shared-component behavior, or observability
+  contracts;
+- scientific/model semantics or supportable claims;
+- operational mode selection; or
+- repository workflow authority and validation policy.
 
-If troubleshooting ends without a durable decision change:
-- record the troubleshooting outcome in the TSR
-- still create the lightweight ADR stub required for the Non-trivial task
+Use `docs/templates/adr-template.md`. Include context, decision, alternatives,
+consequences, operational impact, links, and supersession. Preserve accepted
+history: reverse or replace it through a new ADR and link both directions.
 
-## Naming convention
-Suggested filenames:
-- `docs/decisions/ADR-0001-short-title.md`
-- `docs/troubleshooting/TSR-0001-short-title.md`
+## TSR Triggers
 
-Use zero-padded numeric IDs and keep titles short.
+Create or update a TSR when work originates in production triage, debugging,
+hypothesis testing, root-cause analysis, or durable failure learning. If the
+troubleshooting changes a durable decision, create or update the TSR first,
+then the ADR, and cross-link them.
 
-## ADR required fields
-- Title
-- Status: Proposed | Accepted | Superseded | Deprecated
-- Date
-- Decision Origin: Design | Incident | Troubleshooting chat
-- Context
-- Decision
-- Alternatives considered
-- Consequences
-- Links
+Preserve earlier hypotheses and evidence that disproved them. Use
+`docs/troubleshooting/TSR-TEMPLATE.md` and run
+`scripts/check-troubleshooting-records.ps1` when a TSR, its template, or its
+index changes.
 
-Use `docs/templates/adr-template.md`.
+## Index And Closeout
 
-## TSR required fields
-- Title
-- Status: Open | Resolved | Superseded
-- Date opened
-- Date resolved or current status date
-- RCA Summary:
-  - What happened
-  - Why
-  - What fixed it
-  - How we know
-  - Operator/support answer
-- Trigger
-- Symptoms and impact
-- Hypotheses tested
-- Evidence
-- Root cause or best current explanation
-- Fix or mitigation
-- Why an ADR was or was not required
-- Links
+Add new records to the applicable index using its existing newest-first
+convention. Keep status, date, area, links, and supersession current.
 
-Use `docs/troubleshooting/TSR-TEMPLATE.md` (not `docs/templates/tsr-template.md`,
-an unused legacy template — note the required-fields list above, including
-the `RCA Summary` sub-bullets, already matches `TSR-TEMPLATE.md` exactly,
-not the unused file).
-
-## Immutability and supersession
-- Do not rewrite the history of accepted ADRs.
-- If direction changes, write a new ADR and mark the old one `Superseded`.
-- Link old and new records both ways.
-- TSRs may be updated as evidence improves, but preserve earlier hypotheses and what disproved them.
-
-## Traceability requirements
-Every Non-trivial final summary must include:
-- `Decision refs: ADR-XXXX`
-
-If troubleshooting originated the durable decision, include both:
-- `Decision refs: ADR-XXXX; TSR-XXXX`
-
-Scope-to-Code Traceability must include decision refs for affected items.
-
-## Index maintenance
-Whenever a new ADR or TSR is created:
-- add it to the relevant log file
-- keep the newest entries at the top unless the repo already uses a different convention
-- include status, date, component, and one-line summary
-- for TSRs, run `scripts/check-troubleshooting-records.ps1` after adding or
-  editing a troubleshooting record, the TSR template, or the troubleshooting
-  index
+Codex closeout links applicable ADRs and TSRs to the approved item they govern.
+No fixed `Decision refs` label or empty decision field is required. Fable keeps
+the exact reporting required by its own contract.

@@ -46,8 +46,8 @@ Use this skill before implementing or approving changes that add or modify long-
 
 ## Output Expectations
 
-- Include a `Retained-State Audit` section before implementation.
-- State `No retained-state changes` if the audit was triggered but no long-lived state is actually affected.
+- Report material retained-state ownership, bounds, cleanup, tests, and
+  observability without a fixed section or no-change statement.
 - Name the exact code paths that enforce the bound and the tests that prove it.
 - Call out any structure whose bound is not executable or observable.
 

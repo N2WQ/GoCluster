@@ -1,256 +1,71 @@
-# docs/review-checklist.md
+# Codex Review Checklist
 
-This document defines review posture for read-only Codex work and the mandatory
-Review Pass for Non-trivial changes.
-The compact output shape is owned by
-`docs/templates/non-trivial-change-template.md`.
+This checklist owns final-diff review outcomes. Specialist skills own their
+unique methods, and `docs/dev-runbook.md` owns validation commands.
 
-## Read-only Review/Audit Evidence
-For non-mutating explanation, review, audit, diagnosis, prioritization, or
-requested recommendations, report findings grounded in inspected current
-source and documents. Separate facts, assumptions, proposals, and unknowns;
-include applicable independent evidence and its status. Do not emit
-change-only approval, implementation, traceability, SELF-AUDIT, or validation
-score evidence. If implementation becomes necessary, stop and enter the Small
-or Non-trivial change gate before any mutation or proposed diff.
+## Read-only Review
 
-## Pre-Code Independent Evidence
-Before reviewing implementation, verify that every triggered pre-code role ran
-in a fresh separate read-only context, reported an accurate status, and was
-lead-dispositioned:
+Ground findings in inspected current evidence. Separate confirmed behavior,
+inference, and unknowns. Read-only findings do not authorize mutation; a later
+change enters the applicable gate first.
 
-- bounded parallel-discovery explorers synthesized disjoint evidence and kept
-  conflicts visible
-- `scientific-model-oracle` established normative model evidence or blocked
-  design/scope on unresolved sources
-- `requirements-ambiguity-review` actively searched for semantic forks and
-  blocked the Scope Ledger on unresolved material semantics
-- `design-challenger` received a neutral packet without the lead's preferred
-  solution and reported alternative-design evidence before the Scope Ledger
-- `test-strategy-adversary` produced a contract-to-test matrix after `DESIGN`
-  and before implementation, with any scope gap routed through reapproval
+## Final-diff Review
 
-Missing, failed, timed out, contaminated, or inconclusive independent evidence
-is a reported gap/waiver, not a lead-filled PASS. Map these checks to SA1-SA3,
-SA9-SA12, and SA13 as applicable; the lead owns every final disposition.
+Review the actual final diff and touched files for:
 
-## Review Pass
-The Review Pass happens after implementation and before final closeout.
+- match to approved scope and absence of hidden expansion;
+- correctness, edge cases, error handling, compatibility, and determinism;
+- smallest-change discipline and absence of speculative abstractions,
+  fallbacks, compatibility paths, or unrelated cleanup;
+- resource bounds, ownership, cleanup, lifecycle, and concurrency when
+  applicable;
+- config, parser, protocol, operator, scientific/model, or performance
+  contracts when applicable;
+- tests and checks capable of falsifying the changed behavior;
+- stale or missing authoritative, operator, support, or decision documentation;
+- placeholders, ignored errors, misleading comments, and unsupported claims.
 
-Purpose:
-- switch from implementer mode to reviewer mode
-- find hidden regressions, edge cases, and missing tests
-- verify that the diff matches the approved scope
-- verify that material progress, validation, performance, and science/model
-  claims match current evidence
+Use only the applicable sections of `docs/code-quality.md` and triggered skills
+for deeper domain review.
 
-Required output:
-- findings first, ordered by severity
-- then confirmed fixes
-- then rerun of affected validations for the selected validation lane
-- then fresh verifier outcome when the task is high-risk
+## Go Review Trigger
 
-## Fresh Verifier Pass
-For high-risk Non-trivial work, perform a fresh verifier pass after the Review
-Pass and before final closeout.
+Independent Go code-quality review is required only for High-risk or
+substantial Go implementation. Substantial applies when more than one
+production package changes, a shared or exported interface changes, an
+algorithm or state machine changes materially, a production file is
+substantially rewritten, or meaningful uncertainty remains. Line count alone
+does not determine substantiality.
 
-Use a read-only fresh-verifier explorer when the active environment supports
-independent agents, tool/user authorization permits spawning, and the user has
-not explicitly prohibited independent-agent use. Otherwise, perform a fresh
-self-verification pass by resetting reviewer context and re-checking the
-approved scope, current diff, evidence, validation lane, ADR/TSR impact, and
-claim wording. Report one canonical independent-agent status with separate
-detail and waiver disposition.
+Standard Non-trivial Go work receives a disciplined lead review. When an
+independent reviewer is used, it is read-only findings evidence; the lead owns
+fixes, reruns, integration, and final claims.
 
-The verifier pass must fail the closeout if implementation, validation,
-performance, scientific/model, or operator-facing claims are not supported by
-current-session source inspection, command output, tests, benchmark/profile
-data, runtime evidence, or decision records.
+## Fresh Verification And Invalidation
 
-Fresh-verifier explorer findings are evidence only. The lead agent owns the
-final Review Pass, integration of any fixes, validation claims, ADR/TSR
-handling, Scope-to-Code Traceability, and closeout wording.
+High-risk work receives a fresh final pass over the approved scope, final diff,
+selected validation, claim wording, and decision disposition. Independence is
+conditional; a fresh lead pass is valid.
 
-For high-risk workflow, runbook, rubric, template, or repo-managed skill
-changes where `go-code-quality-review` is not applicable, use the existing
-fresh-verifier explorer role with a prompt to independently score applicable
-SELF-AUDIT rows. This specializes the fresh-verifier role; it does not create a
-new review role.
+When review causes changes:
 
-## Go Code Quality Review
+- rerun the affected targeted checks;
+- rerun the complete lane only when the fix can invalidate broader results,
+  including shared behavior, build configuration, interfaces, concurrency, or
+  cross-package contracts;
+- do not reuse evidence from a state that the fix invalidated.
 
-For Non-trivial Go implementation work, use an independent
-`go-code-quality-review` explorer after code is written and before final
-closeout when independent agents are supported, tool/user authorization permits
-spawning, and not explicitly prohibited. The explorer has its own context
-window and reviews the Go diff against the approved scope, code-quality rules,
-validation lane, comment intent, bounded state, lifecycle/resource ownership,
-anti-speculative implementation, and claim evidence.
+## Command Evidence
 
-The Go quality explorer reports findings only. It must not edit, propose diffs,
-run formatters, create generated artifacts, or run broad/full validation
-suites. If the explorer is unsupported, not authorized/not requested,
-explicitly prohibited, failed, timed out, or inconclusive, report that
-canonical status with separate detail and waiver disposition in the Review Pass
-and Self-Audit; for high-risk Go work, treat it as a review/validation gap
-unless explicitly waived.
+For ordinary successful checks, command, scope, and observed result are enough.
+Add rationale or a minimal excerpt for failures, skips, waivers, surprising
+results, benchmarks, profiles, runtime evidence, or high-risk command-backed
+claims. Label static reasoning as static; do not present it as test, profile, or
+runtime confirmation. Avoid secrets and unnecessary logs.
 
-The Go quality explorer must score only the SELF-AUDIT rows it can inspect at
-its post-code phase. It must not final-score Fresh verification and claim
-evidence when a later fresh-verifier pass has not yet happened.
+## Traceability And Closeout
 
-Review focus:
-- correctness
-- code-walk evidence for unfamiliar or cross-package behavior
-- blast-radius coverage for shared, semantic, package, docs, and support impact
-- protocol/format compatibility
-- hidden behavior drift
-- YAML schema, required-key, null, and sentinel-value behavior
-- hidden runtime defaults or downstream config re-defaulting
-- edge cases
-- concurrency and lifecycle safety
-- leak-detection evidence for goroutine, timer, channel, socket, file-handle,
-  retained-heap, shutdown, or lifecycle concerns
-- cancellation and shutdown
-- backpressure, queue, drop, and disconnect semantics
-- memory/allocation risks
-- performance regressions
-- unsupported performance, latency, p99, memory, scientific, model, path,
-  VOACAP, p50, propagation, or call-correction claims
-- speculative abstractions, compatibility shims, fallback paths, feature flags,
-  broad cleanup, or future-proof hooks outside the approved scope
-- maintainability and readability
-- missing tests
-- documentation gaps
-- subagent assignments, if used, stayed within approved phase, write scope,
-  allowed actions, and lead-owned disposition
-- independent pre-code and post-code explorers were used when supported,
-  authorized, and not explicitly prohibited, or their canonical status,
-  detail, and waiver disposition were reported
-- scientific/model sources, ambiguity resolutions, design alternatives, and
-  test falsifiability evidence match the approved scope and current diff
-- support-agent routing drift when operator docs or operator-visible behavior changed
-- new or materially changed support-critical Go entry/integration files have
-  crawler-entry comments where package/file ownership, related docs/tests, or
-  troubleshooting routes would otherwise be hard to discover
-- Go comments on support-critical code explain intent/why, ownership,
-  invariants, resource bounds, lifecycle, and troubleshooting meaning
-- Go comments avoid mechanical restatement of obvious code, simple booleans, or
-  every repeated branch after the pattern is explained
-- Go comment drift against code, tests, config, docs, ADRs, or support-agent
-  routing docs
-- YAML header consistency on new or changed first-party config files
-- YAML key-comment coverage for non-obvious units, sentinels, ownership,
-  side effects, runtime consequences, and safe-edit boundaries
-- repeated YAML list/table schemas documented once by first occurrence or field
-  guide, without duplicated row noise
-- YAML comment drift against loaders, config docs, current code, or ADRs
-
-If there are no material findings, say:
-- `Review Pass findings: none material`
-
-## Self-Audit
-After the Review Pass, produce a fail-closed Self-Audit for the categories below.
-
-### Required categories
-- SA1 Scope and dependency coverage
-- SA2 Code-walk and blast-radius evidence
-- SA3 Contract, config, and protocol correctness
-- SA4 YAML comment/header audit
-- SA5 Go comment intent audit
-- SA6 Go crawler-entry audit
-- SA7 Concurrency, backpressure, and resource bounds
-- SA8 Leak-detection evidence
-- SA9 Fresh verification and claim evidence
-- SA10 Independent-agent/subagent use and lead ownership
-- SA11 Anti-speculative implementation guard
-- SA12 Verification and checker discipline
-- SA13 Documentation, decision memory, and traceability
-- SA14 Workflow-drift audit
-- SA15 Validation block completeness
-
-These IDs and labels are canonical for executor workflow reporting. Specialist
-skills may retain label-based evidence until a separately approved migration;
-the lead maps that evidence to SA IDs at closeout.
-
-### Self-Audit rules
-- Start with an applicability manifest that classifies every SA1-SA15 ID
-  exactly once as applicable or not applicable.
-- Applicable IDs require a `PASS` or `FAIL` result. Not-applicable IDs replace
-  individual `N/A` rows and require an unambiguous reason; IDs with the same
-  reason may be grouped.
-- Missing, unknown, or duplicate IDs fail the Self-Audit.
-- Every `FAIL` must include a short explanation and next action.
-- Do not hide uncertainty. If evidence is incomplete, fail the category.
-- Use one short note per grouped category. Reference earlier review evidence when
-  that already establishes the point.
-- Independently reviewed high-risk rows must cite the independent evidence
-  source or reported gap/waiver. Do not silently lead-fill `PASS` after an
-  independent review is unsupported, not authorized/not requested, explicitly
-  prohibited, failed, timed out, inconclusive, missing, or stale.
-- Command-backed SA7 or SA8 results must reference the captured excerpt in
-  `Verification command reporting`. Do not paste the same excerpt again in
-  Self-Audit; if the required excerpt is missing, failed, timed out, stale,
-  cached without usable output, or waived, report that status instead of
-  scoring the row as `PASS`.
-- The lead agent owns the final PASS/FAIL/applicability disposition for every
-  ID. SA10 is final-scored by the lead from independent evidence/status plus
-  the lead's own gate checks.
-
-## Closeout evidence
-Every Non-trivial change must end with the template's `CLOSEOUT`,
-`TRACEABILITY`, and `VALIDATION` markers. Keep the closeout concise and refer
-to earlier markers instead of repeating evidence.
-
-## Scope-to-Code Traceability
-Map every Scope Ledger item with status `Agreed` as of the start of the
-implementation cycle to:
-- code locations
-- tests
-- docs/comments updated
-- support-agent docs updated or explicitly not impacted
-- decision refs if applicable
-
-No omissions allowed.
-
-`Pending` is unresolved and must not exist at implementation start. `Rejected`
-and `Deferred` items are outside the implementation cycle and are not mapped as
-implemented scope. If one becomes necessary, require a new ledger version,
-repeated adversarial review, and exact reapproval.
-
-## Verification command reporting
-For each major command, report:
-- exact command
-- why it was run
-- result
-- whether it was incremental or final
-
-This section is the single canonical location for captured validation command
-excerpts. Later `SELF-AUDIT` and `CLOSEOUT` entries should reference this
-section by name instead of repeating excerpts.
-
-For command-backed high-risk concurrency, lifecycle, queue, timer, shutdown,
-shared-state, or leak-detection claims, include a short captured transcript
-excerpt here. The excerpt must show enough current-session output to support
-the claim:
-- command or evidence source
-- target scope
-- pass, fail, timeout, skip, cached, partial, or waived status
-- the key line(s) that prove the result, profile/trace finding, or failure mode
-- whether the result was incremental or final
-
-Do not paste full logs, environment dumps, secrets, tokens, credentials,
-private hostnames, unnecessary user data, or large runtime traces. Redact
-sensitive content and say what was redacted. Static source reasoning remains
-allowed, but label it as static reasoning and name the inspected files instead
-of presenting it as command-backed validation.
-
-Example shape:
-- `go test ./...` - baseline regression check - pass
-- `go test -race ./...` - concurrency/lifecycle verification - pass - final;
-  excerpt: `ok  github.com/N2WQ/GoCluster/internal/cluster  ...`
-- `go test ./internal/cluster -run TestSlowClientDropPolicy` - targeted regression - pass
-- `git diff --check` - documentation-only whitespace check - pass
-
-## Final validation block
-The `VALIDATION` marker must end with the exact block owned by `VALIDATION.md`.
+Map each approved Non-trivial item to changed locations and validation. Add
+documentation and ADR/TSR references only when they apply. Report material
+findings, gaps, waivers, and residual risks; do not enumerate irrelevant audit
+categories or repeat evidence already stated.

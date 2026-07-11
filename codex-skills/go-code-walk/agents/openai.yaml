@@ -1,4 +1,4 @@
 interface:
   display_name: "Go Code Walk"
   short_description: "Walk Go code with semantic and repo context"
-  default_prompt: "Walk the relevant Go code path using package docs, current source, gopls, callgraph, tests, and decision history; report inspected evidence and unknowns before proposing changes."
+  default_prompt: "Use this skill when unfamiliar or cross-package Go behavior requires a current-source execution-path walk."

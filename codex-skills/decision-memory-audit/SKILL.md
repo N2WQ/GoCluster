@@ -1,70 +1,36 @@
 ---
 name: decision-memory-audit
-description: "Use for every Non-trivial gocluster task, troubleshooting-origin task, ADR/TSR update, decision-log or troubleshooting-log edit, durable architecture or operations decision, no-durable-decision stub choice, final Decision refs, and Scope-to-Code Traceability review."
+description: "Use when a Codex task may change a durable architecture, operations, scientific, or workflow decision; originates in troubleshooting; or edits ADR/TSR records and indexes. Do not trigger merely because work is Non-trivial or require a no-change ADR."
 ---
 
 # Decision Memory Audit
 
-## Overview
+## Purpose
 
-Use this skill to keep gocluster's ADR and TSR record complete, current, and
-traceable. It applies before implementation planning and again during closeout
-for Non-trivial and troubleshooting tasks.
+Preserve durable decisions and troubleshooting learning without filling the ADR
+index with task-administration records.
 
-## Workflow
+## Method
 
-1. Perform the mandatory pre-read.
-   - Read `docs/decision-log.md`.
-   - Read `docs/troubleshooting-log.md`.
-   - Open component-relevant ADRs and TSRs.
-   - If none apply, state `No relevant ADR found` and/or
-     `No relevant TSR found`.
+1. Search `docs/decision-log.md` and `docs/troubleshooting-log.md` for the
+   affected component or decision chain. Open the relevant records; do not read
+   every record by default.
+2. Classify the origin as design, follow-up implementation, troubleshooting,
+   incident analysis, or read-only review.
+3. Create or update a full ADR only when a durable decision changes. Create or
+   update a TSR for durable troubleshooting evidence, hypotheses, root cause,
+   or operational learning.
+4. Preserve accepted history. Reverse or replace an accepted decision through a
+   new superseding ADR and link both directions.
+5. Maintain the applicable index and cross-links when a record changes.
+6. Record a concise decision disposition at closeout. If no durable decision
+   changed, do not create a file solely to say so.
 
-2. Classify the task origin.
-   - Design or workflow change
-   - Troubleshooting, incident, or production failure analysis
-   - Follow-up implementation of an accepted decision
-   - Read-only audit or explanation
+Fable continues to follow its own mandatory ADR-handling rule through
+`CLAUDE.md`; this skill defines Codex behavior only.
 
-3. Choose the required record.
-   - Create or update a full ADR when the task changes a durable decision about
-     protocol, parser behavior, concurrency model, backpressure, queue, drop or
-     disconnect policy, deadlines, retries, shutdown behavior, resource bounds,
-     observability contracts, shared component behavior, or operator-visible
-     mode selection.
-   - Create a lightweight ADR stub when a Non-trivial task does not change a
-     durable decision.
-   - Create or update a TSR when troubleshooting, hypothesis testing,
-     root-cause analysis, or durable failure insight is involved.
-   - A final `Decision refs: none` closeout is not valid for Non-trivial work.
+## Reporting
 
-4. Preserve decision history.
-   - Do not rewrite accepted ADR history.
-   - Use a new ADR to supersede or reverse a prior accepted decision.
-   - TSRs may accumulate evidence, but preserve earlier hypotheses and the
-     evidence that disproved them.
-
-5. Maintain indexes and links.
-   - Add new ADRs to `docs/decision-log.md`.
-   - Add new TSRs to `docs/troubleshooting-log.md`.
-   - Keep newest entries at the top unless the existing file shows a different
-     convention.
-   - Cross-link ADRs and TSRs when troubleshooting produced the decision.
-
-6. Close with traceability.
-   - Include `Decision refs: ADR-XXXX` in the final closeout.
-   - Include `Decision refs: ADR-XXXX; TSR-XXXX` when troubleshooting
-     originated the durable decision.
-   - Map approved scope items to changed files, tests/checks, docs/comments,
-     support-agent docs, and decision refs in Scope-to-Code Traceability.
-
-## Output Expectations
-
-- Include a `Decision-memory audit` section when this skill triggers.
-- Report relevant ADR/TSR pre-read, record type chosen, index maintenance,
-  closeout decision refs, and any missing decision-memory evidence.
-- State whether a full ADR, updated ADR, lightweight ADR stub, TSR, or no
-  write applies. For Non-trivial implementation work, no write applies only if
-  the approved scope is explicitly read-only and no durable repo decision is
-  being committed.
-- Treat missing ADR/TSR evidence as a workflow gap, not a style issue.
+Report the relevant records inspected, record choice, index/link updates, and
+any missing durable evidence. Add ADR/TSR references to traceability only when
+they apply. No fixed heading or no-change artifact is required.

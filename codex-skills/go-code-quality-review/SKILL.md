@@ -1,6 +1,6 @@
 ---
 name: go-code-quality-review
-description: "Use for independent read-only review of newly written gocluster Go implementation code and applicable SELF-AUDIT evidence before final closeout. Trigger after Go code changes in Non-trivial tasks when the environment supports independent agents, tool/user authorization permits spawning, and the user has not explicitly prohibited independent-agent use."
+description: "Use for read-only review of newly written gocluster Go implementation when the work is High-risk or substantial: multiple production packages, shared/exported interfaces, material algorithms or state machines, substantial rewrites, or meaningful residual uncertainty. Do not trigger for every Non-trivial Go edit."
 ---
 
 # Go Code Quality Review
@@ -9,19 +9,15 @@ description: "Use for independent read-only review of newly written gocluster Go
 
 Use this skill after Go implementation work and before final closeout to review
 the diff against GoCluster's code-quality, workflow, validation, and
-operational standards. The review is independent evidence from a separate agent
-context; the lead agent still owns fixes, validation claims, traceability, and
+operational standards. A separate reviewer is conditional on value, support,
+and authority; the lead still owns fixes, validation claims, traceability, and
 the final response.
-
-The reviewer also supplies PASS/FAIL/N/A evidence for applicable SELF-AUDIT
-rows it can inspect at this phase. It does not final-score later
-fresh-verification evidence before that evidence exists.
 
 ## Workflow
 
 1. Confirm the phase boundary.
-   - Use after code is written for Non-trivial Go implementation work.
-   - Apply the independent-review contract in `AGENTS.md` `Subagent Use`.
+   - Use after code is written for High-risk or substantial Go implementation.
+   - If a separate reviewer is used, keep it read-only and findings-only.
    - Do not trigger this skill for documentation-only Markdown changes unless
      the diff also changes Go code or a runtime/code contract.
 
@@ -63,36 +59,15 @@ fresh-verification evidence before that evidence exists.
    - Do not run final validation for the lead agent; identify missing or stale
      evidence instead.
 
-5. Report applicable SELF-AUDIT evidence.
-   - Score only rows supported by evidence available at this post-code phase.
-   - Include, at minimum when applicable: Scope and dependency coverage;
-     Code-walk and blast-radius evidence; Contract, config, and protocol
-     correctness; YAML comment/header audit for first-party YAML; Go comment
-     intent audit; Go crawler-entry audit; Concurrency, backpressure, and
-     resource bounds; Leak-detection evidence; Anti-speculative implementation
-     guard; and Verification and checker discipline.
-   - Mark Fresh verification and claim evidence as `N/A - not yet run` or
-     partial evidence when a later fresh-verifier pass is required. Do not
-     present this review as final authority for that row.
-   - If an applicable row cannot be scored from inspected evidence, report
-     `FAIL` or a clear evidence gap rather than inferring `PASS`.
-
-6. Report findings first.
+5. Report findings first.
    - Order findings by severity.
    - Include file paths and line references when inspected.
    - Separate material findings, non-blocking observations, and remaining
      unknowns.
-   - Report the canonical independent-result envelope.
 
 ## Output Expectations
 
-- Start with the canonical four-field independent-result envelope from
-  `AGENTS.md`.
-
-- Include a compact `Go code quality review` result.
-- Include a compact `SELF-AUDIT evidence` section for applicable rows inspected
-  by this reviewer.
-- If there are no material findings, say `Go code quality review findings:
-  none material`.
+- Report material findings and inspected evidence without a mandatory heading,
+  taxonomy, or result envelope.
 - The lead agent must disposition findings, make any fixes within approved
   scope, rerun required checks, and preserve lead-owned closeout.

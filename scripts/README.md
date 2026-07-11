@@ -17,29 +17,21 @@ skill installation.
 
 ## Workflow Checkers
 
-- `measure-codex-workflow-context.ps1` compares fixed Codex instruction-path
-  manifests at immutable Git revisions using deterministic words, characters,
-  and UTF-8 bytes. It is a context-footprint proxy, not model-token evidence.
+- `measure-codex-workflow-context.ps1` reports declared Codex instruction-path
+  scenarios at immutable Git revisions using deterministic words, characters,
+  and UTF-8 bytes. Results are informational context-footprint proxies, not
+  adoption gates, model-token evidence, or quality proof.
 - `test-measure-codex-workflow-context.ps1` exercises the measurement script in
   a disposable Git repository and proves dirty worktree bytes cannot alter a
   pinned candidate comparison.
 
-- `check-workflow-contract.ps1` verifies mechanical coherence of the Codex
-  workflow's exact strings, pre-code independent-role routing, evidence
-  markers, validation block, read-only route and transition boundary, and
-  touched-surface validation precedence. It checks Agreed-only approval and
-  traceability semantics plus exact per-turn skill-marker and canonical
-  independent-agent status fields. It requires an explicit script-only lane
-  that does not infer Go validation from workflow-checker script changes. It
-  also verifies the Document Map. It
-  cannot prove that conversational approval, a conversational route transition,
-  or genuine agent independence occurred.
-- `test-workflow-contract.ps1` runs positive and negative temporary fixtures
-  against the workflow-contract checker, including missing pre-code role and
-  read-only-route transition routing plus invalid validation-lane precedence.
-  Fixtures also reject Pending approval and Pending implementation
-  traceability, a missing or Go-inferred script-only lane, duplicate marker
-  fields, and noncanonical status-field aliases.
+- `check-workflow-contract.ps1` verifies mechanically representable Codex
+  authority routes, positive and negative risk routing, retired Codex-only
+  requirements, references, and optional changed-path exclusions. It
+  explicitly disclaims conversational and engineering proof.
+- `test-workflow-contract.ps1` runs positive and named negative fixtures. Each
+  negative case asserts its invariant-specific failure so an unrelated checker
+  error cannot create a false green.
 - `check-yaml-doc-rigor.ps1` checks first-party runtime YAML headers and
   comment-only YAML scope.
 - `check-go-crawler-entry-comments.ps1` checks changed support-critical Go files

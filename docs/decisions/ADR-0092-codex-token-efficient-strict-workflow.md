@@ -1,6 +1,6 @@
 # ADR-0092: Codex Token-Efficient Strict Workflow
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-04-30
 - Decision Origin: Design
 
@@ -72,4 +72,4 @@ traceability.
 - Related tests:
 - Related docs: `AGENTS.md`, `docs/change-workflow.md`, `docs/templates/non-trivial-change-template.md`, `docs/review-checklist.md`, `VALIDATION.md`, `docs/WORKING_WITH_CODEX.md`
 - Related TSRs:
-- Supersedes / superseded by:
+- Supersedes / superseded by: superseded by ADR-0221

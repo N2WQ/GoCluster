@@ -52,10 +52,8 @@ operator-visible settings.
 
 ## Output expectations
 
-Include a `Config Contract Audit` section before implementation.
-
-If inspection shows no config behavior is affected, state:
-`No config contract changes`.
+Report the material config ownership, defaulting, validation, and consumer
+findings without requiring a fixed section or no-change statement.
 
 Every YAML-owned setting changed or newly enforced must map to:
 - YAML file/key

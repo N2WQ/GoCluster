@@ -56,8 +56,8 @@ facts and call paths, not for implementation.
 
 ## Output Expectations
 
-- Include a `Code-walk evidence` section when this skill is used for
-  Non-trivial workflow discovery.
+- Report inspected paths, established behavior, and unresolved unknowns without
+  requiring a fixed heading.
 - Keep command output summarized; do not paste large call graphs.
 - For support-agent reuse, summarize durable graph conclusions in Markdown that
   points to source files and tests the support agent can retrieve.

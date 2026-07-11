@@ -1,11 +1,11 @@
 # ADR-0209: Codex Subagent Type Selection
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-07-09
 - Decision Origin: Design
-- Supersession note: ADR-0211 supersedes this ADR's authorization-semantics
-  reference to ADR-0205; the explorer/worker type-selection decision remains
-  accepted.
+- Supersession note: ADR-0211 previously superseded this ADR's
+  authorization-semantics reference to ADR-0205. ADR-0221 now supersedes the
+  remaining default explorer/worker type-selection decision.
 
 ## Context
 
@@ -94,5 +94,4 @@ ADR continues to own only the Codex explorer/worker type selection.
   `codex-skills/go-code-quality-review/SKILL.md`
 - Related ADRs: ADR-0202, ADR-0205
 - Related TSRs:
-- Supersedes / superseded by: clarifies ADR-0202 and ADR-0205 without
-  superseding either decision
+- Supersedes / superseded by: superseded by ADR-0221

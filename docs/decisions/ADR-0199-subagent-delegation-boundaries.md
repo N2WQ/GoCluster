@@ -1,6 +1,6 @@
 # ADR-0199: Subagent Delegation Boundaries
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-06-19
 - Decision Origin: Design
 
@@ -110,4 +110,4 @@ and the final response.
   - `customgpt/common-questions.md`
 - Related ADRs: ADR-0202, ADR-0205
 - Related TSRs: none
-- Supersedes / superseded by: none
+- Supersedes / superseded by: superseded by ADR-0221

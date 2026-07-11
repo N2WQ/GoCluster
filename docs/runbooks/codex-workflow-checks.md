@@ -1,20 +1,24 @@
 # Codex Workflow Checks
 
-This component contains Codex-specific checks for the workflow/skill-doc lane.
-It does not select a validation lane; `docs/dev-runbook.md` remains authoritative.
+This component lists Codex-specific checks for the workflow/skill-doc lane. It
+does not select a validation lane; `docs/dev-runbook.md` remains authoritative.
 
-## Required Codex checks
+Run only checks triggered by the changed surface:
 
-- audit drift across `AGENTS.md`, `docs/change-workflow.md`, `VALIDATION.md`,
-  `docs/review-checklist.md`, the Non-trivial template, and `codex-skills/**`
-- run `scripts/check-workflow-contract.ps1` and its fixture suite when Codex
-  workflow semantics or enforcement change
-- run `scripts/verify-codex-skills.ps1` after repo-managed skill edits
-- review skill metadata/body synchronization when metadata changes
-- use fresh read-only conformance review for changed independent-review roles
-- use a fresh verifier for high-risk workflow changes when supported and
-  authorized; otherwise report the canonical status and waiver disposition
+- `scripts/check-workflow-contract.ps1 -BaselineRevision <approved-baseline>`
+  for Codex authority, routing, retired-requirement, reference, and protected-
+  path invariants;
+- `scripts/test-workflow-contract.ps1` when the contract checker or its owned
+  semantics change;
+- `scripts/verify-codex-skills.ps1` after repo-managed skill or metadata edits;
+- `scripts/test-measure-codex-workflow-context.ps1` when informational context
+  measurement changes;
+- PowerShell parser checks for changed scripts;
+- targeted cross-reference and metadata/body checks;
+- cross-executor semantic review for shared documents;
+- final diff review and `git diff --check`.
 
-Repo skill metadata YAML uses metadata/body and manifest consistency checks;
-the runtime-config header standard is `N/A` unless a stricter local standard
-applies.
+Static checks do not prove conversational approval, classification, discovery,
+validation sufficiency, genuine independence, or engineering quality. Do not
+run Go validation solely because Codex workflow Markdown, skill metadata, or
+workflow-checker scripts changed.

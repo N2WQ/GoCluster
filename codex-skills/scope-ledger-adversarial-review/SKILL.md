@@ -1,6 +1,6 @@
 ---
 name: scope-ledger-adversarial-review
-description: "Use for independent read-only adversarial review of a gocluster Proposed Scope Ledger before approval. Trigger for Non-trivial Scope Ledgers when the environment supports independent agents, tool/user authorization permits spawning, and the user has not explicitly prohibited independent-agent use."
+description: "Use for read-only adversarial review of a Proposed Scope Ledger when scope is High-risk, uncertain, disputed, difficult to reverse, or leaves material residual uncertainty. Do not trigger for every Non-trivial ledger. Independence is conditional on value, support, and authority."
 ---
 
 # Scope Ledger Adversarial Review
@@ -8,14 +8,14 @@ description: "Use for independent read-only adversarial review of a gocluster Pr
 ## Overview
 
 Use this skill to challenge a `Proposed Scope Ledger vN` before the lead agent
-presents the approval token. The review is independent evidence from a separate
-agent context; it does not transfer gate ownership away from the lead agent.
+presents the approval token. A separate context is useful when independence
+materially reduces risk, but it does not transfer gate ownership.
 
 ## Workflow
 
 1. Confirm the phase boundary.
    - This skill is pre-approval only.
-   - Apply the independent-review contract in `AGENTS.md` `Subagent Use`.
+   - If a separate reviewer is used, keep it read-only and findings-only.
 
 2. Inspect the proposed scope and its evidence.
    - Read the proposed Scope Ledger, Current-State Discovery, relevant
@@ -46,16 +46,11 @@ agent context; it does not transfer gate ownership away from the lead agent.
 
 6. Report only findings and evidence.
    - Name inspected files, commands, and unknowns.
-   - Report the canonical agent status and separate status detail, role
-     outcome, and waiver disposition.
-   - The lead agent must disposition findings and owns the official
-     `SCOPE ADVERSARIAL REVIEW`.
+   - The lead agent must disposition every material finding.
 
 ## Output Expectations
 
-- the canonical four-field independent-result envelope from `AGENTS.md`;
-- Include a compact `Scope adversarial review` result.
+- Report a compact result without a mandatory heading or envelope.
 - Lead disposition must be explicit for every material finding.
-- If the independent review is unsupported, not authorized/not requested,
-  failed, timed out, or explicitly prohibited, report that as an evidence
-  status, gap, or waiver instead of silently substituting ordinary self-review.
+- If triggered independence is unavailable or fails, report the material gap
+  directly instead of calling lead review independent.

@@ -1,4 +1,4 @@
 interface:
   display_name: "Scope Ledger Adversarial Review"
   short_description: "Challenge Non-trivial scope before approval"
-  default_prompt: "Use $scope-ledger-adversarial-review to independently challenge a Proposed Scope Ledger before approval."
+  default_prompt: "Use this skill only for High-risk, uncertain, disputed, difficult-to-reverse, or materially incomplete scope."

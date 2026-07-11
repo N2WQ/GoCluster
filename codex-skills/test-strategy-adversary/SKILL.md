@@ -1,6 +1,6 @@
 ---
 name: test-strategy-adversary
-description: "Use for independent read-only falsifiability review of a Non-trivial gocluster test strategy after exact Scope Ledger approval and detailed DESIGN, but before the first implementation slice. Trigger for parser or protocol behavior, configuration/default/schema semantics, concurrency or lifecycle, retained state, compatibility, operator-visible classifications, performance claims, scientific/model behavior, implementation-mirroring fixtures, or workflow/checker changes with false-green risk. Do not trigger for localized documentation-only work or mechanical changes whose accepted checks directly prove the unchanged contract."
+description: "Use after approval and before implementation when planned evidence may not falsify a broken design, including unclear parser, protocol, config, lifecycle, retained-state, performance, scientific/model, or workflow-checker oracles. Do not trigger when accepted checks directly prove a mechanical change."
 ---
 
 # Test Strategy Adversary
@@ -14,16 +14,16 @@ execution, validation claims, and disposition with the lead.
 
 ## Establish the Gate
 
-Apply the independent-review contract in `AGENTS.md` `Subagent Use`.
+Use a separate read-only reviewer only when independence materially reduces
+false-green risk.
 
 1. Require exact approval of the current Scope Ledger and a detailed `DESIGN`
    before starting. Run before any implementation slice begins.
 2. Provide the approved ledger, detailed design, normative contracts, relevant
    ADRs/TSRs, oracle and ambiguity results, current tests, and proposed checker
    plan. Do not provide a completed implementation or intended test answers.
-3. Mark ordinary self-review status `inconclusive`, put `no independent
-   context` in the status detail, and do not count it as the required
-   independent pass.
+3. Lead-owned falsifiability analysis is valid when independence is not
+   triggered; state remaining oracle risk directly.
 
 
 ## Build the Contract-to-Test Matrix
@@ -72,14 +72,12 @@ Classify every finding:
 - `normative evidence conflict` that blocks implementation pending resolution.
 
 Block the first implementation slice until the lead dispositions all findings
-and the matrix is adequate. Require another independent pass after material
-matrix changes. Checker-only details may update `DESIGN`, but must not smuggle
+and the matrix is adequate. Repeat the review after material matrix changes.
+Checker-only details may update the design, but must not smuggle
 new behavior into the approved scope.
 
-Return a compact `Test strategy adversarial review` with:
-
-- the canonical four-field independent-result envelope from `AGENTS.md`;
-- evidence inspected, the matrix, findings, unknowns, and required lead actions.
+Report evidence inspected, the matrix, findings, unknowns, and required lead
+actions without a mandatory heading or result envelope.
 
 Do not
 write the tests, execute final validation, review implementation quality, or

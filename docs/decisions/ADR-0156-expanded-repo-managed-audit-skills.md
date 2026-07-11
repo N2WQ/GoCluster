@@ -3,6 +3,9 @@
 - Status: Accepted
 - Date: 2026-06-08
 - Decision Origin: Design
+- Supersession note: ADR-0221 supersedes universal routing language and
+  mandatory template evidence fields while preserving the repo-managed skills,
+  positive triggers, and unique engineering methods.
 
 ## Context
 ADR-0155 made `codex-skills/` the authoritative project skill source for
@@ -87,4 +90,4 @@ Keep the skills concise, SKILL.md-centered, and directly checked into
   `codex-skills/decision-memory-audit/SKILL.md`,
   `codex-skills/workflow-contract-audit/SKILL.md`
 - Related TSRs:
-- Supersedes / superseded by:
+- Supersedes / superseded by: reporting and universal-routing clauses selectively superseded by ADR-0221

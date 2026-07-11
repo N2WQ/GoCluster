@@ -1,6 +1,6 @@
 # ADR-0213: Sol-Aware Token-Efficient Codex Workflow
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-07-09
 - Decision Origin: Design
 
@@ -154,4 +154,4 @@ evidence as an explicit deferred migration.
 - Related ADRs: ADR-0092, ADR-0156, ADR-0194, ADR-0202, ADR-0203, ADR-0204,
   ADR-0211, ADR-0212
 - Related TSRs: none
-- Supersedes / superseded by: extends ADR-0092 and ADR-0194
+- Supersedes / superseded by: superseded by ADR-0221; ADR-0194 remains accepted

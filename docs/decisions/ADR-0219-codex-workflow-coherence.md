@@ -1,6 +1,6 @@
 # ADR-0219: Codex Workflow Coherence
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-07-10
 - Decision Origin: Design
 
@@ -87,5 +87,4 @@ cross-executor review mitigate these risks.
 - Related ADRs: ADR-0092, ADR-0119, ADR-0144, ADR-0179, ADR-0194, ADR-0199,
   ADR-0202, ADR-0203, ADR-0204, ADR-0210, ADR-0211, ADR-0213, ADR-0216
 - Related TSRs: none
-- Supersedes / superseded by: extends and clarifies the related ADRs without
-  superseding their retained approval, evidence, review, or validation rules
+- Supersedes / superseded by: superseded by ADR-0221

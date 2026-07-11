@@ -1,79 +1,44 @@
 ---
 name: workflow-contract-audit
-description: "Use when editing or reviewing gocluster Codex workflow contracts, AGENTS.md, VALIDATION.md, docs/change-workflow.md, review checklists, dev runbooks, code-quality rules, non-trivial templates, repo-managed skills under codex-skills/, workflow scripts, skill verification, approval gates, evidence markers, validation scoring, or closeout rules."
+description: "Use when Codex workflow authority, approval, validation routing, review rules, templates, repo-managed skills, or enforcing scripts change. Do not trigger for ordinary product documentation or runtime work whose workflow contract is unchanged."
 ---
 
 # Workflow Contract Audit
 
-## Overview
+## Purpose
 
-Use this skill to prevent drift between the always-loaded Codex contract,
-detailed workflow docs, validation rubric, templates, repo-managed skills, and
-scripts that enforce the workflow.
+Prevent contradiction, unreachable rules, duplicated ownership, and checkers
+that confuse response formatting with engineering compliance.
 
-## Workflow
+## Method
 
-1. Identify every contract surface touched.
-   - Always-loaded contract: `AGENTS.md`
-   - Detailed workflow: `docs/change-workflow.md`
-   - Evidence shape: `docs/templates/non-trivial-change-template.md`
-   - Validation rubric: `VALIDATION.md`
-   - Review and checker sources: `docs/review-checklist.md`,
-     `docs/dev-runbook.md`, `docs/code-quality.md`
-   - Repo skills: `codex-skills/README.md`, `codex-skills/**/SKILL.md`, and
-     `agents/openai.yaml`
-   - Workflow scripts and script docs under `scripts/`
+1. Identify the changed Codex contract surfaces and any shared documents used
+   by Fable.
+2. Preserve authority routes: Read-only/Small/Non-trivial separation, exact
+   `Approved vN`, agreed scope, reapproval on expansion, current evidence, and
+   touched-surface validation.
+3. Confirm each detailed rule has one natural owner and remains reachable from
+   `AGENTS.md` or a positive specialist trigger.
+4. Check validation commands, review expectations, skill descriptions,
+   metadata, templates, and scripts for contradiction.
+5. Preserve each specialist's unique engineering method while allowing trigger
+   narrowing and reporting simplification.
+6. Verify repo-skill frontmatter, names, referenced assets, and absence of
+   user-level installation paths.
+7. Review shared-document changes for cross-executor semantic drift. Do not
+   alter Fable-owned files in a Codex-only change.
+8. Run the workflow checker, its named negative fixtures, and the repo-skill
+   verifier after edits.
 
-2. Preserve exact operational strings.
-   - Approval token shape: `Approved vN`
-   - Skill marker shape: `Skill check: selected <skill>` or
-     `Skill check: none applicable`
-   - Required evidence marker names
-   - Final validation block labels and score format
-   - Scope Ledger, Scope Adversarial Review, Decision refs, and
-     Scope-to-Code Traceability wording when other docs rely on it
+## Static Boundary
 
-3. Check trigger coherence.
-   - Skill frontmatter descriptions must contain trigger conditions because
-     Codex sees them before loading the skill body.
-   - `AGENTS.md` should route to triggered skills without duplicating long
-     command recipes.
-   - `docs/change-workflow.md` should own detailed workflow behavior.
-   - `docs/templates/non-trivial-change-template.md` should contain reportable
-     evidence fields for newly required audits.
-   - `codex-skills/README.md` should list repo-authoritative skills.
+Static checks may establish text, ownership, references, positive and negative
+trigger representation, and supplied changed-path boundaries. They cannot
+prove conversational approval, classification, discovery sufficiency,
+specialist necessity, validation adequacy, genuine independence, durable
+decision judgment, or engineering quality.
 
-4. Check contradiction and reachability.
-   - Verify moved or shortened rules remain reachable from `AGENTS.md`.
-   - Verify validation rules, runbook commands, review expectations, skill
-     output expectations, and closeout requirements do not contradict each
-     other.
-   - Verify read-only, Small, and Non-trivial paths remain distinct.
-   - Verify optional tools remain optional unless the workflow explicitly makes
-     them required.
+## Reporting
 
-5. Check skill bundle hygiene.
-   - No generated template placeholder text remains.
-   - Frontmatter names match directory names.
-   - `agents/openai.yaml` metadata matches the skill body when present.
-   - Repo skill docs do not tell agents to copy or install skills into
-     user-level skill storage.
-   - Run `scripts/verify-codex-skills.ps1` after repo skill edits.
-
-6. Check documentation impact.
-   - README impact is required when onboarding, user-facing workflow, or public
-     repo behavior changes.
-   - Support-agent docs impact is required when operator-support topics,
-     routing docs, or support answers change. Pure Codex workflow routing does
-     not automatically require support-agent docs.
-   - Use `decision-memory-audit` when workflow changes require ADR/TSR
-     handling.
-
-## Output Expectations
-
-- Include a `Workflow-drift audit` section when this skill triggers.
-- Name the contract surfaces inspected, exact strings preserved, trigger
-  coherence checks, targeted text checks, verifier/checker results, and
-  remaining drift risks.
-- Treat a missing route from `AGENTS.md` to a detailed rule as a material
-  workflow gap.
+Report material contradictions, checker results, cross-executor risks, and
+remaining gaps without a mandatory heading or fixed field set.

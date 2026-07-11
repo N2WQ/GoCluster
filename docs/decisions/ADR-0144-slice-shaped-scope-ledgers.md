@@ -1,6 +1,6 @@
 # ADR-0144: Slice-Shaped Scope Ledgers
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-06-05
 - Decision Origin: Design
 
@@ -59,4 +59,4 @@ uniform, and the validation path is narrow and explicit.
   `docs/WORKING_WITH_CODEX.md`, `customgpt/source-map.md`,
   `customgpt/developer-guide-index.md`, `customgpt/common-questions.md`
 - Related TSRs:
-- Supersedes / superseded by:
+- Supersedes / superseded by: superseded by ADR-0221

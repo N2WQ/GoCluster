@@ -1,170 +1,48 @@
-# VALIDATION.md - Non-trivial Change Compliance Rubric
+# Codex Non-trivial Closeout Compliance
 
-Use this scorecard after any Non-trivial Codex change to verify that Codex
-actually followed `AGENTS.md` and did not merely produce plausible output.
-It is a scoring rubric, not a narrative response template. Evidence may be
-reported through the compact markers in
-`docs/templates/non-trivial-change-template.md`; do not require duplicate prose
-when those markers already contain the evidence.
+This file applies to Codex Non-trivial changes. It evaluates outcomes, not
+response formatting. Read-only work and Small changes use their applicable
+evidence and validation without this closeout review. Fable uses its own
+validation contract.
 
-## How to use
-- Score each of the 6 items as `0` or `1`.
-- Total the score out of `6`.
-- Apply the automatic fail rules even if the numeric score looks acceptable.
-- If evidence is missing or ambiguous, score the item `0`.
-- Do not give partial credit.
+## Pass Conditions
 
-## Required final output block
-For every Non-trivial change, Codex must end its final response with this exact
-3-line block:
+A Codex Non-trivial change passes only when current evidence establishes that:
 
-Validation Score: X/6
-Failed items: none | <comma-separated failed item numbers/names>
-Auto-fail conditions triggered: no | yes (<conditions>)
+- exact approval preceded mutation and the final work stayed within the
+  approved scope;
+- material discovery, compatibility, resource, and operational risks were
+  resolved or reported;
+- the smallest correct change was implemented without speculative additions;
+- the final diff was reviewed against current source and approved scope;
+- validation was selected from the touched surface and actual risk, with
+  affected checks rerun after review fixes;
+- material claims match observed commands, measurements, runtime evidence, or
+  inspected source;
+- affected documentation and durable decision records are current; and
+- each approved item maps compactly to implementation and validation.
 
-Do not accept paraphrases or extra lines inside that block.
+Any unresolved material condition fails closeout. Report the failure, gap,
+waiver, or residual risk directly; do not convert missing evidence into a pass.
 
-## Scorecard
+## Risk-triggered Evidence
 
-### 1) Scope gate and approval discipline
-Score `1` only if scope was ledgered and approved, no pre-approval
-implementation or full validation happened, required pre-approval independent
-agents were read-only evidence gathering, `SCOPE ADVERSARIAL REVIEW` was
-completed by the lead agent before the approval token, no silent scope
-expansion occurred, no `Pending` item remained when approval was presented or
-used, and the approved Scope Ledger was slice-shaped with
-implementation-ready slices. Triggered scientific/model, requirements-
-ambiguity, and design-challenger evidence must be completed or reported as a
-gap/waiver before the Scope Ledger. Final traceability must map back to approved
-items. Unsupported, not authorized/not requested, explicitly prohibited,
-failed, timed out, or inconclusive independent review must report the canonical
-status, separate detail, and any separate waiver. If the active platform
-requires an explicit user request before subagents can be spawned, missing user
-authorization must be reported as `not authorized/not requested`, not as
-`unsupported` or `explicitly prohibited`;
-the current task prompt omitting a repeated subagent request is not missing
-authorization when the active tool/session policy permits this repo's standing
-subagent request.
-Otherwise score `0`.
+Use race checks for concurrency or shared-state changes, fuzzing for parser or
+protocol changes, and benchmarks plus profiles for performance claims. These
+are triggered by the engineering surface, not by task size or reporting
+category.
 
-### 2) Skill and workflow discipline
-Score `1` only if Codex showed the skill check, classified the task correctly,
-and followed the required workflow for that task type, including phase,
-support/authorization/prohibition status, allowed actions, and lead-ownership
-rules for any independent agents or subagents used. Repository workflow text
-does not self-authorize subagent spawning when the active platform requires an
-explicit user request, except for this repo's standing owner request when
-active tool/session policy permits it. Otherwise score `0`.
+High-risk work requires a fresh final verification pass. Independent review is
+conditional; a genuinely fresh lead pass is acceptable. Independent findings
+remain evidence and never replace lead ownership.
 
-### 3) Current-state understanding and dependency rigor
-Score `1` only if pre-code current-state understanding and dependency coverage
-were concrete and complete for the task, including `Dependency scan evidence`
-for Full rigor, triggered code-walk evidence, triggered blast-radius audit, and
-`Config Contract Audit` for config/schema work. Triggered bounded parallel
-discovery must show disjoint lanes, a common revision/worktree snapshot,
-conflicts/failures, and lead synthesis. Otherwise score `0`.
+## Reporting
 
-### 4) Pre-code design discipline
-Score `1` only if Codex disclosed contract/user-visible behavior, provided a
-distinct slice-by-slice implementation plan, architecture framing, and required
-pre-code audits for the task type. Triggered `scientific-model-oracle`,
-`requirements-ambiguity-review`, `design-challenger`, and
-`test-strategy-adversary` evidence must be present, accurately statused, and
-lead-dispositioned. Otherwise score `0`.
+State the overall validation result and material gaps or waivers in plain
+language. Report substantive command results once. No numeric score, exact
+block, audit taxonomy, fixed heading, or visible list of irrelevant categories
+is required.
 
-### 5) Verification and review discipline
-Score `1` only if the validation lane was identified, lane-required checks were
-actually run and reported honestly, incrementally when required, final
-validation claims were lead-owned, and a `Review Pass` occurred before
-closeout. The Self-Audit applicability manifest must classify SA1-SA15 exactly
-once, with evidence for every applicable ID and a reason for every inapplicable
-ID. Non-workflow documentation-only Markdown changes may satisfy this item with
-documentation review, targeted text checks, and `git diff --check` when the
-documented lane criteria are met. Workflow contracts, executor guidance, and
-repo-managed skills use the workflow/skill-doc lane even when Markdown-only;
-structured metadata adds metadata-specific checks within that lane. Triggered
-leak-detection evidence must distinguish
-static reasoning, local test/race evidence, profile evidence, and runtime
-confirmation. Command-backed concurrency, lifecycle, queue, timer, shutdown,
-shared-state, or leak-detection validation claims must include a short captured
-excerpt in `docs/review-checklist.md` `Verification command reporting`;
-`SELF-AUDIT` and `CLOSEOUT` should reference that evidence instead of
-duplicating it. Non-trivial Go implementation work must include an independent
-`go-code-quality-review` result with SELF-AUDIT evidence for applicable rows it
-can inspect at its phase when independent agents are supported, authorized, and
-not explicitly prohibited, or report the canonical independent-agent status,
-separate detail, and any separate waiver disposition. High-risk closeout
-requiring a fresh-verifier pass must include fresh-verifier evidence for later
-rows such as Fresh verification and claim evidence; earlier Go quality review cannot
-substitute for evidence that did not exist yet. Otherwise score `0`.
-
-### 6) Documentation, decision memory, and traceability
-Score `1` only if README/doc review status, decision-memory handling,
-scope-to-code traceability, and the exact final validation block were present
-and complete. Otherwise score `0`.
-
-## Automatic fail conditions
-Mark the task non-compliant regardless of numeric score if any of the following
-happened:
-
-1. Codex implemented, produced diffs, edited files, or ran full validation before `Approved vN`.
-2. Codex claimed validation that was not actually performed.
-3. Codex skipped repo-wide or shared-component dependency review for a change that clearly required it.
-4. Codex omitted `README impact: Required|Not required` on a Non-trivial change.
-5. Codex introduced user-visible behavior changes without explicitly disclosing them.
-6. Codex omitted `go test -race ./...` for a change that touched concurrency, lifecycle, queues, cancellation, timers, long-lived connections, or shared mutable state, unless you explicitly waived it.
-7. Codex left placeholders, stubs, `TODO`, or deferred-hardening markers in touched files.
-8. Codex failed to include Scope-to-Code Traceability for approved scope items.
-9. Codex omitted the exact final 3-line validation block.
-10. Codex changed YAML/config/schema/defaulting behavior without a Config Contract Audit.
-11. Codex introduced or preserved a runtime fallback for a YAML-owned setting without explicitly documenting and approving that exception.
-12. Codex changed documented zero/false sentinel behavior without consumer-level regression tests.
-13. Codex omitted `SCOPE ADVERSARIAL REVIEW` before presenting the approval token for a Non-trivial Scope Ledger.
-14. Codex omitted required independent `scope-ledger-adversarial-review`
-    before presenting the approval token when independent agents were supported,
-    authorized, and not explicitly prohibited, unless the omission was reported
-    with a canonical status, separate detail, and any separate waiver, and
-    explicitly treated as a gap when required.
-15. Codex claimed code-walk, blast-radius, or leak-detection coverage from tools or profiles that were not actually run or inspected.
-16. Codex approved or executed a broad refactor-shaped Scope Ledger without slice-level objective, blast-radius boundary, production-safe stopping point, targeted checks, and per-slice validation evidence.
-17. Codex treated a mixed code/runtime-config/script/CI/generated-artifact/runtime-contract diff as documentation-only validation.
-18. Codex used a pre-approval subagent for file edits, diffs, formatters,
-    generated artifacts, full validation, or anything other than read-only
-    evidence gathering and adversarial review.
-19. Codex omitted required independent `go-code-quality-review` or its
-    applicable SELF-AUDIT evidence for Non-trivial Go implementation work when
-    independent agents were supported, authorized, and not explicitly
-    prohibited, unless the omission was reported with a canonical status,
-    separate detail, and any separate waiver, and explicitly treated as a gap
-    when required.
-20. Codex let a subagent's output replace lead-agent ownership of
-    `SCOPE ADVERSARIAL REVIEW`, integration, validation claims, ADR/TSR
-    handling, Scope-to-Code Traceability, SELF-AUDIT final disposition, or the
-    final response.
-21. Codex claimed command-backed concurrency, lifecycle, queue, timer,
-    shutdown, shared-state, or leak-detection validation evidence without a
-    captured excerpt in `Verification command reporting`, unless the omission
-    was explicitly reported as skipped, failed, timed-out, stale, cached without
-    usable output, partial, waived, or a validation gap.
-22. Codex proposed or implemented scope while material scientific/model evidence
-    or requirements ambiguity remained unresolved.
-23. Codex omitted a triggered `scientific-model-oracle`,
-    `requirements-ambiguity-review`, or `design-challenger` independent pass
-    when independent agents were supported, authorized, and not explicitly
-    prohibited, unless the omission was reported as a gap or explicit waiver.
-24. Codex began the first implementation slice without a triggered
-    `test-strategy-adversary` matrix and lead disposition, or continued after
-    that review found a material scope gap without revised approval.
-25. Codex labeled evidence independent when it did not come from a separate
-    context, or treated a design challenger exposed to the lead's preferred
-    solution as independent alternative-design evidence.
-26. Codex presented or used an approval token while any Scope Ledger item or
-    implementation slice remained `Pending`, or implemented/traced a
-    `Rejected` or `Deferred` item as approved scope.
-
-## Waivers
-Waivers are allowed only when explicit, narrowly scoped, and time-bounded.
-State what was waived, why, who approved it, mitigation, and expiry date.
-
-If the waived item is part of an automatic fail condition, the task still fails
-unless you explicitly override the rubric for that task.
+Static workflow checkers cannot prove conversational approval, correct risk
+classification, adequate discovery, sufficient validation, genuine reviewer
+independence, or engineering quality.

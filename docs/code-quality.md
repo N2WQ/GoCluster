@@ -1,96 +1,126 @@
-# docs/code-quality.md
+# Code Quality
 
-This document owns the code-quality rules referenced by `AGENTS.md`.
+This is the canonical codebase-level engineering standard shared by Codex and
+Fable. Restructuring this file does not change Fable workflow or reporting.
+Read the universal kernel for code changes, then only the risk sections that
+match the touched surface.
 
-## Core Standard
-Commercial-grade from the first draft. Do not write simple code that needs hardening later.
+## Universal Code-quality Kernel
 
-- Prefer the smallest correct change that satisfies the approved scope, preserves bounded-resource contracts, and has validation proportional to risk.
-- Do not add speculative features, abstractions, or refactors that are not required by the approved scope.
-- Do not add compatibility shims, fallback paths, feature flags, generic helper
-  layers, or future-proof hooks unless they are required by the approved scope
-  and validated at the same risk level as the behavior they affect.
-- Correctness over speed. No races, leaks, unbounded resources, or silent contract drift.
-- Use context cancellation plus explicit deadlines and idle/stall timeouts on all long-lived network I/O.
-- For non-trivial changes, define architecture before code: concurrency model, backpressure strategy, failure/recovery modes, resource bounds, and shutdown sequencing.
-- Maintain comments on non-trivial code covering invariants,
-  ownership/lifetime, concurrency contracts, drop policy, and why.
-- Be concise in responses. Skip ceremony for truly small edits; use the full workflow for non-trivial work.
-- No placeholders. Do not leave `TODO`, `...`, stubs, partial handlers, or omitted error paths in touched files.
+- Implement the smallest approved correct change.
+- Do not add unapproved abstractions, refactors, compatibility behavior,
+  fallback paths, feature flags, future-proofing, or unrelated cleanup.
+- Do not introduce races, leaks, unbounded resources, silent contract drift,
+  ignored errors, incomplete paths, placeholders, stubs, or task-related
+  `TODO`s.
+- Preserve clear ownership, error behavior, compatibility, determinism, and
+  reviewability. Validate touched behavior and material claims proportionally
+  to risk.
+- Define material architecture before code, including applicable concurrency,
+  backpressure, failure/recovery, resource-bound, and shutdown decisions.
+- Keep functions cohesive and reviewable. Functions and methods have a soft
+  target of 80 lines; more than 120 lines requires justification. Avoid new
+  functions over 200 lines unless a linear parser/state machine, generated
+  code, or table-driven structure is clearer. A hand-written source file
+  growing past 500 lines is a review trigger; explain why splitting would
+  reduce clarity or cohesion. Avoid both monoliths and fragmented control flow.
 
-## Reviewability
-Keep code reviewable in one sitting.
+## Network And Lifecycle
 
-- Functions and methods: soft target <= 80 lines.
-- Review trigger: > 120 lines requires a short justification.
-- Avoid introducing new functions > 200 lines unless clearly justified by linear parsing/state-machine flow, generated code, or table-driven structure.
-- Files: soft review trigger > 500 lines for hand-written source files.
-- If a file grows past 500 lines, explain why splitting would reduce clarity or worsen cohesion.
-- Prefer cohesive helpers over monolithic routines, but do not fragment code so aggressively that control flow becomes harder to follow.
+Long-lived network paths require an explicit, tested liveness, cancellation,
+recovery, and shutdown contract appropriate to the protocol. Determine:
 
-## Go Comment Intent
-Go comments on support-critical code should help a human or agent answer
-operational questions from source: why this boundary exists, what it owns, and
-how to troubleshoot surprising behavior.
+- who owns the connection, goroutines, timers, channels, and cancellation;
+- how initial failure, EOF, mid-stream drop, silent stall, and zero-data states
+  are detected;
+- which deadlines, keepalives, idle/stall timers, retries, and backoff rules
+  apply, including any deliberately persistent behavior;
+- how shutdown interrupts blocking work and releases every owned resource;
+- how overload, retry storms, and repeated failure remain bounded; and
+- which logs or metrics distinguish connecting, active, idle, retrying,
+  disabled, and stopped states.
 
-Required intent coverage when touching relevant code:
-- crawler-entry comments on package entry files, subsystem integration files,
-  support-critical leaf files, and replay/tool entry points where a human or
-  agent must know why the file matters before reading implementation detail
-- ownership and lifetime for goroutines, timers, channels, queues, retained
-  state, file handles, and background workers
-- resource bounds, eviction, expiry, drop, delay, overflow, or fail-open policy
-- invariants that would not be obvious from local control flow
-- operator/support meaning of logs, metrics, replay artifacts, confidence
-  glyphs, filters, gates, or diagnostics
-- config, ADR, or runtime boundaries when nearby code depends on them
+Use context cancellation plus explicit deadlines and idle/stall timeouts on all
+long-lived network I/O, with values and reset behavior appropriate to the
+protocol.
 
-Avoid comment noise:
-- do not restate obvious assignments, branches, or simple booleans
-- do not comment every repeated row/branch when the first meaningful occurrence
-  or a field guide explains the schema
-- do not add file headers to every helper solely to satisfy a pattern; use them
-  where they improve discovery of ownership, boundaries, related docs/tests, or
-  troubleshooting routes
-- do not use comments as proof of behavior when code, tests, docs, or ADRs
-  disagree
-- keep comments updated when behavior changes; stale comments are defects
-
-## Hot Paths
-On hot paths, generic helper reuse is subordinate to runtime shape.
-
-- If the path is dominated by single-item overflow or single-item correction, default to in-place single-victim logic unless measurements justify a more abstract design.
-- Any new shared helper introduced on a hot path must prove zero or near-zero allocation with targeted benchmarks before it is considered acceptable.
-- Performance claims require measurements. Do not infer success from code shape alone.
-
-## Scientific And Model Claims
-Path reliability, p50, propagation, VOACAP, call-correction, confidence, and
-contest-utility behavior must stay scientifically grounded.
-
-- Name the model assumption or contract being changed or relied on.
-- Tie behavior claims to current source, tests, replay/evaluation evidence,
-  benchmark/profile data, runtime captures, or accepted ADR/TSR records.
-- State remaining uncertainty when evidence is indirect, sampled, stale, or
-  missing.
-- Do not present plausible reasoning, comments, old ADRs, or generated maps as
-  proof of current runtime behavior without checking the current source and
-  relevant validation.
-- Do not claim lower latency, lower allocation, better p99, better prediction
-  quality, or better call accuracy without the matching measurements or
-  evaluation evidence.
+Do not treat a keepalive, retry loop, or context alone as proof of recovery or
+clean shutdown. Use `go-connection-lifecycle-audit` and compose
+`go-leak-detection` when this surface changes.
 
 ## Bounded Retained State
-Bounded retained state is mandatory.
 
-Any new or modified server-lifetime `map`, `sync.Map`, heap/index, cache, pool, interner, retained slice, or side table must explicitly document and validate one of:
-- a hard cardinality cap
-- a time/window expiry rule
-- ownership-coupled deletion
-- reference-counted reclamation
-- a clear proof that its lifetime and cardinality are bounded by another structure
+Any new or modified server-lifetime map, `sync.Map`, heap, index, cache, pool,
+interner, retained slice, or side table must have an executable bound through
+at least one of:
 
-Soft optimization caches are still resources. Interners, dedupe helpers, scratch caches, and memoization maps may not grow for process lifetime unless their maximum size and eviction/reset behavior are proven.
+- a hard cardinality cap;
+- time or window expiry;
+- ownership-coupled deletion;
+- reference-counted reclamation; or
+- a demonstrated bound inherited from another structure.
 
-When deleting or evicting a primary object, review every secondary index, cache, intern table, active counter, and diagnostics structure that can retain derived state. Primary bounds do not imply secondary bounds unless deletion coupling or cardinality coupling is explicit.
+Soft caches are still resources. Document ownership, insertion paths, cleanup
+triggers, eviction coupling, and observable cardinality. When a primary object
+is removed, inspect every secondary index, counter, cache, and intern table that
+can retain derived state. Validate churn and high-cardinality behavior, not only
+steady state. Use `go-retained-state-audit` when this surface changes.
 
-Use `go-retained-state-audit` before implementing retained-state changes when available.
+## Hot Paths And Performance
+
+Runtime shape outranks abstract helper reuse on parsing, fan-out, queue,
+correction, and other measured hot paths.
+
+- Establish the baseline and workload before optimizing.
+- Preserve correctness guards in benchmarks and profiles.
+- Review allocations, CPU, retained heap, contention, latency, and p99 according
+  to the claim being made.
+- If a path is dominated by single-item overflow or correction, default to
+  in-place single-victim logic unless measurements justify more abstraction.
+- A new shared helper on a hot path must prove zero or near-zero allocation with
+  targeted benchmarks and an explicit non-regression criterion; code shape
+  alone is not evidence.
+- Distinguish cold, warm, transition, allocation-space, and in-use evidence.
+
+Do not claim lower latency, allocation, CPU, heap, or better p99 without the
+matching measurement. Use `go-hotpath-design` before material hot-path design
+and `pprof-impact-review` when comparing profile bundles.
+
+## Scientific And Model Claims
+
+Path reliability, p50, propagation, VOACAP, call correction, confidence, and
+contest-utility behavior must remain scientifically grounded.
+
+- Name the model assumption or normative contract being changed or relied on.
+- Establish definitions, units, domains, boundaries, interpolation, rounding,
+  tolerances, sentinels, and classifications from appropriate authority.
+- Use golden vectors independent of the implementation when model correctness
+  is material.
+- Tie claims to current source, tests, replay/evaluation evidence,
+  benchmark/profile data, runtime captures, or accepted current decisions.
+- State uncertainty when evidence is indirect, sampled, stale, calibrated, or
+  missing.
+
+Implementation code, comments, generated maps, and tests derived only from that
+implementation are not independent normative proof. Use
+`scientific-model-oracle` when model semantics or claims change.
+
+## Support-critical Comments
+
+Comments on support-critical Go should explain why a boundary exists, what it
+owns, and how surprising behavior is diagnosed. Cover, when material:
+
+- package or subsystem entry purpose and important source/test/doc routes;
+- ownership and lifetime of goroutines, timers, channels, queues, retained
+  state, files, and background workers;
+- resource bounds, eviction, expiry, overflow, drop, delay, and fail-open or
+  fail-closed policy;
+- non-obvious invariants and concurrency contracts;
+- operator meaning of logs, metrics, artifacts, filters, gates, diagnostics,
+  and classifications; and
+- config, ADR, or runtime boundaries on which nearby code depends.
+
+Do not restate obvious assignments or add headers mechanically. Prefer the
+first meaningful explanation or a field guide over repetitive comments. Stale
+comments are defects; comments never override current code, tests, runtime
+contracts, or decisions.

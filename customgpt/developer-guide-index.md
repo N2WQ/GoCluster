@@ -55,26 +55,18 @@ workflow rules.
   Small or Non-trivial change gate before editing.
 - Small vs Non-trivial classification is owned by [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md) and
   [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md).
-- Non-trivial changes require a Scope Ledger and exact `Approved vN` before code.
-- Non-trivial Scope Ledgers must be slice-shaped; broad refactor-shaped ledgers
-  are not approval-ready.
-- Only `Agreed` Scope Ledger items are approval-eligible and executable.
-  `Pending` blocks approval; `Rejected` and `Deferred` remain outside the
-  implementation cycle.
+- Non-trivial changes require a bounded Scope Ledger and exact `Approved vN`
+  before mutation. Only explicitly agreed items are executable.
+- Decompose work when real rollback, ownership, uncertainty, or validation
+  boundaries exist. A bounded coherent change may remain one slice; broad
+  refactor-shaped scope is not approval-ready.
 - Config, protocol, parser, concurrency, queue, retained-state, hot-path, or
   operator-visible changes are normally Non-trivial.
-- Independent agents should be used by default under the repo owner's standing
-  request when supported, permitted by active tool/session policy, and not
-  explicitly prohibited. Do not report `not authorized/not requested` merely
-  because the current task prompt omits a repeated subagent request.
-  `requirements-ambiguity-review`, `scientific-model-oracle`, and
-  `design-challenger` provide pre-ledger evidence;
-  `scope-ledger-adversarial-review` challenges the resulting Scope Ledger;
-  `test-strategy-adversary` checks falsifiability after `DESIGN` and before
-  implementation; `go-code-quality-review` reviews Non-trivial Go diffs;
-  post-approval workers require approved disjoint slices; and fresh-verifier
-  explorers are read-only closeout reviewers. The lead agent owns gates,
-  integration, final SELF-AUDIT disposition, validation claims, and closeout.
+- Specialists and independent agents are risk-triggered, not default workflow
+  stages. Their unique methods remain available for unresolved ambiguity,
+  scientific/model authority, genuine design forks, unclear falsifiability,
+  uncertain scope or blast radius, and High-risk or substantial Go work. The
+  lead owns scope, decisions, integration, validation claims, and closeout.
 - Workflow-doc or repo-managed skill edits require the workflow-drift audit in
   [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md).
 - Task size controls approval rigor; touched surface controls validation.
@@ -85,8 +77,8 @@ workflow rules.
 
 | Change area | Required routing |
 | --- | --- |
-| Broad refactor proposal or unsliced Scope Ledger | [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), [docs/templates/non-trivial-change-template.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/templates/non-trivial-change-template.md), [VALIDATION.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/VALIDATION.md) |
-| Independent-agent, SELF-AUDIT, subagent, parallel delegation, or fresh-verifier use | [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md), [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), [docs/review-checklist.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/review-checklist.md), [docs/WORKING_WITH_CODEX.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/WORKING_WITH_CODEX.md), [VALIDATION.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/VALIDATION.md) |
+| Broad refactor proposal or scope needing real decomposition | [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), [docs/templates/non-trivial-change-template.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/templates/non-trivial-change-template.md), [VALIDATION.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/VALIDATION.md) |
+| Risk-triggered specialist, independent-agent, subagent, or fresh-verifier use | [AGENTS.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/AGENTS.md), [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), [docs/review-checklist.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/review-checklist.md), `codex-skills/` |
 | Requirements ambiguity, scientific/model oracle, design challenge, or test-strategy review | [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), [docs/templates/non-trivial-change-template.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/templates/non-trivial-change-template.md), `codex-skills/` |
 | Unfamiliar or cross-package Go behavior | [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), [docs/dev-runbook.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/dev-runbook.md), package README, crawler-entry source comments |
 | Uncertain blast radius, shared APIs, semantic callers, package/test impact | [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md), [docs/dev-runbook.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/dev-runbook.md) |
@@ -108,8 +100,8 @@ workflow rules.
 Use [docs/dev-runbook.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/dev-runbook.md) as the command source. Use [VALIDATION.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/VALIDATION.md) as the
 Non-trivial compliance rubric.
 
-- Small changes need targeted checks and normally `go test ./...`.
-- Non-trivial changes need the full runbook sequence.
+- Validation follows touched surface and risk, not the Small or Non-trivial
+  label alone. Markdown-only workflow changes do not require Go tests.
 - Race checks are mandatory for concurrency, queues, timers, cancellation,
   lifecycle, long-lived connections, or shared mutable state.
 - Fuzzing is expected for parser/protocol work.
@@ -117,9 +109,8 @@ Non-trivial compliance rubric.
 - Use code-walk, blast-radius, and leak-detection workflow routing in
   `docs/change-workflow.md` and `docs/dev-runbook.md` when the question is
   about understanding code paths, impact analysis, or lifecycle/resource leaks.
-- Command-backed concurrency and leak-detection claims need short captured
-  excerpts in `docs/review-checklist.md` `Verification command reporting`;
-  SELF-AUDIT and CLOSEOUT should reference that evidence.
+- High-risk command-backed claims need minimal checkable evidence without
+  repeating full transcripts.
 - For high-risk changes, expect a fresh verifier pass and evidence-backed
   progress, validation, performance, and science/model claims.
 - For graph-backed dependency questions, explain that custom GPT can retrieve

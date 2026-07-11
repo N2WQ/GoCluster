@@ -1,6 +1,6 @@
 ---
 name: requirements-ambiguity-review
-description: "Use for independent read-only requirements ambiguity review after Current-State Discovery and applicable model evidence but before a Proposed Scope Ledger. Trigger when filters or Boolean precedence, defaults or sentinels, authentication or admission, reputation or correction gates, failure behavior, thresholds, classifications, diagnostics, compatibility, user-visible behavior, or test oracles may admit materially different semantic interpretations."
+description: "Use after current-state discovery when material product, operator, compatibility, failure, classification, default, threshold, or test-oracle semantics still admit more than one plausible interpretation. Do not trigger merely because requirements are detailed or work is Non-trivial."
 ---
 
 # Requirements Ambiguity Review
@@ -13,10 +13,11 @@ design the solution, or own the Scope Ledger.
 
 ## Workflow
 
-1. Confirm independence and phase.
+1. Confirm the phase and review mode.
    - Run after Current-State Discovery and applicable scientific/model evidence
      but before publishing a Proposed Scope Ledger.
-   - Apply the independent-review contract in `AGENTS.md` `Subagent Use`.
+   - Use a separate read-only reviewer only when independence materially
+     reduces ambiguity risk; the method also supports lead-owned analysis.
 
 2. Build a neutral evidence packet.
    - Inspect the user request, Current-State Discovery, domain and operator
@@ -63,13 +64,11 @@ design the solution, or own the Scope Ledger.
 
 ## Output
 
-Return:
-
-- the canonical four-field independent-result envelope from `AGENTS.md`;
-- the ambiguity register;
+Report the ambiguity register;
 - blocking unresolved semantics;
 - implementation-only uncertainties delegated to design, with rationale;
 - inspected evidence and remaining unknowns;
 - a reminder that the lead owns every disposition and the Scope Ledger.
 
-Report missing or non-independent evidence as a gap.
+Report missing authority as a gap. Do not require a fixed heading or result
+envelope.

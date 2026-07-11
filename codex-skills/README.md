@@ -1,70 +1,41 @@
 # Codex Skills Bundle
 
-This directory is the authoritative gocluster Codex skills bundle. A fresh
-checkout should use these skill files directly instead of copying them into a
-user-level Codex skills directory.
+This directory is the authoritative repo-managed Codex skill source. Load a
+skill only when its positive trigger applies; Non-trivial work alone is not a
+trigger. Retained skills preserve their unique engineering methods even when
+their orchestration or reporting is simplified.
 
-Repo-authoritative skills:
-- `design-challenger` - independently compares viable designs from a neutral,
-  semantically resolved evidence packet before the Scope Ledger
-- `decision-memory-audit` - ADR/TSR pre-read, record choice, indexes, decision
-  refs, and Scope-to-Code Traceability for Non-trivial work
-- `explain-code` - grounded explanation of existing code without changes
-- `gh-address-comments` - inspect and address GitHub PR review comments through
-  `gh` CLI when requested
-- `gh-fix-ci`
-- `go-blast-radius-audit` - maps blast radius, including optional
-  `goda`/Graphviz dependency visualization and support-agent-readable code maps
-  when useful
-- `go-code-quality-review` - independently reviews newly written Go
-  implementation diffs and applicable SELF-AUDIT evidence against scope,
-  code-quality, validation, and operational standards before closeout
-- `go-code-walk` - walks unfamiliar code paths with source, semantic tools, and
-  optional dependency visualization
-- `go-connection-lifecycle-audit` - audits reconnect, retry/backoff,
-  keepalive, silent-stall, liveness, shutdown, and operator diagnostics for
-  long-lived Go connection paths
-- `go-config-contract-audit`
-- `go-hotpath-design`
-- `go-leak-detection`
-- `go-retained-state-audit`
-- `initial-review` - concise code-understanding review without implementation
-- `pprof-impact-review`
-- `requirements-ambiguity-review` - independently searches for unresolved
-  product/operator semantics before scope hardens
-- `security-best-practices` - explicit security best-practice review support
-- `security-threat-model` - repository-grounded threat modeling support
-- `scientific-model-oracle` - establishes normative model contracts, golden
-  vectors, uncertainty, and supportable scientific claims before design
-- `sentry`
-- `scope-ledger-adversarial-review` - independently challenges Non-trivial
-  Scope Ledgers before approval
-- `test-strategy-adversary` - independently checks whether the planned evidence
-  can falsify a broken design before implementation
-- `workflow-contract-audit` - checks Codex workflow, validation, runbook,
-  template, skill, and workflow-script edits for contract drift
+| Skill | Positive trigger |
+| --- | --- |
+| `decision-memory-audit` | Durable decision, troubleshooting record, or ADR/TSR index may change |
+| `workflow-contract-audit` | Codex workflow authority, routing, skills, or enforcement changes |
+| `requirements-ambiguity-review` | Current evidence leaves material semantics genuinely multi-valued |
+| `scientific-model-oracle` | Scientific/model semantics, boundaries, classifications, or claims change |
+| `design-challenger` | A genuine consequential design fork remains |
+| `scope-ledger-adversarial-review` | Scope is High-risk, uncertain, disputed, difficult to reverse, or materially incomplete |
+| `test-strategy-adversary` | A concrete false-green or unclear-oracle risk remains |
+| `go-code-quality-review` | Go implementation is High-risk or substantial |
+| `go-code-walk` | Unfamiliar or cross-package Go behavior needs an execution-path walk |
+| `go-blast-radius-audit` | Shared, semantic, cross-package, test, config, docs, or support impact is uncertain |
+| `go-config-contract-audit` | YAML/loaders/defaults/schema/operator config semantics change |
+| `go-connection-lifecycle-audit` | Long-lived connection liveness, recovery, or shutdown changes |
+| `go-leak-detection` | Goroutine, timer, socket, handle, retained-heap, or lifecycle leak risk changes |
+| `go-retained-state-audit` | Server-lifetime state, bounds, eviction, or secondary indexes change |
+| `go-hotpath-design` | Allocation-sensitive parsing, fan-out, queues, or optimization design changes |
+| `pprof-impact-review` | Multiple local profile bundles need comparable impact analysis |
+| `explain-code` | Existing code behavior needs grounded explanation without changes |
+| `initial-review` | A concise code-understanding review is explicitly requested |
+| `gh-address-comments` | GitHub review comments need inspection or approved fixes |
+| `gh-fix-ci` | GitHub Actions failures need diagnosis or an approved fix |
+| `security-best-practices` | An explicit supported-language security review is requested |
+| `security-threat-model` | An explicit repository threat model is requested |
+| `sentry` | Configured Sentry issues or events need read-only inspection |
 
-The common independent-review contract and result envelope for specialist
-skills are owned once in `AGENTS.md`. Each specialist skill keeps only its
-trigger, phase-specific method, and artifact requirements.
+Generic skill relocation, deletion, and consolidation are outside the current
+workflow change.
 
-Intentionally not vendored as project skills:
-- Codex runtime/system skills; those are provided by the Codex environment.
-- `openai-docs`; current OpenAI product guidance should come from live official
-  docs tooling.
-- `pdf` and `screenshot`; those are task-specific utility skills, not part of
-  the gocluster workflow contract.
-- Plugin-only GitHub skills such as `github` and `yeet`; connector tools and
-  authentication remain external even when repo skills use `gh` CLI fallbacks.
-
-Verify the repo bundle:
+Verify the bundle with:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\verify-codex-skills.ps1
-```
-
-To target a subset:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\verify-codex-skills.ps1 -Skills gh-fix-ci
 ```

@@ -1,6 +1,6 @@
 ---
 name: scientific-model-oracle
-description: "Use for independent read-only establishment of normative scientific or model semantics before requirements resolution, design, and scope. Trigger for VOACAP, propagation, p50, path reliability, call correction, geographic or grid conversions, band or frequency mappings, units, interpolation, thresholds, classifications, scientific diagnostics, confidence wording, or any change whose correctness depends on a scientific model. Do not trigger for purely mechanical work that cannot change model inputs, outputs, semantics, or claims."
+description: "Use when actual scientific or model inputs, outputs, semantics, boundaries, classifications, or claims change or need authoritative resolution. Do not trigger for mechanical work that cannot affect model behavior or claims."
 ---
 
 # Scientific Model Oracle
@@ -13,10 +13,11 @@ scientific or conceptual error.
 
 ## Workflow
 
-1. Confirm independence and phase.
+1. Confirm the phase and review mode.
    - Run after initial Current-State Discovery and before requirements
      ambiguity review, design, or Scope Ledger publication.
-   - Apply the independent-review contract in `AGENTS.md` `Subagent Use`.
+   - Use a separate read-only reviewer when independence materially improves
+     normative confidence; do not make independence a default workflow stage.
 
 2. Define the normative question.
    - State the model behavior or scientific claim being evaluated.
@@ -63,10 +64,7 @@ scientific or conceptual error.
 
 ## Output
 
-Return a `Scientific/model oracle` sheet containing:
-
-- the canonical four-field independent-result envelope from `AGENTS.md`;
-- normative question and source hierarchy;
+Report the normative question and source hierarchy;
 - definitions, units, domains, boundaries, interpolation, rounding, and
   tolerances;
 - provenance-independent golden vectors;
@@ -75,4 +73,6 @@ Return a `Scientific/model oracle` sheet containing:
 - conflicts, missing authority, blocking gaps, and remaining unknowns;
 - inspected evidence and a reminder that the lead owns every disposition.
 
-Report missing or non-independent evidence as a gap.
+Preserve independent derivation and provenance-independent golden vectors.
+Report missing authority as a gap; no fixed heading or result envelope is
+required.

@@ -1,6 +1,6 @@
 # ADR-0202: Default-On Independent Review Agents
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-07-09
 - Decision Origin: Design
 
@@ -102,4 +102,4 @@ not explicitly prohibited:
 - Related ADRs: ADR-0119, ADR-0144, ADR-0156, ADR-0194, ADR-0199,
   ADR-0203, ADR-0205
 - Related TSRs: none
-- Supersedes / superseded by: extends ADR-0199 default behavior
+- Supersedes / superseded by: superseded by ADR-0221
