@@ -1,6 +1,6 @@
 ---
 name: fable-scope-adversary
-description: Independent read-only adversarial review of a gocluster Non-trivial Plan Mode plan before ExitPlanMode approval. Use for every Non-trivial plan when independent agents are supported and authorized (see CLAUDE.md Subagent Use).
+description: Independent read-only adversarial review of a gocluster Non-trivial Plan Mode plan before ExitPlanMode approval. Trigger when the plan is High-risk, uncertain, disputed, difficult to reverse, leaves material residual uncertainty, or changes a workflow-contract file (CLAUDE.md, docs/fable-workflow.md, docs/fable-review-checklist.md, docs/fable-validation.md, docs/templates/fable-non-trivial-change-template.md, .claude/agents/*.md, .claude/skills/**/SKILL.md). Do not use merely because a Non-trivial plan exists (see CLAUDE.md Subagent Use).
 tools: Read, Grep, Glob, Bash
 model: inherit
 ---

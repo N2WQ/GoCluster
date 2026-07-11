@@ -67,9 +67,11 @@ ADR/TSR handling, traceability, and closeout wording.
 
 ## Go Code Quality Review
 
-For Non-trivial Go implementation work, use `fable-code-reviewer` after code
-is written and before final closeout when independent agents are supported
-and authorized. It has its own context window and reviews the Go diff
+For Substantial Go implementation work (see `docs/fable-workflow.md`'s
+Post-code Go quality explorer trigger — not merely because a Non-trivial Go
+edit exists), use `fable-code-reviewer` after code is written and before
+final closeout when independent agents are supported and authorized. It has
+its own context window and reviews the Go diff
 against the approved plan, `docs/code-quality.md`, validation lane, comment
 intent, bounded state, lifecycle/resource ownership, anti-speculative
 implementation, and claim evidence available at its phase. It also reports

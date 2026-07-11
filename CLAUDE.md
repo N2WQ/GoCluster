@@ -105,9 +105,12 @@ For Non-trivial work:
 - use `EnterPlanMode` before any `Write`/`Edit`/mutating `Bash` call
 - the plan must include current-state discovery, a slice-shaped scope, and a
   reasoning-budget recommendation (shape defined in `docs/fable-workflow.md`)
-- perform and report `SCOPE ADVERSARIAL REVIEW` before requesting approval,
-  using an independent adversarial pass when independent agents are
-  supported and authorized (see Subagent Use)
+- perform and report `SCOPE ADVERSARIAL REVIEW` when the plan is High-risk,
+  uncertain, disputed, difficult to reverse, leaves material residual
+  uncertainty, or changes a workflow-contract file — using an independent
+  adversarial pass before requesting approval when independent agents are
+  supported and authorized (see Subagent Use); state `N/A - not triggered`
+  with a one-line reason otherwise
 - request approval via `ExitPlanMode`; do not treat discussion, "go ahead," or
   any implied consent as approval — only the harness's actual approval signal
   counts

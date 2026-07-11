@@ -25,9 +25,10 @@ request approval until every required piece below is present.
 - Independent-agent status: supported, authorized, and not prohibited |
   unsupported | `not authorized/not requested` | explicitly prohibited |
   failed/timed out - <details>
-- Pre-approval independent agent: `fable-scope-adversary` used - <read-only
-  confirmation, no edits/diffs/formatters/full validation> | unsupported/
-  `not authorized/not requested`/failed/timed out - <evidence status>
+- Pre-approval independent agent: `fable-scope-adversary` - <N/A - not
+  triggered, reason | used - read-only confirmation, no edits/diffs/
+  formatters/full validation | unsupported/`not authorized/not requested`/
+  failed/timed out - evidence status>
 - Pre-plan independent evidence: `fable-scientific-oracle`/
   `fable-requirements-adversary`/`fable-design-challenger` - <N/A - not
   triggered | used - status per role> (see DISCOVERY for detail)
@@ -82,20 +83,24 @@ request approval until every required piece below is present.
 
 ### SCOPE ADVERSARIAL REVIEW
 
-- question: What edge case would make this scope unsafe or incomplete?
-- `fable-scope-adversary`: used - <findings and lead disposition> |
-  unsupported/`not authorized/not requested`/prohibited/failed/timed out -
-  <evidence status and lead disposition>
-- applicable edge areas:
-- gaps found: none | <items>
-- disposition: nothing material found | revise plan
+- trigger check: `<N/A - not triggered, reason>` | `<triggered - reason:
+  High-risk | uncertain | disputed | difficult to reverse | material
+  residual uncertainty | workflow-contract file change>`
+- question (when triggered): What edge case would make this scope unsafe or
+  incomplete?
+- `fable-scope-adversary` (when triggered): used - <findings and lead
+  disposition> | unsupported/`not authorized/not requested`/prohibited/
+  failed/timed out - <evidence status and lead disposition>
+- applicable edge areas: <N/A - not triggered | list>
+- gaps found: <N/A - not triggered | none | items>
+- disposition: `N/A - not triggered` | nothing material found | revise plan
 
 If material gaps are found, do not call `ExitPlanMode` for the current plan.
 Revise the plan and repeat this review.
 
-Call `ExitPlanMode` only once disposition is exactly `nothing material
-found`. No code, diffs, file writes, formatters, or full validation commands
-before that approval.
+Call `ExitPlanMode` only once disposition is exactly `N/A - not triggered`
+or `nothing material found`. No code, diffs, file writes, formatters, or full
+validation commands before that approval.
 
 ---
 
@@ -171,8 +176,9 @@ For each slice:
 - confirmed fixes:
 - rerun checks:
 - `fable-code-reviewer`: used - <findings and lead disposition> | N/A - no
-  Go implementation | unsupported/`not authorized/not requested`/
-  prohibited/failed/timed out - <evidence status and lead disposition>
+  Go implementation | N/A - not triggered (Go change not Substantial),
+  <reason> | unsupported/`not authorized/not requested`/prohibited/failed/
+  timed out - <evidence status and lead disposition>
 - fresh verifier pass: <`fable-fresh-verifier` | fresh self-verification |
   N/A - reason>
 

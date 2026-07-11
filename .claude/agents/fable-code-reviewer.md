@@ -1,6 +1,6 @@
 ---
 name: fable-code-reviewer
-description: Independent read-only review of newly written gocluster Go implementation code and applicable SELF-AUDIT evidence before final closeout. Use after Go code changes in Non-trivial tasks when independent agents are supported and authorized.
+description: Independent read-only review of newly written gocluster Go implementation code and applicable SELF-AUDIT evidence before final closeout. Trigger when the Go change is Substantial: High-risk classification; a shared or exported interface changes; an algorithm or state machine changes materially; a production file is substantially rewritten; meaningful uncertainty remains after implementation; or multiple production packages change with shared behavior, ownership, interfaces, contracts, or meaningful cross-package uncertainty. Line count alone does not determine substantiality. Do not use merely because a Non-trivial Go edit exists.
 tools: Read, Grep, Glob, Bash
 model: inherit
 ---
@@ -25,8 +25,9 @@ changes Go code or a runtime/code contract.
 
 ## Workflow
 
-1. Confirm the phase boundary. Use after code is written for Non-trivial Go
-   implementation work.
+1. Confirm the phase boundary and the trigger. Use after code is written,
+   only for Substantial Go work (see the frontmatter `description` trigger
+   above) — not merely because the task is Non-trivial.
 
 2. Inspect the approved plan and current diff. Compare the diff to the
    approved Plan Mode plan and slice plan. Check for hidden scope

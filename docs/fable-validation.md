@@ -33,9 +33,12 @@ Do not accept paraphrases or extra lines inside that block.
 Score `1` only if the plan was written and approved via `ExitPlanMode`
 before any file write, no pre-approval implementation or full validation
 happened, required pre-approval independent agents were read-only evidence
-gathering, the scope adversarial review was completed by the lead agent
-before requesting approval, no silent scope expansion occurred, and the
-approved plan was slice-shaped with implementation-ready slices. Triggered
+gathering, the scope adversarial review — when triggered per
+`docs/fable-workflow.md` (High-risk, uncertain, disputed, difficult to
+reverse, material residual uncertainty, or a workflow-contract file change),
+otherwise stated `N/A - not triggered` with a reason — was completed by the
+lead agent before requesting approval, no silent scope expansion occurred,
+and the approved plan was slice-shaped with implementation-ready slices. Triggered
 `fable-scientific-oracle`, `fable-requirements-adversary`, and
 `fable-design-challenger` evidence must be completed or reported as a
 gap/waiver before the plan's scope was drafted. Final traceability must map
@@ -85,12 +88,13 @@ lane. Command-backed `Concurrency, backpressure, and resource bounds` or
 `Leak-detection evidence` claims must include the captured excerpt in
 `docs/fable-review-checklist.md`'s Verification Command Reporting;
 `SELF-AUDIT` and `CLOSEOUT` must reference that evidence instead of
-duplicating it. Non-trivial Go implementation work must include an
-independent `fable-code-reviewer` result with SELF-AUDIT evidence for
-applicable rows it can inspect at its phase when independent agents are
-supported, authorized, and not explicitly prohibited, or report unsupported,
-`not authorized/not requested`, prohibited, failed, timed-out, or waived
-status. High-risk closeout requiring a `fable-fresh-verifier` pass must
+duplicating it. Substantial Go implementation work (see
+`docs/fable-workflow.md`'s Post-code Go quality explorer trigger — not
+merely because a Non-trivial Go edit exists) must include an independent
+`fable-code-reviewer` result with SELF-AUDIT evidence for applicable rows it
+can inspect at its phase when independent agents are supported, authorized,
+and not explicitly prohibited, or report unsupported, `not authorized/not
+requested`, prohibited, failed, timed-out, or waived status. High-risk closeout requiring a `fable-fresh-verifier` pass must
 include its evidence for later rows such as Fresh verification and claim
 evidence; earlier Go quality review cannot substitute for evidence that did
 not exist yet. Otherwise score `0`.
@@ -130,12 +134,15 @@ following happened:
 12. Fable changed documented zero/false sentinel behavior without
     consumer-level regression tests.
 13. Fable omitted the scope adversarial review before requesting
-    `ExitPlanMode` approval for a Non-trivial plan.
-14. Fable omitted required independent `fable-scope-adversary` review
-    before requesting approval when independent agents were supported,
-    authorized, and not explicitly prohibited, unless the omission was
-    reported as unsupported/`not authorized/not requested`/prohibited/
-    failed/timed-out and explicitly treated as a status, gap, or waiver.
+    `ExitPlanMode` approval for a plan where the trigger applied (see
+    `docs/fable-workflow.md`), or omitted the `N/A - not triggered`
+    statement with a reason when it did not apply.
+14. Fable omitted required independent `fable-scope-adversary` review when
+    the trigger applied (see `docs/fable-workflow.md`) and independent
+    agents were supported, authorized, and not explicitly prohibited, unless
+    the omission was reported as unsupported/`not authorized/not
+    requested`/prohibited/failed/timed-out and explicitly treated as a
+    status, gap, or waiver.
 15. Fable claimed code-walk, blast-radius, or leak-detection coverage from
     tools or skills that were not actually run or inspected.
 16. Fable requested approval for or executed a broad, non-slice-shaped plan
@@ -148,7 +155,8 @@ following happened:
     generated artifacts, full validation, or anything other than read-only
     evidence gathering and adversarial review.
 19. Fable omitted required independent `fable-code-reviewer` or its
-    applicable SELF-AUDIT evidence for Non-trivial Go implementation work
+    applicable SELF-AUDIT evidence for Substantial Go implementation work
+    (see `docs/fable-workflow.md`'s Post-code Go quality explorer trigger)
     when independent agents were supported, authorized, and not explicitly
     prohibited, unless the omission was reported as unsupported/`not
     authorized/not requested`/prohibited/failed/timed-out and explicitly

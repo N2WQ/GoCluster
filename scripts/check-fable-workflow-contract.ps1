@@ -135,7 +135,7 @@ $validationBlock = @"
 Validation Score: X/6
 Failed items: none | <comma-separated failed item numbers/names>
 Auto-fail conditions triggered: no | yes (<conditions>)
-"@.Trim()
+"@.Trim().Replace("`r`n", "`n")
 foreach ($entry in @(
   @{ Path = "docs/templates/fable-non-trivial-change-template.md"; Text = $template },
   @{ Path = "docs/fable-validation.md"; Text = $validation }

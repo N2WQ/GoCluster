@@ -184,8 +184,9 @@ a harness-level gate:
   explicit in-scope and out-of-scope items, and a reasoning-budget
   recommendation.
 - Before requesting approval, run the independent adversarial pass (see
-  Subagent Use) when independent agents are supported and authorized. If it
-  finds material gaps, revise the plan before calling `ExitPlanMode`.
+  Subagent Use) when the Scope adversarial review trigger applies (see
+  below) and independent agents are supported and authorized. If it finds
+  material gaps, revise the plan before calling `ExitPlanMode`.
 - Call `ExitPlanMode` to request approval. Only the harness's actual approval
   signal counts — chat text like "go ahead" is not approval, and there is no
   equivalent risk of a typo'd or ambiguous token because approval is a UI
@@ -196,11 +197,19 @@ a harness-level gate:
 
 ## Scope adversarial review before approval
 
-Required before every Non-trivial `ExitPlanMode` request, when independent
-agents are supported and authorized (see Subagent Use).
+Trigger: the plan is High-risk (see the Fresh-verifier explorer definition
+below), uncertain, disputed, difficult to reverse, leaves material residual
+uncertainty, or changes a workflow-contract file (`CLAUDE.md`, this doc,
+`docs/fable-review-checklist.md`, `docs/fable-validation.md`,
+`docs/templates/fable-non-trivial-change-template.md`, `.claude/agents/*.md`,
+`.claude/skills/**/SKILL.md`). Do not trigger merely because a Non-trivial
+plan exists. When not triggered, state `N/A - not triggered, <reason>` in the
+plan's `SCOPE ADVERSARIAL REVIEW` section and proceed to `ExitPlanMode`.
 
-Spawn `fable-scope-adversary` (or a manual stand-in, briefed identically,
-when the dedicated agent is unavailable) and ask the required question:
+When triggered, and independent agents are supported and authorized (see
+Subagent Use), spawn `fable-scope-adversary` (or a manual stand-in, briefed
+identically, when the dedicated agent is unavailable) and ask the required
+question:
 `What edge case would make this scope unsafe or incomplete?`
 
 The review must check applicable edge areas, including lifecycle/shutdown,
@@ -292,9 +301,18 @@ dispositioned and the matrix is adequate.
 
 ### Post-code Go quality explorer
 
-For Non-trivial Go implementation work, use `fable-code-reviewer` after code
-is written and before final closeout when independent agents are supported
-and authorized. It reviews the Go diff against the approved plan,
+Trigger: the Go change is Substantial — High-risk classification (see the
+Fresh-verifier explorer definition below); a shared or exported interface
+changes; an algorithm or state machine changes materially; a production file
+is substantially rewritten; meaningful uncertainty remains after
+implementation; or multiple production packages change with shared behavior,
+ownership, interfaces, contracts, or meaningful cross-package uncertainty.
+Line count alone does not determine substantiality. Do not trigger merely
+because a Non-trivial Go edit exists.
+
+When triggered, use `fable-code-reviewer` after code is written and before
+final closeout when independent agents are supported and authorized. It
+reviews the Go diff against the approved plan,
 `docs/code-quality.md`, validation lane, comment intent, bounded state,
 lifecycle/concurrency/resource ownership, and anti-speculative
 implementation. It also reports PASS/FAIL/N/A evidence for the applicable
@@ -311,6 +329,11 @@ out, report that status. For high-risk Go work, missing independent review
 is a review/validation gap unless explicitly waived.
 
 ### Fresh-verifier explorer
+
+The High-risk definition below is the shared anchor referenced by three
+roles — this section, the Scope adversarial review trigger, and the
+Post-code Go quality explorer's Substantial-Go trigger — keep it in sync if
+it changes.
 
 High-risk work includes config/schema/protocol/parser changes, user-visible
 or operator-visible behavior, shared interfaces, retained state,

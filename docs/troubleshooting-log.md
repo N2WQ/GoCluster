@@ -11,6 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0033 | Fable Workflow Checker CRLF Self-Inconsistency | Resolved | 2026-07-11 | workflow, checker, Fable, CRLF | none | `docs/troubleshooting/TSR-0033-fable-workflow-checker-crlf-self-inconsistency.md` |
 | TSR-0032 | Single Human Upstream Telnet Config | Resolved | 2026-07-10 | config, rbn, ingest, dashboard, lifecycle, operations | ADR-0218 | `docs/troubleshooting/TSR-0032-single-human-upstream-telnet-config.md` |
 | TSR-0031 | RBN Startup Retry And Console Liveness | Resolved | 2026-06-16 | rbn, ingest, dashboard, lifecycle, operations | ADR-0181 | `docs/troubleshooting/TSR-0031-rbn-startup-retry-and-console-liveness.md` |
 | TSR-0030 | VOACAP Runtime Output File Retention | Resolved | 2026-06-16 | voacap, pathreliability, file lifecycle, operations | ADR-0180 | `docs/troubleshooting/TSR-0030-voacap-runtime-output-file-retention.md` |
