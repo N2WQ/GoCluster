@@ -109,9 +109,9 @@ code-path walking, blast-radius analysis, or domain engineering checks.
 
 ## Subagents When Used
 
-Subagents are optional risk tools, not workflow stages. The repository owner
-provides standing authorization when active platform policy permits, so a task
-prompt need not repeat that authorization. Standing authorization does not
+Subagents are risk-triggered tools, not default workflow stages. The repository
+owner provides standing authorization when active platform policy permits, so a
+task prompt need not repeat that authorization. Standing authorization does not
 require use, expand scope, bypass approval, authorize pre-approval edits, or
 transfer lead authority.
 
@@ -122,13 +122,13 @@ broad evidence or specialist reasoning does not unnecessarily consume or
 contaminate the lead context. Require a separate non-steered context only when
 same-context reasoning would compromise the credibility of the evidence.
 
-When preferred delegation is unavailable, the lead may perform a genuinely
-fresh pass and must not describe it as independent. When required independent
-context is unavailable, pause or proceed only with explicit user approval and
-clearly limit the affected claim. The lead verifies material evidence,
-dispositions findings, resolves conflicts, and retains all workflow authority
-without duplicating the complete delegated investigation. No execution-mode
-field or routine narration is required.
+When preferred delegation is unavailable, disclose that limitation; the lead
+may perform a genuinely fresh pass and must not describe it as independent.
+When required independent context is unavailable, pause or proceed only with
+explicit user approval and clearly limit the affected claim. The lead verifies
+material evidence, dispositions findings, resolves conflicts, and retains all
+workflow authority without duplicating the complete delegated investigation.
+No execution-mode field or routine narration is required.
 
 - Before approval, an agent may inspect and report findings but may not edit,
   propose diffs, format, generate artifacts, or run closeout suites.

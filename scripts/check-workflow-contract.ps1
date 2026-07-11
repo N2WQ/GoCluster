@@ -153,8 +153,16 @@ foreach ($concept in @(
 $agentAuthorizationPositive = '(?i)\b(?:(?:does|may|can|could|might|will|shall|must)\s+(?!(?:not|never)\b)|is\s+(?:allowed|permitted|authorized)\s+to\s+)(?:require\s+subagents|expand\s+scope|bypass\s+approval|authorize\s+pre-approval\s+edits|transfer\s+lead\s+authority)'
 Forbid-Pattern "AGENTS.md#Risk Routing" $agentAuthorizationLimits $agentAuthorizationPositive "standing authorization contains a positive inversion"
 Forbid-Pattern "AGENTS.md#Risk Routing" $agentAuthorizationLimits $prohibitionContrast "standing authorization contains a positive inversion"
-Require-Pattern "AGENTS.md#Risk Routing" $agentRisk '(?s)triggered specialist\s+investigation materially benefits from context partitioning.*use a bounded\s+subagent when supported' "positive context-partitioning route missing"
-Require-Pattern "AGENTS.md#Risk Routing" $agentRisk '(?s)fresh lead pass is not\s+independent review' "fresh lead pass incorrectly substitutes for independent review"
+$agentContextRoute = Get-PatternGroup "AGENTS.md#Risk Routing" $agentRisk '(?is)(?<route>When a triggered specialist\s+investigation materially benefits from context partitioning,.*?)(?:\n\n|$)' "route" "positive context-partitioning route missing"
+$positiveBoundedSubagent = '(?i)\b(?:use\s+a|delegate(?:\s+the investigation)?\s+to\s+a)\s+bounded\s+subagent\b.*\b(?:supported|platform supports)\b'
+$negativeBoundedSubagent = '(?i)\b(?:do not|never|must not|cannot|should not)\s+(?:use\s+a|delegate(?:\s+the investigation)?\s+to\s+a)\s+bounded\s+subagent\b'
+Require-Pattern "AGENTS.md#Context Routing" $agentContextRoute $positiveBoundedSubagent "positive context-partitioning route missing"
+Forbid-Pattern "AGENTS.md#Context Routing" $agentContextRoute $negativeBoundedSubagent "positive context-partitioning route contains a negative inversion"
+$agentFreshLead = Get-PatternGroup "AGENTS.md#Risk Routing" $agentRisk '(?is)(?<fresh>Require a separate non-steered context.*?fresh lead (?:pass|review).*?)(?:\n\n|$)' "fresh" "fresh lead review relationship missing"
+$freshLeadNotIndependent = '(?i)(?:fresh lead (?:pass|review)|fresh pass).*?(?:is not\s+independent review|does not constitute\s+independent review|must not be (?:described|reported) as\s+independent review|must not describe it as independent)'
+$freshLeadReclassified = '(?i)(?:fresh lead (?:pass|review)|fresh pass).*?(?:\bis\b|constitutes|counts as|may be (?:described|reported) as|can be (?:described|reported) as)\s+independent review'
+Require-Pattern "AGENTS.md#Fresh Lead Review" $agentFreshLead $freshLeadNotIndependent "fresh lead pass incorrectly substitutes for independent review"
+Forbid-Pattern "AGENTS.md#Fresh Lead Review" $agentFreshLead $freshLeadReclassified "fresh lead pass contains a positive independent-review inversion"
 
 Require-Pattern "docs/change-workflow.md" $workflow 'Only exact `Approved vN` for the current ledger authorizes Non-trivial\s+mutation\.' "detailed approval route missing"
 Require-Pattern "docs/change-workflow.md" $workflow 'Only explicitly\s+agreed items may be implemented\.' "detailed agreed-scope rule missing"
@@ -208,9 +216,16 @@ foreach ($concept in @(
 $workflowAuthorizationPositive = '(?i)\b(?:(?:does|may|can|could|might|will|shall|must)\s+(?!(?:not|never)\b)|is\s+(?:allowed|permitted|authorized)\s+to\s+)(?:require\s+use|expand\s+scope|bypass\s+approval|authorize\s+pre-approval\s+edits|transfer\s+lead\s+authority)'
 Forbid-Pattern "docs/change-workflow.md#Subagents" $workflowAuthorizationLimits $workflowAuthorizationPositive "detailed standing authorization contains a positive inversion"
 Forbid-Pattern "docs/change-workflow.md#Subagents" $workflowAuthorizationLimits $prohibitionContrast "detailed standing authorization contains a positive inversion"
-Require-Pattern "docs/change-workflow.md#Subagents" $subagents '(?s)triggered specialist investigation materially\s+benefits from context partitioning.*use a bounded subagent when supported' "detailed positive context-partitioning route missing"
-Require-Pattern "docs/change-workflow.md#Subagents" $subagents '(?s)fresh pass and must not describe it as independent' "detailed fresh lead pass incorrectly substitutes for independent review"
-Require-Pattern "docs/change-workflow.md#Subagents" $subagents '(?s)required independent\s+context is unavailable, pause or proceed only with explicit user approval.*limit the affected claim' "required independent evidence substitution boundary missing"
+$workflowContextRoute = Get-PatternGroup "docs/change-workflow.md#Subagents" $subagents '(?is)(?<route>When a triggered specialist investigation materially\s+benefits from context partitioning,.*?)(?:\n\n|$)' "route" "detailed positive context-partitioning route missing"
+Require-Pattern "docs/change-workflow.md#Context Routing" $workflowContextRoute $positiveBoundedSubagent "detailed positive context-partitioning route missing"
+Forbid-Pattern "docs/change-workflow.md#Context Routing" $workflowContextRoute $negativeBoundedSubagent "detailed positive context-partitioning route contains a negative inversion"
+$workflowFallback = Get-PatternGroup "docs/change-workflow.md#Subagents" $subagents '(?is)(?<fallback>When preferred delegation is unavailable,.*?)(?:\n\n|$)' "fallback" "preferred-delegation fallback relationship missing"
+Require-Pattern "docs/change-workflow.md#Fresh Lead Review" $workflowFallback $freshLeadNotIndependent "detailed fresh lead pass incorrectly substitutes for independent review"
+Forbid-Pattern "docs/change-workflow.md#Fresh Lead Review" $workflowFallback $freshLeadReclassified "detailed fresh lead pass contains a positive independent-review inversion"
+$requiredIndependenceBoundary = '(?is)\b(?:when|if)\s+required independent context\s+(?:is unavailable|cannot be obtained).*?\b(?:pause|stop)\b.*?\b(?:explicit user approval|user explicitly approves)\b.*?\blimit\w*\b.*?\bclaim\b'
+$silentLeadSubstitution = '(?i)(?:(?:the )?lead(?:-owned review)?\s+(?:may|can).*?(?:silently\s+)?substitut|lead-owned review\s+is\s+an equivalent substitute)'
+Require-Pattern "docs/change-workflow.md#Required Independence" $workflowFallback $requiredIndependenceBoundary "required independent evidence substitution boundary missing"
+Forbid-Pattern "docs/change-workflow.md#Required Independence" $workflowFallback $silentLeadSubstitution "required independent evidence boundary permits lead substitution"
 
 Require-Text "docs/dev-runbook.md" $runbook "Task classification controls approval; touched surface and engineering risk`n  control validation." "runbook lane authority missing"
 Require-Text "docs/dev-runbook.md" $runbook "Do not run Go validation solely because workflow Markdown" "workflow lane incorrectly permits inferred Go validation"
@@ -290,9 +305,9 @@ Require-Pattern "ADR-0221" $adr0221 '(?s)ADR-0223 refines Decision 2.*specialist
 Require-Pattern "ADR-0222" $adr0222 '(?s)Status: Accepted.*Selectively supersede ADR-0221 only as follows' "ADR-0222 selective authority missing"
 Require-Pattern "ADR-0222" $adr0222 '(?s)ADR-0223 supersedes Decision 7.*separate independent reviewer' "ADR-0222 ADR-0223 reciprocal note missing"
 Require-Pattern "ADR-0223#Decision" $adr0223Decision '(?s)selectively refines ADR-0221 Decision 2.*selectively supersedes ADR-0222 Decision 7' "ADR-0223 selective authority missing"
-Require-Pattern "docs/decision-log.md" $decisionLog '(?m)^\| ADR-0223 \|.*\| Accepted \|.*\| ADR-0222 Decision 7 \| - \|' "ADR-0223 decision-index row missing"
+Require-Pattern "docs/decision-log.md" $decisionLog '(?m)^\| ADR-0223 \|.*\| Accepted \|.*\| ADR-0221 Decision 2 \(refines\); ADR-0222 Decision 7 \| - \|' "ADR-0223 decision-index row missing"
 Require-Pattern "docs/decision-log.md" $decisionLog '(?m)^\| ADR-0222 \|.*\| Accepted \|.*ADR-0221 \(selected clauses\).*\| ADR-0223 \(Decision 7\) \|' "ADR-0222 decision-index reciprocal link missing"
-Require-Pattern "docs/decision-log.md" $decisionLog '(?m)^\| ADR-0221 \|.*\| Accepted \|.*\| ADR-0222 \(selected clauses\) \|' "ADR-0221 reciprocal decision-index link missing"
+Require-Pattern "docs/decision-log.md" $decisionLog '(?m)^\| ADR-0221 \|.*\| Accepted \|.*\| ADR-0222 \(selected clauses\); ADR-0223 \(refines Decision 2\) \|' "ADR-0221 reciprocal decision-index link missing"
 
 Require-Text "docs/workflow-eval-cases.md" $text["docs/workflow-eval-cases.md"] "optional, non-authoritative" "workflow evaluation cases are not marked optional"
 

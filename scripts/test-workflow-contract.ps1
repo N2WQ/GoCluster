@@ -166,13 +166,57 @@ try {
   Invoke-Fixture 1 "positive context-partitioning route missing" "valuable context partitioning routes to bounded subagent"
   Set-Content -LiteralPath (Join-Path $fixtureRoot "AGENTS.md") -Value $original -NoNewline
 
+  $original = Replace-Once "AGENTS.md" "use a bounded`nsubagent when supported" "do not use a bounded`nsubagent when supported"
+  Invoke-Fixture 1 "positive context-partitioning route contains a negative inversion" "AGENTS context route rejects direct inversion"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "AGENTS.md") -Value $original -NoNewline
+
+  $original = Replace-Once "AGENTS.md" "use a bounded`nsubagent when supported." "use a bounded`nsubagent when supported. Never use a bounded subagent when supported."
+  Invoke-Fixture 1 "positive context-partitioning route contains a negative inversion" "AGENTS context route rejects mixed inversion"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "AGENTS.md") -Value $original -NoNewline
+
+  $original = Replace-Once "docs/change-workflow.md" "use a bounded subagent when supported" "do not use a bounded subagent when supported"
+  Invoke-Fixture 1 "detailed positive context-partitioning route contains a negative inversion" "workflow context route rejects direct inversion"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/change-workflow.md") -Value $original -NoNewline
+
+  $original = Replace-Once "docs/change-workflow.md" "use a bounded subagent when supported so" "use a bounded subagent when supported, but never use a bounded subagent when supported, so"
+  Invoke-Fixture 1 "detailed positive context-partitioning route contains a negative inversion" "workflow context route rejects mixed inversion"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/change-workflow.md") -Value $original -NoNewline
+
+  $original = Replace-Once "AGENTS.md" "use a bounded`nsubagent when supported" "delegate the investigation to a bounded`nsubagent when the platform supports it"
+  Invoke-Fixture 0 "PASS Codex workflow static invariants passed." "context route accepts equivalent positive wording"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "AGENTS.md") -Value $original -NoNewline
+
   $original = Replace-Once "AGENTS.md" "A`nfresh lead pass is not independent review." "A`nfresh lead pass is independent review."
   Invoke-Fixture 1 "fresh lead pass incorrectly substitutes for independent review" "fresh lead pass is not independent review"
   Set-Content -LiteralPath (Join-Path $fixtureRoot "AGENTS.md") -Value $original -NoNewline
 
-  $requiredIndependence = "When required independent`ncontext is unavailable, pause or proceed only with explicit user approval and`nclearly limit the affected claim."
+  $original = Replace-Once "AGENTS.md" "A`nfresh lead pass is not independent review." "A`nfresh lead pass is not independent review. A fresh lead pass may be reported as independent review."
+  Invoke-Fixture 1 "fresh lead pass contains a positive independent-review inversion" "AGENTS fresh lead rule rejects mixed inversion"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "AGENTS.md") -Value $original -NoNewline
+
+  $original = Replace-Once "docs/change-workflow.md" "fresh pass and must not describe it as independent." "fresh pass and may be reported as independent review."
+  Invoke-Fixture 1 "detailed fresh lead pass incorrectly substitutes for independent review" "workflow fresh lead rule rejects direct inversion"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/change-workflow.md") -Value $original -NoNewline
+
+  $original = Replace-Once "docs/change-workflow.md" "fresh pass and must not describe it as independent." "fresh pass and must not describe it as independent. The fresh pass may be reported as independent review."
+  Invoke-Fixture 1 "detailed fresh lead pass contains a positive independent-review inversion" "workflow fresh lead rule rejects mixed inversion"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/change-workflow.md") -Value $original -NoNewline
+
+  $original = Replace-Once "AGENTS.md" "A`nfresh lead pass is not independent review." "A`nfresh lead review does not constitute independent review."
+  Invoke-Fixture 0 "PASS Codex workflow static invariants passed." "fresh lead rule accepts equivalent positive wording"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "AGENTS.md") -Value $original -NoNewline
+
+  $requiredIndependence = "When required independent context is unavailable, pause or proceed only with`nexplicit user approval and clearly limit the affected claim."
   $original = Replace-Once "docs/change-workflow.md" $requiredIndependence "When required independent context is unavailable, the lead may silently substitute its own review."
   Invoke-Fixture 1 "required independent evidence substitution boundary missing" "required independence cannot be silently replaced"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/change-workflow.md") -Value $original -NoNewline
+
+  $original = Replace-Once "docs/change-workflow.md" $requiredIndependence ($requiredIndependence + " The lead may silently substitute its own review.")
+  Invoke-Fixture 1 "required independent evidence boundary permits lead substitution" "required independence rejects mixed lead substitution"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/change-workflow.md") -Value $original -NoNewline
+
+  $original = Replace-Once "docs/change-workflow.md" $requiredIndependence "If required independent context cannot be obtained, stop unless the user explicitly approves proceeding with a limited claim."
+  Invoke-Fixture 0 "PASS Codex workflow static invariants passed." "required independence accepts equivalent positive wording"
   Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/change-workflow.md") -Value $original -NoNewline
 
   $original = Replace-Once "docs/change-workflow.md" "Uncertainty that could affect safety,`nscope, validation, or compatibility is High-risk until resolved." "Uncertainty may remain Standard."
@@ -254,6 +298,10 @@ try {
   $original = Replace-Once "docs/decisions/ADR-0223-bounded-specialist-context-and-independent-evidence.md" "It`nselectively supersedes ADR-0222 Decision 7's interpretation" "It`nis related to ADR-0222 Decision 7's interpretation"
   Invoke-Fixture 1 "ADR-0223 selective authority missing" "ADR-0223 selective authority remains explicit"
   Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/decisions/ADR-0223-bounded-specialist-context-and-independent-evidence.md") -Value $original -NoNewline
+
+  $original = Replace-Once "docs/decision-log.md" "ADR-0223 (refines Decision 2)" "ADR-0223 Decision 2"
+  Invoke-Fixture 1 "ADR-0221 reciprocal decision-index link missing" "ADR-0221 refinement direction remains explicit"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/decision-log.md") -Value $original -NoNewline
 
   Invoke-Fixture 1 "protected Fable or release path changed: CLAUDE.md" "Fable path protected" @("CLAUDE.md")
   Invoke-Fixture 1 "protected Fable or release path changed: scripts/create-release.ps1" "release script protected" @("scripts/create-release.ps1")
