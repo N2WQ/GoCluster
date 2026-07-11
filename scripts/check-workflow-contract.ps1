@@ -112,6 +112,8 @@ Require-Text "AGENTS.md" $agents "High-risk work requires a fresh final verifica
 
 $agentRoutes = Get-MarkdownSection $agents "## Work Routes"
 $agentSmallExclusions = Get-PatternGroup "AGENTS.md#Work Routes" $agentRoutes '(?is)Small\s+(?:also\s+)?(?:cannot|must not)\s+change(?<excluded>.*?)(?:If that|Stop and reclassify)' "excluded" "sensitive Small exclusion relationship missing"
+$positiveSensitiveChange = '(?i)\b(?:(?:may|can|could|might|will|shall|must)\s+(?!(?:not|never)\b)|is\s+(?:allowed|permitted|authorized)\s+to\s+)change\b'
+$prohibitionContrast = '(?i)\b(?:but|except|however|yet)\b'
 foreach ($concept in @(
   @{ Pattern='runtime config'; Label='runtime config' },
   @{ Pattern='schema'; Label='schema' },
@@ -126,6 +128,8 @@ foreach ($concept in @(
   @{ Pattern='operator-visible'; Label='operator-visible behavior' },
   @{ Pattern='durable decisions'; Label='durable decisions' }
 )) { Require-Pattern "AGENTS.md#Work Routes" $agentSmallExclusions $concept.Pattern "sensitive Small exclusion missing: $($concept.Label)" }
+Forbid-Pattern "AGENTS.md#Work Routes" $agentSmallExclusions $positiveSensitiveChange "sensitive Small exclusion contains a positive inversion"
+Forbid-Pattern "AGENTS.md#Work Routes" $agentSmallExclusions $prohibitionContrast "sensitive Small exclusion contains a positive inversion"
 
 $agentAuthority = Get-MarkdownSection $agents "## Non-trivial Authority"
 Require-Pattern "AGENTS.md#Non-trivial Authority" $agentAuthority '(?s)lowest\s+sufficient target reasoning level.*rationale.*escalation.*user may override' "reasoning recommendation missing"
@@ -143,7 +147,9 @@ foreach ($concept in @(
 )) {
   Require-Pattern "AGENTS.md#Risk Routing" $agentAuthorizationLimits $concept.Pattern "standing authorization prohibition missing: $($concept.Label)"
 }
-Forbid-Pattern "AGENTS.md#Risk Routing" $agentAuthorizationLimits '(?i)\b(?:does|may|can|will)\s+(?:require\s+subagents|expand\s+scope|bypass\s+approval|authorize\s+pre-approval\s+edits|transfer\s+lead\s+authority)' "standing authorization contains a positive inversion"
+$agentAuthorizationPositive = '(?i)\b(?:(?:does|may|can|could|might|will|shall|must)\s+(?!(?:not|never)\b)|is\s+(?:allowed|permitted|authorized)\s+to\s+)(?:require\s+subagents|expand\s+scope|bypass\s+approval|authorize\s+pre-approval\s+edits|transfer\s+lead\s+authority)'
+Forbid-Pattern "AGENTS.md#Risk Routing" $agentAuthorizationLimits $agentAuthorizationPositive "standing authorization contains a positive inversion"
+Forbid-Pattern "AGENTS.md#Risk Routing" $agentAuthorizationLimits $prohibitionContrast "standing authorization contains a positive inversion"
 
 Require-Pattern "docs/change-workflow.md" $workflow 'Only exact `Approved vN` for the current ledger authorizes Non-trivial\s+mutation\.' "detailed approval route missing"
 Require-Pattern "docs/change-workflow.md" $workflow 'Only explicitly\s+agreed items may be implemented\.' "detailed agreed-scope rule missing"
@@ -158,6 +164,8 @@ $workflowSmallExclusions = Get-PatternGroup "docs/change-workflow.md#Change Clas
 foreach ($concept in @('runtime config','schema','default','sentinel','parser','authentication|admission','persisted state','scientific/model','hot-path','shared\s+contracts','operator-visible','durable decisions')) {
   Require-Pattern "docs/change-workflow.md#Change Classification" $workflowSmallExclusions $concept "detailed sensitive Small exclusion missing: $concept"
 }
+Forbid-Pattern "docs/change-workflow.md#Change Classification" $workflowSmallExclusions $positiveSensitiveChange "detailed sensitive Small exclusion contains a positive inversion"
+Forbid-Pattern "docs/change-workflow.md#Change Classification" $workflowSmallExclusions $prohibitionContrast "detailed sensitive Small exclusion contains a positive inversion"
 $workflowScope = Get-MarkdownSection $workflow "### Scope"
 Require-Pattern "docs/change-workflow.md#Scope" $workflowScope '(?s)lowest\s+sufficient target reasoning level.*rationale.*escalation.*user may override' "detailed reasoning recommendation missing"
 
@@ -192,7 +200,9 @@ foreach ($concept in @(
 )) {
   Require-Pattern "docs/change-workflow.md#Subagents" $workflowAuthorizationLimits $concept.Pattern "detailed standing authorization prohibition missing: $($concept.Label)"
 }
-Forbid-Pattern "docs/change-workflow.md#Subagents" $workflowAuthorizationLimits '(?i)\b(?:does|may|can|will)\s+(?:require\s+use|expand\s+scope|bypass\s+approval|authorize\s+pre-approval\s+edits|transfer\s+lead\s+authority)' "detailed standing authorization contains a positive inversion"
+$workflowAuthorizationPositive = '(?i)\b(?:(?:does|may|can|could|might|will|shall|must)\s+(?!(?:not|never)\b)|is\s+(?:allowed|permitted|authorized)\s+to\s+)(?:require\s+use|expand\s+scope|bypass\s+approval|authorize\s+pre-approval\s+edits|transfer\s+lead\s+authority)'
+Forbid-Pattern "docs/change-workflow.md#Subagents" $workflowAuthorizationLimits $workflowAuthorizationPositive "detailed standing authorization contains a positive inversion"
+Forbid-Pattern "docs/change-workflow.md#Subagents" $workflowAuthorizationLimits $prohibitionContrast "detailed standing authorization contains a positive inversion"
 
 Require-Text "docs/dev-runbook.md" $runbook "Task classification controls approval; touched surface and engineering risk`n  control validation." "runbook lane authority missing"
 Require-Text "docs/dev-runbook.md" $runbook "Do not run Go validation solely because workflow Markdown" "workflow lane incorrectly permits inferred Go validation"

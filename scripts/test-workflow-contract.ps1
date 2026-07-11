@@ -89,6 +89,18 @@ try {
   Invoke-Fixture 0 "PASS Codex workflow static invariants passed." "workflow sensitive exclusion allows equivalent wording"
   Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/change-workflow.md") -Value $original -NoNewline
 
+  $original = Replace-Once "AGENTS.md" "runtime config, schema" "runtime config, but may change parser behavior; schema"
+  Invoke-Fixture 1 "sensitive Small exclusion contains a positive inversion" "AGENTS sensitive exclusion rejects mixed inversion"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "AGENTS.md") -Value $original -NoNewline
+
+  $original = Replace-Once "docs/change-workflow.md" "runtime config, schema" "runtime config, however can change parser behavior; schema"
+  Invoke-Fixture 1 "detailed sensitive Small exclusion contains a positive inversion" "workflow sensitive exclusion rejects mixed inversion"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/change-workflow.md") -Value $original -NoNewline
+
+  $original = Replace-Once "AGENTS.md" "parser behavior" "must never change parser behavior"
+  Invoke-Fixture 0 "PASS Codex workflow static invariants passed." "AGENTS sensitive exclusion allows explicitly negated must"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "AGENTS.md") -Value $original -NoNewline
+
   foreach ($case in @(
     @{ From="runtime config"; To="runtime settings"; Expected="sensitive Small exclusion missing: runtime config"; Label="runtime config cannot be Small" },
     @{ From="parser behavior"; To="text handling"; Expected="sensitive Small exclusion missing: parser"; Label="parser behavior cannot be Small" },
@@ -127,6 +139,18 @@ try {
     Invoke-Fixture 1 $case.Expected $case.Label
     Set-Content -LiteralPath (Join-Path $fixtureRoot $case.Path) -Value $original -NoNewline
   }
+
+  $original = Replace-Once "AGENTS.md" "expand scope" "but could expand scope"
+  Invoke-Fixture 1 "standing authorization contains a positive inversion" "AGENTS standing authorization rejects mixed inversion"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "AGENTS.md") -Value $original -NoNewline
+
+  $original = Replace-Once "docs/change-workflow.md" "expand scope" "yet is permitted to expand scope"
+  Invoke-Fixture 1 "detailed standing authorization contains a positive inversion" "workflow standing authorization rejects mixed inversion"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/change-workflow.md") -Value $original -NoNewline
+
+  $original = Replace-Once "docs/change-workflow.md" "expand scope" "shall not expand scope"
+  Invoke-Fixture 0 "PASS Codex workflow static invariants passed." "workflow standing authorization allows explicitly negated shall"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/change-workflow.md") -Value $original -NoNewline
 
   $original = Replace-Once "AGENTS.md" 'Only exact `Approved vN` authorizes the matching agreed scope.' 'Discussion or requests to proceed authorize the matching agreed scope.'
   Invoke-Fixture 1 "approval authority route missing" "approval cannot be loosened"
