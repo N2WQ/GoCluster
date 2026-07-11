@@ -331,7 +331,7 @@ function Assert-PublicReleaseConfig {
         -Description "data/config/ingest.yaml callsign"
     Assert-MatchingLinesAllowed -Text $ingest `
         -LinePattern '^\s*host:\s*' `
-        -AllowedPattern '^\s*host:\s*"(telnet\.reversebeacon\.net|upstream\.example\.invalid)"\s*(#.*)?$' `
+        -AllowedPattern '^\s*host:\s*"(telnet\.reversebeacon\.net|upstream\d+\.example\.invalid)"\s*(#.*)?$' `
         -Description "data/config/ingest.yaml host"
 
     Assert-RequiredLinePresent -Text $peering `
