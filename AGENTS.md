@@ -132,6 +132,11 @@ impact, concurrency or lifecycle, retained state, config contracts, hot paths,
 or meaningful residual uncertainty. Load only the matching skill or document
 section; do not run specialists or independent agents by default.
 
+Trigger a specialist only when current evidence confirms its specific risk
+surface is materially affected. Plausible or adjacent risk alone is
+insufficient; unresolved applicability must remain a targeted discovery question
+rather than an automatic trigger.
+
 The repository owner provides standing authorization for subagent use when
 active platform policy permits. This authorization does not require subagents,
 expand scope, bypass approval, authorize pre-approval edits, or transfer lead
