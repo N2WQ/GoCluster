@@ -17,44 +17,12 @@ Produce evidence and recommendations for the lead agent. Do not choose product
 policy, approve scope, authorize mutation, or select implementation
 architecture.
 
-## Authority Boundary
-
-The oracle may:
-
-* identify the scientifically or mathematically defensible interpretation;
-* compare and rank competing model contracts;
-* recommend one contract under explicit evidence, assumptions, domain, and
-  uncertainty;
-* reject unsupported definitions, thresholds, classifications, precision, or
-  claims;
-* identify conflict between current repository behavior and stronger authority;
-* distinguish scientific correctness from intentional product policy;
-* define variables, units, domains, boundaries, tolerances, uncertainty, and
-  independent golden vectors;
-* state what evidence would change the recommendation.
-
-The oracle must not:
-
-* choose unresolved product policy;
-* approve or expand scope;
-* authorize mutation;
-* select algorithms, data structures, libraries, or implementation mechanisms;
-* claim certainty, calibration, confidence, probability, or accuracy beyond the
-  evidence;
-* treat current code, tests, fixtures, ADRs, or documentation as controlling
-  scientific authority merely because they agree;
-* manufacture a normative answer or golden vector when independent derivation
-  is unavailable.
-
-Do not choose architecture. Architecture selection belongs to
-`design-challenger` after the scientific and product semantics are resolved.
-
-## Phase
+## Phase And Trigger
 
 Run after initial Current-State Discovery and before requirements ambiguity,
 design selection, or Scope Ledger publication.
 
-Classify the task as one or more of:
+Use for one or more of:
 
 * normative contract derivation;
 * review of an existing model contract;
@@ -63,31 +31,60 @@ Classify the task as one or more of:
 * threshold or classification review;
 * scientific or operational-claim review.
 
-State whether the analysis is independently reviewed, separately reviewed, or
-lead-owned.
+Do not trigger for mechanical work that cannot affect model behavior or claims.
 
-## Required References
+## Reference Loading
 
-Load only the references applicable to the task:
+Load only the references needed for the actual question:
 
 * `references/independence-review.md`
-  when separate non-steered evidence may be required.
+  only when separate non-steered evidence may materially strengthen credibility.
 * `references/source-hierarchy.md`
-  when selecting, ranking, reconciling, or citing normative authorities.
+  when authorities must be selected, ranked, reconciled, or cited.
 * `references/model-contract.md`
-  when deriving variables, units, domains, boundaries, classifications,
-  interpolation, rounding, tolerances, or uncertainty.
+  when variables, units, domains, boundaries, classifications, interpolation,
+  rounding, tolerances, sentinels, or uncertainty must be derived.
 * `references/golden-vectors.md`
-  when numeric, boundary, conversion, classification, sentinel, or transition
+  when numeric, conversion, boundary, classification, sentinel, or transition
   behavior is material.
 * `references/claims-confidence.md`
-  when evaluating probability, confidence, accuracy, calibration, prediction,
-  equivalence, or operator-facing claims.
+  when probability, confidence, calibration, prediction, accuracy,
+  equivalence, or operator-facing claims are evaluated.
 
-Do not load a reference merely because it exists. Load it when its method is
-needed to answer the actual scientific question.
+Do not load every reference by default.
 
-## Core Workflow
+## Authority Boundary
+
+The oracle may:
+
+* identify the scientifically or mathematically defensible interpretation;
+* compare and rank competing model contracts;
+* make an evidence-qualified recommendation;
+* reject unsupported definitions, thresholds, classifications, precision, or
+  claims;
+* identify conflicts between repository behavior and stronger authority;
+* define variables, units, domains, boundaries, tolerances, uncertainty, and
+  independent golden vectors;
+* state what evidence would change the conclusion.
+
+The oracle must not:
+
+* choose unresolved product policy;
+* approve or expand scope;
+* authorize mutation;
+* choose architecture;
+* select algorithms, data structures, libraries, or mechanisms;
+* claim certainty, calibration, confidence, probability, or accuracy beyond the
+  evidence;
+* treat code, tests, fixtures, ADRs, or documentation as controlling scientific
+  authority merely because they agree;
+* manufacture a normative answer or golden vector when independent derivation
+  is unavailable.
+
+Do not choose architecture. Architecture selection belongs to
+`design-challenger` after scientific and product semantics are resolved.
+
+## Workflow
 
 ### 1. Define the normative question
 
@@ -95,66 +92,80 @@ State:
 
 * the scientific or model behavior being evaluated;
 * the decision the result will inform;
-* the relevant variables and outputs;
-* the operating domain;
+* relevant variables and outputs;
+* operating domain;
 * whether the dispute is scientific, mathematical, statistical, empirical,
   conventional, or product-policy-driven.
 
 Separate:
 
 * current implementation behavior;
-* current tests and fixtures;
+* tests and fixtures;
 * repository decisions;
 * desired product behavior;
 * external authority;
 * calibration evidence;
 * assumptions and unknowns.
 
-Do not let current implementation vocabulary predefine the normative question
-when that vocabulary may itself be wrong.
+### 2. Determine independence status
 
-### 2. Establish the source hierarchy
+Load `references/independence-review.md` only if its triggers may apply.
 
-Apply `references/source-hierarchy.md`.
+If separate review is unnecessary:
+
+* state that the review is lead-owned;
+* briefly explain why separation would not materially improve credibility;
+* do not describe the result as independent.
+
+If separate review is required:
+
+* obtain a non-steered read-only review when supported;
+* disclose whether it occurred;
+* follow the repository Scientific Independence Gate if it is unavailable.
+
+A fresh lead pass is not independent review.
+
+### 3. Establish the source hierarchy
+
+Load `references/source-hierarchy.md` when material authorities must be ranked or
+reconciled.
 
 Identify controlling sources, conflicts, version differences, domain
 differences, calibration limits, and missing authority.
 
-Use source and tests as observational evidence, not sole normative authority.
+Treat source and tests as observational evidence, not sole normative authority.
 
-### 3. Derive the model contract
+### 4. Derive the model contract
 
-Apply `references/model-contract.md`.
+Load `references/model-contract.md` when normative behavior must be defined.
 
-Define every applicable variable, unit, valid domain, invalid state, boundary,
+Specify every material variable, unit, domain, invalid state, boundary,
 threshold, interpolation rule, rounding rule, tolerance, classification,
 sentinel, transition, uncertainty, and calibration limit.
 
 Every material rule must identify its source, derivation, assumption, or
 conventional basis.
 
-### 4. Compare competing contracts
+### 5. Compare competing contracts
 
-When more than one plausible contract exists:
+When multiple plausible contracts exist:
 
-1. state each contract neutrally;
-2. identify the authority and assumptions supporting each;
+1. state each neutrally;
+2. identify authority and assumptions;
 3. compare scientific validity, domain fit, units, boundaries, empirical
    support, uncertainty, calibration range, falsifiability, and operational
    consequences;
-4. identify when each contract is valid or invalid;
-5. distinguish scientific disagreement from conventional or product-policy
-   disagreement;
-6. rank the contracts when the evidence permits.
+4. identify when each is valid or invalid;
+5. distinguish scientific disagreement from convention or product policy;
+6. rank them when evidence permits.
 
-Do not create artificial equivalence between a strongly supported contract and
-an unsupported alternative.
+Do not create artificial equivalence between supported and unsupported
+alternatives.
 
-### 5. Derive independent golden vectors
+### 6. Derive golden vectors when material
 
-Apply `references/golden-vectors.md` whenever material behavior includes numeric
-outputs, conversions, boundaries, classifications, thresholds, tolerances,
-rounding, interpolation, sentinels, or transitions.
+Load `references/golden-vectors.md` only when numeric or classified behavior is
+material.
 
 The response is incomplete until it either:
 
@@ -162,23 +173,25 @@ The response is incomplete until it either:
 * explicitly reports that an independent oracle cannot be derived and explains
   what evidence is missing.
 
-### 6. Review claims and confidence
+### 7. Review claims and confidence
 
-Apply `references/claims-confidence.md`.
+Load `references/claims-confidence.md` only when the task includes scientific,
+predictive, calibration, confidence, probability, accuracy, equivalence, or
+operator-facing claims.
 
 State:
 
-* the strongest claim supported;
-* the confidence and its basis;
+* strongest supported claim;
+* confidence and basis;
 * applicable domain and assumptions;
 * residual uncertainty;
-* attractive but unsupported stronger claims;
-* what evidence would change the conclusion;
+* unsupported stronger claims;
+* evidence that would change the conclusion;
 * any remaining user-owned product-policy choice.
 
-A scientific recommendation does not itself authorize product behavior.
+A scientific recommendation does not authorize product behavior.
 
-### 7. Classify the disposition
+### 8. Classify the disposition
 
 Use one or more of:
 
@@ -192,23 +205,6 @@ Use one or more of:
 * `current claim exceeds available evidence`;
 * `scientific question is actually product policy`.
 
-Record the authority and evidence supporting the disposition.
-
-## Independence Requirement
-
-Apply `references/independence-review.md`.
-
-When separate non-steered evidence is required, the final response must disclose
-whether that review actually occurred and whether the result is independent,
-separately reviewed, or lead-owned.
-
-A fresh lead pass is not independent review.
-
-If required independence is unavailable, follow the repository Scientific
-Independence Gate. Do not issue an unqualified verdict or scientifically
-grounded Scope Ledger whose credibility depends on missing independence unless
-the user explicitly accepts the limitation.
-
 ## Product-policy Boundary
 
 The oracle answers:
@@ -216,8 +212,7 @@ The oracle answers:
 > What does the strongest independent scientific, mathematical, statistical, or
 > normative evidence support?
 
-If scientifically supported behavior and desired product behavior can differ,
-state both separately:
+If scientific behavior and desired product behavior can differ, state:
 
 > Scientific recommendation: <evidence-supported contract or claim>
 >
@@ -227,7 +222,7 @@ state both separately:
 Route unresolved product policy through the Semantic Decision Gate and
 `requirements-ambiguity-review`.
 
-## Design and Test Boundaries
+## Design And Test Boundaries
 
 The oracle may state architecture-neutral requirements such as:
 
@@ -239,60 +234,52 @@ The oracle may state architecture-neutral requirements such as:
 
 It must not select implementation architecture.
 
-The oracle defines the normative expected behavior and independent golden
-vectors. `test-strategy-adversary` determines whether planned tests can falsify
-a broken implementation.
+The oracle defines normative expected behavior and golden vectors.
+`test-strategy-adversary` determines whether planned tests can falsify a broken
+implementation.
 
 ## Stopping Condition
 
 Block requirements resolution, design selection, and Scope Ledger publication
-when an unresolved scientific issue could materially change:
-
-* model behavior;
-* variables or units;
-* thresholds or classifications;
-* domains or boundaries;
-* expected outputs;
-* tolerances or uncertainty;
-* validation or golden vectors;
-* scientific or operational claims.
+when unresolved scientific issues could materially change model behavior,
+boundaries, classifications, expected outputs, tolerances, uncertainty,
+validation, or scientific claims.
 
 A recommendation may still be reported while blocked.
 
 The block is removed only when controlling authority resolves the issue,
-required evidence is supplied, uncertainty is bounded and accepted, or
-remaining disagreement is confirmed to be product policy.
+required evidence is supplied, uncertainty is bounded and accepted, or remaining
+disagreement is confirmed to be product policy.
 
 ## Completion Gate
 
-Before issuing the result, confirm every applicable item:
+Before responding, confirm every applicable item:
 
-* independence status is disclosed;
+* independence status is stated;
 * the normative question is explicit;
-* the source hierarchy is established;
-* variables, units, domains, boundaries, tolerances, and uncertainty are
-  defined;
-* competing contracts are compared where applicable;
-* the recommendation states confidence, assumptions, and evidence limits;
-* independent golden vectors are reported, or the missing oracle is explicit;
+* source hierarchy is established when needed;
+* the model contract is defined when needed;
+* competing contracts are compared when applicable;
+* recommendation includes confidence, assumptions, and evidence limits;
+* golden vectors are reported when material, or the missing oracle is explicit;
 * supported and unsupported claims are separated;
 * product-policy decisions remain user-owned;
-* no implementation architecture or Scope Ledger was selected prematurely.
+* no architecture or Scope Ledger was selected prematurely.
 
 ## Output
 
 Report the material result without a fixed heading or score.
 
-Include, when applicable:
+Include only applicable elements:
 
-* independence status and reviewer disclosure;
+* independence status;
 * normative question;
 * source hierarchy and conflicts;
 * model contract;
 * competing-contract comparison;
-* scientific recommendation, confidence, assumptions, and uncertainty;
+* recommendation, confidence, assumptions, and uncertainty;
 * provenance-independent golden vectors;
 * supported and unsupported claims;
 * calibration and authority gaps;
-* product-policy decisions still owned by the user;
+* remaining product-policy decisions;
 * evidence that would change the conclusion.
