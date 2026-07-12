@@ -3,6 +3,9 @@
 - Status: Accepted
 - Date: 2026-06-05
 - Decision Origin: Design
+- Selective supersession: ADR-0229 replaces host-selected source-file and
+  import discovery with full build-tagged source coverage. All other ADR-0147
+  decisions remain accepted.
 
 ## Context
 The repository already routes dependency-visualization and support-agent code
@@ -88,4 +91,4 @@ They are not the support agent's authoritative evidence.
   `scripts/README.md`, `.github/workflows/ci.yml`,
   `scripts/create-release.ps1`
 - Related TSRs:
-- Supersedes / superseded by:
+- Supersedes / superseded by: selectively superseded by ADR-0229

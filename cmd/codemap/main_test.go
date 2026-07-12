@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -129,6 +131,127 @@ func TestGoCommandHelperProcess(t *testing.T) {
 	os.Exit(exitCode)
 }
 
+func TestPackageFromRawUnionsBuildTaggedFilesAndImports(t *testing.T) {
+	repoRoot := t.TempDir()
+	packageDir := filepath.Join(repoRoot, "sample")
+	if err := os.Mkdir(packageDir, 0o755); err != nil {
+		t.Fatalf("create package directory: %v", err)
+	}
+	files := map[string]string{
+		"common.go":              "package sample\nimport _ \"dxcluster/common\"\n",
+		"impl_windows.go":        "//go:build windows\n\npackage sample\nimport _ \"dxcluster/windowsdep\"\n",
+		"impl_other.go":          "//go:build !windows\n\npackage sample\nimport _ \"dxcluster/otherdep\"\n",
+		"feature_cgo.go":         "//go:build cgo\n\npackage sample\nimport _ \"dxcluster/cgodep\"\n",
+		"feature_nocgo.go":       "//go:build !cgo\n\npackage sample\nimport _ \"dxcluster/nocgodep\"\n",
+		"sample_test.go":         "package sample\nimport _ \"dxcluster/testonly\"\n",
+		"sample_windows_test.go": "//go:build windows\n\npackage sample\nimport _ \"dxcluster/windowstestonly\"\n",
+		"sample_other_test.go":   "//go:build !windows\n\npackage sample\nimport _ \"dxcluster/othertestonly\"\n",
+		"_ignored.go":            "package sample\nimport _ \"dxcluster/ignored\"\n",
+		"ordinary-not-go.md":     "not Go source\n",
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(packageDir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	windowsRaw := goPackageRaw{
+		ImportPath:  "dxcluster/sample",
+		Name:        "sample",
+		Dir:         packageDir,
+		GoFiles:     []string{"common.go", "impl_windows.go", "feature_nocgo.go"},
+		TestGoFiles: []string{"sample_test.go", "sample_windows_test.go"},
+		Imports:     []string{"dxcluster/common", "dxcluster/windowsdep", "dxcluster/nocgodep"},
+	}
+	linuxRaw := goPackageRaw{
+		ImportPath:  "dxcluster/sample",
+		Name:        "sample",
+		Dir:         packageDir,
+		GoFiles:     []string{"common.go", "impl_other.go", "feature_cgo.go"},
+		TestGoFiles: []string{"sample_test.go", "sample_other_test.go"},
+		Imports:     []string{"dxcluster/common", "dxcluster/otherdep", "dxcluster/cgodep"},
+	}
+
+	windowsInfo, err := packageFromRaw(repoRoot, windowsRaw)
+	if err != nil {
+		t.Fatalf("package from Windows metadata: %v", err)
+	}
+	linuxInfo, err := packageFromRaw(repoRoot, linuxRaw)
+	if err != nil {
+		t.Fatalf("package from Linux metadata: %v", err)
+	}
+	if !reflect.DeepEqual(windowsInfo, linuxInfo) {
+		t.Fatalf("platform metadata changed package info:\nWindows: %+v\nLinux:   %+v", windowsInfo, linuxInfo)
+	}
+
+	wantGoFiles := []string{
+		"sample/common.go",
+		"sample/feature_cgo.go",
+		"sample/feature_nocgo.go",
+		"sample/impl_other.go",
+		"sample/impl_windows.go",
+	}
+	wantTestFiles := []string{
+		"sample/sample_other_test.go",
+		"sample/sample_test.go",
+		"sample/sample_windows_test.go",
+	}
+	wantImports := []string{
+		"dxcluster/cgodep",
+		"dxcluster/common",
+		"dxcluster/nocgodep",
+		"dxcluster/otherdep",
+		"dxcluster/windowsdep",
+	}
+	if !reflect.DeepEqual(windowsInfo.GoFiles, wantGoFiles) {
+		t.Fatalf("Go files = %v, want %v", windowsInfo.GoFiles, wantGoFiles)
+	}
+	if !reflect.DeepEqual(windowsInfo.TestFiles, wantTestFiles) {
+		t.Fatalf("test files = %v, want %v", windowsInfo.TestFiles, wantTestFiles)
+	}
+	if !reflect.DeepEqual(windowsInfo.Imports, wantImports) {
+		t.Fatalf("imports = %v, want %v", windowsInfo.Imports, wantImports)
+	}
+
+	spec := mapSpec{ID: "sample", Title: "Sample", Output: "docs/code-maps/sample.md", Packages: []string{"./sample"}}
+	windowsData := buildMapData(spec, "dxcluster", []packageInfo{windowsInfo}, nil)
+	windowsData.Fingerprint = fingerprint(windowsData)
+	linuxData := buildMapData(spec, "dxcluster", []packageInfo{linuxInfo}, nil)
+	linuxData.Fingerprint = fingerprint(linuxData)
+	wantOutsideDeps := []repoDep{
+		{From: "dxcluster/sample", To: "dxcluster/cgodep"},
+		{From: "dxcluster/sample", To: "dxcluster/common"},
+		{From: "dxcluster/sample", To: "dxcluster/nocgodep"},
+		{From: "dxcluster/sample", To: "dxcluster/otherdep"},
+		{From: "dxcluster/sample", To: "dxcluster/windowsdep"},
+	}
+	if !reflect.DeepEqual(windowsData.OutsideRepoDeps, wantOutsideDeps) {
+		t.Fatalf("outside dependencies = %v, want %v", windowsData.OutsideRepoDeps, wantOutsideDeps)
+	}
+	if windowsData.Fingerprint != linuxData.Fingerprint || renderMarkdown(windowsData) != renderMarkdown(linuxData) {
+		t.Fatal("platform metadata changed rendered map or fingerprint")
+	}
+}
+
+func TestPackageFromRawFailsOnMalformedInactiveSource(t *testing.T) {
+	repoRoot := t.TempDir()
+	packageDir := filepath.Join(repoRoot, "sample")
+	if err := os.Mkdir(packageDir, 0o755); err != nil {
+		t.Fatalf("create package directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(packageDir, "common.go"), []byte("package sample\n"), 0o644); err != nil {
+		t.Fatalf("write common source: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(packageDir, "broken_linux.go"), []byte("//go:build linux\n\npackage sample\nimport (\n"), 0o644); err != nil {
+		t.Fatalf("write malformed source: %v", err)
+	}
+
+	_, err := packageFromRaw(repoRoot, goPackageRaw{ImportPath: "dxcluster/sample", Name: "sample", Dir: packageDir})
+	if err == nil || !strings.Contains(err.Error(), "broken_linux.go") {
+		t.Fatalf("error = %v, want malformed file diagnostic", err)
+	}
+}
+
 func TestSplitMarkdownTableRow(t *testing.T) {
 	cells := splitMarkdownTableRow("| ADR-0140 | Title | Accepted | 2026-06-04 | workflow, Codex | - | - | `docs/decisions/ADR-0140-example.md` |")
 	if len(cells) != 8 {
@@ -207,6 +330,7 @@ func TestRenderMarkdownIsGeneratedOnly(t *testing.T) {
 		"- Source fingerprint: `abc123`",
 		"## In-Scope Package Edges",
 		"## Related ADRs",
+		"union across all checked-in Go build configurations",
 	} {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("rendered map missing %q\n%s", want, rendered)

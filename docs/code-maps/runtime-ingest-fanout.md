@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `49f837b8dd392fee`
+- Source fingerprint: `1b17667ae9bf0f92`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -15,7 +15,7 @@
 | `dxcluster/internal/cluster` | `internal/cluster` | 25 | 26 |
 | `dxcluster/peer` | `peer` | 20 | 20 |
 | `dxcluster/spot` | `spot` | 32 | 23 |
-| `dxcluster/telnet` | `telnet` | 8 | 24 |
+| `dxcluster/telnet` | `telnet` | 9 | 24 |
 
 ## In-Scope Package Edges
 
@@ -268,6 +268,7 @@ Source files:
 - `telnet/filter_commands.go`
 - `telnet/latency.go`
 - `telnet/login_validation.go`
+- `telnet/reuseaddr_other.go`
 - `telnet/reuseaddr_windows.go`
 - `telnet/server.go`
 - `telnet/show_prop.go`
@@ -435,6 +436,7 @@ Test files:
 
 ## Limits
 
-- Package imports are static compile-time metadata from `go list -json`.
+- Source files and package imports are the deterministic union across all checked-in Go build configurations; mutually exclusive files and edges do not coexist in every binary.
+- Test files are listed, but test-only imports are not included in package dependency edges.
 - This map does not prove interface dispatch, goroutine lifecycle, runtime feature flags, data flow, or concrete traffic paths.
 - ADR matching is deterministic text and metadata matching against scoped package paths and area terms; inspect the ADR before treating it as behavioral evidence.

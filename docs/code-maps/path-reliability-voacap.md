@@ -2,7 +2,7 @@
 # Code Map: Path Reliability And VOACAP
 
 - Map ID: `path-reliability-voacap`
-- Source fingerprint: `993c3147bb6f6fb2`
+- Source fingerprint: `4eb66cddecd396bc`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map path-reliability-voacap`
 - Check: `go run ./cmd/codemap check -map path-reliability-voacap`
@@ -12,8 +12,8 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/internal/solarpath` | `internal/solarpath` | 3 | 1 |
-| `dxcluster/internal/voacap` | `internal/voacap` | 9 | 6 |
-| `dxcluster/pathreliability` | `pathreliability` | 18 | 18 |
+| `dxcluster/internal/voacap` | `internal/voacap` | 10 | 6 |
+| `dxcluster/pathreliability` | `pathreliability` | 19 | 18 |
 | `dxcluster/solarweather` | `solarweather` | 9 | 8 |
 
 ## In-Scope Package Edges
@@ -30,6 +30,7 @@
 | From | Imports |
 |---|---|
 | `dxcluster/internal/voacap` | `dxcluster/internal/yamlconfig` |
+| `dxcluster/pathreliability` | `dxcluster/internal/fsutil` |
 | `dxcluster/pathreliability` | `dxcluster/internal/pebbleutil` |
 | `dxcluster/pathreliability` | `dxcluster/internal/yamlconfig` |
 | `dxcluster/pathreliability` | `dxcluster/strutil` |
@@ -52,6 +53,7 @@ Test files:
 ### `dxcluster/internal/voacap`
 
 Source files:
+- `internal/voacap/atomic_replace.go`
 - `internal/voacap/atomic_replace_windows.go`
 - `internal/voacap/config.go`
 - `internal/voacap/deck.go`
@@ -76,6 +78,7 @@ Source files:
 - `pathreliability/band.go`
 - `pathreliability/config.go`
 - `pathreliability/grid.go`
+- `pathreliability/h3map.go`
 - `pathreliability/h3map_stub.go`
 - `pathreliability/h3tables.go`
 - `pathreliability/keys.go`
@@ -204,6 +207,7 @@ Test files:
 
 ## Limits
 
-- Package imports are static compile-time metadata from `go list -json`.
+- Source files and package imports are the deterministic union across all checked-in Go build configurations; mutually exclusive files and edges do not coexist in every binary.
+- Test files are listed, but test-only imports are not included in package dependency edges.
 - This map does not prove interface dispatch, goroutine lifecycle, runtime feature flags, data flow, or concrete traffic paths.
 - ADR matching is deterministic text and metadata matching against scoped package paths and area terms; inspect the ADR before treating it as behavioral evidence.

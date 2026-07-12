@@ -35,10 +35,14 @@ should include:
 - generation command
 - package dependency edges
 - repository dependencies outside the explicit scope
-- source and test files discovered from Go package metadata
+- all Go-recognized source and test files in each selected package directory,
+  including files excluded from the current host by build constraints
+- package imports unioned from every non-test source file across those build
+  constraints
 - related ADRs discovered from decision-log metadata and ADR text
-- limits: what the graph does not prove, including interface dispatch,
-  build-tag/test-only edges, runtime feature flags, and concrete traffic paths
+- limits: mutually exclusive build-tagged files and edges do not coexist in
+  every binary, test-only imports are excluded, and the graph does not prove
+  interface dispatch, runtime feature flags, or concrete traffic paths
 
 ## Local Commands
 

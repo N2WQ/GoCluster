@@ -43,16 +43,16 @@ func TestResolveReplayConfigDirPrecedence(t *testing.T) {
 func TestResolveReplayArchiveDirPrecedenceAndCleaning(t *testing.T) {
 	t.Parallel()
 
-	replayCfg := replayConfig{ArchiveDir: ` archive data\..\archive data `}
+	replayCfg := replayConfig{ArchiveDir: " " + filepath.Join("archive data", "day", "..") + " "}
 
-	got := resolveReplayArchiveDir(` .\custom-archive\day\.. `, replayCfg)
-	want := filepath.Clean(`.\custom-archive`)
+	got := resolveReplayArchiveDir(" "+filepath.Join("custom-archive", "day", "..")+" ", replayCfg)
+	want := filepath.Clean("custom-archive")
 	if got != want {
 		t.Fatalf("resolveReplayArchiveDir() override = %q, want %q", got, want)
 	}
 
 	got = resolveReplayArchiveDir("", replayCfg)
-	want = filepath.Clean(`archive data\..\archive data`)
+	want = filepath.Clean("archive data")
 	if got != want {
 		t.Fatalf("resolveReplayArchiveDir() replay config = %q, want %q", got, want)
 	}

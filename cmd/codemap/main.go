@@ -9,12 +9,15 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"go/parser"
+	"go/token"
 	"io"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -360,28 +363,60 @@ func packageFromRaw(repoRoot string, raw goPackageRaw) (packageInfo, error) {
 	if err != nil {
 		return packageInfo{}, err
 	}
+	goFiles, testFiles, imports, err := scanPackageFiles(repoRoot, raw.Dir)
+	if err != nil {
+		return packageInfo{}, err
+	}
 	info := packageInfo{
 		ImportPath: raw.ImportPath,
 		Name:       raw.Name,
 		Dir:        raw.Dir,
 		RelDir:     relDir,
-		GoFiles:    fileList(repoRoot, raw.Dir, raw.GoFiles),
-		TestFiles:  fileList(repoRoot, raw.Dir, append(raw.TestGoFiles, raw.XTestGoFiles...)),
-		Imports:    sortedUnique(raw.Imports),
+		GoFiles:    goFiles,
+		TestFiles:  testFiles,
+		Imports:    imports,
 	}
 	return info, nil
 }
 
-func fileList(repoRoot, dir string, names []string) []string {
-	files := make([]string, 0, len(names))
-	for _, name := range names {
-		rel, err := relPath(repoRoot, filepath.Join(dir, name))
-		if err != nil {
+func scanPackageFiles(repoRoot, dir string) ([]string, []string, []string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("read package directory %s: %w", dir, err)
+	}
+
+	var goFiles []string
+	var testFiles []string
+	var imports []string
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") || !strings.HasSuffix(name, ".go") {
 			continue
 		}
-		files = append(files, rel)
+		fullPath := filepath.Join(dir, name)
+		rel, err := relPath(repoRoot, fullPath)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("resolve package file %s: %w", fullPath, err)
+		}
+		if strings.HasSuffix(name, "_test.go") {
+			testFiles = append(testFiles, rel)
+			continue
+		}
+
+		parsed, err := parser.ParseFile(token.NewFileSet(), fullPath, nil, parser.ImportsOnly)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("parse package file %s: %w", rel, err)
+		}
+		goFiles = append(goFiles, rel)
+		for _, imported := range parsed.Imports {
+			importPath, err := strconv.Unquote(imported.Path.Value)
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("parse import in %s: %w", rel, err)
+			}
+			imports = append(imports, importPath)
+		}
 	}
-	return sortedUnique(files)
+	return sortedUnique(goFiles), sortedUnique(testFiles), sortedUnique(imports), nil
 }
 
 func relPath(repoRoot, absPath string) (string, error) {
@@ -715,7 +750,8 @@ func renderMarkdown(data mapData) string {
 	}
 
 	b.WriteString("## Limits\n\n")
-	b.WriteString("- Package imports are static compile-time metadata from `go list -json`.\n")
+	b.WriteString("- Source files and package imports are the deterministic union across all checked-in Go build configurations; mutually exclusive files and edges do not coexist in every binary.\n")
+	b.WriteString("- Test files are listed, but test-only imports are not included in package dependency edges.\n")
 	b.WriteString("- This map does not prove interface dispatch, goroutine lifecycle, runtime feature flags, data flow, or concrete traffic paths.\n")
 	b.WriteString("- ADR matching is deterministic text and metadata matching against scoped package paths and area terms; inspect the ADR before treating it as behavioral evidence.\n")
 	return b.String()

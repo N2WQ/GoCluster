@@ -25,6 +25,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Reserved Placeholder | Unused | - | index hygiene | - | - | No ADR file; first real ADR is `docs/decisions/ADR-0002-ui-v2-render-pipeline.md` |
+| ADR-0229 | Full Build-Tagged Code Map Coverage | Accepted | 2026-07-12 | workflow, docs/code-maps, CI, portability | ADR-0147 (selected clauses) | - | `docs/decisions/ADR-0229-full-build-tagged-code-map-coverage.md` |
 | ADR-0228 | Corrective CI Enforcement | Accepted | 2026-07-12 | workflow, CI, validation, GitHub Actions | ADR-0227 (selected clauses) | - | `docs/decisions/ADR-0228-corrective-ci-enforcement.md` |
 | ADR-0227 | Push-to-Main CI Validation Backstops | Accepted | 2026-07-11 | workflow, CI, validation, GitHub Actions | - | ADR-0228 (selected clauses) | `docs/decisions/ADR-0227-push-to-main-ci-validation-backstops.md` |
 | ADR-0226 | Fable Bounded Specialist Triggering Port | Accepted | 2026-07-11 | workflow, Fable, subagents, independent evidence, context efficiency | ADR-0206 Decision 3 (refines); ADR-0217 (refines); ADR-0223 (Codex source, ported) | - | `docs/decisions/ADR-0226-fable-bounded-specialist-triggering-port.md` |
@@ -105,7 +106,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR-0151 | Archive Range Deletion Cleanup | Accepted | 2026-06-06 | archive, config, hot path, profiling | ADR-0149 cleanup implementation | - | `docs/decisions/ADR-0151-archive-range-deletion-cleanup.md` |
 | ADR-0149 | Single-Window Archive Retention | Accepted | 2026-06-06 | archive, config, spot taxonomy, hot path | ADR-0069 archive retention class | - | `docs/decisions/ADR-0149-single-window-archive-retention.md` |
 | ADR-0148 | Post-Stabilizer Shared Secondary Fanout | Accepted | 2026-06-06 | internal/cluster, stabilizer, dedupe, archive, peer, hot path | ADR-0013 archive/peer side rail; ADR-0020 archive/peer unchanged clause; ADR-0029 archive/peer unchanged clause; ADR-0138 archive/peer MED side rail | - | `docs/decisions/ADR-0148-post-stabilizer-shared-secondary-fanout.md` |
-| ADR-0147 | Generated Code Map Freshness Gate | Accepted | 2026-06-05 | workflow, docs/code-maps, scripts, CI, release | - | - | `docs/decisions/ADR-0147-generated-code-map-freshness-gate.md` |
+| ADR-0147 | Generated Code Map Freshness Gate | Accepted | 2026-06-05 | workflow, docs/code-maps, scripts, CI, release | - | ADR-0229 (selected clauses) | `docs/decisions/ADR-0147-generated-code-map-freshness-gate.md` |
 | ADR-0146 | H3 Path Cell Duplicate Work Removal | Accepted | 2026-06-05 | spot, internal/cluster, pathreliability, hot path | - | - | `docs/decisions/ADR-0146-h3-path-cell-duplicate-work-removal.md` |
 | ADR-0145 | PSKReporter Fast Payload Parser | Accepted | 2026-06-05 | pskreporter, mqtt, parser, hot path | - | - | `docs/decisions/ADR-0145-pskreporter-fast-payload-parser.md` |
 | ADR-0144 | Slice-Shaped Scope Ledgers | Superseded | 2026-06-05 | workflow, Codex, validation | - | ADR-0221 | `docs/decisions/ADR-0144-slice-shaped-scope-ledgers.md` |
