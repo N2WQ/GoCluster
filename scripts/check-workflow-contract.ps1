@@ -87,11 +87,15 @@ $requiredFiles = @(
   "docs/runbooks/codex-triggered-validation-tools.md",
   "docs/workflow-eval-cases.md",
   "docs/decision-log.md",
+  ".github/workflows/ci.yml",
+  ".github/workflows/codex-workflow-contract.yml",
+  ".github/workflows/nightly-race.yml",
   "docs/decisions/ADR-0221-codex-authority-and-evidence-workflow.md",
   "docs/decisions/ADR-0222-corrective-codex-authority-and-validation.md",
   "docs/decisions/ADR-0223-bounded-specialist-context-and-independent-evidence.md",
   "docs/decisions/ADR-0224-evidence-before-scope-and-material-reapproval.md",
   "docs/decisions/ADR-0225-remove-codex-target-reasoning-recommendation.md",
+  "docs/decisions/ADR-0227-push-to-main-ci-validation-backstops.md",
   "codex-skills/README.md",
   "scripts/README.md"
 )
@@ -111,6 +115,10 @@ $adr0225 = $text["docs/decisions/ADR-0225-remove-codex-target-reasoning-recommen
 $adr0223Decision = Get-MarkdownSection $adr0223 "## Decision"
 $adr0225Decision = Get-MarkdownSection $adr0225 "## Decision"
 $decisionLog = $text["docs/decision-log.md"]
+$ciWorkflow = $text[".github/workflows/ci.yml"]
+$contractWorkflow = $text[".github/workflows/codex-workflow-contract.yml"]
+$raceWorkflow = $text[".github/workflows/nightly-race.yml"]
+$adr0227 = $text["docs/decisions/ADR-0227-push-to-main-ci-validation-backstops.md"]
 
 Require-Text "AGENTS.md" $agents 'Only exact `Approved vN` authorizes the matching agreed scope.' "approval authority route missing"
 Require-Text "AGENTS.md" $agents "Only explicitly agreed items are executable." "agreed-scope authority missing"
@@ -244,6 +252,102 @@ foreach ($command in @('go test ./...','go vet ./...','staticcheck ./...','golan
   Require-Text "docs/dev-runbook.md#Non-trivial production Go" $productionGo $command "production-Go final lane command missing: $command"
 }
 Require-Pattern "docs/dev-runbook.md#Non-trivial production Go" $productionGo 'complete baseline once on the\s+final relevant state' "production-Go final-once rule missing"
+
+$ciBackstops = Get-MarkdownSection $runbook "## CI Backstops"
+if ($ciBackstops -eq "") { Add-Failure "CI backstop boundary missing" }
+Require-Pattern "docs/dev-runbook.md#CI Backstops" $ciBackstops '(?s)post-push verification.*cannot prevent.*temporarily reaching\s+`main`' "post-push limitation missing"
+Require-Pattern "docs/dev-runbook.md#CI Backstops" $ciBackstops '(?s)nightly full race suite.*does not\s+replace race validation triggered locally' "nightly race boundary missing"
+Require-Pattern "docs/dev-runbook.md#CI Backstops" $ciBackstops '(?s)path filters and filenames cannot determine semantic engineering risk' "CI semantic-risk limitation missing"
+foreach ($concept in @('fuzzing','benchmarks','pprof','runtime-config','provenance-independent scientific or model vectors','evaluations')) {
+  Require-Pattern "docs/dev-runbook.md#CI Backstops" $ciBackstops $concept "CI triggered-validation boundary missing: $concept"
+}
+Require-Pattern "docs/dev-runbook.md#CI Backstops" $ciBackstops '(?s)do not change\s+Fable''s separate approval, validation, or workflow contract' "CI backstop Fable boundary missing"
+
+Require-Pattern ".github/workflows/ci.yml" $ciWorkflow '(?ms)^on:\s*\n\s+push:\s*\n\s+branches:\s*\n\s+- main\s*\n\s+workflow_dispatch:' "CI push/manual triggers missing"
+Forbid-Pattern ".github/workflows/ci.yml" $ciWorkflow '(?m)^\s*pull_request:' "CI pull-request trigger remains"
+Require-Pattern ".github/workflows/ci.yml" $ciWorkflow '(?ms)^permissions:\s*\n\s+contents: read' "CI least-privilege permissions missing"
+Require-Text ".github/workflows/ci.yml" $ciWorkflow "fetch-depth: 0" "CI full-history checkout missing"
+foreach ($command in @(
+  'go run ./cmd/codemap check -all',
+  'go test ./...',
+  'go vet ./...',
+  'staticcheck ./...',
+  'golangci-lint run ./... --config=.golangci.yaml'
+)) { Require-Text ".github/workflows/ci.yml" $ciWorkflow $command "CI required command missing: $command" }
+Require-Text ".github/workflows/ci.yml" $ciWorkflow 'honnef.co/go/tools/cmd/staticcheck@v0.7.0' "CI Staticcheck pin missing"
+Forbid-Pattern ".github/workflows/ci.yml" $ciWorkflow 'staticcheck@latest' "CI Staticcheck uses latest"
+foreach ($required in @(
+  'BEFORE_SHA: ${{ github.event.before }}',
+  'AFTER_SHA: ${{ github.sha }}',
+  '"$BEFORE_SHA" =~ ^0+$',
+  'git fetch --no-tags --depth=1 origin "$BEFORE_SHA"',
+  'git diff --check "$base" "$AFTER_SHA" --',
+  'base="HEAD^"',
+  'AFTER_SHA="HEAD"'
+)) { Require-Text ".github/workflows/ci.yml" $ciWorkflow $required "CI pushed-range safeguard missing: $required" }
+
+Require-Pattern ".github/workflows/codex-workflow-contract.yml" $contractWorkflow '(?ms)^on:\s*\n\s+push:\s*\n\s+branches:\s*\n\s+- main\s*\n\s+paths:' "Codex contract push/path trigger missing"
+Forbid-Pattern ".github/workflows/codex-workflow-contract.yml" $contractWorkflow '(?m)^\s*workflow_dispatch:' "Codex contract manual trigger is not allowed"
+Require-Pattern ".github/workflows/codex-workflow-contract.yml" $contractWorkflow '(?ms)^permissions:\s*\n\s+contents: read' "Codex contract least-privilege permissions missing"
+Require-Text ".github/workflows/codex-workflow-contract.yml" $contractWorkflow "runs-on: windows-latest" "Codex contract Windows runner missing"
+Require-Text ".github/workflows/codex-workflow-contract.yml" $contractWorkflow "fetch-depth: 0" "Codex contract full-history checkout missing"
+Require-Text ".github/workflows/codex-workflow-contract.yml" $contractWorkflow "shell: pwsh" "Codex contract PowerShell invocation missing"
+foreach ($required in @(
+  './scripts/check-workflow-contract.ps1 -BaselineRevision $env:BEFORE_SHA',
+  './scripts/test-workflow-contract.ps1',
+  './scripts/test-measure-codex-workflow-context.ps1',
+  './scripts/verify-codex-skills.ps1',
+  'BEFORE_SHA: ${{ github.event.before }}',
+  'git fetch --no-tags --depth=1 origin $env:BEFORE_SHA',
+  'git diff --check $env:BEFORE_SHA $env:AFTER_SHA --'
+)) { Require-Text ".github/workflows/codex-workflow-contract.yml" $contractWorkflow $required "Codex contract workflow requirement missing: $required" }
+$requiredContractPaths = @(
+  'AGENTS.md', 'VALIDATION.md', '.golangci.yaml',
+  '.github/workflows/ci.yml', '.github/workflows/codex-workflow-contract.yml',
+  '.github/workflows/nightly-race.yml', 'codex-skills/**',
+  'docs/WORKING_WITH_CODEX.md', 'docs/change-workflow.md',
+  'docs/code-quality.md', 'docs/decision-log.md', 'docs/decision-memory.md',
+  'docs/dev-runbook.md', 'docs/review-checklist.md',
+  'docs/workflow-eval-cases.md',
+  'docs/runbooks/codex-triggered-validation-tools.md',
+  'docs/runbooks/codex-workflow-checks.md',
+  'docs/templates/adr-template.md',
+  'docs/templates/non-trivial-change-template.md',
+  'docs/decisions/ADR-0147-generated-code-map-freshness-gate.md',
+  'docs/decisions/ADR-0155-repo-authoritative-codex-skills.md',
+  'docs/decisions/ADR-0156-expanded-repo-managed-audit-skills.md',
+  'docs/decisions/ADR-0179-documentation-only-validation-lane.md',
+  'docs/decisions/ADR-0194-llm-workflow-verification-and-claim-evidence.md',
+  'docs/decisions/ADR-0210-executor-aware-workflow-skill-doc-runbook-lane.md',
+  'docs/decisions/ADR-0221-codex-authority-and-evidence-workflow.md',
+  'docs/decisions/ADR-0222-corrective-codex-authority-and-validation.md',
+  'docs/decisions/ADR-0223-bounded-specialist-context-and-independent-evidence.md',
+  'docs/decisions/ADR-0224-evidence-before-scope-and-material-reapproval.md',
+  'docs/decisions/ADR-0225-remove-codex-target-reasoning-recommendation.md',
+  'docs/decisions/ADR-0227-push-to-main-ci-validation-backstops.md',
+  'scripts/README.md', 'scripts/check-workflow-contract.ps1',
+  'scripts/measure-codex-workflow-context.ps1',
+  'scripts/test-measure-codex-workflow-context.ps1',
+  'scripts/test-workflow-contract.ps1', 'scripts/verify-codex-skills.ps1'
+)
+foreach ($path in $requiredContractPaths) {
+  Require-Text ".github/workflows/codex-workflow-contract.yml" $contractWorkflow "- $path" "Codex contract path ownership missing: $path"
+}
+
+Require-Pattern ".github/workflows/nightly-race.yml" $raceWorkflow '(?ms)^on:\s*\n\s+schedule:.*cron: "17 7 \* \* \*"\s*\n\s+workflow_dispatch:' "nightly race schedule/manual triggers missing"
+Require-Pattern ".github/workflows/nightly-race.yml" $raceWorkflow '(?ms)^permissions:\s*\n\s+contents: read' "nightly race least-privilege permissions missing"
+Require-Text ".github/workflows/nightly-race.yml" $raceWorkflow "timeout-minutes: 60" "nightly race timeout missing"
+Require-Text ".github/workflows/nightly-race.yml" $raceWorkflow "go-version-file: go.mod" "nightly race go.mod toolchain missing"
+Require-Text ".github/workflows/nightly-race.yml" $raceWorkflow "go test -race -count=1 ./..." "nightly race command missing"
+
+foreach ($workflow in @(
+  @{ Path='.github/workflows/ci.yml'; Text=$ciWorkflow },
+  @{ Path='.github/workflows/codex-workflow-contract.yml'; Text=$contractWorkflow },
+  @{ Path='.github/workflows/nightly-race.yml'; Text=$raceWorkflow }
+)) { Forbid-Pattern $workflow.Path $workflow.Text '(?m)^\s*continue-on-error:' "CI continue-on-error is not allowed" }
+
+Require-Pattern "ADR-0227" $adr0227 '(?s)Status: Accepted.*Push CI is post-push verification.*nightly race job is a broad\s+regression backstop' "ADR-0227 CI policy missing"
+Require-Pattern "docs/decision-log.md" $decisionLog '(?m)^\| ADR-0227 \| Push-to-Main CI Validation Backstops \| Accepted \| 2026-07-11 \| workflow, CI, validation, GitHub Actions \| - \| - \|' "ADR-0227 decision-index row missing"
 
 $networkQuality = Get-MarkdownSection $codeQuality "## Network And Lifecycle"
 Require-Pattern "docs/code-quality.md#Network" $networkQuality '(?s)context cancellation.*deadlines.*idle/stall timeouts' "shared network/lifecycle obligation changed"

@@ -21,6 +21,21 @@ leak-investigation recipes live in
 `docs/runbooks/codex-triggered-validation-tools.md` for Codex. Fable continues
 to use the routes defined by `CLAUDE.md` and `docs/fable-workflow.md`.
 
+## CI Backstops
+
+Push-to-`main` CI is post-push verification. It can detect an invalid commit
+after it lands, but it cannot prevent that commit from temporarily reaching
+`main`. The nightly full race suite is a broad regression backstop; it does not
+replace race validation triggered locally by concurrency, shared-state,
+lifecycle, cancellation, queue, timer, or shutdown changes.
+
+CI path filters and filenames cannot determine semantic engineering risk. They
+do not replace targeted tests during implementation or the Scope Ledger's
+selection of fuzzing, benchmarks, pprof, runtime-config checks,
+provenance-independent scientific or model vectors, evaluations, and other
+validation required by the touched behavior. These backstops do not change
+Fable's separate approval, validation, or workflow contract.
+
 ## Documentation-only Markdown
 
 Use this lane only when all changed files are ordinary Markdown documentation

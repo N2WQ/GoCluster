@@ -7,7 +7,8 @@ Run only checks triggered by the changed surface:
 
 - `scripts/check-workflow-contract.ps1 -BaselineRevision <approved-baseline>`
   for Codex authority, routing, retired-requirement, reference, and protected-
-  path invariants;
+  path invariants, plus mechanically representable push-CI, Codex-contract-CI,
+  nightly-race, and CI-backstop documentation requirements;
 - `scripts/test-workflow-contract.ps1` when the contract checker or its owned
   semantics change;
 - `scripts/verify-codex-skills.ps1` after repo-managed skill or metadata edits;

@@ -67,11 +67,15 @@ try {
     "docs/code-quality.md", "docs/domain-contract.md", "docs/review-checklist.md", "docs/dev-runbook.md",
     "docs/WORKING_WITH_CODEX.md", "docs/decision-memory.md",
     "docs/decision-log.md",
+    ".github/workflows/ci.yml",
+    ".github/workflows/codex-workflow-contract.yml",
+    ".github/workflows/nightly-race.yml",
     "docs/decisions/ADR-0221-codex-authority-and-evidence-workflow.md",
     "docs/decisions/ADR-0222-corrective-codex-authority-and-validation.md",
     "docs/decisions/ADR-0223-bounded-specialist-context-and-independent-evidence.md",
     "docs/decisions/ADR-0224-evidence-before-scope-and-material-reapproval.md",
     "docs/decisions/ADR-0225-remove-codex-target-reasoning-recommendation.md",
+    "docs/decisions/ADR-0227-push-to-main-ci-validation-backstops.md",
     "docs/templates/non-trivial-change-template.md",
     "docs/runbooks/codex-workflow-checks.md",
     "docs/runbooks/codex-triggered-validation-tools.md",
@@ -80,6 +84,38 @@ try {
 
   Invoke-Fixture 0 "PASS Codex workflow static invariants passed." "positive contract"
   Invoke-SkillFixture 0 "PASS all requested repo skills verified." "positive skill methods"
+
+  $original = Replace-Once ".github/workflows/ci.yml" "fetch-depth: 0" "fetch-depth: 1"
+  Invoke-Fixture 1 "CI full-history checkout missing" "CI requires full history"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/ci.yml") -Value $original -NoNewline
+
+  $original = Replace-Once ".github/workflows/ci.yml" "staticcheck@v0.7.0" "staticcheck@latest"
+  Invoke-Fixture 1 "CI Staticcheck uses latest" "CI rejects unpinned Staticcheck"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/ci.yml") -Value $original -NoNewline
+
+  $original = Replace-Once ".github/workflows/ci.yml" 'base="HEAD^"' 'base="HEAD"'
+  Invoke-Fixture 1 "CI pushed-range safeguard missing" "manual CI requires HEAD parent range"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/ci.yml") -Value $original -NoNewline
+
+  $original = Replace-Once ".github/workflows/codex-workflow-contract.yml" "git fetch --no-tags --depth=1 origin `$env:BEFORE_SHA" "Write-Host 'baseline unavailable'"
+  Invoke-Fixture 1 "Codex contract workflow requirement missing" "contract CI requires explicit baseline fetch"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/codex-workflow-contract.yml") -Value $original -NoNewline
+
+  $original = Replace-Once ".github/workflows/codex-workflow-contract.yml" ".github/workflows/nightly-race.yml" ".github/workflows/nightly-race-disabled.yml"
+  Invoke-Fixture 1 "Codex contract path ownership missing: .github/workflows/nightly-race.yml" "contract CI owns all workflow files"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/codex-workflow-contract.yml") -Value $original -NoNewline
+
+  $original = Replace-Once ".github/workflows/nightly-race.yml" "go test -race -count=1 ./..." "go test ./..."
+  Invoke-Fixture 1 "nightly race command missing" "nightly workflow requires uncached full race command"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/nightly-race.yml") -Value $original -NoNewline
+
+  $original = Replace-Once ".github/workflows/nightly-race.yml" "timeout-minutes: 60" "timeout-minutes: 60`n    continue-on-error: true"
+  Invoke-Fixture 1 "CI continue-on-error is not allowed" "CI cannot tolerate required-check failures"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/nightly-race.yml") -Value $original -NoNewline
+
+  $original = Replace-Once "docs/dev-runbook.md" "CI path filters and filenames cannot determine semantic engineering risk." "CI paths determine semantic engineering risk."
+  Invoke-Fixture 1 "CI semantic-risk limitation missing" "CI cannot infer semantic risk"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/dev-runbook.md") -Value $original -NoNewline
 
   foreach ($case in @(
     @{ Text="Target reasoning: low (lowest sufficient)."; Label="target reasoning requirement cannot return" },

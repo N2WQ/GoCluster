@@ -1,10 +1,10 @@
 name: CI
 
 on:
-  pull_request:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,10 +12,12 @@ permissions:
 jobs:
   test-and-lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -23,14 +25,60 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Add installed Go tools to PATH
+        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
       - name: Check code maps
         run: go run ./cmd/codemap check -all
 
       - name: Run unit tests
         run: go test ./...
 
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Install Staticcheck
+        run: go install honnef.co/go/tools/cmd/staticcheck@v0.7.0
+
+      - name: Run Staticcheck
+        run: staticcheck ./...
+
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4
+
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.11.4
-          args: --config=.golangci.yaml
+        run: golangci-lint run ./... --config=.golangci.yaml
+
+      - name: Check pushed range for whitespace errors
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            if [[ -z "$BEFORE_SHA" || "$BEFORE_SHA" =~ ^0+$ ]]; then
+              echo "A non-zero pre-push revision is required for a push to main." >&2
+              exit 1
+            fi
+            if ! git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+              if ! git fetch --no-tags --depth=1 origin "$BEFORE_SHA"; then
+                echo "Unable to fetch pre-push revision $BEFORE_SHA." >&2
+                exit 1
+              fi
+            fi
+            if ! git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+              echo "Unable to resolve pre-push revision $BEFORE_SHA." >&2
+              exit 1
+            fi
+            base="$BEFORE_SHA"
+          else
+            if ! git rev-parse --verify "HEAD^" >/dev/null 2>&1; then
+              echo "workflow_dispatch requires the checked-out commit to have a parent." >&2
+              exit 1
+            fi
+            base="HEAD^"
+            AFTER_SHA="HEAD"
+          fi
+          git diff --check "$base" "$AFTER_SHA" --

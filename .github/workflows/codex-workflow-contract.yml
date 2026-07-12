@@ -1,0 +1,108 @@
+name: Codex Workflow Contract
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - AGENTS.md
+      - VALIDATION.md
+      - .golangci.yaml
+      - .github/workflows/ci.yml
+      - .github/workflows/codex-workflow-contract.yml
+      - .github/workflows/nightly-race.yml
+      - codex-skills/**
+      - docs/WORKING_WITH_CODEX.md
+      - docs/change-workflow.md
+      - docs/code-quality.md
+      - docs/decision-log.md
+      - docs/decision-memory.md
+      - docs/dev-runbook.md
+      - docs/review-checklist.md
+      - docs/workflow-eval-cases.md
+      - docs/runbooks/codex-triggered-validation-tools.md
+      - docs/runbooks/codex-workflow-checks.md
+      - docs/templates/adr-template.md
+      - docs/templates/non-trivial-change-template.md
+      - docs/decisions/ADR-0147-generated-code-map-freshness-gate.md
+      - docs/decisions/ADR-0155-repo-authoritative-codex-skills.md
+      - docs/decisions/ADR-0156-expanded-repo-managed-audit-skills.md
+      - docs/decisions/ADR-0179-documentation-only-validation-lane.md
+      - docs/decisions/ADR-0194-llm-workflow-verification-and-claim-evidence.md
+      - docs/decisions/ADR-0210-executor-aware-workflow-skill-doc-runbook-lane.md
+      - docs/decisions/ADR-0221-codex-authority-and-evidence-workflow.md
+      - docs/decisions/ADR-0222-corrective-codex-authority-and-validation.md
+      - docs/decisions/ADR-0223-bounded-specialist-context-and-independent-evidence.md
+      - docs/decisions/ADR-0224-evidence-before-scope-and-material-reapproval.md
+      - docs/decisions/ADR-0225-remove-codex-target-reasoning-recommendation.md
+      - docs/decisions/ADR-0227-push-to-main-ci-validation-backstops.md
+      - scripts/README.md
+      - scripts/check-workflow-contract.ps1
+      - scripts/measure-codex-workflow-context.ps1
+      - scripts/test-measure-codex-workflow-context.ps1
+      - scripts/test-workflow-contract.ps1
+      - scripts/verify-codex-skills.ps1
+
+permissions:
+  contents: read
+
+jobs:
+  validate-contract:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve pre-push revision
+        shell: pwsh
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:BEFORE_SHA) -or $env:BEFORE_SHA -match '^0+$') {
+            throw 'A non-zero pre-push revision is required for a push to main.'
+          }
+          & git cat-file -e "$($env:BEFORE_SHA)^{commit}" 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            & git fetch --no-tags --depth=1 origin $env:BEFORE_SHA
+            if ($LASTEXITCODE -ne 0) {
+              throw "Unable to fetch pre-push revision $env:BEFORE_SHA."
+            }
+          }
+          & git cat-file -e "$($env:BEFORE_SHA)^{commit}" 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            throw "Unable to resolve pre-push revision $env:BEFORE_SHA."
+          }
+
+      - name: Check Codex workflow contract
+        shell: pwsh
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: ./scripts/check-workflow-contract.ps1 -BaselineRevision $env:BEFORE_SHA
+
+      - name: Run workflow-contract fixtures
+        shell: pwsh
+        run: ./scripts/test-workflow-contract.ps1
+
+      - name: Run workflow-context measurement fixtures
+        shell: pwsh
+        run: |
+          ./scripts/test-measure-codex-workflow-context.ps1
+          exit 0
+
+      - name: Verify repo-managed Codex skills
+        shell: pwsh
+        run: ./scripts/verify-codex-skills.ps1
+
+      - name: Check pushed range for whitespace errors
+        shell: pwsh
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          & git diff --check $env:BEFORE_SHA $env:AFTER_SHA --
+          if ($LASTEXITCODE -ne 0) {
+            throw 'git diff --check failed for the pushed range.'
+          }
