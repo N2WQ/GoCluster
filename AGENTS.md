@@ -40,11 +40,13 @@ the work is Non-trivial. Stop and reclassify if discovery expands the impact.
 Before Non-trivial mutation:
 
 1. Inspect the relevant current implementation, contracts, tests, docs, and
-   decision history. Before proposing scope, resolve material unknowns that
-   could invalidate the approach using the smallest safe read-only proof.
-   Expose unresolved assumptions.
-2. Satisfy every triggered semantic, product-policy, scientific, and model gate
-   below.
+   decision history. Before proposing scope, resolve material unknowns using the
+   smallest sufficient read-only evidence set. Triangulate source, callers,
+   tests, configuration, persistence, or runtime evidence when one source cannot
+   establish the claim. Expose unresolved assumptions.
+2. Complete every positively triggered semantic, product-policy, scientific,
+   model, design-space, and pre-approval falsifiability review. Material findings
+   must be dispositioned in the Scope Ledger or block its publication.
 3. Propose a versioned Scope Ledger containing the objective, agreed scope,
    boundaries, material risks or unknowns, and validation plan.
 4. Challenge the scope before approval. Revise and reapprove it when new
@@ -157,6 +159,9 @@ as independent.
 * Implement the smallest correct approved change. Do not add speculative
   abstractions, compatibility behavior, fallbacks, future-proofing, or unrelated
   cleanup.
+* Behavior required to satisfy current correctness, failure, lifecycle,
+  bounded-resource, compatibility, observability, or operator contracts is not
+  speculative and must be included in approved scope.
 * Preserve bounded resources, lifecycle safety, compatibility, and operator
   contracts. Apply triggered config, lifecycle, leak, retained-state, hot-path,
   scientific/model, and support-critical-comment guidance.
