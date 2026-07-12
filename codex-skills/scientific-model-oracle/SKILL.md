@@ -1,7 +1,7 @@
 ---
+
 name: scientific-model-oracle
 description: "Use when actual scientific or model inputs, outputs, semantics, units, boundaries, classifications, calibration, uncertainty, tolerances, or claims change or require authoritative resolution. Independently derive and evaluate the scientifically defensible contract, compare competing interpretations, create independent golden vectors, and make evidence-qualified recommendations while leaving product policy, scope, architecture, and implementation authority with the user and lead. Do not trigger for mechanical work that cannot affect model behavior or claims."
----
 
 # Scientific Model Oracle
 
@@ -173,6 +173,17 @@ The response is incomplete until it either:
 * explicitly reports that an independent oracle cannot be derived and explains
   what evidence is missing.
 
+For any task involving numeric thresholds, conversions, classifications,
+sentinels, transitions, tolerances, or boundaries, do not issue the final
+response until a representative golden-vector table is included or the response
+explicitly declares `independent oracle missing`.
+
+The table must include enough applicable cases to establish the contract,
+including exact boundaries and adjacent values where material. Each reported
+vector must identify inputs, units, expected result, tolerance or categorical
+acceptance rule, derivation or provenance, applicable domain, and the failure it
+is intended to detect.
+
 ### 7. Review claims and confidence
 
 Load `references/claims-confidence.md` only when the task includes scientific,
@@ -261,7 +272,12 @@ Before responding, confirm every applicable item:
 * the model contract is defined when needed;
 * competing contracts are compared when applicable;
 * recommendation includes confidence, assumptions, and evidence limits;
-* golden vectors are reported when material, or the missing oracle is explicit;
+* for numeric thresholds, conversions, classifications, sentinels, transitions,
+  tolerances, or boundaries, a representative golden-vector table is included
+  or `independent oracle missing` is explicitly declared;
+* every reported vector includes inputs, units, expected result, tolerance or
+  categorical rule, derivation or provenance, applicable domain, and failure
+  sensitivity;
 * supported and unsupported claims are separated;
 * product-policy decisions remain user-owned;
 * no architecture or Scope Ledger was selected prematurely.
@@ -278,8 +294,13 @@ Include only applicable elements:
 * model contract;
 * competing-contract comparison;
 * recommendation, confidence, assumptions, and uncertainty;
-* provenance-independent golden vectors;
+* representative provenance-independent golden-vector table;
 * supported and unsupported claims;
 * calibration and authority gaps;
 * remaining product-policy decisions;
 * evidence that would change the conclusion.
+
+Do not omit the golden-vector table when numeric or classified behavior is
+material. If valid independent expectations cannot be established, report
+`independent oracle missing` and identify the evidence required to complete the
+oracle.
