@@ -32,6 +32,11 @@ remain listed, while test-only imports remain excluded from production package
 dependency edges. File lists, imports, edges, and fingerprints are sorted and
 deduplicated so the rendered artifact is identical across host platforms.
 
+ADR content is canonicalized from CRLF to LF before matching and content
+hashing. Freshness comparison applies the same canonicalization to generated
+Markdown, so line-ending conversion alone does not make an otherwise identical
+artifact stale. Other whitespace and content changes remain significant.
+
 `go list -json` remains responsible for resolving the manifest's explicit
 package paths, package names, and directories. Package-directory access and
 source parsing fail closed with a file-specific diagnostic rather than
@@ -83,7 +88,8 @@ freshness comparison, CI, release, and wrapper decisions remain accepted.
 
 ## Links
 
-- Related issues/PRs/commits: GitHub Actions run `29190757076`
+- Related issues/PRs/commits: GitHub Actions runs `29190757076` and
+  `29191946105`
 - Related tests: `go test ./cmd/codemap`, isolated-cache
   `go run ./cmd/codemap check -all`
 - Related docs: `docs/code-maps/README.md`,

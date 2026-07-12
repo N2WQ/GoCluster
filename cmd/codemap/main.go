@@ -181,7 +181,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 				}
 				return fmt.Errorf("read %s: %w", spec.Output, err)
 			}
-			if !bytes.Equal(existing, content) {
+			if !equalTextContent(existing, content) {
 				stale = append(stale, spec.Output)
 			}
 		}
@@ -485,6 +485,14 @@ func isRepoImport(modulePath, importPath string) bool {
 	return importPath == modulePath || strings.HasPrefix(importPath, modulePath+"/")
 }
 
+func normalizeLineEndings(content []byte) []byte {
+	return bytes.ReplaceAll(content, []byte("\r\n"), []byte("\n"))
+}
+
+func equalTextContent(a, b []byte) bool {
+	return bytes.Equal(normalizeLineEndings(a), normalizeLineEndings(b))
+}
+
 func loadADRs(repoRoot string) ([]adrRecord, error) {
 	logPath := filepath.Join(repoRoot, "docs", "decision-log.md")
 	data, err := os.ReadFile(logPath)
@@ -511,6 +519,7 @@ func loadADRs(repoRoot string) ([]adrRecord, error) {
 		if rec.Path != "" {
 			content, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(rec.Path)))
 			if err == nil {
+				content = normalizeLineEndings(content)
 				rec.Content = string(content)
 				sum := sha256.Sum256(content)
 				rec.ContentHash = hex.EncodeToString(sum[:])[:16]

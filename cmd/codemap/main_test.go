@@ -252,6 +252,63 @@ func TestPackageFromRawFailsOnMalformedInactiveSource(t *testing.T) {
 	}
 }
 
+func TestADRLineEndingsDoNotChangeMap(t *testing.T) {
+	lfRecords := loadADRFixture(t, "\n")
+	crlfRecords := loadADRFixture(t, "\r\n")
+	if !reflect.DeepEqual(lfRecords, crlfRecords) {
+		t.Fatalf("ADR records differ by line endings:\nLF:   %+v\nCRLF: %+v", lfRecords, crlfRecords)
+	}
+
+	spec := mapSpec{ID: "sample", Title: "Sample", Output: "docs/code-maps/sample.md", Packages: []string{"./sample"}}
+	packages := []packageInfo{{ImportPath: "dxcluster/sample", Name: "sample", RelDir: "sample", GoFiles: []string{"sample/sample.go"}}}
+	lfData := buildMapData(spec, "dxcluster", packages, lfRecords)
+	lfData.Fingerprint = fingerprint(lfData)
+	crlfData := buildMapData(spec, "dxcluster", packages, crlfRecords)
+	crlfData.Fingerprint = fingerprint(crlfData)
+	if lfData.Fingerprint != crlfData.Fingerprint {
+		t.Fatalf("fingerprints differ: LF=%s CRLF=%s", lfData.Fingerprint, crlfData.Fingerprint)
+	}
+	if renderMarkdown(lfData) != renderMarkdown(crlfData) {
+		t.Fatal("rendered maps differ by ADR line endings")
+	}
+}
+
+func loadADRFixture(t *testing.T, lineEnding string) []adrRecord {
+	t.Helper()
+	repoRoot := t.TempDir()
+	decisionDir := filepath.Join(repoRoot, "docs", "decisions")
+	if err := os.MkdirAll(decisionDir, 0o755); err != nil {
+		t.Fatalf("create decision directory: %v", err)
+	}
+	log := "| ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |\n" +
+		"| ADR-0002 | Sample | Accepted | 2026-01-01 | sample | - | - | `docs/decisions/ADR-0002-sample.md` |\n"
+	adr := "# ADR-0002: Sample\n\nRelated package: `sample`.\n"
+	log = strings.ReplaceAll(log, "\n", lineEnding)
+	adr = strings.ReplaceAll(adr, "\n", lineEnding)
+	if err := os.WriteFile(filepath.Join(repoRoot, "docs", "decision-log.md"), []byte(log), 0o644); err != nil {
+		t.Fatalf("write decision log: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(decisionDir, "ADR-0002-sample.md"), []byte(adr), 0o644); err != nil {
+		t.Fatalf("write ADR: %v", err)
+	}
+	records, err := loadADRs(repoRoot)
+	if err != nil {
+		t.Fatalf("load ADRs: %v", err)
+	}
+	return records
+}
+
+func TestEqualTextContentNormalizesOnlyLineEndings(t *testing.T) {
+	lf := []byte("first\nsecond\n")
+	crlf := []byte("first\r\nsecond\r\n")
+	if !equalTextContent(lf, crlf) {
+		t.Fatal("equivalent LF and CRLF content should match")
+	}
+	if equalTextContent(lf, []byte("first\r\nchanged\r\n")) {
+		t.Fatal("substantive content change should not match")
+	}
+}
+
 func TestSplitMarkdownTableRow(t *testing.T) {
 	cells := splitMarkdownTableRow("| ADR-0140 | Title | Accepted | 2026-06-04 | workflow, Codex | - | - | `docs/decisions/ADR-0140-example.md` |")
 	if len(cells) != 8 {
