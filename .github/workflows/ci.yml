@@ -28,6 +28,12 @@ jobs:
       - name: Add installed Go tools to PATH
         run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
+      - name: Install Actionlint
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+
+      - name: Check GitHub Actions workflows
+        run: actionlint .github/workflows/*.yml
+
       - name: Check code maps
         run: go run ./cmd/codemap check -all
 

@@ -22,6 +22,10 @@ import (
 
 const defaultManifestPath = "docs/code-maps/manifest.json"
 
+var newGoCommand = func(ctx context.Context, args ...string) *exec.Cmd {
+	return exec.CommandContext(ctx, "go", args...)
+}
+
 type manifest struct {
 	Version int       `json:"version"`
 	Maps    []mapSpec `json:"maps"`
@@ -290,13 +294,11 @@ func generateMap(repoRoot string, spec mapSpec) ([]byte, error) {
 func goListModule(repoRoot string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "list", "-m")
-	cmd.Dir = repoRoot
-	out, err := cmd.CombinedOutput()
+	stdout, stderr, err := runGoCommand(ctx, repoRoot, "list", "-m")
 	if err != nil {
-		return "", fmt.Errorf("go list -m failed: %w\n%s", err, strings.TrimSpace(string(out)))
+		return "", goCommandError("go list -m", err, stderr)
 	}
-	modulePath := strings.TrimSpace(string(out))
+	modulePath := strings.TrimSpace(string(stdout))
 	if modulePath == "" {
 		return "", errors.New("go list -m returned empty module path")
 	}
@@ -307,15 +309,13 @@ func goListPackages(repoRoot string, patterns []string) ([]packageInfo, error) {
 	args := append([]string{"list", "-json"}, patterns...)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", args...)
-	cmd.Dir = repoRoot
-	out, err := cmd.CombinedOutput()
+	stdout, stderr, err := runGoCommand(ctx, repoRoot, args...)
 	if err != nil {
-		return nil, fmt.Errorf("go %s failed: %w\n%s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+		return nil, goCommandError("go "+strings.Join(args, " "), err, stderr)
 	}
 
 	var packages []packageInfo
-	dec := json.NewDecoder(bytes.NewReader(out))
+	dec := json.NewDecoder(bytes.NewReader(stdout))
 	for {
 		var raw goPackageRaw
 		if err := dec.Decode(&raw); err != nil {
@@ -334,6 +334,25 @@ func goListPackages(repoRoot string, patterns []string) ([]packageInfo, error) {
 		return packages[i].ImportPath < packages[j].ImportPath
 	})
 	return packages, nil
+}
+
+func runGoCommand(ctx context.Context, repoRoot string, args ...string) ([]byte, []byte, error) {
+	cmd := newGoCommand(ctx, args...)
+	cmd.Dir = repoRoot
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	return stdout.Bytes(), stderr.Bytes(), err
+}
+
+func goCommandError(command string, err error, stderr []byte) error {
+	diagnostic := strings.TrimSpace(string(stderr))
+	if diagnostic == "" {
+		return fmt.Errorf("%s failed: %w", command, err)
+	}
+	return fmt.Errorf("%s failed: %w\n%s", command, err, diagnostic)
 }
 
 func packageFromRaw(repoRoot string, raw goPackageRaw) (packageInfo, error) {

@@ -28,8 +28,9 @@ skill installation.
 - `check-workflow-contract.ps1` verifies mechanically representable Codex
   authority routes, positive and negative risk routing, retired Codex-only
   requirements, references, optional changed-path exclusions, and the
-  repository's push-CI, Codex-contract-CI, and nightly-race invariants. It
-  explicitly disclaims conversational, hosted-run, and engineering proof.
+  repository's push-CI, Codex-contract-CI, nightly-race, conditional-check,
+  workflow-permission, and Actionlint invariants. It explicitly disclaims
+  conversational, hosted-run, and engineering proof.
 - `test-workflow-contract.ps1` runs positive and named negative fixtures. Each
   negative case asserts its invariant-specific failure so an unrelated checker
   error cannot create a false green.

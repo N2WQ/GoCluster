@@ -8,9 +8,7 @@ on:
       - AGENTS.md
       - VALIDATION.md
       - .golangci.yaml
-      - .github/workflows/ci.yml
-      - .github/workflows/codex-workflow-contract.yml
-      - .github/workflows/nightly-race.yml
+      - .github/workflows/**
       - codex-skills/**
       - docs/WORKING_WITH_CODEX.md
       - docs/change-workflow.md
@@ -82,11 +80,31 @@ jobs:
           BEFORE_SHA: ${{ github.event.before }}
         run: ./scripts/check-workflow-contract.ps1 -BaselineRevision $env:BEFORE_SHA
 
+      - name: Detect context-measurement changes
+        id: context_measurement
+        shell: pwsh
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          $changedPaths = @(& git diff --name-only $env:BEFORE_SHA $env:AFTER_SHA --)
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Unable to derive changed paths for context-measurement validation.'
+          }
+          $measurementPaths = @(
+            'scripts/measure-codex-workflow-context.ps1',
+            'scripts/test-measure-codex-workflow-context.ps1'
+          )
+          $changed = $changedPaths | ForEach-Object { $_.Replace('\', '/') } |
+            Where-Object { $_ -in $measurementPaths }
+          "changed=$($null -ne $changed)".ToLowerInvariant() >> $env:GITHUB_OUTPUT
+
       - name: Run workflow-contract fixtures
         shell: pwsh
         run: ./scripts/test-workflow-contract.ps1
 
       - name: Run workflow-context measurement fixtures
+        if: steps.context_measurement.outputs.changed == 'true'
         shell: pwsh
         run: |
           ./scripts/test-measure-codex-workflow-context.ps1

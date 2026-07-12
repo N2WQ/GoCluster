@@ -73,6 +73,32 @@ function Normalize-RelationshipText([string]$Text) {
   return ([regex]::Replace($Text, '\s+', ' ')).Trim()
 }
 
+function Check-WorkflowPermissions([string]$Path, [string]$Text) {
+  $lines = $Text -split "`n"
+  for ($i = 0; $i -lt $lines.Count; $i++) {
+    $match = [regex]::Match($lines[$i], '^(?<indent>\s*)permissions:\s*(?<inline>.*)$')
+    if (-not $match.Success) { continue }
+    $indent = $match.Groups['indent'].Value.Length
+    $inline = $match.Groups['inline'].Value.Trim()
+    $normalizedInline = $inline.Replace("'", "").Replace('"', '')
+    if ($normalizedInline -match '(?i)\bwrite-all\b|:\s*write(?:\s*[,}]|\s*$)') {
+      Add-Failure "write permission is not allowed [$Path]"
+    }
+    if ($inline -ne '') { continue }
+    for ($j = $i + 1; $j -lt $lines.Count; $j++) {
+      $line = $lines[$j]
+      if ($line.Trim() -eq '' -or $line.TrimStart().StartsWith('#')) { continue }
+      $entry = [regex]::Match($line, '^(?<indent>\s*)(?<key>[A-Za-z0-9_-]+):\s*(?<value>[^#\s]+)')
+      $lineIndent = ([regex]::Match($line, '^\s*')).Value.Length
+      if ($lineIndent -le $indent) { break }
+      $value = $entry.Groups['value'].Value.Trim("'`"")
+      if ($entry.Success -and $value -eq 'write') {
+        Add-Failure "write permission is not allowed [$Path]"
+      }
+    }
+  }
+}
+
 $requiredFiles = @(
   "AGENTS.md",
   "VALIDATION.md",
@@ -96,6 +122,7 @@ $requiredFiles = @(
   "docs/decisions/ADR-0224-evidence-before-scope-and-material-reapproval.md",
   "docs/decisions/ADR-0225-remove-codex-target-reasoning-recommendation.md",
   "docs/decisions/ADR-0227-push-to-main-ci-validation-backstops.md",
+  "docs/decisions/ADR-0228-corrective-ci-enforcement.md",
   "codex-skills/README.md",
   "scripts/README.md"
 )
@@ -119,6 +146,7 @@ $ciWorkflow = $text[".github/workflows/ci.yml"]
 $contractWorkflow = $text[".github/workflows/codex-workflow-contract.yml"]
 $raceWorkflow = $text[".github/workflows/nightly-race.yml"]
 $adr0227 = $text["docs/decisions/ADR-0227-push-to-main-ci-validation-backstops.md"]
+$adr0228 = $text["docs/decisions/ADR-0228-corrective-ci-enforcement.md"]
 
 Require-Text "AGENTS.md" $agents 'Only exact `Approved vN` authorizes the matching agreed scope.' "approval authority route missing"
 Require-Text "AGENTS.md" $agents "Only explicitly agreed items are executable." "agreed-scope authority missing"
@@ -276,6 +304,9 @@ foreach ($command in @(
 )) { Require-Text ".github/workflows/ci.yml" $ciWorkflow $command "CI required command missing: $command" }
 Require-Text ".github/workflows/ci.yml" $ciWorkflow 'honnef.co/go/tools/cmd/staticcheck@v0.7.0' "CI Staticcheck pin missing"
 Forbid-Pattern ".github/workflows/ci.yml" $ciWorkflow 'staticcheck@latest' "CI Staticcheck uses latest"
+Require-Text ".github/workflows/ci.yml" $ciWorkflow 'github.com/rhysd/actionlint/cmd/actionlint@v1.7.12' "CI Actionlint pin missing"
+Require-Text ".github/workflows/ci.yml" $ciWorkflow 'actionlint .github/workflows/*.yml' "CI Actionlint command missing"
+Forbid-Pattern ".github/workflows/ci.yml" $ciWorkflow 'actionlint@latest' "CI Actionlint uses latest"
 foreach ($required in @(
   'BEFORE_SHA: ${{ github.event.before }}',
   'AFTER_SHA: ${{ github.sha }}',
@@ -301,10 +332,20 @@ foreach ($required in @(
   'git fetch --no-tags --depth=1 origin $env:BEFORE_SHA',
   'git diff --check $env:BEFORE_SHA $env:AFTER_SHA --'
 )) { Require-Text ".github/workflows/codex-workflow-contract.yml" $contractWorkflow $required "Codex contract workflow requirement missing: $required" }
+foreach ($required in @(
+  'id: context_measurement',
+  'git diff --name-only $env:BEFORE_SHA $env:AFTER_SHA --',
+  '"changed=$($null -ne $changed)".ToLowerInvariant() >> $env:GITHUB_OUTPUT',
+  "if: steps.context_measurement.outputs.changed == 'true'"
+)) { Require-Text ".github/workflows/codex-workflow-contract.yml" $contractWorkflow $required "conditional context-measurement route missing: $required" }
+foreach ($path in @(
+  'scripts/measure-codex-workflow-context.ps1',
+  'scripts/test-measure-codex-workflow-context.ps1'
+)) { Require-Text ".github/workflows/codex-workflow-contract.yml" $contractWorkflow "'$path'" "conditional context-measurement path missing: $path" }
+Forbid-Pattern ".github/workflows/codex-workflow-contract.yml" $contractWorkflow '(?ms)^\s*- name: Run workflow-context measurement fixtures\s*\n\s*shell:' "context-measurement fixture is unconditional"
 $requiredContractPaths = @(
   'AGENTS.md', 'VALIDATION.md', '.golangci.yaml',
-  '.github/workflows/ci.yml', '.github/workflows/codex-workflow-contract.yml',
-  '.github/workflows/nightly-race.yml', 'codex-skills/**',
+  '.github/workflows/**', 'codex-skills/**',
   'docs/WORKING_WITH_CODEX.md', 'docs/change-workflow.md',
   'docs/code-quality.md', 'docs/decision-log.md', 'docs/decision-memory.md',
   'docs/dev-runbook.md', 'docs/review-checklist.md',
@@ -344,10 +385,16 @@ foreach ($workflow in @(
   @{ Path='.github/workflows/ci.yml'; Text=$ciWorkflow },
   @{ Path='.github/workflows/codex-workflow-contract.yml'; Text=$contractWorkflow },
   @{ Path='.github/workflows/nightly-race.yml'; Text=$raceWorkflow }
-)) { Forbid-Pattern $workflow.Path $workflow.Text '(?m)^\s*continue-on-error:' "CI continue-on-error is not allowed" }
+)) {
+  Forbid-Pattern $workflow.Path $workflow.Text '(?m)^\s*continue-on-error:' "CI continue-on-error is not allowed"
+  Check-WorkflowPermissions $workflow.Path $workflow.Text
+}
 
 Require-Pattern "ADR-0227" $adr0227 '(?s)Status: Accepted.*Push CI is post-push verification.*nightly race job is a broad\s+regression backstop' "ADR-0227 CI policy missing"
-Require-Pattern "docs/decision-log.md" $decisionLog '(?m)^\| ADR-0227 \| Push-to-Main CI Validation Backstops \| Accepted \| 2026-07-11 \| workflow, CI, validation, GitHub Actions \| - \| - \|' "ADR-0227 decision-index row missing"
+Require-Pattern "docs/decision-log.md" $decisionLog '(?m)^\| ADR-0227 \| Push-to-Main CI Validation Backstops \| Accepted \| 2026-07-11 \| workflow, CI, validation, GitHub Actions \| - \| ADR-0228 \(selected clauses\) \|' "ADR-0227 decision-index row missing"
+Require-Pattern "ADR-0227" $adr0227 '(?s)Selective supersession: ADR-0228.*context-measurement.*All other ADR-0227 decisions remain accepted' "ADR-0227 reciprocal correction missing"
+Require-Pattern "ADR-0228" $adr0228 '(?s)Status: Accepted.*selectively supersedes ADR-0227.*context-measurement.*runs only' "ADR-0228 corrective policy missing"
+Require-Pattern "docs/decision-log.md" $decisionLog '(?m)^\| ADR-0228 \| Corrective CI Enforcement \| Accepted \| 2026-07-12 \| workflow, CI, validation, GitHub Actions \| ADR-0227 \(selected clauses\) \| - \|' "ADR-0228 decision-index row missing"
 
 $networkQuality = Get-MarkdownSection $codeQuality "## Network And Lifecycle"
 Require-Pattern "docs/code-quality.md#Network" $networkQuality '(?s)context cancellation.*deadlines.*idle/stall timeouts' "shared network/lifecycle obligation changed"

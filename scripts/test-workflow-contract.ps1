@@ -33,9 +33,18 @@ function Invoke-Fixture([int]$ExpectedExit, [string]$ExpectedText, [string]$Labe
 
 function Replace-Once([string]$RelativePath, [string]$From, [string]$To) {
   $path = Join-Path $fixtureRoot $RelativePath
-  $content = Get-Content -LiteralPath $path -Raw
+  $content = (Get-Content -LiteralPath $path -Raw).Replace("`r`n", "`n")
   $count = ([regex]::Matches($content, [regex]::Escape($From))).Count
   if ($count -ne 1) { throw "$RelativePath mutation expected one occurrence of '$From', found $count" }
+  Set-Content -LiteralPath $path -Value $content.Replace($From, $To) -NoNewline
+  return $content
+}
+
+function Replace-All([string]$RelativePath, [string]$From, [string]$To) {
+  $path = Join-Path $fixtureRoot $RelativePath
+  $content = (Get-Content -LiteralPath $path -Raw).Replace("`r`n", "`n")
+  $count = ([regex]::Matches($content, [regex]::Escape($From))).Count
+  if ($count -lt 1) { throw "$RelativePath mutation expected at least one occurrence of '$From'" }
   Set-Content -LiteralPath $path -Value $content.Replace($From, $To) -NoNewline
   return $content
 }
@@ -61,6 +70,24 @@ function Invoke-ApprovedChangedPathsFixture() {
   Write-Host "PASS approved workflow-script paths accepted"
 }
 
+function Invoke-ContextMeasurementSelectionFixtures() {
+  $measurementPaths = @(
+    'scripts/measure-codex-workflow-context.ps1',
+    'scripts/test-measure-codex-workflow-context.ps1'
+  )
+  foreach ($case in @(
+    @{ Paths=@('AGENTS.md'); Expected=$false; Label='unrelated workflow change skips context measurement' },
+    @{ Paths=@('scripts/measure-codex-workflow-context.ps1'); Expected=$true; Label='measurement implementation triggers context measurement' },
+    @{ Paths=@('scripts/test-measure-codex-workflow-context.ps1'); Expected=$true; Label='measurement fixture triggers context measurement' }
+  )) {
+    $changed = $case.Paths | ForEach-Object { $_.Replace('\', '/') } |
+      Where-Object { $_ -in $measurementPaths }
+    $actual = $null -ne $changed
+    if ($actual -ne $case.Expected) { throw "$($case.Label) expected $($case.Expected), got $actual" }
+    Write-Host "PASS $($case.Label)"
+  }
+}
+
 try {
   foreach ($path in @(
     "AGENTS.md", "VALIDATION.md", "docs/change-workflow.md",
@@ -76,14 +103,29 @@ try {
     "docs/decisions/ADR-0224-evidence-before-scope-and-material-reapproval.md",
     "docs/decisions/ADR-0225-remove-codex-target-reasoning-recommendation.md",
     "docs/decisions/ADR-0227-push-to-main-ci-validation-backstops.md",
+    "docs/decisions/ADR-0228-corrective-ci-enforcement.md",
     "docs/templates/non-trivial-change-template.md",
     "docs/runbooks/codex-workflow-checks.md",
     "docs/runbooks/codex-triggered-validation-tools.md",
     "docs/workflow-eval-cases.md", "codex-skills", "scripts/README.md"
   )) { Copy-ItemTree $path }
 
+  $fixtureAgents = Join-Path $fixtureRoot "AGENTS.md"
+  $agentsLF = (Get-Content -LiteralPath $fixtureAgents -Raw).Replace("`r`n", "`n")
+  Set-Content -LiteralPath $fixtureAgents -Value $agentsLF.Replace("`n", "`r`n") -NoNewline
+
   Invoke-Fixture 0 "PASS Codex workflow static invariants passed." "positive contract"
   Invoke-SkillFixture 0 "PASS all requested repo skills verified." "positive skill methods"
+  Write-Host "PASS CRLF fixture source accepted"
+  Invoke-ContextMeasurementSelectionFixtures
+
+  $original = Replace-Once ".github/workflows/ci.yml" "on:`n  push:" "on:`n  pull_request:`n  push:"
+  Invoke-Fixture 1 "CI pull-request trigger remains" "CI rejects pull-request trigger"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/ci.yml") -Value $original -NoNewline
+
+  $original = Replace-Once ".github/workflows/ci.yml" "  workflow_dispatch:" "  disabled_dispatch:"
+  Invoke-Fixture 1 "CI push/manual triggers missing" "CI requires manual dispatch"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/ci.yml") -Value $original -NoNewline
 
   $original = Replace-Once ".github/workflows/ci.yml" "fetch-depth: 0" "fetch-depth: 1"
   Invoke-Fixture 1 "CI full-history checkout missing" "CI requires full history"
@@ -93,6 +135,23 @@ try {
   Invoke-Fixture 1 "CI Staticcheck uses latest" "CI rejects unpinned Staticcheck"
   Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/ci.yml") -Value $original -NoNewline
 
+  $original = Replace-Once ".github/workflows/ci.yml" "actionlint@v1.7.12" "actionlint@latest"
+  Invoke-Fixture 1 "CI Actionlint uses latest" "CI rejects unpinned Actionlint"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/ci.yml") -Value $original -NoNewline
+
+  foreach ($case in @(
+    @{ From='go run ./cmd/codemap check -all'; To='go run ./cmd/codemap list'; Expected='CI required command missing: go run ./cmd/codemap check -all'; Label='CI requires code-map check' },
+    @{ From='go test ./...'; To='go test ./cmd/codemap'; Expected='CI required command missing: go test ./...'; Label='CI requires full tests' },
+    @{ From='go vet ./...'; To='go vet ./cmd/codemap'; Expected='CI required command missing: go vet ./...'; Label='CI requires full vet' },
+    @{ From='staticcheck ./...'; To='staticcheck ./cmd/codemap'; Expected='CI required command missing: staticcheck ./...'; Label='CI requires full Staticcheck' },
+    @{ From='golangci-lint run ./... --config=.golangci.yaml'; To='golangci-lint run ./cmd/codemap'; Expected='CI required command missing: golangci-lint run ./... --config=.golangci.yaml'; Label='CI requires configured lint' },
+    @{ From='actionlint .github/workflows/*.yml'; To='actionlint .github/workflows/ci.yml'; Expected='CI Actionlint command missing'; Label='CI requires all workflow syntax checks' }
+  )) {
+    $original = Replace-Once ".github/workflows/ci.yml" $case.From $case.To
+    Invoke-Fixture 1 $case.Expected $case.Label
+    Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/ci.yml") -Value $original -NoNewline
+  }
+
   $original = Replace-Once ".github/workflows/ci.yml" 'base="HEAD^"' 'base="HEAD"'
   Invoke-Fixture 1 "CI pushed-range safeguard missing" "manual CI requires HEAD parent range"
   Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/ci.yml") -Value $original -NoNewline
@@ -101,12 +160,76 @@ try {
   Invoke-Fixture 1 "Codex contract workflow requirement missing" "contract CI requires explicit baseline fetch"
   Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/codex-workflow-contract.yml") -Value $original -NoNewline
 
-  $original = Replace-Once ".github/workflows/codex-workflow-contract.yml" ".github/workflows/nightly-race.yml" ".github/workflows/nightly-race-disabled.yml"
-  Invoke-Fixture 1 "Codex contract path ownership missing: .github/workflows/nightly-race.yml" "contract CI owns all workflow files"
+  $original = Replace-Once ".github/workflows/codex-workflow-contract.yml" ".github/workflows/**" ".github/workflows/ci.yml"
+  Invoke-Fixture 1 "Codex contract path ownership missing: .github/workflows/**" "contract CI owns all workflow files"
   Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/codex-workflow-contract.yml") -Value $original -NoNewline
+
+  foreach ($path in @('scripts/measure-codex-workflow-context.ps1','scripts/test-measure-codex-workflow-context.ps1')) {
+    $original = Replace-Once ".github/workflows/codex-workflow-contract.yml" "      - $path" "      - disabled/$path"
+    Invoke-Fixture 1 "Codex contract path ownership missing: $path" "contract CI owns measurement path $path"
+    Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/codex-workflow-contract.yml") -Value $original -NoNewline
+
+    $original = Replace-Once ".github/workflows/codex-workflow-contract.yml" "            '$path'" "            'scripts/disabled-context-measurement.ps1'"
+    Invoke-Fixture 1 "conditional context-measurement path missing: $path" "measurement detector owns $path"
+    Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/codex-workflow-contract.yml") -Value $original -NoNewline
+  }
+
+  $measurementCondition = "        if: steps.context_measurement.outputs.changed == 'true'"
+  $original = Replace-Once ".github/workflows/codex-workflow-contract.yml" $measurementCondition ""
+  Invoke-Fixture 1 "context-measurement fixture is unconditional" "measurement fixture cannot become unconditional"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/codex-workflow-contract.yml") -Value $original -NoNewline
+
+  $original = Replace-Once ".github/workflows/codex-workflow-contract.yml" "runs-on: windows-latest" "runs-on: ubuntu-latest"
+  Invoke-Fixture 1 "Codex contract Windows runner missing" "contract CI requires Windows runner"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/codex-workflow-contract.yml") -Value $original -NoNewline
+
+  $original = Replace-All ".github/workflows/codex-workflow-contract.yml" "shell: pwsh" "shell: bash"
+  Invoke-Fixture 1 "Codex contract PowerShell invocation missing" "contract CI requires PowerShell"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/codex-workflow-contract.yml") -Value $original -NoNewline
+
+  foreach ($case in @(
+    @{ From='run: ./scripts/check-workflow-contract.ps1 -BaselineRevision $env:BEFORE_SHA'; To='run: Write-Host skipped'; Label='contract CI requires contract checker' },
+    @{ From='run: ./scripts/test-workflow-contract.ps1'; To='run: Write-Host skipped'; Label='contract CI requires contract fixtures' },
+    @{ From='          ./scripts/test-measure-codex-workflow-context.ps1'; To='          Write-Host skipped'; Label='contract CI retains conditional measurement fixtures' },
+    @{ From='run: ./scripts/verify-codex-skills.ps1'; To='run: Write-Host skipped'; Label='contract CI requires skill verification' }
+  )) {
+    $original = Replace-Once ".github/workflows/codex-workflow-contract.yml" $case.From $case.To
+    Invoke-Fixture 1 "Codex contract workflow requirement missing" $case.Label
+    Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/codex-workflow-contract.yml") -Value $original -NoNewline
+  }
+
+  foreach ($workflowPath in @('.github/workflows/ci.yml','.github/workflows/codex-workflow-contract.yml','.github/workflows/nightly-race.yml')) {
+    $original = Replace-Once $workflowPath "  contents: read" "  contents: write"
+    Invoke-Fixture 1 "write permission is not allowed" "$workflowPath rejects contents write"
+    Set-Content -LiteralPath (Join-Path $fixtureRoot $workflowPath) -Value $original -NoNewline
+  }
+
+  $original = Replace-Once ".github/workflows/ci.yml" "  contents: read" "  contents: read`n  actions: write"
+  Invoke-Fixture 1 "write permission is not allowed" "CI rejects additive workflow write permission"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/ci.yml") -Value $original -NoNewline
+
+  $original = Replace-Once ".github/workflows/ci.yml" "jobs:`n  test-and-lint:" "jobs:`n  test-and-lint:`n    permissions:`n      actions: write"
+  Invoke-Fixture 1 "write permission is not allowed" "CI rejects job-level write permission"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/ci.yml") -Value $original -NoNewline
+
+  $original = Replace-Once ".github/workflows/ci.yml" "permissions:`n  contents: read" "permissions: write-all"
+  Invoke-Fixture 1 "write permission is not allowed" "CI rejects write-all permissions"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/ci.yml") -Value $original -NoNewline
 
   $original = Replace-Once ".github/workflows/nightly-race.yml" "go test -race -count=1 ./..." "go test ./..."
   Invoke-Fixture 1 "nightly race command missing" "nightly workflow requires uncached full race command"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/nightly-race.yml") -Value $original -NoNewline
+
+  $original = Replace-Once ".github/workflows/nightly-race.yml" '- cron: "17 7 * * *"' '- cron: "17 8 * * *"'
+  Invoke-Fixture 1 "nightly race schedule/manual triggers missing" "nightly workflow requires documented schedule"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/nightly-race.yml") -Value $original -NoNewline
+
+  $original = Replace-Once ".github/workflows/nightly-race.yml" "  workflow_dispatch:" "  disabled_dispatch:"
+  Invoke-Fixture 1 "nightly race schedule/manual triggers missing" "nightly workflow requires manual dispatch"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/nightly-race.yml") -Value $original -NoNewline
+
+  $original = Replace-Once ".github/workflows/nightly-race.yml" "go-version-file: go.mod" "go-version: stable"
+  Invoke-Fixture 1 "nightly race go.mod toolchain missing" "nightly workflow requires go.mod toolchain"
   Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/nightly-race.yml") -Value $original -NoNewline
 
   $original = Replace-Once ".github/workflows/nightly-race.yml" "timeout-minutes: 60" "timeout-minutes: 60`n    continue-on-error: true"
@@ -116,6 +239,10 @@ try {
   $original = Replace-Once "docs/dev-runbook.md" "CI path filters and filenames cannot determine semantic engineering risk." "CI paths determine semantic engineering risk."
   Invoke-Fixture 1 "CI semantic-risk limitation missing" "CI cannot infer semantic risk"
   Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/dev-runbook.md") -Value $original -NoNewline
+
+  $original = Replace-Once "docs/decision-log.md" "| ADR-0228 | Corrective CI Enforcement |" "| ADR-0999 | Corrective CI Enforcement |"
+  Invoke-Fixture 1 "ADR-0228 decision-index row missing" "ADR-0228 remains indexed"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "docs/decision-log.md") -Value $original -NoNewline
 
   foreach ($case in @(
     @{ Text="Target reasoning: low (lowest sufficient)."; Label="target reasoning requirement cannot return" },

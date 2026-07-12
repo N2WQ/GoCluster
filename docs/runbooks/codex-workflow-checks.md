@@ -14,6 +14,9 @@ Run only checks triggered by the changed surface:
 - `scripts/verify-codex-skills.ps1` after repo-managed skill or metadata edits;
 - `scripts/test-measure-codex-workflow-context.ps1` when informational context
   measurement changes;
+- `actionlint (Get-ChildItem .github/workflows/*.yml | Select-Object
+  -ExpandProperty FullName)` from PowerShell when GitHub Actions workflows
+  change;
 - PowerShell parser checks for changed scripts;
 - targeted cross-reference and metadata/body checks;
 - cross-executor semantic review for shared documents;

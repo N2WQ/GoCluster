@@ -25,7 +25,8 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Reserved Placeholder | Unused | - | index hygiene | - | - | No ADR file; first real ADR is `docs/decisions/ADR-0002-ui-v2-render-pipeline.md` |
-| ADR-0227 | Push-to-Main CI Validation Backstops | Accepted | 2026-07-11 | workflow, CI, validation, GitHub Actions | - | - | `docs/decisions/ADR-0227-push-to-main-ci-validation-backstops.md` |
+| ADR-0228 | Corrective CI Enforcement | Accepted | 2026-07-12 | workflow, CI, validation, GitHub Actions | ADR-0227 (selected clauses) | - | `docs/decisions/ADR-0228-corrective-ci-enforcement.md` |
+| ADR-0227 | Push-to-Main CI Validation Backstops | Accepted | 2026-07-11 | workflow, CI, validation, GitHub Actions | - | ADR-0228 (selected clauses) | `docs/decisions/ADR-0227-push-to-main-ci-validation-backstops.md` |
 | ADR-0226 | Fable Bounded Specialist Triggering Port | Accepted | 2026-07-11 | workflow, Fable, subagents, independent evidence, context efficiency | ADR-0206 Decision 3 (refines); ADR-0217 (refines); ADR-0223 (Codex source, ported) | - | `docs/decisions/ADR-0226-fable-bounded-specialist-triggering-port.md` |
 | ADR-0225 | Remove Codex Target Reasoning Recommendation | Accepted | 2026-07-11 | workflow, Codex, reasoning, scope | ADR-0222 Decision 1 | - | `docs/decisions/ADR-0225-remove-codex-target-reasoning-recommendation.md` |
 | ADR-0224 | Evidence Before Scope And Material Reapproval | Accepted | 2026-07-11 | workflow, Codex, evidence, scope, approval | ADR-0221 evidence/planning rules (refines) | - | `docs/decisions/ADR-0224-evidence-before-scope-and-material-reapproval.md` |

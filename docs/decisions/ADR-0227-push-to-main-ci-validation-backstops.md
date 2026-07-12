@@ -3,6 +3,10 @@
 - Status: Accepted
 - Date: 2026-07-11
 - Decision Origin: Design
+- Selective supersession: ADR-0228 replaces Decision 3's always-run
+  context-measurement fixture with path-triggered conditional execution and
+  strengthens workflow ownership, syntax validation, permission enforcement,
+  and hosted portability. All other ADR-0227 decisions remain accepted.
 
 ## Context
 
