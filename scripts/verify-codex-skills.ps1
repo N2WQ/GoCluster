@@ -51,7 +51,7 @@ $specialistInvariants = @{
   "go-code-walk" = @("unfamiliar or cross-package", "Walk one material level up and down", "Unknown from inspected code")
   "go-blast-radius-audit" = @("uncertain blast radius", "Map semantic callers and callees", "not concrete runtime proof")
   "decision-memory-audit" = @("Do not trigger merely", "durable decision changes", "Preserve accepted history")
-  "workflow-contract-audit" = @("Do not trigger", "Preserve authority routes", "Static checks may establish")
+  "workflow-contract-audit" = @("Do not trigger", "Preserve accepted authority routes", "Static checks may establish")
 }
 
 function Add-Failure([string]$Message) {

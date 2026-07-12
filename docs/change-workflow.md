@@ -42,7 +42,7 @@ unknown that could invalidate the approach or materially change scope. If it
 cannot be resolved safely, carry it as an explicit assumption or unknown; do
 not present an assumed mechanism as current fact.
 
-Use code maps and generated graphs only as orientation. Verify material
+Use fresh code maps and generated graphs only as orientation. Verify material
 conclusions against current source and tests. Use parallel discovery only for
 genuinely disjoint, material questions when its coordination cost is justified.
 
@@ -179,7 +179,15 @@ reasoning into test or runtime confirmation.
 ## Documentation, Decisions, And Closeout
 
 Update authoritative, user, operator, or support documentation only when the
-change affects it. Do not emit mandatory impact fields for unaffected surfaces.
+change affects it.
+
+For every Non-trivial change, explicitly decide `Support-agent docs impact:
+Required | Not required`. It is required when operator-support topics change,
+including commands, HELP, filters, modes, EVENT families, glyphs, diagnostics,
+YAML or config surfaces, defaults, sentinel values, logging, observability,
+troubleshooting, startup, service, deployment, source, ingest, peer, or
+connection behavior. When required, inspect and update the relevant `customgpt/`
+routing and support files without duplicating authoritative documentation.
 
 Every Non-trivial closeout considers decision memory. For Codex, create or
 update an ADR only when a durable architecture, operations, scientific, or
@@ -192,7 +200,8 @@ Closeout contains only what is material:
 - outcome and material findings, gaps, waivers, or residual risks;
 - validation commands/results that establish the claim;
 - compact mapping from approved items to changed locations and validation;
-- affected documentation and durable decision references when applicable.
+- affected documentation and durable decision references when applicable;
+- the support-agent documentation impact decision and relevant updates.
 
 No numeric score, fixed headings, marker order, or visible list of irrelevant
 checks is required.

@@ -3,6 +3,8 @@
 These examples help present material information. They are not mandatory
 headings, field counts, marker order, or checker-enforced response formats.
 Omit irrelevant fields and do not print `N/A` merely to complete a template.
+The `Support-agent docs impact` decision is required for every Non-trivial
+change.
 
 The explicit authorization instruction is not optional. Every Proposed Scope
 Ledger presented for approval must end with the exact matching approval token
@@ -17,6 +19,7 @@ Current state: <material evidence and unknowns>
 Objective: <intended outcome>
 Agreed scope: <bounded items>
 Boundaries: <explicit exclusions and stop conditions>
+Support-agent docs impact: Required | Not required - <reason>
 Material risks: <only applicable risks>
 Validation plan: <touched-surface commands or evidence>
 Scope challenge: <material finding and disposition, or none>
@@ -68,6 +71,7 @@ Outcome: <what changed>
 Material findings or gaps: <only applicable findings>
 Validation: <commands and observed results>
 Traceability: <approved item -> implementation -> validation>
+Support-agent docs impact: Required | Not required - <reason and relevant updates>
 Decision: <ADR/TSR reference when durable, otherwise concise disposition>
 ```
 

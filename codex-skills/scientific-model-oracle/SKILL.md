@@ -1,7 +1,7 @@
 ---
-
 name: scientific-model-oracle
 description: "Use when actual scientific or model inputs, outputs, semantics, units, boundaries, classifications, calibration, uncertainty, tolerances, or claims change or require authoritative resolution. Independently derive and evaluate the scientifically defensible contract, compare competing interpretations, create independent golden vectors, and make evidence-qualified recommendations while leaving product policy, scope, architecture, and implementation authority with the user and lead. Do not trigger for mechanical work that cannot affect model behavior or claims."
+---
 
 # Scientific Model Oracle
 

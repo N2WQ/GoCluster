@@ -1,7 +1,7 @@
 ---
-
 name: explain-code
 description: Explain, trace, or deeply review existing code using inspected repository evidence without implementing changes. Use for code-understanding requests unless the user explicitly asks only for a concise, brief, quick, high-level, or initial overview. This skill explicitly owns thorough reviews, comprehensive explanations, audits, diagnosis, correctness analysis, architecture assessment, risk analysis, execution tracing, concurrency analysis, lifecycle analysis, and full subsystem understanding.
+---
 
 # Explain Existing Code
 

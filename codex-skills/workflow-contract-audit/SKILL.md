@@ -1,7 +1,7 @@
 ---
-
 name: workflow-contract-audit
 description: "Use when reviewing or changing Codex workflow authority, approval, validation routing, review rules, templates, repo-managed skills, or enforcing scripts. Select conformance mode when checking implementation against accepted workflow policy. Select effectiveness mode when the user explicitly asks whether the workflow, its rules, or its architecture should be retained, changed, consolidated, replaced, or removed. Do not trigger for ordinary product documentation or runtime work whose workflow contract is unchanged."
+---
 
 # Workflow Contract Audit
 

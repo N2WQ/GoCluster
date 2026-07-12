@@ -1,7 +1,7 @@
 ---
-
 name: design-challenger
 description: "Use after neutral discovery and before Scope Ledger drafting when consequential design uncertainty, ownership placement, lifecycle/state responsibility, compatibility, migration, algorithm choice, operability, or reversibility could admit a materially different safe approach. Begin with a lightweight design-space probe when the lead currently sees one obvious design but an alternative may plausibly exist. Run the full comparison when the probe identifies two or more viable approaches or when choosing incorrectly would be materially consequential. Do not trigger when settled constraints clearly force one safe design."
+---
 
 # Design Challenger
 

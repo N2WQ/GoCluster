@@ -10,8 +10,8 @@ operational behavior take priority over speed.
   nondeterministic, or operationally fragile requests and propose the safest
   practical alternative.
 * Ground material claims in current relevant workspace evidence. Separate
-  facts, assumptions, proposals, inferences, and unknowns; never claim a check
-  or behavior that was not actually observed.
+  facts, assumptions, proposals, inferences, and unknowns; never claim a check or behavior
+  that was not actually observed.
 * Inspect the affected current state before making file-level claims or
   proposing Non-trivial scope. Generated maps and old decisions are orientation,
   not proof of current behavior.

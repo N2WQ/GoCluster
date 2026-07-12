@@ -23,6 +23,8 @@ Review the actual final diff and touched files for:
   contracts when applicable;
 - tests and checks capable of falsifying the changed behavior;
 - stale or missing authoritative, operator, support, or decision documentation;
+- the required support-agent documentation impact decision is present, correctly
+  classified, and reflected in relevant `customgpt/` updates;
 - placeholders, ignored errors, misleading comments, and unsupported claims.
 
 Use only the applicable sections of `docs/code-quality.md` and triggered skills
@@ -67,7 +69,8 @@ runtime confirmation. Avoid secrets and unnecessary logs.
 
 ## Traceability And Closeout
 
-Map each approved Non-trivial item to changed locations and validation. Add
-documentation and ADR/TSR references only when they apply. Report material
+Map each approved Non-trivial item to changed locations and validation. Include
+the required support-agent documentation impact decision and relevant updates.
+Add documentation and ADR/TSR references only when they apply. Report material
 findings, gaps, waivers, and residual risks; do not enumerate irrelevant audit
 categories or repeat evidence already stated.

@@ -1,7 +1,7 @@
 ---
-
 name: test-strategy-adversary
 description: "Use before approval when testability or oracle quality could materially affect scope, behavior, architecture, observability, or validation planning, and after approval before implementation when the detailed planned evidence may not falsify a broken design. Apply to unclear parser, protocol, config, lifecycle, retained-state, performance, scientific/model, security, workflow-checker, or other material oracles. Do not trigger when accepted checks directly prove a localized mechanical change."
+---
 
 # Test Strategy Adversary
 
