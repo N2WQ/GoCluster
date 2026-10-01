@@ -19,47 +19,57 @@ const (
 
 // telnetParser strips telnet IAC sequences from input and returns clean payload bytes plus replies.
 // Replies perform a minimal refuse-all negotiation to keep the link in character mode.
-type telnetParser struct{}
+type telnetParser struct {
+	state   byte
+	command byte
+}
 
 // Feed strips telnet IAC sequences and emits minimal refusal replies.
 // Key aspects: Filters subnegotiation payloads and replies with WONT/DONT.
 // Upstream: Peer reader for native telnet mode.
 // Downstream: None.
 func (p *telnetParser) Feed(input []byte) (output []byte, replies [][]byte) {
-	var out []byte
-	var inIAC, inSB bool
-	for i := 0; i < len(input); i++ {
-		b := input[i]
-		if inIAC {
+	// Negotiation can end in any read boundary. The reader owns this constant
+	// amount of parser state for the whole connection, including unfinished SB.
+	out := make([]byte, 0, len(input))
+	for _, b := range input {
+		switch p.state {
+		case 1: // IAC command
 			switch b {
 			case telnetSB:
-				inSB = true
-			case telnetSE:
-				inSB = false
-			case telnetDO:
-				if i+1 < len(input) {
-					replies = append(replies, []byte{telnetIAC, telnetWONT, input[i+1]})
-					i++
-				}
-			case telnetWILL:
-				if i+1 < len(input) {
-					replies = append(replies, []byte{telnetIAC, telnetDONT, input[i+1]})
-					i++
-				}
+				p.state = 3
+			case telnetDO, telnetDONT, telnetWILL, telnetWONT:
+				p.command, p.state = b, 2
 			case telnetIAC:
 				out = append(out, telnetIAC)
+				p.state = 0
+			default:
+				p.state = 0
 			}
-			inIAC = false
-			continue
+		case 2: // command option
+			switch p.command {
+			case telnetDO:
+				replies = append(replies, []byte{telnetIAC, telnetWONT, b})
+			case telnetWILL:
+				replies = append(replies, []byte{telnetIAC, telnetDONT, b})
+			}
+			p.state = 0
+		case 3: // discard subnegotiation payload
+			if b == telnetIAC {
+				p.state = 4
+			}
+		case 4: // IAC inside subnegotiation
+			p.state = 3
+			if b == telnetSE {
+				p.state = 0
+			}
+		default:
+			if b == telnetIAC {
+				p.state = 1
+			} else {
+				out = append(out, b)
+			}
 		}
-		if b == telnetIAC {
-			inIAC = true
-			continue
-		}
-		if inSB {
-			continue
-		}
-		out = append(out, b)
 	}
 	return out, replies
 }
@@ -77,25 +87,75 @@ type Frame struct {
 // Upstream: Peer reader.
 // Downstream: Frame payload handling.
 func ParseFrame(line string) (*Frame, error) {
-	raw := strings.TrimSpace(line)
+	raw := strings.TrimRight(line, "\r\n~")
+	if len(raw) > MaxPeerFrameBytes {
+		return nil, fmt.Errorf("frame exceeds %d bytes", MaxPeerFrameBytes)
+	}
+	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, fmt.Errorf("empty line")
 	}
-	raw = strings.TrimSuffix(raw, "~")
-	parts := strings.Split(raw, "^")
-	if len(parts) == 0 {
-		return nil, fmt.Errorf("no parts")
+	if !isFrameStartAt([]byte(raw), 0) {
+		return nil, fmt.Errorf("invalid PC frame header")
 	}
 	f := &Frame{Raw: line}
-	f.Type = strutil.NormalizeUpper(parts[0])
-	payload, hop := stripTrailingHopSuffix(parts[1:])
+	f.Type = strutil.NormalizeUpper(raw[:4])
+	payload, hop, err := splitFramePayload(f.Type, raw[5:])
+	if err != nil {
+		return nil, err
+	}
 	f.Fields = payload
 	f.Hop = hop
 	return f, nil
 }
 
+// splitFramePayload locates the hop suffix without a string-header allocation
+// per input delimiter. Authority-bearing PC92/PC93 then enforce their bounded
+// field grammar before Split: a 64 KiB run of carets cannot allocate a megabyte
+// of headers in each concurrently handshaking reader.
+func splitFramePayload(frameType, raw string) ([]string, int, error) {
+	minimum := 0
+	if frameType == "PC93" {
+		minimum = 6
+	}
+	index := strings.Count(raw, "^")
+	end := len(raw)
+	for end > 0 && raw[end-1] == '^' {
+		end--
+		index--
+	}
+	hop, haveSuffix, haveNumeric := 0, false, false
+	for index >= minimum && end >= 0 {
+		start := strings.LastIndexByte(raw[:end], '^') + 1
+		value, like, ok := parseHopToken(strings.TrimSpace(raw[start:end]))
+		if !like {
+			break
+		}
+		haveSuffix = true
+		if ok && !haveNumeric {
+			hop, haveNumeric = value, true
+		}
+		end = start - 1
+		index--
+	}
+	if !haveSuffix {
+		end = len(raw)
+		index = strings.Count(raw, "^")
+	}
+	if frameType == "PC92" && index+1 > 8195 {
+		return nil, 0, fmt.Errorf("PC92 exceeds 8192 records")
+	}
+	if frameType == "PC93" && (index+1 < 6 || index+1 > 8) {
+		return nil, 0, fmt.Errorf("PC93 requires 6 to 8 payload fields")
+	}
+	if end < 0 {
+		return nil, hop, nil
+	}
+	return strings.Split(raw[:end], "^"), hop, nil
+}
+
 // Encode encodes a Frame back to wire format with optional hop override.
-// Key aspects: Preserves fields and appends Hn when hop>0.
+// Key aspects: Preserves fields and appends Hn including the meaningful H0.
 // Upstream: Peer writer.
 // Downstream: fmt.Sprintf.
 func (f *Frame) Encode(hop int) string {
@@ -104,13 +164,10 @@ func (f *Frame) Encode(hop int) string {
 	}
 	// Defensive canonicalization ensures we never emit stacked hop suffixes even
 	// when a caller passes legacy fields that still include trailing H tokens.
-	fields, _ := stripTrailingHopSuffix(f.Fields)
+	fields, _ := stripFrameHopSuffix(f.Type, f.Fields)
 	out := f.Type + "^" + strings.Join(fields, "^")
-	if hop > 0 {
-		if !strings.HasSuffix(out, "^") {
-			out += "^"
-		}
-		out += fmt.Sprintf("H%d^", hop)
+	if hop >= 0 {
+		out += fmt.Sprintf("^H%d^", hop)
 	}
 	return out
 }
@@ -123,7 +180,9 @@ func (f *Frame) payloadFields() []string {
 	if f == nil {
 		return nil
 	}
-	return PayloadFields(f.Fields)
+	// Parsed fields are already payload. In particular PC93 text can itself be
+	// H123 or H9x; running generic suffix stripping again would destroy it.
+	return f.Fields
 }
 
 // PayloadFields returns non-hop payload fields with trailing empties preserved.
@@ -139,6 +198,18 @@ func PayloadFields(fields []string) []string {
 // H95,H94,H93) and returns the payload fields plus effective hop. The effective
 // hop is the rightmost numeric hop token in the trailing suffix.
 func stripTrailingHopSuffix(fields []string) ([]string, int) {
+	return stripHopSuffix(fields, 0)
+}
+
+func stripFrameHopSuffix(frameType string, fields []string) ([]string, int) {
+	minimum := 0
+	if frameType == "PC93" {
+		minimum = 6 // origin, timestamp, recipient, sender, via, text
+	}
+	return stripHopSuffix(fields, minimum)
+}
+
+func stripHopSuffix(fields []string, minimum int) ([]string, int) {
 	if len(fields) == 0 {
 		return fields, 0
 	}
@@ -146,7 +217,7 @@ func stripTrailingHopSuffix(fields []string) ([]string, int) {
 	copy(out, fields)
 
 	i := len(out) - 1
-	for i >= 0 && strings.TrimSpace(out[i]) == "" {
+	for i >= minimum && out[i] == "" {
 		i--
 	}
 	if i < 0 {
@@ -155,20 +226,19 @@ func stripTrailingHopSuffix(fields []string) ([]string, int) {
 
 	hop := 0
 	haveSuffix := false
-	for i >= 0 {
+	haveNumeric := false
+	for i >= minimum {
 		trimmed := strings.TrimSpace(out[i])
 		v, isHopLike, ok := parseHopToken(trimmed)
 		if !isHopLike {
 			break
 		}
 		haveSuffix = true
-		if ok && hop == 0 {
+		if ok && !haveNumeric {
 			hop = v
+			haveNumeric = true
 		}
 		i--
-		for i >= 0 && strings.TrimSpace(out[i]) == "" {
-			i--
-		}
 	}
 	if !haveSuffix {
 		return out, 0

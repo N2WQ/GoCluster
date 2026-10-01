@@ -171,6 +171,9 @@ type Server struct {
 	listener                            net.Listener                               // TCP listener
 	clients                             map[string]*Client                         // Map of callsign → Client
 	clientsMutex                        sync.RWMutex                               // Protects clients map
+	peerMembershipRevision              uint64                                     // Guarded by clientsMutex; changes only with current ownership
+	peerSessionID                       uint64                                     // Guarded by clientsMutex; identifies replacement owners
+	peerMembershipListener              atomic.Value                               // Optional nonblocking func(), separate from dashboard updates
 	shutdown                            chan struct{}                              // Shutdown coordination channel
 	stopOnce                            sync.Once                                  // Ensures Stop is idempotent
 	broadcast                           chan *broadcastPayload                     // Broadcast channel for spots (buffered, configurable)
@@ -369,6 +372,7 @@ type Client struct {
 	writer                  *bufio.Writer          // Buffered writer for client output
 	writeMu                 sync.Mutex             // Guards writer/deadline usage for echo + writer loop
 	callsign                string                 // Client's amateur radio callsign
+	peerSessionID           uint64                 // Assigned once under clientsMutex when this session becomes current
 	connected               time.Time              // Timestamp when client connected
 	server                  *Server                // Back-reference to server for formatting/helpers
 	address                 string                 // Client's IP address
@@ -5965,15 +5969,21 @@ func (c *Client) enqueueControl(msg controlMessage) error {
 	case c.controlChan <- msg:
 		return nil
 	default:
-		if c.server != nil {
-			drops := atomic.AddUint64(&c.server.metrics.clientDrops, 1)
-			if _, ok := c.server.clientDropLog.Inc(); ok {
-				log.Printf("Client %s control queue full (%d/%d), disconnecting (total drops=%d)", c.identity(), len(c.controlChan), cap(c.controlChan), drops)
-			}
-		}
-		c.close("control queue full")
-		return errControlQueueFull
+		return c.controlQueueFull()
 	}
+}
+
+// controlQueueFull performs the existing disconnect policy outside membership
+// locks, since connection reporters may inspect the current client population.
+func (c *Client) controlQueueFull() error {
+	if c.server != nil {
+		drops := atomic.AddUint64(&c.server.metrics.clientDrops, 1)
+		if _, ok := c.server.clientDropLog.Inc(); ok {
+			log.Printf("Client %s control queue full (%d/%d), disconnecting (total drops=%d)", c.identity(), len(c.controlChan), cap(c.controlChan), drops)
+		}
+	}
+	c.close("control queue full")
+	return errControlQueueFull
 }
 
 // enqueueSpot queues a spot delivery and updates drop metrics + extreme drop detection.
@@ -5999,6 +6009,7 @@ func (c *Client) enqueueSpot(env *spotEnvelope) {
 	dropped := false
 	select {
 	case c.spotChan <- env:
+		c.observeQualificationEnqueue(env)
 		if c.server != nil && !env.enqueueAt.IsZero() {
 			c.server.observeEnqueueLatency(time.Since(env.enqueueAt))
 		}
@@ -6133,10 +6144,14 @@ func (s *Server) registerClient(client *Client) {
 		evicted = existing
 		delete(s.clients, client.callsign)
 	}
+	s.peerSessionID++
+	client.peerSessionID = s.peerSessionID
 	s.clients[client.callsign] = client
+	s.peerMembershipRevision++
 	total := len(s.clients)
 	s.shardsDirty.Store(true)
 	s.clientsMutex.Unlock()
+	s.notifyPeerMembershipChange()
 	s.notifyClientListChange()
 
 	if evicted != nil {
@@ -6159,13 +6174,18 @@ func (s *Server) registerClient(client *Client) {
 func (s *Server) unregisterClient(client *Client) {
 	s.clientsMutex.Lock()
 	current, ok := s.clients[client.callsign]
-	if ok && current == client {
+	removed := ok && current == client
+	if removed {
 		delete(s.clients, client.callsign)
+		s.peerMembershipRevision++
 	}
 	total := len(s.clients)
 	s.shardsDirty.Store(true)
 	s.clientsMutex.Unlock()
-	s.notifyClientListChange()
+	if removed {
+		s.notifyPeerMembershipChange()
+		s.notifyClientListChange()
+	}
 
 	if err := client.saveFilter(); err != nil {
 		log.Printf("Warning: failed to persist filter for %s during unregister: %v", client.callsign, err)

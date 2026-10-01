@@ -15,6 +15,9 @@ Tags: peering, overload contract, reconnect semantics
 - The change must keep bounded-resource behavior intact: no new queues, no new knobs, and no blocking on peer socket read paths.
 
 ## Decision
+- Later refinement: [ADR-0230](ADR-0230-pc18-pc92-authority-and-bounds.md)
+  specifies physical queue budgets, ownership and clock/publication/admission
+  gates. Control priority and the local-ingest relay condition remain effective.
 - Treat peer control-plane traffic as health-critical:
   - enqueue periodic `PC51`, `PC92 K`, and `PC92 C` on the existing priority lane instead of the normal write queue
   - if the priority lane is full, close the session immediately and let the existing reconnect/backoff path re-establish a healthy channel

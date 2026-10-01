@@ -50,9 +50,9 @@ import (
 )
 
 // clusterRuntime owns startup-built resources for the live cluster binary.
-// Invariant: initialize preserves the historical startup order, waitForShutdown
-// performs the explicit signal-driven stops, and close replays the former defer
-// chain order for background services and durable resources.
+// Invariant: peer identity and current-user providers are installed before any
+// peer traffic. Signal and failed-startup cleanup stop peering before canceling
+// its context or closing durable resources needed by its workers.
 type clusterRuntime struct {
 	versionInfo       BuildInfo
 	cfg               *config.Config
@@ -961,7 +961,7 @@ func (r *clusterRuntime) initializeServices() bool {
 		return false
 	}
 	r.startOutputPipeline()
-	return true
+	return r.startNetworkServices()
 }
 
 func (r *clusterRuntime) initializeToxicityClassifier() bool {
@@ -1006,19 +1006,18 @@ func (r *clusterRuntime) initializePeerManager() bool {
 	}
 	pm, err := peer.NewManager(r.cfg.Peering, r.cfg.Peering.LocalCallsign, r.ingestInput, r.cfg.SpotPolicy.MaxAgeSeconds, r.dropReporter)
 	if err != nil {
-		log.Printf("Failed to init peering manager: %v", err)
-		return false
+		return r.failStartup("Failed to init peering manager: %v", err)
+	}
+	// Retain ownership immediately: failed identity validation must still close
+	// any optional topology projection opened by manager construction.
+	r.peerManager = pm
+	if err := pm.SetBuildIdentity(r.versionInfo.Version, r.versionInfo.Commit, r.versionInfo.BuildTime, r.versionInfo.VCSModified, r.versionInfo.GoVersion); err != nil {
+		return r.failStartup("Invalid peering build identity: %v", err)
 	}
 	pm.SetBadCallReporter(r.reportBadCallDrop)
 	pm.SetConnectionReporter(func(ev peer.ConnectionEvent) {
 		r.logPeerConnectionEvent(ev.Direction, ev.Action, ev.Peer, ev.Endpoint, ev.Reason)
 	})
-	if err := pm.Start(r.ctx); err != nil {
-		log.Printf("Failed to start peering manager: %v", err)
-		return false
-	}
-	r.peerManager = pm
-	log.Printf("Peering: listen_port=%d peers=%d hop=%d keepalive=%ds forward_spots=%t", r.cfg.Peering.ListenPort, len(r.cfg.Peering.Peers), r.cfg.Peering.HopCount, r.cfg.Peering.KeepaliveSeconds, r.cfg.Peering.ForwardSpots)
 	return true
 }
 
@@ -1044,10 +1043,6 @@ func (r *clusterRuntime) initializeArchiveWriter() {
 
 func (r *clusterRuntime) initializeTelnetServer() bool {
 	r.telnetServer = telnet.NewServer(r.buildTelnetServerOptions(), r.processor)
-	if err := r.telnetServer.Start(); err != nil {
-		log.Printf("Failed to start telnet server: %v", err)
-		return false
-	}
 	r.telnetServer.SetClientListListener(func() {
 		if r.surface == nil {
 			return
@@ -1062,8 +1057,41 @@ func (r *clusterRuntime) initializeTelnetServer() bool {
 		r.peerManager.SetRawBroadcast(r.telnetServer.BroadcastRaw)
 		r.peerManager.SetWWVBroadcast(r.telnetServer.BroadcastWWV)
 		r.peerManager.SetAnnouncementBroadcast(r.telnetServer.BroadcastAnnouncement)
-		r.peerManager.SetDirectMessage(r.telnetServer.SendDirectMessage)
-		r.peerManager.SetUserCountProvider(r.telnetServer.GetClientCount)
+		r.peerManager.SetCurrentDirectMessage(r.telnetServer.SendCurrentDirectMessage)
+		r.peerManager.SetMembershipProvider(r.currentPeerMembership)
+		r.telnetServer.SetPeerMembershipListener(r.peerManager.NotifyMembershipChanged)
+	}
+	return true
+}
+
+// currentPeerMembership adapts a bounded snapshot without coupling the telnet
+// admission owner to peer wire grammar or canonical-identity policy.
+func (r *clusterRuntime) currentPeerMembership() peer.LocalMembership {
+	users := r.telnetServer.CurrentPeerMembership()
+	result := peer.LocalMembership{
+		Revision: users.Revision,
+		RawCount: users.RawCount,
+		Complete: users.Complete,
+		Users:    make([]peer.LocalUser, len(users.Users)),
+	}
+	for i, user := range users.Users {
+		result.Users[i] = peer.LocalUser{SessionID: user.SessionID, Login: user.Login, IP: user.IP}
+	}
+	return result
+}
+
+// startNetworkServices runs only after output workers, identity and membership
+// callbacks are ready. The first PC18/PC92 exchange therefore sees authoritative
+// metadata and a complete current-user provider, including an empty population.
+func (r *clusterRuntime) startNetworkServices() bool {
+	if err := r.telnetServer.Start(); err != nil {
+		return r.failStartup("Failed to start telnet server: %v", err)
+	}
+	if r.peerManager != nil {
+		if err := r.peerManager.Start(r.ctx); err != nil {
+			return r.failStartup("Failed to start peering manager: %v", err)
+		}
+		log.Printf("Peering: listen_port=%d peers=%d hop=%d keepalive=%ds forward_spots=%t", r.cfg.Peering.ListenPort, len(r.cfg.Peering.Peers), r.cfg.Peering.HopCount, r.cfg.Peering.KeepaliveSeconds, r.cfg.Peering.ForwardSpots)
 	}
 	return true
 }
@@ -1501,6 +1529,11 @@ func (r *clusterRuntime) waitForShutdown() {
 }
 
 func (r *clusterRuntime) shutdown() {
+	// Withdraw while current local membership and the parent context still
+	// exist; Manager.Stop owns its bounded drain and worker join.
+	if r.peerManager != nil {
+		r.peerManager.Stop()
+	}
 	if r.freqAverager != nil {
 		r.freqAverager.StopCleanup()
 	}
@@ -1521,9 +1554,6 @@ func (r *clusterRuntime) shutdown() {
 	}
 	if r.deduplicator != nil {
 		r.deduplicator.Stop()
-	}
-	if r.peerManager != nil {
-		r.peerManager.Stop()
 	}
 	if r.secondaryFast != nil {
 		r.secondaryFast.Stop()
@@ -1553,9 +1583,14 @@ func (r *clusterRuntime) shutdown() {
 }
 
 func (r *clusterRuntime) close() {
-	// Preserve the previous defer-chain order now that startup is factored into
-	// helpers: archive first, then grid writer/store, then recent-support store,
-	// refresher, context cancellation/wait, UI, and finally logging sinks.
+	// close also runs after partial startup. Idempotent network stops release
+	// listeners, sessions, and peer workers before stores and context disappear.
+	if r.peerManager != nil {
+		r.peerManager.Stop()
+	}
+	if r.telnetServer != nil {
+		r.telnetServer.Stop()
+	}
 	if r.archiveWriter != nil {
 		r.archiveWriter.Stop()
 	}

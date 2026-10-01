@@ -10,20 +10,20 @@ peering:
   local_callsign: "N0CALL-1"       # Our node callsign sent in PC92/PC19 frames
   listen_port: 6300                # Optional inbound listen port for peers
   hop_count: 99                    # Hop limit we advertise and decrement on forward
-  node_version: "5457"             # Node version advertised in pc9x init
-  node_build: "633"                # Optional build string advertised in pc9x init
+  node_version: "5457"             # Numeric protocol compatibility version (1-10 digits), separate from GoCluster identity
+  node_build: "633"                # Numeric compatibility build (1-10 digits); explicit empty string omits it
   legacy_version: "5401"           # Legacy PC19 version string
   pc92_bitmap: 5                   # Capabilities bitmap in PC92 entries
-  node_count: 1                    # Last resort default node count advertised in keepalives
-  user_count: 1                    # Last resort default user count advertised in keepalives
+  node_count: 1                    # Legacy fallback only; PC92 K derives the actual published direct population
+  user_count: 1                    # Legacy fallback only; PC92 K derives current publishable telnet sessions
   log_keepalive: false             # Emit PC51 keepalive chatter to the console
   log_line_too_long: false         # Log and drop oversized peer lines
   telnet_transport: "native"       # Telnet parser/negotiation backend: native or ziutek
-  keepalive_seconds: 600           # PC92K/PC51 heartbeat interval (0 disables)
-  config_seconds: 1800             # PC92C config refresh interval (0 disables)
-  write_queue_size: 128            # Buffered writes per session before backpressure
-  max_line_length: 65536           # Drop lines longer than this to avoid abuse
-  pc92_max_bytes: 65536            # Drop PC92 topology frames larger than this (<= max_line_length)
+  keepalive_seconds: 600           # Periodic PC92 K/PC51 interval; 0 disables this timer, not recovery
+  config_seconds: 1800             # Periodic PC92 C interval; 0 disables this timer, not mandatory recovery C/A
+  write_queue_size: 128            # Normal queued record ceiling; the independent physical byte budget can win first
+  max_line_length: 65536           # Peer wire ceiling, at most 65536 when enabled; smaller limits remain effective
+  pc92_max_bytes: 65536            # PC92 wire ceiling <= max_line_length; a complete local snapshot must fit
   # Repeated peer entries use the field meanings shown on the first example row.
   peers:
     - enabled: false               # Example peer #1 (set true only after editing)

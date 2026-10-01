@@ -1,162 +1,86 @@
 package peer
 
 import (
+	"bufio"
 	"context"
 	"strings"
 	"testing"
 	"time"
 )
 
-func TestKeepaliveLoopSendsPC51ForPC9x(t *testing.T) {
-	s := &session{
-		localCall:      "N0CALL",
-		remoteCall:     "N0PEER",
-		pc92Bitmap:     5,
-		nodeVersion:    "5457",
-		hopCount:       99,
-		pc9x:           true,
-		keepalive:      5 * time.Millisecond,
-		writeCh:        make(chan string, 8),
-		priorityLineCh: make(chan string, 8),
-		tsGen:          &timestampGenerator{},
-	}
-	s.ctx, s.cancel = context.WithCancel(context.Background())
-	defer s.cancel()
-
-	go s.keepaliveLoop()
-
-	waitForKeepalives(t, s.priorityLineCh, true)
-}
-
 func TestKeepaliveLoopSendsPC51ForLegacy(t *testing.T) {
-	s := &session{
-		localCall:      "N0CALL",
-		remoteCall:     "N0PEER",
-		pc9x:           false,
-		keepalive:      5 * time.Millisecond,
-		writeCh:        make(chan string, 4),
-		priorityLineCh: make(chan string, 4),
-		tsGen:          &timestampGenerator{},
+	s, remote := newTransportTestSession(t)
+	s.keepalive = 20 * time.Millisecond
+	s.startWorker(s.writerLoop)
+	s.startWorker(s.keepaliveLoop)
+	got := readSessionWire(t, bufio.NewReader(remote), remote)
+	if got != "PC51^N1REM^N0CALL^1^" {
+		t.Fatalf("wire=%q", got)
 	}
-	s.ctx, s.cancel = context.WithCancel(context.Background())
-	defer s.cancel()
-
-	go s.keepaliveLoop()
-
-	waitForKeepalives(t, s.priorityLineCh, false)
 }
 
-func TestKeepaliveBypassesNormalWriteBacklog(t *testing.T) {
-	s := &session{
-		localCall:      "N0CALL",
-		remoteCall:     "N0PEER",
-		pc92Bitmap:     5,
-		nodeVersion:    "5457",
-		hopCount:       99,
-		pc9x:           true,
-		keepalive:      5 * time.Millisecond,
-		writeCh:        make(chan string, 1),
-		priorityLineCh: make(chan string, 8),
-		tsGen:          &timestampGenerator{},
-	}
-	s.writeCh <- "queued spot backlog"
-	s.ctx, s.cancel = context.WithCancel(context.Background())
-	defer s.cancel()
-
-	go s.keepaliveLoop()
-
-	waitForKeepalives(t, s.priorityLineCh, true)
-}
-
-func TestKeepaliveLoopSendsPC92ConfigOnPriorityQueue(t *testing.T) {
-	s := &session{
-		localCall:      "N0CALL",
-		remoteCall:     "N0PEER",
-		pc92Bitmap:     5,
-		nodeVersion:    "5457",
-		hopCount:       99,
-		pc9x:           true,
-		keepalive:      time.Hour,
-		configEvery:    5 * time.Millisecond,
-		writeCh:        make(chan string, 1),
-		priorityLineCh: make(chan string, 8),
-		tsGen:          &timestampGenerator{},
-	}
-	s.ctx, s.cancel = context.WithCancel(context.Background())
-	defer s.cancel()
-
-	go s.keepaliveLoop()
-
-	timeout := time.NewTimer(500 * time.Millisecond)
-	defer timeout.Stop()
-	for {
-		select {
-		case line := <-s.priorityLineCh:
-			if strings.HasPrefix(line, "PC92^") && strings.Contains(line, "^C^") {
-				return
+func TestKeepaliveLoopIndependentTimers(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		keep, config   time.Duration
+		want, unwanted string
+	}{
+		{"config with keepalive disabled", 0, 30 * time.Millisecond, "C", "K"},
+		{"keepalive with config disabled", 30 * time.Millisecond, 0, "K", "C"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			manager, _ := newInboundHarnessManager(t, inboundScenario{name: t.Name()})
+			s, remote := newTransportTestSession(t)
+			s.manager = manager
+			s.pc9x = true
+			s.keepalive = tc.keep
+			s.configEvery = tc.config
+			s.id = "N1REM"
+			if err := manager.trackCandidate(s); err != nil {
+				t.Fatal(err)
 			}
-		case <-timeout.C:
-			t.Fatal("timeout waiting for PC92 config refresh on priority queue")
-		}
+			t.Cleanup(func() { manager.releaseCandidate(s); manager.unregisterSession(s) })
+			if err := manager.establishSession(s); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.sendControlLine("test-ready"); err != nil {
+				t.Fatal(err)
+			}
+			s.startWorker(s.writerLoop)
+			reader := bufio.NewReader(remote)
+			for readSessionWire(t, reader, remote) != "test-ready" {
+			}
+			s.startWorker(s.keepaliveLoop)
+			for {
+				got := readSessionWire(t, reader, remote)
+				if strings.HasPrefix(got, "PC92^") {
+					f, err := ParseFrame(got)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if f.Fields[2] == tc.unwanted {
+						t.Fatalf("disabled periodic action on wire: %q", got)
+					}
+					if f.Fields[2] == tc.want {
+						break
+					}
+				}
+			}
+		})
 	}
 }
 
 func TestPriorityLaneSaturationClosesSession(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	s := &session{
-		localCall:      "N0CALL",
-		remoteCall:     "N0PEER",
-		pc92Bitmap:     5,
-		nodeVersion:    "5457",
-		hopCount:       99,
-		pc9x:           true,
-		keepalive:      5 * time.Millisecond,
-		writeCh:        make(chan string, 1),
-		priorityLineCh: make(chan string, 1),
-		ctx:            ctx,
-		cancel:         cancel,
-		tsGen:          &timestampGenerator{},
+	s := &session{ctx: ctx, cancel: cancel, priorityLineCh: make(chan string, 1)}
+	if err := s.sendControlLine("occupied"); err != nil {
+		t.Fatal(err)
 	}
-	s.priorityLineCh <- "occupied"
-
-	done := make(chan struct{})
-	go func() {
-		s.keepaliveLoop()
-		close(done)
-	}()
-
-	select {
-	case <-ctx.Done():
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("expected keepalive loop to close the session when priority lane is full")
+	if err := s.sendControlLine("next"); err == nil {
+		t.Fatal("full queue accepted control")
 	}
-
-	select {
-	case <-done:
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("expected keepalive loop to exit after closing the session")
-	}
-}
-
-func waitForKeepalives(t *testing.T, ch <-chan string, wantPC92 bool) {
-	t.Helper()
-	timeout := time.NewTimer(500 * time.Millisecond)
-	defer timeout.Stop()
-
-	var gotPC51, gotPC92 bool
-	for !gotPC51 || (wantPC92 && !gotPC92) {
-		select {
-		case line := <-ch:
-			if strings.HasPrefix(line, "PC51^") {
-				gotPC51 = true
-			}
-			if strings.HasPrefix(line, "PC92^") && strings.Contains(line, "^K^") {
-				gotPC92 = true
-			}
-		case <-timeout.C:
-			t.Fatalf("timeout waiting for keepalives (pc51=%v pc92=%v)", gotPC51, gotPC92)
-		}
+	if ctx.Err() == nil {
+		t.Fatal("full control lane did not close session")
 	}
 }

@@ -122,6 +122,29 @@ These rules must be explicit, deterministic, and testable.
 - If the peer control-priority lane is full, close the peer session and rely on
   reconnect/backoff rather than silently dropping keepalives.
 
+### PC18/PC92 authority and recovery
+
+- PC18 uses truthful runtime product/build identity independently of numeric
+  compatibility metadata. Invalid enabled identity fails startup.
+- PC92 supports A/C/D/K. Complete C is atomic; unsupported F/R and unknown
+  actions grant neither topology nor freshness. CCCluster receives direct local
+  publication but is excluded from transit PC92 broadcasts.
+- One manager owner orders local timestamps/publication and remote authority.
+  Startup PC92 remains staged until establishment wins. Actual current telnet
+  owners define local membership; available IP addresses are published.
+- Publication overflow and unsafe clock close/gate PC9x while local users and
+  established legacy links continue. Authoritative admission failure closes and
+  gates the affected peer until the actual required headroom is stable.
+- Recovery requires complete C followed by metadata A, including when periodic
+  C and K are disabled. Local recovery does not make incomplete remote state
+  complete; that requires an authoritative remote C.
+- Separate spot/PC92/PC93/bulletin pools never evict unexpired payload keys.
+  Exactly 600 elapsed seconds is unexpired. PC92 and PC93 share origin freshness;
+  unsafe UTC does not erase retained ordering protection.
+- The full resource/workload contract is in [PC92 qualification](pc92-qualification.md).
+  Include backing capacity, rounding and active generations in allocation
+  accounting. Optional SQLite projection is never live authority.
+
 ### Relay under overload
 
 - Do not relay inbound peer spot data after the local ingest queue already

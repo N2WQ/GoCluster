@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"dxcluster/config"
 	ztelnet "github.com/ziutek/telnet"
@@ -23,7 +24,7 @@ const (
 )
 
 const (
-	defaultPriorityQueue     = 32
+	defaultPriorityQueue     = 128
 	defaultPeerWriteDeadline = 2 * time.Second
 )
 
@@ -34,45 +35,71 @@ var (
 )
 
 type session struct {
-	id             string
-	conn           net.Conn
-	reader         *lineReader
-	writer         *bufio.Writer
-	writeCh        chan string
-	priorityLineCh chan string
-	priorityRawCh  chan []byte
-	writeMu        sync.Mutex
-	manager        *Manager
-	peer           PeerEndpoint
-	localCall      string
-	remoteCall     string
-	inboundCC      bool
-	pc9x           bool
-	preferPC9x     bool
-	password       string
-	nodeVersion    string
-	nodeBuild      string
-	legacyVer      string
-	pc92Bitmap     int
-	nodeCount      int
-	userCount      int
-	hopCount       int
-	loginTimeout   time.Duration
-	initTimeout    time.Duration
-	idleTimeout    time.Duration
-	keepalive      time.Duration
-	configEvery    time.Duration
-	dir            direction
-	tsGen          *TimestampGenerator
-	ctx            context.Context
-	cancel         context.CancelFunc
-	closeOnce      sync.Once
-	overlongPath   string
-	logKeepalive   bool
-	logLineTooLong bool
+	qualificationWriter  qualificationWriterState
+	pendingReserved      bool
+	ownerReserved        bool
+	id                   string
+	diagnosticLabel      string
+	conn                 net.Conn
+	reader               *lineReader
+	writer               *bufio.Writer
+	writeCh              chan string
+	normalReady          chan struct{}
+	normalCapacity       int
+	priorityLineCh       chan string
+	priorityRawCh        chan []byte
+	writeMu              sync.Mutex
+	queueMu              sync.Mutex
+	dataBytes            int
+	controlBytes         int
+	dataFixedBytes       int
+	controlFixedBytes    int
+	controlCount         int
+	activeBytes          int
+	activeControl        bool
+	lineTimes            controlTimes
+	rawTimes             controlTimes
+	workers              sync.WaitGroup
+	manager              *Manager
+	peer                 PeerEndpoint
+	localCall            string
+	remoteCall           string
+	remoteVersion        string
+	remoteBuild          string
+	remoteVersionTooLong bool
+	remoteBuildTooLong   bool
+	remoteBitmap         int
+	established          bool
+	inboundCC            bool
+	pc9x                 bool
+	preferPC9x           bool
+	password             string
+	nodeVersion          string
+	nodeBuild            string
+	legacyVer            string
+	pc92Bitmap           int
+	nodeCount            int
+	userCount            int
+	hopCount             int
+	loginTimeout         time.Duration
+	initTimeout          time.Duration
+	idleTimeout          time.Duration
+	keepalive            time.Duration
+	configEvery          time.Duration
+	dir                  direction
+	ctx                  context.Context
+	cancel               context.CancelFunc
+	closeOnce            sync.Once
+	overlongPath         string
+	logKeepalive         bool
+	logLineTooLong       bool
 }
 
 func newSession(conn net.Conn, dir direction, manager *Manager, peer PeerEndpoint, settings sessionSettings) *session {
+	diagnosticLabel := peer.ID()
+	if diagnosticLabel == "" && conn.RemoteAddr() != nil {
+		diagnosticLabel = conn.RemoteAddr().String()
+	}
 	useZiutek := strings.EqualFold(settings.telnetTransport, "ziutek")
 	writerConn := conn
 	readFn := conn.Read
@@ -87,41 +114,49 @@ func newSession(conn net.Conn, dir direction, manager *Manager, peer PeerEndpoin
 	}
 	writer := bufio.NewWriter(writerConn)
 	s := &session{
-		id:             peer.ID(),
-		conn:           conn,
-		writer:         writer,
-		writeCh:        make(chan string, settings.writeQueue),
-		priorityLineCh: make(chan string, defaultPriorityQueue),
-		priorityRawCh:  make(chan []byte, defaultPriorityQueue),
-		manager:        manager,
-		peer:           peer,
-		localCall:      settings.localCall,
-		preferPC9x:     settings.preferPC9x,
-		password:       settings.password,
-		nodeVersion:    settings.nodeVersion,
-		nodeBuild:      settings.nodeBuild,
-		legacyVer:      settings.legacyVersion,
-		pc92Bitmap:     settings.pc92Bitmap,
-		nodeCount:      settings.nodeCount,
-		userCount:      settings.userCount,
-		hopCount:       settings.hopCount,
-		loginTimeout:   settings.loginTimeout,
-		initTimeout:    settings.initTimeout,
-		idleTimeout:    settings.idleTimeout,
-		keepalive:      settings.keepalive,
-		configEvery:    settings.configEvery,
-		dir:            dir,
-		tsGen:          NewTimestampGenerator(),
-		overlongPath:   "logs/peering_overlong.log",
-		logKeepalive:   settings.logKeepalive,
-		logLineTooLong: settings.logLineTooLong,
+		id:              peer.ID(),
+		diagnosticLabel: diagnosticLabel,
+		conn:            conn,
+		writer:          writer,
+		normalReady:     make(chan struct{}),
+		normalCapacity:  boundedDataQueueCount(settings.writeQueue),
+		priorityLineCh:  make(chan string, defaultPriorityQueue),
+		priorityRawCh:   make(chan []byte, defaultPriorityQueue),
+		manager:         manager,
+		peer:            peer,
+		localCall:       settings.localCall,
+		remoteCall:      peer.remoteCall,
+		preferPC9x:      settings.preferPC9x,
+		password:        settings.password,
+		nodeVersion:     settings.nodeVersion,
+		nodeBuild:       settings.nodeBuild,
+		legacyVer:       settings.legacyVersion,
+		pc92Bitmap:      settings.pc92Bitmap,
+		nodeCount:       settings.nodeCount,
+		userCount:       settings.userCount,
+		hopCount:        settings.hopCount,
+		loginTimeout:    settings.loginTimeout,
+		initTimeout:     settings.initTimeout,
+		idleTimeout:     settings.idleTimeout,
+		keepalive:       settings.keepalive,
+		configEvery:     settings.configEvery,
+		dir:             dir,
+		overlongPath:    "logs/peering_overlong.log",
+		logKeepalive:    settings.logKeepalive,
+		logLineTooLong:  settings.logLineTooLong,
 	}
+	s.initializeOutputBudgetLocked()
 	if useZiutek {
 		s.reader = newLineReaderWithTransport(conn, settings.maxLine, settings.pc92MaxBytes, readFn, nil, nil)
 	} else {
 		s.reader = newLineReaderWithTransport(conn, settings.maxLine, settings.pc92MaxBytes, readFn, &telnetParser{}, func(data []byte) {
 			_ = s.sendPriorityRaw(data)
 		})
+	}
+	if manager != nil {
+		s.reader.acquireScratch = func(deadline time.Time) (frameParseLease, error) {
+			return manager.parseBudget.acquireCharge(s.ctx, deadline, readerScratchBytes)
+		}
 	}
 	return s
 }
@@ -130,10 +165,44 @@ func (s *session) Run(ctx context.Context) error {
 	if s.conn == nil {
 		return errors.New("nil conn")
 	}
-	s.ctx, s.cancel = context.WithCancel(ctx)
-	defer s.cancel()
-
-	go s.writerLoop()
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	s.ctx, s.cancel = runCtx, cancel
+	if s.manager == nil {
+		s.close()
+		return errors.New("peer: session manager not initialized")
+	}
+	if err := s.manager.trackCandidate(s); err != nil {
+		s.close()
+		return err
+	}
+	// Run owns every session worker and closes the socket before joining. The
+	// cancellation watcher also interrupts reads when idle timeouts are disabled.
+	defer func() {
+		s.close()
+		s.workers.Wait()
+		s.discardQueuedOutput()
+		s.manager.unregisterSession(s)
+		// Once registry ownership is gone, stale queued input may still retain
+		// this identity but cannot require its potentially large remote metadata.
+		s.manager.mu.Lock()
+		s.remoteVersion, s.remoteBuild = "", ""
+		s.remoteVersionTooLong, s.remoteBuildTooLong = false, false
+		s.manager.mu.Unlock()
+		if s.established {
+			s.manager.reportConnection(ConnectionEvent{
+				Direction: directionLabel(s.dir), Action: "disconnected", Peer: s.remoteCall,
+				Endpoint: s.peer.host, Reason: "session_end",
+			})
+		}
+		s.manager.releaseCandidate(s)
+	}()
+	s.startWorker(s.writerLoop)
+	s.startWorker(s.controlAgeLoop)
+	s.startWorker(func() {
+		<-s.ctx.Done()
+		_ = s.conn.Close()
+	})
 
 	var err error
 	switch s.dir {
@@ -141,6 +210,8 @@ func (s *session) Run(ctx context.Context) error {
 		err = s.runInboundHandshake()
 	case dirOutbound:
 		err = s.runOutboundHandshake()
+	default:
+		err = errors.New("peer: invalid session direction")
 	}
 	if err != nil {
 		s.manager.reportConnection(ConnectionEvent{
@@ -154,10 +225,11 @@ func (s *session) Run(ctx context.Context) error {
 		return err
 	}
 
-	if err := s.manager.registerSession(s); err != nil {
+	if err := s.manager.establishSession(s); err != nil {
 		s.close()
 		return err
 	}
+	s.established = true
 	s.manager.reportConnection(ConnectionEvent{
 		Direction: directionLabel(s.dir),
 		Action:    "established",
@@ -165,17 +237,9 @@ func (s *session) Run(ctx context.Context) error {
 		Endpoint:  s.peer.host,
 		Reason:    "none",
 	})
-	defer s.manager.unregisterSession(s)
-	defer s.manager.reportConnection(ConnectionEvent{
-		Direction: directionLabel(s.dir),
-		Action:    "disconnected",
-		Peer:      s.remoteCall,
-		Endpoint:  s.peer.host,
-		Reason:    "session_end",
-	})
 
-	if s.keepalive > 0 {
-		go s.keepaliveLoop()
+	if s.keepalive > 0 || s.configEvery > 0 {
+		s.startWorker(s.keepaliveLoop)
 	}
 
 	for {
@@ -207,22 +271,23 @@ func (s *session) Run(ctx context.Context) error {
 		if line == "" {
 			continue
 		}
-		frame, err := ParseFrame(line)
-		if err != nil {
-			continue
+		if _, err := s.withParsedFrame(line, deadline, s.handleEstablishedFrame); err != nil {
+			return err
 		}
-		if frame.Type == "PC51" {
-			s.handlePing(frame)
-			continue
-		}
-		if frame.Type == "PC20" && s.inboundCC {
-			// CC peers may send PC20 after the banner-driven inbound establish path
-			// is already complete. Reply with PC22 without re-running init.
-			_ = s.sendPriorityLine("PC22^")
-			continue
-		}
-		s.manager.HandleFrame(frame, s)
 	}
+}
+
+func (s *session) handleEstablishedFrame(frame *Frame) (bool, error) {
+	if frame.Type == "PC51" {
+		s.handlePing(frame)
+		return false, nil
+	}
+	if frame.Type == "PC20" && s.inboundCC {
+		// A delayed CC completion does not start another exchange.
+		return false, s.sendControlLine("PC22^")
+	}
+	s.manager.HandleFrame(frame, s)
+	return false, nil
 }
 
 func directionLabel(dir direction) string {
@@ -236,234 +301,38 @@ func directionLabel(dir direction) string {
 	}
 }
 
-func (s *session) writerLoop() {
-	for {
-		select {
-		case <-s.ctx.Done():
-			return
-		case raw, ok := <-s.priorityRawCh:
-			if !ok {
-				return
-			}
-			if err := s.writeRaw(raw); err != nil {
-				s.handleWriterError("priority raw", err)
-				return
-			}
-			continue
-		case line, ok := <-s.priorityLineCh:
-			if !ok {
-				return
-			}
-			if err := s.writeLine(line); err != nil {
-				s.handleWriterError("priority line", err)
-				return
-			}
-			continue
-		default:
-		}
-		select {
-		case <-s.ctx.Done():
-			return
-		case raw, ok := <-s.priorityRawCh:
-			if !ok {
-				return
-			}
-			if err := s.writeRaw(raw); err != nil {
-				s.handleWriterError("priority raw", err)
-				return
-			}
-		case line, ok := <-s.priorityLineCh:
-			if !ok {
-				return
-			}
-			if err := s.writeLine(line); err != nil {
-				s.handleWriterError("priority line", err)
-				return
-			}
-		case line, ok := <-s.writeCh:
-			if !ok {
-				return
-			}
-			if err := s.writeLine(line); err != nil {
-				s.handleWriterError("line", err)
-				return
-			}
-		}
-	}
-}
-
-func (s *session) sendLine(line string) error {
-	if s.ctx == nil {
-		return errSessionContextUnset
-	}
-	select {
-	case <-s.ctx.Done():
-		return s.ctx.Err()
-	case s.writeCh <- line:
-		return nil
-	default:
-		return errSessionWriteQueueFull
-	}
-}
-
-// sendPriorityLine enqueues a line ahead of normal traffic so PC51 ACKs don't
-// sit behind a large spot backlog. It never blocks the read loop.
-func (s *session) sendPriorityLine(line string) bool {
-	if s == nil {
-		return false
-	}
-	if s.ctx != nil {
-		select {
-		case <-s.ctx.Done():
-			return false
-		default:
-		}
-	}
-	select {
-	case s.priorityLineCh <- line:
-		return true
-	default:
-		return false
-	}
-}
-
-// sendControlLine enqueues liveness/config traffic on the priority lane.
-// Missing a control frame means the session is no longer healthy, so a full
-// priority lane closes the session and lets the reconnect path take over.
-func (s *session) sendControlLine(line string) error {
-	if s == nil || s.ctx == nil {
-		return errSessionContextUnset
-	}
-	select {
-	case <-s.ctx.Done():
-		return s.ctx.Err()
-	case s.priorityLineCh <- line:
-		return nil
-	default:
-		s.close()
-		return errSessionPriorityQueueFull
-	}
-}
-
-// sendPriorityRaw enqueues telnet negotiation replies without blocking.
-func (s *session) sendPriorityRaw(data []byte) bool {
-	if s == nil || len(data) == 0 {
-		return false
-	}
-	if s.ctx != nil {
-		select {
-		case <-s.ctx.Done():
-			return false
-		default:
-		}
-	}
-	select {
-	case s.priorityRawCh <- data:
-		return true
-	default:
-		return false
-	}
-}
-
-func (s *session) writeLine(line string) error {
-	if s.conn == nil {
-		return errors.New("peer: nil conn")
-	}
-	if !strings.HasSuffix(line, "\n") {
-		line += "\r\n"
-	}
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	if err := s.conn.SetWriteDeadline(time.Now().UTC().Add(defaultPeerWriteDeadline)); err != nil {
-		return err
-	}
-	_, err := s.writer.WriteString(line)
-	if err != nil {
-		return err
-	}
-	return s.writer.Flush()
-}
-
-func (s *session) writeRaw(data []byte) error {
-	if s.conn == nil {
-		return errors.New("peer: nil conn")
-	}
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	if err := s.conn.SetWriteDeadline(time.Now().UTC().Add(defaultPeerWriteDeadline)); err != nil {
-		return err
-	}
-	if _, err := s.writer.Write(data); err != nil {
-		return err
-	}
-	return s.writer.Flush()
-}
-
-func (s *session) close() {
-	s.closeOnce.Do(func() {
-		if s.cancel != nil {
-			s.cancel()
-		}
-		if s.conn != nil {
-			_ = s.conn.Close()
-		}
-	})
-}
-
-func (s *session) handleWriterError(kind string, err error) {
-	if err == nil {
-		return
-	}
-	if s.ctx != nil && s.ctx.Err() != nil {
-		return
-	}
-	log.Printf("Peering: writer %s failed for %s: %v", kind, s.peer.host, err)
-	s.close()
-}
-
+// keepaliveLoop has independent timers: zero disables only its own periodic
+// publication. One-shot establishment/recovery is owned by the manager.
 func (s *session) keepaliveLoop() {
-	ticker := time.NewTicker(s.keepalive)
-	defer ticker.Stop()
-	var cfgC <-chan time.Time
-	var cfgTicker *time.Ticker
+	var keepC, configC <-chan time.Time
+	if s.keepalive > 0 {
+		ticker := time.NewTicker(s.keepalive)
+		defer ticker.Stop()
+		keepC = ticker.C
+	}
 	if s.configEvery > 0 {
-		cfgTicker = time.NewTicker(s.configEvery)
-		cfgC = cfgTicker.C
-		defer cfgTicker.Stop()
+		ticker := time.NewTicker(s.configEvery)
+		defer ticker.Stop()
+		configC = ticker.C
 	}
 	for {
 		select {
 		case <-s.ctx.Done():
 			return
-		case <-ticker.C:
-			// Always emit PC51 pings so peers that still expect legacy liveness
-			// see activity even when the session uses pc9x.
-			line := fmt.Sprintf("PC51^%s^%s^1^", s.remoteCall, s.localCall)
-			if err := s.sendControlLine(line); err != nil {
-				if !errors.Is(err, context.Canceled) {
-					log.Printf("Peering: keepalive enqueue failed for %s: %v", s.peer.host, err)
-				}
+		case <-keepC:
+			if err := s.sendControlLine(fmt.Sprintf("PC51^%s^%s^1^", s.remoteCall, s.localCall)); err != nil {
 				return
 			}
-			// For pc9x sessions, also send a PC92 keepalive to refresh topology.
 			if s.pc9x {
-				line := s.buildPC92Keepalive()
-				if err := s.sendControlLine(line); err != nil {
-					if !errors.Is(err, context.Canceled) {
-						log.Printf("Peering: PC92 keepalive enqueue failed for %s: %v", s.peer.host, err)
-					}
+				if err := s.manager.publishPeriodic(s, "K"); err != nil {
+					s.close()
 					return
 				}
 			}
-		case <-cfgC:
-			// Periodic PC92 C config refresh to keep topology alive on peers; DXSpider
-			// purges nodes that miss several config intervals.
+		case <-configC:
 			if s.pc9x {
-				line := s.buildPC92Config()
-				if err := s.sendControlLine(line); err != nil {
-					if !errors.Is(err, context.Canceled) {
-						log.Printf("Peering: PC92 config enqueue failed for %s: %v", s.peer.host, err)
-					}
+				if err := s.manager.publishPeriodic(s, "C"); err != nil {
+					s.close()
 					return
 				}
 			}
@@ -493,177 +362,102 @@ func (s *session) handlePing(frame *Frame) {
 	if s.logKeepalive {
 		log.Printf("Peering: PC51 ping from %s to %s; sending ACK", fromNode, toNode)
 	}
-	if !s.sendPriorityLine(resp) {
-		if s.logKeepalive {
-			log.Printf("Peering: PC51 ACK to %s dropped: priority queue full", toNode)
-		}
+	if err := s.sendControlLine(resp); err != nil && s.logKeepalive {
+		log.Printf("Peering: PC51 ACK to %s failed: %v", toNode, err)
 	}
 }
 
+// runOutboundHandshake requires the protocol completion marker. Spot traffic
+// cannot grant establishment authority or leak staged topology into live state.
 func (s *session) runOutboundHandshake() error {
-	start := time.Now().UTC()
-	deadline := start.Add(s.loginTimeout + s.initTimeout)
-	initSent := false
-	waitInit := true
-	sentCall := false
-	sentPass := false
-
-	// Send credentials immediately to match common DXSpider expectations (banner often precedes prompts).
+	deadline := time.Now().Add(s.loginTimeout + s.initTimeout)
 	if s.localCall != "" {
-		if err := s.sendLine(s.localCall); err != nil {
+		if err := s.sendControlLine(s.localCall); err != nil {
 			return err
 		}
-		sentCall = true
 	}
 	if s.password != "" {
-		if err := s.sendLine(s.password); err != nil {
+		if err := s.sendInitialPassword(); err != nil {
 			return err
 		}
-		sentPass = true
 	}
-
-	logPrefix := fmt.Sprintf("Peering hs %s -> %s", s.localCall, s.peer.host)
-
+	initSent := false
 	for {
-		if time.Now().UTC().After(deadline) {
+		if time.Now().After(deadline) {
 			return errors.New("handshake timeout")
-		}
-		if !sentCall && time.Since(start) > s.loginTimeout/2 {
-			if s.localCall != "" {
-				if err := s.sendLine(s.localCall); err != nil {
-					return err
-				}
-				sentCall = true
-			}
-			if !sentPass && s.password != "" {
-				if err := s.sendLine(s.password); err != nil {
-					return err
-				}
-				sentPass = true
-			}
 		}
 		line, err := s.reader.ReadLine(deadline)
 		if err != nil {
 			var tooLong ErrLineTooLong
 			if errors.As(err, &tooLong) {
-				log.Printf(
-					"%s RX line too long, dropping (reason=%s len=%d limit=%d)",
-					logPrefix,
-					tooLong.Reason,
-					tooLong.Length,
-					tooLong.Limit,
-				)
 				appendOverlongSample(s.overlongPath, s.peer.host, tooLong.Preview, tooLong.Length, tooLong.Reason, tooLong.Limit)
 				continue
 			}
 			return err
 		}
-		if line == "" {
-			continue
-		}
-		log.Printf("%s RX %s", logPrefix, line)
-		if strings.Contains(line, "PC18^") {
-			s.pc9x = s.preferPC9x && strings.Contains(strings.ToLower(line), "pc9x")
-			if !sentCall && s.localCall != "" {
-				if err := s.sendLine(s.localCall); err != nil {
-					return err
-				}
-				sentCall = true
-			}
-			if s.password != "" && !sentPass {
-				if err := s.sendLine(s.password); err != nil {
-					return err
-				}
-				sentPass = true
-			}
-			if !initSent && sentCall && (s.password == "" || sentPass) {
-				if err := s.sendInit(); err != nil {
-					return err
-				}
-				log.Printf("%s TX init (pc9x=%v)", logPrefix, s.pc9x)
-				initSent = true
-			}
-			waitInit = true
-			continue
-		}
-		if (strings.HasPrefix(line, "PC19^") || strings.HasPrefix(line, "PC16^") || strings.HasPrefix(line, "PC17^") || strings.HasPrefix(line, "PC21^")) && !initSent {
-			s.pc9x = s.preferPC9x
-			if !sentCall && s.localCall != "" {
-				if err := s.sendLine(s.localCall); err != nil {
-					return err
-				}
-				sentCall = true
-			}
-			if s.password != "" && !sentPass {
-				if err := s.sendLine(s.password); err != nil {
-					return err
-				}
-				sentPass = true
-			}
-			if sentCall && (s.password == "" || sentPass) {
-				if err := s.sendInit(); err != nil {
-					return err
-				}
-				log.Printf("%s TX init (legacy)", logPrefix)
-				initSent = true
-				waitInit = true
-			}
-			continue
-		}
-		if strings.HasPrefix(line, "PC22") && initSent {
-			return nil
-		}
-		if initSent && (strings.HasPrefix(line, "PC11^") || strings.HasPrefix(line, "PC61^")) {
-			// DXSpider peers often stream spots before sending PC22; treat spot traffic as implicit establishment.
-			if strings.HasPrefix(line, "PC61^") {
-				s.pc9x = true
-			}
-			if frame, err := ParseFrame(line); err == nil && s.manager != nil {
-				s.manager.HandleFrame(frame, s)
-			}
-			log.Printf("%s established via incoming spots (pc9x=%v)", logPrefix, s.pc9x)
-			return nil
-		}
-		if waitInit {
-			if prompt, ok := classifyPrompt(line); ok {
-				if prompt == promptLogin && !sentCall && s.localCall != "" {
-					if err := s.sendLine(s.localCall); err != nil {
-						return err
-					}
-					sentCall = true
-				}
-				if prompt == promptPassword && s.password != "" && !sentPass {
-					if err := s.sendLine(s.password); err != nil {
-						return err
-					}
-					sentPass = true
-				}
-			}
+		done, err := s.withParsedFrame(line, deadline, func(frame *Frame) (bool, error) { return s.handleOutboundFrame(frame, &initSent) })
+		if err != nil || done {
+			return err
 		}
 	}
 }
 
+func (s *session) handleOutboundFrame(frame *Frame, initSent *bool) (bool, error) {
+	switch frame.Type {
+	case "PC18":
+		if *initSent {
+			return false, nil
+		}
+		if err := s.acceptPC18(frame); err != nil {
+			return false, err
+		}
+		if err := s.sendInit(true); err != nil {
+			return false, err
+		}
+		*initSent = true
+	case "PC92":
+		if !*initSent && s.preferPC9x {
+			s.pc9x = true
+		}
+		accepted, err := s.stageStartupPC92(frame)
+		if err != nil {
+			return false, err
+		}
+		if accepted && !*initSent && s.peer.family == config.PeeringPeerFamilyCCluster {
+			if err := s.sendInit(true); err != nil {
+				return false, err
+			}
+			*initSent = true
+		}
+	case "PC19", "PC16", "PC17", "PC21":
+		if !*initSent {
+			s.pc9x = false
+			if err := s.sendInit(true); err != nil {
+				return false, err
+			}
+			*initSent = true
+		}
+	case "PC22":
+		return *initSent, nil
+	}
+	return false, nil
+}
+
 func (s *session) runInboundHandshake() error {
-	s.pc9x = true
-	if err := s.sendLine("login:"); err != nil {
+	if err := s.sendControlLine("login:"); err != nil {
 		return fmt.Errorf("send login prompt: %w", err)
 	}
-	loginDeadline := time.Now().UTC().Add(s.loginTimeout)
+	loginDeadline := time.Now().Add(s.loginTimeout)
 	var call string
-	for {
-		if time.Now().UTC().After(loginDeadline) {
+	for call == "" {
+		if time.Now().After(loginDeadline) {
 			return errors.New("login timeout")
 		}
 		line, err := s.reader.ReadLine(loginDeadline)
 		if err != nil {
 			return err
 		}
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		call = line
-		break
+		call = strings.TrimSpace(line)
 	}
 	peer, err := s.manager.authorizeInbound(call, s.conn.RemoteAddr())
 	if err != nil {
@@ -676,176 +470,203 @@ func (s *session) runInboundHandshake() error {
 	s.preferPC9x = peer.preferPC9x
 	s.id = peer.ID()
 	if s.password != "" {
-		if err := s.sendLine("password:"); err != nil {
-			return fmt.Errorf("send password prompt: %w", err)
+		if err := s.sendControlLine("password:"); err != nil {
+			return err
 		}
-		passDeadline := time.Now().UTC().Add(s.loginTimeout)
-		line, err := s.reader.ReadLine(passDeadline)
+		line, err := s.reader.ReadLine(time.Now().Add(s.loginTimeout))
 		if err != nil {
 			return err
 		}
 		if strings.TrimSpace(line) != s.password {
-			return fmt.Errorf("unauthorized password")
+			return errors.New("unauthorized password")
 		}
 	}
 	if err := s.sendPC18(); err != nil {
 		return err
 	}
-
-	initDeadline := time.Now().UTC().Add(s.initTimeout)
+	deadline := time.Now().Add(s.initTimeout)
+	bannerSeen := false
 	for {
-		if time.Now().UTC().After(initDeadline) {
+		if time.Now().After(deadline) {
 			return errors.New("init timeout")
 		}
-		line, err := s.reader.ReadLine(initDeadline)
+		line, err := s.reader.ReadLine(deadline)
 		if err != nil {
 			return err
 		}
-		frame, err := ParseFrame(line)
-		if err != nil {
-			continue
-		}
-		switch frame.Type {
-		case "PC18":
-			switch s.peer.family {
-			case config.PeeringPeerFamilyCCluster:
-				if !isCCClusterBanner(frame) {
-					log.Printf("Peering: inbound family mismatch for %s: configured=%s banner=%q", s.remoteCall, s.peer.family, line)
-					return fmt.Errorf("inbound family mismatch: %s expects ccluster banner", s.remoteCall)
-				}
-				s.pc9x = true
-				s.inboundCC = true
-				if err := s.sendInit(); err != nil {
-					return err
-				}
-				return nil
-			case config.PeeringPeerFamilyDXSpider:
-				if isCCClusterBanner(frame) {
-					log.Printf("Peering: inbound family mismatch for %s: configured=%s banner=%q", s.remoteCall, s.peer.family, line)
-					return fmt.Errorf("inbound family mismatch: %s expects dxspider banner", s.remoteCall)
-				}
-			}
-		case "PC92":
-			s.pc9x = true
-			s.manager.HandleFrame(frame, s)
-			if s.peer.family == config.PeeringPeerFamilyCCluster {
-				s.inboundCC = true
-				if err := s.sendInit(); err != nil {
-					return err
-				}
-				return nil
-			}
-		case "PC19", "PC16", "PC17", "PC21":
-			s.pc9x = false
-			s.manager.HandleFrame(frame, s)
-		case "PC20":
-			if err := s.sendInit(); err != nil {
-				return err
-			}
-			if err := s.sendLine("PC22^"); err != nil {
-				return err
-			}
-			return nil
+		done, err := s.withParsedFrame(line, deadline, func(frame *Frame) (bool, error) { return s.handleInboundFrame(frame, &bannerSeen) })
+		if err != nil || done {
+			return err
 		}
 	}
+}
+
+func (s *session) handleInboundFrame(frame *Frame, bannerSeen *bool) (bool, error) {
+	switch frame.Type {
+	case "PC18":
+		if *bannerSeen {
+			return false, nil
+		}
+		if err := s.acceptPC18(frame); err != nil {
+			return false, err
+		}
+		*bannerSeen = true
+		if s.peer.family == config.PeeringPeerFamilyCCluster {
+			s.inboundCC = true
+			return true, s.sendInit(true)
+		}
+	case "PC92":
+		if !*bannerSeen && s.preferPC9x {
+			s.pc9x = true
+		}
+		accepted, err := s.stageStartupPC92(frame)
+		if err != nil {
+			return false, err
+		}
+		if accepted && s.peer.family == config.PeeringPeerFamilyCCluster {
+			s.inboundCC = true
+			return true, s.sendInit(true)
+		}
+	case "PC19", "PC16", "PC17", "PC21":
+		s.pc9x = false
+		s.manager.HandleFrame(frame, s)
+	case "PC20":
+		// Inbound configuration is acknowledged by PC22, not another PC20.
+		if err := s.sendInit(false); err != nil {
+			return false, err
+		}
+		return true, s.sendControlLine("PC22^")
+	}
+	return false, nil
+}
+
+func (s *session) stageStartupPC92(frame *Frame) (bool, error) {
+	if !s.pc9x {
+		return false, nil
+	}
+	record, err := DecodePC92(frame)
+	if err != nil || frame.Hop == 0 || record.Origin == s.localCall {
+		return false, nil //nolint:nilerr // Invalid or unsupported startup records are dropped without ending the handshake or granting authority.
+	}
+	if err := s.manager.stagePC92Record(s, frame, record); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func isCCClusterBanner(frame *Frame) bool {
-	if frame == nil || frame.Type != "PC18" {
+	if frame == nil || frame.Type != "PC18" || len(frame.Fields) == 0 {
 		return false
 	}
-	fields := frame.payloadFields()
-	if len(fields) == 0 {
-		return false
+	// Normalize whitespace without a potentially32K-entry Fields array. The
+	// normalized copy is bounded by the frame; parser scratch stays byte-based.
+	var normalized strings.Builder
+	normalized.Grow(len(frame.Fields[0]))
+	space := false
+	for _, r := range frame.Fields[0] {
+		if unicode.IsSpace(r) {
+			space = normalized.Len() > 0
+			continue
+		}
+		if space {
+			normalized.WriteByte(' ')
+			space = false
+		}
+		normalized.WriteRune(unicode.ToLower(r))
 	}
-	return strings.Contains(strings.ToLower(strings.TrimSpace(fields[0])), "cc cluster version:")
+	banner := normalized.String()
+	return strings.Contains(banner, "cc cluster version:") || strings.Contains(banner, "cccluster version:")
+}
+
+func (s *session) acceptPC18(frame *Frame) error {
+	if len(frame.Fields) < 2 {
+		return errors.New("peer: malformed PC18")
+	}
+	cc := isCCClusterBanner(frame)
+	if s.peer.family == config.PeeringPeerFamilyCCluster && !cc || s.peer.family == config.PeeringPeerFamilyDXSpider && cc {
+		return fmt.Errorf("peer: family mismatch for %s (%s)", s.remoteCall, s.peer.family)
+	}
+	// CC's documented startup implies PC9x, but local preference still controls
+	// negotiation. Other peers must advertise the standalone capability token.
+	s.pc9x = s.preferPC9x && (cc || bannerHasPC9x(frame.Fields[0]))
+	s.setRemoteVersion(pc92Numeric(strings.TrimSpace(frame.Fields[1]), false))
+	buildNext := false
+	for word := range strings.FieldsSeq(frame.Fields[0]) {
+		if buildNext {
+			s.setRemoteBuild(pc92Numeric(word, true))
+			break
+		}
+		buildNext = strings.EqualFold(word, "Build:")
+	}
+	if s.pc9x {
+		s.remoteBitmap = 5
+	} else {
+		s.remoteBitmap = 3
+	}
+	return nil
+}
+
+// Session metadata feeds only the bounded local publication. Oversized values
+// remain accepted in the ordinary incoming frame/staged wire/graph, but cannot
+// be published under the10-digit contract. Retain explicit presence rather than
+// a second large string owner. An absent optional field does not call a setter;
+// a later present valid value clears its own oversized marker.
+func (s *session) setRemoteVersion(value string) {
+	s.remoteVersionTooLong = len(value) > 10
+	s.remoteVersion = ""
+	if !s.remoteVersionTooLong {
+		s.remoteVersion = strings.Clone(value)
+	}
+}
+
+func (s *session) setRemoteBuild(value string) {
+	s.remoteBuildTooLong = len(value) > 10
+	s.remoteBuild = ""
+	if !s.remoteBuildTooLong {
+		s.remoteBuild = strings.Clone(value)
+	}
+}
+
+func (s *session) remotePublicationMetadataOK() bool {
+	return !s.remoteVersionTooLong && !s.remoteBuildTooLong && len(s.remoteVersion) <= 10 && len(s.remoteBuild) <= 10
+}
+
+func bannerHasPC9x(banner string) bool {
+	lower := strings.ToLower(banner)
+	for start := 0; start+4 <= len(lower); start++ {
+		if lower[start:start+4] == "pc9x" &&
+			(start == 0 || !pc18WordByte(lower[start-1])) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *session) sendPC18() error {
-	// DXSpider peers classify remote software based on the PC18 banner. Include the
-	// literal "DXSpider Version: <ver>" prefix so their regex matches and we are
-	// treated as a known sort, while still advertising our own variant/build after
-	// the required fields.
-	if strings.TrimSpace(s.nodeBuild) != "" {
-		info := fmt.Sprintf("PC18^DXSpider Version: %s Build: %s gocluster pc9x^%s^", s.nodeVersion, s.nodeBuild, s.nodeVersion)
-		return s.sendLine(info)
-	}
-	info := fmt.Sprintf("PC18^DXSpider Version: %s gocluster pc9x^%s^", s.nodeVersion, s.nodeVersion)
-	return s.sendLine(info)
-}
-
-func (s *session) sendInit() error {
-	if s.pc9x {
-		if err := s.sendLine(s.buildPC92Add()); err != nil {
-			return err
-		}
-		if err := s.sendLine(s.buildPC92Keepalive()); err != nil {
-			return err
-		}
-		return s.sendLine("PC20^")
-	}
-	line := fmt.Sprintf("PC19^1^%s^0^%s^H%d^", s.localCall, s.legacyVer, s.hopCount)
-	if err := s.sendLine(line); err != nil {
+	line, err := FormatPC18(s.manager.pc18Banner, s.nodeVersion, s.preferPC9x)
+	if err != nil {
 		return err
 	}
-	return s.sendLine("PC20^")
+	return s.sendControlLine(line)
 }
 
-func (s *session) buildPC92Add() string {
-	entry := s.pc92Entry()
-	ts := s.tsGen.Next()
-	return fmt.Sprintf("PC92^%s^%s^A^^%s^H%d^", s.localCall, ts, entry, s.hopCount)
-}
-
-func (s *session) buildPC92Keepalive() string {
-	entry := s.pc92Entry()
-	ts := s.tsGen.Next()
-	nodes := s.nodeCount
-	users := s.userCount
-	if s.manager != nil {
-		nodes = s.manager.liveNodeCount()
-		users = s.manager.liveUserCount()
+// sendInit preserves the direction-specific exchange: the initiating side sends
+// PC20; the inbound DXSpider response sends its records followed by PC22 only.
+func (s *session) sendInit(sendEnd bool) error {
+	if s.pc9x {
+		if err := s.manager.publishInitial(s); err != nil {
+			return err
+		}
+	} else {
+		line := fmt.Sprintf("PC19^1^%s^0^%s^H%d^", s.localCall, s.legacyVer, s.hopCount)
+		if err := s.sendControlLine(line); err != nil {
+			return err
+		}
 	}
-	if nodes <= 0 {
-		nodes = 1
+	if sendEnd {
+		return s.sendControlLine("PC20^")
 	}
-	if users < 0 {
-		users = 0
-	}
-	return fmt.Sprintf("PC92^%s^%s^K^%s^%d^%d^H%d^", s.localCall, ts, entry, nodes, users, s.hopCount)
-}
-
-func (s *session) buildPC92Config() string {
-	entry := s.pc92Entry()
-	ts := s.tsGen.Next()
-	return fmt.Sprintf("PC92^%s^%s^C^%s^H%d^", s.localCall, ts, entry, s.hopCount)
-}
-
-func (s *session) pc92Entry() string {
-	entry := fmt.Sprintf("%d%s:%s", s.pc92Bitmap, s.localCall, s.nodeVersion)
-	if strings.TrimSpace(s.nodeBuild) != "" {
-		entry += ":" + strings.TrimSpace(s.nodeBuild)
-	}
-	return entry
-}
-
-type promptType int
-
-const (
-	promptUnknown promptType = iota
-	promptLogin
-	promptPassword
-)
-
-func classifyPrompt(line string) (promptType, bool) {
-	lower := strings.ToLower(line)
-	if strings.Contains(lower, "password") || strings.Contains(lower, "passcode") {
-		return promptPassword, true
-	}
-	if strings.Contains(lower, "login") || strings.Contains(lower, "callsign") || strings.Contains(lower, "call sign") || strings.Contains(lower, "username") {
-		return promptLogin, true
-	}
-	return promptUnknown, false
+	return nil
 }
 
 type sessionSettings struct {

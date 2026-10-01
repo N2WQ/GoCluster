@@ -323,7 +323,11 @@ func keepaliveLoop(writeMu *sync.Mutex, conn net.Conn, pc9x bool, cfg probeConfi
 			// For pc9x sessions, also send a PC92 keepalive to refresh topology.
 			if pc9x {
 				entry := pc92Entry(cfg.localCall, cfg.nodeVersion, cfg.nodeBuild, cfg.pc92Bitmap)
-				ts := tsGen.Next()
+				ts, err := tsGen.Next()
+				if err != nil {
+					log.Printf("keepalive timestamp error: %v", err)
+					return
+				}
 				nodes := liveNodeCountProbe()
 				users := liveUserCountProbe()
 				pc92k := fmt.Sprintf("PC92^%s^%s^K^%s^%d^%d^H%d^", cfg.localCall, ts, entry, nodes, users, cfg.hopCount)
@@ -556,13 +560,20 @@ func handshake(reader *peer.LineReader, writeMu *sync.Mutex, conn net.Conn, cfg 
 func sendInit(mu *sync.Mutex, conn net.Conn, localCall string, pc9x bool, nodeVersion, nodeBuild, legacy string, pc92Bitmap, hopCount int, tsGen *peer.TimestampGenerator) error {
 	if pc9x {
 		entry := pc92Entry(localCall, nodeVersion, nodeBuild, pc92Bitmap)
-		ts := tsGen.Next()
+		ts, err := tsGen.Next()
+		if err != nil {
+			return err
+		}
 		if err := sendLine(mu, conn, fmt.Sprintf("PC92^%s^%s^A^^%s^H%d^", localCall, ts, entry, hopCount)); err != nil {
 			return err
 		}
 		nodes := liveNodeCountProbe()
 		users := liveUserCountProbe()
-		if err := sendLine(mu, conn, fmt.Sprintf("PC92^%s^%s^K^%s^%d^%d^H%d^", localCall, tsGen.Next(), entry, nodes, users, hopCount)); err != nil {
+		ts, err = tsGen.Next()
+		if err != nil {
+			return err
+		}
+		if err := sendLine(mu, conn, fmt.Sprintf("PC92^%s^%s^K^%s^%d^%d^H%d^", localCall, ts, entry, nodes, users, hopCount)); err != nil {
 			return err
 		}
 		return sendLine(mu, conn, "PC20^")

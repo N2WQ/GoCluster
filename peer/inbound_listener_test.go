@@ -101,7 +101,7 @@ func TestInboundListenerRejectsPeerIPBeforePC18(t *testing.T) {
 
 	manager.mu.RLock()
 	defer manager.mu.RUnlock()
-	if len(manager.sessions) != 0 {
-		t.Fatalf("expected no registered sessions, got %d", len(manager.sessions))
+	if manager.sessions.Len() != 0 {
+		t.Fatalf("expected no registered sessions, got %d", manager.sessions.Len())
 	}
 }

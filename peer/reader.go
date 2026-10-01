@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"bytes"
 	"errors"
 	"net"
 	"time"
@@ -35,15 +36,31 @@ func (r *LineReader) ReadLine(deadline time.Time) (string, error) {
 }
 
 type lineReader struct {
-	conn     net.Conn
-	readFn   func([]byte) (int, error)
-	parser   TelnetParser
-	buf      []byte
-	replyFn  func([]byte)
-	maxLine  int
-	pc92Max  int
-	dropping bool
-	readBuf  []byte
+	allocation     readerAllocationState
+	acquireScratch func(time.Time) (frameParseLease, error)
+	conn           net.Conn
+	readFn         func([]byte) (int, error)
+	parser         TelnetParser
+	buf            []byte
+	replyFn        func([]byte)
+	maxLine        int
+	pc92Max        int
+	dropping       bool
+	readBuf        []byte
+	readErr        error
+}
+
+// release runs after the session reader has returned and all workers joined.
+// Queued controller work can still retain the old session identity; it must
+// not also retain a maximum-size unfinished line or transport closures.
+func (r *lineReader) release() {
+	r.buf, r.readBuf = nil, nil
+	r.readFn, r.replyFn = nil, nil
+	r.acquireScratch = nil
+	r.parser, r.conn, r.readErr = nil, nil, nil
+	r.allocation.setBuffer(0)
+	r.allocation.setReadBuffer(0)
+	r.allocation.setRaw(0)
 }
 
 // ErrLineTooLong carries a preview and length when a frame exceeds maxLine.
@@ -63,8 +80,14 @@ func (e ErrLineTooLong) Error() string {
 }
 
 const (
-	overlongReasonPC92MaxBytes = "pc92_max_bytes"
-	overlongReasonMaxLine      = "max_line_length"
+	// MaxPeerFrameBytes is the qualified transport envelope. Configuration may
+	// lower it, but no reader or direct parser can raise it.
+	MaxPeerFrameBytes = 64 << 10
+	// One bounded read's native Telnet replies/output, aggregate growth and
+	// extraction copy share the manager's existing parser scratch allowance.
+	readerScratchBytes         int64 = 288 << 10
+	overlongReasonPC92MaxBytes       = "pc92_max_bytes"
+	overlongReasonMaxLine            = "max_line_length"
 )
 
 // Purpose: Construct a lineReader with the default telnet parser.
@@ -80,19 +103,28 @@ func newLineReader(conn net.Conn, maxLine int, pc92Max int, replyFn func([]byte)
 // Upstream: Peer session setup for external telnet transport.
 // Downstream: lineReader.ReadLine.
 func newLineReaderWithTransport(conn net.Conn, maxLine int, pc92Max int, readFn func([]byte) (int, error), parser TelnetParser, replyFn func([]byte)) *lineReader {
+	if maxLine <= 0 || maxLine > MaxPeerFrameBytes {
+		maxLine = MaxPeerFrameBytes
+	}
+	if pc92Max <= 0 || pc92Max > maxLine {
+		pc92Max = maxLine
+	}
 	if readFn == nil {
 		readFn = conn.Read
 	}
-	return &lineReader{
+	r := &lineReader{
 		conn:    conn,
 		readFn:  readFn,
 		parser:  parser,
-		buf:     make([]byte, 0, maxLine),
+		buf:     make([]byte, 0, min(maxLine+1, 4096)),
 		replyFn: replyFn,
 		maxLine: maxLine,
 		pc92Max: pc92Max,
 		readBuf: make([]byte, 4096),
 	}
+	r.allocation.setBuffer(cap(r.buf))
+	r.allocation.setReadBuffer(cap(r.readBuf))
+	return r
 }
 
 // ReadLine reads a single line/frame with deadline and telnet filtering.
@@ -100,18 +132,61 @@ func newLineReaderWithTransport(conn net.Conn, maxLine int, pc92Max int, readFn 
 // Upstream: Peer session read loop.
 // Downstream: tryReadLine, bytesIndexTerminator.
 func (r *lineReader) ReadLine(deadline time.Time) (string, error) {
+	r.allocation.setRaw(0)
+	var scratch frameParseLease
+	releaseScratch := func() {
+		if scratch.budget != nil {
+			scratch.release()
+			scratch = frameParseLease{}
+		}
+	}
+	defer releaseScratch()
+	acquireScratch := func() error {
+		if scratch.budget != nil || r.acquireScratch == nil {
+			return nil
+		}
+		var err error
+		scratch, err = r.acquireScratch(deadline)
+		return err
+	}
 	if err := r.conn.SetReadDeadline(deadline); err != nil {
 		return "", err
 	}
 	for {
 		if !r.dropping {
+			if len(r.buf) > 0 {
+				if err := acquireScratch(); err != nil {
+					return "", err
+				}
+			}
 			line, err, ready := r.tryReadLine()
 			if ready {
+				r.allocation.setRaw(len(line))
 				return line, err
 			}
 		}
-		n, err := r.readFn(r.readBuf)
+		if r.readErr != nil {
+			return "", r.readErr
+		}
+		// Never hold shared scratch over a blocking socket read. A candidate
+		// withholding bytes cannot deprive other readers of parser progress.
+		releaseScratch()
+		readBuf := r.readBuf
+		if !r.dropping {
+			limit, _ := r.lineLimit()
+			// One lookahead byte distinguishes an exact-limit frame followed by
+			// its terminator from overflow, without retaining a whole extra read.
+			if available := limit + 1 - len(r.buf); available < len(readBuf) {
+				readBuf = readBuf[:available]
+			}
+		} else if len(readBuf) > r.maxLine+1 {
+			readBuf = readBuf[:r.maxLine+1]
+		}
+		n, err := r.readFn(readBuf)
 		if n > 0 {
+			if err := acquireScratch(); err != nil {
+				return "", err
+			}
 			data := r.readBuf[:n]
 			if r.parser != nil {
 				out, replies := r.parser.Feed(data)
@@ -125,15 +200,13 @@ func (r *lineReader) ReadLine(deadline time.Time) (string, error) {
 			if r.dropping {
 				if idx, size := bytesIndexTerminator(data); idx >= 0 {
 					r.dropping = false
-					r.buf = append(r.buf[:0], data[idx+size:]...)
+					r.appendData(data[idx+size:])
 				}
 			} else {
-				r.buf = append(r.buf, data...)
+				r.appendData(data)
 			}
 		}
-		if err != nil {
-			return "", err
-		}
+		r.readErr = err
 	}
 }
 
@@ -145,56 +218,95 @@ func (r *lineReader) ReadLine(deadline time.Time) (string, error) {
 //nolint:revive // Keep return ordering for existing call sites.
 func (r *lineReader) tryReadLine() (string, error, bool) {
 	for {
-		r.buf = trimLeadingTerminators(r.buf)
+		trimmed := trimLeadingTerminators(r.buf)
+		if removed := len(r.buf) - len(trimmed); removed > 0 {
+			r.consume(removed)
+		}
 		if len(r.buf) == 0 {
 			return "", nil, false
 		}
 		// Prefer explicit terminators (~, CRLF, CR, LF) when present.
 		if idx, size := bytesIndexTerminator(r.buf); idx >= 0 {
-			if r.pc92Max > 0 && idx > r.pc92Max && frameTypeFromBuffer(r.buf) == "PC92" {
-				preview := string(r.buf[:idx])
-				r.buf = append([]byte{}, r.buf[idx+size:]...)
+			limit, reason := r.lineLimit()
+			if idx > limit {
+				preview := linePreview(r.buf[:idx])
+				r.consume(idx + size)
 				return "", ErrLineTooLong{
 					Preview: preview,
 					Length:  idx,
-					Reason:  overlongReasonPC92MaxBytes,
-					Limit:   r.pc92Max,
+					Reason:  reason,
+					Limit:   limit,
 				}, true
 			}
 			line := string(trimLine(r.buf[:idx]))
-			r.buf = append([]byte{}, r.buf[idx+size:]...)
+			r.consume(idx + size)
 			return line, nil, true
 		}
 		// Resync: discard leading noise until a valid PCxx^ frame start that follows a terminator.
 		// This avoids splitting on "^PC" sequences that might appear inside payload fields.
 		if start := bytesIndexFrameStart(r.buf); start > 0 {
-			r.buf = r.buf[start:]
+			r.consume(start)
 			continue
 		}
-		if r.pc92Max > 0 && len(r.buf) > r.pc92Max && frameTypeFromBuffer(r.buf) == "PC92" {
-			preview := string(r.buf)
-			r.buf = r.buf[:0]
+		limit, reason := r.lineLimit()
+		if len(r.buf) > limit {
+			length := len(r.buf)
+			preview := linePreview(r.buf)
+			r.buf = nil
+			r.allocation.setBuffer(0)
 			r.dropping = true
 			return "", ErrLineTooLong{
 				Preview: preview,
-				Length:  len(preview),
-				Reason:  overlongReasonPC92MaxBytes,
-				Limit:   r.pc92Max,
-			}, true
-		}
-		if len(r.buf) > r.maxLine && r.maxLine > 0 {
-			// Drop the current buffer to avoid unbounded growth; caller can choose to continue.
-			preview := string(r.buf)
-			r.buf = r.buf[:0]
-			return "", ErrLineTooLong{
-				Preview: preview,
-				Length:  len(preview),
-				Reason:  overlongReasonMaxLine,
-				Limit:   r.maxLine,
+				Length:  length,
+				Reason:  reason,
+				Limit:   limit,
 			}, true
 		}
 		return "", nil, false
 	}
+}
+
+func (r *lineReader) lineLimit() (int, string) {
+	if frameTypeFromBuffer(r.buf) == "PC92" && r.pc92Max <= r.maxLine {
+		return r.pc92Max, overlongReasonPC92MaxBytes
+	}
+	return r.maxLine, overlongReasonMaxLine
+}
+
+func (r *lineReader) consume(n int) {
+	remaining := len(r.buf) - n
+	if cap(r.buf) > 4096 && remaining <= 4096 {
+		if remaining == 0 {
+			r.buf = nil
+		} else {
+			buf := make([]byte, remaining, min(r.maxLine+1, 4096))
+			copy(buf, r.buf[n:])
+			r.buf = buf
+		}
+		r.allocation.setBuffer(cap(r.buf))
+		return
+	}
+	copy(r.buf, r.buf[n:])
+	r.buf = r.buf[:len(r.buf)-n]
+}
+
+func (r *lineReader) appendData(data []byte) {
+	needed := len(r.buf) + len(data)
+	if needed > cap(r.buf) {
+		capacity := min(r.maxLine+1, max(needed, 2*cap(r.buf)))
+		buf := make([]byte, len(r.buf), capacity)
+		copy(buf, r.buf)
+		r.buf = buf
+		r.allocation.setBuffer(cap(r.buf))
+	}
+	r.buf = append(r.buf, data...)
+}
+
+func linePreview(b []byte) string {
+	if len(b) > 512 {
+		b = b[:512]
+	}
+	return string(b)
 }
 
 // Purpose: Trim trailing CR/LF from a line buffer.
@@ -283,7 +395,7 @@ func isFrameStartAt(b []byte, i int) bool {
 	if i+4 >= len(b) {
 		return false
 	}
-	if b[i] != 'P' || b[i+1] != 'C' {
+	if (b[i] != 'P' && b[i] != 'p') || (b[i+1] != 'C' && b[i+1] != 'c') {
 		return false
 	}
 	if b[i+2] < '0' || b[i+2] > '9' || b[i+3] < '0' || b[i+3] > '9' {
@@ -297,8 +409,9 @@ func isFrameStartAt(b []byte, i int) bool {
 // Upstream: tryReadLine.
 // Downstream: isFrameStartAt.
 func frameTypeFromBuffer(b []byte) string {
+	b = bytes.TrimSpace(b)
 	if !isFrameStartAt(b, 0) {
 		return ""
 	}
-	return string(b[:4])
+	return string(bytes.ToUpper(b[:4]))
 }

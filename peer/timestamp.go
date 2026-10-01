@@ -1,39 +1,83 @@
 package peer
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 )
 
-// TimestampGenerator emits second-based timestamps with an in-second sequence
-// suffix used by PC92 frames.
+var (
+	// ErrTimestampRate means all 100 values in this UTC second were issued.
+	// The owner must coalesce or retry after the next second, never invent time.
+	ErrTimestampRate = errors.New("PC9x timestamp rate exhausted")
+	// ErrTimestampClock gates publication until UTC advances past retained state.
+	ErrTimestampClock = errors.New("PC9x clock is unsafe")
+)
+
+// TimestampGenerator owns one origin's sequence across all its sessions. The
+// manager must serialize allocation with enqueueing: this mutex alone cannot
+// order writes to multiple recipient queues. State is constant-size and retained
+// through disconnect/reconnect; full UTC seconds distinguish a legitimate daily
+// wrap from a backwards clock change.
 type TimestampGenerator struct {
-	lastSec int
-	seq     int
-	mu      sync.Mutex
+	mu          sync.Mutex
+	lastUnix    int64
+	seq         int
+	initialized bool
+	unsafe      bool
 }
 
-// timestampGenerator is kept as an alias for existing in-package tests/usages.
-type timestampGenerator = TimestampGenerator
+func NewTimestampGenerator() *TimestampGenerator { return &TimestampGenerator{} }
 
-// NewTimestampGenerator returns a ready-to-use PC92 timestamp generator.
-func NewTimestampGenerator() *TimestampGenerator {
-	return &TimestampGenerator{}
-}
+// Next allocates without sleeping. Callers must handle rate exhaustion and
+// unsafe time explicitly rather than publish an empty or fabricated timestamp.
+func (g *TimestampGenerator) Next() (string, error) { return g.NextAt(time.Now()) }
 
-// Next returns either "<secondsSinceMidnight>" or "<secondsSinceMidnight>.<nn>"
-// for additional calls within the same second.
-func (g *TimestampGenerator) Next() string {
-	now := time.Now().UTC()
-	sec := now.Hour()*3600 + now.Minute()*60 + now.Second()
+// NextAt emits the integer second, then .01 through .99. In particular the 101st
+// allocation never emits .100, whose numerical value would regress to .10.
+func (g *TimestampGenerator) NextAt(now time.Time) (string, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if sec != g.lastSec {
-		g.lastSec = sec
-		g.seq = 0
-		return fmt.Sprintf("%d", sec)
+	if err := g.clockSafe(now); err != nil {
+		return "", err
 	}
-	g.seq++
-	return fmt.Sprintf("%d.%02d", sec, g.seq)
+	second := now.Unix()
+	if !g.initialized || second != g.lastUnix {
+		g.lastUnix, g.seq, g.initialized = second, 0, true
+	} else {
+		if g.seq >= 99 {
+			return "", ErrTimestampRate
+		}
+		g.seq++
+	}
+	utc := now.UTC()
+	daySecond := utc.Hour()*3600 + utc.Minute()*60 + utc.Second()
+	if g.seq == 0 {
+		return fmt.Sprintf("%d", daySecond), nil
+	}
+	return fmt.Sprintf("%d.%02d", daySecond, g.seq), nil
+}
+
+// ClockSafe checks the recovery condition without consuming a wire value.
+// Following a regression, the old second remains blocked even after catching
+// up: publication resumes only when UTC advances beyond it. The manager owns
+// the additional one-second stable-health interval and peer recovery sequence.
+func (g *TimestampGenerator) ClockSafe(now time.Time) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.clockSafe(now)
+}
+
+func (g *TimestampGenerator) clockSafe(now time.Time) error {
+	if now.IsZero() || now.Year() < 1970 || now.Year() > 9999 ||
+		(g.initialized && now.Unix() < g.lastUnix) {
+		g.unsafe = true
+		return ErrTimestampClock
+	}
+	if g.unsafe && g.initialized && now.Unix() <= g.lastUnix {
+		return ErrTimestampClock
+	}
+	g.unsafe = false
+	return nil
 }

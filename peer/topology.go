@@ -3,6 +3,7 @@ package peer
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -47,7 +48,12 @@ func openTopologyStore(path string, retention time.Duration) (*topologyStore, er
 		_ = db.Close()
 		return nil, err
 	}
-	return &topologyStore{db: db, retention: retention}, nil
+	store := &topologyStore{db: db, retention: retention}
+	if err := ensurePC92ProjectionSchema(store); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return store, nil
 }
 
 func ensurePeerNodesSchema(db *sql.DB) error {
@@ -74,20 +80,17 @@ func ensurePeerNodesSchema(db *sql.DB) error {
 		return err
 	}
 	need := []string{"origin", "bitmap", "call", "version", "build", "ip", "updated_at"}
-	missing := false
 	for _, col := range need {
 		if _, ok := cols[col]; ok {
 			continue
 		}
-		missing = true
-	}
-	if missing {
-		ctx, cancel := newTopologyDBContext(context.Background())
-		defer cancel()
-		if _, err := db.ExecContext(ctx, `drop table if exists peer_nodes;`); err != nil {
-			return err
+		// These are fixed identifier literals, never user input. Additive migration
+		// keeps old diagnostic rows intact; rollback can ignore the new columns.
+		kind := "text"
+		if col == "bitmap" || col == "updated_at" {
+			kind = "integer"
 		}
-		if _, err := db.ExecContext(ctx, schema); err != nil {
+		if _, err := db.ExecContext(ctx, fmt.Sprintf("alter table peer_nodes add column %s %s", col, kind)); err != nil {
 			return err
 		}
 	}
@@ -114,106 +117,30 @@ func fetchColumns(ctx context.Context, db *sql.DB, table string) (map[string]str
 	return cols, rows.Err()
 }
 
-func (t *topologyStore) applyPC92(ctx context.Context, frame *Frame, now time.Time) {
+// applyLegacy retains only the latest diagnostic per legacy record family.
+// Legacy traffic does not create PC92 authority or an unbounded history table.
+func (t *topologyStore) applyLegacy(ctx context.Context, frame *Frame, now time.Time) {
 	if t == nil || frame == nil {
 		return
 	}
-	fields := frame.payloadFields()
-	// Expected payload fields (after "PC92^"):
-	//   0: origin node
-	//   1: timestamp
-	//   2: record type (A/C/D/K)
-	//   3+: node entries: <bitmap><call>:<version>[:<build>[:<ip>]]
-	if len(fields) < 3 {
-		return
-	}
-	origin := strings.TrimSpace(fields[0])
-	if origin == "" {
-		origin = frame.Type // fallback; should not happen
-	}
-	recordType := strings.TrimSpace(fields[2])
-	entries := fields[3:]
-	if len(entries) == 0 {
-		return
-	}
 	ctx, cancel := newTopologyDBContext(ctx)
 	defer cancel()
-	for _, entry := range entries {
-		entry = strings.TrimSpace(entry)
-		if entry == "" {
-			continue
-		}
-		if isHopField(entry) {
-			continue
-		}
-		bitmap, call, version, build, ip := parsePC92Entry(entry)
-		if strings.TrimSpace(call) == "" {
-			continue
-		}
-		updatedAt := now.Unix()
-		if strings.EqualFold(recordType, "D") {
-			// Delete record type: remove matching origin+call rows.
-			if _, err := t.db.ExecContext(ctx, `delete from peer_nodes where origin = ? and call = ?`, origin, call); err != nil {
-				log.Printf("Peering: failed to delete topology row origin=%s call=%s: %v", origin, call, err)
-			}
-			continue
-		}
-		if err := t.upsertPeerNode(ctx, origin, bitmap, call, version, build, ip, updatedAt); err != nil {
-			log.Printf("Peering: failed to upsert topology row origin=%s call=%s: %v", origin, call, err)
-		}
-	}
-}
-
-func (t *topologyStore) applyLegacy(ctx context.Context, frame *Frame, now time.Time) {
-	if t == nil {
+	tx, err := t.db.BeginTx(ctx, nil)
+	if err != nil {
+		log.Printf("Peering: legacy projection: %v", err)
 		return
 	}
-	ctx, cancel := newTopologyDBContext(ctx)
-	defer cancel()
-	if _, err := t.db.ExecContext(ctx, `insert into peer_nodes(origin, bitmap, call, version, build, ip, updated_at) values(?,?,?,?,?,?,?)`,
-		frame.Type, 0, "", "", "", "", now.Unix()); err != nil {
-		log.Printf("Peering: failed to record legacy topology frame %s: %v", frame.Type, err)
-	}
-}
-
-func (t *topologyStore) upsertPeerNode(ctx context.Context, origin string, bitmap int, call, version, build, ip string, updatedAt int64) error {
-	if t == nil {
-		return nil
-	}
-	// Best-effort upsert: delete any existing row for origin+call, then insert fresh state.
-	if _, err := t.db.ExecContext(ctx, `delete from peer_nodes where origin = ? and call = ?`, origin, call); err != nil {
-		return err
-	}
-	if _, err := t.db.ExecContext(ctx, `insert into peer_nodes(origin, bitmap, call, version, build, ip, updated_at) values(?,?,?,?,?,?,?)`,
-		origin, bitmap, call, version, build, ip, updatedAt); err != nil {
-		return err
-	}
-	return nil
-}
-
-// isHopField returns true when the token is the trailing hop marker (e.g., H27).
-func isHopField(token string) bool {
-	token = strings.TrimSpace(strings.ToUpper(token))
-	if !strings.HasPrefix(token, "H") || len(token) < 2 {
-		return false
-	}
-	for i := 1; i < len(token); i++ {
-		if token[i] < '0' || token[i] > '9' {
-			return false
-		}
-	}
-	return true
-}
-
-func (t *topologyStore) prune(ctx context.Context, now time.Time) {
-	if t == nil {
+	defer rollbackTopology(tx)
+	if _, err = tx.ExecContext(ctx, `delete from peer_nodes where origin=?`, frame.Type); err != nil {
+		log.Printf("Peering: legacy projection: %v", err)
 		return
 	}
-	cutoff := now.Add(-t.retention).Unix()
-	ctx, cancel := newTopologyDBContext(ctx)
-	defer cancel()
-	if _, err := t.db.ExecContext(ctx, `delete from peer_nodes where updated_at < ?`, cutoff); err != nil {
-		log.Printf("Peering: failed to prune topology rows before %d: %v", cutoff, err)
+	if _, err = tx.ExecContext(ctx, `insert into peer_nodes(origin,bitmap,call,version,build,ip,updated_at) values(?,?,?,?,?,?,?)`, frame.Type, 0, "", "", "", "", now.Unix()); err != nil {
+		log.Printf("Peering: legacy projection: %v", err)
+		return
+	}
+	if err = tx.Commit(); err != nil {
+		log.Printf("Peering: legacy projection: %v", err)
 	}
 }
 
@@ -224,24 +151,8 @@ func (t *topologyStore) Close() error {
 	return t.db.Close()
 }
 
-func parsePC92Entry(entry string) (bitmap int, call, version, build, ip string) {
-	// entry format: <bitmap><call>:<version>[:<build>[:<ip>]]
-	parts := strings.Split(entry, ":")
-	head := parts[0]
-	if len(head) > 0 {
-		bitmap = int(head[0] - '0')
-		if len(head) > 1 {
-			call = head[1:]
-		}
+func rollbackTopology(tx *sql.Tx) {
+	if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+		log.Printf("Peering: topology rollback failed: %v", err)
 	}
-	if len(parts) > 1 {
-		version = parts[1]
-	}
-	if len(parts) > 2 {
-		build = parts[2]
-	}
-	if len(parts) > 3 {
-		ip = parts[3]
-	}
-	return
 }

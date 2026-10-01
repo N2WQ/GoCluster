@@ -15,6 +15,10 @@ Tags: peering, protocol contract, loop suppression, observability
 - Oversized line handling dropped data safely but lacked reason-coded, bounded operator diagnostics.
 
 ## Decision
+- Later refinement: [ADR-0230](ADR-0230-pc18-pc92-authority-and-bounds.md)
+  replaces PC92 application ordering with manager-owned validation, shared
+  freshness and transactional authority admission. Hop-insensitive keys and
+  bounded overlong diagnostics remain effective.
 - Canonicalize hop suffix handling in peer protocol parse/encode:
   - Strip trailing hop suffix runs at parse time.
   - Store one effective hop value (rightmost numeric hop token).

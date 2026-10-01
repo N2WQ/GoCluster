@@ -3,8 +3,6 @@ package peer
 import (
 	"fmt"
 	"strings"
-
-	"dxcluster/spot"
 )
 
 type pc93Message struct {
@@ -46,6 +44,21 @@ func parsePC93(frame *Frame) (pc93Message, bool) {
 	if len(fields) >= 8 {
 		msg.IP = strings.TrimSpace(fields[7])
 	}
+	origin, valid := CanonicalPC92Call(msg.NodeCall)
+	if !valid || strings.TrimSpace(msg.Text) == "" {
+		return pc93Message{}, false
+	}
+	msg.NodeCall = origin
+	if _, err := ParsePC9xTimestamp(msg.Timestamp); err != nil {
+		return pc93Message{}, false
+	}
+	if _, valid := CanonicalPC92Call(msg.From); !valid {
+		return pc93Message{}, false
+	}
+	target, broadcast := pc93Target(msg)
+	if !broadcast && target == "" {
+		return pc93Message{}, false
+	}
 	return msg, true
 }
 
@@ -79,10 +92,10 @@ func pc93Target(msg pc93Message) (target string, broadcast bool) {
 	if strings.HasPrefix(upper, "#") {
 		return "", true
 	}
-	if spot.IsValidCallsign(upper) {
-		return upper, false
+	if call, ok := CanonicalPC92Call(upper); ok {
+		return call, false
 	}
-	return "", true
+	return "", false
 }
 
 // Purpose: Format a PC93 message for telnet display.

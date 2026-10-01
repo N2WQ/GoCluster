@@ -34,7 +34,7 @@ func FuzzParseFrameHopSuffix(f *testing.F) {
 		if reparsed.Hop != frame.Hop {
 			t.Fatalf("hop mismatch after roundtrip: start=%d end=%d line=%q encoded=%q", frame.Hop, reparsed.Hop, line, reencoded)
 		}
-		if hasTrailingHopLikeToken(reparsed.Fields) {
+		if reparsed.Type != "PC93" && hasTrailingHopLikeToken(reparsed.Fields) {
 			t.Fatalf("trailing hop-like suffix remained after roundtrip: fields=%v line=%q encoded=%q", reparsed.Fields, line, reencoded)
 		}
 	})

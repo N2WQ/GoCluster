@@ -2940,6 +2940,11 @@ func asciiLetterOrDigit(ch byte) bool {
 }
 
 func normalizePeeringConfig(cfg *Config) error {
+	// Reject explicit oversized limits before legacy normalization can clamp
+	// one value to another and hide an unsupported operator configuration.
+	if cfg.Peering.Enabled && (cfg.Peering.MaxLineLength > 64<<10 || cfg.Peering.PC92MaxBytes > 64<<10) {
+		return fmt.Errorf("invalid peering frame limits: must be <= 65536")
+	}
 	if strings.TrimSpace(cfg.Peering.LocalCallsign) == "" {
 		cfg.Peering.LocalCallsign = cfg.Server.NodeID
 	}
@@ -3062,7 +3067,7 @@ func normalizePeeringConfig(cfg *Config) error {
 			seenRemoteCalls[peer.RemoteCallsign] = i
 		}
 	}
-	return nil
+	return validatePeeringWireContract(&cfg.Peering)
 }
 
 func normalizeSignalPolicyConfig(cfg *Config) {

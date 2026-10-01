@@ -2,6 +2,7 @@ package peer
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -11,41 +12,51 @@ import (
 	"dxcluster/spot"
 )
 
-// Ensure PC92 enqueue is non-blocking and drops when the queue is full.
-func TestHandleFramePC92QueueDropsWhenFull(t *testing.T) {
-	m := &Manager{
-		topology: &topologyStore{},
-		dedupe:   newDedupeCache(time.Minute),
-		pc92Ch:   make(chan pc92Work, 1),
+func TestHandleFramePC92QueueFailureClosesWithoutAuthority(t *testing.T) {
+	m := newProtocolTestManager(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	src := &session{id: "N1SRC", remoteCall: "N1SRC", pc9x: true, ctx: ctx, cancel: cancel}
+	m.sessions.Set(src.id, src)
+	frame, _ := ParseFrame(fmt.Sprintf("PC92^N1SRC^%d^C^5N1SRC^H2^", utcSecond(time.Now())))
+	for i := 0; i < 192; i++ {
+		if !m.protocol.enqueue(frame, src, time.Now()) {
+			t.Fatalf("premature refusal %d", i)
+		}
 	}
-	// Fill the queue so the next enqueue would block.
-	m.pc92Ch <- pc92Work{}
-
-	frame, err := ParseFrame("PC92^NODE1^123^A^^9CALL:ver^H2^")
-	if err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-
 	start := time.Now()
-	m.HandleFrame(frame, &session{remoteCall: "TEST"})
+	m.HandleFrame(frame, src)
 	if time.Since(start) > time.Second {
-		t.Fatalf("HandleFrame blocked with full queue")
+		t.Fatal("reader blocked on full control queue")
 	}
-	if len(m.pc92Ch) != 1 {
-		t.Fatalf("expected queue to remain full (drop), got len=%d", len(m.pc92Ch))
+	if ctx.Err() == nil {
+		t.Fatal("authoritative admission failure did not close source")
+	}
+	if m.protocol.graph.freshness.Len() != 0 || m.protocol.graph.nodes.Len() != 0 {
+		t.Fatal("refused input changed authority")
 	}
 }
+func newProtocolTestManager(t *testing.T) *Manager {
+	t.Helper()
+	m, err := NewManager(config.PeeringConfig{NodeVersion: "5457", NodeBuild: "633", PC92Bitmap: 5, HopCount: 99, MaxLineLength: 65536, PC92MaxBytes: 65536}, "N0LOCAL", nil, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(m.Stop)
+	return m
+}
+func utcSecond(now time.Time) int { u := now.UTC(); return u.Hour()*3600 + u.Minute()*60 + u.Second() }
 
 func TestActiveSessionSSIDsSortedUnique(t *testing.T) {
 	m := &Manager{
-		sessions: map[string]*session{
+		sessions: sessionTestIndex(map[string]*session{
 			"a": {remoteCall: "n2wq-73"},
 			"b": {remoteCall: " KM3T-44 "},
 			"c": {remoteCall: "km3t-44"},
 			"d": {remoteCall: "*"},
 			"e": {remoteCall: ""},
 			"f": nil,
-		},
+		}),
 	}
 
 	got := m.ActiveSessionSSIDs()
@@ -99,7 +110,7 @@ func TestHandleFrameRelaysInboundPC11AndPC61ToOtherPeers(t *testing.T) {
 				cfg:      config.PeeringConfig{ForwardSpots: true},
 				dedupe:   newDedupeCache(time.Minute),
 				ingest:   ingest,
-				sessions: map[string]*session{"src": src, "dst": dst},
+				sessions: sessionTestIndex(map[string]*session{"src": src, "dst": dst}),
 			}
 
 			frame, err := ParseFrame(tc.line)
@@ -159,7 +170,7 @@ func TestInboundSpotNotRelayedWhenLocalIngestQueueFull(t *testing.T) {
 		cfg:      config.PeeringConfig{ForwardSpots: true},
 		dedupe:   newDedupeCache(time.Minute),
 		ingest:   ingest,
-		sessions: map[string]*session{"src": src, "dst": dst},
+		sessions: sessionTestIndex(map[string]*session{"src": src, "dst": dst}),
 	}
 
 	frame, err := ParseFrame("PC61^14074.0^K1ABC^23-Dec-2025^2001Z^CQ TEST^W1XYZ^ORIGIN^203.0.113.7^H3^")
@@ -198,7 +209,7 @@ func TestInboundSpotRelayedWhenLocallyAccepted(t *testing.T) {
 		cfg:      config.PeeringConfig{ForwardSpots: true},
 		dedupe:   newDedupeCache(time.Minute),
 		ingest:   ingest,
-		sessions: map[string]*session{"src": src, "dst": dst},
+		sessions: sessionTestIndex(map[string]*session{"src": src, "dst": dst}),
 	}
 
 	frame, err := ParseFrame("PC61^14074.0^K1ABC^23-Dec-2025^2001Z^CQ TEST^W1XYZ^ORIGIN^203.0.113.7^H3^")
@@ -227,58 +238,28 @@ func TestInboundSpotRelayedWhenLocallyAccepted(t *testing.T) {
 	}
 }
 
-func TestHandleFramePC92DuplicateSuppressedBeforeTopologyEnqueue(t *testing.T) {
-	src := &session{
-		id:         "src",
-		remoteCall: "SRC",
-		ctx:        context.Background(),
-		writeCh:    make(chan string, 1),
+func TestHandleFramePC92DuplicateDoesNotReapplyOrRelay(t *testing.T) {
+	m := newProtocolTestManager(t)
+	src := &session{id: "N1SRC", remoteCall: "N1SRC", pc9x: true, ctx: context.Background()}
+	dst := &session{id: "N2DST", remoteCall: "N2DST", pc9x: true, ctx: context.Background(), priorityLineCh: make(chan string, 4)}
+	m.sessions.Set(src.id, src)
+	m.sessions.Set(dst.id, dst)
+	now := time.Now()
+	stamp := utcSecond(now)
+	first, _ := ParseFrame(fmt.Sprintf("PC92^N1SRC^%d^C^5N1SRC^1K1USER^H2^", stamp))
+	second, _ := ParseFrame(fmt.Sprintf("PC92^N1SRC^%d^C^5N1SRC^1K1USER^H1^", stamp))
+	m.protocol.receive(first, src, now)
+	m.protocol.receive(second, src, now.Add(time.Second))
+	if m.protocol.graph.edges != 1 || len(dst.priorityLineCh) != 1 {
+		t.Fatalf("edges=%d relays=%d", m.protocol.graph.edges, len(dst.priorityLineCh))
 	}
-	dst := &session{
-		id:         "dst",
-		remoteCall: "DST",
-		pc9x:       true,
-		ctx:        context.Background(),
-		writeCh:    make(chan string, 2),
-	}
-	m := &Manager{
-		topology: &topologyStore{},
-		dedupe:   newDedupeCache(time.Minute),
-		pc92Ch:   make(chan pc92Work, 4),
-		sessions: map[string]*session{"src": src, "dst": dst},
-	}
-
-	first, err := ParseFrame("PC92^NODE1^123^A^^9CALL:ver:build:1.2.3.4^H95^")
-	if err != nil {
-		t.Fatalf("ParseFrame(first): %v", err)
-	}
-	second, err := ParseFrame("PC92^NODE1^123^A^^9CALL:ver:build:1.2.3.4^H94^")
-	if err != nil {
-		t.Fatalf("ParseFrame(second): %v", err)
-	}
-
-	m.HandleFrame(first, src)
-	m.HandleFrame(second, src)
-
-	if got := len(m.pc92Ch); got != 1 {
-		t.Fatalf("expected 1 topology enqueue after duplicate suppression, got %d", got)
-	}
-	select {
-	case <-dst.writeCh:
-	default:
-		t.Fatal("expected first frame to forward to destination peer")
-	}
-	select {
-	case got := <-dst.writeCh:
-		t.Fatalf("expected duplicate frame to be suppressed, got relayed %q", got)
-	default:
+	if m.protocol.graph.nodes.Value("N1SRC").Seen != now {
+		t.Fatal("duplicate refreshed liveness")
 	}
 }
 
 func TestHandleFrameWWVDuplicateHopVariantSuppressed(t *testing.T) {
-	m := &Manager{
-		dedupe: newDedupeCache(time.Minute),
-	}
+	m := newProtocolTestManager(t)
 	var delivered int
 	m.SetWWVBroadcast(func(kind, line string) {
 		delivered++
@@ -302,28 +283,19 @@ func TestHandleFrameWWVDuplicateHopVariantSuppressed(t *testing.T) {
 }
 
 func TestHandleFramePC93AnnouncementDuplicateHopVariantSuppressed(t *testing.T) {
-	m := &Manager{
-		dedupe: newDedupeCache(time.Minute),
-	}
-	var delivered int
-	m.SetAnnouncementBroadcast(func(line string) {
-		delivered++
-	})
-
-	first, err := ParseFrame("PC93^IZ7AUH-6^79200^*^IZ7AUH-6^*^hello^H97^")
-	if err != nil {
-		t.Fatalf("ParseFrame(first): %v", err)
-	}
-	second, err := ParseFrame("PC93^IZ7AUH-6^79200^*^IZ7AUH-6^*^hello^H96^")
-	if err != nil {
-		t.Fatalf("ParseFrame(second): %v", err)
-	}
-
-	m.HandleFrame(first, &session{remoteCall: "SRC"})
-	m.HandleFrame(second, &session{remoteCall: "SRC"})
-
+	m := newProtocolTestManager(t)
+	src := &session{id: "N1SRC", remoteCall: "N1SRC", pc9x: true}
+	m.sessions.Set(src.id, src)
+	delivered := 0
+	m.SetAnnouncementBroadcast(func(string) { delivered++ })
+	now := time.Now()
+	stamp := utcSecond(now)
+	first, _ := ParseFrame(fmt.Sprintf("PC93^N1SRC^%d^*^N1SRC^*^hello^H97^", stamp))
+	second, _ := ParseFrame(fmt.Sprintf("PC93^N1SRC^%d^*^N1SRC^*^hello^H96^", stamp))
+	m.protocol.receive(first, src, now)
+	m.protocol.receive(second, src, now)
 	if delivered != 1 {
-		t.Fatalf("expected one announcement delivery after duplicate suppression, got %d", delivered)
+		t.Fatalf("deliveries=%d", delivered)
 	}
 }
 
@@ -338,7 +310,7 @@ func TestPublishDXReceiveOnlyStillPublishesManualSpot(t *testing.T) {
 	m := &Manager{
 		cfg:       config.PeeringConfig{ForwardSpots: false, HopCount: 3},
 		localCall: "LOCAL",
-		sessions:  map[string]*session{"dst": dst},
+		sessions:  sessionTestIndex(map[string]*session{"dst": dst}),
 	}
 
 	sp := spot.NewSpot("K1ABC", "W1XYZ", 14074.0, "FT8")
@@ -370,7 +342,7 @@ func TestPublishDXWithCommentFallsBackToManualMode(t *testing.T) {
 	m := &Manager{
 		cfg:       config.PeeringConfig{ForwardSpots: true, HopCount: 2},
 		localCall: "LOCAL",
-		sessions:  map[string]*session{"dst": dst},
+		sessions:  sessionTestIndex(map[string]*session{"dst": dst}),
 	}
 
 	sp := spot.NewSpot("K1ABC", "W1XYZ", 14074.0, "FT8")
@@ -424,7 +396,7 @@ func TestHandleFrameSpotRelaySuppressedWhenForwardSpotsDisabled(t *testing.T) {
 				cfg:      config.PeeringConfig{ForwardSpots: false},
 				dedupe:   newDedupeCache(time.Minute),
 				ingest:   ingest,
-				sessions: map[string]*session{"src": src, "dst": dst},
+				sessions: sessionTestIndex(map[string]*session{"src": src, "dst": dst}),
 			}
 
 			frame, err := ParseFrame(tc.line)

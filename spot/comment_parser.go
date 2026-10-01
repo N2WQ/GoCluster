@@ -33,12 +33,6 @@ type acPattern struct {
 	mode string
 }
 
-type acMatch struct {
-	start   int
-	end     int
-	pattern acPattern
-}
-
 type acNode struct {
 	next    map[byte]int
 	fail    int
@@ -54,7 +48,7 @@ func newACScanner(patterns []acPattern) *acScanner {
 	// Purpose: Build an Aho-Corasick scanner for keyword patterns.
 	// Key aspects: Constructs trie, failure links, and output lists.
 	// Upstream: getKeywordScanner initialization.
-	// Downstream: acScanner.FindAll.
+	// Downstream: acCursor.exact.
 	sc := &acScanner{
 		patterns: patterns,
 		nodes:    []acNode{{next: make(map[byte]int)}},
@@ -98,86 +92,54 @@ func newACScanner(patterns []acPattern) *acScanner {
 	return sc
 }
 
-func (sc *acScanner) FindAll(text string) []acMatch {
-	// Purpose: Find all keyword matches within the text.
-	// Key aspects: Uses Aho-Corasick state machine to emit overlapping matches.
-	// Upstream: ParseSpotComment and classifyTokenWithFallback.
-	// Downstream: acScanner nodes and output list.
-	if sc == nil {
-		return nil
-	}
-	state := 0
-	matches := make([]acMatch, 0, 8)
-	for i := 0; i < len(text); i++ {
-		ch := text[i]
-		next, ok := sc.nodes[state].next[ch]
-		for !ok && state > 0 {
-			state = sc.nodes[state].fail
-			next, ok = sc.nodes[state].next[ch]
-		}
-		if ok {
-			state = next
-		}
-		if len(sc.nodes[state].outputs) == 0 {
-			continue
-		}
-		end := i + 1
-		for _, pid := range sc.nodes[state].outputs {
-			p := sc.patterns[pid]
-			start := end - len(p.word)
-			if start >= 0 {
-				matches = append(matches, acMatch{start: start, end: end, pattern: p})
-			}
-		}
-	}
-	return matches
+// acCursor belongs to one parse and walks an immutable taxonomy scanner. Token
+// ends increase, so exact matching needs only the current state, not a growing
+// collection of every substring match. The scanner's transitions and output
+// order remain unchanged, including its existing failure-link behavior.
+type acCursor struct {
+	scanner  *acScanner
+	text     string
+	state    int
+	position int
 }
 
-func buildMatchIndex(matches []acMatch) map[int][]acMatch {
-	// Purpose: Index matches by start position for O(1) lookup.
-	// Key aspects: Groups matches by their start offset.
-	// Upstream: ParseSpotComment.
-	// Downstream: map allocation and append.
-	if len(matches) == 0 {
-		return nil
-	}
-	index := make(map[int][]acMatch, len(matches))
-	for _, m := range matches {
-		index[m.start] = append(index[m.start], m)
-	}
-	return index
-}
-
-func classifyToken(matchIndex map[int][]acMatch, trimStart, trimEnd int) (acPattern, bool) {
-	// Purpose: Resolve an exact token match from the match index.
-	// Key aspects: Requires a match with identical start/end positions.
-	// Upstream: classifyTokenWithFallback.
-	// Downstream: matchIndex lookup.
-	if len(matchIndex) == 0 {
+func (c *acCursor) exact(start, end int) (acPattern, bool) {
+	if c.scanner == nil || start < 0 || end < start || end < c.position || end > len(c.text) {
 		return acPattern{}, false
 	}
-	for _, m := range matchIndex[trimStart] {
-		if m.end == trimEnd {
-			return m.pattern, true
+	for c.position < end {
+		ch := c.text[c.position]
+		next, ok := c.scanner.nodes[c.state].next[ch]
+		for !ok && c.state > 0 {
+			c.state = c.scanner.nodes[c.state].fail
+			next, ok = c.scanner.nodes[c.state].next[ch]
+		}
+		if ok {
+			c.state = next
+		}
+		c.position++
+	}
+	for _, pid := range c.scanner.nodes[c.state].outputs {
+		pattern := c.scanner.patterns[pid]
+		if len(pattern.word) == end-start {
+			return pattern, true
 		}
 	}
 	return acPattern{}, false
 }
 
-func classifyTokenWithFallback(matchIndex map[int][]acMatch, tok commentToken) (acPattern, bool) {
-	// Purpose: Resolve a token to a keyword pattern with fallback scanning.
-	// Key aspects: Checks index first, then scans token text directly.
-	// Upstream: ParseSpotComment loop.
-	// Downstream: classifyToken and getKeywordScanner.FindAll.
-	if pat, ok := classifyToken(matchIndex, tok.trimStart, tok.trimEnd); ok {
+func classifyTokenWithFallback(cursor *acCursor, tok commentToken) (acPattern, bool) {
+	// Keep original byte offsets against the uppercase full comment. Unicode
+	// case mapping can change byte widths; correcting those offsets would change
+	// existing parser results. A dictionary lookup also loses scanner output
+	// suppression when an original span lands inside a longer matched word.
+	if pat, ok := cursor.exact(tok.trimStart, tok.trimEnd); ok {
 		return pat, true
 	}
-	for _, m := range getKeywordScanner().FindAll(tok.upper) {
-		if m.start == 0 && m.end == len(tok.upper) {
-			return m.pattern, true
-		}
-	}
-	return acPattern{}, false
+	// The old fallback fetched the current taxonomy for each token. Preserve
+	// that visibility while the full-comment cursor retains its first snapshot.
+	fallback := acCursor{scanner: getKeywordScanner(), text: tok.upper}
+	return fallback.exact(0, len(tok.upper))
 }
 
 func getKeywordScanner() *acScanner {
@@ -221,7 +183,9 @@ func tokenizeComment(comment string) []commentToken {
 	// Key aspects: Tracks original and trimmed offsets for keyword alignment.
 	// Upstream: ParseSpotComment.
 	// Downstream: strings.ToUpper and rune trimming.
-	tokens := make([]commentToken, 0, 16)
+	// Count using the same ASCII separators as the tokenizer. Exact backing
+	// avoids overlapping growth generations on maximum-size peer comments.
+	tokens := make([]commentToken, 0, commentTokenCount(comment))
 	i := 0
 	for i < len(comment) {
 		for i < len(comment) && (comment[i] == ' ' || comment[i] == '\t') {
@@ -264,6 +228,19 @@ func tokenizeComment(comment string) []commentToken {
 		})
 	}
 	return tokens
+}
+
+func commentTokenCount(comment string) int {
+	count := 0
+	inside := false
+	for i := 0; i < len(comment); i++ {
+		separator := comment[i] == ' ' || comment[i] == '\t'
+		if !separator && !inside {
+			count++
+		}
+		inside = !separator
+	}
+	return count
 }
 
 var snrPattern = regexp.MustCompile(`(?i)([-+]?\d{1,3})\s*dB`)
@@ -391,7 +368,7 @@ func ParseSpotComment(comment string, freq float64) CommentParseResult {
 
 	tokens := tokenizeComment(comment)
 	consumed := make([]bool, len(tokens))
-	matchIndex := buildMatchIndex(getKeywordScanner().FindAll(strings.ToUpper(comment)))
+	cursor := acCursor{scanner: getKeywordScanner(), text: strings.ToUpper(comment)}
 
 	var (
 		mode            string
@@ -435,7 +412,7 @@ func ParseSpotComment(comment string, freq float64) CommentParseResult {
 			continue
 		}
 
-		if pat, ok := classifyTokenWithFallback(matchIndex, tok); ok {
+		if pat, ok := classifyTokenWithFallback(&cursor, tok); ok {
 			switch pat.kind {
 			case acTokenMode:
 				if mode == "" {

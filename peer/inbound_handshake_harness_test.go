@@ -51,8 +51,6 @@ type inboundScenario struct {
 	wantRegistered    bool
 	wantRemoteCall    string
 	wantPC9x          bool
-	wantPC92Queued    int
-	wantLegacyQueued  int
 	wantIngestedSpots int
 }
 
@@ -67,8 +65,6 @@ type inboundScenarioResult struct {
 	registeredObserved bool
 	finalRemoteCall    string
 	finalPC9x          bool
-	pc92Queued         int
-	legacyQueued       int
 	ingestedSpots      int
 }
 
@@ -77,15 +73,6 @@ func exactLine(line string) lineMatcher {
 		name: fmt.Sprintf("exact %q", line),
 		match: func(got string) bool {
 			return got == line
-		},
-	}
-}
-
-func prefixLine(prefix string) lineMatcher {
-	return lineMatcher{
-		name: fmt.Sprintf("prefix %q", prefix),
-		match: func(got string) bool {
-			return strings.HasPrefix(got, prefix)
 		},
 	}
 }
@@ -103,24 +90,6 @@ func pc92TypeLine(recordType string) lineMatcher {
 				return false
 			}
 			return strings.EqualFold(strings.TrimSpace(fields[2]), recordType)
-		},
-	}
-}
-
-func pc92CallTypeLine(call, recordType string) lineMatcher {
-	return lineMatcher{
-		name: fmt.Sprintf("PC92 %s from %s", recordType, call),
-		match: func(got string) bool {
-			frame, err := ParseFrame(got)
-			if err != nil || frame.Type != "PC92" {
-				return false
-			}
-			fields := frame.payloadFields()
-			if len(fields) < 3 {
-				return false
-			}
-			return strings.EqualFold(strings.TrimSpace(fields[0]), call) &&
-				strings.EqualFold(strings.TrimSpace(fields[2]), recordType)
 		},
 	}
 }
@@ -155,7 +124,7 @@ func errIsEOFOrClosedPipe(err error) string {
 	if err == nil {
 		return "expected EOF/closed pipe after remote close, got nil"
 	}
-	if errors.Is(err, io.EOF) {
+	if errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) {
 		return ""
 	}
 	if strings.Contains(strings.ToLower(err.Error()), "closed pipe") {
@@ -195,9 +164,13 @@ func newInboundHarnessManager(t *testing.T, scenario inboundScenario) (*Manager,
 	if err != nil {
 		t.Fatalf("%s: NewManager() error: %v", scenario.name, err)
 	}
-	manager.topology = &topologyStore{}
-	manager.pc92Ch = make(chan pc92Work, 8)
-	manager.legacyCh = make(chan legacyWork, 8)
+	manager.pc18Banner = "GoCluster Version: test"
+	ctx, cancel := context.WithCancel(context.Background())
+	if err := manager.Start(ctx); err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { cancel(); manager.Stop() })
 	return manager, ingest
 }
 
@@ -292,7 +265,7 @@ func runInboundScenario(t *testing.T, scenario inboundScenario) {
 		deadline := time.Now().UTC().Add(timeout)
 		for time.Now().UTC().Before(deadline) {
 			manager.mu.RLock()
-			_, ok := manager.sessions[sess.id]
+			_, ok := manager.sessions.Get(sess.id)
 			manager.mu.RUnlock()
 			if ok {
 				result.registeredObserved = true
@@ -355,12 +328,20 @@ func runInboundScenario(t *testing.T, scenario inboundScenario) {
 		}
 	}
 
+	manager.Stop()
+	if manager.stagedRecords != 0 || manager.stagedBytes != 0 || manager.candidates.Len() != 0 {
+		t.Fatalf("%s: terminal candidate retained staged state", scenario.name)
+	}
+	if !scenario.wantRegistered {
+		entries, _, _ := manager.protocol.pc92.occupancy()
+		if manager.protocol.graph.nodes.Len() != 0 || manager.protocol.graph.freshness.Len() != 0 || entries != 0 {
+			t.Fatalf("%s: failed handshake changed topology, freshness or PC92 dedupe", scenario.name)
+		}
+	}
 	manager.mu.RLock()
 	result.finalRemoteCall = sess.remoteCall
 	result.finalPC9x = sess.pc9x
 	manager.mu.RUnlock()
-	result.pc92Queued = len(manager.pc92Ch)
-	result.legacyQueued = len(manager.legacyCh)
 	result.ingestedSpots = len(ingest)
 
 	if result.registeredObserved != scenario.wantRegistered {
@@ -371,12 +352,6 @@ func runInboundScenario(t *testing.T, scenario inboundScenario) {
 	}
 	if result.finalPC9x != scenario.wantPC9x {
 		t.Fatalf("%s: expected pc9x=%v, got %v\ntranscript:\n%s", scenario.name, scenario.wantPC9x, result.finalPC9x, formatTranscript(result.transcript))
-	}
-	if result.pc92Queued != scenario.wantPC92Queued {
-		t.Fatalf("%s: expected PC92 queue len=%d, got %d\ntranscript:\n%s", scenario.name, scenario.wantPC92Queued, result.pc92Queued, formatTranscript(result.transcript))
-	}
-	if result.legacyQueued != scenario.wantLegacyQueued {
-		t.Fatalf("%s: expected legacy queue len=%d, got %d\ntranscript:\n%s", scenario.name, scenario.wantLegacyQueued, result.legacyQueued, formatTranscript(result.transcript))
 	}
 	if result.ingestedSpots != scenario.wantIngestedSpots {
 		t.Fatalf("%s: expected ingested spots=%d, got %d\ntranscript:\n%s", scenario.name, scenario.wantIngestedSpots, result.ingestedSpots, formatTranscript(result.transcript))

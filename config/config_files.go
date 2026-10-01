@@ -213,6 +213,7 @@ var runtimeAllowEmptySettings = map[string]struct{}{
 	"telnet.dialect_welcome_message": {},
 	"telnet.path_status_message":     {},
 	"peering.topology.db_path":       {},
+	"peering.node_build":             {},
 	"reputation.ipinfo_api_token":    {},
 }
 

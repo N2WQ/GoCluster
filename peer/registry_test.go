@@ -124,13 +124,13 @@ func TestAuthorizeInboundRejectsDuplicateActivePeer(t *testing.T) {
 	}
 
 	existing := &session{id: "REMOTE", remoteCall: "REMOTE"}
-	manager.sessions["REMOTE"] = existing
+	manager.sessions.Set("REMOTE", existing)
 
 	_, err = manager.authorizeInbound("REMOTE", &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 7000})
 	if err == nil || !strings.Contains(err.Error(), "duplicate peer session") {
 		t.Fatalf("expected duplicate peer session error, got %v", err)
 	}
-	if got := manager.sessions["REMOTE"]; got != existing {
+	if got := manager.sessions.Value("REMOTE"); got != existing {
 		t.Fatalf("expected original session to remain active")
 	}
 }

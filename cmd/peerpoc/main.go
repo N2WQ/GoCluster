@@ -255,7 +255,12 @@ func runProbe(ctx context.Context, cfg probeConfig) error {
 							return
 						case <-keepaliveTick:
 							if pc9xMode {
-								if err := sendLine(buildPC92Keepalive(tsGen, cfg)); err != nil {
+								line, err := buildPC92Keepalive(tsGen, cfg)
+								if err != nil {
+									log.Printf("keepalive timestamp error: %v", err)
+									return
+								}
+								if err := sendLine(line); err != nil {
 									log.Printf("keepalive error: %v", err)
 									return
 								}
@@ -307,10 +312,18 @@ func runProbe(ctx context.Context, cfg probeConfig) error {
 
 func sendInit(send func(string) error, tsGen *peer.TimestampGenerator, cfg probeConfig, pc9x bool) error {
 	if pc9x {
-		if err := send(sendPC92Add(tsGen, cfg)); err != nil {
+		line, err := sendPC92Add(tsGen, cfg)
+		if err != nil {
 			return err
 		}
-		if err := send(buildPC92Keepalive(tsGen, cfg)); err != nil {
+		if err := send(line); err != nil {
+			return err
+		}
+		line, err = buildPC92Keepalive(tsGen, cfg)
+		if err != nil {
+			return err
+		}
+		if err := send(line); err != nil {
 			return err
 		}
 		return send("PC20^")
@@ -323,22 +336,28 @@ func sendInit(send func(string) error, tsGen *peer.TimestampGenerator, cfg probe
 	return send("PC20^")
 }
 
-func sendPC92Add(tsGen *peer.TimestampGenerator, cfg probeConfig) string {
-	ts := tsGen.Next()
+func sendPC92Add(tsGen *peer.TimestampGenerator, cfg probeConfig) (string, error) {
+	ts, err := tsGen.Next()
+	if err != nil {
+		return "", err
+	}
 	entry := fmt.Sprintf("%d%s:%s", cfg.pc92Bitmap, cfg.call, cfg.nodeVersion)
 	if strings.TrimSpace(cfg.build) != "" {
 		entry += ":" + strings.TrimSpace(cfg.build)
 	}
-	return fmt.Sprintf("PC92^%s^%s^A^^%s^H%d^", cfg.call, ts, entry, cfg.hop)
+	return fmt.Sprintf("PC92^%s^%s^A^^%s^H%d^", cfg.call, ts, entry, cfg.hop), nil
 }
 
-func buildPC92Keepalive(tsGen *peer.TimestampGenerator, cfg probeConfig) string {
-	ts := tsGen.Next()
+func buildPC92Keepalive(tsGen *peer.TimestampGenerator, cfg probeConfig) (string, error) {
+	ts, err := tsGen.Next()
+	if err != nil {
+		return "", err
+	}
 	entry := fmt.Sprintf("%d%s:%s", cfg.pc92Bitmap, cfg.call, cfg.nodeVersion)
 	if strings.TrimSpace(cfg.build) != "" {
 		entry += ":" + strings.TrimSpace(cfg.build)
 	}
-	return fmt.Sprintf("PC92^%s^%s^K^%s^%d^%d^H%d^", cfg.call, ts, entry, cfg.nodeCount, cfg.userCount, cfg.hop)
+	return fmt.Sprintf("PC92^%s^%s^K^%s^%d^%d^H%d^", cfg.call, ts, entry, cfg.nodeCount, cfg.userCount, cfg.hop), nil
 }
 
 func modeLabel(pc9x bool) string {

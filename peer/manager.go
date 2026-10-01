@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -32,39 +33,52 @@ type ConnectionEvent struct {
 }
 
 type Manager struct {
-	cfg                config.PeeringConfig
-	localCall          string
-	ingest             chan<- *spot.Spot
-	maxAgeSeconds      int
-	topology           *topologyStore
-	sessions           map[string]*session
-	outboundPeers      []PeerEndpoint
-	inboundPeers       map[string]PeerEndpoint
-	mu                 sync.RWMutex
-	allowIPs           []*net.IPNet
-	allowCalls         map[string]struct{}
-	dedupe             *dedupeCache
-	ctx                context.Context
-	cancel             context.CancelFunc
-	listener           net.Listener
-	pc92Ch             chan pc92Work
-	legacyCh           chan legacyWork
-	rawBroadcast       func(string) // optional hook to emit raw lines (e.g., PC26) to telnet clients
-	wwvBroadcast       func(kind, line string)
-	announceBroadcast  func(line string)
-	directMessage      func(to, line string)
-	reconnects         atomic.Uint64
-	userCountFn        func() int
-	dropReporter       func(line string)
-	badCallReporter    BadCallReporter
-	connectionReporter func(ConnectionEvent)
-}
+	// Mutable ownership indexes use fixed bucket backing under mu. Pending/owner
+	// reservations bound candidates/runs to128/192; registry admission bounds
+	// sessions to64. Failure/gate keys belong to the64 configured identities.
+	parseBudget       *frameParseBudget
+	protocolStats     atomic.Pointer[ProtocolStats]
+	admissionFailures *boundedIndex[string, admissionFailure]
+	pendingSlots      chan struct{}
+	ownerSlots        chan struct{}
+	ownedRuns         *boundedIndex[*session, bool]
+	cfg               config.PeeringConfig
+	localCall         string
+	ingest            chan<- *spot.Spot
+	maxAgeSeconds     int
+	topology          *topologyStore
+	sessions          *boundedIndex[string, *session]
+	outboundPeers     []PeerEndpoint
+	inboundPeers      map[string]PeerEndpoint
+	mu                sync.RWMutex
+	allowIPs          []*net.IPNet
+	allowCalls        map[string]struct{}
+	dedupe            *dedupeCache
+	ctx               context.Context
+	cancel            context.CancelFunc
+	listener          net.Listener
 
-// pc92Work wraps an inbound PC92 frame with the time it was observed so topology
-// updates can be applied off the socket read goroutine.
-type pc92Work struct {
-	frame *Frame
-	ts    time.Time
+	legacyCh                   chan legacyWork
+	rawBroadcast               func(string) // optional hook to emit raw lines (e.g., PC26) to telnet clients
+	wwvBroadcast               func(kind, line string)
+	announceBroadcast          func(line string)
+	directMessage              func(to, line string)
+	reconnects                 atomic.Uint64
+	dropReporter               func(line string)
+	badCallReporter            BadCallReporter
+	connectionReporter         func(ConnectionEvent)
+	protocol                   *protocolController
+	bulletinDedupe             *dedupeCache
+	candidates                 *boundedIndex[*session, *candidateState]
+	stagedRecords, stagedBytes int
+	blockedPeers               *boundedIndex[string, bool]
+	membershipFn               func() LocalMembership
+	currentDirect              func(string, uint64, uint64, string) bool
+	pc18Banner                 string
+	pc9xGated                  atomic.Bool
+	stopping                   bool
+	wg                         sync.WaitGroup
+	stopOnce                   sync.Once
 }
 
 // legacyWork wraps legacy topology frames so disk I/O never blocks the read loop.
@@ -74,7 +88,6 @@ type legacyWork struct {
 }
 
 const (
-	defaultPC92Queue   = 64
 	defaultLegacyQueue = 64
 )
 
@@ -108,14 +121,6 @@ func NewManager(cfg config.PeeringConfig, localCall string, ingest chan<- *spot.
 	if retention <= 0 {
 		retention = 24 * time.Hour
 	}
-	var topo *topologyStore
-	var err error
-	if strings.TrimSpace(cfg.Topology.DBPath) != "" {
-		topo, err = openTopologyStore(cfg.Topology.DBPath, retention)
-		if err != nil {
-			return nil, err
-		}
-	}
 	allowIPs, err := parseIPACL(cfg.ACL.AllowIPs)
 	if err != nil {
 		return nil, err
@@ -123,6 +128,13 @@ func NewManager(cfg config.PeeringConfig, localCall string, ingest chan<- *spot.
 	outboundPeers, inboundPeers, err := buildPeerRegistry(cfg.Peers)
 	if err != nil {
 		return nil, err
+	}
+	var topo *topologyStore
+	if strings.TrimSpace(cfg.Topology.DBPath) != "" {
+		topo, err = openTopologyStore(cfg.Topology.DBPath, retention)
+		if err != nil {
+			return nil, err
+		}
 	}
 	allowCalls := make(map[string]struct{})
 	for _, call := range cfg.ACL.AllowCallsigns {
@@ -133,79 +145,143 @@ func NewManager(cfg config.PeeringConfig, localCall string, ingest chan<- *spot.
 		allowCalls[call] = struct{}{}
 	}
 
-	return &Manager{
-		cfg:           cfg,
-		localCall:     strutil.NormalizeUpper(localCall),
-		ingest:        ingest,
-		maxAgeSeconds: maxAgeSeconds,
-		topology:      topo,
-		sessions:      make(map[string]*session),
-		outboundPeers: outboundPeers,
-		inboundPeers:  inboundPeers,
-		allowIPs:      allowIPs,
-		allowCalls:    allowCalls,
-		dedupe:        newDedupeCache(10 * time.Minute),
-		dropReporter:  dropReporter,
-	}, nil
+	m := &Manager{
+		cfg:            cfg,
+		localCall:      strutil.NormalizeUpper(localCall),
+		ingest:         ingest,
+		maxAgeSeconds:  maxAgeSeconds,
+		topology:       topo,
+		sessions:       newFixedIndex[string, *session](64),
+		outboundPeers:  outboundPeers,
+		inboundPeers:   inboundPeers,
+		allowIPs:       allowIPs,
+		allowCalls:     allowCalls,
+		dedupe:         newDedupeCache(10 * time.Minute),
+		bulletinDedupe: newBoundedDedupe(10*time.Minute, 8192, 2<<20),
+		candidates:     newFixedIndex[*session, *candidateState](128),
+		blockedPeers:   newFixedIndex[string, bool](64),
+		dropReporter:   dropReporter,
+	}
+	m.admissionFailures = newFixedIndex[string, admissionFailure](64)
+	m.pendingSlots = make(chan struct{}, 128)
+	m.ownerSlots = make(chan struct{}, 64+128)
+	m.ownedRuns = newFixedIndex[*session, bool](192)
+	m.parseBudget = newFrameParseBudget()
+	m.protocol = newProtocolController(m)
+	return m, nil
 }
 
+// Start creates all state owners before listeners or dialers can deliver traffic.
 func (m *Manager) Start(ctx context.Context) error {
 	if m == nil {
 		return fmt.Errorf("nil manager")
 	}
-	runCtx, cancel := context.WithCancel(ctx)
-	m.ctx = runCtx
-	m.cancel = cancel
-
+	m.mu.Lock()
+	if m.ctx != nil || m.stopping {
+		m.mu.Unlock()
+		return fmt.Errorf("peer manager already started or stopped")
+	}
+	startCtx, cancel := context.WithCancel(ctx)
+	m.ctx, m.cancel = startCtx, cancel
+	m.mu.Unlock()
+	started := false
+	defer func() {
+		if !started {
+			cancel()
+		}
+	}()
+	if err := m.protocol.waitStartupSecond(startCtx); err != nil {
+		m.Stop()
+		return err
+	}
+	m.wg.Add(1)
+	go func() { defer m.wg.Done(); m.protocol.run(m.ctx) }()
+	if m.topology != nil {
+		m.wg.Add(1)
+		go func() { defer m.wg.Done(); m.projectionLoop(m.ctx) }()
+		m.legacyCh = make(chan legacyWork, defaultLegacyQueue)
+		m.wg.Add(1)
+		go func() { defer m.wg.Done(); m.legacyWorker(m.ctx) }()
+	}
+	if err := m.protocolCall("ready", nil); err != nil {
+		m.Stop()
+		return err
+	}
 	if m.cfg.ListenPort > 0 {
-		addr := fmt.Sprintf(":%d", m.cfg.ListenPort)
 		var lc net.ListenConfig
-		ln, err := lc.Listen(ctx, "tcp", addr)
+		ln, err := lc.Listen(startCtx, "tcp", fmt.Sprintf(":%d", m.cfg.ListenPort))
 		if err != nil {
+			m.Stop()
 			return fmt.Errorf("peering listen: %w", err)
 		}
 		m.listener = ln
-		go m.acceptLoop()
+		m.wg.Add(1)
+		go func() { defer m.wg.Done(); m.acceptLoop() }()
 	}
-
-	for _, peer := range m.outboundPeers {
-		go m.runOutbound(peer)
+	for _, endpoint := range m.outboundPeers {
+		m.wg.Add(1)
+		go func(ep PeerEndpoint) { defer m.wg.Done(); m.runOutbound(ep) }(endpoint)
 	}
-
-	// Always run maintenance to prune the peer dedupe cache even when topology
-	// persistence is disabled.
-	go m.maintenanceLoop(runCtx)
-
-	// Topology updates are handled off the session read goroutine to prevent
-	// large PC92 maps from stalling spot delivery. The channel is deliberately
-	// bounded; oversize or overflow frames are dropped with a warning.
-	if m.topology != nil {
-		m.pc92Ch = make(chan pc92Work, defaultPC92Queue)
-		go m.topologyWorker(runCtx)
-		m.legacyCh = make(chan legacyWork, defaultLegacyQueue)
-		go m.legacyWorker(runCtx)
-	}
+	started = true
 	return nil
 }
 
+// Stop is also valid after a construction/startup failure. Withdrawal gets at
+// most two seconds while transports live; cancellation then joins every owner
+// before closing optional storage. It never holds the registry lock while joining.
 func (m *Manager) Stop() {
 	if m == nil {
 		return
 	}
-	if m.cancel != nil {
-		m.cancel()
-	}
-	if m.listener != nil {
-		_ = m.listener.Close()
-	}
-	m.mu.Lock()
-	for _, sess := range m.sessions {
-		sess.close()
-	}
-	m.mu.Unlock()
-	if m.topology != nil {
-		_ = m.topology.Close()
-	}
+	m.stopOnce.Do(func() {
+		m.mu.Lock()
+		m.stopping = true
+		m.mu.Unlock()
+		if m.listener != nil {
+			_ = m.listener.Close()
+		}
+		if m.ctx != nil && m.ctx.Err() == nil {
+			req := protocolRequest{kind: "withdraw", done: make(chan error, 1)}
+			withdrawDeadline := time.Now().Add(2 * time.Second)
+			timer := time.NewTimer(2 * time.Second)
+			select {
+			case m.protocol.lifecycle <- req:
+				select {
+				case <-req.done:
+				case <-timer.C:
+				case <-m.ctx.Done():
+				}
+			case <-timer.C:
+			case <-m.ctx.Done():
+			}
+			timer.Stop()
+			m.drainControl(time.Until(withdrawDeadline))
+		}
+		if m.cancel != nil {
+			m.cancel()
+		}
+		m.mu.RLock()
+		all := make([]*session, 0, m.ownedRuns.Len()+m.sessions.Len())
+		for s := range m.ownedRuns.All() {
+			all = append(all, s)
+		}
+		for _, s := range m.sessions.All() {
+			if !slices.Contains(all, s) {
+				all = append(all, s)
+			}
+		}
+		m.mu.RUnlock()
+		for _, s := range all {
+			s.close()
+		}
+		m.wg.Wait()
+		if m.protocol != nil {
+			m.protocol.drainQueuedProjections()
+		}
+		if m.topology != nil {
+			_ = m.topology.Close()
+		}
+	})
 }
 
 // PublishDX publishes a locally produced spot to peers when the shared
@@ -243,34 +319,26 @@ func (m *Manager) HandleFrame(frame *Frame, sess *session) {
 	if frame == nil {
 		return
 	}
-	now := time.Now().UTC()
+	now := time.Now()
 	switch frame.Type {
 	case "PC92":
-		seen := true
-		if frame.Hop > 1 {
-			seen = m.dedupe.markSeen(pc92Key(frame), now)
-		}
-		if !seen {
+		if sess == nil || !sess.pc9x || frame.Hop == 0 {
 			return
 		}
-		if m.topology != nil && m.pc92Ch != nil {
-			if m.cfg.PC92MaxBytes > 0 && len(frame.Raw) > m.cfg.PC92MaxBytes {
-				log.Printf("Peering: dropping PC92 (%d bytes) from %s: over size limit", len(frame.Raw), sessionLabel(sess))
-			} else {
-				select {
-				case m.pc92Ch <- pc92Work{frame: frame, ts: now}:
-				default:
-					log.Printf("Peering: dropping PC92 from %s: topology queue full", sessionLabel(sess))
-				}
-			}
+		if m.cfg.PC92MaxBytes > 0 && len(frame.Raw) > m.cfg.PC92MaxBytes {
+			return
 		}
-		if frame.Hop > 1 {
-			m.forwardFrame(frame, frame.Hop-1, sess, true)
+		if m.protocol == nil || !m.protocol.enqueue(frame, sess, now) {
+			// Only valid authority records warrant closing and gating a link.
+			// The normal path decodes on the owner; full-mailbox rejection is rare.
+			if _, err := DecodePC92(frame); err == nil {
+				m.recordAdmissionFailure(sess, frame, now)
+			}
 		}
 	case "PC19", "PC16", "PC17", "PC21":
 		if m.topology != nil && m.legacyCh != nil {
 			select {
-			case m.legacyCh <- legacyWork{frame: frame, ts: now}:
+			case m.legacyCh <- legacyWork{frame: &Frame{Type: strings.Clone(frame.Type)}, ts: now}:
 			default:
 				log.Printf("Peering: dropping legacy %s from %s: topology queue full", frame.Type, sessionLabel(sess))
 			}
@@ -301,15 +369,16 @@ func (m *Manager) HandleFrame(frame *Frame, sess *session) {
 		}
 	case "PC23", "PC73":
 		if ev, ok := parseWWV(frame); ok {
-			if m.dedupe.markSeen(wwvKey(frame), now) {
+			if m.bulletinDedupe.markSeen(wwvKey(frame), now) {
 				m.broadcastWWV(ev)
 			}
 		}
 	case "PC93":
-		if msg, ok := parsePC93(frame); ok {
-			if m.dedupe.markSeen(pc93Key(frame), now) {
-				m.routePC93(msg)
-			}
+		if sess == nil || !sess.pc9x || frame.Hop == 0 {
+			return
+		}
+		if _, ok := parsePC93(frame); ok && m.protocol != nil {
+			m.protocol.enqueue(frame, sess, now)
 		}
 	}
 }
@@ -509,11 +578,17 @@ func (m *Manager) registerSession(s *session) error {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if existing, ok := m.sessions[key]; ok && existing != s {
+	if existing, ok := m.sessions.Get(key); ok && existing != s {
 		return fmt.Errorf("duplicate peer session: %s", key)
 	}
+	if m.stopping || m.sessions.Len() >= 64 {
+		return fmt.Errorf("established peer capacity or stopping")
+	}
+	if err := s.activateNormalQueue(); err != nil {
+		return err
+	}
 	s.id = key
-	m.sessions[key] = s
+	m.sessions.Set(key, s)
 	return nil
 }
 
@@ -521,9 +596,16 @@ func (m *Manager) unregisterSession(s *session) {
 	if m == nil || s == nil {
 		return
 	}
+	if m.ctx != nil && m.ctx.Err() == nil {
+		if err := m.protocolCall("closed", s); err == nil {
+			return
+		}
+	}
+	// The owner is absent only before Start or after cancellation. No new live
+	// authority can then be established; release registry ownership directly.
 	m.mu.Lock()
-	if existing, ok := m.sessions[s.id]; ok && existing == s {
-		delete(m.sessions, s.id)
+	if m.sessions.Value(s.id) == s {
+		m.sessions.Delete(s.id)
 	}
 	m.mu.Unlock()
 }
@@ -605,7 +687,7 @@ func (m *Manager) broadcastSpot(s *spot.Spot, comment string, hop int, origin st
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	for _, sess := range m.sessions {
+	for _, sess := range m.sessions.All() {
 		if exclude != nil && sess == exclude {
 			continue
 		}
@@ -647,9 +729,27 @@ func (m *Manager) routePC93(msg pc93Message) {
 	m.mu.RLock()
 	announce := m.announceBroadcast
 	direct := m.directMessage
+	currentDirect := m.currentDirect
 	m.mu.RUnlock()
 	if !broadcast && target != "" {
-		if direct != nil {
+		if currentDirect != nil {
+			snapshot := m.membership()
+			if snapshot.Complete && snapshot.RawCount <= 1000 && len(snapshot.Users) <= 1000 {
+				var match LocalUser
+				count := 0
+				for _, user := range snapshot.Users {
+					call, ok := CanonicalPC92Call(user.Login)
+					if ok && len(call) <= 15 && call == target {
+						match = user
+						count++
+					}
+				}
+				reserved := m.protocol.reservedNodes()
+				if count == 1 && reserved != nil && !reserved.Value(target) {
+					currentDirect(match.Login, match.SessionID, snapshot.Revision, line)
+				}
+			}
+		} else if direct != nil {
 			direct(target, line)
 		}
 		return
@@ -666,14 +766,20 @@ func (m *Manager) forwardFrame(frame *Frame, hop int, exclude *session, pc9xOnly
 	line := frame.Encode(hop)
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	for _, sess := range m.sessions {
+	for _, sess := range m.sessions.All() {
 		if exclude != nil && sess == exclude {
 			continue
 		}
-		if pc9xOnly && !sess.pc9x {
+		if pc9xOnly && (!sess.pc9x || (frame.Type == "PC92" && sess.peer.family == config.PeeringPeerFamilyCCluster)) {
 			continue
 		}
-		m.trySendLine(sess, line, "frame")
+		if frame.Type == "PC92" {
+			if err := sess.sendControlLine(line); err != nil {
+				sess.close()
+			}
+		} else {
+			m.trySendLine(sess, line, "frame")
+		}
 	}
 }
 
@@ -722,7 +828,7 @@ func (m *Manager) hasActiveSession(id string) bool {
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	_, ok := m.sessions[id]
+	_, ok := m.sessions.Get(id)
 	return ok
 }
 
@@ -743,7 +849,7 @@ func (m *Manager) authorizeInbound(call string, addr net.Addr) (PeerEndpoint, er
 	if !ipAllowed(peer.allowIPs, addr) {
 		return PeerEndpoint{}, fmt.Errorf("unauthorized inbound peer ip: %s", addr.String())
 	}
-	if m.hasActiveSession(peer.ID()) {
+	if m.hasActiveSession(peer.ID()) || m.outboundGated(peer) {
 		return PeerEndpoint{}, fmt.Errorf("duplicate peer session: %s", call)
 	}
 	if strings.TrimSpace(peer.host) == "" {
@@ -756,7 +862,7 @@ func (m *Manager) acceptLoop() {
 	for {
 		conn, err := m.listener.Accept()
 		if err != nil {
-			if m.ctx != nil && m.ctx.Err() != nil {
+			if errors.Is(err, net.ErrClosed) || (m.ctx != nil && m.ctx.Err() != nil) {
 				return
 			}
 			log.Printf("Peering: accept failed: %v", err)
@@ -770,12 +876,20 @@ func (m *Manager) acceptLoop() {
 				log.Printf("Peering: failed to set keepalive period for %s: %v", conn.RemoteAddr(), periodErr)
 			}
 		}
+		if !m.reserveCandidateSlots() {
+			_ = conn.Close()
+			continue
+		}
 		peer := PeerEndpoint{host: conn.RemoteAddr().String(), port: 0}
 		m.reportConnection(ConnectionEvent{Direction: "inbound", Action: "accepted", Endpoint: conn.RemoteAddr().String(), Reason: "none"})
 		settings := m.sessionSettings(peer)
 		sess := newSession(conn, dirInbound, m, peer, settings)
+		sess.pendingReserved = true
+		sess.ownerReserved = true
 		sess.id = conn.RemoteAddr().String()
+		m.wg.Add(1)
 		go func() {
+			defer m.wg.Done()
 			if err := sess.Run(m.ctx); err != nil && m.ctx.Err() == nil {
 				log.Printf("Peering: inbound session ended: %v", err)
 			}
@@ -793,29 +907,47 @@ func (m *Manager) runOutbound(peer PeerEndpoint) {
 		if m.ctx != nil && m.ctx.Err() != nil {
 			return
 		}
+		if m.outboundGated(peer) {
+			if !waitPeerRetry(m.ctx, time.Second) {
+				return
+			}
+			continue
+		}
 		if m.hasActiveSession(peer.ID()) {
 			delay := time.Duration(m.cfg.Backoff.BaseMS) * time.Millisecond
 			if delay <= 0 {
 				delay = 2 * time.Second
 			}
-			time.Sleep(delay)
+			if !waitPeerRetry(m.ctx, delay) {
+				return
+			}
 			continue
 		}
 		addr := net.JoinHostPort(peer.host, strconv.Itoa(peer.port))
+		if !m.reserveCandidateSlots() {
+			if !waitPeerRetry(m.ctx, time.Second) {
+				return
+			}
+			continue
+		}
 		log.Printf("Peering: dialing %s as %s", addr, peer.loginCall)
-		conn, err := dialer.Dial("tcp", addr)
+		conn, err := dialer.DialContext(m.ctx, "tcp", addr)
 		if err != nil {
+			m.releaseUnstartedCandidateSlots()
 			delay := backoff.Next()
 			m.reportConnection(ConnectionEvent{Direction: "outbound", Action: "dial_failed", Peer: peer.remoteCall, Endpoint: addr, Reason: err.Error()})
 			log.Printf("Peering: dial %s failed: %v (retry in %s)", addr, err, delay)
-			time.Sleep(delay)
+			if !waitPeerRetry(m.ctx, delay) {
+				return
+			}
 			continue
 		}
 		log.Printf("Peering: connected to %s", addr)
 		m.reportConnection(ConnectionEvent{Direction: "outbound", Action: "connected", Peer: peer.remoteCall, Endpoint: addr, Reason: "none"})
-		backoff.Reset()
 		settings := m.sessionSettings(peer)
 		sess := newSession(conn, dirOutbound, m, peer, settings)
+		sess.pendingReserved = true
+		sess.ownerReserved = true
 		sess.remoteCall = peer.remoteCall
 		if strings.TrimSpace(sess.remoteCall) == "" {
 			sess.remoteCall = "*"
@@ -823,9 +955,14 @@ func (m *Manager) runOutbound(peer PeerEndpoint) {
 		if err := sess.Run(m.ctx); err != nil && m.ctx.Err() == nil {
 			log.Printf("Peering: session to %s ended: %v", addr, err)
 		}
+		if sess.established {
+			backoff.Reset()
+		}
 		m.reconnects.Add(1)
 		delay := backoff.Next()
-		time.Sleep(delay)
+		if !waitPeerRetry(m.ctx, delay) {
+			return
+		}
 	}
 }
 
@@ -835,22 +972,6 @@ func (m *Manager) ReconnectCount() uint64 {
 		return 0
 	}
 	return m.reconnects.Load()
-}
-
-// SetUserCountProvider wires a live user count callback (e.g., from the telnet server)
-// so PC92 K keepalives can advertise current users instead of a static config value.
-func (m *Manager) SetUserCountProvider(fn func() int) {
-	if m == nil {
-		return
-	}
-	m.userCountFn = fn
-}
-
-// liveNodeCount returns 1 (self) plus the number of active peer sessions.
-func (m *Manager) liveNodeCount() int {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return 1 + len(m.sessions)
 }
 
 // ActiveSessionCount returns the number of active peer sessions.
@@ -864,7 +985,7 @@ func (m *Manager) ActiveSessionCount() int {
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return len(m.sessions)
+	return m.sessions.Len()
 }
 
 // ActiveSessionSSIDs returns active peer callsigns (including SSID suffixes) for dashboard display.
@@ -878,12 +999,11 @@ func (m *Manager) ActiveSessionSSIDs() []string {
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	if len(m.sessions) == 0 {
+	if m.sessions.Len() == 0 {
 		return nil
 	}
-	ssids := make([]string, 0, len(m.sessions))
-	seen := make(map[string]struct{}, len(m.sessions))
-	for _, sess := range m.sessions {
+	ssids := make([]string, 0, m.sessions.Len())
+	for _, sess := range m.sessions.All() {
 		if sess == nil {
 			continue
 		}
@@ -891,24 +1011,13 @@ func (m *Manager) ActiveSessionSSIDs() []string {
 		if label == "" || label == "*" {
 			continue
 		}
-		if _, exists := seen[label]; exists {
+		if slices.Contains(ssids, label) {
 			continue
 		}
-		seen[label] = struct{}{}
 		ssids = append(ssids, label)
 	}
 	sort.Strings(ssids)
 	return ssids
-}
-
-// liveUserCount returns the current telnet client count when provided, otherwise falls back to config.
-func (m *Manager) liveUserCount() int {
-	if m.userCountFn != nil {
-		if v := m.userCountFn(); v >= 0 {
-			return v
-		}
-	}
-	return m.cfg.UserCount
 }
 
 func (m *Manager) resolveLocalCall(peer PeerEndpoint) string {
@@ -948,50 +1057,6 @@ func (m *Manager) sessionSettings(peer PeerEndpoint) sessionSettings {
 	}
 }
 
-func (m *Manager) maintenanceLoop(ctx context.Context) {
-	interval := time.Duration(m.cfg.Topology.PersistIntervalSeconds) * time.Second
-	if interval <= 0 {
-		interval = 5 * time.Minute
-	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			now := time.Now().UTC()
-			if m.topology != nil {
-				m.topology.prune(ctx, now)
-			}
-			if m.dedupe != nil {
-				m.dedupe.prune(now)
-			}
-		}
-	}
-}
-
-// topologyWorker applies PC92 frames off the socket read goroutine so spot
-// traffic never blocks behind topology I/O. Oversize/overflow drops happen at
-// enqueue time; this worker best-effort applies what it receives.
-func (m *Manager) topologyWorker(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case work := <-m.pc92Ch:
-			if m.topology == nil || work.frame == nil {
-				continue
-			}
-			start := time.Now().UTC()
-			m.topology.applyPC92Frame(ctx, work.frame, work.ts)
-			if dur := time.Since(start); dur > 2*time.Second {
-				log.Printf("Peering: PC92 apply slow (%s) from %s", dur.Truncate(time.Millisecond), pc92Origin(work.frame))
-			}
-		}
-	}
-}
-
 // legacyWorker applies legacy topology frames off the socket read goroutine so
 // synchronous SQLite calls never delay keepalive handling.
 func (m *Manager) legacyWorker(ctx context.Context) {
@@ -1008,23 +1073,31 @@ func (m *Manager) legacyWorker(ctx context.Context) {
 	}
 }
 
-func pc92Origin(f *Frame) string {
-	if f == nil {
-		return ""
-	}
-	fields := f.payloadFields()
-	if len(fields) > 0 {
-		return strings.TrimSpace(fields[0])
-	}
-	return ""
-}
-
 func sessionLabel(s *session) string {
 	if s == nil {
 		return ""
 	}
-	if strings.TrimSpace(s.remoteCall) != "" {
-		return s.remoteCall
+	if s.diagnosticLabel != "" {
+		return s.diagnosticLabel
 	}
 	return s.id
+}
+
+func waitPeerRetry(ctx context.Context, delay time.Duration) bool {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+func (m *Manager) outboundGated(endpoint PeerEndpoint) bool {
+	if endpoint.preferPC9x && m.pc9xGated.Load() {
+		return true
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.blockedPeers.Value(endpoint.remoteCall)
 }

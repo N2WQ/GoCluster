@@ -13,6 +13,7 @@ func TestPeeringPeerFamilyAndDirectionDefault(t *testing.T) {
   peers:
     - enabled: true
       host: "peer.example.net"
+      remote_callsign: "K1PEER"
       port: 7300
 `
 	writeTestConfigOverlay(t, dir, "peering.yaml", cfgText)
