@@ -3,6 +3,9 @@ package peer
 import (
 	"fmt"
 	"strings"
+
+	"dxcluster/config"
+	"dxcluster/spot"
 )
 
 type pc93Message struct {
@@ -95,7 +98,30 @@ func pc93Target(msg pc93Message) (target string, broadcast bool) {
 	if call, ok := CanonicalPC92Call(upper); ok {
 		return call, false
 	}
-	return "", false
+	// A named group is locally displayed as an announcement, as before PC92
+	// canonicalization. A callsign-shaped private address that cannot be
+	// represented must remain a rejection, never a broadcast of private text.
+	if config.IsPeeringCallCandidate(upper) || privateSpotCallCandidate(upper) {
+		return "", false
+	}
+	return "", true
+}
+
+// This classification preserves legacy private candidates without populating
+// spot's normalization cache from peer-controlled recipient labels. It grants
+// no recipient authority; only CanonicalPC92Call can resolve a private owner.
+func privateSpotCallCandidate(call string) bool {
+	if len(call) > 36 {
+		return false
+	}
+	call = strings.TrimSuffix(strings.ReplaceAll(call, ".", "/"), "/")
+	for _, suffix := range []string{"/QRP", "/MM", "/AM", "/M", "/P"} {
+		if strings.HasSuffix(call, suffix) {
+			call = strings.TrimSuffix(call, suffix)
+			break
+		}
+	}
+	return spot.IsValidNormalizedCallsign(call)
 }
 
 // Purpose: Format a PC93 message for telnet display.

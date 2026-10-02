@@ -137,7 +137,13 @@ These rules must be explicit, deterministic, and testable.
   gates the affected peer until the actual required headroom is stable.
 - Recovery requires complete C followed by metadata A, including when periodic
   C and K are disabled. Local recovery does not make incomplete remote state
-  complete; that requires an authoritative remote C.
+  complete; that requires an authoritative remote C. The C/A pair uses one
+  immutable baseline. Stable eligible membership changes require control-queue
+  admission within one second for every healthy established peer, including
+  recovery; the five-second recovery allowance does not extend this deadline.
+- Node/user relationships use separate typed identities even with the same
+  callsign. Local wire identity follows the pinned receiver normalization;
+  ambiguous or unrepresentable human logins stay local.
 - Separate spot/PC92/PC93/bulletin pools never evict unexpired payload keys.
   Exactly 600 elapsed seconds is unexpired. PC92 and PC93 share origin freshness;
   unsafe UTC does not erase retained ordering protection.

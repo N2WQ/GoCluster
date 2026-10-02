@@ -69,6 +69,21 @@ func (g *TimestampGenerator) ClockSafe(now time.Time) error {
 	return g.clockSafe(now)
 }
 
+// RemainingAt does not issue a value. The sole publication owner uses it to
+// reserve a complete ordered pair and keep timestamp capacity for membership.
+// No other production caller may allocate between the check and its enqueue.
+func (g *TimestampGenerator) RemainingAt(now time.Time) (int, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if err := g.clockSafe(now); err != nil {
+		return 0, err
+	}
+	if !g.initialized || now.Unix() != g.lastUnix {
+		return 100, nil
+	}
+	return 99 - g.seq, nil
+}
+
 func (g *TimestampGenerator) clockSafe(now time.Time) error {
 	if now.IsZero() || now.Year() < 1970 || now.Year() > 9999 ||
 		(g.initialized && now.Unix() < g.lastUnix) {

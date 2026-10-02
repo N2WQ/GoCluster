@@ -127,3 +127,20 @@ func (c *dedupeCache) contains(key string, now time.Time) bool {
 	_, ok := c.items.Get(key)
 	return ok
 }
+
+// firstAdmission reads the original elapsed-time admission without refreshing
+// age. The existing cache entry owns its offset; no secondary history survives
+// expiry. UTC authority clock adjustments must never be applied to this instant.
+func (c *dedupeCache) firstAdmission(key string, now time.Time) (time.Time, bool) {
+	if c == nil {
+		return time.Time{}, false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.pruneLocked(now)
+	offset, ok := c.items.Get(key)
+	if !ok {
+		return time.Time{}, false
+	}
+	return c.epoch.Add(time.Duration(offset)), true
+}

@@ -67,7 +67,7 @@ func TestPC92BookkeepingDiagnosticReasonsFitFixedBacking(t *testing.T) {
 		})
 	}
 	p := newProtocolController(&Manager{})
-	if len(reasons) != 18 || p.diagnosticAt.limit != len(reasons) || len(p.diagnosticAt.buckets) != 32 {
+	if len(reasons) != 19 || p.diagnosticAt.limit != len(reasons) || len(p.diagnosticAt.buckets) != 32 {
 		t.Fatalf("reason enumeration/backing changed: reasons=%d limit=%d buckets=%d", len(reasons), p.diagnosticAt.limit, len(p.diagnosticAt.buckets))
 	}
 	for reason := range reasons {
@@ -165,7 +165,8 @@ func TestPC92BookkeepingFixedAllocationEnvelope(t *testing.T) {
 		"admission failures": {m.admissionFailures.limit, 64}, "blocked records": {p.blockedRecords.limit, 64},
 		"blocked input": {p.blockedInput.limit, 64}, "recovering": {p.recovering.limit, 64},
 		"pending K": {p.pendingK.limit, 64}, "blocked": {p.blocked.limit, 64},
-		"diagnostics": {p.diagnosticAt.limit, 18}, "published": {p.published.limit, 1064},
+		"diagnostics": {p.diagnosticAt.limit, 19}, "published": {p.published.limit, 1064},
+		"active replays": {p.replays.limit, 64},
 	} {
 		if got[0] != got[1] {
 			t.Fatalf("%s constructor limit=%d; allocation proof requires%d", name, got[0], got[1])
@@ -184,6 +185,8 @@ func TestPC92BookkeepingFixedAllocationEnvelope(t *testing.T) {
 	add("sessions", 64, 1, entry, buckets, total)
 	entry, buckets, total = bookkeepingIndexAllowance[*session, *candidateState](128)
 	add("candidates", 128, 1, entry, buckets, total)
+	entry, buckets, total = bookkeepingIndexAllowance[*session, *candidateState](64)
+	add("active replays", 64, 1, entry, buckets, total)
 	entry, buckets, total = bookkeepingIndexAllowance[*session, bool](192)
 	add("owned runs", 192, 1, entry, buckets, total)
 	entry, buckets, total = bookkeepingIndexAllowance[string, bool](64)
@@ -198,12 +201,13 @@ func TestPC92BookkeepingFixedAllocationEnvelope(t *testing.T) {
 	add("recovering", 64, 1, entry, buckets, total)
 	entry, buckets, total = bookkeepingIndexAllowance[*session, bool](64)
 	add("pending K", 64, 1, entry, buckets, total)
-	entry, buckets, total = bookkeepingIndexAllowance[string, time.Time](18)
-	add("diagnostics", 18, 1, entry, buckets, total)
+	entry, buckets, total = bookkeepingIndexAllowance[string, time.Time](19)
+	add("diagnostics", 19, 1, entry, buckets, total)
 	entry, buckets, total = bookkeepingIndexAllowance[string, PC92Entry](1064)
 	// Current, published, the new tick membership, and nested K's membership
-	// are the four distinct possible publication generations on one actor stack.
-	add("publication generations", 1064, 4, entry, buckets, total)
+	// are distinct possible publication generations on one actor stack. A
+	// captured recovery temporarily reconstructs one further immutable baseline.
+	add("publication generations", 1064, 5, entry, buckets, total)
 	entry, buckets, total = bookkeepingIndexAllowance[string, PC92Entry](1128)
 	add("reserved publication union", 1128, 1, entry, buckets, total)
 	entry, buckets, total = bookkeepingIndexAllowance[string, int](1000)

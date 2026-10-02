@@ -58,14 +58,18 @@ The independent graph envelope tests cover every high-water count to each cap, a
 | Working backing | Bytes |
 | --- | ---: |
 | Frame fields | 139,264 |
-| Decoded members | 663,552 |
-| Desired entries + bucket generations | 1,032,080 |
+| Decoded and addition arrays | 1,310,720 |
+| Typed desired entries + bucket generations | 1,163,136 |
 | Planned nodes + bucket generations | 518,144 |
-| Removal slice | 1,122,304 |
-| Addition slice | 663,552 |
-| Subtotal | 4,138,896 |
+| Subtotal | 3,131,264 |
 
-At most 24,577 normalized call/version/build strings partition 64 KiB of input; rounded storage is at most 253,959 bytes. A further 16 KiB covers fixed graph/plan/index headers and the 64-peer direct index. Include another 64 KiB for the active input wire after its mailbox reservation is released. Preparation is bounded by 4,474,775 bytes, below 5 MiB. The sparse-origin test exercises 65,536 existing users replaced by a maximum mixed C, independently of the full-node fixture.
+C removal uses two bounded traversals and retains no population-sized removal
+slice. Including rounded normalized strings, fixed headers/direct index and the
+active input wire, the independent combined bound is **3,467,143 bytes**, below
+5 MiB. The reachable sparse-origin fixture replaces 65,536 users with 8,191
+mixed members and measured 3,408,392 bytes cumulative decode/prepare allocation.
+The [v11 graph evidence](pc92-v11-graph-validation.md) preserves the detailed
+arithmetic, receiver metadata semantics and limitations.
 
 Decoding precedes those large plan arrays. Its retained frame/member/string storage is about 1.01 MiB; only one entry's colon array, numeric builder, regex and IP work is active. Colon arrays have at most four elements. The callsign regex has 75 instructions and an acyclic longest path 70; newly required backtracker storage fits 40 KiB. Even an eleven-wire-size normalization allowance plus active input/encoding copies fits the 5 MiB envelope. Existing larger objects borrowed from process-wide regexp pools remain shared-library retention, not graph generations.
 
@@ -111,7 +115,10 @@ Frozen-oracle tests cover 12,288 parser cases; maximum-taxonomy adversarial meas
 
 ## Staging and generation ownership
 
-The first staged record reserves a 256-string array (4,864 bytes); each wire owns a rounded compact clone. Individual 256-record/512 KiB and global 8,192-record/16 MiB bounds all apply. The active establishment batch retains its charge until release. Failed/losing candidates cannot advance global topology or freshness.
+The first staged record reserves a 256-string array (4,864 bytes); each wire owns a rounded compact clone. Individual 256-record/512 KiB and global 8,192-record/16 MiB bounds all apply. Up to64 active replay batches retain their original full charge until release.
+The sole controller services one record per replay turn; no live input reader
+starts before its replay-ready reply. Cancellation retires the batch before its
+transport permit is released. Replay changes ownership, not storage partitions. Failed/losing candidates cannot advance global topology or freshness.
 
 | Independent boundary | Population | Charge |
 | --- | --- | ---: |
@@ -122,21 +129,51 @@ The first staged record reserves a 256-string array (4,864 bytes); each wire own
 
 Local snapshots include at most 1,000 users and 64 peers. Current/published/temporary fixed indexes, sorted/member/delta arrays, membership adapter copies and encode work share 12 MiB. Existing login syntax bounds admitted calls at 15 bytes. Remote session metadata uses explicit oversized markers; fitting version/build values are cloned at no more than ten bytes each. Unpublishable received values are not retained in publication snapshots. Optional absent metadata preserves its own marker; later valid replacement clears it.
 
-A deliberately overcombined local inventory reserves 1 MiB for all indexes, 270,720 bytes for five generations of compact entry strings, 1,187,840 bytes for provider/adapter slices and borrowed login/address backing, 2,228,224 bytes for member/delta/decoded arrays including growth overlap, and 1 MiB for encoding intermediates. This is 5,783,936 bytes, below 12 MiB. The address allowance is 512 bytes per local owner, including a Windows interface zone name; ordinary global IP literals use at most 39 bytes. The final platform audit must retain that address-source premise. Encoding bounds use at most 1,128 entries, 512 bytes of intermediate material per entry, 64 KiB field headers, three 96 KiB wire/join copies and 64 KiB fixed formatter/regexp work.
+A deliberately overcombined local inventory reserves 1 MiB for all indexes, 270,720 bytes for five generations of compact entry strings, 1,187,840 bytes for provider/adapter slices and borrowed login/address backing, 2,228,224 bytes for member/delta/decoded arrays including growth overlap, and 1 MiB for encoding intermediates. This baseline is 5,783,936 bytes. V11 conservatively adds64 maximum64KiB
+immutable recovery wires and512KiB for one decoded recovery/baseline generation:
+**10,502,528 bytes**, below12MiB. Recovery wires commonly share storage within a
+fanout, but the proof does not depend on that sharing. The address allowance is 512 bytes per local owner, including a Windows interface zone name; ordinary global IP literals use at most 39 bytes. The final platform audit must retain that address-source premise. Encoding bounds use at most 1,128 entries, 512 bytes of intermediate material per entry, 64 KiB field headers, three 96 KiB wire/join copies and 64 KiB fixed formatter/regexp work.
 
 Projection reservations include arrays and every string a snapshot can retain after live replacement. All queued/building/active generations share 36 MiB. Oversized projection is refused whole; live authority remains intact. Stop joins producers/consumer before draining. Native SQL working storage is a separate dependency below.
 
 ## Remaining aggregate dependencies
 
-The latest fixed-index inventory conservatively charges 813,904 bytes across small indexes, including four publication generations and both failure indexes. Retry wire can occupy three 64-entry generations (blocked, active drain, new manager failures): 12 MiB. The layout oracle reports a 2,752-byte session (3,072 rounded), 144-byte reader wrapper (160 rounded), 224-byte TCP descriptor (240 rounded) and 80-byte cancel context (96 rounded). Including fixed channels, closures, compact metadata and address material gives 5,632 bytes per live/stale identity, reserved as 8 KiB. Active-only wrappers, timers, semaphore waiter and I/O control work total 3,312 bytes, reserved as 4 KiB per live owner.
+The latest fixed-index inventory conservatively charges 954,320 bytes across small indexes, including five publication generations
+and the64-entry active-replay index and both failure indexes. Retry wire can occupy three 64-entry generations (blocked, active drain, new manager failures): 12 MiB. The layout oracle reports a 2,784-byte session (3,072 rounded), 144-byte reader wrapper (160 rounded), 224-byte TCP descriptor (240 rounded) and 80-byte cancel context (96 rounded). Including fixed channels, closures, compact metadata and address material gives 5,632 bytes per live/stale identity, reserved as 8 KiB. Active-only wrappers, timers, semaphore waiter and I/O control work total 3,312 bytes, reserved as 4 KiB per live owner.
 
 A provisional inventory includes 192 live owners, 256 queued-input references, 128 lifecycle references, one active actor reference and 64 outbound-loop retirement references: 641 distinct session identities. Combining these reservations with 12 MiB retry wire, 1 MiB indexes and 1 MiB global metadata totals 19.7578125 MiB. This is not yet a final headroom grant: outer goroutine retirement and standard-library context-child-map high-water backing still need explicit disposition. Heap context/timer/closure data cannot be silently excluded as stack overhead.
 
-Separately reported unchanged configuration ownership includes the raw loaded configuration and the baseline's normalized ACL/registry storage: parsed global/per-peer IP ACLs, allowed-call normalization/map, disabled-row-dependent outbound slice capacity, credentials and endpoint formatting. Source comparison against the pre-change baseline established that these owners were not introduced by this work. Newly introduced publication keys, wire clones and remote numeric metadata remain charged above.
+V11 also bounds new fixed global owners: copied active configuration (at most64
+peer structs plus canonical identity allocations), up to128 queued requests,
+192 active callers,64 replay replies and two startup/shutdown calls; request
+messages/attempts/timers/channels,192 candidate/replay headers and fixed
+controller storage. The deliberately overcombined layout inventory is351,536
+bytes inside the existing1MiB global allowance. It does not prove context child
+backing or unrestricted outer goroutine retirement. The cumulative PC93 input
+refusal counter adds no history. These changed-owner checks cannot grant the
+remaining provisional SQLite allowance.
+
+Separately reported unchanged configuration ownership includes the raw loaded configuration and the baseline's normalized ACL/registry storage: parsed global/per-peer IP ACLs, allowed-call normalization/map, credentials and endpoint formatting. V11 removes disabled-row-dependent
+active registry capacity; newly copied normalized configuration is charged above. Source comparison against the pre-change baseline established that these owners were not introduced by this work. Newly introduced publication keys, wire clones and remote numeric metadata remain charged above.
 
 Enabled SQLite topology persistence is not yet proved inside the remaining allowance. Two serial worker paths can own two DB transactions. Each Exec binds only one row; bindings/statements are released before the next. However the default approximately 2 MiB page-cache target is soft, existing file headers can alter it, and transaction/WAL/native allocator backing is not covered by snapshot reservations. On Windows, modernc uses 64 KiB VirtualAlloc granularity outside Go MemStats. Global hard-heap limits would affect all application SQLite users. No setting, accepted-file policy or exclusion was silently introduced. Default configuration disables this optional store; that does not prove its enabled case.
 
+The isolated [v9 persistence experiment](pc92-persistence-feasibility-v9.md)
+rejected its proposed driver candidate at the early allocation/WAL gates.
+Its provisional 10 MiB allowance is not proven production headroom, and the
+production modernc driver remains unchanged. Enabled persistence and the
+remaining metadata inventory still block the complete aggregate claim.
+
 ## Q4 execution and evidence
+
+Current v11 results are in the [implementation record](pc92-v11-closeout.md).
+The original v11 B diagnostic exposed cross-socket ordering in the pressure
+fixture: small refill records could fill count slots before the intended large
+frames. Correcting fixture admission order preserves the required byte/count
+populations and original write deadlines. It does not close the aggregate proof.
+The corrected A/B diagnostics passed their measurement and provenance checks;
+the implementation record preserves their populations and diagnostic limits.
+The earlier preflights described below are historical evidence.
 
 The script records source hashes, runtime/hardware settings and JSON observations. Full A/B require 30 minutes after setup and at least three real-expiry cache fill/release/refill windows, alongside queue/active-write/reader/candidate pressure. Authentication, duplicate ownership and handshake/write deadlines remain active. The narrow writer latch pauses an already dequeued write; it changes no admission/count/deadline and ends on cancellation or the original deadline.
 

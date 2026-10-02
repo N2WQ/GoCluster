@@ -72,16 +72,9 @@ func TestPayloadFieldsStripsTrailingHopSuffixRun(t *testing.T) {
 	}
 }
 
-func TestParseFrameMalformedTrailingHopLikeTokensAreStripped(t *testing.T) {
-	frame, err := ParseFrame("PC92^NODE^123^A^^9CALL:ver^H99^H9x^")
-	if err != nil {
-		t.Fatalf("ParseFrame: %v", err)
-	}
-	if frame.Hop != 99 {
-		t.Fatalf("expected hop from rightmost numeric token, got %d", frame.Hop)
-	}
-	if got, want := len(frame.Fields), 5; got != want {
-		t.Fatalf("expected %d payload fields, got %d (%v)", want, got, frame.Fields)
+func TestParseFrameMalformedTerminalHopCannotBacktrack(t *testing.T) {
+	if _, err := ParseFrame("PC92^N1NODE^123^A^^1K1ABC^H99^H9x^"); err == nil {
+		t.Fatal("malformed terminal hop recovered earlier authority")
 	}
 }
 

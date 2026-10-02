@@ -26,14 +26,14 @@ func TestTopologyProjectionAtomicReplacementAndFailure(t *testing.T) {
 		t.Fatal("fixture failed to trigger transaction rollback")
 	}
 	var count int
-	if err = store.db.QueryRowContext(t.Context(), `select count(*) from peer_pc92_edges`).Scan(&count); err != nil || count != 1 {
+	if err = store.db.QueryRowContext(t.Context(), `select count(*) from peer_pc92_typed_edges`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("rollback count=%d err=%v", count, err)
 	}
 	snapshot.edges = nil
 	if err = store.replaceProjection(context.Background(), snapshot); err != nil {
 		t.Fatal(err)
 	}
-	if err = store.db.QueryRowContext(t.Context(), `select count(*) from peer_pc92_edges`).Scan(&count); err != nil || count != 0 {
+	if err = store.db.QueryRowContext(t.Context(), `select count(*) from peer_pc92_typed_edges`).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("empty replacement count=%d err=%v", count, err)
 	}
 }

@@ -11,11 +11,16 @@ failure and resource contract against a pinned DXSpider implementation. A shared
 payload cache could let spot forwarding consume topology/message headroom.
 Session-owned sequencing, incomplete publication and unbounded retained backing
 could undermine interoperability even when individual records parsed correctly.
-The user approved D1-D8/S01-S14 and the v5-v7 capacity/qualification amendments.
+The user approved D1-D8/S01-S14, the v5-v7 capacity/qualification amendments,
+and the v8 behavior-preserving shared-parser amendment.
 Accepted design authority does not assert that implementation qualification has
 finished; current evidence remains in the linked qualification record.
 
 ## Decision
+
+V11 refinements are recorded in [ADR-0231](ADR-0231-pc92-audit-corrections.md).
+They preserve this authority/resource contract while correcting wire identity,
+typed membership, scheduling, deadline ownership and qualification evidence.
 
 - Support PC92 A/C/D/K against DXSpider revision
   `3e9b3621d94dd45c68702e4a0f896aac33f2a91d`. Drop unsupported actions without
@@ -85,6 +90,12 @@ disconnect PC9x links. Optional database diagnostics may lag or remain stale.
 Maximum workload and whole-allocation claims require the pending qualification;
 source inspection and short tests cannot replace it.
 
+Enabled SQLite persistence still needs a complete owned-allocation proof.
+The approved isolated v9 feasibility experiment rejected its proposed driver
+candidate under the permitted repair boundary. Production modernc SQLite and
+this diagnostic-projection decision remain unchanged; v9 does not establish
+the 480 MiB aggregate bound.
+
 ### Operational impact
 
 Operators should inspect the specific capacity/clock/projection diagnostic and
@@ -98,7 +109,10 @@ SQLite contents never make a restarted node's routing knowledge authoritative.
 - Related tests: `peer/pc92_*test.go`, `peer/pc18_identity_test.go`,
   `peer/session_lifecycle_test.go`, `telnet/peer_membership_test.go`, runtime qualification.
 - Related docs: [approved v6](../pc18-pc92-scope-ledger-v6.md),
-  [approved v7](../pc18-pc92-scope-ledger-v7.md), [qualification](../pc92-qualification.md),
+  [approved v7](../pc18-pc92-scope-ledger-v7.md),
+  [approved v8](../pc18-pc92-scope-ledger-v8.md),
+  [v9 persistence evidence](../pc92-persistence-feasibility-v9.md),
+  [qualification](../pc92-qualification.md),
   [operator behavior](../../peer/README.md).
 - Related TSRs: [TSR-0035](../troubleshooting/TSR-0035-pc92-qualification-accounting.md).
 - Supersedes / superseded by: Refines ADR-0050's PC92 application ordering and

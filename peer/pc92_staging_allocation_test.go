@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -106,7 +107,12 @@ func TestPC92StagingReservationFollowsActiveEstablishmentDrain(t *testing.T) {
 	done := make(chan struct{})
 	var establishmentErr error
 	go func() {
-		establishmentErr = p.request(protocolRequest{kind: "establish", source: source})
+		reply := make(chan error, 1)
+		establishmentErr = p.request(protocolRequest{kind: "establish", source: source, done: reply})
+		if errors.Is(establishmentErr, errReplayPending) {
+			p.serviceReplay()
+			establishmentErr = <-reply
+		}
 		close(done)
 	}()
 	defer func() {

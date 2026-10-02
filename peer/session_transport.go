@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"context"
 	"errors"
 	"log"
 	"strings"
@@ -284,10 +285,18 @@ func (s *session) sendControlLine(line string) error {
 // competing outbound candidate. Logical queue bytes/counts remain unchanged.
 // Untrusted protocol frames always enter through the cloning sendControlLine.
 func (s *session) sendInitialPassword() error {
-	return s.enqueueControlLine(s.password, false)
+	return s.enqueueControlLineBefore(s.password, false, s.phaseDeadline)
+}
+
+func (s *session) sendHandshakeLine(line string) error {
+	return s.enqueueControlLineBefore(line, true, s.phaseDeadline)
 }
 
 func (s *session) enqueueControlLine(line string, clone bool) error {
+	return s.enqueueControlLineBefore(line, clone, time.Time{})
+}
+
+func (s *session) enqueueControlLineBefore(line string, clone bool, deadline time.Time) error {
 	if s == nil || s.ctx == nil {
 		return errSessionContextUnset
 	}
@@ -296,6 +305,10 @@ func (s *session) enqueueControlLine(line string, clone bool) error {
 		return errSessionPriorityQueueFull
 	}
 	s.queueMu.Lock()
+	if !deadline.IsZero() && !time.Now().Before(deadline) {
+		s.queueMu.Unlock()
+		return context.DeadlineExceeded
+	}
 	if err := s.ctx.Err(); err != nil {
 		s.queueMu.Unlock()
 		return err
@@ -305,6 +318,10 @@ func (s *session) enqueueControlLine(line string, clone bool) error {
 	if charge <= peerQueueBytes-s.controlBytes && s.controlCount < defaultPriorityQueue {
 		if clone {
 			line = strings.Clone(line)
+		}
+		if !deadline.IsZero() && !time.Now().Before(deadline) {
+			s.queueMu.Unlock()
+			return context.DeadlineExceeded
 		}
 		select {
 		case s.priorityLineCh <- line:

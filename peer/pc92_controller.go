@@ -2,10 +2,8 @@ package peer
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
-	"net/netip"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -30,6 +28,8 @@ type candidateState struct {
 	bytes        int
 	pc9x         bool
 	initialASent bool // the timestamp retry resumes K without duplicating startup A
+	replayAt     int
+	replayDone   chan error
 }
 type protocolInput struct {
 	wire   string
@@ -43,10 +43,12 @@ type protocolRequest struct {
 	source        *session
 	done          chan error
 	qualification *protocolQualificationRequest
+	deadline      time.Time
+	attempt       *establishmentAttempt
 }
 type recoveryState struct {
 	phase    int
-	revision uint64
+	metadata string // immutable encoded A baseline; at most64 bounded wires
 }
 type protocolController struct {
 	qualification           protocolQualificationState
@@ -61,7 +63,6 @@ type protocolController struct {
 	blockedRecords          *boundedIndex[string, string]
 	blockedInput            *boundedIndex[string, bool]
 	current                 *boundedIndex[string, PC92Entry]
-	revision                uint64
 	wallNow                 func() time.Time
 	elapsedNow              func() time.Time
 	manager                 *Manager
@@ -71,6 +72,7 @@ type protocolController struct {
 	queueMu                 sync.Mutex
 	queued                  [2]int
 	bytes                   [2]int
+	inputPC93Refused        uint64 // cumulative mailbox refusals; queueMu owns it
 	graph                   *protocolGraph
 	pc92, pc93              *dedupeCache
 	timestamps              *TimestampGenerator
@@ -80,11 +82,13 @@ type protocolController struct {
 	dirty                   bool
 	clockGate, capacityGate bool
 	unsafeSince, safeSince  time.Time
-	lastPublish             time.Time
 	lastProjection          time.Time
 	blocked                 *boundedIndex[string, time.Time]
 	diagnosticAt            *boundedIndex[string, time.Time]
 	projection              chan graphProjection
+	replays                 *boundedIndex[*session, *candidateState]
+	replayOrder             [64]*session
+	replayCursor            int
 }
 
 func newProtocolController(m *Manager) *protocolController {
@@ -95,7 +99,8 @@ func newProtocolController(m *Manager) *protocolController {
 	return &protocolController{manager: m, blockedRecords: newFixedIndex[string, string](64), blockedInput: newFixedIndex[string, bool](64), wallNow: time.Now, elapsedNow: time.Now, input: make(chan protocolInput, 256), lifecycle: make(chan protocolRequest, 128), wake: make(chan struct{}, 1),
 		graph: newProtocolGraph(time.Now()), pc92: newBoundedDedupe(600*time.Second, 65536, 8<<20), pc93: newBoundedDedupe(600*time.Second, 65536, 8<<20),
 		timestamps: NewTimestampGenerator(), published: newFixedIndex[string, PC92Entry](1064), recovering: newFixedIndex[*session, recoveryState](64), pendingK: newFixedIndex[*session, bool](64), blocked: newFixedIndex[string, time.Time](64),
-		diagnosticAt: newFixedIndex[string, time.Time](18), projection: make(chan graphProjection, 1), dirty: true}
+		diagnosticAt: newFixedIndex[string, time.Time](19), projection: make(chan graphProjection, 1), dirty: true,
+		replays: newFixedIndex[*session, *candidateState](64)}
 }
 func (m *Manager) SetMembershipProvider(fn func() LocalMembership) {
 	m.mu.Lock()
@@ -140,54 +145,6 @@ func (m *Manager) membership() LocalMembership {
 	}
 	return fn()
 }
-func (m *Manager) protocolCall(kind string, s *session) error {
-	if m.protocol == nil || m.ctx == nil {
-		return fmt.Errorf("peer controller not started")
-	}
-	req := protocolRequest{kind: kind, source: s, done: make(chan error, 1)}
-	ctx := m.ctx
-	if s != nil && s.ctx != nil && kind != "closed" {
-		ctx = s.ctx
-	}
-	select {
-	case m.protocol.lifecycle <- req:
-	case <-m.ctx.Done():
-		return m.ctx.Err()
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-	select {
-	case err := <-req.done:
-		return err
-	case <-m.ctx.Done():
-		return m.ctx.Err()
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-func (m *Manager) publishInitial(s *session) error {
-	deadline := time.NewTimer(5 * time.Second)
-	defer deadline.Stop()
-	for {
-		err := m.protocolCall("initial", s)
-		if !errors.Is(err, ErrTimestampRate) {
-			return err
-		}
-		timer := time.NewTimer(10 * time.Millisecond)
-		select {
-		case <-timer.C:
-		case <-deadline.C:
-			timer.Stop()
-			return fmt.Errorf("PC92 timestamp progress timeout")
-		case <-s.ctx.Done():
-			timer.Stop()
-			return s.ctx.Err()
-		}
-	}
-}
-func (m *Manager) publishPeriodic(s *session, action string) error { return m.protocolCall(action, s) }
-func (m *Manager) establishSession(s *session) error               { return m.protocolCall("establish", s) }
-
 func (m *Manager) trackCandidate(s *session) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -207,6 +164,12 @@ func (m *Manager) trackCandidate(s *session) error {
 	return nil
 }
 func (m *Manager) releaseCandidate(s *session) {
+	m.mu.RLock()
+	ready := s.replayReady
+	m.mu.RUnlock()
+	if ready != nil {
+		<-ready // controller has retired the batch before transport permit release
+	}
 	m.mu.Lock()
 	if c := m.candidates.Value(s); c != nil {
 		m.releaseStagedLocked(c)
@@ -293,6 +256,9 @@ func (p *protocolController) enqueue(f *Frame, s *session, now time.Time) bool {
 	p.queueMu.Lock()
 	defer p.queueMu.Unlock()
 	if p.queued[class] >= maxCount || p.bytes[class]+charge > maxBytes {
+		if class == 1 {
+			p.inputPC93Refused++
+		}
 		return false
 	}
 	p.queued[class]++
@@ -300,57 +266,19 @@ func (p *protocolController) enqueue(f *Frame, s *session, now time.Time) bool {
 	p.input <- protocolInput{strings.Clone(wire), s, now, class, charge}
 	return true
 }
-func (p *protocolController) run(ctx context.Context) {
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	maintenance := time.NewTicker(time.Second)
-	defer maintenance.Stop()
-	for {
-		// Lifecycle requests and membership wakeups cannot be displaced by received
-		// record capacity. All state transitions still run on this sole owner.
-		select {
-		case req := <-p.lifecycle:
-			req.done <- p.request(req)
-			continue
-		default:
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case req := <-p.lifecycle:
-			req.done <- p.request(req)
-		case <-p.wake:
-			p.drainFailures()
-			p.dirty = true
-		case work := <-p.input:
-			p.queueMu.Lock()
-			p.queued[work.class]--
-			p.bytes[work.class] -= work.charge
-			p.queueMu.Unlock()
-			f, err := ParseFrame(work.wire)
-			if err == nil {
-				p.receive(f, work.source, work.at)
-			}
-		case now := <-ticker.C:
-			p.tick(now)
-		case now := <-maintenance.C:
-			p.pc92.prune(now)
-			p.pc93.prune(now)
-			p.manager.dedupe.prune(now)
-			p.manager.bulletinDedupe.prune(now)
-			wall := p.wallNow().UTC()
-			clockSafe := !p.clockGate && wall.After(p.lastExpiryWall) && p.timestamps.ClockSafe(wall) == nil
-			if wall.After(p.lastExpiryWall) {
-				p.lastExpiryWall = wall
-			}
-			p.graph.expire(p.qualificationAuthorityTime(now), clockSafe, p.directNodes())
-			p.project(now)
-			p.sampleStats()
-		}
-	}
-}
 func (p *protocolController) request(req protocolRequest) error {
 	s := req.source
+	if req.kind == "initial" || req.kind == "establish" {
+		if !req.deadline.IsZero() && !time.Now().Before(req.deadline) {
+			return context.DeadlineExceeded
+		}
+		if s == nil {
+			return fmt.Errorf("missing handshake session")
+		}
+		if s.ctx != nil && s.ctx.Err() != nil {
+			return s.ctx.Err()
+		}
+	}
 	switch req.kind {
 	case "qualification":
 		return p.handleQualificationRequest(req.qualification)
@@ -370,12 +298,15 @@ func (p *protocolController) request(req protocolRequest) error {
 		if candidate == nil {
 			return fmt.Errorf("unowned handshake")
 		}
+		if err := p.nonMembershipCapacity(1); err != nil {
+			return err
+		}
 		remote := p.remoteEntry(s)
 		if remote.Call == "" || !s.remotePublicationMetadataOK() {
 			return fmt.Errorf("remote peer identity unavailable")
 		}
 		if !candidate.initialASent {
-			if err := p.sendRecord([]*session{s}, "A", []PC92Entry{remote}, false); err != nil {
+			if err := p.sendRecordBefore([]*session{s}, "A", []PC92Entry{remote}, req.deadline); err != nil {
 				return err
 			}
 			if s.ctx != nil && s.ctx.Err() != nil {
@@ -383,43 +314,26 @@ func (p *protocolController) request(req protocolRequest) error {
 			}
 			candidate.initialASent = true
 		}
-		return p.sendRecord([]*session{s}, "K", nil, false)
+		if err := p.nonMembershipCapacity(1); err != nil {
+			return err
+		}
+		return p.sendRecordBefore([]*session{s}, "K", nil, req.deadline)
 	case "establish":
 		if s.pc9x && (p.clockGate || p.capacityGate || p.manager.outboundGated(s.peer)) {
 			return fmt.Errorf("PC9x establishment gated")
 		}
-		if err := p.manager.registerSession(s); err != nil {
+		p.manager.mu.RLock()
+		candidate := p.manager.candidates.Value(s)
+		p.manager.mu.RUnlock()
+		if candidate == nil {
+			return fmt.Errorf("unowned handshake")
+		}
+		if err := p.manager.registerSessionAttempt(s, req.attempt, req.done); err != nil {
 			return err
 		}
-		p.manager.mu.Lock()
-		c := p.manager.candidates.Value(s)
-		var staged []string
-		if c != nil {
-			staged = c.staged
-			p.manager.candidates.Delete(s)
-			if s.pendingReserved {
-				<-p.manager.pendingSlots
-				s.pendingReserved = false
-			}
-		}
-		p.manager.mu.Unlock()
-		defer p.manager.releaseStaged(c)
-		for _, wire := range staged {
-			f, err := ParseFrame(wire)
-			if err == nil {
-				p.receive(f, s, time.Now())
-			}
-			if s.ctx != nil && s.ctx.Err() != nil {
-				return s.ctx.Err()
-			}
-		}
-		if s.pc9x {
-			p.recovering.Set(s, recoveryState{})
-		}
-		p.dirty = true
-		p.tick(time.Now())
-		return nil
+		return p.beginReplay(s, req)
 	case "closed":
+		p.finishReplay(s, context.Canceled)
 		p.manager.mu.Lock()
 		owned := p.manager.sessions.Value(s.id) == s
 		if owned {
@@ -446,7 +360,6 @@ func (p *protocolController) request(req protocolRequest) error {
 			return nil
 		}
 		p.pendingK.Set(s, true)
-		p.tick(p.elapsedNow())
 		return nil
 	case "withdraw":
 		p.quiescing = true
@@ -485,169 +398,4 @@ func (p *protocolController) diagnostic(reason string) {
 	// Reasons are fixed literals at call sites; this is bounded by their finite set.
 	p.diagnosticAt.Set(reason, now)
 	log.Printf("Peering: %s (nodes=%d users=%d edges=%d ingress=%d freshness=%d)", reason, p.graph.nodes.Len(), p.graph.users.Len(), p.graph.edges, p.graph.ingress.Len(), p.graph.freshness.Len())
-}
-func (p *protocolController) failAdmission(s *session, f *Frame, reason string) {
-	p.diagnostic(reason)
-	if s == nil {
-		return
-	}
-	p.graph.loseIngress(s.remoteCall)
-	p.blocked.Set(s.remoteCall, time.Time{})
-	p.blockedRecords.Set(s.remoteCall, strings.Clone(f.Encode(f.Hop)))
-	p.blockedInput.Delete(s.remoteCall)
-	p.manager.mu.Lock()
-	p.manager.blockedPeers.Set(s.remoteCall, true)
-	p.manager.mu.Unlock()
-	s.close()
-}
-func (p *protocolController) receive(f *Frame, s *session, now time.Time) {
-	if s == nil || !s.pc9x || f.Hop == 0 || (s.ctx != nil && s.ctx.Err() != nil) {
-		return
-	}
-	m := p.manager
-	m.mu.RLock()
-	current := m.sessions.Value(s.id) == s
-	m.mu.RUnlock()
-	if !current {
-		return
-	}
-	if f.Type == "PC93" {
-		p.receiveMessage(f, now)
-		return
-	}
-	r, err := DecodePC92(f)
-	if err != nil || r.Origin == m.localCall {
-		return
-	}
-	old, exists := p.graph.freshness.Get(r.Origin)
-	authorityTime := p.qualificationAuthorityTime(now)
-	key := pc92Key(f)
-	if !freshTime(r.TimestampValue, authorityTime, old, exists) {
-		if p.pc92.contains(key, now) && p.graph.nodes.Value(r.Origin) != nil {
-			if _, known := p.graph.ingress.Get(ingressKey{r.Origin, s.remoteCall}); !known &&
-				(!p.graph.canObserve(r.Origin, s.remoteCall) || p.graph.retainedCharge()+160+ingressEntryBytes(r.Origin, s.remoteCall) > 96<<20) {
-				p.failAdmission(s, f, "PC92 alternate ingress capacity exhausted")
-				return
-			}
-			p.graph.observe(r.Origin, s.remoteCall, f.Hop, old.Accepted, true)
-		}
-		return
-	}
-	external := r.Subject.Call != r.Origin && r.Subject.IsExternal()
-	if external {
-		sw, known := p.graph.freshness.Get(r.Subject.Call)
-		if !freshTime(r.TimestampValue, authorityTime, sw, known) {
-			return
-		}
-	}
-	plan, err := p.graph.prepare(r, m.localCall, s.remoteCall, p.directNodes())
-	if err != nil {
-		p.failAdmission(s, f, "PC92 graph admission refused")
-		return
-	}
-	if plan == nil {
-		return
-	}
-	freshSlots := 0
-	if _, ok := p.graph.freshness.Get(r.Origin); !ok {
-		freshSlots++
-	}
-	if external {
-		if _, ok := p.graph.freshness.Get(r.Subject.Call); !ok {
-			freshSlots++
-		}
-	}
-	extraBytes := freshSlots * 196
-	origins := []string{r.Origin}
-	if external {
-		origins = append(origins, r.Subject.Call)
-	}
-	neededIngress := 0
-	for _, origin := range origins {
-		if _, ok := p.graph.ingress.Get(ingressKey{origin, s.remoteCall}); !ok {
-			neededIngress++
-			extraBytes += 160 + ingressEntryBytes(origin, s.remoteCall)
-		}
-	}
-	if p.graph.freshness.Len()+freshSlots > maxFreshnessOrigins || p.graph.ingress.Len()+neededIngress > maxIngressObservations {
-		p.failAdmission(s, f, "PC92 authority capacity exhausted")
-		return
-	}
-	if p.graph.projectedCharge(plan)+extraBytes > 96<<20 {
-		p.failAdmission(s, f, "PC92 retained-byte capacity exhausted")
-		return
-	}
-	result := p.pc92.admit(key, now)
-	if result == dedupeFull {
-		p.failAdmission(s, f, "PC92 payload cache exhausted")
-		return
-	}
-	if result == dedupeDuplicate {
-		return
-	}
-	p.graph.commit(plan, authorityTime)
-	p.graph.commitWatermark(r.Origin, r.TimestampValue, authorityTime, false)
-	if external {
-		p.graph.commitWatermark(r.Subject.Call, r.TimestampValue, authorityTime, false)
-		p.graph.observe(r.Subject.Call, s.remoteCall, f.Hop, authorityTime, false)
-	}
-	p.graph.observe(r.Origin, s.remoteCall, f.Hop, authorityTime, false)
-	if f.Hop > 1 {
-		m.forwardFrame(f, f.Hop-1, s, true)
-	}
-}
-func (p *protocolController) receiveMessage(f *Frame, now time.Time) {
-	msg, ok := parsePC93(f)
-	if !ok || msg.NodeCall == p.manager.localCall {
-		return
-	}
-	origin, ok := CanonicalPC92Call(msg.NodeCall)
-	if !ok || origin == p.manager.localCall {
-		return
-	}
-	value, ok := parseWireTimestamp(msg.Timestamp)
-	if !ok {
-		return
-	}
-	old, exists := p.graph.freshness.Get(origin)
-	authorityTime := p.qualificationAuthorityTime(now)
-	if !freshTime(value, authorityTime, old, exists) || !p.graph.canWatermark(origin, true) {
-		return
-	}
-	if !exists && p.graph.retainedCharge()+196 > 96<<20 {
-		p.diagnostic("PC93 freshness byte capacity exhausted")
-		return
-	}
-	result := p.pc93.admit(pc93Key(f), now)
-	if result == dedupeFull {
-		p.diagnostic("PC93 payload cache exhausted")
-		return
-	}
-	if result != dedupeAccepted {
-		return
-	}
-	p.graph.commitWatermark(origin, value, authorityTime, true)
-	p.manager.routePC93(msg)
-}
-func parseWireTimestamp(s string) (float64, bool) {
-	v, err := ParsePC9xTimestamp(s)
-	return v, err == nil
-}
-func (p *protocolController) remoteEntry(s *session) PC92Entry {
-	call, ok := CanonicalPC92Call(s.remoteCall)
-	if !ok || len(call) > 15 {
-		return PC92Entry{}
-	}
-	flags := uint8(5)
-	if !s.pc9x {
-		flags = 7
-	}
-	e := PC92Entry{Call: call, Flags: flags, Version: s.remoteVersion, Build: s.remoteBuild}
-	if s.conn != nil {
-		ip := remoteAddrIP(s.conn.RemoteAddr())
-		if a, ok := netip.AddrFromSlice(ip); ok {
-			e.IP = a.Unmap()
-		}
-	}
-	return e
 }

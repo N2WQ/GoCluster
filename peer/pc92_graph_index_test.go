@@ -16,7 +16,7 @@ func TestPC92GraphIndexAllocationEnvelopes(t *testing.T) {
 		name                                     string
 		limit, coefficient, entryBytes, keyBytes int
 	}{
-		{"members", maxGraphEdges, 256, pointerAllocationBytes(int(unsafe.Sizeof(boundedEntry[string, PC92Entry]{}))), 0},
+		{"members", maxGraphEdges, 256, pointerAllocationBytes(int(unsafe.Sizeof(boundedEntry[memberKey, PC92Entry]{}))), 0},
 		{"users", maxGraphUsers, 132, pointerAllocationBytes(int(unsafe.Sizeof(boundedEntry[string, int]{}))), 48},
 		{"ingress", maxIngressObservations, 160, pointerAllocationBytes(int(unsafe.Sizeof(boundedEntry[ingressKey, ingressObservation]{}))), 0},
 		{"freshness", maxFreshnessOrigins, 196, pointerAllocationBytes(int(unsafe.Sizeof(boundedEntry[string, originWatermark]{}))), 48},
@@ -43,10 +43,30 @@ func TestPC92GraphIndexAllocationEnvelopes(t *testing.T) {
 	// root index entry, root key and bucket allowance. Empty nodes retain no
 	// member buckets, but these headers remain explicitly covered.
 	node := pointerAllocationBytes(int(unsafe.Sizeof(graphNode{}))) +
-		pointerAllocationBytes(int(unsafe.Sizeof(boundedIndex[string, PC92Entry]{}))) +
+		pointerAllocationBytes(int(unsafe.Sizeof(boundedIndex[memberKey, PC92Entry]{}))) +
 		pointerAllocationBytes(int(unsafe.Sizeof(boundedEntry[string, *graphNode]{}))) + 48 + 32
 	if node > 512 {
 		t.Fatalf("node's complete fixed ownership%d exceeds512", node)
+	}
+}
+
+func TestPC92GraphTypedScratchEnvelope(t *testing.T) {
+	// Deliberately combine independent maxima rather than assuming one input
+	// can attain all of them. C owns no population-sized removal array; D scans
+	// desired keys directly. Existing graph generations are charged separately.
+	const members = 8191
+	entry := pointerAllocationBytes(int(unsafe.Sizeof(boundedEntry[memberKey, plannedMember]{})))
+	desired := members*entry + pointerAllocationBytes(8192*8) + pointerAllocationBytes(4096*8)
+	nodes := 4096*pointerAllocationBytes(int(unsafe.Sizeof(boundedEntry[string, PC92Entry]{}))) + pointerAllocationBytes(4096*8) + pointerAllocationBytes(2048*8)
+	frames := pointerAllocationBytes(8196 * 16)
+	decodedAndAdded := 2 * pointerAllocationBytes(members*int(unsafe.Sizeof(PC92Entry{})))
+	// The prior normalization proof bounds at most24577 strings partitioning
+	// 64KiB input at253959 rounded bytes.16KiB covers fixed headers/direct index.
+	const stringsAndFixed = 253959 + (16 << 10) + (64 << 10)
+	total := desired + nodes + frames + decodedAndAdded + stringsAndFixed
+	t.Logf("typed planned entry=%d desired=%d nodes=%d frame=%d arrays=%d other=%d total=%d", entry, desired, nodes, frames, decodedAndAdded, stringsAndFixed, total)
+	if total > graphMutationScratchBytes {
+		t.Fatalf("scratch envelope%d exceeds%d", total, graphMutationScratchBytes)
 	}
 }
 
@@ -109,7 +129,7 @@ func TestPC92GraphConstantOccupancyChurnHasFixedIndexBacking(t *testing.T) {
 	}
 }
 
-func TestPC92GraphRemovalPlanRetainsOldCallsThroughReplacement(t *testing.T) {
+func TestPC92GraphReplacementReleasesRemovedMetadataBeforeAdding(t *testing.T) {
 	now := time.Now()
 	graph := newProtocolGraph(now)
 	applyGraphRecord(t, graph, "PC92^N2AAA^43200^C^5N2AAA^1K1OLD^H1^", now)
@@ -118,8 +138,8 @@ func TestPC92GraphRemovalPlanRetainsOldCallsThroughReplacement(t *testing.T) {
 		t.Fatal(err)
 	}
 	peak, final := graph.metadataMutationCharge(plan)
-	if peak != final+8 {
-		t.Fatalf("transaction omitted the old owned call retained by remove: peak%d final%d", peak, final)
+	if peak != final {
+		t.Fatalf("two-pass replacement unexpectedly retained removed calls: peak%d final%d", peak, final)
 	}
 	graph.commit(plan, now)
 	if graph.users.Value("K1OLD") != 0 || graph.users.Value("K2NEW") != 1 {

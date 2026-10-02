@@ -142,7 +142,7 @@ func readPeerFeed(conn net.Conn, reader *peer.LineReader, writeMu *sync.Mutex, l
 			handlePeerPing(frame, writeMu, conn, localCall)
 			log.Printf("KEEPALIVE RECV %s", frame.Raw)
 		case "PC92":
-			if fields := peer.PayloadFields(frame.Fields); len(fields) >= 3 && strings.EqualFold(strings.TrimSpace(fields[2]), "K") {
+			if fields := frame.Fields; len(fields) >= 3 && strings.EqualFold(strings.TrimSpace(fields[2]), "K") {
 				log.Printf("KEEPALIVE RECV %s", frame.Raw)
 			}
 		case "PC11", "PC61":
@@ -345,7 +345,7 @@ func keepaliveLoop(writeMu *sync.Mutex, conn net.Conn, pc9x bool, cfg probeConfi
 
 // handlePeerPing responds to PC51 ping frames with a PC51 ack, matching the production session logic.
 func handlePeerPing(frame *peer.Frame, writeMu *sync.Mutex, conn net.Conn, localCall string) {
-	fields := peer.PayloadFields(frame.Fields)
+	fields := frame.Fields
 	if len(fields) < 3 {
 		return
 	}

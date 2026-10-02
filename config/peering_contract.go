@@ -3,41 +3,98 @@ package config
 import (
 	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
 )
 
-// The grammar is pinned to DXSpider DXUtil::is_callsign. It deliberately does
-// not reuse spot normalization, which strips portable suffixes and can conflate
-// distinct login identities. Its bounded components cap accepted input at 36
-// bytes; local publication has the separately qualified 15-byte envelope.
+// The two expressions are pinned to DXSpider DXUtil::normalise_call and
+// is_callsign, in that order. Login normalization differs from spot identity:
+// in particular its optional prefix is greedy and its SSID follows the suffix.
 var peerCallPattern = regexp.MustCompile(`^(?:[0-9]?[A-Z]{1,2}[0-9]{0,2}/)?(?:[0-9]?[A-Z]{1,2}[0-9]{1,5})[A-Z]{1,8}(?:-[0-9]{1,2})?(?:/[0-9A-Z]{1,7})?(?:/(?:AM?|MM?|P))?$`)
+var peerNormalizePattern = regexp.MustCompile(`^(?:\w{0,4}/)?(\w+)(?:/\w{0,4})?(?:-(\d+))?$`)
 
-// CanonicalPeeringCall returns the shared PC92/login identity. SSID leading
-// zeros are removed so publication collision handling can refuse ambiguity.
+// CanonicalPeeringCall returns a valid, stable receiver identity. The bounded
+// input protects publication/private lookup from arbitrary local login strings;
+// the separately qualified local publication envelope is 15 canonical bytes.
 func CanonicalPeeringCall(call string) (string, bool) {
-	call = strings.ToUpper(strings.TrimSpace(call))
-	if len(call) > 36 || !peerCallPattern.MatchString(call) {
+	call = strings.TrimSpace(call)
+	if len(call) > 36 {
 		return "", false
 	}
-	if dash := strings.IndexByte(call, '-'); dash >= 0 {
-		end := strings.IndexByte(call[dash+1:], '/')
-		if end < 0 {
-			end = len(call)
-		} else {
-			end += dash + 1
+	call = strings.ToUpper(call)
+	// Canonical wire traffic is already slash-free. Keep the common identity
+	// lookup allocation-free; only portable forms require capture storage.
+	if !strings.ContainsRune(call, '/') && peerCallPattern.MatchString(call) {
+		if base, suffix, found := strings.Cut(call, "-"); found {
+			ssid := strings.TrimLeft(suffix, "0")
+			if ssid == "" {
+				return base, true
+			}
+			if ssid != suffix {
+				return base + "-" + ssid, true
+			}
 		}
-		ssid, err := strconv.Atoi(call[dash+1 : end])
-		if err != nil {
-			return "", false
-		}
-		if ssid == 0 {
-			call = call[:dash] + call[end:]
-		} else {
-			call = call[:dash+1] + strconv.Itoa(ssid) + call[end:]
-		}
+		return call, true
+	}
+	parts := peerNormalizePattern.FindStringSubmatch(call)
+	if len(parts) != 3 {
+		return "", false
+	}
+	call = parts[1]
+	if ssid := strings.TrimLeft(parts[2], "0"); ssid != "" {
+		call += "-" + ssid
+	}
+	if !peerCallPattern.MatchString(call) {
+		return "", false
 	}
 	return call, true
+}
+
+// IsPeeringCallCandidate distinguishes callsign-shaped private destinations
+// from named chat groups. A failed normalization must not broadcast private
+// text. This predicate grants no identity or admission authority.
+func IsPeeringCallCandidate(call string) bool {
+	call = strings.TrimSpace(call)
+	return len(call) <= 36 && peerCallPattern.MatchString(strings.ToUpper(call))
+}
+
+// NormalizeActivePeeringWireContract protects direct manager construction as
+// well as the loader. It owns at most 64 active peers; dormant configuration
+// remains caller-owned. It does not fill defaults: a supplied local argument
+// is authoritative only when the config omits it.
+func NormalizeActivePeeringWireContract(cfg PeeringConfig, localCall string) (PeeringConfig, string, error) {
+	local, ok := CanonicalPeeringCall(localCall)
+	if !ok || len(local) > 15 {
+		return cfg, "", fmt.Errorf("invalid peering manager local callsign")
+	}
+	if cfg.LocalCallsign == "" {
+		cfg.LocalCallsign = local
+	}
+	enabled := cfg.Enabled
+	cfg.Enabled = true
+	count := 0
+	for i := range cfg.Peers {
+		if cfg.Peers[i].Enabled {
+			count++
+		}
+		if count > 64 {
+			return cfg, "", fmt.Errorf("invalid peering.peers: at most 64 enabled peers are supported")
+		}
+	}
+	active := make([]PeeringPeer, 0, count)
+	for i := range cfg.Peers {
+		if cfg.Peers[i].Enabled {
+			active = append(active, cfg.Peers[i])
+		}
+	}
+	cfg.Peers = active
+	if err := validatePeeringWireContract(&cfg); err != nil {
+		return cfg, "", err
+	}
+	cfg.Enabled = enabled
+	if cfg.LocalCallsign != local {
+		return cfg, "", fmt.Errorf("peering manager local callsign must identify peering.local_callsign")
+	}
+	return cfg, local, nil
 }
 
 // validatePeeringWireContract runs after legacy defaults and registry shape
@@ -61,11 +118,14 @@ func validatePeeringWireContract(cfg *PeeringConfig) error {
 			return fmt.Errorf("invalid peering.%s: requires 1 to 10 decimal digits", entry.name)
 		}
 	}
-	if cfg.HopCount > 99 {
-		return fmt.Errorf("invalid peering.hop_count: must be <= 99")
+	if cfg.HopCount < 0 || cfg.HopCount > 99 {
+		return fmt.Errorf("invalid peering.hop_count: must be between 0 and 99")
 	}
-	if cfg.PC92Bitmap < 4 || cfg.PC92Bitmap > 7 {
-		return fmt.Errorf("invalid peering.pc92_bitmap: local node flag must be 4 through 7")
+	if cfg.PC92Bitmap != 4 && cfg.PC92Bitmap != 5 {
+		return fmt.Errorf("invalid peering.pc92_bitmap: local node flag must be 4 or 5")
+	}
+	if cfg.Backoff.BaseMS > 300000 || cfg.Backoff.MaxMS > 300000 {
+		return fmt.Errorf("invalid peering.backoff: positive base_ms and max_ms must not exceed 300000")
 	}
 	if cfg.MaxLineLength > 64<<10 || cfg.PC92MaxBytes > 64<<10 {
 		return fmt.Errorf("invalid peering frame limits: max_line_length and pc92_max_bytes must be <= 65536")

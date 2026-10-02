@@ -65,7 +65,7 @@ If the control lane saturates:
 
 That is preferred over silently drifting until the remote side times out.
 
-WWV/WCY (`PC23`/`PC73`) and announcement (`PC93` to `ALL`/`*`) frames are parsed in the peer layer and then delivered to telnet as bulletins. Peer loop suppression keys use canonical payload fields, not raw hop-bearing wire text, so the same bulletin arriving with different hop values is treated as one peer event before telnet delivery.
+WWV/WCY (`PC23`/`PC73`) and announcement (`PC93` to `ALL`/`*` or a named group) frames are parsed in the peer layer and then delivered to telnet as bulletins. Peer loop suppression keys use canonical payload fields, not raw hop-bearing wire text, so the same bulletin arriving with different hop values is treated as one peer event before telnet delivery.
 
 ## PC18 and PC92 compatibility profile
 
@@ -84,7 +84,9 @@ it does not silently continue with an invented banner.
 
 PC92 membership comes from current telnet sessions. Available user/peer IPs
 are published; there is currently no per-user IP-publication preference.
-Canonical callsign collisions, names outside the publication envelope, and
+Wire identities follow the pinned receiver normalization, including portable
+forms and numeric SSIDs. For example, `K1ABC/P-01` publishes as `K1ABC-1`;
+normalization is not a generic slash removal rule. Canonical callsign collisions, names outside the publication envelope, and
 local/configured-peer name collisions stay local. Private PC93 delivery
 requires exactly one current matching telnet owner. A departed session cannot
 withdraw or receive on behalf of its replacement.
@@ -94,7 +96,18 @@ and shared PC92/PC93 freshness. A valid C replaces the complete subject
 membership; A/D update it; only fresh C/K refresh node liveness. Startup records
 are staged until the authenticated session wins establishment. Losing or failed
 candidates cannot alter global authority. Recovery always publishes complete C
-followed by metadata A, even when periodic C/K are disabled.
+followed by metadata A from the same immutable snapshot, even when periodic
+C/K are disabled. Later membership changes follow the matching A. Each stable
+eligible join, withdrawal or IP change must reach every healthy established
+peer's control queue within **one second**, including during recovery. This is
+queue admission, not confirmation of DXSpider processing. The five-second
+recovery allowance does not extend that one-second deadline.
+
+A node and a user can have the same canonical callsign under one parent. Their
+relationships are distinct; deleting one kind does not remove the other.
+Handshake phase deadlines include waiting for controller admission and startup
+timestamp capacity. The session wins authority once, then its reader remains
+parked until staged replay completes; failed candidates never acquire authority.
 
 ## Bounds and operator recovery
 
@@ -110,6 +123,7 @@ The detailed per-class and allocation limits are in
 | Unsafe or stalled UTC clock | Close/gate PC9x within five seconds; retain freshness and issuance protection | UTC advances beyond retained issuance and remains healthy for one second |
 | Authoritative PC92 admission fails | Close the affected link, mark its knowledge incomplete and gate retry | The resource required by the refused record has headroom for one second |
 | Spot, PC93 or bulletin dedupe pool fills | Refuse new untrackable work in that class; keep links open | Payload TTL expiry frees space; refused work is not replay queued |
+| PC93 input mailbox fills | Refuse that message; increment `PC93InputRefused`, separately from cache `PC93Refused`; keep links open | Mailbox drain frees space; refused messages are not replayed |
 | Control queue overload/age or stalled write | Close the affected transport | Ordinary reconnect/backoff and full membership/metadata recovery |
 
 Gate recovery is observed within the next second. Configured reconnect backoff
@@ -128,7 +142,9 @@ local ingest and the local DX-command exception continue.
 Optional SQLite tables are diagnostic projections, never restored live routing
 authority. Slow or failed storage does not block the protocol owner. Oversized
 diagnostic generations are refused whole; a prior database snapshot can remain
-stale. Check the bounded `Peering:` capacity/clock/projection diagnostic before
+stale. Current edges are in `peer_pc92_typed_edges`, keyed by parent, call and
+kind (`0` user, `1` node). The former `peer_pc92_edges` table is historical and
+must not be combined with current nodes as a current graph. Check the bounded `Peering:` capacity/clock/projection diagnostic before
 assuming a remote failure.
 
 Acceptance evidence and outstanding qualification are tracked in

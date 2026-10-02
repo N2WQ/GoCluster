@@ -145,7 +145,7 @@ func (t *topologyStore) replaceProjection(parent context.Context, snapshot graph
 	if _, err = tx.ExecContext(ctx, `delete from peer_pc92_nodes`); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `delete from peer_pc92_edges`); err != nil {
+	if _, err = tx.ExecContext(ctx, `delete from peer_pc92_typed_edges`); err != nil {
 		return err
 	}
 	for _, n := range snapshot.nodes {
@@ -156,7 +156,7 @@ func (t *topologyStore) replaceProjection(parent context.Context, snapshot graph
 	}
 	for _, edge := range snapshot.edges {
 		e := edge.entry
-		if _, err = tx.ExecContext(ctx, `insert into peer_pc92_edges(parent,call,bitmap,version,build,ip,updated_at) values(?,?,?,?,?,?,?)`, edge.parent, e.Call, e.Flags, e.Version, e.Build, entryIP(e), snapshot.at.Unix()); err != nil {
+		if _, err = tx.ExecContext(ctx, `insert into peer_pc92_typed_edges(parent,call,kind,bitmap,version,build,ip,updated_at) values(?,?,?,?,?,?,?,?)`, edge.parent, e.Call, e.IsNode(), e.Flags, e.Version, e.Build, entryIP(e), snapshot.at.Unix()); err != nil {
 			return err
 		}
 	}
@@ -171,12 +171,25 @@ func entryIP(e PC92Entry) string {
 func ensurePC92ProjectionSchema(t *topologyStore) error {
 	ctx, cancel := newTopologyDBContext(context.Background())
 	defer cancel()
-	_, err := t.db.ExecContext(ctx, `create table if not exists peer_pc92_nodes (
- call text primary key,bitmap integer,version text,build text,ip text,complete integer,updated_at integer);
- create table if not exists peer_pc92_edges (
- parent text,call text,bitmap integer,version text,build text,ip text,updated_at integer,primary key(parent,call));`)
+	tx, err := t.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("PC92 projection schema: %w", err)
+	}
+	defer rollbackTopology(tx)
+	// The old call-only table remains historical for rollback diagnostics.
+	// Current nodes and typed edges are replaced together by replaceProjection;
+	// old edges must not be joined to current nodes as a current generation.
+	_, err = tx.ExecContext(ctx, `create table if not exists peer_pc92_nodes (
+ call text primary key,bitmap integer,version text,build text,ip text,complete integer,updated_at integer);
+ create table if not exists peer_pc92_edges (
+ parent text,call text,bitmap integer,version text,build text,ip text,updated_at integer,primary key(parent,call));
+ create table if not exists peer_pc92_typed_edges (
+ parent text not null,call text not null,kind integer not null check(kind in (0,1)),bitmap integer,version text,build text,ip text,updated_at integer,primary key(parent,call,kind));`)
+	if err != nil {
+		return fmt.Errorf("PC92 projection schema: %w", err)
+	}
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("PC92 projection schema commit: %w", err)
 	}
 	return nil
 }

@@ -152,7 +152,7 @@ func TestPC92RuntimeQualification(t *testing.T) {
 		oracle.fail("child shutdown: %v", service.closeErr)
 	}
 	results := oracle.results(!profile.shipped)
-	if finalState.SpotRefused+finalState.PC92Refused+finalState.PC93Refused+finalState.BulletinRefused != 0 {
+	if finalState.SpotRefused+finalState.PC92Refused+finalState.PC93Refused+finalState.PC93InputRefused+finalState.BulletinRefused != 0 {
 		oracle.fail("required traffic encountered cache refusal")
 	}
 	if finalState.ClockGated || finalState.PublicationGated || finalState.BlockedPeers != 0 {
@@ -160,7 +160,7 @@ func TestPC92RuntimeQualification(t *testing.T) {
 	}
 	runtime.ReadMemStats(&after)
 	report := qualificationRuntimeReport{
-		Profile: name, Diagnostic: profile.diagnostic, Qualified: !profile.diagnostic && oracle.failures.Load() == 0,
+		Profile: name, RunID: os.Getenv("GOCLUSTER_PC92_RUN_ID"), Diagnostic: profile.diagnostic, MeasurementPassed: oracle.failures.Load() == 0,
 		LoadSeconds: profile.load.Seconds(), DrainSeconds: profile.drain.Seconds(),
 		Failures: oracle.failures.Load(), FailureExamples: oracle.examples, Recipients: results,
 		NewSpotKeys: driver.newSpots, DuplicateArrivals: driver.duplicates, PC92Records: driver.pc92Count, PC93Records: driver.pc93Count, WWVRecords: driver.wwvCount,
@@ -335,8 +335,8 @@ func qualificationWaitContext(ctx context.Context, wait time.Duration) error {
 }
 
 type qualificationRuntimeReport struct {
-	Profile                                                              string
-	Diagnostic, Qualified                                                bool
+	Profile, RunID                                                       string
+	Diagnostic, MeasurementPassed                                        bool
 	LoadSeconds, DrainSeconds                                            float64
 	Failures                                                             uint64
 	FailureExamples                                                      []string

@@ -11,6 +11,9 @@ import (
 type protocolQualificationState struct{}
 type protocolQualificationRequest struct{}
 
+func (p *protocolController) authorityWallNow() time.Time                                        { return p.wallNow() }
+func (*protocolController) qualificationPublicationAdmitted(*session, string, string, time.Time) {}
+
 func (p *protocolController) qualificationAuthorityTime(now time.Time) time.Time {
 	// Keep the zero-sized tag-selected field/type visible to normal-build static
 	// analysis; production has no mutable qualification state or clock offset.

@@ -139,7 +139,7 @@ func newInboundHarnessManager(t *testing.T, scenario inboundScenario) (*Manager,
 	ingest := make(chan *spot.Spot, 8)
 	cfg := config.PeeringConfig{
 		NodeVersion:    "5457",
-		LegacyVersion:  "1.57",
+		LegacyVersion:  "5457",
 		PC92Bitmap:     5,
 		HopCount:       99,
 		WriteQueueSize: 8,
@@ -160,7 +160,7 @@ func newInboundHarnessManager(t *testing.T, scenario inboundScenario) (*Manager,
 		},
 		Peers: scenario.peers,
 	}
-	manager, err := NewManager(cfg, "N0CALL", ingest, 0, nil)
+	manager, err := NewManager(completeProtocolTestConfig(cfg, "N0CALL"), "N0CALL", ingest, 0, nil)
 	if err != nil {
 		t.Fatalf("%s: NewManager() error: %v", scenario.name, err)
 	}
@@ -203,7 +203,7 @@ func runInboundScenario(t *testing.T, scenario inboundScenario) {
 	settings := sessionSettings{
 		localCall:     "N0CALL",
 		nodeVersion:   "5457",
-		legacyVersion: "1.57",
+		legacyVersion: "5457",
 		pc92Bitmap:    5,
 		nodeCount:     1,
 		userCount:     0,

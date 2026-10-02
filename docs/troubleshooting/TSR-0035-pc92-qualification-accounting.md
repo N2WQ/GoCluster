@@ -6,7 +6,7 @@ Date Resolved: n/a
 Owner: GoCluster maintainers
 Technical Area: peer, telnet, internal/cluster
 Trigger Source: Chat request
-Led To ADR(s): ADR-0230
+Led To ADR(s): ADR-0230, ADR-0231
 Tags: PC92, qualification, allocation, latency
 
 ## RCA Summary
@@ -53,8 +53,75 @@ Tags: PC92, qualification, allocation, latency
 - The PC92 key builder hashes member fields; maximum wire size is not the size retained in its payload key cache. Wire/parse and key-byte budgets need separate evidence.
 - These findings require durable measurement and ownership decisions, documented by ADR-0230, but do not establish completion of Q1-Q6.
 
+## V9 persistence evidence (2026-10-01)
+
+The isolated v9 experiment rejected the pinned ncruces/go-sqlite3 candidate
+under the approved repair boundary. Production modernc SQLite is unchanged.
+The [evidence report](../pc92-persistence-feasibility-v9.md) preserves versions,
+source/binary hashes, commands, controls and the full interpretation limits.
+
+- Eight failed opens left 64 MiB of simultaneous native virtual reservations,
+  including 2.5 MiB committed. Successful open/close freed its complete extent.
+  The observer held scalar extent metadata only; no wrapper references or
+  process-exit cleanup were used to explain retention.
+- Engine allocation exhaustion produced the exact typed OOM panic. Explicit
+  test cleanup released that engine; this is not production panic containment.
+- The existing Windows fallback grew an 8 MiB logical engine to 9,969,664 bytes
+  of backing, with an old/new overlap lower bound of 17,940,480 bytes. This is
+  a backend growth sequence, not a measured SQL projection peak.
+- Selecting that existing fallback also failed the ordinary WAL path with
+  IOERR_SHMMAP. Modernc and candidate-native WAL controls passed. The fault
+  simulated unavailable optional APIs; no older Windows execution is claimed.
+- Correcting allocator/VFS behavior or narrowing supported platforms exceeded
+  v9. The conditional compatibility matrix, 1,000-cycle and 30-minute tests,
+  aggregate host proof and Linux execution were therefore not run.
+
+Durable lesson: logical engine limits do not prove backing or overlapping
+ownership, and successful Close does not prove failed-initialization cleanup.
+Keep experiment rejection distinct from production-driver behavior and from
+the still-open 480 MiB aggregate proof. The fresh checker review used inherited
+context and was not an independent non-steered review.
+
+## V11 audit and checker corrections (2026-10-01)
+
+The audit of `0d8a728` found protocol identity, positional framing, typed
+membership, alternate ingress, deadline/scheduling and diagnostic gaps. Its
+qualification findings showed why passing narrow tests did not establish the
+agreed clock or final-source contract. Approved v11 preserves the earlier
+negative evidence and separates correction completion from overall acceptance.
+
+- A minimum-five-second clock assertion was the wrong oracle: five seconds is
+  a maximum from independently applied fault, including scheduling and closure.
+  The tagged seam now changes clock state outside the actor mailbox. A fresh
+  configured identity proves a global gate; a still-retiring duplicate does not.
+- Hashing only before a run, or trusting a Go report before wrapper exit, allowed
+  false success after source drift or failure. Wrappers now run a retained
+  once-built executable, compare before/build/after manifests and binary hash,
+  and publish one initially-unqualified final result. Go reports are provisional.
+- Receiver node/user relationships with equal callsigns coexist. C metadata
+  selection depends on new/repeated typed relationships; member node metadata
+  differs from explicit subject metadata. Parser round trips could not reveal
+  these receiver state rules; the harness now queries Node and User separately.
+- A controller that drains a whole staged batch or services maintenance as one
+  indivisible bundle can starve deadlines. Commit, replay readiness and local
+  recovery are separate milestones. Schedule C/A at commit so a replaying winner
+  never receives ordinary deltas before its recovery pair.
+- Full-count queues do not prove the intended byte-pressure population. In the
+  v11 Q4B diagnostic, small cache-refill records overtook large pressure frames
+  across different sockets. The measured 929,952 bytes exactly matched that
+  mixture. The fixture must observe admission of the large frames before
+  starting refill, while retaining its original deadlines and final simultaneous
+  population checks. Treat the captured failure as invalid pressure evidence,
+  not proof of a production quota violation or permission to lower the target.
+
+Targeted evidence is retained in the v11 wire, graph and qualification reports.
+The [v11 implementation record](../pc92-v11-closeout.md) retains current full-lane,
+Q5/Q6, negative latency and Q4 sequencing results.
+Full final-source workload and complete480MiB proof remain separate obligations;
+passing wrapper fixtures certifies their failure handling, not protocol capacity.
+
 ## Decision Linkage
-- ADR created/updated: ADR-0230.
+- ADR created/updated: ADR-0230 and [ADR-0231](../decisions/ADR-0231-pc92-audit-corrections.md).
 - Decision delta summary: Explicit compatibility, failure/recovery, allocation and qualification contracts.
 - Contract/behavior changes: V7 changes only the declared qualification profiles and reachable Q4 phases; production batching and correction defaults remain unchanged.
 

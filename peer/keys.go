@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"dxcluster/spot"
-	"dxcluster/strutil"
 )
 
 // Purpose: Build dedupe keys for peer frames and spots.
@@ -22,26 +21,14 @@ func pc92Key(f *Frame) string {
 	if len(fields) < 3 {
 		return fmt.Sprintf("pc92:%s:short:%s", f.Type, strings.TrimSpace(f.Raw))
 	}
-	origin := strutil.NormalizeUpper(fields[0])
-	ts := strings.TrimSpace(fields[1])
-	recordType := strutil.NormalizeUpper(fields[2])
-
 	h := fnv.New64a()
-	entryCount := 0
-	for _, entry := range fields[3:] {
-		entry = strings.TrimSpace(entry)
-		if entry == "" {
-			continue
-		}
-		_, isHopLike, _ := parseHopToken(entry)
-		if isHopLike {
-			continue
-		}
+	// Valid PC92 fields cannot contain this separator. Hash every position,
+	// including empty and hop-like payload; Frame.Hop alone is transport data.
+	for _, entry := range fields {
 		_, _ = h.Write([]byte(entry))
 		_, _ = h.Write([]byte{0x1f})
-		entryCount++
 	}
-	return "pc92:" + origin + ":" + ts + ":" + recordType + ":" + strconv.Itoa(entryCount) + ":" + strconv.FormatUint(h.Sum64(), 16)
+	return "pc92:" + strconv.Itoa(len(fields)) + ":" + strconv.FormatUint(h.Sum64(), 16)
 }
 
 // Purpose: Build a dedupe key for a DX spot frame.

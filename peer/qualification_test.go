@@ -11,7 +11,7 @@ import (
 
 func TestQualificationClockSeparatesAuthorityAndPayloadExpiry(t *testing.T) {
 	p, source, _, now := controllerTestOwner(t)
-	p.qualification.offset = 2 * time.Hour
+	p.qualification.clock.Store(&qualificationClock{offset: 2 * time.Hour})
 	frame := receiveControllerWire(t, p, source, "PC92^N2AAA^50400^C^5N2AAA^1K1USER^H1^", now)
 	if p.graph.nodes.Value("N2AAA") == nil || p.graph.freshness.Value("N2AAA").Accepted != now.Add(2*time.Hour) {
 		t.Fatal("authority did not use controlled clock")

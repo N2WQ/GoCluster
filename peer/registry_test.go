@@ -29,11 +29,11 @@ func TestManagerStartDialsOutboundAndBothPeersOnly(t *testing.T) {
 	outboundHost, outboundPort := splitHostPort(t, outboundLn.Addr().String())
 	bothHost, bothPort := splitHostPort(t, bothLn.Addr().String())
 
-	manager, err := NewManager(config.PeeringConfig{
+	manager, err := NewManager(completeProtocolTestConfig(config.PeeringConfig{
 		LocalCallsign:  "N0CALL",
 		ListenPort:     0,
 		NodeVersion:    "5457",
-		LegacyVersion:  "1.57",
+		LegacyVersion:  "5457",
 		PC92Bitmap:     5,
 		HopCount:       99,
 		WriteQueueSize: 8,
@@ -55,7 +55,7 @@ func TestManagerStartDialsOutboundAndBothPeersOnly(t *testing.T) {
 				Family:         config.PeeringPeerFamilyDXSpider,
 				Host:           outboundHost,
 				Port:           outboundPort,
-				RemoteCallsign: "OUTBOUND-1",
+				RemoteCallsign: "N1OUT",
 			},
 			{
 				Enabled:        true,
@@ -63,13 +63,13 @@ func TestManagerStartDialsOutboundAndBothPeersOnly(t *testing.T) {
 				Family:         config.PeeringPeerFamilyCCluster,
 				Host:           bothHost,
 				Port:           bothPort,
-				RemoteCallsign: "BOTH-1",
+				RemoteCallsign: "N2BOTH",
 			},
 			{
 				Enabled:        true,
 				Direction:      config.PeeringPeerDirectionInbound,
 				Family:         config.PeeringPeerFamilyCCluster,
-				RemoteCallsign: "INBOUND-1",
+				RemoteCallsign: "N3IN",
 			},
 			{
 				Enabled:        false,
@@ -77,10 +77,10 @@ func TestManagerStartDialsOutboundAndBothPeersOnly(t *testing.T) {
 				Family:         config.PeeringPeerFamilyDXSpider,
 				Host:           outboundHost,
 				Port:           outboundPort,
-				RemoteCallsign: "DISABLED-1",
+				RemoteCallsign: "N4OFF",
 			},
 		},
-	}, "N0CALL", nil, 0, nil)
+	}, "N0CALL"), "N0CALL", nil, 0, nil)
 	if err != nil {
 		t.Fatalf("NewManager() error: %v", err)
 	}
@@ -107,64 +107,46 @@ func TestManagerStartDialsOutboundAndBothPeersOnly(t *testing.T) {
 }
 
 func TestAuthorizeInboundRejectsDuplicateActivePeer(t *testing.T) {
-	manager, err := NewManager(config.PeeringConfig{
+	manager, err := NewManager(completeProtocolTestConfig(config.PeeringConfig{
 		NodeVersion:   "5457",
-		LegacyVersion: "1.57",
+		LegacyVersion: "5457",
 		Peers: []config.PeeringPeer{{
 			Enabled:        true,
 			Direction:      config.PeeringPeerDirectionBoth,
 			Family:         config.PeeringPeerFamilyCCluster,
 			Host:           "example.net",
 			Port:           7300,
-			RemoteCallsign: "REMOTE",
+			RemoteCallsign: "N1REM",
 		}},
-	}, "N0CALL", nil, 0, nil)
+	}, "N0CALL"), "N0CALL", nil, 0, nil)
 	if err != nil {
 		t.Fatalf("NewManager() error: %v", err)
 	}
 
-	existing := &session{id: "REMOTE", remoteCall: "REMOTE"}
-	manager.sessions.Set("REMOTE", existing)
+	existing := &session{id: "N1REM", remoteCall: "N1REM"}
+	manager.sessions.Set("N1REM", existing)
 
-	_, err = manager.authorizeInbound("REMOTE", &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 7000})
+	_, err = manager.authorizeInbound("N1REM", &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 7000})
 	if err == nil || !strings.Contains(err.Error(), "duplicate peer session") {
 		t.Fatalf("expected duplicate peer session error, got %v", err)
 	}
-	if got := manager.sessions.Value("REMOTE"); got != existing {
+	if got := manager.sessions.Value("N1REM"); got != existing {
 		t.Fatalf("expected original session to remain active")
 	}
 }
 
+// Endpoint identity fallback is a registry primitive; active manager construction
+// requires explicit remote identities and is covered by the wire-contract tests.
 func TestPeerRegistryDistinguishesBlankRemoteCallByHostPort(t *testing.T) {
-	manager, err := NewManager(config.PeeringConfig{
-		NodeVersion:   "5457",
-		LegacyVersion: "1.57",
-		Peers: []config.PeeringPeer{
-			{
-				Enabled:   true,
-				Direction: config.PeeringPeerDirectionOutbound,
-				Family:    config.PeeringPeerFamilyDXSpider,
-				Host:      "127.0.0.1",
-				Port:      7300,
-			},
-			{
-				Enabled:   true,
-				Direction: config.PeeringPeerDirectionOutbound,
-				Family:    config.PeeringPeerFamilyDXSpider,
-				Host:      "127.0.0.1",
-				Port:      7301,
-			},
-		},
-	}, "N0CALL", nil, 0, nil)
+	peers, _, err := buildPeerRegistry([]config.PeeringPeer{
+		{Enabled: true, Direction: config.PeeringPeerDirectionOutbound, Family: config.PeeringPeerFamilyDXSpider, Host: "127.0.0.1", Port: 7300},
+		{Enabled: true, Direction: config.PeeringPeerDirectionOutbound, Family: config.PeeringPeerFamilyDXSpider, Host: "127.0.0.1", Port: 7301},
+	})
 	if err != nil {
-		t.Fatalf("NewManager() error: %v", err)
+		t.Fatal(err)
 	}
-
-	if got := len(manager.outboundPeers); got != 2 {
-		t.Fatalf("expected 2 outbound peers, got %d", got)
-	}
-	if manager.outboundPeers[0].ID() == manager.outboundPeers[1].ID() {
-		t.Fatalf("expected distinct host:port fallback identities, got %q", manager.outboundPeers[0].ID())
+	if len(peers) != 2 || peers[0].ID() == peers[1].ID() {
+		t.Fatalf("host:port fallback identities: %+v", peers)
 	}
 }
 

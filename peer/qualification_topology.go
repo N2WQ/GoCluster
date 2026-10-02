@@ -158,7 +158,7 @@ func qualificationAwait(ctx context.Context, m QualificationAuthority, check fun
 		if err != nil {
 			return s, err
 		}
-		if s.BlockedPeers != 0 || s.ClockGated || s.PublicationGated || s.PC92Refused != 0 || s.PC93Refused != 0 {
+		if s.BlockedPeers != 0 || s.ClockGated || s.PublicationGated || s.PC92Refused != 0 || s.PC93Refused != 0 || s.PC93InputRefused != 0 {
 			return s, fmt.Errorf("qualification setup refused or gated: %+v", s)
 		}
 		if check(s) {

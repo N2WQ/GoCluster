@@ -3,8 +3,9 @@ package peer
 import "time"
 
 type backoff struct {
-	cur time.Duration
-	max time.Duration
+	base time.Duration
+	cur  time.Duration
+	max  time.Duration
 }
 
 // Purpose: Construct an exponential backoff timer.
@@ -18,7 +19,7 @@ func newBackoff(base, max time.Duration) *backoff {
 	if max < base {
 		max = base
 	}
-	return &backoff{cur: base, max: max}
+	return &backoff{base: base, cur: base, max: max}
 }
 
 // Next returns the next backoff delay and advances the window.
@@ -30,17 +31,19 @@ func (b *backoff) Next() time.Duration {
 		return b.max
 	}
 	d := b.cur
-	b.cur *= 2
-	if b.cur > b.max {
+	if b.cur > b.max-b.cur {
 		b.cur = b.max
+	} else {
+		b.cur *= 2
 	}
 	return d
 }
 
 // Reset resets backoff to its initial state.
-// Key aspects: Sets cur to zero so Next restarts at base.
+// Key aspects: Restores the normalized base; a successful connection never
+// turns subsequent failures into a zero-delay reconnect loop.
 // Upstream: Successful reconnect paths.
 // Downstream: None.
 func (b *backoff) Reset() {
-	b.cur = 0
+	b.cur = b.base
 }

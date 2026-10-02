@@ -16,10 +16,10 @@ func TestPC92FrozenQuietClockClosesAndGates(t *testing.T) {
 	p.wallNow = func() time.Time { return wall }
 	p.elapsedNow = func() time.Time { return elapsed }
 	p.tick(elapsed)
-	elapsed = elapsed.Add(4999 * time.Millisecond)
+	elapsed = elapsed.Add(3999 * time.Millisecond)
 	p.tick(elapsed)
 	if p.clockGate {
-		t.Fatal("frozen clock gated before five seconds")
+		t.Fatal("frozen clock falsely diagnosed before its detection interval")
 	}
 	elapsed = elapsed.Add(time.Millisecond)
 	p.tick(elapsed)
@@ -107,7 +107,7 @@ func TestPC92OutboundGatePreventsTCPDial(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			m, err := NewManager(config.PeeringConfig{}, "N0LOCAL", nil, 0, nil)
+			m, err := NewManager(completeProtocolTestConfig(config.PeeringConfig{}, "N0LOCAL"), "N0LOCAL", nil, 0, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

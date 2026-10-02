@@ -27,6 +27,10 @@ type dxReferenceResult struct {
 	TX            []string                  `json:"tx"`
 	Channel       map[string]any            `json:"channel"`
 	Routes        map[string]map[string]any `json:"routes"`
+	RouteNodes    map[string]map[string]any `json:"route_nodes"`
+	RouteUsers    map[string]map[string]any `json:"route_users"`
+	Normalized    string                    `json:"normalized"`
+	Valid         bool                      `json:"valid"`
 	Users         map[string]map[string]any `json:"users"`
 	UserTotal     int                       `json:"user_total"`
 	NodeTotal     int                       `json:"node_total"`
@@ -134,7 +138,7 @@ func (r *dxReference) frameAt(line string, at time.Time, calls ...string) dxRefe
 func referencePublicationSender(t *testing.T, wall *time.Time) (*protocolController, *session, func() string) {
 	t.Helper()
 	cfg := config.PeeringConfig{NodeVersion: "5457", NodeBuild: "633", PC92Bitmap: 5, HopCount: 99, WriteQueueSize: 128, MaxLineLength: 65536, PC92MaxBytes: 65536}
-	manager, err := NewManager(cfg, "N0CALL", nil, 0, nil)
+	manager, err := NewManager(completeProtocolTestConfig(cfg, "N0CALL"), "N0CALL", nil, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,14 +188,27 @@ func TestDXSpiderReferenceTimestampBurstCoalesces(t *testing.T) {
 	reference, _ := startDXReference(t, false, "N0CALL")
 	wall := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 	p, recipient, read := referencePublicationSender(t, &wall)
-	if err := p.sendRecord([]*session{recipient}, "C", nil, false); err != nil {
+	entries, complete := p.membershipEntries()
+	if !complete {
+		t.Fatal("incomplete timestamp fixture")
+	}
+	p.current, p.published, p.dirty = entries, entries, false
+	if err := p.sendRecord([]*session{recipient}, "C", entryValues(entries), false); err != nil {
 		t.Fatal(err)
+	}
+	// Exercise the complete legal sequence directly. Periodic requests are now
+	// scheduled/coalesced; their count is not a promise of one record each.
+	for range 99 {
+		if err := p.sendRecord([]*session{recipient}, "K", nil, false); err != nil {
+			t.Fatal(err)
+		}
 	}
 	for i := 0; i < 150; i++ {
 		if err := p.request(protocolRequest{kind: "K", source: recipient}); err != nil {
 			t.Fatalf("periodic request %d: %v", i, err)
 		}
 	}
+	p.tick(time.Now()) // The exhausted second must leave the coalesced K pending.
 	if p.pendingK.Len() != 1 || !p.pendingK.Value(recipient) || recipient.ctx.Err() != nil {
 		t.Fatal("same-second overflow did not coalesce to one pending K on a healthy session")
 	}
@@ -223,7 +240,7 @@ func TestDXSpiderReferenceTimestampBurstCoalesces(t *testing.T) {
 	if p.pendingK.Len() != 0 || result.ReceivedLines != 101 {
 		t.Fatalf("pending=%d actual reference frames=%d", p.pendingK.Len(), result.ReceivedLines)
 	}
-	t.Logf("actual receiver accepted initial C + 99 K values through 43200.99, then one coalesced K at 43201 after 150 periodic requests; route=%v", result.Routes["N0CALL"])
+	t.Logf("actual receiver accepted C + 99 allocated K values through 43200.99, then one coalesced K at 43201 after 150 pending requests; route=%v", result.Routes["N0CALL"])
 }
 
 func TestDXSpiderReferenceTimestampMidnight(t *testing.T) {
@@ -441,11 +458,12 @@ func TestDXSpiderReferenceGoSessionStartup(t *testing.T) {
 		{"Go inbound legacy", dirInbound, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			reference, first := startDXReference(t, tc.direction == dirInbound, "N0CALL")
+			reference, first := startDXReference(t, tc.direction == dirInbound, "EA8/N0CALL/P-00")
 			cfg := config.PeeringConfig{NodeVersion: "5457", NodeBuild: "633", LegacyVersion: "5457", PC92Bitmap: 5, HopCount: 99, WriteQueueSize: 128, MaxLineLength: 65536, PC92MaxBytes: 65536,
 				Timeouts: config.PeeringTimeouts{LoginSeconds: 10, InitSeconds: 10},
 				Peers:    []config.PeeringPeer{{Enabled: true, RemoteCallsign: "GB7REF", Direction: config.PeeringPeerDirectionInbound, Family: config.PeeringPeerFamilyDXSpider, PreferPC9x: tc.pc9x}}}
-			manager, err := NewManager(cfg, "N0CALL", nil, 0, nil)
+			cfg.LocalCallsign = "EA8/N0CALL/P-00"
+			manager, err := NewManager(cfg, "N0CALL-00", nil, 0, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

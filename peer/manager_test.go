@@ -38,7 +38,7 @@ func TestHandleFramePC92QueueFailureClosesWithoutAuthority(t *testing.T) {
 }
 func newProtocolTestManager(t *testing.T) *Manager {
 	t.Helper()
-	m, err := NewManager(config.PeeringConfig{NodeVersion: "5457", NodeBuild: "633", PC92Bitmap: 5, HopCount: 99, MaxLineLength: 65536, PC92MaxBytes: 65536}, "N0LOCAL", nil, 0, nil)
+	m, err := NewManager(completeProtocolTestConfig(config.PeeringConfig{NodeVersion: "5457", NodeBuild: "633", PC92Bitmap: 5, HopCount: 99, MaxLineLength: 65536, PC92MaxBytes: 65536}, "N0LOCAL"), "N0LOCAL", nil, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

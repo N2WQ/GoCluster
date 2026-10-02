@@ -174,7 +174,7 @@ func (d *qualificationDriver) load() error {
 			}
 			d.samples = append(d.samples, state)
 			d.t.Logf("%s minute%d new=%d dup=%d PC92=%d checker_failures=%d", d.profile.name, int(sampleAt/time.Minute), d.newSpots, d.duplicates, d.pc92Count, d.oracle.failures.Load())
-			if state.SpotRefused+state.PC92Refused+state.PC93Refused+state.BulletinRefused != 0 || state.ClockGated || state.PublicationGated {
+			if state.SpotRefused+state.PC92Refused+state.PC93Refused+state.PC93InputRefused+state.BulletinRefused != 0 || state.ClockGated || state.PublicationGated {
 				return fmt.Errorf("unexpected capacity/clock gate: %+v", state)
 			}
 			sampleAt += time.Minute

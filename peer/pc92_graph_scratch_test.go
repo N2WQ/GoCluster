@@ -16,7 +16,7 @@ func scratchFixtureCall(prefix string, index, letters int) string {
 	return prefix + string(suffix[:letters])
 }
 
-// This reachable shape maximizes remove backing while the sparse graph still
+// This reachable shape maximizes removal work without retaining removal backing while the sparse graph still
 // permits4095 new node plans. A full4096-node fixture cannot exercise that pair.
 func TestPC92GraphSparseOriginReplacementScratch(t *testing.T) {
 	graph := newProtocolGraph(time.Now())
@@ -72,8 +72,8 @@ func TestPC92GraphSparseOriginReplacementScratch(t *testing.T) {
 		t.Fatal(err)
 	}
 	runtime.ReadMemStats(&after)
-	if plan.addNodes.Len() != 4095 || len(plan.remove) != 65536 || len(plan.add) != 8191 {
-		t.Fatalf("replacement did not exercise simultaneous plan owners: nodes%d remove%d add%d", plan.addNodes.Len(), len(plan.remove), len(plan.add))
+	if plan.addNodes.Len() != 4095 || plan.removed != 65536 || len(plan.add) != 8191 {
+		t.Fatalf("replacement did not exercise simultaneous plan owners: nodes%d remove%d add%d", plan.addNodes.Len(), plan.removed, len(plan.add))
 	}
 	allocated := after.TotalAlloc - before.TotalAlloc
 	t.Logf("wire%d bytes; decode+prepare total allocation%d bytes; reserved%d", len(wire), allocated, graphMutationScratchBytes)

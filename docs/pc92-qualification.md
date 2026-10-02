@@ -8,12 +8,43 @@ inputs, not measured claims.
 
 ## Execution status (2026-10-01)
 
-V8 is approved; full acceptance is not complete. The inherited scope and current
+V11 corrections are implemented with targeted validation; full acceptance is not complete.
+Current corrective authority is the [v11 ledger](pc18-pc92-scope-ledger-v11.md).
+Slice evidence: [wire](pc92-v11-wire-validation.md),
+[graph/projection](pc92-v11-graph-validation.md),
+[qualification checker](pc92-v11-qualification-validation.md).
+Current command results and limitations are in the
+[v11 implementation record](pc92-v11-closeout.md): the normal full lane, full
+Q5/Q6 and cache-memory profile passed; two runtime preflights failed enqueue
+latency. Corrected Q4 A/B diagnostics passed with valid source/binary provenance;
+their short duration does not qualify the full Q4 profiles.
+Older measurements below are historical and do not qualify the v11 final source. The inherited scope and current
 implementation mapping are in [the v6 execution record](pc18-pc92-scope-ledger-v6.md),
 with the controlling qualification amendments in [v7](pc18-pc92-scope-ledger-v7.md)
 and the shared-parser amendment in [v8](pc18-pc92-scope-ledger-v8.md).
 
-Observed component evidence:
+The subsequent [approved v9 persistence experiment](pc18-pc92-scope-ledger-v9.md)
+is complete with a negative feasibility result. Its proposed driver candidate
+failed the early ownership/allocation/compatibility gates; see the
+[evidence report](pc92-persistence-feasibility-v9.md). Production modernc SQLite
+is unchanged. This result does not replace Q1-Q6 or complete the 480 MiB proof.
+
+V11 wrappers build once, retain the executable, and compare manifests before
+build, after build and after execution. The sole authoritative final JSON begins
+unqualified and can accept a profile only after every required checker passes. Go case
+reports are provisional. Script/config/assets/reference inputs and the binary
+are included. Reported overall acceptance remains false while complete owned
+allocation proof and required final-source profiles are missing. This detects
+persisting changes, not adversarial edit-and-restore or tampering.
+
+Clock regression/freeze is applied atomically outside the controller. Measure
+five seconds from actual fault to closure/gating, including detection and
+scheduling. Continuous safe advancing UTC must hold for one second, then be
+observed within the next second. Membership queue admission is measured from
+producer-side eligibility per healthy established recipient, including recovery;
+no unrelated publication or five-second recovery window resets that deadline.
+
+Historical component evidence (before v11; current results are linked above):
 
 - The actual pinned DXSpider receiver modules accepted both startup directions,
   the complete 62,171-byte C fixture, and C/A repair of user IP metadata. The

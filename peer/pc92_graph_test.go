@@ -40,7 +40,7 @@ func TestPC92GraphMultipleParentsAndEmptyC(t *testing.T) {
 		t.Fatalf("multi-parent user state: users=%v edges=%d", graph.users, graph.edges)
 	}
 	applyGraphRecord(t, graph, "PC92^N2AAA^43201^D^^1K1USER^H10^", now.Add(time.Second))
-	if graph.users.Value("K1USER") != 1 || graph.nodes.Value("N3BBB").Members.Value("K1USER").Call != "K1USER" {
+	if graph.users.Value("K1USER") != 1 || graph.nodes.Value("N3BBB").Members.Value(memberKey{"K1USER", false}).Call != "K1USER" {
 		t.Fatal("removing one parent lost the alternate user membership")
 	}
 	applyGraphRecord(t, graph, "PC92^N3BBB^43202^C^5N3BBB^H10^", now.Add(2*time.Second))
@@ -56,13 +56,13 @@ func TestPC92GraphExternalSubjectCreatesParentEdge(t *testing.T) {
 	// DXSpider pc92_handle_first_slot calls _add_thingy on the true parent
 	// when an external subject is first encountered. Its users belong to that
 	// external subject, not to the PC92 origin.
-	if entry, ok := graph.nodes.Value("N2AAA").Members.Get("N3EXT"); !ok || !entry.IsExternal() || !entry.IsNode() {
+	if entry, ok := graph.nodes.Value("N2AAA").Members.Get(memberKey{"N3EXT", true}); !ok || !entry.IsExternal() || !entry.IsNode() {
 		t.Fatal("external subject has no origin-to-subject route edge")
 	}
-	if graph.nodes.Value("N3EXT").Members.Value("K1USER").Call != "K1USER" {
+	if graph.nodes.Value("N3EXT").Members.Value(memberKey{"K1USER", false}).Call != "K1USER" {
 		t.Fatal("external user's membership was not attached to the external subject")
 	}
-	if _, exists := graph.nodes.Value("N2AAA").Members.Get("K1USER"); exists {
+	if _, exists := graph.nodes.Value("N2AAA").Members.Get(memberKey{"K1USER", false}); exists {
 		t.Fatal("external user was incorrectly attached directly to origin")
 	}
 }
@@ -72,16 +72,16 @@ func TestPC92GraphMetadataWithoutIPDoesNotEraseKnownIP(t *testing.T) {
 	graph := newProtocolGraph(now)
 	applyGraphRecord(t, graph, "PC92^N2AAA^43200^A^^1K1USER:192.0.2.1^5N3BBB:5457:633:192.0.2.2^H10^", now)
 	applyGraphRecord(t, graph, "PC92^N2AAA^43201^A^^0K1USER^5N3BBB:5458:634^H10^", now)
-	user := graph.nodes.Value("N2AAA").Members.Value("K1USER")
+	user := graph.nodes.Value("N2AAA").Members.Value(memberKey{"K1USER", false})
 	node := graph.nodes.Value("N3BBB").Entry
-	if user.IP != netip.MustParseAddr("192.0.2.1") || user.Here() {
-		t.Fatalf("here update erased user IP or retained old flag: %+v", user)
+	if user.IP != netip.MustParseAddr("192.0.2.1") || !user.Here() {
+		t.Fatalf("member update erased known IP or changed receiver-retained Here: %+v", user)
 	}
-	if node.IP != netip.MustParseAddr("192.0.2.2") || node.Version != "5458" || node.Build != "634" {
-		t.Fatalf("node metadata update lost known IP: %+v", node)
+	if node.IP != netip.MustParseAddr("192.0.2.2") || node.Version != "5457" || node.Build != "" {
+		t.Fatalf("member update lost IP or changed receiver-owned node version/build: %+v", node)
 	}
 	applyGraphRecord(t, graph, "PC92^N2AAA^43202^A^^1K1USER:192.0.2.9^H10^", now)
-	if graph.nodes.Value("N2AAA").Members.Value("K1USER").IP != netip.MustParseAddr("192.0.2.9") {
+	if graph.nodes.Value("N2AAA").Members.Value(memberKey{"K1USER", false}).IP != netip.MustParseAddr("192.0.2.9") {
 		t.Fatal("explicit replacement IP was not applied")
 	}
 }
@@ -111,13 +111,13 @@ func TestPC92GraphFullUserCapacityAllowsReplacingLastParentUser(t *testing.T) {
 	// committed occupancy remains exactly at the limit.
 	for group := 0; group < 16; group++ {
 		nodeCall := fmt.Sprintf("N%dAAA", group+2)
-		node := &graphNode{Entry: PC92Entry{Call: nodeCall, Flags: 5}, Members: newBoundedIndex[string, PC92Entry](maxGraphEdges), Observations: 3}
+		node := &graphNode{Entry: PC92Entry{Call: nodeCall, Flags: 5}, Members: newBoundedIndex[memberKey, PC92Entry](maxGraphEdges), Observations: 3}
 		graph.nodes.Set(nodeCall, node)
 		graph.metadataBytes += entryBytes(node.Entry)
 		for i := 0; i < 4096; i++ {
 			call := fmt.Sprintf("K%dAA", group*4096+i)
-			node.Members.Set(call, PC92Entry{Call: call, Flags: 1})
-			graph.metadataBytes += entryBytes(node.Members.Value(call))
+			node.Members.Set(memberKey{call, false}, PC92Entry{Call: call, Flags: 1})
+			graph.metadataBytes += entryBytes(node.Members.Value(memberKey{call, false}))
 			graph.users.Set(call, 1)
 		}
 	}
@@ -125,7 +125,7 @@ func TestPC92GraphFullUserCapacityAllowsReplacingLastParentUser(t *testing.T) {
 	graph.edges = maxGraphUsers
 	members := make([]PC92Entry, 0, owner.Members.Len())
 	for call, entry := range owner.Members.All() {
-		if call != "K0AA" {
+		if call.Call != "K0AA" {
 			members = append(members, entry)
 		}
 	}
@@ -246,7 +246,7 @@ func TestPC92GraphSimultaneousFullOccupancyAndReplacement(t *testing.T) {
 	applyGraphRecord(t, graph, "PC92^N2048AA^43202^D^^1K0AA^H10^", now)
 	members := make([]PC92Entry, 0, 32)
 	for call, entry := range graph.nodes.Value("N0AA").Members.All() {
-		if call != "K0AA" {
+		if call.Call != "K0AA" {
 			members = append(members, entry)
 		}
 	}

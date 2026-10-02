@@ -14,9 +14,9 @@ import (
 )
 
 func TestInboundListenerRejectsPeerIPBeforePC18(t *testing.T) {
-	manager, err := NewManager(config.PeeringConfig{
+	manager, err := NewManager(completeProtocolTestConfig(config.PeeringConfig{
 		NodeVersion:    "5457",
-		LegacyVersion:  "1.57",
+		LegacyVersion:  "5457",
 		PC92Bitmap:     5,
 		HopCount:       99,
 		WriteQueueSize: 8,
@@ -31,10 +31,10 @@ func TestInboundListenerRejectsPeerIPBeforePC18(t *testing.T) {
 			Enabled:        true,
 			Direction:      config.PeeringPeerDirectionInbound,
 			Family:         config.PeeringPeerFamilyCCluster,
-			RemoteCallsign: "REMOTE",
+			RemoteCallsign: "N1REM",
 			AllowIPs:       []string{"203.0.113.0/24"},
 		}},
-	}, "N0CALL", nil, 0, nil)
+	}, "N0CALL"), "N0CALL", nil, 0, nil)
 	if err != nil {
 		t.Fatalf("NewManager() error: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestInboundListenerRejectsPeerIPBeforePC18(t *testing.T) {
 		t.Fatalf("expected login prompt, got %q", line)
 	}
 
-	if _, err := writer.WriteString("REMOTE\r\n"); err != nil {
+	if _, err := writer.WriteString("N1REM\r\n"); err != nil {
 		t.Fatalf("write callsign: %v", err)
 	}
 	if err := writer.Flush(); err != nil {

@@ -195,3 +195,19 @@ DXSummit ingest:
 - DXSummit spotter calls ending in `-@` preserve that marker for display/archive provenance. Relayed spotter calls ending in the skimmer marker `-#` strip only that terminal marker; numeric SSIDs are preserved.
 - DXSummit latitude/longitude fields are not used to populate grids. Existing CTY and grid-cache enrichment may fill grids later from callsign-derived data.
 - The console dashboard counts DXSummit in `Ingest Sources` only when `dxsummit.enabled` is true. It shows `DXSUMMIT` connected after a recent successful poll, including seed-only startup polls that emit no spots.
+
+
+PC18/PC92 active wire configuration:
+- `local_callsign` and every effective peer `login_callsign` must normalize to
+  the same valid receiver identity, at most15 canonical bytes. Enabled peer
+  `remote_callsign` values must be distinct after normalization and different
+  from the local identity. Authentication still uses the configured literal
+  allowlist/login boundaries; publication aliases do not broaden access.
+- Local `pc92_bitmap` accepts4 or5. External6/7 are received topology flags,
+  not a valid local root identity. Numeric compatibility version/legacy version
+  have1-10 digits; build may also be explicitly empty.
+- Positive `backoff.base_ms` and `backoff.max_ms` cannot exceed300000 before
+  conversion to durations. Existing nonpositive sentinel/default handling is
+  preserved. Successful establishment resets retry to its normalized base.
+- These wire checks also run for direct `NewManager` callers before storage
+  opens; constructor callers must supply effective values, not loader omissions.

@@ -3,6 +3,7 @@
 package cluster
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -58,14 +59,28 @@ func (d *q4Runtime) fillCaches(full bool) error {
 	return nil
 }
 
-func (d *q4Runtime) validateTransportPressure(states []peer.QualificationTransportState, countOnly bool) error {
+// Missing population may still be in flight across ingress sockets; lost
+// owners or exceeded ownership limits cannot be retried as ordinary progress.
+func (d *q4Runtime) validateTransportBounds(states []peer.QualificationTransportState) error {
 	if len(states) != len(d.peers) {
 		return fmt.Errorf("Q4 pressure lost established owners: got%d want%d", len(states), len(d.peers))
 	}
+	for _, state := range states {
+		if state.ActiveBytes > peer.MaxPeerFrameBytes+2 || state.ControlCount > 128 || state.DataCount > state.DataCapacity || state.ControlBytes > 1<<20 || state.DataBytes > 1<<20 {
+			return fmt.Errorf("Q4 transport ownership boundary: %+v", state)
+		}
+	}
+	return nil
+}
+
+func (d *q4Runtime) validateTransportPressure(states []peer.QualificationTransportState, countOnly bool) error {
+	if err := d.validateTransportBounds(states); err != nil {
+		return err
+	}
 	maxControl, maxData, largeActive := 0, 0, 0
 	for _, state := range states {
-		if state.ActiveBytes == 0 || state.ControlCount > 128 || state.DataCount > state.DataCapacity || state.ControlBytes > 1<<20 || state.DataBytes > 1<<20 {
-			return fmt.Errorf("Q4 transport ownership boundary: %+v", state)
+		if state.ActiveBytes == 0 {
+			return fmt.Errorf("Q4 active-write population too low: %+v", state)
 		}
 		maxControl = max(maxControl, state.ControlCount)
 		maxData = max(maxData, state.DataCount)
@@ -89,6 +104,46 @@ func (d *q4Runtime) validateTransportPressure(states []peer.QualificationTranspo
 	return nil
 }
 
+// A successful socket write does not order work on other ingress sockets.
+// Wait for actual large-record admissions before smaller cache-fill records
+// can consume the remaining count slots. The sampler is read-only; the
+// injected callback also permits deterministic late-observer regression tests.
+func (d *q4Runtime) awaitTransportPressure(deadline time.Time, countOnly bool, sample func() []peer.QualificationTransportState) error {
+	var last []peer.QualificationTransportState
+	for {
+		if err := d.ctx.Err(); err != nil {
+			return err
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("Q4 transport admission deadline: %w; last=%+v", context.DeadlineExceeded, last)
+		}
+		last = sample()
+		// An observer that resumes after the deadline must not turn a late
+		// apparently full queue into successful admission evidence.
+		if err := d.ctx.Err(); err != nil {
+			return err
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("Q4 transport admission deadline: %w; last=%+v", context.DeadlineExceeded, last)
+		}
+		if err := d.validateTransportBounds(last); err != nil {
+			return err
+		}
+		if d.validateTransportPressure(last, countOnly) == nil {
+			if err := d.ctx.Err(); err != nil {
+				return err
+			}
+			if time.Now().After(deadline) {
+				return fmt.Errorf("Q4 transport admission deadline: %w; last=%+v", context.DeadlineExceeded, last)
+			}
+			return nil
+		}
+		if err := qualificationWaitContext(d.ctx, min(time.Millisecond, max(0, time.Until(deadline)))); err != nil {
+			return err
+		}
+	}
+}
+
 // The latch delays actual writes within their original2s deadline. All queue
 // records are admitted through real peer frames; source exclusion determines
 // the reported per-peer occupancy rather than an invented counter target.
@@ -97,6 +152,9 @@ func (d *q4Runtime) queuePressure(countOnly bool) (func(), error) {
 	for i := range calls {
 		calls[i] = d.r.cfg.Peering.Peers[i].RemoteCallsign
 	}
+	// Reserve the second half of the unchanged two-second active-write
+	// lifetime for cache/reader sampling. Neither observation renews it.
+	deadline := time.Now().Add(time.Second)
 	release, err := d.r.peerManager.QualificationHoldWrites(d.ctx, calls)
 	if err != nil {
 		return nil, err
@@ -124,7 +182,6 @@ func (d *q4Runtime) queuePressure(countOnly bool) (func(), error) {
 	if err := d.peers[0].write(wire); err != nil {
 		return nil, err
 	}
-	until := time.Now().Add(time.Second)
 	for {
 		active := 0
 		for _, state := range d.r.peerManager.QualificationTransports() {
@@ -132,11 +189,14 @@ func (d *q4Runtime) queuePressure(countOnly bool) (func(), error) {
 				active++
 			}
 		}
+		if err := d.ctx.Err(); err != nil {
+			return nil, err
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("Q4 active-write population got%d want%d", active, len(d.peers)-1)
+		}
 		if active >= len(d.peers)-1 {
 			break
-		}
-		if time.Now().After(until) {
-			return nil, fmt.Errorf("Q4 active-write population got%d want%d", active, len(d.peers)-1)
 		}
 		if err := qualificationWaitContext(d.ctx, time.Millisecond); err != nil {
 			return nil, err
@@ -168,6 +228,9 @@ func (d *q4Runtime) queuePressure(countOnly bool) (func(), error) {
 				return nil, err
 			}
 		}
+	}
+	if err := d.awaitTransportPressure(deadline, countOnly, d.r.peerManager.QualificationTransports); err != nil {
+		return nil, err
 	}
 	failed = false
 	return release, nil

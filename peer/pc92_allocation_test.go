@@ -65,7 +65,7 @@ func TestPC92GraphPartialShrinkKeepsSurvivorsAndReclaimsCapacity(t *testing.T) {
 		t.Fatalf("quarter-occupancy shrink retained capacity: edges=%d member_slots=%d user_slots=%d", graph.edges, graph.memberHigh, graph.usersHigh)
 	}
 	for _, entry := range members[96:] {
-		if graph.nodes.Value("N2AAA").Members.Value(entry.Call) != entry || graph.users.Value(entry.Call) != 1 {
+		if graph.nodes.Value("N2AAA").Members.Value(memberKey{entry.Call, false}) != entry || graph.users.Value(entry.Call) != 1 {
 			t.Fatal("map reclamation changed a surviving membership")
 		}
 	}

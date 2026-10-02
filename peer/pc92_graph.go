@@ -1,7 +1,6 @@
 package peer
 
 import (
-	"fmt"
 	"strings"
 	"time"
 )
@@ -22,11 +21,21 @@ const (
 type graphNode struct {
 	memberHigh   int
 	Entry        PC92Entry
-	Members      *boundedIndex[string, PC92Entry]
+	Members      *boundedIndex[memberKey, PC92Entry]
 	Complete     bool
 	Observations int
 	Seen         time.Time
 }
+
+// Node and user routes are independent relationships in the receiver, even
+// when their canonical callsigns coincide. Here/external flags remain metadata.
+type memberKey struct {
+	Call string
+	Node bool
+}
+
+func membershipKey(e PC92Entry) memberKey { return memberKey{e.Call, e.IsNode()} }
+
 type ingressKey struct{ Origin, Ingress string }
 type ingressObservation struct {
 	Seen time.Time
@@ -125,129 +134,6 @@ func (g *protocolGraph) observe(origin, ingress string, hop int, now time.Time, 
 	}
 }
 
-// graphPlan holds one subject replacement or delta. Preparing it makes all
-// fallible checks before acceptance; commit cannot fail midway through a C.
-type graphPlan struct {
-	record   *PC92Record
-	addNodes *boundedIndex[string, PC92Entry]
-	external bool
-	remove   []string
-	add      []PC92Entry
-}
-
-func (g *protocolGraph) prepare(r *PC92Record, local, ingress string, direct *boundedIndex[string, bool]) (*graphPlan, error) {
-	subject := r.Subject.Call
-	if subject == "" {
-		subject = r.Origin
-	}
-	if r.Origin == local || subject == local || (direct.Value(subject) && subject != ingress) {
-		return nil, nil //nolint:nilnil // A protected subject is an intentional no-op, not an admission failure.
-	}
-	if r.Action == "D" && g.nodes.Value(r.Origin) == nil {
-		return nil, nil //nolint:nilnil // Withdrawal of an unknown origin has no authority to change.
-	}
-	p := &graphPlan{record: r, addNodes: newBoundedIndex[string, PC92Entry](maxGraphNodes - g.nodes.Len())}
-	addNode := func(call string, entry PC92Entry) bool {
-		if _, exists := p.addNodes.Get(call); !exists && g.nodes.Len()+p.addNodes.Len() >= maxGraphNodes {
-			return false
-		}
-		p.addNodes.Set(call, entry)
-		return true
-	}
-	if g.nodes.Value(r.Origin) == nil {
-		if !addNode(r.Origin, PC92Entry{Call: r.Origin, Flags: 5}) {
-			return nil, fmt.Errorf("node capacity")
-		}
-	}
-	if g.nodes.Value(subject) == nil {
-		if !addNode(subject, r.Subject) {
-			return nil, fmt.Errorf("node capacity")
-		}
-	}
-	node := g.nodes.Value(subject)
-	var existing *boundedIndex[string, PC92Entry]
-	if node != nil {
-		existing = node.Members
-	}
-	desired := newBoundedIndex[string, PC92Entry](len(r.Members))
-	for _, e := range r.Members {
-		if e.Call == local || e.Call == subject {
-			continue
-		}
-		if direct.Value(e.Call) && !e.IsNode() {
-			continue
-		}
-		desired.Set(e.Call, e)
-	}
-	if r.Action == "C" {
-		p.remove = make([]string, 0, existing.Len())
-		for call := range existing.All() {
-			if _, ok := desired.Get(call); !ok {
-				p.remove = append(p.remove, call)
-			}
-		}
-	}
-	if r.Action == "D" {
-		p.remove = make([]string, 0, desired.Len())
-	} else if r.Action != "K" {
-		p.add = make([]PC92Entry, 0, desired.Len())
-	}
-	for call, e := range desired.All() {
-		old, exists := existing.Get(call)
-		if r.Action == "D" {
-			if exists {
-				p.remove = append(p.remove, call)
-			}
-			continue
-		}
-		if r.Action == "K" {
-			continue
-		}
-		if exists && old.IsNode() != e.IsNode() {
-			return nil, fmt.Errorf("PC92 member type conflict")
-		}
-		p.add = append(p.add, e)
-		if e.IsNode() && g.nodes.Value(e.Call) == nil {
-			if !addNode(e.Call, e) {
-				return nil, fmt.Errorf("node capacity")
-			}
-		}
-	}
-	edges := g.edges - len(p.remove)
-	if subject != r.Origin && r.Subject.IsExternal() {
-		origin := g.nodes.Value(r.Origin)
-		if origin == nil {
-			p.external = true
-		} else {
-			_, exists := origin.Members.Get(subject)
-			p.external = !exists
-		}
-		if p.external {
-			edges++
-		}
-	}
-	newUsers := 0
-	for _, call := range p.remove {
-		if !existing.Value(call).IsNode() && g.users.Value(call) == 1 {
-			newUsers--
-		}
-	}
-	for _, e := range p.add {
-		if _, ok := existing.Get(e.Call); !ok {
-			edges++
-		}
-		if !e.IsNode() && g.users.Value(e.Call) == 0 {
-			newUsers++
-		}
-	}
-	if edges > maxGraphEdges || g.users.Len()+newUsers > maxGraphUsers {
-		return nil, fmt.Errorf("membership capacity")
-	}
-	if g.projectedCharge(p) > 96<<20 {
-		return nil, fmt.Errorf("graph retained-byte capacity")
-	}
-	return p, nil
-}
 func entryWithMetadata(old, entry PC92Entry) PC92Entry {
 	if entry.Version == "" {
 		entry.Version = old.Version
@@ -287,11 +173,7 @@ func (g *protocolGraph) commit(p *graphPlan, now time.Time) {
 		g.metadataBytes += entryBytes(e)
 		g.nodes.Set(call, &graphNode{Entry: e, Observations: 3, Seen: now})
 	}
-	subject := r.Subject.Call
-	if subject == "" {
-		subject = r.Origin
-	}
-	n := g.nodes.Value(subject)
+	n := g.nodes.Value(p.subject)
 	if !r.SubjectImplicit {
 		g.setNodeEntry(n, r.Subject)
 	}
@@ -301,11 +183,12 @@ func (g *protocolGraph) commit(p *graphPlan, now time.Time) {
 		g.metadataBytes += entryBytes(r.Subject)
 		g.edges++
 	}
-	for _, call := range p.remove {
-		g.removeEdge(n, call)
+	for key := range p.removals(n.Members) {
+		g.removeEdge(n, key)
 	}
 	for _, e := range p.add {
-		old, exists := n.Members.Get(e.Call)
+		incoming := e
+		old, exists := n.Members.Get(membershipKey(e))
 		e = mergeEntry(old, e)
 		if !exists {
 			g.edges++
@@ -317,7 +200,9 @@ func (g *protocolGraph) commit(p *graphPlan, now time.Time) {
 		g.putMember(n, e)
 		if e.IsNode() {
 			child := g.nodes.Value(e.Call)
-			g.setNodeEntry(child, e)
+			// An omitted IP cannot reassert an older address borrowed from this
+			// parent edge over a newer address learned through another parent.
+			g.setNodeEntry(child, incoming)
 		}
 	}
 	if r.Action == "C" || r.Action == "K" {
@@ -330,18 +215,18 @@ func (g *protocolGraph) commit(p *graphPlan, now time.Time) {
 	g.compactMembers(n)
 	g.compactIndexes()
 }
-func (g *protocolGraph) removeEdge(n *graphNode, call string) {
-	e, ok := n.Members.Get(call)
+func (g *protocolGraph) removeEdge(n *graphNode, key memberKey) {
+	e, ok := n.Members.Get(key)
 	if !ok {
 		return
 	}
 	g.metadataBytes -= entryBytes(e)
-	n.Members.Delete(call)
+	n.Members.Delete(key)
 	g.edges--
 	if !e.IsNode() {
-		g.users.Set(call, g.users.Value(call)-1)
-		if g.users.Value(call) == 0 {
-			g.users.Delete(call)
+		g.users.Set(key.Call, g.users.Value(key.Call)-1)
+		if g.users.Value(key.Call) == 0 {
+			g.users.Delete(key.Call)
 		}
 	}
 }
@@ -373,7 +258,7 @@ func (g *protocolGraph) expire(now time.Time, clockSafe bool, direct *boundedInd
 		}
 		for _, n := range g.nodes.All() {
 			for call, e := range n.Members.All() {
-				if e.IsNode() && expired.Value(call) {
+				if e.IsNode() && expired.Value(call.Call) {
 					g.removeEdge(n, call)
 				}
 			}
@@ -433,24 +318,23 @@ func (g *protocolGraph) projectedCharge(p *graphPlan) int {
 		charge += entryBytes(e)
 	}
 	r := p.record
-	n := g.nodes.Value(r.Subject.Call)
-	var existing *boundedIndex[string, PC92Entry]
+	n := g.nodes.Value(p.subject)
+	var existing *boundedIndex[memberKey, PC92Entry]
 	if n != nil {
 		existing = n.Members
 		if !r.SubjectImplicit {
 			charge += entryBytes(entryWithMetadata(n.Entry, r.Subject)) - entryBytes(n.Entry)
 		}
 	}
-	newMembers, newUsers := existing.Len()-len(p.remove), g.users.Len()
-	for _, call := range p.remove {
-		e := existing.Value(call)
+	newMembers, newUsers := existing.Len()-p.removed, g.users.Len()
+	for key, e := range p.removals(existing) {
 		charge -= entryBytes(e)
-		if !e.IsNode() && g.users.Value(call) == 1 {
+		if !e.IsNode() && g.users.Value(key.Call) == 1 {
 			newUsers--
 		}
 	}
 	for _, e := range p.add {
-		old, ok := existing.Get(e.Call)
+		old, ok := existing.Get(membershipKey(e))
 		if !ok {
 			newMembers++
 			if !e.IsNode() && g.users.Value(e.Call) == 0 {

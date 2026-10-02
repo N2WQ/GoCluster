@@ -172,10 +172,17 @@ func (p *protocolController) publicationFits(entries *boundedIndex[string, PC92E
 	return err == nil
 }
 func (p *protocolController) sendRecord(recipients []*session, action string, members []PC92Entry, _ bool) error {
+	return p.sendRecordBefore(recipients, action, members, time.Time{})
+}
+
+func (p *protocolController) sendRecordBefore(recipients []*session, action string, members []PC92Entry, deadline time.Time) error {
 	if len(recipients) == 0 || ((action == "A" || action == "D") && len(members) == 0) {
 		return nil
 	}
-	wall := p.wallNow().UTC()
+	if !deadline.IsZero() && !time.Now().Before(deadline) {
+		return context.DeadlineExceeded
+	}
+	wall := p.authorityWallNow().UTC()
 	if wall.Unix() <= p.startupSecond || wall.Unix() <= p.clockFloor || wall.Before(p.observedWall) {
 		return ErrTimestampClock
 	}
@@ -188,12 +195,16 @@ func (p *protocolController) sendRecord(recipients []*session, action string, me
 		return err
 	}
 	for _, s := range recipients {
-		if err := s.sendControlLine(wire); err != nil {
+		if err := s.enqueueControlLineBefore(wire, true, deadline); err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				return err
+			}
 			p.diagnostic("PC92 control output refused")
 			s.close()
+		} else {
+			p.qualificationPublicationAdmitted(s, action, wire, p.elapsedNow())
 		}
 	}
-	p.lastPublish = p.elapsedNow()
 	p.unsafeSince = time.Time{}
 	return nil
 }
@@ -221,7 +232,7 @@ func (p *protocolController) tick(now time.Time) {
 	}
 	// UTC deliberately removes Go's monotonic reading. Wall-clock health must
 	// compare UTC; elapsed deadlines below keep their independent monotonic clock.
-	wall := p.wallNow().UTC()
+	wall := p.authorityWallNow().UTC()
 	regressed := !p.observedWall.IsZero() && wall.Before(p.observedWall)
 	if p.observedWall.IsZero() || wall.After(p.observedWall) {
 		p.observedWall, p.wallAdvancedAt = wall, now
@@ -231,7 +242,7 @@ func (p *protocolController) tick(now time.Time) {
 		p.clockFloor = p.observedWall.Unix()
 		clockErr = ErrTimestampClock
 	}
-	if now.Sub(p.wallAdvancedAt) >= 5*time.Second {
+	if now.Sub(p.wallAdvancedAt) >= 4*time.Second {
 		// A frozen clock may never exhaust the 100-value sequence when traffic
 		// is quiet. Detect lack of UTC progress independently of publication.
 		p.clockFloor = p.observedWall.Unix()
@@ -247,7 +258,10 @@ func (p *protocolController) tick(now time.Time) {
 		if p.unsafeSince.IsZero() {
 			p.unsafeSince = now
 		}
-		if now.Sub(p.unsafeSince) >= 5*time.Second && !p.clockGate {
+		// Regression is conclusive immediately. Frozen UTC is detected with
+		// one second of internal margin for scheduling and remote closure;
+		// five seconds is the external maximum, never a required grace period.
+		if !p.clockGate {
 			p.clockGate = true
 			p.gate("PC9x gated: unsafe local clock")
 		}
@@ -265,12 +279,16 @@ func (p *protocolController) tick(now time.Time) {
 		return
 	}
 	if p.clockGate || p.capacityGate {
+		if p.clockGate && !p.recoveryWall.IsZero() && !wall.After(p.recoveryWall) {
+			p.safeSince = time.Time{}
+		}
 		if p.safeSince.IsZero() {
 			p.safeSince = now
 			p.recoveryWall = wall
 			return
 		}
-		if now.Sub(p.safeSince) < time.Second || (p.clockGate && !wall.After(p.recoveryWall)) {
+		p.recoveryWall = wall
+		if now.Sub(p.safeSince) < time.Second {
 			return
 		}
 		p.clockGate = false
@@ -309,82 +327,19 @@ func (p *protocolController) tick(now time.Time) {
 		p.blockedRecords.Delete(call)
 		p.blockedInput.Delete(call)
 	}
-	if !sameMembership(entries, p.current) {
-		p.revision++
-		p.current = entries
-	}
-	members := entryValues(entries)
-	recovering := make([]*session, 0, p.recovering.Len())
-	for s := range p.recovering.All() {
-		recovering = append(recovering, s)
-	}
-	for _, s := range recovering {
-		recovery := p.recovering.Value(s)
-		if s.ctx != nil && s.ctx.Err() != nil {
-			p.recovering.Delete(s)
-			continue
-		}
-		if recovery.phase == 0 || recovery.revision != p.revision {
-			if err := p.sendRecord([]*session{s}, "C", members, false); err != nil {
-				p.publicationError(err, now)
-				return
-			}
-			p.recovering.Set(s, recoveryState{phase: 1, revision: p.revision})
-		}
-		if err := p.sendRecord([]*session{s}, "A", members, false); err != nil {
-			p.publicationError(err, now)
-			return
-		}
-		p.recovering.Delete(s)
-	}
-	for s := range p.pendingK.All() {
-		if s.ctx != nil && s.ctx.Err() != nil {
-			p.pendingK.Delete(s)
-			continue
-		}
-		if err := p.sendRecord([]*session{s}, "K", nil, false); err != nil {
-			p.publicationError(err, now)
-			return
-		}
-		p.pendingK.Delete(s)
-	}
-	if !p.dirty || (!p.lastPublish.IsZero() && now.Sub(p.lastPublish) < 100*time.Millisecond) {
-		return
-	}
-	var removed, added []PC92Entry
-	for call, old := range p.published.All() {
-		if _, ok := entries.Get(call); !ok {
-			removed = append(removed, old)
-		}
-	}
-	for call, e := range entries.All() {
-		old, ok := p.published.Get(call)
-		if !ok || old != e {
-			added = append(added, e)
-		}
-	}
-	recipients := p.sessions()
-	if len(removed) > 0 {
-		if err := p.sendRecord(recipients, "D", removed, false); err != nil {
-			p.publicationError(err, now)
-			return
-		}
-	}
-	if len(added) > 0 {
-		if err := p.sendRecord(recipients, "A", added, false); err != nil {
-			p.publicationError(err, now)
-			return
-		}
-	}
-	p.published = entries
-	p.dirty = false
+	p.publishMembership(entries, now)
 }
 func (p *protocolController) publicationError(err error, now time.Time) {
-	if errors.Is(err, ErrTimestampRate) || errors.Is(err, ErrTimestampClock) {
+	if errors.Is(err, ErrTimestampRate) {
+		// Legitimate rate coalescing is not clock failure. Independent clock
+		// examination catches regression/freeze even when no record is due.
+		return
+	}
+	if errors.Is(err, ErrTimestampClock) {
 		if p.unsafeSince.IsZero() {
 			p.unsafeSince = now
 		}
-		if now.Sub(p.unsafeSince) >= 5*time.Second {
+		if !p.clockGate {
 			p.clockGate = true
 			p.gate("PC9x gated: timestamp progress unavailable")
 		}
@@ -410,12 +365,12 @@ func sameMembership(a, b *boundedIndex[string, PC92Entry]) bool {
 // integer timestamp below the old process's .NN. The wait is bounded and only
 // affects PC9x: a stalled startup clock gates its links while local service lives.
 func (p *protocolController) waitStartupSecond(ctx context.Context) error {
-	p.startupSecond = p.wallNow().Unix()
+	p.startupSecond = p.authorityWallNow().Unix()
 	deadline := time.NewTimer(5 * time.Second)
 	defer deadline.Stop()
 	poll := time.NewTicker(10 * time.Millisecond)
 	defer poll.Stop()
-	for p.wallNow().Unix() <= p.startupSecond {
+	for p.authorityWallNow().Unix() <= p.startupSecond {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()

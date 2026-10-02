@@ -7,6 +7,11 @@ acceptance threshold in [v6](pc18-pc92-scope-ledger-v6.md) and
 progress; this record does not claim compliance or authorize commit, push or
 deployment.
 
+The subsequent [approved v9 experiment](pc18-pc92-scope-ledger-v9.md) completed
+with rejection of its proposed persistence-driver candidate. Production SQLite
+and the v8 implementation remain unchanged. The original qualification and
+aggregate allocation proof remain open.
+
 The user explicitly selected the allocation boundary on 2026-10-01: the
 480 MiB ceiling includes all owned protocol data, backing allocations and
 overlapping active generations. Go runtime stacks, GC overhead and unchanged

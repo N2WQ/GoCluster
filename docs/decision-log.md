@@ -25,6 +25,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Reserved Placeholder | Unused | - | index hygiene | - | - | No ADR file; first real ADR is `docs/decisions/ADR-0002-ui-v2-render-pipeline.md` |
+| ADR-0231 | PC92 Audit Corrections and Deadline Ownership | Accepted | 2026-10-01 | peer, protocol, lifecycle, persistence, qualification | ADR-0050 (PC92/PC93 hop clauses); refines ADR-0230 | - | `docs/decisions/ADR-0231-pc92-audit-corrections.md` |
 | ADR-0230 | PC18/PC92 Authority, Recovery and Bounds | Accepted | 2026-10-01 | peer, telnet, protocol, lifecycle, retained state | ADR-0050/ADR-0054 (selected clauses, refines) | - | `docs/decisions/ADR-0230-pc18-pc92-authority-and-bounds.md` |
 | ADR-0229 | Full Build-Tagged Code Map Coverage | Accepted | 2026-07-12 | workflow, docs/code-maps, CI, portability | ADR-0147 (selected clauses) | - | `docs/decisions/ADR-0229-full-build-tagged-code-map-coverage.md` |
 | ADR-0228 | Corrective CI Enforcement | Accepted | 2026-07-12 | workflow, CI, validation, GitHub Actions | ADR-0227 (selected clauses) | - | `docs/decisions/ADR-0228-corrective-ci-enforcement.md` |

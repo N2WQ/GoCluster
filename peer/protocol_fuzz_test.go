@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -12,6 +13,8 @@ func FuzzParseFrameHopSuffix(f *testing.F) {
 		"PC92^NODE^123^A^^9CALL:ver^H99^H9x^",
 		"PC11^14074.0^K1ABC^23-Dec-2025^2001Z^CQ TEST^W1XYZ^ORIGIN^H3^",
 		"PC93^GB7TLH^81701^WR3D-2^G1TLH-2^*^wot?^H98^",
+		"PC92^N1NODE^123^K^5N1NODE^3^21^^H98^H99^",
+		"PC93^N1NODE^123^LOGGER^K1ABC^*^H9x^H1ABC^^H99^",
 	}
 	for _, seed := range seeds {
 		f.Add(seed)
@@ -34,7 +37,11 @@ func FuzzParseFrameHopSuffix(f *testing.F) {
 		if reparsed.Hop != frame.Hop {
 			t.Fatalf("hop mismatch after roundtrip: start=%d end=%d line=%q encoded=%q", frame.Hop, reparsed.Hop, line, reencoded)
 		}
-		if reparsed.Type != "PC93" && hasTrailingHopLikeToken(reparsed.Fields) {
+		if frame.Type == "PC92" || frame.Type == "PC93" {
+			if !reflect.DeepEqual(frame.Fields, reparsed.Fields) {
+				t.Fatalf("authority payload lost: %q => %q", frame.Fields, reparsed.Fields)
+			}
+		} else if hasTrailingHopLikeToken(reparsed.Fields) {
 			t.Fatalf("trailing hop-like suffix remained after roundtrip: fields=%v line=%q encoded=%q", reparsed.Fields, line, reencoded)
 		}
 	})

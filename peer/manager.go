@@ -114,8 +114,10 @@ func buildPeerRegistry(peers []config.PeeringPeer) ([]PeerEndpoint, map[string]P
 }
 
 func NewManager(cfg config.PeeringConfig, localCall string, ingest chan<- *spot.Spot, maxAgeSeconds int, dropReporter func(string)) (*Manager, error) {
-	if strings.TrimSpace(localCall) == "" {
-		return nil, fmt.Errorf("peering local callsign is empty")
+	var err error
+	cfg, localCall, err = config.NormalizeActivePeeringWireContract(cfg, localCall)
+	if err != nil {
+		return nil, err
 	}
 	retention := time.Duration(cfg.Topology.RetentionHours) * time.Hour
 	if retention <= 0 {
@@ -331,7 +333,7 @@ func (m *Manager) HandleFrame(frame *Frame, sess *session) {
 		if m.protocol == nil || !m.protocol.enqueue(frame, sess, now) {
 			// Only valid authority records warrant closing and gating a link.
 			// The normal path decodes on the owner; full-mailbox rejection is rare.
-			if _, err := DecodePC92(frame); err == nil {
+			if _, eligible := eligiblePC92Record(frame, sess, m.localCall); eligible {
 				m.recordAdmissionFailure(sess, frame, now)
 			}
 		}
@@ -566,6 +568,10 @@ func pc61DropReason(err error) string {
 }
 
 func (m *Manager) registerSession(s *session) error {
+	return m.registerSessionAttempt(s, nil, nil)
+}
+
+func (m *Manager) registerSessionAttempt(s *session, attempt *establishmentAttempt, replayDone chan error) error {
 	if m == nil || s == nil {
 		return nil
 	}
@@ -584,11 +590,23 @@ func (m *Manager) registerSession(s *session) error {
 	if m.stopping || m.sessions.Len() >= 64 {
 		return fmt.Errorf("established peer capacity or stopping")
 	}
+	if s.ctx != nil && s.ctx.Err() != nil {
+		return s.ctx.Err()
+	}
+	if !attempt.commit() {
+		return context.DeadlineExceeded
+	}
 	if err := s.activateNormalQueue(); err != nil {
 		return err
 	}
 	s.id = key
 	m.sessions.Set(key, s)
+	if c := m.candidates.Value(s); c != nil && len(c.staged) != 0 {
+		// Publish the terminal ownership fence before dropping manager.mu.
+		// Even cancellation between registration and replay transfer cannot
+		// retire this transport while the controller retains its staged batch.
+		s.replayReady = replayDone
+	}
 	return nil
 }
 
@@ -726,6 +744,9 @@ func (m *Manager) routePC93(msg pc93Message) {
 		return
 	}
 	target, broadcast := pc93Target(msg)
+	if !broadcast && target == "" {
+		return
+	}
 	m.mu.RLock()
 	announce := m.announceBroadcast
 	direct := m.directMessage
@@ -898,7 +919,11 @@ func (m *Manager) acceptLoop() {
 }
 
 func (m *Manager) runOutbound(peer PeerEndpoint) {
-	backoff := newBackoff(time.Duration(m.cfg.Backoff.BaseMS)*time.Millisecond, time.Duration(m.cfg.Backoff.MaxMS)*time.Millisecond)
+	// Constructor validation bounds positive integers before conversion. Clamp
+	// nonpositive sentinels first as well: an extreme negative integer could
+	// otherwise overflow time.Duration into a spurious positive delay.
+	baseMS, maxMS := max(0, m.cfg.Backoff.BaseMS), max(0, m.cfg.Backoff.MaxMS)
+	backoff := newBackoff(time.Duration(baseMS)*time.Millisecond, time.Duration(maxMS)*time.Millisecond)
 	dialer := &net.Dialer{
 		Timeout:   10 * time.Second,
 		KeepAlive: 2 * time.Minute, // OS-level keepalive for peer links
@@ -914,7 +939,7 @@ func (m *Manager) runOutbound(peer PeerEndpoint) {
 			continue
 		}
 		if m.hasActiveSession(peer.ID()) {
-			delay := time.Duration(m.cfg.Backoff.BaseMS) * time.Millisecond
+			delay := time.Duration(baseMS) * time.Millisecond
 			if delay <= 0 {
 				delay = 2 * time.Second
 			}

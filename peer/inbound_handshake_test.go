@@ -97,7 +97,7 @@ func TestInboundHandshakeConfiguredPeerBehavior(t *testing.T) {
 			steps = append(steps,
 				handshakeStep{kind: handshakeSendRx, line: tc.banner},
 				handshakeStep{kind: handshakeSendRx, line: "PC20^"},
-				handshakeStep{kind: handshakeExpectTx, matcher: exactLine("PC19^1^N0CALL^0^1.57^H99^")},
+				handshakeStep{kind: handshakeExpectTx, matcher: exactLine("PC19^1^N0CALL^0^5457^H99^")},
 				handshakeStep{kind: handshakeExpectTx, matcher: exactLine("PC22^")},
 			)
 			steps = append(steps, inboundEndSteps()...)
@@ -128,6 +128,27 @@ func TestInboundHandshakeConfiguredPeerBehavior(t *testing.T) {
 			steps := inboundLoginSteps(true)
 			steps = append(steps, handshakeStep{kind: handshakeSendRx, line: tc.banner}, handshakeStep{kind: handshakeAwaitResult, timeout: time.Second, errCheck: errContains("family mismatch")})
 			runInboundScenario(t, inboundScenario{name: t.Name(), peers: []config.PeeringPeer{inboundPeer(tc.family)}, wantRemoteCall: "N1REM", steps: steps})
+		})
+	}
+}
+
+func TestInboundHandshakeCanonicalIdentityDoesNotWidenAuthentication(t *testing.T) {
+	for _, tc := range []struct {
+		name, configured, presented string
+		allow                       []string
+	}{
+		{"alias is not registry login", "EA8/N1REM/P-01", "EA8/N1REM/P-01", nil},
+		{"SSID alias is not registry login", "N1REM-01", "N1REM-01", nil},
+		{"literal allowlist is not canonicalized", "N1REM-1", "N1REM-1", []string{"N1REM-01"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			peer := inboundPeer(config.PeeringPeerFamilyDXSpider)
+			peer.RemoteCallsign = tc.configured
+			runInboundScenario(t, inboundScenario{name: t.Name(), peers: []config.PeeringPeer{peer}, globalAllowCalls: tc.allow, steps: []handshakeStep{
+				{kind: handshakeExpectTx, matcher: exactLine("login:")},
+				{kind: handshakeSendRx, line: tc.presented},
+				{kind: handshakeAwaitResult, timeout: time.Second, errCheck: errContains("unauthorized inbound peer")},
+			}})
 		})
 	}
 }

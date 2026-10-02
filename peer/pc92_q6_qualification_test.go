@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -20,14 +21,14 @@ func q6PublicationFault(t *testing.T, zero bool) {
 	r.wait("publication gate", 5*time.Second, func(s QualificationState) bool { return s.PublicationGated && s.Established == 1 })
 	r.closed(r.primary)
 	r.closed(r.alternate)
-	r.refused("GB7REF")
+	r.refused("GB7PEND") // Fresh identity must exercise the gate, not retiring-owner rejection.
 	r.legacyAlive()
 	r.login("K1USER", "127.0.0.3")
 	resume := time.Now()
 	for _, local := range extras {
 		_ = local.conn.Close()
 	}
-	r.wait("publication headroom and stable resume", 5*time.Second, func(s QualificationState) bool {
+	r.waitUntil("publication headroom and stable resume", resume.Add(2*time.Second), func(s QualificationState) bool {
 		return !s.PublicationGated && r.server.CurrentPeerMembership().RawCount == 1
 	})
 	if time.Since(resume) < time.Second {
@@ -36,35 +37,60 @@ func q6PublicationFault(t *testing.T, zero bool) {
 	r.recovered("GB7REF")
 }
 
-func q6ClockFault(t *testing.T, zero bool) {
+func q6ClockFault(t *testing.T, zero, freeze, loaded bool) {
 	r := newQ6Rig(t, zero, 65536, 0)
+	if loaded {
+		// Four synchronous readers keep lifecycle work ready without creating an
+		// unbounded goroutine or request population. Application/closure timing
+		// below does not depend on those actor snapshots.
+		loadContext, stopLoad := context.WithCancel(t.Context())
+		var workers sync.WaitGroup
+		started := make(chan struct{}, 4)
+		for range 4 {
+			workers.Add(1)
+			go func() {
+				defer workers.Done()
+				started <- struct{}{}
+				for loadContext.Err() == nil {
+					_, _ = r.m.QualificationSnapshot(loadContext)
+				}
+			}()
+		}
+		for range 4 {
+			<-started
+		}
+		t.Cleanup(func() { stopLoad(); workers.Wait() })
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	start := time.Now()
-	err := r.m.QualificationSetClockOffset(ctx, -time.Hour)
+	offset := -time.Hour
+	if freeze {
+		offset = 0
+	}
+	start, err := r.m.QualificationApplyClockFault(ctx, offset, freeze)
 	cancel()
 	if err != nil {
 		t.Fatal(err)
 	}
-	r.wait("clock gate", 8*time.Second, func(s QualificationState) bool { return s.ClockGated && s.Established == 1 })
-	if time.Since(start) < 5*time.Second {
-		t.Fatal("clock gate ignored the publication-stall grace interval")
-	}
-	r.closed(r.primary)
-	r.closed(r.alternate)
-	r.refused("GB7REF")
+	// No actor request applies the fault or establishes the closure endpoint.
+	// Both externally observed closes must precede the same absolute deadline.
+	deadline := start.Add(5 * time.Second)
+	r.closedBy(r.primary, deadline)
+	r.closedBy(r.alternate, deadline)
+	r.waitUntil("clock gate", deadline, func(s QualificationState) bool { return s.ClockGated && s.Established == 1 })
+	r.refused("GB7PEND") // A duplicate owner is not evidence that global admission is gated.
 	r.legacyAlive()
 	r.login("K1USER", "127.0.0.3")
 	ctx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
-	resume := time.Now()
-	err = r.m.QualificationSetClockOffset(ctx, 0)
+	resume, err := r.m.QualificationApplyClockFault(ctx, 0, false)
 	cancel()
 	if err != nil {
 		t.Fatal(err)
 	}
-	r.wait("clock stable and UTC-advancing resume", 5*time.Second, func(s QualificationState) bool { return !s.ClockGated })
+	r.waitUntil("clock stable and UTC-advancing resume", resume.Add(2*time.Second), func(s QualificationState) bool { return !s.ClockGated })
 	if time.Since(resume) < time.Second {
 		t.Fatal("clock gate resumed without one second of stable progress")
 	}
+	t.Logf("clock fault freeze=%v loaded=%v: primary closed=%s alternate closed=%s gate recovery=%s", freeze, loaded, r.primary.terminal.at.Sub(start), r.alternate.terminal.at.Sub(start), time.Since(resume))
 	r.recovered("GB7REF")
 }
 
@@ -264,7 +290,11 @@ func TestPC92QualificationQ6Faults(t *testing.T) {
 				name string
 				run  func(*testing.T, bool)
 			}{
-				{"publication", q6PublicationFault}, {"clock", q6ClockFault}, {"admission", q6AdmissionFault},
+				{"publication", q6PublicationFault},
+				{"clock-regression", func(t *testing.T, zero bool) { q6ClockFault(t, zero, false, false) }},
+				{"clock-frozen", func(t *testing.T, zero bool) { q6ClockFault(t, zero, true, false) }},
+				{"clock-frozen-loaded", func(t *testing.T, zero bool) { q6ClockFault(t, zero, true, true) }},
+				{"admission", q6AdmissionFault},
 				{"staging-capacity", func(t *testing.T, zero bool) { q6StagingFault(t, zero, false) }},
 				{"stall", q6StallFault}, {"candidate-race", q6CandidateRace},
 			} {

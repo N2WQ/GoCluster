@@ -5,6 +5,7 @@ package peer
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -48,18 +50,39 @@ type q6Wire struct {
 }
 
 type q6Peer struct {
-	conn    *net.TCPConn
-	reader  *bufio.Reader
-	events  chan q6Wire
-	done    chan struct{}
-	spots   atomic.Int64
-	error   atomic.Bool
-	start   sync.Once
-	call    string
-	hold    atomic.Bool
-	paused  chan struct{}
-	resume  chan struct{}
-	release sync.Once
+	conn     *net.TCPConn
+	reader   *bufio.Reader
+	events   chan q6Wire
+	done     chan struct{}
+	spots    atomic.Int64
+	error    atomic.Bool
+	start    sync.Once
+	call     string
+	hold     atomic.Bool
+	paused   chan struct{}
+	resume   chan struct{}
+	release  sync.Once
+	terminal q6Terminal // written by monitor before closing done
+}
+
+type q6Terminal struct {
+	at     time.Time
+	reason string
+	err    error
+}
+
+func q6ObservationWithinDeadline(observed, checked, deadline time.Time) bool {
+	return !observed.IsZero() && !observed.After(deadline) && !checked.After(deadline)
+}
+
+func q6TerminalReason(err error) string {
+	if errors.Is(err, io.EOF) || errors.Is(err, syscall.ECONNRESET) {
+		return "remote_closed"
+	}
+	if errors.Is(err, net.ErrClosed) {
+		return "local_closed"
+	}
+	return "reader_error"
 }
 
 // The external observer holds at most 256 bounded lines. Transit PC92 and spot
@@ -68,6 +91,12 @@ func (p *q6Peer) monitor() {
 	p.start.Do(func() {
 		go func() {
 			defer close(p.done)
+			finish := func(reason string, err error) {
+				p.terminal = q6Terminal{at: time.Now(), reason: reason, err: err}
+				if reason != "remote_closed" && reason != "local_closed" {
+					p.error.Store(true)
+				}
+			}
 			var partial string
 			for {
 				if p.hold.Load() {
@@ -80,17 +109,15 @@ func (p *q6Peer) monitor() {
 				line := partial + string(bytes)
 				partial = ""
 				if len(line) > MaxPeerFrameBytes+2 {
-					p.error.Store(true)
+					finish("oversized_output", nil)
 					return
 				}
 				if err != nil {
-					if err == bufio.ErrBufferFull {
-						p.error.Store(true)
-					}
 					if networkErr, ok := err.(net.Error); ok && networkErr.Timeout() && p.hold.Load() {
 						partial = line
 						continue
 					}
+					finish(q6TerminalReason(err), err)
 					return
 				}
 				line = strings.TrimSpace(line)
@@ -104,7 +131,7 @@ func (p *q6Peer) monitor() {
 				select {
 				case p.events <- q6Wire{line, time.Now()}:
 				default:
-					p.error.Store(true)
+					finish("observer_overflow", nil)
 					return
 				}
 			}
@@ -124,12 +151,16 @@ func (p *q6Peer) send(t *testing.T, line string) {
 
 func (p *q6Peer) await(t *testing.T, predicate func(string) bool, timeout time.Duration) q6Wire {
 	t.Helper()
+	deadline := time.Now().Add(timeout)
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	for {
 		select {
 		case event := <-p.events:
 			if predicate(event.line) {
+				if !q6ObservationWithinDeadline(event.at, time.Now(), deadline) {
+					t.Fatalf("%s expected wire arrived after deadline", p.call)
+				}
 				return event
 			}
 		case <-p.done:
@@ -236,7 +267,7 @@ func newQ6Rig(t *testing.T, zeroTimers bool, maxBytes, tokenCount int) *q6Rig {
 			Family: config.PeeringPeerFamilyDXSpider, Direction: config.PeeringPeerDirectionInbound})
 	}
 	ingest := make(chan *spot.Spot, 4096)
-	manager, err := NewManager(cfg, "N0CALL", ingest, 600, func(string) { r.dropped.Add(1) })
+	manager, err := NewManager(completeProtocolTestConfig(cfg, "N0CALL"), "N0CALL", ingest, 600, func(string) { r.dropped.Add(1) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,25 +428,39 @@ func (r *q6Rig) snapshot() QualificationState {
 }
 
 func (r *q6Rig) wait(label string, timeout time.Duration, predicate func(QualificationState) bool) QualificationState {
+	return r.waitUntil(label, time.Now().Add(timeout), predicate)
+}
+
+func (r *q6Rig) waitUntil(label string, deadline time.Time, predicate func(QualificationState) bool) QualificationState {
 	r.t.Helper()
-	deadline := time.Now().Add(timeout)
 	for {
-		s := r.snapshot()
+		ctx, cancel := context.WithDeadline(context.Background(), deadline)
+		s, err := r.m.QualificationSnapshot(ctx)
+		cancel()
+		if err != nil || !q6ObservationWithinDeadline(time.Now(), time.Now(), deadline) {
+			r.t.Fatalf("%s: deadline or observation failure: %v; last state=%+v", label, err, s)
+		}
 		if predicate(s) {
 			return s
 		}
-		if time.Now().After(deadline) {
-			r.t.Fatalf("%s: timed out; last state=%+v", label, s)
-		}
-		time.Sleep(20 * time.Millisecond)
+		time.Sleep(min(20*time.Millisecond, max(time.Duration(0), time.Until(deadline))))
 	}
 }
 
 func (r *q6Rig) closed(peer *q6Peer) {
+	r.closedBy(peer, time.Now().Add(5*time.Second))
+}
+
+func (r *q6Rig) closedBy(peer *q6Peer, deadline time.Time) {
 	r.t.Helper()
+	timer := time.NewTimer(max(time.Duration(0), time.Until(deadline)))
+	defer timer.Stop()
 	select {
 	case <-peer.done:
-	case <-time.After(5 * time.Second):
+		if peer.terminal.reason != "remote_closed" || !q6ObservationWithinDeadline(peer.terminal.at, time.Now(), deadline) || peer.error.Load() {
+			r.t.Fatalf("%s invalid/late closure evidence: %+v deadline=%v", peer.call, peer.terminal, deadline)
+		}
+	case <-timer.C:
 		r.t.Fatalf("%s socket did not close", peer.call)
 	}
 }

@@ -74,7 +74,7 @@ func DecodePC92(frame *Frame) (*PC92Record, error) {
 		return nil, err
 	}
 	record := &PC92Record{Origin: origin, Timestamp: fields[1], TimestampValue: stamp, Action: action, Hop: frame.Hop}
-	if fields[3] == "" && (action == "A" || action == "D") {
+	if fields[3] == "" && action != "K" {
 		record.Subject = PC92Entry{Call: origin, Flags: 5}
 		record.SubjectImplicit = true
 	} else {
@@ -216,7 +216,7 @@ func EncodePC92(record *PC92Record) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if record.SubjectImplicit && (record.Action == "A" || record.Action == "D") {
+	if record.SubjectImplicit && record.Action != "K" {
 		subject = ""
 	}
 	fields := []string{record.Origin, record.Timestamp, record.Action, subject}

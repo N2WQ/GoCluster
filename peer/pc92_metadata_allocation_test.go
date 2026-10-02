@@ -8,6 +8,8 @@ import (
 	"testing"
 	"unsafe"
 
+	"dxcluster/config"
+
 	ztelnet "github.com/ziutek/telnet"
 )
 
@@ -66,4 +68,36 @@ func TestPC92MetadataOwnerLayout(t *testing.T) {
 		t.Fatalf("active fixed work exceeds4KiB metadata envelope: %d", active)
 	}
 	t.Logf("active-only fixed inventory=%d, reservation=%d", active, 4<<10)
+}
+
+// The v11 changes fit existing local/global reservations. This inventory does
+// not turn the still-open context backing and outer retirement proofs into a
+// complete metadata or SQLite bound.
+func TestPC92V11ChangedOwnershipEnvelope(t *testing.T) {
+	// Existing deliberately overcombined work plus one maximum immutable wire
+	// per recovery, and an extra transient baseline/member decode generation.
+	const priorLocalWork = 5783936
+	const recoveryWires = 64 * 65536
+	const baselineScratch = 512 << 10
+	local := priorLocalWork + recoveryWires + baselineScratch
+	if local > localPublicationReservedBytes {
+		t.Fatalf("local publication overlap %d exceeds %d", local, localPublicationReservedBytes)
+	}
+	// Candidate states move to replay ownership, never copy their staged wires.
+	// Closed requests and active callers may coexist with replay replies; all
+	// message/timer/attempt allowances are deliberately combined, not subtracted
+	// because two paths usually share a channel.
+	const requestOwners = 128 + 192 + 64 + 2
+	request := dedupeOracleAllocation(int(unsafe.Sizeof(protocolRequest{}))+8) +
+		dedupeOracleAllocation(int(unsafe.Sizeof(establishmentAttempt{}))+8) + 256 + 256
+	global := requestOwners*request +
+		128*int(unsafe.Sizeof(protocolRequest{})) +
+		192*dedupeOracleAllocation(int(unsafe.Sizeof(candidateState{}))+8) +
+		dedupeOracleAllocation(64*int(unsafe.Sizeof(config.PeeringPeer{}))+8) + 129*48 +
+		dedupeOracleAllocation(int(unsafe.Sizeof(Manager{}))+8) +
+		dedupeOracleAllocation(int(unsafe.Sizeof(protocolController{}))+8) + 64<<10
+	if global > 1<<20 {
+		t.Fatalf("changed fixed global ownership exceeds existing1MiB allowance: %d", global)
+	}
+	t.Logf("local overlap bound=%d; global fixed owners=%d; request allowance=%d", local, global, request)
 }

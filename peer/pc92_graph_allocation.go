@@ -9,7 +9,7 @@ func (g *protocolGraph) metadataMutationCharge(plan *graphPlan) (peak, final int
 		final += entryBytes(entry)
 	}
 	peak = final
-	retiredCalls := 0
+
 	plannedEntry := func(call string) PC92Entry {
 		if n := g.nodes.Value(call); n != nil {
 			return n.Entry
@@ -26,7 +26,7 @@ func (g *protocolGraph) metadataMutationCharge(plan *graphPlan) (peak, final int
 				cloned += allocationBytes(len(field.next))
 			}
 		}
-		peak = max(peak, final+retiredCalls+cloned)
+		peak = max(peak, final+cloned)
 		final += entryBytes(next) - entryBytes(old)
 	}
 	r := plan.record
@@ -37,19 +37,15 @@ func (g *protocolGraph) metadataMutationCharge(plan *graphPlan) (peak, final int
 		final += entryBytes(r.Subject)
 		peak = max(peak, final)
 	}
-	var existing *boundedIndex[string, PC92Entry]
-	if n := g.nodes.Value(r.Subject.Call); n != nil {
+	var existing *boundedIndex[memberKey, PC92Entry]
+	if n := g.nodes.Value(plan.subject); n != nil {
 		existing = n.Members
 	}
-	for _, call := range plan.remove {
-		final -= entryBytes(existing.Value(call))
-		// The plan's remove slice still aliases this owned call after both the
-		// membership and last-user index entries have been deleted. Keep that
-		// backing alive in the peak until the complete transaction returns.
-		retiredCalls += allocationBytes(len(call))
+	for _, entry := range plan.removals(existing) {
+		final -= entryBytes(entry)
 	}
 	for _, entry := range plan.add {
-		replace(existing.Value(entry.Call), entry)
+		replace(existing.Value(membershipKey(entry)), entry)
 		if entry.IsNode() {
 			replace(plannedEntry(entry.Call), entry)
 		}
@@ -63,9 +59,9 @@ func (g *protocolGraph) metadataMutationCharge(plan *graphPlan) (peak, final int
 // Compact returns; entries are relinked without allocating another generation.
 func (g *protocolGraph) putMember(n *graphNode, entry PC92Entry) {
 	if n.Members == nil {
-		n.Members = newBoundedIndex[string, PC92Entry](maxGraphEdges)
+		n.Members = newBoundedIndex[memberKey, PC92Entry](maxGraphEdges)
 	}
-	n.Members.Set(entry.Call, entry)
+	n.Members.Set(membershipKey(entry), entry)
 	if size := n.Members.Len(); size > n.memberHigh {
 		g.memberHigh += size - n.memberHigh
 		n.memberHigh = size

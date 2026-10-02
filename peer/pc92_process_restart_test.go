@@ -43,7 +43,7 @@ func TestPC92RestartProcessHelper(t *testing.T) {
 			RemoteCallsign: "GB7REF", LoginCallsign: "N0CALL", PreferPC9x: true,
 			Family: config.PeeringPeerFamilyDXSpider, Direction: config.PeeringPeerDirectionOutbound}},
 	}
-	m, err := NewManager(cfg, "N0CALL", nil, 0, nil)
+	m, err := NewManager(completeProtocolTestConfig(cfg, "N0CALL"), "N0CALL", nil, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

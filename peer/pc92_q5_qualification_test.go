@@ -44,7 +44,7 @@ func newQ5Rig(t *testing.T) *q5Rig {
 	}
 	input := make(chan *spot.Spot, 4096)
 	var err error
-	r.m, err = NewManager(cfg, "N0CALL", input, 600, nil)
+	r.m, err = NewManager(completeProtocolTestConfig(cfg, "N0CALL"), "N0CALL", input, 600, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +364,7 @@ func q5IsolationClass(t *testing.T, class string, full bool) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if class != "spot" && stats.SpotRefused != 0 || class != "pc92" && stats.PC92Refused != 0 || class != "pc93" && stats.PC93Refused != 0 || class != "bulletin" && stats.BulletinRefused != 0 {
+		if stats.PC93InputRefused != 0 || class != "spot" && stats.SpotRefused != 0 || class != "pc92" && stats.PC92Refused != 0 || class != "pc93" && stats.PC93Refused != 0 || class != "bulletin" && stats.BulletinRefused != 0 {
 			t.Fatalf("cross-class refusal: %+v", stats)
 		}
 		t.Logf("class=%s cycle=%d capacity=%d keyBytes=%d fill=%s realWindow=%s healthyChecks=%d stats=%+v", class, cycle, capacity, keyBytes, filled.Sub(started), time.Since(filled), healthIndex, stats)

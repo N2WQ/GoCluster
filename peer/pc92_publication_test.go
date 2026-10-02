@@ -48,7 +48,7 @@ func referenceMembership(current map[string]PC92Entry, record *PC92Record) map[s
 	return current
 }
 
-func TestPC92PublicationRecoveryRestartsCWhenMembershipChangesBetweenCA(t *testing.T) {
+func TestPC92PublicationRecoveryFinishesCapturedPairBeforeCatchup(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
 		before, after LocalUser
@@ -63,19 +63,21 @@ func TestPC92PublicationRecoveryRestartsCWhenMembershipChangesBetweenCA(t *testi
 			p.elapsedNow = func() time.Time { return elapsed }
 			snapshot := LocalMembership{Revision: 1, Complete: true, RawCount: 1, Users: []LocalUser{tc.before}}
 			p.manager.SetMembershipProvider(func() LocalMembership { return snapshot })
-			// Leave precisely one stamp available: C can be emitted, then A
-			// must wait for the next real UTC second without inventing time.
-			for i := 0; i < 99; i++ {
-				if _, err := p.timestamps.NextAt(wall); err != nil {
-					t.Fatal(err)
-				}
+			// Model a C already admitted before an interrupted A. Preserve that
+			// exact baseline while later membership becomes eligible.
+			baseline, ok := p.membershipEntries()
+			if !ok {
+				t.Fatal("membership fixture")
 			}
-			p.recovering.Set(receiver, recoveryState{})
-			p.tick(elapsed)
+			metadata, err := p.encodeRecord("A", "0", entryValues(baseline))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := p.sendRecord([]*session{receiver}, "C", entryValues(baseline), false); err != nil {
+				t.Fatal(err)
+			}
+			p.recovering.Set(receiver, recoveryState{phase: 1, metadata: metadata})
 			first := publicationRecords(t, receiver)
-			if len(first) != 1 || first[0].Action != "C" {
-				t.Fatalf("expected C before timestamp exhaustion, got %+v", first)
-			}
 			remote := referenceMembership(make(map[string]PC92Entry), first[0])
 			if remote[tc.before.Login].IP != netip.MustParseAddr(tc.before.IP) {
 				t.Fatal("initial C was not received with old membership metadata")
@@ -88,12 +90,24 @@ func TestPC92PublicationRecoveryRestartsCWhenMembershipChangesBetweenCA(t *testi
 			}
 			snapshot.Revision++
 			snapshot.Users[0] = tc.after
-			wall = wall.Add(time.Second)
-			elapsed = elapsed.Add(time.Second)
+			wall = wall.Add(100 * time.Millisecond)
+			elapsed = elapsed.Add(100 * time.Millisecond)
 			p.tick(elapsed)
 			recovered := publicationRecords(t, receiver)
-			if len(recovered) != 2 || recovered[0].Action != "C" || recovered[1].Action != "A" {
-				t.Fatalf("changed recovery did not restart with ordered C then A: %+v", recovered)
+			want := []string{"A", "A"}
+			if tc.before.Login != tc.after.Login {
+				want = []string{"A", "D", "A"}
+			}
+			if len(recovered) != len(want) {
+				t.Fatalf("matching A then catchup: got%+v", recovered)
+			}
+			for i, action := range want {
+				if recovered[i].Action != action {
+					t.Fatalf("recovery order%+v", recovered)
+				}
+			}
+			if !sameMembers(first[0].Members, recovered[0].Members) {
+				t.Fatal("matching A baseline changed")
 			}
 			for _, record := range recovered {
 				remote = referenceMembership(remote, record)
@@ -132,13 +146,6 @@ func TestPC92PublicationClockGateUsesElapsedFailureAndStableRecovery(t *testing.
 	p.manager.candidates.Set(pending, &candidateState{pc9x: true})
 	wall = wall.Add(-2 * time.Second)
 	p.tick(elapsed)
-	elapsed = elapsed.Add(4999 * time.Millisecond)
-	p.tick(elapsed)
-	if p.clockGate || first.ctx.Err() != nil {
-		t.Fatal("clock failure gate fired before its elapsed deadline")
-	}
-	elapsed = elapsed.Add(time.Millisecond)
-	p.tick(elapsed)
 	if !p.clockGate || !p.manager.pc9xGated.Load() || first.ctx.Err() == nil || second.ctx.Err() == nil || pending.ctx.Err() == nil {
 		t.Fatal("sustained clock failure did not close and gate established/pending PC9x")
 	}
@@ -167,8 +174,13 @@ func TestPC92PublicationClockGateUsesElapsedFailureAndStableRecovery(t *testing.
 	if !p.clockGate {
 		t.Fatal("a clock that nudged once then froze resumed publication")
 	}
-	wall = wall.Add(time.Second)
-	p.tick(elapsed)
+	// A single forward nudge did not count as continuous recovery. Start a
+	// fresh interval and advance both clocks at every observation.
+	for range 11 {
+		wall = wall.Add(100 * time.Millisecond)
+		elapsed = elapsed.Add(100 * time.Millisecond)
+		p.tick(elapsed)
+	}
 	if p.clockGate || p.manager.pc9xGated.Load() {
 		t.Fatal("safe advancing clock did not resume after stable interval")
 	}
@@ -344,9 +356,11 @@ func TestPC92PublicationZeroPeriodicCStillRequiresRecoveryAndHonestZeroCounts(t 
 	}
 	// Simulate successful establishment; the manager must schedule one-shot
 	// complete recovery even though both periodic timers are disabled.
+	p.manager.candidates.Set(receiver, &candidateState{})
 	if err := p.request(protocolRequest{kind: "establish", source: receiver}); err != nil {
 		t.Fatal(err)
 	}
+	p.tick(wall)
 	records := publicationRecords(t, receiver)
 	if len(records) < 2 || records[0].Action != "C" || records[1].Action != "A" {
 		t.Fatalf("zero periodic C suppressed one-shot recovery: %+v", records)
@@ -363,4 +377,16 @@ func TestPC92PublicationZeroPeriodicCStillRequiresRecoveryAndHonestZeroCounts(t 
 	if len(counts) != 1 || counts[0].NodeCount != 1 || counts[0].UserCount != 0 {
 		t.Fatal("established K counted local root or invented users")
 	}
+}
+
+func sameMembers(a, b []PC92Entry) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

@@ -43,12 +43,14 @@ func TestKeepaliveLoopIndependentTimers(t *testing.T) {
 			if err := manager.establishSession(s); err != nil {
 				t.Fatal(err)
 			}
-			if err := s.sendControlLine("test-ready"); err != nil {
-				t.Fatal(err)
-			}
 			s.startWorker(s.writerLoop)
 			reader := bufio.NewReader(remote)
-			for readSessionWire(t, reader, remote) != "test-ready" {
+			// Establishment commits before its scheduled mandatory recovery.
+			// Observe that one-shot pair before asserting periodic suppression.
+			for _, action := range []string{"C", "A"} {
+				if got := readSessionWire(t, reader, remote); !pc92TypeLine(action).match(got) {
+					t.Fatalf("want recovery %s, got %q", action, got)
+				}
 			}
 			s.startWorker(s.keepaliveLoop)
 			for {

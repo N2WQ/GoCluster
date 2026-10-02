@@ -15,6 +15,10 @@ Tags: peering, protocol contract, loop suppression, observability
 - Oversized line handling dropped data safely but lacked reason-coded, bounded operator diagnostics.
 
 ## Decision
+- V11 refinement: [ADR-0231](ADR-0231-pc92-audit-corrections.md) supersedes
+  generic trailing-token stripping for PC92/PC93 with grammar-aware extraction
+  and complete positional payload keys. The original decision below is retained
+  as history; payload fields resembling hops must not be discarded.
 - Later refinement: [ADR-0230](ADR-0230-pc18-pc92-authority-and-bounds.md)
   replaces PC92 application ordering with manager-owned validation, shared
   freshness and transactional authority admission. Hop-insensitive keys and

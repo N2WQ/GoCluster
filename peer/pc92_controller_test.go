@@ -47,7 +47,7 @@ func TestPC92ControllerMalformedCDoesNotPoisonFreshnessOrPartiallyApply(t *testi
 	p, source, _, now := controllerTestOwner(t)
 	receiveControllerWire(t, p, source, "PC92^N2AAA^43200^C^5N2AAA^1K1OLD^H10^", now)
 	receiveControllerWire(t, p, source, "PC92^N2AAA^43202^C^5N2AAA^1K1NEW^9BAD^H10^", now)
-	if p.graph.freshness.Value("N2AAA").Value != 43200 || p.graph.nodes.Value("N2AAA").Members.Value("K1OLD").Call != "K1OLD" || p.graph.users.Value("K1NEW") != 0 {
+	if p.graph.freshness.Value("N2AAA").Value != 43200 || p.graph.nodes.Value("N2AAA").Members.Value(memberKey{"K1OLD", false}).Call != "K1OLD" || p.graph.users.Value("K1NEW") != 0 {
 		t.Fatal("malformed C changed shared freshness or partially replaced membership")
 	}
 	receiveControllerWire(t, p, source, "PC92^N2AAA^43201^A^^1K1NEW^H10^", now)
@@ -100,7 +100,7 @@ func TestPC92ControllerExternalSubjectSharesFreshnessAcrossOrigins(t *testing.T)
 		t.Fatal("external subject did not acquire its reference freshness authority")
 	}
 	receiveControllerWire(t, p, source, "PC92^N5BBB^43199^C^7N3EXT:5401^1K2STALE^H10^", now)
-	if p.graph.nodes.Value("N3EXT").Members.Value("K1USER").Call != "K1USER" || p.graph.users.Value("K2STALE") != 0 {
+	if p.graph.nodes.Value("N3EXT").Members.Value(memberKey{"K1USER", false}).Call != "K1USER" || p.graph.users.Value("K2STALE") != 0 {
 		t.Fatal("another origin used stale external-subject state to replace current membership")
 	}
 }

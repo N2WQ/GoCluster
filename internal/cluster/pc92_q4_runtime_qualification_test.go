@@ -78,7 +78,8 @@ type q4Cycle struct {
 
 type q4Report struct {
 	Phase                            string
-	Diagnostic, Qualified            bool
+	RunID                            string
+	Diagnostic, MeasurementPassed    bool
 	DurationSeconds                  float64
 	Clients, Established             int
 	Initial, Final                   peer.QualificationState
@@ -240,6 +241,8 @@ func TestPC92Q4RuntimeQualification(t *testing.T) {
 }
 
 func (d *q4Runtime) writeReport(path string) {
+	d.report.RunID = os.Getenv("GOCLUSTER_PC92_RUN_ID")
+	d.report.MeasurementPassed = !d.t.Failed() && len(d.report.Failures) == 0
 	if d.t.Failed() && len(d.report.Failures) == 0 {
 		d.report.Failures = append(d.report.Failures, "setup/test failure; retained test output contains the exact cause")
 	}

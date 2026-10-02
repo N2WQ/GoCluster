@@ -83,16 +83,20 @@ type session struct {
 	hopCount             int
 	loginTimeout         time.Duration
 	initTimeout          time.Duration
-	idleTimeout          time.Duration
-	keepalive            time.Duration
-	configEvery          time.Duration
-	dir                  direction
-	ctx                  context.Context
-	cancel               context.CancelFunc
-	closeOnce            sync.Once
-	overlongPath         string
-	logKeepalive         bool
-	logLineTooLong       bool
+	// The reader owns phaseDeadline. Requests copy it before crossing to the
+	// controller; replayReady is published under manager.mu at commitment.
+	phaseDeadline  time.Time
+	replayReady    <-chan error
+	idleTimeout    time.Duration
+	keepalive      time.Duration
+	configEvery    time.Duration
+	dir            direction
+	ctx            context.Context
+	cancel         context.CancelFunc
+	closeOnce      sync.Once
+	overlongPath   string
+	logKeepalive   bool
+	logLineTooLong bool
 }
 
 func newSession(conn net.Conn, dir direction, manager *Manager, peer PeerEndpoint, settings sessionSettings) *session {
@@ -371,8 +375,9 @@ func (s *session) handlePing(frame *Frame) {
 // cannot grant establishment authority or leak staged topology into live state.
 func (s *session) runOutboundHandshake() error {
 	deadline := time.Now().Add(s.loginTimeout + s.initTimeout)
+	s.phaseDeadline = deadline
 	if s.localCall != "" {
-		if err := s.sendControlLine(s.localCall); err != nil {
+		if err := s.sendHandshakeLine(s.localCall); err != nil {
 			return err
 		}
 	}
@@ -444,10 +449,11 @@ func (s *session) handleOutboundFrame(frame *Frame, initSent *bool) (bool, error
 }
 
 func (s *session) runInboundHandshake() error {
-	if err := s.sendControlLine("login:"); err != nil {
+	loginDeadline := time.Now().Add(s.loginTimeout)
+	s.phaseDeadline = loginDeadline
+	if err := s.sendHandshakeLine("login:"); err != nil {
 		return fmt.Errorf("send login prompt: %w", err)
 	}
-	loginDeadline := time.Now().Add(s.loginTimeout)
 	var call string
 	for call == "" {
 		if time.Now().After(loginDeadline) {
@@ -470,10 +476,11 @@ func (s *session) runInboundHandshake() error {
 	s.preferPC9x = peer.preferPC9x
 	s.id = peer.ID()
 	if s.password != "" {
-		if err := s.sendControlLine("password:"); err != nil {
+		s.phaseDeadline = time.Now().Add(s.loginTimeout)
+		if err := s.sendHandshakeLine("password:"); err != nil {
 			return err
 		}
-		line, err := s.reader.ReadLine(time.Now().Add(s.loginTimeout))
+		line, err := s.reader.ReadLine(s.phaseDeadline)
 		if err != nil {
 			return err
 		}
@@ -481,10 +488,11 @@ func (s *session) runInboundHandshake() error {
 			return errors.New("unauthorized password")
 		}
 	}
+	deadline := time.Now().Add(s.initTimeout)
+	s.phaseDeadline = deadline
 	if err := s.sendPC18(); err != nil {
 		return err
 	}
-	deadline := time.Now().Add(s.initTimeout)
 	bannerSeen := false
 	for {
 		if time.Now().After(deadline) {
@@ -535,18 +543,15 @@ func (s *session) handleInboundFrame(frame *Frame, bannerSeen *bool) (bool, erro
 		if err := s.sendInit(false); err != nil {
 			return false, err
 		}
-		return true, s.sendControlLine("PC22^")
+		return true, s.sendHandshakeLine("PC22^")
 	}
 	return false, nil
 }
 
 func (s *session) stageStartupPC92(frame *Frame) (bool, error) {
-	if !s.pc9x {
+	record, eligible := eligiblePC92Record(frame, s, s.localCall)
+	if !eligible {
 		return false, nil
-	}
-	record, err := DecodePC92(frame)
-	if err != nil || frame.Hop == 0 || record.Origin == s.localCall {
-		return false, nil //nolint:nilerr // Invalid or unsupported startup records are dropped without ending the handshake or granting authority.
 	}
 	if err := s.manager.stagePC92Record(s, frame, record); err != nil {
 		return false, err
@@ -647,7 +652,7 @@ func (s *session) sendPC18() error {
 	if err != nil {
 		return err
 	}
-	return s.sendControlLine(line)
+	return s.sendHandshakeLine(line)
 }
 
 // sendInit preserves the direction-specific exchange: the initiating side sends
@@ -659,12 +664,12 @@ func (s *session) sendInit(sendEnd bool) error {
 		}
 	} else {
 		line := fmt.Sprintf("PC19^1^%s^0^%s^H%d^", s.localCall, s.legacyVer, s.hopCount)
-		if err := s.sendControlLine(line); err != nil {
+		if err := s.sendHandshakeLine(line); err != nil {
 			return err
 		}
 	}
 	if sendEnd {
-		return s.sendControlLine("PC20^")
+		return s.sendHandshakeLine("PC20^")
 	}
 	return nil
 }

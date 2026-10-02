@@ -114,10 +114,10 @@ func ParseFrame(line string) (*Frame, error) {
 // field grammar before Split: a 64 KiB run of carets cannot allocate a megabyte
 // of headers in each concurrently handshaking reader.
 func splitFramePayload(frameType, raw string) ([]string, int, error) {
-	minimum := 0
-	if frameType == "PC93" {
-		minimum = 6
+	if frameType == "PC92" || frameType == "PC93" {
+		return splitAuthorityPayload(frameType, raw)
 	}
+	minimum := 0
 	index := strings.Count(raw, "^")
 	end := len(raw)
 	for end > 0 && raw[end-1] == '^' {
@@ -140,16 +140,73 @@ func splitFramePayload(frameType, raw string) ([]string, int, error) {
 	}
 	if !haveSuffix {
 		end = len(raw)
-		index = strings.Count(raw, "^")
+	}
+	if end < 0 {
+		return nil, hop, nil
+	}
+	return strings.Split(raw[:end], "^"), hop, nil
+}
+
+// splitAuthorityPayload consumes the final transport hop once. Numeric stacks
+// collapse only outside payload grammar: PC92 membership entries cannot start
+// H, whereas K extensions are open-ended and PC93 owns two optional slots.
+// Malformed hop-like payload is retained for whole-record validation; a broken
+// terminal hop can never recover authority from an earlier numeric marker.
+func splitAuthorityPayload(frameType, raw string) ([]string, int, error) {
+	index, end := strings.Count(raw, "^"), len(raw)
+	for end > 0 && raw[end-1] == '^' {
+		end--
+		index--
+	}
+	minimum := 4
+	keepalive := false
+	if frameType == "PC93" {
+		minimum = 6
+	} else {
+		_, tail, _ := strings.Cut(raw, "^")
+		_, tail, _ = strings.Cut(tail, "^")
+		action, _, _ := strings.Cut(tail, "^")
+		keepalive = action == "K"
+		if keepalive {
+			minimum = 6
+		}
+	}
+	hop, found := 0, false
+	if index >= minimum {
+		start := strings.LastIndexByte(raw[:end], '^') + 1
+		value, like, valid := parseHopToken(strings.TrimSpace(raw[start:end]))
+		if like && (!valid || value > 99) {
+			return nil, 0, fmt.Errorf("%s has invalid terminal hop", frameType)
+		}
+		if valid {
+			hop, found, end, index = value, true, start-1, index-1
+		}
+	}
+	if found && !keepalive {
+		stackMinimum := minimum
+		if frameType == "PC93" {
+			stackMinimum = 8
+		}
+		for index >= stackMinimum && end >= 0 {
+			start := strings.LastIndexByte(raw[:end], '^') + 1
+			value, _, valid := parseHopToken(strings.TrimSpace(raw[start:end]))
+			if !valid || value > 99 {
+				break
+			}
+			end, index = start-1, index-1
+		}
+	}
+	if !found {
+		end, index = len(raw), strings.Count(raw, "^")
+	}
+	if frameType == "PC92" && index+1 < minimum {
+		return nil, 0, fmt.Errorf("PC92 requires at least %d payload fields", minimum)
 	}
 	if frameType == "PC92" && index+1 > 8195 {
 		return nil, 0, fmt.Errorf("PC92 exceeds 8192 records")
 	}
 	if frameType == "PC93" && (index+1 < 6 || index+1 > 8) {
 		return nil, 0, fmt.Errorf("PC93 requires 6 to 8 payload fields")
-	}
-	if end < 0 {
-		return nil, hop, nil
 	}
 	return strings.Split(raw[:end], "^"), hop, nil
 }
@@ -162,9 +219,12 @@ func (f *Frame) Encode(hop int) string {
 	if f == nil {
 		return ""
 	}
-	// Defensive canonicalization ensures we never emit stacked hop suffixes even
-	// when a caller passes legacy fields that still include trailing H tokens.
-	fields, _ := stripFrameHopSuffix(f.Type, f.Fields)
+	// Authority fields have already crossed their grammar boundary. Repeating
+	// suffix stripping would consume K extensions or optional PC93 metadata.
+	fields := f.Fields
+	if f.Type != "PC92" && f.Type != "PC93" {
+		fields, _ = stripFrameHopSuffix(f.Type, fields)
+	}
 	out := f.Type + "^" + strings.Join(fields, "^")
 	if hop >= 0 {
 		out += fmt.Sprintf("^H%d^", hop)
@@ -185,7 +245,8 @@ func (f *Frame) payloadFields() []string {
 	return f.Fields
 }
 
-// PayloadFields returns non-hop payload fields with trailing empties preserved.
+// PayloadFields is the legacy suffix helper for unparsed field arrays. Parsed
+// Frame.Fields are already payload and must never be passed through it again.
 func PayloadFields(fields []string) []string {
 	if len(fields) == 0 {
 		return fields

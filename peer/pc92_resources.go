@@ -18,6 +18,7 @@ type ProtocolStats struct {
 	ParseScratchBytes, ParseScratchPeakBytes                                                               int64
 	SpotKeys, SpotKeyBytes, PC92Keys, PC92KeyBytes, PC93Keys, PC93KeyBytes, BulletinKeys, BulletinKeyBytes int
 	SpotRefused, PC92Refused, PC93Refused, BulletinRefused                                                 uint64
+	PC93InputRefused                                                                                       uint64
 	Pending, StagedRecords, StagedBytes                                                                    int
 	InputPC92, InputPC93, InputPC92Bytes, InputPC93Bytes                                                   int
 	Recovering, BlockedPeers                                                                               int
@@ -52,8 +53,15 @@ func (p *protocolController) sampleStats() {
 	stats.InputPC93 = p.queued[1]
 	stats.InputPC92Bytes = p.bytes[0]
 	stats.InputPC93Bytes = p.bytes[1]
+	stats.PC93InputRefused = p.inputPC93Refused
 	p.queueMu.Unlock()
+	previous := p.manager.protocolStats.Load()
 	p.manager.protocolStats.Store(&stats)
+	// The cumulative counter survives drain. Emit a rate-limited fixed reason
+	// only for newly sampled refusals, not forever after the first incident.
+	if stats.PC93InputRefused > 0 && (previous == nil || stats.PC93InputRefused > previous.PC93InputRefused) {
+		p.diagnostic("PC93 input admission refused")
+	}
 	if stats.SpotRefused > 0 {
 		p.diagnostic("spot forwarding dedupe refusals recorded")
 	}

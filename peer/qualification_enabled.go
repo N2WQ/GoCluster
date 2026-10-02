@@ -5,6 +5,7 @@ package peer
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"time"
 )
 
@@ -25,10 +26,11 @@ type QualificationState struct {
 	ReaderBackingBytes, ReaderRawLineBytes          int64
 }
 
-type protocolQualificationState struct{ offset time.Duration }
+type protocolQualificationState struct {
+	clock       atomic.Pointer[qualificationClock]
+	publication atomic.Pointer[qualificationPublicationObserver]
+}
 type protocolQualificationRequest struct {
-	setOffset bool
-	offset    time.Duration
 	state     QualificationState
 	origin    string
 	watermark originWatermark
@@ -36,16 +38,18 @@ type protocolQualificationRequest struct {
 }
 
 func (p *protocolController) qualificationAuthorityTime(now time.Time) time.Time {
-	return now.Add(p.qualification.offset)
+	if clock := p.qualification.clock.Load(); clock != nil {
+		if !clock.frozen.IsZero() {
+			return clock.frozen
+		}
+		return now.Add(clock.offset)
+	}
+	return now
 }
 
 func (p *protocolController) handleQualificationRequest(req *protocolQualificationRequest) error {
 	if req == nil {
 		return errors.New("missing qualification request")
-	}
-	if req.setOffset {
-		p.qualification.offset = req.offset
-		p.wallNow = func() time.Time { return p.qualificationAuthorityTime(time.Now()) }
 	}
 	if req.origin != "" {
 		req.watermark, req.present = p.graph.freshness.Get(req.origin)
@@ -141,6 +145,6 @@ func (m *Manager) QualificationOriginWatermark(ctx context.Context, origin strin
 // deadlines, writes, gate stability, and qualification durations remain real.
 // This API exists only in explicitly tagged qualification builds.
 func (m *Manager) QualificationSetClockOffset(ctx context.Context, offset time.Duration) error {
-	_, err := m.qualificationCall(ctx, &protocolQualificationRequest{setOffset: true, offset: offset})
+	_, err := m.QualificationApplyClockFault(ctx, offset, false)
 	return err
 }

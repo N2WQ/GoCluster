@@ -59,7 +59,10 @@ sub setup {
     $local_user->sort('S'); $local_user->put;
     DXProt::init();
     $main::routeroot = Route::Node->new($main::mycall, $main::version*100+5300, Route::here(1));
-    my $call = $request->{call} || 'N0CALL';
+    # Match cluster.pl's normal channel boundary with the unmodified receiver
+    # routines. Constructing DXProt directly used to bypass this login step.
+    my $call = DXUtil::normalise_call(uc($request->{call} || 'N0CALL'));
+    die "invalid normalized receiver login" unless $call && DXUtil::is_callsign($call);
     my $user = DXUser->new($call);
     $user->sort($request->{sort} || 'A');
     $user->wantpc9x(defined $request->{wantpc9x} ? $request->{wantpc9x} : 1);
@@ -87,10 +90,16 @@ sub snapshot {
     my ($calls) = @_;
     my %nodes;
     my %users;
+    my %route_nodes;
+    my %route_users;
     for my $call (@{$calls || []}, $channel->{call}) {
         my $route = Route::get($call);
         if ($route) {
             $nodes{$call} = { map { $_ => $route->{$_} } grep { exists $route->{$_} } qw(call version build ip flags lastid users nodes parent K) };
+        }
+        for my $typed ([Route::Node::get($call), \%route_nodes], [Route::User::get($call), \%route_users]) {
+            my ($value, $destination) = @$typed;
+            $destination->{$call} = { map { $_ => $value->{$_} } grep { exists $value->{$_} } qw(call version build ip flags lastid users nodes parent K) } if $value;
         }
         my $user = DXUser::get_current($call);
         if ($user) {
@@ -102,7 +111,7 @@ sub snapshot {
     return {
         tx => \@output,
         channel => { map { $_ => $channel->{$_} } grep { exists $channel->{$_} } qw(call sort state version build do_pc9x do_pc91) },
-        routes => \%nodes, users => \%users,
+        routes => \%nodes, users => \%users, route_nodes => \%route_nodes, route_users => \%route_users,
         node_total => Route::Node::count(), user_total => Route::User::count(),
         received_bytes => $transport->{datain}, received_lines => $transport->{linesin},
     };
@@ -110,6 +119,11 @@ sub snapshot {
 
 while (my $line = <STDIN>) {
     my $request = $json->decode($line);
+    if (($request->{command} || '') eq 'normalise') {
+        my $call = DXUtil::normalise_call(uc($request->{call} || ''));
+        print $json->encode({ normalized => $call || '', valid => ($call && DXUtil::is_callsign($call)) ? JSON::PP::true : JSON::PP::false }), "\n";
+        next;
+    }
     if (($request->{command} || '') eq 'init') {
         setup($request);
     } elsif (($request->{command} || '') eq 'frame') {

@@ -12,7 +12,7 @@ import (
 
 func initialRetryOwner(t *testing.T) (*protocolController, *session, *time.Time) {
 	t.Helper()
-	m, err := NewManager(config.PeeringConfig{NodeVersion: "5457", NodeBuild: "633", PC92Bitmap: 5, HopCount: 99}, "N0CALL", nil, 0, nil)
+	m, err := NewManager(completeProtocolTestConfig(config.PeeringConfig{NodeVersion: "5457", NodeBuild: "633", PC92Bitmap: 5, HopCount: 99}, "N0CALL"), "N0CALL", nil, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,9 +32,10 @@ func initialRetryOwner(t *testing.T) (*protocolController, *session, *time.Time)
 
 func TestPC92InitialRateRetryResumesAfterAcceptedA(t *testing.T) {
 	p, s, now := initialRetryOwner(t)
-	// Consume through .98. Initial A can use the final .99 slot, but K must
-	// wait for the next second. Check wire output, not the implementation marker.
-	for range 99 {
+	// Four values remain reserved for the last membership service point.
+	// Initial A can use .95, but K waits without repeating A.
+	*now = now.Add(950 * time.Millisecond)
+	for range 95 {
 		if _, err := p.timestamps.NextAt(*now); err != nil {
 			t.Fatal(err)
 		}
@@ -54,7 +55,7 @@ func TestPC92InitialRateRetryResumesAfterAcceptedA(t *testing.T) {
 	if len(s.priorityLineCh) != 2 {
 		t.Fatalf("completed initial queue=%d; want A then K", len(s.priorityLineCh))
 	}
-	for _, want := range []struct{ action, timestamp string }{{"A", "43200.99"}, {"K", "43201"}} {
+	for _, want := range []struct{ action, timestamp string }{{"A", "43200.95"}, {"K", "43201"}} {
 		wire := <-s.priorityLineCh
 		frame, err := ParseFrame(wire)
 		if err != nil {
