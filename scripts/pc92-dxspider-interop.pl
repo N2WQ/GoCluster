@@ -119,6 +119,18 @@ sub snapshot {
 
 while (my $line = <STDIN>) {
     my $request = $json->decode($line);
+    # Raw-role oracles deliberately bypass login normalization. These calls
+    # observe unmodified receiver routines, not a rewritten Go-side grammar.
+    if (($request->{command} || '') eq 'raw_callsign') {
+        my $call = $request->{call} // '';
+        print $json->encode({ normalized => $call, valid => DXUtil::is_callsign($call) ? JSON::PP::true : JSON::PP::false }), "\n";
+        next;
+    }
+    if (($request->{command} || '') eq 'decode_pc92_entry') {
+        my @entry = DXProt::_decode_pc92_call($request->{entry} // '');
+        print $json->encode({ normalized => $entry[0] || '', valid => @entry ? JSON::PP::true : JSON::PP::false }), "\n";
+        next;
+    }
     if (($request->{command} || '') eq 'normalise') {
         my $call = DXUtil::normalise_call(uc($request->{call} || ''));
         print $json->encode({ normalized => $call || '', valid => ($call && DXUtil::is_callsign($call)) ? JSON::PP::true : JSON::PP::false }), "\n";

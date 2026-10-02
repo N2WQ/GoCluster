@@ -28,7 +28,7 @@ func TestCanonicalPeeringCallDXGrammar(t *testing.T) {
 
 func TestPeeringWireValidation(t *testing.T) {
 	base := func() *Config {
-		return &Config{Peering: PeeringConfig{Enabled: true, LocalCallsign: "K1LOCAL", NodeVersion: "5457", NodeBuild: "633", LegacyVersion: "5401", PC92Bitmap: 5, HopCount: 99, MaxLineLength: 65536, PC92MaxBytes: 65536,
+		return &Config{Peering: PeeringConfig{Enabled: true, MaxPeers: 64, LocalCallsign: "K1LOCAL", NodeVersion: "5457", NodeBuild: "633", LegacyVersion: "5401", PC92Bitmap: 5, HopCount: 99, MaxLineLength: 65536, PC92MaxBytes: 65536,
 			Peers: []PeeringPeer{{Enabled: true, Host: "peer.invalid", Port: 7300, RemoteCallsign: "K1PEER", LoginCallsign: "K1LOCAL"}}}}
 	}
 	for _, tc := range []struct {
@@ -85,7 +85,7 @@ func TestPeeringWireValidation(t *testing.T) {
 }
 
 func TestActivePeeringContractOwnsNormalization(t *testing.T) {
-	cfg := PeeringConfig{LocalCallsign: "EA8/N0CALL/P-00", NodeVersion: "5457", LegacyVersion: "5457", PC92Bitmap: 5,
+	cfg := PeeringConfig{MaxPeers: 64, LocalCallsign: "EA8/N0CALL/P-00", NodeVersion: "5457", LegacyVersion: "5457", PC92Bitmap: 5,
 		Peers: []PeeringPeer{{Enabled: true, RemoteCallsign: "EA8/K1PEER/P-01", LoginCallsign: "N0CALL-0"}}}
 	normalized, local, err := NormalizeActivePeeringWireContract(cfg, "N0CALL")
 	if err != nil || local != "N0CALL" || normalized.Peers[0].RemoteCallsign != "K1PEER-1" || normalized.Peers[0].LoginCallsign != local {

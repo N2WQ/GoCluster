@@ -25,6 +25,24 @@ type plannedMember struct {
 	changed bool
 }
 
+// effectiveNodeSubject keeps K's numeric replacement separate from A/C/D's
+// preserve-absent merge. The decoder represents both omitted and zero numeric
+// fields as empty strings; DXSpider's K handler writes zero in either case.
+// Only node authority and its allocation preflight use this view. The decoded
+// record, distinct origin and relationship-edge metadata retain their wire form.
+func effectiveNodeSubject(record *PC92Record) PC92Entry {
+	entry := record.Subject
+	if record.Action == "K" {
+		if entry.Version == "" {
+			entry.Version = "0"
+		}
+		if entry.Build == "" {
+			entry.Build = "0"
+		}
+	}
+	return entry
+}
+
 // Only C traverses the current population. D is bounded by its input and A/K
 // have no removal work. Commit may delete the yielded existing key, but cannot
 // insert or compact while this iterator is active.
@@ -69,7 +87,9 @@ func (g *protocolGraph) prepare(r *PC92Record, local, ingress string, direct *bo
 		p.addNodes.Set(call, entry)
 		return true
 	}
-	if !addNode(r.Origin, PC92Entry{Call: r.Origin, Flags: 5}) || !addNode(subject, PC92Entry{Call: subject, Flags: r.Subject.Flags, Version: r.Subject.Version, Build: r.Subject.Build, IP: r.Subject.IP}) {
+	subjectEntry := effectiveNodeSubject(r)
+	subjectEntry.Call = subject
+	if !addNode(r.Origin, PC92Entry{Call: r.Origin, Flags: 5}) || !addNode(subject, subjectEntry) {
 		return nil, fmt.Errorf("node capacity")
 	}
 	var existing *boundedIndex[memberKey, PC92Entry]

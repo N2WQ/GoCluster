@@ -31,7 +31,7 @@ func (p *protocolController) membershipEntries() (*boundedIndex[string, PC92Entr
 	if !snapshot.Complete || snapshot.RawCount > 1000 || len(snapshot.Users) > 1000 {
 		return nil, false
 	}
-	entries := newFixedIndex[string, PC92Entry](1064)
+	entries := newFixedIndex[string, PC92Entry](1000 + m.cfg.MaxPeers)
 	reserved := p.reservedNodes()
 	if reserved == nil {
 		return nil, false
@@ -79,7 +79,7 @@ func (p *protocolController) reservedNodes() *boundedIndex[string, bool] {
 	m := p.manager
 	// Validated configuration admits at most64 enabled peers. Refuse an invalid
 	// constructor caller's oversized registry as a whole, never a partial set.
-	nodes := newFixedIndex[string, bool](65)
+	nodes := newFixedIndex[string, bool](m.cfg.MaxPeers + 1)
 	nodes.Set(m.localCall, true)
 	for _, e := range m.outboundPeers {
 		if nodes.Set(e.remoteCall, true) == nil {
@@ -143,7 +143,7 @@ func (p *protocolController) encodeRecord(action, stamp string, members []PC92En
 func (p *protocolController) publicationFits(entries *boundedIndex[string, PC92Entry]) bool {
 	// Reserve maximum metadata for every enabled peer, even while disconnected.
 	// Closing those links cannot itself make this gate resume and oscillate.
-	reserved := newFixedIndex[string, PC92Entry](1128)
+	reserved := newFixedIndex[string, PC92Entry](1000 + 2*p.manager.cfg.MaxPeers)
 	for call, e := range entries.All() {
 		// Check present metadata before replacing it with the disconnected-peer
 		// reservation. Otherwise an oversized legacy peer could repeatedly clear
@@ -171,11 +171,15 @@ func (p *protocolController) publicationFits(entries *boundedIndex[string, PC92E
 	_, err := p.encodeRecord("C", "86399.99", entryValues(reserved))
 	return err == nil
 }
-func (p *protocolController) sendRecord(recipients []*session, action string, members []PC92Entry, _ bool) error {
-	return p.sendRecordBefore(recipients, action, members, time.Time{})
+func (p *protocolController) sendRecord(recipients []*session, action string, members []PC92Entry, recoveryReceipt bool) error {
+	return p.sendRecordReceiptBefore(recipients, action, members, time.Time{}, recoveryReceipt)
 }
 
 func (p *protocolController) sendRecordBefore(recipients []*session, action string, members []PC92Entry, deadline time.Time) error {
+	return p.sendRecordReceiptBefore(recipients, action, members, deadline, false)
+}
+
+func (p *protocolController) sendRecordReceiptBefore(recipients []*session, action string, members []PC92Entry, deadline time.Time, recoveryReceipt bool) error {
 	if len(recipients) == 0 || ((action == "A" || action == "D") && len(members) == 0) {
 		return nil
 	}
@@ -195,7 +199,13 @@ func (p *protocolController) sendRecordBefore(recipients []*session, action stri
 		return err
 	}
 	for _, s := range recipients {
-		if err := s.enqueueControlLineBefore(wire, true, deadline); err != nil {
+		var enqueueErr error
+		if recoveryReceipt {
+			enqueueErr = s.enqueueRecoveryMetadata(wire, deadline)
+		} else {
+			enqueueErr = s.enqueueControlLineBefore(wire, true, deadline)
+		}
+		if err := enqueueErr; err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
 				return err
 			}
@@ -209,7 +219,10 @@ func (p *protocolController) sendRecordBefore(recipients []*session, action stri
 	return nil
 }
 func (p *protocolController) gate(reason string) {
+	p.manager.mu.Lock()
 	p.manager.pc9xGated.Store(true)
+	p.manager.interruptRetriesLocked(p.elapsedNow())
+	p.manager.mu.Unlock()
 	p.diagnostic(reason)
 	for _, s := range p.sessions() {
 		s.close()
@@ -227,6 +240,10 @@ func (p *protocolController) gate(reason string) {
 	}
 }
 func (p *protocolController) tick(now time.Time) {
+	// Admission reasons progress independently of clock/publication gates.
+	// This entry is outside ordinary graph transactions and their scratch.
+	p.drainFailures()
+	p.serviceAdmissionRecovery(now)
 	if p.quiescing {
 		return
 	}
@@ -297,35 +314,6 @@ func (p *protocolController) tick(now time.Time) {
 		p.manager.pc9xGated.Store(false)
 		p.dirty = true
 		p.diagnostic("PC9x admission resumed; complete recovery required")
-	}
-	// Every class retains its own headroom. Do not redial a PC92 authority failure
-	// merely because closing its transport freed an unrelated resource.
-	p.drainFailures()
-	// Snapshot the bounded keys before updating values: index traversals permit
-	// deleting the yielded entry, but must never span a Set.
-	blocked := make([]string, 0, p.blocked.Len())
-	for call := range p.blocked.All() {
-		blocked = append(blocked, call)
-	}
-	for _, call := range blocked {
-		since := p.blocked.Value(call)
-		if !p.admissionHeadroom(call) {
-			p.blocked.Set(call, time.Time{})
-			continue
-		}
-		if since.IsZero() {
-			p.blocked.Set(call, now)
-			continue
-		}
-		if now.Sub(since) < time.Second {
-			continue
-		}
-		p.manager.mu.Lock()
-		p.manager.blockedPeers.Delete(call)
-		p.manager.mu.Unlock()
-		p.blocked.Delete(call)
-		p.blockedRecords.Delete(call)
-		p.blockedInput.Delete(call)
 	}
 	p.publishMembership(entries, now)
 }

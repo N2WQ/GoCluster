@@ -205,7 +205,7 @@ func TestFrameSharedProtocolRegression(t *testing.T) {
 
 func TestPC92TransitPreservesPayloadIdentity(t *testing.T) {
 	p, source, destination, now := controllerTestOwner(t)
-	wire := "PC92^EA8/N2AAA/P-00^43200^A^^1EA8/K1USER/P^H10^"
+	wire := "PC92^EA8/N2AAA/P^43200^A^^1EA8/K1USER/P  ^H10^"
 	receiveControllerWire(t, p, source, wire, now)
 	select {
 	case got := <-destination.priorityLineCh:

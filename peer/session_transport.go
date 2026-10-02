@@ -178,10 +178,31 @@ func (s *session) writeQueuedLine(line string, control bool) bool {
 		return false
 	}
 	err := s.writeLine(line)
-	s.finishActiveWrite()
+	var flushedAt time.Time
+	if err == nil && control {
+		flushedAt = time.Now()
+	}
+	s.queueMu.Lock()
+	s.activeBytes, s.activeControl = 0, false
+	recovered := false
+	if err == nil && control {
+		// Only a successful local Flush advances the FIFO receipt. Raw Telnet
+		// replies and normal data have their own lanes and cannot complete it.
+		s.controlLineFlushed++
+		recovered = s.recoveryFlushTarget != 0 && s.controlLineFlushed == s.recoveryFlushTarget
+		if recovered {
+			s.recoveryFlushTarget = 0
+		}
+	}
+	s.queueMu.Unlock()
 	if err != nil {
 		s.handleWriterError("line", err)
 		return false
+	}
+	// The manager validates current attempt ownership and cancellation.
+	// Neither queueMu nor writeMu may cross that ownership boundary.
+	if recovered && s.manager != nil {
+		s.manager.retryRecoveryFlushed(s, flushedAt)
 	}
 	return true
 }
@@ -232,6 +253,7 @@ func (s *session) discardQueuedOutput() {
 			s.writeCh, s.priorityLineCh, s.priorityRawCh = nil, nil, nil
 			s.activeBytes, s.activeControl = 0, false
 			s.lineTimes, s.rawTimes = controlTimes{}, controlTimes{}
+			s.controlLineEnqueued, s.controlLineFlushed, s.recoveryFlushTarget = 0, 0, 0
 			if s.reader != nil {
 				s.reader.release()
 			}
@@ -280,14 +302,6 @@ func (s *session) sendControlLine(line string) error {
 	return s.enqueueControlLine(line, true)
 }
 
-// The initial password is already immutable configuration-owned storage.
-// Borrow that exact field, avoiding another maximum-frame allocation for each
-// competing outbound candidate. Logical queue bytes/counts remain unchanged.
-// Untrusted protocol frames always enter through the cloning sendControlLine.
-func (s *session) sendInitialPassword() error {
-	return s.enqueueControlLineBefore(s.password, false, s.phaseDeadline)
-}
-
 func (s *session) sendHandshakeLine(line string) error {
 	return s.enqueueControlLineBefore(line, true, s.phaseDeadline)
 }
@@ -297,6 +311,18 @@ func (s *session) enqueueControlLine(line string, clone bool) error {
 }
 
 func (s *session) enqueueControlLineBefore(line string, clone bool, deadline time.Time) error {
+	return s.enqueueControlLineReceipt(line, clone, deadline, false)
+}
+
+// enqueueRecoveryMetadata marks the A paired with the already queued recovery
+// C. Registering its FIFO target in the admission critical section prevents a
+// fast writer from flushing A before the receipt exists. Additional recovery
+// pairs preserve the first pending target; local Flush is not a remote ACK.
+func (s *session) enqueueRecoveryMetadata(line string, deadline time.Time) error {
+	return s.enqueueControlLineReceipt(line, true, deadline, true)
+}
+
+func (s *session) enqueueControlLineReceipt(line string, clone bool, deadline time.Time, recovery bool) error {
 	if s == nil || s.ctx == nil {
 		return errSessionContextUnset
 	}
@@ -305,12 +331,22 @@ func (s *session) enqueueControlLineBefore(line string, clone bool, deadline tim
 		return errSessionPriorityQueueFull
 	}
 	s.queueMu.Lock()
+	err := s.enqueueControlLineLocked(line, clone, deadline, recovery)
+	s.queueMu.Unlock()
+	if errors.Is(err, errSessionPriorityQueueFull) {
+		s.close()
+	}
+	return err
+}
+
+// The caller holds queueMu through admission and receipt registration. Keep
+// this operation separate from unlock/return so its atomicity can be tested
+// with a writer completing before the admitting caller continues.
+func (s *session) enqueueControlLineLocked(line string, clone bool, deadline time.Time, recovery bool) error {
 	if !deadline.IsZero() && !time.Now().Before(deadline) {
-		s.queueMu.Unlock()
 		return context.DeadlineExceeded
 	}
 	if err := s.ctx.Err(); err != nil {
-		s.queueMu.Unlock()
 		return err
 	}
 	s.initializeOutputBudgetLocked()
@@ -320,7 +356,6 @@ func (s *session) enqueueControlLineBefore(line string, clone bool, deadline tim
 			line = strings.Clone(line)
 		}
 		if !deadline.IsZero() && !time.Now().Before(deadline) {
-			s.queueMu.Unlock()
 			return context.DeadlineExceeded
 		}
 		select {
@@ -328,13 +363,14 @@ func (s *session) enqueueControlLineBefore(line string, clone bool, deadline tim
 			s.controlBytes += charge
 			s.controlCount++
 			s.lineTimes.push(time.Now())
-			s.queueMu.Unlock()
+			s.controlLineEnqueued++
+			if recovery && s.recoveryFlushTarget == 0 {
+				s.recoveryFlushTarget = s.controlLineEnqueued
+			}
 			return nil
 		default:
 		}
 	}
-	s.queueMu.Unlock()
-	s.close()
 	return errSessionPriorityQueueFull
 }
 
@@ -429,5 +465,11 @@ func (s *session) handleWriterError(kind string, err error) {
 		return
 	}
 	log.Printf("Peering: writer %s failed for %s: %v", kind, s.diagnosticLabel, err)
+	if s.manager != nil {
+		// Record a genuine writer failure before closing this session. The
+		// coordinator deduplicates the later terminal Run report and handles
+		// global-gate interruption under the same attempt-ownership lock.
+		s.manager.retrySessionEnded(s, time.Now())
+	}
 	s.close()
 }

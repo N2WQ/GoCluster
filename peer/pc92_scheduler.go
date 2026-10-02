@@ -21,6 +21,7 @@ func (p *protocolController) run(ctx context.Context) {
 			return
 		}
 		p.consumeWake()
+		p.serviceAdmissionRecovery(p.elapsedNow())
 		now := p.elapsedNow()
 		if !now.Before(nextPublish) {
 			p.tick(now)
@@ -28,6 +29,7 @@ func (p *protocolController) run(ctx context.Context) {
 		}
 		if !now.Before(nextMaintenance) {
 			p.maintain(maintenance, p.elapsedNow())
+			p.serviceAdmissionRecovery(p.elapsedNow())
 			maintenance = (maintenance + 1) % 6
 			nextMaintenance = p.elapsedNow().Add(25 * time.Millisecond)
 		}
@@ -54,6 +56,7 @@ func (p *protocolController) run(ctx context.Context) {
 				worked = p.serviceReplay()
 			}
 			if worked {
+				p.serviceAdmissionRecovery(p.elapsedNow())
 				break
 			}
 		}
@@ -73,6 +76,7 @@ func (p *protocolController) run(ctx context.Context) {
 			p.consumeInput(work)
 			class = 2
 		}
+		p.serviceAdmissionRecovery(p.elapsedNow())
 	}
 }
 
@@ -102,6 +106,9 @@ func (p *protocolController) consumeInput(work protocolInput) {
 	p.queueMu.Lock()
 	p.queued[work.class]--
 	p.bytes[work.class] -= work.charge
+	if work.class == 0 {
+		p.emitMailboxLocked(p.elapsedNow())
+	}
 	p.queueMu.Unlock()
 	if f, err := ParseFrame(work.wire); err == nil {
 		p.receive(f, work.source, work.at)

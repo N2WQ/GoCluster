@@ -1,6 +1,13 @@
 # Hashes contain no file contents. Missing optional assets are represented so
 # adding one during execution cannot silently change the runtime input set.
 function Get-PC92QualificationAssets([string]$RepositoryRoot, [string]$Family) {
+    # Retry correction evidence pins the retained CTY refresh even though its
+    # synthetic protocol workload does not consult country lookup tables.
+    if ($Family -eq 'retry') {
+        $cty = Join-Path $RepositoryRoot 'data/cty'
+        if (-not (Test-Path -LiteralPath (Join-Path $cty 'cty.plist') -PathType Leaf)) { throw 'retry_cty_missing: exact retained refresh hash is required' }
+        return @($cty)
+    }
     if ($Family -notin @('runtime', 'q4')) { return @() }
     $paths = @((Join-Path $RepositoryRoot 'data/cty'), (Join-Path $RepositoryRoot 'data/h3'))
     $pipeline = Join-Path $RepositoryRoot 'data/config/pipeline.yaml'

@@ -1,0 +1,5 @@
+go test fuzz v1
+string(":")
+uint16(42)
+byte('U')
+byte('h')

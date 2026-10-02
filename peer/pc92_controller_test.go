@@ -12,8 +12,9 @@ import (
 func controllerTestOwner(t *testing.T) (*protocolController, *session, *session, time.Time) {
 	t.Helper()
 	m := &Manager{
-		localCall: "N0LOCAL", cfg: config.PeeringConfig{PC92Bitmap: 5, NodeVersion: "5457", NodeBuild: "633", HopCount: 99},
+		localCall: "N0LOCAL", cfg: config.PeeringConfig{MaxPeers: 64, PC92Bitmap: 5, NodeVersion: "5457", NodeBuild: "633", HopCount: 99},
 		sessions: newFixedIndex[string, *session](64), candidates: newFixedIndex[*session, *candidateState](128), blockedPeers: newFixedIndex[string, bool](64),
+		admissionFailures: newFixedIndex[string, admissionFailure](64),
 	}
 	p := newProtocolController(m)
 	m.protocol = p
@@ -29,6 +30,7 @@ func controllerTestOwner(t *testing.T) (*protocolController, *session, *session,
 		return s
 	}
 	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	p.elapsedNow = func() time.Time { return now }
 	p.graph = newProtocolGraph(now)
 	return p, addSession("N1PEER"), addSession("N4PEER"), now
 }

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/netip"
 	"strings"
+
+	"dxcluster/config"
 )
 
 // DecodePC92Entry follows the flag/call[:version[:build[:IP]]] representation
@@ -21,7 +23,14 @@ func DecodePC92Entry(raw string) (PC92Entry, error) {
 	if len(parts[0]) < 2 || parts[0][0] < '0' || parts[0][0] > '7' {
 		return PC92Entry{}, errors.New("invalid PC92 flag or entry shape")
 	}
-	call, ok := CanonicalPC92Call(parts[0][1:])
+	// DXSpider unpacks the entry call with A*, removing right padding. Inside
+	// our printable envelope only ASCII spaces are padding; origin fields have
+	// no such allowance. Validate before local/login normalization can repair it.
+	rawCall := strings.TrimRight(parts[0][1:], " ")
+	if !config.IsRawPeeringCall(rawCall) {
+		return PC92Entry{}, errors.New("invalid PC92 callsign")
+	}
+	call, ok := CanonicalPC92Call(rawCall)
 	if !ok {
 		return PC92Entry{}, errors.New("invalid PC92 callsign")
 	}

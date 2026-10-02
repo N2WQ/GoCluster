@@ -149,8 +149,8 @@ func TestPC92ResourceFullMailboxRejectsOnlyValidAuthority(t *testing.T) {
 	}
 	failure := p.manager.admissionFailures.Value(source.remoteCall)
 	p.drainFailures()
-	if !p.blockedInput.Value(source.remoteCall) || p.admissionHeadroom(source.remoteCall) {
-		t.Fatal("mailbox refusal lost its recovery cause or resumed while still full")
+	if p.blocked.Value(source.remoteCall).cause != admissionMailbox {
+		t.Fatal("mailbox refusal lost its factual cause")
 	}
 	if p.graph.nodes.Len() != 0 || p.graph.freshness.Len() != 0 {
 		t.Fatal("full-mailbox refusal changed topology or freshness")
@@ -158,37 +158,19 @@ func TestPC92ResourceFullMailboxRejectsOnlyValidAuthority(t *testing.T) {
 	if count, _, _ := p.pc92.occupancy(); count != 0 {
 		t.Fatal("full-mailbox refusal consumed dedupe authority")
 	}
-	// Model the owner's receive boundary, releasing exactly one real queued
-	// item. No record is processed, so only mailbox capacity has changed.
+	// Release one existing queued item without processing it, isolating input
+	// capacity from authority. Available capacity alone cannot erase history.
 	work := <-p.input
 	p.queueMu.Lock()
 	p.queued[work.class]--
 	p.bytes[work.class] -= work.charge
 	p.queueMu.Unlock()
 	p.graph.metadataBytes = 96 << 20
-	if !p.admissionHeadroom(source.remoteCall) {
-		t.Fatal("mailbox recovery incorrectly depends on unrelated graph headroom")
-	}
-	// First observe available space 900 ms after failure. One full second of
-	// observed headroom must pass before readmission, independent of the age
-	// of the failed record or time spent waiting while the mailbox was full.
-	wall := failure.at.UTC()
-	p.wallNow = func() time.Time { return wall }
-	p.elapsedNow = func() time.Time { return wall }
-	p.dirty = false
-	for _, elapsed := range []time.Duration{900 * time.Millisecond, time.Second, 1899 * time.Millisecond} {
-		wall = failure.at.Add(elapsed).UTC()
-		p.tick(wall)
-		if !p.manager.blockedPeers.Value(source.remoteCall) {
-			t.Fatalf("mailbox gate resumed at %s since failure, before one second of observed headroom", elapsed)
-		}
-	}
-	wall = failure.at.Add(1900 * time.Millisecond).UTC()
-	p.tick(wall)
-	if p.manager.blockedPeers.Value(source.remoteCall) || p.blocked.Len() != 0 || p.blockedRecords.Len() != 0 || p.blockedInput.Len() != 0 {
-		t.Fatal("mailbox gate or retained failure state survived stable mailbox recovery")
+	p.serviceAdmissionRecovery(failure.at.Add(10 * time.Second))
+	if !p.manager.blockedPeers.Value(source.remoteCall) || p.blocked.Len() != 1 {
+		t.Fatal("capacity release erased history without healthy retry recovery")
 	}
 	if len(p.input) != 191 || p.queued[0] != 191 || p.graph.metadataBytes != 96<<20 {
-		t.Fatal("mailbox recovery consumed work or required graph capacity to change")
+		t.Fatal("retry service consumed queued work or altered graph capacity")
 	}
 }

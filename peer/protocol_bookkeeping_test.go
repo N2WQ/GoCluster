@@ -46,14 +46,18 @@ func TestPC92BookkeepingDiagnosticReasonsFitFixedBacking(t *testing.T) {
 				return true
 			}
 			selector, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok || !slices.Contains([]string{"diagnostic", "gate", "failAdmission"}, selector.Sel.Name) {
+			if !ok || !slices.Contains([]string{"diagnostic", "gate", "failAdmission", "failAdmissionCause"}, selector.Sel.Name) {
 				return true
 			}
-			argument := call.Args[len(call.Args)-1]
+			reasonIndex := len(call.Args) - 1
+			if selector.Sel.Name == "failAdmissionCause" {
+				reasonIndex = 2 // the fourth argument is the recovery cause
+			}
+			argument := call.Args[reasonIndex]
 			literal, ok := argument.(*ast.BasicLit)
 			if !ok {
-				// The two wrappers pass their already-enumerated reason onward.
-				if id, ok := argument.(*ast.Ident); !ok || id.Name != "reason" || selector.Sel.Name != "diagnostic" {
+				// Wrappers pass their already-enumerated reason onward.
+				if id, ok := argument.(*ast.Ident); !ok || id.Name != "reason" || (selector.Sel.Name != "diagnostic" && selector.Sel.Name != "failAdmissionCause") {
 					t.Errorf("diagnostic call in %s gained a non-literal reason", file.Name())
 				}
 				return true
@@ -66,7 +70,9 @@ func TestPC92BookkeepingDiagnosticReasonsFitFixedBacking(t *testing.T) {
 			return true
 		})
 	}
-	p := newProtocolController(&Manager{})
+	m := &Manager{}
+	m.cfg.MaxPeers = 64
+	p := newProtocolController(m)
 	if len(reasons) != 19 || p.diagnosticAt.limit != len(reasons) || len(p.diagnosticAt.buckets) != 32 {
 		t.Fatalf("reason enumeration/backing changed: reasons=%d limit=%d buckets=%d", len(reasons), p.diagnosticAt.limit, len(p.diagnosticAt.buckets))
 	}
@@ -162,8 +168,7 @@ func TestPC92BookkeepingFixedAllocationEnvelope(t *testing.T) {
 	for name, got := range map[string][2]int{
 		"sessions": {m.sessions.limit, 64}, "candidates": {m.candidates.limit, 128},
 		"owned runs": {m.ownedRuns.limit, 192}, "blocked peers": {m.blockedPeers.limit, 64},
-		"admission failures": {m.admissionFailures.limit, 64}, "blocked records": {p.blockedRecords.limit, 64},
-		"blocked input": {p.blockedInput.limit, 64}, "recovering": {p.recovering.limit, 64},
+		"admission failures": {m.admissionFailures.limit, 64}, "recovering": {p.recovering.limit, 64},
 		"pending K": {p.pendingK.limit, 64}, "blocked": {p.blocked.limit, 64},
 		"diagnostics": {p.diagnosticAt.limit, 19}, "published": {p.published.limit, 1064},
 		"active replays": {p.replays.limit, 64},
@@ -190,13 +195,11 @@ func TestPC92BookkeepingFixedAllocationEnvelope(t *testing.T) {
 	entry, buckets, total = bookkeepingIndexAllowance[*session, bool](192)
 	add("owned runs", 192, 1, entry, buckets, total)
 	entry, buckets, total = bookkeepingIndexAllowance[string, bool](64)
-	add("blocked peers / input / direct snapshot", 64, 3, entry, buckets, total)
+	add("blocked peers / direct snapshot", 64, 2, entry, buckets, total)
 	entry, buckets, total = bookkeepingIndexAllowance[string, admissionFailure](64)
 	add("admission failure swap", 64, 2, entry, buckets, total)
-	entry, buckets, total = bookkeepingIndexAllowance[string, string](64)
-	add("blocked records", 64, 1, entry, buckets, total)
-	entry, buckets, total = bookkeepingIndexAllowance[string, time.Time](64)
-	add("blocked since", 64, 1, entry, buckets, total)
+	entry, buckets, total = bookkeepingIndexAllowance[string, admissionEpisode](64)
+	add("blocked episodes", 64, 1, entry, buckets, total)
 	entry, buckets, total = bookkeepingIndexAllowance[*session, recoveryState](64)
 	add("recovering", 64, 1, entry, buckets, total)
 	entry, buckets, total = bookkeepingIndexAllowance[*session, bool](64)

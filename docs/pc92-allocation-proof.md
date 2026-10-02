@@ -136,12 +136,58 @@ fanout, but the proof does not depend on that sharing. The address allowance is 
 
 Projection reservations include arrays and every string a snapshot can retain after live replacement. All queued/building/active generations share 36 MiB. Oversized projection is refused whole; live authority remains intact. Stop joins producers/consumer before draining. Native SQL working storage is a separate dependency below.
 
-## Remaining aggregate dependencies
+## V14 changed-owner accounting
 
-The latest fixed-index inventory conservatively charges 954,320 bytes across small indexes, including five publication generations
-and the64-entry active-replay index and both failure indexes. Retry wire can occupy three 64-entry generations (blocked, active drain, new manager failures): 12 MiB. The layout oracle reports a 2,784-byte session (3,072 rounded), 144-byte reader wrapper (160 rounded), 224-byte TCP descriptor (240 rounded) and 80-byte cancel context (96 rounded). Including fixed channels, closures, compact metadata and address material gives 5,632 bytes per live/stale identity, reserved as 8 KiB. Active-only wrappers, timers, semaphore waiter and I/O control work total 3,312 bytes, reserved as 4 KiB per live owner.
+`peering.max_peers` is required and ranges1–64. Logical established/replay/retry
+owners use N; pending candidates remain128 and transport owners are N+128.
+Worst-case qualification and this ceiling still use N64. Publication backing
+uses1000+N, N+1 and1000+2N, reserving actual enabled identities only.
 
-A provisional inventory includes 192 live owners, 256 queued-input references, 128 lifecycle references, one active actor reference and 64 outbound-loop retirement references: 641 distinct session identities. Combining these reservations with 12 MiB retry wire, 1 MiB indexes and 1 MiB global metadata totals 19.7578125 MiB. This is not yet a final headroom grant: outer goroutine retirement and standard-library context-child-map high-water backing still need explicit disposition. Heap context/timer/closure data cannot be silently excluded as stack overhead.
+The v14 layout gate on Go1.26.4 windows/amd64 conservatively charges **28,032
+incremental bytes**, below32KiB in the existing metadata partition:
+
+| Changed owner | Incremental rounded backing |
+| --- | ---: |
+| Manager/coordinator, including MaxPeers and timer pointers | 9,472 |
+|24 receipt bytes/session across641 retained identities; session2808 stays in3072 class | 0 |
+|One lifetime-owned reusable timer per identity;288 bytes each ×64 | 18,432 |
+|Two overlapping samples containing six retry phase counters | 128 |
+
+The timer charge includes runtime timeTimer, hchan and time.Time element backing.
+Each identity keeps the same timer across candidates, history resets and later
+overload episodes. Stop alone can leave a runtime-heap zombie; per-attempt
+allocation would not prove a bound from live waiter count. Synchronous handshake
+waiting returns/stops before terminal owner release, so replacement cannot
+concurrently reset the same timer. Runtime per-P timer heap bookkeeping remains
+reported as runtime overhead under the existing accounting boundary.
+
+No control-channel item was widened, no additional wire generation/graph plan
+is retained, and one5MiB graph scratch owner remains. Normal-build observations
+are scalar phase counts; qualification events remain callback-bounded. The
+[test matrix/evidence](pc92-v14-validation.md) distinguishes this changed-owner
+check from outstanding aggregate ownership proofs.
+
+## Historical v12 incremental proof and remaining aggregate dependencies
+
+The superseded v12 design added **16,064 bytes** of conservatively rounded fixed recovery bookkeeping
+on Go 1.26.4 windows/amd64, below its approved 32 KiB addition inside the existing
+32 MiB metadata partition. `TestPC92V12RecoveryFixedStateEnvelope` accounts for
+64 active episode entries, 128 overlapping pending-handoff entries, actual
+controller/manager/cache allocation-class growth, one cache interval tracker
+and an 8 KiB allowance for the sole receiver method-value backing. It does not
+add a wire generation, decoded-plan collection or graph owner. Normal and
+qualification-tagged race checks passed this layout bound.
+
+This is an incremental fixed-state bound, not a complete ownership proof.
+The new scratch-lifetime/retirement experiment and overlapping global-gate
+regression remain open. V12's sustained service gate failed before long
+qualification, so no aggregate memory or runtime acceptance follows from this
+small fixed-state result; see [v12 evidence](pc92-v12-validation.md).
+
+The pre-v14 fixed-index inventory conservatively charged 954,320 bytes across small indexes, including five publication generations
+and the64-entry active-replay index and both failure indexes. The superseded design reserved12MiB for three refused-wire generations; v14 retains none. This removal does not grant unproved SQLite headroom. The layout oracle reports a 2,784-byte session (3,072 rounded), 144-byte reader wrapper (160 rounded), 224-byte TCP descriptor (240 rounded) and 80-byte cancel context (96 rounded). Including fixed channels, closures, compact metadata and address material gives 5,632 bytes per live/stale identity, reserved as 8 KiB. Active-only wrappers, timers, semaphore waiter and I/O control work total 3,312 bytes, reserved as 4 KiB per live owner.
+
+A provisional inventory includes 192 live owners, 256 queued-input references, 128 lifecycle references, one active actor reference and 64 outbound-loop retirement references: 641 distinct session identities. The pre-v14 combination with12MiB retry wire,1MiB indexes and1MiB global metadata totaled19.7578125MiB; v14 removes refused-wire ownership and adds the separately proved fixed coordinator/timers above. This is not yet a final headroom grant: outer goroutine retirement and standard-library context-child-map high-water backing still need explicit disposition. Heap context/timer/closure data cannot be silently excluded as stack overhead.
 
 V11 also bounds new fixed global owners: copied active configuration (at most64
 peer structs plus canonical identity allocations), up to128 queued requests,

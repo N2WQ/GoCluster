@@ -90,3 +90,7 @@ returns to its normalized nonzero base after successful establishment.
 - Supersedes / superseded by: supersedes ADR-0050 generic hop stripping for
   PC92/PC93; refines ADR-0230 identity, typed storage, scheduling and evidence.
   Other ADR-0050/0230 requirements remain effective.
+  [ADR-0232](ADR-0232-pc92-wire-and-recovery-evidence.md) refines the raw wire
+  identity and admission recovery/evidence clauses after the2c06079 re-audit.
+
+Admission-recovery clauses are superseded by [ADR-0233](ADR-0233-pc92-controlled-retries-and-peer-cap.md) under Approved v14. Other clauses and historical evidence remain effective.

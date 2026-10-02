@@ -130,6 +130,10 @@ func q6AdmissionFault(t *testing.T, zero bool) {
 	}
 	before := r.snapshot()
 	refused := q6Record(t, "N0CAP", "A", &generators[0], []PC92Entry{{Call: q6User(65536), Flags: 1}})
+	releaseWire := q6Record(t, "N1CAP", "C", &generators[1], nil)
+	evidence := &retryEvidence{call: "GB7REF"}
+	r.m.QualificationSetAdmissionObserver(evidence.observe)
+	t.Cleanup(func() { r.m.QualificationSetAdmissionObserver(nil) })
 	r.primary.send(t, refused)
 	after := r.wait("authoritative admission closes and gates source", 5*time.Second, func(s QualificationState) bool {
 		return s.BlockedPeers == 1 && s.Established == 2 && s.CompleteNodes == 0
@@ -137,21 +141,37 @@ func q6AdmissionFault(t *testing.T, zero bool) {
 	if before.Users != after.Users || before.Nodes != after.Nodes || before.Freshness != after.Freshness || before.PC92Keys != after.PC92Keys {
 		t.Fatalf("refused authoritative A changed graph/freshness/dedupe: before=%+v after=%+v", before, after)
 	}
+	failure, err := evidence.latest("failure")
+	if err != nil || failure.Generation == 0 {
+		t.Fatalf("admission failure evidence missing: %+v %v", failure, err)
+	}
 	r.closed(r.primary)
-	r.refused("GB7REF")
 	r.legacyAlive()
 	r.login("K1USER", "127.0.0.3")
-	r.alternate.send(t, q6Record(t, "N1CAP", "C", &generators[1], nil))
-	r.wait("ordinary replacement C supplies admission headroom", 5*time.Second, func(s QualificationState) bool {
-		return s.Users == 61440 && s.BlockedPeers == 0 && s.CompleteNodes == 1
+	// The direct-constructor fixture's effective backoff is one second.
+	// Reconnect while the originally refused new-user record is still unable
+	// to fit: startup is a controlled attempt, not a promised admission.
+	if err := qualificationWait(t.Context(), max(0, time.Until(failure.At.Add(time.Second)))); err != nil {
+		t.Fatal(err)
+	}
+	retry := r.connect("GB7REF", true, true)
+	c, a := retry.recovery(t)
+	r.verifyRecovery(c, a)
+	if err := evidence.check(time.Second, time.Second, false); err != nil {
+		t.Fatalf("controlled retry evidence: %v", err)
+	}
+	retry.send(t, q6Record(t, "N2CAP", "K", &generators[2], nil))
+	r.wait("fresh small record admitted while refused population remains infeasible", 5*time.Second, func(s QualificationState) bool {
+		return s.Users == 65536 && s.PC92Keys == before.PC92Keys+1 && s.BlockedPeers == 1
 	})
+	r.alternate.send(t, releaseWire)
+	r.wait("ordinary replacement C releases population", 5*time.Second, func(s QualificationState) bool { return s.Users == 61440 && s.CompleteNodes == 1 })
 	// Equal cardinalities alone could hide an incorrectly advanced watermark.
 	// Retry the exact refused timestamp/key after another origin frees capacity.
 	r.alternate.send(t, refused)
 	r.wait("refused timestamp and dedupe key remained admissible", 5*time.Second, func(s QualificationState) bool {
-		return s.Users == 61441 && s.PC92Keys == before.PC92Keys+2 && s.Freshness == before.Freshness
+		return s.Users == 61441 && s.PC92Keys == before.PC92Keys+3 && s.Freshness == before.Freshness
 	})
-	r.recovered("GB7REF")
 }
 
 func q6StagingFault(t *testing.T, zero, deadline bool) {
@@ -309,9 +329,10 @@ func TestPC92QualificationQ6Faults(t *testing.T) {
 
 func q6Spot(index int, at time.Time) string {
 	kind, extra := "PC11", ""
-	if index%5 == 2 || index%5 == 3 {
+	switch index % 5 {
+	case 2, 3:
 		kind, extra = "PC61", "^127.0.0.8"
-	} else if index%5 == 4 {
+	case 4:
 		kind, extra = "PC26", "^ "
 	}
 	return fmt.Sprintf("%s^14020.0^%s^%s^%sZ^Q6%06d^W1AAA^GB7REF%s^H10^", kind, q6User(index), at.UTC().Format("02-Jan-2006"), at.UTC().Format("1504"), index, extra)

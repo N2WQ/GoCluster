@@ -25,14 +25,14 @@ function Invoke-PC92QualificationRun {
         qualified = $false; overall_accepted = $false; failure_reasons = @(); diagnostic = $plan.diagnostic
         open_evidence = @('Complete 480 MiB enabled-SQLite, context-backing and retirement ownership proof remains open.', 'Required final-source qualification profiles are separate evidence.')
         started_utc = [DateTime]::UtcNow.ToString('o'); finished_utc = ''; exit_code = $null
-        minimum_seconds = $plan.minimum_seconds; elapsed_seconds = 0; expected_cases = $plan.tests
+        minimum_seconds = $plan.minimum_seconds; minimum_case_seconds = $plan.minimum_case_seconds; elapsed_seconds = 0; expected_cases = $plan.tests
     }
     $verdictPath = Join-Path $output 'verdict.json'
     $run | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $verdictPath
     $previousLocation = Get-Location
     $names = @('GOCLUSTER_PC92_RUN_ID', 'GOCLUSTER_PC92_RUNTIME_PROFILE', 'GOCLUSTER_PC92_RUNTIME_OUTPUT', 'GOCLUSTER_PC92_RUNTIME_CPU_PROFILE',
         'GOCLUSTER_PC92_Q4_PROFILE', 'GOCLUSTER_PC92_Q4_OUTPUT', 'GOCLUSTER_PC92_Q5_PROFILE', 'GOCLUSTER_PC92_Q6_PROFILE', 'GOCLUSTER_PC92_Q6_USERS',
-        'GOCLUSTER_PC92_QUALIFICATION', 'DXSPIDER_ROOT', 'DXSPIDER_PERL', 'DXSPIDER_PERL_LIB', 'PATH', 'LC_ALL', 'GOMAXPROCS', 'GOGC', 'GOMEMLIMIT')
+        'GOCLUSTER_PC92_QUALIFICATION', 'GOCLUSTER_PC92_V14_RETRY_PROFILE', 'DXSPIDER_ROOT', 'DXSPIDER_PERL', 'DXSPIDER_PERL_LIB', 'PATH', 'LC_ALL', 'GOMAXPROCS', 'GOGC', 'GOMEMLIMIT')
     $saved = @{}
     foreach ($name in $names) { $saved[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
     $failure = $null

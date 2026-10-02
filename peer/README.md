@@ -84,12 +84,20 @@ it does not silently continue with an invented banner.
 
 PC92 membership comes from current telnet sessions. Available user/peer IPs
 are published; there is currently no per-user IP-publication preference.
-Wire identities follow the pinned receiver normalization, including portable
+Local published identities follow the pinned receiver normalization, including portable
 forms and numeric SSIDs. For example, `K1ABC/P-01` publishes as `K1ABC-1`;
 normalization is not a generic slash removal rule. Canonical callsign collisions, names outside the publication envelope, and
 local/configured-peer name collisions stay local. Private PC93 delivery
 requires exactly one current matching telnet owner. A departed session cannot
 withdraw or receive on behalf of its replacement.
+
+Received PC92 identities must first be valid raw wire calls. Invalid spellings
+such as `K1ABC/`, `/K1ABC` and `K1ABC-000` reject the entire record before any
+topology, freshness, staging or remote metadata change. The origin is not
+trimmed or uppercased; entry call portions allow trailing ASCII spaces. Only
+then is the existing stable canonical mapping applied. These received-wire
+checks do not change human login normalization or literal peer authentication.
+Accepted transit retains its original payload apart from the transport hop.
 
 The manager owns one ordered local-origin timestamp sequence, remote topology,
 and shared PC92/PC93 freshness. A valid C replaces the complete subject
@@ -105,13 +113,21 @@ recovery allowance does not extend that one-second deadline.
 
 A node and a user can have the same canonical callsign under one parent. Their
 relationships are distinct; deleting one kind does not remove the other.
+For an explicit K subject node, omitted or zero version/build replace old
+numeric metadata with zero. For example, K version5457 with no build replaces
+5457/633 with5457/0. Both omitted become0/0. A/C/D omission behavior, absent IP
+and external relationship metadata keep their separate rules.
 Handshake phase deadlines include waiting for controller admission and startup
 timestamp capacity. The session wins authority once, then its reader remains
 parked until staged replay completes; failed candidates never acquire authority.
 
 ## Bounds and operator recovery
 
-Enabled peering supports at most 64 configured peers, 128 pending candidates,
+Enabled peering requires integer `peering.max_peers` (1–64, shipped64). It bounds
+enabled direct identities; disabled rows do not count and `both` counts once.
+There is no runtime fallback or unlimited sentinel. Add the key to existing
+configuration and restart; active over-cap configurations fail startup.
+Pending candidates remain128 and transport owners are bounded by N+128, with
 1,000 local session records, and a 64 KiB peer frame envelope. Smaller configured
 frame limits remain effective. The complete local snapshot is never truncated.
 The detailed per-class and allocation limits are in
@@ -121,15 +137,35 @@ The detailed per-class and allocation limits are in
 | --- | --- | --- |
 | Complete local snapshot does not fit | Close/gate PC9x sessions; local users and established legacy links continue | Complete snapshot fits, including capacity reserved for configured peers that can reconnect; stable for one second |
 | Unsafe or stalled UTC clock | Close/gate PC9x within five seconds; retain freshness and issuance protection | UTC advances beyond retained issuance and remains healthy for one second |
-| Authoritative PC92 admission fails | Close the affected link, mark its knowledge incomplete and gate retry | The resource required by the refused record has headroom for one second |
+| Authoritative PC92 admission fails | Close the affected link, mark its knowledge incomplete and gate retry | Configured identity cooldown expires, controller invalidation is acknowledged, and a fair global startup grant is available |
 | Spot, PC93 or bulletin dedupe pool fills | Refuse new untrackable work in that class; keep links open | Payload TTL expiry frees space; refused work is not replay queued |
 | PC93 input mailbox fills | Refuse that message; increment `PC93InputRefused`, separately from cache `PC93Refused`; keep links open | Mailbox drain frees space; refused messages are not replayed |
 | Control queue overload/age or stalled write | Close the affected transport | Ordinary reconnect/backoff and full membership/metadata recovery |
 
-Gate recovery is observed within the next second. Configured reconnect backoff
-(maximum 300 seconds) and phase deadlines still apply; after handshake completes,
-complete C then required A must be delivered within five seconds. Reconnecting
-alone cannot clear a still-failing publication, clock or admission condition.
+Global clock/publication recovery is observed within the next second after its
+one-second healthy interval. After handshake, complete C then required A must
+be delivered within five seconds, even when periodic C/K are disabled.
+
+Authoritative refusal starts controlled retries with shared inbound/outbound
+configured exponential backoff (normal loaded defaults2,4,8…300 seconds).
+Only one recovery candidate per identity can proceed. Authenticate inbound
+candidates before retry ownership; a failed outbound TCP dial consumes no
+startup grant. Global startup grants are at least one second apart with circular
+fairness; absent or expired candidates reserve no grant. Original handshake
+phase deadlines never extend, so a64-way wave may require candidate retries.
+Refused payloads are not retained or automatically replayed; every new record
+must pass ordinary authority and capacity admission.
+
+Sampled `Peering: PC92 retries` diagnostics report cooldown, waiting, active,
+healthy-reset, eligible-without-candidate and global-gated identity counts.
+These counts describe local attempt state, not remote membership completeness.
+
+Retry history resets only after matching post-establishment C/A has locally
+flushed and establishment/replay has completed, followed by60 healthy seconds.
+Local Flush is not confirmation of remote processing. Quiet PC9x peers qualify;
+legacy fallback does not. A global clock/publication closure interrupts the
+healthy interval without adding a failure or restarting cooldown. Remote
+knowledge remains incomplete until a valid authoritative remote C arrives.
 
 Spot, PC92, PC93 and WWV/WCY payload caches have separate budgets. Unexpired keys
 are never evicted; duplicates do not extend their age. Payloads expire strictly

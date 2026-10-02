@@ -134,7 +134,8 @@ These rules must be explicit, deterministic, and testable.
   owners define local membership; available IP addresses are published.
 - Publication overflow and unsafe clock close/gate PC9x while local users and
   established legacy links continue. Authoritative admission failure closes and
-  gates the affected peer until the actual required headroom is stable.
+  fences replacement until controller ingress invalidation, then permits controlled
+  retries with shared configured backoff and fair one-second startup pacing.
 - Recovery requires complete C followed by metadata A, including when periodic
   C and K are disabled. Local recovery does not make incomplete remote state
   complete; that requires an authoritative remote C. The C/A pair uses one
@@ -144,6 +145,19 @@ These rules must be explicit, deterministic, and testable.
 - Node/user relationships use separate typed identities even with the same
   callsign. Local wire identity follows the pinned receiver normalization;
   ambiguous or unrepresentable human logins stay local.
+- Received PC92 calls pass raw grammar before stable canonicalization: no
+  origin repair; only entry-call trailing ASCII spaces are tolerated. Malformed
+  records reject atomically. K subject numeric omission/zero replaces old
+  version/build with literal zero, preserving separate A/C/D and IP rules.
+- Admission retries have one candidate per configured identity, authentication
+  before ownership, unchanged absolute deadlines, and one terminal outcome per
+  attempt. History resets after matching C/A local Flush and establishment/replay
+  plus60 uninterrupted healthy seconds. Global closure interrupts this interval
+  without advancing cooldown. Refused records are never retained/replayed.
+- Required integer `peering.max_peers` is1–64 (shipped64), with no fallback.
+  Active enabled identities must fit N; direct construction validates before
+  resources. Pending128 is unchanged; transport ownership is N+128. Complete
+  publication reserves actual enabled identities, not phantom population N.
 - Separate spot/PC92/PC93/bulletin pools never evict unexpired payload keys.
   Exactly 600 elapsed seconds is unexpired. PC92 and PC93 share origin freshness;
   unsafe UTC does not erase retained ordering protection.

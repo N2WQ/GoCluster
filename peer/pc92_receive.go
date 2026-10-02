@@ -2,23 +2,20 @@ package peer
 
 import (
 	"net/netip"
-	"strings"
 	"time"
 )
 
 func (p *protocolController) failAdmission(s *session, f *Frame, reason string) {
+	p.failAdmissionCause(s, f, reason, admissionAuthority)
+}
+
+func (p *protocolController) failAdmissionCause(s *session, _ *Frame, reason string, cause admissionCause) {
 	p.diagnostic(reason)
 	if s == nil {
 		return
 	}
-	p.graph.loseIngress(s.remoteCall)
-	p.blocked.Set(s.remoteCall, time.Time{})
-	p.blockedRecords.Set(s.remoteCall, strings.Clone(f.Encode(f.Hop)))
-	p.blockedInput.Delete(s.remoteCall)
-	p.manager.mu.Lock()
-	p.manager.blockedPeers.Set(s.remoteCall, true)
-	p.manager.mu.Unlock()
-	s.close()
+	p.manager.retryRefused(s, cause, p.elapsedNow())
+	p.drainFailures()
 }
 func (p *protocolController) receive(f *Frame, s *session, now time.Time) {
 	if f == nil || s == nil || !s.pc9x || f.Hop == 0 || (s.ctx != nil && s.ctx.Err() != nil) {
@@ -47,7 +44,7 @@ func (p *protocolController) receive(f *Frame, s *session, now time.Time) {
 			origins := recordIngressOrigins(r)
 			needed, charge := p.graph.observationReservation(origins, s.remoteCall)
 			if p.graph.ingress.Len()+needed > maxIngressObservations || p.graph.retainedCharge()+charge > 96<<20 {
-				p.failAdmission(s, f, "PC92 alternate ingress capacity exhausted")
+				p.failAdmissionCause(s, f, "PC92 alternate ingress capacity exhausted", admissionIngress)
 				return
 			}
 			for _, origin := range origins {
@@ -94,7 +91,7 @@ func (p *protocolController) receive(f *Frame, s *session, now time.Time) {
 		p.failAdmission(s, f, "PC92 retained-byte capacity exhausted")
 		return
 	}
-	result := p.pc92.admit(key, now)
+	result := p.pc92.admitAt(key, now, laterAdmissionTime(now, p.elapsedNow()))
 	if result == dedupeFull {
 		p.failAdmission(s, f, "PC92 payload cache exhausted")
 		return
@@ -109,6 +106,8 @@ func (p *protocolController) receive(f *Frame, s *session, now time.Time) {
 		p.graph.observe(r.Subject.Call, s.remoteCall, f.Hop, now, false)
 	}
 	p.graph.observe(r.Origin, s.remoteCall, f.Hop, now, false)
+	committed := p.elapsedNow()
+	p.qualificationAdmissionEvent(qualificationAdmissionEvent{Kind: "pc92_commit", Call: s.remoteCall, At: committed, Origin: r.Origin, Timestamp: r.Timestamp, Nodes: p.graph.nodes.Len(), Users: p.graph.users.Len(), Edges: p.graph.edges, Ingress: p.graph.ingress.Len(), Freshness: p.graph.freshness.Len()})
 	if f.Hop > 1 {
 		m.forwardFrame(f, f.Hop-1, s, true)
 	}

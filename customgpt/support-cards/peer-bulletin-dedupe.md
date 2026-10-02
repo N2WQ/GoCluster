@@ -66,3 +66,37 @@ V11 troubleshooting refinements:
   attributing a failed capacity diagnostic to production transport behavior.
 - Evidence: [v11 ledger](../../docs/pc18-pc92-scope-ledger-v11.md),
   [ADR-0231](../../docs/decisions/ADR-0231-pc92-audit-corrections.md).
+
+V12 re-audit refinements:
+
+- Distinguish raw PC92 wire identity from local login normalization. Malformed
+  trailing/leading slash and oversized SSID forms reject the complete record;
+  a successful human login does not establish raw wire validity.
+- K numeric omission/zero clears prior subject version/build to zero. An
+  observed zero is not evidence that the remote node disconnected; K preserves
+  membership and has separate liveness semantics.
+- V14 admission refusal closes the affected link, invalidates its ingress, then
+  permits controlled retries. Diagnose cooldown, waiting for a fair startup
+  grant, active attempt,60-second healthy-reset interval and global gating using
+  sampled `Peering: PC92 retries` counts. `eligible` means no owned candidate is
+  currently waiting; it does not promise a remote has connected.
+- Backoff is shared across inbound/outbound overload attempts; grants are at
+  least one second apart. Authentication and original handshake deadlines still
+  apply. Waiting/denied arrivals and pure global closure do not advance history.
+- Matching post-establishment C/A local Flush and successful establishment/replay
+  start the60-second interval; enqueue/initial A/K cannot substitute. Local
+  recovery does not prove remote topology complete. Refused frames are neither
+  retained nor automatically replayed.
+- Add required integer `peering.max_peers` (1–64, shipped64) to existing YAML.
+  Restart to change it; active enabled rows above the cap fail. Pending remains
+ 128 and transport owners N+128. Do not silently truncate a configured registry.
+- V12's sustained63-blocked/one-live experiment failed while its zero-blocker
+  control passed. V14 supersedes that recovery mechanism; its short service
+  gate is not full qualification. Use [v14 evidence](../../docs/pc92-v14-validation.md)
+  and keep correction completion separate from the open aggregate allocation
+  proof and required final-source profiles.
+- The retained CTY refresh has separately recorded provenance and exact hashes;
+  do not silently compare new-asset qualification to old-asset runtime results.
+- Sources: [v12 validation](../../docs/pc92-v12-validation.md),
+  [ADR-0232](../../docs/decisions/ADR-0232-pc92-wire-and-recovery-evidence.md),
+  [CTY refresh](../../docs/cty-refresh-2c06079.md).

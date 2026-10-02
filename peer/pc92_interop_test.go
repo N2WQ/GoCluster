@@ -459,7 +459,7 @@ func TestDXSpiderReferenceGoSessionStartup(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			reference, first := startDXReference(t, tc.direction == dirInbound, "EA8/N0CALL/P-00")
-			cfg := config.PeeringConfig{NodeVersion: "5457", NodeBuild: "633", LegacyVersion: "5457", PC92Bitmap: 5, HopCount: 99, WriteQueueSize: 128, MaxLineLength: 65536, PC92MaxBytes: 65536,
+			cfg := config.PeeringConfig{MaxPeers: 64, NodeVersion: "5457", NodeBuild: "633", LegacyVersion: "5457", PC92Bitmap: 5, HopCount: 99, WriteQueueSize: 128, MaxLineLength: 65536, PC92MaxBytes: 65536,
 				Timeouts: config.PeeringTimeouts{LoginSeconds: 10, InitSeconds: 10},
 				Peers:    []config.PeeringPeer{{Enabled: true, RemoteCallsign: "GB7REF", Direction: config.PeeringPeerDirectionInbound, Family: config.PeeringPeerFamilyDXSpider, PreferPC9x: tc.pc9x}}}
 			cfg.LocalCallsign = "EA8/N0CALL/P-00"

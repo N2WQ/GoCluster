@@ -65,6 +65,11 @@ func DecodePC92(frame *Frame) (*PC92Record, error) {
 	if err := validatePC92Fields(fields, frame.Hop); err != nil {
 		return nil, err
 	}
+	// Wire authority must pass the raw receiver grammar before login-style
+	// canonicalization; otherwise malformed slash/SSID spellings gain authority.
+	if !config.IsRawPeeringCall(fields[0]) {
+		return nil, errors.New("invalid PC92 origin")
+	}
 	origin, ok := CanonicalPC92Call(fields[0])
 	if !ok {
 		return nil, errors.New("invalid PC92 origin")
@@ -203,6 +208,12 @@ func EncodePC92(record *PC92Record) (string, error) {
 	if record == nil {
 		return "", errors.New("nil PC92 record")
 	}
+	// Local callers may supply login aliases. Normalize only the emitted copy;
+	// accepted transit traffic uses Frame.Encode and keeps its original payload.
+	origin, ok := CanonicalPC92Call(record.Origin)
+	if !ok {
+		return "", errors.New("invalid PC92 origin")
+	}
 	subjectEntry := record.Subject
 	if record.Action == "K" && len(record.Extensions) > 0 && record.Extensions[0] != "" {
 		if ip, err := decodePC92IP(record.Extensions[0]); err == nil && ip == subjectEntry.IP {
@@ -219,7 +230,7 @@ func EncodePC92(record *PC92Record) (string, error) {
 	if record.SubjectImplicit && record.Action != "K" {
 		subject = ""
 	}
-	fields := []string{record.Origin, record.Timestamp, record.Action, subject}
+	fields := []string{origin, record.Timestamp, record.Action, subject}
 	if record.Action == "K" {
 		fields = append(fields, strconv.Itoa(record.NodeCount), strconv.Itoa(record.UserCount))
 		fields = append(fields, record.Extensions...)

@@ -6,6 +6,7 @@
 
 peering:
   enabled: false                   # Enable DXSpider peering (PC11/PC61/PC92/PC51)
+  max_peers: 64                    # Required maximum enabled direct identities, integer 1-64; restart to change
   forward_spots: false             # Peer spot data-plane forwarding; false = receive-only except local DX posts
   local_callsign: "N0CALL-1"       # Our node callsign sent in PC92/PC19 frames
   listen_port: 6300                # Optional inbound listen port for peers

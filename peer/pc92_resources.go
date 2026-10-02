@@ -1,13 +1,14 @@
 package peer
 
 import (
-	"strings"
+	"log"
 	"time"
 )
 
 type admissionFailure struct {
-	wire string
-	at   time.Time
+	at         time.Time
+	generation uint64
+	cause      admissionCause
 }
 
 // ProtocolStats is a sampled immutable view. Counters distinguish byte/count
@@ -22,6 +23,7 @@ type ProtocolStats struct {
 	Pending, StagedRecords, StagedBytes                                                                    int
 	InputPC92, InputPC93, InputPC92Bytes, InputPC93Bytes                                                   int
 	Recovering, BlockedPeers                                                                               int
+	RetryCooldown, RetryWaiting, RetryActive, RetryHealthy, RetryEligible, RetryGated                      int
 	ClockGated, PublicationGated                                                                           bool
 }
 
@@ -44,6 +46,9 @@ func (p *protocolController) sampleStats() {
 	stats.PC93Keys, stats.PC93KeyBytes, stats.PC93Refused = p.pc93.occupancy()
 	stats.BulletinKeys, stats.BulletinKeyBytes, stats.BulletinRefused = p.manager.bulletinDedupe.occupancy()
 	p.manager.mu.RLock()
+	counts := p.manager.retryCountsLocked(p.elapsedNow())
+	stats.RetryCooldown, stats.RetryWaiting, stats.RetryActive = counts[0], counts[1], counts[2]
+	stats.RetryHealthy, stats.RetryEligible, stats.RetryGated = counts[3], counts[4], counts[5]
 	stats.Pending = p.manager.candidates.Len()
 	stats.StagedRecords = p.manager.stagedRecords
 	stats.StagedBytes = p.manager.stagedBytes
@@ -57,6 +62,11 @@ func (p *protocolController) sampleStats() {
 	p.queueMu.Unlock()
 	previous := p.manager.protocolStats.Load()
 	p.manager.protocolStats.Store(&stats)
+	if previous != nil && (stats.RetryCooldown != previous.RetryCooldown || stats.RetryWaiting != previous.RetryWaiting || stats.RetryActive != previous.RetryActive || stats.RetryHealthy != previous.RetryHealthy || stats.RetryEligible != previous.RetryEligible || stats.RetryGated != previous.RetryGated) {
+		// Sampled aggregate transitions expose operational state without a
+		// per-attempt history, sensitive payload, or logging under manager.mu.
+		log.Printf("Peering: PC92 retries cooldown=%d waiting=%d active=%d healthy-reset=%d eligible=%d global-gated=%d", stats.RetryCooldown, stats.RetryWaiting, stats.RetryActive, stats.RetryHealthy, stats.RetryEligible, stats.RetryGated)
+	}
 	// The cumulative counter survives drain. Emit a rate-limited fixed reason
 	// only for newly sampled refusals, not forever after the first incident.
 	if stats.PC93InputRefused > 0 && (previous == nil || stats.PC93InputRefused > previous.PC93InputRefused) {
@@ -69,90 +79,41 @@ func (p *protocolController) sampleStats() {
 		p.diagnostic("bulletin dedupe refusals recorded")
 	}
 }
-func (m *Manager) recordAdmissionFailure(s *session, f *Frame, now time.Time) {
-	if s == nil {
-		return
+func (m *Manager) recordAdmissionFailure(s *session, _ *Frame, now time.Time) {
+	if s != nil {
+		m.retryRefused(s, admissionMailbox, now)
 	}
-	m.mu.Lock()
-	// Only current registered ownership can create a reconnect gate. Keys are
-	// configured remote identities, so the side table has at most64 entries.
-	if m.sessions.Value(s.id) == s {
-		m.admissionFailures.Set(s.remoteCall, admissionFailure{strings.Clone(f.Encode(f.Hop)), now})
-		m.blockedPeers.Set(s.remoteCall, true)
-	}
-	m.mu.Unlock()
-	m.NotifyMembershipChanged()
-	s.close()
 }
+
+// Drain on the topology owner before acknowledging invalidation. Holding mu
+// only for scalar handoff leaves graph mutation outside the registry lock.
 func (p *protocolController) drainFailures() {
 	m := p.manager
-	m.mu.Lock()
-	failures := m.admissionFailures
-	m.admissionFailures = newFixedIndex[string, admissionFailure](64)
-	m.mu.Unlock()
-	for call, failure := range failures.All() {
+	for {
+		m.mu.Lock()
+		var call string
+		var failure admissionFailure
+		for key, value := range m.admissionFailures.All() {
+			call, failure = key, value
+			break
+		}
+		if call != "" {
+			m.admissionFailures.Delete(call)
+		}
+		m.mu.Unlock()
+		if call == "" {
+			return
+		}
 		p.graph.loseIngress(call)
-		p.blocked.Set(call, time.Time{})
-		p.blockedRecords.Set(call, failure.wire)
-		p.blockedInput.Set(call, true)
+		p.blocked.Set(call, admissionEpisode{generation: failure.generation, cause: failure.cause, at: failure.at})
+		m.mu.Lock()
+		if r := m.retryIdentityLocked(call); r != nil && r.invalidationGeneration == failure.generation {
+			r.invalidating = false
+			p.qualificationAdmissionEvent(qualificationAdmissionEvent{Kind: "ingress_invalidated", Call: call, Generation: failure.generation, Cause: failure.cause.String(), At: p.elapsedNow()})
+		}
+		m.mu.Unlock()
 		p.diagnostic("PC92 input admission refused")
 	}
-}
-func (p *protocolController) admissionHeadroom(call string) bool {
-	wire := p.blockedRecords.Value(call)
-	if wire == "" {
-		return false
-	}
-	p.queueMu.Lock()
-	queued, queuedBytes := p.queued[0], p.bytes[0]
-	p.queueMu.Unlock()
-	if queued >= 192 || queuedBytes+allocationBytes(len(wire))+64 > 3<<20 {
-		return false
-	}
-	// Mailbox refusal precedes semantic decoding. Its recovery depends only on
-	// mailbox space; a malformed refused line must not create a permanent gate.
-	if p.blockedInput.Value(call) {
-		return true
-	}
-	frame, err := ParseFrame(wire)
-	if err != nil {
-		return false
-	}
-	record, err := DecodePC92(frame)
-	if err != nil {
-		return false
-	}
-	count, bytes, _ := p.pc92.occupancy()
-	if count >= 65536 || bytes+len(pc92Key(frame)) > 8<<20 {
-		return false
-	}
-	g := p.graph
-	origins := []string{record.Origin}
-	if record.Subject.IsExternal() && record.Subject.Call != record.Origin {
-		origins = append(origins, record.Subject.Call)
-	}
-	neededFresh, neededIngress, extraBytes := 0, 0, 0
-	for _, origin := range origins {
-		if _, ok := g.freshness.Get(origin); !ok {
-			neededFresh++
-			extraBytes += 196
-		}
-		if _, ok := g.ingress.Get(ingressKey{origin, call}); !ok {
-			neededIngress++
-			extraBytes += 160 + ingressEntryBytes(origin, call)
-		}
-	}
-	if g.freshness.Len()+neededFresh > maxFreshnessOrigins || g.ingress.Len()+neededIngress > maxIngressObservations {
-		return false
-	}
-	plan, err := g.prepare(record, p.manager.localCall, call, p.directNodes())
-	if err != nil {
-		return false
-	}
-	if plan != nil && g.projectedCharge(plan)+extraBytes > 96<<20 {
-		return false
-	}
-	return true
 }
 
 func (m *Manager) drainControl(limit time.Duration) {

@@ -6,7 +6,7 @@ Date Resolved: n/a
 Owner: GoCluster maintainers
 Technical Area: peer, telnet, internal/cluster
 Trigger Source: Chat request
-Led To ADR(s): ADR-0230, ADR-0231
+Led To ADR(s): ADR-0230, ADR-0231, ADR-0232
 Tags: PC92, qualification, allocation, latency
 
 ## RCA Summary
@@ -120,8 +120,78 @@ Q5/Q6, negative latency and Q4 sequencing results.
 Full final-source workload and complete480MiB proof remain separate obligations;
 passing wrapper fixtures certifies their failure handling, not protocol capacity.
 
+## V12 re-audit findings (2026-10-01)
+
+The re-audit of2c06079 showed that a normalization helper could repair malformed
+received identities before validation, and that generic empty-field metadata
+merging preserved stale K version/build values. A raw wire oracle and literal
+SQLite TEXT assertions distinguish these defects from parser roundtrip success
+or SQL numeric conversion. Local/login normalization and authentication remain
+separate boundaries.
+
+Admission recovery also needs the history of the actual required resources.
+Sampling once per tick misses a brief loss/restoration; checking mailbox fit
+before taking the final gate lock can clear using an obsolete interval. A new
+pending failure needs its own generation. Duplicate alternate-ingress refusal
+requires observation capacity, not full reapplication of a refused C.
+
+The prior Q6 combined five-second wait could accept a four-second recovery.
+Q5 began checking after the last key expired and used lookups that themselves
+pruned the cache. Those results do not prove first-availability recovery timing.
+V12 requires original stored age, actual capacity/gate facts, absolute deadline
+fences through the successful predicate and an external observation. It never
+uses the implementation's healthy-since as its expected result.
+
+The CTY asset bundled in2c06079 is explicitly retained as a separate documented
+refresh. [Provenance and exact hashes](../cty-refresh-2c06079.md) distinguish
+earlier-asset runs from future qualification. No actor attribution or geographic
+correctness follows from a matching hash.
+
+See the [v12 validation record](../pc92-v12-validation.md) for current execution
+status. Its early sustained necessary condition failed: with 63 blocked peers,
+205 offered PC92 records produced 12 commits and 192 queued records before the
+next valid record was refused and the healthy source closed. The same graph and
+producer with zero blockers processed 398 of 399 records, peak queue three,
+without closure. Both used a retained executable with matching source manifests.
+
+The exact graph checks run serially after each meaningful transaction, before
+the authority owner can dequeue its next input. Finite storage therefore did
+not imply affordable service cost. Membership admission still met one second
+in this run; that narrow success cannot waive the mailbox failure. CPU and
+allocation profiles support the repeated decode/prepare mechanism; cumulative
+allocation is not simultaneous owned memory. The explicit v12 stop condition
+prevents substituting new retained machinery or relaxed limits without revised
+scope. Full Q5/Q6 and complete-workload qualification were not run after this
+failure.
+
+## V14 controlled retry follow-up
+
+Approved v14 replaces exact refused-record graph checks with bounded identity
+retries. The early4-second diagnostic now reconciles scheduled/offered/committed
+traffic:63blocked+one live and zero-blocker control each processed399/399/399
+PC92 plus7 PC93, with peak mailbox1 and membership admission under25ms. These
+are development diagnostics, not final-source long qualification. See the
+[v14 matrix/evidence](../pc92-v14-validation.md) for final execution status.
+
+Fresh review found that local Flush callbacks can acquire the manager lock in
+an order different from event occurrence; healthy timing therefore takes the
+later occurrence timestamp. Startup enqueue must recheck its grant/global gate
+under the same manager lock used by closure, then release that lock before any
+socket close. A stopped per-attempt timer can remain a runtime-heap zombie;
+one timer per identity reused across attempts supplies a count bound. These
+observations explain the tests and ownership comments; none closes the existing
+SQLite/context/retirement aggregate gaps.
+
+Retry qualification must classify errors by handshake phase. Permitted startup
+candidate expiry cannot swallow post-handshake recovery errors. Start the
+five-second recovery deadline once, check it after blocking reads, and reject
+duplicate completion markers rather than renewing the deadline. A stable-peer
+membership check also cannot prove membership admission during recovery: cause
+the change between recovery C and A, then verify immutable A before the deltas
+and retain the original one-second deadline under the combined load.
+
 ## Decision Linkage
-- ADR created/updated: ADR-0230 and [ADR-0231](../decisions/ADR-0231-pc92-audit-corrections.md).
+- ADR created/updated: [ADR-0233](../decisions/ADR-0233-pc92-controlled-retries-and-peer-cap.md), ADR-0230, [ADR-0231](../decisions/ADR-0231-pc92-audit-corrections.md), and [ADR-0232](../decisions/ADR-0232-pc92-wire-and-recovery-evidence.md).
 - Decision delta summary: Explicit compatibility, failure/recovery, allocation and qualification contracts.
 - Contract/behavior changes: V7 changes only the declared qualification profiles and reachable Q4 phases; production batching and correction defaults remain unchanged.
 

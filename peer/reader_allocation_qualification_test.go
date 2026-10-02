@@ -4,6 +4,7 @@ package peer
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"net"
 	"strings"
@@ -27,7 +28,7 @@ func TestQualificationReaderOwnedBackingAndReturnedLine(t *testing.T) {
 	if backing, raw := r.allocation.snapshot(); backing != 4096 || raw != 65536 {
 		t.Fatalf("returned maximum line backing=%d raw=%d", backing, raw)
 	}
-	if _, err := r.ReadLine(time.Now().Add(time.Second)); err != io.EOF {
+	if _, err := r.ReadLine(time.Now().Add(time.Second)); !errors.Is(err, io.EOF) {
 		t.Fatalf("drain err=%v", err)
 	}
 	if _, raw := r.allocation.snapshot(); raw != 0 {

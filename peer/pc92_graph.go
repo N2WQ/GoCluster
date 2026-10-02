@@ -175,7 +175,7 @@ func (g *protocolGraph) commit(p *graphPlan, now time.Time) {
 	}
 	n := g.nodes.Value(p.subject)
 	if !r.SubjectImplicit {
-		g.setNodeEntry(n, r.Subject)
+		g.setNodeEntry(n, effectiveNodeSubject(r))
 	}
 	if p.external {
 		parent := g.nodes.Value(r.Origin)
@@ -323,7 +323,7 @@ func (g *protocolGraph) projectedCharge(p *graphPlan) int {
 	if n != nil {
 		existing = n.Members
 		if !r.SubjectImplicit {
-			charge += entryBytes(entryWithMetadata(n.Entry, r.Subject)) - entryBytes(n.Entry)
+			charge += entryBytes(entryWithMetadata(n.Entry, effectiveNodeSubject(r))) - entryBytes(n.Entry)
 		}
 	}
 	newMembers, newUsers := existing.Len()-p.removed, g.users.Len()

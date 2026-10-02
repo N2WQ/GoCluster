@@ -60,8 +60,6 @@ type protocolController struct {
 	lastExpiryWall          time.Time
 	recoveryWall            time.Time
 	quiescing               bool
-	blockedRecords          *boundedIndex[string, string]
-	blockedInput            *boundedIndex[string, bool]
 	current                 *boundedIndex[string, PC92Entry]
 	wallNow                 func() time.Time
 	elapsedNow              func() time.Time
@@ -83,7 +81,7 @@ type protocolController struct {
 	clockGate, capacityGate bool
 	unsafeSince, safeSince  time.Time
 	lastProjection          time.Time
-	blocked                 *boundedIndex[string, time.Time]
+	blocked                 *boundedIndex[string, admissionEpisode]
 	diagnosticAt            *boundedIndex[string, time.Time]
 	projection              chan graphProjection
 	replays                 *boundedIndex[*session, *candidateState]
@@ -96,11 +94,14 @@ func newProtocolController(m *Manager) *protocolController {
 	// Fixed arrays have no growth-generation overlap; the two retained membership
 	// generations can coexist with a tick's replacement and a nested K snapshot.
 	// The diagnostic capacity covers every literal call-site reason (tested).
-	return &protocolController{manager: m, blockedRecords: newFixedIndex[string, string](64), blockedInput: newFixedIndex[string, bool](64), wallNow: time.Now, elapsedNow: time.Now, input: make(chan protocolInput, 256), lifecycle: make(chan protocolRequest, 128), wake: make(chan struct{}, 1),
+	p := &protocolController{manager: m, wallNow: time.Now, elapsedNow: time.Now, input: make(chan protocolInput, 256), lifecycle: make(chan protocolRequest, 128), wake: make(chan struct{}, 1),
 		graph: newProtocolGraph(time.Now()), pc92: newBoundedDedupe(600*time.Second, 65536, 8<<20), pc93: newBoundedDedupe(600*time.Second, 65536, 8<<20),
-		timestamps: NewTimestampGenerator(), published: newFixedIndex[string, PC92Entry](1064), recovering: newFixedIndex[*session, recoveryState](64), pendingK: newFixedIndex[*session, bool](64), blocked: newFixedIndex[string, time.Time](64),
+		timestamps: NewTimestampGenerator(), published: newFixedIndex[string, PC92Entry](1000 + m.cfg.MaxPeers), recovering: newFixedIndex[*session, recoveryState](m.cfg.MaxPeers), pendingK: newFixedIndex[*session, bool](m.cfg.MaxPeers), blocked: newFixedIndex[string, admissionEpisode](m.cfg.MaxPeers),
 		diagnosticAt: newFixedIndex[string, time.Time](19), projection: make(chan graphProjection, 1), dirty: true,
-		replays: newFixedIndex[*session, *candidateState](64)}
+		replays: newFixedIndex[*session, *candidateState](m.cfg.MaxPeers)}
+	p.pc92.recovery = &dedupeRecovery{emit: p.qualificationAdmissionEvent}
+	p.emitMailboxLocked(p.elapsedNow())
+	return p
 }
 func (m *Manager) SetMembershipProvider(fn func() LocalMembership) {
 	m.mu.Lock()
@@ -176,6 +177,7 @@ func (m *Manager) releaseCandidate(s *session) {
 		m.candidates.Delete(s)
 	}
 	m.releaseCandidateSlotsLocked(s)
+	m.retryRetireLocked(s, time.Now())
 	owned := m.ownedRuns.Value(s)
 	m.ownedRuns.Delete(s)
 	m.mu.Unlock()
@@ -255,6 +257,9 @@ func (p *protocolController) enqueue(f *Frame, s *session, now time.Time) bool {
 	charge := allocationBytes(len(wire)) + 64
 	p.queueMu.Lock()
 	defer p.queueMu.Unlock()
+	if class == 0 {
+		p.emitMailboxLocked(p.elapsedNow())
+	}
 	if p.queued[class] >= maxCount || p.bytes[class]+charge > maxBytes {
 		if class == 1 {
 			p.inputPC93Refused++
@@ -263,6 +268,9 @@ func (p *protocolController) enqueue(f *Frame, s *session, now time.Time) bool {
 	}
 	p.queued[class]++
 	p.bytes[class] += charge
+	if class == 0 {
+		p.emitMailboxLocked(p.elapsedNow())
+	}
 	p.input <- protocolInput{strings.Clone(wire), s, now, class, charge}
 	return true
 }
@@ -286,7 +294,7 @@ func (p *protocolController) request(req protocolRequest) error {
 		p.tick(time.Now())
 		return nil
 	case "initial":
-		if p.clockGate || p.capacityGate || p.manager.outboundGated(s.peer) {
+		if p.clockGate || p.capacityGate || !p.manager.retrySessionAllowed(s) {
 			return fmt.Errorf("PC9x publication gated")
 		}
 		p.manager.mu.Lock()
@@ -319,7 +327,7 @@ func (p *protocolController) request(req protocolRequest) error {
 		}
 		return p.sendRecordBefore([]*session{s}, "K", nil, req.deadline)
 	case "establish":
-		if s.pc9x && (p.clockGate || p.capacityGate || p.manager.outboundGated(s.peer)) {
+		if s.pc9x && (p.clockGate || p.capacityGate || !p.manager.retrySessionAllowed(s)) {
 			return fmt.Errorf("PC9x establishment gated")
 		}
 		p.manager.mu.RLock()
@@ -384,7 +392,7 @@ func (p *protocolController) directNodes() *boundedIndex[string, bool] {
 	m := p.manager
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	out := newFixedIndex[string, bool](64)
+	out := newFixedIndex[string, bool](m.cfg.MaxPeers)
 	for _, s := range m.sessions.All() {
 		out.Set(s.remoteCall, true)
 	}

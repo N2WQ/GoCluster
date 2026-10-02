@@ -14,6 +14,7 @@ import (
 // proof or an assertion that independent peaks occurred simultaneously.
 type QualificationState struct {
 	ProtocolStats
+	MaxPeers                                        int
 	AuthorityTime, NextObservation                  time.Time
 	MessageOrigins, DetachedTopologyWatermarks      int
 	CompleteNodes, IncompleteNodes                  int
@@ -29,6 +30,7 @@ type QualificationState struct {
 type protocolQualificationState struct {
 	clock       atomic.Pointer[qualificationClock]
 	publication atomic.Pointer[qualificationPublicationObserver]
+	admission   atomic.Pointer[qualificationAdmissionObserver]
 }
 type protocolQualificationRequest struct {
 	state     QualificationState
@@ -56,7 +58,7 @@ func (p *protocolController) handleQualificationRequest(req *protocolQualificati
 		return nil
 	}
 	p.sampleStats()
-	s := QualificationState{ProtocolStats: p.manager.ProtocolStats(), AuthorityTime: p.qualificationAuthorityTime(time.Now()), NextObservation: p.graph.nextObservation,
+	s := QualificationState{ProtocolStats: p.manager.ProtocolStats(), MaxPeers: p.manager.cfg.MaxPeers, AuthorityTime: p.qualificationAuthorityTime(time.Now()), NextObservation: p.graph.nextObservation,
 		MessageOrigins: p.graph.messageOrigins, ProjectionReservedBytes: p.projectionBytes.Load()}
 	for call, wm := range p.graph.freshness.All() {
 		if !wm.MessageOnly && p.graph.nodes.Value(call) == nil {

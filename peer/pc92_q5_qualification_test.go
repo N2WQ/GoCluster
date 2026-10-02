@@ -101,7 +101,8 @@ func newQ5Rig(t *testing.T) *q5Rig {
 
 func (r *q5Rig) connect(t *testing.T, call string) *q5Receiver {
 	t.Helper()
-	conn, err := net.DialTimeout("tcp", r.addr, 3*time.Second)
+	dialer := net.Dialer{Timeout: 3 * time.Second}
+	conn, err := dialer.DialContext(t.Context(), "tcp", r.addr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,15 +235,66 @@ func q5Key(t *testing.T, class, wire string) string {
 
 func q5Await(t *testing.T, label string, duration time.Duration, predicate func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(duration)
-	for !predicate() {
-		if time.Now().After(deadline) {
-			t.Fatalf("Q5 timed out: %s", label)
-		}
-		if err := qualificationWait(t.Context(), 5*time.Millisecond); err != nil {
-			t.Fatal(err)
-		}
+	_, err := qualificationAwaitUntil(t.Context(), time.Now().Add(duration), 5*time.Millisecond,
+		func(context.Context) (bool, error) { return predicate(), nil }, func(ready bool) bool { return ready })
+	if err != nil {
+		t.Fatalf("Q5 %s: %v", label, err)
 	}
+}
+
+// Read-only evidence must not prune the cache it is observing. In particular,
+// firstAdmission and contains are unsuitable here because they perform cleanup.
+func q5StoredAdmission(cache *dedupeCache, key string) (time.Time, bool) {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	offset, ok := cache.items.Get(key)
+	if !ok {
+		return time.Time{}, false
+	}
+	return cache.epoch.Add(time.Duration(offset)), true
+}
+
+func q5CacheHasLive(cache *dedupeCache, key string) bool {
+	at, ok := q5StoredAdmission(cache, key)
+	return ok && time.Since(at) <= cache.ttl
+}
+
+func q5VerifyOriginalAdmission(cache *dedupeCache, key string, expected time.Time) error {
+	actual, present := q5StoredAdmission(cache, key)
+	if !present || !actual.Equal(expected) {
+		return fmt.Errorf("original payload admission changed: present=%v actual=%s expected=%s", present, actual, expected)
+	}
+	return nil
+}
+
+// Expiration remains independent of retry eligibility. Observe the original
+// payload's actual removal without calling a helper that prunes it. Equality
+// at TTL is still live, and the existing maintenance allowance is one second.
+func q5AwaitOriginalExpiry(ctx context.Context, cache *dedupeCache, key string, admitted time.Time) error {
+	expires := admitted.Add(cache.ttl)
+	_, err := qualificationAwaitUntil(ctx, expires.Add(time.Second), 5*time.Millisecond, func(context.Context) (bool, error) {
+		actual, present := q5StoredAdmission(cache, key)
+		observed := time.Now()
+		if present && !actual.Equal(admitted) {
+			return false, fmt.Errorf("original cache admission was renewed")
+		}
+		if !present && !observed.After(expires) {
+			return false, fmt.Errorf("cache key disappeared before strict TTL expiry")
+		}
+		return !present, nil
+	}, func(expired bool) bool { return expired })
+	return err
+}
+
+func q5Snapshot(t *testing.T, m *Manager) QualificationState {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	s, err := m.QualificationSnapshot(ctx)
+	if err != nil || ctx.Err() != nil {
+		t.Fatalf("Q5 snapshot failed: %v context=%v", err, ctx.Err())
+	}
+	return s
 }
 
 // Four isolated managers saturate one class each, concurrently in elapsed time.
@@ -280,6 +332,13 @@ func q5IsolationClass(t *testing.T, class string, full bool) {
 	healthIndex := 0
 	for cycle := 0; cycle < cycles; cycle++ {
 		var first string
+		var firstAdmission time.Time
+		evidence := &retryEvidence{call: "GB7SRC"}
+		if class == "pc92" {
+			// Install before refusal. Retry startup and local recovery are allowed
+			// while this cache remains full; actual PC92 admission still owns TTL.
+			r.m.QualificationSetAdmissionObserver(evidence.observe)
+		}
 		started := time.Now()
 		lastHealthy := started
 		for base := 0; base < capacity; base += 32 {
@@ -295,6 +354,13 @@ func q5IsolationClass(t *testing.T, class string, full bool) {
 			q5Send(t, source, batch.String())
 			want := min(base+32, capacity)
 			q5Await(t, "admitted saturation batch", 5*time.Second, func() bool { count, _, _ := cache.occupancy(); return count == want })
+			if base == 0 {
+				var present bool
+				firstAdmission, present = q5StoredAdmission(cache, q5Key(t, class, first))
+				if !present {
+					t.Fatal("oldest admitted payload lacks original-age evidence")
+				}
+			}
 			if time.Since(lastHealthy) >= time.Second {
 				q5Healthy(t, r, health, destination, &healthy, class, healthIndex)
 				healthIndex++
@@ -323,10 +389,17 @@ func q5IsolationClass(t *testing.T, class string, full bool) {
 			}
 		})
 		ingestedBeforeProbe := r.ingest.Load()
+		probe := fill.line(t, class, (cycle+1)*capacity+1, false)
 		q5Send(t, source, first)
-		q5Send(t, source, fill.line(t, class, (cycle+1)*capacity+1, false))
+		q5Send(t, source, probe)
 		q5Await(t, "new-key refusal", 5*time.Second, func() bool { _, _, n := cache.occupancy(); return n == refused+1 })
-		if count, _, _ := cache.occupancy(); count != capacity || !cache.contains(q5Key(t, class, first), time.Now()) {
+		// This same-source refusal follows the duplicate in receive order. A
+		// next-oldest expiry can hide renewal of the first key from gate timing,
+		// so compare the stored age itself without pruning or extending it.
+		if err := q5VerifyOriginalAdmission(cache, q5Key(t, class, first), firstAdmission); err != nil {
+			t.Fatal(err)
+		}
+		if count, _, _ := cache.occupancy(); count != capacity || !q5CacheHasLive(cache, q5Key(t, class, first)) {
 			t.Fatal("overflow evicted unexpired key")
 		}
 		if class == "spot" {
@@ -341,39 +414,79 @@ func q5IsolationClass(t *testing.T, class string, full bool) {
 					return false
 				}
 			})
+			failure, err := evidence.latest("failure")
+			if err != nil || failure.Generation == 0 {
+				t.Fatalf("Q5 missing failure attempt: %+v %v", failure, err)
+			}
+			// This fixture directly constructs a manager with zero backoff.
+			// Its inherited effective delay is one second, not loader 2s/300s.
+			if err := qualificationWait(t.Context(), max(0, time.Until(failure.At.Add(time.Second)))); err != nil {
+				t.Fatal(err)
+			}
+			source = r.connect(t, "GB7SRC")
+			if err := evidence.check(time.Second, time.Second, false); err != nil {
+				t.Fatalf("Q5 controlled startup with full cache: %v", err)
+			}
+			if count, _, _ := cache.occupancy(); count != capacity {
+				t.Fatal("retry startup required cache headroom or evicted unexpired entries")
+			}
 		}
 		hold := 601 * time.Second
 		if !full {
 			hold = 3 * time.Second
 		}
 		deadline := filled.Add(hold)
+		recoveryChecked := class != "pc92"
+		expiryChecked := false
+		firstExpiry := firstAdmission.Add(cache.ttl)
 		for time.Now().Before(deadline) {
+			if full && !expiryChecked && !time.Now().Before(firstExpiry.Add(-100*time.Millisecond)) {
+				if err := q5AwaitOriginalExpiry(t.Context(), cache, q5Key(t, class, first), firstAdmission); err != nil {
+					t.Fatalf("Q5 original key actual expiry: %v", err)
+				}
+				expiryChecked = true
+			}
+			if class == "pc92" && full && !recoveryChecked {
+				reset, err := evidence.latest("healthy_reset")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if reset.Generation != 0 {
+					if err := evidence.check(time.Second, time.Second, true); err != nil {
+						t.Fatalf("Q5 healthy retry reset: %v", err)
+					}
+					recoveryChecked = true
+				}
+			}
 			q5Healthy(t, r, health, destination, &healthy, class, healthIndex)
 			healthIndex++
-			if err := qualificationWait(t.Context(), time.Second); err != nil {
+			wait := time.Second
+			if full && !expiryChecked {
+				wait = min(wait, max(0, time.Until(firstExpiry.Add(-100*time.Millisecond))))
+			}
+			if err := qualificationWait(t.Context(), wait); err != nil {
 				t.Fatal(err)
 			}
 		}
 		if full {
+			if !expiryChecked {
+				t.Fatal("first original key expiry was not observed")
+			}
 			q5Await(t, "strict-TTL cleanup within maintenance allowance", time.Second, func() bool { count, _, _ := cache.occupancy(); return count == 0 })
-			if cache.contains(q5Key(t, class, first), time.Now()) {
+			if _, present := q5StoredAdmission(cache, q5Key(t, class, first)); present {
 				t.Fatal("duplicate renewed oldest payload age")
 			}
+			if class == "pc92" && !recoveryChecked {
+				t.Fatal("healthy retry reset was not observed during the hold")
+			}
 		}
-		stats, err := r.m.QualificationSnapshot(t.Context())
-		if err != nil {
-			t.Fatal(err)
-		}
+		stats := q5Snapshot(t, r.m)
 		if stats.PC93InputRefused != 0 || class != "spot" && stats.SpotRefused != 0 || class != "pc92" && stats.PC92Refused != 0 || class != "pc93" && stats.PC93Refused != 0 || class != "bulletin" && stats.BulletinRefused != 0 {
 			t.Fatalf("cross-class refusal: %+v", stats)
 		}
 		t.Logf("class=%s cycle=%d capacity=%d keyBytes=%d fill=%s realWindow=%s healthyChecks=%d stats=%+v", class, cycle, capacity, keyBytes, filled.Sub(started), time.Since(filled), healthIndex, stats)
-		if class == "pc92" && full && cycle+1 < cycles {
-			q5Await(t, "actual admission headroom gate recovery", 3*time.Second, func() bool {
-				stats, err := r.m.QualificationSnapshot(t.Context())
-				return err == nil && stats.BlockedPeers == 0
-			})
-			source = r.connect(t, "GB7SRC")
+		if class == "pc92" {
+			r.m.QualificationSetAdmissionObserver(nil)
 		}
 	}
 	if full {
@@ -381,10 +494,7 @@ func q5IsolationClass(t *testing.T, class string, full bool) {
 		if err := qualificationWait(t.Context(), 601*time.Second); err != nil {
 			t.Fatal(err)
 		}
-		stats, err := r.m.QualificationSnapshot(t.Context())
-		if err != nil {
-			t.Fatal(err)
-		}
+		stats := q5Snapshot(t, r.m)
 		if stats.SpotKeys+stats.PC92Keys+stats.PC93Keys+stats.BulletinKeys != 0 {
 			t.Fatalf("terminal payload cleanup incomplete: %+v", stats)
 		}
@@ -410,7 +520,7 @@ func q5Healthy(t *testing.T, r *q5Rig, source, destination *q5Receiver, g *q5Gen
 			case "bulletin":
 				return r.healthyBulletins.Load() == beforeBulletin+1
 			default:
-				return r.m.protocol.pc92.contains(q5Key(t, class, line), time.Now())
+				return q5CacheHasLive(r.m.protocol.pc92, q5Key(t, class, line))
 			}
 		})
 	}

@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `e88a79fd0cf4b401`
+- Source fingerprint: `ff1db89dc153fb96`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,10 +12,10 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 1 | 2 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 25 | 26 |
-| `dxcluster/peer` | `peer` | 20 | 20 |
-| `dxcluster/spot` | `spot` | 32 | 23 |
-| `dxcluster/telnet` | `telnet` | 9 | 24 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 25 | 44 |
+| `dxcluster/peer` | `peer` | 54 | 104 |
+| `dxcluster/spot` | `spot` | 32 | 26 |
+| `dxcluster/telnet` | `telnet` | 12 | 26 |
 
 ## In-Scope Package Edges
 
@@ -147,6 +147,24 @@ Test files:
 - `internal/cluster/path_cells_test.go`
 - `internal/cluster/path_report_metrics_bench_test.go`
 - `internal/cluster/path_report_metrics_test.go`
+- `internal/cluster/pc92_q4_cycles_test.go`
+- `internal/cluster/pc92_q4_pressure_oracle_test.go`
+- `internal/cluster/pc92_q4_pressure_test.go`
+- `internal/cluster/pc92_q4_runtime_qualification_test.go`
+- `internal/cluster/pc92_runtime_counter_test.go`
+- `internal/cluster/pc92_runtime_driver_test.go`
+- `internal/cluster/pc92_runtime_framing_test.go`
+- `internal/cluster/pc92_runtime_load_test.go`
+- `internal/cluster/pc92_runtime_mapping_other_test.go`
+- `internal/cluster/pc92_runtime_mapping_windows_test.go`
+- `internal/cluster/pc92_runtime_oracle_test.go`
+- `internal/cluster/pc92_runtime_process_test.go`
+- `internal/cluster/pc92_runtime_profile_test.go`
+- `internal/cluster/pc92_runtime_qualification_test.go`
+- `internal/cluster/pc92_runtime_rpc_test.go`
+- `internal/cluster/pc92_runtime_service_test.go`
+- `internal/cluster/pc92_runtime_sockets_test.go`
+- `internal/cluster/peer_runtime_test.go`
 - `internal/cluster/prop_report_scheduler_test.go`
 - `internal/cluster/stabilizer_test.go`
 - `internal/cluster/telnet_family_suppressor_bench_test.go`
@@ -157,7 +175,9 @@ Test files:
 
 Source files:
 - `peer/acl.go`
+- `peer/allocation_charge.go`
 - `peer/backoff.go`
+- `peer/bounded_index.go`
 - `peer/dedupe.go`
 - `peer/endpoint.go`
 - `peer/format.go`
@@ -167,18 +187,55 @@ Source files:
 - `peer/mode.go`
 - `peer/overlong.go`
 - `peer/parse.go`
+- `peer/parse_budget.go`
+- `peer/pc18_identity.go`
+- `peer/pc92_codec.go`
+- `peer/pc92_codec_entry.go`
+- `peer/pc92_controller.go`
+- `peer/pc92_eligibility.go`
+- `peer/pc92_graph.go`
+- `peer/pc92_graph_allocation.go`
+- `peer/pc92_graph_plan.go`
+- `peer/pc92_handshake.go`
+- `peer/pc92_membership.go`
+- `peer/pc92_projection.go`
+- `peer/pc92_publication.go`
+- `peer/pc92_receive.go`
+- `peer/pc92_recovery.go`
+- `peer/pc92_recovery_cache.go`
+- `peer/pc92_resources.go`
+- `peer/pc92_retry.go`
+- `peer/pc92_scheduler.go`
 - `peer/pc93.go`
 - `peer/protocol.go`
+- `peer/qualification_admission.go`
+- `peer/qualification_admission_event.go`
+- `peer/qualification_capacity.go`
+- `peer/qualification_capacity_wire.go`
+- `peer/qualification_clock.go`
+- `peer/qualification_disabled.go`
+- `peer/qualification_enabled.go`
+- `peer/qualification_topology.go`
+- `peer/qualification_writer_disabled.go`
+- `peer/qualification_writer_enabled.go`
 - `peer/reader.go`
+- `peer/reader_allocation_disabled.go`
+- `peer/reader_allocation_enabled.go`
 - `peer/session.go`
+- `peer/session_ownership.go`
+- `peer/session_transport.go`
 - `peer/timestamp.go`
 - `peer/topology.go`
-- `peer/topology_apply.go`
 - `peer/types.go`
 - `peer/wwv.go`
 
 Test files:
+- `peer/allocation_charge_test.go`
+- `peer/backoff_test.go`
+- `peer/bounded_index_test.go`
 - `peer/connection_event_test.go`
+- `peer/dedupe_allocation_test.go`
+- `peer/dedupe_index_test.go`
 - `peer/forwarding_policy_test.go`
 - `peer/inbound_handshake_harness_test.go`
 - `peer/inbound_handshake_test.go`
@@ -187,16 +244,95 @@ Test files:
 - `peer/manager_drop_test.go`
 - `peer/manager_legacy_test.go`
 - `peer/manager_test.go`
+- `peer/outbound_backoff_tcp_test.go`
 - `peer/overlong_test.go`
+- `peer/parse_budget_test.go`
 - `peer/parse_test.go`
+- `peer/pc18_identity_test.go`
+- `peer/pc92_allocation_test.go`
+- `peer/pc92_codec_test.go`
+- `peer/pc92_controller_test.go`
+- `peer/pc92_duplicate_clock_qualification_test.go`
+- `peer/pc92_duplicate_ingress_test.go`
+- `peer/pc92_graph_benchmark_test.go`
+- `peer/pc92_graph_index_test.go`
+- `peer/pc92_graph_interop_test.go`
+- `peer/pc92_graph_scratch_normal_test.go`
+- `peer/pc92_graph_scratch_race_test.go`
+- `peer/pc92_graph_scratch_test.go`
+- `peer/pc92_graph_test.go`
+- `peer/pc92_graph_typed_test.go`
+- `peer/pc92_handshake_deadline_test.go`
+- `peer/pc92_identity_authority_v12_test.go`
+- `peer/pc92_identity_benchmark_v12_test.go`
+- `peer/pc92_identity_fuzz_v12_test.go`
+- `peer/pc92_identity_interop_test.go`
+- `peer/pc92_identity_interop_v12_test.go`
+- `peer/pc92_identity_v12_test.go`
+- `peer/pc92_initial_retry_test.go`
+- `peer/pc92_interop_test.go`
+- `peer/pc92_k_metadata_allocation_test.go`
+- `peer/pc92_k_metadata_benchmark_test.go`
+- `peer/pc92_k_metadata_interop_test.go`
+- `peer/pc92_k_metadata_projection_test.go`
+- `peer/pc92_k_metadata_test.go`
+- `peer/pc92_lifecycle_regression_test.go`
+- `peer/pc92_mailbox_v11_test.go`
+- `peer/pc92_max_peers_test.go`
+- `peer/pc92_metadata_allocation_test.go`
+- `peer/pc92_process_restart_test.go`
+- `peer/pc92_projection_typed_test.go`
+- `peer/pc92_publication_test.go`
+- `peer/pc92_q4_qualification_test.go`
+- `peer/pc92_q5_qualification_test.go`
+- `peer/pc92_q6_fixture_test.go`
+- `peer/pc92_q6_qualification_test.go`
+- `peer/pc92_qualification_test.go`
+- `peer/pc92_recovery_cause_v12_test.go`
+- `peer/pc92_recovery_cost_qualification_test.go`
+- `peer/pc92_recovery_dependency_v12_test.go`
+- `peer/pc92_recovery_oracle_qualification_test.go`
+- `peer/pc92_recovery_sustained_qualification_test.go`
+- `peer/pc92_recovery_v12_test.go`
+- `peer/pc92_recovery_wave_oracle_qualification_test.go`
+- `peer/pc92_recovery_wave_qualification_test.go`
+- `peer/pc92_resource_regression_test.go`
+- `peer/pc92_retry_auth_test.go`
+- `peer/pc92_retry_contract_test.go`
+- `peer/pc92_retry_fairness_test.go`
+- `peer/pc92_retry_membership_qualification_test.go`
+- `peer/pc92_retry_mixed_qualification_test.go`
+- `peer/pc92_retry_startup_test.go`
+- `peer/pc92_retry_timer_test.go`
+- `peer/pc92_retry_writer_test.go`
+- `peer/pc92_scheduler_qualification_test.go`
+- `peer/pc92_scratch_regression_test.go`
+- `peer/pc92_staging_allocation_test.go`
+- `peer/pc92_storage_lifecycle_test.go`
+- `peer/pc92_test_config_test.go`
+- `peer/pc92_wire_v11_test.go`
 - `peer/pc93_test.go`
+- `peer/protocol_bookkeeping_test.go`
 - `peer/protocol_fuzz_test.go`
 - `peer/protocol_test.go`
+- `peer/qualification_capacity_wire_test.go`
+- `peer/qualification_clock_test.go`
+- `peer/qualification_deadline_test.go`
+- `peer/qualification_test.go`
+- `peer/qualification_writer_test.go`
+- `peer/reader_allocation_qualification_test.go`
+- `peer/reader_scratch_test.go`
 - `peer/reader_test.go`
 - `peer/registry_test.go`
+- `peer/session_allocation_test.go`
+- `peer/session_control_times_test.go`
 - `peer/session_keepalive_test.go`
+- `peer/session_lifecycle_test.go`
+- `peer/session_ownership_test.go`
 - `peer/session_ping_test.go`
 - `peer/session_test.go`
+- `peer/spot_parse_budget_test.go`
+- `peer/timestamp_test.go`
 - `peer/topology_apply_test.go`
 
 ### `dxcluster/spot`
@@ -240,6 +376,9 @@ Test files:
 - `spot/bounded_store_bench_test.go`
 - `spot/callsign_test.go`
 - `spot/cleanup_runner_test.go`
+- `spot/comment_parser_fuzz_bench_test.go`
+- `spot/comment_parser_legacy_test.go`
+- `spot/comment_parser_stream_test.go`
 - `spot/comment_parser_test.go`
 - `spot/confusion_model_test.go`
 - `spot/correction_distance_test.go`
@@ -268,6 +407,9 @@ Source files:
 - `telnet/filter_commands.go`
 - `telnet/latency.go`
 - `telnet/login_validation.go`
+- `telnet/peer_membership.go`
+- `telnet/qualification_observer.go`
+- `telnet/qualification_observer_disabled.go`
 - `telnet/reuseaddr_other.go`
 - `telnet/reuseaddr_windows.go`
 - `telnet/server.go`
@@ -283,7 +425,9 @@ Test files:
 - `telnet/handshake_transcript_test.go`
 - `telnet/latency_test.go`
 - `telnet/path_settings_test.go`
+- `telnet/peer_membership_test.go`
 - `telnet/prelogin_gate_test.go`
+- `telnet/qualification_observer_test.go`
 - `telnet/read_pause_test.go`
 - `telnet/readline_test.go`
 - `telnet/server_broadcast_worker_test.go`
@@ -303,6 +447,10 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0233](docs/decisions/ADR-0233-pc92-controlled-retries-and-peer-cap.md) | Accepted | 2026-10-02 | peer, config, qualification | `area:peer` |
+| [ADR-0232](docs/decisions/ADR-0232-pc92-wire-and-recovery-evidence.md) | Accepted | 2026-10-01 | peer, protocol, recovery, qualification | `area:peer` |
+| [ADR-0231](docs/decisions/ADR-0231-pc92-audit-corrections.md) | Accepted | 2026-10-01 | peer, protocol, lifecycle, persistence, qualification | `area:peer, path:peer` |
+| [ADR-0230](docs/decisions/ADR-0230-pc18-pc92-authority-and-bounds.md) | Accepted | 2026-10-01 | peer, telnet, protocol, lifecycle, retained state | `area:peer, area:telnet, path:peer, path:telnet` |
 | [ADR-0218](docs/decisions/ADR-0218-multi-human-upstream-telnet-registry.md) | Accepted | 2026-07-10 | config, rbn, ingest, dashboard, lifecycle, operations | `path:internal/cluster` |
 | [ADR-0207](docs/decisions/ADR-0207-nearby-effective-fast-dedupe.md) | Accepted | 2026-07-09 | telnet, dedupe, filters, diagnostics, supportability | `area:telnet, path:commands, path:telnet` |
 | [ADR-0201](docs/decisions/ADR-0201-native-160m-endpoint-daylight-gate.md) | Accepted | 2026-06-20 | pathreliability, telnet, config, operations, supportability, experiments | `area:telnet, path:telnet` |

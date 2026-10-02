@@ -113,7 +113,8 @@ func (p *q6Peer) monitor() {
 					return
 				}
 				if err != nil {
-					if networkErr, ok := err.(net.Error); ok && networkErr.Timeout() && p.hold.Load() {
+					var networkErr net.Error
+					if errors.As(err, &networkErr) && networkErr.Timeout() && p.hold.Load() {
 						partial = line
 						continue
 					}
@@ -152,23 +153,23 @@ func (p *q6Peer) send(t *testing.T, line string) {
 func (p *q6Peer) await(t *testing.T, predicate func(string) bool, timeout time.Duration) q6Wire {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-	for {
+	event, err := qualificationAwaitUntil(t.Context(), deadline, 0, func(ctx context.Context) (q6Wire, error) {
 		select {
 		case event := <-p.events:
-			if predicate(event.line) {
-				if !q6ObservationWithinDeadline(event.at, time.Now(), deadline) {
-					t.Fatalf("%s expected wire arrived after deadline", p.call)
-				}
-				return event
+			if !q6ObservationWithinDeadline(event.at, time.Now(), deadline) {
+				return event, context.DeadlineExceeded
 			}
+			return event, nil
 		case <-p.done:
-			t.Fatalf("%s closed before expected wire event (observer overflow=%v)", p.call, p.error.Load())
-		case <-timer.C:
-			t.Fatalf("%s timed out waiting for wire event", p.call)
+			return q6Wire{}, fmt.Errorf("closed before expected wire event (observer overflow=%v)", p.error.Load())
+		case <-ctx.Done():
+			return q6Wire{}, ctx.Err()
 		}
+	}, func(event q6Wire) bool { return predicate(event.line) })
+	if err != nil {
+		t.Fatalf("%s waiting for wire event: %v", p.call, err)
 	}
+	return event
 }
 
 func q6Action(action string) func(string) bool {
@@ -183,7 +184,7 @@ func (p *q6Peer) recovery(t *testing.T) (q6Wire, q6Wire) {
 	ready := p.await(t, func(line string) bool { return line == "PC22^" }, 5*time.Second)
 	c := p.await(t, q6Action("C"), 5*time.Second)
 	a := p.await(t, func(line string) bool { return q6Action("A")(line) || q6Action("K")(line) }, 5*time.Second)
-	if !q6Action("A")(a.line) || a.at.Before(c.at) || a.at.Sub(ready.at) > 5*time.Second {
+	if !q6Action("A")(a.line) || a.at.Before(c.at) || !q6ObservationWithinDeadline(a.at, time.Now(), ready.at.Add(5*time.Second)) {
 		t.Fatalf("mandatory ordered C/A recovery exceeded 5s or K overtook A: ready=%s C=%+v next=%+v", ready.at, c, a)
 	}
 	return c, a
@@ -220,7 +221,8 @@ var q6UserDirectoryOnce sync.Once
 
 func q6Port(t *testing.T) int {
 	t.Helper()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	var listenConfig net.ListenConfig
+	listener, err := listenConfig.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -362,7 +364,8 @@ func q6ReadUntil(t *testing.T, reader *bufio.Reader, suffix string) {
 
 func (r *q6Rig) connect(call string, pc9x, establish bool) *q6Peer {
 	r.t.Helper()
-	conn, err := net.DialTimeout("tcp", r.peerAddr, 3*time.Second)
+	dialer := net.Dialer{Timeout: 3 * time.Second}
+	conn, err := dialer.DialContext(r.t.Context(), "tcp", r.peerAddr)
 	if err != nil {
 		r.t.Fatal(err)
 	}
@@ -433,18 +436,11 @@ func (r *q6Rig) wait(label string, timeout time.Duration, predicate func(Qualifi
 
 func (r *q6Rig) waitUntil(label string, deadline time.Time, predicate func(QualificationState) bool) QualificationState {
 	r.t.Helper()
-	for {
-		ctx, cancel := context.WithDeadline(context.Background(), deadline)
-		s, err := r.m.QualificationSnapshot(ctx)
-		cancel()
-		if err != nil || !q6ObservationWithinDeadline(time.Now(), time.Now(), deadline) {
-			r.t.Fatalf("%s: deadline or observation failure: %v; last state=%+v", label, err, s)
-		}
-		if predicate(s) {
-			return s
-		}
-		time.Sleep(min(20*time.Millisecond, max(time.Duration(0), time.Until(deadline))))
+	s, err := qualificationAwaitUntil(r.t.Context(), deadline, 20*time.Millisecond, r.m.QualificationSnapshot, predicate)
+	if err != nil {
+		r.t.Fatalf("%s: deadline or observation failure: %v; last state=%+v", label, err, s)
 	}
+	return s
 }
 
 func (r *q6Rig) closed(peer *q6Peer) {
@@ -462,6 +458,8 @@ func (r *q6Rig) closedBy(peer *q6Peer, deadline time.Time) {
 		}
 	case <-timer.C:
 		r.t.Fatalf("%s socket did not close", peer.call)
+	case <-r.t.Context().Done():
+		r.t.Fatalf("%s closure observation canceled: %v", peer.call, r.t.Context().Err())
 	}
 }
 
@@ -480,7 +478,8 @@ func (r *q6Rig) legacyAlive() {
 // Failed retry is observed at the socket, not inferred from a sampled gate.
 func (r *q6Rig) refused(call string) {
 	r.t.Helper()
-	conn, err := net.DialTimeout("tcp", r.peerAddr, 3*time.Second)
+	dialer := net.Dialer{Timeout: 3 * time.Second}
+	conn, err := dialer.DialContext(r.t.Context(), "tcp", r.peerAddr)
 	if err != nil {
 		r.t.Fatal(err)
 	}
@@ -495,7 +494,8 @@ func (r *q6Rig) refused(call string) {
 			r.t.Fatalf("gated peer established: %q", line)
 		}
 		if err != nil {
-			if networkErr, ok := err.(net.Error); ok && networkErr.Timeout() {
+			var networkErr net.Error
+			if errors.As(err, &networkErr) && networkErr.Timeout() {
 				r.t.Fatal("gated retry hung instead of closing")
 			}
 			return

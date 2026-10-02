@@ -36,7 +36,7 @@ func TestPC92MailboxEligibilityMatchesNormalPath(t *testing.T) {
 			name, origin, action, tail string
 			hop                        int
 		}{
-			{"canonical own origin", "EA8/N0LOCAL/P-00", "K", "0^0^^branch", 99},
+			{"canonical own origin", "EA8/N0LOCAL/P", "K", "0^0^^branch", 99},
 			{"zero hop", "N2AAA", "K", "0^0^^branch", 0},
 			{"unsupported", "N2AAA", "F", "0^0^^branch", 99},
 			{"malformed C member", "N2AAA", "C", "1K1GOOD^H9x", 99},

@@ -6,11 +6,44 @@ import (
 	"strings"
 )
 
+// MaxPeeringPeers is the supported resource envelope, not a runtime default.
+// Operators must explicitly choose peering.max_peers in the range 1..64.
+const MaxPeeringPeers = 64
+
+// validateRawPeeringMaxPeers runs before re-marshaling and typed decoding:
+// yaml.v3 accepts floating-point scalars for int fields by truncating them.
+// Missing and null values are reported by the generic required-key walker.
+func validateRawPeeringMaxPeers(raw map[string]any) error {
+	value, present := yamlValueAt(raw, "peering", "max_peers")
+	if !present || value == nil {
+		return nil
+	}
+	n, ok := value.(int)
+	if !ok || n < 1 || n > MaxPeeringPeers {
+		return fmt.Errorf("invalid peering.max_peers: requires an integer between 1 and %d", MaxPeeringPeers)
+	}
+	return nil
+}
+
+func validatePeeringMaxPeers(n int) error {
+	if n < 1 || n > MaxPeeringPeers {
+		return fmt.Errorf("invalid peering.max_peers: must be between 1 and %d", MaxPeeringPeers)
+	}
+	return nil
+}
+
 // The two expressions are pinned to DXSpider DXUtil::normalise_call and
 // is_callsign, in that order. Login normalization differs from spot identity:
 // in particular its optional prefix is greedy and its SSID follows the suffix.
 var peerCallPattern = regexp.MustCompile(`^(?:[0-9]?[A-Z]{1,2}[0-9]{0,2}/)?(?:[0-9]?[A-Z]{1,2}[0-9]{1,5})[A-Z]{1,8}(?:-[0-9]{1,2})?(?:/[0-9A-Z]{1,7})?(?:/(?:AM?|MM?|P))?$`)
 var peerNormalizePattern = regexp.MustCompile(`^(?:\w{0,4}/)?(\w+)(?:/\w{0,4})?(?:-(\d+))?$`)
+
+// IsRawPeeringCall checks the receiver's uppercase ASCII wire grammar without
+// login repairs. Callers own role-specific padding removal; validity alone does
+// not guarantee that CanonicalPeeringCall can represent a stable local identity.
+func IsRawPeeringCall(call string) bool {
+	return len(call) <= 36 && peerCallPattern.MatchString(call)
+}
 
 // CanonicalPeeringCall returns a valid, stable receiver identity. The bounded
 // input protects publication/private lookup from arbitrary local login strings;
@@ -58,10 +91,13 @@ func IsPeeringCallCandidate(call string) bool {
 }
 
 // NormalizeActivePeeringWireContract protects direct manager construction as
-// well as the loader. It owns at most 64 active peers; dormant configuration
+// well as the loader. It owns at most max_peers active peers; dormant configuration
 // remains caller-owned. It does not fill defaults: a supplied local argument
 // is authoritative only when the config omits it.
 func NormalizeActivePeeringWireContract(cfg PeeringConfig, localCall string) (PeeringConfig, string, error) {
+	if err := validatePeeringMaxPeers(cfg.MaxPeers); err != nil {
+		return cfg, "", err
+	}
 	local, ok := CanonicalPeeringCall(localCall)
 	if !ok || len(local) > 15 {
 		return cfg, "", fmt.Errorf("invalid peering manager local callsign")
@@ -76,8 +112,8 @@ func NormalizeActivePeeringWireContract(cfg PeeringConfig, localCall string) (Pe
 		if cfg.Peers[i].Enabled {
 			count++
 		}
-		if count > 64 {
-			return cfg, "", fmt.Errorf("invalid peering.peers: at most 64 enabled peers are supported")
+		if count > cfg.MaxPeers {
+			return cfg, "", fmt.Errorf("invalid peering.peers: enabled peer count exceeds peering.max_peers (%d)", cfg.MaxPeers)
 		}
 	}
 	active := make([]PeeringPeer, 0, count)
@@ -98,8 +134,12 @@ func NormalizeActivePeeringWireContract(cfg PeeringConfig, localCall string) (Pe
 }
 
 // validatePeeringWireContract runs after legacy defaults and registry shape
-// checks. Disabled peering retains its historical dormant-config behavior.
+// checks. The cap is always valid; disabled peering retains its historical
+// dormant row-count and wire-identity behavior.
 func validatePeeringWireContract(cfg *PeeringConfig) error {
+	if err := validatePeeringMaxPeers(cfg.MaxPeers); err != nil {
+		return err
+	}
 	if !cfg.Enabled {
 		return nil
 	}
@@ -138,8 +178,8 @@ func validatePeeringWireContract(cfg *PeeringConfig) error {
 			continue
 		}
 		enabled++
-		if enabled > 64 {
-			return fmt.Errorf("invalid peering.peers: at most 64 enabled peers are supported")
+		if enabled > cfg.MaxPeers {
+			return fmt.Errorf("invalid peering.peers: enabled peer count exceeds peering.max_peers (%d)", cfg.MaxPeers)
 		}
 		if p.LoginCallsign == "" {
 			p.LoginCallsign = call

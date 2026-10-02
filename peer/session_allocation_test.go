@@ -13,8 +13,9 @@ import (
 
 func TestSessionInitialPasswordBorrowsOnlyConfiguredStorage(t *testing.T) {
 	s, _ := allocationSession(t)
+	s.manager = &Manager{}
 	s.password = strings.Repeat("p", MaxPeerFrameBytes)
-	if err := s.sendInitialPassword(); err != nil {
+	if err := s.sendOutboundStartup(); err != nil {
 		t.Fatal(err)
 	}
 	wire := <-s.priorityLineCh
@@ -44,6 +45,7 @@ func allocationSession(t *testing.T) (*session, net.Conn) {
 
 func TestSessionNormalBackingRequiresRegistryWinner(t *testing.T) {
 	m := &Manager{sessions: newFixedIndex[string, *session](64)}
+	m.cfg.MaxPeers = 64
 	winner, _ := allocationSession(t)
 	loser, _ := allocationSession(t)
 	if !errors.Is(winner.sendLine("before establishment"), errSessionWriteQueueFull) || winner.writeCh != nil || winner.dataBytes != 0 {

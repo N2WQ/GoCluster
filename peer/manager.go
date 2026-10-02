@@ -34,29 +34,31 @@ type ConnectionEvent struct {
 
 type Manager struct {
 	// Mutable ownership indexes use fixed bucket backing under mu. Pending/owner
-	// reservations bound candidates/runs to128/192; registry admission bounds
-	// sessions to64. Failure/gate keys belong to the64 configured identities.
-	parseBudget       *frameParseBudget
-	protocolStats     atomic.Pointer[ProtocolStats]
-	admissionFailures *boundedIndex[string, admissionFailure]
-	pendingSlots      chan struct{}
-	ownerSlots        chan struct{}
-	ownedRuns         *boundedIndex[*session, bool]
-	cfg               config.PeeringConfig
-	localCall         string
-	ingest            chan<- *spot.Spot
-	maxAgeSeconds     int
-	topology          *topologyStore
-	sessions          *boundedIndex[string, *session]
-	outboundPeers     []PeerEndpoint
-	inboundPeers      map[string]PeerEndpoint
-	mu                sync.RWMutex
-	allowIPs          []*net.IPNet
-	allowCalls        map[string]struct{}
-	dedupe            *dedupeCache
-	ctx               context.Context
-	cancel            context.CancelFunc
-	listener          net.Listener
+	// reservations bound candidates/runs to128/(N+128); registry admission
+	// bounds sessions to configured N<=64. Retry keys belong to those identities.
+	parseBudget         *frameParseBudget
+	protocolStats       atomic.Pointer[ProtocolStats]
+	admissionFailures   *boundedIndex[string, admissionFailure]
+	admissionGeneration uint64           // mu owns failure episode identity, including undrained failures
+	retry               retryCoordinator // mu owns shared directional retry history
+	pendingSlots        chan struct{}
+	ownerSlots          chan struct{}
+	ownedRuns           *boundedIndex[*session, bool]
+	cfg                 config.PeeringConfig
+	localCall           string
+	ingest              chan<- *spot.Spot
+	maxAgeSeconds       int
+	topology            *topologyStore
+	sessions            *boundedIndex[string, *session]
+	outboundPeers       []PeerEndpoint
+	inboundPeers        map[string]PeerEndpoint
+	mu                  sync.RWMutex
+	allowIPs            []*net.IPNet
+	allowCalls          map[string]struct{}
+	dedupe              *dedupeCache
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	listener            net.Listener
 
 	legacyCh                   chan legacyWork
 	rawBroadcast               func(string) // optional hook to emit raw lines (e.g., PC26) to telnet clients
@@ -153,7 +155,7 @@ func NewManager(cfg config.PeeringConfig, localCall string, ingest chan<- *spot.
 		ingest:         ingest,
 		maxAgeSeconds:  maxAgeSeconds,
 		topology:       topo,
-		sessions:       newFixedIndex[string, *session](64),
+		sessions:       newFixedIndex[string, *session](cfg.MaxPeers),
 		outboundPeers:  outboundPeers,
 		inboundPeers:   inboundPeers,
 		allowIPs:       allowIPs,
@@ -161,13 +163,13 @@ func NewManager(cfg config.PeeringConfig, localCall string, ingest chan<- *spot.
 		dedupe:         newDedupeCache(10 * time.Minute),
 		bulletinDedupe: newBoundedDedupe(10*time.Minute, 8192, 2<<20),
 		candidates:     newFixedIndex[*session, *candidateState](128),
-		blockedPeers:   newFixedIndex[string, bool](64),
+		blockedPeers:   newFixedIndex[string, bool](cfg.MaxPeers),
 		dropReporter:   dropReporter,
 	}
-	m.admissionFailures = newFixedIndex[string, admissionFailure](64)
+	m.admissionFailures = newFixedIndex[string, admissionFailure](cfg.MaxPeers)
 	m.pendingSlots = make(chan struct{}, 128)
-	m.ownerSlots = make(chan struct{}, 64+128)
-	m.ownedRuns = newFixedIndex[*session, bool](192)
+	m.ownerSlots = make(chan struct{}, cfg.MaxPeers+128)
+	m.ownedRuns = newFixedIndex[*session, bool](cfg.MaxPeers + 128)
 	m.parseBudget = newFrameParseBudget()
 	m.protocol = newProtocolController(m)
 	return m, nil
@@ -587,11 +589,14 @@ func (m *Manager) registerSessionAttempt(s *session, attempt *establishmentAttem
 	if existing, ok := m.sessions.Get(key); ok && existing != s {
 		return fmt.Errorf("duplicate peer session: %s", key)
 	}
-	if m.stopping || m.sessions.Len() >= 64 {
+	if m.stopping || m.sessions.Len() >= m.cfg.MaxPeers {
 		return fmt.Errorf("established peer capacity or stopping")
 	}
 	if s.ctx != nil && s.ctx.Err() != nil {
 		return s.ctx.Err()
+	}
+	if s.pc9x && !m.retrySessionAllowedLocked(s) {
+		return fmt.Errorf("PC9x establishment gated")
 	}
 	if !attempt.commit() {
 		return context.DeadlineExceeded
@@ -870,7 +875,7 @@ func (m *Manager) authorizeInbound(call string, addr net.Addr) (PeerEndpoint, er
 	if !ipAllowed(peer.allowIPs, addr) {
 		return PeerEndpoint{}, fmt.Errorf("unauthorized inbound peer ip: %s", addr.String())
 	}
-	if m.hasActiveSession(peer.ID()) || m.outboundGated(peer) {
+	if m.hasActiveSession(peer.ID()) || (peer.preferPC9x && m.pc9xGated.Load()) {
 		return PeerEndpoint{}, fmt.Errorf("duplicate peer session: %s", call)
 	}
 	if strings.TrimSpace(peer.host) == "" {
@@ -955,10 +960,24 @@ func (m *Manager) runOutbound(peer PeerEndpoint) {
 			}
 			continue
 		}
+		generation, admitted := m.reserveRetryDial(peer.remoteCall, time.Now())
+		if !admitted {
+			m.releaseUnstartedCandidateSlots()
+			if !waitPeerRetry(m.ctx, time.Second) {
+				return
+			}
+			continue
+		}
 		log.Printf("Peering: dialing %s as %s", addr, peer.loginCall)
 		conn, err := dialer.DialContext(m.ctx, "tcp", addr)
 		if err != nil {
 			m.releaseUnstartedCandidateSlots()
+			if generation != 0 {
+				m.finishRetryDial(peer.remoteCall, generation, nil, time.Now())
+				m.NotifyMembershipChanged()
+				m.reportConnection(ConnectionEvent{Direction: "outbound", Action: "dial_failed", Peer: peer.remoteCall, Endpoint: addr, Reason: err.Error()})
+				continue
+			}
 			delay := backoff.Next()
 			m.reportConnection(ConnectionEvent{Direction: "outbound", Action: "dial_failed", Peer: peer.remoteCall, Endpoint: addr, Reason: err.Error()})
 			log.Printf("Peering: dial %s failed: %v (retry in %s)", addr, err, delay)
@@ -971,6 +990,11 @@ func (m *Manager) runOutbound(peer PeerEndpoint) {
 		m.reportConnection(ConnectionEvent{Direction: "outbound", Action: "connected", Peer: peer.remoteCall, Endpoint: addr, Reason: "none"})
 		settings := m.sessionSettings(peer)
 		sess := newSession(conn, dirOutbound, m, peer, settings)
+		if !m.finishRetryDial(peer.remoteCall, generation, sess, time.Now()) {
+			sess.close()
+			m.releaseUnstartedCandidateSlots()
+			continue
+		}
 		sess.pendingReserved = true
 		sess.ownerReserved = true
 		sess.remoteCall = peer.remoteCall
@@ -979,6 +1003,13 @@ func (m *Manager) runOutbound(peer PeerEndpoint) {
 		}
 		if err := sess.Run(m.ctx); err != nil && m.ctx.Err() == nil {
 			log.Printf("Peering: session to %s ended: %v", addr, err)
+		}
+		m.mu.RLock()
+		retrying := m.blockedPeers.Value(peer.remoteCall)
+		m.mu.RUnlock()
+		if retrying {
+			m.reconnects.Add(1)
+			continue // shared retry history supplies the sole overload delay
 		}
 		if sess.established {
 			backoff.Reset()
@@ -1124,5 +1155,6 @@ func (m *Manager) outboundGated(endpoint PeerEndpoint) bool {
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.blockedPeers.Value(endpoint.remoteCall)
+	r := m.retryIdentityLocked(endpoint.remoteCall)
+	return r != nil && r.active && (r.owner != nil || r.dialing || r.invalidating || time.Now().Before(r.due))
 }

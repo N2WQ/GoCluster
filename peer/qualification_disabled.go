@@ -13,6 +13,7 @@ type protocolQualificationRequest struct{}
 
 func (p *protocolController) authorityWallNow() time.Time                                        { return p.wallNow() }
 func (*protocolController) qualificationPublicationAdmitted(*session, string, string, time.Time) {}
+func (*protocolController) qualificationAdmissionEvent(qualificationAdmissionEvent)              {}
 
 func (p *protocolController) qualificationAuthorityTime(now time.Time) time.Time {
 	// Keep the zero-sized tag-selected field/type visible to normal-build static

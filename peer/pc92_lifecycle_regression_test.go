@@ -116,7 +116,15 @@ func TestPC92OutboundGatePreventsTCPDial(t *testing.T) {
 			if gate == "clock" {
 				m.pc9xGated.Store(true)
 			} else {
-				m.blockedPeers.Set("N1PEER", true)
+				old := retryV14Candidate(t, m, "N1PEER")
+				m.sessions.Set(old.id, old)
+				m.retryRefused(old, admissionAuthority, time.Now())
+				m.mu.Lock()
+				m.retryRetireLocked(old, time.Now())
+				m.sessions.Delete(old.id)
+				m.mu.Unlock()
+				// Neither elapsed cooldown nor TCP availability may bypass
+				// the still-unacknowledged controller invalidation barrier.
 			}
 			done := make(chan struct{})
 			go func() {

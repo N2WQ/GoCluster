@@ -1,8 +1,8 @@
-# Fixed evidence plans shared by the five public wrappers. These values are the
+# Fixed evidence plans shared by the public wrappers. These values are the
 # approved workload, not caller-adjustable duration or rate overrides.
 function Get-PC92QualificationPlan([string]$Family, [string]$Profile) {
     $plan = [ordered]@{ family = $Family; profile = $Profile; package = './peer'; tags = 'qualification';
-        timeout = '65m'; tests = @(); diagnostic = $false; minimum_seconds = 0; observation = ''; environment = @{} }
+        timeout = '65m'; tests = @(); diagnostic = $false; minimum_seconds = 0; minimum_case_seconds = @{}; observation = ''; environment = @{} }
     switch ($Family) {
         'runtime' {
             if ($Profile -notin @('preflight', 'diagnostic-full', 'q1', 'q2', 'q3', 'shipped-q1')) { throw 'invalid_profile: runtime' }
@@ -50,6 +50,26 @@ function Get-PC92QualificationPlan([string]$Family, [string]$Profile) {
             $plan.environment.GOCLUSTER_PC92_QUALIFICATION = $Profile
             $plan.minimum_seconds = if ($Profile -eq 'cache-sustained') { 3360 } else { 0 }
         }
+        'retry' {
+            if ($Profile -notin @('preflight', 'qualification')) { throw 'invalid_profile: retry' }
+            # 3750 seconds of offered load (including each fixed 600-second
+            # recovery tail) leaves 150 seconds for setup within 65 minutes.
+            # Individual protocol deadlines remain binding inside each case.
+            $plan.timeout = '65m'
+            $plan.tests = @('TestPC92V14RetryWaveService', 'TestPC92V14RetryWaveService/recovering_63', 'TestPC92V14RetryWaveService/recovering_63_periodic', 'TestPC92V14RetryWaveService/recovering_64')
+            $plan.environment.GOCLUSTER_PC92_V14_RETRY_PROFILE = $Profile
+            $plan.diagnostic = $Profile -eq 'preflight'
+            if (-not $plan.diagnostic) {
+                # The zero-periodic 63-peer case sustains mixed overload for
+                # 30 minutes. Periodic 63-peer and zero-periodic 64-peer cases
+                # each add 75 seconds. All keep offered load running through
+                # another 600 seconds for recovery/reset/refail observation.
+                $plan.minimum_seconds = 3750
+                $plan.minimum_case_seconds['TestPC92V14RetryWaveService/recovering_63'] = 2400
+                $plan.minimum_case_seconds['TestPC92V14RetryWaveService/recovering_63_periodic'] = 675
+                $plan.minimum_case_seconds['TestPC92V14RetryWaveService/recovering_64'] = 675
+            }
+        }
         default { throw 'invalid_family' }
     }
     return $plan
@@ -63,6 +83,13 @@ function Test-PC92QualificationEvidence($Plan, [string]$RunID, [string]$Log, [st
         if (-not [regex]::IsMatch($Log, $pattern)) { throw "missing_case: $test" }
     }
     if ($Elapsed -lt $Plan.minimum_seconds) { throw 'short_duration: execution did not span the approved workload' }
+    foreach ($test in $Plan.minimum_case_seconds.Keys) {
+        $pattern = '(?m)^\s*--- PASS: ' + [regex]::Escape($test) + ' \(([0-9]+(?:\.[0-9]+)?)s\)\s*$'
+        $match = [regex]::Match($Log, $pattern)
+        if (-not $match.Success) { throw "missing_case_duration: $test" }
+        $seconds = [double]::Parse($match.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)
+        if (-not [double]::IsFinite($seconds) -or $seconds -lt $Plan.minimum_case_seconds[$test]) { throw "short_case_duration: $test" }
+    }
     if (-not $Plan.observation) { return }
     if (-not (Test-Path -LiteralPath $ObservationPath -PathType Leaf)) { throw 'missing_observations' }
     try { $observation = Get-Content -LiteralPath $ObservationPath -Raw | ConvertFrom-Json -ErrorAction Stop }

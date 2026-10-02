@@ -118,3 +118,5 @@ SQLite contents never make a restarted node's routing knowledge authoritative.
 - Supersedes / superseded by: Refines ADR-0050's PC92 application ordering and
   ADR-0054's queue/resource contract. Their hop-insensitive keys, overlong
   diagnostics, priority and local-ingest relay rules remain effective.
+
+Admission-recovery clauses are superseded by [ADR-0233](ADR-0233-pc92-controlled-retries-and-peer-cap.md) under Approved v14. Other clauses and historical evidence remain effective.

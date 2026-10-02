@@ -2,7 +2,7 @@ package peer
 
 // Pending reservations bound handshakes; owner reservations continue through
 // established service and terminal callbacks until Run releases all ownership.
-// Keeping the combined64+128 transport allowance until final cleanup prevents
+// Keeping the configured N+128 transport allowance until final cleanup prevents
 // rapid replacements from accumulating retired sessions outside either class.
 // Admission reserves both before constructing a reader, writer, or goroutine.
 func (m *Manager) reserveCandidateSlots() bool {
@@ -19,7 +19,7 @@ func (m *Manager) reserveCandidateSlotsLocked() bool {
 		m.pendingSlots = make(chan struct{}, 128)
 	}
 	if m.ownerSlots == nil {
-		m.ownerSlots = make(chan struct{}, 64+128)
+		m.ownerSlots = make(chan struct{}, m.cfg.MaxPeers+128)
 	}
 	if len(m.pendingSlots) == cap(m.pendingSlots) || len(m.ownerSlots) == cap(m.ownerSlots) {
 		return false

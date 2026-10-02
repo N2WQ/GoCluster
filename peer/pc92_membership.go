@@ -171,7 +171,7 @@ func (p *protocolController) finishRecoveries(entries *boundedIndex[string, PC92
 	for _, s := range starting {
 		p.recovering.Set(s, recoveryState{phase: 1, metadata: metadata})
 	}
-	if err := p.sendRecord(starting, "A", members, false); err != nil {
+	if err := p.sendRecord(starting, "A", members, true); err != nil {
 		return err
 	}
 	for _, s := range starting {
@@ -190,13 +190,13 @@ func (p *protocolController) finishRecovery(s *session, state recoveryState, ent
 		return fmt.Errorf("invalid retained recovery members: %w", err)
 	}
 	if state.phase == 1 {
-		if err := p.sendRecord([]*session{s}, "A", r.Members, false); err != nil {
+		if err := p.sendRecord([]*session{s}, "A", r.Members, true); err != nil {
 			return err
 		}
 		state.phase = 2
 		p.recovering.Set(s, state)
 	}
-	baseline := newFixedIndex[string, PC92Entry](1064)
+	baseline := newFixedIndex[string, PC92Entry](1000 + p.manager.cfg.MaxPeers)
 	for _, entry := range r.Members {
 		baseline.Set(entry.Call, entry)
 	}

@@ -1,15 +1,33 @@
 # PC18/PC92 qualification contract and evidence
 
+**Current authority:** [approved v14](pc18-pc92-scope-ledger-v14.md) replaces
+admission headroom simulation with controlled retries and a required YAML peer
+cap. See [v14 evidence](pc92-v14-validation.md) for current results. Overall
+acceptance remains open; historical passes below do not qualify the final v14
+source.
+
+**Historical V12 evidence status:** the2c06079 re-audit invalidated the earlier ordinary
+admission-recovery timing oracle. Its combined five-second Q6 wait could accept
+late recovery; Q5 observed after the last expiry and its lookups could prune.
+Historical run results remain below, but do not prove corrected recovery timing.
+The [v12 record](pc92-v12-validation.md) tracks fresh evidence. Its sustained
+63-blocked/one-live service gate failed: repeated exact recovery checks exhausted
+the input mailbox and closed the healthy source, while the zero-blocker control
+passed. V12 stopped at its explicit design boundary. Overall acceptance remains open. The
+[retained CTY refresh](cty-refresh-2c06079.md) also requires exact new-asset
+manifests for future runtime qualification.
+
 The approved spot-forwarding target is **10,000 distinct new PC11/PC61/PC26
 keys per minute across all peers**, with 100,000 duplicate arrivals per minute.
 Copies delivered to different peers do not count as additional keys. PC92 uses
 its separate target of 100 new records/second. These rates are acceptance
 inputs, not measured claims.
 
-## Execution status (2026-10-01)
+## Historical v11 execution status (2026-10-01)
 
 V11 corrections are implemented with targeted validation; full acceptance is not complete.
-Current corrective authority is the [v11 ledger](pc18-pc92-scope-ledger-v11.md).
+V11 authority was the [v11 ledger](pc18-pc92-scope-ledger-v11.md); the subsequent
+v12 stop was superseded for admission recovery by [v14](pc18-pc92-scope-ledger-v14.md).
 Slice evidence: [wire](pc92-v11-wire-validation.md),
 [graph/projection](pc92-v11-graph-validation.md),
 [qualification checker](pc92-v11-qualification-validation.md).
@@ -326,9 +344,13 @@ affected knowledge incomplete. Failed, losing, timed-out, or capacity-refused
 handshake candidates release all staged state without advancing global
 freshness or topology.
 
-Recovery requires the external condition to remain valid for one second, then
-gate observation within the next second; configured reconnect backoff and fixed
-handshake deadlines still apply. Complete local C plus required A metadata must
+Global clock/publication recovery requires the external condition to remain
+valid for one second, then gate observation within the next second. Admission
+refusal instead uses the [v14 controlled-retry contract](pc18-pc92-scope-ledger-v14.md):
+shared backoff, one candidate per identity, one-second global startup pacing,
+controller invalidation before startup and60-second healthy history reset after
+matching recovery C/A Flush and establishment/replay. Original handshake
+deadlines remain absolute. Complete local C plus required A metadata must
 arrive within five seconds of externally observed handshake completion,
 including when periodic C/K are disabled. Local recovery does not establish
 complete remote membership: a valid authoritative remote C is required.
@@ -337,3 +359,33 @@ The reference interoperability oracle remains the pinned DXSpider revision
 `3e9b3621d94dd45c68702e4a0f896aac33f2a91d`, inspecting actual receiver
 channel/user/route/membership state. Codec round trips alone do not demonstrate
 that state. CCCluster compatibility claims require separate CCCluster evidence.
+
+## V14 qualification status
+
+The [v14 matrix/evidence](pc92-v14-validation.md) governs correction validation.
+The short service gate is necessary, not sufficient. The full retry profile
+requires at least30 minutes of actual retries under approved mixed traffic, then
+release/recovery/reset and another failure. Expected scheduled work and actual
+offered input, lateness, missing output and observer overflow must reconcile;
+a producer dropping timer ticks cannot qualify reduced load. Final-source
+binaries/manifests and the exact CTY hash remain required. Full aggregate
+acceptance remains open pending SQLite, context and retirement proofs.
+
+The retry wrapper requires three cases: 30 minutes of63-peer overload with
+periodic C/K disabled,75 seconds of63-peer overload using the enabled600/1800-
+second settings, and75 seconds of64-peer overload with maintenance work. Each
+qualification case continues its mixed workload or maintenance for a fixed
+600-second tail through recovery, healthy reset and another failure. Case load
+durations are therefore2400/675/675 seconds. The enabled case proves prompt
+recovery independent of periodic firing; its total675 seconds do not span a
+scheduled periodic C. The mixed cases change local
+membership between recovery C and A and verify the original one-second queue
+admission obligation. All wire recovery pairs must decode, retain their matching
+baseline, and complete within five seconds; startup expiry cannot excuse a
+post-handshake recovery failure. The65-minute wrapper timeout accommodates the
+combined3750 seconds of load plus setup. Individual recovery observation bounds
+and all protocol deadlines remain unchanged. Healthy recovered recipients must
+receive mandatory traffic throughout the tail; only an explicitly scheduled
+fault can stop new obligations, after prior obligations have drained. Preflight
+retains a short diagnostic load and quiet recovery tail; it cannot prove loaded
+reset behavior or the real300-second cap.

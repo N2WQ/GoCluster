@@ -12,7 +12,7 @@ import (
 
 func peerRuntimeTestConfig() *config.Config {
 	return &config.Config{Peering: config.PeeringConfig{
-		Enabled: true, LocalCallsign: "N0CALL-1", HopCount: 99,
+		Enabled: true, MaxPeers: 64, LocalCallsign: "N0CALL-1", HopCount: 99,
 		NodeVersion: "5457", NodeBuild: "633", LegacyVersion: "5401", PC92Bitmap: 5,
 		MaxLineLength: 65536, PC92MaxBytes: 65536, WriteQueueSize: 128,
 	}}

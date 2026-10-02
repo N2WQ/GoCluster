@@ -136,11 +136,27 @@ func runTest() {
 		if profile == "cache-sustained" {
 			cases[0] = "TestPC92QualificationCacheSustained"
 		}
+	case "retry":
+		profile = os.Getenv("GOCLUSTER_PC92_V14_RETRY_PROFILE")
+		if profile != "preflight" && profile != "qualification" {
+			fmt.Fprintln(os.Stderr, "missing or invalid retry profile environment")
+			os.Exit(2)
+		}
+		cases = []string{"TestPC92V14RetryWaveService", "TestPC92V14RetryWaveService/recovering_63", "TestPC92V14RetryWaveService/recovering_63_periodic", "TestPC92V14RetryWaveService/recovering_64"}
 	default:
 		os.Exit(2)
 	}
 	if scenario() == "missing_case" {
 		cases = cases[:len(cases)-1]
+	}
+	if scenario() == "missing_retry_63" {
+		cases = []string{cases[0], cases[2], cases[3]}
+	}
+	if scenario() == "missing_retry_periodic" {
+		cases = []string{cases[0], cases[1], cases[3]}
+	}
+	if scenario() == "missing_retry_root" {
+		cases = cases[1:]
 	}
 	for _, name := range cases {
 		fmt.Printf("--- PASS: %s (1.00s)\n", name)

@@ -6,6 +6,9 @@ import "dxcluster/config"
 // Tests of invalid construction must call NewManager directly, without this
 // helper. It deliberately leaves timers, queues, persistence and ACLs unchanged.
 func completeProtocolTestConfig(cfg config.PeeringConfig, localCall string) config.PeeringConfig {
+	if cfg.MaxPeers == 0 {
+		cfg.MaxPeers = 64
+	}
 	if cfg.LocalCallsign == "" {
 		cfg.LocalCallsign = localCall
 	}

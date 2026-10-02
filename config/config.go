@@ -684,6 +684,9 @@ type ArchiveConfig struct {
 // PeeringConfig controls DXSpider node-to-node peering.
 type PeeringConfig struct {
 	Enabled bool `yaml:"enabled"`
+	// MaxPeers is a required startup bound on enabled direct identities, not
+	// remote topology size. It has no zero/unlimited or omitted default.
+	MaxPeers int `yaml:"max_peers"`
 	// ForwardSpots controls peer data-plane forwarding of spot-bearing frames.
 	// Omitted or false disables transit relay; local DX command spots are still published.
 	ForwardSpots  bool   `yaml:"forward_spots"`
@@ -1557,6 +1560,9 @@ func LoadWithDiagnostics(path string) (*Config, LoadDiagnostics, error) {
 	}
 	for _, errText := range mergedRuntimePresenceDiagnostics(raw) {
 		diagnostics.addError(errText)
+	}
+	if err := validateRawPeeringMaxPeers(raw); err != nil {
+		diagnostics.addError(err.Error())
 	}
 
 	var pathCfg pathreliability.Config

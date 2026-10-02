@@ -53,6 +53,7 @@ type dedupeCache struct {
 	ttl                     time.Duration
 	limit, byteLimit, bytes int
 	refused                 uint64
+	recovery                *dedupeRecovery // PC92 factual expiry observations; mu owns them
 }
 
 func newDedupeCache(ttl time.Duration) *dedupeCache { return newBoundedDedupe(ttl, 131072, 64<<20) }
@@ -60,12 +61,19 @@ func newBoundedDedupe(ttl time.Duration, limit, byteLimit int) *dedupeCache {
 	return &dedupeCache{items: newFixedIndex[string, int64](limit), ttl: ttl, limit: limit, byteLimit: byteLimit, expiry: make(dedupeExpiry, 0, limit)}
 }
 func (c *dedupeCache) admit(key string, now time.Time) dedupeAdmission {
+	return c.admitAt(key, now, now)
+}
+
+// Admission age belongs to the original receive instant. Transition time is
+// current elapsed time: due logical expiry precedes a later cache insertion,
+// even when that insertion waited behind an indivisible graph transaction.
+func (c *dedupeCache) admitAt(key string, admittedAt, transitionAt time.Time) dedupeAdmission {
 	if c == nil || key == "" {
 		return dedupeFull
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.pruneLocked(now)
+	c.pruneLocked(transitionAt)
 	if _, ok := c.items.Get(key); ok {
 		return dedupeDuplicate
 	}
@@ -75,14 +83,20 @@ func (c *dedupeCache) admit(key string, now time.Time) dedupeAdmission {
 	}
 	key = strings.Clone(key)
 	if !c.initialized {
-		c.epoch = now
+		c.epoch = admittedAt
 		c.initialized = true
 	}
-	item := c.items.Set(key, int64(now.Sub(c.epoch)))
+	item := c.items.Set(key, int64(admittedAt.Sub(c.epoch)))
 	// The same mutex guards count admission and insertion, so Set cannot refuse
 	// after the existing limit check. No second expiry entry is made for a hit.
 	c.bytes += len(key)
 	heap.Push(&c.expiry, item)
+	c.recoveryEventLocked("pc92_cache_admission", key, transitionAt, admittedAt, time.Time{})
+	if c.recovery != nil {
+		// An unusually delayed receive can already be logically expired. It
+		// must not manufacture an unavailable interval by briefly retaining it.
+		c.pruneLocked(transitionAt)
+	}
 	return dedupeAccepted
 }
 func (c *dedupeCache) markSeen(key string, now time.Time) bool {
@@ -97,16 +111,26 @@ func (c *dedupeCache) prune(now time.Time) {
 	c.pruneLocked(now)
 }
 func (c *dedupeCache) pruneLocked(now time.Time) {
+	if c.recovery != nil {
+		now = laterAdmissionTime(now, c.recovery.observedAt)
+		c.recovery.observedAt = now
+	}
 	for len(c.expiry) > 0 {
 		item := c.expiry[0]
 		if int64(now.Sub(c.epoch))-item.value <= int64(c.ttl) {
 			break
 		}
 		heap.Pop(&c.expiry)
+		key := item.key
+		admitted := c.epoch.Add(time.Duration(item.value))
 		c.bytes -= len(item.key)
 		// Delete clears the popped entry, including its key and chain link.
 		// Account first and never leave a cleared entry in the expiry heap.
 		c.items.Delete(item.key)
+		if c.recovery != nil {
+			expired := admitted.Add(c.ttl + time.Nanosecond)
+			c.recoveryEventLocked("pc92_cache_expiry", key, now, admitted, expired)
+		}
 	}
 }
 func (c *dedupeCache) occupancy() (entries, bytes int, refused uint64) {

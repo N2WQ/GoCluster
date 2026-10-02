@@ -11,7 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
-| TSR-0035 | PC92 Qualification Accounting | Monitoring | 2026-10-01 | peer, telnet, allocation, qualification | ADR-0230, ADR-0231 | `docs/troubleshooting/TSR-0035-pc92-qualification-accounting.md` |
+| TSR-0035 | PC92 Qualification Accounting | Monitoring | 2026-10-01 | peer, telnet, allocation, qualification | ADR-0230, ADR-0231, ADR-0232 | `docs/troubleshooting/TSR-0035-pc92-qualification-accounting.md` |
 | TSR-0034 | Host-Dependent Code Map Freshness | Monitoring | 2026-07-12 | workflow, codemap, CI, portability | ADR-0229 | `docs/troubleshooting/TSR-0034-host-dependent-code-map-freshness.md` |
 | TSR-0033 | Fable Workflow Checker CRLF Self-Inconsistency | Resolved | 2026-07-11 | workflow, checker, Fable, CRLF | none | `docs/troubleshooting/TSR-0033-fable-workflow-checker-crlf-self-inconsistency.md` |
 | TSR-0032 | Single Human Upstream Telnet Config | Resolved | 2026-07-10 | config, rbn, ingest, dashboard, lifecycle, operations | ADR-0218 | `docs/troubleshooting/TSR-0032-single-human-upstream-telnet-config.md` |
@@ -45,3 +45,5 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 | TSR-0018 | Peer Bulletin Duplicate Fanout | Resolved | 2026-04-19 | peer, telnet fan-out, config | ADR-0063 | `docs/troubleshooting/TSR-0018-peer-bulletin-duplicate-fanout.md` |
 | TSR-0019 | MODE UNKNOWN Filter Feedback | Resolved | 2026-04-22 | filter, telnet, docs | - | `docs/troubleshooting/TSR-0019-mode-unknown-filter-feedback.md` |
 | TSR-0020 | RBN Mode Column Confusion | Resolved | 2026-04-26 | rbn, parser, replay, call correction | ADR-0087 | `docs/troubleshooting/TSR-0020-rbn-mode-column-confusion.md` |
+
+TSR-0035 v14 follow-up: controlled retry service, Flush-event ordering, startup/global-gate serialization and lifetime-owned retry timer backing; see [TSR-0035](troubleshooting/TSR-0035-pc92-qualification-accounting.md).

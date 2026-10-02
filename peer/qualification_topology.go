@@ -194,7 +194,7 @@ func (f *QualificationTopology) Prepare(ctx context.Context, m QualificationAuth
 		return err
 	}
 	if f.full {
-		if err := f.renew(ctx, m, send, "M0", 0, 4096); err != nil {
+		if err := f.renew(ctx, m, send, "M0", 0); err != nil {
 			return err
 		}
 	}
@@ -265,7 +265,7 @@ func (f *QualificationTopology) populate(ctx context.Context, m QualificationAut
 }
 
 func (f *QualificationTopology) advance(ctx context.Context, m QualificationAuthority, target time.Time) error {
-	f.offset = target.Sub(time.Now())
+	f.offset = time.Until(target)
 	if err := m.QualificationSetClockOffset(ctx, f.offset); err != nil {
 		return err
 	}
@@ -273,7 +273,8 @@ func (f *QualificationTopology) advance(ctx context.Context, m QualificationAuth
 	return err
 }
 
-func (f *QualificationTopology) renew(ctx context.Context, m QualificationAuthority, send func(int, string) error, prefix string, start, count int) error {
+func (f *QualificationTopology) renew(ctx context.Context, m QualificationAuthority, send func(int, string) error, prefix string, start int) error {
+	const count = 4096
 	before, err := m.QualificationSnapshot(ctx)
 	if err != nil {
 		return err
@@ -315,13 +316,13 @@ func (f *QualificationTopology) prepareDetached(ctx context.Context, m Qualifica
 	if err := f.advance(ctx, m, third.Add(-time.Hour+time.Second)); err != nil {
 		return err
 	}
-	if err := f.renew(ctx, m, send, "N0", 4096, 4096); err != nil {
+	if err := f.renew(ctx, m, send, "N0", 4096); err != nil {
 		return err
 	}
 	if err := f.advance(ctx, m, third.Add(-time.Minute)); err != nil {
 		return err
 	}
-	if err := f.renew(ctx, m, send, "N0", 4096, 4096); err != nil {
+	if err := f.renew(ctx, m, send, "N0", 4096); err != nil {
 		return err
 	}
 	if err := f.advance(ctx, m, third.Add(time.Second)); err != nil {
@@ -350,11 +351,11 @@ func (f *QualificationTopology) prepareDetached(ctx context.Context, m Qualifica
 			if err := f.advance(ctx, m, next); err != nil {
 				return err
 			}
-			if err := f.renew(ctx, m, send, "N0", 4096, 4096); err != nil {
+			if err := f.renew(ctx, m, send, "N0", 4096); err != nil {
 				return err
 			}
 		}
-		if err := f.renew(ctx, m, send, "N0", 8192, 4096); err != nil {
+		if err := f.renew(ctx, m, send, "N0", 8192); err != nil {
 			return err
 		}
 	}

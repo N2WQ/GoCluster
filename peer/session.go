@@ -55,6 +55,9 @@ type session struct {
 	dataFixedBytes       int
 	controlFixedBytes    int
 	controlCount         int
+	controlLineEnqueued  uint64 // queueMu: ordered control-line receipt progress
+	controlLineFlushed   uint64
+	recoveryFlushTarget  uint64
 	activeBytes          int
 	activeControl        bool
 	lineTimes            controlTimes
@@ -178,11 +181,15 @@ func (s *session) Run(ctx context.Context) error {
 	}
 	if err := s.manager.trackCandidate(s); err != nil {
 		s.close()
+		s.manager.mu.Lock()
+		s.manager.retryRetireLocked(s, time.Now())
+		s.manager.mu.Unlock()
 		return err
 	}
 	// Run owns every session worker and closes the socket before joining. The
 	// cancellation watcher also interrupts reads when idle timeouts are disabled.
 	defer func() {
+		s.manager.retrySessionEnded(s, time.Now())
 		s.close()
 		s.workers.Wait()
 		s.discardQueuedOutput()
@@ -234,6 +241,7 @@ func (s *session) Run(ctx context.Context) error {
 		return err
 	}
 	s.established = true
+	s.manager.retryEstablished(s, time.Now())
 	s.manager.reportConnection(ConnectionEvent{
 		Direction: directionLabel(s.dir),
 		Action:    "established",
@@ -376,15 +384,11 @@ func (s *session) handlePing(frame *Frame) {
 func (s *session) runOutboundHandshake() error {
 	deadline := time.Now().Add(s.loginTimeout + s.initTimeout)
 	s.phaseDeadline = deadline
-	if s.localCall != "" {
-		if err := s.sendHandshakeLine(s.localCall); err != nil {
-			return err
-		}
+	if err := s.manager.waitRetryStartup(s, deadline); err != nil {
+		return err
 	}
-	if s.password != "" {
-		if err := s.sendInitialPassword(); err != nil {
-			return err
-		}
+	if err := s.sendOutboundStartup(); err != nil {
+		return err
 	}
 	initSent := false
 	for {
@@ -405,6 +409,34 @@ func (s *session) runOutboundHandshake() error {
 			return err
 		}
 	}
+}
+
+// The final grant/gate check and bounded startup queue admission share mu with
+// global closure. No socket I/O runs under it; the writer remains independent.
+func (s *session) sendOutboundStartup() (err error) {
+	s.manager.mu.RLock()
+	defer func() {
+		s.manager.mu.RUnlock()
+		if err != nil {
+			s.close()
+		}
+	}()
+	if s.manager.stopping || (s.preferPC9x && !s.manager.retrySessionAllowedLocked(s)) {
+		return errors.New("PC9x startup gated")
+	}
+	if s.localCall != "" {
+		if err := s.enqueueStartupLineLocked(s.localCall, true); err != nil {
+			return err
+		}
+	}
+	if s.password != "" {
+		// Borrow immutable configuration storage while preserving logical queue
+		// charges; ordinary untrusted control frames always clone their input.
+		if err := s.enqueueStartupLineLocked(s.password, false); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *session) handleOutboundFrame(frame *Frame, initSent *bool) (bool, error) {
@@ -490,7 +522,10 @@ func (s *session) runInboundHandshake() error {
 	}
 	deadline := time.Now().Add(s.initTimeout)
 	s.phaseDeadline = deadline
-	if err := s.sendPC18(); err != nil {
+	if err := s.manager.waitRetryStartup(s, deadline); err != nil {
+		return err
+	}
+	if err := s.sendInboundStartup(); err != nil {
 		return err
 	}
 	bannerSeen := false
@@ -507,6 +542,38 @@ func (s *session) runInboundHandshake() error {
 			return err
 		}
 	}
+}
+
+func (s *session) sendInboundStartup() (err error) {
+	line, err := FormatPC18(s.manager.pc18Banner, s.nodeVersion, s.preferPC9x)
+	if err != nil {
+		return err
+	}
+	s.manager.mu.RLock()
+	defer func() {
+		s.manager.mu.RUnlock()
+		if err != nil {
+			s.close()
+		}
+	}()
+	if s.manager.stopping || (s.preferPC9x && !s.manager.retrySessionAllowedLocked(s)) {
+		return errors.New("PC9x startup gated")
+	}
+	return s.enqueueStartupLineLocked(line, true)
+}
+
+// manager.mu fences global closure through startup admission. Refusal is
+// returned without closing the socket; the caller unlocks before closing.
+func (s *session) enqueueStartupLineLocked(line string, clone bool) error {
+	if s.ctx == nil {
+		return errSessionContextUnset
+	}
+	if len(line) > MaxPeerFrameBytes {
+		return errSessionPriorityQueueFull
+	}
+	s.queueMu.Lock()
+	defer s.queueMu.Unlock()
+	return s.enqueueControlLineLocked(line, clone, s.phaseDeadline, false)
 }
 
 func (s *session) handleInboundFrame(frame *Frame, bannerSeen *bool) (bool, error) {
@@ -645,14 +712,6 @@ func bannerHasPC9x(banner string) bool {
 		}
 	}
 	return false
-}
-
-func (s *session) sendPC18() error {
-	line, err := FormatPC18(s.manager.pc18Banner, s.nodeVersion, s.preferPC9x)
-	if err != nil {
-		return err
-	}
-	return s.sendHandshakeLine(line)
 }
 
 // sendInit preserves the direction-specific exchange: the initiating side sends

@@ -31,7 +31,7 @@ func (g *protocolGraph) metadataMutationCharge(plan *graphPlan) (peak, final int
 	}
 	r := plan.record
 	if !r.SubjectImplicit {
-		replace(plannedEntry(r.Subject.Call), r.Subject)
+		replace(plannedEntry(r.Subject.Call), effectiveNodeSubject(r))
 	}
 	if plan.external {
 		final += entryBytes(r.Subject)
