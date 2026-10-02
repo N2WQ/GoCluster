@@ -1,6 +1,7 @@
 # PC18/PC92 v14 validation plan and evidence
 
-Status: **implemented; final qualification in progress**. The matrix below is
+Status: **implemented; v14 correction-specific validation complete**. Overall
+PC18/PC92 acceptance remains incomplete; see the final closeout below. The matrix below is
 the pre-implementation plan; observed results are recorded later in this file.
 The user authorized `Approved v14` on 2026-10-02; see the
 [approved execution ledger](pc18-pc92-scope-ledger-v14.md). The lead accepted
@@ -124,7 +125,7 @@ are recorded below; the matrix's proposed checker names are not execution claims
 |V14-09|fixed lifetime-owned ring/timers, unchanged channel elements, phase counts|`TestPC92V14RetryFixedAllocationEnvelope`, `TestPC92V14RetryTimerReusedAcrossAttemptsAndReset`, allocation/bookkeeping/ownership tests|
 |V14-10/11|factual event oracle, absolute schedule and bounded mixed delivery evidence, TCP retry wave|retry oracle/negative controls, mixed missing/duplicate/late/generation controls, cost gate, full retry/Q5/Q6 wrappers|
 |V14-12|narrow tagged error/context/switch/time/constant checker repairs|tagged vet/lint and affected qualification tests|
-|V14-13|ADR-0233, TSR-0035, runtime/config/support/allocation docs and maps; retained-binary retry wrapper|workflow/TSR/map/diff checks and80 wrapper fixtures plus33 observation fixtures|
+|V14-13|ADR-0233, TSR-0035, runtime/config/support/allocation docs and maps; retained-binary retry wrapper|workflow/TSR/map/diff checks and86 final wrapper fixtures plus33 observation fixtures|
 
 Development checks observed on2026-10-02 include full normal tests, full race,
 vet and staticcheck; targeted normal/race lifecycle, config and actual pinned
@@ -167,7 +168,7 @@ Support-agent impact: **Required**, reflected in the peer support card/index.
 ADR-0233 supersedes only admission-recovery clauses; TSR-0035 preserves the
 failed exact-check experiment and records the new ownership findings.
 
-Correction closeout: **pending final qualification**. Overall acceptance:
+Correction closeout: **complete for v14**, with final evidence below. Overall acceptance:
 **incomplete**, with enabled-SQLite/context/retirement allocation proofs and
 required final-source overall workload profiles still open. No deployment,
 restart, commit or push is authorized or claimed.
@@ -257,4 +258,76 @@ The mixed checker now counts actually parsed PC92 actions against the literal
 1-to-8-byte timestamp (excluding CRLF). Wrong-mixture and undersized-frame
 negative controls passed. The86 final wrapper fixtures reject both shortened
 cases and overload-only runs missing the loaded tail. Final-source execution
-must still pass before any positive correction closeout.
+was still required at this stage; its subsequent results follow.
+
+## Final v14 correction closeout
+
+On 2026-10-02, all four final retained-binary wrappers exited zero with
+`measurement_passed`, `provenance_passed` and `profile_accepted` true. Each
+reported `qualified=false` and `overall_accepted=false`; those aggregate flags
+remain correct. Earlier interrupted attempts remain failed evidence.
+
+Artifact root: `D:\codex-gocluster-v14-20261002`. Each directory below retains
+the executable, test log, before/build/after source manifests and authoritative
+`verdict.json`. All three manifests matched within each run. The frozen source
+was clean branch `p92` at `d9211f85eb356d51ec7f7269a486377d42ca9722`.
+
+| Artifact directory | Run ID | Measured execution | Result |
+| --- | --- | --- | --- |
+| `qualified-v14-retry` | `eb8c4be65b0344bfad0bb76f983fbaef` | 3780.491 s | All three full load windows, recovery/reset and subsequent-failure checks passed |
+| `qualified-v14-q5` | `b99dc8c080d9470584dafbfd52ab0514` | 2606.963 s | Three real expiry cycles in each of four isolated cache classes, followed by terminal zero-key cleanup |
+| `qualified-v14-q6` | `c5a027d214fa4e5992db6a891fba74a3` | 1580.531 s | Fault cases with periodic publication enabled/disabled and the 1200-second receive-only case passed |
+| `qualified-v14-cache-memory` | `2035daae70d64bcabc52902a409fed00` | 0.863 s | Retained cache allocation profile passed; not an aggregate protocol-memory proof |
+
+The three qualification executables have SHA256
+`58394BF1F395C3DDB2E79FB4045B2049EBA3F1349FB414405549AF79DF5A2E3C`;
+the cache-memory executable has SHA256
+`CB3E03EFFEDB9F4F1C14ADD96942AE006E671E6395D150192E9D744B2CB34780`.
+The exact CTY plist hash in the manifests is
+`BA9FFE6B669E144A383F70DBB01F8A48ACB534F90DDF712E2EC0CD4FF59D1D8D`.
+Q6 used the pinned DXSpider receiver
+`3e9b3621d94dd45c68702e4a0f896aac33f2a91d`.
+Execution used Go 1.26.4, Windows/amd64, `GOMAXPROCS=2`, `GOGC=50`, and
+`GOMEMLIMIT=1536MiB` on an Intel i9-10900 (10 cores/20 logical processors).
+GOMEMLIMIT is a runtime setting, not the 480 MiB owned-protocol ceiling.
+
+The 40-minute 63-recovering-plus-healthy case offered and committed 240,000
+PC92 records: 108,000 A, 108,000 D, 4,800 C and 19,200 K. It admitted 400,000
+distinct spot-forwarding keys plus 4,000,000 duplicates, verified 4,400,000
+local ingests, 2,000 announcements, 2,000 private messages and 800 bulletins.
+All 4,869,418 mandatory peer deliveries reconciled. Maximum producer lateness
+was 23.0462 ms. C records contained 8,000 members and measured 64,040–64,043
+bytes excluding CRLF. Healthy membership queue admission was 100.4883 ms;
+the separate recovery-overlap oracle also passed. A factual ninth-failure
+retry interval measured 300.0090257 seconds. After all 63 healthy resets,
+another failure returned to the base delay in 2.0027664 seconds.
+
+The 675-second periodic-enabled mixed case offered and committed 67,500 PC92,
+112,500 distinct spot keys and 1,125,000 duplicates. All 5,983,658 mandatory
+peer deliveries reconciled; maximum producer lateness was 15.9035 ms and
+healthy membership queue admission was 97.3061 ms. Its post-reset retry took
+2.0006834 seconds. The 675-second 64-peer case retained queued maintenance,
+completed all resets and measured the next retry at 2.0008931 seconds. All
+three cases continued their declared workload for the full 600-second tail;
+original handshake and recovery deadlines were not extended. The enabled
+periodic case spans the K interval, not the 1800-second periodic C interval.
+
+The final qualification-tagged race suite passed in 116.559 seconds after the
+last checker refinements; tagged vet/lint and all 86 wrapper fixtures passed.
+These supplement the production normal/race/static checks recorded above.
+The cache-memory profile measured simultaneous four-class retained heap growth
+of 82,187,904 bytes; this is scoped cache evidence, not SQLite/context/retirement
+coverage. The changed fixed retry ownership proof remains 28,032 bytes.
+
+A fresh lead-owned verification reconciled the approved items, actual final
+source, checker obligations, retained verdicts and claim limits. Engineering
+reviews were design-aware; no independent scientific certification occurred.
+Only this evidence record and the ledger status were updated after the frozen
+runs; production code and test harnesses were unchanged. Those documentation
+updates are outside the retained run manifests and receive documentation checks.
+
+V14 correction-specific implementation and validation are complete. Overall
+acceptance remains incomplete pending the enabled-SQLite, context-child backing
+and outer-retirement ownership proofs and remaining required final-source
+Q1–Q4/full sustained-cache qualification. No deployment or restart was performed.
+This closeout does not authorize a commit or push.

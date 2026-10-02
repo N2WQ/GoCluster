@@ -89,4 +89,10 @@ for max_peers. Existing private configurations require the explicit key and are
 not automatically edited. If allocation or service gates require changes outside
 these boundaries, stop and request revised exact approval with the evidence.
 
-Status: authorized; implementation and final qualification not yet complete.
+Status: **implemented; v14 correction-specific validation complete** on
+2026-10-02. The final retry, Q5, Q6 and cache-memory profiles passed measurement
+and provenance checks against source `d9211f85eb356d51ec7f7269a486377d42ca9722`.
+See [recorded closeout evidence](pc92-v14-validation.md#final-v14-correction-closeout).
+Overall PC18/PC92 acceptance remains **incomplete**: the enabled-SQLite,
+context-backing and retirement ownership proofs, and remaining final-source
+overall qualification profiles, are separate outstanding obligations.
