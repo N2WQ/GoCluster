@@ -331,3 +331,238 @@ acceptance remains incomplete pending the enabled-SQLite, context-child backing
 and outer-retirement ownership proofs and remaining required final-source
 Q1–Q4/full sustained-cache qualification. No deployment or restart was performed.
 This closeout does not authorize a commit or push.
+
+## Continued overall qualification on 2026-10-02
+
+At the user's instruction to continue under the approved ledger, execution
+resumed on clean source `c07483f34f43f31852b68ee46236119464e591b9` (the prior
+closeout documentation commit; production and harness code unchanged).
+Evidence root: `D:\codex-gocluster-v14-remaining-20261002`.
+
+| Retained directory | Run ID | Execution | Observed result |
+| --- | --- | --- | --- |
+| `runtime-preflight` | `169c2c58b26a481b96abce4121792a96` | 56.476 s | Failed enqueue latency; all 385,827 required deliveries arrived |
+| `runtime-profile` | `75589f5dc1884e1e94f0f155f3f7ff14` | 55.994 s | Profiled preflight also failed latency; profiling is diagnostic |
+| `q4-preflight-a` | `ae6fb79d0b044f62be0b2c0327861ee8` | 485.203 s including setup | Passed short capacity/reachability checks, not full Q4 acceptance |
+| `q4-preflight-b` | `57ebfdc827214bfdb500e904f560d296` | 481.610 s including setup | Passed short staging/winner-race checks, not full Q4 acceptance |
+| `cache-sustained` | `9b3e04a6e57d4386a1145052096c4102` | 3360.215 s | Full 45-minute load and 11-minute drain passed |
+| `shipped-q1` | `463f9122aa8947f6972c8be1e7273040` | 3392.295 s | Failed peer continuity and required delivery; diagnosis below |
+
+Every wrapper above passed source/binary provenance, including failed runs.
+The tagged runtime executable SHA256 was
+`B76672212404C0B05F6A0CFBB46FF1A803A9BA2FEFD900BF6EB4DC4D606AA5CB`;
+cache-sustained used the previously retained cache executable hash
+`CB3E03EFFEDB9F4F1C14ADD96942AE006E671E6395D150192E9D744B2CB34780`.
+The strict latency preflight and its separate CPU-profile repeat ran without
+other qualification load tests. Capacity diagnostics and the informational
+shipped-settings profile overlapped portions of cache-sustained; that host
+concurrency is not concealed or used to qualify strict latency.
+
+The unprofiled preflight offered 3,334 new spot keys, 33,340 duplicates, 2,000
+PC92 records, 34 PC93 and seven bulletins. Ninety of 100 clients exceeded the
+5 ms enqueue p99 threshold, producing 180 failed overall/minute cohort checks.
+Client enqueue p99 histogram upper bounds ranged from 4.4 to 6.5 ms; first-byte
+bounds ranged from 11.1 to 17.6 ms. No required delivery was missing, no cache
+refused input, and no final global gate was active. Producer lateness peaked at
+2.2448 ms. The profiled repeat failed all 100 clients' enqueue threshold, with
+5.3–7.2 ms enqueue and 12.2–18.4 ms first-byte upper bounds. Its load-only
+20-second CPU capture had 17.25 seconds of samples: client writerLoop accounted
+for 49.91% cumulative samples, Windows WSASend for 51.25%, and the PC92
+controller loop for 6.20%. These overlapping stacks must not be summed; they
+identify investigation targets, not a proven causal explanation of p99 tails.
+The profile and before/after allocation captures are retained in runtime-profile.
+
+Capacity A reached 1,000 local users, 64 peers, 128 pending candidates, 4,096
+nodes, 65,536 users, 131,072 edges, 262,144 ingress observations and 16,384
+freshness entries. Capacity B retained 1,000 users/63 peers, exercised 128
+candidate winner races, and reached 7,888 staged records charging the full
+16,777,216-byte staging budget. The pressure-cycle portions were about ten
+seconds; setup time does not substitute for either required 30-minute phase.
+Both reports retain the open aggregate allocation dependency.
+
+The full sustained cache profile admitted exactly 450,000 new spot keys,
+4,500,000 duplicates, 270,000 PC92 keys, 4,500 PC93 keys and 900 bulletin keys,
+without refusal. Spot occupancy stabilized at approximately 100,017 entries.
+All four classes and expiry indexes drained to zero. This closes that component
+workload obligation; it does not prove delivery, aggregate memory or latency.
+
+The shipped-settings run offered all declared 45-minute traffic and completed
+the 11-minute drain, but its final verdict failed. Fifteen receivers timed out
+at 16:13:15 UTC, leaving 2,293,898 required PC92 relays missing. Each of 100
+local clients also lacked eight required enqueue/read observations. Those
+local misses are not explained by the peer timeout and remain under diagnosis.
+Neither symptom is waived. The fixture only responds to received PC51 pings;
+the pinned DXSpider source also initiates PC51 every 300 seconds
+(`perl/DXProt.pm`, pingint and periodic ping branch). The fixture omitted that
+healthy-peer behavior. Shipped GoCluster keepalive and idle settings are both
+600 seconds; relying only on responses leaves a deadline/timer race. Production
+settings and deadlines are not being changed to repair this fixture.
+
+Two checker-only refinements were reviewed and implemented under inherited v7/S14 and
+v14's qualification/closeout authority: bounded fixture-owned 300-second PC51
+initiation throughout load/drain, and bounded missing-token examples from the
+actual reader/enqueue owners. Their tests must reject early/wrong-address ping,
+bad cancellation/stall behavior, missing outputs hidden by example caps, and
+invented parent-side enqueue observations. They must preserve required
+recipients, exact failure counts, rates, durations and all production semantics.
+The lead dispositioned the detailed falsifiability matrix before implementation.
+The heartbeat boundary/wire/busy-read/cancellation/write-failure controls and
+missing-example count/recipient/remote-ownership/malformed-reply controls pass.
+Missing examples are limited to 16 per recipient and observation type; exact
+full missing counts remain decisive. The maximal child reply measured
+1,509,338 bytes against the unchanged 2,097,152-byte packet limit. The shared
+input layout is unchanged. The final integrated tagged package normal/race
+tests passed in 2.806/5.167 seconds. Staticcheck passed again after the final
+mechanical lint corrections. The final tagged golangci-lint 2.11.4 run still
+reports 29 preexisting findings (two errorlint, 23 gosec, four quick-fix
+staticcheck); the seven findings introduced by these refinements were fixed.
+Tagged vet retains the existing Windows MapViewOfFile uintptr conversion
+warning at pc92_runtime_mapping_windows_test.go:60. These findings are reported,
+not treated as clean checks or silently repaired outside this scope.
+
+The refined diagnostic preflight `runtime-corrected-preflight`, run ID
+`c08dbb940e0544778202d3c8f2d8480d`, passed measurement and provenance in
+55.789 seconds, with all required deliveries and 3.3–4.6 ms enqueue / 9.7–13.9 ms
+first-byte per-client p99 bounds. Producer lateness peaked at 3.935 ms. Its
+retained binary was
+`9FD8409EBAAA7DE0E4019C7C9A18BFC8EA870C33E579430822B35B7BE5127030`.
+This short repeat neither erases the earlier failures nor demonstrates a
+performance repair: the five-minute fixture ping was not reached, and the
+missing-example scan runs after measurement. No production optimization was
+made. The subsequent lint-only fixture edits require the next retained binary.
+Full runtime profiles remain necessary; no successful shipped-settings or
+strict Q1–Q3 acceptance is claimed at this point.
+
+Support-agent impact of these refinements: no new operator/runtime behavior;
+existing support-card contracts remain unchanged. This evidence record owns
+the qualification diagnostics. No ADR is needed for a test-fixture correction.
+
+The separate `ownership-probe` diagnostic used an external Go overlay, leaving
+the repository unchanged. It passed in 1.93 seconds. An injected blocked logger
+held 160 post-Run inbound goroutines with zero owner permits, but weak references
+proved all measured session objects and large dynamic rejection-error backing
+were collected. Strong-root and ungated controls passed; releasing the sink
+joined all outer goroutines. This disproves whole-session retention from lexical
+capture for that pinned rejected-inbound path, not every error/build path. The
+context-child-map backing and enabled SQLite proofs remain open. SQLite is also
+used by FCC paths, so a process-wide heap cap is not a peer-only repair. The
+read-only specialist and lead reviews were design-aware, not independent
+scientific certification. Production source and settings remain unchanged.
+
+### Full Q1 after fixture correction
+
+`q1-corrected` completed the full 45-minute load and 11-minute drain on the
+frozen refined fixture. Run ID `c1cf35ca7b5a41e6925886802c900508`, execution
+3393.463 seconds, binary SHA256
+`E0F0619D4E0E3B686677A1D611093606111965ACD3E769E71F23D2D7C8F4D65B`.
+The wrapper passed source/binary provenance and correctly returned failure.
+
+- All 16 peers remained established through the drain. All 4,050,000 required
+  PC92 relays and all 6,750,000 required peer spot deliveries arrived, with no
+  PC92 duplicate/unknown relays. Final caches drained to zero, without refusal
+  or global gating. This verifies the healthy fixture's long-run liveness for
+  Q1; it does not waive the remaining Q2/Q3 fault/pressure profiles.
+- Offered counts were exactly 450,000 new spot keys, 4,500,000 duplicates,
+  270,000 PC92, 4,500 PC93 and 900 bulletins. Maximum producer lateness was
+  4.6596 ms. Of 52,067,250 required token deliveries, 52,066,350 arrived.
+- Every one of 100 local clients missed the same nine spot inputs at both
+  enqueue and read: 90004, 163460, 238635, 269385, 284511, 313619, 358299,
+  358514 and 450793. The bounded diagnostics captured the complete set because
+  nine is below their 16-example limit. Peer spot forwarding delivered all of
+  these inputs. The prior shipped-profile omissions remain recorded separately.
+- Every client's overall enqueue p99 exceeded 5 ms (12.1–13.8 ms histogram
+  upper bounds). Overall first-byte p99 was 19.5–24.5 ms, but individual input
+  minutes reached 36 ms. Across 4,600 client cohorts (overall plus 45 minutes),
+  4,500 exceeded the enqueue threshold and 1,360 exceeded first-byte 25 ms.
+  Minute zero passed latency; later sustained behavior did not. The report's
+  4,600 failures comprise 100 missing-delivery checks and 4,500 combined
+  delivery/latency cohort checks, not 4,600 distinct lost spots.
+
+These observations establish a sustained runtime gate failure despite complete
+peer forwarding. The earlier 20-second preflight is insufficient to establish
+steady-load latency. Production dedupe and runtime optimization are unchanged;
+the missing-token follow-up is an external read-only diagnostic.
+
+### Missing-spot attribution and current scope boundary
+
+The external `hash-collision-probe` matched the entire nine-ID missing set at
+both observation owners for all 100 clients. Eight pairs collide in SLOW
+secondary dedupe; one pair collides in primary dedupe. These are distinct
+11-character callsigns, within both existing fixed-width key encodings. The
+shared caches retain only a truncated 32-bit hash and do not compare full keys
+(`dedup/secondary.go`, `dedup/deduplicator.go`, `spot/spot.go`).
+
+| Missing input | Earlier distinct input | Cache | Equal 32-bit hash |
+| --- | --- | --- | --- |
+| 90004 | 36137 | SLOW | `380bb22d` |
+| 163460 | 96942 | SLOW | `0ba7fa8f` |
+| 238635 | 170190 | SLOW | `1b844355` |
+| 269385 | 250302 | SLOW | `b54f730a` |
+| 284511 | 274707 | Primary | `ad34e59e` |
+| 313619 | 273870 | SLOW | `0722b540` |
+| 358299 | 316096 | SLOW | `b4cce594` |
+| 358514 | 305397 | SLOW | `29256a70` |
+| 450793 | 389384 | SLOW | `ad984985` |
+
+The initial ideal-schedule simulation was diagnostic only. Attribution then
+used actual mapped 10 MHz input timestamps and the report's before-load/final
+authority times. Q1's non-full population does not apply an authority offset.
+The inferred UTC epoch interval was 17:06:19.563660–17:06:19.622059 UTC, widened
+for conversion rounding; the analysis allowed another 10.6597 ms for the
+publication-to-wire interval using the measured producer lateness and next
+six-ms schedule boundary. Every pair endpoint stayed within one wire minute;
+the smallest remaining minute-boundary margin was 3.226994 seconds. This is a
+bounded reconstruction from source ordering and clock evidence, assuming no
+unobserved wall-clock discontinuity; it is not a directly captured wall-clock
+load-epoch field or a packet capture.
+
+The retained pair-control binary invokes actual `processSpot` and
+`ShouldForward`: the first input forwards, its distinct collided input is
+suppressed, a different-hash control forwards, and exact expiry forwards.
+All nine cases passed in 0.69 seconds. Binary SHA256:
+`4C2AA45138D4E99E7E83008D6E9E0AF41EB20DD362229922083832DED4E07C51`.
+`reconciliation.json`, `pair-controls.log` and `provenance.json` retain the
+input/partner/callsign/minute evidence and source matches to the Q1 manifest.
+The primary expiry control deliberately seeds only its isolated cache to test
+that boundary; it does not inject authority into qualification. FAST/MED
+simulation assumed blank grid and is not used as final attribution. The earlier
+shipped run has no retained missing IDs, so its eight omissions are not given
+the same token-level attribution.
+
+The live run did not capture individual deduper drop traces. The reproduced
+defect and exact nine-ID correspondence are stronger evidence than aggregate
+counters alone, but do not constitute an instrumented trace of every live drop.
+
+The fixture corrections are complete, and full Q1 exposes two
+remaining acceptance failures: shared local spot dedupe loses distinct keys,
+and sustained latency exceeds the existing limits. A 20-second CPU profile
+does not establish the cause of steady-state latency after the first minute.
+No production dedupe, correction, queue, runtime tuning or persistence change
+has been made, and no required recipient or threshold has been relaxed.
+
+Further Q2/Q3 and shipped-profile repeats are deferred until these production
+failures are addressed; full Q4 remains gated on the allocation proof. They are
+not waived or marked passed. V14 explicitly requires stopping when allocation
+or service gates need changes outside its boundary. Shared dedupe/runtime
+repairs, a bounded context/terminal-diagnostic ownership design and enabled
+SQLite allocation work require a concrete follow-up scope. The approved v9
+negative feasibility experiment did not authorize a production driver change.
+
+Documentation now records the narrowed ownership evidence, qualification
+outcomes and support guidance. TSR-0035 retains these troubleshooting lessons;
+no new durable architecture choice or ADR was made. The final lead-owned review
+checked the actual fixture diff, bounded diagnostics, retained verdicts and
+claim limits. The reviews were design-aware, not independent certification.
+All production code and runtime settings remain unchanged. Documentation
+updates after Q1 are outside its frozen manifests and receive separate checks.
+
+Final documentation checks passed: workflow contract against baseline
+`2c0607986f3d3d9dc1921eb5b7c5ae00595143d2`, troubleshooting record/index
+consistency, all generated code maps and diff whitespace. The runtime fanout
+map initially reported stale test inventory; regenerating that one map added
+the two qualification test files and refreshed its fingerprint, after which
+the all-map check passed. Tagged lint restricted to the new diff against HEAD
+reported zero issues; this does not erase the 29 full-package findings or the
+existing vet warning documented above. No Go suite was rerun solely for these
+documentation/generated-inventory updates. No commit, push, deployment or
+restart was performed.

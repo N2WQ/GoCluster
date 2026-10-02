@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `ff1db89dc153fb96`
+- Source fingerprint: `79d2b3c2ef56f6cf`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,7 +12,7 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 1 | 2 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 25 | 44 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 25 | 46 |
 | `dxcluster/peer` | `peer` | 54 | 104 |
 | `dxcluster/spot` | `spot` | 32 | 26 |
 | `dxcluster/telnet` | `telnet` | 12 | 26 |
@@ -154,9 +154,11 @@ Test files:
 - `internal/cluster/pc92_runtime_counter_test.go`
 - `internal/cluster/pc92_runtime_driver_test.go`
 - `internal/cluster/pc92_runtime_framing_test.go`
+- `internal/cluster/pc92_runtime_heartbeat_test.go`
 - `internal/cluster/pc92_runtime_load_test.go`
 - `internal/cluster/pc92_runtime_mapping_other_test.go`
 - `internal/cluster/pc92_runtime_mapping_windows_test.go`
+- `internal/cluster/pc92_runtime_missing_evidence_test.go`
 - `internal/cluster/pc92_runtime_oracle_test.go`
 - `internal/cluster/pc92_runtime_process_test.go`
 - `internal/cluster/pc92_runtime_profile_test.go`

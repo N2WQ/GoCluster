@@ -340,7 +340,34 @@ type qualificationRecipientResult struct {
 	Required, Received, MissingEnqueue, MissingRead int
 	Renamed                                         uint32
 	DisplayTruncated                                uint32
-	Cohorts                                         []qualificationCohort `json:",omitempty"`
+	Cohorts                                         []qualificationCohort         `json:",omitempty"`
+	MissingReadExamples, MissingEnqueueExamples     []qualificationMissingExample `json:",omitempty"`
+}
+
+const qualificationMissingExampleLimit = 16
+
+// Missing examples are final-report diagnostics, derived from immutable input
+// metadata. They never cap the full missing counts or change acceptance. Only
+// the process owning an observation bitset may report its missing examples.
+type qualificationMissingExample struct {
+	ID     int
+	Spot   bool
+	DXCall string `json:",omitempty"`
+}
+
+func qualificationMissingInput(id int, in *qualificationInput) qualificationMissingExample {
+	example := qualificationMissingExample{ID: id, Spot: in.spot}
+	if in.spot {
+		example.DXCall = qualificationDXCall(id)
+	}
+	return example
+}
+
+func qualificationAppendMissing(examples []qualificationMissingExample, id int, in *qualificationInput) []qualificationMissingExample {
+	if len(examples) == qualificationMissingExampleLimit {
+		return examples
+	}
+	return append(examples, qualificationMissingInput(id, in))
 }
 
 func (o *qualificationOracle) results(enforceLatency bool) []qualificationRecipientResult {
@@ -351,6 +378,7 @@ func (o *qualificationOracle) results(enforceLatency bool) []qualificationRecipi
 		remote := !r.peer && o.remoteEnqueue != nil
 		if remote {
 			result.MissingEnqueue = o.remoteEnqueue[r.index].MissingEnqueue
+			result.MissingEnqueueExamples = o.remoteEnqueue[r.index].MissingEnqueueExamples
 			result.Renamed = o.remoteEnqueue[r.index].Renamed
 		}
 		if !r.peer {
@@ -376,10 +404,12 @@ func (o *qualificationOracle) results(enforceLatency bool) []qualificationRecipi
 				result.Received++
 			} else {
 				result.MissingRead++
+				result.MissingReadExamples = qualificationAppendMissing(result.MissingReadExamples, id, in)
 			}
 			if !r.peer && in.spot {
 				if !remote && !qualificationHas(r.enqueue, id) {
 					result.MissingEnqueue++
+					result.MissingEnqueueExamples = qualificationAppendMissing(result.MissingEnqueueExamples, id, in)
 				}
 				cohort := int(qualificationTickDuration(time.Duration(in.started.Load()-1), o.clockFrequency, false)/time.Minute) + 1
 				result.Cohorts[0].RequiredSpots++

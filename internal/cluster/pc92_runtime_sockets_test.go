@@ -26,10 +26,31 @@ type qualificationSocket struct {
 	writeMu               sync.Mutex
 	done                  chan struct{}
 	paused, expectedClose atomic.Bool
+	nextPing              time.Time // Read-owner state; monotonic fixture liveness, not measurement time.
 }
 
 func newQualificationSocket(d *qualificationDriver, conn net.Conn, reader *bufio.Reader, row *qualificationRecipient) *qualificationSocket {
-	return &qualificationSocket{driver: d, conn: conn, reader: reader, row: row, done: make(chan struct{})}
+	return &qualificationSocket{driver: d, conn: conn, reader: reader, row: row, done: make(chan struct{}), nextPing: time.Now().Add(300 * time.Second)}
+}
+
+// Healthy DXSpider peers initiate pings independently (the pinned DXProt.pm
+// pingint is 5*60). The existing read owner services this during load and drain,
+// including continuously busy reads. Faulted/retiring fixtures remain silent;
+// one delayed service produces one ping, never a catch-up burst or a new worker.
+func (s *qualificationSocket) pingIfDue(now time.Time) error {
+	select {
+	case <-s.driver.ctx.Done():
+		return nil
+	default:
+	}
+	if !s.row.peer || s.paused.Load() || s.expectedClose.Load() || s.driver.oracle.closing.Load() || now.Before(s.nextPing) {
+		return nil
+	}
+	if err := s.write(fmt.Sprintf("PC51^%s^%s^1^", s.driver.cfg.Peering.LocalCallsign, s.driver.cfg.Peering.Peers[s.row.index].RemoteCallsign)); err != nil {
+		return err
+	}
+	s.nextPing = now.Add(300 * time.Second)
+	return nil
 }
 
 func (s *qualificationSocket) write(line string) error {
@@ -234,7 +255,14 @@ func (s *qualificationSocket) read() {
 			}
 			continue
 		}
-		_ = s.conn.SetReadDeadline(time.Now().Add(time.Second))
+		now := time.Now()
+		if err := s.pingIfDue(now); err != nil {
+			if s.driver.ctx.Err() == nil && !s.driver.oracle.closing.Load() && !s.expectedClose.Load() {
+				s.driver.oracle.fail("%s initiated keepalive: %v", s.row.name, err)
+			}
+			return
+		}
+		_ = s.conn.SetReadDeadline(now.Add(time.Second))
 		n, err := s.reader.Read(buf)
 		at := s.driver.oracle.measurementNow()
 		if parseErr := framer.consume(buf[:n], at, s.observe); parseErr != nil {

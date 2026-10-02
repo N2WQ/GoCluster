@@ -190,6 +190,52 @@ membership check also cannot prove membership admission during recovery: cause
 the change between recovery C and A, then verify immutable A before the deltas
 and retain the original one-second deadline under the combined load.
 
+## Continued v14 workload and ownership evidence (2026-10-02)
+
+The full sustained-cache profile passed its 45-minute load and 11-minute drain.
+The first full shipped-runtime profile instead lost 15 peers at about 20
+minutes and lacked eight local spots per client. The fixture responded to PC51
+but omitted DXSpider's independent five-minute ping initiation; with GoCluster's
+unchanged 600-second keepalive/idle settings, replies alone raced the idle
+deadline. Correct the fixture's healthy-peer behavior rather than silently
+changing production settings or ignoring disconnected recipients.
+
+With the corrected fixture, full Q1 retained all 16 peers through load/drain and
+delivered all 4,050,000 required PC92 relays and 6,750,000 peer spot deliveries.
+Local delivery still failed. Bounded reader/child-enqueue missing-ID examples
+identified the same nine omissions for all 100 clients. Actual-function pair
+reproductions and mapped input timing matched one primary and eight SLOW
+secondary 32-bit hash collisions. The full logical spot keys were distinct;
+both caches store only truncated hashes, so an equality collision suppresses
+the later spot. Different-hash and exact-expiry controls forwarded. The
+[continued evidence](../pc92-v14-validation.md#missing-spot-attribution-and-current-scope-boundary)
+retains all pairs, source/binary provenance and timing-reconstruction limits.
+The earlier eight shipped omissions lack retained IDs and remain separate
+historical evidence. Do not change the required-recipient denominator to make
+accidental hash collisions pass.
+
+The 20-second corrected preflight passed latency, but full Q1 did not: overall
+client enqueue p99 was 12.1–13.8 ms and individual-minute first-byte p99 reached
+36 ms. Preserve both results. An early CPU profile is not a steady-state
+performance diagnosis, and successful protocol forwarding does not prove the
+complete local delivery pipeline.
+
+The blocked-logger diagnostic also refined a prior ownership hypothesis. Weak
+references showed that session and original error objects were reclaimed while
+160 outer wrappers waited with zero transport permits. Source inspection found
+a separate retained owner: standard log.output formats each peer error into
+an exclusive heap buffer before waiting for its output mutex. Bounded message
+length and a bounded downstream line buffer do not bound the number of these
+post-permit buffers. Report this gap rather than claiming full-session
+retention or excluding protocol-derived copies as runtime stacks.
+
+Likewise, the current application's maximum 194 live manager-context children
+does not establish the backing bound of Go1.26.4's retained Swiss-map directory.
+The source-only tombstone construction is a limitation of the cardinality
+proof, not an observed production runaway or attacker control of runtime hash
+values. Enabled SQLite, context backing and terminal diagnostic ownership
+remain open; production changes outside v14 require a new scoped approval.
+
 ## Decision Linkage
 - ADR created/updated: [ADR-0233](../decisions/ADR-0233-pc92-controlled-retries-and-peer-cap.md), ADR-0230, [ADR-0231](../decisions/ADR-0231-pc92-audit-corrections.md), and [ADR-0232](../decisions/ADR-0232-pc92-wire-and-recovery-evidence.md).
 - Decision delta summary: Explicit compatibility, failure/recovery, allocation and qualification contracts.

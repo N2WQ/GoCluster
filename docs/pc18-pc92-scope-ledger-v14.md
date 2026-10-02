@@ -96,3 +96,10 @@ See [recorded closeout evidence](pc92-v14-validation.md#final-v14-correction-clo
 Overall PC18/PC92 acceptance remains **incomplete**: the enabled-SQLite,
 context-backing and retirement ownership proofs, and remaining final-source
 overall qualification profiles, are separate outstanding obligations.
+
+The requested continuation on 2026-10-02 completed full sustained-cache
+qualification and a fresh full Q1 after checker-only liveness/diagnostic
+refinements. Q1 delivered all required PC92 relays and peer spots, but failed
+local spot delivery and sustained latency. [Continued evidence](pc92-v14-validation.md#continued-overall-qualification-on-2026-10-02)
+records the exact failures and remaining ownership gaps; this does not reopen
+or expand v14's implementation authority.

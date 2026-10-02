@@ -6,6 +6,16 @@ cap. See [v14 evidence](pc92-v14-validation.md) for current results. Overall
 acceptance remains open; historical passes below do not qualify the final v14
 source.
 
+**2026-10-02 continuation:** full sustained-cache qualification passed. After
+correcting the healthy peer fixture to initiate DXSpider-style PC51 pings,
+full Q1 retained all 16 peers and delivered every required PC92 relay and peer
+spot. Q1 still failed local delivery (the same nine spot IDs missing at every
+client) and sustained enqueue/per-minute first-byte latency. The wrapper's
+verdict remains failed. See the [continued v14 evidence](pc92-v14-validation.md#continued-overall-qualification-on-2026-10-02)
+for exact counts, source/binary identities and diagnostic attribution. The
+remaining allocation work includes enabled SQLite, context child-map backing
+and peer-derived terminal log buffers outside the transport-owner limit.
+
 **Historical V12 evidence status:** the2c06079 re-audit invalidated the earlier ordinary
 admission-recovery timing oracle. Its combined five-second Q6 wait could accept
 late recovery; Q5 observed after the last expiry and its lookups could prune.

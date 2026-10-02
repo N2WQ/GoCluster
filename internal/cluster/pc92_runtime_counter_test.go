@@ -58,7 +58,8 @@ func (h *qualificationHistogram) observeCounter(ticks time.Duration, frequency i
 }
 
 // The child independently checks every published spot's required enqueue bit.
-// Only bounded cohort summaries cross RPC; there is no lossy event channel.
+// Only bounded cohort summaries and first missing examples cross RPC; there
+// is no lossy event channel and example limits never truncate missing counts.
 func (o *qualificationOracle) enqueueResults(used int) ([]qualificationRecipientResult, error) {
 	if used < 0 || used > len(o.inputs) {
 		return nil, fmt.Errorf("invalid final input count %d", used)
@@ -85,6 +86,7 @@ func (o *qualificationOracle) enqueueResults(used int) ([]qualificationRecipient
 				r.Received++
 			} else {
 				r.MissingEnqueue++
+				r.MissingEnqueueExamples = qualificationAppendMissing(r.MissingEnqueueExamples, id, in)
 			}
 			cohort := int(qualificationTickDuration(time.Duration(stamp-1), o.clockFrequency, false)/time.Minute) + 1
 			if cohort < 1 || cohort >= len(r.Cohorts) {
@@ -105,6 +107,9 @@ func (o *qualificationOracle) acceptEnqueueResults(reply qualificationReply) err
 		if row.Name != o.clients[i].name || len(row.Cohorts) != len(o.clients[i].enqueueLatency) || row.MissingEnqueue < 0 || row.Required-row.Received != row.MissingEnqueue {
 			return fmt.Errorf("child enqueue accounting invalid for client%d", i)
 		}
+		if err := o.validateEnqueueExamples(i, row); err != nil {
+			return err
+		}
 		for j, cohort := range row.Cohorts {
 			if cohort.InputMinute != j-1 || cohort.RequiredSpots < 0 || int(cohort.Enqueue.Count) > cohort.RequiredSpots {
 				return fmt.Errorf("child enqueue cohort invalid for client%d", i)
@@ -120,6 +125,27 @@ func (o *qualificationOracle) acceptEnqueueResults(reply qualificationReply) err
 			break
 		}
 		o.examples = append(o.examples, "child: "+example)
+	}
+	return nil
+}
+
+// The child owns enqueue observations. The parent validates their bounded
+// diagnostic shape and immutable input identity, never inferring omissions
+// from its own empty enqueue bitsets or using examples as a denominator.
+func (o *qualificationOracle) validateEnqueueExamples(client int, row qualificationRecipientResult) error {
+	if len(row.MissingEnqueueExamples) != min(row.MissingEnqueue, qualificationMissingExampleLimit) || len(row.MissingReadExamples) != 0 {
+		return fmt.Errorf("child missing-example count invalid for client%d", client)
+	}
+	previous := -1
+	for _, example := range row.MissingEnqueueExamples {
+		if example.ID <= previous || example.ID >= o.used {
+			return fmt.Errorf("child missing-example ID invalid for client%d", client)
+		}
+		in := &o.inputs[example.ID]
+		if in.started.Load() <= 0 || !in.spot || (in.client >= 0 && in.client != client) || example != qualificationMissingInput(example.ID, in) {
+			return fmt.Errorf("child missing-example input differs for client%d", client)
+		}
+		previous = example.ID
 	}
 	return nil
 }

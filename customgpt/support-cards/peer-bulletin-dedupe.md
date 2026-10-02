@@ -100,3 +100,22 @@ V12 re-audit refinements:
 - Sources: [v12 validation](../../docs/pc92-v12-validation.md),
   [ADR-0232](../../docs/decisions/ADR-0232-pc92-wire-and-recovery-evidence.md),
   [CTY refresh](../../docs/cty-refresh-2c06079.md).
+
+
+## Continued qualification (2026-10-02)
+
+- Full sustained-cache qualification passed. Corrected Q1 fixture pings kept
+  all 16 peers connected through the 45-minute load and 11-minute drain;
+  all required PC92 relays and peer spot deliveries arrived.
+- Q1 still failed local spot delivery and sustained latency. Every local client
+  missed the same nine spot IDs. Exact pair reproductions matched one primary
+  and eight SLOW-cache 32-bit collisions that suppress distinct logical keys.
+  No shared-dedupe repair is included in v14. Do not equate peer forwarding with
+  successful delivery through the shared local spot pipeline, or use a short
+  preflight to certify sustained latency.
+- The 480 MiB proof remains open for enabled SQLite, context child-map backing
+  and peer terminal log buffers retained after transport-owner release. The
+  tested blocked-logger path did not retain whole session objects; formatted
+  log copies are a distinct heap owner and are not runtime stack overhead.
+- Use the [continued v14 record](../../docs/pc92-v14-validation.md#continued-overall-qualification-on-2026-10-02)
+  for final verdicts and diagnostic limits. Overall acceptance remains incomplete.

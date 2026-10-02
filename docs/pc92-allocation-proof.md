@@ -16,7 +16,7 @@ The derivation targets Go 1.26.4, windows/amd64. `allocationBytes` covers small-
 | Snapshots/projection | 48 MiB | 12 MiB local publication work and 36 MiB across all optional projection generations. |
 | Remaining metadata | 32 MiB | Session/controller/registry structures, contexts/timers/waiters, retry records and persistence working storage; final inventory open. |
 
-These sum to 480 MiB. Driver sockets, fixture wire and evidence objects are qualification owners. Ordinary telnet, archive, logging and ingestion owners are distinct from the protocol partitions. Independent heap peaks are never summed and called a simultaneous observation.
+These sum to 480 MiB. Driver sockets, fixture wire and evidence objects are qualification owners. Ordinary telnet, archive, unrelated logging and ingestion owners are distinct from the protocol partitions. This does not exclude heap copies of peer protocol diagnostics merely because the standard logger owns them; those copies require an explicit bound. Independent heap peaks are never summed and called a simultaneous observation.
 
 ## Cache proof
 
@@ -230,3 +230,39 @@ The first preflight-a reached all cache entry limits, full graph/freshness, 192 
 The first preflight-b also passed: 1,000 local users, 63 established peers and 128 authenticated candidates, full reachable graph/freshness and cache entry counts, exactly 16 MiB/7,888 staged records, 7,998 control records, 8,062 data records, 63 active writes and 13,299,712 reader bytes together. The staged origin watermark remained unchanged. A separate completion race selected one winner and advanced its staged freshness, then returned to 63 established peers. ProcessHeap was 736,642,336 bytes and StackInuse 51,806,208 bytes at the simultaneous pressure sample. Evidence is `%TEMP%/gocluster-q4-preflight-b-current`; source changed during setup, and the pressure phase lasted 10.00 seconds.
 
 These are reachability diagnostics, not final-state or 30-minute acceptance. Diagnostic profiles never substitute for full phases; reports retain Qualified=false while aggregate proof is open.
+
+
+## Continued ownership review (2026-10-02)
+
+The current application supplies a no-deadline cancellation parent to
+Manager.Start. Sessions and outbound dial roots jointly consume N+128 transport
+permits; the two serial optional projection paths add at most two immediate
+timeout children. Thus this caller bounds live direct manager children by
+N+130 (194 at N=64). An arbitrary earlier-deadline Start caller needs its own
+subtree inventory. This is a live-child bound, not a backing-allocation proof.
+
+Go1.26.4 context.removeChild deletes entries without rebuilding the child map.
+Source review of Swiss-map insertion, tombstone pruning, table splitting and
+directory growth found no fitting hard backing bound from that cardinality.
+A symbolic legal-hash arrangement can force a 1024-slot table split with at
+most 188 live keys during construction, below 194. Deletion neither merges
+empty siblings nor shrinks the directory. This is not an observed context-map
+runaway, a remote hash-control capability, or a measured 480 MiB breach. The
+source argument and its actual-pointer-hash reachability limits are retained in
+`D:\codex-gocluster-v14-remaining-20261002\ownership-probe\context-child-map-review.md`.
+
+The blocked-logger diagnostic disproved whole-session retention for its tested
+rejected-inbound path: all measured session and original error objects became
+unreachable while 160 post-Run wrappers waited with zero transport permits.
+That does not reclaim the distinct formatted log buffers. Standard log.output
+formats into an exclusively owned heap buffer before acquiring outMu, and only
+returns that buffer after Write finishes. manager.go's terminal inbound log is
+after Run releases the owner permit. A blocked standard sink with a responsive
+connection-event reporter therefore permits additional formatted peer-error
+buffers to wait outside the transport-owner cap. The pool's per-buffer return
+limit and downstream line-buffer limit do not cap their concurrent count.
+These peer-derived heap copies need accounting; they are not runtime stacks.
+
+The external diagnostic and source review narrow the retirement concern rather
+than closing it. Enabled SQLite, context backing and the formatted diagnostic
+ownership remain unresolved. See [v14 evidence](pc92-v14-validation.md#continued-overall-qualification-on-2026-10-02).
