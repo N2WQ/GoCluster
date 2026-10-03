@@ -7,7 +7,7 @@ skill installation.
 Release and PGO scripts stamp the UTC compile date as exactly `YYMMDD`, without
 a prefix, commit suffix, or dirty suffix. Commit and build time are stamped
 separately; GoCluster does not display or broadcast a dirty flag. Release
-tags and names use `YYMMDD-rN`, where `N` is the explicitly supplied positive
+tags and names use `YYMMDDrN`, where `N` is the explicitly supplied positive
 `-ReleaseNumber`. This is required even with `-PackageOnly`, which stamps an
 intended tag without publishing it. Duplicate tags are rejected; plain and PGO
 builds omit release-tag metadata. See [build notes](../README.md#build-and-service-notes).

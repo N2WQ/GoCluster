@@ -38,7 +38,7 @@ func TestPC18HonestBuildIdentityAndReferenceRegexes(t *testing.T) {
 }
 
 func TestPC18DateOnlyVersionPreservesMetadataAndCompatibility(t *testing.T) {
-	for _, releaseTag := range []string{"", "261003-r2"} {
+	for _, releaseTag := range []string{"", "261003r2"} {
 		banner, err := BuildPC18Banner("261003", releaseTag, "abcdef123456", "2026-10-03T12:34:56Z", "go1.26.4")
 		if err != nil {
 			t.Fatal(err)
@@ -50,7 +50,7 @@ func TestPC18DateOnlyVersionPreservesMetadataAndCompatibility(t *testing.T) {
 			}
 			want := "PC18^GoCluster Version: 261003"
 			if releaseTag != "" {
-				want += " Release tag: 261003-r2"
+				want += " Release tag: 261003r2"
 			}
 			want += " Commit: abcdef123456 Built: 2026-10-03T12:34:56Z Go: go1.26.4"
 			if pc9x {

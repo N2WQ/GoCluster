@@ -352,37 +352,57 @@ func TestDXSpiderReferenceSenderRestartRetainedWatermark(t *testing.T) {
 }
 
 func TestDXSpiderReferencePC18IdentityAndK(t *testing.T) {
-	reference, _ := startDXReference(t, true, "N0CALL")
-	banner, err := BuildPC18Banner("v6-test", "", "91abcdef", "2026-10-01", "go1.26")
-	if err != nil {
-		t.Fatal(err)
+	for _, tc := range []struct {
+		name       string
+		releaseTag string
+	}{
+		{"empty release tag", ""},
+		{"numbered release", "261003r2"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reference, _ := startDXReference(t, true, "N0CALL")
+			banner, err := BuildPC18Banner("261003", tc.releaseTag, "91abcdef0123", "2026-10-03T16:42:10Z", "go1.26.4")
+			if err != nil {
+				t.Fatal(err)
+			}
+			line, err := FormatPC18(banner, "5457", true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := "PC18^GoCluster Version: 261003"
+			if tc.releaseTag != "" {
+				want += " Release tag: 261003r2"
+			}
+			want += ` Commit: \x391abcdef0123 Built: 2026-10-03T16:42:10Z Go: go1.26.4 pc9x^5457^`
+			if line != want {
+				t.Fatalf("receiver input = %q, want %q", line, want)
+			}
+			result := reference.frame(line)
+			referenceField(t, result.Channel, "version", "54.57")
+			referenceField(t, result.Channel, "sort", "A")
+			referenceField(t, result.Channel, "do_pc9x", "1")
+			referenceField(t, result.Channel, "do_pc91", "false")
+			referenceField(t, result.Users["N0CALL"], "version", "54.57")
+			stamp, err := NewTimestampGenerator().Next()
+			if err != nil {
+				t.Fatal(err)
+			}
+			wire, err := EncodePC92(&PC92Record{Origin: "N0CALL", Timestamp: stamp, Action: "K", Subject: PC92Entry{Call: "N0CALL", Flags: 5, Version: "5457", Build: "633"}, Hop: 99})
+			if err != nil {
+				t.Fatal(err)
+			}
+			result = reference.frame(wire)
+			referenceField(t, result.Channel, "version", "54.57")
+			referenceField(t, result.Channel, "sort", "A")
+			referenceField(t, result.Channel, "do_pc9x", "1")
+			referenceField(t, result.Channel, "do_pc91", "false")
+			referenceField(t, result.Users["N0CALL"], "version", "54.57")
+			referenceField(t, result.Users["N0CALL"], "sort", "S")
+			referenceField(t, result.Routes["N0CALL"], "version", "5457")
+			referenceField(t, result.Routes["N0CALL"], "build", "633")
+			t.Logf("real DXSpider PC18/K: channel=%v user=%v route=%v", result.Channel, result.Users["N0CALL"], result.Routes["N0CALL"])
+		})
 	}
-	line, err := FormatPC18(banner, "5457", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result := reference.frame(line)
-	referenceField(t, result.Channel, "version", "54.57")
-	referenceField(t, result.Channel, "sort", "A")
-	referenceField(t, result.Channel, "do_pc9x", "1")
-	referenceField(t, result.Channel, "do_pc91", "false")
-	referenceField(t, result.Users["N0CALL"], "version", "54.57")
-	stamp, err := NewTimestampGenerator().Next()
-	if err != nil {
-		t.Fatal(err)
-	}
-	wire, err := EncodePC92(&PC92Record{Origin: "N0CALL", Timestamp: stamp, Action: "K", Subject: PC92Entry{Call: "N0CALL", Flags: 5, Version: "5457", Build: "633"}, Hop: 99})
-	if err != nil {
-		t.Fatal(err)
-	}
-	result = reference.frame(wire)
-	referenceField(t, result.Channel, "version", "54.57")
-	referenceField(t, result.Channel, "sort", "A")
-	referenceField(t, result.Users["N0CALL"], "version", "54.57")
-	referenceField(t, result.Users["N0CALL"], "sort", "S")
-	referenceField(t, result.Routes["N0CALL"], "version", "5457")
-	referenceField(t, result.Routes["N0CALL"], "build", "633")
-	t.Logf("real DXSpider PC18/K: channel=%v user=%v route=%v", result.Channel, result.Users["N0CALL"], result.Routes["N0CALL"])
 }
 
 func TestDXSpiderReferenceComplete62171ByteSnapshot(t *testing.T) {
@@ -467,7 +487,7 @@ func TestDXSpiderReferenceGoSessionStartup(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := manager.SetBuildIdentity("v6-test", "", "91abcdef", "2026-10-01", "go1.26"); err != nil {
+			if err := manager.SetBuildIdentity("261003", "261003r2", "91abcdef0123", "2026-10-03T16:42:10Z", "go1.26.4"); err != nil {
 				t.Fatal(err)
 			}
 			ctx, cancel := context.WithCancel(context.Background())
@@ -514,7 +534,24 @@ func TestDXSpiderReferenceGoSessionStartup(t *testing.T) {
 					t.Fatalf("prompt=%q", got)
 				}
 				write("GB7REF")
-				result := reference.frame(read())
+				line := read()
+				want := `PC18^GoCluster Version: 261003 Release tag: 261003r2 Commit: \x391abcdef0123 Built: 2026-10-03T16:42:10Z Go: go1.26.4`
+				if tc.pc9x {
+					want += " pc9x"
+				}
+				want += "^5457^"
+				if line != want {
+					t.Fatalf("session PC18 = %q, want %q", line, want)
+				}
+				result := reference.frame(line)
+				referenceField(t, result.Channel, "version", "54.57")
+				referenceField(t, result.Users["N0CALL"], "version", "54.57")
+				if tc.pc9x {
+					referenceField(t, result.Channel, "do_pc9x", "1")
+					referenceField(t, result.Channel, "do_pc91", "false")
+				} else {
+					referenceField(t, result.Channel, "do_pc9x", "0")
+				}
 				for _, line := range result.TX {
 					write(line)
 				}

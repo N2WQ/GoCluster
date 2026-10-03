@@ -22,7 +22,7 @@ func peerRuntimeTestBuild() BuildInfo {
 	return BuildInfo{
 		Version: "v26.01.10", Commit: "91abcdef0123456789", BuildTime: "2026-10-01T12:00:00Z",
 		GoVersion:  "go1.26.0",
-		ReleaseTag: "261001-r2",
+		ReleaseTag: "261001r2",
 	}
 }
 

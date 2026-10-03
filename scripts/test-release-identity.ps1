@@ -62,8 +62,8 @@ foreach ($ReleaseNumber in @(1, 2, 2147483647)) {
     . (Get-IdentityAssignment 'version')
     . (Get-IdentityAssignment 'releaseTag')
     . (Get-IdentityAssignment 'ldflags')
-    if ($version -cne '261003' -or $releaseTag -cne "261003-r$ReleaseNumber" -or
-        $ldflags -cne "-X main.Version=261003 -X main.ReleaseTag=261003-r$ReleaseNumber -X main.Commit=$commit -X main.BuildTime=$buildTime") {
+    if ($version -cne '261003' -or $releaseTag -cne "261003r$ReleaseNumber" -or
+        $ldflags -cne "-X main.Version=261003 -X main.ReleaseTag=261003r$ReleaseNumber -X main.Commit=$commit -X main.BuildTime=$buildTime") {
         throw 'Product version, release tag, or executable stamping drifted'
     }
 }
@@ -100,14 +100,14 @@ $targetCheck = $ast.Find({ param($node)
     $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -eq 'Assert-ReleaseTargetsAvailable'
 }, $true)
 . ([scriptblock]::Create($targetCheck.Extent.Text))
-if ($calls.Count -ne 3 -or $calls[0].Arguments[-1] -cne 'refs/tags/261003-r2' -or
-    $calls[1].Arguments[-1] -cne 'refs/tags/261003-r2' -or $calls[2].Arguments[-1] -cne '261003-r2') {
+if ($calls.Count -ne 3 -or $calls[0].Arguments[-1] -cne 'refs/tags/261003r2' -or
+    $calls[1].Arguments[-1] -cne 'refs/tags/261003r2' -or $calls[2].Arguments[-1] -cne '261003r2') {
     throw 'Duplicate checks used the product version instead of the release tag'
 }
 foreach ($duplicate in @('local', 'remote', 'release')) {
     $refused = $false
     try { . ([scriptblock]::Create($targetCheck.Extent.Text)) }
-    catch { if ($_.Exception.Message -notmatch '261003-r2 already exists') { throw }; $refused = $true }
+    catch { if ($_.Exception.Message -notmatch '261003r2 already exists') { throw }; $refused = $true }
     if (-not $refused) { throw "Duplicate $duplicate identity was accepted" }
 }
 $duplicate = ''
@@ -117,25 +117,25 @@ $publish = $ast.Find({ param($node)
 }, $true)
 $calls.Clear()
 . ([scriptblock]::Create($publish.Extent.Text))
-if ($calls.Count -ne 3 -or ($calls[0].Arguments -join '|') -cne 'tag|-a|261003-r2|-m|Release 261003-r2' -or
-    ($calls[1].Arguments -join '|') -cne 'push|fixture-origin|261003-r2' -or
-    $calls[2].Arguments[2] -cne '261003-r2' -or $calls[2].Arguments[5] -cne '261003-r2' -or
+if ($calls.Count -ne 3 -or ($calls[0].Arguments -join '|') -cne 'tag|-a|261003r2|-m|Release 261003r2' -or
+    ($calls[1].Arguments -join '|') -cne 'push|fixture-origin|261003r2' -or
+    $calls[2].Arguments[2] -cne '261003r2' -or $calls[2].Arguments[5] -cne '261003r2' -or
     $calls[2].Arguments[-2] -cne '--notes-file' -or
     $calls[2].Notes -notmatch 'Product version: 261003' -or
-    $calls[2].Notes -notmatch 'Release tag: 261003-r2' -or
+    $calls[2].Notes -notmatch 'Release tag: 261003r2' -or
     (Test-Path -LiteralPath $calls[2].Arguments[-1])) { throw 'Publishing identity, release notes, or notes cleanup drifted' }
 $failPush = $true
 $calls.Clear()
 $refused = $false
 try { . ([scriptblock]::Create($publish.Extent.Text)) }
-catch { if ($_.Exception.Message -notmatch 'Failed to push tag 261003-r2') { throw }; $refused = $true }
+catch { if ($_.Exception.Message -notmatch 'Failed to push tag 261003r2') { throw }; $refused = $true }
 if (-not $refused -or $calls.Count -ne 2) { throw 'Failed tag push did not stop release creation' }
 $failPush = $false
 $failRelease = $true
 $calls.Clear()
 $refused = $false
 try { . ([scriptblock]::Create($publish.Extent.Text)) }
-catch { if ($_.Exception.Message -notmatch 'Failed to create GitHub Release 261003-r2') { throw }; $refused = $true }
+catch { if ($_.Exception.Message -notmatch 'Failed to create GitHub Release 261003r2') { throw }; $refused = $true }
 if (-not $refused -or $calls.Count -ne 3 -or (Test-Path -LiteralPath $calls[2].Arguments[-1])) {
     throw 'Release failure did not propagate or clean up notes'
 }

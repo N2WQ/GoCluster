@@ -802,7 +802,7 @@ available. Peer compatibility values remain
 
 Same-day builds share a product version. Supply a positive `-ReleaseNumber` for
 every release-script build, including package-only builds: number `2` on UTC
-date `261003` stamps tag `261003-r2`. Git tags, GitHub Release names, duplicate
+date `261003` stamps tag `261003r2`. Git tags, GitHub Release names, duplicate
 checks, and release notes use this separate release identity. Different numbers
 allow multiple releases per day; existing tags are never overwritten. Rebuilding
 after UTC midnight changes the date. Package-only builds stamp an intended tag

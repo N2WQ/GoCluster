@@ -39,12 +39,12 @@ func TestCompileDateVersion(t *testing.T) {
 func TestResolveBinaryVersionDateOnlyPreservesMetadata(t *testing.T) {
 	oldVersion, oldReleaseTag, oldCommit, oldBuildTime := Version, ReleaseTag, Commit, BuildTime
 	t.Cleanup(func() { Version, ReleaseTag, Commit, BuildTime = oldVersion, oldReleaseTag, oldCommit, oldBuildTime })
-	ReleaseTag = " 261003-r2 "
+	ReleaseTag = " 261003r2 "
 	Commit, BuildTime = "abcdef123456", "2026-10-03T12:34:56Z"
 	for _, version := range []string{"dev", "261003"} {
 		Version = version
 		info := resolveBinaryVersion()
-		if info.version != "261003" || info.releaseTag != "261003-r2" || info.commit != Commit || info.buildTime != BuildTime {
+		if info.version != "261003" || info.releaseTag != "261003r2" || info.commit != Commit || info.buildTime != BuildTime {
 			t.Fatalf("resolved identity: %+v", info)
 		}
 		build := info.clusterBuildInfo()
@@ -55,7 +55,7 @@ func TestResolveBinaryVersionDateOnlyPreservesMetadata(t *testing.T) {
 }
 
 func TestPrintVersionReleaseMetadata(t *testing.T) {
-	for _, releaseTag := range []string{"", "261003-r2"} {
+	for _, releaseTag := range []string{"", "261003r2"} {
 		t.Run(releaseTag, func(t *testing.T) {
 			output, err := os.CreateTemp(t.TempDir(), "version-output")
 			if err != nil {
@@ -78,7 +78,7 @@ func TestPrintVersionReleaseMetadata(t *testing.T) {
 			}
 			want := "Product version: 261003\n"
 			if releaseTag != "" {
-				want += "Release tag:     261003-r2\n"
+				want += "Release tag:     261003r2\n"
 			}
 			want += "Commit:          abcdef123456\nBuilt:           2026-10-03T12:34:56Z\nGo:              go1.26.4\n"
 			if string(got) != want {

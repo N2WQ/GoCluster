@@ -78,7 +78,7 @@ complete CCCluster interoperability or a full legacy topology bridge.
 
 PC18 identifies GoCluster using the startup-resolved UTC YYMMDD version
 (for example, 261003), with separate commit and build time, plus the
-Go version. Release-script builds include a separate release tag (261003-r2);
+Go version. Release-script builds include a separate release tag (261003r2);
 plain and PGO builds omit it. These fields are distinct from numeric compatibility
 version/build (`5457`/`633` by default). An explicitly empty `node_build` is
 omitted. Enabled peering rejects invalid identities and metadata at startup;

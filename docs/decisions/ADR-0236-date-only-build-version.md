@@ -27,7 +27,7 @@ Compatibility defaults remain PC18/PC92 version `5457`, PC92 build `633`, and
 legacy PC19 version `5401`.
 
 The owner also selected explicitly numbered release tags, independent of the
-product version: `261003-r2`. Every release-script build requires a positive
+product version: `261003r2`. Every release-script build requires a positive
 `-ReleaseNumber`, including package-only builds. Stamp this tag separately and
 display it in `--version`, `SHOW BUILD`, and PC18. Plain and PGO builds leave it
 empty and omit it from output. Package-only metadata denotes an intended tag,

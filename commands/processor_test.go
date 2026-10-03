@@ -751,7 +751,7 @@ func TestShowDXDialectVariants(t *testing.T) {
 func TestShowBuild(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil, WithBuildInfo(BuildInfo{
 		Version:    "260424",
-		ReleaseTag: " 260424-r2 ",
+		ReleaseTag: " 260424r2 ",
 		Commit:     "76fa6eac04fb",
 		BuildTime:  "2026-04-24T12:34:56Z",
 		GoVersion:  "go1.26.2",
@@ -760,7 +760,7 @@ func TestShowBuild(t *testing.T) {
 	resp := p.ProcessCommandForClient("SHOW BUILD", "N2WQ", "", nil, "go")
 	want := []string{
 		"Build version: 260424",
-		"Release tag: 260424-r2",
+		"Release tag: 260424r2",
 		"Go: go1.26.2",
 	}
 	for _, line := range want {

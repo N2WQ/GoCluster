@@ -12,7 +12,7 @@
 
 .PARAMETER ReleaseNumber
 	Required positive release number. The UTC date and this number form the tag,
-	for example 261003-r2. Package-only builds stamp the intended tag as metadata.
+	for example 261003r2. Package-only builds stamp the intended tag as metadata.
 
 .PARAMETER AllowDirty
 	Allow local package creation from a dirty worktree. Publishing still requires
@@ -473,7 +473,7 @@ try {
     $commit = (& git rev-parse --short=12 HEAD).Trim()
     $buildUtc = (Get-Date).ToUniversalTime()
     $version = $buildUtc.ToString("yyMMdd")
-    $releaseTag = "$version-r$ReleaseNumber"
+    $releaseTag = "${version}r${ReleaseNumber}"
     $buildTime = $buildUtc.ToString("yyyy-MM-ddTHH:mm:ssZ")
 
     if (-not $PackageOnly) {
