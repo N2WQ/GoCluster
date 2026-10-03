@@ -19,7 +19,7 @@ func BenchmarkPC92StageTraceObserver(b *testing.B) {
 			name = "installed"
 		}
 		b.Run(name, func(b *testing.B) {
-			s, _, _ := stageFixture(b, 1)
+			s, _, _ := stageFixture(b)
 			now, frequency, err := qualificationCounterClock()
 			if err != nil {
 				b.Skip("actual qualification clock unavailable", err)
@@ -45,7 +45,7 @@ func BenchmarkPC92StageTraceObserver(b *testing.B) {
 }
 
 func TestPC92StageTraceInputMinuteAndFinalIdentity(t *testing.T) {
-	s, f, c := stageFixture(t, 1)
+	s, f, c := stageFixture(t)
 	s.oracle.inputs[0].started.Store(int64(61*time.Second) + 1)
 	base := int64(61 * time.Second)
 	for stage, tick := range []int64{110, 125, 140, 155, 170} {

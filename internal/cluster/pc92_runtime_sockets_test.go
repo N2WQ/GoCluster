@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -272,7 +273,8 @@ func (s *qualificationSocket) read() {
 		if err == nil {
 			continue
 		}
-		if timeout, ok := err.(net.Error); ok && timeout.Timeout() {
+		var timeout net.Error
+		if errors.As(err, &timeout) && timeout.Timeout() {
 			continue
 		}
 		if !s.driver.oracle.closing.Load() && !s.expectedClose.Load() {

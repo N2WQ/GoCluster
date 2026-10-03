@@ -50,7 +50,7 @@ func helperOperationPath(path string) (string, error) {
 	}
 	var prefix string
 	if len(path) >= 2 && isPathSeparator(path[0]) && isPathSeparator(path[1]) {
-		if !(len(path) >= 4 && path[2] == '.' && isPathSeparator(path[3])) {
+		if len(path) < 4 || path[2] != '.' || !isPathSeparator(path[3]) {
 			prefix = `\\?\UNC\`
 		}
 	} else {
@@ -110,7 +110,7 @@ func diagnosticRemove(path string) error {
 	if dirErr == nil {
 		return nil
 	}
-	if dirErr != err {
+	if !errors.Is(dirErr, err) {
 		attributes, attrErr := syscall.GetFileAttributes(p)
 		if attrErr != nil {
 			err = attrErr

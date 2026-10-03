@@ -28,7 +28,7 @@ func TestV15WindowsWTF8ByteCount(t *testing.T) {
 func TestV15WindowsCwdAdmissionBoundary(t *testing.T) {
 	t.Setenv("SYSTEMROOT", `C:\Windows`)
 	// Pinned Windows/amd64 fixed owners plus32 environment bytes leave
-	//452960 bytes after two200-byte options: 7077 cwd bytes fit,7078 do not.
+	// 452960 bytes after two200-byte options: 7077 cwd bytes fit,7078 do not.
 	// These literals protect the independent source inventory at its boundary.
 	if !helperOptionsFit(200, 200, 7077) || helperOptionsFit(200, 200, 7078) || helperOptionsFit(200, 200, 8000) {
 		t.Fatal("legacy absolute-mkdir cwd backing was not admitted at64 bytes/byte")

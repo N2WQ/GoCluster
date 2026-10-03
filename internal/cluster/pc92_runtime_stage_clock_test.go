@@ -9,7 +9,7 @@ import (
 )
 
 func TestPC92StageTraceRealClockAllocation(t *testing.T) {
-	s, _, _ := stageFixture(t, 1)
+	s, _, _ := stageFixture(t)
 	now, frequency, err := qualificationCounterClock()
 	if err != nil {
 		t.Fatal(err)

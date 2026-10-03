@@ -26,7 +26,7 @@ func TestV15TopologyRaceProjectionAndObserver(t *testing.T) {
 		t.Fatal(err)
 	}
 	var count int
-	if err = topologyTestDB(t, store).QueryRow("select count(*) from peer_pc92_typed_edges").Scan(&count); err != nil || count != 2048 {
+	if err = topologyTestDB(t, store).QueryRowContext(t.Context(), "select count(*) from peer_pc92_typed_edges").Scan(&count); err != nil || count != 2048 {
 		t.Fatalf("committed projection=%d err=%v", count, err)
 	}
 }

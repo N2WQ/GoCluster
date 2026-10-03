@@ -548,7 +548,7 @@ func (r *clusterRuntime) initializeULSAndCTY() {
 	ctyPath := strings.TrimSpace(r.cfg.CTY.File)
 	ctyURL := strings.TrimSpace(r.cfg.CTY.URL)
 	if r.cfg.CTY.Enabled && ctyPath != "" {
-		if _, err := os.Stat(ctyPath); err != nil && errors.Is(err, os.ErrNotExist) && ctyURL != "" {
+		if _, err := os.Stat(ctyPath); err != nil && errors.Is(err, os.ErrNotExist) && ctyURL != "" { // #nosec G703 -- Path derives from trusted operator configuration, not peer or client input.
 			if fresh, updated, refreshErr := refreshCTYDatabase(r.ctx, r.cfg.CTY); refreshErr != nil {
 				log.Printf("Warning: CTY download failed: %v", refreshErr)
 				r.ctyState.recordFailure(time.Now().UTC(), refreshErr)

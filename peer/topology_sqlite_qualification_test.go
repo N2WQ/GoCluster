@@ -5,7 +5,6 @@ package peer
 import (
 	"context"
 	"errors"
-	"fmt"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
@@ -146,7 +145,7 @@ func TestV15TopologyLifecycle1000(t *testing.T) {
 			}
 			for kind, count := range counts {
 				if count != 250 {
-					t.Fatal(fmt.Sprintf("kind %d count %d", kind, count))
+					t.Fatalf("kind %d count %d", kind, count)
 				}
 			}
 			t.Logf("normal/cancel/partial-init/actual-OOM cycles=%v; all owners retired", counts)

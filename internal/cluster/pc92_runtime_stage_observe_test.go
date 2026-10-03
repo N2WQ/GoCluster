@@ -20,7 +20,7 @@ func (s *qualificationStageTrace) observe(event qualificationstage.Event) {
 		s.fail(1)
 		return
 	}
-	_, _, start, ok := s.input(id)
+	_, start, ok := s.input(id)
 	if !ok {
 		return
 	}
@@ -67,7 +67,7 @@ func (s *qualificationStageTrace) enqueue(client int, comment string, at int64) 
 		s.fail(1)
 		return
 	}
-	_, minute, start, ok := s.input(id)
+	minute, start, ok := s.input(id)
 	if !ok {
 		return
 	}

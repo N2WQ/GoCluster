@@ -3693,7 +3693,7 @@ func startGridCheckpointScheduler(ctx context.Context, storeHandle *gridStoreHan
 				continue
 			}
 			root := gridCheckpointRoot(dbPath)
-			if err := os.MkdirAll(root, 0o755); err != nil {
+			if err := os.MkdirAll(root, 0o755); err != nil { // #nosec G703 -- Path derives from trusted operator configuration, not peer or client input.
 				log.Printf("Gridstore: checkpoint mkdir failed: %v", err)
 				continue
 			}
@@ -3702,12 +3702,12 @@ func startGridCheckpointScheduler(ctx context.Context, storeHandle *gridStoreHan
 			dest := filepath.Join(root, ts)
 			if err := store.Checkpoint(tmp); err != nil {
 				log.Printf("Gridstore: checkpoint failed: %v", err)
-				_ = os.RemoveAll(tmp)
+				_ = os.RemoveAll(tmp) // #nosec G703 -- Checkpoint temp name is generated beneath the operator-configured root.
 				continue
 			}
-			if err := os.Rename(tmp, dest); err != nil {
+			if err := os.Rename(tmp, dest); err != nil { // #nosec G703 -- Path derives from trusted operator configuration, not peer or client input.
 				log.Printf("Gridstore: checkpoint rename failed: %v", err)
-				_ = os.RemoveAll(tmp)
+				_ = os.RemoveAll(tmp) // #nosec G703 -- Checkpoint temp name is generated beneath the operator-configured root.
 				continue
 			}
 			log.Printf("Gridstore: checkpoint created at %s", dest)
@@ -3898,7 +3898,7 @@ func startCustomSCPCheckpointScheduler(ctx context.Context, store *spot.CustomSC
 			case <-timer.C:
 			}
 			root := customSCPCheckpointRoot(dbPath)
-			if err := os.MkdirAll(root, 0o755); err != nil {
+			if err := os.MkdirAll(root, 0o755); err != nil { // #nosec G703 -- Path derives from trusted operator configuration, not peer or client input.
 				log.Printf("CustomSCP: checkpoint mkdir failed: %v", err)
 				continue
 			}
@@ -3907,12 +3907,12 @@ func startCustomSCPCheckpointScheduler(ctx context.Context, store *spot.CustomSC
 			dest := filepath.Join(root, ts)
 			if err := store.Checkpoint(tmp); err != nil {
 				log.Printf("CustomSCP: checkpoint failed: %v", err)
-				_ = os.RemoveAll(tmp)
+				_ = os.RemoveAll(tmp) // #nosec G703 -- Checkpoint temp name is generated beneath the operator-configured root.
 				continue
 			}
-			if err := os.Rename(tmp, dest); err != nil {
+			if err := os.Rename(tmp, dest); err != nil { // #nosec G703 -- Path derives from trusted operator configuration, not peer or client input.
 				log.Printf("CustomSCP: checkpoint rename failed: %v", err)
-				_ = os.RemoveAll(tmp)
+				_ = os.RemoveAll(tmp) // #nosec G703 -- Checkpoint temp name is generated beneath the operator-configured root.
 				continue
 			}
 			if removed, err := cleanupCustomSCPCheckpoints(root, time.Now().UTC()); err != nil {
@@ -3997,7 +3997,7 @@ func loadFCCSnapshot(path string) *fccSnapshot {
 	if strings.TrimSpace(path) == "" {
 		return nil
 	}
-	info, err := os.Stat(path)
+	info, err := os.Stat(path) // #nosec G703 -- Path derives from trusted operator configuration, not peer or client input.
 	if err != nil {
 		return nil
 	}
@@ -4376,7 +4376,7 @@ func buildOverviewLines(
 
 	skewTime := "n/a"
 	if strings.TrimSpace(skewPath) != "" {
-		if info, err := os.Stat(skewPath); err == nil {
+		if info, err := os.Stat(skewPath); err == nil { // #nosec G703 -- Path derives from trusted operator configuration, not peer or client input.
 			skewTime = formatDateShortZ(info.ModTime())
 		}
 	}

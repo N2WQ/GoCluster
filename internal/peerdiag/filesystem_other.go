@@ -4,6 +4,7 @@ package peerdiag
 
 import "os"
 
+//lint:ignore U1000 Shared sink layout names the Windows-only metadata owner.
 type metadataOwner struct{}
 
 func isFilesystemBudget(error) bool { return false }

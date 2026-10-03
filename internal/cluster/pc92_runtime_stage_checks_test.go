@@ -16,9 +16,9 @@ import (
 	"dxcluster/telnet"
 )
 
-func stageFixture(t testing.TB, capacity int) (*qualificationStageTrace, telnet.QualificationStageFanout, *atomic.Int64) {
+func stageFixture(t testing.TB) (*qualificationStageTrace, telnet.QualificationStageFanout, *atomic.Int64) {
 	t.Helper()
-	o := newQualificationOracle(capacity, 2, 0, 15)
+	o := newQualificationOracle(1, 2, 0, 15)
 	o.measurementEpoch = time.Unix(0, 100)
 	o.clockFrequency = 1_000_000_000
 	clock := new(atomic.Int64)
@@ -52,7 +52,7 @@ func stageLiteral(s *qualificationStageTrace, clock *atomic.Int64) {
 }
 
 func TestPC92StageTraceLiteralChain(t *testing.T) {
-	s, f, clock := stageFixture(t, 1)
+	s, f, clock := stageFixture(t)
 	stageLiteral(s, clock)
 	if got, ok := s.deltas(0, 0, 220, 100); !ok || got != [7]int64{10, 15, 15, 15, 15, 20, 30} {
 		t.Fatalf("literal differences=%v valid=%t", got, ok)
@@ -107,7 +107,7 @@ func TestPC92StageTraceRejectsCorruptEvidence(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			s, f, c := stageFixture(t, 1)
+			s, f, c := stageFixture(t)
 			stageLiteral(s, c)
 			tc.corrupt(s, c)
 			c.Store(300)
@@ -118,7 +118,7 @@ func TestPC92StageTraceRejectsCorruptEvidence(t *testing.T) {
 	}
 	for missing := 0; missing < 7; missing++ {
 		t.Run("missing-"+string(rune('0'+missing)), func(t *testing.T) {
-			s, f, c := stageFixture(t, 1)
+			s, f, c := stageFixture(t)
 			stageLiteral(s, c)
 			s.rows[missing].Store(0)
 			c.Store(300)
@@ -131,7 +131,7 @@ func TestPC92StageTraceRejectsCorruptEvidence(t *testing.T) {
 }
 
 func TestPC92StageTraceObservedFanout(t *testing.T) {
-	s, f, _ := stageFixture(t, 1)
+	s, f, _ := stageFixture(t)
 	f.Clients[0], f.Clients[1] = f.Clients[1], f.Clients[0]
 	if err := s.matchFanout(&f, false); err != nil {
 		t.Fatal("snapshot iteration order is irrelevant", err)
@@ -194,7 +194,7 @@ func TestPC92StageTraceBackingAndPacketBound(t *testing.T) {
 }
 
 func TestPC92StageTraceRetirement(t *testing.T) {
-	s, _, _ := stageFixture(t, 1)
+	s, _, _ := stageFixture(t)
 	if !s.enter() {
 		t.Fatal("live guard refused")
 	}
@@ -219,7 +219,7 @@ func TestPC92StageTraceRetirement(t *testing.T) {
 }
 
 func TestPC92StageTraceObserverAllocation(t *testing.T) {
-	s, f, c := stageFixture(t, 1)
+	s, f, c := stageFixture(t)
 	if n := testing.AllocsPerRun(1000, func() {
 		s.rows[0].Store(0)
 		c.Store(110)
@@ -241,7 +241,7 @@ func TestPC92StageTraceObserverAllocation(t *testing.T) {
 }
 
 func TestPC92StageTraceAccountingAndLateAttribution(t *testing.T) {
-	s, f, c := stageFixture(t, 1)
+	s, f, c := stageFixture(t)
 	stageLiteral(s, c)
 	c.Store(6_000_100)
 	for i := range 2 {

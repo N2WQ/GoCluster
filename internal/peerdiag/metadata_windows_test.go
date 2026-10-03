@@ -118,7 +118,7 @@ func TestV15WindowsOwnedFilesystemTargetParity(t *testing.T) {
 			t.Fatal("metadata selected another native target", path)
 		}
 	}
-	for _, path := range []string{`created\deep`, `created\..\other`, `absent-parent\..\lexical-dir`, "trailing-directory. ", "kept", ""} {
+	for _, path := range []string{`created\deep`, `created\..\other`, `absent-parent\..\lexical-dir`, "trailing-directory. ", "kept", ""} { //nolint:misspell // This Windows parent-traversal path is a lexical parity fixture, not prose.
 		wantErr := os.MkdirAll(path, 0o700)
 		gotErr := sink.diagnosticMkdirAll(path, 0o700)
 		if (gotErr == nil) != (wantErr == nil) || errors.Is(gotErr, syscall.ENOTDIR) != errors.Is(wantErr, syscall.ENOTDIR) {

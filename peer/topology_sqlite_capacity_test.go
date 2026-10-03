@@ -32,7 +32,7 @@ func TestV15TopologyFullProjection(t *testing.T) {
 	}
 	observer := topologyTestDB(t, store)
 	var nodes, edges, users int
-	if err = observer.QueryRow("select (select count(*) from peer_pc92_nodes),(select count(*) from peer_pc92_typed_edges),(select count(distinct call) from peer_pc92_typed_edges)").Scan(&nodes, &edges, &users); err != nil {
+	if err = observer.QueryRowContext(t.Context(), "select (select count(*) from peer_pc92_nodes),(select count(*) from peer_pc92_typed_edges),(select count(distinct call) from peer_pc92_typed_edges)").Scan(&nodes, &edges, &users); err != nil {
 		t.Fatal(err)
 	}
 	if nodes != 4096 || edges != 131072 || users != 32768 {

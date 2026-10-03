@@ -15,14 +15,16 @@ import (
 const timestampLayout = "2006/01/02 15:04:05"
 
 type helperSink struct {
-	options  Options
-	entries  [512]dedupeEntry
-	used     int
-	file     *os.File
-	day      time.Time
-	line     [4096]byte
-	scratch  [64 << 10]byte
-	scan     directoryScan
+	options Options
+	entries [512]dedupeEntry
+	used    int
+	file    *os.File
+	day     time.Time
+	line    [4096]byte
+	scratch [64 << 10]byte
+	//lint:ignore U1000 Native scan ownership is consumed only on Windows; preserve the shared sink layout.
+	scan directoryScan
+	//lint:ignore U1000 Native metadata ownership is consumed only on Windows; preserve the shared sink layout.
 	metadata metadataOwner
 }
 
@@ -221,7 +223,7 @@ func (s *helperSink) writeOverlong(now time.Time, line []byte) error {
 		return err
 	}
 	if err == nil && info.Size() >= 8<<20 {
-		_ = diagnosticRemove(path + ".2")
+		_ = diagnosticRemove(path + ".2") //nolint:errcheck // Best-effort deletion must not prevent diagnostic writes when an old archive is locked.
 		for i := 1; i >= 1; i-- {
 			if err = diagnosticRename(path+"."+strconv.Itoa(i), path+"."+strconv.Itoa(i+1)); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return err

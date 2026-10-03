@@ -89,7 +89,7 @@ func (s *qualificationStageTrace) validateRow(id int, r *qualificationStageRepor
 		return
 	}
 	r.RequiredSpots++
-	_, minute, previous, ok := s.input(id)
+	minute, previous, ok := s.input(id)
 	if !ok {
 		return
 	}

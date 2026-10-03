@@ -81,7 +81,7 @@ func (d *q4Runtime) cycle(plan peer.QualificationStagingPlan) error {
 	if err != nil {
 		return err
 	}
-	cycle.WatermarkUnchanged = value == gotValue && accepted == gotAccepted && present == gotPresent
+	cycle.WatermarkUnchanged = value == gotValue && accepted == gotAccepted && present == gotPresent //nolint:staticcheck // Assert exact retained watermark identity, including time representation.
 	if !cycle.WatermarkUnchanged || cycle.Filled.Nodes != before.Nodes || cycle.Filled.Users != before.Users || cycle.Filled.Edges != before.Edges || cycle.Filled.Ingress != before.Ingress {
 		return fmt.Errorf("%s: unestablished candidates changed global authority", plan.Name)
 	}
@@ -132,7 +132,7 @@ func (d *q4Runtime) cycle(plan peer.QualificationStagingPlan) error {
 		if err != nil {
 			return err
 		}
-		if !newPresent || newValue == value && newAccepted == accepted {
+		if !newPresent || newValue == value && newAccepted == accepted { //nolint:staticcheck // Assert exact retained watermark identity, including time representation.
 			return fmt.Errorf("winner did not acquire staged freshness authority")
 		}
 	case plan.AwaitDeadline:

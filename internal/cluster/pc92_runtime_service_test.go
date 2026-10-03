@@ -148,7 +148,7 @@ func (s *qualificationChild) handle(ctx context.Context, request qualificationRe
 		if s.stopProfile != nil {
 			return reply, fmt.Errorf("profile already started")
 		}
-		s.stopProfile = startQualificationLoadProfile(s.t, s.profile, s.runtime.peerManager, s.oracle.clockNow)
+		s.stopProfile = startQualificationLoadProfile(ctx, s.t, s.profile, s.runtime.peerManager, s.oracle.clockNow)
 	case "arm":
 		if request.Frequency != s.oracle.clockFrequency || request.Epoch <= 0 || !s.oracle.measurementEpoch.IsZero() {
 			return reply, fmt.Errorf("invalid measurement clock epoch/frequency")

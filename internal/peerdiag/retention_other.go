@@ -12,6 +12,7 @@ import (
 	"dxcluster/internal/logutil"
 )
 
+//lint:ignore U1000 Shared sink layout names the Windows-only directory scan owner.
 type directoryScan struct{}
 
 func (s *helperSink) scanFailed() bool { return false }

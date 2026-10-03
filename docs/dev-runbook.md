@@ -21,6 +21,34 @@ leak-investigation recipes live in
 `docs/runbooks/codex-triggered-validation-tools.md` for Codex. Fable continues
 to use the routes defined by `CLAUDE.md` and `docs/fable-workflow.md`.
 
+## Local Analyzer Toolchain Compatibility
+
+Staticcheck and golangci-lint must support the Go toolchain used to load packages.
+An older analyzer can fail on newer export data or panic before reporting source
+issues. Check `go version`, `staticcheck -version`, and `golangci-lint --version`
+before interpreting such failures as code defects.
+
+The installed Staticcheck 2026.1 and golangci-lint 2.11.4 were verified here with
+Go 1.26.2. From PowerShell, select that toolchain only for the current process
+and restore the previous setting afterward:
+
+```powershell
+$previousGoToolchain = $env:GOTOOLCHAIN
+try {
+    $env:GOTOOLCHAIN = 'go1.26.2'
+    go version
+    staticcheck ./...
+    golangci-lint run ./... --config=.golangci.yaml
+} finally {
+    $env:GOTOOLCHAIN = $previousGoToolchain
+}
+```
+
+Each check must exit successfully; a loader failure or panic is not a clean lint
+result. This recipe does not change `go.mod`, installed tools, or persistent
+environment settings. The first invocation may download the selected toolchain.
+See [TSR-0038](troubleshooting/TSR-0038-lint-analyzer-toolchain-compatibility.md).
+
 ## CI Backstops
 
 Push-to-`main` CI is post-push verification. It can detect an invalid commit

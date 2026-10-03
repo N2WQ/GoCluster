@@ -95,7 +95,7 @@ func qualificationCounterClock() (func() time.Time, int64, error) {
 	counterProc := dll.NewProc("QueryPerformanceCounter")
 	var frequency int64
 	if ok, _, err := frequencyProc.Call(uintptr(unsafe.Pointer(&frequency))); ok == 0 {
-		return nil, 0, fmt.Errorf("QPC frequency: %v", err)
+		return nil, 0, fmt.Errorf("QPC frequency: %w", err)
 	}
 	if frequency < 1_000_000 || frequency > math.MaxInt64/int64(time.Second)-1 {
 		return nil, 0, fmt.Errorf("unsupported QPC frequency %d", frequency)

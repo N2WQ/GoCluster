@@ -120,7 +120,7 @@ func (s *helperSink) metadataStat(operation, path string, follow bool) (os.FileI
 	if err == nil && attributes.FileAttributes&syscall.FILE_ATTRIBUTE_REPARSE_POINT == 0 {
 		return &plainMetadata{name: filepath.Base(path), data: attributes}, nil
 	}
-	if err == windows.ERROR_SHARING_VIOLATION {
+	if errors.Is(err, windows.ERROR_SHARING_VIOLATION) {
 		var data syscall.Win32finddata
 		handle, findErr := diagnosticMetadataFindFirst(native, &data)
 		if findErr != nil {
@@ -144,7 +144,7 @@ func (s *helperSink) metadataStat(operation, path string, follow bool) (os.FileI
 func (s *helperSink) metadataFromHandle(path string, native *uint16, follow bool) (os.FileInfo, error) {
 	flags := uint32(syscall.FILE_FLAG_BACKUP_SEMANTICS | syscall.FILE_FLAG_OPEN_REPARSE_POINT)
 	handle, err := diagnosticMetadataCreateFile(native, 0, 0, nil, syscall.OPEN_EXISTING, flags, 0)
-	if err == windows.ERROR_INVALID_PARAMETER {
+	if errors.Is(err, windows.ERROR_INVALID_PARAMETER) {
 		// Only the existing console branch adds read access; ordinary metadata
 		// must remain available without read-data permission.
 		handle, err = diagnosticMetadataCreateFile(native, syscall.GENERIC_READ, 0, nil, syscall.OPEN_EXISTING, flags, 0)

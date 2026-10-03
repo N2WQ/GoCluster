@@ -37,7 +37,7 @@ func TestV15TopologyWindowsJunctionParity(t *testing.T) {
 		t.Fatal(err)
 	}
 	observer := topologyTestDB(t, store)
-	if _, err = observer.Exec("create table kept(v);insert into kept values('committed')"); err != nil {
+	if _, err = observer.ExecContext(t.Context(), "create table kept(v);insert into kept values('committed')"); err != nil {
 		store.Close()
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ New-Item -ItemType Junction -Path $env:GOCLUSTER_TEST_JUNCTION_LINK -Target $env
 			}
 			defer control.Close()
 			var value string
-			controlErr := control.QueryRow("select v from kept").Scan(&value)
+			controlErr := control.QueryRowContext(t.Context(), "select v from kept").Scan(&value)
 			t.Logf("resolved=%q resolveErr=%v abs=%q absErr=%v candidateErr=%v moderncErr=%v value=%q", resolved, resolveErr, absolute, absErr, candidateErr, controlErr, value)
 			if candidateErr != nil {
 				t.Fatal("candidate refused an existing database through a junction", candidateErr)
@@ -91,19 +91,19 @@ New-Item -ItemType Junction -Path $env:GOCLUSTER_TEST_JUNCTION_LINK -Target $env
 			}); err != nil {
 				t.Fatal("candidate could not commit through junction", err)
 			}
-			if err := observer.QueryRow("select v from kept").Scan(&value); err != nil || value != "candidate" {
+			if err := observer.QueryRowContext(t.Context(), "select v from kept").Scan(&value); err != nil || value != "candidate" {
 				t.Fatal("direct observer did not see junction commit", value, err)
 			}
-			if _, err := control.Exec("update kept set v='committed'"); err != nil {
+			if _, err := control.ExecContext(t.Context(), "update kept set v='committed'"); err != nil {
 				t.Fatal(err)
 			}
 		})
 	}
 	var integrity, value string
-	if err = observer.QueryRow("pragma integrity_check").Scan(&integrity); err != nil || integrity != "ok" {
+	if err = observer.QueryRowContext(t.Context(), "pragma integrity_check").Scan(&integrity); err != nil || integrity != "ok" {
 		t.Fatal("junction exercise changed saved database integrity", integrity, err)
 	}
-	if err = observer.QueryRow("select v from kept").Scan(&value); err != nil || value != "committed" {
+	if err = observer.QueryRowContext(t.Context(), "select v from kept").Scan(&value); err != nil || value != "committed" {
 		t.Fatal("junction exercise changed saved database value", value, err)
 	}
 	if topologyReservation.Load() != nil {

@@ -83,11 +83,11 @@ func (s *helperSink) cleanup(day time.Time) (resultErr error) {
 		// Match pinned Go1.26 fileStat.mode's directory/name-surrogate rule.
 		// A junction/symlink has no ModeDir; Remove acts on its entry, not target.
 		isDirectory := data.FileAttributes&syscall.FILE_ATTRIBUTE_DIRECTORY != 0 &&
-			!(data.FileAttributes&syscall.FILE_ATTRIBUTE_REPARSE_POINT != 0 && data.Reserved0&0x20000000 != 0)
+			(data.FileAttributes&syscall.FILE_ATTRIBUTE_REPARSE_POINT == 0 || data.Reserved0&0x20000000 == 0)
 		if !isDirectory {
 			if name, ok := diagnosticArchiveName(&data.FileName); ok {
 				if date, ok := logutil.ParseDailyArchiveDate(name); ok && date.Before(cutoff) {
-					_ = diagnosticRemove(filepath.Join(s.options.Directory, name))
+					_ = diagnosticRemove(filepath.Join(s.options.Directory, name)) //nolint:errcheck // Best-effort deletion must not prevent diagnostic writes when an old archive is locked.
 				}
 			}
 		}

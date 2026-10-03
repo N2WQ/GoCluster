@@ -108,7 +108,7 @@ func (db *topologyDatabase) directoryMetadata(operation, path string, follow boo
 	if err == nil && attributes.FileAttributes&syscall.FILE_ATTRIBUTE_REPARSE_POINT == 0 {
 		return &topologyPlainMetadata{name: filepath.Base(path), data: attributes}, nil
 	}
-	if err == windows.ERROR_SHARING_VIOLATION {
+	if errors.Is(err, windows.ERROR_SHARING_VIOLATION) {
 		var data syscall.Win32finddata
 		h, findErr := topologyMetadataFindFirst(native, &data)
 		if findErr != nil {
@@ -125,7 +125,7 @@ func (db *topologyDatabase) directoryMetadata(operation, path string, follow boo
 	}
 	flags := uint32(syscall.FILE_FLAG_BACKUP_SEMANTICS | syscall.FILE_FLAG_OPEN_REPARSE_POINT)
 	h, err := topologyMetadataCreateFile(native, 0, 0, nil, syscall.OPEN_EXISTING, flags, 0)
-	if err == windows.ERROR_INVALID_PARAMETER {
+	if errors.Is(err, windows.ERROR_INVALID_PARAMETER) {
 		h, err = topologyMetadataCreateFile(native, syscall.GENERIC_READ, 0, nil, syscall.OPEN_EXISTING, flags, 0)
 	}
 	if err != nil {

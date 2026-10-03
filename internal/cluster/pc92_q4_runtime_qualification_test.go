@@ -218,7 +218,7 @@ func TestPC92Q4RuntimeQualification(t *testing.T) {
 		if diagnostic {
 			plan.AwaitDeadline = false
 		}
-		if !(phase == "b" && cycle == 0) && (d.lastFull.IsZero() || time.Since(d.lastFull) >= 601*time.Second) {
+		if (phase != "b" || cycle != 0) && (d.lastFull.IsZero() || time.Since(d.lastFull) >= 601*time.Second) {
 			if err := d.fillCaches(false); err != nil {
 				d.report.Failures = append(d.report.Failures, err.Error())
 				break

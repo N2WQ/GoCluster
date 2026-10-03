@@ -3,6 +3,7 @@
 package cluster
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -28,14 +29,14 @@ type qualificationLoadProfile struct {
 // bounded enqueue observer). Population and drain are excluded from CPU samples. Allocation
 // profiles bracket the same load; their cumulative samples require pprof -base.
 // GC before either allocation snapshot is outside the measured load interval.
-func startQualificationLoadProfile(t *testing.T, profile qualificationProfile, manager *peer.Manager, clockNow func() time.Time) func() qualificationLoadProfile {
+func startQualificationLoadProfile(ctx context.Context, t *testing.T, profile qualificationProfile, manager *peer.Manager, clockNow func() time.Time) func() qualificationLoadProfile {
 	t.Helper()
 	path := os.Getenv("GOCLUSTER_PC92_RUNTIME_CPU_PROFILE")
 	if profile.name == "warm-diagnostic" {
 		if path == "" || !filepath.IsAbs(path) {
 			t.Fatal("warm diagnostic requires CPU profiling and an absolute output path")
 		}
-		return startQualificationWarmProfile(t, path, manager, clockNow)
+		return startQualificationWarmProfile(ctx, t, path, manager, clockNow)
 	}
 	if path == "" {
 		return func() qualificationLoadProfile { return qualificationLoadProfile{} }

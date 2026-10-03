@@ -32,11 +32,12 @@ func (d *q4Runtime) fillCaches(full bool) error {
 			count := min(32, target-before)
 			for range count {
 				size, hop := 0, 1
-				if class == 0 {
+				switch class {
+				case 0:
 					hop = 2
-				} else if class == 2 {
+				case 2:
 					size = 128
-				} else if class == 3 {
+				case 3:
 					size = 256
 				}
 				wire, err := d.generator.Wire(classes[class], d.sequence[class], size, hop)

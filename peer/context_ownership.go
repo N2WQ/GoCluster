@@ -51,11 +51,11 @@ func (m *Manager) initializeContextOwnersLocked() {
 	}
 	m.contextOwners = make([]contextOwner, m.cfg.MaxPeers+128)
 	for i := range m.contextOwners {
-		m.contextOwners[i].parent, m.contextOwners[i].cancel = context.WithCancel(m.ctx)
+		m.contextOwners[i].parent, m.contextOwners[i].cancel = context.WithCancel(m.ctx) // #nosec G118 -- Permanent owner cancellation is released by stopContextOwners after workers join.
 	}
 	if m.topology != nil {
 		for i := range m.projectionContexts {
-			m.projectionContexts[i].parent, m.projectionContexts[i].cancel = context.WithCancel(m.ctx)
+			m.projectionContexts[i].parent, m.projectionContexts[i].cancel = context.WithCancel(m.ctx) // #nosec G118 -- Permanent owner cancellation is released by stopContextOwners after workers join.
 		}
 	}
 }
@@ -75,7 +75,7 @@ func (m *Manager) beginContextOperation() *contextOperation {
 		owner := &m.contextOwners[i]
 		if !owner.active {
 			owner.active = true
-			ctx, cancel := context.WithCancel(owner.parent)
+			ctx, cancel := context.WithCancel(owner.parent) // #nosec G118 -- Cancellation transfers to contextOperation and is released by endContextOperation before slot reuse.
 			return &contextOperation{owner: owner, ctx: ctx, cancel: cancel}
 		}
 	}

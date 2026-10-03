@@ -75,7 +75,7 @@ func TestV15OutboundContextPreservesParentContract(t *testing.T) {
 		t.Fatal("operation did not own an explicit root")
 	}
 	cancel(cause)
-	if operation.ctx.Err() != context.Canceled || context.Cause(operation.ctx) != cause {
+	if operation.ctx.Err() != context.Canceled || context.Cause(operation.ctx) != cause { //nolint:errorlint // Assert the exact inherited cause; matching an error chain would weaken this ownership test.
 		t.Fatal("operation lost manager parent cancellation cause")
 	}
 	m.endContextOperation(operation)

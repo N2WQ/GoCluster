@@ -139,7 +139,7 @@ func helperLegacyOSPath(path string, cwdBytes uint64) (string, error) {
 	var prefix string
 	if length >= 248 {
 		if len(path) >= 2 && isPathSeparator(path[0]) && isPathSeparator(path[1]) {
-			if !(len(path) >= 4 && path[2] == '.' && isPathSeparator(path[3])) {
+			if len(path) < 4 || path[2] != '.' || !isPathSeparator(path[3]) {
 				prefix = `\\?\UNC\`
 			}
 		} else {

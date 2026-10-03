@@ -138,7 +138,7 @@ func TestV15TopologyDirectoryRefusalPreservesState(t *testing.T) {
 		t.Fatal(err)
 	}
 	observer := topologyTestDB(t, store)
-	if _, err = observer.Exec("create table kept(v);insert into kept values('committed')"); err != nil {
+	if _, err = observer.ExecContext(t.Context(), "create table kept(v);insert into kept values('committed')"); err != nil {
 		t.Fatal(err)
 	}
 	if err = store.Close(); err != nil {
@@ -186,10 +186,10 @@ func TestV15TopologyDirectoryRefusalPreservesState(t *testing.T) {
 		t.Fatal(err)
 	}
 	var value string
-	if err := observer.QueryRow("select v from kept").Scan(&value); err != nil || value != "committed" {
+	if err := observer.QueryRowContext(t.Context(), "select v from kept").Scan(&value); err != nil || value != "committed" {
 		t.Fatal("constructor refusal changed saved value", value, err)
 	}
-	if err := observer.QueryRow("pragma integrity_check").Scan(&value); err != nil || value != "ok" {
+	if err := observer.QueryRowContext(t.Context(), "pragma integrity_check").Scan(&value); err != nil || value != "ok" {
 		t.Fatal("constructor refusal changed database integrity", value, err)
 	}
 }

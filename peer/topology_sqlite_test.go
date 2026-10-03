@@ -39,14 +39,14 @@ func TestV15TopologySingleReservation(t *testing.T) {
 	}
 	defer a.Close()
 	observer := topologyTestDB(t, a)
-	if _, err = observer.Exec("insert into peer_nodes(origin,call) values('PC19','K1KEEP')"); err != nil {
+	if _, err = observer.ExecContext(t.Context(), "insert into peer_nodes(origin,call) values('PC19','K1KEEP')"); err != nil {
 		t.Fatal(err)
 	}
 	if b, err := openTopologyStore(second, time.Hour); b != nil || !errors.Is(err, errTopologyReservation) {
 		t.Fatalf("second engine admitted: %v %v", b, err)
 	}
 	var call string
-	if err = observer.QueryRow("select call from peer_nodes").Scan(&call); err != nil || call != "K1KEEP" {
+	if err = observer.QueryRowContext(t.Context(), "select call from peer_nodes").Scan(&call); err != nil || call != "K1KEEP" {
 		t.Fatal("refused construction changed committed data", err, call)
 	}
 	if err = a.Close(); err != nil {
@@ -86,7 +86,7 @@ func TestV15TopologyActualOOMRetiresBeforeReplacement(t *testing.T) {
 	}
 	defer store.Close()
 	observer := topologyTestDB(t, store)
-	if _, err = observer.Exec("create table preserved(v);insert into preserved values('old')"); err != nil {
+	if _, err = observer.ExecContext(t.Context(), "create table preserved(v);insert into preserved values('old')"); err != nil {
 		t.Fatal(err)
 	}
 	old := store.db.usage.Load()
@@ -100,7 +100,7 @@ func TestV15TopologyActualOOMRetiresBeforeReplacement(t *testing.T) {
 		t.Fatal("poisoned engine retained without retirement")
 	}
 	var value string
-	if err = observer.QueryRow("select v from preserved").Scan(&value); err != nil || value != "old" {
+	if err = observer.QueryRowContext(t.Context(), "select v from preserved").Scan(&value); err != nil || value != "old" {
 		t.Fatalf("failed transaction lost committed data: %q %v", value, err)
 	}
 	if err = store.applyLegacy(t.Context(), &Frame{Type: "PC19"}, time.Now()); err != nil {
@@ -118,7 +118,7 @@ func TestV15TopologyTransactionStatementLifetime(t *testing.T) {
 	}
 	defer store.Close()
 	observer := topologyTestDB(t, store)
-	if _, err = observer.Exec("create table rows(k integer primary key, v text); insert into rows values(0,'saved')"); err != nil {
+	if _, err = observer.ExecContext(t.Context(), "create table rows(k integer primary key, v text); insert into rows values(0,'saved')"); err != nil {
 		t.Fatal(err)
 	}
 	insert := "insert into rows values(?,?)"
@@ -134,7 +134,7 @@ func TestV15TopologyTransactionStatementLifetime(t *testing.T) {
 		t.Fatal(err)
 	}
 	var result string
-	if err = observer.QueryRow("select group_concat(k || ':' || v, '|') from (select * from rows order by k)").Scan(&result); err != nil || result != "0:saved|1:changed|2:|3:third" {
+	if err = observer.QueryRowContext(t.Context(), "select group_concat(k || ':' || v, '|') from (select * from rows order by k)").Scan(&result); err != nil || result != "0:saved|1:changed|2:|3:third" {
 		t.Fatalf("repeated/switching bindings: %q %v", result, err)
 	}
 	old := store.db.usage.Load()
@@ -159,7 +159,7 @@ func TestV15TopologyTransactionStatementLifetime(t *testing.T) {
 				t.Fatalf("expected %s failure: %v", failure, err)
 			}
 			var count int
-			if err = observer.QueryRow("select count(*) from rows").Scan(&count); err != nil || count != 4 {
+			if err = observer.QueryRowContext(t.Context(), "select count(*) from rows").Scan(&count); err != nil || count != 4 {
 				t.Fatalf("failed transaction changed saved contents: %d %v", count, err)
 			}
 			if failure == "oom" {

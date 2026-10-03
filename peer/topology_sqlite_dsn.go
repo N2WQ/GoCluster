@@ -108,10 +108,10 @@ func parseTopologyDSN(path string) (out topologyDSN, err error) {
 	}
 	sort.Slice(out.pragmas[:out.count], func(i, j int) bool {
 		x, y := out.pragmas[i].key, out.pragmas[j].key
-		if topologyLowerHasPrefix(x, "busy_timeout") {
+		if topologyHasBusyTimeoutPrefix(x) {
 			return true
 		}
-		if topologyLowerHasPrefix(y, "busy_timeout") {
+		if topologyHasBusyTimeoutPrefix(y) {
 			return false
 		}
 		return topologyLowerCompare(x, y) < 0
@@ -146,7 +146,8 @@ func topologyLowerCompare(x, y string) int {
 
 // The modernc ordering treats either busy_timeout prefix as first, including
 // returning true when both operands have it. Preserve that existing behavior.
-func topologyLowerHasPrefix(value, prefix string) bool {
+func topologyHasBusyTimeoutPrefix(value string) bool {
+	prefix := "busy_timeout"
 	for prefix != "" {
 		if value == "" {
 			return false

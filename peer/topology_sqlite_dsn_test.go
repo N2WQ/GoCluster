@@ -40,7 +40,7 @@ func TestV15TopologyDSNCompatibility(t *testing.T) {
 			defer store.Close()
 			for _, pragma := range []string{"cache_size", "busy_timeout", "foreign_keys", "trusted_schema"} {
 				var want, got int64
-				if err = control.QueryRow("pragma " + pragma).Scan(&want); err != nil {
+				if err = control.QueryRowContext(t.Context(), "pragma "+pragma).Scan(&want); err != nil {
 					t.Fatal(err)
 				}
 				err = store.db.run(t.Context(), func(c *sqlite3.Conn) error {
@@ -81,10 +81,10 @@ func TestV15TopologyConfiguredMmapReadWrite(t *testing.T) {
 	}
 	observer := topologyTestDB(t, store)
 	var value string
-	if err = observer.QueryRow("select value from kept where id=1").Scan(&value); err != nil || value != "committed" {
+	if err = observer.QueryRowContext(t.Context(), "select value from kept where id=1").Scan(&value); err != nil || value != "committed" {
 		t.Fatalf("independent commit observer: %q %v", value, err)
 	}
-	if _, err = observer.Exec("update kept set value='external' where id=1"); err != nil {
+	if _, err = observer.ExecContext(t.Context(), "update kept set value='external' where id=1"); err != nil {
 		t.Fatal(err)
 	}
 	err = store.db.run(t.Context(), func(c *sqlite3.Conn) error {
@@ -141,7 +141,7 @@ func TestV15TopologyDSNLowercaseCompatibility(t *testing.T) {
 				t.Fatalf("compare %q/%q got=%d want=%d", a, b, got, want)
 			}
 		}
-		if topologyLowerHasPrefix(strings.TrimSpace(a), "busy_timeout") != strings.HasPrefix(strings.TrimSpace(strings.ToLower(a)), "busy_timeout") {
+		if topologyHasBusyTimeoutPrefix(strings.TrimSpace(a)) != strings.HasPrefix(strings.TrimSpace(strings.ToLower(a)), "busy_timeout") {
 			t.Fatalf("busy_timeout prefix differs for %q", a)
 		}
 	}
@@ -187,7 +187,7 @@ func TestV15TopologyDSNLowercaseCompatibility(t *testing.T) {
 	malformed := strings.Repeat("\xff", topologyDSNBytes-64)
 	loweredMalformed := strings.ToLower(malformed)
 	if allocations := testing.AllocsPerRun(20, func() {
-		if topologyLowerCompare(malformed, loweredMalformed) != 0 || topologyLowerHasPrefix(malformed, "busy_timeout") {
+		if topologyLowerCompare(malformed, loweredMalformed) != 0 || topologyHasBusyTimeoutPrefix(malformed) {
 			panic("malformed comparison changed")
 		}
 	}); allocations != 0 {
@@ -206,7 +206,7 @@ func TestV15TopologyDirectoryBudget(t *testing.T) {
 		t.Fatal("normal directory creation failed", err)
 	}
 	observer := topologyTestDB(t, store)
-	if _, err = observer.Exec("create table kept(v);insert into kept values('unchanged')"); err != nil {
+	if _, err = observer.ExecContext(t.Context(), "create table kept(v);insert into kept values('unchanged')"); err != nil {
 		t.Fatal(err)
 	}
 	if err = store.Close(); err != nil {
@@ -226,10 +226,10 @@ func TestV15TopologyDirectoryBudget(t *testing.T) {
 		}
 	}
 	var value string
-	if err = observer.QueryRow("select v from kept").Scan(&value); err != nil || value != "unchanged" {
+	if err = observer.QueryRowContext(t.Context(), "select v from kept").Scan(&value); err != nil || value != "unchanged" {
 		t.Fatalf("saved value changed: %q %v", value, err)
 	}
-	if err = observer.QueryRow("pragma integrity_check").Scan(&value); err != nil || value != "ok" {
+	if err = observer.QueryRowContext(t.Context(), "pragma integrity_check").Scan(&value); err != nil || value != "ok" {
 		t.Fatalf("saved file failed integrity check: %q %v", value, err)
 	}
 }
@@ -253,7 +253,7 @@ func TestV15TopologyModeofBudgetAndParity(t *testing.T) {
 	}
 	defer store.Close()
 	observer := topologyTestDB(t, store)
-	if _, err = observer.Exec("create table kept(v);insert into kept values('committed')"); err != nil {
+	if _, err = observer.ExecContext(t.Context(), "create table kept(v);insert into kept values('committed')"); err != nil {
 		t.Fatal(err)
 	}
 	controlPath := "control.db"
@@ -262,7 +262,7 @@ func TestV15TopologyModeofBudgetAndParity(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer control.Close()
-	if _, err = control.Exec("create table kept(v);insert into kept values('committed')"); err != nil {
+	if _, err = control.ExecContext(t.Context(), "create table kept(v);insert into kept values('committed')"); err != nil {
 		t.Fatal("modernc normal modeof control failed", err)
 	}
 	actualInfo, err := os.Stat(path)
@@ -289,10 +289,10 @@ func TestV15TopologyModeofBudgetAndParity(t *testing.T) {
 			t.Fatal("modeof refusal lost partial-file cleanup")
 		}
 		var value string
-		if err = observer.QueryRow("select v from kept").Scan(&value); err != nil || value != "committed" {
+		if err = observer.QueryRowContext(t.Context(), "select v from kept").Scan(&value); err != nil || value != "committed" {
 			t.Fatalf("modeof refusal changed data: %q %v", value, err)
 		}
-		if err = observer.QueryRow("pragma integrity_check").Scan(&value); err != nil || value != "ok" {
+		if err = observer.QueryRowContext(t.Context(), "pragma integrity_check").Scan(&value); err != nil || value != "ok" {
 			t.Fatalf("modeof refusal changed integrity: %q %v", value, err)
 		}
 	}
@@ -304,7 +304,7 @@ func TestV15TopologyStartupResourceRefusalPreservesData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = control.Exec("create table preserved(v);insert into preserved values('K1KEEP');create table huge(v default('" + strings.Repeat("x", 3<<20) + "'))")
+	_, err = control.ExecContext(t.Context(), "create table preserved(v);insert into preserved values('K1KEEP');create table huge(v default('"+strings.Repeat("x", 3<<20)+"'))")
 	if err != nil {
 		control.Close()
 		t.Fatal(err)
@@ -331,7 +331,7 @@ func TestV15TopologyStartupResourceRefusalPreservesData(t *testing.T) {
 	if err = control.QueryRowContext(context.Background(), "select v from preserved").Scan(&value); err != nil || value != "K1KEEP" {
 		t.Fatalf("committed data lost: %q %v", value, err)
 	}
-	if err = control.QueryRow("pragma integrity_check").Scan(&value); err != nil || value != "ok" {
+	if err = control.QueryRowContext(t.Context(), "pragma integrity_check").Scan(&value); err != nil || value != "ok" {
 		t.Fatalf("refused database integrity: %q %v", value, err)
 	}
 	if topologyReservation.Load() != nil {
@@ -364,7 +364,7 @@ func TestV15TopologyTemporaryPathResourceRefusal(t *testing.T) {
 		t.Fatal("control temporary spill did not succeed", err)
 	}
 	var value string
-	if err = topologyTestDB(t, store).QueryRow("select v from kept").Scan(&value); err != nil || value != "preserved" {
+	if err = topologyTestDB(t, store).QueryRowContext(t.Context(), "select v from kept").Scan(&value); err != nil || value != "preserved" {
 		t.Fatalf("temporary refusal changed committed data: %q %v", value, err)
 	}
 }

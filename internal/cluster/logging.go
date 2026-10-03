@@ -84,7 +84,7 @@ func newDailyFileSink(dir string, retentionDays int) (*dailyFileSink, error) {
 	if retentionDays <= 0 {
 		retentionDays = 7
 	}
-	if err := os.MkdirAll(trimmed, 0755); err != nil {
+	if err := os.MkdirAll(trimmed, 0755); err != nil { // #nosec G703 -- Path derives from trusted operator configuration, not peer or client input.
 		return nil, fmt.Errorf("failed to create log directory %q: %w", trimmed, err)
 	}
 	sink := &dailyFileSink{
@@ -247,7 +247,7 @@ func (s *dailyFileSink) rotateLocked(dateKey string, day, now time.Time) (logRot
 func (s *dailyFileSink) archiveActiveLogLocked(date time.Time) (string, error) {
 	activePath := activeLogPathForDir(s.dir)
 	archivePath := archiveLogPathForDate(s.dir, date)
-	info, err := os.Stat(activePath)
+	info, err := os.Stat(activePath) // #nosec G703 -- Path derives from trusted operator configuration, not peer or client input.
 	if err != nil {
 		if os.IsNotExist(err) {
 			return archivePath, nil
@@ -258,16 +258,16 @@ func (s *dailyFileSink) archiveActiveLogLocked(date time.Time) (string, error) {
 		return "", fmt.Errorf("active log path is a directory: %s", activePath)
 	}
 	if info.Size() == 0 {
-		if err := os.Remove(activePath); err != nil && !os.IsNotExist(err) {
+		if err := os.Remove(activePath); err != nil && !os.IsNotExist(err) { // #nosec G703 -- Path derives from trusted operator configuration, not peer or client input.
 			return "", fmt.Errorf("remove empty active log %s: %w", activePath, err)
 		}
 		return archivePath, nil
 	}
-	if _, err := os.Stat(archivePath); err != nil {
+	if _, err := os.Stat(archivePath); err != nil { // #nosec G703 -- Path derives from trusted operator configuration, not peer or client input.
 		if !os.IsNotExist(err) {
 			return "", fmt.Errorf("stat archive log %s: %w", archivePath, err)
 		}
-		if err := os.Rename(activePath, archivePath); err != nil {
+		if err := os.Rename(activePath, archivePath); err != nil { // #nosec G703 -- Path derives from trusted operator configuration, not peer or client input.
 			return "", fmt.Errorf("archive active log %s to %s: %w", activePath, archivePath, err)
 		}
 		return archivePath, nil
@@ -281,30 +281,30 @@ func (s *dailyFileSink) archiveActiveLogLocked(date time.Time) (string, error) {
 func (s *dailyFileSink) adoptLegacyCurrentLogLocked(day time.Time) error {
 	legacyPath := archiveLogPathForDate(s.dir, day)
 	activePath := activeLogPathForDir(s.dir)
-	if _, err := os.Stat(legacyPath); err != nil {
+	if _, err := os.Stat(legacyPath); err != nil { // #nosec G703 -- Path derives from trusted operator configuration, not peer or client input.
 		if os.IsNotExist(err) {
 			return nil
 		}
 		return fmt.Errorf("stat current legacy log %s: %w", legacyPath, err)
 	}
-	if _, err := os.Stat(activePath); err == nil {
+	if _, err := os.Stat(activePath); err == nil { // #nosec G703 -- Path derives from trusted operator configuration, not peer or client input.
 		return nil
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("stat active log %s: %w", activePath, err)
 	}
-	if err := os.Rename(legacyPath, activePath); err != nil {
+	if err := os.Rename(legacyPath, activePath); err != nil { // #nosec G703 -- Path derives from trusted operator configuration, not peer or client input.
 		return fmt.Errorf("adopt current legacy log %s to %s: %w", legacyPath, activePath, err)
 	}
 	return nil
 }
 
 func appendFileAndRemove(srcPath, dstPath string) error {
-	src, err := os.Open(srcPath)
+	src, err := os.Open(srcPath) // #nosec G703 -- Path derives from trusted operator configuration, not peer or client input.
 	if err != nil {
 		return fmt.Errorf("open active log for archive merge %s: %w", srcPath, err)
 	}
 
-	dst, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	dst, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644) // #nosec G703 -- Path derives from trusted operator configuration, not peer or client input.
 	if err != nil {
 		_ = src.Close()
 		return fmt.Errorf("open archive log for merge %s: %w", dstPath, err)
@@ -321,7 +321,7 @@ func appendFileAndRemove(srcPath, dstPath string) error {
 	if closeSrcErr != nil {
 		return fmt.Errorf("close active log %s after merge: %w", srcPath, closeSrcErr)
 	}
-	if err := os.Remove(srcPath); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(srcPath); err != nil && !os.IsNotExist(err) { // #nosec G703 -- Path derives from trusted operator configuration, not peer or client input.
 		return fmt.Errorf("remove merged active log %s: %w", srcPath, err)
 	}
 	return nil
@@ -603,7 +603,7 @@ func cleanupOldLogs(dir string, now time.Time, retentionDays int) error {
 			continue
 		}
 		if date.Before(cutoff) {
-			_ = os.Remove(filepath.Join(dir, entry.Name()))
+			_ = os.Remove(filepath.Join(dir, entry.Name())) // #nosec G703 -- ReadDir supplies a single entry name beneath the operator-configured log directory.
 		}
 	}
 	return nil

@@ -89,12 +89,12 @@ func qualificationWarmInterval(atNS int64, second int) bool {
 // never forces collection. Stop joins it before handing the immutable report
 // to the RPC encoder. All normal runtime settings and hot-path observers stay
 // the same as Q1. Scheduling delay of a whole interval invalidates diagnosis.
-func startQualificationWarmProfile(t *testing.T, path string, manager *peer.Manager, clockNow func() time.Time) func() qualificationLoadProfile {
+func startQualificationWarmProfile(parent context.Context, t *testing.T, path string, manager *peer.Manager, clockNow func() time.Time) func() qualificationLoadProfile {
 	t.Helper()
 	base := strings.TrimSuffix(path, filepath.Ext(path))
 	warm := &qualificationWarmProfile{Windows: qualificationWarmWindows(base)}
 	warm.BackingBytes = uint64(unsafe.Sizeof(*warm))
-	ctx, cancel := context.WithCancel(t.Context())
+	ctx, cancel := context.WithCancel(parent)
 	done := make(chan struct{})
 	ready := make(chan struct{})
 	var report qualificationLoadProfile

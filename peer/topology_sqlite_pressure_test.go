@@ -220,10 +220,10 @@ func topologyPersistencePressure(t *testing.T, phaseDuration time.Duration, auth
 	drainElapsed := time.Since(drainStart)
 	observer := topologyTestDB(t, store)
 	var nodes, edges int
-	if err = observer.QueryRow("select (select count(*) from peer_pc92_nodes),(select count(*) from peer_pc92_typed_edges)").Scan(&nodes, &edges); err != nil || nodes != maxGraphNodes || edges != maxGraphEdges {
+	if err = observer.QueryRowContext(t.Context(), "select (select count(*) from peer_pc92_nodes),(select count(*) from peer_pc92_typed_edges)").Scan(&nodes, &edges); err != nil || nodes != maxGraphNodes || edges != maxGraphEdges {
 		t.Fatalf("final independent contents=%d/%d err=%v", nodes, edges, err)
 	}
-	rows, err := observer.Query("select call,version,build,ip,complete from peer_pc92_nodes order by call")
+	rows, err := observer.QueryContext(t.Context(), "select call,version,build,ip,complete from peer_pc92_nodes order by call")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,7 +247,7 @@ func topologyPersistencePressure(t *testing.T, phaseDuration time.Duration, auth
 	if err != nil || i != maxGraphNodes {
 		t.Fatalf("final nodes observed=%d err=%v", i, err)
 	}
-	rows, err = observer.Query("select parent,call,kind,bitmap,version,build,ip,updated_at from peer_pc92_typed_edges order by parent,call")
+	rows, err = observer.QueryContext(t.Context(), "select parent,call,kind,bitmap,version,build,ip,updated_at from peer_pc92_typed_edges order by parent,call")
 	if err != nil {
 		t.Fatal(err)
 	}

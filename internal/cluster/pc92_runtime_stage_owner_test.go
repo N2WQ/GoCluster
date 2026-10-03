@@ -175,30 +175,30 @@ func (s *qualificationStageTrace) retire() {
 	qualificationStageReserved.Store(false)
 }
 
-func (s *qualificationStageTrace) input(id int) (*qualificationInput, int, int64, bool) {
+func (s *qualificationStageTrace) input(id int) (int, int64, bool) {
 	if id < 0 || id >= len(s.oracle.inputs) {
 		s.fail(1)
-		return nil, 0, 0, false
+		return 0, 0, false
 	}
 	in := &s.oracle.inputs[id]
 	stamp := in.started.Load()
 	if stamp <= 0 || !in.spot {
 		s.fail(2)
-		return nil, 0, 0, false
+		return 0, 0, false
 	}
 	epoch := s.oracle.measurementEpoch.UnixNano()
 	if stamp-1 > math.MaxInt64-epoch {
 		s.fail(4)
-		return nil, 0, 0, false
+		return 0, 0, false
 	}
 	// Divide raw ticks before any duration conversion. The bounded clock
 	// frequency makes the minute divisor safe; no nanosecond product can wrap.
 	minute := int((stamp-1)/(s.oracle.clockFrequency*60)) + 1
 	if minute < 1 || minute >= stageCohorts {
 		s.fail(3)
-		return nil, 0, 0, false
+		return 0, 0, false
 	}
-	return in, minute, epoch + stamp - 1, true
+	return minute, epoch + stamp - 1, true
 }
 
 func (s *qualificationStageTrace) fail(code int) {
