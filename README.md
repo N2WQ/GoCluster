@@ -867,8 +867,8 @@ Each entry uses the same timestamped file logger as the system log and records o
 
 Keep `peerdiag.exe` (Windows) or `peerdiag` (Linux) beside the cluster executable.
 This companion owns detailed peer diagnostics and `logs/peering_overlong.log`.
-The peer status display reports log degradation, known dropped records and
-unconfirmed writes if the companion or disk is unavailable. A missing companion
+The console Ingest Sources panel shows source connectivity and peer callsigns;
+it does not display peer-log health or loss counters. A missing companion
 degrades those diagnostics while peering and local users continue. Detailed
 peer records use the dedicated peer log; the general system log remains in use
 for other components. Peer-frame parse rejections, including invalid DE/DX

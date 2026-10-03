@@ -33,7 +33,9 @@ dedupe, topology cache, or private peer configuration.
   proof and original final-source qualification remain open; see the
   [v15 record](../../docs/pc92-v15-validation.md).
 - Keep the sibling peerdiag companion with the cluster executable. Detailed
-  peer logs moved to that dedicated owner; status reports known dropped records
+  peer logs moved to that dedicated owner. The console Ingest Sources panel
+  shows connectivity and peer callsigns, without peer-log health or loss
+  counters. The manager's `DiagnosticStats()` API retains known dropped records
   separately from unconfirmed file writes. Logging failure does not itself
   close peering. Failed native/process cleanup retains its owner and prevents
   an overlapping replacement.

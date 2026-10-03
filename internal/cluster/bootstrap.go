@@ -861,7 +861,6 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 		p92Live := peerSessions > 0
 		humanSources := dashboardHumanIngestSources(humanTelnetFeeds)
 		ingestSources := dashboardIngestSources(ingestSourceCfg, rbnCWLive, rbnFTLive, pskLive, dxsummitLive, p92Live, peerSessions, peerSSIDs, humanSources...)
-		appendPeerDiagnosticStatus(ingestSources, peerManager)
 
 		lines := make([]string, 0, 11)
 		lines = append(lines,

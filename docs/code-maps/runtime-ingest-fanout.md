@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `d05c5ddaa7a38b0b`
+- Source fingerprint: `8d8d1d0110c88652`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,7 +12,7 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 1 | 2 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 26 | 58 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 25 | 57 |
 | `dxcluster/peer` | `peer` | 61 | 118 |
 | `dxcluster/spot` | `spot` | 32 | 31 |
 | `dxcluster/telnet` | `telnet` | 14 | 33 |
@@ -124,7 +124,6 @@ Source files:
 - `internal/cluster/output_pipeline_stages.go`
 - `internal/cluster/path_cells.go`
 - `internal/cluster/path_report_metrics.go`
-- `internal/cluster/peer_diagnostic_status.go`
 - `internal/cluster/prop_report_scheduler.go`
 - `internal/cluster/stabilizer.go`
 - `internal/cluster/telnet_family_suppressor.go`
@@ -182,7 +181,6 @@ Test files:
 - `internal/cluster/pc92_runtime_stage_service_test.go`
 - `internal/cluster/pc92_runtime_warm_oracle_test.go`
 - `internal/cluster/pc92_runtime_warm_test.go`
-- `internal/cluster/peer_diagnostic_status_test.go`
 - `internal/cluster/peer_runtime_test.go`
 - `internal/cluster/prop_report_scheduler_test.go`
 - `internal/cluster/stabilizer_test.go`
@@ -501,6 +499,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0237](docs/decisions/ADR-0237-remove-console-peer-log-status.md) | Accepted | 2026-10-03 | console, peer diagnostics | `area:peer, path:internal/cluster, path:peer` |
 | [ADR-0236](docs/decisions/ADR-0236-date-only-build-version.md) | Accepted | 2026-10-03 | build metadata, releases, console, PC18 | `path:commands, path:peer` |
 | [ADR-0235](docs/decisions/ADR-0235-spot-history-maintenance.md) | Accepted | 2026-10-02 | spot, hot path, retained state | `area:spot` |
 | [ADR-0234](docs/decisions/ADR-0234-peer-owned-resources-and-exact-spot-keys.md) | Accepted | 2026-10-02 | dedup, peer, diagnostics, persistence | `area:peer` |

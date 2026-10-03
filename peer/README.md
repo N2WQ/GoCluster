@@ -202,8 +202,10 @@ reference test or diagnostic smoke alone is not a sustained-load qualification.
 Detailed peer events and `logs/peering_overlong.log` are owned by the sibling
 `peerdiag.exe` (Windows) or `peerdiag` (Linux). The cluster does not search PATH.
 Keep the companion beside the cluster executable, built from the same source.
-Peer status reports `ready`, `disabled`, `degraded` or `cleanup-failed`, with
-known `dropped` and `unconfirmed` write counts. A write without a successful
+The console Ingest Sources panel retains connectivity and peer callsigns but
+does not display peer-log health or loss counters. The manager's
+`DiagnosticStats()` API retains logging state and known `dropped` and
+`unconfirmed` write counts. A write without a successful
 acknowledgement is unconfirmed, since the file may already contain part or all
 of it. Diagnostic overload can discard records; it cannot discard protocol
 traffic. A failed process termination retains its resource charge and blocks
