@@ -13,15 +13,19 @@ const maxPC18BannerBytes = 1024
 // escapes where DXSpider's unanchored software/capability regexes could mistake
 // metadata for a claim. No value is truncated or replaced by a fabricated one.
 // The caller must fail startup with peering enabled when this envelope fails.
-func BuildPC18Banner(version, commit, buildTime, vcsModified, goVersion string) (string, error) {
-	values := []string{version, commit, buildTime, vcsModified, goVersion}
+func BuildPC18Banner(version, releaseTag, commit, buildTime, goVersion string) (string, error) {
+	values := []string{version, releaseTag, commit, buildTime, goVersion}
 	for i, value := range values {
 		if len(value) > maxPC18BannerBytes {
 			return "", errors.New("PC18 build identity exceeds 1024 bytes")
 		}
 		values[i] = encodePC18Metadata(value)
 	}
-	banner := fmt.Sprintf("GoCluster Version: %s Commit: %s Built: %s Modified: %s Go: %s", values[0], values[1], values[2], values[3], values[4])
+	banner := "GoCluster Version: " + values[0]
+	if values[1] != "" {
+		banner += " Release tag: " + values[1]
+	}
+	banner += fmt.Sprintf(" Commit: %s Built: %s Go: %s", values[2], values[3], values[4])
 	if len(banner) > maxPC18BannerBytes {
 		return "", errors.New("PC18 build identity exceeds 1024 bytes after safe encoding")
 	}
@@ -34,7 +38,7 @@ func encodePC18Metadata(value string) string {
 		b := value[i]
 		escape := b <= 32 || b >= 127 || b == '^' || b == '~' || b == '\\'
 		// handle_18 searches for CCCluster anywhere, and pc9x or 91 after
-		// any word boundary, even inside a hash, dirty marker, or version.
+		// any word boundary, even inside a hash or version.
 		escape = escape || pc18PrefixFold(value[i:], "cccluster") || pc18PrefixFold(value[i:], "pc9x")
 		if b == '9' && i+1 < len(value) && value[i+1] == '1' && (i == 0 || !pc18WordByte(value[i-1])) {
 			escape = true

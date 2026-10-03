@@ -24,7 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| ADR-0236 | Date-Only Build Version | Accepted | 2026-10-03 | build metadata, releases, console, PC18 | ADR-0077; refines ADR-0076/0078 display | - | `docs/decisions/ADR-0236-date-only-build-version.md` |
+| ADR-0236 | Date-Only Build Version | Accepted | 2026-10-03 | build metadata, releases, console, PC18 | ADR-0077; refines ADR-0076 release identity and ADR-0076/0078 display | - | `docs/decisions/ADR-0236-date-only-build-version.md` |
 | ADR-0235 | Spot History Maintenance | Accepted | 2026-10-02 | spot, hot path, retained state | - | - | `docs/decisions/ADR-0235-spot-history-maintenance.md` |
 | ADR-0234 | Peer Owned Resources and Exact Spot Keys | Accepted | 2026-10-02 | dedup, peer, diagnostics, persistence | Refines ADR-0230 ownership clauses | - | `docs/decisions/ADR-0234-peer-owned-resources-and-exact-spot-keys.md` |
 | ADR-0233 | PC92 Controlled Retries and Configured Peer Cap | Accepted | 2026-10-02 | peer, config, qualification | ADR-0230/0231/0232 (admission recovery only) | - | `docs/decisions/ADR-0233-pc92-controlled-retries-and-peer-cap.md` |

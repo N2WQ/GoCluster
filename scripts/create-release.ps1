@@ -10,6 +10,10 @@
 .PARAMETER PackageOnly
 	Create the local package without publishing a GitHub release.
 
+.PARAMETER ReleaseNumber
+	Required positive release number. The UTC date and this number form the tag,
+	for example 261003-r2. Package-only builds stamp the intended tag as metadata.
+
 .PARAMETER AllowDirty
 	Allow local package creation from a dirty worktree. Publishing still requires
 	clean, intentional source.
@@ -39,6 +43,9 @@
 #>
 
 param(
+    [Parameter(Mandatory = $true)]
+    [ValidateRange(1, 2147483647)]
+    [int]$ReleaseNumber,
     [switch]$PackageOnly,
     [switch]$AllowDirty,
     [string]$OutputDir = ".",
@@ -375,6 +382,7 @@ function Assert-PublicReleaseConfig {
 function New-ReleaseNotes {
     param(
         [string]$Version,
+        [string]$ReleaseTag,
         [string]$Commit,
         [string]$BuildTime
     )
@@ -389,6 +397,8 @@ Download $PackageName.zip.
 Do not use GitHub's automatic "Source code (zip)" or "Source code (tar.gz)"
 downloads unless you want the developer source tree.
 
+- Product version: $Version
+- Release tag: $ReleaseTag
 - Commit: $Commit
 - Built: $BuildTime
 - Asset: $PackageName.zip
@@ -400,6 +410,7 @@ Extract the asset and open the $PackageDirectoryName directory.
 function Publish-GitHubRelease {
     param(
         [string]$Version,
+        [string]$ReleaseTag,
         [string]$Commit,
         [string]$ZipPath,
         [string]$Remote,
@@ -407,29 +418,36 @@ function Publish-GitHubRelease {
     )
 
     Invoke-CheckedCommand -CommandName "git" `
-        -Arguments @("tag", "-a", $Version, "-m", "Release $Version") `
-        -FailureMessage "Failed to create tag $Version."
+        -Arguments @("tag", "-a", $ReleaseTag, "-m", "Release $ReleaseTag") `
+        -FailureMessage "Failed to create tag $ReleaseTag."
     try {
         Invoke-CheckedCommand -CommandName "git" `
-            -Arguments @("push", $Remote, $Version) `
-            -FailureMessage "Failed to push tag $Version to $Remote."
+            -Arguments @("push", $Remote, $ReleaseTag) `
+            -FailureMessage "Failed to push tag $ReleaseTag to $Remote."
 
-        $notes = New-ReleaseNotes -Version $Version -Commit $Commit -BuildTime $BuildTime
-        Invoke-CheckedCommand -CommandName "gh" `
-            -Arguments @(
-                "release",
-                "create",
-                $Version,
-                $ZipPath,
-                "--title",
-                $Version,
-                "--notes",
-                $notes
-            ) `
-            -FailureMessage "Failed to create GitHub Release $Version."
+        $notes = New-ReleaseNotes -Version $Version -ReleaseTag $ReleaseTag -Commit $Commit -BuildTime $BuildTime
+        $notesPath = [IO.Path]::GetTempFileName()
+        try {
+            Set-Content -LiteralPath $notesPath -Value $notes -Encoding UTF8
+            Invoke-CheckedCommand -CommandName "gh" `
+                -Arguments @(
+                    "release",
+                    "create",
+                    $ReleaseTag,
+                    $ZipPath,
+                    "--title",
+                    $ReleaseTag,
+                    "--notes-file",
+                    $notesPath
+                ) `
+                -FailureMessage "Failed to create GitHub Release $ReleaseTag."
+        }
+        finally {
+            Remove-Item -LiteralPath $notesPath -Force -ErrorAction SilentlyContinue
+        }
     }
     catch {
-        Write-Warning "Release publishing failed after creating local tag $Version. Inspect local/remote tag state before retrying."
+        Write-Warning "Release publishing failed after creating local tag $ReleaseTag. Inspect local/remote tag state before retrying."
         throw
     }
 }
@@ -455,11 +473,12 @@ try {
     $commit = (& git rev-parse --short=12 HEAD).Trim()
     $buildUtc = (Get-Date).ToUniversalTime()
     $version = $buildUtc.ToString("yyMMdd")
+    $releaseTag = "$version-r$ReleaseNumber"
     $buildTime = $buildUtc.ToString("yyyy-MM-ddTHH:mm:ssZ")
 
     if (-not $PackageOnly) {
         Assert-GitHubCliReady
-        Assert-ReleaseTargetsAvailable -Remote $Remote -Version $version
+        Assert-ReleaseTargetsAvailable -Remote $Remote -Version $releaseTag
     }
 
     $outputRoot = Join-Path $repoRoot $OutputDir
@@ -504,7 +523,7 @@ try {
     Assert-ForbiddenPayloadAbsent -StageRoot $stageRoot
 
     $exePath = Join-Path $stageRoot "gocluster.exe"
-    $ldflags = "-X main.Version=$version -X main.Commit=$commit -X main.BuildTime=$buildTime"
+    $ldflags = "-X main.Version=$version -X main.ReleaseTag=$releaseTag -X main.Commit=$commit -X main.BuildTime=$buildTime"
 
     $env:GOOS = "windows"
     $env:GOARCH = "amd64"
@@ -533,13 +552,14 @@ try {
 
     Write-Host "Release package: $zipPath"
     Write-Host "Release version: $version"
+    Write-Host "Release tag: $releaseTag"
 
     if ($PackageOnly) {
         Write-Host "Package-only mode: no tag, push, or GitHub Release was created."
     }
     else {
-        Publish-GitHubRelease -Version $version -Commit $commit -ZipPath $zipPath -Remote $Remote -BuildTime $buildTime
-        Write-Host "Published GitHub Release: $version"
+        Publish-GitHubRelease -Version $version -ReleaseTag $releaseTag -Commit $commit -ZipPath $zipPath -Remote $Remote -BuildTime $buildTime
+        Write-Host "Published GitHub Release: $releaseTag"
     }
 }
 finally {

@@ -750,16 +750,17 @@ func TestShowDXDialectVariants(t *testing.T) {
 
 func TestShowBuild(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil, WithBuildInfo(BuildInfo{
-		Version:     "260424",
-		Commit:      "76fa6eac04fb",
-		BuildTime:   "2026-04-24T12:34:56Z",
-		VCSModified: "true",
-		GoVersion:   "go1.26.2",
+		Version:    "260424",
+		ReleaseTag: " 260424-r2 ",
+		Commit:     "76fa6eac04fb",
+		BuildTime:  "2026-04-24T12:34:56Z",
+		GoVersion:  "go1.26.2",
 	}))
 
 	resp := p.ProcessCommandForClient("SHOW BUILD", "N2WQ", "", nil, "go")
 	want := []string{
 		"Build version: 260424",
+		"Release tag: 260424-r2",
 		"Go: go1.26.2",
 	}
 	for _, line := range want {
@@ -822,7 +823,7 @@ func TestShowBuildDefaults(t *testing.T) {
 		}
 	}
 	if strings.Contains(resp, "Commit:") || strings.Contains(resp, "Built:") ||
-		strings.Contains(resp, "Dirty:") || strings.Contains(resp, "Go:") {
+		strings.Contains(resp, "Dirty:") || strings.Contains(resp, "Go:") || strings.Contains(resp, "Release tag:") {
 		t.Fatalf("expected empty optional build fields to be omitted, got %q", resp)
 	}
 }

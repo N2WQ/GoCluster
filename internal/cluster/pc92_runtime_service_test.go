@@ -57,7 +57,7 @@ func TestPC92RuntimeService(t *testing.T) {
 	t.Chdir(t.TempDir())
 	filter.UserDataDir = filepath.Join(filepath.Dir(output), "isolated-users")
 	configureRuntimeQualification(t, cfg, repo, profile)
-	r := newClusterRuntime(BuildInfo{Version: "runtime-qualification", Commit: "local", BuildTime: time.Now().UTC().Format(time.RFC3339), VCSModified: "true", GoVersion: runtime.Version()}, cfg, filepath.Join(repo, "data", "config"), config.LoadDiagnostics{})
+	r := newClusterRuntime(BuildInfo{Version: "runtime-qualification", Commit: "local", BuildTime: time.Now().UTC().Format(time.RFC3339), GoVersion: runtime.Version()}, cfg, filepath.Join(repo, "data", "config"), config.LoadDiagnostics{})
 	applyGoRuntimeTuning(cfg.GoRuntime)
 	defer r.close()
 	if !r.initialize() {

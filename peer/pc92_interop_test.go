@@ -353,7 +353,7 @@ func TestDXSpiderReferenceSenderRestartRetainedWatermark(t *testing.T) {
 
 func TestDXSpiderReferencePC18IdentityAndK(t *testing.T) {
 	reference, _ := startDXReference(t, true, "N0CALL")
-	banner, err := BuildPC18Banner("v6-test", "91abcdef", "2026-10-01", "false", "go1.26")
+	banner, err := BuildPC18Banner("v6-test", "", "91abcdef", "2026-10-01", "go1.26")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -467,7 +467,7 @@ func TestDXSpiderReferenceGoSessionStartup(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := manager.SetBuildIdentity("v6-test", "91abcdef", "2026-10-01", "false", "go1.26"); err != nil {
+			if err := manager.SetBuildIdentity("v6-test", "", "91abcdef", "2026-10-01", "go1.26"); err != nil {
 				t.Fatal(err)
 			}
 			ctx, cancel := context.WithCancel(context.Background())

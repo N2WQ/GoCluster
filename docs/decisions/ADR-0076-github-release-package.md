@@ -1,7 +1,9 @@
 # ADR-0076: GitHub Release Package
 
-The dirty-version suffix requirement below is superseded by
-[ADR-0236](ADR-0236-date-only-build-version.md); other package contracts remain.
+The dirty-version suffix, tag/version coupling, and release-script parameter
+requirements below are superseded by [ADR-0236](ADR-0236-date-only-build-version.md).
+Current invocations require an explicit positive `-ReleaseNumber`; other package
+contracts remain.
 
 - Status: Accepted
 - Date: 2026-04-24

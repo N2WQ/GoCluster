@@ -121,8 +121,8 @@ func (m *Manager) SetCurrentDirectMessage(fn func(string, uint64, uint64, string
 	m.currentDirect = fn
 	m.mu.Unlock()
 }
-func (m *Manager) SetBuildIdentity(version, commit, buildTime, vcsModified, goVersion string) error {
-	banner, err := BuildPC18Banner(version, commit, buildTime, vcsModified, goVersion)
+func (m *Manager) SetBuildIdentity(version, releaseTag, commit, buildTime, goVersion string) error {
+	banner, err := BuildPC18Banner(version, releaseTag, commit, buildTime, goVersion)
 	if err != nil {
 		return err
 	}

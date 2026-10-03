@@ -93,11 +93,11 @@ func maxInt(a, b int) int {
 }
 
 type BuildInfo struct {
-	Version     string
-	Commit      string
-	BuildTime   string
-	VCSModified string
-	GoVersion   string
+	Version    string
+	ReleaseTag string
+	Commit     string
+	BuildTime  string
+	GoVersion  string
 }
 
 var currentBuildInfo = BuildInfo{

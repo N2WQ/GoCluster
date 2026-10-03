@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 func TestShortRevision(t *testing.T) {
 	if got := shortRevision("1234567890abcdef"); got != "1234567890ab" {
@@ -34,19 +37,54 @@ func TestCompileDateVersion(t *testing.T) {
 }
 
 func TestResolveBinaryVersionDateOnlyPreservesMetadata(t *testing.T) {
-	oldVersion, oldCommit, oldBuildTime := Version, Commit, BuildTime
-	t.Cleanup(func() { Version, Commit, BuildTime = oldVersion, oldCommit, oldBuildTime })
+	oldVersion, oldReleaseTag, oldCommit, oldBuildTime := Version, ReleaseTag, Commit, BuildTime
+	t.Cleanup(func() { Version, ReleaseTag, Commit, BuildTime = oldVersion, oldReleaseTag, oldCommit, oldBuildTime })
+	ReleaseTag = " 261003-r2 "
 	Commit, BuildTime = "abcdef123456", "2026-10-03T12:34:56Z"
 	for _, version := range []string{"dev", "261003"} {
 		Version = version
 		info := resolveBinaryVersion()
-		if info.version != "261003" || info.commit != Commit || info.buildTime != BuildTime {
+		if info.version != "261003" || info.releaseTag != "261003-r2" || info.commit != Commit || info.buildTime != BuildTime {
 			t.Fatalf("resolved identity: %+v", info)
 		}
 		build := info.clusterBuildInfo()
-		if build.Version != info.version || build.Commit != info.commit || build.BuildTime != info.buildTime || build.VCSModified != info.vcsModified || build.GoVersion != info.goVersion {
+		if build.Version != info.version || build.ReleaseTag != info.releaseTag || build.Commit != info.commit || build.BuildTime != info.buildTime || build.GoVersion != info.goVersion {
 			t.Fatalf("runtime lost build metadata: %+v", build)
 		}
+	}
+}
+
+func TestPrintVersionReleaseMetadata(t *testing.T) {
+	for _, releaseTag := range []string{"", "261003-r2"} {
+		t.Run(releaseTag, func(t *testing.T) {
+			output, err := os.CreateTemp(t.TempDir(), "version-output")
+			if err != nil {
+				t.Fatal(err)
+			}
+			previousStdout := os.Stdout
+			t.Cleanup(func() {
+				os.Stdout = previousStdout
+				_ = output.Close()
+			})
+			os.Stdout = output
+			printVersion(binaryVersion{version: "261003", releaseTag: releaseTag, commit: "abcdef123456", buildTime: "2026-10-03T12:34:56Z", goVersion: "go1.26.4"})
+			os.Stdout = previousStdout
+			if err := output.Close(); err != nil {
+				t.Fatal(err)
+			}
+			got, err := os.ReadFile(output.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := "Product version: 261003\n"
+			if releaseTag != "" {
+				want += "Release tag:     261003-r2\n"
+			}
+			want += "Commit:          abcdef123456\nBuilt:           2026-10-03T12:34:56Z\nGo:              go1.26.4\n"
+			if string(got) != want {
+				t.Fatalf("version output = %q, want %q", got, want)
+			}
+		})
 	}
 }
 

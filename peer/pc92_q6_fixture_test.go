@@ -273,7 +273,7 @@ func newQ6Rig(t *testing.T, zeroTimers bool, maxBytes, tokenCount int) *q6Rig {
 		t.Fatal(err)
 	}
 	r.m = manager
-	if err := manager.SetBuildIdentity("v7-q6", "91abcdef", "2026-10-01", "false", "go1.26"); err != nil {
+	if err := manager.SetBuildIdentity("v7-q6", "", "91abcdef", "2026-10-01", "go1.26"); err != nil {
 		t.Fatal(err)
 	}
 	manager.SetMembershipProvider(func() LocalMembership {

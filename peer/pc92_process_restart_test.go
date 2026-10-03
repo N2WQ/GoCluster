@@ -47,7 +47,7 @@ func TestPC92RestartProcessHelper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := m.SetBuildIdentity("restart-test", "test", "2026-10-01", "false", "go1.26"); err != nil {
+	if err := m.SetBuildIdentity("restart-test", "", "test", "2026-10-01", "go1.26"); err != nil {
 		t.Fatal(err)
 	}
 	user := LocalUser{SessionID: 1, Login: os.Getenv("GOCLUSTER_PC92_RESTART_USER"), IP: "192.0.2.7"}

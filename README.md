@@ -793,15 +793,23 @@ accepted as a one-entry compatibility form.
 The console, startup log, `--version`, telnet `SHOW BUILD`, and PC18 build
 identity use the UTC date as exactly `YYMMDD` (for example, `261003`). Scripted
 builds stamp the compile date; plain builds fall back to the embedded Git commit
-date. Commit, build timestamp, dirty state, and Go version remain separate
-metadata, available through `--version` and PC18 when embedded. `SHOW BUILD`
-shows only the version and Go toolchain. Peer compatibility values remain
+date. Commit, build timestamp, and Go version remain separate
+metadata, available through `--version` and PC18 when embedded. Release-script
+builds also stamp a release tag, shown by `--version`, `SHOW BUILD`, and PC18.
+`SHOW BUILD` shows the product version, release tag, and Go toolchain when
+available. Peer compatibility values remain
 `5457`/`633`, with legacy PC19 version `5401`.
 
-Same-day builds share a version. Release tags and names also use that version,
-so existing duplicate checks reject a second published release for the same UTC
-day. Use the separate metadata to distinguish binaries; dirty package-only
-builds no longer carry a `+dirty` version suffix.
+Same-day builds share a product version. Supply a positive `-ReleaseNumber` for
+every release-script build, including package-only builds: number `2` on UTC
+date `261003` stamps tag `261003-r2`. Git tags, GitHub Release names, duplicate
+checks, and release notes use this separate release identity. Different numbers
+allow multiple releases per day; existing tags are never overwritten. Rebuilding
+after UTC midnight changes the date. Package-only builds stamp an intended tag
+without publishing it; plain and PGO builds omit the release-tag field.
+Use the separate metadata to distinguish binaries; dirty package-only
+builds no longer carry a `+dirty` version suffix. GoCluster neither displays nor
+broadcasts a dirty/modified flag.
 
 GoCluster builds from the repo root with Go `1.26+`.
 
@@ -816,13 +824,13 @@ go build -trimpath -o peerdiag.exe ./cmd/peerdiag
 Windows release-style package for local testing:
 
 ```pwsh
-.\scripts\create-release.ps1 -PackageOnly -AllowDirty
+.\scripts\create-release.ps1 -ReleaseNumber 2 -PackageOnly -AllowDirty
 ```
 
 Clean publishable Windows release package:
 
 ```pwsh
-.\scripts\create-release.ps1
+.\scripts\create-release.ps1 -ReleaseNumber 2
 ```
 
 Linux amd64 binary from source:

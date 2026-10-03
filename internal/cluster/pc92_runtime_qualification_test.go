@@ -78,7 +78,7 @@ func TestPC92RuntimeQualificationSmoke(t *testing.T) {
 		t.Fatal("shipped qualification runtime settings changed; reconcile the contract")
 	}
 	applyGoRuntimeTuning(cfg.GoRuntime)
-	r := newClusterRuntime(BuildInfo{Version: "runtime-qualification", Commit: "local", BuildTime: time.Now().UTC().Format(time.RFC3339), VCSModified: "true", GoVersion: runtime.Version()}, cfg, configDir, config.LoadDiagnostics{})
+	r := newClusterRuntime(BuildInfo{Version: "runtime-qualification", Commit: "local", BuildTime: time.Now().UTC().Format(time.RFC3339), GoVersion: runtime.Version()}, cfg, configDir, config.LoadDiagnostics{})
 	defer r.close()
 	if !r.initialize() {
 		t.Fatalf("runtime startup: %v", r.startupErr)

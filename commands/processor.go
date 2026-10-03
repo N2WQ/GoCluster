@@ -63,11 +63,11 @@ type WhoSpotsMeHelpConfig struct {
 
 // BuildInfo carries the startup-resolved binary identity into SHOW BUILD.
 type BuildInfo struct {
-	Version     string
-	Commit      string
-	BuildTime   string
-	VCSModified string
-	GoVersion   string
+	Version    string
+	ReleaseTag string
+	Commit     string
+	BuildTime  string
+	GoVersion  string
 }
 
 // ProcessorOption customizes Processor construction without widening the core
@@ -402,7 +402,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 		[]string{"SHOW BUILD"},
 		nil,
 		[]string{
-			"Shows version, commit, build time, dirty flag, and Go version.",
+			"Shows the build version, release tag, and Go version when available.",
 		},
 	)
 	add("SHOW BUILD", "SHOW BUILD - Show binary build metadata.", showBuildLines)
@@ -1638,9 +1638,9 @@ func (p *Processor) handleShow(args []string, filterFn func(*spot.Spot) bool, di
 
 func normalizeBuildInfo(info BuildInfo) BuildInfo {
 	info.Version = strings.TrimSpace(info.Version)
+	info.ReleaseTag = strings.TrimSpace(info.ReleaseTag)
 	info.Commit = strings.TrimSpace(info.Commit)
 	info.BuildTime = strings.TrimSpace(info.BuildTime)
-	info.VCSModified = strings.TrimSpace(info.VCSModified)
 	info.GoVersion = strings.TrimSpace(info.GoVersion)
 	if info.Version == "" {
 		info.Version = "dev"
@@ -1658,6 +1658,9 @@ func (p *Processor) handleShowBuild() string {
 	info := normalizeBuildInfo(p.buildInfo)
 	lines := []string{
 		"Build version: " + info.Version,
+	}
+	if info.ReleaseTag != "" {
+		lines = append(lines, "Release tag: "+info.ReleaseTag)
 	}
 	if info.GoVersion != "" {
 		lines = append(lines, "Go: "+info.GoVersion)

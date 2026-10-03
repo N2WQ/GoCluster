@@ -16,15 +16,16 @@ import (
 
 // Version will be set at build time.
 var Version = "dev"
+var ReleaseTag = ""
 var Commit = "unknown"
 var BuildTime = "unknown"
 
 type binaryVersion struct {
-	version     string
-	commit      string
-	buildTime   string
-	vcsModified string
-	goVersion   string
+	version    string
+	releaseTag string
+	commit     string
+	buildTime  string
+	goVersion  string
 }
 
 // Purpose: Resolve executable identity from linker flags or Go build metadata.
@@ -33,9 +34,10 @@ type binaryVersion struct {
 // Downstream: runtime/debug.ReadBuildInfo and startup logging.
 func resolveBinaryVersion() binaryVersion {
 	info := binaryVersion{
-		version:   strings.TrimSpace(Version),
-		commit:    strings.TrimSpace(Commit),
-		buildTime: strings.TrimSpace(BuildTime),
+		version:    strings.TrimSpace(Version),
+		releaseTag: strings.TrimSpace(ReleaseTag),
+		commit:     strings.TrimSpace(Commit),
+		buildTime:  strings.TrimSpace(BuildTime),
 	}
 	if info.version == "" {
 		info.version = "dev"
@@ -58,15 +60,12 @@ func resolveBinaryVersion() binaryVersion {
 
 	vcsRevision := ""
 	vcsTime := ""
-	vcsModified := ""
 	for _, setting := range buildInfo.Settings {
 		switch setting.Key {
 		case "vcs.revision":
 			vcsRevision = strings.TrimSpace(setting.Value)
 		case "vcs.time":
 			vcsTime = strings.TrimSpace(setting.Value)
-		case "vcs.modified":
-			vcsModified = strings.TrimSpace(setting.Value)
 		}
 	}
 	if info.commit == "unknown" && vcsRevision != "" {
@@ -86,9 +85,6 @@ func resolveBinaryVersion() binaryVersion {
 				info.version = mainVer
 			}
 		}
-	}
-	if vcsModified != "" {
-		info.vcsModified = vcsModified
 	}
 	return info
 }
@@ -130,24 +126,24 @@ func shouldPrintVersion(args []string) bool {
 }
 
 func printVersion(info binaryVersion) {
-	fmt.Printf("gocluster %s\n", info.version)
-	fmt.Printf("commit: %s\n", info.commit)
-	fmt.Printf("built:  %s\n", info.buildTime)
-	if info.vcsModified != "" {
-		fmt.Printf("dirty:  %s\n", info.vcsModified)
+	fmt.Printf("Product version: %s\n", info.version)
+	if info.releaseTag != "" {
+		fmt.Printf("Release tag:     %s\n", info.releaseTag)
 	}
+	fmt.Printf("Commit:          %s\n", info.commit)
+	fmt.Printf("Built:           %s\n", info.buildTime)
 	if info.goVersion != "" {
-		fmt.Printf("go:     %s\n", info.goVersion)
+		fmt.Printf("Go:              %s\n", info.goVersion)
 	}
 }
 
 func (info binaryVersion) clusterBuildInfo() cluster.BuildInfo {
 	return cluster.BuildInfo{
-		Version:     info.version,
-		Commit:      info.commit,
-		BuildTime:   info.buildTime,
-		VCSModified: info.vcsModified,
-		GoVersion:   info.goVersion,
+		Version:    info.version,
+		ReleaseTag: info.releaseTag,
+		Commit:     info.commit,
+		BuildTime:  info.buildTime,
+		GoVersion:  info.goVersion,
 	}
 }
 

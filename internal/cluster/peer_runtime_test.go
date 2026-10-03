@@ -21,7 +21,8 @@ func peerRuntimeTestConfig() *config.Config {
 func peerRuntimeTestBuild() BuildInfo {
 	return BuildInfo{
 		Version: "v26.01.10", Commit: "91abcdef0123456789", BuildTime: "2026-10-01T12:00:00Z",
-		VCSModified: "true", GoVersion: "go1.26.0",
+		GoVersion:  "go1.26.0",
+		ReleaseTag: "261001-r2",
 	}
 }
 
@@ -31,6 +32,7 @@ func TestPeerInvalidBuildIdentityFailsBeforeNetworkStartup(t *testing.T) {
 		mutate func(*BuildInfo)
 	}{
 		{"oversized", func(build *BuildInfo) { build.Version = strings.Repeat("x", 4096) }},
+		{"oversized release tag", func(build *BuildInfo) { build.ReleaseTag = strings.Repeat("x", 4096) }},
 		{"escaped expansion", func(build *BuildInfo) { build.Commit = strings.Repeat("^", 300) }},
 		{"combined fields", func(build *BuildInfo) {
 			build.Version = strings.Repeat("v", 400)

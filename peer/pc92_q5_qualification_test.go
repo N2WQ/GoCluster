@@ -48,7 +48,7 @@ func newQ5Rig(t *testing.T) *q5Rig {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := r.m.SetBuildIdentity("v7-q5", "local", "2026-10-01", "true", "go1.26"); err != nil {
+	if err := r.m.SetBuildIdentity("v7-q5", "", "local", "2026-10-01", "go1.26"); err != nil {
 		t.Fatal(err)
 	}
 	r.m.SetAnnouncementBroadcast(func(line string) {

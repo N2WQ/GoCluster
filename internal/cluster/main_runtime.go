@@ -946,11 +946,11 @@ func (r *clusterRuntime) initializeServices() bool {
 			WindowMinutes: r.cfg.WhoSpotsMe.WindowMinutes,
 		}),
 		commands.WithBuildInfo(commands.BuildInfo{
-			Version:     r.versionInfo.Version,
-			Commit:      r.versionInfo.Commit,
-			BuildTime:   r.versionInfo.BuildTime,
-			VCSModified: r.versionInfo.VCSModified,
-			GoVersion:   r.versionInfo.GoVersion,
+			Version:    r.versionInfo.Version,
+			ReleaseTag: r.versionInfo.ReleaseTag,
+			Commit:     r.versionInfo.Commit,
+			BuildTime:  r.versionInfo.BuildTime,
+			GoVersion:  r.versionInfo.GoVersion,
 		}),
 		commands.WithWhoSpotsMe(r.whoSpotsMeStore),
 		commands.WithBadCallReporter(r.reportBadCallDrop),
@@ -1014,7 +1014,7 @@ func (r *clusterRuntime) initializePeerManager() bool {
 	// Retain ownership immediately: failed identity validation must still close
 	// any optional topology projection opened by manager construction.
 	r.peerManager = pm
-	if err := pm.SetBuildIdentity(r.versionInfo.Version, r.versionInfo.Commit, r.versionInfo.BuildTime, r.versionInfo.VCSModified, r.versionInfo.GoVersion); err != nil {
+	if err := pm.SetBuildIdentity(r.versionInfo.Version, r.versionInfo.ReleaseTag, r.versionInfo.Commit, r.versionInfo.BuildTime, r.versionInfo.GoVersion); err != nil {
 		return r.failStartup("Invalid peering build identity: %v", err)
 	}
 	diagnostics.Start()

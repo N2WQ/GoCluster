@@ -28,11 +28,11 @@ Build / run / debug
   stamped as UTC `YYMMDD`, with source identity in separate metadata:
   - Windows/PowerShell example:
     ```powershell
-    .\scripts\create-release.ps1 -PackageOnly -AllowDirty
+    .\scripts\create-release.ps1 -ReleaseNumber 2 -PackageOnly -AllowDirty
     ```
   - Real publishing uses a clean committed tree and GitHub CLI authentication:
     ```powershell
-    .\scripts\create-release.ps1
+    .\scripts\create-release.ps1 -ReleaseNumber 2
     ```
 - Run directly for development:
   - `go run .` (the default `config.yaml` is loaded from the current working directory)

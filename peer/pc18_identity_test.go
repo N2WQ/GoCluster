@@ -9,7 +9,7 @@ import (
 
 func TestPC18HonestBuildIdentityAndReferenceRegexes(t *testing.T) {
 	for _, version := range []string{"261003", "dev", "v1.2.3", "2026.10.01-g91abc-dirty", "release DXSpider Version: 1.55", "CCCluster pc9x 91"} {
-		banner, err := BuildPC18Banner(version, "91abc", "2026-10-01T00:00:00Z", "true", "go1.25.0")
+		banner, err := BuildPC18Banner(version, "", "91abc", "2026-10-01T00:00:00Z", "go1.25.0")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -38,22 +38,28 @@ func TestPC18HonestBuildIdentityAndReferenceRegexes(t *testing.T) {
 }
 
 func TestPC18DateOnlyVersionPreservesMetadataAndCompatibility(t *testing.T) {
-	banner, err := BuildPC18Banner("261003", "abcdef123456", "2026-10-03T12:34:56Z", "true", "go1.26.4")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, pc9x := range []bool{false, true} {
-		wire, err := FormatPC18(banner, "5457", pc9x)
+	for _, releaseTag := range []string{"", "261003-r2"} {
+		banner, err := BuildPC18Banner("261003", releaseTag, "abcdef123456", "2026-10-03T12:34:56Z", "go1.26.4")
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := "PC18^GoCluster Version: 261003 Commit: abcdef123456 Built: 2026-10-03T12:34:56Z Modified: true Go: go1.26.4"
-		if pc9x {
-			want += " pc9x"
-		}
-		want += "^5457^"
-		if wire != want {
-			t.Fatalf("PC18 identity = %q, want %q", wire, want)
+		for _, pc9x := range []bool{false, true} {
+			wire, err := FormatPC18(banner, "5457", pc9x)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := "PC18^GoCluster Version: 261003"
+			if releaseTag != "" {
+				want += " Release tag: 261003-r2"
+			}
+			want += " Commit: abcdef123456 Built: 2026-10-03T12:34:56Z Go: go1.26.4"
+			if pc9x {
+				want += " pc9x"
+			}
+			want += "^5457^"
+			if wire != want {
+				t.Fatalf("PC18 identity = %q, want %q", wire, want)
+			}
 		}
 	}
 }
@@ -65,7 +71,7 @@ func TestPC18MetadataEscapesAreReversibleAndBounded(t *testing.T) {
 		if err != nil || decoded != value {
 			t.Fatalf("%q => %q => %q: %v", value, encoded, decoded, err)
 		}
-		banner, err := BuildPC18Banner(value, value, "", "", "")
+		banner, err := BuildPC18Banner(value, value, value, "", "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -80,6 +86,9 @@ func TestPC18MetadataEscapesAreReversibleAndBounded(t *testing.T) {
 	if _, err := BuildPC18Banner(strings.Repeat("x", 1024), "", "", "", ""); err == nil {
 		t.Fatal("oversized banner accepted")
 	}
+	if _, err := BuildPC18Banner("261003", strings.Repeat("x", 1024), "", "", ""); err == nil {
+		t.Fatal("oversized release tag accepted")
+	}
 	if _, err := FormatPC18("GoCluster Version: v1^PC20", "5457", true); err == nil {
 		t.Fatal("unsafe prebuilt banner accepted")
 	}
@@ -92,7 +101,7 @@ func FuzzPC18MetadataIdentity(f *testing.F) {
 	f.Add("v1.2.3", "91abcdef")
 	f.Add("éİſ^~\r\n", "CCCluster pc9x 91")
 	f.Fuzz(func(t *testing.T, version, commit string) {
-		banner, err := BuildPC18Banner(version, commit, "", "", "")
+		banner, err := BuildPC18Banner(version, version, commit, "", "")
 		if err != nil {
 			return
 		}

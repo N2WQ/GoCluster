@@ -322,7 +322,7 @@ func runRetryWaveService(t *testing.T, blocked int, qualified, periodic bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := m.SetBuildIdentity("v14-retry-wave", "local", "2026-10-02", "true", "go1.26"); err != nil {
+	if err := m.SetBuildIdentity("v14-retry-wave", "", "local", "2026-10-02", "go1.26"); err != nil {
 		t.Fatal(err)
 	}
 	mixed := newRetryMixedQualification(m, calls)

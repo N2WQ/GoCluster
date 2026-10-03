@@ -144,7 +144,7 @@ func TestPC92Q4RuntimeQualification(t *testing.T) {
 	cfg.Logging.PeerConnections.Enabled = true
 	cfg.Logging.PeerConnections.Dir = "q4-peer-connections"
 	applyGoRuntimeTuning(cfg.GoRuntime)
-	r := newClusterRuntime(BuildInfo{Version: "q4-capacity", Commit: "local", BuildTime: time.Now().UTC().Format(time.RFC3339), VCSModified: "true", GoVersion: runtime.Version()}, cfg, filepath.Join(repo, "data", "config"), config.LoadDiagnostics{})
+	r := newClusterRuntime(BuildInfo{Version: "q4-capacity", Commit: "local", BuildTime: time.Now().UTC().Format(time.RFC3339), GoVersion: runtime.Version()}, cfg, filepath.Join(repo, "data", "config"), config.LoadDiagnostics{})
 	defer r.close()
 	if !r.initialize() {
 		t.Fatalf("runtime startup: %v", r.startupErr)
