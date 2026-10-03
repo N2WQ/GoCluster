@@ -208,7 +208,6 @@ type q6Rig struct {
 	legacy    *q6Peer
 	seed      q6Wire
 	ingested  atomic.Int64
-	dropped   atomic.Int64
 	counts    []atomic.Uint32
 	badToken  atomic.Bool
 }
@@ -269,7 +268,7 @@ func newQ6Rig(t *testing.T, zeroTimers bool, maxBytes, tokenCount int) *q6Rig {
 			Family: config.PeeringPeerFamilyDXSpider, Direction: config.PeeringPeerDirectionInbound})
 	}
 	ingest := make(chan *spot.Spot, 4096)
-	manager, err := NewManager(completeProtocolTestConfig(cfg, "N0CALL"), "N0CALL", ingest, 600, func(string) { r.dropped.Add(1) })
+	manager, err := NewManager(completeProtocolTestConfig(cfg, "N0CALL"), "N0CALL", ingest, 600, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,22 +1,17 @@
 package peer
 
-import "testing"
+import (
+	"dxcluster/internal/peerdiag"
+	"testing"
+)
 
 func TestManagerReportsConnectionEvent(t *testing.T) {
-	m := &Manager{}
-	var got ConnectionEvent
-	m.SetConnectionReporter(func(ev ConnectionEvent) {
-		got = ev
-	})
-	m.reportConnection(ConnectionEvent{
-		Direction: "outbound",
-		Action:    "dial_failed",
-		Peer:      "N0PEER-1",
-		Endpoint:  "peer.example:7300",
-		Reason:    "connection_refused",
-	})
-	if got.Action != "dial_failed" || got.Peer != "N0PEER-1" || got.Endpoint != "peer.example:7300" {
-		t.Fatalf("unexpected event: %+v", got)
+	m := &Manager{diagnostics: peerdiag.New(peerdiag.Options{Enabled: true})}
+	t.Cleanup(m.diagnostics.Stop)
+	m.reportConnection(ConnectionEvent{Direction: "outbound", Action: "dial_failed", Peer: "N0PEER-1", Endpoint: "peer.example:7300", Reason: "connection_refused"})
+	event, ok := m.diagnostics.Next()
+	if !ok || event.Kind != peerdiag.Connection || string(event.Data[:event.Length]) != "event=peer_connection direction=outbound action=dial_failed peer=N0PEER-1 endpoint=peer.example:7300 reason=connection_refused" {
+		t.Fatalf("event=%+v", event)
 	}
 }
 

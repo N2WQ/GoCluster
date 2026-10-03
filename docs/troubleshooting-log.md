@@ -11,6 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0036 | Spot Collisions and Peer Ownership | Monitoring | 2026-10-02 | dedup, peer, diagnostics, persistence | ADR-0234, ADR-0235 | `docs/troubleshooting/TSR-0036-spot-collisions-and-peer-ownership.md` |
 | TSR-0035 | PC92 Qualification Accounting | Monitoring | 2026-10-01 | peer, telnet, allocation, qualification | ADR-0230, ADR-0231, ADR-0232 | `docs/troubleshooting/TSR-0035-pc92-qualification-accounting.md` |
 | TSR-0034 | Host-Dependent Code Map Freshness | Monitoring | 2026-07-12 | workflow, codemap, CI, portability | ADR-0229 | `docs/troubleshooting/TSR-0034-host-dependent-code-map-freshness.md` |
 | TSR-0033 | Fable Workflow Checker CRLF Self-Inconsistency | Resolved | 2026-07-11 | workflow, checker, Fable, CRLF | none | `docs/troubleshooting/TSR-0033-fable-workflow-checker-crlf-self-inconsistency.md` |

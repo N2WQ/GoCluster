@@ -54,6 +54,7 @@ import (
 	"dxcluster/cty"
 	"dxcluster/filter"
 	"dxcluster/internal/netutil"
+	"dxcluster/internal/qualificationstage"
 	"dxcluster/internal/ratelimit"
 	"dxcluster/pathreliability"
 	"dxcluster/reputation"
@@ -2469,6 +2470,7 @@ func (s *Server) BroadcastSpotOwned(snapshot *spot.Spot, allowFast, allowMed, al
 		allowSlow: allowSlow,
 		enqueueAt: time.Now().UTC(),
 	}
+	qualificationstage.Observe(qualificationstage.BroadcastReady, snapshot.Comment, -1)
 	select {
 	case s.broadcast <- payload:
 	default:
@@ -2662,6 +2664,7 @@ func (s *Server) broadcastSpot(payload *broadcastPayload) {
 	if payload == nil || payload.spot == nil {
 		return
 	}
+	qualificationstage.Observe(qualificationstage.BroadcastReceived, payload.spot.Comment, -1)
 	shards := s.cachedClientShards()
 	s.dispatchSpotToWorkers(payload, shards)
 }
@@ -2775,6 +2778,7 @@ func (s *Server) dispatchSpotToWorkers(payload *broadcastPayload, shards [][]*Cl
 			clients:   clients,
 			enqueueAt: payload.enqueueAt,
 		}
+		qualificationstage.Observe(qualificationstage.WorkerDispatched, payload.spot.Comment, i)
 		select {
 		case s.workerQueues[i] <- job:
 		default:
@@ -2831,6 +2835,7 @@ func (s *Server) broadcastWorker(id int, jobs <-chan broadcastJob) {
 				if !job.valid() {
 					continue
 				}
+				qualificationstage.Observe(qualificationstage.WorkerStarted, job.spot.Comment, id)
 				s.deliverJob(job)
 			}
 		}
@@ -2847,6 +2852,7 @@ func (s *Server) broadcastWorker(id int, jobs <-chan broadcastJob) {
 			if !job.valid() {
 				continue
 			}
+			qualificationstage.Observe(qualificationstage.WorkerStarted, job.spot.Comment, id)
 			s.deliverJob(job)
 		}
 		batch = batch[:0]
@@ -5747,8 +5753,8 @@ func (c *Client) writerLoop() {
 		}
 		if len(msg.raw) > 0 {
 			batch = append(batch, msg.raw...)
-		} else if normalized := normalizeOutboundLine(msg.line); normalized != "" {
-			batch = append(batch, normalized...)
+		} else {
+			batch = appendWriterNormalized(batch, msg.line)
 		}
 		if msg.closeAfter {
 			*closeAfter = true
@@ -5766,13 +5772,14 @@ func (c *Client) writerLoop() {
 		if c.suppressSpotForReadPause(env, now) {
 			return
 		}
-		formatted := env.spot.FormatDXCluster() + "\n"
+		// Prime the base cache even when diagnostics use an alternate comment.
+		formatted := env.spot.FormatDXCluster()
 		if c.server != nil {
 			formatted = c.server.formatSpotEnvelopeForClient(c, env)
+		} else {
+			formatted += "\n"
 		}
-		if normalized := normalizeOutboundLine(formatted); normalized != "" {
-			batch = append(batch, normalized...)
-		}
+		batch = appendWriterNormalized(batch, formatted)
 		if !env.enqueueAt.IsZero() {
 			spotEnqueueTimes = append(spotEnqueueTimes, env.enqueueAt)
 		}

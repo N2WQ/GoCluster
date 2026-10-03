@@ -56,6 +56,10 @@ function Invoke-WrapperFixture([string]$Family, [string]$Case, [string]$Reason =
         $built = ($processes | Where-Object { $_.StartsWith('build:') }).Substring(6)
         $executed = ($processes | Where-Object { $_.StartsWith('execute:') }).Substring(8)
         if ($built -cne $executed -or (Get-FileHash -LiteralPath $built).Hash -cne $verdict.executable_sha256) { throw "$label did not execute the retained binary" }
+        $helperBuilds = @($processes | Where-Object { $_.StartsWith('helper-build:') })
+        if ($helperBuilds.Count -ne 1) { throw "$label did not build exactly one companion" }
+        $helper = $helperBuilds[0].Substring(13)
+        if ($helper -cne $verdict.helper_executable -or (Get-FileHash -LiteralPath $helper).Hash -cne $verdict.helper_executable_sha256 -or (Split-Path -Parent $helper) -cne (Split-Path -Parent $built)) { throw "$label lost companion source/sibling provenance" }
         if ($Family -eq 'retry') {
             $cty = [IO.Path]::GetFullPath((Join-Path $fixture 'data/cty/cty.plist'))
             foreach ($manifest in @('source-before.json', 'source-after-build.json', 'source-after-run.json')) {
@@ -71,6 +75,53 @@ function Invoke-WrapperFixture([string]$Family, [string]$Case, [string]$Reason =
     }
     $script:passed++
     Write-Host "PASS $label"
+}
+
+function Invoke-EnvironmentFixture([string]$State, [string]$Case) {
+    Restore-FixtureInputs
+    $env:PC92_FIXTURE_FAMILY = 'runtime'
+    $env:PC92_FIXTURE_SCENARIO = $Case
+    $env:PC92_FIXTURE_LOG = Join-Path $base "environment-$State-$Case-processes.txt"
+    # Execute the real wrapper in this process: a child-process fixture cannot
+    # observe damage to its caller's environment on success or failure.
+    . (Join-Path $fixture 'scripts/pc92-qualification-run.ps1')
+    $controls = @('GOCLUSTER_PC92_RUN_ID', 'GOCLUSTER_PC92_RUNTIME_PROFILE', 'GOCLUSTER_PC92_RUNTIME_OUTPUT', 'GOCLUSTER_PC92_RUNTIME_CPU_PROFILE',
+        'GOCLUSTER_PC92_Q4_PROFILE', 'GOCLUSTER_PC92_Q4_OUTPUT', 'GOCLUSTER_PC92_Q5_PROFILE', 'GOCLUSTER_PC92_Q6_PROFILE', 'GOCLUSTER_PC92_Q6_USERS',
+        'GOCLUSTER_PC92_QUALIFICATION', 'GOCLUSTER_PC92_V14_RETRY_PROFILE', 'DXSPIDER_ROOT', 'DXSPIDER_PERL', 'DXSPIDER_PERL_LIB',
+        'LC_ALL', 'GOMAXPROCS', 'GOGC', 'GOMEMLIMIT', 'GOCLUSTER_PC92_RUNTIME_STAGES')
+    $prior = @{}
+    foreach ($name in $controls) { $prior[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
+    try {
+        foreach ($name in $controls) {
+            switch ($State) {
+                absent { [Environment]::SetEnvironmentVariable($name, [NullString]::Value, 'Process') }
+                empty { [Environment]::SetEnvironmentVariable($name, '', 'Process') }
+                value { [Environment]::SetEnvironmentVariable($name, 'fixture-original', 'Process') }
+            }
+        }
+        $before = @{}
+        foreach ($entry in Get-ChildItem Env:) { $before[$entry.Name] = $entry.Value }
+        $location = (Get-Location).Path
+        $failure = ''
+        try { Invoke-PC92QualificationRun runtime preflight (Join-Path $base "environment-$State-$Case") | Out-Null }
+        catch { $failure = $_.Exception.Message }
+        if (($Case -eq 'positive' -and $failure) -or ($Case -eq 'test_failed' -and -not $failure.Contains('test_failed:'))) {
+            throw "environment-$State-${Case}: unexpected wrapper result '$failure'"
+        }
+        $after = @{}
+        foreach ($entry in Get-ChildItem Env:) { $after[$entry.Name] = $entry.Value }
+        if ($before.Count -ne $after.Count -or (Get-Location).Path -cne $location) { throw "environment-$State-${Case}: caller state changed" }
+        foreach ($name in $before.Keys) {
+            if (-not $after.ContainsKey($name) -or $before[$name] -cne $after[$name]) { throw "environment-$State-${Case}: variable changed: $name" }
+        }
+        $script:passed++
+        Write-Host "PASS environment-$State-$Case"
+    } finally {
+        foreach ($name in $controls) {
+            if ($null -eq $prior[$name]) { [Environment]::SetEnvironmentVariable($name, [NullString]::Value, 'Process') }
+            else { [Environment]::SetEnvironmentVariable($name, $prior[$name], 'Process') }
+        }
+    }
 }
 
 try {
@@ -95,12 +146,18 @@ try {
     $env:PC92_FIXTURE_REPO = $fixture
     $env:PC92_FIXTURE_DLL = Join-Path $reference 'dll'
     $env:PATH = $bin + [IO.Path]::PathSeparator + $savedPath
+    foreach ($state in @('absent', 'empty', 'value')) {
+        foreach ($case in @('positive', 'test_failed')) { Invoke-EnvironmentFixture $state $case }
+    }
     foreach ($family in @('runtime', 'q4', 'q5', 'q6', 'cache', 'retry')) {
         Invoke-WrapperFixture $family 'positive'
         foreach ($case in @('source_changed', 'source_added', 'source_deleted')) { Invoke-WrapperFixture $family $case 'source_changed_during_run' }
         Invoke-WrapperFixture $family 'build_source_changed' 'source_changed_during_build'
         Invoke-WrapperFixture $family 'test_failed' 'test_failed'
         Invoke-WrapperFixture $family 'binary_changed' 'binary_changed_during_run'
+        Invoke-WrapperFixture $family 'helper_changed' 'helper_changed_during_run'
+        Invoke-WrapperFixture $family 'helper_missing' 'helper_missing_during_run'
+        Invoke-WrapperFixture $family 'helper_build_failed' 'helper_build_failed'
         Invoke-WrapperFixture $family 'missing_case' 'missing_case'
         Invoke-WrapperFixture $family 'short_duration' 'short_duration'
         if ($family -eq 'retry') {
@@ -162,5 +219,8 @@ try {
     Write-Host "PASS $passed behavioral qualification fixtures; mock-only artifacts: $base"
 } finally {
     $env:PATH = $savedPath
-    foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') }
+    foreach ($name in $names) {
+        if ($null -eq $saved[$name]) { [Environment]::SetEnvironmentVariable($name, [NullString]::Value, 'Process') }
+        else { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') }
+    }
 }

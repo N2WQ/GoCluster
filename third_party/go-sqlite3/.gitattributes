@@ -1,0 +1,7 @@
+# Pinned upstream bytes must survive Windows checkout without CRLF conversion.
+engine/sqlite3.go -text
+engine/libc.go -text
+engine/sqlite3.dat -text
+engine/LICENSE -text
+engine/README.md -text
+provenance/*.txt -text

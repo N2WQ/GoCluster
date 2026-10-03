@@ -33,13 +33,20 @@ func main() {
 		fmt.Println("go version fixture")
 	case "env":
 		fmt.Println("windows\namd64\nv1\n0\n\nlocal")
-	case "test":
+	case "test", "build":
 		for i, arg := range os.Args {
 			if arg == "-o" && i+1 < len(os.Args) {
+				if os.Args[1] == "build" && scenario() == "helper_build_failed" {
+					os.Exit(3)
+				}
 				// Each isolated wrapper keeps a distinct executable path. Hardlinks
 				// avoid copying the immutable mock image for every negative case.
 				must(os.Link(os.Args[0], os.Args[i+1]))
-				log("build:" + os.Args[i+1])
+				prefix := "build:"
+				if os.Args[1] == "build" {
+					prefix = "helper-build:"
+				}
+				log(prefix + os.Args[i+1])
 				if scenario() == "build_source_changed" {
 					mutate("subject.go")
 				}
@@ -182,6 +189,12 @@ func runTest() {
 		// retained mock images and the original fake Go executable are untouched.
 		must(os.Rename(os.Args[0], os.Args[0]+".retired"))
 		must(os.WriteFile(os.Args[0], []byte("wrong executed-artifact association"), 0600))
+	case "helper_changed", "helper_missing":
+		helper := filepath.Join(filepath.Dir(os.Args[0]), "peerdiag.exe")
+		must(os.Rename(helper, helper+".retired"))
+		if scenario() == "helper_changed" {
+			must(os.WriteFile(helper, []byte("wrong companion association"), 0600))
+		}
 	}
 }
 

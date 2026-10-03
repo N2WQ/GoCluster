@@ -1,6 +1,7 @@
 package dedup
 
 import (
+	"encoding/binary"
 	"testing"
 	"time"
 )
@@ -12,9 +13,12 @@ func TestDeduplicatorCleanupCompactsShard(t *testing.T) {
 
 	shard.mu.Lock()
 	for i := 0; i < dedupCompactMinPeak; i++ {
-		shard.cache[uint32(i)] = cachedEntry{when: now.Add(-2 * time.Second)}
+		var key [42]byte
+		binary.LittleEndian.PutUint32(key[:], uint32(i))
+		shard.cache[key] = cachedEntry{when: now.Add(-2 * time.Second)}
 	}
-	keepKey := uint32(dedupCompactMinPeak + 1)
+	var keepKey [42]byte
+	binary.LittleEndian.PutUint32(keepKey[:], dedupCompactMinPeak+1)
 	shard.cache[keepKey] = cachedEntry{when: now}
 	shard.peak = len(shard.cache)
 	shard.mu.Unlock()
@@ -41,9 +45,12 @@ func TestSecondaryCleanupCompactsShard(t *testing.T) {
 
 	shard.mu.Lock()
 	for i := 0; i < secondaryCompactMinPeak; i++ {
-		shard.cache[uint32(i)] = secondaryEntry{when: now.Add(-2 * time.Second)}
+		var key [32]byte
+		binary.LittleEndian.PutUint32(key[:], uint32(i))
+		shard.cache[key] = secondaryEntry{when: now.Add(-2 * time.Second)}
 	}
-	keepKey := uint32(secondaryCompactMinPeak + 1)
+	var keepKey [32]byte
+	binary.LittleEndian.PutUint32(keepKey[:], secondaryCompactMinPeak+1)
 	shard.cache[keepKey] = secondaryEntry{when: now}
 	shard.peak = len(shard.cache)
 	shard.mu.Unlock()

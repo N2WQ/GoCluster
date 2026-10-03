@@ -495,6 +495,15 @@ try {
     Copy-ReleaseDocument -RepoRoot $repoRoot -StageRoot $stageRoot `
         -SourceRelativePath "docs/OPERATOR_GUIDE.md" `
         -DestinationRelativePath "docs/OPERATOR_GUIDE.md"
+    Copy-ReleaseDocument -RepoRoot $repoRoot -StageRoot $stageRoot `
+        -SourceRelativePath "third_party/go-sqlite3/LICENSE" `
+        -DestinationRelativePath "licenses/go-sqlite3-LICENSE.txt"
+    Copy-ReleaseDocument -RepoRoot $repoRoot -StageRoot $stageRoot `
+        -SourceRelativePath "third_party/go-sqlite3/engine/LICENSE" `
+        -DestinationRelativePath "licenses/go-sqlite3-engine-LICENSE.txt"
+    Copy-ReleaseDocument -RepoRoot $repoRoot -StageRoot $stageRoot `
+        -SourceRelativePath "third_party/go-sqlite3/provenance/GO-LICENSE.txt" `
+        -DestinationRelativePath "licenses/go-LICENSE.txt"
     Assert-PublicReleaseConfig -StageRoot $stageRoot
     Assert-ForbiddenPayloadAbsent -StageRoot $stageRoot
 
@@ -507,6 +516,16 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "go build failed."
     }
+    # The companion owns peer diagnostic file I/O. It must come from the same
+    # package source and sit beside the cluster; runtime never searches PATH.
+    $peerDiagnosticExe = Join-Path $stageRoot "peerdiag.exe"
+    & go build -trimpath -o $peerDiagnosticExe ./cmd/peerdiag
+    if ($LASTEXITCODE -ne 0) {
+        throw "peer diagnostic companion build failed."
+    }
+    @($exePath, $peerDiagnosticExe) | ForEach-Object {
+        [ordered]@{ file = [IO.Path]::GetFileName($_); sha256 = (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash }
+    } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stageRoot 'binaries.json')
 
     Push-Location $repoRoot
     try {

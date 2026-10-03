@@ -397,23 +397,34 @@ func (s *WhoSpotsMeStore) evictOneEntryLocked(shard *whoSpotsMeShard) {
 	if first {
 		return
 	}
+	countries := shard.entries[oldestKey].totals
 	delete(shard.entries, oldestKey)
-	s.scrubKeyFromBucketsLocked(oldestKey)
+	s.scrubKeyFromBucketsLocked(oldestKey, countries)
 }
 
 // scrubKeyFromBucketsLocked removes secondary bucket references after a primary
 // entry eviction. Without this coupling, later bucket expiry could retain stale
 // keys or subtract from a newly admitted entry with the same key.
-func (s *WhoSpotsMeStore) scrubKeyFromBucketsLocked(key whoSpotsMeKey) {
+// The selected entry's totals contain every country still represented in its
+// buckets. The store and shard locks keep that set fixed through eviction, so
+// direct deletes need no secondary index. Sparse buckets retain the old scan
+// when it examines fewer records than traversing the victim's country set.
+func (s *WhoSpotsMeStore) scrubKeyFromBucketsLocked(key whoSpotsMeKey, countries map[whoSpotsMeCountryKey]int) {
 	for i := range s.buckets {
 		bucket := &s.buckets[i]
 		if len(bucket.counts) == 0 {
 			continue
 		}
-		for recordKey := range bucket.counts {
-			if recordKey.key == key {
-				delete(bucket.counts, recordKey)
+		if len(bucket.counts) <= len(countries) {
+			for recordKey := range bucket.counts {
+				if recordKey.key == key {
+					delete(bucket.counts, recordKey)
+				}
 			}
+			continue
+		}
+		for country := range countries {
+			delete(bucket.counts, whoSpotsMeRecordKey{key: key, country: country})
 		}
 	}
 }

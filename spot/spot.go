@@ -274,8 +274,8 @@ func roundFrequencyTo10Hz(freqKHz float64) float64 {
 
 // Hash32 computes a 32-bit dedupe hash for the spot.
 // Key aspects: Uses fixed-size buffer with time/freq/calls to avoid allocations.
-// Upstream: deduplication (primary).
-// Downstream: writeFixedNormalizedCall and xxh3.Hash.
+// Upstream: callers requiring the historical compact spot hash.
+// Downstream: DedupeKey and xxh3.Hash.
 // Hash32 returns a 32-bit hash for deduplication using a fixed-layout,
 // zero-allocation buffer. The hash covers:
 //   - Time truncated to the minute (Unix seconds)
@@ -284,6 +284,16 @@ func roundFrequencyTo10Hz(freqKHz float64) float64 {
 //
 // Little-endian encoding keeps the byte order deterministic across platforms.
 func (s *Spot) Hash32() uint32 {
+	key := s.DedupeKey()
+	return uint32(xxh3.Hash(key[:]))
+}
+
+// DedupeKey returns the complete historical primary-dedupe encoding. Equality
+// must compare these bytes: Hash32 collisions do not identify duplicate spots.
+// The fixed minute, whole-kHz and 15-byte call fields intentionally preserve
+// the existing equivalences. The returned array owns its bytes and retains no
+// Spot or string backing storage.
+func (s *Spot) DedupeKey() [42]byte {
 	s.EnsureNormalized()
 	var buf [42]byte
 	// Time (bytes 0-7): Unix seconds, truncated to the minute.
@@ -295,13 +305,12 @@ func (s *Spot) Hash32() uint32 {
 	// DE and DX calls (bytes 12-26, 27-41).
 	writeFixedNormalizedCall(buf[12:27], s.DECallNorm)
 	writeFixedNormalizedCall(buf[27:42], s.DXCallNorm)
-	// Use xxh3 for speed; fold to 32 bits for existing dedup map.
-	return uint32(xxh3.Hash(buf[:]))
+	return buf
 }
 
 // Purpose: Write a normalized callsign into a fixed-width buffer.
 // Key aspects: Pads/truncates to 15 bytes with zero fill.
-// Upstream: Spot.Hash32.
+// Upstream: Spot.DedupeKey.
 // Downstream: None (byte copy only).
 // writeFixedNormalizedCall assumes call is already normalized/uppercased and fits into ASCII bytes.
 func writeFixedNormalizedCall(dst []byte, call string) {

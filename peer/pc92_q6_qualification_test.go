@@ -391,8 +391,11 @@ func TestPC92QualificationQ6ReceiveOnly(t *testing.T) {
 			t.Fatalf("immutable input token %d received %d times, want11", index, count)
 		}
 	}
-	if r.badToken.Load() || r.dropped.Load() != 0 || r.primary.spots.Load()+r.alternate.spots.Load()+r.legacy.spots.Load() != 0 {
-		t.Fatalf("receive-only dropped, changed token, or forwarded a spot: bad_token=%v drops=%d forwarded=%d", r.badToken.Load(), r.dropped.Load(), r.primary.spots.Load()+r.alternate.spots.Load()+r.legacy.spots.Load())
+	// The exact per-token count above proves ingestion without relying on
+	// diagnostic callbacks. Diagnostic loss/coalescing is a separate contract
+	// and cannot substitute for this immutable input/delivery reconciliation.
+	if r.badToken.Load() || r.primary.spots.Load()+r.alternate.spots.Load()+r.legacy.spots.Load() != 0 {
+		t.Fatalf("receive-only changed token or forwarded a spot: bad_token=%v forwarded=%d", r.badToken.Load(), r.primary.spots.Load()+r.alternate.spots.Load()+r.legacy.spots.Load())
 	}
 	s := r.snapshot()
 	if s.SpotKeys != 0 || s.SpotKeyBytes != 0 || s.SpotRefused != 0 {

@@ -22,7 +22,6 @@ type eventFileLogger struct {
 	reputationDrops   *eventLogSink
 	telnetConnections *eventLogSink
 	ingestConnections *eventLogSink
-	peerConnections   *eventLogSink
 }
 
 // eventLogSink couples a daily file sink with a bounded per-line deduper. The
@@ -63,7 +62,6 @@ func newEventFileLogger(cfg config.LoggingConfig) (*eventFileLogger, error) {
 	logger.reputationDrops = setup(cfg.ReputationDrops, "reputation_drops")
 	logger.telnetConnections = setup(cfg.TelnetConnections, "telnet_connections")
 	logger.ingestConnections = setup(cfg.IngestConnections, "ingest_connections")
-	logger.peerConnections = setup(cfg.PeerConnections, "peer_connections")
 	if len(setupErrs) > 0 {
 		return logger, fmt.Errorf("event logging setup: %s", strings.Join(setupErrs, "; "))
 	}
@@ -77,7 +75,7 @@ func (l *eventFileLogger) Close() error {
 		return nil
 	}
 	var firstErr error
-	for _, sink := range []*eventLogSink{l.loginAttempts, l.reputationDrops, l.telnetConnections, l.ingestConnections, l.peerConnections} {
+	for _, sink := range []*eventLogSink{l.loginAttempts, l.reputationDrops, l.telnetConnections, l.ingestConnections} {
 		if sink == nil || sink.sink == nil {
 			continue
 		}
@@ -102,10 +100,6 @@ func (l *eventFileLogger) LogTelnetConnection(fields ...eventLogField) {
 
 func (l *eventFileLogger) LogIngestConnection(fields ...eventLogField) {
 	l.write(l.ingestConnections, fields...)
-}
-
-func (l *eventFileLogger) LogPeerConnection(fields ...eventLogField) {
-	l.write(l.peerConnections, fields...)
 }
 
 // write turns structured support fields into one sanitized line. A disabled

@@ -38,6 +38,8 @@ func runtimeQualificationProfile(name string) (qualificationProfile, error) {
 		p.shipped = true
 	case "preflight":
 		p.load, p.drain, p.diagnostic = 20*time.Second, 5*time.Second, true
+	case "warm-diagnostic":
+		p.load, p.diagnostic = 15*time.Minute, true
 	case "diagnostic-full":
 		p.peers, p.full, p.load, p.drain, p.diagnostic = 64, true, 10*time.Second, 5*time.Second, true
 	default:
@@ -146,6 +148,12 @@ func TestPC92RuntimeQualification(t *testing.T) {
 	if err := oracle.acceptEnqueueResults(childResults); err != nil {
 		t.Fatal(err)
 	}
+	if os.Getenv("GOCLUSTER_PC92_RUNTIME_STAGES") == "1" && !validQualificationStageReport(childResults.Stages, oracle, driver.newSpots, now().UnixNano()) {
+		oracle.fail("optional stage evidence is missing or invalid")
+	}
+	if os.Getenv("GOCLUSTER_PC92_RUNTIME_STAGES") != "1" && childResults.Stages != nil {
+		oracle.fail("unexpected optional stage evidence")
+	}
 	driver.close()
 	service.close()
 	if service.closeErr != nil {
@@ -167,8 +175,8 @@ func TestPC92RuntimeQualification(t *testing.T) {
 		MaximumProducerLagMS: float64(driver.maxLag) / float64(time.Millisecond),
 		FinalState:           finalState, Topology: fixture.Report(), StateSamples: driver.samples,
 		OracleInitialHeapBytes: driverInitialHeap, OracleBackingArrayBytes: oracle.allocatedBytes,
-		LoadProfile: profileReply.Profile,
-		HeapAlloc:   childResults.HeapAlloc, HeapInuse: childResults.HeapInuse, ProcessSys: childResults.ProcessSys,
+		LoadProfile: profileReply.Profile, Stages: childResults.Stages,
+		HeapAlloc: childResults.HeapAlloc, HeapInuse: childResults.HeapInuse, ProcessSys: childResults.ProcessSys,
 		DriverHeapAlloc: after.HeapAlloc, DriverHeapInuse: after.HeapInuse, DriverProcessSys: after.Sys,
 		ChildOracleBackingArrayBytes: childResults.OracleBytes, SharedInputBytes: uint64(mapping.bytes), DriverGOMAXPROCS: runtime.GOMAXPROCS(0), CounterFrequency: frequency,
 		GoVersion: runtime.Version(), CPUs: runtime.NumCPU(), GOMAXPROCS: childResults.GOMAXPROCS,
@@ -335,6 +343,7 @@ func qualificationWaitContext(ctx context.Context, wait time.Duration) error {
 }
 
 type qualificationRuntimeReport struct {
+	Stages                                                               *qualificationStageReport `json:",omitempty"`
 	Profile, RunID                                                       string
 	Diagnostic, MeasurementPassed                                        bool
 	LoadSeconds, DrainSeconds                                            float64

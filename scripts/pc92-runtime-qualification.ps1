@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('preflight', 'diagnostic-full', 'q1', 'q2', 'q3', 'shipped-q1')][string]$Profile = 'preflight',
+    [ValidateSet('preflight', 'diagnostic-full', 'warm-diagnostic', 'q1', 'q2', 'q3', 'shipped-q1')][string]$Profile = 'preflight',
     [switch]$CPUProfile,
     [string]$OutputDirectory = ''
 )

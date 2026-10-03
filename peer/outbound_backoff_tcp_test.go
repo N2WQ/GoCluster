@@ -65,7 +65,7 @@ func TestOutboundTCPBackoffAfterEstablishedDisconnect(t *testing.T) {
 			}
 			events := make(chan timedConnectionEvent, 64)
 			var dropped atomic.Bool
-			m.SetConnectionReporter(func(event ConnectionEvent) {
+			observeConnectionEvents(t, m, func(event ConnectionEvent) {
 				select {
 				case events <- timedConnectionEvent{event: event, at: time.Now()}:
 				default:

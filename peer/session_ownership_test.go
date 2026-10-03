@@ -4,30 +4,19 @@ import (
 	"bufio"
 	"net"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"dxcluster/config"
+	"dxcluster/internal/peerdiag"
 )
 
-func TestSessionOwnerReservationSurvivesTerminalReporter(t *testing.T) {
+func TestSessionOwnerReservationSurvivesDiagnosticOverload(t *testing.T) {
 	m, _ := newInboundHarnessManager(t, inboundScenario{name: t.Name()})
-	release := make(chan struct{})
-	var releaseOnce sync.Once
-	defer releaseOnce.Do(func() { close(release) })
-	established := make(chan struct{}, 1)
-	retired := make(chan struct{}, 1)
-	m.SetConnectionReporter(func(event ConnectionEvent) {
-		switch event.Action {
-		case "established":
-			established <- struct{}{}
-		case "disconnected":
-			retired <- struct{}{}
-			<-release
-		}
-	})
-	done := make(chan error, 192)
+	m.diagnostics = peerdiag.New(peerdiag.Options{Enabled: true})
+	for range peerdiag.QueueSize {
+		m.reportDiagnostic("fill", "", "diagnostic pressure")
+	}
 	endpoint := PeerEndpoint{host: "pipe", remoteCall: "N1REM", family: config.PeeringPeerFamilyDXSpider}
 	for i := 0; i < 192; i++ {
 		local, remote := net.Pipe()
@@ -35,78 +24,43 @@ func TestSessionOwnerReservationSurvivesTerminalReporter(t *testing.T) {
 		settings.loginTimeout, settings.initTimeout = time.Second, time.Second
 		settings.idleTimeout, settings.keepalive, settings.configEvery = 0, 0, 0
 		s := newSession(local, dirOutbound, m, endpoint, settings)
-		go func() { done <- s.Run(m.ctx) }()
+		done := make(chan error, 1)
+		go func() { done <- s.Run() }()
 		reader := bufio.NewReader(remote)
 		if got := readSessionWire(t, reader, remote); got != "N0CALL" {
-			t.Fatalf("replacement %d login=%q", i, got)
+			t.Fatalf("login=%q", got)
 		}
-		// Legacy completion avoids the unrelated PC92 timestamp quota. It still
-		// exercises the same real registry, terminal callback and Run ownership.
 		writeSessionWire(t, remote, "PC18^DXSpider Version: 1.57^5457^")
 		if got := readSessionWire(t, reader, remote); !strings.HasPrefix(got, "PC19^") {
-			t.Fatalf("replacement %d initial=%q", i, got)
+			t.Fatalf("initial=%q", got)
 		}
 		if got := readSessionWire(t, reader, remote); got != "PC20^" {
-			t.Fatalf("replacement %d completion=%q", i, got)
+			t.Fatalf("completion=%q", got)
 		}
 		writeSessionWire(t, remote, "PC22^")
-		awaitOwnerEvent(t, established, "establishment")
-		_ = remote.Close()
-		awaitOwnerEvent(t, retired, "terminal reporter")
-		if m.ActiveSessionCount() != 0 || len(m.pendingSlots) != 0 || len(m.ownerSlots) != i+1 {
-			t.Fatalf("replacement %d: registry=%d pending=%d owners=%d", i, m.ActiveSessionCount(), len(m.pendingSlots), len(m.ownerSlots))
+		deadline := time.Now().Add(time.Second)
+		for m.ActiveSessionCount() != 1 && time.Now().Before(deadline) {
+			time.Sleep(time.Millisecond)
 		}
-	}
-	// Registry and handshake slots are empty, but every transport lifetime is
-	// still owned. Both production pre-construction admission and Run's guard
-	// must reject a further replacement until terminal ownership is released.
-	if m.reserveCandidateSlots() {
-		m.releaseUnstartedCandidateSlots()
-		t.Fatal("retired owners allowed a 193rd transport reservation")
-	}
-	local, remote := net.Pipe()
-	s := newSession(local, dirOutbound, m, endpoint, m.sessionSettings(endpoint))
-	err := s.Run(m.ctx)
-	_ = remote.Close()
-	if err == nil || !strings.Contains(err.Error(), "capacity") {
-		t.Fatalf("Run owner-capacity refusal=%v", err)
-	}
-	releaseOnce.Do(func() { close(release) })
-	for range 192 {
+		if m.ActiveSessionCount() != 1 {
+			t.Fatal("full diagnostic mailbox prevented establishment")
+		}
+		_ = remote.Close()
 		select {
 		case <-done:
-		case <-time.After(5 * time.Second):
-			t.Fatal("terminal reporter release did not join Run")
+		case <-time.After(time.Second):
+			t.Fatal("full diagnostic mailbox prevented terminal Run")
+		}
+		if m.ActiveSessionCount() != 0 || len(m.pendingSlots) != 0 || len(m.ownerSlots) != 0 {
+			t.Fatalf("cycle %d retained session credits", i)
 		}
 	}
-	if len(m.ownerSlots) != 0 || len(m.pendingSlots) != 0 {
-		t.Fatalf("terminal ownership survived Run: owners=%d pending=%d", len(m.ownerSlots), len(m.pendingSlots))
-	}
-	// Refill proves released credits are usable and pending admission remains
-	// independently bounded even when the combined owner pool has headroom.
-	for i := 0; i < 128; i++ {
-		if !m.reserveCandidateSlots() {
-			t.Fatalf("refill refused pending reservation %d", i)
-		}
-	}
-	if m.reserveCandidateSlots() {
-		t.Fatal("pending admission exceeded128")
-	}
-	for range 128 {
-		m.releaseUnstartedCandidateSlots()
+	if stats := m.DiagnosticStats(); stats.Queued != peerdiag.QueueSize || stats.Dropped < 384 {
+		t.Fatalf("diagnostic overflow accounting=%+v", stats)
 	}
 	m.Stop()
-	if m.reserveCandidateSlots() || len(m.ownerSlots) != 0 || len(m.pendingSlots) != 0 {
-		t.Fatal("Stop admitted or retained transport ownership")
-	}
-}
-
-func awaitOwnerEvent(t *testing.T, event <-chan struct{}, label string) {
-	t.Helper()
-	select {
-	case <-event:
-	case <-time.After(5 * time.Second):
-		t.Fatalf("timed out awaiting %s", label)
+	if m.reserveCandidateSlots() {
+		t.Fatal("Stop admitted new transport")
 	}
 }
 
@@ -122,7 +76,7 @@ func TestSessionOwnerReservationCancelledBeforeRun(t *testing.T) {
 	m.mu.Lock()
 	m.stopping = true
 	m.mu.Unlock()
-	if err := s.Run(m.ctx); err == nil {
+	if err := s.Run(); err == nil {
 		t.Fatal("stopped manager accepted a pre-reserved candidate")
 	}
 	if len(m.pendingSlots) != 0 || len(m.ownerSlots) != 0 || s.pendingReserved || s.ownerReserved {

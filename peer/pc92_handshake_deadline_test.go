@@ -271,7 +271,7 @@ func TestPC92EstablishedReaderWaitsForReplayReady(t *testing.T) {
 	settings.loginTimeout, settings.initTimeout = time.Second, time.Second
 	s := newSession(local, dirOutbound, m, ep, settings)
 	done := make(chan error, 1)
-	go func() { done <- s.Run(m.ctx) }()
+	go func() { done <- s.Run() }()
 	t.Cleanup(func() {
 		m.cancel()
 		s.close()
@@ -355,7 +355,7 @@ func TestPC92StopJoinsParkedReplayAndReleasesOwnership(t *testing.T) {
 	settings.loginTimeout, settings.initTimeout = time.Second, time.Second
 	s := newSession(local, dirOutbound, m, ep, settings)
 	done := make(chan error, 1)
-	go func() { done <- s.Run(m.ctx) }()
+	go func() { done <- s.Run() }()
 	joined := false
 	t.Cleanup(func() {
 		m.cancel()

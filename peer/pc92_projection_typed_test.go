@@ -12,7 +12,7 @@ import (
 
 func projectionSQLRows(t *testing.T, store *topologyStore, query string) []string {
 	t.Helper()
-	rows, err := store.db.QueryContext(t.Context(), query)
+	rows, err := topologyTestDB(t, store).QueryContext(t.Context(), query)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func TestTopologyTypedSchemaUpgradePreservesHistoricalRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	if _, err = store.db.ExecContext(t.Context(), `drop table peer_pc92_typed_edges;insert into peer_pc92_edges(parent,call,bitmap,version) values('N1OLD','K1OLD',1,'historic')`); err != nil {
+	if _, err = topologyTestDB(t, store).ExecContext(t.Context(), `drop table peer_pc92_typed_edges;insert into peer_pc92_edges(parent,call,bitmap,version) values('N1OLD','K1OLD',1,'historic')`); err != nil {
 		t.Fatal(err)
 	}
 	for range 2 {
@@ -66,11 +66,11 @@ func TestTopologyTypedSchemaUpgradePreservesHistoricalRows(t *testing.T) {
 	const edgeRows = `select parent,call,kind,bitmap,version,build,ip,updated_at from peer_pc92_typed_edges order by parent,call,kind`
 	previousNodes, previousEdges := projectionSQLRows(t, store, nodeRows), projectionSQLRows(t, store, edgeRows)
 	var count int
-	if err = store.db.QueryRowContext(t.Context(), `select count(*) from peer_pc92_typed_edges where parent='N1NEW' and call='K1DUAL' and kind in (0,1)`).Scan(&count); err != nil || count != 2 {
+	if err = topologyTestDB(t, store).QueryRowContext(t.Context(), `select count(*) from peer_pc92_typed_edges where parent='N1NEW' and call='K1DUAL' and kind in (0,1)`).Scan(&count); err != nil || count != 2 {
 		t.Fatalf("typed rows=%d err=%v", count, err)
 	}
 	var version string
-	if err = store.db.QueryRowContext(t.Context(), `select version from peer_pc92_edges where parent='N1OLD' and call='K1OLD'`).Scan(&version); err != nil || version != "historic" {
+	if err = topologyTestDB(t, store).QueryRowContext(t.Context(), `select version from peer_pc92_edges where parent='N1OLD' and call='K1OLD'`).Scan(&version); err != nil || version != "historic" {
 		t.Fatalf("historical row=%q err=%v", version, err)
 	}
 	// Distinct kinds fit; a duplicate of the same kind must fail after current
@@ -83,13 +83,13 @@ func TestTopologyTypedSchemaUpgradePreservesHistoricalRows(t *testing.T) {
 	if !reflect.DeepEqual(projectionSQLRows(t, store, nodeRows), previousNodes) || !reflect.DeepEqual(projectionSQLRows(t, store, edgeRows), previousEdges) {
 		t.Fatal("failed replacement did not preserve both complete previous current sets")
 	}
-	if err = store.db.QueryRowContext(t.Context(), `select count(*) from peer_pc92_nodes where call='N1NEW' and complete=1`).Scan(&count); err != nil || count != 1 {
+	if err = topologyTestDB(t, store).QueryRowContext(t.Context(), `select count(*) from peer_pc92_nodes where call='N1NEW' and complete=1`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("previous nodes lost: %d %v", count, err)
 	}
-	if err = store.db.QueryRowContext(t.Context(), `select count(*) from peer_pc92_nodes`).Scan(&count); err != nil || count != 1 {
+	if err = topologyTestDB(t, store).QueryRowContext(t.Context(), `select count(*) from peer_pc92_nodes`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("failed node generation survived: %d %v", count, err)
 	}
-	if err = store.db.QueryRowContext(t.Context(), `select count(*) from peer_pc92_typed_edges where parent='N1NEW' and call='K1DUAL'`).Scan(&count); err != nil || count != 2 {
+	if err = topologyTestDB(t, store).QueryRowContext(t.Context(), `select count(*) from peer_pc92_typed_edges where parent='N1NEW' and call='K1DUAL'`).Scan(&count); err != nil || count != 2 {
 		t.Fatalf("previous typed edges lost: %d %v", count, err)
 	}
 }
@@ -156,7 +156,7 @@ func TestTopologyTypedSchemaFailureIsAtomic(t *testing.T) {
 	defer store.Close()
 	// SQLite permits an index/table name collision to be staged before the
 	// migration. Failure occurs at the last CREATE, after the nodes CREATE.
-	_, err = store.db.ExecContext(t.Context(), `drop table peer_pc92_nodes;drop table peer_pc92_typed_edges;insert into peer_pc92_edges(parent,call) values('N1OLD','K1OLD');create index peer_pc92_typed_edges on peer_pc92_edges(call)`)
+	_, err = topologyTestDB(t, store).ExecContext(t.Context(), `drop table peer_pc92_nodes;drop table peer_pc92_typed_edges;insert into peer_pc92_edges(parent,call) values('N1OLD','K1OLD');create index peer_pc92_typed_edges on peer_pc92_edges(call)`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,13 +164,13 @@ func TestTopologyTypedSchemaFailureIsAtomic(t *testing.T) {
 		t.Fatal("fixture failed to interrupt schema creation")
 	}
 	var count int
-	if err = store.db.QueryRowContext(t.Context(), `select count(*) from sqlite_master where type='table' and name='peer_pc92_nodes'`).Scan(&count); err != nil || count != 0 {
+	if err = topologyTestDB(t, store).QueryRowContext(t.Context(), `select count(*) from sqlite_master where type='table' and name='peer_pc92_nodes'`).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("partial schema retained: %d %v", count, err)
 	}
-	if err = store.db.QueryRowContext(t.Context(), `select count(*) from peer_pc92_edges where parent='N1OLD' and call='K1OLD'`).Scan(&count); err != nil || count != 1 {
+	if err = topologyTestDB(t, store).QueryRowContext(t.Context(), `select count(*) from peer_pc92_edges where parent='N1OLD' and call='K1OLD'`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("historical row lost: %d %v", count, err)
 	}
-	if _, err = store.db.ExecContext(t.Context(), `drop index peer_pc92_typed_edges`); err != nil {
+	if _, err = topologyTestDB(t, store).ExecContext(t.Context(), `drop index peer_pc92_typed_edges`); err != nil {
 		t.Fatal(err)
 	}
 	if err = ensurePC92ProjectionSchema(store); err != nil {
@@ -198,7 +198,7 @@ func TestTopologyTypedProjectionRollbackUpgrade(t *testing.T) {
 	defer store.Close()
 	// Exercise the previous writer's exact table shape. This proves additive
 	// SQL compatibility, not execution of a retained old Go binary.
-	if _, err = store.db.ExecContext(t.Context(), `begin;delete from peer_pc92_edges;delete from peer_pc92_nodes;insert into peer_pc92_nodes(call,bitmap) values('N2OLD',5);insert into peer_pc92_edges(parent,call,bitmap,version,build,ip,updated_at) values('N2OLD','K2OLD',1,'','','',1);commit`); err != nil {
+	if _, err = topologyTestDB(t, store).ExecContext(t.Context(), `begin;delete from peer_pc92_edges;delete from peer_pc92_nodes;insert into peer_pc92_nodes(call,bitmap) values('N2OLD',5);insert into peer_pc92_edges(parent,call,bitmap,version,build,ip,updated_at) values('N2OLD','K2OLD',1,'','','',1);commit`); err != nil {
 		t.Fatal(err)
 	}
 	if err = ensurePC92ProjectionSchema(store); err != nil {
@@ -208,13 +208,13 @@ func TestTopologyTypedProjectionRollbackUpgrade(t *testing.T) {
 		t.Fatal(err)
 	}
 	var call string
-	if err = store.db.QueryRowContext(t.Context(), `select call from peer_pc92_nodes`).Scan(&call); err != nil || call != "N3NOW" {
+	if err = topologyTestDB(t, store).QueryRowContext(t.Context(), `select call from peer_pc92_nodes`).Scan(&call); err != nil || call != "N3NOW" {
 		t.Fatalf("current nodes=%q %v", call, err)
 	}
-	if err = store.db.QueryRowContext(t.Context(), `select call from peer_pc92_typed_edges`).Scan(&call); err != nil || call != "K3NOW" {
+	if err = topologyTestDB(t, store).QueryRowContext(t.Context(), `select call from peer_pc92_typed_edges`).Scan(&call); err != nil || call != "K3NOW" {
 		t.Fatalf("current edges=%q %v", call, err)
 	}
-	if err = store.db.QueryRowContext(t.Context(), `select call from peer_pc92_edges`).Scan(&call); err != nil || call != "K2OLD" {
+	if err = topologyTestDB(t, store).QueryRowContext(t.Context(), `select call from peer_pc92_edges`).Scan(&call); err != nil || call != "K2OLD" {
 		t.Fatalf("historical edges=%q %v", call, err)
 	}
 }

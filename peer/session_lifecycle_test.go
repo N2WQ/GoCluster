@@ -23,9 +23,9 @@ func outboundHarness(t *testing.T) (*session, *Manager, net.Conn, chan error, co
 	settings.initTimeout = 150 * time.Millisecond
 	settings.idleTimeout = 0
 	s := newSession(local, dirOutbound, manager, endpoint, settings)
-	ctx, cancel := context.WithCancel(context.Background())
+	cancel := func() { manager.cancel() }
 	done := make(chan error, 1)
-	go func() { done <- s.Run(ctx) }()
+	go func() { done <- s.Run() }()
 	t.Cleanup(func() { cancel(); _ = remote.Close() })
 	return s, manager, remote, done, cancel
 }

@@ -53,7 +53,7 @@ type SecondaryDeduper struct {
 
 type secondaryShard struct {
 	mu             sync.Mutex
-	cache          map[uint32]secondaryEntry
+	cache          map[[32]byte]secondaryEntry
 	processedCount uint64
 	duplicateCount uint64
 	peak           int
@@ -83,7 +83,7 @@ func NewSecondaryDeduper(window time.Duration, preferStronger bool) *SecondaryDe
 func NewSecondaryDeduperWithKey(window time.Duration, preferStronger bool, keyMode SecondaryKeyMode) *SecondaryDeduper {
 	shards := make([]secondaryShard, secondaryShardCount)
 	for i := range shards {
-		shards[i].cache = make(map[uint32]secondaryEntry)
+		shards[i].cache = make(map[[32]byte]secondaryEntry)
 	}
 	return &SecondaryDeduper{
 		window:          window,
@@ -120,7 +120,7 @@ func (d *SecondaryDeduper) Stop() {
 // ShouldForward reports whether a spot should pass secondary dedupe.
 // Key aspects: Uses DE DXCC/grid2 + DX/band + source class and optional stronger SNR.
 // Upstream: processOutputSpots broadcast stage.
-// Downstream: secondaryHash and isSecondaryDuplicateLocked.
+// Downstream: secondaryKey and isSecondaryDuplicateLocked.
 // ShouldForward returns true when the spot is not a duplicate within the
 // configured window. When preferStronger is enabled, a stronger SNR replaces
 // the cached entry and the new spot is forwarded.
@@ -134,19 +134,20 @@ func (d *SecondaryDeduper) ShouldForward(s *spot.Spot) bool {
 		return true
 	}
 
-	hash := secondaryHash(s, deDXCC, d.keyMode)
+	key := secondaryKey(s, deDXCC, d.keyMode)
+	hash := uint32(xxh3.Hash(key[:]))
 	shard := d.shardFor(hash)
 
 	shard.mu.Lock()
 	shard.processedCount++
 
-	dup, lastSeen := isSecondaryDuplicateLocked(shard.cache, hash, s.Time, d.window)
+	dup, lastSeen := isSecondaryDuplicateLocked(shard.cache, key, s.Time, d.window)
 	if dup {
 		upgradeToReported := s.HasReport && !lastSeen.hasReport
 		stronger := d.preferStronger && s.Report > lastSeen.snr
 		if upgradeToReported || stronger {
 			// Track and forward the stronger or newly reported representative.
-			shard.cache[hash] = secondaryEntry{when: s.Time, snr: s.Report, hasReport: s.HasReport}
+			shard.cache[key] = secondaryEntry{when: s.Time, snr: s.Report, hasReport: s.HasReport}
 			d.updateShardPeakLocked(shard)
 			shard.mu.Unlock()
 			return true
@@ -156,7 +157,7 @@ func (d *SecondaryDeduper) ShouldForward(s *spot.Spot) bool {
 		return false
 	}
 
-	shard.cache[hash] = secondaryEntry{when: s.Time, snr: s.Report, hasReport: s.HasReport}
+	shard.cache[key] = secondaryEntry{when: s.Time, snr: s.Report, hasReport: s.HasReport}
 	d.updateShardPeakLocked(shard)
 	shard.mu.Unlock()
 	return true
@@ -208,7 +209,7 @@ func (d *SecondaryDeduper) maybeCompactShardLocked(shard *secondaryShard) {
 	if len(shard.cache) >= threshold {
 		return
 	}
-	next := make(map[uint32]secondaryEntry, len(shard.cache))
+	next := make(map[[32]byte]secondaryEntry, len(shard.cache))
 	for k, v := range shard.cache {
 		next[k] = v
 	}
@@ -239,18 +240,21 @@ func (d *SecondaryDeduper) cleanupLoop() {
 // Upstream: cleanupLoop.
 // Downstream: shard cache mutation.
 func (d *SecondaryDeduper) cleanup() {
+	d.cleanupAt(time.Now().UTC())
+}
+
+func (d *SecondaryDeduper) cleanupAt(now time.Time) {
 	if d.window <= 0 {
 		return
 	}
-	now := time.Now().UTC()
 	for i := range d.shards {
 		shard := &d.shards[i]
 		shard.mu.Lock()
 		removed := false
-		for hash, entry := range shard.cache {
+		for key, entry := range shard.cache {
 			age := now.Sub(entry.when)
 			if age > d.window {
-				delete(shard.cache, hash)
+				delete(shard.cache, key)
 				removed = true
 			}
 		}
@@ -266,19 +270,21 @@ const (
 	secondaryClassSkimmer byte = 2
 )
 
-// Purpose: Hash a spot into the secondary dedupe keyspace.
+// Purpose: Encode a spot into the complete secondary dedupe keyspace.
 // Key aspects: Includes band, DE DXCC/grid2 or CQ zone, DX call, and source class.
 // Upstream: ShouldForward.
 // Downstream: writeFixedCallNormalized and secondarySourceClass.
-// secondaryHash mirrors the primary hash structure (minute + kHz + fixed DX
-// call) but keys on band + DE DXCC + DE grid2 or CQ zone, appends a source class
+// secondaryKey keys on band + DE DXCC + DE grid2 or CQ zone, appends a source class
 // discriminator, and omits the time. The time window is enforced by the cache
 // itself so the hash is stable across minute boundaries, collapsing within the
 // configured window. The source class split ensures a skimmer spot cannot
 // suppress a human spot (and vice versa) during broadcast-only dedupe. A
 // missing or malformed grid/zone falls back to a zeroed bucket so behavior
 // remains deterministic.
-func secondaryHash(s *spot.Spot, deDXCC int, keyMode SecondaryKeyMode) uint32 {
+// Its owned fixed array preserves the historical 12-byte DX truncation and
+// trailing zero bytes. Equality uses the entire array; hashing selects only a
+// shard. Cache entries retain the existing time-window expiry rule.
+func secondaryKey(s *spot.Spot, deDXCC int, keyMode SecondaryKeyMode) [32]byte {
 	var buf [32]byte
 	if s != nil {
 		s.EnsureNormalized()
@@ -296,7 +302,7 @@ func secondaryHash(s *spot.Spot, deDXCC int, keyMode SecondaryKeyMode) uint32 {
 	}
 	writeFixedCallNormalized(buf[8:20], s.DXCallNorm)
 	buf[20] = secondarySourceClass(s)
-	return uint32(xxh3.Hash(buf[:]))
+	return buf
 }
 
 // bandKeyNumeric packs the band string into 4 bytes for hashing. Falls back to
@@ -359,7 +365,7 @@ func toUpperASCII(b byte) byte {
 
 // Purpose: Normalize a spot into human vs skimmer class for dedupe.
 // Key aspects: Skimmer sources are distinct from all human sources.
-// Upstream: secondaryHash.
+// Upstream: secondaryKey.
 // Downstream: spot.IsSkimmerSource.
 // secondarySourceClass normalizes a spot to its secondary-dedupe class.
 // Skimmer sources are always treated as a distinct class from all human inputs.
@@ -372,7 +378,7 @@ func secondarySourceClass(s *spot.Spot) byte {
 
 // Purpose: Write a normalized callsign into a fixed-width buffer.
 // Key aspects: Assumes input is already normalized; zero-pads to 12 bytes.
-// Upstream: secondaryHash.
+// Upstream: secondaryKey.
 // Downstream: None.
 // writeFixedCallNormalized pads/truncates into 12 bytes.
 func writeFixedCallNormalized(dst []byte, call string) {
@@ -393,8 +399,8 @@ func writeFixedCallNormalized(dst []byte, call string) {
 // Upstream: ShouldForward.
 // Downstream: time.Sub comparisons.
 // isSecondaryDuplicateLocked checks if a spot is a duplicate within a shard.
-func isSecondaryDuplicateLocked(cache map[uint32]secondaryEntry, hash uint32, spotTime time.Time, window time.Duration) (bool, secondaryEntry) {
-	lastSeen, exists := cache[hash]
+func isSecondaryDuplicateLocked(cache map[[32]byte]secondaryEntry, key [32]byte, spotTime time.Time, window time.Duration) (bool, secondaryEntry) {
+	lastSeen, exists := cache[key]
 	if !exists {
 		return false, secondaryEntry{}
 	}

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"dxcluster/internal/qualificationstage"
 	"dxcluster/spot"
 )
 
@@ -197,6 +198,9 @@ func (p *outputPipeline) buildFinalDeliveryPlan(
 // deliverSpot is the final synchronous fanout stage after all mutation and
 // suppression decisions are complete.
 func (p *outputPipeline) deliverSpot(ctx *outputSpotContext) {
+	if ctx != nil && ctx.spot != nil {
+		qualificationstage.Observe(qualificationstage.DeliveryStart, ctx.spot.Comment, -1)
+	}
 	if p.secondaryStage != nil {
 		p.secondaryStage.Add(1)
 	}

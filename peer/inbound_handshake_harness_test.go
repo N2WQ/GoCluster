@@ -218,12 +218,11 @@ func runInboundScenario(t *testing.T, scenario inboundScenario) {
 	sess := newSession(server, dirInbound, manager, PeerEndpoint{host: "pipe"}, settings)
 	sess.id = "inbound-harness"
 
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
+	t.Cleanup(sess.close)
 
 	runErrCh := make(chan error, 1)
 	go func() {
-		runErrCh <- sess.Run(ctx)
+		runErrCh <- sess.Run()
 	}()
 
 	reader := NewLineReader(client, 4096, 4096, nil)

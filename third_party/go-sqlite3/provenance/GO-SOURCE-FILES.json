@@ -1,0 +1,58 @@
+[
+  {
+    "file": "GO-LICENSE.txt",
+    "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+  },
+  {
+    "file": "go1.26.4-symlink.go.txt",
+    "sha256": "d4e5ae166c208c8d0fbbed9aa907208f7cc541100b8e04029a38f16f1b5da1b5"
+  },
+  {
+    "file": "go1.26.4-symlink_windows.go.txt",
+    "sha256": "801a4135e7dbc63dbf392fb1b4dcfcd0c8b5d81c66dfaa8aff7ea98a8f708ccf"
+  },
+  {
+    "file": "go1.26.4-getwd.go.txt",
+    "sha256": "20bf5c0875341ff1d685ff8aa58f3a0de19250ec19708d32a921779ed515e26e"
+  },
+  {
+    "file": "go1.26.4-syscall_linux.go.txt",
+    "sha256": "e5fa95a3d18df64cf660e47d832c0fcf32fcc4681606aebcad6269ce522ef632"
+  },
+  {
+    "file": "go1.26.4-stat_windows.go.txt",
+    "sha256": "90f01ab7b8a973df1c4588c3b40fae737c6d23d6548a1805e5f213e38def6df4"
+  },
+  {
+    "file": "go1.26.4-types_windows.go.txt",
+    "sha256": "32bdbb028336c434525559642424295c71c0dd6e4fef7cec1fd0739ec80feffb"
+  },
+  {
+    "file": "go1.26.4-os_path.go.txt",
+    "sha256": "a901784cb6abfb4817a379bdc909f42090b9cc5e49a6b2dac5c06ee6e844966a"
+  },
+  {
+    "file": "go1.26.4-os_path_windows.go.txt",
+    "sha256": "7256e7698c7aed7eba0c3e5e3dd441c7886dfbe21864734f3f8bd3a549cbff58"
+  },
+  {
+    "file": "go1.26.4-file_windows.go.txt",
+    "sha256": "3d27d6ec42a0c4833e243d93e5cfde4279c902690e041d8c908fab01908d1240"
+  },
+  {
+    "file": "go1.26.4-tempfile.go.txt",
+    "sha256": "a337c2a6dc2e4368b2dc0015ea7c0b935b68b14885a0771a6cbe27e588c2cd16"
+  },
+  {
+    "file": "go1.26.4-exec_windows.go.txt",
+    "sha256": "031afbedd3b2e8ee58d890b8ff3df3df67f5556ff174768ec17e9fe31d44ae40"
+  },
+  {
+    "file": "go1.26.4-syscall_windows.go.txt",
+    "sha256": "f1b22dde6bb980cf036561cee7ece968daa260cb622f32c96cebd52477b7a346"
+  },
+  {
+    "file": "go1.26.4-rand_v2.go.txt",
+    "sha256": "a0b0f516652e66ee56de089ec01457f5f786e0463cd08b2453eb025cd6ad6f58"
+  }
+]

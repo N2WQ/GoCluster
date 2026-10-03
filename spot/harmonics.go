@@ -4,6 +4,7 @@ import (
 	"math"
 	"sync"
 	"time"
+	"unsafe"
 )
 
 // HarmonicSettings controls how harmonic detection behaves.
@@ -23,13 +24,21 @@ type harmonicEntry struct {
 	at        time.Time
 }
 
+// harmonicRecency couples the existing acceptance timestamp to one expiry
+// position. Updating time in either direction repairs that same heap item.
+type harmonicRecency struct {
+	at    time.Time
+	index int
+}
+
 // HarmonicDetector tracks recent fundamentals per DX call and decides whether
 // a new spot is likely a harmonic that should be dropped.
 type HarmonicDetector struct {
 	settings HarmonicSettings
 	mu       sync.Mutex
 	entries  map[string][]harmonicEntry
-	lastSeen map[string]time.Time
+	lastSeen map[string]harmonicRecency
+	expiry   []string // exactly one item per lastSeen owner; protected by mu
 
 	sweepQuit chan struct{}
 }
@@ -43,7 +52,7 @@ func NewHarmonicDetector(settings HarmonicSettings) *HarmonicDetector {
 	return &HarmonicDetector{
 		settings: settings,
 		entries:  make(map[string][]harmonicEntry),
-		lastSeen: make(map[string]time.Time),
+		lastSeen: make(map[string]harmonicRecency),
 	}
 }
 
@@ -83,11 +92,11 @@ func (hd *HarmonicDetector) ShouldDrop(s *Spot, now time.Time) (bool, float64, i
 		report:    s.Report,
 		at:        s.Time,
 	})
-	hd.lastSeen[call] = now
+	hd.setLastSeen(call, now)
 	// Prevent map growth: if the slice is empty after pruning, drop the key.
 	if len(hd.entries[call]) == 0 {
-		delete(hd.entries, call)
-		delete(hd.lastSeen, call)
+		hd.removeCall(call)
+		hd.compactExpiry()
 	}
 	return false, 0, 0, 0
 }
@@ -164,12 +173,12 @@ func (hd *HarmonicDetector) prune(call string, now time.Time) {
 		}
 	}
 	if len(dst) == 0 {
-		delete(hd.entries, call)
-		delete(hd.lastSeen, call)
+		hd.removeCall(call)
+		hd.compactExpiry()
 		return
 	}
 	hd.entries[call] = dst
-	hd.lastSeen[call] = now
+	hd.setLastSeen(call, now)
 }
 
 // Purpose: Drop inactive calls beyond the recency window.
@@ -178,15 +187,138 @@ func (hd *HarmonicDetector) prune(call string, now time.Time) {
 // Downstream: map deletes.
 // cleanup drops inactive calls entirely when their last seen time is outside the recency window.
 func (hd *HarmonicDetector) cleanup(now time.Time) {
-	if len(hd.lastSeen) == 0 {
+	if len(hd.expiry) == 0 {
 		return
 	}
 	cutoff := now.Add(-hd.settings.RecencyWindow)
-	for call, last := range hd.lastSeen {
-		if last.Before(cutoff) {
-			delete(hd.lastSeen, call)
-			delete(hd.entries, call)
+	for len(hd.expiry) != 0 {
+		call := hd.expiry[0]
+		if !hd.lastSeen[call].at.Before(cutoff) {
+			break
 		}
+		hd.removeCall(call)
+	}
+	hd.compactExpiry()
+}
+
+// All expiry helpers require hd.mu. Heap order changes only the order in which
+// wholly inactive calls are removed; it never reorders a call's fundamentals.
+// In particular, equality survives global cleanup, while prune keeps its
+// existing strict entry.at.After(cutoff) boundary.
+func (hd *HarmonicDetector) setLastSeen(call string, at time.Time) {
+	if current, ok := hd.lastSeen[call]; ok {
+		current.at = at
+		hd.lastSeen[call] = current
+		// Match the refreshed recency owner's string header. Keeping the first
+		// equal callsign here could retain an obsolete input-frame allocation.
+		hd.expiry[current.index] = call
+		hd.fixExpiry(current.index)
+		return
+	}
+	index := len(hd.expiry)
+	hd.lastSeen[call] = harmonicRecency{at: at, index: index}
+	hd.expiry = append(hd.expiry, call)
+	hd.upExpiry(index)
+}
+
+func (hd *HarmonicDetector) removeCall(call string) {
+	current, ok := hd.lastSeen[call]
+	if ok {
+		last := len(hd.expiry) - 1
+		hd.swapExpiry(current.index, last)
+		hd.expiry[last] = "" // retired capacity must not retain callsign backing
+		hd.expiry = hd.expiry[:last]
+		delete(hd.lastSeen, call)
+		if current.index < last {
+			hd.fixExpiry(current.index)
+		}
+	}
+	delete(hd.entries, call)
+}
+
+func (hd *HarmonicDetector) expiryLess(a, b int) bool {
+	return hd.lastSeen[hd.expiry[a]].at.Before(hd.lastSeen[hd.expiry[b]].at)
+}
+
+func (hd *HarmonicDetector) swapExpiry(a, b int) {
+	if a == b {
+		return
+	}
+	hd.expiry[a], hd.expiry[b] = hd.expiry[b], hd.expiry[a]
+	left, right := hd.lastSeen[hd.expiry[a]], hd.lastSeen[hd.expiry[b]]
+	left.index, right.index = a, b
+	hd.lastSeen[hd.expiry[a]], hd.lastSeen[hd.expiry[b]] = left, right
+}
+
+func (hd *HarmonicDetector) fixExpiry(index int) {
+	if index > 0 && hd.expiryLess(index, (index-1)/2) {
+		hd.upExpiry(index)
+		return
+	}
+	hd.downExpiry(index)
+}
+
+func (hd *HarmonicDetector) upExpiry(index int) {
+	for index > 0 {
+		parent := (index - 1) / 2
+		if !hd.expiryLess(index, parent) {
+			return
+		}
+		hd.swapExpiry(index, parent)
+		index = parent
+	}
+}
+
+func (hd *HarmonicDetector) downExpiry(index int) {
+	for index < len(hd.expiry)/2 {
+		child := 2*index + 1
+		if child+1 < len(hd.expiry) && hd.expiryLess(child+1, child) {
+			child++
+		}
+		if !hd.expiryLess(child, index) {
+			return
+		}
+		hd.swapExpiry(index, child)
+		index = child
+	}
+}
+
+// Compact only excess index backing. During replacement both arrays are
+// owned; the new capacity is max(8, 2*live), then the old owner is released.
+// Empty indexes release all backing. The existing maps and entry slices keep
+// their original lifetime and allocation behavior.
+func (hd *HarmonicDetector) compactExpiry() {
+	live := len(hd.expiry)
+	if live == 0 {
+		hd.expiry = nil
+		return
+	}
+	if cap(hd.expiry) <= max(8, 4*live) {
+		return
+	}
+	next := make([]string, live, max(8, 2*live))
+	copy(next, hd.expiry)
+	hd.expiry = next
+}
+
+// HarmonicRetentionStats reports owned expiry backing, separately from the
+// existing maps, fundamental slices and Go runtime overhead. Scalar reads do
+// not traverse history or allocate an observation per call.
+type HarmonicRetentionStats struct {
+	Calls, RecencyEntries, ExpiryEntries, ExpiryCapacity int
+	ExpiryBackingBytes                                   uint64
+}
+
+func (hd *HarmonicDetector) RetentionStats() HarmonicRetentionStats {
+	if hd == nil {
+		return HarmonicRetentionStats{}
+	}
+	hd.mu.Lock()
+	defer hd.mu.Unlock()
+	return HarmonicRetentionStats{
+		Calls: len(hd.entries), RecencyEntries: len(hd.lastSeen),
+		ExpiryEntries: len(hd.expiry), ExpiryCapacity: cap(hd.expiry),
+		ExpiryBackingBytes: uint64(cap(hd.expiry)) * uint64(unsafe.Sizeof(string(""))),
 	}
 }
 

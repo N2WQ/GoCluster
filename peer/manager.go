@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"slices"
 	"sort"
@@ -16,13 +15,10 @@ import (
 
 	"dxcluster/config"
 	"dxcluster/internal/netutil"
+	"dxcluster/internal/peerdiag"
 	"dxcluster/spot"
 	"dxcluster/strutil"
 )
-
-// BadCallReporter receives parse-time callsign drops. The callback must remain
-// short because it runs on peer session reader goroutines.
-type BadCallReporter func(source, role, reason, call, deCall, dxCall, mode, detail string)
 
 type ConnectionEvent struct {
 	Direction string
@@ -43,6 +39,8 @@ type Manager struct {
 	retry               retryCoordinator // mu owns shared directional retry history
 	pendingSlots        chan struct{}
 	ownerSlots          chan struct{}
+	contextOwners       []contextOwner
+	projectionContexts  [2]contextOwner
 	ownedRuns           *boundedIndex[*session, bool]
 	cfg                 config.PeeringConfig
 	localCall           string
@@ -66,9 +64,7 @@ type Manager struct {
 	announceBroadcast          func(line string)
 	directMessage              func(to, line string)
 	reconnects                 atomic.Uint64
-	dropReporter               func(line string)
-	badCallReporter            BadCallReporter
-	connectionReporter         func(ConnectionEvent)
+	diagnostics                *peerdiag.Service
 	protocol                   *protocolController
 	bulletinDedupe             *dedupeCache
 	candidates                 *boundedIndex[*session, *candidateState]
@@ -115,7 +111,7 @@ func buildPeerRegistry(peers []config.PeeringPeer) ([]PeerEndpoint, map[string]P
 	return outbound, inbound, nil
 }
 
-func NewManager(cfg config.PeeringConfig, localCall string, ingest chan<- *spot.Spot, maxAgeSeconds int, dropReporter func(string)) (*Manager, error) {
+func NewManager(cfg config.PeeringConfig, localCall string, ingest chan<- *spot.Spot, maxAgeSeconds int, diagnostics *peerdiag.Service) (*Manager, error) {
 	var err error
 	cfg, localCall, err = config.NormalizeActivePeeringWireContract(cfg, localCall)
 	if err != nil {
@@ -164,7 +160,7 @@ func NewManager(cfg config.PeeringConfig, localCall string, ingest chan<- *spot.
 		bulletinDedupe: newBoundedDedupe(10*time.Minute, 8192, 2<<20),
 		candidates:     newFixedIndex[*session, *candidateState](128),
 		blockedPeers:   newFixedIndex[string, bool](cfg.MaxPeers),
-		dropReporter:   dropReporter,
+		diagnostics:    diagnostics,
 	}
 	m.admissionFailures = newFixedIndex[string, admissionFailure](cfg.MaxPeers)
 	m.pendingSlots = make(chan struct{}, 128)
@@ -187,6 +183,7 @@ func (m *Manager) Start(ctx context.Context) error {
 	}
 	startCtx, cancel := context.WithCancel(ctx)
 	m.ctx, m.cancel = startCtx, cancel
+	m.initializeContextOwnersLocked()
 	m.mu.Unlock()
 	started := false
 	defer func() {
@@ -202,10 +199,10 @@ func (m *Manager) Start(ctx context.Context) error {
 	go func() { defer m.wg.Done(); m.protocol.run(m.ctx) }()
 	if m.topology != nil {
 		m.wg.Add(1)
-		go func() { defer m.wg.Done(); m.projectionLoop(m.ctx) }()
+		go func() { defer m.wg.Done(); m.projectionLoop(m.projectionContexts[0].parent) }()
 		m.legacyCh = make(chan legacyWork, defaultLegacyQueue)
 		m.wg.Add(1)
-		go func() { defer m.wg.Done(); m.legacyWorker(m.ctx) }()
+		go func() { defer m.wg.Done(); m.legacyWorker(m.projectionContexts[1].parent) }()
 	}
 	if err := m.protocolCall("ready", nil); err != nil {
 		m.Stop()
@@ -279,6 +276,8 @@ func (m *Manager) Stop() {
 			s.close()
 		}
 		m.wg.Wait()
+		m.stopContextOwners()
+		m.diagnostics.Stop()
 		if m.protocol != nil {
 			m.protocol.drainQueuedProjections()
 		}
@@ -344,18 +343,13 @@ func (m *Manager) HandleFrame(frame *Frame, sess *session) {
 			select {
 			case m.legacyCh <- legacyWork{frame: &Frame{Type: strings.Clone(frame.Type)}, ts: now}:
 			default:
-				log.Printf("Peering: dropping legacy %s from %s: topology queue full", frame.Type, sessionLabel(sess))
+				m.reportDiagnostic("legacy_queue_full", sessionLabel(sess), frame.Type)
 			}
 		}
 	case "PC26", "PC11", "PC61":
 		spotEntry, err := parseSpotFromFrame(frame, sess.remoteCall)
 		if err != nil {
 			m.reportBadCallParseDrop(frame, sess, err)
-			if frame.Type == "PC61" {
-				m.reportDrop(formatPC61DropLine(frame, sess, err))
-				return
-			}
-			log.Printf("Peering: parse %s from %s failed: %v", frame.Type, sessionLabel(sess), err)
 			return
 		}
 		accepted := m.ingestSpot(spotEntry)
@@ -401,172 +395,26 @@ func (m *Manager) ingestSpot(s *spot.Spot) bool {
 	case m.ingest <- s:
 		return true
 	default:
-		log.Printf("Peering: ingest queue full, dropping spot from %s", s.SourceNode)
+		m.reportDiagnostic("ingest_queue_full", s.SourceNode, "spot_dropped")
 		return false
 	}
 }
 
-// Purpose: Route a drop line to the UI reporter or logs.
-// Key aspects: Uses the optional dropReporter to avoid system log duplication.
-// Upstream: PC61 parse failures.
-// Downstream: dropReporter or log.Print.
-func (m *Manager) reportDrop(line string) {
-	if line == "" {
-		return
-	}
-	if m != nil && m.dropReporter != nil {
-		m.dropReporter(line)
-		return
-	}
-	log.Print(line)
-}
-
+// reportBadCallParseDrop emits fixed metadata; detailed records are owned by
+// the isolated peer diagnostic process and never call shared UI/log callbacks.
 func (m *Manager) reportBadCallParseDrop(frame *Frame, sess *session, err error) {
-	if m == nil || frame == nil || err == nil {
-		return
-	}
-	role := peerBadCallRole(err)
-	if role == "" {
-		return
-	}
-	reporter := m.badCallReporterSnapshot()
-	if reporter == nil {
+	if m == nil || m.diagnostics == nil || frame == nil || err == nil {
 		return
 	}
 	fields := frame.payloadFields()
-	call, deCall, dxCall, mode := peerBadCallFields(fields, role)
-	reporter(peerBadCallSource(frame, sess), role, "invalid_callsign", call, deCall, dxCall, mode, "peer_parse")
-}
-
-func (m *Manager) badCallReporterSnapshot() BadCallReporter {
-	if m == nil {
-		return nil
-	}
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.badCallReporter
-}
-
-func peerBadCallRole(err error) string {
-	msg := err.Error()
-	switch {
-	case strings.Contains(msg, "invalid DX callsign"):
-		return "DX"
-	case strings.Contains(msg, "invalid DE callsign"):
-		return "DE"
-	default:
-		return ""
-	}
-}
-
-func peerBadCallFields(fields []string, role string) (call, deCall, dxCall, mode string) {
+	dx, de := "", ""
 	if len(fields) > 1 {
-		dxCall = strings.TrimSpace(fields[1])
+		dx = fields[1]
 	}
 	if len(fields) > 5 {
-		deCall = strings.TrimSpace(fields[5])
+		de = fields[5]
 	}
-	if len(fields) > 4 {
-		freq := 0.0
-		if len(fields) > 0 {
-			if parsed, err := strconv.ParseFloat(strings.TrimSpace(fields[0]), 64); err == nil {
-				freq = parsed
-			}
-		}
-		mode = spot.ParseSpotComment(fields[4], freq).Mode
-	}
-	if role == "DE" {
-		call = deCall
-	} else {
-		call = dxCall
-	}
-	return call, deCall, dxCall, mode
-}
-
-func peerBadCallSource(frame *Frame, sess *session) string {
-	source := ""
-	if frame != nil {
-		fields := frame.payloadFields()
-		if len(fields) > 6 {
-			source = strings.TrimSpace(fields[6])
-		}
-	}
-	if source == "" && sess != nil {
-		source = strings.TrimSpace(sess.remoteCall)
-	}
-	if source == "" {
-		source = sessionLabel(sess)
-	}
-	if source == "" {
-		source = "unknown"
-	}
-	return "peer:" + source
-}
-
-// Purpose: Format a standardized PC61 drop line for the dropped pane.
-// Key aspects: Best-effort extraction of fields; reason is stable for parsing.
-// Upstream: HandleFrame parse errors.
-// Downstream: spot.FreqToBand and spot.NormalizeBand.
-func formatPC61DropLine(frame *Frame, sess *session, err error) string {
-	reason := pc61DropReason(err)
-	dx := "unknown"
-	de := "unknown"
-	freq := 0.0
-	band := "unknown"
-	source := sessionLabel(sess)
-	if frame != nil {
-		fields := frame.payloadFields()
-		if len(fields) > 0 {
-			if parsed, parseErr := strconv.ParseFloat(strings.TrimSpace(fields[0]), 64); parseErr == nil {
-				freq = parsed
-				band = spot.NormalizeBand(spot.FreqToBand(parsed))
-				if band == "" {
-					band = "unknown"
-				}
-			}
-		}
-		if len(fields) > 1 {
-			dx = strutil.NormalizeUpper(fields[1])
-			if dx == "" {
-				dx = "unknown"
-			}
-		}
-		if len(fields) > 5 {
-			de = strutil.NormalizeUpper(fields[5])
-			if de == "" {
-				de = "unknown"
-			}
-		}
-		if len(fields) > 6 {
-			origin := strings.TrimSpace(fields[6])
-			if origin != "" {
-				source = origin
-			}
-		}
-	}
-	if source == "" {
-		source = "unknown"
-	}
-	return fmt.Sprintf("PC61 drop: reason=%s de=%s dx=%s band=%s freq=%.1f source=%s", reason, de, dx, band, freq, source)
-}
-
-func pc61DropReason(err error) string {
-	if err == nil {
-		return "unknown"
-	}
-	msg := strings.ToLower(err.Error())
-	switch {
-	case strings.Contains(msg, "insufficient fields"):
-		return "insufficient_fields"
-	case strings.Contains(msg, "freq parse"):
-		return "freq_parse"
-	case strings.Contains(msg, "invalid dx"):
-		return "invalid_dx"
-	case strings.Contains(msg, "invalid de"):
-		return "invalid_de"
-	default:
-		return "parse_error"
-	}
+	m.diagnostics.Emit(peerdiag.Diagnostic, peerdiag.Fields{Action: "parse_rejected", Peer: sessionLabel(sess), Reason: frame.Type, DX: dx, DE: de})
 }
 
 func (m *Manager) registerSession(s *session) error {
@@ -641,36 +489,27 @@ func (m *Manager) SetRawBroadcast(fn func(string)) {
 	m.rawBroadcast = fn
 }
 
-// SetBadCallReporter installs an optional callback for peer frame callsign
-// validation drops.
-func (m *Manager) SetBadCallReporter(fn BadCallReporter) {
-	if m == nil {
-		return
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.badCallReporter = fn
-}
-
-func (m *Manager) SetConnectionReporter(fn func(ConnectionEvent)) {
-	if m == nil {
-		return
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.connectionReporter = fn
-}
-
 func (m *Manager) reportConnection(ev ConnectionEvent) {
-	if m == nil {
+	if m == nil || m.diagnostics == nil {
 		return
 	}
-	m.mu.RLock()
-	reporter := m.connectionReporter
-	m.mu.RUnlock()
-	if reporter != nil {
-		reporter(ev)
+	m.diagnostics.Emit(peerdiag.Connection, peerdiag.Fields{Direction: ev.Direction, Action: ev.Action, Peer: ev.Peer, Endpoint: ev.Endpoint, Reason: ev.Reason})
+}
+
+// reportDiagnostic accepts only borrowed primitive values. The mailbox reserves its
+// fixed record before sanitizing/copying; no actor formats an arbitrary error.
+func (m *Manager) reportDiagnostic(action, peer, reason string) {
+	if m == nil || m.diagnostics == nil {
+		return
 	}
+	m.diagnostics.Emit(peerdiag.Diagnostic, peerdiag.Fields{Action: action, Peer: peer, Reason: reason})
+}
+
+func (m *Manager) DiagnosticStats() peerdiag.Stats {
+	if m == nil || m.diagnostics == nil {
+		return peerdiag.Stats{Disabled: true}
+	}
+	return m.diagnostics.Snapshot()
 }
 
 // SetWWVBroadcast installs a callback used to forward WWV/WCY bulletins to telnet clients.
@@ -817,7 +656,7 @@ func (m *Manager) trySendLine(sess *session, line string, kind string) {
 		if errors.Is(err, context.Canceled) || errors.Is(err, errSessionWriteQueueFull) {
 			return
 		}
-		log.Printf("Peering: failed to enqueue %s for %s: %v", kind, sessionLabel(sess), err)
+		m.reportDiagnostic("enqueue_failed", sessionLabel(sess), kind)
 	}
 }
 
@@ -891,18 +730,24 @@ func (m *Manager) acceptLoop() {
 			if errors.Is(err, net.ErrClosed) || (m.ctx != nil && m.ctx.Err() != nil) {
 				return
 			}
-			log.Printf("Peering: accept failed: %v", err)
+			m.reportDiagnostic("accept_failed", "", "network_error")
 			continue
 		}
 		if isTCP, enableErr, periodErr := netutil.EnableTCPKeepAlive(conn, 2*time.Minute); isTCP {
 			if enableErr != nil {
-				log.Printf("Peering: failed to enable keepalive for %s: %v", conn.RemoteAddr(), enableErr)
+				m.reportDiagnostic("keepalive_enable_failed", "", "network_error")
 			}
 			if periodErr != nil {
-				log.Printf("Peering: failed to set keepalive period for %s: %v", conn.RemoteAddr(), periodErr)
+				m.reportDiagnostic("keepalive_period_failed", "", "network_error")
 			}
 		}
 		if !m.reserveCandidateSlots() {
+			_ = conn.Close()
+			continue
+		}
+		operation := m.beginContextOperation()
+		if operation == nil {
+			m.releaseUnstartedCandidateSlots()
 			_ = conn.Close()
 			continue
 		}
@@ -910,14 +755,15 @@ func (m *Manager) acceptLoop() {
 		m.reportConnection(ConnectionEvent{Direction: "inbound", Action: "accepted", Endpoint: conn.RemoteAddr().String(), Reason: "none"})
 		settings := m.sessionSettings(peer)
 		sess := newSession(conn, dirInbound, m, peer, settings)
+		sess.operation = operation
 		sess.pendingReserved = true
 		sess.ownerReserved = true
 		sess.id = conn.RemoteAddr().String()
 		m.wg.Add(1)
 		go func() {
 			defer m.wg.Done()
-			if err := sess.Run(m.ctx); err != nil && m.ctx.Err() == nil {
-				log.Printf("Peering: inbound session ended: %v", err)
+			if err := sess.Run(); err != nil && m.ctx.Err() == nil {
+				m.reportDiagnostic("inbound_session_ended", "", "session_error")
 			}
 		}()
 	}
@@ -968,30 +814,39 @@ func (m *Manager) runOutbound(peer PeerEndpoint) {
 			}
 			continue
 		}
-		log.Printf("Peering: dialing %s as %s", addr, peer.loginCall)
-		conn, err := dialer.DialContext(m.ctx, "tcp", addr)
+		operation := m.beginContextOperation()
+		if operation == nil {
+			m.releaseUnstartedCandidateSlots()
+			m.finishRetryDial(peer.remoteCall, generation, nil, time.Now())
+			return
+		}
+		m.reportDiagnostic("dialing", peer.remoteCall, "outbound")
+		conn, err := dialer.DialContext(operation.ctx, "tcp", addr)
 		if err != nil {
+			m.endContextOperation(operation)
 			m.releaseUnstartedCandidateSlots()
 			if generation != 0 {
 				m.finishRetryDial(peer.remoteCall, generation, nil, time.Now())
 				m.NotifyMembershipChanged()
-				m.reportConnection(ConnectionEvent{Direction: "outbound", Action: "dial_failed", Peer: peer.remoteCall, Endpoint: addr, Reason: err.Error()})
+				m.reportConnection(ConnectionEvent{Direction: "outbound", Action: "dial_failed", Peer: peer.remoteCall, Endpoint: addr, Reason: "dial_error"})
 				continue
 			}
 			delay := backoff.Next()
-			m.reportConnection(ConnectionEvent{Direction: "outbound", Action: "dial_failed", Peer: peer.remoteCall, Endpoint: addr, Reason: err.Error()})
-			log.Printf("Peering: dial %s failed: %v (retry in %s)", addr, err, delay)
+			m.reportConnection(ConnectionEvent{Direction: "outbound", Action: "dial_failed", Peer: peer.remoteCall, Endpoint: addr, Reason: "dial_error"})
+			m.reportDiagnostic("dial_failed", peer.remoteCall, "network_error")
 			if !waitPeerRetry(m.ctx, delay) {
 				return
 			}
 			continue
 		}
-		log.Printf("Peering: connected to %s", addr)
+		m.reportDiagnostic("connected", peer.remoteCall, "outbound")
 		m.reportConnection(ConnectionEvent{Direction: "outbound", Action: "connected", Peer: peer.remoteCall, Endpoint: addr, Reason: "none"})
 		settings := m.sessionSettings(peer)
 		sess := newSession(conn, dirOutbound, m, peer, settings)
+		sess.operation = operation
 		if !m.finishRetryDial(peer.remoteCall, generation, sess, time.Now()) {
 			sess.close()
+			m.endContextOperation(operation)
 			m.releaseUnstartedCandidateSlots()
 			continue
 		}
@@ -1001,8 +856,8 @@ func (m *Manager) runOutbound(peer PeerEndpoint) {
 		if strings.TrimSpace(sess.remoteCall) == "" {
 			sess.remoteCall = "*"
 		}
-		if err := sess.Run(m.ctx); err != nil && m.ctx.Err() == nil {
-			log.Printf("Peering: session to %s ended: %v", addr, err)
+		if err := sess.Run(); err != nil && m.ctx.Err() == nil {
+			m.reportDiagnostic("outbound_session_ended", peer.remoteCall, "session_error")
 		}
 		m.mu.RLock()
 		retrying := m.blockedPeers.Value(peer.remoteCall)
@@ -1124,7 +979,9 @@ func (m *Manager) legacyWorker(ctx context.Context) {
 			if m.topology == nil || work.frame == nil {
 				continue
 			}
-			m.topology.applyLegacy(ctx, work.frame, work.ts)
+			if err := m.topology.applyLegacy(ctx, work.frame, work.ts); err != nil && ctx.Err() == nil {
+				m.reportDiagnostic("legacy_projection_failed", "", "storage_error")
+			}
 		}
 	}
 }

@@ -27,7 +27,6 @@ func TestEventFileLoggerWritesSeparateDailyFiles(t *testing.T) {
 	logger.LogReputationDrop(eventLogField{key: "event", value: "reputation_drop"}, eventLogField{key: "call", value: "K1ABC"}, eventLogField{key: "reason", value: "probation"})
 	logger.LogTelnetConnection(eventLogField{key: "event", value: "telnet_connection"}, eventLogField{key: "action", value: "connect"}, eventLogField{key: "ip", value: "203.0.113.1"})
 	logger.LogIngestConnection(eventLogField{key: "event", value: "ingest_connection"}, eventLogField{key: "source", value: "RBN"}, eventLogField{key: "action", value: "connected"})
-	logger.LogPeerConnection(eventLogField{key: "event", value: "peer_connection"}, eventLogField{key: "peer", value: "N0PEER-1"}, eventLogField{key: "action", value: "established"})
 	if err := logger.Close(); err != nil {
 		t.Fatalf("Close() error: %v", err)
 	}
@@ -36,7 +35,9 @@ func TestEventFileLoggerWritesSeparateDailyFiles(t *testing.T) {
 	assertEventLogLine(t, filepath.Join(dir, "reputation"), "event=reputation_drop call=K1ABC reason=probation")
 	assertEventLogLine(t, filepath.Join(dir, "telnet"), "event=telnet_connection action=connect ip=203.0.113.1")
 	assertEventLogLine(t, filepath.Join(dir, "ingest"), "event=ingest_connection source=RBN action=connected")
-	assertEventLogLine(t, filepath.Join(dir, "peer"), "event=peer_connection peer=N0PEER-1 action=established")
+	if _, err := os.Stat(filepath.Join(dir, "peer")); !os.IsNotExist(err) {
+		t.Fatal("parent constructed peer diagnostic sink")
+	}
 }
 
 func TestEventLogDeduperBoundsKeys(t *testing.T) {

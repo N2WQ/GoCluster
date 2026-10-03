@@ -12,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"dxcluster/peer"
 )
 
 type qualificationLoadProfile struct {
@@ -19,15 +21,22 @@ type qualificationLoadProfile struct {
 	CPU, AllocationsBefore, AllocationsAfter string
 	ElapsedSeconds                           float64
 	TotalAllocBytes, AllocObjects            uint64
+	Warm                                     *qualificationWarmProfile `json:",omitempty"`
 }
 
 // Profiling is an opt-in diagnostic of the service process (runtime and its
 // bounded enqueue observer). Population and drain are excluded from CPU samples. Allocation
 // profiles bracket the same load; their cumulative samples require pprof -base.
 // GC before either allocation snapshot is outside the measured load interval.
-func startQualificationLoadProfile(t *testing.T, profile qualificationProfile) func() qualificationLoadProfile {
+func startQualificationLoadProfile(t *testing.T, profile qualificationProfile, manager *peer.Manager, clockNow func() time.Time) func() qualificationLoadProfile {
 	t.Helper()
 	path := os.Getenv("GOCLUSTER_PC92_RUNTIME_CPU_PROFILE")
+	if profile.name == "warm-diagnostic" {
+		if path == "" || !filepath.IsAbs(path) {
+			t.Fatal("warm diagnostic requires CPU profiling and an absolute output path")
+		}
+		return startQualificationWarmProfile(t, path, manager, clockNow)
+	}
 	if path == "" {
 		return func() qualificationLoadProfile { return qualificationLoadProfile{} }
 	}

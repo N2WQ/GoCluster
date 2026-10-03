@@ -100,6 +100,9 @@ func (d *q4Runtime) cycle(plan peer.QualificationStagingPlan) error {
 	if err != nil {
 		return err
 	}
+	if err := q4EnabledOwnership(cycle.Pressured); err != nil {
+		return err
+	}
 	if releaseWrites != nil {
 		cycle.Transports = d.r.peerManager.QualificationTransports()
 		releaseWrites()

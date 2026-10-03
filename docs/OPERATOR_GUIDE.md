@@ -20,6 +20,7 @@ Linux operators currently build from source:
 
 ```sh
 GOOS=linux GOARCH=amd64 go build -trimpath -o gocluster .
+GOOS=linux GOARCH=amd64 go build -trimpath -o peerdiag ./cmd/peerdiag
 ```
 
 ## Configure A Real Node
@@ -85,6 +86,7 @@ To compile from source on Windows:
 ```pwsh
 go test ./...
 go build -trimpath -o gocluster.exe .
+go build -trimpath -o peerdiag.exe ./cmd/peerdiag
 ```
 
 ## Run On Linux
@@ -94,9 +96,10 @@ Build from the repository root with Go `1.26+`:
 ```sh
 go test ./...
 GOOS=linux GOARCH=amd64 go build -trimpath -o gocluster .
+GOOS=linux GOARCH=amd64 go build -trimpath -o peerdiag ./cmd/peerdiag
 ```
 
-Install the binary and the required runtime data together, for example under
+Install both executables and the required runtime data together, for example under
 `/opt/gocluster`. Keep a complete private config directory at a stable path
 such as `/opt/gocluster/data/config.local`.
 
@@ -113,7 +116,7 @@ data, then assign ownership to the service user:
 ```sh
 sudo useradd -r -s /bin/false gocluster
 sudo mkdir -p /opt/gocluster
-sudo cp gocluster /opt/gocluster/
+sudo cp gocluster peerdiag /opt/gocluster/
 sudo cp -R data /opt/gocluster/
 sudo chown -R gocluster:gocluster /opt/gocluster
 ```

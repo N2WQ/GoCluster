@@ -1,10 +1,13 @@
 # PC18/PC92 qualification contract and evidence
 
-**Current authority:** [approved v14](pc18-pc92-scope-ledger-v14.md) replaces
-admission headroom simulation with controlled retries and a required YAML peer
-cap. See [v14 evidence](pc92-v14-validation.md) for current results. Overall
-acceptance remains open; historical passes below do not qualify the final v14
-source.
+**Current authority:** [approved v15](pc18-pc92-scope-ledger-v15.md) consolidates
+the demonstrated shared-dedupe corrections, measured latency work and remaining
+context/diagnostic/SQLite ownership proofs. Its
+[consolidated validation record](pc92-v15-validation.md) distinguishes planned
+checks, correction evidence and final acceptance. The [approved v16 amendment](pc18-pc92-scope-ledger-v16.md)
+adds behavior-preserving WHOSPOTSME and harmonic maintenance changes. V14's controlled retries and
+required peer cap remain unchanged. Overall acceptance is incomplete; historical
+passes below do not qualify the changing v15/v16 source.
 
 **2026-10-02 continuation:** full sustained-cache qualification passed. After
 correcting the healthy peer fixture to initiate DXSpider-style PC51 pings,
@@ -54,8 +57,10 @@ and the shared-parser amendment in [v8](pc18-pc92-scope-ledger-v8.md).
 The subsequent [approved v9 persistence experiment](pc18-pc92-scope-ledger-v9.md)
 is complete with a negative feasibility result. Its proposed driver candidate
 failed the early ownership/allocation/compatibility gates; see the
-[evidence report](pc92-persistence-feasibility-v9.md). Production modernc SQLite
-is unchanged. This result does not replace Q1-Q6 or complete the 480 MiB proof.
+[evidence report](pc92-persistence-feasibility-v9.md). At that historical
+checkpoint, production modernc SQLite remained unchanged; the current v15
+topology-only driver replacement is tracked above. The v9 result does not
+replace Q1-Q6 or complete the 480 MiB proof.
 
 V11 wrappers build once, retain the executable, and compare manifests before
 build, after build and after execution. The sole authoritative final JSON begins

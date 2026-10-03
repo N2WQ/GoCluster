@@ -17,6 +17,7 @@ import (
 	"dxcluster/config"
 	"dxcluster/cty"
 	"dxcluster/dedup"
+	"dxcluster/internal/qualificationstage"
 	"dxcluster/internal/toxicity"
 	"dxcluster/pathreliability"
 	"dxcluster/peer"
@@ -244,6 +245,9 @@ func (p *outputPipeline) run() {
 				p.releaseDueFT(time.Now().UTC().Add(24*time.Hour), true)
 				p.drainToxicityPending(time.Now().UTC().Add(p.toxicityClassifier.DrainTimeout()))
 				return
+			}
+			if s != nil {
+				qualificationstage.Observe(qualificationstage.OutputReceived, s.Comment, -1)
 			}
 			p.processSpot(s, nil)
 		case result := <-p.toxicityResults():

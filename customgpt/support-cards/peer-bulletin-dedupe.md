@@ -26,10 +26,25 @@ dedupe, topology cache, or private peer configuration.
   Recovery C/A is mandatory even with periodic C/K disabled.
 - PC18 identifies GoCluster truthfully; numeric compatibility values are not
   its product version. Optional topology SQLite rows can be stale diagnostics.
-- V9 rejected an isolated replacement-driver candidate; production modernc
-  SQLite remains unchanged. Do not attribute the candidate's failures to the
-  current driver. The complete 480 MiB allocation proof is still open; see the
-  [v9 evidence report](../../docs/pc92-persistence-feasibility-v9.md).
+- V9 rejected an isolated unmodified replacement-driver candidate. V15 now
+  integrates a narrowly repaired, pinned SQLite fork only for peer topology;
+  other database owners keep their existing drivers. The historical v9 failures
+  do not describe the repaired candidate's current results. Complete allocation
+  proof and original final-source qualification remain open; see the
+  [v15 record](../../docs/pc92-v15-validation.md).
+- Keep the sibling peerdiag companion with the cluster executable. Detailed
+  peer logs moved to that dedicated owner; status reports known dropped records
+  separately from unconfirmed file writes. Logging failure does not itself
+  close peering. Failed native/process cleanup retains its owner and prevents
+  an overlapping replacement.
+- A configured topology database that exceeds its resource budget refuses
+  startup while preserving committed data. Runtime persistence failure does
+  not replace or reset live protocol authority. Empty topology.db_path remains
+  the explicit disable setting.
+- Ordinary ingestion spot caches now compare their complete existing encoded
+  keys. The former32-bit collision could lose a local spot while peer relay
+  succeeded; this is distinct from PC92 payload-cache admission or topology
+  loss. Check complete token evidence before attributing a missing spot.
 
 ## Must Avoid
 

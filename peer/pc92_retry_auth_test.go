@@ -46,7 +46,7 @@ func retryV14WireCandidate(t *testing.T, m *Manager) (*session, net.Conn, *bufio
 	s := newSession(server, dirInbound, m, PeerEndpoint{host: "pipe"}, m.sessionSettings(PeerEndpoint{}))
 	result := make(chan error, 1)
 	done := make(chan struct{})
-	go func() { result <- s.Run(t.Context()); close(done) }()
+	go func() { result <- s.Run(); close(done) }()
 	t.Cleanup(func() {
 		_ = client.Close()
 		_ = server.Close()
@@ -216,7 +216,7 @@ func TestPC92V14RetryDialFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	failed := make(chan struct{}, 1)
-	m.SetConnectionReporter(func(event ConnectionEvent) {
+	observeConnectionEvents(t, m, func(event ConnectionEvent) {
 		if event.Action == "dial_failed" {
 			select {
 			case failed <- struct{}{}:

@@ -7,6 +7,8 @@ import (
 	"errors"
 	"sync/atomic"
 	"time"
+
+	"dxcluster/internal/peerdiag"
 )
 
 // QualificationState is collected by the graph owner. Transport counters are
@@ -25,6 +27,9 @@ type QualificationState struct {
 	ControlBytes, DataBytes, ActiveBytes            int
 	ProjectionReservedBytes                         int64
 	ReaderBackingBytes, ReaderRawLineBytes          int64
+	Persistence                                     TopologyPersistenceStats
+	Diagnostics                                     peerdiag.Stats
+	Contexts                                        ContextOwnershipStats
 }
 
 type protocolQualificationState struct {
@@ -97,6 +102,9 @@ func (p *protocolController) handleQualificationRequest(req *protocolQualificati
 		session.queueMu.Unlock()
 	}
 	m.mu.RUnlock()
+	s.Persistence = m.TopologyPersistenceStats()
+	s.Diagnostics = m.DiagnosticStats()
+	s.Contexts = m.ContextOwnership()
 	req.state = s
 	return nil
 }

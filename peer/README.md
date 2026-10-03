@@ -175,6 +175,8 @@ expiry. Telnet bulletin dedupe remains a separate configurable final fanout
 filter. `forward_spots: false` leaves the peer transit spot cache unused while
 local ingest and the local DX-command exception continue.
 
+## Diagnostics And Persistence
+
 Optional SQLite tables are diagnostic projections, never restored live routing
 authority. Slow or failed storage does not block the protocol owner. Oversized
 diagnostic generations are refused whole; a prior database snapshot can remain
@@ -186,6 +188,40 @@ assuming a remote failure.
 Acceptance evidence and outstanding qualification are tracked in
 [`docs/pc92-qualification.md`](../docs/pc92-qualification.md). A component
 reference test or diagnostic smoke alone is not a sustained-load qualification.
+
+
+Detailed peer events and `logs/peering_overlong.log` are owned by the sibling
+`peerdiag.exe` (Windows) or `peerdiag` (Linux). The cluster does not search PATH.
+Keep the companion beside the cluster executable, built from the same source.
+Peer status reports `ready`, `disabled`, `degraded` or `cleanup-failed`, with
+known `dropped` and `unconfirmed` write counts. A write without a successful
+acknowledgement is unconfirmed, since the file may already contain part or all
+of it. Diagnostic overload can discard records; it cannot discard protocol
+traffic. A failed process termination retains its resource charge and blocks
+replacement. The general logger continues serving nonpeer components.
+
+The optional topology store uses one serialized connection in the pinned local
+SQLite fork; other application databases keep their existing drivers. One
+process-wide reservation covers opening, active work and failed retirement, so
+a second topology-enabled manager cannot overlap it. Database deadlines include
+waiting for that owner. A configured database that cannot fit its memory budget
+refuses startup with an error and preserves the file and committed data. A
+runtime persistence failure leaves live protocol authority intact. Disabling
+persistence remains the explicit empty `topology.db_path` setting.
+If a Windows native file close fails after consuming its Go handle state,
+persistence retains its reservation and refuses replacement until process
+restart; it cannot safely retry that consumed handle.
+
+Current qualification has demonstrated a DSN compatibility failure:
+`_pragma=data_store_directory(...)` no longer redirects later relative opens
+by the application's other SQLite driver. This remains an unresolved defect
+against the selected compatibility contract, not an accepted configuration
+policy. See the [SQLite evidence](../docs/pc92-v15-sqlite-validation.md).
+
+The resource ceiling and final qualification remain open until the complete
+source ownership proof and original workloads pass. See
+[ADR-0234](../docs/decisions/ADR-0234-peer-owned-resources-and-exact-spot-keys.md)
+and [v15 evidence](../docs/pc92-v15-validation.md).
 
 ## Operator View
 

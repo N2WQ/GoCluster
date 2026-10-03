@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"strings"
 	"sync"
@@ -38,6 +37,7 @@ type session struct {
 	qualificationWriter  qualificationWriterState
 	pendingReserved      bool
 	ownerReserved        bool
+	operation            *contextOperation
 	id                   string
 	diagnosticLabel      string
 	conn                 net.Conn
@@ -97,7 +97,6 @@ type session struct {
 	ctx            context.Context
 	cancel         context.CancelFunc
 	closeOnce      sync.Once
-	overlongPath   string
 	logKeepalive   bool
 	logLineTooLong bool
 }
@@ -115,7 +114,7 @@ func newSession(conn net.Conn, dir direction, manager *Manager, peer PeerEndpoin
 			writerConn = tconn
 			readFn = tconn.Read
 		} else {
-			log.Printf("Peering: failed to wrap telnet transport: %v", err)
+			manager.reportDiagnostic("telnet_wrap_failed", diagnosticLabel, "transport_error")
 			useZiutek = false
 		}
 	}
@@ -148,7 +147,6 @@ func newSession(conn net.Conn, dir direction, manager *Manager, peer PeerEndpoin
 		keepalive:       settings.keepalive,
 		configEvery:     settings.configEvery,
 		dir:             dir,
-		overlongPath:    "logs/peering_overlong.log",
 		logKeepalive:    settings.logKeepalive,
 		logLineTooLong:  settings.logLineTooLong,
 	}
@@ -168,24 +166,42 @@ func newSession(conn net.Conn, dir direction, manager *Manager, peer PeerEndpoin
 	return s
 }
 
-func (s *session) Run(ctx context.Context) error {
+func (s *session) Run() error {
 	if s.conn == nil {
+		if s.manager != nil {
+			s.manager.endContextOperation(s.operation)
+			s.manager.mu.Lock()
+			s.manager.releaseCandidateSlotsLocked(s)
+			s.manager.retryRetireLocked(s, time.Now())
+			s.manager.mu.Unlock()
+		}
 		return errors.New("nil conn")
 	}
-	runCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	s.ctx, s.cancel = runCtx, cancel
 	if s.manager == nil {
 		s.close()
 		return errors.New("peer: session manager not initialized")
 	}
 	if err := s.manager.trackCandidate(s); err != nil {
 		s.close()
+		s.manager.endContextOperation(s.operation)
 		s.manager.mu.Lock()
+		s.manager.releaseCandidateSlotsLocked(s)
 		s.manager.retryRetireLocked(s, time.Now())
 		s.manager.mu.Unlock()
 		return err
 	}
+	// Production construction hands Run the operation that already owns the
+	// inbound reservation or outbound dial. Package harnesses use the same
+	// fixed owner pool; there is no alternate parent or cancellation bridge.
+	if s.operation == nil {
+		s.operation = s.manager.beginContextOperation()
+	}
+	if s.operation == nil {
+		s.close()
+		s.manager.releaseCandidate(s)
+		return errors.New("peer: context owner capacity or manager stopped")
+	}
+	s.ctx, s.cancel = s.operation.ctx, s.operation.cancel
 	// Run owns every session worker and closes the socket before joining. The
 	// cancellation watcher also interrupts reads when idle timeouts are disabled.
 	defer func() {
@@ -206,6 +222,10 @@ func (s *session) Run(ctx context.Context) error {
 				Endpoint: s.peer.host, Reason: "session_end",
 			})
 		}
+		// releaseCandidate returns transport credits. Cancellation and removal
+		// from the permanent parent must complete before another owner can use it.
+		s.cancel()
+		s.manager.endContextOperation(s.operation)
 		s.manager.releaseCandidate(s)
 	}()
 	s.startWorker(s.writerLoop)
@@ -230,7 +250,7 @@ func (s *session) Run(ctx context.Context) error {
 			Action:    "rejected",
 			Peer:      s.remoteCall,
 			Endpoint:  s.peer.host,
-			Reason:    err.Error(),
+			Reason:    "handshake_error",
 		})
 		s.close()
 		return err
@@ -267,15 +287,9 @@ func (s *session) Run(ctx context.Context) error {
 			var tooLong ErrLineTooLong
 			if errors.As(err, &tooLong) {
 				if s.logLineTooLong {
-					log.Printf(
-						"Peering: line too long from %s, dropping and continuing (reason=%s len=%d limit=%d)",
-						s.peer.host,
-						tooLong.Reason,
-						tooLong.Length,
-						tooLong.Limit,
-					)
+					s.manager.reportDiagnostic("line_too_long", s.diagnosticLabel, tooLong.Reason)
 				}
-				appendOverlongSample(s.overlongPath, s.peer.host, tooLong.Preview, tooLong.Length, tooLong.Reason, tooLong.Limit)
+				s.reportOverlong(tooLong)
 				continue
 			}
 			return err
@@ -366,16 +380,16 @@ func (s *session) handlePing(frame *Frame) {
 	call := strings.TrimSpace(s.localCall)
 	if call != "" && !strings.EqualFold(toNode, call) && toNode != "*" && toNode != "" {
 		if s.logKeepalive {
-			log.Printf("Peering: PC51 ping addressed to %q (local %q); skipping response", toNode, call)
+			s.manager.reportDiagnostic("pc51_other_destination", toNode, "skipped")
 		}
 		return
 	}
 	resp := fmt.Sprintf("PC51^%s^%s^0^", fromNode, toNode)
 	if s.logKeepalive {
-		log.Printf("Peering: PC51 ping from %s to %s; sending ACK", fromNode, toNode)
+		s.manager.reportDiagnostic("pc51_ping", fromNode, "ack")
 	}
 	if err := s.sendControlLine(resp); err != nil && s.logKeepalive {
-		log.Printf("Peering: PC51 ACK to %s failed: %v", toNode, err)
+		s.manager.reportDiagnostic("pc51_ack_failed", toNode, "queue_error")
 	}
 }
 
@@ -399,7 +413,7 @@ func (s *session) runOutboundHandshake() error {
 		if err != nil {
 			var tooLong ErrLineTooLong
 			if errors.As(err, &tooLong) {
-				appendOverlongSample(s.overlongPath, s.peer.host, tooLong.Preview, tooLong.Length, tooLong.Reason, tooLong.Limit)
+				s.reportOverlong(tooLong)
 				continue
 			}
 			return err

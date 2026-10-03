@@ -479,7 +479,7 @@ func TestDXSpiderReferenceGoSessionStartup(t *testing.T) {
 			endpoint := manager.inboundPeers["GB7REF"]
 			session := newSession(local, tc.direction, manager, endpoint, manager.sessionSettings(endpoint))
 			done := make(chan error, 1)
-			go func() { done <- session.Run(ctx) }()
+			go func() { done <- session.Run() }()
 			t.Cleanup(func() { cancel(); _ = remote.Close(); manager.Stop(); <-done })
 			reader := bufio.NewReader(remote)
 			var wire []string

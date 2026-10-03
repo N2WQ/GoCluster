@@ -3,7 +3,6 @@ package peer
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -150,7 +149,6 @@ func (m *Manager) trackCandidate(s *session) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.stopping {
-		m.releaseCandidateSlotsLocked(s)
 		return fmt.Errorf("peer manager stopping")
 	}
 	if !s.pendingReserved {
@@ -405,5 +403,5 @@ func (p *protocolController) diagnostic(reason string) {
 	}
 	// Reasons are fixed literals at call sites; this is bounded by their finite set.
 	p.diagnosticAt.Set(reason, now)
-	log.Printf("Peering: %s (nodes=%d users=%d edges=%d ingress=%d freshness=%d)", reason, p.graph.nodes.Len(), p.graph.users.Len(), p.graph.edges, p.graph.ingress.Len(), p.graph.freshness.Len())
+	p.manager.reportDiagnostic("pc92", "", reason)
 }

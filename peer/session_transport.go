@@ -3,7 +3,6 @@ package peer
 import (
 	"context"
 	"errors"
-	"log"
 	"strings"
 	"time"
 )
@@ -102,7 +101,7 @@ func (s *session) controlAgeLoop() {
 			expired := s.lineTimes.expired(now) || s.rawTimes.expired(now)
 			s.queueMu.Unlock()
 			if expired {
-				log.Printf("Peering: control queue age exceeded for %s", s.diagnosticLabel)
+				s.manager.reportDiagnostic("control_queue_age", s.diagnosticLabel, "expired")
 				s.close()
 				return
 			}
@@ -464,7 +463,7 @@ func (s *session) handleWriterError(kind string, err error) {
 	if err == nil || s.ctx != nil && s.ctx.Err() != nil {
 		return
 	}
-	log.Printf("Peering: writer %s failed for %s: %v", kind, s.diagnosticLabel, err)
+	s.manager.reportDiagnostic("writer_failed", s.diagnosticLabel, kind)
 	if s.manager != nil {
 		// Record a genuine writer failure before closing this session. The
 		// coordinator deduplicates the later terminal Run report and handles

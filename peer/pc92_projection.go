@@ -3,7 +3,6 @@ package peer
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 	"unsafe"
 )
@@ -123,7 +122,7 @@ func (m *Manager) projectionLoop(ctx context.Context) {
 			return
 		case snapshot := <-m.protocol.projection:
 			if err := m.topology.replaceProjection(ctx, snapshot); err != nil && ctx.Err() == nil {
-				log.Printf("Peering: topology projection failed: %v", err)
+				m.reportDiagnostic("topology_projection_failed", "", "storage_error")
 			}
 			m.protocol.releaseProjection(&snapshot)
 		}
@@ -132,35 +131,36 @@ func (m *Manager) projectionLoop(ctx context.Context) {
 func (t *topologyStore) replaceProjection(parent context.Context, snapshot graphProjection) error {
 	ctx, cancel := newTopologyDBContext(parent)
 	defer cancel()
-	tx, err := t.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer rollbackTopology(tx)
-	// Old diagnostic rows are never restored as live routing authority. Keep
-	// their configured retention effective without tying receive work to SQLite.
-	if _, err = tx.ExecContext(ctx, `delete from peer_nodes where updated_at < ?`, snapshot.at.Add(-t.retention).Unix()); err != nil {
-		return err
-	}
-	if _, err = tx.ExecContext(ctx, `delete from peer_pc92_nodes`); err != nil {
-		return err
-	}
-	if _, err = tx.ExecContext(ctx, `delete from peer_pc92_typed_edges`); err != nil {
-		return err
-	}
-	for _, n := range snapshot.nodes {
-		e := n.entry
-		if _, err = tx.ExecContext(ctx, `insert into peer_pc92_nodes(call,bitmap,version,build,ip,complete,updated_at) values(?,?,?,?,?,?,?)`, e.Call, e.Flags, e.Version, e.Build, entryIP(e), n.complete, n.seen.Unix()); err != nil {
+	err := t.db.transaction(ctx, func(tx *topologyTransaction) error {
+		// Old diagnostic rows are never restored as live routing authority. Keep
+		// their configured retention effective without tying receive work to SQLite.
+		if err := tx.Exec(`delete from peer_nodes where updated_at < ?`, snapshot.at.Add(-t.retention).Unix()); err != nil {
 			return err
 		}
-	}
-	for _, edge := range snapshot.edges {
-		e := edge.entry
-		if _, err = tx.ExecContext(ctx, `insert into peer_pc92_typed_edges(parent,call,kind,bitmap,version,build,ip,updated_at) values(?,?,?,?,?,?,?,?)`, edge.parent, e.Call, e.IsNode(), e.Flags, e.Version, e.Build, entryIP(e), snapshot.at.Unix()); err != nil {
+		if err := tx.Exec(`delete from peer_pc92_nodes`); err != nil {
 			return err
 		}
+		if err := tx.Exec(`delete from peer_pc92_typed_edges`); err != nil {
+			return err
+		}
+		for _, n := range snapshot.nodes {
+			e := n.entry
+			if err := tx.Exec(`insert into peer_pc92_nodes(call,bitmap,version,build,ip,complete,updated_at) values(?,?,?,?,?,?,?)`, e.Call, e.Flags, e.Version, e.Build, entryIP(e), n.complete, n.seen.Unix()); err != nil {
+				return err
+			}
+		}
+		for _, edge := range snapshot.edges {
+			e := edge.entry
+			if err := tx.Exec(`insert into peer_pc92_typed_edges(parent,call,kind,bitmap,version,build,ip,updated_at) values(?,?,?,?,?,?,?,?)`, edge.parent, e.Call, e.IsNode(), e.Flags, e.Version, e.Build, entryIP(e), snapshot.at.Unix()); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err == nil {
+		t.recordProjectionCommit(snapshot.at)
 	}
-	return tx.Commit()
+	return err
 }
 func entryIP(e PC92Entry) string {
 	if e.IP.IsValid() {
@@ -171,25 +171,19 @@ func entryIP(e PC92Entry) string {
 func ensurePC92ProjectionSchema(t *topologyStore) error {
 	ctx, cancel := newTopologyDBContext(context.Background())
 	defer cancel()
-	tx, err := t.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("PC92 projection schema: %w", err)
-	}
-	defer rollbackTopology(tx)
-	// The old call-only table remains historical for rollback diagnostics.
-	// Current nodes and typed edges are replaced together by replaceProjection;
-	// old edges must not be joined to current nodes as a current generation.
-	_, err = tx.ExecContext(ctx, `create table if not exists peer_pc92_nodes (
+	err := t.db.transaction(ctx, func(tx *topologyTransaction) error {
+		// The old call-only table remains historical for rollback diagnostics.
+		// Current nodes and typed edges are replaced together by replaceProjection;
+		// old edges must not be joined to current nodes as a current generation.
+		return tx.Exec(`create table if not exists peer_pc92_nodes (
  call text primary key,bitmap integer,version text,build text,ip text,complete integer,updated_at integer);
  create table if not exists peer_pc92_edges (
  parent text,call text,bitmap integer,version text,build text,ip text,updated_at integer,primary key(parent,call));
  create table if not exists peer_pc92_typed_edges (
  parent text not null,call text not null,kind integer not null check(kind in (0,1)),bitmap integer,version text,build text,ip text,updated_at integer,primary key(parent,call,kind));`)
+	})
 	if err != nil {
 		return fmt.Errorf("PC92 projection schema: %w", err)
-	}
-	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("PC92 projection schema commit: %w", err)
 	}
 	return nil
 }

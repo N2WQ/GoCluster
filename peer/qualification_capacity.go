@@ -79,6 +79,8 @@ type QualificationCapacityChecks struct {
 	MaxReaderBackingBytes, MaxReaderRawLineBytes, MaxParseBytes                  int64
 	MaxSpotKeys, MaxPC92Keys, MaxPC93Keys, MaxBulletinKeys                       int
 	MaxGraphChargedBytes                                                         int
+	MaxPersistenceReservedBytes, MaxDiagnosticChargedBytes                       int64
+	MaxContextParents, MaxActiveContexts                                         int
 }
 
 func (c *QualificationCapacityChecks) Observe(s QualificationState) error {
@@ -99,11 +101,18 @@ func (c *QualificationCapacityChecks) Observe(s QualificationState) error {
 	c.MaxPC93Keys = max(c.MaxPC93Keys, s.PC93Keys)
 	c.MaxBulletinKeys = max(c.MaxBulletinKeys, s.BulletinKeys)
 	c.MaxGraphChargedBytes = max(c.MaxGraphChargedBytes, s.GraphChargedBytes)
+	c.MaxPersistenceReservedBytes = max(c.MaxPersistenceReservedBytes, s.Persistence.ReservedBytes)
+	c.MaxDiagnosticChargedBytes = max(c.MaxDiagnosticChargedBytes, s.Diagnostics.ChargedBytes)
+	c.MaxContextParents = max(c.MaxContextParents, s.Contexts.Parents)
+	c.MaxActiveContexts = max(c.MaxActiveContexts, s.Contexts.Active)
 	if s.MaxPeers < 1 || s.MaxPeers > 64 {
 		return fmt.Errorf("invalid qualified peer cap: %d", s.MaxPeers)
 	}
 	if s.OwnedSessions > s.MaxPeers+128 || s.OwnerReservations > s.MaxPeers+128 || s.Established > s.MaxPeers || s.Pending > 128 || s.StagedRecords > 8192 || s.StagedBytes > 16<<20 || s.GraphChargedBytes > 96<<20 || s.ParseScratchBytes > 8<<20 || s.ProjectionReservedBytes > 48<<20 {
 		return fmt.Errorf("capacity reservation exceeded: %+v", s)
+	}
+	if s.Persistence.ReservedBytes > 16<<20 || s.Persistence.EngineBackingBytes > 8<<20 || s.Persistence.EngineNativeBytes > 8<<20 || s.Persistence.WALViewBytes+s.Persistence.WALShadowBytes > 6<<20 || s.Persistence.WALSlots > 64 || s.Persistence.HostReservedBytes > 2<<20 || s.Diagnostics.ChargedBytes > 3<<20 || s.Contexts.Parents > s.MaxPeers+128 || s.Contexts.Active > s.Contexts.Parents || s.Contexts.ProjectionParents > 2 {
+		return fmt.Errorf("persistence/diagnostic/context reservation exceeded: %+v", s)
 	}
 	return nil
 }

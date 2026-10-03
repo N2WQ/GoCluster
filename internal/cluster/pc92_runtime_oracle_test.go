@@ -121,6 +121,7 @@ type qualificationRecipient struct {
 }
 
 type qualificationOracle struct {
+	stages           atomic.Pointer[qualificationStageTrace]
 	epoch            time.Time
 	measurementEpoch time.Time
 	clockNow         func() time.Time
@@ -327,6 +328,9 @@ func (o *qualificationOracle) enqueued(event telnet.QualificationEnqueue) {
 		return
 	}
 	o.observed(o.clients[i-1], event.Comment, event.DXCall, event.ObservedAt, true)
+	if stages := o.stages.Load(); stages != nil {
+		stages.enqueue(i-1, event.Comment, event.ObservedAt.UnixNano())
+	}
 }
 
 type qualificationCohort struct {

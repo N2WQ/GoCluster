@@ -55,9 +55,12 @@ func openQualificationSharedInputs(path string, count int, create bool) (*qualif
 		_ = m.close()
 		return nil, err
 	}
-	// MapViewOfFile returns page-aligned non-Go memory. Neither the Go heap nor
-	// the mapping contains pointers, so the collector cannot relocate it.
-	m.inputs = unsafe.Slice((*qualificationInput)(unsafe.Pointer(m.view)), count)
+	// MapViewOfFile returns page-aligned native memory, not a Go heap pointer
+	// round-tripped through uintptr. Reinterpret its stored address as in the
+	// pinned native SQLite wrapper. This owner retains the live view/handle;
+	// inputs contains only scalar records and is borrowed until close unmaps it.
+	ptr := *(*unsafe.Pointer)(unsafe.Pointer(&m.view))
+	m.inputs = unsafe.Slice((*qualificationInput)(ptr), count)
 	return m, nil
 }
 

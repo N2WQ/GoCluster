@@ -861,6 +861,7 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 		p92Live := peerSessions > 0
 		humanSources := dashboardHumanIngestSources(humanTelnetFeeds)
 		ingestSources := dashboardIngestSources(ingestSourceCfg, rbnCWLive, rbnFTLive, pskLive, dxsummitLive, p92Live, peerSessions, peerSSIDs, humanSources...)
+		appendPeerDiagnosticStatus(ingestSources, peerManager)
 
 		lines := make([]string, 0, 11)
 		lines = append(lines,
@@ -1350,7 +1351,6 @@ func startPipelineHealthMonitor(ctx context.Context, dedup *dedup.Deduplicator, 
 	// Downstream: ticker.Stop and log.Printf.
 	go func() {
 		defer ticker.Stop()
-		var lastReconnects uint64
 		for {
 			select {
 			case <-ctx.Done():
@@ -1376,12 +1376,7 @@ func startPipelineHealthMonitor(ctx context.Context, dedup *dedup.Deduplicator, 
 						}
 					}
 				}
-				if peerManager != nil {
-					if reconnects := peerManager.ReconnectCount(); reconnects != lastReconnects {
-						log.Printf("Peering: outbound reconnects=%d", reconnects)
-						lastReconnects = reconnects
-					}
-				}
+
 				if dedup != nil {
 					if last := dedup.LastProcessedAt(); !last.IsZero() {
 						if age := now.Sub(last); age > outputStallWarning {
@@ -4555,6 +4550,11 @@ func formatIngestSourceLines(sources []dashboardIngestSource) []string {
 			}
 		}
 		entries = append(entries, withIngestStatusLabel(source.Label, source.Connected))
+		if !source.Connected && source.Label == "Peers" {
+			for _, detail := range source.Details {
+				entries = append(entries, withIngestStatusLabel(detail, false))
+			}
+		}
 	}
 	lines := []string{fmt.Sprintf("[yellow]Ingest[-]: %d / %d connected", connected, enabled)}
 	if enabled == 0 {

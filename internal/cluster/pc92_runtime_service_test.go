@@ -77,6 +77,7 @@ func TestPC92RuntimeService(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := &qualificationChild{t: t, runtime: r, oracle: oracle, profile: profile}
+	defer service.retireStages()
 	for {
 		_ = conn.SetReadDeadline(time.Now().Add(70 * time.Minute))
 		var request qualificationRequest
@@ -147,7 +148,7 @@ func (s *qualificationChild) handle(ctx context.Context, request qualificationRe
 		if s.stopProfile != nil {
 			return reply, fmt.Errorf("profile already started")
 		}
-		s.stopProfile = startQualificationLoadProfile(s.t, s.profile)
+		s.stopProfile = startQualificationLoadProfile(s.t, s.profile, s.runtime.peerManager, s.oracle.clockNow)
 	case "arm":
 		if request.Frequency != s.oracle.clockFrequency || request.Epoch <= 0 || !s.oracle.measurementEpoch.IsZero() {
 			return reply, fmt.Errorf("invalid measurement clock epoch/frequency")
@@ -164,12 +165,16 @@ func (s *qualificationChild) handle(ctx context.Context, request qualificationRe
 			}
 			s.oracle.sessionIDs[index-1] = user.SessionID
 		}
+		if err := s.armStages(); err != nil {
+			return reply, err
+		}
 		reply.Clock = s.oracle.clockNow().UnixNano()
 	case "profile-stop":
 		if s.stopProfile != nil {
 			reply.Profile = s.stopProfile()
 		}
 	case "results":
+		reply.Stages = s.finishStages(request.Used)
 		rows, err := s.oracle.enqueueResults(request.Used)
 		if err != nil {
 			return reply, err

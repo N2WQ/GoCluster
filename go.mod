@@ -1,6 +1,6 @@
 module dxcluster
 
-go 1.26
+go 1.26.0
 
 require gopkg.in/yaml.v3 v3.0.1
 
@@ -27,7 +27,9 @@ require (
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
+	github.com/ncruces/go-sqlite3-wasm/v6 v6.3.35304 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
+	github.com/ncruces/julianday v1.0.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/client_golang v1.15.0 // indirect
 	github.com/prometheus/client_model v0.3.0 // indirect
@@ -50,6 +52,7 @@ require (
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/gdamore/tcell/v2 v2.8.1
 	github.com/json-iterator/go v1.1.12
+	github.com/ncruces/go-sqlite3 v0.35.6
 	github.com/uber/h3-go/v4 v4.4.0
 	github.com/zeebo/xxh3 v1.0.2
 	github.com/ziutek/telnet v0.1.0
@@ -73,3 +76,7 @@ require (
 )
 
 replace github.com/eclipse/paho.mqtt.golang => ./third_party/paho.mqtt.golang
+
+replace github.com/ncruces/go-sqlite3 => ./third_party/go-sqlite3
+
+replace github.com/ncruces/go-sqlite3-wasm/v6 => ./third_party/go-sqlite3/engine

@@ -1,9 +1,59 @@
 # PC18/PC92 owned-allocation proof record
 
-The selected ceiling is **480 MiB of owned protocol data and backing storage**, including overlapping active generations. Go stacks, GC/runtime bookkeeping and unchanged configuration storage are reported separately. This is not a process RSS limit. The aggregate proof remains open for enabled SQLite persistence and the final remaining-metadata inventory. No final 30-minute Q4 acceptance is claimed.
+The selected ceiling is **480 MiB of owned protocol data and backing storage**, including overlapping active generations. Go stacks, GC/runtime bookkeeping and unchanged configuration storage are reported separately. This is not a process RSS limit. The aggregate proof remains open for the final enabled-SQLite inventory, unjoined standard-library dial/resolver descendants and final-source qualification. Approved v15 replaces the historical persistence and diagnostic owners described below; its current accounting is summarized first. No final 30-minute Q4 acceptance is claimed.
 
 The derivation targets Go 1.26.4, windows/amd64. `allocationBytes` covers small-object classes and whole 8 KiB pages; `pointerAllocationBytes` includes an allocation type header. Rounded owned storage is included. Unreachable garbage awaiting GC, runtime heap arenas and stack backing are separate runtime overhead. A toolchain/architecture change requires rechecking the source and allocation oracles.
 
+## Current v15 ownership changes
+
+[Approved v15](pc18-pc92-scope-ledger-v15.md) subdivides the existing32MiB
+metadata ceiling into SQLite16MiB (engine8, WAL6, host2), diagnostics3MiB
+(parent1, helper2), and other metadata13MiB. No partition or aggregate increase
+is implied. The historical modernc and direct-logger descriptions below record
+why earlier proofs remained open; they no longer describe the v15 implementation.
+
+The topology-only SQLite fork has one serialized connection and one global
+reservation covering construction, operation and failed retirement. Its source
+inventory and actual native/fallback/Linux evidence are tracked in
+[the SQLite record](pc92-v15-sqlite-validation.md). The generated engine remains
+byte-identical to its pinned source. Constructor path work precedes engine/file
+owners; simultaneous phased maxima, rather than independent measurements, govern
+the host proof. The full prescribed sustained gate and final-source Linux
+capacity result remain required.
+
+A successfully closed topology store leaves a small zeroed shell in the single
+production Manager. The pinned amd64 source inventory is 5,040 bytes of heap
+shell/gate/scalar accounting plus 4,272 bytes of process-static reservation state.
+A 16 KiB allowance includes these inside the existing other-metadata global
+allowance; their combined 9,312 bytes are not added outside 480 MiB. The current
+Windows owner layout was read from the executed native-owner binary's DWARF;
+the new directory owner changes the static term while the heap allocation
+still rounds to the same size class. Successfully released engine, file,
+path and statement backing is absent from this shell. Failed retirement remains
+fully charged through its strong owner. Arbitrary sets of stopped API objects
+retained by an external caller are distinct from the production Manager's
+bounded owner history. This source inventory does not close the remaining
+aggregate proof; the SQLite record retains its derivation and validation state.
+
+Peer diagnostic records now enter a fixed mailbox and one companion generation.
+All callbacks into the shared logger were removed from the peer diagnostic path.
+Failed process/native cleanup keeps a strong charged owner and gates replacement.
+[The ownership record](pc92-v15-ownership-validation.md) inventories fixed records,
+path/environment expansion, file maintenance, process startup and retirement.
+Helper Linux connect cancellation may finish after DialContext returns, but the
+helper dials only once and the parent joins the whole process before replacement.
+
+Fixed context parents remove manager-root map churn and limit each parent to one
+active operation child. They do not join hidden Go resolver/Happy Eyeballs workers
+or Linux connect-cancellation callbacks. Standard deadline timer callbacks also can outlive cancellation and slot reuse, including parse and topology deadlines. Retained old generations remain an open
+source proof; fixed parent counts, a stable heap and successful cancellation
+cannot close it. No networking behavior, retry policy or accounting exclusion has
+been changed to hide this gap.
+
+V16's harmonic expiry index belongs to ordinary shared ingestion history. Its
+live-count/spare-capacity/overlap inventory is separately reported in
+[the history record](pc92-v16-performance-validation.md), consistent with the
+existing separation of shared ingestion owners from protocol partitions.
 ## Partitions
 
 | Owner | Ceiling | Included storage |

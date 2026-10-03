@@ -73,20 +73,6 @@ func (r *clusterRuntime) logIngestConnectionEvent(source, action, endpoint, reas
 	)
 }
 
-func (r *clusterRuntime) logPeerConnectionEvent(direction, action, peer, endpoint, reason string) {
-	if r == nil || r.eventFileLogger == nil {
-		return
-	}
-	r.eventFileLogger.LogPeerConnection(
-		eventLogField{key: "event", value: "peer_connection"},
-		eventLogField{key: "direction", value: direction},
-		eventLogField{key: "action", value: action},
-		eventLogField{key: "peer", value: eventCall(peer)},
-		eventLogField{key: "endpoint", value: endpoint},
-		eventLogField{key: "reason", value: reason},
-	)
-}
-
 func eventCall(call string) string {
 	call = strings.TrimSpace(call)
 	if call == "" {

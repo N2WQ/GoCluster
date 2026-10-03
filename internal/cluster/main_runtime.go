@@ -31,6 +31,7 @@ import (
 	"dxcluster/filter"
 	"dxcluster/floodcontrol"
 	"dxcluster/gridstore"
+	"dxcluster/internal/peerdiag"
 	"dxcluster/internal/toxicity"
 	"dxcluster/internal/voacap"
 	"dxcluster/pathreliability"
@@ -1004,8 +1005,10 @@ func (r *clusterRuntime) initializePeerManager() bool {
 	if !r.cfg.Peering.Enabled {
 		return true
 	}
-	pm, err := peer.NewManager(r.cfg.Peering, r.cfg.Peering.LocalCallsign, r.ingestInput, r.cfg.SpotPolicy.MaxAgeSeconds, r.dropReporter)
+	diagnostics := peerdiag.New(peerdiag.Options{Enabled: r.cfg.Logging.PeerConnections.Enabled, Directory: r.cfg.Logging.PeerConnections.Dir, RetentionDays: r.cfg.Logging.PeerConnections.RetentionDays, DedupeWindow: time.Duration(r.cfg.Logging.PeerConnections.DedupeWindowSeconds) * time.Second, OverlongPath: "logs/peering_overlong.log"})
+	pm, err := peer.NewManager(r.cfg.Peering, r.cfg.Peering.LocalCallsign, r.ingestInput, r.cfg.SpotPolicy.MaxAgeSeconds, diagnostics)
 	if err != nil {
+		diagnostics.Stop()
 		return r.failStartup("Failed to init peering manager: %v", err)
 	}
 	// Retain ownership immediately: failed identity validation must still close
@@ -1014,10 +1017,7 @@ func (r *clusterRuntime) initializePeerManager() bool {
 	if err := pm.SetBuildIdentity(r.versionInfo.Version, r.versionInfo.Commit, r.versionInfo.BuildTime, r.versionInfo.VCSModified, r.versionInfo.GoVersion); err != nil {
 		return r.failStartup("Invalid peering build identity: %v", err)
 	}
-	pm.SetBadCallReporter(r.reportBadCallDrop)
-	pm.SetConnectionReporter(func(ev peer.ConnectionEvent) {
-		r.logPeerConnectionEvent(ev.Direction, ev.Action, ev.Peer, ev.Endpoint, ev.Reason)
-	})
+	diagnostics.Start()
 	return true
 }
 

@@ -10,7 +10,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"dxcluster/internal/qualificationstage"
 	"dxcluster/spot"
+
+	"github.com/zeebo/xxh3"
 )
 
 // Deduplicator removes duplicate spots within a time window. A zero or negative
@@ -31,14 +34,14 @@ type Deduplicator struct {
 // Sharding the map eliminates the single global mutex on the hot path.
 type cacheShard struct {
 	mu             sync.Mutex
-	cache          map[uint32]cachedEntry
+	cache          map[[42]byte]cachedEntry
 	processedCount uint64
 	duplicateCount uint64
 	peak           int
 }
 
-// cachedEntry tracks when we last saw a hash and the associated SNR so we can
-// optionally choose the strongest representative when duplicates collide.
+// cachedEntry tracks the last admitted complete key and its report. Entries
+// retain the existing time-window expiry rule; hashing only chooses a shard.
 type cachedEntry struct {
 	when      time.Time
 	snr       int
@@ -71,7 +74,7 @@ func NewDeduplicator(window time.Duration, preferStronger bool, outputBuffer int
 	}
 	shards := make([]cacheShard, shardCount)
 	for i := range shards {
-		shards[i].cache = make(map[uint32]cachedEntry)
+		shards[i].cache = make(map[[42]byte]cachedEntry)
 	}
 	return &Deduplicator{
 		window:          window,
@@ -173,20 +176,21 @@ func (d *Deduplicator) processSpot(s *spot.Spot) {
 			log.Printf("Deduplicator: panic processing spot: %v\n%s", r, debug.Stack())
 		}
 	}()
-	hash := s.Hash32()
+	key := s.DedupeKey()
+	hash := uint32(xxh3.Hash(key[:]))
 	shard := d.shardFor(hash)
 
 	shard.mu.Lock()
 	shard.processedCount++
 
-	dup, lastSeen := isDuplicateLocked(shard.cache, hash, s.Time, d.window)
+	dup, lastSeen := isDuplicateLocked(shard.cache, key, s.Time, d.window)
 	if dup {
 		upgradeToReported := s.HasReport && !lastSeen.hasReport
 		// Optionally favor the stronger SNR when a duplicate collides within the window.
 		stronger := d.preferStronger && s.Report > lastSeen.snr
 		if upgradeToReported || stronger {
 			// Replace the cached timestamp/SNR with the stronger or newly reported spot and forward it.
-			shard.cache[hash] = cachedEntry{when: s.Time, snr: s.Report, hasReport: s.HasReport}
+			shard.cache[key] = cachedEntry{when: s.Time, snr: s.Report, hasReport: s.HasReport}
 			d.updateShardPeakLocked(shard)
 			shard.mu.Unlock()
 		} else {
@@ -196,12 +200,13 @@ func (d *Deduplicator) processSpot(s *spot.Spot) {
 		}
 	} else {
 		// Add to cache
-		shard.cache[hash] = cachedEntry{when: s.Time, snr: s.Report, hasReport: s.HasReport}
+		shard.cache[key] = cachedEntry{when: s.Time, snr: s.Report, hasReport: s.HasReport}
 		d.updateShardPeakLocked(shard)
 		shard.mu.Unlock()
 	}
 
 	// Send to output channel
+	qualificationstage.Observe(qualificationstage.PrimaryReady, s.Comment, -1)
 	select {
 	case d.outputChan <- s:
 		// Successfully sent
@@ -227,15 +232,15 @@ func (d *Deduplicator) LastProcessedAt() time.Time {
 	return time.Unix(0, ns).UTC()
 }
 
-// Purpose: Check if a spot hash is a duplicate within the time window.
+// Purpose: Check if a complete spot key is a duplicate within the time window.
 // Key aspects: Caller must hold the shard lock; handles out-of-order time.
 // Upstream: processSpot.
 // Downstream: time.Sub comparisons.
 // isDuplicateLocked checks if a spot is a duplicate within a shard.
 // Caller must hold the shard mutex. When the window is zero the function always
 // returns false, effectively bypassing deduplication.
-func isDuplicateLocked(cache map[uint32]cachedEntry, hash uint32, spotTime time.Time, window time.Duration) (bool, cachedEntry) {
-	lastSeen, exists := cache[hash]
+func isDuplicateLocked(cache map[[42]byte]cachedEntry, key [42]byte, spotTime time.Time, window time.Duration) (bool, cachedEntry) {
+	lastSeen, exists := cache[key]
 	if !exists {
 		return false, cachedEntry{}
 	}
@@ -271,37 +276,38 @@ func (d *Deduplicator) cleanupLoop() {
 }
 
 // Purpose: Remove expired cache entries across all shards.
-// Key aspects: Two-phase deletion to minimize lock time.
+// Key aspects: Expiry decision and deletion share the shard lock.
 // Upstream: cleanupLoop.
 // Downstream: shard cache mutation.
 // cleanup removes expired entries from the cache
 func (d *Deduplicator) cleanup() {
-	now := time.Now().UTC()
-	removed := 0
+	d.cleanupAt(time.Now().UTC(), nil)
+}
+
+// cleanupAt holds each shard lock continuously through expiry and deletion so
+// a report upgrade cannot be erased using an older timestamp. beforeDelete is
+// a synchronous test barrier, nil in production and never retained. It runs
+// under the lock and must not reenter this deduplicator. No deletion list is
+// allocated; compaction retains its existing threshold and overlap behavior.
+func (d *Deduplicator) cleanupAt(now time.Time, beforeDelete func(*cacheShard, [42]byte)) {
 	for i := range d.shards {
 		shard := &d.shards[i]
-		// Phase 1: collect expired keys under a short lock.
 		shard.mu.Lock()
-		toDelete := make([]uint32, 0, len(shard.cache)/10)
-		for hash, lastSeen := range shard.cache {
+		removed := false
+		for key, lastSeen := range shard.cache {
 			if now.Sub(lastSeen.when) > d.window {
-				toDelete = append(toDelete, hash)
+				if beforeDelete != nil {
+					beforeDelete(shard, key)
+				}
+				delete(shard.cache, key)
+				removed = true
 			}
+		}
+		if removed {
+			d.maybeCompactShardLocked(shard)
 		}
 		shard.mu.Unlock()
-
-		// Phase 2: delete under lock.
-		if len(toDelete) > 0 {
-			shard.mu.Lock()
-			for _, hash := range toDelete {
-				delete(shard.cache, hash)
-				removed++
-			}
-			d.maybeCompactShardLocked(shard)
-			shard.mu.Unlock()
-		}
 	}
-
 }
 
 // GetStats returns deduplication stats across all shards.
@@ -350,7 +356,7 @@ func (d *Deduplicator) maybeCompactShardLocked(shard *cacheShard) {
 	if len(shard.cache) >= threshold {
 		return
 	}
-	next := make(map[uint32]cachedEntry, len(shard.cache))
+	next := make(map[[42]byte]cachedEntry, len(shard.cache))
 	for k, v := range shard.cache {
 		next[k] = v
 	}

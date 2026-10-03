@@ -1,7 +1,6 @@
 package peer
 
 import (
-	"log"
 	"time"
 )
 
@@ -65,7 +64,7 @@ func (p *protocolController) sampleStats() {
 	if previous != nil && (stats.RetryCooldown != previous.RetryCooldown || stats.RetryWaiting != previous.RetryWaiting || stats.RetryActive != previous.RetryActive || stats.RetryHealthy != previous.RetryHealthy || stats.RetryEligible != previous.RetryEligible || stats.RetryGated != previous.RetryGated) {
 		// Sampled aggregate transitions expose operational state without a
 		// per-attempt history, sensitive payload, or logging under manager.mu.
-		log.Printf("Peering: PC92 retries cooldown=%d waiting=%d active=%d healthy-reset=%d eligible=%d global-gated=%d", stats.RetryCooldown, stats.RetryWaiting, stats.RetryActive, stats.RetryHealthy, stats.RetryEligible, stats.RetryGated)
+		p.manager.reportDiagnostic("pc92_retry_transition", "", "see_peer_status")
 	}
 	// The cumulative counter survives drain. Emit a rate-limited fixed reason
 	// only for newly sampled refusals, not forever after the first incident.

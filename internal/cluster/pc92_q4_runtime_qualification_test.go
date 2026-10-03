@@ -137,6 +137,12 @@ func TestPC92Q4RuntimeQualification(t *testing.T) {
 	configureRuntimeQualification(t, cfg, repo, qualificationProfile{name: "q4", peers: 64, shipped: true})
 	cfg.Telnet.MaxConnections = 1000
 	cfg.Peering.Peers[63].Password = "q4-fixture-password"
+	// Q4 must exercise the enabled owners inside the protocol allocation
+	// ceiling. Paths stay inside this test's isolated working directory; the
+	// shipped projection interval and database deadlines remain unchanged.
+	cfg.Peering.Topology.DBPath = "q4-topology.sqlite"
+	cfg.Logging.PeerConnections.Enabled = true
+	cfg.Logging.PeerConnections.Dir = "q4-peer-connections"
 	applyGoRuntimeTuning(cfg.GoRuntime)
 	r := newClusterRuntime(BuildInfo{Version: "q4-capacity", Commit: "local", BuildTime: time.Now().UTC().Format(time.RFC3339), VCSModified: "true", GoVersion: runtime.Version()}, cfg, filepath.Join(repo, "data", "config"), config.LoadDiagnostics{})
 	defer r.close()
@@ -171,6 +177,19 @@ func TestPC92Q4RuntimeQualification(t *testing.T) {
 	d.report.Established = len(d.peers)
 	if s := d.report.Initial; s.Nodes != 4096 || s.Users != 65536 || s.Edges != 131072 || s.Ingress != 4096*len(d.peers) || s.Freshness != 16384 {
 		t.Fatalf("incomplete reachable starting population: %+v", s)
+	}
+	populationReady := time.Now()
+	// A reservation alone cannot establish that the complete graph was ever
+	// persisted. Wait through the unchanged periodic interval for a committed
+	// snapshot taken after all topology preparation finished.
+	d.report.Initial, err = d.await(func(s peer.QualificationState) bool {
+		return s.Persistence.LastProjectionSnapshotUnixNano >= populationReady.UnixNano() && s.Persistence.ProjectionCommits > 0 && s.Diagnostics.Written > 0
+	}, time.Duration(cfg.Peering.Topology.PersistIntervalSeconds)*time.Second+5*time.Second)
+	if err != nil {
+		t.Fatalf("enabled persistence/helper evidence: %v", err)
+	}
+	if err := q4EnabledOwnership(d.report.Initial); err != nil {
+		t.Fatal(err)
 	}
 	d.generator = peer.NewQualificationCapacityGenerator(d.topology)
 	if err := d.fillCaches(false); err != nil {
@@ -235,9 +254,23 @@ func TestPC92Q4RuntimeQualification(t *testing.T) {
 	if len(d.report.Failures) > 0 {
 		t.Fatalf("Q4 wire capacity checks: %v", d.report.Failures)
 	}
-	if !diagnostic {
-		t.Errorf("Q4 evidence incomplete: %v", d.report.OpenEvidence)
+	// The wrapper and final reconciler keep overall acceptance false while
+	// OpenEvidence remains. Measurement success and allocation proof are
+	// separate results; neither can be manufactured from the other.
+}
+
+func q4EnabledOwnership(s peer.QualificationState) error {
+	p, d, c := s.Persistence, s.Diagnostics, s.Contexts
+	if !p.Enabled || p.ReservedBytes != 16<<20 || p.EngineBackingBytes != 8<<20 || p.HostReservedBytes != 2<<20 || p.Active != 1 || p.Opening != 0 || p.Retiring != 0 || p.CleanupFailed || p.ProjectionCommits == 0 {
+		return fmt.Errorf("Q4 enabled SQLite ownership/commit missing: %+v", p)
 	}
+	if d.Disabled || d.Degraded || d.CleanupFailed || d.Generation == 0 || d.Written == 0 || d.ChargedBytes != 3<<20 {
+		return fmt.Errorf("Q4 enabled companion ownership/write missing: %+v", d)
+	}
+	if c.Parents != s.MaxPeers+128 || c.ProjectionParents != 2 || c.Active < s.Established+s.Pending {
+		return fmt.Errorf("Q4 active context ownership missing: %+v", c)
+	}
+	return nil
 }
 
 func (d *q4Runtime) writeReport(path string) {

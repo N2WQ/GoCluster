@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `79d2b3c2ef56f6cf`
+- Source fingerprint: `51f99b96007f8cb9`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,10 +12,10 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 1 | 2 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 25 | 46 |
-| `dxcluster/peer` | `peer` | 54 | 104 |
-| `dxcluster/spot` | `spot` | 32 | 26 |
-| `dxcluster/telnet` | `telnet` | 12 | 26 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 26 | 58 |
+| `dxcluster/peer` | `peer` | 61 | 118 |
+| `dxcluster/spot` | `spot` | 32 | 31 |
+| `dxcluster/telnet` | `telnet` | 14 | 33 |
 
 ## In-Scope Package Edges
 
@@ -53,7 +53,9 @@
 | `dxcluster/internal/cluster` | `dxcluster/internal/linebuffer` |
 | `dxcluster/internal/cluster` | `dxcluster/internal/logutil` |
 | `dxcluster/internal/cluster` | `dxcluster/internal/pebbleresilience` |
+| `dxcluster/internal/cluster` | `dxcluster/internal/peerdiag` |
 | `dxcluster/internal/cluster` | `dxcluster/internal/propreport` |
+| `dxcluster/internal/cluster` | `dxcluster/internal/qualificationstage` |
 | `dxcluster/internal/cluster` | `dxcluster/internal/ratelimit` |
 | `dxcluster/internal/cluster` | `dxcluster/internal/schedule` |
 | `dxcluster/internal/cluster` | `dxcluster/internal/toxicity` |
@@ -70,6 +72,7 @@
 | `dxcluster/internal/cluster` | `dxcluster/uls` |
 | `dxcluster/peer` | `dxcluster/config` |
 | `dxcluster/peer` | `dxcluster/internal/netutil` |
+| `dxcluster/peer` | `dxcluster/internal/peerdiag` |
 | `dxcluster/peer` | `dxcluster/strutil` |
 | `dxcluster/spot` | `dxcluster/config` |
 | `dxcluster/spot` | `dxcluster/internal/yamlconfig` |
@@ -78,6 +81,7 @@
 | `dxcluster/telnet` | `dxcluster/cty` |
 | `dxcluster/telnet` | `dxcluster/filter` |
 | `dxcluster/telnet` | `dxcluster/internal/netutil` |
+| `dxcluster/telnet` | `dxcluster/internal/qualificationstage` |
 | `dxcluster/telnet` | `dxcluster/internal/ratelimit` |
 | `dxcluster/telnet` | `dxcluster/pathreliability` |
 | `dxcluster/telnet` | `dxcluster/reputation` |
@@ -120,6 +124,7 @@ Source files:
 - `internal/cluster/output_pipeline_stages.go`
 - `internal/cluster/path_cells.go`
 - `internal/cluster/path_report_metrics.go`
+- `internal/cluster/peer_diagnostic_status.go`
 - `internal/cluster/prop_report_scheduler.go`
 - `internal/cluster/stabilizer.go`
 - `internal/cluster/telnet_family_suppressor.go`
@@ -139,6 +144,7 @@ Test files:
 - `internal/cluster/main_runtime_test.go`
 - `internal/cluster/main_stats_test.go`
 - `internal/cluster/main_test.go`
+- `internal/cluster/output_pipeline_collision_test.go`
 - `internal/cluster/output_pipeline_delivery_test.go`
 - `internal/cluster/output_pipeline_dropped_log_test.go`
 - `internal/cluster/output_pipeline_ownership_bench_test.go`
@@ -148,6 +154,7 @@ Test files:
 - `internal/cluster/path_report_metrics_bench_test.go`
 - `internal/cluster/path_report_metrics_test.go`
 - `internal/cluster/pc92_q4_cycles_test.go`
+- `internal/cluster/pc92_q4_enabled_ownership_test.go`
 - `internal/cluster/pc92_q4_pressure_oracle_test.go`
 - `internal/cluster/pc92_q4_pressure_test.go`
 - `internal/cluster/pc92_q4_runtime_qualification_test.go`
@@ -166,6 +173,16 @@ Test files:
 - `internal/cluster/pc92_runtime_rpc_test.go`
 - `internal/cluster/pc92_runtime_service_test.go`
 - `internal/cluster/pc92_runtime_sockets_test.go`
+- `internal/cluster/pc92_runtime_stage_bench_test.go`
+- `internal/cluster/pc92_runtime_stage_checks_test.go`
+- `internal/cluster/pc92_runtime_stage_clock_test.go`
+- `internal/cluster/pc92_runtime_stage_observe_test.go`
+- `internal/cluster/pc92_runtime_stage_owner_test.go`
+- `internal/cluster/pc92_runtime_stage_report_test.go`
+- `internal/cluster/pc92_runtime_stage_service_test.go`
+- `internal/cluster/pc92_runtime_warm_oracle_test.go`
+- `internal/cluster/pc92_runtime_warm_test.go`
+- `internal/cluster/peer_diagnostic_status_test.go`
 - `internal/cluster/peer_runtime_test.go`
 - `internal/cluster/prop_report_scheduler_test.go`
 - `internal/cluster/stabilizer_test.go`
@@ -180,6 +197,7 @@ Source files:
 - `peer/allocation_charge.go`
 - `peer/backoff.go`
 - `peer/bounded_index.go`
+- `peer/context_ownership.go`
 - `peer/dedupe.go`
 - `peer/endpoint.go`
 - `peer/format.go`
@@ -228,6 +246,12 @@ Source files:
 - `peer/session_transport.go`
 - `peer/timestamp.go`
 - `peer/topology.go`
+- `peer/topology_sqlite.go`
+- `peer/topology_sqlite_directory_other.go`
+- `peer/topology_sqlite_directory_owner_other.go`
+- `peer/topology_sqlite_directory_owner_windows.go`
+- `peer/topology_sqlite_directory_windows.go`
+- `peer/topology_sqlite_dsn.go`
 - `peer/types.go`
 - `peer/wwv.go`
 
@@ -236,8 +260,10 @@ Test files:
 - `peer/backoff_test.go`
 - `peer/bounded_index_test.go`
 - `peer/connection_event_test.go`
+- `peer/context_ownership_test.go`
 - `peer/dedupe_allocation_test.go`
 - `peer/dedupe_index_test.go`
+- `peer/diagnostic_observer_test.go`
 - `peer/forwarding_policy_test.go`
 - `peer/inbound_handshake_harness_test.go`
 - `peer/inbound_handshake_test.go`
@@ -336,6 +362,18 @@ Test files:
 - `peer/spot_parse_budget_test.go`
 - `peer/timestamp_test.go`
 - `peer/topology_apply_test.go`
+- `peer/topology_sqlite_capacity_test.go`
+- `peer/topology_sqlite_cleanup_qualification_windows_test.go`
+- `peer/topology_sqlite_directory_owner_windows_test.go`
+- `peer/topology_sqlite_directory_windows_test.go`
+- `peer/topology_sqlite_dsn_test.go`
+- `peer/topology_sqlite_paths_windows_test.go`
+- `peer/topology_sqlite_pressure_test.go`
+- `peer/topology_sqlite_qualification_other_test.go`
+- `peer/topology_sqlite_qualification_test.go`
+- `peer/topology_sqlite_qualification_windows_test.go`
+- `peer/topology_sqlite_race_test.go`
+- `peer/topology_sqlite_test.go`
 
 ### `dxcluster/spot`
 
@@ -386,8 +424,12 @@ Test files:
 - `spot/correction_distance_test.go`
 - `spot/correction_family_test.go`
 - `spot/custom_scp_store_test.go`
+- `spot/dedupe_key_test.go`
 - `spot/ft_frequency_test.go`
 - `spot/harmonics_test.go`
+- `spot/harmonics_v16_reference_test.go`
+- `spot/harmonics_v16_test.go`
+- `spot/history_v16_bench_test.go`
 - `spot/iaru_region_test.go`
 - `spot/mode_infer_test.go`
 - `spot/mode_region_test.go`
@@ -400,6 +442,7 @@ Test files:
 - `spot/taxonomy_test.go`
 - `spot/who_spots_me_bench_test.go`
 - `spot/who_spots_me_test.go`
+- `spot/who_spots_me_v16_test.go`
 
 ### `dxcluster/telnet`
 
@@ -412,13 +455,16 @@ Source files:
 - `telnet/peer_membership.go`
 - `telnet/qualification_observer.go`
 - `telnet/qualification_observer_disabled.go`
+- `telnet/qualification_stage.go`
 - `telnet/reuseaddr_other.go`
 - `telnet/reuseaddr_windows.go`
 - `telnet/server.go`
 - `telnet/show_prop.go`
+- `telnet/writer_normalize.go`
 
 Test files:
 - `telnet/bulletin_dedupe_test.go`
+- `telnet/dedupe_collision_test.go`
 - `telnet/dedupe_policy_test.go`
 - `telnet/diag_command_test.go`
 - `telnet/event_reporter_test.go`
@@ -430,6 +476,7 @@ Test files:
 - `telnet/peer_membership_test.go`
 - `telnet/prelogin_gate_test.go`
 - `telnet/qualification_observer_test.go`
+- `telnet/qualification_stage_test.go`
 - `telnet/read_pause_test.go`
 - `telnet/readline_test.go`
 - `telnet/server_broadcast_worker_test.go`
@@ -444,11 +491,18 @@ Test files:
 - `telnet/server_template_test.go`
 - `telnet/show_prop_test.go`
 - `telnet/solar_command_test.go`
+- `telnet/writer_v15_append_test.go`
+- `telnet/writer_v15_bench_test.go`
+- `telnet/writer_v15_fixture_test.go`
+- `telnet/writer_v15_prediction_test.go`
+- `telnet/writer_v15_test.go`
 
 ## Related ADRs
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0235](docs/decisions/ADR-0235-spot-history-maintenance.md) | Accepted | 2026-10-02 | spot, hot path, retained state | `area:spot` |
+| [ADR-0234](docs/decisions/ADR-0234-peer-owned-resources-and-exact-spot-keys.md) | Accepted | 2026-10-02 | dedup, peer, diagnostics, persistence | `area:peer` |
 | [ADR-0233](docs/decisions/ADR-0233-pc92-controlled-retries-and-peer-cap.md) | Accepted | 2026-10-02 | peer, config, qualification | `area:peer` |
 | [ADR-0232](docs/decisions/ADR-0232-pc92-wire-and-recovery-evidence.md) | Accepted | 2026-10-01 | peer, protocol, recovery, qualification | `area:peer` |
 | [ADR-0231](docs/decisions/ADR-0231-pc92-audit-corrections.md) | Accepted | 2026-10-01 | peer, protocol, lifecycle, persistence, qualification | `area:peer, path:peer` |

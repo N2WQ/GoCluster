@@ -2,6 +2,7 @@ package peer
 
 import (
 	"context"
+	"dxcluster/internal/peerdiag"
 	"errors"
 	"strings"
 	"sync"
@@ -90,23 +91,9 @@ func TestSpotLeaseInvalidDXAndDEDiagnosticConsumers(t *testing.T) {
 		for _, kind := range []string{"PC11", "PC61", "PC26"} {
 			b := newFrameParseBudget()
 			ctx := t.Context()
-			m := &Manager{parseBudget: b, dropReporter: func(string) {}}
+			m := &Manager{parseBudget: b, diagnostics: peerdiag.New(peerdiag.Options{Enabled: true})}
+			t.Cleanup(m.diagnostics.Stop)
 			s := &session{manager: m, ctx: ctx, remoteCall: "N1REM"}
-			called := 0
-			m.badCallReporter = func(source, gotRole, reason, call, deCall, dxCall, mode, detail string) {
-				called++
-				if gotRole != role || reason != "invalid_callsign" {
-					t.Errorf("incorrect diagnostic branch: %s %s", gotRole, reason)
-				}
-				// Installed reporting normalizes these temporary fields before
-				// handing them to its separately owned persistent dedupe/logger.
-				for _, value := range []string{source, call, deCall, dxCall} {
-					_ = strings.Join(strings.Fields(strings.ToUpper(value)), " ")
-				}
-				if used, _ := b.usage(); used == 0 {
-					t.Error("diagnostic callback ran after its parser lease ended")
-				}
-			}
 			dx, de := "K1ABC", "W1ABC"
 			if role == "DX" {
 				dx = "INVALID CALL"
@@ -118,12 +105,13 @@ func TestSpotLeaseInvalidDXAndDEDiagnosticConsumers(t *testing.T) {
 				m.HandleFrame(frame, s)
 				return false, errors.New("intentional handler failure")
 			})
-			if err == nil || called != 1 {
-				t.Fatalf("diagnostic consumer not exercised exactly once: callbacks%d err%v", called, err)
+			if err == nil || m.DiagnosticStats().Queued == 0 {
+				t.Fatalf("diagnostic consumer not exercised: stats=%+v err=%v", m.DiagnosticStats(), err)
 			}
 			if used, _ := b.usage(); used != 0 {
 				t.Fatalf("error path leaked%d bytes", used)
 			}
+			m.diagnostics.Stop()
 		}
 	}
 }

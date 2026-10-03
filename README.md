@@ -797,6 +797,7 @@ Windows amd64 binary:
 ```pwsh
 go test ./...
 go build -trimpath -o gocluster.exe .
+go build -trimpath -o peerdiag.exe ./cmd/peerdiag
 ```
 
 Windows release-style package for local testing:
@@ -816,9 +817,10 @@ Linux amd64 binary from source:
 ```sh
 go test ./...
 GOOS=linux GOARCH=amd64 go build -trimpath -o gocluster .
+GOOS=linux GOARCH=amd64 go build -trimpath -o peerdiag ./cmd/peerdiag
 ```
 
-Deploy the Linux binary together with a complete config directory and required
+Deploy both Linux executables together with a complete config directory and required
 runtime data such as `data/cty`, `data/h3`, `data/peers/topology.db`, and
 `data/skm_correction/rbnskew.json` when those inputs are used by your config.
 There is not currently a published Linux ready-to-run release asset.
@@ -841,6 +843,17 @@ account, unit-file, and operational command sequence.
 Each entry uses the same timestamped file logger as the system log and records only the ingestion source, dropped role, reason, call, DE, DX, mode, and a short detail field. Frequency, category, and dashboard text are intentionally omitted.
 
 `logging.login_attempts`, `logging.reputation_drops`, `logging.telnet_connections`, `logging.ingest_connections`, and `logging.peer_connections` write separate file-only event logs for failed or blocked login attempts, reputation-gated spot drops, telnet lifecycle, ingest lifecycle, and peer lifecycle. These event logs do not add local console or UI output; check `data/config/README.md` for the per-log `enabled`, `dir`, `retention_days`, and `dedupe_window_seconds` settings.
+
+Keep `peerdiag.exe` (Windows) or `peerdiag` (Linux) beside the cluster executable.
+This companion owns detailed peer diagnostics and `logs/peering_overlong.log`.
+The peer status display reports log degradation, known dropped records and
+unconfirmed writes if the companion or disk is unavailable. A missing companion
+degrades those diagnostics while peering and local users continue. Detailed
+peer records use the dedicated peer log; the general system log remains in use
+for other components. Peer-frame parse rejections, including invalid DE/DX
+calls, now appear there as `parse_rejected` records with the frame type and
+bounded DE/DX fields. They no longer use the shared dropped-call log or pane.
+See [peer operations](peer/README.md#diagnostics-and-persistence).
 
 Runtime file logs keep a stable active filename derived from the configured
 directory name, such as `data/logs/system/system.log` and

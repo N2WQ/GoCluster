@@ -6,6 +6,10 @@
 
 ## Context
 
+Subsequent [ADR-0234](ADR-0234-peer-owned-resources-and-exact-spot-keys.md)
+refines diagnostic and persistence ownership under the unchanged protocol
+resource ceiling. Its approval does not establish final qualification.
+
 GoCluster's PC18/PC92 behavior needed a complete authority, ordering, membership,
 failure and resource contract against a pinned DXSpider implementation. A shared
 payload cache could let spot forwarding consume topology/message headroom.

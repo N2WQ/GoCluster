@@ -32,6 +32,7 @@ type qualificationRequest struct {
 }
 
 type qualificationReply struct {
+	Stages                           *qualificationStageReport `json:",omitempty"`
 	Error                            string
 	State                            peer.QualificationState
 	Membership                       telnet.PeerMembership

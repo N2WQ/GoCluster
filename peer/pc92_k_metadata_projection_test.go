@@ -31,7 +31,7 @@ func TestTopologyKSubjectNumericProjection(t *testing.T) {
 					t.Fatal(err)
 				}
 				var version, build, ip, versionType, buildType string
-				if err := store.db.QueryRowContext(t.Context(), `select version,build,ip,typeof(version),typeof(build) from peer_pc92_nodes where call='N2AAA'`).Scan(&version, &build, &ip, &versionType, &buildType); err != nil {
+				if err := topologyTestDB(t, store).QueryRowContext(t.Context(), `select version,build,ip,typeof(version),typeof(build) from peer_pc92_nodes where call='N2AAA'`).Scan(&version, &build, &ip, &versionType, &buildType); err != nil {
 					t.Fatal(err)
 				}
 				// Never CAST: SQLite would turn an incorrect empty string into 0.
@@ -39,7 +39,7 @@ func TestTopologyKSubjectNumericProjection(t *testing.T) {
 					t.Fatalf("stored values=%q/%q ip=%q types=%q/%q; want %s/%s", version, build, ip, versionType, buildType, wantVersion, wantBuild)
 				}
 				var users int
-				if err := store.db.QueryRowContext(t.Context(), `select count(*) from peer_pc92_typed_edges where parent='N2AAA' and call='K1USER' and kind=0 and version='' and build=''`).Scan(&users); err != nil || users != 1 {
+				if err := topologyTestDB(t, store).QueryRowContext(t.Context(), `select count(*) from peer_pc92_typed_edges where parent='N2AAA' and call='K1USER' and kind=0 and version='' and build=''`).Scan(&users); err != nil || users != 1 {
 					t.Fatalf("K altered projected user membership: %d %v", users, err)
 				}
 			}

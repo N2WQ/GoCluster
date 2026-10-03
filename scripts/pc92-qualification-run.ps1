@@ -10,7 +10,8 @@ function Invoke-PC92QualificationRun {
     $ErrorActionPreference = 'Stop'
     $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
     $plan = Get-PC92QualificationPlan $Family $Profile
-    if ($CPUProfile -and ($Family -ne 'runtime' -or $Profile -ne 'preflight')) { throw 'invalid_cpu_profile' }
+    if ($CPUProfile -and ($Family -ne 'runtime' -or $Profile -notin @('preflight', 'warm-diagnostic'))) { throw 'invalid_cpu_profile' }
+    if ($Family -eq 'runtime' -and $Profile -eq 'warm-diagnostic' -and -not $CPUProfile) { throw 'warm_cpu_profile_required' }
     if (-not $OutputDirectory) { $OutputDirectory = Join-Path ([IO.Path]::GetTempPath()) ('gocluster-' + $Family + '-' + [guid]::NewGuid().ToString('N')) }
     $output = [IO.Path]::GetFullPath($OutputDirectory)
     if ($output.StartsWith($root.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or $output -eq $root) {
@@ -38,7 +39,7 @@ function Invoke-PC92QualificationRun {
     $failure = $null
     try {
         Set-Location -LiteralPath $root
-        foreach ($name in $names | Where-Object { $_ -like 'GOCLUSTER_PC92_*' }) { [Environment]::SetEnvironmentVariable($name, $null, 'Process') }
+        foreach ($name in $names | Where-Object { $_ -like 'GOCLUSTER_PC92_*' }) { [Environment]::SetEnvironmentVariable($name, [NullString]::Value, 'Process') }
         foreach ($name in $plan.environment.Keys) { [Environment]::SetEnvironmentVariable($name, $plan.environment[$name], 'Process') }
         $env:GOCLUSTER_PC92_RUN_ID = $run.run_id
         $observationPath = Join-Path $output 'observations.json'
@@ -51,12 +52,21 @@ function Invoke-PC92QualificationRun {
         if ($Family -eq 'q6') {
             $env:DXSPIDER_ROOT = (Resolve-Path -LiteralPath $DXSpiderRoot).Path
             $env:DXSPIDER_PERL = (Resolve-Path -LiteralPath $PerlPath).Path
-            $env:DXSPIDER_PERL_LIB = $PerlLibrary
+            $env:DXSPIDER_PERL_LIB = ''
+            $run['reference_root'] = $env:DXSPIDER_ROOT
+            $run['perl_executable'] = $env:DXSPIDER_PERL
+            $run['perl_library'] = ''
+            $run['reference_dll_directory'] = ''
             Assert-PC92PinnedReference $env:DXSPIDER_ROOT
             $external = @((Join-Path $env:DXSPIDER_ROOT 'perl'), (Join-Path $env:DXSPIDER_ROOT 'data/prefix_data.pl'), $env:DXSPIDER_PERL)
-            if ($PerlLibrary) { $external += (Resolve-Path -LiteralPath $PerlLibrary).Path }
+            if ($PerlLibrary) {
+                $run.perl_library = (Resolve-Path -LiteralPath $PerlLibrary).Path
+                $env:DXSPIDER_PERL_LIB = $run.perl_library
+                $external += $run.perl_library
+            }
             if ($PerlDLLDirectory) {
                 $dll = (Resolve-Path -LiteralPath $PerlDLLDirectory).Path
+                $run.reference_dll_directory = $dll
                 $external += $dll
             }
             $env:GOCLUSTER_PC92_Q6_USERS = Join-Path $output 'users'
@@ -64,11 +74,14 @@ function Invoke-PC92QualificationRun {
         }
         $run['source_head'] = (& git -C $root rev-parse HEAD)
         if ($LASTEXITCODE -ne 0) { throw 'source_identity_failed' }
+        $run['repository_root'] = $root
+        $run['external_inputs'] = $external
         $run['source_status'] = @(& git -C $root status --short)
         $run['go_version'] = (& go version)
         if ($LASTEXITCODE -ne 0) { throw 'go_version_failed' }
-        $run['go_build_environment'] = @(& go env GOOS GOARCH GOAMD64 CGO_ENABLED GOFLAGS GOTOOLCHAIN CC CXX)
+        $run['go_build_environment'] = @(& go env GOOS GOARCH GOAMD64 CGO_ENABLED GOFLAGS GOTOOLCHAIN CC CXX GOEXPERIMENT)
         if ($LASTEXITCODE -ne 0) { throw 'go_environment_failed' }
+        $run['go_debug'] = [string][Environment]::GetEnvironmentVariable('GODEBUG', 'Process')
         $run['runtime_settings'] = 'GOMAXPROCS=2 GOGC=50 GOMEMLIMIT=1536MiB'
         $run['os'] = [Runtime.InteropServices.RuntimeInformation]::OSDescription
         $run['processors'] = [Environment]::ProcessorCount
@@ -83,11 +96,22 @@ function Invoke-PC92QualificationRun {
         & go @arguments 2>&1 | Tee-Object -FilePath (Join-Path $output 'build.log')
         if ($LASTEXITCODE -ne 0) { throw 'build_failed' }
         if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) { throw 'missing_binary' }
+        $helperName = if ([Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([Runtime.InteropServices.OSPlatform]::Windows)) { 'peerdiag.exe' } else { 'peerdiag' }
+        $helper = Join-Path $output $helperName
+        $helperArguments = @('build', '-trimpath', '-o', $helper, './cmd/peerdiag')
+        $run['helper_build_arguments'] = $helperArguments
+        & go @helperArguments 2>&1 | Tee-Object -FilePath (Join-Path $output 'helper-build.log')
+        if ($LASTEXITCODE -ne 0) { throw 'helper_build_failed' }
+        if (-not (Test-Path -LiteralPath $helper -PathType Leaf)) { throw 'missing_helper_binary' }
         $built = Get-PC92InputManifest $root $Family $external
         $built | Set-Content -LiteralPath (Join-Path $output 'source-after-build.json')
         if ($before -cne $built) { throw 'source_changed_during_build' }
         $hash = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash
+        $run['executable'] = $binary
         $run['executable_sha256'] = $hash
+        $helperHash = (Get-FileHash -LiteralPath $helper -Algorithm SHA256).Hash
+        $run['helper_executable'] = $helper
+        $run['helper_executable_sha256'] = $helperHash
         $roots = @($plan.tests | Where-Object { -not $_.Contains('/') })
         $pattern = '^(' + (($roots | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')$'
         $testArguments = @('-test.count=1', '-test.v', "-test.timeout=$($plan.timeout)", "-test.run=$pattern")
@@ -108,10 +132,20 @@ function Invoke-PC92QualificationRun {
         $after | Set-Content -LiteralPath (Join-Path $output 'source-after-run.json')
         if ($before -cne $after) { throw 'source_changed_during_run' }
         if ((Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash -cne $hash) { throw 'binary_changed_during_run' }
+        if (-not (Test-Path -LiteralPath $helper -PathType Leaf)) { throw 'helper_missing_during_run' }
+        if ((Get-FileHash -LiteralPath $helper -Algorithm SHA256).Hash -cne $helperHash) { throw 'helper_changed_during_run' }
         if ($Family -eq 'q6') { Assert-PC92PinnedReference $env:DXSPIDER_ROOT }
         $run.provenance_passed = $true
+        $run['test_log_sha256'] = (Get-FileHash -LiteralPath (Join-Path $output 'test.log') -Algorithm SHA256).Hash
+        if ($plan.observation) { $run['observations_sha256'] = (Get-FileHash -LiteralPath $observationPath -Algorithm SHA256).Hash }
         if ($run.exit_code -ne 0) { throw "test_failed: exit $($run.exit_code)" }
         Test-PC92QualificationEvidence $plan $run.run_id (Get-Content -LiteralPath (Join-Path $output 'test.log') -Raw) $observationPath $run.elapsed_seconds
+        if ($Profile -eq 'warm-diagnostic') {
+            $warm = (Get-Content -LiteralPath $observationPath -Raw | ConvertFrom-Json).LoadProfile.Warm
+            $run['diagnostic_profiles'] = @(foreach ($window in $warm.Windows) {
+                [ordered]@{ path = $window.Path; sha256 = (Get-FileHash -LiteralPath $window.Path -Algorithm SHA256).Hash }
+            })
+        }
         $run.measurement_passed = $true
         $run.profile_accepted = -not $plan.diagnostic
         $run.status = 'measured'
@@ -129,7 +163,15 @@ function Invoke-PC92QualificationRun {
             $run | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $temporary
             [IO.File]::Move($temporary, $verdictPath, $true)
         } finally {
-            foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') }
+            foreach ($name in $names) {
+                # PowerShell converts ordinary $null to an empty string for
+                # this .NET overload. Preserve absent versus present-empty.
+                if ($null -eq $saved[$name]) {
+                    [Environment]::SetEnvironmentVariable($name, [NullString]::Value, 'Process')
+                } else {
+                    [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process')
+                }
+            }
             Set-Location -LiteralPath $previousLocation.Path
         }
     }
