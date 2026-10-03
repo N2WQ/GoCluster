@@ -8,7 +8,7 @@ import (
 )
 
 func TestPC18HonestBuildIdentityAndReferenceRegexes(t *testing.T) {
-	for _, version := range []string{"dev", "v1.2.3", "2026.10.01-g91abc-dirty", "release DXSpider Version: 1.55", "CCCluster pc9x 91"} {
+	for _, version := range []string{"261003", "dev", "v1.2.3", "2026.10.01-g91abc-dirty", "release DXSpider Version: 1.55", "CCCluster pc9x 91"} {
 		banner, err := BuildPC18Banner(version, "91abc", "2026-10-01T00:00:00Z", "true", "go1.25.0")
 		if err != nil {
 			t.Fatal(err)
@@ -33,6 +33,27 @@ func TestPC18HonestBuildIdentityAndReferenceRegexes(t *testing.T) {
 		}
 		if regexp.MustCompile(`(?i)\bpc9x`).MatchString(legacy) {
 			t.Fatalf("metadata enables pc9x: %s", legacy)
+		}
+	}
+}
+
+func TestPC18DateOnlyVersionPreservesMetadataAndCompatibility(t *testing.T) {
+	banner, err := BuildPC18Banner("261003", "abcdef123456", "2026-10-03T12:34:56Z", "true", "go1.26.4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pc9x := range []bool{false, true} {
+		wire, err := FormatPC18(banner, "5457", pc9x)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "PC18^GoCluster Version: 261003 Commit: abcdef123456 Built: 2026-10-03T12:34:56Z Modified: true Go: go1.26.4"
+		if pc9x {
+			want += " pc9x"
+		}
+		want += "^5457^"
+		if wire != want {
+			t.Fatalf("PC18 identity = %q, want %q", wire, want)
 		}
 	}
 }

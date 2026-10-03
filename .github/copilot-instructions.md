@@ -25,7 +25,7 @@ Config conventions
 
 Build / run / debug
 - Create release packages with the repository script so binary identity is
-  stamped as `vYY.DD.MM-<12-char-commit>[+dirty]`:
+  stamped as UTC `YYMMDD`, with source identity in separate metadata:
   - Windows/PowerShell example:
     ```powershell
     .\scripts\create-release.ps1 -PackageOnly -AllowDirty

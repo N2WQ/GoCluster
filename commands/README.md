@@ -42,6 +42,9 @@ The operator-facing commands handled here are:
 - `SHOW DXCC`
 - `SHOW PROP`
 - `SHOW BUILD`
+  shows the startup-resolved UTC `YYMMDD` version and Go toolchain when available;
+  commit, build timestamp, and modified flag remain separate metadata in
+  `--version` and PC18, rather than appearing in the version string.
 - `SHOW OWN`
 - `WHOSPOTSME [band]`
 - `SHOW HOLD`

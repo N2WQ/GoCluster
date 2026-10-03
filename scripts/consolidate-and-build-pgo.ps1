@@ -72,13 +72,8 @@ function Get-GitValue {
 }
 
 $commit = Get-GitValue -Probe { git rev-parse --short=12 HEAD } -Default "unknown"
-$dirtySuffix = ""
-$gitStatus = & git status --porcelain
-if ($LASTEXITCODE -eq 0 -and $gitStatus) {
-    $dirtySuffix = "+dirty"
-}
 $buildUtc = (Get-Date).ToUniversalTime()
-$version = "v$($buildUtc.ToString("yy.dd.MM"))-$commit$dirtySuffix"
+$version = $buildUtc.ToString("yyMMdd")
 $buildTime = $buildUtc.ToString("yyyy-MM-ddTHH:mm:ssZ")
 $ldflags = "-X main.Version=$version -X main.Commit=$commit -X main.BuildTime=$buildTime"
 

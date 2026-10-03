@@ -4,6 +4,12 @@ Tracked PowerShell scripts in this directory are operational tooling for local
 builds, release packaging, profiling, console setup, workflow checks, and Codex
 skill installation.
 
+Release and PGO scripts stamp the UTC compile date as exactly `YYMMDD`, without
+a prefix, commit suffix, or dirty suffix. Commit and build time are stamped
+separately; Go embeds the working-tree modified flag when available. Release
+tags and names match this date-only version, so duplicate publication on the
+same UTC day is rejected. See [build notes](../README.md#build-and-service-notes).
+
 ## Operational Helpers
 
 - `watch-voacap-ssn.ps1` runs the repo-local lightweight SSN watcher

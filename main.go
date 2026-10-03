@@ -76,7 +76,7 @@ func resolveBinaryVersion() binaryVersion {
 		info.buildTime = vcsTime
 	}
 	if info.version == "dev" {
-		switch generated := compileDateVersion(info.buildTime, vcsRevision, vcsModified); {
+		switch generated := compileDateVersion(info.buildTime); {
 		case generated != "":
 			info.version = generated
 		case vcsRevision != "":
@@ -93,19 +93,13 @@ func resolveBinaryVersion() binaryVersion {
 	return info
 }
 
-func compileDateVersion(buildTime, revision, vcsModified string) string {
+// compileDateVersion uses UTC YYMMDD; source identity remains separate metadata.
+func compileDateVersion(buildTime string) string {
 	stamp, ok := compileDateStamp(buildTime)
 	if !ok {
 		return ""
 	}
-	commit := shortRevision(strings.TrimSpace(revision))
-	if commit == "" {
-		commit = "unknown"
-	}
-	if isVCSModified(vcsModified) {
-		commit += "+dirty"
-	}
-	return stamp + "-" + commit
+	return stamp
 }
 
 func compileDateStamp(buildTime string) (string, bool) {
@@ -114,16 +108,7 @@ func compileDateStamp(buildTime string) (string, bool) {
 		return "", false
 	}
 	utc := parsed.UTC()
-	return fmt.Sprintf("v%02d.%02d.%02d", utc.Year()%100, utc.Day(), int(utc.Month())), true
-}
-
-func isVCSModified(vcsModified string) bool {
-	switch strings.ToLower(strings.TrimSpace(vcsModified)) {
-	case "true", "1", "yes", "dirty":
-		return true
-	default:
-		return false
-	}
+	return utc.Format("060102"), true
 }
 
 func shortRevision(revision string) string {

@@ -1,6 +1,6 @@
 # ADR-0077: Compile-Date Binary Version
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-04-24
 - Decision Origin: Design
 
@@ -74,4 +74,4 @@ time.
 - Related tests: `go test .`, `go test ./commands`
 - Related docs: `README.md`, `commands/README.md`, `scripts/create-release.ps1`, `scripts/consolidate-and-build-pgo.ps1`, `docs/decisions/ADR-0078-release-package-clean-source-gate.md`
 - Related TSRs:
-- Supersedes / superseded by:
+- Supersedes / superseded by: [ADR-0236](ADR-0236-date-only-build-version.md)

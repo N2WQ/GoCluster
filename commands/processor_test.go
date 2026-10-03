@@ -750,7 +750,7 @@ func TestShowDXDialectVariants(t *testing.T) {
 
 func TestShowBuild(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil, WithBuildInfo(BuildInfo{
-		Version:     "v26.24.04-76fa6eac04fb",
+		Version:     "260424",
 		Commit:      "76fa6eac04fb",
 		BuildTime:   "2026-04-24T12:34:56Z",
 		VCSModified: "true",
@@ -759,7 +759,7 @@ func TestShowBuild(t *testing.T) {
 
 	resp := p.ProcessCommandForClient("SHOW BUILD", "N2WQ", "", nil, "go")
 	want := []string{
-		"Build version: v26.24.04-76fa6eac04fb",
+		"Build version: 260424",
 		"Go: go1.26.2",
 	}
 	for _, line := range want {
@@ -774,7 +774,7 @@ func TestShowBuild(t *testing.T) {
 	}
 
 	resp = p.ProcessCommandForClient("SH BUILD", "N2WQ", "", nil, "go")
-	if !strings.Contains(resp, "Build version: v26.24.04-76fa6eac04fb") {
+	if !strings.Contains(resp, "Build version: 260424") {
 		t.Fatalf("expected SH BUILD alias to show build info, got %q", resp)
 	}
 

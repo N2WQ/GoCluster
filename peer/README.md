@@ -76,8 +76,9 @@ freshness. CCCluster retains its documented startup and direct local
 publication, and is excluded from transit PC92 broadcasts. This does not claim
 complete CCCluster interoperability or a full legacy topology bridge.
 
-PC18 identifies GoCluster using the actual runtime version, commit, build time
-and Go version. Those fields are distinct from the numeric compatibility
+PC18 identifies GoCluster using the startup-resolved UTC YYMMDD version
+(for example, 261003), with separate commit, build time, modified flag, and
+Go version. Those fields are distinct from the numeric compatibility
 version/build (`5457`/`633` by default). An explicitly empty `node_build` is
 omitted. Enabled peering rejects invalid identities and metadata at startup;
 it does not silently continue with an invented banner.

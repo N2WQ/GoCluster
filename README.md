@@ -790,6 +790,19 @@ accepted as a one-entry compatibility form.
 
 ## Build And Service Notes
 
+The console, startup log, `--version`, telnet `SHOW BUILD`, and PC18 build
+identity use the UTC date as exactly `YYMMDD` (for example, `261003`). Scripted
+builds stamp the compile date; plain builds fall back to the embedded Git commit
+date. Commit, build timestamp, dirty state, and Go version remain separate
+metadata, available through `--version` and PC18 when embedded. `SHOW BUILD`
+shows only the version and Go toolchain. Peer compatibility values remain
+`5457`/`633`, with legacy PC19 version `5401`.
+
+Same-day builds share a version. Release tags and names also use that version,
+so existing duplicate checks reject a second published release for the same UTC
+day. Use the separate metadata to distinguish binaries; dirty package-only
+builds no longer carry a `+dirty` version suffix.
+
 GoCluster builds from the repo root with Go `1.26+`.
 
 Windows amd64 binary:

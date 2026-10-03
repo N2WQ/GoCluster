@@ -1,5 +1,8 @@
 # ADR-0078: Release Package Clean Source Gate
 
+The dirty-version suffix requirement below is superseded by
+[ADR-0236](ADR-0236-date-only-build-version.md); the clean-source gate remains.
+
 - Status: Accepted
 - Date: 2026-04-24
 - Decision Origin: Design

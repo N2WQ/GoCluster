@@ -11,66 +11,41 @@ func TestShortRevision(t *testing.T) {
 	}
 }
 
-func TestCompileDateStampUsesUTCYearDayMonth(t *testing.T) {
-	got, ok := compileDateStamp("2026-04-24T02:26:27Z")
-	if !ok {
-		t.Fatalf("compileDateStamp returned not ok")
-	}
-	if got != "v26.24.04" {
-		t.Fatalf("compileDateStamp mismatch: got %q", got)
-	}
-}
-
 func TestCompileDateVersion(t *testing.T) {
 	cases := []struct {
-		name        string
-		buildTime   string
-		revision    string
-		vcsModified string
-		want        string
+		name      string
+		buildTime string
+		want      string
 	}{
-		{
-			name:      "clean",
-			buildTime: "2026-04-24T02:26:27Z",
-			revision:  "78b3cd19baacffff",
-			want:      "v26.24.04-78b3cd19baac",
-		},
-		{
-			name:        "dirty",
-			buildTime:   "2026-04-24T02:26:27Z",
-			revision:    "78b3cd19baacffff",
-			vcsModified: "true",
-			want:        "v26.24.04-78b3cd19baac+dirty",
-		},
-		{
-			name:      "unknown commit",
-			buildTime: "2026-04-24T02:26:27Z",
-			want:      "v26.24.04-unknown",
-		},
-		{
-			name:     "bad date",
-			revision: "78b3cd19baacffff",
-			want:     "",
-		},
+		{name: "selected format", buildTime: "2026-10-03T12:34:56Z", want: "261003"},
+		{name: "zero padding", buildTime: "2026-01-02T00:00:00Z", want: "260102"},
+		{name: "UTC next year", buildTime: "2026-12-31T23:30:00-05:00", want: "270101"},
+		{name: "UTC previous day", buildTime: "2026-10-03T00:30:00+02:00", want: "261002"},
+		{name: "leap day", buildTime: "2028-02-29T12:00:00Z", want: "280229"},
+		{name: "bad date", buildTime: "unknown", want: ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := compileDateVersion(tc.buildTime, tc.revision, tc.vcsModified); got != tc.want {
+			if got := compileDateVersion(tc.buildTime); got != tc.want {
 				t.Fatalf("compileDateVersion() = %q, want %q", got, tc.want)
 			}
 		})
 	}
 }
 
-func TestIsVCSModified(t *testing.T) {
-	for _, value := range []string{"true", "TRUE", "1", "yes", "dirty"} {
-		if !isVCSModified(value) {
-			t.Fatalf("isVCSModified(%q) = false, want true", value)
+func TestResolveBinaryVersionDateOnlyPreservesMetadata(t *testing.T) {
+	oldVersion, oldCommit, oldBuildTime := Version, Commit, BuildTime
+	t.Cleanup(func() { Version, Commit, BuildTime = oldVersion, oldCommit, oldBuildTime })
+	Commit, BuildTime = "abcdef123456", "2026-10-03T12:34:56Z"
+	for _, version := range []string{"dev", "261003"} {
+		Version = version
+		info := resolveBinaryVersion()
+		if info.version != "261003" || info.commit != Commit || info.buildTime != BuildTime {
+			t.Fatalf("resolved identity: %+v", info)
 		}
-	}
-	for _, value := range []string{"", "false", "0", "clean"} {
-		if isVCSModified(value) {
-			t.Fatalf("isVCSModified(%q) = true, want false", value)
+		build := info.clusterBuildInfo()
+		if build.Version != info.version || build.Commit != info.commit || build.BuildTime != info.buildTime || build.VCSModified != info.vcsModified || build.GoVersion != info.goVersion {
+			t.Fatalf("runtime lost build metadata: %+v", build)
 		}
 	}
 }

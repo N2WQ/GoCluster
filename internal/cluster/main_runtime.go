@@ -248,7 +248,7 @@ func (r *clusterRuntime) setupLoggingAndUI() bool {
 	r.loadSolarWeatherConfig()
 	r.configureSurface()
 
-	log.Printf("DX Cluster Server v%s starting... (commit=%s built=%s)", r.versionInfo.Version, r.versionInfo.Commit, r.versionInfo.BuildTime)
+	log.Printf("DX Cluster Server %s starting... (commit=%s built=%s)", r.versionInfo.Version, r.versionInfo.Commit, r.versionInfo.BuildTime)
 	r.ctx, r.cancel = context.WithCancel(context.Background())
 	return true
 }

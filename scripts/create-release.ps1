@@ -444,7 +444,7 @@ if ($SkipCodeMapCheck -and -not $PackageOnly) {
 $repoRoot = Resolve-RepoRoot
 Push-Location $repoRoot
 try {
-    $gitStatus = @(Assert-CleanWorktree -RepoRoot $repoRoot -AllowDirty:$AllowDirty)
+    Assert-CleanWorktree -RepoRoot $repoRoot -AllowDirty:$AllowDirty | Out-Null
     Assert-GoModulesTidy
     if ($SkipCodeMapCheck) {
         Write-Warning "Skipping generated code-map freshness check for package-only testing."
@@ -453,12 +453,8 @@ try {
     }
 
     $commit = (& git rev-parse --short=12 HEAD).Trim()
-    $dirtySuffix = ""
-    if ($gitStatus.Count -gt 0) {
-        $dirtySuffix = "+dirty"
-    }
     $buildUtc = (Get-Date).ToUniversalTime()
-    $version = "v$($buildUtc.ToString("yy.dd.MM"))-$commit$dirtySuffix"
+    $version = $buildUtc.ToString("yyMMdd")
     $buildTime = $buildUtc.ToString("yyyy-MM-ddTHH:mm:ssZ")
 
     if (-not $PackageOnly) {

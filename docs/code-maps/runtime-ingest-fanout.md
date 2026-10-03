@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `51f99b96007f8cb9`
+- Source fingerprint: `151fb09b2440d2b2`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -501,6 +501,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0236](docs/decisions/ADR-0236-date-only-build-version.md) | Accepted | 2026-10-03 | build metadata, releases, console, PC18 | `path:commands, path:peer` |
 | [ADR-0235](docs/decisions/ADR-0235-spot-history-maintenance.md) | Accepted | 2026-10-02 | spot, hot path, retained state | `area:spot` |
 | [ADR-0234](docs/decisions/ADR-0234-peer-owned-resources-and-exact-spot-keys.md) | Accepted | 2026-10-02 | dedup, peer, diagnostics, persistence | `area:peer` |
 | [ADR-0233](docs/decisions/ADR-0233-pc92-controlled-retries-and-peer-cap.md) | Accepted | 2026-10-02 | peer, config, qualification | `area:peer` |
@@ -582,7 +583,7 @@ Test files:
 | [ADR-0081](docs/decisions/ADR-0081-operator-docs-completeness-pass.md) | Accepted | 2026-04-25 | docs, operator guide, release package | `path:telnet` |
 | [ADR-0080](docs/decisions/ADR-0080-custom-scp-retained-heap-layout.md) | Accepted | 2026-04-25 | custom_scp, retained state, profiling | `path:spot` |
 | [ADR-0079](docs/decisions/ADR-0079-whospotsme-optional-band-compact-output.md) | Accepted | 2026-04-24 | commands, docs | `area:commands, path:commands` |
-| [ADR-0077](docs/decisions/ADR-0077-compile-date-binary-version.md) | Accepted | 2026-04-24 | build metadata, release packaging, operator console | `path:commands` |
+| [ADR-0077](docs/decisions/ADR-0077-compile-date-binary-version.md) | Superseded | 2026-04-24 | build metadata, release packaging, operator console | `path:commands` |
 | [ADR-0075](docs/decisions/ADR-0075-output-pipeline-context-allocation.md) | Accepted | 2026-04-24 | main output pipeline, FT confidence, allocation | `path:internal/cluster, path:spot` |
 | [ADR-0073](docs/decisions/ADR-0073-root-live-runtime-boundary-and-root-artifact-hygiene.md) | Accepted | 2026-04-23 | repo structure, internal/cluster, cmd, docs | `area:internal/cluster, path:internal/cluster` |
 | [ADR-0071](docs/decisions/ADR-0071-whospotsme-rolling-country-summary.md) | Accepted | 2026-04-23 | commands, config, main output pipeline, spot | `area:commands, area:spot, path:commands, path:spot` |
