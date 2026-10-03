@@ -450,8 +450,12 @@ func (s *session) writeRaw(data []byte) error {
 
 func (s *session) close() {
 	s.closeOnce.Do(func() {
-		if s.cancel != nil {
-			s.cancel()
+		s.cancelMu.Lock()
+		s.cancelClosed = true
+		cancel := s.cancel
+		s.cancelMu.Unlock()
+		if cancel != nil {
+			cancel()
 		}
 		if s.conn != nil {
 			_ = s.conn.Close()

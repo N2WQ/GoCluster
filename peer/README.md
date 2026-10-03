@@ -123,6 +123,13 @@ Handshake phase deadlines include waiting for controller admission and startup
 timestamp capacity. The session wins authority once, then its reader remains
 parked until staged replay completes; failed candidates never acquire authority.
 
+Session cancellation installation and terminal closure share a session-local
+mutex. Closure before installation cancels the later operation and refuses
+startup; the cancellation worker uses the same one-time socket close. Run
+closes before joining workers and retires the context operation before returning
+transport credits. See [TSR-0037](../docs/troubleshooting/TSR-0037-peer-session-cancellation-publication.md)
+for the reproduced publication race and regression evidence.
+
 ## Bounds and operator recovery
 
 Enabled peering requires integer `peering.max_peers` (1–64, shipped64). It bounds

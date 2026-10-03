@@ -1,5 +1,18 @@
 # PC18/PC92 owned-allocation proof record
 
+## Session cancellation publication correction (2026-10-03)
+
+The session-local cancellation mutex and terminal flag restore safe close-before-
+installation behavior without adding a context, goroutine, timer or retained
+payload. On Go 1.26.4 windows/amd64, the session grows from 2,792 to 2,808 bytes;
+both round to the existing 3,072-byte allocation class. The current layout gate
+reports 5,632/8,192 bytes of per-owner fixed inventory and 3,312/4,096 bytes of
+active-only inventory. No reservation is enlarged. See
+[TSR-0037](troubleshooting/TSR-0037-peer-session-cancellation-publication.md).
+
+This structural check does not close the remaining aggregate allocation,
+retirement or long-running qualification obligations below.
+
 The selected ceiling is **480 MiB of owned protocol data and backing storage**, including overlapping active generations. Go stacks, GC/runtime bookkeeping and unchanged configuration storage are reported separately. This is not a process RSS limit. The aggregate proof remains open for the final enabled-SQLite inventory, unjoined standard-library dial/resolver descendants and final-source qualification. Approved v15 replaces the historical persistence and diagnostic owners described below; its current accounting is summarized first. No final 30-minute Q4 acceptance is claimed.
 
 The derivation targets Go 1.26.4, windows/amd64. `allocationBytes` covers small-object classes and whole 8 KiB pages; `pointerAllocationBytes` includes an allocation type header. Rounded owned storage is included. Unreachable garbage awaiting GC, runtime heap arenas and stack backing are separate runtime overhead. A toolchain/architecture change requires rechecking the source and allocation oracles.

@@ -7,11 +7,202 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"dxcluster/config"
 )
+
+// Close calls are counted at the socket boundary, including cancellation workers.
+type cancellationPublicationConn struct {
+	net.Conn
+	closes      atomic.Int32
+	closeSignal chan struct{}
+	closeOnce   sync.Once
+}
+
+func (c *cancellationPublicationConn) Close() error {
+	c.closes.Add(1)
+	if c.closeSignal != nil {
+		c.closeOnce.Do(func() { close(c.closeSignal) })
+	}
+	return c.Conn.Close()
+}
+
+func TestSessionCancellationPublicationInstallOrdering(t *testing.T) {
+	for _, ordering := range []string{"close first", "install first", "overlap"} {
+		t.Run(ordering, func(t *testing.T) {
+			local, remote := net.Pipe()
+			t.Cleanup(func() { _ = remote.Close() })
+			conn := &cancellationPublicationConn{Conn: local}
+			s := &session{conn: conn}
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
+			var err error
+			switch ordering {
+			case "close first":
+				s.close()
+				err = s.installContext(ctx, cancel)
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("closed installation returned %v", err)
+				}
+			case "install first":
+				err = s.installContext(ctx, cancel)
+				if err != nil {
+					t.Fatal(err)
+				}
+				s.close()
+			case "overlap":
+				start := make(chan struct{})
+				var pending sync.WaitGroup
+				pending.Add(2)
+				go func() { defer pending.Done(); <-start; err = s.installContext(ctx, cancel) }()
+				go func() { defer pending.Done(); <-start; s.close() }()
+				close(start)
+				pending.Wait()
+				if err != nil && !errors.Is(err, context.Canceled) {
+					t.Fatal(err)
+				}
+			}
+			// Repeated callers must neither reopen cancellation nor close twice.
+			var closers sync.WaitGroup
+			for range 8 {
+				closers.Add(1)
+				go func() { defer closers.Done(); s.close() }()
+			}
+			closers.Wait()
+			if ctx.Err() == nil || conn.closes.Load() != 1 {
+				t.Fatalf("canceled=%v socket close calls=%d", ctx.Err(), conn.closes.Load())
+			}
+		})
+	}
+}
+
+// Err gates the return from installation while the real operation's Done and
+// cancellation remain intact. Manager.Stop must close this registered session
+// before the reader is permitted to start any workers or handshake I/O.
+type cancellationPublicationContext struct {
+	context.Context
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (c *cancellationPublicationContext) Err() error {
+	c.once.Do(func() { close(c.entered) })
+	<-c.release
+	return c.Context.Err()
+}
+
+func TestSessionCancellationPublicationManagerStop(t *testing.T) {
+	for _, dir := range []direction{dirInbound, dirOutbound} {
+		t.Run(fmt.Sprintf("direction=%d", dir), func(t *testing.T) {
+			m, _ := newInboundHarnessManager(t, inboundScenario{name: t.Name()})
+			local, remote := net.Pipe()
+			t.Cleanup(func() { _ = remote.Close() })
+			conn := &cancellationPublicationConn{Conn: local, closeSignal: make(chan struct{})}
+			s := newSession(conn, dir, m, PeerEndpoint{}, m.sessionSettings(PeerEndpoint{}))
+			s.operation = m.beginContextOperation()
+			if s.operation == nil {
+				t.Fatal("operation admission failed")
+			}
+			gate := &cancellationPublicationContext{Context: s.operation.ctx, entered: make(chan struct{}), release: make(chan struct{})}
+			s.operation.ctx = gate
+			var releaseOnce sync.Once
+			release := func() { releaseOnce.Do(func() { close(gate.release) }) }
+			t.Cleanup(release)
+			runDone, stopDone := make(chan error, 1), make(chan struct{})
+			go func() { runDone <- s.Run() }()
+			select {
+			case <-gate.entered:
+			case <-time.After(time.Second):
+				t.Fatal("startup did not reach cancellation installation")
+			}
+			go func() { m.Stop(); close(stopDone) }()
+			select {
+			case <-conn.closeSignal:
+			case <-time.After(3 * time.Second):
+				t.Fatal("Stop did not close the published startup session")
+			}
+			release()
+			select {
+			case err := <-runDone:
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("canceled startup returned %v", err)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("Run did not retire after shutdown")
+			}
+			select {
+			case <-stopDone:
+			case <-time.After(time.Second):
+				t.Fatal("Stop did not join startup ownership")
+			}
+			if conn.closes.Load() != 1 {
+				t.Fatalf("socket close calls=%d", conn.closes.Load())
+			}
+			assertCancellationPublicationRetired(t, m, s)
+		})
+	}
+}
+
+func assertCancellationPublicationRetired(t *testing.T, m *Manager, s *session) {
+	t.Helper()
+	m.mu.RLock()
+	clean := m.candidates.Len() == 0 && m.ownedRuns.Len() == 0 && m.sessions.Len() == 0 &&
+		len(m.pendingSlots) == 0 && len(m.ownerSlots) == 0 && !s.pendingReserved && !s.ownerReserved
+	m.mu.RUnlock()
+	if !clean || m.ContextOwnership().Active != 0 {
+		t.Fatal("terminal session retained registry, context or transport ownership")
+	}
+}
+
+// This reproducer uses only baseline Run/close entry points. The concurrent
+// close must cancel the operation even when it wins before Run installs it.
+func TestSessionCancellationPublicationRunCloseOverlap(t *testing.T) {
+	for _, dir := range []direction{dirInbound, dirOutbound} {
+		for i := 0; i < 4; i++ {
+			t.Run(fmt.Sprintf("direction=%d/cycle=%d", dir, i), func(t *testing.T) {
+				m, _ := newInboundHarnessManager(t, inboundScenario{name: t.Name()})
+				local, remote := net.Pipe()
+				t.Cleanup(func() { _ = remote.Close() })
+				conn := &cancellationPublicationConn{Conn: local}
+				s := newSession(conn, dir, m, PeerEndpoint{}, m.sessionSettings(PeerEndpoint{}))
+				s.operation = m.beginContextOperation()
+				if s.operation == nil {
+					t.Fatal("operation admission failed")
+				}
+				start, closed := make(chan struct{}), make(chan struct{})
+				done := make(chan error, 1)
+				go func() { <-start; done <- s.Run() }()
+				go func() { <-start; s.close(); close(closed) }()
+				close(start)
+				<-closed
+				select {
+				case err := <-done:
+					if err == nil {
+						t.Fatal("closed startup succeeded")
+					}
+				case <-time.After(time.Second):
+					// Retire the baseline's stranded cancellation watcher before failing.
+					m.cancel()
+					select {
+					case <-done:
+					case <-time.After(time.Second):
+						t.Fatal("parent cancellation did not retire startup")
+					}
+					t.Fatal("concurrent close lost operation cancellation")
+				}
+				if s.operation.ctx.Err() == nil || conn.closes.Load() != 1 {
+					t.Fatalf("canceled=%v socket close calls=%d", s.operation.ctx.Err(), conn.closes.Load())
+				}
+				assertCancellationPublicationRetired(t, m, s)
+			})
+		}
+	}
+}
 
 func outboundHarness(t *testing.T) (*session, *Manager, net.Conn, chan error, context.CancelFunc) {
 	t.Helper()

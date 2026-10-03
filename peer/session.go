@@ -88,14 +88,19 @@ type session struct {
 	initTimeout          time.Duration
 	// The reader owns phaseDeadline. Requests copy it before crossing to the
 	// controller; replayReady is published under manager.mu at commitment.
-	phaseDeadline  time.Time
-	replayReady    <-chan error
-	idleTimeout    time.Duration
-	keepalive      time.Duration
-	configEvery    time.Duration
-	dir            direction
-	ctx            context.Context
+	phaseDeadline time.Time
+	replayReady   <-chan error
+	idleTimeout   time.Duration
+	keepalive     time.Duration
+	configEvery   time.Duration
+	dir           direction
+	ctx           context.Context
+	// cancelMu protects cancellation installation and terminal closure. Never
+	// hold it across cancellation, socket I/O, manager locks or worker joins.
+	// ctx is installed once by Run before workers/controller requests observe it.
+	cancelMu       sync.Mutex
 	cancel         context.CancelFunc
+	cancelClosed   bool
 	closeOnce      sync.Once
 	logKeepalive   bool
 	logLineTooLong bool
@@ -166,6 +171,21 @@ func newSession(conn net.Conn, dir direction, manager *Manager, peer PeerEndpoin
 	return s
 }
 
+// installContext hands cancellation to close without losing an earlier close.
+// Run owns this one-time installation; the operation remains Run's retirement
+// responsibility even when terminal closure refuses startup here.
+func (s *session) installContext(ctx context.Context, cancel context.CancelFunc) error {
+	s.cancelMu.Lock()
+	s.ctx, s.cancel = ctx, cancel
+	closed := s.cancelClosed
+	s.cancelMu.Unlock()
+	if closed {
+		cancel()
+		return context.Canceled
+	}
+	return ctx.Err()
+}
+
 func (s *session) Run() error {
 	if s.conn == nil {
 		if s.manager != nil {
@@ -201,7 +221,6 @@ func (s *session) Run() error {
 		s.manager.releaseCandidate(s)
 		return errors.New("peer: context owner capacity or manager stopped")
 	}
-	s.ctx, s.cancel = s.operation.ctx, s.operation.cancel
 	// Run owns every session worker and closes the socket before joining. The
 	// cancellation watcher also interrupts reads when idle timeouts are disabled.
 	defer func() {
@@ -224,15 +243,18 @@ func (s *session) Run() error {
 		}
 		// releaseCandidate returns transport credits. Cancellation and removal
 		// from the permanent parent must complete before another owner can use it.
-		s.cancel()
+		s.operation.cancel()
 		s.manager.endContextOperation(s.operation)
 		s.manager.releaseCandidate(s)
 	}()
+	if err := s.installContext(s.operation.ctx, s.operation.cancel); err != nil {
+		return err
+	}
 	s.startWorker(s.writerLoop)
 	s.startWorker(s.controlAgeLoop)
 	s.startWorker(func() {
 		<-s.ctx.Done()
-		_ = s.conn.Close()
+		s.close()
 	})
 
 	var err error
