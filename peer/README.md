@@ -30,7 +30,7 @@ Inbound admission is explicit:
 
 In receive-only mode:
 
-- inbound peer spots still ingest locally
+- valid inbound peer spots still ingest locally; malformed originals are rejected first
 - inbound peer spotter calls ending in the skimmer marker `-#` strip only that terminal marker before local ingest; numeric SSIDs are preserved
 - maintenance traffic still runs
 - only local `DX` command spots are peer-published
@@ -39,6 +39,121 @@ With `forward_spots: true`:
 
 - normal transit forwarding is re-enabled
 - local acceptance still gates whether relayed traffic continues onward
+
+## Original Spot Admission And Relay
+
+PC11, PC61 and PC26 originals pass one admission boundary before local
+normalization, comment parsing, timestamp/origin fallback or either the primary
+or peer dedupe cache. Malformed originals are dropped: they do not enter the
+local ingest queue, accepted-spot archive, display or peer relay. This boundary
+also applies in receive-only mode. A valid spot may still be refused by an age,
+queue, duplicate or forwarding gate; that is separate from malformed input.
+
+Local processing may normalize or correct an accepted spot's callsigns,
+comment, mode, frequency, timestamp and origin. Peer relay uses the original
+fields, not the locally processed `Spot`. Its only content changes are the hop
+decrement, canonical sentence framing and PC61-to-PC11 conversion for a legacy
+destination. Original PC11 stays PC11 even for a modern destination; converting
+it to PC61 would require an IP field that was not received.
+
+### Original field rules
+
+The caret is a field delimiter and `~` is a transport terminator; neither can
+be literal comment content. Required payload fields, before any hop suffix,
+are:
+
+| Type | Payload fields in order |
+| --- | --- |
+| PC11 | frequency, DX call, date, time, comment, spotter call, origin call |
+| PC61 | PC11's seven fields, then spotter IP |
+| PC26 | PC11's seven fields, then an optional merge/request field |
+
+Extra fields, including extra empty fields, are malformed. The optional PC26
+field may be omitted, empty, one ASCII space, `*`, or a valid original callsign.
+Its original spelling and presence are retained. A legitimate no-hop PC26 merge
+sentence remains locally eligible and is not transit-forwarded.
+
+- DX, spotter, origin and any requested call are checked as supplied, without
+  trimming, uppercasing or stripping suffixes. They are 3-15 ASCII bytes matching
+  `^[A-Z0-9]+(?:[/-][A-Z0-9#]+)*$`, with at least one slash/hyphen-delimited
+  identity segment containing a digit followed by a letter and at most two
+  letters before its first digit. This is GoCluster's broader spot-call rule:
+  `W1XYZ-#` and `W1XYZ-123` can be valid originals. It is separate from the
+  narrower PC92/configuration identity contract. Origin must be a nonempty
+  valid original call; the authenticated sender cannot repair it.
+- Frequency is an unpadded unsigned ASCII decimal, `[0-9]+(?:\.[0-9]+)?`, in
+  kHz. Signs, exponents, hexadecimal notation, NaN and infinity are unsupported.
+  Parsing and the existing half-up 10 Hz rounding must remain finite, with the
+  rounded kHz value in `[0, 2^32)` so the unchanged primary frequency identity is
+  representable. Zero and out-of-band values are not rejected merely for being
+  outside an amateur band.
+- Date is a real UTC calendar date in `dd-Mmm-yyyy` form, with an English month
+  abbreviation and the existing Go parser's month-case tolerance. Time is
+  exactly `HHMMZ`, with valid hours and minutes. Neither field permits padding
+  or a fallback to today's date.
+- Comment is nonempty. Reject byte ranges `0x00-0x08`, `0x0A-0x1F`,
+  `0x80-0x9F`, and literal `0xFF`, even when a prohibited byte occurs inside
+  otherwise valid UTF-8. Tabs (`0x09`), whitespace-only comments and permitted
+  bytes such as `0xFE` remain accepted. This is a byte rule, not a UTF-8 validity
+  rule. `0xFF` is unsupported because the native Telnet writer cannot preserve
+  decoded literal IAC content through the next receiver without escaping.
+- PC61 IP is a nonempty plain IPv4 or IPv6 address accepted by `netip.ParseAddr`,
+  without a zone, prefix length, brackets, port or surrounding whitespace.
+  Accepted spelling is retained, including IPv4-mapped forms. No private-address
+  or unicast-only filter is added.
+
+### Sentence framing and gates
+
+PC headers and H hop markers retain case-insensitive transport recognition.
+Optional `~` and the reader's existing CR/LF and repeated-terminator tolerance
+remain. Leading/trailing sentence whitespace, padded hop tokens and malformed
+suffixes are rejected. PC11 and PC61 require a hop token; each token is `H`/`h`
+plus one or two digits, from 0 through 99. Valid numeric stacks keep the
+rightmost-hop interpretation, but every stacked token must be valid. A closing
+caret is required; only one closing caret is framing. Extra empty slots remain
+subject to the field-count rule. Payload
+fields such as an origin or PC26 requested call `H1ABC` are never consumed as
+hop tokens.
+
+Onward sentences end in `^Hn^~`, followed by writer CRLF. A modern destination
+receives original PC11, PC61 or eligible PC26 fields. A legacy destination
+receives original PC11 fields, or original PC61 fields with only its IP removed.
+PC26 retains its modern-destination restriction. Forwarding still requires
+`forward_spots: true`, successful local queue handoff, hop greater than one,
+peer-dedupe admission and source exclusion. Valid H0/H1 inputs remain locally
+eligible. The original timestamp governs age admission and PC11/PC61's second
+age check immediately before relay; PC26 keeps its existing age-check behavior.
+
+Each output variant must fit the existing writer sentence limit, including
+`~`. The maximum sentence is 65,536 bytes; writer CRLF adds two bytes. Smaller
+configured reader limits continue to govern incoming sentences. Refuse an oversized variant without truncating its
+fields. A fitting PC61-to-PC11 variant may still be sent when the modern PC61
+variant does not fit. Existing cache admission and expiry remain in force;
+refusal does not reset a key or create an automatic retry.
+
+### Ownership and support evidence
+
+The handler clones at most eight original payload fields before the local
+parser can place derived strings in normalization caches. These compact owned
+copies cannot retain the reader's entire line through a short cached callsign.
+It captures the existing peer key and original timestamp before local handoff,
+then never reads the handed-off `Spot` for relay. Temporary copies and encodings
+remain inside the existing shared 8 MiB parse-budget contract; queue/cache
+owners retain their separate existing charges.
+
+Field-validation failures may emit bounded `parse_rejected` diagnostics. Invalid
+sentence framing is discarded by `ParseFrame` before the spot handler. Diagnose a
+missing valid spot separately through age, ingest queue, forwarding, hop and
+dedupe gates. Diagnostic overload may lose records, so absence of a record is
+not proof of acceptance. The existing dedupe identities are unchanged: valid
+spots differing only in a comment may still be suppressed as duplicates.
+
+Broad GoCluster validity does not promise acceptance by every downstream
+receiver. Compare the decoded original fields, emitted bytes and actual
+receiver storage separately. See
+[ADR-0239](../docs/decisions/ADR-0239-peer-original-validation-and-relay.md) and
+[TSR-0039](../docs/troubleshooting/TSR-0039-peer-normalized-relay-and-telnet-iac.md)
+for the contract and the source-grounded failure explanation.
 
 ## Publishing Rules
 

@@ -91,15 +91,24 @@ func ParseFrame(line string) (*Frame, error) {
 	if len(raw) > MaxPeerFrameBytes {
 		return nil, fmt.Errorf("frame exceeds %d bytes", MaxPeerFrameBytes)
 	}
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
 		return nil, fmt.Errorf("empty line")
 	}
-	if !isFrameStartAt([]byte(raw), 0) {
+	if !isFrameStartAt([]byte(trimmed), 0) {
 		return nil, fmt.Errorf("invalid PC frame header")
 	}
 	f := &Frame{Raw: line}
-	f.Type = strutil.NormalizeUpper(raw[:4])
+	f.Type = strutil.NormalizeUpper(trimmed[:4])
+	// Spot admission validates the original sentence, before whitespace or
+	// local fallbacks can hide defects. Other PC families keep their grammar.
+	if isPeerSpotFrame(f.Type) && trimmed != raw {
+		return nil, fmt.Errorf("%s has outer sentence whitespace", f.Type)
+	}
+	if isPeerSpotFrame(f.Type) && strings.ContainsAny(raw, "\r\n~") {
+		return nil, fmt.Errorf("%s has an embedded transport terminator", f.Type)
+	}
+	raw = trimmed
 	payload, hop, err := splitFramePayload(f.Type, raw[5:])
 	if err != nil {
 		return nil, err
@@ -114,6 +123,9 @@ func ParseFrame(line string) (*Frame, error) {
 // field grammar before Split: a 64 KiB run of carets cannot allocate a megabyte
 // of headers in each concurrently handshaking reader.
 func splitFramePayload(frameType, raw string) ([]string, int, error) {
+	if isPeerSpotFrame(frameType) {
+		return splitPeerSpotPayload(frameType, raw)
+	}
 	if frameType == "PC92" || frameType == "PC93" {
 		return splitAuthorityPayload(frameType, raw)
 	}
@@ -145,6 +157,59 @@ func splitFramePayload(frameType, raw string) ([]string, int, error) {
 		return nil, hop, nil
 	}
 	return strings.Split(raw[:end], "^"), hop, nil
+}
+
+// Spot field positions delimit transport hops. In particular an origin or
+// PC26 requested callsign such as H1ABC belongs to the payload. Consume one
+// closing caret, then valid hop tokens only; extra empty slots stay visible to
+// the field-count check. The split allocates at most eight string headers.
+func splitPeerSpotPayload(frameType, raw string) ([]string, int, error) {
+	if !strings.HasSuffix(raw, "^") {
+		return nil, 0, fmt.Errorf("%s requires a closing caret", frameType)
+	}
+	raw = raw[:len(raw)-1]
+	minimum := 7
+	if frameType == "PC61" {
+		minimum = 8
+	}
+	count, end := strings.Count(raw, "^")+1, len(raw)
+	hop, found := 0, false
+	for count > minimum {
+		start := strings.LastIndexByte(raw[:end], '^') + 1
+		value, valid := parsePeerSpotHop(raw[start:end])
+		if !valid {
+			break
+		}
+		if !found {
+			hop, found = value, true
+		}
+		end, count = start-1, count-1
+	}
+	if !found && frameType != "PC26" {
+		return nil, 0, fmt.Errorf("%s requires a valid hop", frameType)
+	}
+	maximum := minimum
+	if frameType == "PC26" {
+		maximum = 8
+	}
+	if count < minimum || count > maximum {
+		return nil, 0, fmt.Errorf("%s has invalid fields or hop suffix", frameType)
+	}
+	return strings.Split(raw[:end], "^"), hop, nil
+}
+
+func parsePeerSpotHop(token string) (int, bool) {
+	if len(token) < 2 || len(token) > 3 || (token[0] != 'H' && token[0] != 'h') {
+		return 0, false
+	}
+	value := 0
+	for i := 1; i < len(token); i++ {
+		if token[i] < '0' || token[i] > '9' {
+			return 0, false
+		}
+		value = value*10 + int(token[i]-'0')
+	}
+	return value, true
 }
 
 // splitAuthorityPayload consumes the final transport hop once. Numeric stacks
@@ -222,12 +287,16 @@ func (f *Frame) Encode(hop int) string {
 	// Authority fields have already crossed their grammar boundary. Repeating
 	// suffix stripping would consume K extensions or optional PC93 metadata.
 	fields := f.Fields
-	if f.Type != "PC92" && f.Type != "PC93" {
+	if f.Type != "PC92" && f.Type != "PC93" && !isPeerSpotFrame(f.Type) {
 		fields, _ = stripFrameHopSuffix(f.Type, fields)
 	}
 	out := f.Type + "^" + strings.Join(fields, "^")
 	if hop >= 0 {
 		out += fmt.Sprintf("^H%d^", hop)
+	} else if isPeerSpotFrame(f.Type) {
+		// PC26 merge frames may have no hop. Their closing caret distinguishes
+		// an omitted optional slot from an explicitly empty one.
+		out += "^"
 	}
 	return out
 }

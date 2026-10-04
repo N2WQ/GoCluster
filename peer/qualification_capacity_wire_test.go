@@ -24,12 +24,18 @@ func TestQualificationCapacityWireUsesOrdinaryParsersAndExactSizes(t *testing.T)
 					t.Fatal(err)
 				}
 			} else {
+				if _, err := validateOriginalPeerSpot(frame); err != nil {
+					t.Fatalf("capacity spot failed shared original-field validation: %v", err)
+				}
 				spot, err := parseSpotFromFrame(frame, "DL1PAA")
 				if err != nil {
 					t.Fatal(err)
 				}
-				if key := dxKey(frame, spot); len(key) != 360 {
-					t.Fatalf("reachable maximum-scale spot key length%d want360", len(key))
+				// This ordinary present-day fixture reaches a63-byte key.
+				// The separate373-byte synthetic cache qualification remains
+				// useful pressure, but is not a claim of parser reachability.
+				if key := dxKey(frame, spot); len(key) != 63 {
+					t.Fatalf("reachable present-day spot key length%d want63", len(key))
 				}
 			}
 		}

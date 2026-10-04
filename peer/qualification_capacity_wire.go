@@ -4,8 +4,6 @@ package peer
 
 import (
 	"fmt"
-	"math"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -29,9 +27,10 @@ func (g *QualificationCapacityGenerator) Wire(class string, index, size, hop int
 	switch class {
 	case "spot":
 		call := qualificationCall("K0", index%(26*26*26*26)) + "ABCDEFGHI"
-		// Ordinary spot construction multiplies by100 while rounding. Keep
-		// that intermediate finite so the retained key contains all digits.
-		prefix := "PC26^" + strconv.FormatFloat(math.MaxFloat64/128, 'g', -1, 64) + "^" + call + "^" + time.Now().UTC().Format("02-Jan-2006^1504Z") + "^"
+		// Exercise the largest reachable plain-decimal frequency key while
+		// keeping the local rounded value representable by primary dedupe.
+		// Synthetic cache-key pressure remains a separate qualification.
+		prefix := "PC26^4294967295.99^" + call + "^" + time.Now().UTC().Format("02-Jan-2006^1504Z") + "^"
 		suffix := fmt.Sprintf("^W1ABCDEFGHIJKLM^N1REM^^H%d^", hop)
 		padding := max(1, size-len(prefix)-len(suffix))
 		return prefix + strings.Repeat("x", padding) + suffix, nil

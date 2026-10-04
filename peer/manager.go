@@ -347,24 +347,7 @@ func (m *Manager) HandleFrame(frame *Frame, sess *session) {
 			}
 		}
 	case "PC26", "PC11", "PC61":
-		spotEntry, err := parseSpotFromFrame(frame, sess.remoteCall)
-		if err != nil {
-			m.reportBadCallParseDrop(frame, sess, err)
-			return
-		}
-		accepted := m.ingestSpot(spotEntry)
-		if accepted && frame.Hop > 1 && m.shouldRelayDataFrame(frame.Type) {
-			key := dxKey(frame, spotEntry)
-			if m.dedupe.markSeen(key, now) {
-				if frame.Type == "PC26" {
-					// Preserve merge semantics by forwarding PC26; pc9x peers only. Telnet clients
-					// see the formatted spot via normal broadcast after ingest.
-					m.forwardFrame(frame, frame.Hop-1, sess, true)
-				} else {
-					m.broadcastSpot(spotEntry, spotEntry.Comment, frame.Hop-1, spotEntry.SourceNode, sess)
-				}
-			}
-		}
+		m.handlePeerSpot(frame, sess, now)
 	case "PC23", "PC73":
 		if ev, ok := parseWWV(frame); ok {
 			if m.bulletinDedupe.markSeen(wwvKey(frame), now) {

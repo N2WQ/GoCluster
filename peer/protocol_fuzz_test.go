@@ -37,7 +37,7 @@ func FuzzParseFrameHopSuffix(f *testing.F) {
 		if reparsed.Hop != frame.Hop {
 			t.Fatalf("hop mismatch after roundtrip: start=%d end=%d line=%q encoded=%q", frame.Hop, reparsed.Hop, line, reencoded)
 		}
-		if frame.Type == "PC92" || frame.Type == "PC93" {
+		if frame.Type == "PC92" || frame.Type == "PC93" || isPeerSpotFrame(frame.Type) {
 			if !reflect.DeepEqual(frame.Fields, reparsed.Fields) {
 				t.Fatalf("authority payload lost: %q => %q", frame.Fields, reparsed.Fields)
 			}

@@ -2,12 +2,14 @@ package peer
 
 import (
 	"context"
-	"dxcluster/internal/peerdiag"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"dxcluster/internal/peerdiag"
 )
 
 func TestSpotFrameParseChargeExactFieldAndASCIIShape(t *testing.T) {
@@ -39,7 +41,14 @@ func TestSpotFrameParseChargeExactFieldAndASCIIShape(t *testing.T) {
 
 func maximumSpotBudgetWire(kind, dx, de string) string {
 	prefix := kind + "^14000^" + dx + "^01-Oct-2026^1200Z^"
-	suffix := "^" + de + "^N1REM^192.0.2.1^H1^"
+	suffix := "^" + de + "^N1REM"
+	switch kind {
+	case "PC61":
+		suffix += "^192.0.2.1"
+	case "PC26":
+		suffix += "^ "
+	}
+	suffix += "^H1^"
 	n := MaxPeerFrameBytes - len(prefix) - len(suffix)
 	return prefix + strings.Repeat("X ", n/2) + strings.Repeat("X", n%2) + suffix
 }
@@ -89,6 +98,13 @@ func TestSpotLeaseRealParserConcurrentAndReaderHeadroom(t *testing.T) {
 func TestSpotLeaseInvalidDXAndDEDiagnosticConsumers(t *testing.T) {
 	for _, role := range []string{"DX", "DE"} {
 		for _, kind := range []string{"PC11", "PC61", "PC26"} {
+			validFrame, err := ParseFrame(maximumSpotBudgetWire(kind, "K1ABC", "W1ABC"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := validateOriginalPeerSpot(validFrame); err != nil {
+				t.Fatalf("%s diagnostic control fixture is malformed: %v", kind, err)
+			}
 			b := newFrameParseBudget()
 			ctx := t.Context()
 			m := &Manager{parseBudget: b, diagnostics: peerdiag.New(peerdiag.Options{Enabled: true})}
@@ -101,7 +117,10 @@ func TestSpotLeaseInvalidDXAndDEDiagnosticConsumers(t *testing.T) {
 				de = "INVALID CALL"
 			}
 			line := maximumSpotBudgetWire(kind, dx, de)
-			_, err := s.withParsedFrame(line, time.Time{}, func(frame *Frame) (bool, error) {
+			_, err = s.withParsedFrame(line, time.Time{}, func(frame *Frame) (bool, error) {
+				if _, err := validateOriginalPeerSpot(frame); err == nil || !strings.Contains(err.Error(), "callsign") {
+					return false, fmt.Errorf("%s diagnostic did not exercise original callsign rejection: %w", role, err)
+				}
 				m.HandleFrame(frame, s)
 				return false, errors.New("intentional handler failure")
 			})

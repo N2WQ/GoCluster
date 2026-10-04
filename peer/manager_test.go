@@ -76,14 +76,14 @@ func TestHandleFrameRelaysInboundPC11AndPC61ToOtherPeers(t *testing.T) {
 	}{
 		{
 			name:         "pc11 relays to legacy peer as pc11",
-			line:         "PC11^14074.0^K1ABC^23-Dec-2025^2001Z^CQ TEST^W1XYZ^ORIGIN^H3^",
+			line:         "PC11^14074.0^K1ABC^23-Dec-2025^2001Z^CQ TEST^W1XYZ^N1ORIG^H3^",
 			targetPC9x:   false,
 			wantPrefix:   "PC11^",
 			wantHopToken: "^H2^",
 		},
 		{
 			name:         "pc61 relays to pc9x peer as pc61",
-			line:         "PC61^14074.0^K1ABC^23-Dec-2025^2001Z^CQ TEST^W1XYZ^ORIGIN^203.0.113.7^H3^",
+			line:         "PC61^14074.0^K1ABC^23-Dec-2025^2001Z^CQ TEST^W1XYZ^N1ORIG^203.0.113.7^H3^",
 			targetPC9x:   true,
 			wantPrefix:   "PC61^",
 			wantHopToken: "^H2^",
@@ -173,7 +173,7 @@ func TestInboundSpotNotRelayedWhenLocalIngestQueueFull(t *testing.T) {
 		sessions: sessionTestIndex(map[string]*session{"src": src, "dst": dst}),
 	}
 
-	frame, err := ParseFrame("PC61^14074.0^K1ABC^23-Dec-2025^2001Z^CQ TEST^W1XYZ^ORIGIN^203.0.113.7^H3^")
+	frame, err := ParseFrame("PC61^14074.0^K1ABC^23-Dec-2025^2001Z^CQ TEST^W1XYZ^N1ORIG^203.0.113.7^H3^")
 	if err != nil {
 		t.Fatalf("ParseFrame: %v", err)
 	}
@@ -212,7 +212,7 @@ func TestInboundSpotRelayedWhenLocallyAccepted(t *testing.T) {
 		sessions: sessionTestIndex(map[string]*session{"src": src, "dst": dst}),
 	}
 
-	frame, err := ParseFrame("PC61^14074.0^K1ABC^23-Dec-2025^2001Z^CQ TEST^W1XYZ^ORIGIN^203.0.113.7^H3^")
+	frame, err := ParseFrame("PC61^14074.0^K1ABC^23-Dec-2025^2001Z^CQ TEST^W1XYZ^N1ORIG^203.0.113.7^H3^")
 	if err != nil {
 		t.Fatalf("ParseFrame: %v", err)
 	}
@@ -368,11 +368,11 @@ func TestHandleFrameSpotRelaySuppressedWhenForwardSpotsDisabled(t *testing.T) {
 	}{
 		{
 			name: "pc11 ingest only",
-			line: "PC11^14074.0^K1ABC^23-Dec-2025^2001Z^CQ TEST^W1XYZ^ORIGIN^H3^",
+			line: "PC11^14074.0^K1ABC^23-Dec-2025^2001Z^CQ TEST^W1XYZ^N1ORIG^H3^",
 		},
 		{
 			name: "pc26 ingest only",
-			line: "PC26^14074.0^K1ABC^23-Dec-2025^2001Z^CQ TEST^W1XYZ^ORIGIN^ ^H3^",
+			line: "PC26^14074.0^K1ABC^23-Dec-2025^2001Z^CQ TEST^W1XYZ^N1ORIG^ ^H3^",
 		},
 	}
 

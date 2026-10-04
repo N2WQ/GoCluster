@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0239 | Peer Original Validation and Relay | Accepted | 2026-10-04 | peer, protocol, admission, ownership | Refines ADR-0050/0054/0091/0234 selected spot clauses | - | `docs/decisions/ADR-0239-peer-original-validation-and-relay.md` |
 | ADR-0238 | Named Presets Shared Across Numeric SSIDs | Accepted | 2026-10-03 | filter, telnet, commands, persistence | - | - | `docs/decisions/ADR-0238-named-presets.md` |
 | ADR-0237 | Remove Console Peer-Log Status | Accepted | 2026-10-03 | console, peer diagnostics | ADR-0234 (console status display only) | - | `docs/decisions/ADR-0237-remove-console-peer-log-status.md` |
 | ADR-0236 | Date-Only Build Version | Accepted | 2026-10-03 | build metadata, releases, console, PC18 | ADR-0077; refines ADR-0076 release identity and ADR-0076/0078 display | - | `docs/decisions/ADR-0236-date-only-build-version.md` |
@@ -243,7 +244,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR-0051 | Mode Inference Provenance and Band Default Policy | Superseded | 2026-03-06 | spot, rbn, pskreporter, commands | - | ADR-0052 | `docs/decisions/ADR-0051-mode-inference-provenance-and-band-default-policy.md` |
 | ADR-0052 | Region-Aware Final Mode Inference and UNKNOWN Filter Token | Accepted | 2026-03-07 | spot, main output pipeline, filter, telnet, docs | ADR-0051 | - | `docs/decisions/ADR-0052-region-aware-mode-inference-and-unknown-filter-token.md` |
 | ADR-0053 | Peering Receive-Only Forwarding Knob With Local DX Exception | Accepted | 2026-03-07 | config, peer, main output pipeline | - | - | `docs/decisions/ADR-0053-peering-receive-only-forwarding-knob.md` |
-| ADR-0054 | Peering Control-Plane Priority and Local-Acceptance Relay Gate | Accepted | 2026-03-07 | peer | - | - | `docs/decisions/ADR-0054-peering-control-priority-and-local-acceptance-relay.md` |
+| ADR-0054 | Peering Control-Plane Priority and Local-Acceptance Relay Gate | Accepted | 2026-03-07 | peer | - | ADR-0239 (spot admission/relay refinement only) | `docs/decisions/ADR-0054-peering-control-priority-and-local-acceptance-relay.md` |
 | ADR-0055 | FT2 Explicit Mode Support and Filter Contract | Accepted | 2026-03-27 | spot, pskreporter, filter, telnet, commands, docs | - | - | `docs/decisions/ADR-0055-ft2-explicit-mode-support-and-filter-contract.md` |
 | ADR-0056 | Local Self-Spots Use an Operator-Authoritative V Path | Accepted | 2026-03-27 | commands, main output pipeline, telnet, custom_scp, docs | - | - | `docs/decisions/ADR-0056-local-self-spots-operator-authoritative-v-path.md` |
 | ADR-0057 | FT Confidence Uses Bounded Main-Loop Corroboration | Superseded | 2026-04-07 | main output pipeline, filter, custom_scp, docs | - | ADR-0059 | `docs/decisions/ADR-0057-ft-confidence-corroboration.md` |

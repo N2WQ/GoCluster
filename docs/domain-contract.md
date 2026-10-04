@@ -39,8 +39,9 @@ pressure.
 
 ## Source identity normalization
 
-- Peer PC11, PC61, and PC26 DE/spotter calls strip only a terminal `-#`
-  skimmer marker before local ingest.
+- Validated peer PC11, PC61, and PC26 DE/spotter calls strip only a terminal
+  `-#` skimmer marker for local ingest. Their onward peer payload retains the
+  original spotter spelling.
 - DXSummit DE/spotter calls strip only a terminal `-#` skimmer marker before
   local ingest.
 - Numeric SSIDs before the marker are preserved, so `N2WQ-1-#` becomes
@@ -167,6 +168,32 @@ These rules must be explicit, deterministic, and testable.
 
 ### Relay under overload
 
+- Validate original PC11, PC61 and PC26 sentences and fields before local
+  normalization/fallback, queue handoff or either primary/peer dedupe admission.
+  Malformed originals must not be displayed, archived as accepted spots or
+  relayed, including when forwarding is disabled.
+- Keep local corrections separate from transit content. Relay original
+  callsigns, comments, mode-bearing text, frequency, timestamp and origin;
+  only hop decrement, required framing and legacy PC61-to-PC11 conversion may
+  change the transmitted sentence. PC11 remains PC11 for modern peers; PC26
+  retains its destination restrictions and legitimate no-hop local form.
+- Check original spot calls using the agreed broader GoCluster call syntax,
+  not PC92's narrower wire-identity rule. Original comments reject bytes
+  `0x00-0x08`, `0x0A-0x1F`, `0x80-0x9F` and literal `0xFF`. Tabs and nonempty
+  whitespace-only comments remain valid. The rule applies to individual bytes
+  even inside valid UTF-8; native Telnet negotiation does not imply support
+  for literal IAC in spot content.
+- Own compact field copies before normalization-cache access; capture the peer
+  key and original timestamp before local handoff. Relay must never read the
+  handed-off mutable `Spot`.
+- Keep the existing `forward_spots`, hop, age, duplicate, source-exclusion and
+  queue gates. Valid H0/H1 inputs remain locally eligible. PC11/PC61 retain
+  their second original-timestamp age check; PC26's age-check behavior remains.
+- Emit `^Hn^~` plus writer CRLF and refuse each oversized output variant without
+  truncation. Retain the 65,536-byte writer sentence maximum, configured reader
+  limits, parse/queue/cache budgets, existing dedupe identities and expiry.
+  Detailed field and framing grammar is in [peer behavior](../peer/README.md#original-spot-admission-and-relay)
+  and [ADR-0239](decisions/ADR-0239-peer-original-validation-and-relay.md).
 - Do not relay inbound peer spot data after the local ingest queue already
   dropped it.
 - A node that is shedding inbound peer spots locally must not continue acting as

@@ -3,7 +3,8 @@
 ## Match
 
 Use when a node operator or telnet user reports duplicate peer bulletins,
-surprising peer fanout, peer topology confusion, or asks about peer passwords.
+surprising peer fanout, changed or missing relayed spots, peer topology confusion,
+or asks about peer passwords.
 
 ## First Safe Check
 
@@ -47,6 +48,40 @@ dedupe, topology cache, or private peer configuration.
   keys. The former32-bit collision could lose a local spot while peer relay
   succeeded; this is distinct from PC92 payload-cache admission or topology
   loss. Check complete token evidence before attributing a missing spot.
+
+## Original Peer Spot Admission And Relay
+
+- Validate PC11/PC61/PC26 original sentences and fields before normalization,
+  fallback, local handoff or both dedupe paths, even in receive-only mode.
+  Malformed originals never enter accepted display/archive or relay.
+- Local call, comment, mode, frequency, timestamp and origin corrections may
+  appear in local output. Onward content retains accepted originals except the
+  hop decrement, required framing and legacy PC61-to-PC11 removal of the IP.
+  Original PC11 remains PC11 for modern peers; PC26 retains its destination
+  restriction and legitimate no-hop local merge form.
+- Original comments must be nonempty and reject bytes `00-08`, `0A-1F`,
+  `80-9F` and `FF` (hexadecimal), even inside valid UTF-8. Tabs and nonempty
+  whitespace-only comments remain valid. Incoming escaped `FF FF` still
+  decodes to unsupported literal IAC; do not suggest transport escaping as an
+  available configuration feature.
+- Broader original GoCluster calls such as `W1XYZ-#` and `W1XYZ-123` are
+  accepted when they satisfy the documented raw spot-call rule. PC92 has a
+  separate narrower contract, and a downstream receiver may reject those calls.
+- Valid forwarding-disabled and H0/H1 inputs remain locally eligible. Check
+  age, local ingest refusal, existing primary/peer duplicate suppression,
+  source exclusion and destination restrictions before diagnosing lost relay.
+  PC11/61 retain the second original-timestamp age check.
+- Relay ends in `^Hn^~` plus CRLF and refuses oversized variants without
+  truncating payloads or changing existing queue/cache budgets. A fitting
+  legacy conversion may still be sent if modern PC61 does not fit.
+- `parse_rejected` identifies original admission refusal in peer diagnostics.
+  Absence of a diagnostic is not acceptance proof because diagnostic overload
+  may lose records. Keep literal emitted-byte evidence, real receiver storage
+  and locally corrected output as separate observations.
+- Current contract: [peer behavior](../../peer/README.md#original-spot-admission-and-relay),
+  [ADR-0239](../../docs/decisions/ADR-0239-peer-original-validation-and-relay.md).
+  Source-derived failure explanation and verification status:
+  [TSR-0039](../../docs/troubleshooting/TSR-0039-peer-normalized-relay-and-telnet-iac.md).
 
 ## Must Avoid
 
