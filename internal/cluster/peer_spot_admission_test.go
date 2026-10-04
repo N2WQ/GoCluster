@@ -33,6 +33,107 @@ func TestPeerSpotMalformedAdmissionDoesNotPoisonDelivery(t *testing.T) {
 	}
 }
 
+func TestPeerSpotDateSpellingsSharePrimaryIdentity(t *testing.T) {
+	for _, forward := range []bool{true, false} {
+		for _, typeID := range []string{"PC11", "PC61", "PC26"} {
+			t.Run(fmt.Sprintf("%s/forward=%t", typeID, forward), func(t *testing.T) {
+				runPeerSpotDateIdentity(t, typeID, forward)
+			})
+		}
+	}
+}
+
+func runPeerSpotDateIdentity(t *testing.T, typeID string, forward bool) {
+	t.Helper()
+	// The fixed historical instant distinguishes validated input from the
+	// tolerant parser's fallback to now. Disable age filtering only in this
+	// fixture; the production date/age gate is checked by peer handler tests.
+	at := time.Date(2024, time.October, 4, 12, 34, 0, 0, time.UTC)
+	ingest := make(chan *spot.Spot, 4)
+	source, destination := newPeerAdmissionSockets(t, ingest, forward, 0)
+	primary := dedup.NewDeduplicator(10*time.Minute, false, 4)
+	primary.Start()
+	t.Cleanup(primary.Stop)
+	ring := buffer.NewRingBuffer(4)
+	writer := newDeliveryTestArchiveWriter(t)
+	display := telnet.NewServer(telnet.ServerOptions{BroadcastQueue: 4}, nil)
+	t.Cleanup(display.Stop)
+	pipeline := newDeliveryTestPipeline(ring, writer, display)
+
+	var firstKey [42]byte
+	for i, input := range []struct{ date, dx string }{
+		{" 4-Oct-2024", "K1DATE"},
+		{"04-Oct-2024", "K1DATE"},
+		{" 4-Oct-2024", "K1DONE"},
+	} {
+		fields := peerAdmissionFields(typeID, input.dx, at)
+		fields[2] = input.date
+		peerAdmissionSendAndAck(t, source, peerAdmissionSentence(typeID, fields, 5))
+		var accepted *spot.Spot
+		select {
+		case accepted = <-ingest:
+		default:
+			t.Fatalf("date %q did not reach local handoff", input.date)
+		}
+		assertPeerAdmissionSpot(t, accepted, input.dx, at)
+		key := accepted.DedupeKey()
+		if i == 0 {
+			firstKey = key
+		} else if i == 1 && key != firstKey {
+			t.Fatalf("equivalent original dates have different primary identities: %x != %x", key, firstKey)
+		}
+		select {
+		case primary.GetInputChannel() <- accepted:
+		case <-time.After(3 * time.Second):
+			t.Fatal("primary input handoff timed out")
+		}
+		if forward && i != 1 {
+			got := peerAdmissionReadSpot(t, destination)
+			if want := peerAdmissionSentence(typeID, fields, 4); got != want {
+				t.Fatalf("original date relay=%q want=%q", got, want)
+			}
+		}
+	}
+
+	// A distinct final spot is a FIFO processing barrier. Its output proves
+	// that primary dedupe consumed the preceding spelling without emitting
+	// it; no sleep or absence sampled before processing establishes the claim.
+	for _, dx := range []string{"K1DATE", "K1DONE"} {
+		var accepted *spot.Spot
+		select {
+		case accepted = <-primary.GetOutputChannel():
+		case <-time.After(3 * time.Second):
+			t.Fatal("primary output timed out")
+		}
+		assertPeerAdmissionSpot(t, accepted, dx, at)
+		pipeline.deliverSpot(&outputSpotContext{spot: accepted})
+		archived, ok := tryReadArchiveQueuedSpot(writer)
+		if !ok {
+			t.Fatal("validated timestamp missing from accepted archive queue")
+		}
+		assertPeerAdmissionSpot(t, archived, dx, at)
+		broadcast, ok := tryReadTelnetBroadcastSpot(display)
+		if !ok {
+			t.Fatal("validated timestamp missing from display broadcast queue")
+		}
+		assertPeerAdmissionSpot(t, broadcast, dx, at)
+		recent := ring.GetRecent(1)
+		if len(recent) != 1 {
+			t.Fatal("validated timestamp missing from recent display")
+		}
+		assertPeerAdmissionSpot(t, recent[0], dx, at)
+	}
+	processed, duplicates, size := primary.GetStats()
+	if processed != 3 || duplicates != 1 || size != 2 || ring.GetCount() != 2 {
+		t.Fatalf("primary date identity processed=%d duplicates=%d size=%d display=%d want=3/1/2/2", processed, duplicates, size, ring.GetCount())
+	}
+	select {
+	case got := <-primary.GetOutputChannel():
+		t.Fatalf("equivalent original date emitted an extra primary output: %+v", got)
+	default:
+	}
+}
+
 type peerAdmissionSocket struct {
 	conn   net.Conn
 	reader *bufio.Reader
@@ -49,7 +150,7 @@ type peerAdmissionCase struct {
 func runPeerSpotAdmissionCases(t *testing.T, forward bool) {
 	t.Helper()
 	ingest := make(chan *spot.Spot, 4)
-	source, destination := newPeerAdmissionSockets(t, ingest, forward)
+	source, destination := newPeerAdmissionSockets(t, ingest, forward, 3600)
 	primary := dedup.NewDeduplicator(10*time.Minute, false, 4)
 	primary.Start()
 	t.Cleanup(primary.Stop)
@@ -213,7 +314,7 @@ func assertPeerAdmissionSpot(t *testing.T, got *spot.Spot, dx string, at time.Ti
 	}
 }
 
-func newPeerAdmissionSockets(t *testing.T, ingest chan<- *spot.Spot, forward bool) (*peerAdmissionSocket, *peerAdmissionSocket) {
+func newPeerAdmissionSockets(t *testing.T, ingest chan<- *spot.Spot, forward bool, maxAgeSeconds int) (*peerAdmissionSocket, *peerAdmissionSocket) {
 	t.Helper()
 	lc := net.ListenConfig{}
 	reserved, err := lc.Listen(t.Context(), "tcp", "127.0.0.1:0")
@@ -232,7 +333,7 @@ func newPeerAdmissionSockets(t *testing.T, ingest chan<- *spot.Spot, forward boo
 		{Enabled: true, Direction: config.PeeringPeerDirectionInbound, Family: config.PeeringPeerFamilyDXSpider, RemoteCallsign: "N1REM"},
 		{Enabled: true, Direction: config.PeeringPeerDirectionInbound, Family: config.PeeringPeerFamilyDXSpider, RemoteCallsign: "N2DST", PreferPC9x: true},
 	}
-	manager, err := peer.NewManager(cfg, cfg.LocalCallsign, ingest, 3600, nil)
+	manager, err := peer.NewManager(cfg, cfg.LocalCallsign, ingest, maxAgeSeconds, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

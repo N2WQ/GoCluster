@@ -59,11 +59,25 @@ dedupe, topology cache, or private peer configuration.
   hop decrement, required framing and legacy PC61-to-PC11 removal of the IP.
   Original PC11 remains PC11 for modern peers; PC26 retains its destination
   restriction and legitimate no-hop local merge form.
+- Original dates accept exactly `04-Oct-2026` or DXSpider's ` 4-Oct-2026`
+  day spelling, with real-calendar and strict UTC-clock checks. Unpadded days,
+  tabs and arbitrary padding remain malformed. The validated timestamp is
+  assigned before dedupe or ingest age; onward date bytes retain their original
+  spelling. At the earlier `668ec513` baseline, ordinary days 1-9 were rejected;
+  inspect original bytes and the deployed version before attributing missing
+  early-month input to dedupe. Generated no-hop PC26 can ingest without relay.
 - Original comments must be nonempty and reject bytes `00-08`, `0A-1F`,
   `80-9F` and `FF` (hexadecimal), even inside valid UTF-8. Tabs and nonempty
   whitespace-only comments remain valid. Incoming escaped `FF FF` still
   decodes to unsupported literal IAC; do not suggest transport escaping as an
   available configuration feature.
+- Literal comment tilde support is required and pending as a separate bounded
+  framing correction. DXSpider permits `~`, including generated replacement of
+  comment carets; the current reader splits at the first tilde and cannot ingest
+  `CQ~TEST` intact. Future checks must cover terminal markers, fragmented reads,
+  consecutive frames and overflow recovery as well as literal tildes. This is
+  not an available configuration switch; full DXSpider spot compatibility remains
+  qualified until the framing correction passes verification.
 - Broader original GoCluster calls such as `W1XYZ-#` and `W1XYZ-123` are
   accepted when they satisfy the documented raw spot-call rule. PC92 has a
   separate narrower contract, and a downstream receiver may reject those calls.
@@ -76,10 +90,13 @@ dedupe, topology cache, or private peer configuration.
   legacy conversion may still be sent if modern PC61 does not fit.
 - `parse_rejected` identifies original admission refusal in peer diagnostics.
   Absence of a diagnostic is not acceptance proof because diagnostic overload
-  may lose records. Keep literal emitted-byte evidence, real receiver storage
-  and locally corrected output as separate observations.
+  may lose records. Incoming sender-generated admission, literal emitted-byte
+  evidence, real receiver storage and locally corrected output are separate
+  observations; zero-padded outbound fixtures did not prove incoming dates.
 - Current contract: [peer behavior](../../peer/README.md#original-spot-admission-and-relay),
-  [ADR-0239](../../docs/decisions/ADR-0239-peer-original-validation-and-relay.md).
+  [ADR-0239](../../docs/decisions/ADR-0239-peer-original-validation-and-relay.md)
+  and its date refinement
+  [ADR-0240](../../docs/decisions/ADR-0240-peer-dxspider-date-admission.md).
   Source-derived failure explanation and verification status:
   [TSR-0039](../../docs/troubleshooting/TSR-0039-peer-normalized-relay-and-telnet-iac.md).
 

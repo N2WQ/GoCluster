@@ -103,7 +103,12 @@ func originalPeerSpotTime(date, clock string) (time.Time, error) {
 	if len(date) != 11 || date[2] != '-' || date[6] != '-' || len(clock) != 5 || clock[4] != 'Z' {
 		return time.Time{}, errors.New("invalid original date or time syntax")
 	}
-	for _, i := range [...]int{0, 1, 7, 8, 9, 10} {
+	// DXSpider cldate uses %2d: days 1-9 have one leading ASCII space.
+	// Admit that exact spelling alongside zero padding, not general trimming.
+	if (date[0] < '0' || date[0] > '9') && (date[0] != ' ' || date[1] < '1' || date[1] > '9') {
+		return time.Time{}, errors.New("invalid original day syntax")
+	}
+	for _, i := range [...]int{1, 7, 8, 9, 10} {
 		if date[i] < '0' || date[i] > '9' {
 			return time.Time{}, errors.New("invalid original date digits")
 		}
@@ -113,7 +118,7 @@ func originalPeerSpotTime(date, clock string) (time.Time, error) {
 			return time.Time{}, errors.New("invalid original time digits")
 		}
 	}
-	stamp, err := time.ParseInLocation("02-Jan-2006 1504Z", date+" "+clock, time.UTC)
+	stamp, err := time.ParseInLocation("_2-Jan-2006 1504Z", date+" "+clock, time.UTC)
 	if err != nil {
 		return time.Time{}, errors.New("invalid original calendar date or UTC time")
 	}
@@ -138,6 +143,9 @@ func (m *Manager) handlePeerSpot(frame *Frame, source *session, receivedAt time.
 		m.reportBadCallParseDrop(frame, source, err)
 		return
 	}
+	// The tolerant local parser cannot decode every admitted wire spelling.
+	// Use the validated instant before identity/age checks; keep transit bytes.
+	local.Time = stamp
 	// The local consumer owns local after handoff and may immediately mutate
 	// every field. Capture the existing key and timestamp before sending it.
 	key := dxKey(&original, local)

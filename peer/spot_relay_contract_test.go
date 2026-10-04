@@ -228,6 +228,11 @@ func FuzzOriginalPeerSpotAdmission(f *testing.F) {
 	}
 	f.Add("PC26^14074^K1ABC^29-Feb-2024^2359Z^CQ^W1XYZ^H2ABC^H1ABC^")
 	f.Add("PC26^14074^K1ABC^29-Feb-2024^2359Z^CQ^W1XYZ^H2ABC^^")
+	for _, kind := range []string{"PC11", "PC61", "PC26"} {
+		for _, date := range []string{" 1-Oct-2026", " 9-Oct-2026", " 0-Oct-2026", "\t1-Oct-2026", "  1-Oct-2026"} {
+			f.Add(strings.Replace(originalSpotTestWire(kind, "CQ"), "01-oCt-2026", date, 1))
+		}
+	}
 	f.Fuzz(func(t *testing.T, line string) {
 		frame, err := ParseFrame(line)
 		if err != nil || !isPeerSpotFrame(frame.Type) {

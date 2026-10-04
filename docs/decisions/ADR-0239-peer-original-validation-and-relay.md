@@ -112,6 +112,15 @@ for admission refusal, then separate valid-spot age, queue, duplicate and relay
 gates. Local display/archive may contain corrections; receiver observations
 must compare against the decoded original and authorized conversion.
 
+## Date-contract refinement
+
+[ADR-0240](ADR-0240-peer-dxspider-date-admission.md) refines the original date
+spelling and validated local timestamp assignment after sender review found
+that the zero-padded grammar omitted DXSpider's `%2d` day. It preserves this
+accepted decision's ownership, admission, relay, gate and resource contracts.
+Literal comment tilde support is required and pending as a separate framing
+correction; full DXSpider spot compatibility remains qualified.
+
 ## Links
 
 - Related issues/PRs/commits: Approved Scope Ledger v3; baseline

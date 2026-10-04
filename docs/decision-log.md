@@ -24,7 +24,8 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| ADR-0239 | Peer Original Validation and Relay | Accepted | 2026-10-04 | peer, protocol, admission, ownership | Refines ADR-0050/0054/0091/0234 selected spot clauses | - | `docs/decisions/ADR-0239-peer-original-validation-and-relay.md` |
+| ADR-0240 | Peer DXSpider Date Admission | Accepted | 2026-10-04 | peer, protocol, date, admission, compatibility | Refines ADR-0239 date/timestamp clauses | - | `docs/decisions/ADR-0240-peer-dxspider-date-admission.md` |
+| ADR-0239 | Peer Original Validation and Relay | Accepted | 2026-10-04 | peer, protocol, admission, ownership | Refines ADR-0050/0054/0091/0234 selected spot clauses | Date/timestamp clauses refined by ADR-0240 | `docs/decisions/ADR-0239-peer-original-validation-and-relay.md` |
 | ADR-0238 | Named Presets Shared Across Numeric SSIDs | Accepted | 2026-10-03 | filter, telnet, commands, persistence | - | - | `docs/decisions/ADR-0238-named-presets.md` |
 | ADR-0237 | Remove Console Peer-Log Status | Accepted | 2026-10-03 | console, peer diagnostics | ADR-0234 (console status display only) | - | `docs/decisions/ADR-0237-remove-console-peer-log-status.md` |
 | ADR-0236 | Date-Only Build Version | Accepted | 2026-10-03 | build metadata, releases, console, PC18 | ADR-0077; refines ADR-0076 release identity and ADR-0076/0078 display | - | `docs/decisions/ADR-0236-date-only-build-version.md` |

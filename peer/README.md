@@ -58,9 +58,10 @@ it to PC61 would require an IP field that was not received.
 
 ### Original field rules
 
-The caret is a field delimiter and `~` is a transport terminator; neither can
-be literal comment content. Required payload fields, before any hop suffix,
-are:
+The caret is a field delimiter. The current native reader treats the first
+`~` anywhere as a terminator, so literal comment tildes are not admitted; this
+is a known DXSpider compatibility limitation, not a restriction imposed by
+DXSpider's comment rule. Required payload fields, before any hop suffix, are:
 
 | Type | Payload fields in order |
 | --- | --- |
@@ -71,7 +72,9 @@ are:
 Extra fields, including extra empty fields, are malformed. The optional PC26
 field may be omitted, empty, one ASCII space, `*`, or a valid original callsign.
 Its original spelling and presence are retained. A legitimate no-hop PC26 merge
-sentence remains locally eligible and is not transit-forwarded.
+sentence remains locally eligible and is not transit-forwarded. The pinned
+DXSpider PC26 generator emits this no-hop form; hop-bearing PC26 relay remains
+a separate case with the existing modern-destination restriction.
 
 - DX, spotter, origin and any requested call are checked as supplied, without
   trimming, uppercasing or stripping suffixes. They are 3-15 ASCII bytes matching
@@ -87,10 +90,16 @@ sentence remains locally eligible and is not transit-forwarded.
   rounded kHz value in `[0, 2^32)` so the unchanged primary frequency identity is
   representable. Zero and out-of-band values are not rejected merely for being
   outside an amateur band.
-- Date is a real UTC calendar date in `dd-Mmm-yyyy` form, with an English month
-  abbreviation and the existing Go parser's month-case tolerance. Time is
-  exactly `HHMMZ`, with valid hours and minutes. Neither field permits padding
-  or a fallback to today's date.
+- Date is exactly 11 ASCII bytes with a real UTC calendar date and an English
+  month abbreviation, retaining the existing Go parser's month-case tolerance
+  and four-decimal-digit year domain. The day is either two decimal digits or
+  one ASCII space followed by a digit from 1 through 9: `04-Oct-2026` and
+  ` 4-Oct-2026` represent the same instant. The latter is DXSpider's standard
+  `%2d` spelling. Unpadded days, tabs, extra spaces, trailing padding and invalid
+  calendar dates are rejected. Time is exactly `HHMMZ`, with valid hours and
+  minutes. The validated UTC timestamp is assigned to the local `Spot` before
+  dedupe identity or ingest-age checks; relay retains the original date bytes.
+  Neither field falls back to today's date.
 - Comment is nonempty. Reject byte ranges `0x00-0x08`, `0x0A-0x1F`,
   `0x80-0x9F`, and literal `0xFF`, even when a prohibited byte occurs inside
   otherwise valid UTF-8. Tabs (`0x09`), whitespace-only comments and permitted
@@ -136,8 +145,11 @@ refusal does not reset a key or create an automatic retry.
 The handler clones at most eight original payload fields before the local
 parser can place derived strings in normalization caches. These compact owned
 copies cannot retain the reader's entire line through a short cached callsign.
-It captures the existing peer key and original timestamp before local handoff,
-then never reads the handed-off `Spot` for relay. Temporary copies and encodings
+After local parsing it assigns the already validated UTC instant to `Spot.Time`,
+then captures the existing peer key before local handoff. Neither dedupe nor
+ingest age can observe a tolerant parser's fallback timestamp. Relay uses the
+captured original timestamp and never reads the handed-off `Spot`. Temporary
+copies and encodings
 remain inside the existing shared 8 MiB parse-budget contract; queue/cache
 owners retain their separate existing charges.
 
@@ -151,9 +163,27 @@ spots differing only in a comment may still be suppressed as duplicates.
 Broad GoCluster validity does not promise acceptance by every downstream
 receiver. Compare the decoded original fields, emitted bytes and actual
 receiver storage separately. See
-[ADR-0239](../docs/decisions/ADR-0239-peer-original-validation-and-relay.md) and
+[ADR-0239](../docs/decisions/ADR-0239-peer-original-validation-and-relay.md),
+its date-contract refinement
+[ADR-0240](../docs/decisions/ADR-0240-peer-dxspider-date-admission.md), and
 [TSR-0039](../docs/troubleshooting/TSR-0039-peer-normalized-relay-and-telnet-iac.md)
 for the contract and the source-grounded failure explanation.
+
+### Required DXSpider framing correction
+
+Literal comment `~` support is required and pending in a separate bounded
+framing change. DXSpider permits this byte and its generators replace comment
+carets with it. The current shared reader splits at the first tilde, so a valid
+DXSpider comment such as `CQ~TEST` cannot survive incoming processing. This
+reader behavior predates original-payload relay and is unchanged by the date
+correction.
+
+That framing change must cover literal comment tildes, terminal markers,
+fragmented reads, consecutive frames and overflow recovery without weakening
+existing limits. Full DXSpider spot compatibility remains qualified until it
+passes verification. Sender-generated admission, literal outbound bytes and
+actual downstream receiver storage establish different claims; the earlier
+zero-padded outbound fixtures did not establish sender-date compatibility.
 
 ## Publishing Rules
 

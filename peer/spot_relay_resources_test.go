@@ -61,7 +61,12 @@ func newPeerSpotResourceFixture(ctx context.Context, t testing.TB, saturate bool
 }
 
 func peerSpotResourceWire(kind, shape string) string {
-	prefix := kind + "^14074.019^K1RSC" + kind[2:] + "-123^01-Oct-2026^1200Z^"
+	date := "01-Oct-2026"
+	if strings.HasPrefix(shape, "space_padded_") {
+		date = " 1-Oct-2026"
+		shape = strings.TrimPrefix(shape, "space_padded_")
+	}
+	prefix := kind + "^14074.019^K1RSC" + kind[2:] + "-123^" + date + "^1200Z^"
 	suffix := "^W1RSC" + kind[2:] + "-#^N1RSC"
 	switch kind {
 	case "PC61":
@@ -115,7 +120,7 @@ func assertPeerSpotStringOwned(t testing.TB, raw, value, owner string) {
 
 func TestPeerSpotFullLeasedHandlerBoundedFanoutAndOwnedStorage(t *testing.T) {
 	for _, kind := range []string{"PC11", "PC61", "PC26"} {
-		for _, shape := range []string{"short", "one_token", "many_tokens"} {
+		for _, shape := range []string{"short", "one_token", "many_tokens", "space_padded_short", "space_padded_one_token", "space_padded_many_tokens"} {
 			t.Run(kind+"/"+shape, func(t *testing.T) {
 				fixture := newPeerSpotResourceFixture(t.Context(), t, true)
 				wire := peerSpotResourceWire(kind, shape)
@@ -328,20 +333,19 @@ func TestPeerSpotAddedScratchInventoryWithinUnchangedCharge(t *testing.T) {
 }
 
 func TestPeerSpotReachableKeyIncludesCalendarExtremes(t *testing.T) {
-	for _, date := range []string{"01-Jan-0000", "31-Dec-9999"} {
-		frame, err := ParseFrame("PC61^4294967295.99^K0ABCDEFGHIJKLM^" + date + "^1200Z^CQ^W1ABCDEFGHIJKLM^N1RSC^192.0.2.1^H99^")
-		if err != nil {
+	for _, date := range []string{"01-Jan-0000", " 1-Jan-0000", "31-Dec-9999", " 9-Jan-9999"} {
+		fixture := newPeerSpotResourceFixture(t.Context(), t, false)
+		wire := "PC61^4294967295.99^K0ABCDEFGHIJKLM^" + date + "^1200Z^CQ^W1ABCDEFGHIJKLM^N1RSC^192.0.2.1^H99^"
+		if err := handleLeasedPeerSpot(fixture, wire); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := validateOriginalPeerSpot(frame); err != nil {
-			t.Fatalf("agreed calendar grammar refused a representable key fixture: %v", err)
+		if len(fixture.ingest) != 1 || fixture.manager.dedupe.items.Len() != 1 {
+			t.Fatalf("agreed calendar grammar refused the date %q", date)
 		}
-		local, err := parseSpotFromFrame(frame, "")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if key := dxKey(frame, local); len(key) != 65 {
-			t.Fatalf("full calendar domain key %q has %d bytes, want65", key, len(key))
+		for key := range fixture.manager.dedupe.items.All() {
+			if len(key) != 65 {
+				t.Fatalf("full calendar domain key %q has %d bytes, want65", key, len(key))
+			}
 		}
 	}
 }
@@ -365,7 +369,7 @@ func resetPeerSpotResourceFixture(fixture *peerSpotResourceFixture) {
 func TestPeerSpotFullHandlerActualAllocationWithinScratchAndQueues(t *testing.T) {
 	previous := debug.SetGCPercent(-1)
 	defer debug.SetGCPercent(previous)
-	for _, shape := range []string{"short", "one_token", "many_tokens"} {
+	for _, shape := range []string{"short", "one_token", "many_tokens", "space_padded_short", "space_padded_one_token", "space_padded_many_tokens"} {
 		t.Run(shape, func(t *testing.T) {
 			fixture := newPeerSpotResourceFixture(t.Context(), t, false)
 			wire := peerSpotResourceWire("PC61", shape)

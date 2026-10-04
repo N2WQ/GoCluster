@@ -26,6 +26,38 @@ mocked publishing checks; its Git/GitHub operations never reach external tools.
   .\scripts\watch-voacap-ssn.ps1
   ```
 
+## Pinned DXSpider Spot Interoperability
+
+The peer reference tests use DXSpider revision
+`3e9b3621d94dd45c68702e4a0f896aac33f2a91d`, selected with `DXSPIDER_ROOT`.
+`DXSPIDER_PERL` selects an existing Perl runtime; both variables are required
+for the externally configured tests. Optional `DXSPIDER_PERL_LIB` adds its
+dependency search path. These harnesses are test tooling, not runtime peer
+transports:
+
+- `spot-dxspider-generate.pl` calls the pinned PC11, PC61 and PC26 generators
+  with a controlled test clock in a separate process and temporary state.
+  It retains the real `cldate` formatter; days 1-9 therefore have one leading
+  ASCII space. Sender-generated cases cover days 1, 9, 10 and 31. PC26 emits
+  no hop, so its native-input case establishes local admission and timestamp,
+  while hop-bearing relay is tested separately.
+- `spot-dxspider-interop.pl` sends production writer bytes through the pinned
+  receiver and observes its own cache and disk storage. Receiver behavior such
+  as trimming or rounding is separate from GoCluster's byte preservation.
+
+The Go harness supplies `DXSPIDER_TEST_STATE`, `GOCLUSTER_ROOT` and the decimal
+`DXSPIDER_TEST_AT` timestamp for each one-shot sender process. Its stdout is a
+JSON object containing base64 PC11, PC61 and PC26 sentences; the actual modules
+format those sentences. These test-only variables do not affect cluster runtime.
+
+See [sender-date tests](../peer/spot_relay_date_test.go),
+[receiver tests](../peer/spot_relay_interop_test.go) and
+[TSR-0039](../docs/troubleshooting/TSR-0039-peer-normalized-relay-and-telnet-iac.md)
+for commands, actual results and claim boundaries. Standard suites skip
+externally configured cases when the reference runtime is unavailable; those
+skips do not establish interoperability. Literal comment tilde support remains
+a required separate framing correction.
+
 ## Workflow Checkers
 
 - `measure-codex-workflow-context.ps1` reports declared Codex instruction-path

@@ -183,6 +183,12 @@ These rules must be explicit, deterministic, and testable.
   whitespace-only comments remain valid. The rule applies to individual bytes
   even inside valid UTF-8; native Telnet negotiation does not imply support
   for literal IAC in spot content.
+- Accept exactly 11-byte original UTC dates with either a two-digit day or
+  DXSpider's one-ASCII-space-padded day 1-9 (`04-Oct-2026` / ` 4-Oct-2026`).
+  Retain real-calendar validation, English month-case tolerance, four-digit
+  years and strict `HHMMZ`; reject unpadded days and arbitrary padding.
+  Assign the validated instant to the local `Spot.Time` before dedupe-key or
+  ingest-age checks. Preserve original date bytes in onward fields.
 - Own compact field copies before normalization-cache access; capture the peer
   key and original timestamp before local handoff. Relay must never read the
   handed-off mutable `Spot`.
@@ -193,7 +199,15 @@ These rules must be explicit, deterministic, and testable.
   truncation. Retain the 65,536-byte writer sentence maximum, configured reader
   limits, parse/queue/cache budgets, existing dedupe identities and expiry.
   Detailed field and framing grammar is in [peer behavior](../peer/README.md#original-spot-admission-and-relay)
-  and [ADR-0239](decisions/ADR-0239-peer-original-validation-and-relay.md).
+  and [ADR-0239](decisions/ADR-0239-peer-original-validation-and-relay.md),
+  refined for original dates by
+  [ADR-0240](decisions/ADR-0240-peer-dxspider-date-admission.md).
+- Literal comment `~` support is a required, pending interoperability
+  correction outside the date fix: the current reader splits at the first
+  tilde, including one inside a legitimate DXSpider comment. The separate
+  framing change must verify terminal markers, fragmented reads, consecutive
+  frames and overflow recovery as well as literal tildes. Full DXSpider spot
+  compatibility remains qualified until that change passes verification.
 - Do not relay inbound peer spot data after the local ingest queue already
   dropped it.
 - A node that is shedding inbound peer spots locally must not continue acting as
