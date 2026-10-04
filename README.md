@@ -165,6 +165,33 @@ REJECT PATH CLOSED,INSUFFICIENT
 SHOW FILTER
 ```
 
+### Named Presets
+
+Save your current filters and preferences as a reusable snapshot:
+
+```text
+SAVE PRESET contest
+LIST PRESET
+LOAD PRESET contest
+DELETE PRESET contest
+```
+
+Presets are shared by your numeric SSIDs: `N2WQ`, `N2WQ-1`, and `N2WQ-2`
+use the same collection. Loading applies the snapshot and saves it as the
+current login call/SSID's default. Other connected sessions keep their settings
+until they load a preset. Saving an existing name replaces it; deleting a
+preset leaves current settings unchanged.
+
+Names are case-insensitive and displayed uppercase. Use 1-32 ASCII letters, digits,
+underscores or hyphens, starting with a letter or digit. Each callsign can keep
+20 presets of up to 256 KiB each. A preset includes all filters and toggles,
+dialect, dedupe, grid, noise, path sample minimum and solar summary cadence. Login/IP
+history, diagnostics and temporary read pause are excluded. A failed load
+leaves live settings and saved defaults unchanged.
+
+See [telnet persistence details](telnet/README.md#named-presets) for storage
+and runtime restoration rules.
+
 ## HELP
 
 The section below mirrors the default `go` dialect `HELP` output from [`commands/processor.go`](commands/processor.go) using the shipped config in [`data/config`](data/config).
@@ -196,6 +223,10 @@ SHOW FILTER - Display filter state.
 PASS - Allow filter matches.
 REJECT - Block filter matches.
 RESET FILTER - Reset filters to defaults.
+SAVE PRESET - Save filters and preferences to a preset.
+LIST PRESET - List your saved presets.
+LOAD PRESET - Load a preset and save this SSID's defaults.
+DELETE PRESET - Delete a saved preset.
 DIALECT - Show or switch dialect.
 BYE - Disconnect.
 Type HELP <command> for details.

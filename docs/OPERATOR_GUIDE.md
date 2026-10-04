@@ -210,6 +210,10 @@ Log in with your callsign. Useful first commands:
 - `PASS <type> <list>`: allow matching spots.
 - `REJECT <type> <list>`: block matching spots.
 - `RESET FILTER`: restore default filters.
+- `SAVE PRESET <name>`: save filters and preferences to a named snapshot.
+- `LIST PRESET`: list the snapshots shared by your numeric SSIDs.
+- `LOAD PRESET <name>`: load a snapshot and save the current SSID's defaults.
+- `DELETE PRESET <name>`: remove a snapshot while keeping current settings.
 - `PASS NEARBY ON|OFF`: toggle nearby local-area filtering.
 - `SHOW DEDUPE`: show your dedupe policy.
 - `SET DEDUPE FAST|MED|SLOW`: change your dedupe policy.

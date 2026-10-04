@@ -3986,6 +3986,14 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 			continue
 		}
 
+		// Named snapshots are shared across SSIDs and independent of the dialect.
+		if resp, handled := s.handlePresetCommand(client, line); handled {
+			if !s.sendCommandResponse(client, resp, "named preset command response") {
+				return
+			}
+			continue
+		}
+
 		// Check for filter commands under the active dialect.
 		if resp, handled := s.filterEngine.Handle(client, line); handled {
 			if resp != "" {

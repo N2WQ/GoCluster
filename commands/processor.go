@@ -540,6 +540,29 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 	)
 	add("RESET FILTER", "RESET FILTER - Reset filters to defaults.", resetFilterLines)
 
+	presetNotes := []string{
+		"Presets are shared across your numeric SSIDs; commands work in both dialects.",
+		"Names: 1-32 ASCII letters, digits, underscores or hyphens; start with a letter or digit.",
+		"Names are case-insensitive and displayed uppercase.",
+		"Limit: 20 presets, 256 KiB per preset.",
+		"Includes filters, dialect, dedupe, grid, noise, PATHSAMPLES and solar cadence.",
+		"Login/IP history and temporary session controls are excluded.",
+	}
+	for _, entry := range []struct{ verb, summary, note string }{
+		{"SAVE", "Save filters and preferences to a preset.", "Saving an existing name replaces that snapshot."},
+		{"LIST", "List your saved presets.", "Lists names alphabetically, with the count and limit."},
+		{"LOAD", "Load a preset and save this SSID's defaults.", "A failed load leaves live settings and saved defaults unchanged."},
+		{"DELETE", "Delete a saved preset.", "Deleting a preset leaves your current settings unchanged."},
+	} {
+		key := entry.verb + " PRESET"
+		usage := key
+		if entry.verb != "LIST" {
+			usage += " <name>"
+		}
+		notes := append(append([]string(nil), presetNotes...), entry.note)
+		add(key, key+" - "+entry.summary, helpEntryLines(key+" - "+entry.summary, []string{usage}, nil, notes))
+	}
+
 	dialectLines := helpEntryLines(
 		"DIALECT - Show or switch filter command dialect.",
 		[]string{"DIALECT", "DIALECT LIST", "DIALECT <go|cc>"},
@@ -723,6 +746,10 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"SH/FILTER",
 			"RESET FILTER",
 			"SET/FILTER",
+			"SAVE PRESET",
+			"LIST PRESET",
+			"LOAD PRESET",
+			"DELETE PRESET",
 			"UNSET/FILTER",
 			"SET/NOFILTER",
 			"SET/ANN",
@@ -858,6 +885,10 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"PASS",
 			"REJECT",
 			"RESET FILTER",
+			"SAVE PRESET",
+			"LIST PRESET",
+			"LOAD PRESET",
+			"DELETE PRESET",
 			"DIALECT",
 			"BYE",
 		}

@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `8d8d1d0110c88652`
+- Source fingerprint: `3045cfed493d9789`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -11,11 +11,11 @@
 
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
-| `dxcluster/commands` | `commands` | 1 | 2 |
+| `dxcluster/commands` | `commands` | 1 | 3 |
 | `dxcluster/internal/cluster` | `internal/cluster` | 25 | 57 |
 | `dxcluster/peer` | `peer` | 61 | 118 |
 | `dxcluster/spot` | `spot` | 32 | 31 |
-| `dxcluster/telnet` | `telnet` | 14 | 33 |
+| `dxcluster/telnet` | `telnet` | 15 | 34 |
 
 ## In-Scope Package Edges
 
@@ -97,6 +97,7 @@ Source files:
 - `commands/processor.go`
 
 Test files:
+- `commands/preset_help_test.go`
 - `commands/processor_test.go`
 - `commands/readme_sync_test.go`
 
@@ -451,6 +452,7 @@ Source files:
 - `telnet/latency.go`
 - `telnet/login_validation.go`
 - `telnet/peer_membership.go`
+- `telnet/preset_commands.go`
 - `telnet/qualification_observer.go`
 - `telnet/qualification_observer_disabled.go`
 - `telnet/qualification_stage.go`
@@ -473,6 +475,7 @@ Test files:
 - `telnet/path_settings_test.go`
 - `telnet/peer_membership_test.go`
 - `telnet/prelogin_gate_test.go`
+- `telnet/preset_commands_test.go`
 - `telnet/qualification_observer_test.go`
 - `telnet/qualification_stage_test.go`
 - `telnet/read_pause_test.go`
@@ -499,6 +502,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0238](docs/decisions/ADR-0238-named-presets.md) | Accepted | 2026-10-03 | filter, telnet, commands, persistence | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0237](docs/decisions/ADR-0237-remove-console-peer-log-status.md) | Accepted | 2026-10-03 | console, peer diagnostics | `area:peer, path:internal/cluster, path:peer` |
 | [ADR-0236](docs/decisions/ADR-0236-date-only-build-version.md) | Accepted | 2026-10-03 | build metadata, releases, console, PC18 | `path:commands, path:peer` |
 | [ADR-0235](docs/decisions/ADR-0235-spot-history-maintenance.md) | Accepted | 2026-10-02 | spot, hot path, retained state | `area:spot` |

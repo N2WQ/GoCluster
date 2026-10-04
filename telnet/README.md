@@ -82,6 +82,56 @@ or archive records.
 spots and archive-backed history queries. Local self-spot bypasses still honor
 `REJECT TOXIC` once a spot is classified as `TOXIC`.
 
+## Named Presets
+
+These commands work in both `go` and `cc` dialects:
+
+| Command | Effect |
+| --- | --- |
+| `SAVE PRESET <name>` | Snapshot current filters and preferences; replace an existing name. |
+| `LIST PRESET` | Show uppercase names alphabetically, with the count and limit. |
+| `LOAD PRESET <name>` | Apply the snapshot and save this login call/SSID's defaults. |
+| `DELETE PRESET <name>` | Delete the snapshot without changing current settings. |
+
+Numeric SSIDs share the baseline callsign's collection. Portable prefixes and
+non-numeric hyphen suffixes retain the existing baseline-call identity rules.
+Other callsigns cannot address this collection through these commands. Loading
+does not change another connected SSID's live state or saved default.
+
+Names contain 1-32 ASCII letters, digits, underscores or hyphens, starting with
+a letter or digit. They are case-insensitive and stored/displayed uppercase.
+Each callsign can keep 20 presets, each with at most 256 KiB of standalone YAML
+preferences. Replacement is allowed at capacity; a new name requires deleting
+another preset. Presets remain independent snapshots after later preference
+changes.
+
+The snapshot includes every persistent filter field and toggle, `NEARBY`,
+dialect, dedupe policy, grid, noise class, path sample minimum and solar summary
+cadence. It excludes login/IP history, diagnostic mode, automatic read pause,
+and derived caches. LOAD uses existing preference normalization and server
+restrictions: disabled dedupe policies use the enabled-policy fallback, and a
+path sample override only applies above the current cluster minimum. Grid/H3
+cells and the `NEARBY` location-filter restoration snapshot are rebuilt. Stored
+`NEARBY` remains inactive with a warning when usable cells are unavailable.
+Solar summaries start at the next wall-clock-aligned tick.
+
+Ordinary per-SSID autosaving remains in place. Named collections are separate
+runtime data at `data/users/presets/<hex-encoded-baseline-call>.yaml` under
+`filter.UserDataDir`. Include that directory in user-data backups. Collections
+are read on demand, with an 8 MiB read limit; no collection cache or background
+worker is retained. A fixed array of 64 locks serializes updates in one cluster
+process, including commands from different SSIDs. Multiple processes must not
+write the same user-data directory concurrently.
+
+SAVE/DELETE replace a complete collection using a synced, closed temporary file.
+LOAD prepares detached preferences, preserves the target SSID's login metadata,
+and atomically commits its user record before changing live settings. Missing,
+invalid, oversized or unreadable presets produce errors. Failed writes leave the
+previous file intact; a failed LOAD leaves live settings and saved defaults
+unchanged. Malformed collections are not reset or overwritten automatically.
+Successful SAVE/DELETE logs include collection cardinality. Handled failures
+clean up their temporary files; a cleanup failure is logged for the operator.
+
 ## Dedupe Policies
 
 The telnet server exposes per-user dedupe policy control through `SHOW DEDUPE` and `SET DEDUPE`.

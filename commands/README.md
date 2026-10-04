@@ -58,10 +58,14 @@ The operator-facing commands handled here are:
 - `SET PATHSAMPLES`
 - `SET SOLAR`
 - `RESET FILTER`
+- `SAVE PRESET <name>`
+- `LIST PRESET`
+- `LOAD PRESET <name>`
+- `DELETE PRESET <name>`
 - `DIALECT`
 - `BYE`
 
-Filter mutation, `SHOW PROP` execution, and read-pause state are handled in the telnet layer.
+Filter mutation, named presets, `SHOW PROP` execution, and read-pause state are handled in the telnet layer.
 This package documents those commands in HELP, but the parsers for `PASS`,
 `REJECT`, `SHOW FILTER`, `SHOW PROP`, `SHOW HOLD`, `RESUME`, and the `cc` aliases live under
 [`../telnet`](../telnet).
@@ -78,3 +82,6 @@ shows only rows whose `REL` prediction is `HIGH`, `MEDIUM`, or `LOW`.
 - Dedupe HELP should match the effective secondary dedupe windows from `data/config`.
 
 For session flow and filter behavior, see [`../telnet/README.md`](../telnet/README.md).
+For preset ownership, contents, bounds and failure behavior, see
+[`Named Presets`](../telnet/README.md#named-presets). The four commands
+and their HELP topics are available in both dialects.
