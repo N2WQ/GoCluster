@@ -38,7 +38,8 @@ Tags: peer, cancellation, lifecycle, race, ownership
 
 ## Symptoms and Impact
 
-The isolated baseline at `f85d610e52311b94b925077627f11f351111852b` reproduced
+Root cause (or best current explanation): The isolated baseline at
+`f85d610e52311b94b925077627f11f351111852b` reproduced
 unsynchronized cancellation publication under `-race`. Close-before-installation
 could consume the closure Once without canceling the operation; Run's deferred
 worker join then needed parent cancellation to finish. The socket cancellation
@@ -58,13 +59,15 @@ worker also bypassed the one-time socket close path.
    assert operation cancellation, one socket close, bounded Run/Stop completion,
    and empty registries, context operations and transport reservations.
 
-## Findings and Decision Linkage
+## Fix or mitigation
 
 Run owns one-time context installation, workers and operation retirement.
 The cancellation mutex owns the installed function and terminal flag. No
 cancellation, socket I/O, manager lock or worker join occurs while it is held.
 Run installs an immutable context before workers and controller requests observe
 it. Existing manager, retry, queue and context-pool ownership remains intact.
+
+## Decision Linkage
 
 No new ADR: this restores the existing terminal-close and joined-retirement
 contract rather than selecting a new shutdown or retry policy.
