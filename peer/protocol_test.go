@@ -72,6 +72,47 @@ func TestPayloadFieldsStripsTrailingHopSuffixRun(t *testing.T) {
 	}
 }
 
+func TestPayloadFieldsLegacyCopyContract(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   []string
+		want []string
+	}{
+		{"nil", nil, nil},
+		{"empty", []string{}, []string{}},
+		{"no_suffix", []string{"DATA", ""}, []string{"DATA", ""}},
+		{"all_empty", []string{"", ""}, []string{"", ""}},
+		{"all_hop", []string{"H3", ""}, []string{}},
+		{"stack", []string{"DATA", "H95", "H94", "H93", ""}, []string{"DATA"}},
+		{"malformed_stack", []string{"DATA", "H95", "H9x", ""}, []string{"DATA"}},
+		{"empty_gap", []string{"DATA", "H7", "", "H3", ""}, []string{"DATA", "H7", ""}},
+		{"space_gap", []string{"DATA", "H7", " ", "H3", ""}, []string{"DATA", "H7", " "}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			before := snapshotProtocolFrame(&Frame{Fields: tc.in}).Fields
+			got := PayloadFields(tc.in)
+			if !reflect.DeepEqual(got, tc.want) || !reflect.DeepEqual(tc.in, before) {
+				t.Fatalf("payload=%q expected=%q input=%q original=%q", got, tc.want, tc.in, before)
+			}
+			if len(tc.in) == 0 {
+				return // Empty input retains its existing nil/empty representation.
+			}
+			if len(got) == 0 {
+				got = append(got, "")
+			}
+			got[0] = "output mutation"
+			if !reflect.DeepEqual(tc.in, before) {
+				t.Fatal("output aliases raw input headers")
+			}
+			got = PayloadFields(tc.in)
+			tc.in[0] = "input mutation"
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatal("raw input aliases output headers")
+			}
+		})
+	}
+}
+
 func TestParseFrameMalformedTerminalHopCannotBacktrack(t *testing.T) {
 	if _, err := ParseFrame("PC92^N1NODE^123^A^^1K1ABC^H99^H9x^"); err == nil {
 		t.Fatal("malformed terminal hop recovered earlier authority")

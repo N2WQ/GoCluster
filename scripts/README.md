@@ -46,17 +46,27 @@ transports:
   as trimming or rounding is separate from GoCluster's byte preservation.
 
 The Go harness supplies `DXSPIDER_TEST_STATE`, `GOCLUSTER_ROOT` and the decimal
-`DXSPIDER_TEST_AT` timestamp for each one-shot sender process. Its stdout is a
+`DXSPIDER_TEST_AT` timestamp for each one-shot sender process. Optional
+`DXSPIDER_TEST_COMMENT` and `DXSPIDER_TEST_IP` select test payloads; unchanged
+defaults are `CQ TEST` and `203.0.113.7`. The Go default helper supplies those
+values explicitly. The PC11/PC61 generators perform their own caret-to-tilde
+replacement; PC26 receives literal comment tildes and emits no hop. Its stdout
+is a
 JSON object containing base64 PC11, PC61 and PC26 sentences; the actual modules
 format those sentences. These test-only variables do not affect cluster runtime.
 
 See [sender-date tests](../peer/spot_relay_date_test.go),
+[sender-comment/native framing tests](../peer/spot_relay_framing_test.go),
 [receiver tests](../peer/spot_relay_interop_test.go) and
 [TSR-0039](../docs/troubleshooting/TSR-0039-peer-normalized-relay-and-telnet-iac.md)
 for commands, actual results and claim boundaries. Standard suites skip
 externally configured cases when the reference runtime is unavailable; those
-skips do not establish interoperability. Literal comment tilde support remains
-a required separate framing correction.
+skips do not establish interoperability. Literal comment preservation is checked
+through native input, production writers and a second native reader; pinned
+receiver storage is observed separately. Dotted IPv4 tails in legitimate IPv6
+are accepted by GoCluster but rejected by the pinned receiver's narrower IP
+predicate. Use a fresh fixture/key for each positive IP case because existing
+dedupe identity excludes IP text.
 
 ## Workflow Checkers
 

@@ -46,7 +46,6 @@ func TestOriginalPeerSpotValidity(t *testing.T) {
 		{"empty comment", 4, ""}, {"C0 comment", 4, "A\x00B"},
 		{"newline comment", 4, "A\nB"}, {"C1 comment", 4, "A\x9fB"},
 		{"UTF8 C1 continuation", 4, "A\xc3\x81B"}, {"IAC comment", 4, "A\xffB"},
-		{"transport delimiter in comment", 4, "A~B"},
 		{"empty origin", 6, ""}, {"invalid origin", 6, "ORIGIN"},
 		{"padded origin", 6, "H1ABC "}, {"lowercase origin", 6, "h1abc"},
 	}
@@ -94,13 +93,13 @@ func TestOriginalPeerSpotValidity(t *testing.T) {
 func TestOriginalPeerCommentByteRule(t *testing.T) {
 	for value := 0; value <= 255; value++ {
 		// Independently enumerate allowed bytes, rather than repeat the guard.
-		allowed := value == 9 || (value >= 32 && value <= 127 && value != '^' && value != '~') || (value >= 160 && value <= 254)
+		allowed := value == 9 || (value >= 32 && value <= 127 && value != '^') || (value >= 160 && value <= 254)
 		comment := "A" + string([]byte{byte(value)}) + "B"
 		if got := validOriginalPeerComment(comment); got != allowed {
 			t.Errorf("byte %02x: accepted=%v want=%v", value, got, allowed)
 		}
 	}
-	for _, comment := range []string{" ", "\t", " \t ", "A\xfeB", "A\xc3\xa9B"} {
+	for _, comment := range []string{" ", "\t", " \t ", "A\xfeB", "A\xc3\xa9B", "~", "~CQ", "CQ~", "CQ~~TEST"} {
 		if !validOriginalPeerComment(comment) {
 			t.Errorf("rejected allowed comment %q", comment)
 		}
@@ -114,7 +113,7 @@ func TestOriginalPeerSpotPermittedBytesSurviveNativeTransport(t *testing.T) {
 	var wires []string
 	for _, kind := range []string{"PC11", "PC61", "PC26"} {
 		for value := 0; value <= 255; value++ {
-			allowed := value == 9 || (value >= 32 && value <= 127 && value != '^' && value != '~') || (value >= 160 && value <= 254)
+			allowed := value == 9 || (value >= 32 && value <= 127 && value != '^') || (value >= 160 && value <= 254)
 			if !allowed {
 				continue
 			}
@@ -173,7 +172,6 @@ func TestPeerSpotEnvelopeAndPC26NoHopRoundTrip(t *testing.T) {
 			}
 		}
 		for _, line := range []string{
-			originalSpotTestWire(kind, "A~B"),
 			" " + wire, wire + " ", wire + "\t\r\n", wire + "^",
 			wire[:len(wire)-3] + "H3^H9x^", wire[:len(wire)-3] + "H3^H100^",
 			wire[:len(wire)-3] + " H3^", wire[:len(wire)-3] + "H3 ^",

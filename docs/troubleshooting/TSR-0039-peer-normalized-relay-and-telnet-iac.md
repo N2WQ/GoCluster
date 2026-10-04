@@ -6,7 +6,7 @@ Date Resolved: n/a
 Owner: Core maintainers
 Technical Area: peer admission, protocol framing, relay ownership
 Trigger Source: Operator report and troubleshooting chat
-Led To ADR(s): ADR-0239, ADR-0240
+Led To ADR(s): ADR-0239, ADR-0240, ADR-0241
 Tags: PC11, PC61, PC26, original payload, date, primary dedupe, Telnet IAC, tilde
 
 ## RCA Summary
@@ -20,15 +20,16 @@ Tags: PC11, PC61, PC26, original payload, date, primary dedupe, Telnet IAC, tild
   `Spot`, whose fields and comment had already changed. The original sentence
   had no shared strict admission boundary. Literal decoded `0xFF` also cannot
   survive native relay unchanged because the writer does not Telnet-escape it.
-  The new date guard overlooked DXSpider's `%2d` day spelling; the unchanged
-  shared reader treats the first `~` anywhere as a terminator.
+  The v3 date guard overlooked DXSpider's `%2d` day spelling; the reader at
+  that baseline treated the first `~` anywhere as a terminator.
 - What fixed it: The v3 remediation validates original PC11/PC61/PC26 fields
   first, owns compact original copies, and separates local corrections from
   relay. It rejects unsupported comment byte `0xFF`. The v4 date refinement
   admits the exact space-padded day spelling and assigns the validated instant
   before local dedupe/age checks while retaining original date bytes. Its final
-  verification is recorded separately below. Literal comment tilde support is
-  required and pending in a separate framing correction. Deployment and
+  verification is recorded separately below. The approved v5 correction writes
+  parsed payload once and recognizes comment tildes by field position across
+  reader, parser and validation, including overflow recovery. Deployment and
   production monitoring have not been performed.
 - How we know: The original relay and IAC causes were traced in source at
   `dd89af2d47e0abfadf80c709fbdc24d48b7f1478`. The implementation's separate
@@ -44,7 +45,8 @@ Tags: PC11, PC61, PC26, original payload, date, primary dedupe, Telnet IAC, tild
   configuration. Compare early-month date spelling and the deployed version
   when diagnosing missing input. A downstream receiver may reject a valid
   broader GoCluster callsign or selected IP spelling without GoCluster having
-  altered it. Literal comment tildes remain a known incoming-framing limitation.
+  altered it. Literal comment tildes are supported by the separately approved
+  v5 correction.
 
 ## Triggering Request
 
@@ -52,7 +54,7 @@ Tags: PC11, PC61, PC26, original payload, date, primary dedupe, Telnet IAC, tild
 - Request summary: Vet the changed-spot complaint and surgically prevent
   malformed peer spots from entering primary dedupe while preserving onward
   original payloads independently of local correction.
-- Request reference: Peer-forwarding review chat, Approved Scope Ledgers v3 and v4.
+- Request reference: Peer-forwarding review chat, Approved Scope Ledgers v3, v4 and v5.
 
 ## Symptoms and Impact
 
@@ -71,8 +73,11 @@ Tags: PC11, PC61, PC26, original payload, date, primary dedupe, Telnet IAC, tild
   handoff and both dedupe paths, including when forwarding is disabled. A
   guard-only relaxation could still make the tolerant local parser use now,
   changing identity and age decisions.
-- DXSpider-generated comments such as `CQ~TEST` cannot survive the current
-  reader. This predates the branch and remains outside the date correction.
+- Before v5, DXSpider-generated comments such as `CQ~TEST` could not survive
+  the reader. This predates the branch and remained outside the date correction.
+- At `c3bdcd1`, generic re-encoding strips hop-like payload a second time across
+  blank fields. `PC00^H0^^H0^^H0` loses two payload fields; a round trip could
+  appear green if the parser and test oracle shared the same loss.
 
 ## Timeline
 
@@ -94,6 +99,10 @@ Tags: PC11, PC61, PC26, original payload, date, primary dedupe, Telnet IAC, tild
    timestamp assignment before keys and age checks, and reference-generated
    reverse-direction coverage in approved v4. Literal comment tilde handling
    was tracked as a required separate bounded framing correction.
+
+7. 2026-10-04 - The operator selected preservation of generic payload across
+   blank fields, RFC 4291 IPv6 and original IP text, and comment-tilde handling
+   across reader, parser and validation, then approved v5's bounded patch.
 
 ## Hypotheses and Tests
 
@@ -155,9 +164,14 @@ Tags: PC11, PC61, PC26, original payload, date, primary dedupe, Telnet IAC, tild
 - Date root cause: The agreed original grammar and its guard overlooked the
   reference sender's day spelling. The v4 correction assigns validated time
   before identity and age, rather than changing global tolerant parsing.
-- Framing root cause: The shared reader uses the first tilde as a sentence
-  boundary. DXSpider permits comment tildes and replaces comment carets with
-  them. This older incompatibility needs its own splitting/recovery evidence.
+- Framing root cause before v5: The shared reader used the first tilde as a
+  sentence boundary. DXSpider permits comment tildes and replaces comment
+  carets with them. Parser and original-comment guards also rejected tilde.
+  The v5 correction addresses all three owners and overflow continuation.
+- Generic encoding root cause: The parser already extracted transport hops,
+  stopping at a blank field, but Encode stripped the payload again. Encoding
+  also represented zero fields as one empty field. The parser's generic
+  classification stays intact; Encode now writes its payload once.
 - Native transport tests observed escaped incoming `FF FF` becoming literal
   `FF`, then being rejected before local handoff and peer dedupe for all three
   spot types, with forwarding enabled and disabled. No historical production
@@ -178,6 +192,10 @@ Tags: PC11, PC61, PC26, original payload, date, primary dedupe, Telnet IAC, tild
 - Contract/behavior changes: Strict malformed admission, original-field PC11
   retention and PC61 legacy conversion, canonical `^Hn^~` plus writer CRLF.
   Receive-only admission and no-hop PC26 use the same original validity rule.
+
+- Framing refinement: [ADR-0241](../decisions/ADR-0241-peer-frame-payload-and-comment-framing.md)
+  preserves generic parsed payload and supports literal spot-comment tildes
+  while retaining original admission, IP spelling, gates and all limits.
 
 ## Verification and Monitoring
 
@@ -300,15 +318,86 @@ Support-agent docs impact: Required. Current peer/script documentation, domain
 contract and custom GPT routes/card point to the date contract and keep incoming
 sender evidence separate from outbound bytes and downstream storage.
 
-### Required pending framing correction
+### Payload and comment-framing v5 evidence
 
-Literal comment tilde support is required and pending. A separate bounded
-reader splitting/recovery change must test literal comment tildes, terminal
-markers, fragmented reads, consecutive frames and overflow recovery, retaining
-existing limits. The current reader and date correction do not supply that
-behavior. Full DXSpider spot compatibility remains qualified, including the
-selected broader callsign/IP policies that differ from the pinned receiver.
-This record remains Monitoring; no rollout or production fix is claimed.
+Approved v5 covers the generic encoding/fuzzer mismatch, literal comment tildes
+at reader/parser/validator boundaries and RFC 4291 native relay evidence. It
+does not change the IP validator, dedupe identities, queue or age rules, limits,
+transport escaping or the other PC families' parser grammar. The date correction
+and its historical fuzzer failure above are preserved as evidence.
+
+- `go test ./...` and `go vet ./...` passed with the pinned reference runtime
+  configured. `staticcheck ./...` and
+  `golangci-lint run ./... --config=.golangci.yaml` passed using process-local
+  Go 1.26.2, compatible with the installed analyzers. Initial unused-assignment
+  and tagged-switch findings in tests were corrected; affected tests were
+  rerun. No production change was needed for those findings.
+- `go test -race ./...` passed with native CGO support. Configured targeted
+  native/IP/comment, reference and primary-admission race checks also passed.
+  Default suites may skip external references when unconfigured; the explicit
+  configured `go test ./peer -run '^TestDXSpiderReference' -v -count=1` run
+  passed in 70.984 seconds with no skips. It exercises actual sender output,
+  native transport, a production writer/second native reader, and pinned
+  receiver cache/disk observations; these remain distinct evidence.
+- Sequential two-worker fuzz runs passed: `FuzzParseFrameHopSuffix` for 120
+  seconds (205,523 executions), `FuzzPeerSpotReaderFraming` for 120 seconds
+  (683,857), `FuzzLineReaderRetainedBound` for 60 seconds (352,461) and
+  `FuzzOriginalPeerSpotAdmission` for 30 seconds (155,208). Commands used
+  `go test ./peer -run '^$' -fuzz '^<target>$' -fuzztime <duration> -parallel 2`.
+- Temporary Go overlays against exact `c3bdcd1` sources made the new regressions
+  fail for the intended defects: encoding lost the blank-protected payload;
+  the old reader returned truncated CQ and released an internal Q during
+  discard; the old parser's embedded-terminator guard rejected tildes; the
+  old comment validator rejected them before local handoff. No repository
+  production source was replaced by these negative controls.
+- Twenty literal positive IPv6 spellings passed native ingress, original
+  validation, local handoff, production writer and receiving native parser,
+  retaining original modern IP text or removing only IP for legacy peers.
+  Twenty-two malformed/wrapped address controls rejected. The real primary
+  integration exercised 51 malformed cases in each forwarding mode, with
+  ACK barriers, no malformed local/cache/archive/display admission, and a
+  subsequent valid same-identity spot accepted.
+- Literal reader tests cover comment tildes at all two-part read boundaries,
+  byte reads, bare terminal markers on an open socket, repeated endings,
+  consecutive frames, whitespace-shaped rejection, tiny limits 1-5, overflow
+  decoys, PC92's separate cap, completed bytes before EOF, incomplete tails,
+  scratch release and teardown. The unchanged gate tests now carry tilde
+  comments; correction isolation mutates all local fields, including IP,
+  before verifying original output through a native receiving reader.
+- `go test -tags qualification ./peer -run
+  '^TestQualificationReaderOwnedBackingAndReturnedLine$' -count=1` passed.
+  `TestPC92MetadataOwnerLayout` observed a 152-byte reader wrapper, a 5,632-byte
+  per-owner inventory within 8,192 bytes and active inventory 3,312 within
+  4,096. The new fixed continuation owns no payload references; its allocation
+  test passes. `BenchmarkSpotFrameBoundaryScan` measured 823.2 ns/op, 0 B/op
+  and 0 allocs/op on Windows amd64. This establishes a narrow scan-allocation
+  property, not an end-to-end latency or throughput improvement.
+- The modified Perl sender passes its native `-c` syntax check. Existing
+  sender defaults remain explicit and unchanged. Reference-generated no-hop
+  PC26 proves local timestamp/comment admission and no peer-dedupe/relay;
+  separate labelled hop-bearing fixtures prove modern-only onward transport.
+- The final Go-code-quality, lifecycle, retained-state and scope pass found no
+  additional material defect. Review was lead-owned with design-aware scoped
+  workers; no independent non-steered review occurred. All 30 changed paths
+  remain inside approved v5. Support-agent documentation impact: Required;
+  contract, script documentation, routes/card, ADR and this TSR are updated.
+- Code-map generation/freshness, changed Markdown links/anchors and whitespace
+  checks passed. The troubleshooting checker still reports only TSR-0037's
+  two pre-existing omissions (root-cause and fix/remediation evidence); that
+  record is unchanged and no issue is reported for this record or its index.
+
+| Approved v5 item | Implementation and falsifiable verification |
+|---|---|
+| Preserve parsed payload, arity and complete oversized encoding | `peer/protocol.go`; literal `protocol_roundtrip_test.go` goldens, source snapshots, live queue/parser boundaries, baseline overlay and corrected hop fuzz oracle. |
+| Admit literal comment tildes across all three owners | `peer/reader.go`, `peer/protocol.go`, comment-only relaxation in `peer/spot_relay.go`; `reader_spot_framing_test.go`, native/reference fixtures and distinct old-reader/parser/validator negative controls. |
+| Retain plain IPv6 validity and original IP text | Production address guard and serializer unchanged; `spot_relay_framing_test.go` exercises literal RFC 4291 forms, malformed controls and modern/legacy native output. |
+| Preserve malformed rejection, correction isolation and relay gates | `peer_spot_admission_test.go`, `spot_relay_test.go` and receiver fixtures observe real dedupe/archive/display, mutable local handoff, original output and existing forwarding/age/queue/destination gates. |
+| Preserve reader bounds, ownership and lifecycle | Fixed discard continuation, scratch/EOF/release tests, owner inventory, qualification backing checks, scan allocation evidence and full race suite. |
+| Record current operator/support contract and history | ADR-0241, historical ADR backlinks, this Monitoring TSR, domain/peer/script docs, custom GPT routes/card and generated runtime map; no rollout or production observation claimed. |
+
+Full DXSpider spot compatibility remains qualified because selected broader
+callsign/IP policies differ from the pinned receiver. This record remains
+Monitoring; no rollout or production fix is claimed.
 
 - Signals to monitor: Existing `parse_rejected`, ingest-queue refusal and peer
   queue/size diagnostics. Diagnostic overload can lose records; an absent log
@@ -325,7 +414,8 @@ This record remains Monitoring; no rollout or production fix is claimed.
 - Date-correction baseline: `668ec513292f6dbf363063d6212c99ad6a7c24b1`.
 - Related ADR(s): [ADR-0054](../decisions/ADR-0054-peering-control-priority-and-local-acceptance-relay.md),
   [ADR-0239](../decisions/ADR-0239-peer-original-validation-and-relay.md),
-  [ADR-0240](../decisions/ADR-0240-peer-dxspider-date-admission.md).
+  [ADR-0240](../decisions/ADR-0240-peer-dxspider-date-admission.md),
+  [ADR-0241](../decisions/ADR-0241-peer-frame-payload-and-comment-framing.md).
 - Related docs: [Peer behavior](../../peer/README.md#original-spot-admission-and-relay),
   [Domain contract](../domain-contract.md#relay-under-overload).
 - Reference sender and receiver: DXSpider revision

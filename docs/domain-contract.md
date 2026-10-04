@@ -201,13 +201,19 @@ These rules must be explicit, deterministic, and testable.
   Detailed field and framing grammar is in [peer behavior](../peer/README.md#original-spot-admission-and-relay)
   and [ADR-0239](decisions/ADR-0239-peer-original-validation-and-relay.md),
   refined for original dates by
-  [ADR-0240](decisions/ADR-0240-peer-dxspider-date-admission.md).
-- Literal comment `~` support is a required, pending interoperability
-  correction outside the date fix: the current reader splits at the first
-  tilde, including one inside a legitimate DXSpider comment. The separate
-  framing change must verify terminal markers, fragmented reads, consecutive
-  frames and overflow recovery as well as literal tildes. Full DXSpider spot
-  compatibility remains qualified until that change passes verification.
+  [ADR-0240](decisions/ADR-0240-peer-dxspider-date-admission.md) and for payload
+  encoding/comment framing by
+  [ADR-0241](decisions/ADR-0241-peer-frame-payload-and-comment-framing.md).
+- Treat `~` within PC11/PC61/PC26's comment field as payload in the reader,
+  parser and original validator. Recognize terminal markers outside that field
+  and retain the same distinction while discarding overflowing input, including
+  fragmented headers. CR/LF and other PC families retain their existing ending
+  behavior. No frame, queue or scratch limit is raised.
+- Accept plain RFC 4291 IPv6 addresses under the existing `netip.ParseAddr`
+  rule, including compressed and embedded-IPv4 forms, without zones, prefixes,
+  ports or surrounding padding. Preserve incoming IP text during relay.
+  Selected broader callsign/IP policies remain different from the pinned
+  DXSpider receiver; admission and byte fidelity do not imply its acceptance.
 - Do not relay inbound peer spot data after the local ingest queue already
   dropped it.
 - A node that is shedding inbound peer spots locally must not continue acting as

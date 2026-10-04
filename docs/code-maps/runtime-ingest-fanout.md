@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `fc90de3b866a76c9`
+- Source fingerprint: `181721282a4ce1a7`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -13,7 +13,7 @@
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 1 | 3 |
 | `dxcluster/internal/cluster` | `internal/cluster` | 25 | 58 |
-| `dxcluster/peer` | `peer` | 62 | 123 |
+| `dxcluster/peer` | `peer` | 62 | 126 |
 | `dxcluster/spot` | `spot` | 32 | 31 |
 | `dxcluster/telnet` | `telnet` | 15 | 34 |
 
@@ -343,6 +343,7 @@ Test files:
 - `peer/pc93_test.go`
 - `peer/protocol_bookkeeping_test.go`
 - `peer/protocol_fuzz_test.go`
+- `peer/protocol_roundtrip_test.go`
 - `peer/protocol_test.go`
 - `peer/qualification_capacity_wire_test.go`
 - `peer/qualification_clock_test.go`
@@ -351,6 +352,7 @@ Test files:
 - `peer/qualification_writer_test.go`
 - `peer/reader_allocation_qualification_test.go`
 - `peer/reader_scratch_test.go`
+- `peer/reader_spot_framing_test.go`
 - `peer/reader_test.go`
 - `peer/registry_test.go`
 - `peer/session_allocation_test.go`
@@ -363,6 +365,7 @@ Test files:
 - `peer/spot_parse_budget_test.go`
 - `peer/spot_relay_contract_test.go`
 - `peer/spot_relay_date_test.go`
+- `peer/spot_relay_framing_test.go`
 - `peer/spot_relay_interop_test.go`
 - `peer/spot_relay_resources_test.go`
 - `peer/spot_relay_test.go`
@@ -509,6 +512,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0241](docs/decisions/ADR-0241-peer-frame-payload-and-comment-framing.md) | Accepted | 2026-10-04 | peer, protocol, framing, admission, compatibility | `area:peer, path:internal/cluster, path:peer` |
 | [ADR-0240](docs/decisions/ADR-0240-peer-dxspider-date-admission.md) | Accepted | 2026-10-04 | peer, protocol, date, admission, compatibility | `area:peer, path:peer` |
 | [ADR-0239](docs/decisions/ADR-0239-peer-original-validation-and-relay.md) | Accepted | 2026-10-04 | peer, protocol, admission, ownership | `area:peer, path:peer, path:spot` |
 | [ADR-0238](docs/decisions/ADR-0238-named-presets.md) | Accepted | 2026-10-03 | filter, telnet, commands, persistence | `area:commands, area:telnet, path:commands, path:telnet` |

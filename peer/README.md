@@ -58,10 +58,10 @@ it to PC61 would require an IP field that was not received.
 
 ### Original field rules
 
-The caret is a field delimiter. The current native reader treats the first
-`~` anywhere as a terminator, so literal comment tildes are not admitted; this
-is a known DXSpider compatibility limitation, not a restriction imposed by
-DXSpider's comment rule. Required payload fields, before any hop suffix, are:
+The caret is a field delimiter. In PC11, PC61 and PC26, a `~` inside the
+fifth payload field (comment) is literal content. Outside that field it ends
+the sentence; CR/LF always end a sentence. Required payload fields, before
+any hop suffix, are:
 
 | Type | Payload fields in order |
 | --- | --- |
@@ -103,13 +103,17 @@ a separate case with the existing modern-destination restriction.
 - Comment is nonempty. Reject byte ranges `0x00-0x08`, `0x0A-0x1F`,
   `0x80-0x9F`, and literal `0xFF`, even when a prohibited byte occurs inside
   otherwise valid UTF-8. Tabs (`0x09`), whitespace-only comments and permitted
-  bytes such as `0xFE` remain accepted. This is a byte rule, not a UTF-8 validity
+  bytes such as `~` and `0xFE` remain accepted. This is a byte rule, not a
+  UTF-8 validity
   rule. `0xFF` is unsupported because the native Telnet writer cannot preserve
   decoded literal IAC content through the next receiver without escaping.
 - PC61 IP is a nonempty plain IPv4 or IPv6 address accepted by `netip.ParseAddr`,
   without a zone, prefix length, brackets, port or surrounding whitespace.
-  Accepted spelling is retained, including IPv4-mapped forms. No private-address
-  or unicast-only filter is added.
+  Accepted spelling is retained, including RFC 4291 full/compressed IPv6,
+  hexadecimal case and leading zeros, embedded IPv4 tails and IPv4-mapped
+  forms. No private-address or unicast-only filter is added. Empty strings,
+  malformed compression, oversized components, zones, CIDR notation and ports
+  remain invalid; relay never formats an accepted address through `Addr.String`.
 
 ### Sentence framing and gates
 
@@ -122,7 +126,12 @@ rightmost-hop interpretation, but every stacked token must be valid. A closing
 caret is required; only one closing caret is framing. Extra empty slots remain
 subject to the field-count rule. Payload
 fields such as an origin or PC26 requested call `H1ABC` are never consumed as
-hop tokens.
+hop tokens. The reader tracks the comment's field position during both normal
+extraction and overflow discard, including fragmented headers. Internal tildes
+cannot release a discarded tail as a new frame. Whitespace-prefixed spot-shaped
+sentences retain their bytes for strict rejection rather than resynchronizing
+at a `~PCxx` inside their comment. Other PC families retain their existing
+terminator behavior.
 
 Onward sentences end in `^Hn^~`, followed by writer CRLF. A modern destination
 receives original PC11, PC61 or eligible PC26 fields. A legacy destination
@@ -165,25 +174,30 @@ receiver. Compare the decoded original fields, emitted bytes and actual
 receiver storage separately. See
 [ADR-0239](../docs/decisions/ADR-0239-peer-original-validation-and-relay.md),
 its date-contract refinement
-[ADR-0240](../docs/decisions/ADR-0240-peer-dxspider-date-admission.md), and
+[ADR-0240](../docs/decisions/ADR-0240-peer-dxspider-date-admission.md),
+[ADR-0241](../docs/decisions/ADR-0241-peer-frame-payload-and-comment-framing.md), and
 [TSR-0039](../docs/troubleshooting/TSR-0039-peer-normalized-relay-and-telnet-iac.md)
 for the contract and the source-grounded failure explanation.
 
-### Required DXSpider framing correction
+### Framing and interoperability evidence
 
-Literal comment `~` support is required and pending in a separate bounded
-framing change. DXSpider permits this byte and its generators replace comment
-carets with it. The current shared reader splits at the first tilde, so a valid
-DXSpider comment such as `CQ~TEST` cannot survive incoming processing. This
-reader behavior predates original-payload relay and is unchanged by the date
-correction.
+DXSpider's PC11/PC61 generators replace comment carets with `~`. Those generated
+comments now pass the native reader, frame parser and original validator and
+retain their bytes through relay and a second native reader. Generated no-hop
+PC26 proves local admission and comment/timestamp preservation; an explicitly
+adapted hop-bearing fixture proves forwarding to modern destinations.
 
-That framing change must cover literal comment tildes, terminal markers,
-fragmented reads, consecutive frames and overflow recovery without weakening
-existing limits. Full DXSpider spot compatibility remains qualified until it
-passes verification. Sender-generated admission, literal outbound bytes and
-actual downstream receiver storage establish different claims; the earlier
-zero-padded outbound fixtures did not establish sender-date compatibility.
+The generic `Frame` encoder writes its parsed payload exactly once. A blank
+field stops generic hop-suffix parsing: `PC00^DATA^H7^^H3^` retains `H7` and the
+blank field as payload, with hop 3. Encoding distinguishes zero fields from one
+empty field and does not reject oversized strings; the existing parser and
+writer enforce their limits. Original-spot variant size refusal is unchanged.
+
+Tests separately observe reference-generated admission, exact outbound bytes,
+a receiving native reader and pinned DXSpider storage. These establish different
+claims. The pinned receiver still rejects some accepted broader callsigns and IP
+spellings, including dotted IPv4 tails in IPv6; full compatibility with every
+accepted GoCluster original is not promised.
 
 ## Publishing Rules
 

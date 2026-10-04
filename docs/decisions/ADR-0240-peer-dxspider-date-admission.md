@@ -115,3 +115,10 @@ peer contract and TSR rather than duplicating acceptance rules.
   local timestamp assignment under
   [ADR-0239](ADR-0239-peer-original-validation-and-relay.md); its other contracts
   and accepted history remain effective.
+
+## Payload and comment-framing refinement
+
+[ADR-0241](ADR-0241-peer-frame-payload-and-comment-framing.md) refines payload
+encoding and supplies the separately approved PC11/PC61/PC26 comment-tilde
+correction across reader, parser and validation. This accepted history remains
+unchanged; current behavior and compatibility limits are in that refinement.

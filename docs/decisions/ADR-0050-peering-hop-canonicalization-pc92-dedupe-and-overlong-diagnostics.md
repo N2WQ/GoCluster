@@ -98,3 +98,10 @@ Tags: peering, protocol contract, loop suppression, observability
 - Related ADR(s): ADR-0047, ADR-0049
 - Troubleshooting Record(s): TSR-0012
 - Docs: `README.md`, `data/config/peering.yaml`
+
+## Payload and comment-framing refinement
+
+[ADR-0241](ADR-0241-peer-frame-payload-and-comment-framing.md) refines payload
+encoding and supplies the separately approved PC11/PC61/PC26 comment-tilde
+correction across reader, parser and validation. This accepted history remains
+unchanged; current behavior and compatibility limits are in that refinement.

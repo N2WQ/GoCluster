@@ -74,7 +74,8 @@ func (p *telnetParser) Feed(input []byte) (output []byte, replies [][]byte) {
 	return out, replies
 }
 
-// Frame represents a parsed PC protocol sentence.
+// Frame represents a parsed PC protocol sentence. Fields contains payload only;
+// transport hop extraction belongs to ParseFrame, not subsequent encoding.
 type Frame struct {
 	Type   string
 	Fields []string
@@ -105,13 +106,22 @@ func ParseFrame(line string) (*Frame, error) {
 	if isPeerSpotFrame(f.Type) && trimmed != raw {
 		return nil, fmt.Errorf("%s has outer sentence whitespace", f.Type)
 	}
-	if isPeerSpotFrame(f.Type) && strings.ContainsAny(raw, "\r\n~") {
+	if isPeerSpotFrame(f.Type) && strings.ContainsAny(raw, "\r\n") {
 		return nil, fmt.Errorf("%s has an embedded transport terminator", f.Type)
 	}
 	raw = trimmed
 	payload, hop, err := splitFramePayload(f.Type, raw[5:])
 	if err != nil {
 		return nil, err
+	}
+	if isPeerSpotFrame(f.Type) {
+		// The bounded split fixes field ownership before admitting literal
+		// comment tildes. Other fields and transport hops cannot contain them.
+		for i, field := range payload {
+			if i != 4 && strings.IndexByte(field, '~') >= 0 {
+				return nil, fmt.Errorf("%s has tilde outside comment", f.Type)
+			}
+		}
 	}
 	f.Fields = payload
 	f.Hop = hop
@@ -284,13 +294,13 @@ func (f *Frame) Encode(hop int) string {
 	if f == nil {
 		return ""
 	}
-	// Authority fields have already crossed their grammar boundary. Repeating
-	// suffix stripping would consume K extensions or optional PC93 metadata.
-	fields := f.Fields
-	if f.Type != "PC92" && f.Type != "PC93" && !isPeerSpotFrame(f.Type) {
-		fields, _ = stripFrameHopSuffix(f.Type, fields)
+	// All parsed fields are payload, including a hop-like value before a blank
+	// field. A second suffix pass would erase admitted data. Keep the complete
+	// encoding even if it exceeds the downstream parser/writer size limit.
+	out := f.Type
+	if len(f.Fields) > 0 || hop < 0 {
+		out += "^" + strings.Join(f.Fields, "^")
 	}
-	out := f.Type + "^" + strings.Join(fields, "^")
 	if hop >= 0 {
 		out += fmt.Sprintf("^H%d^", hop)
 	} else if isPeerSpotFrame(f.Type) {
@@ -328,18 +338,6 @@ func PayloadFields(fields []string) []string {
 // H95,H94,H93) and returns the payload fields plus effective hop. The effective
 // hop is the rightmost numeric hop token in the trailing suffix.
 func stripTrailingHopSuffix(fields []string) ([]string, int) {
-	return stripHopSuffix(fields, 0)
-}
-
-func stripFrameHopSuffix(frameType string, fields []string) ([]string, int) {
-	minimum := 0
-	if frameType == "PC93" {
-		minimum = 6 // origin, timestamp, recipient, sender, via, text
-	}
-	return stripHopSuffix(fields, minimum)
-}
-
-func stripHopSuffix(fields []string, minimum int) ([]string, int) {
 	if len(fields) == 0 {
 		return fields, 0
 	}
@@ -347,7 +345,7 @@ func stripHopSuffix(fields []string, minimum int) ([]string, int) {
 	copy(out, fields)
 
 	i := len(out) - 1
-	for i >= minimum && out[i] == "" {
+	for i >= 0 && out[i] == "" {
 		i--
 	}
 	if i < 0 {
@@ -357,7 +355,7 @@ func stripHopSuffix(fields []string, minimum int) ([]string, int) {
 	hop := 0
 	haveSuffix := false
 	haveNumeric := false
-	for i >= minimum {
+	for i >= 0 {
 		trimmed := strings.TrimSpace(out[i])
 		v, isHopLike, ok := parseHopToken(trimmed)
 		if !isHopLike {

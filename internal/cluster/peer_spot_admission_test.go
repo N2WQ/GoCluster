@@ -206,6 +206,9 @@ func runPeerSpotAdmissionCases(t *testing.T, forward bool) {
 				t.Fatal("valid original did not reach local handoff after malformed input")
 			}
 			assertPeerAdmissionSpot(t, accepted, fields[1], at)
+			if accepted.Comment != fields[4] || (test.typeID == "PC61" && accepted.SpotterIP != fields[7]) {
+				t.Fatalf("valid original comment/IP changed at local handoff: comment=%q IP=%q wantComment=%q wantIP=%q", accepted.Comment, accepted.SpotterIP, fields[4], fields[len(fields)-1])
+			}
 			select {
 			case primary.GetInputChannel() <- accepted:
 			case <-time.After(3 * time.Second):
@@ -260,9 +263,9 @@ func peerSpotAdmissionCases() []peerAdmissionCase {
 		{"invalid calendar date", 2, "32-Oct-2026"},
 		{"invalid UTC time", 3, "2460Z"},
 		{"empty comment", 4, ""},
-		{"C0 comment byte", 4, "bad\x01comment"},
-		{"C1 comment byte", 4, "bad\x85comment"},
-		{"escaped IAC comment byte", 4, "bad\xffcomment"},
+		{"C0 comment byte", 4, "bad~\x01comment~"},
+		{"C1 comment byte", 4, "bad~\x85comment~"},
+		{"escaped IAC comment byte", 4, "bad~\xffcomment~"},
 		{"padded spotter", 5, " W1XYZ"},
 		{"empty origin", 6, ""},
 	}
@@ -281,14 +284,23 @@ func peerSpotAdmissionCases() []peerAdmissionCase {
 		peerAdmissionCase{"PC61/invalid original IP", "PC61", 7, "not-an-ip"},
 		peerAdmissionCase{"PC26/invalid merge request", "PC26", 7, "NOPE"},
 	)
+	for _, ip := range []string{
+		"1:2:3:4:5:6:7", "1:2:3:4:5:6:7:8:9", "1::2::3", ":::1",
+		"2001:db8::g", "2001:db8::00001", "1:2:3:4:5:6:7:8::",
+		"::ffff:192.0.2.256", "::ffff:192.0.2", "::ffff:192.00.2.1",
+		"[2001:db8::1]", "[2001:db8::1]:23", "2001:db8::1%eth0", "2001:db8::1/64",
+		" 2001:db8::1", "2001:db8::1 ",
+	} {
+		cases = append(cases, peerAdmissionCase{"PC61/invalid IPv6=" + ip, "PC61", 7, ip})
+	}
 	return cases
 }
 
 func peerAdmissionFields(typeID, dx string, at time.Time) []string {
-	fields := []string{"14020.00", dx, at.Format("02-Jan-2006"), at.Format("1504Z"), "valid original", "W1XYZ", "K2ORG"}
+	fields := []string{"14020.00", dx, at.Format("02-Jan-2006"), at.Format("1504Z"), "~valid~~original~", "W1XYZ", "K2ORG"}
 	switch typeID {
 	case "PC61":
-		fields = append(fields, "192.0.2.7")
+		fields = append(fields, "2001:0dB8:0000:0000::0007")
 	case "PC26":
 		fields = append(fields, " ")
 	}

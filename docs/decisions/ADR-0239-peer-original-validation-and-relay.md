@@ -136,3 +136,10 @@ correction; full DXSpider spot compatibility remains qualified.
   ADR-0050, ADR-0054, ADR-0091 and ADR-0234; their other contracts remain effective.
   [ADR-0054](ADR-0054-peering-control-priority-and-local-acceptance-relay.md)
   retains control priority and successful-local-queue relay gating.
+
+## Payload and comment-framing refinement
+
+[ADR-0241](ADR-0241-peer-frame-payload-and-comment-framing.md) refines payload
+encoding and supplies the separately approved PC11/PC61/PC26 comment-tilde
+correction across reader, parser and validation. This accepted history remains
+unchanged; current behavior and compatibility limits are in that refinement.

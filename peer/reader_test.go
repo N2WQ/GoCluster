@@ -135,6 +135,8 @@ func TestLineReaderReleasesLargeBackingBuffer(t *testing.T) {
 func FuzzLineReaderRetainedBound(f *testing.F) {
 	f.Add("PC92^K1ABC^1^C^5K1ABC^H99^~PC51^K1ABC^K2ABC^0^\r\n", uint16(1))
 	f.Add(strings.Repeat("x", 300)+"~PC51^K1ABC^K2ABC^0^~", uint16(4096))
+	f.Add("PC61^14074^K1ABC^04-Oct-2026^1200Z^CQ~TEST^W1XYZ^N0CALL^::1^H3^~Z~", uint16(1))
+	f.Add("pC11^14074^K1ABC^04-Oct-2026^1200Z^"+strings.Repeat("x", 300)+"~Q~^W1XYZ^N0CALL^H3^~Z~", uint16(4096))
 	f.Fuzz(func(t *testing.T, input string, chunk uint16) {
 		if len(input) > MaxPeerFrameBytes {
 			return

@@ -71,13 +71,16 @@ dedupe, topology cache, or private peer configuration.
   whitespace-only comments remain valid. Incoming escaped `FF FF` still
   decodes to unsupported literal IAC; do not suggest transport escaping as an
   available configuration feature.
-- Literal comment tilde support is required and pending as a separate bounded
-  framing correction. DXSpider permits `~`, including generated replacement of
-  comment carets; the current reader splits at the first tilde and cannot ingest
-  `CQ~TEST` intact. Future checks must cover terminal markers, fragmented reads,
-  consecutive frames and overflow recovery as well as literal tildes. This is
-  not an available configuration switch; full DXSpider spot compatibility remains
-  qualified until the framing correction passes verification.
+- Literal `~` in PC11/PC61/PC26 comments is payload. The reader, parser and
+  original validator preserve it; terminal markers outside that field and CR/LF
+  delimit the sentence. Overflow discard keeps field position across fragmented
+  headers, preventing a comment tilde from releasing a discarded tail. No
+  framing configuration switch or raised limit is required.
+- PC61 accepts plain RFC 4291 IPv6, including full/compressed spellings and
+  embedded IPv4 tails, under its existing address rule. Relay preserves original
+  IP text; zones, prefixes, ports, padding and malformed addresses are rejected.
+  The pinned DXSpider receiver rejects some legitimate spellings; distinguish
+  GoCluster admission and literal bytes from downstream acceptance.
 - Broader original GoCluster calls such as `W1XYZ-#` and `W1XYZ-123` are
   accepted when they satisfy the documented raw spot-call rule. PC92 has a
   separate narrower contract, and a downstream receiver may reject those calls.
@@ -96,7 +99,8 @@ dedupe, topology cache, or private peer configuration.
 - Current contract: [peer behavior](../../peer/README.md#original-spot-admission-and-relay),
   [ADR-0239](../../docs/decisions/ADR-0239-peer-original-validation-and-relay.md)
   and its date refinement
-  [ADR-0240](../../docs/decisions/ADR-0240-peer-dxspider-date-admission.md).
+  [ADR-0240](../../docs/decisions/ADR-0240-peer-dxspider-date-admission.md), plus
+  [ADR-0241](../../docs/decisions/ADR-0241-peer-frame-payload-and-comment-framing.md).
   Source-derived failure explanation and verification status:
   [TSR-0039](../../docs/troubleshooting/TSR-0039-peer-normalized-relay-and-telnet-iac.md).
 

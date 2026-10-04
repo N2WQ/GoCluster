@@ -1,11 +1,8 @@
 package peer
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"fmt"
-	"net"
 	"strings"
 	"testing"
 	"time"
@@ -27,12 +24,12 @@ func TestPeerSpotCorrectionIsolationBeforeRelay(t *testing.T) {
 	for _, kind := range []string{"PC11", "PC61"} {
 		for _, modern := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/modern=%v", kind, modern), func(t *testing.T) {
-				wire := originalSpotTestWire(kind, "  FT8 -10 dB 1100Z  CQ\tDX \xfe  ")
-				frame, err := ParseFrame(wire)
-				if err != nil {
-					t.Fatal(err)
-				}
-				m, source, destination, ingest := peerSpotTestManager(true, modern)
+				wire := originalSpotTestWire(kind, "  FT8 -10 dB 1100Z  ~CQ~~DX~\t \xfe  ")
+				frame := readNativePeerSpotFrame(t, wire+"~")
+				m, source, _, ingest := peerSpotTestManager(true, modern)
+				destination, remote := newTransportTestSession(t)
+				destination.id, destination.pc9x = "N2DST", modern
+				m.sessions.Set(destination.id, destination)
 				// The existing cache mutex is a test-only barrier after local
 				// handoff, before serialization/fanout. No production hooks.
 				m.dedupe.mu.Lock()
@@ -61,23 +58,15 @@ func TestPeerSpotCorrectionIsolationBeforeRelay(t *testing.T) {
 				if kind == "PC61" && !modern {
 					want = "PC11" + strings.TrimSuffix(wire[4:], "^2001:0db8:0:0::0001^H3^") + "^H2^~"
 				}
-				select {
-				case line := <-destination.writeCh:
-					if line != want {
-						t.Fatalf("original sentence changed:\ngot  %q\nwant %q", line, want)
-					}
-					// Verify the supplied sentence through the native sole writer,
-					// including its CRLF (not merely a queued-prefix assertion).
-					server, client := net.Pipe()
-					defer server.Close()
-					defer client.Close()
-					var sent bytes.Buffer
-					writer := &session{conn: server, writer: bufio.NewWriter(&sent)}
-					if err := writer.writeLine(line); err != nil || sent.String() != want+"\r\n" {
-						t.Fatalf("native writer output %q, err=%v", sent.String(), err)
-					}
-				default:
+				if len(destination.writeCh) != 1 {
 					t.Fatal("relay missing")
+				}
+				got, received := readNativePeerSpotWriter(t, destination, remote)
+				if got != want+"\r\n" || received.Fields[4] != "  FT8 -10 dB 1100Z  ~CQ~~DX~\t \xfe  " {
+					t.Fatalf("original sentence changed through writer/receiving reader: got=%q want=%q received=%q", got, want+"\r\n", received.Fields)
+				}
+				if kind == "PC61" && modern && received.Fields[7] != "2001:0db8:0:0::0001" {
+					t.Fatal("local IP mutation entered original relay")
 				}
 				wantKey := fmt.Sprintf("dx:%s:K1ABC:W1XYZ:14074.0:%d", kind, time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC).Unix())
 				if !m.dedupe.contains(wantKey, time.Now()) || m.dedupe.items.Len() != 1 {
@@ -99,7 +88,7 @@ func TestMalformedPeerSpotCannotPoisonAdmission(t *testing.T) {
 				value string
 			}{
 				{0, "1.4074e4"}, {1, " K1ABC-123"}, {2, "31-Feb-2026"}, {3, "2400Z"},
-				{4, ""}, {4, "A\x01B"}, {4, "A\xc3\x81B"}, {4, "A\xffB"}, {4, "A~B"}, {5, "W1XYZ-# "}, {6, ""},
+				{4, ""}, {4, "A~\x01B"}, {4, "A~\xc3\x81B"}, {4, "A~\xffB"}, {5, "W1XYZ-# "}, {6, ""},
 			}
 			if kind == "PC61" {
 				bad = append(bad, struct {
@@ -116,7 +105,7 @@ func TestMalformedPeerSpotCannotPoisonAdmission(t *testing.T) {
 			for _, test := range bad {
 				t.Run(fmt.Sprintf("%s/forward=%v/%d=%q", kind, forward, test.index, test.value), func(t *testing.T) {
 					m, source, destination, ingest := peerSpotTestManager(forward, true)
-					valid, err := ParseFrame(originalSpotTestWire(kind, "CQ"))
+					valid, err := ParseFrame(originalSpotTestWire(kind, "~CQ~~TEST~"))
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -143,7 +132,7 @@ func TestPeerSpotRelayGates(t *testing.T) {
 		for _, hop := range []int{0, 1, 2} {
 			for _, forward := range []bool{false, true} {
 				m, source, destination, ingest := peerSpotTestManager(forward, true)
-				frame, err := ParseFrame(strings.TrimSuffix(originalSpotTestWire(kind, "CQ"), "H3^") + fmt.Sprintf("H%d^", hop))
+				frame, err := ParseFrame(strings.TrimSuffix(originalSpotTestWire(kind, "~CQ~~TEST~"), "H3^") + fmt.Sprintf("H%d^", hop))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -159,7 +148,7 @@ func TestPeerSpotRelayGates(t *testing.T) {
 		}
 		for _, failure := range []string{"stale", "full", "duplicate", "legacy"} {
 			m, source, destination, ingest := peerSpotTestManager(true, failure != "legacy")
-			frame, _ := ParseFrame(originalSpotTestWire(kind, "CQ"))
+			frame, _ := ParseFrame(originalSpotTestWire(kind, "~CQ~~TEST~"))
 			switch failure {
 			case "stale":
 				m.maxAgeSeconds = 1
@@ -200,7 +189,7 @@ func TestPeerSpotSecondAgeCheckUsesOriginalTimestamp(t *testing.T) {
 	for _, kind := range []string{"PC11", "PC61", "PC26"} {
 		m, source, destination, ingest := peerSpotTestManager(true, true)
 		now := time.Now().UTC()
-		wire := strings.ReplaceAll(originalSpotTestWire(kind, "CQ"), "01-oCt-2026^1200Z", now.Format("02-Jan-2006^1504Z"))
+		wire := strings.ReplaceAll(originalSpotTestWire(kind, "~CQ~~TEST~"), "01-oCt-2026^1200Z", now.Format("02-Jan-2006^1504Z"))
 		frame, err := ParseFrame(wire)
 		if err != nil {
 			t.Fatal(err)

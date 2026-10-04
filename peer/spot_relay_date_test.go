@@ -1,7 +1,6 @@
 package peer
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -169,6 +168,11 @@ func TestPeerSpotDateSpellingsSharePeerDedupeIdentity(t *testing.T) {
 // the pinned source and formatter remain unmodified.
 func generateReferencePeerSpots(t *testing.T, at time.Time) map[string]string {
 	t.Helper()
+	return generateReferencePeerSpotsWithInput(t, at, "CQ TEST", "203.0.113.7")
+}
+
+func generateReferencePeerSpotsWithInput(t *testing.T, at time.Time, comment, ip string) map[string]string {
+	t.Helper()
 	root, perl := os.Getenv("DXSPIDER_ROOT"), os.Getenv("DXSPIDER_PERL")
 	if root == "" || perl == "" {
 		t.Skip("spot sender observations require explicit DXSPIDER_ROOT and DXSPIDER_PERL; this skip is not interoperability evidence")
@@ -193,7 +197,7 @@ func generateReferencePeerSpots(t *testing.T, at time.Time) map[string]string {
 	args = append(args, filepath.Join(repo, "scripts", "spot-dxspider-generate.pl"))
 	command := exec.CommandContext(ctx, perl, args...)
 	command.Dir = t.TempDir()
-	command.Env = append(os.Environ(), "DXSPIDER_TEST_STATE="+command.Dir, "GOCLUSTER_ROOT="+repo, "DXSPIDER_TEST_AT="+strconv.FormatInt(at.Unix(), 10), "LC_ALL=C")
+	command.Env = append(os.Environ(), "DXSPIDER_TEST_STATE="+command.Dir, "GOCLUSTER_ROOT="+repo, "DXSPIDER_TEST_AT="+strconv.FormatInt(at.Unix(), 10), "DXSPIDER_TEST_COMMENT="+comment, "DXSPIDER_TEST_IP="+ip, "LC_ALL=C")
 	var stderr bytes.Buffer
 	command.Stderr = &stderr
 	output, err := command.Output()
@@ -251,6 +255,7 @@ type nativePeerSpotObservation struct {
 	frame       *Frame
 	local       *spot.Spot
 	wire        string
+	received    *Frame
 	peerEntries int
 }
 
@@ -278,15 +283,7 @@ func observeNativePeerSpot(t *testing.T, sentence string, forward, modern bool) 
 		t.Fatal("native spot relay returned to its source")
 	}
 	if len(destination.writeCh) != 0 {
-		destination.startWorker(destination.writerLoop)
-		if err := remote.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
-			t.Fatal(err)
-		}
-		wire, err := bufio.NewReader(remote).ReadString('\n')
-		if err != nil {
-			t.Fatal(err)
-		}
-		result.wire = wire
+		result.wire, result.received = readNativePeerSpotWriter(t, destination, remote)
 	}
 	return result
 }

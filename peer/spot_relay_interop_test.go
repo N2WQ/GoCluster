@@ -1,7 +1,6 @@
 package peer
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -148,11 +147,7 @@ func captureSpotRelayWriter(t *testing.T, incoming string, pc9x bool) ([]byte, *
 		cfg: config.PeeringConfig{ForwardSpots: true}, ingest: localQueue, dedupe: newBoundedDedupe(time.Minute, 16, 4096),
 		sessions: sessionTestIndex(map[string]*session{"src": source, "dst": destination}),
 	}
-	frame, err := ParseFrame(incoming)
-	if err != nil {
-		t.Fatal(err)
-	}
-	destination.startWorker(destination.writerLoop)
+	frame := readNativePeerSpotFrame(t, incoming)
 	manager.HandleFrame(frame, source)
 	var local *spot.Spot
 	select {
@@ -163,14 +158,8 @@ func captureSpotRelayWriter(t *testing.T, incoming string, pc9x bool) ([]byte, *
 	if len(source.writeCh) != 0 {
 		t.Fatal("relay returned to its source")
 	}
-	if err := remote.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	wire, err := bufio.NewReader(remote).ReadBytes('\n')
-	if err != nil {
-		t.Fatal(err)
-	}
-	return wire, local
+	wire, _ := readNativePeerSpotWriter(t, destination, remote)
+	return []byte(wire), local
 }
 
 type spotInteropCase struct {
@@ -189,6 +178,11 @@ func spotInteropCases(kind string, modern bool, at time.Time) []spotInteropCase 
 		{"tab-only comment", "\t", ""},
 		{"space-only comment", "   ", ""},
 		{"non-UTF8 permitted byte", "A\xfeB", "A\xfeB"},
+		{"internal tilde", "CQ~TEST", "CQ~TEST"},
+		{"leading tilde", "~CQ", "~CQ"},
+		{"trailing tilde", "CQ~", "CQ~"},
+		{"only tilde", "~", "~"},
+		{"repeated and header-like tildes", "CQ~~PC61~TEST~~", "CQ~~PC61~TEST~~"},
 	}
 	var cases []spotInteropCase
 	for i, comment := range comments {

@@ -7,8 +7,10 @@ import (
 	"net"
 	"runtime"
 	"runtime/debug"
+	"strings"
 	"testing"
 	"time"
+	"unsafe"
 )
 
 func TestReaderScratchWaitHonorsCancellationAndPhaseDeadline(t *testing.T) {
@@ -154,5 +156,64 @@ func BenchmarkReaderScratchLease(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+func TestSpotReaderScratchAndDiscardStateRelease(t *testing.T) {
+	budget := newFrameParseBudget()
+	r := spotFramingReader(t, spotReaderSentence("PC61", strings.Repeat("X", 200)+"~Q~")+"~Z~", 3, 1)
+	read := r.readFn
+	r.readFn = func(dst []byte) (int, error) {
+		if used, _ := budget.usage(); used != 0 {
+			t.Errorf("discard/read retained shared scratch: %d", used)
+		}
+		return read(dst)
+	}
+	r.parser = &scratchCheckingParser{t: t, budget: budget}
+	r.acquireScratch = func(deadline time.Time) (frameParseLease, error) {
+		return budget.acquireCharge(context.Background(), deadline, readerScratchBytes)
+	}
+	_, err := r.ReadLine(time.Now().Add(time.Second))
+	var over ErrLineTooLong
+	if !errors.As(err, &over) {
+		t.Fatalf("overflow=%v", err)
+	}
+	if used, _ := budget.usage(); used != 0 {
+		t.Fatalf("overflow return retained scratch: %d", used)
+	}
+	requireSpotFramingLines(t, r, "Z")
+	if used, peak := budget.usage(); used != 0 || peak != readerScratchBytes {
+		t.Fatalf("return scratch used=%d peak=%d", used, peak)
+	}
+	r.release()
+	if r.dropBoundary != (frameBoundaryState{}) || r.dropping {
+		t.Fatal("release retained framing continuation")
+	}
+}
+
+func TestSpotFrameBoundaryStateAllocation(t *testing.T) {
+	// The reader owner already has an 8 KiB metadata envelope. This fixed
+	// continuation must not become a second retained payload allocation.
+	if size := unsafe.Sizeof(frameBoundaryState{}); size > 16 {
+		t.Fatalf("framing continuation grew to %d bytes", size)
+	}
+	input := []byte("\u2003" + spotReaderSentence("PC61", "CQ~TEST") + "~")
+	if allocations := testing.AllocsPerRun(100, func() {
+		var state frameBoundaryState
+		state.scan(input)
+	}); allocations != 0 {
+		t.Fatalf("boundary scan allocated %.1f objects", allocations)
+	}
+}
+
+func BenchmarkSpotFrameBoundaryScan(b *testing.B) {
+	input := []byte(spotReaderSentence("PC61", strings.Repeat("CQ~TEST", 100)) + "~")
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		var state frameBoundaryState
+		index, _ := state.scan(input)
+		if index != len(input)-1 {
+			b.Fatal("lost terminal marker")
+		}
 	}
 }

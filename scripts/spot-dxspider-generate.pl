@@ -33,9 +33,11 @@ $DXDebug::no_stdout = 1;
 # Configure the ordinary native hop table; get_hops and all formatters remain
 # the pinned implementations. PC26 deliberately has no transport hop.
 $DXProt::def_hopcount = 3;
+my $comment = exists $ENV{DXSPIDER_TEST_COMMENT} ? $ENV{DXSPIDER_TEST_COMMENT} : 'CQ TEST';
+my $ip = exists $ENV{DXSPIDER_TEST_IP} ? $ENV{DXSPIDER_TEST_IP} : '203.0.113.7';
 my %frames = (
-    PC11 => DXProt::pc11('W1XYZ', 14074.1, 'K1ABC', 'CQ TEST'),
-    PC61 => DXProt::pc61('W1XYZ', 14074.1, 'K1ABC', 'CQ TEST', '203.0.113.7'),
-    PC26 => DXProt::pc26(14074.1, 'K1ABC', $main::controlled_time, 'CQ TEST', 'W1XYZ', $main::mycall),
+    PC11 => DXProt::pc11('W1XYZ', 14074.1, 'K1ABC', $comment),
+    PC61 => DXProt::pc61('W1XYZ', 14074.1, 'K1ABC', $comment, $ip),
+    PC26 => DXProt::pc26(14074.1, 'K1ABC', $main::controlled_time, $comment, 'W1XYZ', $main::mycall),
 );
 print JSON::PP->new->canonical->encode({ map { $_ => encode_base64($frames{$_}, '') } keys %frames }), "\n";

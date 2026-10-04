@@ -92,7 +92,7 @@ func validOriginalPeerComment(comment string) bool {
 		ch := comment[i]
 		// This is a byte rule, even within UTF-8. FF is Telnet IAC: the native
 		// writer cannot preserve it without transport escaping (out of scope).
-		if ch <= 0x08 || (ch >= 0x0a && ch <= 0x1f) || (ch >= 0x80 && ch <= 0x9f) || ch == 0xff || ch == '^' || ch == '~' {
+		if ch <= 0x08 || (ch >= 0x0a && ch <= 0x1f) || (ch >= 0x80 && ch <= 0x9f) || ch == 0xff || ch == '^' {
 			return false
 		}
 	}

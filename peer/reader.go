@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // TelnetParser strips telnet negotiation bytes and emits optional replies.
@@ -46,6 +48,7 @@ type lineReader struct {
 	maxLine        int
 	pc92Max        int
 	dropping       bool
+	dropBoundary   frameBoundaryState
 	readBuf        []byte
 	readErr        error
 }
@@ -58,6 +61,7 @@ func (r *lineReader) release() {
 	r.readFn, r.replyFn = nil, nil
 	r.acquireScratch = nil
 	r.parser, r.conn, r.readErr = nil, nil, nil
+	r.dropping, r.dropBoundary = false, frameBoundaryState{}
 	r.allocation.setBuffer(0)
 	r.allocation.setReadBuffer(0)
 	r.allocation.setRaw(0)
@@ -130,7 +134,7 @@ func newLineReaderWithTransport(conn net.Conn, maxLine int, pc92Max int, readFn 
 // ReadLine reads a single line/frame with deadline and telnet filtering.
 // Key aspects: Aggregates reads into a buffer and handles overlong lines.
 // Upstream: Peer session read loop.
-// Downstream: tryReadLine, bytesIndexTerminator.
+// Downstream: tryReadLine, frameBoundaryState.scan.
 func (r *lineReader) ReadLine(deadline time.Time) (string, error) {
 	r.allocation.setRaw(0)
 	var scratch frameParseLease
@@ -198,8 +202,9 @@ func (r *lineReader) ReadLine(deadline time.Time) (string, error) {
 				data = out
 			}
 			if r.dropping {
-				if idx, size := bytesIndexTerminator(data); idx >= 0 {
+				if idx, size := r.dropBoundary.scan(data); idx >= 0 {
 					r.dropping = false
+					r.dropBoundary = frameBoundaryState{}
 					r.appendData(data[idx+size:])
 				}
 			} else {
@@ -213,7 +218,7 @@ func (r *lineReader) ReadLine(deadline time.Time) (string, error) {
 // Purpose: Attempt to extract a full line from the current buffer.
 // Key aspects: Respects terminators, PC92 max size, and resync rules.
 // Upstream: ReadLine.
-// Downstream: trimLeadingTerminators, bytesIndexTerminator, frameTypeFromBuffer.
+// Downstream: trimLeadingTerminators, frameBoundaryState.scan, frameTypeFromBuffer.
 //
 //nolint:revive // Keep return ordering for existing call sites.
 func (r *lineReader) tryReadLine() (string, error, bool) {
@@ -225,8 +230,10 @@ func (r *lineReader) tryReadLine() (string, error, bool) {
 		if len(r.buf) == 0 {
 			return "", nil, false
 		}
-		// Prefer explicit terminators (~, CRLF, CR, LF) when present.
-		if idx, size := bytesIndexTerminator(r.buf); idx >= 0 {
+		// Rescan retained bytes normally; only overflow needs continuation
+		// across reads. Comment tildes and actual boundaries share one rule.
+		boundary := frameBoundaryState{}
+		if idx, size := boundary.scan(r.buf); idx >= 0 {
 			limit, reason := r.lineLimit()
 			if idx > limit {
 				preview := linePreview(r.buf[:idx])
@@ -244,9 +251,13 @@ func (r *lineReader) tryReadLine() (string, error, bool) {
 		}
 		// Resync: discard leading noise until a valid PCxx^ frame start that follows a terminator.
 		// This avoids splitting on "^PC" sequences that might appear inside payload fields.
-		if start := bytesIndexFrameStart(r.buf); start > 0 {
-			r.consume(start)
-			continue
+		// A spot-shaped prefix with whitespace must reach strict rejection;
+		// its comment cannot repair that prefix via a ~PCxx recovery marker.
+		if !boundary.spot {
+			if start := bytesIndexFrameStart(r.buf); start > 0 {
+				r.consume(start)
+				continue
+			}
 		}
 		limit, reason := r.lineLimit()
 		if len(r.buf) > limit {
@@ -254,6 +265,7 @@ func (r *lineReader) tryReadLine() (string, error, bool) {
 			preview := linePreview(r.buf)
 			r.buf = nil
 			r.allocation.setBuffer(0)
+			r.dropBoundary = boundary
 			r.dropping = true
 			return "", ErrLineTooLong{
 				Preview: preview,
@@ -347,15 +359,31 @@ func isTerminator(b byte) bool {
 	return b == '\n' || b == '\r' || b == '~'
 }
 
-// Purpose: Find the first line terminator and its width.
-// Key aspects: Prefers '~' and handles CRLF pairs.
-// Upstream: tryReadLine.
-// Downstream: None.
-func bytesIndexTerminator(b []byte) (int, int) {
+// frameBoundaryState owns no payload or slices. The read owner keeps its fixed
+// prefix/field state only while discarding an overflow, including partial PC
+// headers and Unicode whitespace. Whitespace stays in the returned sentence
+// for strict spot rejection. Caret count saturates after the comment closes.
+type frameBoundaryState struct {
+	header     [5]byte
+	headerLen  uint8
+	spaceRune  [utf8.UTFMax]byte
+	runeLen    uint8
+	classified bool
+	spot       bool
+	carets     uint8
+}
+
+// scan delimits before admission: even a broken hop can end at ~ and recover.
+// Only the fifth payload field is protected; CR/LF still terminate it. Using
+// the same continuation in discard mode prevents comment tildes from releasing
+// discarded tails as new sentences. Header state is constant at every limit.
+func (s *frameBoundaryState) scan(b []byte) (int, int) {
 	for i := 0; i < len(b); i++ {
 		switch b[i] {
 		case '~':
-			return i, 1
+			if !s.spot || s.carets != 5 {
+				return i, 1
+			}
 		case '\n':
 			return i, 1
 		case '\r':
@@ -364,8 +392,51 @@ func bytesIndexTerminator(b []byte) (int, int) {
 			}
 			return i, 1
 		}
+		if !s.classified {
+			s.headerByte(b[i])
+		} else if s.spot && b[i] == '^' && s.carets < 6 {
+			s.carets++
+		}
 	}
 	return -1, 0
+}
+
+func (s *frameBoundaryState) headerByte(b byte) {
+	if s.headerLen == 0 {
+		if b < utf8.RuneSelf && s.runeLen == 0 {
+			if unicode.IsSpace(rune(b)) {
+				return
+			}
+		} else {
+			// Even a limit shorter than one UTF-8 whitespace rune must keep
+			// classification across discard reads, without retaining its line.
+			s.spaceRune[s.runeLen] = b
+			s.runeLen++
+			if !utf8.FullRune(s.spaceRune[:s.runeLen]) {
+				return
+			}
+			ch, _ := utf8.DecodeRune(s.spaceRune[:s.runeLen])
+			s.runeLen = 0
+			if unicode.IsSpace(ch) {
+				return
+			}
+			s.classified = true
+			return
+		}
+	}
+	s.header[s.headerLen] = b
+	s.headerLen++
+	if s.headerLen != uint8(len(s.header)) {
+		return
+	}
+	s.classified = true
+	s.spot = isFrameStartAt(s.header[:], 0) &&
+		((s.header[2] == '1' && s.header[3] == '1') ||
+			(s.header[2] == '6' && s.header[3] == '1') ||
+			(s.header[2] == '2' && s.header[3] == '6'))
+	if s.spot {
+		s.carets = 1 // the header's caret opens the frequency field
+	}
 }
 
 // Purpose: Find a valid PCxx^ frame start in the buffer.
