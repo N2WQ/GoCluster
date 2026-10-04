@@ -183,7 +183,7 @@ until they load a preset. Saving an existing name replaces it; deleting a
 preset leaves current settings unchanged.
 
 Names are case-insensitive and displayed uppercase. Use 1-32 ASCII letters, digits,
-underscores or hyphens, starting with a letter or digit. Each callsign can keep
+or hyphens, starting with a letter or digit. Each callsign can keep
 20 presets of up to 256 KiB each. A preset includes all filters and toggles,
 dialect, dedupe, grid, noise, path sample minimum and solar summary cadence. Login/IP
 history, diagnostics and temporary read pause are excluded. A failed load

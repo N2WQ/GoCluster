@@ -98,7 +98,7 @@ non-numeric hyphen suffixes retain the existing baseline-call identity rules.
 Other callsigns cannot address this collection through these commands. Loading
 does not change another connected SSID's live state or saved default.
 
-Names contain 1-32 ASCII letters, digits, underscores or hyphens, starting with
+Names contain 1-32 ASCII letters, digits or hyphens, starting with
 a letter or digit. They are case-insensitive and stored/displayed uppercase.
 Each callsign can keep 20 presets, each with at most 256 KiB of standalone YAML
 preferences. Replacement is allowed at capacity; a new name requires deleting

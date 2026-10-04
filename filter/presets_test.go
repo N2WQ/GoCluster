@@ -23,6 +23,34 @@ func usePresetTestDir(t *testing.T) {
 	t.Cleanup(func() { UserDataDir = previous })
 }
 
+func TestPresetUnderscoreNamesRejected(t *testing.T) {
+	usePresetTestDir(t)
+	if err := SavePreset("N2WQ", "GOOD-NAME", testSavedPreset()); err != nil {
+		t.Fatal(err)
+	}
+	path, err := presetCollectionPath("N2WQ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := SavePreset("N2WQ", "GOOD_BAD", testSavedPreset()); err == nil {
+		t.Fatal("SAVE accepted an underscore")
+	}
+	if _, err := LoadPreset("N2WQ", "GOOD_BAD"); err == nil {
+		t.Fatal("LOAD accepted an underscore")
+	}
+	if err := DeletePreset("N2WQ", "GOOD_BAD"); err == nil {
+		t.Fatal("DELETE accepted an underscore")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("invalid name changed the collection")
+	}
+}
+
 func testSavedPreset() *SavedPreset {
 	f := NewFilter()
 	f.SetBand("20m", true)
@@ -223,7 +251,7 @@ func TestPresetCorruptCollections(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, input := range []string{"", "presets: null\n", "presets: []\n", "presets: {lower: {}}\n", "presets: {VALID: null}\n", "presets: {}\nunknown: true\n", "presets: {}\n---\npresets: {}\n", "presets: {VALID: {recent_ips: [1.2.3.4]}}\n", string(tooManyBytes), string(oversizedBytes), strings.Repeat(" ", (8<<20)+1)} {
+	for _, input := range []string{"", "presets: null\n", "presets: []\n", "presets: {lower: {}}\n", "presets: {GOOD_BAD: {}}\n", "presets: {VALID: null}\n", "presets: {}\nunknown: true\n", "presets: {}\n---\npresets: {}\n", "presets: {VALID: {recent_ips: [1.2.3.4]}}\n", string(tooManyBytes), string(oversizedBytes), strings.Repeat(" ", (8<<20)+1)} {
 		path, err := presetCollectionPath("N2WQ")
 		if err != nil {
 			t.Fatal(err)
@@ -464,10 +492,10 @@ func TestSaveUserPreferences(t *testing.T) {
 }
 
 func FuzzNormalizePresetName(f *testing.F) {
-	for _, seed := range []string{"contest", "1_main", "CON", "", "-one", "two words", "../escape", "Å", strings.Repeat("A", 32), strings.Repeat("A", 33)} {
+	for _, seed := range []string{"contest", "1-main", "1_main", "CON", "", "-one", "two words", "../escape", "Å", strings.Repeat("A", 32), strings.Repeat("A", 33)} {
 		f.Add(seed)
 	}
-	grammar := regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`)
+	grammar := regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,31}$`)
 	f.Fuzz(func(t *testing.T, name string) {
 		canonical, err := NormalizePresetName(name)
 		valid := grammar.MatchString(name)

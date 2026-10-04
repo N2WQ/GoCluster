@@ -17,7 +17,7 @@ SSIDs without merging those sessions' active settings or login metadata.
 - Use the existing baseline own-call normalization for collection ownership.
   Names are case-insensitive uppercase ASCII identifiers, 1-32 characters,
   starting with a letter or digit and otherwise allowing digits, letters,
-  underscores and hyphens.
+  and hyphens.
 - Store a separate YAML collection below `filter.UserDataDir/presets`,
   using the hex-encoded owner as its filename. Keep ordinary per-SSID user
   records and autosaving in place. No automatic preset selection or live binding

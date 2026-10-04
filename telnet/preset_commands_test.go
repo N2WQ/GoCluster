@@ -40,6 +40,7 @@ func TestParsePresetCommand(t *testing.T) {
 		{"LIST PRESET extra", "LIST", "", true, true},
 		{"LOAD PRESET one two", "LOAD", "", true, true},
 		{"DELETE PRESET ../bad", "DELETE", "", true, true},
+		{"SAVE PRESET good_bad", "SAVE", "", true, true},
 		{"SAVE PRESET _bad", "SAVE", "", true, true},
 		{"SAVE PRESET Å", "SAVE", "", true, true},
 		{"SAVE OTHER one", "", "", false, false},
@@ -71,8 +72,8 @@ func TestPresetCommands(t *testing.T) {
 			origin.pathMinObservationCount = 30
 			origin.setSolarSummaryMinutes(30, time.Now())
 			origin.setDedupePolicy(dedupePolicySlow)
-			response, handled := s.handlePresetCommand(origin, "save preset contest")
-			if !handled || !strings.Contains(response, "Saved preset CONTEST") {
+			response, handled := s.handlePresetCommand(origin, "save preset contest-live-1")
+			if !handled || !strings.Contains(response, "Saved preset CONTEST-LIVE-1") {
 				t.Fatalf("SAVE: %q", response)
 			}
 			origin.filter.SetBand("40m", true)
@@ -86,11 +87,11 @@ func TestPresetCommands(t *testing.T) {
 			}
 			pointer := target.filter
 			response, handled = s.handlePresetCommand(target, "LIST PRESET")
-			if !handled || !strings.Contains(response, "N2WQ (1/20):\nCONTEST\n") {
+			if !handled || !strings.Contains(response, "N2WQ (1/20):\nCONTEST-LIVE-1\n") {
 				t.Fatalf("LIST: %q", response)
 			}
-			response, handled = s.handlePresetCommand(target, "LOAD PRESET contest")
-			if !handled || !strings.Contains(response, "Loaded preset CONTEST") {
+			response, handled = s.handlePresetCommand(target, "LOAD PRESET contest-live-1")
+			if !handled || !strings.Contains(response, "Loaded preset CONTEST-LIVE-1") {
 				t.Fatalf("LOAD: %q", response)
 			}
 			if target.filter != pointer || !target.filter.Bands["20m"] || target.filter.Bands["40m"] || target.filter.WWVEnabled() || target.grid != "FN31" || target.noiseClass != "URBAN" || target.pathMinObservationCount != 30 || target.getSolarSummaryMinutes() != 30 || target.getDedupePolicy() != dedupePolicySlow || target.dialect != dialect {
@@ -106,12 +107,12 @@ func TestPresetCommands(t *testing.T) {
 			if !record.LastLoginUTC.Equal(login) || strings.Join(record.RecentIPs, ",") != "192.0.2.2" || !origin.filter.Bands["40m"] {
 				t.Fatal("LOAD changed login metadata or another connected SSID")
 			}
-			response, handled = s.handlePresetCommand(target, "DELETE PRESET contest")
-			if !handled || !strings.Contains(response, "Deleted preset CONTEST") || target.grid != "FN31" || !target.filter.Bands["20m"] {
+			response, handled = s.handlePresetCommand(target, "DELETE PRESET contest-live-1")
+			if !handled || !strings.Contains(response, "Deleted preset CONTEST-LIVE-1") || target.grid != "FN31" || !target.filter.Bands["20m"] {
 				t.Fatalf("DELETE changed active settings: %q", response)
 			}
-			response, _ = s.handlePresetCommand(origin, "LOAD PRESET contest")
-			if response != "Saved preset CONTEST not found.\n" {
+			response, _ = s.handlePresetCommand(origin, "LOAD PRESET contest-live-1")
+			if response != "Saved preset CONTEST-LIVE-1 not found.\n" {
 				t.Fatalf("missing: %q", response)
 			}
 		})
@@ -283,12 +284,12 @@ func TestPresetSessionTranscriptAndReconnect(t *testing.T) {
 				if i == 2 && !strings.Contains(greeting, "Noise: URBAN") {
 					t.Fatalf("reconnect lost loaded preferences: %q", greeting)
 				}
-				commands := []struct{ line, want string }{{"SET NOISE URBAN", "Noise class set to URBAN"}, {"SAVE PRESET contest", "Saved preset CONTEST"}}
+				commands := []struct{ line, want string }{{"SET NOISE URBAN", "Noise class set to URBAN"}, {"SAVE PRESET contest-live-1", "Saved preset CONTEST-LIVE-1"}}
 				if i == 1 {
-					commands = []struct{ line, want string }{{"LOAD PRESET contest", "Loaded preset CONTEST"}, {"LIST PRESET", "CONTEST"}}
+					commands = []struct{ line, want string }{{"LOAD PRESET contest-live-1", "Loaded preset CONTEST-LIVE-1"}, {"LIST PRESET", "CONTEST-LIVE-1"}}
 				}
 				if i == 2 {
-					commands = []struct{ line, want string }{{"DELETE PRESET contest", "Deleted preset CONTEST"}}
+					commands = []struct{ line, want string }{{"DELETE PRESET contest-live-1", "Deleted preset CONTEST-LIVE-1"}}
 				}
 				if dialect == DialectCC && i < 2 {
 					commands = append([]struct{ line, want string }{{"DIALECT cc", "Dialect set to CC"}}, commands...)
@@ -319,10 +320,10 @@ func TestPresetSessionTranscriptAndReconnect(t *testing.T) {
 }
 
 func FuzzParsePresetCommand(f *testing.F) {
-	for _, seed := range []string{"SAVE PRESET contest", "LIST PRESET", "LOAD PRESET two words", "DELETE PRESET ../bad", "SAVE", "SHOW FILTER", "save\tpreset\t1-main", "SAVE FILTER one", "LIST FILTER", "LOAD FILTER one", "DELETE FILTER one"} {
+	for _, seed := range []string{"SAVE PRESET contest-live-1", "SAVE PRESET good_bad", "LIST PRESET", "LOAD PRESET two words", "DELETE PRESET ../bad", "SAVE", "SHOW FILTER", "save\tpreset\t1-main", "SAVE FILTER one", "LIST FILTER", "LOAD FILTER one", "DELETE FILTER one"} {
 		f.Add(seed)
 	}
-	grammar := regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`)
+	grammar := regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,31}$`)
 	f.Fuzz(func(t *testing.T, line string) {
 		command, handled, usage := parsePresetCommand(line)
 		tokens := strings.Fields(line)

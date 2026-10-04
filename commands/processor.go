@@ -542,7 +542,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 
 	presetNotes := []string{
 		"Presets are shared across your numeric SSIDs; commands work in both dialects.",
-		"Names: 1-32 ASCII letters, digits, underscores or hyphens; start with a letter or digit.",
+		"Names: 1-32 ASCII letters, digits or hyphens; start with a letter or digit.",
 		"Names are case-insensitive and displayed uppercase.",
 		"Limit: 20 presets, 256 KiB per preset.",
 		"Includes filters, dialect, dedupe, grid, noise, PATHSAMPLES and solar cadence.",

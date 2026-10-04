@@ -81,13 +81,13 @@ func (set *SavedPreset) normalize() {
 // uppercase key. Whitespace is rejected rather than silently changing the name.
 func NormalizePresetName(name string) (string, error) {
 	if len(name) < 1 || len(name) > 32 {
-		return "", errors.New("preset name must contain 1-32 letters, digits, underscores or hyphens")
+		return "", errors.New("preset name must contain 1-32 letters, digits or hyphens")
 	}
 	for i := range len(name) {
 		ch := name[i]
 		alnum := ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9'
-		if !alnum && (i == 0 || ch != '_' && ch != '-') {
-			return "", errors.New("preset name must start with a letter or digit and contain only letters, digits, underscores or hyphens")
+		if !alnum && (i == 0 || ch != '-') {
+			return "", errors.New("preset name must start with a letter or digit and contain only letters, digits or hyphens")
 		}
 	}
 	return strings.ToUpper(name), nil
