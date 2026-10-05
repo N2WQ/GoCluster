@@ -23,6 +23,21 @@ func writeUserFileBytes(file *os.File, data []byte) error {
 }
 
 func writeAtomicUserFileWith(path string, data []byte, write func(*os.File, []byte) error, replace func(string, string) error) error {
+	return writeAtomicUserFileWithStages(path, data, atomicUserFileStages{
+		write: write, sync: (*os.File).Sync, close: (*os.File).Close, replace: replace,
+	})
+}
+
+// Stages are per-call fault seams for the four commit boundaries. They do not
+// retain filesystem handles or install mutable process-wide hooks.
+type atomicUserFileStages struct {
+	write   func(*os.File, []byte) error
+	sync    func(*os.File) error
+	close   func(*os.File) error
+	replace func(string, string) error
+}
+
+func writeAtomicUserFileWithStages(path string, data []byte, stages atomicUserFileStages) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -45,17 +60,17 @@ func writeAtomicUserFileWith(path string, data []byte, write func(*os.File, []by
 	if err := file.Chmod(0o644); err != nil {
 		return err
 	}
-	if err := write(file, data); err != nil {
+	if err := stages.write(file, data); err != nil {
 		return err
 	}
-	if err := file.Sync(); err != nil {
+	if err := stages.sync(file); err != nil {
 		return err
 	}
-	if err := file.Close(); err != nil {
+	if err := stages.close(file); err != nil {
 		return err
 	}
 	closed = true
-	if err := replace(temporary, path); err != nil {
+	if err := stages.replace(temporary, path); err != nil {
 		return err
 	}
 	committed = true

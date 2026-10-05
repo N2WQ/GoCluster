@@ -104,7 +104,7 @@ Loader behavior:
 - Extra YAML keys are logged as `Config warning` messages in the system log and ignored after logging is configured. If fatal config load errors happen before the configured system log can be opened, startup writes an explicit fallback message and the diagnostics to the default process logger. Known removed migration keys still fail startup with migration hints, such as removed archive cleanup keys, removed archive Pebble compatibility keys, legacy PSKReporter mode-routing keys, and removed path-reliability clamp/legacy threshold keys.
 - When `path_reliability.enabled` is true, `h3_table_path` must contain valid `res1.bin` and `res2.bin` tables. Missing, malformed, or wrong-sized H3 tables fail startup because H3 cells are critical to path predictions.
 - Gridstore startup open failures are logged to the system log. Corruption opens a checkpoint-restore path and the process temporarily runs without grid persistence while recovery proceeds; non-corruption open failures abort startup.
-- Documented zero values are meaningful. For example, `telnet.broadcast_batch_interval_ms: 0` means immediate delivery, `telnet.auto_read_pause_min_rows: 0` or `telnet.auto_read_pause_seconds: 0` disables automatic read pause, and `*_keepalive_seconds: 0` means the keepalive is disabled.
+- Documented zero values are meaningful. For example, `telnet.broadcast_batch_interval_ms: 0` means immediate delivery, either automatic read-pause setting at `0` disables the generic row-based trigger, and `*_keepalive_seconds: 0` means the keepalive is disabled. The new human SHOW readbacks have the reading-pause exception described below.
 - `go_runtime.memory_limit_mib`, `go_runtime.gc_percent`, and `go_runtime.max_procs` apply the same process-wide Go runtime controls as `GOMEMLIMIT`, `GOGC`, and `GOMAXPROCS` without requiring a wrapper script. Set any value to `0` to leave the Go runtime or environment-provided value unchanged.
 - `pskreporter.workers: 0` follows the effective `go_runtime.max_procs` / `GOMAXPROCS` scheduler width; set a positive value only when you deliberately want wider PSKReporter burst processing than the process CPU budget.
 - `openai.yaml` is optional for server startup and `prop_report -no-llm`. When propagation-report LLM generation is enabled, the file is required and validated at that tool boundary. Secret values must not be logged or committed.
@@ -170,6 +170,11 @@ Telnet message tokens (usable in `runtime.yaml`):
 Input behavior:
 - Human telnet input is normalized to uppercase as it is read; the echoed characters are uppercase as well.
 - Telnet IAC negotiation bytes (including subnegotiation) are stripped from input before validation.
+- Recognized machine command headers preserve request identifier case. Structured
+  YAML bodies preserve case and punctuation and use their own 65,536-byte limit
+  and 30-second total upload deadline. These protocol limits do not change
+  `runtime.yaml` or turn user YAML into deployment configuration. See the
+  [client protocol](../../telnet/README.md).
 
 Read-pause behavior:
 - `telnet.auto_read_pause_min_rows` is the rendered command-output row count
@@ -177,7 +182,7 @@ Read-pause behavior:
   final trailing newline does not.
 - `telnet.auto_read_pause_seconds` is how long live spot lines are suppressed
   after long command output.
-- Set either read-pause value to `0` to disable automatic read pause. Manual
+- Set either read-pause value to `0` to disable the generic automatic trigger. Manual
   `PAUSE [seconds]` remains available, defaults to `30` seconds independently of
   these settings, and accepts whole seconds from `1` to `300`.
 - The shipped values are `10` rows and `30` seconds so commands such as
@@ -189,6 +194,26 @@ Read-pause behavior:
   pause but cannot shorten it; their footer reports the effective remaining
   duration. Replies to `PAUSE`, `SHOW HOLD`, and `RESUME` do not trigger another
   automatic pause. Missed spots are not replayed.
+- Human `SHOW FILTER`, `SHOW FILTER FULL`, `SHOW FILTER <category>` and
+  `SHOW SETTINGS` always start a reading pause, including their size-error
+  responses. They ignore the row threshold, including `0`, use a positive
+  `auto_read_pause_seconds` value, and use 30 seconds when it is `0`.
+- For those readbacks, suppression begins at request acceptance, covers output
+  preparation, queueing and delivery, then continues for the full reading interval
+  after successful server write and flush. Terminal rendering time is unknown.
+  Preserve any longer active pause and suppression count. A later valid processed
+  `PAUSE` or `RESUME` supersedes an earlier response's pending completion; another
+  human SHOW starts a fresh reading pause. Close or session replacement retires
+  pending completion effects.
+- Machine GET, PUT, PATCH and VALIDATE YAML commands, including errors, do not
+  start, extend, resume or reset pauses or suppression counters. Counters can
+  still increase naturally if an existing pause suppresses live traffic.
+- Every new readback has a 65,536-byte final response limit, including CRLF,
+  headers, YAML document markers and human pause footers. Generate the complete
+  response before queueing; oversized output fails explicitly without a truncated
+  success. Human errors follow the reading-pause policy; YAML errors remain framed
+  YAML with no human footer or pause effects. Existing row-based behavior for
+  other commands and the checked-in runtime YAML values remain unchanged.
 
 Bulletin behavior:
 - `telnet.bulletin_dedupe_window_seconds` suppresses identical WWV, WCY, and `TO ALL` announcement lines across all bulletin sources before they enter client control queues.
@@ -223,3 +248,42 @@ PC18/PC92 active wire configuration:
   preserved. Successful establishment resets retry to its normalized base.
 - These wire checks also run for direct `NewManager` callers before storage
   opens; constructor callers must supply effective values, not loader omissions.
+
+## User Configuration Storage
+
+User preferences are stored under `filter.UserDataDir` (normally `data/users`),
+separately from the files in this deployment-config directory. Each full callsign,
+including its SSID, owns one record such as `N2WQ-1.yaml`. The `presets` subdirectory
+holds shared named snapshots for the owner callsign; back it up with user records.
+
+`configuration_version: 1` identifies exact current records and snapshots. Only
+an absent marker selects legacy migration; current-version reads preserve false
+map entries, empty selections, zero values and default choices. An unreadable,
+malformed or unsupported record is preserved, and the session uses temporary
+defaults with a warning. LOAD, machine writes and SAVE PRESET are rejected for
+that protected record; SAVE fails before writing the named library. Ordinary
+preference and teardown saves also preserve it. If only the login timestamp/IP
+save fails after a successful read, login continues with the restored preferences
+and preset reference plus a warning.
+
+User-record writes atomically commit preferences together with the applied preset
+name and one bounded baseline. LOAD records the applied snapshot, including
+reported server adjustments; SAVE associates the same capture written to the
+named library. If the named save succeeds but its association fails, the previous
+live and disk association/baseline remain recoverable. Ordinary saves preserve
+that reference, and library overwrite or deletion does not alter the applied
+snapshot. Reconnect restores the reference for that full callsign. Preferences
+differing from the baseline show `(modified)`; reversing them clears the label.
+
+The existing preset budgets remain 20 names per owner, 256 KiB per encoded
+snapshot and 8 MiB per collection. Valid large presets can LOAD even when a FULL
+or YAML readback exceeds 64 KiB. PUT/PATCH/VALIDATE instead require the resulting
+complete CONFIG readback to fit, including reserved response metadata. An
+unchanged PUT still persists before success, repairing an earlier failed human
+save without resetting unrelated solar, GRID, NEARBY, diagnostic or pause state.
+
+There is no separate migration job. Stop writers before backup, repair or restore;
+use one writer process per user-data directory. Older binaries may discard the
+new fields or reject marked preset snapshots, so downgrade with a matching binary
+and data backup. See [backup instructions](../../docs/ENVIRONMENT.md#user-configuration-backups-and-downgrades)
+and [ADR-0244](../../docs/decisions/ADR-0244-exact-configuration-persistence.md).

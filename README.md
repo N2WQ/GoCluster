@@ -16,7 +16,11 @@ Log in with your callsign, then start with:
 - `HELP`: show the command list.
 - `HELP <command>`: show command-specific help.
 - `SHOW MYDX` or `SHOW DX`: show recent spots after your filters.
-- `SHOW FILTER`: show your active filter state.
+- `SHOW FILTER`: show every filter category and its rule counts.
+- `SHOW FILTER FULL` or `SHOW FILTER BAND`: inspect every exact rule, or one
+  category.
+- `SHOW SETTINGS`: show configured preferences, effective choices and session
+  state.
 - `SHOW DEDUPE`: show your repeated-spot suppression policy.
 - `SET GRID <grid>`: set your 4-6 character Maidenhead grid for distance,
   nearby filtering, and path hints.
@@ -47,7 +51,8 @@ build, release, and service details are later in this file and in
 - To see recent spotter countries for your baseline call, use `WHOSPOTSME [band]`.
 - To pause live spots, use `PAUSE` for 30 seconds or `PAUSE 60` for 60 seconds.
   Use `SHOW HOLD` to inspect the pause or `RESUME` to end it immediately.
-- Long command output also pauses live spots briefly.
+- Filter and settings readbacks always pause live spots for delivery and reading.
+  Other long command output uses the configured automatic-pause threshold.
 - To receive periodic solar summaries, use `SET SOLAR 15|30|60|OFF`.
 
 New DX spots are materialized and displayed without trailing numeric SSIDs on
@@ -78,20 +83,84 @@ Dedupe: SLOW (cqzone) (fast=on med=on slow=on)
 Dedupe policy set to FAST
 ```
 
-Check whether nearby filtering or a blocklist is active. This example is
-abridged; real `SHOW FILTER` output includes every filter domain:
+Check every filter category at once. Counts include stored entries whose value
+is `false`: `1/2 enabled` means one of two configured entries is enabled. This
+example uses a preset named CONTEST whose current preferences have changed:
 
 ```text
 > SHOW FILTER
-Current filters: BAND=ALL MODE=CW, LSB, USB, RTTY, FT8, FT4, FT2, PSK, JS8,
-                 MSK144, SSTV SOURCE=ALL EVENT=LLOTA, IOTA, POTA, SOTA, WWFF
-BAND: allow=ALL block=NONE
-MODE: enabled=CW, LSB, USB, RTTY, FT8, FT4, FT2, PSK, JS8, MSK144, SSTV
-EVENT: enabled=LLOTA, IOTA, POTA, SOTA, WWFF; no-event spots=pass
-...
-NEARBY: OFF
-SELF: ON
+FILTER for W1ABC-1
+Preset: CONTEST (modified)
+BAND: allow_all=false block_all=false; allow=1/2 enabled; block=1/1 enabled
+MODE: allow_all=false block_all=false; allow=1/2 enabled; block=0/0 enabled
+SOURCE: allow_all=true block_all=false; allow=0/0 enabled; block=0/0 enabled
+EVENT: allow_all=true block_all=false; allow=0/0 true; block=0/0 true
+  note: EVENT rules use key presence; false does not remove a rule.
+CONFIDENCE: allow_all=true block_all=false; allow=0/0 enabled; block=0/0 enabled
+PATH: allow_all=true block_all=false; allow=0/0 enabled; block=0/0 enabled
+DXCONT: allow_all=true block_all=false; allow=0/0 enabled; block=0/0 enabled
+DECONT: allow_all=true block_all=false; allow=0/0 enabled; block=0/0 enabled
+DXZONE: allow_all=true block_all=false; allow=0/0 enabled; block=0/0 enabled
+DEZONE: allow_all=true block_all=false; allow=0/0 enabled; block=0/0 enabled
+DXGRID2: allow_all=true block_all=false; allow=0/0 enabled; block=0/0 enabled
+DEGRID2: allow_all=true block_all=false; allow=0/0 enabled; block=0/0 enabled
+DXDXCC: allow_all=true block_all=false; allow=0/0 enabled; block=0/0 enabled
+DEDXCC: allow_all=true block_all=false; allow=0/0 enabled; block=0/0 enabled
+DXCALL: allow=2 patterns; block=1 patterns
+DECALL: allow=0 patterns; block=0 patterns
+BEACON: DEFAULT (effective true)
+WWV: true
+WCY: false
+ANNOUNCE: DEFAULT (effective true)
+SELF: true
+TOXIC: false
+NEARBY: false (effective active=false; location rules suspended only while active)
+Use SHOW FILTER FULL or SHOW FILTER <category> for every exact rule.
+Live spots paused during delivery and for at least 30s after delivery. Type RESUME to resume now.
+Missed spots are not replayed.
 ```
+
+`SHOW FILTER FULL` displays all categories in exact-value form. To inspect just
+the band rules from this example:
+
+```text
+> SHOW FILTER BAND
+FILTER for W1ABC-1
+Preset: CONTEST (modified)
+BAND:
+  allow_all: false
+  block_all: false
+  allow: {"20m": true, "40m": false}
+  block: {"80m": true}
+Live spots paused during delivery and for at least 30s after delivery. Type RESUME to resume now.
+Missed spots are not replayed.
+```
+
+`SHOW SETTINGS` separates your selections from the choices currently in use.
+Here the server's path sample minimum is 20; the configured zero means to use
+that minimum:
+
+```text
+> SHOW SETTINGS
+SETTINGS for W1ABC-1
+Preset: CONTEST (modified)
+DIALECT: "go" (effective "go")
+GRID: "FN42" (effective "FN42")
+NOISE: "URBAN" (effective "URBAN")
+DEDUPE: "SLOW" (effective "SLOW")
+GRID source: derived=false
+PATHSAMPLES: 0 (0=cluster default; effective 20)
+SOLAR: 30 minutes (0=OFF)
+DIAG: OFF (session only)
+Live spots: paused=true; delivery pending=true; remaining=0s; suppressed=0
+Persistence: temporary defaults=false
+Server defaults: dialect=go dedupe=SLOW noise=QUIET PATHSAMPLES=20
+Live spots paused during delivery and for at least 30s after delivery. Type RESUME to resume now.
+Missed spots are not replayed.
+```
+
+The session row is captured while preparing the response. `delivery pending=true`
+with `remaining=0s` means the full reading interval has not started yet.
 
 See recent countries that have heard your baseline call:
 
@@ -134,6 +203,15 @@ to `30` seconds and accepts whole seconds from `1` to `300`, even when automatic
 read pause is disabled. Repeating `PAUSE` sets a fresh duration; automatic
 pauses can extend an active pause but cannot shorten it. Command replies and
 other control traffic continue, and missed live spots are not replayed.
+
+Human `SHOW FILTER`, FULL/category readbacks and `SHOW SETTINGS` suppress spots
+from command acceptance through preparation, queueing and delivery. Their full
+reading interval starts after the server completes its write and flush; terminal
+rendering time is unknown. They use a positive configured pause duration, or
+30 seconds when it is zero, and ignore the row threshold even when it is zero.
+A longer existing pause is preserved. A later valid, processed `PAUSE` or
+`RESUME` takes precedence over an earlier queued readback; another human
+readback starts a fresh hold. Size-error responses follow this same policy.
 
 ### Filter Examples
 
@@ -189,6 +267,15 @@ current login call/SSID's default. Other connected sessions keep their settings
 until they load a preset. Saving an existing name replaces it; deleting a
 preset leaves current settings unchanged.
 
+A successful LOAD establishes the successfully applied snapshot as the reference
+for `Preset: CONTEST`; any server adjustments are reported separately. A
+successful SAVE establishes the exact captured preferences that were saved.
+`(modified)` appears when current preferences differ from that reference, and
+disappears when you restore them. Pause, diagnostics and temporary NEARBY dedupe
+changes do not affect it. The name and reference survive reconnect for the full
+login call, including its SSID, even if someone later deletes or overwrites that
+named preset in the shared library.
+
 Names are case-insensitive and displayed uppercase. Use 1-32 ASCII letters, digits,
 or hyphens, starting with a letter or digit. Each callsign can keep
 20 presets of up to 256 KiB each. A preset includes all filters and toggles,
@@ -196,8 +283,129 @@ dialect, dedupe, grid, noise, path sample minimum and solar summary cadence. Log
 history, diagnostics and temporary read pause are excluded. A failed load
 leaves live settings and saved defaults unchanged.
 
+SAVE can partially succeed: the named snapshot may be saved while saving this
+SSID's association fails. The reply explains this, and the previous association
+and reference remain unchanged both live and on disk. Ordinary preference saves
+preserve that reference too. A valid large preset may LOAD even when its complete
+FULL/YAML readback exceeds the separate 64 KiB response limit.
+
+If a saved user record cannot be read or uses an unsupported format, login uses
+temporary defaults without overwriting it. Human changes remain temporary;
+SAVE PRESET, LOAD PRESET and client configuration writes are rejected. Readbacks
+remain available. If only saving the new login timestamp/IP fails, login instead
+continues with the restored configuration and a warning.
+
 See [telnet persistence details](telnet/README.md#named-presets) for storage
 and runtime restoration rules.
+
+### Client YAML Configuration
+
+Clients use `GET YAML FILTER`, `GET YAML SETTINGS`, `GET YAML CONFIG` and
+`GET YAML CAPABILITIES`. The first two read one resource; CONFIG captures filters
+and settings together; CAPABILITIES describes the schema, choices and limits.
+CAPABILITIES is read-only.
+Optional `ID <id>` accepts 1-32 ASCII letters, digits or hyphens and preserves
+case. Without an ID, GET assigns one.
+
+This complete SETTINGS response is a separate example with no active pause:
+
+```yaml
+---
+schema_version: 1
+request_id: noise-Ab1
+resource: SETTINGS
+revision: 7faea7039a0b47a1bb8e462157b4c621-3
+configuration:
+  dialect: go
+  grid: FN42
+  noise_class: URBAN
+  dedupe_policy: SLOW
+  path_min_observation_count: 0
+  solar_summary_minutes: 30
+status:
+  configured:
+    dialect: go
+    grid: FN42
+    noise_class: URBAN
+    dedupe_policy: SLOW
+    path_min_observation_count: 0
+    solar_summary_minutes: 30
+  effective:
+    dialect: go
+    grid: FN42
+    grid_derived: false
+    noise_class: URBAN
+    dedupe_policy: SLOW
+    path_min_observation_count: 20
+    solar_summary_minutes: 30
+    nearby_active: false
+  session:
+    callsign: W1ABC-1
+    diagnostic_comments: "OFF"
+    pause_active: false
+    pause_pending_delivery: false
+    pause_remaining_seconds: 0
+    suppressed_spots: 0
+    temporary_defaults: false
+  server:
+    default_dialect: go
+    default_dedupe_policy: SLOW
+    default_noise_class: QUIET
+    path_min_observation_count: 20
+    auto_read_pause_min_rows: 10
+    auto_read_pause_seconds: 30
+  preset:
+    associated: true
+    name: CONTEST
+    modified: true
+...
+```
+
+Send `GET YAML SETTINGS ID noise-Ab1` to request that response shape. Only
+`configuration` is writable. Preserve explicit `false`, zero, empty strings,
+empty collections and `DEFAULT` selections when editing it; the `status`
+sections, resource name and GET envelope are read-only. Use the returned
+`revision` as `if_revision` in a new write envelope.
+
+`PUT YAML FILTER|SETTINGS|CONFIG` replaces a complete resource and requires
+every writable field. `PATCH YAML FILTER|SETTINGS|CONFIG` changes supplied
+fields while retaining omissions. Supplied maps and lists replace their whole
+collections. For example, change only the noise selection:
+
+```text
+PATCH YAML SETTINGS
+---
+schema_version: 1
+request_id: noise-Ab2
+if_revision: 7faea7039a0b47a1bb8e462157b4c621-3
+configuration:
+  noise_class: RURAL
+...
+```
+
+The revision shown is illustrative: use the value from your own GET. GET again
+after reconnect or a revision conflict. Validation or persistence failure leaves
+both live and saved configuration unchanged; unavailable choices are rejected.
+Even an unchanged PUT saves the configuration before reporting success, repairing
+a failed earlier human autosave without resetting scheduling or session controls.
+Machine writes retain the preset reference and may change `(modified)`.
+`VALIDATE YAML CONFIG` checks a complete proposal without applying or saving it.
+
+Every new human or YAML readback is limited to **65,536 final response bytes**,
+including CRLF, framing and human footers. Responses are complete or return an
+explicit error. New machine proposals must also fit a complete CONFIG response,
+including reserved response metadata. Uploads allow 65,536 body bytes, excluding
+markers but counting actual LF/CRLF bytes, with a 30-second deadline from header
+acceptance. Oversized, expired, incomplete or unreliable uploads, including
+malformed upload headers, close the connection. A fully received invalid document
+gets a framed YAML error and keeps the connection open.
+
+All machine success and error responses leave pause state unchanged and have no
+human pause footer. Send one plain YAML document: aliases, anchors, merge keys,
+custom tags, nulls and additional documents are rejected. Ordinary command
+headers retain the configured line limit (128 bytes in the shipped config);
+the framed body uses its separate limit.
+See the [client protocol details](telnet/README.md#client-yaml-configuration).
 
 ## HELP
 
@@ -227,7 +435,7 @@ SET GRID - Set your grid (4-6 chars).
 SET NOISE - Set noise class.
 SET PATHSAMPLES - Set path sample floor.
 PASS NEARBY - Toggle nearby filtering.
-SHOW FILTER - Display filter state.
+SHOW FILTER - Display filter state and rule counts.
 PASS - Allow filter matches.
 REJECT - Block filter matches.
 RESET FILTER - Reset filters to defaults.
@@ -237,6 +445,18 @@ LOAD PRESET - Load a preset and save this SSID's defaults.
 DELETE PRESET - Delete a saved preset.
 DIALECT - Show or switch dialect.
 BYE - Disconnect.
+SHOW SETTINGS - Display preferences and session behavior.
+GET YAML FILTER - Read filter for clients.
+GET YAML SETTINGS - Read settings for clients.
+GET YAML CONFIG - Read config for clients.
+GET YAML CAPABILITIES - Read capabilities for clients.
+PUT YAML FILTER - Write filter for clients.
+PUT YAML SETTINGS - Write settings for clients.
+PUT YAML CONFIG - Write config for clients.
+PATCH YAML FILTER - Write filter for clients.
+PATCH YAML SETTINGS - Write settings for clients.
+PATCH YAML CONFIG - Write config for clients.
+VALIDATE YAML CONFIG - Check a complete client proposal.
 Type HELP <command> for details.
 
 Filter core rules:
@@ -401,13 +621,14 @@ Band handling is intentionally simple:
 `NEARBY` also changes how location filters behave:
 
 - While `NEARBY` is on, the regular location filters are suspended: `DXGRID2`, `DEGRID2`, `DXCONT`, `DECONT`, `DXZONE`, `DEZONE`, `DXDXCC`, and `DEDXCC`.
-- Attempts to change those filters while `NEARBY` is on are rejected with a warning.
+- Human `PASS`/`REJECT` attempts to change those filters while `NEARBY` is on are rejected with a warning.
 - `PASS NEARBY OFF` restores the saved location-filter state from before `NEARBY` was enabled.
 - While `NEARBY` has usable grid-backed cells, spot delivery temporarily uses the least-suppressive available dedupe policy so nearby repeats are less likely to be hidden. `SHOW DEDUPE` reports the temporary lane when it differs from the saved policy, and `SET DIAG DEDUPE` uses the temporary lane for its compact key and policy tag.
 
 `NEARBY` persists across logins. The login greeting warns you when it is active,
-and `SHOW FILTER` includes the current `NEARBY` state. If your stored grid is
-missing, `NEARBY` stays stored but inactive until a valid grid is configured.
+and `SHOW FILTER` includes the current `NEARBY` state. If no usable configured
+or looked-up grid is available, or its H3 cells cannot be built, `NEARBY` stays
+stored but inactive until it can be activated cleanly.
 When path reliability is enabled, missing or invalid H3 mapping tables fail
 startup and are reported in the system log instead of silently weakening path
 predictions.

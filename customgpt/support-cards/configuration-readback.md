@@ -1,0 +1,84 @@
+# Support Card: Configuration Readbacks And Client YAML
+
+## Match
+
+Use for human SHOW FILTER/FULL/category or SHOW SETTINGS output, canonical
+GET/PUT/PATCH/VALIDATE YAML configuration commands, revision conflicts, upload
+errors, protected temporary records, preset modification status or partial SAVE.
+If `getSupportRoute` is not decisive, follow source-map or troubleshooting links
+and retrieve this card with `getDoc`; it is not a new automatic Worker route.
+
+## First Safe Check
+
+Identify whether this is a human readback, a machine upload/readback, a preset
+operation or a login warning. Retrieve the relevant section of `telnet/README.md`
+before interpreting the exact command and response. Ask for one redacted
+command/error artifact that distinguishes the next step.
+
+## Must Include
+
+- Human SHOW FILTER reports all categories and counts; FULL/category exposes
+  exact values, including false entries. SHOW SETTINGS separates configured
+  selections, effective choices and session/server status.
+- EVENT rules use key presence, even when a stored value is false. Their
+  overview counts are labelled true and the readback includes an explanation.
+  To remove an EVENT rule through YAML, omit its key from the replacement map.
+- Human readbacks, including size errors, suppress spots before preparation,
+  through queueing/delivery and for the full interval after successful write
+  and flush. They ignore zero row thresholds and use 30 seconds for a zero
+  duration. Longer pauses remain; later processed PAUSE/RESUME takes precedence.
+- Canonical machine reads are GET YAML FILTER/SETTINGS/CONFIG/CAPABILITIES.
+  Machine success/errors have no pause-state effects or human footer. Existing
+  suppressed counts may still increase from live traffic during a prior pause.
+- GET separates exact writable configuration from read-only status. Preserve
+  explicit false, zero, empty values/collections and DEFAULT selections. GET IDs
+  are 1-32 ASCII letters/digits/hyphens and preserve case; CAPABILITIES is read-only.
+- PUT requires a complete FILTER, SETTINGS or CONFIG resource. PATCH retains
+  omissions; supplied maps/lists replace their whole collections. VALIDATE YAML
+  CONFIG checks a complete proposal without applying or saving it.
+- PUT/PATCH use GET's matching revision as if_revision. GET again after reconnect,
+  restart or conflict. Validation/persistence failure leaves live and saved
+  configuration unchanged; unavailable choices are rejected. Even an unchanged
+  PUT persists before success, repairing failed human autosave without resetting
+  solar scheduling, NEARBY restoration, diagnostics or pause.
+- Every new readback's 65,536-byte final budget includes CRLF, markers and human
+  footers. Complete output or an explicit error replaces silent truncation.
+  Machine proposals must fit a complete CONFIG readback with reserved metadata;
+  valid larger presets may still LOAD under the separate 256 KiB preset limit.
+- Uploads use standalone ---/... lines, 65,536 actual body bytes excluding
+  markers, and a 30-second absolute deadline from valid-header acceptance.
+  Malformed upload headers and oversized/expired/incomplete/unreliable framing
+  close the connection without dispatching remaining bytes. Fully received
+  invalid documents return framed YAML errors and leave the connection open.
+- Unreadable/unsupported user records are preserved. Protected temporary-defaults
+  sessions allow readbacks and temporary human changes but reject SAVE before
+  any library write, LOAD and PUT/PATCH. A login timestamp/IP save warning after
+  successful restoration instead continues with the restored preferences.
+- Preset modified compares current preferences with the retained applied/saved
+  reference for the full callsign/SSID. Reversing changes clears it; PAUSE,
+  diagnostics and temporary NEARBY dedupe do not affect it. Library overwrite or
+  deletion does not change the reference. Partial SAVE retains the previous
+  association/reference live and on disk, including subsequent ordinary saves.
+
+## Must Avoid
+
+- Do not invent SHOW YAML aliases, pagination, a force-revision command or an
+  operator setting for raising these limits.
+- Do not upload read-only status or omit required PUT fields to mean defaults.
+- Do not silently substitute an unavailable choice, promise memory-only success
+  or skip persistence because a PUT matches the current live configuration.
+- Do not claim a malformed upload tail can become ordinary commands, or confuse
+  the ordinary 128-byte shipped command-header limit with the upload-body limit.
+- Do not reset/delete a protected record or overwrite a named preset with
+  temporary defaults as a first troubleshooting step.
+- Do not treat a saved library snapshot as proof that its new SSID association
+  persisted, or treat all SSIDs as one session configuration.
+
+## Sources
+
+- [telnet/README.md human readbacks](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md#human-configuration-readbacks)
+- [telnet/README.md client schema and framing](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md#client-yaml-configuration)
+- [telnet/README.md named presets and persistence](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md#named-presets)
+- [README.md output examples](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md#output-examples)
+- [commands/README.md HELP ownership](https://raw.githubusercontent.com/N2WQ/GoCluster/main/commands/README.md)
+- [data/config/README.md effective node YAML](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/config/README.md)

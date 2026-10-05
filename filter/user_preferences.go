@@ -9,12 +9,11 @@ import (
 	"strings"
 
 	"dxcluster/spot"
-	"gopkg.in/yaml.v3"
 )
 
 // SaveUserPreferences atomically replaces only a login callsign's preferences.
 // Existing login timestamp and IP history belong to this SSID, never to the preset.
-// Ordinary per-SSID autosave behavior remains owned by SaveUserRecord.
+// Its applied preset association remains unchanged.
 func SaveUserPreferences(callsign string, set *SavedPreset, recentIPs []string) error {
 	return saveUserPreferences(callsign, set, recentIPs, writeAtomicUserFile)
 }
@@ -34,17 +33,52 @@ func saveUserPreferences(callsign string, set *SavedPreset, recentIPs []string, 
 	if record == nil {
 		record = &UserRecord{}
 	}
-	record.Filter = set.Filter
-	record.Dialect = set.Dialect
-	record.DedupePolicy = NormalizeDedupePolicy(set.DedupePolicy)
-	record.Grid = set.Grid
-	record.NoiseClass = set.NoiseClass
-	record.PathMinObservationCount = normalizePathMinObservationCount(set.PathMinObservationCount)
-	record.SolarSummaryMinutes = normalizeSolarSummaryMinutes(set.SolarSummaryMinutes)
+	applyRecordConfiguration(record, ConfigurationFromPreset(set))
 	record.RecentIPs = MergeRecentIPs(recentIPs, record.RecentIPs)
-	bs, err := yaml.Marshal(record)
+	return saveUserRecord(callsign, record, write)
+}
+
+// SaveConfiguration atomically commits exact preferences and the explicit
+// applied-preset reference. A nil reference clears the association. Transaction
+// ownership, schema/availability validation and detached input lifetime are the
+// telnet caller's responsibility.
+func SaveConfiguration(callsign string, cfg Configuration, ref *PresetReference, recentIPs []string) error {
+	return saveConfiguration(callsign, cfg, ref, recentIPs, writeAtomicUserFile)
+}
+
+func saveConfiguration(callsign string, cfg Configuration, ref *PresetReference, recentIPs []string, write func(string, []byte) error) error {
+	callsign = strings.ToUpper(strings.TrimSpace(callsign))
+	if !spot.IsValidNormalizedCallsign(callsign) {
+		return errors.New("invalid login callsign")
+	}
+	for _, toggle := range cfg.Filters.toggles() {
+		if toggle > DefaultBoolTrue {
+			return errors.New("invalid default boolean selection")
+		}
+	}
+	record, err := LoadUserRecord(callsign)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("load current user record: %w", err)
+	}
+	if record == nil {
+		record = &UserRecord{}
+	}
+	record.Preset, err = ref.Clone()
 	if err != nil {
 		return err
 	}
-	return write(userRecordPath(callsign), bs)
+	applyRecordConfiguration(record, cfg)
+	record.RecentIPs = MergeRecentIPs(recentIPs, record.RecentIPs)
+	return saveUserRecord(callsign, record, write)
+}
+
+func applyRecordConfiguration(record *UserRecord, cfg Configuration) {
+	record.ConfigurationVersion = CurrentConfigurationVersion
+	record.Filter = cfg.FilterValue()
+	record.Dialect = cfg.Settings.Dialect
+	record.Grid = cfg.Settings.Grid
+	record.NoiseClass = cfg.Settings.NoiseClass
+	record.DedupePolicy = cfg.Settings.DedupePolicy
+	record.PathMinObservationCount = cfg.Settings.PathMinObservationCount
+	record.SolarSummaryMinutes = cfg.Settings.SolarSummaryMinutes
 }

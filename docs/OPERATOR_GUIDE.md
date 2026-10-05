@@ -207,7 +207,9 @@ Log in with your callsign. Useful first commands:
 - `SET DIAG OFF|DEDUPE|SOURCE|CONF|PATH|MODE`: replace spot comments with compact per-session diagnostics.
 - `SET SOLAR 15|30|60|OFF`: opt into or stop periodic solar summaries.
 - `DIALECT`, `DIALECT LIST`, `DIALECT <go|cc>`: show or switch command dialect.
-- `SHOW FILTER`: display active filters.
+- `SHOW FILTER`: show filter counts and selections.
+- `SHOW FILTER FULL` or `SHOW FILTER <category>`: show every exact rule, including disabled entries.
+- `SHOW SETTINGS`: show configured choices, effective settings, and session status.
 - `PASS <type> <list>`: allow matching spots.
 - `REJECT <type> <list>`: block matching spots.
 - `RESET FILTER`: restore default filters.
@@ -235,6 +237,241 @@ even when automatic read pause is disabled and always defaults to `30` seconds.
 A new `PAUSE` sets a fresh duration; automatic pauses can extend an active pause
 but cannot shorten it. `SHOW HOLD` reports either kind of pause. Replies to
 `PAUSE`, `SHOW HOLD`, and `RESUME` do not trigger another automatic pause.
+
+### Read Your Filters And Settings
+
+`SHOW FILTER` gives a compact overview. For example, `allow=1/2 enabled` means
+one of two configured allow entries is enabled. `SHOW FILTER FULL` lists every
+value; `SHOW FILTER BAND` limits the detail to one category. In the CC dialect,
+`SHOW/FILTER` and `SH/FILTER` support the same arguments.
+
+An example response to `SHOW FILTER BAND` is:
+
+```text
+FILTER for W1ABC-1
+Preset: CONTEST (modified)
+BAND:
+  allow_all: true
+  block_all: false
+  allow: {"20m": true, "40m": false}
+  block: {"160m": false}
+Live spots paused during delivery and for at least 30s after delivery. Type RESUME to resume now.
+Missed spots are not replayed.
+```
+
+All-selection flags and individual entries are shown separately. A `false`
+entry stays visible. Callsign patterns keep their supplied order.
+EVENT matching uses key presence, including keys stored as `false`; its
+overview counts are labelled `true` and its readback explains this behavior.
+When editing YAML, remove an EVENT key from its replacement map to remove that
+rule. Setting the value to `false` keeps the key present.
+
+`SHOW SETTINGS` shows the configured choice and the behavior the server uses.
+For example, an empty configured GRID can use a callsign lookup. Active NEARBY
+can temporarily use FAST dedupe while the configured choice remains SLOW. A zero
+PATHSAMPLES value uses the cluster default; zero SOLAR means OFF. Pause and
+diagnostic status are session information.
+
+Every human filter/settings readback pauses live spots as soon as the request
+is accepted, including time spent preparing and sending the reply. After the
+server finishes its write and flush, users get the full configured positive
+reading interval, or 30 seconds when that duration is zero. The row threshold,
+including zero, does not disable these readback pauses. Other automatic
+responses retain the ordinary row threshold and zero-disable settings.
+
+A longer active pause remains in force. A later valid PAUSE or RESUME takes
+precedence over a reply still waiting to finish; invalid pause arguments have
+no effect. A new human readback starts a fresh reading pause. SHOW HOLD can
+report a reply still being delivered with no finite countdown yet. Terminal
+rendering time is outside the server's delivery measurement.
+
+Each new readback has a 65,536-byte final response limit, including line
+endings and footers. If the complete response does not fit, users receive an
+explicit error. A human size error still pauses for reading. Use a smaller
+filter category when FULL is too large. A valid larger preset can still LOAD
+within the existing 256 KiB preset limit even when FULL or YAML inspection
+returns a size error.
+
+### Understand Preset Status And Reconnect Warnings
+
+Successful LOAD or SAVE associates the preset name with the current full login
+callsign, including its SSID. The reference is the snapshot successfully
+applied or saved. Editing filters or preferences adds `(modified)`; restoring
+those values clears it. Callsign pattern order does not count as a change, but
+adding or removing an occurrence does. Pauses, diagnostics, and temporary NEARBY dedupe
+behavior leave this status unchanged.
+
+Reconnect restores the preferences, preset name, and reference together.
+Deleting or overwriting a library preset keeps the session's applied snapshot
+and reference. Failed LOAD retains the previous configuration. If SAVE writes
+the named snapshot but cannot save its association, the reply says:
+
+```text
+Saved preset CONTEST, but could not persist its association for W1ABC-1.
+Previous preset association and baseline retained.
+```
+
+The named snapshot was saved, and the previous association remains recoverable
+after reconnect. Reconnect also continues with a warning when it restores the
+configuration but cannot save the new login timestamp/IP.
+
+An unreadable or unsupported saved user record causes a different warning:
+the session uses temporary defaults, and its original record stays protected.
+Human changes remain temporary. SAVE PRESET is rejected before changing the
+preset library, and YAML PUT/PATCH are rejected. Readbacks and YAML validation
+remain available. Repair or restore the saved record before reconnecting to
+resume normal persistence.
+
+### Configure Through A YAML Client
+
+Clients can use these commands in either dialect:
+
+| Command | Practical use |
+| --- | --- |
+| `GET YAML FILTER` | Read every exact filter value. |
+| `GET YAML SETTINGS` | Read preferences and current behavior. |
+| `GET YAML CONFIG` | Read filters and settings together. |
+| `GET YAML CAPABILITIES` | Discover fields, available choices, and limits. |
+| `PUT YAML FILTER|SETTINGS|CONFIG` | Replace the complete selected resource. |
+| `PATCH YAML FILTER|SETTINGS|CONFIG` | Change supplied fields and keep omitted fields. |
+| `VALIDATE YAML CONFIG` | Check a complete proposal without changing or saving it. |
+
+GET accepts an optional identifier, for example `GET YAML SETTINGS ID Noise-1`.
+Identifiers contain 1-32 ASCII letters, digits, or hyphens, and preserve case.
+The server assigns one when it is omitted. One example complete reply is:
+
+```yaml
+---
+schema_version: 1
+request_id: Noise-1
+resource: SETTINGS
+revision: example-session-0
+configuration:
+  dialect: ""
+  grid: ""
+  noise_class: ""
+  dedupe_policy: ""
+  path_min_observation_count: 0
+  solar_summary_minutes: 0
+status:
+  configured:
+    dialect: ""
+    grid: ""
+    noise_class: ""
+    dedupe_policy: ""
+    path_min_observation_count: 0
+    solar_summary_minutes: 0
+  effective:
+    dialect: go
+    grid: FN31
+    grid_derived: true
+    noise_class: QUIET
+    dedupe_policy: FAST
+    path_min_observation_count: 0
+    solar_summary_minutes: 0
+    nearby_active: false
+  session:
+    callsign: W1ABC-1
+    diagnostic_comments: "OFF"
+    pause_active: false
+    pause_pending_delivery: false
+    pause_remaining_seconds: 0
+    suppressed_spots: 0
+    temporary_defaults: false
+  server:
+    default_dialect: go
+    default_dedupe_policy: FAST
+    default_noise_class: QUIET
+    path_min_observation_count: 0
+    auto_read_pause_min_rows: 10
+    auto_read_pause_seconds: 30
+  preset:
+    associated: false
+    name: ""
+    modified: false
+...
+```
+
+Copy the writable `configuration` into a request and use the actual revision
+returned by GET. FILTER and SETTINGS put their fields directly under
+`configuration`; CONFIG contains `filters` and `settings`. The separate
+`status` sections are read-only, and the stored preset reference is private.
+
+For example, a complete settings replacement is sent as:
+
+```text
+PUT YAML SETTINGS
+---
+schema_version: 1
+request_id: edit-1
+if_revision: example-session-0
+configuration:
+  dialect: "go"
+  grid: "FN31"
+  noise_class: URBAN
+  dedupe_policy: FAST
+  path_min_observation_count: 0
+  solar_summary_minutes: 0
+...
+```
+
+PUT requires every writable field in the selected resource. A missing field
+returns an error without resetting other settings. PATCH keeps omitted fields:
+
+```text
+PATCH YAML SETTINGS
+---
+schema_version: 1
+request_id: edit-2
+if_revision: example-session-1
+configuration:
+  noise_class: RURAL
+...
+```
+
+A supplied list or rule map replaces that whole list or map. PATCH can change
+one rule-set member while preserving the other members. Use CONFIG to change
+GRID and its dependent NEARBY filter together. Explicit `false`, zero, empty
+default strings, and toggle `DEFAULT` values survive read/edit/write cycles.
+
+Writes validate the resulting configuration, save it atomically, and then
+install it. Validation or persistence failure leaves the live and saved
+configuration unchanged. A recognized choice that the server has disabled,
+such as SLOW dedupe, is rejected. An unchanged successful PUT still repairs
+durability if an earlier human change failed to save; its revision stays the
+same. Successful replies contain `applied: true` and `persisted: true`.
+VALIDATE replies contain `valid: true`, `applied: false`, and `persisted: false`.
+
+PUT/PATCH require the matching GET revision. After an edit conflict, reconnect,
+or server restart, GET again before retrying. Pause, diagnostics, and login
+timestamps do not change the configuration revision. Ordinary YAML writes keep
+the preset reference and may change `(modified)`. If the connection breaks
+during a write, reconnect and GET to discover the outcome.
+
+Upload one ordinary YAML document between standalone `---` and `...` lines.
+The body limit is 65,536 bytes, counting its received LF or CRLF line endings;
+the marker lines are separate. The complete upload must arrive within 30
+seconds. Oversized, incomplete, expired, or unreliable framing closes the
+connection without applying the proposal. Rejected PUT/PATCH/VALIDATE headers
+also close it, so leftover payload cannot execute commands. A fully received
+document with invalid syntax or values gets a framed error and keeps the
+connection open. Use plain values and collections; anchors, aliases, merge
+keys, custom tags, nulls, unknown fields, and duplicate interpreted keys are
+rejected.
+
+Every YAML reply is one complete document with CRLF line endings and the same
+65,536-byte response limit. New machine writes must leave a complete CONFIG
+readback within that limit, including reserved metadata. A small PATCH of an
+already oversized human configuration can fail until that configuration is
+reduced. A size error contains `error.code: response_too_large` instead of a
+truncated success. YAML commands and their errors have no pause effects or
+human footers. Existing pauses still suppress ordinary live traffic and can
+naturally increase their counters.
+
+See [the telnet protocol guide](../telnet/README.md) for the full field schema,
+framing contract, error codes, and limits.
+
+### Login Identity And Diagnostics
 
 Numeric SSIDs on the spotted DX call are removed regardless of ingest source.
 For example, a new DX call of `K1ABC-2` is materialized and displayed as

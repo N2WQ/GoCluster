@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"dxcluster/cty"
 	"dxcluster/filter"
@@ -188,6 +189,18 @@ func (e *filterCommandEngine) Handle(client *Client, line string) (string, bool)
 	if client == nil || e == nil {
 		return "", false
 	}
+	release, err := client.server.acquireConfiguration(client, false, false, time.Time{})
+	if err != nil {
+		return fmt.Sprintf("Filter command failed: %v\n", err), true
+	}
+	defer release()
+	client.refreshConfigurationRevision()
+	response, handled := e.handleOwned(client, line)
+	client.refreshConfigurationRevision()
+	return response, handled
+}
+
+func (e *filterCommandEngine) handleOwned(client *Client, line string) (string, bool) {
 	tokens := strings.Fields(strings.TrimSpace(line))
 	if len(tokens) == 0 {
 		return "", false
@@ -205,7 +218,7 @@ func (e *filterCommandEngine) Handle(client *Client, line string) (string, bool)
 		}
 		resp, mutated := e.execute(client, parsed)
 		if mutated {
-			if err := client.saveFilter(); err != nil {
+			if err := client.saveFilterOwned(); err != nil {
 				log.Printf("Warning: failed to persist filter for %s: %v", client.callsign, err)
 			}
 		}

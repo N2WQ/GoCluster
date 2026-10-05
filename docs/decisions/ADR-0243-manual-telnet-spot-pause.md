@@ -4,6 +4,13 @@
 - Date: 2026-10-04
 - Decision Origin: Design
 
+Refinement: [ADR-0246](ADR-0246-delivery-timed-human-readbacks.md) introduces
+writer-completion pauses for human configuration readbacks and synchronizes all
+pause mutators under one authority. Later processed PAUSE/RESUME commands still
+take precedence; invalid commands have no pause effects. This replaces the
+command-goroutine-only deadline ownership statement below while retaining the
+manual durations, stale-spot cutoff and no-replay contract.
+
 ## Context
 
 Telnet users need to pause live spots deliberately, independently of long

@@ -661,10 +661,10 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 		setFilterLines = appendListSection(setFilterLines, "Types:", append([]string{"DXBM"}, filterListTypes()...))
 		setFilterLines = appendNotes(setFilterLines, []string{
 			"DXBM maps CC band codes to BAND filters.",
-		}, helpMaxWidth)
+		})
 		setFilterLines = appendNotes(setFilterLines, []string{
 			"DXBM bands: 160, 80, 40, 30, 20, 17, 15, 12, 10, 6, 2 (1 if enabled).",
-		}, helpMaxWidth)
+		})
 		add("SET/FILTER", "SET/FILTER - Allow list-based filters.", setFilterLines)
 
 		unsetFilterLines := helpEntryLines(
@@ -909,6 +909,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 		}
 	}
 
+	installConfigurationHelp(&catalog, dialect)
 	return catalog
 }
 
@@ -1049,7 +1050,7 @@ func helpEntryLines(summary string, usage []string, aliases []string, notes []st
 	lines := []string{summary}
 	lines = appendUsageLines(lines, usage)
 	lines = appendAliases(lines, aliases, helpMaxWidth)
-	lines = appendNotes(lines, notes, helpMaxWidth)
+	lines = appendNotes(lines, notes)
 	return lines
 }
 
@@ -1075,13 +1076,13 @@ func appendAliases(lines []string, aliases []string, width int) []string {
 	return lines
 }
 
-func appendNotes(lines []string, notes []string, width int) []string {
+func appendNotes(lines []string, notes []string) []string {
 	if len(notes) == 0 {
 		return lines
 	}
 	lines = append(lines, "Notes:")
 	for _, note := range notes {
-		lines = append(lines, wrapTextLines(note, width, "  ")...)
+		lines = append(lines, wrapTextLines(note, "  ")...)
 	}
 	return lines
 }
@@ -1121,22 +1122,19 @@ func wrapLabelList(label string, items []string, width int) []string {
 	return lines
 }
 
-func wrapTextLines(text string, width int, indentNext string) []string {
+func wrapTextLines(text string, indentNext string) []string {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil
 	}
 	const indentFirst = "  "
-	if width <= 0 {
-		return []string{indentFirst + text}
-	}
 	words := strings.Fields(text)
 	if len(words) == 0 {
 		return nil
 	}
 	lines := []string{}
 	line := indentFirst
-	limit := width
+	limit := helpMaxWidth
 	for _, word := range words {
 		if line == indentFirst || strings.TrimSpace(line) == "" {
 			if len(line)+len(word) > limit {
@@ -1195,11 +1193,11 @@ func filterHelpLines(dialect string) []string {
 		"C - The call was corrected.",
 		"B - A correction was attempted, but base-call or CTY validation failed, so the original call was kept.",
 	} {
-		lines = append(lines, wrapTextLines(note, helpMaxWidth, "    ")...)
+		lines = append(lines, wrapTextLines(note, "    ")...)
 	}
 	lines = append(lines, "", "Event filters:")
-	lines = append(lines, wrapTextLines("EVENT recognizes the taxonomy EVENT families as standalone comment tokens or acronym-prefixed references such as POTA-1234. Only the event family is filtered; the reference remains in the comment.", helpMaxWidth, "    ")...)
-	lines = append(lines, wrapTextLines("Spots with no recognized EVENT tag are not affected by EVENT filters, including REJECT EVENT ALL.", helpMaxWidth, "    ")...)
+	lines = append(lines, wrapTextLines("EVENT recognizes the taxonomy EVENT families as standalone comment tokens or acronym-prefixed references such as POTA-1234. Only the event family is filtered; the reference remains in the comment.", "    ")...)
+	lines = append(lines, wrapTextLines("Spots with no recognized EVENT tag are not affected by EVENT filters, including REJECT EVENT ALL.", "    ")...)
 	if strings.EqualFold(strings.TrimSpace(dialect), "cc") {
 		ccModeLine := "SET/<MODE> | SET/NO<MODE> (" + strings.Join(spot.CCShortcutModes(), ", ") + ")"
 		lines = append(lines,
@@ -1244,7 +1242,7 @@ func pathGlyphHelpLines(cfg PathGlyphHelpConfig) []string {
 		fmt.Sprintf("%s - CLOSED: VOACAP fallback predicts closed SNR, or native 160m fallback marks endpoint daylight or a low-darkness 160m path as a solar proxy.", quoteHelpGlyph(cfg.Closed)),
 		"PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, CLOSED, INSUFFICIENT.",
 	} {
-		lines = append(lines, wrapTextLines(note, helpMaxWidth, "    ")...)
+		lines = append(lines, wrapTextLines(note, "    ")...)
 	}
 	return lines
 }

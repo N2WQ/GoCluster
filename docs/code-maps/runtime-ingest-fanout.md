@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `7fd8fce58696b005`
+- Source fingerprint: `4d348b7d852930b3`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -11,11 +11,11 @@
 
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
-| `dxcluster/commands` | `commands` | 1 | 3 |
+| `dxcluster/commands` | `commands` | 2 | 4 |
 | `dxcluster/internal/cluster` | `internal/cluster` | 25 | 58 |
 | `dxcluster/peer` | `peer` | 62 | 126 |
 | `dxcluster/spot` | `spot` | 32 | 31 |
-| `dxcluster/telnet` | `telnet` | 15 | 35 |
+| `dxcluster/telnet` | `telnet` | 28 | 48 |
 
 ## In-Scope Package Edges
 
@@ -94,9 +94,11 @@
 ### `dxcluster/commands`
 
 Source files:
+- `commands/configuration_help.go`
 - `commands/processor.go`
 
 Test files:
+- `commands/configuration_help_test.go`
 - `commands/preset_help_test.go`
 - `commands/processor_test.go`
 - `commands/readme_sync_test.go`
@@ -457,15 +459,28 @@ Test files:
 
 Source files:
 - `telnet/bulletin_dedupe.go`
+- `telnet/configuration_capabilities.go`
+- `telnet/configuration_publish.go`
+- `telnet/configuration_readback.go`
+- `telnet/configuration_render.go`
+- `telnet/configuration_session.go`
+- `telnet/configuration_transaction.go`
 - `telnet/events.go`
 - `telnet/filter_commands.go`
 - `telnet/latency.go`
 - `telnet/login_validation.go`
+- `telnet/machine_commands.go`
+- `telnet/machine_input.go`
+- `telnet/machine_schema.go`
+- `telnet/machine_schema_fields.go`
+- `telnet/machine_upload.go`
+- `telnet/machine_validation.go`
 - `telnet/peer_membership.go`
 - `telnet/preset_commands.go`
 - `telnet/qualification_observer.go`
 - `telnet/qualification_observer_disabled.go`
 - `telnet/qualification_stage.go`
+- `telnet/readback_pause.go`
 - `telnet/reuseaddr_other.go`
 - `telnet/reuseaddr_windows.go`
 - `telnet/server.go`
@@ -474,6 +489,10 @@ Source files:
 
 Test files:
 - `telnet/bulletin_dedupe_test.go`
+- `telnet/configuration_handoff_test.go`
+- `telnet/configuration_publish_test.go`
+- `telnet/configuration_readback_test.go`
+- `telnet/configuration_session_test.go`
 - `telnet/dedupe_collision_test.go`
 - `telnet/dedupe_policy_test.go`
 - `telnet/diag_command_test.go`
@@ -482,14 +501,23 @@ Test files:
 - `telnet/handshake_mode_test.go`
 - `telnet/handshake_transcript_test.go`
 - `telnet/latency_test.go`
+- `telnet/machine_commands_test.go`
+- `telnet/machine_deadline_lifecycle_test.go`
+- `telnet/machine_input_test.go`
+- `telnet/machine_schema_test.go`
+- `telnet/machine_session_test.go`
+- `telnet/machine_upload_test.go`
 - `telnet/path_settings_test.go`
 - `telnet/peer_membership_test.go`
 - `telnet/prelogin_gate_test.go`
 - `telnet/preset_commands_test.go`
+- `telnet/preset_transaction_test.go`
 - `telnet/qualification_observer_test.go`
 - `telnet/qualification_stage_test.go`
 - `telnet/read_pause_command_test.go`
 - `telnet/read_pause_test.go`
+- `telnet/readback_pause_test.go`
+- `telnet/readback_writer_test.go`
 - `telnet/readline_test.go`
 - `telnet/server_broadcast_worker_test.go`
 - `telnet/server_filter_test.go`
@@ -513,6 +541,9 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0246](docs/decisions/ADR-0246-delivery-timed-human-readbacks.md) | Accepted | 2026-10-05 | telnet, commands, writer, pause, bounded output | `area:commands, area:telnet, path:telnet` |
+| [ADR-0245](docs/decisions/ADR-0245-machine-yaml-configuration.md) | Accepted | 2026-10-05 | telnet, protocol, schema, transactions, bounded resources | `area:telnet, path:commands, path:telnet` |
+| [ADR-0244](docs/decisions/ADR-0244-exact-configuration-persistence.md) | Accepted | 2026-10-05 | filter, telnet, persistence, lifecycle, presets | `area:telnet, path:commands, path:telnet` |
 | [ADR-0243](docs/decisions/ADR-0243-manual-telnet-spot-pause.md) | Accepted | 2026-10-04 | telnet, commands, deadlines, supportability | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0241](docs/decisions/ADR-0241-peer-frame-payload-and-comment-framing.md) | Accepted | 2026-10-04 | peer, protocol, framing, admission, compatibility | `area:peer, path:internal/cluster, path:peer` |
 | [ADR-0240](docs/decisions/ADR-0240-peer-dxspider-date-admission.md) | Accepted | 2026-10-04 | peer, protocol, date, admission, compatibility | `area:peer, path:peer` |

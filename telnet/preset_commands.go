@@ -11,9 +11,7 @@ import (
 	"time"
 
 	"dxcluster/filter"
-	"dxcluster/pathreliability"
 	"dxcluster/spot"
-	"dxcluster/strutil"
 )
 
 type presetCommand struct{ verb, name string }
@@ -65,8 +63,16 @@ func (s *Server) handlePresetCommand(client *Client, line string) (string, bool)
 	if s == nil || client == nil || client.filter == nil || strings.TrimSpace(client.callsign) == "" {
 		return "Preset settings unavailable.\n", true
 	}
+	release, err := s.acquireConfiguration(client, false, false, time.Time{})
+	if err != nil {
+		return presetError(command.verb, command.name, err), true
+	}
+	defer release()
 	switch command.verb {
 	case "SAVE":
+		if client.recordProtected {
+			return presetError(command.verb, command.name, errProtectedRecord), true
+		}
 		set, err := client.presetSnapshot()
 		if err == nil {
 			err = filter.SavePreset(client.callsign, command.name, set)
@@ -74,6 +80,11 @@ func (s *Server) handlePresetCommand(client *Client, line string) (string, bool)
 		if err != nil {
 			return presetError(command.verb, command.name, err), true
 		}
+		ref := &filter.PresetReference{Name: command.name, Baseline: set}
+		if err := s.persistConfiguration(client, filter.ConfigurationFromPreset(set), ref); err != nil {
+			return fmt.Sprintf("Saved preset %s, but could not persist its association for %s.\nPrevious preset association and baseline retained.\n", command.name, client.callsign), true
+		}
+		client.presetReference = ref
 		return fmt.Sprintf("Saved preset %s for %s.\n", command.name, spot.NormalizeOwnCallsign(client.callsign)), true
 	case "LIST":
 		names, err := filter.ListPresets(client.callsign)
@@ -86,7 +97,7 @@ func (s *Server) handlePresetCommand(client *Client, line string) (string, bool)
 		}
 		return header + strings.Join(names, "\n") + "\n", true
 	case "LOAD":
-		return s.loadPreset(client, command.name, filter.SaveUserPreferences), true
+		return s.loadPresetOwned(client, command.name), true
 	case "DELETE":
 		if err := filter.DeletePreset(client.callsign, command.name); err != nil {
 			return presetError(command.verb, command.name, err), true
@@ -103,82 +114,82 @@ func presetError(verb, name string, err error) string {
 	return fmt.Sprintf("%s PRESET failed: %v\n", verb, err)
 }
 
-// The session goroutine owns preference mutations. Broadcast readers share
-// filter/path/solar state through the existing locks; Clone detaches every map,
-// slice and toggle before persistence can outlive those read locks.
+// The caller owns the transaction stripe. Capture preflights the independent
+// preset budget before detaching maps/lists; configured defaults remain exact.
 func (c *Client) presetSnapshot() (*filter.SavedPreset, error) {
-	state := c.pathSnapshot()
-	solarMinutes := c.getSolarSummaryMinutes()
-	c.filterMu.RLock()
-	defer c.filterMu.RUnlock()
-	set := &filter.SavedPreset{
-		Filter: *c.filter, Dialect: string(c.dialect), DedupePolicy: c.getDedupePolicy().label(),
-		Grid: state.grid, NoiseClass: state.noiseClass,
-		PathMinObservationCount: state.pathMinObservationCount, SolarSummaryMinutes: solarMinutes,
+	cfg, err := c.captureConfiguration(filter.MaxPresetBytes)
+	if err != nil {
+		return nil, fmt.Errorf("preset exceeds %d KiB", filter.MaxPresetBytes/1024)
 	}
-	return set.Clone()
+	return cfg.Preset()
 }
 
 func (s *Server) preparePreset(client *Client, set *filter.SavedPreset, now time.Time) (*Client, string) {
-	prepared := &Client{filter: &set.Filter, dialect: normalizeDialectName(set.Dialect)}
-	requested := parseDedupePolicy(set.DedupePolicy)
-	policy := s.resolveDedupePolicy(requested)
-	prepared.setDedupePolicy(policy)
-	prepared.grid = strutil.NormalizeUpper(set.Grid)
-	if prepared.grid == "" && s.gridLookup != nil {
-		if grid, derived, ok := s.gridLookup(client.callsign); ok {
-			prepared.grid = strutil.NormalizeUpper(grid)
-			prepared.gridDerived = derived
-		}
-	}
-	prepared.gridCell = pathreliability.EncodeCell(prepared.grid)
-	prepared.gridCoarseCell = pathreliability.EncodeCoarseCell(prepared.grid)
-	prepared.noiseClass = strutil.NormalizeUpper(set.NoiseClass)
-	if prepared.noiseClass == "" {
-		prepared.noiseClass = "QUIET"
-	}
-	if set.PathMinObservationCount > s.pathPredictorMinObservationCount() {
-		prepared.pathMinObservationCount = set.PathMinObservationCount
-	}
-	prepared.setSolarSummaryMinutes(set.SolarSummaryMinutes, now)
-	warning, _ := applyNearbyLoginState(prepared, s.nearbyLoginWarning)
-	if policy != requested {
-		warning += fmt.Sprintf("Note: dedupe %s unavailable; using %s.\n", requested.label(), policy.label())
-	}
+	prepared, warning := s.prepareConfiguration(client, filter.ConfigurationFromPreset(set), now)
+	warning = strings.ReplaceAll(warning, "; effective dedupe is ", "; using ")
 	return prepared, warning
 }
 
-func (s *Server) loadPreset(client *Client, name string, persist func(string, *filter.SavedPreset, []string) error) string {
+func (s *Server) loadPresetOwned(client *Client, name string) string {
+	if client.recordProtected {
+		return presetError("LOAD", name, errProtectedRecord)
+	}
 	set, err := filter.LoadPreset(client.callsign, name)
 	if err != nil {
 		return presetError("LOAD", name, err)
 	}
 	now := time.Now().UTC()
 	prepared, warning := s.preparePreset(client, set, now)
-	preferences := &filter.SavedPreset{
-		Filter: *prepared.filter, Dialect: string(prepared.dialect), DedupePolicy: prepared.getDedupePolicy().label(),
-		Grid: prepared.grid, NoiseClass: prepared.noiseClass,
-		PathMinObservationCount: prepared.pathMinObservationCount, SolarSummaryMinutes: prepared.getSolarSummaryMinutes(),
+	applied := filter.ConfigurationFromPreset(set)
+	if applied.Settings.DedupePolicy != "" && applied.Settings.DedupePolicy != prepared.getDedupePolicy().label() {
+		if !strings.Contains(warning, "Note: dedupe ") {
+			warning += fmt.Sprintf("Note: stored dedupe choice unavailable; using %s.\n", prepared.getDedupePolicy().label())
+		}
+		applied.Settings.DedupePolicy = prepared.getDedupePolicy().label()
 	}
-	if err := persist(client.callsign, preferences, client.recentIPs); err != nil {
+	if applied.Settings.Dialect != "" && applied.Settings.Dialect != string(prepared.dialect) {
+		warning += fmt.Sprintf("Note: stored dialect applied as %s.\n", strings.ToUpper(string(prepared.dialect)))
+		applied.Settings.Dialect = string(prepared.dialect)
+	}
+	if applied.Settings.PathMinObservationCount != prepared.pathMinObservationCount {
+		warning += fmt.Sprintf("Note: PATHSAMPLES %d unavailable; using the cluster default.\n", applied.Settings.PathMinObservationCount)
+		applied.Settings.PathMinObservationCount = prepared.pathMinObservationCount
+	}
+	acknowledgement := fmt.Sprintf("Loaded preset %s; defaults saved for %s.\n", name, client.callsign)
+	if !presetAcknowledgementFits(acknowledgement, warning) {
+		return presetError("LOAD", name, errReadbackTooLarge)
+	}
+	baseline, err := applied.Preset()
+	if err != nil {
 		return presetError("LOAD", name, err)
 	}
-	// Keep the Filter pointer stable: fan-out/history readers retain it between
-	// read-lock sections. All fallible preparation and disk work is already done.
-	client.pathMu.Lock()
-	client.filterMu.Lock()
-	*client.filter = *prepared.filter
-	client.grid = prepared.grid
-	client.gridDerived = prepared.gridDerived
-	client.gridCell = prepared.gridCell
-	client.gridCoarseCell = prepared.gridCoarseCell
-	client.noiseClass = prepared.noiseClass
-	client.pathMinObservationCount = prepared.pathMinObservationCount
-	client.dialect = prepared.dialect
-	client.setDedupePolicy(prepared.getDedupePolicy())
-	// Schedule from publication time so slow disk I/O cannot install a past tick.
-	client.setSolarSummaryMinutes(prepared.getSolarSummaryMinutes(), time.Now().UTC())
-	client.filterMu.Unlock()
-	client.pathMu.Unlock()
-	return fmt.Sprintf("Loaded preset %s; defaults saved for %s.\n", name, client.callsign) + warning
+	ref := &filter.PresetReference{Name: name, Baseline: baseline}
+	if err := s.persistConfiguration(client, applied, ref); err != nil {
+		return presetError("LOAD", name, err)
+	}
+	s.publishPreparedConfiguration(client, applied, prepared, ref, time.Now().UTC(), true)
+	return acknowledgement + warning
+}
+
+// LOAD admits the acknowledgement, independently of a complete CONFIG readback.
+// Count the writer's CRLF expansion before concatenating a success response.
+func presetAcknowledgementFits(parts ...string) bool {
+	remaining := maxYAMLBytes
+	previousCR := false
+	for _, part := range parts {
+		if len(part) > remaining {
+			return false
+		}
+		remaining -= len(part)
+		for i := range len(part) {
+			if part[i] == '\n' && !previousCR {
+				if remaining == 0 {
+					return false
+				}
+				remaining--
+			}
+			previousCR = part[i] == '\r'
+		}
+	}
+	return true
 }

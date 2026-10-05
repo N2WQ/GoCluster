@@ -4,6 +4,12 @@
 - Date: 2026-10-03
 - Decision Origin: Design
 
+Refinement: [ADR-0244](ADR-0244-exact-configuration-persistence.md) adds exact
+versioned storage, the applied preset baseline, atomic ordinary records and
+full per-SSID session handoff protection. Its continuity contract replaces the
+earlier unchanged autosave/session-replacement limitation below; shared preset
+ownership and library budgets remain accepted.
+
 ## Context
 
 Telnet preferences are automatically stored per full login callsign, including

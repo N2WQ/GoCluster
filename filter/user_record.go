@@ -7,14 +7,17 @@
 package filter
 
 import (
-	"dxcluster/strutil"
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
+	"dxcluster/strutil"
 	"gopkg.in/yaml.v3"
 )
 
@@ -23,10 +26,12 @@ const maxRecentIPs = 5
 // UserRecord stores per-callsign metadata that should survive across sessions.
 // The Filter fields are inline so legacy files that only contain filters still load.
 type UserRecord struct {
-	Filter       `yaml:",inline"`
-	RecentIPs    []string `yaml:"recent_ips,omitempty"`
-	Dialect      string   `yaml:"dialect,omitempty"`
-	DedupePolicy string   `yaml:"dedupe_policy,omitempty"`
+	ConfigurationVersion int `yaml:"configuration_version,omitempty"`
+	Filter               `yaml:",inline"`
+	Preset               *PresetReference `yaml:"preset,omitempty"`
+	RecentIPs            []string         `yaml:"recent_ips,omitempty"`
+	Dialect              string           `yaml:"dialect,omitempty"`
+	DedupePolicy         string           `yaml:"dedupe_policy,omitempty"`
 	// LastLoginUTC records the timestamp of the previous successful login (UTC).
 	LastLoginUTC time.Time `yaml:"last_login_utc,omitempty"`
 	Grid         string    `yaml:"grid,omitempty"`        // Optional user-supplied grid (uppercased)
@@ -38,7 +43,8 @@ type UserRecord struct {
 }
 
 // LoadUserRecord loads a persisted user record by callsign.
-// Key aspects: Normalizes defaults and trims recent IPs; returns os.ErrNotExist if missing.
+// Key aspects: Migrates only legacy defaults and trims recent IPs; marked values
+// remain exact. Missing files return os.ErrNotExist; malformed/future files fail.
 // Upstream: LoadUserFilter, TouchUserRecordIP, telnet login flows.
 // Downstream: yaml.Unmarshal, trimRecentIPs, Filter normalization helpers.
 func LoadUserRecord(callsign string) (*UserRecord, error) {
@@ -51,22 +57,64 @@ func LoadUserRecord(callsign string) (*UserRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	var record UserRecord
-	if err := yaml.Unmarshal(bs, &record); err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(bs))
+	var document yaml.Node
+	if err := decoder.Decode(&document); err != nil {
 		return nil, err
 	}
-	record.migrateLegacyConfidence()
-	record.normalizeDefaults()
-	record.RecentIPs = trimRecentIPs(record.RecentIPs)
-	if strings.TrimSpace(record.Dialect) == "" {
-		record.Dialect = "go"
+	if len(document.Content) != 1 {
+		return nil, errors.New("user record must contain one YAML mapping")
 	}
-	record.DedupePolicy = NormalizeDedupePolicy(record.DedupePolicy)
-	record.Grid = strutil.NormalizeUpper(record.Grid)
-	record.NoiseClass = strutil.NormalizeUpper(record.NoiseClass)
-	record.PathMinObservationCount = normalizePathMinObservationCount(record.PathMinObservationCount)
-	record.SolarSummaryMinutes = normalizeSolarSummaryMinutes(record.SolarSummaryMinutes)
+	var record UserRecord
+	if err := record.UnmarshalYAML(document.Content[0]); err != nil {
+		return nil, err
+	}
+	var extra yaml.Node
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		return nil, errors.New("user record must contain one YAML document")
+	}
+	record.RecentIPs = trimRecentIPs(record.RecentIPs)
 	return &record, nil
+}
+
+// UnmarshalYAML preserves marked records exactly. Only an absent marker invokes
+// the historic migrations/defaults; explicit zero/null/future markers fail.
+func (record *UserRecord) UnmarshalYAML(node *yaml.Node) error {
+	version, err := storedConfigurationVersion(node)
+	if err != nil {
+		return err
+	}
+	if version != 0 {
+		if err := validateStoredMapping(node, reflect.TypeFor[UserRecord]()); err != nil {
+			return err
+		}
+		if err := validateCurrentStoredValues(node, reflect.TypeFor[UserRecord]()); err != nil {
+			return err
+		}
+	}
+	type plain UserRecord
+	var decoded plain
+	if err := node.Decode(&decoded); err != nil {
+		return err
+	}
+	if decoded.ConfigurationVersion != version {
+		return fmt.Errorf("%w: marker must be an explicit field", ErrUnsupportedConfigurationVersion)
+	}
+	*record = UserRecord(decoded)
+	if version == 0 {
+		record.migrateLegacyConfidence()
+		record.normalizeDefaults()
+		if strings.TrimSpace(record.Dialect) == "" {
+			record.Dialect = "go"
+		}
+		record.DedupePolicy = NormalizeDedupePolicy(record.DedupePolicy)
+		record.Grid = strutil.NormalizeUpper(record.Grid)
+		record.NoiseClass = strutil.NormalizeUpper(record.NoiseClass)
+		record.PathMinObservationCount = normalizePathMinObservationCount(record.PathMinObservationCount)
+		record.SolarSummaryMinutes = normalizeSolarSummaryMinutes(record.SolarSummaryMinutes)
+	}
+	record.ConfigurationVersion = CurrentConfigurationVersion
+	return nil
 }
 
 // TouchUserRecordIP updates recent IP history for a callsign and persists it.
@@ -136,7 +184,7 @@ func TouchUserRecordLoginWithDefaultDedupe(callsign, ip string, loginTime time.T
 	record.RecentIPs = UpdateRecentIPs(record.RecentIPs, ip)
 	record.LastLoginUTC = loginTime
 	if err := SaveUserRecord(callsign, record); err != nil {
-		return nil, created, time.Time{}, "", err
+		return record, created, prevLogin, prevIP, err
 	}
 	return record, created, prevLogin, prevIP, nil
 }
@@ -144,8 +192,12 @@ func TouchUserRecordLoginWithDefaultDedupe(callsign, ip string, loginTime time.T
 // SaveUserRecord persists a user record to disk.
 // Key aspects: Ensures data dir exists; trims recent IP list.
 // Upstream: SaveUserFilter, TouchUserRecordIP.
-// Downstream: yaml.Marshal, os.WriteFile, userRecordPath.
+// Downstream: yaml.Marshal, atomic replacement, userRecordPath.
 func SaveUserRecord(callsign string, record *UserRecord) error {
+	return saveUserRecord(callsign, record, writeAtomicUserFile)
+}
+
+func saveUserRecord(callsign string, record *UserRecord, write func(string, []byte) error) error {
 	if record == nil {
 		return errors.New("nil user record")
 	}
@@ -153,19 +205,25 @@ func SaveUserRecord(callsign string, record *UserRecord) error {
 	if callsign == "" {
 		return errors.New("empty callsign")
 	}
-	if err := os.MkdirAll(UserDataDir, 0o755); err != nil {
+	if record.ConfigurationVersion != 0 && record.ConfigurationVersion != CurrentConfigurationVersion {
+		return ErrUnsupportedConfigurationVersion
+	}
+	// Preserve the caller's captured preferences and baseline. Metadata trimming
+	// applies to this local copy; a failed write cannot alter the live reference.
+	snapshot := *record
+	snapshot.ConfigurationVersion = CurrentConfigurationVersion
+	snapshot.RecentIPs = trimRecentIPs(snapshot.RecentIPs)
+	var err error
+	snapshot.Preset, err = snapshot.Preset.Clone()
+	if err != nil {
 		return err
 	}
-	record.RecentIPs = trimRecentIPs(record.RecentIPs)
-	record.DedupePolicy = NormalizeDedupePolicy(record.DedupePolicy)
-	record.PathMinObservationCount = normalizePathMinObservationCount(record.PathMinObservationCount)
-	record.SolarSummaryMinutes = normalizeSolarSummaryMinutes(record.SolarSummaryMinutes)
-	bs, err := yaml.Marshal(record)
+	bs, err := yaml.Marshal(&snapshot)
 	if err != nil {
 		return err
 	}
 	path := userRecordPath(callsign)
-	return os.WriteFile(path, bs, 0o644)
+	return write(path, bs)
 }
 
 // UpdateRecentIPs updates recent IP history with a new address.

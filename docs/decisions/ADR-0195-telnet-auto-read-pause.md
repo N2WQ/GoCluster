@@ -8,6 +8,13 @@ Refinement: [ADR-0243](ADR-0243-manual-telnet-spot-pause.md) adds manual `PAUSE`
 defines active-pause deadline precedence, and exempts pause-control replies from
 the automatic trigger. The other decisions here remain accepted.
 
+Further refinement: [ADR-0246](ADR-0246-delivery-timed-human-readbacks.md) gives
+the new human configuration readbacks a pause from acceptance through delivery,
+then a full reading interval after successful write and flush. Those readbacks
+ignore the row threshold and use 30 seconds when duration is zero. Machine YAML
+commands have no pause effects. The generic automatic trigger above remains
+the contract for other human responses.
+
 ## Context
 
 Telnet users can run commands that intentionally return many rows, including

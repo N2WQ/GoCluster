@@ -20,6 +20,19 @@ This directory owns the telnet session layer: login flow, prompt handling, filte
 - Dialect choice and filter state are persisted per callsign.
 - If `NEARBY` is active, the login greeting warns the user.
 
+Restoration uses the full login call, including its SSID. Configuration,
+associated preset name and its reference snapshot stay consistent through
+replacement of an older connection. An old session cannot overwrite the new
+session's record, including through a save already underway during reconnect.
+
+If a valid record is restored but updating the login timestamp/IP fails, login
+continues with those preferences and a warning. If the record itself is
+unreadable or has an unsupported format, login uses protected temporary
+defaults without overwriting that record. Human preference changes are
+temporary; readbacks remain available. SAVE PRESET is rejected before any
+library write, and LOAD PRESET and PUT/PATCH cannot commit configuration.
+LIST/DELETE retain their separate preset-library behavior.
+
 The handshake transcript tests in this package cover the visible login sequence.
 
 ## Spot Line Format
@@ -82,6 +95,256 @@ or archive records.
 spots and archive-backed history queries. Local self-spot bypasses still honor
 `REJECT TOXIC` once a spot is classified as `TOXIC`.
 
+## Human Configuration Readbacks
+
+| Command | Response |
+| --- | --- |
+| `SHOW FILTER` | All 23 categories, with allow/block flags, enabled-entry counts, pattern counts and toggles. |
+| `SHOW FILTER FULL` | Every exact rule and selection in every category. |
+| `SHOW FILTER <category>` | Every exact value for one category. |
+| `SHOW SETTINGS` | Configured preferences, effective behavior, session controls and server defaults. |
+
+`SHOW/FILTER` and `SH/FILTER` accept the same FULL/category arguments in the
+`cc` dialect. The category names are BAND, MODE, SOURCE, EVENT, CONFIDENCE,
+PATH, DXCONT, DECONT, DXZONE, DEZONE, DXGRID2, DEGRID2, DXDXCC, DEDXCC, DXCALL,
+DECALL, BEACON, WWV, WCY, ANNOUNCE, SELF, TOXIC and NEARBY. CONF is an alias
+for CONFIDENCE, and PC93 is an alias for ANNOUNCE.
+
+The overview counts configured entries, including entries set to `false`.
+For example, `allow=1/2 enabled` reports two saved entries with one enabled.
+EVENT counts are labelled `true` because EVENT matching uses key presence:
+an EVENT entry set to `false` still participates in matching. Its readback
+includes a note explaining this existing behavior.
+FULL and category responses preserve both values and all allow/block flags:
+
+```text
+> SHOW FILTER BAND
+FILTER for W1ABC-1
+Preset: CONTEST (modified)
+BAND:
+  allow_all: false
+  block_all: false
+  allow: {"20m": true, "40m": false}
+  block: {"80m": true}
+Live spots paused during delivery and for at least 30s after delivery. Type RESUME to resume now.
+Missed spots are not replayed.
+```
+
+`SHOW FILTER FULL` uses that exact format for each rule category, displays
+ordered allow/block lists for DXCALL/DECALL, and includes all feature toggles.
+`DEFAULT` remains distinct from explicit `true` or `false`. NEARBY reports its
+configured selection and whether it is effectively active. No successful FULL
+response omits a value. The [landing-page examples](../README.md#output-examples)
+show a complete overview and a complete SETTINGS response.
+
+`SHOW SETTINGS` shows an empty configured preference as `DEFAULT (empty)`
+while displaying its effective choice separately. PATHSAMPLES zero means the
+cluster minimum; SOLAR zero means OFF. Diagnostics, pause state and temporary
+defaults are session status, not saved configuration. The preset row appears
+in both human views. Its `(modified)` flag compares preferences with the
+applied/saved reference snapshot described below.
+
+Every human readback, including a size error, always suppresses live spots
+from command acceptance, before preparation or any transaction wait, through
+queueing and delivery. It then provides the full reading interval after a
+successful server write and flush. This does not measure terminal rendering.
+The positive configured pause duration is used; zero selects 30 seconds for
+these commands. The row threshold is ignored, including zero. A longer active
+pause is preserved. Later valid, processed PAUSE/RESUME commands supersede
+earlier pending completion effects; a subsequent human readback starts a fresh
+hold. Suppressed counts carry from delivery into the reading interval.
+
+Each complete response is limited to 65,536 bytes after CRLF conversion,
+including its header and human footer. Generation either completes within
+the limit or returns an explicit error. Compact counts do not build all the
+detailed rule strings first.
+
+## Client YAML Configuration
+
+The following canonical commands work independently of the human dialect:
+
+| Command | Purpose |
+| --- | --- |
+| `GET YAML FILTER [ID <id>]` | Read every exact filter value. |
+| `GET YAML SETTINGS [ID <id>]` | Read all writable settings. |
+| `GET YAML CONFIG [ID <id>]` | Read filters and settings together in one consistent snapshot. |
+| `GET YAML CAPABILITIES [ID <id>]` | Discover version, fields, supported choices, availability and limits. |
+| `PUT YAML FILTER`, `PUT YAML SETTINGS`, `PUT YAML CONFIG` | Replace the complete writable resource. |
+| `PATCH YAML FILTER`, `PATCH YAML SETTINGS`, `PATCH YAML CONFIG` | Change supplied fields, preserving omissions. |
+| `VALIDATE YAML CONFIG` | Check a complete proposal without applying or saving it. |
+
+GET replies contain `schema_version`, `request_id`, `resource`, an opaque
+`revision`, `configuration` and read-only `status`. GET assigns an ID if it is
+omitted; a supplied ID preserves case and must contain 1-32 ASCII letters,
+digits or hyphens. See the [complete SETTINGS envelope](../README.md#client-yaml-configuration)
+for an example with all status fields.
+
+FILTER's writable `configuration` directly contains the filter fields;
+SETTINGS directly contains setting fields. CONFIG contains `filters` and
+`settings` mappings. Extract that writable section when creating a new upload;
+do not send the GET envelope's resource, revision or status fields as writable
+data. Preset association, effective choices, server defaults, diagnostics and
+pause state cannot be set through a configuration upload. The preset reference
+snapshot itself is not exposed in GET.
+CAPABILITIES is a read-only discovery resource; its `configuration` section
+describes the protocol rather than writable preferences.
+
+### Writable Values
+
+| Resource fields | Representation |
+| --- | --- |
+| `bands`, `modes`, `sources`, `events`, `confidence`, `path_classes`, `dx_continents`, `de_continents`, `dx_grid2`, `de_grid2` | RuleSet: `allow_all`/`block_all` booleans and `allow`/`block` maps of string keys to booleans. |
+| `dx_zones`, `de_zones`, `dx_dxcc`, `de_dxcc` | The same four RuleSet members, with integer rule keys. |
+| `dx_callsigns`, `block_dx_callsigns`, `de_callsigns`, `block_de_callsigns` | Ordered string lists; duplicate patterns are preserved. |
+| `include_beacons`, `allow_wwv`, `allow_wcy`, `allow_announce`, `allow_self`, `allow_toxic` | Explicit `true`, explicit `false` or the string `DEFAULT`. |
+| `nearby_enabled` | Boolean. |
+| `dialect`, `grid`, `noise_class`, `dedupe_policy` | Strings; an empty string preserves the explicit default/lookup selection. |
+| `path_min_observation_count` | Integer; zero uses the cluster minimum. |
+| `solar_summary_minutes` | Integer: 0, 15, 30 or 60; zero means OFF. |
+
+Use canonical keys and the choices from CAPABILITIES. Both enabled and disabled
+map entries are stored exactly. Preserve explicit false, zero, empty values,
+empty collections and DEFAULT during a GET/edit/PUT cycle. Named preset
+normalization is not machine validation: unknown or unavailable choices, such
+as SLOW when disabled, fail unchanged rather than substituting another choice.
+EVENT maps use key presence rather than their stored boolean values. To remove
+an EVENT rule, supply its complete map without that key; setting it to `false`
+keeps the rule present. The existing all-selection flags still apply.
+
+PUT requires every field in its resource, including all four members of every
+RuleSet. A missing field is an error. CONFIG requires complete filters and
+settings together. PATCH preserves omitted fields, including omitted RuleSet
+members. A supplied `bands.allow` replaces that entire map without merging
+individual entries; the remaining band members stay unchanged. Supplied lists
+replace the entire list, and `{}`/`[]` explicitly clear those collections.
+
+### Upload And Revision Examples
+
+A complete settings replacement uses the revision returned by your own GET:
+
+```text
+PUT YAML SETTINGS
+---
+schema_version: 1
+request_id: settings-Ab1
+if_revision: 7faea7039a0b47a1bb8e462157b4c621-3
+configuration:
+  dialect: ""
+  grid: FN42
+  noise_class: URBAN
+  dedupe_policy: FAST
+  path_min_observation_count: 0
+  solar_summary_minutes: 0
+...
+```
+
+CONFIG can change a dependent setting and filter together:
+
+```text
+PATCH YAML CONFIG
+---
+schema_version: 1
+request_id: nearby-Ab1
+if_revision: 7faea7039a0b47a1bb8e462157b4c621-3
+configuration:
+  filters:
+    nearby_enabled: true
+  settings:
+    grid: FN42
+...
+```
+
+This succeeds only if the server can activate NEARBY for that grid. A PATCH
+can also replace just one rule map while retaining explicit false entries:
+
+```text
+PATCH YAML FILTER
+---
+schema_version: 1
+request_id: bands-Ab1
+if_revision: 7faea7039a0b47a1bb8e462157b4c621-3
+configuration:
+  bands:
+    allow: {20m: true, 40m: false}
+  dx_callsigns: ["W1*", "W1*"]
+  allow_wcy: DEFAULT
+...
+```
+
+Each example is a separate request; its sample revision is illustrative.
+PUT/PATCH require a matching revision, an opaque ASCII string of at most
+128 bytes. GET again after reconnect, server restart or a conflict before
+retrying. Pause, diagnostics and login metadata do not count as configuration
+edits. Reordering otherwise identical patterns does not change the revision
+or `(modified)`; the displayed order and duplicate multiplicity are retained.
+
+Uploads require `schema_version: 1`, `request_id` and `configuration`.
+PUT/PATCH additionally require `if_revision`. VALIDATE CONFIG requires the
+complete configuration; `if_revision` is optional because it does not write.
+Its result reports `valid: true`, `applied: false` and `persisted: false` on
+success. Successful writes report their operation, resulting revision and
+`applied: true`, `persisted: true`.
+
+Validation or persistence failure leaves both the live and durable
+configuration unchanged. Machine writes preserve the associated preset and
+reference; changing preferences can set or clear `(modified)`. Even an
+unchanged PUT persists before success, so an earlier failed human autosave can
+be repaired without resetting solar timing, NEARBY restoration, diagnostics
+or pause. A lost acknowledgement does not undo a committed write; GET again
+to discover the current revision and configuration.
+
+A fully received unavailable-choice request gets a framed error, for example:
+
+```yaml
+---
+schema_version: 1
+request_id: settings-Ab1
+resource: SETTINGS
+revision: 7faea7039a0b47a1bb8e462157b4c621-3
+error:
+  code: invalid_configuration
+  message: settings.dedupe_policy is unavailable on this server
+...
+```
+
+### Framing, Limits And Pause Behavior
+
+Send standalone `---` and `...` marker lines, terminated by LF or CRLF,
+around one ordinary YAML document. Body bytes preserve case and punctuation;
+terminal echo and editing controls do not modify the payload. Aliases,
+anchors, merge keys, custom tags, nulls, duplicate keys, unknown/read-only
+fields and additional documents are rejected. Numeric keys are checked for
+duplicates after interpretation, so `1` and `01` cannot select the same rule
+twice. Pattern-list duplicates are valid.
+
+The body limit is 65,536 bytes, excluding marker lines and counting actual
+LF/CRLF endings. The absolute reception deadline is 30 seconds from acceptance
+of a valid header. At most one watchdog belongs to an active reception; a
+completed buffered frame is still checked against that absolute deadline.
+Oversized bodies, deadline expiry, incomplete or unreliable framing, and
+malformed recognized PUT/PATCH/VALIDATE headers are terminal. Remaining bytes
+cannot return to ordinary command dispatch. A complete malformed GET header
+receives a framed error and remains usable; an early reader failure in any
+recognized machine header is terminal. A complete, reliably framed invalid
+document received before the deadline gets a YAML error and keeps the
+connection open.
+
+Every GET response, write/validation acknowledgement and error fits within
+65,536 final bytes after CRLF conversion, including all document markers and
+metadata. Each complete frame is queued as one control message, so spots and
+other messages can appear between documents but cannot enter a YAML document.
+Successful readbacks contain every value; oversized readbacks return an
+explicit error instead of truncation. PUT/PATCH/VALIDATE additionally require
+the resulting complete CONFIG readback to fit, reserving the maximum response
+metadata. A small PATCH to an oversized human-created configuration therefore
+fails until the configuration is reduced enough to permit complete readback.
+
+All machine operations, including success, validation and errors, have no
+pause-state effects and no human pause footer. An existing pause continues
+normally; suppressed-spot counts may increase as live traffic arrives.
+Ordinary commands and machine headers keep the configured command-line limit
+(128 bytes in the shipped config); only the framed body uses the larger limit.
+
 ## Named Presets
 
 These commands work in both `go` and `cc` dialects:
@@ -103,17 +366,47 @@ a letter or digit. They are case-insensitive and stored/displayed uppercase.
 Each callsign can keep 20 presets, each with at most 256 KiB of standalone YAML
 preferences. Replacement is allowed at capacity; a new name requires deleting
 another preset. Presets remain independent snapshots after later preference
-changes.
+changes. The collection read limit remains 8 MiB. A valid preset can LOAD even
+when its complete FULL/YAML readback exceeds the separate 65,536-byte response
+budget; LOAD checks its acknowledgement rather than requiring CONFIG readback
+to fit.
 
 The snapshot includes every persistent filter field and toggle, `NEARBY`,
 dialect, dedupe policy, grid, noise class, path sample minimum and solar summary
 cadence. It excludes login/IP history, diagnostic mode, temporary read pause,
-and derived caches. LOAD uses existing preference normalization and server
+and derived caches. Legacy unmarked snapshots retain their migration rules;
+current-version snapshots preserve exact configured values. LOAD uses server
 restrictions: disabled dedupe policies use the enabled-policy fallback, and a
 path sample override only applies above the current cluster minimum. Grid/H3
 cells and the `NEARBY` location-filter restoration snapshot are rebuilt. Stored
 `NEARBY` remains inactive with a warning when usable cells are unavailable.
 Solar summaries start at the next wall-clock-aligned tick.
+
+Successful LOAD associates the name and establishes the successfully applied
+preferences as the reference. Server adjustments are reported separately.
+Successful SAVE associates the exact captured preferences that were written.
+Both human views and YAML status show `(modified)`/`modified: true` when the
+current preferences differ from that reference. Reversing changes clears it;
+this does not imply that every difference was caused by the user. Pause,
+diagnostics and a temporary NEARBY dedupe override do not affect it.
+
+The association and reference survive reconnect for the full callsign/SSID.
+Deleting or overwriting the named library entry leaves the already applied
+snapshot and reference intact. Failed LOAD preserves the previous preferences,
+association and reference, both live and on disk.
+
+SAVE has an explicit partial-success outcome when saving the library snapshot
+succeeds but persisting the SSID association fails:
+
+```text
+Saved preset CONTEST, but could not persist its association for W1ABC-1.
+Previous preset association and baseline retained.
+```
+
+The old association/reference remain recoverable from disk after reconnect,
+and every ordinary preference save preserves them. The saved library snapshot
+remains available. Protected temporary-defaults sessions reject SAVE before
+changing the library and reject LOAD before changing configuration.
 
 Ordinary per-SSID autosaving remains in place. Named collections are separate
 runtime data at `data/users/presets/<hex-encoded-baseline-call>.yaml` under
@@ -131,6 +424,26 @@ previous file intact; a failed LOAD leaves live settings and saved defaults
 unchanged. Malformed collections are not reset or overwritten automatically.
 Successful SAVE/DELETE logs include collection cardinality. Handled failures
 clean up their temporary files; a cleanup failure is logged for the operator.
+
+### Persistence Format And Rollback
+
+New records and snapshots carry `configuration_version: 1`. Only an absent
+marker selects legacy migration. Invalid markers, explicit zero and unknown
+future versions are rejected; unreadable/unsupported user records are protected
+by temporary-defaults sessions. Collections may contain supported legacy and
+current entries together, but an unsupported entry prevents library mutation
+without rewriting it.
+
+Per-SSID preference and association saves use synced, closed temporary files
+and atomic replacement. The configuration transaction covers reconnect's
+record read, login metadata update and registration, including competing older
+saves. It does not provide coordination between separate cluster processes.
+
+Back up `data/users` with writers stopped before upgrading, and stop writers
+before restoring a backup or changing server versions. An older user-record
+writer can discard association/version metadata and normalize exact values;
+an older preset reader may reject the new fields. Downgrade therefore requires
+a compatible backup rather than assuming the new records are interchangeable.
 
 ## Dedupe Policies
 
@@ -180,10 +493,19 @@ counts carry across an active pause; a new pause after expiry starts a fresh
 count. Pause state is temporary and is excluded from saved preferences and
 presets.
 
+Human configuration readbacks use the unconditional delivery/reading hold
+described above. Later valid PAUSE/RESUME controls override queued readback
+completion. All pause mutators share the same ordering authority, while YAML
+operations do not mutate that authority.
+
 Long command responses can temporarily pause live spot lines so users have time
 to read the response before the live stream scrolls it away. The shipped config
 uses `telnet.auto_read_pause_min_rows: 10` and
 `telnet.auto_read_pause_seconds: 30`.
+
+For those generic responses, either setting being zero disables the automatic
+trigger. Human FILTER/SETTINGS readbacks are the explicit exception: they
+ignore the row threshold and use 30 seconds when the duration is zero.
 
 - The threshold counts rendered output rows, not bytes.
 - Blank separator rows inside command output count because they scroll the
@@ -227,8 +549,8 @@ not trigger automatic pausing themselves.
 While `NEARBY` is active:
 
 - the regular location filters are suspended
-- attempts to change `DXGRID2`, `DEGRID2`, `DXCONT`, `DECONT`, `DXZONE`, `DEZONE`, `DXDXCC`, and `DEDXCC` are rejected with a warning
-- `SHOW FILTER` reports `NEARBY: ON (location filters suspended)`
+- human `PASS`/`REJECT` attempts to change `DXGRID2`, `DEGRID2`, `DXCONT`, `DECONT`, `DXZONE`, `DEZONE`, `DXDXCC`, and `DEDXCC` are rejected with a warning
+- `SHOW FILTER` reports the configured NEARBY boolean and `effective active=true`
 - spot delivery uses the least-suppressive available dedupe policy while usable grid-backed cells are present
 
 When `PASS NEARBY OFF` is used, the telnet layer restores the saved location-filter snapshot that existed before `NEARBY` was enabled.

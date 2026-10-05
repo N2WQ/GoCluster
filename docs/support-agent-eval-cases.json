@@ -1460,6 +1460,1038 @@
           ]
         }
       ]
+    },
+    {
+      "id": "SA-019",
+      "category": "configuration-human-readback",
+      "severity": "high",
+      "title": "Human exact readback and zero-setting reading hold",
+      "prompt_sequence": [
+        "SHOW FILTER only shows counts. How do I see false rules and defaults?",
+        "Our automatic pause settings are zero. Why did SHOW SETTINGS pause spots?"
+      ],
+      "action_plan": [
+        {
+          "name": "getSupportRoute",
+          "endpoint": "/support-route?query=SHOW%20FILTER%20FULL%20SHOW%20SETTINGS%20zero%20reading%20pause"
+        },
+        {
+          "name": "getSourceMap",
+          "endpoint": "/source-map"
+        },
+        {
+          "name": "getTroubleshootingIndex",
+          "endpoint": "/troubleshooting-index"
+        },
+        {
+          "name": "getDoc",
+          "endpoint": "/doc?path=customgpt/support-cards/configuration-readback.md"
+        },
+        {
+          "name": "getDoc",
+          "endpoint": "/doc?path=telnet/README.md"
+        }
+      ],
+      "required_sources": [
+        "customgpt/source-map.md",
+        "customgpt/troubleshooting-index.md",
+        "customgpt/support-cards/configuration-readback.md",
+        "telnet/README.md"
+      ],
+      "required_source_substrings": [
+        {
+          "path": "customgpt/source-map.md",
+          "contains": [
+            "Human configuration inspection",
+            "configuration-readback.md"
+          ]
+        },
+        {
+          "path": "telnet/README.md",
+          "contains": [
+            "allow=1/2 enabled",
+            "`DEFAULT` remains distinct",
+            "before preparation or any transaction wait",
+            "zero selects 30 seconds",
+            "The row threshold is ignored, including zero."
+          ]
+        }
+      ],
+      "answer_checks": {
+        "required": [
+          {
+            "name": "exact human views",
+            "all_of": [
+              "SHOW FILTER FULL",
+              "SHOW SETTINGS"
+            ],
+            "any_of": [
+              "SHOW FILTER BAND",
+              "category"
+            ]
+          },
+          {
+            "name": "explicit configured values",
+            "all_of": [
+              "false",
+              "DEFAULT"
+            ]
+          },
+          {
+            "name": "human unconditional interval",
+            "all_of": [
+              "30 seconds",
+              "write",
+              "flush"
+            ],
+            "any_of": [
+              "zero",
+              "disabled"
+            ]
+          },
+          {
+            "name": "pause inspection and later override",
+            "all_of": [
+              "SHOW HOLD",
+              "RESUME"
+            ],
+            "any_of": [
+              "later",
+              "processed"
+            ]
+          }
+        ],
+        "forbidden": [
+          {
+            "name": "generic disable applied to human readbacks",
+            "text": "zero disables SHOW SETTINGS pause"
+          },
+          {
+            "name": "resume undone by queued readback",
+            "text": "SHOW completion always overrides RESUME"
+          }
+        ],
+        "require_source_citation": true,
+        "allowed_source_citations": [
+          "telnet/README.md"
+        ]
+      }
+    },
+    {
+      "id": "SA-020",
+      "category": "configuration-machine-schema",
+      "severity": "high",
+      "title": "Canonical GET extraction and exact PUT/PATCH values",
+      "prompt_sequence": [
+        "Which YAML command lets my client read filters and settings together?",
+        "Can I send GET's status back, omit PUT fields, or merge just one map entry? My request ID is noise-Ab1.",
+        "Can I check a complete config without applying or saving it?"
+      ],
+      "action_plan": [
+        {
+          "name": "getSupportRoute",
+          "endpoint": "/support-route?query=GET%20YAML%20CONFIG%20PUT%20PATCH%20status%20request_id"
+        },
+        {
+          "name": "getSourceMap",
+          "endpoint": "/source-map"
+        },
+        {
+          "name": "getDoc",
+          "endpoint": "/doc?path=customgpt/support-cards/configuration-readback.md"
+        },
+        {
+          "name": "getDoc",
+          "endpoint": "/doc?path=telnet/README.md"
+        },
+        {
+          "name": "getDoc",
+          "endpoint": "/doc?path=commands/README.md"
+        }
+      ],
+      "required_sources": [
+        "customgpt/source-map.md",
+        "customgpt/support-cards/configuration-readback.md",
+        "telnet/README.md",
+        "commands/README.md"
+      ],
+      "required_source_substrings": [
+        {
+          "path": "customgpt/source-map.md",
+          "contains": [
+            "Client configuration:",
+            "GET YAML FILTER"
+          ]
+        },
+        {
+          "path": "telnet/README.md",
+          "contains": [
+            "GET YAML CONFIG [ID <id>]",
+            "supplied ID preserves case",
+            "PUT requires every field in its resource",
+            "supplied `bands.allow` replaces that entire map",
+            "CAPABILITIES is a read-only discovery resource",
+            "Its result reports `valid: true`, `applied: false` and `persisted: false`"
+          ]
+        }
+      ],
+      "answer_checks": {
+        "required": [
+          {
+            "name": "canonical machine command and discovery",
+            "all_of": [
+              "GET YAML CONFIG",
+              "GET YAML CAPABILITIES"
+            ]
+          },
+          {
+            "name": "writable versus read-only",
+            "all_of": [
+              "configuration",
+              "status"
+            ],
+            "any_of": [
+              "read-only",
+              "read only"
+            ]
+          },
+          {
+            "name": "complete PUT and selective PATCH",
+            "all_of": [
+              "PUT",
+              "complete",
+              "PATCH"
+            ],
+            "any_of": [
+              "omitted",
+              "omissions"
+            ]
+          },
+          {
+            "name": "collections replace and sentinel values",
+            "all_of": [
+              "replace",
+              "false",
+              "zero",
+              "empty",
+              "DEFAULT"
+            ]
+          },
+          {
+            "name": "correlation and no machine pause",
+            "all_of": [
+              "noise-Ab1"
+            ],
+            "any_of": [
+              "preserves case",
+              "case is preserved"
+            ]
+          },
+          {
+            "name": "pause contract",
+            "any_of": [
+              "no pause-state effects",
+              "leave pause state unchanged",
+              "do not change pause state"
+            ]
+          },
+          {
+            "name": "complete non-applying validation",
+            "all_of": [
+              "VALIDATE YAML CONFIG",
+              "complete"
+            ],
+            "any_of": [
+              "without applying",
+              "without saving",
+              "does not apply"
+            ]
+          }
+        ],
+        "forbidden": [
+          {
+            "name": "invented YAML SHOW alias",
+            "text": "Use SHOW FILTER YAML"
+          },
+          {
+            "name": "PATCH merges individual map entries",
+            "text": "PATCH merges map entries"
+          },
+          {
+            "name": "PUT omissions silently default",
+            "text": "omitted PUT fields reset to defaults"
+          }
+        ],
+        "require_source_citation": true,
+        "allowed_source_citations": [
+          "telnet/README.md"
+        ]
+      }
+    },
+    {
+      "id": "SA-021",
+      "category": "configuration-revision-conflict",
+      "severity": "high",
+      "title": "Stale client edits after reconnect",
+      "prompt_sequence": [
+        "My PATCH YAML CONFIG uses the revision from GET before reconnect and gets a conflict. Can I force the old edit?"
+      ],
+      "action_plan": [
+        {
+          "name": "getSupportRoute",
+          "endpoint": "/support-route?query=PATCH%20YAML%20CONFIG%20stale%20revision%20reconnect%20conflict"
+        },
+        {
+          "name": "getSourceMap",
+          "endpoint": "/source-map"
+        },
+        {
+          "name": "getTroubleshootingIndex",
+          "endpoint": "/troubleshooting-index"
+        },
+        {
+          "name": "getDoc",
+          "endpoint": "/doc?path=customgpt/support-cards/configuration-readback.md"
+        },
+        {
+          "name": "getDoc",
+          "endpoint": "/doc?path=telnet/README.md"
+        }
+      ],
+      "required_sources": [
+        "customgpt/source-map.md",
+        "customgpt/troubleshooting-index.md",
+        "customgpt/support-cards/configuration-readback.md",
+        "telnet/README.md"
+      ],
+      "required_source_substrings": [
+        {
+          "path": "customgpt/troubleshooting-index.md",
+          "contains": [
+            "PUT/PATCH revision is stale after reconnect",
+            "Do not invent SHOW YAML aliases"
+          ]
+        },
+        {
+          "path": "telnet/README.md",
+          "contains": [
+            "PUT/PATCH require a matching revision",
+            "after reconnect, server restart or a conflict",
+            "Pause, diagnostics and login metadata do not count as configuration"
+          ]
+        }
+      ],
+      "answer_checks": {
+        "required": [
+          {
+            "name": "fresh consistent read",
+            "all_of": [
+              "GET YAML CONFIG",
+              "if_revision"
+            ],
+            "any_of": [
+              "GET again",
+              "fresh GET"
+            ]
+          },
+          {
+            "name": "session boundary",
+            "all_of": [
+              "reconnect"
+            ],
+            "any_of": [
+              "matching revision",
+              "stale",
+              "conflict"
+            ]
+          },
+          {
+            "name": "unchanged stale write",
+            "any_of": [
+              "unchanged",
+              "not applied",
+              "does not apply"
+            ]
+          },
+          {
+            "name": "re-edit current state",
+            "any_of": [
+              "review",
+              "edit",
+              "reapply"
+            ]
+          }
+        ],
+        "forbidden": [
+          {
+            "name": "invented force revision",
+            "text": "PUT YAML CONFIG FORCE"
+          },
+          {
+            "name": "blind old revision retry",
+            "text": "retry with the same stale revision"
+          }
+        ],
+        "require_source_citation": true,
+        "allowed_source_citations": [
+          "telnet/README.md"
+        ]
+      }
+    },
+    {
+      "id": "SA-022",
+      "category": "configuration-transaction-failure",
+      "severity": "critical",
+      "title": "Unavailable choice rejection and unchanged PUT persistence repair",
+      "prompt_sequence": [
+        "PUT YAML SETTINGS requests SLOW but this server disables SLOW. Does it use FAST instead?",
+        "A human SET changed live preferences but its save failed. Does an unchanged PUT still save without resetting solar or my pause?"
+      ],
+      "action_plan": [
+        {
+          "name": "getSupportRoute",
+          "endpoint": "/support-route?query=PUT%20YAML%20SETTINGS%20unavailable%20dedupe%20unchanged%20persist%20solar"
+        },
+        {
+          "name": "getSourceMap",
+          "endpoint": "/source-map"
+        },
+        {
+          "name": "getTroubleshootingIndex",
+          "endpoint": "/troubleshooting-index"
+        },
+        {
+          "name": "getDoc",
+          "endpoint": "/doc?path=customgpt/support-cards/configuration-readback.md"
+        },
+        {
+          "name": "getDoc",
+          "endpoint": "/doc?path=telnet/README.md"
+        }
+      ],
+      "required_sources": [
+        "customgpt/source-map.md",
+        "customgpt/troubleshooting-index.md",
+        "customgpt/support-cards/configuration-readback.md",
+        "telnet/README.md"
+      ],
+      "required_source_substrings": [
+        {
+          "path": "telnet/README.md",
+          "contains": [
+            "settings.dedupe_policy is unavailable on this server",
+            "unchanged PUT persists before success",
+            "without resetting solar timing, NEARBY restoration, diagnostics",
+            "Validation or persistence failure leaves both the live and durable"
+          ]
+        }
+      ],
+      "answer_checks": {
+        "required": [
+          {
+            "name": "unavailable selection refused",
+            "all_of": [
+              "SLOW"
+            ],
+            "any_of": [
+              "reject",
+              "unavailable"
+            ]
+          },
+          {
+            "name": "all-or-nothing failure",
+            "all_of": [
+              "live",
+              "saved",
+              "unchanged"
+            ]
+          },
+          {
+            "name": "unchanged PUT repairs durable state",
+            "all_of": [
+              "unchanged PUT",
+              "persist"
+            ],
+            "any_of": [
+              "repair",
+              "autosave"
+            ]
+          },
+          {
+            "name": "runtime controls preserved",
+            "all_of": [
+              "solar",
+              "NEARBY",
+              "diagnostics",
+              "pause"
+            ]
+          },
+          {
+            "name": "preset reference preserved",
+            "any_of": [
+              "preset reference",
+              "preset baseline"
+            ]
+          },
+          {
+            "name": "revision checked",
+            "all_of": [
+              "GET",
+              "revision"
+            ]
+          }
+        ],
+        "forbidden": [
+          {
+            "name": "silent unavailable dedupe substitution",
+            "text": "SLOW silently falls back to FAST for PUT"
+          },
+          {
+            "name": "unchanged PUT skips disk",
+            "text": "unchanged PUT skips persistence"
+          },
+          {
+            "name": "live-only success",
+            "text": "persistence failure still reports success"
+          }
+        ],
+        "require_source_citation": true,
+        "allowed_source_citations": [
+          "telnet/README.md"
+        ]
+      }
+    },
+    {
+      "id": "SA-023",
+      "category": "configuration-upload-framing",
+      "severity": "critical",
+      "title": "Oversize upload tails and recoverable invalid YAML",
+      "prompt_sequence": [
+        "A 65,537-byte PUT YAML CONFIG upload contains RESUME in its tail. Will it become a command after an error?",
+        "What are the header/body limits and timeout? Can a fully received invalid document keep the connection open?"
+      ],
+      "action_plan": [
+        {
+          "name": "getSupportRoute",
+          "endpoint": "/support-route?query=PUT%20YAML%20CONFIG%20oversized%20upload%20framing%20deadline%20RESUME"
+        },
+        {
+          "name": "getSourceMap",
+          "endpoint": "/source-map"
+        },
+        {
+          "name": "getTroubleshootingIndex",
+          "endpoint": "/troubleshooting-index"
+        },
+        {
+          "name": "getDoc",
+          "endpoint": "/doc?path=customgpt/support-cards/configuration-readback.md"
+        },
+        {
+          "name": "getDoc",
+          "endpoint": "/doc?path=telnet/README.md"
+        }
+      ],
+      "required_sources": [
+        "customgpt/source-map.md",
+        "customgpt/troubleshooting-index.md",
+        "customgpt/support-cards/configuration-readback.md",
+        "telnet/README.md"
+      ],
+      "required_source_substrings": [
+        {
+          "path": "telnet/README.md",
+          "contains": [
+            "65,536 bytes, excluding marker lines and counting actual",
+            "LF/CRLF endings",
+            "30 seconds from acceptance",
+            "malformed recognized PUT/PATCH/VALIDATE headers are terminal",
+            "Remaining bytes",
+            "gets a YAML error and keeps the"
+          ]
+        }
+      ],
+      "answer_checks": {
+        "required": [
+          {
+            "name": "body limit and markers",
+            "all_of": [
+              "65,536",
+              "markers",
+              "LF",
+              "CRLF"
+            ]
+          },
+          {
+            "name": "absolute total deadline",
+            "all_of": [
+              "30 seconds"
+            ],
+            "any_of": [
+              "absolute",
+              "header acceptance",
+              "accepted header"
+            ]
+          },
+          {
+            "name": "terminal upload failure isolates tail",
+            "all_of": [
+              "close",
+              "connection"
+            ],
+            "any_of": [
+              "never dispatch",
+              "not dispatched",
+              "without dispatching"
+            ]
+          },
+          {
+            "name": "fully received invalid document recoverable",
+            "all_of": [
+              "invalid",
+              "YAML",
+              "error"
+            ],
+            "any_of": [
+              "keeps the connection open",
+              "remains connected"
+            ]
+          },
+          {
+            "name": "ordinary header limit separate",
+            "all_of": [
+              "128",
+              "header"
+            ],
+            "any_of": [
+              "separate",
+              "body limit"
+            ]
+          },
+          {
+            "name": "machine pause unchanged",
+            "any_of": [
+              "no pause-state effects",
+              "leave pause state unchanged",
+              "do not change pause state"
+            ]
+          }
+        ],
+        "forbidden": [
+          {
+            "name": "oversize tail executes RESUME",
+            "text": "the upload tail executes RESUME"
+          },
+          {
+            "name": "body inherits short header limit",
+            "text": "YAML bodies are limited to 128 bytes"
+          },
+          {
+            "name": "framing error returns to dispatch",
+            "text": "discard one bad line and resume ordinary dispatch"
+          }
+        ],
+        "require_source_citation": true,
+        "allowed_source_citations": [
+          "telnet/README.md"
+        ]
+      }
+    },
+    {
+      "id": "SA-024",
+      "category": "configuration-response-size",
+      "severity": "high",
+      "title": "Large preset LOAD versus bounded readback and machine admission",
+      "prompt_sequence": [
+        "A valid 100 KiB preset loaded, but SHOW FILTER FULL and GET YAML CONFIG return size errors. Was LOAD supposed to fail?",
+        "Can a tiny PATCH still change noise in this oversized configuration?"
+      ],
+      "action_plan": [
+        {
+          "name": "getSupportRoute",
+          "endpoint": "/support-route?query=LOAD%20PRESET%20GET%20YAML%20CONFIG%2064%20KiB%20size%20error%20PATCH"
+        },
+        {
+          "name": "getSourceMap",
+          "endpoint": "/source-map"
+        },
+        {
+          "name": "getTroubleshootingIndex",
+          "endpoint": "/troubleshooting-index"
+        },
+        {
+          "name": "getDoc",
+          "endpoint": "/doc?path=customgpt/support-cards/configuration-readback.md"
+        },
+        {
+          "name": "getDoc",
+          "endpoint": "/doc?path=telnet/README.md"
+        }
+      ],
+      "required_sources": [
+        "customgpt/source-map.md",
+        "customgpt/troubleshooting-index.md",
+        "customgpt/support-cards/configuration-readback.md",
+        "telnet/README.md"
+      ],
+      "required_source_substrings": [
+        {
+          "path": "telnet/README.md",
+          "contains": [
+            "valid preset can LOAD even",
+            "65,536-byte response",
+            "LOAD checks its acknowledgement",
+            "instead of truncation",
+            "reserving the maximum response",
+            "small PATCH to an oversized human-created configuration"
+          ]
+        }
+      ],
+      "answer_checks": {
+        "required": [
+          {
+            "name": "separate preset and response limits",
+            "all_of": [
+              "256 KiB",
+              "65,536",
+              "LOAD"
+            ]
+          },
+          {
+            "name": "complete final response accounting",
+            "all_of": [
+              "CRLF",
+              "markers"
+            ],
+            "any_of": [
+              "footer",
+              "footers"
+            ]
+          },
+          {
+            "name": "explicit readback failure",
+            "all_of": [
+              "error"
+            ],
+            "any_of": [
+              "complete",
+              "truncation",
+              "truncated"
+            ]
+          },
+          {
+            "name": "machine resulting config admission",
+            "all_of": [
+              "PATCH",
+              "CONFIG",
+              "metadata"
+            ],
+            "any_of": [
+              "reduce",
+              "reduced"
+            ]
+          },
+          {
+            "name": "human error reading pause",
+            "all_of": [
+              "human",
+              "pause"
+            ]
+          },
+          {
+            "name": "machine error pause unchanged",
+            "any_of": [
+              "no pause-state effects",
+              "leave pause state unchanged",
+              "do not change pause state"
+            ]
+          }
+        ],
+        "forbidden": [
+          {
+            "name": "LOAD subject to CONFIG admission",
+            "text": "LOAD must fail whenever CONFIG readback exceeds 64 KiB"
+          },
+          {
+            "name": "silent successful omission",
+            "text": "oversized GET succeeds with omitted rules"
+          },
+          {
+            "name": "invented pagination command",
+            "text": "SHOW FILTER PAGE 2"
+          }
+        ],
+        "require_source_citation": true,
+        "allowed_source_citations": [
+          "telnet/README.md"
+        ]
+      }
+    },
+    {
+      "id": "SA-025",
+      "category": "configuration-protected-record",
+      "severity": "critical",
+      "title": "Temporary defaults preserve unreadable records",
+      "prompt_sequence": [
+        "Login says my saved user record could not be read and changes will not be saved. Can SAVE PRESET write these defaults anyway?",
+        "How is that different from a warning that only login timestamp/IP could not be saved?"
+      ],
+      "action_plan": [
+        {
+          "name": "getSupportRoute",
+          "endpoint": "/support-route?query=temporary%20defaults%20saved%20user%20record%20SAVE%20PRESET%20timestamp%20IP"
+        },
+        {
+          "name": "getSourceMap",
+          "endpoint": "/source-map"
+        },
+        {
+          "name": "getTroubleshootingIndex",
+          "endpoint": "/troubleshooting-index"
+        },
+        {
+          "name": "getDoc",
+          "endpoint": "/doc?path=customgpt/support-cards/configuration-readback.md"
+        },
+        {
+          "name": "getDoc",
+          "endpoint": "/doc?path=telnet/README.md"
+        }
+      ],
+      "required_sources": [
+        "customgpt/source-map.md",
+        "customgpt/troubleshooting-index.md",
+        "customgpt/support-cards/configuration-readback.md",
+        "telnet/README.md"
+      ],
+      "required_source_substrings": [
+        {
+          "path": "telnet/README.md",
+          "contains": [
+            "defaults without overwriting that record",
+            "SAVE PRESET is rejected before any",
+            "library write",
+            "updating the login timestamp/IP fails",
+            "continues with those preferences and a warning",
+            "compatible backup"
+          ]
+        }
+      ],
+      "answer_checks": {
+        "required": [
+          {
+            "name": "preserve unreadable saved data",
+            "all_of": [
+              "record"
+            ],
+            "any_of": [
+              "preserve",
+              "without overwriting",
+              "protected"
+            ]
+          },
+          {
+            "name": "reject preset write before library mutation",
+            "all_of": [
+              "SAVE PRESET",
+              "before"
+            ],
+            "any_of": [
+              "library",
+              "preset write"
+            ]
+          },
+          {
+            "name": "other durable configuration changes rejected",
+            "all_of": [
+              "LOAD",
+              "PUT",
+              "PATCH"
+            ]
+          },
+          {
+            "name": "temporary human edits and readable state",
+            "all_of": [
+              "temporary"
+            ],
+            "any_of": [
+              "readbacks",
+              "GET",
+              "SHOW"
+            ]
+          },
+          {
+            "name": "metadata warning restores preferences",
+            "all_of": [
+              "timestamp",
+              "IP"
+            ],
+            "any_of": [
+              "restored configuration",
+              "restored preferences"
+            ]
+          },
+          {
+            "name": "safe recovery route",
+            "any_of": [
+              "backup",
+              "operator",
+              "logs"
+            ]
+          }
+        ],
+        "forbidden": [
+          {
+            "name": "destructive first recovery",
+            "text": "delete the saved user record first"
+          },
+          {
+            "name": "defaults overwrite named preset",
+            "text": "SAVE PRESET may overwrite the preset from temporary defaults"
+          },
+          {
+            "name": "metadata warning discards restored preferences",
+            "text": "timestamp save failure replaces restored configuration with defaults"
+          }
+        ],
+        "require_source_citation": true,
+        "allowed_source_citations": [
+          "telnet/README.md"
+        ]
+      }
+    },
+    {
+      "id": "SA-026",
+      "category": "configuration-preset-reference",
+      "severity": "high",
+      "title": "Preset modified state and durable partial SAVE",
+      "prompt_sequence": [
+        "CONTEST says modified after I edit preferences, then someone overwrites the shared preset. Which version am I comparing with?",
+        "SAVE PRESET saved the snapshot but could not persist W1ABC-1's association. What survives reconnect and my next ordinary save?"
+      ],
+      "action_plan": [
+        {
+          "name": "getSupportRoute",
+          "endpoint": "/support-route?query=preset%20modified%20SAVE%20partial%20association%20baseline%20reconnect%20SSID"
+        },
+        {
+          "name": "getSourceMap",
+          "endpoint": "/source-map"
+        },
+        {
+          "name": "getTroubleshootingIndex",
+          "endpoint": "/troubleshooting-index"
+        },
+        {
+          "name": "getDoc",
+          "endpoint": "/doc?path=customgpt/support-cards/configuration-readback.md"
+        },
+        {
+          "name": "getDoc",
+          "endpoint": "/doc?path=telnet/README.md"
+        }
+      ],
+      "required_sources": [
+        "customgpt/source-map.md",
+        "customgpt/troubleshooting-index.md",
+        "customgpt/support-cards/configuration-readback.md",
+        "telnet/README.md"
+      ],
+      "required_source_substrings": [
+        {
+          "path": "telnet/README.md",
+          "contains": [
+            "Deleting or overwriting the named library entry",
+            "Previous preset association and baseline retained.",
+            "recoverable from disk after reconnect",
+            "every ordinary preference save preserves them",
+            "temporary NEARBY dedupe override do not affect it"
+          ]
+        }
+      ],
+      "answer_checks": {
+        "required": [
+          {
+            "name": "reference is applied or saved snapshot",
+            "all_of": [
+              "reference"
+            ],
+            "any_of": [
+              "applied",
+              "captured",
+              "baseline"
+            ]
+          },
+          {
+            "name": "reverse changes clears modified",
+            "all_of": [
+              "modified"
+            ],
+            "any_of": [
+              "reversing",
+              "restore",
+              "clears"
+            ]
+          },
+          {
+            "name": "library change keeps reference",
+            "all_of": [
+              "library"
+            ],
+            "any_of": [
+              "overwrite",
+              "delete",
+              "deleting"
+            ]
+          },
+          {
+            "name": "partial SAVE retains old association durably",
+            "all_of": [
+              "previous",
+              "association",
+              "live",
+              "disk"
+            ]
+          },
+          {
+            "name": "continuity and ordinary saves",
+            "all_of": [
+              "reconnect",
+              "ordinary"
+            ],
+            "any_of": [
+              "SSID",
+              "W1ABC-1"
+            ]
+          },
+          {
+            "name": "session controls excluded",
+            "all_of": [
+              "pause",
+              "diagnostics",
+              "NEARBY"
+            ]
+          }
+        ],
+        "forbidden": [
+          {
+            "name": "partial association installed",
+            "text": "partial SAVE establishes the new association"
+          },
+          {
+            "name": "mutable library comparison",
+            "text": "modified always compares with the latest library preset"
+          },
+          {
+            "name": "pause creates preference modification",
+            "text": "PAUSE marks a preset modified"
+          }
+        ],
+        "require_source_citation": true,
+        "allowed_source_citations": [
+          "telnet/README.md"
+        ]
+      }
     }
   ]
 }

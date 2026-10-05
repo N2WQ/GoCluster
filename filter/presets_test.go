@@ -69,7 +69,7 @@ func testSavedPreset() *SavedPreset {
 	f.SetAnnounceEnabled(false)
 	f.SetSelfEnabled(false)
 	f.SetToxicEnabled(false)
-	return &SavedPreset{Filter: *f, Dialect: "cc", DedupePolicy: "SLOW", Grid: "FN31", NoiseClass: "URBAN", PathMinObservationCount: 40, SolarSummaryMinutes: 30}
+	return &SavedPreset{ConfigurationVersion: CurrentConfigurationVersion, Filter: *f, Dialect: "cc", DedupePolicy: "SLOW", Grid: "FN31", NoiseClass: "URBAN", PathMinObservationCount: 40, SolarSummaryMinutes: 30}
 }
 
 func TestPresetsOwnershipAndCRUD(t *testing.T) {
@@ -300,6 +300,7 @@ func TestPresetCollectionReadBoundary(t *testing.T) {
 func TestPresetNormalizedSizeBound(t *testing.T) {
 	usePresetTestDir(t)
 	set := testSavedPreset()
+	set.ConfigurationVersion = 0                // This fixture exercises absent-marker legacy migration.
 	set.Grid = strings.Repeat("\u023f", 90_000) // Uppercase uses three UTF-8 bytes instead of two.
 	data, err := yaml.Marshal(presetCollection{Presets: map[string]*SavedPreset{"GROW": set}})
 	if err != nil {

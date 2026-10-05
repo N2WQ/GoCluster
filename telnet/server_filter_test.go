@@ -1813,7 +1813,7 @@ func TestDialectPersistence(t *testing.T) {
 	client := &Client{
 		filter:   filter.NewFilter(),
 		dialect:  DialectCC,
-		callsign: "TEST1",
+		callsign: "W1TEST",
 	}
 	client.recentIPs = filter.UpdateRecentIPs(nil, "1.2.3.4")
 
@@ -1821,7 +1821,7 @@ func TestDialectPersistence(t *testing.T) {
 		t.Fatalf("saveFilter failed: %v", err)
 	}
 
-	record, err := filter.LoadUserRecord("TEST1")
+	record, err := filter.LoadUserRecord("W1TEST")
 	if err != nil {
 		t.Fatalf("load user record failed: %v", err)
 	}
