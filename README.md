@@ -870,9 +870,10 @@ Root module files use LF on Windows. Packaging restores caller location and
 `GOOS`/`GOARCH`, and binds the tag and GitHub destination to the captured commit
 and selected Git remote.
 
-Existing build outputs require an unchanged generated ownership manifest.
-Move legacy outputs without that manifest, edited packages, or previously run
-deployment directories aside before retrying. The manifest stays out of the ZIP.
+Legacy build outputs without an ownership manifest are preserved automatically
+in an ignored backup after the replacement package is ready. Marked outputs
+require unchanged contents; edited deployment directories must be kept separate
+from build outputs. The manifest stays out of the ZIP.
 Custom names/output directories remain supported with source/collision/reparse
 checks. See [release preparation](scripts/README.md#release-preparation) for
 ownership, clean-source requirements, and partial-failure recovery.

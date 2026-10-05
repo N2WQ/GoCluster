@@ -31,8 +31,12 @@ directories and ZIPs are replaced only when the private
 `.gocluster-release-owner.json` manifest proves their origin and unchanged
 contents. It records all staged files/directories and the ZIP hash, and is
 written after archiving so it is excluded from the shipped ZIP. Legacy
-`ready_to_run/` directories and ZIPs without this manifest, edited packages,
-missing outputs, or additional runtime files must be moved aside deliberately.
+`ready_to_run/` directories and ZIPs without this manifest are accepted without
+manual migration. After the replacement is ready, their contents are preserved
+under the reported `.tmp/release-<id>/previous-stage/` and
+`previous-package.zip` paths. A lone legacy directory or ZIP is also preserved.
+These backups are retained, never automatically deleted. Marked packages with
+edited or missing contents or additional runtime files are still refused.
 Keep a previously run package as a deployment directory, separate from build
 outputs. The script does not delete legacy nested staging directories.
 

@@ -26,8 +26,9 @@ Tags: release, PowerShell, CRLF, ownership, publication
   file. Native behavior and package validation are covered by the commands in
   Verification and Monitoring.
 - Operator/support answer: inspect the exact gate and its evidence. A manual
-  build is unnecessary. Move legacy or edited output packages aside after
-  inspection; keep deployed runtime state separate from build destinations.
+  build is unnecessary. Markerless legacy packages are preserved automatically
+  when the replacement is ready; keep deployed runtime state separate from
+  build destinations.
 
 ## Triggering Request
 
@@ -54,6 +55,11 @@ and failure-to-absence conversion in local-tag and release lookups.
    refinements, and implemented approved release-safety changes.
 4. 2026-10-04 - Final failure fixtures found raw Windows path normalization and
    failed-backup-disposal cleanup gaps; fixed both and added regression checks.
+5. 2026-10-04 - An actual normal invocation exposed the manual legacy-output
+   migration requirement. The maintainer requested autonomous repair and
+   iteration without further Scope Ledgers. Refined ADR-0242 to preserve legacy
+   outputs automatically, prepare replacements first, and retain all unknown
+   prior contents without changing marked-output tampering protections.
 
 ## Hypotheses and Tests
 
@@ -95,6 +101,13 @@ and failure-to-absence conversion in local-tag and release lookups.
   fixtures passed on both. A separate one-drive fixture correctly reported the
   unavailable external-drive check as skipped. Actual Git 2.51.0 lookup returned
   0 for a present tag, 2 for absence, and 128 for an execution failure.
+- Follow-up migration validation: 111 safety cases passed with no skips on both
+  engines, including legacy pair/partial-output preservation, build failures,
+  rollback, and retention across subsequent owned rebuilds. The actual default
+  package build passed under both engines; the prior ZIP was retained under
+  `.tmp/release-560919bc29394029a444398f727558c1/previous-package.zip`.
+  The actual Git/GitHub read-only publication preflight also passed. No live
+  release was published during repair.
 - Observed package results: two real PowerShell 7 package-only builds verified
   unchanged-output replacement; a final Windows PowerShell 5.1 build wrote its
   ZIP on a different drive. Both engines produced 36 allowlisted ZIP entries;

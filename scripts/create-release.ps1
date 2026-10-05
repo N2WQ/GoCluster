@@ -40,8 +40,8 @@
 	publish a GitHub release when PackageOnly is omitted.
 	Safety: do not publish from a dirty worktree; real secrets and private
 	operational state must not enter the release payload.
-	Existing outputs require an unchanged generated ownership manifest. Move
-	legacy or operator-modified outputs aside before retrying. Source and output
+	Markerless legacy outputs are backed up automatically after preparation.
+	Marked outputs require an unchanged ownership manifest. Source and output
 	directories must have no concurrent writers during packaging.
 #>
 
@@ -606,12 +606,21 @@ function Assert-StageInventory {
 }
 
 function Assert-OwnedReleaseOutputs {
-    param([object]$Paths)
+    param([object]$Paths, [switch]$AllowLegacy)
 
     $stageExists = Test-Path -LiteralPath $Paths.StageRoot
     $zipExists = Test-Path -LiteralPath $Paths.ZipPath
     if (-not $stageExists -and -not $zipExists) { return $null }
     $markerPath = Join-Path $Paths.StageRoot '.gocluster-release-owner.json'
+    if ($AllowLegacy -and -not (Test-Path -LiteralPath $markerPath)) {
+        if (($stageExists -and -not (Test-Path -LiteralPath $Paths.StageRoot -PathType Container)) -or
+            ($zipExists -and -not (Test-Path -LiteralPath $Paths.ZipPath -PathType Leaf))) {
+            throw 'Existing release destinations have incompatible types; staging must be a directory and the ZIP must be a file.'
+        }
+        foreach ($path in @($Paths.StageRoot, $Paths.ZipPath)) { Assert-NoReparsePath $path }
+        if ($stageExists) { Get-StageInventory $Paths.StageRoot | Out-Null }
+        return $null
+    }
     if (-not (Test-Path -LiteralPath $Paths.StageRoot -PathType Container) -or
         -not (Test-Path -LiteralPath $Paths.ZipPath -PathType Leaf) -or -not (Test-Path -LiteralPath $markerPath -PathType Leaf)) {
         throw 'Existing release outputs have no verifiable ownership. Move legacy or unrelated outputs aside before retrying.'
@@ -652,16 +661,14 @@ function Complete-ReleaseOutputs {
     param([object]$Paths, [string]$PreparedStage, [string]$PreparedZip, [string]$RunRoot, [object]$NewOwner)
 
     $verifiedPaths = Get-ReleasePaths -RepoRoot $Paths.RepoRoot -OutputDir $Paths.OutputRoot -PackageName $PackageName -PackageDirectoryName $PackageDirectoryName
-    $oldOwner = Assert-OwnedReleaseOutputs $verifiedPaths
+    $oldOwner = Assert-OwnedReleaseOutputs $verifiedPaths -AllowLegacy
     $stageBackup = Join-Path $RunRoot 'previous-stage'
     $zipBackup = $Paths.ZipPath + '.rollback-' + [guid]::NewGuid().ToString('N')
     $stageSaved = $false; $zipSaved = $false; $stagePromoted = $false; $zipPromoted = $false
     New-Item -ItemType Directory -Path $Paths.OutputRoot -Force | Out-Null
     try {
-        if ($null -ne $oldOwner) {
-            [IO.Directory]::Move($Paths.StageRoot, $stageBackup); $stageSaved = $true
-            [IO.File]::Move($Paths.ZipPath, $zipBackup); $zipSaved = $true
-        }
+        if (Test-Path -LiteralPath $Paths.StageRoot) { [IO.Directory]::Move($Paths.StageRoot, $stageBackup); $stageSaved = $true }
+        if (Test-Path -LiteralPath $Paths.ZipPath) { [IO.File]::Move($Paths.ZipPath, $zipBackup); $zipSaved = $true }
         [IO.Directory]::Move($PreparedStage, $Paths.StageRoot); $stagePromoted = $true
         [IO.File]::Move($PreparedZip, $Paths.ZipPath); $zipPromoted = $true
         Assert-OwnedReleaseOutputs $Paths | Out-Null
@@ -689,6 +696,14 @@ function Complete-ReleaseOutputs {
         throw $promotionError
     }
     try {
+        if ($null -eq $oldOwner -and ($stageSaved -or $zipSaved)) {
+            # Legacy contents are unknown user data: preserve them permanently,
+            # and exempt this run from the outer temporary-directory cleanup.
+            $script:retainRunRoot = $true
+            if ($zipSaved) { [IO.File]::Move($zipBackup, (Join-Path $RunRoot 'previous-package.zip')) }
+            Write-Host "Legacy release outputs preserved at: $RunRoot"
+            return
+        }
         if ($stageSaved) {
             Assert-StageInventory -StageRoot $stageBackup -Expected @($oldOwner.Entries)
             Remove-RunDirectory -Path $stageBackup -RunRoot $RunRoot
@@ -799,7 +814,7 @@ try {
     $buildTime = $buildUtc.ToString("yyyy-MM-ddTHH:mm:ssZ")
 
     $paths = Get-ReleasePaths -RepoRoot $repoRoot -OutputDir $OutputDir -PackageName $PackageName -PackageDirectoryName $PackageDirectoryName
-    Assert-OwnedReleaseOutputs $paths | Out-Null
+    Assert-OwnedReleaseOutputs $paths -AllowLegacy | Out-Null
     $target = $null
     if (-not $PackageOnly) {
         $target = Resolve-PublicationTarget $Remote

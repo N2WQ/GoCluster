@@ -25,7 +25,11 @@ replacing any output. Custom single-component package names and custom ZIP
 output directories remain supported. Reject source collisions, Windows aliases,
 reserved names, traversal, unsafe ancestry, and reparse points. Replacement
 requires a generated ownership manifest with unchanged files, directories, and
-ZIP hash. Refuse legacy, incomplete, operator-modified, and unrelated outputs.
+ZIP hash before old contents may be deleted. Markerless legacy directories and
+ZIPs are automatically preserved in the ignored invocation directory after a
+replacement is prepared and verified, including when only one output exists.
+Refuse incompatible types, reparse points, and incomplete or modified marked
+outputs. No unknown legacy contents are deleted.
 Write the private manifest after archiving; it does not enter the public ZIP.
 Eliminate automatic deletion of legacy nested staging. Retain recoverable prior
 outputs during promotion and report recovery paths if rollback fails.
@@ -74,7 +78,8 @@ not the static checker's inability to prove conversational authorization.
 
 ### Risks
 
-- Legacy output migration requires manual inspection and moving old outputs.
+- Automatic legacy migration retains backups that consume disk space; their
+  eventual disposal remains an operator decision.
 - Ownership inventories and preparation consume temporary disk space.
 - Concurrent source/output writers are unsupported; remote publication is not a
   transaction, and failed recovery may retain explicitly reported artifacts.

@@ -76,6 +76,25 @@ function Reset-ReleaseNative([string]$Repo, [string]$Fault = '') {
         Drift = ''; FinalDrift = ''; HeadCalls = 0; BuildSerial = [guid]::NewGuid().ToString('N')
     }
 }
+function New-LegacyReleaseOutputs([string]$Repo, [string]$Shape) {
+    $stage = Join-Path $Repo 'ready_to_run'
+    $zip = Join-Path $Repo 'gocluster-windows-amd64.zip'
+    if ($Shape -in @('pair', 'stage-only')) {
+        Write-FixtureFile (Join-Path $stage 'operator-state/private.txt') 'legacy private operator bytes'
+        New-Item -ItemType Directory -Path (Join-Path $stage 'empty-runtime-directory') | Out-Null
+    }
+    if ($Shape -in @('pair', 'zip-only')) {
+        $seed = Join-Path $Repo '.tmp/legacy-archive-input.txt'
+        Write-FixtureFile $seed 'legacy archive private bytes'
+        Microsoft.PowerShell.Archive\Compress-Archive -LiteralPath $seed -DestinationPath $zip
+        Remove-Item -LiteralPath $seed
+    }
+    return [pscustomobject]@{
+        StageRoot = $stage; ZipPath = $zip
+        StageBytes = if (Test-Path -LiteralPath $stage) { Get-FixtureBytes $stage } else { $null }
+        ZipHash = if (Test-Path -LiteralPath $zip) { (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash } else { '' }
+    }
+}
 function Invoke-ReleaseNativeStatus([string]$Operation, [string[]]$Arguments, [int]$Code = 0, [string]$Output = '') {
     $state = $global:ReleaseSafetyFixture
     $state.Calls.Add([pscustomobject]@{ Operation = $Operation; Arguments = @($Arguments); GOOS = $env:GOOS; GOARCH = $env:GOARCH })
@@ -439,13 +458,52 @@ try {
         Remove-Item -LiteralPath (Join-Path $pathRepo 'protected.zip')
         Expect-ReleaseRefusal { Get-ReleasePaths $pathRepo '.' 'protected' 'ready_to_run' } 'tracked source'
     }
-    foreach ($mutation in @('markerless', 'edited-file', 'missing-file', 'extra-file', 'extra-dir', 'zip-edited', 'zip-directory', 'stage-file', 'marker-malformed', 'marker-identity', 'inventory-duplicate')) {
+    foreach ($shape in @('pair', 'stage-only', 'zip-only')) {
+        Run-ReleaseCase "markerless legacy migration preserves $shape" {
+            $repo = New-ReleaseFixture
+            $legacy = New-LegacyReleaseOutputs $repo $shape
+            Reset-ReleaseNative $repo
+            Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageOnly = $true }
+            Assert-Fixture (Test-Path -LiteralPath (Join-Path $legacy.StageRoot '.gocluster-release-owner.json')) 'Replacement did not acquire an ownership marker.'
+            Assert-Fixture (-not (Test-Path -LiteralPath (Join-Path $legacy.StageRoot 'operator-state'))) 'Private legacy state entered the replacement stage.'
+            $runs = @(Get-ChildItem -LiteralPath (Join-Path $repo '.tmp') -Filter 'release-*' -Directory)
+            Assert-Fixture ($runs.Count -eq 1) 'Legacy backup run directory was not retained exactly once.'
+            $run = $runs[0].FullName
+            $stageBackup = Join-Path $run 'previous-stage'; $zipBackup = Join-Path $run 'previous-package.zip'
+            if ($null -ne $legacy.StageBytes) { Assert-FixtureBytes $stageBackup $legacy.StageBytes }
+            else { Assert-Fixture (-not (Test-Path -LiteralPath $stageBackup)) 'ZIP-only migration invented a previous-stage backup.' }
+            if ($legacy.ZipHash) { Assert-Fixture ((Get-FileHash -LiteralPath $zipBackup -Algorithm SHA256).Hash -ceq $legacy.ZipHash) 'Legacy archive bytes were not preserved.' }
+            else { Assert-Fixture (-not (Test-Path -LiteralPath $zipBackup)) 'Stage-only migration invented a previous-package backup.' }
+            Assert-Fixture (@(Get-ChildItem -LiteralPath $repo -Filter '*.rollback-*' -File).Count -eq 0) 'Successful legacy migration left a sibling rollback ZIP.'
+            $zip = [IO.Compression.ZipFile]::OpenRead($legacy.ZipPath)
+            try { Assert-Fixture (@($zip.Entries | Where-Object { $_.FullName -match 'operator-state|private|previous-|owner' }).Count -eq 0) 'Legacy bytes or ownership bookkeeping entered the public ZIP.' }
+            finally { $zip.Dispose() }
+            Reset-ReleaseNative $repo
+            Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageOnly = $true }
+            if ($null -ne $legacy.StageBytes) { Assert-FixtureBytes $stageBackup $legacy.StageBytes }
+            if ($legacy.ZipHash) { Assert-Fixture ((Get-FileHash -LiteralPath $zipBackup -Algorithm SHA256).Hash -ceq $legacy.ZipHash) 'Owned rebuild discarded the retained legacy ZIP.' }
+        }
+        foreach ($fault in @('go-build-main', 'go-build-peer')) {
+            Run-ReleaseCase "legacy $shape survives $fault" {
+                $repo = New-ReleaseFixture
+                $legacy = New-LegacyReleaseOutputs $repo $shape
+                Reset-ReleaseNative $repo $fault
+                Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageOnly = $true } 'failed'
+                if ($null -ne $legacy.StageBytes) { Assert-FixtureBytes $legacy.StageRoot $legacy.StageBytes }
+                else { Assert-Fixture (-not (Test-Path -LiteralPath $legacy.StageRoot)) 'Failed build promoted a new stage over ZIP-only legacy output.' }
+                if ($legacy.ZipHash) { Assert-Fixture ((Get-FileHash -LiteralPath $legacy.ZipPath -Algorithm SHA256).Hash -ceq $legacy.ZipHash) 'Build failure changed a legacy ZIP.' }
+                else { Assert-Fixture (-not (Test-Path -LiteralPath $legacy.ZipPath)) 'Failed build created a ZIP over stage-only legacy output.' }
+                Assert-Fixture (-not (Test-Path -LiteralPath (Join-Path $legacy.StageRoot '.gocluster-release-owner.json'))) 'Failed build wrote ownership into legacy data.'
+                Assert-Fixture (@(Get-ChildItem -LiteralPath (Join-Path $repo '.tmp') -Filter 'release-*' -Directory -ErrorAction SilentlyContinue).Count -eq 0) 'Failed build moved legacy data into a retained run.'
+            }
+        }
+    }
+    foreach ($mutation in @('edited-file', 'missing-file', 'extra-file', 'extra-dir', 'zip-edited', 'zip-directory', 'stage-file', 'marker-malformed', 'marker-directory', 'marker-identity', 'inventory-duplicate')) {
         Run-ReleaseCase "owned output refusal: $mutation" {
             $repo = New-ReleaseFixture; Reset-ReleaseNative $repo
             Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageOnly = $true }
             $stage = Join-Path $repo 'ready_to_run'; $zip = Join-Path $repo 'gocluster-windows-amd64.zip'; $marker = Join-Path $stage '.gocluster-release-owner.json'
             switch ($mutation) {
-                'markerless' { Remove-Item -LiteralPath $marker }
                 'edited-file' { [IO.File]::AppendAllText((Join-Path $stage 'data/config/app.yaml'), 'operator private edit') }
                 'missing-file' { Remove-Item -LiteralPath (Join-Path $stage 'README.md') }
                 'extra-file' { Write-FixtureFile (Join-Path $stage 'data/users/private.txt') 'private state' }
@@ -454,6 +512,7 @@ try {
                 'zip-directory' { Remove-Item -LiteralPath $zip; New-Item -ItemType Directory -Path $zip | Out-Null }
                 'stage-file' { Remove-Item -LiteralPath $stage -Recurse -Force; Write-FixtureFile $stage 'unrelated file' }
                 'marker-malformed' { Write-FixtureFile $marker '{broken JSON' }
+                'marker-directory' { Remove-Item -LiteralPath $marker; New-Item -ItemType Directory -Path $marker | Out-Null }
                 'marker-identity' { $owner = [IO.File]::ReadAllText($marker) | ConvertFrom-Json; $owner.RepoRoot = 'C:\unrelated'; $owner | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $marker }
                 'inventory-duplicate' { $owner = [IO.File]::ReadAllText($marker) | ConvertFrom-Json; $owner.Entries[1] = $owner.Entries[0]; $owner | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $marker }
             }
@@ -478,6 +537,42 @@ try {
         New-Item -ItemType Junction -Path $nested -Target $outside | Out-Null
         try { Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageOnly = $true } 'Reparse'; Assert-FixtureBytes $outside $before }
         finally { [IO.Directory]::Delete($nested) }
+    }
+    Run-ReleaseCase 'markerless legacy junction refuses before replacement' {
+        $repo = New-ReleaseFixture
+        $legacy = New-LegacyReleaseOutputs $repo 'pair'
+        $outside = Join-Path $script:FixtureRoot ('legacy-junction-target-' + [guid]::NewGuid().ToString('N'))
+        Write-FixtureFile (Join-Path $outside 'sentinel.txt') 'untouched external legacy state'
+        $before = Get-FixtureBytes $outside
+        $link = Join-Path $legacy.StageRoot 'linked-state'
+        New-Item -ItemType Junction -Path $link -Target $outside | Out-Null
+        try {
+            Reset-ReleaseNative $repo
+            Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageOnly = $true } 'Reparse'
+            Assert-FixtureBytes $outside $before
+            Assert-Fixture ((Get-FileHash -LiteralPath $legacy.ZipPath -Algorithm SHA256).Hash -ceq $legacy.ZipHash) 'Legacy reparse refusal changed the ZIP.'
+            Assert-Fixture (@($global:ReleaseSafetyFixture.Calls | Where-Object Operation -eq 'go-readme').Count -eq 0) 'Unsafe legacy staging began preparation.'
+        } finally { [IO.Directory]::Delete($link) }
+        Assert-FixtureBytes $legacy.StageRoot $legacy.StageBytes
+    }
+    Run-ReleaseCase 'markerless legacy rollback restores original pair' {
+        $repo = New-ReleaseFixture
+        $legacy = New-LegacyReleaseOutputs $repo 'pair'
+        Reset-ReleaseNative $repo
+        $PackageName = 'gocluster-windows-amd64'; $PackageDirectoryName = 'ready_to_run'
+        $paths = Get-ReleasePaths $repo '.' $PackageName $PackageDirectoryName
+        $runRoot = Join-Path $repo '.tmp/legacy-rollback-fixture'
+        $preparedStage = Join-Path $runRoot $PackageDirectoryName; $preparedZip = Join-Path $runRoot 'prepared.zip'
+        Write-FixtureFile (Join-Path $preparedStage 'new.txt') 'new generated bytes'
+        Write-FixtureFile $preparedZip 'new archive bytes'
+        $owner = Write-ReleaseOwnership $paths $preparedStage $preparedZip
+        Remove-Item -LiteralPath $preparedZip
+        $script:retainRunRoot = $false
+        Expect-ReleaseRefusal { Complete-ReleaseOutputs $paths $preparedStage $preparedZip $runRoot $owner } '.'
+        Assert-FixtureBytes $legacy.StageRoot $legacy.StageBytes
+        Assert-Fixture ((Get-FileHash -LiteralPath $legacy.ZipPath -Algorithm SHA256).Hash -ceq $legacy.ZipHash) 'Legacy rollback lost the original ZIP.'
+        Assert-Fixture (-not (Test-Path -LiteralPath (Join-Path $legacy.StageRoot '.gocluster-release-owner.json'))) 'Rollback rewrote ownership into unknown legacy contents.'
+        Remove-RunDirectory $runRoot $runRoot
     }
     foreach ($fault in @('go-tidy', 'go-readme', 'go-build-main', 'go-build-peer', 'archive', 'marker')) {
         Run-ReleaseCase "prior outputs survive: $fault" {
@@ -563,9 +658,9 @@ try {
         $original = (Get-Command Assert-OwnedReleaseOutputs).ScriptBlock
         $global:ReleaseDisposalFault = [pscustomobject]@{ Original = $original; Calls = 0; RunRoot = $runRoot }
         function global:Assert-OwnedReleaseOutputs {
-            param([object]$Paths)
+            param([object]$Paths, [switch]$AllowLegacy)
             $fault = $global:ReleaseDisposalFault
-            $result = & $fault.Original $Paths
+            $result = & $fault.Original $Paths -AllowLegacy:$AllowLegacy
             $fault.Calls++
             if ($fault.Calls -eq 2) {
                 # Inject an actual unexpected file after new outputs verify.
