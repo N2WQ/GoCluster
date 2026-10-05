@@ -389,6 +389,7 @@ type Client struct {
 	done                    chan struct{}          // Closed to stop writer and prevent new enqueues
 	closeOnce               sync.Once              // Ensures close logic runs once
 	closeReportStarted      atomic.Bool            // A second close never waits for an already-running reporter
+	preserveRecordOnExit    atomic.Bool            // Rejection retains prior disk state after a failed human save
 	readPauseMu             sync.Mutex             // Serializes every pause-state mutation and writer completion
 	readPauseEpoch          uint64                 // Later valid controls invalidate earlier response completions
 	readPausePending        atomic.Bool            // Suppresses spots during preparation, queueing and delivery
@@ -3857,6 +3858,7 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 			// and validation recovery paths: its unread tail can contain a body.
 			var machineErr *machineInputError
 			if errors.As(err, &machineErr) {
+				client.preserveRecordOnExit.Store(true)
 				response := renderYAMLCommandError("", "", "", "invalid_header", machineErr.Error())
 				if s.queueMachineReply(client, response, true) {
 					closeOnExit = false
@@ -3889,6 +3891,7 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 
 		if machine := s.handleMachineCommand(client, line); machine.handled {
 			if machine.terminal {
+				client.preserveRecordOnExit.Store(true)
 				if machine.closeQueued {
 					closeOnExit = false
 				}

@@ -1,7 +1,8 @@
 // File role: Restores exact preferences and fences the complete reconnect handoff.
 // The full-callsign stripe remains owned from disk read through registration.
-// Optional eviction reporting happens after release; current-owner teardown saves
-// before removing membership so a closed socket does not revoke its final lease.
+// Optional eviction reporting happens after release; teardown retains its final
+// owner lease through membership removal. Protected records and terminal machine
+// rejection skip autosave; eligible ordinary disconnects save before removal.
 package telnet
 
 import (
@@ -209,8 +210,12 @@ func (s *Server) unregisterClient(c *Client) {
 	if err != nil {
 		return // A retired session may neither save nor remove its replacement.
 	}
-	if err := c.saveFilterOwned(); err != nil {
-		log.Printf("Warning: failed to persist filter for %s during unregister: %v", c.callsign, err)
+	// A rejected machine upload must not repair an earlier failed human save.
+	// Keep the final owner fence and registry removal even when autosave is skipped.
+	if !c.preserveRecordOnExit.Load() {
+		if err := c.saveFilterOwned(); err != nil {
+			log.Printf("Warning: failed to persist filter for %s during unregister: %v", c.callsign, err)
+		}
 	}
 	s.clientsMutex.Lock()
 	removed := s.clients[c.callsign] == c

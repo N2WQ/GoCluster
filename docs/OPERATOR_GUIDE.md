@@ -271,6 +271,9 @@ For example, an empty configured GRID can use a callsign lookup. Active NEARBY
 can temporarily use FAST dedupe while the configured choice remains SLOW. A zero
 PATHSAMPLES value uses the cluster default; zero SOLAR means OFF. Pause and
 diagnostic status are session information.
+NEARBY readback distinguishes enabled from usable. Enabled NEARBY keeps ordinary
+location rules suspended when user cells are unavailable; DX spots on the
+affected bands fail NEARBY matching instead of falling back to those rules.
 
 Every human filter/settings readback pauses live spots as soon as the request
 is accepted, including time spent preparing and sending the reply. After the

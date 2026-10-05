@@ -20,6 +20,9 @@ command/error artifact that distinguishes the next step.
 - Human SHOW FILTER reports all categories and counts; FULL/category exposes
   exact values, including false entries. SHOW SETTINGS separates configured
   selections, effective choices and session/server status.
+- NEARBY distinguishes enabled from usable. Enabled NEARBY suspends ordinary
+  location rules even with unavailable cells; spots on affected bands fail
+  NEARBY matching instead of falling back to ordinary location rules.
 - EVENT rules use key presence, even when a stored value is false. Their
   overview counts are labelled true and the readback includes an explanation.
   To remove an EVENT rule through YAML, omit its key from the replacement map.
@@ -50,6 +53,8 @@ command/error artifact that distinguishes the next step.
   Malformed upload headers and oversized/expired/incomplete/unreliable framing
   close the connection without dispatching remaining bytes. Fully received
   invalid documents return framed YAML errors and leave the connection open.
+  Terminal rejection also skips final preference autosave, preserving the disk
+  record even when an earlier human command changed live state but failed to save.
 - Unreadable/unsupported user records are preserved. Protected temporary-defaults
   sessions allow readbacks and temporary human changes but reject SAVE before
   any library write, LOAD and PUT/PATCH. A login timestamp/IP save warning after

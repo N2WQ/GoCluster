@@ -133,7 +133,9 @@ Missed spots are not replayed.
 `SHOW FILTER FULL` uses that exact format for each rule category, displays
 ordered allow/block lists for DXCALL/DECALL, and includes all feature toggles.
 `DEFAULT` remains distinct from explicit `true` or `false`. NEARBY reports its
-configured selection and whether it is effectively active. No successful FULL
+configured enabled selection separately from whether its user cells are usable.
+Enabled NEARBY suspends ordinary location rules even when cells are unavailable;
+unavailable cells reject ordinary DX spots on the affected bands. No successful FULL
 response omits a value. The [landing-page examples](../README.md#output-examples)
 show a complete overview and a complete SETTINGS response.
 
@@ -186,6 +188,9 @@ do not send the GET envelope's resource, revision or status fields as writable
 data. Preset association, effective choices, server defaults, diagnostics and
 pause state cannot be set through a configuration upload. The preset reference
 snapshot itself is not exposed in GET.
+`status.effective.nearby_active` means NEARBY is enabled with both user cells
+available. If it is false while the configured `nearby_enabled` is true, ordinary
+location rules remain suspended; invalid user cells reject spots on their bands.
 CAPABILITIES is a read-only discovery resource; its `configuration` section
 describes the protocol rather than writable preferences.
 
@@ -328,6 +333,10 @@ receives a framed error and remains usable; an early reader failure in any
 recognized machine header is terminal. A complete, reliably framed invalid
 document received before the deadline gets a YAML error and keeps the
 connection open.
+Terminal protocol rejection also skips final preference autosave: if an earlier
+human command changed live preferences but its save failed, the rejected upload
+does not save those preferences during disconnect. Normal disconnect saving and
+session-ownership cleanup remain in effect.
 
 Every GET response, write/validation acknowledgement and error fits within
 65,536 final bytes after CRLF conversion, including all document markers and

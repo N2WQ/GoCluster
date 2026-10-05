@@ -96,6 +96,8 @@ func TestMachineUnchangedPUTRepairsDurabilityWithoutRuntimeReset(t *testing.T) {
 	c.noiseClass = "QUIET"
 	c.setDedupePolicy(dedupePolicyFast)
 	c.setSolarSummaryMinutes(15, time.Now())
+	c.filter.Bands["20m"] = false
+	priorBands := c.filter.Bands
 	if err := c.saveFilter(); err != nil {
 		t.Fatal(err)
 	}
@@ -126,6 +128,11 @@ func TestMachineUnchangedPUTRepairsDurabilityWithoutRuntimeReset(t *testing.T) {
 	if c.solarNextSummaryAt != beforeTick || c.readPauseUntilUnixNano.Load() != beforePause || c.getDiagMode() != beforeDiag {
 		t.Fatal("unchanged PUT reset temporary runtime state")
 	}
+	priorBands["20m"] = true
+	if !c.filter.Bands["20m"] {
+		t.Fatal("unchanged PUT replaced a live filter collection to repair persistence")
+	}
+	priorBands["20m"] = false
 	data, err := os.ReadFile(filepath.Join(filter.UserDataDir, c.callsign+".yaml"))
 	if err != nil || !strings.Contains(string(data), "noise_class: URBAN") {
 		t.Fatalf("durable repair=%q, %v", data, err)
@@ -180,6 +187,54 @@ func TestMachineRevisionOrderAndReversal(t *testing.T) {
 	current, err := c.captureConfiguration(maxYAMLBytes)
 	if err != nil || !current.Equal(filter.ConfigurationFromPreset(c.presetReference.Baseline)) {
 		t.Fatal("reversal did not match preserved baseline")
+	}
+}
+
+func TestMachineOrderOnlyPATCHPublishesAndPersistsEveryPatternList(t *testing.T) {
+	for _, tc := range []struct {
+		field   string
+		diskKey string
+	}{
+		{field: "dx_callsigns", diskKey: "callsigns"},
+		{field: "block_dx_callsigns", diskKey: "block_callsigns"},
+		{field: "de_callsigns", diskKey: "decallsigns"},
+		{field: "block_de_callsigns", diskKey: "block_decallsigns"},
+	} {
+		t.Run(tc.field, func(t *testing.T) {
+			s := presetTestServer(t)
+			c := configurationTestClient(s, "W1ABC-1")
+			var patterns *[]string
+			switch tc.field {
+			case "dx_callsigns":
+				patterns = &c.filter.DXCallsigns
+			case "block_dx_callsigns":
+				patterns = &c.filter.BlockDXCallsigns
+			case "de_callsigns":
+				patterns = &c.filter.DECallsigns
+			case "block_de_callsigns":
+				patterns = &c.filter.BlockDECallsigns
+			}
+			*patterns = []string{"W1*", "K1*"}
+			revision, err := c.configurationRevisionToken()
+			if err != nil {
+				t.Fatal(err)
+			}
+			command, request := decodeProposalTest(t, c, "PATCH", "FILTER", "  "+tc.field+": [\"K1*\", \"W1*\"]\n")
+			if response := s.applyMachineRequest(c, command, request); !strings.Contains(response, "persisted: true") || strings.Contains(response, "error:") {
+				t.Fatal(response)
+			}
+			if strings.Join(*patterns, ",") != "K1*,W1*" {
+				t.Fatal("order-only write skipped runtime publication")
+			}
+			if after, err := c.configurationRevisionToken(); err != nil || after != revision {
+				t.Fatal("order-only write changed the semantic revision")
+			}
+			var record map[string]any
+			data := presetDiskBytes(t, filepath.Join(filter.UserDataDir, c.callsign+".yaml"))
+			if err := yaml.Unmarshal(data, &record); err != nil || !reflect.DeepEqual(record[tc.diskKey], []any{"K1*", "W1*"}) {
+				t.Fatalf("disk lost supplied order: %v, %v", record[tc.diskKey], err)
+			}
+		})
 	}
 }
 

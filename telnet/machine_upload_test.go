@@ -198,6 +198,9 @@ func TestYAMLReceptionJoinsAlreadyRunningWatchdog(t *testing.T) {
 		close(callbackDone)
 	}()
 	awaitYAMLTestSignal(t, conn.closeEntered, "watchdog socket close")
+	if !c.preserveRecordOnExit.Load() {
+		t.Fatal("watchdog interrupted the connection before fencing final preference autosave")
+	}
 	releaseReception.Do(func() { close(startReception) })
 	awaitYAMLTestSignal(t, timer.stopCalled, "watchdog disarm")
 	select {

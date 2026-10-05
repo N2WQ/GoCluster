@@ -186,7 +186,7 @@ func writePatternList(b *boundedResponse, label string, patterns []string) error
 	return err
 }
 
-func writeReadbackCategory(b *boundedResponse, category readbackCategory, compact bool, nearby bool, active bool) error {
+func writeReadbackCategory(b *boundedResponse, category readbackCategory, compact bool, nearby bool, usable bool) error {
 	switch rules := category.rules.(type) {
 	case filter.StringRules:
 		if !compact {
@@ -240,7 +240,14 @@ func writeReadbackCategory(b *boundedResponse, category readbackCategory, compac
 		_, err := fmt.Fprintf(b, "%s: %s\n", category.name, selection)
 		return err
 	default:
-		_, err := fmt.Fprintf(b, "NEARBY: %t (effective active=%t; location rules suspended only while active)\n", nearby, active)
+		explanation := "ordinary location rules apply"
+		if nearby {
+			explanation = "location rules suspended"
+			if !usable {
+				explanation = "unavailable cells reject DX spots on affected bands; location rules remain suspended"
+			}
+		}
+		_, err := fmt.Fprintf(b, "NEARBY: enabled=%t; usable=%t (%s)\n", nearby, usable, explanation)
 		return err
 	}
 }

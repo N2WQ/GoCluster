@@ -91,7 +91,9 @@ that outcome.
 Unchanged PUT/PATCH still persist before success. This repairs durable state
 when an earlier human command changed live preferences but its save failed,
 without resetting solar scheduling, NEARBY restoration, diagnostics, or pause
-state. Successful write acknowledgements report `valid: true`, `applied: true`,
+state. Exactly identical writes repair disk without publishing runtime state.
+Pattern order is included in that identity check despite being ignored for
+revisions. Successful write acknowledgements report `valid: true`, `applied: true`,
 and `persisted: true`; validation reports true/false/false. Protected
 temporary-defaults sessions reject PUT/PATCH and keep validation available.
 
@@ -123,6 +125,9 @@ Rejected PUT/PATCH/VALIDATE headers close the connection without dispatching
 any remaining payload. A complete invalid GET header is recoverable. A fully
 received invalid YAML document is recoverable through a framed error. All
 failure paths preserve configuration.
+Terminal rejection prevents final preference autosave, including unsaved live
+changes from an earlier failed human command. Ownership fencing and membership
+cleanup still run; ordinary disconnect autosave is unchanged.
 
 Strict YAML decoding holds one of four cancellable global preparation permits
 while its `yaml.Node` tree remains reachable. Extract detached values and
@@ -193,6 +198,8 @@ it does not establish production latency or p99 improvements.
   [framing/deadlines](../../telnet/machine_upload_test.go),
   [blocked-reporting cleanup](../../telnet/machine_deadline_lifecycle_test.go),
   [native/ziutek sessions](../../telnet/machine_session_test.go),
+  [echo/trickle/blocked negotiation](../../telnet/machine_transport_coverage_test.go),
+  [terminal rejection disk/reconnect](../../telnet/machine_failure_persistence_test.go),
   [schema](../../telnet/machine_schema_test.go),
   [literal output/limits](../../telnet/configuration_readback_test.go)
 - Related docs: [operator guide](../OPERATOR_GUIDE.md),

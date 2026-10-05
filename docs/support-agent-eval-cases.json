@@ -1965,10 +1965,11 @@
       "id": "SA-023",
       "category": "configuration-upload-framing",
       "severity": "critical",
-      "title": "Oversize upload tails and recoverable invalid YAML",
+      "title": "Rejected uploads preserve disk state and isolate tails",
       "prompt_sequence": [
         "A 65,537-byte PUT YAML CONFIG upload contains RESUME in its tail. Will it become a command after an error?",
-        "What are the header/body limits and timeout? Can a fully received invalid document keep the connection open?"
+        "What are the header/body limits and timeout? Can a fully received invalid document keep the connection open?",
+        "QUIET was saved, then SET NOISE URBAN changed live state but its save failed. Does a terminal upload rejection save URBAN during disconnect?"
       ],
       "action_plan": [
         {
@@ -2007,7 +2008,8 @@
             "30 seconds from acceptance",
             "malformed recognized PUT/PATCH/VALIDATE headers are terminal",
             "Remaining bytes",
-            "gets a YAML error and keeps the"
+            "gets a YAML error and keeps the",
+            "Terminal protocol rejection also skips final preference autosave"
           ]
         }
       ],
@@ -2074,6 +2076,18 @@
               "no pause-state effects",
               "leave pause state unchanged",
               "do not change pause state"
+            ]
+          },
+          {
+            "name": "terminal rejection preserves prior saved preferences",
+            "all_of": [
+              "QUIET",
+              "URBAN"
+            ],
+            "any_of": [
+              "skips final preference autosave",
+              "does not save URBAN",
+              "QUIET remains saved"
             ]
           }
         ],

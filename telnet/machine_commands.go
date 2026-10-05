@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"time"
 
 	"dxcluster/filter"
@@ -24,6 +25,9 @@ type machineDispatch struct {
 }
 
 func (s *Server) queueMachineReply(c *Client, response string, terminal bool) bool {
+	if terminal {
+		c.preserveRecordOnExit.Store(true)
+	}
 	err := c.enqueueControl(controlMessage{raw: []byte(response), closeAfter: terminal})
 	return err == nil
 }
@@ -197,12 +201,21 @@ func (s *Server) applyMachineRequest(c *Client, command machineCommand, request 
 	if validateOnly {
 		return response
 	}
+	// Semantic equality ignores callsign order. Order-only updates still publish
+	// their supplied lists; identical writes repair disk without rebuilding runtime.
+	unchanged := before.Equal(next) &&
+		slices.Equal(before.Filters.DXCallsigns, next.Filters.DXCallsigns) &&
+		slices.Equal(before.Filters.BlockDXCallsigns, next.Filters.BlockDXCallsigns) &&
+		slices.Equal(before.Filters.DECallsigns, next.Filters.DECallsigns) &&
+		slices.Equal(before.Filters.BlockDECallsigns, next.Filters.BlockDECallsigns)
 	// Even an unchanged PUT must establish durable consistency. No fallible work
 	// remains after this commit; a lost acknowledgement is recovered by GET.
 	if err := s.persistConfiguration(c, next, c.presetReference); err != nil {
 		return renderYAMLCommandError(command.Resource, request.RequestID, revision, "persistence_failed", "Could not save configuration; live and saved configuration are unchanged.")
 	}
-	s.publishConfiguration(c, next, prepared, c.presetReference, time.Now().UTC())
+	if !unchanged {
+		s.publishConfiguration(c, next, prepared, c.presetReference, time.Now().UTC())
+	}
 	return response
 }
 

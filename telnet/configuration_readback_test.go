@@ -140,6 +140,39 @@ func TestHumanReadbackOverviewCountsOversizedRulesWithoutDetail(t *testing.T) {
 	}
 }
 
+func TestHumanNearbyReadbackDistinguishesEnabledAndUsable(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		enabled bool
+		fine    pathreliability.CellID
+		coarse  pathreliability.CellID
+		want    string
+	}{
+		{name: "disabled", want: "NEARBY: enabled=false; usable=false (ordinary location rules apply)\r\n"},
+		{name: "usable", enabled: true, fine: 1, coarse: 2, want: "NEARBY: enabled=true; usable=true (location rules suspended)\r\n"},
+		{name: "unavailable", enabled: true, want: "NEARBY: enabled=true; usable=false (unavailable cells reject DX spots on affected bands; location rules remain suspended)\r\n"},
+		{name: "partly unavailable", enabled: true, coarse: 2, want: "NEARBY: enabled=true; usable=false (unavailable cells reject DX spots on affected bands; location rules remain suspended)\r\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, c := readbackTestClient()
+			c.filter = filter.NewFilter()
+			c.filter.NearbyEnabled, c.filter.NearbyUserFine, c.filter.NearbyUserCoarse = tc.enabled, tc.fine, tc.coarse
+			for _, category := range []string{"", "FULL", "NEARBY"} {
+				response, err := s.renderHumanReadback(c, "FILTER", category, 30*time.Second)
+				if err != nil || !strings.Contains(response, tc.want) {
+					t.Fatalf("%s does not explain NEARBY state: %q, %v", category, response, err)
+				}
+			}
+			if tc.fine == pathreliability.InvalidCell {
+				candidate := spot.NewSpot("K1ABC", "W1XYZ", 14074, "CW")
+				if c.filter.Matches(candidate) == tc.enabled {
+					t.Fatal("20m matching does not follow the described unavailable-cell behavior")
+				}
+			}
+		})
+	}
+}
+
 func TestYAMLReadbackLiteralSettingsAndNoPauseEffects(t *testing.T) {
 	s, c := readbackTestClient()
 	c.readPauseUntilUnixNano.Store(1700000030000000000)

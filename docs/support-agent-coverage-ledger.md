@@ -62,7 +62,7 @@ route is not decisive, these evals use the documented specific fallback.
 | Exact writable GET schema, case-preserved IDs, complete PUT, selective PATCH and non-applying VALIDATE | SA-020 | Canonical commands, validation result and read-only status source checks; omission/collection/default/validation answer checks. |
 | Matching revisions after reconnect and unchanged stale edits | SA-021 | Fresh-GET source evidence and conflict/re-edit answer checks; invented force commands forbidden. |
 | All-or-nothing writes, unavailable choices and unchanged PUT disk repair | SA-022 | Exact unavailable error and persistence source evidence; runtime/reference preservation answer checks. |
-| Bounded framing/deadline, terminal rejected tails and recoverable invalid YAML | SA-023 | Literal limit/deadline/framing evidence; separate header/body and no-tail-dispatch answer checks. |
+| Bounded framing/deadline, terminal rejected tails, preserved saved preferences and recoverable invalid YAML | SA-023 | Literal limit/deadline/framing evidence; separate header/body, no-tail-dispatch and failed-human-save disk-preservation answer checks. |
 | Complete-or-error responses, separate LOAD budget and resultant CONFIG fit | SA-024 | LOAD/readback/metadata source evidence; final-byte and small-PATCH admission answer checks. |
 | Protected records versus metadata-only login warnings | SA-025 | Protection/continuation source evidence; no destructive first-step recovery or preset overwrite. |
 | Applied/saved reference, reversal, full-SSID continuity and SAVE partial success | SA-026 | Exact partial-success message and disk recovery evidence; retained-reference answer checks. |

@@ -60,6 +60,7 @@ func (c *Client) receiveYAMLBody(deadline time.Time) ([]byte, error) {
 func (c *Client) receiveYAMLBodyWithHooks(deadline time.Time, hooks yamlReceptionHooks) (body []byte, err error) {
 	defer func() {
 		if err != nil {
+			c.preserveRecordOnExit.Store(true)
 			c.interrupt()
 			body = nil
 		}
@@ -104,6 +105,7 @@ func (r *yamlReception) expire() {
 	r.mu.Unlock()
 	if expire {
 		// This phase closes done/socket independently of optional reporting.
+		r.client.preserveRecordOnExit.Store(true)
 		r.client.interrupt()
 	}
 }

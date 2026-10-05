@@ -50,6 +50,10 @@ complete per-SSID persistence handoff become explicit contracts.
   through login metadata persistence and replacement registration. All per-SSID
   save paths, including saves already in progress and teardown, use this same
   ownership contract. A retired session cannot overwrite its replacement.
+- Terminal machine rejection skips the final preference autosave while retaining
+  the final owner lease and membership cleanup. An earlier failed human save must
+  not change the disk record as a side effect of rejection. Ordinary disconnects
+  retain final autosave, subject to the protected-record and retired-owner fences.
 - Acquire transaction ownership before registry, filter, path or writer locks.
   Never wait for a stripe while holding those locks. Disk I/O runs outside client
   locks while the stripe protects the transaction; keep the Filter pointer stable
@@ -97,6 +101,8 @@ complete per-SSID persistence handoff become explicit contracts.
   solar clock, lookup-derived GRID, NEARBY restoration state, diagnostics and pause
   controls when their configuration is unchanged. LOAD keeps its existing fresh
   solar schedule from successful publication, even at the same cadence.
+  Exactly identical PUT/PATCH repairs disk without publishing runtime state.
+  Pattern-order-only changes still publish and persist the supplied order.
 - Keep the preset budgets at 20 names per owner, 256 KiB per standalone encoded
   snapshot and 8 MiB per collection. Existing fixed collection locks remain
   separate from the per-SSID transaction stripes.
@@ -172,7 +178,8 @@ and [runtime configuration notes](../../data/config/README.md#user-configuration
   [ownership-check competition](../../telnet/configuration_handoff_test.go),
   [runtime continuity](../../telnet/configuration_publish_test.go),
   [preset transactions](../../telnet/preset_transaction_test.go),
-  [machine writes](../../telnet/machine_commands_test.go).
+  [machine writes](../../telnet/machine_commands_test.go),
+  [terminal rejection disk/reconnect](../../telnet/machine_failure_persistence_test.go).
 - Related docs: [telnet](../../telnet/README.md),
   [commands](../../commands/README.md), [environment](../ENVIRONMENT.md),
   [runtime config](../../data/config/README.md).

@@ -114,7 +114,7 @@ WCY: false
 ANNOUNCE: DEFAULT (effective true)
 SELF: true
 TOXIC: false
-NEARBY: false (effective active=false; location rules suspended only while active)
+NEARBY: enabled=false; usable=false (ordinary location rules apply)
 Use SHOW FILTER FULL or SHOW FILTER <category> for every exact rule.
 Live spots paused during delivery and for at least 30s after delivery. Type RESUME to resume now.
 Missed spots are not replayed.
