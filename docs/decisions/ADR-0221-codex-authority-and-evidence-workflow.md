@@ -1,5 +1,9 @@
 # ADR-0221: Codex Authority And Evidence Workflow
 
+[ADR-0242](ADR-0242-release-preparation-safety.md) replaces only the checker's
+release-script changed-path exclusion. The normal exact approval gate and all
+Fable ownership protections remain.
+
 - Status: Accepted
 - Date: 2026-07-10
 - Decision Origin: Design

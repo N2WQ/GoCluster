@@ -5,6 +5,9 @@ requirements below are superseded by [ADR-0236](ADR-0236-date-only-build-version
 Current invocations require an explicit positive `-ReleaseNumber`; other package
 contracts remain.
 
+[ADR-0242](ADR-0242-release-preparation-safety.md) refines preparation,
+output replacement, source rechecks, and publication destination/commit binding.
+
 - Status: Accepted
 - Date: 2026-04-24
 - Decision Origin: Design

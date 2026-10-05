@@ -544,8 +544,11 @@ try {
 
   Invoke-ApprovedChangedPathsFixture
 
-  Invoke-Fixture 1 "protected Fable or release path changed: CLAUDE.md" "Fable path protected" @("CLAUDE.md")
-  Invoke-Fixture 1 "protected Fable or release path changed: scripts/create-release.ps1" "release script protected" @("scripts/create-release.ps1")
+  foreach ($protectedPath in @('CLAUDE.md', '.claude/agents/example.md', 'docs/fable-workflow.md',
+      'docs/templates/fable-change.md', 'scripts/check-fable.ps1', 'docs/decisions/ADR-0206-example.md')) {
+    Invoke-Fixture 1 "protected Fable path changed: $protectedPath" "Fable path protected: $protectedPath" @($protectedPath)
+  }
+  Invoke-Fixture 0 "PASS Codex workflow static invariants passed." "release script follows normal scope authority" @("scripts/create-release.ps1")
 
   & $engine -NoProfile -File $checker -RepoRoot $repoRoot
   if ($LASTEXITCODE -ne 0) { throw "current repository contract failed checker" }

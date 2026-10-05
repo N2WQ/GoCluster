@@ -41,7 +41,7 @@ try {
     Remove-Item -LiteralPath $probePath -Force -ErrorAction SilentlyContinue
 }
 
-foreach ($name in @('Invoke-CheckedCommand', 'Assert-ReleaseTargetsAvailable', 'New-ReleaseNotes', 'Publish-GitHubRelease')) {
+foreach ($name in @('Invoke-NativeResult', 'Invoke-CheckedCommand', 'Assert-ReleaseTargetsAvailable', 'New-ReleaseNotes', 'Publish-GitHubRelease')) {
     $definition = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name }, $true)
     if (-not $definition) { throw "Missing helper: $name" }
     . ([scriptblock]::Create($definition.Extent.Text))
@@ -56,6 +56,7 @@ function Get-IdentityAssignment([string]$Name) {
     return [scriptblock]::Create($assignment[0].Extent.Text)
 }
 $commit = '3d8c007ae164'
+$commitId = '3d8c007ae164012345678901234567890123456789'
 $buildTime = '2026-10-03T16:42:10Z'
 foreach ($ReleaseNumber in @(1, 2, 2147483647)) {
     $buildUtc = [DateTimeOffset]::Parse($buildTime).UtcDateTime
@@ -70,6 +71,7 @@ foreach ($ReleaseNumber in @(1, 2, 2147483647)) {
 $ReleaseNumber = 2
 . (Get-IdentityAssignment 'releaseTag')
 $Remote = 'fixture-origin'
+$target = [pscustomobject]@{ PushUrl = 'https://github.com/fixture/release.git'; Repository = 'github.com/fixture/release'; NameWithOwner = 'fixture/release'; HostName = 'github.com' }
 $PackageName = 'gocluster-windows-amd64'
 $PackageDirectoryName = 'ready_to_run'
 $calls = [Collections.Generic.List[object]]::new()
@@ -80,7 +82,7 @@ function git {
     $calls.Add([pscustomobject]@{ Command = 'git'; Arguments = @($args) })
     $global:LASTEXITCODE = 0
     switch ($args[0]) {
-        'rev-parse' { $global:LASTEXITCODE = [int]($duplicate -ne 'local') }
+        'show-ref' { if ($duplicate -ne 'local') { $global:LASTEXITCODE = 2 } }
         'ls-remote' { if ($duplicate -ne 'remote') { $global:LASTEXITCODE = 2 } }
         'tag' { }
         'push' { if ($failPush) { $global:LASTEXITCODE = 1 } }
@@ -91,17 +93,20 @@ function gh {
     $notes = if ($args[1] -eq 'create') { [IO.File]::ReadAllText($args[-1]) } else { '' }
     $calls.Add([pscustomobject]@{ Command = 'gh'; Arguments = @($args); Notes = $notes })
     $global:LASTEXITCODE = 0
-    if ($args[0] -ne 'release') { throw 'Unexpected mocked GitHub command' }
-    if ($args[1] -eq 'view') { $global:LASTEXITCODE = [int]($duplicate -ne 'release') }
-    elseif ($args[1] -ne 'create') { throw 'Unexpected mocked GitHub release operation' }
-    elseif ($failRelease) { $global:LASTEXITCODE = 1 }
+    switch ($args[0]) {
+        'repo' { '{"nameWithOwner":"fixture/release","viewerPermission":"WRITE"}' }
+        'api' { if ($duplicate -eq 'release') { '[{"tag_name":"261003r2","draft":true}]' } else { '[]' } }
+        'release' { if ($args[1] -ne 'create') { throw 'Unexpected mocked GitHub release operation' }; if ($failRelease) { $global:LASTEXITCODE = 1 } }
+        default { throw 'Unexpected mocked GitHub command' }
+    }
 }
 $targetCheck = $ast.Find({ param($node)
     $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -eq 'Assert-ReleaseTargetsAvailable'
 }, $true)
 . ([scriptblock]::Create($targetCheck.Extent.Text))
-if ($calls.Count -ne 3 -or $calls[0].Arguments[-1] -cne 'refs/tags/261003r2' -or
-    $calls[1].Arguments[-1] -cne 'refs/tags/261003r2' -or $calls[2].Arguments[-1] -cne '261003r2') {
+if ($calls.Count -ne 4 -or $calls[0].Arguments[-1] -cne 'refs/tags/261003r2' -or
+    $calls[1].Arguments[-1] -cne 'refs/tags/261003r2' -or $calls[2].Arguments[2] -cne 'github.com/fixture/release' -or
+    $calls[3].Arguments[-1] -cne 'repos/fixture/release/releases?per_page=100&page=1') {
     throw 'Duplicate checks used the product version instead of the release tag'
 }
 foreach ($duplicate in @('local', 'remote', 'release')) {
@@ -117,9 +122,10 @@ $publish = $ast.Find({ param($node)
 }, $true)
 $calls.Clear()
 . ([scriptblock]::Create($publish.Extent.Text))
-if ($calls.Count -ne 3 -or ($calls[0].Arguments -join '|') -cne 'tag|-a|261003r2|-m|Release 261003r2' -or
-    ($calls[1].Arguments -join '|') -cne 'push|fixture-origin|261003r2' -or
-    $calls[2].Arguments[2] -cne '261003r2' -or $calls[2].Arguments[5] -cne '261003r2' -or
+if ($calls.Count -ne 3 -or ($calls[0].Arguments -join '|') -cne "tag|-a|261003r2|$commitId|-m|Release 261003r2" -or
+    ($calls[1].Arguments -join '|') -cne 'push|https://github.com/fixture/release.git|refs/tags/261003r2:refs/tags/261003r2' -or
+    $calls[2].Arguments[2] -cne '261003r2' -or $calls[2].Arguments[8] -cne '261003r2' -or
+    $calls[2].Arguments[5] -cne 'github.com/fixture/release' -or $calls[2].Arguments[6] -cne '--verify-tag' -or
     $calls[2].Arguments[-2] -cne '--notes-file' -or
     $calls[2].Notes -notmatch 'Product version: 261003' -or
     $calls[2].Notes -notmatch 'Release tag: 261003r2' -or

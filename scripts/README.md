@@ -14,6 +14,55 @@ builds omit release-tag metadata. See [build notes](../README.md#build-and-servi
 
 Run `test-release-identity.ps1` for parameter, stamping, duplicate-target, and
 mocked publishing checks; its Git/GitHub operations never reach external tools.
+Run `test-release-safety.ps1` for disposable Git/native-command/filesystem
+fixtures, failure ordering, output ownership, and caller-state restoration.
+
+## Release Preparation
+
+`create-release.ps1` builds both binaries itself. A manual `go build` is not a
+prerequisite. Normal releases require clean committed source and fresh module
+files/code maps; a refusal includes the repository and offending Git paths.
+`-AllowDirty` and `-SkipCodeMapCheck` remain package-only exceptions. Root
+`go.mod` and `go.sum` use LF even with `core.autocrlf=true`; ordinary `go mod tidy`
+can leave an otherwise tidy CRLF `go.sum` untouched, while `tidy -diff` rejects it.
+
+Preparation uses one ignored `.tmp/release-<id>/` directory. Existing output
+directories and ZIPs are replaced only when the private
+`.gocluster-release-owner.json` manifest proves their origin and unchanged
+contents. It records all staged files/directories and the ZIP hash, and is
+written after archiving so it is excluded from the shipped ZIP. Legacy
+`ready_to_run/` directories and ZIPs without this manifest, edited packages,
+missing outputs, or additional runtime files must be moved aside deliberately.
+Keep a previously run package as a deployment directory, separate from build
+outputs. The script does not delete legacy nested staging directories.
+
+Custom `-PackageDirectoryName` and `-PackageName` are single Windows path
+components; bracket-containing names are supported. Reserved device names,
+traversal, aliases, Git/source collisions, and junction/symlink traversal are
+refused. `-OutputDir` is relative to the repository root or a fully qualified
+absolute directory; paths such as `C:`/`C:folder` and `\folder` are refused.
+Default outputs remain repo-root `ready_to_run/` and `gocluster-windows-amd64.zip`.
+Custom artifacts created by the current invocation are the only final source
+check exclusions. Existing custom outputs must be ignored or moved aside to
+satisfy the initial comprehensive clean-worktree gate; no ignore settings are
+changed automatically.
+
+`-Remote` selects one Git push URL and the same explicit GitHub host/repository
+for lookup and publication, overriding ambient `GH_REPO`/`GH_HOST`. Supported
+URLs use HTTPS, `ssh://`, or `git@host:owner/repository`; ambiguous push URLs are
+refused. Repository push access must be verifiable so draft releases are visible.
+Git/GitHub lookup failures stop preparation; only established absence permits a
+new release. The annotated tag points explicitly to the captured full commit ID.
+
+Source and output directories must have no concurrent writers. Persistent HEAD
+or source changes abort publication; rechecks cannot detect transient changes
+that are reverted between checks. Caller location and `GOOS`/`GOARCH` are restored
+on every exit. Local output promotion retains recoverable previous artifacts;
+failed recovery or backup disposal preserves and reports the retained paths.
+Tag/push/release failures require
+manual inspection of local/remote state before retrying, without automatic ref
+deletion. See [ADR-0242](../docs/decisions/ADR-0242-release-preparation-safety.md)
+and [TSR-0040](../docs/troubleshooting/TSR-0040-release-preflight-and-output-safety.md).
 
 ## Operational Helpers
 

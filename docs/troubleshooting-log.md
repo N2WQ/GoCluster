@@ -11,6 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0040 | Release Preflight and Output Safety | Monitoring | 2026-10-03 | release, PowerShell, Git, CRLF, ownership | ADR-0242 | `docs/troubleshooting/TSR-0040-release-preflight-and-output-safety.md` |
 | TSR-0039 | Peer Normalized Relay, Date Admission and Telnet Framing | Monitoring | 2026-10-04 | peer, protocol, relay, date, admission, Telnet, framing | ADR-0239, ADR-0240, ADR-0241 | `docs/troubleshooting/TSR-0039-peer-normalized-relay-and-telnet-iac.md` |
 | TSR-0038 | Lint Analyzer Toolchain Compatibility | Resolved | 2026-10-03 | development, lint, Go toolchain | none | `docs/troubleshooting/TSR-0038-lint-analyzer-toolchain-compatibility.md` |
 | TSR-0037 | Peer Session Cancellation Publication | Resolved | 2026-10-03 | peer, cancellation, lifecycle, race, ownership | none | `docs/troubleshooting/TSR-0037-peer-session-cancellation-publication.md` |

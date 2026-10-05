@@ -489,12 +489,11 @@ $protectedPatterns = @(
   '^docs/fable-',
   '^docs/templates/fable-',
   '^scripts/.*fable',
-  '^docs/decisions/ADR-(0206|0208|0215|0217)-',
-  '^scripts/create-release\.ps1$'
+  '^docs/decisions/ADR-(0206|0208|0215|0217)-'
 )
 foreach ($changed in $ChangedPaths | Sort-Object -Unique) {
   $normalized = $changed.Replace('\','/')
-  if ($protectedPatterns | Where-Object { $normalized -match $_ }) { Add-Failure "protected Fable or release path changed: $normalized" }
+  if ($protectedPatterns | Where-Object { $normalized -match $_ }) { Add-Failure "protected Fable path changed: $normalized" }
 }
 
 Write-Host "INFO static checks prove text, ownership, references, trigger representation, and supplied path boundaries only."

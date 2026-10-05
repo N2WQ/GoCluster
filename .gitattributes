@@ -1,3 +1,5 @@
 cmd/rbn_backtest/data/** filter=lfs diff=lfs merge=lfs -text
 data/fcc/** filter=lfs diff=lfs merge=lfs -text
 data/rbn/** filter=lfs diff=lfs merge=lfs -text
+/go.mod text eol=lf
+/go.sum text eol=lf
