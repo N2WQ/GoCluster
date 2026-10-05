@@ -107,7 +107,7 @@ changes.
 
 The snapshot includes every persistent filter field and toggle, `NEARBY`,
 dialect, dedupe policy, grid, noise class, path sample minimum and solar summary
-cadence. It excludes login/IP history, diagnostic mode, automatic read pause,
+cadence. It excludes login/IP history, diagnostic mode, temporary read pause,
 and derived caches. LOAD uses existing preference normalization and server
 restrictions: disabled dedupe policies use the enabled-policy fallback, and a
 path sample override only applies above the current cluster minimum. Grid/H3
@@ -166,7 +166,19 @@ The telnet server applies a separate all-source duplicate guard before those lin
 
 If a duplicate is suppressed, slow clients do not see another control-queue enqueue. Unique bulletins still use the normal control queue, where a full queue disconnects the client.
 
-## Auto Read Pause
+## Read Pause
+
+`PAUSE [seconds]` temporarily suppresses live spot lines for the current session.
+`PAUSE` defaults to `30` seconds; `PAUSE 60` pauses for `60` seconds. The optional
+duration accepts whole seconds from `1` to `300`. Invalid durations or extra
+arguments return usage without changing the pause. The command is available in
+both dialects and works even when automatic read pause is disabled.
+
+A new `PAUSE` sets a fresh duration, including a shorter one. Automatic pauses
+may extend an active pause but cannot shorten its deadline. Suppressed spot
+counts carry across an active pause; a new pause after expiry starts a fresh
+count. Pause state is temporary and is excluded from saved preferences and
+presets.
 
 Long command responses can temporarily pause live spot lines so users have time
 to read the response before the live stream scrolls it away. The shipped config
@@ -184,7 +196,8 @@ uses `telnet.auto_read_pause_min_rows: 10` and
 - Suppressed live spots do not count as slow-client queue drops and do not
   trigger extreme-drop disconnect policy.
 
-When a pause starts, the command response gets a footer:
+When automatic pausing applies, the command response gets a footer showing the
+effective remaining duration:
 
 ```text
 Live spots paused for 30s after 14 output rows. Type RESUME to resume now.
@@ -194,6 +207,8 @@ Missed spots are not replayed.
 Users can type `SHOW HOLD` to see remaining pause time and the suppressed spot
 count. `RESUME` ends the pause immediately and discards any stale spot envelopes
 queued before the resume point so old spots are not replayed.
+Replies to `PAUSE`, `SHOW HOLD`, and `RESUME`, including PAUSE usage errors, do
+not trigger automatic pausing themselves.
 
 ## Grid, Noise, And Nearby
 

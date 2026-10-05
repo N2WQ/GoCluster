@@ -65,7 +65,7 @@ func TestReadPauseCommandsReportAndResume(t *testing.T) {
 	now := time.Unix(1700000000, 0).UTC()
 	server := &Server{nowFn: func() time.Time { return now }}
 	client := &Client{server: server}
-	client.startAutoReadPause(now, 30*time.Second)
+	client.startReadPause(now, 30*time.Second)
 	client.readPauseSuppressed.Store(2)
 
 	now = now.Add(12 * time.Second)
@@ -73,7 +73,7 @@ func TestReadPauseCommandsReportAndResume(t *testing.T) {
 	if !handled {
 		t.Fatal("SHOW HOLD was not handled")
 	}
-	if !strings.Contains(resp, "Live spots auto-paused for 18s more. Suppressed spots: 2.") {
+	if !strings.Contains(resp, "Live spots paused for 18s more. Suppressed spots: 2.") {
 		t.Fatalf("unexpected SHOW HOLD response: %q", resp)
 	}
 
@@ -100,7 +100,7 @@ func TestResumeAllowsFutureSpotsBeforeOriginalPauseDeadline(t *testing.T) {
 		done:     make(chan struct{}),
 	}
 	dxSpot := spot.NewSpot("K1ABC", "N0CALL", 14074.0, "FT8")
-	client.startAutoReadPause(now, 30*time.Second)
+	client.startReadPause(now, 30*time.Second)
 
 	now = now.Add(5 * time.Second)
 	active, _ := client.resumeReadPause(now)
@@ -132,7 +132,7 @@ func TestReadPauseSuppressesSpotsWithoutSlowClientDrops(t *testing.T) {
 		dropWindow: newDropWindow(server.dropExtremeWindow),
 	}
 	dxSpot := spot.NewSpot("K1ABC", "N0CALL", 14074.0, "FT8")
-	client.startAutoReadPause(now, 30*time.Second)
+	client.startReadPause(now, 30*time.Second)
 
 	for i := 0; i < 5; i++ {
 		client.enqueueSpot(&spotEnvelope{spot: dxSpot, enqueueAt: now.Add(time.Duration(i) * time.Second)})
@@ -174,7 +174,7 @@ func TestWriterLoopDropsQueuedReadPauseSpotsButWritesControl(t *testing.T) {
 		done:        make(chan struct{}),
 	}
 	dxSpot := spot.NewSpot("K1ABC", "N0CALL", 14074.0, "FT8")
-	client.startAutoReadPause(now, 30*time.Second)
+	client.startReadPause(now, 30*time.Second)
 	client.spotChan <- &spotEnvelope{spot: dxSpot, enqueueAt: now.Add(-time.Second)}
 	client.controlChan <- controlMessage{line: "control\n"}
 
@@ -211,5 +211,91 @@ func TestWriterLoopDropsQueuedReadPauseSpotsButWritesControl(t *testing.T) {
 	_, _, suppressed := client.readPauseStatus(now)
 	if suppressed != 1 {
 		t.Fatalf("suppressed spots = %d, want 1", suppressed)
+	}
+}
+
+func TestReadPauseExpiryAndResumeDiscardStaleEnqueue(t *testing.T) {
+	for _, resume := range []bool{false, true} {
+		name := "expiry"
+		if resume {
+			name = "resume"
+		}
+		t.Run(name, func(t *testing.T) {
+			start := time.Unix(1700000000, 0).UTC()
+			now := start
+			server := &Server{nowFn: func() time.Time { return now }}
+			client := &Client{server: server, spotChan: make(chan *spotEnvelope, 1), done: make(chan struct{})}
+			dxSpot := spot.NewSpot("K1ABC", "N0CALL", 14074.0, "FT8")
+			server.handleReadPauseCommand(client, "PAUSE 30")
+			client.enqueueSpot(&spotEnvelope{spot: dxSpot, enqueueAt: now})
+			if len(client.spotChan) != 0 {
+				t.Fatal("live spot enqueued during manual pause")
+			}
+			if resume {
+				now = start.Add(5 * time.Second)
+				response, _ := server.handleReadPauseCommand(client, "RESUME")
+				if response != "Live spots resumed. Suppressed spots: 1.\n" {
+					t.Fatalf("unexpected resume response: %q", response)
+				}
+			} else {
+				now = start.Add(30 * time.Second)
+			}
+			now = now.Add(time.Nanosecond)
+			client.enqueueSpot(&spotEnvelope{spot: dxSpot, enqueueAt: start.Add(-time.Second)})
+			if len(client.spotChan) != 0 {
+				t.Fatal("stale spot enqueued after pause ended")
+			}
+			fresh := &spotEnvelope{spot: dxSpot, enqueueAt: now}
+			client.enqueueSpot(fresh)
+			select {
+			case got := <-client.spotChan:
+				if got != fresh {
+					t.Fatal("fresh spot was replaced with a stale spot")
+				}
+			default:
+				t.Fatal("fresh spot did not enqueue after pause ended")
+			}
+			if drops := atomic.LoadUint64(&client.dropCount); drops != 0 {
+				t.Fatalf("pause suppression counted as %d slow-client drops", drops)
+			}
+		})
+	}
+}
+
+func TestWriterReadPauseExpiryAndResumeDiscardQueuedSpots(t *testing.T) {
+	for _, resume := range []bool{false, true} {
+		name := "expiry"
+		if resume {
+			name = "resume"
+		}
+		t.Run(name, func(t *testing.T) {
+			start := time.Unix(1700000000, 0).UTC()
+			now := start
+			server := &Server{writerBatchWait: time.Millisecond, nowFn: func() time.Time { return now }}
+			want := "control\r\n" + writerV15Oracle(writerV15Spot().FormatDXCluster()+"\n")
+			conn := &writerV15Conn{expected: []byte(want), target: 1, reached: make(chan struct{})}
+			client := writerV15Client(server, conn)
+			server.handleReadPauseCommand(client, "PAUSE 30")
+			client.spotChan <- &spotEnvelope{spot: writerV15Spot(), enqueueAt: start.Add(-time.Second)}
+			client.spotChan <- &spotEnvelope{spot: writerV15Spot(), enqueueAt: start.Add(time.Second)}
+			if resume {
+				now = start.Add(5 * time.Second)
+				server.handleReadPauseCommand(client, "RESUME")
+			} else {
+				now = start.Add(30 * time.Second)
+			}
+			now = now.Add(time.Nanosecond)
+			client.spotChan <- &spotEnvelope{spot: writerV15Spot(), enqueueAt: now}
+			client.controlChan <- controlMessage{line: "control\n"}
+			done := writerV15Start(client)
+			defer func() { client.close(""); writerV15Wait(t, done, "cleanup") }()
+			writerV15Wait(t, conn.reached, "fresh spot and control")
+			client.close("")
+			writerV15Wait(t, done, "shutdown")
+			writerV15Check(t, conn)
+			if active, _, suppressed := client.readPauseStatus(now); active || suppressed != 2 {
+				t.Fatalf("ended pause = active:%t suppressed:%d, want false 2", active, suppressed)
+			}
+		})
 	}
 }

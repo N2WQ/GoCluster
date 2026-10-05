@@ -48,6 +48,7 @@ The operator-facing commands handled here are:
   `--version` and PC18, rather than appearing in the version string.
 - `SHOW OWN`
 - `WHOSPOTSME [band]`
+- `PAUSE [seconds]`
 - `SHOW HOLD`
 - `RESUME`
 - `SHOW DEDUPE`
@@ -67,8 +68,15 @@ The operator-facing commands handled here are:
 
 Filter mutation, named presets, `SHOW PROP` execution, and read-pause state are handled in the telnet layer.
 This package documents those commands in HELP, but the parsers for `PASS`,
-`REJECT`, `SHOW FILTER`, `SHOW PROP`, `SHOW HOLD`, `RESUME`, and the `cc` aliases live under
-[`../telnet`](../telnet).
+`REJECT`, `SHOW FILTER`, `SHOW PROP`, `PAUSE`, `SHOW HOLD`, `RESUME`, and the `cc`
+aliases live under [`../telnet`](../telnet).
+
+`PAUSE` defaults to 30 seconds and accepts whole seconds from 1 to 300 in both
+dialects. It remains available when automatic read pause is disabled. A new
+`PAUSE` sets a fresh duration; automatic pauses may extend an active pause but
+cannot shorten it. `SHOW HOLD` reports either pause, and `RESUME` ends it without
+replaying missed spots. Command replies and other control traffic continue.
+
 `SHOW PROP` HELP should stay aligned with the telnet formatter: the command
 shows only rows whose `REL` prediction is `HIGH`, `MEDIUM`, or `LOW`.
 

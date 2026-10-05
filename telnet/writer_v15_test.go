@@ -105,7 +105,7 @@ func TestWriterV15PausedSpotDoesNotPrimeCache(t *testing.T) {
 	conn := &writerV15Conn{expected: []byte("control\r\n"), target: 1, reached: make(chan struct{})}
 	client := writerV15Client(&Server{writerBatchWait: time.Millisecond, nowFn: func() time.Time { return now }}, conn)
 	sp := writerV15Spot()
-	client.startAutoReadPause(now, 30*time.Second)
+	client.startReadPause(now, 30*time.Second)
 	client.spotChan <- &spotEnvelope{spot: sp, enqueueAt: now.Add(-time.Second)}
 	client.controlChan <- controlMessage{line: "control\n"}
 	done := writerV15Start(client)

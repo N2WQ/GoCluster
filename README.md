@@ -45,8 +45,9 @@ build, release, and service details are later in this file and in
   `SHOW PROP <call|prefix|grid> [band] [mode]`.
 - To confirm the baseline call used for own-call features, use `SHOW OWN`.
 - To see recent spotter countries for your baseline call, use `WHOSPOTSME [band]`.
-- After long command output, live spots pause briefly; use `SHOW HOLD` or
-  `RESUME` to inspect or end that pause.
+- To pause live spots, use `PAUSE` for 30 seconds or `PAUSE 60` for 60 seconds.
+  Use `SHOW HOLD` to inspect the pause or `RESUME` to end it immediately.
+- Long command output also pauses live spots briefly.
 - To receive periodic solar summaries, use `SET SOLAR 15|30|60|OFF`.
 
 New DX spots are materialized and displayed without trailing numeric SSIDs on
@@ -127,6 +128,12 @@ Long command responses also append a short read-pause footer:
 Live spots paused for 30s after 14 output rows. Type RESUME to resume now.
 Missed spots are not replayed.
 ```
+
+`PAUSE [seconds]` lets you start the same pause manually. The duration defaults
+to `30` seconds and accepts whole seconds from `1` to `300`, even when automatic
+read pause is disabled. Repeating `PAUSE` sets a fresh duration; automatic
+pauses can extend an active pause but cannot shorten it. Command replies and
+other control traffic continue, and missed live spots are not replayed.
 
 ### Filter Examples
 
@@ -209,8 +216,9 @@ SHOW PROP - Show propagation outlook.
 SHOW BUILD - Show binary build metadata.
 SHOW OWN - Show own-call identity.
 WHOSPOTSME - Show recent spotter countries.
+PAUSE - Pause live spots temporarily.
 SHOW HOLD - Show read-pause status.
-RESUME - End automatic read pause.
+RESUME - End read pause.
 SHOW DEDUPE - Show dedupe policy.
 SET DEDUPE - Select dedupe policy.
 SET DIAG - Select diagnostic comments.

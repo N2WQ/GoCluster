@@ -382,7 +382,7 @@ type Client struct {
 	controlChan             chan controlMessage    // Buffered channel for control/bulletin delivery
 	done                    chan struct{}          // Closed to stop writer and prevent new enqueues
 	closeOnce               sync.Once              // Ensures close logic runs once
-	readPauseUntilUnixNano  atomic.Int64           // Auto read-pause deadline; checked lazily, no timer/goroutine
+	readPauseUntilUnixNano  atomic.Int64           // Read-pause deadline; checked lazily, no timer/goroutine
 	readPauseDiscardBefore  atomic.Int64           // Drop queued spot envelopes at/before this enqueue timestamp
 	readPauseSuppressed     atomic.Uint64          // Spots suppressed by the current or most recent read pause
 	echoInput               bool                   // True when we should echo typed characters back to the client
@@ -1898,6 +1898,7 @@ const (
 	defaultControlQueueSize       = 32
 	defaultWorkerQueueSize        = 128
 	defaultSendDeadline           = 2 * time.Second
+	defaultReadPauseDuration      = 30 * time.Second
 	maxAutoReadPauseDuration      = 5 * time.Minute
 	maxAutoReadPauseRows          = 500
 	defaultRejectWorkers          = 2
@@ -3924,7 +3925,8 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 
 		if resp, handled := s.handleReadPauseCommand(client, line); handled {
 			if resp != "" {
-				if !s.sendCommandResponse(client, resp, "read pause command response") {
+				// Pause controls must not trigger another pause through their own replies.
+				if !s.sendClientMessage(client, resp, "read pause command response") {
 					return
 				}
 			}
@@ -5628,8 +5630,11 @@ func (s *Server) maybeApplyAutoReadPause(client *Client, message string) string 
 	if rows < s.autoReadPauseMinRows {
 		return message
 	}
-	duration := s.autoReadPauseDuration
-	client.startAutoReadPause(s.now(), duration)
+	now := s.now()
+	_, remaining, _ := client.readPauseStatus(now)
+	// Long output may extend an active pause, but must not shorten its deadline.
+	duration := max(s.autoReadPauseDuration, remaining)
+	client.startReadPause(now, duration)
 	footer := fmt.Sprintf(
 		"Live spots paused for %ds after %d output rows. Type RESUME to resume now.\nMissed spots are not replayed.\n",
 		durationCeilSeconds(duration),
@@ -5648,6 +5653,23 @@ func (s *Server) sendCommandResponse(client *Client, message string, purpose str
 func (s *Server) handleReadPauseCommand(client *Client, line string) (string, bool) {
 	upper := strutil.NormalizeUpper(line)
 	now := s.now()
+	fields := strings.Fields(upper)
+	if len(fields) > 0 && fields[0] == "PAUSE" {
+		const usage = "Usage: PAUSE [seconds 1-300] (default 30)\n"
+		if len(fields) > 2 {
+			return usage, true
+		}
+		duration := defaultReadPauseDuration
+		if len(fields) == 2 {
+			seconds, err := strconv.Atoi(fields[1])
+			if err != nil || seconds < 1 || seconds > int(maxAutoReadPauseDuration/time.Second) {
+				return usage, true
+			}
+			duration = time.Duration(seconds) * time.Second
+		}
+		client.startReadPause(now, duration)
+		return fmt.Sprintf("Live spots paused for %ds. Type RESUME to resume now.\nMissed spots are not replayed.\n", durationCeilSeconds(duration)), true
+	}
 	switch upper {
 	case "RESUME":
 		active, suppressed := client.resumeReadPause(now)
@@ -5661,7 +5683,7 @@ func (s *Server) handleReadPauseCommand(client *Client, line string) (string, bo
 	case "SHOW HOLD":
 		active, remaining, suppressed := client.readPauseStatus(now)
 		if active {
-			return fmt.Sprintf("Live spots auto-paused for %ds more. Suppressed spots: %d.\n", durationCeilSeconds(remaining), suppressed), true
+			return fmt.Sprintf("Live spots paused for %ds more. Suppressed spots: %d.\n", durationCeilSeconds(remaining), suppressed), true
 		}
 		if suppressed > 0 {
 			return fmt.Sprintf("Live spots are not paused. Suppressed spots in last pause: %d.\n", suppressed), true
@@ -5672,7 +5694,11 @@ func (s *Server) handleReadPauseCommand(client *Client, line string) (string, bo
 	}
 }
 
-func (c *Client) startAutoReadPause(now time.Time, duration time.Duration) {
+// startReadPause replaces the deadline from the client's command goroutine.
+// Fan-out and the writer read the atomic state and count suppression concurrently.
+// An active window keeps its count; an expired window starts a fresh count.
+// The cutoff discards stale queued spots without a timer or replay buffer.
+func (c *Client) startReadPause(now time.Time, duration time.Duration) {
 	if c == nil || duration <= 0 {
 		return
 	}

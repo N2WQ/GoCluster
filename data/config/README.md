@@ -177,12 +177,18 @@ Read-pause behavior:
   final trailing newline does not.
 - `telnet.auto_read_pause_seconds` is how long live spot lines are suppressed
   after long command output.
-- Set either read-pause value to `0` to disable the feature.
+- Set either read-pause value to `0` to disable automatic read pause. Manual
+  `PAUSE [seconds]` remains available, defaults to `30` seconds independently of
+  these settings, and accepts whole seconds from `1` to `300`.
 - The shipped values are `10` rows and `30` seconds so commands such as
   `SHOW PROP`, `WHOSPOTSME`, and long `HELP` output can be read before live
   spots resume.
 - Read pause suppresses live spot lines only; bulletins, talks, command
   replies, errors, keepalives, and close messages continue on the control path.
+- A manual `PAUSE` sets a fresh duration. Automatic pauses may extend an active
+  pause but cannot shorten it; their footer reports the effective remaining
+  duration. Replies to `PAUSE`, `SHOW HOLD`, and `RESUME` do not trigger another
+  automatic pause. Missed spots are not replayed.
 
 Bulletin behavior:
 - `telnet.bulletin_dedupe_window_seconds` suppresses identical WWV, WCY, and `TO ALL` announcement lines across all bulletin sources before they enter client control queues.

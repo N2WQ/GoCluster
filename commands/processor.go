@@ -425,25 +425,38 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 	)
 	add("WHOSPOTSME", "WHOSPOTSME - Show recent spotter countries.", whoSpotsMeLines)
 
+	pauseLines := helpEntryLines(
+		"PAUSE - Pause live spots temporarily.",
+		[]string{"PAUSE [seconds 1-300]"},
+		nil,
+		[]string{
+			"Defaults to 30 seconds, even when automatic read pause is disabled.",
+			"PAUSE sets a fresh duration; automatic pauses can only extend it.",
+			"Only live spots pause; missed spots are not replayed.",
+			"Command replies and other control traffic continue.",
+		},
+	)
+	add("PAUSE", "PAUSE - Pause live spots temporarily.", pauseLines)
+
 	showHoldLines := helpEntryLines(
 		"SHOW HOLD - Show read-pause status.",
 		[]string{"SHOW HOLD"},
 		nil,
 		[]string{
-			"Shows remaining automatic pause time and suppressed spot count.",
+			"Shows remaining pause time and suppressed spot count.",
 		},
 	)
 	add("SHOW HOLD", "SHOW HOLD - Show read-pause status.", showHoldLines)
 
 	resumeLines := helpEntryLines(
-		"RESUME - End the automatic read pause.",
+		"RESUME - End the read pause.",
 		[]string{"RESUME"},
 		nil,
 		[]string{
 			"Live spots resume immediately; missed spots are not replayed.",
 		},
 	)
-	add("RESUME", "RESUME - End automatic read pause.", resumeLines)
+	add("RESUME", "RESUME - End read pause.", resumeLines)
 
 	showDedupeLines := helpEntryLines(
 		"SHOW DEDUPE - Show your broadcast dedupe policy.",
@@ -732,6 +745,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"SHOW BUILD",
 			"SHOW OWN",
 			"WHOSPOTSME",
+			"PAUSE",
 			"SHOW HOLD",
 			"RESUME",
 			"SHOW DEDUPE",
@@ -871,6 +885,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"SHOW BUILD",
 			"SHOW OWN",
 			"WHOSPOTSME",
+			"PAUSE",
 			"SHOW HOLD",
 			"RESUME",
 			"SHOW DEDUPE",
@@ -923,6 +938,8 @@ func normalizeHelpTopic(dialect string, topic string) string {
 		return "SHOW DXCC"
 	case strings.HasPrefix(upper, "WHOSPOTSME"):
 		return "WHOSPOTSME"
+	case upper == "PAUSE" || strings.HasPrefix(upper, "PAUSE "):
+		return "PAUSE"
 	case strings.HasPrefix(upper, "SHOW HOLD"):
 		return "SHOW HOLD"
 	case strings.HasPrefix(upper, "RESUME"):

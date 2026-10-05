@@ -4,6 +4,10 @@
 - Date: 2026-06-18
 - Decision Origin: Design
 
+Refinement: [ADR-0243](ADR-0243-manual-telnet-spot-pause.md) adds manual `PAUSE`,
+defines active-pause deadline precedence, and exempts pause-control replies from
+the automatic trigger. The other decisions here remain accepted.
+
 ## Context
 
 Telnet users can run commands that intentionally return many rows, including

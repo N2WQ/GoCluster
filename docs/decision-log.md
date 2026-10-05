@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0243 | Manual Telnet Spot Pause | Accepted | 2026-10-04 | telnet, commands, deadlines, supportability | Refines ADR-0195 commands, deadline precedence, and pause-control replies | - | `docs/decisions/ADR-0243-manual-telnet-spot-pause.md` |
 | ADR-0242 | Release Preparation Safety | Accepted | 2026-10-04 | release scripts, Git, module hygiene, ownership, workflow | Refines ADR-0076/0078; replaces ADR-0221 release-path checker exclusion | - | `docs/decisions/ADR-0242-release-preparation-safety.md` |
 | ADR-0241 | Peer Frame Payload and Comment Framing | Accepted | 2026-10-04 | peer, protocol, framing, admission, compatibility | Refines ADR-0050 encoder and ADR-0239/0240 comment framing | - | `docs/decisions/ADR-0241-peer-frame-payload-and-comment-framing.md` |
 | ADR-0240 | Peer DXSpider Date Admission | Accepted | 2026-10-04 | peer, protocol, date, admission, compatibility | Refines ADR-0239 date/timestamp clauses | Comment framing refined by ADR-0241 | `docs/decisions/ADR-0240-peer-dxspider-date-admission.md` |
@@ -72,7 +73,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR-0198 | 160m Merge Readiness Cleanup | Accepted | 2026-06-19 | workflow, docs, tests, code maps, pathreliability, custom_scp | - | - | `docs/decisions/ADR-0198-160m-merge-readiness-cleanup.md` |
 | ADR-0197 | Native 160m Closed Solar Proxy | Superseded | 2026-06-19 | pathreliability, telnet, config, operations, supportability, experiments | ADR-0196 LOW/UNLIKELY-only native 160m contract | ADR-0201 | `docs/decisions/ADR-0197-native-160m-closed-solar-proxy.md` |
 | ADR-0196 | Native 160m Solar Darkness Fallback | Superseded | 2026-06-18 | pathreliability, solarweather, telnet, config, operations, experiments | - | ADR-0197 | `docs/decisions/ADR-0196-native-160m-solar-darkness-fallback.md` |
-| ADR-0195 | Telnet Auto Read Pause | Accepted | 2026-06-18 | telnet, commands, config, queues, supportability | - | - | `docs/decisions/ADR-0195-telnet-auto-read-pause.md` |
+| ADR-0195 | Telnet Auto Read Pause | Accepted | 2026-06-18 | telnet, commands, config, queues, supportability | - | ADR-0243 (refines commands, deadlines, and pause-control replies) | `docs/decisions/ADR-0195-telnet-auto-read-pause.md` |
 | ADR-0194 | LLM Workflow Verification And Claim Evidence | Accepted | 2026-06-18 | workflow, Codex, validation, agent-memory | - | - | `docs/decisions/ADR-0194-llm-workflow-verification-and-claim-evidence.md` |
 | ADR-0193 | TSR RCA Summary And Checker Contract | Accepted | 2026-06-17 | decision-memory, troubleshooting, supportability, workflow | - | - | `docs/decisions/ADR-0193-tsr-rca-summary-checker.md` |
 | ADR-0192 | ADR Reader Guide And Current Contract Map | Accepted | 2026-06-17 | docs, ADR, supportability, pathreliability, voacap | - | - | `docs/decisions/ADR-0192-adr-reader-guide-and-current-contract-map.md` |

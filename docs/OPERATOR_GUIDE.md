@@ -198,8 +198,9 @@ Log in with your callsign. Useful first commands:
   propagation outlook from your grid to a target.
 - `SHOW OWN`: show your login call and baseline own call.
 - `WHOSPOTSME [band]`: show recent spotter countries for your baseline call.
-- `SHOW HOLD`: show automatic read-pause status after long command output.
-- `RESUME`: end the automatic read pause and resume live spots immediately.
+- `PAUSE [seconds]`: pause live spots for 30 seconds by default, or 1-300 whole seconds.
+- `SHOW HOLD`: show manual or automatic read-pause status.
+- `RESUME`: end the read pause and resume live spots immediately.
 - `SET GRID <grid>`: set your 4-6 character Maidenhead grid.
 - `SET NOISE QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL`: set receive noise class.
 - `SET PATHSAMPLES <count|DEFAULT>`: require more path samples than the cluster default, or clear your personal override.
@@ -228,6 +229,12 @@ read the response. The shipped config starts that pause at `10` rendered rows
 for `30` seconds. Missed live spots are not buffered or replayed; control
 traffic such as bulletins, talks, command replies, errors, and close messages
 continues.
+
+Users can also start the same pause with `PAUSE [seconds]`. Manual pausing works
+even when automatic read pause is disabled and always defaults to `30` seconds.
+A new `PAUSE` sets a fresh duration; automatic pauses can extend an active pause
+but cannot shorten it. `SHOW HOLD` reports either kind of pause. Replies to
+`PAUSE`, `SHOW HOLD`, and `RESUME` do not trigger another automatic pause.
 
 Numeric SSIDs on the spotted DX call are removed regardless of ingest source.
 For example, a new DX call of `K1ABC-2` is materialized and displayed as

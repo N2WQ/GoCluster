@@ -861,10 +861,12 @@ func TestHelpLineWidth(t *testing.T) {
 		p.ProcessCommandForClient("HELP SHOW BUILD", "N2WQ", "", nil, "go"),
 		p.ProcessCommandForClient("HELP SHOW OWN", "N2WQ", "", nil, "go"),
 		p.ProcessCommandForClient("HELP SHOW PROP", "N2WQ", "", nil, "go"),
+		p.ProcessCommandForClient("HELP PAUSE", "N2WQ", "", nil, "go"),
 		p.ProcessCommandForClient("HELP SHOW HOLD", "N2WQ", "", nil, "go"),
 		p.ProcessCommandForClient("HELP RESUME", "N2WQ", "", nil, "go"),
 		p.ProcessCommandForClient("HELP SHOW/DX", "N2WQ", "", nil, "cc"),
 		p.ProcessCommandForClient("HELP SHOW/PROP", "N2WQ", "", nil, "cc"),
+		p.ProcessCommandForClient("HELP PAUSE", "N2WQ", "", nil, "cc"),
 		p.ProcessCommandForClient("HELP SET/FILTER", "N2WQ", "", nil, "cc"),
 	}
 	for _, help := range helps {
@@ -878,6 +880,22 @@ func TestHelpLineWidth(t *testing.T) {
 				t.Fatalf("help line exceeds 78 chars: %q", line)
 			}
 		}
+	}
+}
+
+func TestHelpPauseAcrossDialects(t *testing.T) {
+	p := NewProcessor(nil, nil, nil, nil, nil, nil)
+	for _, dialect := range []string{"go", "cc", "classic"} {
+		t.Run(dialect, func(t *testing.T) {
+			list := p.ProcessCommandForClient("HELP", "N2WQ", "", nil, dialect)
+			if !strings.Contains(list, "PAUSE - Pause live spots temporarily.") {
+				t.Fatalf("PAUSE missing from command list: %q", list)
+			}
+			response := p.ProcessCommandForClient("HELP pause 60", "N2WQ", "", nil, dialect)
+			if !strings.Contains(response, "Usage: PAUSE [seconds 1-300]") {
+				t.Fatalf("PAUSE help with an argument was not recognized: %q", response)
+			}
+		})
 	}
 }
 
@@ -1009,7 +1027,8 @@ func TestHelpEntriesGoDialect(t *testing.T) {
 		{"SHOW OWN", []string{"SHOW OWN - Show your login and baseline own call", "Usage: SHOW OWN"}},
 		{"WHOSPOTSME", []string{"WHOSPOTSME - Show recent spotter countries", "Usage: WHOSPOTSME [band]"}},
 		{"SHOW HOLD", []string{"SHOW HOLD - Show read-pause status", "Usage: SHOW HOLD"}},
-		{"RESUME", []string{"RESUME - End the automatic read pause", "Usage: RESUME"}},
+		{"PAUSE", []string{"PAUSE - Pause live spots temporarily", "Usage: PAUSE [seconds 1-300]", "Defaults to 30 seconds", "automatic pauses can only extend it", "other control traffic continue"}},
+		{"RESUME", []string{"RESUME - End the read pause", "Usage: RESUME"}},
 		{"SHOW DEDUPE", []string{"SHOW DEDUPE - Show your broadcast dedupe policy", "FAST = short window", "CQ zones", "Usable NEARBY temporarily uses the least-suppressive available lane"}},
 		{"SET DEDUPE", []string{"SET DEDUPE - Select broadcast dedupe policy", "FAST = short window", "CQ zones", "Usable NEARBY temporarily uses the least-suppressive available lane"}},
 		{"SET DIAG", []string{"SET DIAG - Select diagnostic comments", "Usage: SET DIAG <OFF|DEDUPE|SOURCE|CONF|PATH|MODE>"}},
@@ -1047,7 +1066,8 @@ func TestHelpEntriesCCDialect(t *testing.T) {
 		{"SHOW OWN", []string{"SHOW OWN - Show your login and baseline own call", "Usage: SHOW OWN"}},
 		{"WHOSPOTSME", []string{"WHOSPOTSME - Show recent spotter countries", "Usage: WHOSPOTSME [band]"}},
 		{"SHOW HOLD", []string{"SHOW HOLD - Show read-pause status", "Usage: SHOW HOLD"}},
-		{"RESUME", []string{"RESUME - End the automatic read pause", "Usage: RESUME"}},
+		{"PAUSE", []string{"PAUSE - Pause live spots temporarily", "Usage: PAUSE [seconds 1-300]", "Defaults to 30 seconds", "automatic pauses can only extend it", "other control traffic continue"}},
+		{"RESUME", []string{"RESUME - End the read pause", "Usage: RESUME"}},
 		{"SHOW DEDUPE", []string{"SHOW DEDUPE - Show your broadcast dedupe policy", "FAST = short window", "CQ zones", "Usable NEARBY temporarily uses the least-suppressive available lane"}},
 		{"SET DEDUPE", []string{"SET DEDUPE - Select broadcast dedupe policy", "FAST = short window", "CQ zones", "Usable NEARBY temporarily uses the least-suppressive available lane"}},
 		{"SET DIAG", []string{"SET DIAG - Select diagnostic comments", "Usage: SET DIAG <OFF|DEDUPE|SOURCE|CONF|PATH|MODE>"}},

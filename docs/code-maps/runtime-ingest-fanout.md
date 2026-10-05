@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `181721282a4ce1a7`
+- Source fingerprint: `7fd8fce58696b005`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -15,7 +15,7 @@
 | `dxcluster/internal/cluster` | `internal/cluster` | 25 | 58 |
 | `dxcluster/peer` | `peer` | 62 | 126 |
 | `dxcluster/spot` | `spot` | 32 | 31 |
-| `dxcluster/telnet` | `telnet` | 15 | 34 |
+| `dxcluster/telnet` | `telnet` | 15 | 35 |
 
 ## In-Scope Package Edges
 
@@ -488,6 +488,7 @@ Test files:
 - `telnet/preset_commands_test.go`
 - `telnet/qualification_observer_test.go`
 - `telnet/qualification_stage_test.go`
+- `telnet/read_pause_command_test.go`
 - `telnet/read_pause_test.go`
 - `telnet/readline_test.go`
 - `telnet/server_broadcast_worker_test.go`
@@ -512,6 +513,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0243](docs/decisions/ADR-0243-manual-telnet-spot-pause.md) | Accepted | 2026-10-04 | telnet, commands, deadlines, supportability | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0241](docs/decisions/ADR-0241-peer-frame-payload-and-comment-framing.md) | Accepted | 2026-10-04 | peer, protocol, framing, admission, compatibility | `area:peer, path:internal/cluster, path:peer` |
 | [ADR-0240](docs/decisions/ADR-0240-peer-dxspider-date-admission.md) | Accepted | 2026-10-04 | peer, protocol, date, admission, compatibility | `area:peer, path:peer` |
 | [ADR-0239](docs/decisions/ADR-0239-peer-original-validation-and-relay.md) | Accepted | 2026-10-04 | peer, protocol, admission, ownership | `area:peer, path:peer, path:spot` |
