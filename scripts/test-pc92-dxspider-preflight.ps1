@@ -9,7 +9,7 @@ $fixtureRoot = Join-Path ([IO.Path]::GetTempPath()) ('gocluster-dx-preflight-' +
 $names = @('DXSPIDER_ROOT','DXSPIDER_PERL','DXSPIDER_PERL_LIB','PATH','LC_ALL')
 $previous = @{}
 foreach ($name in $names) { $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
-$savedExitCode = Get-Variable LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue
+$savedExitCode = Get-Variable LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue | Select-Object Value
 $global:FixtureGoCalls = 0
 function go { $global:FixtureGoCalls++; $global:LASTEXITCODE = $global:FixtureGoExit }
 try {

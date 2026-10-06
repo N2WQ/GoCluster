@@ -4,7 +4,7 @@ Set-StrictMode -Version Latest
 $fixtureBase = Join-Path ([IO.Path]::GetTempPath()) ('pair-fixtures-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $fixtureBase
 $originalLocation = Get-Location
-$savedExitCode = Get-Variable LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue
+$savedExitCode = Get-Variable LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue | Select-Object Value
 $originalGoEnvironment = @{}
 foreach ($name in @('GOOS','GOARCH')) {
     $originalGoEnvironment[$name] = @{ Exists = Test-Path ('Env:' + $name); Value = [Environment]::GetEnvironmentVariable($name, 'Process') }

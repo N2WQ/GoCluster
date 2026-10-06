@@ -6,7 +6,7 @@ $null = New-Item -ItemType Directory -Path $fixtureBase
 $originalLocation = Get-Location
 $originalConfig = $env:DXC_CONFIG_PATH
 $hadOriginalConfig = Test-Path Env:DXC_CONFIG_PATH
-$savedExitCode = Get-Variable LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue
+$savedExitCode = Get-Variable LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue | Select-Object Value
 $passed = 0
 function Invoke-LauncherFixture([string]$Name, [string]$Profiles, [string]$Failure = '', [string]$ConfigState = 'value') {
     $root = Join-Path $fixtureBase $Name
