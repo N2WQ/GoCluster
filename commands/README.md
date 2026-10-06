@@ -79,13 +79,21 @@ This package documents those commands in HELP, but the parsers for `PASS`,
 `REJECT`, `SHOW FILTER`, `SHOW SETTINGS`, GET/PUT/PATCH/VALIDATE YAML, `SHOW PROP`,
 `PAUSE`, `SHOW HOLD`, `RESUME`, and the `cc` aliases live under [`../telnet`](../telnet).
 
-`SHOW FILTER` reports every category with enabled/total entry counts and
-allow/block flags. FULL shows every exact value; a category selects one part
-without omitting values inside it. `SHOW/FILTER` and `SH/FILTER` accept the same
-FULL/category arguments in `cc`. `SHOW SETTINGS` separates configured
-preferences from effective behavior, diagnostics, pause and server defaults.
+`SHOW FILTER` uses aligned labels, readable short selections and counts for
+long selections. It groups geography rules and inclusion switches. FULL shows
+every exact flag and value, including false entries and explicit defaults; a
+category selects one part without omitting values inside it. `SHOW/FILTER` and
+`SH/FILTER` accept the same FULL/category arguments in `cc`. `SHOW SETTINGS`
+separates configured preferences and effective behavior from session status.
+Path minimums reflect active runtime state for both stations and beacons.
 Both views report the associated preset and whether preferences differ from
 its retained reference snapshot.
+
+Human lines contain at most 78 printable ASCII characters followed by CRLF.
+Exact strings use quoted ASCII escapes; complete quoted pieces joined by `+`
+preserve long values without trimming spaces or splitting escapes. Map keys
+use stable ordering and pattern lists retain supplied order. Preview entry
+count and rendered length are bounded before sorting or joining selections.
 
 These human readbacks always suppress live spots during preparation, queueing
 and delivery, followed by a full reading interval after the server write and

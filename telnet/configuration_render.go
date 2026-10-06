@@ -1,11 +1,11 @@
 // File role: Renders exact configuration through a hard final CRLF byte budget.
 // Preflight happens before map sorting or YAML's intermediate node allocation.
-// Compact counts borrow collections without building detailed rule strings.
+// Human previews are bounded; exact detail preflights before sorting borrowed keys.
 package telnet
 
 import (
+	"errors"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -117,190 +117,48 @@ func categoryMinimumFits(category readbackCategory) bool {
 	return (filter.Configuration{Filters: f}).MinimumSizeFits(maxYAMLBytes)
 }
 
-func enabledRules[K string | int](entries map[K]bool) int {
-	count := 0
-	for _, enabled := range entries {
-		if enabled {
-			count++
-		}
+func humanReadbackFooter(duration time.Duration) string {
+	if duration <= 0 {
+		duration = defaultReadPauseDuration
 	}
-	return count
+	return fmt.Sprintf("Live spots paused during delivery and for at least %ds afterward.\nType RESUME when ready. Missed spots are not replayed.\n", durationCeilSeconds(duration))
 }
 
-func writeExactRules[K string | int](b *boundedResponse, name string, rules filter.RuleSet[K]) error {
-	if _, err := fmt.Fprintf(b, "%s:\n  allow_all: %t\n  block_all: %t\n", name, rules.AllowAll, rules.BlockAll); err != nil {
+func humanReadbackError(err error, duration time.Duration) string {
+	var h humanResponse
+	message := err.Error()
+	if errors.Is(err, errReadbackTooLarge) {
+		message = "response exceeds 65,536 bytes."
+	}
+	if h.prose("Readback failed: ", "", message) == nil && writeHumanFooter(&h, duration) == nil {
+		return string(h.data)
+	}
+	return "Readback failed: response exceeds 65,536 bytes.\r\n\r\n" + strings.ReplaceAll(humanReadbackFooter(duration), "\n", "\r\n")
+}
+
+func writeHumanFooter(h *humanResponse, duration time.Duration) error {
+	if err := h.line(""); err != nil {
 		return err
 	}
-	for i, entries := range []map[K]bool{rules.Allow, rules.Block} {
-		label := "allow"
-		if i == 1 {
-			label = "block"
-		}
-		if _, err := fmt.Fprintf(b, "  %s: {", label); err != nil {
-			return err
-		}
-		keys := make([]K, 0, len(entries))
-		for key := range entries {
-			keys = append(keys, key)
-		}
-		slices.Sort(keys)
-		for index, key := range keys {
-			if index > 0 {
-				if _, err := b.Write([]byte(", ")); err != nil {
-					return err
-				}
-			}
-			var text string
-			switch value := any(key).(type) {
-			case string:
-				text = strconv.Quote(value)
-			case int:
-				text = strconv.Itoa(value)
-			}
-			if _, err := fmt.Fprintf(b, "%s: %t", text, entries[key]); err != nil {
-				return err
-			}
-		}
-		if _, err := b.Write([]byte("}\n")); err != nil {
+	for _, line := range strings.Split(strings.TrimSuffix(humanReadbackFooter(duration), "\n"), "\n") {
+		if err := h.line(line); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func writePatternList(b *boundedResponse, label string, patterns []string) error {
-	if _, err := fmt.Fprintf(b, "  %s: [", label); err != nil {
-		return err
-	}
-	for index, pattern := range patterns {
-		if index > 0 {
-			if _, err := b.Write([]byte(", ")); err != nil {
-				return err
-			}
-		}
-		if _, err := fmt.Fprintf(b, "%q", pattern); err != nil {
-			return err
-		}
-	}
-	_, err := b.Write([]byte("]\n"))
-	return err
-}
-
-func writeReadbackCategory(b *boundedResponse, category readbackCategory, compact bool, nearby bool, usable bool) error {
-	switch rules := category.rules.(type) {
-	case filter.StringRules:
-		if !compact {
-			if err := writeExactRules(b, category.name, rules); err != nil {
-				return err
-			}
-		} else {
-			countLabel := "enabled"
-			if category.name == "EVENT" {
-				countLabel = "true"
-			}
-			if _, err := fmt.Fprintf(b, "%s: allow_all=%t block_all=%t; allow=%d/%d %s; block=%d/%d %s\n",
-				category.name, rules.AllowAll, rules.BlockAll, enabledRules(rules.Allow), len(rules.Allow), countLabel, enabledRules(rules.Block), len(rules.Block), countLabel); err != nil {
-				return err
-			}
-		}
-		if category.name == "EVENT" {
-			_, err := b.Write([]byte("  note: EVENT rules use key presence; false does not remove a rule.\n"))
-			return err
-		}
-		return nil
-	case filter.IntRules:
-		if !compact {
-			return writeExactRules(b, category.name, rules)
-		}
-		_, err := fmt.Fprintf(b, "%s: allow_all=%t block_all=%t; allow=%d/%d enabled; block=%d/%d enabled\n",
-			category.name, rules.AllowAll, rules.BlockAll, enabledRules(rules.Allow), len(rules.Allow), enabledRules(rules.Block), len(rules.Block))
-		return err
-	}
-	switch category.kind {
-	case 'p':
-		if compact {
-			_, err := fmt.Fprintf(b, "%s: allow=%d patterns; block=%d patterns\n", category.name, len(category.allow), len(category.block))
-			return err
-		}
-		if _, err := fmt.Fprintf(b, "%s:\n", category.name); err != nil {
-			return err
-		}
-		if err := writePatternList(b, "allow", category.allow); err != nil {
-			return err
-		}
-		return writePatternList(b, "block", category.block)
-	case 't':
-		selection := "DEFAULT (effective true)"
-		switch category.toggle {
-		case filter.DefaultBoolFalse:
-			selection = "false"
-		case filter.DefaultBoolTrue:
-			selection = "true"
-		}
-		_, err := fmt.Fprintf(b, "%s: %s\n", category.name, selection)
-		return err
-	default:
-		explanation := "ordinary location rules apply"
-		if nearby {
-			explanation = "location rules suspended"
-			if !usable {
-				explanation = "unavailable cells reject DX spots on affected bands; location rules remain suspended"
-			}
-		}
-		_, err := fmt.Fprintf(b, "NEARBY: enabled=%t; usable=%t (%s)\n", nearby, usable, explanation)
-		return err
-	}
-}
-
-func humanReadbackFooter(duration time.Duration) string {
-	if duration <= 0 {
-		duration = defaultReadPauseDuration
-	}
-	return fmt.Sprintf("Live spots paused during delivery and for at least %ds after delivery. Type RESUME to resume now.\nMissed spots are not replayed.\n", durationCeilSeconds(duration))
-}
-
-func humanReadbackError(err error, duration time.Duration) string {
-	var b boundedResponse
-	if _, writeErr := fmt.Fprintf(&b, "Readback failed: %v\n%s", err, humanReadbackFooter(duration)); writeErr == nil {
-		return string(b.data)
-	}
-	return "Readback failed: response exceeds 65,536 bytes.\r\n" + strings.ReplaceAll(humanReadbackFooter(duration), "\n", "\r\n")
-}
-
-func writeReadbackHeader(b *boundedResponse, c *Client, status configurationReadbackStatus, resource string) error {
-	if _, err := fmt.Fprintf(b, "%s for %s\nPreset: ", resource, c.callsign); err != nil {
-		return err
-	}
-	name := "(none)"
-	if status.Preset.Associated {
-		name = status.Preset.Name
-		if status.Preset.Modified {
-			name += " (modified)"
-		}
-	}
-	_, err := fmt.Fprintf(b, "%s\n", name)
-	return err
-}
-
+// Callers own the full-callsign transaction. Capture runtime before borrowing
+// filter/path locks, then use the same snapshot for preflight and generation.
+// Machine status/envelopes and writer/pause ownership are deliberately unchanged.
 func (s *Server) renderHumanReadback(c *Client, resource, category string, duration time.Duration) (string, error) {
 	status := s.captureReadbackStatus(c, nil)
-	var b boundedResponse
+	runtime := s.captureHumanRuntime(c)
+	var response string
 	err := c.withBorrowedConfiguration(func(cfg filter.Configuration) error {
 		status = attachReadbackConfiguration(status, c, cfg)
 		if !readbackMetadataFits(status, "", "") {
 			return errReadbackTooLarge
-		}
-		if err := writeReadbackHeader(&b, c, status, resource); err != nil {
-			return err
-		}
-		if resource == "SETTINGS" {
-			if category != "" {
-				return fmt.Errorf("usage: SHOW SETTINGS")
-			}
-			if !(filter.Configuration{Settings: cfg.Settings}).MinimumSizeFits(maxYAMLBytes) {
-				return errReadbackTooLarge
-			}
-			return writeHumanSettings(&b, cfg.Settings, status)
 		}
 		switch category {
 		case "CONF":
@@ -308,59 +166,257 @@ func (s *Server) renderHumanReadback(c *Client, resource, category string, durat
 		case "PC93":
 			category = "ANNOUNCE"
 		}
-		categories := readbackCategories(cfg.Filters)
+		if resource == "SETTINGS" && category != "" {
+			return fmt.Errorf("usage: SHOW SETTINGS")
+		}
+		if resource == "SETTINGS" && !(filter.Configuration{Settings: cfg.Settings}).MinimumSizeFits(maxYAMLBytes) {
+			return errReadbackTooLarge
+		}
 		if category == "FULL" && !(filter.Configuration{Filters: cfg.Filters}).MinimumSizeFits(maxYAMLBytes) {
 			return errReadbackTooLarge
 		}
-		found := category == "" || category == "FULL"
-		for _, item := range categories {
-			if category != "" && category != "FULL" && category != item.name {
-				continue
-			}
-			found = true
-			if category != "" && !categoryMinimumFits(item) {
-				return errReadbackTooLarge
-			}
-			if err := writeReadbackCategory(&b, item, category == "", cfg.Filters.NearbyEnabled, status.Effective.NearbyActive); err != nil {
+		for _, countOnly := range []bool{true, false} {
+			h := humanResponse{countOnly: countOnly}
+			if err := writeHumanHeader(&h, c, status); err != nil {
 				return err
 			}
-		}
-		if !found {
-			return fmt.Errorf("usage: SHOW FILTER [FULL|BAND|MODE|SOURCE|EVENT|CONFIDENCE|PATH|DXCONT|DECONT|DXZONE|DEZONE|DXGRID2|DEGRID2|DXDXCC|DEDXCC|DXCALL|DECALL|BEACON|WWV|WCY|ANNOUNCE|SELF|TOXIC|NEARBY]")
-		}
-		if category == "" {
-			_, err := b.Write([]byte("Use SHOW FILTER FULL or SHOW FILTER <category> for every exact rule.\n"))
-			return err
+			switch {
+			case resource == "SETTINGS":
+				if err := writeHumanSettings(&h, cfg.Settings, status, runtime, duration); err != nil {
+					return err
+				}
+			case category == "":
+				if err := writeHumanOverview(&h, cfg.Filters, status); err != nil {
+					return err
+				}
+			default:
+				found := false
+				for _, item := range readbackCategories(cfg.Filters) {
+					if category != "FULL" && category != item.name {
+						continue
+					}
+					if found {
+						if err := h.line(""); err != nil {
+							return err
+						}
+					}
+					found = true
+					if !categoryMinimumFits(item) {
+						return errReadbackTooLarge
+					}
+					if err := writeHumanExactCategory(&h, item, cfg.Filters, status); err != nil {
+						return err
+					}
+				}
+				if !found {
+					return fmt.Errorf("usage: SHOW FILTER [FULL|category]; use HELP SHOW FILTER")
+				}
+				if h.joined {
+					if err := h.line(""); err != nil {
+						return err
+					}
+					if err := h.line("A + joins quoted pieces of one value; no characters are added."); err != nil {
+						return err
+					}
+				}
+			}
+			if err := writeHumanFooter(&h, duration); err != nil {
+				return err
+			}
+			if !countOnly {
+				response = string(h.data)
+			}
 		}
 		return nil
 	})
-	if err != nil {
-		return "", err
-	}
-	if _, err := b.Write([]byte(humanReadbackFooter(duration))); err != nil {
-		return "", err
-	}
-	return string(b.data), nil
+	return response, err
 }
 
-func writeHumanSettings(b *boundedResponse, cfg filter.SettingsConfiguration, status configurationReadbackStatus) error {
-	for _, item := range []struct{ label, configured, effective string }{
-		{"DIALECT", cfg.Dialect, status.Effective.Dialect}, {"GRID", cfg.Grid, status.Effective.Grid},
-		{"NOISE", cfg.NoiseClass, status.Effective.NoiseClass}, {"DEDUPE", cfg.DedupePolicy, status.Effective.DedupePolicy},
-	} {
-		configured := strconv.Quote(item.configured)
-		if item.configured == "" {
-			configured = "DEFAULT (empty)"
+type humanRuntimeStatus struct {
+	stationFloor, beaconFloor                  int
+	stationMinimum, beaconMinimum, userMinimum int
+	prediction                                 string
+	dedupeEnabled, fastEnabled                 bool
+}
+
+func (s *Server) captureHumanRuntime(c *Client) humanRuntimeStatus {
+	state := c.pathSnapshot()
+	runtime := humanRuntimeStatus{prediction: "unavailable", userMinimum: state.pathMinObservationCount}
+	if s == nil {
+		return runtime
+	}
+	runtime.dedupeEnabled = s.dedupeFastEnabled || s.dedupeMedEnabled || s.dedupeSlowEnabled
+	runtime.fastEnabled = s.dedupeFastEnabled
+	if s.pathPredictor != nil {
+		cfg := s.pathPredictor.Config()
+		runtime.stationFloor, runtime.beaconFloor = cfg.MinObservationCount, cfg.BeaconMinObservationCount
+		runtime.stationMinimum = effectivePathMinObservationCount(state, cfg)
+		runtime.beaconMinimum = effectiveBeaconPathMinObservationCount(state, cfg)
+		runtime.prediction = ""
+		if !cfg.Enabled {
+			runtime.prediction = "disabled"
 		}
-		if _, err := fmt.Fprintf(b, "%s: %s (effective %q)\n", item.label, configured, item.effective); err != nil {
+	}
+	return runtime
+}
+
+func humanSettingToken(label, value string) string {
+	// Only the known dialect labels use their familiar human spelling.
+	// Other saved values, including unusual mixed-case strings, stay exact.
+	if label == "Dialect" && (strings.EqualFold(value, "go") || strings.EqualFold(value, "cc")) {
+		return strings.ToUpper(value)
+	}
+	return value
+}
+
+func writeHumanSetting(h *humanResponse, label, configured, effective string) error {
+	if configured == "" {
+		display := humanSettingToken(label, effective)
+		if simpleHumanValue(display) && len(display)+19 <= humanValueWidth {
+			return h.row(label, "DEFAULT; effective "+display)
+		}
+		if err := h.row(label, "DEFAULT; effective"); err != nil {
+			return err
+		}
+		return h.quoted(humanPrefix(""), effective, "")
+	}
+	configuredDisplay, effectiveDisplay := humanSettingToken(label, configured), humanSettingToken(label, effective)
+	if strings.EqualFold(configured, effective) {
+		return h.valueRow(label, configuredDisplay, "")
+	}
+	if err := h.valueRow(label, configuredDisplay, ""); err != nil {
+		return err
+	}
+	return h.valueRow("", effectiveDisplay, " (effective)")
+}
+
+func writeHumanPathSettings(h *humanResponse, configured int, runtime humanRuntimeStatus) error {
+	selection := "DEFAULT"
+	if configured != 0 {
+		selection = strconv.Itoa(configured) + " configured"
+	}
+	if runtime.prediction != "" {
+		return h.row("Path samples", selection+"; prediction "+runtime.prediction)
+	}
+	floors := fmt.Sprintf("stations %d, beacons %d", runtime.stationMinimum, runtime.beaconMinimum)
+	if configured == 0 {
+		return h.row("Path samples", "DEFAULT; "+floors)
+	}
+	if runtime.userMinimum == 0 {
+		if err := h.row("Path samples", selection+"; effective "+floors); err != nil {
+			return err
+		}
+		return h.row("", fmt.Sprintf("Override inactive: not above station minimum %d", runtime.stationFloor))
+	}
+	if err := h.row("Path samples", fmt.Sprintf("%d (user minimum); %s", configured, floors)); err != nil {
+		return err
+	}
+	return h.row("", fmt.Sprintf("Cluster minimums: stations %d, beacons %d", runtime.stationFloor, runtime.beaconFloor))
+}
+
+func writeHumanDedupe(h *humanResponse, configured string, status configurationReadbackStatus, runtime humanRuntimeStatus) error {
+	choice := configured
+	if choice == "" {
+		choice = "DEFAULT"
+	}
+	if !runtime.dedupeEnabled {
+		return h.valueRow("Dedupe", choice, "; secondary duplicate suppression disabled")
+	}
+	suffix := ""
+	if configured == "" || !strings.EqualFold(configured, status.Effective.DedupePolicy) {
+		suffix = "; effective " + status.Effective.DedupePolicy
+		if status.Effective.NearbyActive {
+			suffix += " while NEARBY is active"
+		}
+	}
+	if err := h.valueRow("Dedupe", choice, suffix); err != nil {
+		return err
+	}
+	if status.Effective.NearbyActive && !runtime.fastEnabled {
+		return h.row("", "FAST is unavailable on this server")
+	}
+	if configured != "" && !status.Effective.NearbyActive && !strings.EqualFold(configured, status.Effective.DedupePolicy) {
+		return h.row("", "Configured choice is unavailable on this server")
+	}
+	return nil
+}
+
+func writeHumanSettings(h *humanResponse, cfg filter.SettingsConfiguration, status configurationReadbackStatus, runtime humanRuntimeStatus, duration time.Duration) error {
+	if err := writeHumanSetting(h, "Dialect", cfg.Dialect, status.Effective.Dialect); err != nil {
+		return err
+	}
+	if cfg.Grid == "" {
+		text := "DEFAULT; no grid available"
+		if status.Effective.Grid != "" && simpleHumanValue(status.Effective.Grid) && len(status.Effective.Grid)+41 <= humanValueWidth {
+			text = "DEFAULT; using " + status.Effective.Grid + " from callsign lookup"
+		} else if status.Effective.Grid != "" {
+			if err := h.row("Grid", "DEFAULT; using grid from callsign lookup"); err != nil {
+				return err
+			}
+			if err := h.quoted(humanPrefix(""), status.Effective.Grid, ""); err != nil {
+				return err
+			}
+			text = ""
+		}
+		if text != "" {
+			if err := h.row("Grid", text); err != nil {
+				return err
+			}
+		}
+	} else if err := writeHumanSetting(h, "Grid", cfg.Grid, status.Effective.Grid); err != nil {
+		return err
+	}
+	if err := writeHumanSetting(h, "Noise", cfg.NoiseClass, status.Effective.NoiseClass); err != nil {
+		return err
+	}
+	if err := writeHumanDedupe(h, cfg.DedupePolicy, status, runtime); err != nil {
+		return err
+	}
+	if err := writeHumanPathSettings(h, cfg.PathMinObservationCount, runtime); err != nil {
+		return err
+	}
+	solar := "Off"
+	if cfg.SolarSummaryMinutes != 0 {
+		solar = fmt.Sprintf("Every %d minutes", cfg.SolarSummaryMinutes)
+	}
+	if err := h.row("Solar", solar); err != nil {
+		return err
+	}
+	if err := h.line(""); err != nil {
+		return err
+	}
+	if err := h.line("Session only"); err != nil {
+		return err
+	}
+	diagnostics := status.Session.DiagnosticComments
+	if diagnostics == "OFF" {
+		diagnostics = "Off"
+	}
+	if err := h.row("Diagnostics", diagnostics); err != nil {
+		return err
+	}
+	if status.Session.TemporaryDefaults {
+		if err := h.row("Persistence", "Temporary defaults; changes will not be saved"); err != nil {
 			return err
 		}
 	}
-	_, err := fmt.Fprintf(b, "GRID source: derived=%t\nPATHSAMPLES: %d (0=cluster default; effective %d)\nSOLAR: %d minutes (0=OFF)\nDIAG: %s (session only)\nLive spots: paused=%t; delivery pending=%t; remaining=%ds; suppressed=%d\nPersistence: temporary defaults=%t\nServer defaults: dialect=%s dedupe=%s noise=%s PATHSAMPLES=%d\n",
-		status.Effective.GridDerived, cfg.PathMinObservationCount, status.Effective.PathMinObservationCount,
-		cfg.SolarSummaryMinutes, status.Session.DiagnosticComments, status.Session.PauseActive,
-		status.Session.PausePendingDelivery, status.Session.PauseRemaining, status.Session.SuppressedSpots,
-		status.Session.TemporaryDefaults, status.Server.DefaultDialect, status.Server.DefaultDedupePolicy,
-		status.Server.DefaultNoiseClass, status.Server.PathMinObservationCount)
-	return err
+	if status.Session.PausePendingDelivery {
+		if duration <= 0 {
+			duration = defaultReadPauseDuration
+		}
+		if err := h.row("Live spots", fmt.Sprintf("Paused for reading; at least %ds after delivery", durationCeilSeconds(duration))); err != nil {
+			return err
+		}
+		if err := h.row("", fmt.Sprintf("%d spots suppressed", status.Session.SuppressedSpots)); err != nil {
+			return err
+		}
+		if status.Session.PauseRemaining > durationCeilSeconds(duration) {
+			return h.row("", fmt.Sprintf("Existing pause: %ds remaining", status.Session.PauseRemaining))
+		}
+		return nil
+	}
+	if status.Session.PauseActive {
+		return h.row("Live spots", fmt.Sprintf("Paused: %ds remaining; %d suppressed", status.Session.PauseRemaining, status.Session.SuppressedSpots))
+	}
+	return h.row("Live spots", "Flowing")
 }

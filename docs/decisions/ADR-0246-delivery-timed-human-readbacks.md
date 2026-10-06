@@ -11,6 +11,9 @@ it. Row-triggered pauses can be disabled or expire while a response is waiting
 in the queue. Human readbacks must suppress scrolling through preparation and
 delivery, then begin the reading interval at successful server delivery.
 Machine YAML commands need uninterrupted pause-state semantics.
+Counts alone do not explain ordinary selections well. The human presentation
+must follow the readable operator examples while exact views preserve every
+stored value and explain category-specific matching behavior.
 
 [ADR-0195](ADR-0195-telnet-auto-read-pause.md) established automatic pauses;
 [ADR-0243](ADR-0243-manual-telnet-spot-pause.md) added manual controls. Their
@@ -21,15 +24,40 @@ changes the deadline.
 
 ### Human Views And The Output Budget
 
-Provide `SHOW FILTER` overview counts, `SHOW FILTER FULL` exact complete
-rules, `SHOW FILTER <category>` exact category rules, and `SHOW SETTINGS`.
-Keep CC `SHOW/FILTER` and `SH/FILTER` aliases and category aliases CONF and
-PC93. The overview counts enabled versus stored map entries and callsign
-patterns without first constructing detailed rule strings or cloning/sorting
-all rules. FULL/category show exact flags, false entries, ordered patterns,
-and explicit toggle defaults. SETTINGS separates configured preferences,
-effective values, server defaults, and session controls. Both views report
-preset association and `(modified)` using the retained reference in
+Provide `SHOW FILTER` as an aligned, readable overview, `SHOW FILTER FULL` as
+exact complete rules, `SHOW FILTER <category>` as exact category rules, and
+`SHOW SETTINGS`. Keep CC `SHOW/FILTER` and `SH/FILTER` aliases and category
+aliases CONF and PC93. Refine the initial count-based overview to show actual
+short selections, with clear counts when selections cannot fit. Group DX/DE
+geography and inclusion switches. Bound preview entry count and rendered
+length before collecting, sorting or joining; counts do not construct all
+detail strings. Use stable ordering for map selections.
+
+Summaries reflect actual category behavior rather than a generic allow-all
+interpretation. Ordinary string/integer categories can remain restrictive
+with a nonempty allow map even when allow_all is true. EVENT uses key presence,
+including false entries, ignores allow restrictions when allow_all is true,
+and always includes untagged spots. PATH preserves its UNLIKELY/CLOSED rules.
+Enabled NEARBY suspends geography rules even when user cells are unavailable;
+the human view explains rejection on affected bands and retained rules.
+
+FULL/category show every exact flag, false entry, ordered pattern and explicit
+toggle default. Human lines are at most 78 printable ASCII characters followed
+by CRLF. Quote exact strings with Go-style ASCII escapes; wrap long individual
+values as complete quoted pieces joined by + without adding characters or
+trimming whitespace. Never split an escape. Map keys sort lexicographically
+or numerically; pattern order and duplicates remain intact. Preflight escaped
+length before unrestricted quoting/sorting, and bound quoted-piece scratch
+space by the line width. The human exact format does not change client YAML.
+
+SETTINGS separates configured preferences and effective behavior from session
+controls. Read effective station/beacon path minimums from active runtime
+state and loaded predictor configuration. For server floors 21/11, reconnect
+can retain a saved personal minimum of 15 without activating it; show the
+configured 15 and effective 21/11 rather than deriving a beacon minimum of 15
+from saved preferences. Explain disabled/unavailable prediction explicitly.
+Pending delivery is a reading hold, not a finite countdown already underway.
+Both views report preset association and `(modified)` using the retained reference in
 [ADR-0244](ADR-0244-exact-configuration-persistence.md).
 
 Every new human or YAML readback is complete within a 65,536-byte final
@@ -90,8 +118,8 @@ Human replies, including human size errors, include the delivery/reading
 footer and RESUME guidance:
 
 ```text
-Live spots paused during delivery and for at least 30s after delivery. Type RESUME to resume now.
-Missed spots are not replayed.
+Live spots paused during delivery and for at least 30s afterward.
+Type RESUME when ready. Missed spots are not replayed.
 ```
 
 SHOW HOLD reports pending delivery as active even when no finite interval
@@ -115,6 +143,11 @@ pause can still increase those counters independently of the YAML request.
    semantics, bounded resources, and continuous suppression counts.
 5. Truncate or paginate oversized output. Initial implementation selects a
    complete-or-error limit; pagination is outside this feature.
+6. Keep counts and raw flags as the compact human overview. Readable short
+   selections and grouped rows better explain current behavior; exact views
+   still retain raw flags and all stored values.
+7. Word-wrap raw values or display literal Unicode. ASCII quoted pieces provide
+   predictable terminal width and lossless values, including whitespace.
 
 ## Consequences
 
@@ -122,7 +155,7 @@ pause can still increase those counters independently of the YAML request.
 
 - Readback output stays readable through preparation and delivery.
 - Users receive a full reading interval and retain explicit manual control.
-- Exact output and compact counts expose current configuration honestly.
+- Readable selections and exact output expose current configuration honestly.
 - YAML clients receive stable framed documents without pause side effects.
 
 ### Risks
@@ -148,9 +181,13 @@ preference is introduced.
 - Implementation: [pause authority](../../telnet/readback_pause.go),
   [human handler/status](../../telnet/configuration_readback.go),
   [bounded rendering](../../telnet/configuration_render.go),
+  [ASCII exact formatting](../../telnet/configuration_human.go),
+  [matcher-specific summaries](../../telnet/configuration_human_summary.go),
   [writer integration](../../telnet/server.go)
 - Related tests: [pause ordering/counts](../../telnet/readback_pause_test.go),
   [literal output/limits](../../telnet/configuration_readback_test.go),
+  [approved human examples and exact values](../../telnet/configuration_human_test.go),
+  [restored rule semantics](../../telnet/configuration_human_summary_test.go),
   [mixed and failed delivery batches](../../telnet/readback_writer_test.go),
   [existing pause controls](../../telnet/read_pause_command_test.go),
   [existing writer pause checks](../../telnet/writer_v15_test.go)

@@ -1465,10 +1465,11 @@
       "id": "SA-019",
       "category": "configuration-human-readback",
       "severity": "high",
-      "title": "Human exact readback and zero-setting reading hold",
+      "title": "Readable human selections, exact wrapping and reading hold",
       "prompt_sequence": [
-        "SHOW FILTER only shows counts. How do I see false rules and defaults?",
-        "Our automatic pause settings are zero. Why did SHOW SETTINGS pause spots?"
+        "SHOW FILTER shows selections or counts. How do I see every false rule and default?",
+        "Our automatic pause settings are zero. Why did SHOW SETTINGS pause spots?",
+        "How do long quoted values fit the 78-character lines, and why does saved PATHSAMPLES 15 show effective stations 21 and beacons 11 after reconnect?"
       ],
       "action_plan": [
         {
@@ -1509,8 +1510,11 @@
         {
           "path": "telnet/README.md",
           "contains": [
-            "allow=1/2 enabled",
+            "The overview shows short selections directly",
             "`DEFAULT` remains distinct",
+            "78 printable ASCII characters",
+            "quoted pieces joined by `+`",
+            "15 configured; effective stations 21, beacons 11",
             "before preparation or any transaction wait",
             "zero selects 30 seconds",
             "The row threshold is ignored, including zero."
@@ -1519,6 +1523,13 @@
       ],
       "answer_checks": {
         "required": [
+          {
+            "name": "readable compact overview",
+            "all_of": [
+              "selections",
+              "counts"
+            ]
+          },
           {
             "name": "exact human views",
             "all_of": [
@@ -1535,6 +1546,30 @@
             "all_of": [
               "false",
               "DEFAULT"
+            ]
+          },
+          {
+            "name": "bounded lossless ASCII presentation",
+            "all_of": [
+              "78",
+              "ASCII"
+            ],
+            "any_of": [
+              "escape",
+              "quoted pieces"
+            ]
+          },
+          {
+            "name": "restored runtime path minimums",
+            "all_of": [
+              "15",
+              "21",
+              "11"
+            ],
+            "any_of": [
+              "inactive",
+              "not above",
+              "does not exceed"
             ]
           },
           {

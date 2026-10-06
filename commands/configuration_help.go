@@ -10,7 +10,8 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 		filterTopic = "SHOW/FILTER"
 	}
 	filterNotes := []string{
-		"The overview shows every filter category with configured rule counts.",
+		"The overview shows short selections, or counts when a selection is too long.",
+		"Human lines use at most 78 ASCII characters; exact values use escapes.",
 		"FULL shows every exact value; a category shows only that category.",
 		"Preset (modified) means preferences differ from the applied snapshot.",
 		"These readbacks always pause live spots, even if automatic pause is disabled.",
@@ -18,7 +19,7 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 		"Responses are complete within 65,536 bytes or return an explicit size error.",
 	}
 	catalog.entries[filterTopic] = helpEntry{
-		summary: filterTopic + " - Display filter state and rule counts.",
+		summary: filterTopic + " - Display filters and selections.",
 		lines: helpEntryLines(filterTopic+" - Display current filter state.",
 			[]string{filterTopic, filterTopic + " FULL", filterTopic + " <category>"}, nil, filterNotes),
 	}

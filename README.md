@@ -16,7 +16,7 @@ Log in with your callsign, then start with:
 - `HELP`: show the command list.
 - `HELP <command>`: show command-specific help.
 - `SHOW MYDX` or `SHOW DX`: show recent spots after your filters.
-- `SHOW FILTER`: show every filter category and its rule counts.
+- `SHOW FILTER`: show your filter selections and restrictions.
 - `SHOW FILTER FULL` or `SHOW FILTER BAND`: inspect every exact rule, or one
   category.
 - `SHOW SETTINGS`: show configured preferences, effective choices and session
@@ -83,84 +83,137 @@ Dedupe: SLOW (cqzone) (fast=on med=on slow=on)
 Dedupe policy set to FAST
 ```
 
-Check every filter category at once. Counts include stored entries whose value
-is `false`: `1/2 enabled` means one of two configured entries is enabled. This
-example uses a preset named CONTEST whose current preferences have changed:
+Check your filter selections at once. Short lists show actual selections;
+long lists show clear counts. This example uses the CONTEST preset with changes
+and NEARBY enabled:
 
 ```text
 > SHOW FILTER
-FILTER for W1ABC-1
-Preset: CONTEST (modified)
-BAND: allow_all=false block_all=false; allow=1/2 enabled; block=1/1 enabled
-MODE: allow_all=false block_all=false; allow=1/2 enabled; block=0/0 enabled
-SOURCE: allow_all=true block_all=false; allow=0/0 enabled; block=0/0 enabled
-EVENT: allow_all=true block_all=false; allow=0/0 true; block=0/0 true
-  note: EVENT rules use key presence; false does not remove a rule.
-CONFIDENCE: allow_all=true block_all=false; allow=0/0 enabled; block=0/0 enabled
-PATH: allow_all=true block_all=false; allow=0/0 enabled; block=0/0 enabled
-DXCONT: allow_all=true block_all=false; allow=0/0 enabled; block=0/0 enabled
-DECONT: allow_all=true block_all=false; allow=0/0 enabled; block=0/0 enabled
-DXZONE: allow_all=true block_all=false; allow=0/0 enabled; block=0/0 enabled
-DEZONE: allow_all=true block_all=false; allow=0/0 enabled; block=0/0 enabled
-DXGRID2: allow_all=true block_all=false; allow=0/0 enabled; block=0/0 enabled
-DEGRID2: allow_all=true block_all=false; allow=0/0 enabled; block=0/0 enabled
-DXDXCC: allow_all=true block_all=false; allow=0/0 enabled; block=0/0 enabled
-DEDXCC: allow_all=true block_all=false; allow=0/0 enabled; block=0/0 enabled
-DXCALL: allow=2 patterns; block=1 patterns
-DECALL: allow=0 patterns; block=0 patterns
-BEACON: DEFAULT (effective true)
-WWV: true
-WCY: false
-ANNOUNCE: DEFAULT (effective true)
-SELF: true
-TOXIC: false
-NEARBY: enabled=false; usable=false (ordinary location rules apply)
-Use SHOW FILTER FULL or SHOW FILTER <category> for every exact rule.
-Live spots paused during delivery and for at least 30s after delivery. Type RESUME to resume now.
-Missed spots are not replayed.
+User          N2WQ-1
+Preset        CONTEST (modified)
+
+Bands         Only 20m, 40m
+Modes         CW, FT8; unknown modes hidden
+Sources       All (HUMAN, SKIMMER)
+Events        POTA; block WWFF; untagged included
+Confidence    All
+Path          All
+DX geography  Suspended by NEARBY; rules retained
+DE geography  Suspended by NEARBY; rules retained
+DX calls      Only 12 patterns; 3 blocked
+DE calls      All
+Nearby        On; grid FN31PR
+Include       Beacons: Off | WWV: On | WCY: On | Announce: On
+              Self: Off | Toxic: Off
+
+Exact rules: SHOW FILTER FULL
+One category: SHOW FILTER <category>
+
+Live spots paused during delivery and for at least 30s afterward.
+Type RESUME when ready. Missed spots are not replayed.
 ```
 
-`SHOW FILTER FULL` displays all categories in exact-value form. To inspect just
-the band rules from this example:
+With NEARBY off, the geography and callsign rows can look like this:
 
 ```text
-> SHOW FILTER BAND
-FILTER for W1ABC-1
-Preset: CONTEST (modified)
-BAND:
+DX geography  Continents: Only EU, NA | Zones: All | DXCC: All
+              Grids: All
+DE geography  Continents: All | Zones: Only 5, 8 | DXCC: All
+              Grids: All
+DX calls      All except 100 blocked patterns
+DE calls      Only W1*, K1*; block W1XYZ
+Nearby        Off
+```
+
+`SHOW FILTER FULL` displays every exact flag and entry. A category shows only
+that part, without omitting its values. EVENT's existing matcher uses key
+presence, so a stored `false` entry still applies:
+
+```text
+> SHOW FILTER EVENT
+User          N2WQ-1
+Preset        CONTEST (modified)
+
+Events (exact rules)
   allow_all: false
   block_all: false
-  allow: {"20m": true, "40m": false}
-  block: {"80m": true}
-Live spots paused during delivery and for at least 30s after delivery. Type RESUME to resume now.
-Missed spots are not replayed.
+  allow:
+    "POTA": true
+    "SOTA": false
+  block:
+    "WWFF": false
+
+Tagged spots: POTA or SOTA; WWFF blocked.
+Untagged spots are always included.
+False EVENT entries apply because matching uses key presence.
+
+Live spots paused during delivery and for at least 30s afterward.
+Type RESUME when ready. Missed spots are not replayed.
 ```
 
 `SHOW SETTINGS` separates your selections from the choices currently in use.
-Here the server's path sample minimum is 20; the configured zero means to use
-that minimum:
+The following example uses server path minimums of 21 for stations and 11 for
+beacons. NEARBY temporarily uses FAST dedupe while the saved choice remains
+SLOW:
 
 ```text
 > SHOW SETTINGS
-SETTINGS for W1ABC-1
-Preset: CONTEST (modified)
-DIALECT: "go" (effective "go")
-GRID: "FN42" (effective "FN42")
-NOISE: "URBAN" (effective "URBAN")
-DEDUPE: "SLOW" (effective "SLOW")
-GRID source: derived=false
-PATHSAMPLES: 0 (0=cluster default; effective 20)
-SOLAR: 30 minutes (0=OFF)
-DIAG: OFF (session only)
-Live spots: paused=true; delivery pending=true; remaining=0s; suppressed=0
-Persistence: temporary defaults=false
-Server defaults: dialect=go dedupe=SLOW noise=QUIET PATHSAMPLES=20
-Live spots paused during delivery and for at least 30s after delivery. Type RESUME to resume now.
-Missed spots are not replayed.
+User          N2WQ-1
+Preset        CONTEST (modified)
+
+Dialect       GO
+Grid          FN31PR
+Noise         SUBURBAN
+Dedupe        SLOW; effective FAST while NEARBY is active
+Path samples  DEFAULT; stations 21, beacons 11
+Solar         Every 30 minutes
+
+Session only
+Diagnostics   Off
+Live spots    Paused for reading; at least 30s after delivery
+              135 spots suppressed
+
+Live spots paused during delivery and for at least 30s afterward.
+Type RESUME when ready. Missed spots are not replayed.
 ```
 
-The session row is captured while preparing the response. `delivery pending=true`
-with `remaining=0s` means the full reading interval has not started yet.
+The reading interval starts after the server finishes writing and flushing the
+response. Session status is captured during preparation, so it does not claim
+that the reading countdown has already started. Effective settings and path
+minimums come from the active server and session state.
+
+For example, reconnect does not activate a saved personal minimum of 15 when
+the station minimum is 21. The beacon minimum remains 11:
+
+```text
+Path samples  15 configured; effective stations 21, beacons 11
+              Override inactive: not above station minimum 21
+```
+
+An active stricter personal minimum of 30 applies to both:
+
+```text
+Path samples  30 (user minimum); stations 30, beacons 30
+              Cluster minimums: stations 21, beacons 11
+```
+
+Human readbacks use at most 78 printable ASCII characters per line, followed
+by CRLF. Exact strings use quoted ASCII escapes. A long value is split into
+quoted pieces joined by `+`, without adding or removing characters:
+
+```text
+DX calls (exact rules)
+  allow:
+    [1] "  W1ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ c"
+        + "af\u00e9\t\"Q\"\\end  "
+  block: []
+
+A + joins quoted pieces of one value; no characters are added.
+```
+
+Spaces inside quotes belong to the value. Indentation, line endings and the
+`+` marker do not. FULL/category preserve false entries, explicit defaults,
+empty collections and callsign-pattern order; map keys use stable ordering.
 
 See recent countries that have heard your baseline call:
 
@@ -435,7 +488,7 @@ SET GRID - Set your grid (4-6 chars).
 SET NOISE - Set noise class.
 SET PATHSAMPLES - Set path sample floor.
 PASS NEARBY - Toggle nearby filtering.
-SHOW FILTER - Display filter state and rule counts.
+SHOW FILTER - Display filters and selections.
 PASS - Allow filter matches.
 REJECT - Block filter matches.
 RESET FILTER - Reset filters to defaults.
@@ -628,7 +681,8 @@ Band handling is intentionally simple:
 `NEARBY` persists across logins. The login greeting warns you when it is active,
 and `SHOW FILTER` includes the current `NEARBY` state. If no usable configured
 or looked-up grid is available, or its H3 cells cannot be built, `NEARBY` stays
-stored but inactive until it can be activated cleanly.
+enabled but unavailable. Geography rules remain suspended, and DX spots on
+affected bands are rejected until usable cells are available.
 When path reliability is enabled, missing or invalid H3 mapping tables fail
 startup and are reported in the system log instead of silently weakening path
 predictions.

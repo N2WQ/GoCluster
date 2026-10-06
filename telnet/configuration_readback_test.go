@@ -15,7 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const readbackFooterLiteral = "Live spots paused during delivery and for at least 30s after delivery. Type RESUME to resume now.\r\nMissed spots are not replayed.\r\n"
+const readbackFooterLiteral = "\r\nLive spots paused during delivery and for at least 30s afterward.\r\nType RESUME when ready. Missed spots are not replayed.\r\n"
 
 func readbackTestClient() (*Server, *Client) {
 	s := &Server{nowFn: func() time.Time { return time.Unix(1700000000, 0) }}
@@ -38,7 +38,7 @@ func TestHumanReadbackLiteralCategoryAndAliases(t *testing.T) {
 				t.Fatal("readback alias not recognized")
 			}
 			message := <-c.controlChan
-			want := "FILTER for W1ABC-1\r\nPreset: (none)\r\nBAND:\r\n  allow_all: true\r\n  block_all: false\r\n  allow: {\"20m\": true, \"40m\": false}\r\n  block: {\"160m\": false}\r\n" + readbackFooterLiteral
+			want := "User          W1ABC-1\r\nPreset        (none)\r\n\r\nBands (exact rules)\r\n  allow_all: true\r\n  block_all: false\r\n  allow:\r\n    \"20m\": true\r\n    \"40m\": false\r\n  block:\r\n    \"160m\": false\r\n" + readbackFooterLiteral
 			if string(message.raw) != want || message.line != "" || len(c.controlChan) != 0 {
 				t.Fatalf("complete one-message readback mismatch: %q", message.raw)
 			}
@@ -55,16 +55,13 @@ func TestHumanReadbackLiteralSettingsDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "SETTINGS for W1ABC-1\r\nPreset: (none)\r\n" +
-		"DIALECT: DEFAULT (empty) (effective \"go\")\r\n" +
-		"GRID: DEFAULT (empty) (effective \"FN31\")\r\n" +
-		"NOISE: DEFAULT (empty) (effective \"QUIET\")\r\n" +
-		"DEDUPE: DEFAULT (empty) (effective \"FAST\")\r\n" +
-		"GRID source: derived=true\r\nPATHSAMPLES: 0 (0=cluster default; effective 0)\r\n" +
-		"SOLAR: 0 minutes (0=OFF)\r\nDIAG: OFF (session only)\r\n" +
-		"Live spots: paused=false; delivery pending=false; remaining=0s; suppressed=0\r\n" +
-		"Persistence: temporary defaults=false\r\n" +
-		"Server defaults: dialect=go dedupe=FAST noise=QUIET PATHSAMPLES=0\r\n" + readbackFooterLiteral
+	want := "User          W1ABC-1\r\nPreset        (none)\r\n\r\n" +
+		"Dialect       DEFAULT; effective GO\r\n" +
+		"Grid          DEFAULT; using FN31 from callsign lookup\r\n" +
+		"Noise         DEFAULT; effective QUIET\r\n" +
+		"Dedupe        DEFAULT; secondary duplicate suppression disabled\r\n" +
+		"Path samples  DEFAULT; prediction unavailable\r\n" +
+		"Solar         Off\r\n\r\nSession only\r\nDiagnostics   Off\r\nLive spots    Flowing\r\n" + readbackFooterLiteral
 	if got != want {
 		t.Fatalf("human settings mismatch: %q", got)
 	}
@@ -76,9 +73,9 @@ func TestHumanEventReadbackExplainsFalseKeyPresence(t *testing.T) {
 	c.filter.AllEvents = false
 	c.filter.Events = map[string]bool{"POTA": false}
 	c.filter.BlockEvents = map[string]bool{"SOTA": false}
-	detail := "EVENT:\r\n  allow_all: false\r\n  block_all: false\r\n  allow: {\"POTA\": false}\r\n  block: {\"SOTA\": false}\r\n  note: EVENT rules use key presence; false does not remove a rule.\r\n"
+	detail := "Events (exact rules)\r\n  allow_all: false\r\n  block_all: false\r\n  allow:\r\n    \"POTA\": false\r\n  block:\r\n    \"SOTA\": false\r\n\r\nTagged spots: POTA; SOTA blocked.\r\nUntagged spots are always included.\r\nFalse EVENT entries apply because matching uses key presence.\r\n"
 	got, err := s.renderHumanReadback(c, "FILTER", "EVENT", 30*time.Second)
-	want := "FILTER for W1ABC-1\r\nPreset: (none)\r\n" + detail + readbackFooterLiteral
+	want := "User          W1ABC-1\r\nPreset        (none)\r\n\r\n" + detail + readbackFooterLiteral
 	if err != nil || got != want {
 		t.Fatalf("EVENT category mismatch: %q, %v", got, err)
 	}
@@ -87,71 +84,67 @@ func TestHumanEventReadbackExplainsFalseKeyPresence(t *testing.T) {
 		t.Fatalf("FULL omitted EVENT explanation: %q, %v", got, err)
 	}
 	got, err = s.renderHumanReadback(c, "FILTER", "", 30*time.Second)
-	want = "EVENT: allow_all=false block_all=false; allow=0/1 true; block=0/1 true\r\n  note: EVENT rules use key presence; false does not remove a rule.\r\n"
-	if err != nil || !strings.Contains(got, want) {
-		t.Fatalf("overview described stored false keys as disabled: %q, %v", got, err)
+	if err != nil || !strings.Contains(got, "Events        POTA; block SOTA; untagged included\r\n") {
+		t.Fatalf("overview misdescribed false EVENT keys: %q, %v", got, err)
 	}
 	for _, tc := range []struct {
 		name   string
 		events spot.EventMask
 		want   bool
 	}{
-		{name: "false allow key", events: spot.EventPOTA, want: true},
-		{name: "false block key", events: spot.EventPOTA | spot.EventSOTA, want: false},
-		{name: "absent allow key", events: spot.EventIOTA, want: false},
-		{name: "eventless", want: true},
+		{"false allow key", spot.EventPOTA, true},
+		{"false block key", spot.EventPOTA | spot.EventSOTA, false},
+		{"absent allow key", spot.EventIOTA, false},
+		{"untagged exception", 0, true},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			candidate := spot.NewSpot("K1ABC", "W1XYZ", 14074, "CW")
-			candidate.Events = tc.events
-			if c.filter.Matches(candidate) != tc.want {
-				t.Fatalf("existing EVENT matching disagrees with readback for %s", tc.name)
-			}
-		})
+		candidate := spot.NewSpot("K1ABC", "W1XYZ", 14074, "CW")
+		candidate.Events = tc.events
+		if got := c.filter.Matches(candidate); got != tc.want {
+			t.Fatalf("%s: matcher=%t want=%t", tc.name, got, tc.want)
+		}
 	}
 }
 
 func TestHumanReadbackOverviewCountsOversizedRulesWithoutDetail(t *testing.T) {
 	s, c := readbackTestClient()
+	c.filter = filter.NewFilter()
 	c.filter.AllBands = true
-	c.filter.Bands = map[string]bool{"40m": false, "20m": true}
-	c.filter.BlockBands = map[string]bool{"160m": false}
-	c.filter.DXCallsigns = []string{strings.Repeat("X", 1024*1024)}
+	c.filter.Bands = map[string]bool{"20m": true, "40m": false}
+	c.filter.DXCallsigns = []string{strings.Repeat("X", 1<<20)}
 	got, err := s.renderHumanReadback(c, "FILTER", "", 30*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) > 4096 || strings.Contains(got, "XXXX") || !strings.Contains(got, "BAND: allow_all=true block_all=false; allow=1/2 enabled; block=0/1 enabled\r\n") || !strings.Contains(got, "DXCALL: allow=1 patterns; block=0 patterns\r\n") {
-		t.Fatalf("compact readback did not use bounded counts: length=%d", len(got))
+	if len(got) > 4096 || strings.Contains(got, "XXXX") || !strings.Contains(got, "Bands         Only 20m\r\n") || !strings.Contains(got, "DX calls      Only 1 pattern") {
+		t.Fatalf("overview lost bounded counts: %q", got)
 	}
 	for _, resource := range []string{"FILTER", "CONFIG"} {
 		if response, err := s.renderYAMLReadback(c, resource, "read-1", "session-0"); response != "" || !errors.Is(err, errReadbackTooLarge) {
-			t.Fatalf("oversized %s returned partial success: %q, %v", resource, response, err)
+			t.Fatal("oversized YAML returned partial success")
 		}
 	}
 	if response, err := s.renderHumanReadback(c, "FILTER", "FULL", 30*time.Second); response != "" || !errors.Is(err, errReadbackTooLarge) {
-		t.Fatal("oversized FULL must fail without truncated output")
+		t.Fatal("oversized FULL returned partial success")
 	}
-	if response, err := s.renderHumanReadback(c, "FILTER", "BAND", 30*time.Second); err != nil || !strings.Contains(response, "\"40m\": false") {
-		t.Fatal("bounded category was rejected because an unrelated category is oversized")
+	if response, err := s.renderHumanReadback(c, "FILTER", "BAND", 30*time.Second); err != nil || !strings.Contains(response, `"40m": false`) {
+		t.Fatal("small category rejected due to unrelated oversized category")
 	}
 	if _, err := s.renderYAMLReadback(c, "SETTINGS", "read-1", "session-0"); err != nil {
-		t.Fatal("bounded SETTINGS was rejected because FILTER is oversized")
+		t.Fatal("SETTINGS rejected due to oversized FILTER")
 	}
 }
 
 func TestHumanNearbyReadbackDistinguishesEnabledAndUsable(t *testing.T) {
 	for _, tc := range []struct {
-		name    string
-		enabled bool
-		fine    pathreliability.CellID
-		coarse  pathreliability.CellID
-		want    string
+		name         string
+		enabled      bool
+		fine, coarse pathreliability.CellID
+		want         string
 	}{
-		{name: "disabled", want: "NEARBY: enabled=false; usable=false (ordinary location rules apply)\r\n"},
-		{name: "usable", enabled: true, fine: 1, coarse: 2, want: "NEARBY: enabled=true; usable=true (location rules suspended)\r\n"},
-		{name: "unavailable", enabled: true, want: "NEARBY: enabled=true; usable=false (unavailable cells reject DX spots on affected bands; location rules remain suspended)\r\n"},
-		{name: "partly unavailable", enabled: true, coarse: 2, want: "NEARBY: enabled=true; usable=false (unavailable cells reject DX spots on affected bands; location rules remain suspended)\r\n"},
+		{name: "disabled", want: "Nearby        Off\r\n"},
+		{name: "usable", enabled: true, fine: 1, coarse: 2, want: "Nearby        On; grid FN31\r\n"},
+		{name: "unavailable", enabled: true, want: "Nearby        On, unavailable; usable grid cells missing\r\n              DX spots on affected bands are rejected\r\n"},
+		{name: "partly unavailable", enabled: true, coarse: 2, want: "Nearby        On, unavailable; usable grid cells missing\r\n              DX spots on affected bands are rejected\r\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, c := readbackTestClient()
@@ -160,13 +153,13 @@ func TestHumanNearbyReadbackDistinguishesEnabledAndUsable(t *testing.T) {
 			for _, category := range []string{"", "FULL", "NEARBY"} {
 				response, err := s.renderHumanReadback(c, "FILTER", category, 30*time.Second)
 				if err != nil || !strings.Contains(response, tc.want) {
-					t.Fatalf("%s does not explain NEARBY state: %q, %v", category, response, err)
+					t.Fatalf("%s: %q, %v", category, response, err)
 				}
 			}
 			if tc.fine == pathreliability.InvalidCell {
 				candidate := spot.NewSpot("K1ABC", "W1XYZ", 14074, "CW")
 				if c.filter.Matches(candidate) == tc.enabled {
-					t.Fatal("20m matching does not follow the described unavailable-cell behavior")
+					t.Fatal("matcher disagrees with unavailable-cell description")
 				}
 			}
 		})
@@ -288,7 +281,7 @@ func TestYAMLReadbackExactValuesAndPresetComparison(t *testing.T) {
 	}
 	c.filter.DXCallsigns = []string{"W1*", "Z*"}
 	got, err := s.renderHumanReadback(c, "FILTER", "DXCALL", 30*time.Second)
-	if err != nil || !strings.Contains(got, "Preset: CONTEST (modified)\r\n") || !strings.Contains(got, "allow: [\"W1*\", \"Z*\"]") {
+	if err != nil || !strings.Contains(got, "Preset        CONTEST (modified)\r\n") || !strings.Contains(got, "    [1] \"W1*\"\r\n    [2] \"Z*\"\r\n") {
 		t.Fatal("pattern multiplicity change was not described exactly")
 	}
 }
@@ -386,7 +379,7 @@ func TestHumanReadbackSizeErrorsPauseAndAliasValidation(t *testing.T) {
 		t.Fatal("FULL not recognized")
 	}
 	response := <-c.controlChan
-	want := "Readback failed: response exceeds 65,536 bytes; request a smaller filter category or reduce the configuration\r\n" + readbackFooterLiteral
+	want := "Readback failed: response exceeds 65,536 bytes.\r\n" + readbackFooterLiteral
 	if string(response.raw) != want || response.readback.epoch == 0 || !c.readPausePending.Load() {
 		t.Fatal("human size error omitted the reading pause or returned partial success")
 	}

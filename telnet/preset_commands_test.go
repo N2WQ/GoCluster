@@ -304,7 +304,7 @@ func TestPresetSessionTranscriptAndReconnect(t *testing.T) {
 					if dialect == DialectCC {
 						show = "SHOW/FILTER"
 					}
-					commands = append(commands, struct{ line, want string }{show, "BAND:"}, struct{ line, want string }{"RESET FILTER", "Filters reset to defaults"})
+					commands = append(commands, struct{ line, want string }{show, "Type RESUME when ready. Missed spots are not replayed."}, struct{ line, want string }{"RESET FILTER", "Filters reset to defaults"})
 				}
 				for _, command := range commands {
 					if _, err := io.WriteString(conn, command.line+"\r\n"); err != nil {

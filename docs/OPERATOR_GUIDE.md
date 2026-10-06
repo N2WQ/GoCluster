@@ -207,7 +207,7 @@ Log in with your callsign. Useful first commands:
 - `SET DIAG OFF|DEDUPE|SOURCE|CONF|PATH|MODE`: replace spot comments with compact per-session diagnostics.
 - `SET SOLAR 15|30|60|OFF`: opt into or stop periodic solar summaries.
 - `DIALECT`, `DIALECT LIST`, `DIALECT <go|cc>`: show or switch command dialect.
-- `SHOW FILTER`: show filter counts and selections.
+- `SHOW FILTER`: show filter selections and restrictions.
 - `SHOW FILTER FULL` or `SHOW FILTER <category>`: show every exact rule, including disabled entries.
 - `SHOW SETTINGS`: show configured choices, effective settings, and session status.
 - `PASS <type> <list>`: allow matching spots.
@@ -240,37 +240,113 @@ but cannot shorten it. `SHOW HOLD` reports either kind of pause. Replies to
 
 ### Read Your Filters And Settings
 
-`SHOW FILTER` gives a compact overview. For example, `allow=1/2 enabled` means
-one of two configured allow entries is enabled. `SHOW FILTER FULL` lists every
-value; `SHOW FILTER BAND` limits the detail to one category. In the CC dialect,
-`SHOW/FILTER` and `SH/FILTER` support the same arguments.
-
-An example response to `SHOW FILTER BAND` is:
+`SHOW FILTER` gives a compact, aligned overview. Short selections appear by
+name; long selections use counts. Geography rules and inclusion switches are
+grouped for reading. For example:
 
 ```text
-FILTER for W1ABC-1
-Preset: CONTEST (modified)
-BAND:
-  allow_all: true
-  block_all: false
-  allow: {"20m": true, "40m": false}
-  block: {"160m": false}
-Live spots paused during delivery and for at least 30s after delivery. Type RESUME to resume now.
-Missed spots are not replayed.
+User          N2WQ-1
+Preset        CONTEST (modified)
+
+Bands         Only 20m, 40m
+Modes         CW, FT8; unknown modes hidden
+Sources       All (HUMAN, SKIMMER)
+Events        POTA; block WWFF; untagged included
+Confidence    All
+Path          All
+DX geography  Suspended by NEARBY; rules retained
+DE geography  Suspended by NEARBY; rules retained
+DX calls      Only 12 patterns; 3 blocked
+DE calls      All
+Nearby        On; grid FN31PR
+Include       Beacons: Off | WWV: On | WCY: On | Announce: On
+              Self: Off | Toxic: Off
+
+Exact rules: SHOW FILTER FULL
+One category: SHOW FILTER <category>
+
+Live spots paused during delivery and for at least 30s afterward.
+Type RESUME when ready. Missed spots are not replayed.
 ```
 
-All-selection flags and individual entries are shown separately. A `false`
-entry stays visible. Callsign patterns keep their supplied order.
-EVENT matching uses key presence, including keys stored as `false`; its
-overview counts are labelled `true` and its readback explains this behavior.
-When editing YAML, remove an EVENT key from its replacement map to remove that
-rule. Setting the value to `false` keeps the key present.
+`SHOW FILTER FULL` lists every stored value; `SHOW FILTER BAND` limits the
+detail to one category. In the CC dialect, `SHOW/FILTER` and `SH/FILTER`
+support the same arguments. An example response to `SHOW FILTER EVENT`
+retains false values and defaults:
+
+```text
+User          N2WQ-1
+Preset        CONTEST (modified)
+
+Events (exact rules)
+  allow_all: false
+  block_all: false
+  allow:
+    "POTA": true
+    "SOTA": false
+  block:
+    "WWFF": false
+
+Tagged spots: POTA or SOTA; WWFF blocked.
+Untagged spots are always included.
+False EVENT entries apply because matching uses key presence.
+
+Live spots paused during delivery and for at least 30s afterward.
+Type RESUME when ready. Missed spots are not replayed.
+```
+
+The overview describes matching behavior; FULL/category preserves exact
+flags and entries. Ordinary string/integer categories can remain restrictive
+with a nonempty allow map even when `allow_all=true`. EVENT instead matches
+key presence, including keys stored as `false`, and ignores allow restrictions
+when `allow_all=true`. Untagged spots always pass its check. When editing YAML,
+remove an EVENT key from its replacement map to remove that rule. Setting the
+value to `false` keeps the key present. PATH retains its UNLIKELY/CLOSED rules.
+
+Human readbacks use at most 78 printable ASCII characters per line, followed
+by CRLF. Exact strings use quoted ASCII escapes; long values use complete
+quoted pieces joined with `+`. Spaces inside quotes are retained, and neither
+the marker nor continuation indentation is part of the value. Escapes are not
+split. Callsign patterns retain supplied order; map keys use stable ordering.
+See [lossless wrapping examples](../telnet/README.md#human-configuration-readbacks).
 
 `SHOW SETTINGS` shows the configured choice and the behavior the server uses.
 For example, an empty configured GRID can use a callsign lookup. Active NEARBY
 can temporarily use FAST dedupe while the configured choice remains SLOW. A zero
-PATHSAMPLES value uses the cluster default; zero SOLAR means OFF. Pause and
-diagnostic status are session information.
+PATHSAMPLES value uses the active station/beacon minimums; zero SOLAR means Off.
+Pause and diagnostic status appear under Session only:
+
+```text
+User          N2WQ-1
+Preset        CONTEST (modified)
+
+Dialect       GO
+Grid          FN31PR
+Noise         SUBURBAN
+Dedupe        SLOW; effective FAST while NEARBY is active
+Path samples  DEFAULT; stations 21, beacons 11
+Solar         Every 30 minutes
+
+Session only
+Diagnostics   Off
+Live spots    Paused for reading; at least 30s after delivery
+              135 spots suppressed
+
+Live spots paused during delivery and for at least 30s afterward.
+Type RESUME when ready. Missed spots are not replayed.
+```
+
+Effective path minimums reflect restored runtime state. With server floors
+of 21/11, reconnect leaves a saved personal minimum of 15 inactive:
+
+```text
+Path samples  15 configured; effective stations 21, beacons 11
+              Override inactive: not above station minimum 21
+```
+
+An active minimum of 30 gives stations 30 and beacons 30. Production output
+reads the loaded predictor configuration rather than using these example
+numbers, and identifies disabled or unavailable prediction explicitly.
 NEARBY readback distinguishes enabled from usable. Enabled NEARBY keeps ordinary
 location rules suspended when user cells are unavailable; DX spots on the
 affected bands fail NEARBY matching instead of falling back to those rules.

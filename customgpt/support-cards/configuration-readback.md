@@ -17,19 +17,36 @@ command/error artifact that distinguishes the next step.
 
 ## Must Include
 
-- Human SHOW FILTER reports all categories and counts; FULL/category exposes
-  exact values, including false entries. SHOW SETTINGS separates configured
-  selections, effective choices and session/server status.
+- Human SHOW FILTER uses aligned labels, actual short selections and counts
+  for long selections, with grouped geography and inclusion switches.
+  FULL/category exposes every exact flag and value, including false entries,
+  explicit defaults and empty collections. SHOW SETTINGS separates configured
+  selections and effective choices from session status; both show the preset.
+- Every human line is at most 78 printable ASCII characters followed by CRLF.
+  Exact strings use quoted ASCII escapes. Complete quoted pieces joined by +
+  preserve long values without trimming whitespace or splitting escapes.
+  Indentation, line endings and the + marker are not stored characters. Map
+  keys use stable ordering; callsign patterns retain supplied order. Compact
+  preview count and rendered length are bounded before sorting or joining.
+- Effective path minimums come from restored runtime state and loaded server
+  configuration. With station/beacon floors 21/11, reconnect leaves a saved
+  personal minimum of 15 inactive, so effective values remain 21/11. An active
+  personal minimum of 30 gives 30/30. Explain disabled/unavailable prediction.
 - NEARBY distinguishes enabled from usable. Enabled NEARBY suspends ordinary
   location rules even with unavailable cells; spots on affected bands fail
   NEARBY matching instead of falling back to ordinary location rules.
-- EVENT rules use key presence, even when a stored value is false. Their
-  overview counts are labelled true and the readback includes an explanation.
-  To remove an EVENT rule through YAML, omit its key from the replacement map.
+- Ordinary string/integer categories can remain restrictive with a nonempty
+  allow map even when allow_all is true. EVENT uses key presence, including
+  entries stored as false, ignores allow-list restrictions when allow_all is
+  true, and always includes untagged spots. PATH retains its UNLIKELY/CLOSED
+  relationship. To remove an EVENT rule through YAML, omit its key from the
+  replacement map rather than setting it to false.
 - Human readbacks, including size errors, suppress spots before preparation,
   through queueing/delivery and for the full interval after successful write
   and flush. They ignore zero row thresholds and use 30 seconds for a zero
   duration. Longer pauses remain; later processed PAUSE/RESUME takes precedence.
+  Pending delivery is not an already-running reading countdown; the SETTINGS
+  snapshot describes the full interval that follows server delivery.
 - Canonical machine reads are GET YAML FILTER/SETTINGS/CONFIG/CAPABILITIES.
   Machine success/errors have no pause-state effects or human footer. Existing
   suppressed counts may still increase from live traffic during a prior pause.
@@ -78,6 +95,11 @@ command/error artifact that distinguishes the next step.
   temporary defaults as a first troubleshooting step.
 - Do not treat a saved library snapshot as proof that its new SSID association
   persisted, or treat all SSIDs as one session configuration.
+- Do not interpret false EVENT entries as disabled, infer unrestricted ordinary
+  rules from allow_all alone, or calculate effective path minimums from a saved
+  preference that reconnect did not activate.
+- Do not strip quoted spaces, join wrapped pieces with a separator, or treat
+  the human exact format as the client YAML schema.
 
 ## Sources
 

@@ -99,10 +99,10 @@ spots and archive-backed history queries. Local self-spot bypasses still honor
 
 | Command | Response |
 | --- | --- |
-| `SHOW FILTER` | All 23 categories, with allow/block flags, enabled-entry counts, pattern counts and toggles. |
+| `SHOW FILTER` | Readable selections and restrictions, grouped geography and inclusion switches; long selections use counts. |
 | `SHOW FILTER FULL` | Every exact rule and selection in every category. |
 | `SHOW FILTER <category>` | Every exact value for one category. |
-| `SHOW SETTINGS` | Configured preferences, effective behavior, session controls and server defaults. |
+| `SHOW SETTINGS` | Configured preferences and effective behavior, followed by session status. |
 
 `SHOW/FILTER` and `SH/FILTER` accept the same FULL/category arguments in the
 `cc` dialect. The category names are BAND, MODE, SOURCE, EVENT, CONFIDENCE,
@@ -110,40 +110,115 @@ PATH, DXCONT, DECONT, DXZONE, DEZONE, DXGRID2, DEGRID2, DXDXCC, DEDXCC, DXCALL,
 DECALL, BEACON, WWV, WCY, ANNOUNCE, SELF, TOXIC and NEARBY. CONF is an alias
 for CONFIDENCE, and PC93 is an alias for ANNOUNCE.
 
-The overview counts configured entries, including entries set to `false`.
-For example, `allow=1/2 enabled` reports two saved entries with one enabled.
-EVENT counts are labelled `true` because EVENT matching uses key presence:
-an EVENT entry set to `false` still participates in matching. Its readback
-includes a note explaining this existing behavior.
-FULL and category responses preserve both values and all allow/block flags:
+The overview shows short selections directly, in stable order. When a row's
+selections cannot fit, it shows a clear count, such as `Only 100 patterns; 3
+blocked`. Preview preparation is bounded by entry count and rendered length
+before collecting, sorting or joining values. Large selections do not build
+all their detailed rule strings just to produce counts.
+
+Rows describe what the matcher does. Ordinary string and integer categories
+can remain restrictive when `allow_all=true` and their allow map is nonempty.
+EVENT instead uses key presence: entries stored as `false` still apply,
+`allow_all=true` ignores allow-list restrictions, and untagged spots always
+pass the EVENT check. PATH retains the existing UNLIKELY/CLOSED relationship.
+FULL and category responses preserve every stored flag and value:
 
 ```text
-> SHOW FILTER BAND
-FILTER for W1ABC-1
-Preset: CONTEST (modified)
-BAND:
+> SHOW FILTER EVENT
+User          N2WQ-1
+Preset        CONTEST (modified)
+
+Events (exact rules)
   allow_all: false
   block_all: false
-  allow: {"20m": true, "40m": false}
-  block: {"80m": true}
-Live spots paused during delivery and for at least 30s after delivery. Type RESUME to resume now.
-Missed spots are not replayed.
+  allow:
+    "POTA": true
+    "SOTA": false
+  block:
+    "WWFF": false
+
+Tagged spots: POTA or SOTA; WWFF blocked.
+Untagged spots are always included.
+False EVENT entries apply because matching uses key presence.
+
+Live spots paused during delivery and for at least 30s afterward.
+Type RESUME when ready. Missed spots are not replayed.
 ```
 
 `SHOW FILTER FULL` uses that exact format for each rule category, displays
 ordered allow/block lists for DXCALL/DECALL, and includes all feature toggles.
 `DEFAULT` remains distinct from explicit `true` or `false`. NEARBY reports its
-configured enabled selection separately from whether its user cells are usable.
+configured On/Off selection separately from whether its user cells are usable.
 Enabled NEARBY suspends ordinary location rules even when cells are unavailable;
-unavailable cells reject ordinary DX spots on the affected bands. No successful FULL
-response omits a value. The [landing-page examples](../README.md#output-examples)
-show a complete overview and a complete SETTINGS response.
+unavailable cells reject ordinary DX spots on the affected bands:
 
-`SHOW SETTINGS` shows an empty configured preference as `DEFAULT (empty)`
-while displaying its effective choice separately. PATHSAMPLES zero means the
-cluster minimum; SOLAR zero means OFF. Diagnostics, pause state and temporary
-defaults are session status, not saved configuration. The preset row appears
-in both human views. Its `(modified)` flag compares preferences with the
+```text
+DX geography  Suspended by NEARBY; rules retained
+DE geography  Suspended by NEARBY; rules retained
+Nearby        On, unavailable; usable grid cells missing
+              DX spots on affected bands are rejected
+```
+
+No successful FULL response omits a value. The
+[landing-page examples](../README.md#output-examples) show the complete aligned
+overview and SETTINGS layout.
+
+Every human readback line has at most 78 printable ASCII characters followed
+by CRLF, including headers, exact values, explanations, errors and pause
+footers. Exact strings use Go-style double-quoted ASCII escapes for whitespace,
+quotes, backslashes, control characters and non-ASCII values. Long individual
+values use complete quoted pieces joined by `+`:
+
+```text
+DX calls (exact rules)
+  allow:
+    [1] "  W1ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ c"
+        + "af\u00e9\t\"Q\"\\end  "
+  block: []
+
+A + joins quoted pieces of one value; no characters are added.
+```
+
+Leading/trailing spaces inside quotes belong to the value. Indentation, line
+endings and `+` are presentation only. Escapes are never split, and decoding
+then joining the pieces reproduces the original string. Long map keys use
+the same mechanism with their associated boolean outside the quoted pieces.
+String map keys sort lexicographically; integer map keys sort numerically.
+Pattern lists retain supplied order and duplicates. Empty collections stay
+explicit, and no word wrapping trims exact values.
+
+`SHOW SETTINGS` uses readable labels such as Dialect, Grid, Noise, Dedupe and
+Path samples. An empty configured preference is `DEFAULT`, with the effective
+choice or looked-up grid explained separately. Zero PATHSAMPLES uses the
+cluster minimums; zero SOLAR means Off. Effective path minimums come from the
+active session override and loaded predictor configuration, not just the
+stored preference. With station/beacon minimums of 21/11:
+
+```text
+Path samples  DEFAULT; stations 21, beacons 11
+```
+
+Reconnect leaves a saved minimum of 15 inactive because it does not exceed
+the station floor:
+
+```text
+Path samples  15 configured; effective stations 21, beacons 11
+              Override inactive: not above station minimum 21
+```
+
+An active personal minimum of 30 applies to both paths:
+
+```text
+Path samples  30 (user minimum); stations 30, beacons 30
+              Cluster minimums: stations 21, beacons 11
+```
+
+Disabled or unavailable prediction is identified explicitly. These numbers
+illustrate a configuration; production output reads active values.
+Diagnostics, pause state and protected temporary defaults appear under
+Session only. Pending delivery says `Paused for reading; at least 30s after
+delivery`, without claiming that the reading countdown has begun. Both human
+views show the preset row. Its `(modified)` flag compares preferences with the
 applied/saved reference snapshot described below.
 
 Every human readback, including a size error, always suppresses live spots
@@ -158,8 +233,9 @@ hold. Suppressed counts carry from delivery into the reading interval.
 
 Each complete response is limited to 65,536 bytes after CRLF conversion,
 including its header and human footer. Generation either completes within
-the limit or returns an explicit error. Compact counts do not build all the
-detailed rule strings first.
+the limit or returns an explicit error. ASCII-escape expansion is budgeted
+before unrestricted quoting or sorting. Exact-value scratch space is bounded
+by the line width; compact previews and counts remain bounded separately.
 
 ## Client YAML Configuration
 
@@ -559,7 +635,7 @@ While `NEARBY` is active:
 
 - the regular location filters are suspended
 - human `PASS`/`REJECT` attempts to change `DXGRID2`, `DEGRID2`, `DXCONT`, `DECONT`, `DXZONE`, `DEZONE`, `DXDXCC`, and `DEDXCC` are rejected with a warning
-- `SHOW FILTER` reports the configured NEARBY boolean and `effective active=true`
+- `SHOW FILTER` reports `Nearby On` with the grid, or explains unavailable cells
 - spot delivery uses the least-suppressive available dedupe policy while usable grid-backed cells are present
 
 When `PASS NEARBY OFF` is used, the telnet layer restores the saved location-filter snapshot that existed before `NEARBY` was enabled.
@@ -567,7 +643,7 @@ When `PASS NEARBY OFF` is used, the telnet layer restores the saved location-fil
 `NEARBY` state is persisted. On login:
 
 - the greeting warns when `NEARBY` is active
-- if the user has no usable grid or H3 mapping is unavailable, the state remains stored but inactive until it can be reactivated cleanly
+- if the user has no usable grid or H3 cells are unavailable, NEARBY remains enabled but unavailable; geography rules stay suspended and DX spots on affected bands are rejected
 
 ## Path Display
 
