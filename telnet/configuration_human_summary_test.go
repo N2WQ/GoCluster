@@ -1,7 +1,11 @@
 package telnet
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -10,6 +14,134 @@ import (
 	"dxcluster/filter"
 	"dxcluster/spot"
 )
+
+func TestHumanNearbyRestoredGridLossless(t *testing.T) {
+	requireH3Mappings(t)
+	for _, tc := range []struct {
+		name, grid, firstLine string
+	}{
+		{"ordinary", "FN31PR", "Nearby        On; grid FN31PR\r\n"},
+		{"unicode", "FN31PRé", "Nearby        On; grid \"FN31PR\\u00e9\"\r\n"},
+		{"control", "FN31PR\tX", "Nearby        On; grid \"FN31PR\\tX\"\r\n"},
+		{"long ASCII", "FN31PR" + strings.Repeat("X", 100), "Nearby        On; grid \""},
+		{"long escaped", "FN31PR" + strings.Repeat("é\t \"\\", 30) + "  ", "Nearby        On; grid \""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := presetTestServer(t)
+			f := filter.NewFilter()
+			f.NearbyEnabled = true
+			record := &filter.UserRecord{
+				ConfigurationVersion: filter.CurrentConfigurationVersion,
+				Filter:               *f, Dialect: "go", Grid: tc.grid,
+			}
+			if err := filter.SaveUserRecord("W1ABC-1", record); err != nil {
+				t.Fatal(err)
+			}
+			c := configurationTestClient(s, "W1ABC-1")
+			restored, err := s.restoreAndRegisterClient(c, time.Now().UTC(), time.Now().Add(time.Minute))
+			if err != nil || restored.loadError != nil {
+				t.Fatalf("restore failed: %v; record: %v", err, restored.loadError)
+			}
+			if c.configuredSettings.Grid != tc.grid || c.pathSnapshot().grid != tc.grid || !c.nearbyFilterInEffect() {
+				t.Fatal("retained grid lost bytes or did not prepare usable NEARBY cells")
+			}
+			path := filepath.Join(filter.UserDataDir, "W1ABC-1.yaml")
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, command := range []string{"SHOW FILTER", "SHOW FILTER FULL", "SHOW FILTER NEARBY"} {
+				t.Run(command, func(t *testing.T) {
+					if !s.handleHumanReadback(c, command) {
+						t.Fatal("readback not handled")
+					}
+					got := string((<-c.controlChan).raw)
+					assertHumanWire(t, got)
+					if !strings.Contains(got, tc.firstLine) {
+						t.Fatalf("retained grid not rendered losslessly:\n%s", got)
+					}
+					if tc.name == "ordinary" {
+						return
+					}
+					// Isolate the grid row and its continuation pieces from other
+					// exact values, then use the standard-library unquote oracle.
+					lines := strings.Split(got, "\r\n")
+					for i, line := range lines {
+						if !strings.HasPrefix(line, "Nearby        On; grid ") {
+							continue
+						}
+						row := line + "\r\n"
+						for _, piece := range lines[i+1:] {
+							if !strings.HasPrefix(piece, "                       + ") {
+								break
+							}
+							row += piece + "\r\n"
+						}
+						if decoded := unquoteHumanPieces(t, row); decoded != tc.grid {
+							t.Fatalf("grid bytes changed: %q != %q", decoded, tc.grid)
+						}
+					}
+				})
+			}
+			after, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(before, after) || c.configuredSettings.Grid != tc.grid || c.pathSnapshot().grid != tc.grid {
+				t.Fatal("readback changed retained grid preferences")
+			}
+		})
+	}
+}
+
+func TestHumanNearbyEscapedExpansionBudget(t *testing.T) {
+	s, c := readbackTestClient()
+	c.grid = "FN31PR" + strings.Repeat("é", 12000)
+	c.filter.NearbyEnabled = true
+	c.filter.NearbyUserFine, c.filter.NearbyUserCoarse = 1, 2
+	for _, category := range []string{"", "FULL", "NEARBY"} {
+		got, err := s.renderHumanReadback(c, "FILTER", category, time.Second)
+		if got != "" || !errors.Is(err, errReadbackTooLarge) {
+			t.Fatalf("%q escaped grid exceeded the budget without a size error: %v", category, err)
+		}
+	}
+}
+
+func TestHumanSummaryDenialsWin(t *testing.T) {
+	for _, tc := range []struct {
+		name, want string
+		set        func(*filter.Filter)
+	}{
+		{"band overlap", "Bands         None\r\n", func(f *filter.Filter) {
+			f.AllBands = true
+			f.Bands, f.BlockBands = map[string]bool{"20m": true}, map[string]bool{"20m": true}
+		}},
+		{"DX calls wildcard", "DX calls      None\r\n", func(f *filter.Filter) {
+			f.DXCallsigns, f.BlockDXCallsigns = []string{"K1*"}, []string{"*"}
+		}},
+		{"DE calls wildcard", "DE calls      None\r\n", func(f *filter.Filter) {
+			f.DECallsigns, f.BlockDECallsigns = []string{"W1*"}, []string{"*"}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, c := readbackTestClient()
+			c.filter = filter.NewFilter()
+			candidate := spot.NewSpot("K1ABC", "W1XYZ", 14074, "CW")
+			if !c.filter.Matches(candidate) {
+				t.Fatal("unrestricted fixture unexpectedly rejects the spot")
+			}
+			tc.set(c.filter)
+			got, err := s.renderHumanReadback(c, "FILTER", "", time.Second)
+			if err != nil || !strings.Contains(got, tc.want) {
+				t.Fatalf("deny-wins summary missing: %v\n%s", err, got)
+			}
+			assertHumanWire(t, got)
+			if c.filter.Matches(candidate) {
+				t.Fatal("summary disagrees with matcher denial")
+			}
+		})
+	}
+}
 
 func TestHumanQuotedPiecesDocumentationExample(t *testing.T) {
 	value := "  W1ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ café\t\"Q\"\\end  "

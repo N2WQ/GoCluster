@@ -149,6 +149,10 @@ Type RESUME when ready. Missed spots are not replayed.
 ordered allow/block lists for DXCALL/DECALL, and includes all feature toggles.
 `DEFAULT` remains distinct from explicit `true` or `false`. NEARBY reports its
 configured On/Off selection separately from whether its user cells are usable.
+When usable, short simple grids remain bare, such as `On; grid FN31PR`.
+Stored grids needing escaping or wrapping use lossless quoted ASCII pieces,
+such as `On; grid "FN31PR\u00e9"`; the same rule applies to overview, FULL and
+NEARBY category output. Presentation preserves the original saved bytes.
 Enabled NEARBY suspends ordinary location rules even when cells are unavailable;
 unavailable cells reject ordinary DX spots on the affected bands:
 

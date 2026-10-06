@@ -35,6 +35,10 @@ command/error artifact that distinguishes the next step.
 - NEARBY distinguishes enabled from usable. Enabled NEARBY suspends ordinary
   location rules even with unavailable cells; spots on affected bands fail
   NEARBY matching instead of falling back to ordinary location rules.
+  Usable grids remain bare when short and simple, as in `On; grid FN31PR`;
+  otherwise, quoted ASCII pieces preserve the exact retained grid bytes.
+  Escaping an unusual saved grid is not itself a response-size failure;
+  the complete rendered response still has to fit its byte budget.
 - Ordinary string/integer categories can remain restrictive with a nonempty
   allow map even when allow_all is true. EVENT uses key presence, including
   entries stored as false, ignores allow-list restrictions when allow_all is

@@ -391,7 +391,14 @@ func writeHumanNearby(h *humanResponse, cfg filter.FilterConfiguration, status c
 		return h.row("Nearby", "Off")
 	}
 	if status.Effective.NearbyActive {
-		return h.row("Nearby", "On; grid "+status.Effective.Grid)
+		const description = "On; grid "
+		grid := status.Effective.Grid
+		if len(grid) <= humanValueWidth-len(description) && simpleHumanValue(grid) {
+			return h.row("Nearby", description+grid)
+		}
+		// Usable cells do not guarantee a simple stored grid. Preserve every
+		// retained byte through bounded quoting rather than prose wrapping.
+		return h.quoted(humanPrefix("Nearby")+description, grid, "")
 	}
 	if err := h.row("Nearby", "On, unavailable; usable grid cells missing"); err != nil {
 		return err
