@@ -9,6 +9,7 @@ $fixtureRoot = Join-Path ([IO.Path]::GetTempPath()) ('gocluster-dx-preflight-' +
 $names = @('DXSPIDER_ROOT','DXSPIDER_PERL','DXSPIDER_PERL_LIB','PATH','LC_ALL')
 $previous = @{}
 foreach ($name in $names) { $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
+$savedExitCode = Get-Variable LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue
 $global:FixtureGoCalls = 0
 function go { $global:FixtureGoCalls++; $global:LASTEXITCODE = $global:FixtureGoExit }
 try {
@@ -40,6 +41,9 @@ $global:LASTEXITCODE = $global:FixturePerlExit
         Write-Host "PASS $case prerequisite/qualification control flow and caller environment restoration"
     }
 } finally {
+    # A simulated failure must not become the successful fixture process's exit code.
+    if ($savedExitCode) { $global:LASTEXITCODE = $savedExitCode.Value }
+    else { Remove-Variable LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue }
     foreach ($name in $names) {
         if ($null -eq $previous[$name]) { Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue }
         else { [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process') }
