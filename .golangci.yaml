@@ -7,7 +7,7 @@ run:
   tests: true
   allow-parallel-runners: true
   # Optional; safe for single-toolchain. Otherwise omit and rely on go.mod.
-  go: "1.26"
+  go: "1.27"
 
 linters:
   default: none

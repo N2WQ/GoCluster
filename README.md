@@ -1132,7 +1132,14 @@ Use the separate metadata to distinguish binaries; dirty package-only
 builds no longer carry a `+dirty` version suffix. GoCluster neither displays nor
 broadcasts a dirty/modified flag.
 
-GoCluster builds from the repo root with Go `1.26+`.
+GoCluster builds from the repo root with Go `1.27.1+`.
+
+For Windows source startup, `pwsh -NoProfile -File ./launch-cluster.ps1`
+builds and launches one fresh Windows amd64 cluster/peerdiag pair. CPU profiles
+select strict PGO; no profiles select an ordinary build. A build failure stops
+startup. Root binaries and prior isolated pairs are preserved. See
+[script operations](scripts/README.md#development-and-launcher-validation)
+and [environment setup](docs/ENVIRONMENT.md#development-tools-and-wsl).
 
 Windows amd64 binary:
 

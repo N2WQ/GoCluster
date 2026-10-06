@@ -14,7 +14,7 @@ closeout, against gocluster's code-quality, workflow, validation, and
 operational standards. This is independent evidence from a separate context
 window; the lead agent still owns fixes, validation claims, traceability,
 and the final response. This is the Fable-native counterpart to
-`codex-skills/go-code-quality-review/SKILL.md`.
+`.agents/skills/go-code-quality-review/SKILL.md`.
 
 ## Constraints
 

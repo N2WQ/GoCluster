@@ -10,7 +10,7 @@ description: "Use when Fable needs to understand unfamiliar or cross-package Go 
 Use this skill to build current-state understanding from the repository
 before planning, explaining, reviewing, or editing non-trivial Go behavior.
 It is for facts and call paths, not for implementation. Fable-native
-counterpart to `codex-skills/go-code-walk/SKILL.md`.
+counterpart to `.agents/skills/go-code-walk/SKILL.md`.
 
 ## Workflow
 

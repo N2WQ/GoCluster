@@ -13,7 +13,7 @@ Develop an independent second opinion before the lead anchors the Plan Mode
 plan to one design. Findings-only evidence from a separate context window;
 scope, product policy, design selection, approval, implementation,
 validation, and final disposition stay with the lead agent. This is the
-Fable-native counterpart to `codex-skills/design-challenger/SKILL.md`.
+Fable-native counterpart to `.agents/skills/design-challenger/SKILL.md`.
 
 ## Constraints
 

@@ -14,7 +14,7 @@ assessed. Prevent code and tests from agreeing with each other while
 encoding the same scientific or conceptual error. This is independent
 evidence from a separate context window; it does not transfer
 model-authority ownership away from the lead agent. This is the
-Fable-native counterpart to `codex-skills/scientific-model-oracle/
+Fable-native counterpart to `.agents/skills/scientific-model-oracle/
 SKILL.md`.
 
 ## Constraints

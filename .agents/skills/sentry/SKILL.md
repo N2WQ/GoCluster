@@ -28,7 +28,7 @@ Use `scripts/sentry_api.py` for deterministic API calls. It handles pagination a
 ## Skill path (from repo root)
 
 ```powershell
-$env:SENTRY_API = (Resolve-Path .\codex-skills\sentry\scripts\sentry_api.py).Path
+$env:SENTRY_API = (Resolve-Path .\.agents\skills\sentry\scripts\sentry_api.py).Path
 ```
 
 Use the repo-relative script path so Sentry inspection follows the checked-in

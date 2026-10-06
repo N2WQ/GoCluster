@@ -26,7 +26,7 @@ try {
     }
     $perlArguments = @()
     if ($PerlLibrary) { $perlArguments += @('-I', $PerlLibrary) }
-    $perlArguments += @('-MDB_File', '-MDBI', '-MMojo::IOLoop', '-MData::Structure::Util', '-MNet::CIDR::Lite', '-e', 'print "DXSpider runtime prerequisites available\n"')
+    $perlArguments += @('-MDB_File', '-MDBI', '-MMojo::IOLoop', '-MData::Structure::Util', '-MNet::CIDR::Lite', '-MJSON', '-MMath::Round', '-e', 'print "DXSpider runtime prerequisites available\n"')
     & $interpreter @perlArguments
     if ($LASTEXITCODE -ne 0) { throw 'DXSpider runtime dependencies are unavailable; no interoperability claim can be made.' }
     & go -C $repositoryRoot test ./peer -run '^TestDXSpiderReference' -count=1 -v -timeout=2m
@@ -35,6 +35,10 @@ try {
 }
 finally {
     foreach ($name in $environmentNames) {
-        [Environment]::SetEnvironmentVariable($name, $previousEnvironment[$name], 'Process')
+        if ($null -eq $previousEnvironment[$name]) {
+            Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
+        } else {
+            [Environment]::SetEnvironmentVariable($name, $previousEnvironment[$name], 'Process')
+        }
     }
 }

@@ -1,5 +1,34 @@
 # GoCluster Scripts
 
+## Development And Launcher Validation
+
+Use Go 1.27.1 and the analyzer pins in `docs/dev-runbook.md`. Run
+`verify-agentic-tools.ps1` in the actual development shell; quiet mode still
+runs version probes. Its fixtures are `test-agentic-tools.ps1` and the DXSpider
+dependency preflight fixtures are `test-pc92-dxspider-preflight.ps1`.
+
+From a Windows source checkout, `pwsh -NoProfile -File ./launch-cluster.ps1`
+builds one Windows amd64 cluster/peerdiag pair and launches that exact pair.
+`logs/cpu-*.pprof` selects the strict PGO route; an absent/empty profile set
+selects `build-executable-pair.ps1` with `-pgo=off`. A malformed profile, failed
+merge, or failed build is an error, with no launch or stale-binary fallback.
+The standalone `consolidate-and-build-pgo.ps1` still requires profiles and the
+matching root `gocluster.exe` that captured them.
+
+Both routes publish a unique directory under `.tmp/ordinary` or `.tmp/pgo`
+only after both builds and the hash manifest succeed. They return an object
+with `Mode`, `OutputDirectory`, `ClusterPath`, `PeerDiagnosticPath`, and
+`ManifestPath`. Prior pairs and root executables remain intact. The launcher
+uses the repository's config directory and restores the caller's location and
+configuration environment after the process exits. Pair-build target settings
+are restored too. This does not start a Linux server from WSL or qualify PGO
+performance; matching capture provenance still matters.
+
+Run `test-consolidate-and-build-pgo.ps1` and `test-launch-cluster.ps1` for
+successful publication, build/merge failures, exact fresh-path handoff, and
+caller-state preservation. These fixtures use controlled tool/process stubs;
+they do not start a production cluster.
+
 Tracked PowerShell scripts in this directory are operational tooling for local
 builds, release packaging, profiling, console setup, workflow checks, and Codex
 skill installation.

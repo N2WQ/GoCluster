@@ -9,7 +9,7 @@ description: "Use when Go work involves or investigates goroutine, timer, ticker
 
 Use this skill to investigate and validate leak risks in long-lived Go
 cluster paths. It covers goroutine/lifecycle leaks, OS resource leaks, and
-retained heap growth. Fable-native counterpart to `codex-skills/go-leak-
+retained heap growth. Fable-native counterpart to `.agents/skills/go-leak-
 detection/SKILL.md` — same technical content, ported near-verbatim since it
 carries no workflow-marker vocabulary to translate.
 

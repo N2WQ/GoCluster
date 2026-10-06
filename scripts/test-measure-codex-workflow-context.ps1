@@ -30,9 +30,9 @@ try {
   git -C $root config user.email test@example.invalid
   git -C $root config user.name test
 
-  $core=@('AGENTS.md','docs/change-workflow.md','docs/templates/non-trivial-change-template.md','docs/code-quality.md','docs/review-checklist.md','VALIDATION.md','docs/dev-runbook.md','codex-skills/README.md','docs/runbooks/codex-triggered-validation-tools.md')
+  $core=@('AGENTS.md','docs/change-workflow.md','docs/templates/non-trivial-change-template.md','docs/code-quality.md','docs/review-checklist.md','VALIDATION.md','docs/dev-runbook.md','.agents/skills/README.md','docs/runbooks/codex-triggered-validation-tools.md')
   $skills=@('decision-memory-audit','workflow-contract-audit','requirements-ambiguity-review','scientific-model-oracle','design-challenger','scope-ledger-adversarial-review','test-strategy-adversary','go-code-quality-review','go-code-walk','go-blast-radius-audit','go-config-contract-audit','go-connection-lifecycle-audit','go-leak-detection','go-retained-state-audit','pprof-impact-review')
-  $paths=$core + @($skills | ForEach-Object { "codex-skills/$_/SKILL.md" })
+  $paths=$core + @($skills | ForEach-Object { ".agents/skills/$_/SKILL.md" })
 
   $weight=1
   foreach($path in $paths) {

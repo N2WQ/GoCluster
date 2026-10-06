@@ -14,7 +14,7 @@ not merely confirm the implementation's own assumptions. Findings-only
 evidence from a separate context window; test ownership, scope,
 implementation, final execution, validation claims, and disposition stay
 with the lead agent. This is the Fable-native counterpart to
-`codex-skills/test-strategy-adversary/SKILL.md`.
+`.agents/skills/test-strategy-adversary/SKILL.md`.
 
 ## Constraints
 

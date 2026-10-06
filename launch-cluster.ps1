@@ -1,59 +1,34 @@
 <#
-Purpose: Run the consolidate-and-build-pgo pipeline from anywhere, mirroring the manual steps:
-  1) cd C:\src\gocluster
-  2) cd .\scripts; .\consolidate-and-build-pgo.ps1
-  3) cd C:\src\gocluster; .\consolidate-and-build-pgo.ps1
-  4) launch the freshly built cluster binary (prefers gocluster_pgo.exe, falls back to gocluster.exe)
-Usage:   pwsh -File .\launch-cluster.ps1
+.SYNOPSIS
+    Build once and launch the exact fresh Windows amd64 executable pair.
+.DESCRIPTION
+    With CPU profiles, uses the strict PGO pipeline. Without profiles, builds a
+    fresh ordinary pair. Failed builds never fall back to an existing binary.
 #>
-
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-
-$repoRoot = 'C:\src\gocluster'
-if (-not (Test-Path $repoRoot)) {
-    throw "Repository root not found at $repoRoot"
-}
-$buildScript = Join-Path $repoRoot 'scripts\consolidate-and-build-pgo.ps1'
-if (-not (Test-Path $buildScript)) {
-    throw "Build script not found at $buildScript"
-}
-
-# Remember the caller's location so we can restore it.
+$repoRoot = $PSScriptRoot
 $originalLocation = Get-Location
-
+$originalConfigPath = $env:DXC_CONFIG_PATH
+$hadConfigPath = Test-Path Env:DXC_CONFIG_PATH
 try {
-    Write-Host "Switching to $repoRoot" -ForegroundColor Cyan
     Set-Location $repoRoot
-
-    # Step 1: run from scripts directory (matches manual workflow).
-    Push-Location (Join-Path $repoRoot 'scripts')
-    try {
-        Write-Host "Running from scripts dir: $buildScript" -ForegroundColor Cyan
-        & $buildScript
-    }
-    finally {
-        Pop-Location
-    }
-
-    # Step 2: run from repo root (matches the second manual invocation).
-    Write-Host "Running from repo root: $buildScript" -ForegroundColor Cyan
-    & $buildScript
-
-    # Step 3: launch the cluster using the freshest binary.
-    $pgoExe = Join-Path $repoRoot 'gocluster_pgo.exe'
-    $fallbackExe = Join-Path $repoRoot 'gocluster.exe'
-    $exeToRun = if (Test-Path $pgoExe) { $pgoExe } elseif (Test-Path $fallbackExe) { $fallbackExe } else { $null }
-    if (-not $exeToRun) {
-        throw "No cluster binary found (expected $pgoExe or $fallbackExe)"
-    }
-
-    $env:DXC_CONFIG_PATH = Join-Path $repoRoot 'data\config'
-    Write-Host "Launching cluster: $exeToRun (DXC_CONFIG_PATH=$env:DXC_CONFIG_PATH)" -ForegroundColor Green
-    Write-Host "Binary version:" -ForegroundColor Green
-    & $exeToRun --version
-    & $exeToRun
-}
-finally {
+    $logsDir = Join-Path $repoRoot 'logs'
+    $profiles = if (Test-Path -LiteralPath $logsDir -PathType Container) {
+        @(Get-ChildItem -LiteralPath $logsDir -Filter 'cpu-*.pprof' -File)
+    } else { @() }
+    $buildScript = if (@($profiles).Count) { 'consolidate-and-build-pgo.ps1' } else { 'build-executable-pair.ps1' }
+    $pair = & (Join-Path $repoRoot ('scripts/' + $buildScript))
+    if (-not $pair -or @($pair).Count -ne 1 -or
+        -not (Test-Path -LiteralPath $pair.ClusterPath -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $pair.PeerDiagnosticPath -PathType Leaf)) { throw 'Builder did not return a complete executable pair.' }
+    $env:DXC_CONFIG_PATH = Join-Path $repoRoot 'data/config'
+    Write-Host "Launching cluster: $($pair.ClusterPath) (DXC_CONFIG_PATH=$env:DXC_CONFIG_PATH)"
+    & $pair.ClusterPath --version
+    if ($LASTEXITCODE -ne 0) { throw 'Fresh cluster version probe failed.' }
+    & $pair.ClusterPath
+    if ($LASTEXITCODE -ne 0) { throw "Fresh cluster exited with code $LASTEXITCODE." }
+} finally {
+    if ($hadConfigPath) { $env:DXC_CONFIG_PATH = $originalConfigPath } else { Remove-Item Env:DXC_CONFIG_PATH -ErrorAction SilentlyContinue }
     Set-Location $originalLocation
 }

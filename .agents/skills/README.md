@@ -31,8 +31,11 @@ their orchestration or reporting is simplified.
 | `security-threat-model` | An explicit repository threat model is requested |
 | `sentry` | Configured Sentry issues or events need read-only inspection |
 
-Generic skill relocation, deletion, and consolidation are outside the current
-workflow change.
+Codex discovers these real directories under `.agents/skills` from the
+checkout. No symlink privilege or user-level copy is required. A metadata
+verifier pass alone does not prove discovery: reload skills or start a new
+session and inspect the live skill inventory for this repository. Same-named
+user-level skills remain outside the project authority defined by ADR-0155.
 
 Verify the bundle with:
 

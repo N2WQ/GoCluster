@@ -21,9 +21,10 @@ function Copy-ItemTree([string]$RelativePath) {
   Copy-Item -LiteralPath $source -Destination $target -Recurse
 }
 
-function Invoke-Fixture([int]$ExpectedExit, [string]$ExpectedText, [string]$Label, [string[]]$ChangedPaths = @()) {
+function Invoke-Fixture([int]$ExpectedExit, [string]$ExpectedText, [string]$Label, [string[]]$ChangedPaths = @(), [string]$BaselineRevision = '') {
   $arguments = @('-NoProfile','-File',$checker,'-RepoRoot',$fixtureRoot)
   if ($ChangedPaths.Count -gt 0) { $arguments += '-ChangedPaths'; $arguments += $ChangedPaths }
+  if ($BaselineRevision -ne '') { $arguments += @('-BaselineRevision', $BaselineRevision) }
   $output = (& $engine @arguments 2>&1 | Out-String)
   $actual = $LASTEXITCODE
   if ($actual -ne $ExpectedExit) { throw "$Label expected exit $ExpectedExit, got $actual`n$output" }
@@ -90,6 +91,7 @@ function Invoke-ContextMeasurementSelectionFixtures() {
 
 try {
   foreach ($path in @(
+    "go.mod", ".golangci.yaml",
     "AGENTS.md", "VALIDATION.md", "docs/change-workflow.md",
     "docs/code-quality.md", "docs/domain-contract.md", "docs/review-checklist.md", "docs/dev-runbook.md",
     "docs/WORKING_WITH_CODEX.md", "docs/decision-memory.md",
@@ -107,7 +109,7 @@ try {
     "docs/templates/non-trivial-change-template.md",
     "docs/runbooks/codex-workflow-checks.md",
     "docs/runbooks/codex-triggered-validation-tools.md",
-    "docs/workflow-eval-cases.md", "codex-skills", "scripts/README.md"
+    "docs/workflow-eval-cases.md", ".agents/skills", "scripts/README.md"
   )) { Copy-ItemTree $path }
 
   $fixtureAgents = Join-Path $fixtureRoot "AGENTS.md"
@@ -116,7 +118,20 @@ try {
 
   Invoke-Fixture 0 "PASS Codex workflow static invariants passed." "positive contract"
   Invoke-SkillFixture 0 "PASS all requested repo skills verified." "positive skill methods"
+  $frontmatterPath = '.agents/skills/initial-review/SKILL.md'
+  $original = Replace-Once $frontmatterPath "`n---`n" "`n----------`n"
+  Invoke-SkillFixture 1 "[initial-review] missing SKILL.md front matter" "skill rejects nonexact frontmatter delimiter"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot $frontmatterPath) -Value $original -NoNewline
   Write-Host "PASS CRLF fixture source accepted"
+  $original = Replace-Once "go.mod" "go 1.27.1" "go 1.26.0"
+  Invoke-Fixture 1 "Go 1.27.1 module requirement missing" "module rejects obsolete Go requirement"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot "go.mod") -Value $original -NoNewline
+  $original = Replace-Once ".golangci.yaml" 'go: "1.27"' 'go: "1.26"'
+  Invoke-Fixture 1 "Go 1.27 lint target missing" "lint rejects obsolete Go target"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot ".golangci.yaml") -Value $original -NoNewline
+  $original = Replace-Once ".github/workflows/ci.yml" "golangci-lint@v2.14.0" "golangci-lint@latest"
+  Invoke-Fixture 1 "CI golangci-lint pin missing" "CI rejects unpinned golangci-lint"
+  Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/ci.yml") -Value $original -NoNewline
   Invoke-ContextMeasurementSelectionFixtures
 
   $original = Replace-Once ".github/workflows/ci.yml" "on:`n  push:" "on:`n  pull_request:`n  push:"
@@ -131,7 +146,7 @@ try {
   Invoke-Fixture 1 "CI full-history checkout missing" "CI requires full history"
   Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/ci.yml") -Value $original -NoNewline
 
-  $original = Replace-Once ".github/workflows/ci.yml" "staticcheck@v0.7.0" "staticcheck@latest"
+  $original = Replace-Once ".github/workflows/ci.yml" "staticcheck@v0.8.1" "staticcheck@latest"
   Invoke-Fixture 1 "CI Staticcheck uses latest" "CI rejects unpinned Staticcheck"
   Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/ci.yml") -Value $original -NoNewline
 
@@ -485,7 +500,7 @@ try {
   Invoke-Fixture 1 "Codex durable-decision rule missing" "Codex no-change stub cannot return"
   Set-Content -LiteralPath $decisionPath -Value $baseDecision -NoNewline
 
-  $oraclePath="codex-skills/scientific-model-oracle/SKILL.md"
+  $oraclePath=".agents/skills/scientific-model-oracle/SKILL.md"
   $oracleFullPath=Join-Path $fixtureRoot $oraclePath
   $original=Get-Content -Raw -LiteralPath $oracleFullPath
   $oracleCount=([regex]::Matches($original,[regex]::Escape("independent golden vectors"))).Count
@@ -494,12 +509,12 @@ try {
   Invoke-SkillFixture 1 "missing preserved trigger or method invariant: independent golden vectors" "scientific method cannot disappear"
   Set-Content -LiteralPath $oracleFullPath -Value $original -NoNewline
 
-  $scopeSkillPath="codex-skills/scope-ledger-adversarial-review/SKILL.md"
+  $scopeSkillPath=".agents/skills/scope-ledger-adversarial-review/SKILL.md"
   $original=Replace-Once $scopeSkillPath "Do not trigger for every Non-trivial ledger." "Trigger for every Non-trivial ledger."
   Invoke-SkillFixture 1 "missing preserved trigger or method invariant: Do not trigger for every" "scope specialist cannot become default"
   Set-Content -LiteralPath (Join-Path $fixtureRoot $scopeSkillPath) -Value $original -NoNewline
 
-  $leakSkillPath = Join-Path $fixtureRoot "codex-skills/go-leak-detection/SKILL.md"
+  $leakSkillPath = Join-Path $fixtureRoot ".agents/skills/go-leak-detection/SKILL.md"
   $original = Get-Content -LiteralPath $leakSkillPath -Raw
   Set-Content -LiteralPath $leakSkillPath -Value ($original + "`nVerification command reporting`n") -NoNewline
   Invoke-SkillFixture 1 "obsolete command-evidence reference" "obsolete specialist integration cannot return"
@@ -550,10 +565,30 @@ try {
   }
   Invoke-Fixture 0 "PASS Codex workflow static invariants passed." "release script follows normal scope authority" @("scripts/create-release.ps1")
 
+  $counterpart = '.claude/agents/relocation-fixture.md'
+  $counterpartPath = Join-Path $fixtureRoot $counterpart
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $counterpartPath) | Out-Null
+  $oldCounterpart = "---`nname: relocation-fixture`n---`nCounterpart: codex-skills/design-challenger/SKILL.md`n"
+  Set-Content -LiteralPath $counterpartPath -Value $oldCounterpart -NoNewline
+  & git -C $fixtureRoot init -q
+  & git -C $fixtureRoot add -- $counterpart
+  & git -C $fixtureRoot -c user.name=Fixture -c user.email=fixture@example.invalid commit -qm baseline
+  if ($LASTEXITCODE -ne 0) { throw 'unable to create counterpart baseline fixture' }
+  $counterpartBaseline = (& git -C $fixtureRoot rev-parse HEAD).Trim()
+  $newCounterpart = $oldCounterpart.Replace('codex-skills/', '.agents/skills/')
+  Set-Content -LiteralPath $counterpartPath -Value $newCounterpart -NoNewline
+  Invoke-Fixture 0 "PASS Codex workflow static invariants passed." "baseline proves counterpart relocation only" @() $counterpartBaseline
+  Invoke-Fixture 1 "protected Fable path changed: $counterpart" "counterpart exception requires baseline" @($counterpart)
+  Set-Content -LiteralPath $counterpartPath -Value ($newCounterpart + "Changed Fable authority.`n") -NoNewline
+  Invoke-Fixture 1 "protected Fable path changed: $counterpart" "baseline refuses relocation plus Fable policy change" @() $counterpartBaseline
+
   & $engine -NoProfile -File $checker -RepoRoot $repoRoot
   if ($LASTEXITCODE -ne 0) { throw "current repository contract failed checker" }
   Write-Host "PASS current repository contract"
   Write-Host "PASS all workflow-contract fixtures passed."
 } finally {
+  $fixtureAbsolute = [IO.Path]::GetFullPath($fixtureRoot)
+  $tempPrefix = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+  if (-not $fixtureAbsolute.StartsWith($tempPrefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'Fixture cleanup escapes temporary directory.' }
   Remove-Item -LiteralPath $fixtureRoot -Recurse -Force -ErrorAction SilentlyContinue
 }

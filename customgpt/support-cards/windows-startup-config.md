@@ -19,6 +19,15 @@ $env:DXC_CONFIG_PATH
 For a source checkout, use the documented source run command from the project
 directory and apply the same `Tee-Object` capture.
 
+The source launcher is `pwsh -NoProfile -File ./launch-cluster.ps1`. It builds
+and launches one fresh Windows amd64 cluster/peerdiag pair in an isolated
+directory. Existing CPU profiles select PGO; no profiles select an ordinary
+build. Build or profile-merge errors stop startup and never select an old root
+executable. Capture the launcher's output to retain its exact executable path.
+Windows Application Control can deny an executable before application startup;
+capture that OS error separately from YAML/config diagnostics. See
+`scripts/README.md` and `docs/ENVIRONMENT.md` for source-build requirements.
+
 ## Must Include
 
 - Use exact diagnostic phrases when the user asks what to search for:

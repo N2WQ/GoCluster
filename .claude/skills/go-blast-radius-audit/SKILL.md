@@ -9,7 +9,7 @@ description: "Use before planning, approving, reviewing, or implementing Go chan
 
 Use this skill to map what a proposed Go change can affect before a plan is
 approved or implementation continues. It complements dependency rigor in
-`docs/fable-workflow.md`. Fable-native counterpart to `codex-skills/go-
+`docs/fable-workflow.md`. Fable-native counterpart to `.agents/skills/go-
 blast-radius-audit/SKILL.md`.
 
 ## Required Tool Boundary

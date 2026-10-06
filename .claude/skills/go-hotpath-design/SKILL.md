@@ -7,7 +7,7 @@ description: "Use when designing or reviewing Go runtime-performance patches on 
 
 Use this skill when the task is not merely to optimize code, but to design
 the right optimization for a Go hot path without cargo-cult abstraction.
-Fable-native counterpart to `codex-skills/go-hotpath-design/SKILL.md`.
+Fable-native counterpart to `.agents/skills/go-hotpath-design/SKILL.md`.
 
 ## Required workflow
 

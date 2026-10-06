@@ -100,6 +100,8 @@ function Check-WorkflowPermissions([string]$Path, [string]$Text) {
 }
 
 $requiredFiles = @(
+  "go.mod",
+  ".golangci.yaml",
   "AGENTS.md",
   "VALIDATION.md",
   "docs/change-workflow.md",
@@ -123,7 +125,7 @@ $requiredFiles = @(
   "docs/decisions/ADR-0225-remove-codex-target-reasoning-recommendation.md",
   "docs/decisions/ADR-0227-push-to-main-ci-validation-backstops.md",
   "docs/decisions/ADR-0228-corrective-ci-enforcement.md",
-  "codex-skills/README.md",
+  ".agents/skills/README.md",
   "scripts/README.md"
 )
 $text = @{}
@@ -302,7 +304,11 @@ foreach ($command in @(
   'staticcheck ./...',
   'golangci-lint run ./... --config=.golangci.yaml'
 )) { Require-Text ".github/workflows/ci.yml" $ciWorkflow $command "CI required command missing: $command" }
-Require-Text ".github/workflows/ci.yml" $ciWorkflow 'honnef.co/go/tools/cmd/staticcheck@v0.7.0' "CI Staticcheck pin missing"
+Require-Text ".github/workflows/ci.yml" $ciWorkflow 'honnef.co/go/tools/cmd/staticcheck@v0.8.1' "CI Staticcheck pin missing"
+Require-Pattern "go.mod" $text['go.mod'] '(?m)^go 1\.27\.1$' "Go 1.27.1 module requirement missing"
+Require-Pattern ".golangci.yaml" $text['.golangci.yaml'] '(?m)^  go: "1\.27"$' "Go 1.27 lint target missing"
+Require-Text ".github/workflows/ci.yml" $ciWorkflow 'github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0' "CI golangci-lint pin missing"
+Forbid-Pattern ".github/workflows/ci.yml" $ciWorkflow 'golangci-lint@latest' "CI golangci-lint uses latest"
 Forbid-Pattern ".github/workflows/ci.yml" $ciWorkflow 'staticcheck@latest' "CI Staticcheck uses latest"
 Require-Text ".github/workflows/ci.yml" $ciWorkflow 'github.com/rhysd/actionlint/cmd/actionlint@v1.7.12' "CI Actionlint pin missing"
 Require-Text ".github/workflows/ci.yml" $ciWorkflow 'actionlint .github/workflows/*.yml' "CI Actionlint command missing"
@@ -328,6 +334,10 @@ foreach ($required in @(
   './scripts/test-workflow-contract.ps1',
   './scripts/test-measure-codex-workflow-context.ps1',
   './scripts/verify-codex-skills.ps1',
+  './scripts/test-consolidate-and-build-pgo.ps1',
+  './scripts/test-launch-cluster.ps1',
+  './scripts/test-agentic-tools.ps1',
+  './scripts/test-pc92-dxspider-preflight.ps1',
   'BEFORE_SHA: ${{ github.event.before }}',
   'git fetch --no-tags --depth=1 origin $env:BEFORE_SHA',
   'git diff --check $env:BEFORE_SHA $env:AFTER_SHA --'
@@ -344,8 +354,8 @@ foreach ($path in @(
 )) { Require-Text ".github/workflows/codex-workflow-contract.yml" $contractWorkflow "'$path'" "conditional context-measurement path missing: $path" }
 Forbid-Pattern ".github/workflows/codex-workflow-contract.yml" $contractWorkflow '(?ms)^\s*- name: Run workflow-context measurement fixtures\s*\n\s*shell:' "context-measurement fixture is unconditional"
 $requiredContractPaths = @(
-  'AGENTS.md', 'VALIDATION.md', '.golangci.yaml',
-  '.github/workflows/**', 'codex-skills/**',
+  'AGENTS.md', 'VALIDATION.md', 'go.mod', '.golangci.yaml',
+  '.github/workflows/**', '.agents/skills/**',
   'docs/WORKING_WITH_CODEX.md', 'docs/change-workflow.md',
   'docs/code-quality.md', 'docs/decision-log.md', 'docs/decision-memory.md',
   'docs/dev-runbook.md', 'docs/review-checklist.md',
@@ -429,9 +439,9 @@ $activeCodexPaths = @(
   "docs/review-checklist.md",
   "docs/WORKING_WITH_CODEX.md",
   "docs/templates/non-trivial-change-template.md",
-  "codex-skills/README.md"
+  ".agents/skills/README.md"
 )
-$activeCodexPaths += Get-ChildItem -LiteralPath (Join-Path $root "codex-skills") -Recurse -File |
+$activeCodexPaths += Get-ChildItem -LiteralPath (Join-Path $root ".agents/skills") -Recurse -File |
   Where-Object { $_.Name -in @("SKILL.md", "openai.yaml") } |
   ForEach-Object { $_.FullName.Substring($root.Length).TrimStart('\').Replace('\','/') }
 
@@ -449,7 +459,7 @@ foreach ($path in $activeCodexPaths | Sort-Object -Unique) {
   foreach ($retired in $retiredPatterns) { Forbid-Pattern $path $content $retired.Pattern $retired.Label }
 }
 
-$obsoleteReferencePaths = @($activeCodexPaths | Where-Object { $_ -like 'codex-skills/*' })
+$obsoleteReferencePaths = @($activeCodexPaths | Where-Object { $_ -like '.agents/skills/*' })
 $obsoleteReferencePaths += "docs/runbooks/codex-triggered-validation-tools.md"
 foreach ($path in $obsoleteReferencePaths | Sort-Object -Unique) {
   $content = if ($text.ContainsKey($path)) { $text[$path] } else { Get-RepoText $path }
@@ -493,7 +503,21 @@ $protectedPatterns = @(
 )
 foreach ($changed in $ChangedPaths | Sort-Object -Unique) {
   $normalized = $changed.Replace('\','/')
-  if ($protectedPatterns | Where-Object { $normalized -match $_ }) { Add-Failure "protected Fable path changed: $normalized" }
+  if ($protectedPatterns | Where-Object { $normalized -match $_ }) {
+    # ADR-0250 relocates counterpart references only. Compare against Git's
+    # supplied baseline; no explicit path list can waive Fable policy changes.
+    $referenceOnly = $false
+    if ($BaselineRevision -ne '' -and $normalized -match '^\.claude/(agents/[^/]+\.md|skills/[^/]+/SKILL\.md)$') {
+      $previousLines = @(& git -C $root show "${BaselineRevision}:$normalized" 2>$null)
+      if ($LASTEXITCODE -eq 0) {
+        $previous = $previousLines -join "`n"
+        $current = (Get-RepoText $normalized).TrimEnd("`n")
+        $referenceOnly = $previous.Contains('codex-skills/') -and
+          $current -ceq $previous.Replace('codex-skills/', '.agents/skills/')
+      }
+    }
+    if (-not $referenceOnly) { Add-Failure "protected Fable path changed: $normalized" }
+  }
 }
 
 Write-Host "INFO static checks prove text, ownership, references, trigger representation, and supplied path boundaries only."

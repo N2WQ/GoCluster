@@ -28,26 +28,26 @@ An older analyzer can fail on newer export data or panic before reporting source
 issues. Check `go version`, `staticcheck -version`, and `golangci-lint --version`
 before interpreting such failures as code defects.
 
-The installed Staticcheck 2026.1 and golangci-lint 2.11.4 were verified here with
-Go 1.26.2. From PowerShell, select that toolchain only for the current process
-and restore the previous setting afterward:
+Use Go 1.27.1 or newer in the Go 1.27 series, Staticcheck 2026.2.1
+(`v0.8.1`), and golangci-lint 2.14.0. These versions are pinned in CI and
+were verified with Go 1.27.1 on native Windows and Ubuntu 24.04 under WSL2.
+Install the analyzers with the matching Go toolchain:
 
 ```powershell
-$previousGoToolchain = $env:GOTOOLCHAIN
-try {
-    $env:GOTOOLCHAIN = 'go1.26.2'
-    go version
-    staticcheck ./...
-    golangci-lint run ./... --config=.golangci.yaml
-} finally {
-    $env:GOTOOLCHAIN = $previousGoToolchain
-}
+go version
+go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
+staticcheck ./...
+golangci-lint run ./... --config=.golangci.yaml
 ```
 
 Each check must exit successfully; a loader failure or panic is not a clean lint
-result. This recipe does not change `go.mod`, installed tools, or persistent
-environment settings. The first invocation may download the selected toolchain.
-See [TSR-0038](troubleshooting/TSR-0038-lint-analyzer-toolchain-compatibility.md).
+result. Do not retain the former Go 1.26.2 workaround for this checkout:
+the module now requires Go 1.27.1. See
+[TSR-0038](troubleshooting/TSR-0038-lint-analyzer-toolchain-compatibility.md)
+for the original failure and subsequent repair, and
+[environment setup](ENVIRONMENT.md#development-tools-and-wsl) for platform
+dependencies and remaining machine-local setup.
 
 ## CI Backstops
 

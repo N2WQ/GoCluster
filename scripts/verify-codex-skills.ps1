@@ -19,7 +19,7 @@ $repoRoot = if ($RepoRoot -eq "") {
 } else {
   (Resolve-Path -LiteralPath $RepoRoot).Path
 }
-$sourceRoot = Join-Path $repoRoot "codex-skills"
+$sourceRoot = Join-Path $repoRoot ".agents/skills"
 if (-not (Test-Path -LiteralPath $sourceRoot -PathType Container)) { throw "Missing source directory: $sourceRoot" }
 
 if ($Skills.Count -eq 0) {
@@ -76,7 +76,7 @@ foreach ($skill in $Skills) {
   }
 
   $content = Get-Content -LiteralPath $skillFile -Raw
-  $front = [regex]::Match($content, "(?s)^---\r?\n(.*?)\r?\n---")
+  $front = [regex]::Match($content, "(?s)^---\r?\n(.*?)\r?\n---(?:\r?\n|$)")
   if (-not $front.Success) {
     Add-Failure "[$skill] missing SKILL.md front matter"
     continue

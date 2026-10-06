@@ -90,7 +90,7 @@ Set `DXC_PSKR_MQTT_DEBUG=true` to enable verbose Paho MQTT debug logs for the PS
 
 ## Codex Skills
 
-This repo vendors gocluster's project skills under `codex-skills/`. They are
+This repo vendors gocluster's project skills under `.agents/skills/`. They are
 part of the checkout and should be used as the project authority on every
 machine.
 
@@ -102,3 +102,69 @@ powershell -ExecutionPolicy Bypass -File .\scripts\verify-codex-skills.ps1
 
 Credentials and connector/plugin setup remain machine-local; do not commit
 tokens, auth files, or personal plugin state.
+
+## Development Tools And WSL
+
+The module requires Go 1.27.1. CI pins Staticcheck 2026.2.1 (`v0.8.1`) and
+golangci-lint 2.14.0. Run `scripts/verify-agentic-tools.ps1` in the shell used
+for development; required version probes must succeed, including in quiet
+mode. Commands without version probes are reported as presence checks.
+Recommended and optional tools retain their existing classifications.
+
+For Windows, install a compatible MinGW-w64 compiler when CGO or race testing
+is required. The repaired host uses WinLibs GCC 16.2.0 with UCRT and Strawberry
+Perl 5.42.3.1. Finding a compiler can change Go's automatic `CGO_ENABLED` from
+0 to 1; inspect `go env CGO_ENABLED` before comparing validation results.
+Some CGO-built test executables on the migration host were denied by Windows
+Application Control, while the full race suite and a CGO-disabled cluster
+test passed. Do not treat that denial as a source-test failure or disable the
+security policy. Native CGO execution requires resolving the machine policy;
+WSL validation does not prove Windows executables are permitted to run.
+
+The selected Codex environment is WSL2 with Ubuntu 24.04. Install Go and
+development tools inside Linux rather than relying on Windows executables in
+the inherited PATH. The migration host has Go 1.27.1, Node 24.19.0,
+PowerShell 7.6.6, Codex CLI 0.160.1, and Claude Code 2.1.292 available in WSL.
+Install VS Code's `ms-vscode-remote.remote-wsl` extension and reopen the
+checkout in WSL. Both `.vscode/settings.json` and `gocluster.code-workspace`
+select WSL for Codex. The operational PowerShell launcher builds and runs
+Windows executable pairs; selecting WSL for Codex does not convert it into a
+Linux server launcher.
+
+The shared checkout is `/mnt/c/src/gocluster` in WSL. Windows-mounted paths
+can be slower than Linux home directories. Keep one authoritative checkout;
+moving it is a separate operation that must account for runtime writers and
+operator paths. Match Git line-ending settings when accessing this existing
+Windows checkout, and trust only its exact path if Git reports ownership
+differences. Never set a wildcard `safe.directory` exception.
+
+Linux authentication and user settings are separate from the Windows profile.
+The new `r_bak` WSL user has no password set; use
+`wsl -d Ubuntu-24.04 -u root -- passwd r_bak` interactively to set one.
+Codex, Claude, and GitHub CLI require Linux login (`codex login`,
+`claude auth login`, `gh auth login`) unless the selected client supplies its
+own authenticated session. CLI installation and a sandbox smoke check do not
+establish account access. Never copy Windows configuration blindly: paths,
+notification commands, and plugin bindings can be platform-specific.
+
+DXSpider reference qualification uses the exact pinned external checkout and
+an explicit Perl interpreter. Ubuntu prerequisites are `perl`, `libdbi-perl`,
+`libmojolicious-perl`, `libdata-structure-util-perl`, `libjson-perl`, and
+`libmath-round-perl`, plus CPAN `Net::CIDR::Lite` (DB_File is bundled with Perl).
+Then run from the repo root:
+
+```powershell
+pwsh -NoProfile -File scripts/pc92-dxspider-interop.ps1 `
+  -DXSpiderRoot /path/to/pinned/dxspider -PerlPath /usr/bin/perl
+```
+
+On Windows, provide Strawberry's `perl.exe` and its `c/bin` directory through
+`-PerlDLLDirectory`. Tests skipped because reference environment variables
+are unset provide no sender/receiver interoperability evidence. The configured
+suite passed on both platforms during the migration repair.
+
+Repository files do not carry installed tools, user skills, VS Code extensions,
+Codex/Claude history or settings, credential storage, caches, or external
+VOACAP/DXSpider installations. The old disk was unavailable; current checks
+establish a working setup, not byte-for-byte completeness against that disk.
+See [ADR-0250](decisions/ADR-0250-go127-development-and-launcher.md).

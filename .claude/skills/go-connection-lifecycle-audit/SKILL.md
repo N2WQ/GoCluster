@@ -11,7 +11,7 @@ Use this skill to audit connection state machines in the Go cluster before
 planning, changing, or reviewing reconnect and liveness behavior. It
 focuses on whether a connection path keeps the data stream alive, recovers
 safely, shuts down cleanly, and tells operators what happened. Fable-native
-counterpart to `codex-skills/go-connection-lifecycle-audit/SKILL.md`.
+counterpart to `.agents/skills/go-connection-lifecycle-audit/SKILL.md`.
 
 ## Workflow
 

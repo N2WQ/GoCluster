@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0250 | Go 1.27 Development And Fresh Launcher Builds | Accepted | 2026-10-06 | development, Go, WSL, skills, build, launcher | ADR-0155 (source directory only) | - | `docs/decisions/ADR-0250-go127-development-and-launcher.md` |
 | ADR-0249 | Effective Human Filter Details | Accepted | 2026-10-06 | telnet, commands, human readbacks, bounded output | Replaces exact human FULL/category portions of ADR-0246/0247/0248 | - | `docs/decisions/ADR-0249-effective-human-filter-details.md` |
 | ADR-0248 | Canonical DXCC Input And Human Labels | Accepted | 2026-10-06 | cty, commands, telnet, DXCC, human readbacks | Refines ADR-0011/0246/0247 for canonical input and DXCC labels | Human detail presentation replaced by ADR-0249 | `docs/decisions/ADR-0248-canonical-dxcc-input-and-human-labels.md` |
 | ADR-0247 | Complete Finite Filter Selections | Accepted | 2026-10-05 | telnet, commands, overview, bounded output | Refines ADR-0246's overview count policy for finite categories | Human detail presentation replaced by ADR-0249 | `docs/decisions/ADR-0247-complete-finite-filter-selections.md` |
@@ -119,7 +120,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR-0158 | VOACAP Process Wrapper Experiment | Accepted | 2026-06-08 | voacap, experiments, process lifecycle | - | - | `docs/decisions/ADR-0158-voacap-process-wrapper-experiment.md` |
 | ADR-0157 | VOACAP SSN Moving Average Experiment | Accepted | 2026-06-08 | voacap, solarweather, experiments | - | - | `docs/decisions/ADR-0157-voacap-ssn-moving-average-experiment.md` |
 | ADR-0156 | Expanded Repo-Managed Audit Skills | Accepted | 2026-06-08 | workflow, Codex, skills, lifecycle, decision-memory | - | ADR-0221 (routing/reporting clauses) | `docs/decisions/ADR-0156-expanded-repo-managed-audit-skills.md` |
-| ADR-0155 | Repo-Authoritative Codex Skills | Accepted | 2026-06-08 | workflow, Codex, skills, portability | - | - | `docs/decisions/ADR-0155-repo-authoritative-codex-skills.md` |
+| ADR-0155 | Repo-Authoritative Codex Skills | Accepted | 2026-06-08 | workflow, Codex, skills, portability | - | ADR-0250 (source directory only) | `docs/decisions/ADR-0155-repo-authoritative-codex-skills.md` |
 | ADR-0154 | Support-Agent Quality Contract | Accepted | 2026-06-07 | customgpt, supportability, actions, operations | ADR-0107; ADR-0108; ADR-0109; ADR-0112; ADR-0113 | - | `docs/decisions/ADR-0154-support-agent-quality-contract.md` |
 | ADR-0153 | Startup Config Diagnostics And Gridstore Logging | Accepted | 2026-06-07 | config, startup, pathreliability, gridstore, operations | ADR-0067 unknown-key fatal behavior | - | `docs/decisions/ADR-0153-startup-config-diagnostics-and-gridstore-logging.md` |
 | ADR-0152 | Stable Active Log Filenames With Date-Only Archives | Accepted | 2026-06-07 | logging, propagation reports, operations | ADR-0093 active filename shape; ADR-0123 active filename shape | - | `docs/decisions/ADR-0152-stable-active-log-filenames-with-date-only-archives.md` |

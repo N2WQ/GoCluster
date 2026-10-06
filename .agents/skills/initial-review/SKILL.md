@@ -2,7 +2,7 @@
 
 name: initial-review
 description: Deliver a concise initial orientation to existing code without implementing changes. Use only when the user explicitly asks for a concise, brief, quick, high-level, or initial overview and no more specific repo-managed review, audit, diagnostic, domain, or engineering skill applies. Do not compose this skill with a specialist skill or use its output format to constrain specialist analysis.
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+---
 
 # Initial Review
 

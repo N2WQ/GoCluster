@@ -63,8 +63,8 @@ function Measure-Paths([string]$Revision, [string[]]$Paths) {
 
 $standardPlanning = @('AGENTS.md','docs/change-workflow.md','docs/templates/non-trivial-change-template.md')
 $standardExecution = @('AGENTS.md','docs/change-workflow.md','docs/code-quality.md','docs/review-checklist.md','VALIDATION.md','docs/dev-runbook.md')
-$highRiskPlanning = $standardPlanning + @('codex-skills/README.md')
-$highRiskExecution = $standardExecution + @('codex-skills/README.md','docs/runbooks/codex-triggered-validation-tools.md')
+$highRiskPlanning = $standardPlanning + @('.agents/skills/README.md')
+$highRiskExecution = $standardExecution + @('.agents/skills/README.md','docs/runbooks/codex-triggered-validation-tools.md')
 $skillNames = @(
   'decision-memory-audit','workflow-contract-audit',
   'requirements-ambiguity-review','scientific-model-oracle',
@@ -82,7 +82,7 @@ $scenarios = @(
   @{ Name='high-risk-execution-closeout'; Paths=$highRiskExecution }
 )
 foreach ($skill in $skillNames) {
-  $scenarios += @{ Name="specialist-$skill"; Paths=@('AGENTS.md',"codex-skills/$skill/SKILL.md") }
+  $scenarios += @{ Name="specialist-$skill"; Paths=@('AGENTS.md',".agents/skills/$skill/SKILL.md") }
 }
 
 $names = @($scenarios | ForEach-Object { $_.Name })

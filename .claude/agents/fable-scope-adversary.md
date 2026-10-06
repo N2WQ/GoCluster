@@ -12,7 +12,7 @@ model: inherit
 Challenge a Non-trivial Plan Mode plan before the lead agent calls
 `ExitPlanMode`. This is independent evidence from a separate context window;
 it does not transfer plan-approval ownership away from the lead agent. This
-is the Fable-native counterpart to `codex-skills/scope-ledger-adversarial-
+is the Fable-native counterpart to `.agents/skills/scope-ledger-adversarial-
 review/SKILL.md`.
 
 ## Constraints

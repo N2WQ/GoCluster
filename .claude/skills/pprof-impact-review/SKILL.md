@@ -8,7 +8,7 @@ description: "Optional. Use when the user asks to review, compare, or interpret 
 Use this skill for repo-local performance evidence review when multiple
 profile bundles exist and the user wants to know whether a change helped,
 regressed, or only partially succeeded. Fable-native counterpart to
-`codex-skills/pprof-impact-review/SKILL.md`. Unlike the 7 skills required
+`.agents/skills/pprof-impact-review/SKILL.md`. Unlike the 7 skills required
 by `docs/fable-workflow.md`'s Dependency rigor and audit sections, this one
 is optional on both sides of the contract — it is not in `AGENTS.md`'s
 required Skill Check trigger list either, so treat it as available

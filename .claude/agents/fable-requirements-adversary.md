@@ -12,7 +12,7 @@ model: inherit
 Actively expose unresolved semantic forks before they harden into scope or
 design. This is independent evidence from a separate context window; it does
 not transfer requirements-decision ownership away from the lead agent. This
-is the Fable-native counterpart to `codex-skills/requirements-ambiguity-
+is the Fable-native counterpart to `.agents/skills/requirements-ambiguity-
 review/SKILL.md`.
 
 ## Constraints

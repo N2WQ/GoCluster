@@ -142,7 +142,7 @@ func NewDashboardV2(cfg config.UIConfig, enable bool) *DashboardV2 {
 		return nil
 	}
 
-	//nolint:gosec // Stop calls the retained cancel function; the returned dashboard owns that lifecycle.
+	// Stop calls the retained cancel function; the returned dashboard owns that lifecycle.
 	ctx, cancel := context.WithCancel(context.Background())
 	app := tview.NewApplication().EnableMouse(cfg.V2.EnableMouse)
 	pages := tview.NewPages()

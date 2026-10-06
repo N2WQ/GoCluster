@@ -4,6 +4,12 @@
 - Date: 2026-06-08
 - Decision Origin: Design
 
+Selective supersession: [ADR-0250](ADR-0250-go127-development-and-launcher.md)
+replaces the source-directory choice with real `.agents/skills` directories.
+All other ADR-0155 authority and machine-local responsibility decisions remain
+accepted. The historical directory references below describe the original
+decision.
+
 ## Context
 gocluster already vendors several Codex workflow skills under `codex-skills/`,
 but the workflow still documented copying selected skills into a user-level

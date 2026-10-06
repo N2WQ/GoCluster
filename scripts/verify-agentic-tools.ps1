@@ -5,12 +5,13 @@
 .DESCRIPTION
 	Checks required repository workflow tools, required semantic/navigation
 	helpers, recommended Go developer helpers, and optional investigation tools.
-	Missing required tools fail the script. Missing recommended or optional tools
-	are reported separately so they do not block ordinary Go implementation,
+	Missing required tools or failed required version probes fail the script.
+	Missing or failed recommended/optional tools are reported separately and do
+	not block ordinary Go implementation,
 	review, or validation.
 
 .PARAMETER Quiet
-	Suppress successful tool lines and show only missing tools plus the summary.
+	Suppress successful tool lines; all checks still run and failures remain visible.
 
 .NOTES
 	Prerequisites: PowerShell and the current process/user/machine PATH.
@@ -25,13 +26,9 @@ Param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$processPath = $env:Path
-$machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
-$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-$graphvizUserBin = Join-Path $env:LOCALAPPDATA "Programs\Graphviz\bin"
-$graphvizVirtualStoreBin = Join-Path $env:LOCALAPPDATA "VirtualStore\Program Files\Graphviz\bin"
-$graphvizMachineBin = "C:\Program Files\Graphviz\bin"
-$env:Path = "$processPath;$machinePath;$userPath;$graphvizUserBin;$graphvizVirtualStoreBin;$graphvizMachineBin"
+$windowsHost = [Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT
+$pathVariable = if ($windowsHost) { 'Path' } else { 'PATH' }
+$processPath = [Environment]::GetEnvironmentVariable($pathVariable, 'Process')
 
 $versionArgs = @{
     "go" = @("version")
@@ -79,67 +76,84 @@ $toolGroups = @(
     }
 )
 
-function Get-VersionLine {
-    Param(
-        [string]$CommandName,
-        [string]$CommandSource
-    )
+function Get-ToolProbe {
+    Param([string]$CommandName, [System.Management.Automation.CommandInfo]$Command)
 
     if (-not $versionArgs.ContainsKey($CommandName)) {
-        return "found"
+        return @{ Success = $true; Detail = "presence only; no version probe configured" }
     }
-
     try {
-        $output = & $CommandSource @($versionArgs[$CommandName]) 2>&1 |
-            Where-Object { $_ -and $_.ToString().Trim() -ne "" } |
-            Select-Object -First 2
-        if ($output) {
-            return (($output | ForEach-Object { $_.ToString().Trim() }) -join " | ")
+        # Reset stale native status and consume all output before reading exit status.
+        $global:LASTEXITCODE = 0
+        $output = @(& $Command @($versionArgs[$CommandName]) 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            return @{ Success = $false; Detail = "version probe failed with exit code $LASTEXITCODE" }
         }
-        return "found"
+        $lines = @($output | Where-Object { $_ -and $_.ToString().Trim() -ne "" } |
+            Select-Object -First 2 | ForEach-Object { $_.ToString().Trim() })
+        $detail = if ($lines.Count) { $lines -join " | " } else { "version probe succeeded; no version text returned" }
+        return @{ Success = $true; Detail = $detail }
     } catch {
-        return "found; version probe failed: $($_.Exception.Message)"
+        return @{ Success = $false; Detail = "version probe failed: $($_.Exception.Message)" }
     }
 }
 
-$missingRequired = New-Object System.Collections.Generic.List[string]
-$missingRecommended = New-Object System.Collections.Generic.List[string]
+$failedRequired = New-Object System.Collections.Generic.List[string]
+$failedRecommended = New-Object System.Collections.Generic.List[string]
+$exitCode = 0
+try {
+    # User/machine PATH and Graphviz installation conventions are Windows-only.
+    # On other hosts the process PATH is already the authoritative search path.
+    if ($windowsHost) {
+        $extraPaths = @(
+            [Environment]::GetEnvironmentVariable("Path", "Machine")
+            [Environment]::GetEnvironmentVariable("Path", "User")
+        )
+        if ($env:LOCALAPPDATA) {
+            $extraPaths += Join-Path $env:LOCALAPPDATA "Programs\Graphviz\bin"
+            $extraPaths += Join-Path $env:LOCALAPPDATA "VirtualStore\Program Files\Graphviz\bin"
+        }
+        if ($env:ProgramFiles) { $extraPaths += Join-Path $env:ProgramFiles "Graphviz\bin" }
+        [Environment]::SetEnvironmentVariable($pathVariable,
+            ((@($processPath) + @($extraPaths | Where-Object { $_ })) -join [IO.Path]::PathSeparator), 'Process')
+    }
 
-foreach ($group in $toolGroups) {
-    Write-Host "[$($group.Label)]"
-    foreach ($tool in $group.Tools) {
-        $cmd = Get-Command $tool -ErrorAction SilentlyContinue | Select-Object -First 1
-        if (-not $cmd) {
-            if ($group.Required) {
-                $missingRequired.Add($tool) | Out-Null
-                Write-Host "FAIL  $tool (missing)"
-            } else {
-                $missingRecommended.Add($tool) | Out-Null
-                Write-Host "WARN  $tool (missing)"
+    foreach ($group in $toolGroups) {
+        Write-Host "[$($group.Label)]"
+        foreach ($tool in $group.Tools) {
+            $cmd = Get-Command $tool -ErrorAction SilentlyContinue | Select-Object -First 1
+            $probe = if ($cmd) { Get-ToolProbe -CommandName $tool -Command $cmd } else {
+                @{ Success = $false; Detail = "missing" }
             }
-            continue
-        }
-
-        if (-not $Quiet) {
-            $version = Get-VersionLine -CommandName $tool -CommandSource $cmd.Source
-            Write-Host "PASS  $tool - $version"
+            if (-not $probe.Success) {
+                if ($group.Required) {
+                    $failedRequired.Add($tool)
+                    Write-Host "FAIL  $tool ($($probe.Detail))"
+                } else {
+                    $failedRecommended.Add($tool)
+                    Write-Host "WARN  $tool ($($probe.Detail))"
+                }
+            } elseif (-not $Quiet) {
+                Write-Host "PASS  $tool - $($probe.Detail)"
+            }
         }
     }
-}
-
-if ($missingRequired.Count -gt 0) {
     Write-Host ""
-    Write-Host "FAIL missing required tools: $($missingRequired -join ', ')"
-    if ($missingRecommended.Count -gt 0) {
-        Write-Host "WARN missing recommended/optional tools: $($missingRecommended -join ', ')"
+    if ($failedRequired.Count) {
+        Write-Host "FAIL unavailable required tools: $($failedRequired -join ', ')"
+        $exitCode = 1
+    } else {
+        Write-Host "PASS required agentic workflow tools are available."
     }
-    exit 1
+    if ($failedRecommended.Count) {
+        Write-Host "WARN unavailable recommended/optional tools: $($failedRecommended -join ', ')"
+        Write-Host "WARN optional absence is a conditional evidence gap only when a workflow specifically needs that tool."
+    }
+} finally {
+    if ($null -eq $processPath) {
+        Remove-Item -LiteralPath "Env:$pathVariable" -ErrorAction SilentlyContinue
+    } else {
+        [Environment]::SetEnvironmentVariable($pathVariable, $processPath, 'Process')
+    }
 }
-
-Write-Host ""
-Write-Host "PASS required agentic workflow tools are available."
-if ($missingRecommended.Count -gt 0) {
-    Write-Host "WARN missing recommended/optional tools: $($missingRecommended -join ', ')"
-    Write-Host "WARN optional absence is a conditional evidence gap only when a workflow specifically needs that tool."
-}
-exit 0
+exit $exitCode

@@ -5,11 +5,12 @@ on:
     branches:
       - main
     paths:
+      - go.mod
       - AGENTS.md
       - VALIDATION.md
       - .golangci.yaml
       - .github/workflows/**
-      - codex-skills/**
+      - .agents/skills/**
       - docs/WORKING_WITH_CODEX.md
       - docs/change-workflow.md
       - docs/code-quality.md
@@ -40,6 +41,15 @@ on:
       - scripts/test-measure-codex-workflow-context.ps1
       - scripts/test-workflow-contract.ps1
       - scripts/verify-codex-skills.ps1
+      - launch-cluster.ps1
+      - scripts/build-executable-pair.ps1
+      - scripts/consolidate-and-build-pgo.ps1
+      - scripts/test-consolidate-and-build-pgo.ps1
+      - scripts/test-launch-cluster.ps1
+      - scripts/verify-agentic-tools.ps1
+      - scripts/test-agentic-tools.ps1
+      - scripts/pc92-dxspider-interop.ps1
+      - scripts/test-pc92-dxspider-preflight.ps1
 
 permissions:
   contents: read
@@ -113,6 +123,22 @@ jobs:
       - name: Verify repo-managed Codex skills
         shell: pwsh
         run: ./scripts/verify-codex-skills.ps1
+
+      - name: Run executable-pair fixtures
+        shell: pwsh
+        run: ./scripts/test-consolidate-and-build-pgo.ps1
+
+      - name: Run launcher fixtures
+        shell: pwsh
+        run: ./scripts/test-launch-cluster.ps1
+
+      - name: Run tool-verifier fixtures
+        shell: pwsh
+        run: ./scripts/test-agentic-tools.ps1
+
+      - name: Run DXSpider preflight fixtures
+        shell: pwsh
+        run: ./scripts/test-pc92-dxspider-preflight.ps1
 
       - name: Check pushed range for whitespace errors
         shell: pwsh

@@ -6,7 +6,7 @@ Date Resolved: 2026-10-03
 Owner: GoCluster maintainers
 Technical Area: local Go static analysis
 Trigger Source: Chat request
-Led To ADR(s): none
+Led To ADR(s): ADR-0250 (2026-10-06 follow-up)
 Tags: lint, staticcheck, golangci-lint, toolchain
 
 ## RCA Summary
@@ -82,6 +82,23 @@ version 2`. golangci-lint panicked with `file requires newer Go version go1.27
   either tool begins failing before reporting source diagnostics.
 - Rollback trigger: do not use a workaround that changes module semantics or
   hides required diagnostics; reassess compatibility instead.
+
+## Go 1.27 Repair Follow-up (2026-10-06)
+
+The Go 1.26.2 selection above was an interim workaround. The migration repair
+installed Staticcheck 2026.2.1 (v0.8.1) and golangci-lint 2.14.0 built with Go
+1.27.0. Full standalone Staticcheck, vet, and configured golangci-lint scans
+passed with Go 1.27.1 on Windows and WSL Ubuntu 24.04. Both ordinary and race
+Go suites passed in WSL; native Windows race passed, while some ordinary CGO
+test executables were denied by Windows Application Control. Code Integrity
+event 3077 established an OS execution-policy denial rather than a test
+assertion failure. No policy was disabled.
+
+The module and CI now adopt Go 1.27.1 and the supported analyzer pins through
+[ADR-0250](../decisions/ADR-0250-go127-development-and-launcher.md). Do not
+use the earlier workaround against a module requiring Go 1.27.1. Migration
+readiness also requires actual skill discovery and account/tool state outside
+the repository; an unavailable old disk prevents a completeness comparison.
 
 ## References
 

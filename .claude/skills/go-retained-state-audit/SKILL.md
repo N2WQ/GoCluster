@@ -7,7 +7,7 @@ description: "Use when designing, reviewing, or modifying Go server-lifetime ret
 
 Use this skill before implementing or approving changes that add or modify
 long-lived retained state in the Go cluster. Fable-native counterpart to
-`codex-skills/go-retained-state-audit/SKILL.md`.
+`.agents/skills/go-retained-state-audit/SKILL.md`.
 
 ## Required Workflow
 

@@ -8,7 +8,7 @@ description: "Use before designing, reviewing, or modifying Go YAML config loadi
 Use this skill before implementing or approving changes that touch YAML
 config, loader behavior, config structs, runtime defaults, reference-table
 loading, or operator-visible settings. Fable-native counterpart to
-`codex-skills/go-config-contract-audit/SKILL.md`.
+`.agents/skills/go-config-contract-audit/SKILL.md`.
 
 ## Required workflow
 
