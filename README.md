@@ -306,8 +306,10 @@ SHOW FILTER
 
 DXCC filters also accept existing positive ADIF numbers. Canonical CTY prefixes
 select whole entities: `REJECT DXDXCC IT9` also blocks `I` and `IG9` (ADIF 248).
-`SHOW FILTER`, FULL and DXCC category views show all canonical prefixes for each
-entity; unresolved rules show `Unknown DXCC (12345)`. YAML remains numeric.
+`SHOW FILTER`, FULL and DXCC category views show all unambiguous canonical
+prefixes for each entity. Conflicting labels are omitted; valid alternatives
+remain. With no usable label, rules show `Unknown DXCC (12345)`.
+YAML remains numeric.
 For canonical history search use `SHOW MYDX 3D2/R 10`; bare numbers remain counts.
 See [canonical DXCC prefixes](telnet/README.md#canonical-dxcc-prefixes).
 

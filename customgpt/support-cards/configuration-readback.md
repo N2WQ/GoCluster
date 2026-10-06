@@ -21,9 +21,11 @@ command/error artifact that distinguishes the next step.
   positive numeric ADIF codes, including mixed lists. Canonical input requires
   CTY; unknown or conflicting labels reject the whole list without mutation.
   IT9, I and IG9 select the same ADIF entity, not separate country subdivisions.
-  All human SHOW FILTER views use canonical prefixes; FULL/category group all
-  labels per entity and retain every flag and false entry. Long overview counts
-  count entities. Unresolved rules show `Unknown DXCC (12345)`; YAML stays numeric.
+  All human SHOW FILTER views use unambiguous canonical prefixes; FULL/category
+  group all such labels per entity and retain every flag and false entry.
+  Conflicting labels are omitted; valid alternatives remain. Long overview counts
+  count entities. With no usable label, rules show `Unknown DXCC (12345)`;
+  each entity retains its own number in this fallback. YAML stays numeric.
   SHOW DX/MYDX recognize canonical labels before portable callsign processing;
   numeric history arguments remain counts. SHOW DXCC details are unchanged.
 

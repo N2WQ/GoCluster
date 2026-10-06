@@ -48,6 +48,12 @@ func NewDXCCIndex(db *CTYDatabase) *DXCCIndex {
 	for adif, group := range groups {
 		prefixes := make([]string, 0, len(group))
 		for prefix := range group {
+			// Wait until every record has been examined: a later association
+			// can make an earlier label ambiguous. Keep valid alternatives so
+			// human readbacks retain this entity's unambiguous identity.
+			if index.canonical[prefix] != adif {
+				continue
+			}
 			prefixes = append(prefixes, prefix)
 		}
 		slices.Sort(prefixes)
@@ -72,7 +78,8 @@ func (index *DXCCIndex) ResolveCanonical(input string) (int, error) {
 	return adif, nil
 }
 
-// Prefixes returns borrowed sorted labels. Callers must not modify the slice.
+// Prefixes returns borrowed sorted unambiguous labels. Callers must not modify
+// the slice. If no labels remain, human readbacks use their stored-number fallback.
 func (index *DXCCIndex) Prefixes(adif int) []string {
 	if index == nil {
 		return nil

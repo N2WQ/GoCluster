@@ -244,10 +244,11 @@ but cannot shorten it. `SHOW HOLD` reports either kind of pause. Replies to
 SOURCE, EVENT, PATH, CONFIDENCE and DX/DE continents show names and useful
 explicit exclusions, wrapping across lines. Unrestricted categories show
 `All`; an explicit block can show `All except 80m`. Disabled choices are not
-enumerated. Long callsign, DXCC, grid and zone lists use counts. DXCC labels use canonical
-CTY prefixes in overview, FULL and category views. Shared entities display all
-prefixes: IT9, I and IG9 all refer to ADIF 248. Unknown rules display
-`Unknown DXCC (12345)`; YAML retains numeric ADIF keys. Geography rules
+enumerated. Long callsign, DXCC, grid and zone lists use counts. DXCC labels use
+unambiguous canonical CTY prefixes in overview, FULL and category views. Shared
+entities display all such prefixes: IT9, I and IG9 all refer to ADIF 248.
+Conflicting labels are omitted; valid alternatives remain. Rules with no usable
+label display `Unknown DXCC (12345)`; YAML retains numeric ADIF keys. Geography rules
 and inclusion switches are grouped for reading. For example:
 
 ```text

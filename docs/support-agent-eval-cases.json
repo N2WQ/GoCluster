@@ -2568,7 +2568,8 @@
       "prompt_sequence": [
         "Can I use REJECT DXDXCC IT9? Does that block only Sicily?",
         "Why does SHOW FILTER list I, IG9 and IT9? What happens if CTY is unavailable?",
-        "Can I use SHOW MYDX 3D2/R 10 and SHOW DX 248? Are YAML keys prefixes now?"
+        "Can I use SHOW MYDX 3D2/R 10 and SHOW DX 248? Are YAML keys prefixes now?",
+        "If CTY maps K to both 291 and 999, how does SHOW FILTER display those numeric rules? What if W and Z are valid alternative labels?"
       ],
       "action_plan": [
         {
@@ -2591,6 +2592,7 @@
             "Canonical DXCC Prefixes",
             "REJECT DXDXCC IT9",
             "Unknown DXCC (12345)",
+            "Conflicting canonical labels are omitted; valid alternatives remain.",
             "Machine YAML and saved records continue to use numbers."
           ]
         },
@@ -2598,6 +2600,7 @@
           "path": "customgpt/support-cards/configuration-readback.md",
           "contains": [
             "IT9, I and IG9 select the same ADIF entity",
+            "Conflicting labels are omitted; valid alternatives remain.",
             "numeric history arguments remain counts."
           ]
         }
@@ -2626,6 +2629,18 @@
             "any_of": [
               "FULL",
               "category"
+            ]
+          },
+          {
+            "name": "conflicting canonical label readback",
+            "all_of": [
+              "labels",
+              "Unknown DXCC"
+            ],
+            "any_of": [
+              "unambiguous",
+              "omitted",
+              "excluded"
             ]
           },
           {

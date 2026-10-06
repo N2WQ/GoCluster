@@ -12,7 +12,8 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 	filterNotes := []string{
 		"The overview wraps finite selections and useful explicit exclusions.",
 		"Long callsign, DXCC, grid and zone lists use counts.",
-		"DXCC entries show all canonical CTY prefixes for each selected entity.",
+		"DXCC entries show all unambiguous canonical CTY prefixes per entity.",
+		"Conflicting labels are omitted; valid alternatives remain.",
 		"FULL/category keep flags and false entries; YAML keeps numeric ADIF keys.",
 		"Unresolved rules show Unknown DXCC followed by their stored number.",
 		"Human lines use at most 78 ASCII characters; exact values use escapes.",

@@ -172,8 +172,9 @@ Existing prefix/callsign queries and count-only syntax remain supported.
 `SHOW DXCC` detail lookup retains its existing behavior.
 
 Telnet `PASS`/`REJECT DXDXCC|DEDXCC` accept canonical CTY prefixes or existing
-positive ADIF numbers. All human `SHOW FILTER` views display every canonical
-prefix for each selected entity; FULL/category preserve flags and false entries.
-Long overview counts count entities. Unresolved entries show
+positive ADIF numbers. All human `SHOW FILTER` views display every unambiguous
+canonical prefix for each selected entity; FULL/category preserve flags and
+false entries. Conflicting labels are omitted; valid alternatives remain.
+Long overview counts count entities. Entries with no usable labels show
 `Unknown DXCC (12345)`; machine YAML remains numeric. See
 [canonical DXCC prefixes](../telnet/README.md#canonical-dxcc-prefixes).

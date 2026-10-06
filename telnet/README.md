@@ -118,12 +118,15 @@ Matching and persistence remain ADIF-based. IT9, I and IG9 select the same
 entity, ADIF 248: REJECT DXDXCC IT9 blocks the whole entity, not just Sicily.
 For a literal callsign-prefix block use REJECT DXCALL IT9* instead.
 
-Every human SHOW FILTER view displays canonical prefixes for known entities.
-Short overview selections list all prefixes, such as DXCC: All except I, IG9,
-IT9; long previews count DXCC entities rather than expanded prefix labels.
-FULL and DXDXCC/DEDXCC category views group all labels for one stored entity,
-for example `"I, IG9, IT9": true`, preserving false entries and allow_all/block_all
-flags. A missing CTY association, including unavailable CTY, appears as
+Every human SHOW FILTER view displays unambiguous canonical prefixes for known
+entities. Short overview selections list all such prefixes, such as DXCC: All
+except I, IG9, IT9; long previews count DXCC entities rather than expanded prefix
+labels. FULL and DXDXCC/DEDXCC category views group all unambiguous labels for
+one stored entity, for example `"I, IG9, IT9": true`, preserving false entries
+and allow_all/block_all
+flags. Conflicting canonical labels are omitted; valid alternatives remain.
+When none remain, each stored entity retains its own `Unknown DXCC (<number>)`
+label. A missing CTY association, including unavailable CTY, also appears as
 `Unknown DXCC (12345)`. Machine YAML and saved records continue to use numbers.
 All human width, size, quoting and reading-pause limits remain in force.
 

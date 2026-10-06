@@ -3,6 +3,7 @@ package cty
 import (
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -61,6 +62,41 @@ func TestCanonicalDXCCConflictAndSnapshotOwnership(t *testing.T) {
 	for _, index := range []*DXCCIndex{nil, NewDXCCIndex(nil)} {
 		if _, err := index.ResolveCanonical("K"); !errors.Is(err, ErrUnknownCanonicalPrefix) || index.Prefixes(291) != nil {
 			t.Fatal("nil database/index must be unresolved")
+		}
+	}
+}
+
+func TestCanonicalDXCCConflictDisplayLabels(t *testing.T) {
+	for _, alternatives := range []bool{false, true} {
+		db := &CTYDatabase{Data: map[string]PrefixInfo{
+			"FIRST": {Prefix: "K", ADIF: 291}, "DUPLICATE": {Prefix: " k ", ADIF: 291},
+			"SECOND": {Prefix: "k", ADIF: 999},
+		}}
+		want := map[int][]string{291: {}, 999: {}}
+		if alternatives {
+			db.Data["ALT-FIRST"] = PrefixInfo{Prefix: "W", ADIF: 291}
+			db.Data["ALT-FIRST-DUPLICATE"] = PrefixInfo{Prefix: " w ", ADIF: 291}
+			db.Data["ALT-FIRST-SORT"] = PrefixInfo{Prefix: "AA", ADIF: 291}
+			db.Data["ALT-SECOND"] = PrefixInfo{Prefix: "Z", ADIF: 999}
+			want[291], want[999] = []string{"AA", "W"}, []string{"Z"}
+		}
+		for range 20 {
+			index := NewDXCCIndex(db)
+			if _, err := index.ResolveCanonical(" K "); !errors.Is(err, ErrConflictingCanonicalPrefix) {
+				t.Fatalf("alternatives=%t: conflicting input resolved: %v", alternatives, err)
+			}
+			for _, code := range []int{291, 999} {
+				if got := index.Prefixes(code); !slices.Equal(got, want[code]) {
+					t.Fatalf("alternatives=%t: ADIF %d labels=%v, want %v", alternatives, code, got, want[code])
+				}
+			}
+			if alternatives {
+				for label, code := range map[string]int{"AA": 291, "W": 291, "Z": 999} {
+					if got, err := index.ResolveCanonical(label); err != nil || got != code {
+						t.Fatalf("unambiguous alternative %q: %d, %v", label, got, err)
+					}
+				}
+			}
 		}
 	}
 }

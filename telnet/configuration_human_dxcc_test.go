@@ -2,6 +2,8 @@ package telnet
 
 import (
 	"errors"
+	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +11,91 @@ import (
 	"dxcluster/cty"
 	"dxcluster/filter"
 )
+
+func TestHumanCanonicalDXCCConflictReadbacks(t *testing.T) {
+	for _, tc := range []struct {
+		name, first, second string
+		alternatives        bool
+	}{
+		{name: "fallback", first: "Unknown DXCC (291)", second: "Unknown DXCC (999)"},
+		{name: "alternatives", first: "W", second: "Z", alternatives: true},
+	} {
+		for _, domain := range []string{"DXDXCC", "DEDXCC"} {
+			t.Run(tc.name+"/"+domain, func(t *testing.T) {
+				db := &cty.CTYDatabase{Data: map[string]cty.PrefixInfo{
+					"FIRST": {Prefix: "K", ADIF: 291}, "SECOND": {Prefix: " k ", ADIF: 999},
+				}}
+				if tc.alternatives {
+					db.Data["ALT-FIRST"] = cty.PrefixInfo{Prefix: "W", ADIF: 291}
+					db.Data["ALT-SECOND"] = cty.PrefixInfo{Prefix: "Z", ADIF: 999}
+				}
+				s, c := readbackTestClient()
+				c.filter = filter.NewFilter()
+				heading := "DX DXCC"
+				if domain == "DXDXCC" {
+					c.filter.AllDXDXCC, c.filter.BlockAllDXDXCC = false, true
+					c.filter.DXDXCC = map[int]bool{291: true, 999: false}
+					c.filter.BlockDXDXCC = map[int]bool{291: false, 999: true}
+				} else {
+					heading = "DE DXCC"
+					c.filter.AllDEDXCC, c.filter.BlockAllDEDXCC = false, true
+					c.filter.DEDXCC = map[int]bool{291: true, 999: false}
+					c.filter.BlockDEDXCC = map[int]bool{291: false, 999: true}
+				}
+				before := filter.ConfigurationFromFilter(c.filter, filter.SettingsConfiguration{}).Clone()
+				calls := 0
+				s.ctyLookup = func() *cty.CTYDatabase { calls++; return db }
+				section := fmt.Sprintf("%s (exact rules)\r\n  allow_all: false\r\n  block_all: true\r\n  allow:\r\n    %q: true\r\n    %q: false\r\n  block:\r\n    %q: false\r\n    %q: true\r\n", heading, tc.first, tc.second, tc.first, tc.second)
+				for _, command := range []string{"SHOW FILTER " + domain, "SHOW FILTER FULL"} {
+					previousCalls := calls
+					if !s.handleHumanReadback(c, command) {
+						t.Fatal("production dispatch not handled")
+					}
+					message := <-c.controlChan
+					response := string(message.raw)
+					assertHumanWire(t, response)
+					if !strings.Contains(response, section) || strings.Contains(response, `"K"`) {
+						t.Fatalf("conflict labels/flags/false entries: %q", response)
+					}
+					if command != "SHOW FILTER FULL" && response != "User          W1ABC-1\r\nPreset        (none)\r\n\r\n"+section+readbackFooterLiteral {
+						t.Fatalf("complete category response changed: %q", response)
+					}
+					if calls != previousCalls+1 || message.readback.epoch == 0 || !c.readPausePending.Load() {
+						t.Fatal("snapshot/readback hold changed")
+					}
+				}
+				if !reflect.DeepEqual(before, filter.ConfigurationFromFilter(c.filter, filter.SettingsConfiguration{}).Clone()) {
+					t.Fatal("readback changed stored numeric rules")
+				}
+				if domain == "DXDXCC" {
+					c.filter.AllDXDXCC, c.filter.BlockAllDXDXCC = true, false
+					c.filter.DXDXCC = nil
+					c.filter.BlockDXDXCC = map[int]bool{291: true, 999: true}
+				} else {
+					c.filter.AllDEDXCC, c.filter.BlockAllDEDXCC = true, false
+					c.filter.DEDXCC = nil
+					c.filter.BlockDEDXCC = map[int]bool{291: true, 999: true}
+				}
+				if !s.handleHumanReadback(c, "SHOW FILTER") {
+					t.Fatal("overview not handled")
+				}
+				response := string((<-c.controlChan).raw)
+				assertHumanWire(t, response)
+				if !strings.Contains(response, "DXCC: All except "+tc.first+", "+tc.second) {
+					t.Fatalf("overview lost entity identities: %q", response)
+				}
+				legacy := formatFilterSnapshot(c.filter, s.ctyLookup)
+				if !strings.Contains(legacy, domain+": allow=ALL block="+tc.first+", "+tc.second) {
+					t.Fatalf("legacy labels: %q", legacy)
+				}
+				rules := filter.IntRules{AllowAll: true, Block: map[int]bool{291: true, 999: true}}
+				if got := humanDXCCSummary(rules, cty.NewDXCCIndex(db), 10); got != "All except 2 blocked DXCC entries" {
+					t.Fatalf("overview counted labels instead of entities: %q", got)
+				}
+			})
+		}
+	}
+}
 
 func TestHumanCanonicalDXCCProductionReadbacks(t *testing.T) {
 	for _, command := range []string{"SHOW FILTER", "SHOW/FILTER", "SH/FILTER", "SHOW FILTER FULL", "SHOW FILTER DXDXCC", "SHOW FILTER DEDXCC"} {

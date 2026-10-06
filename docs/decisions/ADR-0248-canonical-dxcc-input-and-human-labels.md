@@ -24,11 +24,15 @@ SHOW DX/MYDX resolve canonical labels before existing callsign normalization
 and portable lookup. Preserve ADR-0011's count grammar, limits, client-filter
 intersection and archive behavior. SHOW DXCC detail lookup is unchanged.
 
-All human SHOW FILTER views use canonical prefixes. Expand all labels for a
-selected ADIF entity, preserving entity-wide matching: I, IG9 and IT9 select
-ADIF 248. Overview counts count entities. FULL/category retain flags and every
-true/false stored entry, grouping labels for one entity as one quoted key.
-Unresolved associations display Unknown DXCC followed by the stored number.
+All human SHOW FILTER views use unambiguous canonical prefixes. Expand all
+unambiguous labels for a selected ADIF entity, preserving entity-wide matching:
+I, IG9 and IT9 select ADIF 248. Overview counts count entities. FULL/category
+retain flags and every true/false stored entry, grouping labels for one entity
+as one quoted key.
+After complete conflict detection, omit conflicting labels from display
+associations while retaining every unambiguous alternative. If none remain,
+display Unknown DXCC followed by that entity's stored number. Missing CTY
+associations use the same fallback, preserving distinct entity identities.
 Machine YAML and persistence keep numeric ADIF keys.
 
 Use one request-owned CTY index built from one captured database. Its storage
@@ -47,7 +51,10 @@ ADR-0246/0247's width, ASCII quoting, response-size and delivery-pause contracts
 4. Retain an index globally or on CTYDatabase. A request-owned index avoids new
    refresh invalidation, retained-state and synchronization responsibility.
 5. Show one representative prefix or retain numbers in exact human views.
-   Rejected because users need to see all canonical labels for an entity.
+   Rejected because users need to see all unambiguous canonical labels for an
+   entity.
+6. Retain conflicting labels with ADIF annotations. Rejected in favor of
+   omitting those labels and using the existing fallback when none remain.
 
 ## Consequences
 
