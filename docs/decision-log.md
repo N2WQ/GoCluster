@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0248 | Canonical DXCC Input And Human Labels | Accepted | 2026-10-06 | cty, commands, telnet, DXCC, human readbacks | Refines ADR-0011/0246/0247 for canonical input and DXCC labels | - | `docs/decisions/ADR-0248-canonical-dxcc-input-and-human-labels.md` |
 | ADR-0247 | Complete Finite Filter Selections | Accepted | 2026-10-05 | telnet, commands, overview, bounded output | Refines ADR-0246's overview count policy for finite categories | - | `docs/decisions/ADR-0247-complete-finite-filter-selections.md` |
 | ADR-0246 | Delivery-Timed Human Configuration Readbacks | Accepted | 2026-10-05 | telnet, commands, writer, pause, bounded output | Refines ADR-0195/0243 for configuration readbacks and pause synchronization | Finite overview selections refined by ADR-0247 | `docs/decisions/ADR-0246-delivery-timed-human-readbacks.md` |
 | ADR-0245 | Machine YAML Configuration Commands | Accepted | 2026-10-05 | telnet, protocol, schema, transactions, bounded resources | - | - | `docs/decisions/ADR-0245-machine-yaml-configuration.md` |

@@ -163,3 +163,17 @@ temporary-defaults sessions cannot SAVE, LOAD or commit machine writes.
 The 20-name, 256 KiB-per-preset and 8 MiB collection limits remain separate
 from the readback budget, so a valid large preset may LOAD even when FULL/YAML
 readback returns a size error.
+
+### Canonical DXCC input and display
+
+`SHOW DX` / `SHOW MYDX` resolve canonical CTY entity labels before callsign
+normalization or portable lookup; `SHOW MYDX 3D2/R 10` selects Rotuma's ADIF.
+Existing prefix/callsign queries and count-only syntax remain supported.
+`SHOW DXCC` detail lookup retains its existing behavior.
+
+Telnet `PASS`/`REJECT DXDXCC|DEDXCC` accept canonical CTY prefixes or existing
+positive ADIF numbers. All human `SHOW FILTER` views display every canonical
+prefix for each selected entity; FULL/category preserve flags and false entries.
+Long overview counts count entities. Unresolved entries show
+`Unknown DXCC (12345)`; machine YAML remains numeric. See
+[canonical DXCC prefixes](../telnet/README.md#canonical-dxcc-prefixes).

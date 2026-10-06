@@ -10,6 +10,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"dxcluster/cty"
 	"dxcluster/filter"
 )
 
@@ -24,6 +25,8 @@ type humanResponse struct {
 	countOnly bool
 	size      int
 	joined    bool
+	// dxcc is request-owned and shared by the counting and generation passes.
+	dxcc *cty.DXCCIndex
 }
 
 // line owns CRLF conversion and final size accounting in both passes. No partial
@@ -285,7 +288,11 @@ func writeHumanExactCategory(h *humanResponse, category readbackCategory, cfg fi
 	case filter.StringRules:
 		err = writeHumanExactRules(h, rules)
 	case filter.IntRules:
-		err = writeHumanExactRules(h, rules)
+		if category.name == "DXDXCC" || category.name == "DEDXCC" {
+			err = writeHumanDXCCRules(h, rules)
+		} else {
+			err = writeHumanExactRules(h, rules)
+		}
 	default:
 		switch category.kind {
 		case 'p':

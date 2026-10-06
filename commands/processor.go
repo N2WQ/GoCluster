@@ -4,6 +4,7 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"sort"
@@ -369,6 +370,8 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"Count range is 1-250 (default 50).",
 			"Respects your filters; self-spots always pass.",
 			"When prefix/call is present, only matching DXCC (ADIF) spots are shown.",
+			"Canonical CTY labels, including slash labels, take precedence over callsigns.",
+			"Numeric arguments remain counts, not DXCC selectors.",
 		},
 	)
 	add("SHOW MYDX", "SHOW MYDX - Show filtered spot history.", showMYDXLines)
@@ -616,6 +619,8 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			[]string{
 				"Count range is 1-250 (default 50).",
 				"When prefix/call is present, only matching DXCC (ADIF) spots are shown.",
+				"Canonical CTY labels, including slash labels, take precedence over callsigns.",
+				"Numeric arguments remain counts, not DXCC selectors.",
 			},
 		)
 		add("SHOW/DX", "SHOW/DX - Alias of SHOW MYDX.", showDXLines, "SH/DX")
@@ -656,6 +661,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 				"Same semantics as PASS.",
 				"Use /ON or /OFF to allow or block all for a type.",
 				"Example: SET/FILTER BAND/ON",
+				"DXDXCC/DEDXCC accept canonical CTY prefixes or positive ADIF numbers.",
 			},
 		)
 		setFilterLines = appendListSection(setFilterLines, "Types:", append([]string{"DXBM"}, filterListTypes()...))
@@ -673,6 +679,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			nil,
 			[]string{
 				"Same semantics as REJECT.",
+				"DXDXCC/DEDXCC accept canonical CTY prefixes or positive ADIF numbers.",
 			},
 		)
 		unsetFilterLines = appendListSection(unsetFilterLines, "Types:", append([]string{"DXBM"}, filterListTypes()...))
@@ -811,6 +818,8 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			[]string{
 				"Adds to allowlist and removes from blocklist.",
 				"List is comma or space separated; use ALL to allow all.",
+				"DXDXCC/DEDXCC accept canonical CTY prefixes or positive ADIF numbers.",
+				"IT9 selects the whole entity shared with I and IG9.",
 				"For MODE, list entries are enabled without changing modes not listed.",
 				"Use PASS MODE UNKNOWN or PASS MODE ALL to restore blank-mode spots.",
 			},
@@ -833,6 +842,8 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			[]string{
 				"Adds to blocklist and removes from allowlist.",
 				"List is comma or space separated; use ALL to block all.",
+				"DXDXCC/DEDXCC accept canonical CTY prefixes or positive ADIF numbers.",
+				"IT9 blocks the whole entity shared with I and IG9.",
 				"For MODE, list entries are rejected without changing modes not listed.",
 				"UNKNOWN is the MODE token for blank-mode spots.",
 			},
@@ -859,6 +870,8 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			[]string{
 				"Count range is 1-250 (default 50).",
 				"When prefix/call is present, only matching DXCC (ADIF) spots are shown.",
+				"Canonical CTY labels, including slash labels, take precedence over callsigns.",
+				"Numeric arguments remain counts, not DXCC selectors.",
 			},
 		)
 		add("SHOW DX", "SHOW DX - Alias of SHOW MYDX.", showDXLines, "SH DX")
@@ -1166,6 +1179,9 @@ func filterHelpLines(dialect string) []string {
 		"PASS <type> <list> adds to allowlist and removes from blocklist.",
 		"REJECT <type> <list> adds to blocklist and removes from allowlist.",
 		"PASS/REJECT MODE <list> are deltas; modes not listed are unchanged.",
+		"DXDXCC/DEDXCC accept canonical CTY prefixes or positive ADIF numbers.",
+		"Canonical prefixes select whole entities; IT9 also selects I and IG9.",
+		"Unknown prefixes reject the whole list; canonical input requires CTY.",
 		"UNKNOWN is the MODE token for blank-mode spots.",
 		"If an item appears in both lists, block wins.",
 		"",
@@ -1739,11 +1755,10 @@ func (p *Processor) handleShowMYDX(args []string, filterFn func(*spot.Spot) bool
 
 	matchFn := filterFn
 	if request.selector != "" {
-		_, _, info, lookupErr := p.lookupPortableDXCC(request.selector)
+		dxADIF, lookupErr := p.resolveHistoryDXCC(request.selector)
 		if lookupErr != "" {
 			return lookupErr
 		}
-		dxADIF := info.ADIF
 		baseMatch := matchFn
 		matchFn = func(s *spot.Spot) bool {
 			if s == nil || s.DXMetadata.ADIF != dxADIF {
@@ -1775,6 +1790,31 @@ func (p *Processor) handleShowMYDX(args []string, filterFn func(*spot.Spot) bool
 	}
 
 	return result.String()
+}
+
+// resolveHistoryDXCC treats canonical entity labels before callsign suffixes
+// or portable segments. Both interpretations use one request-owned CTY snapshot;
+// SHOW DXCC detail lookup deliberately retains its existing metadata behavior.
+func (p *Processor) resolveHistoryDXCC(selector string) (int, string) {
+	if p.ctyLookup == nil {
+		return 0, "CTY database is not available.\n"
+	}
+	db := p.ctyLookup()
+	if db == nil {
+		return 0, "CTY database is not loaded.\n"
+	}
+	adif, err := cty.NewDXCCIndex(db).ResolveCanonical(selector)
+	if err == nil {
+		return adif, ""
+	}
+	if !errors.Is(err, cty.ErrUnknownCanonicalPrefix) {
+		return 0, "Conflicting DXCC canonical prefix.\n"
+	}
+	info, ok := db.LookupCallsignPortable(spot.NormalizeCallsign(selector))
+	if !ok || info == nil {
+		return 0, "Unknown DXCC/prefix.\n"
+	}
+	return info.ADIF, ""
 }
 
 // Purpose: Reverse a slice of spots in place.

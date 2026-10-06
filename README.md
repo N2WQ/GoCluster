@@ -283,8 +283,8 @@ REJECT DEZONE 3,4,5
 PASS DXCONT EU,AF
 REJECT DECONT NA
 
-PASS DXDXCC 291,110
-REJECT DEDXCC 291
+PASS DXDXCC K,VE,248
+REJECT DEDXCC 3D2/R
 
 PASS DXGRID2 FN,EM
 REJECT DEGRID2 DM
@@ -303,6 +303,13 @@ REJECT PATH CLOSED,INSUFFICIENT
 
 SHOW FILTER
 ```
+
+DXCC filters also accept existing positive ADIF numbers. Canonical CTY prefixes
+select whole entities: `REJECT DXDXCC IT9` also blocks `I` and `IG9` (ADIF 248).
+`SHOW FILTER`, FULL and DXCC category views show all canonical prefixes for each
+entity; unresolved rules show `Unknown DXCC (12345)`. YAML remains numeric.
+For canonical history search use `SHOW MYDX 3D2/R 10`; bare numbers remain counts.
+See [canonical DXCC prefixes](telnet/README.md#canonical-dxcc-prefixes).
 
 ### Named Presets
 
@@ -517,6 +524,9 @@ Filter core rules:
 PASS <type> <list> adds to allowlist and removes from blocklist.
 REJECT <type> <list> adds to blocklist and removes from allowlist.
 PASS/REJECT MODE <list> are deltas; modes not listed are unchanged.
+DXDXCC/DEDXCC accept canonical CTY prefixes or positive ADIF numbers.
+Canonical prefixes select whole entities; IT9 also selects I and IG9.
+Unknown prefixes reject the whole list; canonical input requires CTY.
 UNKNOWN is the MODE token for blank-mode spots.
 If an item appears in both lists, block wins.
 

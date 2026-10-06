@@ -17,6 +17,16 @@ command/error artifact that distinguishes the next step.
 
 ## Must Include
 
+- DXDXCC/DEDXCC PASS/REJECT accept exact canonical CTY prefixes and existing
+  positive numeric ADIF codes, including mixed lists. Canonical input requires
+  CTY; unknown or conflicting labels reject the whole list without mutation.
+  IT9, I and IG9 select the same ADIF entity, not separate country subdivisions.
+  All human SHOW FILTER views use canonical prefixes; FULL/category group all
+  labels per entity and retain every flag and false entry. Long overview counts
+  count entities. Unresolved rules show `Unknown DXCC (12345)`; YAML stays numeric.
+  SHOW DX/MYDX recognize canonical labels before portable callsign processing;
+  numeric history arguments remain counts. SHOW DXCC details are unchanged.
+
 - Human SHOW FILTER uses aligned labels and wraps all passing finite selections
   by name: BAND, MODE, SOURCE, EVENT, PATH, CONFIDENCE and DX/DE continents.
   Explain All, None and useful explicit exclusions, including All except.
@@ -95,6 +105,10 @@ command/error artifact that distinguishes the next step.
   association/reference live and on disk, including subsequent ordinary saves.
 
 ## Must Avoid
+
+- Do not interpret REJECT DXDXCC IT9 as Sicily-only or a callsign-prefix block.
+  Do not suggest W6/K1ABC as canonical filter labels or a numeric history ADIF
+  selector. Do not replace machine YAML's numeric keys with human label groups.
 
 - Do not invent SHOW YAML aliases, pagination, a force-revision command or an
   operator setting for raising these limits.

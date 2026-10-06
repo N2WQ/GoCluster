@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"dxcluster/cty"
 	"dxcluster/filter"
 	"gopkg.in/yaml.v3"
 )
@@ -154,6 +155,16 @@ func writeHumanFooter(h *humanResponse, duration time.Duration) error {
 func (s *Server) renderHumanReadback(c *Client, resource, category string, duration time.Duration) (string, error) {
 	status := s.captureReadbackStatus(c, nil)
 	runtime := s.captureHumanRuntime(c)
+	// Build the request index before borrowing broadcast-visible filter/path
+	// locks. One snapshot serves both preflight and generation after refresh.
+	var dxcc *cty.DXCCIndex
+	if resource == "FILTER" && (category == "" || category == "FULL" || category == "DXDXCC" || category == "DEDXCC") {
+		var db *cty.CTYDatabase
+		if s != nil && s.ctyLookup != nil {
+			db = s.ctyLookup()
+		}
+		dxcc = cty.NewDXCCIndex(db)
+	}
 	var response string
 	err := c.withBorrowedConfiguration(func(cfg filter.Configuration) error {
 		status = attachReadbackConfiguration(status, c, cfg)
@@ -176,7 +187,7 @@ func (s *Server) renderHumanReadback(c *Client, resource, category string, durat
 			return errReadbackTooLarge
 		}
 		for _, countOnly := range []bool{true, false} {
-			h := humanResponse{countOnly: countOnly}
+			h := humanResponse{countOnly: countOnly, dxcc: dxcc}
 			if err := writeHumanHeader(&h, c, status); err != nil {
 				return err
 			}

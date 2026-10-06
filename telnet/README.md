@@ -95,6 +95,43 @@ or archive records.
 spots and archive-backed history queries. Local self-spot bypasses still honor
 `REJECT TOXIC` once a spot is classified as `TOXIC`.
 
+## Canonical DXCC Prefixes
+
+DXCC filters accept exact canonical CTY prefixes (case-insensitive) as well as
+existing positive ADIF numbers, including mixed comma/space-separated lists:
+
+```text
+PASS DXDXCC K,VE,248
+REJECT DXDXCC IT9
+REJECT DEDXCC 3D2/R
+```
+
+Canonical labels come from CTY's Prefix field, not its callsign lookup keys.
+Letters-only and slash-bearing labels work; aliases and callsigns such as W6
+and K1ABC are not canonical filter inputs. A canonical input requires loaded
+CTY. Unknown or conflicting prefixes reject the entire command without changing
+or saving any rules. Numeric-only commands retain their existing acceptance
+without CTY membership verification. Standalone ALL and NEARBY restrictions
+retain their current behavior.
+
+Matching and persistence remain ADIF-based. IT9, I and IG9 select the same
+entity, ADIF 248: REJECT DXDXCC IT9 blocks the whole entity, not just Sicily.
+For a literal callsign-prefix block use REJECT DXCALL IT9* instead.
+
+Every human SHOW FILTER view displays canonical prefixes for known entities.
+Short overview selections list all prefixes, such as DXCC: All except I, IG9,
+IT9; long previews count DXCC entities rather than expanded prefix labels.
+FULL and DXDXCC/DEDXCC category views group all labels for one stored entity,
+for example `"I, IG9, IT9": true`, preserving false entries and allow_all/block_all
+flags. A missing CTY association, including unavailable CTY, appears as
+`Unknown DXCC (12345)`. Machine YAML and saved records continue to use numbers.
+All human width, size, quoting and reading-pause limits remain in force.
+
+SHOW DX and SHOW MYDX recognize canonical CTY labels before portable callsign
+processing, including SHOW MYDX 3D2/R 10. Existing callsign searches remain
+supported. Numeric history arguments remain counts; SHOW DXCC detail lookup
+retains its existing behavior.
+
 ## Human Configuration Readbacks
 
 | Command | Response |

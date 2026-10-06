@@ -244,7 +244,10 @@ but cannot shorten it. `SHOW HOLD` reports either kind of pause. Replies to
 SOURCE, EVENT, PATH, CONFIDENCE and DX/DE continents show names and useful
 explicit exclusions, wrapping across lines. Unrestricted categories show
 `All`; an explicit block can show `All except 80m`. Disabled choices are not
-enumerated. Long callsign, DXCC, grid and zone lists use counts. Geography rules
+enumerated. Long callsign, DXCC, grid and zone lists use counts. DXCC labels use canonical
+CTY prefixes in overview, FULL and category views. Shared entities display all
+prefixes: IT9, I and IG9 all refer to ADIF 248. Unknown rules display
+`Unknown DXCC (12345)`; YAML retains numeric ADIF keys. Geography rules
 and inclusion switches are grouped for reading. For example:
 
 ```text
@@ -866,3 +869,17 @@ shows at most ten rows but is scrollable, so entries beyond the visible window
 remain discoverable.
 
 For config loader details, see `data/config/README.md`.
+
+### Canonical DXCC filter and history inputs
+
+Use `PASS DXDXCC K,VE,248`, `REJECT DXDXCC IT9`, or `REJECT DEDXCC 3D2/R`.
+Prefixes match canonical CTY labels exactly after trimming and uppercasing;
+filter aliases/callsigns such as W6 and K1ABC are rejected. Invalid mixed lists
+change nothing. Canonical input needs CTY; numeric-only filters retain their
+existing positive-code behavior. IT9 selects the whole entity shared with I and
+IG9, not Sicily alone. Use `REJECT DXCALL IT9*` for a callsign-prefix block.
+
+`SHOW MYDX 3D2/R 10` and `SHOW DX K 10` search by entity. Canonical labels take
+precedence over portable callsign parsing; existing callsign searches still work.
+Numeric arguments remain counts. `SHOW DXCC` detail lookup is unchanged. See
+[canonical DXCC prefixes](../telnet/README.md#canonical-dxcc-prefixes).

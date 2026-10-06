@@ -2559,6 +2559,107 @@
           "telnet/README.md"
         ]
       }
+    },
+    {
+      "id": "SA-027",
+      "category": "canonical-dxcc-filters",
+      "severity": "high",
+      "title": "Canonical DXCC entity input and human readbacks",
+      "prompt_sequence": [
+        "Can I use REJECT DXDXCC IT9? Does that block only Sicily?",
+        "Why does SHOW FILTER list I, IG9 and IT9? What happens if CTY is unavailable?",
+        "Can I use SHOW MYDX 3D2/R 10 and SHOW DX 248? Are YAML keys prefixes now?"
+      ],
+      "action_plan": [
+        {
+          "name": "getDoc",
+          "endpoint": "/doc?path=telnet/README.md&start_line=85&line_count=115"
+        },
+        {
+          "name": "getDoc",
+          "endpoint": "/doc?path=customgpt/support-cards/configuration-readback.md"
+        }
+      ],
+      "required_sources": [
+        "telnet/README.md",
+        "customgpt/support-cards/configuration-readback.md"
+      ],
+      "required_source_substrings": [
+        {
+          "path": "telnet/README.md",
+          "contains": [
+            "Canonical DXCC Prefixes",
+            "REJECT DXDXCC IT9",
+            "Unknown DXCC (12345)",
+            "Machine YAML and saved records continue to use numbers."
+          ]
+        },
+        {
+          "path": "customgpt/support-cards/configuration-readback.md",
+          "contains": [
+            "IT9, I and IG9 select the same ADIF entity",
+            "numeric history arguments remain counts."
+          ]
+        }
+      ],
+      "answer_checks": {
+        "required": [
+          {
+            "name": "entity-wide rejection",
+            "all_of": [
+              "IT9",
+              "I",
+              "IG9"
+            ],
+            "any_of": [
+              "whole entity",
+              "same entity",
+              "ADIF 248"
+            ]
+          },
+          {
+            "name": "canonical labels and unknown fallback",
+            "all_of": [
+              "SHOW FILTER",
+              "Unknown DXCC"
+            ],
+            "any_of": [
+              "FULL",
+              "category"
+            ]
+          },
+          {
+            "name": "history and machine compatibility",
+            "all_of": [
+              "3D2/R",
+              "counts",
+              "YAML"
+            ],
+            "any_of": [
+              "numeric",
+              "numbers"
+            ]
+          }
+        ],
+        "forbidden": [
+          {
+            "name": "subdivision filtering",
+            "text": "blocks only Sicily"
+          },
+          {
+            "name": "prefix YAML migration",
+            "text": "YAML keys are prefixes now"
+          },
+          {
+            "name": "numeric ADIF history selector",
+            "text": "SHOW DX 248 selects ADIF 248"
+          }
+        ],
+        "require_source_citation": true,
+        "allowed_source_citations": [
+          "telnet/README.md"
+        ]
+      }
     }
   ]
 }

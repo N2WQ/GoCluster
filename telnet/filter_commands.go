@@ -137,8 +137,8 @@ func (e *filterCommandEngine) registerDomains() {
 		newContinentHandler("DECONT", func(f *filter.Filter, value string, allowed bool) { f.SetDEContinent(value, allowed) }),
 		newZoneHandler("DXZONE", func(f *filter.Filter, value int, allowed bool) { f.SetDXZone(value, allowed) }),
 		newZoneHandler("DEZONE", func(f *filter.Filter, value int, allowed bool) { f.SetDEZone(value, allowed) }),
-		newDXCCHandler("DXDXCC", func(f *filter.Filter, code int, allowed bool) { f.SetDXDXCC(code, allowed) }),
-		newDXCCHandler("DEDXCC", func(f *filter.Filter, code int, allowed bool) { f.SetDEDXCC(code, allowed) }),
+		newDXCCHandler("DXDXCC", e.ctyLookup, func(f *filter.Filter, code int, allowed bool) { f.SetDXDXCC(code, allowed) }),
+		newDXCCHandler("DEDXCC", e.ctyLookup, func(f *filter.Filter, code int, allowed bool) { f.SetDEDXCC(code, allowed) }),
 		newGrid2Handler("DXGRID2", func(f *filter.Filter, value string, allowed bool) { f.SetDXGrid2Prefix(value, allowed) }),
 		newGrid2Handler("DEGRID2", func(f *filter.Filter, value string, allowed bool) { f.SetDEGrid2Prefix(value, allowed) }),
 		newFeatureToggleHandler("BEACON", func(f *filter.Filter, enabled bool) { f.SetBeaconEnabled(enabled) }),
@@ -1175,7 +1175,7 @@ func newZoneHandler(name string, setter func(*filter.Filter, int, bool)) *domain
 	}
 }
 
-func newDXCCHandler(name string, setter func(*filter.Filter, int, bool)) *domainHandler {
+func newDXCCHandler(name string, ctyLookup func() *cty.CTYDatabase, setter func(*filter.Filter, int, bool)) *domainHandler {
 	return &domainHandler{
 		name: name,
 		apply: func(c *Client, action filterAction, args []string) (string, bool) {
@@ -1183,7 +1183,7 @@ func newDXCCHandler(name string, setter func(*filter.Filter, int, bool)) *domain
 			switch action {
 			case actionAllow:
 				if value == "" {
-					return fmt.Sprintf("Usage: PASS %s <code>[,<code>...] (comma or space separated, or ALL)\nType HELP for usage.\n", name), false
+					return fmt.Sprintf("Usage: PASS %s <code|prefix>[,<code|prefix>...] (canonical CTY prefixes; comma or space separated, or ALL)\nType HELP for usage.\n", name), false
 				}
 				if strings.EqualFold(value, "ALL") {
 					c.updateFilter(func(f *filter.Filter) {
@@ -1195,12 +1195,15 @@ func newDXCCHandler(name string, setter func(*filter.Filter, int, bool)) *domain
 					})
 					return fmt.Sprintf("All %s DXCCs enabled\n", strings.ToLower(name[:2])), true
 				}
-				codes, invalid := parseDXCCList(value)
-				if len(codes) == 0 {
-					return fmt.Sprintf("Usage: PASS %s <code>[,<code>...] (comma or space separated, or ALL)\nType HELP for usage.\n", name), false
+				codes, invalid, lookupErr := parseDXCCList(value, ctyLookup)
+				if lookupErr != "" {
+					return lookupErr, false
 				}
 				if len(invalid) > 0 {
-					return fmt.Sprintf("Invalid DXCC code: %s\n", strings.Join(invalid, ", ")), false
+					return fmt.Sprintf("Invalid DXCC selection: %s\n", strings.Join(invalid, ", ")), false
+				}
+				if len(codes) == 0 {
+					return fmt.Sprintf("Usage: PASS %s <code|prefix>[,<code|prefix>...] (canonical CTY prefixes; comma or space separated, or ALL)\nType HELP for usage.\n", name), false
 				}
 				c.updateFilter(func(f *filter.Filter) {
 					for _, code := range codes {
@@ -1210,7 +1213,7 @@ func newDXCCHandler(name string, setter func(*filter.Filter, int, bool)) *domain
 				return fmt.Sprintf("Filter set: %s %s\n", name[:2], joinZones(codes)), true
 			case actionBlock:
 				if value == "" {
-					return fmt.Sprintf("Usage: REJECT %s <code>[,<code>...] (comma or space separated, or ALL)\nType HELP for usage.\n", name), false
+					return fmt.Sprintf("Usage: REJECT %s <code|prefix>[,<code|prefix>...] (canonical CTY prefixes; comma or space separated, or ALL)\nType HELP for usage.\n", name), false
 				}
 				if strings.EqualFold(value, "ALL") {
 					c.updateFilter(func(f *filter.Filter) {
@@ -1226,12 +1229,15 @@ func newDXCCHandler(name string, setter func(*filter.Filter, int, bool)) *domain
 					})
 					return fmt.Sprintf("All %s DXCCs blocked\n", strings.ToLower(name[:2])), true
 				}
-				codes, invalid := parseDXCCList(value)
-				if len(codes) == 0 {
-					return fmt.Sprintf("Usage: REJECT %s <code>[,<code>...] (comma or space separated, or ALL)\nType HELP for usage.\n", name), false
+				codes, invalid, lookupErr := parseDXCCList(value, ctyLookup)
+				if lookupErr != "" {
+					return lookupErr, false
 				}
 				if len(invalid) > 0 {
-					return fmt.Sprintf("Invalid DXCC code: %s\n", strings.Join(invalid, ", ")), false
+					return fmt.Sprintf("Invalid DXCC selection: %s\n", strings.Join(invalid, ", ")), false
+				}
+				if len(codes) == 0 {
+					return fmt.Sprintf("Usage: REJECT %s <code|prefix>[,<code|prefix>...] (canonical CTY prefixes; comma or space separated, or ALL)\nType HELP for usage.\n", name), false
 				}
 				c.updateFilter(func(f *filter.Filter) {
 					for _, code := range codes {
@@ -1479,6 +1485,7 @@ func formatFilterSnapshot(f *filter.Filter, ctyLookup func() *cty.CTYDatabase) s
 		ctyDB = ctyLookup()
 	}
 	dxccSupported := supportedDXCCCodes(ctyDB)
+	dxccIndex := cty.NewDXCCIndex(ctyDB)
 
 	bands := snapshotAllowBlockStrings(f.AllBands, f.BlockAllBands, f.Bands, f.BlockBands, spot.SupportedBandNames())
 	modes := snapshotModeFilter(f)
@@ -1491,8 +1498,14 @@ func formatFilterSnapshot(f *filter.Filter, ctyLookup func() *cty.CTYDatabase) s
 	deCont := snapshotAllowBlockStrings(f.AllDEContinents, f.BlockAllDEContinents, f.DEContinents, f.BlockDEContinents, filter.SupportedContinents)
 	dxZone := snapshotAllowBlockIntsRange(f.AllDXZones, f.BlockAllDXZones, f.DXZones, f.BlockDXZones, filter.MinCQZone(), filter.MaxCQZone())
 	deZone := snapshotAllowBlockIntsRange(f.AllDEZones, f.BlockAllDEZones, f.DEZones, f.BlockDEZones, filter.MinCQZone(), filter.MaxCQZone())
-	dxDXCC := snapshotAllowBlockIntsSupported(f.AllDXDXCC, f.BlockAllDXDXCC, f.DXDXCC, f.BlockDXDXCC, dxccSupported)
-	deDXCC := snapshotAllowBlockIntsSupported(f.AllDEDXCC, f.BlockAllDEDXCC, f.DEDXCC, f.BlockDEDXCC, dxccSupported)
+	dxDXCC, err := snapshotCanonicalDXCC(f.AllDXDXCC, f.BlockAllDXDXCC, f.DXDXCC, f.BlockDXDXCC, dxccSupported, dxccIndex)
+	if err != nil {
+		return "DXCC labels exceed the response limit.\n"
+	}
+	deDXCC, err := snapshotCanonicalDXCC(f.AllDEDXCC, f.BlockAllDEDXCC, f.DEDXCC, f.BlockDEDXCC, dxccSupported, dxccIndex)
+	if err != nil {
+		return "DXCC labels exceed the response limit.\n"
+	}
 	dxGrid2 := snapshotAllowBlockStrings(f.AllDXGrid2, f.BlockAllDXGrid2, f.DXGrid2Prefixes, f.BlockDXGrid2, nil)
 	deGrid2 := snapshotAllowBlockStrings(f.AllDEGrid2, f.BlockAllDEGrid2, f.DEGrid2Prefixes, f.BlockDEGrid2, nil)
 
@@ -1615,15 +1628,6 @@ func snapshotAllowBlockIntsRange(allowAll, blockAll bool, allow, block map[int]b
 	allowList := joinIntValues(allowValues)
 	blockList := joinIntValues(blockValues)
 	allowAllNormalized := allowAll || coversAllRange(allow, min, max)
-	return buildAllowBlockSnapshot(allowAllNormalized, blockAll, allowList, blockList, len(allowValues), len(blockValues))
-}
-
-func snapshotAllowBlockIntsSupported(allowAll, blockAll bool, allow, block map[int]bool, supported []int) allowBlockSnapshot {
-	allowValues := orderedIntValues(allow)
-	blockValues := orderedIntValues(block)
-	allowList := joinIntValues(allowValues)
-	blockList := joinIntValues(blockValues)
-	allowAllNormalized := allowAll || coversAllSupportedInts(allow, supported)
 	return buildAllowBlockSnapshot(allowAllNormalized, blockAll, allowList, blockList, len(allowValues), len(blockValues))
 }
 
@@ -2133,20 +2137,40 @@ func parseZoneList(arg string) ([]int, []string) {
 	return zones, invalid
 }
 
-func parseDXCCList(arg string) ([]int, []string) {
+// parseDXCCList preserves positive integer inputs independently of CTY. Only
+// canonical inputs load an index; one snapshot covers the complete transaction.
+func parseDXCCList(arg string, ctyLookup func() *cty.CTYDatabase) ([]int, []string, string) {
 	values := splitListValues(arg)
 	if len(values) == 0 {
-		return nil, nil
+		return nil, nil, ""
 	}
 	seen := make(map[int]bool)
 	codes := make([]int, 0, len(values))
 	invalid := make([]string, 0)
+	var index *cty.DXCCIndex
 	for _, value := range values {
 		v := strings.TrimSpace(value)
 		if v == "" {
 			continue
 		}
 		code, err := strconv.Atoi(v)
+		if err != nil && dxccNumericToken(v) {
+			invalid = append(invalid, value)
+			continue
+		}
+		if err != nil {
+			if index == nil {
+				if ctyLookup == nil {
+					return nil, nil, "CTY database is not available.\n"
+				}
+				db := ctyLookup()
+				if db == nil {
+					return nil, nil, "CTY database is not loaded.\n"
+				}
+				index = cty.NewDXCCIndex(db)
+			}
+			code, err = index.ResolveCanonical(v)
+		}
 		if err != nil || code <= 0 {
 			invalid = append(invalid, value)
 			continue
@@ -2157,7 +2181,22 @@ func parseDXCCList(arg string) ([]int, []string) {
 		codes = append(codes, code)
 		seen[code] = true
 	}
-	return codes, invalid
+	return codes, invalid, ""
+}
+
+func dxccNumericToken(value string) bool {
+	if value != "" && (value[0] == '+' || value[0] == '-') {
+		value = value[1:]
+	}
+	if value == "" {
+		return false
+	}
+	for i := range len(value) {
+		if value[i] < '0' || value[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func parseGrid2List(arg string) ([]string, []string) {

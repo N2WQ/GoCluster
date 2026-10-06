@@ -255,7 +255,7 @@ func writeHumanGeography(h *humanResponse, label string, continents filter.Strin
 	}
 	for _, part := range []string{
 		"Zones: " + humanRuleSummaryWhere(zones, "zones", humanValueWidth-7, filter.IsSupportedZone, nil),
-		"DXCC: " + humanRuleSummary(dxcc, "DXCC entries", humanValueWidth-6),
+		"DXCC: " + humanDXCCSummary(dxcc, h.dxcc, humanValueWidth-6),
 	} {
 		if err := r.part(part); err != nil {
 			return err
