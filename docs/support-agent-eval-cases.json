@@ -1465,9 +1465,9 @@
       "id": "SA-019",
       "category": "configuration-human-readback",
       "severity": "high",
-      "title": "Readable human selections, exact wrapping and reading hold",
+      "title": "Complete finite selections, exact wrapping and reading hold",
       "prompt_sequence": [
-        "SHOW FILTER shows selections or counts. How do I see every false rule and default?",
+        "How does SHOW FILTER display long band and mode selections without listing disabled choices? Which lists use counts, and how do I see every false rule and default?",
         "Our automatic pause settings are zero. Why did SHOW SETTINGS pause spots?",
         "How do long quoted values fit the 78-character lines, and why does saved PATHSAMPLES 15 show effective stations 21 and beacons 11 after reconnect?"
       ],
@@ -1510,7 +1510,11 @@
         {
           "path": "telnet/README.md",
           "contains": [
-            "The overview shows short selections directly",
+            "The overview shows finite selections by name",
+            "SOURCE, EVENT, PATH,",
+            "CONFIDENCE and DX/DE continents",
+            "Long callsign, DXCC, grid and zone lists retain clear counts",
+            "without enumerating disabled choices",
             "`DEFAULT` remains distinct",
             "78 printable ASCII characters",
             "quoted pieces joined by `+`",
@@ -1519,15 +1523,29 @@
             "zero selects 30 seconds",
             "The row threshold is ignored, including zero."
           ]
+        },
+        {
+          "path": "customgpt/support-cards/configuration-readback.md",
+          "contains": [
+            "wraps all passing finite selections",
+            "Do not enumerate disabled choices or replace finite names with counts."
+          ]
         }
       ],
       "answer_checks": {
         "required": [
           {
-            "name": "readable compact overview",
+            "name": "complete finite selections and bounded long-list counts",
             "all_of": [
               "selections",
+              "BAND",
+              "MODE",
+              "disabled",
               "counts"
+            ],
+            "any_of": [
+              "wrap",
+              "continuation"
             ]
           },
           {

@@ -58,7 +58,7 @@ route is not decisive, these evals use the documented specific fallback.
 
 | Contract | Cases | Observable check |
 | --- | --- | --- |
-| Readable human selections, lossless ASCII exact values, runtime path minimums and unconditional read pause | SA-019 | Literal selection/default/wrapping/restoration/hold source evidence; FULL/category, 78-character ASCII, inactive saved minimum 15, flush interval and RESUME answer checks. |
+| Complete finite selections, lossless ASCII exact values, runtime path minimums and unconditional read pause | SA-019 | Finite-name wrapping without disabled inventories, distinct long-list counts and literal default/restoration/hold source evidence; FULL/category, 78-character ASCII, inactive saved minimum 15, flush interval and RESUME answer checks. |
 | Exact writable GET schema, case-preserved IDs, complete PUT, selective PATCH and non-applying VALIDATE | SA-020 | Canonical commands, validation result and read-only status source checks; omission/collection/default/validation answer checks. |
 | Matching revisions after reconnect and unchanged stale edits | SA-021 | Fresh-GET source evidence and conflict/re-edit answer checks; invented force commands forbidden. |
 | All-or-nothing writes, unavailable choices and unchanged PUT disk repair | SA-022 | Exact unavailable error and persistence source evidence; runtime/reference preservation answer checks. |

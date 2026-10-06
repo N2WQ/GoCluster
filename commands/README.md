@@ -79,8 +79,11 @@ This package documents those commands in HELP, but the parsers for `PASS`,
 `REJECT`, `SHOW FILTER`, `SHOW SETTINGS`, GET/PUT/PATCH/VALIDATE YAML, `SHOW PROP`,
 `PAUSE`, `SHOW HOLD`, `RESUME`, and the `cc` aliases live under [`../telnet`](../telnet).
 
-`SHOW FILTER` uses aligned labels, readable short selections and counts for
-long selections. It groups geography rules and inclusion switches. FULL shows
+`SHOW FILTER` uses aligned labels and wraps passing finite selections and
+useful exclusions by name. BAND, MODE, SOURCE, EVENT, PATH, CONFIDENCE and DX/DE
+continents keep their names; disabled choices are not enumerated. Long callsign,
+DXCC, grid and zone lists retain counts. It groups geography rules and inclusion
+switches. FULL shows
 every exact flag and value, including false entries and explicit defaults; a
 category selects one part without omitting values inside it. `SHOW/FILTER` and
 `SH/FILTER` accept the same FULL/category arguments in `cc`. `SHOW SETTINGS`

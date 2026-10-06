@@ -17,8 +17,13 @@ command/error artifact that distinguishes the next step.
 
 ## Must Include
 
-- Human SHOW FILTER uses aligned labels, actual short selections and counts
-  for long selections, with grouped geography and inclusion switches.
+- Human SHOW FILTER uses aligned labels and wraps all passing finite selections
+  by name: BAND, MODE, SOURCE, EVENT, PATH, CONFIDENCE and DX/DE continents.
+  Explain All, None and useful explicit exclusions, including All except.
+  Do not enumerate disabled choices or replace finite names with counts.
+  Long callsign, DXCC, grid and zone lists retain counts, with grouped geography
+  and inclusion switches. Unknown-mode, untagged-event, confidence-exemption,
+  PATH legacy and NEARBY qualifications still apply.
   FULL/category exposes every exact flag and value, including false entries,
   explicit defaults and empty collections. SHOW SETTINGS separates configured
   selections and effective choices from session status; both show the preset.
@@ -28,6 +33,9 @@ command/error artifact that distinguishes the next step.
   Indentation, line endings and the + marker are not stored characters. Map
   keys use stable ordering; callsign patterns retain supplied order. Compact
   preview count and rendered length are bounded before sorting or joining.
+  Finite selections preflight aggregate escaped size before key collection;
+  every complete wrapped response must fit 65,536 bytes. An unusually large
+  retained finite selection can return an explicit size error.
 - Effective path minimums come from restored runtime state and loaded server
   configuration. With station/beacon floors 21/11, reconnect leaves a saved
   personal minimum of 15 inactive, so effective values remain 21/11. An active

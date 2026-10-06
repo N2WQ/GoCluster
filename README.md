@@ -83,8 +83,9 @@ Dedupe: SLOW (cqzone) (fast=on med=on slow=on)
 Dedupe policy set to FAST
 ```
 
-Check your filter selections at once. Short lists show actual selections;
-long lists show clear counts. This example uses the CONTEST preset with changes
+Check your filter selections at once. Finite selections show their passing
+names and useful exclusions, wrapping across lines. Long callsign, DXCC, grid
+and zone lists show counts. This example uses the CONTEST preset with changes
 and NEARBY enabled:
 
 ```text

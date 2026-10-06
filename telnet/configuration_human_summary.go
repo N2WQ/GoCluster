@@ -1,6 +1,6 @@
-// File role: Explains matcher-specific behavior with bounded human previews.
-// Only fitting previews allocate/sort keys. Large selections retain count-only
-// preparation, and the exact view remains the authority for every stored rule.
+// File role: Explains matcher-specific behavior in human configuration views.
+// Unbounded-category previews retain count-only preparation when names do not
+// fit. Finite overview selections wrap through configuration_human_finite.go.
 package telnet
 
 import (
@@ -190,8 +190,14 @@ func humanSourceSummary(rules filter.StringRules) string {
 	case human && skimmer:
 		return "All (HUMAN, SKIMMER)"
 	case human:
+		if rules.AllowAll && len(rules.Allow) == 0 {
+			return "All except SKIMMER"
+		}
 		return "Only HUMAN"
 	case skimmer:
+		if rules.AllowAll && len(rules.Allow) == 0 {
+			return "All except HUMAN"
+		}
 		return "Only SKIMMER"
 	default:
 		return "None"
@@ -311,11 +317,17 @@ func humanPathSummary(rules filter.StringRules) string {
 		return "None"
 	}
 	slices.Sort(selected)
-	text := "Only " + strings.Join(selected, ", ")
-	if len(text) > humanValueWidth {
-		return fmt.Sprintf("Only %d classes", len(selected))
+	if rules.AllowAll && len(rules.Allow) == 0 {
+		excluded := make([]string, 0, len(filter.SupportedPathClasses)-len(selected))
+		for _, token := range filter.SupportedPathClasses {
+			if !humanPathPass(token, rules) {
+				excluded = append(excluded, token)
+			}
+		}
+		slices.Sort(excluded)
+		return "All except " + strings.Join(excluded, ", ")
 	}
-	return text
+	return "Only " + strings.Join(selected, ", ")
 }
 func humanPatternList(values []string, limit int) (string, bool) {
 	if len(values) > humanReadbackWidth {
@@ -405,45 +417,24 @@ func writeHumanNearby(h *humanResponse, cfg filter.FilterConfiguration, status c
 	}
 	return h.row("", "DX spots on affected bands are rejected")
 }
-func writeHumanGeography(h *humanResponse, label string, continents filter.StringRules, zones filter.IntRules, dxcc filter.IntRules, grids filter.StringRules, nearby bool) error {
-	if nearby {
-		return h.row(label, "Suspended by NEARBY; rules retained")
-	}
-	if err := h.group(label, []string{
-		"Continents: " + humanRuleSummaryWhere(continents, "continents", humanValueWidth-12, humanUpperRuleKey, humanUpperRuleKey),
-		"Zones: " + humanRuleSummaryWhere(zones, "zones", humanValueWidth-7, filter.IsSupportedZone, nil),
-		"DXCC: " + humanRuleSummary(dxcc, "DXCC entries", humanValueWidth-6),
-	}); err != nil {
-		return err
-	}
-	return h.row("", "Grids: "+humanRuleSummaryWhere(grids, "grids", humanValueWidth-7, humanGridRuleKey, humanGridBlockKey))
-}
 func writeHumanOverview(h *humanResponse, cfg filter.FilterConfiguration, status configurationReadbackStatus) error {
-	if err := h.row("Bands", humanRuleSummaryWhere(cfg.Bands, "bands", humanValueWidth, humanBandRuleKey, humanBandBlockKey)); err != nil {
+	if err := writeHumanFiniteRules(h, "Bands", "Only", cfg.Bands, humanBandRuleKey, humanBandBlockKey, "", false); err != nil {
 		return err
 	}
-	unknown := "; unknown modes hidden"
+	unknown := "unknown modes hidden"
 	if humanRulesPass(filter.UnknownModeToken, cfg.Modes) {
-		unknown = "; unknown modes included"
+		unknown = "unknown modes included"
 	}
-	modes := humanRuleSummaryWhere(cfg.Modes, "modes", humanValueWidth-len(unknown), humanModeRuleKey, humanModeRuleKey)
-	if strings.HasPrefix(modes, "Only ") && !strings.Contains(modes, "modes") {
-		modes = strings.TrimPrefix(modes, "Only ")
-	}
-	if err := h.row("Modes", modes+unknown); err != nil {
+	if err := writeHumanFiniteRules(h, "Modes", "", cfg.Modes, humanModeRuleKey, humanModeRuleKey, unknown, false); err != nil {
 		return err
 	}
 	if err := h.row("Sources", humanSourceSummary(cfg.Sources)); err != nil {
 		return err
 	}
-	if err := h.row("Events", humanEventSummary(cfg.Events, humanValueWidth-19)+"; untagged included"); err != nil {
+	if err := writeHumanFiniteEvents(h, cfg.Events); err != nil {
 		return err
 	}
-	confidence := humanRuleSummaryWhere(cfg.Confidence, "glyphs", humanValueWidth-25, humanConfidenceRuleKey, humanConfidenceBlockKey)
-	if confidence != "All" {
-		confidence += "; exempt modes still pass"
-	}
-	if err := h.row("Confidence", confidence); err != nil {
+	if err := writeHumanFiniteRules(h, "Confidence", "Only", cfg.Confidence, humanConfidenceRuleKey, humanConfidenceBlockKey, "exempt modes still pass", true); err != nil {
 		return err
 	}
 	if err := h.row("Path", humanPathSummary(cfg.PathClasses)); err != nil {

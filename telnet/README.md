@@ -99,7 +99,7 @@ spots and archive-backed history queries. Local self-spot bypasses still honor
 
 | Command | Response |
 | --- | --- |
-| `SHOW FILTER` | Readable selections and restrictions, grouped geography and inclusion switches; long selections use counts. |
+| `SHOW FILTER` | Passing finite selections and useful exclusions wrap by name; long callsign, DXCC, grid and zone lists use counts. |
 | `SHOW FILTER FULL` | Every exact rule and selection in every category. |
 | `SHOW FILTER <category>` | Every exact value for one category. |
 | `SHOW SETTINGS` | Configured preferences and effective behavior, followed by session status. |
@@ -110,11 +110,28 @@ PATH, DXCONT, DECONT, DXZONE, DEZONE, DXGRID2, DEGRID2, DXDXCC, DEDXCC, DXCALL,
 DECALL, BEACON, WWV, WCY, ANNOUNCE, SELF, TOXIC and NEARBY. CONF is an alias
 for CONFIDENCE, and PC93 is an alias for ANNOUNCE.
 
-The overview shows short selections directly, in stable order. When a row's
-selections cannot fit, it shows a clear count, such as `Only 100 patterns; 3
-blocked`. Preview preparation is bounded by entry count and rendered length
-before collecting, sorting or joining values. Large selections do not build
-all their detailed rule strings just to produce counts.
+The overview shows finite selections by name, wrapping onto continuation
+lines in stable order. This applies to BAND, MODE, SOURCE, EVENT, PATH,
+CONFIDENCE and DX/DE continents. It shows passing selections and useful
+explicit exclusions, without enumerating disabled choices. Unrestricted
+categories say `All`; explicit blocks can say `All except 80m`. Longer explicit
+band and mode selections can look like this:
+
+```text
+Bands         Only 1.25m, 10m, 12m, 13cm, 15m, 160m, 17m, 20m, 2200m, 23cm,
+              2m, 30m, 33cm, 40m, 60m, 630m, 6m, 70cm, 80m
+Modes         CW, FT2, FT4, FT8, JS8, LSB, MSK144, PSK, RTTY, SSTV, UNKNOWN,
+              USB; unknown modes included
+```
+
+Long callsign, DXCC, grid and zone lists retain clear counts, such as
+`Only 100 patterns; 3 blocked`. Those previews bound entry count and rendered
+length before collecting, sorting or joining values; large lists do not build
+all their detailed strings to produce counts. Finite selections preflight
+aggregate escaped size before key collection, then count the complete wrapped
+response. Canonical nonstandard keys retained in saved records remain visible
+when reachable by the matcher. An unusually large finite selection can exceed
+the response budget and return the explicit size error.
 
 Rows describe what the matcher does. Ordinary string and integer categories
 can remain restrictive when `allow_all=true` and their allow map is nonempty.
@@ -239,7 +256,8 @@ Each complete response is limited to 65,536 bytes after CRLF conversion,
 including its header and human footer. Generation either completes within
 the limit or returns an explicit error. ASCII-escape expansion is budgeted
 before unrestricted quoting or sorting. Exact-value scratch space is bounded
-by the line width; compact previews and counts remain bounded separately.
+by the line width; finite selections and compact count previews have their
+own preparation bounds.
 
 ## Client YAML Configuration
 

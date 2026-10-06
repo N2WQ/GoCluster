@@ -240,9 +240,12 @@ but cannot shorten it. `SHOW HOLD` reports either kind of pause. Replies to
 
 ### Read Your Filters And Settings
 
-`SHOW FILTER` gives a compact, aligned overview. Short selections appear by
-name; long selections use counts. Geography rules and inclusion switches are
-grouped for reading. For example:
+`SHOW FILTER` gives an aligned overview of passing selections. BAND, MODE,
+SOURCE, EVENT, PATH, CONFIDENCE and DX/DE continents show names and useful
+explicit exclusions, wrapping across lines. Unrestricted categories show
+`All`; an explicit block can show `All except 80m`. Disabled choices are not
+enumerated. Long callsign, DXCC, grid and zone lists use counts. Geography rules
+and inclusion switches are grouped for reading. For example:
 
 ```text
 User          N2WQ-1

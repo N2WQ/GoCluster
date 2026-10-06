@@ -4,6 +4,11 @@
 - Date: 2026-10-05
 - Decision Origin: Design
 
+Finite-category overview selections are further refined by
+[ADR-0247](ADR-0247-complete-finite-filter-selections.md). The original count
+policy below remains historical context; exact views and delivery timing are
+unchanged by that refinement.
+
 ## Context
 
 Users need clear current filter/preference output and a full interval to read
@@ -201,3 +206,5 @@ preference is introduced.
   shared pause synchronization, and
   [ADR-0243](ADR-0243-manual-telnet-spot-pause.md) for writer-owned completion
   and command precedence. Other automatic/manual contracts remain accepted.
+  The finite-category overview count policy is refined by
+  [ADR-0247](ADR-0247-complete-finite-filter-selections.md).

@@ -301,7 +301,7 @@ func TestHumanMatcherSummaryContracts(t *testing.T) {
 	c.filter.Events = map[string]bool{"POTA": false}
 	c.filter.BlockEvents = map[string]bool{"WWFF": false}
 	got, err = s.renderHumanReadback(c, "FILTER", "", 30*time.Second)
-	if err != nil || !strings.Contains(got, "Events        All; block WWFF; untagged included\r\n") {
+	if err != nil || !strings.Contains(got, "Events        All except WWFF; untagged included\r\n") {
 		t.Fatal("EVENT allow_all not respected")
 	}
 	for _, tc := range []struct {

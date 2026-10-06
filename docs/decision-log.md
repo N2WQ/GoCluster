@@ -24,7 +24,8 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| ADR-0246 | Delivery-Timed Human Configuration Readbacks | Accepted | 2026-10-05 | telnet, commands, writer, pause, bounded output | Refines ADR-0195/0243 for configuration readbacks and pause synchronization | - | `docs/decisions/ADR-0246-delivery-timed-human-readbacks.md` |
+| ADR-0247 | Complete Finite Filter Selections | Accepted | 2026-10-05 | telnet, commands, overview, bounded output | Refines ADR-0246's overview count policy for finite categories | - | `docs/decisions/ADR-0247-complete-finite-filter-selections.md` |
+| ADR-0246 | Delivery-Timed Human Configuration Readbacks | Accepted | 2026-10-05 | telnet, commands, writer, pause, bounded output | Refines ADR-0195/0243 for configuration readbacks and pause synchronization | Finite overview selections refined by ADR-0247 | `docs/decisions/ADR-0246-delivery-timed-human-readbacks.md` |
 | ADR-0245 | Machine YAML Configuration Commands | Accepted | 2026-10-05 | telnet, protocol, schema, transactions, bounded resources | - | - | `docs/decisions/ADR-0245-machine-yaml-configuration.md` |
 | ADR-0244 | Exact Configuration Persistence and Preset Continuity | Accepted | 2026-10-05 | filter, telnet, persistence, lifecycle, presets | Refines ADR-0238 storage, applied baselines and session continuity | - | `docs/decisions/ADR-0244-exact-configuration-persistence.md` |
 | ADR-0243 | Manual Telnet Spot Pause | Accepted | 2026-10-04 | telnet, commands, deadlines, supportability | Refines ADR-0195 commands, deadline precedence, and pause-control replies | Configuration readbacks and synchronization refined by ADR-0246 | `docs/decisions/ADR-0243-manual-telnet-spot-pause.md` |

@@ -10,7 +10,8 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 		filterTopic = "SHOW/FILTER"
 	}
 	filterNotes := []string{
-		"The overview shows short selections, or counts when a selection is too long.",
+		"The overview wraps finite selections and useful explicit exclusions.",
+		"Long callsign, DXCC, grid and zone lists use counts.",
 		"Human lines use at most 78 ASCII characters; exact values use escapes.",
 		"FULL shows every exact value; a category shows only that category.",
 		"Preset (modified) means preferences differ from the applied snapshot.",
