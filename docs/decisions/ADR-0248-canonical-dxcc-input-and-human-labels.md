@@ -4,6 +4,10 @@
 - Date: 2026-10-06
 - Decision Origin: Design
 
+The exact human FULL/category presentation below is superseded by
+[ADR-0249](ADR-0249-effective-human-filter-details.md). Other decisions remain
+in force; the text below preserves the accepted historical decision.
+
 ## Context
 
 Operators recognize CTY canonical prefixes more readily than ADIF numbers.

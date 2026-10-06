@@ -83,9 +83,9 @@ This package documents those commands in HELP, but the parsers for `PASS`,
 useful exclusions by name. BAND, MODE, SOURCE, EVENT, PATH, CONFIDENCE and DX/DE
 continents keep their names; disabled choices are not enumerated. Long callsign,
 DXCC, grid and zone lists retain counts. It groups geography rules and inclusion
-switches. FULL shows
-every exact flag and value, including false entries and explicit defaults; a
-category selects one part without omitting values inside it. `SHOW/FILTER` and
+switches. FULL/category show complete effective PASS/REJECT selections using
+ALL/NONE, with ON/OFF switches. GET YAML FILTER preserves stored flags, false
+entries and defaults. `SHOW/FILTER` and
 `SH/FILTER` accept the same FULL/category arguments in `cc`. `SHOW SETTINGS`
 separates configured preferences and effective behavior from session status.
 Path minimums reflect active runtime state for both stations and beacons.
@@ -173,8 +173,9 @@ Existing prefix/callsign queries and count-only syntax remain supported.
 
 Telnet `PASS`/`REJECT DXDXCC|DEDXCC` accept canonical CTY prefixes or existing
 positive ADIF numbers. All human `SHOW FILTER` views display every unambiguous
-canonical prefix for each selected entity; FULL/category preserve flags and
-false entries. Conflicting labels are omitted; valid alternatives remain.
+canonical prefix for each selected entity; FULL/category show effective
+PASS/REJECT selections. Conflicting labels are omitted; valid alternatives
+remain.
 Long overview counts count entities. Entries with no usable labels show
 `Unknown DXCC (12345)`; machine YAML remains numeric. See
 [canonical DXCC prefixes](../telnet/README.md#canonical-dxcc-prefixes).

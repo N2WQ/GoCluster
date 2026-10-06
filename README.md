@@ -17,7 +17,7 @@ Log in with your callsign, then start with:
 - `HELP <command>`: show command-specific help.
 - `SHOW MYDX` or `SHOW DX`: show recent spots after your filters.
 - `SHOW FILTER`: show your filter selections and restrictions.
-- `SHOW FILTER FULL` or `SHOW FILTER BAND`: inspect every exact rule, or one
+- `SHOW FILTER FULL` or `SHOW FILTER BAND`: inspect effective selections, or one
   category.
 - `SHOW SETTINGS`: show configured preferences, effective choices and session
   state.
@@ -107,7 +107,7 @@ Nearby        On; grid FN31PR
 Include       Beacons: Off | WWV: On | WCY: On | Announce: On
               Self: Off | Toxic: Off
 
-Exact rules: SHOW FILTER FULL
+Detailed selections: SHOW FILTER FULL
 One category: SHOW FILTER <category>
 
 Live spots paused during delivery and for at least 30s afterward.
@@ -126,27 +126,20 @@ DE calls      Only W1*, K1*; block W1XYZ
 Nearby        Off
 ```
 
-`SHOW FILTER FULL` displays every exact flag and entry. A category shows only
-that part, without omitting its values. EVENT's existing matcher uses key
-presence, so a stored `false` entry still applies:
+`SHOW FILTER FULL` displays complete effective PASS/REJECT selections. A
+category shows only that part. ALL means unrestricted before listed exclusions;
+NONE means no selections. Switches show ON/OFF. EVENT uses key presence, so a
+stored `false` entry still applies:
 
 ```text
 > SHOW FILTER EVENT
 User          N2WQ-1
 Preset        CONTEST (modified)
 
-Events (exact rules)
-  allow_all: false
-  block_all: false
-  allow:
-    "POTA": true
-    "SOTA": false
-  block:
-    "WWFF": false
-
-Tagged spots: POTA or SOTA; WWFF blocked.
-Untagged spots are always included.
-False EVENT entries apply because matching uses key presence.
+Events
+  PASS: POTA, SOTA
+  REJECT: WWFF
+  Untagged spots are always included.
 
 Live spots paused during delivery and for at least 30s afterward.
 Type RESUME when ready. Missed spots are not replayed.
@@ -203,18 +196,19 @@ by CRLF. Exact strings use quoted ASCII escapes. A long value is split into
 quoted pieces joined by `+`, without adding or removing characters:
 
 ```text
-DX calls (exact rules)
-  allow:
-    [1] "  W1ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ c"
+DX calls
+  PASS: "  W1ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ c"
         + "af\u00e9\t\"Q\"\\end  "
-  block: []
+  REJECT: NONE
 
 A + joins quoted pieces of one value; no characters are added.
 ```
 
 Spaces inside quotes belong to the value. Indentation, line endings and the
-`+` marker do not. FULL/category preserve false entries, explicit defaults,
-empty collections and callsign-pattern order; map keys use stable ordering.
+`+` marker do not. FULL/category omit inactive ordinary entries and show
+effective PASS/REJECT selections; callsign patterns retain supplied order,
+with REJECT taking precedence. Map keys use stable ordering. Use GET YAML FILTER
+for exact stored flags, false entries and defaults.
 
 See recent countries that have heard your baseline call:
 

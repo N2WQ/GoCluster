@@ -24,7 +24,7 @@ sources.
 | Telnet user | Command syntax and HELP | supported commands, dialect differences, unknown command behavior | `commands/README.md`, `telnet/README.md` | required |
 | Telnet user | Spot output | confidence glyphs, path glyphs, mode/event fields, comments | `README.md`, `spot/README.md`, `telnet/README.md` | required |
 | Telnet user | Filters and dedupe | `SHOW FILTER`, `SHOW DEDUPE`, `REJECT`, `PASS`, `NEARBY` | `README.md`, `telnet/README.md`, `data/config/README.md` | required |
-| Telnet user | Configuration readbacks and preset reference | compact/FULL/category values, SETTINGS, reading holds, modified, partial SAVE | `README.md`, `telnet/README.md`, `commands/README.md` | SA-019, SA-024, SA-026 |
+| Telnet user | Configuration readbacks and preset reference | compact/effective FULL/category values, stored YAML, SETTINGS, reading holds, modified, partial SAVE | `README.md`, `telnet/README.md`, `commands/README.md` | SA-019, SA-024, SA-026 |
 | Client developer | Machine configuration protocol | canonical GET/PUT/PATCH/VALIDATE, exact schema, revision conflicts, atomic writes, upload framing | `telnet/README.md`, `commands/README.md`, configuration source/tests | SA-020, SA-021, SA-022, SA-023, SA-024 |
 | Telnet user | User diagnostics | `SET GRID`, `SET DIAG`, `SET PATHSAMPLES`, effective user state | `README.md`, `docs/OPERATOR_GUIDE.md`, `pathreliability/README.md` | required |
 | Node operator | Install and run mode | Windows/manual, Linux/systemd, release package, source checkout | `README.md`, `docs/OPERATOR_GUIDE.md` | required |
@@ -58,7 +58,7 @@ route is not decisive, these evals use the documented specific fallback.
 
 | Contract | Cases | Observable check |
 | --- | --- | --- |
-| Complete finite selections, lossless ASCII exact values, runtime path minimums and unconditional read pause | SA-019 | Finite-name wrapping without disabled inventories, distinct long-list counts and literal default/restoration/hold source evidence; FULL/category, 78-character ASCII, inactive saved minimum 15, flush interval and RESUME answer checks. |
+| Complete finite selections, lossless ASCII exact values, runtime path minimums and unconditional read pause | SA-019 | Finite-name wrapping without disabled inventories, distinct long-list counts and literal default/restoration/hold source evidence; effective PASS/REJECT FULL/category, stored YAML, 78-character ASCII, inactive saved minimum 15, flush interval and RESUME answer checks. |
 | Exact writable GET schema, case-preserved IDs, complete PUT, selective PATCH and non-applying VALIDATE | SA-020 | Canonical commands, validation result and read-only status source checks; omission/collection/default/validation answer checks. |
 | Matching revisions after reconnect and unchanged stale edits | SA-021 | Fresh-GET source evidence and conflict/re-edit answer checks; invented force commands forbidden. |
 | All-or-nothing writes, unavailable choices and unchanged PUT disk repair | SA-022 | Exact unavailable error and persistence source evidence; runtime/reference preservation answer checks. |

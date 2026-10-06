@@ -4,6 +4,10 @@
 - Date: 2026-10-05
 - Decision Origin: Design
 
+The exact human FULL/category presentation below is superseded by
+[ADR-0249](ADR-0249-effective-human-filter-details.md). Other decisions remain
+in force; the text below preserves the accepted historical decision.
+
 ## Context
 
 [ADR-0246](ADR-0246-delivery-timed-human-readbacks.md) made the human filter

@@ -121,10 +121,10 @@ For a literal callsign-prefix block use REJECT DXCALL IT9* instead.
 Every human SHOW FILTER view displays unambiguous canonical prefixes for known
 entities. Short overview selections list all such prefixes, such as DXCC: All
 except I, IG9, IT9; long previews count DXCC entities rather than expanded prefix
-labels. FULL and DXDXCC/DEDXCC category views group all unambiguous labels for
-one stored entity, for example `"I, IG9, IT9": true`, preserving false entries
-and allow_all/block_all
-flags. Conflicting canonical labels are omitted; valid alternatives remain.
+labels. FULL and DXDXCC/DEDXCC category views show effective PASS/REJECT
+selections, for example `PASS: ALL` and `REJECT: I, IG9, IT9`. Inactive ordinary
+entries and overridden flags are omitted.
+Conflicting canonical labels are omitted; valid alternatives remain.
 When none remain, each stored entity retains its own `Unknown DXCC (<number>)`
 label. A missing CTY association, including unavailable CTY, also appears as
 `Unknown DXCC (12345)`. Machine YAML and saved records continue to use numbers.
@@ -140,8 +140,8 @@ retains its existing behavior.
 | Command | Response |
 | --- | --- |
 | `SHOW FILTER` | Passing finite selections and useful exclusions wrap by name; long callsign, DXCC, grid and zone lists use counts. |
-| `SHOW FILTER FULL` | Every exact rule and selection in every category. |
-| `SHOW FILTER <category>` | Every exact value for one category. |
+| `SHOW FILTER FULL` | Complete effective PASS/REJECT selections and ON/OFF switches. |
+| `SHOW FILTER <category>` | Complete effective selections for one category. |
 | `SHOW SETTINGS` | Configured preferences and effective behavior, followed by session status. |
 
 `SHOW/FILTER` and `SH/FILTER` accept the same FULL/category arguments in the
@@ -178,38 +178,44 @@ can remain restrictive when `allow_all=true` and their allow map is nonempty.
 EVENT instead uses key presence: entries stored as `false` still apply,
 `allow_all=true` ignores allow-list restrictions, and untagged spots always
 pass the EVENT check. PATH retains the existing UNLIKELY/CLOSED relationship.
-FULL and category responses preserve every stored flag and value:
+FULL/category show effective PASS/REJECT selections using ALL or NONE.
+ALL means unrestricted before applying listed REJECT entries. Ordinary false
+entries are omitted, and rejected entries are removed from PASS. A nonempty
+false-only allow map still produces PASS: NONE. REJECT ALL hides overridden
+entries. Reserved literal tokens and punctuation are quoted. For example:
 
 ```text
 > SHOW FILTER EVENT
 User          N2WQ-1
 Preset        CONTEST (modified)
 
-Events (exact rules)
-  allow_all: false
-  block_all: false
-  allow:
-    "POTA": true
-    "SOTA": false
-  block:
-    "WWFF": false
-
-Tagged spots: POTA or SOTA; WWFF blocked.
-Untagged spots are always included.
-False EVENT entries apply because matching uses key presence.
+Events
+  PASS: POTA, SOTA
+  REJECT: WWFF
+  Untagged spots are always included.
 
 Live spots paused during delivery and for at least 30s afterward.
 Type RESUME when ready. Missed spots are not replayed.
 ```
 
-`SHOW FILTER FULL` uses that exact format for each rule category, displays
-ordered allow/block lists for DXCALL/DECALL, and includes all feature toggles.
-`DEFAULT` remains distinct from explicit `true` or `false`. NEARBY reports its
-configured On/Off selection separately from whether its user cells are usable.
-When usable, short simple grids remain bare, such as `On; grid FN31PR`.
+`SHOW FILTER FULL` uses the effective format for every list category. Switches
+show one ON/OFF value. DXCALL/DECALL retain ordered PASS/REJECT patterns, with
+REJECT taking precedence when patterns overlap. PATH expands inherited CLOSED
+behavior and honors explicit overrides. MODE explains UNKNOWN visibility;
+CONFIDENCE explains exempt modes; EVENT always explains untagged inclusion.
+Geography sections show PASS: ALL / REJECT: NONE with a suspension note when
+NEARBY bypasses them. SELF explains its ordinary-filter bypass while TOXIC
+still applies.
+
+Machine YAML preserves stored flags, false entries and defaults. Use
+`GET YAML FILTER` for exact stored rules; `DEFAULT` remains distinct from
+explicit `true` or `false` there. NEARBY reports its effective ON/OFF state
+separately from whether its user cells are usable.
+When usable, short simple grids remain bare, such as `ON; grid FN31PR`
+in detail views (`On` in the overview).
 Stored grids needing escaping or wrapping use lossless quoted ASCII pieces,
-such as `On; grid "FN31PR\u00e9"`; the same rule applies to overview, FULL and
-NEARBY category output. Presentation preserves the original saved bytes.
+such as `ON; grid "FN31PR\u00e9"`; the same lossless rule applies to overview,
+FULL and NEARBY category output. Presentation preserves the original saved bytes.
 Enabled NEARBY suspends ordinary location rules even when cells are unavailable;
 unavailable cells reject ordinary DX spots on the affected bands:
 
@@ -220,33 +226,33 @@ Nearby        On, unavailable; usable grid cells missing
               DX spots on affected bands are rejected
 ```
 
-No successful FULL response omits a value. The
+No successful FULL response omits an active selection. Inactive or overridden
+stored entries do not count against human effective-content admission. The
 [landing-page examples](../README.md#output-examples) show the complete aligned
 overview and SETTINGS layout.
 
 Every human readback line has at most 78 printable ASCII characters followed
-by CRLF, including headers, exact values, explanations, errors and pause
+by CRLF, including headers, active values, explanations, errors and pause
 footers. Exact strings use Go-style double-quoted ASCII escapes for whitespace,
 quotes, backslashes, control characters and non-ASCII values. Long individual
 values use complete quoted pieces joined by `+`:
 
 ```text
-DX calls (exact rules)
-  allow:
-    [1] "  W1ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ c"
+DX calls
+  PASS: "  W1ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ c"
         + "af\u00e9\t\"Q\"\\end  "
-  block: []
+  REJECT: NONE
 
 A + joins quoted pieces of one value; no characters are added.
 ```
 
 Leading/trailing spaces inside quotes belong to the value. Indentation, line
 endings and `+` are presentation only. Escapes are never split, and decoding
-then joining the pieces reproduces the original string. Long map keys use
-the same mechanism with their associated boolean outside the quoted pieces.
+then joining the pieces reproduces the original string. Long active map keys
+use the same mechanism without stored booleans.
 String map keys sort lexicographically; integer map keys sort numerically.
-Pattern lists retain supplied order and duplicates. Empty collections stay
-explicit, and no word wrapping trims exact values.
+Pattern lists retain supplied order and duplicates. Empty effective selections
+use NONE; no word wrapping trims stored values.
 
 `SHOW SETTINGS` uses readable labels such as Dialect, Grid, Noise, Dedupe and
 Path samples. An empty configured preference is `DEFAULT`, with the effective

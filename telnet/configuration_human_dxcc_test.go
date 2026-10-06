@@ -33,19 +33,23 @@ func TestHumanCanonicalDXCCConflictReadbacks(t *testing.T) {
 				c.filter = filter.NewFilter()
 				heading := "DX DXCC"
 				if domain == "DXDXCC" {
-					c.filter.AllDXDXCC, c.filter.BlockAllDXDXCC = false, true
+					c.filter.AllDXDXCC, c.filter.BlockAllDXDXCC = false, false
 					c.filter.DXDXCC = map[int]bool{291: true, 999: false}
 					c.filter.BlockDXDXCC = map[int]bool{291: false, 999: true}
 				} else {
 					heading = "DE DXCC"
-					c.filter.AllDEDXCC, c.filter.BlockAllDEDXCC = false, true
+					c.filter.AllDEDXCC, c.filter.BlockAllDEDXCC = false, false
 					c.filter.DEDXCC = map[int]bool{291: true, 999: false}
 					c.filter.BlockDEDXCC = map[int]bool{291: false, 999: true}
 				}
 				before := filter.ConfigurationFromFilter(c.filter, filter.SettingsConfiguration{}).Clone()
 				calls := 0
 				s.ctyLookup = func() *cty.CTYDatabase { calls++; return db }
-				section := fmt.Sprintf("%s (exact rules)\r\n  allow_all: false\r\n  block_all: true\r\n  allow:\r\n    %q: true\r\n    %q: false\r\n  block:\r\n    %q: false\r\n    %q: true\r\n", heading, tc.first, tc.second, tc.first, tc.second)
+				first, second := tc.first, tc.second
+				if !tc.alternatives {
+					first, second = fmt.Sprintf("%q", first), fmt.Sprintf("%q", second)
+				}
+				section := fmt.Sprintf("%s\r\n  PASS: %s\r\n  REJECT: %s\r\n", heading, first, second)
 				for _, command := range []string{"SHOW FILTER " + domain, "SHOW FILTER FULL"} {
 					previousCalls := calls
 					if !s.handleHumanReadback(c, command) {
@@ -105,7 +109,7 @@ func TestHumanCanonicalDXCCProductionReadbacks(t *testing.T) {
 			c.filter.BlockDXDXCC = map[int]bool{248: true, 12345: true, 291: false}
 			c.filter.DEDXCC = map[int]bool{460: true, 291: false}
 			c.filter.AllDEDXCC = false
-			c.filter.BlockAllDEDXCC = true
+			c.filter.BlockAllDEDXCC = false
 			calls := 0
 			s.ctyLookup = func() *cty.CTYDatabase { calls++; return canonicalTestCTY() }
 			if !s.handleHumanReadback(c, command) {
@@ -118,7 +122,7 @@ func TestHumanCanonicalDXCCProductionReadbacks(t *testing.T) {
 				t.Fatal("snapshot/readback hold changed")
 			}
 			if strings.HasSuffix(command, "DEDXCC") {
-				for _, want := range []string{`"3D2/R": true`, `"K": false`, `allow_all: false`, `block_all: true`} {
+				for _, want := range []string{"DE DXCC\r\n  PASS: 3D2/R\r\n  REJECT: NONE\r\n"} {
 					if !strings.Contains(response, want) {
 						t.Fatalf("missing %s: %q", want, response)
 					}
@@ -128,7 +132,7 @@ func TestHumanCanonicalDXCCProductionReadbacks(t *testing.T) {
 					t.Fatalf("entity labels missing: %q", response)
 				}
 				if strings.Contains(command, "FULL") || strings.HasSuffix(command, "DXDXCC") {
-					for _, want := range []string{`"I, IG9, IT9": true`, `"K": false`, `block_all: false`} {
+					for _, want := range []string{"  PASS: ALL\r\n", "  REJECT: I, IG9, IT9", `"Unknown DXCC (12345)"`} {
 						if !strings.Contains(response, want) {
 							t.Fatalf("missing %s: %q", want, response)
 						}
@@ -159,16 +163,16 @@ func TestHumanCanonicalDXCCSnapshotAndUnavailable(t *testing.T) {
 		return second
 	}
 	response, err := s.renderHumanReadback(c, "FILTER", "DXDXCC", time.Second)
-	if err != nil || calls != 1 || !strings.Contains(response, `"I, IG9, IT9": true`) {
+	if err != nil || calls != 1 || !strings.Contains(response, "  REJECT: I, IG9, IT9\r\n") {
 		t.Fatalf("preflight/generation drift: %q, %v, calls=%d", response, err, calls)
 	}
 	response, err = s.renderHumanReadback(c, "FILTER", "DXDXCC", time.Second)
-	if err != nil || calls != 2 || !strings.Contains(response, `"NEW": true`) {
+	if err != nil || calls != 2 || !strings.Contains(response, "  REJECT: NEW\r\n") {
 		t.Fatal("replacement CTY not visible")
 	}
 	s.ctyLookup = nil
 	response, err = s.renderHumanReadback(c, "FILTER", "DXDXCC", time.Second)
-	if err != nil || !strings.Contains(response, `"Unknown DXCC (248)": true`) {
+	if err != nil || !strings.Contains(response, `"Unknown DXCC (248)"`) {
 		t.Fatal("unavailable CTY hid saved rule")
 	}
 }

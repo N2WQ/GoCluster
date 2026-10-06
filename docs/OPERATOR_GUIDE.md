@@ -208,7 +208,7 @@ Log in with your callsign. Useful first commands:
 - `SET SOLAR 15|30|60|OFF`: opt into or stop periodic solar summaries.
 - `DIALECT`, `DIALECT LIST`, `DIALECT <go|cc>`: show or switch command dialect.
 - `SHOW FILTER`: show filter selections and restrictions.
-- `SHOW FILTER FULL` or `SHOW FILTER <category>`: show every exact rule, including disabled entries.
+- `SHOW FILTER FULL` or `SHOW FILTER <category>`: show complete effective PASS/REJECT selections and ON/OFF switches.
 - `SHOW SETTINGS`: show configured choices, effective settings, and session status.
 - `PASS <type> <list>`: allow matching spots.
 - `REJECT <type> <list>`: block matching spots.
@@ -269,42 +269,36 @@ Nearby        On; grid FN31PR
 Include       Beacons: Off | WWV: On | WCY: On | Announce: On
               Self: Off | Toxic: Off
 
-Exact rules: SHOW FILTER FULL
+Detailed selections: SHOW FILTER FULL
 One category: SHOW FILTER <category>
 
 Live spots paused during delivery and for at least 30s afterward.
 Type RESUME when ready. Missed spots are not replayed.
 ```
 
-`SHOW FILTER FULL` lists every stored value; `SHOW FILTER BAND` limits the
+`SHOW FILTER FULL` lists complete effective selections; `SHOW FILTER BAND` limits the
 detail to one category. In the CC dialect, `SHOW/FILTER` and `SH/FILTER`
 support the same arguments. An example response to `SHOW FILTER EVENT`
-retains false values and defaults:
+shows effective event selections, including active false-valued keys:
 
 ```text
 User          N2WQ-1
 Preset        CONTEST (modified)
 
-Events (exact rules)
-  allow_all: false
-  block_all: false
-  allow:
-    "POTA": true
-    "SOTA": false
-  block:
-    "WWFF": false
-
-Tagged spots: POTA or SOTA; WWFF blocked.
-Untagged spots are always included.
-False EVENT entries apply because matching uses key presence.
+Events
+  PASS: POTA, SOTA
+  REJECT: WWFF
+  Untagged spots are always included.
 
 Live spots paused during delivery and for at least 30s afterward.
 Type RESUME when ready. Missed spots are not replayed.
 ```
 
-The overview describes matching behavior; FULL/category preserves exact
-flags and entries. Ordinary string/integer categories can remain restrictive
-with a nonempty allow map even when `allow_all=true`. EVENT instead matches
+The overview describes matching behavior; FULL/category shows complete
+effective PASS/REJECT selections with ALL/NONE and ON/OFF switches. Ordinary
+false entries are omitted; REJECT wins over PASS. Use GET YAML FILTER for stored
+flags, false entries and defaults. Ordinary string/integer categories can remain
+restrictive with a nonempty allow map even when `allow_all=true`. EVENT instead matches
 key presence, including keys stored as `false`, and ignores allow restrictions
 when `allow_all=true`. Untagged spots always pass its check. When editing YAML,
 remove an EVENT key from its replacement map to remove that rule. Setting the

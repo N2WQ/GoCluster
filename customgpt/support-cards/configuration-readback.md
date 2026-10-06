@@ -22,7 +22,7 @@ command/error artifact that distinguishes the next step.
   CTY; unknown or conflicting labels reject the whole list without mutation.
   IT9, I and IG9 select the same ADIF entity, not separate country subdivisions.
   All human SHOW FILTER views use unambiguous canonical prefixes; FULL/category
-  group all such labels per entity and retain every flag and false entry.
+  show effective PASS/REJECT selections, including all labels per entity.
   Conflicting labels are omitted; valid alternatives remain. Long overview counts
   count entities. With no usable label, rules show `Unknown DXCC (12345)`;
   each entity retains its own number in this fallback. YAML stays numeric.
@@ -36,8 +36,14 @@ command/error artifact that distinguishes the next step.
   Long callsign, DXCC, grid and zone lists retain counts, with grouped geography
   and inclusion switches. Unknown-mode, untagged-event, confidence-exemption,
   PATH legacy and NEARBY qualifications still apply.
-  FULL/category exposes every exact flag and value, including false entries,
-  explicit defaults and empty collections. SHOW SETTINGS separates configured
+  FULL/category shows complete effective PASS/REJECT selections using ALL/NONE.
+  ALL means unrestricted before listed REJECT entries. Ordinary false entries
+  and rejected PASS entries are omitted; a false-only allow map gives PASS: NONE.
+  Switches show ON/OFF. Callsign patterns retain order with REJECT precedence.
+  PATH includes inherited CLOSED behavior; EVENT false keys remain active.
+  NEARBY suspends geography even when unavailable. Use GET YAML FILTER for
+  exact stored flags, false entries and defaults. SHOW SETTINGS separates
+  configured
   selections and effective choices from session status; both show the preset.
 - Every human line is at most 78 printable ASCII characters followed by CRLF.
   Exact strings use quoted ASCII escapes. Complete quoted pieces joined by +
@@ -127,7 +133,7 @@ command/error artifact that distinguishes the next step.
   rules from allow_all alone, or calculate effective path minimums from a saved
   preference that reconnect did not activate.
 - Do not strip quoted spaces, join wrapped pieces with a separator, or treat
-  the human exact format as the client YAML schema.
+  the human effective format as the client YAML schema.
 
 ## Sources
 

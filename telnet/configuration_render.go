@@ -105,19 +105,6 @@ func readbackCategories(f filter.FilterConfiguration) [23]readbackCategory {
 	}
 }
 
-func categoryMinimumFits(category readbackCategory) bool {
-	var f filter.FilterConfiguration
-	switch rules := category.rules.(type) {
-	case filter.StringRules:
-		f.Bands = rules
-	case filter.IntRules:
-		f.DXZones = rules
-	default:
-		f.DXCallsigns, f.BlockDXCallsigns = category.allow, category.block
-	}
-	return (filter.Configuration{Filters: f}).MinimumSizeFits(maxYAMLBytes)
-}
-
 func humanReadbackFooter(duration time.Duration) string {
 	if duration <= 0 {
 		duration = defaultReadPauseDuration
@@ -183,9 +170,6 @@ func (s *Server) renderHumanReadback(c *Client, resource, category string, durat
 		if resource == "SETTINGS" && !(filter.Configuration{Settings: cfg.Settings}).MinimumSizeFits(maxYAMLBytes) {
 			return errReadbackTooLarge
 		}
-		if category == "FULL" && !(filter.Configuration{Filters: cfg.Filters}).MinimumSizeFits(maxYAMLBytes) {
-			return errReadbackTooLarge
-		}
 		for _, countOnly := range []bool{true, false} {
 			h := humanResponse{countOnly: countOnly, dxcc: dxcc}
 			if err := writeHumanHeader(&h, c, status); err != nil {
@@ -212,10 +196,7 @@ func (s *Server) renderHumanReadback(c *Client, resource, category string, durat
 						}
 					}
 					found = true
-					if !categoryMinimumFits(item) {
-						return errReadbackTooLarge
-					}
-					if err := writeHumanExactCategory(&h, item, cfg.Filters, status); err != nil {
+					if err := writeHumanEffectiveCategory(&h, item, cfg.Filters, status); err != nil {
 						return err
 					}
 				}

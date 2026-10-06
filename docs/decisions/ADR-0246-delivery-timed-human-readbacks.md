@@ -9,6 +9,10 @@ Finite-category overview selections are further refined by
 policy below remains historical context; exact views and delivery timing are
 unchanged by that refinement.
 
+The exact human FULL/category presentation below is superseded by
+[ADR-0249](ADR-0249-effective-human-filter-details.md). Other decisions remain
+in force; the text below preserves the accepted historical decision.
+
 ## Context
 
 Users need clear current filter/preference output and a full interval to read

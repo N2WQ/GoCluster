@@ -20,7 +20,7 @@ func TestConfigurationCommandHelp(t *testing.T) {
 			}
 		}
 		response := p.ProcessCommandForClient("HELP SHOW FILTER", "W1ABC-1", "", nil, dialect)
-		for _, want := range []string{"FULL", "<category>", "65,536", "always pause", "wraps finite selections", "grid and zone lists use counts"} {
+		for _, want := range []string{"FULL", "<category>", "65,536", "always pause", "wraps finite selections", "grid and zone lists use counts", "PASS/REJECT", "ON/OFF", "GET YAML FILTER"} {
 			if !strings.Contains(response, want) {
 				t.Fatalf("readback help omits %q: %s", want, response)
 			}

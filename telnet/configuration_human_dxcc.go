@@ -1,5 +1,5 @@
 // File role: Displays canonical DXCC labels while keeping entity rules numeric.
-// Shared-entity labels are grouped in exact views; overview counts remain counts
+// Shared-entity labels expand in human views; overview counts remain counts
 // of entities. All label expansion is checked before joining or sorting keys.
 package telnet
 
@@ -165,56 +165,4 @@ func humanDXCCSummary(rules filter.IntRules, index *cty.DXCCIndex, limit int) st
 		return text + "; block " + block
 	}
 	return fmt.Sprintf("Only %s; %d blocked", humanCount(count, "DXCC entries"), blocked)
-}
-
-// writeHumanDXCCRules preserves each stored entity entry, including false values.
-// Count unsorted borrowed keys first; only the budget-approved pass sorts them.
-func writeHumanDXCCRules(h *humanResponse, rules filter.IntRules) error {
-	if err := h.line(fmt.Sprintf("  allow_all: %t", rules.AllowAll)); err != nil {
-		return err
-	}
-	if err := h.line(fmt.Sprintf("  block_all: %t", rules.BlockAll)); err != nil {
-		return err
-	}
-	for i, entries := range []map[int]bool{rules.Allow, rules.Block} {
-		label := "allow"
-		if i == 1 {
-			label = "block"
-		}
-		if len(entries) == 0 {
-			if err := h.line("  " + label + ": {}"); err != nil {
-				return err
-			}
-			continue
-		}
-		if err := h.line("  " + label + ":"); err != nil {
-			return err
-		}
-		write := func(code int) error {
-			value, fits := dxccLabel(h.dxcc, code, maxYAMLBytes)
-			if !fits {
-				return errReadbackTooLarge
-			}
-			return h.quoted("    ", value, fmt.Sprintf(": %t", entries[code]))
-		}
-		if h.countOnly {
-			for code := range entries {
-				if err := write(code); err != nil {
-					return err
-				}
-			}
-			continue
-		}
-		keys := make([]int, 0, len(entries))
-		for code := range entries {
-			keys = append(keys, code)
-		}
-		slices.Sort(keys)
-		for _, code := range keys {
-			if err := write(code); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }

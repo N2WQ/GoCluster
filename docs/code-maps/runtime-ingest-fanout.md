@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `76545ff8aef2e838`
+- Source fingerprint: `024163a09f3c1d54`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -15,7 +15,7 @@
 | `dxcluster/internal/cluster` | `internal/cluster` | 25 | 58 |
 | `dxcluster/peer` | `peer` | 62 | 126 |
 | `dxcluster/spot` | `spot` | 32 | 31 |
-| `dxcluster/telnet` | `telnet` | 32 | 55 |
+| `dxcluster/telnet` | `telnet` | 33 | 56 |
 
 ## In-Scope Package Edges
 
@@ -463,6 +463,7 @@ Source files:
 - `telnet/configuration_capabilities.go`
 - `telnet/configuration_human.go`
 - `telnet/configuration_human_dxcc.go`
+- `telnet/configuration_human_effective.go`
 - `telnet/configuration_human_finite.go`
 - `telnet/configuration_human_summary.go`
 - `telnet/configuration_publish.go`
@@ -496,6 +497,7 @@ Test files:
 - `telnet/bulletin_dedupe_test.go`
 - `telnet/configuration_handoff_test.go`
 - `telnet/configuration_human_dxcc_test.go`
+- `telnet/configuration_human_effective_test.go`
 - `telnet/configuration_human_finite_test.go`
 - `telnet/configuration_human_summary_test.go`
 - `telnet/configuration_human_test.go`
@@ -553,6 +555,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0249](docs/decisions/ADR-0249-effective-human-filter-details.md) | Accepted | 2026-10-06 | telnet, commands, human readbacks, bounded output | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0248](docs/decisions/ADR-0248-canonical-dxcc-input-and-human-labels.md) | Accepted | 2026-10-06 | cty, commands, telnet, DXCC, human readbacks | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0247](docs/decisions/ADR-0247-complete-finite-filter-selections.md) | Accepted | 2026-10-05 | telnet, commands, overview, bounded output | `area:commands, area:telnet, path:telnet` |
 | [ADR-0246](docs/decisions/ADR-0246-delivery-timed-human-readbacks.md) | Accepted | 2026-10-05 | telnet, commands, writer, pause, bounded output | `area:commands, area:telnet, path:telnet` |

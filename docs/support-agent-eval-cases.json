@@ -1465,7 +1465,7 @@
       "id": "SA-019",
       "category": "configuration-human-readback",
       "severity": "high",
-      "title": "Complete finite selections, exact wrapping and reading hold",
+      "title": "Effective selections, lossless wrapping and reading hold",
       "prompt_sequence": [
         "How does SHOW FILTER display long band and mode selections without listing disabled choices? Which lists use counts, and how do I see every false rule and default?",
         "Our automatic pause settings are zero. Why did SHOW SETTINGS pause spots?",
@@ -1521,7 +1521,9 @@
             "15 configured; effective stations 21, beacons 11",
             "before preparation or any transaction wait",
             "zero selects 30 seconds",
-            "The row threshold is ignored, including zero."
+            "The row threshold is ignored, including zero.",
+            "FULL/category show effective PASS/REJECT selections",
+            "Machine YAML preserves stored flags, false entries and defaults."
           ]
         },
         {
@@ -1549,10 +1551,14 @@
             ]
           },
           {
-            "name": "exact human views",
+            "name": "effective human views",
             "all_of": [
               "SHOW FILTER FULL",
-              "SHOW SETTINGS"
+              "SHOW SETTINGS",
+              "PASS",
+              "REJECT",
+              "ON",
+              "OFF"
             ],
             "any_of": [
               "SHOW FILTER BAND",
@@ -1560,10 +1566,11 @@
             ]
           },
           {
-            "name": "explicit configured values",
+            "name": "exact stored configuration through YAML",
             "all_of": [
               "false",
-              "DEFAULT"
+              "DEFAULT",
+              "GET YAML FILTER"
             ]
           },
           {
@@ -2569,7 +2576,8 @@
         "Can I use REJECT DXDXCC IT9? Does that block only Sicily?",
         "Why does SHOW FILTER list I, IG9 and IT9? What happens if CTY is unavailable?",
         "Can I use SHOW MYDX 3D2/R 10 and SHOW DX 248? Are YAML keys prefixes now?",
-        "If CTY maps K to both 291 and 999, how does SHOW FILTER display those numeric rules? What if W and Z are valid alternative labels?"
+        "If CTY maps K to both 291 and 999, how does SHOW FILTER display those numeric rules? What if W and Z are valid alternative labels?",
+        "How do FULL and DXDXCC display effective PASS/REJECT rules and omitted false entries? Where can I read exact stored flags?"
       ],
       "action_plan": [
         {
@@ -2653,6 +2661,14 @@
             "any_of": [
               "numeric",
               "numbers"
+            ]
+          },
+          {
+            "name": "effective display and stored YAML",
+            "all_of": [
+              "PASS",
+              "REJECT",
+              "GET YAML FILTER"
             ]
           }
         ],

@@ -57,7 +57,12 @@ func TestHumanNearbyRestoredGridLossless(t *testing.T) {
 					}
 					got := string((<-c.controlChan).raw)
 					assertHumanWire(t, got)
-					if !strings.Contains(got, tc.firstLine) {
+					firstLine, gridPrefix := tc.firstLine, "Nearby        On; grid "
+					if command != "SHOW FILTER" {
+						firstLine = strings.Replace(firstLine, "On", "ON", 1)
+						gridPrefix = "Nearby        ON; grid "
+					}
+					if !strings.Contains(got, firstLine) {
 						t.Fatalf("retained grid not rendered losslessly:\n%s", got)
 					}
 					if tc.name == "ordinary" {
@@ -67,7 +72,7 @@ func TestHumanNearbyRestoredGridLossless(t *testing.T) {
 					// exact values, then use the standard-library unquote oracle.
 					lines := strings.Split(got, "\r\n")
 					for i, line := range lines {
-						if !strings.HasPrefix(line, "Nearby        On; grid ") {
+						if !strings.HasPrefix(line, gridPrefix) {
 							continue
 						}
 						row := line + "\r\n"
@@ -146,10 +151,10 @@ func TestHumanSummaryDenialsWin(t *testing.T) {
 func TestHumanQuotedPiecesDocumentationExample(t *testing.T) {
 	value := "  W1ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ café\t\"Q\"\\end  "
 	var h humanResponse
-	if err := writeHumanPatterns(&h, "allow", []string{value}); err != nil {
+	if err := writeHumanEffectiveList(&h, "PASS", []string{value}, false); err != nil {
 		t.Fatal(err)
 	}
-	want := "  allow:\r\n    [1] \"  W1ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ c\"\r\n        + \"af\\u00e9\\t\\\"Q\\\"\\\\end  \"\r\n"
+	want := "  PASS: \"  W1ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ c\"\r\n        + \"af\\u00e9\\t\\\"Q\\\"\\\\end  \"\r\n"
 	if string(h.data) != want || unquoteHumanPieces(t, want) != value {
 		t.Fatalf("documented pieces differ or lose stored bytes: %q", h.data)
 	}
@@ -190,8 +195,8 @@ func TestHumanRestoredUnreachableSelections(t *testing.T) {
 			}
 			assertHumanWire(t, overview)
 			detail, err := s.renderHumanReadback(c, "FILTER", tc.category, time.Second)
-			if err != nil || !strings.Contains(detail, "    "+strconv.Quote(tc.key)+": true\r\n") {
-				t.Fatal("exact view lost unreachable saved key")
+			if err != nil || !strings.Contains(detail, "  PASS: NONE\r\n") {
+				t.Fatal("effective view included unreachable saved key")
 			}
 			candidate := spot.NewSpot("K1ABC", "W1XYZ", 14074, "FT8")
 			candidate.IsHuman, candidate.Confidence = true, "P"

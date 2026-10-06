@@ -17,7 +17,7 @@ import (
 
 // humanRuleList scans borrowed entries for counts and rendered length before
 // allocating keys. Its cap follows terminal width; inactive ordinary entries
-// are never copied. EVENT supplies a key-presence predicate instead.
+// are never copied.
 func humanRuleList[K string | int](entries map[K]bool, eligible func(K, bool) bool, limit int) (string, int, bool) {
 	count, rendered, fits := 0, 0, true
 	for key, enabled := range entries {
@@ -224,51 +224,6 @@ func humanEventMask(key string, names []string) spot.EventMask {
 	}
 	return 0
 }
-func humanEventSummary(rules filter.StringRules, limit int) string {
-	if rules.BlockAll {
-		return "None"
-	}
-	names := spot.EventNames(^spot.EventMask(0))
-	var allowMask, blockMask spot.EventMask
-	for key := range rules.Allow {
-		allowMask |= humanEventMask(key, names)
-	}
-	for key := range rules.Block {
-		blockMask |= humanEventMask(key, names)
-	}
-	allowRules, blockRules := make(map[string]bool), make(map[string]bool)
-	for _, name := range names {
-		mask := spot.EventMaskForName(name)
-		if mask&allowMask != 0 && mask&blockMask == 0 {
-			allowRules[name] = true
-		}
-		if mask&blockMask != 0 {
-			blockRules[name] = true
-		}
-	}
-	allow, count, fits := humanRuleList(allowRules, func(_ string, _ bool) bool { return true }, limit)
-	text := "All"
-	if !rules.AllowAll {
-		if count == 0 {
-			return "None"
-		}
-		text = allow
-		if !fits {
-			text = "Only " + humanCount(count, "events")
-		}
-	}
-	block, blocked, blockFits := humanRuleList(blockRules, func(_ string, _ bool) bool { return true }, limit)
-	if blocked == 0 {
-		return text
-	}
-	if fits && blockFits && len(text)+8+len(block) <= limit {
-		return text + "; block " + block
-	}
-	if rules.AllowAll {
-		return fmt.Sprintf("All; %d blocked events", blocked)
-	}
-	return fmt.Sprintf("Only %d events; %d blocked", count, blocked)
-}
 func humanRulesPass(token string, rules filter.StringRules) bool {
 	if rules.BlockAll || rules.Block[token] {
 		return false
@@ -399,11 +354,15 @@ func humanCount(count int, noun string) string {
 	return strconv.Itoa(count) + " " + humanNoun(count, noun)
 }
 func writeHumanNearby(h *humanResponse, cfg filter.FilterConfiguration, status configurationReadbackStatus) error {
+	return writeHumanNearbyState(h, cfg, status, "On", "Off")
+}
+
+func writeHumanNearbyState(h *humanResponse, cfg filter.FilterConfiguration, status configurationReadbackStatus, on, off string) error {
 	if !cfg.NearbyEnabled {
-		return h.row("Nearby", "Off")
+		return h.row("Nearby", off)
 	}
 	if status.Effective.NearbyActive {
-		const description = "On; grid "
+		description := on + "; grid "
 		grid := status.Effective.Grid
 		if len(grid) <= humanValueWidth-len(description) && simpleHumanValue(grid) {
 			return h.row("Nearby", description+grid)
@@ -412,7 +371,7 @@ func writeHumanNearby(h *humanResponse, cfg filter.FilterConfiguration, status c
 		// retained byte through bounded quoting rather than prose wrapping.
 		return h.quoted(humanPrefix("Nearby")+description, grid, "")
 	}
-	if err := h.row("Nearby", "On, unavailable; usable grid cells missing"); err != nil {
+	if err := h.row("Nearby", on+", unavailable; usable grid cells missing"); err != nil {
 		return err
 	}
 	return h.row("", "DX spots on affected bands are rejected")
@@ -477,7 +436,7 @@ func writeHumanOverview(h *humanResponse, cfg filter.FilterConfiguration, status
 	if err := h.line(""); err != nil {
 		return err
 	}
-	if err := h.line("Exact rules: SHOW FILTER FULL"); err != nil {
+	if err := h.line("Detailed selections: SHOW FILTER FULL"); err != nil {
 		return err
 	}
 	return h.line("One category: SHOW FILTER <category>")

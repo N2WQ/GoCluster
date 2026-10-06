@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-const humanOverviewExample = "User          N2WQ-1\r\nPreset        CONTEST (modified)\r\n\r\nBands         Only 20m, 40m\r\nModes         CW, FT8; unknown modes hidden\r\nSources       All (HUMAN, SKIMMER)\r\nEvents        POTA; block WWFF; untagged included\r\nConfidence    All\r\nPath          All\r\nDX geography  Suspended by NEARBY; rules retained\r\nDE geography  Suspended by NEARBY; rules retained\r\nDX calls      Only 12 patterns; 3 blocked\r\nDE calls      All\r\nNearby        On; grid FN31PR\r\nInclude       Beacons: Off | WWV: On | WCY: On | Announce: On\r\n              Self: Off | Toxic: Off\r\n\r\nExact rules: SHOW FILTER FULL\r\nOne category: SHOW FILTER <category>\r\n\r\nLive spots paused during delivery and for at least 30s afterward.\r\nType RESUME when ready. Missed spots are not replayed.\r\n"
+const humanOverviewExample = "User          N2WQ-1\r\nPreset        CONTEST (modified)\r\n\r\nBands         Only 20m, 40m\r\nModes         CW, FT8; unknown modes hidden\r\nSources       All (HUMAN, SKIMMER)\r\nEvents        POTA; block WWFF; untagged included\r\nConfidence    All\r\nPath          All\r\nDX geography  Suspended by NEARBY; rules retained\r\nDE geography  Suspended by NEARBY; rules retained\r\nDX calls      Only 12 patterns; 3 blocked\r\nDE calls      All\r\nNearby        On; grid FN31PR\r\nInclude       Beacons: Off | WWV: On | WCY: On | Announce: On\r\n              Self: Off | Toxic: Off\r\n\r\nDetailed selections: SHOW FILTER FULL\r\nOne category: SHOW FILTER <category>\r\n\r\nLive spots paused during delivery and for at least 30s afterward.\r\nType RESUME when ready. Missed spots are not replayed.\r\n"
 const humanSettingsExample = "User          N2WQ-1\r\nPreset        CONTEST (modified)\r\n\r\nDialect       GO\r\nGrid          FN31PR\r\nNoise         SUBURBAN\r\nDedupe        SLOW; effective FAST while NEARBY is active\r\nPath samples  DEFAULT; stations 21, beacons 11\r\nSolar         Every 30 minutes\r\n\r\nSession only\r\nDiagnostics   Off\r\nLive spots    Paused for reading; at least 30s after delivery\r\n              135 spots suppressed\r\n\r\nLive spots paused during delivery and for at least 30s afterward.\r\nType RESUME when ready. Missed spots are not replayed.\r\n"
 
 func humanExampleClient() (*Server, *Client) {
@@ -190,7 +190,7 @@ func TestHumanQuotedValuesRoundTripAndWidths(t *testing.T) {
 	}
 }
 
-func TestHumanExactLongKeysAndPatterns(t *testing.T) {
+func TestHumanEffectiveLongKeysAndPatterns(t *testing.T) {
 	s, c := readbackTestClient()
 	long := " " + strings.Repeat("é\\\"\t", 70) + " "
 	c.filter.Bands = map[string]bool{long: false}
@@ -199,8 +199,8 @@ func TestHumanExactLongKeysAndPatterns(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertHumanWire(t, got)
-	if unquoteHumanPieces(t, got) != long || !strings.Contains(got, ": false") {
-		t.Fatal("long map key or false value lost")
+	if unquoteHumanPieces(t, got) != "" || !strings.Contains(got, "  PASS: NONE\r\n  REJECT: NONE\r\n") {
+		t.Fatal("inactive map key was displayed")
 	}
 	c.filter.DXCallsigns = []string{long, long}
 	got, err = s.renderHumanReadback(c, "FILTER", "DXCALL", 30*time.Second)
@@ -208,7 +208,7 @@ func TestHumanExactLongKeysAndPatterns(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertHumanWire(t, got)
-	if unquoteHumanPieces(t, got) != long+long || !strings.Contains(got, "    [2] ") || !strings.Contains(got, "A + joins quoted pieces") {
+	if unquoteHumanPieces(t, got) != long+long || !strings.Contains(got, "A + joins quoted pieces") {
 		t.Fatal("pattern order/multiplicity lost")
 	}
 }
@@ -382,7 +382,7 @@ func BenchmarkHumanOverviewBoundedPreparation(b *testing.B) {
 	}
 }
 
-func TestHumanExactEventApprovedExample(t *testing.T) {
+func TestHumanEffectiveEventApprovedExample(t *testing.T) {
 	s, c := humanExampleClient()
 	c.filter.Events = map[string]bool{"POTA": true, "SOTA": false}
 	c.filter.BlockEvents = map[string]bool{"WWFF": false}
@@ -390,9 +390,9 @@ func TestHumanExactEventApprovedExample(t *testing.T) {
 		t.Fatal("unhandled")
 	}
 	got := string((<-c.controlChan).raw)
-	want := "User          N2WQ-1\r\nPreset        CONTEST (modified)\r\n\r\nEvents (exact rules)\r\n  allow_all: false\r\n  block_all: false\r\n  allow:\r\n    \"POTA\": true\r\n    \"SOTA\": false\r\n  block:\r\n    \"WWFF\": false\r\n\r\nTagged spots: POTA or SOTA; WWFF blocked.\r\nUntagged spots are always included.\r\nFalse EVENT entries apply because matching uses key presence.\r\n\r\nLive spots paused during delivery and for at least 30s afterward.\r\nType RESUME when ready. Missed spots are not replayed.\r\n"
+	want := "User          N2WQ-1\r\nPreset        CONTEST (modified)\r\n\r\nEvents\r\n  PASS: POTA, SOTA\r\n  REJECT: WWFF\r\n  Untagged spots are always included.\r\n" + readbackFooterLiteral
 	if got != want {
-		t.Fatalf("exact EVENT example mismatch:\n%s", got)
+		t.Fatalf("effective EVENT example mismatch:\n%s", got)
 	}
 	assertHumanWire(t, got)
 }

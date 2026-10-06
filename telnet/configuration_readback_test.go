@@ -38,7 +38,7 @@ func TestHumanReadbackLiteralCategoryAndAliases(t *testing.T) {
 				t.Fatal("readback alias not recognized")
 			}
 			message := <-c.controlChan
-			want := "User          W1ABC-1\r\nPreset        (none)\r\n\r\nBands (exact rules)\r\n  allow_all: true\r\n  block_all: false\r\n  allow:\r\n    \"20m\": true\r\n    \"40m\": false\r\n  block:\r\n    \"160m\": false\r\n" + readbackFooterLiteral
+			want := "User          W1ABC-1\r\nPreset        (none)\r\n\r\nBands\r\n  PASS: 20m\r\n  REJECT: NONE\r\n" + readbackFooterLiteral
 			if string(message.raw) != want || message.line != "" || len(c.controlChan) != 0 {
 				t.Fatalf("complete one-message readback mismatch: %q", message.raw)
 			}
@@ -73,7 +73,7 @@ func TestHumanEventReadbackExplainsFalseKeyPresence(t *testing.T) {
 	c.filter.AllEvents = false
 	c.filter.Events = map[string]bool{"POTA": false}
 	c.filter.BlockEvents = map[string]bool{"SOTA": false}
-	detail := "Events (exact rules)\r\n  allow_all: false\r\n  block_all: false\r\n  allow:\r\n    \"POTA\": false\r\n  block:\r\n    \"SOTA\": false\r\n\r\nTagged spots: POTA; SOTA blocked.\r\nUntagged spots are always included.\r\nFalse EVENT entries apply because matching uses key presence.\r\n"
+	detail := "Events\r\n  PASS: POTA\r\n  REJECT: SOTA\r\n  Untagged spots are always included.\r\n"
 	got, err := s.renderHumanReadback(c, "FILTER", "EVENT", 30*time.Second)
 	want := "User          W1ABC-1\r\nPreset        (none)\r\n\r\n" + detail + readbackFooterLiteral
 	if err != nil || got != want {
@@ -126,7 +126,7 @@ func TestHumanReadbackOverviewCountsOversizedRulesWithoutDetail(t *testing.T) {
 	if response, err := s.renderHumanReadback(c, "FILTER", "FULL", 30*time.Second); response != "" || !errors.Is(err, errReadbackTooLarge) {
 		t.Fatal("oversized FULL returned partial success")
 	}
-	if response, err := s.renderHumanReadback(c, "FILTER", "BAND", 30*time.Second); err != nil || !strings.Contains(response, `"40m": false`) {
+	if response, err := s.renderHumanReadback(c, "FILTER", "BAND", 30*time.Second); err != nil || !strings.Contains(response, "  PASS: 20m\r\n  REJECT: NONE\r\n") {
 		t.Fatal("small category rejected due to unrelated oversized category")
 	}
 	if _, err := s.renderYAMLReadback(c, "SETTINGS", "read-1", "session-0"); err != nil {
@@ -152,7 +152,11 @@ func TestHumanNearbyReadbackDistinguishesEnabledAndUsable(t *testing.T) {
 			c.filter.NearbyEnabled, c.filter.NearbyUserFine, c.filter.NearbyUserCoarse = tc.enabled, tc.fine, tc.coarse
 			for _, category := range []string{"", "FULL", "NEARBY"} {
 				response, err := s.renderHumanReadback(c, "FILTER", category, 30*time.Second)
-				if err != nil || !strings.Contains(response, tc.want) {
+				want := tc.want
+				if category != "" {
+					want = strings.ReplaceAll(strings.ReplaceAll(want, "On", "ON"), "Off", "OFF")
+				}
+				if err != nil || !strings.Contains(response, want) {
 					t.Fatalf("%s: %q, %v", category, response, err)
 				}
 			}
@@ -281,7 +285,7 @@ func TestYAMLReadbackExactValuesAndPresetComparison(t *testing.T) {
 	}
 	c.filter.DXCallsigns = []string{"W1*", "Z*"}
 	got, err := s.renderHumanReadback(c, "FILTER", "DXCALL", 30*time.Second)
-	if err != nil || !strings.Contains(got, "Preset        CONTEST (modified)\r\n") || !strings.Contains(got, "    [1] \"W1*\"\r\n    [2] \"Z*\"\r\n") {
+	if err != nil || !strings.Contains(got, "Preset        CONTEST (modified)\r\n") || !strings.Contains(got, "  PASS: W1*, Z*\r\n") {
 		t.Fatal("pattern multiplicity change was not described exactly")
 	}
 }
