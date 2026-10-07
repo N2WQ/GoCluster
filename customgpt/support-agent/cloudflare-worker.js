@@ -19,6 +19,7 @@ const MAX_FIND_RESULTS = 80;
 const MAX_FIND_QUERY_CHARS = 64;
 const MAX_SEARCH_QUERY_CHARS = 96;
 const MAX_SEARCH_RESULTS = 25;
+const MAX_SEARCH_RESPONSE_CHARS = 99000;
 const SEARCH_CONTEXT_LINES = 2;
 const AUTH_SECRET_BINDING = "GOCLUSTER_DOCS_ACTION_TOKEN";
 const AUTH_MODE = "bearer";
@@ -587,27 +588,115 @@ async function searchResponse(query, requestedScope) {
     }
   }
   const ranked = rankSearchRegions(candidates);
-  const matches = ranked.slice(0, MAX_SEARCH_RESULTS).map(({ quality, round, ...match }) => match);
-  const files = matches.map((match) => ({
-    repo: `${REPO_OWNER}/${REPO_NAME}`, branch: BRANCH, path: match.path,
-    source_url: match.source_url, kind: match.kind,
-    line_start: match.line_start, line_end: match.line_end,
-    line_count: match.line_end - match.line_start + 1, content: match.snippet
-  }));
+  const selected = ranked.slice(0, MAX_SEARCH_RESULTS).map(({ quality, round, ...match }) => match);
   const coverageComplete = failedPaths.length === 0 && sourceTruncatedPaths.length === 0;
-  const resultsTruncated = ranked.length > MAX_SEARCH_RESULTS;
-  return jsonResponse({
+  const body = {
     repo: `${REPO_OWNER}/${REPO_NAME}`, branch: BRANCH, auth: AUTH_MODE,
     retrieved_at: new Date().toISOString(), query, scope,
     corpus_count: corpus.length, eligible_file_count: paths.length, searched_count: searchedCount,
     failed_paths: failedPaths, source_truncated_paths: sourceTruncatedPaths,
-    coverage_complete: coverageComplete, results_truncated: resultsTruncated,
-    result_count: matches.length, truncated: resultsTruncated || !coverageComplete,
+    coverage_complete: coverageComplete,
     limits: { max_search_query_chars: MAX_SEARCH_QUERY_CHARS, max_search_results: MAX_SEARCH_RESULTS,
-      search_context_lines: SEARCH_CONTEXT_LINES, max_search_file_chars: MAX_FILE_CHARS },
-    matches, files,
+      search_context_lines: SEARCH_CONTEXT_LINES, max_search_file_chars: MAX_FILE_CHARS,
+      max_search_response_chars: MAX_SEARCH_RESPONSE_CHARS },
     ...(searchedCount === 0 ? { error: "search_sources_unavailable", message: "No eligible corpus file could be read" } : {})
-  }, searchedCount === 0 ? 502 : 200);
+  };
+  return jsonResponse(budgetSearchResponse(body, selected, ranked.length > selected.length, query),
+    searchedCount === 0 ? 502 : 200);
+}
+
+// Budget the exact pretty-printed wire representation, including both snippet
+// copies and metadata. A shared snippet ceiling keeps ranked file diversity;
+// the final feasible serialization is retained even if sizing is not monotonic.
+function budgetSearchResponse(body, selected, overflow, query) {
+  const assemble = (matches, budgetTruncated) => ({ ...body,
+    results_truncated: overflow || budgetTruncated, response_budget_truncated: budgetTruncated,
+    result_count: matches.length, truncated: overflow || budgetTruncated || !body.coverage_complete,
+    matches, files: matches.map((match) => ({
+      repo: body.repo, branch: body.branch, path: match.path,
+      source_url: match.source_url, kind: match.kind,
+      line_start: match.line_start, line_end: match.line_end,
+      column_start: match.column_start, column_end: match.column_end,
+      snippet_truncated: match.snippet_truncated,
+      line_count: match.line_end - match.line_start + 1, content: match.snippet
+    }))
+  });
+  const complete = assemble(selected.map(match => shortenSearchMatch(match, match.snippet.length, query)), false);
+  const fits = value => JSON.stringify(value, null, 2).length <= MAX_SEARCH_RESPONSE_CHARS;
+  if (fits(complete)) return complete;
+
+  // The empty envelope contains only the fixed 46-file corpus metadata and
+  // bounded query/scope strings; it is well below the response budget.
+  let best = assemble([], true);
+  let low = 1;
+  let high = Math.max(...selected.map(match => match.snippet.length));
+  while (low <= high) {
+    const ceiling = Math.floor((low + high) / 2);
+    const candidate = assemble(selected.map(match => shortenSearchMatch(match, ceiling, query)), true);
+    if (fits(candidate)) {
+      best = candidate;
+      low = ceiling + 1;
+    } else {
+      high = ceiling - 1;
+    }
+  }
+  return best;
+}
+
+// Return a literal contiguous source slice, centered on the strongest matching
+// line's phrase (or all-word span). Columns are one-based UTF-16 offsets with
+// an exclusive end. No ellipsis is inserted into evidence. Source match_type
+// and matched_line remain anchors; matched_lines names matches visible in full.
+function shortenSearchMatch(match, ceiling, query) {
+  const lines = match.snippet.split("\n");
+  if (match.snippet.length <= ceiling) {
+    return { ...match, column_start: 1, column_end: lines.at(-1).length + 1, snippet_truncated: false };
+  }
+  const anchorIndex = match.matched_line - match.line_start;
+  const anchorLine = lines[anchorIndex];
+  const text = normalizeSearchQuery(query);
+  const lower = anchorLine.toLowerCase();
+  const needles = match.match_type === "exact" ? [text] : text.split(/\s+/).filter(Boolean);
+  const positions = needles.map(needle => [lower.indexOf(needle), needle.length]);
+  // Lowercasing can expand a code point (for example U+0130). Translate the
+  // normalized match offsets back to original source columns before slicing.
+  const sourceOffset = (offset, roundDown = false) => {
+    let normalized = 0;
+    let original = 0;
+    for (const char of anchorLine) {
+      if (normalized >= offset) break;
+      if (roundDown && normalized + char.toLowerCase().length > offset) break;
+      normalized += char.toLowerCase().length;
+      original += char.length;
+    }
+    return original;
+  };
+  const anchorStart = lines.slice(0, anchorIndex).reduce((sum, line) => sum + line.length + 1, 0);
+  const first = anchorStart + sourceOffset(Math.min(...positions.map(([offset]) => offset)), true);
+  const last = anchorStart + sourceOffset(Math.max(...positions.map(([offset, length]) => offset + length)));
+  let start = Math.max(0, first - Math.max(0, Math.floor((ceiling - (last - first)) / 2)));
+  start = Math.min(start, Math.max(0, match.snippet.length - ceiling));
+  let end = Math.min(match.snippet.length, start + ceiling);
+  // Keep surrogate pairs intact; the measured serialization includes any extra unit.
+  if (start > 0 && /[\uDC00-\uDFFF]/.test(match.snippet[start])) start--;
+  if (end < match.snippet.length && /[\uD800-\uDBFF]/.test(match.snippet[end - 1])) end++;
+  const snippet = match.snippet.slice(start, end);
+  const before = match.snippet.slice(0, start);
+  const lineStart = match.line_start + before.split("\n").length - 1;
+  const columnStart = start - before.lastIndexOf("\n");
+  const returnedLines = snippet.split("\n");
+  const lineEnd = lineStart + returnedLines.length - 1;
+  const columnEnd = returnedLines.length === 1 ? columnStart + snippet.length : returnedLines.at(-1).length + 1;
+  const matchedLines = match.matched_lines.filter(line => {
+    const visible = returnedLines[line - lineStart];
+    if (visible === undefined) return false;
+    const normalized = visible.toLowerCase();
+    const tokens = text.split(/\s+/).filter(Boolean);
+    return normalized.includes(text) || (tokens.length > 1 && tokens.every(token => normalized.includes(token)));
+  });
+  return { ...match, line_start: lineStart, line_end: lineEnd,
+    column_start: columnStart, column_end: columnEnd, matched_lines: matchedLines,
+    snippet_truncated: start !== 0 || end !== match.snippet.length, snippet };
 }
 
 // Rounds provide file diversity within each quality tier, never ahead of exact

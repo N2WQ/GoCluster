@@ -150,9 +150,24 @@ the selected scope and `searched_count` counts successful source reads.
 `failed_paths` names unsuccessful reads; `source_truncated_paths` names files
 whose searchable prefix was capped at 140,000 characters. `coverage_complete`
 is true only when all eligible sources were read without that cap.
-`results_truncated` independently means more than 25 merged regions existed.
-The existing `truncated` flag is true for either incomplete coverage or omitted
-results. Exactly 25 regions with complete coverage is not overflow.
+The complete serialized response is capped at 99,000 characters, including
+JSON escaping, formatting, metadata, and both `matches` and `files` copies.
+`response_budget_truncated` reports shortening or omission to meet that budget.
+Oversized regions are shortened around their strongest source match where
+possible, using a shared snippet ceiling to preserve ranked file diversity.
+`results_truncated` is true when any result evidence is shortened or omitted,
+whether by the response budget or the 25-region limit. The existing `truncated`
+flag also includes incomplete source coverage. Exactly 25 complete regions
+with complete coverage and no budget truncation do not indicate overflow.
+
+Each match and corresponding file has `snippet_truncated`, `column_start`, and
+`column_end`. The snippet is a literal contiguous source slice with LF line
+endings; line ranges describe the returned slice. Columns are one-based UTF-16
+code units, with inclusive start and exclusive end. Shortening preserves
+surrogate pairs. `matched_line` and `match_type` describe the strongest original source
+match, which may not fit entirely in the slice. `matched_lines` lists only
+matching lines whose phrase or all-word match is fully visible; it can be empty
+for a shortened long line. No synthetic ellipsis is inserted into evidence.
 
 Partial reads return HTTP 200 when at least one eligible file was read, even
 when no matches were found; all-source failure returns HTTP 502 with the same
@@ -161,4 +176,5 @@ selected corpus search. Follow source-map routes and `getDoc` for evidence
 outside that corpus. The configuration support card is now searchable; its
 automatic support-route selection remains unchanged.
 
-See [ADR-0255](decisions/ADR-0255-support-search-evidence-and-coverage.md).
+See [ADR-0255](decisions/ADR-0255-support-search-evidence-and-coverage.md) and
+[ADR-0256](decisions/ADR-0256-support-search-response-budget.md).

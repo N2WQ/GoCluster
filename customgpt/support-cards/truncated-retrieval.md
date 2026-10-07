@@ -36,7 +36,13 @@ Treat truncation as partial evidence, not as retrieval failure.
 
 For `/search`, inspect `coverage_complete`, `failed_paths`,
 `source_truncated_paths`, and `results_truncated`. Source coverage and result
-overflow are separate. A partial HTTP 200 response, including zero matches,
+truncation are separate. `response_budget_truncated` identifies shortening or
+omission to fit the 99,000-character serialized-response budget. A snippet
+with `snippet_truncated: true` is a literal partial source slice, with
+one-based UTF-16 columns (inclusive start, exclusive end). `matched_line`
+anchors the original match; `matched_lines` lists only matches fully visible
+in the slice. Retrieve the source before interpreting missing context.
+A partial HTTP 200 response, including zero matches,
 does not establish absence. Narrow the corpus `path` or follow the discovered
 source with `getDoc` and line windows. HTTP 502 means no eligible source could
 be read; preserve that uncertainty rather than inventing an answer.

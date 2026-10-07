@@ -23,7 +23,31 @@ async function search(query = "needle", scope) {
   url.searchParams.set("query", query);
   if (scope !== undefined) url.searchParams.set("path", scope);
   const response = await worker.fetch(new Request(url, { headers: { Authorization: "Bearer search-fixture-token" } }), env, {});
-  return { status: response.status, body: await response.json() };
+  const serialized = await response.text();
+  return { status: response.status, body: JSON.parse(serialized), serialized };
+}
+function assertBounded(result, sources) {
+  const { body, serialized } = result;
+  assert(serialized.length <= 99000, `serialized response has ${serialized.length} characters`);
+  assert.equal(body.limits.max_search_response_chars, 99000);
+  assert.equal(body.result_count, body.matches.length);
+  assert.equal(body.files.length, body.matches.length);
+  for (const [index, match] of body.matches.entries()) {
+    const lines = sources.get(match.path).slice(0, 140000).split(/\r?\n/);
+    const selected = lines.slice(match.line_start - 1, match.line_end);
+    selected[selected.length - 1] = selected.at(-1).slice(0, match.column_end - 1);
+    selected[0] = selected[0].slice(match.column_start - 1);
+    assert.equal(match.snippet, selected.join("\n"), "snippet must be the exact claimed source slice");
+    assert(!/^[\uDC00-\uDFFF]|[\uD800-\uDBFF]$/.test(match.snippet), "must not split a surrogate pair");
+    assert(match.matched_line >= match.line_start && match.matched_line <= match.line_end);
+    assert(match.matched_lines.every(line => line >= match.line_start && line <= match.line_end));
+    const file = body.files[index];
+    assert.equal(file.content, match.snippet);
+    for (const key of ["path", "line_start", "line_end", "column_start", "column_end", "snippet_truncated"]) {
+      assert.equal(file[key], match[key], key);
+    }
+    assert.equal(file.line_count, match.line_end - match.line_start + 1);
+  }
 }
 async function check(name, fn) {
   fixtures = new Map();
@@ -110,6 +134,8 @@ try {
     assert.equal(body.truncated, true);
     assert.equal(body.results_truncated, false);
     assert.equal(body.result_count, 1);
+    assert.equal(body.response_budget_truncated, false);
+    assert.equal(body.matches[0].snippet_truncated, false);
   });
   await check("partial empty search differs from completed empty search", async () => {
     fixtures.set("README.md", 503);
@@ -140,6 +166,7 @@ try {
     assert.deepEqual(body.source_truncated_paths, ["README.md"]);
     assert.equal(body.coverage_complete, false);
     assert.equal(body.truncated, true);
+    assert.equal(body.response_budget_truncated, false);
     assert.equal((await search("TRUNCATED BY WORKER", "README.md")).body.result_count, 0);
   });
   await check("query limit remains enforced", async () => {
@@ -152,11 +179,86 @@ try {
     fixtures.set("README.md", "prefixneedleSuffix");
     assert.equal((await search("needle", "README.md")).body.result_count, 1);
   });
+  await check("dense merged region budgets snippet copies and matched-line metadata", async () => {
+    fixtures.set("README.md", "needle\n".repeat(19000));
+    const result = await search("needle", "README.md");
+    assertBounded(result, fixtures);
+    assert.equal(result.body.result_count, 1);
+    assert.equal(result.body.coverage_complete, true);
+    assert.equal(result.body.response_budget_truncated, true);
+    assert.equal(result.body.results_truncated, true);
+    assert.equal(result.body.truncated, true);
+    assert.equal(result.body.matches[0].snippet_truncated, true);
+    assert(result.body.matches[0].matched_lines.length > 0);
+  });
+  await check("25 large regions retain ranked diversity under the total budget", async () => {
+    fixtures.set("README.md", blankRegions(24, "needle" + "x".repeat(4000)));
+    fixtures.set("scripts/README.md", "needle" + "x".repeat(50000));
+    const result = await search();
+    assertBounded(result, fixtures);
+    assert.equal(result.body.result_count, 25);
+    assert.deepEqual(result.body.matches.slice(0, 3).map(m => m.path), ["README.md", "scripts/README.md", "README.md"]);
+    assert(result.body.matches.every(m => m.snippet.includes("needle")));
+    assert.equal(result.body.response_budget_truncated, true);
+  });
+  await check("late strongest match, escaped text, CRLF and Unicode retain literal locations", async () => {
+    for (const filler of ["x", '\"\\\t\u0001', "😀İ"]) {
+      fixtures.set("README.md", "alpha separated beta\r\n" + filler.repeat(Math.floor(90000 / filler.length)) + "ALPHA BETA" + filler.repeat(1000));
+      const result = await search("alpha beta", "README.md");
+      assertBounded(result, fixtures);
+      const match = result.body.matches[0];
+      assert.equal(match.matched_line, 2);
+      assert.equal(match.match_type, "exact");
+      assert(match.snippet.includes("ALPHA BETA"));
+      assert(match.column_start > 1);
+      assert.equal(match.snippet_truncated, true);
+    }
+  });
+  await check("all-word span wider than budget remains explicitly partial", async () => {
+    fixtures.set("README.md", "alpha" + "x".repeat(110000) + "beta");
+    const result = await search("alpha beta", "README.md");
+    assertBounded(result, fixtures);
+    assert.equal(result.body.matches[0].match_type, "all_words");
+    assert.equal(result.body.matches[0].matched_line, 1);
+    assert.deepEqual(result.body.matches[0].matched_lines, []);
+    assert.equal(result.body.matches[0].snippet_truncated, true);
+  });
+  await check("lowercase expansion maps late matches back to original columns", async () => {
+    fixtures.set("README.md", "İ".repeat(80000) + "NEEDLE");
+    const result = await search("needle", "README.md");
+    assertBounded(result, fixtures);
+    assert(result.body.matches[0].snippet.includes("NEEDLE"));
+  });
+  await check("last complete response and first shortened response straddle the wire budget", async () => {
+    let low = 40000, high = 51000, last;
+    while (low <= high) {
+      const length = Math.floor((low + high) / 2);
+      fixtures.set("README.md", "needle" + "x".repeat(length));
+      const result = await search("needle", "README.md");
+      assertBounded(result, fixtures);
+      if (result.body.response_budget_truncated) high = length - 1;
+      else { last = result; low = length + 1; }
+    }
+    assert(last.serialized.length >= 98999);
+    assert.equal(last.body.truncated, false);
+    fixtures.set("README.md", "needle" + "x".repeat(low));
+    const next = await search("needle", "README.md");
+    assertBounded(next, fixtures);
+    assert.equal(next.body.response_budget_truncated, true);
+    assert.equal(next.body.coverage_complete, true);
+  });
   await check("all added corpus evidence and exact diagnostics are discoverable", async () => {
     globalThis.fetch = async url => {
       const sourcePath = decodeURIComponent(String(url).split("/main/")[1]);
       return new Response(await fs.readFile(new URL(`../${sourcePath}`, import.meta.url), "utf8"));
     };
+    for (const query of ["on", "a"]) {
+      const result = await search(query);
+      assert(result.serialized.length <= 99000);
+      assert.equal(result.status, 200);
+      assert.equal(result.body.response_budget_truncated, true);
+      assert(result.body.matches.length > 0);
+    }
     const additions = [
       ["customgpt/support-cards/configuration-readback.md", "Configuration Readbacks"],
       ["data/config/data.yaml", "ised"], ["scripts/README.md", "create-release.ps1"],

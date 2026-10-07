@@ -165,7 +165,7 @@ try {
     Assert-ContainsLiteral $schemaPath "operationId: $operationId" "schema exposes $operationId"
   }
   Assert-ContainsLiteral $schemaPath "bearerAuth:" "schema requires bearer auth"
-  Assert-ContainsLiteral $schemaPath "version: 4.8.0" "schema version is 4.8.0"
+  Assert-ContainsLiteral $schemaPath "version: 4.9.0" "schema version is 4.9.0"
   Assert-ContainsLiteral $schemaPath "Choose the most specific symptom route" "schema documents route specificity"
   Assert-ContainsLiteral $schemaPath "SupportRouteResponse" "schema documents support-route response"
   Assert-ContainsLiteral $schemaPath "SearchResponse" "schema documents search response"

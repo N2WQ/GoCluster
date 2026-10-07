@@ -24,7 +24,8 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| ADR-0255 | Support Search Evidence and Coverage | Accepted | 2026-10-07 | customgpt, search, retrieval, supportability | Refines ADR-0154 search evidence and coverage | - | `docs/decisions/ADR-0255-support-search-evidence-and-coverage.md` |
+| ADR-0256 | Support Search Response Budget | Accepted | 2026-10-07 | customgpt, search, retrieval, bounded resources | Refines ADR-0255 response bound and truncation | - | `docs/decisions/ADR-0256-support-search-response-budget.md` |
+| ADR-0255 | Support Search Evidence and Coverage | Accepted | 2026-10-07 | customgpt, search, retrieval, supportability | Refines ADR-0154 search evidence and coverage | ADR-0256 (response budget and truncation refinement) | `docs/decisions/ADR-0255-support-search-evidence-and-coverage.md` |
 | ADR-0254 | Canadian ISED License and State Reuse | Accepted | 2026-10-07 | uls, config, spot, archive, filter, telnet, commands, runtime | Refines ADR-0253 for Canadian source ownership, shared State vocabulary and older-reader compatibility | - | `docs/decisions/ADR-0254-canadian-ised-license-and-state-reuse.md` |
 | ADR-0253 | FCC State Enrichment and Filtering | Accepted | 2026-10-07 | uls, spot, archive, filter, telnet, commands, runtime | Refines ADR-0244/0245/0251 for state metadata and schema versions | Canadian source/shared State vocabulary refined by ADR-0254 | `docs/decisions/ADR-0253-fcc-state-enrichment-and-filtering.md` |
 | ADR-0252 | Automatic Commit-Suffix Release Tags | Accepted | 2026-10-06 | release scripts, build metadata | ADR-0236 numbering clauses | - | `docs/decisions/ADR-0252-automatic-commit-suffix-release-tags.md` |

@@ -84,3 +84,11 @@ contents are unchanged.
 - Related docs: `docs/support-agent-quality-contract.md`, `docs/support-agent-runbook.md`, `docs/support-agent-coverage-ledger.md`, `data/config/README.md`
 - Related TSRs: `docs/troubleshooting/TSR-0027-support-agent-shallow-answers.md`
 - Supersedes / superseded by: refines ADR-0154 search evidence and coverage; other quality-contract decisions remain active
+
+
+## Subsequent refinement
+
+[ADR-0256](ADR-0256-support-search-response-budget.md) adds a serialized-response
+budget and explicit shortened-snippet metadata, and extends result truncation
+to include shortened evidence. The original finite source/region bounds did
+not guarantee that Action payloads stayed below 100,000 characters.

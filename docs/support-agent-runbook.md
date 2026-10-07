@@ -155,3 +155,22 @@ The full search may fetch all 46 files; use a corpus path scope to narrow work.
 The search change requires deploying the Worker and updating the GPT action
 schema/instructions together, followed by Preview checks. Repository validation
 alone does not deploy those payloads.
+
+## Search response budget
+
+Search responses must fit 99,000 serialized characters, below the GPT Actions
+100,000-character limit. The budget includes escaped JSON, formatting, both
+snippet copies, and metadata. `scripts/test-support-search.mjs` measures actual
+response bodies for dense matches, long lines, escaping, Unicode, boundary
+sizes, and workspace-backed `on`/`a` queries.
+
+When `response_budget_truncated` or `snippet_truncated` is true, treat the
+returned slice as partial evidence. Use its source URL and line range for
+follow-up retrieval; column bounds identify partial lines. `matched_line`
+anchors an original match even when the full phrase or all-word span cannot
+fit. Source coverage remains independent of the response budget. Update the
+Worker, action schema and GPT instructions together, then check dense-search
+behavior in Preview before release.
+
+See [ADR-0256](decisions/ADR-0256-support-search-response-budget.md) and
+[TSR-0043](troubleshooting/TSR-0043-support-search-action-limit.md).
