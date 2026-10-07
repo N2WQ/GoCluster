@@ -2215,7 +2215,7 @@ func parseGrid2List(arg string) ([]string, []string) {
 		if len(raw) > 2 {
 			raw = raw[:2]
 		}
-		if len(raw) != 2 {
+		if !validMachineGrid2(raw) {
 			invalid = append(invalid, value)
 			continue
 		}
