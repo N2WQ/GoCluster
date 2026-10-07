@@ -32,6 +32,8 @@
 
 .NOTES
 	Prerequisites: Go toolchain, git, and GitHub CLI authentication for publishing.
+	Executed Go helpers disable CGO temporarily; caller CGO settings are restored.
+	Packaged binaries retain the caller CGO settings.
 	Side effects: builds a binary, creates package directories/zips, and can
 	publish a GitHub release when PackageOnly is omitted.
 	Release tags use the UTC date and last four full commit hash characters,
@@ -314,12 +316,21 @@ function Invoke-GoRunHost {
 
     $oldGOOS = $env:GOOS
     $oldGOARCH = $env:GOARCH
+    $oldCGO = $env:CGO_ENABLED
     try {
         Remove-Item Env:GOOS -ErrorAction SilentlyContinue
         Remove-Item Env:GOARCH -ErrorAction SilentlyContinue
+        # Executed helper tools use pure Go to avoid the observed Windows CGO
+        # policy denial. Tidy and packaged binaries retain caller build settings.
+        if ($Arguments[0] -eq 'run') { $env:CGO_ENABLED = '0' }
         Invoke-CheckedCommand -CommandName 'go' -Arguments $Arguments -FailureMessage "go $($Arguments -join ' ') failed."
     }
     finally {
+        if ($null -eq $oldCGO) {
+            Remove-Item Env:CGO_ENABLED -ErrorAction SilentlyContinue
+        } else {
+            $env:CGO_ENABLED = $oldCGO
+        }
         if ($null -eq $oldGOOS) {
             Remove-Item Env:GOOS -ErrorAction SilentlyContinue
         }

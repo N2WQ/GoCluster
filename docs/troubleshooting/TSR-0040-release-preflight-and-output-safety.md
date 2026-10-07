@@ -7,7 +7,7 @@ Owner: GoCluster maintainers
 Technical Area: Windows release tooling, Git, module files
 Trigger Source: Chat request
 Led To ADR(s): ADR-0242
-Tags: release, PowerShell, CRLF, ownership, publication
+Tags: release, PowerShell, CRLF, ownership, publication, CGO, Application Control
 
 ## RCA Summary
 
@@ -143,6 +143,29 @@ No live publication was performed during this correction.
   edits, publishes to another repository/commit, or loses both prior output copies.
 - Live publication is not part of this validation; retain Monitoring until a
   separately authorized release confirms the operational path.
+
+## CGO helper execution follow-up (2026-10-07)
+
+The maintainer reported that release preflight could no longer execute the
+Go-cache `codemap.exe`: Windows Application Control blocked it. Native
+`go env CGO_ENABLED` returned `1`; the same checker with `CGO_ENABLED=0`
+reported `code maps are fresh`. Code Integrity event 3077 independently
+identified the reported cache executable as denied by policy. The historical
+trigger between successful releases and the denial remains unknown.
+
+The release host helper now disables CGO only for executed Go helper tools
+and restores the previous setting even on failure. Tidy and packaged binaries
+retain the caller setting. Regression coverage checks unset, `0`, and `1`
+settings, both helper failures, binary-build failure, and successful packaging.
+Both real helper commands passed on native Windows under Windows PowerShell
+5.1.26100.9549 and PowerShell 7.6.6 with caller CGO explicitly set to `1`;
+the checker reported fresh maps, the renderer wrote its README in disposable
+staging, and both helpers restored `1`. The release-safety suite passed 123
+cases on each engine, including all 12 added CGO cases. Each engine skipped
+the existing second-drive-root case because no second filesystem drive was
+available. Release-identity fixtures also passed under both engines. No release
+was published.
+Do not interpret a policy denial as stale maps or disable the security policy.
 
 ## References
 

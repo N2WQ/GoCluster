@@ -26,6 +26,7 @@ $script:Skipped = 0
 $script:OriginalLocation = Get-Location
 $script:OriginalGOOS = $env:GOOS
 $script:OriginalGOARCH = $env:GOARCH
+$script:OriginalCGO = $env:CGO_ENABLED
 $script:OriginalGHRepo = $env:GH_REPO
 $script:OriginalGHHost = $env:GH_HOST
 New-Item -ItemType Directory -Path $script:FixtureRoot | Out-Null
@@ -99,7 +100,7 @@ function New-LegacyReleaseOutputs([string]$Repo, [string]$Shape) {
 }
 function Invoke-ReleaseNativeStatus([string]$Operation, [string[]]$Arguments, [int]$Code = 0, [string]$Output = '') {
     $state = $global:ReleaseSafetyFixture
-    $state.Calls.Add([pscustomobject]@{ Operation = $Operation; Arguments = @($Arguments); GOOS = $env:GOOS; GOARCH = $env:GOARCH })
+    $state.Calls.Add([pscustomobject]@{ Operation = $Operation; Arguments = @($Arguments); GOOS = $env:GOOS; GOARCH = $env:GOARCH; CGO = $env:CGO_ENABLED })
     if ($state.Fault -ceq $Operation) { $Code = $state.FaultCode; $Output = '' }
     if ($Output) { Write-Output $Output }
     if ($state.SuccessStderr -and $Operation.StartsWith('go-') -and $Code -eq 0) {
@@ -142,7 +143,7 @@ function global:git {
     if ($op -eq 'git-local') { Invoke-ReleaseNativeStatus $op $nativeArgs $state.LocalCode; return }
     if ($op -eq 'git-remote') { Invoke-ReleaseNativeStatus $op $nativeArgs $state.RemoteCode; return }
     if ($op -in @('git-tag', 'git-push') -or $state.Fault -ceq $op) { Invoke-ReleaseNativeStatus $op $nativeArgs; return }
-    $state.Calls.Add([pscustomobject]@{ Operation = $op; Arguments = $nativeArgs; GOOS = $env:GOOS; GOARCH = $env:GOARCH })
+    $state.Calls.Add([pscustomobject]@{ Operation = $op; Arguments = $nativeArgs; GOOS = $env:GOOS; GOARCH = $env:GOARCH; CGO = $env:CGO_ENABLED })
     & $state.RealGit @nativeArgs
 }
 function global:go {
@@ -212,20 +213,22 @@ function global:gh {
 function global:Compress-Archive {
     param([string]$LiteralPath, [string]$DestinationPath)
     $state = $global:ReleaseSafetyFixture
-    $state.Calls.Add([pscustomobject]@{ Operation = 'archive'; Arguments = @($LiteralPath, $DestinationPath); GOOS = $env:GOOS; GOARCH = $env:GOARCH })
+    $state.Calls.Add([pscustomobject]@{ Operation = 'archive'; Arguments = @($LiteralPath, $DestinationPath); GOOS = $env:GOOS; GOARCH = $env:GOARCH; CGO = $env:CGO_ENABLED })
     if ($state.Fault -eq 'archive') { throw 'Injected archive preparation failed.' }
     Microsoft.PowerShell.Archive\Compress-Archive -LiteralPath $LiteralPath -DestinationPath $DestinationPath
 }
 function Invoke-ActualRelease([string]$Repo, [hashtable]$Parameters, [string]$ExpectedFailure = '') {
     $beforeLocation = (Get-Location).Path
-    $beforeOS = $env:GOOS; $beforeArch = $env:GOARCH
+    $beforeOS = $env:GOOS; $beforeArch = $env:GOARCH; $beforeCGO = $env:CGO_ENABLED
     $beforeOSExists = Test-Path Env:GOOS; $beforeArchExists = Test-Path Env:GOARCH
+    $beforeCGOExists = Test-Path Env:CGO_ENABLED
     $errorSeen = $null
     try { & (Join-Path $Repo 'scripts/create-release.ps1') @Parameters 6>$null | Out-Null }
     catch { $errorSeen = $_ }
     Assert-Fixture ((Get-Location).Path -ceq $beforeLocation) 'Caller location was not restored.'
     Assert-Fixture ((Test-Path Env:GOOS) -eq $beforeOSExists -and (Test-Path Env:GOARCH) -eq $beforeArchExists) 'Caller environment existence was not restored.'
     Assert-Fixture ($env:GOOS -ceq $beforeOS -and $env:GOARCH -ceq $beforeArch) 'Caller environment values were not restored.'
+    Assert-Fixture ((Test-Path Env:CGO_ENABLED) -eq $beforeCGOExists -and $env:CGO_ENABLED -ceq $beforeCGO) 'Caller CGO setting was not restored.'
     if ($ExpectedFailure) {
         Assert-Fixture ($null -ne $errorSeen) "Expected refusal: $ExpectedFailure"
         Assert-Fixture ($errorSeen.Exception.Message -match $ExpectedFailure) "Wrong refusal; expected $ExpectedFailure; got $($errorSeen.Exception.Message)"
@@ -351,6 +354,33 @@ try {
         Assert-Fixture (Test-Path -LiteralPath (Join-Path $output 'custom-asset.zip')) 'Absolute ZIP output was not promoted.'
         Assert-Fixture (@($global:ReleaseSafetyFixture.Calls | Where-Object { $_.Operation -in @('git-tag', 'git-push', 'gh-create') }).Count -eq 0) 'PackageOnly created publication operations.'
     }
+    foreach ($cgo in @('unset', '0', '1')) {
+        foreach ($fault in @('', 'go-map', 'go-readme', 'go-build-main')) {
+            Run-ReleaseCase "helper CGO isolation: $cgo / $fault" {
+                if ($cgo -eq 'unset') { Remove-Item Env:CGO_ENABLED -ErrorAction SilentlyContinue }
+                else { $env:CGO_ENABLED = $cgo }
+                $expectedCGO = $env:CGO_ENABLED
+                $repo = New-ReleaseFixture; Reset-ReleaseNative $repo $fault
+                $expectedFailure = if ($fault) { 'failed' } else { '' }
+                Invoke-ActualRelease $repo @{ PackageOnly = $true } $expectedFailure
+                $calls = $global:ReleaseSafetyFixture.Calls
+                $helpers = @($calls | Where-Object { $_.Operation -in @('go-map', 'go-readme') })
+                Assert-Fixture ($helpers.Count -gt 0) 'No executed helper was reached.'
+                foreach ($call in $helpers) {
+                    Assert-Fixture ($call.CGO -ceq '0') "Helper inherited CGO: $($call.Operation)"
+                }
+                foreach ($call in @($calls | Where-Object { $_.Operation -in @('go-tidy', 'go-build-main', 'go-build-peer') })) {
+                    Assert-Fixture ($call.CGO -ceq $expectedCGO) "Caller CGO changed for $($call.Operation)"
+                }
+                if (-not $fault) {
+                    Assert-Fixture ($helpers.Count -eq 2) 'Successful release did not execute both helpers.'
+                    Assert-Fixture (@($calls | Where-Object Operation -like 'go-build-*').Count -eq 2) 'Both packaged binary builds were not checked.'
+                } else { Assert-NoReleaseAfter $fault }
+            }
+        }
+    }
+    if ($null -eq $script:OriginalCGO) { Remove-Item Env:CGO_ENABLED -ErrorAction SilentlyContinue }
+    else { $env:CGO_ENABLED = $script:OriginalCGO }
     foreach ($combination in @('os-only', 'arch-only', 'neither', 'both')) {
         Run-ReleaseCase "environment restoration after failure: $combination" {
             if ($combination -in @('os-only', 'both')) { $env:GOOS = 'linux' } else { Remove-Item Env:GOOS -ErrorAction SilentlyContinue }
@@ -761,7 +791,7 @@ try {
     $global:LASTEXITCODE = 0
 } finally {
     Set-Location $script:OriginalLocation
-    foreach ($entry in @(@('GOOS', $script:OriginalGOOS), @('GOARCH', $script:OriginalGOARCH), @('GH_REPO', $script:OriginalGHRepo), @('GH_HOST', $script:OriginalGHHost))) {
+    foreach ($entry in @(@('GOOS', $script:OriginalGOOS), @('GOARCH', $script:OriginalGOARCH), @('CGO_ENABLED', $script:OriginalCGO), @('GH_REPO', $script:OriginalGHRepo), @('GH_HOST', $script:OriginalGHHost))) {
         if ($null -eq $entry[1]) { Remove-Item ('Env:' + $entry[0]) -ErrorAction SilentlyContinue }
         else { Set-Item ('Env:' + $entry[0]) $entry[1] }
     }

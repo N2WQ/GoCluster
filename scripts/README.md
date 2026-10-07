@@ -91,7 +91,12 @@ new release. The annotated tag points explicitly to the captured full commit ID.
 Source and output directories must have no concurrent writers. Persistent HEAD
 or source changes abort publication; rechecks cannot detect transient changes
 that are reverted between checks. Caller location and `GOOS`/`GOARCH` are restored
-on every exit. Local output promotion retains recoverable previous artifacts;
+on every exit. The code-map checker and README renderer run with
+`CGO_ENABLED=0`, restoring the caller setting on success and failure. Module
+tidy and both packaged binary builds retain the caller CGO setting. This avoids
+the observed CGO helper execution denial without changing shipped binaries;
+other Windows Application Control denials still require policy diagnosis.
+Local output promotion retains recoverable previous artifacts;
 failed recovery or backup disposal preserves and reports the retained paths.
 Tag/push/release failures require
 manual inspection of local/remote state before retrying, without automatic ref

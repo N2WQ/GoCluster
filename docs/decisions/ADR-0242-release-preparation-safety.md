@@ -57,6 +57,17 @@ normal exact Scope Ledger approval governs those edits. Retain every Fable
 protection and the direct-to-main workflow. This changes checker enforcement,
 not the static checker's inability to prove conversational authorization.
 
+### Helper execution refinement (2026-10-07)
+
+Run the code-map checker and release README renderer with `CGO_ENABLED=0`
+inside the host-command helper, restoring the caller setting in `finally`.
+Module tidy and packaged binary compilation retain their existing CGO settings.
+The reported CGO code-map executable was blocked by Windows Application Control,
+while the maintainer verified the non-CGO checker succeeded. Do not disable
+security policy or skip freshness checks. This resolves the demonstrated helper
+condition, not every possible machine policy denial. See the follow-up in
+[TSR-0040](../troubleshooting/TSR-0040-release-preflight-and-output-safety.md).
+
 ## Alternatives considered
 
 1. Disable cleanliness or tidy checks: loses committed-source/module guarantees.
