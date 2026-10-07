@@ -131,3 +131,10 @@ Adopt a repository-owned support-agent quality contract:
 - Related TSRs: `docs/troubleshooting/TSR-0027-support-agent-shallow-answers.md`
 - Supersedes / superseded by: extends ADR-0107, ADR-0108, ADR-0109,
   ADR-0112, and ADR-0113
+
+
+## Subsequent admission refinement
+
+[ADR-0257](ADR-0257-public-support-agent-retrieval.md) replaces the preserved
+Bearer admission contract with public retrieval. Safe-path restrictions,
+deployment-bundle isolation and answer-quality requirements remain active.

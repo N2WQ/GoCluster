@@ -1,6 +1,6 @@
 # ADR-0109: Support-Agent Bearer Authentication
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-05-04
 - Decision Origin: Design
 
@@ -68,3 +68,9 @@ diagnostics can detect the active contract.
   `customgpt/support-agent/cloudflare-worker.js`
 - Related TSRs: none
 - Supersedes / superseded by: extends ADR-0107 and ADR-0108
+
+
+## Supersession
+
+[ADR-0257](ADR-0257-public-support-agent-retrieval.md) supersedes this Bearer
+authentication contract with explicitly selected public retrieval access.

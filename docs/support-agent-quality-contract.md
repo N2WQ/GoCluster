@@ -178,3 +178,13 @@ automatic support-route selection remains unchanged.
 
 See [ADR-0255](decisions/ADR-0255-support-search-evidence-and-coverage.md) and
 [ADR-0256](decisions/ADR-0256-support-search-response-budget.md).
+
+## Public retrieval access
+
+The support-agent API is public and requires no Worker token or Action
+authentication. Successful retrieval responses report `auth: "none"`. Public
+access does not broaden allowed paths or expose the deployment bundle; it
+changes caller admission only. Read-only methods, search budgets, source
+coverage and retrieval evidence requirements remain unchanged.
+
+See [ADR-0257](decisions/ADR-0257-public-support-agent-retrieval.md).

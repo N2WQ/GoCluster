@@ -184,8 +184,8 @@ dedupe identity excludes IP text.
   ADR-linked, and readable through the required `RCA Summary` block.
 - `check-support-agent.ps1` verifies the custom GPT support-agent deployment
   bundle, support-route contracts, bounded support search, routing docs, local
-  Worker behavior, and optional deployed Worker health without printing bearer
-  tokens.
+  Worker behavior, and optional deployed public Worker health without
+  credentials.
 - `evaluate-support-agent.ps1` runs the local support-agent eval harness against
   `docs/support-agent-eval-cases.json`, using the checked-in Worker and current
   workspace files to validate retrieval/source coverage and optionally score

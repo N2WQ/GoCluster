@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0257 | Public Support-Agent Retrieval | Accepted | 2026-10-07 | customgpt, actions, admission, deployment | ADR-0109; ADR-0154 admission clauses | - | `docs/decisions/ADR-0257-public-support-agent-retrieval.md` |
 | ADR-0256 | Support Search Response Budget | Accepted | 2026-10-07 | customgpt, search, retrieval, bounded resources | Refines ADR-0255 response bound and truncation | - | `docs/decisions/ADR-0256-support-search-response-budget.md` |
 | ADR-0255 | Support Search Evidence and Coverage | Accepted | 2026-10-07 | customgpt, search, retrieval, supportability | Refines ADR-0154 search evidence and coverage | ADR-0256 (response budget and truncation refinement) | `docs/decisions/ADR-0255-support-search-evidence-and-coverage.md` |
 | ADR-0254 | Canadian ISED License and State Reuse | Accepted | 2026-10-07 | uls, config, spot, archive, filter, telnet, commands, runtime | Refines ADR-0253 for Canadian source ownership, shared State vocabulary and older-reader compatibility | - | `docs/decisions/ADR-0254-canadian-ised-license-and-state-reuse.md` |
@@ -127,7 +128,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR-0157 | VOACAP SSN Moving Average Experiment | Accepted | 2026-06-08 | voacap, solarweather, experiments | - | - | `docs/decisions/ADR-0157-voacap-ssn-moving-average-experiment.md` |
 | ADR-0156 | Expanded Repo-Managed Audit Skills | Accepted | 2026-06-08 | workflow, Codex, skills, lifecycle, decision-memory | - | ADR-0221 (routing/reporting clauses) | `docs/decisions/ADR-0156-expanded-repo-managed-audit-skills.md` |
 | ADR-0155 | Repo-Authoritative Codex Skills | Accepted | 2026-06-08 | workflow, Codex, skills, portability | - | ADR-0250 (source directory only) | `docs/decisions/ADR-0155-repo-authoritative-codex-skills.md` |
-| ADR-0154 | Support-Agent Quality Contract | Accepted | 2026-06-07 | customgpt, supportability, actions, operations | ADR-0107; ADR-0108; ADR-0109; ADR-0112; ADR-0113 | - | `docs/decisions/ADR-0154-support-agent-quality-contract.md` |
+| ADR-0154 | Support-Agent Quality Contract | Accepted | 2026-06-07 | customgpt, supportability, actions, operations | ADR-0107; ADR-0108; ADR-0109; ADR-0112; ADR-0113 | ADR-0257 (admission clauses) | `docs/decisions/ADR-0154-support-agent-quality-contract.md` |
 | ADR-0153 | Startup Config Diagnostics And Gridstore Logging | Accepted | 2026-06-07 | config, startup, pathreliability, gridstore, operations | ADR-0067 unknown-key fatal behavior | - | `docs/decisions/ADR-0153-startup-config-diagnostics-and-gridstore-logging.md` |
 | ADR-0152 | Stable Active Log Filenames With Date-Only Archives | Accepted | 2026-06-07 | logging, propagation reports, operations | ADR-0093 active filename shape; ADR-0123 active filename shape | - | `docs/decisions/ADR-0152-stable-active-log-filenames-with-date-only-archives.md` |
 | ADR-0151 | Archive Range Deletion Cleanup | Accepted | 2026-06-06 | archive, config, hot path, profiling | ADR-0149 cleanup implementation | - | `docs/decisions/ADR-0151-archive-range-deletion-cleanup.md` |
@@ -171,7 +172,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR-0112 | Support-Agent Deployment Bundle Isolation | Accepted | 2026-05-04 | customgpt, supportability, actions | - | - | `docs/decisions/ADR-0112-support-agent-deployment-bundle-isolation.md` |
 | ADR-0111 | Support-Agent Large-File Recovery | Accepted | 2026-05-04 | customgpt, supportability, actions | - | - | `docs/decisions/ADR-0111-support-agent-large-file-recovery.md` |
 | ADR-0110 | Call-Like CTY Admission | Accepted | 2026-05-04 | spot, CTY, telnet, ingest, peer, replay | ADR-0090 | - | `docs/decisions/ADR-0110-call-like-cty-admission.md` |
-| ADR-0109 | Support-Agent Bearer Authentication | Accepted | 2026-05-04 | customgpt, supportability, actions, security | - | - | `docs/decisions/ADR-0109-support-agent-bearer-auth.md` |
+| ADR-0109 | Support-Agent Bearer Authentication | Superseded | 2026-05-04 | customgpt, supportability, actions, security | - | ADR-0257 | `docs/decisions/ADR-0109-support-agent-bearer-auth.md` |
 | ADR-0108 | Repo-Derived Support-Agent Routes | Accepted | 2026-05-04 | customgpt, supportability, actions | - | - | `docs/decisions/ADR-0108-repo-derived-support-agent-routes.md` |
 | ADR-0107 | Support-Agent Action Contract Alignment | Accepted | 2026-05-04 | customgpt, supportability, actions | - | - | `docs/decisions/ADR-0107-support-agent-action-contract-alignment.md` |
 | ADR-0106 | Go Crawler Entry Comments | Accepted | 2026-05-04 | workflow, code quality, supportability | - | - | `docs/decisions/ADR-0106-go-crawler-entry-comments.md` |

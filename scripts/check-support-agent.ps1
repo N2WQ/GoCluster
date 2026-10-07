@@ -243,7 +243,7 @@ await check("public /version returns service status without a secret or header",
 
 await check("public access preserves read-only methods and safe-path boundaries", async () => {
   assert((await call("/version", { method: "POST" })).status === 405, "POST must fail");
-  for (const path of ["/doc?path=customgpt/support-agent/cloudflare-worker.js", "/file?path=private.key", "/doc?path=../README.md"]) {
+  for (const path of ["/doc?path=customgpt/support-agent/cloudflare-worker.js", "/file?path=private.key", "/doc?path=.git/config"]) {
     const response = await call(path);
     assert(response.status === 400 || response.status === 403, `unsafe path must fail: ${path}`);
   }
