@@ -155,7 +155,8 @@ the accepted FCC design rather than introducing a separate province interface.
 - Related docs: [configuration](../../data/config/README.md),
   [domain contract](../domain-contract.md),
   [telnet interface](../../telnet/README.md).
-- Related TSRs: none; this is a feature design decision.
+- Related TSRs: [TSR-0042](../troubleshooting/TSR-0042-short-portable-license-identity.md)
+  corrects short portable identity selection without changing this decision.
 - Refines [ADR-0253](ADR-0253-fcc-state-enrichment-and-filtering.md) for Canadian
   source ownership, shared State vocabulary and older-reader compatibility.
   ADR-0253 and its ADR-0244/0245/0251 dependencies otherwise remain accepted.

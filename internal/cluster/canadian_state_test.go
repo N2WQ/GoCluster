@@ -74,7 +74,7 @@ func canadianClusterCTY(t testing.TB) *cty.CTYDatabase {
 	for _, entity := range []struct {
 		prefix string
 		adif   int
-	}{{"VE3", 1}, {"VE2", 1}, {"CY0", 211}, {"CY9", 252}, {"K1", 291}, {"N2", 291}, {"DL1", 230}} {
+	}{{"VE3", 1}, {"VE2", 1}, {"CY0", 211}, {"CY9", 252}, {"K1", 291}, {"W", 291}, {"N2", 291}, {"DL1", 230}} {
 		fmt.Fprintf(&data, `<key>%s</key><dict><key>Country</key><string>Fixture</string><key>Prefix</key><string>%s</string><key>ADIF</key><integer>%d</integer><key>Continent</key><string>NA</string><key>CQZone</key><integer>5</integer></dict>`, entity.prefix, entity.prefix, entity.adif)
 	}
 	data.WriteString("</dict></plist>")

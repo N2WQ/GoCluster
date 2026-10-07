@@ -34,6 +34,8 @@ func TestCanadianLoginUsesBaseIdentityAndPreservesExceptions(t *testing.T) {
 		{"VE3ABC", "VE3ABC", true}, {"W1/VE3ABC", "VE3ABC", true}, {"VE3ABC/W1", "VE3ABC", true},
 		{"CY0ABC", "CY0ABC", true}, {"CY9ABC", "CY9ABC", true},
 		{"VE3/W1ABC", "W1ABC", false}, {"W1ABC/VE3", "W1ABC", false},
+		{"VE3/W1A", "W1A", false}, {"W1A/VE3", "W1A", false},
+		{"W1234/VE3A", "VE3A", true}, {"VE3A/W1234", "VE3A", true},
 	} {
 		t.Run(row.call, func(t *testing.T) {
 			usCalls, caCalls := []string{}, []string{}
@@ -75,6 +77,34 @@ func TestCanadianLoginUsesBaseIdentityAndPreservesExceptions(t *testing.T) {
 	}
 	if result := s.validateLoginCallsign("VE3WRONG"); result.valid || checks != 1 {
 		t.Fatal("US allowlist leaked into Canadian authority")
+	}
+	for _, row := range []struct{ call, qualified, wrong string }{
+		{"VE3/W1A", "US:^W1A$", "1:^W1A$"},
+		{"W1A/VE3", "US:^W1A$", "1:^W1A$"},
+		{"W1234/VE3A", "1:^VE3A$", "US:^VE3A$"},
+		{"VE3A/W1234", "1:^VE3A$", "US:^VE3A$"},
+	} {
+		t.Run("allowlist/"+row.call, func(t *testing.T) {
+			for _, policy := range []struct {
+				entry string
+				valid bool
+			}{{row.wrong, false}, {row.qualified, true}} {
+				allowlist := filepath.Join(t.TempDir(), "allowlist.txt")
+				if err := os.WriteFile(allowlist, []byte(policy.entry+"\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				uls.SetAllowlistPath(allowlist)
+				before := checks
+				got := s.validateLoginCallsign(row.call)
+				wantChecks := before + 1
+				if policy.valid {
+					wantChecks = before
+				}
+				if got.valid != policy.valid || checks != wantChecks {
+					t.Fatalf("policy=%q result=%+v checks=%d want=%d", policy.entry, got, checks, wantChecks)
+				}
+			}
+		})
 	}
 	previous := uls.CanadianLicenseChecksEnabled()
 	uls.SetCanadianLicenseChecksEnabled(false)

@@ -97,9 +97,9 @@ FCC 176–235 ns/op; Canada 344–368 ns/op. FCC cold lookup was 41.8–42.1 us/
 and 18 allocations. The added cancellable pool/query budget increases cold
 cost. Measurements are local microbenchmarks, without a speedup or p99 claim.
 
-## Final Checks
+## Feature Implementation Checks
 
-The final production state passed `go test ./...`, `go test -race -p 1 ./...`,
+The initial feature implementation passed `go test ./...`, `go test -race -p 1 ./...`,
 `go vet ./...`, `staticcheck ./...` and
 `golangci-lint run ./... --config=.golangci.yaml` (0 issues), with Go 1.27.1,
 Staticcheck 2026.2.1 and golangci-lint 2.14.0. Selected native Windows Go 1.27.1
@@ -125,7 +125,7 @@ race run with serialized package execution passed. Peer code/tests were not
 changed. The later alias and temporary-directory fixes received targeted checks
 and the complete final lane reported above.
 
-The final normal and serialized race logs are
+The feature implementation normal and serialized race logs are
 `/tmp/gocluster-canadian-final-test.log` and
 `/tmp/gocluster-canadian-final-race-complete.log`. The final source pair was also
 reprocessed through exported refresh; the counts, provinces, membership and
@@ -133,3 +133,14 @@ unchanged retry above remained correct. Generated maps were regenerated and
 `go run ./cmd/codemap check -all` reported **code maps are fresh**. A final check
 resolved all 260 local Markdown targets, including the generated maps' repo-root
 targets. `git diff --check` passed.
+
+## Short Portable Review Correction
+
+Review of `281b8fb` found a short portable identity defect in the shared
+normalizer: `VE3/W1A` chose the bare prefix while the reverse form chose `W1A`.
+The existing admission identity syntax now takes priority over bare prefix
+length. New login and healthy-snapshot DE/DX tests cover both orders, longer
+bare prefixes, correct/wrong qualified allowlists and registered State.
+[TSR-0042](troubleshooting/TSR-0042-short-portable-license-identity.md) records
+the before/after evidence and follow-up validation separately from the initial
+feature implementation checks above.

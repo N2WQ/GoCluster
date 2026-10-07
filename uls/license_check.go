@@ -399,10 +399,11 @@ func sourceLookupStats(source *licenseSnapshot) LookupStatsSnapshot {
 	return s
 }
 
-// NormalizeForLicense normalizes callsigns for FCC ULS lookup.
-// Key aspects: Strips SSIDs/skimmer suffixes and chooses the most call-like slash segment.
-// Upstream: IsLicensedUS.
-// Downstream: spot.NormalizeCallsign, unicode digit checks.
+// NormalizeForLicense selects the station identity for FCC/ISED lookup and
+// qualified allowlist matching. Existing station-identity syntax outranks a
+// bare prefix lacking that shape, even when the prefix ties or exceeds its length.
+// SSIDs/skimmer markers are removed; equally call-like segments retain their
+// existing longest/first ordering, as does the fallback without an identity.
 func NormalizeForLicense(call string) string {
 	normalized := spot.NormalizeCallsign(call)
 	if normalized == "" {
@@ -410,21 +411,24 @@ func NormalizeForLicense(call string) string {
 	}
 	normalized = strings.TrimSuffix(normalized, "-#") // RBN skimmer indicator
 
-	// When slashes are present, pick the most callsign-like segment (longest slice that contains a digit)
-	// so base calls like W1VF/VE3 resolve to the licensed call rather than the location suffix.
+	// A bare prefix like VE3 can tie W1A or outlength a short base call. Prefer
+	// station syntax before length, using the same identity gate as admission.
 	if strings.Contains(normalized, "/") {
 		segments := strings.Split(normalized, "/")
 		var candidate string
 		var candidateLen int
+		var candidateIdentity bool
 		for _, seg := range segments {
 			seg = strings.TrimSpace(seg)
 			if seg == "" {
 				continue
 			}
 			if idx := strings.IndexFunc(seg, unicode.IsDigit); idx >= 0 {
-				if len(seg) > candidateLen {
+				identity := spot.IsValidNormalizedCallsign(seg)
+				if identity && !candidateIdentity || identity == candidateIdentity && len(seg) > candidateLen {
 					candidate = seg
 					candidateLen = len(seg)
+					candidateIdentity = identity
 				}
 			}
 		}

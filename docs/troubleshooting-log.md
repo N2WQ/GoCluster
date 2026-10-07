@@ -11,6 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0042 | Short Portable License Identity | Resolved | 2026-10-07 | uls, telnet, runtime, license, portable, allowlist | none | `docs/troubleshooting/TSR-0042-short-portable-license-identity.md` |
 | TSR-0041 | Exact-Call History And Archive Scan Cap | Monitoring | 2026-10-06 | commands, telnet, archive, pagination, lifecycle | ADR-0251 | `docs/troubleshooting/TSR-0041-exact-call-history-and-scan-cap.md` |
 | TSR-0040 | Release Preflight and Output Safety | Monitoring | 2026-10-03 | release, PowerShell, Git, CRLF, ownership | ADR-0242 | `docs/troubleshooting/TSR-0040-release-preflight-and-output-safety.md` |
 | TSR-0039 | Peer Normalized Relay, Date Admission and Telnet Framing | Monitoring | 2026-10-04 | peer, protocol, relay, date, admission, Telnet, framing | ADR-0239, ADR-0240, ADR-0241 | `docs/troubleshooting/TSR-0039-peer-normalized-relay-and-telnet-iac.md` |
