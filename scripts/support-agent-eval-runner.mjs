@@ -2,7 +2,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-const DEFAULT_TOKEN = "local-support-agent-eval-token";
 const REPO_OWNER = "N2WQ";
 const REPO_NAME = "GoCluster";
 const BRANCH = "main";
@@ -153,12 +152,8 @@ async function runCase(testCase) {
 }
 
 async function callWorker(endpoint) {
-  const request = new Request(`https://support-agent.local${endpoint}`, {
-    headers: {
-      Authorization: `Bearer ${DEFAULT_TOKEN}`
-    }
-  });
-  const response = await worker.fetch(request, { GOCLUSTER_DOCS_ACTION_TOKEN: DEFAULT_TOKEN }, {});
+  const request = new Request(`https://support-agent.local${endpoint}`);
+  const response = await worker.fetch(request, {}, {});
   const text = await response.text();
   let body = null;
   if (text) {

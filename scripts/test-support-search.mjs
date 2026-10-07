@@ -5,7 +5,7 @@ import fs from "node:fs/promises";
 import worker from "../customgpt/support-agent/cloudflare-worker.js";
 
 const originalFetch = globalThis.fetch;
-const env = { GOCLUSTER_DOCS_ACTION_TOKEN: "search-fixture-token" };
+const env = {};
 let fixtures = new Map();
 let requests = [];
 const blankRegions = (count, text = "needle") => Array.from({ length: count }, () => `${text}\n\n\n\n\n\n`).join("");
@@ -22,7 +22,7 @@ async function search(query = "needle", scope) {
   const url = new URL("https://fixture.local/search");
   url.searchParams.set("query", query);
   if (scope !== undefined) url.searchParams.set("path", scope);
-  const response = await worker.fetch(new Request(url, { headers: { Authorization: "Bearer search-fixture-token" } }), env, {});
+  const response = await worker.fetch(new Request(url), env, {});
   const serialized = await response.text();
   return { status: response.status, body: JSON.parse(serialized), serialized };
 }
@@ -30,6 +30,7 @@ function assertBounded(result, sources) {
   const { body, serialized } = result;
   assert(serialized.length <= 99000, `serialized response has ${serialized.length} characters`);
   assert.equal(body.limits.max_search_response_chars, 99000);
+  assert.equal(body.auth, "none");
   assert.equal(body.result_count, body.matches.length);
   assert.equal(body.files.length, body.matches.length);
   for (const [index, match] of body.matches.entries()) {

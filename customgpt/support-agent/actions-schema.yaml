@@ -1,14 +1,13 @@
 openapi: 3.1.0
 info:
   title: GoCluster Repository Retrieval Action
-  description: Read-only authenticated API for retrieving current public GoCluster repository files by support-route contract, source map, troubleshooting index, repo-relative path, bundle, approved raw GitHub URL, bounded line window, directory listing, bounded filename discovery, or bounded support-corpus text search. Safe text retrieval includes Go, Markdown, YAML, and first-party PowerShell scripts. Full-file content is capped at 140000 characters, bundles are capped at 12 files, related_paths are capped at 80, line windows are capped at 400 lines, directory listings are capped at 80 entries, filename discovery is capped at 80 results, and support search returns at most 25 merged snippet regions from a curated 46-file safe corpus within a 99000-character serialized-response budget; oversized snippets are explicitly partial. The GPT routes through support-route contracts, repo-derived routes, symptom_routes, and related_paths, then retrieves authoritative files before answering. Answer quality, routing depth, and evaluation expectations are governed by docs/support-agent-quality-contract.md.
-  version: 4.9.0
+  description: Public read-only API for retrieving current public GoCluster repository files by support-route contract, source map, troubleshooting index, repo-relative path, bundle, approved raw GitHub URL, bounded line window, directory listing, bounded filename discovery, or bounded support-corpus text search. Safe text retrieval includes Go, Markdown, YAML, and first-party PowerShell scripts. Full-file content is capped at 140000 characters, bundles are capped at 12 files, related_paths are capped at 80, line windows are capped at 400 lines, directory listings are capped at 80 entries, filename discovery is capped at 80 results, and support search returns at most 25 merged snippet regions from a curated 46-file safe corpus within a 99000-character serialized-response budget; oversized snippets are explicitly partial. The GPT routes through support-route contracts, repo-derived routes, symptom_routes, and related_paths, then retrieves authoritative files before answering. Answer quality, routing depth, and evaluation expectations are governed by docs/support-agent-quality-contract.md.
+  version: 4.10.0
 
 servers:
   - url: https://gocluster-docs-action.n2wq-api.workers.dev
 
-security:
-  - bearerAuth: []
+security: []
 
 paths:
   /version:
@@ -23,8 +22,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/VersionResponse"
-        "401":
-          description: Missing or invalid bearer token
 
   /entrypoint:
     get:
@@ -38,8 +35,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FileResponse"
-        "401":
-          description: Missing or invalid bearer token
         "404":
           description: Entrypoint file not found
 
@@ -55,8 +50,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FileResponse"
-        "401":
-          description: Missing or invalid bearer token
         "404":
           description: Source map not found
 
@@ -72,8 +65,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FileResponse"
-        "401":
-          description: Missing or invalid bearer token
         "404":
           description: Troubleshooting index not found
 
@@ -89,8 +80,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FileResponse"
-        "401":
-          description: Missing or invalid bearer token
         "404":
           description: External authorities document not found
 
@@ -116,8 +105,6 @@ paths:
                 $ref: "#/components/schemas/SupportRouteResponse"
         "400":
           description: Missing or invalid query
-        "401":
-          description: Missing or invalid bearer token
 
   /search:
     get:
@@ -147,8 +134,6 @@ paths:
                 $ref: "#/components/schemas/SearchResponse"
         "400":
           description: Missing or invalid query or search scope
-        "401":
-          description: Missing or invalid bearer token
 
         "502":
           description: No eligible source could be read. Returns coverage metadata and search_sources_unavailable.
@@ -176,8 +161,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DirectoryResponse"
-        "401":
-          description: Missing or invalid bearer token
         "403":
           description: Path is not safe for discovery
         "404":
@@ -211,8 +194,6 @@ paths:
                 $ref: "#/components/schemas/FindFilesResponse"
         "400":
           description: Missing or invalid query
-        "401":
-          description: Missing or invalid bearer token
         "403":
           description: Path is not safe for discovery
 
@@ -264,8 +245,6 @@ paths:
                 $ref: "#/components/schemas/FileResponse"
         "400":
           description: Missing or invalid path
-        "401":
-          description: Missing or invalid bearer token
         "403":
           description: Path is not safe for retrieval
         "404":
@@ -319,8 +298,6 @@ paths:
                 $ref: "#/components/schemas/FileResponse"
         "400":
           description: Missing or invalid path
-        "401":
-          description: Missing or invalid bearer token
         "403":
           description: Path is not safe for retrieval
         "404":
@@ -357,8 +334,6 @@ paths:
                 $ref: "#/components/schemas/BundleResponse"
         "400":
           description: Missing paths
-        "401":
-          description: Missing or invalid bearer token
         "403":
           description: One requested path is not safe for retrieval
         "404":
@@ -367,12 +342,6 @@ paths:
           description: GitHub retrieval failed for one requested path
 
 components:
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      description: Configure the GPT action with the same bearer token stored in the Worker secret binding GOCLUSTER_DOCS_ACTION_TOKEN.
-
   schemas:
     VersionResponse:
       type: object

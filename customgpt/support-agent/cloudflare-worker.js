@@ -21,8 +21,7 @@ const MAX_SEARCH_QUERY_CHARS = 96;
 const MAX_SEARCH_RESULTS = 25;
 const MAX_SEARCH_RESPONSE_CHARS = 99000;
 const SEARCH_CONTEXT_LINES = 2;
-const AUTH_SECRET_BINDING = "GOCLUSTER_DOCS_ACTION_TOKEN";
-const AUTH_MODE = "bearer";
+const AUTH_MODE = "none";
 
 const SUPPORT_ROUTES = [
   {
@@ -296,10 +295,6 @@ export default {
       );
     }
 
-    if (!isAuthenticated(request, env)) {
-      return unauthorizedResponse();
-    }
-
     try {
       if (url.pathname === "/version") {
         return jsonResponse({
@@ -311,7 +306,7 @@ export default {
           entrypoint: ENTRYPOINT_PATH,
           auth: AUTH_MODE,
           retrieved_at: new Date().toISOString(),
-          message: "Worker is reachable with authenticated access"
+          message: "Worker is reachable with public read-only access"
         });
       }
 
@@ -1739,46 +1734,6 @@ function dedupeStrings(values) {
   return out;
 }
 
-function isAuthenticated(request, env) {
-  const expectedToken = env && env[AUTH_SECRET_BINDING];
-  if (!expectedToken) {
-    return false;
-  }
-
-  const header = request.headers.get("authorization") || "";
-  const match = header.match(/^Bearer\s+(.+)$/i);
-  if (!match) {
-    return false;
-  }
-
-  return constantTimeEquals(match[1].trim(), String(expectedToken));
-}
-
-function constantTimeEquals(actual, expected) {
-  const actualText = String(actual || "");
-  const expectedText = String(expected || "");
-  const maxLength = Math.max(actualText.length, expectedText.length);
-  let mismatch = actualText.length ^ expectedText.length;
-
-  for (let i = 0; i < maxLength; i++) {
-    const actualCode = i < actualText.length ? actualText.charCodeAt(i) : 0;
-    const expectedCode = i < expectedText.length ? expectedText.charCodeAt(i) : 0;
-    mismatch |= actualCode ^ expectedCode;
-  }
-
-  return mismatch === 0;
-}
-
-function unauthorizedResponse() {
-  return jsonResponse(
-    {
-      error: "unauthorized",
-      message: "Missing or invalid bearer token"
-    },
-    401
-  );
-}
-
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body, null, 2), {
     status,
@@ -1800,7 +1755,7 @@ function corsHeaders() {
   return {
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET, OPTIONS",
-    "access-control-allow-headers": "Authorization, Content-Type",
+    "access-control-allow-headers": "Content-Type",
     "access-control-max-age": "86400"
   };
 }
@@ -1888,8 +1843,8 @@ function privacyPolicyResponse() {
 
   <h2>Security</h2>
   <p>
-    Repository retrieval endpoints require a bearer token configured by the GPT owner.
-    This privacy page remains public so users can review the policy before using the action.
+    Repository retrieval endpoints are public and do not require authentication.
+    The action retrieves only allowed public repository files; it cannot change repository content.
   </p>
 
   <h2>Changes</h2>

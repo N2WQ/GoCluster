@@ -7,7 +7,7 @@
   shims GitHub retrieval to the current workspace, executes the action plan in
   docs/support-agent-eval-cases.json, and scores retrieval plus optional answer
   text. The harness is local-only: it does not call the deployed Worker and it
-  uses a dummy bearer token for the in-process Worker.
+  uses no authentication for the in-process Worker.
 
 .PARAMETER CasesPath
   Repo-relative path to the machine-readable support-agent eval case catalog.
@@ -37,7 +37,7 @@
   Prerequisites: PowerShell and Node.js 18 or newer. LiveModel also requires
   OPENAI_API_KEY.
   Side effects: creates one timestamped report directory under .tmp by default.
-  Safety: does not print API keys, bearer tokens, private config, or deployed
+  Safety: does not print API keys, private config, or deployed
   Worker URLs; does not modify runtime config or call the deployed Worker.
 #>
 [CmdletBinding()]
