@@ -70,6 +70,8 @@ dirty-version display requirements are replaced.
 
 ## Links
 
+- Release-number and numbered-tag clauses superseded by [ADR-0252](ADR-0252-automatic-commit-suffix-release-tags.md). Date-only version and runtime identity contracts remain accepted.
+
 - Related tests: `main_version_test.go`, `commands/processor_test.go`, `peer/pc18_identity_test.go`, `scripts/test-release-identity.ps1`
 - Related docs: [build notes](../../README.md#build-and-service-notes), [peer profile](../../peer/README.md), [scripts](../../scripts/README.md)
 - Supersedes: [ADR-0077](ADR-0077-compile-date-binary-version.md); refines release identity and parameter clauses in [ADR-0076](ADR-0076-github-release-package.md) and dirty-version display clauses in [ADR-0076](ADR-0076-github-release-package.md)/[ADR-0078](ADR-0078-release-package-clean-source-gate.md).

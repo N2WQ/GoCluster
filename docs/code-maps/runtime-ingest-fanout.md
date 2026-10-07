@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `1281e85101e4c8c2`
+- Source fingerprint: `f017daafb8741e0e`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -566,6 +566,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0252](docs/decisions/ADR-0252-automatic-commit-suffix-release-tags.md) | Accepted | 2026-10-06 | release scripts, build metadata | `path:peer` |
 | [ADR-0251](docs/decisions/ADR-0251-exact-call-paged-history.md) | Accepted | 2026-10-06 | commands, telnet, archive, pagination, lifecycle | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0249](docs/decisions/ADR-0249-effective-human-filter-details.md) | Accepted | 2026-10-06 | telnet, commands, human readbacks, bounded output | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0248](docs/decisions/ADR-0248-canonical-dxcc-input-and-human-labels.md) | Accepted | 2026-10-06 | cty, commands, telnet, DXCC, human readbacks | `area:commands, area:telnet, path:commands, path:telnet` |

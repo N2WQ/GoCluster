@@ -36,10 +36,11 @@ skill installation.
 Release and PGO scripts stamp the UTC compile date as exactly `YYMMDD`, without
 a prefix, commit suffix, or dirty suffix. Commit and build time are stamped
 separately; GoCluster does not display or broadcast a dirty flag. Release
-tags and names use `YYMMDDrN`, where `N` is the explicitly supplied positive
-`-ReleaseNumber`. This is required even with `-PackageOnly`, which stamps an
-intended tag without publishing it. Duplicate tags are rejected; plain and PGO
-builds omit release-tag metadata. See [build notes](../README.md#build-and-service-notes).
+tags and names automatically use `YYMMDDrhhhh`, where `hhhh` is the last four
+characters of the captured full Git commit hash, for example `261006r9abc`.
+No release number is supplied or prompted for. `-PackageOnly` stamps an
+intended tag without publishing it. Duplicate tags are rejected, including
+same-day retries of the same commit; plain and PGO builds omit release-tag metadata. See [build notes](../README.md#build-and-service-notes).
 
 Run `test-release-identity.ps1` for parameter, stamping, duplicate-target, and
 mocked publishing checks; its Git/GitHub operations never reach external tools.

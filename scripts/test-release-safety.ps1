@@ -69,8 +69,10 @@ function New-ReleaseFixture {
     return $repo
 }
 function Reset-ReleaseNative([string]$Repo, [string]$Fault = '') {
+    $fixtureCommit = Invoke-FixtureGit $Repo @('rev-parse', 'HEAD')
+    $fixtureTag = (Get-Date).ToUniversalTime().ToString('yyMMdd') + 'r' + $fixtureCommit.Substring($fixtureCommit.Length - 4)
     $global:ReleaseSafetyFixture = [pscustomobject]@{
-        Repo = $Repo; RealGit = $script:RealGit; Fault = $Fault; FaultCode = 19
+        Repo = $Repo; RealGit = $script:RealGit; Fault = $Fault; FaultCode = 19; ReleaseTag = $fixtureTag
         Calls = [Collections.Generic.List[object]]::new(); SuccessStderr = $false
         LocalCode = 2; RemoteCode = 2; Listing = 'absent'; Permission = 'WRITE'
         Drift = ''; FinalDrift = ''; HeadCalls = 0; BuildSerial = [guid]::NewGuid().ToString('N')
@@ -190,11 +192,11 @@ function global:gh {
             $page = if ($nativeArgs[-1] -match 'page=(\d+)$') { [int]$Matches[1] } else { throw 'Missing explicit listing page.' }
             switch ($state.Listing) {
                 'absent' { $output = '[]' }
-                'duplicate' { $output = '[{"tag_name":"' + (Get-Date).ToUniversalTime().ToString('yyMMdd') + 'r2","draft":false}]' }
-                'draft' { $output = '[{"tag_name":"' + (Get-Date).ToUniversalTime().ToString('yyMMdd') + 'r2","draft":true}]' }
+                'duplicate' { $output = '[{"tag_name":"' + $state.ReleaseTag + '","draft":false}]' }
+                'draft' { $output = '[{"tag_name":"' + $state.ReleaseTag + '","draft":true}]' }
                 'late-draft' {
                     if ($page -eq 1) { $output = (@(1..100 | ForEach-Object { @{ tag_name = "other$_"; draft = $false } }) | ConvertTo-Json -Compress) }
-                    else { $output = '[{"tag_name":"' + (Get-Date).ToUniversalTime().ToString('yyMMdd') + 'r2","draft":true}]' }
+                    else { $output = '[{"tag_name":"' + $state.ReleaseTag + '","draft":true}]' }
                 }
                 'malformed' { $output = '{"message":"not a release list"}' }
                 'invalid-entry' { $output = '[{"tag_name":"x","draft":"false"}]' }
@@ -298,17 +300,17 @@ try {
         $repo = New-ReleaseFixture
         Reset-ReleaseNative $repo
         $global:ReleaseSafetyFixture.SuccessStderr = $true
-        Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageOnly = $true }
+        Invoke-ActualRelease $repo @{ PackageOnly = $true }
         Assert-Fixture (@($global:ReleaseSafetyFixture.Calls | Where-Object Operation -eq 'go-build-peer').Count -eq 1) 'Success with stderr did not reach both builds.'
         $global:ReleaseSafetyFixture.Fault = 'go-tidy'
         Expect-ReleaseRefusal { Invoke-GoRunHost @('mod', 'tidy', '-diff') } 'failed'
     }
     Run-ReleaseCase 'repeat owned package and private marker exclusion' {
         $repo = New-ReleaseFixture; Reset-ReleaseNative $repo
-        Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageOnly = $true }
+        Invoke-ActualRelease $repo @{ PackageOnly = $true }
         Reset-ReleaseNative $repo
         Remove-Item Env:GOOS, Env:GOARCH -ErrorAction SilentlyContinue
-        Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageOnly = $true }
+        Invoke-ActualRelease $repo @{ PackageOnly = $true }
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         $zip = [IO.Compression.ZipFile]::OpenRead((Join-Path $repo 'gocluster-windows-amd64.zip'))
         try {
@@ -324,7 +326,7 @@ try {
     }
     Run-ReleaseCase 'custom bracket paths and explicit publication target' {
         $repo = New-ReleaseFixture; Reset-ReleaseNative $repo
-        Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageDirectoryName = 'package[one]'; PackageName = 'asset[two]'; OutputDir = 'custom-out' }
+        Invoke-ActualRelease $repo @{ PackageDirectoryName = 'package[one]'; PackageName = 'asset[two]'; OutputDir = 'custom-out' }
         $calls = $global:ReleaseSafetyFixture.Calls
         $tag = @($calls | Where-Object Operation -eq 'git-tag')[0]
         $head = Invoke-FixtureGit $repo @('rev-parse', 'HEAD')
@@ -342,7 +344,7 @@ try {
         $repo = New-ReleaseFixture
         $output = Join-Path $script:FixtureRoot ('absolute-output-' + [guid]::NewGuid().ToString('N'))
         Reset-ReleaseNative $repo
-        $parameters = @{ ReleaseNumber = 2; PackageOnly = $true; AllowDirty = $true; PackageDirectoryName = 'custom-stage'; PackageName = 'custom-asset'; OutputDir = $output }
+        $parameters = @{ PackageOnly = $true; AllowDirty = $true; PackageDirectoryName = 'custom-stage'; PackageName = 'custom-asset'; OutputDir = $output }
         Invoke-ActualRelease $repo $parameters
         Reset-ReleaseNative $repo
         Invoke-ActualRelease $repo $parameters
@@ -354,14 +356,14 @@ try {
             if ($combination -in @('os-only', 'both')) { $env:GOOS = 'linux' } else { Remove-Item Env:GOOS -ErrorAction SilentlyContinue }
             if ($combination -in @('arch-only', 'both')) { $env:GOARCH = 'arm64' } else { Remove-Item Env:GOARCH -ErrorAction SilentlyContinue }
             $repo = New-ReleaseFixture; Reset-ReleaseNative $repo 'go-build-peer'
-            Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageOnly = $true } 'failed'
+            Invoke-ActualRelease $repo @{ PackageOnly = $true } 'failed'
         }
     }
     $env:GOOS = 'linux'; $env:GOARCH = 'arm64'
     foreach ($forbiddenSwitch in @('AllowDirty', 'SkipCodeMapCheck')) {
         Run-ReleaseCase "publish switch guard: $forbiddenSwitch" {
             $repo = New-ReleaseFixture; Reset-ReleaseNative $repo
-            $parameters = @{ ReleaseNumber = 2 }; $parameters[$forbiddenSwitch] = $true
+            $parameters = @{}; $parameters[$forbiddenSwitch] = $true
             Invoke-ActualRelease $repo $parameters 'only permitted'
             Assert-Fixture ($global:ReleaseSafetyFixture.Calls.Count -eq 0) 'Forbidden publish switch reached native operations.'
         }
@@ -369,7 +371,7 @@ try {
     foreach ($fault in @('git-root', 'git-status', 'go-tidy', 'go-map', 'git-head', 'git-abbrev', 'git-files', 'git-target', 'gh-auth', 'git-local', 'git-remote', 'gh-repo', 'gh-page1', 'go-readme', 'go-build-main', 'go-build-peer', 'archive', 'git-tag', 'git-push', 'gh-create')) {
         Run-ReleaseCase "native stop: $fault" {
             $repo = New-ReleaseFixture; Reset-ReleaseNative $repo $fault
-            Invoke-ActualRelease $repo @{ ReleaseNumber = 2 } '.'
+            Invoke-ActualRelease $repo @{} '.'
             Assert-NoReleaseAfter $fault
             if ($fault -notin @('git-tag', 'git-push', 'gh-create')) {
                 Assert-Fixture (@($global:ReleaseSafetyFixture.Calls | Where-Object { $_.Operation -in @('git-tag', 'git-push', 'gh-create') }).Count -eq 0) 'Publication followed refusal.'
@@ -381,7 +383,7 @@ try {
         Write-FixtureFile (Join-Path $repo 'unrelated.txt') 'untouched user content'
         $before = Get-FixtureBytes $repo
         Reset-ReleaseNative $repo
-        Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageOnly = $true } 'unrelated.txt'
+        Invoke-ActualRelease $repo @{ PackageOnly = $true } 'unrelated.txt'
         Assert-FixtureBytes $repo $before
         Assert-NoReleaseAfter 'git-status'
     }
@@ -389,14 +391,14 @@ try {
         Run-ReleaseCase "final source guard: $drift" {
             $repo = New-ReleaseFixture; Reset-ReleaseNative $repo
             $global:ReleaseSafetyFixture.Drift = $drift
-            Invoke-ActualRelease $repo @{ ReleaseNumber = 2 } 'dirty worktree|HEAD changed'
+            Invoke-ActualRelease $repo @{} 'dirty worktree|HEAD changed'
             Assert-Fixture (@($global:ReleaseSafetyFixture.Calls | Where-Object { $_.Operation -in @('git-tag', 'git-push', 'gh-create') }).Count -eq 0) 'Source drift reached refs.'
             Assert-Fixture (-not (Test-Path -LiteralPath (Join-Path $repo 'ready_to_run'))) 'Source drift promoted outputs.'
         }
         Run-ReleaseCase "guard immediately before refs: $drift" {
             $repo = New-ReleaseFixture; Reset-ReleaseNative $repo
             $global:ReleaseSafetyFixture.FinalDrift = $drift
-            Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageDirectoryName = 'custom-stage'; PackageName = 'custom-asset'; OutputDir = 'custom-out' } 'dirty worktree|HEAD changed'
+            Invoke-ActualRelease $repo @{ PackageDirectoryName = 'custom-stage'; PackageName = 'custom-asset'; OutputDir = 'custom-out' } 'dirty worktree|HEAD changed'
             Assert-Fixture (Test-Path -LiteralPath (Join-Path $repo 'custom-out/custom-asset.zip')) 'Final refusal fixture never reached output promotion.'
             Assert-Fixture (@($global:ReleaseSafetyFixture.Calls | Where-Object { $_.Operation -in @('git-tag', 'git-push', 'gh-create') }).Count -eq 0) 'Final source drift reached refs.'
         }
@@ -405,7 +407,7 @@ try {
         Run-ReleaseCase "release listing: $listing" {
             $repo = New-ReleaseFixture; Reset-ReleaseNative $repo
             $global:ReleaseSafetyFixture.Listing = $listing
-            Invoke-ActualRelease $repo @{ ReleaseNumber = 2 } 'already exists|Invalid'
+            Invoke-ActualRelease $repo @{} 'already exists|Invalid'
             Assert-Fixture (@($global:ReleaseSafetyFixture.Calls | Where-Object Operation -eq 'go-readme').Count -eq 0) 'Invalid/duplicate release lookup began staging.'
             if ($listing -eq 'late-draft') { Assert-Fixture (@($global:ReleaseSafetyFixture.Calls | Where-Object Operation -eq 'gh-page2').Count -eq 1) 'Listing did not inspect its second page.' }
         }
@@ -414,14 +416,14 @@ try {
         Run-ReleaseCase "draft visibility: $permission" {
             $repo = New-ReleaseFixture; Reset-ReleaseNative $repo
             $global:ReleaseSafetyFixture.Permission = $permission
-            Invoke-ActualRelease $repo @{ ReleaseNumber = 2 } 'draft visibility'
+            Invoke-ActualRelease $repo @{} 'draft visibility'
         }
     }
     foreach ($kind in @('local', 'remote')) {
         Run-ReleaseCase "duplicate $kind tag" {
             $repo = New-ReleaseFixture; Reset-ReleaseNative $repo
             if ($kind -eq 'local') { $global:ReleaseSafetyFixture.LocalCode = 0 } else { $global:ReleaseSafetyFixture.RemoteCode = 0 }
-            Invoke-ActualRelease $repo @{ ReleaseNumber = 2 } 'already exists'
+            Invoke-ActualRelease $repo @{} 'already exists'
         }
     }
     Run-ReleaseCase 'ambiguous push remotes and different fetch URL' {
@@ -476,7 +478,7 @@ try {
             $repo = New-ReleaseFixture
             $legacy = New-LegacyReleaseOutputs $repo $shape
             Reset-ReleaseNative $repo
-            Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageOnly = $true }
+            Invoke-ActualRelease $repo @{ PackageOnly = $true }
             Assert-Fixture (Test-Path -LiteralPath (Join-Path $legacy.StageRoot '.gocluster-release-owner.json')) 'Replacement did not acquire an ownership marker.'
             Assert-Fixture (-not (Test-Path -LiteralPath (Join-Path $legacy.StageRoot 'operator-state'))) 'Private legacy state entered the replacement stage.'
             $runs = @(Get-ChildItem -LiteralPath (Join-Path $repo '.tmp') -Filter 'release-*' -Directory)
@@ -492,7 +494,7 @@ try {
             try { Assert-Fixture (@($zip.Entries | Where-Object { $_.FullName -match 'operator-state|private|previous-|owner' }).Count -eq 0) 'Legacy bytes or ownership bookkeeping entered the public ZIP.' }
             finally { $zip.Dispose() }
             Reset-ReleaseNative $repo
-            Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageOnly = $true }
+            Invoke-ActualRelease $repo @{ PackageOnly = $true }
             if ($null -ne $legacy.StageBytes) { Assert-FixtureBytes $stageBackup $legacy.StageBytes }
             if ($legacy.ZipHash) { Assert-Fixture ((Get-FileHash -LiteralPath $zipBackup -Algorithm SHA256).Hash -ceq $legacy.ZipHash) 'Owned rebuild discarded the retained legacy ZIP.' }
         }
@@ -501,7 +503,7 @@ try {
                 $repo = New-ReleaseFixture
                 $legacy = New-LegacyReleaseOutputs $repo $shape
                 Reset-ReleaseNative $repo $fault
-                Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageOnly = $true } 'failed'
+                Invoke-ActualRelease $repo @{ PackageOnly = $true } 'failed'
                 if ($null -ne $legacy.StageBytes) { Assert-FixtureBytes $legacy.StageRoot $legacy.StageBytes }
                 else { Assert-Fixture (-not (Test-Path -LiteralPath $legacy.StageRoot)) 'Failed build promoted a new stage over ZIP-only legacy output.' }
                 if ($legacy.ZipHash) { Assert-Fixture ((Get-FileHash -LiteralPath $legacy.ZipPath -Algorithm SHA256).Hash -ceq $legacy.ZipHash) 'Build failure changed a legacy ZIP.' }
@@ -514,7 +516,7 @@ try {
     foreach ($mutation in @('edited-file', 'missing-file', 'extra-file', 'extra-dir', 'zip-edited', 'zip-directory', 'stage-file', 'marker-malformed', 'marker-directory', 'marker-identity', 'inventory-duplicate')) {
         Run-ReleaseCase "owned output refusal: $mutation" {
             $repo = New-ReleaseFixture; Reset-ReleaseNative $repo
-            Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageOnly = $true }
+            Invoke-ActualRelease $repo @{ PackageOnly = $true }
             $stage = Join-Path $repo 'ready_to_run'; $zip = Join-Path $repo 'gocluster-windows-amd64.zip'; $marker = Join-Path $stage '.gocluster-release-owner.json'
             switch ($mutation) {
                 'edited-file' { [IO.File]::AppendAllText((Join-Path $stage 'data/config/app.yaml'), 'operator private edit') }
@@ -531,7 +533,7 @@ try {
             }
             $before = Get-FixtureBytes $repo
             Reset-ReleaseNative $repo
-            Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageOnly = $true } '.'
+            Invoke-ActualRelease $repo @{ PackageOnly = $true } '.'
             Assert-FixtureBytes $repo $before
             Assert-Fixture (@($global:ReleaseSafetyFixture.Calls | Where-Object Operation -eq 'go-readme').Count -eq 0) 'Unowned existing output began preparation.'
         }
@@ -545,10 +547,10 @@ try {
         New-Item -ItemType Junction -Path $link -Target $outside | Out-Null
         try { Expect-ReleaseRefusal { Get-ReleasePaths $repo 'linked-output/subdir' 'asset' 'ready_to_run' } 'Reparse' }
         finally { [IO.Directory]::Delete($link) }
-        Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageOnly = $true }
+        Invoke-ActualRelease $repo @{ PackageOnly = $true }
         $nested = Join-Path $repo 'ready_to_run/linked-state'
         New-Item -ItemType Junction -Path $nested -Target $outside | Out-Null
-        try { Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageOnly = $true } 'Reparse'; Assert-FixtureBytes $outside $before }
+        try { Invoke-ActualRelease $repo @{ PackageOnly = $true } 'Reparse'; Assert-FixtureBytes $outside $before }
         finally { [IO.Directory]::Delete($nested) }
     }
     Run-ReleaseCase 'markerless legacy junction refuses before replacement' {
@@ -561,7 +563,7 @@ try {
         New-Item -ItemType Junction -Path $link -Target $outside | Out-Null
         try {
             Reset-ReleaseNative $repo
-            Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageOnly = $true } 'Reparse'
+            Invoke-ActualRelease $repo @{ PackageOnly = $true } 'Reparse'
             Assert-FixtureBytes $outside $before
             Assert-Fixture ((Get-FileHash -LiteralPath $legacy.ZipPath -Algorithm SHA256).Hash -ceq $legacy.ZipHash) 'Legacy reparse refusal changed the ZIP.'
             Assert-Fixture (@($global:ReleaseSafetyFixture.Calls | Where-Object Operation -eq 'go-readme').Count -eq 0) 'Unsafe legacy staging began preparation.'
@@ -590,16 +592,16 @@ try {
     foreach ($fault in @('go-tidy', 'go-readme', 'go-build-main', 'go-build-peer', 'archive', 'marker')) {
         Run-ReleaseCase "prior outputs survive: $fault" {
             $repo = New-ReleaseFixture; Reset-ReleaseNative $repo
-            Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageOnly = $true }
+            Invoke-ActualRelease $repo @{ PackageOnly = $true }
             $before = Get-FixtureBytes $repo
             Reset-ReleaseNative $repo $fault
-            Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageOnly = $true } '.'
+            Invoke-ActualRelease $repo @{ PackageOnly = $true } '.'
             Assert-FixtureBytes $repo $before
         }
     }
     Run-ReleaseCase 'second promotion failure restores prior bytes' {
         $repo = New-ReleaseFixture; Reset-ReleaseNative $repo
-        Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageOnly = $true }
+        Invoke-ActualRelease $repo @{ PackageOnly = $true }
         $PackageName = 'gocluster-windows-amd64'; $PackageDirectoryName = 'ready_to_run'
         $paths = Get-ReleasePaths $repo '.' $PackageName $PackageDirectoryName
         $beforeStage = Get-FixtureBytes $paths.StageRoot
@@ -617,7 +619,7 @@ try {
     }
     Run-ReleaseCase 'rollback failure retains named recovery backups' {
         $repo = New-ReleaseFixture; Reset-ReleaseNative $repo
-        Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageOnly = $true }
+        Invoke-ActualRelease $repo @{ PackageOnly = $true }
         $PackageName = 'gocluster-windows-amd64'; $PackageDirectoryName = 'ready_to_run'
         $paths = Get-ReleasePaths $repo '.' $PackageName $PackageDirectoryName
         $priorStage = Get-FixtureBytes $paths.StageRoot
@@ -658,7 +660,7 @@ try {
     }
     Run-ReleaseCase 'failed old-backup verification survives actual outer cleanup guard' {
         $repo = New-ReleaseFixture; Reset-ReleaseNative $repo
-        Invoke-ActualRelease $repo @{ ReleaseNumber = 2; PackageOnly = $true }
+        Invoke-ActualRelease $repo @{ PackageOnly = $true }
         $PackageName = 'gocluster-windows-amd64'; $PackageDirectoryName = 'ready_to_run'
         $paths = Get-ReleasePaths $repo '.' $PackageName $PackageDirectoryName
         $priorStage = Get-FixtureBytes $paths.StageRoot

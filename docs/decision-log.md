@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0252 | Automatic Commit-Suffix Release Tags | Accepted | 2026-10-06 | release scripts, build metadata | ADR-0236 numbering clauses | - | `docs/decisions/ADR-0252-automatic-commit-suffix-release-tags.md` |
 | ADR-0251 | Exact-Call Paged Archive History | Accepted | 2026-10-06 | commands, telnet, archive, pagination, lifecycle | Refines ADR-0011/0248 history selection and paging | - | `docs/decisions/ADR-0251-exact-call-paged-history.md` |
 | ADR-0250 | Go 1.27 Development And Fresh Launcher Builds | Accepted | 2026-10-06 | development, Go, WSL, skills, build, launcher | ADR-0155 (source directory only) | - | `docs/decisions/ADR-0250-go127-development-and-launcher.md` |
 | ADR-0249 | Effective Human Filter Details | Accepted | 2026-10-06 | telnet, commands, human readbacks, bounded output | Replaces exact human FULL/category portions of ADR-0246/0247/0248 | - | `docs/decisions/ADR-0249-effective-human-filter-details.md` |
@@ -39,7 +40,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR-0239 | Peer Original Validation and Relay | Accepted | 2026-10-04 | peer, protocol, admission, ownership | Refines ADR-0050/0054/0091/0234 selected spot clauses | Date/timestamp clauses refined by ADR-0240; comment framing by ADR-0241 | `docs/decisions/ADR-0239-peer-original-validation-and-relay.md` |
 | ADR-0238 | Named Presets Shared Across Numeric SSIDs | Accepted | 2026-10-03 | filter, telnet, commands, persistence | - | Exact storage and continuity refined by ADR-0244 | `docs/decisions/ADR-0238-named-presets.md` |
 | ADR-0237 | Remove Console Peer-Log Status | Accepted | 2026-10-03 | console, peer diagnostics | ADR-0234 (console status display only) | - | `docs/decisions/ADR-0237-remove-console-peer-log-status.md` |
-| ADR-0236 | Date-Only Build Version | Accepted | 2026-10-03 | build metadata, releases, console, PC18 | ADR-0077; refines ADR-0076 release identity and ADR-0076/0078 display | - | `docs/decisions/ADR-0236-date-only-build-version.md` |
+| ADR-0236 | Date-Only Build Version | Accepted | 2026-10-03 | build metadata, releases, console, PC18 | ADR-0077; refines ADR-0076 release identity and ADR-0076/0078 display | ADR-0252 (numbering clauses) | `docs/decisions/ADR-0236-date-only-build-version.md` |
 | ADR-0235 | Spot History Maintenance | Accepted | 2026-10-02 | spot, hot path, retained state | - | - | `docs/decisions/ADR-0235-spot-history-maintenance.md` |
 | ADR-0234 | Peer Owned Resources and Exact Spot Keys | Accepted | 2026-10-02 | dedup, peer, diagnostics, persistence | Refines ADR-0230 ownership clauses | ADR-0237 (console status display only) | `docs/decisions/ADR-0234-peer-owned-resources-and-exact-spot-keys.md` |
 | ADR-0233 | PC92 Controlled Retries and Configured Peer Cap | Accepted | 2026-10-02 | peer, config, qualification | ADR-0230/0231/0232 (admission recovery only) | - | `docs/decisions/ADR-0233-pc92-controlled-retries-and-peer-cap.md` |

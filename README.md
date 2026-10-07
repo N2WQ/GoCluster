@@ -1135,13 +1135,14 @@ builds also stamp a release tag, shown by `--version`, `SHOW BUILD`, and PC18.
 available. Peer compatibility values remain
 `5457`/`633`, with legacy PC19 version `5401`.
 
-Same-day builds share a product version. Supply a positive `-ReleaseNumber` for
-every release-script build, including package-only builds: number `2` on UTC
-date `261003` stamps tag `261003r2`. Git tags, GitHub Release names, duplicate
-checks, and release notes use this separate release identity. Different numbers
-allow multiple releases per day; existing tags are never overwritten. Rebuilding
-after UTC midnight changes the date. Package-only builds stamp an intended tag
-without publishing it; plain and PGO builds omit the release-tag field.
+Same-day builds share a product version. Release-script builds automatically
+use the UTC date and last four characters of the captured full Git commit hash:
+`261006r9abc`. No release number is supplied or prompted for. Git tags, GitHub
+Release names, duplicate checks, and release notes use this separate identity.
+Existing tags are never overwritten; a same-day retry of the same commit or a
+same-day commit-suffix collision is rejected. Rebuilding after UTC midnight
+changes the date. Package-only builds stamp an intended tag without publishing
+it; plain and PGO builds omit the release-tag field.
 Use the separate metadata to distinguish binaries; dirty package-only
 builds no longer carry a `+dirty` version suffix. GoCluster neither displays nor
 broadcasts a dirty/modified flag.
@@ -1166,13 +1167,13 @@ go build -trimpath -o peerdiag.exe ./cmd/peerdiag
 Windows release-style package for local testing:
 
 ```pwsh
-.\scripts\create-release.ps1 -ReleaseNumber 2 -PackageOnly -AllowDirty
+.\scripts\create-release.ps1 -PackageOnly -AllowDirty
 ```
 
 Clean publishable Windows release package:
 
 ```pwsh
-.\scripts\create-release.ps1 -ReleaseNumber 2
+.\scripts\create-release.ps1
 ```
 
 The release script builds both executables; a manual build is unnecessary.

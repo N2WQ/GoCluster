@@ -10,10 +10,6 @@
 .PARAMETER PackageOnly
 	Create the local package without publishing a GitHub release.
 
-.PARAMETER ReleaseNumber
-	Required positive release number. The UTC date and this number form the tag,
-	for example 261003r2. Package-only builds stamp the intended tag as metadata.
-
 .PARAMETER AllowDirty
 	Allow local package creation from a dirty worktree. Publishing still requires
 	clean, intentional source.
@@ -38,6 +34,8 @@
 	Prerequisites: Go toolchain, git, and GitHub CLI authentication for publishing.
 	Side effects: builds a binary, creates package directories/zips, and can
 	publish a GitHub release when PackageOnly is omitted.
+	Release tags use the UTC date and last four full commit hash characters,
+	for example 261006r9abc. Package-only builds stamp the intended tag.
 	Safety: do not publish from a dirty worktree; real secrets and private
 	operational state must not enter the release payload.
 	Markerless legacy outputs are backed up automatically after preparation.
@@ -45,10 +43,8 @@
 	directories must have no concurrent writers during packaging.
 #>
 
+[CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
-    [ValidateRange(1, 2147483647)]
-    [int]$ReleaseNumber,
     [switch]$PackageOnly,
     [switch]$AllowDirty,
     [string]$OutputDir = ".",
@@ -813,7 +809,7 @@ try {
     $commit = $shortCommit.Output.Trim()
     $buildUtc = (Get-Date).ToUniversalTime()
     $version = $buildUtc.ToString("yyMMdd")
-    $releaseTag = "${version}r${ReleaseNumber}"
+    $releaseTag = "${version}r$($commitId.Substring($commitId.Length - 4))"
     $buildTime = $buildUtc.ToString("yyyy-MM-ddTHH:mm:ssZ")
 
     $paths = Get-ReleasePaths -RepoRoot $repoRoot -OutputDir $OutputDir -PackageName $PackageName -PackageDirectoryName $PackageDirectoryName
