@@ -11,6 +11,10 @@ executor's contract.
   control validation.
 - Run the smallest useful targeted checks while working, then one complete
   selected lane on the final relevant state.
+- As the final write step in validation, after source and documentation updates,
+  run `go run ./cmd/codemap generate -all`. Then run
+  `go run ./cmd/codemap check -all` and review the final diff. Repeat if map
+  inputs subsequently change.
 - A missing required tool is a reported gap. Missing optional investigation
   tooling matters only when that investigation is required.
 - Report observed results honestly. Do not infer runtime, performance, or
