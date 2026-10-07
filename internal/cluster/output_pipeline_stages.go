@@ -374,7 +374,9 @@ func (p *outputPipeline) prepareFanoutSpot(ctx *outputSpotContext) bool {
 		if info := effectivePrefixInfo(ctx.ctyDB, p.metaCache, call); info != nil {
 			deGrid := strings.TrimSpace(s.DEMetadata.Grid)
 			deGridDerived := s.DEMetadata.GridDerived
+			deState := s.DEMetadata.State
 			s.DEMetadata = metadataFromPrefix(info)
+			s.DEMetadata.State = deState
 			if deGrid != "" {
 				s.DEMetadata.Grid = deGrid
 				s.DEMetadata.GridDerived = deGridDerived

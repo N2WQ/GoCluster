@@ -141,7 +141,7 @@ func TestExactMarkedUserRecordAndLegacyMigration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, literal := range []string{"configuration_version: 1\n", "allbands: false\n", "USB: false\n", "SOTA: false\n", "allow_wwv: false\n"} {
+	for _, literal := range []string{"configuration_version: 2\n", "allbands: false\n", "USB: false\n", "SOTA: false\n", "allow_wwv: false\n"} {
 		if !bytes.Contains(disk, []byte(literal)) {
 			t.Fatalf("disk omitted exact literal %q", literal)
 		}
@@ -151,14 +151,14 @@ func TestExactMarkedUserRecordAndLegacyMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	record, err = LoadUserRecord("N2WQ-2")
-	if err != nil || !record.AllBands || !record.Modes["UNKNOWN"] || record.ConfigurationVersion != 1 {
+	if err != nil || !record.AllBands || !record.Modes["UNKNOWN"] || record.ConfigurationVersion != CurrentConfigurationVersion {
 		t.Fatalf("legacy migration changed: record=%+v err=%v", record, err)
 	}
 }
 
 func TestUnsupportedUserRecordMarkersRemainUnchanged(t *testing.T) {
 	usePresetTestDir(t)
-	for _, marker := range []string{"0", "2", "-1", "null", "\"1\"", "[]", "true"} {
+	for _, marker := range []string{"0", "3", "-1", "null", "\"1\"", "[]", "true"} {
 		raw := "configuration_version: " + marker + "\nbands: {}\n"
 		path := userRecordPath("N2WQ-1")
 		if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
@@ -301,7 +301,7 @@ func TestSaveConfigurationPersistsExactBaselineAndMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, literal := range []string{"configuration_version: 1\n", "name: CONTEST\n", "noise_class: URBAN\n", "last_login_utc: 2026-10-05T14:00:00Z\n", "20m: false\n", "allow_wwv: false\n"} {
+	for _, literal := range []string{"configuration_version: 2\n", "name: CONTEST\n", "noise_class: URBAN\n", "last_login_utc: 2026-10-05T14:00:00Z\n", "20m: false\n", "allow_wwv: false\n"} {
 		if !bytes.Contains(data, []byte(literal)) {
 			t.Fatalf("missing durable literal %q", literal)
 		}
@@ -336,7 +336,7 @@ func TestAppliedBaselineValidation(t *testing.T) {
 	for _, raw := range []string{
 		"configuration_version: 1\npreset: {name: CONTEST, baseline: null}\n",
 		"configuration_version: 1\npreset: {name: lower, baseline: {configuration_version: 1}}\n",
-		"configuration_version: 1\npreset: {name: CONTEST, baseline: {configuration_version: 2}}\n",
+		"configuration_version: 1\npreset: {name: CONTEST, baseline: {configuration_version: 3}}\n",
 		"configuration_version: 1\npreset: {name: CONTEST, baseline: {configuration_version: 1, grid: " + strings.Repeat("A", MaxPresetBytes+1) + "}}\n",
 	} {
 		if err := os.WriteFile(userRecordPath("N2WQ-1"), []byte(raw), 0o644); err != nil {
@@ -372,7 +372,7 @@ func TestMixedPresetVersionsAndUnsupportedMutation(t *testing.T) {
 	if err := SavePreset("N2WQ", "NEW", testSavedPreset()); err != nil {
 		t.Fatalf("supported mixed collection unusable: %v", err)
 	}
-	for _, marker := range []string{"0", "2", "null", "\"1\""} {
+	for _, marker := range []string{"0", "3", "null", "\"1\""} {
 		bad := fmt.Sprintf("presets:\n  EXACT: {configuration_version: 1}\n  FUTURE: {configuration_version: %s}\n", marker)
 		if err := os.WriteFile(path, []byte(bad), 0o644); err != nil {
 			t.Fatal(err)

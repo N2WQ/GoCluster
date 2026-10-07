@@ -535,6 +535,9 @@ PASS <type> <list> adds to allowlist and removes from blocklist.
 REJECT <type> <list> adds to blocklist and removes from allowlist.
 PASS/REJECT MODE <list> are deltas; modes not listed are unchanged.
 DXDXCC/DEDXCC accept canonical CTY prefixes or positive ADIF numbers.
+DXSTATE/DESTATE accept FCC two-letter mailing-address codes.
+Unknown state fails an explicit PASS list and passes a REJECT-only list.
+State filters are suspended and retained while NEARBY is enabled.
 Canonical prefixes select whole entities; IT9 also selects I and IG9.
 Unknown prefixes reject the whole list; canonical input requires CTY.
 UNKNOWN is the MODE token for blank-mode spots.
@@ -591,7 +594,7 @@ Path reliability glyphs:
 
 List types:
   BAND, MODE, SOURCE, EVENT, DXCALL, DECALL, DXGRID2, DEGRID2, DXCONT, DECONT
-  DXZONE, DEZONE, DXDXCC, DEDXCC, CONFIDENCE, PATH
+  DXZONE, DEZONE, DXDXCC, DEDXCC, DXSTATE, DESTATE, CONFIDENCE, PATH
 
 Supported modes:
   CW, FT2, FT4, FT8, JS8, LSB, USB, RTTY, MSK144, PSK, SSTV, UNKNOWN
@@ -1299,3 +1302,23 @@ Implementation-heavy material now lives next to the relevant code:
 Additional operator references:
 
 - [`docs/OPERATOR_GUIDE.md`](docs/OPERATOR_GUIDE.md)
+
+## FCC State And Territory Filtering
+
+Use `PASS DXSTATE CA,TX` to select known California/Texas mailing addresses or
+`REJECT DESTATE AA,AE,AP` to exclude military postal codes. All 60 FCC state,
+DC, territory and military codes are accepted. State is mailing-address data,
+not an assertion about a station's operating location. Unknown state fails an
+explicit PASS list and passes an unrestricted or REJECT-only category.
+NEARBY temporarily overrides and restores state rules.
+
+`fcc_uls.enabled: false` disables license rejection while reference-data
+refresh and state enrichment continue. New live spots and archive records
+carry known state for the spotter and final corrected DX base call. Old archive
+records remain unknown, without current-registry backfill. Canadian province
+support requires a separate data source and is outside this release.
+
+Existing YAML clients retain schema 1. Opt in with `GET YAML CONFIG SCHEMA 2`
+for `dx_states`/`de_states`; schema 1 writes preserve those hidden rules.
+See [telnet filtering](telnet/README.md#fcc-state-and-territory-filters) and
+[upgrade/rollback guidance](data/config/README.md#fcc-reference-data-and-enforcement).

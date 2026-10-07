@@ -404,6 +404,20 @@ func writeHumanOverview(h *humanResponse, cfg filter.FilterConfiguration, status
 			return err
 		}
 	}
+	for _, state := range []struct {
+		label string
+		rules filter.StringRules
+	}{
+		{"DX states", cfg.DXStates}, {"DE states", cfg.DEStates},
+	} {
+		if cfg.NearbyEnabled {
+			if err := h.row(state.label, "Suspended by NEARBY; rules retained"); err != nil {
+				return err
+			}
+		} else if err := writeHumanFiniteRules(h, state.label, "Only", state.rules, spot.IsFCCState, spot.IsFCCState, "", false); err != nil {
+			return err
+		}
+	}
 	if err := writeHumanGeography(h, "DX geography", cfg.DXContinents, cfg.DXZones, cfg.DXDXCC, cfg.DXGrid2, cfg.NearbyEnabled); err != nil {
 		return err
 	}

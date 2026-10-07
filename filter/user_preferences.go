@@ -51,6 +51,9 @@ func saveConfiguration(callsign string, cfg Configuration, ref *PresetReference,
 	if !spot.IsValidNormalizedCallsign(callsign) {
 		return errors.New("invalid login callsign")
 	}
+	if err := cfg.ValidateStateRules(); err != nil {
+		return err
+	}
 	for _, toggle := range cfg.Filters.toggles() {
 		if toggle > DefaultBoolTrue {
 			return errors.New("invalid default boolean selection")

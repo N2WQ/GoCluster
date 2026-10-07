@@ -1889,17 +1889,16 @@ func peerPublishComment(src *spot.Spot) string {
 }
 
 // applyLicenseGate runs the FCC license check after all corrections and returns true when the spot should be dropped.
-// Purpose: Enforce FCC ULS licensing gates for US base calls (DX only; DE checked at ingest).
+// Purpose: Enrich the final DX base call and optionally enforce FCC licensing (DE checked at ingest).
 // Key aspects: Jurisdiction is derived from the normalized base call; reporter callback on drops.
 // Upstream: processOutputSpots before broadcast.
-// Downstream: uls.IsLicensedUS, reporter.
+// Downstream: uls.LookupUS, enforcement flag, reporter.
 func applyLicenseGate(s *spot.Spot, ctyDB *cty.CTYDatabase, metaCache *callMetaCache, reporter func(source, role, call, deCall, dxCall, mode string, freq float64)) bool {
 	if s == nil {
 		return false
 	}
-	if s.IsBeacon {
-		return false
-	}
+	// Corrections and unavailable lookups must never leave another call's state.
+	s.DXMetadata.State = ""
 	if ctyDB == nil {
 		return false
 	}
@@ -1924,8 +1923,10 @@ func applyLicenseGate(s *spot.Spot, ctyDB *cty.CTYDatabase, metaCache *callMetaC
 		deGrid := strings.TrimSpace(s.DEMetadata.Grid)
 		dxGridDerived := s.DXMetadata.GridDerived
 		deGridDerived := s.DEMetadata.GridDerived
+		deState := s.DEMetadata.State
 		s.DXMetadata = metadataFromPrefix(dxInfo)
 		s.DEMetadata = metadataFromPrefix(deInfo)
+		s.DEMetadata.State = deState
 		if dxGrid != "" {
 			s.DXMetadata.Grid = dxGrid
 			s.DXMetadata.GridDerived = dxGridDerived
@@ -1947,17 +1948,15 @@ func applyLicenseGate(s *spot.Spot, ctyDB *cty.CTYDatabase, metaCache *callMetaC
 		dxLicenseInfo = effectivePrefixInfo(ctyDB, metaCache, dxLicenseCall)
 	}
 
-	if dxLicenseInfo != nil && dxLicenseInfo.ADIF == 291 {
-		callKey := dxLicenseCall
-		if callKey == "" {
-			callKey = dxCall
+	if dxLicenseInfo != nil && spot.IsFCCJurisdiction(dxLicenseInfo.ADIF) {
+		result := uls.LookupUS(dxLicenseCall)
+		if result.Available && result.Found {
+			s.DXMetadata.State = result.State
 		}
-		if uls.AllowlistMatch(dxLicenseInfo.ADIF, callKey) {
-			return false
-		}
-		if !uls.IsLicensedUS(callKey) {
+		if !s.IsBeacon && !uls.AllowlistMatch(dxLicenseInfo.ADIF, dxLicenseCall) &&
+			uls.LicenseChecksEnabled() && result.Available && !result.Found {
 			if reporter != nil {
-				reporter(droppedCallSourceFromSpot(s), "DX", callKey, deCall, dxCall, droppedCallModeFromSpot(s), s.Frequency)
+				reporter(droppedCallSourceFromSpot(s), "DX", dxLicenseCall, deCall, dxCall, droppedCallModeFromSpot(s), s.Frequency)
 			}
 			return true
 		}
@@ -5365,6 +5364,10 @@ func maybeStartMapLogger(tracker *stats.Tracker, predictor *pathreliability.Pred
 			if customSCPStore != nil {
 				customSCP = customSCPStore.StatsSnapshot()
 			}
+
+			fccCache := uls.LookupStats()
+			log.Printf("FCC cache: entries=%d slots=%d cap=%d ttl=%s generation=%d state_ready=%t refreshing=%t",
+				fccCache.Entries, fccCache.Slots, fccCache.Capacity, fccCache.TTL, fccCache.Generation, fccCache.StateCapable, fccCache.Refreshing)
 
 			log.Printf("Map sizes: stats sources=%d source-modes=%d; dedup primary=%d secondary fast=%d med=%d slow=%d; path buckets=%d; custom_scp static=%d keys=%d spotters=%d interned=%d intern_refs=%d intern_release_misses=%d entry_expiry=%d static_expiry=%d load_oversized=%d overflow_pruned=%d stale_obs_pruned=%d stale_static_pruned=%d",
 				sourceCount,

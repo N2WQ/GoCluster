@@ -43,7 +43,8 @@ const (
 	recordVersionV2         = 2
 	recordVersionV3         = 3
 	recordVersionV4         = 4
-	recordVersion           = 5
+	recordVersionV5         = 5
+	recordVersion           = 6
 	recordFixedHeaderSizeV2 = 28
 	recordFixedHeaderSize   = 36
 )
@@ -66,15 +67,19 @@ const (
 	fieldToxicityStatus
 	fieldToxicityCategories
 	fieldToxicityModel
+	fieldDXState
+	fieldDEState
 	fieldCount
 )
 
 const (
 	fieldCountV3         = fieldEvents
 	fieldCountV4         = fieldEvents + 1
+	fieldCountV5         = fieldDXState
 	recordHeaderSizeV2   = recordFixedHeaderSizeV2 + fieldCountV3*2
 	recordHeaderSizeV3   = recordFixedHeaderSize + fieldCountV3*2
 	recordHeaderSizeV4   = recordFixedHeaderSize + fieldCountV4*2
+	recordHeaderSizeV5   = recordFixedHeaderSize + fieldCountV5*2
 	recordHeaderSize     = recordFixedHeaderSize + fieldCount*2
 	recentScanMultiplier = 20
 	recentScanGrowth     = 4
@@ -98,6 +103,8 @@ func recordLayout(version byte) (fixedHeaderSize int, headerSize int, fieldN int
 		return recordFixedHeaderSize, recordHeaderSizeV3, fieldCountV3, true
 	case recordVersionV4:
 		return recordFixedHeaderSize, recordHeaderSizeV4, fieldCountV4, true
+	case recordVersionV5:
+		return recordFixedHeaderSize, recordHeaderSizeV5, fieldCountV5, true
 	case recordVersion:
 		return recordFixedHeaderSize, recordHeaderSize, fieldCount, true
 	default:
@@ -604,6 +611,8 @@ type archiveRecord struct {
 	deGridDerived      bool
 	dxCont             string
 	deCont             string
+	dxState            string
+	deState            string
 	events             spot.EventMask
 	freq               float64
 	observedFreq       float64
@@ -656,6 +665,8 @@ func encodeRecord(s *spot.Spot) []byte {
 	}
 	dxCont := strutil.NormalizeUpper(s.DXMetadata.Continent)
 	deCont := strutil.NormalizeUpper(s.DEMetadata.Continent)
+	dxState := validArchiveState(s.DXMetadata.State)
+	deState := validArchiveState(s.DEMetadata.State)
 	events := spot.EventString(s.Events)
 	toxicityStatus := string(spot.NormalizeToxicityStatus(string(s.ToxicityStatus)))
 	toxicityCategories := strings.Join(s.ToxicityCategories, ",")
@@ -679,6 +690,8 @@ func encodeRecord(s *spot.Spot) []byte {
 		len(toxicityStatus),
 		len(toxicityCategories),
 		len(toxicityModel),
+		len(dxState),
+		len(deState),
 	}
 	total := recordHeaderSize
 	for _, l := range lengths {
@@ -740,6 +753,8 @@ func encodeRecord(s *spot.Spot) []byte {
 	writeString(toxicityStatus)
 	writeString(toxicityCategories)
 	writeString(toxicityModel)
+	writeString(dxState)
+	writeString(deState)
 	return buf
 }
 
@@ -760,7 +775,7 @@ func decodeRecord(raw []byte) (archiveRecord, error) {
 	dxADIF := int(binary.BigEndian.Uint32(raw[20:]))
 	deADIF := int(binary.BigEndian.Uint32(raw[24:]))
 	observedFreq := freq
-	if raw[0] == recordVersionV3 || raw[0] == recordVersionV4 || raw[0] == recordVersion {
+	if raw[0] == recordVersionV3 || raw[0] == recordVersionV4 || raw[0] == recordVersionV5 || raw[0] == recordVersion {
 		observedFreq = math.Float64frombits(binary.BigEndian.Uint64(raw[28:]))
 	}
 
@@ -806,6 +821,11 @@ func decodeRecord(raw []byte) (archiveRecord, error) {
 		toxicityModel = fields[fieldToxicityModel]
 	}
 
+	if fields[fieldDXState] != "" && !spot.IsFCCState(fields[fieldDXState]) ||
+		fields[fieldDEState] != "" && !spot.IsFCCState(fields[fieldDEState]) {
+		return archiveRecord{}, errInvalidRecord
+	}
+
 	return archiveRecord{
 		dxCall:             fields[fieldDXCall],
 		deCall:             fields[fieldDECall],
@@ -822,6 +842,8 @@ func decodeRecord(raw []byte) (archiveRecord, error) {
 		deGridDerived:      flags&flagDEGridDerived != 0,
 		dxCont:             fields[fieldDXCont],
 		deCont:             fields[fieldDECont],
+		dxState:            fields[fieldDXState],
+		deState:            fields[fieldDEState],
 		events:             events,
 		freq:               freq,
 		observedFreq:       observedFreq,
@@ -877,6 +899,7 @@ func decodeSpot(ts int64, raw []byte) (*spot.Spot, error) {
 		Grid:        rec.dxGrid,
 		GridDerived: rec.dxGridDerived,
 		Continent:   rec.dxCont,
+		State:       rec.dxState,
 		CQZone:      rec.dxCQZone,
 		ADIF:        rec.dxADIF,
 	}
@@ -884,6 +907,7 @@ func decodeSpot(ts int64, raw []byte) (*spot.Spot, error) {
 		Grid:        rec.deGrid,
 		GridDerived: rec.deGridDerived,
 		Continent:   rec.deCont,
+		State:       rec.deState,
 		CQZone:      rec.deCQZone,
 		ADIF:        rec.deADIF,
 	}
@@ -939,4 +963,13 @@ func clampInt(value int) int {
 		return 0
 	}
 	return value
+}
+
+// Archive records retain the observed FCC metadata, never a current-registry
+// lookup. Restrict the two new fields to the finite canonical vocabulary.
+func validArchiveState(state string) string {
+	if spot.IsFCCState(state) {
+		return state
+	}
+	return ""
 }

@@ -4,6 +4,7 @@ package uls
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log"
@@ -26,22 +27,27 @@ const (
 )
 
 // StartBackground starts a background refresh loop for the FCC ULS database.
-// Key aspects: Kicks off an immediate refresh and then schedules daily updates.
-// Upstream: main.go startup when ULS is enabled.
+// Key aspects: Rebuilds missing/old schemas immediately, then schedules daily updates.
+// The caller cancels ctx and joins the returned channel before releasing runtime owners.
+// Upstream: runtime startup; download/enrichment are independent of enforcement.
 // Downstream: Refresh, startScheduler.
-func StartBackground(ctx context.Context, cfg config.FCCULSConfig) {
-	if !cfg.Enabled {
-		return
+func StartBackground(ctx context.Context, cfg config.FCCULSConfig) <-chan struct{} {
+	done := make(chan struct{})
+	if ctx == nil {
+		close(done)
+		return done
 	}
 	// Run refresh/scheduler without blocking the caller.
 	go func() {
+		defer close(done)
 		archiveDir := filepath.Dir(strings.TrimSpace(cfg.Archive))
 		cleanupDownloadTemps(archiveDir, time.Now().UTC())
 		dbExists, err := fileExists(cfg.DBPath)
 		if err != nil {
 			log.Printf("Warning: FCC ULS db stat failed: %v", err)
 		}
-		if err != nil || !dbExists {
+		ready := dbExists && databaseStateReady(ctx, cfg.DBPath)
+		if err != nil || !ready {
 			if updated, err := Refresh(ctx, cfg, true); err != nil {
 				log.Printf("Warning: FCC ULS refresh failed: %v", err)
 			} else if updated {
@@ -52,13 +58,29 @@ func StartBackground(ctx context.Context, cfg config.FCCULSConfig) {
 		}
 		startScheduler(ctx, cfg)
 	}()
+	return done
 }
+
+// refreshOwner serializes builders, independently of lookup/diagnostic locks.
+var refreshOwner = make(chan struct{}, 1)
 
 // Refresh downloads, extracts, and rebuilds the FCC ULS SQLite database.
 // Key aspects: Uses conditional HTTP headers unless forced; rebuilds only when needed.
 // Upstream: StartBackground, BuildOnce/manual refresh triggers.
 // Downstream: downloadArchive, extractArchive, buildDatabase, ResetLicenseDB.
-func Refresh(ctx context.Context, cfg config.FCCULSConfig, force bool) (bool, error) {
+func Refresh(ctx context.Context, cfg config.FCCULSConfig, force bool) (updated bool, err error) {
+	if ctx == nil {
+		return false, errors.New("fcc uls: nil context")
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	select {
+	case refreshOwner <- struct{}{}:
+		defer func() { <-refreshOwner }()
+	case <-ctx.Done():
+		return false, ctx.Err()
+	}
 	url := strings.TrimSpace(cfg.URL)
 	dest := strings.TrimSpace(cfg.Archive)
 	dbPath := strings.TrimSpace(cfg.DBPath)
@@ -84,7 +106,10 @@ func Refresh(ctx context.Context, cfg config.FCCULSConfig, force bool) (bool, er
 	if err != nil {
 		return false, fmt.Errorf("fcc uls: stat db: %w", err)
 	}
-	if !dbExists {
+	ready := dbExists && databaseStateReady(ctx, dbPath)
+	meta, _ := download.ReadMetadata(metaPath, dest+legacyMetaSuffix)
+	processingFailed := meta != nil && !meta.ProcessedAt.IsZero() && !meta.ProcessedOK
+	if !ready || processingFailed {
 		force = true
 	}
 
@@ -93,7 +118,7 @@ func Refresh(ctx context.Context, cfg config.FCCULSConfig, force bool) (bool, er
 		return false, err
 	}
 
-	needBuild := archiveUpdated || force || !dbExists
+	needBuild := archiveUpdated || force || !ready || processingFailed
 
 	if !needBuild && !force {
 		return false, nil
@@ -102,20 +127,28 @@ func Refresh(ctx context.Context, cfg config.FCCULSConfig, force bool) (bool, er
 	// Prevent readers from reopening the DB during build/swap.
 	SetRefreshInProgress(true)
 	defer SetRefreshInProgress(false)
+	defer func() {
+		if err != nil {
+			if metaErr := download.UpdateProcessedStatus(metaPath, false); metaErr != nil {
+				log.Printf("Warning: unable to mark FCC ULS build failure: %v", metaErr)
+			}
+		}
+	}()
 
-	extractDir, err := extractArchive(dest)
+	extractDir, err := extractArchiveContext(ctx, dest)
 	if err != nil {
 		return false, err
 	}
 	defer os.RemoveAll(extractDir)
 
 	ResetLicenseDB()
-	if err := buildDatabase(ctx, extractDir, dbPath, cfg.TempDir); err != nil {
-		if metaErr := download.UpdateProcessedStatus(metaPath, false); metaErr != nil {
-			log.Printf("Warning: unable to update FCC ULS metadata %s: %v", metaPath, metaErr)
-		}
+	if err = buildDatabase(ctx, extractDir, dbPath, cfg.TempDir); err != nil {
 		return false, err
 	}
+	SetLicenseDBPath(dbPath)
+	snapshot := LookupStats()
+	log.Printf("FCC ULS published: schema=%d cache_generation=%d cache_entries=%d cache_cap=%d", CurrentSchemaVersion, snapshot.Generation, snapshot.Entries, snapshot.Capacity)
+
 	if err := download.UpdateProcessedStatus(metaPath, true); err != nil {
 		log.Printf("Warning: unable to update FCC ULS metadata %s: %v", metaPath, err)
 	}
@@ -237,4 +270,24 @@ func cleanupDownloadTemps(dir string, now time.Time) {
 	if removed > 0 {
 		log.Printf("FCC ULS temp cleanup removed %d file(s) in %s", removed, dir)
 	}
+}
+
+// databaseStateReady is a cold lifecycle probe, never a per-spot operation.
+// The schema marker and actual column both matter; an unusable projection must
+// retry on unchanged upstream data rather than wait for a new FCC archive.
+func databaseStateReady(ctx context.Context, path string) bool {
+	db, err := sql.Open("sqlite", fmt.Sprintf("file:%s?mode=ro&_pragma=query_only(1)&_pragma=immutable(1)", path))
+	if err != nil {
+		return false
+	}
+	defer db.Close()
+	var version int
+	if err := db.QueryRowContext(ctx, "PRAGMA user_version;").Scan(&version); err != nil || version != CurrentSchemaVersion {
+		return false
+	}
+	rows, err := db.QueryContext(ctx, "SELECT call_sign, state FROM AM LIMIT 0;")
+	if err != nil {
+		return false
+	}
+	return rows.Close() == nil
 }

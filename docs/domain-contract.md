@@ -296,3 +296,29 @@ Shutdown behavior must be explicit, bounded, and testable.
 Slow-client, overload, reconnect, parser-error, and shutdown behavior must be
 deterministic from the operator's perspective. Differences between strict and
 lenient modes must be explicit, documented, and test-covered.
+
+## FCC Mailing State Metadata
+
+- FCC licensee mailing state is factual reference metadata, separate from
+  admission enforcement. `fcc_uls.enabled: false` keeps reference refreshes and
+  state enrichment active; it only disables missing-license rejection.
+- DE state belongs to the central-ingest spotter; DX state belongs to the final
+  corrected spotted callsign, including delayed delivery. Base-call CTY
+  jurisdiction selects lookup, rather than a portable operating prefix.
+- A missing license, absent/invalid address code, unavailable database or
+  conflicting evidence cannot establish state. A valid license with unknown
+  state remains valid. Existing admission exceptions do not fabricate metadata.
+- Both roles use the same bounded FCC license/state cache. Database replacement
+  resets its generation; old queries cannot populate a new generation.
+- State uses the 60 accepted FCC codes, including territories and military
+  postal codes. PASS on named states excludes unknown state; a named REJECT
+  list admits unknown state. NEARBY temporarily suspends and restores these
+  rules with the existing geography rules.
+- Archive version 6 stores the two observed states. Versions 2-5 retain unknown
+  state; history never consults today's FCC database to hydrate an old record.
+- Machine YAML version 1 retains its document format and hidden state rules.
+  Explicit schema 2 exposes state fields. Disk version 2 migrates legacy and
+  version 1 records by initializing only new state categories unrestricted.
+
+See [ADR-0253](decisions/ADR-0253-fcc-state-enrichment-and-filtering.md) for the
+full source, jurisdiction, migration and compatibility decisions.

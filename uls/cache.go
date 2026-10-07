@@ -11,7 +11,7 @@ const (
 )
 
 type cacheEntry struct {
-	value bool
+	value LookupResult
 	at    time.Time
 	used  bool
 	slot  int
@@ -45,25 +45,25 @@ func newLicenseCache(ttl time.Duration, maxEntries int) *ttlCache {
 	}
 }
 
-func (c *ttlCache) get(key string, now time.Time) (bool, bool) {
+func (c *ttlCache) get(key string, now time.Time) (LookupResult, bool) {
 	if c == nil || key == "" {
-		return false, false
+		return LookupResult{}, false
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	entry := c.entries[key]
 	if entry == nil {
-		return false, false
+		return LookupResult{}, false
 	}
 	if c.ttl > 0 && now.Sub(entry.at) > c.ttl {
 		c.deleteEntryLocked(key, entry)
-		return false, false
+		return LookupResult{}, false
 	}
 	entry.used = true
 	return entry.value, true
 }
 
-func (c *ttlCache) set(key string, value bool, now time.Time) {
+func (c *ttlCache) set(key string, value LookupResult, now time.Time) {
 	if c == nil || key == "" {
 		return
 	}

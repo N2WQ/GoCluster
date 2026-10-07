@@ -125,6 +125,7 @@ func CanonicalPSKMode(mode string) (canonical string, variant string, isPSK bool
 type CallMetadata struct {
 	Continent   string
 	Country     string
+	State       string // FCC mailing-address state/territory; empty when unknown.
 	CQZone      int
 	Grid        string
 	GridDerived bool

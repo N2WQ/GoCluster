@@ -679,6 +679,9 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 				"Use /ON or /OFF to allow or block all for a type.",
 				"Example: SET/FILTER BAND/ON",
 				"DXDXCC/DEDXCC accept canonical CTY prefixes or positive ADIF numbers.",
+				"DXSTATE/DESTATE accept FCC two-letter mailing-address codes.",
+				"Unknown state fails an explicit PASS list and passes a REJECT-only list.",
+				"State filters are suspended and retained while NEARBY is enabled.",
 			},
 		)
 		setFilterLines = appendListSection(setFilterLines, "Types:", append([]string{"DXBM"}, filterListTypes()...))
@@ -697,6 +700,9 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			[]string{
 				"Same semantics as REJECT.",
 				"DXDXCC/DEDXCC accept canonical CTY prefixes or positive ADIF numbers.",
+				"DXSTATE/DESTATE accept FCC two-letter mailing-address codes.",
+				"Unknown state fails an explicit PASS list and passes a REJECT-only list.",
+				"State filters are suspended and retained while NEARBY is enabled.",
 			},
 		)
 		unsetFilterLines = appendListSection(unsetFilterLines, "Types:", append([]string{"DXBM"}, filterListTypes()...))
@@ -836,6 +842,9 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 				"Adds to allowlist and removes from blocklist.",
 				"List is comma or space separated; use ALL to allow all.",
 				"DXDXCC/DEDXCC accept canonical CTY prefixes or positive ADIF numbers.",
+				"DXSTATE/DESTATE accept FCC two-letter mailing-address codes.",
+				"Unknown state fails an explicit PASS list and passes a REJECT-only list.",
+				"State filters are suspended and retained while NEARBY is enabled.",
 				"IT9 selects the whole entity shared with I and IG9.",
 				"For MODE, list entries are enabled without changing modes not listed.",
 				"Use PASS MODE UNKNOWN or PASS MODE ALL to restore blank-mode spots.",
@@ -860,6 +869,9 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 				"Adds to blocklist and removes from allowlist.",
 				"List is comma or space separated; use ALL to block all.",
 				"DXDXCC/DEDXCC accept canonical CTY prefixes or positive ADIF numbers.",
+				"DXSTATE/DESTATE accept FCC two-letter mailing-address codes.",
+				"Unknown state fails an explicit PASS list and passes a REJECT-only list.",
+				"State filters are suspended and retained while NEARBY is enabled.",
 				"IT9 blocks the whole entity shared with I and IG9.",
 				"For MODE, list entries are rejected without changing modes not listed.",
 				"UNKNOWN is the MODE token for blank-mode spots.",
@@ -1206,6 +1218,9 @@ func filterHelpLines(dialect string) []string {
 		"REJECT <type> <list> adds to blocklist and removes from allowlist.",
 		"PASS/REJECT MODE <list> are deltas; modes not listed are unchanged.",
 		"DXDXCC/DEDXCC accept canonical CTY prefixes or positive ADIF numbers.",
+		"DXSTATE/DESTATE accept FCC two-letter mailing-address codes.",
+		"Unknown state fails an explicit PASS list and passes a REJECT-only list.",
+		"State filters are suspended and retained while NEARBY is enabled.",
 		"Canonical prefixes select whole entities; IT9 also selects I and IG9.",
 		"Unknown prefixes reject the whole list; canonical input requires CTY.",
 		"UNKNOWN is the MODE token for blank-mode spots.",
@@ -1436,7 +1451,7 @@ func filterListTypes() []string {
 	return []string{
 		"BAND", "MODE", "SOURCE", "EVENT", "DXCALL", "DECALL", "DXGRID2",
 		"DEGRID2", "DXCONT", "DECONT", "DXZONE", "DEZONE", "DXDXCC",
-		"DEDXCC", "CONFIDENCE", "PATH",
+		"DEDXCC", "DXSTATE", "DESTATE", "CONFIDENCE", "PATH",
 	}
 }
 

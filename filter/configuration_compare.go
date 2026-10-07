@@ -62,7 +62,7 @@ func equalPatterns(a, b []string) bool {
 // It is a configuration-change detector, not a client authentication token.
 func (c Configuration) Fingerprint() [32]byte {
 	h := sha256.New()
-	writeFingerprintString(h, "configuration-v1")
+	writeFingerprintString(h, "configuration-v2")
 	for _, value := range []string{c.Settings.Dialect, c.Settings.Grid, c.Settings.NoiseClass, c.Settings.DedupePolicy} {
 		writeFingerprintString(h, value)
 	}

@@ -51,6 +51,7 @@ func TestPC92RuntimeQualificationSmoke(t *testing.T) {
 	}
 	cfg.PSKReporter.Enabled, cfg.DXSummit.Enabled = false, false
 	cfg.FCCULS.Enabled, cfg.Reputation.Enabled, cfg.Skew.Enabled = false, false, false
+	configureFCCQualificationSource(t, cfg)
 	cfg.SolarWeather.Enabled, cfg.PropReport.Enabled = false, false
 	cfg.PathReliability.VOACAPFallback.Enabled = false
 	cfg.CTY.File, cfg.CTY.URL = filepath.Join(repo, "data", "cty", "cty.plist"), ""

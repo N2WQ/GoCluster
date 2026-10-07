@@ -41,6 +41,9 @@ func canonicalUpperChoice(valid func(string) bool) func(string) bool {
 }
 
 func (s *Server) validateMachineConfiguration(cfg filter.Configuration) error {
+	if err := cfg.ValidateStateRules(); err != nil {
+		return err
+	}
 	f := cfg.Filters
 	checks := []struct {
 		name  string

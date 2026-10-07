@@ -1,8 +1,12 @@
+// File role: Owns FCC lookup snapshots and their bounded result cache. Admission
+// and address enrichment share factual results; enforcement is a separate flag.
 package uls
 
 import (
 	"context"
 	"database/sql"
+	"dxcluster/spot"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -12,227 +16,246 @@ import (
 	"sync/atomic"
 	"time"
 	"unicode"
-
-	"dxcluster/spot"
 )
+
+// CurrentSchemaVersion marks the FCC projection that includes mailing state.
+const CurrentSchemaVersion = 1
+
+// LookupResult separates confirmed membership from reference-data unavailability.
+// State is a registered mailing-address code, never an inferred operating site.
+type LookupResult struct {
+	Available, Found bool
+	State            string
+}
+
+// LookupStatsSnapshot describes the current bounded cache and schema capability.
+type LookupStatsSnapshot struct {
+	Entries, Slots, Capacity int
+	TTL                      time.Duration
+	Generation               uint64
+	StateCapable, Refreshing bool
+}
 
 var (
-	licenseDBPath   string
-	licenseDB       *sql.DB
-	licenseOnce     sync.Once
-	licenseMu       sync.Mutex
-	licenseDead     atomic.Bool
-	licenseEnabled  atomic.Bool
-	refreshActive   atomic.Bool
-	loggedDBError   atomic.Bool
-	licenseCacheTTL atomic.Int64
-	licenseCache    atomic.Pointer[ttlCache]
+	licenseDBPath    string
+	licenseDB        *sql.DB
+	licenseMu        sync.Mutex
+	licenseEnabled   atomic.Bool
+	refreshActive    atomic.Bool
+	loggedDBError    atomic.Bool
+	licenseCacheTTL  atomic.Int64
+	licenseCache     atomic.Pointer[ttlCache]
+	lookupGeneration atomic.Uint64
+	stateCapable     atomic.Bool
 )
 
-// Purpose: Enable license checks by default when the package loads.
-// Key aspects: Uses an atomic flag to avoid locks during queries.
-// Upstream: Go runtime init for the uls package.
-// Downstream: licenseEnabled flag read by IsLicensedUS.
 func init() {
 	licenseEnabled.Store(true)
 	licenseCacheTTL.Store(int64(defaultLicenseCacheTTL))
-	licenseCache.Store(newLicenseCache(defaultLicenseCacheTTL, defaultLicenseCacheMaxEntries))
+	resetLicenseCache()
 }
 
-// SetLicenseChecksEnabled toggles FCC ULS license checks on or off.
-// Key aspects: Updates an atomic flag; disabled mode short-circuits lookups.
-// Upstream: Config load or administrative controls.
-// Downstream: licenseEnabled flag read by IsLicensedUS.
-func SetLicenseChecksEnabled(enabled bool) {
-	licenseEnabled.Store(enabled)
-}
+// SetLicenseChecksEnabled changes admission enforcement, not reference lookup.
+func SetLicenseChecksEnabled(enabled bool) { licenseEnabled.Store(enabled) }
 
-// SetLicenseCacheTTL configures the TTL for license lookup caching.
-// Key aspects: Resets the cache with the new TTL and a fixed safety cap.
-// Upstream: Config load or operator overrides.
-// Downstream: IsLicensedUS cache behavior.
+// LicenseChecksEnabled reports admission enforcement independently of enrichment.
+func LicenseChecksEnabled() bool { return licenseEnabled.Load() }
+
+// SetLicenseCacheTTL configures the existing bounded lookup cache expiry.
 func SetLicenseCacheTTL(ttl time.Duration) {
 	if ttl <= 0 {
 		ttl = defaultLicenseCacheTTL
 	}
 	licenseCacheTTL.Store(int64(ttl))
-	licenseCache.Store(newLicenseCache(ttl, defaultLicenseCacheMaxEntries))
+	ResetLicenseDB()
 }
 
-// SetRefreshInProgress marks whether a refresh/swap is in progress to fail open on lookups.
-// Key aspects: Uses atomic flag so hot-path checks avoid locks.
-// Upstream: FCC ULS refresh/swap logic.
-// Downstream: IsLicensedUS and getLicenseDB.
-func SetRefreshInProgress(active bool) {
-	refreshActive.Store(active)
-}
+// SetRefreshInProgress marks the fail-open publication/build interval.
+func SetRefreshInProgress(active bool) { refreshActive.Store(active) }
 
-// RefreshInProgress reports whether a refresh/swap is currently active.
-// Key aspects: Used by UI to avoid touching the DB during swaps.
-// Upstream: Stats/monitoring.
-// Downstream: RefreshInProgress callers.
-func RefreshInProgress() bool {
-	return refreshActive.Load()
-}
+// RefreshInProgress lets diagnostics avoid opening the DB during replacement.
+func RefreshInProgress() bool { return refreshActive.Load() }
 
-// SetLicenseDBPath configures the FCC ULS SQLite path used for license lookups.
-// Key aspects: Normalizes path, validates presence, and marks the DB as dead on failure.
-// Upstream: Config load or refresh logic.
-// Downstream: licenseDBPath, licenseDead, os.Stat.
+// SetLicenseDBPath retains missing paths so first-build publication can rearm
+// lookup. Handle/path transitions share one mutex; SQL work uses a captured DB.
 func SetLicenseDBPath(path string) {
 	clean := strings.TrimSpace(path)
-	if clean == "" {
-		licenseDBPath = ""
-		return
+	if clean != "" {
+		if abs, err := filepath.Abs(clean); err == nil {
+			clean = abs
+		}
 	}
-	if abs, err := filepath.Abs(clean); err == nil {
-		clean = abs
-	}
-	if _, err := os.Stat(clean); err != nil {
-		log.Printf("FCC ULS: database not found at %s (%v); license checks will be skipped", clean, err)
-		licenseDBPath = ""
-		licenseDead.Store(true)
-		return
-	}
+	licenseMu.Lock()
+	old := licenseDB
+	licenseDB = nil
 	licenseDBPath = clean
-}
-
-// IsLicensedUS reports whether a callsign appears in the FCC ULS AM table.
-// Key aspects: Normalizes callsign, caches results, retries on locked DB, and fails open on errors.
-// Upstream: Spot filtering in main.go, RBN client, PSKReporter client.
-// Downstream: getLicenseDB, NormalizeForLicense, SQL query, ResetLicenseDB.
-func IsLicensedUS(call string) bool {
-	if !licenseEnabled.Load() {
-		return true
-	}
-	// Fail open while a refresh/swap is active so the DB file can be replaced.
-	if refreshActive.Load() {
-		return true
-	}
-	if licenseDead.Load() {
-		return true
-	}
-	canonical := NormalizeForLicense(call)
-	if canonical == "" {
-		return true
-	}
-
-	now := time.Now().UTC()
-	cacheKey := licenseCacheKey("US", canonical)
-	if cache := licenseCache.Load(); cache != nil {
-		if cached, ok := cache.get(cacheKey, now); ok {
-			return cached
-		}
-	}
-
-	allow := true
-
-	db := getLicenseDB()
-	if db != nil {
-		const retries = 5
-		delay := 100 * time.Millisecond
-		for attempt := 0; attempt < retries; attempt++ {
-			var dummy int
-			err := db.QueryRowContext(context.Background(), "SELECT 1 FROM AM WHERE call_sign = ? LIMIT 1;", canonical).Scan(&dummy)
-			if err == nil {
-				allow = true
-				break
-			}
-			if err == sql.ErrNoRows {
-				allow = false
-				break
-			}
-			if strings.Contains(strings.ToLower(err.Error()), "database is locked") && attempt < retries-1 {
-				time.Sleep(delay)
-				delay *= 2
-				continue
-			}
-			if strings.Contains(strings.ToLower(err.Error()), "unable to open database file") ||
-				strings.Contains(strings.ToLower(err.Error()), "out of memory") {
-				if !loggedDBError.Load() {
-					loggedDBError.Store(true)
-					log.Printf("FCC ULS lookup failed for %s: %v (disabling license checks)", call, err)
-				}
-				licenseDead.Store(true)
-				ResetLicenseDB()
-				allow = true
-				break
-			}
-			// On other query errors, default to allow and log once.
-			if !loggedDBError.Load() {
-				loggedDBError.Store(true)
-				log.Printf("FCC ULS lookup failed for %s: %v", call, err)
-			}
-			allow = true
-			break
-		}
-	}
-
-	if cache := licenseCache.Load(); cache != nil {
-		cache.set(cacheKey, allow, now)
-	}
-	return allow
-}
-
-// Purpose: Lazily open the FCC ULS SQLite database in read-only mode.
-// Key aspects: Uses sync.Once; opens immutable/query-only to avoid WAL writes.
-// Upstream: IsLicensedUS.
-// Downstream: sql.Open, licenseDB/locks.
-func getLicenseDB() *sql.DB {
-	licenseOnce.Do(func() {
-		if licenseDBPath == "" {
-			return
-		}
-		if refreshActive.Load() {
-			return
-		}
-		// Open read-only with query_only/immutable pragmas and a short busy timeout so refresh
-		// swaps don't trigger write attempts (WAL needs write access, so avoid it here).
-		dsn := fmt.Sprintf("file:%s?mode=ro&_busy_timeout=5000&_pragma=query_only(1)&_pragma=immutable(1)", licenseDBPath)
-		db, err := sql.Open("sqlite", dsn)
-		if err != nil {
-			log.Printf("FCC ULS: unable to open license DB at %s: %v (skipping license checks)", licenseDBPath, err)
-			return
-		}
-		licenseMu.Lock()
-		licenseDB = db
-		licenseMu.Unlock()
-	})
-	licenseMu.Lock()
-	defer licenseMu.Unlock()
-	return licenseDB
-}
-
-// ResetLicenseDB closes the license DB and clears all related caches/flags.
-// Key aspects: Resets sync.Once so a future lookup can reopen the DB.
-// Upstream: Refresh in uls/downloader.go, IsLicensedUS error handling.
-// Downstream: sql.DB.Close, licenseCache/flags.
-func ResetLicenseDB() {
-	licenseMu.Lock()
-	defer licenseMu.Unlock()
-	if licenseDB != nil {
-		_ = licenseDB.Close()
-		licenseDB = nil
-	}
-	licenseOnce = sync.Once{}
+	stateCapable.Store(false)
 	resetLicenseCache()
-	licenseDead.Store(false)
+	licenseMu.Unlock()
+	if old != nil {
+		_ = old.Close()
+	}
 	loggedDBError.Store(false)
 }
 
+// IsLicensedUS preserves the existing fail-open admission API.
+func IsLicensedUS(call string) bool {
+	if !LicenseChecksEnabled() {
+		return true
+	}
+	result := LookupUS(call)
+	return !result.Available || result.Found
+}
+
+// LookupUS performs one indexed query on a cold lookup. Only definitive
+// results enter the existing capped cache; outages cannot invent a license.
+func LookupUS(call string) LookupResult {
+	if refreshActive.Load() {
+		return LookupResult{}
+	}
+	canonical := NormalizeForLicense(call)
+	if canonical == "" {
+		return LookupResult{}
+	}
+	now := time.Now().UTC()
+	cache := licenseCache.Load()
+
+	if cache != nil {
+		if result, ok := cache.get(canonical, now); ok {
+			if cache != licenseCache.Load() || refreshActive.Load() {
+				return LookupResult{}
+			}
+			return result
+		}
+	}
+	db, hasState := getLicenseDB()
+	if db == nil {
+		return LookupResult{}
+	}
+	query := "SELECT '' FROM AM WHERE call_sign = ? LIMIT 1;"
+	if hasState {
+		query = "SELECT state FROM AM WHERE call_sign = ? LIMIT 1;"
+	}
+	result := queryLicense(db, query, canonical)
+	return finishLookup(cache, canonical, result, now)
+}
+
+// finishLookup is the generation publication barrier shared by cold lookups.
+// An old owner is harmless after reset, but its result must not become current.
+func finishLookup(cache *ttlCache, canonical string, result LookupResult, now time.Time) LookupResult {
+	if cache != licenseCache.Load() || refreshActive.Load() {
+		return LookupResult{}
+	}
+	if result.Available && cache != nil {
+		cache.set(canonical, result, now)
+	}
+	return result
+}
+
+func queryLicense(db *sql.DB, query, canonical string) LookupResult {
+	delay := 100 * time.Millisecond
+	for attempt := 0; attempt < 5; attempt++ {
+		var rawState sql.NullString
+		err := db.QueryRowContext(context.Background(), query, canonical).Scan(&rawState)
+		if err == nil {
+			state := strings.ToUpper(strings.TrimSpace(rawState.String))
+			if !spot.IsFCCState(state) {
+				state = ""
+			}
+			return LookupResult{Available: true, Found: true, State: state}
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			return LookupResult{Available: true}
+		}
+		if strings.Contains(strings.ToLower(err.Error()), "database is locked") && attempt < 4 {
+			time.Sleep(delay)
+			delay *= 2
+			continue
+		}
+		logLookupError(err)
+		return LookupResult{}
+	}
+	return LookupResult{}
+}
+
+// logLookupError shares one diagnostic across cold-open/probe/query failures.
+// Resetting the generation rearms it; there is no per-spot logging or error cache.
+func logLookupError(err error) {
+	if loggedDBError.CompareAndSwap(false, true) {
+		log.Printf("FCC ULS lookup unavailable: %v", err)
+	}
+}
+
+// getLicenseDB probes schema once per handle generation. Legacy databases remain
+// membership authorities while an attempted state-schema rebuild is unavailable.
+func getLicenseDB() (*sql.DB, bool) {
+	licenseMu.Lock()
+	defer licenseMu.Unlock()
+	if refreshActive.Load() || licenseDBPath == "" {
+		return nil, false
+	}
+	if licenseDB != nil {
+		return licenseDB, stateCapable.Load()
+	}
+	if _, err := os.Stat(licenseDBPath); err != nil {
+		logLookupError(err)
+		return nil, false
+	}
+	dsn := fmt.Sprintf("file:%s?mode=ro&_busy_timeout=5000&_pragma=query_only(1)&_pragma=immutable(1)", licenseDBPath)
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		logLookupError(err)
+		return nil, false
+	}
+	var version int
+	if err = db.QueryRowContext(context.Background(), "PRAGMA user_version;").Scan(&version); err != nil {
+		_ = db.Close()
+		logLookupError(err)
+		return nil, false
+	}
+	var dummy string
+	if err = db.QueryRowContext(context.Background(), "SELECT call_sign FROM AM LIMIT 1;").Scan(&dummy); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		_ = db.Close()
+		logLookupError(err)
+		return nil, false
+	}
+	licenseDB = db
+	stateCapable.Store(version == CurrentSchemaVersion)
+	return db, stateCapable.Load()
+}
+
+// ResetLicenseDB detaches the old owner before closing it. In-flight queries
+// may complete, but cannot publish into or return data from the new generation.
+func ResetLicenseDB() {
+	licenseMu.Lock()
+	old := licenseDB
+	licenseDB = nil
+	stateCapable.Store(false)
+	resetLicenseCache()
+	licenseMu.Unlock()
+	if old != nil {
+		_ = old.Close()
+	}
+	loggedDBError.Store(false)
+}
 func resetLicenseCache() {
 	ttl := time.Duration(licenseCacheTTL.Load())
 	if ttl <= 0 {
 		ttl = defaultLicenseCacheTTL
 	}
 	licenseCache.Store(newLicenseCache(ttl, defaultLicenseCacheMaxEntries))
+	lookupGeneration.Add(1)
 }
 
-func licenseCacheKey(jurisdiction, call string) string {
-	if jurisdiction == "" {
-		return call
+// LookupStats reads bounded ownership without taking the DB/refresh mutex.
+func LookupStats() LookupStatsSnapshot {
+	s := LookupStatsSnapshot{Generation: lookupGeneration.Load(), StateCapable: stateCapable.Load(), Refreshing: refreshActive.Load()}
+	if cache := licenseCache.Load(); cache != nil {
+		cache.mu.Lock()
+		s.Entries, s.Slots, s.Capacity, s.TTL = len(cache.entries), len(cache.slots), cache.max, cache.ttl
+		cache.mu.Unlock()
 	}
-	return jurisdiction + ":" + call
+	return s
 }
 
 // NormalizeForLicense normalizes callsigns for FCC ULS lookup.

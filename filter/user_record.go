@@ -77,11 +77,15 @@ func LoadUserRecord(callsign string) (*UserRecord, error) {
 	return &record, nil
 }
 
-// UnmarshalYAML preserves marked records exactly. Only an absent marker invokes
-// the historic migrations/defaults; explicit zero/null/future markers fail.
+// UnmarshalYAML preserves marked values exactly. Version one initializes only
+// the new state domains; absent markers invoke historical migrations/defaults.
+// Explicit zero/null/future markers fail without changing persisted bytes.
 func (record *UserRecord) UnmarshalYAML(node *yaml.Node) error {
 	version, err := storedConfigurationVersion(node)
 	if err != nil {
+		return err
+	}
+	if err := validateStoredStateFields(node, version); err != nil {
 		return err
 	}
 	if version != 0 {
@@ -112,6 +116,13 @@ func (record *UserRecord) UnmarshalYAML(node *yaml.Node) error {
 		record.NoiseClass = strutil.NormalizeUpper(record.NoiseClass)
 		record.PathMinObservationCount = normalizePathMinObservationCount(record.PathMinObservationCount)
 		record.SolarSummaryMinutes = normalizeSolarSummaryMinutes(record.SolarSummaryMinutes)
+	}
+	if version < CurrentConfigurationVersion {
+		record.ResetDXStates()
+		record.ResetDEStates()
+	}
+	if err := ConfigurationFromFilter(&record.Filter, SettingsConfiguration{}).ValidateStateRules(); err != nil {
+		return err
 	}
 	record.ConfigurationVersion = CurrentConfigurationVersion
 	return nil
@@ -207,6 +218,9 @@ func saveUserRecord(callsign string, record *UserRecord, write func(string, []by
 	}
 	if record.ConfigurationVersion != 0 && record.ConfigurationVersion != CurrentConfigurationVersion {
 		return ErrUnsupportedConfigurationVersion
+	}
+	if err := ConfigurationFromFilter(&record.Filter, SettingsConfiguration{}).ValidateStateRules(); err != nil {
+		return err
 	}
 	// Preserve the caller's captured preferences and baseline. Metadata trimming
 	// applies to this local copy; a failed write cannot alter the live reference.

@@ -125,3 +125,13 @@ Local non-test `DX` self-spots are treated as operator-authoritative in the live
 - `custom_scp_store.go` for persistent support storage
 
 For the main operator summary, see [`../README.md`](../README.md). For parser-specific input behavior, see [`../rbn/README.md`](../rbn/README.md) and [`../pskreporter/README.md`](../pskreporter/README.md).
+
+## FCC Address Metadata
+
+`CallMetadata.State` holds the canonical two-letter FCC mailing state/territory
+or an empty string when unknown. It is distinct from CTY operating-location
+metadata and Maidenhead grids. Central ingest fills the spotter value; final
+output processing clears/recomputes the DX value after correction, including
+delayed release. Immutable sink snapshots retain both values. State enrichment
+is independent of license enforcement; no spot wire-format column is added.
+`state.go` owns the fixed 60-code vocabulary and 17 current FCC ADIF entities.

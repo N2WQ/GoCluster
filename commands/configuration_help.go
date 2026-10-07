@@ -19,6 +19,7 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 		"Human lines use at most 78 ASCII characters; exact values use escapes.",
 		"Switches show ON/OFF; REJECT takes precedence over PASS patterns.",
 		"GET YAML FILTER preserves stored flags, false entries and numeric ADIF keys.",
+		"DESTATE/DXSTATE show FCC mailing-address codes; empty means unknown.",
 		"Preset (modified) means preferences differ from the applied snapshot.",
 		"These readbacks always pause live spots, even if automatic pause is disabled.",
 		"The reading interval starts after server delivery; RESUME ends it now.",
@@ -48,26 +49,28 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 			"Returns one framed YAML document; machine commands never change pause state.",
 			"Optional ID uses 1-32 ASCII letters, digits or hyphens and preserves case.",
 			"Responses include schema version, request ID and an opaque revision.",
+			"Default schema 1 is unchanged. SCHEMA 2 includes DESTATE/DXSTATE rules.",
 			"The final CRLF response is limited to 65,536 bytes, including framing.",
 		}
 		if resource != "CAPABILITIES" {
 			notes = append(notes, "Edit the writable configuration section; status is read-only.")
 		}
-		add(topic, "Read "+strings.ToLower(resource)+" for clients.", []string{topic + " [ID <id>]"}, notes)
+		add(topic, "Read "+strings.ToLower(resource)+" for clients.", []string{topic + " [SCHEMA 2] [ID <id>]"}, notes)
 	}
 	for _, verb := range []string{"PUT", "PATCH"} {
 		for _, resource := range []string{"FILTER", "SETTINGS", "CONFIG"} {
 			topic := verb + " YAML " + resource
 			notes := []string{
 				"Send standalone --- and ... marker lines around one plain YAML document.",
-				"Include schema_version: 1, request_id, if_revision and configuration.",
+				"Include schema_version: 1 or 2, request_id, if_revision and configuration.",
 				"GET again after reconnect or a revision conflict before retrying a write.",
 				"Validation or persistence failure leaves live and saved configuration unchanged.",
 				"Unavailable choices are rejected; named preset baselines are preserved.",
 				"Body limit: 65,536 bytes; total upload deadline: 30 seconds.",
 				"Oversized, expired or unreliable framing closes the connection.",
 				"A complete invalid document gets a YAML error and keeps the connection open.",
-				"Resulting full CONFIG readback must also fit 65,536 bytes.",
+				"Schema 1 preserves hidden state rules and bounds its CONFIG projection.",
+				"Schema 2 includes state rules; full CONFIG must fit 65,536 bytes.",
 				"No aliases, anchors, merge keys, custom tags, nulls or extra documents.",
 			}
 			if verb == "PUT" {

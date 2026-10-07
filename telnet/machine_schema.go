@@ -1,3 +1,6 @@
+// File role: Validates machine YAML envelopes before detaching writable data.
+// Supported schema versions select vocabulary; presence masks preserve PATCH
+// omissions without retaining parser nodes in client state.
 package telnet
 
 import (
@@ -22,7 +25,7 @@ type machineRequest struct {
 	resource      string
 	filterFields  uint32
 	settingFields uint8
-	ruleFields    [14]uint8
+	ruleFields    [16]uint8
 }
 
 // machineSchemaError names a schema-controlled path, never an unbounded value
@@ -57,6 +60,29 @@ func decodeMachineRequest(body []byte, command machineCommand) (machineRequest, 
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		return request, schemaError("document", "exactly one YAML document is required")
 	}
+	// Retain an unambiguous supported envelope version for error replies even
+	// when a later node is invalid. This does not admit any request values.
+	if document.Kind == yaml.DocumentNode && len(document.Content) == 1 {
+		root := document.Content[0]
+		if root.Kind == yaml.MappingNode && len(root.Content)%2 == 0 {
+			var version *yaml.Node
+			duplicate := false
+			for i := 0; i < len(root.Content); i += 2 {
+				if root.Content[i].Value == "schema_version" {
+					duplicate = version != nil
+					if duplicate {
+						break
+					}
+					version = root.Content[i+1]
+				}
+			}
+			if version != nil && !duplicate {
+				if value, err := machineInteger(version, "schema_version", false); err == nil && (value == 1 || value == 2) {
+					request.SchemaVersion = value
+				}
+			}
+		}
+	}
 	if err := validateMachineNodes(&document); err != nil {
 		return request, err
 	}
@@ -81,7 +107,7 @@ func decodeMachineRequest(body []byte, command machineCommand) (machineRequest, 
 	if request.SchemaVersion, err = machineInteger(version, "schema_version", false); err != nil {
 		return request, err
 	}
-	if request.SchemaVersion != 1 {
+	if request.SchemaVersion != 1 && request.SchemaVersion != 2 {
 		return request, schemaError("schema_version", "unsupported schema version")
 	}
 	if revision := envelope["if_revision"]; revision != nil {

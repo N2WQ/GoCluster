@@ -1,3 +1,5 @@
+// File role: Frames bounded machine commands and uploads while retaining
+// terminal error intent when an incomplete upload cannot be safely resumed.
 package telnet
 
 import (
@@ -8,9 +10,10 @@ import (
 // machineCommand is a bounded header, separate from the case-sensitive YAML body.
 // Verb and Resource are normalized; RequestID remains exactly as supplied.
 type machineCommand struct {
-	Verb      string
-	Resource  string
-	RequestID string
+	Verb          string
+	Resource      string
+	RequestID     string
+	SchemaVersion int
 }
 
 // machineInputError retains recognized machine intent when ingress fails before
@@ -212,13 +215,20 @@ func parseMachineHeader(line string) (machineCommand, bool, error) {
 		}
 		return cmd, true, nil
 	}
-	if len(args) == 3 {
-		return cmd, true, nil
+	remaining := args[3:]
+	if len(remaining) >= 2 && strings.EqualFold(remaining[0], "SCHEMA") {
+		if remaining[1] != "2" {
+			return cmd, true, fmt.Errorf("GET YAML SCHEMA requires version 2")
+		}
+		cmd.SchemaVersion = 2
+		remaining = remaining[2:]
 	}
-	if len(args) != 5 || !strings.EqualFold(args[3], "ID") || !validMachineRequestID(args[4]) {
-		return cmd, true, fmt.Errorf("GET YAML permits ID followed by 1-32 ASCII letters, digits or hyphens")
+	if len(remaining) != 0 {
+		if len(remaining) != 2 || !strings.EqualFold(remaining[0], "ID") || !validMachineRequestID(remaining[1]) {
+			return cmd, true, fmt.Errorf("GET YAML permits [SCHEMA 2] [ID <1-32 ASCII letters, digits or hyphens>]")
+		}
+		cmd.RequestID = remaining[1]
 	}
-	cmd.RequestID = args[4]
 	return cmd, true, nil
 }
 

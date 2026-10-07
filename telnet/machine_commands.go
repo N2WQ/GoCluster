@@ -32,9 +32,9 @@ func (s *Server) queueMachineReply(c *Client, response string, terminal bool) bo
 	return err == nil
 }
 
-func (s *Server) machineHeaderFailure(c *Client, verb string, err error) machineDispatch {
+func (s *Server) machineHeaderFailure(c *Client, verb string, version int, err error) machineDispatch {
 	terminal := verb != "GET"
-	response := renderYAMLCommandError("", "", "", "invalid_header", err.Error())
+	response := renderYAMLCommandErrorVersion(version, "", "", "", "invalid_header", err.Error())
 	queued := s.queueMachineReply(c, response, terminal)
 	return machineDispatch{handled: true, terminal: terminal || !queued, closeQueued: terminal && queued}
 }
@@ -45,7 +45,7 @@ func (s *Server) handleMachineCommand(c *Client, line string) machineDispatch {
 		return machineDispatch{}
 	}
 	if err != nil {
-		return s.machineHeaderFailure(c, command.Verb, err)
+		return s.machineHeaderFailure(c, command.Verb, command.SchemaVersion, err)
 	}
 	if command.Verb == "GET" {
 		return machineDispatch{handled: true, terminal: !s.getMachineConfiguration(c, command)}
@@ -59,7 +59,7 @@ func (s *Server) handleMachineCommand(c *Client, line string) machineDispatch {
 	request, err := s.prepareMachineRequest(c, body, command)
 	if err != nil {
 		return machineDispatch{handled: true, terminal: !s.queueMachineReply(c,
-			renderYAMLCommandError(command.Resource, request.RequestID, "", "invalid_document", err.Error()), false)}
+			renderYAMLCommandErrorVersion(request.SchemaVersion, command.Resource, request.RequestID, "", "invalid_document", err.Error()), false)}
 	}
 	response := s.applyMachineRequest(c, command, request)
 	return machineDispatch{handled: true, terminal: !s.queueMachineReply(c, response, false)}
@@ -109,24 +109,24 @@ func (s *Server) getMachineConfiguration(c *Client, command machineCommand) bool
 func (s *Server) prepareMachineReadback(c *Client, command machineCommand) string {
 	release, err := s.acquireConfiguration(c, false, false, time.Time{})
 	if err != nil {
-		return renderYAMLCommandError(command.Resource, command.RequestID, "", "session_unavailable", err.Error())
+		return renderYAMLCommandErrorVersion(command.SchemaVersion, command.Resource, command.RequestID, "", "session_unavailable", err.Error())
 	}
 	defer release()
 	revision, err := c.configurationRevisionToken()
 	if err != nil {
-		return renderYAMLCommandError(command.Resource, command.RequestID, "", "revision_unavailable", err.Error())
+		return renderYAMLCommandErrorVersion(command.SchemaVersion, command.Resource, command.RequestID, "", "revision_unavailable", err.Error())
 	}
 	requestID := command.RequestID
 	if requestID == "" {
 		var identifier [16]byte
 		if _, err := rand.Read(identifier[:]); err != nil {
-			return renderYAMLCommandError(command.Resource, "", revision, "identifier_unavailable", "Could not assign a request identifier.")
+			return renderYAMLCommandErrorVersion(command.SchemaVersion, command.Resource, "", revision, "identifier_unavailable", "Could not assign a request identifier.")
 		}
 		requestID = hex.EncodeToString(identifier[:])
 	}
-	response, err := s.renderYAMLReadback(c, command.Resource, requestID, revision)
+	response, err := s.renderYAMLReadbackVersion(c, command.Resource, requestID, revision, command.SchemaVersion)
 	if err != nil {
-		response = renderYAMLCommandError(command.Resource, requestID, revision, machineErrorCode(err), err.Error())
+		response = renderYAMLCommandErrorVersion(command.SchemaVersion, command.Resource, requestID, revision, machineErrorCode(err), err.Error())
 	}
 	return response
 }
@@ -146,8 +146,8 @@ func (c *Client) prepareMachineCandidate(request machineRequest) (before, next f
 	if err != nil {
 		return before, next, err
 	}
-	if !next.MinimumSizeFits(maxYAMLBytes) {
-		return before, next, errReadbackTooLarge
+	if err := machineConfigurationFits(next, request.SchemaVersion); err != nil {
+		return before, next, err
 	}
 	next = next.Clone()
 	return before, next, nil
@@ -156,22 +156,22 @@ func (c *Client) prepareMachineCandidate(request machineRequest) (before, next f
 func (s *Server) applyMachineRequest(c *Client, command machineCommand, request machineRequest) string {
 	release, err := s.acquireConfiguration(c, false, false, time.Time{})
 	if err != nil {
-		return renderYAMLCommandError(command.Resource, request.RequestID, "", "session_unavailable", err.Error())
+		return renderYAMLCommandErrorVersion(request.SchemaVersion, command.Resource, request.RequestID, "", "session_unavailable", err.Error())
 	}
 	defer release()
 	revision, err := c.configurationRevisionToken()
 	if err != nil {
-		return renderYAMLCommandError(command.Resource, request.RequestID, "", "revision_unavailable", err.Error())
+		return renderYAMLCommandErrorVersion(request.SchemaVersion, command.Resource, request.RequestID, "", "revision_unavailable", err.Error())
 	}
 	fail := func(err error) string {
-		return renderYAMLCommandError(command.Resource, request.RequestID, revision, machineErrorCode(err), err.Error())
+		return renderYAMLCommandErrorVersion(request.SchemaVersion, command.Resource, request.RequestID, revision, machineErrorCode(err), err.Error())
 	}
 	validateOnly := command.Verb == "VALIDATE"
 	if !validateOnly && c.recordProtected {
 		return fail(errProtectedRecord)
 	}
 	if !validateOnly && request.IfRevision != revision {
-		return renderYAMLCommandError(command.Resource, request.RequestID, revision, "revision_conflict", "Configuration changed or the session was replaced; GET again before retrying.")
+		return renderYAMLCommandErrorVersion(request.SchemaVersion, command.Resource, request.RequestID, revision, "revision_conflict", "Configuration changed or the session was replaced; GET again before retrying.")
 	}
 	before, next, err := c.prepareMachineCandidate(request)
 	if err != nil {
@@ -184,7 +184,7 @@ func (s *Server) applyMachineRequest(c *Client, command machineCommand, request 
 	if next.Filters.NearbyEnabled && (prepared.filter.NearbyUserFine == pathreliability.InvalidCell || prepared.filter.NearbyUserCoarse == pathreliability.InvalidCell) {
 		return fail(fmt.Errorf("NEARBY requires a usable GRID and available H3 tables"))
 	}
-	if err := s.configurationReadbackFits(c, next, prepared); err != nil {
+	if err := s.configurationReadbackFitsVersion(c, next, prepared, request.SchemaVersion); err != nil {
 		return fail(err)
 	}
 	resultRevision := revision
@@ -194,7 +194,7 @@ func (s *Server) applyMachineRequest(c *Client, command machineCommand, request 
 		}
 		resultRevision = fmt.Sprintf("%s-%d", c.configurationEpoch, c.configurationRevision+1)
 	}
-	response, err := renderYAMLCommandSuccess(command.Resource, request.RequestID, resultRevision, command.Verb, !validateOnly, !validateOnly)
+	response, err := renderYAMLCommandSuccessVersion(request.SchemaVersion, command.Resource, request.RequestID, resultRevision, command.Verb, !validateOnly, !validateOnly)
 	if err != nil {
 		return fail(err)
 	}
@@ -211,7 +211,7 @@ func (s *Server) applyMachineRequest(c *Client, command machineCommand, request 
 	// Even an unchanged PUT must establish durable consistency. No fallible work
 	// remains after this commit; a lost acknowledgement is recovered by GET.
 	if err := s.persistConfiguration(c, next, c.presetReference); err != nil {
-		return renderYAMLCommandError(command.Resource, request.RequestID, revision, "persistence_failed", "Could not save configuration; live and saved configuration are unchanged.")
+		return renderYAMLCommandErrorVersion(request.SchemaVersion, command.Resource, request.RequestID, revision, "persistence_failed", "Could not save configuration; live and saved configuration are unchanged.")
 	}
 	if !unchanged {
 		s.publishConfiguration(c, next, prepared, c.presetReference, time.Now().UTC())

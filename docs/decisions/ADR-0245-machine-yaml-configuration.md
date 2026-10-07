@@ -208,3 +208,6 @@ it does not establish production latency or p99 improvements.
   [ADR-0246](ADR-0246-delivery-timed-human-readbacks.md)
 - Related TSRs: -
 - Supersedes / superseded by: No previous machine-write protocol decision.
+
+- State metadata and related schema version rules are refined by
+  [ADR-0253](ADR-0253-fcc-state-enrichment-and-filtering.md).

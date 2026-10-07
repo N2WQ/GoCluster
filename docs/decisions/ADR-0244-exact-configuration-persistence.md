@@ -186,3 +186,6 @@ and [runtime configuration notes](../../data/config/README.md#user-configuration
 - Related TSRs: none; this is a new feature decision.
 - Supersedes / superseded by: refines [ADR-0238](ADR-0238-named-presets.md)'s
   normalization and per-SSID lifecycle clauses; no whole-record supersession.
+
+- State metadata and related schema version rules are refined by
+  [ADR-0253](ADR-0253-fcc-state-enrichment-and-filtering.md).

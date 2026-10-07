@@ -878,3 +878,28 @@ IG9, not Sicily alone. Use `REJECT DXCALL IT9*` for a callsign-prefix block.
 precedence over portable callsign parsing; existing callsign searches still work.
 Numeric arguments remain counts. `SHOW DXCC` detail lookup is unchanged. See
 [canonical DXCC prefixes](../telnet/README.md#canonical-dxcc-prefixes).
+
+## FCC State Filtering And Upgrade
+
+FCC state filtering uses the licensee mailing address. Users can select
+`PASS DXSTATE CA,TX` or `REJECT DESTATE AA,AE,AP`; unknown state fails an explicit
+PASS list and passes a REJECT-only list. NEARBY suspends these rules until OFF.
+All 60 FCC codes are accepted; Canadian provinces require a later source.
+
+`fcc_uls.enabled` controls license enforcement only. Turning it off keeps
+reference downloads, database migration and state enrichment active. Startup
+reporting separates enforcement from refresh. Missing data supplies empty state
+and keeps existing fail-open license behavior. Import failures preserve the last
+good database; successful first creation becomes available without a restart.
+
+New archive version 6 retains observed state. Versions 2–5 remain readable with
+unknown state and are not enriched on history reads. Saved profile/preset
+version 2 migrates earlier records without changing their old rules. Stop writers
+and back up profiles, preset libraries and the archive before upgrade. Downgrade
+using matching binary/data backups; older binaries may reject version 2 saved
+records or skip version 6 archive rows. A failed FCC rebuild is recovered by
+retrying with the last good database in place, not by deleting it.
+
+Existing YAML clients keep schema 1 documents and preserve hidden state rules
+when writing. Use `GET YAML CONFIG SCHEMA 2` to inspect/edit state fields. Both
+schemas use one full configuration revision and retain their documented bounds.

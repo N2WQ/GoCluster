@@ -203,7 +203,7 @@ var humanCategoryNames = map[string]string{
 	"CONFIDENCE": "Confidence", "PATH": "Path", "DXCONT": "DX continents",
 	"DECONT": "DE continents", "DXZONE": "DX zones", "DEZONE": "DE zones",
 	"DXGRID2": "DX grids", "DEGRID2": "DE grids", "DXDXCC": "DX DXCC",
-	"DEDXCC": "DE DXCC", "DXCALL": "DX calls", "DECALL": "DE calls",
+	"DEDXCC": "DE DXCC", "DXSTATE": "DX states", "DESTATE": "DE states", "DXCALL": "DX calls", "DECALL": "DE calls",
 	"BEACON": "Beacons", "WWV": "WWV", "WCY": "WCY", "ANNOUNCE": "Announce",
 	"SELF": "Self", "TOXIC": "Toxic", "NEARBY": "Nearby",
 }

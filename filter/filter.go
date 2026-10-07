@@ -456,6 +456,15 @@ type Filter struct {
 	AllDEDXCC            bool            // If true, accept all DE ADIF codes (except blocked)
 	BlockAllDEDXCC       bool            // If true, reject all DE ADIF codes
 
+	DXStates         map[string]bool // FCC mailing-address state allow/block rules; empty metadata is unknown.
+	BlockDXStates    map[string]bool
+	DEStates         map[string]bool
+	BlockDEStates    map[string]bool
+	AllDXStates      bool
+	BlockAllDXStates bool
+	AllDEStates      bool
+	BlockAllDEStates bool
+
 	// NearbyEnabled toggles H3 nearby matching that bypasses location filters.
 	// This state is persisted per user.
 	NearbyEnabled bool `yaml:"nearby_enabled,omitempty"`
@@ -474,6 +483,15 @@ type Filter struct {
 // NearbyLocationSnapshot stores location filter state for restoration when
 // PASS NEARBY is disabled. It is not persisted.
 type NearbyLocationSnapshot struct {
+	DXStates         map[string]bool // FCC mailing-address state allow/block rules; empty metadata is unknown.
+	BlockDXStates    map[string]bool
+	DEStates         map[string]bool
+	BlockDEStates    map[string]bool
+	AllDXStates      bool
+	BlockAllDXStates bool
+	AllDEStates      bool
+	BlockAllDEStates bool
+
 	DXContinents         map[string]bool
 	BlockDXContinents    map[string]bool
 	DEContinents         map[string]bool
@@ -582,6 +600,12 @@ func NewFilter() *Filter {
 		BlockAllDXDXCC:       false,
 		AllDEDXCC:            true,
 		BlockAllDEDXCC:       false,
+		DXStates:             make(map[string]bool),
+		BlockDXStates:        make(map[string]bool),
+		DEStates:             make(map[string]bool),
+		BlockDEStates:        make(map[string]bool),
+		AllDXStates:          true,
+		AllDEStates:          true,
 		NearbyEnabled:        false,
 		NearbySnapshot:       nil,
 		NearbyUserFine:       pathreliability.InvalidCell,
@@ -1140,6 +1164,8 @@ func (f *Filter) Reset() {
 	f.SetSelfEnabled(true)
 	f.SetToxicEnabled(true)
 	f.DisableNearby()
+	f.ResetDXStates()
+	f.ResetDEStates()
 }
 
 // ResetToDefaults resets all filter criteria back to configured defaults.
@@ -1220,6 +1246,14 @@ func (f *Filter) captureLocationSnapshot() *NearbyLocationSnapshot {
 		return nil
 	}
 	return &NearbyLocationSnapshot{
+		DXStates:             copyStringBoolMap(f.DXStates),
+		BlockDXStates:        copyStringBoolMap(f.BlockDXStates),
+		DEStates:             copyStringBoolMap(f.DEStates),
+		BlockDEStates:        copyStringBoolMap(f.BlockDEStates),
+		AllDXStates:          f.AllDXStates,
+		BlockAllDXStates:     f.BlockAllDXStates,
+		AllDEStates:          f.AllDEStates,
+		BlockAllDEStates:     f.BlockAllDEStates,
 		DXContinents:         copyStringBoolMap(f.DXContinents),
 		BlockDXContinents:    copyStringBoolMap(f.BlockDXContinents),
 		DEContinents:         copyStringBoolMap(f.DEContinents),
@@ -1259,6 +1293,10 @@ func (f *Filter) restoreLocationSnapshot(snapshot *NearbyLocationSnapshot) {
 	if f == nil || snapshot == nil {
 		return
 	}
+	f.DXStates, f.BlockDXStates = copyStringBoolMap(snapshot.DXStates), copyStringBoolMap(snapshot.BlockDXStates)
+	f.DEStates, f.BlockDEStates = copyStringBoolMap(snapshot.DEStates), copyStringBoolMap(snapshot.BlockDEStates)
+	f.AllDXStates, f.BlockAllDXStates = snapshot.AllDXStates, snapshot.BlockAllDXStates
+	f.AllDEStates, f.BlockAllDEStates = snapshot.AllDEStates, snapshot.BlockAllDEStates
 	f.DXContinents = copyStringBoolMap(snapshot.DXContinents)
 	f.BlockDXContinents = copyStringBoolMap(snapshot.BlockDXContinents)
 	f.DEContinents = copyStringBoolMap(snapshot.DEContinents)
@@ -1477,6 +1515,14 @@ func (f *Filter) matchesWithPath(s *spot.Spot, pathClass string) bool {
 			return false
 		}
 	} else {
+		// State filters use mailing-address metadata. Unknown values follow the
+		// ordinary geography contract: restrictive PASS hides them; named REJECT does not.
+		if !passesStringFilter(s.DXMetadata.State, f.DXStates, f.BlockDXStates, f.AllDXStates, f.BlockAllDXStates) {
+			return false
+		}
+		if !passesStringFilter(s.DEMetadata.State, f.DEStates, f.BlockDEStates, f.AllDEStates, f.BlockAllDEStates) {
+			return false
+		}
 		// DX/DE continent filters.
 		if !passesStringFilter(dxCont, f.DXContinents, f.BlockDXContinents, f.AllDXContinents, f.BlockAllDXContinents) {
 			return false
@@ -1925,6 +1971,8 @@ func (f *Filter) String() string {
 		}
 	}
 
+	parts = append(parts, formatStateSummary("DXState", f.DXStates, f.BlockDXStates, f.AllDXStates, f.BlockAllDXStates))
+	parts = append(parts, formatStateSummary("DEState", f.DEStates, f.BlockDEStates, f.AllDEStates, f.BlockAllDEStates))
 	// Describe continent filters
 	if f.AllDXContinents {
 		parts = append(parts, "DXCont: ALL")

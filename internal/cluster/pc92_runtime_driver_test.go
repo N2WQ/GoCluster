@@ -181,7 +181,7 @@ func TestPC92RuntimeQualification(t *testing.T) {
 		ChildOracleBackingArrayBytes: childResults.OracleBytes, SharedInputBytes: uint64(mapping.bytes), DriverGOMAXPROCS: runtime.GOMAXPROCS(0), CounterFrequency: frequency,
 		GoVersion: runtime.Version(), CPUs: runtime.NumCPU(), GOMAXPROCS: childResults.GOMAXPROCS,
 		BroadcastBatchMS: cfg.Telnet.BroadcastBatchIntervalMS, StabilizerEnabled: cfg.CallCorrection.StabilizerEnabled, TemporalEnabled: cfg.CallCorrection.TemporalDecoder.Enabled,
-		Limits: []string{"Separate service process retains shipped2P/GC50/1536MiB; external generator and recipient sockets run in parent with separately reported resources.", "Every endpoint uses shared Windows QPC ticks; interval accounting adds one uncertainty tick and rounds upward. Input metadata is atomically published before source write, without resetting timestamps in transit.", "Histogram p99 is an upper bound; exact counters at5ms/25ms determine acceptance using all required tokens.", "Oracle allocation counts exclude socket and PC92 fixture storage; child profiles include bounded enqueue accounting and are not a governed-subsystem allocation verdict.", "Renamed counts compare full callsigns at successful enqueue or peer reception; DisplayTruncated counts the separate ten-character telnet presentation.", "Network feeds/downloaders disabled in isolated config; reference models read-only; persisted state uses temporary working and evidence directories."},
+		Limits: []string{"Separate service process retains shipped2P/GC50/1536MiB; external generator and recipient sockets run in parent with separately reported resources.", "Every endpoint uses shared Windows QPC ticks; interval accounting adds one uncertainty tick and rounds upward. Input metadata is atomically published before source write, without resetting timestamps in transit.", "Histogram p99 is an upper bound; exact counters at5ms/25ms determine acceptance using all required tokens.", "Oracle allocation counts exclude socket and PC92 fixture storage; child profiles include bounded enqueue accounting and are not a governed-subsystem allocation verdict.", "Renamed counts compare full callsigns at successful enqueue or peer reception; DisplayTruncated counts the separate ten-character telnet presentation.", "Network feeds disabled and FCC refresh uses a local fixture; reference models read-only; persisted state uses temporary working and evidence directories."},
 	}
 	data, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
@@ -204,6 +204,7 @@ func configureRuntimeQualification(t *testing.T, cfg *config.Config, repo string
 	}
 	cfg.PSKReporter.Enabled, cfg.DXSummit.Enabled = false, false
 	cfg.FCCULS.Enabled, cfg.Reputation.Enabled, cfg.Skew.Enabled = false, false, false
+	configureFCCQualificationSource(t, cfg)
 	cfg.SolarWeather.Enabled, cfg.PropReport.Enabled = false, false
 	cfg.PathReliability.VOACAPFallback.Enabled = false
 	cfg.CTY.File, cfg.CTY.URL = filepath.Join(repo, "data", "cty", "cty.plist"), ""

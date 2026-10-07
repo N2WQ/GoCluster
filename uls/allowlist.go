@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"dxcluster/spot"
 	"dxcluster/strutil"
 )
 
@@ -186,10 +187,17 @@ func jurisdictionKeys(adif int) []string {
 	if adif <= 0 {
 		return nil
 	}
-	if adif == 291 {
-		return []string{"US", "ADIF291"}
+	// Unqualified/US exceptions follow FCC jurisdiction; explicitly named ADIF
+	// exceptions remain confined to their own entity. Preserve the common key
+	// without formatting a new string for every contiguous-US spot.
+	entityKey := "ADIF291"
+	if adif != 291 {
+		entityKey = "ADIF" + strconv.Itoa(adif)
 	}
-	return []string{"ADIF" + strconv.Itoa(adif)}
+	if spot.IsFCCJurisdiction(adif) {
+		return []string{defaultAllowlistJurisdiction, entityKey}
+	}
+	return []string{entityKey}
 }
 
 func compileAllowlistEntry(pattern string) (allowlistEntry, error) {

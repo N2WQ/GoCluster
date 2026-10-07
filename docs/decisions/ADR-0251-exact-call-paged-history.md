@@ -132,3 +132,6 @@ Stop cancels readers and waits for their iterators to close before closing Pebbl
   `telnet/history_fuzz_test.go` (stateful cursor sequences).
 - Related docs: [commands history](../../commands/README.md#archive-history),
   [telnet history](../../telnet/README.md#archive-history-and-continuation).
+
+- State metadata and related schema version rules are refined by
+  [ADR-0253](ADR-0253-fcc-state-enrichment-and-filtering.md).

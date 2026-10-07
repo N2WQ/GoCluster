@@ -87,8 +87,8 @@ type readbackCategory struct {
 	kind         byte
 }
 
-func readbackCategories(f filter.FilterConfiguration) [23]readbackCategory {
-	return [23]readbackCategory{
+func readbackCategories(f filter.FilterConfiguration) [25]readbackCategory {
+	return [25]readbackCategory{
 		{name: "BAND", rules: f.Bands}, {name: "MODE", rules: f.Modes},
 		{name: "SOURCE", rules: f.Sources}, {name: "EVENT", rules: f.Events},
 		{name: "CONFIDENCE", rules: f.Confidence}, {name: "PATH", rules: f.PathClasses},
@@ -96,6 +96,7 @@ func readbackCategories(f filter.FilterConfiguration) [23]readbackCategory {
 		{name: "DXZONE", rules: f.DXZones}, {name: "DEZONE", rules: f.DEZones},
 		{name: "DXGRID2", rules: f.DXGrid2}, {name: "DEGRID2", rules: f.DEGrid2},
 		{name: "DXDXCC", rules: f.DXDXCC}, {name: "DEDXCC", rules: f.DEDXCC},
+		{name: "DXSTATE", rules: f.DXStates}, {name: "DESTATE", rules: f.DEStates},
 		{name: "DXCALL", allow: f.DXCallsigns, block: f.BlockDXCallsigns, kind: 'p'},
 		{name: "DECALL", allow: f.DECallsigns, block: f.BlockDECallsigns, kind: 'p'},
 		{name: "BEACON", toggle: f.IncludeBeacons, kind: 't'}, {name: "WWV", toggle: f.AllowWWV, kind: 't'},

@@ -60,10 +60,14 @@ func (set *SavedPreset) Clone() (*SavedPreset, error) {
 	return ConfigurationFromPreset(set).Preset()
 }
 
-// UnmarshalYAML migrates absent-marker snapshots and preserves marked ones.
+// UnmarshalYAML migrates legacy snapshots and adds unrestricted states to v1.
+// Version two preserves every configured state rule exactly.
 func (set *SavedPreset) UnmarshalYAML(node *yaml.Node) error {
 	version, err := storedConfigurationVersion(node)
 	if err != nil {
+		return err
+	}
+	if err := validateStoredStateFields(node, version); err != nil {
 		return err
 	}
 	if err := validateStoredMapping(node, reflect.TypeFor[SavedPreset]()); err != nil {
@@ -85,6 +89,13 @@ func (set *SavedPreset) UnmarshalYAML(node *yaml.Node) error {
 	*set = SavedPreset(decoded)
 	if version == 0 {
 		set.normalize()
+	}
+	if version < CurrentConfigurationVersion {
+		set.ResetDXStates()
+		set.ResetDEStates()
+	}
+	if err := ConfigurationFromFilter(&set.Filter, SettingsConfiguration{}).ValidateStateRules(); err != nil {
+		return err
 	}
 	set.ConfigurationVersion = CurrentConfigurationVersion
 	return nil

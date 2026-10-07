@@ -82,6 +82,8 @@ var locationFilterDomains = map[string]bool{
 	"DEZONE":  true,
 	"DXDXCC":  true,
 	"DEDXCC":  true,
+	"DXSTATE": true,
+	"DESTATE": true,
 }
 
 func newFilterCommandEngine() *filterCommandEngine {
@@ -139,6 +141,8 @@ func (e *filterCommandEngine) registerDomains() {
 		newZoneHandler("DEZONE", func(f *filter.Filter, value int, allowed bool) { f.SetDEZone(value, allowed) }),
 		newDXCCHandler("DXDXCC", e.ctyLookup, func(f *filter.Filter, code int, allowed bool) { f.SetDXDXCC(code, allowed) }),
 		newDXCCHandler("DEDXCC", e.ctyLookup, func(f *filter.Filter, code int, allowed bool) { f.SetDEDXCC(code, allowed) }),
+		newStateHandler("DXSTATE"),
+		newStateHandler("DESTATE"),
 		newGrid2Handler("DXGRID2", func(f *filter.Filter, value string, allowed bool) { f.SetDXGrid2Prefix(value, allowed) }),
 		newGrid2Handler("DEGRID2", func(f *filter.Filter, value string, allowed bool) { f.SetDEGrid2Prefix(value, allowed) }),
 		newFeatureToggleHandler("BEACON", func(f *filter.Filter, enabled bool) { f.SetBeaconEnabled(enabled) }),
@@ -1509,6 +1513,9 @@ func formatFilterSnapshot(f *filter.Filter, ctyLookup func() *cty.CTYDatabase) s
 	dxGrid2 := snapshotAllowBlockStrings(f.AllDXGrid2, f.BlockAllDXGrid2, f.DXGrid2Prefixes, f.BlockDXGrid2, nil)
 	deGrid2 := snapshotAllowBlockStrings(f.AllDEGrid2, f.BlockAllDEGrid2, f.DEGrid2Prefixes, f.BlockDEGrid2, nil)
 
+	dxStates := snapshotAllowBlockStrings(f.AllDXStates, f.BlockAllDXStates, f.DXStates, f.BlockDXStates, spot.FCCStateCodes())
+	deStates := snapshotAllowBlockStrings(f.AllDEStates, f.BlockAllDEStates, f.DEStates, f.BlockDEStates, spot.FCCStateCodes())
+
 	dxCallSummary, dxCallLine := callsignSnapshot("DXCALL", f.DXCallsigns, f.BlockDXCallsigns)
 	deCallSummary, deCallLine := callsignSnapshot("DECALL", f.DECallsigns, f.BlockDECallsigns)
 
@@ -1550,6 +1557,8 @@ func formatFilterSnapshot(f *filter.Filter, ctyLookup func() *cty.CTYDatabase) s
 		summaryAllowBlockField("DEDXCC", deDXCC, maxFieldLen),
 		summaryAllowBlockField("DXGRID2", dxGrid2, maxFieldLen),
 		summaryAllowBlockField("DEGRID2", deGrid2, maxFieldLen),
+		summaryAllowBlockField("DXSTATE", dxStates, maxFieldLen),
+		summaryAllowBlockField("DESTATE", deStates, maxFieldLen),
 		clampSummaryField(nearbySummary, maxFieldLen),
 		clampSummaryField(beaconSummary, maxFieldLen),
 		clampSummaryField(wwvSummary, maxFieldLen),
@@ -1581,6 +1590,19 @@ func formatFilterSnapshot(f *filter.Filter, ctyLookup func() *cty.CTYDatabase) s
 	b.WriteString(formatAllowBlockLine("DEDXCC", deDXCC))
 	b.WriteString(formatAllowBlockLine("DXGRID2", dxGrid2))
 	b.WriteString(formatAllowBlockLine("DEGRID2", deGrid2))
+	for _, state := range []struct {
+		name  string
+		rules filter.StringRules
+	}{
+		{"DXSTATE", filter.StringRules{AllowAll: f.AllDXStates, BlockAll: f.BlockAllDXStates, Allow: f.DXStates, Block: f.BlockDXStates}},
+		{"DESTATE", filter.StringRules{AllowAll: f.AllDEStates, BlockAll: f.BlockAllDEStates, Allow: f.DEStates, Block: f.BlockDEStates}},
+	} {
+		var h humanResponse
+		if err := writeHumanFiniteRules(&h, state.name, "Only", state.rules, spot.IsFCCState, spot.IsFCCState, "", false); err != nil {
+			return "State labels exceed the response limit.\n"
+		}
+		b.WriteString(strings.ReplaceAll(string(h.data), "\r\n", "\n"))
+	}
 	b.WriteString(nearbyLine)
 	b.WriteString(beaconLine)
 	b.WriteString(wwvLine)

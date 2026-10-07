@@ -256,8 +256,10 @@ separately from the files in this deployment-config directory. Each full callsig
 including its SSID, owns one record such as `N2WQ-1.yaml`. The `presets` subdirectory
 holds shared named snapshots for the owner callsign; back it up with user records.
 
-`configuration_version: 1` identifies exact current records and snapshots. Only
-an absent marker selects legacy migration; current-version reads preserve false
+`configuration_version: 2` identifies exact current records and snapshots. An
+absent marker selects legacy migration; version 1 preserves old exact rules and
+adds unrestricted DX/DE state domains, including nested preset baselines. Migration
+is written on the next ordinary successful save. Current-version reads preserve false
 map entries, empty selections, zero values and default choices. An unreadable,
 malformed or unsupported record is preserved, and the session uses temporary
 defaults with a warning. LOAD, machine writes and SAVE PRESET are rejected for
@@ -287,3 +289,33 @@ use one writer process per user-data directory. Older binaries may discard the
 new fields or reject marked preset snapshots, so downgrade with a matching binary
 and data backup. See [backup instructions](../../docs/ENVIRONMENT.md#user-configuration-backups-and-downgrades)
 and [ADR-0244](../../docs/decisions/ADR-0244-exact-configuration-persistence.md).
+
+## FCC Reference Data And Enforcement
+
+`data.yaml` owns the FCC URL, archive/database/temp paths, refresh time, allowlist
+path and lookup TTL. `fcc_uls.enabled` controls **license rejection only**.
+`false` still initializes and refreshes the database and enriches live and
+archived spots with known FCC mailing-address state/territory. Existing values
+and defaults are unchanged. Startup reporting displays enforcement separately
+from reference-data refresh. This differs from older releases, where false also
+stopped acquisition.
+
+Old state-less databases are rebuilt promptly on startup, including when remote
+metadata is unchanged. During acquisition/build, unavailable lookups allow
+spots through the license gate and leave state empty. A failed build preserves
+the last good database; its membership remains usable even if it has no state
+column. First-time success activates the new database without restarting.
+The existing refresh schedule and lookup TTL still apply.
+
+Only the new two-letter state is added to the existing active-license projection;
+no full address/contact table persists. Blank, invalid or ambiguous state leaves
+the license intact. General US allowlist entries cover all supported FCC
+jurisdictions; entity-specific entries remain entity-specific. Refresh logs
+report known/unknown state and malformed input counts; the existing map logger
+reports cache cardinality/capacity/generation when enabled.
+
+Back up user profiles, preset libraries and the archive with writers stopped
+before upgrading. New saved records use version 2 and new archive records use
+version 6. Earlier binaries may reject those profiles or skip those archive
+rows; a deployment downgrade requires a matching backup. Do not repair a
+failed import by deleting the last good database or rewriting protected files.

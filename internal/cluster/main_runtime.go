@@ -67,8 +67,9 @@ type clusterRuntime struct {
 	eventFileLogger   *eventFileLogger
 	surface           ui.Surface
 
-	ctx    context.Context
-	cancel context.CancelFunc
+	ctx     context.Context
+	cancel  context.CancelFunc
+	ulsDone <-chan struct{}
 
 	pathCfg        pathreliability.Config
 	pathPredictor  *pathreliability.Predictor
@@ -537,12 +538,13 @@ func (r *clusterRuntime) validateTaxonomyReferences() bool {
 }
 
 func (r *clusterRuntime) initializeULSAndCTY() {
-	// Toggle FCC ULS lookups independently of the downloader so disabled configs
-	// can keep the DB on disk without performing license checks.
+	// The operator flag controls rejection only. Reference data and state
+	// enrichment remain active with enforcement disabled.
 	uls.SetLicenseChecksEnabled(r.cfg.FCCULS.Enabled)
 	uls.SetLicenseCacheTTL(time.Duration(r.cfg.FCCULS.CacheTTLSeconds) * time.Second)
 	uls.SetAllowlistPath(r.cfg.FCCULS.AllowlistPath)
-	uls.StartBackground(r.ctx, r.cfg.FCCULS)
+	uls.SetLicenseDBPath(r.cfg.FCCULS.DBPath)
+	r.ulsDone = uls.StartBackground(r.ctx, r.cfg.FCCULS)
 
 	r.ctyState = newCTYRefreshState()
 	ctyPath := strings.TrimSpace(r.cfg.CTY.File)
@@ -613,9 +615,6 @@ func (r *clusterRuntime) initializeCorrectionModels() {
 	r.refresher = newAdaptiveRefresher(r.adaptiveMinReports, r.cfg.CallCorrection.AdaptiveRefreshByBand, noopRefresh)
 	if r.refresher != nil {
 		r.refresher.Start()
-	}
-	if r.cfg.FCCULS.Enabled && strings.TrimSpace(r.cfg.FCCULS.DBPath) != "" {
-		uls.SetLicenseDBPath(r.cfg.FCCULS.DBPath)
 	}
 }
 
@@ -1613,6 +1612,9 @@ func (r *clusterRuntime) close() {
 	}
 	if r.cancel != nil {
 		r.cancel()
+	}
+	if r.ulsDone != nil {
+		<-r.ulsDone
 	}
 	if r.voacapFallback != nil {
 		r.voacapFallback.Wait()

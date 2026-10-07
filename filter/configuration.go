@@ -13,7 +13,7 @@ import (
 )
 
 // CurrentConfigurationVersion identifies disk records that preserve exact values.
-const CurrentConfigurationVersion = 1
+const CurrentConfigurationVersion = 2
 
 // RuleSet preserves every configured selection, including explicit false entries.
 type RuleSet[K string | int] struct {
@@ -111,6 +111,8 @@ type FilterConfiguration struct { //nolint:revive // Names the filter portion al
 	Events           StringRules `yaml:"events"`
 	Confidence       StringRules `yaml:"confidence"`
 	PathClasses      StringRules `yaml:"path_classes"`
+	DXStates         StringRules `yaml:"dx_states"`
+	DEStates         StringRules `yaml:"de_states"`
 	DXContinents     StringRules `yaml:"dx_continents"`
 	DEContinents     StringRules `yaml:"de_continents"`
 	DXZones          IntRules    `yaml:"dx_zones"`
@@ -151,6 +153,8 @@ func ConfigurationFromFilter(f *Filter, settings SettingsConfiguration) Configur
 		Events:       StringRules{f.AllEvents, f.BlockAllEvents, f.Events, f.BlockEvents},
 		Confidence:   StringRules{f.AllConfidence, f.BlockAllConfidence, f.Confidence, f.BlockConfidence},
 		PathClasses:  StringRules{f.AllPathClasses, f.BlockAllPathClasses, f.PathClasses, f.BlockPathClasses},
+		DXStates:     StringRules{f.AllDXStates, f.BlockAllDXStates, f.DXStates, f.BlockDXStates},
+		DEStates:     StringRules{f.AllDEStates, f.BlockAllDEStates, f.DEStates, f.BlockDEStates},
 		DXContinents: StringRules{f.AllDXContinents, f.BlockAllDXContinents, f.DXContinents, f.BlockDXContinents},
 		DEContinents: StringRules{f.AllDEContinents, f.BlockAllDEContinents, f.DEContinents, f.BlockDEContinents},
 		DXZones:      IntRules{f.AllDXZones, f.BlockAllDXZones, f.DXZones, f.BlockDXZones},
@@ -190,6 +194,8 @@ func (c Configuration) FilterValue() Filter {
 		Events: f.Events.Allow, BlockEvents: f.Events.Block, AllEvents: f.Events.AllowAll, BlockAllEvents: f.Events.BlockAll,
 		Confidence: f.Confidence.Allow, BlockConfidence: f.Confidence.Block, AllConfidence: f.Confidence.AllowAll, BlockAllConfidence: f.Confidence.BlockAll,
 		PathClasses: f.PathClasses.Allow, BlockPathClasses: f.PathClasses.Block, AllPathClasses: f.PathClasses.AllowAll, BlockAllPathClasses: f.PathClasses.BlockAll,
+		DXStates: f.DXStates.Allow, BlockDXStates: f.DXStates.Block, AllDXStates: f.DXStates.AllowAll, BlockAllDXStates: f.DXStates.BlockAll,
+		DEStates: f.DEStates.Allow, BlockDEStates: f.DEStates.Block, AllDEStates: f.DEStates.AllowAll, BlockAllDEStates: f.DEStates.BlockAll,
 		DXContinents: f.DXContinents.Allow, BlockDXContinents: f.DXContinents.Block, AllDXContinents: f.DXContinents.AllowAll, BlockAllDXContinents: f.DXContinents.BlockAll,
 		DEContinents: f.DEContinents.Allow, BlockDEContinents: f.DEContinents.Block, AllDEContinents: f.DEContinents.AllowAll, BlockAllDEContinents: f.DEContinents.BlockAll,
 		DXZones: f.DXZones.Allow, BlockDXZones: f.DXZones.Block, AllDXZones: f.DXZones.AllowAll, BlockAllDXZones: f.DXZones.BlockAll,
@@ -217,6 +223,7 @@ func (c Configuration) Clone() Configuration {
 	f := &c.Filters
 	f.Bands, f.Modes, f.Sources = cloneRules(f.Bands), cloneRules(f.Modes), cloneRules(f.Sources)
 	f.Events, f.Confidence, f.PathClasses = cloneRules(f.Events), cloneRules(f.Confidence), cloneRules(f.PathClasses)
+	f.DXStates, f.DEStates = cloneRules(f.DXStates), cloneRules(f.DEStates)
 	f.DXContinents, f.DEContinents = cloneRules(f.DXContinents), cloneRules(f.DEContinents)
 	f.DXZones, f.DEZones = cloneRules(f.DXZones), cloneRules(f.DEZones)
 	f.DXGrid2, f.DEGrid2 = cloneRules(f.DXGrid2), cloneRules(f.DEGrid2)
@@ -229,6 +236,9 @@ func (c Configuration) Clone() Configuration {
 // Preset enforces the independent named-snapshot budget before cloning/encoding.
 // Ordinary user records and LOAD admission do not inherit the readback budget.
 func (c Configuration) Preset() (*SavedPreset, error) {
+	if err := c.ValidateStateRules(); err != nil {
+		return nil, err
+	}
 	if !c.MinimumSizeFits(MaxPresetBytes) {
 		return nil, fmt.Errorf("preset exceeds %d KiB", MaxPresetBytes/1024)
 	}
@@ -250,8 +260,8 @@ func (c Configuration) Preset() (*SavedPreset, error) {
 	return set, nil
 }
 
-func (f FilterConfiguration) stringRules() [10]StringRules {
-	return [10]StringRules{f.Bands, f.Modes, f.Sources, f.Events, f.Confidence, f.PathClasses, f.DXContinents, f.DEContinents, f.DXGrid2, f.DEGrid2}
+func (f FilterConfiguration) stringRules() [12]StringRules {
+	return [12]StringRules{f.DXStates, f.DEStates, f.Bands, f.Modes, f.Sources, f.Events, f.Confidence, f.PathClasses, f.DXContinents, f.DEContinents, f.DXGrid2, f.DEGrid2}
 }
 
 func (f FilterConfiguration) intRules() [4]IntRules {

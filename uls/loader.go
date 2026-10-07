@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"dxcluster/config"
@@ -50,10 +52,11 @@ var tables = []tableSpec{
 	{
 		Name:      "AM",
 		FileNames: []string{"AM.DAT"},
-		Columns:   2, // unique_system_identifier, call_sign
+		Columns:   3, // unique_system_identifier, call_sign, state
 		Schema: `CREATE TABLE IF NOT EXISTS AM (
 			unique_system_identifier INTEGER,
-			call_sign TEXT
+			call_sign TEXT,
+			state TEXT NOT NULL DEFAULT ''
 		);`,
 		Indexes: []string{
 			"CREATE INDEX IF NOT EXISTS idx_AM_call_sign ON AM (call_sign);",
@@ -118,11 +121,17 @@ func buildDatabase(ctx context.Context, extractDir, dbPath string, tempDir strin
 		}
 	}
 
+	if err := importStates(ctx, db, extractDir); err != nil {
+		return err
+	}
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version=%d;", CurrentSchemaVersion)); err != nil {
+		return fmt.Errorf("fcc uls: schema marker: %w", err)
+	}
 	if err := db.Close(); err != nil {
 		return fmt.Errorf("fcc uls: close sqlite: %w", err)
 	}
 
-	if err := replaceDBWithRetry(dbPath, tmpPath); err != nil {
+	if err := replaceDBWithRetryContext(ctx, dbPath, tmpPath); err != nil {
 		return err
 	}
 	return nil
@@ -139,17 +148,29 @@ const (
 // Upstream: buildDatabase.
 // Downstream: replaceDBOnce, shouldRetryReplace.
 func replaceDBWithRetry(dbPath, tmpPath string) error {
-	start := time.Now().UTC()
+	return replaceDBWithRetryContext(context.Background(), dbPath, tmpPath)
+}
+
+func replaceDBWithRetryContext(ctx context.Context, dbPath, tmpPath string) error {
+	retryCtx, cancel := context.WithTimeout(ctx, swapRetryMaxDuration)
+	defer cancel()
 	delay := swapRetryInitial
 	for {
+		if err := retryCtx.Err(); err != nil {
+			return err
+		}
 		if err := replaceDBOnceFn(dbPath, tmpPath); err == nil {
 			return nil
-		} else if !shouldRetryReplace(err) || time.Since(start) >= swapRetryMaxDuration {
+		} else if !shouldRetryReplace(err) {
 			return err
 		}
 		timer := time.NewTimer(delay)
-		<-timer.C
-		timer.Stop()
+		select {
+		case <-retryCtx.Done():
+			timer.Stop()
+			return retryCtx.Err()
+		case <-timer.C:
+		}
 		delay = minDuration(delay*2, swapRetryMaxDelay)
 	}
 }
@@ -157,9 +178,9 @@ func replaceDBWithRetry(dbPath, tmpPath string) error {
 var replaceDBOnceFn = replaceDBOnce
 
 func replaceDBOnce(dbPath, tmpPath string) error {
-	if err := os.Remove(dbPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("fcc uls: remove old db: %w", err)
-	}
+	// Rename replaces the destination in the same directory. Never remove the
+	// last-good file first: failed sharing/rename attempts must preserve it.
+
 	if err := os.Rename(tmpPath, dbPath); err != nil {
 		return fmt.Errorf("fcc uls: replace db: %w", err)
 	}
@@ -169,6 +190,12 @@ func replaceDBOnce(dbPath, tmpPath string) error {
 func shouldRetryReplace(err error) bool {
 	if err == nil {
 		return false
+	}
+	// Windows replacement may report access denied when a reader has withheld
+	// delete sharing. Retry both native denial codes, but never interpret Unix
+	// errno 5 (I/O failure) as a sharing problem. The outer retry is cancellable.
+	if runtime.GOOS == "windows" && (errors.Is(err, syscall.Errno(5)) || errors.Is(err, syscall.Errno(32))) {
+		return true
 	}
 	lower := strings.ToLower(err.Error())
 	return strings.Contains(lower, "being used by another process") ||
@@ -236,6 +263,12 @@ func loadTable(ctx context.Context, db *sql.DB, extractDir string, spec tableSpe
 
 	rowCount := 0
 	for scanner.Scan() {
+		if err := ctx.Err(); err != nil {
+			if rollbackErr := rollbackTx(); rollbackErr != nil {
+				return errors.Join(err, rollbackErr)
+			}
+			return err
+		}
 		line := scanner.Text()
 		fields := strings.Split(line, "|")
 
@@ -256,7 +289,7 @@ func loadTable(ctx context.Context, db *sql.DB, extractDir string, spec tableSpe
 			activeIDs[id] = struct{}{}
 			args := []any{
 				id,
-				strings.TrimSpace(fields[4]),
+				strings.ToUpper(strings.TrimSpace(fields[4])),
 				strings.TrimSpace(fields[5]),
 				strings.TrimSpace(fields[6]),
 				strings.TrimSpace(fields[7]),
@@ -283,8 +316,8 @@ func loadTable(ctx context.Context, db *sql.DB, extractDir string, spec tableSpe
 			if _, ok := activeIDs[id]; !ok {
 				continue
 			}
-			call := strings.TrimSpace(fields[4])
-			args := []any{id, call}
+			call := strings.ToUpper(strings.TrimSpace(fields[4]))
+			args := []any{id, call, ""}
 			if _, err := stmt.ExecContext(ctx, args...); err != nil {
 				insertErr := fmt.Errorf("fcc uls: insert into %s at row %d: %w", spec.Name, rowCount+1, err)
 				if rollbackErr := rollbackTx(); rollbackErr != nil {

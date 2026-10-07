@@ -104,7 +104,8 @@ func sameLocationRules(a, b filter.FilterConfiguration) bool {
 	return sameRules(a.DXContinents, b.DXContinents) && sameRules(a.DEContinents, b.DEContinents) &&
 		sameRules(a.DXZones, b.DXZones) && sameRules(a.DEZones, b.DEZones) &&
 		sameRules(a.DXGrid2, b.DXGrid2) && sameRules(a.DEGrid2, b.DEGrid2) &&
-		sameRules(a.DXDXCC, b.DXDXCC) && sameRules(a.DEDXCC, b.DEDXCC)
+		sameRules(a.DXDXCC, b.DXDXCC) && sameRules(a.DEDXCC, b.DEDXCC) &&
+		sameRules(a.DXStates, b.DXStates) && sameRules(a.DEStates, b.DEStates)
 }
 
 // publishConfiguration has no fallible work. Stable Filter identity and the

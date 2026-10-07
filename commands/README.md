@@ -229,3 +229,16 @@ remain.
 Long overview counts count entities. Entries with no usable labels show
 `Unknown DXCC (12345)`; machine YAML remains numeric. See
 [canonical DXCC prefixes](../telnet/README.md#canonical-dxcc-prefixes).
+
+## FCC State Commands And YAML Versions
+
+DXSTATE and DESTATE are list categories in both dialects. PASS selects known
+matching FCC mailing-address states; REJECT excludes matching states and allows
+unknown values. All 60 codes are supported, including territories, DC and
+military postal codes. NEARBY suspends and restores these location rules.
+See [telnet state filters](../telnet/README.md#fcc-state-and-territory-filters).
+
+Existing GET YAML commands stay schema 1. `GET YAML CONFIG SCHEMA 2` exposes the
+new `dx_states` and `de_states` RuleSets. Upload body `schema_version` selects
+1 or 2; schema 1 writes preserve hidden state rules. HELP and the main README
+retain schema 1 examples for existing clients.

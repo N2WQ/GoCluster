@@ -360,10 +360,11 @@ The following canonical commands work independently of the human dialect:
 
 | Command | Purpose |
 | --- | --- |
-| `GET YAML FILTER [ID <id>]` | Read every exact filter value. |
+| `GET YAML FILTER [ID <id>]` | Read schema 1 filter values. |
 | `GET YAML SETTINGS [ID <id>]` | Read all writable settings. |
 | `GET YAML CONFIG [ID <id>]` | Read filters and settings together in one consistent snapshot. |
 | `GET YAML CAPABILITIES [ID <id>]` | Discover version, fields, supported choices, availability and limits. |
+| `GET YAML <resource> SCHEMA 2 [ID <id>]` | Opt in to schema 2, including state rules. |
 | `PUT YAML FILTER`, `PUT YAML SETTINGS`, `PUT YAML CONFIG` | Replace the complete writable resource. |
 | `PATCH YAML FILTER`, `PATCH YAML SETTINGS`, `PATCH YAML CONFIG` | Change supplied fields, preserving omissions. |
 | `VALIDATE YAML CONFIG` | Check a complete proposal without applying or saving it. |
@@ -386,6 +387,25 @@ available. If it is false while the configured `nearby_enabled` is true, ordinar
 location rules remain suspended; invalid user cells reject spots on their bands.
 CAPABILITIES is a read-only discovery resource; its `configuration` section
 describes the protocol rather than writable preferences.
+
+Existing GET commands keep schema 1 and its original field order. Schema 1
+PUT/PATCH/VALIDATE preserves state rules hidden from that format; supplying
+`dx_states` or `de_states` in a schema 1 upload is an unknown-field error.
+Schema 2 adds those two string RuleSets, accepting only the 60 uppercase FCC
+codes. Its complete PUT/VALIDATE requires both domains; PATCH preserves omitted
+fields. Upload headers stay unchanged: the body `schema_version: 1` or `2`
+selects its vocabulary. A single revision covers all preferences, so a hidden
+state-only change conflicts with a stale schema 1 write. Schema selection itself
+does not alter the revision, pause, preset or history continuation.
+
+Schema 1 capabilities retain their original shape and advertise `[1, 2]` in
+`schema_versions`. Request schema 2 capabilities to discover state fields and
+choices. Schema 1 writes retain their existing 64 KiB projection limit; the
+four hidden state maps are separately limited to 60 canonical keys each before
+cloning. Schema 2 writes must fit the complete schema 2 CONFIG response. Large
+ordinary human configurations remain supported; an oversized schema 2 GET
+returns an explicit error, with schema 1 still available to reduce the rules.
+No response is truncated.
 
 ### Writable Values
 
@@ -476,7 +496,7 @@ retrying. Pause, diagnostics and login metadata do not count as configuration
 edits. Reordering otherwise identical patterns does not change the revision
 or `(modified)`; the displayed order and duplicate multiplicity are retained.
 
-Uploads require `schema_version: 1`, `request_id` and `configuration`.
+Uploads require supported `schema_version: 1` or `2`, `request_id` and `configuration`.
 PUT/PATCH additionally require `if_revision`. VALIDATE CONFIG requires the
 complete configuration; `if_revision` is optional because it does not write.
 Its result reports `valid: true`, `applied: false` and `persisted: false` on
@@ -629,8 +649,11 @@ clean up their temporary files; a cleanup failure is logged for the operator.
 
 ### Persistence Format And Rollback
 
-New records and snapshots carry `configuration_version: 1`. Only an absent
-marker selects legacy migration. Invalid markers, explicit zero and unknown
+New records and snapshots carry `configuration_version: 2`. An absent marker
+selects historical legacy migration; version 1 retains all old exact values and
+initializes only the new state domains as unrestricted. Nested preset baselines
+follow the same migration, preserving their modification status. New versions
+are written on the next ordinary successful save; there is no bulk rewrite. Invalid markers, explicit zero and unknown
 future versions are rejected; unreadable/unsupported user records are protected
 by temporary-defaults sessions. Collections may contain supported legacy and
 current entries together, but an unsupported entry prevents library mutation
@@ -808,3 +831,29 @@ go test -race ./telnet -run '^$' -fuzz '^FuzzHistoryCursorSequences$' -fuzztime=
 The seeded programs run during ordinary package tests. Mutation runs cover
 sequential command sequences and scripted publication interleavings; they do
 not replace the existing deterministic tests with overlapping goroutines.
+
+## FCC State And Territory Filters
+
+`PASS DXSTATE CA,TX` selects spotted stations with known FCC mailing states CA
+or TX. `REJECT DESTATE AA,AE,AP` excludes spotters with those military postal
+codes. The same list commands work through the `cc` SET/FILTER and UNSET/FILTER
+aliases. Lists are case-insensitive and completely validated before mutation.
+Supported values are the 50 states, DC, AS/GU/MP/PR/VI/UM and AA/AE/AP. Canadian
+provinces are not populated or accepted in this FCC phase.
+
+Unknown state passes an unrestricted or named REJECT-only category and fails
+an explicit PASS list. ALL and NOFILTER follow existing resets; categories
+combine with AND, values within a category with OR. SELF retains its existing
+matching exception. SHOW FILTER, FULL and category details display finite
+selections completely. NEARBY suspends state rules, locks their ordinary
+mutation and restores them when switched off, including after schema 1 writes.
+
+State enrichment remains active with FCC license enforcement disabled. State
+comes from the licensee's mailing address and can differ from the operating
+location. The final corrected DX base call determines DXSTATE; portable
+operating prefixes do not imply a state. Missing or unavailable data remains
+empty and never creates a license record.
+
+New archive records store the observed state values. Older versions remain
+readable with unknown state; history does not look up current FCC addresses.
+An explicit state PASS list therefore excludes those older unknown rows.

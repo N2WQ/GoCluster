@@ -11,9 +11,9 @@ cty:
   file: "data/cty/cty.plist"           # Path to the CTY prefix database (cty.plist)
   refresh_utc: "00:10"                 # Daily download time in HH:MM UTC
 
-# FCC ULS archive
+# FCC ULS reference data: refresh and state enrichment always remain active.
 fcc_uls:
-  enabled: true
+  enabled: true # License enforcement only; false still downloads and enriches state.
   url: "https://data.fcc.gov/download/pub/uls/complete/l_amat.zip"  # FCC ULS amateur archive
   archive_path: "data/fcc/l_amat.zip"                               # Where to store the downloaded ZIP
   db_path: "data/fcc/fcc_uls.db"                                    # Where to write the built SQLite database

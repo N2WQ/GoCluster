@@ -30,7 +30,7 @@ command/error artifact that distinguishes the next step.
   numeric history arguments remain counts. SHOW DXCC details are unchanged.
 
 - Human SHOW FILTER uses aligned labels and wraps all passing finite selections
-  by name: BAND, MODE, SOURCE, EVENT, PATH, CONFIDENCE and DX/DE continents.
+  by name: BAND, MODE, SOURCE, EVENT, PATH, CONFIDENCE, DX/DE continents and states.
   Explain All, None and useful explicit exclusions, including All except.
   Do not enumerate disabled choices or replace finite names with counts.
   Long callsign, DXCC, grid and zone lists retain counts, with grouped geography
@@ -42,7 +42,7 @@ command/error artifact that distinguishes the next step.
   Switches show ON/OFF. Callsign patterns retain order with REJECT precedence.
   PATH includes inherited CLOSED behavior; EVENT false keys remain active.
   NEARBY suspends geography even when unavailable. Use GET YAML FILTER for
-  exact stored flags, false entries and defaults. SHOW SETTINGS separates
+  schema 1 flags, false entries and defaults; use SCHEMA 2 for state rules. SHOW SETTINGS separates
   configured
   selections and effective choices from session status; both show the preset.
 - Every human line is at most 78 printable ASCII characters followed by CRLF.
@@ -134,6 +134,31 @@ command/error artifact that distinguishes the next step.
   preference that reconnect did not activate.
 - Do not strip quoted spaces, join wrapped pieces with a separator, or treat
   the human effective format as the client YAML schema.
+
+## FCC State And Version Compatibility
+
+DXSTATE/DESTATE accept the 60 FCC mailing-address codes. Unknown state passes
+unrestricted and REJECT-only rules, and fails an explicit PASS list. NEARBY
+suspends/locks/restores state rules. These values can differ from operating
+location; do not infer them from a portable prefix, grid or callsign district.
+Enrichment remains active when `fcc_uls.enabled` is false: that flag disables
+license rejection only. Missing/unavailable state stays empty.
+
+Default GET remains schema 1 and does not expose state fields. Request
+`GET YAML CONFIG SCHEMA 2` or `GET YAML FILTER SCHEMA 2` for `dx_states` and
+`de_states`; body schema_version selects upload vocabulary. Schema 1 writes
+preserve hidden state and state-only edits still advance the shared revision.
+Capabilities are versioned; schema 1 advertises supported versions without new
+choice-object fields. A near-limit schema 1 configuration can produce an explicit
+schema 2 size error; reduce ordinary rules using schema 1 rather than truncating
+or discarding hidden fields.
+
+New saved records use version 2; legacy/version 1 initializes only new states
+as unrestricted, including nested preset baselines. Protected malformed/future
+records must not be rewritten. New archive version 6 stores observed state;
+versions 2–5 have unknown state, with no current-FCC history hydration. Explain
+state PASS exclusions of older rows. Downgrades require matching binary/data
+backups; failed imports instead retain the last good FCC database.
 
 ## Sources
 

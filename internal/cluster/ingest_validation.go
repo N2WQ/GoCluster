@@ -23,23 +23,24 @@ const (
 // ingestValidator centralizes CTY/ULS validation before deduplication.
 // It is intentionally single-consumer to keep CTY cache usage bounded and predictable.
 type ingestValidator struct {
-	input              chan *spot.Spot
-	dedupInput         chan<- *spot.Spot
-	ctyLookup          func() *cty.CTYDatabase
-	metaCache          *callMetaCache
-	ctyUpdater         func(call string, info *cty.PrefixInfo)
-	gridUpdate         func(call, grid string)
-	unlicensedReporter func(source, role, call, deCall, dxCall, mode string, freq float64)
-	dropReporter       func(line string)
-	badCallReporter    func(source, role, reason, call, deCall, dxCall, mode, detail string)
-	isLicensedUS       func(call string) bool
-	requireCTY         bool
-	ctyDropDXCounter   ratelimit.Counter
-	ctyDropDECounter   ratelimit.Counter
-	invalidDropDX      ratelimit.Counter
-	invalidDropDE      ratelimit.Counter
-	dedupDropCounter   ratelimit.Counter
-	ingestTotal        atomic.Uint64 // total spots received (includes those dropped by validation)
+	input                chan *spot.Spot
+	dedupInput           chan<- *spot.Spot
+	ctyLookup            func() *cty.CTYDatabase
+	metaCache            *callMetaCache
+	ctyUpdater           func(call string, info *cty.PrefixInfo)
+	gridUpdate           func(call, grid string)
+	unlicensedReporter   func(source, role, call, deCall, dxCall, mode string, freq float64)
+	dropReporter         func(line string)
+	badCallReporter      func(source, role, reason, call, deCall, dxCall, mode, detail string)
+	lookupUS             func(call string) uls.LookupResult
+	licenseChecksEnabled func() bool
+	requireCTY           bool
+	ctyDropDXCounter     ratelimit.Counter
+	ctyDropDECounter     ratelimit.Counter
+	invalidDropDX        ratelimit.Counter
+	invalidDropDE        ratelimit.Counter
+	dedupDropCounter     ratelimit.Counter
+	ingestTotal          atomic.Uint64 // total spots received (includes those dropped by validation)
 }
 
 // newIngestValidator wires a bounded ingest gate for CTY/ULS checks.
@@ -58,21 +59,22 @@ func newIngestValidator(
 		inputBuffer = 10000
 	}
 	return &ingestValidator{
-		input:              make(chan *spot.Spot, inputBuffer),
-		dedupInput:         dedupInput,
-		ctyLookup:          ctyLookup,
-		metaCache:          metaCache,
-		ctyUpdater:         ctyUpdater,
-		gridUpdate:         gridUpdate,
-		unlicensedReporter: unlicensedReporter,
-		dropReporter:       dropReporter,
-		isLicensedUS:       uls.IsLicensedUS,
-		requireCTY:         requireCTY,
-		ctyDropDXCounter:   ratelimit.NewCounterWithRetry(defaultIngestDropLogInterval),
-		ctyDropDECounter:   ratelimit.NewCounterWithRetry(defaultIngestDropLogInterval),
-		invalidDropDX:      ratelimit.NewCounterWithRetry(defaultIngestDropLogInterval),
-		invalidDropDE:      ratelimit.NewCounterWithRetry(defaultIngestDropLogInterval),
-		dedupDropCounter:   ratelimit.NewCounterWithRetry(defaultIngestDropLogInterval),
+		input:                make(chan *spot.Spot, inputBuffer),
+		dedupInput:           dedupInput,
+		ctyLookup:            ctyLookup,
+		metaCache:            metaCache,
+		ctyUpdater:           ctyUpdater,
+		gridUpdate:           gridUpdate,
+		unlicensedReporter:   unlicensedReporter,
+		dropReporter:         dropReporter,
+		lookupUS:             uls.LookupUS,
+		licenseChecksEnabled: uls.LicenseChecksEnabled,
+		requireCTY:           requireCTY,
+		ctyDropDXCounter:     ratelimit.NewCounterWithRetry(defaultIngestDropLogInterval),
+		ctyDropDECounter:     ratelimit.NewCounterWithRetry(defaultIngestDropLogInterval),
+		invalidDropDX:        ratelimit.NewCounterWithRetry(defaultIngestDropLogInterval),
+		invalidDropDE:        ratelimit.NewCounterWithRetry(defaultIngestDropLogInterval),
+		dedupDropCounter:     ratelimit.NewCounterWithRetry(defaultIngestDropLogInterval),
 	}
 }
 
@@ -136,6 +138,8 @@ func (v *ingestValidator) validateSpot(s *spot.Spot) bool {
 		return false
 	}
 	s.EnsureNormalized()
+	// Incoming metadata cannot establish an FCC address association.
+	s.DEMetadata.State, s.DXMetadata.State = "", ""
 	if v.ctyLookup == nil {
 		return true
 	}
@@ -218,32 +222,37 @@ afterLookup:
 		v.gridUpdate(deLookupCall, deGrid)
 	}
 
-	if s.IsTestSpotter {
+	return v.checkSpotterLicense(s, ctyDB, deCall, dxCall)
+}
+
+// checkSpotterLicense attaches address metadata independently of enforcement.
+// Base-call jurisdiction selects the lookup; an admission exception never
+// converts an absent license into a found record or a fabricated state.
+func (v *ingestValidator) checkSpotterLicense(s *spot.Spot, ctyDB *cty.CTYDatabase, deCall, dxCall string) bool {
+	if v.lookupUS == nil {
 		return true
 	}
-	if v.isLicensedUS != nil {
-		deLicenseCall := strings.TrimSpace(uls.NormalizeForLicense(deCall))
-		if deLicenseCall != "" {
-			// License checks key off the normalized base call; jurisdiction derives from that base.
-			if info, ok := v.lookupCTY(ctyDB, deLicenseCall); ok && info.ADIF == 291 {
-				callKey := deLicenseCall
-				if callKey == "" {
-					callKey = deCall
-				}
-				if uls.AllowlistMatch(info.ADIF, callKey) {
-					return true
-				}
-				if !v.isLicensedUS(callKey) {
-					if v.unlicensedReporter != nil {
-						v.unlicensedReporter(ingestSourceLabel(s), "DE", callKey, deCall, dxCall, s.ModeNorm, s.Frequency)
-					}
-					return false
-				}
-			}
-		}
+	call := uls.NormalizeForLicense(deCall)
+	if call == "" {
+		return true
 	}
-
-	return true
+	info, ok := v.lookupCTY(ctyDB, call)
+	if !ok || !spot.IsFCCJurisdiction(info.ADIF) {
+		return true
+	}
+	result := v.lookupUS(call)
+	if result.Available && result.Found {
+		s.DEMetadata.State = result.State
+	}
+	if s.IsTestSpotter || uls.AllowlistMatch(info.ADIF, call) ||
+		v.licenseChecksEnabled == nil || !v.licenseChecksEnabled() ||
+		!result.Available || result.Found {
+		return true
+	}
+	if v.unlicensedReporter != nil {
+		v.unlicensedReporter(ingestSourceLabel(s), "DE", call, deCall, dxCall, s.ModeNorm, s.Frequency)
+	}
+	return false
 }
 
 func (v *ingestValidator) waitForCTY() *cty.CTYDatabase {

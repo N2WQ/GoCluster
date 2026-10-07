@@ -1,3 +1,6 @@
+// File role: Defines versioned YAML fields and fixed presence-mask positions.
+// Version 1 excludes state rules; version 2 admits the bounded state domains
+// while sharing exact rule replacement and omitted-field behavior.
 package telnet
 
 import (
@@ -17,6 +20,15 @@ var machineFilterFields = [...]string{
 	"include_beacons", "allow_wwv", "allow_wcy", "allow_announce", "allow_self", "allow_toxic", "nearby_enabled",
 }
 
+// Append new fields without changing v1 presence-mask positions.
+var machineFilterFieldsV2 = [...]string{
+	"bands", "modes", "sources", "events", "confidence", "path_classes", "dx_continents", "de_continents",
+	"dx_zones", "de_zones", "dx_grid2", "de_grid2", "dx_dxcc", "de_dxcc",
+	"dx_callsigns", "block_dx_callsigns", "de_callsigns", "block_de_callsigns",
+	"include_beacons", "allow_wwv", "allow_wcy", "allow_announce", "allow_self", "allow_toxic", "nearby_enabled",
+	"dx_states", "de_states",
+}
+
 var machineSettingFields = [...]string{
 	"dialect", "grid", "noise_class", "dedupe_policy", "path_min_observation_count", "solar_summary_minutes",
 }
@@ -29,7 +41,11 @@ const (
 )
 
 func (r *machineRequest) decodeFilters(node *yaml.Node, path string, complete bool) error {
-	fields, err := machineObject(node, path, machineFilterFields[:], complete)
+	names := machineFilterFields[:]
+	if r.SchemaVersion == 2 {
+		names = machineFilterFieldsV2[:]
+	}
+	fields, err := machineObject(node, path, names, complete)
 	if err != nil {
 		return err
 	}
@@ -38,7 +54,7 @@ func (r *machineRequest) decodeFilters(node *yaml.Node, path string, complete bo
 	integerTargets := [14]*filter.IntRules{8: &f.DXZones, 9: &f.DEZones, 12: &f.DXDXCC, 13: &f.DEDXCC}
 	patterns := [4]*[]string{&f.DXCallsigns, &f.BlockDXCallsigns, &f.DECallsigns, &f.BlockDECallsigns}
 	toggles := [6]*filter.DefaultBool{&f.IncludeBeacons, &f.AllowWWV, &f.AllowWCY, &f.AllowAnnounce, &f.AllowSelf, &f.AllowToxic}
-	for i, name := range machineFilterFields {
+	for i, name := range names {
 		field := fields[name]
 		if field == nil {
 			continue
@@ -55,8 +71,12 @@ func (r *machineRequest) decodeFilters(node *yaml.Node, path string, complete bo
 			*patterns[i-14], err = machinePatterns(field, fieldPath)
 		case i < 24:
 			*toggles[i-18], err = machineDefaultBoolean(field, fieldPath)
-		default:
+		case i == 24:
 			f.NearbyEnabled, err = machineBoolean(field, fieldPath)
+		case i == 25:
+			r.ruleFields[14], err = decodeMachineRules(&f.DXStates, field, fieldPath, complete, machineStringRuleKey)
+		case i == 26:
+			r.ruleFields[15], err = decodeMachineRules(&f.DEStates, field, fieldPath, complete, machineStringRuleKey)
 		}
 		if err != nil {
 			return err
@@ -211,6 +231,8 @@ func (r machineRequest) apply(before filter.Configuration) (filter.Configuration
 	f.DEGrid2 = applyMachineRules(f.DEGrid2, proposed.DEGrid2, r.ruleFields[11])
 	f.DXDXCC = applyMachineRules(f.DXDXCC, proposed.DXDXCC, r.ruleFields[12])
 	f.DEDXCC = applyMachineRules(f.DEDXCC, proposed.DEDXCC, r.ruleFields[13])
+	f.DXStates = applyMachineRules(f.DXStates, proposed.DXStates, r.ruleFields[14])
+	f.DEStates = applyMachineRules(f.DEStates, proposed.DEStates, r.ruleFields[15])
 	patterns := [4]*[]string{&f.DXCallsigns, &f.BlockDXCallsigns, &f.DECallsigns, &f.BlockDECallsigns}
 	proposedPatterns := [4][]string{proposed.DXCallsigns, proposed.BlockDXCallsigns, proposed.DECallsigns, proposed.BlockDECallsigns}
 	for i := range patterns {

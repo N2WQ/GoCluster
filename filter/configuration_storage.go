@@ -1,6 +1,6 @@
 // File role: Presence-aware disk versioning and bounded applied-preset references.
-// Only absent version markers select legacy migration. Invalid/future versions
-// fail before a caller can rewrite a record or its shared preset collection.
+// Absent markers select legacy migration; version one adds unrestricted states.
+// Invalid/future versions fail before records or shared presets can be rewritten.
 package filter
 
 import (
@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"dxcluster/spot"
 	"gopkg.in/yaml.v3"
 )
 
@@ -79,11 +80,90 @@ func storedConfigurationVersion(node *yaml.Node) (int, error) {
 		if value.Kind != yaml.ScalarNode || value.Tag != "!!int" {
 			return 0, fmt.Errorf("%w: marker must be an integer", ErrUnsupportedConfigurationVersion)
 		}
-		if err := value.Decode(&version); err != nil || version != CurrentConfigurationVersion {
-			return 0, fmt.Errorf("%w: expected %d", ErrUnsupportedConfigurationVersion, CurrentConfigurationVersion)
+		if err := value.Decode(&version); err != nil || (version != 1 && version != CurrentConfigurationVersion) {
+			return 0, fmt.Errorf("%w: expected 1 or %d", ErrUnsupportedConfigurationVersion, CurrentConfigurationVersion)
 		}
 	}
 	return version, nil
+}
+
+// validateStoredStateFields admits states only in version two. Validate the
+// fixed vocabulary before Node.Decode allocates rule maps, including fields
+// inherited through legacy YAML merges. Only merge sources are followed: an
+// unrelated legacy field must not change the historical migration contract.
+func validateStoredStateFields(node *yaml.Node, version int) error {
+	pending := []*yaml.Node{node}
+	seen := make(map[*yaml.Node]bool)
+	for len(pending) != 0 {
+		current := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		if current == nil || seen[current] {
+			continue
+		}
+		seen[current] = true
+		switch current.Kind {
+		case yaml.AliasNode:
+			pending = append(pending, current.Alias)
+			continue
+		case yaml.SequenceNode:
+			pending = append(pending, current.Content...)
+			continue
+		case yaml.MappingNode:
+		default:
+			continue // Decode owns malformed merge shape errors.
+		}
+		if err := validateStoredStateMapping(current, version, &pending); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Each YAML node is visited once even when merge aliases form a cycle. State
+// presence in any merge source is rejected for legacy records before decoding.
+func validateStoredStateMapping(node *yaml.Node, version int, pending *[]*yaml.Node) error {
+	for i := 0; i < len(node.Content); i += 2 {
+		key := node.Content[i]
+		// Match yaml.v3's merge recognition before aliases are resolved as
+		// ordinary field names; an aliased << key is not a merge directive.
+		if key.Kind == yaml.ScalarNode && key.Value == "<<" && key.Tag == "!!merge" {
+			*pending = append(*pending, node.Content[i+1])
+			continue
+		}
+		if key.Kind == yaml.AliasNode && key.Alias != nil {
+			key = key.Alias
+		}
+		name := key.Value
+		switch name {
+		case "dxstates", "blockdxstates", "destates", "blockdestates",
+			"alldxstates", "blockalldxstates", "alldestates", "blockalldestates":
+			if version < CurrentConfigurationVersion {
+				return fmt.Errorf("state field %s requires configuration version %d", name, CurrentConfigurationVersion)
+			}
+		default:
+			continue
+		}
+		switch name {
+		case "dxstates", "blockdxstates", "destates", "blockdestates":
+			value := node.Content[i+1]
+			if value.Kind == yaml.AliasNode && value.Alias != nil {
+				value = value.Alias
+			}
+			if value.Kind != yaml.MappingNode || len(value.Content)/2 > maxStateRuleEntries {
+				return fmt.Errorf("invalid bounded state map %s", name)
+			}
+			for j := 0; j < len(value.Content); j += 2 {
+				key := value.Content[j]
+				if key.Kind == yaml.AliasNode && key.Alias != nil {
+					key = key.Alias
+				}
+				if key.Kind != yaml.ScalarNode || key.Tag != "!!str" || !spot.IsFCCState(key.Value) {
+					return fmt.Errorf("state map %s contains an unsupported key", name)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // Custom node decoding does not inherit Decoder.KnownFields. Enforce the same

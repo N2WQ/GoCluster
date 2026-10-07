@@ -168,6 +168,11 @@ func readbackMetadataFits(status configurationReadbackStatus, requestID, revisio
 // renderYAMLReadback is called under transaction ownership. Preflight guards
 // borrowed state before the encoder can sort maps or build its node tree.
 func (s *Server) renderYAMLReadback(c *Client, resource, requestID, revision string) (string, error) {
+	return s.renderYAMLReadbackVersion(c, resource, requestID, revision, 1)
+}
+
+func (s *Server) renderYAMLReadbackVersion(c *Client, resource, requestID, revision string, version int) (string, error) {
+	version = machineSchemaVersion(version)
 	resource = strings.ToUpper(resource)
 	if c == nil {
 		return "", fmt.Errorf("configuration unavailable")
@@ -181,9 +186,9 @@ func (s *Server) renderYAMLReadback(c *Client, resource, requestID, revision str
 		}
 		var data any
 		if resource == "CAPABILITIES" {
-			data = s.readbackCapabilities()
+			data = s.readbackCapabilitiesVersion(version)
 		} else {
-			bounded, selected, err := readbackResourceConfiguration(cfg, resource)
+			bounded, selected, err := readbackResourceConfigurationVersion(cfg, resource, version)
 			if err != nil {
 				return err
 			}
@@ -194,7 +199,7 @@ func (s *Server) renderYAMLReadback(c *Client, resource, requestID, revision str
 		}
 		var err error
 		response, err = encodeBoundedYAML(yamlReadbackEnvelope{
-			SchemaVersion: 1, RequestID: requestID, Resource: resource, Revision: revision, Configuration: data, Status: status,
+			SchemaVersion: version, RequestID: requestID, Resource: resource, Revision: revision, Configuration: data, Status: status,
 		})
 		return err
 	})
@@ -205,8 +210,13 @@ func (s *Server) renderYAMLReadback(c *Client, resource, requestID, revision str
 // v1 envelope scalars. The exact byte check includes quoted numeric identifiers,
 // all headers, document markers and CRLF, rather than a guessed overhead margin.
 func (s *Server) configurationReadbackFits(c *Client, cfg filter.Configuration, prepared *Client) error {
-	if !cfg.MinimumSizeFits(maxYAMLBytes) {
-		return errReadbackTooLarge
+	return s.configurationReadbackFitsVersion(c, cfg, prepared, 1)
+}
+
+func (s *Server) configurationReadbackFitsVersion(c *Client, cfg filter.Configuration, prepared *Client, version int) error {
+	version = machineSchemaVersion(version)
+	if err := machineConfigurationFits(cfg, version); err != nil {
+		return err
 	}
 	status := attachReadbackConfiguration(s.captureReadbackStatus(c, prepared), c, cfg)
 	if !readbackMetadataFits(status, "", "") {
@@ -229,14 +239,23 @@ func (s *Server) configurationReadbackFits(c *Client, cfg filter.Configuration, 
 		PathMinObservationCount: math.MaxInt, AutoReadPauseMinRows: math.MaxInt, AutoReadPauseSeconds: math.MaxInt,
 	}
 	status.Preset = readbackPresetStatus{Name: strings.Repeat("1", 32)}
-	_, err := encodeBoundedYAML(yamlReadbackEnvelope{
-		SchemaVersion: 1, RequestID: strings.Repeat("1", 32), Resource: "CONFIG", Revision: strings.Repeat("\"", 128),
-		Configuration: cfg, Status: status,
+	_, document, err := readbackResourceConfigurationVersion(cfg, "CONFIG", version)
+	if err != nil {
+		return err
+	}
+	_, err = encodeBoundedYAML(yamlReadbackEnvelope{
+		SchemaVersion: version, RequestID: strings.Repeat("1", 32), Resource: "CONFIG", Revision: strings.Repeat("\"", 128),
+		Configuration: document, Status: status,
 	})
 	return err
 }
 
 func renderYAMLCommandError(resource, requestID, revision, code, message string) string {
+	return renderYAMLCommandErrorVersion(1, resource, requestID, revision, code, message)
+}
+
+func renderYAMLCommandErrorVersion(version int, resource, requestID, revision, code, message string) string {
+	version = machineSchemaVersion(version)
 	type documentError struct {
 		Code    string `yaml:"code"`
 		Message string `yaml:"message"`
@@ -249,15 +268,20 @@ func renderYAMLCommandError(resource, requestID, revision, code, message string)
 		Error         documentError `yaml:"error"`
 	}
 	if len(resource)+len(requestID)+len(revision)+len(code)+len(message) <= maxYAMLBytes {
-		response, err := encodeBoundedYAML(errorEnvelope{1, requestID, resource, revision, documentError{code, message}})
+		response, err := encodeBoundedYAML(errorEnvelope{version, requestID, resource, revision, documentError{code, message}})
 		if err == nil {
 			return response
 		}
 	}
-	return "---\r\nschema_version: 1\r\nrequest_id: \"\"\r\nresource: \"\"\r\nerror:\r\n  code: response_too_large\r\n  message: Error details exceed the response limit.\r\n...\r\n"
+	return fmt.Sprintf("---\r\nschema_version: %d\r\nrequest_id: \"\"\r\nresource: \"\"\r\nerror:\r\n  code: response_too_large\r\n  message: Error details exceed the response limit.\r\n...\r\n", version)
 }
 
 func renderYAMLCommandSuccess(resource, requestID, revision, operation string, applied, persisted bool) (string, error) {
+	return renderYAMLCommandSuccessVersion(1, resource, requestID, revision, operation, applied, persisted)
+}
+
+func renderYAMLCommandSuccessVersion(version int, resource, requestID, revision, operation string, applied, persisted bool) (string, error) {
+	version = machineSchemaVersion(version)
 	if len(resource)+len(requestID)+len(revision)+len(operation) > maxYAMLBytes {
 		return "", errReadbackTooLarge
 	}
@@ -273,7 +297,7 @@ func renderYAMLCommandSuccess(resource, requestID, revision, operation string, a
 		Resource      string        `yaml:"resource"`
 		Revision      string        `yaml:"revision"`
 		Result        commandResult `yaml:"result"`
-	}{1, requestID, resource, revision, commandResult{operation, true, applied, persisted}})
+	}{version, requestID, resource, revision, commandResult{operation, true, applied, persisted}})
 }
 
 // Human readbacks establish suppression before waiting for transaction ownership.

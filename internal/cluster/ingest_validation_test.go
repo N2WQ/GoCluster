@@ -85,7 +85,7 @@ const ingestSamplePLIST = `<?xml version="1.0" encoding="UTF-8"?>
 </dict>
 </plist>`
 
-func loadIngestCTY(t *testing.T) *cty.CTYDatabase {
+func loadIngestCTY(t testing.TB) *cty.CTYDatabase {
 	t.Helper()
 	db, err := cty.LoadCTYDatabaseFromReader(strings.NewReader(ingestSamplePLIST))
 	if err != nil {
@@ -97,7 +97,7 @@ func loadIngestCTY(t *testing.T) *cty.CTYDatabase {
 func TestIngestValidatorPreservesGrids(t *testing.T) {
 	db := loadIngestCTY(t)
 	v := newIngestValidator(func() *cty.CTYDatabase { return db }, nil, nil, nil, make(chan *spot.Spot, 1), nil, nil, true)
-	v.isLicensedUS = func(call string) bool { return true }
+	v.lookupUS = func(call string) uls.LookupResult { return uls.LookupResult{Available: true, Found: true} }
 
 	s := spot.NewSpotNormalized("DL1ABC", "K1ABC", 14074.0, "FT8")
 	s.SourceType = spot.SourcePSKReporter
@@ -144,7 +144,7 @@ func TestIngestValidatorReportsCTYUnknownDrop(t *testing.T) {
 		got.mode = mode
 		got.detail = detail
 	})
-	v.isLicensedUS = func(call string) bool { return true }
+	v.lookupUS = func(call string) uls.LookupResult { return uls.LookupResult{Available: true, Found: true} }
 
 	s := spot.NewSpotNormalized("ZZ9ABC", "K1ABC", 14074.0, "FT8")
 	s.SourceNode = "RBN"
@@ -172,7 +172,7 @@ func TestIngestValidatorReportsInvalidCallsignDrop(t *testing.T) {
 			got.call = call
 			got.detail = detail
 		})
-		v.isLicensedUS = func(call string) bool { return true }
+		v.lookupUS = func(call string) uls.LookupResult { return uls.LookupResult{Available: true, Found: true} }
 
 		s := spot.NewSpotNormalized(call, "K1ABC", 14074.0, "FT8")
 		s.SourceNode = "RBN"
@@ -200,7 +200,8 @@ func TestIngestValidatorDropsUnlicensedUSSpotter(t *testing.T) {
 		gotMode = mode
 		gotFreq = freq
 	}
-	v.isLicensedUS = func(call string) bool { return false }
+	v.lookupUS = func(call string) uls.LookupResult { return uls.LookupResult{Available: true} }
+	v.licenseChecksEnabled = func() bool { return true }
 
 	s := spot.NewSpotNormalized("DL1ABC", "K1ABC", 14074.0, "FT8")
 	s.SourceNode = "PSKREPORTER"
@@ -236,7 +237,8 @@ func TestIngestValidatorSkipsULSForTestSpotter(t *testing.T) {
 	v.unlicensedReporter = func(source, role, call, deCall, dxCall, mode string, freq float64) {
 		reported = true
 	}
-	v.isLicensedUS = func(call string) bool { return false }
+	v.lookupUS = func(call string) uls.LookupResult { return uls.LookupResult{Available: true} }
+	v.licenseChecksEnabled = func() bool { return true }
 
 	s := spot.NewSpotNormalized("DL1ABC", "K1TEST", 14074.0, "FT8")
 	s.SourceNode = "TELNET"
@@ -255,9 +257,9 @@ func TestIngestValidatorUsesBaseCallForLicenseJurisdiction(t *testing.T) {
 	checked := make([]string, 0, 2)
 
 	v := newIngestValidator(func() *cty.CTYDatabase { return db }, nil, nil, nil, make(chan *spot.Spot, 1), nil, nil, true)
-	v.isLicensedUS = func(call string) bool {
+	v.lookupUS = func(call string) uls.LookupResult {
 		checked = append(checked, call)
-		return true
+		return uls.LookupResult{Available: true, Found: true}
 	}
 
 	spotUSBase := spot.NewSpotNormalized("DL1ABC", "HR9/N2WQ", 14074.0, "FT8")
@@ -281,7 +283,7 @@ func TestIngestValidatorUsesBaseCallForLicenseJurisdiction(t *testing.T) {
 func TestIngestValidatorDropsInvalidCallsignShape(t *testing.T) {
 	db := loadIngestCTY(t)
 	v := newIngestValidator(func() *cty.CTYDatabase { return db }, nil, nil, nil, make(chan *spot.Spot, 1), nil, nil, true)
-	v.isLicensedUS = func(call string) bool { return true }
+	v.lookupUS = func(call string) uls.LookupResult { return uls.LookupResult{Available: true, Found: true} }
 
 	for _, call := range []string{"ABC1", "SET/FT8", "NOFT8"} {
 		s := spot.NewSpotNormalized(call, "K1ABC", 14074.0, "FT8")
@@ -302,7 +304,7 @@ func TestIngestValidatorAllowlistOverridesInvalidLeadingLetters(t *testing.T) {
 
 	db := loadIngestCTY(t)
 	v := newIngestValidator(func() *cty.CTYDatabase { return db }, nil, nil, nil, make(chan *spot.Spot, 1), nil, nil, true)
-	v.isLicensedUS = func(call string) bool { return true }
+	v.lookupUS = func(call string) uls.LookupResult { return uls.LookupResult{Available: true, Found: true} }
 
 	s := spot.NewSpotNormalized("ABC1", "K1ABC", 14074.0, "FT8")
 	if !v.validateSpot(s) {

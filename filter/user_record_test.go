@@ -277,9 +277,7 @@ func TestLoadUserRecordLegacyFilter(t *testing.T) {
 	UserDataDir = tmp
 	t.Cleanup(func() { UserDataDir = orig })
 
-	f := NewFilter()
-	f.SetBand("20m", true)
-	raw, err := yaml.Marshal(f)
+	raw, err := yaml.Marshal(map[string]any{"bands": map[string]bool{"20m": true}, "allbands": false})
 	if err != nil {
 		t.Fatalf("yaml marshal failed: %v", err)
 	}

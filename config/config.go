@@ -1354,7 +1354,8 @@ type SkewConfig struct {
 	RefreshUTC string  `yaml:"refresh_utc"`
 }
 
-// FCCULSConfig controls downloading of the FCC ULS database archive.
+// FCCULSConfig configures the FCC reference data and optional license enforcement.
+// Enabled controls rejection only; database refresh and state enrichment remain active.
 type FCCULSConfig struct {
 	Enabled    bool   `yaml:"enabled"`
 	URL        string `yaml:"url"`
@@ -3915,8 +3916,9 @@ func (c *Config) Print() {
 	if c.CTY.Enabled && c.CTY.URL != "" {
 		fmt.Printf("CTY refresh: %s UTC (source=%s)\n", c.CTY.RefreshUTC, c.CTY.URL)
 	}
-	if c.FCCULS.Enabled && c.FCCULS.URL != "" {
-		fmt.Printf("FCC ULS: refresh %s UTC (source=%s archive=%s db=%s allowlist=%s cache_ttl=%ds)\n",
+	if c.FCCULS.URL != "" {
+		fmt.Printf("FCC ULS: enforcement=%t; refresh %s UTC (source=%s archive=%s db=%s allowlist=%s cache_ttl=%ds)\n",
+			c.FCCULS.Enabled,
 			c.FCCULS.RefreshUTC,
 			c.FCCULS.URL,
 			c.FCCULS.Archive,

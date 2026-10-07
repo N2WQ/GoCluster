@@ -16,6 +16,7 @@ type readbackIntegerDomain struct {
 }
 
 type readbackValueChoices struct {
+	States      []string              `yaml:"states,omitempty"`
 	Bands       []string              `yaml:"bands"`
 	Modes       []string              `yaml:"modes"`
 	Sources     []string              `yaml:"sources"`
@@ -50,7 +51,7 @@ type readbackValueChoices struct {
 	SolarSummaryMinutes []int `yaml:"solar_summary_minutes"`
 }
 
-func (s *Server) readbackCapabilities() any {
+func (s *Server) readbackCapabilitiesVersion(version int) any {
 	choices := readbackValueChoices{
 		Bands: spot.SupportedBandNames(), Modes: filter.SupportedModes(), Events: filter.SupportedEvents(),
 		Sources: filter.SupportedSources, Confidence: filter.SupportedConfidenceSymbols,
@@ -58,6 +59,13 @@ func (s *Server) readbackCapabilities() any {
 		CQZones: readbackIntegerDomain{Minimum: 1, Maximum: 40}, DXCC: readbackIntegerDomain{Minimum: 1, Maximum: math.MaxInt},
 		Dialects: []string{"", "go", "cc"}, NoiseClasses: []string{""}, DedupePolicies: []string{"", "FAST", "MED", "SLOW"},
 		SolarSummaryMinutes: []int{0, 15, 30, 60},
+	}
+	fields := machineFilterFields[:]
+	categories := []string{"BAND", "MODE", "SOURCE", "EVENT", "CONFIDENCE", "PATH", "DXCONT", "DECONT", "DXZONE", "DEZONE", "DXGRID2", "DEGRID2", "DXDXCC", "DEDXCC", "DXCALL", "DECALL", "BEACON", "WWV", "WCY", "ANNOUNCE", "SELF", "TOXIC", "NEARBY"}
+	if machineSchemaVersion(version) == 2 {
+		choices.States = spot.FCCStateCodes()
+		fields = machineFilterFieldsV2[:]
+		categories = append(categories, "DXSTATE", "DESTATE")
 	}
 	choices.Grid2.FirstCharacter, choices.Grid2.SecondCharacter = "A-R", "A-R"
 	choices.CallsignPatterns.Characters = "A-Z a-z 0-9 / -"
@@ -92,9 +100,9 @@ func (s *Server) readbackCapabilities() any {
 		AdvancedYAML          bool                 `yaml:"advanced_yaml_features"`
 	}{
 		Commands:  []string{"GET YAML FILTER", "GET YAML SETTINGS", "GET YAML CONFIG", "GET YAML CAPABILITIES", "PUT YAML FILTER", "PUT YAML SETTINGS", "PUT YAML CONFIG", "PATCH YAML FILTER", "PATCH YAML SETTINGS", "PATCH YAML CONFIG", "VALIDATE YAML CONFIG"},
-		Resources: []string{"FILTER", "SETTINGS", "CONFIG", "CAPABILITIES"}, SchemaVersions: []int{1},
-		FilterCategories: []string{"BAND", "MODE", "SOURCE", "EVENT", "CONFIDENCE", "PATH", "DXCONT", "DECONT", "DXZONE", "DEZONE", "DXGRID2", "DEGRID2", "DXDXCC", "DEDXCC", "DXCALL", "DECALL", "BEACON", "WWV", "WCY", "ANNOUNCE", "SELF", "TOXIC", "NEARBY"},
-		FilterFields:     machineFilterFields[:], Settings: machineSettingFields[:], RuleSetFields: []string{"allow_all", "block_all", "allow", "block"}, Choices: choices,
+		Resources: []string{"FILTER", "SETTINGS", "CONFIG", "CAPABILITIES"}, SchemaVersions: []int{1, 2},
+		FilterCategories: categories,
+		FilterFields:     fields, Settings: machineSettingFields[:], RuleSetFields: []string{"allow_all", "block_all", "allow", "block"}, Choices: choices,
 		DedupeAvailable:       map[string]bool{"FAST": s != nil && s.dedupeFastEnabled, "MED": s != nil && s.dedupeMedEnabled, "SLOW": s != nil && s.dedupeSlowEnabled},
 		DefaultBooleanChoices: []filter.DefaultBool{filter.DefaultBoolDefault, filter.DefaultBoolFalse, filter.DefaultBoolTrue},
 		ResponseBytes:         maxYAMLBytes, UploadBytes: maxYAMLBytes, UploadSeconds: 30,

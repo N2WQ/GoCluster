@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `f017daafb8741e0e`
+- Source fingerprint: `32691e0b93e3ccc6`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,10 +12,10 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 3 | 7 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 25 | 58 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 25 | 60 |
 | `dxcluster/peer` | `peer` | 62 | 126 |
-| `dxcluster/spot` | `spot` | 32 | 31 |
-| `dxcluster/telnet` | `telnet` | 35 | 60 |
+| `dxcluster/spot` | `spot` | 33 | 32 |
+| `dxcluster/telnet` | `telnet` | 37 | 62 |
 
 ## In-Scope Package Edges
 
@@ -142,6 +142,8 @@ Test files:
 - `internal/cluster/drop_log_dedupe_test.go`
 - `internal/cluster/dropped_call_log_test.go`
 - `internal/cluster/event_file_log_test.go`
+- `internal/cluster/fcc_runtime_state_test.go`
+- `internal/cluster/fcc_state_test.go`
 - `internal/cluster/ft_confidence_runtime_test.go`
 - `internal/cluster/gc_window_test.go`
 - `internal/cluster/go_runtime_tuning_test.go`
@@ -425,6 +427,7 @@ Source files:
 - `spot/signal_resolver_driver.go`
 - `spot/source.go`
 - `spot/spot.go`
+- `spot/state.go`
 - `spot/taxonomy.go`
 - `spot/who_spots_me.go`
 
@@ -456,6 +459,7 @@ Test files:
 - `spot/signal_resolver_driver_test.go`
 - `spot/signal_resolver_test.go`
 - `spot/spot_test.go`
+- `spot/state_test.go`
 - `spot/taxonomy_test.go`
 - `spot/who_spots_me_bench_test.go`
 - `spot/who_spots_me_test.go`
@@ -488,6 +492,7 @@ Source files:
 - `telnet/machine_schema_fields.go`
 - `telnet/machine_upload.go`
 - `telnet/machine_validation.go`
+- `telnet/machine_versions.go`
 - `telnet/peer_membership.go`
 - `telnet/preset_commands.go`
 - `telnet/qualification_observer.go`
@@ -498,6 +503,7 @@ Source files:
 - `telnet/reuseaddr_windows.go`
 - `telnet/server.go`
 - `telnet/show_prop.go`
+- `telnet/state_commands.go`
 - `telnet/writer_normalize.go`
 
 Test files:
@@ -556,6 +562,8 @@ Test files:
 - `telnet/server_template_test.go`
 - `telnet/show_prop_test.go`
 - `telnet/solar_command_test.go`
+- `telnet/state_commands_test.go`
+- `telnet/state_machine_test.go`
 - `telnet/writer_v15_append_test.go`
 - `telnet/writer_v15_bench_test.go`
 - `telnet/writer_v15_fixture_test.go`
@@ -566,6 +574,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0253](docs/decisions/ADR-0253-fcc-state-enrichment-and-filtering.md) | Accepted | 2026-10-07 | uls, spot, archive, filter, telnet, commands, runtime | `area:commands, area:spot, area:telnet, path:internal/cluster, path:telnet` |
 | [ADR-0252](docs/decisions/ADR-0252-automatic-commit-suffix-release-tags.md) | Accepted | 2026-10-06 | release scripts, build metadata | `path:peer` |
 | [ADR-0251](docs/decisions/ADR-0251-exact-call-paged-history.md) | Accepted | 2026-10-06 | commands, telnet, archive, pagination, lifecycle | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0249](docs/decisions/ADR-0249-effective-human-filter-details.md) | Accepted | 2026-10-06 | telnet, commands, human readbacks, bounded output | `area:commands, area:telnet, path:commands, path:telnet` |

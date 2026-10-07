@@ -237,18 +237,18 @@ func (r *replayRunner) configureExternalDependencies() error {
 		uls.SetAllowlistPath("")
 	}
 
+	// Replay stays offline. Available local reference data enriches spots even
+	// when enforcement is disabled; a missing optional DB clears prior globals.
+	dbPath := strings.TrimSpace(cfg.FCCULS.DBPath)
 	if cfg.FCCULS.Enabled {
-		dbPath := strings.TrimSpace(cfg.FCCULS.DBPath)
 		if dbPath == "" {
 			return fmt.Errorf("fcc_uls.enabled=true but fcc_uls.db_path is empty (config=%s)", cfg.LoadedFrom)
 		}
 		if _, err := os.Stat(dbPath); err != nil {
 			return fmt.Errorf("fcc_uls.db_path missing/unreadable %s: %w", dbPath, err)
 		}
-		uls.SetLicenseDBPath(dbPath)
-	} else {
-		uls.SetLicenseDBPath("")
 	}
+	uls.SetLicenseDBPath(dbPath)
 
 	if !cfg.CTY.Enabled {
 		return nil
