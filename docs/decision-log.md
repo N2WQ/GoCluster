@@ -24,9 +24,10 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0251 | Exact-Call Paged Archive History | Accepted | 2026-10-06 | commands, telnet, archive, pagination, lifecycle | Refines ADR-0011/0248 history selection and paging | - | `docs/decisions/ADR-0251-exact-call-paged-history.md` |
 | ADR-0250 | Go 1.27 Development And Fresh Launcher Builds | Accepted | 2026-10-06 | development, Go, WSL, skills, build, launcher | ADR-0155 (source directory only) | - | `docs/decisions/ADR-0250-go127-development-and-launcher.md` |
 | ADR-0249 | Effective Human Filter Details | Accepted | 2026-10-06 | telnet, commands, human readbacks, bounded output | Replaces exact human FULL/category portions of ADR-0246/0247/0248 | - | `docs/decisions/ADR-0249-effective-human-filter-details.md` |
-| ADR-0248 | Canonical DXCC Input And Human Labels | Accepted | 2026-10-06 | cty, commands, telnet, DXCC, human readbacks | Refines ADR-0011/0246/0247 for canonical input and DXCC labels | Human detail presentation replaced by ADR-0249 | `docs/decisions/ADR-0248-canonical-dxcc-input-and-human-labels.md` |
+| ADR-0248 | Canonical DXCC Input And Human Labels | Accepted | 2026-10-06 | cty, commands, telnet, DXCC, human readbacks | Refines ADR-0011/0246/0247 for canonical input and DXCC labels | Human detail presentation replaced by ADR-0249; history refined by ADR-0251 | `docs/decisions/ADR-0248-canonical-dxcc-input-and-human-labels.md` |
 | ADR-0247 | Complete Finite Filter Selections | Accepted | 2026-10-05 | telnet, commands, overview, bounded output | Refines ADR-0246's overview count policy for finite categories | Human detail presentation replaced by ADR-0249 | `docs/decisions/ADR-0247-complete-finite-filter-selections.md` |
 | ADR-0246 | Delivery-Timed Human Configuration Readbacks | Accepted | 2026-10-05 | telnet, commands, writer, pause, bounded output | Refines ADR-0195/0243 for configuration readbacks and pause synchronization | Finite overview selections refined by ADR-0247; human detail presentation replaced by ADR-0249 | `docs/decisions/ADR-0246-delivery-timed-human-readbacks.md` |
 | ADR-0245 | Machine YAML Configuration Commands | Accepted | 2026-10-05 | telnet, protocol, schema, transactions, bounded resources | - | - | `docs/decisions/ADR-0245-machine-yaml-configuration.md` |
@@ -212,7 +213,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR-0008 | Call Correction Recent-On-Band Bonus (Min-Reports Only) | Accepted | 2026-02-14 | spot/correction | - | - | `docs/decisions/ADR-0008-call-correction-recent-band-bonus.md` |
 | ADR-0009 | Call Correction Stacked Prior + Recent Bonus for Min-Reports | Accepted | 2026-02-14 | spot/correction | ADR-0007 (prior-bonus scope) | - | `docs/decisions/ADR-0009-call-correction-stacked-prior-recent-bonus.md` |
 | ADR-0010 | S Glyph Confidence Floor Includes Recent-On-Band Admission | Accepted | 2026-02-16 | main/spot confidence | - | - | `docs/decisions/ADR-0010-s-glyph-recent-on-band-floor.md` |
-| ADR-0011 | SHOW DX / SHOW MYDX Optional DXCC Selector | Accepted | 2026-02-17 | commands/processor | - | - | `docs/decisions/ADR-0011-show-history-dxcc-selector.md` |
+| ADR-0011 | SHOW DX / SHOW MYDX Optional DXCC Selector | Accepted | 2026-02-17 | commands/processor | - | History selection/paging refined by ADR-0251 | `docs/decisions/ADR-0011-show-history-dxcc-selector.md` |
 | ADR-0012 | CC Dialect Accepts SHOW DX / SH DX History Aliases | Accepted | 2026-02-17 | commands/processor | - | - | `docs/decisions/ADR-0012-cc-show-dx-alias.md` |
 | ADR-0013 | Telnet Stabilizer for Risky Call-Correction Output | Accepted | 2026-02-17 | main/telnet fan-out | - | - | `docs/decisions/ADR-0013-call-correction-telnet-stabilizer.md` |
 | ADR-0014 | Call-Correction Family Policy: Slash Threshold, Truncation Advantage Rail, and Telnet Family Suppression | Accepted | 2026-02-22 | spot/correction, main/telnet fan-out | - | - | `docs/decisions/ADR-0014-call-correction-family-policy.md` |

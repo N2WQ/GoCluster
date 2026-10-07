@@ -11,7 +11,7 @@ import (
 	"howett.net/plist"
 )
 
-func historyCanonicalCTY(t *testing.T) *cty.CTYDatabase {
+func historyCanonicalCTY(t testing.TB) *cty.CTYDatabase {
 	t.Helper()
 	records := map[string]cty.PrefixInfo{
 		"3D2": {Prefix: "3D2", ADIF: 176}, "R": {Prefix: "UA", ADIF: 54},
@@ -44,7 +44,7 @@ func TestHistoryCanonicalPrecedenceAndCompatibility(t *testing.T) {
 	p := NewProcessor(nil, &fakeArchive{spots: rows}, nil, func() *cty.CTYDatabase { calls++; return db }, nil, nil)
 	match := func(s *spot.Spot) bool { return s != nil }
 	for _, tc := range []struct{ selector, call string }{
-		{"3D2/R", "ENTITYC"}, {"3y/p", "ENTITYE"}, {"IT9", "ENTITYG"}, {"K", "ENTITYF"}, {"W6/LZ5VV/M", "ENTITYF"},
+		{"3D2/R", "ENTITYC"}, {"3y/p", "ENTITYE"}, {"IT9", "ENTITYG"}, {"K", "ENTITYF"},
 	} {
 		for _, command := range []string{"SHOW DX " + tc.selector + " 1", "SHOW MYDX 1 " + tc.selector} {
 			before := calls
@@ -64,7 +64,7 @@ func TestHistoryCanonicalPrecedenceAndCompatibility(t *testing.T) {
 	if response := p.ProcessCommandForClient("SHOW/DX 3D2/R 1", "N2WQ", "", match, "cc"); !strings.Contains(response, "ENTITYC") {
 		t.Fatalf("CC alias: %q", response)
 	}
-	if response := p.ProcessCommandForClient("SHOW MYDX K 1", "N2WQ", "", func(*spot.Spot) bool { return false }, "go"); response != "No spots available.\n" {
+	if response := p.ProcessCommandForClient("SHOW MYDX K 1", "N2WQ", "", func(*spot.Spot) bool { return false }, "go"); response != "No matching retained spots.\n" {
 		t.Fatalf("client filter bypassed: %q", response)
 	}
 	// Detail lookup deliberately retains portable-call behavior, not canonical precedence.
@@ -76,17 +76,17 @@ func TestHistoryCanonicalPrecedenceAndCompatibility(t *testing.T) {
 func TestHistoryCanonicalConflictAndRefresh(t *testing.T) {
 	db := historyCanonicalCTY(t)
 	p := NewProcessor(nil, &fakeArchive{}, nil, func() *cty.CTYDatabase { return db }, nil, nil)
-	if code, errText := p.resolveHistoryDXCC("K"); code != 291 || errText != "" {
-		t.Fatalf("initial snapshot: %d %q", code, errText)
+	if code, errText := p.resolveHistorySelector("K"); code.adif != 291 || errText != "" {
+		t.Fatalf("initial snapshot: %+v %q", code, errText)
 	}
 	db = historyCanonicalCTY(t)
 	db.Data["K"] = cty.PrefixInfo{Prefix: "K", ADIF: 999}
 	db.Data["W6"] = cty.PrefixInfo{Prefix: "K", ADIF: 999}
-	if code, errText := p.resolveHistoryDXCC("K"); code != 999 || errText != "" {
-		t.Fatalf("refresh not visible: %d %q", code, errText)
+	if code, errText := p.resolveHistorySelector("K"); code.adif != 999 || errText != "" {
+		t.Fatalf("refresh not visible: %+v %q", code, errText)
 	}
 	db.Data["CONFLICT"] = cty.PrefixInfo{Prefix: "K", ADIF: 291}
-	if _, errText := p.resolveHistoryDXCC("K"); errText != "Conflicting DXCC canonical prefix.\n" {
+	if _, errText := p.resolveHistorySelector("K"); errText != "Conflicting DXCC canonical prefix.\n" {
 		t.Fatalf("conflict fell through: %q", errText)
 	}
 }

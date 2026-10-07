@@ -164,12 +164,62 @@ The 20-name, 256 KiB-per-preset and 8 MiB collection limits remain separate
 from the readback budget, so a valid large preset may LOAD even when FULL/YAML
 readback returns a size error.
 
+### Archive history
+
+`SHOW DX` and `SHOW MYDX` search archived spots using your current filters and
+existing self-spot rules. Both accept a count, a selector, or one of each in
+either order. The default count is 50; the range is 1-250. `SH DX` and `SH MYDX`
+are aliases in both dialects; `SHOW/DX` and `SH/DX` remain `cc`-dialect aliases.
+Bare numbers are counts, not ADIF selectors.
+
+```text
+SHOW DX K1ABC 10
+SHOW MYDX 10 K1ABC
+SHOW MYDX 3D2/R 10
+```
+
+An exact canonical CTY label takes precedence and selects its whole ADIF entity;
+`3D2/R` selects Rotuma. Otherwise a full valid call selects only its normalized
+stored DX identity, and other supported prefixes select their CTY entity.
+Queries and decoded old records use the same DX normalization, including numeric
+SSID removal. An exact call is never widened to its country when no rows match.
+A supplied selector requires loaded CTY, but a valid full call with unresolved
+country remains a valid exact query. Conflicting canonical labels fail explicitly.
+`SHOW DXCC` detail lookup retains its existing behavior.
+
+Every history form applies the page's captured current time minus
+`archive.retention_seconds`; the exact cutoff is included. Select newest matching
+rows, then show that page chronologically. A page visits at most 200,000 archive
+candidates, including malformed/decode-failed records, filter rejects and one
+non-consuming older lookahead. At most 199,999 records are consumed. The work
+limit reports incomplete search; reaching the requested count also offers a
+continuation when older search remains.
+
+Use the exact returned `SHOW DX NEXT H1...` command on the same connection.
+`H1...` denotes the supplied H1-plus-32-hex-digit token, not a literal command
+argument. Supported DX/MYDX aliases also accept NEXT. Each connection owns one
+search; successful page publication rotates its token, so an old token cannot
+be reused. Continued pages are marked as older history. Each page uses a fresh
+archive view and current cutoff, not a snapshot frozen across commands.
+
+Relevant filter/path-setting changes invalidate continuation, even if restored
+to their previous values. Each page captures coherent settings; propagation
+observations remain live. New valid searches replace the old search, even if
+the new read fails; invalid fresh requests preserve it. A failed continuation
+keeps its position retryable unless close, settings changes or a new search
+independently invalidated it. Unreadable-record warnings persist across pages;
+archive errors and unsafe malformed continuation boundaries are explicit errors.
+
+For queue acceptance, disconnect and publication ownership, see
+[telnet history](../telnet/README.md#archive-history-and-continuation). The reader
+uses existing timestamp keys; no callsign index, backfill or migration is needed.
+See [ADR-0251](../docs/decisions/ADR-0251-exact-call-paged-history.md) and
+[TSR-0041](../docs/troubleshooting/TSR-0041-exact-call-history-and-scan-cap.md).
+
 ### Canonical DXCC input and display
 
-`SHOW DX` / `SHOW MYDX` resolve canonical CTY entity labels before callsign
-normalization or portable lookup; `SHOW MYDX 3D2/R 10` selects Rotuma's ADIF.
-Existing prefix/callsign queries and count-only syntax remain supported.
-`SHOW DXCC` detail lookup retains its existing behavior.
+History selection is described above; canonical labels retain precedence over
+exact calls and prefixes.
 
 Telnet `PASS`/`REJECT DXDXCC|DEDXCC` accept canonical CTY prefixes or existing
 positive ADIF numbers. All human `SHOW FILTER` views display every unambiguous

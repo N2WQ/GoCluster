@@ -130,10 +130,59 @@ label. A missing CTY association, including unavailable CTY, also appears as
 `Unknown DXCC (12345)`. Machine YAML and saved records continue to use numbers.
 All human width, size, quoting and reading-pause limits remain in force.
 
-SHOW DX and SHOW MYDX recognize canonical CTY labels before portable callsign
-processing, including SHOW MYDX 3D2/R 10. Existing callsign searches remain
-supported. Numeric history arguments remain counts; SHOW DXCC detail lookup
-retains its existing behavior.
+SHOW DX and SHOW MYDX recognize canonical CTY labels before exact-call or
+prefix classification, including SHOW MYDX 3D2/R 10. Numeric history arguments
+remain counts; SHOW DXCC detail lookup retains its existing behavior.
+
+## Archive History And Continuation
+
+`SHOW DX` and `SHOW MYDX` share archive history selection and paging. Counts
+range from 1 to 250, default 50; selector and count may appear in either order.
+`SH DX` / `SH MYDX` work in both dialects, while `SHOW/DX` / `SH/DX` are `cc`
+aliases. An unambiguous canonical CTY label selects its entity first. Other full
+valid calls select their exact normalized stored DX identity; other supported
+prefixes select their resolved entity. Supplied selectors require loaded CTY,
+but valid full calls with unresolved countries still work as exact searches.
+See [commands history](../commands/README.md#archive-history) for examples.
+
+Every page applies current time minus configured archive retention, including
+the exact cutoff, and visits at most 200,000 candidates. Decode failures,
+malformed keys, rejects and non-consuming lookahead count toward that budget.
+Rows are selected newest-first and displayed chronologically within the page.
+A work-limit response is explicitly incomplete; count reached also offers NEXT
+when older search remains. Continued output starts `Older retained history page:`.
+Unreadable-record warnings accumulate across the search; exhaustion with a
+warning is not proof that every matching record was readable. Archive failures
+are explicit errors, and unsafe malformed cursor boundaries fail rather than
+looping or silently skipping valid rows.
+
+Follow the returned `SHOW DX NEXT <token>` on the same connection. Tokens are
+`H1` plus 32 uppercase hexadecimal characters; the longest supported full NEXT
+command is 49 bytes. One small cursor belongs to that connection, without a
+registry, expiry worker or retained iterator. Successful page publication rotates
+the handle; replaying an older handle fails. New valid searches replace the old
+search immediately, even if the new scan fails. Invalid commands preserve it.
+Close invalidates stored and pending work. Failed continuations preserve their
+position for retry unless close, settings changes or another valid search
+independently invalidated it.
+
+Each page captures detached, coherent filter/path settings before scanning.
+Relevant changes invalidate the search, including a change followed by restoring
+the old value. Presentation-only preferences do not. Propagation observations
+remain live; pages use fresh archive views and cutoff times. Newly inserted rows
+ahead of the saved older position are not revisited. No configuration/history
+lock is held during archive scanning. Publication rechecks connection state and
+search generation to prevent stale results recreating invalidated cursors.
+
+Advancement occurs when the bounded control queue accepts the page, rather than
+when the socket delivers it. Queue overflow keeps the existing disconnect policy.
+Network failure after queue acceptance does not undo advancement; reconnect and
+start a fresh search. Archive readers close their request-owned iterators before
+DB shutdown. Storage writes and timestamp range cleanup remain unchanged; no
+secondary index, backfill or migration is introduced.
+
+See [ADR-0251](../docs/decisions/ADR-0251-exact-call-paged-history.md) and
+[TSR-0041](../docs/troubleshooting/TSR-0041-exact-call-history-and-scan-cap.md).
 
 ## Human Configuration Readbacks
 

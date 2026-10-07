@@ -432,8 +432,15 @@ type Client struct {
 	configurationRevision    uint64
 	configurationDigest      [32]byte
 	configurationDigestSet   bool
-	dropCount                uint64     // Count of spots dropped for this client due to backpressure
-	dropWindow               dropWindow // Sliding window for extreme drop detection
+	// One cursor is bounded by this connection; close/replacement releases it.
+	historyMu         sync.Mutex
+	historySearch     *historySearch
+	historyGeneration uint64
+	historyDigest     [32]byte
+	historyDigestSet  bool
+	historyClosed     bool
+	dropCount         uint64     // Count of spots dropped for this client due to backpressure
+	dropWindow        dropWindow // Sliding window for extreme drop detection
 }
 
 // InputValidationError represents a non-fatal ingress violation (length or character guardrails).
@@ -3986,6 +3993,13 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 			continue
 		}
 
+		if handled, proceed := s.handleHistoryCommand(client, line); handled {
+			if !proceed {
+				return
+			}
+			continue
+		}
+
 		// Process other commands
 		filterFn := func(spotEntry *spot.Spot) bool {
 			if spotEntry == nil {
@@ -6028,6 +6042,7 @@ func (c *Client) interrupt() {
 		return
 	}
 	c.closeOnce.Do(func() {
+		c.invalidateHistory()
 		c.invalidateHumanReadback()
 		if c.done != nil {
 			close(c.done)

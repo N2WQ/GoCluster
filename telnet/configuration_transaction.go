@@ -152,6 +152,7 @@ func (c *Client) refreshConfigurationRevision() {
 		c.configurationRevision++
 	}
 	c.configurationDigest, c.configurationDigestSet = digest, true
+	c.refreshHistoryRevision()
 }
 
 func (c *Client) configurationRevisionToken() (string, error) {

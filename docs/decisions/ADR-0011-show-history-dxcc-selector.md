@@ -6,6 +6,10 @@ Decision Makers: Cluster maintainers
 Technical Area: commands/processor
 Tags: command-contract, cty, archive-history
 
+History selection, paging, request-time retention and failure reporting are
+refined by [ADR-0251](ADR-0251-exact-call-paged-history.md). The text below
+preserves this accepted historical decision; count grammar remains in force.
+
 ## Context
 - Operators wanted history queries scoped to a DXCC without running separate lookups and manual filtering.
 - Existing `SHOW DX` / `SHOW MYDX` only accepted an optional count, so DXCC narrowing required external tooling.
@@ -67,5 +71,6 @@ Tags: command-contract, cty, archive-history
 - Issue(s): user-requested interactive command enhancement (session scope)
 - PR(s): pending
 - Commit(s): pending
-- Related ADR(s): none
+- Related ADR(s): [ADR-0248](ADR-0248-canonical-dxcc-input-and-human-labels.md),
+  [ADR-0251](ADR-0251-exact-call-paged-history.md) (history refinement).
 - Docs: `README.md`, `commands/processor.go`, `commands/processor_test.go`

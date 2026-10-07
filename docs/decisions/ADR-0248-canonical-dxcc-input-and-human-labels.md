@@ -6,7 +6,10 @@
 
 The exact human FULL/category presentation below is superseded by
 [ADR-0249](ADR-0249-effective-human-filter-details.md). Other decisions remain
-in force; the text below preserves the accepted historical decision.
+in force. History selector branches after canonical-label precedence, paging,
+retention and failure reporting are refined by
+[ADR-0251](ADR-0251-exact-call-paged-history.md). The text below preserves the
+accepted historical decision.
 
 ## Context
 
@@ -84,6 +87,7 @@ ADR-0246/0247's width, ASCII quoting, response-size and delivery-pause contracts
 
 ## Links
 
+- History refinement: [ADR-0251](ADR-0251-exact-call-paged-history.md).
 - Related decisions: [ADR-0011](ADR-0011-show-history-dxcc-selector.md),
   [ADR-0246](ADR-0246-delivery-timed-human-readbacks.md),
   [ADR-0247](ADR-0247-complete-finite-filter-selections.md).

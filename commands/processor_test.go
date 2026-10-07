@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"dxcluster/archive"
 	"dxcluster/buffer"
 	"dxcluster/cty"
 	"dxcluster/spot"
@@ -21,6 +22,11 @@ type fakeArchive struct {
 type fakeWhoSpotsMeQuerier struct {
 	window time.Duration
 	counts map[string]map[string]map[string][]spot.WhoSpotsMeCountryCount
+}
+
+func (f *fakeArchive) ReadHistoryPage(req archive.HistoryRequest) (archive.HistoryPage, error) {
+	rows, err := f.RecentFiltered(req.Limit, req.Match)
+	return archive.HistoryPage{Spots: rows, End: archive.HistoryExhausted}, err
 }
 
 func (f *fakeArchive) Recent(limit int) ([]*spot.Spot, error) {
@@ -496,7 +502,7 @@ func TestShowMYDXDXCCSelectorOnly(t *testing.T) {
 	ctyDB := loadTestCTY(t)
 	ctyLookup := func() *cty.CTYDatabase { return ctyDB }
 
-	usNew := spot.NewSpot("K1AAA", "DE1AA", 14074.0, "FT8")
+	usNew := spot.NewSpot("W6/LZ5VV", "DE1AA", 14074.0, "FT8")
 	usNew.DXMetadata.ADIF = 291
 	usNew.Time = time.Now().UTC().Add(-30 * time.Second)
 
@@ -513,11 +519,8 @@ func TestShowMYDXDXCCSelectorOnly(t *testing.T) {
 	filterFn := func(s *spot.Spot) bool { return s != nil }
 
 	resp := p.ProcessCommandForClient("SHOW MYDX W6/LZ5VV", "N2WQ", "", filterFn, "go")
-	if !strings.Contains(resp, "K1AAA") || !strings.Contains(resp, "W6CCC") {
-		t.Fatalf("expected US ADIF matches in response, got %q", resp)
-	}
-	if strings.Contains(resp, "IT9BBB") {
-		t.Fatalf("unexpected non-matching ADIF in response: %q", resp)
+	if !strings.Contains(resp, "W6/LZ5VV") || strings.Contains(resp, "W6CCC") || strings.Contains(resp, "IT9BBB") {
+		t.Fatalf("expected only portable call, got %q", resp)
 	}
 }
 
@@ -525,11 +528,11 @@ func TestShowDXDXCCSelectorCountBothOrders(t *testing.T) {
 	ctyDB := loadTestCTY(t)
 	ctyLookup := func() *cty.CTYDatabase { return ctyDB }
 
-	usNew := spot.NewSpot("K1AAA", "DE1AA", 14074.0, "FT8")
+	usNew := spot.NewSpot("W6/LZ5VV", "DE1AA", 14074.0, "FT8")
 	usNew.DXMetadata.ADIF = 291
 	usNew.Time = time.Now().UTC().Add(-20 * time.Second)
 
-	usOld := spot.NewSpot("W6CCC", "DE3CC", 10136.0, "CW")
+	usOld := spot.NewSpot("W6/LZ5VV", "DE3CC", 10136.0, "CW")
 	usOld.DXMetadata.ADIF = 291
 	usOld.Time = time.Now().UTC().Add(-40 * time.Second)
 
@@ -547,11 +550,11 @@ func TestShowDXDXCCSelectorCountBothOrders(t *testing.T) {
 		t.Fatalf("expected both argument orders to match, got %q vs %q", respSelectorCount, respCountSelector)
 	}
 	lines := strings.Split(strings.TrimSpace(strings.ReplaceAll(respSelectorCount, "\r", "")), "\n")
-	if len(lines) != 1 {
-		t.Fatalf("expected one line for count=1, got %d (%q)", len(lines), respSelectorCount)
+	if len(lines) != 2 {
+		t.Fatalf("expected one spot plus completion for count=1, got %d lines (%q)", len(lines), respSelectorCount)
 	}
-	if !strings.Contains(respSelectorCount, "K1AAA") {
-		t.Fatalf("expected newest matching ADIF spot, got %q", respSelectorCount)
+	if !strings.Contains(respSelectorCount, usNew.FormatDXCluster()) || strings.Contains(respSelectorCount, usOld.FormatDXCluster()) {
+		t.Fatalf("expected newest matching exact-call spot, got %q", respSelectorCount)
 	}
 }
 
@@ -574,8 +577,8 @@ func TestShowMYDXDXCCSelectorErrors(t *testing.T) {
 	ctyLookup := func() *cty.CTYDatabase { return ctyDB }
 	p := NewProcessor(nil, &fakeArchive{}, nil, ctyLookup, nil, nil)
 	resp = p.ProcessCommandForClient("SHOW MYDX ZZ0ZZ", "N2WQ", "", filterFn, "go")
-	if resp != "Unknown DXCC/prefix.\n" {
-		t.Fatalf("expected unknown selector error, got %q", resp)
+	if resp != "No matching retained spots.\n" {
+		t.Fatalf("expected country-unresolved call search, got %q", resp)
 	}
 }
 
@@ -1232,8 +1235,8 @@ func TestShowMYDXCountBounds(t *testing.T) {
 
 	resp := p.ProcessCommandForClient("SHOW MYDX", "N2WQ", "", filterFn, "classic")
 	lines := strings.Split(strings.TrimRight(resp, "\r\n"), "\n")
-	if len(lines) != showDXDefaultCount {
-		t.Fatalf("expected %d lines, got %d", showDXDefaultCount, len(lines))
+	if len(lines) != showDXDefaultCount+1 {
+		t.Fatalf("expected %d spot lines plus completion, got %d lines", showDXDefaultCount, len(lines))
 	}
 
 	resp = p.ProcessCommandForClient("SHOW MYDX 251", "N2WQ", "", filterFn, "classic")
@@ -1254,7 +1257,7 @@ func TestShowDXArchiveOnly(t *testing.T) {
 	filterFn := func(s *spot.Spot) bool { return s != nil }
 
 	resp := p.ProcessCommandForClient("SHOW DX 1", "N2WQ", "", filterFn, "classic")
-	if resp != "No spots available.\n" {
+	if !strings.HasPrefix(resp, "History search failed:") {
 		t.Fatalf("expected archive-only response, got %q", resp)
 	}
 }
@@ -1265,8 +1268,8 @@ func TestShowMYDXArchiveError(t *testing.T) {
 	filterFn := func(s *spot.Spot) bool { return s != nil }
 
 	resp := p.ProcessCommandForClient("SHOW MYDX 1", "N2WQ", "", filterFn, "classic")
-	if resp != "No spots available.\n" {
-		t.Fatalf("expected archive error to return no spots, got %q", resp)
+	if !strings.HasPrefix(resp, "History search failed:") {
+		t.Fatalf("expected explicit archive error, got %q", resp)
 	}
 }
 

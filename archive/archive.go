@@ -119,8 +119,12 @@ type Writer struct {
 
 	startOnce sync.Once
 	stopOnce  sync.Once
-	started   atomic.Bool
-	seq       uint32
+	// lifecycleMu orders Start against Stop; readMu keeps DB closure behind
+	// request-owned iterators. Neither lock is held by archive writes or cleanup.
+	lifecycleMu sync.Mutex
+	readMu      sync.RWMutex
+	started     atomic.Bool
+	seq         uint32
 }
 
 // NewWriter initializes archive storage and returns a writer instance.
@@ -252,6 +256,13 @@ func (w *Writer) Start() {
 	if w == nil {
 		return
 	}
+	w.lifecycleMu.Lock()
+	defer w.lifecycleMu.Unlock()
+	select {
+	case <-w.stop:
+		return
+	default:
+	}
 	w.startOnce.Do(func() {
 		w.started.Store(true)
 		go w.insertLoop()
@@ -267,14 +278,20 @@ func (w *Writer) Stop() {
 	if w == nil {
 		return
 	}
-	w.stopOnce.Do(func() { close(w.stop) })
-	if w.started.Load() {
-		<-w.doneInsert
-		<-w.doneClean
-	}
-	if w.db != nil {
-		_ = w.db.Close()
-	}
+	w.stopOnce.Do(func() {
+		w.lifecycleMu.Lock()
+		close(w.stop)
+		w.lifecycleMu.Unlock()
+		if w.started.Load() {
+			<-w.doneInsert
+			<-w.doneClean
+		}
+		w.readMu.Lock()
+		defer w.readMu.Unlock()
+		if w.db != nil {
+			_ = w.db.Close()
+		}
+	})
 }
 
 // Enqueue tries to enqueue a spot snapshot for archival without blocking.
@@ -502,12 +519,13 @@ func (w *Writer) Recent(limit int) ([]*spot.Spot, error) {
 
 // RecentFiltered returns the most recent N archived spots that match a predicate.
 // Key aspects: Progressive bounded scan to avoid unbounded reads on narrow filters.
-// Upstream: Telnet SHOW MYDX handlers.
+// Upstream: Legacy archive callers; user history uses ReadHistoryPage.
 // Downstream: decodeSpot, predicate match.
 func (w *Writer) RecentFiltered(limit int, match func(*spot.Spot) bool) ([]*spot.Spot, error) {
-	if w == nil || w.db == nil {
-		return nil, fmt.Errorf("archive: writer is nil")
+	if err := w.beginRead(); err != nil {
+		return nil, err
 	}
+	defer w.readMu.RUnlock()
 	if limit <= 0 {
 		return []*spot.Spot{}, nil
 	}
@@ -529,6 +547,9 @@ func (w *Writer) RecentFiltered(limit int, match func(*spot.Spot) bool) ([]*spot
 	}
 
 	for ok := iter.Last(); ok && len(results) < limit; ok = iter.Prev() {
+		if err := w.readCanceled(nil); err != nil {
+			return nil, err
+		}
 		// Expand scan window for narrow filters while keeping a hard cap.
 		if scanned >= scanLimit {
 			if scanLimit >= recentScanMax {

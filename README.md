@@ -304,8 +304,22 @@ select whole entities: `REJECT DXDXCC IT9` also blocks `I` and `IG9` (ADIF 248).
 prefixes for each entity. Conflicting labels are omitted; valid alternatives
 remain. With no usable label, rules show `Unknown DXCC (12345)`.
 YAML remains numeric.
-For canonical history search use `SHOW MYDX 3D2/R 10`; bare numbers remain counts.
-See [canonical DXCC prefixes](telnet/README.md#canonical-dxcc-prefixes).
+For canonical entity history use `SHOW MYDX 3D2/R 10`. For one stored station
+use `SHOW DX K1ABC 10` or `SHOW MYDX 10 K1ABC`: full valid calls select exact
+normalized DX identity after canonical-label precedence. Supplied selectors
+require loaded CTY; valid calls with unresolved countries remain exact searches.
+Bare numbers remain counts, default 50 and range 1-250.
+
+History pages apply current archive retention and your filters. They select the
+newest matches and display each page chronologically. A 200,000-candidate work
+limit reports incomplete search; follow the returned `SHOW DX NEXT H1...` on the
+same connection to continue older history. Use the actual returned token, which
+rotates after successful publication. A new valid search, relevant settings
+changes (even changed back), or reconnect requires a fresh search. Unreadable
+warnings remain visible across pages; read errors are not empty results. Pages
+observe live retained history, without a new index or storage migration.
+See [archive history](commands/README.md#archive-history) and
+[continuation ownership](telnet/README.md#archive-history-and-continuation).
 
 ### Named Presets
 

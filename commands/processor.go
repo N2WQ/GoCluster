@@ -4,7 +4,6 @@
 package commands
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"sort"
@@ -13,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"dxcluster/archive"
 	"dxcluster/buffer"
 	"dxcluster/cty"
 	"dxcluster/filter"
@@ -23,8 +23,7 @@ import (
 
 // archiveReader is the minimal interface the archive layer exposes for read paths.
 type archiveReader interface {
-	Recent(limit int) ([]*spot.Spot, error)
-	RecentFiltered(limit int, match func(*spot.Spot) bool) ([]*spot.Spot, error)
+	ReadHistoryPage(archive.HistoryRequest) (archive.HistoryPage, error)
 }
 
 type whoSpotsMeQuerier interface {
@@ -363,13 +362,22 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"SHOW MYDX [count]",
 			"SHOW MYDX <prefix|callsign> [count]",
 			"SHOW MYDX [count] <prefix|callsign>",
+			"SHOW MYDX NEXT <cursor>",
 		},
 		nil,
 		[]string{
 			"History is pulled from stored spots (not live buffer).",
 			"Count range is 1-250 (default 50).",
-			"Respects your filters; self-spots always pass.",
-			"When prefix/call is present, only matching DXCC (ADIF) spots are shown.",
+			"Respects your filters; self-spots bypass rules except toxicity.",
+			"Full calls select exact normalized DX identities; prefixes select entities.",
+			"DX suffixes and numeric SSIDs follow stored station normalization.",
+			"Each page selects newest matches and displays them chronologically.",
+			"History excludes reports older than the configured retention cutoff.",
+			"Work limits may return zero spots with a continuation; this is incomplete.",
+			"Use NEXT with the returned cursor for progressively older pages.",
+			"Matching settings changes require a fresh search; observations stay current.",
+			"A valid fresh search replaces the previous cursor even if its read fails.",
+			"A failed continuation retains its position unless independently invalidated.",
 			"Canonical CTY labels, including slash labels, take precedence over callsigns.",
 			"Numeric arguments remain counts, not DXCC selectors.",
 		},
@@ -614,11 +622,20 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 				"SHOW/DX [count]",
 				"SHOW/DX <prefix|callsign> [count]",
 				"SHOW/DX [count] <prefix|callsign>",
+				"SHOW/DX NEXT <cursor>",
 			},
 			[]string{"SH/DX"},
 			[]string{
 				"Count range is 1-250 (default 50).",
-				"When prefix/call is present, only matching DXCC (ADIF) spots are shown.",
+				"Full calls select exact normalized DX identities; prefixes select entities.",
+				"DX suffixes and numeric SSIDs follow stored station normalization.",
+				"Each page selects newest matches and displays them chronologically.",
+				"History excludes reports older than the configured retention cutoff.",
+				"Work limits may return zero spots with a continuation; this is incomplete.",
+				"Use NEXT with the returned cursor for progressively older pages.",
+				"Matching settings changes require a fresh search; observations stay current.",
+				"A valid fresh search replaces the previous cursor even if its read fails.",
+				"A failed continuation retains its position unless independently invalidated.",
 				"Canonical CTY labels, including slash labels, take precedence over callsigns.",
 				"Numeric arguments remain counts, not DXCC selectors.",
 			},
@@ -865,11 +882,20 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 				"SHOW DX [count]",
 				"SHOW DX <prefix|callsign> [count]",
 				"SHOW DX [count] <prefix|callsign>",
+				"SHOW DX NEXT <cursor>",
 			},
 			[]string{"SH DX"},
 			[]string{
 				"Count range is 1-250 (default 50).",
-				"When prefix/call is present, only matching DXCC (ADIF) spots are shown.",
+				"Full calls select exact normalized DX identities; prefixes select entities.",
+				"DX suffixes and numeric SSIDs follow stored station normalization.",
+				"Each page selects newest matches and displays them chronologically.",
+				"History excludes reports older than the configured retention cutoff.",
+				"Work limits may return zero spots with a continuation; this is incomplete.",
+				"Use NEXT with the returned cursor for progressively older pages.",
+				"Matching settings changes require a fresh search; observations stay current.",
+				"A valid fresh search replaces the previous cursor even if its read fails.",
+				"A failed continuation retains its position unless independently invalidated.",
 				"Canonical CTY labels, including slash labels, take precedence over callsigns.",
 				"Numeric arguments remain counts, not DXCC selectors.",
 			},
@@ -1739,92 +1765,22 @@ func (p *Processor) handleShowOwn(spotter string) string {
 	return fmt.Sprintf("Own call: %s\nLogin call: %s\nSSID handling: numeric SSIDs are ignored for own-call features.\n", ownCall, loginCall)
 }
 
-// Purpose: Render recent stored spots filtered by client rules and optional DXCC selector.
-// Key aspects: Archive-only history; outputs oldest-first; optional selector narrows by DX ADIF.
-// Upstream: handleShow (SHOW MYDX).
-// Downstream: archive.RecentFiltered.
+// handleShowMYDX serves direct processor callers. Production telnet history
+// uses the same classified query and reader with connection-owned continuation.
 func (p *Processor) handleShowMYDX(args []string, filterFn func(*spot.Spot) bool, commandLabel string) string {
 	if filterFn == nil {
 		return noLoggedUserMsg
 	}
-
-	request, errText := parseShowHistoryRequest(args, commandLabel)
+	query, errText := p.prepareHistory(args, commandLabel)
 	if errText != "" {
 		return errText
 	}
-
-	matchFn := filterFn
-	if request.selector != "" {
-		dxADIF, lookupErr := p.resolveHistoryDXCC(request.selector)
-		if lookupErr != "" {
-			return lookupErr
-		}
-		baseMatch := matchFn
-		matchFn = func(s *spot.Spot) bool {
-			if s == nil || s.DXMetadata.ADIF != dxADIF {
-				return false
-			}
-			return baseMatch(s)
-		}
+	page, err := p.ReadHistoryPage(query, nil, filterFn, time.Now().UTC(), nil)
+	if err != nil {
+		log.Printf("history archive query failed: %v", err)
+		return "History search failed: archive unavailable or unreadable. Retry the search.\n"
 	}
-
-	var spots []*spot.Spot
-	if p.archive == nil {
-		return "No spots available.\n"
-	}
-	if rows, err := p.archive.RecentFiltered(request.count, matchFn); err != nil {
-		log.Printf("SHOW MYDX: archive query failed: %v", err)
-	} else {
-		spots = rows
-	}
-	if len(spots) == 0 {
-		return "No spots available.\n"
-	}
-
-	reverseSpotsInPlace(spots)
-
-	var result strings.Builder
-	for _, spot := range spots {
-		result.WriteString(spot.FormatDXCluster())
-		result.WriteString("\r\n")
-	}
-
-	return result.String()
-}
-
-// resolveHistoryDXCC treats canonical entity labels before callsign suffixes
-// or portable segments. Both interpretations use one request-owned CTY snapshot;
-// SHOW DXCC detail lookup deliberately retains its existing metadata behavior.
-func (p *Processor) resolveHistoryDXCC(selector string) (int, string) {
-	if p.ctyLookup == nil {
-		return 0, "CTY database is not available.\n"
-	}
-	db := p.ctyLookup()
-	if db == nil {
-		return 0, "CTY database is not loaded.\n"
-	}
-	adif, err := cty.NewDXCCIndex(db).ResolveCanonical(selector)
-	if err == nil {
-		return adif, ""
-	}
-	if !errors.Is(err, cty.ErrUnknownCanonicalPrefix) {
-		return 0, "Conflicting DXCC canonical prefix.\n"
-	}
-	info, ok := db.LookupCallsignPortable(spot.NormalizeCallsign(selector))
-	if !ok || info == nil {
-		return 0, "Unknown DXCC/prefix.\n"
-	}
-	return info.ADIF, ""
-}
-
-// Purpose: Reverse a slice of spots in place.
-// Key aspects: Used to present chronological output.
-// Upstream: handleShowDX.
-// Downstream: None.
-func reverseSpotsInPlace(spots []*spot.Spot) {
-	for i, j := 0, len(spots)-1; i < j; i, j = i+1, j-1 {
-		spots[i], spots[j] = spots[j], spots[i]
-	}
+	return RenderHistoryPage(page, "", false, false, false)
 }
 
 // Purpose: Resolve CTY metadata for a prefix or callsign and render DXCC details.
