@@ -74,19 +74,22 @@ function Invoke-NativeResult {
 
     Get-Command $CommandName -ErrorAction Stop | Out-Null
     # Native stderr is diagnostic output on both supported engines. Only the
-    # exit status decides success, including when the caller enables PS7's
-    # native error-action preference. PS5 wraps redirected stderr in records.
+    # exit status decides success. Convert PS5 stderr ErrorRecords to message
+    # text before formatting so successful progress is not printed as an error.
     $ErrorActionPreference = 'Continue'
     $PSNativeCommandUseErrorActionPreference = $false
-    $errorPath = [IO.Path]::GetTempFileName()
-    try {
-        $lines = @(& $CommandName @Arguments 2> $errorPath | ForEach-Object { $_.ToString() })
-        $exitCode = $LASTEXITCODE
-        return [pscustomobject]@{ Lines = $lines; Output = ($lines -join "`n")
-            Diagnostic = [IO.File]::ReadAllText($errorPath); ExitCode = $exitCode }
-    } finally {
-        Remove-Item -LiteralPath $errorPath -Force -ErrorAction SilentlyContinue
+    $lines = [Collections.Generic.List[string]]::new()
+    $diagnostics = [Collections.Generic.List[string]]::new()
+    & $CommandName @Arguments 2>&1 | ForEach-Object {
+        if ($_ -is [Management.Automation.ErrorRecord]) {
+            $diagnostics.Add($_.ToString())
+        } else {
+            $lines.Add($_.ToString())
+        }
     }
+    $exitCode = $LASTEXITCODE
+    return [pscustomobject]@{ Lines = $lines.ToArray(); Output = ($lines -join "`n")
+        Diagnostic = ($diagnostics -join "`n"); ExitCode = $exitCode }
 }
 
 function Invoke-CheckedCommand {

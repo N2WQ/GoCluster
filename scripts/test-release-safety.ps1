@@ -281,6 +281,19 @@ try {
     $env:GH_REPO = 'wrong.invalid/unrelated/repository'; $env:GH_HOST = 'wrong.invalid'
     $env:GOOS = 'linux'; $env:GOARCH = 'arm64'
 
+    Run-ReleaseCase 'native diagnostics stay plain and separate from stdout' {
+        foreach ($code in @(0, 19)) {
+            $result = Invoke-NativeResult -CommandName $env:ComSpec -Arguments @('/d', '/c', "echo native output & echo native diagnostic 1>&2 & exit /b $code")
+            Assert-Fixture ($result.ExitCode -eq $code) 'Native exit code changed.'
+            Assert-Fixture ($result.Lines.Count -eq 1 -and $result.Output.Trim() -ceq 'native output') 'Native stdout was lost or mixed with stderr.'
+            Assert-Fixture ($result.Diagnostic.Trim() -ceq 'native diagnostic') 'Native stderr contains PowerShell formatting or lost its text.'
+        }
+        $display = (Invoke-CheckedCommand -CommandName $env:ComSpec -Arguments @('/d', '/c', 'echo native diagnostic 1>&2 & exit /b 0') -FailureMessage 'native fixture failed' 6>&1 | Out-String).Trim()
+        Assert-Fixture ($display -ceq 'native diagnostic') 'Successful stderr was not displayed as plain text.'
+        Expect-ReleaseRefusal {
+            Invoke-CheckedCommand -CommandName $env:ComSpec -Arguments @('/d', '/c', 'echo failed diagnostic 1>&2 & exit /b 19') -FailureMessage 'native fixture failed'
+        } 'native fixture failed[\s\S]*failed diagnostic'
+    }
     Run-ReleaseCase 'actual native exit and successful stderr' {
         $repo = New-ReleaseFixture
         Reset-ReleaseNative $repo

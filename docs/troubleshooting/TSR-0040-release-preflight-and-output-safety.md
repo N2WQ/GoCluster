@@ -84,6 +84,29 @@ and failure-to-absence conversion in local-tag and release lookups.
 - Durable decision required: ownership-based output replacement and the narrow
   final generated-output exception change operational behavior.
 
+## Successful Native Stderr Follow-up
+
+A successful Windows PowerShell 5.1 release printed `NativeCommandError`
+formatting around Git's normal push progress, then published the release.
+The native helper redirected stderr into a temporary file; PowerShell wrote
+formatted ErrorRecords into that file. Printing the captured file reproduced
+the wrapper despite the successful native exit status.
+
+An isolated `cmd.exe` probe reproduced formatted diagnostic text with exit
+code 0. Capturing the merged pipeline and converting stderr ErrorRecords to
+message strings preserved separate stdout and diagnostics and exit code 19.
+The helper now performs that conversion before displaying diagnostics. Success
+still depends on exit status; nonzero commands retain their diagnostic text.
+Regression fixtures assert exact plain diagnostic text, stdout separation,
+successful display, and refusal with failed-command diagnostics on both engines.
+This corrects diagnostic formatting without changing ADR-0242 release policy.
+
+Follow-up validation: release identity fixtures and all 111 available safety
+cases passed on Windows PowerShell 5.1.26100.8655 and PowerShell 7.6.6.
+Each safety run skipped the second-drive fixture because no second filesystem
+drive was available. Script syntax and troubleshooting-record checks passed.
+No live publication was performed during this correction.
+
 ## Decision Linkage
 
 - ADR created: ADR-0242, Release Preparation Safety.
