@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `024163a09f3c1d54`
+- Source fingerprint: `09c23773afeac2a7`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -11,11 +11,11 @@
 
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
-| `dxcluster/commands` | `commands` | 2 | 5 |
+| `dxcluster/commands` | `commands` | 3 | 7 |
 | `dxcluster/internal/cluster` | `internal/cluster` | 25 | 58 |
 | `dxcluster/peer` | `peer` | 62 | 126 |
 | `dxcluster/spot` | `spot` | 32 | 31 |
-| `dxcluster/telnet` | `telnet` | 33 | 56 |
+| `dxcluster/telnet` | `telnet` | 35 | 59 |
 
 ## In-Scope Package Edges
 
@@ -34,6 +34,7 @@
 
 | From | Imports |
 |---|---|
+| `dxcluster/commands` | `dxcluster/archive` |
 | `dxcluster/commands` | `dxcluster/buffer` |
 | `dxcluster/commands` | `dxcluster/cty` |
 | `dxcluster/commands` | `dxcluster/filter` |
@@ -78,6 +79,7 @@
 | `dxcluster/spot` | `dxcluster/internal/yamlconfig` |
 | `dxcluster/spot` | `dxcluster/pathreliability` |
 | `dxcluster/spot` | `dxcluster/strutil` |
+| `dxcluster/telnet` | `dxcluster/archive` |
 | `dxcluster/telnet` | `dxcluster/cty` |
 | `dxcluster/telnet` | `dxcluster/filter` |
 | `dxcluster/telnet` | `dxcluster/internal/netutil` |
@@ -95,11 +97,14 @@
 
 Source files:
 - `commands/configuration_help.go`
+- `commands/history.go`
 - `commands/processor.go`
 
 Test files:
 - `commands/configuration_help_test.go`
 - `commands/dxcc_history_test.go`
+- `commands/history_archive_test.go`
+- `commands/history_test.go`
 - `commands/preset_help_test.go`
 - `commands/processor_test.go`
 - `commands/readme_sync_test.go`
@@ -473,6 +478,8 @@ Source files:
 - `telnet/configuration_transaction.go`
 - `telnet/events.go`
 - `telnet/filter_commands.go`
+- `telnet/history.go`
+- `telnet/history_filter.go`
 - `telnet/latency.go`
 - `telnet/login_validation.go`
 - `telnet/machine_commands.go`
@@ -512,6 +519,9 @@ Test files:
 - `telnet/glyph_test.go`
 - `telnet/handshake_mode_test.go`
 - `telnet/handshake_transcript_test.go`
+- `telnet/history_filter_test.go`
+- `telnet/history_fuzz_test.go`
+- `telnet/history_test.go`
 - `telnet/latency_test.go`
 - `telnet/machine_commands_test.go`
 - `telnet/machine_deadline_lifecycle_test.go`
@@ -555,6 +565,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0251](docs/decisions/ADR-0251-exact-call-paged-history.md) | Accepted | 2026-10-06 | commands, telnet, archive, pagination, lifecycle | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0249](docs/decisions/ADR-0249-effective-human-filter-details.md) | Accepted | 2026-10-06 | telnet, commands, human readbacks, bounded output | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0248](docs/decisions/ADR-0248-canonical-dxcc-input-and-human-labels.md) | Accepted | 2026-10-06 | cty, commands, telnet, DXCC, human readbacks | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0247](docs/decisions/ADR-0247-complete-finite-filter-selections.md) | Accepted | 2026-10-05 | telnet, commands, overview, bounded output | `area:commands, area:telnet, path:telnet` |
