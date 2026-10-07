@@ -456,7 +456,7 @@ type Filter struct {
 	AllDEDXCC            bool            // If true, accept all DE ADIF codes (except blocked)
 	BlockAllDEDXCC       bool            // If true, reject all DE ADIF codes
 
-	DXStates         map[string]bool // FCC mailing-address state allow/block rules; empty metadata is unknown.
+	DXStates         map[string]bool // US/Canadian mailing-address state allow/block rules; empty metadata is unknown.
 	BlockDXStates    map[string]bool
 	DEStates         map[string]bool
 	BlockDEStates    map[string]bool
@@ -483,7 +483,7 @@ type Filter struct {
 // NearbyLocationSnapshot stores location filter state for restoration when
 // PASS NEARBY is disabled. It is not persisted.
 type NearbyLocationSnapshot struct {
-	DXStates         map[string]bool // FCC mailing-address state allow/block rules; empty metadata is unknown.
+	DXStates         map[string]bool // US/Canadian mailing-address state allow/block rules; empty metadata is unknown.
 	BlockDXStates    map[string]bool
 	DEStates         map[string]bool
 	BlockDEStates    map[string]bool

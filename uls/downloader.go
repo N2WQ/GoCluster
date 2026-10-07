@@ -1,5 +1,5 @@
-// Package uls downloads and refreshes the FCC ULS amateur archive, rebuilding a
-// slim SQLite database used for call metadata enrichment.
+// Package uls refreshes FCC and ISED reference archives into independent slim
+// SQLite snapshots for license checks and registered state/province metadata.
 package uls
 
 import (
@@ -165,10 +165,18 @@ func Refresh(ctx context.Context, cfg config.FCCULSConfig, force bool) (updated 
 // Purpose: Run the daily refresh schedule until ctx is canceled.
 // Key aspects: Uses reusable timers and honors ctx cancellation.
 // Upstream: StartBackground goroutine.
-// Downstream: nextRefreshDelay, Refresh.
+// Downstream: runDailyRefresh, Refresh.
 func startScheduler(ctx context.Context, cfg config.FCCULSConfig) {
+	runDailyRefresh(ctx, "FCC ULS", cfg.RefreshUTC, func(ctx context.Context, force bool) (bool, error) {
+		return Refresh(ctx, cfg, force)
+	})
+}
+
+// runDailyRefresh owns one timer at a time, and joins each bounded refresh before
+// scheduling another. Cancellation stops the timer and reaches the active build.
+func runDailyRefresh(ctx context.Context, label, refreshUTC string, refresh func(context.Context, bool) (bool, error)) {
 	for {
-		delay := nextRefreshDelay(cfg, time.Now().UTC())
+		delay := schedule.NextDailyUTC(refreshUTC, time.Now().UTC(), 2, 15, schedule.ParseOptions{})
 		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
@@ -176,22 +184,14 @@ func startScheduler(ctx context.Context, cfg config.FCCULSConfig) {
 			return
 		case <-timer.C:
 		}
-		if updated, err := Refresh(ctx, cfg, false); err != nil {
-			log.Printf("Warning: scheduled FCC ULS download failed: %v", err)
+		if updated, err := refresh(ctx, false); err != nil {
+			log.Printf("Warning: scheduled %s download failed: %v", label, err)
 		} else if updated {
-			log.Printf("FCC ULS database updated")
+			log.Printf("%s database updated", label)
 		} else {
-			log.Printf("Scheduled FCC ULS download: up to date (%s)", cfg.Archive)
+			log.Printf("Scheduled %s download: up to date", label)
 		}
 	}
-}
-
-// Purpose: Compute the delay until the next scheduled refresh.
-// Key aspects: Uses configured UTC hour/minute; rolls to next day if needed.
-// Upstream: startScheduler.
-// Downstream: internal/schedule helpers.
-func nextRefreshDelay(cfg config.FCCULSConfig, now time.Time) time.Duration {
-	return schedule.NextDailyUTC(cfg.RefreshUTC, now, 2, 15, schedule.ParseOptions{})
 }
 
 // Purpose: Fetch the FCC ULS archive to disk, honoring cached metadata.

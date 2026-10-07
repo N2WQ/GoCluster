@@ -229,23 +229,34 @@ afterLookup:
 // Base-call jurisdiction selects the lookup; an admission exception never
 // converts an absent license into a found record or a fabricated state.
 func (v *ingestValidator) checkSpotterLicense(s *spot.Spot, ctyDB *cty.CTYDatabase, deCall, dxCall string) bool {
-	if v.lookupUS == nil {
-		return true
-	}
 	call := uls.NormalizeForLicense(deCall)
 	if call == "" {
 		return true
 	}
 	info, ok := v.lookupCTY(ctyDB, call)
-	if !ok || !spot.IsFCCJurisdiction(info.ADIF) {
+	if !ok {
 		return true
 	}
-	result := v.lookupUS(call)
+	var result uls.LookupResult
+	var enabled bool
+	switch {
+	case spot.IsFCCJurisdiction(info.ADIF):
+		if v.lookupUS == nil {
+			return true
+		}
+		result = v.lookupUS(call)
+		enabled = v.licenseChecksEnabled != nil && v.licenseChecksEnabled()
+	case spot.IsCanadianJurisdiction(info.ADIF):
+		result = uls.LookupCanadian(call)
+		enabled = uls.CanadianLicenseChecksEnabled()
+	default:
+		return true
+	}
 	if result.Available && result.Found {
 		s.DEMetadata.State = result.State
 	}
 	if s.IsTestSpotter || uls.AllowlistMatch(info.ADIF, call) ||
-		v.licenseChecksEnabled == nil || !v.licenseChecksEnabled() ||
+		!enabled ||
 		!result.Available || result.Found {
 		return true
 	}

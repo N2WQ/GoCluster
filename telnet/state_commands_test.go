@@ -14,8 +14,8 @@ import (
 )
 
 // This accepted vocabulary is a literal oracle rather than a copy of the new
-// getter. It includes postal districts/territories and military-mail codes.
-const stateCodesFixture = "AA AE AK AL AP AR AS AZ CA CO CT DC DE FL GA GU HI IA ID IL IN KS KY LA MA MD ME MI MN MO MP MS MT NC ND NE NH NJ NM NV NY OH OK OR PA PR RI SC SD TN TX UM UT VA VI VT WA WI WV WY"
+// getter. It includes US mailing codes and Canadian provinces/territories.
+const stateCodesFixture = "AA AB AE AK AL AP AR AS AZ BC CA CO CT DC DE FL GA GU HI IA ID IL IN KS KY LA MA MB MD ME MI MN MO MP MS MT NB NC ND NE NH NJ NL NM NS NT NU NV NY OH OK ON OR PA PE PR QC RI SC SD SK TN TX UM UT VA VI VT WA WI WV WY YT"
 
 func TestStateCommandsAtomicBothDialects(t *testing.T) {
 	for _, dialect := range []DialectName{DialectGo, DialectCC} {
@@ -29,7 +29,7 @@ func TestStateCommandsAtomicBothDialects(t *testing.T) {
 				if dialect == DialectCC {
 					pass, reject = "SET/FILTER ", "UNSET/FILTER "
 				}
-				if response, handled := e.Handle(c, pass+domain+" ca,TX ca"); !handled || strings.Contains(response, "Invalid") {
+				if response, handled := e.Handle(c, pass+domain+" ca,TX on ca"); !handled || strings.Contains(response, "Invalid") {
 					t.Fatal(response)
 				}
 				before := filter.ConfigurationFromFilter(c.filter, c.configuredSettings).Clone()
@@ -38,7 +38,7 @@ func TestStateCommandsAtomicBothDialects(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				for _, line := range []string{pass + domain + " NY,ZZ", reject + domain + " NY,California", pass + domain + " ALL,CA", pass + domain + " AB"} {
+				for _, line := range []string{pass + domain + " NY,ZZ", reject + domain + " NY,California", pass + domain + " ALL,CA", pass + domain + " ZZ"} {
 					response, _ := e.Handle(c, line)
 					afterDisk, err := os.ReadFile(path)
 					if !strings.Contains(response, "Invalid") || !before.Equal(filter.ConfigurationFromFilter(c.filter, c.configuredSettings)) || err != nil || !bytes.Equal(beforeDisk, afterDisk) {
@@ -46,17 +46,17 @@ func TestStateCommandsAtomicBothDialects(t *testing.T) {
 					}
 				}
 				candidate := spot.NewSpot("K1ABC", "W1XYZ", 14030, "CW")
-				for _, state := range []string{"CA", "TX", "NY", ""} {
+				for _, state := range []string{"CA", "TX", "ON", "QC", "NY", ""} {
 					candidate.DXMetadata.State, candidate.DEMetadata.State = state, state
-					if got := c.filter.Matches(candidate); got != (state == "CA" || state == "TX") {
+					if got := c.filter.Matches(candidate); got != (state == "CA" || state == "TX" || state == "ON") {
 						t.Fatalf("PASS %s state=%q got=%t", domain, state, got)
 					}
 				}
 				e.Handle(c, pass+domain+" ALL")
-				e.Handle(c, reject+domain+" CA")
-				for _, state := range []string{"CA", "TX", ""} {
+				e.Handle(c, reject+domain+" CA,ON")
+				for _, state := range []string{"CA", "ON", "QC", "TX", ""} {
 					candidate.DXMetadata.State, candidate.DEMetadata.State = state, state
-					if got := c.filter.Matches(candidate); got != (state != "CA") {
+					if got := c.filter.Matches(candidate); got != (state != "CA" && state != "ON") {
 						t.Fatalf("REJECT %s state=%q got=%t", domain, state, got)
 					}
 				}
@@ -84,7 +84,7 @@ func TestStateReadbacksCompleteFiniteSelections(t *testing.T) {
 	c := configurationTestClient(s, "W1ABC-1")
 	e := newFilterCommandEngine()
 	want := strings.Fields(stateCodesFixture)
-	if got := spot.FCCStateCodes(); !reflect.DeepEqual(got, want) {
+	if got := spot.StateCodes(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("code vocabulary: %v", got)
 	}
 	for _, domain := range []string{"DXSTATE", "DESTATE"} {
@@ -108,7 +108,7 @@ func TestStateReadbacksCompleteFiniteSelections(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertHumanWire(t, response)
-	if strings.Contains(response, "60 states") || !strings.Contains(response, "DX states") || !strings.Contains(response, "WY") {
+	if strings.Contains(response, "73 states") || !strings.Contains(response, "DX states") || !strings.Contains(response, "YT") {
 		t.Fatal("finite overview collapsed selections")
 	}
 }
@@ -116,11 +116,11 @@ func TestStateReadbacksCompleteFiniteSelections(t *testing.T) {
 func TestStateHistorySnapshotAndPresetIdentity(t *testing.T) {
 	s := presetTestServer(t)
 	c := configurationTestClient(s, "W1ABC-1")
-	c.filter.SetDXState("CA", true)
-	c.filter.SetDEState("TX", true)
+	c.filter.SetDXState("ON", true)
+	c.filter.SetDEState("NY", true)
 	snapshot := c.captureHistoryFilter()
 	sp := spot.NewSpot("K1ABC", "W2XYZ", 14030, "CW")
-	sp.DXMetadata.State, sp.DEMetadata.State = "CA", "TX"
+	sp.DXMetadata.State, sp.DEMetadata.State = "ON", "NY"
 	if !snapshot.matches(s, sp) {
 		t.Fatal("captured state rules did not match")
 	}
@@ -128,7 +128,7 @@ func TestStateHistorySnapshotAndPresetIdentity(t *testing.T) {
 	if !strings.Contains(response, "Saved preset") {
 		t.Fatal(response)
 	}
-	newFilterCommandEngine().Handle(c, "REJECT DXSTATE CA")
+	newFilterCommandEngine().Handle(c, "REJECT DXSTATE ON")
 	if !snapshot.matches(s, sp) || c.historyFilterDigest() == snapshot.digest {
 		t.Fatal("history snapshot borrowed state or digest omitted state")
 	}
@@ -137,7 +137,7 @@ func TestStateHistorySnapshotAndPresetIdentity(t *testing.T) {
 		t.Fatalf("preset state lost: %s", response)
 	}
 	record, err := filter.LoadUserRecord(c.callsign)
-	if err != nil || !record.DXStates["CA"] || !record.DEStates["TX"] || record.Preset == nil || !record.Preset.Baseline.DXStates["CA"] {
+	if err != nil || !record.DXStates["ON"] || !record.DEStates["NY"] || record.Preset == nil || !record.Preset.Baseline.DXStates["ON"] {
 		t.Fatalf("durable state/baseline lost: %v", err)
 	}
 }
@@ -151,7 +151,7 @@ func FuzzStateList(f *testing.F) {
 			t.Skip()
 		}
 		states, invalid := parseStateList(input)
-		if len(states) > 60 {
+		if len(states) > 73 {
 			t.Fatal("unbounded accepted vocabulary")
 		}
 		seen := make(map[string]bool)

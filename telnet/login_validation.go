@@ -1,3 +1,6 @@
+// File role: Admits login identities using syntax, portable CTY validity and
+// base-call FCC/ISED authority. Missing reference data fails open; structured
+// rejection reasons are stable operator diagnostics, independent of spot gates.
 package telnet
 
 import (
@@ -18,6 +21,7 @@ const (
 	loginValidationReasonCTYUnavailable loginValidationReason = "cty_unavailable"
 	loginValidationReasonCTYUnknown     loginValidationReason = "cty_unknown"
 	loginValidationReasonUSUnlicensed   loginValidationReason = "us_unlicensed"
+	loginValidationReasonCAUnlicensed   loginValidationReason = "ca_unlicensed"
 )
 
 // loginValidationResult separates hard rejection from fail-open admission. A
@@ -31,7 +35,7 @@ type loginValidationResult struct {
 
 // validateLoginCallsign protects the cluster from obvious bad, unknown, or
 // unlicensed logins without making external reference data a single point of
-// failure. CTY/ULS outages fail open and are logged as skipped validation.
+// failure. CTY/license snapshot outages fail open and are logged as skipped validation.
 func (s *Server) validateLoginCallsign(call string) loginValidationResult {
 	if !isValidLoginCallsign(call) {
 		return loginValidationResult{reason: loginValidationReasonSyntaxInvalid}
@@ -49,23 +53,34 @@ func (s *Server) validateLoginCallsign(call string) loginValidationResult {
 	if isTestCall {
 		lookupCall = testBase
 	}
-	info, ok := db.LookupCallsignPortable(lookupCall)
+	_, ok := db.LookupCallsignPortable(lookupCall)
 	if !ok {
 		return loginValidationResult{reason: loginValidationReasonCTYUnknown}
 	}
-	if info.ADIF == 291 && !isTestCall {
+	if !isTestCall {
 		licenseCall := strings.TrimSpace(uls.NormalizeForLicense(call))
-		if licenseCall == "" {
-			licenseCall = call
+		baseInfo, baseOK := db.LookupCallsignPortable(licenseCall)
+		if !baseOK {
+			return loginValidationResult{valid: true, failOpen: true, reason: loginValidationReasonCTYUnknown}
 		}
-		if uls.AllowlistMatch(info.ADIF, licenseCall) {
+		var check func(string) bool
+		var reason loginValidationReason
+		switch {
+		case baseInfo.ADIF == 291:
+			check, reason = s.usLicenseCheck, loginValidationReasonUSUnlicensed
+		case spot.IsCanadianJurisdiction(baseInfo.ADIF):
+			check, reason = s.canadianLicenseCheck, loginValidationReasonCAUnlicensed
+		default:
 			return loginValidationResult{valid: true}
 		}
-		if s.usLicenseCheck == nil {
+		if uls.AllowlistMatch(baseInfo.ADIF, licenseCall) {
+			return loginValidationResult{valid: true}
+		}
+		if check == nil {
 			return loginValidationResult{valid: true, failOpen: true, reason: loginValidationReasonCTYUnavailable}
 		}
-		if !s.usLicenseCheck(licenseCall) {
-			return loginValidationResult{reason: loginValidationReasonUSUnlicensed}
+		if !check(licenseCall) {
+			return loginValidationResult{reason: reason}
 		}
 	}
 	return loginValidationResult{valid: true}

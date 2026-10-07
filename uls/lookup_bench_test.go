@@ -23,9 +23,9 @@ func BenchmarkLookupCold(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		cache := licenseCache.Load()
 		cache.mu.Lock()
-		entry := cache.entries["K1ABC"]
+		entry := cache.entries[licenseCacheKey{call: "K1ABC"}]
 		if entry != nil {
-			cache.deleteEntryLocked("K1ABC", entry)
+			cache.deleteEntryLocked(licenseCacheKey{call: "K1ABC"}, entry)
 		}
 		cache.mu.Unlock()
 		LookupUS("K1ABC")

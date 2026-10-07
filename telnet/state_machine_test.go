@@ -33,12 +33,23 @@ func stateProposal(t *testing.T, c *Client, version int, verb, resource, content
 	return command, request
 }
 
+func stateReadbackFilter(t *testing.T, response string) filter.FilterConfiguration {
+	t.Helper()
+	var document struct {
+		Configuration filter.FilterConfiguration `yaml:"configuration"`
+	}
+	if err := yaml.Unmarshal([]byte(response), &document); err != nil {
+		t.Fatal(err)
+	}
+	return document.Configuration
+}
+
 func installExactStateFixture(c *Client) {
-	c.filter.DXStates = map[string]bool{"CA": true, "TX": false}
-	c.filter.BlockDXStates = map[string]bool{"NY": false}
+	c.filter.DXStates = map[string]bool{"CA": true, "TX": false, "ON": true, "QC": false}
+	c.filter.BlockDXStates = map[string]bool{"NY": false, "BC": false}
 	c.filter.AllDXStates = false
 	c.filter.DEStates = map[string]bool{}
-	c.filter.BlockDEStates = map[string]bool{"AA": false}
+	c.filter.BlockDEStates = map[string]bool{"AA": false, "AB": false}
 	c.filter.BlockAllDEStates, c.filter.AllDEStates = true, false
 }
 
@@ -110,6 +121,22 @@ func TestStateMachineV2Contract(t *testing.T) {
 		if strings.Contains(response, "dx_states") != (version == 2) || strings.Contains(response, "states:") != (version == 2) {
 			t.Fatal("capabilities leaked or omitted state")
 		}
+		var document struct {
+			Configuration struct {
+				Choices struct {
+					States []string `yaml:"states"`
+				} `yaml:"choices"`
+			} `yaml:"configuration"`
+		}
+		if err := yaml.Unmarshal([]byte(response), &document); err != nil {
+			t.Fatal(err)
+		}
+		if version == 2 && !reflect.DeepEqual(document.Configuration.Choices.States, strings.Fields(stateCodesFixture)) {
+			t.Fatalf("capabilities state vocabulary: %v", document.Configuration.Choices.States)
+		}
+		if version == 1 && len(document.Configuration.Choices.States) != 0 {
+			t.Fatal("v1 capabilities included province/state choices")
+		}
 	}
 	for _, field := range []string{"dx_states", "de_states"} {
 		fixture := machineCompleteFilterFixture + "dx_states: {allow_all: true, block_all: false, allow: {}, block: {}}\nde_states: {allow_all: true, block_all: false, allow: {}, block: {}}\n"
@@ -123,17 +150,26 @@ func TestStateMachineV2Contract(t *testing.T) {
 			t.Fatalf("v2 complete PUT omitted %s", field)
 		}
 	}
-	command, request := stateProposal(t, c, 2, "PATCH", "FILTER", "  dx_states: {allow: {CA: true, TX: false}, allow_all: false}\n  de_states: {block: {NY: true}}\n")
+	command, request := stateProposal(t, c, 2, "PATCH", "FILTER", "  dx_states: {allow: {CA: true, TX: false, ON: true, QC: false}, allow_all: false}\n  de_states: {block: {NY: true, BC: true, AB: false}}\n")
 	response := s.applyMachineRequest(c, command, request)
-	if !strings.Contains(response, "schema_version: 2\r\n") || !strings.Contains(response, "persisted: true") || !c.filter.DXStates["CA"] || !c.filter.BlockDEStates["NY"] {
+	if !strings.Contains(response, "schema_version: 2\r\n") || !strings.Contains(response, "persisted: true") || !c.filter.DXStates["CA"] || !c.filter.DXStates["ON"] || c.filter.DXStates["QC"] || !c.filter.BlockDEStates["NY"] || !c.filter.BlockDEStates["BC"] {
 		t.Fatal(response)
+	}
+	readback, err := s.renderYAMLReadbackVersion(c, "FILTER", "mixed-1", "session-0", 2)
+	if err != nil {
+		t.Fatalf("mixed state readback lost exact entries: %v %s", err, readback)
+	}
+	readbackFilter := stateReadbackFilter(t, readback)
+	if !reflect.DeepEqual(readbackFilter.DXStates.Allow, map[string]bool{"CA": true, "TX": false, "ON": true, "QC": false}) ||
+		!reflect.DeepEqual(readbackFilter.DEStates.Block, map[string]bool{"NY": true, "BC": true, "AB": false}) {
+		t.Fatal("mixed readback changed exact active/inactive entries")
 	}
 	command, request = stateProposal(t, c, 2, "PATCH", "FILTER", "  dx_states: {allow: {TX: true}}\n")
 	if response := s.applyMachineRequest(c, command, request); strings.Contains(response, "error:") || len(c.filter.DXStates) != 1 || !c.filter.DXStates["TX"] || !c.filter.BlockDEStates["NY"] {
 		t.Fatalf("v2 PATCH did not replace/preserve: %s", response)
 	}
 	before := filter.ConfigurationFromFilter(c.filter, c.configuredSettings).Clone()
-	for _, key := range []string{"ca", "AB", "UNKNOWN"} {
+	for _, key := range []string{"ca", "on", "ZZ", "UNKNOWN"} {
 		command, request = stateProposal(t, c, 2, "PATCH", "FILTER", "  dx_states: {allow: {"+key+": true}}\n")
 		response := s.applyMachineRequest(c, command, request)
 		if !strings.Contains(response, "schema_version: 2\r\n") || !strings.Contains(response, "error:") || !before.Equal(filter.ConfigurationFromFilter(c.filter, c.configuredSettings)) {
@@ -159,7 +195,7 @@ func TestStateMachineV2FramedSessions(t *testing.T) {
 				t.Fatal(response)
 			}
 			revision := machineTestRevision(t, response)
-			write(fmt.Sprintf("PATCH YAML FILTER\r\n---\r\nschema_version: 2\r\nrequest_id: states-edit\r\nif_revision: %s\r\nconfiguration:\r\n  dx_states: {allow_all: false, allow: {CA: true}}\r\n  de_states: {block: {NY: true}}\r\n...\r\n", revision))
+			write(fmt.Sprintf("PATCH YAML FILTER\r\n---\r\nschema_version: 2\r\nrequest_id: states-edit\r\nif_revision: %s\r\nconfiguration:\r\n  dx_states: {allow_all: false, allow: {CA: true, ON: true, QC: false}}\r\n  de_states: {block: {NY: true, BC: true, AB: false}}\r\n...\r\n", revision))
 			response = readMachineTestFrame(t, reader)
 			if !strings.Contains(response, "schema_version: 2\r\n") || !strings.Contains(response, "persisted: true\r\n") {
 				t.Fatal(response)
@@ -179,11 +215,13 @@ func TestStateMachineV2FramedSessions(t *testing.T) {
 			}
 			write("GET YAML FILTER SCHEMA 2 ID After-2\r\n")
 			response = readMachineTestFrame(t, reader)
-			if !strings.Contains(response, "CA: true") || !strings.Contains(response, "NY: true") || machineTestRevision(t, response) != revision {
+			readbackFilter := stateReadbackFilter(t, response)
+			if !reflect.DeepEqual(readbackFilter.DXStates.Allow, map[string]bool{"CA": true, "ON": true, "QC": false}) ||
+				!reflect.DeepEqual(readbackFilter.DEStates.Block, map[string]bool{"NY": true, "BC": true, "AB": false}) || machineTestRevision(t, response) != revision {
 				t.Fatal(response)
 			}
 			record, err := filter.LoadUserRecord("W1ABC-1")
-			if err != nil || !record.DXStates["CA"] || !record.BlockDEStates["NY"] {
+			if err != nil || !record.DXStates["CA"] || !record.DXStates["ON"] || !record.BlockDEStates["NY"] || !record.BlockDEStates["BC"] {
 				t.Fatal("framed state write was not persisted")
 			}
 		})
@@ -201,7 +239,7 @@ func TestStateMachineV2ValidateCompleteReadOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixture := strings.ReplaceAll(machineCompleteFilterFixture, "K1?", "K1*") + "dx_states: {allow_all: false, block_all: false, allow: {CA: true}, block: {}}\nde_states: {allow_all: true, block_all: false, allow: {}, block: {NY: true}}\n"
+	fixture := strings.ReplaceAll(machineCompleteFilterFixture, "K1?", "K1*") + "dx_states: {allow_all: false, block_all: false, allow: {CA: true, ON: true, QC: false}, block: {}}\nde_states: {allow_all: true, block_all: false, allow: {}, block: {NY: true, BC: true, AB: false}}\n"
 	settings := "dialect: go\ngrid: \"\"\nnoise_class: QUIET\ndedupe_policy: FAST\npath_min_observation_count: 0\nsolar_summary_minutes: 0\n"
 	configuration := "filters:\n" + indentMachineFixture(fixture) + "settings:\n" + indentMachineFixture(settings)
 	body := bytes.Replace(machineRequestFixture(configuration, false), []byte("schema_version: 1"), []byte("schema_version: 2"), 1)
@@ -234,7 +272,10 @@ func TestStateMachineV2ValidateCompleteReadOnly(t *testing.T) {
 }
 
 func TestStateExpansionPreservesLoginLicensePolicy(t *testing.T) {
-	db := &cty.CTYDatabase{Data: map[string]cty.PrefixInfo{"W1ABC-1": {Prefix: "K", ADIF: 291}, "KH6ABC-1": {Prefix: "KH6", ADIF: 110}}}
+	db := &cty.CTYDatabase{Data: map[string]cty.PrefixInfo{
+		"W1ABC": {Prefix: "K", ADIF: 291}, "W1ABC-1": {Prefix: "K", ADIF: 291},
+		"KH6ABC": {Prefix: "KH6", ADIF: 110}, "KH6ABC-1": {Prefix: "KH6", ADIF: 110},
+	}}
 	checks := 0
 	s := newHandshakeTranscriptServerWithOptions(t, func(opts *ServerOptions) {
 		opts.CTYLookup = func() *cty.CTYDatabase { return db }
@@ -287,7 +328,7 @@ func TestStateNearbyV1Restoration(t *testing.T) {
 		t.Fatalf("state command escaped NEARBY: %s", response)
 	}
 	newFilterCommandEngine().Handle(c, "PASS NEARBY OFF")
-	if !reflect.DeepEqual(c.filter.DXStates, map[string]bool{"CA": true, "TX": false}) || !c.filter.BlockAllDEStates {
+	if !reflect.DeepEqual(c.filter.DXStates, map[string]bool{"CA": true, "TX": false, "ON": true, "QC": false}) || !c.filter.BlockAllDEStates {
 		t.Fatal("NEARBY lost exact state restoration")
 	}
 }

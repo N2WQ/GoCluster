@@ -234,6 +234,12 @@ func configureFCCQualificationSource(t *testing.T, cfg *config.Config) {
 	t.Cleanup(source.Close)
 	cfg.FCCULS.DBPath, cfg.FCCULS.Archive, cfg.FCCULS.TempDir = path, filepath.Join(dir, "fcc.zip"), dir
 	cfg.FCCULS.URL = source.URL
+	// Canadian refreshes also stay local in runtime qualification. These tests
+	// exercise FCC traffic; the separate Canadian consumer fixtures prove ISED.
+	cfg.ISED.Enabled = false
+	cfg.ISED.DBPath = canadianClusterDatabase(t, false)
+	cfg.ISED.Archive, cfg.ISED.SpecialArchive = filepath.Join(dir, "ised.zip"), filepath.Join(dir, "events.zip")
+	cfg.ISED.TempDir, cfg.ISED.URL, cfg.ISED.SpecialURL = dir, source.URL, source.URL
 }
 
 // The pipeline benchmark exercises both role consumers with an already warm

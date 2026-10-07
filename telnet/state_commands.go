@@ -1,4 +1,4 @@
-// File role: State commands share the FCC postal-code vocabulary with imported metadata.
+// File role: State commands share the US/Canadian mailing-address vocabulary with imported metadata.
 // Parse the whole list before mutating preferences so invalid input is atomic.
 package telnet
 
@@ -11,9 +11,9 @@ import (
 )
 
 func parseStateList(value string) (states, invalid []string) {
-	seen := make(map[string]bool, 60)
+	seen := make(map[string]bool, 73)
 	for _, token := range strings.FieldsFunc(strings.ToUpper(value), func(r rune) bool { return r == ',' || r == ' ' || r == '\t' }) {
-		if !spot.IsFCCState(token) {
+		if !spot.IsState(token) {
 			invalid = append(invalid, token)
 			continue
 		}
@@ -41,7 +41,7 @@ func newStateHandler(name string) *domainHandler {
 			return "Invalid state selection: " + strings.Join(invalid, ", ") + "\n", false
 		}
 		if !all && len(states) == 0 {
-			return fmt.Sprintf("Usage: %s %s <state>[,<state>...] (FCC two-letter codes, or ALL)\nType HELP for usage.\n", verb, name), false
+			return fmt.Sprintf("Usage: %s %s <state>[,<state>...] (US state/Canadian province codes, or ALL)\nType HELP for usage.\n", verb, name), false
 		}
 		c.updateFilter(func(f *filter.Filter) {
 			if all {

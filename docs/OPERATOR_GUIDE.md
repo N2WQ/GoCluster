@@ -41,7 +41,7 @@ Review normal deployment/runtime files before first run:
 - `peering.yaml`: only if this node connects to peer clusters.
 - `reputation.yaml`: only if IPinfo/Cymru reputation enrichment is enabled.
 - `solarweather.yaml`: only if solar/geomagnetic path overrides are enabled.
-- `data.yaml`: CTY, FCC, H3, skew, and runtime data paths.
+- `data.yaml`: CTY, FCC, ISED, H3, skew, and runtime data paths.
 - `spot_taxonomy.yaml`: only when changing supported modes, events, or
   PSKReporter mode routing.
 
@@ -879,27 +879,35 @@ precedence over portable callsign parsing; existing callsign searches still work
 Numeric arguments remain counts. `SHOW DXCC` detail lookup is unchanged. See
 [canonical DXCC prefixes](../telnet/README.md#canonical-dxcc-prefixes).
 
-## FCC State Filtering And Upgrade
+## US State And Canadian Province Filtering And Upgrade
 
-FCC state filtering uses the licensee mailing address. Users can select
-`PASS DXSTATE CA,TX` or `REJECT DESTATE AA,AE,AP`; unknown state fails an explicit
-PASS list and passes a REJECT-only list. NEARBY suspends these rules until OFF.
-All 60 FCC codes are accepted; Canadian provinces require a later source.
+Users can select `PASS DXSTATE CA,TX,ON,QC` or `REJECT DESTATE AA,AE,AP` using
+the existing State fields. Unknown State fails an explicit PASS list and passes
+a REJECT-only list. NEARBY suspends these rules until OFF. All 60 FCC and 13
+Canadian province/territory codes are accepted. The source is a registered
+address, which can differ from the station's operating location.
 
-`fcc_uls.enabled` controls license enforcement only. Turning it off keeps
-reference downloads, database migration and state enrichment active. Startup
-reporting separates enforcement from refresh. Missing data supplies empty state
-and keeps existing fail-open license behavior. Import failures preserve the last
-good database; successful first creation becomes available without a restart.
+`fcc_uls.enabled` and `ised.enabled` control source-specific license rejection.
+Turning either off keeps its downloads and enrichment active. Add the complete
+required `ised` block from public `data.yaml` to private configurations before
+upgrade; URL, archive/database/temp paths and UTC refresh time are explicit.
+Canadian spot/login coverage includes ADIF 1, 211 and 252, routed by base call.
+The two ISED archives publish together. Failed downloads/imports/swaps retain the
+last good database, and exact source hashes keep pending updates retryable even
+after HTTP 304 responses or restart. FCC availability remains independent.
 
-New archive version 6 retains observed state. Versions 2–5 remain readable with
-unknown state and are not enriched on history reads. Saved profile/preset
-version 2 migrates earlier records without changing their old rules. Stop writers
-and back up profiles, preset libraries and the archive before upgrade. Downgrade
-using matching binary/data backups; older binaries may reject version 2 saved
-records or skip version 6 archive rows. A failed FCC rebuild is recovered by
-retrying with the last good database in place, not by deleting it.
+ISED ordinary calls use club province when club data exists, otherwise personal
+province. Active exact special calls use the listed trustee's province; active
+prefix substitutions use an assigned ordinary call. Blank or conflicting
+address evidence stays unknown. First/last event dates are inclusive UTC days;
+Canadian cache entries revalidate at midnight. Prefix checks prove callsign
+plausibility without proving residency or club/event eligibility.
 
-Existing YAML clients keep schema 1 documents and preserve hidden state rules
-when writing. Use `GET YAML CONFIG SCHEMA 2` to inspect/edit state fields. Both
-schemas use one full configuration revision and retain their documented bounds.
+Archive version 6 retains observed State; versions 2–5 remain unknown and are
+never enriched on history reads. Preference disk version 2 and machine YAML
+schemas 1/2 keep their layouts. Schema 1 writes preserve hidden State rules;
+schema 2 exposes them. Stop writers and retain matching binary/data backups
+before upgrade or downgrade: older binaries may reject Canadian codes in saved
+profiles and archive rows. Recover failed refreshes by retrying with the last
+good database in place. See [configuration](../data/config/README.md#canadian-ised-reference-data)
+and [validation](canadian-state-validation.md).

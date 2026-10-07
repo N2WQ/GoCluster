@@ -297,28 +297,35 @@ Slow-client, overload, reconnect, parser-error, and shutdown behavior must be
 deterministic from the operator's perspective. Differences between strict and
 lenient modes must be explicit, documented, and test-covered.
 
-## FCC Mailing State Metadata
+## Registered State And Province Metadata
 
-- FCC licensee mailing state is factual reference metadata, separate from
-  admission enforcement. `fcc_uls.enabled: false` keeps reference refreshes and
-  state enrichment active; it only disables missing-license rejection.
-- DE state belongs to the central-ingest spotter; DX state belongs to the final
-  corrected spotted callsign, including delayed delivery. Base-call CTY
-  jurisdiction selects lookup, rather than a portable operating prefix.
-- A missing license, absent/invalid address code, unavailable database or
-  conflicting evidence cannot establish state. A valid license with unknown
-  state remains valid. Existing admission exceptions do not fabricate metadata.
-- Both roles use the same bounded FCC license/state cache. Database replacement
-  resets its generation; old queries cannot populate a new generation.
-- State uses the 60 accepted FCC codes, including territories and military
-  postal codes. PASS on named states excludes unknown state; a named REJECT
-  list admits unknown state. NEARBY temporarily suspends and restores these
-  rules with the existing geography rules.
-- Archive version 6 stores the two observed states. Versions 2-5 retain unknown
-  state; history never consults today's FCC database to hydrate an old record.
-- Machine YAML version 1 retains its document format and hidden state rules.
-  Explicit schema 2 exposes state fields. Disk version 2 migrates legacy and
-  version 1 records by initializing only new state categories unrestricted.
+- FCC and ISED registered address codes are factual reference metadata,
+  independent of admission enforcement. Disabling either source's enforcement
+  keeps refreshes and enrichment active.
+- DE State belongs to central ingest; DX State belongs to the final corrected
+  callsign, including delayed delivery. Base-call CTY jurisdiction selects the
+  source. Canadian coverage is ADIF 1, 211 and 252; US login remains ADIF 291.
+- ISED uses club province when club information exists, otherwise personal
+  province. Exact active special calls use listed ISED trustee evidence; active
+  prefix substitutions use assigned ordinary base calls. Blank, invalid or
+  conflicting evidence stays unknown without removing a valid assignment.
+- Event dates are inclusive UTC days. Prefix admission means callsign
+  plausibility, without proving residency, membership or event eligibility.
+  Unsupported or ambiguous event evidence fails open for affected candidates.
+- Each registry owns its database, refresh state and generation. Both ISED
+  archives publish as one completed projection with their exact hash pair.
+  Failed refreshes retain last-good data. The aggregate cache is capped at
+  200,000 entries with the existing FCC TTL; Canadian facts also revalidate at
+  UTC midnight. Old generation/date queries cannot publish stale facts.
+  Unavailable facts are never cached.
+- State accepts 60 FCC and 13 Canadian codes. Named PASS lists exclude unknown
+  State; named REJECT lists admit it. NEARBY suspends/restores these rules.
+- Archive version 6 records both observed States. Versions 2-5 remain unknown;
+  history never consults today's registry to hydrate old records.
+- Machine YAML schema 1 preserves its shape and hidden State rules; explicit
+  schema 2 exposes the same State fields. Disk version 2 keeps its layout with
+  73-key State bounds. Older binaries can reject Canadian codes; downgrade uses
+  matching backups.
 
-See [ADR-0253](decisions/ADR-0253-fcc-state-enrichment-and-filtering.md) for the
-full source, jurisdiction, migration and compatibility decisions.
+See [ADR-0253](decisions/ADR-0253-fcc-state-enrichment-and-filtering.md) and
+[ADR-0254](decisions/ADR-0254-canadian-ised-license-and-state-reuse.md).

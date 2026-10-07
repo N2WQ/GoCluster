@@ -535,7 +535,7 @@ PASS <type> <list> adds to allowlist and removes from blocklist.
 REJECT <type> <list> adds to blocklist and removes from allowlist.
 PASS/REJECT MODE <list> are deltas; modes not listed are unchanged.
 DXDXCC/DEDXCC accept canonical CTY prefixes or positive ADIF numbers.
-DXSTATE/DESTATE accept FCC two-letter mailing-address codes.
+DXSTATE/DESTATE accept US state and Canadian province/territory codes.
 Unknown state fails an explicit PASS list and passes a REJECT-only list.
 State filters are suspended and retained while NEARBY is enabled.
 Canonical prefixes select whole entities; IT9 also selects I and IG9.
@@ -1044,7 +1044,7 @@ For the exact thresholds, per-mode offsets, weight rules, and shipped tables, se
   On non-Windows builds those VOACAP values stay `n/a` because the fallback
   provider is not started.
 - Normalizes callsigns, frequencies, modes, and reports before shared validation and enrichment.
-- Adds CTY metadata and optional FCC license checks where that policy applies.
+- Adds CTY metadata and optional FCC/ISED license checks where that policy applies.
 - Applies shared-ingest flood policy before primary dedupe using the shipped `floodcontrol.yaml` rails.
 - Deduplicates and fans out spots to telnet clients with per-user filters.
 - Optionally derives path-reliability glyphs from recent reports between your grid and the DX grid.
@@ -1097,7 +1097,7 @@ Review normal deployment/runtime files before first run:
 - `peering.yaml`: edit only if this node peers with other clusters.
 - `reputation.yaml`: edit only if IPinfo/Cymru reputation enrichment is enabled.
 - `solarweather.yaml`: edit only if solar/geomagnetic path overrides are enabled.
-- `data.yaml`: adjust CTY, FCC, H3, skew, and data paths if your deployment layout differs.
+- `data.yaml`: adjust CTY, FCC, ISED, H3, skew, and data paths if your deployment layout differs.
 - `spot_taxonomy.yaml`: edit only when changing supported modes, event families, or PSKReporter mode routing.
 
 Do not retune `pipeline.yaml`, path thresholds, solar override gates, or
@@ -1219,7 +1219,7 @@ account, unit-file, and operational command sequence.
 
 ## Operator Logs
 
-`logging.dropped_calls` can write optional UTC-rotated files for dropped calls without changing any drop policy. The shipped config enables it; set `logging.dropped_calls.enabled: false` to disable those files. When enabled, the cluster writes separate files for bad DE/DX calls, FCC no-license drops, and harmonic suppressions under `logging.dropped_calls.dir`.
+`logging.dropped_calls` can write optional UTC-rotated files for dropped calls without changing any drop policy. The shipped config enables it; set `logging.dropped_calls.enabled: false` to disable those files. When enabled, the cluster writes separate files for bad DE/DX calls, FCC/ISED no-license drops, and harmonic suppressions under `logging.dropped_calls.dir`.
 
 Each entry uses the same timestamped file logger as the system log and records only the ingestion source, dropped role, reason, call, DE, DX, mode, and a short detail field. Frequency, category, and dashboard text are intentionally omitted.
 
@@ -1275,7 +1275,7 @@ The repo root now follows a simple ownership rule:
 - `scripts/` contains build, release, profiling, validation, and developer helper scripts; use [`scripts/README.md`](scripts/README.md) before running or changing them.
 - `data/` contains more than config: public example YAML in `data/config/`,
   private ignored config in `data/config.local/`, reference inputs such as CTY,
-  FCC, H3, grids, beacons, and reputation/IPinfo data, plus runtime/local state
+  FCC, ISED, H3, grids, beacons, and reputation/IPinfo data, plus runtime/local state
   such as users, logs, reports, diagnostics, peer topology, RBN data, SCP data,
   VOACAP runtime state, and skew/correction data. Treat committed
   example/reference data differently from ignored operator-local state.
@@ -1303,22 +1303,30 @@ Additional operator references:
 
 - [`docs/OPERATOR_GUIDE.md`](docs/OPERATOR_GUIDE.md)
 
-## FCC State And Territory Filtering
+## US State And Canadian Province Filtering
 
-Use `PASS DXSTATE CA,TX` to select known California/Texas mailing addresses or
-`REJECT DESTATE AA,AE,AP` to exclude military postal codes. All 60 FCC state,
-DC, territory and military codes are accepted. State is mailing-address data,
-not an assertion about a station's operating location. Unknown state fails an
-explicit PASS list and passes an unrestricted or REJECT-only category.
+Use `PASS DXSTATE CA,TX,ON,QC` to select US mailing states and Canadian
+provinces, or `REJECT DESTATE AA,AE,AP` to exclude military postal codes.
+All 60 FCC codes and all 13 Canadian province/territory codes are accepted in
+these existing fields. Registered addresses can differ from operating location.
+Unknown state fails an explicit PASS list and passes a REJECT-only list.
 NEARBY temporarily overrides and restores state rules.
 
-`fcc_uls.enabled: false` disables license rejection while reference-data
-refresh and state enrichment continue. New live spots and archive records
-carry known state for the spotter and final corrected DX base call. Old archive
-records remain unknown, without current-registry backfill. Canadian province
-support requires a separate data source and is outside this release.
+`fcc_uls.enabled: false` and `ised.enabled: false` disable rejection for their
+respective sources; reference downloads and enrichment continue. The required
+`ised` block in `data.yaml` configures both official ISED archives and their
+single local database. Canadian coverage includes Canada, Sable Island and
+St. Paul Island, using the base identity even with a foreign portable prefix.
+Active special calls use their listed trustee's province; prefix substitutions
+use an assigned ordinary base call. Events are active on inclusive UTC dates.
+A prefix match checks callsign plausibility and does not prove event eligibility.
 
-Existing YAML clients retain schema 1. Opt in with `GET YAML CONFIG SCHEMA 2`
-for `dx_states`/`de_states`; schema 1 writes preserve those hidden rules.
-See [telnet filtering](telnet/README.md#fcc-state-and-territory-filters) and
-[upgrade/rollback guidance](data/config/README.md#fcc-reference-data-and-enforcement).
+New live spots and archive records carry known State for the spotter and final
+corrected DX base call. History uses recorded metadata and never backfills old
+records from today's registry. Archive version 6, preference disk version 2 and
+machine YAML schemas 1/2 remain unchanged. Older binaries may reject Canadian
+codes in saved profiles or archive rows; retain matching backups for downgrade.
+Machine YAML schema 1 preserves hidden state rules; schema 2 exposes them.
+See [telnet filtering](telnet/README.md#us-state-and-canadian-province-filters),
+[configuration](data/config/README.md#canadian-ised-reference-data), and
+[validation evidence](docs/canadian-state-validation.md).

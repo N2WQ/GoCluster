@@ -135,18 +135,18 @@ command/error artifact that distinguishes the next step.
 - Do not strip quoted spaces, join wrapped pieces with a separator, or treat
   the human effective format as the client YAML schema.
 
-## FCC State And Version Compatibility
+## US And Canadian State And Version Compatibility
 
-DXSTATE/DESTATE accept the 60 FCC mailing-address codes. Unknown state passes
+DXSTATE/DESTATE accept 60 US mailing codes and 13 Canadian province/territory codes. Unknown state passes
 unrestricted and REJECT-only rules, and fails an explicit PASS list. NEARBY
 suspends/locks/restores state rules. These values can differ from operating
 location; do not infer them from a portable prefix, grid or callsign district.
 Enrichment remains active when `fcc_uls.enabled` is false: that flag disables
 license rejection only. Missing/unavailable state stays empty.
-Extraction/rebuilding also makes cached calls unavailable: named state PASS
+FCC extraction/rebuilding and ISED publication make their own cached calls unavailable: named state PASS
 filters exclude those spots, named REJECT filters admit them, and archived empty
 states remain empty after refresh. See the
-[FCC filter documentation](../../telnet/README.md#fcc-state-and-territory-filters)
+[State filter documentation](../../telnet/README.md#us-state-and-canadian-province-filters)
 for the refresh interruption and its measured local duration.
 
 Default GET remains schema 1 and does not expose state fields. Request
@@ -173,3 +173,14 @@ backups; failed imports instead retain the last good FCC database.
 - [README.md output examples](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md#output-examples)
 - [commands/README.md HELP ownership](https://raw.githubusercontent.com/N2WQ/GoCluster/main/commands/README.md)
 - [data/config/README.md effective node YAML](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/config/README.md)
+
+Canadian licensing uses the required `ised` configuration block and independent
+paired ISED snapshot. `ised.enabled: false` keeps downloads and enrichment on.
+The same DXSTATE/DESTATE fields accept all 13 province/territory codes alongside
+the 60 FCC codes. Base-call CTY selects source, including foreign portable calls.
+Events use inclusive UTC dates; a prefix match means callsign plausibility,
+without proving eligibility. History uses stored State. Layout versions stay
+archive 6, saved preferences 2 and machine YAML 1/2; older binaries may reject
+Canadian codes, so downgrade with matching backups. Route source/failure details
+to [ADR-0254](../../docs/decisions/ADR-0254-canadian-ised-license-and-state-reuse.md)
+and [configuration](../../data/config/README.md#canadian-ised-reference-data).

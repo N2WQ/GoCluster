@@ -64,7 +64,7 @@ Configuration is split by concern so you only edit the relevant file:
 - `peering.yaml` - deployment/runtime settings for peer links and ACLs.
 - `reputation.yaml` - deployment/runtime settings plus operator policy for reputation gates.
 - `archive.yaml` - deployment/runtime settings for archive enablement, storage path, backpressure, cleanup cadence, and single-window retention; expired rows are removed with timestamp range deletion rather than operator-tuned cleanup batches.
-- `data.yaml` - deployment/runtime settings for CTY/FCC/skew sources, grid/cache tuning, data paths, and H3 table path.
+- `data.yaml` - deployment/runtime settings for CTY/FCC/ISED/skew sources, grid/cache tuning, data paths, and H3 table path.
 - `prop_report.yaml` - deployment/runtime settings for scheduled propagation-report generation controls.
 - `openai.yaml` - optional secret-bearing tool config for LLM report generation.
 - `dedupe.yaml` - operator policy settings for primary/secondary dedupe windows and the default telnet dedupe policy for new users.
@@ -290,7 +290,7 @@ new fields or reject marked preset snapshots, so downgrade with a matching binar
 and data backup. See [backup instructions](../../docs/ENVIRONMENT.md#user-configuration-backups-and-downgrades)
 and [ADR-0244](../../docs/decisions/ADR-0244-exact-configuration-persistence.md).
 
-## FCC Reference Data And Enforcement
+## FCC And ISED Reference Data And Enforcement
 
 `data.yaml` owns the FCC URL, archive/database/temp paths, refresh time, allowlist
 path and lookup TTL. `fcc_uls.enabled` controls **license rejection only**.
@@ -314,8 +314,68 @@ jurisdictions; entity-specific entries remain entity-specific. Refresh logs
 report known/unknown state and malformed input counts; the existing map logger
 reports cache cardinality/capacity/generation when enabled.
 
+Canadian reference data uses the required `ised` block in the same `data.yaml`,
+loaded through the startup configuration loader. Existing private config
+directories must add the complete block from the
+[public example](data.yaml). Missing or null settings fail startup; required
+URLs, paths and refresh times cannot be empty. The loader preserves explicit
+`ised.enabled: false` and supplies no omitted ISED defaults.
+
+| Setting | Meaning |
+| --- | --- |
+| `ised.enabled` | License rejection only. `false` still refreshes the snapshot and enriches provinces. |
+| `ised.url` | Absolute HTTP(S) URL for ISED's assigned individual and club callsign archive. |
+| `ised.special_url` | Absolute HTTP(S) URL for ISED's dated special-event and temporary-prefix archive. |
+| `ised.archive_path` | Local ZIP path for assigned callsigns. |
+| `ised.special_archive_path` | Local ZIP path for special events and prefix substitutions. |
+| `ised.db_path` | Canadian SQLite snapshot, independently owned from the FCC database. |
+| `ised.temp_dir` | Canadian extraction directory; may share a directory with FCC work. Database scratch stays beside `ised.db_path` for atomic publication. |
+| `ised.refresh_utc` | Daily refresh time in `HH:MM` UTC; the public example uses `22:15`. |
+
+Archive, database and metadata paths must be distinct across both sources and
+must not overwrite the existing FCC allowlist. The loader rejects cleaned path,
+case, existing symlink and hard-link collisions, including a managed file used
+as another path's parent. Shared temp directories are allowed.
+
+The Canadian snapshot publishes only after both archives have been downloaded,
+parsed and committed together. Literal quotes and empty semicolon-delimited
+fields are preserved. The projection retains callsign/province and dated event
+evidence, rather than names, full addresses, qualifications or event prose.
+The two archive SHA-256 values stored in the completed database identify the
+published input pair; HTTP sidecars alone do not prove that pair was published.
+A failed download, parse, build or publication retains the last successful
+database and remains retryable when upstream HTTP validators are unchanged.
+FCC lookups continue independently during a Canadian refresh.
+
+`fcc_uls.cache_ttl_seconds` is the common lookup TTL for both sources. There is
+one aggregate 200,000-entry cache cap, rather than a second Canadian cache.
+Canadian answers additionally expire at UTC midnight so an unchanged snapshot
+still observes special-event start and end dates. Events are active on their
+inclusive UTC calendar dates. An active prefix substitution must match an
+assigned ordinary base call; this is a callsign plausibility check and does not
+prove residency, club membership or other event eligibility. Unsupported or
+ambiguous membership evidence remains unknown and fails open at admission.
+
+Province uses the club address when club information is present, otherwise the
+individual address. Exact special-event calls use the listed trustee's province;
+temporary prefix substitutions use the ordinary base call's province. Blank,
+unsupported or conflicting province evidence stays empty. A registered address
+can differ from the operating location, as with FCC mailing state.
+
+The existing `CallMetadata.State`, `DESTATE` and `DXSTATE` contracts carry both
+the 60 FCC codes and 13 Canadian codes (`AB`, `BC`, `MB`, `NB`, `NL`, `NS`, `NT`,
+`NU`, `ON`, `PE`, `QC`, `SK`, `YT`). Mixed filters such as `PASS DXSTATE NY,ON`
+use the existing filter composition and NEARBY behavior. History uses the state
+recorded when the spot was archived; existing rows are not backfilled from the
+current snapshot.
+
 Back up user profiles, preset libraries and the archive with writers stopped
 before upgrading. New saved records use version 2 and new archive records use
-version 6. Earlier binaries may reject those profiles or skip those archive
-rows; a deployment downgrade requires a matching backup. Do not repair a
-failed import by deleting the last good database or rewriting protected files.
+version 6; the Canadian extension retains those versions and machine YAML
+schemas 1 and 2. Schema 1 retains its existing hidden State rules, and schema 2
+exposes the shared 73-code vocabulary. Earlier binaries can reject Canadian
+codes in profiles/presets or skip Canadian archive rows even when the version
+number matches; a deployment downgrade requires a matching backup. Do not
+repair a failed import by deleting the last good database or rewriting
+protected files. See
+[ADR-0254](../../docs/decisions/ADR-0254-canadian-ised-license-and-state-reuse.md).

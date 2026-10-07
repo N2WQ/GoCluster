@@ -56,6 +56,9 @@ type Request struct {
 	LegacyMetadataPaths     []string
 	UserAgent               string
 	DisableLegacyCleanup    bool
+	// MaxBytes bounds both declared and streamed body size before publication.
+	// Zero preserves unlimited downloads for existing callers.
+	MaxBytes int64
 }
 
 // Result summarizes the download outcome.
@@ -74,8 +77,9 @@ func MetadataPath(dest string) string {
 }
 
 // Download downloads a file with conditional headers and metadata sidecar.
-// Key aspects: Uses ETag/Last-Modified, computes SHA256, and writes atomically.
-// Upstream: CTY/SCP/IPinfo/ULS refreshers.
+// Key aspects: Uses ETag/Last-Modified, computes SHA256, and caps opted-in bodies
+// before publication. Oversized or interrupted bodies preserve existing data.
+// Upstream: CTY/SCP/IPinfo/ULS/ISED refreshers.
 // Downstream: HTTP client, metadata read/write helpers.
 func Download(ctx context.Context, req Request) (Result, error) {
 	var result Result
@@ -86,6 +90,9 @@ func Download(ctx context.Context, req Request) (Result, error) {
 	}
 	if dest == "" {
 		return result, errors.New("download: destination is empty")
+	}
+	if req.MaxBytes < 0 {
+		return result, errors.New("download: MaxBytes must be >= 0")
 	}
 
 	metaPath := strings.TrimSpace(req.MetadataPath)
@@ -159,6 +166,9 @@ func Download(ctx context.Context, req Request) (Result, error) {
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return result, fmt.Errorf("download: fetch failed: status %s", resp.Status)
 	}
+	if req.MaxBytes > 0 && resp.ContentLength > req.MaxBytes {
+		return result, fmt.Errorf("download: body exceeds MaxBytes (%d)", req.MaxBytes)
+	}
 
 	if err := fsutil.EnsureParentDir(dest, "download: create directory"); err != nil {
 		return result, err
@@ -171,7 +181,7 @@ func Download(ctx context.Context, req Request) (Result, error) {
 	defer os.Remove(tmpName)
 
 	hasher := sha256.New()
-	written, err := io.Copy(io.MultiWriter(tmpFile, hasher), resp.Body)
+	written, err := copyDownloadBody(io.MultiWriter(tmpFile, hasher), resp.Body, req.MaxBytes)
 	if err != nil {
 		tmpFile.Close()
 		return result, fmt.Errorf("download: copy body: %w", err)
@@ -181,6 +191,9 @@ func Download(ctx context.Context, req Request) (Result, error) {
 	}
 	if written <= 0 {
 		return result, errors.New("download: empty response body")
+	}
+	if err := reqCtx.Err(); err != nil {
+		return result, fmt.Errorf("download: canceled before publication: %w", err)
 	}
 
 	hashHex := hex.EncodeToString(hasher.Sum(nil))
@@ -221,6 +234,27 @@ func Download(ctx context.Context, req Request) (Result, error) {
 	}
 	result.Meta = meta
 	return result, nil
+}
+
+// copyDownloadBody consumes at most the configured limit plus one overflow byte.
+// Overflow is checked even without Content-Length, before any destination or
+// metadata changes. Limiting before Copy avoids integer overflow at MaxInt64.
+func copyDownloadBody(dst io.Writer, body io.Reader, maxBytes int64) (int64, error) {
+	if maxBytes == 0 {
+		return io.Copy(dst, body)
+	}
+	written, err := io.Copy(dst, io.LimitReader(body, maxBytes))
+	if err != nil || written < maxBytes {
+		return written, err
+	}
+	overflow, err := io.CopyN(io.Discard, body, 1)
+	if overflow != 0 {
+		return written, fmt.Errorf("body exceeds MaxBytes (%d)", maxBytes)
+	}
+	if err != nil && !errors.Is(err, io.EOF) {
+		return written, err
+	}
+	return written, nil
 }
 
 // ReadMetadata reads a metadata JSON file from the first readable path.

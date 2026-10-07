@@ -2,6 +2,8 @@ package archive
 
 import (
 	"encoding/hex"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -44,9 +46,46 @@ func TestStateArchiveLiteralVersions(t *testing.T) {
 	}
 }
 
+// This literal version-six record has ON/QC in the existing two State fields.
+// Its 74-byte header and payload do not depend on the current encoder.
+const literalCanadianStateRecord = "060f050040cb620000000000fffffff900050004000001230000012340cb62028f5c28f600050005000500020007000300070001000300040004000200020004000500040002000200024b314142434e324141414e324141414357435120504f544152424e464958545552455632306d464e3432454d31304e414e41504f5441636c65616e6e6f6e656d314f4e5143"
+
+func TestStateArchiveLiteralCanadianRecord(t *testing.T) {
+	raw, err := hex.DecodeString(literalCanadianStateRecord)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := decodeSpot(time.Now().UnixNano(), raw)
+	if err != nil || s.DXCall != "K1ABC" || s.DECall != "N2AAA" || s.DXMetadata.State != "ON" || s.DEMetadata.State != "QC" {
+		t.Fatalf("literal province record changed: %+v %v", s, err)
+	}
+}
+
+func TestStateArchiveCanadianProvinceRoundtrip(t *testing.T) {
+	for _, province := range strings.Fields("AB BC MB NB NL NS NT NU ON PE QC SK YT") {
+		t.Run(province, func(t *testing.T) {
+			s := spot.NewSpot("VE3ABC", "W1ABC", 14020, "CW")
+			s.DXMetadata.State, s.DEMetadata.State = province, "NY"
+			raw := encodeRecord(s)
+			if raw[0] != 6 {
+				t.Fatalf("province caused archive format version change: %d", raw[0])
+			}
+			decoded, err := decodeSpot(s.Time.UnixNano(), raw)
+			if err != nil || decoded.DXMetadata.State != province || decoded.DEMetadata.State != "NY" {
+				t.Fatalf("mixed state roundtrip: %+v %v", decoded, err)
+			}
+			s.DXMetadata.State, s.DEMetadata.State = "NY", province
+			decoded, err = decodeSpot(s.Time.UnixNano(), encodeRecord(s))
+			if err != nil || decoded.DXMetadata.State != "NY" || decoded.DEMetadata.State != province {
+				t.Fatalf("spotter province roundtrip: %+v %v", decoded, err)
+			}
+		})
+	}
+}
+
 func TestStateArchiveRoundTripAndSnapshot(t *testing.T) {
 	s := spot.NewSpot("K1ABC", "N2AAA", 14020, "CW")
-	s.DXMetadata.State, s.DEMetadata.State = "CA", "AP"
+	s.DXMetadata.State, s.DEMetadata.State = "ON", "CA"
 	w := &Writer{queue: make(chan *spot.Spot, 1), stop: make(chan struct{})}
 	w.Enqueue(s)
 	s.DXMetadata.State, s.DEMetadata.State = "TX", ""
@@ -56,7 +95,7 @@ func TestStateArchiveRoundTripAndSnapshot(t *testing.T) {
 		t.Fatalf("writer version = %d", raw[0])
 	}
 	decoded, err := decodeSpot(s.Time.UnixNano(), raw)
-	if err != nil || decoded.DXMetadata.State != "CA" || decoded.DEMetadata.State != "AP" {
+	if err != nil || decoded.DXMetadata.State != "ON" || decoded.DEMetadata.State != "CA" {
 		t.Fatalf("snapshot/state roundtrip: %+v %v", decoded, err)
 	}
 	for n := 0; n < len(raw); n++ {
@@ -65,7 +104,7 @@ func TestStateArchiveRoundTripAndSnapshot(t *testing.T) {
 		}
 	}
 	bad := append([]byte(nil), raw...)
-	copy(bad[len(bad)-2:], "ON")
+	copy(bad[len(bad)-2:], "ZZ")
 	if _, err := decodeRecord(bad); err == nil {
 		t.Fatal("accepted unsupported state")
 	}
@@ -80,17 +119,23 @@ func FuzzStateArchiveDecode(f *testing.F) {
 		f.Add(raw)
 	}
 	s := spot.NewSpot("K1ABC", "N2AAA", 14020, "CW")
-	s.DXMetadata.State = "CA"
+	s.DXMetadata.State, s.DEMetadata.State = "ON", "CA"
 	f.Add(encodeRecord(s))
+	want := strings.Fields("AA AB AE AK AL AP AR AS AZ BC CA CO CT DC DE FL GA GU HI IA ID IL IN KS KY LA MA MB MD ME MI MN MO MP MS MT NB NC ND NE NH NJ NL NM NS NT NU NV NY OH OK ON OR PA PE PR QC RI SC SD SK TN TX UM UT VA VI VT WA WI WV WY YT")
 	f.Fuzz(func(t *testing.T, raw []byte) {
 		record, err := decodeRecord(raw)
-		if err == nil && (record.dxState != "" && !spot.IsFCCState(record.dxState) || record.deState != "" && !spot.IsFCCState(record.deState)) {
-			t.Fatal("decoder admitted unsupported state")
+		if err != nil {
+			return
+		}
+		for _, state := range []string{record.dxState, record.deState} {
+			if state != "" && !slices.Contains(want, state) {
+				t.Fatalf("decoder admitted unsupported state %q", state)
+			}
 		}
 	})
 }
 
-// History uses each stored record's metadata. A current FCC database must not
+// History uses each stored record's metadata. A current license database must not
 // turn old records into retroactively located stations.
 func TestStateArchiveMixedVersionHistory(t *testing.T) {
 	w := historyTestWriter(t, 86400)
@@ -102,7 +147,7 @@ func TestStateArchiveMixedVersionHistory(t *testing.T) {
 		}
 		putHistoryRow(t, w, spotKeyBytes(now.Add(-time.Second).UnixNano(), uint32(i)), raw)
 	}
-	for i, state := range []string{"CA", "TX", ""} {
+	for i, state := range []string{"CA", "ON", "QC", "TX", ""} {
 		s := spot.NewSpot("K1ABC", "N2AAA", 14020, "CW")
 		s.DXMetadata.State = state
 		putHistoryRow(t, w, spotKeyBytes(now.Add(-time.Second).UnixNano(), uint32(i+4)), encodeRecord(s))
@@ -112,17 +157,18 @@ func TestStateArchiveMixedVersionHistory(t *testing.T) {
 		pass bool
 		want int
 	}{
-		{"pass_known", true, 1}, {"reject_known", false, 6},
+		{"pass_known", true, 2}, {"reject_known", false, 7},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			f := filter.NewFilter()
 			f.SetDXState("CA", test.pass)
+			f.SetDXState("ON", test.pass)
 			page, err := w.ReadHistoryPage(HistoryRequest{Limit: 10, Now: now, Match: f.Matches})
 			if err != nil || len(page.Spots) != test.want {
 				t.Fatalf("mixed history: rows=%d err=%v", len(page.Spots), err)
 			}
 			for _, s := range page.Spots {
-				if (s.DXMetadata.State == "CA") != test.pass {
+				if (s.DXMetadata.State == "CA" || s.DXMetadata.State == "ON") != test.pass {
 					t.Fatalf("state policy changed: %+v", s.DXMetadata)
 				}
 			}

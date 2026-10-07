@@ -414,7 +414,7 @@ func writeHumanOverview(h *humanResponse, cfg filter.FilterConfiguration, status
 			if err := h.row(state.label, "Suspended by NEARBY; rules retained"); err != nil {
 				return err
 			}
-		} else if err := writeHumanFiniteRules(h, state.label, "Only", state.rules, spot.IsFCCState, spot.IsFCCState, "", false); err != nil {
+		} else if err := writeHumanFiniteRules(h, state.label, "Only", state.rules, spot.IsState, spot.IsState, "", false); err != nil {
 			return err
 		}
 	}

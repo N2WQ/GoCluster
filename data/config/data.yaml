@@ -20,7 +20,18 @@ fcc_uls:
   temp_dir: "data/fcc"                                              # SQLite temp/sort files for FCC build
   refresh_utc: "22:00"                                              # Daily download time in HH:MM UTC
   allowlist_path: "data/fcc/allowlist.txt"                          # Regex allowlist file (one pattern per line)
-  cache_ttl_seconds: 21600                                          # Cache TTL for FCC ULS lookups
+  cache_ttl_seconds: 21600                                          # Shared FCC/ISED lookup TTL; ISED also expires at UTC midnight.
+
+# ISED Canadian reference data: refresh and province enrichment always remain active.
+ised:
+  enabled: true # License enforcement only; false still downloads and enriches province.
+  url: "https://apc-cap.ic.gc.ca/datafiles/amateur_delim.zip" # Assigned individual and club callsigns.
+  special_url: "https://apc-cap.ic.gc.ca/datafiles/special_callsign.zip" # Dated special events and prefix substitutions.
+  archive_path: "data/ised/amateur_delim.zip" # Downloaded assigned-callsign archive.
+  special_archive_path: "data/ised/special_callsign.zip" # Downloaded special-event archive.
+  db_path: "data/ised/ised.db" # Published Canadian SQLite snapshot.
+  temp_dir: "data/ised" # Unique extraction directories; may be shared with FCC.
+  refresh_utc: "22:15" # Daily download time in HH:MM UTC; event dates are inclusive UTC dates.
 
 # Grid/call metadata database (Pebble directory).
 grid_db: "data/grids/pebble"

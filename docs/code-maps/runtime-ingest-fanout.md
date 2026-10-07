@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `1e368d55a479c14d`
+- Source fingerprint: `b7555e0d5024d203`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,10 +12,10 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 3 | 7 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 25 | 61 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 25 | 62 |
 | `dxcluster/peer` | `peer` | 62 | 126 |
 | `dxcluster/spot` | `spot` | 33 | 32 |
-| `dxcluster/telnet` | `telnet` | 37 | 62 |
+| `dxcluster/telnet` | `telnet` | 37 | 63 |
 
 ## In-Scope Package Edges
 
@@ -139,6 +139,7 @@ Source files:
 - `internal/cluster/temporal_runtime.go`
 
 Test files:
+- `internal/cluster/canadian_state_test.go`
 - `internal/cluster/drop_log_dedupe_test.go`
 - `internal/cluster/dropped_call_log_test.go`
 - `internal/cluster/event_file_log_test.go`
@@ -509,6 +510,7 @@ Source files:
 
 Test files:
 - `telnet/bulletin_dedupe_test.go`
+- `telnet/canadian_login_test.go`
 - `telnet/configuration_handoff_test.go`
 - `telnet/configuration_human_dxcc_test.go`
 - `telnet/configuration_human_effective_test.go`
@@ -575,6 +577,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0254](docs/decisions/ADR-0254-canadian-ised-license-and-state-reuse.md) | Accepted | 2026-10-07 | uls, config, spot, archive, filter, telnet, commands, runtime | `area:commands, area:spot, area:telnet, path:telnet` |
 | [ADR-0253](docs/decisions/ADR-0253-fcc-state-enrichment-and-filtering.md) | Accepted | 2026-10-07 | uls, spot, archive, filter, telnet, commands, runtime | `area:commands, area:spot, area:telnet, path:internal/cluster, path:telnet` |
 | [ADR-0252](docs/decisions/ADR-0252-automatic-commit-suffix-release-tags.md) | Accepted | 2026-10-06 | release scripts, build metadata | `path:peer` |
 | [ADR-0251](docs/decisions/ADR-0251-exact-call-paged-history.md) | Accepted | 2026-10-06 | commands, telnet, archive, pagination, lifecycle | `area:commands, area:telnet, path:commands, path:telnet` |

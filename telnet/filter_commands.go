@@ -1513,8 +1513,8 @@ func formatFilterSnapshot(f *filter.Filter, ctyLookup func() *cty.CTYDatabase) s
 	dxGrid2 := snapshotAllowBlockStrings(f.AllDXGrid2, f.BlockAllDXGrid2, f.DXGrid2Prefixes, f.BlockDXGrid2, nil)
 	deGrid2 := snapshotAllowBlockStrings(f.AllDEGrid2, f.BlockAllDEGrid2, f.DEGrid2Prefixes, f.BlockDEGrid2, nil)
 
-	dxStates := snapshotAllowBlockStrings(f.AllDXStates, f.BlockAllDXStates, f.DXStates, f.BlockDXStates, spot.FCCStateCodes())
-	deStates := snapshotAllowBlockStrings(f.AllDEStates, f.BlockAllDEStates, f.DEStates, f.BlockDEStates, spot.FCCStateCodes())
+	dxStates := snapshotAllowBlockStrings(f.AllDXStates, f.BlockAllDXStates, f.DXStates, f.BlockDXStates, spot.StateCodes())
+	deStates := snapshotAllowBlockStrings(f.AllDEStates, f.BlockAllDEStates, f.DEStates, f.BlockDEStates, spot.StateCodes())
 
 	dxCallSummary, dxCallLine := callsignSnapshot("DXCALL", f.DXCallsigns, f.BlockDXCallsigns)
 	deCallSummary, deCallLine := callsignSnapshot("DECALL", f.DECallsigns, f.BlockDECallsigns)
@@ -1598,7 +1598,7 @@ func formatFilterSnapshot(f *filter.Filter, ctyLookup func() *cty.CTYDatabase) s
 		{"DESTATE", filter.StringRules{AllowAll: f.AllDEStates, BlockAll: f.BlockAllDEStates, Allow: f.DEStates, Block: f.BlockDEStates}},
 	} {
 		var h humanResponse
-		if err := writeHumanFiniteRules(&h, state.name, "Only", state.rules, spot.IsFCCState, spot.IsFCCState, "", false); err != nil {
+		if err := writeHumanFiniteRules(&h, state.name, "Only", state.rules, spot.IsState, spot.IsState, "", false); err != nil {
 			return "State labels exceed the response limit.\n"
 		}
 		b.WriteString(strings.ReplaceAll(string(h.data), "\r\n", "\n"))

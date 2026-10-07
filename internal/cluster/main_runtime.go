@@ -67,9 +67,10 @@ type clusterRuntime struct {
 	eventFileLogger   *eventFileLogger
 	surface           ui.Surface
 
-	ctx     context.Context
-	cancel  context.CancelFunc
-	ulsDone <-chan struct{}
+	ctx          context.Context
+	cancel       context.CancelFunc
+	ulsDone      <-chan struct{}
+	canadianDone <-chan struct{}
 
 	pathCfg        pathreliability.Config
 	pathPredictor  *pathreliability.Predictor
@@ -541,10 +542,13 @@ func (r *clusterRuntime) initializeULSAndCTY() {
 	// The operator flag controls rejection only. Reference data and state
 	// enrichment remain active with enforcement disabled.
 	uls.SetLicenseChecksEnabled(r.cfg.FCCULS.Enabled)
+	uls.SetCanadianLicenseChecksEnabled(r.cfg.ISED.Enabled)
 	uls.SetLicenseCacheTTL(time.Duration(r.cfg.FCCULS.CacheTTLSeconds) * time.Second)
 	uls.SetAllowlistPath(r.cfg.FCCULS.AllowlistPath)
 	uls.SetLicenseDBPath(r.cfg.FCCULS.DBPath)
 	r.ulsDone = uls.StartBackground(r.ctx, r.cfg.FCCULS)
+	uls.SetCanadianLicenseDBPath(r.cfg.ISED.DBPath)
+	r.canadianDone = uls.StartCanadianBackground(r.ctx, r.cfg.ISED)
 
 	r.ctyState = newCTYRefreshState()
 	ctyPath := strings.TrimSpace(r.cfg.CTY.File)
@@ -1616,6 +1620,10 @@ func (r *clusterRuntime) close() {
 	if r.ulsDone != nil {
 		<-r.ulsDone
 	}
+	if r.canadianDone != nil {
+		<-r.canadianDone
+	}
+	uls.CloseLicenseDatabases()
 	if r.voacapFallback != nil {
 		r.voacapFallback.Wait()
 		if err := r.voacapFallback.CloseForecastCacheStore(); err != nil {

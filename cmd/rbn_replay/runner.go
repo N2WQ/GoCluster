@@ -225,6 +225,7 @@ func (r *replayRunner) configureExternalDependencies() error {
 	cfg := r.cfg
 
 	uls.SetLicenseChecksEnabled(cfg.FCCULS.Enabled)
+	uls.SetCanadianLicenseChecksEnabled(cfg.ISED.Enabled)
 	uls.SetLicenseCacheTTL(time.Duration(cfg.FCCULS.CacheTTLSeconds) * time.Second)
 
 	allowlistPath := strings.TrimSpace(cfg.FCCULS.AllowlistPath)
@@ -237,9 +238,8 @@ func (r *replayRunner) configureExternalDependencies() error {
 		uls.SetAllowlistPath("")
 	}
 
-	// Replay registers its local lookup database without downloading reference
-	// data. It does not attach FCC state to replay spots. A missing optional DB
-	// clears prior globals even when enforcement is disabled.
+	// Replay registers local snapshots without downloading or enriching spots.
+	// A missing optional DB clears prior globals even when enforcement is disabled.
 	dbPath := strings.TrimSpace(cfg.FCCULS.DBPath)
 	if cfg.FCCULS.Enabled {
 		if dbPath == "" {
@@ -250,6 +250,16 @@ func (r *replayRunner) configureExternalDependencies() error {
 		}
 	}
 	uls.SetLicenseDBPath(dbPath)
+	canadianPath := strings.TrimSpace(cfg.ISED.DBPath)
+	if cfg.ISED.Enabled {
+		if canadianPath == "" {
+			return fmt.Errorf("ised.enabled=true but ised.db_path is empty (config=%s)", cfg.LoadedFrom)
+		}
+		if _, err := os.Stat(canadianPath); err != nil {
+			return fmt.Errorf("ised.db_path missing/unreadable %s: %w", canadianPath, err)
+		}
+	}
+	uls.SetCanadianLicenseDBPath(canadianPath)
 
 	if !cfg.CTY.Enabled {
 		return nil

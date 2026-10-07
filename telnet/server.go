@@ -259,6 +259,7 @@ type Server struct {
 	noiseModel                          pathreliability.NoiseModel                                                  // Noise class lookup
 	gridLookup                          func(string) (string, bool, bool)                                           // Optional grid lookup from store
 	ctyLookup                           func() *cty.CTYDatabase                                                     // Optional CTY lookup for login validation and filter display
+	canadianLicenseCheck                func(string) bool                                                           // Optional ISED plausibility checker for login validation
 	usLicenseCheck                      func(string) bool                                                           // Optional US FCC ULS license checker for login validation
 	nowFn                               func() time.Time                                                            // Optional clock injection for deterministic tests
 	admissionGeoLookupFn                func(string, time.Time) (string, string)                                    // Optional prelogin geo-key lookup override for tests
@@ -2041,6 +2042,7 @@ type ServerOptions struct {
 	GridLookup                func(string) (string, bool, bool)
 	CTYLookup                 func() *cty.CTYDatabase
 	USLicenseCheck            func(string) bool
+	CanadianLicenseCheck      func(string) bool
 	DefaultDedupePolicy       string
 	DedupeFastEnabled         bool
 	DedupeMedEnabled          bool
@@ -2133,6 +2135,7 @@ func NewServer(opts ServerOptions, processor *commands.Processor) *Server {
 		gridLookup:            opts.GridLookup,
 		ctyLookup:             config.CTYLookup,
 		usLicenseCheck:        config.USLicenseCheck,
+		canadianLicenseCheck:  config.CanadianLicenseCheck,
 		defaultDedupePolicy:   parseDedupePolicy(config.DefaultDedupePolicy),
 		defaultDedupeSet:      true,
 		dedupeFastEnabled:     config.DedupeFastEnabled,
@@ -2307,6 +2310,9 @@ func normalizeServerOptions(opts ServerOptions) ServerOptions {
 	}
 	if config.PathPredictor == nil {
 		config.PathDisplayEnabled = false
+	}
+	if config.CanadianLicenseCheck == nil {
+		config.CanadianLicenseCheck = uls.IsLicensedCanadian
 	}
 	if config.USLicenseCheck == nil {
 		config.USLicenseCheck = uls.IsLicensedUS

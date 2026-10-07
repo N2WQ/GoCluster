@@ -17,6 +17,12 @@ not a single flat current-state specification.
 4. Confirm current operator-facing behavior in the runtime docs, package
    READMEs, source, tests, and generated code maps when applicable.
 
+For license checks and State filters, read
+[ADR-0254](ADR-0254-canadian-ised-license-and-state-reuse.md) for the Canadian
+ISED source and shared US/Canadian vocabulary, then
+[ADR-0253](ADR-0253-fcc-state-enrichment-and-filtering.md) for the underlying
+FCC State, persistence, machine-schema and history contracts.
+
 ## Status Interpretation
 
 - `Accepted` records durable decisions unless a later ADR supersedes or narrows

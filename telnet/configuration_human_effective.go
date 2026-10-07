@@ -302,7 +302,7 @@ func writeHumanEffectiveCategory(h *humanResponse, category readbackCategory, cf
 	case "CONFIDENCE":
 		validAllow, validBlock = humanConfidenceRuleKey, humanConfidenceBlockKey
 	case "DXSTATE", "DESTATE":
-		validAllow, validBlock = spot.IsFCCState, spot.IsFCCState
+		validAllow, validBlock = spot.IsState, spot.IsState
 	case "DXGRID2", "DEGRID2":
 		validAllow, validBlock = humanGridRuleKey, humanGridBlockKey
 	}

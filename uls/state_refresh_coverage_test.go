@@ -24,6 +24,7 @@ func TestRefreshChangesStateDuringConcurrentLookups(t *testing.T) {
 	SetLicenseDBPath(fixtureDB(t, false))
 	t.Cleanup(func() { SetLicenseDBPath("") })
 	oldCache := licenseCache.Load()
+	oldGeneration := fccSnapshot.generation.Load()
 	oldDB, hasState := getLicenseDB()
 	if oldDB == nil || !hasState {
 		t.Fatal("state-capable old database unavailable")
@@ -41,7 +42,7 @@ func TestRefreshChangesStateDuringConcurrentLookups(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(payload) }))
 	defer server.Close()
 	dir := t.TempDir()
-	cfg := config.FCCULSConfig{URL: server.URL, Archive: filepath.Join(dir, "fresh.zip"), DBPath: licenseDBPath}
+	cfg := config.FCCULSConfig{URL: server.URL, Archive: filepath.Join(dir, "fresh.zip"), DBPath: fccSnapshot.path}
 	base, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	entered, release, published := make(chan struct{}), make(chan struct{}), make(chan struct{})
@@ -91,7 +92,7 @@ func TestRefreshChangesStateDuringConcurrentLookups(t *testing.T) {
 	case <-base.Done():
 		t.Fatal("refresh did not finish within deadline")
 	}
-	if result := finishLookup(oldCache, "K1ABC", oldResult, time.Now()); result.Available {
+	if result := finishLookup(fccSnapshot, oldCache, licenseCacheKey{call: "K1ABC"}, oldGeneration, 0, oldResult, time.Now(), time.Now); result.Available {
 		t.Fatalf("old CA fact returned after TX publication: %+v", result)
 	}
 	close(published)
@@ -104,8 +105,8 @@ func TestRefreshChangesStateDuringConcurrentLookups(t *testing.T) {
 	if got := LookupUS("K1ABC"); got != (LookupResult{Available: true, Found: true, State: "TX"}) {
 		t.Fatalf("published fact=%+v, want TX", got)
 	}
-	if oldCache == licenseCache.Load() || RefreshInProgress() {
-		t.Fatal("publication retained the old owner or refresh flag")
+	if oldGeneration == fccSnapshot.generation.Load() || RefreshInProgress() {
+		t.Fatal("publication retained the old generation or refresh flag")
 	}
 }
 

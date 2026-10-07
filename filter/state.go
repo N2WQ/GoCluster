@@ -1,4 +1,4 @@
-// File role: FCC mailing-address state rules and fixed-vocabulary preparation bounds.
+// File role: US/Canadian mailing-address state rules and fixed-vocabulary preparation bounds.
 // Unknown-state and NEARBY behavior follows the existing geography matcher.
 package filter
 
@@ -12,13 +12,13 @@ import (
 )
 
 // maxStateRuleEntries bounds each allow/block map independently, including
-// inactive false entries. The approved FCC vocabulary contains sixty codes.
-const maxStateRuleEntries = 60
+// inactive false entries. The US/Canadian vocabulary contains seventy-three codes.
+const maxStateRuleEntries = 73
 
 // SetDXState updates mailing-address rules with the ordinary deny-first contract.
 func (f *Filter) SetDXState(state string, enabled bool) {
 	state = strutil.NormalizeUpper(state)
-	if !spot.IsFCCState(state) {
+	if !spot.IsState(state) {
 		return
 	}
 	applyAllowBlockToggle(&f.DXStates, &f.BlockDXStates, state, enabled, &f.AllDXStates, &f.BlockAllDXStates)
@@ -27,7 +27,7 @@ func (f *Filter) SetDXState(state string, enabled bool) {
 // SetDEState updates spotter mailing-address rules independently of DX rules.
 func (f *Filter) SetDEState(state string, enabled bool) {
 	state = strutil.NormalizeUpper(state)
-	if !spot.IsFCCState(state) {
+	if !spot.IsState(state) {
 		return
 	}
 	applyAllowBlockToggle(&f.DEStates, &f.BlockDEStates, state, enabled, &f.AllDEStates, &f.BlockAllDEStates)
@@ -58,7 +58,7 @@ func (c Configuration) ValidateStateRules() error {
 				return fmt.Errorf("filters.%s exceeds %d state entries", domain.name, maxStateRuleEntries)
 			}
 			for key := range entries {
-				if !spot.IsFCCState(key) {
+				if !spot.IsState(key) {
 					return fmt.Errorf("filters.%s contains an unsupported key", domain.name)
 				}
 			}

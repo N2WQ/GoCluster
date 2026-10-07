@@ -199,8 +199,9 @@ func TestLookupGenerationBarrierAndChurn(t *testing.T) {
 	defer SetLicenseDBPath("")
 	SetLicenseDBPath(fixtureDB(t, false))
 	old := licenseCache.Load()
+	oldGeneration := fccSnapshot.generation.Load()
 	ResetLicenseDB()
-	if result := finishLookup(old, "K1ABC", LookupResult{Available: true, Found: true, State: "NY"}, time.Now()); result.Available {
+	if result := finishLookup(fccSnapshot, old, licenseCacheKey{call: "K1ABC"}, oldGeneration, 0, LookupResult{Available: true, Found: true, State: "NY"}, time.Now(), time.Now); result.Available {
 		t.Fatal("old result published")
 	}
 	if LookupStats().Entries != 0 {
@@ -223,7 +224,7 @@ func TestLookupGenerationBarrierAndChurn(t *testing.T) {
 	wg.Wait()
 	cache := newLicenseCache(time.Minute, 7)
 	for n := 0; n < 1000; n++ {
-		cache.set(fmt.Sprint(n), LookupResult{Available: true}, time.Now())
+		cache.set(licenseCacheKey{call: fmt.Sprint(n)}, 0, 0, LookupResult{Available: true}, time.Now())
 	}
 	if len(cache.entries) > 7 || len(cache.slots) != 7 {
 		t.Fatal("unbounded cache")
@@ -396,17 +397,17 @@ func TestCancellationAndLastGoodRename(t *testing.T) {
 }
 
 func TestLookupStatsDoesNotWaitForDBOwner(t *testing.T) {
-	licenseMu.Lock()
+	fccSnapshot.mu.Lock()
 	result := make(chan LookupStatsSnapshot, 1)
 	go func() { result <- LookupStats() }()
 	select {
 	case stats := <-result:
-		licenseMu.Unlock()
+		fccSnapshot.mu.Unlock()
 		if stats.Capacity != defaultLicenseCacheMaxEntries {
 			t.Fatal(stats)
 		}
 	case <-time.After(time.Second):
-		licenseMu.Unlock()
+		fccSnapshot.mu.Unlock()
 		t.Fatal("stats blocked behind database owner")
 	}
 }

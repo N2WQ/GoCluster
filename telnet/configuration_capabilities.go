@@ -63,7 +63,7 @@ func (s *Server) readbackCapabilitiesVersion(version int) any {
 	fields := machineFilterFields[:]
 	categories := []string{"BAND", "MODE", "SOURCE", "EVENT", "CONFIDENCE", "PATH", "DXCONT", "DECONT", "DXZONE", "DEZONE", "DXGRID2", "DEGRID2", "DXDXCC", "DEDXCC", "DXCALL", "DECALL", "BEACON", "WWV", "WCY", "ANNOUNCE", "SELF", "TOXIC", "NEARBY"}
 	if machineSchemaVersion(version) == 2 {
-		choices.States = spot.FCCStateCodes()
+		choices.States = spot.StateCodes()
 		fields = machineFilterFieldsV2[:]
 		categories = append(categories, "DXSTATE", "DESTATE")
 	}

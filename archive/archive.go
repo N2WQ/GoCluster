@@ -821,8 +821,8 @@ func decodeRecord(raw []byte) (archiveRecord, error) {
 		toxicityModel = fields[fieldToxicityModel]
 	}
 
-	if fields[fieldDXState] != "" && !spot.IsFCCState(fields[fieldDXState]) ||
-		fields[fieldDEState] != "" && !spot.IsFCCState(fields[fieldDEState]) {
+	if fields[fieldDXState] != "" && !spot.IsState(fields[fieldDXState]) ||
+		fields[fieldDEState] != "" && !spot.IsState(fields[fieldDEState]) {
 		return archiveRecord{}, errInvalidRecord
 	}
 
@@ -965,10 +965,10 @@ func clampInt(value int) int {
 	return value
 }
 
-// Archive records retain the observed FCC metadata, never a current-registry
-// lookup. Restrict the two new fields to the finite canonical vocabulary.
+// Archive records retain the observed US/Canadian metadata, never a current
+// registry lookup. Restrict both State fields to the finite canonical vocabulary.
 func validArchiveState(state string) string {
-	if spot.IsFCCState(state) {
+	if spot.IsState(state) {
 		return state
 	}
 	return ""

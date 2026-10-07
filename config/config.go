@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"dxcluster/download"
 	"dxcluster/internal/yamlconfig"
 	"dxcluster/pathreliability"
 	"dxcluster/solarweather"
@@ -158,6 +159,7 @@ type Config struct {
 	Buffer              BufferConfig         `yaml:"buffer"`
 	Skew                SkewConfig           `yaml:"skew"`
 	FCCULS              FCCULSConfig         `yaml:"fcc_uls"`
+	ISED                ISEDConfig           `yaml:"ised"`
 	Peering             PeeringConfig        `yaml:"peering"`
 	Reputation          ReputationConfig     `yaml:"reputation"`
 	GridDBPath          string               `yaml:"grid_db"`
@@ -1367,6 +1369,21 @@ type FCCULSConfig struct {
 	AllowlistPath string `yaml:"allowlist_path"`
 	// CacheTTLSeconds controls how long license lookup decisions remain cached.
 	CacheTTLSeconds int `yaml:"cache_ttl_seconds"`
+}
+
+// ISEDConfig owns the assigned and special-event Canadian callsign snapshot.
+// Enabled controls rejection only; refresh and province enrichment remain active.
+// The shared FCCULS cache TTL also bounds Canadian answers, with an additional
+// UTC-midnight expiry because special-event assignments use inclusive UTC dates.
+type ISEDConfig struct {
+	Enabled        bool   `yaml:"enabled"`
+	URL            string `yaml:"url"`
+	SpecialURL     string `yaml:"special_url"`
+	Archive        string `yaml:"archive_path"`
+	SpecialArchive string `yaml:"special_archive_path"`
+	DBPath         string `yaml:"db_path"`
+	TempDir        string `yaml:"temp_dir"`
+	RefreshUTC     string `yaml:"refresh_utc"`
 }
 
 // CTYConfig controls downloading of the CTY prefix plist.
@@ -3135,6 +3152,12 @@ func normalizeReferenceDataConfig(cfg *Config, presence loadRawPresence) error {
 	if err := normalizeFCCULSConfig(cfg); err != nil {
 		return err
 	}
+	if err := normalizeISEDConfig(cfg); err != nil {
+		return err
+	}
+	if err := validateLicenseDataPaths(cfg); err != nil {
+		return err
+	}
 	normalizeGridConfig(cfg)
 	return nil
 }
@@ -3182,6 +3205,127 @@ func normalizeFCCULSConfig(cfg *Config) error {
 		return fmt.Errorf("invalid FCC ULS refresh time %q: %w", cfg.FCCULS.RefreshUTC, err)
 	}
 	return nil
+}
+
+func normalizeISEDConfig(cfg *Config) error {
+	// Presence and value validation happen before normalization. These settings
+	// remain YAML-owned even when enforcement is disabled; no defaults are added.
+	ised := &cfg.ISED
+	for _, source := range []struct {
+		key   string
+		value *string
+	}{
+		{"url", &ised.URL},
+		{"special_url", &ised.SpecialURL},
+	} {
+		*source.value = strings.TrimSpace(*source.value)
+		parsed, err := url.Parse(*source.value)
+		if err != nil || parsed.Hostname() == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			return fmt.Errorf("invalid YAML setting %q: must be an absolute HTTP(S) URL", "ised."+source.key)
+		}
+	}
+	ised.Archive = strings.TrimSpace(ised.Archive)
+	ised.SpecialArchive = strings.TrimSpace(ised.SpecialArchive)
+	ised.DBPath = strings.TrimSpace(ised.DBPath)
+	ised.TempDir = strings.TrimSpace(ised.TempDir)
+	ised.RefreshUTC = strings.TrimSpace(ised.RefreshUTC)
+	if len(ised.RefreshUTC) != len("15:04") {
+		return fmt.Errorf("invalid YAML setting %q: must use HH:MM UTC", "ised.refresh_utc")
+	}
+	if _, err := time.Parse("15:04", ised.RefreshUTC); err != nil {
+		return fmt.Errorf("invalid YAML setting %q: must use HH:MM UTC: %w", "ised.refresh_utc", err)
+	}
+	return nil
+}
+
+// validateLicenseDataPaths preserves independent FCC/ISED publication ownership.
+// Resolving existing ancestors also catches aliases before the final file exists.
+// Case-insensitive comparison protects deployments on Windows filesystems.
+func validateLicenseDataPaths(cfg *Config) error {
+	type ownedPath struct {
+		key, path string
+		info      os.FileInfo
+	}
+	files := []ownedPath{
+		{key: "fcc_uls.archive_path", path: cfg.FCCULS.Archive},
+		{key: "fcc_uls.db_path", path: cfg.FCCULS.DBPath},
+		{key: "fcc_uls.allowlist_path", path: cfg.FCCULS.AllowlistPath},
+		{key: "fcc_uls.archive_path metadata", path: download.MetadataPath(cfg.FCCULS.Archive)},
+		{key: "fcc_uls.archive_path legacy metadata", path: strings.TrimSpace(cfg.FCCULS.Archive) + ".meta.json"},
+		{key: "ised.archive_path", path: cfg.ISED.Archive},
+		{key: "ised.special_archive_path", path: cfg.ISED.SpecialArchive},
+		{key: "ised.db_path", path: cfg.ISED.DBPath},
+		{key: "ised.archive_path metadata", path: download.MetadataPath(cfg.ISED.Archive)},
+		{key: "ised.special_archive_path metadata", path: download.MetadataPath(cfg.ISED.SpecialArchive)},
+	}
+	for i := range files {
+		resolved, err := licenseDataPathIdentity(files[i].path)
+		if err != nil {
+			return fmt.Errorf("invalid YAML setting %q: resolve path: %w", files[i].key, err)
+		}
+		files[i].path = resolved
+		files[i].info, err = os.Stat(resolved)
+		if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("invalid YAML setting %q: stat path: %w", files[i].key, err)
+		}
+		for j := 0; j < i; j++ {
+			aliased := files[i].info != nil && files[j].info != nil && os.SameFile(files[i].info, files[j].info)
+			if aliased || licensePathAtOrBelow(files[i].path, files[j].path) || licensePathAtOrBelow(files[j].path, files[i].path) {
+				return fmt.Errorf("license data path collision: %s and %s", files[j].key, files[i].key)
+			}
+		}
+	}
+	for _, temp := range []ownedPath{{key: "fcc_uls.temp_dir", path: cfg.FCCULS.TempDir}, {key: "ised.temp_dir", path: cfg.ISED.TempDir}} {
+		resolved, err := licenseDataPathIdentity(temp.path)
+		if err != nil {
+			return fmt.Errorf("invalid YAML setting %q: resolve path: %w", temp.key, err)
+		}
+		for _, file := range files {
+			if licensePathAtOrBelow(resolved, file.path) {
+				return fmt.Errorf("license data path collision: %s and %s", file.key, temp.key)
+			}
+		}
+	}
+	return nil
+}
+
+func licensePathAtOrBelow(path, parent string) bool {
+	path, parent = strings.ToLower(path), strings.ToLower(parent)
+	return path == parent || strings.HasPrefix(path, parent+string(filepath.Separator))
+}
+
+func licenseDataPathIdentity(path string) (string, error) {
+	abs, err := filepath.Abs(strings.TrimSpace(path))
+	if err != nil {
+		return "", err
+	}
+	ancestor := abs
+	var suffix []string
+	for {
+		resolved, err := filepath.EvalSymlinks(ancestor)
+		if err == nil {
+			for i := len(suffix) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, suffix[i])
+			}
+			return resolved, nil
+		}
+		if !os.IsNotExist(err) {
+			return "", err
+		}
+		info, statErr := os.Lstat(ancestor)
+		if statErr == nil && info.Mode()&os.ModeSymlink != 0 {
+			return "", fmt.Errorf("dangling symlink %q", ancestor)
+		}
+		if statErr != nil && !os.IsNotExist(statErr) {
+			return "", statErr
+		}
+		parent := filepath.Dir(ancestor)
+		if parent == ancestor {
+			return "", err
+		}
+		suffix = append(suffix, filepath.Base(ancestor))
+		ancestor = parent
+	}
 }
 
 func normalizeGridConfig(cfg *Config) {
@@ -3925,6 +4069,11 @@ func (c *Config) Print() {
 			c.FCCULS.DBPath,
 			c.FCCULS.AllowlistPath,
 			c.FCCULS.CacheTTLSeconds)
+	}
+	if c.ISED.URL != "" {
+		fmt.Printf("ISED: enforcement=%t; refresh %s UTC (source=%s special_source=%s archive=%s special_archive=%s db=%s cache_ttl=%ds, capped at UTC midnight)\n",
+			c.ISED.Enabled, c.ISED.RefreshUTC, c.ISED.URL, c.ISED.SpecialURL,
+			c.ISED.Archive, c.ISED.SpecialArchive, c.ISED.DBPath, c.FCCULS.CacheTTLSeconds)
 	}
 	if strings.TrimSpace(c.GridDBPath) != "" {
 		dbCheckOnMiss := true

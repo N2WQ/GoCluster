@@ -21,6 +21,7 @@ existing operator-facing docs.
 | Need | Start here |
 | --- | --- |
 | Understand `DXC_CONFIG_PATH` | [data/config/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/config/README.md) |
+| Configure ISED Canadian licensing and reuse DXSTATE/DESTATE province filters | [data/config/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/config/README.md), [telnet/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md), [ADR-0254](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/decisions/ADR-0254-canadian-ised-license-and-state-reuse.md) |
 | Know which YAML file owns a setting | [data/config/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/config/README.md) |
 | Know whether a YAML setting is operator policy or algorithm calibration | [data/config/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/config/README.md) |
 | Fix unknown file/key startup errors | [data/config/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/config/README.md) |

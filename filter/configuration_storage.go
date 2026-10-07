@@ -157,7 +157,7 @@ func validateStoredStateMapping(node *yaml.Node, version int, pending *[]*yaml.N
 				if key.Kind == yaml.AliasNode && key.Alias != nil {
 					key = key.Alias
 				}
-				if key.Kind != yaml.ScalarNode || key.Tag != "!!str" || !spot.IsFCCState(key.Value) {
+				if key.Kind != yaml.ScalarNode || key.Tag != "!!str" || !spot.IsState(key.Value) {
 					return fmt.Errorf("state map %s contains an unsupported key", name)
 				}
 			}

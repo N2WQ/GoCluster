@@ -113,6 +113,41 @@ func TestStatePrecheckAliasesAndCardinality(t *testing.T) {
 	}
 }
 
+func TestStateStoredVocabularyAtBound(t *testing.T) {
+	usePresetTestDir(t)
+	var entries strings.Builder
+	// Literal oracle proves the stored-map bound includes inactive province keys.
+	for _, code := range strings.Fields("AA AB AE AK AL AP AR AS AZ BC CA CO CT DC DE FL GA GU HI IA ID IL IN KS KY LA MA MB MD ME MI MN MO MP MS MT NB NC ND NE NH NJ NL NM NS NT NU NV NY OH OK ON OR PA PE PR QC RI SC SD SK TN TX UM UT VA VI VT WA WI WV WY YT") {
+		fmt.Fprintf(&entries, "%s: false, ", code)
+	}
+	raw := "configuration_version: 2\n"
+	for _, field := range []string{"dxstates", "blockdxstates", "destates", "blockdestates"} {
+		raw += field + ": {" + entries.String() + "}\n"
+	}
+	path := userRecordPath("N2WQ-1")
+	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
+		t.Fatal(err)
+	}
+	record, err := LoadUserRecord("N2WQ-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, states := range []map[string]bool{record.DXStates, record.BlockDXStates, record.DEStates, record.BlockDEStates} {
+		if len(states) != 73 {
+			t.Fatalf("stored vocabulary lost inactive entries: %v", states)
+		}
+		if value, exists := states["YT"]; !exists || value {
+			t.Fatal("stored territory false entry changed")
+		}
+	}
+	if err := SaveUserRecord("N2WQ-1", record); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadUserRecord("N2WQ-1"); err != nil {
+		t.Fatalf("full mixed vocabulary no longer readable after save: %v", err)
+	}
+}
+
 func TestLegacyAliasedMergeLookingKeyMatchesYAMLDecoder(t *testing.T) {
 	raw := "key: &key <<\n? *key\n: {dxstates: {ZZ: false}}\nbands: {20m: true}\nallbands: false\n"
 	// The plain decoder is the compatibility oracle: YAML merge recognition

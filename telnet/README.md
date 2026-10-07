@@ -11,10 +11,10 @@ This directory owns the telnet session layer: login flow, prompt handling, filte
 - Valid login tokens must include a concrete call-like identity segment such as
   `K1ABC`, `DL6LD`, `4U1UN`, `P5/N1K`, or `W6TEST-1`.
 - When CTY data is loaded, login calls must resolve to a known CTY prefix.
-- US calls (ADIF 291) must pass FCC ULS validation when ULS is available.
+- Base US calls (ADIF 291) must pass FCC validation; Canadian base calls (ADIF 1, 211, 252) must pass ISED assignment/plausibility checks when enabled and available. Portable location prefixes do not change the licensing source.
 - Local TEST calls with CTY-valid US prefixes, such as `W6TEST` or `W6TEST-1`,
-  bypass FCC ULS validation but still require CTY validity.
-- CTY or FCC data outages fail open so operators are not locked out by a
+  bypass license validation but still require CTY validity.
+- CTY or license data outages fail open so operators are not locked out by a
   reference-data refresh or missing local database.
 - The greeting can include dialect, grid, noise, and dedupe status from config.
 - Dialect choice and filter state are persisted per callsign.
@@ -391,7 +391,7 @@ describes the protocol rather than writable preferences.
 Existing GET commands keep schema 1 and its original field order. Schema 1
 PUT/PATCH/VALIDATE preserves state rules hidden from that format; supplying
 `dx_states` or `de_states` in a schema 1 upload is an unknown-field error.
-Schema 2 adds those two string RuleSets, accepting only the 60 uppercase FCC
+Schema 2 adds those two string RuleSets, accepting the 73 uppercase US/Canadian
 codes. Its complete PUT/VALIDATE requires both domains; PATCH preserves omitted
 fields. Upload headers stay unchanged: the body `schema_version: 1` or `2`
 selects its vocabulary. A single revision covers all preferences, so a hidden
@@ -401,7 +401,7 @@ does not alter the revision, pause, preset or history continuation.
 Schema 1 capabilities retain their original shape and advertise `[1, 2]` in
 `schema_versions`. Request schema 2 capabilities to discover state fields and
 choices. Schema 1 writes retain their existing 64 KiB projection limit; the
-four hidden state maps are separately limited to 60 canonical keys each before
+four hidden state maps are separately limited to 73 canonical keys each before
 cloning. Schema 2 writes must fit the complete schema 2 CONFIG response. Large
 ordinary human configurations remain supported; an oversized schema 2 GET
 returns an explicit error, with schema 1 still available to reduce the rules.
@@ -412,7 +412,7 @@ No response is truncated.
 | Resource fields | Representation |
 | --- | --- |
 | `bands`, `modes`, `sources`, `events`, `confidence`, `path_classes`, `dx_continents`, `de_continents`, `dx_grid2`, `de_grid2` | RuleSet: `allow_all`/`block_all` booleans and `allow`/`block` maps of string keys to booleans. |
-| `dx_states`, `de_states` (schema 2 only) | The same four RuleSet members, with uppercase FCC mailing-state codes as string keys. |
+| `dx_states`, `de_states` (schema 2 only) | The same four RuleSet members, with uppercase US mailing-state and Canadian province/territory codes as string keys. |
 | `dx_zones`, `de_zones`, `dx_dxcc`, `de_dxcc` | The same four RuleSet members, with integer rule keys. |
 | `dx_callsigns`, `block_dx_callsigns`, `de_callsigns`, `block_de_callsigns` | Ordered string lists; duplicate patterns are preserved. |
 | `include_beacons`, `allow_wwv`, `allow_wcy`, `allow_announce`, `allow_self`, `allow_toxic` | Explicit `true`, explicit `false` or the string `DEFAULT`. |
@@ -833,14 +833,13 @@ The seeded programs run during ordinary package tests. Mutation runs cover
 sequential command sequences and scripted publication interleavings; they do
 not replace the existing deterministic tests with overlapping goroutines.
 
-## FCC State And Territory Filters
+## US State And Canadian Province Filters
 
-`PASS DXSTATE CA,TX` selects spotted stations with known FCC mailing states CA
-or TX. `REJECT DESTATE AA,AE,AP` excludes spotters with those military postal
-codes. The same list commands work through the `cc` SET/FILTER and UNSET/FILTER
-aliases. Lists are case-insensitive and completely validated before mutation.
-Supported values are the 50 states, DC, AS/GU/MP/PR/VI/UM and AA/AE/AP. Canadian
-provinces are not populated or accepted in this FCC phase.
+`PASS DXSTATE CA,TX,ON,QC` selects spotted stations with those registered address
+codes. `REJECT DESTATE AA,AE,AP` excludes spotters with those military postal
+codes. The same commands work through `cc` SET/FILTER and UNSET/FILTER aliases.
+Lists are case-insensitive and completely validated before mutation. Accepted
+values are the 60 FCC codes and AB, BC, MB, NB, NL, NS, NT, NU, ON, PE, QC, SK, YT.
 
 Unknown state passes an unrestricted or named REJECT-only category and fails
 an explicit PASS list. ALL and NOFILTER follow existing resets; categories
@@ -849,20 +848,25 @@ matching exception. SHOW FILTER, FULL and category details display finite
 selections completely. NEARBY suspends state rules, locks their ordinary
 mutation and restores them when switched off, including after schema 1 writes.
 
-State enrichment remains active with FCC license enforcement disabled. State
-comes from the licensee's mailing address and can differ from the operating
-location. The final corrected DX base call determines DXSTATE; portable
-operating prefixes do not imply a state. Missing or unavailable data remains
-empty and never creates a license record.
+State enrichment remains active with either source's license enforcement
+disabled. Registered addresses can differ from operating location. The final
+corrected DX base call determines DXSTATE, and central ingest determines DESTATE.
+Portable operating prefixes do not imply a state. ISED uses a club address when
+club data exists, otherwise the personal address. Exact active special calls
+use their listed ISED trustee; prefix substitutions use the ordinary assigned
+base call. Blank or conflicting evidence leaves State unknown. Prefix matches
+establish callsign plausibility, without proving event eligibility. Event dates
+are inclusive UTC days; cached Canadian facts revalidate at UTC midnight.
 
-During FCC archive extraction and database rebuilding, lookups return unknown
-state even for previously cached calls. Named state PASS lists therefore exclude
-these spots; named REJECT lists let unknown states through that category. Newly
-archived empty states remain empty after the refresh; history does not backfill
-them. The full sample rebuild took approximately five minutes locally (see
-[validation evidence](../docs/fcc-state-validation.md#full-sample)); refresh
-duration depends on the installation.
+Each registry has an independent snapshot and generation. Publication briefly
+makes that source unknown; FCC rebuilding also suppresses FCC facts during its
+import. Named State PASS lists exclude these unknown spots, while named REJECT
+lists allow them through that category. Failed builds retain the last good
+snapshot. Refresh duration depends on installation and source size; see
+[FCC evidence](../docs/fcc-state-validation.md#full-sample) and
+[Canadian evidence](../docs/canadian-state-validation.md).
 
-New archive records store the observed state values. Older versions remain
-readable with unknown state; history does not look up current FCC addresses.
-An explicit state PASS list therefore excludes those older unknown rows.
+Archive version 6 stores the observed State values. Versions 2–5 remain readable
+with unknown State; history never consults current registry addresses. Existing
+machine schemas 1/2 and profile disk version 2 retain their formats. Older
+binaries can reject Canadian codes, so use matching backups for downgrade.

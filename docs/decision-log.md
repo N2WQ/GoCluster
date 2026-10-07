@@ -24,7 +24,8 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| ADR-0253 | FCC State Enrichment and Filtering | Accepted | 2026-10-07 | uls, spot, archive, filter, telnet, commands, runtime | Refines ADR-0244/0245/0251 for state metadata and schema versions | - | `docs/decisions/ADR-0253-fcc-state-enrichment-and-filtering.md` |
+| ADR-0254 | Canadian ISED License and State Reuse | Accepted | 2026-10-07 | uls, config, spot, archive, filter, telnet, commands, runtime | Refines ADR-0253 for Canadian source ownership, shared State vocabulary and older-reader compatibility | - | `docs/decisions/ADR-0254-canadian-ised-license-and-state-reuse.md` |
+| ADR-0253 | FCC State Enrichment and Filtering | Accepted | 2026-10-07 | uls, spot, archive, filter, telnet, commands, runtime | Refines ADR-0244/0245/0251 for state metadata and schema versions | Canadian source/shared State vocabulary refined by ADR-0254 | `docs/decisions/ADR-0253-fcc-state-enrichment-and-filtering.md` |
 | ADR-0252 | Automatic Commit-Suffix Release Tags | Accepted | 2026-10-06 | release scripts, build metadata | ADR-0236 numbering clauses | - | `docs/decisions/ADR-0252-automatic-commit-suffix-release-tags.md` |
 | ADR-0251 | Exact-Call Paged Archive History | Accepted | 2026-10-06 | commands, telnet, archive, pagination, lifecycle | Refines ADR-0011/0248 history selection and paging | Stored state filtering refined by ADR-0253 | `docs/decisions/ADR-0251-exact-call-paged-history.md` |
 | ADR-0250 | Go 1.27 Development And Fresh Launcher Builds | Accepted | 2026-10-06 | development, Go, WSL, skills, build, launcher | ADR-0155 (source directory only) | - | `docs/decisions/ADR-0250-go127-development-and-launcher.md` |

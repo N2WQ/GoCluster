@@ -1247,7 +1247,10 @@ func configureULS(cfg *config.Config) error {
 		return errors.New("nil config")
 	}
 	uls.SetLicenseChecksEnabled(cfg.FCCULS.Enabled)
+	uls.SetCanadianLicenseChecksEnabled(cfg.ISED.Enabled)
+	uls.SetLicenseCacheTTL(time.Duration(cfg.FCCULS.CacheTTLSeconds) * time.Second)
 	uls.SetLicenseDBPath(strings.TrimSpace(cfg.FCCULS.DBPath))
+	uls.SetCanadianLicenseDBPath(strings.TrimSpace(cfg.ISED.DBPath))
 	allowlistPath := strings.TrimSpace(cfg.FCCULS.AllowlistPath)
 	if allowlistPath == "" {
 		uls.SetAllowlistPath("")

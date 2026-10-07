@@ -83,7 +83,7 @@ func TestStateFilterMutationAndComposition(t *testing.T) {
 		t.Fatal("removing final allow must restore unrestricted passing with blocks retained")
 	}
 	before := ConfigurationFromFilter(f, SettingsConfiguration{}).Clone()
-	f.SetDXState("ON", true)
+	f.SetDXState("ZZ", true)
 	f.SetDEState("ZZ", false)
 	if !before.Equal(ConfigurationFromFilter(f, SettingsConfiguration{})) {
 		t.Fatal("unsupported setter changed rules")
@@ -103,6 +103,31 @@ func TestStateFilterMutationAndComposition(t *testing.T) {
 	f.ResetToDefaults()
 	if !f.Matches(stateTestSpot("", "")) {
 		t.Fatal("RESET FILTER did not restore state defaults")
+	}
+}
+
+func TestStateFilterMixedUSAndCanada(t *testing.T) {
+	f := NewFilter()
+	f.SetDXState("NY", true)
+	f.SetDXState(" on ", true)
+	f.SetDEState("CA", true)
+	f.SetDEState("QC", true)
+	f.BlockDXStates["ON"] = false
+	f.DEStates["AB"] = false
+	for _, test := range []struct {
+		dx, de string
+		want   bool
+	}{
+		{"NY", "CA", true}, {"NY", "QC", true}, {"ON", "CA", true}, {"ON", "QC", true},
+		{"BC", "QC", false}, {"ON", "AB", false}, {"", "QC", false}, {"NY", "", false},
+	} {
+		if got := f.Matches(stateTestSpot(test.dx, test.de)); got != test.want {
+			t.Errorf("DX=%q DE=%q: got %t want %t", test.dx, test.de, got, test.want)
+		}
+	}
+	f.BlockDXStates["ON"] = true
+	if f.Matches(stateTestSpot("ON", "QC")) || !f.Matches(stateTestSpot("NY", "QC")) {
+		t.Fatal("province block did not take precedence within a mixed allowlist")
 	}
 }
 
@@ -167,17 +192,22 @@ func TestStateConfigurationDetachedFingerprintAndBound(t *testing.T) {
 	if c.MinimumSizeFits(8) || !c.MinimumSizeFits(9) {
 		t.Fatal("state entries missing from preparation bound")
 	}
-	for _, code := range spot.FCCStateCodes() {
+	for _, code := range strings.Fields("AA AB AE AK AL AP AR AS AZ BC CA CO CT DC DE FL GA GU HI IA ID IL IN KS KY LA MA MB MD ME MI MN MO MP MS MT NB NC ND NE NH NJ NL NM NS NT NU NV NY OH OK ON OR PA PE PR QC RI SC SD SK TN TX UM UT VA VI VT WA WI WV WY YT") {
 		c.Filters.DXStates.Allow[code] = false
 	}
-	if len(c.Filters.DXStates.Allow) != maxStateRuleEntries || c.ValidateStateRules() != nil {
-		t.Fatal("complete FCC vocabulary must be admissible")
+	if len(c.Filters.DXStates.Allow) != 73 || maxStateRuleEntries != 73 || c.ValidateStateRules() != nil {
+		t.Fatal("complete US/Canadian vocabulary must be admissible")
 	}
+	delete(c.Filters.DXStates.Allow, "YT")
+	if c.ValidateStateRules() != nil {
+		t.Fatal("near-bound mixed vocabulary was rejected")
+	}
+	c.Filters.DXStates.Allow["YT"] = false
 	c.Filters.DXStates.Allow["ZZ"] = false
 	if err := c.ValidateStateRules(); err == nil || !strings.Contains(err.Error(), "exceeds") {
 		t.Fatal("map cardinality was not rejected before key validation")
 	}
-	for _, code := range []string{"tx", " TX", "ON", "", "ZZ"} {
+	for _, code := range []string{"tx", " TX", "on", "", "ZZ"} {
 		bad := Configuration{Filters: FilterConfiguration{DEStates: StringRules{Block: map[string]bool{code: false}}}}
 		if bad.ValidateStateRules() == nil {
 			t.Fatalf("invalid inactive key %q admitted", code)
@@ -235,9 +265,9 @@ func TestStateDiskMigrationAndPresetBaseline(t *testing.T) {
 func TestStateV2ExactRoundtripAndInvalidStorage(t *testing.T) {
 	usePresetTestDir(t)
 	f := NewFilter()
-	f.DXStates, f.BlockDXStates = map[string]bool{"TX": false}, map[string]bool{"CA": false, "GU": true}
+	f.DXStates, f.BlockDXStates = map[string]bool{"TX": false, "ON": true, "QC": false}, map[string]bool{"CA": false, "GU": true, "BC": false}
 	f.AllDXStates, f.AllDEStates = false, false
-	f.DEStates = map[string]bool{}
+	f.DEStates = map[string]bool{"AB": false}
 	cfg := ConfigurationFromFilter(f, SettingsConfiguration{})
 	baseline, err := cfg.Preset()
 	if err != nil {
@@ -262,7 +292,7 @@ func TestStateV2ExactRoundtripAndInvalidStorage(t *testing.T) {
 	}
 	for _, raw := range []string{
 		"configuration_version: 2\ndxstates: {tx: false}\n",
-		"configuration_version: 2\nblockdestates: {ON: false}\n",
+		"configuration_version: 2\nblockdestates: {ZZ: false}\n",
 		"configuration_version: 2\ndxstates: null\n",
 		"configuration_version: 2\nalldxstates: \"true\"\n",
 		"configuration_version: 2\ndxstates: {TX: \"false\"}\n",

@@ -1888,11 +1888,11 @@ func peerPublishComment(src *spot.Spot) string {
 	return mode
 }
 
-// applyLicenseGate runs the FCC license check after all corrections and returns true when the spot should be dropped.
-// Purpose: Enrich the final DX base call and optionally enforce FCC licensing (DE checked at ingest).
+// applyLicenseGate checks the final corrected DX identity against FCC or ISED data.
+// Purpose: Enrich the final DX base call and optionally enforce licensing (DE checked at ingest).
 // Key aspects: Jurisdiction is derived from the normalized base call; reporter callback on drops.
 // Upstream: processOutputSpots before broadcast.
-// Downstream: uls.LookupUS, enforcement flag, reporter.
+// Downstream: uls.LookupForADIF, source enforcement flag, reporter.
 func applyLicenseGate(s *spot.Spot, ctyDB *cty.CTYDatabase, metaCache *callMetaCache, reporter func(source, role, call, deCall, dxCall, mode string, freq float64)) bool {
 	if s == nil {
 		return false
@@ -1948,13 +1948,13 @@ func applyLicenseGate(s *spot.Spot, ctyDB *cty.CTYDatabase, metaCache *callMetaC
 		dxLicenseInfo = effectivePrefixInfo(ctyDB, metaCache, dxLicenseCall)
 	}
 
-	if dxLicenseInfo != nil && spot.IsFCCJurisdiction(dxLicenseInfo.ADIF) {
-		result := uls.LookupUS(dxLicenseCall)
+	if dxLicenseInfo != nil && (spot.IsFCCJurisdiction(dxLicenseInfo.ADIF) || spot.IsCanadianJurisdiction(dxLicenseInfo.ADIF)) {
+		result := uls.LookupForADIF(dxLicenseInfo.ADIF, dxLicenseCall)
 		if result.Available && result.Found {
 			s.DXMetadata.State = result.State
 		}
 		if !s.IsBeacon && !uls.AllowlistMatch(dxLicenseInfo.ADIF, dxLicenseCall) &&
-			uls.LicenseChecksEnabled() && result.Available && !result.Found {
+			uls.LicenseChecksEnabledForADIF(dxLicenseInfo.ADIF) && result.Available && !result.Found {
 			if reporter != nil {
 				reporter(droppedCallSourceFromSpot(s), "DX", dxLicenseCall, deCall, dxCall, droppedCallModeFromSpot(s), s.Frequency)
 			}
@@ -5366,8 +5366,10 @@ func maybeStartMapLogger(tracker *stats.Tracker, predictor *pathreliability.Pred
 			}
 
 			fccCache := uls.LookupStats()
-			log.Printf("FCC cache: entries=%d slots=%d cap=%d ttl=%s generation=%d state_ready=%t refreshing=%t",
+			log.Printf("License cache: entries=%d slots=%d cap=%d ttl=%s generation=%d state_ready=%t refreshing=%t",
 				fccCache.Entries, fccCache.Slots, fccCache.Capacity, fccCache.TTL, fccCache.Generation, fccCache.StateCapable, fccCache.Refreshing)
+			canadianCache := uls.CanadianLookupStats()
+			log.Printf("ISED snapshot: generation=%d state_ready=%t refreshing=%t", canadianCache.Generation, canadianCache.StateCapable, canadianCache.Refreshing)
 
 			log.Printf("Map sizes: stats sources=%d source-modes=%d; dedup primary=%d secondary fast=%d med=%d slow=%d; path buckets=%d; custom_scp static=%d keys=%d spotters=%d interned=%d intern_refs=%d intern_release_misses=%d entry_expiry=%d static_expiry=%d load_oversized=%d overflow_pruned=%d stale_obs_pruned=%d stale_static_pruned=%d",
 				sourceCount,

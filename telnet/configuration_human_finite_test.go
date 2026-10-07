@@ -400,6 +400,16 @@ func TestHumanFiniteOverviewStates(t *testing.T) {
 			"DE geography  Continents: All | Zones: All | DXCC: All\r\n",
 		}},
 		{"unrestricted", func(f *filter.Filter) { f.ResetModes() }, []string{"Modes         All; unknown modes included\r\n"}},
+		{"mixed states", func(f *filter.Filter) {
+			f.SetDXState("NY", true)
+			f.SetDXState("ON", true)
+			f.DXStates["QC"] = false
+			f.SetDEState("BC", false)
+			f.SetDEState("CA", false)
+		}, []string{
+			"DX states     Only NY, ON\r\n",
+			"DE states     All except BC, CA\r\n",
+		}},
 		{"empty", func(f *filter.Filter) {
 			f.AllBands, f.AllModes, f.AllSources, f.AllEvents = false, false, false, false
 			f.AllConfidence, f.AllPathClasses, f.AllDXContinents, f.AllDEContinents = false, false, false, false

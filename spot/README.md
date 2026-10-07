@@ -126,12 +126,18 @@ Local non-test `DX` self-spots are treated as operator-authoritative in the live
 
 For the main operator summary, see [`../README.md`](../README.md). For parser-specific input behavior, see [`../rbn/README.md`](../rbn/README.md) and [`../pskreporter/README.md`](../pskreporter/README.md).
 
-## FCC Address Metadata
+## US And Canadian Address Metadata
 
-`CallMetadata.State` holds the canonical two-letter FCC mailing state/territory
+`CallMetadata.State` holds the canonical two-letter US mailing state/territory or Canadian province/territory
 or an empty string when unknown. It is distinct from CTY operating-location
 metadata and Maidenhead grids. Central ingest fills the spotter value; final
 output processing clears/recomputes the DX value after correction, including
 delayed release. Immutable sink snapshots retain both values. State enrichment
 is independent of license enforcement; no spot wire-format column is added.
-`state.go` owns the fixed 60-code vocabulary and 17 current FCC ADIF entities.
+`state.go` owns the fixed 73-code shared vocabulary, strict 60-code FCC vocabulary, 17 FCC ADIF entities and Canadian ADIF 1/211/252.
+
+ISED province evidence prefers club information, otherwise personal addresses.
+Exact active special calls use their listed trustee; temporary prefixes use an
+assigned ordinary base. Dates are inclusive UTC; prefix matches establish
+plausibility without proving event eligibility. See
+[ADR-0254](../docs/decisions/ADR-0254-canadian-ised-license-and-state-reuse.md).
