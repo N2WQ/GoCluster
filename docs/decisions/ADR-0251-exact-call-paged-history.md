@@ -128,6 +128,7 @@ Stop cancels readers and waits for their iterators to close before closing Pebbl
   [ADR-0149](ADR-0149-single-window-archive-retention.md) storage cleanup decisions.
 - Related TSR: [TSR-0041](../troubleshooting/TSR-0041-exact-call-history-and-scan-cap.md).
 - Related tests: `archive/history_test.go`, `commands/history_test.go`,
-  `telnet/history_test.go` and `telnet/history_filter_test.go`.
+  `telnet/history_test.go`, `telnet/history_filter_test.go` and
+  `telnet/history_fuzz_test.go` (stateful cursor sequences).
 - Related docs: [commands history](../../commands/README.md#archive-history),
   [telnet history](../../telnet/README.md#archive-history-and-continuation).

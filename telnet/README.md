@@ -784,3 +784,27 @@ Rows whose `REL` prediction is `UNLIKELY` or `CLOSED` are hidden. Bucket p50 is
 not shown.
 
 For command HELP and dialect details, see [`../commands/README.md`](../commands/README.md).
+
+## Cursor Validation For Developers
+
+[`history_fuzz_test.go`](history_fuzz_test.go) provides
+`FuzzHistoryCursorSequences`, a bounded stateful model that drives history
+commands through fresh searches, continuation, partial read failures and
+cancellation, matching-settings changes (including change then restore),
+settings/search/close interleavings during a read, invalid and retired tokens,
+queue overflow, close and reconnect. It checks published responses, cursor
+ownership, saved positions, selection/counts and cumulative warnings after
+operations. Propagation-observation and concurrent publication behavior remain
+covered by the deterministic history tests.
+
+Run from the repository root:
+
+```sh
+go test ./telnet
+go test ./telnet -run '^$' -fuzz '^FuzzHistoryCursorSequences$' -fuzztime=20s -parallel=2
+go test -race ./telnet -run '^$' -fuzz '^FuzzHistoryCursorSequences$' -fuzztime=30s -parallel=2
+```
+
+The seeded programs run during ordinary package tests. Mutation runs cover
+sequential command sequences and scripted publication interleavings; they do
+not replace the existing deterministic tests with overlapping goroutines.
