@@ -379,3 +379,24 @@ number matches; a deployment downgrade requires a matching backup. Do not
 repair a failed import by deleting the last good database or rewriting
 protected files. See
 [ADR-0254](../../docs/decisions/ADR-0254-canadian-ised-license-and-state-reuse.md).
+
+### FCC/ISED diagnostic lookup
+
+Check the complete redacted warning, effective `data.yaml`, source archive pair
+and last successful publication before changing files. These diagnostics do not
+by themselves prove that a callsign is unassigned or that stored history is wrong.
+
+| Exact diagnostic | What it establishes | First safe check |
+| --- | --- | --- |
+| `FCC ULS refresh failed` | A startup FCC acquisition/build attempt returned an error. | Read the appended cause and check the configured archive/database paths and permissions; failed replacement retains the last good database. |
+| `ISED startup refresh failed` | Startup reconciliation or Canadian refresh returned an error. | Read the appended cause and check both source URLs, archive paths and database path as one pair. |
+| `ISED processing metadata unavailable` | Writing an archive processing-status sidecar failed. | Check the appended filesystem error and sidecar permissions; sidecar success/failure alone does not establish database publication. |
+| `ised: invalid source manifest` | A database source-pair hash is not a 64-character hexadecimal SHA-256 value. | Check that the configured Canadian database belongs to this installation and inspect preceding refresh/publication messages; do not edit database rows as a first step. |
+| `unterminated final record` | An ISED input ends with a nonempty record lacking its terminating newline. | Preserve the error and check whether both downloaded archives completed; a failed import must not be treated as a successful new snapshot. |
+
+Source ownership: [FCC refresh](../../uls/downloader.go),
+[Canadian refresh](../../uls/ised_refresh.go),
+[database probe](../../uls/ised_lookup.go), and
+[ISED record framing](../../uls/ised_import.go). Existing qualification evidence
+is in [FCC validation](../../docs/fcc-state-validation.md) and
+[Canadian validation](../../docs/canadian-state-validation.md).

@@ -52,7 +52,8 @@ sources.
 The configuration support card routes to the authoritative human readback,
 client schema/framing and persistence sections of `telnet/README.md`. Source-map,
 operator and troubleshooting links make it discoverable through `getDoc`.
-The fixed Worker card registry and search corpus remain unchanged; automatic
+The Worker card registry remains unchanged. The configuration card is included
+in the 46-file search corpus; automatic
 `getSupportRoute` selection of this new card is not claimed. When the returned
 route is not decisive, these evals use the documented specific fallback.
 

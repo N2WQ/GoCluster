@@ -10,7 +10,7 @@ Action flow:
 2. Treat support_route as the answer contract: persona, domain, ambiguity, security_sensitive, required_sources, must_include, and must_avoid. Cite returned files. If confidence is low or ambiguity is true, preserve uncertainty and ask one focused follow-up unless a safe nearest lookup is documented.
 3. If no support card fits, call getTroubleshootingIndex for symptoms/failures and getSourceMap for normal topic/developer questions.
 4. Choose the narrowest route: platform-specific beats generic, command-specific beats command-family, source-specific beats ingest-generic. Later clarification can require new retrieval.
-5. Use searchSupportCorpus for exact diagnostic strings, config keys, commands, glyphs, or log names. Then use getDoc line windows when search points to larger source.
+5. searchSupportCorpus finds diagnostics, keys, commands, glyphs and logs; path scopes the corpus. It returns 25 merged regions, exact first with file diversity. Check coverage_complete, failed_paths, source_truncated_paths, results_truncated. Partial empty results do not prove absence. Follow sources with getDoc line windows.
 6. Call getDoc before making a GoCluster claim unless getSupportRoute/getBundle already returned the authoritative file in files[]. Use getBundle only after concrete paths are known.
 7. Use getDoc directly only for a specific repo file or action-returned path.
 8. Use getExternalAuthorities only for Go/GitHub/Linux/systemd/PowerShell mechanics, never for GoCluster behavior.

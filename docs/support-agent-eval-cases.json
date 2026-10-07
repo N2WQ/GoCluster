@@ -2691,6 +2691,65 @@
           "telnet/README.md"
         ]
       }
+    },
+    {
+      "id": "SA-028",
+      "category": "retrieval-resilience",
+      "severity": "high",
+      "title": "Scoped current configuration and ISED diagnostics discovery",
+      "prompt_sequence": [
+        "What does ISED startup refresh failed mean, and how do I find the current configuration support guidance?"
+      ],
+      "action_plan": [
+        {
+          "name": "searchSupportCorpus",
+          "endpoint": "/search?query=ISED%20startup%20refresh%20failed&path=data/config/README.md"
+        },
+        {
+          "name": "searchSupportCorpus",
+          "endpoint": "/search?query=Configuration%20Readbacks&path=customgpt/support-cards/configuration-readback.md"
+        },
+        {
+          "name": "getDoc",
+          "endpoint": "/doc?path=data/config/README.md"
+        }
+      ],
+      "required_sources": [
+        "data/config/README.md",
+        "customgpt/support-cards/configuration-readback.md"
+      ],
+      "required_source_substrings": [
+        {
+          "path": "data/config/README.md",
+          "contains": [
+            "ISED startup refresh failed",
+            "ised: invalid source manifest",
+            "unterminated final record"
+          ]
+        }
+      ],
+      "answer_checks": {
+        "required": [
+          {
+            "name": "read appended cause",
+            "any_of": [
+              "appended cause",
+              "appended error",
+              "complete warning"
+            ]
+          }
+        ],
+        "forbidden": [
+          {
+            "name": "absence inference",
+            "text": "no results prove the information does not exist"
+          }
+        ],
+        "require_source_citation": true,
+        "allowed_source_citations": [
+          "data/config/README.md"
+        ]
+      }
     }
   ]
 }

@@ -18,7 +18,7 @@ const MAX_DIR_ENTRIES = 80;
 const MAX_FIND_RESULTS = 80;
 const MAX_FIND_QUERY_CHARS = 64;
 const MAX_SEARCH_QUERY_CHARS = 96;
-const MAX_SEARCH_RESULTS = 12;
+const MAX_SEARCH_RESULTS = 25;
 const SEARCH_CONTEXT_LINES = 2;
 const AUTH_SECRET_BINDING = "GOCLUSTER_DOCS_ACTION_TOKEN";
 const AUTH_MODE = "bearer";
@@ -259,7 +259,18 @@ const SEARCH_CORPUS_PATHS = [
   "customgpt/support-cards/confidence-glyph.md",
   "customgpt/support-cards/dxsummit-startup-spots.md",
   "customgpt/support-cards/peer-bulletin-dedupe.md",
-  "customgpt/support-cards/security-boundary.md"
+  "customgpt/support-cards/security-boundary.md",
+  "customgpt/support-cards/configuration-readback.md",
+  "data/config/data.yaml",
+  "scripts/README.md",
+  "docs/troubleshooting/TSR-0041-exact-call-history-and-scan-cap.md",
+  "docs/decision-log.md",
+  "docs/troubleshooting-log.md",
+  "docs/ENVIRONMENT.md",
+  "docs/dev-runbook.md",
+  "docs/code-maps/README.md",
+  "docs/fcc-state-validation.md",
+  "docs/canadian-state-validation.md"
 ];
 
 export default {
@@ -340,7 +351,7 @@ export default {
             400
           );
         }
-        return await searchResponse(query);
+        return await searchResponse(query, url.searchParams.has("path") ? url.searchParams.get("path") : null);
       }
 
       if (url.pathname === "/list-dir") {
@@ -536,92 +547,112 @@ function scoreSupportRoute(query, route) {
   return score;
 }
 
-async function searchResponse(query) {
-  const files = [];
-  const matches = [];
-  const paths = dedupeStrings(SEARCH_CORPUS_PATHS).filter(isSafeRepoPath);
-
-  for (const searchPath of paths) {
-    const file = await fetchRepoFilePayload(searchPath, "");
-    if (file.error || typeof file.content !== "string") {
-      continue;
-    }
-
-    const fileMatches = searchFileContent(file.path, file.content, query);
-    for (const match of fileMatches) {
-      matches.push({
-        ...match,
-        source_url: file.source_url,
-        kind: file.kind
-      });
-      files.push({
-        repo: file.repo,
-        branch: file.branch,
-        path: file.path,
-        source_url: file.source_url,
-        kind: file.kind,
-        line_start: match.line_start,
-        line_end: match.line_end,
-        line_count: match.line_end - match.line_start + 1,
-        content: match.snippet
-      });
-      if (matches.length >= MAX_SEARCH_RESULTS) {
-        return jsonResponse(searchPayload(query, matches, files, true));
-      }
+// Search owns only request-local candidates. Scan the finite corpus before ranking;
+// failed or capped sources reduce coverage, independently of result overflow.
+async function searchResponse(query, requestedScope) {
+  const corpus = dedupeStrings(SEARCH_CORPUS_PATHS).filter(isSafeRepoPath);
+  let scope = null;
+  if (requestedScope !== null) {
+    scope = String(requestedScope).trim().replace(/\\/g, "/").replace(/\/+$/, "");
+    if (!scope || !isSafeRepoDirPath(scope)) {
+      return jsonResponse({ error: "invalid_search_scope", message: "Use a safe corpus file or directory path" }, 400);
     }
   }
-
-  return jsonResponse(searchPayload(query, matches, files, false));
+  const paths = corpus.filter((path) => scope === null || path === scope || path.startsWith(`${scope}/`));
+  if (paths.length === 0) {
+    return jsonResponse({ error: "invalid_search_scope", message: "Scope selects no curated corpus files" }, 400);
+  }
+  const candidates = [];
+  const failedPaths = [];
+  const sourceTruncatedPaths = [];
+  let searchedCount = 0;
+  for (const path of paths) {
+    let file;
+    try {
+      file = await fetchRepoFilePayload(path, "");
+    } catch {
+      failedPaths.push({ path, error: "fetch_failed", status: 502 });
+      continue;
+    }
+    if (file.error || typeof file.content !== "string") {
+      failedPaths.push({ path, error: file.error || "invalid_content", status: file.status || 502 });
+      continue;
+    }
+    searchedCount++;
+    if (file.source_truncated || file.truncated) {
+      sourceTruncatedPaths.push(path);
+    }
+    for (const match of searchFileContent(path, file.content.slice(0, MAX_FILE_CHARS), query)) {
+      candidates.push({ ...match, source_url: file.source_url, kind: file.kind });
+    }
+  }
+  const ranked = rankSearchRegions(candidates);
+  const matches = ranked.slice(0, MAX_SEARCH_RESULTS).map(({ quality, round, ...match }) => match);
+  const files = matches.map((match) => ({
+    repo: `${REPO_OWNER}/${REPO_NAME}`, branch: BRANCH, path: match.path,
+    source_url: match.source_url, kind: match.kind,
+    line_start: match.line_start, line_end: match.line_end,
+    line_count: match.line_end - match.line_start + 1, content: match.snippet
+  }));
+  const coverageComplete = failedPaths.length === 0 && sourceTruncatedPaths.length === 0;
+  const resultsTruncated = ranked.length > MAX_SEARCH_RESULTS;
+  return jsonResponse({
+    repo: `${REPO_OWNER}/${REPO_NAME}`, branch: BRANCH, auth: AUTH_MODE,
+    retrieved_at: new Date().toISOString(), query, scope,
+    corpus_count: corpus.length, eligible_file_count: paths.length, searched_count: searchedCount,
+    failed_paths: failedPaths, source_truncated_paths: sourceTruncatedPaths,
+    coverage_complete: coverageComplete, results_truncated: resultsTruncated,
+    result_count: matches.length, truncated: resultsTruncated || !coverageComplete,
+    limits: { max_search_query_chars: MAX_SEARCH_QUERY_CHARS, max_search_results: MAX_SEARCH_RESULTS,
+      search_context_lines: SEARCH_CONTEXT_LINES, max_search_file_chars: MAX_FILE_CHARS },
+    matches, files,
+    ...(searchedCount === 0 ? { error: "search_sources_unavailable", message: "No eligible corpus file could be read" } : {})
+  }, searchedCount === 0 ? 502 : 200);
 }
 
-function searchPayload(query, matches, files, truncated) {
-  return {
-    repo: `${REPO_OWNER}/${REPO_NAME}`,
-    branch: BRANCH,
-    auth: AUTH_MODE,
-    retrieved_at: new Date().toISOString(),
-    query,
-    corpus_count: SEARCH_CORPUS_PATHS.length,
-    result_count: matches.length,
-    truncated,
-    limits: {
-      max_search_query_chars: MAX_SEARCH_QUERY_CHARS,
-      max_search_results: MAX_SEARCH_RESULTS,
-      search_context_lines: SEARCH_CONTEXT_LINES
-    },
-    matches,
-    files
-  };
+// Rounds provide file diversity within each quality tier, never ahead of exact
+// matches. Code-point path order and numeric line order make ties reproducible.
+function rankSearchRegions(candidates) {
+  const counts = new Map();
+  for (const match of candidates) {
+    const key = `${match.quality}:${match.path}`;
+    match.round = counts.get(key) || 0;
+    counts.set(key, match.round + 1);
+  }
+  return candidates.sort((a, b) => b.quality - a.quality || a.round - b.round ||
+    (a.path < b.path ? -1 : a.path > b.path ? 1 : 0) || a.line_start - b.line_start);
 }
 
 function searchFileContent(path, content, query) {
   const lines = String(content || "").split(/\r?\n/);
   const queryText = normalizeSearchQuery(query);
   const tokens = queryText.split(/\s+/).filter(Boolean);
-  const matches = [];
-
+  const regions = [];
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const lineText = line.toLowerCase();
+    const lineText = lines[i].toLowerCase();
     const exact = lineText.includes(queryText);
-    const allTokens = tokens.length > 1 && tokens.every((token) => lineText.includes(token));
-    if (!exact && !allTokens) {
+    if (!exact && !(tokens.length > 1 && tokens.every((token) => lineText.includes(token)))) {
       continue;
     }
-
-    const start = Math.max(0, i - SEARCH_CONTEXT_LINES);
-    const end = Math.min(lines.length - 1, i + SEARCH_CONTEXT_LINES);
-    const snippet = lines.slice(start, end + 1).join("\n");
-    matches.push({
-      path,
-      line_start: start + 1,
-      line_end: end + 1,
-      matched_line: i + 1,
-      snippet
-    });
+    const start = Math.max(0, i - SEARCH_CONTEXT_LINES) + 1;
+    const end = Math.min(lines.length - 1, i + SEARCH_CONTEXT_LINES) + 1;
+    const quality = exact ? 2 : 1;
+    const previous = regions[regions.length - 1];
+    if (previous && start <= previous.line_end) {
+      previous.line_end = end;
+      previous.matched_lines.push(i + 1);
+      if (quality > previous.quality) {
+        previous.quality = quality;
+        previous.matched_line = i + 1;
+      }
+    } else {
+      regions.push({ path, line_start: start, line_end: end, matched_line: i + 1,
+        matched_lines: [i + 1], quality });
+    }
   }
-
-  return matches;
+  return regions.map((region) => ({ ...region,
+    match_type: region.quality === 2 ? "exact" : "all_words",
+    snippet: lines.slice(region.line_start - 1, region.line_end).join("\n") }));
 }
 
 async function fetchDirectoryResponse(dirPath) {

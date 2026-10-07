@@ -135,3 +135,30 @@ The persona-domain coverage ledger lives in
 `docs/support-agent-evals.md`; the executable case catalog lives in
 `docs/support-agent-eval-cases.json`. Deployment, smoke-check, and local eval
 instructions live in `docs/support-agent-runbook.md`.
+
+## Curated Search Contract
+
+Search scans a fixed 46-file public corpus, not the entire repository. It returns
+at most 25 merged overlapping context regions. Exact case-insensitive phrases
+rank before same-line all-word substring matches. Within each quality tier,
+files receive one region before receiving their next; ties use path then line.
+An optional safe file/directory `path` restricts corpus membership. Empty,
+unsafe and non-corpus scopes return 400; omission searches the entire corpus.
+
+`corpus_count` identifies the configured corpus; `eligible_file_count` describes
+the selected scope and `searched_count` counts successful source reads.
+`failed_paths` names unsuccessful reads; `source_truncated_paths` names files
+whose searchable prefix was capped at 140,000 characters. `coverage_complete`
+is true only when all eligible sources were read without that cap.
+`results_truncated` independently means more than 25 merged regions existed.
+The existing `truncated` flag is true for either incomplete coverage or omitted
+results. Exactly 25 regions with complete coverage is not overflow.
+
+Partial reads return HTTP 200 when at least one eligible file was read, even
+when no matches were found; all-source failure returns HTTP 502 with the same
+coverage metadata. Zero matches establish absence only within the completed
+selected corpus search. Follow source-map routes and `getDoc` for evidence
+outside that corpus. The configuration support card is now searchable; its
+automatic support-route selection remains unchanged.
+
+See [ADR-0255](decisions/ADR-0255-support-search-evidence-and-coverage.md).

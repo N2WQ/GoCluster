@@ -61,7 +61,8 @@ scripts/check-support-agent.ps1
 ```
 
 This validates the checked-in instructions, schema, Worker syntax,
-support-route contracts, bounded support search, route extraction, auth
+support-route contracts, search selection/coverage fixtures from
+`scripts/test-support-search.mjs`, route extraction, auth
 behavior, safe-path denial, line windows, and local in-process Worker behavior
 using a dummy token. It does not print or require production secrets.
 
@@ -142,3 +143,15 @@ If the GPT works in the browser but not in the app, treat the Worker as probably
 reachable and check ChatGPT client, model/mode, action approval, workspace
 policy, and action availability. Do not weaken Worker authentication to work
 around a client-specific issue.
+
+## Local Search Measurements
+
+Compare the checked-in Worker with its preceding version using identical
+workspace-backed fetch responses. Record serialized response bytes, elapsed
+local time, eligible/successful fetch counts and coverage for broad and exact
+queries. Repeat with partial failures and capped sources. These measurements
+exclude production network latency and do not establish deployed answer quality.
+The full search may fetch all 46 files; use a corpus path scope to narrow work.
+The search change requires deploying the Worker and updating the GPT action
+schema/instructions together, followed by Preview checks. Repository validation
+alone does not deploy those payloads.

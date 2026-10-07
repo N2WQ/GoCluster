@@ -156,3 +156,12 @@ For each prompt:
    unsupported claim.
 5. If a prompt fails, update either the routing doc, the agent instructions, or
    the authoritative source doc. Do not patch the answer wording only.
+
+## Search Contract Regression
+
+SA-028 verifies scoped discovery of the configuration card and exact ISED
+warnings through the expanded corpus. `scripts/test-support-search.mjs`, invoked
+by the local smoke checker, covers 0/24/25/26 regions, late exact candidates,
+file diversity, overlap line boundaries, scope denial, partial/total failures
+and source-prefix caps. These are retrieval checks, not autonomous action
+selection or deployed answer-quality evidence.

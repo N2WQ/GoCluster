@@ -165,7 +165,7 @@ try {
     Assert-ContainsLiteral $schemaPath "operationId: $operationId" "schema exposes $operationId"
   }
   Assert-ContainsLiteral $schemaPath "bearerAuth:" "schema requires bearer auth"
-  Assert-ContainsLiteral $schemaPath "version: 4.7.0" "schema version is 4.7.0"
+  Assert-ContainsLiteral $schemaPath "version: 4.8.0" "schema version is 4.8.0"
   Assert-ContainsLiteral $schemaPath "Choose the most specific symptom route" "schema documents route specificity"
   Assert-ContainsLiteral $schemaPath "SupportRouteResponse" "schema documents support-route response"
   Assert-ContainsLiteral $schemaPath "SearchResponse" "schema documents search response"
@@ -488,6 +488,11 @@ function jsonFetchResponse(body, status = 200) {
     }
   } finally {
     Remove-Item -LiteralPath $tempScript -ErrorAction SilentlyContinue
+  }
+
+  & $nodeCommand.Source (Join-Path $repoRoot "scripts/test-support-search.mjs")
+  if ($LASTEXITCODE -ne 0) {
+    throw "FAIL: support search contract fixtures failed with exit code $LASTEXITCODE"
   }
 
   if ($Deployed) {
