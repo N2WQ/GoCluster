@@ -143,6 +143,11 @@ suspends/locks/restores state rules. These values can differ from operating
 location; do not infer them from a portable prefix, grid or callsign district.
 Enrichment remains active when `fcc_uls.enabled` is false: that flag disables
 license rejection only. Missing/unavailable state stays empty.
+Extraction/rebuilding also makes cached calls unavailable: named state PASS
+filters exclude those spots, named REJECT filters admit them, and archived empty
+states remain empty after refresh. See the
+[FCC filter documentation](../../telnet/README.md#fcc-state-and-territory-filters)
+for the refresh interruption and its measured local duration.
 
 Default GET remains schema 1 and does not expose state fields. Request
 `GET YAML CONFIG SCHEMA 2` or `GET YAML FILTER SCHEMA 2` for `dx_states` and

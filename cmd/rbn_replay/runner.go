@@ -237,8 +237,9 @@ func (r *replayRunner) configureExternalDependencies() error {
 		uls.SetAllowlistPath("")
 	}
 
-	// Replay stays offline. Available local reference data enriches spots even
-	// when enforcement is disabled; a missing optional DB clears prior globals.
+	// Replay registers its local lookup database without downloading reference
+	// data. It does not attach FCC state to replay spots. A missing optional DB
+	// clears prior globals even when enforcement is disabled.
 	dbPath := strings.TrimSpace(cfg.FCCULS.DBPath)
 	if cfg.FCCULS.Enabled {
 		if dbPath == "" {

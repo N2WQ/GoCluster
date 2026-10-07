@@ -30,7 +30,7 @@ func configureFCCStateFixture(t testing.TB, enabled bool) {
 	}
 	_, err = db.ExecContext(t.Context(), `CREATE TABLE AM (unique_system_identifier INTEGER, call_sign TEXT, state TEXT NOT NULL);
 		CREATE INDEX idx_AM_call_sign ON AM(call_sign);
-		INSERT INTO AM VALUES(1,'K1ABC','CA'),(2,'K1XYZ','TX'),(3,'N2AAA','AP');
+		INSERT INTO AM VALUES(1,'K1ABC','CA'),(2,'K1XYZ','TX'),(3,'N2AAA','AP'),(4,'K1ABD','TX');
 		PRAGMA user_version=1;`)
 	closeErr := db.Close()
 	if err != nil || closeErr != nil {

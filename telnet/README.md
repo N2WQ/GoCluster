@@ -195,9 +195,9 @@ See [ADR-0251](../docs/decisions/ADR-0251-exact-call-paged-history.md) and
 
 `SHOW/FILTER` and `SH/FILTER` accept the same FULL/category arguments in the
 `cc` dialect. The category names are BAND, MODE, SOURCE, EVENT, CONFIDENCE,
-PATH, DXCONT, DECONT, DXZONE, DEZONE, DXGRID2, DEGRID2, DXDXCC, DEDXCC, DXCALL,
-DECALL, BEACON, WWV, WCY, ANNOUNCE, SELF, TOXIC and NEARBY. CONF is an alias
-for CONFIDENCE, and PC93 is an alias for ANNOUNCE.
+PATH, DXCONT, DECONT, DXZONE, DEZONE, DXGRID2, DEGRID2, DXDXCC, DEDXCC, DXSTATE,
+DESTATE, DXCALL, DECALL, BEACON, WWV, WCY, ANNOUNCE, SELF, TOXIC and NEARBY.
+CONF is an alias for CONFIDENCE, and PC93 is an alias for ANNOUNCE.
 
 The overview shows finite selections by name, wrapping onto continuation
 lines in stable order. This applies to BAND, MODE, SOURCE, EVENT, PATH,
@@ -412,6 +412,7 @@ No response is truncated.
 | Resource fields | Representation |
 | --- | --- |
 | `bands`, `modes`, `sources`, `events`, `confidence`, `path_classes`, `dx_continents`, `de_continents`, `dx_grid2`, `de_grid2` | RuleSet: `allow_all`/`block_all` booleans and `allow`/`block` maps of string keys to booleans. |
+| `dx_states`, `de_states` (schema 2 only) | The same four RuleSet members, with uppercase FCC mailing-state codes as string keys. |
 | `dx_zones`, `de_zones`, `dx_dxcc`, `de_dxcc` | The same four RuleSet members, with integer rule keys. |
 | `dx_callsigns`, `block_dx_callsigns`, `de_callsigns`, `block_de_callsigns` | Ordered string lists; duplicate patterns are preserved. |
 | `include_beacons`, `allow_wwv`, `allow_wcy`, `allow_announce`, `allow_self`, `allow_toxic` | Explicit `true`, explicit `false` or the string `DEFAULT`. |
@@ -774,7 +775,7 @@ not trigger automatic pausing themselves.
 While `NEARBY` is active:
 
 - the regular location filters are suspended
-- human `PASS`/`REJECT` attempts to change `DXGRID2`, `DEGRID2`, `DXCONT`, `DECONT`, `DXZONE`, `DEZONE`, `DXDXCC`, and `DEDXCC` are rejected with a warning
+- human `PASS`/`REJECT` attempts to change `DXGRID2`, `DEGRID2`, `DXCONT`, `DECONT`, `DXZONE`, `DEZONE`, `DXDXCC`, `DEDXCC`, `DXSTATE`, and `DESTATE` are rejected with a warning
 - `SHOW FILTER` reports `Nearby On` with the grid, or explains unavailable cells
 - spot delivery uses the least-suppressive available dedupe policy while usable grid-backed cells are present
 
@@ -853,6 +854,14 @@ comes from the licensee's mailing address and can differ from the operating
 location. The final corrected DX base call determines DXSTATE; portable
 operating prefixes do not imply a state. Missing or unavailable data remains
 empty and never creates a license record.
+
+During FCC archive extraction and database rebuilding, lookups return unknown
+state even for previously cached calls. Named state PASS lists therefore exclude
+these spots; named REJECT lists let unknown states through that category. Newly
+archived empty states remain empty after the refresh; history does not backfill
+them. The full sample rebuild took approximately five minutes locally (see
+[validation evidence](../docs/fcc-state-validation.md#full-sample)); refresh
+duration depends on the installation.
 
 New archive records store the observed state values. Older versions remain
 readable with unknown state; history does not look up current FCC addresses.
