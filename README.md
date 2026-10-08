@@ -116,7 +116,8 @@ with the station and frequency you actually heard. `HELP DX` explains the syntax
 
 Filters let you choose which reports to see. Different categories work
 together: allowing a band does not bypass your mode, location, or other filters.
-Use `SHOW FILTER` to confirm the result and `RESUME` to end the reading pause.
+Use `SHOW FILTER` to confirm the result. Filter readbacks temporarily pause
+live spots. Type `RESUME` when ready, or wait for the pause to expire.
 
 `PASS` adds allowed values and removes those values from the blocked list.
 `REJECT` adds blocked values and removes those values from the allowed list.
@@ -135,7 +136,6 @@ selection.
 REJECT BAND ALL
 PASS BAND 20m,40m
 SHOW FILTER BAND
-RESUME
 ```
 
 Other filter categories still apply. To clear band restrictions, use
@@ -147,7 +147,6 @@ Other filter categories still apply. To clear band restrictions, use
 REJECT MODE ALL
 PASS MODE CW
 SHOW FILTER MODE
-RESUME
 ```
 
 To clear mode restrictions, use `PASS MODE ALL`. `UNKNOWN` is the mode token
@@ -158,7 +157,6 @@ for reports whose mode is blank.
 ```text
 REJECT MODE FT8
 SHOW FILTER MODE
-RESUME
 ```
 
 To allow FT8 again, use `PASS MODE FT8`; this adds it to the allowed modes.
@@ -170,7 +168,6 @@ Use `PASS MODE ALL` if you want every mode instead.
 REJECT SOURCE ALL
 PASS SOURCE HUMAN
 SHOW FILTER SOURCE
-RESUME
 ```
 
 `SKIMMER` is the automated-source category. To clear source restrictions,
@@ -207,7 +204,6 @@ Set your actual grid before enabling this feature:
 SET GRID FN31PR
 PASS NEARBY ON
 SHOW FILTER
-RESUME
 ```
 
 NEARBY keeps reports with either the DX station or the spotter in your nearby
