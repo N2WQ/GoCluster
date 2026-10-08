@@ -176,6 +176,8 @@ Bare numbers are counts, not ADIF selectors.
 SHOW DX K1ABC 10
 SHOW MYDX 10 K1ABC
 SHOW MYDX 3D2/R 10
+SHOW DX 20 COMMENT up 5
+SHOW DX K1ABC 20 COMMENT POTA
 ```
 
 An exact canonical CTY label takes precedence and selects its whole ADIF entity;
@@ -186,6 +188,15 @@ SSID removal. An exact call is never widened to its country when no rows match.
 A supplied selector requires loaded CTY, but a valid full call with unresolved
 country remains a valid exact query. Conflicting canonical labels fail explicitly.
 `SHOW DXCC` detail lookup retains its existing behavior.
+
+Append `COMMENT <phrase>` after the optional selector/count to require a
+case-insensitive literal substring of the stored spot comment. Selector/count
+retain either existing order. The trimmed phrase must contain 1-64 printable
+ASCII bytes; interior spaces, commas, quotes, `*`, `?`, `ALL` and `NONE` remain
+literal text. Mode/report/time tokens removed during ingestion and diagnostics
+added during display are not searched. This explicit selection is mandatory even
+for self-spots; saved filters retain their existing self-spot exception. Searches
+do not change saved rules. NEXT retains the original phrase and grammar.
 
 Every history form applies the page's captured current time minus
 `archive.retention_seconds`; the exact cutoff is included. Select newest matching
@@ -240,7 +251,7 @@ See [telnet state filters](../telnet/README.md#us-state-and-canadian-province-fi
 
 Existing GET YAML commands stay schema 1. `GET YAML CONFIG SCHEMA 2` exposes the
 new `dx_states` and `de_states` RuleSets. Upload body `schema_version` selects
-1, 2 or 3; schema 1 writes preserve hidden state rules. HELP and the main README
+1, 2, 3 or 4; schema 1 writes preserve hidden state rules. HELP and the main README
 retain schema 1 examples for existing clients.
 
 The existing State commands accept 73 codes (60 FCC plus 13 Canadian).
@@ -262,3 +273,41 @@ stable and writes preserve hidden thresholds. Full schema 3 PUT/VALIDATE require
 this map; PATCH omissions preserve it and supplied maps replace it, including
 `{}` to clear it. Presets, reconnects, revisions and history include MINSNR.
 See [telnet minimum SNR](../telnet/README.md#minimum-snr).
+
+## Comment Commands And Schema 4
+
+```text
+PASS COMMENT POTA
+REJECT COMMENT QRT
+REMOVE PASS COMMENT POTA
+REMOVE REJECT COMMENT QRT
+RESET FILTER COMMENT PASS
+RESET FILTER COMMENT REJECT
+RESET FILTER COMMENT
+SHOW FILTER COMMENT
+```
+
+PASS selects comments containing any saved PASS phrase; REJECT blocks comments
+containing any saved REJECT phrase and takes precedence. Other categories still
+apply: PASS BAND 20,40 with PASS COMMENT POTA selects matching POTA comments on
+those bands. Empty comments fail an active PASS list; no PASS phrases impose no
+comment allowlist restriction. Comments are stored text, compared using
+case-insensitive literal substrings with the same phrase rules as archive search.
+
+Repeated commands accumulate distinct phrases up to 32 entries per list.
+Case-equivalent repeats are idempotent; applying the opposite action moves a
+phrase between lists. Individual removal deletes every case-equivalent entry in
+the selected list, and missing phrases are unchanged. Resets clear the selected
+list or both lists; global filter resets also clear comment rules. Invalid or
+over-limit updates change neither list. Rules persist across reconnects, presets,
+configuration baselines and revisions; changes invalidate pending history pages
+and NEXT continuation.
+
+Explicit machine schema 4 adds `comments` and `block_comments` to filter
+configuration. Full PUT/VALIDATE requires both lists; PATCH omission preserves
+each list, supplied lists replace them and `[]` clears. Each phrase is 1-64
+printable ASCII bytes and cannot be blank; exact YAML preserves supplied case,
+spaces, order and duplicates. Every entry counts toward the 32-entry bound,
+including duplicates. Overlapping PASS/REJECT entries retain reject precedence.
+Schemas 1-3 keep their previous shapes and writes preserve hidden comment lists.
+Uploads and framed replies retain the independent 65,536-byte limit.

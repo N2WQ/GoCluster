@@ -124,6 +124,17 @@ class ReaderFixtures(unittest.TestCase):
 
 
 class FrameFixtures(unittest.TestCase):
+    def test_schema_four_preserves_literal_comment_collections(self):
+        body = ('schema_version: 4\nrequest_id: Case-1\nresource: CONFIG\n'
+                'configuration:\n  filters:\n'
+                '    comments: ["up  5: please!", "POTA", "pota"]\n'
+                '    block_comments: ["POTA"]\nstatus: {}\n')
+        document, errors = HARNESS.decode_frame(frame(body), "CONFIG", "Case-1", 4)
+        self.assertEqual(errors, [])
+        self.assertEqual(document["configuration"]["filters"]["comments"],
+                         ["up  5: please!", "POTA", "pota"])
+        self.assertEqual(document["configuration"]["filters"]["block_comments"], ["POTA"])
+
     def test_valid_success_and_error_common_envelopes(self):
         document, errors = HARNESS.decode_frame(frame(), "CONFIG", "Case-1", 3)
         self.assertEqual(document["configuration"], {})
@@ -182,13 +193,13 @@ class HumanEchoFixtures(unittest.TestCase):
 
     def test_exact_response_equal_to_command_survives_single_echo_removal(self):
         command = "PASS DXSTATE ALL"
-        prefix = (command + "\r\n" + command + "\r\nGET YAML CONFIG SCHEMA 3 ID Echo-1\r\n").encode()
+        prefix = (command + "\r\n" + command + "\r\nGET YAML CONFIG SCHEMA 4 ID Echo-1\r\n").encode()
         text, _ = self.session(prefix).human(command, command)
         self.assertEqual(text, command)
 
     def test_echo_only_never_satisfies_expected_response(self):
         command = "PASS DXSTATE ALL"
-        prefix = (command + "\r\nGET YAML CONFIG SCHEMA 3 ID Echo-1\r\n").encode()
+        prefix = (command + "\r\nGET YAML CONFIG SCHEMA 4 ID Echo-1\r\n").encode()
         with self.assertRaises(AssertionError):
             self.session(prefix).human(command, command)
 

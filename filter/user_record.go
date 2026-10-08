@@ -78,7 +78,8 @@ func LoadUserRecord(callsign string) (*UserRecord, error) {
 }
 
 // UnmarshalYAML preserves marked values exactly. Version one initializes only
-// the state domains; version two keeps states, version three admits MINSNR.
+// the state domains; version two keeps states, version three admits MINSNR,
+// and version four additionally admits bounded comment lists.
 // Absent markers invoke historical migrations/defaults.
 // Explicit zero/null/future markers fail without changing persisted bytes.
 func (record *UserRecord) UnmarshalYAML(node *yaml.Node) error {
@@ -90,6 +91,9 @@ func (record *UserRecord) UnmarshalYAML(node *yaml.Node) error {
 		return err
 	}
 	if err := validateStoredMinSNRFields(node, version); err != nil {
+		return err
+	}
+	if err := validateStoredCommentFields(node, version); err != nil {
 		return err
 	}
 	if version != 0 {
@@ -129,6 +133,9 @@ func (record *UserRecord) UnmarshalYAML(node *yaml.Node) error {
 		return err
 	}
 	if err := ConfigurationFromFilter(&record.Filter, SettingsConfiguration{}).ValidateMinSNRRules(); err != nil {
+		return err
+	}
+	if err := ConfigurationFromFilter(&record.Filter, SettingsConfiguration{}).ValidateCommentRules(); err != nil {
 		return err
 	}
 	record.ConfigurationVersion = CurrentConfigurationVersion
@@ -230,6 +237,9 @@ func saveUserRecord(callsign string, record *UserRecord, write func(string, []by
 		return err
 	}
 	if err := ConfigurationFromFilter(&record.Filter, SettingsConfiguration{}).ValidateMinSNRRules(); err != nil {
+		return err
+	}
+	if err := ConfigurationFromFilter(&record.Filter, SettingsConfiguration{}).ValidateCommentRules(); err != nil {
 		return err
 	}
 	// Preserve the caller's captured preferences and baseline. Metadata trimming

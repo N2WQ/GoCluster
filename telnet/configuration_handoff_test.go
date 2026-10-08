@@ -145,7 +145,7 @@ func assertHandoffDiskLiteral(t *testing.T, path string) {
 		path       []string
 		tag, value string
 	}{
-		{[]string{"configuration_version"}, "!!int", "3"},
+		{[]string{"configuration_version"}, "!!int", "4"},
 		{[]string{"noise_class"}, "!!str", "URBAN"},
 		{[]string{"dedupe_policy"}, "!!str", "FAST"},
 		{[]string{"path_min_observation_count"}, "!!int", "25"},
@@ -153,7 +153,7 @@ func assertHandoffDiskLiteral(t *testing.T, path string) {
 		{[]string{"bands", "20m"}, "!!bool", "true"},
 		{[]string{"bands", "40m"}, "!!bool", "false"},
 		{[]string{"preset", "name"}, "!!str", "CONTEST"},
-		{[]string{"preset", "baseline", "configuration_version"}, "!!int", "3"},
+		{[]string{"preset", "baseline", "configuration_version"}, "!!int", "4"},
 		{[]string{"preset", "baseline", "noise_class"}, "!!str", "QUIET"},
 		{[]string{"preset", "baseline", "bands", "40m"}, "!!bool", "false"},
 	} {

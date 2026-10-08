@@ -158,7 +158,7 @@ choice-object fields. A near-limit schema 1 configuration can produce an explici
 schema 2 size error; reduce ordinary rules using schema 1 rather than truncating
 or discarding hidden fields.
 
-New saved records use version 3; legacy/version 1 initializes new states
+New saved records use version 4; legacy/version 1 initializes new states
 as unrestricted, version 2 states remain exact, and older versions acquire no
 MINSNR thresholds, including nested preset baselines. Protected malformed/future
 records must not be rewritten. New archive version 6 stores observed state;
@@ -181,7 +181,7 @@ The same DXSTATE/DESTATE fields accept all 13 province/territory codes alongside
 the 60 FCC codes. Base-call CTY selects source, including foreign portable calls.
 Events use inclusive UTC dates; a prefix match means callsign plausibility,
 without proving eligibility. History uses stored State. Layout versions stay
-archive 6, saved preferences 3 and machine YAML 1/2/3; older binaries may reject
+archive 6, saved preferences 4 and machine YAML 1/2/3/4; older binaries may reject
 Canadian codes, so downgrade with matching backups. Route source/failure details
 to [ADR-0254](../../docs/decisions/ADR-0254-canadian-ised-license-and-state-reuse.md)
 and [configuration](../../data/config/README.md#canadian-ised-reference-data).
@@ -223,3 +223,25 @@ profile/preset backups, rather than editing only the version marker. Archive
 format and report parsing do not change for this feature. See the
 [telnet MINSNR contract](../../telnet/README.md#minimum-snr) and
 [ADR-0258](../../docs/decisions/ADR-0258-per-mode-minimum-snr-filter.md).
+
+## Literal Comment Rules
+
+Retrieve [the comment contract](../../telnet/README.md#comment-filters-and-searches)
+for PASS/REJECT COMMENT, REMOVE PASS/REJECT COMMENT and RESET FILTER COMMENT.
+These use stored comments, case-insensitive literal matching, 32 entries per
+list and 64 printable ASCII bytes per phrase. An active PASS list hides ordinary
+nonmatching/empty comments; EVENT's untagged exemption does not apply.
+Spaces/punctuation inside a phrase are literal. ALL/NONE/*/? are not operators.
+
+Use SHOW FILTER COMMENT or GET YAML FILTER SCHEMA 4 for inspection. Schema 4
+requires `comments`/`block_comments` on full PUT/VALIDATE; PATCH omission preserves,
+supplied lists replace and `[]` clears. Exact YAML retains duplicates/overlap,
+counting every entry, with REJECT precedence. Schemas 1-3 preserve hidden rules.
+Disk saves now use version 4; existing v3 minima remain supported. Distinguish
+human live-edit/save warnings from atomic machine persistence failures.
+
+SHOW DX/MYDX accepts COMMENT after selector/count options. Its phrase is mandatory
+even for self-spots, while saved filters retain existing self exceptions. Follow
+the returned NEXT command; comment edits invalidate continuation. A rare match
+may exhaust a page's scan budget, which is incomplete search rather than absence.
+See [ADR-0261](../../docs/decisions/ADR-0261-literal-comment-filter-and-history.md).

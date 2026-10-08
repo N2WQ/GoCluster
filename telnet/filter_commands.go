@@ -206,6 +206,14 @@ func (e *filterCommandEngine) Handle(client *Client, line string) (string, bool)
 }
 
 func (e *filterCommandEngine) handleOwned(client *Client, line string) (string, bool) {
+	if resp, handled, mutated := handleCommentFilterCommand(client, line); handled {
+		if mutated {
+			if err := client.saveFilterOwned(); err != nil {
+				log.Printf("Warning: failed to persist filter for %s: %v", client.callsign, err)
+			}
+		}
+		return resp, true
+	}
 	tokens := strings.Fields(strings.TrimSpace(line))
 	if len(tokens) == 0 {
 		return "", false

@@ -199,7 +199,7 @@ func writeHumanHeader(h *humanResponse, c *Client, status configurationReadbackS
 }
 
 var humanCategoryNames = map[string]string{
-	"BAND": "Bands", "MODE": "Modes", "MINSNR": "Minimum SNR", "SOURCE": "Sources", "EVENT": "Events",
+	"BAND": "Bands", "MODE": "Modes", "MINSNR": "Minimum SNR", "SOURCE": "Sources", "EVENT": "Events", "COMMENT": "Comments",
 	"CONFIDENCE": "Confidence", "PATH": "Path", "DXCONT": "DX continents",
 	"DECONT": "DE continents", "DXZONE": "DX zones", "DEZONE": "DE zones",
 	"DXGRID2": "DX grids", "DEGRID2": "DE grids", "DXDXCC": "DX DXCC",

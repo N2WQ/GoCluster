@@ -84,7 +84,8 @@ func (c *Client) readInputLine(maxLen int, context string, allowComma, allowWild
 			continue
 		}
 		allowed := ""
-		if len(line) >= maxLen || !isAllowedInputByte(b, allowComma, allowWildcard, allowConfidence, allowDot) {
+		commentByte := machineAware && b >= 32 && b <= 126 && commentArgumentsStarted(line)
+		if len(line) >= maxLen || (!commentByte && !isAllowedInputByte(b, allowComma, allowWildcard, allowConfidence, allowDot)) {
 			allowed = allowedCharacterList(allowComma, allowWildcard, allowConfidence, allowDot)
 		}
 		if len(line) >= maxLen {
@@ -217,19 +218,22 @@ func parseMachineHeader(line string) (machineCommand, bool, error) {
 	}
 	remaining := args[3:]
 	if len(remaining) >= 2 && strings.EqualFold(remaining[0], "SCHEMA") {
-		if remaining[1] != "2" && remaining[1] != "3" {
-			return cmd, true, fmt.Errorf("GET YAML SCHEMA requires version 2 or 3")
+		if remaining[1] != "2" && remaining[1] != "3" && remaining[1] != "4" {
+			return cmd, true, fmt.Errorf("GET YAML SCHEMA requires version 2, 3 or 4")
 		}
-		if remaining[1] == "3" {
+		switch remaining[1] {
+		case "4":
+			cmd.SchemaVersion = 4
+		case "3":
 			cmd.SchemaVersion = 3
-		} else {
+		default:
 			cmd.SchemaVersion = 2
 		}
 		remaining = remaining[2:]
 	}
 	if len(remaining) != 0 {
 		if len(remaining) != 2 || !strings.EqualFold(remaining[0], "ID") || !validMachineRequestID(remaining[1]) {
-			return cmd, true, fmt.Errorf("GET YAML permits [SCHEMA 2|3] [ID <1-32 ASCII letters, digits or hyphens>]")
+			return cmd, true, fmt.Errorf("GET YAML permits [SCHEMA 2|3|4] [ID <1-32 ASCII letters, digits or hyphens>]")
 		}
 		cmd.RequestID = remaining[1]
 	}

@@ -390,6 +390,9 @@ func writeHumanOverview(h *humanResponse, cfg filter.FilterConfiguration, status
 	if err := writeHumanMinSNR(h, cfg.MinSNR, true); err != nil {
 		return err
 	}
+	if err := writeHumanComments(h, cfg.Comments, cfg.BlockComments, true); err != nil {
+		return err
+	}
 	if err := h.row("Sources", humanSourceSummary(cfg.Sources)); err != nil {
 		return err
 	}

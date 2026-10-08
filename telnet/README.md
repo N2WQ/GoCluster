@@ -95,6 +95,73 @@ or archive records.
 spots and archive-backed history queries. Local self-spot bypasses still honor
 `REJECT TOXIC` once a spot is classified as `TOXIC`.
 
+## Comment Filters And Searches
+
+`PASS COMMENT <phrase>` adds a case-insensitive literal substring to the comment
+allowlist; `REJECT COMMENT <phrase>` adds one to the reject list. Match only the
+stored comment, after ingestion cleanup. Removed mode/report/time tokens,
+synthetic beacon fallbacks and per-user diagnostic display text are not searched.
+
+Any PASS phrase satisfies the comment domain; any matching REJECT phrase wins.
+Other filter domains still apply. Empty/nonmatching comments fail a nonempty
+PASS list; an empty PASS list imposes no comment restriction. Existing live and
+history self-spot exceptions remain in force for saved filters. Unlike EVENT,
+COMMENT does not exempt ordinary untagged spots.
+
+```text
+PASS BAND 20,40
+PASS COMMENT POTA
+PASS COMMENT up  5: please!
+REJECT COMMENT QRT
+REMOVE PASS COMMENT POTA
+REMOVE REJECT COMMENT QRT
+RESET FILTER COMMENT PASS
+RESET FILTER COMMENT REJECT
+RESET FILTER COMMENT
+SHOW FILTER COMMENT
+SHOW DX K1ABC 20 COMMENT POTA
+SHOW MYDX 20 COMMENT up 5
+```
+
+These base commands work in both dialects. Each command supplies one phrase,
+not a comma-separated list. Trim only surrounding ASCII spaces in human commands;
+preserve interior spaces and punctuation. Quotes, commas, `*`, `?`, `ALL`, and
+`NONE` are literal text, with no quoting, escaping, wildcard or reset meaning.
+COMMENT arguments permit printable ASCII punctuation specifically; other
+command and login character restrictions remain unchanged.
+
+Each list admits at most 32 retained entries, and each phrase contains 1-64
+printable ASCII bytes with at least one non-space character. The independent
+configured command-line ceiling still applies to the whole command. Invalid or
+over-limit operations fail before any move/add/removal. Human additions are
+case-insensitive and idempotent; moving or removing a phrase deletes all
+case-equivalent opposite/selected entries. All filter resets clear comments.
+Human commands retain existing live-update-then-save behavior; a disk failure
+is logged and does not roll back a human filter edit.
+
+`SHOW DX`/`SHOW MYDX` accept COMMENT after their existing optional selector/count
+arguments. Existing aliases retain their restrictions. Everything after COMMENT
+is the search phrase; count/selector options must precede it. This phrase is a
+mandatory additional condition, including for self-spots; saved user filters
+retain their existing self exceptions. Search changes no preferences. Matching
+occurs before rows are counted, and returned NEXT commands retain the phrase.
+Changing saved comment rules invalidates continuation and pending publication.
+Retention, page counts, work budgets, errors and warnings remain as documented
+under [archive history](#archive-history-and-continuation).
+
+Rules survive reconnects and presets. Explicit machine schema 4 adds `comments`
+and `block_comments` lists; full PUT/VALIDATE requires both. PATCH omission
+preserves a list; a supplied list replaces it, including `[]` to clear. Null,
+wrong-type, empty/space-only, non-ASCII and over-limit entries are errors.
+YAML preserves exact valid case, spaces, order and duplicates; every entry counts
+toward the cap. Cross-list overlap is retained and REJECT wins at matching.
+Schema 4 CAPABILITIES exposes phrase limits and status/readbacks expose counts.
+Schemas 1-3 retain their shapes and preserve hidden comment rules during writes.
+New disk saves use configuration version 4; older profiles, presets and applied
+baselines acquire empty comment lists while preserving state/SNR rules. Malformed
+rules and unsupported versions protect stored data instead of truncating it.
+See [ADR-0261](../docs/decisions/ADR-0261-literal-comment-filter-and-history.md).
+
 ## Canonical DXCC Prefixes
 
 DXCC filters accept exact canonical CTY prefixes (case-insensitive) as well as
@@ -406,6 +473,7 @@ The following canonical commands work independently of the human dialect:
 | `GET YAML CAPABILITIES [ID <id>]` | Discover version, fields, supported choices, availability and limits. |
 | `GET YAML <resource> SCHEMA 2 [ID <id>]` | Opt in to schema 2, including state rules. |
 | `GET YAML <resource> SCHEMA 3 [ID <id>]` | Include state rules and per-mode minimum SNR. |
+| `GET YAML <resource> SCHEMA 4 [ID <id>]` | Also include literal comment PASS/REJECT lists. |
 | `PUT YAML FILTER`, `PUT YAML SETTINGS`, `PUT YAML CONFIG` | Replace the complete writable resource. |
 | `PATCH YAML FILTER`, `PATCH YAML SETTINGS`, `PATCH YAML CONFIG` | Change supplied fields, preserving omissions. |
 | `VALIDATE YAML CONFIG` | Check a complete proposal without applying or saving it. |
@@ -434,7 +502,7 @@ PUT/PATCH/VALIDATE preserves state rules hidden from that format; supplying
 `dx_states` or `de_states` in a schema 1 upload is an unknown-field error.
 Schema 2 adds those two string RuleSets, accepting the 73 uppercase US/Canadian
 codes. Its complete PUT/VALIDATE requires both domains; PATCH preserves omitted
-fields. Upload headers stay unchanged: the body `schema_version: 1`, `2` or `3`
+fields. Upload headers stay unchanged: the body `schema_version: 1`, `2`, `3` or `4`
 selects its vocabulary. A single revision covers all preferences, so a hidden
 state-only change conflicts with a stale schema 1 write. Schema selection itself
 does not alter the revision, pause, preset or history continuation.
@@ -444,7 +512,9 @@ Schema 1 capabilities retain their original shape and advertise `[1, 2, 3]` in
 choices. Schema 1 writes retain their existing 64 KiB projection limit; the
 four hidden state maps are separately limited to 73 canonical keys each before
 cloning. Hidden MINSNR maps in schemas 1/2 retain their independent entry/key-byte
-bounds. Schema 3 exposes the full map and checks the full CONFIG budget.
+bounds. Schema 3 exposes the full MINSNR map and checks its visible CONFIG budget.
+Schema 4 additionally exposes bounded comment lists. Older schemas independently
+validate hidden comment bounds without charging hidden bytes to visible output.
 Schema 2 writes must fit the complete schema 2 CONFIG response. Large
 ordinary human configurations remain supported; an oversized schema 2 GET
 returns an explicit error, with schema 1 still available to reduce the rules.
@@ -454,9 +524,10 @@ No response is truncated.
 
 | Resource fields | Representation |
 | --- | --- |
-| `min_snr` (schema 3) | A bounded map of exact uppercase mode names to signed integers; presence enables zero and negative thresholds. |
+| `min_snr` (schemas 3/4) | A bounded map of exact uppercase mode names to signed integers; presence enables zero and negative thresholds. |
+| `comments`, `block_comments` (schema 4) | Exact printable ASCII phrase lists; 32 entries each, 1-64 bytes each; duplicates/overlaps are retained and REJECT wins. |
 | `bands`, `modes`, `sources`, `events`, `confidence`, `path_classes`, `dx_continents`, `de_continents`, `dx_grid2`, `de_grid2` | RuleSet: `allow_all`/`block_all` booleans and `allow`/`block` maps of string keys to booleans. |
-| `dx_states`, `de_states` (schemas 2/3) | The same four RuleSet members, with uppercase US mailing-state and Canadian province/territory codes as string keys. |
+| `dx_states`, `de_states` (schemas 2/3/4) | The same four RuleSet members, with uppercase US mailing-state and Canadian province/territory codes as string keys. |
 | `dx_zones`, `de_zones`, `dx_dxcc`, `de_dxcc` | The same four RuleSet members, with integer rule keys. |
 | `dx_callsigns`, `block_dx_callsigns`, `de_callsigns`, `block_de_callsigns` | Ordered string lists; duplicate patterns are preserved. |
 | `include_beacons`, `allow_wwv`, `allow_wcy`, `allow_announce`, `allow_self`, `allow_toxic` | Explicit `true`, explicit `false` or the string `DEFAULT`. |
@@ -541,7 +612,7 @@ retrying. Pause, diagnostics and login metadata do not count as configuration
 edits. Reordering otherwise identical patterns does not change the revision
 or `(modified)`; the displayed order and duplicate multiplicity are retained.
 
-Uploads require supported `schema_version: 1`, `2` or `3`, `request_id` and `configuration`.
+Uploads require supported `schema_version: 1`, `2`, `3` or `4`, `request_id` and `configuration`.
 PUT/PATCH additionally require `if_revision`. VALIDATE CONFIG requires the
 complete configuration; `if_revision` is optional because it does not write.
 Its result reports `valid: true`, `applied: false` and `persisted: false` on
@@ -694,10 +765,11 @@ clean up their temporary files; a cleanup failure is logged for the operator.
 
 ### Persistence Format And Rollback
 
-New records and snapshots carry `configuration_version: 3`. An absent marker
+New records and snapshots carry `configuration_version: 4`. An absent marker
 selects historical legacy migration; version 1 retains all old exact values and
 initializes only the new state domains as unrestricted. Legacy/version 1/2 records
-acquire no MINSNR thresholds; version 2 state rules remain exact. Nested preset
+acquire no MINSNR thresholds; version 2 state rules remain exact. Versions 0-3
+acquire empty comment lists; version 3 MINSNR remains exact. Nested preset
 baselines
 follow the same migration, preserving their modification status. New versions
 are written on the next ordinary successful save; there is no bulk rewrite. Invalid markers, explicit zero and unknown

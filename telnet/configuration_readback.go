@@ -57,6 +57,12 @@ type configurationReadbackStatus struct {
 	Server     readbackServerStatus         `yaml:"server"`
 	Preset     readbackPresetStatus         `yaml:"preset"`
 	MinSNR     *readbackMinSNRStatus        `yaml:"min_snr,omitempty"`
+	Comments   *readbackCommentStatus       `yaml:"comments,omitempty"`
+}
+
+type readbackCommentStatus struct {
+	PassCount   int `yaml:"pass_count"`
+	RejectCount int `yaml:"reject_count"`
 }
 
 type readbackMinSNRStatus struct {
@@ -65,10 +71,10 @@ type readbackMinSNRStatus struct {
 	InactiveModes   []string `yaml:"inactive_modes"`
 }
 
-// Activity is derived from exact stored keys, never from alias rebinding. The
+// Minimum activity and phrase counts come from exact saved rules. The
 // schema gate preserves old status shapes; validation bounds the list before
 // construction and the complete envelope budget includes its repeated keys.
-func attachReadbackMinSNR(status configurationReadbackStatus, cfg filter.Configuration, version int) (configurationReadbackStatus, error) {
+func attachReadbackFilterStatus(status configurationReadbackStatus, cfg filter.Configuration, version int) (configurationReadbackStatus, error) {
 	if version < 3 {
 		return status, nil
 	}
@@ -84,6 +90,12 @@ func attachReadbackMinSNR(status configurationReadbackStatus, cfg filter.Configu
 	sort.Strings(activity.InactiveModes)
 	activity.InactiveCount = len(activity.InactiveModes)
 	status.MinSNR = activity
+	if version >= 4 {
+		if err := cfg.ValidateCommentRules(); err != nil {
+			return status, err
+		}
+		status.Comments = &readbackCommentStatus{PassCount: len(cfg.Filters.Comments), RejectCount: len(cfg.Filters.BlockComments)}
+	}
 	return status, nil
 }
 
@@ -218,9 +230,12 @@ func (s *Server) renderYAMLReadbackVersion(c *Client, resource, requestID, revis
 	status := s.captureReadbackStatus(c, nil)
 	var response string
 	err := c.withBorrowedConfiguration(func(cfg filter.Configuration) error {
+		if err := cfg.ValidateCommentRules(); err != nil {
+			return err
+		}
 		status = attachReadbackConfiguration(status, c, cfg)
 		var err error
-		status, err = attachReadbackMinSNR(status, cfg, version)
+		status, err = attachReadbackFilterStatus(status, cfg, version)
 		if err != nil {
 			return err
 		}
@@ -265,7 +280,7 @@ func (s *Server) configurationReadbackFitsVersion(c *Client, cfg filter.Configur
 	}
 	status := attachReadbackConfiguration(s.captureReadbackStatus(c, prepared), c, cfg)
 	var err error
-	status, err = attachReadbackMinSNR(status, cfg, version)
+	status, err = attachReadbackFilterStatus(status, cfg, version)
 	if err != nil {
 		return err
 	}

@@ -48,8 +48,9 @@ type readbackValueChoices struct {
 		MinimumExclusive  int  `yaml:"minimum_exclusive"`
 		Maximum           int  `yaml:"maximum"`
 	} `yaml:"path_min_observation_count"`
-	SolarSummaryMinutes []int                  `yaml:"solar_summary_minutes"`
-	MinSNR              *readbackMinSNRChoices `yaml:"min_snr,omitempty"`
+	SolarSummaryMinutes []int                   `yaml:"solar_summary_minutes"`
+	MinSNR              *readbackMinSNRChoices  `yaml:"min_snr,omitempty"`
+	Comments            *readbackCommentChoices `yaml:"comments,omitempty"`
 }
 
 type readbackMinSNRChoices struct {
@@ -57,6 +58,13 @@ type readbackMinSNRChoices struct {
 	Maximum     int `yaml:"maximum"`
 	MaxEntries  int `yaml:"max_entries"`
 	MaxKeyBytes int `yaml:"max_key_bytes"`
+}
+
+type readbackCommentChoices struct {
+	Characters     string `yaml:"characters"`
+	MaxPhrases     int    `yaml:"max_phrases_per_list"`
+	MaxPhraseBytes int    `yaml:"max_phrase_bytes"`
+	Matching       string `yaml:"matching"`
 }
 
 func (s *Server) readbackCapabilitiesVersion(version int) any {
@@ -75,10 +83,17 @@ func (s *Server) readbackCapabilitiesVersion(version int) any {
 		fields = machineFilterFieldsV2[:]
 		categories = append(categories, "DXSTATE", "DESTATE")
 	}
-	if machineSchemaVersion(version) == 3 {
+	if machineSchemaVersion(version) >= 3 {
 		fields = machineFilterFieldsV3[:]
 		categories = append(categories, "MINSNR")
 		choices.MinSNR = &readbackMinSNRChoices{Minimum: math.MinInt, Maximum: math.MaxInt, MaxEntries: filter.MaxMinSNREntries, MaxKeyBytes: filter.MaxMinSNRKeyBytes}
+	}
+	versions := []int{1, 2, 3}
+	if machineSchemaVersion(version) >= 4 {
+		fields = machineFilterFieldsV4[:]
+		categories = append(categories, "COMMENT")
+		choices.Comments = &readbackCommentChoices{Characters: "printable ASCII (space through ~), with non-space text", MaxPhrases: filter.MaxCommentPhrases, MaxPhraseBytes: filter.MaxCommentPhraseBytes, Matching: "case-insensitive literal substring; REJECT wins"}
+		versions = append(versions, 4)
 	}
 	choices.Grid2.FirstCharacter, choices.Grid2.SecondCharacter = "A-R", "A-R"
 	choices.CallsignPatterns.Characters = "A-Z a-z 0-9 / -"
@@ -113,7 +128,7 @@ func (s *Server) readbackCapabilitiesVersion(version int) any {
 		AdvancedYAML          bool                 `yaml:"advanced_yaml_features"`
 	}{
 		Commands:  []string{"GET YAML FILTER", "GET YAML SETTINGS", "GET YAML CONFIG", "GET YAML CAPABILITIES", "PUT YAML FILTER", "PUT YAML SETTINGS", "PUT YAML CONFIG", "PATCH YAML FILTER", "PATCH YAML SETTINGS", "PATCH YAML CONFIG", "VALIDATE YAML CONFIG"},
-		Resources: []string{"FILTER", "SETTINGS", "CONFIG", "CAPABILITIES"}, SchemaVersions: []int{1, 2, 3},
+		Resources: []string{"FILTER", "SETTINGS", "CONFIG", "CAPABILITIES"}, SchemaVersions: versions,
 		FilterCategories: categories,
 		FilterFields:     fields, Settings: machineSettingFields[:], RuleSetFields: []string{"allow_all", "block_all", "allow", "block"}, Choices: choices,
 		DedupeAvailable:       map[string]bool{"FAST": s != nil && s.dedupeFastEnabled, "MED": s != nil && s.dedupeMedEnabled, "SLOW": s != nil && s.dedupeSlowEnabled},

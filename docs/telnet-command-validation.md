@@ -5,7 +5,8 @@ preset test (38 commands, conversation `01a10480-fa10-76c3-ad00-6374493f3d99`).
 The original evidence remains in `.tmp/preset-live-current.log` and `.json`.
 The current harness covers that preset sequence and the subsequent command
 families found in current dispatch, HELP, source tests and ADR-0243 through
-ADR-0258. It changes no production implementation or operator contract.
+ADR-0261. The current harness requires schema 4 to snapshot and restore comment
+preferences, including hidden-field preservation checks for older schemas.
 
 Run only against an owner-authorized server. It creates numeric SSIDs under the
 supplied base call, changes their preferences, creates/deletes uniquely named
@@ -41,11 +42,12 @@ bytes; strict application responses still fail above 65,536 bytes.
 | Contract | Live stimulus and falsifiable observation | Deterministic supplement |
 |---|---|---|
 | Telnet framing and correlation | Split-capable IAC decoding; complete YAML markers, resource/version/request ID, raw CRLF and final byte count | Offline split, EOF, timeout, malformed marker, duplicate-key, identity and echo fixtures |
-| Human readbacks | Both dialects; overview, FULL, 26 categories and CONF/PC93 aliases; headings, representative values, 78 printable-ASCII columns, delivery hold | Existing configuration human/readback tests |
+| Human readbacks | Both dialects; overview, FULL, 27 categories and CONF/PC93 aliases; headings, representative values, 78 printable-ASCII columns, delivery hold | Existing configuration human/readback tests |
 | Human filter commands | PASS/REJECT and CC mutations; barrier GET verifies maps, lists and toggles; mixed-invalid lists preserve configuration/revision | State, MINSNR, canonical DXCC and GRID2 package tests |
 | Settings and diagnostics | GRID, NOISE, PATHSAMPLES, SOLAR, DEDUPE, DIAG, DIALECT; exact configuration/status after commands | Existing command/settings tests |
 | Pause | Default, 1/300 boundaries, invalid durations, SHOW HOLD, RESUME; state and remaining duration | Existing manual/delivery-timed pause tests |
-| Machine schema versions | All GET resources in schemas 1/2/3; old shapes and hidden-field preservation | State/MINSNR projection golden fixtures |
+| Machine schema versions | All GET resources in schemas 1/2/3/4; old shapes and hidden-field preservation | State/MINSNR/comment projection and transaction fixtures |
+| Comment rules/search | Literal punctuation/repeated spaces, idempotent additions, opposite moves, removal/clears, 64/65-byte phrases; labeled archive query | Matching truth tables, 32/33-entry limits, snapshots, concurrent invalidation, storage and parser fuzz fixtures |
 | PUT/PATCH | Unchanged and changed PUT for every writable resource; PATCH collection replacement and omission preservation; fresh revisions | Existing machine transaction/persistence-failure tests |
 | Validation and conflicts | VALIDATE changes neither revision nor configuration; stale writes and malformed values reject atomically | Existing machine schema/transaction tests |
 | Presets | Case normalization, ordered listing, cross-SSID sharing, exact new-field round trips, overwrite, invalid inputs, CC/NEARBY and reconnect, association/modified state, deletion without preference changes | Existing preset ownership, disk failure and transaction tests |
@@ -72,7 +74,7 @@ The main callsign is used only for GET and BUILD discovery. Its persisted
 preferences are checked unchanged. Ordinary login bookkeeping still occurs.
 Mutation uses numeric SSIDs. The harness refuses protected temporary defaults or
 an existing preset association before modifying a test profile. It snapshots
-each profile's exact schema-3 configuration before changes and saves snapshots
+each profile's exact schema-4 configuration before changes and saves snapshots
 to `baselines.json`.
 
 Cleanup runs in `finally`, closes active test sockets and uses fresh connections

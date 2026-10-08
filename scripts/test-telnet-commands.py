@@ -18,8 +18,8 @@ import yaml
 
 MAX_FRAME = 65536
 MAX_BUFFER = 262144
-CATEGORIES = "BAND MODE MINSNR SOURCE EVENT CONFIDENCE PATH DXCONT DECONT DXZONE DEZONE DXGRID2 DEGRID2 DXDXCC DEDXCC DXSTATE DESTATE DXCALL DECALL BEACON WWV WCY ANNOUNCE SELF TOXIC NEARBY".split()
-HEADINGS = dict(zip(CATEGORIES, ["Bands", "Modes", "Minimum SNR", "Sources", "Events", "Confidence", "Path", "DX continents", "DE continents", "DX zones", "DE zones", "DX grids", "DE grids", "DX DXCC", "DE DXCC", "DX states", "DE states", "DX calls", "DE calls", "Beacons", "WWV", "WCY", "Announce", "Self", "Toxic", "Nearby"]))
+CATEGORIES = "BAND MODE MINSNR COMMENT SOURCE EVENT CONFIDENCE PATH DXCONT DECONT DXZONE DEZONE DXGRID2 DEGRID2 DXDXCC DEDXCC DXSTATE DESTATE DXCALL DECALL BEACON WWV WCY ANNOUNCE SELF TOXIC NEARBY".split()
+HEADINGS = dict(zip(CATEGORIES, ["Bands", "Modes", "Minimum SNR", "Comments", "Sources", "Events", "Confidence", "Path", "DX continents", "DE continents", "DX zones", "DE zones", "DX grids", "DE grids", "DX DXCC", "DE DXCC", "DX states", "DE states", "DX calls", "DE calls", "Beacons", "WWV", "WCY", "Announce", "Self", "Toxic", "Nearby"]))
 
 
 class StrictLoader(yaml.SafeLoader):
@@ -165,7 +165,7 @@ class Session:
             self.suite.wire_failures.append({"call": self.call, "command": command, "errors": errors})
         return document, bytes(prefix)
 
-    def get(self, resource="CONFIG", version=3):
+    def get(self, resource="CONFIG", version=4):
         identifier = self.suite.identifier()
         command = f"GET YAML {resource}" + (f" SCHEMA {version}" if version != 1 else "") + f" ID {identifier}"
         self.send(command + "\r\n")
@@ -177,10 +177,10 @@ class Session:
 
     def human(self, command, expected=None):
         identifier = self.suite.identifier()
-        sync = f"GET YAML CONFIG SCHEMA 3 ID {identifier}"
+        sync = f"GET YAML CONFIG SCHEMA 4 ID {identifier}"
         self.send(command + "\r\n" + sync + "\r\n")
         self.suite.commands += 1
-        document, prefix = self.frame("CONFIG", identifier, 3, command)
+        document, prefix = self.frame("CONFIG", identifier, 4, command)
         if command.startswith(("SHOW FILTER", "SHOW/FILTER", "SH/FILTER", "SHOW SETTINGS")):
             start = prefix.find(b"User          ")
             end = prefix.find(b"Missed spots are not replayed.")
@@ -202,7 +202,7 @@ class Session:
         assert "error" not in document, document.get("error")
         return text, document
 
-    def upload(self, verb, resource, configuration, version=3, revision=None, raw_body=None, error_id=False):
+    def upload(self, verb, resource, configuration, version=4, revision=None, raw_body=None, error_id=False):
         identifier = self.suite.identifier()
         body = {"schema_version": version, "request_id": identifier, "configuration": configuration}
         if verb != "VALIDATE":
@@ -265,6 +265,23 @@ class Suite:
             _, selected = a.human("DIALECT " + dialect)
             assert selected["configuration"]["settings"]["dialect"] == dialect
             a.human("PAUSE 300")
+            for command, allow, block in (
+                ("RESET FILTER COMMENT", [], []),
+                ("PASS COMMENT up  5: please!", ["UP  5: PLEASE!"], []),
+                ("PASS COMMENT up  5: please!", ["UP  5: PLEASE!"], []),
+                ("REJECT COMMENT QRT", ["UP  5: PLEASE!"], ["QRT"]),
+                ("REJECT COMMENT up  5: please!", [], ["QRT", "UP  5: PLEASE!"]),
+                ("REMOVE REJECT COMMENT UP  5: PLEASE!", [], ["QRT"]),
+                ("RESET FILTER COMMENT REJECT", [], []),
+                ("PASS COMMENT " + "A" * 64, ["A" * 64], []),
+                ("RESET FILTER COMMENT PASS", [], []),
+            ):
+                def comment_rule(c=command, pa=allow, re=block):
+                    _, doc = a.human(c)
+                    fields = doc["configuration"]["filters"]
+                    assert fields["comments"] == pa and fields["block_comments"] == re
+                self.case(dialect + " " + command, comment_rule)
+            self.case(dialect + " COMMENT overlong", lambda: self.unchanged(a, "PASS COMMENT " + "A" * 65, "Usage:"))
             for command, expected in (("HELP", "Available commands:"), ("H", "Available commands:"), ("DIALECT LIST", "GO"), ("SHOW BUILD", "Build version:"), ("SHOW OWN", "Own call: " + self.args.call.upper()), ("SHOW DEDUPE", "Dedupe"), ("SHOW DXCC VE", "Canada"), ("WHOSPOTSME", "WHOSPOTSME"), ("WHOSPOTSME 20M", "WHOSPOTSME")):
                 self.case(dialect + " " + command, lambda c=command, e=expected: a.human(c, e))
             for category in ["", "FULL"] + CATEGORIES + ["CONF", "PC93"]:
@@ -368,15 +385,17 @@ class Suite:
                 assert doc["status"]["session"]["pause_remaining_seconds"] > 100
             self.case(command, bad_pause)
         self.case("SHOW HOLD", lambda: a.human("SHOW HOLD", "Live spots paused"))
-        for version in (1, 2, 3):
+        for version in (1, 2, 3, 4):
             for resource in ("FILTER", "SETTINGS", "CONFIG", "CAPABILITIES"):
                 def projection(r=resource, v=version):
                     doc = a.get(r, v)
                     data = doc["configuration"]
                     if r in ("FILTER", "CONFIG"):
                         fields = data if r == "FILTER" else data["filters"]
-                        assert ("min_snr" in fields) == (v == 3)
+                        assert ("min_snr" in fields) == (v >= 3)
                         assert ("dx_states" in fields) == (v >= 2)
+                        assert ("comments" in fields) == (v >= 4)
+                        assert ("block_comments" in fields) == (v >= 4)
                     assert doc["status"]["session"]["pause_remaining_seconds"] > 80
                 self.case(f"GET {resource} schema {version}", projection)
         for resource in ("FILTER", "SETTINGS", "CONFIG"):
@@ -433,11 +452,14 @@ class Suite:
             self.case("invalid YAML " + repr(patch), invalid)
         def old_write():
             a.human("SET/FILTER DXSTATE ON,NY")
+            a.human("PASS COMMENT POTA")
+            a.human("REJECT COMMENT QRT")
             before = a.get()["configuration"]
-            for version in (1, 2):
+            for version in (1, 2, 3):
                 projected = a.get("FILTER", version)
                 self.acknowledge(a.upload("PUT", "FILTER", projected["configuration"], version, projected["revision"]))
                 assert a.get()["configuration"] == before
+            a.human("RESET FILTER COMMENT")
         self.case("old schema writes preserve newer fields", old_write)
         def resume():
             _, doc = a.human("RESUME")
@@ -510,6 +532,9 @@ class Suite:
         exact, _ = a.human("SHOW DX VA3UXA 2")
         rows = re.findall(r"^DX de\s+\S+:\s+[0-9.]+\s+(\S+)", exact, re.MULTILINE)
         assert rows and all(call == "VA3UXA" for call in rows), "exact-call response lacks exclusively matching rows"
+        comment_text, _ = a.human("SHOW DX VA3UXA 2 COMMENT T" + self.token)
+        comment_rows = [line for line in comment_text.splitlines() if line.startswith("DX de")]
+        assert comment_rows and all("T" + self.token in line for line in comment_rows), "comment history lacks exclusively matching labeled rows"
         text, _ = a.human("SHOW DX 1", "DX de")
         token = re.search(r"H1[A-F0-9]{32}", text)
         assert token, "positive NEXT unavailable: insufficient retained matching rows"

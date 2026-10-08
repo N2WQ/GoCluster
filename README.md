@@ -714,7 +714,6 @@ Use `HELP` on your connection for the commands supported by your active dialect.
 The section below mirrors the default `go` dialect `HELP` output from [`commands/processor.go`](commands/processor.go) using the shipped config in [`data/config`](data/config).
 
 <!-- BEGIN DEFAULT_GO_HELP -->
-
 ```text
 Available commands:
 HELP - Show command list or command-specific help.
@@ -762,6 +761,12 @@ PATCH YAML FILTER - Write filter for clients.
 PATCH YAML SETTINGS - Write settings for clients.
 PATCH YAML CONFIG - Write config for clients.
 VALIDATE YAML CONFIG - Check a complete client proposal.
+PASS COMMENT - Add a literal comment phrase.
+REMOVE PASS COMMENT - Remove one comment phrase.
+REJECT COMMENT - Add a literal comment phrase.
+REMOVE REJECT COMMENT - Remove one comment phrase.
+RESET FILTER COMMENT - Clear comment selections.
+SHOW FILTER COMMENT - Display saved comment phrases.
 Type HELP <command> for details.
 
 Filter core rules:
@@ -770,6 +775,8 @@ REJECT <type> <list> adds to blocklist and removes from allowlist.
 PASS/REJECT MODE <list> are deltas; modes not listed are unchanged.
 Numeric PASS/REJECT MINSNR set the same inclusive per-mode minimum.
 MINSNR exempts human spots and spots without SNR; other filters apply.
+COMMENT uses one literal phrase, 1-64 printable ASCII bytes; max 32 per list.
+Any COMMENT PASS qualifies; matching REJECT wins; empty comments fail PASS.
 DXDXCC/DEDXCC accept canonical CTY prefixes or positive ADIF numbers.
 DXSTATE/DESTATE accept US state and Canadian province/territory codes.
 Unknown state fails an explicit PASS list and passes a REJECT-only list.
@@ -783,6 +790,7 @@ ALL keyword (type-scoped):
 PASS <type> ALL - allow everything for that type
 REJECT <type> ALL - block everything for most types
 REJECT EVENT ALL - block only tagged EVENT spots
+COMMENT treats ALL and NONE literally; RESET FILTER COMMENT clears rules.
 RESET FILTER resets all filters to configured defaults for new users.
 
 Feature toggles (not list-based):
@@ -829,8 +837,9 @@ Path reliability glyphs:
   PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, CLOSED, INSUFFICIENT.
 
 List types:
-  BAND, MODE, SOURCE, EVENT, DXCALL, DECALL, DXGRID2, DEGRID2, DXCONT, DECONT
-  DXZONE, DEZONE, DXDXCC, DEDXCC, DXSTATE, DESTATE, CONFIDENCE, PATH, MINSNR
+  BAND, MODE, SOURCE, EVENT, COMMENT, DXCALL, DECALL, DXGRID2, DEGRID2, DXCONT
+  DECONT, DXZONE, DEZONE, DXDXCC, DEDXCC, DXSTATE, DESTATE, CONFIDENCE, PATH
+  MINSNR
 
 Supported modes:
   CW, FT2, FT4, FT8, JS8, LSB, USB, RTTY, MSK144, PSK, SSTV, UNKNOWN
@@ -842,7 +851,6 @@ Supported bands:
   2200m, 630m, 160m, 80m, 60m, 40m, 30m, 20m, 17m, 15m, 12m, 10m, 6m, 2m
   1.25m, 70cm, 33cm, 23cm, 13cm
 ```
-
 <!-- END DEFAULT_GO_HELP -->
 
 </details>

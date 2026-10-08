@@ -13,7 +13,7 @@ import (
 )
 
 // CurrentConfigurationVersion identifies disk records that preserve exact values.
-const CurrentConfigurationVersion = 3
+const CurrentConfigurationVersion = 4
 
 // stateConfigurationVersion is fixed at the disk version introducing state rules.
 const stateConfigurationVersion = 2
@@ -108,6 +108,8 @@ type SettingsConfiguration struct {
 
 // FilterConfiguration contains all exact rules, excluding runtime NEARBY caches.
 type FilterConfiguration struct { //nolint:revive // Names the filter portion alongside SettingsConfiguration in the public schema.
+	Comments         []string       `yaml:"comments"`
+	BlockComments    []string       `yaml:"block_comments"`
 	MinSNR           map[string]int `yaml:"min_snr"`
 	Bands            StringRules    `yaml:"bands"`
 	Modes            StringRules    `yaml:"modes"`
@@ -151,6 +153,7 @@ func ConfigurationFromFilter(f *Filter, settings SettingsConfiguration) Configur
 		return Configuration{Settings: settings}
 	}
 	return Configuration{Settings: settings, Filters: FilterConfiguration{
+		Comments: f.Comments, BlockComments: f.BlockComments,
 		MinSNR:       f.MinSNR,
 		Bands:        StringRules{f.AllBands, f.BlockAllBands, f.Bands, f.BlockBands},
 		Modes:        StringRules{f.AllModes, f.BlockAllModes, f.Modes, f.BlockModes},
@@ -193,6 +196,7 @@ func ConfigurationFromPreset(set *SavedPreset) Configuration {
 func (c Configuration) FilterValue() Filter {
 	f := c.Filters
 	return Filter{
+		Comments: f.Comments, BlockComments: f.BlockComments,
 		MinSNR: f.MinSNR,
 		Bands:  f.Bands.Allow, BlockBands: f.Bands.Block, AllBands: f.Bands.AllowAll, BlockAllBands: f.Bands.BlockAll,
 		Modes: f.Modes.Allow, BlockModes: f.Modes.Block, AllModes: f.Modes.AllowAll, BlockAllModes: f.Modes.BlockAll,
@@ -227,6 +231,7 @@ func cloneRules[K string | int](rules RuleSet[K]) RuleSet[K] {
 // Clone detaches exact values after the caller has established preparation bounds.
 func (c Configuration) Clone() Configuration {
 	f := &c.Filters
+	f.Comments, f.BlockComments = slices.Clone(f.Comments), slices.Clone(f.BlockComments)
 	f.MinSNR = maps.Clone(f.MinSNR)
 	f.Bands, f.Modes, f.Sources = cloneRules(f.Bands), cloneRules(f.Modes), cloneRules(f.Sources)
 	f.Events, f.Confidence, f.PathClasses = cloneRules(f.Events), cloneRules(f.Confidence), cloneRules(f.PathClasses)
@@ -243,6 +248,9 @@ func (c Configuration) Clone() Configuration {
 // Preset enforces the independent named-snapshot budget before cloning/encoding.
 // Ordinary user records and LOAD admission do not inherit the readback budget.
 func (c Configuration) Preset() (*SavedPreset, error) {
+	if err := c.ValidateCommentRules(); err != nil {
+		return nil, err
+	}
 	if err := c.ValidateStateRules(); err != nil {
 		return nil, err
 	}
@@ -332,6 +340,16 @@ func (c Configuration) MinimumSizeFits(limit int) bool {
 		}
 		for _, pattern := range patterns {
 			if !consume(len(pattern)) {
+				return false
+			}
+		}
+	}
+	for _, phrases := range [][]string{c.Filters.Comments, c.Filters.BlockComments} {
+		if len(phrases) > remaining/3 || !consume(len(phrases)*3) {
+			return false
+		}
+		for _, phrase := range phrases {
+			if !consume(len(phrase)) {
 				return false
 			}
 		}

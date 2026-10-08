@@ -215,6 +215,15 @@ func (p *Processor) ProcessCommandForClient(cmd string, spotter string, spotterI
 	if strings.EqualFold(fields[0], "WHOSPOTSME") {
 		return p.handleWhoSpotsMe(fields[1:], spotter)
 	}
+	if history, handled, errText := p.ParseHistoryCommand(cmd, dialect); handled && filterFn != nil {
+		if errText != "" {
+			return errText
+		}
+		if history.Token != "" {
+			return "History continuation requires a connected client. Start a fresh SHOW DX search.\n"
+		}
+		return p.renderHistoryQuery(history.Query, filterFn)
+	}
 
 	// Split into parts
 	parts := strings.Fields(strings.ToUpper(cmd))
@@ -363,6 +372,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"SHOW MYDX <prefix|callsign> [count]",
 			"SHOW MYDX [count] <prefix|callsign>",
 			"SHOW MYDX NEXT <cursor>",
+			"SHOW MYDX [selector] [count] COMMENT <phrase>",
 		},
 		nil,
 		[]string{
@@ -623,6 +633,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 				"SHOW/DX <prefix|callsign> [count]",
 				"SHOW/DX [count] <prefix|callsign>",
 				"SHOW/DX NEXT <cursor>",
+				"SHOW/DX [selector] [count] COMMENT <phrase>",
 			},
 			[]string{"SH/DX"},
 			[]string{
@@ -897,6 +908,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 				"SHOW DX <prefix|callsign> [count]",
 				"SHOW DX [count] <prefix|callsign>",
 				"SHOW DX NEXT <cursor>",
+				"SHOW DX [selector] [count] COMMENT <phrase>",
 			},
 			[]string{"SH DX"},
 			[]string{
@@ -963,6 +975,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 	}
 
 	installConfigurationHelp(&catalog, dialect)
+	installCommentHelp(&catalog)
 	return catalog
 }
 
@@ -974,6 +987,18 @@ func normalizeHelpTopic(dialect string, topic string) string {
 	upper = strings.Join(strings.Fields(upper), " ")
 
 	switch {
+	case upper == "PASS COMMENT" || strings.HasPrefix(upper, "PASS COMMENT "):
+		return "PASS COMMENT"
+	case upper == "REJECT COMMENT" || strings.HasPrefix(upper, "REJECT COMMENT "):
+		return "REJECT COMMENT"
+	case upper == "REMOVE PASS COMMENT" || strings.HasPrefix(upper, "REMOVE PASS COMMENT "):
+		return "REMOVE PASS COMMENT"
+	case upper == "REMOVE REJECT COMMENT" || strings.HasPrefix(upper, "REMOVE REJECT COMMENT "):
+		return "REMOVE REJECT COMMENT"
+	case upper == "RESET FILTER COMMENT" || strings.HasPrefix(upper, "RESET FILTER COMMENT "):
+		return "RESET FILTER COMMENT"
+	case upper == "SHOW FILTER COMMENT" || upper == "SHOW/FILTER COMMENT" || upper == "SH/FILTER COMMENT":
+		return "SHOW FILTER COMMENT"
 	case strings.HasPrefix(upper, "PASS NEARBY"):
 		return "PASS NEARBY"
 	case strings.HasPrefix(upper, "SHOW BUILD"):
@@ -1225,6 +1250,8 @@ func filterHelpLines(dialect string) []string {
 		"PASS/REJECT MODE <list> are deltas; modes not listed are unchanged.",
 		"Numeric PASS/REJECT MINSNR set the same inclusive per-mode minimum.",
 		"MINSNR exempts human spots and spots without SNR; other filters apply.",
+		"COMMENT uses one literal phrase, 1-64 printable ASCII bytes; max 32 per list.",
+		"Any COMMENT PASS qualifies; matching REJECT wins; empty comments fail PASS.",
 		"DXDXCC/DEDXCC accept canonical CTY prefixes or positive ADIF numbers.",
 		"DXSTATE/DESTATE accept US state and Canadian province/territory codes.",
 		"Unknown state fails an explicit PASS list and passes a REJECT-only list.",
@@ -1238,6 +1265,7 @@ func filterHelpLines(dialect string) []string {
 		"PASS <type> ALL - allow everything for that type",
 		"REJECT <type> ALL - block everything for most types",
 		"REJECT EVENT ALL - block only tagged EVENT spots",
+		"COMMENT treats ALL and NONE literally; RESET FILTER COMMENT clears rules.",
 		"RESET FILTER resets all filters to configured defaults for new users.",
 		"",
 		"Feature toggles (not list-based):",
@@ -1371,7 +1399,7 @@ func showDXUsage(dialect string) string {
 }
 
 func showHistoryUsage(command string) string {
-	return fmt.Sprintf("Usage: %s [count 1-250] | %s <prefix|callsign> [count 1-250]\n", command, command)
+	return fmt.Sprintf("Usage: %s [count 1-250] | %s <prefix|callsign> [count 1-250] [COMMENT <phrase>]\n", command, command)
 }
 
 func whoSpotsMeUsage() string {
@@ -1457,7 +1485,7 @@ func parseShowHistoryRequest(args []string, commandLabel string) (showHistoryReq
 
 func filterListTypes() []string {
 	return []string{
-		"BAND", "MODE", "SOURCE", "EVENT", "DXCALL", "DECALL", "DXGRID2",
+		"BAND", "MODE", "SOURCE", "EVENT", "COMMENT", "DXCALL", "DECALL", "DXGRID2",
 		"DEGRID2", "DXCONT", "DECONT", "DXZONE", "DEZONE", "DXDXCC",
 		"DEDXCC", "DXSTATE", "DESTATE", "CONFIDENCE", "PATH", "MINSNR",
 	}
@@ -1798,6 +1826,10 @@ func (p *Processor) handleShowMYDX(args []string, filterFn func(*spot.Spot) bool
 	if errText != "" {
 		return errText
 	}
+	return p.renderHistoryQuery(query, filterFn)
+}
+
+func (p *Processor) renderHistoryQuery(query HistoryQuery, filterFn func(*spot.Spot) bool) string {
 	page, err := p.ReadHistoryPage(query, nil, filterFn, time.Now().UTC(), nil)
 	if err != nil {
 		log.Printf("history archive query failed: %v", err)

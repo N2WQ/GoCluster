@@ -16,6 +16,7 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 		"Conflicting labels are omitted; valid alternatives remain.",
 		"FULL/category show effective PASS/REJECT selections, using ALL or NONE.",
 		"MINSNR shows per-mode minimum reports and retained inactive modes.",
+		"COMMENT shows saved literal PASS/REJECT phrases; explicit resets clear them.",
 		"Unresolved rules show Unknown DXCC followed by their stored number.",
 		"Human lines use at most 78 ASCII characters; exact values use escapes.",
 		"Switches show ON/OFF; REJECT takes precedence over PASS patterns.",
@@ -67,19 +68,20 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 			"Responses include schema version, request ID and an opaque revision.",
 			"Default schema 1 is unchanged. SCHEMA 2 includes DESTATE/DXSTATE rules.",
 			"SCHEMA 3 also includes the min_snr map; older schemas preserve hidden thresholds.",
+			"SCHEMA 4 adds comments and block_comments; older writes preserve these lists.",
 			"The final CRLF response is limited to 65,536 bytes, including framing.",
 		}
 		if resource != "CAPABILITIES" {
 			notes = append(notes, "Edit the writable configuration section; status is read-only.")
 		}
-		add(topic, "Read "+strings.ToLower(resource)+" for clients.", []string{topic + " [SCHEMA 2|3] [ID <id>]"}, notes)
+		add(topic, "Read "+strings.ToLower(resource)+" for clients.", []string{topic + " [SCHEMA 2|3|4] [ID <id>]"}, notes)
 	}
 	for _, verb := range []string{"PUT", "PATCH"} {
 		for _, resource := range []string{"FILTER", "SETTINGS", "CONFIG"} {
 			topic := verb + " YAML " + resource
 			notes := []string{
 				"Send standalone --- and ... marker lines around one plain YAML document.",
-				"Include schema_version: 1, 2 or 3, request_id, if_revision and configuration.",
+				"Include schema_version: 1, 2, 3 or 4, request_id, if_revision and configuration.",
 				"GET again after reconnect or a revision conflict before retrying a write.",
 				"Validation or persistence failure leaves live and saved configuration unchanged.",
 				"Unavailable choices are rejected; named preset baselines are preserved.",
@@ -90,6 +92,9 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 				"Schema 2 includes state rules; full CONFIG must fit 65,536 bytes.",
 				"Schema 3 includes min_snr: a mode-to-signed-integer map; {} clears it.",
 				"Supplied min_snr replaces the map; omitted PATCH preserves it.",
+				"Schema 4 includes comments and block_comments: up to 32 phrases per list.",
+				"Phrases: 1-64 printable ASCII bytes; YAML preserves case, spaces and duplicates.",
+				"Supplied lists replace them; [] clears; PATCH omission preserves each list.",
 				"No aliases, anchors, merge keys, custom tags, nulls or extra documents.",
 			}
 			if verb == "PUT" {

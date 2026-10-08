@@ -1,5 +1,6 @@
 // File role: Defines versioned YAML fields and fixed presence-mask positions.
-// Schema 2 adds bounded state domains; schema 3 adds per-mode SNR minima.
+// Schema 2 adds bounded state domains; schema 3 adds per-mode SNR minima;
+// schema 4 adds bounded exact COMMENT phrase lists.
 // Older masks stay fixed and supplied collections replace their entire value.
 package telnet
 
@@ -37,6 +38,14 @@ var machineFilterFieldsV3 = [...]string{
 	"dx_states", "de_states", "min_snr",
 }
 
+var machineFilterFieldsV4 = [...]string{
+	"bands", "modes", "sources", "events", "confidence", "path_classes", "dx_continents", "de_continents",
+	"dx_zones", "de_zones", "dx_grid2", "de_grid2", "dx_dxcc", "de_dxcc",
+	"dx_callsigns", "block_dx_callsigns", "de_callsigns", "block_de_callsigns",
+	"include_beacons", "allow_wwv", "allow_wcy", "allow_announce", "allow_self", "allow_toxic", "nearby_enabled",
+	"dx_states", "de_states", "min_snr", "comments", "block_comments",
+}
+
 var machineSettingFields = [...]string{
 	"dialect", "grid", "noise_class", "dedupe_policy", "path_min_observation_count", "solar_summary_minutes",
 }
@@ -55,6 +64,8 @@ func (r *machineRequest) decodeFilters(node *yaml.Node, path string, complete bo
 		names = machineFilterFieldsV2[:]
 	case 3:
 		names = machineFilterFieldsV3[:]
+	case 4:
+		names = machineFilterFieldsV4[:]
 	}
 	fields, err := machineObject(node, path, names, complete)
 	if err != nil {
@@ -90,6 +101,10 @@ func (r *machineRequest) decodeFilters(node *yaml.Node, path string, complete bo
 			r.ruleFields[15], err = decodeMachineRules(&f.DEStates, field, fieldPath, complete, machineStringRuleKey)
 		case i == 27:
 			f.MinSNR, err = machineMinSNRMap(field, fieldPath)
+		case i == 28:
+			f.Comments, err = machineCommentPhrases(field, fieldPath)
+		case i == 29:
+			f.BlockComments, err = machineCommentPhrases(field, fieldPath)
 		}
 		if err != nil {
 			return err
@@ -245,6 +260,31 @@ func machinePatterns(node *yaml.Node, path string) ([]string, error) {
 	return patterns, nil
 }
 
+// Raw cardinality is checked before constructing a detached list. Exact case,
+// order, duplicates and overlap survive; admission must not normalize phrases.
+func machineCommentPhrases(node *yaml.Node, path string) ([]string, error) {
+	if node.Kind != yaml.SequenceNode || node.Tag != "!!seq" {
+		return nil, schemaError(path, "expected a list of strings")
+	}
+	if len(node.Content) > filter.MaxCommentPhrases {
+		return nil, schemaError(path, "exceeds 32-phrase limit")
+	}
+	for _, node := range node.Content {
+		value, err := machineString(node, path)
+		if err != nil {
+			return nil, err
+		}
+		if !filter.ValidCommentPhrase(value) {
+			return nil, schemaError(path, "expected 1-64 printable ASCII bytes with non-space text")
+		}
+	}
+	values := make([]string, len(node.Content))
+	for i, node := range node.Content {
+		values[i] = node.Value
+	}
+	return values, nil
+}
+
 func machineDefaultBoolean(node *yaml.Node, path string) (filter.DefaultBool, error) {
 	if node.Kind == yaml.ScalarNode && node.Tag == "!!str" && node.Value == "DEFAULT" {
 		return filter.DefaultBoolDefault, nil
@@ -304,6 +344,12 @@ func (r machineRequest) apply(before filter.Configuration) (filter.Configuration
 	}
 	if r.filterFields&(1<<27) != 0 {
 		f.MinSNR = proposed.MinSNR
+	}
+	if r.filterFields&(1<<28) != 0 {
+		f.Comments = proposed.Comments
+	}
+	if r.filterFields&(1<<29) != 0 {
+		f.BlockComments = proposed.BlockComments
 	}
 	s, desired := &before.Settings, r.Configuration.Settings
 	settings := [4]*string{&s.Dialect, &s.Grid, &s.NoiseClass, &s.DedupePolicy}

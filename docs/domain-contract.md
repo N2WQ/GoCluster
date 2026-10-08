@@ -372,3 +372,34 @@ aggregation, archive layouts and model semantics are unchanged.
 
 See [ADR-0258](decisions/ADR-0258-per-mode-minimum-snr-filter.md) and the
 [telnet command contract](../telnet/README.md#minimum-snr).
+
+
+## Literal Comment Filtering And Archive Selection
+
+COMMENT matches case-insensitive ASCII literal substrings of the stored comment,
+after ingestion cleanup and before display diagnostics or synthetic fallbacks.
+Each owned PASS/REJECT list retains at most 32 phrases of 1-64 printable ASCII
+bytes, with at least one non-space character. Any PASS qualifies; any REJECT
+match wins. Empty/nonmatching comments fail an active PASS list. Other ordinary
+filter categories and existing self-spot exceptions remain in force.
+
+Human commands trim only surrounding ASCII spaces and preserve interior spaces
+and punctuation literally. Case-equivalent additions are idempotent and move
+phrases out of the opposite list; individual removal deletes equivalent entries.
+Failed admission leaves both lists unchanged. Existing human live-edit/save
+failure behavior is preserved; machine writes remain persist-before-publication.
+
+An explicit SHOW DX/MYDX COMMENT phrase is mandatory even for self-spots, applies
+before row counts, and is retained by NEXT without changing preferences. Saved
+comment edits invalidate continuation and pending publication. Existing retention,
+page work bounds, warnings, queues and archive storage ownership remain unchanged.
+
+Explicit machine schema 4 and disk configuration version 4 add comments and
+block_comments. Schemas 1-3 retain their shapes and preserve hidden comment rules.
+Full PUT/VALIDATE requires both lists; PATCH omission preserves and supplied lists
+replace, including [] to clear. Exact YAML preserves case/order/duplicates/overlap;
+every entry counts toward limits and REJECT wins. Old records acquire empty lists,
+with state introduction pinned to 2 and MINSNR to 3. Malformed or oversized stored
+comment rules fail without truncation or protected-record rewrite. See
+[ADR-0261](decisions/ADR-0261-literal-comment-filter-and-history.md) and
+[telnet comments](../telnet/README.md#comment-filters-and-searches).

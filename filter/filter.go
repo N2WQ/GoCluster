@@ -389,6 +389,10 @@ func EnsureUserDataDir() error {
 //   - Each client has their own Filter instance (no sharing)
 //   - No internal locking needed (single-threaded per client)
 type Filter struct {
+	// Comments own bounded literal selections; empty allow lists impose no restriction.
+	// Snapshot clones detach both lists, and global reset releases their entries.
+	Comments      []string `yaml:"comments,omitempty"`
+	BlockComments []string `yaml:"block_comments,omitempty"`
 	// MinSNR owns bounded per-mode inclusive minima. Presence enables zero/negative values;
 	// dormant exact keys survive taxonomy changes and are never rebound through aliases.
 	MinSNR               map[string]int  `yaml:"min_snr,omitempty"`
@@ -1146,6 +1150,7 @@ func (f *Filter) ResetEvents() {
 // Upstream: Telnet RESET ALL commands or new-session defaults.
 // Downstream: ResetBands, ResetModes, ResetSources, ClearCallsignPatterns, ResetConfidence, Reset* helpers.
 func (f *Filter) Reset() {
+	f.Comments, f.BlockComments = nil, nil
 	f.ResetMinSNR()
 	f.ResetBands()
 	f.ResetModes()
@@ -1471,6 +1476,9 @@ func (f *Filter) matchesWithPath(s *spot.Spot, pathClass string) bool {
 		return false
 	}
 
+	if !f.passesComment(s.Comment) {
+		return false
+	}
 	modeUpper := modeFilterTokenForSpot(s)
 
 	bandNorm := spot.NormalizeBand(s.BandNorm)

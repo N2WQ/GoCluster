@@ -108,7 +108,7 @@ func TestStateMachineV2Contract(t *testing.T) {
 			t.Fatal(response)
 		}
 	}
-	for _, line := range []string{"GET YAML FILTER SCHEMA 1", "GET YAML FILTER SCHEMA 4", "GET YAML FILTER ID abc SCHEMA 2", "PUT YAML FILTER SCHEMA 2"} {
+	for _, line := range []string{"GET YAML FILTER SCHEMA 1", "GET YAML FILTER SCHEMA 5", "GET YAML FILTER ID abc SCHEMA 2", "PUT YAML FILTER SCHEMA 2"} {
 		if _, _, err := parseMachineHeader(line); err == nil {
 			t.Fatalf("invalid header admitted: %q", line)
 		}
@@ -374,7 +374,7 @@ func TestStateMachineBoundsAndStoredProtection(t *testing.T) {
 		t.Fatal("hidden invalid state copied before admission")
 	}
 	_ = command
-	protected := []byte("configuration_version: 4\ndxstates: {CA: true}\n")
+	protected := []byte("configuration_version: 5\ndxstates: {CA: true}\n")
 	path := filepath.Join(filter.UserDataDir, "W2ABC-1.yaml")
 	if err := os.WriteFile(path, protected, 0o600); err != nil {
 		t.Fatal(err)

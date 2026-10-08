@@ -41,6 +41,9 @@ func canonicalUpperChoice(valid func(string) bool) func(string) bool {
 }
 
 func (s *Server) validateMachineConfiguration(cfg filter.Configuration) error {
+	if err := cfg.ValidateCommentRules(); err != nil {
+		return err
+	}
 	if err := cfg.ValidateMinSNRRules(); err != nil {
 		return err
 	}

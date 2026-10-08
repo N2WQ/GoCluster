@@ -83,7 +83,7 @@ func TestHistoryFilterBeforeCountAndPresentation(t *testing.T) {
 }
 
 func FuzzHistoryCommand(f *testing.F) {
-	for _, seed := range []string{"SHOW DX K1ABC 20", "SHOW MYDX 20 W6/LZ5VV", "SHOW DX NEXT H1" + strings.Repeat("A", 32), "SHOW DX NEXT", "SH/DX 251", "SHOW DX K$"} {
+	for _, seed := range []string{"SHOW DX K1ABC 20", "SHOW MYDX 20 W6/LZ5VV", "SHOW DX NEXT H1" + strings.Repeat("A", 32), "SHOW DX NEXT", "SH/DX 251", "SHOW DX K$", "SHOW DX COMMENT POTA:  up 5!", "SHOW MYDX 1 K1ABC COMMENT ALL", "SHOW DX COMMENT " + strings.Repeat("a", 65)} {
 		f.Add(seed)
 	}
 	db := historyCanonicalCTY(f)

@@ -1,7 +1,7 @@
 // File role: Machine schema 1 is a stable projection of the complete preferences. State
 // rules remain owned by the full configuration, including revisions and disk.
-// Schema 2 exposes those rules; schema 3 additionally exposes per-mode SNR minima.
-// Both additions require explicit request selection.
+// Schema 2 exposes those rules; schema 3 exposes per-mode SNR minima; schema 4
+// exposes exact COMMENT phrases. All additions require explicit request selection.
 package telnet
 
 import "dxcluster/filter"
@@ -68,14 +68,24 @@ type machineFilterV2 struct {
 	NearbyEnabled    bool               `yaml:"nearby_enabled"`
 }
 
+// Schema 3 keeps its historical min_snr-first order even when the internal
+// configuration grows. Embedded schema 2 fields retain their original order.
+type machineFilterV3 struct {
+	MinSNR          map[string]int `yaml:"min_snr"`
+	machineFilterV2 `yaml:",inline"`
+}
+
 func machineSchemaVersion(version int) int {
-	if version == 2 || version == 3 {
+	if version >= 2 && version <= 4 {
 		return version
 	}
 	return 1
 }
 
 func projectMachineConfiguration(cfg filter.Configuration, version int) filter.Configuration {
+	if machineSchemaVersion(version) < 4 {
+		cfg.Filters.Comments, cfg.Filters.BlockComments = nil, nil
+	}
 	if machineSchemaVersion(version) < 3 {
 		cfg.Filters.MinSNR = nil
 	}
@@ -118,13 +128,15 @@ func machineV2Filter(f filter.FilterConfiguration) machineFilterV2 {
 
 func readbackResourceConfigurationVersion(cfg filter.Configuration, resource string, version int) (filter.Configuration, any, error) {
 	bounded, data, err := readbackResourceConfiguration(cfg, resource)
-	if err != nil || machineSchemaVersion(version) == 3 || resource == "SETTINGS" {
+	if err != nil || machineSchemaVersion(version) == 4 || resource == "SETTINGS" {
 		return bounded, data, err
 	}
 	bounded = projectMachineConfiguration(bounded, version)
 	var f any = machineV1Filter(cfg.Filters)
 	if machineSchemaVersion(version) == 2 {
 		f = machineV2Filter(cfg.Filters)
+	} else if machineSchemaVersion(version) == 3 {
+		f = machineFilterV3{MinSNR: cfg.Filters.MinSNR, machineFilterV2: machineV2Filter(cfg.Filters)}
 	}
 	if resource == "FILTER" {
 		return bounded, f, nil
@@ -135,10 +147,13 @@ func readbackResourceConfigurationVersion(cfg filter.Configuration, resource str
 	}{f, cfg.Settings}, nil
 }
 
-// Old schemas bound their visible projection, with hidden maps independently
+// Old schemas bound their visible projection, with hidden rules independently
 // checked before any full clone. This preserves old admission without inventing
-// an ordinary-user file size limit. V3 bounds the complete configuration.
+// an ordinary-user file size limit. V4 bounds the complete configuration.
 func machineConfigurationFits(cfg filter.Configuration, version int) error {
+	if err := cfg.ValidateCommentRules(); err != nil {
+		return err
+	}
 	if err := cfg.ValidateMinSNRRules(); err != nil {
 		return err
 	}

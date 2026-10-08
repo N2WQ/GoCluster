@@ -61,7 +61,8 @@ func (set *SavedPreset) Clone() (*SavedPreset, error) {
 }
 
 // UnmarshalYAML migrates legacy snapshots and adds unrestricted states to v1.
-// Version two preserves every configured state rule; version three adds MINSNR.
+// Version two preserves state rules, version three adds MINSNR, and version
+// four adds bounded literal comment lists.
 func (set *SavedPreset) UnmarshalYAML(node *yaml.Node) error {
 	version, err := storedConfigurationVersion(node)
 	if err != nil {
@@ -71,6 +72,9 @@ func (set *SavedPreset) UnmarshalYAML(node *yaml.Node) error {
 		return err
 	}
 	if err := validateStoredMinSNRFields(node, version); err != nil {
+		return err
+	}
+	if err := validateStoredCommentFields(node, version); err != nil {
 		return err
 	}
 	if err := validateStoredMapping(node, reflect.TypeFor[SavedPreset]()); err != nil {
@@ -101,6 +105,9 @@ func (set *SavedPreset) UnmarshalYAML(node *yaml.Node) error {
 		return err
 	}
 	if err := ConfigurationFromFilter(&set.Filter, SettingsConfiguration{}).ValidateMinSNRRules(); err != nil {
+		return err
+	}
+	if err := ConfigurationFromFilter(&set.Filter, SettingsConfiguration{}).ValidateCommentRules(); err != nil {
 		return err
 	}
 	set.ConfigurationVersion = CurrentConfigurationVersion

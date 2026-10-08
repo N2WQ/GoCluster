@@ -9,6 +9,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// minSNRConfigurationVersion remains fixed when later fields change the disk version.
+const minSNRConfigurationVersion = 3
+
 // Only effective legacy merge sources are followed; unrelated anchor fields
 // cannot add a new failure to historical migration. Each node is visited once
 // so recursive alias graphs terminate before the decoder reports the cycle.
@@ -50,8 +53,8 @@ func validateStoredMinSNRMapping(node *yaml.Node, version int, pending *[]*yaml.
 		if key.Value != "min_snr" {
 			continue
 		}
-		if version < CurrentConfigurationVersion {
-			return fmt.Errorf("min_snr requires configuration version %d", CurrentConfigurationVersion)
+		if version < minSNRConfigurationVersion {
+			return fmt.Errorf("min_snr requires configuration version %d", minSNRConfigurationVersion)
 		}
 		if err := validateStoredMinSNRMap(node.Content[i+1]); err != nil {
 			return err

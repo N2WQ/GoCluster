@@ -343,7 +343,7 @@ func TestMachineSchemaEnvelopeBoundsAndCompleteness(t *testing.T) {
 	good := machineRequestFixture("noise_class: URBAN\n", true)
 	for _, mutated := range [][]byte{
 		bytes.Replace(good, []byte("schema_version: 1\n"), nil, 1),
-		bytes.Replace(good, []byte("schema_version: 1"), []byte("schema_version: 4"), 1),
+		bytes.Replace(good, []byte("schema_version: 1"), []byte("schema_version: 5"), 1),
 		bytes.Replace(good, []byte("schema_version: 1"), []byte("schema_version: \"1\""), 1),
 		bytes.Replace(good, []byte("request_id: noise-Ab1\n"), nil, 1),
 		bytes.Replace(good, []byte("request_id: noise-Ab1"), []byte("request_id: noise_1"), 1),
@@ -406,6 +406,9 @@ func FuzzMachineSchema(f *testing.F) {
 		{1, bytes.Replace(machineRequestFixture("dx_states: {allow: {CA: true, TX: false}}\nde_states: {block_all: true}\n", true), []byte("schema_version: 1"), []byte("schema_version: 2"), 1)},
 		{4, bytes.Replace(machineRequestFixture(machineCompleteFilterFixture+"dx_states: {allow_all: true, block_all: false, allow: {}, block: {}}\nde_states: {allow_all: true, block_all: false, allow: {}, block: {}}\n", true), []byte("schema_version: 1"), []byte("schema_version: 2"), 1)},
 		{1, minSNRMachineFixture("min_snr: {CW: 0, FT8: -10}\n", 3, true)},
+		{1, minSNRMachineFixture("comments: [\"POTA\", \"pota\", \"up  5!\"]\nblock_comments: [\"POTA\"]\n", 4, true)},
+		{1, minSNRMachineFixture("comments: [\"\"]\n", 4, true)},
+		{4, minSNRMachineFixture(machineCompleteFilterFixture+minSNRCompleteStateFixture+"min_snr: {}\ncomments: []\nblock_comments: []\n", 4, true)},
 		{1, minSNRMachineFixture("min_snr: {FT8: 0, FT8: -1}\n", 3, true)},
 		{4, minSNRMachineFixture(machineCompleteFilterFixture+minSNRCompleteStateFixture+"min_snr: {CW: 0, FT8: -10}\n", 3, true)},
 		{3, minSNRMachineFixture("filters:\n"+indentMachineFixture(machineCompleteFilterFixture+minSNRCompleteStateFixture+"min_snr: {CW: 0, FT8: -10}\n")+"settings:\n"+indentMachineFixture(machineCompleteSettingsFixture), 3, false)},
@@ -430,16 +433,28 @@ func FuzzMachineSchema(f *testing.F) {
 			}
 			return
 		}
-		if (request.SchemaVersion != 1 && request.SchemaVersion != 2 && request.SchemaVersion != 3) || len(request.RequestID) < 1 || len(request.RequestID) > 32 || len(request.IfRevision) > 128 || (command.Verb != "VALIDATE" && request.IfRevision == "") {
+		if (request.SchemaVersion < 1 || request.SchemaVersion > 4) || len(request.RequestID) < 1 || len(request.RequestID) > 32 || len(request.IfRevision) > 128 || (command.Verb != "VALIDATE" && request.IfRevision == "") {
 			t.Fatal("invalid envelope admitted")
 		}
-		before := filter.Configuration{Filters: filter.FilterConfiguration{MinSNR: map[string]int{"FT8": -10, "DORMANT": 0}, Bands: filter.StringRules{Allow: map[string]bool{"40m": true}, Block: map[string]bool{"80m": false}}, DXStates: filter.StringRules{Allow: map[string]bool{"CA": false}, Block: map[string]bool{"TX": true}}, DEStates: filter.StringRules{AllowAll: true, Block: map[string]bool{"NY": false}}, DXCallsigns: []string{"K2*"}}, Settings: filter.SettingsConfiguration{NoiseClass: "QUIET", Grid: "FN42", SolarSummaryMinutes: 30}}
+		before := filter.Configuration{Filters: filter.FilterConfiguration{Comments: []string{"POTA"}, BlockComments: []string{"QRT"}, MinSNR: map[string]int{"FT8": -10, "DORMANT": 0}, Bands: filter.StringRules{Allow: map[string]bool{"40m": true}, Block: map[string]bool{"80m": false}}, DXStates: filter.StringRules{Allow: map[string]bool{"CA": false}, Block: map[string]bool{"TX": true}}, DEStates: filter.StringRules{AllowAll: true, Block: map[string]bool{"NY": false}}, DXCallsigns: []string{"K2*"}}, Settings: filter.SettingsConfiguration{NoiseClass: "QUIET", Grid: "FN42", SolarSummaryMinutes: 30}}
 		stateBefore := before.Clone()
 		next, err := request.apply(before)
 		if err != nil {
 			t.Fatalf("decoded request could not apply: %v", err)
 		}
 		detached := next.Clone()
+		if err := next.ValidateCommentRules(); err != nil {
+			t.Fatalf("accepted invalid comment rules: %v", err)
+		}
+		if len(detached.Filters.Comments) != 0 {
+			detached.Filters.Comments[0] = "CHANGED"
+		}
+		if len(detached.Filters.BlockComments) != 0 {
+			detached.Filters.BlockComments[0] = "CHANGED"
+		}
+		if !reflect.DeepEqual(before.Filters.Comments, stateBefore.Filters.Comments) || !reflect.DeepEqual(before.Filters.BlockComments, stateBefore.Filters.BlockComments) {
+			t.Fatal("detachment mutated prior phrases")
+		}
 		for key := range detached.Filters.MinSNR {
 			detached.Filters.MinSNR[key] = 42
 			break

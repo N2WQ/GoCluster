@@ -140,3 +140,14 @@ Implementation entry points are `filter/min_snr.go`, `filter/min_snr_storage.go`
 `telnet/configuration_readback.go`. Check signed map presence, exact canonical
 activity, predecode/precopy bounds, frozen schemas 1/2, pinned version 2 state
 migration, and detached history snapshots when reviewing changes.
+
+## Literal Comment Rules And History
+
+Route to [telnet comments](../telnet/README.md#comment-filters-and-searches) and
+[ADR-0261](../docs/decisions/ADR-0261-literal-comment-filter-and-history.md).
+Entry points are `filter/comment.go`, `filter/comment_storage.go`,
+`telnet/comment_commands.go`, `telnet/comment_input.go`, `commands/history.go`
+and `telnet/machine_versions.go`. Check literal spacing/punctuation, scoped
+ASCII ingress, case-insensitive moves, independent 32/64 limits, exact duplicate
+YAML lists, schema 1-3 projections/preservation, pinned MINSNR introduction at
+disk 3, detached snapshots and mandatory query matching before self exceptions.

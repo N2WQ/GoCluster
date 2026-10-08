@@ -11,6 +11,7 @@ import (
 
 	"dxcluster/archive"
 	"dxcluster/cty"
+	"dxcluster/filter"
 	"dxcluster/spot"
 )
 
@@ -33,6 +34,7 @@ type historySelector struct {
 type HistoryQuery struct {
 	selector historySelector
 	count    int
+	comment  string // At most MaxCommentPhraseBytes; retained with continuation.
 }
 
 // HistoryCommand distinguishes a fresh search from a connection-local NEXT token.
@@ -42,37 +44,66 @@ type HistoryCommand struct {
 }
 
 // ParseHistoryCommand recognizes only existing history spellings, preserving
-// dialect restrictions. Invalid requests do not allocate or replace a search.
+// dialect restrictions. Invalid requests do not create or replace a search.
 func (p *Processor) ParseHistoryCommand(line, dialect string) (HistoryCommand, bool, string) {
-	parts := strings.Fields(strings.ToUpper(line))
+	parts := strings.Fields(line)
 	if len(parts) == 0 {
 		return HistoryCommand{}, false, ""
 	}
 	var args []string
 	label := "SHOW DX"
-	switch parts[0] {
+	argStart := 1
+	switch strings.ToUpper(parts[0]) {
 	case "SHOW/DX", "SH/DX":
 		if normalizeDialectString(dialect) != "cc" {
 			return HistoryCommand{}, true, "Use SHOW DX or SH DX for DX history.\n"
 		}
 		args = parts[1:]
 	case "SHOW", "SH":
-		if len(parts) < 2 || (parts[1] != "DX" && parts[1] != "MYDX") {
+		if len(parts) < 2 || (!strings.EqualFold(parts[1], "DX") && !strings.EqualFold(parts[1], "MYDX")) {
 			return HistoryCommand{}, false, ""
 		}
-		label = "SHOW " + parts[1]
+		label = "SHOW " + strings.ToUpper(parts[1])
+		argStart = 2
 		args = parts[2:]
 	default:
 		return HistoryCommand{}, false, ""
 	}
-	if len(args) > 0 && args[0] == "NEXT" {
-		if len(args) != 2 || !ValidHistoryToken(args[1]) {
+	if len(args) > 0 && strings.EqualFold(args[0], "NEXT") {
+		if len(args) != 2 || !ValidHistoryToken(strings.ToUpper(args[1])) {
 			return HistoryCommand{}, true, "Invalid history continuation. Start a fresh SHOW DX search.\n"
 		}
-		return HistoryCommand{Token: args[1]}, true, ""
+		return HistoryCommand{Token: strings.ToUpper(args[1])}, true, ""
+	}
+	// COMMENT consumes the original remainder, rather than Fields/Join, so
+	// interior spaces and literal punctuation survive unchanged. NEXT is handled
+	// first: a continuation cannot replace the saved search phrase.
+	comment := ""
+	for i, arg := range args {
+		if strings.EqualFold(arg, "COMMENT") {
+			comment = historyCommentRemainder(line, parts[:argStart+i+1])
+			if !filter.ValidCommentPhrase(comment) {
+				return HistoryCommand{}, true, "Invalid COMMENT phrase. Use 1-64 printable ASCII bytes.\n"
+			}
+			args = args[:i]
+			break
+		}
 	}
 	query, errText := p.prepareHistory(args, label)
+	// Detach the retained needle from the full command's backing string. Even
+	// callers with a larger command budget retain at most 64 phrase bytes.
+	query.comment = strings.Clone(comment)
 	return HistoryCommand{Query: query}, true, errText
+}
+
+// Prefix fields come from this same line; each search advances past the exact
+// original token. Only command-edge whitespace is trimmed from the phrase.
+func historyCommentRemainder(line string, prefix []string) string {
+	for _, token := range prefix {
+		i := strings.Index(line, token)
+		line = line[i+len(token):]
+	}
+	return strings.Trim(line, " ")
 }
 
 // ValidHistoryToken also bounds token parsing before any connection state lookup.
@@ -93,7 +124,7 @@ func (p *Processor) prepareHistory(args []string, label string) (HistoryQuery, s
 	if errText != "" {
 		return HistoryQuery{}, errText
 	}
-	selector, errText := p.resolveHistorySelector(req.selector)
+	selector, errText := p.resolveHistorySelector(strings.ToUpper(req.selector))
 	return HistoryQuery{selector: selector, count: req.count}, errText
 }
 
@@ -158,6 +189,11 @@ func (p *Processor) ReadHistoryPage(query HistoryQuery, before []byte, match fun
 		Limit: query.count, Before: before, Now: now, Done: done,
 		Match: func(s *spot.Spot) bool {
 			if s == nil {
+				return false
+			}
+			// Explicit search selection is mandatory even when the caller's saved
+			// filter predicate exempts self-spots.
+			if query.comment != "" && !filter.MatchCommentPhrase(s.Comment, query.comment) {
 				return false
 			}
 			switch query.selector.kind {

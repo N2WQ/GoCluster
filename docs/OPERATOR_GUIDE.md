@@ -937,6 +937,17 @@ schemas 1/2 preserve hidden thresholds. PATCH replaces a supplied map and `{}`
 clears it. Active and dormant rules share the finite entry/key-byte limits exposed
 by schema 3 CAPABILITIES. See [the transport contract](../telnet/README.md#minimum-snr).
 
-New saves use disk configuration version 3. Older records acquire no minimums
-and retain their previous rules, including version 2 States. Back up profiles and
+Literal comment filtering uses `PASS COMMENT <phrase>` and `REJECT COMMENT <phrase>`.
+PASS phrases use OR, REJECT wins and other ordinary filters still apply. Use
+`SHOW FILTER COMMENT`, `REMOVE PASS|REJECT COMMENT <phrase>` and
+`RESET FILTER COMMENT [PASS|REJECT]` to inspect/remove/clear rules. Each list holds
+32 phrases of at most 64 printable ASCII bytes; punctuation and repeated spaces
+are literal. For archive searching use `SHOW DX [selector] [count] COMMENT <phrase>`;
+the phrase is mandatory even for self-spots and is retained by NEXT. Rules persist
+in presets/profiles and explicit machine schema 4. Old schemas preserve hidden
+comments. See [the full comment contract](../telnet/README.md#comment-filters-and-searches).
+
+New saves use disk configuration version 4. Older records acquire no minimums
+and retain their previous rules, including version 2 States and version 3 minima.
+Versions before 4 acquire empty comment rules. Back up profiles and
 presets before upgrading; downgrade with a matching binary and data backup.

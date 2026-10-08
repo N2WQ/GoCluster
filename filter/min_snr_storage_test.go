@@ -27,7 +27,7 @@ func TestMinSNRStoredRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, literal := range []string{"configuration_version: 3\n", "min_snr:\n", "FT8: -10\n", "CW: 0\n", "REMOVED-MODE_1: 20\n"} {
+	for _, literal := range []string{"configuration_version: 4\n", "min_snr:\n", "FT8: -10\n", "CW: 0\n", "REMOVED-MODE_1: 20\n"} {
 		if !bytes.Contains(raw, []byte(literal)) {
 			t.Fatalf("v3 disk encoding omitted %q", literal)
 		}
@@ -83,7 +83,7 @@ func TestMinSNRStorageVersions(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if record.ConfigurationVersion != 3 || record.Preset.Baseline.ConfigurationVersion != 3 || len(record.MinSNR) != 0 || len(record.Preset.Baseline.MinSNR) != 0 {
+			if record.ConfigurationVersion != CurrentConfigurationVersion || record.Preset.Baseline.ConfigurationVersion != CurrentConfigurationVersion || len(record.MinSNR) != 0 || len(record.Preset.Baseline.MinSNR) != 0 {
 				t.Fatal("legacy thresholds were not disabled in both record and baseline")
 			}
 			if version == 2 {
@@ -106,7 +106,7 @@ func TestMinSNRStorageVersions(t *testing.T) {
 				t.Fatal(err)
 			}
 			data, err = os.ReadFile(path)
-			if err != nil || !bytes.Contains(data, []byte("configuration_version: 3\n")) || bytes.Contains(data, []byte("min_snr:")) {
+			if err != nil || !bytes.Contains(data, []byte("configuration_version: 4\n")) || bytes.Contains(data, []byte("min_snr:")) {
 				t.Fatal("legacy successful save did not mark v3 disabled thresholds")
 			}
 		})
@@ -126,7 +126,7 @@ func TestMinSNRStorageVersions(t *testing.T) {
 	}
 	for _, raw := range []string{
 		"configuration_version: 3\npreset: {name: TEST, baseline: {configuration_version: 2, min_snr: {FT8: -10}}}\n",
-		"configuration_version: 3\npreset: {name: TEST, baseline: {configuration_version: 4}}\n",
+		"configuration_version: 3\npreset: {name: TEST, baseline: {configuration_version: 5}}\n",
 		"configuration_version: 3\nmin_snr: {FT8: null}\n",
 		"configuration_version: 3\nmin_snr: {FT8: \"-10\"}\n",
 		"configuration_version: 3\nmin_snr: {FT8: 99999999999999999999999999999999}\n",
