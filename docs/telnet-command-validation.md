@@ -110,6 +110,59 @@ Its length comes from explicit command cases; it adds no general testing framewo
 Support-agent documentation impact: not required; this is a developer test tool
 and changes no supported command behavior. No architecture decision changed.
 
+## COMMENT CPU and literal-input regression
+
+[TSR-0046](troubleshooting/TSR-0046-comment-matching-cpu-and-history-input.md)
+records the repeated-prefix CPU defect and generic history phrase trimming.
+Capture the old baseline after adding fixtures but before production edits;
+the invalid-ending goldens should fail on old code. `-run '^$'` keeps those
+expected failures out of benchmark runs. Repeat the same benchmark fixtures
+and toolchain/runtime settings on corrected code:
+
+```powershell
+go test ./filter ./commands ./telnet -run '^$' -bench 'Comment' -benchmem -benchtime=100ms -count=7
+go test ./filter ./commands ./telnet ./peer -run 'Comment|TestGenericHistoryComment' -count=1
+go test ./filter -run '^$' -fuzz '^FuzzMatchCommentPhrase$' -fuzztime=30s -parallel=4
+go test ./commands -run '^$' -fuzz '^FuzzHistoryCommentRemainder$' -fuzztime=30s -parallel=4
+```
+
+Include both repeated-prefix/suffix and periodic negatives, overlapping and
+final-position positives, phrase lengths 1/63/64, arbitrary stored comment
+bytes, both maximum lists and cheap band/mode/archive-identity rejection.
+65,500 bytes is a synthetic matcher/fanout stress size. The peer fixture derives
+the actual maximum stored comment from each frame family's 65,536-byte envelope
+and checks that the full comment and tail phrase survive production admission.
+
+Require zero matcher/normalized-filter allocations and at least 10x improvement
+for the specified 32-reject repeated-prefix cases at 1,024/65,500 bytes. Existing
+passing/no-COMMENT fixtures allow at most 25% regression. Separately report
+absolute old/new times for a first REJECT match and short PASS miss: deferring
+COMMENT adds ordinary-filter work, with the new total bounded by 1.25 times
+the measured new ordinary-only plus isolated-matcher component sum. A missed
+budget requires disposition rather than quietly weakening the criterion.
+
+Capture separate old/new fanout CPU profiles for one and eight clients. This
+example records the corrected eight-client case; use the matching filenames
+and fixture suffix for the other cases:
+
+```powershell
+go test ./telnet -run '^$' -bench '^BenchmarkCommentFanout/clients-8$' -benchmem -benchtime=5s -count=1 -cpuprofile=.tmp/comment-v2/new-fanout-8.pprof -o .tmp/comment-v2/new-telnet.test.exe
+go tool pprof -top -cum .tmp/comment-v2/new-telnet.test.exe .tmp/comment-v2/new-fanout-8.pprof
+```
+
+Create the output directory first. The fanout guard checks exact delivery count,
+spot identity, empty backlog and unchanged drops, with a separate self-bypass
+control. Its logs include completed calls/envelopes from calibration runs for
+normalizing whole-profile CPU samples. Compare absolute operation time and
+caller/matcher cumulative CPU per completed call; CPU percentages alone cannot
+establish success. Delivery envelopes retain their existing allocations.
+Record platform, toolchain, runtime settings, sample counts and budget arithmetic.
+
+These local fixtures/profile checks support the correction, not production
+latency guarantees. Production acceptance needs representative steady/burst
+runtime profiling, admission latency and filter-writer wait measurements,
+alongside drop/backlog checks against the deployment's capacity budget.
+
 ## Observed validation
 
 On October 7, 2026 (America/New_York), the final complete run against
@@ -137,3 +190,6 @@ package tests, not a claim that the full repository suite or that exact commit
 ran on the remote server. Offline Python fixtures cover transport, echo,
 correlation and failure cleanup. The script-only lane also checks syntax and
 diff whitespace; code-map generation/check is run after documentation updates.
+
+That October 7 live run predates the COMMENT/schema-4 feature and does not
+validate its behavior or performance.

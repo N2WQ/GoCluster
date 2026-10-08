@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `63cb87d3a5bb7bae`
+- Source fingerprint: `e33b78491767bc20`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -11,11 +11,11 @@
 
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
-| `dxcluster/commands` | `commands` | 4 | 8 |
+| `dxcluster/commands` | `commands` | 4 | 9 |
 | `dxcluster/internal/cluster` | `internal/cluster` | 25 | 63 |
-| `dxcluster/peer` | `peer` | 62 | 129 |
+| `dxcluster/peer` | `peer` | 62 | 130 |
 | `dxcluster/spot` | `spot` | 33 | 32 |
-| `dxcluster/telnet` | `telnet` | 42 | 71 |
+| `dxcluster/telnet` | `telnet` | 42 | 72 |
 
 ## In-Scope Package Edges
 
@@ -102,6 +102,7 @@ Source files:
 - `commands/processor.go`
 
 Test files:
+- `commands/comment_history_benchmark_test.go`
 - `commands/comment_history_test.go`
 - `commands/configuration_help_test.go`
 - `commands/dxcc_history_test.go`
@@ -278,6 +279,7 @@ Test files:
 - `peer/cc_handshake_test.go`
 - `peer/cc_live_test.go`
 - `peer/cc_response_retry_test.go`
+- `peer/comment_filter_boundary_test.go`
 - `peer/connection_event_test.go`
 - `peer/context_ownership_test.go`
 - `peer/dedupe_allocation_test.go`
@@ -522,6 +524,7 @@ Source files:
 Test files:
 - `telnet/bulletin_dedupe_test.go`
 - `telnet/canadian_login_test.go`
+- `telnet/comment_benchmark_test.go`
 - `telnet/comment_commands_test.go`
 - `telnet/comment_input_test.go`
 - `telnet/configuration_handoff_test.go`

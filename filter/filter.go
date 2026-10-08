@@ -1476,9 +1476,6 @@ func (f *Filter) matchesWithPath(s *spot.Spot, pathClass string) bool {
 		return false
 	}
 
-	if !f.passesComment(s.Comment) {
-		return false
-	}
 	modeUpper := modeFilterTokenForSpot(s)
 
 	bandNorm := spot.NormalizeBand(s.BandNorm)
@@ -1641,7 +1638,8 @@ func (f *Filter) matchesWithPath(s *spot.Spot, pathClass string) bool {
 		return false
 	}
 
-	return true // Passed all filters
+	// Defer the length-dependent comment scan until other rejection gates pass.
+	return f.passesComment(s.Comment)
 }
 
 func (f *Filter) matchesNearby(s *spot.Spot, bandNorm string) bool {

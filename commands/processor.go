@@ -195,6 +195,9 @@ func (p *Processor) ProcessCommand(cmd string) string {
 // Upstream: Telnet client command loop with callsign context.
 // Downstream: handleDX, handleHelp, handleShow.
 func (p *Processor) ProcessCommandForClient(cmd string, spotter string, spotterIP string, filterFn func(*spot.Spot) bool, dialect string) string {
+	// History's literal phrase boundary trims only ASCII spaces. Keep its raw
+	// input so generic command-edge normalization cannot admit invalid endings.
+	historyInput := cmd
 	cmd = strings.TrimSpace(cmd)
 
 	// Empty command
@@ -215,7 +218,7 @@ func (p *Processor) ProcessCommandForClient(cmd string, spotter string, spotterI
 	if strings.EqualFold(fields[0], "WHOSPOTSME") {
 		return p.handleWhoSpotsMe(fields[1:], spotter)
 	}
-	if history, handled, errText := p.ParseHistoryCommand(cmd, dialect); handled && filterFn != nil {
+	if history, handled, errText := p.ParseHistoryCommand(historyInput, dialect); handled && filterFn != nil {
 		if errText != "" {
 			return errText
 		}

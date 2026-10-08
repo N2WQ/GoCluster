@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"dxcluster/archive"
 	"dxcluster/cty"
 	"dxcluster/filter"
 	"dxcluster/spot"
@@ -73,6 +74,49 @@ func TestHistoryCommentLimitsAndSelection(t *testing.T) {
 	}
 }
 
+// These fixed rejection vectors intentionally do not consult the shared phrase
+// validator: they catch both validator drift and generic pre-parser trimming.
+func TestGenericHistoryCommentInvalidPhraseGoldens(t *testing.T) {
+	const invalid = "Invalid COMMENT phrase. Use 1-64 printable ASCII bytes.\n"
+	p := NewProcessor(nil, &fakeArchive{}, nil, nil, nil, nil)
+	match := func(*spot.Spot) bool { return true }
+	for _, dialect := range []string{"go", "cc"} {
+		for _, prefix := range []string{"SHOW DX", "SH DX", "SHOW MYDX", "SH MYDX", "SHOW/DX", "SH/DX"} {
+			if dialect == "go" && strings.Contains(prefix, "/") {
+				continue
+			}
+			for _, phrase := range []string{"", "   ", "POTA\t", "POTA\u00a0", "\tPOTA", "\u00a0POTA", "POTA\n", "POTA\r", "POTA\v", "POTA\f", "POTA\x00", "POTA\x7f", "PÖTA", "PO\tTA", strings.Repeat("a", 65)} {
+				line := prefix + " COMMENT " + phrase
+				if text := p.ProcessCommandForClient(line, "W1AAA", "", match, dialect); text != invalid {
+					t.Errorf("%s %q: want exact invalid phrase rejection, got %q", dialect, line, text)
+				}
+			}
+			// A nil predicate retains the established logged-user guard even
+			// when the history phrase is malformed.
+			for _, phrase := range []string{"POTA", "POTA\t", "POTA\u00a0"} {
+				if text := p.ProcessCommandForClient(prefix+" COMMENT "+phrase, "W1AAA", "", nil, dialect); text != noLoggedUserMsg {
+					t.Errorf("nil-filter routing changed: %s %s %q => %q", dialect, prefix, phrase, text)
+				}
+			}
+		}
+		for _, ordinary := range []string{"SHOW BUILD", "SHOW OWN"} {
+			for _, predicate := range []func(*spot.Spot) bool{nil, match} {
+				want := p.ProcessCommandForClient(ordinary, "W1AAA", "", predicate, dialect)
+				if text := p.ProcessCommandForClient("\t "+ordinary+"\t\u00a0\r\n", "W1AAA", "", predicate, dialect); text != want {
+					t.Errorf("ordinary command whitespace routing changed: %s %s => %q, want %q", dialect, ordinary, text, want)
+				}
+			}
+		}
+	}
+	for _, prefix := range []string{"SHOW/DX", "SH/DX"} {
+		for _, predicate := range []func(*spot.Spot) bool{nil, match} {
+			if text := p.ProcessCommandForClient(prefix+" COMMENT POTA\t", "W1AAA", "", predicate, "go"); text != "Use SHOW DX or SH DX for DX history.\n" {
+				t.Errorf("slash alias restriction changed: %s => %q", prefix, text)
+			}
+		}
+	}
+}
+
 func TestCommentCommandHelp(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
 	for _, dialect := range []string{"go", "cc"} {
@@ -95,15 +139,16 @@ func TestCommentCommandHelp(t *testing.T) {
 }
 
 func FuzzHistoryCommentRemainder(f *testing.F) {
-	for _, seed := range []string{"POTA", "up  5", `:! ,"*?"`, "ALL", "a\tb", strings.Repeat("a", 65)} {
+	for _, seed := range []string{"POTA", "up  5", `:! ,"*?"`, "ALL", "a\tb", "POTA\t", "POTA\u00a0", " POTA ", strings.Repeat("a", 65)} {
 		f.Add(seed)
 	}
-	p := NewProcessor(nil, &fakeArchive{}, nil, nil, nil, nil)
 	f.Fuzz(func(t *testing.T, phrase string) {
 		if len(phrase) > 128 {
 			t.Skip()
 		}
-		command, handled, text := p.ParseHistoryCommand("SHOW DX COMMENT "+phrase, "go")
+		p := NewProcessor(nil, &fakeArchive{}, nil, nil, nil, nil)
+		line := "SHOW DX 1 COMMENT " + phrase
+		command, handled, text := p.ParseHistoryCommand(line, "go")
 		trimmed := strings.Trim(phrase, " ")
 		valid := filter.ValidCommentPhrase(trimmed)
 		if !handled || (text == "") != valid {
@@ -111,6 +156,23 @@ func FuzzHistoryCommentRemainder(f *testing.F) {
 		}
 		if valid && command.Query.comment != trimmed {
 			t.Fatalf("literal changed: %q => %q", trimmed, command.Query.comment)
+		}
+		// Put a nonmatching row first and a literal matching row second. A
+		// count-one generic query must skip the first row, so ignoring COMMENT
+		// or losing its literal remainder produces observably wrong output.
+		wrong := spot.NewSpot("K2WRONG", "W1AAA", 14031, "CW")
+		wanted := spot.NewSpot("K1RIGHT", "W1AAA", 14030, "CW")
+		wanted.Comment = trimmed
+		p.archive = &fakeArchive{spots: []*spot.Spot{wrong, wanted}}
+		response := p.ProcessCommandForClient(line, "W1AAA", "", func(*spot.Spot) bool { return true }, "go")
+		if !valid {
+			if response != "Invalid COMMENT phrase. Use 1-64 printable ASCII bytes.\n" {
+				t.Fatalf("generic caller accepted invalid phrase %q: %q", phrase, response)
+			}
+			return
+		}
+		if response != RenderHistoryPage(archive.HistoryPage{Spots: []*spot.Spot{wanted}, End: archive.HistoryExhausted}, "", false, false, false) {
+			t.Fatalf("generic caller lost phrase-sensitive selection for %q: %q", phrase, response)
 		}
 	})
 }

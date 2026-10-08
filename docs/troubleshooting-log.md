@@ -11,6 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0046 | Comment Matching CPU And History Input | Monitoring | 2026-10-08 | filter, commands, telnet, peer | none | `docs/troubleshooting/TSR-0046-comment-matching-cpu-and-history-input.md` |
 | TSR-0045 | CCCluster Outbound Handshake | Monitoring | 2026-10-08 | peer, ccluster, handshake, PC20, PC51 | ADR-0260 | `docs/troubleshooting/TSR-0045-cccluster-outbound-handshake.md` |
 | TSR-0044 | Support Agent Token Mismatch | Monitoring | 2026-10-07 | customgpt, deployment, admission | ADR-0257 | `docs/troubleshooting/TSR-0044-support-agent-token-mismatch.md` |
 | TSR-0043 | Support Search Action Limit | Monitoring | 2026-10-07 | customgpt, search, actions, response-budget | ADR-0256 | `docs/troubleshooting/TSR-0043-support-search-action-limit.md` |

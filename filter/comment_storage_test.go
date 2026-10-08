@@ -92,6 +92,10 @@ func TestCommentStorageVersionsAndProtection(t *testing.T) {
 func FuzzMatchCommentPhrase(f *testing.F) {
 	f.Add("POTA UP 5", "pota")
 	f.Add("UP  5", "up 5")
+	f.Add(strings.Repeat("A", 1024), strings.Repeat("A", 61)+"000")
+	f.Add(strings.Repeat("A", 64), strings.Repeat("a", 64))
+	f.Add("PO\x80TA", "pota")
+	f.Add("ABABABABAC", "ABABAC")
 	f.Fuzz(func(t *testing.T, comment, phrase string) {
 		want := ValidCommentPhrase(phrase) && strings.Contains(asciiLower(comment), asciiLower(phrase))
 		if MatchCommentPhrase(comment, phrase) != want {

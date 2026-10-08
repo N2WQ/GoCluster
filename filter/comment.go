@@ -33,21 +33,31 @@ func foldCommentByte(b byte) byte {
 	return b
 }
 
-// MatchCommentPhrase performs literal ASCII case-insensitive substring matching
-// without allocating or rewriting the stored comment. Invalid needles fail.
+// MatchCommentPhrase performs literal ASCII case-insensitive substring matching.
+// The 64-byte admission cap fits Shift-And's state in one uint64: bit i records
+// a matching prefix of length i+1 ending at the current byte. Repeated prefixes
+// cannot restart scans. Work is O(len(comment)+len(phrase)+128), with a fixed
+// 1 KiB stack table, no heap/cache state, and no rewriting of the stored text.
 func MatchCommentPhrase(comment, phrase string) bool {
 	if !ValidCommentPhrase(phrase) || len(phrase) > len(comment) {
 		return false
 	}
-	for start := 0; start <= len(comment)-len(phrase); start++ {
-		matched := true
-		for i := range len(phrase) {
-			if foldCommentByte(comment[start+i]) != foldCommentByte(phrase[i]) {
-				matched = false
-				break
-			}
+	var masks [128]uint64
+	for i := range len(phrase) {
+		masks[foldCommentByte(phrase[i])] |= uint64(1) << i
+	}
+	terminal := uint64(1) << (len(phrase) - 1)
+	var state uint64
+	for i := range len(comment) {
+		ch := foldCommentByte(comment[i])
+		if ch >= 128 {
+			// An ASCII phrase cannot span a non-ASCII byte. Do not skip it or
+			// apply Unicode folding, which would change literal semantics.
+			state = 0
+			continue
 		}
-		if matched {
+		state = ((state << 1) | 1) & masks[ch]
+		if state&terminal != 0 {
 			return true
 		}
 	}

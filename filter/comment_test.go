@@ -68,6 +68,77 @@ func TestCommentFilterTruthTableAndReset(t *testing.T) {
 	}
 }
 
+func TestCommentMatcherAdversarialBoundaries(t *testing.T) {
+	for _, size := range []int{1, 63, 64} {
+		phrase := strings.Repeat("a", size-1) + "B"
+		for _, comment := range []string{
+			strings.Repeat("A", 128), strings.Repeat("A", 65500),
+			strings.Repeat("A", 65500-size) + phrase,
+			strings.Repeat("AB", 32750),
+			"\xff" + phrase, phrase[:size-1] + "\x80B",
+			phrase[:size-1], phrase + "\x7f",
+		} {
+			want := strings.Contains(asciiLower(comment), asciiLower(phrase))
+			if got := MatchCommentPhrase(comment, phrase); got != want {
+				t.Fatalf("size=%d comment bytes=%d: got %v want %v", size, len(comment), got, want)
+			}
+		}
+	}
+	for _, tc := range []struct{ comment, phrase string }{
+		{"ABABABABAC", "ABABAC"}, {"aaaaaab", "aaab"},
+		{"ABABABABAB", "ABABAC"}, {"\xc3\xa9POTA", "pota"},
+		{"PO\xc3\xa9TA", "pota"}, {"AA\x00AA", "AAAA"},
+		{strings.Repeat("A", 65500), "B" + strings.Repeat("A", 63)},
+	} {
+		want := strings.Contains(asciiLower(tc.comment), asciiLower(tc.phrase))
+		if got := MatchCommentPhrase(tc.comment, tc.phrase); got != want {
+			t.Fatalf("phrase=%q comment bytes=%d: got %v want %v", tc.phrase, len(tc.comment), got, want)
+		}
+	}
+	for _, phrase := range []string{"", " ", "\t", "POTA\n", "POTA\x7f", "POTA\u00a0", strings.Repeat("A", 65)} {
+		if ValidCommentPhrase(phrase) || MatchCommentPhrase(phrase, phrase) {
+			t.Fatalf("invalid phrase accepted: %q", phrase)
+		}
+	}
+	comment, phrase := strings.Repeat("A", 65500), strings.Repeat("A", 61)+"000"
+	if got := testing.AllocsPerRun(10, func() { MatchCommentPhrase(comment, phrase) }); got != 0 {
+		t.Fatalf("long matcher allocated %v", got)
+	}
+}
+
+func TestCommentMaximumListsAndOtherGates(t *testing.T) {
+	f := NewFilter()
+	f.Reset()
+	s := spot.NewSpot("K1ABC", "N2ABC", 14025, "CW")
+	for i := range MaxCommentPhrases {
+		f.BlockComments = append(f.BlockComments, strings.Repeat("A", 61)+fmt.Sprintf("%03d", i))
+		f.Comments = append(f.Comments, strings.Repeat("A", 61)+fmt.Sprintf("%03d", i+32))
+	}
+	s.Comment = strings.Repeat("A", 65500-64) + f.Comments[31]
+	if !f.Matches(s) {
+		t.Fatal("last PASS phrase at final bytes did not match")
+	}
+	if got := testing.AllocsPerRun(3, func() { f.Matches(s) }); got != 0 {
+		t.Fatalf("normalized full filter allocated %v", got)
+	}
+	s.Comment += f.BlockComments[0]
+	if f.Matches(s) {
+		t.Fatal("REJECT lost precedence")
+	}
+	s.Comment = strings.Repeat("A", 65500-64) + f.Comments[31]
+	f.SetBand("40m", true)
+	if f.Matches(s) {
+		t.Fatal("COMMENT bypassed band allowlist")
+	}
+	f.Reset()
+	f.Comments = []string{"000"}
+	s.Comment = "000"
+	f.SetMode("FT8", true)
+	if f.Matches(s) {
+		t.Fatal("COMMENT bypassed mode allowlist")
+	}
+}
+
 func TestCommentConfigurationBoundsAndOwnership(t *testing.T) {
 	c := ConfigurationFromFilter(NewFilter(), SettingsConfiguration{})
 	c.Filters.Comments = make([]string, MaxCommentPhrases)

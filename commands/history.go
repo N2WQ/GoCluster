@@ -191,11 +191,6 @@ func (p *Processor) ReadHistoryPage(query HistoryQuery, before []byte, match fun
 			if s == nil {
 				return false
 			}
-			// Explicit search selection is mandatory even when the caller's saved
-			// filter predicate exempts self-spots.
-			if query.comment != "" && !filter.MatchCommentPhrase(s.Comment, query.comment) {
-				return false
-			}
 			switch query.selector.kind {
 			case historyExactCall:
 				if s.DXCallNorm != query.selector.call {
@@ -205,6 +200,11 @@ func (p *Processor) ReadHistoryPage(query HistoryQuery, before []byte, match fun
 				if s.DXMetadata.ADIF != query.selector.adif {
 					return false
 				}
+			}
+			// Reject unrelated identities before scanning their comments. Explicit
+			// selection remains mandatory even when saved filters exempt self-spots.
+			if query.comment != "" && !filter.MatchCommentPhrase(s.Comment, query.comment) {
+				return false
 			}
 			return match != nil && match(s)
 		},
