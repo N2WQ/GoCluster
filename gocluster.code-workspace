@@ -6,7 +6,7 @@
 	],
 	"settings": {
 		"chatgpt.openOnStartup": true,
-		"chatgpt.runCodexInWindowsSubsystemForLinux": true,
+		"chatgpt.runCodexInWindowsSubsystemForLinux": false,
 		"editor.aiStats.enabled": true
 	}
 }

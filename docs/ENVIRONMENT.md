@@ -121,31 +121,42 @@ test passed. Do not treat that denial as a source-test failure or disable the
 security policy. Native CGO execution requires resolving the machine policy;
 WSL validation does not prove Windows executables are permitted to run.
 
-The selected Codex environment is WSL2 with Ubuntu 24.04. Install Go and
-development tools inside Linux rather than relying on Windows executables in
-the inherited PATH. The migration host has Go 1.27.1, Node 24.19.0,
-PowerShell 7.6.6, Codex CLI 0.160.1, and Claude Code 2.1.292 available in WSL.
-Install VS Code's `ms-vscode-remote.remote-wsl` extension and reopen the
-checkout in WSL. Both `.vscode/settings.json` and `gocluster.code-workspace`
-select WSL for Codex. The operational PowerShell launcher builds and runs
-Windows executable pairs; selecting WSL for Codex does not convert it into a
-Linux server launcher.
+The selected Codex environment is native Windows. Open
+`C:\src\gocluster\gocluster.code-workspace` in a local Windows VS Code window,
+rather than a Remote WSL window. Both `.vscode/settings.json` and
+`gocluster.code-workspace` set
+`chatgpt.runCodexInWindowsSubsystemForLinux` to `false`. Changing this setting
+reloads VS Code; an existing Linux session does not establish that the next
+session runs on Windows. Start a new Codex session after reopening the workspace
+and confirm its working directory is `C:\src\gocluster` and its commands run in
+Windows PowerShell.
 
-The shared checkout is `/mnt/c/src/gocluster` in WSL. Windows-mounted paths
-can be slower than Linux home directories. Keep one authoritative checkout;
-moving it is a separate operation that must account for runtime writers and
-operator paths. Match Git line-ending settings when accessing this existing
-Windows checkout, and trust only its exact path if Git reports ownership
-differences. Never set a wildcard `safe.directory` exception.
+Native Windows readiness checks on 2026-10-07 passed for all required workflow
+and navigation tools and the repository skill metadata. The installed VS Code
+Codex extension was 26.1002.51308, with bundled Codex CLI
+0.162.0-alpha.2. No standalone `codex` command was found in the probed Windows
+PATH; the extension supplies its own executable. These checks do not establish
+native session authentication, sandbox operation, or permission to execute CGO
+test binaries. Run `scripts/verify-agentic-tools.ps1` in the new native session
+to verify its actual tool environment.
 
-Linux authentication and user settings are separate from the Windows profile.
-The new `r_bak` WSL user has no password set; use
-`wsl -d Ubuntu-24.04 -u root -- passwd r_bak` interactively to set one.
-Codex, Claude, and GitHub CLI require Linux login (`codex login`,
-`claude auth login`, `gh auth login`) unless the selected client supplies its
-own authenticated session. CLI installation and a sandbox smoke check do not
-establish account access. Never copy Windows configuration blindly: paths,
-notification commands, and plugin bindings can be platform-specific.
+The operational PowerShell launcher continues to build and run Windows
+executable pairs. Keep one authoritative checkout at `C:\src\gocluster`, also
+accessible as `/mnt/c/src/gocluster` in WSL. Moving it is a separate operation
+that must account for runtime writers and operator paths. Match Git line-ending
+settings when accessing this existing Windows checkout, and trust only its exact
+path if Git reports ownership differences. Never set a wildcard `safe.directory`
+exception.
+
+The existing Ubuntu 24.04 WSL2 installation remains available for explicit Linux
+validation, with its own tools, authentication and user settings. Its previously
+verified tools include Go 1.27.1, Node 24.19.0, PowerShell 7.6.6, Codex CLI
+0.160.1, and Claude Code 2.1.292. Windows and Linux checks establish different
+platform evidence. Never copy configuration or credentials blindly between
+profiles: paths, notification commands, and plugin bindings can be
+platform-specific. Repository skill metadata verification does not establish
+the skill inventory loaded by a new native Codex session; inspect that inventory
+after reopening.
 
 DXSpider reference qualification uses the exact pinned external checkout and
 an explicit Perl interpreter. Ubuntu prerequisites are `perl`, `libdbi-perl`,
@@ -167,4 +178,5 @@ Repository files do not carry installed tools, user skills, VS Code extensions,
 Codex/Claude history or settings, credential storage, caches, or external
 VOACAP/DXSpider installations. The old disk was unavailable; current checks
 establish a working setup, not byte-for-byte completeness against that disk.
-See [ADR-0250](decisions/ADR-0250-go127-development-and-launcher.md).
+See [ADR-0250](decisions/ADR-0250-go127-development-and-launcher.md) and
+[ADR-0259](decisions/ADR-0259-native-windows-codex-environment.md).

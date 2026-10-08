@@ -1,6 +1,6 @@
 # ADR-0250: Go 1.27 Development And Fresh Launcher Builds
 
-- Status: Accepted
+- Status: Accepted (Codex environment selection superseded by ADR-0259)
 - Date: 2026-10-06
 - Decision Origin: Troubleshooting chat
 
@@ -75,4 +75,6 @@ tests green.
   `.agents/skills/README.md`, `scripts/README.md`, `launch-cluster.ps1`
 - Related TSRs: TSR-0038
 - Supersedes / superseded by: selectively supersedes ADR-0155's source-directory
-  choice; repo authority and machine-local responsibility remain accepted
+  choice; repo authority and machine-local responsibility remain accepted.
+  [ADR-0259](ADR-0259-native-windows-codex-environment.md) supersedes only the
+  WSL2 selection for Codex; the other decisions above remain accepted.
