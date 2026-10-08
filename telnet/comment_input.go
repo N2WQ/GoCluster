@@ -38,8 +38,10 @@ func commentArgumentsStarted(line []byte) bool {
 	default:
 		return false
 	}
-	// History accepts at most a selector and count before the phrase marker.
-	for range 3 {
+	// History BAND/MODE lists can put COMMENT beyond the selector/count. This
+	// borrowed scan is bounded by the reader's byte ceiling and allocates no
+	// parser state per input byte. Invalid grammar still fails at dispatch.
+	for {
 		word, pos = nextCommentInputWord(line, pos)
 		if asciiWordEqual(word, "COMMENT") {
 			return pos < len(line)
@@ -48,5 +50,4 @@ func commentArgumentsStarted(line []byte) bool {
 			return false
 		}
 	}
-	return false
 }

@@ -66,7 +66,8 @@ func TestHistoryRealArchiveLegacyIdentityAndRetention(t *testing.T) {
 	for _, test := range []struct {
 		selector string
 		count    int
-	}{{"K1ABC", 2}, {"K1ABC-1", 2}, {"W6/LZ5VV", 1}, {"K", 5}, {"", 5}} {
+	}{{"K1ABC", 2}, {"K1ABC-1", 2}, {"W6/LZ5VV", 1}, {"K", 5}, {"", 5},
+		{"K1ABC BAND 20 MODE CW", 2}, {"K1ABC BAND 40 MODE CW", 0}, {"K1ABC MODE UNKNOWN", 0}, {"K1ABC MODE FT8", 0}} {
 		command, handled, text := p.ParseHistoryCommand("SHOW DX "+test.selector, "go")
 		if !handled || text != "" {
 			t.Fatalf("%s: %q", test.selector, text)

@@ -394,6 +394,19 @@ before row counts, and is retained by NEXT without changing preferences. Saved
 comment edits invalidate continuation and pending publication. Existing retention,
 page work bounds, warnings, queues and archive storage ownership remain unchanged.
 
+DX/MYDX history also accepts BAND and MODE lists after the optional selector/count
+and before COMMENT, in either order, once each. Commas/spaces separate values;
+OR applies within each list and AND across supplied selections. Existing band and
+filter-mode normalization applies, including UNKNOWN for blank modes. Missing or
+unsupported values, repeated categories and BAND/MODE ALL/NONE reject the whole
+request without replacing its cursor. Explicit lists narrow saved filters and
+remain mandatory even for self-spots; saved self exceptions remain intact.
+Deduplicated detached canonical names are retained only by the existing bounded
+connection query and carried through NEXT, with existing replacement/invalidation
+and close ownership. COMMENT keeps its entire literal remainder. No saved rule,
+archive encoding, index, schema or configuration setting changes. See
+[ADR-0262](decisions/ADR-0262-history-band-mode-selections.md).
+
 Explicit machine schema 4 and disk configuration version 4 add comments and
 block_comments. Schemas 1-3 retain their shapes and preserve hidden comment rules.
 Full PUT/VALIDATE requires both lists; PATCH omission preserves and supplied lists

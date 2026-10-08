@@ -218,6 +218,168 @@ class HumanEchoFixtures(unittest.TestCase):
         self.assertTrue(value.suite.wire_failures)
 
 
+class SyntheticHistorySession:
+    """Literal fixture answers challenge the collector without a second parser.
+
+    The two distinct identities are 10m/CW and 15m/FT8. Defect variants change
+    one observable answer so a permissive checker cannot silently stay green.
+    This fixture validates harness assertions, not server history behavior.
+    """
+    selections = {
+        "BAND 10m": [0], "BAND 15": [1], "MODE cw": [0], "MODE FT8": [1],
+        "BAND 10m,15m": [0, 1], "BAND 10 15": [0, 1],
+        "MODE CW,FT8": [0, 1], "MODE CW FT8": [0, 1],
+        "BAND 10m,10 MODE CW,CW": [0], "BAND 10,15 MODE CW": [0],
+        "MODE CW FT8 BAND 15m": [1], "BAND 10 MODE FT8": [],
+        "MODE UNKNOWN": [], "BAND 10 MODE CW": [0],
+        "BAND 10,15 MODE CW FT8": [0, 1],
+        "MODE CW FT8 BAND 10,15": [0, 1], "BAND 10M": [], "MODE CW": [],
+    }
+    invalid = {
+        "BAND", "MODE", "BAND MODE CW", "MODE BAND 10", "BAND ,", "MODE ,",
+        "BAND 10 INVALID", "MODE CW INVALID", "BAND 10,INVALID", "MODE CW,INVALID",
+        "BAND ALL", "BAND NONE", "BAND UNKNOWN", "MODE ALL", "MODE NONE", "BAND 10 BAND 15",
+        "MODE CW MODE FT8", "BAND 10 MODE CW BAND 15",
+    }
+
+    def __init__(self, defect=None):
+        self.defect, self.dialect, self.cursor = defect, "go", False
+        self.configuration = {"blocked_band": False, "blocked_mode": False, "marker": 0}
+        self.revision, self.commands = 0, []
+
+    def get(self):
+        return {"configuration": dict(self.configuration), "revision": str(self.revision)}
+
+    def rows(self, indices):
+        lines = [f"DX de W1AW: {28200 if index == 0 else 21200}.0 K1ABC TABCDEF01-{index} up-5?" for index in indices]
+        return "\n".join(lines) if lines else "No matching retained spots."
+
+    def human(self, command, expected=None):
+        self.commands.append(command)
+        if command == "PASS NOFILTER":
+            self.configuration.update(blocked_band=False, blocked_mode=False)
+            self.revision += 1
+            text = "Filters reset"
+        elif command in ("REJECT BAND 10M", "REJECT MODE CW"):
+            self.configuration["blocked_band" if "BAND" in command else "blocked_mode"] = True
+            self.revision += 1
+            text = command
+        elif command.startswith(("SHOW/DX", "SH/DX")) and self.dialect == "go":
+            text = self.rows([0, 1]) if self.defect == "dialect_bypass" else "Use SHOW DX or SH DX for DX history."
+        elif " NEXT " in command:
+            if not self.cursor or self.defect == "invalid_clears_cursor":
+                text = "Invalid history continuation."
+            else:
+                self.cursor = False
+                text = "Older retained history page:\n" + self.rows([1] if self.defect == "next_forgets_selection" else [0])
+        else:
+            _, args = command.split(" K1ABC ", 1)
+            count, suffix = args.split(" ", 1)
+            if suffix in self.invalid:
+                text = "No matching retained spots." if self.defect == "accept_invalid" else "Invalid " + suffix.split()[0] + " selection."
+            else:
+                selection, phrase = suffix.split(" COMMENT ", 1)
+                indices = list(self.selections[selection])
+                if phrase == "TABCDEF01-0 up-5?":
+                    indices = [0]
+                elif phrase == "TABCDEF01-0 up-5!":
+                    indices = [0] if self.defect == "trim_punctuation" else []
+                elif phrase not in ("tabcdef01", "TABCDEF01"):
+                    raise AssertionError("unexpected synthetic phrase: " + phrase)
+                if (selection, self.defect) in (("BAND 10m", "ignore_band"), ("MODE cw", "ignore_mode"), ("BAND 10 MODE FT8", "categories_union")):
+                    indices = [0, 1]
+                if self.defect != "ignore_saved" and (self.configuration["blocked_band"] or self.configuration["blocked_mode"]):
+                    indices = [index for index in indices if index != 0]
+                if count == "1":
+                    assert indices == [0, 1]
+                    self.cursor = True
+                    indices = [1]
+                text = self.rows(indices)
+                if count == "1":
+                    text += "\nContinue older history: SHOW DX NEXT H1" + "A" * 32
+                if self.defect == "mutate_preferences":
+                    self.configuration["marker"] += 1
+                if self.defect == "wrong_frequency":
+                    text = text.replace("28200.0", "14030.0")
+        if expected is not None:
+            assert expected in text, f"{command}: missing {expected!r}: {text}"
+        return text, self.get()
+
+
+class HistoryOracleFixtures(unittest.TestCase):
+    def suite(self):
+        value = object.__new__(HARNESS.Suite)
+        value.token, value.results = "ABCDEF01", []
+        return value
+
+    def test_live_stimuli_keep_two_explicit_modes_and_a_nonself_target(self):
+        for base, target in (("VA3UXA", "K1ABC"), ("K1ABC", "VA3UXA")):
+            with self.subTest(base=base):
+                value, commands = self.suite(), []
+                value.args = SimpleNamespace(call=base)
+                document = {"configuration": {}, "revision": "fixture"}
+                def human(command, expected=None):
+                    commands.append(command)
+                    text = expected or (f"DX de W1AW: 28201.0 {target} fixture" if command.startswith("SHOW DX") else "")
+                    return text, document
+                session = SimpleNamespace(human=human, get=lambda: document)
+                with patch.object(HARNESS.time, "sleep"), patch.object(value, "history_result", side_effect=RuntimeError("fixture boundary")):
+                    with self.assertRaisesRegex(RuntimeError, "fixture boundary"):
+                        value.history(session)
+                stimuli = [command for command in commands if command.startswith("DX ") and "NOTAFREQ" not in command]
+                self.assertEqual(stimuli, [f"DX 28201 {target} CW TABCDEF01-0 up-5?", f"DX {target} 21201 FT8 TABCDEF01-1 up-5?"])
+
+    def test_selection_matrix_and_saved_filters_have_exact_positive_results(self):
+        value, session = self.suite(), SyntheticHistorySession()
+        value.history_selections(session, "K1ABC", [28200, 21200])
+        self.assertEqual(len(value.results), 18)
+        self.assertTrue(all(result["result"] == "PASS" for result in value.results), value.results)
+        self.assertFalse(session.configuration["blocked_band"])
+        self.assertFalse(session.configuration["blocked_mode"])
+
+    def test_selection_oracle_rejects_plausible_false_green_answers(self):
+        for defect in ("ignore_band", "ignore_mode", "categories_union", "ignore_saved", "trim_punctuation", "mutate_preferences", "wrong_frequency"):
+            with self.subTest(defect=defect):
+                value = self.suite()
+                with patch("builtins.print"):
+                    value.history_selections(SyntheticHistorySession(defect), "K1ABC", [28200, 21200])
+                self.assertTrue(any(result["result"] == "FAIL" for result in value.results), defect)
+
+    def test_selection_next_retains_identity_after_all_invalid_requests(self):
+        value, session = self.suite(), SyntheticHistorySession()
+        value.history_selection_next(session, "K1ABC", [28200, 21200])
+        rejected = [command for command in session.commands if " COMMENT " not in command and " NEXT " not in command]
+        self.assertEqual(len(rejected), len(SyntheticHistorySession.invalid))
+        self.assertTrue(any(command.startswith("SHOW/DX") for command in session.commands))
+        self.assertTrue(any(command.startswith("SH/DX") for command in session.commands))
+
+    def test_invalid_and_next_oracle_rejects_false_green_answers(self):
+        for defect in ("accept_invalid", "invalid_clears_cursor", "next_forgets_selection", "dialect_bypass"):
+            with self.subTest(defect=defect):
+                with self.assertRaises(AssertionError):
+                    self.suite().history_selection_next(SyntheticHistorySession(defect), "K1ABC", [28200, 21200])
+
+    def test_selection_aliases_require_the_same_exact_rows_in_both_dialects(self):
+        value, session = self.suite(), SyntheticHistorySession()
+        for dialect in ("go", "cc"):
+            session.dialect = dialect
+            for alias in ("SHOW DX", "SH DX", "SHOW MYDX", "SH MYDX") + (("SHOW/DX", "SH/DX") if dialect == "cc" else ()):
+                value.history_result(session, alias + " K1ABC 2 MODE CW FT8 BAND 10,15 COMMENT TABCDEF01", "K1ABC", [28200, 21200], [0, 1])
+
+    def test_exact_row_oracle_rejects_missing_duplicate_or_unrelated_rows(self):
+        value = self.suite()
+        for response in ("Spot queued.", "No matching retained spots.",
+                         "\n".join([SyntheticHistorySession().rows([0])] * 2),
+                         "DX de W1AW: 28200.0 K1ABC unrelated", "DX de malformed",
+                         SyntheticHistorySession().rows([0, 1]) + "\nSearch work limit reached; this page is incomplete.",
+                         SyntheticHistorySession().rows([0, 1]) + "\nWarning: unreadable archive records were skipped;"):
+            with self.subTest(response=response):
+                session = SyntheticHistorySession()
+                session.human = lambda *args: (response, session.get())
+                with self.assertRaises(AssertionError):
+                    value.history_result(session, "query", "K1ABC", [28200, 21200], [0, 1])
+
+
 class SafetyFixtures(unittest.TestCase):
     def test_optimized_python_refused_before_any_connection(self):
         with patch.object(HARNESS.sys, "flags", SimpleNamespace(optimize=1)):

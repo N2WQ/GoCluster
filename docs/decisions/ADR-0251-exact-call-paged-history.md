@@ -120,6 +120,10 @@ Stop cancels readers and waits for their iterators to close before closing Pebbl
 
 ## Links
 
+- BAND/MODE query lists are refined by
+  [ADR-0262](ADR-0262-history-band-mode-selections.md), preserving cursor ownership
+  and the existing saved-filter/self contracts.
+
 - Refines [ADR-0011](ADR-0011-show-history-dxcc-selector.md) for station selection,
   pagination, retention and failure reporting, and
   [ADR-0248](ADR-0248-canonical-dxcc-input-and-human-labels.md) for the selector

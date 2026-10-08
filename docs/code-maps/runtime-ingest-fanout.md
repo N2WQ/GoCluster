@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `e33b78491767bc20`
+- Source fingerprint: `1f22d072b2c6824e`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -11,11 +11,11 @@
 
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
-| `dxcluster/commands` | `commands` | 4 | 9 |
+| `dxcluster/commands` | `commands` | 5 | 10 |
 | `dxcluster/internal/cluster` | `internal/cluster` | 25 | 63 |
 | `dxcluster/peer` | `peer` | 62 | 130 |
 | `dxcluster/spot` | `spot` | 33 | 32 |
-| `dxcluster/telnet` | `telnet` | 42 | 72 |
+| `dxcluster/telnet` | `telnet` | 42 | 73 |
 
 ## In-Scope Package Edges
 
@@ -99,6 +99,7 @@ Source files:
 - `commands/comment_help.go`
 - `commands/configuration_help.go`
 - `commands/history.go`
+- `commands/history_selection.go`
 - `commands/processor.go`
 
 Test files:
@@ -107,6 +108,7 @@ Test files:
 - `commands/configuration_help_test.go`
 - `commands/dxcc_history_test.go`
 - `commands/history_archive_test.go`
+- `commands/history_selection_test.go`
 - `commands/history_test.go`
 - `commands/preset_help_test.go`
 - `commands/processor_test.go`
@@ -548,6 +550,7 @@ Test files:
 - `telnet/history_comment_test.go`
 - `telnet/history_filter_test.go`
 - `telnet/history_fuzz_test.go`
+- `telnet/history_selection_test.go`
 - `telnet/history_test.go`
 - `telnet/latency_test.go`
 - `telnet/machine_commands_test.go`
@@ -599,6 +602,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0262](docs/decisions/ADR-0262-history-band-mode-selections.md) | Accepted | 2026-10-08 | commands, telnet, history, parser, retained state | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0261](docs/decisions/ADR-0261-literal-comment-filter-and-history.md) | Accepted | 2026-10-08 | filter, telnet, commands, YAML, persistence, history | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0260](docs/decisions/ADR-0260-cccluster-outbound-handshake.md) | Accepted | 2026-10-08 | peer, handshake, ccluster, deadlines, retry progress | `area:peer, path:peer` |
 | [ADR-0258](docs/decisions/ADR-0258-per-mode-minimum-snr-filter.md) | Accepted | 2026-10-07 | filter, telnet, commands, YAML, persistence, history | `area:commands, area:telnet, path:telnet` |

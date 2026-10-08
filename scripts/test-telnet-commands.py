@@ -515,26 +515,110 @@ class Suite:
         assert doc["configuration"] == cc and doc["status"]["preset"]["associated"] is True
         self.unchanged(a, "LOAD PRESET " + names[0], "not found")
 
+    def history_result(self, a, command, target, frequencies, expected):
+        """Require exact labeled archive rows, never a queue ACK or empty PASS."""
+        before = a.get()
+        text, after = a.human(command)
+        assert before["configuration"] == after["configuration"] and before["revision"] == after["revision"], "history search changed saved preferences"
+        assert "Warning: unreadable archive records" not in text and "Search work limit reached" not in text, "history coverage is incomplete: " + text[:1000]
+        actual = []
+        for line in text.splitlines():
+            if not line.startswith("DX de"):
+                continue
+            row = re.match(r"^DX de\s+\S+:\s+([0-9.]+)\s+(\S+)\s+", line)
+            labels = re.findall(r"\bT" + self.token + r"-([01])\b", line)
+            assert row and len(labels) == 1, "history returned malformed or unrelated row: " + line
+            actual.append((row.group(2), float(row.group(1)), int(labels[0])))
+        wanted = [(target, float(frequencies[index]), index) for index in expected]
+        assert sorted(actual) == sorted(wanted), f"{command}: expected {wanted!r}, got {actual!r}"
+        if not expected:
+            assert "No matching retained spots." in text, "empty selection lacks exhausted-history status"
+        return text
+
+    def history_selections(self, a, target, frequencies):
+        # Explicit mode tokens in the two DX stimuli establish CW/FT8 independently
+        # of frequency inference; labels also isolate this run from ambient spots.
+        label = "T" + self.token
+        queries = (
+            ("BAND 10m", [0]), ("BAND 15", [1]),
+            ("MODE cw", [0]), ("MODE FT8", [1]),
+            ("BAND 10m,15m", [0, 1]), ("BAND 10 15", [0, 1]),
+            ("MODE CW,FT8", [0, 1]), ("MODE CW FT8", [0, 1]),
+            ("BAND 10m,10 MODE CW,CW", [0]),
+            ("BAND 10,15 MODE CW", [0]), ("MODE CW FT8 BAND 15m", [1]),
+            ("BAND 10 MODE FT8", []),
+            ("MODE UNKNOWN", []),
+            ("BAND 10 MODE CW", [0]),
+        )
+        for suffix, expected in queries:
+            command = f"SHOW DX {target} 2 {suffix} COMMENT {label.lower()}"
+            self.case("history selection " + suffix, lambda c=command, e=expected: self.history_result(a, c, target, frequencies, e))
+        for phrase, expected in ((label + "-0 up-5?", [0]), (label + "-0 up-5!", [])):
+            command = f"SHOW DX {target} 2 BAND 10,15 MODE CW FT8 COMMENT {phrase}"
+            self.case("history selection literal " + phrase, lambda c=command, e=expected: self.history_result(a, c, target, frequencies, e))
+        for category, value, suffix, expected in (
+            ("BAND", "10M", "BAND 10,15 MODE CW FT8", [1]),
+            ("MODE", "CW", "BAND 10,15 MODE CW FT8", [1]),
+        ):
+            def saved_block(cat=category, val=value, search=suffix, remaining=expected):
+                a.human(f"REJECT {cat} {val}")
+                try:
+                    self.history_result(a, f"SHOW DX {target} 2 {search} COMMENT {label}", target, frequencies, remaining)
+                    self.history_result(a, f"SHOW DX {target} 2 {cat} {val} COMMENT {label}", target, frequencies, [])
+                finally:
+                    a.human("PASS NOFILTER")
+            self.case("history narrows saved " + category, saved_block)
+
+    def history_selection_next(self, a, target, frequencies):
+        label = "T" + self.token
+        command = f"SHOW DX {target} 1 BAND 10,15 MODE CW FT8 COMMENT {label}"
+        text = self.history_result(a, command, target, frequencies, [1])
+        cursor = re.search(r"H1[A-F0-9]{32}", text)
+        assert cursor, "selection NEXT unavailable: both labeled stimuli must survive admission"
+        invalid = (
+            "BAND", "MODE", "BAND MODE CW", "MODE BAND 10", "BAND ,", "MODE ,",
+            "BAND 10 INVALID", "MODE CW INVALID", "BAND 10,INVALID", "MODE CW,INVALID",
+            "BAND ALL", "BAND NONE", "BAND UNKNOWN", "MODE ALL", "MODE NONE",
+            "BAND 10 BAND 15", "MODE CW MODE FT8", "BAND 10 MODE CW BAND 15",
+        )
+        for suffix in invalid:
+            before = a.get()
+            response, after = a.human(f"SHOW DX {target} 2 {suffix}")
+            assert "Invalid " + suffix.split()[0] + " selection" in response, "invalid selection was not rejected: " + response
+            assert before["configuration"] == after["configuration"] and before["revision"] == after["revision"]
+        for alias in ("SHOW/DX", "SH/DX"):
+            self.unchanged(a, f"{alias} {target} 2 BAND 10,15 MODE CW FT8 COMMENT {label}", "Use SHOW DX or SH DX")
+        older = self.history_result(a, "SHOW MYDX NEXT " + cursor.group(), target, frequencies, [0])
+        assert "Older retained history page:" in older
+        self.unchanged(a, "SHOW DX NEXT " + cursor.group(), "Invalid history continuation")
+
     def history(self, a):
         a.human("DIALECT GO")
         a.human("PASS NOFILTER")
         a.human("PAUSE 300")
         # Owner-authorized, labeled human spots create exact-call history evidence.
         offset = int(self.token[-2:], 16)
+        # A non-self target is essential: history intentionally exempts self DX
+        # from saved band/mode filters, which would conceal a narrowing defect.
+        target = "K1ABC" if self.args.call.upper() == "VA3UXA" else "VA3UXA"
+        target_prefix = "K" if target == "K1ABC" else "VE"
+        frequencies = [28200 + offset, 21200 + offset]
         for index in range(2):
-            command = f"DX {28200 + offset} VA3UXA T{self.token}-0" if index == 0 else f"DX VA3UXA {21200 + offset} T{self.token}-1"
+            # DX retains the ordinary reader safe list. Only explicit COMMENT
+            # commands admit printable punctuation such as ':' and '!'.
+            command = f"DX {frequencies[0]} {target} CW T{self.token}-0 up-5?" if index == 0 else f"DX {target} {frequencies[1]} FT8 T{self.token}-1 up-5?"
             self.case(f"DX valid syntax {index}", lambda c=command: a.human(c, "Spot queued."))
             time.sleep(1)
         self.case("DX invalid input", lambda: self.unchanged(a, "DX NOTAFREQ VA3UXA", "Invalid frequency"))
-        # Use retained data for paging; pipeline admission/dedupe may remove new
-        # manual fixtures. Exact matching is checked separately, never via ACK.
+        # Both fixtures must survive admission/dedupe for selection coverage.
+        # The separate unrestricted paging check also uses older retained data.
         time.sleep(.5)
-        exact, _ = a.human("SHOW DX VA3UXA 2")
+        exact, _ = a.human(f"SHOW DX {target} 2")
         rows = re.findall(r"^DX de\s+\S+:\s+[0-9.]+\s+(\S+)", exact, re.MULTILINE)
-        assert rows and all(call == "VA3UXA" for call in rows), "exact-call response lacks exclusively matching rows"
-        comment_text, _ = a.human("SHOW DX VA3UXA 2 COMMENT T" + self.token)
-        comment_rows = [line for line in comment_text.splitlines() if line.startswith("DX de")]
-        assert comment_rows and all("T" + self.token in line for line in comment_rows), "comment history lacks exclusively matching labeled rows"
+        assert rows and all(call == target for call in rows), "exact-call response lacks exclusively matching rows"
+        self.history_result(a, f"SHOW DX {target} 2 COMMENT T" + self.token, target, frequencies, [0, 1])
+        self.history_selections(a, target, frequencies)
+        self.case("history selection NEXT and invalid preservation", lambda: self.history_selection_next(a, target, frequencies))
         text, _ = a.human("SHOW DX 1", "DX de")
         token = re.search(r"H1[A-F0-9]{32}", text)
         assert token, "positive NEXT unavailable: insufficient retained matching rows"
@@ -545,8 +629,11 @@ class Suite:
         self.unchanged(a, "SHOW DX NEXT " + first, "Invalid history continuation")
         for dialect in ("go", "cc"):
             a.human("DIALECT " + dialect)
-            for command in ("SHOW DX 1", "SH DX 1", "SHOW MYDX VA3UXA 2", "SH MYDX 2 VA3UXA", "SHOW DX VE 1") + (("SHOW/DX 1", "SH/DX 1") if dialect == "cc" else ()):
+            for command in ("SHOW DX 1", "SH DX 1", f"SHOW MYDX {target} 2", f"SH MYDX 2 {target}", f"SHOW DX {target_prefix} 1") + (("SHOW/DX 1", "SH/DX 1") if dialect == "cc" else ()):
                 self.case(dialect + " " + command, lambda c=command: a.human(c, "DX de"))
+            for alias in ("SHOW DX", "SH DX", "SHOW MYDX", "SH MYDX") + (("SHOW/DX", "SH/DX") if dialect == "cc" else ()):
+                command = f"{alias} {target} 2 MODE CW FT8 BAND 10,15 COMMENT T{self.token}"
+                self.case(dialect + " selection " + alias, lambda c=command: self.history_result(a, c, target, frequencies, [0, 1]))
             for command in ("SHOW DX 0", "SHOW MYDX 251"):
                 self.case(dialect + " invalid " + command, lambda c=command: self.unchanged(a, c, "1-250"))
         self.case("SHOW PROP syntax", lambda: a.human("SHOW PROP", "Usage: SHOW PROP"))

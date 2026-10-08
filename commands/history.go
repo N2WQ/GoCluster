@@ -34,7 +34,9 @@ type historySelector struct {
 type HistoryQuery struct {
 	selector historySelector
 	count    int
-	comment  string // At most MaxCommentPhraseBytes; retained with continuation.
+	comment  string   // At most MaxCommentPhraseBytes; retained with continuation.
+	bands    []string // Unique canonical names, bounded by SupportedBandNames.
+	modes    []string // Unique canonical names, bounded by SupportedFilterModes.
 }
 
 // HistoryCommand distinguishes a fresh search from a connection-local NEXT token.
@@ -90,6 +92,9 @@ func (p *Processor) ParseHistoryCommand(line, dialect string) (HistoryCommand, b
 		}
 	}
 	query, errText := p.prepareHistory(args, label)
+	if errText != "" {
+		return HistoryCommand{}, true, errText
+	}
 	// Detach the retained needle from the full command's backing string. Even
 	// callers with a larger command budget retain at most 64 phrase bytes.
 	query.comment = strings.Clone(comment)
@@ -120,12 +125,18 @@ func ValidHistoryToken(token string) bool {
 }
 
 func (p *Processor) prepareHistory(args []string, label string) (HistoryQuery, string) {
-	req, errText := parseShowHistoryRequest(args, label)
+	base, bands, modes, errText := parseHistorySelections(args)
 	if errText != "" {
 		return HistoryQuery{}, errText
 	}
-	selector, errText := p.resolveHistorySelector(strings.ToUpper(req.selector))
-	return HistoryQuery{selector: selector, count: req.count}, errText
+	req, errText := parseShowHistoryRequest(base, label)
+	if errText != "" {
+		return HistoryQuery{}, errText
+	}
+	// Normalization can retain its input in the callsign cache. Detach the
+	// selector first so a short uppercase call cannot pin the entire command.
+	selector, errText := p.resolveHistorySelector(strings.Clone(strings.ToUpper(req.selector)))
+	return HistoryQuery{selector: selector, count: req.count, bands: bands, modes: modes}, errText
 }
 
 func (p *Processor) resolveHistorySelector(raw string) (historySelector, string) {
@@ -200,6 +211,9 @@ func (p *Processor) ReadHistoryPage(query HistoryQuery, before []byte, match fun
 				if s.DXMetadata.ADIF != query.selector.adif {
 					return false
 				}
+			}
+			if !query.matchesBandMode(s) {
+				return false
 			}
 			// Reject unrelated identities before scanning their comments. Explicit
 			// selection remains mandatory even when saved filters exempt self-spots.

@@ -5,8 +5,9 @@ preset test (38 commands, conversation `01a10480-fa10-76c3-ad00-6374493f3d99`).
 The original evidence remains in `.tmp/preset-live-current.log` and `.json`.
 The current harness covers that preset sequence and the subsequent command
 families found in current dispatch, HELP, source tests and ADR-0243 through
-ADR-0261. The current harness requires schema 4 to snapshot and restore comment
-preferences, including hidden-field preservation checks for older schemas.
+ADR-0261, plus history BAND/MODE selections. The current harness requires
+schema 4 to snapshot and restore comment preferences, including hidden-field
+preservation checks for older schemas.
 
 Run only against an owner-authorized server. It creates numeric SSIDs under the
 supplied base call, changes their preferences, creates/deletes uniquely named
@@ -51,7 +52,7 @@ bytes; strict application responses still fail above 65,536 bytes.
 | PUT/PATCH | Unchanged and changed PUT for every writable resource; PATCH collection replacement and omission preservation; fresh revisions | Existing machine transaction/persistence-failure tests |
 | Validation and conflicts | VALIDATE changes neither revision nor configuration; stale writes and malformed values reject atomically | Existing machine schema/transaction tests |
 | Presets | Case normalization, ordered listing, cross-SSID sharing, exact new-field round trips, overwrite, invalid inputs, CC/NEARBY and reconnect, association/modified state, deletion without preference changes | Existing preset ownership, disk failure and transaction tests |
-| History | Exact-call rows, retained-history NEXT, invalid tokens and replay, count bounds and GO/CC aliases | Existing archive and commands/telnet history tests cover cutoff, work limits, state/SNR matching and concurrent invalidation |
+| History | Exact-call rows; singleton/list BAND/MODE, category AND, COMMENT-last punctuation, MODE UNKNOWN, saved-filter narrowing; selected NEXT and invalid-request preservation; count bounds and GO/CC aliases | Commands/telnet history tests cover matching before counting, parser/fuzz boundaries, immutable selections, self exceptions, cutoff/work limits and concurrent invalidation; offline harness fixtures reject ignored categories, union matching, preference mutation and lost selections |
 | Terminal uploads | Bad header, over-limit body, missing end marker and absolute expiry; FIN or RST required; reconnect configuration unchanged | Existing terminal framing/deadline/session tests |
 | General commands | HELP/H, BUILD, OWN, DXCC, WHOSPOTSME, PROP, DX syntax and BYE/QUIT/EXIT | Existing processor/help tests |
 
@@ -67,6 +68,38 @@ latency, throughput or delivery under overload. Local state/SNR/history fixtures
 provide the deterministic evidence for those filtering contracts; no performance
 or scientific-model improvement is claimed. A missing usable live history page
 is a failed coverage condition, not an empty-history PASS.
+
+The same two labeled DX stimuli establish history-selection evidence: 10m/CW
+and 15m/FT8, with explicit mode tokens and exact per-run labels. Their target is
+CTY-valid and differs from the authorized base call (K1ABC for VA3UXA tests,
+otherwise VA3UXA), so history's existing self exception cannot hide saved-filter
+failures. Both labeled archive rows must be present; admission/deduplication
+that loses either row fails coverage. Tests compare the exact callsign,
+frequency and label identities, rather than acknowledgements or nonempty
+output. No additional DX stimuli are sent.
+
+Raw ingress has two distinct contracts: ordinary DX input retains the command
+reader's safe character list, while recognized COMMENT prefixes admit printable
+ASCII in their phrase. Submitted DX fixtures therefore use `up-5?`; `:` and `!`
+would be rejected before DX dispatch. The matching history query uses `up-5?`,
+and its negative punctuation query uses `up-5!`, which is legal after SHOW
+COMMENT but differs from the archived phrase. Collector-only fixtures bypass
+raw ingress; actual Go reader fixtures validate both emitted DX command orders.
+
+Selections accept comma/space lists, OR within each list and AND across BAND,
+MODE and COMMENT. Crossed 10m/FT8 selection and a mismatched literal punctuation
+suffix must return an exhausted empty search. Saved band/mode blocks must hide
+otherwise selected rows, and each search must preserve configuration/revision.
+A count-one combined selection supplies a NEXT token; missing/invalid/repeated
+categories and ALL/NONE are rejected before that token returns the remaining
+labeled row. MODE UNKNOWN is valid; BAND UNKNOWN is unsupported and rejected.
+GO rejects slash aliases; accepted aliases in GO/CC return the
+same exact selected identities. Offline synthetic-session defects prove the
+collector rejects false-green responses; they do not prove server behavior.
+These exact tests require the selected labeled rows within the page work
+budget and exhausted status for empty searches. A timeout, unreadable-record
+warning or incomplete page instead fails coverage; the harness does not treat
+that bounded-search limitation as proof that no matching records exist.
 
 ## Ownership, restoration and output
 
@@ -107,8 +140,9 @@ the relevant failure excerpts is sufficient.
 The entrypoint keeps transport, the command matrix and cleanup together so the
 whole authorized mutation/restoration sequence can be reviewed in one place.
 Its length comes from explicit command cases; it adds no general testing framework.
-Support-agent documentation impact: not required; this is a developer test tool
-and changes no supported command behavior. No architecture decision changed.
+This document owns harness prerequisites and observed evidence. Operator/support
+documentation and the durable decision for runtime BAND/MODE commands belong to
+the accompanying implementation.
 
 ## COMMENT CPU and literal-input regression
 
@@ -192,4 +226,7 @@ correlation and failure cleanup. The script-only lane also checks syntax and
 diff whitespace; code-map generation/check is run after documentation updates.
 
 That October 7 live run predates the COMMENT/schema-4 feature and does not
-validate its behavior or performance.
+validate its behavior or performance. It also predates history BAND/MODE
+selections; the extended harness requires a separate owner-authorized live run
+to establish deployed behavior. No live execution is implied by offline
+collector fixtures or local Go tests.

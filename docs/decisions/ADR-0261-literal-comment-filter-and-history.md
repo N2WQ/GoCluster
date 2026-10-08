@@ -87,6 +87,10 @@ ceilings, response/preset budgets and archive lifetime remain unchanged.
 
 ## Links
 
+- Combined BAND/MODE/COMMENT history grammar is refined by
+  [ADR-0262](ADR-0262-history-band-mode-selections.md); COMMENT still consumes
+  the remaining literal text.
+
 - Refines [ADR-0251](ADR-0251-exact-call-paged-history.md) and
   [ADR-0258](ADR-0258-per-mode-minimum-snr-filter.md); preserves EVENT's
   [ADR-0070](ADR-0070-event-filters-preserve-untagged-spots.md).

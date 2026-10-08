@@ -120,6 +120,7 @@ RESET FILTER COMMENT REJECT
 RESET FILTER COMMENT
 SHOW FILTER COMMENT
 SHOW DX K1ABC 20 COMMENT POTA
+SHOW DX K1ABC 20 BAND 20m,40m MODE CW FT8 COMMENT POTA
 SHOW MYDX 20 COMMENT up 5
 ```
 
@@ -251,6 +252,19 @@ valid calls select their exact normalized stored DX identity; other supported
 prefixes select their resolved entity. Supplied selectors require loaded CTY,
 but valid full calls with unresolved countries still work as exact searches.
 See [commands history](../commands/README.md#archive-history) for examples.
+
+Append `BAND <list>` and/or `MODE <list>` after selector/count, then optional
+`COMMENT <phrase>` last. Lists accept commas or spaces, OR within each category
+and AND across categories. BAND and MODE may appear in either order, once each.
+Use the existing band names/normalization (`20` or `20m`) and filter-mode
+names/aliases, including `UNKNOWN` for blank modes. Duplicated values are
+deduplicated; unsupported or missing values, repeated categories and BAND/MODE
+`ALL`/`NONE` reject the request and preserve the previous cursor. Explicit query
+selections are required even for self-spots, apply before counts and narrow your
+saved filters. Saved-filter self exceptions are unchanged. Searches do not edit
+preferences; NEXT retains the selected lists and phrase. The existing command
+byte limit still applies. See
+[ADR-0262](../docs/decisions/ADR-0262-history-band-mode-selections.md).
 
 Every page applies current time minus configured archive retention, including
 the exact cutoff, and visits at most 200,000 candidates. Decode failures,

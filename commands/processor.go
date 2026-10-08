@@ -376,6 +376,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"SHOW MYDX [count] <prefix|callsign>",
 			"SHOW MYDX NEXT <cursor>",
 			"SHOW MYDX [selector] [count] COMMENT <phrase>",
+			"SHOW MYDX [selector] [count] BAND <list> MODE <list>",
 		},
 		nil,
 		[]string{
@@ -637,6 +638,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 				"SHOW/DX [count] <prefix|callsign>",
 				"SHOW/DX NEXT <cursor>",
 				"SHOW/DX [selector] [count] COMMENT <phrase>",
+				"SHOW/DX [selector] [count] BAND <list> MODE <list>",
 			},
 			[]string{"SH/DX"},
 			[]string{
@@ -912,6 +914,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 				"SHOW DX [count] <prefix|callsign>",
 				"SHOW DX NEXT <cursor>",
 				"SHOW DX [selector] [count] COMMENT <phrase>",
+				"SHOW DX [selector] [count] BAND <list> MODE <list>",
 			},
 			[]string{"SH DX"},
 			[]string{
@@ -1402,7 +1405,7 @@ func showDXUsage(dialect string) string {
 }
 
 func showHistoryUsage(command string) string {
-	return fmt.Sprintf("Usage: %s [count 1-250] | %s <prefix|callsign> [count 1-250] [COMMENT <phrase>]\n", command, command)
+	return fmt.Sprintf("Usage: %s [count 1-250] | %s <prefix|callsign> [count 1-250] [BAND <list>] [MODE <list>] [COMMENT <phrase>]\n", command, command)
 }
 
 func whoSpotsMeUsage() string {

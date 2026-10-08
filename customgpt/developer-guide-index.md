@@ -143,6 +143,14 @@ migration, and detached history snapshots when reviewing changes.
 
 ## Literal Comment Rules And History
 
+For combined BAND/MODE/COMMENT history searches, also use
+[commands history](../commands/README.md#archive-history) and
+[ADR-0262](../docs/decisions/ADR-0262-history-band-mode-selections.md).
+`commands/history_selection.go` owns canonical OR lists and AND query gates;
+the existing history cursor retains only bounded immutable selections. Check
+saved-filter narrowing, mandatory explicit selection for self-spots, malformed
+request preservation and NEXT, and reader-level COMMENT punctuation after lists.
+
 Route to [telnet comments](../telnet/README.md#comment-filters-and-searches) and
 [ADR-0261](../docs/decisions/ADR-0261-literal-comment-filter-and-history.md).
 Entry points are `filter/comment.go`, `filter/comment_storage.go`,

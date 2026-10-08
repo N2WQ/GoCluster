@@ -38,10 +38,16 @@ func installCommentHelp(catalog *helpCatalog) {
 			continue
 		}
 		entry.lines = appendNotes(entry.lines, []string{
-			"Append COMMENT <phrase> after the optional selector and count (either order).",
+			"Append BAND <list> and/or MODE <list> after the optional selector/count.",
+			"Lists use commas or spaces; OR within lists, AND between selections.",
+			"BAND and MODE may appear in either order, at most once each.",
+			"Bands accept 20 or 20m; modes use existing names/aliases, including UNKNOWN.",
+			"BAND/MODE ALL and NONE are invalid; omit a category to leave it unrestricted.",
+			"Explicit BAND/MODE selections are required even for self-spots.",
+			"Put COMMENT <phrase> last; it consumes the remaining literal text.",
 			"The literal phrase is required even for self-spots; saved filters still apply.",
 			"Uses stored comments, printable ASCII, case-insensitive matching, 1-64 bytes.",
-			"Interior spaces and punctuation are literal; NEXT retains the original phrase.",
+			"Interior spaces and punctuation are literal; NEXT retains all selections.",
 			"Searching does not change saved comment rules or other preferences.",
 		})
 		catalog.entries[topic] = entry
