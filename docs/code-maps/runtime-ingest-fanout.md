@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `27a14f3f778568f9`
+- Source fingerprint: `f5d1eb00ed971540`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -13,7 +13,7 @@
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 3 | 7 |
 | `dxcluster/internal/cluster` | `internal/cluster` | 25 | 63 |
-| `dxcluster/peer` | `peer` | 62 | 126 |
+| `dxcluster/peer` | `peer` | 62 | 129 |
 | `dxcluster/spot` | `spot` | 33 | 32 |
 | `dxcluster/telnet` | `telnet` | 39 | 67 |
 
@@ -273,6 +273,9 @@ Test files:
 - `peer/allocation_charge_test.go`
 - `peer/backoff_test.go`
 - `peer/bounded_index_test.go`
+- `peer/cc_handshake_test.go`
+- `peer/cc_live_test.go`
+- `peer/cc_response_retry_test.go`
 - `peer/connection_event_test.go`
 - `peer/context_ownership_test.go`
 - `peer/dedupe_allocation_test.go`
@@ -584,6 +587,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0260](docs/decisions/ADR-0260-cccluster-outbound-handshake.md) | Accepted | 2026-10-08 | peer, handshake, ccluster, deadlines, retry progress | `area:peer, path:peer` |
 | [ADR-0258](docs/decisions/ADR-0258-per-mode-minimum-snr-filter.md) | Accepted | 2026-10-07 | filter, telnet, commands, YAML, persistence, history | `area:commands, area:telnet, path:telnet` |
 | [ADR-0254](docs/decisions/ADR-0254-canadian-ised-license-and-state-reuse.md) | Accepted | 2026-10-07 | uls, config, spot, archive, filter, telnet, commands, runtime | `area:commands, area:spot, area:telnet, path:telnet` |
 | [ADR-0253](docs/decisions/ADR-0253-fcc-state-enrichment-and-filtering.md) | Accepted | 2026-10-07 | uls, spot, archive, filter, telnet, commands, runtime | `area:commands, area:spot, area:telnet, path:internal/cluster, path:telnet` |

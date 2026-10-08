@@ -1,3 +1,6 @@
+// The PC92 controller orders publication, candidate staging and establishment.
+// Candidate-owned A/K retry progress prevents duplicate A during timestamp
+// exhaustion, independently for initial startup and CC completion (ADR-0260).
 package peer
 
 import (
@@ -23,12 +26,13 @@ type LocalMembership struct {
 }
 
 type candidateState struct {
-	staged       []string
-	bytes        int
-	pc9x         bool
-	initialASent bool // the timestamp retry resumes K without duplicating startup A
-	replayAt     int
-	replayDone   chan error
+	staged          []string
+	bytes           int
+	pc9x            bool
+	initialASent    bool // the timestamp retry resumes K without duplicating startup A
+	ccResponseASent bool // the separate CC completion exchange resumes its own K
+	replayAt        int
+	replayDone      chan error
 }
 type protocolInput struct {
 	wire   string
@@ -274,7 +278,7 @@ func (p *protocolController) enqueue(f *Frame, s *session, now time.Time) bool {
 }
 func (p *protocolController) request(req protocolRequest) error {
 	s := req.source
-	if req.kind == "initial" || req.kind == "establish" {
+	if req.kind == "initial" || req.kind == "cc_response" || req.kind == "establish" {
 		if !req.deadline.IsZero() && !time.Now().Before(req.deadline) {
 			return context.DeadlineExceeded
 		}
@@ -291,7 +295,7 @@ func (p *protocolController) request(req protocolRequest) error {
 	case "ready":
 		p.tick(time.Now())
 		return nil
-	case "initial":
+	case "initial", "cc_response":
 		if p.clockGate || p.capacityGate || !p.manager.retrySessionAllowed(s) {
 			return fmt.Errorf("PC9x publication gated")
 		}
@@ -311,14 +315,21 @@ func (p *protocolController) request(req protocolRequest) error {
 		if remote.Call == "" || !s.remotePublicationMetadataOK() {
 			return fmt.Errorf("remote peer identity unavailable")
 		}
-		if !candidate.initialASent {
+		// The CC PC20 response needs a fresh A even after initial A/K. Each
+		// exchange retains its own progress on the bounded candidate owner, so
+		// timestamp retries after A resume K without duplicating publication.
+		aSent := &candidate.initialASent
+		if req.kind == "cc_response" {
+			aSent = &candidate.ccResponseASent
+		}
+		if !*aSent {
 			if err := p.sendRecordBefore([]*session{s}, "A", []PC92Entry{remote}, req.deadline); err != nil {
 				return err
 			}
 			if s.ctx != nil && s.ctx.Err() != nil {
 				return s.ctx.Err()
 			}
-			candidate.initialASent = true
+			*aSent = true
 		}
 		if err := p.nonMembershipCapacity(1); err != nil {
 			return err

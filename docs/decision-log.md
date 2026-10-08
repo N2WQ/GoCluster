@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0260 | CCCluster Outbound Handshake | Accepted | 2026-10-08 | peer, handshake, ccluster, deadlines, retry progress | Refines ADR-0230/0231 outbound CC startup only | - | `docs/decisions/ADR-0260-cccluster-outbound-handshake.md` |
 | ADR-0259 | Native Windows Codex Environment | Accepted | 2026-10-07 | development, Codex, Windows, WSL | ADR-0250 (Codex environment selection only) | - | `docs/decisions/ADR-0259-native-windows-codex-environment.md` |
 | ADR-0258 | Per-Mode Minimum SNR Filter | Accepted | 2026-10-07 | filter, telnet, commands, YAML, persistence, history | Refines ADR-0244/0245/0253 for MINSNR and version 3 | - | `docs/decisions/ADR-0258-per-mode-minimum-snr-filter.md` |
 | ADR-0257 | Public Support-Agent Retrieval | Accepted | 2026-10-07 | customgpt, actions, admission, deployment | ADR-0109; ADR-0154 admission clauses | - | `docs/decisions/ADR-0257-public-support-agent-retrieval.md` |

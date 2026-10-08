@@ -1,3 +1,6 @@
+// Handshake requests cross to the sole protocol controller with copied phase
+// deadlines. Initial and CC response configuration have separate retry progress;
+// establishment commits one owner before bounded staged replay releases reading.
 package peer
 
 import (
@@ -31,7 +34,7 @@ func (a *establishmentAttempt) commit() bool {
 
 func (m *Manager) protocolCall(kind string, s *session) error {
 	var deadline time.Time
-	if s != nil && (kind == "initial" || kind == "establish") {
+	if s != nil && (kind == "initial" || kind == "cc_response" || kind == "establish") {
 		deadline = s.phaseDeadline
 	}
 	return m.protocolCallBefore(kind, s, deadline)
@@ -88,12 +91,22 @@ func (m *Manager) protocolCallBefore(kind string, s *session, deadline time.Time
 }
 
 func (m *Manager) publishInitial(s *session) error {
+	return m.publishHandshakeConfig(s, "initial")
+}
+
+// publishCCResponse repeats the direct A/K configuration for CC's PC20
+// completion, using the same controller, fixed phase deadline and writer.
+func (m *Manager) publishCCResponse(s *session) error {
+	return m.publishHandshakeConfig(s, "cc_response")
+}
+
+func (m *Manager) publishHandshakeConfig(s *session, kind string) error {
 	deadline := time.Now().Add(5 * time.Second)
 	if !s.phaseDeadline.IsZero() && s.phaseDeadline.Before(deadline) {
 		deadline = s.phaseDeadline
 	}
 	for {
-		err := m.protocolCallBefore("initial", s, deadline)
+		err := m.protocolCallBefore(kind, s, deadline)
 		if !errors.Is(err, ErrTimestampRate) {
 			return err
 		}

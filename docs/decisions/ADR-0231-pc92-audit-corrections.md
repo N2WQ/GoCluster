@@ -94,3 +94,7 @@ returns to its normalized nonzero base after successful establishment.
   identity and admission recovery/evidence clauses after the2c06079 re-audit.
 
 Admission-recovery clauses are superseded by [ADR-0233](ADR-0233-pc92-controlled-retries-and-peer-cap.md) under Approved v14. Other clauses and historical evidence remain effective.
+
+[ADR-0260](ADR-0260-cccluster-outbound-handshake.md) refines outbound CCCluster
+startup and bounded handshake publication retry progress. The authority, fixed
+deadline, resource and mandatory C/A recovery contracts remain effective.

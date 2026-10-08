@@ -1,3 +1,7 @@
+// Peer sessions own the bounded socket reader/writer and fixed startup deadline.
+// Configured family selects completion: DXSpider waits for PC22; outbound CC
+// answers PC20 with configuration and PC22 before controller establishment.
+// Startup pings grant no authority. See ADR-0260 and cc_handshake_test.go.
 package peer
 
 import (
@@ -327,10 +331,9 @@ func (s *session) Run() error {
 
 func (s *session) handleEstablishedFrame(frame *Frame) (bool, error) {
 	if frame.Type == "PC51" {
-		s.handlePing(frame)
-		return false, nil
+		return false, s.handlePing(frame)
 	}
-	if frame.Type == "PC20" && s.inboundCC {
+	if frame.Type == "PC20" && (s.inboundCC || s.dir == dirOutbound && s.peer.family == config.PeeringPeerFamilyCCluster) {
 		// A delayed CC completion does not start another exchange.
 		return false, s.sendControlLine("PC22^")
 	}
@@ -388,31 +391,41 @@ func (s *session) keepaliveLoop() {
 	}
 }
 
-func (s *session) handlePing(frame *Frame) {
+func (s *session) handlePing(frame *Frame) error {
 	fields := frame.payloadFields()
 	if len(fields) < 3 {
-		return
+		return nil
 	}
 	toNode := strings.TrimSpace(fields[0])
 	fromNode := strings.TrimSpace(fields[1])
 	flag := strings.TrimSpace(fields[2])
 	if flag != "1" {
-		return
+		return nil
 	}
 	call := strings.TrimSpace(s.localCall)
 	if call != "" && !strings.EqualFold(toNode, call) && toNode != "*" && toNode != "" {
 		if s.logKeepalive {
 			s.manager.reportDiagnostic("pc51_other_destination", toNode, "skipped")
 		}
-		return
+		return nil
 	}
 	resp := fmt.Sprintf("PC51^%s^%s^0^", fromNode, toNode)
 	if s.logKeepalive {
 		s.manager.reportDiagnostic("pc51_ping", fromNode, "ack")
 	}
-	if err := s.sendControlLine(resp); err != nil && s.logKeepalive {
+	// Startup liveness uses the same destination rules without extending the
+	// phase deadline or granting establishment. All output has one bounded
+	// priority writer, including pings received before configuration completes.
+	var err error
+	if s.established {
+		err = s.sendControlLine(resp)
+	} else {
+		err = s.sendHandshakeLine(resp)
+	}
+	if err != nil && s.logKeepalive {
 		s.manager.reportDiagnostic("pc51_ack_failed", toNode, "queue_error")
 	}
+	return err
 }
 
 // runOutboundHandshake requires the protocol completion marker. Spot traffic
@@ -477,6 +490,8 @@ func (s *session) sendOutboundStartup() (err error) {
 
 func (s *session) handleOutboundFrame(frame *Frame, initSent *bool) (bool, error) {
 	switch frame.Type {
+	case "PC51":
+		return false, s.handlePing(frame)
 	case "PC18":
 		if *initSent {
 			return false, nil
@@ -510,6 +525,21 @@ func (s *session) handleOutboundFrame(frame *Frame, initSent *bool) (bool, error
 			}
 			*initSent = true
 		}
+	case "PC20":
+		if !*initSent || s.peer.family != config.PeeringPeerFamilyCCluster {
+			return false, nil
+		}
+		// CC requests our configuration after receiving the initial A/K and
+		// PC20. Match the reference response before committing ownership; spots
+		// and staged PC92 still cannot establish this candidate themselves.
+		if s.pc9x {
+			if err := s.manager.publishCCResponse(s); err != nil {
+				return false, err
+			}
+		} else if err := s.sendInit(false); err != nil {
+			return false, err
+		}
+		return true, s.sendHandshakeLine("PC22^")
 	case "PC22":
 		return *initSent, nil
 	}
@@ -614,6 +644,8 @@ func (s *session) enqueueStartupLineLocked(line string, clone bool) error {
 
 func (s *session) handleInboundFrame(frame *Frame, bannerSeen *bool) (bool, error) {
 	switch frame.Type {
+	case "PC51":
+		return false, s.handlePing(frame)
 	case "PC18":
 		if *bannerSeen {
 			return false, nil

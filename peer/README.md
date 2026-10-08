@@ -209,11 +209,32 @@ The runtime is intentionally conservative about what it republishes to peers.
 
 ## Control Plane
 
-Configured peer family drives inbound startup:
+Configured peer family drives startup:
 
 - `dxspider` peers keep the strict inbound path and still need remote `PC20` to finish startup
 - `ccluster` peers can complete inbound startup from a `PC18` banner carrying `CC Cluster Version:` or from the first valid `PC92`
-- outbound CC behavior is unchanged in this slice
+- outbound `dxspider` peers still require remote `PC22` after local initialization
+- outbound `ccluster` peers also accept remote `PC20` after local initialization;
+  they send fresh negotiated configuration followed by `PC22` before completing
+  establishment. PC9x configuration is `PC92 A` then `K`; legacy configuration
+  is `PC19`. An early `PC20` cannot complete startup before initialization.
+
+The outbound initial exchange remains configuration followed by `PC20`. Existing
+bannerless startup eligibility is preserved; the local initialization flag is
+not proof of remote identity. During either direction's handshake, `PC51` ping
+requests use the existing destination rules and control-priority writer. Ping
+replies neither establish the session nor extend its fixed handshake deadline.
+
+Initial A/K and the CC completion A/K have separate candidate-local progress on
+the existing bounded controller owner. If timestamp capacity runs out after A,
+that exchange resumes at K rather than duplicating A. Queue refusal still closes
+the session. Repeated completion markers do not register a session twice or
+start another configuration loop. Established PC9x recovery still requires
+complete C followed by metadata A; the handshake A/K pair cannot replace it.
+
+See [ADR-0260](../docs/decisions/ADR-0260-cccluster-outbound-handshake.md) and
+[TSR-0045](../docs/troubleshooting/TSR-0045-cccluster-outbound-handshake.md)
+for reference-source evidence and live-test limitations.
 
 Keepalive and topology traffic has higher priority than normal outbound spot backlog.
 

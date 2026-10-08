@@ -125,6 +125,17 @@ These rules must be explicit, deterministic, and testable.
 
 ### PC18/PC92 authority and recovery
 
+- Outbound `ccluster` startup accepts remote `PC20` only after local
+  initialization. It replies with fresh negotiated configuration (PC9x A/K,
+  legacy PC19), then PC22, and completes establishment. Outbound `dxspider`
+  still requires PC22; inbound family-specific startup remains unchanged.
+  Existing bannerless initialization eligibility is not remote identity proof.
+- Handshake PC51 requests use existing destination rules and bounded priority
+  output. Ping replies do not grant authority or extend fixed phase deadlines.
+  The initial and CC response A/K exchanges have separate bounded candidate
+  progress; timestamp retries after A resume K without duplicating A. Neither
+  handshake exchange substitutes for post-establishment C/A recovery. See
+  [ADR-0260](decisions/ADR-0260-cccluster-outbound-handshake.md).
 - PC18 uses truthful runtime product/build identity independently of numeric
   compatibility metadata. Invalid enabled identity fails startup.
 - PC92 supports A/C/D/K. Complete C is atomic; unsupported F/R and unknown
