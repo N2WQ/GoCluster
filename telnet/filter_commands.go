@@ -127,6 +127,7 @@ func (e *filterCommandEngine) registerDomains() {
 		newBandHandler(),
 		newDXBMHandler(),
 		newModeHandler(),
+		newMinSNRHandler(),
 		newSourceHandler(),
 		newEventHandler(),
 		newNoFilterHandler(),
@@ -1543,6 +1544,7 @@ func formatFilterSnapshot(f *filter.Filter, ctyLookup func() *cty.CTYDatabase) s
 	summaryParts := []string{
 		summaryAllowBlockField("BAND", bands, maxFieldLen),
 		summaryEnabledField("MODE", modes, maxFieldLen),
+		fmt.Sprintf("MINSNR=%d configured modes", len(f.MinSNR)),
 		summaryAllowBlockField("SOURCE", sources, maxFieldLen),
 		summaryEventField(events, eventlessVisible, maxFieldLen),
 		clampSummaryField(dxCallSummary, maxFieldLen),
@@ -1573,6 +1575,11 @@ func formatFilterSnapshot(f *filter.Filter, ctyLookup func() *cty.CTYDatabase) s
 	}
 	b.WriteString(formatAllowBlockLine("BAND", bands))
 	b.WriteString(formatEnabledLine("MODE", modes))
+	var minimums humanResponse
+	if err := writeHumanMinSNR(&minimums, f.MinSNR, false); err != nil {
+		return "Minimum SNR labels exceed the response limit.\n"
+	}
+	b.WriteString(strings.ReplaceAll(string(minimums.data), "\r\n", "\n"))
 	if !f.UnknownModeVisible() {
 		b.WriteString(unknownModeHiddenWarningMsg)
 	}

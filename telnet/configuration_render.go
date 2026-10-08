@@ -87,9 +87,10 @@ type readbackCategory struct {
 	kind         byte
 }
 
-func readbackCategories(f filter.FilterConfiguration) [25]readbackCategory {
-	return [25]readbackCategory{
+func readbackCategories(f filter.FilterConfiguration) [26]readbackCategory {
+	return [26]readbackCategory{
 		{name: "BAND", rules: f.Bands}, {name: "MODE", rules: f.Modes},
+		{name: "MINSNR", kind: 's'},
 		{name: "SOURCE", rules: f.Sources}, {name: "EVENT", rules: f.Events},
 		{name: "CONFIDENCE", rules: f.Confidence}, {name: "PATH", rules: f.PathClasses},
 		{name: "DXCONT", rules: f.DXContinents}, {name: "DECONT", rules: f.DEContinents},

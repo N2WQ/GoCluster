@@ -240,9 +240,25 @@ See [telnet state filters](../telnet/README.md#us-state-and-canadian-province-fi
 
 Existing GET YAML commands stay schema 1. `GET YAML CONFIG SCHEMA 2` exposes the
 new `dx_states` and `de_states` RuleSets. Upload body `schema_version` selects
-1 or 2; schema 1 writes preserve hidden state rules. HELP and the main README
+1, 2 or 3; schema 1 writes preserve hidden state rules. HELP and the main README
 retain schema 1 examples for existing clients.
 
 The existing State commands accept 73 codes (60 FCC plus 13 Canadian).
 `PASS DXSTATE CA,TX,ON,QC` can combine both sources. Registered addresses can
 differ from operating location; no new province field or command is introduced.
+
+## MINSNR Commands
+
+PASS MINSNR and REJECT MINSNR both set an inclusive per-mode minimum. Use
+`PASS MINSNR CW,RTTY 10` or `REJECT MINSNR FT8,FT4 -10`; human spots and spots
+without SNR are exempt. Clear selected modes with PASS's ALL value or REJECT's
+NONE value. A standalone mode selector ALL expands supported modes for numeric
+updates and clears every retained rule for resets. Lists validate atomically.
+SHOW FILTER MINSNR lists signed minima and inactive retained names; other filters
+still apply. Removed modes reactivate only when their exact canonical mode returns.
+
+Explicit machine schema 3 adds the `min_snr` map. Older schema shapes remain
+stable and writes preserve hidden thresholds. Full schema 3 PUT/VALIDATE requires
+this map; PATCH omissions preserve it and supplied maps replace it, including
+`{}` to clear it. Presets, reconnects, revisions and history include MINSNR.
+See [telnet minimum SNR](../telnet/README.md#minimum-snr).

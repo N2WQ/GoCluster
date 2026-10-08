@@ -31,7 +31,7 @@ func TestLegacyMergedStateFieldsProtected(t *testing.T) {
 	for name, raw := range map[string]string{
 		"aliased field key":    "key: &key dxstates\n? *key\n: {CA: false}\n",
 		"aliased state map":    "states: &states {CA: false}\n<<: {dxstates: *states}\n",
-		"merged future marker": "<<: {configuration_version: 3, bands: {20m: true}}\n",
+		"merged future marker": "<<: {configuration_version: 4, bands: {20m: true}}\n",
 		"malformed merge":      "<<: [42]\n",
 	} {
 		t.Run(name, func(t *testing.T) { assertStateStorageProtected(t, raw) })

@@ -323,9 +323,41 @@ lenient modes must be explicit, documented, and test-covered.
 - Archive version 6 records both observed States. Versions 2-5 remain unknown;
   history never consults today's registry to hydrate old records.
 - Machine YAML schema 1 preserves its shape and hidden State rules; explicit
-  schema 2 exposes the same State fields. Disk version 2 keeps its layout with
-  73-key State bounds. Older binaries can reject Canadian codes; downgrade uses
+  schema 2 exposes the same State fields. Disk version 3 and machine schema 3
+  also carry MINSNR; State maps retain their 73-key bounds. Older binaries can reject Canadian codes; downgrade uses
   matching backups.
 
 See [ADR-0253](decisions/ADR-0253-fcc-state-enrichment-and-filtering.md) and
 [ADR-0254](decisions/ADR-0254-canadian-ised-license-and-state-reuse.md).
+
+## Per-Mode Minimum SNR
+
+`PASS MINSNR <modes|ALL> <integer dB>` and numeric `REJECT MINSNR` set
+identical inclusive minima for automated spots with a present report. A zero
+report is present when `HasReport` is true; zero and negative thresholds enable
+rules. Human spots and spots without a report bypass only this category. Other
+categories and existing live/history self-spot behavior remain in force.
+
+Exact canonical mode keys own the signed thresholds. Removed or newly aliased
+keys remain stored but inactive, reactivating if the exact canonical mode
+returns. All maps include active and dormant keys in their 128-entry and 65,536
+aggregate raw ASCII key-byte bounds. Human clears resolve retained exact names
+first. Numeric updates admit only current supported canonical modes; machine
+supplied maps may retain unavailable names only from the transaction's prior
+configuration. Invalid lists or maps publish no partial edit.
+
+PASS's value ALL and REJECT's value NONE clear selected minima. ALL alone in
+the selector expands supported modes for numeric updates and clears all saved
+minima for resets. Whole-filter resets also clear dormant entries. Configuration
+identity, presets, revision tokens and detached history predicates include the
+map; edits invalidate history continuation and pending publication.
+
+Saved version 3 and explicit machine schema 3 carry `min_snr`. Old saved versions
+acquire no minima and version 2 state rules remain exact. Machine schemas 1/2
+preserve hidden thresholds without adding fields to their status/choice shapes.
+Schema 3 status reports configured/inactive counts and sorted inactive keys;
+complete response budgets include that status. Source parsing, report units,
+aggregation, archive layouts and model semantics are unchanged.
+
+See [ADR-0258](decisions/ADR-0258-per-mode-minimum-snr-filter.md) and the
+[telnet command contract](../telnet/README.md#minimum-snr).

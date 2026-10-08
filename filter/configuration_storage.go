@@ -1,5 +1,5 @@
 // File role: Presence-aware disk versioning and bounded applied-preset references.
-// Absent markers select legacy migration; version one adds unrestricted states.
+// Absent markers select legacy migration; later versions add exact state/SNR rules.
 // Invalid/future versions fail before records or shared presets can be rewritten.
 package filter
 
@@ -80,8 +80,8 @@ func storedConfigurationVersion(node *yaml.Node) (int, error) {
 		if value.Kind != yaml.ScalarNode || value.Tag != "!!int" {
 			return 0, fmt.Errorf("%w: marker must be an integer", ErrUnsupportedConfigurationVersion)
 		}
-		if err := value.Decode(&version); err != nil || (version != 1 && version != CurrentConfigurationVersion) {
-			return 0, fmt.Errorf("%w: expected 1 or %d", ErrUnsupportedConfigurationVersion, CurrentConfigurationVersion)
+		if err := value.Decode(&version); err != nil || (version < 1 || version > CurrentConfigurationVersion) {
+			return 0, fmt.Errorf("%w: expected 1 through %d", ErrUnsupportedConfigurationVersion, CurrentConfigurationVersion)
 		}
 	}
 	return version, nil
@@ -137,8 +137,8 @@ func validateStoredStateMapping(node *yaml.Node, version int, pending *[]*yaml.N
 		switch name {
 		case "dxstates", "blockdxstates", "destates", "blockdestates",
 			"alldxstates", "blockalldxstates", "alldestates", "blockalldestates":
-			if version < CurrentConfigurationVersion {
-				return fmt.Errorf("state field %s requires configuration version %d", name, CurrentConfigurationVersion)
+			if version < stateConfigurationVersion {
+				return fmt.Errorf("state field %s requires configuration version %d", name, stateConfigurationVersion)
 			}
 		default:
 			continue

@@ -389,6 +389,9 @@ func EnsureUserDataDir() error {
 //   - Each client has their own Filter instance (no sharing)
 //   - No internal locking needed (single-threaded per client)
 type Filter struct {
+	// MinSNR owns bounded per-mode inclusive minima. Presence enables zero/negative values;
+	// dormant exact keys survive taxonomy changes and are never rebound through aliases.
+	MinSNR               map[string]int  `yaml:"min_snr,omitempty"`
 	Bands                map[string]bool // Allowed bands (whitelist when non-empty)
 	BlockBands           map[string]bool // Blocked bands (deny wins over allow)
 	Modes                map[string]bool // Allowed modes
@@ -535,6 +538,7 @@ type NearbyLocationSnapshot struct {
 // Downstream: Filter setters and default selection state.
 func NewFilter() *Filter {
 	f := &Filter{
+		MinSNR:               make(map[string]int),
 		Bands:                make(map[string]bool),
 		BlockBands:           make(map[string]bool),
 		Modes:                make(map[string]bool),
@@ -1142,6 +1146,7 @@ func (f *Filter) ResetEvents() {
 // Upstream: Telnet RESET ALL commands or new-session defaults.
 // Downstream: ResetBands, ResetModes, ResetSources, ClearCallsignPatterns, ResetConfidence, Reset* helpers.
 func (f *Filter) Reset() {
+	f.ResetMinSNR()
 	f.ResetBands()
 	f.ResetModes()
 	f.ResetSources()
@@ -1497,6 +1502,12 @@ func (f *Filter) matchesWithPath(s *spot.Spot, pathClass string) bool {
 	}
 	if !passesStringFilter(modeUpper, f.Modes, f.BlockModes, f.AllModes, f.BlockAllModes) {
 		return false
+	}
+
+	if !s.IsHuman && s.HasReport {
+		if minimum, configured := f.MinSNR[modeUpper]; configured && IsActiveMinSNRMode(modeUpper) && s.Report < minimum {
+			return false
+		}
 	}
 
 	sourceLabel := "SKIMMER"
@@ -1921,6 +1932,8 @@ func (f *Filter) String() string {
 			parts = append(parts, "Modes: NONE (no spots will pass)")
 		}
 	}
+
+	parts = append(parts, f.MinSNRSummary())
 
 	// Describe source filter.
 	{

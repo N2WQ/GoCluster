@@ -41,6 +41,9 @@ func canonicalUpperChoice(valid func(string) bool) func(string) bool {
 }
 
 func (s *Server) validateMachineConfiguration(cfg filter.Configuration) error {
+	if err := cfg.ValidateMinSNRRules(); err != nil {
+		return err
+	}
 	if err := cfg.ValidateStateRules(); err != nil {
 		return err
 	}
@@ -151,6 +154,24 @@ func (s *Server) validateMachineSettings(settings filter.SettingsConfiguration) 
 	case 0, 15, 30, 60:
 	default:
 		return fmt.Errorf("settings.solar_summary_minutes must be 0, 15, 30 or 60")
+	}
+	return nil
+}
+
+// Supplied minima may retain an exact dormant key from the transaction-owned
+// previous snapshot. The proposed map must never prove its own prior retention.
+// Omitted maps use only finite grammar validation and remain hidden in v1/v2.
+func (r machineRequest) validateMinSNRSuppliedModes(before filter.Configuration) error {
+	if r.filterFields&(1<<27) == 0 {
+		return nil
+	}
+	for mode := range r.Configuration.Filters.MinSNR {
+		if filter.IsActiveMinSNRMode(mode) {
+			continue
+		}
+		if _, retained := before.Filters.MinSNR[mode]; !retained {
+			return fmt.Errorf("filters.min_snr contains an unavailable mode not previously retained")
+		}
 	}
 	return nil
 }

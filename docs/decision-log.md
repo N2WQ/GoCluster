@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0258 | Per-Mode Minimum SNR Filter | Accepted | 2026-10-07 | filter, telnet, commands, YAML, persistence, history | Refines ADR-0244/0245/0253 for MINSNR and version 3 | - | `docs/decisions/ADR-0258-per-mode-minimum-snr-filter.md` |
 | ADR-0257 | Public Support-Agent Retrieval | Accepted | 2026-10-07 | customgpt, actions, admission, deployment | ADR-0109; ADR-0154 admission clauses | - | `docs/decisions/ADR-0257-public-support-agent-retrieval.md` |
 | ADR-0256 | Support Search Response Budget | Accepted | 2026-10-07 | customgpt, search, retrieval, bounded resources | Refines ADR-0255 response bound and truncation | - | `docs/decisions/ADR-0256-support-search-response-budget.md` |
 | ADR-0255 | Support Search Evidence and Coverage | Accepted | 2026-10-07 | customgpt, search, retrieval, supportability | Refines ADR-0154 search evidence and coverage | ADR-0256 (response budget and truncation refinement) | `docs/decisions/ADR-0255-support-search-evidence-and-coverage.md` |

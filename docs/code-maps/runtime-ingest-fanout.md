@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `bf65ebeb430c097f`
+- Source fingerprint: `27a14f3f778568f9`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -15,7 +15,7 @@
 | `dxcluster/internal/cluster` | `internal/cluster` | 25 | 63 |
 | `dxcluster/peer` | `peer` | 62 | 126 |
 | `dxcluster/spot` | `spot` | 33 | 32 |
-| `dxcluster/telnet` | `telnet` | 37 | 63 |
+| `dxcluster/telnet` | `telnet` | 39 | 67 |
 
 ## In-Scope Package Edges
 
@@ -477,6 +477,7 @@ Source files:
 - `telnet/configuration_human_dxcc.go`
 - `telnet/configuration_human_effective.go`
 - `telnet/configuration_human_finite.go`
+- `telnet/configuration_human_minsnr.go`
 - `telnet/configuration_human_summary.go`
 - `telnet/configuration_publish.go`
 - `telnet/configuration_readback.go`
@@ -496,6 +497,7 @@ Source files:
 - `telnet/machine_upload.go`
 - `telnet/machine_validation.go`
 - `telnet/machine_versions.go`
+- `telnet/minsnr_commands.go`
 - `telnet/peer_membership.go`
 - `telnet/preset_commands.go`
 - `telnet/qualification_observer.go`
@@ -542,6 +544,10 @@ Test files:
 - `telnet/machine_session_test.go`
 - `telnet/machine_transport_coverage_test.go`
 - `telnet/machine_upload_test.go`
+- `telnet/minsnr_commands_test.go`
+- `telnet/minsnr_history_test.go`
+- `telnet/minsnr_machine_test.go`
+- `telnet/minsnr_readback_test.go`
 - `telnet/path_settings_test.go`
 - `telnet/peer_membership_test.go`
 - `telnet/prelogin_gate_test.go`
@@ -578,6 +584,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0258](docs/decisions/ADR-0258-per-mode-minimum-snr-filter.md) | Accepted | 2026-10-07 | filter, telnet, commands, YAML, persistence, history | `area:commands, area:telnet, path:telnet` |
 | [ADR-0254](docs/decisions/ADR-0254-canadian-ised-license-and-state-reuse.md) | Accepted | 2026-10-07 | uls, config, spot, archive, filter, telnet, commands, runtime | `area:commands, area:spot, area:telnet, path:telnet` |
 | [ADR-0253](docs/decisions/ADR-0253-fcc-state-enrichment-and-filtering.md) | Accepted | 2026-10-07 | uls, spot, archive, filter, telnet, commands, runtime | `area:commands, area:spot, area:telnet, path:internal/cluster, path:telnet` |
 | [ADR-0252](docs/decisions/ADR-0252-automatic-commit-suffix-release-tags.md) | Accepted | 2026-10-06 | release scripts, build metadata | `path:peer` |

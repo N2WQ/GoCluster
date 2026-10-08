@@ -343,7 +343,7 @@ func TestMachineSchemaEnvelopeBoundsAndCompleteness(t *testing.T) {
 	good := machineRequestFixture("noise_class: URBAN\n", true)
 	for _, mutated := range [][]byte{
 		bytes.Replace(good, []byte("schema_version: 1\n"), nil, 1),
-		bytes.Replace(good, []byte("schema_version: 1"), []byte("schema_version: 3"), 1),
+		bytes.Replace(good, []byte("schema_version: 1"), []byte("schema_version: 4"), 1),
 		bytes.Replace(good, []byte("schema_version: 1"), []byte("schema_version: \"1\""), 1),
 		bytes.Replace(good, []byte("request_id: noise-Ab1\n"), nil, 1),
 		bytes.Replace(good, []byte("request_id: noise-Ab1"), []byte("request_id: noise_1"), 1),
@@ -405,6 +405,10 @@ func FuzzMachineSchema(f *testing.F) {
 		{1, machineRequestFixture("dx_callsigns: [&a \"W1*\", *a]\n", true)},
 		{1, bytes.Replace(machineRequestFixture("dx_states: {allow: {CA: true, TX: false}}\nde_states: {block_all: true}\n", true), []byte("schema_version: 1"), []byte("schema_version: 2"), 1)},
 		{4, bytes.Replace(machineRequestFixture(machineCompleteFilterFixture+"dx_states: {allow_all: true, block_all: false, allow: {}, block: {}}\nde_states: {allow_all: true, block_all: false, allow: {}, block: {}}\n", true), []byte("schema_version: 1"), []byte("schema_version: 2"), 1)},
+		{1, minSNRMachineFixture("min_snr: {CW: 0, FT8: -10}\n", 3, true)},
+		{1, minSNRMachineFixture("min_snr: {FT8: 0, FT8: -1}\n", 3, true)},
+		{4, minSNRMachineFixture(machineCompleteFilterFixture+minSNRCompleteStateFixture+"min_snr: {CW: 0, FT8: -10}\n", 3, true)},
+		{3, minSNRMachineFixture("filters:\n"+indentMachineFixture(machineCompleteFilterFixture+minSNRCompleteStateFixture+"min_snr: {CW: 0, FT8: -10}\n")+"settings:\n"+indentMachineFixture(machineCompleteSettingsFixture), 3, false)},
 		{2, machineRequestFixture("settings: {noise_class: URBAN}\n", true)},
 		{3, machineRequestFixture("filters:\n"+indentMachineFixture(machineCompleteFilterFixture)+"settings:\n"+indentMachineFixture(machineCompleteSettingsFixture), false)},
 		{4, machineRequestFixture(machineCompleteFilterFixture, true)},
@@ -426,16 +430,25 @@ func FuzzMachineSchema(f *testing.F) {
 			}
 			return
 		}
-		if (request.SchemaVersion != 1 && request.SchemaVersion != 2) || len(request.RequestID) < 1 || len(request.RequestID) > 32 || len(request.IfRevision) > 128 || (command.Verb != "VALIDATE" && request.IfRevision == "") {
+		if (request.SchemaVersion != 1 && request.SchemaVersion != 2 && request.SchemaVersion != 3) || len(request.RequestID) < 1 || len(request.RequestID) > 32 || len(request.IfRevision) > 128 || (command.Verb != "VALIDATE" && request.IfRevision == "") {
 			t.Fatal("invalid envelope admitted")
 		}
-		before := filter.Configuration{Filters: filter.FilterConfiguration{Bands: filter.StringRules{Allow: map[string]bool{"40m": true}, Block: map[string]bool{"80m": false}}, DXStates: filter.StringRules{Allow: map[string]bool{"CA": false}, Block: map[string]bool{"TX": true}}, DEStates: filter.StringRules{AllowAll: true, Block: map[string]bool{"NY": false}}, DXCallsigns: []string{"K2*"}}, Settings: filter.SettingsConfiguration{NoiseClass: "QUIET", Grid: "FN42", SolarSummaryMinutes: 30}}
+		before := filter.Configuration{Filters: filter.FilterConfiguration{MinSNR: map[string]int{"FT8": -10, "DORMANT": 0}, Bands: filter.StringRules{Allow: map[string]bool{"40m": true}, Block: map[string]bool{"80m": false}}, DXStates: filter.StringRules{Allow: map[string]bool{"CA": false}, Block: map[string]bool{"TX": true}}, DEStates: filter.StringRules{AllowAll: true, Block: map[string]bool{"NY": false}}, DXCallsigns: []string{"K2*"}}, Settings: filter.SettingsConfiguration{NoiseClass: "QUIET", Grid: "FN42", SolarSummaryMinutes: 30}}
 		stateBefore := before.Clone()
-		if _, err := request.apply(before); err != nil {
+		next, err := request.apply(before)
+		if err != nil {
 			t.Fatalf("decoded request could not apply: %v", err)
+		}
+		detached := next.Clone()
+		for key := range detached.Filters.MinSNR {
+			detached.Filters.MinSNR[key] = 42
+			break
 		}
 		if !reflect.DeepEqual(before.Filters.Bands.Allow, map[string]bool{"40m": true}) || !reflect.DeepEqual(before.Filters.Bands.Block, map[string]bool{"80m": false}) || !reflect.DeepEqual(before.Filters.DXCallsigns, []string{"K2*"}) || before.Settings.NoiseClass != "QUIET" || before.Settings.Grid != "FN42" || before.Settings.SolarSummaryMinutes != 30 {
 			t.Fatal("apply mutated previous configuration")
+		}
+		if !reflect.DeepEqual(before.Filters.MinSNR, stateBefore.Filters.MinSNR) {
+			t.Fatal("apply mutated previous minima")
 		}
 		if !sameRules(before.Filters.DXStates, stateBefore.Filters.DXStates) || !sameRules(before.Filters.DEStates, stateBefore.Filters.DEStates) {
 			t.Fatal("apply mutated previous state rules")

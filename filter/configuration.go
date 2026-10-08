@@ -13,7 +13,10 @@ import (
 )
 
 // CurrentConfigurationVersion identifies disk records that preserve exact values.
-const CurrentConfigurationVersion = 2
+const CurrentConfigurationVersion = 3
+
+// stateConfigurationVersion is fixed at the disk version introducing state rules.
+const stateConfigurationVersion = 2
 
 // RuleSet preserves every configured selection, including explicit false entries.
 type RuleSet[K string | int] struct {
@@ -105,33 +108,34 @@ type SettingsConfiguration struct {
 
 // FilterConfiguration contains all exact rules, excluding runtime NEARBY caches.
 type FilterConfiguration struct { //nolint:revive // Names the filter portion alongside SettingsConfiguration in the public schema.
-	Bands            StringRules `yaml:"bands"`
-	Modes            StringRules `yaml:"modes"`
-	Sources          StringRules `yaml:"sources"`
-	Events           StringRules `yaml:"events"`
-	Confidence       StringRules `yaml:"confidence"`
-	PathClasses      StringRules `yaml:"path_classes"`
-	DXStates         StringRules `yaml:"dx_states"`
-	DEStates         StringRules `yaml:"de_states"`
-	DXContinents     StringRules `yaml:"dx_continents"`
-	DEContinents     StringRules `yaml:"de_continents"`
-	DXZones          IntRules    `yaml:"dx_zones"`
-	DEZones          IntRules    `yaml:"de_zones"`
-	DXGrid2          StringRules `yaml:"dx_grid2"`
-	DEGrid2          StringRules `yaml:"de_grid2"`
-	DXDXCC           IntRules    `yaml:"dx_dxcc"`
-	DEDXCC           IntRules    `yaml:"de_dxcc"`
-	DXCallsigns      []string    `yaml:"dx_callsigns"`
-	BlockDXCallsigns []string    `yaml:"block_dx_callsigns"`
-	DECallsigns      []string    `yaml:"de_callsigns"`
-	BlockDECallsigns []string    `yaml:"block_de_callsigns"`
-	IncludeBeacons   DefaultBool `yaml:"include_beacons"`
-	AllowWWV         DefaultBool `yaml:"allow_wwv"`
-	AllowWCY         DefaultBool `yaml:"allow_wcy"`
-	AllowAnnounce    DefaultBool `yaml:"allow_announce"`
-	AllowSelf        DefaultBool `yaml:"allow_self"`
-	AllowToxic       DefaultBool `yaml:"allow_toxic"`
-	NearbyEnabled    bool        `yaml:"nearby_enabled"`
+	MinSNR           map[string]int `yaml:"min_snr"`
+	Bands            StringRules    `yaml:"bands"`
+	Modes            StringRules    `yaml:"modes"`
+	Sources          StringRules    `yaml:"sources"`
+	Events           StringRules    `yaml:"events"`
+	Confidence       StringRules    `yaml:"confidence"`
+	PathClasses      StringRules    `yaml:"path_classes"`
+	DXStates         StringRules    `yaml:"dx_states"`
+	DEStates         StringRules    `yaml:"de_states"`
+	DXContinents     StringRules    `yaml:"dx_continents"`
+	DEContinents     StringRules    `yaml:"de_continents"`
+	DXZones          IntRules       `yaml:"dx_zones"`
+	DEZones          IntRules       `yaml:"de_zones"`
+	DXGrid2          StringRules    `yaml:"dx_grid2"`
+	DEGrid2          StringRules    `yaml:"de_grid2"`
+	DXDXCC           IntRules       `yaml:"dx_dxcc"`
+	DEDXCC           IntRules       `yaml:"de_dxcc"`
+	DXCallsigns      []string       `yaml:"dx_callsigns"`
+	BlockDXCallsigns []string       `yaml:"block_dx_callsigns"`
+	DECallsigns      []string       `yaml:"de_callsigns"`
+	BlockDECallsigns []string       `yaml:"block_de_callsigns"`
+	IncludeBeacons   DefaultBool    `yaml:"include_beacons"`
+	AllowWWV         DefaultBool    `yaml:"allow_wwv"`
+	AllowWCY         DefaultBool    `yaml:"allow_wcy"`
+	AllowAnnounce    DefaultBool    `yaml:"allow_announce"`
+	AllowSelf        DefaultBool    `yaml:"allow_self"`
+	AllowToxic       DefaultBool    `yaml:"allow_toxic"`
+	NearbyEnabled    bool           `yaml:"nearby_enabled"`
 }
 
 // Configuration captures settings and filter rules as one writable snapshot.
@@ -147,6 +151,7 @@ func ConfigurationFromFilter(f *Filter, settings SettingsConfiguration) Configur
 		return Configuration{Settings: settings}
 	}
 	return Configuration{Settings: settings, Filters: FilterConfiguration{
+		MinSNR:       f.MinSNR,
 		Bands:        StringRules{f.AllBands, f.BlockAllBands, f.Bands, f.BlockBands},
 		Modes:        StringRules{f.AllModes, f.BlockAllModes, f.Modes, f.BlockModes},
 		Sources:      StringRules{f.AllSources, f.BlockAllSources, f.Sources, f.BlockSources},
@@ -188,7 +193,8 @@ func ConfigurationFromPreset(set *SavedPreset) Configuration {
 func (c Configuration) FilterValue() Filter {
 	f := c.Filters
 	return Filter{
-		Bands: f.Bands.Allow, BlockBands: f.Bands.Block, AllBands: f.Bands.AllowAll, BlockAllBands: f.Bands.BlockAll,
+		MinSNR: f.MinSNR,
+		Bands:  f.Bands.Allow, BlockBands: f.Bands.Block, AllBands: f.Bands.AllowAll, BlockAllBands: f.Bands.BlockAll,
 		Modes: f.Modes.Allow, BlockModes: f.Modes.Block, AllModes: f.Modes.AllowAll, BlockAllModes: f.Modes.BlockAll,
 		Sources: f.Sources.Allow, BlockSources: f.Sources.Block, AllSources: f.Sources.AllowAll, BlockAllSources: f.Sources.BlockAll,
 		Events: f.Events.Allow, BlockEvents: f.Events.Block, AllEvents: f.Events.AllowAll, BlockAllEvents: f.Events.BlockAll,
@@ -221,6 +227,7 @@ func cloneRules[K string | int](rules RuleSet[K]) RuleSet[K] {
 // Clone detaches exact values after the caller has established preparation bounds.
 func (c Configuration) Clone() Configuration {
 	f := &c.Filters
+	f.MinSNR = maps.Clone(f.MinSNR)
 	f.Bands, f.Modes, f.Sources = cloneRules(f.Bands), cloneRules(f.Modes), cloneRules(f.Sources)
 	f.Events, f.Confidence, f.PathClasses = cloneRules(f.Events), cloneRules(f.Confidence), cloneRules(f.PathClasses)
 	f.DXStates, f.DEStates = cloneRules(f.DXStates), cloneRules(f.DEStates)
@@ -237,6 +244,9 @@ func (c Configuration) Clone() Configuration {
 // Ordinary user records and LOAD admission do not inherit the readback budget.
 func (c Configuration) Preset() (*SavedPreset, error) {
 	if err := c.ValidateStateRules(); err != nil {
+		return nil, err
+	}
+	if err := c.ValidateMinSNRRules(); err != nil {
 		return nil, err
 	}
 	if !c.MinimumSizeFits(MaxPresetBytes) {
@@ -302,6 +312,11 @@ func (c Configuration) MinimumSizeFits(limit int) bool {
 					return false
 				}
 			}
+		}
+	}
+	for key := range c.Filters.MinSNR {
+		if !consume(len(key)) || !consume(4) {
+			return false
 		}
 	}
 	for _, rules := range c.Filters.intRules() {

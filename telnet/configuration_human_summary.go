@@ -387,6 +387,9 @@ func writeHumanOverview(h *humanResponse, cfg filter.FilterConfiguration, status
 	if err := writeHumanFiniteRules(h, "Modes", "", cfg.Modes, humanModeRuleKey, humanModeRuleKey, unknown, false); err != nil {
 		return err
 	}
+	if err := writeHumanMinSNR(h, cfg.MinSNR, true); err != nil {
+		return err
+	}
 	if err := h.row("Sources", humanSourceSummary(cfg.Sources)); err != nil {
 		return err
 	}

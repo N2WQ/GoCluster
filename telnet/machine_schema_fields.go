@@ -1,6 +1,6 @@
 // File role: Defines versioned YAML fields and fixed presence-mask positions.
-// Version 1 excludes state rules; version 2 admits the bounded state domains
-// while sharing exact rule replacement and omitted-field behavior.
+// Schema 2 adds bounded state domains; schema 3 adds per-mode SNR minima.
+// Older masks stay fixed and supplied collections replace their entire value.
 package telnet
 
 import (
@@ -29,6 +29,14 @@ var machineFilterFieldsV2 = [...]string{
 	"dx_states", "de_states",
 }
 
+var machineFilterFieldsV3 = [...]string{
+	"bands", "modes", "sources", "events", "confidence", "path_classes", "dx_continents", "de_continents",
+	"dx_zones", "de_zones", "dx_grid2", "de_grid2", "dx_dxcc", "de_dxcc",
+	"dx_callsigns", "block_dx_callsigns", "de_callsigns", "block_de_callsigns",
+	"include_beacons", "allow_wwv", "allow_wcy", "allow_announce", "allow_self", "allow_toxic", "nearby_enabled",
+	"dx_states", "de_states", "min_snr",
+}
+
 var machineSettingFields = [...]string{
 	"dialect", "grid", "noise_class", "dedupe_policy", "path_min_observation_count", "solar_summary_minutes",
 }
@@ -42,8 +50,11 @@ const (
 
 func (r *machineRequest) decodeFilters(node *yaml.Node, path string, complete bool) error {
 	names := machineFilterFields[:]
-	if r.SchemaVersion == 2 {
+	switch r.SchemaVersion {
+	case 2:
 		names = machineFilterFieldsV2[:]
+	case 3:
+		names = machineFilterFieldsV3[:]
 	}
 	fields, err := machineObject(node, path, names, complete)
 	if err != nil {
@@ -77,6 +88,8 @@ func (r *machineRequest) decodeFilters(node *yaml.Node, path string, complete bo
 			r.ruleFields[14], err = decodeMachineRules(&f.DXStates, field, fieldPath, complete, machineStringRuleKey)
 		case i == 26:
 			r.ruleFields[15], err = decodeMachineRules(&f.DEStates, field, fieldPath, complete, machineStringRuleKey)
+		case i == 27:
+			f.MinSNR, err = machineMinSNRMap(field, fieldPath)
 		}
 		if err != nil {
 			return err
@@ -168,6 +181,45 @@ func machineRuleMap[K string | int](node *yaml.Node, path string, key func(*yaml
 	return values, nil
 }
 
+// Check raw entry and key-byte limits before constructing the typed map. Keys
+// stay exact; alias normalization could redirect a saved dormant threshold.
+func machineMinSNRMap(node *yaml.Node, path string) (map[string]int, error) {
+	if node.Kind != yaml.MappingNode || node.Tag != "!!map" || len(node.Content)%2 != 0 {
+		return nil, schemaError(path, "expected a mapping")
+	}
+	count := len(node.Content) / 2
+	if count > filter.MaxMinSNREntries {
+		return nil, schemaError(path, "exceeds mode-entry limit")
+	}
+	remaining := filter.MaxMinSNRKeyBytes
+	for i := 0; i < len(node.Content); i += 2 {
+		key, err := machineString(node.Content[i], path)
+		if err != nil {
+			return nil, err
+		}
+		if len(key) > remaining {
+			return nil, schemaError(path, "exceeds aggregate mode-key byte limit")
+		}
+		remaining -= len(key)
+		if !filter.ValidMinSNRModeKey(key) {
+			return nil, schemaError(path, "expected an exact uppercase mode key")
+		}
+	}
+	values := make(map[string]int, count)
+	for i := 0; i < len(node.Content); i += 2 {
+		key := node.Content[i].Value
+		if _, duplicate := values[key]; duplicate {
+			return nil, schemaError(path, "duplicate mode key")
+		}
+		value, err := machineInteger(node.Content[i+1], path, false)
+		if err != nil {
+			return nil, err
+		}
+		values[key] = value
+	}
+	return values, nil
+}
+
 func machineStringRuleKey(node *yaml.Node, path string) (string, string, error) {
 	value, err := machineString(node, path)
 	return value, strings.ToUpper(value), err
@@ -249,6 +301,9 @@ func (r machineRequest) apply(before filter.Configuration) (filter.Configuration
 	}
 	if r.filterFields&(1<<24) != 0 {
 		f.NearbyEnabled = proposed.NearbyEnabled
+	}
+	if r.filterFields&(1<<27) != 0 {
+		f.MinSNR = proposed.MinSNR
 	}
 	s, desired := &before.Settings, r.Configuration.Settings
 	settings := [4]*string{&s.Dialect, &s.Grid, &s.NoiseClass, &s.DedupePolicy}

@@ -54,6 +54,9 @@ func saveConfiguration(callsign string, cfg Configuration, ref *PresetReference,
 	if err := cfg.ValidateStateRules(); err != nil {
 		return err
 	}
+	if err := cfg.ValidateMinSNRRules(); err != nil {
+		return err
+	}
 	for _, toggle := range cfg.Filters.toggles() {
 		if toggle > DefaultBoolTrue {
 			return errors.New("invalid default boolean selection")

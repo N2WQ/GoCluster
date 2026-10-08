@@ -904,10 +904,39 @@ Canadian cache entries revalidate at midnight. Prefix checks prove callsign
 plausibility without proving residency or club/event eligibility.
 
 Archive version 6 retains observed State; versions 2–5 remain unknown and are
-never enriched on history reads. Preference disk version 2 and machine YAML
-schemas 1/2 keep their layouts. Schema 1 writes preserve hidden State rules;
+never enriched on history reads. Preference disk version 3 and explicit machine
+schema 3 also carry MINSNR; machine schemas 1/2 keep their layouts. Schema 1
+writes preserve hidden State rules;
 schema 2 exposes them. Stop writers and retain matching binary/data backups
 before upgrade or downgrade: older binaries may reject Canadian codes in saved
 profiles and archive rows. Recover failed refreshes by retrying with the last
 good database in place. See [configuration](../data/config/README.md#canadian-ised-reference-data)
 and [validation](canadian-state-validation.md).
+
+## Per-Mode Minimum SNR
+
+```text
+PASS MINSNR CW,RTTY 10
+REJECT MINSNR FT8,FT4 -10
+PASS MINSNR FT8 ALL
+REJECT MINSNR CW,RTTY NONE
+SHOW FILTER MINSNR
+```
+
+Numeric PASS and REJECT set the same inclusive minimum. Human spots and spots
+without SNR are exempt from MINSNR; other filters still apply. Zero and negative
+values are thresholds, and a missing setting means disabled. Other modes remain
+unchanged. ALL in the mode position must stand alone; numeric updates expand
+currently supported modes, while reset operations clear active and dormant rules.
+Removed modes retain inactive thresholds until their exact canonical mode returns.
+RESET FILTER and PASS NOFILTER clear every minimum.
+
+Presets, reconnects and modified status retain these settings. Changes invalidate
+history continuation. Use GET YAML CONFIG SCHEMA 3 for exact `min_snr` values;
+schemas 1/2 preserve hidden thresholds. PATCH replaces a supplied map and `{}`
+clears it. Active and dormant rules share the finite entry/key-byte limits exposed
+by schema 3 CAPABILITIES. See [the transport contract](../telnet/README.md#minimum-snr).
+
+New saves use disk configuration version 3. Older records acquire no minimums
+and retain their previous rules, including version 2 States. Back up profiles and
+presets before upgrading; downgrade with a matching binary and data backup.

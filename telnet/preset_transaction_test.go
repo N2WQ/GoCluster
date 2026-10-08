@@ -68,7 +68,7 @@ func TestPresetSaveUsesOneExactCapture(t *testing.T) {
 		}
 	}
 	bs := presetDiskBytes(t, filepath.Join(filter.UserDataDir, "N2WQ-1.yaml"))
-	for _, literal := range []string{"configuration_version: 2", "name: CONTEST", "20m: false", "allmodes: false", "allow_wwv: false"} {
+	for _, literal := range []string{"configuration_version: 3", "name: CONTEST", "20m: false", "allmodes: false", "allow_wwv: false"} {
 		if !bytes.Contains(bs, []byte(literal)) {
 			t.Fatalf("saved record lacks literal %q", literal)
 		}

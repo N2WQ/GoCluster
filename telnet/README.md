@@ -134,6 +134,46 @@ SHOW DX and SHOW MYDX recognize canonical CTY labels before exact-call or
 prefix classification, including SHOW MYDX 3D2/R 10. Numeric history arguments
 remain counts; SHOW DXCC detail lookup retains its existing behavior.
 
+## Minimum SNR
+
+Use a per-mode minimum to suppress weak automated reports:
+
+```text
+PASS MINSNR CW,RTTY 10
+REJECT MINSNR FT8,FT4 -10
+PASS MINSNR FT8,FT4 ALL
+REJECT MINSNR CW,RTTY NONE
+SHOW FILTER MINSNR
+```
+
+Numeric PASS and REJECT set the same inclusive minimum: reports equal to the
+threshold pass. Zero and negative integers are valid. Human spots and spots
+without SNR bypass this category; other filters still apply. Lists are validated
+before any change. Updates replace selected thresholds and leave other modes
+unchanged. ALL must stand alone in the mode position: numeric ALL selects every
+currently supported filter mode, while PASS MINSNR ALL ALL or REJECT MINSNR ALL
+NONE clears every saved threshold. RESET FILTER and PASS NOFILTER also clear it.
+
+Removed modes remain saved but inactive, reactivating when their exact canonical
+mode returns. Alias changes do not redirect saved rules. Readbacks list each
+minimum and mark inactive entries; selected retained dormant names can be cleared.
+Active and dormant entries share a 128-entry limit and 65,536 aggregate mode-key
+byte limit. Commands exceeding a bound fail without partial changes.
+
+Live delivery and archive history use the shared matcher, retaining existing
+self-spot exceptions. Threshold changes invalidate an active history continuation
+and pending pages. Saved preferences, presets and modification status include
+these values. Default minima are disabled.
+
+Machine clients use `GET YAML FILTER SCHEMA 3` or `GET YAML CONFIG SCHEMA 3`. The
+`min_snr` map contains exact mode names and signed integers; an empty map
+clears it. Full PUT/VALIDATE requires it, PATCH omissions preserve it, and supplied
+maps replace the whole collection. Existing dormant keys can be retained or
+removed through YAML; a new unavailable mode name is rejected. Schemas 1/2 retain
+their shapes and preserve hidden thresholds during writes. Schema 3 status
+adds configured/inactive counts and sorted exact inactive keys; response limits
+include that status.
+
 ## Archive History And Continuation
 
 `SHOW DX` and `SHOW MYDX` share archive history selection and paging. Counts
@@ -365,6 +405,7 @@ The following canonical commands work independently of the human dialect:
 | `GET YAML CONFIG [ID <id>]` | Read filters and settings together in one consistent snapshot. |
 | `GET YAML CAPABILITIES [ID <id>]` | Discover version, fields, supported choices, availability and limits. |
 | `GET YAML <resource> SCHEMA 2 [ID <id>]` | Opt in to schema 2, including state rules. |
+| `GET YAML <resource> SCHEMA 3 [ID <id>]` | Include state rules and per-mode minimum SNR. |
 | `PUT YAML FILTER`, `PUT YAML SETTINGS`, `PUT YAML CONFIG` | Replace the complete writable resource. |
 | `PATCH YAML FILTER`, `PATCH YAML SETTINGS`, `PATCH YAML CONFIG` | Change supplied fields, preserving omissions. |
 | `VALIDATE YAML CONFIG` | Check a complete proposal without applying or saving it. |
@@ -393,16 +434,18 @@ PUT/PATCH/VALIDATE preserves state rules hidden from that format; supplying
 `dx_states` or `de_states` in a schema 1 upload is an unknown-field error.
 Schema 2 adds those two string RuleSets, accepting the 73 uppercase US/Canadian
 codes. Its complete PUT/VALIDATE requires both domains; PATCH preserves omitted
-fields. Upload headers stay unchanged: the body `schema_version: 1` or `2`
+fields. Upload headers stay unchanged: the body `schema_version: 1`, `2` or `3`
 selects its vocabulary. A single revision covers all preferences, so a hidden
 state-only change conflicts with a stale schema 1 write. Schema selection itself
 does not alter the revision, pause, preset or history continuation.
 
-Schema 1 capabilities retain their original shape and advertise `[1, 2]` in
+Schema 1 capabilities retain their original shape and advertise `[1, 2, 3]` in
 `schema_versions`. Request schema 2 capabilities to discover state fields and
 choices. Schema 1 writes retain their existing 64 KiB projection limit; the
 four hidden state maps are separately limited to 73 canonical keys each before
-cloning. Schema 2 writes must fit the complete schema 2 CONFIG response. Large
+cloning. Hidden MINSNR maps in schemas 1/2 retain their independent entry/key-byte
+bounds. Schema 3 exposes the full map and checks the full CONFIG budget.
+Schema 2 writes must fit the complete schema 2 CONFIG response. Large
 ordinary human configurations remain supported; an oversized schema 2 GET
 returns an explicit error, with schema 1 still available to reduce the rules.
 No response is truncated.
@@ -411,8 +454,9 @@ No response is truncated.
 
 | Resource fields | Representation |
 | --- | --- |
+| `min_snr` (schema 3) | A bounded map of exact uppercase mode names to signed integers; presence enables zero and negative thresholds. |
 | `bands`, `modes`, `sources`, `events`, `confidence`, `path_classes`, `dx_continents`, `de_continents`, `dx_grid2`, `de_grid2` | RuleSet: `allow_all`/`block_all` booleans and `allow`/`block` maps of string keys to booleans. |
-| `dx_states`, `de_states` (schema 2 only) | The same four RuleSet members, with uppercase US mailing-state and Canadian province/territory codes as string keys. |
+| `dx_states`, `de_states` (schemas 2/3) | The same four RuleSet members, with uppercase US mailing-state and Canadian province/territory codes as string keys. |
 | `dx_zones`, `de_zones`, `dx_dxcc`, `de_dxcc` | The same four RuleSet members, with integer rule keys. |
 | `dx_callsigns`, `block_dx_callsigns`, `de_callsigns`, `block_de_callsigns` | Ordered string lists; duplicate patterns are preserved. |
 | `include_beacons`, `allow_wwv`, `allow_wcy`, `allow_announce`, `allow_self`, `allow_toxic` | Explicit `true`, explicit `false` or the string `DEFAULT`. |
@@ -497,7 +541,7 @@ retrying. Pause, diagnostics and login metadata do not count as configuration
 edits. Reordering otherwise identical patterns does not change the revision
 or `(modified)`; the displayed order and duplicate multiplicity are retained.
 
-Uploads require supported `schema_version: 1` or `2`, `request_id` and `configuration`.
+Uploads require supported `schema_version: 1`, `2` or `3`, `request_id` and `configuration`.
 PUT/PATCH additionally require `if_revision`. VALIDATE CONFIG requires the
 complete configuration; `if_revision` is optional because it does not write.
 Its result reports `valid: true`, `applied: false` and `persisted: false` on
@@ -650,9 +694,11 @@ clean up their temporary files; a cleanup failure is logged for the operator.
 
 ### Persistence Format And Rollback
 
-New records and snapshots carry `configuration_version: 2`. An absent marker
+New records and snapshots carry `configuration_version: 3`. An absent marker
 selects historical legacy migration; version 1 retains all old exact values and
-initializes only the new state domains as unrestricted. Nested preset baselines
+initializes only the new state domains as unrestricted. Legacy/version 1/2 records
+acquire no MINSNR thresholds; version 2 state rules remain exact. Nested preset
+baselines
 follow the same migration, preserving their modification status. New versions
 are written on the next ordinary successful save; there is no bulk rewrite. Invalid markers, explicit zero and unknown
 future versions are rejected; unreadable/unsupported user records are protected
@@ -868,5 +914,5 @@ snapshot. Refresh duration depends on installation and source size; see
 
 Archive version 6 stores the observed State values. Versions 2–5 remain readable
 with unknown State; history never consults current registry addresses. Existing
-machine schemas 1/2 and profile disk version 2 retain their formats. Older
-binaries can reject Canadian codes, so use matching backups for downgrade.
+machine schemas 1/2 retain their formats; disk version 3 and explicit machine
+schema 3 also carry MINSNR. Older binaries can reject Canadian codes, so use matching backups for downgrade.

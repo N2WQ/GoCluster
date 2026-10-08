@@ -48,13 +48,23 @@ func TestHistoryFilterSnapshotDetachesEveryRuleCollection(t *testing.T) {
 	for i := range live.NumField() {
 		field := live.Field(i)
 		if field.Kind() == reflect.Map {
+			if field.IsNil() {
+				field.Set(reflect.MakeMap(field.Type()))
+			}
 			key := reflect.New(field.Type().Key()).Elem()
 			if key.Kind() == reflect.String {
 				key.SetString("fixture")
 			} else {
 				key.SetInt(7)
 			}
-			field.SetMapIndex(key, reflect.ValueOf(true))
+			value := reflect.New(field.Type().Elem()).Elem()
+			if value.Kind() == reflect.Int {
+				key.SetString("CW")
+				value.SetInt(0)
+			} else {
+				value.SetBool(true)
+			}
+			field.SetMapIndex(key, value)
 		}
 		if field.Kind() == reflect.Slice {
 			field.Set(reflect.ValueOf([]string{"fixture"}))

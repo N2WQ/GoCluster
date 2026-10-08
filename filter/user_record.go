@@ -78,7 +78,8 @@ func LoadUserRecord(callsign string) (*UserRecord, error) {
 }
 
 // UnmarshalYAML preserves marked values exactly. Version one initializes only
-// the new state domains; absent markers invoke historical migrations/defaults.
+// the state domains; version two keeps states, version three admits MINSNR.
+// Absent markers invoke historical migrations/defaults.
 // Explicit zero/null/future markers fail without changing persisted bytes.
 func (record *UserRecord) UnmarshalYAML(node *yaml.Node) error {
 	version, err := storedConfigurationVersion(node)
@@ -86,6 +87,9 @@ func (record *UserRecord) UnmarshalYAML(node *yaml.Node) error {
 		return err
 	}
 	if err := validateStoredStateFields(node, version); err != nil {
+		return err
+	}
+	if err := validateStoredMinSNRFields(node, version); err != nil {
 		return err
 	}
 	if version != 0 {
@@ -117,11 +121,14 @@ func (record *UserRecord) UnmarshalYAML(node *yaml.Node) error {
 		record.PathMinObservationCount = normalizePathMinObservationCount(record.PathMinObservationCount)
 		record.SolarSummaryMinutes = normalizeSolarSummaryMinutes(record.SolarSummaryMinutes)
 	}
-	if version < CurrentConfigurationVersion {
+	if version < stateConfigurationVersion {
 		record.ResetDXStates()
 		record.ResetDEStates()
 	}
 	if err := ConfigurationFromFilter(&record.Filter, SettingsConfiguration{}).ValidateStateRules(); err != nil {
+		return err
+	}
+	if err := ConfigurationFromFilter(&record.Filter, SettingsConfiguration{}).ValidateMinSNRRules(); err != nil {
 		return err
 	}
 	record.ConfigurationVersion = CurrentConfigurationVersion
@@ -220,6 +227,9 @@ func saveUserRecord(callsign string, record *UserRecord, write func(string, []by
 		return ErrUnsupportedConfigurationVersion
 	}
 	if err := ConfigurationFromFilter(&record.Filter, SettingsConfiguration{}).ValidateStateRules(); err != nil {
+		return err
+	}
+	if err := ConfigurationFromFilter(&record.Filter, SettingsConfiguration{}).ValidateMinSNRRules(); err != nil {
 		return err
 	}
 	// Preserve the caller's captured preferences and baseline. Metadata trimming

@@ -238,7 +238,7 @@ func TestStateDiskMigrationAndPresetBaseline(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if record.ConfigurationVersion != 2 || !record.AllDXStates || !record.AllDEStates || record.Preset == nil || !record.Preset.Baseline.AllDXStates || !record.Preset.Baseline.AllDEStates {
+			if record.ConfigurationVersion != 3 || !record.AllDXStates || !record.AllDEStates || record.Preset == nil || !record.Preset.Baseline.AllDXStates || !record.Preset.Baseline.AllDEStates {
 				t.Fatal("old states were not migrated in record and nested baseline")
 			}
 			if version == 1 && (record.AllBands || record.Bands["20m"] || record.AllowWWV == nil || *record.AllowWWV) {
@@ -255,8 +255,8 @@ func TestStateDiskMigrationAndPresetBaseline(t *testing.T) {
 				t.Fatal(err)
 			}
 			disk, err := os.ReadFile(path)
-			if err != nil || !bytes.Contains(disk, []byte("configuration_version: 2")) {
-				t.Fatal("successful save did not mark v2")
+			if err != nil || !bytes.Contains(disk, []byte("configuration_version: 3")) {
+				t.Fatal("successful save did not mark v3")
 			}
 		})
 	}

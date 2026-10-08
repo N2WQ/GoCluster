@@ -256,10 +256,11 @@ separately from the files in this deployment-config directory. Each full callsig
 including its SSID, owns one record such as `N2WQ-1.yaml`. The `presets` subdirectory
 holds shared named snapshots for the owner callsign; back it up with user records.
 
-`configuration_version: 2` identifies exact current records and snapshots. An
+`configuration_version: 3` identifies exact current records and snapshots. An
 absent marker selects legacy migration; version 1 preserves old exact rules and
-adds unrestricted DX/DE state domains, including nested preset baselines. Migration
-is written on the next ordinary successful save. Current-version reads preserve false
+adds unrestricted DX/DE state domains, including nested preset baselines. Legacy
+and versions 1/2 acquire no MINSNR thresholds, while version 2 states stay exact.
+Migration is written on the next ordinary successful save. Current-version reads preserve false
 map entries, empty selections, zero values and default choices. An unreadable,
 malformed or unsupported record is preserved, and the session uses temporary
 defaults with a warning. LOAD, machine writes and SAVE PRESET are rejected for
@@ -370,9 +371,9 @@ recorded when the spot was archived; existing rows are not backfilled from the
 current snapshot.
 
 Back up user profiles, preset libraries and the archive with writers stopped
-before upgrading. New saved records use version 2 and new archive records use
-version 6; the Canadian extension retains those versions and machine YAML
-schemas 1 and 2. Schema 1 retains its existing hidden State rules, and schema 2
+before upgrading. New saved records use version 3 and new archive records use
+version 6. Machine schemas 1/2 retain their shapes; explicit schema 3 also
+carries MINSNR. Schema 1 retains its existing hidden State rules, and schema 2
 exposes the shared 73-code vocabulary. Earlier binaries can reject Canadian
 codes in profiles/presets or skip Canadian archive rows even when the version
 number matches; a deployment downgrade requires a matching backup. Do not
@@ -400,3 +401,9 @@ Source ownership: [FCC refresh](../../uls/downloader.go),
 [ISED record framing](../../uls/ised_import.go). Existing qualification evidence
 is in [FCC validation](../../docs/fcc-state-validation.md) and
 [Canadian validation](../../docs/canadian-state-validation.md).
+
+Per-user minimum SNR lives in profile/preset `min_snr`, separate from deployment
+YAML. Its exact mode-to-signed-integer map includes zero/negative thresholds and
+retained inactive mode names; empty means disabled. Human and missing-report
+spots are exempt. The bounded map is exposed through machine schema 3, with
+older schema writes preserving it. See [minimum SNR](../../telnet/README.md#minimum-snr).

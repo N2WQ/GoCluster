@@ -158,8 +158,9 @@ choice-object fields. A near-limit schema 1 configuration can produce an explici
 schema 2 size error; reduce ordinary rules using schema 1 rather than truncating
 or discarding hidden fields.
 
-New saved records use version 2; legacy/version 1 initializes only new states
-as unrestricted, including nested preset baselines. Protected malformed/future
+New saved records use version 3; legacy/version 1 initializes new states
+as unrestricted, version 2 states remain exact, and older versions acquire no
+MINSNR thresholds, including nested preset baselines. Protected malformed/future
 records must not be rewritten. New archive version 6 stores observed state;
 versions 2–5 have unknown state, with no current-FCC history hydration. Explain
 state PASS exclusions of older rows. Downgrades require matching binary/data
@@ -180,7 +181,45 @@ The same DXSTATE/DESTATE fields accept all 13 province/territory codes alongside
 the 60 FCC codes. Base-call CTY selects source, including foreign portable calls.
 Events use inclusive UTC dates; a prefix match means callsign plausibility,
 without proving eligibility. History uses stored State. Layout versions stay
-archive 6, saved preferences 2 and machine YAML 1/2; older binaries may reject
+archive 6, saved preferences 3 and machine YAML 1/2/3; older binaries may reject
 Canadian codes, so downgrade with matching backups. Route source/failure details
 to [ADR-0254](../../docs/decisions/ADR-0254-canadian-ised-license-and-state-reuse.md)
 and [configuration](../../data/config/README.md#canadian-ised-reference-data).
+
+## MINSNR
+
+Numeric `PASS MINSNR CW,RTTY 10` and `REJECT MINSNR FT8,FT4 -10` both set an
+inclusive minimum per selected mode: automated reports must be at least that
+value. Zero and negative integers enable thresholds. Human spots and spots
+without SNR bypass MINSNR only; other filters still apply. Do not describe
+numeric REJECT as rejecting stronger signals or invent a SET MINSNR command.
+
+Mode lists accept comma or space separators and are validated before any edit.
+ALL must stand alone in the mode selector. A numeric ALL update covers current
+supported modes. PASS's value ALL and REJECT's value NONE clear selected rules;
+ALL in the selector clears every saved rule, including inactive ones. RESET
+FILTER and PASS NOFILTER also clear them. SHOW FILTER, FULL and MINSNR show
+sorted thresholds, configured/inactive counts and exemptions. Removed modes
+remain saved but inactive and reactivate only when the exact canonical name
+returns. Clear an inactive rule by its displayed exact name. Maps are limited
+to 128 total rules and 65,536 aggregate ASCII key bytes, including inactive keys.
+
+Thresholds are saved in profiles/presets, contribute to modified status and
+revision tokens, and invalidate history continuation when edited. Existing
+live/history self-spot exceptions still apply. Valid human edits keep existing
+live-first save/log behavior; machine persistence failures publish no change.
+
+Use `GET YAML FILTER SCHEMA 3` or `GET YAML CONFIG SCHEMA 3` for `min_snr`, a
+map of exact uppercase mode keys to signed integers. Schema 3 status includes
+configured/inactive counts and sorted inactive keys. A supplied map replaces
+all thresholds; `{}` clears it, while omitted PATCH preserves it. Full schema 3
+PUT/VALIDATE requires the map. A supplied unavailable name must already exist
+in the prior configuration; new unavailable keys fail validation. Schemas 1/2
+retain their shapes and preserve hidden thresholds. Default GET remains 1.
+
+Saved version 3 reads older records without inventing minima and preserves
+version 2 states and nested preset baselines. Downgrade requires matching
+profile/preset backups, rather than editing only the version marker. Archive
+format and report parsing do not change for this feature. See the
+[telnet MINSNR contract](../../telnet/README.md#minimum-snr) and
+[ADR-0258](../../docs/decisions/ADR-0258-per-mode-minimum-snr-filter.md).

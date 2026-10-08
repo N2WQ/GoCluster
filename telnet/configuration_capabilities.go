@@ -48,7 +48,15 @@ type readbackValueChoices struct {
 		MinimumExclusive  int  `yaml:"minimum_exclusive"`
 		Maximum           int  `yaml:"maximum"`
 	} `yaml:"path_min_observation_count"`
-	SolarSummaryMinutes []int `yaml:"solar_summary_minutes"`
+	SolarSummaryMinutes []int                  `yaml:"solar_summary_minutes"`
+	MinSNR              *readbackMinSNRChoices `yaml:"min_snr,omitempty"`
+}
+
+type readbackMinSNRChoices struct {
+	Minimum     int `yaml:"minimum"`
+	Maximum     int `yaml:"maximum"`
+	MaxEntries  int `yaml:"max_entries"`
+	MaxKeyBytes int `yaml:"max_key_bytes"`
 }
 
 func (s *Server) readbackCapabilitiesVersion(version int) any {
@@ -62,10 +70,15 @@ func (s *Server) readbackCapabilitiesVersion(version int) any {
 	}
 	fields := machineFilterFields[:]
 	categories := []string{"BAND", "MODE", "SOURCE", "EVENT", "CONFIDENCE", "PATH", "DXCONT", "DECONT", "DXZONE", "DEZONE", "DXGRID2", "DEGRID2", "DXDXCC", "DEDXCC", "DXCALL", "DECALL", "BEACON", "WWV", "WCY", "ANNOUNCE", "SELF", "TOXIC", "NEARBY"}
-	if machineSchemaVersion(version) == 2 {
+	if machineSchemaVersion(version) >= 2 {
 		choices.States = spot.StateCodes()
 		fields = machineFilterFieldsV2[:]
 		categories = append(categories, "DXSTATE", "DESTATE")
+	}
+	if machineSchemaVersion(version) == 3 {
+		fields = machineFilterFieldsV3[:]
+		categories = append(categories, "MINSNR")
+		choices.MinSNR = &readbackMinSNRChoices{Minimum: math.MinInt, Maximum: math.MaxInt, MaxEntries: filter.MaxMinSNREntries, MaxKeyBytes: filter.MaxMinSNRKeyBytes}
 	}
 	choices.Grid2.FirstCharacter, choices.Grid2.SecondCharacter = "A-R", "A-R"
 	choices.CallsignPatterns.Characters = "A-Z a-z 0-9 / -"
@@ -100,7 +113,7 @@ func (s *Server) readbackCapabilitiesVersion(version int) any {
 		AdvancedYAML          bool                 `yaml:"advanced_yaml_features"`
 	}{
 		Commands:  []string{"GET YAML FILTER", "GET YAML SETTINGS", "GET YAML CONFIG", "GET YAML CAPABILITIES", "PUT YAML FILTER", "PUT YAML SETTINGS", "PUT YAML CONFIG", "PATCH YAML FILTER", "PATCH YAML SETTINGS", "PATCH YAML CONFIG", "VALIDATE YAML CONFIG"},
-		Resources: []string{"FILTER", "SETTINGS", "CONFIG", "CAPABILITIES"}, SchemaVersions: []int{1, 2},
+		Resources: []string{"FILTER", "SETTINGS", "CONFIG", "CAPABILITIES"}, SchemaVersions: []int{1, 2, 3},
 		FilterCategories: categories,
 		FilterFields:     fields, Settings: machineSettingFields[:], RuleSetFields: []string{"allow_all", "block_all", "allow", "block"}, Choices: choices,
 		DedupeAvailable:       map[string]bool{"FAST": s != nil && s.dedupeFastEnabled, "MED": s != nil && s.dedupeMedEnabled, "SLOW": s != nil && s.dedupeSlowEnabled},

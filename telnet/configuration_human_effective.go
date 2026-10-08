@@ -250,6 +250,9 @@ func writeHumanEffectivePatterns(h *humanResponse, allow, block []string) error 
 
 func writeHumanEffectiveCategory(h *humanResponse, category readbackCategory, cfg filter.FilterConfiguration, status configurationReadbackStatus) error {
 	name := humanCategoryNames[category.name]
+	if category.kind == 's' {
+		return writeHumanMinSNR(h, cfg.MinSNR, false)
+	}
 	if category.kind == 't' {
 		value := "ON"
 		if category.toggle == filter.DefaultBoolFalse {

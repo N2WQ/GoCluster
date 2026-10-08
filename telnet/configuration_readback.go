@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -55,6 +56,35 @@ type configurationReadbackStatus struct {
 	Session    readbackSessionStatus        `yaml:"session"`
 	Server     readbackServerStatus         `yaml:"server"`
 	Preset     readbackPresetStatus         `yaml:"preset"`
+	MinSNR     *readbackMinSNRStatus        `yaml:"min_snr,omitempty"`
+}
+
+type readbackMinSNRStatus struct {
+	ConfiguredCount int      `yaml:"configured_count"`
+	InactiveCount   int      `yaml:"inactive_count"`
+	InactiveModes   []string `yaml:"inactive_modes"`
+}
+
+// Activity is derived from exact stored keys, never from alias rebinding. The
+// schema gate preserves old status shapes; validation bounds the list before
+// construction and the complete envelope budget includes its repeated keys.
+func attachReadbackMinSNR(status configurationReadbackStatus, cfg filter.Configuration, version int) (configurationReadbackStatus, error) {
+	if version < 3 {
+		return status, nil
+	}
+	if err := cfg.ValidateMinSNRRules(); err != nil {
+		return status, err
+	}
+	activity := &readbackMinSNRStatus{ConfiguredCount: len(cfg.Filters.MinSNR), InactiveModes: make([]string, 0)}
+	for key := range cfg.Filters.MinSNR {
+		if !filter.IsActiveMinSNRMode(key) {
+			activity.InactiveModes = append(activity.InactiveModes, key)
+		}
+	}
+	sort.Strings(activity.InactiveModes)
+	activity.InactiveCount = len(activity.InactiveModes)
+	status.MinSNR = activity
+	return status, nil
 }
 
 type yamlReadbackEnvelope struct {
@@ -151,6 +181,14 @@ func readbackResourceConfiguration(cfg filter.Configuration, resource string) (f
 
 func readbackMetadataFits(status configurationReadbackStatus, requestID, revision string) bool {
 	remaining := maxYAMLBytes
+	if status.MinSNR != nil {
+		for _, key := range status.MinSNR.InactiveModes {
+			if len(key) > remaining {
+				return false
+			}
+			remaining -= len(key)
+		}
+	}
 	for _, value := range []string{
 		requestID, revision, status.Preset.Name, status.Session.Callsign, status.Session.DiagnosticComments,
 		status.Configured.Dialect, status.Configured.Grid, status.Configured.NoiseClass, status.Configured.DedupePolicy,
@@ -181,6 +219,11 @@ func (s *Server) renderYAMLReadbackVersion(c *Client, resource, requestID, revis
 	var response string
 	err := c.withBorrowedConfiguration(func(cfg filter.Configuration) error {
 		status = attachReadbackConfiguration(status, c, cfg)
+		var err error
+		status, err = attachReadbackMinSNR(status, cfg, version)
+		if err != nil {
+			return err
+		}
 		if !readbackMetadataFits(status, requestID, revision) {
 			return errReadbackTooLarge
 		}
@@ -192,12 +235,14 @@ func (s *Server) renderYAMLReadbackVersion(c *Client, resource, requestID, revis
 			if err != nil {
 				return err
 			}
+			if err := bounded.ValidateMinSNRRules(); err != nil {
+				return err
+			}
 			if !bounded.MinimumSizeFits(maxYAMLBytes) {
 				return errReadbackTooLarge
 			}
 			data = selected
 		}
-		var err error
 		response, err = encodeBoundedYAML(yamlReadbackEnvelope{
 			SchemaVersion: version, RequestID: requestID, Resource: resource, Revision: revision, Configuration: data, Status: status,
 		})
@@ -219,6 +264,11 @@ func (s *Server) configurationReadbackFitsVersion(c *Client, cfg filter.Configur
 		return err
 	}
 	status := attachReadbackConfiguration(s.captureReadbackStatus(c, prepared), c, cfg)
+	var err error
+	status, err = attachReadbackMinSNR(status, cfg, version)
+	if err != nil {
+		return err
+	}
 	if !readbackMetadataFits(status, "", "") {
 		return errReadbackTooLarge
 	}

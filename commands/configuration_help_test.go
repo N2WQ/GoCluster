@@ -8,7 +8,7 @@ import (
 func TestConfigurationCommandHelp(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
 	for _, dialect := range []string{"go", "cc"} {
-		for _, topic := range []string{"SHOW SETTINGS", "GET YAML FILTER", "GET YAML SETTINGS", "GET YAML CONFIG", "GET YAML CAPABILITIES", "PUT YAML FILTER", "PUT YAML SETTINGS", "PUT YAML CONFIG", "PATCH YAML FILTER", "PATCH YAML SETTINGS", "PATCH YAML CONFIG", "VALIDATE YAML CONFIG"} {
+		for _, topic := range []string{"PASS MINSNR", "REJECT MINSNR", "SHOW SETTINGS", "GET YAML FILTER", "GET YAML SETTINGS", "GET YAML CONFIG", "GET YAML CAPABILITIES", "PUT YAML FILTER", "PUT YAML SETTINGS", "PUT YAML CONFIG", "PATCH YAML FILTER", "PATCH YAML SETTINGS", "PATCH YAML CONFIG", "VALIDATE YAML CONFIG"} {
 			response := p.ProcessCommandForClient("HELP "+topic, "W1ABC-1", "", nil, dialect)
 			if !strings.Contains(response, "Usage: "+topic) {
 				t.Fatalf("%s %s missing usage: %q", dialect, topic, response)

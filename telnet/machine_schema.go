@@ -77,7 +77,7 @@ func decodeMachineRequest(body []byte, command machineCommand) (machineRequest, 
 				}
 			}
 			if version != nil && !duplicate {
-				if value, err := machineInteger(version, "schema_version", false); err == nil && (value == 1 || value == 2) {
+				if value, err := machineInteger(version, "schema_version", false); err == nil && (value == 1 || value == 2 || value == 3) {
 					request.SchemaVersion = value
 				}
 			}
@@ -107,7 +107,7 @@ func decodeMachineRequest(body []byte, command machineCommand) (machineRequest, 
 	if request.SchemaVersion, err = machineInteger(version, "schema_version", false); err != nil {
 		return request, err
 	}
-	if request.SchemaVersion != 1 && request.SchemaVersion != 2 {
+	if request.SchemaVersion != 1 && request.SchemaVersion != 2 && request.SchemaVersion != 3 {
 		return request, schemaError("schema_version", "unsupported schema version")
 	}
 	if revision := envelope["if_revision"]; revision != nil {

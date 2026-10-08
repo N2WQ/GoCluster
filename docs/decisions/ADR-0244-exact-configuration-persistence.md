@@ -189,3 +189,9 @@ and [runtime configuration notes](../../data/config/README.md#user-configuration
 
 - State metadata and related schema version rules are refined by
   [ADR-0253](ADR-0253-fcc-state-enrichment-and-filtering.md).
+
+## Minimum SNR Refinement
+
+[ADR-0258](ADR-0258-per-mode-minimum-snr-filter.md) refines this decision for
+MINSNR and disk/machine version 3. Other clauses remain in force; state
+migration remains pinned to version 2 and machine schemas 1/2 keep their shapes.

@@ -847,6 +847,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 				"State filters are suspended and retained while NEARBY is enabled.",
 				"IT9 selects the whole entity shared with I and IG9.",
 				"For MODE, list entries are enabled without changing modes not listed.",
+				"MINSNR takes a mode list and dB minimum; numeric PASS and REJECT are equivalent.",
 				"Use PASS MODE UNKNOWN or PASS MODE ALL to restore blank-mode spots.",
 			},
 		)
@@ -874,6 +875,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 				"State filters are suspended and retained while NEARBY is enabled.",
 				"IT9 blocks the whole entity shared with I and IG9.",
 				"For MODE, list entries are rejected without changing modes not listed.",
+				"MINSNR takes a mode list and dB minimum; numeric PASS and REJECT are equivalent.",
 				"UNKNOWN is the MODE token for blank-mode spots.",
 			},
 		)
@@ -1010,6 +1012,10 @@ func normalizeHelpTopic(dialect string, topic string) string {
 		return "SET NOISE"
 	case strings.HasPrefix(upper, "SET PATHSAMPLES"):
 		return "SET PATHSAMPLES"
+	case upper == "PASS MINSNR" || strings.HasPrefix(upper, "PASS MINSNR "):
+		return "PASS MINSNR"
+	case upper == "REJECT MINSNR" || strings.HasPrefix(upper, "REJECT MINSNR "):
+		return "REJECT MINSNR"
 	case strings.HasPrefix(upper, "RESET FILTER"):
 		return "RESET FILTER"
 	case strings.HasPrefix(upper, "DIALECT"):
@@ -1217,6 +1223,8 @@ func filterHelpLines(dialect string) []string {
 		"PASS <type> <list> adds to allowlist and removes from blocklist.",
 		"REJECT <type> <list> adds to blocklist and removes from allowlist.",
 		"PASS/REJECT MODE <list> are deltas; modes not listed are unchanged.",
+		"Numeric PASS/REJECT MINSNR set the same inclusive per-mode minimum.",
+		"MINSNR exempts human spots and spots without SNR; other filters apply.",
 		"DXDXCC/DEDXCC accept canonical CTY prefixes or positive ADIF numbers.",
 		"DXSTATE/DESTATE accept US state and Canadian province/territory codes.",
 		"Unknown state fails an explicit PASS list and passes a REJECT-only list.",
@@ -1451,7 +1459,7 @@ func filterListTypes() []string {
 	return []string{
 		"BAND", "MODE", "SOURCE", "EVENT", "DXCALL", "DECALL", "DXGRID2",
 		"DEGRID2", "DXCONT", "DECONT", "DXZONE", "DEZONE", "DXDXCC",
-		"DEDXCC", "DXSTATE", "DESTATE", "CONFIDENCE", "PATH",
+		"DEDXCC", "DXSTATE", "DESTATE", "CONFIDENCE", "PATH", "MINSNR",
 	}
 }
 

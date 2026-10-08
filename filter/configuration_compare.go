@@ -18,6 +18,9 @@ func (c Configuration) Equal(other Configuration) bool {
 	if c.Settings != other.Settings || c.Filters.NearbyEnabled != other.Filters.NearbyEnabled || c.Filters.toggles() != other.Filters.toggles() {
 		return false
 	}
+	if !maps.Equal(c.Filters.MinSNR, other.Filters.MinSNR) {
+		return false
+	}
 	aStrings, bStrings := c.Filters.stringRules(), other.Filters.stringRules()
 	for i := range aStrings {
 		if !equalRules(aStrings[i], bStrings[i]) {
@@ -62,7 +65,7 @@ func equalPatterns(a, b []string) bool {
 // It is a configuration-change detector, not a client authentication token.
 func (c Configuration) Fingerprint() [32]byte {
 	h := sha256.New()
-	writeFingerprintString(h, "configuration-v2")
+	writeFingerprintString(h, "configuration-v3")
 	for _, value := range []string{c.Settings.Dialect, c.Settings.Grid, c.Settings.NoiseClass, c.Settings.DedupePolicy} {
 		writeFingerprintString(h, value)
 	}
@@ -80,6 +83,7 @@ func (c Configuration) Fingerprint() [32]byte {
 		writeIntRuleFingerprint(h, rules.Allow)
 		writeIntRuleFingerprint(h, rules.Block)
 	}
+	writeMinSNRFingerprint(h, c.Filters.MinSNR)
 	for _, patterns := range c.Filters.patterns() {
 		var sum fingerprintSum
 		for _, pattern := range patterns {
@@ -161,4 +165,15 @@ func writeFingerprintBool(h hash.Hash, value bool) {
 		bytes[0] = 1
 	}
 	_, _ = h.Write(bytes[:])
+}
+
+func writeMinSNRFingerprint(h hash.Hash, entries map[string]int) {
+	var sum fingerprintSum
+	for key, value := range entries {
+		entry := sha256.New()
+		writeFingerprintString(entry, key)
+		writeFingerprintInt(entry, value)
+		sum.add(entry)
+	}
+	sum.write(h, len(entries))
 }

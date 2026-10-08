@@ -217,15 +217,19 @@ func parseMachineHeader(line string) (machineCommand, bool, error) {
 	}
 	remaining := args[3:]
 	if len(remaining) >= 2 && strings.EqualFold(remaining[0], "SCHEMA") {
-		if remaining[1] != "2" {
-			return cmd, true, fmt.Errorf("GET YAML SCHEMA requires version 2")
+		if remaining[1] != "2" && remaining[1] != "3" {
+			return cmd, true, fmt.Errorf("GET YAML SCHEMA requires version 2 or 3")
 		}
-		cmd.SchemaVersion = 2
+		if remaining[1] == "3" {
+			cmd.SchemaVersion = 3
+		} else {
+			cmd.SchemaVersion = 2
+		}
 		remaining = remaining[2:]
 	}
 	if len(remaining) != 0 {
 		if len(remaining) != 2 || !strings.EqualFold(remaining[0], "ID") || !validMachineRequestID(remaining[1]) {
-			return cmd, true, fmt.Errorf("GET YAML permits [SCHEMA 2] [ID <1-32 ASCII letters, digits or hyphens>]")
+			return cmd, true, fmt.Errorf("GET YAML permits [SCHEMA 2|3] [ID <1-32 ASCII letters, digits or hyphens>]")
 		}
 		cmd.RequestID = remaining[1]
 	}

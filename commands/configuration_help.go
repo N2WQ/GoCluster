@@ -15,6 +15,7 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 		"DXCC entries show all unambiguous canonical CTY prefixes per entity.",
 		"Conflicting labels are omitted; valid alternatives remain.",
 		"FULL/category show effective PASS/REJECT selections, using ALL or NONE.",
+		"MINSNR shows per-mode minimum reports and retained inactive modes.",
 		"Unresolved rules show Unknown DXCC followed by their stored number.",
 		"Human lines use at most 78 ASCII characters; exact values use escapes.",
 		"Switches show ON/OFF; REJECT takes precedence over PASS patterns.",
@@ -43,6 +44,21 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 		"Uses the positive configured pause duration, or 30 seconds when it is zero.",
 		"The complete response, including its pause footer, is limited to 65,536 bytes.",
 	})
+	for _, verb := range []string{"PASS", "REJECT"} {
+		clear := "ALL"
+		if verb == "REJECT" {
+			clear = "NONE"
+		}
+		add(verb+" MINSNR", "Set or clear per-mode minimum SNR.", []string{verb + " MINSNR <mode[,mode...]|ALL> <integer dB|" + clear + ">"}, []string{
+			"Numeric PASS and REJECT set the same inclusive minimum: report >= dB.",
+			"Zero and negative integers are valid; human and missing-SNR spots are exempt.",
+			"Other filters still apply. Selected modes change; other modes stay unchanged.",
+			"ALL in the mode position must stand alone; numeric updates select supported modes.",
+			verb + " MINSNR ALL " + clear + " clears every saved threshold, including inactive modes.",
+			"Removed modes stay saved but inactive and reactivate if their exact mode returns.",
+			"SHOW FILTER MINSNR lists thresholds; RESET FILTER and PASS NOFILTER clear them.",
+		})
+	}
 	for _, resource := range []string{"FILTER", "SETTINGS", "CONFIG", "CAPABILITIES"} {
 		topic := "GET YAML " + resource
 		notes := []string{
@@ -50,19 +66,20 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 			"Optional ID uses 1-32 ASCII letters, digits or hyphens and preserves case.",
 			"Responses include schema version, request ID and an opaque revision.",
 			"Default schema 1 is unchanged. SCHEMA 2 includes DESTATE/DXSTATE rules.",
+			"SCHEMA 3 also includes the min_snr map; older schemas preserve hidden thresholds.",
 			"The final CRLF response is limited to 65,536 bytes, including framing.",
 		}
 		if resource != "CAPABILITIES" {
 			notes = append(notes, "Edit the writable configuration section; status is read-only.")
 		}
-		add(topic, "Read "+strings.ToLower(resource)+" for clients.", []string{topic + " [SCHEMA 2] [ID <id>]"}, notes)
+		add(topic, "Read "+strings.ToLower(resource)+" for clients.", []string{topic + " [SCHEMA 2|3] [ID <id>]"}, notes)
 	}
 	for _, verb := range []string{"PUT", "PATCH"} {
 		for _, resource := range []string{"FILTER", "SETTINGS", "CONFIG"} {
 			topic := verb + " YAML " + resource
 			notes := []string{
 				"Send standalone --- and ... marker lines around one plain YAML document.",
-				"Include schema_version: 1 or 2, request_id, if_revision and configuration.",
+				"Include schema_version: 1, 2 or 3, request_id, if_revision and configuration.",
 				"GET again after reconnect or a revision conflict before retrying a write.",
 				"Validation or persistence failure leaves live and saved configuration unchanged.",
 				"Unavailable choices are rejected; named preset baselines are preserved.",
@@ -71,6 +88,8 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 				"A complete invalid document gets a YAML error and keeps the connection open.",
 				"Schema 1 preserves hidden state rules and bounds its CONFIG projection.",
 				"Schema 2 includes state rules; full CONFIG must fit 65,536 bytes.",
+				"Schema 3 includes min_snr: a mode-to-signed-integer map; {} clears it.",
+				"Supplied min_snr replaces the map; omitted PATCH preserves it.",
 				"No aliases, anchors, merge keys, custom tags, nulls or extra documents.",
 			}
 			if verb == "PUT" {

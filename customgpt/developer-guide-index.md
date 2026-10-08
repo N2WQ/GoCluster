@@ -129,3 +129,14 @@ For custom GPT responses:
 - Say when effective YAML or current code must be inspected.
 - Do not summarize old ADRs as current behavior without checking the current
   doc/code path.
+
+## Per-Mode Minimum SNR
+
+Route command, exception, inactive-rule and machine-schema questions to
+[telnet/README.md](../telnet/README.md#minimum-snr) and
+[ADR-0258](../docs/decisions/ADR-0258-per-mode-minimum-snr-filter.md).
+Implementation entry points are `filter/min_snr.go`, `filter/min_snr_storage.go`,
+`telnet/minsnr_commands.go`, `telnet/machine_versions.go` and
+`telnet/configuration_readback.go`. Check signed map presence, exact canonical
+activity, predecode/precopy bounds, frozen schemas 1/2, pinned version 2 state
+migration, and detached history snapshots when reviewing changes.

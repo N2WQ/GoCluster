@@ -95,6 +95,7 @@ Preset        CONTEST (modified)
 
 Bands         Only 20m, 40m
 Modes         CW, FT8; unknown modes hidden
+Min SNR       None
 Sources       All (HUMAN, SKIMMER)
 Events        POTA; block WWFF; untagged included
 Confidence    All
@@ -483,6 +484,7 @@ See the [client protocol details](telnet/README.md#client-yaml-configuration).
 The section below mirrors the default `go` dialect `HELP` output from [`commands/processor.go`](commands/processor.go) using the shipped config in [`data/config`](data/config).
 
 <!-- BEGIN DEFAULT_GO_HELP -->
+
 ```text
 Available commands:
 HELP - Show command list or command-specific help.
@@ -517,6 +519,8 @@ DELETE PRESET - Delete a saved preset.
 DIALECT - Show or switch dialect.
 BYE - Disconnect.
 SHOW SETTINGS - Display preferences and session behavior.
+PASS MINSNR - Set or clear per-mode minimum SNR.
+REJECT MINSNR - Set or clear per-mode minimum SNR.
 GET YAML FILTER - Read filter for clients.
 GET YAML SETTINGS - Read settings for clients.
 GET YAML CONFIG - Read config for clients.
@@ -534,6 +538,8 @@ Filter core rules:
 PASS <type> <list> adds to allowlist and removes from blocklist.
 REJECT <type> <list> adds to blocklist and removes from allowlist.
 PASS/REJECT MODE <list> are deltas; modes not listed are unchanged.
+Numeric PASS/REJECT MINSNR set the same inclusive per-mode minimum.
+MINSNR exempts human spots and spots without SNR; other filters apply.
 DXDXCC/DEDXCC accept canonical CTY prefixes or positive ADIF numbers.
 DXSTATE/DESTATE accept US state and Canadian province/territory codes.
 Unknown state fails an explicit PASS list and passes a REJECT-only list.
@@ -594,7 +600,7 @@ Path reliability glyphs:
 
 List types:
   BAND, MODE, SOURCE, EVENT, DXCALL, DECALL, DXGRID2, DEGRID2, DXCONT, DECONT
-  DXZONE, DEZONE, DXDXCC, DEDXCC, DXSTATE, DESTATE, CONFIDENCE, PATH
+  DXZONE, DEZONE, DXDXCC, DEDXCC, DXSTATE, DESTATE, CONFIDENCE, PATH, MINSNR
 
 Supported modes:
   CW, FT2, FT4, FT8, JS8, LSB, USB, RTTY, MSK144, PSK, SSTV, UNKNOWN
@@ -606,6 +612,7 @@ Supported bands:
   2200m, 630m, 160m, 80m, 60m, 40m, 30m, 20m, 17m, 15m, 12m, 10m, 6m, 2m
   1.25m, 70cm, 33cm, 23cm, 13cm
 ```
+
 <!-- END DEFAULT_GO_HELP -->
 
 ## Dedupe Policies
@@ -636,6 +643,20 @@ In plain terms:
 - When usable `PASS NEARBY ON` is active, your telnet feed temporarily uses the least-suppressive available policy, normally `FAST`. Your saved `SET DEDUPE` policy is not changed and resumes when `NEARBY` is off or inactive.
 
 WWV, WCY, and `TO ALL` announcement bulletins have a separate server-wide duplicate guard because they are delivered as telnet control traffic rather than spots. The shipped `runtime.yaml` suppresses identical bulletin lines for `600s` across peer and relay sources; set `telnet.bulletin_dedupe_window_seconds: 0` to disable that behavior.
+
+## Minimum SNR Filtering
+
+Use `PASS MINSNR CW,RTTY 10` or `REJECT MINSNR FT8,FT4 -10` to set inclusive
+per-mode minima. Both numeric verbs set the same minimum. Human spots and spots
+without SNR are exempt from MINSNR; other filters still apply. Zero and negative
+thresholds are valid. Clear selected thresholds with `PASS MINSNR FT8 ALL` or
+`REJECT MINSNR FT8 NONE`; use ALL in the mode position to clear every saved rule.
+
+`SHOW FILTER MINSNR` lists thresholds, including removed modes retained as
+inactive until their exact canonical mode returns. Presets and reconnects retain
+these rules; threshold edits invalidate history continuation. Machine schema 3
+exposes the `min_snr` map while schemas 1/2 preserve hidden thresholds. See the
+[complete command and persistence contract](telnet/README.md#minimum-snr).
 
 ## EVENT Filtering
 
@@ -1323,8 +1344,9 @@ A prefix match checks callsign plausibility and does not prove event eligibility
 
 New live spots and archive records carry known State for the spotter and final
 corrected DX base call. History uses recorded metadata and never backfills old
-records from today's registry. Archive version 6, preference disk version 2 and
-machine YAML schemas 1/2 remain unchanged. Older binaries may reject Canadian
+records from today's registry. Archive version 6 stores State; preference disk
+version 3 and machine schema 3 also carry MINSNR, while machine schemas 1/2
+retain their shapes. Older binaries may reject Canadian
 codes in saved profiles or archive rows; retain matching backups for downgrade.
 Machine YAML schema 1 preserves hidden state rules; schema 2 exposes them.
 See [telnet filtering](telnet/README.md#us-state-and-canadian-province-filters),

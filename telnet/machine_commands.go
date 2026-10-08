@@ -142,6 +142,9 @@ func (c *Client) prepareMachineCandidate(request machineRequest) (before, next f
 	defer c.filterMu.RUnlock()
 	defer c.pathMu.RUnlock()
 	before = filter.ConfigurationFromFilter(c.filter, c.configuredSettings)
+	if err := request.validateMinSNRSuppliedModes(before); err != nil {
+		return before, next, err
+	}
 	next, err = request.apply(before)
 	if err != nil {
 		return before, next, err

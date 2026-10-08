@@ -122,3 +122,9 @@ and is outside this change.
   version 2, [ADR-0245](ADR-0245-machine-yaml-configuration.md) for explicit
   schema 2, and [ADR-0251](ADR-0251-exact-call-paged-history.md) for stored state.
   These decisions otherwise remain accepted.
+
+## Minimum SNR Refinement
+
+[ADR-0258](ADR-0258-per-mode-minimum-snr-filter.md) refines this decision for
+MINSNR and disk/machine version 3. Other clauses remain in force; state
+migration remains pinned to version 2 and machine schemas 1/2 keep their shapes.
