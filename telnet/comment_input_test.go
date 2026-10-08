@@ -15,7 +15,7 @@ func TestCommentInputPunctuationBoundariesAndEditing(t *testing.T) {
 		{"pass comment up  5: please!\n", "PASS COMMENT UP  5: PLEASE!", false},
 		{"remove reject comment \"*?,x\"\n", "REMOVE REJECT COMMENT \"*?,X\"", false},
 		{"show dx K1ABC 20 comment a:b!\n", "SHOW DX K1ABC 20 COMMENT A:B!", false},
-		{"show dx K1ABC 20 band 20,40 mode cw ft8 comment a:b!\n", "SHOW DX K1ABC 20 BAND 20,40 MODE CW FT8 COMMENT A:B!", false},
+		{"show dx K1ABC 20 band 20,40 mode cw, ft8 comment a:b!\n", "SHOW DX K1ABC 20 BAND 20,40 MODE CW, FT8 COMMENT A:B!", false},
 		{"sh/dx mode cw band 20 comment a+b=c\n", "SH/DX MODE CW BAND 20 COMMENT A+B=C", false},
 		{"DX 28201 K1ABC CW TABCDEF01-0 up-5?\n", "DX 28201 K1ABC CW TABCDEF01-0 UP-5?", false},
 		{"DX K1ABC 21201 FT8 TABCDEF01-1 up-5?\n", "DX K1ABC 21201 FT8 TABCDEF01-1 UP-5?", false},
@@ -45,7 +45,7 @@ func TestCommentInputPunctuationBoundariesAndEditing(t *testing.T) {
 }
 
 func FuzzCommentInput(f *testing.F) {
-	for _, seed := range []string{"pass comment a:b!\n", "pass band :\n", "show dx 1 comment a  b\n", "show dx band 20,40 mode cw ft8 comment a:b!\n", "pass comment x\x15show filter\n"} {
+	for _, seed := range []string{"pass comment a:b!\n", "pass band :\n", "show dx 1 comment a  b\n", "show dx band 20,40 mode cw, ft8 comment a:b!\n", "pass comment x\x15show filter\n"} {
 		f.Add(seed)
 	}
 	f.Fuzz(func(t *testing.T, input string) {
@@ -68,7 +68,7 @@ func FuzzCommentInput(f *testing.F) {
 }
 
 func TestCommentInputHistoryPrefixAllocations(t *testing.T) {
-	line := []byte("SHOW DX K1ABC 20 BAND 20,40 MODE CW FT8 UNKNOWN COMMENT ")
+	line := []byte("SHOW DX K1ABC 20 BAND 20,40 MODE CW, FT8, UNKNOWN COMMENT ")
 	if !commentArgumentsStarted(line) {
 		t.Fatal("combined selection phrase marker not recognized")
 	}

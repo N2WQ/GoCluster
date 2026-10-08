@@ -17,8 +17,8 @@ func TestHistoryBandModeParser(t *testing.T) {
 	p := NewProcessor(nil, &fakeArchive{}, nil, func() *cty.CTYDatabase { return db }, nil, nil)
 	for _, prefix := range []string{"SHOW DX", "SH DX", "SHOW MYDX", "SH MYDX", "SHOW/DX", "SH/DX"} {
 		for _, args := range []string{
-			"k1abc 20 band 20,40m,20m mode cw ft8 CW comment POTA:  up 5!",
-			"20 k1abc MODE CW,FT8 BAND 20m 40 COMMENT POTA:  up 5!",
+			"k1abc 20 band 20,40m,20m mode cw, ft8, CW comment POTA:  up 5!",
+			"20 k1abc MODE CW,FT8 BAND 20m , 40 COMMENT POTA:  up 5!",
 		} {
 			command, handled, text := p.ParseHistoryCommand(prefix+" "+args, "cc")
 			if !handled || text != "" || command.Query.count != 20 || command.Query.selector.call != "K1ABC" ||
@@ -34,8 +34,10 @@ func TestHistoryBandModeParser(t *testing.T) {
 		modes []string
 	}{
 		{"BAND 1.25m,70cm", []string{"1.25m", "70cm"}, nil},
-		{"MODE psk31,PSK63 unknown", nil, []string{"PSK", "UNKNOWN"}},
+		{"MODE psk31,PSK63, unknown", nil, []string{"PSK", "UNKNOWN"}},
 		{"BAND 20,,40,", []string{"20m", "40m"}, nil},
+		{"BAND ,20, ,40, MODE CW,", []string{"20m", "40m"}, []string{"CW"}},
+		{"MODE ,CW,,FT8, BAND 20,", []string{"20m"}, []string{"CW", "FT8"}},
 	} {
 		command, handled, text := p.ParseHistoryCommand("SHOW DX "+tc.args, "go")
 		if !handled || text != "" || command.Query.count != 50 || command.Query.selector.kind != historyNone ||
@@ -55,6 +57,8 @@ func TestHistoryBandModeInvalidRequests(t *testing.T) {
 		"BAND", "MODE", "BAND , ,", "MODE ,", "BAND MODE CW", "MODE BAND 20",
 		"BAND 20,BOGUS", "MODE CW,BOGUS", "BAND ALL", "BAND NONE", "MODE ALL", "MODE NONE",
 		"BAND 20 BAND 40", "MODE CW MODE FT8", "BAND 20 MODE CW BAND 40", "MODE CW K1ABC",
+		"BAND 20 40", "MODE CW FT8", "BAND 20,40 MODE CW FT8", "MODE CW,FT8 BAND 20 40",
+		"BAND 20 ,40 20", "MODE CW ,FT8 CW",
 		"BAND 20 COMMENT", "MODE CW COMMENT POTA\t",
 	} {
 		command, handled, text := p.ParseHistoryCommand("SHOW DX "+args, "go")
@@ -97,8 +101,8 @@ func TestHistoryBandModeMatchingBeforeCount(t *testing.T) {
 		args string
 		want []int
 	}{
-		{"K1ABC 1 BAND 20,40 MODE CW FT8 COMMENT POTA", []int{4}},
-		{"K1ABC 20 BAND 20,40 MODE CW FT8 COMMENT POTA", []int{4, 5}},
+		{"K1ABC 1 BAND 20,40 MODE CW,FT8 COMMENT POTA", []int{4}},
+		{"K1ABC 20 BAND 20,40 MODE CW,FT8 COMMENT POTA", []int{4, 5}},
 		{"K1ABC MODE UNKNOWN BAND 20", []int{6}},
 		{"K1ABC MODE PSK63", []int{7}},
 		{"K1ABC BAND 40", []int{5}},
@@ -167,6 +171,7 @@ func TestHistorySelectionDetachesExactSelector(t *testing.T) {
 func FuzzHistoryBandModeSelectionResults(f *testing.F) {
 	for _, mask := range []uint8{0, 1, 2, 4, 8, 16, 31} {
 		f.Add(mask, false, false)
+		f.Add(mask, true, true)
 	}
 	f.Fuzz(func(t *testing.T, mask uint8, reverse, comma bool) {
 		separator := " "
@@ -209,6 +214,12 @@ func FuzzHistoryBandModeSelectionResults(f *testing.F) {
 		}
 		p := NewProcessor(nil, &fakeArchive{spots: rows}, nil, nil, nil, nil)
 		command, handled, text := p.ParseHistoryCommand("SHOW DX"+bandClause+modeClause, "go")
+		if !comma && (len(bands) > 1 || len(modes) > 1) {
+			if !handled || !strings.Contains(text, "separate values with commas") || !reflect.DeepEqual(command.Query, HistoryQuery{}) {
+				t.Fatalf("missing commas accepted or retained partial state: %+v handled=%v text=%q", command, handled, text)
+			}
+			return
+		}
 		if !handled || text != "" {
 			t.Fatalf("valid generated list rejected: %q", text)
 		}
@@ -230,7 +241,7 @@ func TestHistoryBandModeHelp(t *testing.T) {
 		}
 		for _, topic := range topics {
 			text := p.ProcessCommandForClient("HELP "+topic, "W1AAA", "", nil, dialect)
-			for _, phrase := range []string{"BAND <list>", "MODE <list>", "OR within lists", "AND between selections", "UNKNOWN", "Put COMMENT", "NEXT retains all selections"} {
+			for _, phrase := range []string{"BAND <list>", "MODE <list>", "commas between values", "OR within lists", "AND between selections", "UNKNOWN", "Put COMMENT", "NEXT retains all selections"} {
 				if !strings.Contains(text, phrase) {
 					t.Fatalf("%s HELP %s lacks %q: %q", dialect, topic, phrase, text)
 				}

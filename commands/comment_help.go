@@ -39,9 +39,11 @@ func installCommentHelp(catalog *helpCatalog) {
 		}
 		entry.lines = appendNotes(entry.lines, []string{
 			"Append BAND <list> and/or MODE <list> after the optional selector/count.",
-			"Lists use commas or spaces; OR within lists, AND between selections.",
+			"Lists require commas between values; spaces around commas are allowed.",
+			"OR within lists, AND between selections; for example BAND 20,40 MODE CW,FT8.",
 			"BAND and MODE may appear in either order, at most once each.",
 			"Bands accept 20 or 20m; modes use existing names/aliases, including UNKNOWN.",
+			"Aliases named BAND/MODE are values first or after a comma; otherwise clauses.",
 			"BAND/MODE ALL and NONE are invalid; omit a category to leave it unrestricted.",
 			"Explicit BAND/MODE selections are required even for self-spots.",
 			"Put COMMENT <phrase> last; it consumes the remaining literal text.",

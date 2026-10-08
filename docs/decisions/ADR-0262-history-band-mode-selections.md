@@ -4,6 +4,10 @@
 - Date: 2026-10-08
 - Decision Origin: Design
 
+List delimiter and keyword-boundary clauses are superseded by
+[ADR-0263](ADR-0263-history-list-comma-boundaries.md). The remaining decisions
+stay in force; the original comma/space grammar below records the accepted history.
+
 ## Context
 
 Operators need ad hoc band/mode lists in a station-history search without editing

@@ -26,18 +26,14 @@ func parseHistorySelections(args []string) (base, bands, modes []string, errText
 	base = args[:pos]
 	for pos < len(args) {
 		domain := strings.ToUpper(args[pos])
-		start := pos + 1
-		pos = start
-		for pos < len(args) && !historySelectionToken(args[pos]) {
-			pos++
-		}
 		if (domain == "BAND" && bands != nil) || (domain == "MODE" && modes != nil) {
 			return nil, nil, nil, fmt.Sprintf("Invalid %s selection: category may appear only once.\n", domain)
 		}
-		values, text := parseHistorySelectionValues(domain, args[start:pos])
+		values, consumed, text := parseHistorySelectionValues(domain, args[pos+1:])
 		if text != "" {
 			return nil, nil, nil, text
 		}
+		pos += 1 + consumed
 		if domain == "BAND" {
 			bands = values
 		} else {
@@ -47,12 +43,27 @@ func parseHistorySelections(args []string) (base, bands, modes []string, errText
 	return base, bands, modes, ""
 }
 
-func parseHistorySelectionValues(domain string, args []string) ([]string, string) {
+func parseHistorySelectionValues(domain string, args []string) ([]string, int, string) {
 	var values []string
+	separatorRequired := false
+	consumed := 0
 	for _, arg := range args {
-		for _, value := range strings.Split(arg, ",") {
+		// A configured keyword alias is a mode value only at the start of a
+		// list or after a comma. Otherwise the keyword starts another clause.
+		// Empty comma fields remain harmless, including before a new clause
+		// whose keyword is not a supported value in the current category.
+		if historySelectionToken(arg) && (separatorRequired || domain != "MODE" || !filter.IsSupportedMode(arg)) {
+			break
+		}
+		for i, value := range strings.Split(arg, ",") {
+			if i > 0 {
+				separatorRequired = false
+			}
 			if value == "" {
-				continue // Same comma/space separators as PASS BAND/MODE.
+				continue
+			}
+			if separatorRequired {
+				return nil, 0, fmt.Sprintf("Invalid %s selection: separate values with commas.\n", domain)
 			}
 			var normalized string
 			var valid bool
@@ -64,19 +75,21 @@ func parseHistorySelectionValues(domain string, args []string) ([]string, string
 				valid = filter.IsSupportedMode(normalized)
 			}
 			if !valid || strings.EqualFold(value, "ALL") || strings.EqualFold(value, "NONE") {
-				return nil, fmt.Sprintf("Invalid %s selection: unsupported value %q.\n", domain, value)
+				return nil, 0, fmt.Sprintf("Invalid %s selection: unsupported value %q.\n", domain, value)
 			}
+			separatorRequired = true
 			if !slices.Contains(values, normalized) {
 				// A raw lowercase band token can borrow the whole input string.
 				// Detach it, and never grow beyond the finite supported vocabulary.
 				values = append(values, strings.Clone(normalized))
 			}
 		}
+		consumed++
 	}
 	if len(values) == 0 {
-		return nil, fmt.Sprintf("Invalid %s selection: supply at least one supported value.\n", domain)
+		return nil, 0, fmt.Sprintf("Invalid %s selection: supply at least one supported value.\n", domain)
 	}
-	return values, ""
+	return values, consumed, ""
 }
 
 // Explicit clauses also constrain self-spots. Saved filters keep their existing

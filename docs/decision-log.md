@@ -24,7 +24,8 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| ADR-0262 | BAND And MODE Archive History Selections | Accepted | 2026-10-08 | commands, telnet, history, parser, retained state | Refines ADR-0251/0261 with query lists | - | `docs/decisions/ADR-0262-history-band-mode-selections.md` |
+| ADR-0263 | Commas And Keyword Aliases In History Lists | Accepted | 2026-10-08 | commands, telnet, history parser, compatibility | ADR-0262 delimiter and keyword-boundary clauses only | - | `docs/decisions/ADR-0263-history-list-comma-boundaries.md` |
+| ADR-0262 | BAND And MODE Archive History Selections | Accepted | 2026-10-08 | commands, telnet, history, parser, retained state | Refines ADR-0251/0261 with query lists | ADR-0263 (delimiter and keyword-boundary clauses only) | `docs/decisions/ADR-0262-history-band-mode-selections.md` |
 | ADR-0261 | Literal Comment Filters And Archive Searches | Accepted | 2026-10-08 | filter, telnet, commands, YAML, persistence, history | Refines ADR-0251/0258 with comment rules and version 4 | - | `docs/decisions/ADR-0261-literal-comment-filter-and-history.md` |
 | ADR-0260 | CCCluster Outbound Handshake | Accepted | 2026-10-08 | peer, handshake, ccluster, deadlines, retry progress | Refines ADR-0230/0231 outbound CC startup only | - | `docs/decisions/ADR-0260-cccluster-outbound-handshake.md` |
 | ADR-0259 | Native Windows Codex Environment | Accepted | 2026-10-07 | development, Codex, Windows, WSL | ADR-0250 (Codex environment selection only) | - | `docs/decisions/ADR-0259-native-windows-codex-environment.md` |

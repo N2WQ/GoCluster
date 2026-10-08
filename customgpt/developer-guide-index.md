@@ -145,11 +145,17 @@ migration, and detached history snapshots when reviewing changes.
 
 For combined BAND/MODE/COMMENT history searches, also use
 [commands history](../commands/README.md#archive-history) and
-[ADR-0262](../docs/decisions/ADR-0262-history-band-mode-selections.md).
+[ADR-0262](../docs/decisions/ADR-0262-history-band-mode-selections.md) and the
+[comma/keyword boundary refinement](../docs/decisions/ADR-0263-history-list-comma-boundaries.md).
 `commands/history_selection.go` owns canonical OR lists and AND query gates;
 the existing history cursor retains only bounded immutable selections. Check
 saved-filter narrowing, mandatory explicit selection for self-spots, malformed
 request preservation and NEXT, and reader-level COMMENT punctuation after lists.
+History lists require commas; PASS/REJECT lists keep their existing separators.
+For configured mode aliases named BAND/MODE, inspect first-value and post-comma
+precedence and repeated-clause rejection. See
+[TSR-0047](../docs/troubleshooting/TSR-0047-history-mode-alias-clause-collision.md)
+and `commands/history_selection_taxonomy_test.go` for the collision regression.
 
 Route to [telnet comments](../telnet/README.md#comment-filters-and-searches) and
 [ADR-0261](../docs/decisions/ADR-0261-literal-comment-filter-and-history.md).

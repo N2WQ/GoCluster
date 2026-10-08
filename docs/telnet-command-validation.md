@@ -86,13 +86,19 @@ and its negative punctuation query uses `up-5!`, which is legal after SHOW
 COMMENT but differs from the archived phrase. Collector-only fixtures bypass
 raw ingress; actual Go reader fixtures validate both emitted DX command orders.
 
-Selections accept comma/space lists, OR within each list and AND across BAND,
-MODE and COMMENT. Crossed 10m/FT8 selection and a mismatched literal punctuation
+Selections require comma-separated lists (spaces around commas are allowed),
+OR within each list and AND across BAND, MODE and COMMENT. Crossed 10m/FT8
+selection and a mismatched literal punctuation
 suffix must return an exhausted empty search. Saved band/mode blocks must hide
 otherwise selected rows, and each search must preserve configuration/revision.
 A count-one combined selection supplies a NEXT token; missing/invalid/repeated
 categories and ALL/NONE are rejected before that token returns the remaining
 labeled row. MODE UNKNOWN is valid; BAND UNKNOWN is unsupported and rejected.
+Missing commas between values reject the request and preserve NEXT, just like
+other invalid selections. Local `TestHistoryBandModeConfiguredAliases` loads a
+temporary taxonomy with BAND/MODE variants for CW and asserts exact selected
+rows and clause boundaries. The shared-server harness uses the deployed taxonomy
+and does not alter it; these local cases establish configured-alias behavior.
 GO rejects slash aliases; accepted aliases in GO/CC return the
 same exact selected identities. Offline synthetic-session defects prove the
 collector rejects false-green responses; they do not prove server behavior.

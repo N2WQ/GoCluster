@@ -120,7 +120,7 @@ RESET FILTER COMMENT REJECT
 RESET FILTER COMMENT
 SHOW FILTER COMMENT
 SHOW DX K1ABC 20 COMMENT POTA
-SHOW DX K1ABC 20 BAND 20m,40m MODE CW FT8 COMMENT POTA
+SHOW DX K1ABC 20 BAND 20m,40m MODE CW,FT8 COMMENT POTA
 SHOW MYDX 20 COMMENT up 5
 ```
 
@@ -254,17 +254,22 @@ but valid full calls with unresolved countries still work as exact searches.
 See [commands history](../commands/README.md#archive-history) for examples.
 
 Append `BAND <list>` and/or `MODE <list>` after selector/count, then optional
-`COMMENT <phrase>` last. Lists accept commas or spaces, OR within each category
-and AND across categories. BAND and MODE may appear in either order, once each.
+`COMMENT <phrase>` last. Lists require commas between values, allow spaces around
+commas, use OR within each category and AND across categories. BAND and MODE may
+appear in either order, once each.
 Use the existing band names/normalization (`20` or `20m`) and filter-mode
 names/aliases, including `UNKNOWN` for blank modes. Duplicated values are
-deduplicated; unsupported or missing values, repeated categories and BAND/MODE
+deduplicated; empty comma fields remain ignored. Configured BAND/MODE mode
+aliases are values first or after a comma; otherwise standalone keywords start
+clauses. Finish a list without a comma before starting another clause. Missing
+commas, unsupported or missing values, repeated categories and BAND/MODE
 `ALL`/`NONE` reject the request and preserve the previous cursor. Explicit query
 selections are required even for self-spots, apply before counts and narrow your
 saved filters. Saved-filter self exceptions are unchanged. Searches do not edit
 preferences; NEXT retains the selected lists and phrase. The existing command
 byte limit still applies. See
-[ADR-0262](../docs/decisions/ADR-0262-history-band-mode-selections.md).
+[ADR-0262](../docs/decisions/ADR-0262-history-band-mode-selections.md) and
+[ADR-0263](../docs/decisions/ADR-0263-history-list-comma-boundaries.md).
 
 Every page applies current time minus configured archive retention, including
 the exact cutoff, and visits at most 200,000 candidates. Decode failures,

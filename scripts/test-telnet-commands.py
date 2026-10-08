@@ -542,10 +542,10 @@ class Suite:
         queries = (
             ("BAND 10m", [0]), ("BAND 15", [1]),
             ("MODE cw", [0]), ("MODE FT8", [1]),
-            ("BAND 10m,15m", [0, 1]), ("BAND 10 15", [0, 1]),
-            ("MODE CW,FT8", [0, 1]), ("MODE CW FT8", [0, 1]),
+            ("BAND 10m,15m", [0, 1]), ("BAND 10, 15", [0, 1]),
+            ("MODE CW,FT8", [0, 1]), ("MODE CW, FT8", [0, 1]),
             ("BAND 10m,10 MODE CW,CW", [0]),
-            ("BAND 10,15 MODE CW", [0]), ("MODE CW FT8 BAND 15m", [1]),
+            ("BAND 10,15 MODE CW", [0]), ("MODE CW, FT8 BAND 15m", [1]),
             ("BAND 10 MODE FT8", []),
             ("MODE UNKNOWN", []),
             ("BAND 10 MODE CW", [0]),
@@ -554,11 +554,11 @@ class Suite:
             command = f"SHOW DX {target} 2 {suffix} COMMENT {label.lower()}"
             self.case("history selection " + suffix, lambda c=command, e=expected: self.history_result(a, c, target, frequencies, e))
         for phrase, expected in ((label + "-0 up-5?", [0]), (label + "-0 up-5!", [])):
-            command = f"SHOW DX {target} 2 BAND 10,15 MODE CW FT8 COMMENT {phrase}"
+            command = f"SHOW DX {target} 2 BAND 10,15 MODE CW, FT8 COMMENT {phrase}"
             self.case("history selection literal " + phrase, lambda c=command, e=expected: self.history_result(a, c, target, frequencies, e))
         for category, value, suffix, expected in (
-            ("BAND", "10M", "BAND 10,15 MODE CW FT8", [1]),
-            ("MODE", "CW", "BAND 10,15 MODE CW FT8", [1]),
+            ("BAND", "10M", "BAND 10,15 MODE CW, FT8", [1]),
+            ("MODE", "CW", "BAND 10,15 MODE CW, FT8", [1]),
         ):
             def saved_block(cat=category, val=value, search=suffix, remaining=expected):
                 a.human(f"REJECT {cat} {val}")
@@ -571,23 +571,32 @@ class Suite:
 
     def history_selection_next(self, a, target, frequencies):
         label = "T" + self.token
-        command = f"SHOW DX {target} 1 BAND 10,15 MODE CW FT8 COMMENT {label}"
+        command = f"SHOW DX {target} 1 BAND 10,15 MODE CW, FT8 COMMENT {label}"
         text = self.history_result(a, command, target, frequencies, [1])
         cursor = re.search(r"H1[A-F0-9]{32}", text)
         assert cursor, "selection NEXT unavailable: both labeled stimuli must survive admission"
+        # The failing category may follow a valid clause. Assert its exact
+        # diagnostic rather than assuming the first word owns every error.
         invalid = (
-            "BAND", "MODE", "BAND MODE CW", "MODE BAND 10", "BAND ,", "MODE ,",
-            "BAND 10 INVALID", "MODE CW INVALID", "BAND 10,INVALID", "MODE CW,INVALID",
-            "BAND ALL", "BAND NONE", "BAND UNKNOWN", "MODE ALL", "MODE NONE",
-            "BAND 10 BAND 15", "MODE CW MODE FT8", "BAND 10 MODE CW BAND 15",
+            ("BAND", "BAND"), ("MODE", "MODE"),
+            ("BAND MODE CW", "BAND"), ("MODE BAND 10", "MODE"),
+            ("BAND ,", "BAND"), ("MODE ,", "MODE"),
+            ("BAND 10 15", "BAND"), ("MODE CW FT8", "MODE"),
+            ("BAND 10,15 MODE CW FT8", "MODE"), ("MODE CW,FT8 BAND 10 15", "BAND"),
+            ("BAND 10 INVALID", "BAND"), ("MODE CW INVALID", "MODE"),
+            ("BAND 10,INVALID", "BAND"), ("MODE CW,INVALID", "MODE"),
+            ("BAND ALL", "BAND"), ("BAND NONE", "BAND"), ("BAND UNKNOWN", "BAND"),
+            ("MODE ALL", "MODE"), ("MODE NONE", "MODE"),
+            ("BAND 10 BAND 15", "BAND"), ("MODE CW MODE FT8", "MODE"),
+            ("BAND 10 MODE CW BAND 15", "BAND"),
         )
-        for suffix in invalid:
+        for suffix, category in invalid:
             before = a.get()
             response, after = a.human(f"SHOW DX {target} 2 {suffix}")
-            assert "Invalid " + suffix.split()[0] + " selection" in response, "invalid selection was not rejected: " + response
+            assert "Invalid " + category + " selection" in response, "invalid selection was not rejected: " + response
             assert before["configuration"] == after["configuration"] and before["revision"] == after["revision"]
         for alias in ("SHOW/DX", "SH/DX"):
-            self.unchanged(a, f"{alias} {target} 2 BAND 10,15 MODE CW FT8 COMMENT {label}", "Use SHOW DX or SH DX")
+            self.unchanged(a, f"{alias} {target} 2 BAND 10,15 MODE CW, FT8 COMMENT {label}", "Use SHOW DX or SH DX")
         older = self.history_result(a, "SHOW MYDX NEXT " + cursor.group(), target, frequencies, [0])
         assert "Older retained history page:" in older
         self.unchanged(a, "SHOW DX NEXT " + cursor.group(), "Invalid history continuation")
@@ -632,7 +641,7 @@ class Suite:
             for command in ("SHOW DX 1", "SH DX 1", f"SHOW MYDX {target} 2", f"SH MYDX 2 {target}", f"SHOW DX {target_prefix} 1") + (("SHOW/DX 1", "SH/DX 1") if dialect == "cc" else ()):
                 self.case(dialect + " " + command, lambda c=command: a.human(c, "DX de"))
             for alias in ("SHOW DX", "SH DX", "SHOW MYDX", "SH MYDX") + (("SHOW/DX", "SH/DX") if dialect == "cc" else ()):
-                command = f"{alias} {target} 2 MODE CW FT8 BAND 10,15 COMMENT T{self.token}"
+                command = f"{alias} {target} 2 MODE CW, FT8 BAND 10,15 COMMENT T{self.token}"
                 self.case(dialect + " selection " + alias, lambda c=command: self.history_result(a, c, target, frequencies, [0, 1]))
             for command in ("SHOW DX 0", "SHOW MYDX 251"):
                 self.case(dialect + " invalid " + command, lambda c=command: self.unchanged(a, c, "1-250"))

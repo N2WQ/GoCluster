@@ -227,19 +227,23 @@ class SyntheticHistorySession:
     """
     selections = {
         "BAND 10m": [0], "BAND 15": [1], "MODE cw": [0], "MODE FT8": [1],
-        "BAND 10m,15m": [0, 1], "BAND 10 15": [0, 1],
-        "MODE CW,FT8": [0, 1], "MODE CW FT8": [0, 1],
+        "BAND 10m,15m": [0, 1], "BAND 10, 15": [0, 1],
+        "MODE CW,FT8": [0, 1], "MODE CW, FT8": [0, 1],
         "BAND 10m,10 MODE CW,CW": [0], "BAND 10,15 MODE CW": [0],
-        "MODE CW FT8 BAND 15m": [1], "BAND 10 MODE FT8": [],
+        "MODE CW, FT8 BAND 15m": [1], "BAND 10 MODE FT8": [],
         "MODE UNKNOWN": [], "BAND 10 MODE CW": [0],
-        "BAND 10,15 MODE CW FT8": [0, 1],
-        "MODE CW FT8 BAND 10,15": [0, 1], "BAND 10M": [], "MODE CW": [],
+        "BAND 10,15 MODE CW, FT8": [0, 1],
+        "MODE CW, FT8 BAND 10,15": [0, 1], "BAND 10M": [], "MODE CW": [],
     }
     invalid = {
-        "BAND", "MODE", "BAND MODE CW", "MODE BAND 10", "BAND ,", "MODE ,",
-        "BAND 10 INVALID", "MODE CW INVALID", "BAND 10,INVALID", "MODE CW,INVALID",
-        "BAND ALL", "BAND NONE", "BAND UNKNOWN", "MODE ALL", "MODE NONE", "BAND 10 BAND 15",
-        "MODE CW MODE FT8", "BAND 10 MODE CW BAND 15",
+        "BAND": "BAND", "MODE": "MODE", "BAND MODE CW": "BAND", "MODE BAND 10": "MODE",
+        "BAND ,": "BAND", "MODE ,": "MODE", "BAND 10 15": "BAND", "MODE CW FT8": "MODE",
+        "BAND 10,15 MODE CW FT8": "MODE", "MODE CW,FT8 BAND 10 15": "BAND",
+        "BAND 10 INVALID": "BAND", "MODE CW INVALID": "MODE",
+        "BAND 10,INVALID": "BAND", "MODE CW,INVALID": "MODE",
+        "BAND ALL": "BAND", "BAND NONE": "BAND", "BAND UNKNOWN": "BAND",
+        "MODE ALL": "MODE", "MODE NONE": "MODE", "BAND 10 BAND 15": "BAND",
+        "MODE CW MODE FT8": "MODE", "BAND 10 MODE CW BAND 15": "BAND",
     }
 
     def __init__(self, defect=None):
@@ -276,7 +280,7 @@ class SyntheticHistorySession:
             _, args = command.split(" K1ABC ", 1)
             count, suffix = args.split(" ", 1)
             if suffix in self.invalid:
-                text = "No matching retained spots." if self.defect == "accept_invalid" else "Invalid " + suffix.split()[0] + " selection."
+                text = "No matching retained spots." if self.defect == "accept_invalid" else "Invalid " + self.invalid[suffix] + " selection."
             else:
                 selection, phrase = suffix.split(" COMMENT ", 1)
                 indices = list(self.selections[selection])
@@ -364,7 +368,7 @@ class HistoryOracleFixtures(unittest.TestCase):
         for dialect in ("go", "cc"):
             session.dialect = dialect
             for alias in ("SHOW DX", "SH DX", "SHOW MYDX", "SH MYDX") + (("SHOW/DX", "SH/DX") if dialect == "cc" else ()):
-                value.history_result(session, alias + " K1ABC 2 MODE CW FT8 BAND 10,15 COMMENT TABCDEF01", "K1ABC", [28200, 21200], [0, 1])
+                value.history_result(session, alias + " K1ABC 2 MODE CW, FT8 BAND 10,15 COMMENT TABCDEF01", "K1ABC", [28200, 21200], [0, 1])
 
     def test_exact_row_oracle_rejects_missing_duplicate_or_unrelated_rows(self):
         value = self.suite()

@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `1f22d072b2c6824e`
+- Source fingerprint: `686c6bfc5c163817`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -11,7 +11,7 @@
 
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
-| `dxcluster/commands` | `commands` | 5 | 10 |
+| `dxcluster/commands` | `commands` | 5 | 11 |
 | `dxcluster/internal/cluster` | `internal/cluster` | 25 | 63 |
 | `dxcluster/peer` | `peer` | 62 | 130 |
 | `dxcluster/spot` | `spot` | 33 | 32 |
@@ -108,6 +108,7 @@ Test files:
 - `commands/configuration_help_test.go`
 - `commands/dxcc_history_test.go`
 - `commands/history_archive_test.go`
+- `commands/history_selection_taxonomy_test.go`
 - `commands/history_selection_test.go`
 - `commands/history_test.go`
 - `commands/preset_help_test.go`
@@ -602,6 +603,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0263](docs/decisions/ADR-0263-history-list-comma-boundaries.md) | Accepted | 2026-10-08 | commands, telnet, history parser, compatibility | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0262](docs/decisions/ADR-0262-history-band-mode-selections.md) | Accepted | 2026-10-08 | commands, telnet, history, parser, retained state | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0261](docs/decisions/ADR-0261-literal-comment-filter-and-history.md) | Accepted | 2026-10-08 | filter, telnet, commands, YAML, persistence, history | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0260](docs/decisions/ADR-0260-cccluster-outbound-handshake.md) | Accepted | 2026-10-08 | peer, handshake, ccluster, deadlines, retry progress | `area:peer, path:peer` |

@@ -395,17 +395,24 @@ comment edits invalidate continuation and pending publication. Existing retentio
 page work bounds, warnings, queues and archive storage ownership remain unchanged.
 
 DX/MYDX history also accepts BAND and MODE lists after the optional selector/count
-and before COMMENT, in either order, once each. Commas/spaces separate values;
+and before COMMENT, in either order, once each. Commas are required between
+values; spaces around commas and empty comma fields are allowed.
 OR applies within each list and AND across supplied selections. Existing band and
 filter-mode normalization applies, including UNKNOWN for blank modes. Missing or
-unsupported values, repeated categories and BAND/MODE ALL/NONE reject the whole
-request without replacing its cursor. Explicit lists narrow saved filters and
-remain mandatory even for self-spots; saved self exceptions remain intact.
+unsupported values, missing commas, repeated categories and BAND/MODE ALL/NONE
+reject the whole request without replacing its cursor. Explicit lists narrow
+saved filters and remain mandatory even for self-spots; saved self exceptions
+remain intact.
 Deduplicated detached canonical names are retained only by the existing bounded
 connection query and carried through NEXT, with existing replacement/invalidation
 and close ownership. COMMENT keeps its entire literal remainder. No saved rule,
 archive encoding, index, schema or configuration setting changes. See
-[ADR-0262](decisions/ADR-0262-history-band-mode-selections.md).
+[ADR-0262](decisions/ADR-0262-history-band-mode-selections.md) and
+[ADR-0263](decisions/ADR-0263-history-list-comma-boundaries.md). Configured BAND/MODE
+mode aliases are values first or after a comma; otherwise standalone keywords
+start clauses. A keyword unsupported in the current category starts a clause,
+including after empty comma fields. Finish a list without a comma before starting
+another clause to avoid interpreting a configured keyword alias as a value.
 
 Explicit machine schema 4 and disk configuration version 4 add comments and
 block_comments. Schemas 1-3 retain their shapes and preserve hidden comment rules.

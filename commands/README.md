@@ -179,7 +179,7 @@ SHOW MYDX 3D2/R 10
 SHOW DX 20 COMMENT up 5
 SHOW DX K1ABC 20 COMMENT POTA
 SHOW DX K1ABC 20 BAND 20m,40m
-SHOW DX K1ABC 20 MODE CW FT8
+SHOW DX K1ABC 20 MODE CW,FT8
 SHOW DX K1ABC 20 MODE CW,FT8 BAND 20,40 COMMENT POTA
 ```
 
@@ -202,21 +202,29 @@ for self-spots; saved filters retain their existing self-spot exception. Searche
 do not change saved rules. NEXT retains the original phrase and grammar.
 
 Append `BAND <list>` and/or `MODE <list>` after the optional selector/count.
-Lists accept commas or spaces, match any supplied value within a category, and
-require all supplied categories. BAND and MODE may appear in either order, once
-each; COMMENT must come last because everything after it is literal phrase text.
+Lists require commas between values, allow spaces around commas, match any
+supplied value within a category, and require all supplied categories. BAND and
+MODE may appear in either order, once each; COMMENT must come last because
+everything after it is literal phrase text.
 Bands use existing normalization (`20` and `20m` are equivalent); modes use the
 existing filter names/aliases (`PSK31` selects PSK), including `UNKNOWN` for blank
 modes. Repeated values are deduplicated. `ALL`/`NONE` are unsupported in these
 lists; omit a category to impose no additional query restriction for it.
-Missing or unsupported values and repeated categories reject the entire command
-without replacing the current search. Explicit BAND/MODE restrictions apply even
-to self-spots, before counting, and narrow results within saved filters rather
+Empty comma fields remain ignored. A configured mode alias named `BAND` or
+`MODE` is a value at the start of the mode list or after a comma. Without a
+preceding comma, a standalone BAND/MODE starts a clause. For example, with both
+aliases mapped to CW, `MODE BAND` selects CW, `MODE CW,MODE,FT8` selects CW/FT8,
+and `MODE CW BAND 20` selects CW on 20m. `MODE CW MODE FT8` is a repeated clause
+and is rejected. Finish the list without a comma before starting another clause.
+Missing commas, missing or unsupported values and repeated categories reject the
+entire command without replacing the current search. Explicit BAND/MODE
+restrictions apply even to self-spots, before counting, and narrow results within saved filters rather
 than overriding them. The saved-filter self-spot exception remains unchanged.
 NEXT retains all selections, and searches never change preferences. Only unique
 canonical band/mode names are retained in the existing connection-owned cursor;
 there is no new archive index or stored preference. See
-[ADR-0262](../docs/decisions/ADR-0262-history-band-mode-selections.md).
+[ADR-0262](../docs/decisions/ADR-0262-history-band-mode-selections.md) and its
+[list grammar refinement](../docs/decisions/ADR-0263-history-list-comma-boundaries.md).
 
 Every history form applies the page's captured current time minus
 `archive.retention_seconds`; the exact cutoff is included. Select newest matching
