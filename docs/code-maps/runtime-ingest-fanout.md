@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `3b3c2d26e9d95c09`
+- Source fingerprint: `389d40817ff55b63`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -11,7 +11,7 @@
 
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
-| `dxcluster/commands` | `commands` | 6 | 14 |
+| `dxcluster/commands` | `commands` | 6 | 15 |
 | `dxcluster/internal/cluster` | `internal/cluster` | 25 | 63 |
 | `dxcluster/peer` | `peer` | 62 | 130 |
 | `dxcluster/spot` | `spot` | 33 | 32 |
@@ -104,6 +104,7 @@ Source files:
 - `commands/processor.go`
 
 Test files:
+- `commands/command_arity_test.go`
 - `commands/comment_history_benchmark_test.go`
 - `commands/comment_history_test.go`
 - `commands/configuration_help_test.go`

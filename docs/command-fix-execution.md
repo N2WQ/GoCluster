@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 11a complete (04a used two commits);
-30 approved checkpoints remain; 11b is next.
+Current progress: checkpoints 00 through 11b complete (04a used two commits);
+29 approved checkpoints remain; 12 is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -1701,3 +1701,78 @@ state the admitted arguments; TSR-0057 records the normalization failure and
 checker limits without inventing a new ADR. Generated-map and whitespace checks
 complete closeout. No required check was waived; no production-load, external
 cluster or unrelated lifecycle qualification is claimed.
+
+## Checkpoint 11b: DXCC lookup and logout arity
+
+Status: complete. Discovery inspected Processor dispatch, SHOW/SH routing,
+portable CTY lookup and its existing tests, HELP usage, the actual telnet caller,
+SendAndClose and writer close-after-flush handling. SHOW DXCC currently ignores
+arguments after the first query. BYE/QUIT/EXIT return the close sentinel even
+with extra tokens. Existing HELP unambiguously specifies one DXCC query and
+argument-free logout aliases; the approved 11b contract requires strict arity
+and a still-usable connection after invalid logout. No policy selection remains.
+
+Architecture: refuse wrong arity in the existing processor before CTY lookup or
+the BYE sentinel. Preserve all valid portable lookups, SHOW/SH aliases, dialects,
+logged-in requirement and valid logout behavior. No server, socket, deadline,
+schema, preset or persistence-owner change is needed.
+
+The connection-lifecycle audit identifies a session-owned inbound command loop
+and its existing writer. Only the exact BYE sentinel queues SendAndClose; the
+writer flushes the farewell then closes. Invalid logout must return ordinary
+usage and continue reading. Listener/login, writer/queue ownership, idle/recovery
+deadlines and shutdown/reconnect mechanics remain outside this arity change;
+there is no new goroutine, timer or socket owner. Tests must establish usable
+subsequent commands and server-originated EOF for valid logout, not just an
+acknowledgement followed by a client-initiated close.
+
+Lead-owned preimplementation falsifiability matrix:
+
+| Contract | Stimulus / fault | Required evidence | False-green risk | Checker / owner |
+|---|---|---|---|---|
+| DXCC query arity | SHOW/SH, both dialects, missing/extra tokens | Exact usage before any CTY callback; valid prefix/portable controls still resolve | Looking up the first token then ignoring the tail | Processor callback count and literal results; real checkout commands / commands, runner |
+| Logout arity | BYE/QUIT/EXIT with extra tokens and mixed case/spacing | Usage rather than sentinel; no live/revision/effective/preset/disk change | A close message or new connection masks a disconnected original | Existing exact reply reader, correlated GET and subsequent SHOW OWN on the same socket / commands, runner |
+| Valid logout | Each alias on its own admitted connection | Farewell and actual remote EOF within existing deadline; owned fixture retirement still joins | Harness closes locally after seeing farewell | Explicit EOF control before local cleanup / runner |
+| Compatibility | Original CTY metadata/portable lookup and valid aliases | Existing tests and complete baseline remain green | A blanket refusal passes malformed-input tests | Valid controls and complete selected lane / commands, telnet |
+
+This is a directly falsifiable parser boundary with no architecture fork or
+scientific claim. Lead final review remains sufficient; no separate reviewer is
+required for the two localized guards. Select ordinary baseline, targeted/race
+packages, actual ordinary/race server cases and the existing record/map checks.
+
+The first actual attempt `20261009-184801-e50f9482` retained an incorrect checker
+expectation for SHOW OWN: the full SSID belongs on its Login call line, while
+Own call is the baseline station. GET and SHOW OWN on the original connection
+had already succeeded after the refused logout. Correct the control to require
+both independent literal identities; do not change this existing display
+contract. The failed attempt is retained and excluded from qualification.
+
+Observed final validation:
+
+| Check | Result |
+|---|---|
+| Focused processor controls | Both dialects, SHOW/SH, portable lookup and all logout aliases passed; rejected DXCC performs zero CTY callbacks |
+| Complete commands/telnet packages | Ordinary and race suites passed |
+| Complete ordinary baseline | All 70 packages completed successfully, with no-test packages build-checked |
+| Runner controls | All 39 passed, including remote EOF before local close and failure cleanup even when receipt writing fails |
+| Actual checkout runs | Ordinary `20261009-184949-1a6fac18` and race `20261009-185252-45024a94`: all 86 required cases passed per build; 36 main and 7 reputation cases per transport |
+| Transport and child ownership | Zero strict wire or cleanup failures; all eight retirement receipts per build confirm clients retired, consumer joined and archive stopped |
+| Whole-repository analyzers | vet, Staticcheck and lint passed; zero lint issues |
+| Support and records | Troubleshooting-record checks passed; the mechanical crawler-entry checker had zero changed candidates; existing processor entry/lookup comments were reviewed directly |
+
+Both actual builds and their children report Go/module source digest
+`294182a3d234702c471eb0307289ddac989682d35cf8720078aa53be7df4e4a9`.
+Python was frozen for both builds; this digest does not hash Python, docs or
+configuration. Fresh lead final source, test, diff and retirement-receipt review
+found no unresolved material defect. The two token-count guards enforce the
+documented contract without replacing the tokenizer or writer. Literal callback,
+same-socket and EOF controls qualify this boundary; no new lexical parser,
+performance or broader lifecycle claim is made.
+
+Implementation maps to `commands/processor.go`, permanent processor arity tests
+and the cumulative checkout runner. Support-agent impact: Required; the telnet
+guide and support routing explain usage/refusal versus valid closure. TSR-0058
+records the failure and checker limits; no new ADR is needed for enforcement of
+existing documented usage. Generated-map and whitespace checks complete
+closeout. No required check was waived; no full-repository race, production-load
+or external-cluster qualification is claimed.

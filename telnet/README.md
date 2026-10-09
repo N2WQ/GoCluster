@@ -455,6 +455,11 @@ restrictions. Named CC shortcuts such as `SET/BEACON`, `SET/NOFT8` and
 `SET/FILTER BAND/OFF` also take no extra values. An unexpected tail refuses
 the whole command without live or saved changes.
 
+`SHOW DXCC` (also `SH DXCC`) requires one prefix or callsign. Extra values
+return usage without performing a lookup. `BYE`, `QUIT` and `EXIT` take no
+arguments. A malformed logout returns usage and leaves the connection usable;
+a valid logout sends the farewell and closes the connection.
+
 Machine YAML preserves stored flags, false entries and defaults. Use
 `GET YAML FILTER` for exact stored rules; `DEFAULT` remains distinct from
 explicit `true` or `false` there. NEARBY reports its effective ON/OFF state

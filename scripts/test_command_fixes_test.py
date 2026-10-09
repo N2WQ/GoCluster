@@ -25,6 +25,53 @@ HISTORY_ROW = "DX de K1ABC:     14074.00  W6ABC       CW LABEL                  
 
 
 class DriverControls(unittest.TestCase):
+    def test_logout_oracle_requires_remote_eof_before_local_close(self):
+        session = mock.Mock()
+        session.call, session.suite.log = "N0CALL-1", io.BytesIO()
+        session.reader.buffer, session.reader.state = bytearray(), "data"
+        events = []
+
+        def read_line():
+            events.append("read")
+            if len(events) == 1:
+                return b"BYE\r\n"
+            if len(events) == 2:
+                return b"73!\r\n"
+            events.append("remote EOF")
+            raise EOFError("closed")
+
+        session.reader.line.side_effect = read_line
+        session.sock.close.side_effect = lambda: events.append("local close")
+        driver.require_remote_logout(session, "BYE")
+        self.assertEqual(events[-2:], ["remote EOF", "local close"])
+        self.assertTrue(session.closed)
+        self.assertTrue(session.suite.log.getvalue().endswith(b"BYE\r\n73!\r\n"))
+        for lines, pending, state in (([EOFError("no farewell")], b"", "data"),
+                                      ([b"73!\r\n", TimeoutError("still open")], b"", "data"),
+                                      ([b"73!\r\n", EOFError("partial")], b"PARTIAL", "data"),
+                                      ([b"73!\r\n", EOFError("partial IAC")], b"", "iac"),
+                                      ([b"73!\r\n", b"73!\r\n"], b"", "data"),
+                                      ([b"73!\n"], b"", "data"),
+                                      ([b"X" * (driver.harness.MAX_FRAME + 1) + b"\r\n"], b"", "data")):
+            session = mock.Mock()
+            session.call, session.suite.log = "N0CALL-1", io.BytesIO()
+            session.reader.buffer, session.reader.state = bytearray(pending), state
+            session.reader.line.side_effect = lines
+            with self.assertRaises((ValueError, TimeoutError)):
+                driver.require_remote_logout(session, "BYE")
+            session.sock.close.assert_called_once()
+            self.assertTrue(session.closed)
+            if pending:
+                self.assertTrue(session.suite.log.getvalue().endswith(pending))
+        session = mock.Mock()
+        session.reader.buffer, session.reader.state = bytearray(), "data"
+        session.reader.line.side_effect = [b"73!\r\n", EOFError("closed")]
+        session.suite.log.write.side_effect = OSError("receipt failure")
+        with self.assertRaisesRegex(OSError, "receipt failure"):
+            driver.require_remote_logout(session, "BYE")
+        session.sock.close.assert_called_once()
+        self.assertTrue(session.closed)
+
     def test_filter_argument_oracle_requires_refusal_and_exact_owners(self):
         before = dict(configuration={"selection": "before"}, revision="revision-1",
                       status=dict(effective={"selection": "before"}, preset={"name": "before"}))

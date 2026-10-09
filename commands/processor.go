@@ -263,6 +263,9 @@ func (p *Processor) ProcessCommandForClient(cmd string, spotter string, spotterI
 		}
 		return p.handleShow(parts[1:], filterFn, dialect, spotter)
 	case "BYE", "QUIT", "EXIT":
+		if len(parts) != 1 {
+			return fmt.Sprintf("Usage: %s\n", command)
+		}
 		return "BYE"
 	default:
 		return fmt.Sprintf("Unknown command: %s\nType HELP for available commands.\n", command)
@@ -1859,7 +1862,7 @@ func (p *Processor) renderHistoryQuery(query HistoryQuery, filterFn func(*spot.S
 // Upstream: handleShow (SHOW DXCC).
 // Downstream: CTY lookup, prefixIdx for sibling retrieval.
 func (p *Processor) handleShowDXCC(args []string) string {
-	if len(args) == 0 {
+	if len(args) != 1 {
 		return "Usage: SHOW DXCC <prefix|callsign>\n"
 	}
 	queryRaw := strings.TrimSpace(args[0])

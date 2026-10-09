@@ -274,7 +274,6 @@ def callsign_pattern_cases(suite, root, cw_label, saved_callsigns):
 
 
 def require_filter_argument_refusal(session, command, record, exact_feedback=None):
-    before, saved = session.get(), record.read_bytes()
     if exact_feedback is None:
         fields = command.upper().split()
         if fields[0].startswith("SET/") and fields[0] != "SET/FILTER":
@@ -284,6 +283,11 @@ def require_filter_argument_refusal(session, command, record, exact_feedback=Non
         else:
             domain = "ANNOUNCE" if fields[1] == "PC93" else fields[1]
             exact_feedback = domain + " accepts no value or ALL. No changes applied."
+    require_command_refusal(session, command, record, exact_feedback)
+
+
+def require_command_refusal(session, command, record, exact_feedback):
+    before, saved = session.get(), record.read_bytes()
     text, after = exact_human_reply(session, command, exact_feedback)
     require(text.strip() == exact_feedback, "malformed filter arguments lack a refusal")
     require(after["configuration"] == before["configuration"] and
@@ -291,6 +295,66 @@ def require_filter_argument_refusal(session, command, record, exact_feedback=Non
             after["status"]["effective"] == before["status"]["effective"] and
             after["status"]["preset"] == before["status"]["preset"] and
             record.read_bytes() == saved, "malformed filter arguments changed live or saved state")
+
+
+def require_remote_logout(session, verb):
+    received, raw, farewell = 0, bytearray(), False
+    try:
+        session.send(verb + "\r\n")
+        while True:
+            try:
+                line = session.reader.line()
+            except EOFError:
+                require(farewell and not session.reader.buffer and session.reader.state == "data",
+                        "logout lacks farewell or has partial trailing bytes")
+                return  # Remote EOF is observed before any local socket close.
+            received += len(line)
+            raw.extend(line[:harness.MAX_FRAME - len(raw)])
+            require(received <= harness.MAX_FRAME and line.endswith(b"\r\n") and b"\r" not in line[:-2],
+                    "logout reply exceeds its bound or has invalid CRLF")
+            text = line[:-2].decode("ascii", "strict")
+            if not farewell and text == "73!":
+                farewell = True
+            else:
+                require(text == "" or (not farewell and text == verb.upper()), "unexpected logout output")
+    finally:
+        try:
+            pending = session.reader.buffer
+            received += len(pending)
+            raw.extend(pending[:harness.MAX_FRAME - len(raw)])
+            receipt = f"\n[{session.call}] {verb} [remote logout]\n".encode() + bytes(raw)
+            if received > len(raw):
+                receipt += b"\n[logout receipt truncated at 65536 bytes]\n"
+            session.suite.log.write(receipt)
+            session.suite.log.flush()
+        finally:
+            session.sock.close()
+            session.closed = True
+
+
+def command_arity_cases(suite, root, saved_arity):
+    for index, (dialect, call) in enumerate((("go", "VE3ABC-70048"), ("cc", "VE3ABC-70049"))):
+        current = harness.Session(suite, call)
+        current.human("PAUSE 300")
+        current.human("DIALECT " + dialect)
+        current.human("SET DEDUPE FAST")
+        record = root / "users" / (call + ".yaml")
+        for prefix in ("SHOW DXCC", "SH DXCC"):
+            for tail in ("", " VE EXTRA", " W6/LZ5VV/M EXTRA MORE"):
+                require_command_refusal(current, prefix + tail, record, "Usage: SHOW DXCC <prefix|callsign>")
+            current.human(prefix + " VE", "Canada")
+        for verb in ("BYE", "QUIT", "EXIT"):
+            for tail in (" NOW", " ALL MORE"):
+                require_command_refusal(current, verb.lower() + tail, record, "Usage: " + verb)
+                # Keep using the original connection after each invalid logout.
+                text, _ = current.human("SHOW OWN", "Login call: " + call)
+                require("Own call: VE3ABC" in text, "baseline own-call identity changed after refused logout")
+        saved_arity[call] = current.get()["configuration"]
+        for offset, verb in enumerate(("BYE", "QUIT", "EXIT")):
+            terminal = harness.Session(suite, "K1ABC-" + str(70050 + index * 3 + offset))
+            terminal.human("PAUSE 300")
+            terminal.human("DIALECT " + dialect)
+            require_remote_logout(terminal, verb)
 
 
 def filter_argument_cases(suite, root, cw_label, saved_arguments):
@@ -869,6 +933,7 @@ def profile(binary, root, source, transport):
                 f"{transport}: GRID exact syntax preserves refusals and canonical publication",
                 f"{transport}: callsign patterns admit complete lists and preserve matching",
                 f"{transport}: original filter arguments refuse before normalization",
+                f"{transport}: DXCC and logout arity preserve the original session",
                 f"{transport}/1: held endpoint and loaded consumers",
                 f"{transport}: preferences and archive survive fresh child",
                 f"{transport}: NOFILTER geography survives fresh child",
@@ -883,7 +948,8 @@ def profile(binary, root, source, transport):
                 f"{transport}/1: NEARBY endpoints filter seeded archive independently",
                 f"{transport}: canonical GRID and active cells survive fresh child",
                 f"{transport}: callsign patterns and matching survive fresh child",
-                f"{transport}: supported filter arguments survive fresh child"]
+                f"{transport}: supported filter arguments survive fresh child",
+                f"{transport}: command arity preferences survive fresh child"]
     call = "K1ABC-70001"
     observer_call, observer_configuration = "VE3ABC-70003", None
     failed_records, refused_records, compatible_records = {}, {}, {}
@@ -894,6 +960,7 @@ def profile(binary, root, source, transport):
     saved_grids = {}
     saved_callsigns = {}
     saved_arguments = {}
+    saved_arity = {}
     label = None
     suites = []
     for generation in range(2):
@@ -1297,6 +1364,8 @@ def profile(binary, root, source, transport):
                      lambda: callsign_pattern_cases(suite, root, label, saved_callsigns))
                 case(f"{transport}: original filter arguments refuse before normalization",
                      lambda: filter_argument_cases(suite, root, label, saved_arguments))
+                case(f"{transport}: DXCC and logout arity preserve the original session",
+                     lambda: command_arity_cases(suite, root, saved_arity))
             else:
                 def restored():
                     settings = session.get()["configuration"]["settings"]
@@ -1478,6 +1547,17 @@ def profile(binary, root, source, transport):
                         require_callsign_archive(current, label, True)
 
                 case(f"{transport}: supported filter arguments survive fresh child", restored_arguments)
+
+                def restored_arity():
+                    require(len(saved_arity) == 2, "required command arity controls did not execute")
+                    for stored_call, configuration in saved_arity.items():
+                        current = harness.Session(suite, stored_call)
+                        _, document = current.human("PAUSE 300")
+                        require(document["configuration"] == configuration,
+                                "fresh child lost preferences after refused command arity")
+                        current.human("SH DXCC VE", "Canada")
+
+                case(f"{transport}: command arity preferences survive fresh child", restored_arity)
         finally:
             try:
                 if suite:
