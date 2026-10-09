@@ -374,6 +374,17 @@ See [ADR-0258](decisions/ADR-0258-per-mode-minimum-snr-filter.md) and the
 [telnet command contract](../telnet/README.md#minimum-snr).
 
 
+## Station Reputation
+
+Numeric SSIDs share baseline station reputation and active posting allowance;
+configuration ownership remains full-SSID. Benign reconnects preserve spent
+counts and the current window except normal elapsed advancement. Risk penalties
+may tighten restrictions or extend deadlines without clearing spent counts or
+shortening an applicable deadline. Baseline ASN/country history is reused; old
+SSID files are preserved and unmerged. Counters are runtime-only and may be lost
+on restart or state eviction. See
+[ADR-0271](decisions/ADR-0271-shared-station-reputation.md).
+
 ## Stored Configuration Admission
 
 User-record physical reads, normalized encoding and exact prepared writes each

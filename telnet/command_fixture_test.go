@@ -26,27 +26,30 @@ import (
 	"dxcluster/cty"
 	"dxcluster/filter"
 	"dxcluster/pathreliability"
+	"dxcluster/reputation"
 	"dxcluster/spot"
 	"dxcluster/uls"
 )
 
 type commandFixtureSpec struct {
-	Nonce        string `json:"nonce"`
-	Root         string `json:"root"`
-	SourceDigest string `json:"source_digest"`
+	Nonce             string `json:"nonce"`
+	Root              string `json:"root"`
+	SourceDigest      string `json:"source_digest"`
+	ReputationEnabled bool   `json:"reputation_enabled"`
 }
 
 type commandFixtureReceipt struct {
-	Nonce          string            `json:"nonce"`
-	PID            int               `json:"pid"`
-	Address        string            `json:"address"`
-	BinaryHash     string            `json:"binary_hash"`
-	SourceDigest   string            `json:"source_digest"`
-	ConfigHashes   map[string]string `json:"config_hashes"`
-	Started        bool              `json:"started"`
-	ClientsRetired bool              `json:"clients_retired"`
-	ConsumerJoined bool              `json:"consumer_joined"`
-	ArchiveStopped bool              `json:"archive_stopped"`
+	Nonce             string            `json:"nonce"`
+	PID               int               `json:"pid"`
+	Address           string            `json:"address"`
+	BinaryHash        string            `json:"binary_hash"`
+	SourceDigest      string            `json:"source_digest"`
+	ConfigHashes      map[string]string `json:"config_hashes"`
+	Started           bool              `json:"started"`
+	ClientsRetired    bool              `json:"clients_retired"`
+	ConsumerJoined    bool              `json:"consumer_joined"`
+	ArchiveStopped    bool              `json:"archive_stopped"`
+	ReputationEnabled bool              `json:"reputation_enabled"`
 }
 
 func loadCommandFixtureInputs(t *testing.T, root string) (*config.Config, *cty.CTYDatabase) {
@@ -128,15 +131,44 @@ func TestCheckoutCommandFixture(t *testing.T) {
 	configDir := filepath.Join(spec.Root, "config")
 	cfg, ctyDB := loadCommandFixtureInputs(t, spec.Root)
 	defer uls.CloseLicenseDatabases()
+	if cfg.Reputation.Enabled != spec.ReputationEnabled {
+		t.Fatal("loaded reputation profile differs from requested fixture")
+	}
+	var gate *reputation.Gate
+	if spec.ReputationEnabled {
+		// Construct the production gate from the private loaded config, sharing
+		// it between login and manual posting. Start would launch enrichment and
+		// maintenance workers; those are deliberately outside this local proof.
+		if cfg.Reputation.ReputationDir != filepath.Join(spec.Root, "reputation") ||
+			cfg.Reputation.IPInfoDownloadEnabled || cfg.Reputation.IPInfoAPIEnabled || cfg.Reputation.FallbackTeamCymru ||
+			cfg.Reputation.InitialWaitSeconds != 60 || cfg.Reputation.RampWindowSeconds != 3600 ||
+			cfg.Reputation.PerBandStart != 1 || cfg.Reputation.PerBandCap != 1 ||
+			cfg.Reputation.TotalCapStart != 2 || cfg.Reputation.TotalCapPostRamp != 2 ||
+			cfg.Reputation.IPv4BucketSize != 10000 || cfg.Reputation.IPv4BucketRefillPerSec != 10000 ||
+			cfg.Reputation.IPv6BucketSize != 10000 || cfg.Reputation.IPv6BucketRefillPerSec != 10000 {
+			t.Fatal("reputation profile lacks the isolated loaded quota controls")
+		}
+		gate, err = reputation.NewGate(cfg.Reputation, func() *cty.CTYDatabase { return ctyDB })
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer gate.Close()
+	}
 	writer, err := archive.NewWriter(cfg.Archive)
 	if err != nil {
 		t.Fatal(err)
 	}
 	writer.Start()
 	spotInput := make(chan *spot.Spot, 32)
-	processor := commands.NewProcessor(nil, writer, spotInput, func() *cty.CTYDatabase { return ctyDB }, nil, nil,
+	processor := commands.NewProcessor(nil, writer, spotInput, func() *cty.CTYDatabase { return ctyDB }, gate, nil,
 		commands.WithBuildInfo(commands.BuildInfo{Version: "fixture-" + spec.Nonce, GoVersion: runtime.Version()}))
-	server := NewServer(commandFixtureOptions(cfg, ctyDB), processor)
+	options := commandFixtureOptions(cfg, ctyDB)
+	options.ReputationGate = gate
+	server := NewServer(options, processor)
+	if server.reputationGate != gate {
+		writer.Stop()
+		t.Fatal("fixture login and posting gates differ")
+	}
 	var listenConfig net.ListenConfig
 	listener, err := listenConfig.Listen(context.Background(), "tcp4", "127.0.0.1:0")
 	if err != nil {
@@ -170,7 +202,8 @@ func TestCheckoutCommandFixture(t *testing.T) {
 		}
 	}()
 	receipt := commandFixtureReceipt{Nonce: spec.Nonce, PID: os.Getpid(), Address: listener.Addr().String(),
-		SourceDigest: spec.SourceDigest, ConfigHashes: make(map[string]string), Started: true}
+		SourceDigest: spec.SourceDigest, ConfigHashes: make(map[string]string), Started: true,
+		ReputationEnabled: gate != nil}
 	defer func() {
 		server.Stop()
 		deadline := time.Now().Add(5 * time.Second)

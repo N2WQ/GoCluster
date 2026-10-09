@@ -58,19 +58,19 @@ reputation:
   total_cap_start: 5                        # total spots per window during probation
   total_cap_post_ramp: 10                   # total spots per window after ramp completes
   total_cap_ramp_delay_seconds: 30          # delay after per-band ramp before raising total cap
-  # Penalties and reset triggers
+  # Penalties tighten active limits/deadlines without clearing spent counts.
   country_mismatch_extra_wait_seconds: 60   # adds delay before ramp increases (CTY vs IP country)
   disagreement_penalty_seconds: 60          # adds delay when Cymru vs IPinfo disagree
   unknown_penalty_seconds: 60               # adds delay when no source resolves the IP
-  disagreement_reset_on_new: true           # treat disagreement as "new" (probation reset)
-  reset_on_new_asn: true                    # new ASN resets probation
+  disagreement_reset_on_new: true           # disagreement reapplies new-station restrictions
+  reset_on_new_asn: true                    # new ASN reapplies new-station restrictions
   country_flip_scope: "country"             # treat country flips as new ("continent" to relax)
 
   # ===== State bounds =====
-  max_asn_history: 5                # per-call ASN history length
-  max_country_history: 5            # per-call country/continent history length
-  state_ttl_seconds: 7200           # idle time before a call is treated as new
-  state_max_entries: 50000          # hard cap; eviction resets calls to probation
+  max_asn_history: 5                # baseline-station ASN history length
+  max_country_history: 5            # baseline-station country/continent history length
+  state_ttl_seconds: 7200           # inactive station state expires; histories remain
+  state_max_entries: 50000          # per-shard sweep threshold; eviction loses runtime counters
   prefix_ttl_seconds: 3600          # idle time before prefix buckets reset
   prefix_max_entries: 50000         # hard cap on tracked prefixes
   lookup_cache_ttl_seconds: 86400   # cache ASN/country lookups (applies to all sources)
@@ -86,4 +86,4 @@ reputation:
   # ===== Observability =====
   console_drop_display: true         # show dropped spots in local console UI
   drop_log_sample_rate: 1.0          # 1.0 = log every drop; lower to sample
-  reputation_dir: "data/reputation"  # ASN/country history per callsign
+  reputation_dir: "data/reputation"  # baseline-station histories; old SSID files stay untouched

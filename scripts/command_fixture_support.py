@@ -153,7 +153,7 @@ def build(race):
     return binary, before
 
 
-def stage(root, transport):
+def stage(root, transport, *, reputation_enabled=False):
     """Copy tracked config only; disable network destinations in private copies."""
     root = plain_output(root)
     root.mkdir(parents=True, exist_ok=False)
@@ -195,6 +195,22 @@ def stage(root, transport):
             content["h3_table_path"] = str(root / "h3")
             content["grid_db"] = str(root / "grid")
             content["skew"]["file"] = str(root / "skew.json")
+        if name == "reputation":
+            # No enrichment workers or deployment paths belong to a checkout
+            # fixture. The optional profile exercises the real loaded gate;
+            # its seeded baseline history makes initial positive posts eligible
+            # while retaining the shipped, strictly valid initial wait.
+            content["reputation"].update(
+                enabled=reputation_enabled, reputation_dir=str(root / "reputation"),
+                ipinfo_snapshot_path=str(root / "ipinfo" / "location.csv"),
+                ipinfo_download_path=str(root / "ipinfo" / "location.csv.gz"),
+                ipinfo_pebble_path=str(root / "ipinfo" / "pebble"),
+                ipinfo_download_enabled=False, ipinfo_api_enabled=False,
+                fallback_team_cymru=False, initial_wait_seconds=60,
+                ramp_window_seconds=3600, per_band_start=1, per_band_cap=1,
+                total_cap_start=2, total_cap_post_ramp=2,
+                ipv4_bucket_size=10000, ipv4_bucket_refill_per_sec=10000,
+                ipv6_bucket_size=10000, ipv6_bucket_refill_per_sec=10000)
         (root / "config" / f"{name}.yaml").write_text(yaml.safe_dump(content, sort_keys=False), encoding="utf-8")
     (root / "h3").mkdir()
     for name in ("res1.bin", "res2.bin"):
@@ -212,15 +228,23 @@ def stage(root, transport):
     return root
 
 
+def require_reputation_identity(receipt, requested):
+    enabled = receipt.get("reputation_enabled")
+    require(type(enabled) is bool and enabled == requested,
+            "fixture reputation gate identity mismatch")
+
+
 class Child:
-    def __init__(self, binary, root, source):
+    def __init__(self, binary, root, source, *, reputation_enabled=False):
         self.root, self.nonce = root, uuid.uuid4().hex
+        self.reputation_enabled = reputation_enabled
         self.ready = root / ("ready-" + self.nonce + ".json")
         self.receipt = root / ("stopped-" + self.nonce + ".json")
         self.log_path = root / ("child-" + self.nonce + ".log")
         spec = root / ("spec-" + self.nonce + ".json")
         spec.write_text(json.dumps({"root": str(root), "nonce": self.nonce,
-                                    "source_digest": source["digest"]}), encoding="utf-8")
+                                    "source_digest": source["digest"],
+                                    "reputation_enabled": reputation_enabled}), encoding="utf-8")
         self.log = self.log_path.open("wb")
         try:
             self.process = subprocess.Popen([str(binary), "-test.run=^TestCheckoutCommandFixture$",
@@ -251,6 +275,7 @@ class Child:
                     "fixture provenance mismatch")
             require(value["config_hashes"] == {p.name: digest(p) for p in (root / "config").iterdir()},
                     "fixture loaded configuration identity mismatch")
+            require_reputation_identity(value, reputation_enabled)
             host, port = value["address"].rsplit(":", 1)
             require(host == "127.0.0.1" and 0 < int(port) <= 65535, "non-loopback fixture endpoint refused")
             self.host, self.port = host, int(port)
@@ -282,6 +307,7 @@ class Child:
             require(value["nonce"] == self.nonce and all(value[k] for k in
                     ("started", "clients_retired", "consumer_joined", "archive_stopped")),
                     "fixture lacks graceful retirement receipt")
+            require_reputation_identity(value, self.reputation_enabled)
             text = self.log_path.read_text(encoding="utf-8", errors="replace")
             require("CHECKOUT_FIXTURE_EXECUTED " + self.nonce in text and
                     "--- PASS: TestCheckoutCommandFixture" in text, "required fixture did not execute")

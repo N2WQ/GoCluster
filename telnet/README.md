@@ -43,6 +43,14 @@ becomes unreadable, fitting changes remain temporary with a warning. Later saves
 and ordinary logout retry a repaired file using its authoritative metadata.
 Sessions that started with protected defaults keep that protection until logout.
 
+Manual DX reputation and posting allowances are shared by the baseline station:
+`N2WQ-1` and `N2WQ-2` both use `N2WQ`. Their saved configuration remains separate.
+An ordinary reconnect preserves an active spent allowance; normal elapsed windows
+can replenish it, while configured risk penalties may tighten restrictions.
+ASN/country history uses the baseline record. Old SSID history files are preserved
+and are not merged. Posting counters are temporary runtime state, so restart or
+state eviction can discard them; history does not persist those counters.
+
 The handshake transcript tests in this package cover the visible login sequence.
 
 ## Rejected Input And Recovery

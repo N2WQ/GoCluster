@@ -22,6 +22,26 @@ spec.loader.exec_module(driver)
 
 
 class DriverControls(unittest.TestCase):
+    def test_reputation_receipt_requires_the_requested_gate_identity(self):
+        for requested in (False, True):
+            support.require_reputation_identity({"reputation_enabled": requested}, requested)
+            for receipt in ({}, {"reputation_enabled": not requested},
+                            {"reputation_enabled": int(requested)}, {"reputation_enabled": "true"}):
+                with self.subTest(requested=requested, receipt=receipt), \
+                        self.assertRaisesRegex(ValueError, "reputation gate identity mismatch"):
+                    support.require_reputation_identity(receipt, requested)
+
+    def test_reputation_archive_oracles_require_positive_identity_and_refused_absence(self):
+        row = "DX de K1ABC:       14074.00  W6ABC       CW LABEL123             1234Z"
+        driver.require_reputation_archive_row([row], "LABEL123", 14074)
+        driver.require_archive_absent([])
+        for rows in ([], [row, row], [row.replace("K1ABC:", "K1ABC-7:")],
+                     [row.replace("14074.00", "7074.00")], [row.replace("LABEL123", "OTHER")]):
+            with self.subTest(rows=rows), self.assertRaisesRegex(ValueError, "baseline-station archive row"):
+                driver.require_reputation_archive_row(rows, "LABEL123", 14074)
+        with self.assertRaisesRegex(ValueError, "refused spot reached the archive"):
+            driver.require_archive_absent([row])
+
     def test_resource_fixtures_separate_raw_canonical_and_work_refusals(self):
         raw = driver.refused_resource_record("RAW")
         self.assertEqual(len(raw), driver.RECORD_BYTES + 1)
@@ -200,7 +220,8 @@ class DriverControls(unittest.TestCase):
                 process.poll.return_value = None
                 receipt = json.dumps(dict(nonce="fixed", pid=123, started=True,
                                           binary_hash="binary", source_digest="source",
-                                          config_hashes={}, address="127.0.0.1:12345"))
+                                          config_hashes={}, address="127.0.0.1:12345",
+                                          reputation_enabled=False))
                 reads = [PermissionError("sharing publication"), receipt]
                 with mock.patch.object(support.uuid, "uuid4", return_value=mock.Mock(hex="fixed")), \
                         mock.patch.object(support.subprocess, "Popen", return_value=process), \

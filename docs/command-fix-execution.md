@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 04d complete (04a used two commits);
-38 approved checkpoints remain, beginning with 05a.
+Current progress: checkpoints 00 through 05a complete (04a used two commits);
+37 approved checkpoints remain; 05b is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -811,7 +811,7 @@ Final validation:
 
 Each server run had 24/24 passing required cases per transport, zero wire and
 cleanup failures, and two joined child generations per transport. Both captured
-the same Go/script source digest:
+the same compiled-Go/module source digest:
 `dc12077e714e646cda751a1a0791732caf93bdbb40033ec503c2f04128504aac`.
 
 The final analyzers caught an intentionally invalid nil callback result needing
@@ -838,4 +838,150 @@ and support coverage ledger. ADR-0270 records the durable admission decision;
 TSR-0052 retains the measured schema-allocation learning and production-monitoring
 boundary. No external service, deployed support agent or production-load check
 was run. All accepted reviewer findings are dispositioned above; no waiver is
-used to declare this checkpoint complete.
+used to declare this checkpoint complete. Checkpoint 04d is committed as `c0ad48b`.
+
+## Checkpoint 05a: shared station reputation without reconnect replenishment
+
+Status: complete. Architecture and checkers preceded production edits; final
+qualification and implementation mapping follow below.
+
+Inspected pre-change source: telnet login calls `Gate.RecordLogin` with full-SSID identity;
+manual DX already passes the displayed baseline sender to `Gate.Check`.
+`RecordLogin` reloads/touches history before taking the call-state lock, then
+unconditionally resets the active window and counts. `Store.Touch` serializes
+writes, but `Store.Load` and the earlier history observation are not serialized
+with those writes. Sharing the key therefore also needs coherent history
+observation/update and state publication, without holding the Check lock across
+enrichment or disk I/O. Semantic `gopls references` confirms the production
+login and manual-post consumers; no additional production gate consumer appeared.
+
+Approved constraints: normalize login and posting at the Gate boundary to the
+same baseline callsign. Preserve full-SSID configuration ownership and baseline
+spot display. Ordinary reconnects keep active counts/window, except normal elapsed
+window advancement. Configured penalties can tighten limits or extend applicable
+deadlines, without clearing spent counts or shortening a deadline. Preserve old
+SSID files, use existing baseline history, and apply ordinary new-station
+probation when no baseline exists. Counts remain runtime-only.
+
+Retained-state audit: keep existing 32 call-state shards, their TTL sweep and
+per-shard sweep threshold, bounded history slices and existing prefix/cache
+owners. No new callsign registry or durable counters are selected. The sweep
+threshold is not an insertion-time hard cap. Eviction/restart can discard runtime
+counts; the approved active-state guarantee does not add persistence or change
+eviction policy. Tests must show aliases co-own one state, expiry deletes it,
+and no secondary per-login state survives deletion.
+
+| Contract | Boundary / fault | Stimulus | Required result | Level | False-green risk | Checker | Owner |
+|---|---|---|---|---|---|---|---|
+| Shared key | Different numeric SSIDs | Actual login and Check using mixed case/SSID and baseline forms | One baseline history/state; independent full-SSID preferences | Unit/checkout | Changing only one caller, or checking only display | Gate API and actual registered server/processor cases | reputation, runner |
+| Benign reconnect | Spent per-band and total allowance | Post through one SSID, reconnect another before the natural boundary | Further posts refused; window/counts/deadlines preserved | Unit/checkout | Login-only test never spends quota | Explicit-time API decisions plus archive absence/presence | reputation, runner |
+| Natural advancement | Just before/at exact window end | Reconnect and Check around a literal UTC boundary | No early replenishment; existing elapsed-window progression at boundary | Unit | Sleeping through a boundary hides reset defects | Controlled-time gate cases | reputation |
+| Probation | Existing later wait | Reconnect while waiting, then valid posts around deadline | Reconnect never shortens wait | Unit | Only checking first login | Before/at deadline decision controls | reputation |
+| Risk tightening | New ASN/country after spent allowance | Distinct known IP evidence and retained baseline history | Existing counts remain; applicable limits tighten/deadlines extend | Unit | Checking a fresh empty state | Actual RecordLogin/Check with spent allowance | reputation |
+| Upgrade ordering | Previously scheduled later upgrade | Penalty after maturity, then ramp/time advancement | No premature cap upgrade or shortened later floor | Unit | Only nextAllowedAt asserted | Explicit ramp and total-upgrade timeline | reputation |
+| History ownership | Old SSID files or baseline absent | Byte-fixed old records, existing/missing baseline and new gate | Old files untouched/unmerged; correct baseline history/probation | Unit/checkout | Auto-migration or new key skips all history | Exact file readback and restart controls | reputation, runner |
+| Concurrent ownership | Lookup/history/publication interleave | Bounded barriers and concurrent SSID login/Check | No corrupt history, lost counts or stale final owner metadata | Race/unit | Serial calls and race flag without concurrent stimulus | Controlled ownership plus concurrent quota/history tests | reputation |
+| I/O isolation | Slow history work | Hold the history owner while checking established state | Check remains usable without a network/disk-held state lock | Unit | Final-state-only test misses lock obstruction | Direct lock/barrier checks with bounded joins | reputation |
+| Retention | Aliases, expiry and churn | Many SSIDs for one station, expire/sweep, insert replacements | Single active station state; existing deletion/bounds remain | Unit | Count only on first insertion | Shard cardinality and expiry/churn checks | reputation |
+
+The lead-owned detailed falsifiability pass identifies no need for a new clock
+API: controlled UTC Gate calls cover exact time rules; actual checkout cases
+prove login/post wiring, durable identity and lack of queued/archive effects.
+Generic client rejection feedback remains checkpoint 05b. A separate-context
+read-only design challenge resolved the narrow history/publication owner before
+production edits, with the lead disposition below. This is technical review,
+not scientific independence.
+
+Lead disposition: accept the challenge's fixed login-only mutex on each existing
+call shard. Perform enrichment before it; retain it through history observation,
+touch and state publication. Take the separate state mutex only for bounded
+in-memory publication, re-fetching the map entry after possible eviction. Current
+semantic Store callers are Gate-owned, so this eliminates the shared history
+race without changing Store APIs, callback machinery or disk failure semantics.
+There is no new per-call lock registry. Strict arrival-time ordering is not
+required; completed history transactions and their publication are serialized.
+
+Advance existing elapsed windows before applying login changes. On configured
+risk, tighten current caps and take later applicable probation/ramp/upgrade
+deadlines, leaving the window and counts intact. Retain the existing role of
+extra delay (ramp, not added probation). Require per-band maturity before a
+pending total upgrade, then retain the later old floor or configured delay.
+Keep lastSeen nondecreasing. Checks must progress during stalled login history;
+concurrent publication and eviction-during-preparation checkers are added to
+the matrix's ownership/retention rows. These are within-scope correctness and
+checker refinements; no unresolved product selection or scope change remains.
+
+The fresh source-quality review found three checker gaps, all accepted and
+corrected: directly prove the login mutex remains held after the history write
+through stalled state publication; preserve a pre-existing later ramp floor;
+and explicitly exercise replacement churn beyond the actual per-shard sweep
+threshold. The new controls use actual files/locks with bounded worker release
+and joins. The failed-history control now asserts both 50-second probation and
+150-second ramp floors survive a newly derived shorter restriction. Existing
+concurrent/eviction controls also check older operation timestamps cannot reduce
+lastSeen. No material production defect remained in the fresh source review;
+final broad and checkout qualification follows after all worker edits freeze.
+
+Configuration impact: `data/config/reputation.yaml` changes comments only.
+The YAML header and comment-stripped-value checker passed. Its two boolean
+inline-comment prompts were reviewed: their effects are the configured risk
+triggers, which now reapply tighter restrictions without resetting spent counts.
+No key/default/sentinel changes or package-loader fallback were introduced.
+The real fixture retains loaded initial-wait policy and seeds existing baseline
+history for eligible positive posting controls; missing-baseline/exact-time
+behavior is separately proven by Gate unit cases.
+
+Final qualification:
+
+| Check | Observed result / artifact under `.tmp/command-fixes` |
+|---|---|
+| Complete reputation/commands/telnet ordinary and race suites | PASS; `checkpoint-05a-packages-final.log`, `checkpoint-05a-race-final.log` |
+| Complete ordinary Windows suite | PASS, 70 packages; `checkpoint-05a-baseline-final.log` |
+| Complete race Windows suite | PASS, 70 packages; `checkpoint-05a-full-race.log` |
+| Vet, Staticcheck and golangci-lint | PASS; `checkpoint-05a-vet.log`, `checkpoint-05a-staticcheck.log`, `checkpoint-05a-lint.log` |
+| Actual checkout server, both transports and profiles | PASS, 60 required cases each in ordinary and race builds; `20261009-152232-d5dc6d4d/results.json`, `20261009-152306-080885f8/results.json` |
+| Final runner controls | PASS, 24 controls; `checkpoint-05a-runner-controls-final.log` |
+| Comment-only YAML and indexed troubleshooting | PASS; `checkpoint-05a-yaml-docs.log`, `checkpoint-05a-tsr-final.log` |
+| Support-critical entry comments, code maps and direct diff/whitespace review | Passed and reviewed before commit |
+
+Each server run has the preceding 48 required cases plus six reputation cases
+per transport. All four profiles passed, with zero wire/cleanup failures and two
+joined child generations each. Both builds captured compiled-Go/module digest
+`43fca3866c2d9fa4c153c7abcef7d7940f56cd5ed8988f7e1722b2f67bf474f9`.
+That digest does not cover Python scripts. The fixture shares the actual loaded
+Gate between telnet login and Processor posting, with enrichment workers stopped.
+This qualifies those consumers and owned history/state, not external services
+or the production correction/classifier pipeline.
+
+Two failed attempts remain in the evidence. The first broad run stopped at the
+unchanged `TestSignalResolverResourceCaps` candidate-pressure assertion
+(`checkpoint-05a-baseline.log`). Its isolated retry and both subsequent complete
+ordinary/race runs passed without spot source/test changes. The test's winner
+predicate does not fence processing of every queued evidence item; this is a
+plausible timing explanation, not a reproduced causal proof or a flake repair.
+
+The first checkout child rejected an invalid private `initial_wait_seconds: 0`
+before startup (`20261009-152114-46ec7991`). The staging code had assumed the
+later normalization fallback would admit zero, but the strict loader rejects it
+first. The private fixture now retains the shipped valid 60 seconds; known
+baseline history provides eligible positive controls. Final runner controls and
+both actual-server builds were rerun after this script-only correction. It did
+not change Go source or invalidate the completed Go lane. No failed attempt is
+counted as passing server evidence.
+
+Implementation mapping: `reputation/gate.go` owns baseline ingress, fixed shard
+login/history publication, elapsed-window progression and upgrade ordering;
+`login_restrictions.go` tightens restrictions without replacing counts/window.
+`login_restrictions_test.go` covers literal UTC boundaries, risk, failed history,
+stalled I/O, concurrent ownership, eviction and churn. The checkout fixture and
+runner prove actual login/post wiring, full-SSID persistence, archive effects and
+restart limits. Client rejection wording remains checkpoint 05b.
+
+Support-agent documentation impact: Required. The developer reputation route
+now links ADR-0271; telnet/configuration guides and the domain contract describe
+shared allowances, preserved files and runtime-only counters. ADR-0271 records
+the durable decision and ADR-0115 points to its refinement. No separate durable
+troubleshooting record is needed for the fixture input error. The final lead
+pass reviewed source, tests, scripts, documentation, scope and observed checks;
+no material defect, waiver or new product decision remains. No production-load,
+external enrichment service, deployment or external support-agent check ran.

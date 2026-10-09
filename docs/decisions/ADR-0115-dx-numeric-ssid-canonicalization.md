@@ -72,6 +72,8 @@ The contract is:
   while login calls remain distinct session identities.
 
 ## Links
+
+- Reputation refinement: [ADR-0271](ADR-0271-shared-station-reputation.md)
 - Related issues/PRs/commits: current working tree
 - Related tests: `spot/callsign_test.go`, `spot/spot_test.go`,
   `spot/who_spots_me_test.go`, `commands/processor_test.go`,

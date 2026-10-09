@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `219617982813d220`
+- Source fingerprint: `e8b3a9c528718be4`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -619,6 +619,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0271](docs/decisions/ADR-0271-shared-station-reputation.md) | Accepted | 2026-10-09 | reputation, telnet, station identity, allowance, history ownership | `area:telnet` |
 | [ADR-0270](docs/decisions/ADR-0270-complete-storage-admission.md) | Accepted | 2026-10-09 | filter, telnet, quotas, temporary settings, SAVE ordering | `area:telnet, path:telnet` |
 | [ADR-0269](docs/decisions/ADR-0269-detached-human-preference-publication.md) | Accepted | 2026-10-09 | telnet, configuration, staging, publication, ownership | `area:telnet, path:telnet` |
 | [ADR-0266](docs/decisions/ADR-0266-bounded-human-line-rejection.md) | Accepted | 2026-10-09 | telnet, input, protocol, deadlines, lifecycle | `area:telnet, path:telnet` |

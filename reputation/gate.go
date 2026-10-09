@@ -20,7 +20,6 @@ import (
 	"dxcluster/config"
 	"dxcluster/cty"
 	"dxcluster/spot"
-	"dxcluster/strutil"
 )
 
 // Gate enforces the passwordless telnet reputation policy. It is designed to
@@ -103,11 +102,12 @@ type gateConfig struct {
 // callShard bounds lock contention by callsign; each shard owns only the calls
 // mapped to it.
 type callShard struct {
-	mu    sync.Mutex
-	calls map[string]*callState
+	loginMu sync.Mutex // Serializes history read/touch/publication without blocking Check on disk I/O.
+	mu      sync.Mutex
+	calls   map[string]*callState
 }
 
-// callState is the active per-login-call probation window. Historical ASN and
+// callState is the active baseline-station probation window. Historical ASN and
 // country slices are copied from Store records so support output can explain why
 // a user was treated as new or risky.
 type callState struct {
@@ -259,14 +259,14 @@ func (g *Gate) LoadSnapshot() error {
 	return g.LoadStore()
 }
 
-// RecordLogin seeds or refreshes per-call reputation state from CTY, IPinfo, and
-// Cymru evidence. It front-loads the expensive context so later Check calls can
-// make bounded, lock-local decisions.
+// RecordLogin refreshes shared station evidence without replenishing an active
+// allowance. Enrichment runs outside both shard locks; the login-only lock owns
+// disk history and its publication. Check never holds or needs that I/O lock.
 func (g *Gate) RecordLogin(call, ip string, now time.Time) {
 	if g == nil || !g.cfg.enabled {
 		return
 	}
-	call = spot.NormalizeCallsign(call)
+	call = spot.NormalizeOwnCallsign(call)
 	if call == "" {
 		return
 	}
@@ -300,6 +300,9 @@ func (g *Gate) RecordLogin(call, ip string, now time.Time) {
 		extraDelay = maxDuration(extraDelay, g.cfg.disagreementPenalty)
 	}
 
+	shard := g.callShard(call)
+	shard.loginMu.Lock()
+	defer shard.loginMu.Unlock()
 	record, recordCreated := g.loadRecord(call)
 	asnNew, geoFlip := g.evaluateHistory(record, primary, ipKey, ipContinent)
 	if asnNew {
@@ -320,14 +323,20 @@ func (g *Gate) RecordLogin(call, ip string, now time.Time) {
 	}
 	updatedRecord := g.touchRecord(call, primary, ipKey, ipContinent)
 
-	shard := g.callShard(call)
 	shard.mu.Lock()
+	// A sweep may have retired the old entry during enrichment/history work.
+	// Re-fetch current ownership rather than retaining a detached state pointer.
 	state := shard.calls[call]
 	if state == nil {
 		state = &callState{perBandCounts: make(map[string]int)}
 		shard.calls[call] = state
+		g.resetState(state, now, initialWait, extraDelay)
+	} else {
+		g.advanceState(state, now)
+		if newUser || extraDelay > 0 {
+			g.tightenLoginRestrictions(state, now, initialWait, extraDelay)
+		}
 	}
-	g.resetState(state, now, initialWait, extraDelay)
 	state.penaltyFlags = flags
 	state.ctyCountryKey = ctyCountryKey
 	state.ctyContinentKey = ctyContinentKey
@@ -337,7 +346,9 @@ func (g *Gate) RecordLogin(call, ip string, now time.Time) {
 	state.currentCountry = primary.CountryName
 	state.currentSource = primary.Source
 	state.currentPrefix = prefixKeyFromIP(addr)
-	state.lastSeen = now
+	if now.After(state.lastSeen) {
+		state.lastSeen = now
+	}
 	if updatedRecord != nil {
 		state.asnHistory = append([]string(nil), updatedRecord.RecentASNs...)
 		state.countryHistory = append([]string(nil), updatedRecord.RecentCountries...)
@@ -353,7 +364,7 @@ func (g *Gate) Check(req Request) Decision {
 	if g == nil || !g.cfg.enabled {
 		return Decision{Allow: true}
 	}
-	call := strutil.NormalizeUpper(req.Call)
+	call := spot.NormalizeOwnCallsign(req.Call)
 	if call == "" {
 		return Decision{Allow: true}
 	}
@@ -386,7 +397,9 @@ func (g *Gate) Check(req Request) Decision {
 		g.resetState(state, now, g.cfg.initialWait, 0)
 		state.penaltyFlags = PenaltyUnknown
 	}
-	state.lastSeen = now
+	if now.After(state.lastSeen) {
+		state.lastSeen = now
+	}
 	g.advanceState(state, now)
 
 	if now.Before(state.nextAllowedAt) {
@@ -506,11 +519,15 @@ func (g *Gate) advanceState(state *callState, now time.Time) {
 			state.perBandLimit++
 			state.nextRampAt = state.nextRampAt.Add(g.cfg.rampWindow)
 		}
-		if state.perBandLimit >= g.cfg.perBandCap && state.totalCapUpgradeAt.IsZero() {
-			state.totalCapUpgradeAt = now.Add(g.cfg.totalCapRampDelay)
+		if state.perBandLimit >= g.cfg.perBandCap {
+			// A penalty may retain an older, later upgrade floor. Reaching
+			// maturity starts the configured delay without shortening that floor.
+			if deadline := now.Add(g.cfg.totalCapRampDelay); deadline.After(state.totalCapUpgradeAt) {
+				state.totalCapUpgradeAt = deadline
+			}
 		}
 	}
-	if state.totalCapUpgradeAt.IsZero() {
+	if state.perBandLimit < g.cfg.perBandCap || state.totalCapUpgradeAt.IsZero() {
 		return
 	}
 	if now.After(state.totalCapUpgradeAt) || now.Equal(state.totalCapUpgradeAt) {

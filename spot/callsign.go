@@ -192,7 +192,7 @@ func stripTrailingNumericSSID(call string) string {
 
 // NormalizeOwnCallsign normalizes the baseline call used by own-call features.
 // Login identity stays separate; this intentionally ignores numeric SSIDs only
-// for self/own matching, manual telnet sender display, and WHOSPOTSME lookups.
+// for self/own matching, manual sender display/reputation, and WHOSPOTSME lookups.
 func NormalizeOwnCallsign(call string) string {
 	return NormalizeSpotDXCallsign(call)
 }

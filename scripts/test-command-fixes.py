@@ -58,6 +58,111 @@ def require_archive(session, label):
         time.sleep(.025)
 
 
+def require_reputation_archive_row(rows, label, frequency):
+    require(len(rows) == 1 and label in rows[0] and
+            re.search(r"^DX de K1ABC:\s+" + re.escape(str(frequency)) +
+                      r"\.0+\s+W6ABC\s+CW\b", rows[0]),
+            f"wrong baseline-station archive row: {rows}")
+
+
+def require_reputation_archive(session, label, frequency):
+    deadline = time.monotonic() + 5
+    while True:
+        rows = archive_rows(session, label)
+        if rows:
+            require_reputation_archive_row(rows, label, frequency)
+            return
+        require(time.monotonic() < deadline, "eligible reputation spot absent from archive")
+        time.sleep(.025)
+
+
+def require_archive_absent(rows):
+    require(not rows, f"reputation-refused spot reached the archive: {rows}")
+
+
+def require_reputation_history(root, old_files):
+    for path, raw in old_files.items():
+        require(path.read_bytes() == raw, "old SSID reputation history was changed or merged")
+    for call, country in (("K1ABC", "US"), ("VE3ABC", "CA")):
+        document = stored_document((root / "reputation" / (call + ".yaml")).read_bytes())
+        require(set(document) == {"recent_asns", "recent_countries", "recent_continents", "updated_at"} and
+                document.get("recent_asns") == ["AS64500"] and
+                document.get("recent_countries") == [country] and
+                document.get("recent_continents") == ["NA"],
+                "baseline reputation history was lost, replaced or merged")
+        updated = document.get("updated_at")
+        require(hasattr(updated, "year") and updated.year > 2000,
+                "login did not touch the baseline history")
+    require({path.name for path in (root / "reputation").iterdir()} ==
+            {"K1ABC.yaml", "VE3ABC.yaml"} | {path.name for path in old_files},
+            "reputation profile created an unexpected per-SSID history owner")
+
+
+def require_reputation_preferences(root, sessions, expected):
+    require(all(current.call in expected for current in sessions),
+            "required full-SSID preference controls missing")
+    for current in sessions:
+        configuration = current.get()["configuration"]
+        require(configuration == expected[current.call], "full-SSID preferences were shared or lost")
+        saved = stored_document((root / "users" / (current.call + ".yaml")).read_bytes())
+        settings = configuration["settings"]
+        require(all(saved[key] == settings[key] for key in ("noise_class", "grid", "dialect")),
+                "SSID setting was not saved while connected")
+    require(not (root / "users" / "K1ABC.yaml").exists(),
+            "station reputation normalization changed preference ownership")
+
+
+def reputation_posts(suite, sessions, observer, generation, labels):
+    for index, frequency in enumerate((14074, 7074)):
+        current = sessions[index]
+        label = suite.token + f"G{generation}P{frequency}"
+        current.human(f"DX {frequency} W6ABC CW {label}", "Spot queued.")
+        labels["accepted"].append((label, frequency))
+        require_reputation_archive(observer, label, frequency)
+        if frequency == 14074:
+            if generation == 0:
+                sessions[1].close()
+                sessions[1] = harness.Session(suite, sessions[1].call)
+                sessions[1].human("PAUSE 300")
+            refused = suite.token + f"G{generation}BAND"
+            text, _ = sessions[1].human(f"DX 14074 W6ABC CW {refused}")
+            require("Spot queued" not in text and "Spot queue full" not in text,
+                    "another SSID replenished the spent per-band allowance")
+            labels["refused"].append(refused)
+    # Both per-band and total counts are spent before benign reconnects. The
+    # command's correlated GET fences processing before the following archive
+    # barrier, so absence is not inferred from a prompt or arbitrary sleep.
+    if generation == 0:
+        for current in sessions:
+            current.close()
+        sessions[:] = [harness.Session(suite, current.call) for current in sessions]
+        for current in sessions:
+            current.human("PAUSE 300")
+    for index, current in enumerate(sessions):
+        for frequency in (14074, 3504):
+            label = suite.token + f"G{generation}R{index}F{frequency}"
+            text, _ = current.human(f"DX {frequency} W6ABC CW {label}")
+            require("Spot queued" not in text and "Spot queue full" not in text,
+                    "benign SSID login replenished the spent station allowance")
+            labels["refused"].append(label)
+    barrier = suite.token + f"G{generation}BARRIER"
+    observer.human(f"DX 3504 W6ABC CW {barrier}", "Spot queued.")
+    # The independent, known-history observer's later accepted row proves the
+    # shared FIFO bridge and archive have passed every earlier attempted post.
+    deadline = time.monotonic() + 5
+    while True:
+        rows = archive_rows(observer, barrier)
+        if rows:
+            require(len(rows) == 1 and barrier in rows[0] and
+                    re.search(r"^DX de VE3ABC:\s+3504\.0+\s+W6ABC\s+CW\b", rows[0]),
+                    "archive refusal barrier lacks its accepted observer control")
+            break
+        require(time.monotonic() < deadline, "accepted archive refusal barrier absent")
+        time.sleep(.025)
+    for label in labels["refused"]:
+        require_archive_absent(archive_rows(observer, label))
+
+
 def require_unrestricted_geography(document, saved):
     filters = document["configuration"]["filters"]
     for category in ("dx_continents", "de_continents", "dx_zones", "de_zones",
@@ -882,6 +987,136 @@ def profile(binary, root, source, transport):
     return report
 
 
+def reputation_profile(binary, root, source, transport):
+    """Separate loaded-gate profile; counts are intentionally runtime-only."""
+    prefix = transport + "/reputation"
+    required = [f"{prefix}/0: held endpoint includes the loaded shared gate",
+                f"{prefix}: full-SSID settings save independently",
+                f"{prefix}: spent station allowances survive other-SSID reconnects",
+                f"{prefix}: baseline history keeps old SSID files untouched",
+                f"{prefix}/1: saved ownership and archive outcomes survive fresh child",
+                f"{prefix}: fresh runtime resets counts while retaining shared admission"]
+    results, wire, cleanup, children = [], [], [], []
+    calls = ("K1ABC-70101", "K1ABC-70102")
+    expected, labels, old_files = {}, {"accepted": [], "refused": []}, {}
+    directory = root / "reputation"
+    directory.mkdir()
+    # Existing baseline histories establish eligible first-post controls through
+    # the real loaded initial-wait policy. Old SSID evidence is distinct and
+    # must never enter either baseline record or be overwritten by login.
+    for call, asn, country, continent in (("K1ABC", "AS64500", "US", "NA"),
+                                          ("VE3ABC", "AS64500", "CA", "NA"),
+                                          (calls[0], "AS64501", "CA", "NA"),
+                                          (calls[1], "AS64502", "FR", "EU")):
+        raw = (f"recent_asns: [{asn}]\nrecent_countries: [{country}]\n"
+               f"recent_continents: [{continent}]\nupdated_at: 2000-01-01T00:00:00Z\n").encode("ascii")
+        path = directory / (call + ".yaml")
+        path.write_bytes(raw)
+        if call in calls:
+            old_files[path] = raw
+    for generation in range(2):
+        child, suite = None, None
+        try:
+            child = Child(binary, root, source, reputation_enabled=True)
+            children.append(child.identity)
+            suite = harness.Suite(SimpleNamespace(host=child.host, port=child.port, call="K1ABC",
+                                                  timeout=8, run_seconds=120,
+                                                  output=root / f"wire-{generation}"))
+            sessions = [harness.Session(suite, call) for call in calls]
+            observer = harness.Session(suite, "VE3ABC-70103")
+
+            def case(name, fn):
+                suite.case(name, fn)
+                child.check_running()
+
+            if generation == 0:
+                def identity():
+                    private = stored_document((root / "config" / "reputation.yaml").read_bytes())["reputation"]
+                    require(private["enabled"] is True and private["initial_wait_seconds"] == 60 and
+                            private["ramp_window_seconds"] == 3600 and private["per_band_start"] == 1 and
+                            private["per_band_cap"] == 1 and private["total_cap_start"] == 2 and
+                            private["total_cap_post_ramp"] == 2 and
+                            all(private[key] is False for key in
+                                ("ipinfo_download_enabled", "ipinfo_api_enabled", "fallback_team_cymru")),
+                            "private reputation profile lost its loaded quota or isolation controls")
+                    for current in (*sessions, observer):
+                        current.human("PAUSE 300")
+                        current.human("SHOW BUILD", "Build version: fixture-" + child.nonce)
+                        text, _ = current.human("SHOW OWN", "Login call: " + current.call)
+                        require("Own call: " + current.call.split("-")[0] in text,
+                                "displayed own-call identity retained the numeric SSID")
+
+                case(required[0], identity)
+
+                def preferences():
+                    for current, noise, grid, dialect in zip(sessions, ("QUIET", "URBAN"),
+                                                            ("FN31", "IO91"), ("go", "cc")):
+                        current.human("SET NOISE " + noise, "Noise class set")
+                        current.human("SET GRID " + grid, "Grid set")
+                        _, document = current.human("DIALECT " + dialect)
+                        expected[current.call] = document["configuration"]
+                    require(expected[calls[0]] != expected[calls[1]], "SSID ownership controls are identical")
+                    require_reputation_preferences(root, sessions, expected)
+
+                case(required[1], preferences)
+
+                def exhausted():
+                    require(len(expected) == 2, "SSID preference controls did not execute")
+                    reputation_posts(suite, sessions, observer, generation, labels)
+                    require_reputation_preferences(root, sessions, expected)
+
+                case(required[2], exhausted)
+                case(required[3], lambda: require_reputation_history(root, old_files))
+            else:
+                def restored():
+                    require(len(expected) == 2 and len(labels["accepted"]) == 2 and
+                            len(labels["refused"]) == 5, "required first-generation admission controls missing")
+                    for current in (*sessions, observer):
+                        current.human("PAUSE 300")
+                        current.human("SHOW BUILD", "Build version: fixture-" + child.nonce)
+                    require_reputation_preferences(root, sessions, expected)
+                    require_reputation_history(root, old_files)
+                    for label, frequency in labels["accepted"]:
+                        require_reputation_archive(observer, label, frequency)
+                    # Generation zero has exited and drained before this query:
+                    # rejected absence cannot be hidden in its pending queue.
+                    for label in labels["refused"]:
+                        require_archive_absent(archive_rows(observer, label))
+
+                case(required[4], restored)
+
+                def runtime_reset():
+                    reputation_posts(suite, sessions, observer, generation, labels)
+                    require_reputation_preferences(root, sessions, expected)
+                    require_reputation_history(root, old_files)
+
+                case(required[5], runtime_reset)
+        finally:
+            try:
+                if suite:
+                    for current in suite.sessions:
+                        try:
+                            current.close()
+                        except (OSError, ValueError, EOFError) as error:
+                            suite.cleanup_errors.append(str(error))
+                    suite.log.close()
+                    results.extend(suite.results)
+                    wire.extend(suite.wire_failures)
+                    cleanup.extend(suite.cleanup_errors)
+            finally:
+                if child:
+                    try:
+                        child.stop()
+                    except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+                        cleanup.append(str(error))
+    report = {"transport": transport, "profile": "reputation", "required": required,
+              "results": results, "wire_failures": wire, "cleanup_errors": cleanup,
+              "children": children, "runtime_counts": "reset on fresh child; not persisted"}
+    (root / "results.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    qualified(results, required, wire, cleanup)
+    return report
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--race", action="store_true", help="build and run fixture with Go race detector")
@@ -899,6 +1134,8 @@ def main():
             for transport in ("native", "ziutek"):
                 root = stage(run / transport, transport)
                 report["profiles"].append(profile(binary, root, source, transport))
+                reputation_root = stage(run / (transport + "-reputation"), transport, reputation_enabled=True)
+                report["profiles"].append(reputation_profile(binary, reputation_root, source, transport))
         report["result"] = "PASS"
     except (OSError, ValueError, EOFError, TimeoutError, subprocess.TimeoutExpired, harness.yaml.YAMLError) as error:
         report["error"] = str(error)
