@@ -12,7 +12,7 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 03 complete; checkpoint 04a is next;
+Current progress: checkpoints 00 through 03 complete; checkpoint 04a in progress;
 42 checkpoints remain.
 
 ## Checkpoint 00: unattended checkout-server fixture
@@ -304,3 +304,102 @@ real server and protected handoffs, and no new fuzz target was needed.
 Support-agent docs impact: Required and completed in the telnet README,
 troubleshooting routing and TSR-0050. No ADR is required because this completes
 the agreed existing human live-edit/failure contract without new policy.
+
+## Checkpoint 04a: compatible storage decoding and work accounting
+
+Status: discovery and frozen compatibility baseline complete; replacement next. Checkpoint 03
+is committed as `745a722`. All new thresholds remain inactive in this checkpoint.
+
+Execution divides this approved checkpoint at a verification boundary:
+
+1. Freeze the old typed record, reference, baseline and collection decoding in
+   tests; observe the compatibility corpus before replacing production decoding.
+2. Add storage-local compatible decoding and document-wide P+E accounting, then
+   compare acceptance and complete values against that baseline. Admission limits
+   become active only in checkpoint 04d after its dependent publication/storage
+   contracts are implemented.
+
+### Current-state configuration and impact audit
+
+These are feature-owned persisted user/preset data and test fixtures, not merged
+runtime YAML. Keep `filter.LoadUserRecord`, `readPresetCollection` and the public
+stored-type unmarshalling boundaries as the authoritative paths. No runtime
+loader, machine schema, optional tool/secret file or reference table changes.
+
+Legacy user records ignore unknown values and support ordinary merges; marked
+records reject unknown/root-merge fields. SavedPreset/reference prechecks are
+strict even for legacy baselines. Collections use known-field validation and
+currently accept root merges. Null, false, empty selections and absent optional
+toggles retain the separate legacy migration and marked exact-value contracts.
+Existing ADR-0238 and ADR-0244 ownership, normalization and persistence remain.
+
+`gopls references` and current source identify record loads from filter loading,
+login/IP updates, preference/configuration saves and telnet restoration. Preset
+operations all read the same operation-local collection. `go list -test` confirms
+direct production consumers in commands, telnet and internal/cluster, and tests
+in those packages plus archive and peer. YAML interface dispatch also reaches
+stored callbacks; direct call references alone cannot inventory those edges.
+
+The inherited-context discovery used the pinned production loader to reproduce
+the excessive-alias merge trap with 125 bytes. Removing the root merge yields
+118 accepted bytes; the neighboring width-six expansion is accepted. This is a
+minimized observed regression, not the unsupplied reported 325-byte file.
+Ignored duplicate/cyclic values remain accepted, while reachable duplicate/cyclic
+merge sources are refused. Legacy interpreted integer keys 1/01 keep last-write
+behavior; marked configuration rejects them. Explicit fields and first sequence
+merge sources retain precedence; shadowed malformed values remain skipped.
+
+### Detailed falsifiability challenge, before decoder replacement
+
+| Contract / broken approach | Required stimulus and observation | Checker / owner |
+|---|---|---|
+| Projection loses old alias refusal | Observed 125-byte root-merge trap, 118-byte unused anchors and accepted width-six neighbor | Frozen stock nested decoder plus literal positive/negative controls / filter tests |
+| Global validation changes ignored values | Duplicate/cyclic ignored branches versus reachable merge sources | Paired accepted/refused corpus; require original excessive-alias reason for the trap / filter tests |
+| Different duplicate or key conversion semantics | Raw Kind/Value duplicates, differing scalar tags, aliased keys and legacy 1/01 | Full typed-value comparison, not only success/error / filter tests |
+| Wrong merge order or shared skip state | Explicit/sequence precedence, sibling maps and shadowed invalid values | Exact independent resulting map fields / filter tests |
+| Nested decoder resets the new budget | Record/reference/baseline and collection fixtures | Hand-counted P and E; separate old guard contexts / accounting tests |
+| Optimized decode adds another alias refusal | Unknown keys dilute original traversal; reduced projection still contains aliases | Compare the original guard behavior before any alias-free materialization / differential corpus and fuzzing |
+| New thresholds activate too soon | Large unaliased/raw input and compact expensive scalar aliases currently accepted | Explicit acceptance controls; existing preset limits remain / filter tests |
+| Apparently linear code retains quadratic work | Increasing bulk maps, root keys and nested baselines | Scale/allocation measurements with correct complete results / lead qualification |
+
+Physical accounting follows Content only and charges parsed scalar Value UTF-8
+bytes, including ignored fields and unused anchors. Logical accounting follows
+the original typed decoding visits and scalar bytes, including merge bookkeeping
+and nested custom dispatch. Charge it once regardless of optimization passes.
+Nested Node.Decode guards reset separately; P+E remains operation-owned across
+the complete document. No process-lifetime node/type cache is required.
+
+Hand-counted source oracles include `{}` P=2/E=1, `bands: {20m: true}` P=18/E=17,
+an ignored `legacy: {x: "abc"}` P=16/E=8, and a record containing preset TEST with
+that bands baseline P=46/E=47. These are expected integers to test, not observed
+candidate accounting results. Additional aliases, merges and collection vectors
+are retained in the discovery report and will be asserted explicitly.
+
+A separate-context read-only design-space challenge is complete. The lead selects
+storage-specific, operation-local traversal of the original AST before typed
+materialization. A projected AST remains viable but needs the same traversal and
+adds reconstruction and second-guard risks. Scalar conversions retain stock
+Node.Decode on alias-free leaves; bulk map duplicate checks become linear.
+
+The challenge findings are dispositioned as follows: raw duplicate identity,
+interpreted key identity and generic merge bookkeeping remain separate; visited
+merge sources are checked even when their values are shadowed; original guard
+prefix order and nested reset boundaries are retained. Physical census follows
+Content, while logical expansion uses an active-alias path rather than a global
+visited set. Custom handoffs charge the outer dispatch and fresh plain root;
+record/reference/baseline share P+E while their stock guards reset. Duplicate
+compatibility means refusal and error-class agreement, not reproducing quadratic
+pairwise diagnostic output. The observed excessive-alias refusal remains exact.
+These are engineering dispositions within the approved contract, not new policy.
+
+The test-only 04a.1 baseline is complete. It freezes the old nested callbacks,
+compares complete values and refuses altered stored bytes, and includes an
+isolated work-limit control whose raw, canonical and configuration bytes fit.
+The complete filter package passed on final source in
+`.tmp/command-fixes/checkpoint-04a-1-filter.log`; targeted filter vet, staticcheck
+and lint passed (zero lint issues). Production decoding remains unchanged.
+Support-agent/operator docs and a new ADR are NotRequired for this test-only
+slice. Decoder closeout still requires accounting assertions, differential tests,
+parser fuzzing, scale evidence, cumulative server storage cases, the complete
+selected lane and fresh final review. The inherited-context test challenge and
+separate-context design review are findings-only evidence; lead authority remains.
