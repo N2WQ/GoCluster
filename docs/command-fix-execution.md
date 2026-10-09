@@ -12,7 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 and 01 complete; 44 checkpoints remain.
+Current progress: checkpoints 00, 01 and 02 complete; checkpoint 03 is next;
+43 checkpoints remain.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -180,3 +181,64 @@ describe whole-line rejection and safe recovery/disconnect. Existing unrelated
 legacy bytes in the domain contract were preserved. ADR-0266 records the durable
 recovery policy; TSR-0048 preserves the parser/codec root cause and support
 learning. Machine schemas and upload policy remain unchanged.
+
+## Checkpoint 02: NOFILTER and NEARBY restoration
+
+Status: complete; qualification and final review are recorded below.
+
+Pre-change source confirmed that NOFILTER was the sole production caller of
+`Filter.Reset`. Reset cleared most geography before `DisableNearby` restored the
+saved geography snapshot; states were cleared afterward, so state-only checks
+missed the bug. The fix disables NEARBY before resetting every filter domain. Ordinary
+NEARBY OFF and RESET FILTER retain their existing restoration/default behavior.
+
+The inherited-context read-only test-strategy challenge found an important
+history oracle trap: DX own-call matches bypass ordinary filters. The cumulative
+case uses a separate observer whose baseline differs from the posted DX,
+proves its geographic restriction hides the exact archived row, then requires
+NOFILTER to reveal it. Posting alone does not establish a DX own-call match.
+
+| Contract / false-green risk | Required stimulus and observation | Checker |
+|---|---|---|
+| Old geography survives reset | Active NEARBY snapshot with allow, block and block-all geography across all ten axes | Exact permissive rules and a previously hidden non-self candidate matches |
+| Stale snapshot restores later | Reset, then NEARBY OFF and another enable/disable cycle | Snapshot/cached filter cells cleared; old restrictions never return |
+| OFF/default behavior accidentally changes | Independent restrictive snapshot and custom mode/source defaults | Ordinary OFF restores exact snapshot; RESET FILTER uses defaults; NOFILTER permits all |
+| DX own-call bypass hides bug | Distinct observer with a different DX identity; restrictive geography hides exact labeled archive row before enabling NEARBY | Same archive selection visible after GO PASS NOFILTER / CC SET/NOFILTER |
+| Save/reconnect silently repairs result | Inspect saved record while connected, then replace server process with same stores | Permissive saved geography and restored configuration/history; no autosave-only proof |
+
+Required qualification comprises targeted filter/telnet tests, cumulative
+native/ziutek fixtures, and the complete production-Go baseline. This change introduces
+no parser, schema, snapshot format, new lifetime owner or filter hot-path change.
+
+### Observed checkpoint 02 qualification (2026-10-09)
+
+| Command / scope | Observed result |
+|---|---|
+| Stable Windows runner, targeted filter and telnet reset tests | Passed: all ten geography axes, retired snapshot/cells, exact ordinary OFF restoration, configured defaults, both dialects and immediate saved matching |
+| Same targeted tests with `-Race` | Passed in both packages, no race report; log `.tmp/command-fixes/checkpoint-02-targeted-race.log` |
+| Pinned Python cumulative checkout driver | All 18 required cases passed; artifact `.tmp/command-fixes/20261009-100346-da0fc7cc` |
+| Same driver with `--race` | All 18 cases passed, zero wire/cleanup errors; artifact `.tmp/command-fixes/20261009-102421-c00296d2` |
+| `pwsh -NoProfile -File scripts/test-windows.ps1` | Complete 70-package run passed; log `.tmp/command-fixes/checkpoint-02-baseline.log` |
+| `go vet ./...`; `staticcheck ./...`; `golangci-lint run ./... --config=.golangci.yaml` | Passed; final lint reported zero issues |
+
+The first archive control used REJECT NA, which cannot hide the bridge's unknown
+geography. That attempt failed and was not counted as qualification. Its
+replacement first proves visibility, then uses an EU-only allowlist to hide the
+exact row before testing reset. Unit tests separately use known geography.
+
+Two complete-suite attempts failed in unchanged
+`peer.TestOutboundTCPBackoffAfterEstablishedDisconnect`, measuring 998.5822 ms
+against one second and 98.7486 ms against 100 ms. The test timestamps an
+asynchronously polled diagnostic, rather than the timer's start. Uneven observer
+delay can shorten that measured interval; these failures do not establish an
+early production timer. The isolated rerun passed, and the subsequent complete
+run passed. Both failed logs remain under `.tmp/command-fixes`. No peer code or
+tolerance was changed. Race qualification here covers the affected filter/telnet
+tests and actual server cases; checkpoint 01 remains the latest complete race
+suite. No new parser fuzzing was needed for this reset-order change.
+
+The inherited-context final read-only review found no production or checker
+defect. Fresh final verification was lead-owned. Support-agent docs impact:
+Required and completed in the telnet README and troubleshooting routing.
+TSR-0049 records the reset order and history-oracle traps. No ADR is required:
+this restores the existing permissive reset contract without a new policy.

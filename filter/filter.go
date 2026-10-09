@@ -1147,9 +1147,12 @@ func (f *Filter) ResetEvents() {
 
 // Reset resets all filter criteria back to permissive defaults.
 // Key aspects: Invokes the specific reset helpers for each filter domain.
-// Upstream: Telnet RESET ALL commands or new-session defaults.
+// Upstream: Telnet NOFILTER command.
 // Downstream: ResetBands, ResetModes, ResetSources, ClearCallsignPatterns, ResetConfidence, Reset* helpers.
 func (f *Filter) Reset() {
+	// Restore and retire NEARBY before clearing geography. Restoring afterward
+	// would reintroduce the restrictions that NOFILTER just promised to remove.
+	f.DisableNearby()
 	f.Comments, f.BlockComments = nil, nil
 	f.ResetMinSNR()
 	f.ResetBands()
@@ -1173,7 +1176,6 @@ func (f *Filter) Reset() {
 	f.SetAnnounceEnabled(true)
 	f.SetSelfEnabled(true)
 	f.SetToxicEnabled(true)
-	f.DisableNearby()
 	f.ResetDXStates()
 	f.ResetDEStates()
 }

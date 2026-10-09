@@ -937,6 +937,11 @@ While `NEARBY` is active:
 
 When `PASS NEARBY OFF` is used, the telnet layer restores the saved location-filter snapshot that existed before `NEARBY` was enabled.
 
+`PASS NOFILTER` (`SET/NOFILTER` in CC) disables NEARBY and clears every filter,
+including the saved location restrictions. A later NEARBY OFF cannot restore
+those old restrictions. The user's GRID stays configured. `RESET FILTER`
+restores the cluster's new-user filter defaults instead.
+
 `NEARBY` state is persisted. On login:
 
 - the greeting warns when `NEARBY` is active

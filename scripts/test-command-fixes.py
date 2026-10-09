@@ -55,6 +55,25 @@ def require_archive(session, label):
         time.sleep(.025)
 
 
+def require_unrestricted_geography(document, saved):
+    filters = document["configuration"]["filters"]
+    for category in ("dx_continents", "de_continents", "dx_zones", "de_zones",
+                     "dx_grid2", "de_grid2", "dx_dxcc", "de_dxcc", "dx_states", "de_states"):
+        rule = filters[category]
+        require(rule == dict(allow_all=True, block_all=False, allow={}, block={}),
+                f"live geography restriction remained: {category}")
+    for stem, allow_key in (("dxcontinents", "dxcontinents"), ("decontinents", "decontinents"),
+                            ("dxzones", "dxzones"), ("dezones", "dezones"),
+                            ("dxgrid2", "dxgrid2prefixes"), ("degrid2", "degrid2prefixes"),
+                            ("dxdxcc", "dxdxcc"), ("dedxcc", "dedxcc"),
+                            ("dxstates", "dxstates"), ("destates", "destates")):
+        require(saved["all" + stem] is True and saved["blockall" + stem] is False and
+                saved[allow_key] == {} and saved["block" + stem] == {},
+                f"saved geography restriction remained: {stem}")
+    require(filters["nearby_enabled"] is False and saved.get("nearby_enabled", False) is False,
+            "NEARBY remained enabled")
+
+
 def profile(binary, root, source, transport):
     results, wire, cleanup, children = [], [], [], []
     required = [f"{transport}/0: held endpoint and loaded consumers",
@@ -62,9 +81,12 @@ def profile(binary, root, source, transport):
                 f"{transport}: stalled rejected tail disconnects",
                 f"{transport}: live change saved before disconnect",
                 f"{transport}: invalid control and actual archive write",
+                f"{transport}: NOFILTER retires NEARBY geography and saves",
                 f"{transport}/1: held endpoint and loaded consumers",
-                f"{transport}: preferences and archive survive fresh child"]
+                f"{transport}: preferences and archive survive fresh child",
+                f"{transport}: NOFILTER geography survives fresh child"]
     call = "K1ABC-70001"
+    observer_call, observer_configuration = "VE3ABC-70003", None
     label = "T" + uuid.uuid4().hex[:8].upper()
     suites = []
     for generation in range(2):
@@ -163,6 +185,31 @@ def profile(binary, root, source, transport):
                     require_archive(session, label)
 
                 case(f"{transport}: invalid control and actual archive write", posting)
+
+                def nofilter():
+                    nonlocal observer_configuration
+                    observer = harness.Session(suite, observer_call)
+                    observer.human("PAUSE 300")
+                    observer.human("SET GRID FN31", "Grid set")
+                    require_archive(observer, label) # Control: exact row exists and is visible.
+                    for dialect, reset in (("go", "PASS NOFILTER"), ("cc", "SET/NOFILTER")):
+                        observer.human("DIALECT " + dialect)
+                        # The isolated manual bridge does not run production
+                        # metadata enrichment. A restrictive whitelist also
+                        # hides unknown geography, providing a valid control.
+                        observer.human("PASS DXCONT EU")
+                        require(not archive_rows(observer, label), "restrictive geography failed to hide control row")
+                        observer.human("PASS NEARBY ON", "Nearby filter enabled")
+                        _, document = observer.human(reset, "All filters disabled")
+                        saved = harness.yaml.load((root / "users" / (observer_call + ".yaml")).read_text(),
+                                                  Loader=harness.StrictLoader)
+                        require_unrestricted_geography(document, saved)
+                        require(saved["grid"] == "FN31" and document["configuration"]["settings"]["grid"] == "FN31",
+                                "NOFILTER cleared the user's grid")
+                        require_archive(observer, label)
+                        observer_configuration = document["configuration"]
+
+                case(f"{transport}: NOFILTER retires NEARBY geography and saves", nofilter)
             else:
                 def restored():
                     settings = session.get()["configuration"]["settings"]
@@ -171,6 +218,19 @@ def profile(binary, root, source, transport):
                     require_archive(session, label)
 
                 case(f"{transport}: preferences and archive survive fresh child", restored)
+
+                def restored_nofilter():
+                    observer = harness.Session(suite, observer_call)
+                    observer.human("PAUSE 300")
+                    document = observer.get()
+                    require(document["configuration"] == observer_configuration,
+                            "NOFILTER configuration lost across process replacement")
+                    saved = harness.yaml.load((root / "users" / (observer_call + ".yaml")).read_text(),
+                                              Loader=harness.StrictLoader)
+                    require_unrestricted_geography(document, saved)
+                    require_archive(observer, label)
+
+                case(f"{transport}: NOFILTER geography survives fresh child", restored_nofilter)
         finally:
             if suite:
                 for session in suite.sessions:
