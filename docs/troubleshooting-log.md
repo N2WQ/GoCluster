@@ -11,6 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0050 | Human Persistence Feedback | Monitoring | 2026-10-09 | telnet, filter, dialect, persistence | none | `docs/troubleshooting/TSR-0050-human-persistence-feedback.md` |
 | TSR-0049 | NOFILTER Restored NEARBY Restrictions | Monitoring | 2026-10-09 | filter, telnet, reset, snapshot | none | `docs/troubleshooting/TSR-0049-nofilter-nearby-restoration.md` |
 | TSR-0048 | Rejected Human Line Tail Dispatch | Monitoring | 2026-10-09 | telnet, input, protocol, lifecycle | ADR-0266 | `docs/troubleshooting/TSR-0048-rejected-human-line-tail-dispatch.md` |
 | TSR-0047 | History Mode Alias Clause Collision | Monitoring | 2026-10-08 | commands, telnet, history parser | ADR-0263 | `docs/troubleshooting/TSR-0047-history-mode-alias-clause-collision.md` |

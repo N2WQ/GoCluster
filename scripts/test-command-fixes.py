@@ -10,6 +10,7 @@ if sys.flags.optimize:
 sys.dont_write_bytecode = True
 
 import argparse
+import contextlib
 import importlib.util
 import json
 from pathlib import Path
@@ -19,7 +20,8 @@ import time
 from types import SimpleNamespace
 import uuid
 
-from command_fixture_support import Child, ROOT, build, command, plain_output, require, runner_lock, stage
+from command_fixture_support import (Child, ROOT, build, command, deny_record_replacement,
+                                     plain_output, require, runner_lock, stage)
 
 spec = importlib.util.spec_from_file_location("checkout_telnet_harness", ROOT / "scripts" / "test-telnet-commands.py")
 harness = importlib.util.module_from_spec(spec)
@@ -74,6 +76,13 @@ def require_unrestricted_geography(document, saved):
             "NEARBY remained enabled")
 
 
+def require_save_warning(text):
+    require(text.count("warning: failed to persist") == 1 and
+            "\nwarning: failed to persist;" in text and
+            "changes are active but were not saved" in text,
+            f"missing or misleading persistence warning: {text[:800]}")
+
+
 def profile(binary, root, source, transport):
     results, wire, cleanup, children = [], [], [], []
     required = [f"{transport}/0: held endpoint and loaded consumers",
@@ -82,15 +91,20 @@ def profile(binary, root, source, transport):
                 f"{transport}: live change saved before disconnect",
                 f"{transport}: invalid control and actual archive write",
                 f"{transport}: NOFILTER retires NEARBY geography and saves",
+                f"{transport}: actual replacement failure warns and preserves saved bytes",
+                f"{transport}: preparation failure and protected login preserve refused records",
                 f"{transport}/1: held endpoint and loaded consumers",
                 f"{transport}: preferences and archive survive fresh child",
-                f"{transport}: NOFILTER geography survives fresh child"]
+                f"{transport}: NOFILTER geography survives fresh child",
+                f"{transport}: failed saves and refused records survive fresh child"]
     call = "K1ABC-70001"
     observer_call, observer_configuration = "VE3ABC-70003", None
+    failed_records, refused_records = {}, {}
     label = "T" + uuid.uuid4().hex[:8].upper()
     suites = []
     for generation in range(2):
         child, suite = None, None
+        replacement_faults = contextlib.ExitStack()
         try:
             child = Child(binary, root, source)
             children.append(child.identity)
@@ -210,6 +224,87 @@ def profile(binary, root, source, transport):
                         observer_configuration = document["configuration"]
 
                 case(f"{transport}: NOFILTER retires NEARBY geography and saves", nofilter)
+
+                def failed_saves():
+                    for dialect, failed_call in (("go", "K1ABC-70004"), ("cc", "K1ABC-70007")):
+                        failed = harness.Session(suite, failed_call)
+                        failed.human("PAUSE 300")
+                        failed.human("DIALECT " + ("cc" if dialect == "go" else "go"))
+                        failed.human("PASS BAND 40")
+                        _, before = failed.human("PASS COMMENT OLD")
+                        record = root / "users" / (failed_call + ".yaml")
+                        saved = record.read_bytes()
+                        failed_records[failed_call] = (saved, before["configuration"])
+                        # Keep this handle through child.stop(), not merely BYE:
+                        # unregister's final save must not repair a failed save.
+                        replacement_faults.enter_context(deny_record_replacement(record))
+
+                        def changed(line, check):
+                            text, document = failed.human(line)
+                            require_save_warning(text)
+                            require(check(document["configuration"]), f"live change absent: {line}")
+                            require(record.read_bytes() == saved, f"failed save changed disk: {line}")
+                            return document
+
+                        changed("DIALECT " + dialect, lambda cfg: cfg["settings"]["dialect"] == dialect)
+                        for line in ("DIALECT " + dialect, "PASS COMMENT old",
+                                     "REMOVE PASS COMMENT absent", "RESET FILTER COMMENT REJECT"):
+                            before_noop = failed.get()
+                            text, after_noop = failed.human(line)
+                            require("warning: failed to persist" not in text and
+                                    after_noop["configuration"] == before_noop["configuration"] and
+                                    record.read_bytes() == saved, f"no-op save behavior changed: {line}")
+                        band_command = "PASS BAND 20" if dialect == "go" else "SET/FILTER BAND 20"
+                        changed(band_command, lambda cfg: cfg["filters"]["bands"]["allow"].get("20m") is True)
+                        changed(band_command, lambda cfg: cfg["filters"]["bands"]["allow"].get("20m") is True)
+                        changed("PASS COMMENT NEW", lambda cfg: cfg["filters"]["comments"] == ["OLD", "NEW"])
+                        changed("REMOVE PASS COMMENT OLD", lambda cfg: cfg["filters"]["comments"] == ["NEW"])
+                        changed("RESET FILTER COMMENT", lambda cfg: cfg["filters"]["comments"] == [])
+                        changed("RESET FILTER", lambda cfg: cfg["filters"]["bands"]["allow_all"] is True)
+                        changed("REJECT BAND ALL", lambda cfg: cfg["filters"]["bands"]["block_all"] is True)
+                        changed("PASS NOFILTER" if dialect == "go" else "SET/NOFILTER",
+                                lambda cfg: cfg["filters"]["bands"]["allow_all"] is True and
+                                cfg["filters"]["bands"]["block_all"] is False)
+
+                case(f"{transport}: actual replacement failure warns and preserves saved bytes", failed_saves)
+
+                def refused_storage():
+                    for refused_call, raw in (("K1ABC-70005", b"[broken"),
+                                              ("K1ABC-70006", b"configuration_version: 99\nnoise_class: URBAN\n")):
+                        existing = harness.Session(suite, refused_call)
+                        existing.human("PAUSE 300")
+                        record = root / "users" / (refused_call + ".yaml")
+                        record.write_bytes(raw) # Authoritative storage changes after valid login.
+                        refused_records[refused_call] = raw
+                        for dialect, line in (("cc", "SET/FILTER BAND 20"), ("go", "PASS BAND 40")):
+                            text, document = existing.human("DIALECT " + dialect)
+                            require_save_warning(text)
+                            require(document["configuration"]["settings"]["dialect"] == dialect,
+                                    "preparation failure rolled back live dialect")
+                            text, document = existing.human(line)
+                            require_save_warning(text)
+                            require(document["configuration"]["filters"]["bands"]["allow"].get(
+                                "20m" if dialect == "cc" else "40m") is True and record.read_bytes() == raw,
+                                "preparation failure changed disk or lost live filter")
+                        existing.close()
+                        protected = harness.Session(suite, refused_call)
+                        startup, document = protected.human("PAUSE 300")
+                        # The configured greeting ends in a UTC prompt before
+                        # the appended restore warning. Synchronize through GET
+                        # to consume and check that remainder, not just prompt.
+                        require("temporary defaults" in startup,
+                                "protected login omitted temporary-settings warning")
+                        require(document["status"]["session"]["temporary_defaults"] is True,
+                                "protected login status absent")
+                        for line in ("DIALECT cc", "SET/FILTER BAND 20", "PASS COMMENT TEMP"):
+                            text, document = protected.human(line)
+                            require_save_warning(text)
+                            require(record.read_bytes() == raw, "protected edit overwrote refused file")
+                        require(document["configuration"]["settings"]["dialect"] == "cc" and
+                                document["configuration"]["filters"]["comments"] == ["TEMP"],
+                                "protected live edits were not applied")
+
+                case(f"{transport}: preparation failure and protected login preserve refused records", refused_storage)
             else:
                 def restored():
                     settings = session.get()["configuration"]["settings"]
@@ -231,21 +326,53 @@ def profile(binary, root, source, transport):
                     require_archive(observer, label)
 
                 case(f"{transport}: NOFILTER geography survives fresh child", restored_nofilter)
+
+                def restored_failures():
+                    for failed_call, (saved, configuration) in failed_records.items():
+                        record = root / "users" / (failed_call + ".yaml")
+                        require(record.read_bytes() == saved, "teardown repaired failed persistence")
+                        restored = harness.Session(suite, failed_call)
+                        restored.human("PAUSE 300")
+                        require(restored.get()["configuration"] == configuration,
+                                "fresh child restored a previously unsaved change")
+                        text, document = restored.human("SET GRID FN31")
+                        require("warning: failed to persist" not in text and
+                                document["configuration"]["settings"]["grid"] == "FN31",
+                                "save did not recover after fault release")
+                        saved_now = harness.yaml.load(record.read_text(), Loader=harness.StrictLoader)
+                        require(saved_now["grid"] == "FN31", "later successful save not immediately durable")
+                    for refused_call, raw in refused_records.items():
+                        record = root / "users" / (refused_call + ".yaml")
+                        require(record.read_bytes() == raw, "teardown overwrote refused record")
+                        protected = harness.Session(suite, refused_call)
+                        startup, document = protected.human("PAUSE 300")
+                        require("temporary defaults" in startup and
+                                document["status"]["session"]["temporary_defaults"] is True,
+                                "fresh child did not protect refused record")
+                        require(record.read_bytes() == raw, "fresh login overwrote refused record")
+
+                case(f"{transport}: failed saves and refused records survive fresh child", restored_failures)
         finally:
-            if suite:
-                for session in suite.sessions:
+            try:
+                if suite:
+                    for session in suite.sessions:
+                        try:
+                            session.close()
+                        except (OSError, ValueError, EOFError) as error:
+                            suite.cleanup_errors.append(str(error))
+                    suite.log.close()
+                    results.extend(suite.results)
+                    wire.extend(suite.wire_failures)
+                    cleanup.extend(suite.cleanup_errors)
+                if child:
                     try:
-                        session.close()
-                    except (OSError, ValueError, EOFError) as error:
-                        suite.cleanup_errors.append(str(error))
-                suite.log.close()
-                results.extend(suite.results)
-                wire.extend(suite.wire_failures)
-                cleanup.extend(suite.cleanup_errors)
-            if child:
+                        child.stop()
+                    except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+                        cleanup.append(str(error))
+            finally:
                 try:
-                    child.stop()
-                except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+                    replacement_faults.close()
+                except (OSError, ValueError) as error:
                     cleanup.append(str(error))
     report = {"transport": transport, "required": required, "results": results,
               "wire_failures": wire, "cleanup_errors": cleanup, "children": children}

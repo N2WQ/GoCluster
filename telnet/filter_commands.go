@@ -210,6 +210,7 @@ func (e *filterCommandEngine) handleOwned(client *Client, line string) (string, 
 		if mutated {
 			if err := client.saveFilterOwned(); err != nil {
 				log.Printf("Warning: failed to persist filter for %s: %v", client.callsign, err)
+				resp += fmt.Sprintf("warning: failed to persist; changes are active but were not saved: %v\n", err)
 			}
 		}
 		return resp, true
@@ -233,6 +234,7 @@ func (e *filterCommandEngine) handleOwned(client *Client, line string) (string, 
 		if mutated {
 			if err := client.saveFilterOwned(); err != nil {
 				log.Printf("Warning: failed to persist filter for %s: %v", client.callsign, err)
+				resp += fmt.Sprintf("warning: failed to persist; changes are active but were not saved: %v\n", err)
 			}
 		}
 		return resp, true

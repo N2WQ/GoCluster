@@ -62,6 +62,30 @@ def runner_lock():
         raise ValueError("checkout command-fix runner requires native Windows")
 
 
+@contextlib.contextmanager
+def deny_record_replacement(path):
+    """Keep an owned record readable while actual atomic replacement fails."""
+    path = plain_output(path)
+    require(os.name == "nt" and path.is_file(), "replacement fault requires an existing Windows record")
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    create = kernel.CreateFileW
+    create.argtypes = [ctypes.c_wchar_p, ctypes.c_uint32, ctypes.c_uint32,
+                       ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p]
+    create.restype = ctypes.c_void_p
+    close = kernel.CloseHandle
+    close.argtypes = [ctypes.c_void_p]
+    close.restype = ctypes.c_int
+    # GENERIC_READ, FILE_SHARE_READ|FILE_SHARE_WRITE, OPEN_EXISTING. Withhold
+    # FILE_SHARE_DELETE: LoadUserRecord may read, but MoveFileEx cannot commit.
+    handle = create(str(path), 0x80000000, 3, None, 3, 0x80, None)
+    if handle == ctypes.c_void_p(-1).value:
+        raise OSError(ctypes.get_last_error(), "cannot install record replacement fault")
+    try:
+        yield
+    finally:
+        require(bool(close(handle)), "cannot release record replacement fault")
+
+
 def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 

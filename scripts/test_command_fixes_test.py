@@ -21,6 +21,27 @@ spec.loader.exec_module(driver)
 
 
 class DriverControls(unittest.TestCase):
+    @unittest.skipUnless(os.name == "nt", "native Windows replacement behavior")
+    def test_record_fault_permits_reads_refuses_replace_and_releases(self):
+        with tempfile.TemporaryDirectory(prefix="record-fault-", dir=support.ROOT / ".tmp") as directory:
+            target, source = Path(directory) / "record.yaml", Path(directory) / "new.yaml"
+            target.write_bytes(b"old record")
+            source.write_bytes(b"new record")
+            with support.deny_record_replacement(target):
+                self.assertEqual(target.read_bytes(), b"old record")
+                with self.assertRaises(OSError):
+                    os.replace(source, target)
+                self.assertEqual(target.read_bytes(), b"old record")
+                self.assertEqual(source.read_bytes(), b"new record")
+            os.replace(source, target)
+            self.assertEqual(target.read_bytes(), b"new record")
+            source.write_bytes(b"after failure")
+            with self.assertRaisesRegex(ValueError, "test failure"):
+                with support.deny_record_replacement(target):
+                    raise ValueError("test failure")
+            os.replace(source, target)
+            self.assertEqual(target.read_bytes(), b"after failure")
+
     def test_optimized_launch_refuses_before_any_tools(self):
         result = subprocess.run([sys.executable, "-O", str(Path(driver.__file__)), "--race"],
                                 capture_output=True, text=True, timeout=10)

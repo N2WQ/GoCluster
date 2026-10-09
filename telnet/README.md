@@ -157,7 +157,19 @@ over-limit operations fail before any move/add/removal. Human additions are
 case-insensitive and idempotent; moving or removing a phrase deletes all
 case-equivalent opposite/selected entries. All filter resets clear comments.
 Human commands retain existing live-update-then-save behavior; a disk failure
-is logged and does not roll back a human filter edit.
+is logged and reported, and does not roll back a human filter edit. Filter,
+COMMENT, reset and changed DIALECT commands append a warning when saving fails:
+
+```text
+warning: failed to persist; changes are active but were not saved: <reason>
+```
+
+The accepted change is active in this session. A new login restores the last
+successfully saved settings. Protected temporary settings preserve the refused
+record, including during logout. Repeating an unchanged DIALECT or idempotent
+COMMENT edit does not attempt another save; other filter commands retain their
+existing save attempts. A later successful preference save can persist current
+live settings when the record is writable and valid.
 
 `SHOW DX`/`SHOW MYDX` accept COMMENT after their existing optional selector/count
 arguments. Existing aliases retain their restrictions. Everything after COMMENT

@@ -1454,11 +1454,13 @@ func (s *Server) handleDialectCommandOwned(client *Client, line string) (string,
 	}
 	client.dialect = selected
 	client.configuredSettings.Dialect = string(selected)
+	response := fmt.Sprintf("Dialect set to %s\n", strings.ToUpper(string(selected)))
 	// Persist updated dialect selection.
 	if err := client.saveFilterOwned(); err != nil {
 		log.Printf("Warning: failed to persist dialect for %s: %v", client.callsign, err)
+		response += fmt.Sprintf("warning: failed to persist; changes are active but were not saved: %v\n", err)
 	}
-	return fmt.Sprintf("Dialect set to %s\n", strings.ToUpper(string(selected))), true
+	return response, true
 }
 
 type dialectTemplateData struct {

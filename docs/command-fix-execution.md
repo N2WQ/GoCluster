@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00, 01 and 02 complete; checkpoint 03 is next;
-43 checkpoints remain.
+Current progress: checkpoints 00 through 03 complete; checkpoint 04a is next;
+42 checkpoints remain.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -242,3 +242,65 @@ defect. Fresh final verification was lead-owned. Support-agent docs impact:
 Required and completed in the telnet README and troubleshooting routing.
 TSR-0049 records the reset order and history-oracle traps. No ADR is required:
 this restores the existing permissive reset contract without a new policy.
+
+## Checkpoint 03: truthful human persistence warnings
+
+Status: complete; checkpoint 02 is committed as `0ecb0a8`.
+
+Pre-change filter, COMMENT and changed-DIALECT save failures were logged without a
+client warning. Other human settings already warned while keeping the live edit.
+Append an explicit warning on its own line to these three consumers, preserving
+their acknowledgements and existing save-attempt rules. This checkpoint changes
+feedback only; detached validation, admission and storage protection changes
+belong to checkpoint 04.
+
+The inherited-context pre-implementation test-strategy challenge found two
+false-green risks: replacing the entire save function does not exercise actual
+storage preparation/commit, and disconnect autosave can repair a failed save.
+The native Windows driver will deny replacement with an owned file handle that
+still permits reads. Hold the fault through teardown, verify old bytes while
+connected, then check them in a fresh child. A separate malformed/future record
+case exercises real preparation and protected login. Release every handle even
+on failure; later admitted persistence must succeed without the fault.
+
+| Contract / false-green risk | Required stimulus and observation | Checker |
+|---|---|---|
+| Success hides save failure | BAND, COMMENT add/remove/reset, RESET FILTER, NOFILTER and changed DIALECT in both dialects | Existing acknowledgement plus one warning on its own line; exact live change and old durable bytes |
+| Callback bypasses real storage | Valid record held readable but non-replaceable; record replaced with malformed/future YAML after valid login | Actual commit/preparation error reaches response; bytes unchanged before teardown |
+| No-op behavior changes | Same DIALECT and idempotent COMMENT; ordinary identical filter commands | No save/no warning for former; preserve existing attempted-save warning for latter |
+| Protected login overwrites original | Login through malformed/future record, apply fitting human edits, teardown/restart | Temporary-settings warning, live edits, original refused bytes preserved |
+| Fault outlives test or repairs result | Keep replacement fault through disconnect, then release it | Fresh child sees old preferences; later valid save succeeds and becomes durable |
+
+Required checks: targeted warning/preparation/protected tests, cumulative actual
+native/ziutek cases, complete production-Go baseline and static checks. No new
+schema, storage API, parser, lifetime owner or rollback policy is introduced.
+Checkpoint 04 must rerun these live/durable cases against its new storage seams.
+
+### Observed checkpoint 03 qualification (2026-10-09)
+
+| Command / scope | Observed result |
+|---|---|
+| Stable Windows runner, telnet `Test(HumanPersistenceWarning\|ConfigurationProtectedTemporaryDefaults)` | Passed: seven operation families in both dialects across injected, actual malformed/future preparation and protected-login failures; no-op/ordinary save-attempt distinction |
+| Pinned Python checkout-runner offline controls | All 19 tests passed, including actual readable/non-replaceable file, release after normal completion and exception, then successful replacement |
+| Existing telnet harness offline controls | All 29 tests passed; original harness remains unchanged |
+| Cumulative checkout driver | All 24 required cases passed, zero wire/cleanup errors; artifact `.tmp/command-fixes/20261009-103655-794d4a53` |
+| Same driver with `--race`, final runner state | All 24 cases passed, zero wire/cleanup errors and no race report; artifact `.tmp/command-fixes/20261009-104230-5b606068` |
+| `pwsh -NoProfile -File scripts/test-windows.ps1` | Complete 70-package run passed; log `.tmp/command-fixes/checkpoint-03-baseline.log` |
+| `go vet ./...`; `staticcheck ./...`; `golangci-lint run ./... --config=.golangci.yaml` | Passed; lint reported zero issues |
+
+The first server attempt checked the first UTC prompt for the protected-login
+warning. The configured greeting places that prompt before the appended warning,
+so the assertion failed before consuming it. The corrected checker synchronizes
+through PAUSE plus correlated GET, checks the actual remaining warning and
+temporary-defaults status, then verifies live edits and preserved bytes. This
+failed attempt remains diagnostic evidence and is excluded from qualification.
+
+Final source/diff verification was lead-owned, after the inherited-context
+test-strategy challenge. Each response retains its original acknowledgement and
+appends exactly one separate warning on a failed save. The production patch adds
+no concurrency, parsing or storage behavior; race evidence covers the cumulative
+real server and protected handoffs, and no new fuzz target was needed.
+
+Support-agent docs impact: Required and completed in the telnet README,
+troubleshooting routing and TSR-0050. No ADR is required because this completes
+the agreed existing human live-edit/failure contract without new policy.
