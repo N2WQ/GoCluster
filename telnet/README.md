@@ -447,6 +447,14 @@ Geography sections show PASS: ALL / REJECT: NONE with a suspension note when
 NEARBY bypasses them. SELF explains its ordinary-filter bypass while TOXIC
 still applies.
 
+Feature switches accept no value or one `ALL`: use `PASS BEACON` to enable
+beacons and `REJECT BEACON` to disable them. `PASS BEACON OFF` is refused;
+it does not change the switch. `PASS NOFILTER` and `PASS NOFILTER ALL` reset
+restrictions. Named CC shortcuts such as `SET/BEACON`, `SET/NOFT8` and
+`SET/NOFILTER` take no arguments. Inline category flags such as
+`SET/FILTER BAND/OFF` also take no extra values. An unexpected tail refuses
+the whole command without live or saved changes.
+
 Machine YAML preserves stored flags, false entries and defaults. Use
 `GET YAML FILTER` for exact stored rules; `DEFAULT` remains distinct from
 explicit `true` or `false` there. NEARBY reports its effective ON/OFF state

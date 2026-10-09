@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 10 complete (04a used two commits);
-31 approved checkpoints remain; 11a is next.
+Current progress: checkpoints 00 through 11a complete (04a used two commits);
+30 approved checkpoints remain; 11b is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -1610,3 +1610,94 @@ separate-context technical follow-up found no unresolved material defect.
 Generated-map and whitespace checks complete the commit closeout. No waiver,
 production-load qualification, external cluster run or unrelated migration is
 claimed. The generated Python bytecode remains outside the staged patch.
+
+## Checkpoint 11a: original filter arguments
+
+Status: complete. Discovery inspected actual dialect dispatch/fallback and
+hinting, named CC shortcuts, dynamic mode shortcuts, inline flags, feature and
+NOFILTER handlers, coordinator/publication, executable HELP and existing tests.
+Named shortcuts currently discard tails; inline /ON and /OFF replace them with
+ALL before validation; feature switches and NOFILTER ignore their supplied values.
+
+Contract disposition: preserve argument-free shortcuts and existing supported
+inline flags. A named shortcut takes no arguments. A flagged category takes no
+extra arguments before normalization. Feature switches and PASS NOFILTER retain
+their no-value form and a single ALL, consistent with the existing type-scoped
+ALL reference; arbitrary values or additional tokens must refuse with no effects.
+This preserves the useful existing ALL operation rather than silently changing
+it. Named shortcut ALL is still an extra argument, not that category operation.
+The approved raw-argument validation and executable HELP supply authority; no
+new option, mode alias, category or product-policy selection is introduced.
+
+Architecture: validate named/dynamic shortcut arity in their private parser
+before accepting the normalized command. Validate inline-flag tails before
+substituting ALL. Bound feature/NOFILTER arguments at the shared handler before
+mutation. Retain dialect fallback/hints, existing summaries/deprecation notes,
+the detached coordinator, mode delta semantics and valid category normalization.
+No exported interface, storage format, default, lifecycle or retained-state owner
+changes. SHOW DXCC/logout arity remains 11b; fixed settings remain 12; comprehensive
+category/HELP repairs remain 17/18.
+
+Lead-owned preimplementation falsifiability matrix:
+
+| Contract | Fault / stimulus | Required evidence | False-green risk | Checker / owner |
+|---|---|---|---|---|
+| Named shortcuts | Every fixed alias and dynamic mode shortcut with ON/OFF/ALL/additional tokens | Recognized refusal; exact live, revision and disk bytes unchanged; no commit attempt | Testing normalized handlers misses discarded tails | Actual engine/coordinator plus real checkout dispatch / telnet, runner |
+| Inline flags | /ON and /OFF on list, callsign, feature and NOFILTER categories with tails | Refuse before ALL substitution; positive argument-free controls retain semantics | Checking final parser shape alone | Literal state/control expectations, immediate disk and history / telnet, runner |
+| Shared switches | GO, CC and GO fallback; each feature and PC93 alias | Zero value/single ALL work; malformed values/extra tokens do not publish | An already-enabled switch hides opposite mutation | Start from opposite state; exact snapshot, commit and disk assertions / telnet |
+| Fresh durability | Saved valid MODE/BAND/callsign/switch selections in second owned child | Exact restored configuration and known CW history visibility | Acknowledgement hides save failure | Cumulative isolated server runner / runner |
+| Arbitrary tails | Bounded direct staged parser fuzz | No publication or detached mutation for nonempty shortcut/flag tails | Production parser supplies expected outcome | Literal prefix/tail grammar and permanent seeds / telnet |
+
+The raw-arity guard is package-local and directly falsifiable. There is no
+scientific or performance claim, architecture fork or new test seam requiring
+another independent context. Final review will inspect the parser/handler diff
+and positive compatibility controls directly.
+
+Review disposition: the separate-context technical pass found no production
+defect or scope expansion, but identified a missing unsupported NOFILTER/OFF
+regression. Add exact refusal, zero-commit and unchanged-state/disk controls
+through both the coordinator and real checkout dispatch. A direct GO-dialect
+control also preserves the existing CC syntax hint for a malformed mode shortcut.
+This review is technical evidence, not independent scientific evidence or approval.
+
+Retained setup failures: the first focused run compared absent files before two
+tests had performed any save; valid setup commands now create those records.
+The first fuzz launcher used the unpinned system Python, which lacks PyYAML;
+no fuzzing ran in that attempt. The pinned repository environment subsequently
+ran the fuzz check successfully without an installation or user action.
+
+Actual attempt `20261009-182700-7f42e508` caught another pipelined echo interleave:
+GET text interrupted the exact callsign refusal on the ziutek transport. The
+retained transcript shows the expected two-line response interrupted by GET echo;
+this attempt is excluded from final qualification. Receive each
+known complete callsign/argument refusal before its correlated GET, using exact
+lines, the existing deadline, a 64 KiB receipt cap, strict CRLF/ASCII, bounded
+pending-byte failure receipts and mandatory existing GET framing. No loose echo
+reconstruction, server protocol change or permissive feedback match is added.
+Offline controls challenge interleaved text, wrong/partial lines, EOF/timeout and
+oversized replies and require receipt publication before GET. The first control
+rerun retained an obsolete one-line fake reply; it was corrected to the full
+literal shortcut refusal before final qualification.
+
+Observed final validation:
+
+| Check | Result |
+|---|---|
+| Complete filter/telnet/commands packages | Ordinary and race suites passed; final NOFILTER/OFF and GO-hint additions passed targeted race checks |
+| Direct staged shortcut fuzz | 79,379 executions passed in approximately 16 seconds with two workers; seven permanent seeds |
+| Complete ordinary baseline | All 70 packages completed successfully, with no-test packages build-checked |
+| Runner controls | All 38 passed, including exact refusal ordering, corruption/partial-byte receipts and each live/durable observation owner |
+| Final actual checkout runs | Ordinary `20261009-183126-87089317` and race `20261009-183250-48da12f5`: all 82 required cases passed per build; 34 main and 7 reputation cases per transport |
+| Transport and child ownership | Zero strict wire or cleanup failures; all eight owned retirement receipts per build confirm clients retired, consumer joined and archive stopped |
+| Whole-repository analyzers | vet, Staticcheck and lint passed; zero lint issues |
+| Support and records | The one touched support-critical Go candidate passed the comment check; troubleshooting-record checks passed |
+
+Both actual builds and all children report Go/module source digest
+`a8176565c662382e80d905d54895d50d74aaf8cc1096f09abf3a8f7981f6e4fa`.
+Python was frozen for both final builds; the digest does not hash Python, docs or
+configuration. Fresh lead source/diff/receipt review and the technical follow-up
+found no unresolved material defect. HELP reference and telnet/support wording
+state the admitted arguments; TSR-0057 records the normalization failure and
+checker limits without inventing a new ADR. Generated-map and whitespace checks
+complete closeout. No required check was waived; no production-load, external
+cluster or unrelated lifecycle qualification is claimed.

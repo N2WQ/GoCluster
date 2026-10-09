@@ -25,6 +25,73 @@ HISTORY_ROW = "DX de K1ABC:     14074.00  W6ABC       CW LABEL                  
 
 
 class DriverControls(unittest.TestCase):
+    def test_filter_argument_oracle_requires_refusal_and_exact_owners(self):
+        before = dict(configuration={"selection": "before"}, revision="revision-1",
+                      status=dict(effective={"selection": "before"}, preset={"name": "before"}))
+        for fault in (None, "response", "configuration", "revision", "effective", "preset", "disk"):
+            with self.subTest(fault=fault):
+                session, record = mock.Mock(), mock.Mock()
+                session.get.return_value = copy.deepcopy(before)
+                after = copy.deepcopy(before)
+                response = "Usage: SET/BEACON\nNo changes applied."
+                if fault == "response":
+                    response = "enabled"
+                elif fault in ("configuration", "revision"):
+                    after[fault] = "changed"
+                elif fault in ("effective", "preset"):
+                    after["status"][fault] = "changed"
+                record.read_bytes.side_effect = [b"before", b"changed" if fault == "disk" else b"before"]
+                with mock.patch.object(driver, "exact_human_reply", return_value=(response, after)):
+                    if fault is None:
+                        driver.require_filter_argument_refusal(session, "SET/BEACON OFF", record)
+                    else:
+                        with self.assertRaises(ValueError):
+                            driver.require_filter_argument_refusal(session, "SET/BEACON OFF", record)
+        session, record = mock.Mock(), mock.Mock()
+        session.get.return_value = before
+        record.read_bytes.return_value = b"before"
+        expected = "Invalid filter command. Type HELP for usage."
+        with mock.patch.object(driver, "exact_human_reply", return_value=(expected + "\n", before)):
+            driver.require_filter_argument_refusal(session, "SET/FILTER NOFILTER/OFF", record, expected)
+        with mock.patch.object(driver, "exact_human_reply", return_value=(expected + " enabled\n", before)):
+            with self.assertRaises(ValueError):
+                driver.require_filter_argument_refusal(session, "SET/FILTER NOFILTER/OFF", record, expected)
+
+    def test_exact_human_reply_precedes_get_and_preserves_failures(self):
+        command, reply = "PASS DXCALL BAD", "First refusal line\nLast refusal line"
+        session = mock.Mock()
+        session.call, session.suite.log = "N0CALL-1", io.BytesIO()
+        raw = (command + "\r\nFirst refusal line\r\nLast refusal line\r\n").encode()
+        session.reader.line.side_effect = raw.splitlines(keepends=True)
+
+        def get_after_receipt():
+            self.assertTrue(session.suite.log.getvalue().endswith(raw))
+            return {"checked": True}
+
+        session.get.side_effect = get_after_receipt
+        self.assertEqual(driver.exact_human_reply(session, command, reply), (reply, {"checked": True}))
+        session.send.assert_called_once_with(command + "\r\n")
+        session.human.assert_not_called()
+        for bad in (b"GET YAML First refusal line\r\n", b"First refusal line EXTRA\r\n",
+                    b"First refusal line\n", b"X" * (driver.harness.MAX_FRAME + 1) + b"\r\n"):
+            session = mock.Mock()
+            session.call, session.suite.log = "N0CALL-1", io.BytesIO()
+            session.reader.buffer = bytearray()
+            session.reader.line.return_value = bad
+            with self.assertRaises(ValueError):
+                driver.exact_human_reply(session, command, reply)
+            session.get.assert_not_called()
+            self.assertIn(bad[:driver.harness.MAX_FRAME], session.suite.log.getvalue())
+        for error in (EOFError("partial"), TimeoutError("partial")):
+            session = mock.Mock()
+            session.call, session.suite.log = "N0CALL-1", io.BytesIO()
+            session.reader.buffer = bytearray(b"Last refusal")
+            session.reader.line.side_effect = [b"First refusal line\r\n", error]
+            with self.assertRaises(type(error)):
+                driver.exact_human_reply(session, command, reply)
+            session.get.assert_not_called()
+            self.assertTrue(session.suite.log.getvalue().endswith(b"First refusal line\r\nLast refusal"))
+
     def test_archive_get_follows_complete_history_and_preserves_rows(self):
         events = []
         session = mock.Mock()

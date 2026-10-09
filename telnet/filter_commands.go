@@ -384,32 +384,32 @@ func parseCCDialect(tokens, upper []string) (parsedFilterCommand, bool, string) 
 		}
 		return parsedFilterCommand{}, true, "Usage: RESET FILTER\nType HELP for usage.\n"
 	case "SET/ANN":
-		return parsedFilterCommand{action: actionAllow, domain: "ANNOUNCE"}, true, ""
+		return parseCCShortcut(upper, parsedFilterCommand{action: actionAllow, domain: "ANNOUNCE"})
 	case "SET/NOANN":
-		return parsedFilterCommand{action: actionBlock, domain: "ANNOUNCE"}, true, ""
+		return parseCCShortcut(upper, parsedFilterCommand{action: actionBlock, domain: "ANNOUNCE"})
 	case "SET/BEACON":
-		return parsedFilterCommand{action: actionAllow, domain: "BEACON"}, true, ""
+		return parseCCShortcut(upper, parsedFilterCommand{action: actionAllow, domain: "BEACON"})
 	case "SET/NOBEACON":
-		return parsedFilterCommand{action: actionBlock, domain: "BEACON"}, true, ""
+		return parseCCShortcut(upper, parsedFilterCommand{action: actionBlock, domain: "BEACON"})
 	case "SET/WWV":
-		return parsedFilterCommand{action: actionAllow, domain: "WWV"}, true, ""
+		return parseCCShortcut(upper, parsedFilterCommand{action: actionAllow, domain: "WWV"})
 	case "SET/NOWWV":
-		return parsedFilterCommand{action: actionBlock, domain: "WWV"}, true, ""
+		return parseCCShortcut(upper, parsedFilterCommand{action: actionBlock, domain: "WWV"})
 	case "SET/WCY":
-		return parsedFilterCommand{action: actionAllow, domain: "WCY"}, true, ""
+		return parseCCShortcut(upper, parsedFilterCommand{action: actionAllow, domain: "WCY"})
 	case "SET/NOWCY":
-		return parsedFilterCommand{action: actionBlock, domain: "WCY"}, true, ""
+		return parseCCShortcut(upper, parsedFilterCommand{action: actionBlock, domain: "WCY"})
 	case "SET/SELF":
-		return parsedFilterCommand{action: actionAllow, domain: "SELF"}, true, ""
+		return parseCCShortcut(upper, parsedFilterCommand{action: actionAllow, domain: "SELF"})
 	case "SET/NOSELF":
-		return parsedFilterCommand{action: actionBlock, domain: "SELF"}, true, ""
+		return parseCCShortcut(upper, parsedFilterCommand{action: actionBlock, domain: "SELF"})
 	case "SET/SKIMMER":
-		return parsedFilterCommand{action: actionAllow, domain: "SOURCE", args: []string{"SKIMMER"}}, true, ""
+		return parseCCShortcut(upper, parsedFilterCommand{action: actionAllow, domain: "SOURCE", args: []string{"SKIMMER"}})
 	case "SET/NOSKIMMER":
-		return parsedFilterCommand{action: actionBlock, domain: "SOURCE", args: []string{"SKIMMER"}}, true, ""
+		return parseCCShortcut(upper, parsedFilterCommand{action: actionBlock, domain: "SOURCE", args: []string{"SKIMMER"}})
 	case "SET/NOFILTER":
 		// CC "no filter" means allow everything.
-		return parsedFilterCommand{action: actionAllow, domain: "NOFILTER"}, true, ""
+		return parseCCShortcut(upper, parsedFilterCommand{action: actionAllow, domain: "NOFILTER"})
 	case "SET/FILTER":
 		if len(upper) < 2 {
 			return parsedFilterCommand{}, true, passFilterUsageMsg()
@@ -418,11 +418,17 @@ func parseCCDialect(tokens, upper []string) (parsedFilterCommand, bool, string) 
 		args := tokens[2:]
 		// Recognize inline /OFF to disable a domain quickly.
 		if strings.HasSuffix(domain, "/OFF") {
+			if len(args) != 0 {
+				return parsedFilterCommand{}, true, fmt.Sprintf("Usage: SET/FILTER %s\nNo changes applied.\n", domain)
+			}
 			domain = strings.TrimSuffix(domain, "/OFF")
 			args = []string{"ALL"}
 			return parsedFilterCommand{action: actionBlock, domain: domain, args: args}, true, ""
 		}
 		if strings.HasSuffix(domain, "/ON") {
+			if len(args) != 0 {
+				return parsedFilterCommand{}, true, fmt.Sprintf("Usage: SET/FILTER %s\nNo changes applied.\n", domain)
+			}
 			domain = strings.TrimSuffix(domain, "/ON")
 			args = []string{"ALL"}
 			return parsedFilterCommand{action: actionAllow, domain: domain, args: args}, true, ""
@@ -441,20 +447,29 @@ func parseCCDialect(tokens, upper []string) (parsedFilterCommand, bool, string) 
 		return cmd, true, ""
 	default:
 		// Mode shortcuts: SET/FT8, SET/NOFT8, etc.
-		if len(upper) == 1 && strings.HasPrefix(upper[0], "SET/NO") {
+		if strings.HasPrefix(upper[0], "SET/NO") {
 			mode := strings.TrimPrefix(upper[0], "SET/NO")
 			if isCCMode(mode) {
-				return parsedFilterCommand{action: actionBlock, domain: "MODE", args: []string{mode}}, true, ""
+				return parseCCShortcut(upper, parsedFilterCommand{action: actionBlock, domain: "MODE", args: []string{mode}})
 			}
 		}
-		if len(upper) == 1 && strings.HasPrefix(upper[0], "SET/") && !strings.Contains(upper[0], "/NO") {
+		if strings.HasPrefix(upper[0], "SET/") && !strings.Contains(upper[0], "/NO") {
 			mode := strings.TrimPrefix(upper[0], "SET/")
 			if isCCMode(mode) {
-				return parsedFilterCommand{action: actionAllow, domain: "MODE", args: []string{mode}}, true, ""
+				return parseCCShortcut(upper, parsedFilterCommand{action: actionAllow, domain: "MODE", args: []string{mode}})
 			}
 		}
 		return parsedFilterCommand{}, false, ""
 	}
+}
+
+// Check the original shortcut before accepting its normalized value; otherwise its
+// ignored tail can acknowledge an unintended change under the full command.
+func parseCCShortcut(upper []string, command parsedFilterCommand) (parsedFilterCommand, bool, string) {
+	if len(upper) != 1 {
+		return parsedFilterCommand{}, true, fmt.Sprintf("Usage: %s\nNo changes applied.\n", upper[0])
+	}
+	return command, true, ""
 }
 
 func newBandHandler() *domainHandler {
@@ -741,6 +756,9 @@ func newNoFilterHandler() *domainHandler {
 		apply: func(c *Client, action filterAction, args []string) (string, bool) {
 			if action != actionAllow {
 				return invalidFilterCommandMsg, false
+			}
+			if len(args) != 0 && (len(args) != 1 || !strings.EqualFold(args[0], "ALL")) {
+				return "NOFILTER accepts no value or ALL. No changes applied.\n", false
 			}
 			c.updateFilter(func(f *filter.Filter) { f.Reset() })
 			return "All filters disabled\n", true
@@ -1348,6 +1366,9 @@ func newFeatureToggleHandler(name string, setter func(*filter.Filter, bool), ali
 		name:    name,
 		aliases: aliases,
 		apply: func(c *Client, action filterAction, args []string) (string, bool) {
+			if len(args) != 0 && (len(args) != 1 || !strings.EqualFold(args[0], "ALL")) {
+				return fmt.Sprintf("%s accepts no value or ALL. No changes applied.\n", name), false
+			}
 			switch action {
 			case actionAllow:
 				c.updateFilter(func(f *filter.Filter) { setter(f, true) })

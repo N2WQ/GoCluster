@@ -1273,6 +1273,7 @@ func filterHelpLines(dialect string) []string {
 		"PASS ANNOUNCE | REJECT ANNOUNCE",
 		"PASS SELF | REJECT SELF",
 		"PASS TOXIC | REJECT TOXIC",
+		"Feature switches accept no value or ALL; other values are refused.",
 		"PASS NEARBY ON|OFF",
 	}
 	lines = append(lines, "", "Event filters:")
@@ -1292,10 +1293,12 @@ func filterHelpLines(dialect string) []string {
 		lines = append(lines, wrapTextLines(ccModeLine, "  ")...)
 		lines = append(lines,
 			"SET/NOFILTER",
+			"CC shortcuts take no extra arguments.",
 			"SET/FILTER <type> <list>",
 			"UNSET/FILTER <type> <list>",
 			"SET/FILTER <type>/ON  -> PASS <type> ALL",
 			"SET/FILTER <type>/OFF -> REJECT <type> ALL",
+			"Inline /ON and /OFF flags take no extra arguments.",
 			"SHOW/FILTER | SH/FILTER",
 		)
 	}

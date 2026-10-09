@@ -194,6 +194,37 @@ def require_callsign_archive(session, label, visible):
     require_history_row(rows[0])
 
 
+def exact_human_reply(session, command, reply):
+    # Receive the known complete refusal before GET can echo into its text.
+    expected, index, received, raw = reply.splitlines(), 0, 0, bytearray()
+    require(bool(expected), "empty human reply oracle")
+    try:
+        session.send(command + "\r\n")
+        while index < len(expected):
+            line = session.reader.line()
+            received += len(line)
+            raw.extend(line[:harness.MAX_FRAME - len(raw)])
+            require(received <= harness.MAX_FRAME and line.endswith(b"\r\n") and b"\r" not in line[:-2],
+                    "human reply exceeds its bound or has invalid CRLF")
+            text = line[:-2].decode("ascii", "strict")
+            if index == 0 and text in ("", command.upper()):
+                continue
+            require(text == expected[index], "human reply differs from the exact refusal")
+            index += 1
+    except Exception:
+        pending = session.reader.buffer
+        received += len(pending)
+        raw.extend(pending[:harness.MAX_FRAME - len(raw)])
+        raise
+    finally:
+        receipt = f"\n[{session.call}] {command}\n".encode() + bytes(raw)
+        if received > len(raw):
+            receipt += b"\n[human receipt truncated at 65536 bytes]\n"
+        session.suite.log.write(receipt)
+        session.suite.log.flush()
+    return reply, session.get()
+
+
 def callsign_pattern_cases(suite, root, cw_label, saved_callsigns):
     for dialect, call in (("go", "VE3ABC-70044"), ("cc", "VE3ABC-70045")):
         current = harness.Session(suite, call)
@@ -212,10 +243,9 @@ def callsign_pattern_cases(suite, root, cw_label, saved_callsigns):
                 # underscores/non-ASCII are separately checked at the direct stage.
                 for bad_list in ("N0XYZ,W*ABC", "*ABC*,N0XYZ", "N0XYZ,W1?", "W1.ABC,N0XYZ"):
                     before, saved = current.get(), record.read_bytes()
-                    text, after = current.human(verb + " " + domain + " " + bad_list)
-                    require(text.strip() == "Invalid callsign pattern. Use ASCII letters, digits, / or -.\n"
-                            "Use at most one * at the beginning or end. No changes applied.",
-                            "invalid callsign list lacks the specific whole-list refusal")
+                    _, after = exact_human_reply(current, verb + " " + domain + " " + bad_list,
+                                                 "Invalid callsign pattern. Use ASCII letters, digits, / or -.\n"
+                                                 "Use at most one * at the beginning or end. No changes applied.")
                     require(after["configuration"] == before["configuration"] and
                             after["revision"] == before["revision"] and
                             after["status"]["effective"] == before["status"]["effective"] and
@@ -241,6 +271,126 @@ def callsign_pattern_cases(suite, root, cw_label, saved_callsigns):
                 result["result"]["valid"] is True and result["result"]["applied"] is False and
                 result["result"]["persisted"] is False, "human callsign configuration is machine-invalid")
         saved_callsigns[call] = (document["configuration"], expected)
+
+
+def require_filter_argument_refusal(session, command, record, exact_feedback=None):
+    before, saved = session.get(), record.read_bytes()
+    if exact_feedback is None:
+        fields = command.upper().split()
+        if fields[0].startswith("SET/") and fields[0] != "SET/FILTER":
+            exact_feedback = "Usage: " + fields[0] + "\nNo changes applied."
+        elif fields[0] == "SET/FILTER" and "/" in fields[1]:
+            exact_feedback = "Usage: SET/FILTER " + fields[1] + "\nNo changes applied."
+        else:
+            domain = "ANNOUNCE" if fields[1] == "PC93" else fields[1]
+            exact_feedback = domain + " accepts no value or ALL. No changes applied."
+    text, after = exact_human_reply(session, command, exact_feedback)
+    require(text.strip() == exact_feedback, "malformed filter arguments lack a refusal")
+    require(after["configuration"] == before["configuration"] and
+            after["revision"] == before["revision"] and
+            after["status"]["effective"] == before["status"]["effective"] and
+            after["status"]["preset"] == before["status"]["preset"] and
+            record.read_bytes() == saved, "malformed filter arguments changed live or saved state")
+
+
+def filter_argument_cases(suite, root, cw_label, saved_arguments):
+    switches = dict(BEACON="include_beacons", WWV="allow_wwv", WCY="allow_wcy",
+                    ANNOUNCE="allow_announce", SELF="allow_self", TOXIC="allow_toxic")
+    for dialect, call in (("go", "VE3ABC-70046"), ("cc", "VE3ABC-70047")):
+        current = harness.Session(suite, call)
+        current.human("PAUSE 300")
+        current.human("DIALECT " + dialect)
+        allow, block = ("PASS", "REJECT") if dialect == "go" else ("SET/FILTER", "UNSET/FILTER")
+        record = root / "users" / (call + ".yaml")
+        for domain, key in switches.items():
+            for verb, opposite, enabled in ((allow, block, True), (block, allow, False)):
+                current.human(opposite + " " + domain)
+                for tail in ("OFF", "ALL OFF", "ALL ALL"):
+                    require_filter_argument_refusal(current, verb + " " + domain + " " + tail, record)
+                _, document = current.human(verb + " " + domain + " ALL")
+                require(document["configuration"]["filters"][key] is enabled and
+                        stored_document(record.read_bytes())[key] is enabled,
+                        "valid switch operation lost its live or saved direction")
+        current.human("REJECT BAND ALL")
+        require_filter_argument_refusal(current, "PASS NOFILTER OFF", record)
+        _, document = current.human("PASS NOFILTER ALL", "All filters disabled")
+        require(document["configuration"]["filters"]["bands"]["allow_all"] is True,
+                "compatible NOFILTER ALL did not clear restrictions")
+        require_callsign_archive(current, cw_label, True)
+        if dialect == "cc":
+            for yes, no, key in (("SET/ANN", "SET/NOANN", "allow_announce"),
+                                 ("SET/BEACON", "SET/NOBEACON", "include_beacons"),
+                                 ("SET/WWV", "SET/NOWWV", "allow_wwv"),
+                                 ("SET/WCY", "SET/NOWCY", "allow_wcy"),
+                                 ("SET/SELF", "SET/NOSELF", "allow_self")):
+                for command, opposite, enabled in ((yes, no, True), (no, yes, False)):
+                    current.human(opposite)
+                    for tail in ("ON", "ALL"):
+                        require_filter_argument_refusal(current, command + " " + tail, record)
+                    _, document = current.human(command)
+                    require(document["configuration"]["filters"][key] is enabled,
+                            "valid CC feature shortcut changed the wrong direction")
+            for command, opposite, enabled in (("SET/SKIMMER", "SET/NOSKIMMER", True),
+                                               ("SET/NOSKIMMER", "SET/SKIMMER", False)):
+                current.human(opposite)
+                require_filter_argument_refusal(current, command + " ALL", record)
+                _, document = current.human(command)
+                rule = document["configuration"]["filters"]["sources"]
+                require(rule["block"].get("SKIMMER", False) is (not enabled) and
+                        rule["allow"].get("SKIMMER", False) is enabled,
+                        "valid skimmer shortcut changed the wrong source")
+            current.human("PASS NOFILTER")
+            for mode in ("CW", "FT8"):
+                for command, opposite in (("SET/" + mode, "SET/NO" + mode),
+                                          ("SET/NO" + mode, "SET/" + mode)):
+                    current.human(opposite)
+                    require_filter_argument_refusal(current, command + " CW", record)
+                    current.human(command)
+            current.human("SET/CW")
+            require_callsign_archive(current, cw_label, True)
+            current.human("SET/NOCW")
+            require_callsign_archive(current, cw_label, False)
+            current.human("SET/CW")
+            current.human("REJECT BAND ALL")
+            require_filter_argument_refusal(current, "SET/NOFILTER ALL", record)
+            current.human("SET/NOFILTER")
+            for domain in ("BAND", "MODE", "DXCALL", "DECALL", "BEACON", "TOXIC"):
+                for flag, opposite in (("OFF", "ON"), ("ON", "OFF")):
+                    current.human("SET/FILTER " + domain + "/" + opposite)
+                    for tail in ("ALL", "20 CW"):
+                        require_filter_argument_refusal(current, "SET/FILTER " + domain + "/" + flag + " " + tail, record)
+                    _, document = current.human("SET/FILTER " + domain + "/" + flag)
+                    filters = document["configuration"]["filters"]
+                    if domain in ("BAND", "MODE"):
+                        rule = filters["bands" if domain == "BAND" else "modes"]
+                        require(rule == dict(allow_all=flag == "ON", block_all=flag == "OFF",
+                                             allow={}, block={}), "valid inline flag lost its ALL direction")
+                    elif domain in ("DXCALL", "DECALL"):
+                        stem = "dx" if domain == "DXCALL" else "de"
+                        require(filters[stem + "_callsigns"] == [] and
+                                filters["block_" + stem + "_callsigns"] == ([] if flag == "ON" else ["*"]),
+                                "valid inline flag lost its callsign reset/block operation")
+                    else:
+                        require(filters[switches[domain]] is (flag == "ON"),
+                                "valid inline feature flag lost its direction")
+                    if domain in ("BAND", "MODE", "DXCALL", "DECALL"):
+                        require_callsign_archive(current, cw_label, flag == "ON")
+            require_filter_argument_refusal(current, "SET/FILTER NOFILTER/ON OFF", record)
+            current.human("REJECT BAND ALL")
+            require_filter_argument_refusal(current, "SET/FILTER NOFILTER/OFF", record,
+                                            "Invalid filter command. Type HELP for usage.")
+            current.human("SET/FILTER NOFILTER/ON")
+            # GO fallback must reach the same strict switch owner.
+            require_filter_argument_refusal(current, "PASS BEACON OFF", record)
+            require_filter_argument_refusal(current, "REJECT PC93 ON", record)
+        current.human("PASS NOFILTER")
+        current.human("REJECT BEACON")
+        _, document = current.human("REJECT MODE FT8")
+        require(document["configuration"]["filters"]["include_beacons"] is False and
+                document["configuration"]["filters"]["modes"]["block"] == {"FT8": True},
+                "final supported switch/MODE selection is incorrect")
+        require_callsign_archive(current, cw_label, True)
+        saved_arguments[call] = document["configuration"]
 
 
 def grid_exact_cases(suite, root, saved_grids):
@@ -718,6 +868,7 @@ def profile(binary, root, source, transport):
                 f"{transport}/0: NEARBY endpoints filter seeded archive independently",
                 f"{transport}: GRID exact syntax preserves refusals and canonical publication",
                 f"{transport}: callsign patterns admit complete lists and preserve matching",
+                f"{transport}: original filter arguments refuse before normalization",
                 f"{transport}/1: held endpoint and loaded consumers",
                 f"{transport}: preferences and archive survive fresh child",
                 f"{transport}: NOFILTER geography survives fresh child",
@@ -731,7 +882,8 @@ def profile(binary, root, source, transport):
                 f"{transport}: MODE outcomes survive fresh child",
                 f"{transport}/1: NEARBY endpoints filter seeded archive independently",
                 f"{transport}: canonical GRID and active cells survive fresh child",
-                f"{transport}: callsign patterns and matching survive fresh child"]
+                f"{transport}: callsign patterns and matching survive fresh child",
+                f"{transport}: supported filter arguments survive fresh child"]
     call = "K1ABC-70001"
     observer_call, observer_configuration = "VE3ABC-70003", None
     failed_records, refused_records, compatible_records = {}, {}, {}
@@ -741,6 +893,7 @@ def profile(binary, root, source, transport):
     saved_modes = {}
     saved_grids = {}
     saved_callsigns = {}
+    saved_arguments = {}
     label = None
     suites = []
     for generation in range(2):
@@ -1142,6 +1295,8 @@ def profile(binary, root, source, transport):
                      lambda: grid_exact_cases(suite, root, saved_grids))
                 case(f"{transport}: callsign patterns admit complete lists and preserve matching",
                      lambda: callsign_pattern_cases(suite, root, label, saved_callsigns))
+                case(f"{transport}: original filter arguments refuse before normalization",
+                     lambda: filter_argument_cases(suite, root, label, saved_arguments))
             else:
                 def restored():
                     settings = session.get()["configuration"]["settings"]
@@ -1312,6 +1467,17 @@ def profile(binary, root, source, transport):
                         require_callsign_archive(current, label, True)
 
                 case(f"{transport}: callsign patterns and matching survive fresh child", restored_callsigns)
+
+                def restored_arguments():
+                    require(len(saved_arguments) == 2, "required original-argument controls did not execute")
+                    for stored_call, configuration in saved_arguments.items():
+                        current = harness.Session(suite, stored_call)
+                        _, document = current.human("PAUSE 300")
+                        require(document["configuration"] == configuration,
+                                "fresh child lost supported filter argument selections")
+                        require_callsign_archive(current, label, True)
+
+                case(f"{transport}: supported filter arguments survive fresh child", restored_arguments)
         finally:
             try:
                 if suite:
