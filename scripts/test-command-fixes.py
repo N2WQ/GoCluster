@@ -84,6 +84,220 @@ def require_save_warning(text):
             f"missing or misleading persistence warning: {text[:800]}")
 
 
+RECORD_BYTES = 1 << 20
+
+
+def refused_resource_record(kind):
+    """Separate raw, normalized-byte and logical-work refusals with valid YAML."""
+    if kind == "RAW":
+        # A fitting mapping with comment padding would otherwise load normally.
+        return b"{}\n#" + b"X" * (RECORD_BYTES - 3)
+    if kind == "CANONICAL":
+        # Five retained scalar occurrences alone exceed the normalized-record
+        # byte quota. P+E stays below 2 Mi units and raw bytes remain small.
+        return ("legacy: &text " + "K" * 210000 +
+                "\nrecent_ips: [" + ",".join(["*text"] * 5) + "]\n").encode("ascii")
+    require(kind == "WORK", "unknown resource fixture")
+    # Frozen 04a control: 144 old decode visits, but 70*32768 scalar bytes.
+    # Trimming retains only five entries, separating work from final bytes.
+    return ("legacy: &text " + "K" * 32768 +
+            "\nrecent_ips: [" + ",".join(["*text"] * 70) + "]\n").encode("ascii")
+
+
+def stored_document(raw):
+    document = harness.yaml.load(raw.decode("ascii"), Loader=harness.StrictLoader)
+    require(isinstance(document, dict), "stored fixture is not a mapping")
+    return document
+
+
+def record_with_metadata(raw, timestamp, ip):
+    document = stored_document(raw)
+    document["last_login_utc"] = timestamp
+    document["recent_ips"] = [ip]
+    return harness.yaml.safe_dump(document, sort_keys=False).encode("ascii")
+
+
+def require_metadata(raw, timestamp, ip):
+    saved = stored_document(raw)
+    value = saved["last_login_utc"]
+    if not isinstance(value, str):
+        value = value.isoformat().replace("+00:00", "Z")
+    require(value == timestamp and saved["recent_ips"][0] == "127.0.0.1" and
+            ip in saved["recent_ips"] and len(saved["recent_ips"]) <= 5,
+            "save used stale session metadata instead of the authoritative repair")
+
+
+def padded_canonical_record(raw, remaining=8):
+    """Pad only the Go-written plain-ASCII metadata block, preserving encoding."""
+    require(stored_document(raw)["recent_ips"] == ["127.0.0.1"],
+            "canonical padding requires the held loopback login")
+    match = re.search(rb"(?m)^recent_ips:\n(?: +[^\n]*\n)+", raw)
+    require(match is not None, "Go-written recent IP block absent")
+    block = b"recent_ips:\n    - 127.0.0.1\n    - METADATA"
+    fixed = raw[:match.start()] + block + b"\n" + raw[match.end():]
+    padding = RECORD_BYTES - remaining - len(fixed)
+    require(padding > 0, "canonical record has no padding room")
+    result = raw[:match.start()] + block + b"A" * padding + b"\n" + raw[match.end():]
+    require(len(result) == RECORD_BYTES - remaining and
+            stored_document(result)["recent_ips"] == ["127.0.0.1", "METADATA" + "A" * padding],
+            "prospective fixture size or retained metadata changed")
+    return result
+
+
+def preset_library(root):
+    return root / "users" / "presets" / ("K1ABC".encode().hex() + ".yaml")
+
+
+def require_transaction_unchanged(before, after, record, saved, library, library_saved):
+    require(after["configuration"] == before["configuration"] and
+            after["revision"] == before["revision"] and
+            after["status"]["preset"] == before["status"]["preset"] and
+            after["status"]["effective"] == before["status"]["effective"] and
+            after["status"]["session"]["temporary_defaults"] ==
+            before["status"]["session"]["temporary_defaults"] and
+            record.read_bytes() == saved and library.read_bytes() == library_saved,
+            "resource refusal published, protected or durably changed the transaction")
+
+
+def resource_login_cases(suite, root, refused):
+    library = preset_library(root)
+    for index, kind in enumerate(("RAW", "CANONICAL", "WORK"), start=21):
+        call = f"K1ABC-700{index:02d}"
+        record, raw = root / "users" / (call + ".yaml"), refused_resource_record(kind)
+        record.write_bytes(raw)
+        refused[call] = raw
+        current = harness.Session(suite, call)
+        startup, document = current.human("PAUSE 300")
+        require("temporary defaults" in startup and
+                document["status"]["session"]["temporary_defaults"] is True and
+                record.read_bytes() == raw, f"{kind} resource-refused login was not protected")
+        for dialect in ("cc", "go"):
+            text, document = current.human("DIALECT " + dialect)
+            require_save_warning(text)
+            line = "SET/FILTER BAND 20" if dialect == "cc" else "PASS BAND 40"
+            text, document = current.human(line)
+            require_save_warning(text)
+            require(document["configuration"]["filters"]["bands"]["allow"].get(
+                "20m" if dialect == "cc" else "40m") is True and record.read_bytes() == raw,
+                f"{kind} protected edit was lost or overwrote storage")
+        library_saved = library.read_bytes()
+        before = current.get()
+        text, after = current.human("SAVE PRESET BLOCK" + kind, "SAVE PRESET failed:")
+        require("saved user record is protected" in text,
+                "protected SAVE did not stop at the existing record-protection boundary")
+        require_transaction_unchanged(before, after, record, raw, library, library_saved)
+
+
+def resource_warm_cases(suite, root, refused, repaired):
+    library = preset_library(root)
+    for index, kind in enumerate(("RAW", "CANONICAL", "WORK"), start=24):
+        call = f"K1ABC-700{index:02d}"
+        current = harness.Session(suite, call)
+        current.human("PAUSE 300")
+        name = "WARM" + kind
+        current.human("SAVE PRESET " + name, "Saved preset " + name)
+        record = root / "users" / (call + ".yaml")
+        repair_source, raw = record.read_bytes(), refused_resource_record(kind)
+        record.write_bytes(raw)
+        text, temporary = current.human("DIALECT cc")
+        require_save_warning(text)
+        text, temporary = current.human("PASS COMMENT TEMP " + kind)
+        require_save_warning(text)
+        require(temporary["configuration"]["filters"]["comments"] == ["TEMP " + kind] and
+                temporary["status"]["session"]["temporary_defaults"] is False and
+                record.read_bytes() == raw, "warm refusal became sticky or lost its temporary edit")
+        library_saved = library.read_bytes()
+        for target in (name, "DENY" + kind):
+            text, after = current.human("SAVE PRESET " + target, "SAVE PRESET failed:")
+            require("load current user record:" in text and
+                    "but could not persist its association" not in text,
+                    "warm refusal was misreported as protected or as a successful library write")
+            require_transaction_unchanged(temporary, after, record, raw, library, library_saved)
+        timestamp, ip = f"2026-10-08T12:34:{index:02d}Z", f"198.51.100.{index}"
+        record.write_bytes(record_with_metadata(repair_source, timestamp, ip))
+        text, after = current.human("PASS COMMENT RETRY " + kind)
+        require("warning: failed to persist" not in text and
+                after["configuration"]["filters"]["comments"] == ["TEMP " + kind, "RETRY " + kind] and
+                after["status"]["session"]["temporary_defaults"] is False,
+                "warm preparation did not retry after authoritative repair")
+        require_metadata(record.read_bytes(), timestamp, ip)
+        repaired[call] = (after["configuration"], timestamp, ip)
+
+    # A still-refused ordinary logout must preserve bytes; a repaired logout
+    # must independently retry without a second mutating command masking it.
+    for call, repair in (("K1ABC-70028", False), ("K1ABC-70029", True)):
+        current = harness.Session(suite, call)
+        current.human("PAUSE 300")
+        record = root / "users" / (call + ".yaml")
+        repair_source, raw = record.read_bytes(), refused_resource_record("RAW")
+        record.write_bytes(raw)
+        text, temporary = current.human("PASS COMMENT LOGOUT RETRY")
+        require_save_warning(text)
+        require(temporary["status"]["session"]["temporary_defaults"] is False and
+                record.read_bytes() == raw, "warm logout control did not remain temporary")
+        timestamp, ip = "2026-10-08T12:35:29Z", "198.51.100.29"
+        if repair:
+            record.write_bytes(record_with_metadata(repair_source, timestamp, ip))
+        current.close()
+        if not repair:
+            require(record.read_bytes() == raw, "logout overwrote a still-refused resource file")
+            refused[call] = raw
+            continue
+        deadline = time.monotonic() + 5
+        while stored_document(record.read_bytes()).get("comments") != ["LOGOUT RETRY"]:
+            require(time.monotonic() < deadline, "repaired logout did not save the temporary live edit")
+            time.sleep(.025)
+        require_metadata(record.read_bytes(), timestamp, ip)
+        repaired[call] = (temporary["configuration"], timestamp, ip)
+
+
+def resource_prospective_case(suite, root, prospective):
+    call = "K1ABC-70027"
+    current = harness.Session(suite, call)
+    current.human("PAUSE 300")
+    current.human("SET NOISE QUIET")
+    current.human("SAVE PRESET QUOTAOLD", "Saved preset QUOTAOLD")
+    _, before = current.human("PASS COMMENT CURRENT QUOTA")
+    require(before["status"]["preset"] == dict(associated=True, name="QUOTAOLD", modified=True),
+            "prospective control lacks an older, smaller applied baseline")
+    library, record = preset_library(root), root / "users" / (call + ".yaml")
+    collection = stored_document(library.read_bytes())
+    target = copy.deepcopy(collection["presets"]["QUOTAOLD"])
+    target["comments"] = ["LOAD TARGET GROWS BOTH CONFIGURATION AND BASELINE"]
+    collection["presets"]["QUOTALOAD"] = target
+    library.write_text(harness.yaml.safe_dump(collection, sort_keys=False), encoding="ascii")
+    library_saved = library.read_bytes()
+    saved = padded_canonical_record(record.read_bytes())
+    record.write_bytes(saved)
+
+    text, after = current.human("PASS COMMENT HUMAN PROSPECTIVE QUOTA", "Configuration command failed:")
+    require("user record exceeds 1048576 bytes" in text and
+            "load current user record:" not in text and "warning: failed to persist" not in text,
+            "prospective human quota was misclassified as a temporary live change")
+    require_transaction_unchanged(before, after, record, saved, library, library_saved)
+    for name in ("QUOTAOLD", "QUOTANEW"):
+        text, after = current.human("SAVE PRESET " + name, "SAVE PRESET failed:")
+        require("user record exceeds 1048576 bytes" in text and
+                "load current user record:" not in text and
+                "but could not persist its association" not in text,
+                "SAVE did not refuse prospective bytes before library publication")
+        require_transaction_unchanged(before, after, record, saved, library, library_saved)
+    candidate = copy.deepcopy(before["configuration"])
+    candidate["filters"]["comments"].append("EXTRA PROSPECTIVE QUOTA")
+    validation = current.upload("VALIDATE", "CONFIG", candidate)
+    suite.acknowledge(validation, applied=False)
+    require_transaction_unchanged(before, current.get(), record, saved, library, library_saved)
+    response = current.upload("PUT", "CONFIG", candidate, revision=before["revision"])
+    require(response.get("error", {}).get("code") == "persistence_failed",
+            "small valid machine candidate did not reach destination admission")
+    require_transaction_unchanged(before, current.get(), record, saved, library, library_saved)
+    text, after = current.human("LOAD PRESET QUOTALOAD", "LOAD PRESET failed:")
+    require("user record exceeds 1048576 bytes" in text and "load current user record:" not in text,
+            "LOAD fixture failed before prospective destination admission")
+    require_transaction_unchanged(before, after, record, saved, library, library_saved)
+    prospective[call] = (saved, before["configuration"], before["status"]["preset"])
+
+
 def profile(binary, root, source, transport):
     results, wire, cleanup, children = [], [], [], []
     required = [f"{transport}/0: held endpoint and loaded consumers",
@@ -97,18 +311,25 @@ def profile(binary, root, source, transport):
                 f"{transport}: compatible storage and old alias refusal reach login and LOAD",
                 f"{transport}: real machine LOAD and SAVE commit faults preserve publication",
                 f"{transport}: detached human edits preserve refusal and NEARBY restoration",
+                f"{transport}: resource-refused login keeps fitting edits temporary",
+                f"{transport}: warm resource refusals retry authoritative saves and logout",
+                f"{transport}: prospective human SAVE machine and LOAD refuse before effects",
                 f"{transport}/1: held endpoint and loaded consumers",
                 f"{transport}: preferences and archive survive fresh child",
                 f"{transport}: NOFILTER geography survives fresh child",
                 f"{transport}: failed saves and refused records survive fresh child",
                 f"{transport}: compatible storage survives fresh child",
                 f"{transport}: prepared commit outcomes survive fresh child",
-                f"{transport}: detached human settings survive fresh child"]
+                f"{transport}: detached human settings survive fresh child",
+                f"{transport}: resource-refused records survive fresh child",
+                f"{transport}: repaired resource metadata survives fresh child",
+                f"{transport}: prospective admission outcomes survive fresh child"]
     call = "K1ABC-70001"
     observer_call, observer_configuration = "VE3ABC-70003", None
     failed_records, refused_records, compatible_records = {}, {}, {}
     prepared_records = {}
     staged_records = {}
+    resource_refused, resource_repaired, resource_prospective = {}, {}, {}
     label = "T" + uuid.uuid4().hex[:8].upper()
     suites = []
     for generation in range(2):
@@ -494,6 +715,12 @@ def profile(binary, root, source, transport):
                         staged_records[staged_call] = configured["configuration"]
 
                 case(f"{transport}: detached human edits preserve refusal and NEARBY restoration", detached_human_edits)
+                case(f"{transport}: resource-refused login keeps fitting edits temporary",
+                     lambda: resource_login_cases(suite, root, resource_refused))
+                case(f"{transport}: warm resource refusals retry authoritative saves and logout",
+                     lambda: resource_warm_cases(suite, root, resource_refused, resource_repaired))
+                case(f"{transport}: prospective human SAVE machine and LOAD refuse before effects",
+                     lambda: resource_prospective_case(suite, root, resource_prospective))
             else:
                 def restored():
                     settings = session.get()["configuration"]["settings"]
@@ -580,6 +807,52 @@ def profile(binary, root, source, transport):
                                 "fresh child lost accepted detached human outcomes")
 
                 case(f"{transport}: detached human settings survive fresh child", restored_detached_humans)
+
+                def restored_resource_refusals():
+                    require(len(resource_refused) == 4, "required resource refusal controls did not execute")
+                    for stored_call, raw in resource_refused.items():
+                        record = root / "users" / (stored_call + ".yaml")
+                        require(record.read_bytes() == raw, "teardown changed resource-refused bytes")
+                        restored = harness.Session(suite, stored_call)
+                        startup, document = restored.human("PAUSE 300")
+                        require("temporary defaults" in startup and
+                                document["status"]["session"]["temporary_defaults"] is True and
+                                record.read_bytes() == raw, "fresh child did not protect resource refusal")
+
+                case(f"{transport}: resource-refused records survive fresh child", restored_resource_refusals)
+
+                def restored_resource_repairs():
+                    require(len(resource_repaired) == 4, "required authoritative retry controls did not execute")
+                    for stored_call, (configuration, timestamp, ip) in resource_repaired.items():
+                        record = root / "users" / (stored_call + ".yaml")
+                        require_metadata(record.read_bytes(), timestamp, ip) # Before login changes timestamp.
+                        restored = harness.Session(suite, stored_call)
+                        startup, document = restored.human("PAUSE 300")
+                        require("temporary defaults" not in startup and
+                                document["status"]["session"]["temporary_defaults"] is False and
+                                document["configuration"] == configuration,
+                                "fresh child lost the admitted temporary edit or repair")
+
+                case(f"{transport}: repaired resource metadata survives fresh child", restored_resource_repairs)
+
+                def restored_prospective_admission():
+                    require(len(resource_prospective) == 1, "prospective admission control did not execute")
+                    library = stored_document(preset_library(root).read_bytes())["presets"]
+                    require("QUOTANEW" not in library and library["QUOTAOLD"].get("comments", []) == [] and
+                            library["QUOTALOAD"]["comments"] ==
+                            ["LOAD TARGET GROWS BOTH CONFIGURATION AND BASELINE"],
+                            "failed quota SAVE altered the library before restart")
+                    for stored_call, (saved, configuration, preset_status) in resource_prospective.items():
+                        record = root / "users" / (stored_call + ".yaml")
+                        require(record.read_bytes() == saved, "teardown changed refused prospective state")
+                        restored = harness.Session(suite, stored_call)
+                        startup, document = restored.human("PAUSE 300")
+                        require("temporary defaults" not in startup and
+                                document["configuration"] == configuration and
+                                document["status"]["preset"] == preset_status,
+                                "fresh child restored a refused candidate or changed its baseline")
+
+                case(f"{transport}: prospective admission outcomes survive fresh child", restored_prospective_admission)
         finally:
             try:
                 if suite:

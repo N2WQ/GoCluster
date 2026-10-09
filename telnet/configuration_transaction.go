@@ -168,14 +168,11 @@ func (c *Client) configurationRevisionToken() (string, error) {
 }
 
 func (s *Server) persistConfiguration(c *Client, cfg filter.Configuration, ref *filter.PresetReference) error {
-	if c.recordProtected {
-		return errProtectedRecord
+	prepared, err := s.prepareConfigurationRecord(c, cfg, ref)
+	if err != nil {
+		return err
 	}
-	persist := filter.SaveConfiguration
-	if s != nil && s.saveConfigurationFn != nil {
-		persist = s.saveConfigurationFn
-	}
-	return persist(c.callsign, cfg, ref, c.recentIPs)
+	return s.commitConfigurationRecord(prepared)
 }
 
 // saveFilterOwned runs under a lease acquired by the enclosing command or final

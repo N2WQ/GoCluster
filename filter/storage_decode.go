@@ -1,7 +1,7 @@
 // File role: Operation-owned compatible decoding of persisted user/preset YAML.
 // The original typed traversal is accounted before bulk materialization. Its
 // yaml.v3 alias guards reset at the old plain Node.Decode boundaries, while the
-// document's physical/logical work remains shared. New quotas are not active.
+// document's physical/logical work remains shared and bounded before bulk decode.
 package filter
 
 import (
@@ -25,24 +25,52 @@ type storageDecodeField struct {
 }
 
 // Scratch state belongs to one document/callback. No node, key or type cache
-// survives the operation. Only raw-duplicate results are safe to memoize by node;
-// typed visits and merge skipping depend on the current decoder context.
+// survives the operation. Field schemas are immutable and raw-duplicate results
+// are safe to memoize by node; typed visits and merge skipping stay contextual.
 type storageDecodeState struct {
-	work        storageDecodeWork
-	materialize bool
-	duplicates  map[*yaml.Node]error
-	fields      map[reflect.Type]map[string]storageDecodeField
+	work                storageDecodeWork
+	limits              storageDecodeLimits
+	presetCountExceeded bool
+	materialize         bool
+	duplicates          map[*yaml.Node]error
+	fields              map[reflect.Type]map[string]storageDecodeField
 }
 
 type storageDecodeGuard struct {
-	visits      uint64
-	aliases     uint64
-	aliasDepth  uint64
-	active      map[*yaml.Node]bool
-	merged      map[any]bool
-	knownFields bool
-	typeErrors  []string
-	marker      int
+	visits        uint64
+	aliases       uint64
+	aliasDepth    uint64
+	active        map[*yaml.Node]bool
+	merged        map[any]bool
+	knownFields   bool
+	typeErrors    []string
+	marker        int
+	presetEntries *storagePresetEntries
+}
+
+type storageDecodeLimits struct {
+	work    uint64
+	presets int
+}
+
+// One logical collection map borrows this observer across merge frames. It
+// never changes traversal or suppresses losing values. Once overflow is known,
+// only the first limit+1 typed keys remain; later errors keep their precedence.
+type storagePresetEntries struct {
+	keys     map[string]bool
+	depth    int
+	overflow bool
+}
+
+func (state *storageDecodeState) observePresetEntry(entries *storagePresetEntries, key string) {
+	if entries.overflow || entries.keys[key] {
+		return
+	}
+	entries.keys[key] = true
+	if len(entries.keys) > state.limits.presets {
+		entries.overflow = true
+		state.presetCountExceeded = true
+	}
 }
 
 type storagePlainUserRecord UserRecord
@@ -58,7 +86,12 @@ func checkedStorageAdd(value *uint64, amount uint64) error {
 }
 
 func newStorageDecodeState(node *yaml.Node) (*storageDecodeState, error) {
+	return newStorageDecodeStateWithLimits(node, storageDecodeLimits{work: maxUserRecordWork})
+}
+
+func newStorageDecodeStateWithLimits(node *yaml.Node, limits storageDecodeLimits) (*storageDecodeState, error) {
 	state := &storageDecodeState{
+		limits:     limits,
 		duplicates: make(map[*yaml.Node]error),
 		fields:     make(map[reflect.Type]map[string]storageDecodeField),
 	}
@@ -78,9 +111,22 @@ func newStorageDecodeState(node *yaml.Node) (*storageDecodeState, error) {
 		if err := checkedStorageAdd(&state.work.P, amount); err != nil {
 			return nil, err
 		}
+		if err := state.admitWork(); err != nil {
+			return nil, err
+		}
 		pending = append(pending, current.Content...)
 	}
 	return state, nil
+}
+
+func (state *storageDecodeState) admitWork() error {
+	if state.work.P > math.MaxUint64-state.work.E {
+		return errors.New("stored configuration decoding work overflow")
+	}
+	if state.limits.work != 0 && state.work.P+state.work.E > state.limits.work {
+		return storageAdmissionf("stored configuration decoding work exceeds %d units", state.limits.work)
+	}
+	return nil
 }
 
 func newStorageDecodeGuard(knownFields bool) *storageDecodeGuard {
@@ -98,8 +144,8 @@ func (state *storageDecodeState) visit(node *yaml.Node, guard *storageDecodeGuar
 	if err := checkedStorageAdd(&state.work.E, amount); err != nil {
 		return err
 	}
-	if state.work.P > math.MaxUint64-state.work.E {
-		return errors.New("stored configuration decoding work overflow")
+	if err := state.admitWork(); err != nil {
+		return err
 	}
 	if err := checkedStorageAdd(&guard.visits, 1); err != nil {
 		return err
@@ -185,6 +231,33 @@ func (state *storageDecodeState) storedFields(typ reflect.Type) map[string]stora
 	add(typ, nil)
 	state.fields[typ] = fields
 	return fields
+}
+
+// Owner prechecks borrow the same operation-owned schema as typed decoding.
+// Only names/types are reused; each owner and value is validated afresh.
+func (state *storageDecodeState) validateStoredMapping(node *yaml.Node, typ reflect.Type) error {
+	if node.Kind != yaml.MappingNode {
+		return errors.New("stored configuration must be a mapping")
+	}
+	fields := state.storedFields(typ)
+	for i := 0; i < len(node.Content); i += 2 {
+		key := node.Content[i]
+		if key.Kind != yaml.ScalarNode || key.Tag != "!!str" || fields[key.Value].typ == nil {
+			return fmt.Errorf("unknown stored configuration field %q", key.Value)
+		}
+	}
+	return nil
+}
+
+func (state *storageDecodeState) validateCurrentStoredValues(node *yaml.Node, typ reflect.Type) error {
+	fields := state.storedFields(typ)
+	for i := 0; i < len(node.Content); i += 2 {
+		field := node.Content[i].Value
+		if err := validateStoredValueWithFields(node.Content[i+1], fields[field].typ, state.validateCurrentStoredValues); err != nil {
+			return fmt.Errorf("invalid stored field %s: %w", field, err)
+		}
+	}
+	return nil
 }
 
 func storedTypeError(guard *storageDecodeGuard, node *yaml.Node, typ reflect.Type) {
@@ -306,6 +379,17 @@ func (state *storageDecodeState) decodeMapping(node *yaml.Node, typ reflect.Type
 }
 
 func (state *storageDecodeState) decodeMappingContents(node *yaml.Node, typ reflect.Type, out reflect.Value, guard *storageDecodeGuard) (reflect.Value, bool, error) {
+	if !state.materialize && state.limits.presets > 0 && typ == reflect.TypeFor[map[string]*SavedPreset]() {
+		previous := guard.presetEntries
+		if previous == nil {
+			guard.presetEntries = &storagePresetEntries{keys: make(map[string]bool, state.limits.presets+1)}
+		}
+		guard.presetEntries.depth++
+		defer func() {
+			guard.presetEntries.depth--
+			guard.presetEntries = previous
+		}()
+	}
 	merged := guard.merged
 	guard.merged = nil
 	defer func() { guard.merged = merged }()
@@ -406,6 +490,13 @@ func (state *storageDecodeState) decodeMapEntries(node *yaml.Node, typ reflect.T
 		_, good, err = state.decode(node.Content[i+1], typ.Elem(), value, guard)
 		if err != nil {
 			return err
+		}
+		if entries := guard.presetEntries; entries != nil && typ == reflect.TypeFor[map[string]*SavedPreset]() {
+			// The first frame creates a map even when empty; merge frames borrow
+			// that existing map. Match insertion of null values without building it.
+			if good || node.Content[i+1].ShortTag() == "!!null" && (entries.depth == 1 || !entries.keys[key.String()]) {
+				state.observePresetEntry(entries, key.String())
+			}
 		}
 		if out.IsValid() && (good || node.Content[i+1].ShortTag() == "!!null" && (mapIsNew || !out.MapIndex(key).IsValid())) {
 			out.SetMapIndex(key, value)

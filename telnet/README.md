@@ -33,6 +33,16 @@ temporary; readbacks remain available. SAVE PRESET is rejected before any
 library write, and LOAD PRESET and PUT/PATCH cannot commit configuration.
 LIST/DELETE retain their separate preset-library behavior.
 
+Raw and normalized user records must each fit 1 MiB. The proposed saved record,
+including login metadata and the applied baseline, must also fit 1 MiB.
+Preferences and each baseline must fit 256 KiB when encoded as a standalone
+preset. A small file can still be refused for expensive alias expansion; these
+processing limits are separate from file sizes. Refused files are preserved.
+Human changes are admitted before becoming live. If a connected user's file
+becomes unreadable, fitting changes remain temporary with a warning. Later saves
+and ordinary logout retry a repaired file using its authoritative metadata.
+Sessions that started with protected defaults keep that protection until logout.
+
 The handshake transcript tests in this package cover the visible login sequence.
 
 ## Rejected Input And Recovery
@@ -785,8 +795,10 @@ Deleting or overwriting the named library entry leaves the already applied
 snapshot and reference intact. Failed LOAD preserves the previous preferences,
 association and reference, both live and on disk.
 
-SAVE has an explicit partial-success outcome when saving the library snapshot
-succeeds but persisting the SSID association fails:
+SAVE prepares and admits both the library and SSID association before writing
+either. Admission failure changes neither file. SAVE has an explicit
+partial-success outcome when the admitted library write succeeds but the later
+SSID association write fails:
 
 ```text
 Saved preset CONTEST, but could not persist its association for W1ABC-1.

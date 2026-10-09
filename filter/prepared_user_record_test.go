@@ -186,7 +186,7 @@ func TestPreparedConfigurationCapturesExplicitReference(t *testing.T) {
 	}
 }
 
-func TestPreparedRecordFutureLimitsInactive(t *testing.T) {
+func TestPreparedRecordLimitsActive(t *testing.T) {
 	usePresetTestDir(t)
 	large := strings.Repeat("A", (1<<20)+1)
 	for _, prepare := range []func() (*PreparedUserRecord, error){
@@ -199,8 +199,8 @@ func TestPreparedRecordFutureLimitsInactive(t *testing.T) {
 		},
 	} {
 		prepared, err := prepare()
-		if err != nil || prepared.ByteLen() <= 1<<20 {
-			t.Fatalf("future ordinary-record/configuration quota activated early: %v", err)
+		if !errors.Is(err, ErrStorageAdmission) || prepared != nil {
+			t.Fatalf("ordinary-record/configuration quota was bypassed: %v", err)
 		}
 	}
 }

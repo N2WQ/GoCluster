@@ -468,7 +468,7 @@ func TestStorageDecodePresetCollectionCompatibility(t *testing.T) {
 	}
 }
 
-func TestStorageDecodeNewThresholdsInactive(t *testing.T) {
+func TestStorageDecodeThresholdsActive(t *testing.T) {
 	usePresetTestDir(t)
 	// These controls apply to 04a. Quota activation in 04d replaces their
 	// acceptance assertions with the separately approved refusal assertions.
@@ -479,7 +479,15 @@ func TestStorageDecodeNewThresholdsInactive(t *testing.T) {
 		t.Fatal("raw-limit control does not exceed the future limit")
 	}
 	t.Run("raw bytes", func(t *testing.T) {
-		assertUserRecordCompat(t, storageCompatCase{raw: raw})
+		if _, err := frozenDecodeUserRecord([]byte(raw)); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(userRecordPath("N2WQ"), []byte(raw), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadUserRecord("N2WQ"); !errors.Is(err, ErrStorageAdmission) {
+			t.Fatalf("raw threshold inactive: %v", err)
+		}
 	})
 	const scalarBytes = 32768
 	const occurrences = 70
@@ -507,7 +515,12 @@ func TestStorageDecodeNewThresholdsInactive(t *testing.T) {
 				t.Fatal("logical-work occurrence does not resolve to the intended scalar")
 			}
 		}
-		assertUserRecordCompat(t, storageCompatCase{raw: workRaw})
+		if err := os.WriteFile(userRecordPath("N2WQ"), []byte(workRaw), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadUserRecord("N2WQ"); !errors.Is(err, ErrStorageAdmission) || !strings.Contains(err.Error(), "decoding work") {
+			t.Fatalf("logical work threshold inactive: %v", err)
+		}
 		record, err := frozenDecodeUserRecord([]byte(workRaw))
 		if err != nil || len(record.RecentIPs) != 5 {
 			t.Fatalf("old trimming did not retain five recent IPs: %v", err)

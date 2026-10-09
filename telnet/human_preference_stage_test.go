@@ -92,7 +92,7 @@ func TestHumanPreferenceExplicitRefusalAndSaveIntent(t *testing.T) {
 				t.Fatal(err)
 			}
 			attempts := 0
-			s.saveConfigurationFn = func(string, filter.Configuration, *filter.PresetReference, []string) error { attempts++; return nil }
+			s.commitConfigurationFn = func(*filter.PreparedUserRecord) error { attempts++; return nil }
 			for _, line := range []string{"PASS BAND 20 NOTABAND", "PASS MODE CW NOTAMODE", "PASS DXCONT EU INVALID", "PASS COMMENT é", "PASS COMMENT pota", "REMOVE PASS COMMENT absent"} {
 				staged := newHumanPreferenceCandidate(c)
 				outcome := s.filterEngine.stageOwned(staged, line)
@@ -169,7 +169,7 @@ func TestHumanPreferenceGridPercentWarningIsLiteral(t *testing.T) {
 	requireH3Mappings(t)
 	s := presetTestServer(t)
 	c := configurationTestClient(s, "W1ABC-1")
-	s.saveConfigurationFn = func(string, filter.Configuration, *filter.PresetReference, []string) error {
+	s.commitConfigurationFn = func(*filter.PreparedUserRecord) error {
 		return errors.New("denied")
 	}
 	response, handled := s.handlePathSettingsCommand(c, "SET GRID FN31PR%v")
@@ -178,25 +178,25 @@ func TestHumanPreferenceGridPercentWarningIsLiteral(t *testing.T) {
 	}
 }
 
-func TestHumanPreferenceFutureQuotasRemainInactive(t *testing.T) {
+func TestHumanPreferenceOversizedSavedRecordUsesProtectedDefaults(t *testing.T) {
 	s := presetTestServer(t)
-	large := strings.Repeat("A", (1<<20)+1)
-	record := &filter.UserRecord{Filter: *filter.NewFilter(), Dialect: "go"}
-	record.DXCallsigns = []string{large}
-	if err := filter.SaveUserRecord("W1ABC-1", record); err != nil {
+	path := filepath.Join(filter.UserDataDir, "W1ABC-1.yaml")
+	before := []byte("#" + strings.Repeat("A", filter.MaxUserRecordBytes) + "\n")
+	if err := os.WriteFile(path, before, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	c := configurationTestClient(s, "W1ABC-1")
-	if _, err := s.restoreAndRegisterClient(c, time.Now().UTC(), time.Now().Add(time.Minute)); err != nil {
-		t.Fatal(err)
+	restored, err := s.restoreAndRegisterClient(c, time.Now().UTC(), time.Now().Add(time.Minute))
+	if err != nil || !c.recordProtected || !strings.Contains(restored.warning, "temporary defaults") {
+		t.Fatalf("oversized login: %+v, %v", restored, err)
 	}
 	response, handled := s.handlePathSettingsCommand(c, "SET NOISE URBAN")
-	if !handled || response != "Noise class set to URBAN\n" || c.noiseClass != "URBAN" || !reflect.DeepEqual(c.filter.DXCallsigns, []string{large}) {
-		t.Fatalf("ordinary large warm record was refused or normalized: %q", response)
+	if !handled || !strings.Contains(response, "warning: failed to persist") || c.noiseClass != "URBAN" {
+		t.Fatalf("fitting protected change was not temporary: %q", response)
 	}
-	loaded, err := filter.LoadUserRecord(c.callsign)
-	if err != nil || loaded.NoiseClass != "URBAN" || !reflect.DeepEqual(loaded.DXCallsigns, []string{large}) {
-		t.Fatalf("ordinary human save inherited a future preset/readback/record quota: %v", err)
+	s.unregisterClient(c)
+	if !bytes.Equal(before, presetDiskBytes(t, path)) {
+		t.Fatal("human change or logout overwrote the refused file")
 	}
 }
 
@@ -205,7 +205,7 @@ func TestHumanPreferenceFilterPreflightRoutes(t *testing.T) {
 	s.filterEngine = newFilterCommandEngine()
 	c := configurationTestClient(s, "W1ABC-1")
 	attempts := 0
-	s.saveConfigurationFn = func(string, filter.Configuration, *filter.PresetReference, []string) error { attempts++; return nil }
+	s.commitConfigurationFn = func(*filter.PreparedUserRecord) error { attempts++; return nil }
 	for _, test := range []struct {
 		line, response string
 		handled        bool

@@ -11,15 +11,16 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Read-only in-memory equivalents of the file loaders keep fuzzing independent
-// of mutable UserDataDir. Trailing-document and collection checks are retained.
+// Unlimited engine equivalents preserve the frozen compatibility oracle even
+// for inputs beyond new resource limits. Active admission has separate tests
+// through production readers and direct callbacks; no process-global switch exists.
 func candidateStorageRecord(raw []byte) (*UserRecord, error) {
 	decoder := yaml.NewDecoder(bytes.NewReader(raw))
 	var document yaml.Node
 	if err := decoder.Decode(&document); err != nil {
 		return nil, err
 	}
-	record, _, err := decodeStoredUserRecordDocument(&document)
+	record, _, err := decodeStoredUserRecordDocumentWithLimits(&document, storageDecodeLimits{})
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +38,7 @@ func candidateStorageCollection(raw []byte) (map[string]*SavedPreset, error) {
 	if err := decoder.Decode(&document); err != nil {
 		return nil, err
 	}
-	collection, _, err := decodeStoredPresetCollectionDocument(&document)
+	collection, _, err := decodeStoredPresetCollectionDocumentWithLimits(&document, storageDecodeLimits{})
 	if err != nil {
 		return nil, fmt.Errorf("invalid preset collection: %w", err)
 	}

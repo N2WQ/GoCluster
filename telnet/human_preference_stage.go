@@ -4,6 +4,7 @@
 package telnet
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -105,9 +106,35 @@ func (s *Server) runHumanPreferenceOwned(c *Client, line string, stage func(*Cli
 	if !outcome.publish {
 		return outcome.response, outcome.handled
 	}
+	// Filterless/anonymous adapters retain their existing nonpersistent behavior.
+	// Logged-in sessions admit a detached candidate before either publication or
+	// durable replacement, including when the destination is unreadable.
+	var prepared *filter.PreparedUserRecord
+	var prepareErr error
+	if c.filter != nil && strings.TrimSpace(c.callsign) != "" {
+		cfg, err := staged.captureConfiguration(0)
+		if err == nil {
+			err = c.admitTemporaryConfiguration(cfg)
+		}
+		if err != nil {
+			return fmt.Sprintf("Configuration command failed: %v\n", err), true
+		}
+		prepared, prepareErr = s.prepareConfigurationRecord(c, cfg, c.presetReference)
+		// A bad current file allows an independently admitted temporary change.
+		// A successfully loaded destination whose combined record is too large
+		// must reject the command without live or durable effects.
+		if prepareErr != nil && !errors.Is(prepareErr, filter.ErrCurrentUserRecord) && errors.Is(prepareErr, filter.ErrStorageAdmission) {
+			return fmt.Sprintf("Configuration command failed: %v\n", prepareErr), true
+		}
+	}
 	s.publishHumanPreference(c, staged, outcome.forceSolar)
-	if err := c.saveFilterOwned(); err != nil {
-		return outcome.persistenceFailure(c, err), outcome.handled
+	if prepareErr != nil {
+		return outcome.persistenceFailure(c, prepareErr), outcome.handled
+	}
+	if prepared != nil {
+		if err := s.commitConfigurationRecord(prepared); err != nil {
+			return outcome.persistenceFailure(c, err), outcome.handled
+		}
 	}
 	return outcome.response, outcome.handled
 }

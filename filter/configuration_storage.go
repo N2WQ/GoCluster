@@ -47,10 +47,10 @@ func (ref *PresetReference) UnmarshalYAML(node *yaml.Node) error {
 }
 
 func (ref *PresetReference) unmarshalStored(node *yaml.Node, state *storageDecodeState) error {
-	if err := validateStoredMapping(node, reflect.TypeFor[PresetReference]()); err != nil {
+	if err := state.validateStoredMapping(node, reflect.TypeFor[PresetReference]()); err != nil {
 		return err
 	}
-	if err := validateCurrentStoredValues(node, reflect.TypeFor[PresetReference]()); err != nil {
+	if err := state.validateCurrentStoredValues(node, reflect.TypeFor[PresetReference]()); err != nil {
 		return err
 	}
 	type plain PresetReference
@@ -228,6 +228,12 @@ func validateCurrentStoredValues(node *yaml.Node, typ reflect.Type) error {
 }
 
 func validateStoredValue(node *yaml.Node, typ reflect.Type) error {
+	return validateStoredValueWithFields(node, typ, validateCurrentStoredValues)
+}
+
+// The struct validator supplies field metadata only. Every value keeps its
+// original ordered validation, including aliased keys and interpreted duplicates.
+func validateStoredValueWithFields(node *yaml.Node, typ reflect.Type, validateFields func(*yaml.Node, reflect.Type) error) error {
 	if node.Kind == yaml.AliasNode && node.Alias != nil {
 		node = node.Alias
 	}
@@ -252,14 +258,14 @@ func validateStoredValue(node *yaml.Node, typ reflect.Type) error {
 		if typ == reflect.TypeFor[SavedPreset]() {
 			return nil
 		}
-		return validateCurrentStoredValues(node, typ)
+		return validateFields(node, typ)
 	case reflect.Map:
 		if node.Kind != yaml.MappingNode {
 			return errors.New("expected a rule map")
 		}
 		seen := make(map[string]bool, len(node.Content)/2)
 		for i := 0; i < len(node.Content); i += 2 {
-			if err := validateStoredValue(node.Content[i], typ.Key()); err != nil {
+			if err := validateStoredValueWithFields(node.Content[i], typ.Key(), validateFields); err != nil {
 				return err
 			}
 			keyNode := node.Content[i]
@@ -278,7 +284,7 @@ func validateStoredValue(node *yaml.Node, typ reflect.Type) error {
 				return fmt.Errorf("duplicate interpreted rule key %q", key)
 			}
 			seen[key] = true
-			if err := validateStoredValue(node.Content[i+1], typ.Elem()); err != nil {
+			if err := validateStoredValueWithFields(node.Content[i+1], typ.Elem(), validateFields); err != nil {
 				return err
 			}
 		}
@@ -287,7 +293,7 @@ func validateStoredValue(node *yaml.Node, typ reflect.Type) error {
 			return errors.New("expected a list")
 		}
 		for _, item := range node.Content {
-			if err := validateStoredValue(item, typ.Elem()); err != nil {
+			if err := validateStoredValueWithFields(item, typ.Elem(), validateFields); err != nil {
 				return err
 			}
 		}

@@ -374,6 +374,23 @@ See [ADR-0258](decisions/ADR-0258-per-mode-minimum-snr-filter.md) and the
 [telnet command contract](../telnet/README.md#minimum-snr).
 
 
+## Stored Configuration Admission
+
+User-record physical reads, normalized encoding and exact prepared writes each
+have a 1,048,576-byte limit. Configuration and applied baseline use separate
+262,144-byte standalone SavedPreset encoding limits. One document-wide
+physical-plus-logical decoding-work budget includes repeated alias expansion:
+2,097,152 units for a record and 16,777,216 for a collection. Work units are not
+heap or file bytes. Existing 20-name/8 MiB collection limits remain.
+
+Admit human candidates and temporary records before publication. A refused
+destination permits fitting warned temporary changes; a prospective oversized
+replacement rejects without effects. Initial login protection is sticky, while
+warm failures retry authoritative metadata on later saves and ordinary logout.
+SAVE admits library and association before either write; only later I/O failure
+can leave documented library-only success. Machine and LOAD publish after commit.
+See [ADR-0270](decisions/ADR-0270-complete-storage-admission.md).
+
 ## Human Preference Publication
 
 Human filter and settings commands prepare writable preferences on detached

@@ -1,5 +1,6 @@
 """Offline failure controls for the checkout runner; these do not qualify telnet."""
 
+import copy
 import importlib.util
 import io
 import json
@@ -21,6 +22,74 @@ spec.loader.exec_module(driver)
 
 
 class DriverControls(unittest.TestCase):
+    def test_resource_fixtures_separate_raw_canonical_and_work_refusals(self):
+        raw = driver.refused_resource_record("RAW")
+        self.assertEqual(len(raw), driver.RECORD_BYTES + 1)
+        self.assertEqual(driver.stored_document(raw), {})
+        canonical = driver.refused_resource_record("CANONICAL")
+        decoded = driver.stored_document(canonical)
+        self.assertLess(len(canonical), driver.RECORD_BYTES)
+        self.assertEqual(len(decoded["recent_ips"]), 5)
+        self.assertTrue(all(len(ip) == 210000 for ip in decoded["recent_ips"]))
+        self.assertGreater(sum(map(len, decoded["recent_ips"])), driver.RECORD_BYTES)
+        # Scalar work, including physical anchor plus all logical occurrences,
+        # is below the separate two-million-unit guard for this byte fixture.
+        self.assertLess(6 * 210000 + 1000, 2 << 20)
+        work = driver.refused_resource_record("WORK")
+        decoded = driver.stored_document(work)
+        self.assertEqual(work.count(b"*text"), 70)
+        self.assertEqual(len(decoded["recent_ips"]), 70)
+        self.assertTrue(all(len(ip) == 32768 for ip in decoded["recent_ips"]))
+        self.assertGreater(sum(map(len, decoded["recent_ips"])), 2 << 20)
+        self.assertLess(sum(map(len, decoded["recent_ips"][:5])) + 4096, driver.RECORD_BYTES)
+        with self.assertRaisesRegex(ValueError, "unknown resource fixture"):
+            driver.refused_resource_record("OTHER")
+
+    def test_canonical_padding_changes_only_retained_loopback_metadata(self):
+        raw = (b"configuration_version: 4\nrecent_ips:\n    - 127.0.0.1\n"
+               b"last_login_utc: 2026-10-08T12:34:56Z\nnoise_class: QUIET\n")
+        result = driver.padded_canonical_record(raw)
+        self.assertEqual(len(result), driver.RECORD_BYTES - 8)
+        before, after = driver.stored_document(raw), driver.stored_document(result)
+        self.assertEqual(after["recent_ips"][0], "127.0.0.1")
+        self.assertEqual(len(after["recent_ips"]), 2)
+        self.assertTrue(after["recent_ips"][1].startswith("METADATA"))
+        self.assertEqual(after["recent_ips"][1][len("METADATA"):],
+                         "A" * (len(after["recent_ips"][1]) - len("METADATA")))
+        after["recent_ips"] = before["recent_ips"]
+        self.assertEqual(after, before)
+        for invalid in (raw.replace(b"127.0.0.1", b"198.51.100.1"),
+                        raw.replace(b"recent_ips:\n    - 127.0.0.1", b"recent_ips: [127.0.0.1]")):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                driver.padded_canonical_record(invalid)
+
+    def test_resource_transaction_checker_refuses_each_missing_effect_channel(self):
+        before = dict(configuration={"filters": {}}, revision="epoch-1",
+                      status=dict(preset=dict(associated=False), effective=dict(grid="FN31"),
+                                  session=dict(temporary_defaults=False)))
+        record, library = mock.Mock(), mock.Mock()
+        record.read_bytes.return_value, library.read_bytes.return_value = b"record", b"library"
+        driver.require_transaction_unchanged(before, before, record, b"record", library, b"library")
+        for channel in ("configuration", "revision", "preset", "effective", "protection", "record", "library"):
+            after = copy.deepcopy(before)
+            record.read_bytes.return_value, library.read_bytes.return_value = b"record", b"library"
+            if channel == "configuration":
+                after["configuration"]["filters"]["comments"] = ["CHANGED"]
+            elif channel == "revision":
+                after["revision"] = "epoch-2"
+            elif channel == "preset":
+                after["status"]["preset"]["associated"] = True
+            elif channel == "effective":
+                after["status"]["effective"]["grid"] = "IO91"
+            elif channel == "protection":
+                after["status"]["session"]["temporary_defaults"] = True
+            elif channel == "record":
+                record.read_bytes.return_value = b"changed record"
+            else:
+                library.read_bytes.return_value = b"changed library"
+            with self.subTest(channel=channel), self.assertRaises(ValueError):
+                driver.require_transaction_unchanged(before, after, record, b"record", library, b"library")
+
     @unittest.skipUnless(os.name == "nt", "native Windows replacement behavior")
     def test_record_fault_permits_reads_refuses_replace_and_releases(self):
         with tempfile.TemporaryDirectory(prefix="record-fault-", dir=support.ROOT / ".tmp") as directory:

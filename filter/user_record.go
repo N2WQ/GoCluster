@@ -53,7 +53,12 @@ func LoadUserRecord(callsign string) (*UserRecord, error) {
 		return nil, errors.New("empty callsign")
 	}
 	path := userRecordPath(callsign)
-	bs, err := os.ReadFile(path)
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = file.Close() }()
+	bs, err := readUserRecordBytes(file)
 	if err != nil {
 		return nil, err
 	}
@@ -74,6 +79,9 @@ func LoadUserRecord(callsign string) (*UserRecord, error) {
 		return nil, errors.New("user record must contain one YAML document")
 	}
 	record.RecentIPs = trimRecentIPs(record.RecentIPs)
+	if _, err := encodeUserRecord(record); err != nil {
+		return nil, err
+	}
 	return record, nil
 }
 
@@ -101,10 +109,10 @@ func (record *UserRecord) unmarshalStored(node *yaml.Node, state *storageDecodeS
 		return err
 	}
 	if version != 0 {
-		if err := validateStoredMapping(node, reflect.TypeFor[UserRecord]()); err != nil {
+		if err := state.validateStoredMapping(node, reflect.TypeFor[UserRecord]()); err != nil {
 			return err
 		}
-		if err := validateCurrentStoredValues(node, reflect.TypeFor[UserRecord]()); err != nil {
+		if err := state.validateCurrentStoredValues(node, reflect.TypeFor[UserRecord]()); err != nil {
 			return err
 		}
 	}

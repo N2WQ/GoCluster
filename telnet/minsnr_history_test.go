@@ -35,7 +35,7 @@ func TestMinSNRHistoryCursorInvalidation(t *testing.T) {
 	s, c := historyTestSession(func(archive.HistoryRequest) (archive.HistoryPage, error) {
 		return archive.HistoryPage{Before: []byte("p"), End: archive.HistoryBudgetReached}, nil
 	})
-	s.saveConfigurationFn = func(string, filter.Configuration, *filter.PresetReference, []string) error { return nil }
+	s.commitConfigurationFn = func(*filter.PreparedUserRecord) error { return nil }
 	runHistory(t, s, c, "SHOW DX 1")
 	token := c.historySearch.token
 	newFilterCommandEngine().Handle(c, "PASS MINSNR CW 10")
@@ -60,7 +60,7 @@ func TestMinSNRHistoryPendingPageInvalidation(t *testing.T) {
 		}
 		return archive.HistoryPage{Spots: []*spot.Spot{sp}, Before: []byte("p"), End: archive.HistoryCountReached}, nil
 	})
-	s.saveConfigurationFn = func(string, filter.Configuration, *filter.PresetReference, []string) error { return nil }
+	s.commitConfigurationFn = func(*filter.PreparedUserRecord) error { return nil }
 	done := make(chan bool, 1)
 	go func() { _, proceed := s.handleHistoryCommand(c, "SHOW DX K1ABC 1"); done <- proceed }()
 	<-entered

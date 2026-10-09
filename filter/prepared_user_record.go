@@ -7,8 +7,6 @@ import (
 	"errors"
 	"path/filepath"
 	"strings"
-
-	"gopkg.in/yaml.v3"
 )
 
 // PreparedUserRecord owns an immutable target path and final YAML bytes. It
@@ -35,16 +33,26 @@ func (prepared *PreparedUserRecord) Commit() error {
 }
 
 func (prepared *PreparedUserRecord) commitWith(write func(string, []byte) error) error {
-	if prepared == nil || prepared.path == "" || len(prepared.data) == 0 {
-		return errors.New("unprepared user record")
+	if err := prepared.validate(); err != nil {
+		return err
 	}
 	return write(prepared.path, prepared.data)
 }
 
+func (prepared *PreparedUserRecord) validate() error {
+	if prepared == nil || prepared.path == "" || len(prepared.data) == 0 {
+		return errors.New("unprepared user record")
+	}
+	if len(prepared.data) > MaxUserRecordBytes {
+		return storageAdmissionf("user record exceeds %d bytes", MaxUserRecordBytes)
+	}
+	return nil
+}
+
 // PrepareUserRecord validates and encodes the supplied record without durable
 // effects. Callers must synchronize or detach its maps/lists for the entire
-// preparation. Ordinary records retain their existing validation and do not
-// inherit the standalone preset's size restriction.
+// preparation. Configuration, baseline and exact final record bytes must fit
+// their independent bounds before a replacement payload can be returned.
 func PrepareUserRecord(callsign string, record *UserRecord) (*PreparedUserRecord, error) {
 	if record == nil {
 		return nil, errors.New("nil user record")
@@ -53,29 +61,7 @@ func PrepareUserRecord(callsign string, record *UserRecord) (*PreparedUserRecord
 	if callsign == "" {
 		return nil, errors.New("empty callsign")
 	}
-	if record.ConfigurationVersion != 0 && record.ConfigurationVersion != CurrentConfigurationVersion {
-		return nil, ErrUnsupportedConfigurationVersion
-	}
-	if err := ConfigurationFromFilter(&record.Filter, SettingsConfiguration{}).ValidateStateRules(); err != nil {
-		return nil, err
-	}
-	if err := ConfigurationFromFilter(&record.Filter, SettingsConfiguration{}).ValidateMinSNRRules(); err != nil {
-		return nil, err
-	}
-	if err := ConfigurationFromFilter(&record.Filter, SettingsConfiguration{}).ValidateCommentRules(); err != nil {
-		return nil, err
-	}
-	// Trimming and baseline validation apply to a local copy. Neither failed
-	// preparation nor a later failed commit changes the caller's live record.
-	snapshot := *record
-	snapshot.ConfigurationVersion = CurrentConfigurationVersion
-	snapshot.RecentIPs = trimRecentIPs(snapshot.RecentIPs)
-	var err error
-	snapshot.Preset, err = snapshot.Preset.Clone()
-	if err != nil {
-		return nil, err
-	}
-	data, err := yaml.Marshal(&snapshot)
+	data, err := encodeUserRecord(record)
 	if err != nil {
 		return nil, err
 	}

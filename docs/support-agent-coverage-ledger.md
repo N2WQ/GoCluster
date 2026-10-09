@@ -36,7 +36,7 @@ sources.
 | Node operator | Runtime resources | Go runtime knobs, buffers, queues, memory, p99-safe operations | `data/config/runtime.yaml`, `data/config/README.md`, source/tests when exact | required |
 | Node operator | Data stores | H3 tables, gridstore, archive/replay, report files | `data/config/README.md`, package READMEs, operator docs | required |
 | Node operator | Upgrades and backups | release package, config copy, private data safety, rollback evidence | `README.md`, `download/README.md`, `docs/OPERATOR_GUIDE.md` | required |
-| Node operator | User-record protection and continuity | temporary defaults, restored login warnings, per-SSID references, partial SAVE, rollback | `telnet/README.md`, current persistence source/tests | SA-025, SA-026; rollback remains manual evidence |
+| Node operator | User-record protection and continuity | raw/canonical/work quotas, admitted temporary settings, warm repair retries, restored login warnings, per-SSID references, SAVE admission and partial success, rollback | `telnet/README.md`, `docs/decisions/ADR-0270-complete-storage-admission.md`, current persistence source/tests | SA-025, SA-026; rollback remains manual evidence |
 | Future developer | Repo ownership | package boundaries, code maps, source entry points | `customgpt/source-map.md`, package READMEs, `docs/code-maps/` | required |
 | Future developer | Debugging behavior | source/tests, ADR/TSR history, current-code verification | package READMEs, source/tests, `docs/troubleshooting-log.md` | required |
 | Future developer | Config/schema behavior | loader, required files, defaulting, warnings, YAML comments | `config/`, `data/config/README.md`, checked-in YAML | required |

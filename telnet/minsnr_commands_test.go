@@ -134,7 +134,7 @@ func TestMinSNRHumanPersistenceFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.saveConfigurationFn = func(string, filter.Configuration, *filter.PresetReference, []string) error {
+	s.commitConfigurationFn = func(*filter.PreparedUserRecord) error {
 		return errors.New("injected save failure")
 	}
 	response, _ := e.Handle(c, "PASS MINSNR CW 0")

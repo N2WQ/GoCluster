@@ -45,18 +45,12 @@ func TestPresetSaveUsesOneExactCapture(t *testing.T) {
 	c.filter.AllowWCY = nil
 	c.filter.SetWWVEnabled(false)
 	c.filter.DXCallsigns = []string{"K1*", "W1*", "K1*"}
-	s.saveConfigurationFn = func(call string, cfg filter.Configuration, ref *filter.PresetReference, ips []string) error {
-		if ref.Name != "CONTEST" || ref.Baseline.Grid != "" || ref.Baseline.NoiseClass != "" || ref.Baseline.DedupePolicy != "" || ref.Baseline.AllowWCY != nil {
-			t.Fatal("SAVE association changed configured defaults")
-		}
-		if value, present := cfg.Filters.Bands.Allow["20m"]; !present || value || cfg.Filters.Modes.AllowAll || len(cfg.Filters.Modes.Allow) != 0 || cfg.Filters.AllowWWV != filter.DefaultBoolFalse {
-			t.Fatal("SAVE changed false entries or an empty mode selection")
-		}
+	s.commitConfigurationFn = func(prepared *filter.PreparedUserRecord) error {
 		// A persistence callback observes an already captured snapshot. Mutating
 		// the source here must not change either the named save or its baseline.
 		c.filter.Bands["20m"] = true
 		c.filter.DXCallsigns[0] = "MUTATED*"
-		return filter.SaveConfiguration(call, cfg, ref, ips)
+		return prepared.Commit()
 	}
 	response, handled := s.handlePresetCommand(c, "SAVE PRESET CONTEST")
 	if !handled || response != "Saved preset CONTEST for N2WQ.\n" {
@@ -66,6 +60,13 @@ func TestPresetSaveUsesOneExactCapture(t *testing.T) {
 		if value, present := set.Bands["20m"]; !present || value || set.AllBands || set.AllModes || len(set.Modes) != 0 || set.AllowWWV == nil || *set.AllowWWV || set.AllowWCY != nil || !reflect.DeepEqual(set.DXCallsigns, []string{"K1*", "W1*", "K1*"}) {
 			t.Fatal("named snapshot and association did not retain the same exact capture")
 		}
+	}
+	record, err := filter.LoadUserRecord(c.callsign)
+	if err != nil || record.Preset == nil || record.Preset.Name != "CONTEST" || record.Grid != "" || record.NoiseClass != "" || record.DedupePolicy != "" || record.AllowWCY != nil {
+		t.Fatalf("SAVE association changed configured defaults: %v", err)
+	}
+	if value, present := record.Bands["20m"]; !present || value || record.AllBands || record.AllModes || len(record.Modes) != 0 || record.AllowWWV == nil || *record.AllowWWV || !reflect.DeepEqual(record.DXCallsigns, []string{"K1*", "W1*", "K1*"}) {
+		t.Fatal("exact prepared record changed false entries or captured patterns")
 	}
 	bs := presetDiskBytes(t, filepath.Join(filter.UserDataDir, "N2WQ-1.yaml"))
 	for _, literal := range []string{"configuration_version: 4", "name: CONTEST", "20m: false", "allmodes: false", "allow_wwv: false"} {
@@ -100,7 +101,7 @@ func TestPresetSavePartialSuccessRetainsDurableAssociation(t *testing.T) {
 	path := filepath.Join(filter.UserDataDir, "N2WQ-1.yaml")
 	before := presetDiskBytes(t, path)
 	c.filter.DXCallsigns = []string{"W1*"}
-	s.saveConfigurationFn = func(string, filter.Configuration, *filter.PresetReference, []string) error {
+	s.commitConfigurationFn = func(*filter.PreparedUserRecord) error {
 		return errors.New("association commit failed")
 	}
 	response, _ := s.handlePresetCommand(c, "SAVE PRESET NEW")
@@ -111,7 +112,7 @@ func TestPresetSavePartialSuccessRetainsDurableAssociation(t *testing.T) {
 	if got := mustLoadPreset(t, "NEW").DXCallsigns; !reflect.DeepEqual(got, []string{"W1*"}) {
 		t.Fatalf("partial SAVE lost the successful library snapshot: %v", got)
 	}
-	s.saveConfigurationFn = nil
+	s.commitConfigurationFn = nil
 	if err := c.saveFilter(); err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +185,7 @@ func TestPresetFailedLoadRetainsAssociation(t *testing.T) {
 	old, pointer := c.presetReference, c.filter
 	path := filepath.Join(filter.UserDataDir, "N2WQ-1.yaml")
 	before := presetDiskBytes(t, path)
-	s.saveConfigurationFn = func(string, filter.Configuration, *filter.PresetReference, []string) error {
+	s.commitConfigurationFn = func(*filter.PreparedUserRecord) error {
 		return errors.New("commit failed")
 	}
 	response, _ := s.handlePresetCommand(c, "LOAD PRESET NEW")
@@ -234,8 +235,8 @@ func TestPresetLoadUnchangedCadenceResetsFromPublication(t *testing.T) {
 		t.Fatal(err)
 	}
 	var commitFinished time.Time
-	s.saveConfigurationFn = func(call string, cfg filter.Configuration, ref *filter.PresetReference, ips []string) error {
-		if err := filter.SaveConfiguration(call, cfg, ref, ips); err != nil {
+	s.commitConfigurationFn = func(prepared *filter.PreparedUserRecord) error {
+		if err := prepared.Commit(); err != nil {
 			return err
 		}
 		commitFinished = time.Now().UTC()

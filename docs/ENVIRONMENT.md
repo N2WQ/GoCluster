@@ -65,7 +65,7 @@ in a file named with the hex-encoded owner callsign. Back up the entire user-dat
 directory so current preferences, the applied preset name and baseline, login
 metadata and the shared preset library remain together.
 
-Current user records and preset snapshots contain `configuration_version: 1`.
+Current user records and preset snapshots contain `configuration_version: 4`.
 An absent marker selects legacy migration on read; current versions preserve
 explicit false, empty and default preferences. Malformed or unsupported records
 are preserved. A user can connect with temporary defaults and a warning, but
@@ -73,6 +73,15 @@ LOAD, SAVE PRESET and YAML writes cannot overwrite the protected configuration;
 ordinary session changes are temporary. Failure to save login timestamp/IP after
 a successful record read instead restores that configuration and continues with
 a warning.
+
+User records have separate 1 MiB physical-read, normalized-encoding and final
+replacement limits. Preferences and applied baselines must each fit the 256 KiB
+standalone-preset encoding. Expensive alias expansion is also refused under a
+shared decoding-work budget; work units are not file or heap bytes. Preserve
+refused originals for backup and repair. A connected session whose file becomes
+unreadable can use admitted temporary changes with a warning; later saves and
+ordinary logout retry the authoritative file. Login-protected sessions keep
+their protection until logout. SAVE checks both destinations before either write.
 
 Before upgrading, stop server writers and external editors, and retain a backup
 of the user-data directory and its matching binary. Older user-record writers

@@ -74,14 +74,18 @@ func (s *Server) handlePresetCommand(client *Client, line string) (string, bool)
 			return presetError(command.verb, command.name, errProtectedRecord), true
 		}
 		set, err := client.presetSnapshot()
-		if err == nil {
-			err = filter.SavePreset(client.callsign, command.name, set)
-		}
 		if err != nil {
 			return presetError(command.verb, command.name, err), true
 		}
 		ref := &filter.PresetReference{Name: command.name, Baseline: set}
-		if err := s.persistConfiguration(client, filter.ConfigurationFromPreset(set), ref); err != nil {
+		cfg := filter.ConfigurationFromPreset(set)
+		librarySaved, err := filter.SavePresetAndRecord(client.callsign, command.name, set, func() (*filter.PreparedUserRecord, error) {
+			return s.prepareConfigurationRecord(client, cfg, ref)
+		}, s.commitConfigurationRecord)
+		if err != nil && !librarySaved {
+			return presetError(command.verb, command.name, err), true
+		}
+		if err != nil {
 			return fmt.Sprintf("Saved preset %s, but could not persist its association for %s.\nPrevious preset association and baseline retained.\n", command.name, client.callsign), true
 		}
 		client.presetReference = ref

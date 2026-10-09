@@ -4,7 +4,6 @@ package filter
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"strings"
 
@@ -40,7 +39,7 @@ func PrepareUserPreferences(callsign string, set *SavedPreset, recentIPs []strin
 	}
 	record, err := LoadUserRecord(callsign)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("load current user record: %w", err)
+		return nil, &currentUserRecordError{cause: err}
 	}
 	if record == nil {
 		record = &UserRecord{}
@@ -88,7 +87,7 @@ func PrepareConfiguration(callsign string, cfg Configuration, ref *PresetReferen
 	}
 	record, err := LoadUserRecord(callsign)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("load current user record: %w", err)
+		return nil, &currentUserRecordError{cause: err}
 	}
 	if record == nil {
 		record = &UserRecord{}

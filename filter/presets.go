@@ -35,6 +35,8 @@ const (
 // It also matches os.ErrNotExist for callers using the usual persistence contract.
 var ErrPresetNotFound = fmt.Errorf("saved preset not found: %w", os.ErrNotExist)
 
+var errPresetCollectionCount = errors.New("invalid preset collection count")
+
 // SavedPreset contains preferences only. Login history and runtime caches
 // must never move between SSIDs when a preset is loaded.
 type SavedPreset struct {
@@ -81,11 +83,11 @@ func (set *SavedPreset) unmarshalStored(node *yaml.Node, state *storageDecodeSta
 	if err := validateStoredCommentFields(node, version); err != nil {
 		return err
 	}
-	if err := validateStoredMapping(node, reflect.TypeFor[SavedPreset]()); err != nil {
+	if err := state.validateStoredMapping(node, reflect.TypeFor[SavedPreset]()); err != nil {
 		return err
 	}
 	if version != 0 {
-		if err := validateCurrentStoredValues(node, reflect.TypeFor[SavedPreset]()); err != nil {
+		if err := state.validateCurrentStoredValues(node, reflect.TypeFor[SavedPreset]()); err != nil {
 			return err
 		}
 	}
@@ -176,35 +178,76 @@ func SavePreset(callsign, name string, set *SavedPreset) error {
 	return (presetStore{}).save(callsign, name, set)
 }
 
+// SavePresetAndRecord admits both immutable payloads before either write. The
+// caller retains full-SSID ownership; this operation owns the base-call preset
+// stripe through preparation and library-then-record commits. Callbacks must not
+// reenter preset APIs. A nil commit uses PreparedUserRecord.Commit. librarySaved
+// reports only a completed library replacement, including later record failure.
+func SavePresetAndRecord(callsign, name string, set *SavedPreset, prepare func() (*PreparedUserRecord, error), commit func(*PreparedUserRecord) error) (librarySaved bool, err error) {
+	return (presetStore{}).saveWithRecord(callsign, name, set, prepare, commit, true)
+}
+
 func (store presetStore) save(callsign, name string, set *SavedPreset) error {
+	_, err := store.saveWithRecord(callsign, name, set, nil, nil, false)
+	return err
+}
+
+func (store presetStore) saveWithRecord(callsign, name string, set *SavedPreset, prepare func() (*PreparedUserRecord, error), commit func(*PreparedUserRecord) error, withRecord bool) (bool, error) {
+	if withRecord && prepare == nil {
+		return false, errors.New("nil user record preparation")
+	}
 	name, err := NormalizePresetName(name)
 	if err != nil {
-		return err
+		return false, err
 	}
 	path, err := presetCollectionPath(callsign)
 	if err != nil {
-		return err
+		return false, err
 	}
 	snapshot, err := set.Clone()
 	if err != nil {
-		return err
+		return false, err
 	}
 	mu := presetCollectionLock(path)
 	mu.Lock()
 	defer mu.Unlock()
 	collection, err := readPresetCollection(path)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if _, exists := collection.Presets[name]; !exists && len(collection.Presets) >= MaxPresets {
-		return fmt.Errorf("preset limit reached (%d); delete a preset first", MaxPresets)
+		return false, storageAdmissionf("preset limit reached (%d); delete a preset first", MaxPresets)
 	}
 	collection.Presets[name] = snapshot
-	if err := store.persist(path, collection); err != nil {
-		return err
+	data, err := preparePresetCollection(collection)
+	if err != nil {
+		return false, err
+	}
+	var record *PreparedUserRecord
+	if withRecord {
+		record, err = prepare()
+		if err != nil {
+			return false, err
+		}
+		if err := record.validate(); err != nil {
+			return false, err
+		}
+	}
+	write := store.write
+	if write == nil {
+		write = writeAtomicUserFile
+	}
+	if err := write(path, data); err != nil {
+		return false, err
 	}
 	log.Printf("Saved named preset %s for %s (presets=%d/%d)", name, spot.NormalizeOwnCallsign(callsign), len(collection.Presets), MaxPresets)
-	return nil
+	if withRecord {
+		if commit == nil {
+			commit = (*PreparedUserRecord).Commit
+		}
+		return true, commit(record)
+	}
+	return true, nil
 }
 
 // ListPresets returns sorted canonical names; a missing collection is empty.
@@ -294,14 +337,14 @@ func checkPresetSize(set *SavedPreset) error {
 	// Existing live callsign/DXCC lists can grow across commands. Reject an
 	// impossible snapshot before yaml.Marshal allocates a node tree for them.
 	if !presetFitsMinimumSize(set) {
-		return fmt.Errorf("preset exceeds %d KiB", MaxPresetBytes/1024)
+		return storageAdmissionf("preset exceeds %d KiB", MaxPresetBytes/1024)
 	}
 	bs, err := yaml.Marshal(set)
 	if err != nil {
 		return err
 	}
 	if len(bs) > MaxPresetBytes {
-		return fmt.Errorf("preset exceeds %d KiB", MaxPresetBytes/1024)
+		return storageAdmissionf("preset exceeds %d KiB", MaxPresetBytes/1024)
 	}
 	return nil
 }
@@ -327,7 +370,7 @@ func readPresetCollection(path string) (*presetCollection, error) {
 		return nil, err
 	}
 	if len(bs) > maxPresetCollectionBytes {
-		return nil, errors.New("preset collection exceeds 8 MiB")
+		return nil, storageAdmissionf("preset collection exceeds 8 MiB")
 	}
 	decoder := yaml.NewDecoder(bytes.NewReader(bs))
 	var document yaml.Node
@@ -335,15 +378,18 @@ func readPresetCollection(path string) (*presetCollection, error) {
 		return nil, fmt.Errorf("invalid preset collection: %w", err)
 	}
 	collection, _, err := decodeStoredPresetCollectionDocument(&document)
-	if err != nil {
+	if err != nil && !errors.Is(err, errPresetCollectionCount) {
 		return nil, fmt.Errorf("invalid preset collection: %w", err)
 	}
 	var extra yaml.Node
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		return nil, errors.New("preset collection must contain one YAML document")
 	}
+	if err != nil {
+		return nil, err
+	}
 	if collection.Presets == nil || len(collection.Presets) > MaxPresets {
-		return nil, errors.New("invalid preset collection count")
+		return nil, errPresetCollectionCount
 	}
 	for name, set := range collection.Presets {
 		canonical, err := NormalizePresetName(name)
@@ -378,7 +424,7 @@ func preparePresetCollection(collection *presetCollection) ([]byte, error) {
 		return nil, err
 	}
 	if len(bs) > maxPresetCollectionBytes {
-		return nil, errors.New("preset collection exceeds 8 MiB")
+		return nil, storageAdmissionf("preset collection exceeds 8 MiB")
 	}
 	return bs, nil
 }

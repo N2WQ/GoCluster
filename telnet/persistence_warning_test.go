@@ -60,7 +60,7 @@ func TestHumanPersistenceWarningsKeepLiveChanges(t *testing.T) {
 					oldBytes := presetDiskBytes(t, path)
 					attempts := 0
 					if fault == "save" {
-						s.saveConfigurationFn = func(string, filter.Configuration, *filter.PresetReference, []string) error {
+						s.commitConfigurationFn = func(*filter.PreparedUserRecord) error {
 							attempts++
 							return os.ErrPermission
 						}
@@ -134,7 +134,7 @@ func TestHumanPersistenceWarningPreservesSaveAttemptRules(t *testing.T) {
 				t.Fatal(err)
 			}
 			attempts := 0
-			s.saveConfigurationFn = func(string, filter.Configuration, *filter.PresetReference, []string) error {
+			s.commitConfigurationFn = func(*filter.PreparedUserRecord) error {
 				attempts++
 				return os.ErrPermission
 			}

@@ -208,7 +208,7 @@ func TestMinSNRMachinePersistenceFailure(t *testing.T) {
 	disk := presetDiskBytes(t, path)
 	revision, _ := c.configurationRevisionToken()
 	persistCalls := 0
-	s.saveConfigurationFn = func(string, filter.Configuration, *filter.PresetReference, []string) error {
+	s.commitConfigurationFn = func(*filter.PreparedUserRecord) error {
 		persistCalls++
 		return os.ErrPermission
 	}

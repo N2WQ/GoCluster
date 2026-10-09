@@ -81,10 +81,10 @@ func TestConfigurationSaveAndReconnectHandoff(t *testing.T) {
 	old.presetReference = &filter.PresetReference{Name: "CONTEST", Baseline: &filter.SavedPreset{Filter: *filter.NewFilter(), Dialect: "go", NoiseClass: "QUIET", DedupePolicy: "FAST"}}
 	s.registerClient(old)
 	entered, finish := make(chan struct{}), make(chan struct{})
-	s.saveConfigurationFn = func(call string, cfg filter.Configuration, ref *filter.PresetReference, ips []string) error {
+	s.commitConfigurationFn = func(prepared *filter.PreparedUserRecord) error {
 		close(entered)
 		<-finish
-		return filter.SaveConfiguration(call, cfg, ref, ips)
+		return prepared.Commit()
 	}
 	saved := make(chan struct{})
 	var saveErr error
@@ -121,7 +121,7 @@ func TestConfigurationSaveAndReconnectHandoff(t *testing.T) {
 	if next.configuredSettings.NoiseClass != "URBAN" || next.presetReference == nil || next.presetReference.Name != "CONTEST" || next.presetReference.Baseline.NoiseClass != "QUIET" {
 		t.Fatal("handoff did not restore the committed preferences and baseline together")
 	}
-	s.saveConfigurationFn = nil
+	s.commitConfigurationFn = nil
 	// Neither a later retired save nor its unconditional teardown can overwrite
 	// the successor. Inspect the literal durable bytes after both paths.
 	path := filepath.Join(filter.UserDataDir, "W1ABC-1.yaml")
@@ -207,7 +207,7 @@ func TestConfigurationLoginMetadataFailureRestoresPreferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.saveLoginRecordFn = func(string, *filter.UserRecord) error { return os.ErrPermission }
+	s.commitLoginRecordFn = func(*filter.PreparedUserRecord) error { return os.ErrPermission }
 	c := configurationTestClient(s, call)
 	result, err := s.restoreAndRegisterClient(c, time.Now().UTC(), time.Now().Add(time.Minute))
 	if err != nil || c.recordProtected || !strings.Contains(result.warning, "Restored your saved configuration") {

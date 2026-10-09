@@ -4,7 +4,6 @@ package filter
 
 import (
 	"errors"
-	"fmt"
 	"maps"
 	"slices"
 
@@ -245,8 +244,8 @@ func (c Configuration) Clone() Configuration {
 	return c
 }
 
-// Preset enforces the independent named-snapshot budget before cloning/encoding.
-// Ordinary user records and LOAD admission do not inherit the readback budget.
+// Preset uses the authoritative standalone v4 configuration budget before
+// cloning/encoding. Transport/readback limits remain independent.
 func (c Configuration) Preset() (*SavedPreset, error) {
 	if err := c.ValidateCommentRules(); err != nil {
 		return nil, err
@@ -258,7 +257,7 @@ func (c Configuration) Preset() (*SavedPreset, error) {
 		return nil, err
 	}
 	if !c.MinimumSizeFits(MaxPresetBytes) {
-		return nil, fmt.Errorf("preset exceeds %d KiB", MaxPresetBytes/1024)
+		return nil, storageAdmissionf("preset exceeds %d KiB", MaxPresetBytes/1024)
 	}
 	for _, toggle := range c.Filters.toggles() {
 		if toggle > DefaultBoolTrue {
@@ -297,6 +296,11 @@ func (f FilterConfiguration) toggles() [6]DefaultBool {
 // MinimumSizeFits is a linear lower bound with constant scratch space. It must
 // precede cloning or encoding, and never replaces the final encoded-byte check.
 func (c Configuration) MinimumSizeFits(limit int) bool {
+	_, fits := c.minimumSizeRemaining(limit)
+	return fits
+}
+
+func (c Configuration) minimumSizeRemaining(limit int) (int, bool) {
 	remaining := limit
 	consume := func(size int) bool {
 		if size < 0 || size > remaining {
@@ -307,52 +311,52 @@ func (c Configuration) MinimumSizeFits(limit int) bool {
 	}
 	for _, value := range []string{c.Settings.Dialect, c.Settings.Grid, c.Settings.NoiseClass, c.Settings.DedupePolicy} {
 		if !consume(len(value)) {
-			return false
+			return 0, false
 		}
 	}
 	for _, rules := range c.Filters.stringRules() {
 		for _, entries := range []map[string]bool{rules.Allow, rules.Block} {
 			if len(entries) > remaining/7 || !consume(len(entries)*7) {
-				return false
+				return 0, false
 			}
 			for key, value := range entries {
 				if !consume(len(key)) || (!value && !consume(1)) {
-					return false
+					return 0, false
 				}
 			}
 		}
 	}
 	for key := range c.Filters.MinSNR {
 		if !consume(len(key)) || !consume(4) {
-			return false
+			return 0, false
 		}
 	}
 	for _, rules := range c.Filters.intRules() {
 		for _, entries := range []map[int]bool{rules.Allow, rules.Block} {
 			if len(entries) > remaining/8 || !consume(len(entries)*8) {
-				return false
+				return 0, false
 			}
 		}
 	}
 	for _, patterns := range c.Filters.patterns() {
 		if len(patterns) > remaining/3 || !consume(len(patterns)*3) {
-			return false
+			return 0, false
 		}
 		for _, pattern := range patterns {
 			if !consume(len(pattern)) {
-				return false
+				return 0, false
 			}
 		}
 	}
 	for _, phrases := range [][]string{c.Filters.Comments, c.Filters.BlockComments} {
 		if len(phrases) > remaining/3 || !consume(len(phrases)*3) {
-			return false
+			return 0, false
 		}
 		for _, phrase := range phrases {
 			if !consume(len(phrase)) {
-				return false
+				return 0, false
 			}
 		}
 	}
-	return remaining >= 0
+	return remaining, remaining >= 0
 }

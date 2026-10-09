@@ -146,14 +146,14 @@ func TestPresetLoadFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	beforePath, pointer, beforeTick := client.pathSnapshot(), client.filter, client.solarNextSummaryAt
-	s.saveConfigurationFn = func(_ string, _ filter.Configuration, _ *filter.PresetReference, _ []string) error {
+	s.commitConfigurationFn = func(*filter.PreparedUserRecord) error {
 		if client.grid != "IO91" || client.dialect != DialectGo {
 			t.Fatal("live settings changed before disk commit")
 		}
 		return os.ErrNotExist // A filesystem failure must not be reported as a missing preset.
 	}
 	response, _ := s.handlePresetCommand(client, "LOAD PRESET NEW")
-	s.saveConfigurationFn = nil
+	s.commitConfigurationFn = nil
 	if !strings.Contains(response, "LOAD PRESET failed") || strings.Contains(response, "Loaded preset") {
 		t.Fatalf("failure reported success: %q", response)
 	}

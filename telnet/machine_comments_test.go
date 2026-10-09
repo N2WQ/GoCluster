@@ -107,7 +107,7 @@ func TestCommentMachineTransactionsAndOldPreservation(t *testing.T) {
 		t.Fatalf("persistence lost exact phrases: %v", err)
 	}
 	revision, _ := c.configurationRevisionToken()
-	s.saveConfigurationFn = func(string, filter.Configuration, *filter.PresetReference, []string) error {
+	s.commitConfigurationFn = func(*filter.PreparedUserRecord) error {
 		return errors.New("write failed")
 	}
 	command, request = stateProposal(t, c, 4, "PATCH", "FILTER", "  comments: []\n  block_comments: []\n")
@@ -118,7 +118,7 @@ func TestCommentMachineTransactionsAndOldPreservation(t *testing.T) {
 	if afterRevision != revision || !reflect.DeepEqual(c.filter.Comments, record.Comments) {
 		t.Fatal("failed persistence changed live state")
 	}
-	s.saveConfigurationFn = nil
+	s.commitConfigurationFn = nil
 	command, request = stateProposal(t, c, 4, "PATCH", "FILTER", "  comments: []\n  block_comments: []\n")
 	if response := s.applyMachineRequest(c, command, request); strings.Contains(response, "error:") || len(c.filter.Comments) != 0 || len(c.filter.BlockComments) != 0 {
 		t.Fatal(response)

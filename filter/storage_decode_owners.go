@@ -11,7 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func storageOwnerVersion(node *yaml.Node, typ reflect.Type) (int, error) {
+func (state *storageDecodeState) ownerVersion(node *yaml.Node, typ reflect.Type) (int, error) {
 	version, err := storedConfigurationVersion(node)
 	if err != nil {
 		return 0, err
@@ -26,12 +26,12 @@ func storageOwnerVersion(node *yaml.Node, typ reflect.Type) (int, error) {
 		return 0, err
 	}
 	if version != 0 || typ == reflect.TypeFor[SavedPreset]() {
-		if err := validateStoredMapping(node, typ); err != nil {
+		if err := state.validateStoredMapping(node, typ); err != nil {
 			return 0, err
 		}
 	}
 	if version != 0 {
-		if err := validateCurrentStoredValues(node, typ); err != nil {
+		if err := state.validateCurrentStoredValues(node, typ); err != nil {
 			return 0, err
 		}
 	}
@@ -52,15 +52,15 @@ func storagePlainOwnerType(typ reflect.Type) reflect.Type {
 func (state *storageDecodeState) preflightOwner(node *yaml.Node, typ reflect.Type) error {
 	version := 0
 	if typ == reflect.TypeFor[PresetReference]() {
-		if err := validateStoredMapping(node, typ); err != nil {
+		if err := state.validateStoredMapping(node, typ); err != nil {
 			return err
 		}
-		if err := validateCurrentStoredValues(node, typ); err != nil {
+		if err := state.validateCurrentStoredValues(node, typ); err != nil {
 			return err
 		}
 	} else {
 		var err error
-		version, err = storageOwnerVersion(node, typ)
+		version, err = state.ownerVersion(node, typ)
 		if err != nil {
 			return err
 		}
@@ -142,11 +142,23 @@ func decodeStoredOwnerNode(node *yaml.Node, output any) error {
 	if err == nil && len(guard.typeErrors) != 0 {
 		return &yaml.TypeError{Errors: guard.typeErrors}
 	}
+	if err == nil {
+		switch owner := output.(type) {
+		case *UserRecord:
+			_, err = encodeUserRecord(owner)
+		case *SavedPreset:
+			err = checkPresetSize(owner)
+		}
+	}
 	return err
 }
 
 func decodeStoredUserRecordDocument(document *yaml.Node) (*UserRecord, storageDecodeWork, error) {
-	state, err := newStorageDecodeState(document)
+	return decodeStoredUserRecordDocumentWithLimits(document, storageDecodeLimits{work: maxUserRecordWork})
+}
+
+func decodeStoredUserRecordDocumentWithLimits(document *yaml.Node, limits storageDecodeLimits) (*UserRecord, storageDecodeWork, error) {
+	state, err := newStorageDecodeStateWithLimits(document, limits)
 	if err != nil {
 		return nil, storageDecodeWork{}, err
 	}
@@ -166,7 +178,11 @@ func decodeStoredUserRecordDocument(document *yaml.Node) (*UserRecord, storageDe
 }
 
 func decodeStoredPresetCollectionDocument(document *yaml.Node) (*presetCollection, storageDecodeWork, error) {
-	state, err := newStorageDecodeState(document)
+	return decodeStoredPresetCollectionDocumentWithLimits(document, storageDecodeLimits{work: maxPresetCollectionWork, presets: MaxPresets})
+}
+
+func decodeStoredPresetCollectionDocumentWithLimits(document *yaml.Node, limits storageDecodeLimits) (*presetCollection, storageDecodeWork, error) {
+	state, err := newStorageDecodeStateWithLimits(document, limits)
 	if err != nil {
 		return nil, storageDecodeWork{}, err
 	}
@@ -176,6 +192,9 @@ func decodeStoredPresetCollectionDocument(document *yaml.Node) (*presetCollectio
 	}
 	if len(guard.typeErrors) != 0 {
 		return nil, state.work, &yaml.TypeError{Errors: guard.typeErrors}
+	}
+	if state.presetCountExceeded {
+		return nil, state.work, &storageAdmissionError{message: errPresetCollectionCount.Error(), cause: errPresetCollectionCount}
 	}
 	state.materialize = true
 	var collection presetCollection

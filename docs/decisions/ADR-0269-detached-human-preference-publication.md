@@ -85,6 +85,8 @@ tests alone cannot prove that live locks or side effects were not copied.
 
 ## Links
 
+- Admission refinement: [ADR-0270](ADR-0270-complete-storage-admission.md)
+
 - Refines: [ADR-0244](ADR-0244-exact-configuration-persistence.md)
 - Related preparation: [ADR-0268](ADR-0268-exact-byte-user-record-preparation.md)
 - Related scope: [Scope Ledger v3](../command-fix-scope-ledger-v3.md)

@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 03 complete; checkpoint 04a in progress;
-42 checkpoints remain.
+Current progress: checkpoints 00 through 04d complete (04a used two commits);
+38 approved checkpoints remain, beginning with 05a.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -644,3 +644,198 @@ algorithm was introduced. Existing parser coverage remains in the complete
 packages; no new performance or production-capacity claim is made. Code-map,
 indexed TSR and whitespace checks close out this checkpoint. New admission
 thresholds and SAVE admission ordering remain deferred to 04d.
+
+## Checkpoint 04d: complete storage admission and SAVE ordering
+
+Status: complete; final qualification and review are recorded below. Checkpoint
+04c is committed as `4333811`.
+
+The selected design retains the approved byte/work limits and current owners.
+Filter bounds actual record reads at limit plus one byte, checks shared P+E before
+bulk materialization, and admits configuration/baseline through standalone v4
+SavedPreset encoding. A pure encoding/admission helper checks normalized complete
+UserRecord bytes without adding path resolution to loading. PreparedUserRecord
+remains the immutable durable payload; commits do not reload or serialize.
+
+Telnet admits a detached human candidate's configuration, baseline and bounded
+session-temporary record first. Capture the session timestamp and at most five
+detached recent IPs on restore; those values never authorize overwriting a
+refused record. Prepare the authoritative destination before human publication.
+An explicit current-record-load error preserves causality: an existing refused
+file allows fitting warned temporary human settings, whereas a successfully
+loaded record whose newly combined prospective bytes exceed admission rejects
+the proposed edit with zero effects. Initial protected-login status stays sticky;
+warm refusals remain retryable on later save-intent commands and ordinary logout.
+
+Replace configuration/login fault seams with commit seams receiving only the
+admitted PreparedUserRecord. Production commits its captured bytes. Machine and
+LOAD retain persistence before publication and VALIDATE remains nonpersistent.
+Human commit failure retains the published edit and the existing warning style.
+
+SAVE's narrow callback coordinator retains the internal baseline-callsign
+collection stripe while the caller holds its full-SSID lease. Prepare private
+library bytes, then an admitted association payload; reject nil/zero payloads
+before either writer. Commit library then record, reporting library-only success
+only after a successful library replacement. Callbacks may not reenter preset
+operations; no unlocked prepared collection or new release lifecycle is exposed.
+
+Separate-context read-only design and detailed test reviews found no new product
+policy. The lead accepts all six detailed-review findings as checker-only
+refinements: production/direct-callback coverage, counted-reader evidence,
+unusable SAVE payloads, distinct logout retries, preserved API validation order,
+and login-metadata overflow after a successful load. No implementation or
+qualification was performed by those reviewers.
+
+A further source-grounded refinement enforces the existing 20 visible presets
+before bulk materialization. A saturated typed-key observer stores at most 21
+keys, follows the existing insertion/null/merge predicates, and leaves value
+preflight and P+E unchanged. Continue preflight after count overflow to preserve
+existing type/owner/alias refusals; the reader checks trailing-document framing
+before returning the original count error. This changes no cardinality policy.
+Hand-derived 100,000-entry and repeated-key controls establish why count and
+work alone must not be described as heap-byte guarantees. No winner-only
+materialization or additional limit is selected. Allocation/scale evidence must
+check operational usefulness; inadequate protection or unacceptable cost blocks
+closeout rather than silently changing thresholds.
+
+| Contract | Boundary / fault | Stimulus | Required result | Level | False-green risk | Planned checker | Owner |
+|---|---|---|---|---|---|---|---|
+| Authoritative configuration bytes | Serializer disagreement | Standalone v4 SavedPreset at 262,144/262,145 bytes; Configuration encoding larger than admitted SavedPreset | Exact boundary accepts/rejects using SavedPreset; preserve false/default/ordered/UTF-8 values | Unit and storage | Measuring Configuration or a lower bound only | Admission boundary tests | filter |
+| Raw reading | Large file consumed before refusal | Counted reader with unread sentinel beyond 1,048,577 bytes and actual file controls | At most limit+1 consumed; exact raw boundary accepts; excess refuses without effects | Unit/file | Read-all then length check | Production read-helper and Load tests | filter |
+| Canonical and prospective records | Aliases or fresh metadata enlarge output | Raw-small canonical-large IP aliases; fitting loaded metadata plus fitting replacement preferences yields excessive prepared bytes | Distinct refusal boundaries; prospective refusal publishes/writes nothing | Unit/consumer | Classifying all admission errors as existing-file refusal | Canonical/prepared and human tests | filter, telnet |
+| Active work budgets | Nested reset or helper bypass | Hand-counted exact/over P+E, UTF-8/ignored nodes, nested baseline/whole collection, seventy 32 KiB scalar aliases | Shared approved limits before bulk; old alias/cycle/skipping refusals remain | Unit/fuzz/storage | Unlimited differential helper substituted for production evidence | Load/all preset verbs/direct callbacks plus limited fuzz | filter, telnet |
+| Existing collection count | Too many defaults materialized | 20/21 and many empty entries; aliased keys, null insertion, overrides and shadowed merges | Count visible typed entries; saturated observer; refuse before bulk; preserve prior errors and framing | Unit/storage/scale | Counting raw pairs or skipping losing values | Collection observer and refusal allocation tests | filter |
+| Operational usefulness | Admitted repeated values still expensive | Increasing refused distinct-key and admitted repeated-alias-key collections | Correct outcome and measured allocation/time; no heap or production-capacity guarantee | Bench/scale | Count-only benchmark misses admitted duplicate values | Guarded collection scale controls | filter, lead |
+| Fitting warm human edit | Disk becomes refused after login | Actual raw/canonical/work-refused files, then fitting human commands | Warned live edit, unchanged file, retained runtime state; no sticky warm protection | Unit/checkout | Only acknowledgement or protected-login fixture | Registered warm-session and checkout cases | telnet, runner |
+| Temporary admission | Candidate, baseline or cached metadata too large/invalid | Refused file plus individually bad candidate/baseline/session-temporary record | Zero publication/write/revision/history/SOLAR/NEARBY effects | Consumer | Fallback blindly permits every human command | Temporary representation tests | telnet |
+| Logout and metadata | Retry paths differ | Still-refused logout; repair then command; repair then logout only | Preserve bad bytes; successful retries use fresh authoritative timestamp/IPs | Consumer/checkout | A second command masks broken teardown | Warm/protected/reconnect exit tests | telnet, runner |
+| Login metadata overflow | Load succeeds, new timestamp/IP does not fit | Admitted source record near final-record boundary | No writer; restored usable configuration and warning; protection remains false | Consumer | Oversized-load tests cover the wrong branch | Login preparation-overflow test | telnet |
+| SAVE admission/order | Association cannot be admitted or is unusable | Quota/load refusal, nil/zero callback payload, real library/record replacement faults | No writers before admission; library failure stops record; later record I/O yields library-only success | Unit/checkout | Generic save hook bypasses preparation or wrong filesystem fault | Coordinator and actual SAVE failures | filter, telnet, runner |
+| Ownership/exact payload | Concurrent SSIDs/reconnect or source changes | Stalled commits, same-base SAVE/DELETE, same-SSID handoff, mutation after preparation | No lost library update or retired write; exact admitted bytes committed | Race/consumer | Sequential or callback-only proof | Existing/new lease and prepared-byte tests | filter, telnet |
+| Preservation | Scope leaks into later behavior | Existing API markers/order, no-ops, SOLAR clocks, NEARBY, large LOAD/readback and VALIDATE | Preserve all distinctions; replace only explicit inactive-quota expectations | Unit/checkout | New shared helper changes unrelated validation/defaults | Complete filter/telnet and cumulative checkout cases | filter, telnet, runner |
+
+The selected lane includes complete filter/telnet ordinary and race checks,
+the full ordinary Windows suite and all repository analyzers, actual checkout
+cases in both transports with and without race, meaningful limited-decoder
+fuzz/scale checks, runner controls, support/decision documentation, indexed TSR,
+code maps and final direct diff/whitespace review. Observed evidence follows.
+
+Initial ordinary filter/telnet and the full 70-package Windows suite passed on
+the pre-cost-correction production state (`checkpoint-04d-packages.log` and
+`checkpoint-04d-baseline.log`). The cumulative ordinary checkout run passed
+48 required cases, 24 per transport, in
+`.tmp/command-fixes/20261009-141648-127cc21e`; the runner's 22 offline controls
+passed separately. These establish semantic/fixture evidence, not final closeout.
+Early runs caught test build mistakes, a null-key fixture that YAML interprets
+as null, an invalid preset fixture name and a VALIDATE test using an unsupported
+resource. Those failed logs are retained; the fixtures were corrected against
+the frozen source and existing command contract.
+
+The active admission fuzz target passed 1,372 executions over about 16 seconds
+with two workers (`checkpoint-04d-fuzz.log`). Its tool job had a 1 GiB guard;
+that is a qualification harness bound, not a production heap guarantee.
+
+All six initial collection scale controls returned the required result, but
+their benchmark PASS did not satisfy operational usefulness. At 100,000 entries,
+distinct-key refusal allocated 1,224,268,176 bytes cumulatively and took
+1.7547554 seconds per timed decode; repeated-key admission allocated
+2,793,917,992 bytes and took 3.843905 seconds. The benchmark job's peak was
+228,032,512 bytes under the 1 GiB guard. Parsing and final collection canonical
+checks were outside the timed decode; parsing was inside the guarded process.
+These are local synthetic measurements, not
+production latency, concurrent-memory or worst-case guarantees.
+
+The lead accepted the quality review's operational-cost blocker. A guarded
+allocation profile of the 1,000 repeated-key control attributed 82.32% of
+cumulative allocation space to `addStoredFields`, which repeatedly rebuilds
+the same fixed YAML field table; stock decoder construction accounted for
+3.44% flat. Source inspection confirms production owner prechecks bypass the
+already operation-owned field metadata. Logs/profiles are
+`checkpoint-04d-scale.log`, `checkpoint-04d-profile.log` and
+the updated profile `04d-collection-final-alloc.pprof` under
+`.tmp/command-fixes`; the original allocation summary remains in its log.
+
+The bounded correction reuses only immutable schema metadata within the existing
+operation state, keyed by exact Go type, through owner and recursive value
+validation. Free validators remain fresh for the frozen oracle. Every owner,
+value, error boundary, work charge, alias guard and losing-value materialization
+remains. No scalar decoder, limit, winner-only optimization or retained cache
+is selected. Design and quality review found this correction within approved
+04d implementation scope. Revised scale evidence must resolve the blocker;
+otherwise any materially different mitigation requires revised scope approval.
+
+The review also found a weak timed SAVE/DELETE ownership checker. It now asserts
+the actual stripe is held at both preparation and record commit, retains the
+real concurrent final-state check, and releases/joins workers with bounded
+cleanup. Targeted coordinator tests passed in
+`checkpoint-04d-coordinator-review.log`. Separate temporary admission tests
+now cover oversized/invalid baselines and oversized cached metadata, checking
+unchanged SOLAR schedule, NEARBY cells/snapshot, history cursor/generation,
+revision, pause, dedupe, bytes and commit count. The lead accepted both checker
+findings and verified the fixes. These reviews are technical separate-context
+evidence, not an independent scientific assessment.
+
+Revised scale controls passed on the frozen schema-reuse implementation. At
+100,000 entries, distinct-key refusal fell to 42,702,512 cumulative bytes and
+81.3999 milliseconds; repeated-key admission fell to 430,713,408 bytes and
+458.4064 milliseconds. All six 21/1,000/100,000 controls retained their required
+outcomes. Peak job memory was 228,618,240 bytes, essentially unchanged because
+parsing and the owned tree remain. The follow-up profile no longer has
+`addStoredFields` among the displayed allocation contributors; normalization
+and stock scalar decoding remain deliberate per-value work. Results are in
+`checkpoint-04d-scale-final.log` and `checkpoint-04d-profile-final.log`.
+
+The lead dispositions the repeated schema-construction blocker as resolved by
+the narrow approved correction. This does not claim a production memory,
+concurrency or latency ceiling. No skipped values, new scalar conversion or
+changed bounds were needed. Fresh source review confirms free legacy validators,
+exact-type schema isolation and per-node validation/accounting remain intact.
+Final source review found no unresolved material defect. The remaining repeated
+value allocation is substantial; these serial local controls do not establish
+worst-case or concurrent production capacity. Normal collection writers retain
+20 canonical entries; no arbitrary reduction of approved limits was selected.
+
+Final validation:
+
+| Check | Observed result / artifact under `.tmp/command-fixes` |
+|---|---|
+| Complete filter/telnet ordinary and race suites | PASS; `checkpoint-04d-packages-final.log`, `checkpoint-04d-race.log` |
+| Complete ordinary Windows suite | PASS, 70 packages; `checkpoint-04d-baseline-final.log` |
+| Vet, Staticcheck and golangci-lint | PASS; `checkpoint-04d-vet-final.log`, `checkpoint-04d-staticcheck-final.log`, `checkpoint-04d-lint-final.log` |
+| Actual checkout server, both transports | PASS, 48 required cases each for ordinary and race builds; `20261009-143641-16784c56/results.json`, `20261009-143710-8f8155d5/results.json` |
+| Runner controls | PASS, 22 controls; `checkpoint-04d-runner-controls.log` |
+| Active bounded admission fuzzing | PASS, 2,397 executions over about 16 seconds with two workers; `checkpoint-04d-fuzz-final.log` |
+| Six increasing admitted/refused collection controls and follow-up profile | PASS; revised cost evidence above and `checkpoint-04d-scale-final.log`, `checkpoint-04d-profile-final.log` |
+| Indexed troubleshooting and support-critical entry comments | PASS; `checkpoint-04d-tsr-final.log`, `checkpoint-04d-comments.log` |
+| Code maps and final whitespace/diff review | Generated, checked and reviewed before commit |
+
+Each server run had 24/24 passing required cases per transport, zero wire and
+cleanup failures, and two joined child generations per transport. Both captured
+the same Go/script source digest:
+`dc12077e714e646cda751a1a0791732caf93bdbb40033ec503c2f04128504aac`.
+
+The final analyzers caught an intentionally invalid nil callback result needing
+an explicit fixture lint exemption and an unread private schema-fixture field.
+The fixture now checks actual YAML exclusion of that field. An initial check
+mistakenly decoded the separate inline-collision fixture and panicked; it was
+corrected to use the plain field fixture. Both ordinary and race targeted checks
+passed (`checkpoint-04d-analyzer-fixtures-final.log` and `-race.log`). These
+test-only corrections did not invalidate the preceding complete production
+suite; final checkout builds and analyzers include them. Failed logs remain.
+
+Implementation mapping: `filter/storage_admission.go` owns exact record admission
+and bounded reads; `storage_decode*.go` owns shared work and collection preflight;
+`configuration*.go`, `user_record.go`, `user_preferences.go` and
+`prepared_user_record.go` enforce the selected representations; `presets.go`
+coordinates both admitted SAVE payloads. `telnet/configuration_admission.go`,
+`human_preference_stage.go`, session restoration, machine transactions and preset
+dispatch preserve publication/ownership contracts. Boundary, consumer, race,
+fuzz, scale and cumulative checkout tests map to the matrix above.
+
+Support impact is runtime/operator-visible: updated telnet and configuration
+guides, domain/environment contracts, the configuration support card, source map
+and support coverage ledger. ADR-0270 records the durable admission decision;
+TSR-0052 retains the measured schema-allocation learning and production-monitoring
+boundary. No external service, deployed support agent or production-load check
+was run. All accepted reviewer findings are dispositioned above; no waiver is
+used to declare this checkpoint complete.

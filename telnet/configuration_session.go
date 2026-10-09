@@ -77,16 +77,21 @@ func (s *Server) restoreClientRecordOwned(c *Client, loginTime time.Time) restor
 		}
 		record.RecentIPs = filter.UpdateRecentIPs(record.RecentIPs, spotterIP(c.address))
 		record.LastLoginUTC = loginTime
-		persist := filter.SaveUserRecord
-		if s.saveLoginRecordFn != nil {
-			persist = s.saveLoginRecordFn
+		prepared, saveErr := filter.PrepareUserRecord(c.callsign, record)
+		if saveErr == nil {
+			if s.commitLoginRecordFn != nil {
+				saveErr = s.commitLoginRecordFn(prepared)
+			} else {
+				saveErr = prepared.Commit()
+			}
 		}
-		if err := persist(c.callsign, record); err != nil {
+		if saveErr != nil {
 			result.warning = "Restored your saved configuration, but could not save this login's timestamp/IP.\n"
-			log.Printf("Warning: failed to save login metadata for %s: %v", c.callsign, err)
+			log.Printf("Warning: failed to save login metadata for %s: %v", c.callsign, saveErr)
 		}
 	}
-	c.recentIPs = record.RecentIPs
+	c.recentIPs = boundedSessionIPs(record.RecentIPs)
+	c.lastLoginUTC = record.LastLoginUTC
 	c.configuredSettings = filter.SettingsConfiguration{
 		Dialect: record.Dialect, Grid: record.Grid, NoiseClass: record.NoiseClass,
 		DedupePolicy: record.DedupePolicy, PathMinObservationCount: record.PathMinObservationCount,

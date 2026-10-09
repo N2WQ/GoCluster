@@ -36,11 +36,11 @@ func TestHumanPreferenceCoordinatorReconnectFence(t *testing.T) {
 		}
 	})
 	var attempts atomic.Int32
-	s.saveConfigurationFn = func(call string, cfg filter.Configuration, ref *filter.PresetReference, ips []string) error {
+	s.commitConfigurationFn = func(prepared *filter.PreparedUserRecord) error {
 		attempts.Add(1)
 		close(entered)
 		<-finish
-		return filter.SaveConfiguration(call, cfg, ref, ips)
+		return prepared.Commit()
 	}
 	saved := make(chan struct{})
 	joined = append(joined, saved)
@@ -83,7 +83,7 @@ func TestHumanPreferenceCoordinatorReconnectFence(t *testing.T) {
 	if response != "Noise class set to URBAN\n" || restoreErr != nil || attempts.Load() != 1 || next.configuredSettings.NoiseClass != "URBAN" {
 		t.Fatalf("human coordinator handoff failed: %q, %v, saves=%d", response, restoreErr, attempts.Load())
 	}
-	s.saveConfigurationFn = nil
+	s.commitConfigurationFn = nil
 	path := filepath.Join(filter.UserDataDir, "W1ABC-1.yaml")
 	before, err := os.ReadFile(path)
 	if err != nil {

@@ -30,7 +30,8 @@ still own synchronized or detached input just as for the existing save APIs.
 
 Existing save APIs remain preparation-then-commit wrappers, with private per-call
 writer seams for failure tests. Preserve their validation differences; ordinary
-record preparation must not acquire the standalone preset size restriction.
+record preparation retains its validation boundaries. The later complete
+admission checkpoint adds the independently measured configuration/baseline limits.
 Resolve a relative target location during preparation so a later working-directory
 change cannot redirect the captured commit.
 
@@ -69,6 +70,8 @@ cache, new worker or synchronization layer is introduced. Preparation does not
 make borrowed mutable input safe to encode concurrently.
 
 ## Links
+
+- Admission refinement: [ADR-0270](ADR-0270-complete-storage-admission.md)
 
 - Refines: [ADR-0244](ADR-0244-exact-configuration-persistence.md)
 - Related scope: [Scope Ledger v3](../command-fix-scope-ledger-v3.md)

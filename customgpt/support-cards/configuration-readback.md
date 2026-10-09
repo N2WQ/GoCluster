@@ -17,6 +17,17 @@ command/error artifact that distinguishes the next step.
 
 ## Must Include
 
+- Stored user records have separate 1 MiB raw, normalized and exact-write limits;
+  configuration and baseline each use the 256 KiB standalone-preset encoding.
+  Expensive alias expansion can also be refused; decoding-work units are not
+  file or heap bytes. Preserve refused files for backup/repair. Initial protected
+  defaults remain protected for the session; a warm refusal allows admitted
+  temporary changes with a warning and retries a repaired authoritative record
+  on later saves or ordinary logout. A prospective oversized replacement rejects
+  before publication. SAVE admits library and association before either write;
+  only a later association I/O failure can produce partial success. Retrieve
+  [ADR-0270](../../docs/decisions/ADR-0270-complete-storage-admission.md).
+
 - DXDXCC/DEDXCC PASS/REJECT accept exact canonical CTY prefixes and existing
   positive numeric ADIF codes, including mixed lists. Canonical input requires
   CTY; unknown or conflicting labels reject the whole list without mutation.

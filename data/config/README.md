@@ -256,7 +256,7 @@ separately from the files in this deployment-config directory. Each full callsig
 including its SSID, owns one record such as `N2WQ-1.yaml`. The `presets` subdirectory
 holds shared named snapshots for the owner callsign; back it up with user records.
 
-`configuration_version: 3` identifies exact current records and snapshots. An
+`configuration_version: 4` identifies exact current records and snapshots. An
 absent marker selects legacy migration; version 1 preserves old exact rules and
 adds unrestricted DX/DE state domains, including nested preset baselines. Legacy
 and versions 1/2 acquire no MINSNR thresholds, while version 2 states stay exact.
@@ -278,8 +278,20 @@ that reference, and library overwrite or deletion does not alter the applied
 snapshot. Reconnect restores the reference for that full callsign. Preferences
 differing from the baseline show `(modified)`; reversing them clears the label.
 
-The existing preset budgets remain 20 names per owner, 256 KiB per encoded
-snapshot and 8 MiB per collection. Valid large presets can LOAD even when a FULL
+User records have separate 1 MiB raw-read, normalized-encoding and final-write
+limits. Each configuration and applied baseline has a 256 KiB standalone-preset
+encoding limit. Decoding also has a shared processing budget for node visits and
+decoded scalar bytes, including alias expansion: 2,097,152 units per record and
+16,777,216 per collection. These are work units, not heap or file bytes.
+Refused files remain untouched. Human candidates are admitted before publication;
+a warm session with a refused destination can use fitting temporary changes with
+a warning, then retry a repaired file on a later save or ordinary logout. A
+login that started with protected defaults remains protected for that session.
+SAVE admits the library and association before either write; only later I/O
+failure can produce its documented partial success.
+
+Preset budgets remain 20 names per owner, 256 KiB per encoded snapshot and
+8 MiB per collection. Valid large presets can LOAD even when a FULL
 or YAML readback exceeds 64 KiB. PUT/PATCH/VALIDATE instead require the resulting
 complete CONFIG readback to fit, including reserved response metadata. An
 unchanged PUT still persists before success, repairing an earlier failed human

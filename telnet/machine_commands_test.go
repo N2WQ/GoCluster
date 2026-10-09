@@ -51,7 +51,7 @@ func TestMachineWriteFailureLeavesLiveAndDiskUnchanged(t *testing.T) {
 	for _, failure := range []string{"stale", "unavailable", "persistence", "protected", "padded_grid", "padded_noise"} {
 		t.Run(failure, func(t *testing.T) {
 			proposal := request
-			s.saveConfigurationFn = nil
+			s.commitConfigurationFn = nil
 			c.recordProtected = false
 			s.dedupeSlowEnabled = true
 			switch failure {
@@ -61,7 +61,7 @@ func TestMachineWriteFailureLeavesLiveAndDiskUnchanged(t *testing.T) {
 				s.dedupeSlowEnabled = false
 				_, proposal = decodeProposalTest(t, c, "PATCH", "SETTINGS", "  dedupe_policy: SLOW\n")
 			case "persistence":
-				s.saveConfigurationFn = func(string, filter.Configuration, *filter.PresetReference, []string) error { return os.ErrPermission }
+				s.commitConfigurationFn = func(*filter.PreparedUserRecord) error { return os.ErrPermission }
 			case "protected":
 				c.recordProtected = true
 			case "padded_grid":
@@ -100,12 +100,12 @@ func TestMachineUnchangedPUTRepairsDurabilityWithoutRuntimeReset(t *testing.T) {
 	if err := c.saveFilter(); err != nil {
 		t.Fatal(err)
 	}
-	s.saveConfigurationFn = func(string, filter.Configuration, *filter.PresetReference, []string) error { return os.ErrPermission }
+	s.commitConfigurationFn = func(*filter.PreparedUserRecord) error { return os.ErrPermission }
 	response, _ := s.handlePathSettingsCommand(c, "SET NOISE URBAN")
 	if !strings.Contains(response, "warning: failed to persist") {
 		t.Fatalf("setter=%q", response)
 	}
-	s.saveConfigurationFn = nil
+	s.commitConfigurationFn = nil
 	c.setDiagMode(diagModePath)
 	deadline := time.Now().Add(time.Minute)
 	c.startReadPause(time.Now(), time.Minute)
@@ -320,7 +320,7 @@ func TestMachineVALIDATEHasNoLiveDurableOrSessionEffects(t *testing.T) {
 	pause := readbackPauseTestState{until: c.readPauseUntilUnixNano.Load(), cutoff: c.readPauseDiscardBefore.Load(),
 		count: c.readPauseSuppressed.Load(), epoch: c.readPauseEpoch, pending: c.readPausePending.Load(), closed: c.readPauseClosed}
 	persistCalls := 0
-	s.saveConfigurationFn = func(string, filter.Configuration, *filter.PresetReference, []string) error {
+	s.commitConfigurationFn = func(*filter.PreparedUserRecord) error {
 		persistCalls++
 		return os.ErrPermission
 	}

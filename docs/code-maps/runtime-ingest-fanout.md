@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `293f554ed38e9e7c`
+- Source fingerprint: `219617982813d220`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -15,7 +15,7 @@
 | `dxcluster/internal/cluster` | `internal/cluster` | 25 | 63 |
 | `dxcluster/peer` | `peer` | 62 | 130 |
 | `dxcluster/spot` | `spot` | 33 | 32 |
-| `dxcluster/telnet` | `telnet` | 45 | 82 |
+| `dxcluster/telnet` | `telnet` | 46 | 83 |
 
 ## In-Scope Package Edges
 
@@ -486,6 +486,7 @@ Source files:
 - `telnet/bulletin_dedupe.go`
 - `telnet/comment_commands.go`
 - `telnet/comment_input.go`
+- `telnet/configuration_admission.go`
 - `telnet/configuration_capabilities.go`
 - `telnet/configuration_human.go`
 - `telnet/configuration_human_comments.go`
@@ -537,6 +538,7 @@ Test files:
 - `telnet/comment_benchmark_test.go`
 - `telnet/comment_commands_test.go`
 - `telnet/comment_input_test.go`
+- `telnet/configuration_admission_test.go`
 - `telnet/configuration_handoff_test.go`
 - `telnet/configuration_human_dxcc_test.go`
 - `telnet/configuration_human_effective_test.go`
@@ -617,6 +619,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0270](docs/decisions/ADR-0270-complete-storage-admission.md) | Accepted | 2026-10-09 | filter, telnet, quotas, temporary settings, SAVE ordering | `area:telnet, path:telnet` |
 | [ADR-0269](docs/decisions/ADR-0269-detached-human-preference-publication.md) | Accepted | 2026-10-09 | telnet, configuration, staging, publication, ownership | `area:telnet, path:telnet` |
 | [ADR-0266](docs/decisions/ADR-0266-bounded-human-line-rejection.md) | Accepted | 2026-10-09 | telnet, input, protocol, deadlines, lifecycle | `area:telnet, path:telnet` |
 | [ADR-0264](docs/decisions/ADR-0264-task-oriented-compiled-help.md) | Accepted | 2026-10-08 | commands, HELP, dialects, operator documentation | `area:commands, path:commands, path:telnet` |

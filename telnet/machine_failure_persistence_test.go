@@ -33,11 +33,11 @@ func TestMachineTerminalRejectionPreservesDivergentSavedPreferences(t *testing.T
 				s, conn, reader, done := startMachineTestSession(t, transport)
 				defer closeHandshakeTranscriptSession(t, conn, done)
 				var failSave atomic.Bool
-				s.saveConfigurationFn = func(call string, cfg filter.Configuration, ref *filter.PresetReference, ips []string) error {
+				s.commitConfigurationFn = func(prepared *filter.PreparedUserRecord) error {
 					if failSave.Load() {
 						return os.ErrPermission
 					}
-					return filter.SaveConfiguration(call, cfg, ref, ips)
+					return prepared.Commit()
 				}
 				for _, command := range []string{"SET NOISE QUIET", "SAVE PRESET BEFORE"} {
 					if _, err := io.WriteString(conn, command+"\r\n"); err != nil {
