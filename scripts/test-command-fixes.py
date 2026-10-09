@@ -58,6 +58,8 @@ def require_archive(session, label):
 def profile(binary, root, source, transport):
     results, wire, cleanup, children = [], [], [], []
     required = [f"{transport}/0: held endpoint and loaded consumers",
+                f"{transport}: rejected lines have no command effects",
+                f"{transport}: stalled rejected tail disconnects",
                 f"{transport}: live change saved before disconnect",
                 f"{transport}: invalid control and actual archive write",
                 f"{transport}/1: held endpoint and loaded consumers",
@@ -89,6 +91,52 @@ def profile(binary, root, source, transport):
 
             case(f"{transport}/{generation}: held endpoint and loaded consumers", identity)
             if generation == 0:
+                def rejected_lines():
+                    record = root / "users" / (call + ".yaml")
+                    for dialect in ("go", "cc"):
+                        session.human("DIALECT " + dialect)
+                        for bad in ("DX 14074 K1ABC CW !REJECT BAND ALL",
+                                    "A" * 129 + "REJECT BAND ALL"):
+                            before = session.get()
+                            saved = record.read_bytes()
+                            identifier = suite.identifier()
+                            sync = f"GET YAML CONFIG SCHEMA 4 ID {identifier}"
+                            session.send(bad + "\r\nSHOW OWN\r\n" + sync + "\r\n")
+                            after, prefix = session.frame("CONFIG", identifier, 4, "rejected physical line")
+                            require(prefix.count(b"Own call: K1ABC") == 1,
+                                    "recovery lost or duplicated the next read-only command")
+                            require(b"Command input" in prefix, "rejection response absent")
+                            require(after["configuration"] == before["configuration"] and
+                                    after["revision"] == before["revision"],
+                                    "rejected line changed live configuration")
+                            require(record.read_bytes() == saved,
+                                    "rejected line changed saved configuration")
+                            require(b"All bands blocked" not in prefix and b"Spot queued" not in prefix,
+                                    "rejected physical line executed a command")
+
+                case(f"{transport}: rejected lines have no command effects", rejected_lines)
+
+                def stalled_rejection():
+                    terminal = harness.Session(suite, "K1ABC-70002")
+                    record = root / "users" / (terminal.call + ".yaml")
+                    saved = record.read_bytes()
+                    terminal.send("DX 14074 K1ABC CW !REJECT BAND ALL")  # No physical EOL.
+                    start = time.monotonic()
+                    try:
+                        terminal.reader.until(b"unreachable-test-marker")
+                        raise ValueError("stalled rejected line stayed open")
+                    except EOFError:
+                        require(time.monotonic() - start < 7, "recovery exceeded five-second bound")
+                        require(b"Spot queued" not in terminal.reader.buffer,
+                                "incomplete rejected line posted a spot")
+                    finally:
+                        terminal.sock.close()
+                        terminal.closed = True
+                    require(record.read_bytes() == saved,
+                            "stalled rejected line changed saved configuration")
+
+                case(f"{transport}: stalled rejected tail disconnects", stalled_rejection)
+
                 def persistence():
                     for dialect in ("cc", "go", "cc"):
                         _, doc = session.human("DIALECT " + dialect)

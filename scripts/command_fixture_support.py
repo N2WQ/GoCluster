@@ -209,11 +209,18 @@ class Child:
             raise
         try:
             deadline = time.monotonic() + 45
-            while not self.ready.exists():
+            while True:
                 self.check_running()
                 require(time.monotonic() < deadline, "fixture readiness deadline expired")
-                time.sleep(.025)
-            value = json.loads(self.ready.read_text())
+                try:
+                    ready_text = self.ready.read_text()
+                except (FileNotFoundError, PermissionError):
+                    # Windows can briefly refuse an open during atomic receipt
+                    # publication. Keep the existing live-child/time bounds.
+                    time.sleep(.025)
+                    continue
+                value = json.loads(ready_text)
+                break
             require(value["nonce"] == self.nonce and value["pid"] == self.process.pid and value["started"],
                     "fixture child identity mismatch")
             require(value["binary_hash"] == digest(binary) and value["source_digest"] == source["digest"],

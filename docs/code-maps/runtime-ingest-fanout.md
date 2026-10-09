@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `a2482d50717e164f`
+- Source fingerprint: `22171fbe4d77b4e4`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -15,7 +15,7 @@
 | `dxcluster/internal/cluster` | `internal/cluster` | 25 | 63 |
 | `dxcluster/peer` | `peer` | 62 | 130 |
 | `dxcluster/spot` | `spot` | 33 | 32 |
-| `dxcluster/telnet` | `telnet` | 42 | 76 |
+| `dxcluster/telnet` | `telnet` | 44 | 77 |
 
 ## In-Scope Package Edges
 
@@ -503,6 +503,8 @@ Source files:
 - `telnet/filter_commands.go`
 - `telnet/history.go`
 - `telnet/history_filter.go`
+- `telnet/human_input_recovery.go`
+- `telnet/input_wire.go`
 - `telnet/latency.go`
 - `telnet/login_validation.go`
 - `telnet/machine_commands.go`
@@ -558,6 +560,7 @@ Test files:
 - `telnet/history_fuzz_test.go`
 - `telnet/history_selection_test.go`
 - `telnet/history_test.go`
+- `telnet/human_input_recovery_test.go`
 - `telnet/latency_test.go`
 - `telnet/machine_commands_test.go`
 - `telnet/machine_comments_test.go`
@@ -608,6 +611,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0266](docs/decisions/ADR-0266-bounded-human-line-rejection.md) | Accepted | 2026-10-09 | telnet, input, protocol, deadlines, lifecycle | `area:telnet, path:telnet` |
 | [ADR-0264](docs/decisions/ADR-0264-task-oriented-compiled-help.md) | Accepted | 2026-10-08 | commands, HELP, dialects, operator documentation | `area:commands, path:commands, path:telnet` |
 | [ADR-0263](docs/decisions/ADR-0263-history-list-comma-boundaries.md) | Accepted | 2026-10-08 | commands, telnet, history parser, compatibility | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0262](docs/decisions/ADR-0262-history-band-mode-selections.md) | Accepted | 2026-10-08 | commands, telnet, history, parser, retained state | `area:commands, area:telnet, path:commands, path:telnet` |

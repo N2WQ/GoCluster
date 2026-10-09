@@ -101,6 +101,34 @@ class DriverControls(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "fixture exited early"):
                 support.Child(Path(sys.executable), Path(directory), {"digest": "source"})
 
+    def test_readiness_sharing_retry_is_bounded(self):
+        for expires in (False, True):
+            with self.subTest(expires=expires), tempfile.TemporaryDirectory(dir=support.ROOT / ".tmp") as directory:
+                root = Path(directory)
+                (root / "config").mkdir()
+                process = mock.Mock(pid=123)
+                process.poll.return_value = None
+                receipt = json.dumps(dict(nonce="fixed", pid=123, started=True,
+                                          binary_hash="binary", source_digest="source",
+                                          config_hashes={}, address="127.0.0.1:12345"))
+                reads = [PermissionError("sharing publication"), receipt]
+                with mock.patch.object(support.uuid, "uuid4", return_value=mock.Mock(hex="fixed")), \
+                        mock.patch.object(support.subprocess, "Popen", return_value=process), \
+                        mock.patch.object(support, "digest", return_value="binary"), \
+                        mock.patch.object(Path, "read_text", side_effect=reads) as reading, \
+                        mock.patch.object(support.time, "monotonic", side_effect=([0, 0, 46] if expires else [0, 0, 1])), \
+                        mock.patch.object(support.time, "sleep"):
+                    if expires:
+                        with self.assertRaisesRegex(ValueError, "readiness deadline expired"):
+                            support.Child(Path("fixture.exe"), root, {"digest": "source"})
+                        process.kill.assert_called_once()
+                        self.assertEqual(reading.call_count, 1)
+                    else:
+                        child = support.Child(Path("fixture.exe"), root, {"digest": "source"})
+                        self.assertEqual(child.port, 12345)
+                        self.assertEqual(reading.call_count, 2)
+                        child.abort()
+
     def test_direct_cleanup_exception_still_retires_and_closes_job(self):
         for failing_method in ("kill", "wait"):
             process = mock.Mock()

@@ -3,6 +3,7 @@
 package telnet
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -43,11 +44,28 @@ func (c *Client) readInputLine(maxLen int, context string, allowComma, allowWild
 		context = "command"
 	}
 	var line []byte
+	progress := false
+	var wireStart uint64
+	if c.inputWire != nil {
+		wireStart = c.inputWire.total
+	}
+	if c.inputExposure != nil {
+		c.inputExposure.enabled = true
+		defer func() { c.inputExposure.enabled = false }()
+	}
 	fail := func(err error) (string, error) {
 		if machineAware {
 			if verb := machineIntent(line); verb != "" {
 				return "", &machineInputError{Verb: verb, Err: err, Terminal: true}
 			}
+		}
+		var validationErr *InputValidationError
+		if errors.As(err, &validationErr) {
+			return c.rejectHumanInput(err)
+		}
+		wireProgress := c.inputWire != nil && (c.inputWire.total != wireStart || c.inputWire.state != 0)
+		if progress || wireProgress {
+			return c.terminalHumanInput(err)
 		}
 		return "", err
 	}
@@ -59,10 +77,17 @@ func (c *Client) readInputLine(maxLen int, context string, allowComma, allowWild
 		if c.skipNextEOL {
 			c.skipNextEOL = false
 			if b == '\n' || b == 0x00 {
+				if c.inputWire != nil {
+					wireStart = c.inputWire.total // Completes the previous CR, not a partial new line.
+				}
 				continue
 			}
 		}
 		if b == IAC {
+			progress = true
+			if c.decodedInput() {
+				continue // Already decoded literal IAC; do not consume following data.
+			}
 			if err := c.consumeIACSequence(); err != nil {
 				return fail(err)
 			}
@@ -77,6 +102,7 @@ func (c *Client) readInputLine(maxLen int, context string, allowComma, allowWild
 			c.skipNextEOL = b == '\r'
 			break
 		}
+		progress = true // Editing can erase the bytes, but not physical progress.
 		if edited, err := c.editInputLine(&line, b); edited {
 			if err != nil {
 				return fail(err)

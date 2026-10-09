@@ -12,9 +12,11 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
+Current progress: checkpoints 00 and 01 complete; 44 checkpoints remain.
+
 ## Checkpoint 00: unattended checkout-server fixture
 
-Status: complete. Other 45 checkpoints are pending. The matrix records the
+Status: complete. The matrix records the
 obligations established before implementation; observed evidence follows.
 
 The fixture uses real `config.Load`, taxonomy/IARU/CTY/H3 loaders,
@@ -98,3 +100,83 @@ attempts executed no tests and are excluded from passed evidence.
 Fresh final verification was lead-owned. Review findings were dispositioned,
 owned-process retirement was exercised locally, and the final diff was inspected.
 No external cluster, deployment or production-load evidence is claimed.
+
+## Checkpoint 01: physical-line rejection
+
+Status: complete; checkpoint 00 is committed as `c179916`.
+The post-approval lifecycle/test-strategy review was inherited-context and
+read-only. Its transport findings are incorporated before implementation.
+
+The read owner retains the installed read deadline. Recovery uses its earlier
+value or five seconds, drains without editing/echo through the selected codec,
+and owns a timer whose expiry interrupts the raw socket, including negotiation
+writes. Acceptance and expiry are linearized; cleanup joins a started callback.
+Typed terminal human errors precede timeout/validation retry in both caller loops.
+Physical progress survives erasure; an empty idle timeout remains retryable.
+
+A raw guard is installed before the codec and limits new reads only during
+recovery. Native buffered bytes are counted exactly. Ziutek gets single decoded
+byte exposure while reading human/header lines so it cannot hide an offending
+byte behind a later negotiation write. Machine body bulk reads remain available.
+Reserve the codec's hidden 256 bytes plus twice any already buffered decoded
+bytes (escaped IAC can represent two wire bytes). This is a conservative at-most
+64 KiB guarantee, not a promise to accept every boundary exactly at 64 KiB.
+Recoverability near the limit may require disconnecting somewhat earlier.
+
+| Contract / broken design | Required stimulus and observation | Checker |
+|---|---|---|
+| Rejected tail executes | Original invalid DX and overlong input containing REJECT BAND ALL | Exact unchanged configuration/revision and stored bytes; no tail acknowledgement |
+| Recovery consumes next command | Bad line then read-only SHOW OWN sentinel | Exactly one sentinel reply and correlated GET; reader returns exactly the next line |
+| Decoded count misses wire | Large IAC/subnegotiation streams through actual codecs | Recorded raw bytes stay within admitted recovery budget; terminal closure |
+| Buffered debt bypasses limit | Native prefetch and ziutek hidden/decoded buffering | Debt reserved before any new raw read |
+| Deadline slips or extends | Trickle/buffered input and earlier installed deadline | Absolute deadline governs, including with watchdog deliberately delayed |
+| Callback Write stalls | Invalid byte followed by actual ziutek negotiation Write | Offending byte is exposed first; watchdog interrupts socket and reader joins |
+| Editing hides partial read | Partial text followed by Ctrl-U/BS then timeout | Terminal human error; caller disconnects and never dispatches tail |
+| Idle behavior changes | Empty timeout then valid command | Existing idle retry and usable session |
+| Raw newline ends SB prematurely | CR/LF and escaped IAC inside subnegotiation | Actual data boundary wins in both transports |
+| Timer outlives recovery | Delayed expiry/accept races and repeated recovery | Callback joined; retired timer cannot close later command |
+| Shared reader breaks machine input | Existing machine/transport/editing suites | Reserved machine intent, body deadlines, case and normal editing preserved |
+
+Validation adds required cumulative checkout cases, targeted transport/caller
+tests, structured protocol fuzzing and race coverage. Allocation checks target
+zero additional allocations in the raw guard's ordinary Read; no latency or
+production-load improvement is claimed.
+
+### Observed checkpoint 01 qualification (2026-10-09)
+
+| Command / scope | Observed result |
+|---|---|
+| Stable Windows runner, telnet targeted `Test(Human\|InputWire\|ReadLine\|Machine\|Malformed\|YAML)\|FuzzHumanRecoveryBoundary` | Passed, including real blocked ziutek negotiation Write, split CRLF/CR-NUL idle retry, terminal login/command callers, bulk decoded debt, literal limits and both callback winners |
+| Pinned Python `unittest discover -s scripts -p test_command_fixes_test.py` | 18 failure controls passed; transient receipt sharing retries remain bounded and retire the child on expiry |
+| `python scripts/test-command-fixes.py` | All 14 required cases passed, zero wire/cleanup errors; artifact `.tmp/command-fixes/20261009-093545-d01aea38` |
+| Same driver with `--race` | All 14 cases passed, zero wire/cleanup errors; final artifact `.tmp/command-fixes/20261009-095433-c631745b` |
+| Stable fuzz-instrumented binary, `-test.fuzz=^FuzzHumanRecoveryBoundary$ -test.fuzztime=10s -test.parallel=2` | Passed 39,096 executions, 15 new coverage inputs; log `.tmp/command-fixes/checkpoint-01-fuzz-guided.log` |
+| `pwsh -NoProfile -File scripts/test-windows.ps1` | Complete 70-package run passed; log `.tmp/command-fixes/checkpoint-01-baseline.log` |
+| Same runner with `-Race` | Complete 70-package run passed, no race report; log `.tmp/command-fixes/checkpoint-01-race.log` |
+| `go vet ./...`; `staticcheck ./...`; `golangci-lint run ./... --config=.golangci.yaml` | Passed; lint reported zero issues |
+
+The first fixture attempt failed on a transient Windows sharing refusal while
+opening an atomically published readiness receipt. The retry is restricted to
+missing/sharing-refused files within the existing 45-second live-child bound;
+invalid JSON and identity failures remain terminal. Its positive/expiry control
+and subsequent ordinary/race server runs passed. The failed attempt remains
+diagnostic evidence and is excluded from passed qualification.
+
+The first exploratory fuzz launch lacked coverage instrumentation. Qualification
+uses the subsequent fresh `go test -c -fuzz=^FuzzHumanRecoveryBoundary$` build at
+the stable path, protected by the shared runner lock. Literal unit oracles
+independently enforce 65,536 wire bytes and a five-second effective deadline.
+The fake-clock trickle test withholds expiry and asserts reading stops before
+the boundary; a registered deadline alone cannot satisfy it.
+
+The inherited-context code review found and fixed split-terminator idle
+accounting. It also prompted stronger literal-bound, bulk-prefetch and timer
+winner evidence. Fresh final verification was lead-owned. Ordinary Read added
+zero allocations in its focused check; this is not a latency or load claim.
+
+Support-agent docs impact: Required and completed. The connectivity card,
+troubleshooting route, telnet README and affected domain-contract sections
+describe whole-line rejection and safe recovery/disconnect. Existing unrelated
+legacy bytes in the domain contract were preserved. ADR-0266 records the durable
+recovery policy; TSR-0048 preserves the parser/codec root cause and support
+learning. Machine schemas and upload policy remain unchanged.

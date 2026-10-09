@@ -34,6 +34,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"math/rand"
@@ -377,6 +378,9 @@ type Server struct {
 type Client struct {
 	conn                    net.Conn               // TCP connection to client
 	reader                  *bufio.Reader          // Buffered reader for client input
+	inputWire               *inputWireConn         // Raw recovery accounting, owned by reader goroutine
+	inputExposure           *singleByteInput       // Ziutek human/header byte exposure, same read owner
+	readDeadline            time.Time              // Last installed read deadline, owned by read goroutine
 	writer                  *bufio.Writer          // Buffered writer for client output
 	writeMu                 sync.Mutex             // Guards writer/deadline usage for echo + writer loop
 	callsign                string                 // Client's amateur radio callsign
@@ -444,8 +448,9 @@ type Client struct {
 	dropWindow        dropWindow // Sliding window for extreme drop detection
 }
 
-// InputValidationError represents a non-fatal ingress violation (length or character guardrails).
-// Returning this error allows the caller to keep the connection open and prompt the user again.
+// InputValidationError describes a length or character violation. It is
+// retryable only after the physical line was recovered; unsafe recovery wraps
+// it in humanInputError, which callers must handle first and terminate.
 type InputValidationError struct {
 	reason  string
 	context string
@@ -3689,15 +3694,24 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 	if s != nil && s.wrapConnFn != nil {
 		wrapConn = s.wrapConnFn
 	}
-	readerConn, writerConn, err := wrapConn(conn)
+	inputWire := &inputWireConn{Conn: conn}
+	readerConn, writerConn, err := wrapConn(inputWire)
 	if err != nil {
 		log.Printf("telnet: failed to wrap connection from %s: %v", address, err)
 		_ = conn.Close()
 		return
 	}
+	var inputExposure *singleByteInput
+	var inputReader io.Reader = readerConn
+	if s.useZiutek {
+		inputExposure = &singleByteInput{reader: readerConn}
+		inputReader = inputExposure
+	}
 	client := &Client{
 		conn:           conn,
-		reader:         bufio.NewReader(readerConn),
+		inputWire:      inputWire,
+		inputExposure:  inputExposure,
+		reader:         bufio.NewReader(inputReader),
 		writer:         bufio.NewWriter(writerConn),
 		connected:      time.Now().UTC(),
 		server:         s,
@@ -3763,6 +3777,11 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 		// callsign, including suffixes such as /QRP or /MM.
 		line, err := client.ReadLine(s.loginLineLimit, "login", false, false, false, false)
 		if err != nil {
+			var humanErr *humanInputError
+			if errors.As(err, &humanErr) {
+				log.Printf("Unsafe login input from %s: %v", address, err)
+				return
+			}
 			if isTimeoutErr(err) {
 				s.recordPreloginTimeout()
 				s.reportLoginAttempt("timeout", "login_timeout", "", address, "")
@@ -3882,6 +3901,11 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 				if s.queueMachineReply(client, response, true) {
 					closeOnExit = false
 				}
+				return
+			}
+			var humanErr *humanInputError
+			if errors.As(err, &humanErr) {
+				log.Printf("Unsafe command input from %s: %v", client.callsign, err)
 				return
 			}
 			if isTimeoutErr(err) {
@@ -6124,10 +6148,16 @@ func (c *Client) clearWriteDeadline() {
 }
 
 func (c *Client) setReadDeadline(deadline time.Time) error {
-	if c == nil || c.conn == nil {
+	if c == nil {
 		return nil
 	}
-	return c.conn.SetReadDeadline(deadline)
+	if c.conn != nil {
+		if err := c.conn.SetReadDeadline(deadline); err != nil {
+			return err
+		}
+	}
+	c.readDeadline = deadline
+	return nil
 }
 
 func isTimeoutErr(err error) bool {
@@ -6269,8 +6299,9 @@ func (c *Client) SendAndClose(message string) error {
 //     '@', and '-') is accepted. Command contexts can optionally allow commas,
 //     wildcards (*), and the '?' confidence glyph so filter commands retain
 //     their legacy syntax. Any other
-//     character is immediately rejected, logged, and returned as an error so
-//     the caller can tear down the session before state is mutated.
+//     character rejects the entire physical line. Bounded recovery preserves a
+//     session only when a trusted data terminator is found; unsafe recovery is
+//     returned as a terminal humanInputError before any tail can be dispatched.
 //
 // The CRLF terminator is always allowed: '\r' ends the line and a following
 // '\n' (or NUL) is consumed per RFC 854. Editing controls are handled inline:

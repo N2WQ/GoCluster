@@ -13,27 +13,27 @@ pressure.
 ## Protocol scope and telnet byte policy
 
 - The protocol is line-oriented over TCP.
-- Accept `\n` and `\r\n`.
-- Telnet negotiation is not implied by the use of TCP.
-- Default policy:
-  - treat the service as a raw line protocol
-  - if telnet negotiation bytes (`IAC`, `0xFF`) are observed, close the
-    connection with a deterministic reason indicating telnet negotiation is
-    unsupported
-- If minimal telnet compatibility is intentionally added later:
-  - strip or ignore IAC sequences deterministically
-  - never allow telnet bytes to reach business handlers
-  - do not implement partial/ad hoc telnet behavior
+- Human lines accept LF, CRLF, CR-NUL and CR followed by the next line's data.
+- The configured default `ziutek` transport decodes Telnet negotiation. The
+  `native` transport strips supported IAC sequences in the input reader.
+- Negotiation and escaped IAC bytes never reach business handlers. Newlines
+  inside Telnet subnegotiation do not end application lines.
 
 ## Input parsing
 
 - Use streaming parse with bounded per-connection buffers.
-- Default bounds:
-  - max line: 1024 bytes
-  - max token: 64 bytes
+- Default human bounds are 32 bytes for login and 128 bytes for commands;
+  configured line limits apply before dispatch.
 - Handle partial reads correctly.
 - Reject unexpected control characters per policy.
-- Close on repeated abusive input.
+- Reject an invalid or overlong human physical line with zero command effects.
+  Discard its tail without editing or echo, through a safe data line boundary.
+- Recovery spends at most 64 KiB of wire data and five seconds, respecting any
+  earlier installed read deadline. Count buffered data and codec negotiation;
+  conservative codec-buffer reservation may disconnect earlier near the limit.
+- Disconnect if recovery fails or a partial human read is interrupted. Editing
+  cannot erase physical progress. An empty logged-in idle timeout is retryable.
+- Machine headers/uploads retain their separate framing and terminal rules.
 - Do not retain subslices of shared read buffers when data must outlive the read
   cycle.
 

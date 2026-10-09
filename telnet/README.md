@@ -35,6 +35,25 @@ LIST/DELETE retain their separate preset-library behavior.
 
 The handshake transcript tests in this package cover the visible login sequence.
 
+## Rejected Input And Recovery
+
+An invalid or overlong human line is rejected as a whole. Text after the rejected
+byte cannot execute as a second command, including while entering a callsign.
+The server discards the remainder without applying editing keys or echoing it.
+If it finds a safe line ending, it reports the input error and keeps the session.
+
+Recovery discards at most 64 KiB of wire data and lasts at most five seconds.
+An earlier login or session read deadline takes priority. Telnet negotiation
+bytes and buffered data count toward the limit; the compatibility codec reserves
+its hidden buffer conservatively, so a boundary near the limit may require an
+earlier disconnect. Newlines inside subnegotiation are not command boundaries.
+
+The server disconnects when recovery reaches either limit or cannot establish a
+safe boundary. A partial line interrupted by EOF, timeout or transport failure
+also disconnects, even if editing erased all its visible characters. An empty
+logged-in idle timeout retains its existing retry behavior. Machine headers and
+YAML uploads keep their separate terminal-error and upload limits.
+
 ## Spot Line Format
 
 Spot lines are formatted in [`../spot/spot.go`](../spot/spot.go) and sent by the telnet layer.
