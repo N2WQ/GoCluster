@@ -236,3 +236,27 @@ validate its behavior or performance. It also predates history BAND/MODE
 selections; the extended harness requires a separate owner-authorized live run
 to establish deployed behavior. No live execution is implied by offline
 collector fixtures or local Go tests.
+
+## Local command-fix regression runner
+
+`scripts/test-command-fixes.py` builds this checkout and starts isolated local
+servers. It requires no external cluster or manual server setup. Run with the
+pinned test environment:
+
+```powershell
+.tmp/telnet-test-venv/Scripts/python.exe -m unittest discover -s scripts -p test_command_fixes_test.py
+.tmp/telnet-test-venv/Scripts/python.exe scripts/test-command-fixes.py
+.tmp/telnet-test-venv/Scripts/python.exe scripts/test-command-fixes.py --race
+```
+
+The runner requires native Windows and uses the existing stable telnet test executable and exclusive
+runner lock. It refuses optimized Python, cross compilation, output junctions,
+stale builds, missing required cases, framing errors and incomplete cleanup.
+Each run retains source/config identity, results, child logs and socket transcripts
+under `.tmp/command-fixes`. Both telnet transports and both dialects are covered;
+fresh child processes verify saved preferences and actual archive data.
+
+Coverage grows with each approved fix. The initial fixture does not certify
+production dedupe, classifier or runtime shutdown. See the
+[execution record](command-fix-execution.md) and
+[approved v3 scope](command-fix-scope-ledger-v3.md).

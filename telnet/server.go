@@ -2343,6 +2343,14 @@ func (s *Server) Start() error {
 		return fmt.Errorf("failed to start telnet server: %w", err)
 	}
 
+	s.startWithListener(listener)
+	return nil
+}
+
+// startWithListener shares production startup with the checkout fixture. The
+// caller owns binding and transfers the held listener to Stop; no port rebind
+// occurs between selecting an endpoint and accepting its first connection.
+func (s *Server) startWithListener(listener net.Listener) {
 	s.listener = listener
 	log.Printf("Telnet server listening on port %d", s.port)
 
@@ -2363,8 +2371,6 @@ func (s *Server) Start() error {
 
 	// Accept connections in a goroutine
 	go s.acceptConnections()
-
-	return nil
 }
 
 // listenWithReuse enables SO_REUSEADDR so we can rebind quickly after a crash/exit.

@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `f0ebd914e3fa3b15`
+- Source fingerprint: `a2482d50717e164f`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -15,7 +15,7 @@
 | `dxcluster/internal/cluster` | `internal/cluster` | 25 | 63 |
 | `dxcluster/peer` | `peer` | 62 | 130 |
 | `dxcluster/spot` | `spot` | 33 | 32 |
-| `dxcluster/telnet` | `telnet` | 42 | 74 |
+| `dxcluster/telnet` | `telnet` | 42 | 76 |
 
 ## In-Scope Package Edges
 
@@ -529,6 +529,8 @@ Source files:
 Test files:
 - `telnet/bulletin_dedupe_test.go`
 - `telnet/canadian_login_test.go`
+- `telnet/command_fixture_options_test.go`
+- `telnet/command_fixture_test.go`
 - `telnet/comment_benchmark_test.go`
 - `telnet/comment_commands_test.go`
 - `telnet/comment_input_test.go`
