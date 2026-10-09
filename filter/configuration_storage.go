@@ -43,6 +43,10 @@ func (ref *PresetReference) Clone() (*PresetReference, error) {
 
 // UnmarshalYAML validates the applied name and baseline before admitting a record.
 func (ref *PresetReference) UnmarshalYAML(node *yaml.Node) error {
+	return decodeStoredOwnerNode(node, ref)
+}
+
+func (ref *PresetReference) unmarshalStored(node *yaml.Node, state *storageDecodeState) error {
 	if err := validateStoredMapping(node, reflect.TypeFor[PresetReference]()); err != nil {
 		return err
 	}
@@ -51,7 +55,7 @@ func (ref *PresetReference) UnmarshalYAML(node *yaml.Node) error {
 	}
 	type plain PresetReference
 	var decoded plain
-	if err := node.Decode(&decoded); err != nil {
+	if err := state.decodePlain(node, &decoded); err != nil {
 		return err
 	}
 	detached, err := (*PresetReference)(&decoded).Clone()

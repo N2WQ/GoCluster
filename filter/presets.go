@@ -64,6 +64,10 @@ func (set *SavedPreset) Clone() (*SavedPreset, error) {
 // Version two preserves state rules, version three adds MINSNR, and version
 // four adds bounded literal comment lists.
 func (set *SavedPreset) UnmarshalYAML(node *yaml.Node) error {
+	return decodeStoredOwnerNode(node, set)
+}
+
+func (set *SavedPreset) unmarshalStored(node *yaml.Node, state *storageDecodeState) error {
 	version, err := storedConfigurationVersion(node)
 	if err != nil {
 		return err
@@ -87,7 +91,7 @@ func (set *SavedPreset) UnmarshalYAML(node *yaml.Node) error {
 	}
 	type plain SavedPreset
 	var decoded plain
-	if err := node.Decode(&decoded); err != nil {
+	if err := state.decodePlain(node, &decoded); err != nil {
 		return err
 	}
 	if decoded.ConfigurationVersion != version {
@@ -325,13 +329,16 @@ func readPresetCollection(path string) (*presetCollection, error) {
 	if len(bs) > maxPresetCollectionBytes {
 		return nil, errors.New("preset collection exceeds 8 MiB")
 	}
-	var collection presetCollection
 	decoder := yaml.NewDecoder(bytes.NewReader(bs))
-	decoder.KnownFields(true)
-	if err := decoder.Decode(&collection); err != nil {
+	var document yaml.Node
+	if err := decoder.Decode(&document); err != nil {
 		return nil, fmt.Errorf("invalid preset collection: %w", err)
 	}
-	var extra any
+	collection, _, err := decodeStoredPresetCollectionDocument(&document)
+	if err != nil {
+		return nil, fmt.Errorf("invalid preset collection: %w", err)
+	}
+	var extra yaml.Node
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		return nil, errors.New("preset collection must contain one YAML document")
 	}
@@ -347,7 +354,7 @@ func readPresetCollection(path string) (*presetCollection, error) {
 			return nil, fmt.Errorf("invalid stored preset %s: %w", name, err)
 		}
 	}
-	return &collection, nil
+	return collection, nil
 }
 
 func (store presetStore) persist(path string, collection *presetCollection) error {

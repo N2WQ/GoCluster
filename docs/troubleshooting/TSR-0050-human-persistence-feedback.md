@@ -10,11 +10,18 @@ Led To ADR(s): none
 
 ## RCA Summary
 
+Accepted human edits could appear durably saved after storage preparation or
+replacement failed.
+
+## Root cause or best current explanation
+
 Filter, COMMENT, reset and changed-DIALECT consumers applied accepted edits,
 attempted saving and logged failures, but returned only the success
 acknowledgement to the client. Several other settings already reported save
 failures. An acknowledgement could therefore imply durable success even when
 the next login would restore the old settings.
+
+## Fix or mitigation
 
 These consumers now append one explicit warning on its own line. The live edit
 remains active and the old stored bytes remain intact when preparation or atomic

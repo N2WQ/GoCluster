@@ -65,8 +65,8 @@ func LoadUserRecord(callsign string) (*UserRecord, error) {
 	if len(document.Content) != 1 {
 		return nil, errors.New("user record must contain one YAML mapping")
 	}
-	var record UserRecord
-	if err := record.UnmarshalYAML(document.Content[0]); err != nil {
+	record, _, err := decodeStoredUserRecordDocument(&document)
+	if err != nil {
 		return nil, err
 	}
 	var extra yaml.Node
@@ -74,7 +74,7 @@ func LoadUserRecord(callsign string) (*UserRecord, error) {
 		return nil, errors.New("user record must contain one YAML document")
 	}
 	record.RecentIPs = trimRecentIPs(record.RecentIPs)
-	return &record, nil
+	return record, nil
 }
 
 // UnmarshalYAML preserves marked values exactly. Version one initializes only
@@ -83,6 +83,10 @@ func LoadUserRecord(callsign string) (*UserRecord, error) {
 // Absent markers invoke historical migrations/defaults.
 // Explicit zero/null/future markers fail without changing persisted bytes.
 func (record *UserRecord) UnmarshalYAML(node *yaml.Node) error {
+	return decodeStoredOwnerNode(node, record)
+}
+
+func (record *UserRecord) unmarshalStored(node *yaml.Node, state *storageDecodeState) error {
 	version, err := storedConfigurationVersion(node)
 	if err != nil {
 		return err
@@ -106,7 +110,7 @@ func (record *UserRecord) UnmarshalYAML(node *yaml.Node) error {
 	}
 	type plain UserRecord
 	var decoded plain
-	if err := node.Decode(&decoded); err != nil {
+	if err := state.decodePlain(node, &decoded); err != nil {
 		return err
 	}
 	if decoded.ConfigurationVersion != version {

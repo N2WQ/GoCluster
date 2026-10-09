@@ -21,7 +21,7 @@ Led To ADR(s): ADR-0266
 - Support advice: a rejected line has no effects after this fix. A recovery or
   partial-read disconnect requires a new session and a complete valid command.
 
-## Findings
+## Root cause or best current explanation
 
 Ziutek can hide negotiation work and block replying before exposing decoded
 data. Count wire bytes below the codec and interrupt the socket with an owned

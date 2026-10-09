@@ -11,6 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0051 | Stored YAML Alias Compatibility | Monitoring | 2026-10-09 | filter, YAML, aliases, merges, persistence | ADR-0267 | `docs/troubleshooting/TSR-0051-stored-yaml-alias-compatibility.md` |
 | TSR-0050 | Human Persistence Feedback | Monitoring | 2026-10-09 | telnet, filter, dialect, persistence | none | `docs/troubleshooting/TSR-0050-human-persistence-feedback.md` |
 | TSR-0049 | NOFILTER Restored NEARBY Restrictions | Monitoring | 2026-10-09 | filter, telnet, reset, snapshot | none | `docs/troubleshooting/TSR-0049-nofilter-nearby-restoration.md` |
 | TSR-0048 | Rejected Human Line Tail Dispatch | Monitoring | 2026-10-09 | telnet, input, protocol, lifecycle | ADR-0266 | `docs/troubleshooting/TSR-0048-rejected-human-line-tail-dispatch.md` |

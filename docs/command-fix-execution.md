@@ -307,8 +307,9 @@ the agreed existing human live-edit/failure contract without new policy.
 
 ## Checkpoint 04a: compatible storage decoding and work accounting
 
-Status: discovery and frozen compatibility baseline complete; replacement next. Checkpoint 03
-is committed as `745a722`. All new thresholds remain inactive in this checkpoint.
+Status: complete. Checkpoint 03 is committed as `745a722`; the test-only frozen
+baseline is committed as `8596005`. All new thresholds remain inactive in this
+checkpoint.
 
 Execution divides this approved checkpoint at a verification boundary:
 
@@ -403,3 +404,77 @@ slice. Decoder closeout still requires accounting assertions, differential tests
 parser fuzzing, scale evidence, cumulative server storage cases, the complete
 selected lane and fresh final review. The inherited-context test challenge and
 separate-context design review are findings-only evidence; lead authority remains.
+
+### Compatible decoder implementation and final qualification
+
+`storage_decode.go` owns the original typed traversal, linear raw duplicate
+checking, separate stock guard contexts and checked P/E counters. The cohesive
+engine is 495 lines; owner callbacks/finalization are separated into the
+190-line `storage_decode_owners.go`. `LoadUserRecord`, the stored public
+callbacks and `readPresetCollection` now use those operation-owned paths. No
+AST, key/type inventory or counter survives the operation. All nine literal
+accounting vectors match their hand-counted integers, and overflow is refused.
+
+A separate-context read-only Go quality review found a null-tag dispatch
+mismatch. The lead verified it with eight failing literal controls, corrected
+the dispatch and reran those controls plus the differential targets. Null tags
+skip pointer/custom preparation but do not replace mapping/sequence dispatch.
+Both the dependency's composite-key panic and its null-tagged inline-root panic
+are now normal refusals; no previously accepted value is removed. Direct typed
+callback errors accumulate, while wrapped owner failures remain terminal; the
+pinned distinction has an explicit regression and justified local lint exception.
+
+The applied reference is temporarily finalized after its own accounted walk to
+retain its old early name/snapshot failure boundary. Main bulk materialization
+still follows complete preflight. This exception is not allocation-free and the
+final snapshot cap is not an intermediate legacy-allocation bound. ADR-0267
+records that limitation and the phased threshold activation.
+
+Final observed evidence:
+
+- Complete ordinary Windows lane: 70 packages passed in
+  `.tmp/command-fixes/checkpoint-04a-baseline-retry.log`. The first attempt hit
+  the unchanged peer retry-observer timing test (98.8274 ms against 100 ms);
+  its isolated control passed before the complete rerun. The failed attempt is
+  retained in `checkpoint-04a-baseline-final.log`, not counted as qualification.
+- Full filter package with race detection passed in
+  `.tmp/command-fixes/checkpoint-04a-filter-race.log`. Vet and Staticcheck passed
+  repository-wide; final repository lint passed with zero issues.
+- Corrected differential fuzzing passed 30,441 raw and 51,918 structured
+  executions with two workers, including expanded null-tag seeds, in
+  `.tmp/command-fixes/checkpoint-04a-fuzz-final.log`. Frozen callbacks preserve
+  stock nested guard boundaries; unchanged prevalidation/migration helpers remain
+  shared oracle seams. Candidate panics are failures, not tolerated refusals.
+- All 32 scale measurements passed complete-value checks for direct/merged maps,
+  ignored legacy roots and nested baselines at 128/512/2,048/8,192 entries in
+  `.tmp/command-fixes/checkpoint-04a-scale-final.log`. The initial aliased merge
+  scale fixture reached the old guard and was corrected to an accepted inline
+  merge; that failed fixture attempt is diagnostic evidence only.
+- Measurements show higher allocation and sometimes slower small loads for the
+  two-pass decoder. For direct maps, candidate allocated bytes grow from 232,416
+  at 128 entries to 11,774,056 at 8,192; the frozen baseline is 86,656 to 5,135,488.
+  The sampled allocation profile identifies stock scalar conversion as the largest
+  contributor. No universal speed, allocation, production latency or capacity
+  improvement is claimed.
+- The cumulative checkout runner passes 28 required cases across native and
+  ziutek transports, with zero wire/cleanup failures, in
+  `.tmp/command-fixes/20261009-115909-6a8a9cc1`. Its race counterpart also passes
+  all 28 in `.tmp/command-fixes/20261009-120409-ff0aac67`. Cases exercise accepted
+  legacy aliases, exact false/empty selections, detached baselines, merged
+  collections, old alias refusal, preserved refused bytes and fresh-child
+  restoration. The first attempt used PyYAML's space-separated datetime, which
+  the pinned time decoder refuses; the fixture now retains RFC3339. That failed
+  attempt is excluded from qualification.
+- Nineteen runner lifecycle/qualification controls passed. The TSR checker
+  passed after repairing the required cause/fix labels in this work's earlier
+  TSR-0048 through TSR-0050; their behavior statements remain unchanged.
+
+The fresh separate-context quality pass found no remaining material defect on
+the final source. It did not execute suites; qualification and the final
+source/diff review remain lead-owned. Support-agent documentation impact is
+Required and completed in the troubleshooting index and TSR-0051. ADR-0267
+records the durable decoder decision. This checkpoint does not activate new
+admission limits or migrate production data.
+
+Code maps were generated and checked fresh on this state; they produced no
+content diff. Final whitespace/diff checks and the indexed TSR checker passed.

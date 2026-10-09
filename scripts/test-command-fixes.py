@@ -93,13 +93,15 @@ def profile(binary, root, source, transport):
                 f"{transport}: NOFILTER retires NEARBY geography and saves",
                 f"{transport}: actual replacement failure warns and preserves saved bytes",
                 f"{transport}: preparation failure and protected login preserve refused records",
+                f"{transport}: compatible storage and old alias refusal reach login and LOAD",
                 f"{transport}/1: held endpoint and loaded consumers",
                 f"{transport}: preferences and archive survive fresh child",
                 f"{transport}: NOFILTER geography survives fresh child",
-                f"{transport}: failed saves and refused records survive fresh child"]
+                f"{transport}: failed saves and refused records survive fresh child",
+                f"{transport}: compatible storage survives fresh child"]
     call = "K1ABC-70001"
     observer_call, observer_configuration = "VE3ABC-70003", None
-    failed_records, refused_records = {}, {}
+    failed_records, refused_records, compatible_records = {}, {}, {}
     label = "T" + uuid.uuid4().hex[:8].upper()
     suites = []
     for generation in range(2):
@@ -305,6 +307,80 @@ def profile(binary, root, source, transport):
                                 "protected live edits were not applied")
 
                 case(f"{transport}: preparation failure and protected login preserve refused records", refused_storage)
+
+                def compatible_storage():
+                    unused = ("a: &a {x: 0}\nb: &b {<<: [*a,*a,*a,*a,*a,*a,*a]}\n"
+                              "c: &c {<<: [*b,*b,*b,*b,*b,*b,*b]}\n"
+                              "d: &d {<<: [*c,*c,*c,*c,*c,*c,*c]}\n")
+                    legacy_call, exact_call, trap_call = "K1ABC-70008", "K1ABC-70009", "K1ABC-70010"
+                    users = root / "users"
+                    legacy = (unused + "rules: &rules {20m: true, 40m: false}\n"
+                              "bands: *rules\nallbands: false\nblockbands: {80m: true}\n"
+                              "dialect: cc\ndedupe_policy: MED\n")
+                    (users / (legacy_call + ".yaml")).write_text(legacy, encoding="utf-8")
+                    restored = harness.Session(suite, legacy_call)
+                    startup, document = restored.human("PAUSE 300")
+                    bands = document["configuration"]["filters"]["bands"]
+                    require("temporary defaults" not in startup and
+                            document["status"]["session"]["temporary_defaults"] is False and
+                            bands == dict(allow_all=False, block_all=False,
+                                          allow={"20m": True, "40m": False}, block={"80m": True}),
+                            "legacy aliases, false entries or migration changed at login")
+                    compatible_records[legacy_call] = document["configuration"]
+
+                    exact = harness.yaml.load((users / (call + ".yaml")).read_text(), Loader=harness.StrictLoader)
+                    exact.update(bands={"20m": True, "40m": False}, blockbands={"80m": False},
+                                 allbands=False, modes={}, allmodes=False, min_snr={"CW": -5},
+                                 comments=["CQ TEST"], allow_wwv=False)
+                    # PyYAML emits a space-separated datetime that time.Time's
+                    # pinned decoder refuses. Keep the stored RFC3339 contract.
+                    exact["last_login_utc"] = exact["last_login_utc"].isoformat().replace("+00:00", "Z")
+                    baseline = {key: value for key, value in exact.items()
+                                if key not in ("preset", "recent_ips", "last_login_utc")}
+                    exact["preset"] = dict(name="BASE04A", baseline=baseline)
+                    (users / (exact_call + ".yaml")).write_text(harness.yaml.safe_dump(exact), encoding="utf-8")
+                    restored = harness.Session(suite, exact_call)
+                    startup, document = restored.human("PAUSE 300")
+                    filters = document["configuration"]["filters"]
+                    require("temporary defaults" not in startup and
+                            filters["bands"] == dict(allow_all=False, block_all=False,
+                                                     allow={"20m": True, "40m": False}, block={"80m": False}) and
+                            filters["modes"]["allow_all"] is False and filters["modes"]["allow"] == {} and
+                            filters["comments"] == ["CQ TEST"] and filters["min_snr"] == {"CW": -5} and
+                            filters["allow_wwv"] is False and
+                            document["status"]["preset"]["name"] == "BASE04A" and
+                            document["status"]["preset"]["modified"] is False,
+                            "exact false/empty values or detached baseline changed at login")
+                    library = users / "presets" / ("K1ABC".encode().hex() + ".yaml")
+                    library.parent.mkdir(exist_ok=True)
+                    collection = harness.yaml.safe_dump(dict(presets=dict(LEGACY04A=dict(
+                        bands={"20m": True, "40m": False}, allbands=False, dialect="go", dedupe_policy="MED"))))
+                    library.write_text("<<:\n" + "".join("  " + line for line in collection.splitlines(True)),
+                                       encoding="utf-8")
+                    restored.human("LIST PRESET", "LEGACY04A")
+                    _, document = restored.human("LOAD PRESET LEGACY04A", "Loaded preset")
+                    require(document["configuration"]["filters"]["bands"]["allow"] ==
+                            {"20m": True, "40m": False} and
+                            document["status"]["preset"]["name"] == "LEGACY04A" and
+                            document["status"]["preset"]["modified"] is False,
+                            "merged collection did not load its migrated preset")
+                    compatible_records[exact_call] = document["configuration"]
+
+                    trap = (unused + "<<: *d\n").encode("ascii")
+                    require(len(trap) == 125, "alias refusal fixture changed")
+                    record = users / (trap_call + ".yaml")
+                    record.write_bytes(trap)
+                    refused_records[trap_call] = trap
+                    protected = harness.Session(suite, trap_call)
+                    startup, document = protected.human("PAUSE 300")
+                    require("temporary defaults" in startup and
+                            document["status"]["session"]["temporary_defaults"] is True,
+                            "old alias guard refusal was lost at login")
+                    text, _ = protected.human("PASS BAND 20")
+                    require_save_warning(text)
+                    require(record.read_bytes() == trap, "alias-refused file was overwritten")
+
+                case(f"{transport}: compatible storage and old alias refusal reach login and LOAD", compatible_storage)
             else:
                 def restored():
                     settings = session.get()["configuration"]["settings"]
@@ -352,6 +428,18 @@ def profile(binary, root, source, transport):
                         require(record.read_bytes() == raw, "fresh login overwrote refused record")
 
                 case(f"{transport}: failed saves and refused records survive fresh child", restored_failures)
+
+                def restored_compatible_storage():
+                    for stored_call, configuration in compatible_records.items():
+                        restored = harness.Session(suite, stored_call)
+                        startup, document = restored.human("PAUSE 300")
+                        require("temporary defaults" not in startup and
+                                document["configuration"] == configuration,
+                                "accepted legacy/exact storage did not survive a fresh process")
+                    listing, _ = session.human("LIST PRESET", "LEGACY04A")
+                    require("Failed" not in listing, "merged preset library was lost on restart")
+
+                case(f"{transport}: compatible storage survives fresh child", restored_compatible_storage)
         finally:
             try:
                 if suite:

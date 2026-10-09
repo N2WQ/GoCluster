@@ -12,7 +12,7 @@ Led To ADR(s): none
 
 - NOFILTER acknowledged that all filters were disabled, but could retain old
   geography while turning NEARBY off.
-- `Filter.Reset` cleared continents, zones, grids and DXCC, then called
+- Root cause: `Filter.Reset` cleared continents, zones, grids and DXCC, then called
   `DisableNearby`, which restored the old snapshot. State rules were reset
   afterward and therefore escaped the defect.
 - Retire NEARBY before resetting every domain. Ordinary NEARBY OFF still
@@ -36,7 +36,7 @@ failed for that reason. An EU-only allowlist hides unknown geography and then
 reveals the exact row after reset; matcher tests separately exercise literal
 known-geography and valid-grid candidates.
 
-## Decision Disposition And Verification
+## Fix or mitigation
 
 This corrects the established permissive NOFILTER contract, with no new policy,
 schema or ordinary OFF/default semantics, so no separate ADR is required.
