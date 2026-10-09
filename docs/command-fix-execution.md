@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 07 complete (04a used two commits);
-34 approved checkpoints remain; 08 is next.
+Current progress: checkpoints 00 through 08 complete (04a used two commits);
+33 approved checkpoints remain; 09 is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -1275,3 +1275,110 @@ ADR-0018; the historical generic-family decision is preserved and cross-linked.
 TSR-0053 records the observed whitelist/fallback trap and checker limitations.
 Final entry-comment, TSR, generated-map and whitespace checks accompany commit.
 No external service, deployment or production-load certification is claimed.
+Checkpoint 07 is committed as `9affd59`.
+
+## Checkpoint 08: independent NEARBY endpoints
+
+Status: complete. The approved DX-or-DE condition means an unavailable
+opposite endpoint cannot veto a matching available endpoint. Both unavailable
+endpoints, an unknown band and an unavailable user cell still reject.
+
+Current discovery inspected Filter.matchesNearby/nearbySpotCells, their semantic
+references (one Matches caller and one cell-helper caller), existing nearby tests,
+H3 encoders/table loading and the Windows fallback, Spot cache ownership and
+invalidation, live deliverJob and historyFilterSnapshot matching, archive grid
+encoding and the held checkout fixture. Existing fine caches use nonzero IDs
+before grid derivation; coarse filtering derives grids on 160m/80m/60m. Preserve
+that precedence and resolution. ADR-0146 owns Spot's cell-cache lifetime; no
+cache policy, H3 calculation/table contract or geographic model is changed.
+
+The narrow design removes joint endpoint prerequisites in the existing cell
+helper and matcher. Each side resolves independently using the existing rules;
+the valid user cell may equal either result. No new helper, interface, config,
+retained state, allocation, worker, queue or deadline owner is introduced.
+This is a Boolean correctness fix rather than a performance optimization.
+
+Lead-owned detailed falsifiability review:
+
+| Contract | Boundary / fault | Stimulus | Required observation | Level | False-green risk | Checker | Owner |
+|---|---|---|---|---|---|---|---|
+| Either endpoint | One matching side, opposite blank/invalid | Swap DX/DE on fine and every coarse band | Match succeeds symmetrically | Unit | Fixing only matcher while cell helper still discards both | Actual Matches table with loaded H3 controls | filter |
+| Unmappable opposite | Valid grid absent from a private mapping | Fresh child loads owned count-valid tables with only the opposite cells removed | User grid maps, opposite grid is unmapped, either available side still matches | Isolated unit | Invalid syntax does not exercise a mapping miss; global once-loader hides fixture | Required child execution marker and positive/miss guards | filter |
+| Cache precedence | Cached fine ID with missing/mismatching grid | Matching cached DX or DE; coarse band with fine cache only | Fine cache remains authoritative; coarse does not use it | Unit | Deriving every side or reusing fine IDs on coarse bands | Literal cell-ID probes plus actual loaded mapping | filter |
+| Negative admission | Neither match, both absent, unknown band/user cell | Explicit negative controls | No match or delivery | Unit/consumer | Only positive cases or missing metadata interpreted as a match | Exact boolean and live queue/history results | filter, telnet |
+| Other filters | Nearby match with a mode/category refusal | Existing geography suspension plus independent mode block | Suspended location rules stay suspended; unrelated gate still refuses | Unit/consumer | Nearby OR bypasses the whole filter | Matches and actual live/history consumers | filter, telnet |
+| Live/history agreement | Same fixed metadata across each consumer | Actual deliverJob queue and captured history predicate; archive-backed checkout queries | Same positive/negative decisions, no own-call exemption | Consumer/checkout | Replies prove configuration only; fixture lacks metadata enrichment | Direct live queue; required real archive case with fixed metadata seed controls | telnet, runner |
+| Bounded cost | Existing per-spot matching | Reuse normalized fine/coarse fixtures | No new matching allocation; existing bounded state/owners remain | Unit/static | Incidental allocation or added global cache | AllocsPerRun correctness guard and final diff | filter |
+
+The fixture's manual bridge does not enrich metadata. Add a fixed bounded set of
+explicitly synthetic spots to its existing queue before readiness, with unique
+child labels and distinct frequencies. Those test seeds qualify archive/history
+matching, not manual admission or the production enrichment pipeline. Direct
+live-consumer tests call the actual delivery owner and inspect its queue; no
+separate unpaused socket-delivery claim is made. A private fresh child is needed
+for the once-owned H3 mapping miss, rather than mutating live global mappings.
+All test additions stay within the approved unattended runner extension.
+
+Planned qualification: focused and complete filter/telnet/commands suites,
+targeted race, complete ordinary lane, vet/Staticcheck/lint, strict runner controls,
+both checkout builds/transports and final comment/map/TSR/diff checks. Mapping
+changes are test-only, bounded and guarded; no model-quality or production-load
+claim follows from them. No new policy choice or scope revision is required.
+
+Implementation and observed targeted evidence: the production diff removes the
+two joint-grid prerequisites and the joint-cell veto, retaining all other
+matching logic. `filter/nearby_endpoint_test.go` qualifies symmetric missing,
+invalid and distant endpoints on 20m/160m/80m/60m, fine-cache precedence, unknown
+band/user cells, unrelated mode refusals and zero matching allocations on reused
+fine/coarse controls. Its joined private-table child proves eight available-side
+matches while the opposite valid grid cannot map. The test refuses a missing
+execution marker or failed child. `telnet/nearby_endpoint_test.go` qualifies 40
+literal live/history consumer cases and detached history after opposite live
+mode edits. The source/test review corrected that edit stimulus before complete
+package qualification, retaining exact captured-result assertions.
+
+Focused tests, complete filter/telnet/commands ordinary and race suites and 29
+strict driver controls passed (`checkpoint-08-targeted.log`, `-packages.log`,
+`-race.log`, `-runner-controls-final.log`). The checkout fixture adds ten fixed
+synthetic metadata rows to its existing queue before readiness. The driver
+requires every row before activation, then the exact expected visibility through
+both GO and CC commands in both fresh generations. The ordinary and race actual
+checkout runs both passed all 70 required cases (28 main and seven reputation
+per transport), with zero wire/cleanup failures and two joined children per
+profile. Artifacts are `20261009-170149-08fb5f12/results.json` and
+`20261009-170238-10d49d09/results.json`, under `.tmp/command-fixes/`. Their
+compiled-Go/module digest is
+`696da90bf6aedcfe821d1fad4d02fd607c0c2b0e023fad18963efcd192bbb557`.
+No separate unpaused socket-stream or production enrichment claim is made.
+
+The first two ordinary checkout attempts failed existing manual-spot controls.
+Inspection of their exact wire rows and Spot's SNR regexp showed random hex
+labels containing a number followed by DB were interpreted as signal reports;
+the added text clipped long labels in fixed-width history output. The first
+short-prefix adjustment was insufficient because DB could occur inside the
+token. The final runner converts its eight hex digits bijectively to letters
+for long manual controls and keeps their tags within 20 characters. A required
+offline vector covers the observed `341C7DBB` token. Exact label, frequency,
+identity, mode and refused-absence assertions remain; no production parser or
+formatter behavior changes. Failed artifacts `20261009-165717-67013780` and
+`20261009-165915-4a76026c` and their launch logs are retained. They do not qualify
+the final result. The second failure also caused downstream controls to lack
+their required setup; the driver correctly rejected the complete run.
+
+Support-agent documentation impact: Required. The telnet guide and common
+question route explain independent endpoints and remaining refusal conditions.
+TSR-0054 records the concrete double-veto mechanism, cache/resolution ownership
+and checker limits; its index is updated. ADR-0146 remains accepted unchanged;
+no new durable design decision is introduced. The changed-only entry-comment
+checker passes but selects zero files here because its path whitelist excludes
+filter/filter.go and test files. The changed matcher comment was reviewed
+directly. The TSR index/RCA consistency check passes. Full-lane and final-map
+evidence follows before checkpoint commit.
+
+Final relevant-source qualification passed: the complete ordinary lane checked
+70 packages (`checkpoint-08-baseline.log`); vet, Staticcheck and golangci-lint
+passed with zero lint issues (`-vet.log`, `-staticcheck.log`, `-lint.log`). The
+fresh lead-owned final review found no unresolved material defect, waiver or
+scope expansion. No new parser/protocol or performance claim requires a fuzz or
+comparison-profile selection. Generated-map generation/check and final
+whitespace/staged-diff review accompany the isolated checkpoint commit.

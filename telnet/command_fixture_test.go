@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -125,7 +126,7 @@ func TestCheckoutCommandFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	var spec commandFixtureSpec
-	if err := json.Unmarshal(data, &spec); err != nil || spec.Nonce == "" || !filepath.IsAbs(spec.Root) {
+	if err := json.Unmarshal(data, &spec); err != nil || len(spec.Nonce) < 8 || !filepath.IsAbs(spec.Root) {
 		t.Fatalf("invalid fixture specification: %v", err)
 	}
 	configDir := filepath.Join(spec.Root, "config")
@@ -227,6 +228,27 @@ func TestCheckoutCommandFixture(t *testing.T) {
 			t.Error("client storage owners did not retire before fixture shutdown")
 		}
 	}()
+	// Fixed synthetic metadata controls use the existing bounded bridge. They
+	// qualify archive/history NEARBY decisions, not manual admission or metadata
+	// enrichment. Each child has distinct short labels and each row a distinct
+	// frequency, so neither an old row nor an archive key collision can qualify it.
+	for _, seed := range []struct {
+		name      string
+		frequency float64
+		dx, de    string
+	}{
+		{"DX20", 14021, "FN31", ""}, {"DE20", 14022, "", "FN31"},
+		{"DXBAD20", 14023, "FN31", "BAD"}, {"DEBAD20", 14024, "BAD", "FN31"},
+		{"NONE20", 14025, "", ""}, {"FAR20", 14026, "EM10", ""},
+		{"DX80", 3521, "FN31", ""}, {"DE80", 3522, "", "FN31"},
+		{"DX60", 5355, "FN31", ""}, {"DE160", 1821, "", "FN31"},
+	} {
+		sp := spot.NewSpotNormalized("W6ABC", "N0XYZ", seed.frequency, "CW")
+		sp.Comment = "N08" + strings.ToUpper(spec.Nonce[:8]) + seed.name
+		sp.IsHuman = true
+		sp.DXMetadata.Grid, sp.DEMetadata.Grid = seed.dx, seed.de
+		spotInput <- sp
+	}
 	binary, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)

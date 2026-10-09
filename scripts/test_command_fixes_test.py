@@ -22,6 +22,25 @@ spec.loader.exec_module(driver)
 
 
 class DriverControls(unittest.TestCase):
+    def test_literal_archive_labels_avoid_signal_tags_and_clipping(self):
+        suite = mock.Mock(token="341C7DBB")
+        for suffix in ("F8", "G0P14074", "G0R0F14074", "G1BAND", "G1BARRIER"):
+            label = driver.literal_archive_label(suite, suffix)
+            self.assertEqual(label, "TDEBMHNLL" + suffix)
+            self.assertLessEqual(len(label), 20)
+            self.assertNotRegex(label, r"(?i)[-+]?\d{1,3}\s*dB")
+
+    def test_nearby_oracle_requires_seeded_rows_and_unmatched_absence(self):
+        row = "DX de N0XYZ:       14021.00  W6ABC       CW NEARBYCONTROL             1234Z"
+        driver.require_nearby_archive([row], "NEARBYCONTROL", 14021, True)
+        driver.require_nearby_archive([], "NEARBYCONTROL", 14021, False)
+        for rows in ([], [row, row], [row.replace("N0XYZ:", "K1ABC:")],
+                     [row.replace("14021.00", "3521.00")], [row.replace("NEARBYCONTROL", "OTHER")]):
+            with self.subTest(rows=rows), self.assertRaisesRegex(ValueError, "seeded archive row"):
+                driver.require_nearby_archive(rows, "NEARBYCONTROL", 14021, True)
+        with self.assertRaisesRegex(ValueError, "unmatched NEARBY control"):
+            driver.require_nearby_archive([row], "NEARBYCONTROL", 14021, False)
+
     def test_mode_oracles_reject_whitelist_and_missing_or_misclassified_controls(self):
         expected = dict(allow_all=True, block_all=False, allow={}, block={})
         document = {"configuration": {"filters": {"modes": copy.deepcopy(expected)}}}

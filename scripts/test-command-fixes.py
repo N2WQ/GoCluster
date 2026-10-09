@@ -109,11 +109,64 @@ def require_mode_archive(session, label, mode, visible):
             "visible MODE control absent or misclassified in history")
 
 
+def literal_archive_label(suite, suffix):
+    # Hex tokens may contain a number followed by DB, which the production spot
+    # parser recognizes as an SNR report. Keep control identity out of that
+    # grammar and short enough for the fixed-width history comment.
+    token = "".join(chr(ord("A") + int(ch, 16)) for ch in suite.token)
+    return "T" + token + suffix
+
+
+def require_nearby_archive(rows, label, frequency, visible):
+    if not visible:
+        require(not rows, "unmatched NEARBY control remained visible in history")
+        return
+    require(len(rows) == 1 and label in rows[0] and
+            re.search(r"^DX de N0XYZ:\s+" + re.escape(str(frequency)) +
+                      r"\.0+\s+W6ABC\s+CW\b", rows[0]),
+            "NEARBY control absent or different from its seeded archive row")
+
+
+def nearby_endpoint_cases(suite, child):
+    # The pre-filter barrier proves every positive and negative row exists in
+    # the real archive. Absence after enabling NEARBY then proves filtering.
+    seeds = (("DX20", 14021, True), ("DE20", 14022, True),
+             ("DXBAD20", 14023, True), ("DEBAD20", 14024, True),
+             ("NONE20", 14025, False), ("FAR20", 14026, False),
+             ("DX80", 3521, True), ("DE80", 3522, True),
+             ("DX60", 5355, True), ("DE160", 1821, True))
+    for dialect, call in (("go", "VE3ABC-70040"), ("cc", "VE3ABC-70041")):
+        current = harness.Session(suite, call)
+        current.human("PAUSE 300")
+        current.human("DIALECT " + dialect)
+        nearby = "PASS NEARBY" if dialect == "go" else "SET/FILTER NEARBY"
+        current.human(nearby + " OFF")
+        current.human("PASS MODE ALL")
+        current.human("SET GRID FN31")
+        for name, frequency, _ in seeds:
+            label = "N08" + child.nonce[:8].upper() + name
+            deadline = time.monotonic() + 5
+            while True:
+                rows = archive_rows(current, label)
+                if rows:
+                    require_nearby_archive(rows, label, frequency, True)
+                    break
+                require(time.monotonic() < deadline, "NEARBY pre-filter archive barrier absent")
+                time.sleep(.025)
+        _, document = current.human(nearby + " ON")
+        require(document["status"]["effective"]["nearby_active"] is True and
+                document["status"]["effective"]["grid"] == "FN31",
+                "NEARBY endpoint controls lack an active user location")
+        for name, frequency, visible in seeds:
+            label = "N08" + child.nonce[:8].upper() + name
+            require_nearby_archive(archive_rows(current, label), label, frequency, visible)
+
+
 def mode_delta_cases(suite, root, cw_label, saved_modes):
     poster = harness.Session(suite, "K1ABC-70034")
     poster.human("PAUSE 300")
     poster.human("PASS MODE ALL")
-    ft8_label = suite.token + "MODEFT8"
+    ft8_label = literal_archive_label(suite, "F8")
     poster.human("DX 7074 W6ABC FT8 " + ft8_label, "Spot queued.")
     deadline = time.monotonic() + 5
     while not archive_rows(poster, ft8_label):
@@ -197,7 +250,7 @@ def require_reputation_preferences(root, sessions, expected):
 def reputation_posts(suite, sessions, observer, generation, labels):
     for index, frequency in enumerate((14074, 7074)):
         current = sessions[index]
-        label = suite.token + f"G{generation}P{frequency}"
+        label = literal_archive_label(suite, f"G{generation}P{frequency}")
         current.human(f"DX {frequency} W6ABC CW {label}", "Spot queued.")
         labels["accepted"].append((label, frequency))
         require_reputation_archive(observer, label, frequency)
@@ -206,7 +259,7 @@ def reputation_posts(suite, sessions, observer, generation, labels):
                 sessions[1].close()
                 sessions[1] = harness.Session(suite, sessions[1].call)
                 sessions[1].human("PAUSE 300")
-            refused = suite.token + f"G{generation}BAND"
+            refused = literal_archive_label(suite, f"G{generation}BAND")
             text, _ = sessions[1].human(f"DX 14074 W6ABC CW {refused}")
             require_reputation_refusal(text)
             labels["refused"].append(refused)
@@ -221,11 +274,11 @@ def reputation_posts(suite, sessions, observer, generation, labels):
             current.human("PAUSE 300")
     for index, current in enumerate(sessions):
         for frequency in (14074, 3504):
-            label = suite.token + f"G{generation}R{index}F{frequency}"
+            label = literal_archive_label(suite, f"G{generation}R{index}F{frequency}")
             text, _ = current.human(f"DX {frequency} W6ABC CW {label}")
             require_reputation_refusal(text)
             labels["refused"].append(label)
-    barrier = suite.token + f"G{generation}BARRIER"
+    barrier = literal_archive_label(suite, f"G{generation}BARRIER")
     observer.human(f"DX 3504 W6ABC CW {barrier}", "Spot queued.")
     # The independent, known-history observer's later accepted row proves the
     # shared FIFO bridge and archive have passed every earlier attempted post.
@@ -500,6 +553,7 @@ def profile(binary, root, source, transport):
                 f"{transport}: warm resource refusals retry authoritative saves and logout",
                 f"{transport}: prospective human SAVE machine and LOAD refuse before effects",
                 f"{transport}: MODE deltas preserve visible history and saved fallback",
+                f"{transport}/0: NEARBY endpoints filter seeded archive independently",
                 f"{transport}/1: held endpoint and loaded consumers",
                 f"{transport}: preferences and archive survive fresh child",
                 f"{transport}: NOFILTER geography survives fresh child",
@@ -510,7 +564,8 @@ def profile(binary, root, source, transport):
                 f"{transport}: resource-refused records survive fresh child",
                 f"{transport}: repaired resource metadata survives fresh child",
                 f"{transport}: prospective admission outcomes survive fresh child",
-                f"{transport}: MODE outcomes survive fresh child"]
+                f"{transport}: MODE outcomes survive fresh child",
+                f"{transport}/1: NEARBY endpoints filter seeded archive independently"]
     call = "K1ABC-70001"
     observer_call, observer_configuration = "VE3ABC-70003", None
     failed_records, refused_records, compatible_records = {}, {}, {}
@@ -911,6 +966,8 @@ def profile(binary, root, source, transport):
                      lambda: resource_prospective_case(suite, root, resource_prospective))
                 case(f"{transport}: MODE deltas preserve visible history and saved fallback",
                      lambda: mode_delta_cases(suite, root, label, saved_modes))
+                case(f"{transport}/0: NEARBY endpoints filter seeded archive independently",
+                     lambda: nearby_endpoint_cases(suite, child))
             else:
                 def restored():
                     settings = session.get()["configuration"]["settings"]
@@ -1055,6 +1112,8 @@ def profile(binary, root, source, transport):
                         require_mode_archive(current, ft8_label, "FT8", visible)
 
                 case(f"{transport}: MODE outcomes survive fresh child", restored_modes)
+                case(f"{transport}/1: NEARBY endpoints filter seeded archive independently",
+                     lambda: nearby_endpoint_cases(suite, child))
         finally:
             try:
                 if suite:

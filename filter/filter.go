@@ -1682,9 +1682,8 @@ func (f *Filter) matchesNearby(s *spot.Spot, bandNorm string) bool {
 		return false
 	}
 	dxCell, deCell := f.nearbySpotCells(s, useCoarse)
-	if dxCell == pathreliability.InvalidCell || deCell == pathreliability.InvalidCell {
-		return false
-	}
+	// Either endpoint may match. An unavailable opposite endpoint cannot veto
+	// the available side; the valid user cell cannot equal InvalidCell.
 	return userCell == dxCell || userCell == deCell
 }
 
@@ -1695,14 +1694,8 @@ func (f *Filter) nearbySpotCells(s *spot.Spot, useCoarse bool) (pathreliability.
 	dxGrid := strings.TrimSpace(s.DXMetadata.Grid)
 	deGrid := strings.TrimSpace(s.DEMetadata.Grid)
 	if useCoarse {
-		if dxGrid == "" || deGrid == "" {
-			return pathreliability.InvalidCell, pathreliability.InvalidCell
-		}
 		return pathreliability.EncodeCoarseCell(dxGrid),
 			pathreliability.EncodeCoarseCell(deGrid)
-	}
-	if dxGrid == "" || deGrid == "" {
-		return pathreliability.InvalidCell, pathreliability.InvalidCell
 	}
 	dxCell := pathreliability.InvalidCell
 	if s.DXCellID != 0 {

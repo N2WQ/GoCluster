@@ -968,6 +968,12 @@ not trigger automatic pausing themselves.
 - coarse resolution on `160m`, `80m`, and `60m`
 - finer resolution on the other supported bands
 
+DX and DE are checked independently. A matching side still passes when the
+other side has no grid, an invalid grid, or no mapping. If neither side matches,
+the spot is rejected. An unavailable user cell or an unknown band also rejects.
+Other active filters still apply. See
+[NEARBY endpoint troubleshooting](../docs/troubleshooting/TSR-0054-nearby-opposite-endpoint-veto.md).
+
 While `NEARBY` is active:
 
 - the regular location filters are suspended
