@@ -504,13 +504,15 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 
 	setGridLines := helpEntryLines(
 		"SET GRID - Set your grid for path reliability glyphs.",
-		[]string{"SET GRID <4-6 char maidenhead>"},
+		[]string{"SET GRID <locator>"},
 		nil,
 		[]string{
-			"Example: SET GRID FN31.",
+			"Use exactly 4 or 6 characters, for example FN31 or FN31PR.",
+			"Unavailable grid mapping is reported separately from invalid syntax.",
+			"When NEARBY is on, both fine and coarse grid mappings must be usable.",
 		},
 	)
-	add("SET GRID", "SET GRID - Set your grid (4-6 chars).", setGridLines)
+	add("SET GRID", "SET GRID - Set your grid (4 or 6 characters).", setGridLines)
 
 	setNoiseLines := helpEntryLines(
 		"SET NOISE - Set your noise class for glyphs.",

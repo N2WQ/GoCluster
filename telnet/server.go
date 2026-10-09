@@ -1530,18 +1530,24 @@ func (s *Server) stagePathSettingsCommand(client *Client, line string) humanComm
 	}
 	switch upper[1] {
 	case "GRID":
-		if len(upper) < 3 {
-			return humanHandled("Usage: SET GRID <4-6 char maidenhead>\n")
+		if len(upper) != 3 {
+			return humanHandled("Usage: SET GRID <4 or 6 character Maidenhead locator>\n")
 		}
 		grid := strutil.NormalizeUpper(upper[2])
-		if len(grid) < 4 {
-			return humanHandled("Grid must be at least 4 characters (e.g., FN31)\n")
+		if !validExactGrid(grid) {
+			return humanHandled("Invalid grid. Use a 4 or 6 character Maidenhead locator.\n")
 		}
 		cell := pathreliability.EncodeCell(grid)
 		if cell == pathreliability.InvalidCell {
-			return humanHandled("Invalid grid. Please provide a 4-6 character Maidenhead locator.\n")
+			return humanHandled("Grid mapping is unavailable for this locator on this server; grid unchanged.\n")
 		}
 		coarseCell := pathreliability.EncodeCoarseCell(grid)
+		client.filterMu.RLock()
+		nearby := client.filter != nil && client.filter.NearbyActive()
+		client.filterMu.RUnlock()
+		if nearby && coarseCell == pathreliability.InvalidCell {
+			return humanHandled("NEARBY requires usable fine and coarse grid mappings; grid unchanged.\n")
+		}
 		client.configuredSettings.Grid = grid
 		client.pathMu.Lock()
 		client.grid = grid

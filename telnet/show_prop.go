@@ -72,7 +72,7 @@ func (s *Server) handleShowPropCommand(client *Client, line string) (string, boo
 		userCell = pathreliability.EncodeCell(userGrid)
 	}
 	if userGrid == "" || userCell == pathreliability.InvalidCell {
-		return "Grid not set. Use SET GRID <4-6 char maidenhead>.\n", true
+		return "Grid not set. Use SET GRID <4 or 6 character Maidenhead locator>.\n", true
 	}
 
 	target, ok := s.resolveShowPropTarget(cmd.target)

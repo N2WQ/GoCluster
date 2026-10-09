@@ -69,7 +69,7 @@ type filterCommandEngine struct {
 
 const nearbyLocationFilterWarning = "This filter is disabled when NEARBY ON. Disable NEARBY if you want to use regular location filters\n"
 const nearbyUsageMsg = "Usage: PASS NEARBY ON|OFF\nType HELP for usage.\n"
-const nearbyMissingGridMsg = "Grid not set. Use SET GRID <4-6 char maidenhead>.\n"
+const nearbyMissingGridMsg = "Grid not set. Use SET GRID <4 or 6 character Maidenhead locator>.\n"
 const nearbyUnavailableMsg = "Unable to enable NEARBY: invalid grid or H3 tables unavailable.\n"
 const unknownModeHiddenWarningMsg = "Note: UNKNOWN represents blank-mode spots. They are hidden; use PASS MODE UNKNOWN or PASS MODE ALL to show them again.\n"
 

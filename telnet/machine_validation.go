@@ -121,12 +121,27 @@ func validMachinePattern(value string) bool {
 	return true
 }
 
+// The general locator parser accepts a usable prefix. Command/configuration
+// boundaries require the complete token to be an exact supported locator.
+func validExactGrid(grid string) bool {
+	if len(grid) != 4 && len(grid) != 6 {
+		return false
+	}
+	_, _, valid := pathreliability.GridCenterLatLon(grid)
+	return valid
+}
+
 func (s *Server) validateMachineSettings(settings filter.SettingsConfiguration) error {
 	if settings.Dialect != "" && settings.Dialect != "go" && settings.Dialect != "cc" {
 		return fmt.Errorf("settings.dialect must be go, cc or an empty default selection")
 	}
-	if settings.Grid != "" && (settings.Grid != strings.ToUpper(strings.TrimSpace(settings.Grid)) || (len(settings.Grid) != 4 && len(settings.Grid) != 6) || pathreliability.EncodeCell(settings.Grid) == pathreliability.InvalidCell) {
-		return fmt.Errorf("settings.grid must be a valid uppercase Maidenhead locator or empty for lookup")
+	if settings.Grid != "" {
+		if settings.Grid != strings.ToUpper(strings.TrimSpace(settings.Grid)) || !validExactGrid(settings.Grid) {
+			return fmt.Errorf("settings.grid must be a valid uppercase 4 or 6 character Maidenhead locator or empty for lookup")
+		}
+		if pathreliability.EncodeCell(settings.Grid) == pathreliability.InvalidCell {
+			return fmt.Errorf("settings.grid mapping is unavailable on this server")
+		}
 	}
 	if settings.NoiseClass != "" && (settings.NoiseClass != strings.ToUpper(strings.TrimSpace(settings.NoiseClass)) || !s.noiseClassKnown(settings.NoiseClass)) {
 		return fmt.Errorf("settings.noise_class is unavailable on this server")

@@ -65,7 +65,7 @@ After login, type `HELP` for the command list. Useful first commands:
 
 - `SHOW MYDX` or `SHOW DX`: show filtered spot history.
 - `WHOSPOTSME [band]`: show recent spotter countries for your call.
-- `SET GRID <grid>`: set your 4-6 character Maidenhead grid.
+- `SET GRID <grid>`: set your 4 or 6 character Maidenhead grid.
 - `SHOW FILTER`: display active filters.
 - `PASS <type> <list>` and `REJECT <type> <list>`: adjust filters.
 - `SHOW DEDUPE` and `SET DEDUPE FAST|MED|SLOW`: inspect or change duplicate suppression.

@@ -45,7 +45,7 @@ an existing cluster.
 4. Type `SHOW FILTER` to see your current filters, then `RESUME` when you are
    ready for live spots to continue.
 5. Optionally, set your location with `SET GRID FN31PR`, replacing `FN31PR`
-   with your own 4-6 character Maidenhead grid locator. A grid locator is the
+   with your own 4 or 6 character Maidenhead grid locator. A grid locator is the
    short location code used in amateur radio.
 6. Type `BYE` when you want to disconnect.
 

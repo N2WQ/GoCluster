@@ -205,7 +205,7 @@ Log in with your callsign. Useful first commands:
 - `PAUSE [seconds]`: pause live spots for 30 seconds by default, or 1-300 whole seconds.
 - `SHOW HOLD`: show manual or automatic read-pause status.
 - `RESUME`: end the read pause and resume live spots immediately.
-- `SET GRID <grid>`: set your 4-6 character Maidenhead grid.
+- `SET GRID <grid>`: set your 4 or 6 character Maidenhead grid.
 - `SET NOISE QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL`: set receive noise class.
 - `SET PATHSAMPLES <count|DEFAULT>`: require more path samples than the cluster default, or clear your personal override.
 - `SET DIAG OFF|DEDUPE|SOURCE|CONF|PATH|MODE`: replace spot comments with compact per-session diagnostics.

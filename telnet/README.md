@@ -956,7 +956,11 @@ not trigger automatic pausing themselves.
 
 ## Grid, Noise, And Nearby
 
-- `SET GRID` stores the user's Maidenhead grid for path reliability
+- `SET GRID` accepts exactly one valid 4 or 6 character Maidenhead locator,
+  normalizes it to uppercase, and stores it for path reliability. Trailing text
+  and extra arguments are refused. Valid syntax with unavailable mapping gets
+  an availability response and leaves the grid unchanged. If NEARBY is on, both
+  resulting user cells must be usable before a grid change is published.
 - `SET NOISE` stores the user's noise class; the checked-in path config applies one receive-side penalty per class
 - `SET PATHSAMPLES` stores a stricter per-user path sample floor; it cannot lower the cluster default
 - `SHOW PROP <call|prefix|grid> [band] [mode]` uses the saved grid and noise

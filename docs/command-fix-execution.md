@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 08 complete (04a used two commits);
-33 approved checkpoints remain; 09 is next.
+Current progress: checkpoints 00 through 09 complete (04a used two commits);
+32 approved checkpoints remain; 10 is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -1382,3 +1382,120 @@ fresh lead-owned final review found no unresolved material defect, waiver or
 scope expansion. No new parser/protocol or performance claim requires a fuzz or
 comparison-profile selection. Generated-map generation/check and final
 whitespace/staged-diff review accompany the isolated checkpoint commit.
+Checkpoint 08 is committed as `4a65a44`; its final working tree was clean.
+
+## Checkpoint 09: exact GRID and truthful mapping availability
+
+Status: complete. Discovery inspected the human staged GRID owner and its
+detached transaction coordinator, machine settings validation and prepared
+NEARBY admission, H3 fine/coarse encoders and once-owned mappings, locator parsing,
+existing settings/percent-warning tests, HELP and guide wording. The locator
+parser deliberately accepts a usable prefix at its general path boundary;
+human SET currently relies on that prefix behavior and ignores extra arguments.
+Machine input already requires exact length but conflates syntax with mapping.
+The active machine transaction already refuses unavailable resulting NEARBY
+cells before any commit/publication. Preserve that ordering.
+
+The shared telnet syntax predicate will require exactly four or six characters
+and reuse the existing locator parser for field/square/subsquare validity.
+Human input normalizes its single token; machine input keeps its existing
+uppercase/no-whitespace contract. Missing fine mapping support remains a
+refusal, with an availability response instead of a syntax accusation. Do not
+introduce mapping-independent geography. Human active NEARBY will also require
+the resulting coarse cell before any candidate mutation or publication. No
+H3 math, table loader, global cache, user schema, default or persisted migration
+changes are planned. ADR-0153 and ADR-0146 remain controlling and unchanged.
+
+Config-contract audit: the user SETTINGS grid is the persisted selection owned
+by the existing per-user configuration loader/coordinator; empty machine GRID
+retains its lookup sentinel. Required H3 reference tables keep their existing
+startup loader. Runtime path/NEARBY cells remain derived, not durable ownership.
+Only command-boundary validation/feedback and test fixtures change; no runtime
+YAML loader, required-key/default/null semantics or optional tool config changes.
+
+Lead-owned preimplementation falsifiability matrix:
+
+| Contract | Boundary / fault | Stimulus | Required observation | Level | False-green risk | Checker | Owner |
+|---|---|---|---|---|---|---|---|
+| Exact syntax | Valid prefix plus junk, five characters, out-of-range fields/subsquares, extra arguments | Both dialects, case/whitespace and explicit boundary vectors | Refusal leaves live settings, derived cells, revision and saved bytes unchanged | Unit/checkout | Calling the permissive grid parser alone or ignoring the extra argument | Actual human coordinator with immediate disk comparison; public readback | telnet, runner |
+| Canonical publication | Valid four/six-character human token | Lower/mixed case, active NEARBY grid change | Uppercase saved configuration validates through the machine boundary; both resulting cells change together | Unit/checkout | A success acknowledgement without valid returned configuration | Complete validator, exact configuration and durable readback | telnet, runner |
+| Mapping unavailable | No process-global mapper | Fresh child that never loads tables | Valid syntax receives availability refusal, malformed syntax receives syntax refusal; zero effects | Isolated unit | Global once-loader or invalid syntax conceals the intended fault | Required child execution marker and explicit no-mapping guards | telnet |
+| Active NEARBY | Fine mapping available, coarse mapping missing for proposed locator | Fresh child with only that coarse entry removed | Active session rejects without mutation/save; inactive session keeps existing fine-only admission | Isolated unit | Clearing both maps or only checking fine cells | Separate positive fine and missing coarse guards; real coordinator and saved bytes | telnet |
+| Arbitrary input | Bounded direct stage input | Seeded fuzz, independent literal character-domain oracle | Every publication has exact syntax and canonical matching settings; every refusal leaves candidate state intact | Fuzz/unit | Mirroring prefix parser or testing only curated invalid examples | Actual staged handler and independent ASCII positional oracle | telnet |
+| Discoverability | Existing misleading 4-6 wording | Compiled HELP and related GRID guidance | Exact four-or-six wording, no invalid five-character suggestion | Command/docs | Editing docs while executable help stays inaccurate | HELP test and synchronized existing fixtures/lint | commands, docs |
+
+The old warning-format regression uses an invalid GRID containing a percent
+sequence. Retain its literal-format assertion directly at the existing outcome
+formatter, and add actual-command refusal coverage rather than preserving that
+invalid acceptance. This is a checker-only refinement. The new private mapping
+fixtures are joined child processes because mappings belong to sync.Once.
+Fuzzing uses the established stable executable, runner lock and bounded tool
+owner. The checkout driver will add immediate refusal/readback, machine VALIDATE
+and fresh-process saved GRID controls. No new policy or scope revision is needed.
+
+Implementation: `validExactGrid` gates canonical human and machine tokens before
+the existing prefix parser. The staged human owner rejects extra arguments,
+invalid syntax and unavailable fine mapping before mutation; an enabled NEARBY
+also requires the proposed coarse cell. Machine admission retains its existing
+uppercase/lookup-sentinel and prepared-NEARBY ordering, with truthful separate
+mapping feedback. Other settings and the general locator parser remain.
+
+Complete targeted ordinary and race filter/telnet/commands suites passed
+(`checkpoint-09-packages.log`, `-race.log`). Both mapping-fault children are
+required, guarded and joined. Permanent `FuzzHumanGridAdmission` passed 90,571
+executions over approximately 16 seconds with two workers, following nine seed
+controls (`-fuzz.log`). It checks bounded direct stage input rather than claiming
+a separate wire-input fuzz qualification. The ignored fuzz launcher uses the
+existing exclusive runner lock, stable executable, fresh-source manifest and
+bounded tool owner; no permanent workflow mechanism changes.
+
+Thirty strict driver controls passed (`checkpoint-09-runner-controls.log`). Both
+actual checkout builds passed all 74 required cases, with 30 main and seven
+reputation cases per transport. Every profile reports zero wire/cleanup failures
+and two joined children. The new cases require malformed GRID to preserve exact
+configuration, revision, effective settings, preset status and saved bytes;
+time-varying pause duration is deliberately excluded. Accepted mixed-case GRID
+must match canonical/effective/saved values and succeed through machine VALIDATE
+without apply/persist effects. The active IO91 selection must survive a fresh
+server process in both dialects. Artifacts are
+`20261009-172152-e60326c7/results.json` and
+`20261009-172311-83d4de3b/results.json`, under `.tmp/command-fixes/`. Their
+compiled-Go/module digest is
+`d4a992da81251b510b85cd3bce3f35fb6fba4a4b3ea9aed747ae73fd36ede589`.
+
+The first focused launch failed to build because two new test references used
+incorrect existing type/API names. The corrected test built and its telnet
+checks passed, then command tests correctly failed two stale HELP usage
+expectations. Both failures are retained as `checkpoint-09-targeted-build-failure.log`
+and `checkpoint-09-targeted-help-failure.log`; they are not qualifying final
+evidence. Complete ordinary/race package logs above include the corrected HELP
+assertions and every new test. The percent-argument formatter regression is now
+direct, while actual percent-suffixed GRID is refused with unchanged effects.
+
+Separate-context technical quality review found no material Go defect or scope
+expansion and identified two remaining active 4-6 descriptions in the operator
+guide and release README template. Both are corrected to four-or-six wording;
+the archived numbered README remains historical evidence. The review inspected
+implementation and intended scope and is not independent scientific evidence.
+No source change followed the final Go package/fuzz/checkout qualification;
+the guide corrections do not invalidate that compiled-source evidence.
+
+Support-agent documentation impact: Required. Executable HELP, command HELP
+tests, root/telnet/operator guides and the release README template now agree.
+The common-question route and indexed TSR-0055 explain syntax, mapping
+availability, preservation and test limits. ADR-0153 and ADR-0146 are unchanged;
+no new durable design decision is introduced. Changed-only entry comments pass
+for four support-critical production files; the TSR index/RCA check passes.
+The first full ordinary lane failed the unchanged peer TCP retry timing test:
+`positive_exponential` observed 98.23 ms against a 100 ms delay with a 1 ms
+tolerance (`checkpoint-09-baseline-peer-failure.log`). No peer files changed.
+Its isolated rerun passed (`-peer-timing-recheck.log`), followed by a complete
+70-package ordinary lane pass on the frozen final source (`-baseline.log`).
+The cause of that intermittent observation is unresolved; this checkpoint does
+not claim to repair it. No required check is waived.
+
+Whole-repository vet, Staticcheck and golangci-lint passed, with zero lint issues
+(`-vet.log`, `-staticcheck.log`, `-lint.log`). The fresh lead-owned final review
+covered production, tests, driver negative controls and documentation, and
+found no unresolved material defect or scope expansion. Generated-map generation
+and check, whitespace and staged-diff review accompany the isolated commit.

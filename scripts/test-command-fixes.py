@@ -117,6 +117,49 @@ def literal_archive_label(suite, suffix):
     return "T" + token + suffix
 
 
+def require_grid_configuration(document, grid, record):
+    require(document["configuration"]["settings"]["grid"] == grid and
+            document["status"]["effective"]["grid"] == grid and
+            stored_document(record.read_bytes())["grid"] == grid,
+            "GRID canonical selection, effective location or saved bytes disagree")
+
+
+def grid_exact_cases(suite, root, saved_grids):
+    for dialect, call in (("go", "VE3ABC-70042"), ("cc", "VE3ABC-70043")):
+        current = harness.Session(suite, call)
+        current.human("PAUSE 300")
+        current.human("DIALECT " + dialect)
+        record = root / "users" / (call + ".yaml")
+        current.human("SET GRID IO91", "Grid set to IO91")
+        for command in ("SET GRID FN31PRJUNK", "SET GRID FN31P", "SET GRID FN31YZ",
+                        "SET GRID SN31", "SET GRID FN31 EXTRA", "SET GRID FN31 PR"):
+            before, saved = current.get(), record.read_bytes()
+            text, after = current.human(command)
+            require("Invalid grid." in text or "Usage: SET GRID" in text,
+                    "malformed GRID lacks a specific refusal")
+            require(after["configuration"] == before["configuration"] and
+                    after["revision"] == before["revision"] and
+                    after["status"]["effective"] == before["status"]["effective"] and
+                    after["status"]["preset"] == before["status"]["preset"] and
+                    record.read_bytes() == saved,
+                    "malformed GRID changed configuration, runtime, revision or saved bytes")
+        for token in ("fn31", "Fn31pR"):
+            grid = token.upper()
+            _, document = current.human("SET GRID " + token, "Grid set to " + grid)
+            require_grid_configuration(document, grid, record)
+            result = current.upload("VALIDATE", "CONFIG", document["configuration"])
+            require("error" not in result and result["result"]["operation"] == "VALIDATE" and
+                    result["result"]["valid"] is True and
+                    result["result"]["applied"] is False and result["result"]["persisted"] is False,
+                    "accepted human GRID failed machine validation")
+        current.human("PASS NEARBY ON")
+        _, document = current.human("SET GRID IO91", "Grid set to IO91")
+        require_grid_configuration(document, "IO91", record)
+        require(document["status"]["effective"]["nearby_active"] is True,
+                "valid GRID update lost active NEARBY cells")
+        saved_grids[call] = document["configuration"]
+
+
 def require_nearby_archive(rows, label, frequency, visible):
     if not visible:
         require(not rows, "unmatched NEARBY control remained visible in history")
@@ -554,6 +597,7 @@ def profile(binary, root, source, transport):
                 f"{transport}: prospective human SAVE machine and LOAD refuse before effects",
                 f"{transport}: MODE deltas preserve visible history and saved fallback",
                 f"{transport}/0: NEARBY endpoints filter seeded archive independently",
+                f"{transport}: GRID exact syntax preserves refusals and canonical publication",
                 f"{transport}/1: held endpoint and loaded consumers",
                 f"{transport}: preferences and archive survive fresh child",
                 f"{transport}: NOFILTER geography survives fresh child",
@@ -565,7 +609,8 @@ def profile(binary, root, source, transport):
                 f"{transport}: repaired resource metadata survives fresh child",
                 f"{transport}: prospective admission outcomes survive fresh child",
                 f"{transport}: MODE outcomes survive fresh child",
-                f"{transport}/1: NEARBY endpoints filter seeded archive independently"]
+                f"{transport}/1: NEARBY endpoints filter seeded archive independently",
+                f"{transport}: canonical GRID and active cells survive fresh child"]
     call = "K1ABC-70001"
     observer_call, observer_configuration = "VE3ABC-70003", None
     failed_records, refused_records, compatible_records = {}, {}, {}
@@ -573,6 +618,7 @@ def profile(binary, root, source, transport):
     staged_records = {}
     resource_refused, resource_repaired, resource_prospective = {}, {}, {}
     saved_modes = {}
+    saved_grids = {}
     label = "T" + uuid.uuid4().hex[:8].upper()
     suites = []
     for generation in range(2):
@@ -968,6 +1014,8 @@ def profile(binary, root, source, transport):
                      lambda: mode_delta_cases(suite, root, label, saved_modes))
                 case(f"{transport}/0: NEARBY endpoints filter seeded archive independently",
                      lambda: nearby_endpoint_cases(suite, child))
+                case(f"{transport}: GRID exact syntax preserves refusals and canonical publication",
+                     lambda: grid_exact_cases(suite, root, saved_grids))
             else:
                 def restored():
                     settings = session.get()["configuration"]["settings"]
@@ -1114,6 +1162,18 @@ def profile(binary, root, source, transport):
                 case(f"{transport}: MODE outcomes survive fresh child", restored_modes)
                 case(f"{transport}/1: NEARBY endpoints filter seeded archive independently",
                      lambda: nearby_endpoint_cases(suite, child))
+
+                def restored_grids():
+                    require(len(saved_grids) == 2, "required GRID controls did not execute")
+                    for stored_call, configuration in saved_grids.items():
+                        current = harness.Session(suite, stored_call)
+                        _, document = current.human("PAUSE 300")
+                        require(document["configuration"] == configuration and
+                                document["status"]["effective"]["nearby_active"] is True,
+                                "fresh child lost canonical GRID or active NEARBY")
+                        require_grid_configuration(document, "IO91", root / "users" / (stored_call + ".yaml"))
+
+                case(f"{transport}: canonical GRID and active cells survive fresh child", restored_grids)
         finally:
             try:
                 if suite:

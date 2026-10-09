@@ -165,16 +165,11 @@ func TestHumanPreferenceSettingsRefusalAndFilterlessCallers(t *testing.T) {
 	}
 }
 
-func TestHumanPreferenceGridPercentWarningIsLiteral(t *testing.T) {
-	requireH3Mappings(t)
-	s := presetTestServer(t)
-	c := configurationTestClient(s, "W1ABC-1")
-	s.commitConfigurationFn = func(*filter.PreparedUserRecord) error {
-		return errors.New("denied")
-	}
-	response, handled := s.handlePathSettingsCommand(c, "SET GRID FN31PR%v")
-	if !handled || response != "Grid set to FN31PR%V (warning: failed to persist: denied)\n" || c.grid != "FN31PR%V" {
-		t.Fatalf("currently accepted GRID text was reinterpreted as a format: %q", response)
+func TestHumanPreferenceWarningArgumentsAreLiteral(t *testing.T) {
+	outcome := humanMutation("", "Grid set to %s (warning: failed to persist: %v)\n", "FN31PR%V")
+	response := outcome.persistenceFailure(&Client{}, errors.New("denied"))
+	if response != "Grid set to FN31PR%V (warning: failed to persist: denied)\n" {
+		t.Fatalf("warning text was reinterpreted as a format: %q", response)
 	}
 }
 

@@ -22,6 +22,21 @@ spec.loader.exec_module(driver)
 
 
 class DriverControls(unittest.TestCase):
+    def test_grid_oracle_requires_configured_effective_and_saved_canonical_values(self):
+        document = {"configuration": {"settings": {"grid": "FN31"}},
+                    "status": {"effective": {"grid": "FN31"}}}
+        record = mock.Mock()
+        record.read_bytes.return_value = b"grid: FN31\n"
+        driver.require_grid_configuration(document, "FN31", record)
+        for owner in (document["configuration"]["settings"], document["status"]["effective"]):
+            owner["grid"] = "FN31PRJUNK"
+            with self.assertRaisesRegex(ValueError, "GRID canonical selection"):
+                driver.require_grid_configuration(document, "FN31", record)
+            owner["grid"] = "FN31"
+        record.read_bytes.return_value = b"grid: FN31PRJUNK\n"
+        with self.assertRaisesRegex(ValueError, "GRID canonical selection"):
+            driver.require_grid_configuration(document, "FN31", record)
+
     def test_literal_archive_labels_avoid_signal_tags_and_clipping(self):
         suite = mock.Mock(token="341C7DBB")
         for suffix in ("F8", "G0P14074", "G0R0F14074", "G1BAND", "G1BARRIER"):
