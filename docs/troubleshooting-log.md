@@ -11,6 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0053 | MODE Delta Became A Whitelist Transition | Monitoring | 2026-10-09 | filter, telnet, MODE, feedback, marked reload | ADR-0272 | `docs/troubleshooting/TSR-0053-mode-delta-whitelist-transition.md` |
 | TSR-0052 | Stored YAML Schema Allocation | Monitoring | 2026-10-09 | filter, YAML, schema validation, allocation, resource admission | ADR-0270 | `docs/troubleshooting/TSR-0052-stored-yaml-schema-allocation.md` |
 | TSR-0051 | Stored YAML Alias Compatibility | Monitoring | 2026-10-09 | filter, YAML, aliases, merges, persistence | ADR-0267 | `docs/troubleshooting/TSR-0051-stored-yaml-alias-compatibility.md` |
 | TSR-0050 | Human Persistence Feedback | Monitoring | 2026-10-09 | telnet, filter, dialect, persistence | none | `docs/troubleshooting/TSR-0050-human-persistence-feedback.md` |

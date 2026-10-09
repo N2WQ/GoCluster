@@ -133,6 +133,7 @@ func TestCommentMaximumListsAndOtherGates(t *testing.T) {
 	f.Reset()
 	f.Comments = []string{"000"}
 	s.Comment = "000"
+	f.BlockAllModes = true
 	f.SetMode("FT8", true)
 	if f.Matches(s) {
 		t.Fatal("COMMENT bypassed mode allowlist")

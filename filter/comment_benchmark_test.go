@@ -97,6 +97,7 @@ func BenchmarkCommentCheapReject(b *testing.B) {
 				if gate == "band" {
 					f.SetBand("40m", true)
 				} else {
+					f.BlockAllModes = true
 					f.SetMode("FT8", true)
 				}
 				b.ReportAllocs()

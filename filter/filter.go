@@ -11,8 +11,8 @@
 //
 // Filter Logic:
 //   - Multiple filters use AND logic (all must match)
-//   - Default state: All bands and modes enabled (no filtering)
-//   - Once a specific filter is set, only matching spots pass
+//   - Default state: All bands and the curated default modes enabled
+//   - Named MODE changes preserve every unlisted mode's visibility
 //   - Callsign patterns support wildcards (* at start or end) for both DX and DE calls
 //
 // Each telnet client has its own Filter instance, allowing personalized spot feeds.
@@ -75,10 +75,7 @@ func (f *Filter) UnknownModeVisible() bool {
 	if f == nil {
 		return false
 	}
-	if f.BlockAllModes || f.BlockModes[UnknownModeToken] {
-		return false
-	}
-	return f.AllModes || f.Modes[UnknownModeToken]
+	return passesStringFilter(UnknownModeToken, f.Modes, f.BlockModes, f.AllModes, f.BlockAllModes)
 }
 
 // SupportedSources enumerates how telnet users can filter on Spot.IsHuman.
@@ -666,15 +663,35 @@ func (f *Filter) SetBand(band string, enabled bool) {
 }
 
 // SetMode allows or blocks a specific mode.
-// Key aspects: Updates allow/block lists and AllModes/BlockAllModes flags.
+// Key aspects: Changes only this mode's visibility, preserving open/restrictive
+// fallback for every unlisted token, including modes outside today's taxonomy.
 // Upstream: Telnet PASS/REJECT MODE commands.
-// Downstream: None.
+// Downstream: Matches (deny-first allow/block predicate); ADR-0272.
 func (f *Filter) SetMode(mode string, enabled bool) {
 	mode = canonicalModeToken(mode)
 	if mode == "" || !IsSupportedMode(mode) {
 		return
 	}
-	applyAllowBlockToggle(&f.Modes, &f.BlockModes, mode, enabled, &f.AllModes, &f.BlockAllModes)
+	ensureBoolMap(&f.Modes)
+	ensureBoolMap(&f.BlockModes)
+	// A nonempty allow map is restrictive even if AllModes is true. Preserve
+	// the actual fallback, including false-only and empty restrictive states.
+	open := !f.BlockAllModes && f.AllModes && len(f.Modes) == 0
+	f.AllModes = open
+	if enabled {
+		if f.BlockAllModes {
+			// Latent allows were invisible; opening them would violate the delta.
+			clear(f.Modes)
+			f.BlockAllModes = false
+		}
+		if !open {
+			f.Modes[mode] = true
+		}
+		delete(f.BlockModes, mode)
+		return
+	}
+	delete(f.Modes, mode)
+	f.BlockModes[mode] = true
 }
 
 // SetSource allows or blocks a specific source category.
@@ -1449,12 +1466,14 @@ func (f *Filter) ResetDEDXCC() {
 //
 // Filter Logic (AND):
 //  1. Band filter: If AllBands=false, spot.Band must be in Bands map
-//  2. Mode filter: If AllModes=false, spot.Mode must be in Modes map
+//  2. Mode filter: Deny first; a nonempty allow map is restrictive, otherwise
+//     AllModes supplies the fallback
 //  3. Callsign filter: If patterns exist, spot.DXCall must match at least one
 //
 // Examples:
 //
 //	filter.SetBand("20m", true)
+//	filter.BlockAllModes = true // Start a MODE whitelist explicitly.
 //	filter.SetMode("CW", true)
 //	filter.Matches(spot_20m_CW)   → true
 //	filter.Matches(spot_40m_CW)   → false (wrong band)
@@ -1904,7 +1923,7 @@ func isConfidenceExemptMode(mode string) bool {
 //	filter.String() → "No active filters"
 //	(after SetBand("20m", true))
 //	filter.String() → "Bands: 20m | Modes: ALL"
-//	(after SetMode("CW", true))
+//	(after BlockAllModes=true then SetMode("CW", true))
 //	filter.String() → "Bands: 20m | Modes: CW"
 func (f *Filter) String() string {
 	var parts []string

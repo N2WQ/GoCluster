@@ -52,6 +52,9 @@ Tags: refactor, filter, telnet, consistency
   - existing filter/telnet suites plus new targeted setter-flag tests.
 
 ## Links
+- Refinement: [ADR-0272](ADR-0272-mode-visibility-deltas.md) replaces the shared
+  toggle for MODE only with visibility-preserving named deltas. Other families
+  retain the original decision.
 - Related ADR(s): none
 - Code:
   - `filter/filter.go`

@@ -22,6 +22,24 @@ spec.loader.exec_module(driver)
 
 
 class DriverControls(unittest.TestCase):
+    def test_mode_oracles_reject_whitelist_and_missing_or_misclassified_controls(self):
+        expected = dict(allow_all=True, block_all=False, allow={}, block={})
+        document = {"configuration": {"filters": {"modes": copy.deepcopy(expected)}}}
+        driver.require_mode_rules(document, expected)
+        document["configuration"]["filters"]["modes"]["allow_all"] = False
+        with self.assertRaisesRegex(ValueError, "exact open/restrictive state"):
+            driver.require_mode_rules(document, expected)
+        row = "DX de K1ABC:       14074.00  W6ABC       CW MODECONTROL             1234Z"
+        with mock.patch.object(driver, "archive_rows", return_value=[row]):
+            driver.require_mode_archive(None, "MODECONTROL", "CW", True)
+            with self.assertRaisesRegex(ValueError, "blocked MODE control"):
+                driver.require_mode_archive(None, "MODECONTROL", "CW", False)
+            with self.assertRaisesRegex(ValueError, "absent or misclassified"):
+                driver.require_mode_archive(None, "MODECONTROL", "FT8", True)
+        with mock.patch.object(driver, "archive_rows", return_value=[]), \
+                self.assertRaisesRegex(ValueError, "absent or misclassified"):
+            driver.require_mode_archive(None, "MODECONTROL", "CW", True)
+
     def test_frequency_refusal_requires_its_specific_feedback(self):
         driver.require_frequency_refusal("Invalid frequency. Use a kHz value like 7001.0.\r\n")
         for text in ("", "Spot queued.", "Spot rejected.", "Invalid input."):

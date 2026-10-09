@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 06 complete (04a used two commits);
-35 approved checkpoints remain; 07 is next.
+Current progress: checkpoints 00 through 07 complete (04a used two commits);
+34 approved checkpoints remain; 08 is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -1146,3 +1146,132 @@ troubleshooting decision is introduced. Final source/test/script/doc review
 found no material defect or waiver. Entry-comment, generated-map and whitespace
 checks accompany final commit qualification. No external service, production
 load or global ingest-validation change is claimed.
+Checkpoint 06 is committed as `397875c`.
+
+## Checkpoint 07: MODE visibility-preserving deltas
+
+Status: complete. The selected D01 contract changes only named modes;
+every unlisted mode keeps its prior visibility, including custom/unseen tokens
+and future taxonomy entries. Other finite-family transitions remain unchanged.
+
+Current-source discovery inspected Filter.SetMode, Matches, UnknownModeVisible,
+passesStringFilter, mode command dispatch, effective MODE snapshots, human
+overview/detail predicates, marked and unmarked user/preset decoding, current
+tests and ADR-0018/0052/0247/0249. Semantic SetMode references have only two
+production consumers, the telnet PASS/REJECT loops. The actual matcher treats
+any nonempty allow map as restrictive, including false-only maps, regardless
+of AllModes; BlockAllModes dominates dormant selections. Semantic
+UnknownModeVisible
+references identify only the two telnet feedback consumers. Targeted package
+dependency inspection confirms filter -> spot/pathreliability and telnet/commands
+-> filter without new APIs or interfaces. Marked owners preserve
+flags/maps exactly; only unmarked historical records invoke migration. No
+loader, schema, taxonomy, global matcher or default-policy change is selected.
+
+The Filter owns the delta. Determine the prior open fallback using the flags
+and raw map length, preserve that fallback, and update the named allow/block
+entry. Opening one mode from BlockAll clears dormant allows so unrelated modes
+stay hidden. Rejecting the last restrictive allow must leave a restrictive
+empty map. Unknown-mode feedback uses the same matcher. MODE-only snapshots
+ignore false/noncanonical entries without promoting finite taxonomy coverage to
+an open fallback. General finite-family helpers and human exact stored-rule views stay
+unchanged. State remains client-owned under existing detached publication and
+filter locks; no new owner, retained structure or lifecycle is introduced.
+
+The bounded separate-context design/falsifiability review was read-only. It
+confirmed the pointwise design through a finite Boolean-state reasoning probe;
+that is design evidence, not implementation validation or scientific independent
+review. Its refinements are covered below: false-only maps cannot become open
+after filtering display entries; UnknownModeVisible must agree with Matches;
+old tests constructing a whitelist with ResetModes + SetMode must explicitly
+start restrictive; marked persistence must retain empty restrictive states.
+The lead owns implementation, oracles, final review and validation.
+
+| Contract | Boundary / fault | Stimulus | Required observation | Level | False-green risk | Checker | Owner |
+|---|---|---|---|---|---|---|---|
+| Named delta | Open/restrictive, false-only, empty, conflicting flags/maps | All Boolean flags and absent/false/true entries; PASS/REJECT CW/FT8 | Named token equals requested visibility; every other observed token unchanged | Unit | Testing only default curated list | Matches-backed exhaustive pointwise invariant | filter |
+| Dormant state | BlockAll with positive and false latent entries | PASS FT8; REJECT CW; repeat transitions | Only selected PASS opens, no latent mode revives | Unit | Starting block-all with empty maps only | Full state-space cases and literal checkpoints | filter |
+| Unknown feedback | AllModes true with a restrictive map | UnknownModeVisible and actual blank/UNKNOWN match before/after | Same answer, including false entries | Consumer | Comparing two flag-only summaries | Actual Matches oracle | filter, telnet |
+| Future/custom preservation | Nonstandard map keys and later taxonomy | Apply named deltas, add a taxonomy mode | Original open/restrictive fallback remains; retained custom visibility unchanged | Unit | Enumerating supported modes as a complete universe | Literal unseen/custom probes and private taxonomy fixture | filter |
+| Truthful mode snapshots | False/padded/lowercase/alias extras, all-known restrictive list, contradictory flag | MODE effective response and SHOW FILTER MODE | Enabled tokens agree with normalized Matches; no false/custom promotion | Consumer | Finite display union hides false entries or future fallback | Matcher-backed snapshot and detail assertions | telnet |
+| Persistence | Last allow removed, open minus block, latent/custom records | Human commands, marked save/load and reconnect | Live, saved and fresh-session flags/maps/visibility agree | Consumer/checkout | Logout repairs persistence or migration silently reopens modes | Immediate stored bytes plus second child readback | filter, runner |
+| Other families | Same generic toggle callers | Existing BAND/SOURCE/EVENT tests and full package suites | Existing transitions unchanged | Regression | Broad helper change accidentally alters unrelated contracts | Generic helper remains untouched; full baseline | filter, telnet |
+
+Planned qualification: focused and full filter/telnet/commands tests, targeted
+race checks, complete ordinary Windows lane, vet/Staticcheck/lint, strict runner
+controls, both actual-server build modes/transports and final comment/map/diff
+checks. The state-space oracle states pointwise behavior independently of the
+mutation representation. No parser change or performance claim is made.
+
+Observed qualification:
+
+| Check | Result / artifact under `.tmp/command-fixes` |
+|---|---|
+| Focused state/feedback/persistence cases | PASS; `checkpoint-07-targeted.log` |
+| Final complete filter/telnet/commands ordinary and race suites | PASS; `checkpoint-07-packages-final.log`, `checkpoint-07-race-final.log` |
+| Final complete ordinary Windows lane | PASS, 70 packages; `checkpoint-07-baseline.log` |
+| Vet, Staticcheck and golangci-lint | PASS, zero lint issues; `checkpoint-07-vet.log`, `checkpoint-07-staticcheck.log`, `checkpoint-07-lint.log` |
+| Runner negative controls | PASS, 27 controls; `checkpoint-07-runner-controls.log` |
+| Existing COMMENT benchmark rejection guard | PASS, six cases with one iteration each; `checkpoint-07-benchmark-guard.log`; correctness only, no comparative timing claim |
+| Actual checkout server | PASS, 66 required cases each in ordinary/race builds; `20261009-163641-dcb0a556/results.json`, `20261009-163719-a9492e1b/results.json` |
+
+The implementation oracle checked 11,664 transitions (both flags, absent/false/
+true entries for CW/FT8/custom, both named selections and actions), comparing
+five tokens against actual Matches before and after. This includes unseen
+fallback and unknown feedback. A private later taxonomy adds FUTUREMODE:
+an open filter still accepts it while a restrictive filter, including one that
+previously covered the complete current taxonomy, does not. Marked user records,
+saved presets and applied baselines retain exact rules and actual visibility,
+including restrictive-empty, false-only, dormant and custom entries.
+
+The required checkout extension adds two main-profile cases per transport
+(26 each, plus the unchanged seven reputation cases). It uses accepted CW and
+FT8 archive rows as independent positive controls, verifies rejection/re-enabling
+through both dialects, checks durable rules while connected, and queries again
+after replacing the server process. Each build passed all four profiles with
+zero wire/cleanup failures and two joined children each. Their compiled-Go/module
+source digest is `ff5b66b895cf41485b20834f072e59c5b9723cc16ef70dbc1400dd7b4c0e2d5d`.
+These are archive-backed history consumer checks; they do not claim a separate
+unpaused live-fanout delivery qualification. Direct Matches and existing telnet
+consumer suites cover the shared predicate. No parser change requires new fuzz
+selection, and no performance claim requires comparison profiles.
+
+The first focused launch mistyped the timeout argument and ran no tests
+(`checkpoint-07-targeted-launch.log`). The corrected focused run passed. The
+initial complete filter suite then caught an old COMMENT test using a named
+PASS to construct an exclusive allowlist (`checkpoint-07-packages-initial.log`).
+Its setup, the paired cheap-rejection benchmark, and old unknown-mode fixtures
+now explicitly start restrictive; their negative assertions remain. Complete
+targeted ordinary/race suites passed after those corrections. The final source
+also passed the repeated complete ordinary lane; the preceding successful lane
+is retained as `checkpoint-07-baseline-prereview.log` rather than reused as final
+source evidence.
+
+The separate-context technical quality review found no transition/ownership
+defect and identified two feedback corrections: padded/noncanonical true keys
+must not appear as effectively enabled, and source examples must explicitly
+start a whitelist. Both are fixed and the Mode-only matrix is extended with
+padded, lowercase and alias keys. Final targeted ordinary/race, full ordinary,
+analyzers and actual-server builds all include those fixes. This review saw the
+design and implementation; it is not scientific independent review. Fresh
+lead-owned source/test/script/doc review found no unresolved material defect
+or waiver. Generic toggles, matching precedence, configuration schemas, defaults
+and unmarked migrations remain unchanged.
+
+Implementation mapping: Filter.SetMode owns the named delta;
+UnknownModeVisible uses its real predicate; telnet's Mode-only snapshot ignores
+inactive/unreachable display keys while preserving raw fallback. The two new
+test files qualify pointwise mutation, feedback, future taxonomy and marked
+owners. Five exclusive unit/benchmark fixtures retain their original rejection
+intent. The strict runner and controls qualify actual history, saved rules and
+fresh-process outcomes. The ignored benchmark helper uses the established runner
+lock, bounded tool owner, stable executable and fresh-source check; no workflow
+policy or permanent runner mechanism changes.
+
+Support-agent documentation impact: Required. The telnet guide explains deltas
+and deliberate whitelist construction; the common-question index routes there,
+to ADR-0272 and TSR-0053. ADR-0272 records the selected MODE-only refinement of
+ADR-0018; the historical generic-family decision is preserved and cross-linked.
+TSR-0053 records the observed whitelist/fallback trap and checker limitations.
+Final entry-comment, TSR, generated-map and whitespace checks accompany commit.
+No external service, deployment or production-load certification is claimed.

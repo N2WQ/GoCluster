@@ -106,6 +106,10 @@ The telnet layer owns the live filter parser and persistence rules.
 - if a value appears in both, block wins
 - `RESET FILTER` restores configured defaults for new users
 - `PASS/REJECT MODE <list>` are deltas; modes not listed are unchanged
+- Re-enabling FT8 after rejecting it keeps previously visible CW visible.
+  This also preserves visibility for custom and future modes. To select only
+  named modes, use `REJECT MODE ALL` first, then `PASS MODE CW,FT8`.
+  `PASS MODE ALL` or `RESET MODE` explicitly allows every mode again.
 - `UNKNOWN` is the MODE token for blank-mode spots; use `PASS MODE UNKNOWN` or `PASS MODE ALL` to show them again after they are hidden
 
 Path and confidence filters are operator-visible here:

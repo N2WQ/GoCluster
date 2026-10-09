@@ -1626,7 +1626,40 @@ func snapshotModeFilter(f *filter.Filter) allowBlockSnapshot {
 	if f == nil {
 		return buildAllowBlockSnapshot(false, false, "", "", 0, 0)
 	}
-	return snapshotAllowBlockStrings(f.AllModes, f.BlockAllModes, f.Modes, f.BlockModes, filter.SupportedModes())
+	// Raw map length determines the fallback; false entries still make the
+	// matcher restrictive. Finite taxonomy coverage cannot imply future ALL.
+	supported := filter.SupportedModes()
+	allowValues := orderedModeValues(f.Modes, supported)
+	blockValues := orderedModeValues(f.BlockModes, supported)
+	open := f.AllModes && len(f.Modes) == 0
+	snapshot := buildAllowBlockSnapshot(open, f.BlockAllModes,
+		strings.Join(allowValues, ", "), strings.Join(blockValues, ", "), len(allowValues), len(blockValues))
+	candidates := allowValues
+	if open {
+		candidates = supported
+	}
+	enabled := make([]string, 0, len(candidates))
+	if !f.BlockAllModes {
+		for _, mode := range candidates {
+			if !f.BlockModes[mode] {
+				enabled = append(enabled, mode)
+			}
+		}
+	}
+	snapshot.enabled, snapshot.enabledCount = enabledListLabel(enabled), len(enabled)
+	return snapshot
+}
+
+// Mode feedback excludes false/noncanonical entries without changing raw rules.
+func orderedModeValues(values map[string]bool, supported []string) []string {
+	ordered := orderedStringValues(values, supported)
+	enabled := ordered[:0]
+	for _, mode := range ordered {
+		if values[mode] && humanModeRuleKey(mode) {
+			enabled = append(enabled, mode)
+		}
+	}
+	return enabled
 }
 
 func snapshotEventFilter(f *filter.Filter) allowBlockSnapshot {

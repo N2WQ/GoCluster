@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `dd23f54237d9df24`
+- Source fingerprint: `f7bd10d77d361503`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -15,7 +15,7 @@
 | `dxcluster/internal/cluster` | `internal/cluster` | 25 | 63 |
 | `dxcluster/peer` | `peer` | 62 | 130 |
 | `dxcluster/spot` | `spot` | 33 | 32 |
-| `dxcluster/telnet` | `telnet` | 46 | 83 |
+| `dxcluster/telnet` | `telnet` | 46 | 84 |
 
 ## In-Scope Package Edges
 
@@ -583,6 +583,7 @@ Test files:
 - `telnet/minsnr_history_test.go`
 - `telnet/minsnr_machine_test.go`
 - `telnet/minsnr_readback_test.go`
+- `telnet/mode_delta_test.go`
 - `telnet/nofilter_nearby_test.go`
 - `telnet/path_settings_test.go`
 - `telnet/peer_membership_test.go`
@@ -621,6 +622,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0272](docs/decisions/ADR-0272-mode-visibility-deltas.md) | Accepted | 2026-10-09 | filter, telnet, MODE, persistence, effective feedback | `area:telnet, path:telnet` |
 | [ADR-0271](docs/decisions/ADR-0271-shared-station-reputation.md) | Accepted | 2026-10-09 | reputation, telnet, station identity, allowance, history ownership | `area:telnet` |
 | [ADR-0270](docs/decisions/ADR-0270-complete-storage-admission.md) | Accepted | 2026-10-09 | filter, telnet, quotas, temporary settings, SAVE ordering | `area:telnet, path:telnet` |
 | [ADR-0269](docs/decisions/ADR-0269-detached-human-preference-publication.md) | Accepted | 2026-10-09 | telnet, configuration, staging, publication, ownership | `area:telnet, path:telnet` |

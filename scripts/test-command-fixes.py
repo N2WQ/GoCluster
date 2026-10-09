@@ -89,6 +89,69 @@ def require_frequency_refusal(text):
             "manual DX frequency refusal is missing or incorrect")
 
 
+def require_mode_rules(document, expected, record=None):
+    require(document["configuration"]["filters"]["modes"] == expected,
+            "MODE delta lost its exact open/restrictive state")
+    if record is not None:
+        saved = stored_document(record.read_bytes())
+        require(dict(allow_all=saved["allmodes"], block_all=saved["blockallmodes"],
+                     allow=saved["modes"], block=saved["blockmodes"]) == expected,
+                "MODE delta was not saved before disconnect")
+
+
+def require_mode_archive(session, label, mode, visible):
+    rows = archive_rows(session, label)
+    if not visible:
+        require(not rows, "blocked MODE control remained visible in history")
+        return
+    require(len(rows) == 1 and label in rows[0] and
+            re.search(r"\bW6ABC\s+" + re.escape(mode) + r"\b", rows[0]),
+            "visible MODE control absent or misclassified in history")
+
+
+def mode_delta_cases(suite, root, cw_label, saved_modes):
+    poster = harness.Session(suite, "K1ABC-70034")
+    poster.human("PAUSE 300")
+    poster.human("PASS MODE ALL")
+    ft8_label = suite.token + "MODEFT8"
+    poster.human("DX 7074 W6ABC FT8 " + ft8_label, "Spot queued.")
+    deadline = time.monotonic() + 5
+    while not archive_rows(poster, ft8_label):
+        require(time.monotonic() < deadline, "MODE positive archive barrier absent")
+        time.sleep(.025)
+    require_mode_archive(poster, ft8_label, "FT8", True)
+    for dialect, call in (("go", "VE3ABC-70033"), ("cc", "VE3ABC-70034")):
+        current = harness.Session(suite, call)
+        current.human("PAUSE 300")
+        current.human("DIALECT " + dialect)
+        allow = "PASS MODE" if dialect == "go" else "SET/FILTER MODE"
+        block = "REJECT MODE" if dialect == "go" else "UNSET/FILTER MODE"
+        for command, ft8_visible in ((allow + " ALL", True), (block + " FT8", False),
+                                     (allow + " FT8", True)):
+            current.human(command, "Effective MODE:")
+            require_mode_archive(current, cw_label, "CW", True)
+            require_mode_archive(current, ft8_label, "FT8", ft8_visible)
+        text, document = current.human("SHOW FILTER MODE", "PASS: ALL")
+        require("Unknown modes are included" in text, "MODE warning disagrees with open state")
+        expected = dict(allow_all=True, block_all=False, allow={}, block={})
+        record = root / "users" / (call + ".yaml")
+        require_mode_rules(document, expected, record)
+        saved_modes[call] = (document["configuration"], expected, cw_label, ft8_label, True)
+
+    current = harness.Session(suite, "VE3ABC-70035")
+    current.human("PAUSE 300")
+    for command in ("REJECT MODE ALL", "PASS MODE CW", "REJECT MODE CW"):
+        current.human(command, "Effective MODE:")
+    text, document = current.human("SHOW FILTER MODE", "PASS: NONE")
+    require("Unknown modes are hidden" in text, "MODE warning disagrees with restrictive empty state")
+    expected = dict(allow_all=False, block_all=False, allow={}, block={"CW": True})
+    record = root / "users" / "VE3ABC-70035.yaml"
+    require_mode_rules(document, expected, record)
+    require_mode_archive(current, cw_label, "CW", False)
+    require_mode_archive(current, ft8_label, "FT8", False)
+    saved_modes[current.call] = (document["configuration"], expected, cw_label, ft8_label, False)
+
+
 def invalid_frequency_posts(suite, sessions, labels):
     # Keep wire vectors below the fixture's loaded human-line limit. Direct Go
     # API/fuzz cases cover long decimal parse/scaling overflow separately.
@@ -436,6 +499,7 @@ def profile(binary, root, source, transport):
                 f"{transport}: resource-refused login keeps fitting edits temporary",
                 f"{transport}: warm resource refusals retry authoritative saves and logout",
                 f"{transport}: prospective human SAVE machine and LOAD refuse before effects",
+                f"{transport}: MODE deltas preserve visible history and saved fallback",
                 f"{transport}/1: held endpoint and loaded consumers",
                 f"{transport}: preferences and archive survive fresh child",
                 f"{transport}: NOFILTER geography survives fresh child",
@@ -445,13 +509,15 @@ def profile(binary, root, source, transport):
                 f"{transport}: detached human settings survive fresh child",
                 f"{transport}: resource-refused records survive fresh child",
                 f"{transport}: repaired resource metadata survives fresh child",
-                f"{transport}: prospective admission outcomes survive fresh child"]
+                f"{transport}: prospective admission outcomes survive fresh child",
+                f"{transport}: MODE outcomes survive fresh child"]
     call = "K1ABC-70001"
     observer_call, observer_configuration = "VE3ABC-70003", None
     failed_records, refused_records, compatible_records = {}, {}, {}
     prepared_records = {}
     staged_records = {}
     resource_refused, resource_repaired, resource_prospective = {}, {}, {}
+    saved_modes = {}
     label = "T" + uuid.uuid4().hex[:8].upper()
     suites = []
     for generation in range(2):
@@ -843,6 +909,8 @@ def profile(binary, root, source, transport):
                      lambda: resource_warm_cases(suite, root, resource_refused, resource_repaired))
                 case(f"{transport}: prospective human SAVE machine and LOAD refuse before effects",
                      lambda: resource_prospective_case(suite, root, resource_prospective))
+                case(f"{transport}: MODE deltas preserve visible history and saved fallback",
+                     lambda: mode_delta_cases(suite, root, label, saved_modes))
             else:
                 def restored():
                     settings = session.get()["configuration"]["settings"]
@@ -975,6 +1043,18 @@ def profile(binary, root, source, transport):
                                 "fresh child restored a refused candidate or changed its baseline")
 
                 case(f"{transport}: prospective admission outcomes survive fresh child", restored_prospective_admission)
+
+                def restored_modes():
+                    require(len(saved_modes) == 3, "required MODE controls did not execute")
+                    for saved_call, (configuration, expected, cw_label, ft8_label, visible) in saved_modes.items():
+                        current = harness.Session(suite, saved_call)
+                        _, document = current.human("PAUSE 300")
+                        require(document["configuration"] == configuration, "MODE configuration lost across process replacement")
+                        require_mode_rules(document, expected, root / "users" / (saved_call + ".yaml"))
+                        require_mode_archive(current, cw_label, "CW", visible)
+                        require_mode_archive(current, ft8_label, "FT8", visible)
+
+                case(f"{transport}: MODE outcomes survive fresh child", restored_modes)
         finally:
             try:
                 if suite:

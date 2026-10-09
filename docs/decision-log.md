@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0272 | MODE Visibility Deltas | Accepted | 2026-10-09 | filter, telnet, MODE, persistence, effective feedback | Refines ADR-0018 for MODE | - | `docs/decisions/ADR-0272-mode-visibility-deltas.md` |
 | ADR-0271 | Shared Station Reputation | Accepted | 2026-10-09 | reputation, telnet, station identity, allowance, history ownership | Refines ADR-0115 | - | `docs/decisions/ADR-0271-shared-station-reputation.md` |
 | ADR-0270 | Complete Storage Admission | Accepted | 2026-10-09 | filter, telnet, quotas, temporary settings, SAVE ordering | Refines ADR-0267/0268/0269 | - | `docs/decisions/ADR-0270-complete-storage-admission.md` |
 | ADR-0269 | Detached Human Preference Publication | Accepted | 2026-10-09 | telnet, configuration, staging, publication, ownership | Refines ADR-0244 | - | `docs/decisions/ADR-0269-detached-human-preference-publication.md` |

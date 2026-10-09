@@ -780,6 +780,7 @@ func TestDefaultFilterIncludesUnknownModeSpots(t *testing.T) {
 func TestExplicitModeAllowlistExcludesUnknown(t *testing.T) {
 	f := NewFilter()
 	f.ResetModes()
+	f.BlockAllModes = true
 	f.SetMode("CW", true)
 	if f.UnknownModeVisible() {
 		t.Fatalf("expected CW-only filter to mark UNKNOWN as hidden")

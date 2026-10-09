@@ -650,6 +650,7 @@ func TestModeUnknownHiddenWarnings(t *testing.T) {
 func TestInvalidPassModeDoesNotMutateModeFilter(t *testing.T) {
 	client := newTestClient()
 	client.filter.ResetModes()
+	client.filter.BlockAllModes = true
 	client.filter.SetMode("CW", true)
 	engine := newFilterCommandEngine()
 
@@ -1212,6 +1213,7 @@ func TestShowFilterSnapshotDefault(t *testing.T) {
 func TestShowFilterWarnsWhenUnknownHidden(t *testing.T) {
 	client := newTestClient()
 	client.filter.ResetModes()
+	client.filter.BlockAllModes = true
 	client.filter.SetMode("CW", true)
 	engine := newFilterCommandEngine()
 
