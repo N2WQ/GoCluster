@@ -11,7 +11,7 @@ func TestNamedPresetHelp(t *testing.T) {
 		list := p.ProcessCommandForClient("HELP", "N2WQ", "", nil, dialect)
 		for _, verb := range []string{"SAVE", "LIST", "LOAD", "DELETE"} {
 			topic := verb + " PRESET"
-			if !strings.Contains(list, topic+" - ") {
+			if !strings.Contains(list, topic) {
 				t.Fatalf("%s HELP omits %s", dialect, topic)
 			}
 			response := p.ProcessCommandForClient("HELP "+topic, "N2WQ", "", nil, dialect)

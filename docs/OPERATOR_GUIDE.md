@@ -190,8 +190,12 @@ telnet localhost 8300
 
 Log in with your callsign. Useful first commands:
 
-- `HELP`: show the command list.
+- `HELP`: show commands grouped by task, filter categories and practical examples.
 - `HELP <command>`: show command-specific help.
+- `HELP PASS` / `HELP REJECT`: show detailed filter syntax, values and examples.
+- `HELP FILTERS`: show full filter rules and supported values.
+- `HELP SYMBOLS`: explain confidence and configured path reliability symbols.
+
 - `SHOW MYDX` or `SHOW DX`: show filtered spot history.
 - `SHOW DXCC <call>`: look up DXCC/ADIF and zones.
 - `SHOW PROP <call|prefix|grid> [band] [mode]`: show hourly
@@ -222,6 +226,11 @@ Log in with your callsign. Useful first commands:
 - `SET DEDUPE FAST|MED|SLOW`: change your dedupe policy.
 - `DX <freq> <call> <comment>`: post a local human spot.
 - `BYE`: disconnect.
+
+In the CC dialect, use `HELP SET/FILTER` and `HELP UNSET/FILTER` for ordinary
+list filters. The overview uses CC spellings; COMMENT, MINSNR and NEARBY keep
+their shared PASS/REJECT syntax. YAML client commands are omitted from the
+overview but remain available, including their command-specific help.
 
 The top-level repository README contains the generated default `HELP` output.
 That block is checked against the command processor in tests.

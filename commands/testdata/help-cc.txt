@@ -1,0 +1,210 @@
+GoCluster help - CC dialect
+
+Getting started:
+  SHOW/DX 10             Show 10 recent spots matching your filters.
+  SHOW/FILTER            See your current filters.
+  SHOW SETTINGS          See your preferences and session settings.
+  SET GRID FN31          Set your Maidenhead grid square.
+  BYE                    Disconnect.
+
+Type HELP followed by a command for details:
+  HELP SHOW/DX
+  HELP SET/FILTER
+  HELP UNSET/FILTER
+  HELP PASS COMMENT
+
+Reading and posting spots:
+  SHOW/DX                Show recent spots matching your filters.
+  SHOW MYDX              Same as SHOW/DX.
+  SH/DX                  Short form of SHOW/DX.
+  DX                     Post a spot.
+  SHOW DXCC              Look up a callsign or country prefix.
+  WHOSPOTSME             Show recent spotter countries for your call.
+
+Examples:
+  SHOW/DX 10             Show the latest 10 matching spots.
+  SHOW/DX K1ABC 10       Search for spots of K1ABC.
+  SHOW/DX 10 BAND 20     Search for 10 matching spots on 20m.
+  DX 14025.0 K1ABC CQ    Post K1ABC on 14025.0 kHz with comment CQ.
+
+Changing filters:
+  SET/FILTER             Allow selections.
+  UNSET/FILTER           Block selections.
+  SHOW/FILTER            Show your current filters.
+  SHOW/FILTER FULL       Show complete filter selections.
+  SHOW/FILTER MODE       Show one filter category.
+  RESET FILTER           Restore the cluster's default filters.
+
+What you can filter:
+  DX means the station being spotted; DE means the spotter.
+
+  BAND                   Radio band, such as 20m or 40m.
+  MODE                   Operating mode, such as CW, FT8 or USB.
+  SOURCE                 HUMAN or SKIMMER reports.
+  EVENT                  POTA, SOTA, IOTA, WWFF or LLOTA tags.
+  COMMENT                A phrase anywhere in the spot comment.
+  DXCALL                 Spotted callsign or pattern, such as K1ABC or W1*.
+  DECALL                 Spotter callsign or pattern.
+  DXCONT                 Spotted station's continent.
+  DECONT                 Spotter's continent.
+  DXZONE                 Spotted station's CQ zone (1-40).
+  DEZONE                 Spotter's CQ zone (1-40).
+  DXDXCC                 Spotted station's country prefix or ADIF number.
+  DEDXCC                 Spotter's country prefix or ADIF number.
+  DXSTATE                Spotted station's US state or Canadian province code.
+  DESTATE                Spotter's US state or Canadian province code.
+  DXGRID2                Spotted station's two-character grid, such as FN.
+  DEGRID2                Spotter's two-character grid.
+  CONFIDENCE             Callsign confidence symbols: ?, S, P, V, C, B.
+  PATH                   HIGH, MEDIUM, LOW, UNLIKELY, CLOSED or INSUFFICIENT.
+  MINSNR                 Minimum signal report in dB, selected by mode.
+
+SET/FILTER and UNSET/FILTER examples:
+  Each example below is a separate change, not a combined recipe.
+
+  SET/FILTER BAND 20,40       Add 20m and 40m to your band selections.
+  UNSET/FILTER BAND 80        Block 80m spots.
+  SET/FILTER MODE CW,FT8      Enable CW and FT8; other modes stay unchanged.
+  UNSET/FILTER MODE FT8       Disable FT8.
+  SET/FILTER SOURCE HUMAN     Allow human reports.
+  UNSET/FILTER SOURCE SKIMMER Block automated skimmer reports.
+  UNSET/FILTER EVENT POTA     Block POTA-tagged spots.
+  PASS COMMENT CQ             Require a comment containing CQ.
+  REJECT COMMENT QRT          Block comments containing QRT.
+  UNSET/FILTER DXCALL W1*     Block spotted calls beginning with W1.
+  UNSET/FILTER DECALL W1ABC   Block reports from spotter W1ABC.
+  SET/FILTER DXCONT EU        Add Europe to your DX continent selections.
+  SET/FILTER DECONT NA        Add North America to your spotter selections.
+  SET/FILTER DXZONE 14,15     Add DX CQ zones 14 and 15.
+  SET/FILTER DEZONE 5         Add spotters in CQ zone 5.
+  SET/FILTER DXDXCC DL        Add Germany to your DX country selections.
+  SET/FILTER DEDXCC K         Add the United States to your spotter countries.
+  SET/FILTER DXSTATE CT,MA    Add DX stations in Connecticut and
+                              Massachusetts.
+  SET/FILTER DESTATE ON       Add spotters with Canadian province code ON.
+  SET/FILTER DXGRID2 JO       Add DX stations in grid field JO.
+  SET/FILTER DEGRID2 FN       Add spotters in grid field FN.
+  UNSET/FILTER CONFIDENCE ?   Block spots marked with confidence symbol ?.
+  UNSET/FILTER PATH LOW       Block spots classified as LOW path reliability.
+  PASS MINSNR CW 10           Set a minimum CW signal report of 10 dB.
+
+A complete recipe: only 20m/40m and only CW/FT8:
+  UNSET/FILTER BAND ALL
+  SET/FILTER BAND 20,40
+  UNSET/FILTER MODE ALL
+  SET/FILTER MODE CW,FT8
+  SHOW/FILTER
+
+  This changes BAND and MODE only. Other filters still apply.
+  Own-call spots have special exemptions; see HELP SHOW MYDX.
+
+Filter rules to remember:
+  Allowed selections do not generally replace your existing selections.
+  Allowing moves named items to allowed; blocking moves them to blocked.
+  Different filter categories must all match, except own-call exemptions.
+  MODE changes only the modes you name.
+  SET/FILTER BAND ALL allows every band; other filters still apply.
+  UNSET/FILTER EVENT ALL blocks tagged events, not untagged spots.
+  COMMENT matches literal text without regard to letter case.
+  COMMENT treats commas, quotes, * and ? as literal characters.
+  COMMENT also treats ALL and NONE as literal phrases.
+  Any allowed COMMENT phrase can match; a blocked phrase wins.
+  Numeric PASS and REJECT MINSNR commands set the same minimum.
+  MINSNR exempts human reports and reports without SNR.
+  RESET FILTER restores cluster defaults, which may restrict spots.
+
+Comment rules:
+  PASS COMMENT           Add an allowed comment phrase.
+  REJECT COMMENT         Add a blocked comment phrase.
+  REMOVE PASS COMMENT    Remove an allowed phrase.
+  REMOVE REJECT COMMENT  Remove a blocked phrase.
+  RESET FILTER COMMENT   Clear all comment rules.
+  SHOW FILTER COMMENT    Show your saved phrases.
+
+Examples:
+  PASS COMMENT CQ DX
+  REJECT COMMENT QRT
+  REMOVE PASS COMMENT CQ DX
+  RESET FILTER COMMENT REJECT
+
+CC shortcuts:
+  SH/FILTER                 Short form of SHOW/FILTER.
+  SET/ANN | SET/NOANN       Allow or block announcements.
+  SET/BEACON | SET/NOBEACON Allow or block beacon spots.
+  SET/WWV | SET/NOWWV       Allow or block WWV bulletins.
+  SET/WCY | SET/NOWCY       Allow or block WCY bulletins.
+  SET/SELF | SET/NOSELF     Allow or block your own spots.
+  SET/SKIMMER               Allow automated skimmer reports.
+  SET/NOSKIMMER             Block automated skimmer reports.
+  SET/<MODE>                Enable a mode; for example SET/FT8.
+  SET/NO<MODE>              Disable a mode; for example SET/NOFT8.
+  SET/NOFILTER              Clear filter restrictions.
+  REJECT TOXIC              Hide human spots already classified as toxic.
+  PASS TOXIC                Allow human spots already classified as toxic.
+
+Nearby filtering:
+  SET GRID FN31          Set your location first.
+  PASS NEARBY ON         Enable nearby filtering.
+  PASS NEARBY OFF        Disable nearby filtering.
+
+  NEARBY suspends location filters and retains their rules.
+  Type HELP PASS NEARBY for details.
+
+Preferences and propagation:
+  SHOW SETTINGS          Show preferences and session settings.
+  SET GRID               Set your Maidenhead grid square.
+  SET NOISE              Set your receiving noise environment.
+  SHOW PROP              Show an outlook to a callsign, prefix or grid.
+  SET PATHSAMPLES        Set the minimum observations for path estimates.
+  SHOW DEDUPE            Show duplicate-spot suppression settings.
+  SET DEDUPE             Choose FAST, MED or SLOW duplicate suppression.
+  SET SOLAR              Receive solar summaries or turn them off.
+  DIALECT                Show or switch between GO and CC command styles.
+
+Examples:
+  SET GRID FN31
+  SET NOISE SUBURBAN
+  SHOW PROP DL 20 CW
+  SET DEDUPE FAST
+  SET SOLAR 30           Receive solar summaries every 30 minutes.
+  SET SOLAR OFF          Stop solar summaries.
+
+Saving and loading presets:
+  SAVE PRESET <name>     Save your filters and preferences under a name.
+  LIST PRESET            List your saved presets.
+  LOAD PRESET <name>     Apply a preset and save this login's defaults.
+  DELETE PRESET <name>   Delete a saved preset.
+
+Examples:
+  SAVE PRESET CONTEST
+  LOAD PRESET CONTEST
+
+Pausing live spots:
+  PAUSE                  Pause live spots for 30 seconds.
+  PAUSE 60               Pause for 60 seconds (maximum 300).
+  SHOW HOLD              Show time remaining and spots suppressed.
+  RESUME                 Resume live spots immediately.
+
+  Filter and settings readbacks temporarily pause live spots.
+  Type RESUME when ready, or wait for the pause to expire.
+  Spots missed during a pause are not replayed.
+
+Diagnostics:
+  SHOW BUILD             Show server version and build information.
+  SHOW OWN               Show your login call and own-call identity.
+  SET DIAG               Select diagnostic information in spot comments.
+
+More help:
+  HELP SET/FILTER        Complete allow rules and examples.
+  HELP UNSET/FILTER      Complete block rules and examples.
+  HELP FILTERS           Filter reference and supported values.
+  HELP SYMBOLS           Confidence and path reliability symbols.
+  HELP <command>         Detailed help for a command.
+
+Other commands:
+  HELP                   Show this help.
+  BYE                    Disconnect (also QUIT or EXIT).
+
+Syntax used in detailed help:
+  <value> means required; [value] means optional.
+  A|B means choose one. Do not type the brackets.

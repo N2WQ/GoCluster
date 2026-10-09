@@ -715,141 +715,214 @@ The section below mirrors the default `go` dialect `HELP` output from [`commands
 
 <!-- BEGIN DEFAULT_GO_HELP -->
 ```text
-Available commands:
-HELP - Show command list or command-specific help.
-DX - Post a spot (human entry).
-SHOW DX - Alias of SHOW MYDX.
-SH DX - Alias of SHOW DX.
-SHOW MYDX - Show filtered spot history.
-SHOW DXCC - Look up DXCC/ADIF and zones.
-SHOW PROP - Show propagation outlook.
-SHOW BUILD - Show binary build metadata.
-SHOW OWN - Show own-call identity.
-WHOSPOTSME - Show recent spotter countries.
-PAUSE - Pause live spots temporarily.
-SHOW HOLD - Show read-pause status.
-RESUME - End read pause.
-SHOW DEDUPE - Show dedupe policy.
-SET DEDUPE - Select dedupe policy.
-SET DIAG - Select diagnostic comments.
-SET SOLAR - Solar summary cadence.
-SET GRID - Set your grid (4-6 chars).
-SET NOISE - Set noise class.
-SET PATHSAMPLES - Set path sample floor.
-PASS NEARBY - Toggle nearby filtering.
-SHOW FILTER - Display filters and selections.
-PASS - Allow filter matches.
-REJECT - Block filter matches.
-RESET FILTER - Reset filters to defaults.
-SAVE PRESET - Save filters and preferences to a preset.
-LIST PRESET - List your saved presets.
-LOAD PRESET - Load a preset and save this SSID's defaults.
-DELETE PRESET - Delete a saved preset.
-DIALECT - Show or switch dialect.
-BYE - Disconnect.
-SHOW SETTINGS - Display preferences and session behavior.
-PASS MINSNR - Set or clear per-mode minimum SNR.
-REJECT MINSNR - Set or clear per-mode minimum SNR.
-GET YAML FILTER - Read filter for clients.
-GET YAML SETTINGS - Read settings for clients.
-GET YAML CONFIG - Read config for clients.
-GET YAML CAPABILITIES - Read capabilities for clients.
-PUT YAML FILTER - Write filter for clients.
-PUT YAML SETTINGS - Write settings for clients.
-PUT YAML CONFIG - Write config for clients.
-PATCH YAML FILTER - Write filter for clients.
-PATCH YAML SETTINGS - Write settings for clients.
-PATCH YAML CONFIG - Write config for clients.
-VALIDATE YAML CONFIG - Check a complete client proposal.
-PASS COMMENT - Add a literal comment phrase.
-REMOVE PASS COMMENT - Remove one comment phrase.
-REJECT COMMENT - Add a literal comment phrase.
-REMOVE REJECT COMMENT - Remove one comment phrase.
-RESET FILTER COMMENT - Clear comment selections.
-SHOW FILTER COMMENT - Display saved comment phrases.
-Type HELP <command> for details.
+GoCluster help - GO dialect
 
-Filter core rules:
-PASS <type> <list> adds to allowlist and removes from blocklist.
-REJECT <type> <list> adds to blocklist and removes from allowlist.
-PASS/REJECT MODE <list> are deltas; modes not listed are unchanged.
-Numeric PASS/REJECT MINSNR set the same inclusive per-mode minimum.
-MINSNR exempts human spots and spots without SNR; other filters apply.
-COMMENT uses one literal phrase, 1-64 printable ASCII bytes; max 32 per list.
-Any COMMENT PASS qualifies; matching REJECT wins; empty comments fail PASS.
-DXDXCC/DEDXCC accept canonical CTY prefixes or positive ADIF numbers.
-DXSTATE/DESTATE accept US state and Canadian province/territory codes.
-Unknown state fails an explicit PASS list and passes a REJECT-only list.
-State filters are suspended and retained while NEARBY is enabled.
-Canonical prefixes select whole entities; IT9 also selects I and IG9.
-Unknown prefixes reject the whole list; canonical input requires CTY.
-UNKNOWN is the MODE token for blank-mode spots.
-If an item appears in both lists, block wins.
+Getting started:
+  SHOW DX 10             Show 10 recent spots matching your filters.
+  SHOW FILTER            See your current filters.
+  SHOW SETTINGS          See your preferences and session settings.
+  SET GRID FN31          Set your Maidenhead grid square.
+  BYE                    Disconnect.
 
-ALL keyword (type-scoped):
-PASS <type> ALL - allow everything for that type
-REJECT <type> ALL - block everything for most types
-REJECT EVENT ALL - block only tagged EVENT spots
-COMMENT treats ALL and NONE literally; RESET FILTER COMMENT clears rules.
-RESET FILTER resets all filters to configured defaults for new users.
+Type HELP followed by a command for details:
+  HELP SHOW DX
+  HELP PASS
+  HELP REJECT
+  HELP PASS COMMENT
 
-Feature toggles (not list-based):
-PASS BEACON | REJECT BEACON
-PASS WWV | REJECT WWV
-PASS WCY | REJECT WCY
-PASS ANNOUNCE | REJECT ANNOUNCE
-PASS SELF | REJECT SELF
-PASS TOXIC | REJECT TOXIC
-PASS NEARBY ON|OFF
+Reading and posting spots:
+  SHOW DX                Show recent spots matching your filters.
+  SHOW MYDX              Same as SHOW DX.
+  SH DX                  Short form of SHOW DX.
+  DX                     Post a spot.
+  SHOW DXCC              Look up a callsign or country prefix.
+  WHOSPOTSME             Show recent spotter countries for your call.
 
-Confidence glyphs:
-  ? - One reporter only; no prior/static support promoted it to S.
-  S - One reporter only, but the call has static or recent on-band support.
-  P - Resolver modes: lower-confidence multi-spotter support. FT modes:
-    corroboration burst support at or above the configured P threshold but
-    below the configured V threshold.
-  V - Resolver modes: higher-confidence multi-spotter support. FT modes:
-    corroboration burst support at or above the configured V threshold.
-  C - The call was corrected.
-  B - A correction was attempted, but base-call or CTY validation failed, so
-    the original call was kept.
+Examples:
+  SHOW DX 10             Show the latest 10 matching spots.
+  SHOW DX K1ABC 10       Search for spots of K1ABC.
+  SHOW DX 10 BAND 20     Search for 10 matching spots on 20m.
+  DX 14025.0 K1ABC CQ    Post K1ABC on 14025.0 kHz with comment CQ.
 
-Event filters:
-  EVENT recognizes the taxonomy EVENT families as standalone comment tokens or
-    acronym-prefixed references such as POTA-1234. Only the event family is
-    filtered; the reference remains in the comment.
-  Spots with no recognized EVENT tag are not affected by EVENT filters,
-    including REJECT EVENT ALL.
+Changing filters:
+  PASS                   Allow selections.
+  REJECT                 Block selections.
+  SHOW FILTER            Show your current filters.
+  SHOW FILTER FULL       Show complete filter selections.
+  SHOW FILTER MODE       Show one filter category.
+  RESET FILTER           Restore the cluster's default filters.
 
-Path reliability glyphs:
-  ">" - HIGH: favorable path.
-  "=" - MEDIUM: workable path.
-  "<" - LOW: weak or marginal path.
-  "-" - UNLIKELY: poor path.
-  " " - INSUFFICIENT: not enough recent evidence.
-  Bucket p50 data is authoritative; VOACAP may only replace insufficient data
-    when closed, aligned with sparse p50, or REL-gated from cached VOACAP.
-  Native 160m fallback may fill insufficient 160m data with CLOSED, LOW, or
-    UNLIKELY from endpoint sunlight/twilight first, then civil-dark path
-    fraction.
-  "#" - CLOSED: VOACAP fallback predicts closed SNR, or native 160m fallback
-    marks endpoint daylight or a low-darkness 160m path as a solar proxy.
-  PATH filters use HIGH, MEDIUM, LOW, UNLIKELY, CLOSED, INSUFFICIENT.
+What you can filter:
+  DX means the station being spotted; DE means the spotter.
 
-List types:
-  BAND, MODE, SOURCE, EVENT, COMMENT, DXCALL, DECALL, DXGRID2, DEGRID2, DXCONT
-  DECONT, DXZONE, DEZONE, DXDXCC, DEDXCC, DXSTATE, DESTATE, CONFIDENCE, PATH
-  MINSNR
+  BAND                   Radio band, such as 20m or 40m.
+  MODE                   Operating mode, such as CW, FT8 or USB.
+  SOURCE                 HUMAN or SKIMMER reports.
+  EVENT                  POTA, SOTA, IOTA, WWFF or LLOTA tags.
+  COMMENT                A phrase anywhere in the spot comment.
+  DXCALL                 Spotted callsign or pattern, such as K1ABC or W1*.
+  DECALL                 Spotter callsign or pattern.
+  DXCONT                 Spotted station's continent.
+  DECONT                 Spotter's continent.
+  DXZONE                 Spotted station's CQ zone (1-40).
+  DEZONE                 Spotter's CQ zone (1-40).
+  DXDXCC                 Spotted station's country prefix or ADIF number.
+  DEDXCC                 Spotter's country prefix or ADIF number.
+  DXSTATE                Spotted station's US state or Canadian province code.
+  DESTATE                Spotter's US state or Canadian province code.
+  DXGRID2                Spotted station's two-character grid, such as FN.
+  DEGRID2                Spotter's two-character grid.
+  CONFIDENCE             Callsign confidence symbols: ?, S, P, V, C, B.
+  PATH                   HIGH, MEDIUM, LOW, UNLIKELY, CLOSED or INSUFFICIENT.
+  MINSNR                 Minimum signal report in dB, selected by mode.
 
-Supported modes:
-  CW, FT2, FT4, FT8, JS8, LSB, USB, RTTY, MSK144, PSK, SSTV, UNKNOWN
+PASS and REJECT examples:
+  Each example below is a separate change, not a combined recipe.
 
-Supported events:
-  LLOTA, IOTA, POTA, SOTA, WWFF
+  PASS BAND 20,40        Add 20m and 40m to your band selections.
+  REJECT BAND 80         Block 80m spots.
+  PASS MODE CW,FT8       Enable CW and FT8; other modes stay unchanged.
+  REJECT MODE FT8        Disable FT8.
+  PASS SOURCE HUMAN      Allow human reports.
+  REJECT SOURCE SKIMMER  Block automated skimmer reports.
+  REJECT EVENT POTA      Block POTA-tagged spots.
+  PASS COMMENT CQ        Require a comment containing CQ.
+  REJECT COMMENT QRT     Block comments containing QRT.
+  REJECT DXCALL W1*      Block spotted calls beginning with W1.
+  REJECT DECALL W1ABC    Block reports from spotter W1ABC.
+  PASS DXCONT EU         Add Europe to your DX continent selections.
+  PASS DECONT NA         Add North America to your spotter selections.
+  PASS DXZONE 14,15      Add DX CQ zones 14 and 15.
+  PASS DEZONE 5          Add spotters in CQ zone 5.
+  PASS DXDXCC DL         Add Germany to your DX country selections.
+  PASS DEDXCC K          Add the United States to your spotter countries.
+  PASS DXSTATE CT,MA     Add DX stations in Connecticut and Massachusetts.
+  PASS DESTATE ON        Add spotters with Canadian province code ON.
+  PASS DXGRID2 JO        Add DX stations in grid field JO.
+  PASS DEGRID2 FN        Add spotters in grid field FN.
+  REJECT CONFIDENCE ?    Block spots marked with confidence symbol ?.
+  REJECT PATH LOW        Block spots classified as LOW path reliability.
+  PASS MINSNR CW 10      Set a minimum CW signal report of 10 dB.
 
-Supported bands:
-  2200m, 630m, 160m, 80m, 60m, 40m, 30m, 20m, 17m, 15m, 12m, 10m, 6m, 2m
-  1.25m, 70cm, 33cm, 23cm, 13cm
+A complete recipe: only 20m/40m and only CW/FT8:
+  REJECT BAND ALL
+  PASS BAND 20,40
+  REJECT MODE ALL
+  PASS MODE CW,FT8
+  SHOW FILTER
+
+  This changes BAND and MODE only. Other filters still apply.
+  Own-call spots have special exemptions; see HELP SHOW MYDX.
+
+Filter rules to remember:
+  Allowed selections do not generally replace your existing selections.
+  Allowing moves named items to allowed; blocking moves them to blocked.
+  Different filter categories must all match, except own-call exemptions.
+  MODE changes only the modes you name.
+  PASS BAND ALL allows every band; other filters still apply.
+  REJECT EVENT ALL blocks tagged events, not untagged spots.
+  COMMENT matches literal text without regard to letter case.
+  COMMENT treats commas, quotes, * and ? as literal characters.
+  COMMENT also treats ALL and NONE as literal phrases.
+  Any allowed COMMENT phrase can match; a blocked phrase wins.
+  Numeric PASS and REJECT MINSNR commands set the same minimum.
+  MINSNR exempts human reports and reports without SNR.
+  RESET FILTER restores cluster defaults, which may restrict spots.
+
+Comment rules:
+  PASS COMMENT           Add an allowed comment phrase.
+  REJECT COMMENT         Add a blocked comment phrase.
+  REMOVE PASS COMMENT    Remove an allowed phrase.
+  REMOVE REJECT COMMENT  Remove a blocked phrase.
+  RESET FILTER COMMENT   Clear all comment rules.
+  SHOW FILTER COMMENT    Show your saved phrases.
+
+Examples:
+  PASS COMMENT CQ DX
+  REJECT COMMENT QRT
+  REMOVE PASS COMMENT CQ DX
+  RESET FILTER COMMENT REJECT
+
+Feature switches:
+  Use PASS to enable or REJECT to disable:
+  BEACON                 Beacon spots.
+  WWV                    WWV bulletins.
+  WCY                    WCY bulletins.
+  ANNOUNCE               Announcements.
+  SELF                   Your own spots.
+  TOXIC                  Human spots already classified as toxic.
+
+Examples:
+  REJECT BEACON          Hide beacon spots.
+  PASS ANNOUNCE          Allow announcements.
+  REJECT TOXIC           Hide spots already classified as toxic.
+
+Nearby filtering:
+  SET GRID FN31          Set your location first.
+  PASS NEARBY ON         Enable nearby filtering.
+  PASS NEARBY OFF        Disable nearby filtering.
+
+  NEARBY suspends location filters and retains their rules.
+  Type HELP PASS NEARBY for details.
+
+Preferences and propagation:
+  SHOW SETTINGS          Show preferences and session settings.
+  SET GRID               Set your Maidenhead grid square.
+  SET NOISE              Set your receiving noise environment.
+  SHOW PROP              Show an outlook to a callsign, prefix or grid.
+  SET PATHSAMPLES        Set the minimum observations for path estimates.
+  SHOW DEDUPE            Show duplicate-spot suppression settings.
+  SET DEDUPE             Choose FAST, MED or SLOW duplicate suppression.
+  SET SOLAR              Receive solar summaries or turn them off.
+  DIALECT                Show or switch between GO and CC command styles.
+
+Examples:
+  SET GRID FN31
+  SET NOISE SUBURBAN
+  SHOW PROP DL 20 CW
+  SET DEDUPE FAST
+  SET SOLAR 30           Receive solar summaries every 30 minutes.
+  SET SOLAR OFF          Stop solar summaries.
+
+Saving and loading presets:
+  SAVE PRESET <name>     Save your filters and preferences under a name.
+  LIST PRESET            List your saved presets.
+  LOAD PRESET <name>     Apply a preset and save this login's defaults.
+  DELETE PRESET <name>   Delete a saved preset.
+
+Examples:
+  SAVE PRESET CONTEST
+  LOAD PRESET CONTEST
+
+Pausing live spots:
+  PAUSE                  Pause live spots for 30 seconds.
+  PAUSE 60               Pause for 60 seconds (maximum 300).
+  SHOW HOLD              Show time remaining and spots suppressed.
+  RESUME                 Resume live spots immediately.
+
+  Filter and settings readbacks temporarily pause live spots.
+  Type RESUME when ready, or wait for the pause to expire.
+  Spots missed during a pause are not replayed.
+
+Diagnostics:
+  SHOW BUILD             Show server version and build information.
+  SHOW OWN               Show your login call and own-call identity.
+  SET DIAG               Select diagnostic information in spot comments.
+
+More help:
+  HELP PASS              Complete allow rules and examples.
+  HELP REJECT            Complete block rules and examples.
+  HELP FILTERS           Filter reference and supported values.
+  HELP SYMBOLS           Confidence and path reliability symbols.
+  HELP <command>         Detailed help for a command.
+
+Other commands:
+  HELP                   Show this help.
+  BYE                    Disconnect (also QUIT or EXIT).
+
+Syntax used in detailed help:
+  <value> means required; [value] means optional.
+  A|B means choose one. Do not type the brackets.
 ```
 <!-- END DEFAULT_GO_HELP -->
 

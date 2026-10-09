@@ -606,27 +606,22 @@ func TestShowMYDXSelectorArgumentValidation(t *testing.T) {
 
 func TestHelpPerDialect(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
-
-	classic := p.ProcessCommandForClient("HELP", "N2WQ", "", nil, "classic")
-	if !strings.Contains(classic, "HELP <command>") || !strings.Contains(classic, "SHOW DX -") {
-		t.Fatalf("classic help missing expected content: %q", classic)
-	}
-	if !strings.Contains(classic, "List types:") || !strings.Contains(classic, "Supported bands:") {
-		t.Fatalf("classic help missing list sections: %q", classic)
-	}
-	if !strings.Contains(classic, "Confidence glyphs:") || !strings.Contains(classic, "One reporter only;") {
-		t.Fatalf("classic help missing confidence legend: %q", classic)
-	}
-
-	cc := p.ProcessCommandForClient("HELP", "N2WQ", "", nil, "cc")
-	if !strings.Contains(strings.ToUpper(cc), "CC SHORTCUTS:") || !strings.Contains(cc, "SHOW/DX -") || !strings.Contains(cc, "SET/ANN -") {
-		t.Fatalf("cc help missing cc aliases: %q", cc)
-	}
-	if !strings.Contains(cc, "SET/FILTER <type>/ON") || !strings.Contains(cc, "SET/FILTER <type>/OFF") {
-		t.Fatalf("cc help missing ON/OFF mapping: %q", cc)
-	}
-	if !strings.Contains(cc, "Confidence glyphs:") || !strings.Contains(cc, "The call was corrected.") {
-		t.Fatalf("cc help missing confidence legend: %q", cc)
+	for _, dialect := range []string{"classic", "go", "cc"} {
+		text := p.ProcessCommandForClient("HELP", "N2WQ", "", nil, dialect)
+		for _, want := range []string{"Getting started:", "What you can filter:", "HELP <command>", "HELP SYMBOLS"} {
+			if !strings.Contains(text, want) {
+				t.Fatalf("%s overview missing %q", dialect, want)
+			}
+		}
+		reference := p.ProcessCommandForClient("HELP FILTERS", "N2WQ", "", nil, dialect)
+		for _, want := range []string{"List types:", "Supported bands:", "REJECT EVENT ALL"} {
+			if !strings.Contains(reference, want) {
+				t.Fatalf("%s reference missing %q", dialect, want)
+			}
+		}
+		if dialect == "cc" && (!strings.Contains(text, "SHOW/DX") || !strings.Contains(text, "SET/ANN") || !strings.Contains(reference, "SET/FILTER <type>/ON")) {
+			t.Fatal("CC aliases or reference missing")
+		}
 	}
 }
 
@@ -641,7 +636,7 @@ func TestHelpPathGlyphLegendUsesConfiguredSymbols(t *testing.T) {
 		Closed:       "!",
 	}))
 
-	resp := p.ProcessCommandForClient("HELP", "N2WQ", "", nil, "go")
+	resp := p.ProcessCommandForClient("HELP SYMBOLS", "N2WQ", "", nil, "go")
 	for _, want := range []string{
 		"Path reliability glyphs:",
 		`">" - HIGH: favorable path.`,
@@ -678,7 +673,7 @@ func TestHelpPathGlyphLegendOmittedWhenDisabled(t *testing.T) {
 		Closed:       "!",
 	}))
 
-	resp := p.ProcessCommandForClient("HELP", "N2WQ", "", nil, "go")
+	resp := p.ProcessCommandForClient("HELP SYMBOLS", "N2WQ", "", nil, "go")
 	if strings.Contains(resp, "Path reliability glyphs:") {
 		t.Fatalf("expected path glyph legend omitted when disabled, got %q", resp)
 	}
@@ -891,7 +886,7 @@ func TestHelpPauseAcrossDialects(t *testing.T) {
 	for _, dialect := range []string{"go", "cc", "classic"} {
 		t.Run(dialect, func(t *testing.T) {
 			list := p.ProcessCommandForClient("HELP", "N2WQ", "", nil, dialect)
-			if !strings.Contains(list, "PAUSE - Pause live spots temporarily.") {
+			if !strings.Contains(list, "PAUSE                  Pause live spots for 30 seconds.") {
 				t.Fatalf("PAUSE missing from command list: %q", list)
 			}
 			response := p.ProcessCommandForClient("HELP pause 60", "N2WQ", "", nil, dialect)

@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `686c6bfc5c163817`
+- Source fingerprint: `f0ebd914e3fa3b15`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -11,11 +11,11 @@
 
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
-| `dxcluster/commands` | `commands` | 5 | 11 |
+| `dxcluster/commands` | `commands` | 6 | 12 |
 | `dxcluster/internal/cluster` | `internal/cluster` | 25 | 63 |
 | `dxcluster/peer` | `peer` | 62 | 130 |
 | `dxcluster/spot` | `spot` | 33 | 32 |
-| `dxcluster/telnet` | `telnet` | 42 | 73 |
+| `dxcluster/telnet` | `telnet` | 42 | 74 |
 
 ## In-Scope Package Edges
 
@@ -98,6 +98,7 @@
 Source files:
 - `commands/comment_help.go`
 - `commands/configuration_help.go`
+- `commands/help_overview.go`
 - `commands/history.go`
 - `commands/history_selection.go`
 - `commands/processor.go`
@@ -107,6 +108,7 @@ Test files:
 - `commands/comment_history_test.go`
 - `commands/configuration_help_test.go`
 - `commands/dxcc_history_test.go`
+- `commands/help_overview_test.go`
 - `commands/history_archive_test.go`
 - `commands/history_selection_taxonomy_test.go`
 - `commands/history_selection_test.go`
@@ -548,6 +550,7 @@ Test files:
 - `telnet/grid2_commands_test.go`
 - `telnet/handshake_mode_test.go`
 - `telnet/handshake_transcript_test.go`
+- `telnet/help_recipe_test.go`
 - `telnet/history_comment_test.go`
 - `telnet/history_filter_test.go`
 - `telnet/history_fuzz_test.go`
@@ -603,6 +606,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0264](docs/decisions/ADR-0264-task-oriented-compiled-help.md) | Accepted | 2026-10-08 | commands, HELP, dialects, operator documentation | `area:commands, path:commands, path:telnet` |
 | [ADR-0263](docs/decisions/ADR-0263-history-list-comma-boundaries.md) | Accepted | 2026-10-08 | commands, telnet, history parser, compatibility | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0262](docs/decisions/ADR-0262-history-band-mode-selections.md) | Accepted | 2026-10-08 | commands, telnet, history, parser, retained state | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0261](docs/decisions/ADR-0261-literal-comment-filter-and-history.md) | Accepted | 2026-10-08 | filter, telnet, commands, YAML, persistence, history | `area:commands, area:telnet, path:commands, path:telnet` |

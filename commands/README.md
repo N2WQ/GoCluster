@@ -5,7 +5,7 @@ This directory is the source of truth for telnet command help. The public `HELP`
 ## What Lives Here
 
 - command parsing for `HELP`, `DX`, `SHOW`, `BYE`, and related aliases
-- per-dialect HELP catalogs
+- per-dialect HELP catalogs and task-oriented overviews
 - build, dedupe, and path-glyph HELP notes injected from runtime snapshots
 - history, DXCC, propagation-outlook, and build-info read paths used by
   `SHOW DX`, `SHOW MYDX`, `SHOW DXCC`, `SHOW PROP`, and `SHOW BUILD`
@@ -13,15 +13,41 @@ This directory is the source of truth for telnet command help. The public `HELP`
 
 ## HELP Source Of Truth
 
-The top-level `HELP` output is assembled by:
+HELP rendering and its detailed references are owned by:
 
+- `helpOverviewLines(...)` in [`help_overview.go`](help_overview.go)
 - `buildHelpCatalog(...)`
 - `filterHelpLines(...)`
 - `pathGlyphHelpLines(...)`
 - `dedupeHelpNotes(...)`
 - `installConfigurationHelp(...)` in [`configuration_help.go`](configuration_help.go)
+- `installCommentHelp(...)` in [`comment_help.go`](comment_help.go)
+
+The overview groups everyday commands by task, describes every filter category,
+and gives individual filter examples and a complete BAND/MODE recipe. GO uses
+PASS/REJECT; CC uses SET/FILTER and UNSET/FILTER for ordinary lists. Shared
+COMMENT, MINSNR and NEARBY commands retain their PASS/REJECT spellings.
+
+`HELP PASS` and `HELP REJECT` provide category examples, accepted values and
+exceptions. In CC, these help topics describe the supported CC list commands;
+`HELP SET/FILTER` and `HELP UNSET/FILTER` show the same detailed material.
+This help routing does not add executable GO list commands to CC.
+
+`HELP FILTERS` contains the complete filter rules and supported-value lists.
+`HELP SYMBOLS` contains the existing confidence legend and the path legend when
+its configured display is available. Configured glyphs and reporting windows
+still come from startup snapshots; help does not read external text files.
+
+YAML client commands are omitted only from the overview. They remain executable
+and retain command-specific help, such as `HELP GET YAML CONFIG`.
 
 The main landing page [`../README.md`](../README.md) now includes a generated HELP block for the default `go` dialect. A test in this package checks that the README block still matches the processor output built from the shipped config files.
+
+Reviewed GO and CC overview fixtures live under [`testdata`](testdata).
+Tests also check command discoverability, reference navigation and line widths.
+The executable recipe is checked in `telnet/help_recipe_test.go` against spot
+matching, including preservation of unrelated source/comment/callsign rules.
+See [ADR-0264](../docs/decisions/ADR-0264-task-oriented-compiled-help.md).
 
 ## Dialects
 

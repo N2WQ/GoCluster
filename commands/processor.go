@@ -118,7 +118,7 @@ func NewProcessor(buf *buffer.RingBuffer, archive archiveReader, spotInput chan<
 	return p
 }
 
-// WithPathGlyphHelp configures top-level HELP to describe the actual glyphs
+// WithPathGlyphHelp configures HELP SYMBOLS to describe the actual glyphs
 // shown in telnet output for path reliability.
 func WithPathGlyphHelp(cfg PathGlyphHelpConfig) ProcessorOption {
 	return func(p *Processor) {
@@ -276,6 +276,13 @@ func (p *Processor) handleHelp(dialect string, topic string) string {
 	dialect = normalizeDialectString(dialect)
 	catalog := buildHelpCatalog(dialect, p.dedupeHelp, p.whoSpotsMeHelp)
 	normalized := normalizeHelpTopic(dialect, topic)
+	if normalized == "FILTERS" {
+		return strings.Join(filterReferenceHelpLines(dialect), "\n") + "\n"
+	}
+	if normalized == "SYMBOLS" {
+		lines := append(confidenceHelpLines(), pathGlyphHelpLines(p.pathGlyphHelp)...)
+		return strings.Join(lines, "\n") + "\n"
+	}
 	if normalized != "" {
 		if entry, ok := catalog.lookup(normalized); ok {
 			return strings.Join(entry.lines, "\n") + "\n"
@@ -283,29 +290,7 @@ func (p *Processor) handleHelp(dialect string, topic string) string {
 		return fmt.Sprintf("Unknown help topic: %s\nType HELP for available commands.\n", normalized)
 	}
 
-	lines := []string{
-		"Available commands:",
-	}
-	for _, key := range catalog.order {
-		entry := catalog.entries[key]
-		lines = append(lines, entry.summary)
-	}
-	lines = append(lines, "Type HELP <command> for details.")
-	lines = append(lines, filterHelpLines(dialect)...)
-	lines = append(lines, pathGlyphHelpLines(p.pathGlyphHelp)...)
-	lines = append(lines, "")
-	lines = append(lines, "List types:")
-	lines = append(lines, wrapListLines(filterListTypes())...)
-	lines = append(lines, "")
-	lines = append(lines, "Supported modes:")
-	lines = append(lines, wrapListLines(filter.SupportedModes())...)
-	lines = append(lines, "")
-	lines = append(lines, "Supported events:")
-	lines = append(lines, wrapListLines(filter.SupportedEvents())...)
-	lines = append(lines, "")
-	lines = append(lines, "Supported bands:")
-	lines = append(lines, wrapListLines(spot.SupportedBandNames())...)
-	return strings.Join(lines, "\n") + "\n"
+	return strings.Join(helpOverviewLines(dialect), "\n") + "\n"
 }
 
 type helpEntry struct {
@@ -982,6 +967,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 
 	installConfigurationHelp(&catalog, dialect)
 	installCommentHelp(&catalog)
+	installConcreteFilterHelp(&catalog, dialect)
 	return catalog
 }
 
@@ -1283,17 +1269,6 @@ func filterHelpLines(dialect string) []string {
 		"PASS TOXIC | REJECT TOXIC",
 		"PASS NEARBY ON|OFF",
 	}
-	lines = append(lines, "", "Confidence glyphs:")
-	for _, note := range []string{
-		"? - One reporter only; no prior/static support promoted it to S.",
-		"S - One reporter only, but the call has static or recent on-band support.",
-		"P - Resolver modes: lower-confidence multi-spotter support. FT modes: corroboration burst support at or above the configured P threshold but below the configured V threshold.",
-		"V - Resolver modes: higher-confidence multi-spotter support. FT modes: corroboration burst support at or above the configured V threshold.",
-		"C - The call was corrected.",
-		"B - A correction was attempted, but base-call or CTY validation failed, so the original call was kept.",
-	} {
-		lines = append(lines, wrapTextLines(note, "    ")...)
-	}
 	lines = append(lines, "", "Event filters:")
 	lines = append(lines, wrapTextLines("EVENT recognizes the taxonomy EVENT families as standalone comment tokens or acronym-prefixed references such as POTA-1234. Only the event family is filtered; the reference remains in the comment.", "    ")...)
 	lines = append(lines, wrapTextLines("Spots with no recognized EVENT tag are not affected by EVENT filters, including REJECT EVENT ALL.", "    ")...)
@@ -1307,7 +1282,9 @@ func filterHelpLines(dialect string) []string {
 			"SET/WWV | SET/NOWWV",
 			"SET/WCY | SET/NOWCY",
 			"SET/SKIMMER | SET/NOSKIMMER",
-			ccModeLine,
+		)
+		lines = append(lines, wrapTextLines(ccModeLine, "  ")...)
+		lines = append(lines,
 			"SET/NOFILTER",
 			"SET/FILTER <type> <list>",
 			"UNSET/FILTER <type> <list>",
@@ -1315,6 +1292,24 @@ func filterHelpLines(dialect string) []string {
 			"SET/FILTER <type>/OFF -> REJECT <type> ALL",
 			"SHOW/FILTER | SH/FILTER",
 		)
+	}
+	return lines
+}
+
+// confidenceHelpLines preserves the scientific legend in HELP SYMBOLS; the
+// overview describes commands, not confidence classifications.
+func confidenceHelpLines() []string {
+	lines := make([]string, 0, 16)
+	lines = append(lines, "Confidence glyphs:")
+	for _, note := range []string{
+		"? - One reporter only; no prior/static support promoted it to S.",
+		"S - One reporter only, but the call has static or recent on-band support.",
+		"P - Resolver modes: lower-confidence multi-spotter support. FT modes: corroboration burst support at or above the configured P threshold but below the configured V threshold.",
+		"V - Resolver modes: higher-confidence multi-spotter support. FT modes: corroboration burst support at or above the configured V threshold.",
+		"C - The call was corrected.",
+		"B - A correction was attempted, but base-call or CTY validation failed, so the original call was kept.",
+	} {
+		lines = append(lines, wrapTextLines(note, "    ")...)
 	}
 	return lines
 }
