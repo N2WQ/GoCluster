@@ -60,6 +60,14 @@ Dialect selection is user-visible and persisted per callsign. HELP is rendered f
 
 ## Manual DX Admission
 
+Plain decimal frequencies are in kHz. Before admission, the effective value is
+rounded to the nearest 10 Hz (0.01 kHz), using the same rounding as Spot
+construction, and checked for finiteness and the inclusive Spot bounds:
+135.70 through 2450000.00 kHz. Values in gaps inside that envelope retain their
+existing acceptance. An invalid value queues no spot and consumes no posting
+allowance. Admission uses the rounded value's band. `HELP DX` exposes the
+current envelope.
+
 A manual `DX` post that enters the queue returns `Spot queued.`. When the cluster's
 reputation gate refuses the post, it returns `Spot rejected.` and queues no
 spot. That message deliberately omits probation, allowance and IP-history

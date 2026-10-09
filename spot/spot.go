@@ -273,6 +273,13 @@ func roundFrequencyTo10Hz(freqKHz float64) float64 {
 	return math.Floor(freqKHz*100+0.5) / 100
 }
 
+// RoundFrequencyTo10Hz returns the same canonical kHz value as Spot constructors.
+// Admission callers must check finiteness and FrequencyBounds after rounding;
+// very large finite inputs can overflow during scaling.
+func RoundFrequencyTo10Hz(freqKHz float64) float64 {
+	return roundFrequencyTo10Hz(freqKHz)
+}
+
 // Hash32 computes a 32-bit dedupe hash for the spot.
 // Key aspects: Uses fixed-size buffer with time/freq/calls to avoid allocations.
 // Upstream: callers requiring the historical compact spot hash.

@@ -84,6 +84,21 @@ def require_reputation_refusal(text):
     require(text.strip() == "Spot rejected.", "manual DX rejection feedback is not generic")
 
 
+def require_frequency_refusal(text):
+    require(text.strip() == "Invalid frequency. Use a kHz value like 7001.0.",
+            "manual DX frequency refusal is missing or incorrect")
+
+
+def invalid_frequency_posts(suite, sessions, labels):
+    # Keep wire vectors below the fixture's loaded human-line limit. Direct Go
+    # API/fuzz cases cover long decimal parse/scaling overflow separately.
+    for index, token in enumerate(("0.004", "135.694", "2450000.005", "NaN", "INF")):
+        label = suite.token + f"INVALIDF{index}"
+        text, _ = sessions[index % 2].human(f"DX {token} W6ABC CW {label}")
+        require_frequency_refusal(text)
+        labels["invalid"].append(label)
+
+
 def require_reputation_history(root, old_files):
     for path, raw in old_files.items():
         require(path.read_bytes() == raw, "old SSID reputation history was changed or merged")
@@ -161,7 +176,7 @@ def reputation_posts(suite, sessions, observer, generation, labels):
             break
         require(time.monotonic() < deadline, "accepted archive refusal barrier absent")
         time.sleep(.025)
-    for label in labels["refused"]:
+    for label in labels["refused"] + labels["invalid"]:
         require_archive_absent(archive_rows(observer, label))
 
 
@@ -994,13 +1009,14 @@ def reputation_profile(binary, root, source, transport):
     prefix = transport + "/reputation"
     required = [f"{prefix}/0: held endpoint includes the loaded shared gate",
                 f"{prefix}: full-SSID settings save independently",
+                f"{prefix}: invalid frequencies leave station allowance available",
                 f"{prefix}: spent station allowances survive other-SSID reconnects",
                 f"{prefix}: baseline history keeps old SSID files untouched",
                 f"{prefix}/1: saved ownership and archive outcomes survive fresh child",
                 f"{prefix}: fresh runtime resets counts while retaining shared admission"]
     results, wire, cleanup, children = [], [], [], []
     calls = ("K1ABC-70101", "K1ABC-70102")
-    expected, labels, old_files = {}, {"accepted": [], "refused": []}, {}
+    expected, labels, old_files = {}, {"accepted": [], "refused": [], "invalid": []}, {}
     directory = root / "reputation"
     directory.mkdir()
     # Existing baseline histories establish eligible first-post controls through
@@ -1062,17 +1078,25 @@ def reputation_profile(binary, root, source, transport):
 
                 case(required[1], preferences)
 
+                def invalid_frequencies():
+                    invalid_frequency_posts(suite, sessions, labels)
+                    require(len(labels["invalid"]) == 5, "required frequency refusal controls missing")
+                    require_reputation_preferences(root, sessions, expected)
+
+                case(required[2], invalid_frequencies)
+
                 def exhausted():
                     require(len(expected) == 2, "SSID preference controls did not execute")
                     reputation_posts(suite, sessions, observer, generation, labels)
                     require_reputation_preferences(root, sessions, expected)
 
-                case(required[2], exhausted)
-                case(required[3], lambda: require_reputation_history(root, old_files))
+                case(required[3], exhausted)
+                case(required[4], lambda: require_reputation_history(root, old_files))
             else:
                 def restored():
                     require(len(expected) == 2 and len(labels["accepted"]) == 2 and
-                            len(labels["refused"]) == 5, "required first-generation admission controls missing")
+                            len(labels["refused"]) == 5 and len(labels["invalid"]) == 5,
+                            "required first-generation admission controls missing")
                     for current in (*sessions, observer):
                         current.human("PAUSE 300")
                         current.human("SHOW BUILD", "Build version: fixture-" + child.nonce)
@@ -1082,17 +1106,17 @@ def reputation_profile(binary, root, source, transport):
                         require_reputation_archive(observer, label, frequency)
                     # Generation zero has exited and drained before this query:
                     # rejected absence cannot be hidden in its pending queue.
-                    for label in labels["refused"]:
+                    for label in labels["refused"] + labels["invalid"]:
                         require_archive_absent(archive_rows(observer, label))
 
-                case(required[4], restored)
+                case(required[5], restored)
 
                 def runtime_reset():
                     reputation_posts(suite, sessions, observer, generation, labels)
                     require_reputation_preferences(root, sessions, expected)
                     require_reputation_history(root, old_files)
 
-                case(required[5], runtime_reset)
+                case(required[6], runtime_reset)
         finally:
             try:
                 if suite:

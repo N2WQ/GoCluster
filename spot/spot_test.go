@@ -141,6 +141,20 @@ func TestNewSpotRoundsFrequencyTo10HzHalfUp(t *testing.T) {
 	}
 }
 
+func TestPublicFrequencyRoundingMatchesConstructorContract(t *testing.T) {
+	for _, tc := range []struct{ input, want float64 }{
+		{7009.504, 7009.50}, {7009.505, 7009.51}, {7009.506, 7009.51},
+		{0.004, 0}, {135.695, 135.7}, {2450000.005, 2450000.01},
+	} {
+		if got := RoundFrequencyTo10Hz(tc.input); got != tc.want {
+			t.Fatalf("public rounding(%v)=%v, want %v", tc.input, got, tc.want)
+		}
+		if got := NewSpotNormalized("W6ABC", "K1ABC", tc.input, "CW").Frequency; got != tc.want {
+			t.Fatalf("constructor rounding(%v)=%v, want %v", tc.input, got, tc.want)
+		}
+	}
+}
+
 func TestEnsureNormalizedCollapsesPSKVariants(t *testing.T) {
 	s := NewSpot("K1ABC", "W1AW", 14074.0, "PSK31")
 	s.ModeNorm = "" // force recompute

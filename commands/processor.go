@@ -6,6 +6,7 @@ package commands
 import (
 	"fmt"
 	"log"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -338,6 +339,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 	)
 	add("HELP", "HELP - Show command list or command-specific help.", helpLines)
 
+	minDXFrequency, maxDXFrequency := spot.FrequencyBounds()
 	dxLines := helpEntryLines(
 		"DX - Post a spot (human entry).",
 		[]string{
@@ -347,6 +349,8 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 		nil,
 		[]string{
 			"Frequency is in kHz (e.g., 7001.0).",
+			fmt.Sprintf("After 10 Hz rounding: %.2f through %.2f kHz.", minDXFrequency, maxDXFrequency),
+			"Values in gaps between bands remain accepted.",
 			"Comment is free text; mode/report may be parsed from it.",
 			"Rejects invalid callsigns and CTY-unknown DX when CTY is enabled.",
 		},
@@ -1652,7 +1656,11 @@ func (p *Processor) handleDX(fields []string, spotter string, spotterIP string) 
 			"       DX <callsign> <freq_khz> [comment]\n"
 	}
 	freq, dxRaw, ok := parseDXCommandArgs(fields)
-	if !ok {
+	// Validate the constructor's effective frequency before consuming admission
+	// allowance. Keep existing raw comment parsing/constructor inputs unchanged.
+	canonicalFreq := spot.RoundFrequencyTo10Hz(freq)
+	minFreq, maxFreq := spot.FrequencyBounds()
+	if !ok || math.IsNaN(canonicalFreq) || math.IsInf(canonicalFreq, 0) || canonicalFreq < minFreq || canonicalFreq > maxFreq {
 		return "Invalid frequency. Use a kHz value like 7001.0.\n"
 	}
 	dx := spot.NormalizeSpotDXCallsign(dxRaw)
@@ -1684,7 +1692,7 @@ func (p *Processor) handleDX(fields []string, spotter string, spotterIP string) 
 	}
 	if p.repGate != nil {
 		now := time.Now().UTC()
-		band := spot.FreqToBand(freq)
+		band := spot.FreqToBand(canonicalFreq)
 		decision := p.repGate.Check(reputation.Request{
 			Call: spotterNorm,
 			Band: band,

@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 05b complete (04a used two commits);
-36 approved checkpoints remain; 06 is next.
+Current progress: checkpoints 00 through 06 complete (04a used two commits);
+35 approved checkpoints remain; 07 is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -1045,3 +1045,104 @@ Final source/diff review found no unresolved material defect; entry-comment and
 map/whitespace checks are recorded with the checkpoint artifacts before commit.
 External services, production load and the production correction/classifier
 pipeline remain outside this consumer qualification.
+Checkpoint 05b is committed as `a483708`.
+
+## Checkpoint 06: canonical frequency validation before admission effects
+
+Status: complete. Inspected pre-change Processor parsing accepts positive plain
+decimal kHz, but admission uses its raw band and only the later constructor
+rounds frequency. Tiny values can become zero; out-of-envelope and rounded
+overflow values reach admission. The approved contract is finite canonical
+frequency inside the existing inclusive Spot envelope, before admission/queue
+effects, retaining interior-gap behavior.
+
+Inspected `spot/spot.go`, `bands.go`, constructor/band tests, Processor dispatch
+and both argument orders, the actual server's bounded input reader, and ADR-0045.
+Current envelope is 135.70 through 2450000.00 kHz, including the upper disjoint
+13cm segment. `gopls references` confirms the existing rounder's three
+constructor and two FT-frequency production consumers, FrequencyBounds' Spot
+validator consumer, and both private frequency-parser call sites. Targeted
+`go list -deps -test -json` confirms commands -> spot/reputation and telnet ->
+commands/spot/reputation consumers and test dependencies. Existing constructors
+and FT callers require compilation/regression coverage, not behavior changes.
+
+Lead-owned design-space disposition: expose the existing rounder through one
+stateless public wrapper. Compute the canonical value in manual DX dispatch;
+use it for envelope/finiteness checks and the admission band. Retain existing
+raw inputs to comment parsing and constructor normalization. Earlier Spot
+construction would move its timestamp/allocation before admission; duplicating
+rounding would permit drift. The narrow wrapper adds no owner, state, goroutine,
+registry or algorithm. This is a local implementation choice within approved
+06; no propagation/correction/model rule or global Spot validator change is
+selected, and no scientific independence claim is needed for reusing ADR-0045.
+
+| Contract | Boundary / fault | Stimulus | Required observation | Level | False-green risk | Checker | Owner |
+|---|---|---|---|---|---|---|---|
+| Canonical envelope | Raw neighbors/ties at min/max | Literal decimal vectors and adjacent representable floats in both orders/dialects | Exact accepted canonical values or invalid-frequency response; queue agrees | Unit | Testing raw bounds instead of rounded bounds | Literal boundary vectors and queued Spot fields | commands |
+| Finite output | NaN/Inf, parse overflow, finite value whose scaling overflows | Plain/nonplain token vectors and long decimal values | Invalid response, no queue | Unit/fuzz | Lexer rejects only Inf but finite scaling still overflows | Direct Processor boundary and active domain fuzzing | commands |
+| No admission cost | Invalid values before an eligible post | Real Gate with a one-token prefix budget and one total allowance | No diagnostics/queue for invalid values; eligible control still queues | Consumer | A later archive validator or prefix refill masks prior admission/queue effects | Direct queue, callback and remaining-budget control | commands |
+| Canonical admission band | Raw value just below 20m rounds into it | Accepted boundary post then ordinary 20m post | Canonical queued band; same-band refusal | Consumer | Only checking frequency, while Gate still keys raw band | Real Gate reason/queue checks | commands |
+| Interior gaps | Existing envelope gaps | Representative HF and disjoint-13cm gap values | Existing acceptance and unknown-band result retained | Unit | Replacing envelope with segment membership | Literal gap controls | commands |
+| Actual ingress | Invalid values before spending shared allowance | Registered server in both transports with archive barriers/restart | Exact frequency feedback; later positive quotas intact; invalid archive absence | Checkout | Reply alone or off-target server becomes green | Required loaded-gate profile case | runner |
+| Public rounding access / discovery | Shared API and HELP disagreement | Existing constructor vectors plus both HELP DX topics | Same 10 Hz rounder; current inclusive bounds and gap wording | Unit/full build | Copying arithmetic or stale hard-coded help | Golden vectors, HELP width/catalog checks and complete baseline | spot, commands |
+
+The lead-owned detailed test-strategy pass separates raw/canonical neighbors,
+parse/scaling overflow, queue effects and admission effects. Fuzzing checks the
+actual Processor's admitted-output domain with tokens up to 1024 bytes; this is
+a test-work bound, not a new ingress limit. Long overflow values use the direct
+API because the real fixture retains its smaller loaded human-line ceiling.
+The existing generator/profile/receipt and independent FIFO archive barriers
+remain. No unselected behavior or remaining product choice is inferred.
+
+Observed qualification:
+
+| Check | Result / artifact under `.tmp/command-fixes` |
+|---|---|
+| Focused boundaries and public rounding access | PASS; `checkpoint-06-targeted.log` |
+| Complete commands/spot/telnet ordinary and race suites | PASS; `checkpoint-06-packages.log`, `checkpoint-06-race.log` |
+| Complete ordinary Windows suite | PASS, 70 packages; `checkpoint-06-baseline.log` |
+| Vet, Staticcheck and golangci-lint | PASS, zero lint issues; `checkpoint-06-vet.log`, `checkpoint-06-staticcheck.log`, `checkpoint-06-lint.log` |
+| Runner controls | PASS, 26 controls; `checkpoint-06-runner-controls.log` |
+| Active admitted-domain fuzzing | PASS, 75,665 executions, about 16 seconds, two workers; `checkpoint-06-fuzz-final.log` |
+| Actual checkout server | PASS, 62 required cases each in ordinary/race builds; `20261009-160258-10023f4f/results.json`, `20261009-160334-f6fa2822/results.json` |
+
+The server runs retained 24 preceding cases and added a required frequency case
+to each reputation profile (now seven per transport). All four profiles passed,
+with zero wire/cleanup failures and two joined child generations each. Both
+captured compiled-Go/module digest
+`70154cbde12c3c0e2df2f7692db097014c531999b267a270143fcb6ee4ef7235`.
+Invalid values received exact frequency feedback, left existing quotas available,
+and remained absent after the FIFO barrier and a fresh child. Long overflow
+vectors belong to direct API/fuzz evidence, not a claimed wire test above the
+fixture's human-line ceiling. Interior-gap and exact rounded-neighbor controls
+prove queue admission at the direct Processor boundary.
+
+The first native fuzz launch omitted the required `-test.fuzzcachedir` flag and
+exited before fuzzing (`checkpoint-06-fuzz.log`). Its ignored qualification
+helper now supplies an owned cache, rebuilds with fuzz instrumentation, holds
+the existing native runner lock and uses the existing bounded Job Object tool
+owner. The corrected run passed and retired workers before releasing the lock;
+the failed launch is not active-fuzz evidence. No production/test-source change
+was needed for that launch correction. The final lead falsifiability review also
+tightened the budget test to one total allowance, so prefix refill cannot hide
+an accidentally spent allowance; both complete targeted suites include it.
+
+Implementation mapping: `spot.RoundFrequencyTo10Hz` exposes the unchanged
+constructor rounder; Processor validates its effective value and uses its band
+before Gate admission. Raw comment/constructor inputs remain unchanged. New
+frequency tests cover both orders/dialects, literal and representable neighbors,
+parse/scaling overflow, gaps, remaining allowance and canonical-band accounting;
+the active fuzzer checks admitted outputs independently against the envelope and
+10 Hz lattice. Existing constructor and FT callers remain untouched, and a
+final `gopls references` pass confirms the wrapper's only production caller is
+manual DX dispatch. The required checkout case and strict offline response
+controls qualify actual ingress and outcomes.
+
+Support-agent documentation impact: Required. Compiled `HELP DX` and the command
+guide expose the current rounded envelope and preserved gaps; the common-question
+index routes rejected/differently counted frequencies there and to ADR-0045.
+Existing ADR-0045 owns rounding; no new algorithm/default or separate durable
+troubleshooting decision is introduced. Final source/test/script/doc review
+found no material defect or waiver. Entry-comment, generated-map and whitespace
+checks accompany final commit qualification. No external service, production
+load or global ingest-validation change is claimed.

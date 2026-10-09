@@ -22,6 +22,12 @@ spec.loader.exec_module(driver)
 
 
 class DriverControls(unittest.TestCase):
+    def test_frequency_refusal_requires_its_specific_feedback(self):
+        driver.require_frequency_refusal("Invalid frequency. Use a kHz value like 7001.0.\r\n")
+        for text in ("", "Spot queued.", "Spot rejected.", "Invalid input."):
+            with self.subTest(text=text), self.assertRaisesRegex(ValueError, "frequency refusal is missing"):
+                driver.require_frequency_refusal(text)
+
     def test_reputation_refusal_requires_only_generic_feedback(self):
         driver.require_reputation_refusal("\r\nSpot rejected.\r\n")
         for text in ("", "Spot queued.", "Spot queue full.",
