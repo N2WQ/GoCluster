@@ -919,7 +919,7 @@ writes preserve hidden State rules;
 schema 2 exposes them. Stop writers and retain matching binary/data backups
 before upgrade or downgrade: older binaries may reject Canadian codes in saved
 profiles and archive rows. Recover failed refreshes by retrying with the last
-good database in place. See [configuration](../data/config/README.md#canadian-ised-reference-data)
+good database in place. See [configuration](../data/config/README.md#fcc-and-ised-reference-data-and-enforcement)
 and [validation](canadian-state-validation.md).
 
 ## Per-Mode Minimum SNR
