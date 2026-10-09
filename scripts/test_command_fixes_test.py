@@ -20,8 +20,150 @@ spec = importlib.util.spec_from_file_location("command_fix_driver", Path(__file_
 driver = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(driver)
 
+# Literal 78-column archive row; expected layout is separate from the checker.
+HISTORY_ROW = "DX de K1ABC:     14074.00  W6ABC       CW LABEL                          2152Z"
+
 
 class DriverControls(unittest.TestCase):
+    def test_archive_get_follows_complete_history_and_preserves_rows(self):
+        events = []
+        session = mock.Mock()
+        session.call = "N0CALL-1"
+        raw_log = io.BytesIO()
+        session.suite.log = mock.Mock(wraps=raw_log)
+        query = "SHOW DX W6ABC 10 COMMENT LABEL"
+        row = HISTORY_ROW
+        lines = iter([(query + "\r\n").encode(), (row + "\r\n").encode(),
+                      b"End of retained history search.\r\n"])
+        session.send.side_effect = lambda text: events.append(("send", text))
+
+        def read_line():
+            value = next(lines)
+            events.append(("line", value))
+            return value
+
+        session.reader.line.side_effect = read_line
+        expected_receipt = ("\n[N0CALL-1] " + query + "\n" + query + "\r\n" + row +
+                            "\r\nEnd of retained history search.\r\n").encode()
+
+        def get_after_receipt():
+            self.assertEqual(raw_log.getvalue(), expected_receipt)
+            session.suite.log.flush.assert_called_once()
+            events.append(("get",))
+
+        session.get.side_effect = get_after_receipt
+        self.assertEqual(driver.archive_rows(session, "LABEL"), [row])
+        self.assertEqual(events, [("send", query + "\r\n"),
+                                  ("line", (query + "\r\n").encode()),
+                                  ("line", (row + "\r\n").encode()),
+                                  ("line", b"End of retained history search.\r\n"), ("get",)])
+        session.human.assert_not_called()
+
+    def test_history_row_oracle_rejects_valid_prefix_corruption(self):
+        self.assertEqual(len(HISTORY_ROW), 78)
+        driver.require_history_row(HISTORY_ROW)
+        bad_rows = (HISTORY_ROW + "GET YAML CONFIG SCHEMA 4 ID Test-99",
+                    HISTORY_ROW[:-5] + "GET Y", HISTORY_ROW[:-5] + "2560Z",
+                    HISTORY_ROW[:27] + "BAD?  " + HISTORY_ROW[33:],
+                    HISTORY_ROW[:63] + "X" + HISTORY_ROW[64:])
+        for row in bad_rows:
+            with self.assertRaisesRegex(ValueError, "column or UTC-tail"):
+                driver.require_history_row(row)
+            session = mock.Mock()
+            session.reader.buffer = bytearray()
+            session.reader.line.return_value = (row + "\r\n").encode()
+            with self.assertRaises(ValueError):
+                driver.archive_rows(session, "LABEL")
+            session.get.assert_not_called()
+
+    def test_archive_refuses_incomplete_interleaved_and_unbounded_responses(self):
+        for line in (b"GET YAML CONFIG SCHEMADX de K1ABC: 14074 W6ABC CW LABEL\r\n",
+                     b"End of retained history search. EXTRA\r\n",
+                     b"Search work limit reached.\r\n", b"unreadable archive\r\n",
+                     b"No matching retained spots.\n", b"No matching retained spots.\rX\r\n",
+                     b"DX de " + b"A" * driver.harness.MAX_FRAME + b"\r\n"):
+            session = mock.Mock()
+            session.reader.buffer = bytearray()
+            session.call, session.suite.log = "N0CALL-1", io.BytesIO()
+            session.reader.line.return_value = line
+            with self.assertRaises(ValueError):
+                driver.archive_rows(session, "LABEL")
+            session.get.assert_not_called()
+            receipt = session.suite.log.getvalue()
+            self.assertTrue(receipt.startswith(b"\n[N0CALL-1] SHOW DX W6ABC 10 COMMENT LABEL\n"))
+            self.assertIn(line[:driver.harness.MAX_FRAME], receipt)
+            if len(line) > driver.harness.MAX_FRAME:
+                self.assertIn(b"receipt truncated at 65536 bytes", receipt)
+        session = mock.Mock()
+        session.reader.buffer = bytearray()
+        session.call, session.suite.log = "N0CALL-1", io.BytesIO()
+        session.reader.line.side_effect = [(HISTORY_ROW + "\r\n").encode(), EOFError("missing footer")]
+        with self.assertRaises(EOFError):
+            driver.archive_rows(session, "LABEL")
+        session.get.assert_not_called()
+        self.assertTrue(session.suite.log.getvalue().endswith((HISTORY_ROW + "\r\n").encode()))
+        for lines in ([b"End of retained history search.\r\n"],
+                      [(HISTORY_ROW + "\r\n").encode(), b"No matching retained spots.\r\n"]):
+            session = mock.Mock()
+            session.reader.buffer = bytearray()
+            session.reader.line.side_effect = lines
+            with self.assertRaisesRegex(ValueError, "footer disagrees"):
+                driver.archive_rows(session, "LABEL")
+            session.get.assert_not_called()
+
+    def test_archive_failure_receipt_preserves_bounded_pending_decoded_bytes(self):
+        for error, pending in ((EOFError("partial footer"), b"End of retained hist"),
+                               (TimeoutError("partial row"), b"DX de K1ABC: 14074"),
+                               (ValueError("receive buffer limit exceeded"),
+                                b"X" * (driver.harness.MAX_FRAME + 1))):
+            with self.subTest(error=type(error).__name__):
+                session = mock.Mock()
+                session.call, session.suite.log = "N0CALL-1", io.BytesIO()
+                session.reader.buffer = bytearray(pending)
+                session.reader.line.side_effect = error
+                with self.assertRaises(type(error)):
+                    driver.archive_rows(session, "LABEL")
+                session.get.assert_not_called()
+                self.assertEqual(session.reader.buffer, pending)
+                prefix = b"\n[N0CALL-1] SHOW DX W6ABC 10 COMMENT LABEL\n"
+                expected = prefix + pending[:driver.harness.MAX_FRAME]
+                if len(pending) > driver.harness.MAX_FRAME:
+                    expected += b"\n[history receipt truncated at 65536 bytes]\n"
+                self.assertEqual(session.suite.log.getvalue(), expected)
+
+    def test_callsign_oracle_requires_all_four_canonical_and_saved_lists(self):
+        expected = dict(dx_callsigns=["W6*"], block_dx_callsigns=["N0XYZ"],
+                        de_callsigns=["K1*"], block_de_callsigns=["N0XYZ"])
+        document = {"configuration": {"filters": copy.deepcopy(expected)}}
+        record = mock.Mock()
+        record.read_bytes.return_value = b"callsigns: [W6*]\nblock_callsigns: [N0XYZ]\ndecallsigns: [K1*]\nblock_decallsigns: [N0XYZ]\n"
+        driver.require_callsign_rules(document, expected, record)
+        for key in expected:
+            document["configuration"]["filters"][key] = ["W*ABC"]
+            with self.assertRaisesRegex(ValueError, "callsign canonical selection"):
+                driver.require_callsign_rules(document, expected, record)
+            document["configuration"]["filters"][key] = expected[key]
+        record.read_bytes.return_value = b"callsigns: [W6*]\nblock_callsigns: [N0XYZ]\ndecallsigns: [K1*]\n"
+        with self.assertRaisesRegex(ValueError, "callsign canonical selection"):
+            driver.require_callsign_rules(document, expected, record)
+
+    def test_callsign_archive_oracle_requires_identity_visibility_and_exact_row(self):
+        session = mock.Mock()
+        row = HISTORY_ROW
+        with mock.patch.object(driver, "archive_rows", return_value=[row]):
+            driver.require_callsign_archive(session, "LABEL", True)
+            with self.assertRaisesRegex(ValueError, "blocked callsign"):
+                driver.require_callsign_archive(session, "LABEL", False)
+        for rows in ([], [row, row], [row.replace("K1ABC", "N0XYZ")], [row.replace("W6ABC", "W6XYZ")]):
+            with mock.patch.object(driver, "archive_rows", return_value=rows):
+                with self.assertRaisesRegex(ValueError, "visible callsign"):
+                    driver.require_callsign_archive(session, "LABEL", True)
+        corrupted = row[:39] + "CW LABEL GET YAML".ljust(24) + row[63:]
+        driver.require_history_row(corrupted)  # Legal layout cannot replace exact content.
+        with mock.patch.object(driver, "archive_rows", return_value=[corrupted]):
+            with self.assertRaisesRegex(ValueError, "visible callsign"):
+                driver.require_callsign_archive(session, "LABEL", True)
+
     def test_grid_oracle_requires_configured_effective_and_saved_canonical_values(self):
         document = {"configuration": {"settings": {"grid": "FN31"}},
                     "status": {"effective": {"grid": "FN31"}}}
@@ -44,6 +186,10 @@ class DriverControls(unittest.TestCase):
             self.assertEqual(label, "TDEBMHNLL" + suffix)
             self.assertLessEqual(len(label), 20)
             self.assertNotRegex(label, r"(?i)[-+]?\d{1,3}\s*dB")
+        cw = driver.literal_archive_label(suite, "CW")
+        ft8 = driver.literal_archive_label(suite, "F8")
+        self.assertNotIn(cw, ft8)
+        self.assertNotIn(ft8, cw)
 
     def test_nearby_oracle_requires_seeded_rows_and_unmatched_absence(self):
         row = "DX de N0XYZ:       14021.00  W6ABC       CW NEARBYCONTROL             1234Z"

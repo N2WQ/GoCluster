@@ -39,11 +39,59 @@ def qualified(results, required, wire_failures, cleanup_errors):
     require(not cleanup_errors, "cleanup failed")
 
 
+def require_history_row(row):
+    # The isolated fixture uses Spot's 78-column archive layout; it does not run
+    # main's runtime-layout initializer. Frequency ends at column 25, DX starts
+    # at 28, mode at 40 and the UTC tail is anchored.
+    require(len(row) == 78 and all(32 <= ord(ch) <= 126 for ch in row) and
+            re.fullmatch(r"DX de [A-Z0-9/#@-]+:\s+\d+\.\d{2}", row[:25]) and
+            row[25:27] == "  " and re.fullmatch(r"[A-Z0-9/-]+ +", row[27:39]) and
+            all(row[index] == " " for index in (63, 65, 70, 72)) and
+            re.fullmatch(r"(?:[01]\d|2[0-3])[0-5]\dZ", row[-5:]),
+            "history row violates the fixture column or UTC-tail contract")
+
+
 def archive_rows(session, label):
-    text, _ = session.human(f"SHOW DX W6ABC 10 COMMENT {label}")
-    require("Search work limit reached" not in text and "unreadable archive" not in text,
-            "archive selection incomplete")
-    return [line for line in text.splitlines() if line.startswith("DX de")]
+    # Pipelining GET can interleave its server echo with a history row. Consume
+    # the bounded history body first; never strip arbitrary echo pieces. These
+    # zero/one-row queries do not exercise the ten-row automatic pause trailer.
+    query = f"SHOW DX W6ABC 10 COMMENT {label}"
+    rows, received, raw = [], 0, bytearray()
+    try:
+        session.send(query + "\r\n")
+        while True:
+            line = session.reader.line()
+            received += len(line)
+            raw.extend(line[:harness.MAX_FRAME - len(raw)])
+            require(received <= harness.MAX_FRAME and line.endswith(b"\r\n") and b"\r" not in line[:-2],
+                    "history reply exceeds its bound or has invalid CRLF")
+            text = line[:-2].decode("ascii", "strict")
+            if text in ("End of retained history search.", "No matching retained spots."):
+                require(bool(rows) == (text == "End of retained history search."),
+                        "history footer disagrees with returned rows")
+                break
+            require("Search work limit reached" not in text and "unreadable archive" not in text,
+                    "archive selection incomplete")
+            if text.startswith("DX de"):
+                require_history_row(text)
+                rows.append(text)
+            else:
+                require(text in ("", query.upper()), "unexpected or interleaved history output")
+    except Exception:
+        # line() leaves an unreturned decoded suffix on EOF/timeout/buffer
+        # refusal. Preserve it within the same receipt bound before rethrowing.
+        pending = session.reader.buffer
+        received += len(pending)
+        raw.extend(pending[:harness.MAX_FRAME - len(raw)])
+        raise
+    finally:
+        receipt = f"\n[{session.call}] {query}\n".encode() + bytes(raw)
+        if received > len(raw):
+            receipt += b"\n[history receipt truncated at 65536 bytes]\n"
+        session.suite.log.write(receipt)
+        session.suite.log.flush()
+    session.get()  # Mandatory strict resource/schema/request-ID validation.
+    return rows
 
 
 def require_archive(session, label):
@@ -122,6 +170,77 @@ def require_grid_configuration(document, grid, record):
             document["status"]["effective"]["grid"] == grid and
             stored_document(record.read_bytes())["grid"] == grid,
             "GRID canonical selection, effective location or saved bytes disagree")
+
+
+def require_callsign_rules(document, expected, record):
+    saved = stored_document(record.read_bytes())
+    names = dict(dx_callsigns="callsigns", block_dx_callsigns="block_callsigns",
+                 de_callsigns="decallsigns", block_de_callsigns="block_decallsigns")
+    for key, stored_key in names.items():
+        require(document["configuration"]["filters"][key] == expected[key] and
+                (saved.get(stored_key) or []) == expected[key],
+                "callsign canonical selection or saved patterns disagree")
+
+
+def require_callsign_archive(session, label, visible):
+    rows = archive_rows(session, label)
+    if not visible:
+        require(not rows, "blocked callsign control remained visible in history")
+        return
+    require(len(rows) == 1 and label in rows[0] and
+            re.search(r"^DX de K1ABC:\s+14074\.0+\s+W6ABC\s+CW\b", rows[0]) and
+            rows[0][39:63].rstrip() == "CW " + label,
+            "visible callsign control absent or has the wrong DX/DE identity")
+    require_history_row(rows[0])
+
+
+def callsign_pattern_cases(suite, root, cw_label, saved_callsigns):
+    for dialect, call in (("go", "VE3ABC-70044"), ("cc", "VE3ABC-70045")):
+        current = harness.Session(suite, call)
+        current.human("PAUSE 300")
+        current.human("DIALECT " + dialect)
+        allow = "PASS" if dialect == "go" else "SET/FILTER"
+        block = "REJECT" if dialect == "go" else "UNSET/FILTER"
+        record = root / "users" / (call + ".yaml")
+        for domain, matching, prefix in (("DXCALL", "W6ABC", "w6*"), ("DECALL", "K1ABC", "k1*")):
+            current.human(allow + " " + domain + " ALL", "All ")
+            require_callsign_archive(current, cw_label, True)
+            current.human(allow + " " + domain + " w6*,*abc,k1abc,ea8/w1xyz,w2abc-1")
+            require_callsign_archive(current, cw_label, True)
+            for verb in (allow, block):
+                # A dot reaches this domain through the human input safe list;
+                # underscores/non-ASCII are separately checked at the direct stage.
+                for bad_list in ("N0XYZ,W*ABC", "*ABC*,N0XYZ", "N0XYZ,W1?", "W1.ABC,N0XYZ"):
+                    before, saved = current.get(), record.read_bytes()
+                    text, after = current.human(verb + " " + domain + " " + bad_list)
+                    require(text.strip() == "Invalid callsign pattern. Use ASCII letters, digits, / or -.\n"
+                            "Use at most one * at the beginning or end. No changes applied.",
+                            "invalid callsign list lacks the specific whole-list refusal")
+                    require(after["configuration"] == before["configuration"] and
+                            after["revision"] == before["revision"] and
+                            after["status"]["effective"] == before["status"]["effective"] and
+                            after["status"]["preset"] == before["status"]["preset"] and
+                            record.read_bytes() == saved,
+                            "invalid callsign list changed live/revision/saved state")
+                    require_callsign_archive(current, cw_label, True)
+            current.human(block + " " + domain + " " + matching)
+            require_callsign_archive(current, cw_label, False)
+            current.human(allow + " " + domain + " *")
+            require_callsign_archive(current, cw_label, False)
+            current.human(allow + " " + domain + " ALL", "All ")
+            require_callsign_archive(current, cw_label, True)
+            current.human(allow + " " + domain + " " + prefix)
+            current.human(block + " " + domain + " N0XYZ")
+        document = current.get()
+        expected = dict(dx_callsigns=["W6*"], block_dx_callsigns=["N0XYZ"],
+                        de_callsigns=["K1*"], block_de_callsigns=["N0XYZ"])
+        require_callsign_rules(document, expected, record)
+        require_callsign_archive(current, cw_label, True)
+        result = current.upload("VALIDATE", "CONFIG", document["configuration"])
+        require("error" not in result and result["result"]["operation"] == "VALIDATE" and
+                result["result"]["valid"] is True and result["result"]["applied"] is False and
+                result["result"]["persisted"] is False, "human callsign configuration is machine-invalid")
+        saved_callsigns[call] = (document["configuration"], expected)
 
 
 def grid_exact_cases(suite, root, saved_grids):
@@ -598,6 +717,7 @@ def profile(binary, root, source, transport):
                 f"{transport}: MODE deltas preserve visible history and saved fallback",
                 f"{transport}/0: NEARBY endpoints filter seeded archive independently",
                 f"{transport}: GRID exact syntax preserves refusals and canonical publication",
+                f"{transport}: callsign patterns admit complete lists and preserve matching",
                 f"{transport}/1: held endpoint and loaded consumers",
                 f"{transport}: preferences and archive survive fresh child",
                 f"{transport}: NOFILTER geography survives fresh child",
@@ -610,7 +730,8 @@ def profile(binary, root, source, transport):
                 f"{transport}: prospective admission outcomes survive fresh child",
                 f"{transport}: MODE outcomes survive fresh child",
                 f"{transport}/1: NEARBY endpoints filter seeded archive independently",
-                f"{transport}: canonical GRID and active cells survive fresh child"]
+                f"{transport}: canonical GRID and active cells survive fresh child",
+                f"{transport}: callsign patterns and matching survive fresh child"]
     call = "K1ABC-70001"
     observer_call, observer_configuration = "VE3ABC-70003", None
     failed_records, refused_records, compatible_records = {}, {}, {}
@@ -619,7 +740,8 @@ def profile(binary, root, source, transport):
     resource_refused, resource_repaired, resource_prospective = {}, {}, {}
     saved_modes = {}
     saved_grids = {}
-    label = "T" + uuid.uuid4().hex[:8].upper()
+    saved_callsigns = {}
+    label = None
     suites = []
     for generation in range(2):
         child, suite = None, None
@@ -630,6 +752,8 @@ def profile(binary, root, source, transport):
             suite = harness.Suite(SimpleNamespace(host=child.host, port=child.port, call="K1ABC",
                                                   timeout=8, run_seconds=120,
                                                   output=root / f"wire-{generation}"))
+            if generation == 0:
+                label = literal_archive_label(suite, "CW")
             suites.append(suite)
             session = harness.Session(suite, call)
 
@@ -1016,6 +1140,8 @@ def profile(binary, root, source, transport):
                      lambda: nearby_endpoint_cases(suite, child))
                 case(f"{transport}: GRID exact syntax preserves refusals and canonical publication",
                      lambda: grid_exact_cases(suite, root, saved_grids))
+                case(f"{transport}: callsign patterns admit complete lists and preserve matching",
+                     lambda: callsign_pattern_cases(suite, root, label, saved_callsigns))
             else:
                 def restored():
                     settings = session.get()["configuration"]["settings"]
@@ -1174,6 +1300,18 @@ def profile(binary, root, source, transport):
                         require_grid_configuration(document, "IO91", root / "users" / (stored_call + ".yaml"))
 
                 case(f"{transport}: canonical GRID and active cells survive fresh child", restored_grids)
+
+                def restored_callsigns():
+                    require(len(saved_callsigns) == 2, "required callsign controls did not execute")
+                    for stored_call, (configuration, expected) in saved_callsigns.items():
+                        current = harness.Session(suite, stored_call)
+                        _, document = current.human("PAUSE 300")
+                        require(document["configuration"] == configuration,
+                                "fresh child lost callsign configuration")
+                        require_callsign_rules(document, expected, root / "users" / (stored_call + ".yaml"))
+                        require_callsign_archive(current, label, True)
+
+                case(f"{transport}: callsign patterns and matching survive fresh child", restored_callsigns)
         finally:
             try:
                 if suite:

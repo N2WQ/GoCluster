@@ -432,7 +432,15 @@ Type RESUME when ready. Missed spots are not replayed.
 
 `SHOW FILTER FULL` uses the effective format for every list category. Switches
 show one ON/OFF value. DXCALL/DECALL retain ordered PASS/REJECT patterns, with
-REJECT taking precedence when patterns overlap. PATH expands inherited CLOSED
+REJECT taking precedence when patterns overlap. Patterns use ASCII letters,
+digits, `/` or `-`, with at most one `*` at the beginning or end. Examples are
+`K1ABC`, `W1*` and `*ABC`. `?` and interior or multiple stars are unsupported;
+one invalid entry refuses the entire command without changing any rules.
+Comma and space separators, case normalization and ordered patterns remain.
+Standalone `ALL` clears both lists for PASS or blocks all for REJECT. `*` is an
+ordinary all-matching list entry, so PASS `*` retains other REJECT patterns.
+`ALL` inside a list is a literal exact pattern. Existing saved legacy patterns
+are retained without an automatic migration. PATH expands inherited CLOSED
 behavior and honors explicit overrides. MODE explains UNKNOWN visibility;
 CONFIDENCE explains exempt modes; EVENT always explains untagged inclusion.
 Geography sections show PASS: ALL / REJECT: NONE with a suspension note when

@@ -11,6 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0056 | Human Callsign Pattern Admission | Monitoring | 2026-10-09 | telnet, callsign filters, syntax, machine validation | none | `docs/troubleshooting/TSR-0056-human-callsign-pattern-admission.md` |
 | TSR-0055 | GRID Prefix Acceptance And Mapping Feedback | Monitoring | 2026-10-09 | telnet, GRID, syntax, mapping availability, NEARBY | none | `docs/troubleshooting/TSR-0055-grid-prefix-and-mapping-feedback.md` |
 | TSR-0054 | NEARBY Opposite Endpoint Veto | Monitoring | 2026-10-09 | filter, telnet, NEARBY, endpoint cells, history | none | `docs/troubleshooting/TSR-0054-nearby-opposite-endpoint-veto.md` |
 | TSR-0053 | MODE Delta Became A Whitelist Transition | Monitoring | 2026-10-09 | filter, telnet, MODE, feedback, marked reload | ADR-0272 | `docs/troubleshooting/TSR-0053-mode-delta-whitelist-transition.md` |

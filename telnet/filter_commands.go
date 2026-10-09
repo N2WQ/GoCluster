@@ -72,6 +72,7 @@ const nearbyUsageMsg = "Usage: PASS NEARBY ON|OFF\nType HELP for usage.\n"
 const nearbyMissingGridMsg = "Grid not set. Use SET GRID <4 or 6 character Maidenhead locator>.\n"
 const nearbyUnavailableMsg = "Unable to enable NEARBY: invalid grid or H3 tables unavailable.\n"
 const unknownModeHiddenWarningMsg = "Note: UNKNOWN represents blank-mode spots. They are hidden; use PASS MODE UNKNOWN or PASS MODE ALL to show them again.\n"
+const invalidCallsignPatternMsg = "Invalid callsign pattern. Use ASCII letters, digits, / or -.\nUse at most one * at the beginning or end. No changes applied.\n"
 
 var locationFilterDomains = map[string]bool{
 	"DXGRID2": true,
@@ -775,6 +776,12 @@ func newCallPatternHandler(name string) *domainHandler {
 				if len(patterns) == 0 {
 					return passFilterUsageMsg(), false
 				}
+				// Admit the whole list before changing any allow/block entries.
+				for _, pattern := range patterns {
+					if !validCallsignPattern(pattern) {
+						return invalidCallsignPatternMsg, false
+					}
+				}
 				c.updateFilter(func(f *filter.Filter) {
 					for _, pattern := range patterns {
 						if name == "DXCALL" {
@@ -819,6 +826,11 @@ func newCallPatternHandler(name string) *domainHandler {
 				patterns := splitListValues(value)
 				if len(patterns) == 0 {
 					return rejectFilterUsageMsg(), false
+				}
+				for _, pattern := range patterns {
+					if !validCallsignPattern(pattern) {
+						return invalidCallsignPatternMsg, false
+					}
 				}
 				c.updateFilter(func(f *filter.Filter) {
 					for _, pattern := range patterns {

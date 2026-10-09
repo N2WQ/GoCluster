@@ -75,6 +75,12 @@ func TestConcreteFilterHelpEveryCategory(t *testing.T) {
 	for _, dialect := range []string{"go", "cc"} {
 		for _, verb := range []string{"PASS", "REJECT"} {
 			text := p.ProcessCommandForClient("HELP "+verb, "N0CALL", "", nil, dialect)
+			flattened := strings.Join(strings.Fields(text), " ")
+			for _, note := range []string{"ASCII letters, digits, / or -", "at most one leading or trailing *", "invalid pattern refuses the entire list"} {
+				if !strings.Contains(flattened, note) {
+					t.Fatalf("%s %s omits callsign admission rule %q", dialect, verb, note)
+				}
+			}
 			for _, category := range categories {
 				prefix := verb
 				if dialect == "cc" && category != "COMMENT" && category != "MINSNR" {
@@ -87,7 +93,7 @@ func TestConcreteFilterHelpEveryCategory(t *testing.T) {
 					t.Fatalf("%s HELP %s lacks a %s example", dialect, verb, category)
 				}
 			}
-			for _, want := range []string{"Supported bands:", "Supported modes:", "Supported events:", "Continents:", "State/province mailing-address codes:", "Only a leading or trailing *", "SOURCE takes one value", "other filters still apply"} {
+			for _, want := range []string{"Supported bands:", "Supported modes:", "Supported events:", "Continents:", "State/province mailing-address codes:", "Callsign patterns:", "SOURCE takes one value", "other filters still apply"} {
 				if !strings.Contains(text, want) {
 					t.Fatalf("%s HELP %s lacks %q", dialect, verb, want)
 				}

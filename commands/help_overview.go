@@ -277,7 +277,7 @@ func installConcreteFilterHelp(catalog *helpCatalog, dialect string) {
 			"CQ zones use integers 1-40; grid fields use two letters (for example FN or JO).",
 			"DXCC values use canonical CTY prefixes or positive ADIF integers, not arbitrary callsigns; lookup depends on the server CTY database.",
 			"CONFIDENCE accepts ?, S, P, V, C, B; PATH accepts HIGH, MEDIUM, LOW, UNLIKELY, CLOSED, INSUFFICIENT.",
-			"Callsign patterns: exact call, W1* (starts with W1), or *ABC (ends with ABC). Only a leading or trailing * is supported; ? is not a wildcard.",
+			"Callsign patterns: exact call, W1* (starts with W1), or *ABC (ends with ABC). Use ASCII letters, digits, / or -, with at most one leading or trailing *. ? is not a wildcard. An invalid pattern refuses the entire list.",
 			"Geography selections are suspended by NEARBY; turn it OFF before editing them.",
 			"Type HELP FILTERS for supported values, full rules and feature switches.",
 			"Type HELP SYMBOLS for confidence and path symbol meanings.",

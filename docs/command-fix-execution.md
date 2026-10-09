@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 09 complete (04a used two commits);
-32 approved checkpoints remain; 10 is next.
+Current progress: checkpoints 00 through 10 complete (04a used two commits);
+31 approved checkpoints remain; 11a is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -1499,3 +1499,114 @@ Whole-repository vet, Staticcheck and golangci-lint passed, with zero lint issue
 covered production, tests, driver negative controls and documentation, and
 found no unresolved material defect or scope expansion. Generated-map generation
 and check, whitespace and staged-diff review accompany the isolated commit.
+Checkpoint 09 is committed as `afa8053`; its final working tree was clean.
+
+## Checkpoint 10: callsign-pattern admission
+
+Status: complete. Current-source discovery inspected both dialect parsers,
+the DXCALL/DECALL allow/block handlers, the existing list separator, all four
+Filter pattern mutators and their actual matcher, machine validation and
+capabilities, detached human publication, and existing command/filter tests.
+The human handlers currently publish every nonempty list without validation;
+the matcher and machine contract support only an exact pattern, `*`, or one
+leading/trailing star, with ASCII letters, digits, slash and hyphen otherwise.
+Both CC list aliases reach the same handler. Original CC /ON and /OFF tail
+validation belongs to checkpoint 11a and is not silently added here.
+
+Architecture: share the existing private machine pattern predicate with the
+human handler, naming it for its callsign domain. Validate the complete parsed
+list before the first Filter mutation. Preserve existing separators, case
+normalization, list order, duplicate handling, PASS/REJECT precedence and ALL
+behavior. Standalone ALL remains the reset/block-all operation; ALL inside a
+list remains a literal exact pattern. A standalone star still participates in
+the existing allow/block lists. No matcher, exported API, schema, migration,
+runtime default, queue, lock owner or storage quota changes are needed.
+
+Config ownership: these four per-user YAML string lists remain owned by the
+existing configuration loader and prepared-record coordinator; the machine
+validator remains authoritative for admitted proposals. Empty lists retain
+their existing meaning. Stored legacy patterns are not rewritten or pruned.
+The predicate adds no default or alternate loader. ASCII character and wildcard
+restrictions already appear in machine capabilities and executable HELP.
+
+Lead-owned preimplementation falsifiability matrix:
+
+| Contract | Boundary / fault | Stimulus | Required observation | Level | False-green risk | Checker | Owner |
+|---|---|---|---|---|---|---|---|
+| Complete-list admission | Valid token before/after an unsupported wildcard or character | DX/DE, PASS/REJECT, GO/CC lists | Refusal, zero commit attempts, exact live/revision/saved bytes unchanged | Unit/checkout | Testing only a lone invalid token or discarding a partially mutated candidate | Actual coordinator plus immediate disk/revision assertions; direct staged fuzz | telnet, runner |
+| Supported forms | Exact, prefix, suffix, star, slash/hyphen and mixed case | All four human routes | Canonical ordered rules are saved and accepted by full machine validation | Unit/checkout | Acknowledgement alone or tightening the existing machine domain | Exact live/durable patterns and machine VALIDATE | telnet, runner |
+| Matching semantics | Allow/block overlap, ALL versus star, DX versus normalized DE | Literal matching/nonmatching spot calls | Correct visibility and existing reset/block behavior | Consumer/checkout | Testing the validator without invoking the actual matcher | Filter.Matches and correlated positive/negative archive controls | telnet, runner |
+| Arbitrary syntax | Bounded malformed lists, non-ASCII, multiple/interior stars | Permanent fuzz seeds and independent regular-expression domain | Publication only for supported lists; refusal preserves staged configuration | Fuzz | Deriving expected validity from the shared production predicate | Independent grammar and actual staged handler | telnet |
+| Fresh durability | Close child and reconnect identical identities | Same stores in replacement process | Exact saved rules and visibility survive | Checkout | Live settings hide failed persistence | Two joined actual checkout children per transport | runner |
+
+The shared predicate is a bounded package-local command admission change. The
+matrix is adequate without a new test seam or policy decision. No scientific
+or performance claim is made; no separate non-steered review is required for
+this directly falsifiable grammar. Relevant HELP/guide wording and support
+routing will state the actual character domain and whole-list refusal.
+
+Checkout evidence requires one checker refinement: server input echo may
+interleave the pipelined GET echo with a history row. Read the complete bounded
+history response before sending its correlated GET; never reconstruct rows by
+loosely stripping echo fragments. Require an exact complete history footer,
+the existing deadline, a 64 KiB response bound and strict subsequent YAML
+identity. Negative controls must reject unknown/interleaved lines, partial or
+missing footers, EOF and oversized replies, and prove GET follows completion.
+This changes the checker only, not server echo, history, protocol or accepted
+command behavior. These zero/one-row queries qualify the history body and its
+semantic footer, not the optional automatic-pause trailer for ten-row replies.
+Receipts retain the decoded body before GET on success and failure, including
+pending bytes after EOF/timeout/buffer refusal, capped at 64 KiB with an explicit
+truncation marker. They are Telnet-decoded receipts, not literal IAC wire captures.
+
+The fixture does not run the main runtime output-layout initializer: its archive
+rows use Spot's existing 78-column default, not the loaded runtime YAML's 76.
+The checker requires the actual fixed columns, complete UTC tail and exact
+callsign-control comment; a valid row prefix alone cannot hide inserted GET text.
+The first public invalid-character vector used an underscore rejected by upstream
+ingress; the corrected wire-admitted dot reaches this handler. Underscore and
+non-ASCII remain covered by direct-stage tests.
+
+The existing hex nonce can accidentally enter the production SNR grammar. The
+primary control now uses the existing letter-only nonce helper, with distinct
+CW and F8 suffixes: neither history comment query is a substring of the other.
+The first empty CW suffix caused both rows to match when FT8 was visible; this
+was a checker-label collision, not a production MODE change.
+
+Retained failed actual runs: `20261009-175048-f145a405` (underscore stopped at
+ingress), `20261009-175220-0d981a7f` (pipelined echo interleaving),
+`20261009-180503-c2d8cdfa` (incorrect 76-column oracle), and
+`20261009-180658-1ddf61c3` (CW/F8 prefix collision). Preliminary passing ordinary
+and race runs `20261009-175826-9dbe93c1` and `20261009-175927-3b543a11` qualified
+78 required cases per build but preceded final history receipt/layout controls;
+they are not the final checker qualification.
+
+The read-only separate-context technical review found the missing pending-byte
+receipt and wrong fixture layout, both corrected with negative controls. It also
+prompted precise PASS-star wording: PASS retains other block patterns and removes
+an identical block pattern. No product selection, independent scientific review
+or new runtime ownership is claimed. Earlier test failures from nil-versus-empty
+slice equality, missing explicitly enriched DE baseline and a stale HELP assertion
+are retained in targeted logs; corrected complete suites passed.
+
+Observed final validation:
+
+| Check | Result |
+|---|---|
+| Complete filter, telnet and commands suites | Ordinary and race runs passed; final identical-block-star consumer regression also passed under race |
+| Direct staged callsign fuzz | 93,686 executions passed in approximately 16 seconds with two workers; 11 permanent seeds |
+| Complete Windows ordinary baseline | All 70 packages passed on final Go source |
+| Runner failure controls | All 36 passed, including row corruption, disjoint labels and bounded pending-response receipts |
+| Final actual checkout runs | Ordinary `20261009-181214-8f22254c` and race `20261009-181321-8ea8a6f0`: all 78 required cases passed per build; 32 main and 7 reputation cases per transport |
+| Child ownership and transport | Both configured transports passed strict checks; zero wire/cleanup failures; all eight owned child retirement receipts per build confirm client retirement, consumer join and archive stop |
+| Whole-repository analyzers | vet, Staticcheck and lint passed; zero lint issues |
+| Support and records | Both touched support-critical Go files passed comment checks; troubleshooting-record checks passed |
+
+Both final actual builds and all their children report Go/module source digest
+`3a86418e5ac33ec4ed6f716992bc5b30367a11982308f2de6dd9b98084f0f5fe`.
+This digest does not cover Python, documentation or configuration. The final
+checker was frozen for both builds. Fresh lead diff/receipt review and the
+separate-context technical follow-up found no unresolved material defect.
+Generated-map and whitespace checks complete the commit closeout. No waiver,
+production-load qualification, external cluster run or unrelated migration is
+claimed. The generated Python bytecode remains outside the staged patch.

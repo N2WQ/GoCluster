@@ -92,7 +92,7 @@ func (s *Server) validateMachineConfiguration(cfg filter.Configuration) error {
 	}
 	for _, list := range [][]string{f.DXCallsigns, f.BlockDXCallsigns, f.DECallsigns, f.BlockDECallsigns} {
 		for _, pattern := range list {
-			if !validMachinePattern(pattern) {
+			if !validCallsignPattern(pattern) {
 				return fmt.Errorf("filters contains an invalid callsign pattern")
 			}
 		}
@@ -104,7 +104,9 @@ func validMachineGrid2(value string) bool {
 	return len(value) == 2 && value[0] >= 'A' && value[0] <= 'R' && value[1] >= 'A' && value[1] <= 'R'
 }
 
-func validMachinePattern(value string) bool {
+// Human and machine proposals share the matcher's exact/prefix/suffix domain.
+// Validate the complete list before publication; saved legacy rules are retained.
+func validCallsignPattern(value string) bool {
 	if value == "" || value != strings.TrimSpace(value) {
 		return false
 	}
