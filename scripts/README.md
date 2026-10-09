@@ -47,6 +47,66 @@ mocked publishing checks; its Git/GitHub operations never reach external tools.
 Run `test-release-safety.ps1` for disposable Git/native-command/filesystem
 fixtures, failure ordering, output ownership, and caller-state restoration.
 
+## Windows Tests With Stable Firewall Paths
+
+Use PowerShell 7 and the native Windows Go toolchain from this checkout:
+
+```powershell
+# Build and list the paths to approve, without executing tests.
+pwsh -NoProfile -File scripts/test-windows.ps1 -PrepareOnly
+# Run all repository packages through those paths.
+pwsh -NoProfile -File scripts/test-windows.ps1
+# Targeted runs from PowerShell (arrays are passed directly to the script).
+& ./scripts/test-windows.ps1 -Packages ./peer,./internal/cluster -Run 'TestPC92' -Timeout 180s
+& ./scripts/test-windows.ps1 -Packages ./peer -Race
+```
+
+Each package is compiled with `go test -c -o`, then its saved binary is run in
+the package's source directory with `-test.count=1`. This avoids Go's temporary
+execution paths and test-result caching. Go's unexpected `os.Exit(0)` safeguard
+is retained. The default timeout is 10 minutes per
+package. Packages without test files are build-checked. A build or test failure
+stops the run and returns a failing exit status; it never runs an old binary
+after a failed build. The runner covers package selection, test name filters,
+timeouts and race builds; other Go test flags need a separately selected command.
+
+Executables live under `.tmp/windows-tests/<full-import-path>/package.test.exe`.
+For this checkout, the listening test packages include:
+
+```text
+C:\src\gocluster\.tmp\windows-tests\dxcluster\peer\package.test.exe
+C:\src\gocluster\.tmp\windows-tests\dxcluster\internal\cluster\package.test.exe
+C:\src\gocluster\.tmp\windows-tests\dxcluster\internal\peerdiag\package.test.exe
+```
+
+Windows Firewall application rules use the **full executable path**. Approve
+the needed paths printed by preparation, with the network scope appropriate to
+your tests. The runner does not create rules or request elevation. Firewall
+policy and successful tests must still be verified on the machine after setup;
+stable paths do not resolve Windows Application Control denials. See
+[Microsoft's application-rule guidance](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/rules).
+
+Ordinary and race builds replace the binaries at the same paths, so they share
+firewall approvals. Relaunched test children retain those paths too. The
+peer diagnostic companion uses `peerdiag.exe` beside its package test binary;
+preparation builds and prints that path. Temporary VOACAP fixture executables
+remain isolated; the inspected fixtures do not listen on network sockets.
+Moving the checkout changes the paths and requires corresponding rule updates.
+
+One file lock protects all packages and preparation runs in this checkout.
+An overlapping invocation is refused; a crash releases the handle automatically.
+The empty `runner.lock` file remains on disk and should not be removed during a
+run. Manually running these binaries or changing output junctions concurrently
+is outside this lock; keep the output tree private to the runner while it runs.
+Generated output is already ignored by `.tmp/`. The caller's location and PATH
+are restored on success and failure; cross-compilation targets are refused.
+
+Run `pwsh -NoProfile -File scripts/test-test-windows.ps1` for disposable,
+network-free fixtures proving path reuse, child execution, working directories,
+race execution, preparation, failure propagation, lock exclusion, and refusal
+to replace binaries through junctions. See
+[ADR-0265](../docs/decisions/ADR-0265-stable-windows-test-executables.md).
+
 ## Release Preparation
 
 `create-release.ps1` builds both binaries itself. A manual `go build` is not a

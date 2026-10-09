@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0265 | Stable Windows Test Executables | Accepted | 2026-10-09 | development, Windows, tests, firewall | - | - | `docs/decisions/ADR-0265-stable-windows-test-executables.md` |
 | ADR-0264 | Task-Oriented Compiled HELP | Accepted | 2026-10-08 | commands, HELP, dialects, operator documentation | Preserves ADR-0012/0089 command contracts | - | `docs/decisions/ADR-0264-task-oriented-compiled-help.md` |
 | ADR-0263 | Commas And Keyword Aliases In History Lists | Accepted | 2026-10-08 | commands, telnet, history parser, compatibility | ADR-0262 delimiter and keyword-boundary clauses only | - | `docs/decisions/ADR-0263-history-list-comma-boundaries.md` |
 | ADR-0262 | BAND And MODE Archive History Selections | Accepted | 2026-10-08 | commands, telnet, history, parser, retained state | Refines ADR-0251/0261 with query lists | ADR-0263 (delimiter and keyword-boundary clauses only) | `docs/decisions/ADR-0262-history-band-mode-selections.md` |

@@ -53,6 +53,30 @@ for the original failure and subsequent repair, and
 [environment setup](ENVIRONMENT.md#development-tools-and-wsl) for platform
 dependencies and remaining machine-local setup.
 
+## Native Windows Test Execution
+
+For native Windows package tests, use the stable-path runner in place of the
+lane's `go test ./...` command:
+
+```powershell
+pwsh -NoProfile -File scripts/test-windows.ps1
+```
+
+For a full race run use `-Race`; for targeted checks invoke the script with
+`-Packages ./peer,./internal/cluster`, optional `-Run '<test regex>'`, and
+`-Timeout 180s`. The runner compiles each selected package and executes saved
+test binaries from stable paths in the package source directories. Tests run
+without result caching, packages without tests are build-checked, and failures
+stop the run. Existing vet, Staticcheck, lint and other lane requirements still
+apply. CI/Linux commands remain as listed below. Commands requiring additional
+Go test flags (such as coverage, fuzzing, or benchmarks) need separate selection.
+
+First use `-PrepareOnly` to build without running tests and print full paths
+for manual Windows Firewall approval. Ordinary and race builds reuse the paths;
+the runner does not modify firewall settings. See the
+[script guide](../scripts/README.md#windows-tests-with-stable-firewall-paths)
+for paths, prerequisites, helper binaries, locking, and policy limitations.
+
 ## CI Backstops
 
 Push-to-`main` CI is post-push verification. It can detect an invalid commit
