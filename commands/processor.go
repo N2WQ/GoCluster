@@ -1707,7 +1707,9 @@ func (p *Processor) handleDX(fields []string, spotter string, spotterIP string) 
 					When:        now,
 				})
 			}
-			return ""
+			// Keep gate evidence in operator diagnostics, while acknowledging
+			// the rejected command before any Spot or queue effect.
+			return "Spot rejected.\n"
 		}
 	}
 	comment := ""

@@ -80,6 +80,10 @@ def require_archive_absent(rows):
     require(not rows, f"reputation-refused spot reached the archive: {rows}")
 
 
+def require_reputation_refusal(text):
+    require(text.strip() == "Spot rejected.", "manual DX rejection feedback is not generic")
+
+
 def require_reputation_history(root, old_files):
     for path, raw in old_files.items():
         require(path.read_bytes() == raw, "old SSID reputation history was changed or merged")
@@ -126,8 +130,7 @@ def reputation_posts(suite, sessions, observer, generation, labels):
                 sessions[1].human("PAUSE 300")
             refused = suite.token + f"G{generation}BAND"
             text, _ = sessions[1].human(f"DX 14074 W6ABC CW {refused}")
-            require("Spot queued" not in text and "Spot queue full" not in text,
-                    "another SSID replenished the spent per-band allowance")
+            require_reputation_refusal(text)
             labels["refused"].append(refused)
     # Both per-band and total counts are spent before benign reconnects. The
     # command's correlated GET fences processing before the following archive
@@ -142,8 +145,7 @@ def reputation_posts(suite, sessions, observer, generation, labels):
         for frequency in (14074, 3504):
             label = suite.token + f"G{generation}R{index}F{frequency}"
             text, _ = current.human(f"DX {frequency} W6ABC CW {label}")
-            require("Spot queued" not in text and "Spot queue full" not in text,
-                    "benign SSID login replenished the spent station allowance")
+            require_reputation_refusal(text)
             labels["refused"].append(label)
     barrier = suite.token + f"G{generation}BARRIER"
     observer.human(f"DX 3504 W6ABC CW {barrier}", "Spot queued.")

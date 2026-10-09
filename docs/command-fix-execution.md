@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 05a complete (04a used two commits);
-37 approved checkpoints remain; 05b is next.
+Current progress: checkpoints 00 through 05b complete (04a used two commits);
+36 approved checkpoints remain; 06 is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -985,3 +985,63 @@ troubleshooting record is needed for the fixture input error. The final lead
 pass reviewed source, tests, scripts, documentation, scope and observed checks;
 no material defect, waiver or new product decision remains. No production-load,
 external enrichment service, deployment or external support-agent check ran.
+Checkpoint 05a is committed as `f8fa835`.
+
+## Checkpoint 05b: truthful manual DX rejection feedback
+
+Status: complete. Inspected Processor dispatch and the actual shared
+Gate/profile from checkpoint 05a. All gate drops currently return an empty
+response after the existing diagnostic callback, before Spot construction and
+queue admission. The approved change affects that response only: return
+`Spot rejected.` without exposing internal gate details. Preserve the callback,
+queue ordering, baseline display and existing accepted/full-queue responses.
+No new state, interface, configuration or lifecycle owner is needed.
+
+| Contract / fault | Stimulus | Required observation / checker |
+|---|---|---|
+| Silent or overly detailed rejection | Real Gate probation, band, total and prefix refusals through Processor in both dialects | Exact generic response, zero queued spots and correct internal callback reason |
+| Response depends on diagnostic callback | Refusal with callback absent | Same exact response and zero queue effects |
+| Accepted controls lose baseline identity | Eligible real Gate posting from numeric SSID | Existing queue acknowledgement; queued DE/source remain baseline |
+| Wire acknowledgement hides queue effects | Actual loaded server, spent band/total quotas and reconnects | Generic response in both transports, accepted FIFO archive barrier and refused archive absence, repeated after fresh child |
+| Oracle accepts silent denial | Offline controls with empty, accepted or internal-detail feedback | Refusal checker fails those samples; real-server case remains required |
+
+The lead-owned test-strategy pass uses actual Gate decisions and existing
+consumer/archive barriers. Unit prefix priming uses a later explicit timestamp
+to prevent elapsed refill from making the cause depend on test speed. The
+diagnostic reason must prove which branch refused the post. Rejection wording
+and test strengthening are within approved 05b; no product ambiguity remains.
+
+Observed qualification:
+
+| Check | Result / artifact under `.tmp/command-fixes` |
+|---|---|
+| Focused real-Gate feedback cases | PASS; `checkpoint-05b-targeted.log` |
+| Complete commands/telnet ordinary and race suites | PASS; `checkpoint-05b-packages.log`, `checkpoint-05b-race.log` |
+| Complete ordinary Windows suite | PASS, 70 packages; `checkpoint-05b-baseline.log` |
+| Vet, Staticcheck and golangci-lint | PASS, zero lint issues; `checkpoint-05b-vet.log`, `checkpoint-05b-staticcheck.log`, `checkpoint-05b-lint.log` |
+| Runner controls | PASS, 25 controls; `checkpoint-05b-runner-controls.log` |
+| Actual checkout server | PASS, 60 required cases each in ordinary/race builds; `20261009-153544-71d34510/results.json`, `20261009-153619-c6d3e06b/results.json` |
+
+Each build passed all four profiles with zero wire/cleanup failures and two
+joined child generations per profile. Their compiled-Go/module source digest is
+`e586fb57a20de6d3d05ff3a372c261b16a95d56c48850b4192bb465dc9eb395d`.
+The real-server checker requires only the generic response, preserving the
+existing archive barrier and post-restart refusal-absence checks. Unit cases
+prove all four gate causes still reach the internal callback and rejected spots
+never reach the queue. No new production concurrency was introduced; targeted
+race/actual-server evidence supplements 05a's unchanged state-owner full race
+qualification. No failed attempt or waiver was needed for checkpoint 05b.
+
+Implementation mapping: `commands/processor.go` changes the gate-drop response;
+`manual_dx_reputation_test.go` proves both dialects, all causes, absent callback
+and accepted baseline display. The runner and its offline controls require exact
+generic wire feedback and retain independent archive outcome controls.
+
+Support-agent documentation impact: Required. `commands/README.md` documents
+queue/rejection outcomes, `telnet/README.md` points operators to configured gate
+diagnostics, and `customgpt/common-questions.md` routes the rejection question to
+those sources. No new architecture or troubleshooting decision is introduced.
+Final source/diff review found no unresolved material defect; entry-comment and
+map/whitespace checks are recorded with the checkpoint artifacts before commit.
+External services, production load and the production correction/classifier
+pipeline remain outside this consumer qualification.

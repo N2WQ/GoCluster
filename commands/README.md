@@ -58,6 +58,16 @@ The runtime supports two command dialects:
 
 Dialect selection is user-visible and persisted per callsign. HELP is rendered for the active dialect, so the command list and examples change with the selected dialect.
 
+## Manual DX Admission
+
+A manual `DX` post that enters the queue returns `Spot queued.`. When the cluster's
+reputation gate refuses the post, it returns `Spot rejected.` and queues no
+spot. That message deliberately omits probation, allowance and IP-history
+details; configured operator reputation-drop diagnostics retain the cause.
+Numeric SSIDs share the baseline station allowance while saved settings remain
+separate. See the [telnet guide](../telnet/README.md) and
+[reputation configuration](../data/config/reputation.yaml).
+
 ## Command Surface
 
 The operator-facing commands handled here are:

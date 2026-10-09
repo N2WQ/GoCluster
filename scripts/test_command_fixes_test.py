@@ -22,6 +22,13 @@ spec.loader.exec_module(driver)
 
 
 class DriverControls(unittest.TestCase):
+    def test_reputation_refusal_requires_only_generic_feedback(self):
+        driver.require_reputation_refusal("\r\nSpot rejected.\r\n")
+        for text in ("", "Spot queued.", "Spot queue full.",
+                     "Spot rejected. Probation", "Spot rejected.\nASN: AS64500"):
+            with self.subTest(text=text), self.assertRaisesRegex(ValueError, "feedback is not generic"):
+                driver.require_reputation_refusal(text)
+
     def test_reputation_receipt_requires_the_requested_gate_identity(self):
         for requested in (False, True):
             support.require_reputation_identity({"reputation_enabled": requested}, requested)
