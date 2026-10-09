@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `ae26e8df4b3866cf`
+- Source fingerprint: `293f554ed38e9e7c`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -15,7 +15,7 @@
 | `dxcluster/internal/cluster` | `internal/cluster` | 25 | 63 |
 | `dxcluster/peer` | `peer` | 62 | 130 |
 | `dxcluster/spot` | `spot` | 33 | 32 |
-| `dxcluster/telnet` | `telnet` | 44 | 79 |
+| `dxcluster/telnet` | `telnet` | 45 | 82 |
 
 ## In-Scope Package Edges
 
@@ -504,6 +504,7 @@ Source files:
 - `telnet/history.go`
 - `telnet/history_filter.go`
 - `telnet/human_input_recovery.go`
+- `telnet/human_preference_stage.go`
 - `telnet/input_wire.go`
 - `telnet/latency.go`
 - `telnet/login_validation.go`
@@ -561,6 +562,9 @@ Test files:
 - `telnet/history_selection_test.go`
 - `telnet/history_test.go`
 - `telnet/human_input_recovery_test.go`
+- `telnet/human_preference_handoff_test.go`
+- `telnet/human_preference_publish_test.go`
+- `telnet/human_preference_stage_test.go`
 - `telnet/latency_test.go`
 - `telnet/machine_commands_test.go`
 - `telnet/machine_comments_test.go`
@@ -613,6 +617,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0269](docs/decisions/ADR-0269-detached-human-preference-publication.md) | Accepted | 2026-10-09 | telnet, configuration, staging, publication, ownership | `area:telnet, path:telnet` |
 | [ADR-0266](docs/decisions/ADR-0266-bounded-human-line-rejection.md) | Accepted | 2026-10-09 | telnet, input, protocol, deadlines, lifecycle | `area:telnet, path:telnet` |
 | [ADR-0264](docs/decisions/ADR-0264-task-oriented-compiled-help.md) | Accepted | 2026-10-08 | commands, HELP, dialects, operator documentation | `area:commands, path:commands, path:telnet` |
 | [ADR-0263](docs/decisions/ADR-0263-history-list-comma-boundaries.md) | Accepted | 2026-10-08 | commands, telnet, history parser, compatibility | `area:commands, area:telnet, path:commands, path:telnet` |

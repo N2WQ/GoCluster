@@ -216,7 +216,13 @@ func (s *Server) handleDialectCommand(c *Client, line string) (string, bool) {
 	if len(fields) == 0 || !strings.EqualFold(fields[0], "DIALECT") {
 		return "", false
 	}
-	return s.runPreferenceCommand(c, line, s.handleDialectCommandOwned)
+	return s.runPreferenceCommand(c, line, func(client *Client, input string) (string, bool) {
+		if len(fields) == 1 || len(fields) == 2 && strings.EqualFold(fields[1], "LIST") {
+			outcome := s.stageDialectCommand(client, input)
+			return outcome.response, outcome.handled
+		}
+		return s.runHumanPreferenceOwned(client, input, s.stageDialectCommand)
+	})
 }
 
 func (s *Server) handlePathSettingsCommand(c *Client, line string) (string, bool) {
@@ -226,7 +232,9 @@ func (s *Server) handlePathSettingsCommand(c *Client, line string) (string, bool
 	}
 	switch strings.ToUpper(fields[1]) {
 	case "GRID", "NOISE", "PATHSAMPLES":
-		return s.runPreferenceCommand(c, line, s.handlePathSettingsCommandOwned)
+		return s.runPreferenceCommand(c, line, func(client *Client, input string) (string, bool) {
+			return s.runHumanPreferenceOwned(client, input, s.stagePathSettingsCommand)
+		})
 	default:
 		return "", false
 	}
@@ -237,7 +245,9 @@ func (s *Server) handleSolarCommand(c *Client, line string) (string, bool) {
 	if len(fields) < 2 || !strings.EqualFold(fields[0], "SET") || !strings.EqualFold(fields[1], "SOLAR") {
 		return "", false
 	}
-	return s.runPreferenceCommand(c, line, s.handleSolarCommandOwned)
+	return s.runPreferenceCommand(c, line, func(client *Client, input string) (string, bool) {
+		return s.runHumanPreferenceOwned(client, input, s.stageSolarCommand)
+	})
 }
 
 func (s *Server) handleDedupeCommand(c *Client, line string) (string, bool) {
@@ -245,5 +255,11 @@ func (s *Server) handleDedupeCommand(c *Client, line string) (string, bool) {
 	if len(fields) < 2 || !strings.EqualFold(fields[1], "DEDUPE") || (!strings.EqualFold(fields[0], "SET") && !strings.EqualFold(fields[0], "SHOW")) {
 		return "", false
 	}
-	return s.runPreferenceCommand(c, line, s.handleDedupeCommandOwned)
+	return s.runPreferenceCommand(c, line, func(client *Client, input string) (string, bool) {
+		if strings.EqualFold(fields[0], "SHOW") {
+			outcome := s.stageDedupeCommand(client, input)
+			return outcome.response, outcome.handled
+		}
+		return s.runHumanPreferenceOwned(client, input, s.stageDedupeCommand)
+	})
 }

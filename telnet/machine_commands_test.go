@@ -97,7 +97,6 @@ func TestMachineUnchangedPUTRepairsDurabilityWithoutRuntimeReset(t *testing.T) {
 	c.setDedupePolicy(dedupePolicyFast)
 	c.setSolarSummaryMinutes(15, time.Now())
 	c.filter.Bands["20m"] = false
-	priorBands := c.filter.Bands
 	if err := c.saveFilter(); err != nil {
 		t.Fatal(err)
 	}
@@ -116,6 +115,9 @@ func TestMachineUnchangedPUTRepairsDurabilityWithoutRuntimeReset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Human staging intentionally publishes detached collections. Capture the
+	// current collection at the machine boundary, whose unchanged PUT must retain it.
+	priorBands := c.filter.Bands
 	command, request := decodeProposalTest(t, c, "PUT", "SETTINGS", "  dialect: go\n  grid: \"\"\n  noise_class: URBAN\n  dedupe_policy: FAST\n  path_min_observation_count: 0\n  solar_summary_minutes: 15\n")
 	response = s.applyMachineRequest(c, command, request)
 	if !strings.Contains(response, "persisted: true") || strings.Contains(response, "error:") {

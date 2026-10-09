@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0269 | Detached Human Preference Publication | Accepted | 2026-10-09 | telnet, configuration, staging, publication, ownership | Refines ADR-0244 | - | `docs/decisions/ADR-0269-detached-human-preference-publication.md` |
 | ADR-0268 | Exact-Byte User Record Preparation | Accepted | 2026-10-09 | filter, persistence, configuration, ownership, exact bytes | Refines ADR-0244 | - | `docs/decisions/ADR-0268-exact-byte-user-record-preparation.md` |
 | ADR-0267 | Compatible Stored YAML Decoding | Accepted | 2026-10-09 | filter, YAML, persistence, compatibility, work accounting | - | - | `docs/decisions/ADR-0267-compatible-stored-yaml-decoding.md` |
 | ADR-0266 | Bounded Human Line Rejection | Accepted | 2026-10-09 | telnet, input, protocol, deadlines, lifecycle | Refines human-line recovery; preserves ADR-0245 machine framing | - | `docs/decisions/ADR-0266-bounded-human-line-rejection.md` |

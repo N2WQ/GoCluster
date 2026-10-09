@@ -374,6 +374,24 @@ See [ADR-0258](decisions/ADR-0258-per-mode-minimum-snr-filter.md) and the
 [telnet command contract](../telnet/README.md#minimum-snr).
 
 
+## Human Preference Publication
+
+Human filter and settings commands prepare writable preferences on detached
+state under the existing full-SSID transaction lease. Refused commands publish
+and persist nothing. Read-only commands retain their live readback paths.
+
+Accepted commands publish before attempting persistence; a save failure keeps
+the edit live and reports the existing warning. Repeated ordinary filter commands
+retain their save attempts, while unchanged DIALECT and idempotent COMMENT edits
+do not save. NEARBY restoration and effective cells remain runtime state.
+
+Human SET SOLAR deliberately reapplies scheduling at publication, including an
+unchanged cadence. Other human edits preserve broadcaster progress. Unchanged
+machine cadence preserves its clock; LOAD starts a fresh schedule. Publication
+retains stable Filter identity and does not replace diagnostics, read-pause or
+connection lifecycle ownership. See
+[ADR-0269](decisions/ADR-0269-detached-human-preference-publication.md).
+
 ## Literal Comment Filtering And Archive Selection
 
 COMMENT matches case-insensitive ASCII literal substrings of the stored comment,

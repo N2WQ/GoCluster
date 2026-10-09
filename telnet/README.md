@@ -156,7 +156,9 @@ configured command-line ceiling still applies to the whole command. Invalid or
 over-limit operations fail before any move/add/removal. Human additions are
 case-insensitive and idempotent; moving or removing a phrase deletes all
 case-equivalent opposite/selected entries. All filter resets clear comments.
-Human commands retain existing live-update-then-save behavior; a disk failure
+Human filter and settings edits are prepared before publication; a rejected edit
+leaves live preferences and saved bytes unchanged. Accepted edits retain existing
+live-update-then-save behavior; a disk failure
 is logged and reported, and does not roll back a human filter edit. Filter,
 COMMENT, reset and changed DIALECT commands append a warning when saving fails:
 

@@ -96,16 +96,19 @@ def profile(binary, root, source, transport):
                 f"{transport}: preparation failure and protected login preserve refused records",
                 f"{transport}: compatible storage and old alias refusal reach login and LOAD",
                 f"{transport}: real machine LOAD and SAVE commit faults preserve publication",
+                f"{transport}: detached human edits preserve refusal and NEARBY restoration",
                 f"{transport}/1: held endpoint and loaded consumers",
                 f"{transport}: preferences and archive survive fresh child",
                 f"{transport}: NOFILTER geography survives fresh child",
                 f"{transport}: failed saves and refused records survive fresh child",
                 f"{transport}: compatible storage survives fresh child",
-                f"{transport}: prepared commit outcomes survive fresh child"]
+                f"{transport}: prepared commit outcomes survive fresh child",
+                f"{transport}: detached human settings survive fresh child"]
     call = "K1ABC-70001"
     observer_call, observer_configuration = "VE3ABC-70003", None
     failed_records, refused_records, compatible_records = {}, {}, {}
     prepared_records = {}
+    staged_records = {}
     label = "T" + uuid.uuid4().hex[:8].upper()
     suites = []
     for generation in range(2):
@@ -434,6 +437,63 @@ def profile(binary, root, source, transport):
                     prepared_records[prepared_call] = (saved, before["configuration"], before["status"]["preset"])
 
                 case(f"{transport}: real machine LOAD and SAVE commit faults preserve publication", prepared_commit_faults)
+
+                def detached_human_edits():
+                    for dialect, staged_call in (("go", "K1ABC-70012"), ("cc", "K1ABC-70013")):
+                        current = harness.Session(suite, staged_call)
+                        current.human("PAUSE 300")
+                        current.human("DIALECT " + dialect)
+                        current.human("SET DIAG SOURCE")
+                        current.human("SET GRID FN31", "Grid set to FN31")
+                        _, ordinary = current.human("PASS DXCONT EU", "Filter set: DX continents EU")
+                        restoration = ordinary["configuration"]["filters"]["dx_continents"]
+                        _, nearby = current.human("PASS NEARBY ON", "Nearby filter enabled")
+                        require(nearby["status"]["effective"]["nearby_active"],
+                                "NEARBY control did not become active")
+                        record = root / "users" / (staged_call + ".yaml")
+                        saved = record.read_bytes()
+                        band = "PASS BAND" if dialect == "go" else "SET/FILTER BAND"
+                        mode = "REJECT MODE" if dialect == "go" else "UNSET/FILTER MODE"
+                        for line, response in ((band + " 20,NOTABAND", "Unknown band"),
+                                               (mode + " CW,NOTAMODE", "Unknown mode"),
+                                               ("PASS COMMENT", "Usage:"),
+                                               ("SET NOISE NOTACLASS", "Unknown noise class"),
+                                               ("PASS NEARBY MAYBE", "Usage:")):
+                            _, refused = current.human(line, response)
+                            require(refused["configuration"] == nearby["configuration"] and
+                                    refused["revision"] == nearby["revision"] and
+                                    refused["status"]["effective"] == nearby["status"]["effective"] and
+                                    record.read_bytes() == saved,
+                                    "refused detached edit affected live or durable state")
+
+                        # Readable authoritative file and writable temp directory;
+                        # only atomic replacement is refused after valid login.
+                        with deny_record_replacement(record):
+                            text, temporary = current.human("SET NOISE URBAN", "warning: failed to persist")
+                            require(text.count("warning: failed to persist") == 1 and
+                                    temporary["configuration"]["settings"]["noise_class"] == "URBAN" and
+                                    temporary["status"]["effective"]["nearby_active"] and
+                                    record.read_bytes() == saved,
+                                    "human commit failure lost the live edit or NEARBY state")
+
+                        _, changed_grid = current.human("SET GRID IO91", "Grid set to IO91")
+                        require(changed_grid["status"]["effective"]["nearby_active"] and
+                                changed_grid["status"]["effective"]["grid"] == "IO91",
+                                "active GRID change lost NEARBY cells")
+                        _, restored = current.human("PASS NEARBY OFF", "Nearby filter disabled")
+                        require(restored["configuration"]["filters"]["dx_continents"] == restoration and
+                                not restored["status"]["effective"]["nearby_active"],
+                                "unrelated edits or GRID change lost restoration rules")
+                        _, configured = current.human("SET SOLAR 15", "Solar summaries: every 15 minutes")
+                        require(configured["status"]["session"]["diagnostic_comments"] == "SOURCE" and
+                                configured["status"]["session"]["pause_active"],
+                                "human publication changed diagnostics or read pause")
+                        persisted = record.read_bytes()
+                        current.human("SHOW DEDUPE", "Dedupe")
+                        require(record.read_bytes() == persisted, "read-only command saved a record")
+                        staged_records[staged_call] = configured["configuration"]
+
+                case(f"{transport}: detached human edits preserve refusal and NEARBY restoration", detached_human_edits)
             else:
                 def restored():
                     settings = session.get()["configuration"]["settings"]
@@ -508,6 +568,18 @@ def profile(binary, root, source, transport):
                                 "library I/O outcomes did not survive replacement")
 
                 case(f"{transport}: prepared commit outcomes survive fresh child", restored_prepared_commits)
+
+                def restored_detached_humans():
+                    for stored_call, configuration in staged_records.items():
+                        restored = harness.Session(suite, stored_call)
+                        _, document = restored.human("PAUSE 300")
+                        require(document["configuration"] == configuration and
+                                document["status"]["effective"]["grid"] == "IO91" and
+                                document["status"]["effective"]["noise_class"] == "URBAN" and
+                                not document["status"]["effective"]["nearby_active"],
+                                "fresh child lost accepted detached human outcomes")
+
+                case(f"{transport}: detached human settings survive fresh child", restored_detached_humans)
         finally:
             try:
                 if suite:

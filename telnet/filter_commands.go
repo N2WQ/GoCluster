@@ -200,24 +200,22 @@ func (e *filterCommandEngine) Handle(client *Client, line string) (string, bool)
 	}
 	defer release()
 	client.refreshConfigurationRevision()
-	response, handled := e.handleOwned(client, line)
+	outcome, needsStage := e.preflightHumanFilterOwned(client, line)
+	response, handled := outcome.response, outcome.handled
+	if needsStage {
+		response, handled = client.server.runHumanPreferenceOwned(client, line, e.stageOwned)
+	}
 	client.refreshConfigurationRevision()
 	return response, handled
 }
 
-func (e *filterCommandEngine) handleOwned(client *Client, line string) (string, bool) {
+func (e *filterCommandEngine) stageOwned(client *Client, line string) humanCommandOutcome {
 	if resp, handled, mutated := handleCommentFilterCommand(client, line); handled {
-		if mutated {
-			if err := client.saveFilterOwned(); err != nil {
-				log.Printf("Warning: failed to persist filter for %s: %v", client.callsign, err)
-				resp += fmt.Sprintf("warning: failed to persist; changes are active but were not saved: %v\n", err)
-			}
-		}
-		return resp, true
+		return humanCommandOutcome{response: resp, handled: true, publish: mutated, warning: humanWarningFilter}
 	}
 	tokens := strings.Fields(strings.TrimSpace(line))
 	if len(tokens) == 0 {
-		return "", false
+		return humanCommandOutcome{}
 	}
 	upper := make([]string, len(tokens))
 	for i, t := range tokens {
@@ -228,23 +226,17 @@ func (e *filterCommandEngine) handleOwned(client *Client, line string) (string, 
 	parsed, ok, errText := e.parse(tokens, upper, active)
 	if ok {
 		if errText != "" {
-			return errText, true
+			return humanHandled(errText)
 		}
 		resp, mutated := e.execute(client, parsed)
-		if mutated {
-			if err := client.saveFilterOwned(); err != nil {
-				log.Printf("Warning: failed to persist filter for %s: %v", client.callsign, err)
-				resp += fmt.Sprintf("warning: failed to persist; changes are active but were not saved: %v\n", err)
-			}
-		}
-		return resp, true
+		return humanCommandOutcome{response: resp, handled: true, publish: mutated, warning: humanWarningFilter}
 	}
 
 	if hint := e.hintForOtherDialect(tokens, upper, active); hint != "" {
-		return hint, true
+		return humanHandled(hint)
 	}
 
-	return "", false
+	return humanCommandOutcome{}
 }
 
 func (e *filterCommandEngine) parse(tokens, upper []string, dialect DialectName) (parsedFilterCommand, bool, string) {

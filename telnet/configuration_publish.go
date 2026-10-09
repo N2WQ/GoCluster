@@ -140,3 +140,29 @@ func (s *Server) publishPreparedConfiguration(c *Client, next filter.Configurati
 	c.pathMu.Unlock()
 	c.refreshConfigurationRevision()
 }
+
+// Human commands publish their staged runtime Filter directly, preserving
+// ordinary NEARBY restoration rather than reconstructing machine runtime state.
+// The SSID lease covers publication/save. Fan-out sees stable Filter identity
+// under path→filter locks; unrelated edits never replace a broadcaster's tick.
+// Publication transfers the staged collections to the live client. The command
+// must discard the adapter and never mutate those collections after this call.
+func (s *Server) publishHumanPreference(c, staged *Client, forceSolar bool) {
+	c.pathMu.Lock()
+	c.filterMu.Lock()
+	if c.filter != nil && staged.filter != nil {
+		*c.filter = *staged.filter
+	}
+	c.grid, c.gridDerived = staged.grid, staged.gridDerived
+	c.gridCell, c.gridCoarseCell = staged.gridCell, staged.gridCoarseCell
+	c.noiseClass, c.pathMinObservationCount = staged.noiseClass, staged.pathMinObservationCount
+	c.dialect = staged.dialect
+	c.setDedupePolicy(staged.getDedupePolicy())
+	if forceSolar {
+		c.setSolarSummaryMinutes(staged.configuredSettings.SolarSummaryMinutes, s.now())
+	}
+	c.configuredSettings, c.configurationInitialized = staged.configuredSettings, true
+	c.filterMu.Unlock()
+	c.pathMu.Unlock()
+	c.refreshConfigurationRevision()
+}

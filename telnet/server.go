@@ -1418,24 +1418,25 @@ func (w *dropWindow) record(now time.Time, dropped bool) (uint64, uint64) {
 	return attempts, drops
 }
 
-// handleDialectCommand lets a client select a filter command dialect explicitly.
-func (s *Server) handleDialectCommandOwned(client *Client, line string) (string, bool) {
+// stageDialectCommand selects a candidate dialect and reports explicit intent.
+// The human coordinator owns publication and command-specific save warnings.
+func (s *Server) stageDialectCommand(client *Client, line string) humanCommandOutcome {
 	if client == nil || s == nil || s.filterEngine == nil {
-		return "", false
+		return humanCommandOutcome{}
 	}
 	fields := strings.Fields(strings.TrimSpace(line))
 	if len(fields) == 0 {
-		return "", false
+		return humanCommandOutcome{}
 	}
 	if !strings.EqualFold(fields[0], "DIALECT") {
-		return "", false
+		return humanCommandOutcome{}
 	}
 	if len(fields) == 1 {
-		return fmt.Sprintf("Current dialect: %s\n", strings.ToUpper(string(client.dialect))), true
+		return humanHandled(fmt.Sprintf("Current dialect: %s\n", strings.ToUpper(string(client.dialect))))
 	}
 	if len(fields) == 2 && strings.EqualFold(fields[1], "LIST") {
 		names := s.filterEngine.availableDialectNames()
-		return fmt.Sprintf("Available dialects: %s\n", strings.ToUpper(strings.Join(names, ", "))), true
+		return humanHandled(fmt.Sprintf("Available dialects: %s\n", strings.ToUpper(strings.Join(names, ", "))))
 	}
 	nameToken := strings.ToLower(strings.TrimSpace(fields[1]))
 	selected, ok := s.filterEngine.dialectAliases[nameToken]
@@ -1447,20 +1448,15 @@ func (s *Server) handleDialectCommandOwned(client *Client, line string) (string,
 		}
 	}
 	if !ok {
-		return fmt.Sprintf("Unknown dialect: %s\nAvailable dialects: %s\n", fields[1], strings.ToUpper(strings.Join(s.filterEngine.availableDialectNames(), ", "))), true
+		return humanHandled(fmt.Sprintf("Unknown dialect: %s\nAvailable dialects: %s\n", fields[1], strings.ToUpper(strings.Join(s.filterEngine.availableDialectNames(), ", "))))
 	}
 	if client.dialect == selected {
-		return fmt.Sprintf("Dialect already set to %s\n", strings.ToUpper(string(selected))), true
+		return humanHandled(fmt.Sprintf("Dialect already set to %s\n", strings.ToUpper(string(selected))))
 	}
 	client.dialect = selected
 	client.configuredSettings.Dialect = string(selected)
 	response := fmt.Sprintf("Dialect set to %s\n", strings.ToUpper(string(selected)))
-	// Persist updated dialect selection.
-	if err := client.saveFilterOwned(); err != nil {
-		log.Printf("Warning: failed to persist dialect for %s: %v", client.callsign, err)
-		response += fmt.Sprintf("warning: failed to persist; changes are active but were not saved: %v\n", err)
-	}
-	return response, true
+	return humanCommandOutcome{response: response, handled: true, publish: true, warning: humanWarningDialect}
 }
 
 type dialectTemplateData struct {
@@ -1521,27 +1517,28 @@ func (s *Server) formatPathStatusMessage(client *Client) string {
 	return replacer.Replace(template)
 }
 
-// handlePathSettingsCommand processes SET GRID/SET NOISE/SET PATHSAMPLES commands.
-func (s *Server) handlePathSettingsCommandOwned(client *Client, line string) (string, bool) {
+// stagePathSettingsCommand mutates only candidate GRID/noise/sample settings.
+// Publication and persistence belong to the enclosing human coordinator.
+func (s *Server) stagePathSettingsCommand(client *Client, line string) humanCommandOutcome {
 	if client == nil {
-		return "", false
+		return humanCommandOutcome{}
 	}
 	upper := strings.Fields(strutil.NormalizeUpper(line))
 	if len(upper) < 2 || upper[0] != "SET" {
-		return "", false
+		return humanCommandOutcome{}
 	}
 	switch upper[1] {
 	case "GRID":
 		if len(upper) < 3 {
-			return "Usage: SET GRID <4-6 char maidenhead>\n", true
+			return humanHandled("Usage: SET GRID <4-6 char maidenhead>\n")
 		}
 		grid := strutil.NormalizeUpper(upper[2])
 		if len(grid) < 4 {
-			return "Grid must be at least 4 characters (e.g., FN31)\n", true
+			return humanHandled("Grid must be at least 4 characters (e.g., FN31)\n")
 		}
 		cell := pathreliability.EncodeCell(grid)
 		if cell == pathreliability.InvalidCell {
-			return "Invalid grid. Please provide a 4-6 character Maidenhead locator.\n", true
+			return humanHandled("Invalid grid. Please provide a 4-6 character Maidenhead locator.\n")
 		}
 		coarseCell := pathreliability.EncodeCoarseCell(grid)
 		client.configuredSettings.Grid = grid
@@ -1556,33 +1553,27 @@ func (s *Server) handlePathSettingsCommandOwned(client *Client, line string) (st
 				f.UpdateNearbyUserCells(cell, coarseCell)
 			}
 		})
-		if err := client.saveFilterOwned(); err != nil {
-			return fmt.Sprintf("Grid set to %s (warning: failed to persist: %v)\n", grid, err), true
-		}
-		return fmt.Sprintf("Grid set to %s\n", grid), true
+		return humanMutation(fmt.Sprintf("Grid set to %s\n", grid), "Grid set to %s (warning: failed to persist: %v)\n", grid)
 	case "NOISE":
 		if len(upper) < 3 {
-			return "Usage: SET NOISE <QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL>\n", true
+			return humanHandled("Usage: SET NOISE <QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL>\n")
 		}
 		class := strutil.NormalizeUpper(upper[2])
 		if class == "" || !s.noiseClassKnown(class) {
-			return "Unknown noise class. Use QUIET, RURAL, SUBURBAN, URBAN, or INDUSTRIAL.\n", true
+			return humanHandled("Unknown noise class. Use QUIET, RURAL, SUBURBAN, URBAN, or INDUSTRIAL.\n")
 		}
 		client.pathMu.Lock()
 		client.noiseClass = class
 		client.pathMu.Unlock()
 		client.configuredSettings.NoiseClass = class
-		if err := client.saveFilterOwned(); err != nil {
-			return fmt.Sprintf("Noise class set to %s (warning: failed to persist: %v)\n", class, err), true
-		}
-		return fmt.Sprintf("Noise class set to %s\n", class), true
+		return humanMutation(fmt.Sprintf("Noise class set to %s\n", class), "Noise class set to %s (warning: failed to persist: %v)\n", class)
 	case "PATHSAMPLES":
 		if len(upper) < 3 {
-			return "Usage: SET PATHSAMPLES <count|DEFAULT>\n", true
+			return humanHandled("Usage: SET PATHSAMPLES <count|DEFAULT>\n")
 		}
 		clusterDefault, ok := s.pathMinObservationDefault()
 		if !ok {
-			return "Path reliability is disabled.\n", true
+			return humanHandled("Path reliability is disabled.\n")
 		}
 		token := upper[2]
 		if token == "DEFAULT" {
@@ -1590,31 +1581,25 @@ func (s *Server) handlePathSettingsCommandOwned(client *Client, line string) (st
 			client.pathMinObservationCount = 0
 			client.pathMu.Unlock()
 			client.configuredSettings.PathMinObservationCount = 0
-			if err := client.saveFilterOwned(); err != nil {
-				return fmt.Sprintf("Path sample minimum reset to cluster default %d (warning: failed to persist: %v)\n", clusterDefault, err), true
-			}
-			return fmt.Sprintf("Path sample minimum reset to cluster default %d\n", clusterDefault), true
+			return humanMutation(fmt.Sprintf("Path sample minimum reset to cluster default %d\n", clusterDefault), "Path sample minimum reset to cluster default %d (warning: failed to persist: %v)\n", clusterDefault)
 		}
 		count, err := strconv.Atoi(token)
 		if err != nil || count <= 0 {
-			return "Usage: SET PATHSAMPLES <count|DEFAULT>\n", true
+			return humanHandled("Usage: SET PATHSAMPLES <count|DEFAULT>\n")
 		}
 		if count > maxUserPathMinObservationCount {
-			return fmt.Sprintf("Path sample minimum must be %d or lower\n", maxUserPathMinObservationCount), true
+			return humanHandled(fmt.Sprintf("Path sample minimum must be %d or lower\n", maxUserPathMinObservationCount))
 		}
 		if count <= clusterDefault {
-			return fmt.Sprintf("Path sample minimum must be greater than cluster default %d\n", clusterDefault), true
+			return humanHandled(fmt.Sprintf("Path sample minimum must be greater than cluster default %d\n", clusterDefault))
 		}
 		client.pathMu.Lock()
 		client.pathMinObservationCount = count
 		client.pathMu.Unlock()
 		client.configuredSettings.PathMinObservationCount = count
-		if err := client.saveFilterOwned(); err != nil {
-			return fmt.Sprintf("Path sample minimum set to %d (cluster default %d; warning: failed to persist: %v)\n", count, clusterDefault, err), true
-		}
-		return fmt.Sprintf("Path sample minimum set to %d (cluster default %d)\n", count, clusterDefault), true
+		return humanMutation(fmt.Sprintf("Path sample minimum set to %d (cluster default %d)\n", count, clusterDefault), "Path sample minimum set to %d (cluster default %d; warning: failed to persist: %v)\n", count, clusterDefault)
 	default:
-		return "", false
+		return humanCommandOutcome{}
 	}
 }
 
@@ -1773,86 +1758,78 @@ func (s *Server) handleDiagCommand(client *Client, line string) (string, bool) {
 	}
 }
 
-// handleSolarCommand processes SET SOLAR commands.
-func (s *Server) handleSolarCommandOwned(client *Client, line string) (string, bool) {
+// stageSolarCommand records cadence and explicit rescheduling intent. The live
+// deadline is computed at human publication, never at preparation time.
+func (s *Server) stageSolarCommand(client *Client, line string) humanCommandOutcome {
 	if client == nil {
-		return "", false
+		return humanCommandOutcome{}
 	}
 	upper := strings.Fields(strutil.NormalizeUpper(line))
 	if len(upper) < 2 || upper[0] != "SET" || upper[1] != "SOLAR" {
-		return "", false
+		return humanCommandOutcome{}
 	}
 	if len(upper) < 3 {
-		return "Usage: SET SOLAR <15|30|60|OFF>\n", true
+		return humanHandled("Usage: SET SOLAR <15|30|60|OFF>\n")
 	}
 	minutes, ok := parseSolarSummaryMinutes(upper[2])
 	if !ok {
-		return "Usage: SET SOLAR <15|30|60|OFF>\n", true
+		return humanHandled("Usage: SET SOLAR <15|30|60|OFF>\n")
 	}
-	now := time.Now().UTC()
-	client.setSolarSummaryMinutes(minutes, now)
 	client.configuredSettings.SolarSummaryMinutes = minutes
-	if err := client.saveFilterOwned(); err != nil {
-		if minutes == 0 {
-			return fmt.Sprintf("Solar summaries: OFF (warning: failed to persist: %v)\n", err), true
-		}
-		return fmt.Sprintf("Solar summaries: every %d minutes (warning: failed to persist: %v)\n", minutes, err), true
-	}
+	// The candidate exposes the proposed effective cadence but owns no deadline.
+	// Human publication schedules the live client using its then-current clock.
+	client.solarMu.Lock()
+	client.solarSummaryMinutes = minutes
+	client.solarMu.Unlock()
+	var outcome humanCommandOutcome
 	if minutes == 0 {
-		return "Solar summaries: OFF\n", true
+		outcome = humanMutation("Solar summaries: OFF\n", "Solar summaries: OFF (warning: failed to persist: %v)\n")
+	} else {
+		outcome = humanMutation(fmt.Sprintf("Solar summaries: every %d minutes\n", minutes), "Solar summaries: every %d minutes (warning: failed to persist: %v)\n", minutes)
 	}
-	return fmt.Sprintf("Solar summaries: every %d minutes\n", minutes), true
+	outcome.forceSolar = true
+	return outcome
 }
 
-// handleDedupeCommand processes SET/SHOW DEDUPE commands.
-func (s *Server) handleDedupeCommandOwned(client *Client, line string) (string, bool) {
+// stageDedupeCommand selects a candidate policy and its exact warning format.
+// SHOW remains a live read-only path; the coordinator owns saves for SET.
+func (s *Server) stageDedupeCommand(client *Client, line string) humanCommandOutcome {
 	if client == nil || s == nil {
-		return "", false
+		return humanCommandOutcome{}
 	}
 	upper := strings.Fields(strutil.NormalizeUpper(line))
 	if len(upper) < 2 {
-		return "", false
+		return humanCommandOutcome{}
 	}
 	switch upper[0] {
 	case "SHOW":
 		if upper[1] != "DEDUPE" {
-			return "", false
+			return humanCommandOutcome{}
 		}
-		return s.formatDedupeStatus(client), true
+		return humanHandled(s.formatDedupeStatus(client))
 	case "SET":
 		if upper[1] != "DEDUPE" {
-			return "", false
+			return humanCommandOutcome{}
 		}
 		if len(upper) < 3 {
-			return "Usage: SET DEDUPE <FAST|MED|SLOW>\n", true
+			return humanHandled("Usage: SET DEDUPE <FAST|MED|SLOW>\n")
 		}
 		requested, ok := parseDedupePolicyToken(upper[2])
 		if !ok {
-			return "Usage: SET DEDUPE <FAST|MED|SLOW>\n", true
+			return humanHandled("Usage: SET DEDUPE <FAST|MED|SLOW>\n")
 		}
 		effective := s.resolveDedupePolicy(requested)
 		client.setDedupePolicy(effective)
 		client.configuredSettings.DedupePolicy = effective.label()
-		saveErr := client.saveFilterOwned()
-
 		if !s.dedupeFastEnabled && !s.dedupeMedEnabled && !s.dedupeSlowEnabled {
-			if saveErr != nil {
-				return fmt.Sprintf("Dedupe policy set to %s (secondary disabled; warning: failed to persist: %v)\n", effective.label(), saveErr), true
-			}
-			return fmt.Sprintf("Dedupe policy set to %s (secondary disabled)\n", effective.label()), true
+			return humanMutation(fmt.Sprintf("Dedupe policy set to %s (secondary disabled)\n", effective.label()), "Dedupe policy set to %s (secondary disabled; warning: failed to persist: %v)\n", effective.label())
 		}
 		if requested != effective {
-			if saveErr != nil {
-				return fmt.Sprintf("Dedupe policy set to %s (requested %s disabled; warning: failed to persist: %v)\n", effective.label(), requested.label(), saveErr), true
-			}
-			return fmt.Sprintf("Dedupe policy set to %s (requested %s disabled)\n", effective.label(), requested.label()), true
+			return humanMutation(fmt.Sprintf("Dedupe policy set to %s (requested %s disabled)\n", effective.label(), requested.label()), "Dedupe policy set to %s (requested %s disabled; warning: failed to persist: %v)\n", effective.label(), requested.label())
 		}
-		if saveErr != nil {
-			return fmt.Sprintf("Dedupe policy set to %s (warning: failed to persist: %v)\n", effective.label(), saveErr), true
-		}
-		return fmt.Sprintf("Dedupe policy set to %s\n", effective.label()), true
+		return humanMutation(fmt.Sprintf("Dedupe policy set to %s\n", effective.label()), "Dedupe policy set to %s (warning: failed to persist: %v)\n", effective.label())
 	default:
-		return "", false
+		return humanCommandOutcome{}
 	}
 }
 

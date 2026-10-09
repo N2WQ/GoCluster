@@ -557,3 +557,90 @@ the complete filter tests. Support-agent documentation impact is Required and
 completed in the persistence troubleshooting route. ADR-0268 records prepared
 ownership and its limits. Code-map/whitespace and indexed TSR checks close out
 this checkpoint; the new admission behavior remains deferred to 04d.
+
+## Checkpoint 04c: detached human preparation and publication
+
+Status: complete. Checkpoint 04b is committed as `4471943`.
+
+The selected design constructs a fresh, operation-owned minimal Client adapter
+with detached filter maps/lists/toggles, configured settings and current effective
+path/dialect/dedupe state. It never copies live mutexes, atomics, queues, cursors,
+sockets or lifecycle ownership. Preserve NEARBY cells, the immutable restoration
+snapshot and the legacy scalar omitted from Configuration. DisableNearby copies
+the snapshot's maps, so ordinary restoration does not mutate the shared snapshot.
+
+Stage handlers contain no persistence. Their explicit outcome distinguishes
+handled/refused/read-only commands from publication/save intent and deliberate
+human SOLAR rescheduling. Preserve command-specific success/warning formatting;
+neither configuration equality nor response text determines save intent. Existing
+ordinary repeated PASS commands still save; unchanged DIALECT/COMMENT choices do
+not. Read-only summaries remain on the live readback path before candidate cloning.
+
+The existing full-SSID lease spans staging, publication, saving and response.
+Keep runPreferenceCommand's generic lease callback contract, which semantic
+references also identify in history tests/fuzz fixtures. Production staged
+handlers coordinate within that existing lease. Publish the staged runtime
+Filter directly with stable Filter identity and path-then-filter lock order;
+machine preparation must not reconstruct human NEARBY state or defaults.
+Filterless lightweight settings callers remain supported.
+
+An accepted human edit still publishes before its save attempt, and a save
+failure keeps it live with the existing warning. Same-cadence human SET SOLAR
+starts its deliberate fresh schedule at publication. Unrelated edits preserve
+live broadcaster progress between preparation and publication. Machine unchanged
+cadence and LOAD retain their different existing scheduling contracts. No new
+quota, argument grammar, MODE, GRID or dedupe policy activates in this checkpoint.
+
+A separate-context read-only detailed falsifiability pass refined the evidence
+without finding a new policy/scope requirement. The lead dispositions its five
+findings as checker-only refinements, covered below. The 19 runner
+lifecycle/qualification controls passed in
+`checkpoint-04c-runner-controls.log` after extending the required checkout cases.
+
+| Contract / broken design | Stimulus and required observation | Evidence / checker owner |
+|---|---|---|
+| Construction initializes or otherwise changes live state | Snapshot raw uninitialized metadata, revisions, history/cursor and lifecycle fields before invoking any capture/revision helper; build and discard candidate; exact original values remain | Direct constructor test, telnet |
+| Candidate retains writable live references | Mutate candidate maps/lists/toggles and stage accepted/refused commands; original live rules/path/settings and saved bytes remain unchanged until publication | Direct detached-stage tests, telnet |
+| Partial invalid command changes live or disk | Mixed valid/invalid GO and CC selections plus settings failures; explicit refused result; no save attempt, revision/effective/rule/file changes | Unit command matrix and checkout runner |
+| Read-only/no-op paths acquire publication/save intent | Current/LIST DIALECT, SHOW filters/DEDUPE, unchanged COMMENT/DIALECT, repeated ordinary PASS; assert the distinct literal save-attempt rules | Existing persistence tests plus explicit stage outcomes, telnet |
+| Publication reconstructs or loses NEARBY restoration | ON/OFF, active GRID update, unrelated setting, NOFILTER, RESET and loaded active state without a snapshot; literal restoration rules/cells and stable Filter pointer | Runtime publication tests plus actual checkout/fresh-child readbacks |
+| SOLAR uses preparation time or overwrites broadcaster progress | Bracket stage-to-publication with a cross-clock-boundary test and advance the live tick in between; human SET uses literal publication deadline, unrelated edit retains advanced tick | Direct clock/barrier tests; existing machine/LOAD scheduling tests, telnet |
+| Failure test reaches the wrong persistence branch | After valid login, allow reads/temp-file writes and deny atomic replacement with production save hooks unset; live human edit survives and exact saved bytes do not change | Real filesystem-failure checkout cases; preparation/protected controls remain separate |
+| New bounds activate prematurely | Large ordinary warm-session record and fitting ordinary human edit beyond future record/configuration limits; accepted live change and durable save, without Preset/readback admission | Positive quota-inactivity test, telnet |
+| New path bypasses ownership or touches unrelated session state | Pause a save reached through the new human coordinator while reconnect attempts its occupied stripe and fan-out path/filter reads progress; successor restores the committed edit, retired teardown cannot overwrite; solar advancement, diagnostics/read-pause/history semantics are tested separately | Human-entry-point handoff test plus clock/publication and existing handoff controls, race-enabled telnet |
+
+Final observed evidence:
+
+- Complete filter and telnet packages passed ordinary and race checks
+  (`checkpoint-04c-targeted-retry.log`, `checkpoint-04c-race.log`). The first
+  ordinary run exposed an existing machine test that captured a collection before
+  an intervening human command; detached human publication intentionally replaces
+  collections. The test now captures at the unchanged machine PUT boundary and
+  retains its collection-identity assertion. No machine production change was
+  required. The failed log remains `checkpoint-04c-targeted.log`.
+- The complete ordinary Windows suite passed all 70 packages in
+  `checkpoint-04c-baseline.log`. Repository-wide vet, Staticcheck and lint passed;
+  lint reported zero issues. The changed Python runner passed native AST syntax
+  validation.
+- All 36 required checkout cases passed across both transports in
+  `.tmp/command-fixes/20261009-130814-75c8df3f`; all 36 also passed with race
+  detection in `.tmp/command-fixes/20261009-132009-d113ef9f`. Each run has zero
+  wire/cleanup failures and two joined children per transport. New cases check
+  refused mixed lists/settings, real denied replacement after login, retained
+  live changes and saved bytes, NEARBY restoration/GRID cells, diagnostics/pause,
+  read-only saves and exact outcomes recovered by a fresh child.
+
+A separate-context read-only Go quality review found no material production
+defect. Its evidence-wording refinement is reflected in the handoff row above:
+path/filter progress is observed during stalled saving, while solar advancement
+is tested separately at publication. The lead verified the final source and
+actual diff. Publication transfers collection ownership; the command discards
+its adapter afterward.
+
+Support-agent documentation impact is Required and completed in the persistence
+route, telnet documentation and domain contract. ADR-0269 records the detached
+ownership and scheduling decision. No new troubleshooting root cause or parser
+algorithm was introduced. Existing parser coverage remains in the complete
+packages; no new performance or production-capacity claim is made. Code-map,
+indexed TSR and whitespace checks close out this checkpoint. New admission
+thresholds and SAVE admission ordering remain deferred to 04d.
