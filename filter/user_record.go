@@ -227,41 +227,11 @@ func SaveUserRecord(callsign string, record *UserRecord) error {
 }
 
 func saveUserRecord(callsign string, record *UserRecord, write func(string, []byte) error) error {
-	if record == nil {
-		return errors.New("nil user record")
-	}
-	callsign = strings.TrimSpace(callsign)
-	if callsign == "" {
-		return errors.New("empty callsign")
-	}
-	if record.ConfigurationVersion != 0 && record.ConfigurationVersion != CurrentConfigurationVersion {
-		return ErrUnsupportedConfigurationVersion
-	}
-	if err := ConfigurationFromFilter(&record.Filter, SettingsConfiguration{}).ValidateStateRules(); err != nil {
-		return err
-	}
-	if err := ConfigurationFromFilter(&record.Filter, SettingsConfiguration{}).ValidateMinSNRRules(); err != nil {
-		return err
-	}
-	if err := ConfigurationFromFilter(&record.Filter, SettingsConfiguration{}).ValidateCommentRules(); err != nil {
-		return err
-	}
-	// Preserve the caller's captured preferences and baseline. Metadata trimming
-	// applies to this local copy; a failed write cannot alter the live reference.
-	snapshot := *record
-	snapshot.ConfigurationVersion = CurrentConfigurationVersion
-	snapshot.RecentIPs = trimRecentIPs(snapshot.RecentIPs)
-	var err error
-	snapshot.Preset, err = snapshot.Preset.Clone()
+	prepared, err := PrepareUserRecord(callsign, record)
 	if err != nil {
 		return err
 	}
-	bs, err := yaml.Marshal(&snapshot)
-	if err != nil {
-		return err
-	}
-	path := userRecordPath(callsign)
-	return write(path, bs)
+	return prepared.commitWith(write)
 }
 
 // UpdateRecentIPs updates recent IP history with a new address.

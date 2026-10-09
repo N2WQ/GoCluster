@@ -19,23 +19,35 @@ func SaveUserPreferences(callsign string, set *SavedPreset, recentIPs []string) 
 }
 
 func saveUserPreferences(callsign string, set *SavedPreset, recentIPs []string, write func(string, []byte) error) error {
+	prepared, err := PrepareUserPreferences(callsign, set, recentIPs)
+	if err != nil {
+		return err
+	}
+	return prepared.commitWith(write)
+}
+
+// PrepareUserPreferences captures loaded preferences while retaining this full
+// login callsign's authoritative timestamp, IPs and applied-preset association.
+// Callers must guard the borrowed snapshot during preparation and retain their
+// transaction ownership through commit. No durable state changes here.
+func PrepareUserPreferences(callsign string, set *SavedPreset, recentIPs []string) (*PreparedUserRecord, error) {
 	callsign = strings.ToUpper(strings.TrimSpace(callsign))
 	if !spot.IsValidNormalizedCallsign(callsign) {
-		return errors.New("invalid login callsign")
+		return nil, errors.New("invalid login callsign")
 	}
 	if set == nil {
-		return errors.New("nil saved preset")
+		return nil, errors.New("nil saved preset")
 	}
 	record, err := LoadUserRecord(callsign)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("load current user record: %w", err)
+		return nil, fmt.Errorf("load current user record: %w", err)
 	}
 	if record == nil {
 		record = &UserRecord{}
 	}
 	applyRecordConfiguration(record, ConfigurationFromPreset(set))
 	record.RecentIPs = MergeRecentIPs(recentIPs, record.RecentIPs)
-	return saveUserRecord(callsign, record, write)
+	return PrepareUserRecord(callsign, record)
 }
 
 // SaveConfiguration atomically commits exact preferences and the explicit
@@ -47,35 +59,47 @@ func SaveConfiguration(callsign string, cfg Configuration, ref *PresetReference,
 }
 
 func saveConfiguration(callsign string, cfg Configuration, ref *PresetReference, recentIPs []string, write func(string, []byte) error) error {
+	prepared, err := PrepareConfiguration(callsign, cfg, ref, recentIPs)
+	if err != nil {
+		return err
+	}
+	return prepared.commitWith(write)
+}
+
+// PrepareConfiguration captures exact preferences and an explicit association;
+// nil clears the association. Stored timestamp/IP metadata belongs to this full
+// login callsign. Input synchronization, schema/availability validation and
+// transaction ownership through Commit remain the caller's responsibility.
+func PrepareConfiguration(callsign string, cfg Configuration, ref *PresetReference, recentIPs []string) (*PreparedUserRecord, error) {
 	callsign = strings.ToUpper(strings.TrimSpace(callsign))
 	if !spot.IsValidNormalizedCallsign(callsign) {
-		return errors.New("invalid login callsign")
+		return nil, errors.New("invalid login callsign")
 	}
 	if err := cfg.ValidateStateRules(); err != nil {
-		return err
+		return nil, err
 	}
 	if err := cfg.ValidateMinSNRRules(); err != nil {
-		return err
+		return nil, err
 	}
 	for _, toggle := range cfg.Filters.toggles() {
 		if toggle > DefaultBoolTrue {
-			return errors.New("invalid default boolean selection")
+			return nil, errors.New("invalid default boolean selection")
 		}
 	}
 	record, err := LoadUserRecord(callsign)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("load current user record: %w", err)
+		return nil, fmt.Errorf("load current user record: %w", err)
 	}
 	if record == nil {
 		record = &UserRecord{}
 	}
 	record.Preset, err = ref.Clone()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	applyRecordConfiguration(record, cfg)
 	record.RecentIPs = MergeRecentIPs(recentIPs, record.RecentIPs)
-	return saveUserRecord(callsign, record, write)
+	return PrepareUserRecord(callsign, record)
 }
 
 func applyRecordConfiguration(record *UserRecord, cfg Configuration) {

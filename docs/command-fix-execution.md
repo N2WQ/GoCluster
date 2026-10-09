@@ -478,3 +478,82 @@ admission limits or migrate production data.
 
 Code maps were generated and checked fresh on this state; they produced no
 content diff. Final whitespace/diff checks and the indexed TSR checker passed.
+
+## Checkpoint 04b: exact-byte preparation and commit
+
+Status: complete.
+Checkpoint 04a.2 is committed as `f8f7fce`. New quotas remain inactive.
+
+Current saves already marshal once before the atomic writer. Configuration and
+preference saves first load authoritative SSID metadata, apply the captured
+preferences and merge current/fallback IPs. Preserve those differing validation
+boundaries: ordinary record preparation must not call `Configuration.Preset()`
+or add that preset's size restriction. Preference saves retain the association;
+configuration saves explicitly replace it, including nil to clear it.
+
+A separate-context read-only design challenge confirms an opaque prepared user
+record owned by filter: captured path, private final YAML bytes, byte length and
+a byte-only atomic commit. Preparation retains no caller maps, slices, baseline,
+record pointer or closures; input synchronization/detachment remains the caller's
+existing responsibility during preparation. Commit neither reloads metadata nor
+validates, normalizes or marshals again. The payload grants no transaction
+authority: telnet still holds its full-callsign lease through preparation/commit.
+
+The lead selects exported `PrepareUserRecord`, `PrepareConfiguration` and
+`PrepareUserPreferences`, returning `PreparedUserRecord` with `ByteLen` and
+`Commit`. Existing save functions retain prepare-then-commit wrappers and their
+private per-call writer seams. Collection preparation stays private, inside the
+existing preset stripe through commit. An unlocked exported collection snapshot
+is rejected because competing SSIDs could overwrite each other's library edits.
+
+| Broken design | Required falsifying evidence |
+|---|---|
+| Preparation retains mutable inputs or commit serializes again | Prepare, copy expected bytes, mutate maps/lists/toggles/IPs/metadata/baseline; commit exact original bytes and length, including captured target path |
+| Metadata or association contract drifts | Literal timestamp and primary/fallback IP ordering/cap controls; missing-record creation, preference association retention and configuration nil-reference clearing |
+| Refused preparation has durable effects | Invalid candidate and malformed/future authoritative record controls; no writes/directories/temp files or changed inputs |
+| Extracted commit bypasses atomic failure behavior | Prepared bytes through real write/sync/close/replace stage faults; preserve target, underlying error, exact stop order and temp-file cleanup |
+| Preparation enables stale unlocked library writes | Existing concurrent collection updates plus lock-scoped collection preparation; retain full-callsign reconnect ownership tests |
+| Publication or SAVE ordering moves early | Human warnings retain live edits; real machine/LOAD replacement failures retain live state/revisions/runtime/association; library failure prevents association attempt and later association I/O failure retains library-only success |
+| New quotas activate before dependent human/admission work | Positive prepared-record/configuration controls beyond future bounds; existing preset/collection limits remain in force |
+
+This checkpoint preserves today's SAVE order: library write precedes association
+preparation. Coordinated admission of both prepared payloads before the first
+write belongs to 04d. No new product-policy blocker was found. Cross-process
+concurrency and power-loss durability are outside the evidence established here.
+
+`filter/prepared_user_record.go` now owns the immutable bytes/absolute target.
+The existing record/configuration/preference saves are prepare-then-commit
+wrappers. Collection serialization is separately prepared under the existing
+stripe, with its old limit intact. No new quota, publication or SAVE-order change
+was introduced. A relative target is captured lexically after validation/marshal;
+no symlinks or filesystem objects are resolved during preparation.
+
+Final observed evidence:
+
+- Both complete filter and telnet packages passed targeted ordinary and race
+  checks (`checkpoint-04b-targeted.log`, `checkpoint-04b-race.log`). New tests
+  mutate caller maps/lists/toggles, metadata, baseline, UserDataDir and working
+  directory after preparation, then verify captured bytes/path and literal
+  restoration. They cover differing validation order, metadata/IP cap/full SSID,
+  retained/cleared/explicit associations, no preparation effects, future limits
+  remaining inactive, and real atomic stage faults with stop order/cleanup/retry.
+- The complete ordinary Windows suite passed all 70 packages in
+  `.tmp/command-fixes/checkpoint-04b-baseline.log`. Repository-wide vet,
+  Staticcheck and lint passed; lint reported zero issues.
+- All 32 required checkout cases passed across both transports in
+  `.tmp/command-fixes/20261009-122008-d0d0079f`; all 32 also passed with race
+  detection in `.tmp/command-fixes/20261009-122942-0eb7e0b7`. Both runs have zero
+  wire/cleanup failures. Real denied replacements prove machine/LOAD failure
+  retains configuration/revision/effective state/association and bytes. SAVE
+  retains library-only success after association failure; library failure with
+  a writable record preserves both targets. Fresh children recover those exact
+  outcomes. Existing reconnect and concurrent collection tests retain ownership
+  evidence; mock save callbacks alone are not the filesystem-failure proof.
+
+A separate-context read-only Go quality review found no material defect. The
+lead verified final source and the actual diff and owns all qualification claims.
+No new parser behavior was introduced; 04a's differential corpus also runs in
+the complete filter tests. Support-agent documentation impact is Required and
+completed in the persistence troubleshooting route. ADR-0268 records prepared
+ownership and its limits. Code-map/whitespace and indexed TSR checks close out
+this checkpoint; the new admission behavior remains deferred to 04d.

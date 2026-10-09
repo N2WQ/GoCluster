@@ -11,6 +11,7 @@ sys.dont_write_bytecode = True
 
 import argparse
 import contextlib
+import copy
 import importlib.util
 import json
 from pathlib import Path
@@ -94,14 +95,17 @@ def profile(binary, root, source, transport):
                 f"{transport}: actual replacement failure warns and preserves saved bytes",
                 f"{transport}: preparation failure and protected login preserve refused records",
                 f"{transport}: compatible storage and old alias refusal reach login and LOAD",
+                f"{transport}: real machine LOAD and SAVE commit faults preserve publication",
                 f"{transport}/1: held endpoint and loaded consumers",
                 f"{transport}: preferences and archive survive fresh child",
                 f"{transport}: NOFILTER geography survives fresh child",
                 f"{transport}: failed saves and refused records survive fresh child",
-                f"{transport}: compatible storage survives fresh child"]
+                f"{transport}: compatible storage survives fresh child",
+                f"{transport}: prepared commit outcomes survive fresh child"]
     call = "K1ABC-70001"
     observer_call, observer_configuration = "VE3ABC-70003", None
     failed_records, refused_records, compatible_records = {}, {}, {}
+    prepared_records = {}
     label = "T" + uuid.uuid4().hex[:8].upper()
     suites = []
     for generation in range(2):
@@ -381,6 +385,55 @@ def profile(binary, root, source, transport):
                     require(record.read_bytes() == trap, "alias-refused file was overwritten")
 
                 case(f"{transport}: compatible storage and old alias refusal reach login and LOAD", compatible_storage)
+
+                def prepared_commit_faults():
+                    prepared_call = "K1ABC-70011"
+                    current = harness.Session(suite, prepared_call)
+                    current.human("PAUSE 300")
+                    current.human("SET NOISE QUIET")
+                    current.human("SAVE PRESET OLD04B", "Saved preset OLD04B")
+                    _, before = current.human("SET NOISE URBAN")
+                    require(before["status"]["preset"] ==
+                            dict(associated=True, name="OLD04B", modified=True),
+                            "baseline/control change did not establish a distinct LOAD target")
+                    record = root / "users" / (prepared_call + ".yaml")
+                    saved = record.read_bytes()
+                    library = root / "users" / "presets" / ("K1ABC".encode().hex() + ".yaml")
+
+                    def preserved(document):
+                        require(document["configuration"] == before["configuration"] and
+                                document["revision"] == before["revision"] and
+                                document["status"]["preset"] == before["status"]["preset"] and
+                                document["status"]["effective"] == before["status"]["effective"] and
+                                record.read_bytes() == saved,
+                                "failed commit published or persisted a staged change")
+
+                    with deny_record_replacement(record):
+                        candidate = copy.deepcopy(before["configuration"])
+                        candidate["settings"]["noise_class"] = "QUIET"
+                        response = current.upload("PUT", "CONFIG", candidate, revision=before["revision"])
+                        require(response.get("error", {}).get("code") == "persistence_failed",
+                                "machine replacement fault did not reach the commit boundary")
+                        preserved(current.get())
+                        _, document = current.human("LOAD PRESET OLD04B", "LOAD PRESET failed:")
+                        preserved(document)
+                        _, document = current.human("SAVE PRESET NEW04B", "but could not persist its association")
+                        preserved(document)
+                        collection = harness.yaml.load(library.read_text(), Loader=harness.StrictLoader)
+                        require(collection["presets"]["NEW04B"]["noise_class"] == "URBAN",
+                                "later association I/O failure lost the successful library write")
+
+                    # The record is writable for this control. A library failure
+                    # must stop before any attempted association can alter it.
+                    library_before = library.read_bytes()
+                    with deny_record_replacement(library):
+                        _, document = current.human("SAVE PRESET FAIL04B", "SAVE PRESET failed:")
+                        preserved(document)
+                        require(library.read_bytes() == library_before,
+                                "failed library replacement altered the saved presets")
+                    prepared_records[prepared_call] = (saved, before["configuration"], before["status"]["preset"])
+
+                case(f"{transport}: real machine LOAD and SAVE commit faults preserve publication", prepared_commit_faults)
             else:
                 def restored():
                     settings = session.get()["configuration"]["settings"]
@@ -440,6 +493,21 @@ def profile(binary, root, source, transport):
                     require("Failed" not in listing, "merged preset library was lost on restart")
 
                 case(f"{transport}: compatible storage survives fresh child", restored_compatible_storage)
+
+                def restored_prepared_commits():
+                    for stored_call, (saved, configuration, preset_status) in prepared_records.items():
+                        require((root / "users" / (stored_call + ".yaml")).read_bytes() == saved,
+                                "teardown changed a failed transaction's stored record")
+                        restored = harness.Session(suite, stored_call)
+                        _, document = restored.human("PAUSE 300")
+                        require(document["configuration"] == configuration and
+                                document["status"]["preset"] == preset_status,
+                                "fresh child restored a failed staged change or association")
+                        listing, _ = restored.human("LIST PRESET", "NEW04B")
+                        require("OLD04B" in listing and "FAIL04B" not in listing,
+                                "library I/O outcomes did not survive replacement")
+
+                case(f"{transport}: prepared commit outcomes survive fresh child", restored_prepared_commits)
         finally:
             try:
                 if suite:

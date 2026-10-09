@@ -358,16 +358,27 @@ func readPresetCollection(path string) (*presetCollection, error) {
 }
 
 func (store presetStore) persist(path string, collection *presetCollection) error {
-	bs, err := yaml.Marshal(collection)
+	bs, err := preparePresetCollection(collection)
 	if err != nil {
 		return err
-	}
-	if len(bs) > maxPresetCollectionBytes {
-		return errors.New("preset collection exceeds 8 MiB")
 	}
 	write := store.write
 	if write == nil {
 		write = writeAtomicUserFile
 	}
 	return write(path, bs)
+}
+
+// Collection bytes remain private and operation-owned. Every caller holds the
+// existing preset stripe through preparation and replacement; this helper does
+// not expose an unlocked snapshot that another SSID could later overwrite.
+func preparePresetCollection(collection *presetCollection) ([]byte, error) {
+	bs, err := yaml.Marshal(collection)
+	if err != nil {
+		return nil, err
+	}
+	if len(bs) > maxPresetCollectionBytes {
+		return nil, errors.New("preset collection exceeds 8 MiB")
+	}
+	return bs, nil
 }
