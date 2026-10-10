@@ -12,9 +12,9 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 27, 28b, 29, 30, 31 and 33 complete (04a used two commits);
-40 of 46 approved checkpoints complete; 6 remain. Checkpoints 28a and 32 await
-the user's policy selections; independent checkpoint 34a is next.
+Current progress: checkpoints 00 through 27, 28b, 29, 30, 31, 33 and 34a complete (04a used two commits);
+41 of 46 approved checkpoints complete; 5 remain. Checkpoints 28a and 32 await
+the user's policy selections; independent checkpoint 34b is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -4201,3 +4201,167 @@ Support impact: Required. The keyboard guide and source map describe aliases,
 page/pane navigation, scrolling, quit and fixture limits. No ADR/TSR is required
 for this localized completion of already advertised behavior. Crawler,
 whitespace and maps complete last against the explicit staged diff.
+
+## Checkpoint 34a: peer-probe session ownership
+
+Status: complete. Architecture and matrix established before code under approved v3 row34a.
+Current discovery inspected the complete peerpoc tool, actual peer LineReader
+and timestamp generator, relevant lifecycle tests, actual-main fixture pattern
+and approved34a/b/c boundaries. Source/design and test-strategy reviewers were
+read-only. The design comparison preceded concrete selection; the test reviewer
+received the selected design. Neither ran checks or supplies independent
+empirical evidence. Root verified and dispositions their material findings here.
+
+The tool keeps one synchronous reader/protocol owner per connection. A session
+owns its child context, socket, buffered writer, one interruptor and at most one
+keeper/ticker. The existing writer mutex covers both complete line publication
+and raw Telnet replies. No output queue, shared peer API or exported hook is
+introduced. Callback/keeper write, short-write and timestamp errors record the
+first causal failure and cancel the session; returned buffered input cannot be
+dispatched after that failure.
+
+A short separate deadline gate serializes deadline installation with retirement.
+It never covers blocking Read/Write/Flush or worker joins. Session cancellation
+marks ordinary I/O unavailable and expires transport deadlines without waiting
+for the writer mutex. LineReader's own SetReadDeadline cannot restore a future
+deadline after cancellation. Deadline-setting failure falls back to closing the
+owned connection. The interruptor is owned and joined. After the reader returns,
+cancel and join the keeper and interruptor before bounded best-effort BYE and
+socket retirement; no next session starts before this sequence returns. BYE may
+override the expired write deadline only after those joins, retains its existing
+two-second bound, and is skipped when the connection cannot be used safely.
+Its failure remains secondary to the primary session cause. A failed buffered
+writer is not replaced to replay an uncertain partial frame.
+
+First PC22 owns at most one keeper and captures its mode. Later PC18 retains
+compatibility initialization responses without changing that keeper's mode.
+Spot-after-init establishment removes the current handshake restriction but
+starts no keeper and adds no BYE effect. A later first PC22 still starts its one
+keeper/BYE ownership: established and keeper-started are separate facts.
+Repeated PC22 creates no duplicate workers or tickers.
+
+Preserve every current flag/default, reconnect/backoff behavior and frame format.
+One-session errors, including EOF, exit unsuccessfully; deliberate local command
+cancellation exits zero. Internal session cancellation alone is not local user
+cancellation. Main status wiring is tested with the actual saved executable.
+Private connected-session, ticker and reconnect-runner seams provide bounded
+controls without changing peer.LineReader or production-facing configuration.
+The real timestamp generator can be made unsafe deterministically for a keeper
+error control; no fabricated timestamp oracle is needed.
+
+Absolute phase budgets remain34b. In particular,34b preserves the initial
+loginTimeout+initTimeout budget, starting it before credential writes, and starts
+the fixed initTimeout budget only at the first initialization transition before
+its writes. The source/design follow-up confirmed no authority to replace the
+initial combined duration with loginTimeout alone. Cross-reconnect timestamp
+allocation/publication ownership remains34c. These later obligations are not
+claimed complete by34a.
+
+| Contract | Failure/boundary | Stimulus | Observable result | Level | False-green risk | Exact checker | Owner |
+|---|---|---|---|---|---|---|---|
+| Shared writer | Raw replies overlap buffered lines or short writes disappear | Real Telnet parser plus decorated connection; overlap writes; short-nil/partial-error faults | One transport writer at a time, intact literal frames and causal failure | Consumer/wire/race | net.Pipe itself serializes writes | Entry barriers, exact transcript and primary cause | peerpoc tests |
+| Stalled line writes | Login/password/init/ack/keeper never retire | Withhold peer reads after actual write entry; cancel with normal deadlines distant | Each producer returns within bound before fixture closure | Real connection/race | Test closes socket or a short ordinary deadline rescues it | Entered/exited barriers and actual owner completion | peerpoc tests |
+| Callback retirement | Callback stalls or logs-and-continues | Real IAC reply blocked, behind another writer, or faulted with valid buffered line | Reader/callback joined, causal fault retained, no later dispatch | Consumer/wire/race | Direct callback helper or missing input consumer | Literal negotiation and subsequent-wire absence | peerpoc tests |
+| Deadline ordering | Cancellation is overwritten by future deadline | Both ordinary-setter/interrupt orders and pre-canceled startup | No ordinary I/O revived after cancellation | Transport/race | An expired setter occurred but a future one followed | Underlying setter barriers and final deadline trace | peerpoc tests |
+| Keeper failure | Keeper dies while reader/session remains healthy | Controlled tick, failed write and real unsafe generator | Primary failure ends session; ticker stopped and reader/keeper joined | Consumer/race | Log or goroutine return alone passes | Causal error plus stopped ticker and join witnesses | peerpoc tests |
+| Single keeper | Duplicate workers compete for one mutable channel | Repeated PC22, later PC18, spot-only and spot-to-first-PC22 | Exactly one owned ticker/worker where required; captured mode retained | Wire/ownership/race | One tick emits one frame despite several consumers | Creation/stop counts, completion barriers, literal mode frames | peerpoc tests |
+| Retirement order | Cancellation or socket close substitutes for a join | Park keeper Stop and interruptor separately; fail and reconnect | No BYE/next dial until both workers complete; socket retires | Consumer/runner/race | Cleanup-maintained counters fabricate retirement | Worker completion barriers and next-attempt ordering | peerpoc tests |
+| Bounded BYE | Deadline override races interruptor or blocks forever | Healthy canceled connection; withheld BYE reads; setter failures | Actual BYE when writable; otherwise bounded return/fallback retirement | Real wire/race | Sticky writer error mistaken for successful BYE | Exact BYE plus bound/causal controls and joined owners | peerpoc tests |
+| Status/first cause | EOF or child-context cancellation exits zero | Actual-main EOF; dial/read/write/callback/keeper faults; explicit parent cancel | Nonzero failures, zero deliberate local cancel; first cause preserved | Actual main/runner | Launch failure or test deadline credited as expected result | Actual connection/child marker, exact cause and context guard | peerpoc tests |
+| Reconnect ownership | Retry stops or old ownership accumulates | Dial failure then recovery, established failure, cancel in session/backoff, bounded churn | Retired old socket/ticker/workers before successor; cancellation stops attempts | Local TCP/runner/race | One retry or race silence alone passes | Ordered attempts plus per-session retirement witnesses | peerpoc tests |
+
+All ten test-challenge findings are checker refinements inside the approved
+boundary. Controls must observe actual producer entry; test timeout/fixture
+closure cannot count as successful retirement. The single-keeper checker counts
+owners because duplicate readers of one tick channel can falsely appear correct.
+Private seams remain tool-local and serve these concrete controls. Selected lane:
+focused ownership/wire/actual-main tests, complete peerpoc and peer normal/race
+checks, complete ordinary70-package baseline, repository analyzers, fresh Go
+quality/final diff review, documentation/record/crawler/whitespace and maps last.
+No phase-deadline, cross-reconnect timestamp, performance, external-peer or
+long-running production leak result is claimed at this checkpoint.
+
+### Checkpoint34a source review and checker refinement
+
+The fresh bounded Go quality reviewer inspected the six production files and
+actual LineReader callers without running checks. No material34a defect was
+found. Root verified the ownership and call graph directly. Ordinary producers
+currently install only read deadlines; their guarded setter and the joined
+interruptor/BYE sequence suffice. Adding unused wrapper setters would address
+hypothetical callers. Checkpoint34b will guard write setters when phase writes
+actually use them. Underlying write errors can win first-cause publication
+before outer producer labels; their identity is preserved, so no extra error
+policy or architecture is introduced.
+
+Before qualification, the wire checker must consume the actual negotiation
+read receipt rather than an older PC22 receipt. Keeper-failure controls must
+witness the independently stalled reader. A real negotiation received behind
+a blocked keeper also exercises cancellation and absence of later input
+dispatch. Scheduling delay alone is not callback-entry evidence. A temporary
+missing-raw-writer-mutex control is selected to test whether the concurrent wire
+fixture can falsify lost serialization; retain its observed failure separately,
+restore production source before final checks and credit only a specific
+overlap/wire failure, not a watchdog or unrelated launch failure.
+
+Support impact: Required. The tool guide, ADR-0278, TSR-0077 and source map
+describe owned retirement, best-effort BYE, unsuccessful one-session outcomes
+and remaining phase/timestamp qualification boundaries. Final observed results
+follow only after the complete selected lane on frozen Go source.
+
+The initial complete peerpoc/peer ordinary suites passed; the temporary
+missing-mutex control failed specifically on overlapping transport writes and
+the saved source hash matched after restoration. These pre-lint checks are
+retained separately. Repository lint then found13 issues, including signal
+cleanup before os.Exit, context-first fixture helpers and local listener
+contexts. Repairs preserve the selected contracts: a return-status CLI owner
+runs deferred signal cleanup before main exits; explicit loop exit retains
+deliberate cancellation status; fixture helpers use owned contexts. The
+transport uses a private nonembedded connection with minimal required
+net.Conn delegation so cancellation/BYE setters visibly target the underlying
+connection rather than an ordinary wrapper method. This changes no deadline
+policy or owner. Secondary fallback Close errors are logged without replacing
+the primary cause. Failed lint is retained and uncredited; production-owner
+changes require fresh affected package/race and repository qualification.
+
+The repository also checks discarded error returns. The three remaining lint
+findings were resolved by making fail a void first-cause recorder; sendLine and
+sendRaw record then explicitly return context.Cause. No suppression or causal
+policy changed. Root reviewed that final correction and the transport/CLI diff
+directly. Final peerpoc race and repository vet/Staticcheck/lint passed (zero
+lint issues). The complete core peer race suite passed before that final private
+tool-only recorder change; no core peer source, dependency or test changed, so
+that result remains applicable. No full repository race result is claimed.
+The full ordinary baseline passed all70 packages on frozen final Go source,
+including the complete final peerpoc and core peer ordinary suites.
+
+Qualification artifacts use `.tmp/command-fixes/checkpoint34a`. Both missing-raw-
+mutex controls failed specifically on concurrent transport Write entry; each
+restoration matched the saved source SHA256. The second control used the final
+connection/writer structure before the subsequent void-recorder-only correction.
+That correction changes neither serialization nor the fixture, and final
+ordinary/race coverage retains the actual overlap checker. Initial ordinary
+and pre-recorder tool race passes are retained separately; final tool race and
+full ordinary results are the final-state tool evidence. The core peer race
+result remains applicable to unchanged core source. Failed lint logs are
+retained separately and uncredited.
+
+The final wire/owner evidence includes blocked credential/init/ack/keeper and
+raw callback producers returning before fixture closure; callback failure with
+buffered AFTER input producing no later acknowledgement; one ticker per first
+PC22; captured legacy/PC9x modes after later compatibility init; and spot-only
+versus spot-to-PC22 ownership. Independently parked keeper and interruptor
+completion barriers precede BYE and successor admission. Writable local cancel
+delivers literal BYE; withheld reads retire within the existing two-second
+deadline plus bounded fixture tolerance. Actual-main loopback login followed
+by deliberate EOF exits1 with the EOF cause before the parent watchdog; explicit
+parent cancellation returns success in the command runner. Real loopback
+recovery follows an injected initial dial failure and a real midstream drop;
+six pipe-backed sessions additionally check ordered ownership retirement.
+
+Root's fresh final diff/owner/fixture/claim pass is lead-owned, not independent
+empirical verification. Record and staged whitespace checks passed. The crawler
+aid passed with zero configured candidates for this tool; root reviewed the
+entry/ownership comments manually rather than treating zero as header proof.
+Generated maps finish last with the explicit owned diff; no phase budget,
+timestamp-ordering, external-peer, firewall, production-load or long-running
+leak result is credited here. Cumulative checkout-server reconciliation remains35.
