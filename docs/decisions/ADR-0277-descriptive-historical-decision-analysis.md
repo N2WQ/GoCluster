@@ -39,7 +39,13 @@ inspect existing data and do not supersede that path.
   before final approximate floating presentation. Empty summaries are N/A;
   rejection reasons exclude unknown outcomes and retain their missing bucket.
   Report no correlation, calibration or reliability evaluation.
-- This record governs the repaired distance-3, threshold and distance-summary readers. Other readers
+- Extend the contract to `inspect_decisions`: consistent case-only outcome
+  partitions, binary raw-label grouping and recognized-only capped samples.
+  Preserve distinct projections and reason fallbacks. All four selections must
+  load before reporting; they retain independent statement snapshots and do not
+  promise chronology, input validity or correction accuracy.
+- This record governs the repaired distance-3, threshold, distance-summary and
+  inspection readers. Other readers
   receive their own approved qualification before repaired claims are made.
 
 ## Alternatives considered
@@ -65,8 +71,9 @@ inspect existing data and do not supersede that path.
   lead-owned arithmetic/claim checks establish only its descriptive contract.
 
 ## Links
-- Related issues/PRs/commits: approved v3 checkpoints 26/27/28b.
-- Related tests: `cmd/analyze_distance3/`, `cmd/simulate_threshold/`, `cmd/analyze1c/` and execution qualification.
+- Related issues/PRs/commits: approved v3 checkpoints 26/27/28b/29.
+- Related tests: `cmd/analyze_distance3/`, `cmd/simulate_threshold/`,
+  `cmd/analyze1c/`, `cmd/inspect_decisions/` and execution qualification.
 - Related docs: `docs/historical-analysis.md`, `docs/command-fix-execution.md`.
 - Related TSRs: `docs/troubleshooting/TSR-0075-historical-analysis-claims-and-failures.md`.
 - Supersedes / superseded by: none; clarifies retained-reader boundaries alongside

@@ -123,3 +123,37 @@ No correlation, accuracy, calibration, reliability or optimal-setting evaluation
 follows from these descriptive summaries.
 
 See [checkpoint 28b qualification](command-fix-execution.md#checkpoint-28b-descriptive-distance-summaries).
+
+## Decision inspection
+
+```powershell
+go run ./cmd/inspect_decisions -db C:\data\decisions.db
+```
+
+`inspect_decisions` preserves its database flag/default and legacy projections.
+It counts every row, shows separate applied/rejected/unknown totals, and lists
+raw outcome spellings. Case-only known outcomes agree across the breakdown and
+all samples. NULL and the literal string `<NULL>` remain distinct. Binary
+grouping preserves literal unknown spellings even on a `NOCASE` column.
+
+Each sample list has at most ten rows. Applied samples use lexical selected-field
+ordering. Distance-1 recognized rejections sort by winner support descending;
+recognized rejections with logged scores strictly greater than 70 sort by score
+descending. Selected-field binary ties make the capped lists deterministic.
+Unknown rows are excluded before either rejection limit. These orderings describe
+selected samples, without a chronological or correctness claim.
+
+Each selection scans only its original columns; unused or unselected numeric
+fields acquire no validation requirement. Distance-1 samples include stored
+thresholds. NULL sample reasons retain `UNKNOWN`, while valid empty reasons
+remain empty, preserving this command's existing distinction.
+
+The four SQL selections run independently. A database changing during inspection
+can differ between those selections; this command establishes no single database
+snapshot. All four must load before reporting. Failed query, scan, iteration,
+close or output returns unsuccessful status. Empty compatible input succeeds
+with zero totals and no samples. Raw-label memory depends on input cardinality;
+the three sample lists retain at most thirty rows in total. Logged scores remain
+unvalidated, and the output establishes no correction accuracy or calibration.
+
+See [checkpoint 29 qualification](command-fix-execution.md#checkpoint-29-consistent-decision-inspection).

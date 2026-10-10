@@ -12,9 +12,9 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 27 and 28b complete (04a used two commits);
-36 of 46 approved checkpoints complete; 10 remain. Checkpoint 28a awaits the
-user's counting-rule selection; independent checkpoint 29 is next.
+Current progress: checkpoints 00 through 27, 28b and 29 complete (04a used two commits);
+37 of 46 approved checkpoints complete; 9 remain. Checkpoint 28a awaits the
+user's counting-rule selection; independent checkpoint 30 is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -3775,4 +3775,105 @@ Support documentation impact: Required. The historical guide, source map and
 ADR-0277/TSR-0075 now route this reader's descriptive limits. No production model,
 schema/default, runtime configuration, concurrency or deployment behavior changed.
 Record checks passed; staged crawler/whitespace checks and maps finish last.
+Final cumulative checkout reconciliation remains checkpoint35.
+
+## Checkpoint 29: consistent decision inspection
+
+Status: complete. Architecture and matrix preceded code under approved v3 row29.
+Current discovery inspected every existing query/Scan/report path, related
+historical readers, ADR-0023/0277 and the shadow-runbook invocation. Package
+inventory: `checkpoint-29-dependencies.json`. No current producer of this legacy
+schema was found; fixtures qualify the reader rather than database provenance.
+
+Preserve the db flag/default, all-row breakdown and ten samples per existing
+population: recognized applied rows, distance1 recognized rejections ranked by
+support descending, and recognized rejections with logged score strictly >70
+ranked by score descending. Case-only known labels and NULL/empty/other unknowns
+must agree across breakdown and samples. Unknowns must be excluded before LIMIT.
+Preserve each query's selected columns: unselected unknown numeric data and
+unused sample fields acquire no new validation. NULL reasons retain UNKNOWN;
+valid empty reasons retain the empty string. No new ID requirement.
+
+Architecture stays one private command package. Main chooses status after
+private run retires DB. Load the existing four selections before a checked
+writer; every query/Scan/Next/Close failure refuses the partial inspection.
+A private sample-row owner shares only identical SQL resource/error traversal;
+three fixed queries retain their distinct projections and explicit scan fields.
+Binary raw-outcome grouping prevents a legacy NOCASE column collapsing unknown
+spellings. Deterministic selected-field binary ties cover all sample caps;
+applied samples use lexical selected-field order with no chronological claim.
+Go lifetime is invocation-local: raw breakdown cardinality <= distinct input
+labels and three sample slices <=10 each. SQL COUNT values and totals retain
+int64 width, avoiding narrowing an aggregate to a platform-sized int. No runtime state/configuration/schema,
+model, shared framework or production interface change. Preserve four independent
+SQL selections rather than introduce a snapshot transaction or locking policy;
+documents explicitly disclose that a changing database can differ between them.
+
+Hand-derived classification vectors distinguish APPLIED/applied/Applied from
+NULL/empty/pending/padded labels. More than ten high-support/high-score unknowns
+must consume zero recognized-rejection sample slots. Score70 is excluded and
+score71 included in the high-score population. Reverse insertion under NOCASE
+must preserve raw unknown spellings and literal capped sample membership. These
+are descriptive classifications, not correction accuracy or score calibration.
+
+| Contract | Failure/boundary | Stimulus | Observable result | Level | False-green risk | Exact checker | Owner |
+|---|---|---|---|---|---|---|---|
+| Consistency | Mixed case/NULL/other outcomes misclassified | SQLite raw labels including NULL and literal <NULL> | Literal A/R/U totals, separate raw labels and matching known samples | Main/loader | Totals conceal reassignment | Explicit partitions/raw labels/sample identities | inspect_decisions |
+| Sample admission | Unknowns consume LIMIT10 slots | >10 unknowns ahead of recognized R by support/score | All ten intended known rejections still sampled | SQLite/report | Small or low-ranked unknown fixtures | Literal capped memberships with high-ranked U | inspect_decisions |
+| Boundaries | Threshold or distance changes | Score70/71 and dist1/2 witnesses | Strict >70 and original distance1 selection | Main/SQLite | All values far above boundary | Exact selected/excluded identities | inspect_decisions |
+| Compatibility | Extra projected fields now scanned | Malformed unused applied/unknown numeric fields; NULL/empty reasons | Unselected fields remain ignored; reason fallback preserved | SQLite/main | Full valid schema hides extra validation | Minimal selected-field witnesses and reason literals | inspect_decisions |
+| Determinism | Undefined ties/collation reorder caps | Reverse insertion, NOCASE and ties crossing each cap | Exact raw breakdown and selected-field sample order | SQLite/report | Count-only comparison | Literal output and cap memberships | inspect_decisions |
+| Four-stage errors | Later faults look like no samples | Indexed Connector Query/Scan/Next/Close faults, good row before faults | Earlier stages witnessed; nil partial inspection; rows retired | Loader | Missing column only reaches earliest query | Query index/Next/Close counters and causal stage errors | inspect_decisions |
+| Actual status | Log-and-return success persists | Missing schema/column; late distance1/high-score Scan after valid stages | Status1/no partial stdout with causal error | Actual main | Launch/flag failure satisfies nonzero | Paired valid stage controls and exact diagnostic | inspect_decisions |
+| Output | Writer failure ignored | Valid nonempty report, then closed output/partial writer | Causal report failure/nonzero with allowed prefix | Main/report | Load fails before writer | Positive report witness and write cause | inspect_decisions |
+
+Bounded inherited-context read-only challenge identified fourth-query isolation,
+qualifying malformed rows, unknown-before-LIMIT and reason fallback differences.
+Root verified/dispositioned them above. Findings-only, no empirical independence
+claim. Selected lane: focused real-SQLite/main/indexed-driver tests, complete
+ordinary baseline/analyzers, fresh Go quality/claim/diff review, support/runbook/
+decision/record/whitespace updates and maps last. No parser/race/performance trigger.
+
+### Observed qualification and final verification
+
+Focused stable-executable tests passed. Twelve actual-main children cover mixed,
+empty and unknown-only compatible databases; ignored malformed unused fields;
+the unchanged default database path; five causal SQL-stage failures; and paired
+valid/closed stdout publication. Failed loads return status1 with no partial
+report. A fourteen-row NOCASE fixture gives A3/R4/U7 and preserves NULL versus
+literal <NULL>, empty/padded labels and pending/PENDING. Recognized samples agree
+with the breakdown; score70 is excluded and71 included. NULL reasons remain
+UNKNOWN while valid empty reasons stay empty.
+
+High-ranked unknowns occupy no rejection sample slots. Literal eleven-row
+populations cap each sample list at ten, and reversed insertion under NOCASE
+preserves raw-label and reason tie membership. Malformed unselected fields
+acquire no extra Scan requirement. Indexed isolated Connector tests qualify all
+four SQL stages against Query/Scan/Next/EOF-close/Scan-plus-close failures after
+good rows, with exact earlier completion/later untouched and row/connection
+retirement counters. The count-width positive control exceeds MaxInt32. A
+partial writer publishes its eleven-byte prefix and returns the causal error.
+
+Repository vet, Staticcheck and final lint passed (zero lint issues). Initial
+lint identified a test-only kind conditional; it now uses an equivalent tagged
+switch. That failed attempt and the earlier vet attempt during unfrozen draft
+tests are uncredited. The complete ordinary 70-package baseline passed on frozen
+final Go code, including this package after the test-only switch correction.
+Logs are `checkpoint-29-focused-qualified.log`,
+`checkpoint-29-all-packages.log` and the three analyzer `*-qualified.log` files
+under `.tmp/command-fixes`.
+
+Bounded inherited-context source and final source/test reviews found no material
+remaining finding. Root directly inspected final production/tests/docs against
+the matrix, resource owners, compatibility projections and descriptive limits.
+These are source findings and lead-owned qualification, not independent empirical
+accuracy/calibration evidence. Support documentation impact: Required. Historical
+analysis, the source map and ADR-0277/TSR-0075 route this command; the shadow
+runbook invokes the complete package and identifies the required legacy schema.
+Record checks passed; staged crawler and whitespace checks passed. The crawler
+selected zero support-critical files; root reviewed the command headers directly.
+Maps regenerated and checked fresh with no actual map diff. An initial invocation
+used an incorrect subcommand and was refused before generation; only the final
+runbook commands (`generate -all`, `check -all`) are credited.
+No runtime model/schema/configuration/concurrency or deployment behavior changed.
 Final cumulative checkout reconciliation remains checkpoint35.

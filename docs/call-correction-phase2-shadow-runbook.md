@@ -250,10 +250,11 @@ $warnOrCrit | Export-Csv -Path $hitsCsv -NoTypeInformation
 Write-Host "Threshold hits CSV: $hitsCsv"
 ```
 
-Optional decision DB sanity check:
+Optional descriptive inspection, if `$dbFile` contains the compatible legacy
+`decisions` schema described in [historical analysis](historical-analysis.md#decision-inspection):
 
 ```pwsh
-go run ./cmd/inspect_decisions/main.go -db $dbFile
+go run ./cmd/inspect_decisions -db $dbFile
 ```
 
 ## 7) Metric line definition
