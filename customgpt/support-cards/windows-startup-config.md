@@ -34,6 +34,10 @@ capture that OS error separately from YAML/config diagnostics. See
   `required config file`, `required YAML setting`, `Config diagnostics`, and
   `Config warning`.
 - `DXC_CONFIG_PATH` points to a complete config directory, not a single YAML file.
+- The root executable's `--help` and `--version` return before config loading or
+  startup. Successful output confirms that invocation ran; it does not establish
+  node/config health. Unknown arguments exit 2, except when an existing version
+  token takes precedence. Run without arguments to test normal node startup.
 - Search the captured startup block for `Config warning`, `Config diagnostics`,
   `required config file`, `required YAML setting`, H3 validation, and gridstore
   open/recovery messages.
@@ -55,4 +59,5 @@ capture that OS error separately from YAML/config diagnostics. See
 - `docs/OPERATOR_GUIDE.md`
 - `data/config/README.md`
 - `config/config_files.go`
+- `main.go`
 - `internal/cluster/bootstrap.go`

@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 21 complete (04a used two commits);
-29 of 46 approved checkpoints complete; 17 remain; 22 is next.
+Current progress: checkpoints 00 through 22 complete (04a used two commits);
+30 of 46 approved checkpoints complete; 16 remain; 23 is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -3109,3 +3109,104 @@ Fresh lead verification checked the approved item, final guards/consumer tests,
 review disposition, exact artifacts, support and decision records, and claim
 limits. No source changed after qualification. Maps are generated last, checked
 and directly reviewed with the final staged diff before this checkpoint commit.
+
+## Checkpoint 22: root executable argument boundary
+
+Status: complete; authority is approved v3 checkpoint 22.
+
+Current source: root `main` resolves binary identity, checks version tokens,
+then delegates every other invocation to `cluster.Run`. Semantic references
+confirm this is Run's only production caller; shouldPrintVersion also has its
+existing root test caller. Run loads configuration before runtime construction;
+its loader conditionally tries the relative `data/config` fallback when its
+missing-file check permits it. Excluding that fallback with an isolated cwd is
+required rather than assuming an absent override alone proves isolation.
+Root main/version tests, README
+build/config notes and the startup support card are the affected contracts.
+The root dependency/test inventory is saved in `checkpoint-22-dependencies.json`.
+
+Architecture: root main retains version-token-anywhere precedence, including
+case normalization/trimming and the existing three version tokens. After that
+check, only conventional `-h`, `-help` and `--help` arguments are accepted;
+unrecognized options or positional arguments exit 2 with usage before Run.
+All arguments are checked, so help cannot mask an unknown argument. No arguments
+retain normal startup and its current failure status. A private bounded argv
+scan returns the first unknown token without effects; help printing remains at
+main's process boundary. Failed help output exits unsuccessfully rather than
+starting runtime. No config, cluster.Run interface, metadata, runtime tuning,
+worker, persistence, networking or version-output behavior changes.
+
+Actual-main subprocess controls use the runner's saved root test executable,
+an explicit child marker, isolated empty working directory, absent override,
+bounded execution and joined child. The helper calls production main; it does
+not substitute cluster.Run. A no-argument startup-failure control proves the
+fixture really excludes both config paths. It omits child paniconexit0 solely
+because returning from production main deliberately exits zero; the parent
+test binary retains the runner's flag. Pure argv fuzzing supplements actual
+exit/effect controls rather than replacing them.
+
+| Contract | Failure/boundary | Stimulus | Observable result | Level | False-green risk | Exact checker | Owner |
+|---|---|---|---|---|---|---|---|
+| Help before startup | Help enters config/runtime | Each help flag, repeated help in isolated empty cwd | Exit 0, useful usage, empty stderr, no files | Actual main | Repository default config remains available | Root subprocess controls and no-arg failure witness | root |
+| Version precedence | Unknown/help masks version | Each token anywhere, mixed case/trim, help+unknown+version | Exit 0, literal fixture identity, no usage/startup | Actual main | Predicate-only tests never invoke main | Version subprocess cases plus existing tests | root |
+| Unknown admission | Partial argv accepted or positional ignored | Unknown before/after help, empty/Unicode/control input and extra positional values | Exit 2, diagnostic/usage, no config attempt/files | Actual main | Help short-circuits later invalid token | Exact status/streams/empty-directory checks | root |
+| Startup preservation | New validation prevents ordinary launch | No arguments and no available config | Existing startup diagnostic and exit 1 | Actual main | All successful tests bypass a broken helper | Positive startup-failure control | root |
+| Output failure | Help silently succeeds when unwritable | Helper closes only its stdout before production main | Exit 1 with output error, no startup/files | Actual main | Parent fails to launch rather than child's write failing | Closed-output child marker/control | root |
+| Parser exactness | Help conceals or alters malformed token | Fuzz invalid positional values surrounded by valid flags | First unknown returned byte-for-byte | Fuzz | Parser oracle alone credited for process effects | Saved root binary fuzz plus main controls | root |
+
+Lead-owned detailed test challenge finds no unresolved product-policy or oracle
+gap. Conventional help aliases are local implementation detail of the approved
+help fix; existing version precedence is controlling authority. Selected lane:
+focused root tests, bounded argv fuzzing, all 70-package ordinary baseline and
+whole-repository analyzers. No production concurrency change requires new race
+qualification. Cumulative telnet remains covered by checkpoint 21 and final 35;
+it cannot establish root CLI behavior. README/startup support and TSR-0071 retain
+the operator finding; accepted build/version ADRs are preserved without a new
+architecture decision solely for checkpoint bookkeeping. Maps are last.
+
+### Implementation, qualification and final review
+
+`main.go` adds one private argv scan and one usage constant. The existing version
+predicate/output and Run delegation are unchanged. Main refuses the first
+unknown token after the version check, prints help only for a fully valid help
+invocation, checks help output failure and retains no-argument startup.
+`main_arguments_test.go` adds 21 actual-main cases plus the pure argv fuzz target.
+The explicit helper marker/literal version identity, separate stream checks,
+bounded child join and empty-directory checks prevent skipped helpers, parent
+launch errors and default-config availability from becoming passing evidence.
+
+| Evidence | Observed result |
+|---|---|
+| Final focused actual-main/version tests | PASS; `checkpoint-22-focused-final.log` |
+| Final complete root package | PASS after lint refinement; `checkpoint-22-root-final.log` |
+| Instrumented bounded argv fuzz | PASS, 40934 executions in 10 seconds with two workers; `checkpoint-22-fuzz-final.log` |
+| Complete ordinary Windows baseline | 70 passed/build-checked; `checkpoint-22-all-packages.log` |
+| Final repository analyzers | Vet/Staticcheck PASS, lint zero issues; `checkpoint-22-{vet,staticcheck,lint}-final.log` |
+| Record and whitespace checks | PASS; no inconsistent TSR index/status/RCA/link or diff whitespace |
+
+Three non-green artifacts are retained. The initial focused test guessed the
+final-fallback startup message, while the current loader reports `failed to stat
+config path` directly; the assertion now proves actual config failure without
+changing the loader. The initial stable binary fuzz run warned it lacked
+coverage instrumentation, so it is not credited as guided fuzz evidence;
+rebuilding the same path with `go test -c -fuzz=FuzzUnknownRootArgument` supplied
+instrumentation for the passing final run. Lint flagged an ignored custom usage
+helper error. Removing that unnecessary wrapper put the checked stdout write
+directly in main and kept authoritative status 2 for invalid invocation.
+
+The final root suite and repository analyzers reran after that local lint
+refinement. The complete ordinary baseline preceded it; no other package,
+runtime interface, config, build settings, concurrency or parser logic changed
+to invalidate broader results. The fuzzed argv helper remains byte-for-byte
+unchanged. No new race/performance/model evidence is needed for this cold CLI
+boundary. Prior cumulative telnet results remain historical command evidence;
+they are not credited for root CLI behavior or a newly hashed full checkout.
+
+Root's fresh final pass reviewed all code/tests, actual artifacts, approved
+boundaries, output/exit paths, existing version fixtures, README/startup support
+and TSR-0071 routing. This pass is lead-owned, not independent. No durable
+architecture or build/version decision changed; existing ADR-0236/0252 remain
+authoritative. Support impact is operator invocation/discovery and is reflected
+in README, Windows startup card and source map. Local main controls do not prove
+real node readiness, production deployment or cross-platform runtime behavior.
+Maps are generated last, checked and reviewed with the staged diff before commit.

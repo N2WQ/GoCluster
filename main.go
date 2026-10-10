@@ -125,6 +125,27 @@ func shouldPrintVersion(args []string) bool {
 	return false
 }
 
+// unknownRootArgument is used only after the existing version-precedence check.
+// Validate the complete remaining argv before showing help or entering runtime.
+func unknownRootArgument(args []string) (string, bool) {
+	for _, arg := range args {
+		switch arg {
+		case "-h", "-help", "--help":
+		default:
+			return arg, true
+		}
+	}
+	return "", false
+}
+
+const rootUsage = `Usage: gocluster [--help | --version]
+
+Run without arguments to start the configured node.
+  -h, -help, --help             Show help without starting the server.
+  -version, --version, version  Show binary identity without startup.
+Configuration: data/config, or DXC_CONFIG_PATH (a complete directory).
+A version token anywhere takes precedence over every other argument.`
+
 func printVersion(info binaryVersion) {
 	fmt.Printf("Product version: %s\n", info.version)
 	if info.releaseTag != "" {
@@ -151,6 +172,19 @@ func main() {
 	versionInfo := resolveBinaryVersion()
 	if shouldPrintVersion(os.Args[1:]) {
 		printVersion(versionInfo)
+		return
+	}
+	if arg, unknown := unknownRootArgument(os.Args[1:]); unknown {
+		// Status 2 remains authoritative even if the diagnostic sink fails.
+		fmt.Fprintf(os.Stderr, "Unrecognized argument %q\n", arg)
+		fmt.Fprintln(os.Stderr, rootUsage)
+		os.Exit(2)
+	}
+	if len(os.Args) > 1 {
+		if _, err := fmt.Fprintln(os.Stdout, rootUsage); err != nil {
+			fmt.Fprintf(os.Stderr, "Unable to write help: %v\n", err)
+			os.Exit(1)
+		}
 		return
 	}
 	if err := cluster.Run(versionInfo.clusterBuildInfo()); err != nil {

@@ -967,6 +967,13 @@ separate tag such as `261006r9abc` (date plus the last four commit-hash
 characters). Same-day builds can share a product version. Use `SHOW BUILD`
 or `--version` to identify the binary and available release/toolchain metadata.
 
+Run the executable with `--help` (`-h` or `-help` also works) to see usage and
+configuration-directory guidance. Help and version return before configuration
+loading or server startup. Start the configured node by running with no
+arguments. Unexpected options or positional arguments print usage and exit 2.
+A `--version`, `-version` or `version` token anywhere takes precedence over all
+other arguments, preserving the existing version behavior.
+
 ## Operator Logs
 
 Use the [logs and health guide](docs/OPERATOR_GUIDE.md#logs-and-health) and
