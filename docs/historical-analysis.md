@@ -49,3 +49,42 @@ not a server queue; memory depends on input cardinality.
 See [ADR-0277](decisions/ADR-0277-descriptive-historical-decision-analysis.md),
 [TSR-0075](troubleshooting/TSR-0075-historical-analysis-claims-and-failures.md)
 and [qualification](command-fix-execution.md#checkpoint-26-descriptive-distance-3-analysis).
+
+## Hypothetical threshold comparison
+
+```powershell
+go run ./cmd/simulate_threshold -db C:\data\decisions.db -min-reports 3 -min-advantage 1 -min-confidence 55
+```
+
+`simulate_threshold` selects distances 1 through 3 from the legacy `decisions`
+table. In addition to the distance-3 reader's columns, it requires `id`,
+`min_reports`, `min_advantage` and `min_confidence`. It preserves uppercase
+callsign display and existing flags/defaults. The three numeric flags accept
+integers; they describe hypothetical gates, not recommended production settings.
+
+Outcome recognition and unknown handling follow the descriptive rules above.
+The report shows every stored baseline tuple and its frequency across all
+selected rows, instead of inferring common current settings from one record.
+Outcome percentages use all selected rows. No selected rows means no inferred
+baseline and unavailable ratios.
+
+The comparison tests minimum winner reports, support advantage and logged score.
+Distance 3 deliberately retains assumed extras of advantage one and score five,
+with no extra reports. It does not load current configuration or replay other
+correction gates. Threshold sums beyond the native integer range are impossible
+for native integer inputs and cannot wrap into permissive gates.
+
+For recognized outcomes, the report gives applied rows retained or removed and
+rejected rows added. Net change is **added minus removed**. The passing-row
+percentage uses applied plus rejected rows; the change percentage uses the
+original applied count. A zero denominator is `N/A`. Unknown passes stay
+separate and do not change those totals. At most ten added-row samples appear;
+passing these scalar tests does not establish correctness.
+
+The tool publishes no partial counts after a failed load and exits unsuccessfully
+on query, scan, iteration, close or output failure. Existing SQLite creation and
+late partial-stdout behavior are retained. Its loaded rows and tuple breakdown
+use memory proportional to input cardinality. No stability, accuracy or
+calibration prediction follows from this report.
+
+See [checkpoint 27 qualification](command-fix-execution.md#checkpoint-27-hypothetical-threshold-set-comparison).

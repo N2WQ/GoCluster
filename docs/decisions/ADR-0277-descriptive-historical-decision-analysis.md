@@ -27,7 +27,14 @@ inspect existing data and do not supersede that path.
   Own rows and database until explicit retirement.
 - Preserve schema, database flag/default, command-local lifetime and production
   correction behavior. Synthetic fixtures do not prove database provenance.
-- This record governs the repaired distance-3 reader. Other historical readers
+- Extend the descriptive contract to `simulate_threshold`: preserve its selected
+  distances1..3, flags/defaults and assumed distance-3 extras. Report all stored
+  baseline tuple frequencies, not a first-row common configuration. Retained
+  applications plus added rejections define the recognized passing count
+  (original applied minus removed plus added); net is added minus removed.
+  Unknown passes remain separate. Name all-selected/recognized/applied denominators; zero ratios are
+  unavailable. Integer overflow cannot make an impossible extra gate permissive.
+- This record governs the repaired distance-3 and threshold readers. Other readers
   receive their own approved qualification before repaired claims are made.
 
 ## Alternatives considered
@@ -53,8 +60,8 @@ inspect existing data and do not supersede that path.
   lead-owned arithmetic/claim checks establish only its descriptive contract.
 
 ## Links
-- Related issues/PRs/commits: approved v3 checkpoint 26.
-- Related tests: `cmd/analyze_distance3/` tests and execution qualification.
+- Related issues/PRs/commits: approved v3 checkpoints 26/27.
+- Related tests: `cmd/analyze_distance3/`, `cmd/simulate_threshold/` and execution qualification.
 - Related docs: `docs/historical-analysis.md`, `docs/command-fix-execution.md`.
 - Related TSRs: `docs/troubleshooting/TSR-0075-historical-analysis-claims-and-failures.md`.
 - Supersedes / superseded by: none; clarifies retained-reader boundaries alongside

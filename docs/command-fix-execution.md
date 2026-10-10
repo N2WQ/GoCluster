@@ -12,8 +12,9 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 26 complete (04a used two commits);
-34 of 46 approved checkpoints complete; 12 remain; 27 is next.
+Current progress: checkpoints 00 through 27 complete (04a used two commits);
+35 of 46 approved checkpoints complete; 11 remain. Checkpoint 28a awaits the
+user's counting-rule selection; independent checkpoint 28b is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -3576,3 +3577,100 @@ pipeline replay; TSR-0075 records unsupported-claim and failure-boundary learnin
 No production schema, correction gate, parameter default, service or deployment
 behavior changed. No new cumulative checkout-server qualification is claimed for
 this standalone command checkpoint; checkpoint 35 retains final reconciliation.
+
+## Checkpoint 27: hypothetical threshold set comparison
+
+Status: complete under approved v3 checkpoint 27. Design and matrix preceded code.
+
+Current discovery inspected simulate_threshold's complete main/loader/predicates,
+neighboring historical readers, pipeline threshold YAML, ADR-0023/0277 and
+support routing. The command selects distance1..3, normalizes display callsigns
+and applies three scalar gates with fixed distance-3 extras advantage1/score5.
+It treats every non-lowercase-applied outcome as rejected, presents a first-row
+tuple as common current configuration, omits lost applications from net change
+and prints fixed stability forecasts. Preserve selection, normalization,
+flags/defaults and predicate choices, declared hypothetical rather than current
+settings or full model replay. Dependencies: `checkpoint-27-dependencies.json`.
+
+V3 selects the descriptive contract: case-only applied/rejected, separate
+NULL/empty/other unknowns and named denominators. Recognized sets A/R and passing
+P give retained=A∩P, removed=A-P, added=R∩P, recognized pass=retained+added and
+net=added-removed. U passes stay separate. Baseline tuple frequencies cover every
+selected row and establish no common current configuration. Empty ratios are
+N/A. Lead-owned set arithmetic is analytically derived; no independent empirical
+accuracy/stability/calibration oracle exists or is claimed for this reader.
+
+Architecture stays one private command package. Main parses existing flags;
+private run owns DB close and load/report errors before exit1. Loader scans
+nullable outcomes, checks query/Scan/Next/Close and refuses partial loads.
+Comparison owns counts, input-bounded tuple/distance maps and ten added samples.
+Writer sorts keys, names denominators/assumptions and checks stdout. Thresholds
+remain integers; fixed positive extras above native integer range cannot be
+satisfied by stored native ints, rather than wrapping into permissive gates.
+No new flag domain/default, shared helper, production gate/schema/logger/state,
+parser or runtime configuration changes.
+
+Hand-derived vectors: A={a,b}, R={c,d}, U={u}, P={a,c,u} gives retained1,
+removed1, added1, recognized2/4, net0, unknown-pass1. Added2/removed1 gives +1;
+added1/removed2 gives -1. Baseline tuples (3,1,60) three rows and (2,2,70) two
+rows remain separate frequencies after insertion reversal. Inclusive cuts accept
+exact values and refuse one below; distance3 preserves advantage+1/score+5.
+Native-MaxInt plus a positive extra is unsatisfiable. Counts are exact, displayed
+percentages one decimal with explicit denominators.
+
+| Contract | Failure/boundary | Stimulus | Observable result | Level | False-green risk | Exact checker | Owner |
+|---|---|---|---|---|---|---|---|
+| Partition | Unknowns become rejected/added | SQLite case-only/NULL/empty/padded labels | Exact A/R/U and unknown-pass; all-selected denominator | Main/report | Totals hide reassignment | Literal partition/set checks | simulate_threshold |
+| Set arithmetic | Lost applications omitted/sign reversed | Tightening, relaxing, mixed sets | Retained/removed/added and ±net; change ratio names A | Main/report | Equal additions/removals hide sign | Literal +1/-1/zero/only-removal vectors | simulate_threshold |
+| Baseline truth | First row becomes common settings | Heterogeneous tuples/insertion reversal | Sorted tuple frequencies, no current-setting claim | SQLite/report | Single-tuple fixture | Literal tuple counts and reversal | simulate_threshold |
+| Assumptions | Scalar comparison becomes forecast | Distance1/2/3 extra boundaries | Explicit fixed extras, no stability/accuracy advice | Predicate/report | Wording-only checks | Analytical cut/membership vectors | simulate_threshold |
+| Integer extras | Overflow admits impossible gate | Native maximum thresholds with distance3 | Unsatisfiable cut remains false, ordinary cuts retained | Predicate | Ordinary integers alone | Exact max/neighbor vectors | simulate_threshold |
+| Empty input | Nonfinite/fabricated values | Empty schema/unknown-only/no applied rows | Success/N/A ratios, no invented baseline | Actual main/report | Missing schema fails earlier | Valid schema and literal empty output | simulate_threshold |
+| SQL failure | Partial load reported as success | Missing schema/column/bad cell; isolated Next/Close faults | Failure/no partial report, retired rows | Main/loader | Launch failure satisfies status | Causal diagnostics/positive row/driver counters | simulate_threshold |
+| Output failure | Closed stdout ignored | Paired valid DB then closed output/failing writer | Causal report error/nonzero | Actual main/report | Loader fails first | Positive report witness and error | simulate_threshold |
+
+The lead-owned test challenge dispositions these false-green paths. No new
+empirical verdict or unresolved product choice is needed for checkpoint 27.
+Selected lane: targeted SQLite/main/driver suite, complete ordinary baseline,
+repository analyzers, fresh Go quality/claim review, support/decision/record/
+whitespace checks and maps last. No new race/fuzz/performance claim is triggered.
+
+### Observed qualification and final verification
+
+The final stable-executable focused suite passed, including twelve actual-main
+child executions. Real SQLite vectors give A2/R2/U1, retained1/removed1/added1,
+recognized2/4, net0 and unknown-pass1. Asymmetric custom flags15/4/76 remove
+three applications and add one rejection (net-2); preserved negative cuts pass
+all four recognized rows (net+1). Heterogeneous baseline tuples, insertion
+reversal, case-only nullable labels, known-rejection sample caps and explicit
+binary ordering under a NOCASE legacy schema have literal witnesses. Native
+maximum extras refuse impossible cuts; exact/lower neighbors remain compatible.
+Empty/no-applied/unknown-only ratios are N/A with named denominators.
+
+SQL query/scan failures publish no partial report. Isolated connector faults
+witness Next and EOF-close failures and joined Scan-plus-close causes, with
+one query, two Next calls, one row close and connection retirement. A paired
+valid SQLite witness reaches reporting before closed stdout fails with status1.
+No driver/factory global or production-only fixture seam was introduced.
+
+The complete ordinary 70-package baseline passed. The inherited-context final
+source review found no production defect but identified a missing unknown-row
+predicate counterexample: all earlier unknowns passed. A final test-only real
+SQLite exact55/below54 vector now requires unknown2/pass1, recognized0/0/net0,
+no samples and baseline frequency2. The affected suite reran successfully after
+that local refinement; repository vet, Staticcheck and lint passed, zero lint
+issues. Other baseline packages are not invalidated by the private fixture
+addition. Logs: `checkpoint-27-all-packages.log`,
+`checkpoint-27-focused-qualified.log` and the three analyzer `*-qualified.log`
+files under `.tmp/command-fixes`. Initial lint range-copy findings were corrected
+and excluded from passed evidence. No old-version mutation run is claimed.
+
+Root's fresh final diff pass verifies approved scope, integer arithmetic, error
+retirement, deterministic samples, test oracles and claim wording. This is
+lead-owned integration verification; inherited review is findings-only and
+neither establishes independent empirical accuracy/calibration evidence.
+Support documentation impact: Required. The historical guide/source map and
+ADR-0277/TSR-0075 cover this reader's populations, assumptions and failures.
+No schema/default, production correction gate, runtime setting, concurrency,
+service or deployment behavior changed. Record/crawler/whitespace checks and
+maps complete last. Checkpoint35 retains final cumulative checkout qualification.

@@ -13,11 +13,14 @@ Tags: analysis, outcomes, scientific-claims, SQL, exit-status
 - What happened: distance-3 analysis printed fixed optimality, calibration and
   stability advice, classified all non-applied labels as rejections and could
   return success after a failed query or scan.
+- Threshold simulation similarly printed fixed stability forecasts, presented a
+  first-row tuple as common settings and omitted removed applications from net
+  change. Fixed positive extras could overflow into permissive comparisons.
 - Why: hard-coded narrative and binary classification bypassed input-derived
   evidence; log-and-return main implied successful exit.
 - What fixed it: descriptive counts, separate unknowns, explicit hypothetical
   gates and checked loading/reporting with unsuccessful status on failure.
-- How we know: checkpoint 26's execution matrix and qualification pair literal
+- How we know: checkpoints 26/27 execution matrices and qualification pair literal
   data/set vectors with actual-main status and isolated SQL driver faults.
 - Operator/support answer: the report describes logged observations and scalar
   comparisons. It does not establish correction accuracy or optimal settings.
@@ -25,7 +28,7 @@ Tags: analysis, outcomes, scientific-claims, SQL, exit-status
 ## Triggering Request
 - Request date: 2026-10-10.
 - Request summary: implement approved v3 historical command fixes.
-- Request reference: `docs/command-fix-scope-ledger-v3.md`, checkpoint 26.
+- Request reference: `docs/command-fix-scope-ledger-v3.md`, checkpoints 26/27.
 
 ## Symptoms and Impact
 - Empty denominators produced non-finite percentages.
@@ -48,6 +51,8 @@ Tags: analysis, outcomes, scientific-claims, SQL, exit-status
 ## Findings
 - Root cause: unsupported narrative, binary classification and unchecked
   command failure boundaries.
+- Threshold net arithmetic must account for both additions and removals;
+  heterogeneous logged tuples establish no common current configuration.
 - No current producer of this legacy schema was found in inspected source.
   Reader qualification cannot certify real database provenance.
 - Scenarios are hypothetical scalar predicates, not complete model replay or
@@ -58,7 +63,7 @@ Tags: analysis, outcomes, scientific-claims, SQL, exit-status
 - Contract changes: descriptive reader claims and outcome semantics.
 
 ## Verification and Monitoring
-- Validation steps: checkpoint 26 in the execution record.
+- Validation steps: checkpoints 26/27 in the execution record.
 - Signals: exact partitions/means/set transitions, empty N/A and causal failures.
 - Rollback triggers: unknowns enter rejected sets, fixed advice returns, failed
   loads succeed or scores acquire unsupported scientific meaning.
@@ -70,4 +75,5 @@ Tags: analysis, outcomes, scientific-claims, SQL, exit-status
 - PR(s): none.
 - Commit(s): checkpoint 26 on `fix_commands`; see execution history.
 - Related ADR(s): ADR-0277; ADR-0023 remains the pipeline replay decision.
-- Related docs: `docs/historical-analysis.md`, `cmd/analyze_distance3/`.
+- Related docs: `docs/historical-analysis.md`, `cmd/analyze_distance3/`,
+  `cmd/simulate_threshold/`.
