@@ -12,9 +12,9 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 27, 28b, 29, 30 and 31 complete (04a used two commits);
-39 of 46 approved checkpoints complete; 7 remain. Checkpoints 28a and 32 await
-the user's policy selections; independent checkpoint 33 is next.
+Current progress: checkpoints 00 through 27, 28b, 29, 30, 31 and 33 complete (04a used two commits);
+40 of 46 approved checkpoints complete; 6 remain. Checkpoints 28a and 32 await
+the user's policy selections; independent checkpoint 34a is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -4134,3 +4134,70 @@ fixture limits. No ADR is needed: ADR-0074 already owns positive YAML applicatio
 and the zero sentinel. Root's fresh final diff/owner/claim pass remains the
 closeout authority. Record, crawler and whitespace checks and maps complete last
 with final documentation and the explicit staged diff.
+
+## Checkpoint 33: dashboard help aliases
+
+Status: complete. Architecture and matrix preceded code under approved v3 row33.
+Current discovery inspected DashboardV2's actual input capture, page and focus
+owners, help/footer text, scroll consumers, Stop and existing UI fixtures. The
+help/footer advertise H, but both opening and closing branches accept only h/?.
+Add H to those two branches. Preserve navigation, pane cycling, scrolling,
+quit, pass-through input and page availability. No terminal setup, scheduler,
+UI lifecycle, configuration, retained state or shared interface changes.
+
+An owned headless fixture builds real tview pages, the actual help overlay and
+focus groups, then installs the actual root and input capture. It starts neither
+app.Run nor the scheduler. Its context is canceled on cleanup. Test stimuli call
+Application.GetInputCapture with actual tcell events; no copied key switch is the
+checker. Actual page visibility, focus and scroll consumers are observed. This
+proves the binding contract, not OS-terminal rendering or production UI shutdown.
+
+| Contract | Failure/boundary | Stimulus | Observable result | Level | False-green risk | Exact checker | Owner |
+|---|---|---|---|---|---|---|---|
+| Open aliases | Uppercase remains unrecognized | H/h/? on each of four pages | Input consumed; actual help page visible | Actual capture | HELP text or direct toggleHelp passes | Front page plus helpShown | ui keybinding tests |
+| Close aliases | H opens but cannot close | H/h/?/Esc after every opening alias; two cycles | Input consumed; underlying page restored | Actual capture | Only opening branch exercised | Exact front-page/state sequence | ui keybinding tests |
+| Navigation | Help fix consumes another binding | o/O/i/I/p/P/e/E | Correct actual page and first pane focused | Actual capture | Same-page control never traverses | Literal destination and primitive identity | ui keybinding tests |
+| Pane cycling | Tab dispatch changes or wraps incorrectly | Tab/Backtab on each page | Correct pane identity and wrap, including one-pane events | Actual capture/group | Nil group or fake focus only | Actual Application.GetFocus | ui keybinding tests |
+| Scrolling | A key is swallowed without reaching pane | Arrows, k/j, PageUp/Down and Home/End with literal geometry | Existing scroll offsets/direction on real consumers | Actual capture/consumer | Return nil alone passes | Exact ordinary offsets; End reaches bottom | ui keybinding tests |
+| Quit and pass-through | Broad rune case changes behavior or consumes unhandled scroll | q/Q/Ctrl+C, unknown x and a focused non-scrollable pane | Owned context canceled for quit; same unhandled event returned without movement | Actual capture/consumer | Direct Stop, rewritten event or swallowed scroll passes | Context cause, exact pointer and unchanged offset | ui keybinding tests |
+
+The lead-owned falsification pass requires an initial uppercase test failure on
+the old source, followed by the same capture tests on the two-line repair. The
+fixture uses actual production pane types/counts, and bounded simulation drawing
+only where a bottom-scroll witness needs it. No independent review is claimed.
+Selected lane: focused capture tests, complete UI normal/race package checks,
+complete ordinary70-package baseline, repository vet/Staticcheck/lint, fresh
+direct diff review, support/crawler/whitespace and maps last. No parser, protocol,
+performance or long-running lifecycle claim is introduced. Checkpoints28a/32
+remain pending their explicit user selections.
+
+### Checkpoint33 qualification refinement
+
+The old-source negative control failed specifically on H in both help branches.
+The two-line repair passed all focused capture cases and the complete UI normal
+and race suites. Initial lint reported an existing optional scroll parameter as
+constant after the additional fixture call. Before further test mutation, the
+lead selects a consumer negative control: a focused non-scrollable pane must
+return the same scroll event without moving. This preserves the existing
+optional behavior and falsifies an overly broad input-capture change; it needs
+no production API cleanup or analyzer suppression. The failed lint log is kept
+separately and is uncredited. The ordinary70-package baseline passed on unchanged
+final production code before the additional local control. No Go file changed
+during that run. Final complete UI/analyzer qualification follows the control;
+it changes no production behavior, shared test owner or build configuration and
+does not invalidate the broad baseline. Unknown-input and quit controls also
+exercise help-visible state to falsify an overly broad closing predicate.
+
+Final complete UI ordinary/race checks and repository vet/Staticcheck/lint passed;
+lint reported zero issues. The full ordinary baseline passed all70 packages on
+the final two-line production repair. Artifact prefix:
+`.tmp/command-fixes/checkpoint33`; the old-source uppercase failure and initial
+lint failure are retained separately and uncredited. Root directly reviewed the
+final diff, fixture ownership, literal key/geometry controls and claim limits.
+This is lead-owned verification, not independent empirical evidence. No full
+race rerun, terminal-rendering or current cumulative checkout result is claimed.
+
+Support impact: Required. The keyboard guide and source map describe aliases,
+page/pane navigation, scrolling, quit and fixture limits. No ADR/TSR is required
+for this localized completion of already advertised behavior. Crawler,
+whitespace and maps complete last against the explicit staged diff.

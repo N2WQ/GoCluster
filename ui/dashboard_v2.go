@@ -315,7 +315,7 @@ func (d *DashboardV2) installRoot() {
 func (d *DashboardV2) installKeybindings() {
 	d.app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if d.helpShown {
-			if event.Key() == tcell.KeyEsc || event.Rune() == 'h' || event.Rune() == '?' {
+			if event.Key() == tcell.KeyEsc || event.Rune() == 'H' || event.Rune() == 'h' || event.Rune() == '?' {
 				d.toggleHelp(false)
 				return nil
 			}
@@ -375,7 +375,7 @@ func (d *DashboardV2) installKeybindings() {
 		case 'q', 'Q':
 			d.Stop()
 			return nil
-		case 'h', '?':
+		case 'H', 'h', '?':
 			d.toggleHelp(!d.helpShown)
 			return nil
 		case 'o', 'O':
