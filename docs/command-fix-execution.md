@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 23 complete (04a used two commits);
-31 of 46 approved checkpoints complete; 15 remain; 24 is next.
+Current progress: checkpoints 00 through 24 complete (04a used two commits);
+32 of 46 approved checkpoints complete; 14 remain; 25 is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -3283,3 +3283,73 @@ lead-owned verification, not independent review. No model or durable architectur
 contract changed. Operator/support impact is reflected in the script guide,
 wrapper comments, source map and TSR-0072. Record/crawler/whitespace checks and
 generated maps are completed last and reviewed with the explicit staged diff.
+
+## Checkpoint 24: skew-fetch command status
+
+Status: complete; authority is approved v3 checkpoint 24.
+
+Discovery inspected `cmd/rbnskewfetch/main.go`, skew Fetch/FetchAndWrite/
+FilterEntries/WriteJSON, required config registry and test-copy patterns,
+ADR-0031 and support routing. Semantic references show the command is the sole
+caller of FetchAndWrite. Dependency inventory is retained as
+`checkpoint-24-dependencies.json`. Main already exits on config error, but logs
+a fetch/filter/write error and returns success. Shared functions already return
+those errors. The command can exit 1 there without changing any shared API,
+threshold, CSV parser, factor calculation, timeout, path/default or file format.
+The existing direct-write ownership is retained; no atomic-output claim is made.
+The final success report also returns status 1 if stdout fails, preserving the
+table already written. This is the same approved write-failure boundary and
+retains prior partial effects; it introduces no output transaction policy.
+
+Architecture: return command errors through a private run function so its request
+context cancellation completes before main logs and exits 1. Actual-main
+children run the stable package executable with reset child-local flags, an
+isolated cwd/config copy and owned loopback CSV. A child transport rejects other
+destinations before DNS/dial; request counts distinguish config refusal from
+fetch/parse/write failures. Context bounds and joined process exit are checked
+separately from status. Selection remains inclusive absolute skew, with factor-1
+rows retained, as specified by ADR-0031 and current FilterEntries.
+
+| Contract | Failure/boundary | Stimulus | Observable result | Level | False-green risk | Exact checker | Owner |
+|---|---|---|---|---|---|---|---|
+| Successful table | Status fix changes selection/order | Full private config; +/- exact threshold and factor-1 CSV rows | Status 0, one request, literal decoded JSON rows/order and Wrote count | Actual main | Fixture fails config or copies selection code | Literal rows and request witness | rbnskewfetch |
+| Fetch/read/parse failures | Logged error exits zero | HTTP 500, truncated body, malformed/incomplete/header-only CSV | Status 1, causal diagnostic, no Wrote or new output | Actual main | Launch/deadline/config error mistaken for intended branch | Bound, request count and exact error family | rbnskewfetch |
+| Empty selection | All rows filtered still succeeds | Valid below-threshold rows | Status 1, no entries after filtering, prior output unchanged | Actual main | Parsing fails before filter | Known valid rows and specific diagnostic | rbnskewfetch |
+| Durable output failure | False success or early setup error | Valid CSV, blocked parent or directory target | One request, file-path diagnostic, status 1 | Actual main | HTTP/config failure masks write path | Request plus causal mkdir/write error | rbnskewfetch |
+| Preservation | Pre-write failure overwrites old table | Seed exact old bytes, then fetch/parse/filter fault | Old bytes unchanged | Actual main | Only missing output tested | Byte-for-byte old-file check | rbnskewfetch |
+| Config failure | Regression reaches fetch on invalid config | Missing directory and malformed data.yaml in full copy | Status 1, config diagnostic, zero requests | Actual main | Blanket early refusal appears correct | Paired successful full-config fixture | rbnskewfetch |
+| JSON/report output | Encoding or stdout failure ignored | Retained NaN factor; closed child stdout after valid input | Status 1; causal marshal/report error; preserve old table on encoding failure and newly written table on report failure | Actual main | Generic parse failure or child termination credited | Specific errors plus decoded/unchanged output witnesses | rbnskewfetch |
+
+Lead-owned falsifiability review resolves fixture/exit false-green paths; inherited
+operator review is read-only evidence, not independent verification. No material
+ambiguity remains. Selected lane: focused actual-main suite, ordinary complete
+baseline, analyzers, source-aware support/record/whitespace checks and maps last.
+No parser, production concurrency or scientific behavior change requires new
+fuzz, race or model qualification.
+
+Observed qualification: actual-main skew command and existing skew suites passed.
+The first complete run failed in the unchanged peer retry timing control:
+98.9956 ms measured against its 99 ms lower acceptance bound for a 100 ms timer.
+No peer source or test threshold was changed. Three focused repetitions passed,
+then the complete ordinary 70-package rerun passed. These artifacts remain as
+`checkpoint-24-all-packages.log`, `checkpoint-24-peer-retry.log` and
+`checkpoint-24-all-packages-2.log`; the initial run is not credited as a pass.
+
+Repository analyzers then caught the direct-exit/deferred-cancel path. The local
+private-run refinement makes context cleanup finish before exit, preserving
+status/messages and shared behavior. Final focused command/skew suites reran,
+and repository vet, Staticcheck and lint passed (zero lint issues), retained as
+`checkpoint-24-focused-final.log` and `checkpoint-24-*-final.log`. The complete
+baseline preceded that command-local refinement; no shared API, package behavior,
+config, build or production concurrency changed to invalidate other packages.
+The final affected command suite and whole-repository analyzers are current.
+
+Root's fresh direct review checked the final command, actual-main helpers and
+all stage-specific failure witnesses against v3. The compact table-driven test
+keeps the fault/expected-error pairs together; no hand-written file exceeds the
+review threshold. This verification is lead-owned. Support impact is reflected
+in the configuration guide, source map and TSR-0073. Existing selection and
+write ownership remain authoritative; no ADR change is warranted. Record and
+whitespace checks passed; crawler checks, map generation/check and staged-diff
+review complete last. External feed health and cross-platform execution remain
+outside this local qualification.
