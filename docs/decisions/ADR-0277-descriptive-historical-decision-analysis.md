@@ -34,7 +34,12 @@ inspect existing data and do not supersede that path.
   (original applied minus removed plus added); net is added minus removed.
   Unknown passes remain separate. Name all-selected/recognized/applied denominators; zero ratios are
   unavailable. Integer overflow cannot make an impossible extra gate permissive.
-- This record governs the repaired distance-3 and threshold readers. Other readers
+- Extend the contract to `analyze1c`: preserve its four-column legacy projection
+  and all-distance population. Applied-only mean/median use exact accumulation
+  before final approximate floating presentation. Empty summaries are N/A;
+  rejection reasons exclude unknown outcomes and retain their missing bucket.
+  Report no correlation, calibration or reliability evaluation.
+- This record governs the repaired distance-3, threshold and distance-summary readers. Other readers
   receive their own approved qualification before repaired claims are made.
 
 ## Alternatives considered
@@ -60,8 +65,8 @@ inspect existing data and do not supersede that path.
   lead-owned arithmetic/claim checks establish only its descriptive contract.
 
 ## Links
-- Related issues/PRs/commits: approved v3 checkpoints 26/27.
-- Related tests: `cmd/analyze_distance3/`, `cmd/simulate_threshold/` and execution qualification.
+- Related issues/PRs/commits: approved v3 checkpoints 26/27/28b.
+- Related tests: `cmd/analyze_distance3/`, `cmd/simulate_threshold/`, `cmd/analyze1c/` and execution qualification.
 - Related docs: `docs/historical-analysis.md`, `docs/command-fix-execution.md`.
 - Related TSRs: `docs/troubleshooting/TSR-0075-historical-analysis-claims-and-failures.md`.
 - Supersedes / superseded by: none; clarifies retained-reader boundaries alongside

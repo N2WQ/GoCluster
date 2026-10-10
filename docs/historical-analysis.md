@@ -88,3 +88,38 @@ use memory proportional to input cardinality. No stability, accuracy or
 calibration prediction follows from this report.
 
 See [checkpoint 27 qualification](command-fix-execution.md#checkpoint-27-hypothetical-threshold-set-comparison).
+
+## Distance summaries
+
+```powershell
+go run ./cmd/analyze1c -db C:\data\decisions.db
+```
+
+`analyze1c` requires only `distance`, `decision`, `winner_confidence` and `reason`
+in the legacy `decisions` table. It selects every row and groups by the stored
+distance, including zero or values outside 1 through 3. Its database flag and
+default remain unchanged.
+
+Known outcomes follow the case-only recognition rules above; NULL, empty,
+padded or other outcomes stay unknown. Overall percentages use all selected
+rows; each distance's percentages use that distance's rows. Raw unknown values
+are reported separately. Rejection reasons contain only recognized rejections,
+with that distance's rejection count as denominator. NULL/empty reasons retain
+the existing `UNKNOWN` bucket. A stored literal `UNKNOWN` shares that bucket.
+Reasons sort by descending count, then by their literal text.
+
+Mean and median use only applied logged integer scores. Empty applied groups
+show `N/A`; an observed zero remains `0.0`. Arithmetic sums exactly before
+division and final floating conversion, avoiding integer overflow and early
+rounding of opposite extremes. The displayed one-decimal values are approximate
+at large magnitudes. Scores are unvalidated logs rather than correctness
+probabilities, and their presentation has no percent unit.
+
+Empty valid input succeeds with unavailable ratios/statistics. Failed loads
+publish no partial report; query, scan, iteration, close or output failures exit
+unsuccessfully. SQLite file creation and late partial-stdout effects remain.
+Invocation-local maps and applied-score slices use memory proportional to input.
+No correlation, accuracy, calibration, reliability or optimal-setting evaluation
+follows from these descriptive summaries.
+
+See [checkpoint 28b qualification](command-fix-execution.md#checkpoint-28b-descriptive-distance-summaries).

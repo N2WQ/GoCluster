@@ -12,9 +12,9 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 27 complete (04a used two commits);
-35 of 46 approved checkpoints complete; 11 remain. Checkpoint 28a awaits the
-user's counting-rule selection; independent checkpoint 28b is next.
+Current progress: checkpoints 00 through 27 and 28b complete (04a used two commits);
+36 of 46 approved checkpoints complete; 10 remain. Checkpoint 28a awaits the
+user's counting-rule selection; independent checkpoint 29 is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -3674,3 +3674,105 @@ ADR-0277/TSR-0075 cover this reader's populations, assumptions and failures.
 No schema/default, production correction gate, runtime setting, concurrency,
 service or deployment behavior changed. Record/crawler/whitespace checks and
 maps complete last. Checkpoint35 retains final cumulative checkout qualification.
+
+## Checkpoint 28b: descriptive distance summaries
+
+Status: complete under approved v3 row28b. Architecture and matrix preceded code.
+Checkpoint28a remains separately pending; this reader has no dependency on its
+winner-field counting policy. Checkpoints still implement/test/commit one at a
+time. Current complete source, four-column legacy projection, neighboring26/27,
+ADR-0023/0277 and support routing were inspected. Dependency inventory is
+`checkpoint-28b-dependencies.json`. There is no inspected current producer for
+this historical schema. Synthetic databases qualify the consumer alone.
+
+The reader currently groups all distances, treats everything except lowercase
+applied as rejected, fabricates zero applied statistics for empty groups, can
+overflow native sums/even medians, ignores close/output failures and infers
+reliability/calibration/settings advice without independent labels. Row28b
+already selects descriptive summaries: case-only known outcomes, separate
+NULL/empty/other unknowns, all-selected and per-distance denominators,
+applied-only mean/median, known-rejection reasons and N/A empty statistics.
+Preserve all distances and the four required columns distance/decision/
+winner_confidence/reason; no imported ID/callsign requirements or distance filter.
+No new score admission domain. Logged scores remain unvalidated integers.
+
+Architecture stays private to analyze1c: main parses the existing db flag/default
+and selects unsuccessful status after private run closes DB. Loader owns rows,
+checks Query/Scan/Next/Close and returns no partial aggregate after failure.
+Invocation-local maps have at most one key per selected row; score slices retain
+only applied rows. Sort distances numerically and reasons count-desc/raw-label
+lexically, with no sample ordering or shared framework. Private arithmetic uses
+exact big.Int accumulation and big.Rat division before final float64 conversion
+for approximate one-decimal presentation; this avoids both native overflow and
+opposite-endpoint cancellation. Median sorts its owned score slice. Checked
+writer publishes only after complete loading. No runtime logger/schema/model,
+configuration, shared interfaces, server state, concurrency or hot-path change.
+
+Analytical vectors: applied scores10/20/90 give mean40/median20; rejected80 and
+unknown100 stay outside summaries. Applied0/1 give mean0.5/median0.5; no applied
+rows gives N/A. For native extrema M=MaxInt and m=MinInt, {M,m} sum=-1 so both
+mean/median=-0.5 exactly. {M,M} and {m,m} retain same-sign final floating
+presentations without intermediate overflow. Displayed values are approximate
+at large magnitudes; no exact-decimal or empirical-calibration claim is made.
+These are lead-owned mathematical derivations. Independent empirical oracle is
+missing; removing unsupported verdicts requires no such verdict or new policy.
+
+| Contract | Failure/boundary | Stimulus | Observable result | Level | False-green risk | Exact checker | Owner |
+|---|---|---|---|---|---|---|---|
+| Outcome partition | Case/unknown labels become rejected | Four-column SQLite with case-only labels, NULL/empty/padded/other | Literal A/R/U, named denominators/raw unknowns | Actual main/report | Totals conceal reassignment | Known/unknown counts and reason ownership | analyze1c |
+| Applied statistics | Other outcomes contaminate mean/median | Applied10/20/90, rejected80, unknown100; even0/1 | Mean40/median20 and0.5; scores unvalidated | Report/arithmetic | Keyword checks alone | Hand-derived numeric values | analyze1c |
+| Arithmetic | Native overflow or float cancellation | Same-sign extrema and opposite extrema | Finite final means/medians; opposite pair -0.5 | Arithmetic/report | Ordinary 0..100 misses overflow | Exact derivation then stated presentation tolerance | analyze1c |
+| Population | Neighbor's1..3 filter imported | Distances-1/0/1/3/4 with literal counts | Every supplied distance remains a separate group | SQLite/main | Only1..3 fixtures | Four-column schema and outlying-distance witnesses | analyze1c |
+| Reasons/order | Unknowns leak or ties reorder | Recognized reasons with equal counts; reversal | Rejected-only denominator; deterministic count/lex order | SQLite/report | Unique-count reasons hide ties | Exact labels/counts/order and reversal | analyze1c |
+| Empty statistics | NaN or measured zero invented | Empty schema and unknown/rejected-only groups | Successful empty report; ratios and applied summaries N/A | Actual main/report | Invalid schema merely fails | Valid schema plus literal empty output | analyze1c |
+| SQL retirement | Partial load becomes successful report | Missing schema/column, bad cell after good; isolated Next/Close faults | Failure/no partial report and retired rows | Main/loader | Launch error satisfies status | Causal diagnostics/control/row-close counters | analyze1c |
+| Output failure | Checked output bypassed | Paired valid nonempty report then closed stdout/failing writer | Causal report error/nonzero | Main/report | Load fails before writer | Positive report witness plus write cause | analyze1c |
+
+The bounded inherited-context read-only test challenge identified four-column
+compatibility, all-distance controls, reason tie ordering and exact-arithmetic
+cancellation witnesses. Root verified them against current source and dispositions
+them above. It is findings-only, not independent empirical evidence. Selected
+lane: focused real-SQLite/actual-main/driver/math tests, complete ordinary baseline,
+repository analyzers, fresh Go quality/claim/diff pass, support/decision/record/
+whitespace and maps last. No new production parser/race/performance trigger.
+
+### Observed qualification and final verification
+
+Focused stable-executable tests passed, including eleven actual-main children.
+A fourteen-row four-column SQLite fixture produces overall A5/R4/U5 with
+35.7%/28.6%/35.7% all-row denominators. Distance1 has A3/R2/U5 and applied
+mean40/median20; distance3 has A2/R2/U0 and mean60/median60. Unknown labels and
+their reasons contaminate neither known counts nor applied scores/rejection
+reasons. NULL/empty/literal UNKNOWN known-rejection reasons retain their bucket.
+All-distance controls include -1/0/4, numeric group order and literal singleton0
+versus absent N/A; even0/1 yields0.5 and applied1/2/4 yields mean2.3/median2.0.
+Opposite native extrema yield mean/median-0.5; same-sign endpoints retain their
+finite final float presentation. Permutation and NOCASE-schema reason ties
+produce identical input-derived reports.
+
+The actual default database path succeeds without -db in a private fixture.
+Missing table/column and bad/NULL unknown scores after a valid row fail causally
+with no stdout. Isolated Next/EOF-close/Scan-plus-close faults return nil partial
+analysis and preserve error causes, one query/two Next/one row close/one connection
+retirement. Paired valid reporting precedes closed stdout failure; a separate
+partial writer preserves its eleven-byte prefix and returns the causal error.
+No global database factory/driver or production fixture seam changed.
+
+The complete ordinary 70-package baseline passed on the final Go state, as did
+repository vet, Staticcheck and lint (zero lint issues). Logs are
+`checkpoint-28b-focused-qualified.log`, `checkpoint-28b-all-packages.log` and
+the three analyzer `*-qualified.log` files in `.tmp/command-fixes`. The initial
+focused attempt failed three textual adjacency expectations that omitted the
+existing denominator explanation. Expectations now include that line; numerical
+oracles and production output were unchanged. That failed attempt is uncredited.
+
+Bounded inherited-context final source/test review found no material remaining
+finding. Root's fresh direct diff pass verifies scope, exact arithmetic before
+presentation, population/reason ownership, resource retirement and docs/tests.
+These are findings-only inherited review and lead-owned integration verification;
+no independent empirical correlation/calibration/reliability review is claimed.
+Support documentation impact: Required. The historical guide, source map and
+ADR-0277/TSR-0075 now route this reader's descriptive limits. No production model,
+schema/default, runtime configuration, concurrency or deployment behavior changed.
+Record checks passed; staged crawler/whitespace checks and maps finish last.
+Final cumulative checkout reconciliation remains checkpoint35.
