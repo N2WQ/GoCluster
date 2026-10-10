@@ -153,7 +153,7 @@ def build(race):
     return binary, before
 
 
-def stage(root, transport, *, reputation_enabled=False, dedupe_fast_only=False, solar_enabled=None):
+def stage(root, transport, *, reputation_enabled=False, dedupe_fast_only=False, solar_enabled=None, underscore_taxonomy=False):
     """Copy tracked config only; disable network destinations in private copies."""
     root = plain_output(root)
     root.mkdir(parents=True, exist_ok=False)
@@ -190,6 +190,12 @@ def stage(root, transport, *, reputation_enabled=False, dedupe_fast_only=False, 
             content["dedup"].update(secondary_med_window_seconds=0, secondary_slow_window_seconds=0)
         if name == "solarweather" and solar_enabled is not None:
             content["enabled"] = solar_enabled
+        if name == "spot_taxonomy" and underscore_taxonomy:
+            # Private checked taxonomy, not a production mode/default change.
+            cw = next(mode for mode in content["modes"] if mode["name"] == "CW")
+            cw.setdefault("variants", []).append("CW_ALIAS")
+            content["modes"].append(dict(name="TEST_MODE", filter_visible=True))
+            content["events"].append(dict(name="TEST_EVENT", filter_visible=True))
         if name == "data":
             content["cty"]["file"] = str(root / "cty.plist")
             for key in ("fcc_uls", "ised"):

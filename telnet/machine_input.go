@@ -34,8 +34,9 @@ func (c *Client) readCommandLine(maxLen int) (string, error) {
 }
 
 // readInputLine preserves the established human/login editing and echo rules.
-// Only recognized machine headers retain their original case, so request IDs
-// survive dispatch without broadening the ordinary command character safe list.
+// Only recognized machine headers retain their original case. Human commands
+// admit taxonomy underscores after login; login and recognized machine headers
+// retain their existing character restrictions.
 func (c *Client) readInputLine(maxLen int, context string, allowComma, allowWildcard, allowConfidence, allowDot, machineAware bool) (string, error) {
 	if maxLen <= 0 {
 		maxLen = defaultCommandLineLimit
@@ -111,8 +112,12 @@ func (c *Client) readInputLine(maxLen int, context string, allowComma, allowWild
 		}
 		allowed := ""
 		commentByte := machineAware && b >= 32 && b <= 126 && commentArgumentsStarted(line)
-		if len(line) >= maxLen || (!commentByte && !isAllowedInputByte(b, allowComma, allowWildcard, allowConfidence, allowDot)) {
+		humanUnderscore := machineAware && b == '_' && machineIntent(line) == ""
+		if len(line) >= maxLen || (!commentByte && !humanUnderscore && !isAllowedInputByte(b, allowComma, allowWildcard, allowConfidence, allowDot)) {
 			allowed = allowedCharacterList(allowComma, allowWildcard, allowConfidence, allowDot)
+			if machineAware && machineIntent(line) == "" {
+				allowed += ", '_'"
+			}
 		}
 		if len(line) >= maxLen {
 			c.logRejectedInput(context, fmt.Sprintf("exceeded %d-byte limit", maxLen))

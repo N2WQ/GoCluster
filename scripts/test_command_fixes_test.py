@@ -25,6 +25,58 @@ HISTORY_ROW = "DX de K1ABC:     14074.00  W6ABC       CW LABEL                  
 
 
 class DriverControls(unittest.TestCase):
+    def test_taxonomy_rules_require_canonical_live_and_saved_names_and_booleans(self):
+        expected = dict(modes=dict(allow_all=False, block_all=False, allow={"TEST_MODE": True, "CW": True}, block={}),
+                        events=dict(allow_all=False, block_all=False, allow={"TEST_EVENT": True}, block={}))
+        stored = dict(modes={"TEST_MODE": True, "CW": True}, blockmodes={}, allmodes=False, blockallmodes=False,
+                      events={"TEST_EVENT": True}, blockevents={}, allevents=False, blockallevents=False)
+        record = mock.Mock()
+        record.read_bytes.return_value = driver.yaml.safe_dump(stored).encode()
+        document = dict(configuration=dict(filters=copy.deepcopy(expected)))
+        driver.require_taxonomy_rules(document, expected, record)
+        for kind in ("modes", "events"):
+            for fault in ("wrong_name", "integer_flag", "integer_entry", "missing_name"):
+                changed = copy.deepcopy(document)
+                rules = changed["configuration"]["filters"][kind]
+                if fault == "wrong_name":
+                    rules["allow"] = {"UNDERSCORE_REMOVED": True}
+                elif fault == "integer_flag":
+                    rules["allow_all"] = 0
+                elif fault == "integer_entry":
+                    rules["allow"][next(iter(rules["allow"]))] = 1
+                else:
+                    rules["allow"] = {}
+                with self.assertRaises(ValueError):
+                    driver.require_taxonomy_rules(changed, expected, record)
+            changed = copy.deepcopy(stored)
+            changed[kind] = {}
+            record.read_bytes.return_value = driver.yaml.safe_dump(changed).encode()
+            with self.assertRaises(ValueError):
+                driver.require_taxonomy_rules(document, expected, record)
+            record.read_bytes.return_value = driver.yaml.safe_dump(stored).encode()
+
+    def test_taxonomy_archive_requires_literal_identity_mode_frequency_and_label(self):
+        # Reuse the literal fixture's padding/tail, not the production formatter.
+        row = HISTORY_ROW.replace("K1ABC", "N0XYZ").replace("14074.00", "14061.00")
+        row = row[:39] + "TEST_MODE T15LABEL".ljust(24) + row[63:]
+        suffix_mode = row[:39] + "TEST_MODE-X T15LABEL1234" + row[63:]
+        suffix_label = row[:39] + "TEST_MODE T15LABELX".ljust(24) + row[63:]
+        driver.require_taxonomy_archive([row], "T15LABEL", 14061, True)
+        driver.require_taxonomy_archive([], "T15LABEL", 14061, False)
+        driver.require_history_row(suffix_mode)
+        driver.require_history_row(suffix_label)
+        for rows, label, frequency, visible in (([], "T15LABEL", 14061, True),
+                                              ([row], "T15LABEL", 14061, False),
+                                              ([row], "STALELABEL", 14061, True),
+                                              ([row], "T15LABEL", 14062, True),
+                                              ([row.replace("TEST_MODE", "WRONGMODE")], "T15LABEL", 14061, True),
+                                              ([suffix_mode], "T15LABEL1234", 14061, True),
+                                              ([suffix_label], "T15LABEL", 14061, True),
+                                              ([row.replace("N0XYZ", "W1XYZ")], "T15LABEL", 14061, True),
+                                              ([row, row], "T15LABEL", 14061, True)):
+            with self.assertRaises(ValueError):
+                driver.require_taxonomy_archive(rows, label, frequency, visible)
+
     def test_solar_receipt_requires_exact_loaded_availability(self):
         for available in (False, True):
             support.require_solar_identity({"solar_enabled": available}, available)

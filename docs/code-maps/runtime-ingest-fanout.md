@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `e3ecb3331d0083d0`
+- Source fingerprint: `d294c0fbc8abfbef`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -15,7 +15,7 @@
 | `dxcluster/internal/cluster` | `internal/cluster` | 25 | 63 |
 | `dxcluster/peer` | `peer` | 62 | 130 |
 | `dxcluster/spot` | `spot` | 33 | 32 |
-| `dxcluster/telnet` | `telnet` | 47 | 91 |
+| `dxcluster/telnet` | `telnet` | 47 | 92 |
 
 ## In-Scope Package Edges
 
@@ -621,6 +621,7 @@ Test files:
 - `telnet/solar_outcome_test.go`
 - `telnet/state_commands_test.go`
 - `telnet/state_machine_test.go`
+- `telnet/taxonomy_input_test.go`
 - `telnet/writer_v15_append_test.go`
 - `telnet/writer_v15_bench_test.go`
 - `telnet/writer_v15_fixture_test.go`

@@ -117,6 +117,9 @@ Path and confidence filters are operator-visible here:
 - `PASS/REJECT CONFIDENCE` works with `?`, `S`, `C`, `P`, `V`, `B`
 - `PASS/REJECT PATH` works with `HIGH`, `MEDIUM`, `LOW`, `UNLIKELY`, `CLOSED`, `INSUFFICIENT`
 - `PASS/REJECT MODE` and `PASS/REJECT EVENT` validate against the active `spot_taxonomy.yaml`
+- Configured MODE/EVENT names and mode aliases containing `_` work in human
+  commands after login, in both dialects. Login callsigns and machine request
+  IDs retain their stricter alphabets. Unknown names still fail without changes.
 - the shipped `PASS/REJECT EVENT` families are `LLOTA`, `IOTA`, `POTA`, `SOTA`, `WWFF`, or `ALL`
 - `PASS TOXIC` shows spots classified as toxic; `REJECT TOXIC` hides only spots with the classifier status `TOXIC`
 

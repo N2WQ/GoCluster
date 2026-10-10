@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 14 complete (04a used two commits);
-26 approved checkpoints remain; 15 is next.
+Current progress: checkpoints 00 through 15 complete (04a used two commits);
+25 approved checkpoints remain; next is 16.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -2074,3 +2074,87 @@ route were updated. TSR-0061 retains the failure mechanism and checker limits.
 The LOAD guide now describes scheduling separately from conditional delivery.
 No new ADR is warranted. Record, crawler-entry, generated-map, whitespace and
 direct staged-diff checks close the slice.
+
+## Checkpoint 15: configured taxonomy underscores at human ingress
+
+Status: complete. Discovery inspected taxonomy name admission, canonical
+MODE/EVENT normalization, filter dispatch, history selection, the shared reader,
+machine intent and header validation, login callers, loaded checkout taxonomy,
+editing and physical-line recovery controls. `normalizeTaxonomyName` already
+admits underscores. `gopls references` confirms only the post-login command
+reader and the unchanged ReadLine adapter call the shared input implementation.
+Login uses the adapter without machine awareness; machine request IDs remain
+alphanumeric or hyphen, with a separate unchanged parser check.
+
+Architecture: admit the one additional ASCII character only on the post-login
+human path, before recognized machine intent. Preserve uppercase human delivery
+and echo, byte limits, editing, printable COMMENT handling and recovery. Once
+GET/PUT/PATCH/VALIDATE intent is recognized, the current character restriction
+and terminal failure behavior remain. No signature, taxonomy configuration
+contract, dispatch grammar, storage, worker, timer or retained-state change is
+required. Unknown names still fail at the existing semantic handlers.
+
+Lead-owned preimplementation falsifiability matrix:
+
+| Contract | Stimulus / fault | Required evidence | False-green risk | Checker / owner |
+|---|---|---|---|---|
+| Loaded names are reachable | Actual loaded mode/event names and a mode alias with underscores; GO/CC and both codecs | Exact canonical rules, actual matching, immediate saved bytes and fresh-child restoration | Calling handlers directly bypasses the faulty reader | Real reader plus publication/matcher controls; loaded checkout capability and configuration / telnet, runner |
+| Editing and bounds stay exact | Lowercase, echo, BS/DEL/word/line erase; exact 128 bytes and one over | Literal human delivery/echo, complete refusal at overflow | Broad punctuation admission or underscore removal | Reader controls and independent ASCII-domain fuzz / telnet |
+| Login remains restricted | Underscore in login, then a valid physical line | Rejection, preserved recovery boundary and next valid input | Accidentally changing the shared base alphabet | Both codecs through ReadLine / telnet |
+| Machine restrictions remain | Underscore immediately after a reserved verb or in request ID, including after editing | Terminal machine error retaining intent; unchanged direct header refusal | Accepting the underscore before parsing and keeping an unsafe upload session | Both-codec reader and direct header controls / telnet; cumulative checkout retains valid machine commands, without an early-error framing claim |
+| Unsupported names have no effects | Underscored unknown MODE/EVENT and mixed valid/invalid lists | No publication/commit, exact live/revision/preset/disk unchanged | Testing syntax acceptance without semantic admission | Detached coordinator and actual immediate owner checks / telnet, runner |
+
+The matrix refines checker detail within approved checkpoint 15. It introduces
+no product-policy, scientific or ownership fork. Independent scientific review
+is not triggered. Select focused reader/consumer tests, complete telnet/filter/
+commands/spot ordinary and race suites, bounded reader fuzz, cumulative actual
+ordinary/race profiles, offline oracle faults, full ordinary baseline, analyzers,
+documentation/support records, maps and fresh final diff verification.
+
+### Review disposition and observed validation
+
+The fresh inherited-context technical review found no production ingress defect.
+It identified an archive-oracle false green: a word-boundary match admitted
+`TEST_MODE-X` while looking for `TEST_MODE`. The checker now requires the exact
+24-column mode/comment field. Valid-layout mode and label suffix corruptions
+are permanent negative controls. Both actual builds were rerun after this
+Python-only correction; the earlier checkout runs are preliminary evidence.
+
+Initial composed Go controls also compared decoded storage internals with
+reflect.DeepEqual. Reload normalizes empty collections and excludes runtime
+caches. Final controls compare every configured filter/settings/baseline value
+semantically, retaining exact canonical selected-rule maps, association name,
+stable live pointer and zero-commit/disk-byte preservation on refusal.
+
+| Check | Observed result |
+|---|---|
+| Focused and complete package controls | Reader/taxonomy/machine/history controls and complete telnet/filter/commands/spot ordinary and race suites passed |
+| Bounded reader fuzz | 113,590 inputs passed in the selected 15-second run; independent ASCII alphabet, editing/framing covered by curated controls |
+| Final runner controls | All 52 passed, including valid-layout mode/label suffix corruption and exact rule/type faults; `checkpoint-15-runner-controls-final.log` |
+| Final actual checkout | Ordinary `20261009-233825-d878a7e9` and race `20261009-234014-73110f12`: all 116 required cases per build passed; 44 main, 7 reputation and 7 disabled-SOLAR/FAST-only cases per transport |
+| Transport and retirement | Zero wire/cleanup failures; all 12 retirement receipts per build confirm clients retired, consumer joined and archive stopped; loaded availability remains 8 enabled and 4 disabled solar children |
+| Complete ordinary baseline | All 70 packages completed successfully, including build checks for no-test packages; before removal of one unused test-helper argument, with final focused taxonomy race checks refreshed afterward |
+| Whole-repository analyzers | Final vet and Staticcheck passed; final lint passed with zero issues |
+
+Both final actual builds and their children report Go/module source digest
+`b292b14a2ca4f01710540631c8ef77046b3f7f440be1272edfb8c6767d23c841`.
+Go and Python were frozen across the final pair. The digest excludes Python,
+docs and configuration; the loaded private configurations have verified hashes.
+Lint found one unused test-helper argument. Removing it changed no runtime code
+or test assertion, so broader package and fuzz evidence remain applicable.
+Focused taxonomy race checks, all analyzers and both actual builds were refreshed
+on the final source state. The earlier checkout pairs are preliminary evidence.
+
+Implementation maps to the narrow readInputLine guard, composed permanent
+reader/publication/storage/matcher controls and loaded checkout profiles.
+Support-agent impact: Required; telnet/validation guides, the common-question
+route and TSR-0062 explain reachable configured names and unchanged restrictions.
+ADR-0069 already makes the loaded taxonomy authoritative; no new ADR is needed.
+These checks do not establish event inference, model quality, production load,
+external-cluster behavior, full-repository race qualification or early
+machine-error wire framing. No new runtime owner or retained state is added.
+Fresh lead verification directly reviewed final source, exact rule/record
+comparisons, oracle fault controls, documentation and the final receipts. The
+technical review was inherited-context, not independent scientific evidence.
+Record, crawler-entry, generated-map, whitespace and direct staged-diff checks
+close the slice; no required check is waived.

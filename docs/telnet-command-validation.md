@@ -256,6 +256,14 @@ Each run retains source/config identity, results, child logs and socket transcri
 under `.tmp/command-fixes`. Both telnet transports and both dialects are covered;
 fresh child processes verify saved preferences and actual archive data.
 
+The main profiles load private MODE/EVENT names and a mode alias containing
+underscores. Human commands reach the real reader, canonical publication,
+immediate saved records and archive filtering; fresh children restore the same
+rules. Seeded spots carry explicit mode/event metadata. This qualifies command
+and filter behavior, not event inference or model quality. Reader controls keep
+login and recognized machine headers restricted, with literal editing, echo
+and byte-boundary checks. They do not qualify early machine-error wire framing.
+
 Coverage grows with each approved fix. The initial fixture does not certify
 production dedupe, classifier or runtime shutdown. See the
 [execution record](command-fix-execution.md) and

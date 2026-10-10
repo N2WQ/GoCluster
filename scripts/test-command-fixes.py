@@ -51,11 +51,11 @@ def require_history_row(row):
             "history row violates the fixture column or UTC-tail contract")
 
 
-def archive_rows(session, label):
+def archive_rows(session, label, selection=""):
     # Pipelining GET can interleave its server echo with a history row. Consume
     # the bounded history body first; never strip arbitrary echo pieces. These
     # zero/one-row queries do not exercise the ten-row automatic pause trailer.
-    query = f"SHOW DX W6ABC 10 COMMENT {label}"
+    query = f"SHOW DX W6ABC 10{(' ' + selection) if selection else ''} COMMENT {label}"
     rows, received, raw = [], 0, bytearray()
     try:
         session.send(query + "\r\n")
@@ -1026,6 +1026,7 @@ def profile(binary, root, source, transport):
                 f"{transport}: fixed settings reject tails and preserve valid values",
                 f"{transport}/0: large DEDUPE final send fits or refuses without effects",
                 f"{transport}/0: enabled SOLAR feedback preserves cadence and read owners",
+                f"{transport}/0: configured taxonomy underscores reach human commands and matching",
                 f"{transport}/1: held endpoint and loaded consumers",
                 f"{transport}: preferences and archive survive fresh child",
                 f"{transport}: NOFILTER geography survives fresh child",
@@ -1044,7 +1045,8 @@ def profile(binary, root, source, transport):
                 f"{transport}: command arity preferences survive fresh child",
                 f"{transport}: fixed setting values survive fresh child with session reset",
                 f"{transport}/1: large DEDUPE final send survives fresh child",
-                f"{transport}/1: enabled SOLAR cadence survives fresh child"]
+                f"{transport}/1: enabled SOLAR cadence survives fresh child",
+                f"{transport}/1: configured taxonomy underscore rules survive fresh child"]
     call = "K1ABC-70001"
     observer_call, observer_configuration = "VE3ABC-70003", None
     failed_records, refused_records, compatible_records = {}, {}, {}
@@ -1058,6 +1060,7 @@ def profile(binary, root, source, transport):
     saved_arity = {}
     saved_settings = {}
     saved_solar = {}
+    saved_taxonomy = {}
     label = None
     suites = []
     for generation in range(2):
@@ -1469,6 +1472,8 @@ def profile(binary, root, source, transport):
                      lambda: large_dedupe_cases(suite, root, generation))
                 case(f"{transport}/0: enabled SOLAR feedback preserves cadence and read owners",
                      lambda: solar_cases(suite, root, True, generation, saved_solar))
+                case(f"{transport}/0: configured taxonomy underscores reach human commands and matching",
+                     lambda: taxonomy_cases(suite, root, child.nonce, generation, saved_taxonomy, label))
             else:
                 def restored():
                     settings = session.get()["configuration"]["settings"]
@@ -1677,6 +1682,8 @@ def profile(binary, root, source, transport):
                      lambda: large_dedupe_cases(suite, root, generation))
                 case(f"{transport}/1: enabled SOLAR cadence survives fresh child",
                      lambda: solar_cases(suite, root, True, generation, saved_solar))
+                case(f"{transport}/1: configured taxonomy underscore rules survive fresh child",
+                     lambda: taxonomy_cases(suite, root, child.nonce, generation, saved_taxonomy, label))
         finally:
             try:
                 if suite:
@@ -1802,6 +1809,96 @@ def large_dedupe_cases(suite, root, generation):
                 after["status"]["effective"] == before["status"]["effective"] and
                 after["status"]["preset"] == before["status"]["preset"] and record.read_bytes() == saved,
                 "large DEDUPE success/refusal changed a preference owner")
+
+
+def require_taxonomy_rules(document, expected, record):
+    stored = stored_document(record.read_bytes())
+    for name, allow, block, allow_all, block_all in (("modes", "modes", "blockmodes", "allmodes", "blockallmodes"),
+                                                   ("events", "events", "blockevents", "allevents", "blockallevents")):
+        actual = document["configuration"]["filters"][name]
+        require(all(key in stored for key in (allow, block, allow_all, block_all)),
+                "saved taxonomy rule fields are missing")
+        saved = dict(allow=stored[allow], block=stored[block], allow_all=stored[allow_all], block_all=stored[block_all])
+        for rules in (actual, saved):
+            require(type(rules) is dict and rules == expected[name] and
+                    type(rules["allow_all"]) is bool and type(rules["block_all"]) is bool and
+                    type(rules["allow"]) is dict and type(rules["block"]) is dict and
+                    all(type(value) is bool for values in (rules["allow"], rules["block"]) for value in values.values()),
+                    "taxonomy human or immediately saved rules lost canonical names or exact booleans")
+
+
+def require_taxonomy_archive(rows, label, frequency, visible):
+    if not visible:
+        require(not rows, "blocked taxonomy control remained visible")
+        return
+    require(len(rows) == 1 and rows[0][39:63].rstrip() == "TEST_MODE " + label and
+            re.search(r"^DX de N0XYZ:\s+" + str(frequency) + r"\.00\s+W6ABC\s+", rows[0]),
+            "taxonomy control is absent, stale or has the wrong identity, frequency or mode")
+    require_history_row(rows[0])
+
+
+def taxonomy_cases(suite, root, nonce, generation, saved_taxonomy, cw_label):
+    labels = ["T15" + nonce[:8].upper() + str(i) for i in range(2)]
+    expected = dict(modes=dict(allow_all=False, block_all=False, allow={"TEST_MODE": True, "CW": True}, block={}),
+                    events=dict(allow_all=False, block_all=False, allow={"TEST_EVENT": True}, block={}))
+    for dialect, call in (("go", "VE3ABC-70067"), ("cc", "VE3ABC-70068")):
+        current = harness.Session(suite, call)
+        current.human("PAUSE 300")
+        choices = current.get("CAPABILITIES")["configuration"]["choices"]
+        require("TEST_MODE" in choices["modes"] and "TEST_EVENT" in choices["events"],
+                "loaded taxonomy does not advertise literal underscore names")
+        record = root / "users" / (call + ".yaml")
+        allow, block = ("PASS", "REJECT") if dialect == "go" else ("SET/FILTER", "UNSET/FILTER")
+        if generation == 0:
+            current.human("DIALECT " + dialect)
+            current.human(block + " MODE ALL", "All modes blocked")
+            current.human(allow + " MODE test_mode,cw_alias", "Modes enabled: TEST_MODE, CW")
+            current.human(allow + " EVENT test_event", "Events enabled: TEST_EVENT")
+            current.human("SAVE PRESET TAXONOMY15", "Saved preset TAXONOMY15")
+        before, saved = current.get(), record.read_bytes()
+        require_taxonomy_rules(before, expected, record)
+        if generation:
+            require((before["configuration"], before["status"]["preset"]) == saved_taxonomy[call],
+                    "fresh child lost underscore rules or preset association")
+        for domain, known, unknown in (("MODE", "TEST_MODE", "MISSING_MODE"), ("EVENT", "TEST_EVENT", "MISSING_EVENT")):
+            for command in (allow + " " + domain + " " + known + "," + unknown,
+                            block + " " + domain + " " + unknown + "," + known):
+                text, after = current.human(command, "Unknown " + domain.lower() + ": " + unknown)
+                require("Invalid character" not in text and after["configuration"] == before["configuration"] and
+                        after["revision"] == before["revision"] and after["status"]["preset"] == before["status"]["preset"] and
+                        after["status"]["effective"] == before["status"]["effective"] and
+                        record.read_bytes() == saved, "unsupported taxonomy name changed a preference owner")
+        for category in ("MODE", "EVENT"):
+            _, after = current.human("SHOW FILTER " + category, "PASS:")
+            require(after["configuration"] == before["configuration"] and after["revision"] == before["revision"] and
+                    after["status"]["preset"] == before["status"]["preset"] and
+                    after["status"]["effective"] == before["status"]["effective"] and
+                    record.read_bytes() == saved, "taxonomy read changed a preference owner")
+        require_mode_archive(current, cw_label, "CW", True)
+        cw_rows = archive_rows(current, cw_label)
+        require(archive_rows(current, cw_label, "MODE CW_ALIAS") == cw_rows and len(cw_rows) == 1,
+                "configured underscore alias cannot select its canonical history mode")
+        for i, visible in ((0, True), (1, False)):
+            require_taxonomy_archive(archive_rows(current, labels[i]), labels[i], 14061 + i, visible)
+        current.human(allow + " EVENT ALL", "All events enabled")
+        require_taxonomy_archive(archive_rows(current, labels[1]), labels[1], 14062, True)
+        current.human(allow + " EVENT TEST_EVENT", "Events enabled: TEST_EVENT")
+        current.human(block + " MODE TEST_MODE", "Modes rejected: TEST_MODE")
+        require_taxonomy_archive(archive_rows(current, labels[0]), labels[0], 14061, False)
+        current.human(allow + " MODE TEST_MODE", "Modes enabled: TEST_MODE")
+        require_taxonomy_archive(archive_rows(current, labels[0]), labels[0], 14061, True)
+        final = current.get()
+        require_taxonomy_rules(final, expected, record)
+        final_saved = record.read_bytes()
+        result = current.upload("VALIDATE", "CONFIG", final["configuration"])
+        require("error" not in result and result["result"]["valid"] is True and result["result"]["applied"] is False and
+                result["result"]["persisted"] is False, "human underscore rules are machine-invalid")
+        validated = current.get()
+        require(validated["configuration"] == final["configuration"] and validated["revision"] == final["revision"] and
+                validated["status"]["effective"] == final["status"]["effective"] and
+                validated["status"]["preset"] == final["status"]["preset"] and record.read_bytes() == final_saved,
+                "VALIDATE changed a taxonomy preference owner")
+        saved_taxonomy[call] = final["configuration"], final["status"]["preset"]
 
 
 def require_solar_value(document, value, available):
@@ -2137,7 +2234,7 @@ def main():
                                "yaml": harness.yaml.__version__}
             require(harness.yaml.__version__ == "6.0.3", "use pinned PyYAML 6.0.3 test environment")
             for transport in ("native", "ziutek"):
-                root = stage(run / transport, transport)
+                root = stage(run / transport, transport, underscore_taxonomy=True)
                 report["profiles"].append(profile(binary, root, source, transport))
                 reputation_root = stage(run / (transport + "-reputation"), transport, reputation_enabled=True)
                 report["profiles"].append(reputation_profile(binary, reputation_root, source, transport))

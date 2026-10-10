@@ -253,6 +253,21 @@ func TestCheckoutCommandFixture(t *testing.T) {
 		sp.DXMetadata.Grid, sp.DEMetadata.Grid = seed.dx, seed.de
 		spotInput <- sp
 	}
+	// Checkpoint 15 uses explicit metadata through the same bounded bridge. It
+	// qualifies configured names at human ingress and the actual filter/history
+	// consumer, without claiming comment inference or model quality.
+	if spot.CurrentTaxonomy().IsSupportedFilterMode("TEST_MODE") {
+		for i, event := range []string{"TEST_EVENT", "POTA"} {
+			mask := spot.CurrentTaxonomy().EventMaskForName(event)
+			if mask == 0 {
+				t.Fatalf("loaded taxonomy lacks checkpoint-15 event %s", event)
+			}
+			sp := spot.NewSpotNormalized("W6ABC", "N0XYZ", 14061+float64(i), "TEST_MODE")
+			sp.Comment = "T15" + strings.ToUpper(spec.Nonce[:8]) + fmt.Sprint(i)
+			sp.IsHuman, sp.Events = true, mask
+			spotInput <- sp
+		}
+	}
 	binary, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
