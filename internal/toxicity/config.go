@@ -24,7 +24,8 @@ const (
 	defaultMaxCommentBytes = 512
 )
 
-// Config is loaded from optional toxicity.yaml at startup.
+// Config is loaded from optional toxicity.yaml at startup. Six numeric zero
+// sentinels request documented defaults; required presence is still enforced.
 type Config struct {
 	Enabled         bool   `yaml:"enabled"`
 	Endpoint        string `yaml:"endpoint"`
@@ -99,6 +100,14 @@ func normalizeConfig(cfg *Config) error {
 	if cfg.TimeoutMS < 0 || cfg.Workers < 0 || cfg.QueueSize < 0 ||
 		cfg.CacheMaxEntries < 0 || cfg.CacheTTLSeconds < 0 || cfg.MaxCommentBytes < 0 {
 		return fmt.Errorf("toxicity.yaml numeric settings must be >= 0")
+	}
+	// Validate before consumers convert units or apply their direct-constructor
+	// fallback. A positive YAML choice must never silently become another value.
+	if cfg.TimeoutMS > math.MaxInt32 {
+		return fmt.Errorf("toxicity.yaml timeout_ms must be <= %d", math.MaxInt32)
+	}
+	if int64(cfg.CacheTTLSeconds) > math.MaxInt64/int64(time.Second) {
+		return fmt.Errorf("toxicity.yaml cache_ttl_seconds must be <= %d", math.MaxInt64/int64(time.Second))
 	}
 	if cfg.Enabled {
 		if cfg.Endpoint == "" {

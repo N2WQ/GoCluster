@@ -8,13 +8,17 @@ enabled: false
 endpoint: "https://toxicity-worker.example.invalid/classify"
 bearer_token_env: "DXC_TOXICITY_WORKER_TOKEN"
 # timeout_ms caps one Worker call; failures mark the spot UNAVAILABLE and pass filters.
+# Explicit 0 requests 1200 ms; positive values must fit the existing timeout consumer.
 timeout_ms: 1200
 # workers and queue_size bound concurrent AI work after primary dedupe.
+# Explicit 0 requests 2 workers or 128 queue slots, respectively.
 workers: 2
 queue_size: 128
 # cache_* bounds the memory-only normalized-comment decision cache.
+# Explicit 0 requests 4096 entries or 86400 seconds; TTL must fit a Go duration.
 cache_max_entries: 4096
 cache_ttl_seconds: 86400
 # max_comment_bytes truncates only the Worker/cache payload, preserving UTF-8 boundaries.
+# Explicit 0 requests 512 bytes. All numeric keys must be present and non-null.
 max_comment_bytes: 512
 safe_gate_file: "toxicity_safe_gate.yaml"

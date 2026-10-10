@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 20b complete (04a used two commits);
-28 of 46 approved checkpoints complete; 18 remain; 21 is next.
+Current progress: checkpoints 00 through 21 complete (04a used two commits);
+29 of 46 approved checkpoints complete; 17 remain; 22 is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -2988,3 +2988,124 @@ then checked and the staged final diff reviewed before commit. This qualifies
 native Windows local behavior. External model/cluster behavior, durable archive
 receipt, socket receipt, deployment, process-wide ingress retirement, long-run
 production leak freedom and latency remain unclaimed.
+
+## Checkpoint 21: optional toxicity configuration values
+
+Status: complete. Authority: approved v3 checkpoint 21 and
+the explicit user choice that zero requests the existing six defaults.
+
+Current evidence: `internal/toxicity/config.go` is the strict optional-file
+loader; `clusterRuntime.initializeToxicityClassifier` is its production caller.
+Absent/blank files disable the feature. Present files require all ten non-null
+keys even when disabled. The YAML decoder already owns scalar conversion;
+this patch does not invent an integer spelling grammar. Configuration is
+optional deployment/runtime tool-boundary configuration, not a main-config
+merge. Enabled credential validation reads only the named environment variable.
+The safe-gate reference table is loaded only for the enabled feature.
+
+The loader already normalizes explicit zero to 1200 ms, 2 workers, queue 128,
+cache 4096, TTL 86400 seconds and payload 512 bytes, and refuses negatives.
+However, a positive timeout over 2147483647 silently becomes 1200 ms in the
+consumer, and a TTL over 9223372036 seconds overflows `time.Duration` conversion
+on 64-bit hosts. Add two loader admission checks before enabled credential
+validation. Preserve the raw constructors' existing disable/default behavior;
+do not add arbitrary capacity limits or allocate boundary-sized capacities.
+Native integer decoding limits remain authoritative on 32-bit hosts.
+
+Architecture: synchronous startup validation before constructing queues/cache,
+starting workers or converting TTL. No new goroutine, retained state, interface,
+hot-path operation, defaults, parser grammar or shutdown behavior. The accepted
+timeout upper bound also makes downstream doubling safe; existing 500 ms to
+five-second drain clamp remains unchanged. Current semantic references and the
+checkpoint-20b Go dependency inventory cover toxicity and its runtime consumer;
+imports remain unchanged. The config discovery reviewer was inherited-context,
+read-only; this is not scientific or independent review. No policy is reopened.
+
+Lead-owned falsifiability review: literal default snapshots and consumer
+observations prevent a normalize-only false green; exact limits and one-past
+refusals distinguish representability from silent fallback. A separate runtime
+initializer test proves production loading/startup, since the command fixture
+intentionally omits the optional classifier. Fractional scalar conversion and
+arbitrary raw-constructor overflow remain outside this approved preservation.
+
+| Contract | Failure/boundary | Stimulus | Observable result | Level | False-green risk | Exact checker | Owner |
+|---|---|---|---|---|---|---|---|
+| Required presence | Missing/null/unknown or wrong-type keys | Enabled and disabled complete files, one altered key | Error and no admitted config | Loader | Disabled bypass accepts invalid YAML | Config contract table | toxicity |
+| Explicit zero | Six sentinels lost or treated as disabled | Each zero and all-zero YAML | Literal six defaults; enabled flag retained | Loader/consumer | Test repeats production constants | Snapshot, queue/cache/payload/deadline tests | toxicity |
+| Negative/positive | Negative admitted or positive re-defaulted | Each -1 and 1; native integer maximum capacities load-only | Negative refused; valid literal positives retained | Loader | Huge test allocation or unrelated auth failure | Enabled/disabled values table | toxicity |
+| Duration admission | Conversion overflow or hidden timeout fallback | Exact upper bounds and one-past; 32-bit architecture guard | Exact effective duration or key-specific refusal | Loader/consumer | Error comes from missing secret or native int decoder | Boundary table and effective cache expiry/deadline | toxicity |
+| Constructor preservation | Direct calls acquire loader semantics | Raw nonpositive settings and timeout fallback | Existing disable/cache-off/untruncated/default behavior | Consumer | Only loaded config exercised | Constructor and literal drain vectors | toxicity |
+| Production ownership | Loader bypass or optional file made required | Actual initializer absent/disabled/all-zero enabled/bad duration | Expected startup result and terminal worker join; no HTTP request | Runtime/race | Wire fixture omits feature and is miscredited | Runtime initializer controls | cluster |
+
+Selected evidence: focused ordinary/race controls, complete ordinary Windows
+lane and repository analyzers; cumulative runner/collector offline controls and
+ordinary/race actual checkout command reconciliation. Existing 20b full-race
+baseline remains relevant; repeat focused race for the new consumers. No parser
+grammar or performance change requires new fuzz/benchmark claims. Record the
+explicit narrow zero exception in ADR-0276, operator YAML/support guidance and
+the configuration decision chain; preserve existing accepted history.
+
+### Implementation and observed qualification
+
+The two guards are in `normalizeConfig` after explicit-zero normalization and
+negative rejection, before enabled credential checks. No raw constructor,
+timeout formula, queue, cache, worker or decoder changes. Permanent loader
+controls cover all ten keys missing/null/wrong-type, the six values negative,
+zero and one with enabled/disabled files, unknown keys, optional paths, native
+integer capacity boundaries without constructing them, and exact/one-past
+duration limits. Consumer controls observe real classified payload and context
+deadline, literal queue/cache defaults, exact cache expiry and drain endpoints.
+Actual runtime initializer controls start and terminally join the loaded
+classifier, exercise a synchronous local decision without HTTP, and refuse
+invalid duration. Missing/malformed gate files succeed only while disabled.
+
+The inherited read-only reviewer identified a false-green fixture that always
+wrote a valid gate. The paired enabled/disabled absent/malformed controls resolve
+it; focused race and the final complete ordinary lane include the final controls.
+No remaining material blocker was reported. Root reviewed the production diff
+and final tests directly; neither pass is described as independent review.
+
+| Evidence | Observed result |
+|---|---|
+| Focused ordinary controls | PASS; `checkpoint-21-focused.log` (before the gate-only fixture refinement) |
+| Final focused race controls | PASS; `checkpoint-21-focused-race.log`, including paired gate controls |
+| Complete ordinary Windows baseline | All 70 packages passed/build-checked; `checkpoint-21-all-packages.log` |
+| Whole-repository analyzers | Vet and Staticcheck PASS; lint zero issues; `checkpoint-21-{vet,staticcheck,lint}.log` |
+| Native Windows 386 config/consumer controls | Compiled and executed successfully; `checkpoint-21-386-final.log` |
+| Offline runner/collector controls | 84 and 29 PASS; `checkpoint-21-runner-controls.log`, `checkpoint-21-collector-controls.log` |
+| Ordinary actual checkout | `20261010-123529-679c021b`: 136 PASS, no wire/cleanup failures and 12 source-matched retirement receipts |
+| Race actual checkout | `20261010-123900-809fd19c`: 136 PASS, no wire/cleanup failures and 12 source-matched retirement receipts |
+
+The pair's 1137 Go/module file hashes and Git source inventory match the final
+current checkout; five Python driver/support/harness/control hashes remained
+unchanged. All 24 retirement receipts match the source digest and report started,
+clients retired, consumer joined and archive stopped. `checkpoint-21-identity.log`
+records digest `8835fce47963aed407e870b5552e0b3415a7a3e86ddc536c99b65520ff7edde8`.
+Manifests identify HEAD 1e016bd plus these working-tree hashes; no clean-HEAD
+binary equivalence is inferred. Fixture-private configuration is separately
+qualified by the driver.
+
+The initial extra 386 invocation compiled successfully but PowerShell split an
+unquoted dotted test flag; the binary refused `-test` before execution (status
+2). Reinvoking the same saved binary with a literal argument array passed. The
+failed command is retained in `checkpoint-21-386.log`; it is not a passing test.
+
+The selected full baseline covers final production source. The existing full
+race baseline from 20b is retained; new focused race exercises the added
+consumers, with no production concurrency changes to invalidate the earlier
+broader result. YAML headers passed for all 20 files; comment-only comparison
+against HEAD passed and reported no added boolean inline warnings. Troubleshooting
+records passed index/status/RCA/link checks. Support routing, toxicity card,
+operator settings and ADR-0067/0114 cross-links now point to ADR-0276/TSR-0070.
+
+Limits: the cumulative wire fixture intentionally omits optional toxicity and
+does not establish its startup semantics; permanent actual initializer and
+consumer tests do. Native 386 evidence covers toxicity config/consumers, not an
+entire 32-bit runtime. No external Worker, model accuracy, production sizing,
+performance or raw malformed TTL-overflow claim is made. No new scientific,
+hot-path, lifecycle or parser-grammar policy requires a separate oracle here.
+
+Fresh lead verification checked the approved item, final guards/consumer tests,
+review disposition, exact artifacts, support and decision records, and claim
+limits. No source changed after qualification. Maps are generated last, checked
+and directly reviewed with the final staged diff before this checkpoint commit.

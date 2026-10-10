@@ -11,6 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0070 | Toxicity Positive Duration Admission | Monitoring | 2026-10-10 | toxicity, optional YAML, defaults and numeric units | ADR-0276 | `docs/troubleshooting/TSR-0070-toxicity-positive-duration-admission.md` |
 | TSR-0069 | Output Pipeline Retirement | Monitoring | 2026-10-10 | runtime output, grace, held work and released fanout | ADR-0275 | `docs/troubleshooting/TSR-0069-output-pipeline-retirement.md` |
 | TSR-0068 | Classifier Terminal Retirement | Monitoring | 2026-10-10 | toxicity lifecycle, queued references and HTTP cancellation | ADR-0274 | `docs/troubleshooting/TSR-0068-classifier-terminal-retirement.md` |
 | TSR-0067 | SHOW HOLD Token Recognition | Monitoring | 2026-10-10 | telnet read-pause control, token parsing and status | none | `docs/troubleshooting/TSR-0067-show-hold-token-recognition.md` |

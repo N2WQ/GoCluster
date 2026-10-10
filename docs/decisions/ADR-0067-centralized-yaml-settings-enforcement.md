@@ -88,6 +88,10 @@ instead of silent fallback.
 
 ## Links
 
+- Narrow optional-classifier exception: [ADR-0276](ADR-0276-toxicity-config-zero-and-duration-admission.md)
+  documents explicit numeric zero as a request for existing toxicity defaults,
+  while retaining required presence and refusing unsupported positive durations.
+
 - Related tests: `config`, `pathreliability`, `solarweather`, `spot`,
   `commands`, `internal/propreport`
 - Related docs: `data/config/README.md`, `pathreliability/README.md`,

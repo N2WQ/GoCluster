@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0276 | Toxicity Configuration Zero And Duration Admission | Accepted | 2026-10-10 | toxicity, optional YAML, defaults, duration admission | none | none | `docs/decisions/ADR-0276-toxicity-config-zero-and-duration-admission.md` |
 | ADR-0275 | Runtime Output Retirement | Accepted | 2026-10-10 | output lifecycle, bounded grace, holds and downstream ownership | none | none | `docs/decisions/ADR-0275-runtime-output-retirement.md` |
 | ADR-0274 | Terminal Classifier Retirement | Accepted | 2026-10-10 | toxicity lifecycle, admission, cancellation and result ownership | none | none | `docs/decisions/ADR-0274-terminal-classifier-retirement.md` |
 | ADR-0273 | History COMMENT Alias Boundary | Accepted | 2026-10-10 | commands, telnet, history, aliases, literal phrases | Refines ADR-0263 COMMENT boundary only | - | `docs/decisions/ADR-0273-history-comment-alias-boundary.md` |

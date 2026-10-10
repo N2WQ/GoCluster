@@ -109,6 +109,15 @@ Loader behavior:
 - `pskreporter.workers: 0` follows the effective `go_runtime.max_procs` / `GOMAXPROCS` scheduler width; set a positive value only when you deliberately want wider PSKReporter burst processing than the process CPU budget.
 - `openai.yaml` is optional for server startup and `prop_report -no-llm`. When propagation-report LLM generation is enabled, the file is required and validated at that tool boundary. Secret values must not be logged or committed.
 - `toxicity.yaml` is optional for server startup. When enabled, it requires a Worker endpoint, bearer token environment variable, bounded worker/queue/cache settings, and `toxicity_safe_gate.yaml`; secret bearer token values must stay in the environment or private config, not checked-in YAML.
+- In a present `toxicity.yaml`, all ten keys are required and non-null even when
+  disabled. Explicit numeric `0` requests the existing defaults: timeout 1200 ms,
+  workers 2, queue 128, cache 4096 entries, TTL 86400 seconds and comment payload
+  512 bytes. This is a documented exception to the general no-hidden-default
+  rule; omission is never the same as zero. Negative values fail load. Positive
+  `timeout_ms` must be at most 2147483647 (the existing consumer ceiling), and
+  positive `cache_ttl_seconds` must fit Go's duration, at most 9223372036 on a
+  64-bit host. Native integer decoding limits also apply. These are admission
+  limits, not recommended operating values. See [ADR-0276](../../docs/decisions/ADR-0276-toxicity-config-zero-and-duration-admission.md).
 - Classifier `Stop` is terminal: it cancels HTTP work, joins workers and releases
   queued jobs and unreceived results. Later eligible human submissions fail open
   as `UNAVAILABLE`. Terminal cancellation is cleanup, not an AI timeout or

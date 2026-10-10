@@ -108,5 +108,7 @@ The stage uses these rules:
   defines terminal admission, cancellation, queue retirement and result ownership.
 - Runtime completion: [ADR-0275](ADR-0275-runtime-output-retirement.md) defines
   first-request grace and joins processing before dependent resources close.
+- Configuration clarification: [ADR-0276](ADR-0276-toxicity-config-zero-and-duration-admission.md)
+  defines explicit zero/defaults and duration admission at the optional loader.
 - Related TSRs: [TSR-0068](../troubleshooting/TSR-0068-classifier-terminal-retirement.md)
 - Supersedes / superseded by: none

@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `2510d97aa5944c10`
+- Source fingerprint: `7d959184c3753c69`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,7 +12,7 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 26 | 72 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 26 | 73 |
 | `dxcluster/peer` | `peer` | 62 | 130 |
 | `dxcluster/spot` | `spot` | 33 | 32 |
 | `dxcluster/telnet` | `telnet` | 48 | 98 |
@@ -230,6 +230,7 @@ Test files:
 - `internal/cluster/telnet_family_suppressor_test.go`
 - `internal/cluster/temporal_retirement_test.go`
 - `internal/cluster/temporal_runtime_test.go`
+- `internal/cluster/toxicity_config_contract_test.go`
 
 ### `dxcluster/peer`
 
@@ -656,6 +657,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0276](docs/decisions/ADR-0276-toxicity-config-zero-and-duration-admission.md) | Accepted | 2026-10-10 | toxicity, optional YAML, defaults, duration admission | `path:internal/cluster` |
 | [ADR-0275](docs/decisions/ADR-0275-runtime-output-retirement.md) | Accepted | 2026-10-10 | output lifecycle, bounded grace, holds and downstream ownership | `path:internal/cluster, path:peer, path:telnet` |
 | [ADR-0273](docs/decisions/ADR-0273-history-comment-alias-boundary.md) | Accepted | 2026-10-10 | commands, telnet, history, aliases, literal phrases | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0272](docs/decisions/ADR-0272-mode-visibility-deltas.md) | Accepted | 2026-10-09 | filter, telnet, MODE, persistence, effective feedback | `area:telnet, path:telnet` |

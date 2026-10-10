@@ -16,6 +16,10 @@ comment was classified toxic.
 - Distinguish `TOXIC` from `UNKNOWN`, `SAFE_LOCAL`, and `UNAVAILABLE`.
 - Confirm toxicity classifier configuration and Worker auth/timeout/429/5xx
   health before guessing the classification.
+- A missing optional `toxicity.yaml` disables classification. A present file
+  requires all ten keys even when disabled; numeric zero requests the six
+  documented defaults. Invalid durations fail startup instead of silently
+  falling back or disabling the cache. Check the named key in the error.
 - Skimmer or automated-source spots may bypass human comment toxicity
   classification.
 - Classifier Stop is terminal. Later eligible human submissions are
@@ -40,3 +44,4 @@ comment was classified toxic.
 - `docs/decisions/ADR-0274-terminal-classifier-retirement.md`
 - `docs/decisions/ADR-0275-runtime-output-retirement.md`
 - `docs/troubleshooting/TSR-0069-output-pipeline-retirement.md`
+- `docs/decisions/ADR-0276-toxicity-config-zero-and-duration-admission.md`
