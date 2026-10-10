@@ -25,7 +25,8 @@
   .tmp/voacap-ssn-watch-state.json.
 
 .PARAMETER Once
-  Fetch once and exit.
+  Fetch once and exit. Fetch, report, or state-write failure exits unsuccessfully;
+  this wrapper propagates the Go command status.
 
 .NOTES
   Prerequisites: Go toolchain and network access to NOAA SWPC.

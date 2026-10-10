@@ -1,3 +1,6 @@
+// Program voacap_sunspot_watch reports local SSN/EWMA observations, not forecasts.
+// One-shot errors reach the caller; continuous polls retain their retry cadence.
+// Reporting and state persistence are independent attempted effects.
 package main
 
 import (
@@ -45,13 +48,13 @@ func main() {
 	once := flag.Bool("once", false, "fetch once and exit")
 	flag.Parse()
 
-	if err := run(*url, *interval, *halfLife, *threshold, *timeout, *statePath, *once); err != nil {
+	if err := run(*url, *interval, *halfLife, *threshold, *timeout, *statePath, *once, os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run(url string, interval time.Duration, halfLife time.Duration, threshold float64, timeout time.Duration, statePath string, once bool) error {
+func run(url string, interval time.Duration, halfLife time.Duration, threshold float64, timeout time.Duration, statePath string, once bool, out io.Writer) error {
 	if interval <= 0 {
 		return fmt.Errorf("interval must be positive")
 	}
@@ -69,19 +72,24 @@ func run(url string, interval time.Duration, halfLife time.Duration, threshold f
 	if err != nil {
 		return err
 	}
-	printHeader()
+	headerErr := printHeader(out)
 	for {
-		if err := poll(url, timeout, halfLife, threshold, statePath, &st); err != nil {
-			fmt.Fprintf(os.Stderr, "%s error: %v\n", time.Now().UTC().Format(time.RFC3339), err)
-		}
+		pollErr := poll(url, timeout, halfLife, threshold, statePath, &st, out)
 		if once {
-			return nil
+			return errors.Join(headerErr, pollErr)
+		}
+		if headerErr != nil {
+			fmt.Fprintf(os.Stderr, "%s error: %v\n", time.Now().UTC().Format(time.RFC3339), headerErr)
+			headerErr = nil
+		}
+		if pollErr != nil {
+			fmt.Fprintf(os.Stderr, "%s error: %v\n", time.Now().UTC().Format(time.RFC3339), pollErr)
 		}
 		time.Sleep(interval)
 	}
 }
 
-func poll(url string, timeout time.Duration, halfLife time.Duration, threshold float64, statePath string, st *state) error {
+func poll(url string, timeout time.Duration, halfLife time.Duration, threshold float64, statePath string, st *state, out io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -98,8 +106,8 @@ func poll(url string, timeout time.Duration, halfLife time.Duration, threshold f
 	}
 
 	if result.notModified {
-		printUnchanged(now, *st)
-		return saveState(statePath, *st)
+		outputErr := printUnchanged(out, now, *st)
+		return errors.Join(outputErr, saveState(statePath, *st))
 	}
 
 	series, err := voacap.ParseNOAASunspotReport(result.body)
@@ -111,8 +119,8 @@ func poll(url string, timeout time.Duration, halfLife time.Duration, threshold f
 	}
 	latest := series[len(series)-1]
 	if st.EWMAInitialized && !latest.ObservedAtUTC.After(st.LastObservedAtUTC) {
-		printUnchanged(now, *st)
-		return saveState(statePath, *st)
+		outputErr := printUnchanged(out, now, *st)
+		return errors.Join(outputErr, saveState(statePath, *st))
 	}
 
 	ewma, err := voacap.UpdateSunspotEWMA(st.EWMA, st.LastObservedAtUTC, st.EWMAInitialized, latest, halfLife)
@@ -139,8 +147,10 @@ func poll(url string, timeout time.Duration, halfLife time.Duration, threshold f
 	st.EWMA = ewma.Average
 	st.EWMAInitialized = ewma.Initialized
 
-	printSample(now, latest, roundedSSN, delta, marker, "new")
-	return saveState(statePath, *st)
+	// Preserve the state-write attempt even if reporting fails; both outcomes
+	// belong to this poll, and a one-shot caller must see every failure.
+	outputErr := printSample(out, now, latest, roundedSSN, delta, marker, "new")
+	return errors.Join(outputErr, saveState(statePath, *st))
 }
 
 func fetch(ctx context.Context, url string, etag string, lastModified string) (fetchResult, error) {
@@ -213,12 +223,16 @@ func saveState(path string, st state) error {
 	return os.WriteFile(path, append(body, '\n'), 0o644)
 }
 
-func printHeader() {
-	fmt.Println("fetched_at_utc observed_at_utc raw_ssn ewma_ssn delta recompute status")
+func printHeader(out io.Writer) error {
+	_, err := fmt.Fprintln(out, "fetched_at_utc observed_at_utc raw_ssn ewma_ssn delta recompute status")
+	if err != nil {
+		return fmt.Errorf("write header: %w", err)
+	}
+	return nil
 }
 
-func printSample(now time.Time, observation voacap.SunspotObservation, ewmaSSN int, delta float64, marker string, status string) {
-	fmt.Printf("%s %s %d %d %.4f %s %s\n",
+func printSample(out io.Writer, now time.Time, observation voacap.SunspotObservation, ewmaSSN int, delta float64, marker string, status string) error {
+	_, err := fmt.Fprintf(out, "%s %s %d %d %.4f %s %s\n",
 		now.Format(time.RFC3339),
 		observation.ObservedAtUTC.Format(time.RFC3339),
 		observation.RawWolfEstimate,
@@ -227,9 +241,13 @@ func printSample(now time.Time, observation voacap.SunspotObservation, ewmaSSN i
 		marker,
 		status,
 	)
+	if err != nil {
+		return fmt.Errorf("write sample: %w", err)
+	}
+	return nil
 }
 
-func printUnchanged(now time.Time, st state) {
+func printUnchanged(out io.Writer, now time.Time, st state) error {
 	observedAt := "-"
 	if !st.LastObservedAtUTC.IsZero() {
 		observedAt = st.LastObservedAtUTC.Format(time.RFC3339)
@@ -244,10 +262,14 @@ func printUnchanged(now time.Time, st state) {
 			roundedSSN = rounded
 		}
 	}
-	fmt.Printf("%s %s %s %d 0.0000  unchanged\n",
+	_, err := fmt.Fprintf(out, "%s %s %s %d 0.0000  unchanged\n",
 		now.Format(time.RFC3339),
 		observedAt,
 		rawSSN,
 		roundedSSN,
 	)
+	if err != nil {
+		return fmt.Errorf("write unchanged sample: %w", err)
+	}
+	return nil
 }

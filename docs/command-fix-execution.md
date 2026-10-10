@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 22 complete (04a used two commits);
-30 of 46 approved checkpoints complete; 16 remain; 23 is next.
+Current progress: checkpoints 00 through 23 complete (04a used two commits);
+31 of 46 approved checkpoints complete; 15 remain; 24 is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -3210,3 +3210,76 @@ authoritative. Support impact is operator invocation/discovery and is reflected
 in README, Windows startup card and source map. Local main controls do not prove
 real node readiness, production deployment or cross-platform runtime behavior.
 Maps are generated last, checked and reviewed with the staged diff before commit.
+
+## Checkpoint 23: sunspot watcher one-shot outcomes
+
+Status: complete; authority is approved v3 checkpoint 23.
+
+Current source/callers: `cmd/voacap_sunspot_watch/main.go` calls private run,
+which calls private poll. Semantic references confirm neither has external Go
+callers. Main already exits 1 on returned errors; run logs poll errors but returns
+nil for `-once`. Report helpers ignore stdout errors. Each poll attempts its
+existing report before its existing state write. The native PowerShell wrapper
+already exits with the Go command status. Dependency inventory is in
+`checkpoint-23-dependencies.json`. Inspected `internal/voacap/sunspot.go`, existing
+sunspot/forecast fixtures and SSN decision routing establish that this is an
+observational tool, not a new forecast or calibration claim.
+
+Architecture: one-shot run returns polling/report/state errors. Continuous mode
+keeps its current timestamped diagnostics and retry interval. Inject a private
+io.Writer through run/poll/report helpers, with main supplying its existing
+stdout. The caller owns the writer; do not close it. Join report errors with the
+existing state write result, preserving the write attempt and order even if
+reporting fails. Header failure is reported too, while preserving the existing
+poll/state attempt; continuous header error is logged once. No new flag/default,
+duration, scientific calculation, state format, HTTP bound, conditional fetch,
+JSON parser or production lifecycle change. The existing ordered state attempts
+resolve preservation; do not introduce a new skip-write-on-output-error policy.
+
+Actual-main children use the saved watcher package executable, an explicit
+helper marker, reset only their own flag set, private loopback HTTP and TempDir
+state, bounded child join and request-count witnesses. Continuous retry evidence
+deliberately terminates its child after observed retries and joins it; this is
+not graceful production retirement evidence. A native PowerShell child executes
+the unchanged wrapper with a local function standing in for the Go command,
+capturing the forwarded argument array/cwd and successful invocation. A separate
+native -File child compares a real Go-command preflight failure against the
+wrapper's status. It neither contacts NOAA nor replaces an installed executable
+or changes parent state.
+
+| Contract | Failure/boundary | Stimulus | Observable result | Level | False-green risk | Exact checker | Owner |
+|---|---|---|---|---|---|---|---|
+| One-shot failures | Logged error still exits zero | HTTP failure/truncated body/bad JSON/no usable rows | Exit 1, causal diagnostic, one request, no state write | Actual main | Error arises in fixture startup/flag parsing instead | Request/body/output/state witnesses | watcher |
+| Success and unchanged | Fix breaks valid/conditional output | Synthetic one-group/32-spot body, 304 and repeated observation | Exit 0, expected raw/rounded 42 or unchanged, valid saved state | Actual main | Only status asserted or source-dependent advice accepted | Literal sample fields, state decode and conditional header witnesses | watcher |
+| State I/O | Directory fault happens before polling | Handler creates target directory after absent-state load | Valid sample and one request, then write-path error/exit 1 | Actual main | Initial load error masquerades as save fault | Late filesystem fault witness | watcher |
+| Report I/O | Header/sample/unchanged error ignored or skips old effects | Closed stdout actual main; staged failing writers | Exit/error nonzero and existing state attempt still occurs | Main/consumer | Parent fails to launch or no actual poll/state branch | Closed-output child and report writer controls | watcher |
+| Continuous retries | One-shot fix terminates loop on polling error | Failing then valid then failing loopback responses | Three requests, valid saved sample, expected report/error output, joined child | Actual main | Request witness precedes parsing/persistence | Third request plus saved-state/output checks | watcher |
+| Wrapper propagation | Wrapper drops flag/status or starts NOAA | Native PS argument probe plus real -File failure, child-only invalid GOFLAGS | Exact array/cwd; actual Go preflight status propagated; no state | Native PS | -Command exit mapping or mock credited for Go failure | Captured JSON marker, real Go causal error and -File status | scripts/watcher tests |
+
+Lead-owned detailed challenge resolves the earlier-error and durable-write
+false-green paths above. Inherited operator-tool discovery is source evidence,
+not independent verification. The selected scientific/data contracts are
+unchanged; no new independent scientific verdict is needed for reporting status.
+Selected lane: watcher targeted ordinary/race controls, full ordinary baseline,
+repository analyzers, source-aware support/record/whitespace checks and maps last.
+No new parser/protocol or performance change calls for fuzz/benchmark repetition.
+
+Observed qualification: final watcher race suite passed, followed by the complete
+ordinary 70-package baseline on the final source. Repository vet, Staticcheck and
+golangci-lint passed (zero lint issues). Logs are retained as
+`checkpoint-23-focused-race.log`, `checkpoint-23-all-packages.log` and the
+checkpoint's analyzer logs. The initial PowerShell -Command status-7 fixture
+failed because the host returned 1; that result is retained and not credited.
+The repaired native -File control observes a real Go preflight failure, and its
+copied no-exit negative control returns zero under the same failure. Final tests
+check child execution bounds independently of status and refuse non-loopback
+HTTP before DNS/dial. Both stdout/state error ownership and continuous retry
+witnesses passed. These fixtures do not establish live NOAA health, scientific
+accuracy or graceful continuous-mode retirement.
+
+Root's fresh final pass reviewed source, test fault paths, request/state/output
+witnesses and native wrapper controls against the approved boundary. This is
+lead-owned verification, not independent review. No model or durable architecture
+contract changed. Operator/support impact is reflected in the script guide,
+wrapper comments, source map and TSR-0072. Record/crawler/whitespace checks and
+generated maps are completed last and reviewed with the explicit staged diff.

@@ -168,7 +168,12 @@ and [TSR-0040](../docs/troubleshooting/TSR-0040-release-preflight-and-output-saf
 - `watch-voacap-ssn.ps1` runs the repo-local lightweight SSN watcher
   (`cmd/voacap_sunspot_watch`) to watch NOAA fetches, raw SSN, rounded EWMA
   SSN, recompute delta, and recompute markers without launching VOACAP
-  forecasts. Example:
+  forecasts. Add `-Once` for one fetch: fetch, report or state-write failure
+  produces a nonzero Go-command status, which the wrapper propagates. Continuous
+  mode logs polling errors and retries at the configured interval. Report failure
+  still retains the existing state-write attempt. The reported raw value is the
+  local `10 * groups + spots` estimate, not the official corrected International
+  Sunspot Number. Example:
 
   ```powershell
   .\scripts\watch-voacap-ssn.ps1
