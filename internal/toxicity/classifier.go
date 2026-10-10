@@ -113,8 +113,8 @@ func (c *Classifier) Start() {
 }
 
 // Stop is terminal and concurrent callers wait for the same complete retirement.
-// The consumer must finish its grace/handoff ownership before invoking Stop;
-// received results remain consumer-owned, while buffered results are discarded.
+// Stop ends the grace opportunity to transfer results. Already received results
+// remain consumer-owned through processing; buffered results are discarded.
 func (c *Classifier) Stop() {
 	if c == nil {
 		return

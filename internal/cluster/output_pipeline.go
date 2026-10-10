@@ -9,6 +9,7 @@ package cluster
 import (
 	"log"
 	"runtime/debug"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -85,6 +86,16 @@ type outputPipeline struct {
 	ftTimerCh              <-chan time.Time
 	ftTimerDue             time.Time
 	toxicityClassifier     *toxicity.Classifier
+
+	// Runtime owns stop/completion; the output goroutine owns held-spot state.
+	lifecycleOnce         sync.Once
+	stopCh                chan struct{}
+	done                  chan struct{}
+	retirementOnce        sync.Once
+	graceFinished         chan struct{}
+	classifierStopped     chan struct{}
+	drainDeadline         time.Time
+	stabilizerReleaseDone chan struct{}
 }
 
 // outputSpotContext carries mutable spot state and resolver context through the
@@ -191,6 +202,7 @@ func newOutputPipeline(
 		ftConfidence:           newFTConfidenceController(correctionCfg),
 		ftRecentBandStore:      newFTRecentBandStore(correctionCfg),
 	}
+	pipeline.initLifecycle()
 	pipeline.stabilizerEnabled = telnet != nil && correctionCfg.Enabled && correctionCfg.StabilizerEnabled && recentBandStore != nil
 	if pipeline.stabilizerEnabled {
 		pipeline.telnetStabilizer = newTelnetSpotStabilizer(
@@ -218,32 +230,40 @@ func newOutputPipeline(
 }
 
 // run advances timer-backed stages before every select so idle ingest still
-// releases bounded temporal and FT holds. On input close it force-drains held
-// work before returning to avoid silently losing already accepted spots.
+// releases bounded temporal and FT holds. Runtime stop and input close share
+// retirement: classifier grace first, then late holds and released fanout joins.
 func (p *outputPipeline) run() {
+	p.initLifecycle()
+	defer close(p.done)
 	if p.stabilizerEnabled {
-		defer p.telnetStabilizer.Stop()
 		p.startStabilizerReleaseLoop()
 	}
-	defer p.stopTemporalTimer()
-	defer p.stopFTTimer()
-	if p.toxicityClassifier != nil {
-		defer p.toxicityClassifier.Stop()
-	}
+	defer p.retire()
 
 	for {
+		// Give an already published stop priority over ready ordinary results.
+		// Retirement remains the sole processing consumer through its grace.
+		select {
+		case <-p.stopCh:
+			return
+		default:
+		}
 		now := time.Now().UTC()
 		p.releaseDueTemporal(now, false)
 		p.scheduleTemporalTimer(now)
 		p.releaseDueFT(now, false)
 		p.scheduleFTTimer(now)
+		select {
+		case <-p.stopCh:
+			return
+		default:
+		}
 
 		select {
+		case <-p.stopCh:
+			return
 		case s, ok := <-p.outputChan:
 			if !ok {
-				p.releaseDueTemporal(time.Now().UTC().Add(24*time.Hour), true)
-				p.releaseDueFT(time.Now().UTC().Add(24*time.Hour), true)
-				p.drainToxicityPending(time.Now().UTC().Add(p.toxicityClassifier.DrainTimeout()))
 				return
 			}
 			if s != nil {
@@ -251,39 +271,13 @@ func (p *outputPipeline) run() {
 			}
 			p.processSpot(s, nil)
 		case result := <-p.toxicityResults():
-			toxicity.ApplyResult(result)
-			p.processSpot(result.Spot, nil)
+			if !p.processToxicityResult(result) {
+				return
+			}
 		case <-p.temporalTimerCh:
 			// Timer-driven wakeup for lag/max-wait release when ingest is idle.
 		case <-p.ftTimerCh:
 			// Timer-driven wakeup for bounded FT corroboration release when ingest is idle.
-		}
-	}
-}
-
-func (p *outputPipeline) drainToxicityPending(deadline time.Time) {
-	if p == nil || p.toxicityClassifier == nil {
-		return
-	}
-	for p.toxicityClassifier.Pending() > 0 || p.toxicityClassifier.ResultBacklog() > 0 {
-		remaining := time.Until(deadline)
-		if remaining <= 0 {
-			log.Printf("toxicity classifier shutdown drain timed out with pending=%d result_backlog=%d",
-				p.toxicityClassifier.Pending(),
-				p.toxicityClassifier.ResultBacklog(),
-			)
-			return
-		}
-		select {
-		case result := <-p.toxicityResults():
-			toxicity.ApplyResult(result)
-			p.processSpot(result.Spot, nil)
-		case <-time.After(remaining):
-			log.Printf("toxicity classifier shutdown drain timed out with pending=%d result_backlog=%d",
-				p.toxicityClassifier.Pending(),
-				p.toxicityClassifier.ResultBacklog(),
-			)
-			return
 		}
 	}
 }

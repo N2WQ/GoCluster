@@ -29,7 +29,9 @@ func (p outputDeliveryPlan) normalFanoutAllowed() bool {
 // fanout owner and keeps delayed-output support evidence in the same path as
 // immediate output.
 func (p *outputPipeline) startStabilizerReleaseLoop() {
+	p.stabilizerReleaseDone = make(chan struct{})
 	go func() {
+		defer close(p.stabilizerReleaseDone)
 		releaseCh := p.telnetStabilizer.ReleaseChan()
 		for envelope := range releaseCh {
 			p.handleStabilizerRelease(envelope)

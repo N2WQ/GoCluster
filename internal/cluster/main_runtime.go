@@ -137,6 +137,8 @@ type clusterRuntime struct {
 
 	modeAssigner       *spot.ModeAssigner
 	toxicityClassifier *toxicity.Classifier
+	outputPipeline     *outputPipeline
+	outputRetirement   sync.Once
 
 	peerManager   *peer.Manager
 	archiveWriter *archive.Writer
@@ -1177,9 +1179,9 @@ func (r *clusterRuntime) buildTelnetServerOptions() telnet.ServerOptions {
 }
 
 func (r *clusterRuntime) startOutputPipeline() {
-	// The output pipeline remains a single goroutine so sequencing of correction,
-	// suppression, archive fan-out, and peer publish stays identical.
-	go processOutputSpots(
+	// The main output consumer stays sequential. Its handle also owns delayed
+	// release and retirement workers, which must finish before dependencies close.
+	r.outputPipeline = newOutputPipeline(
 		r.deduplicator,
 		r.secondaryFast,
 		r.secondaryMed,
@@ -1221,6 +1223,7 @@ func (r *clusterRuntime) startOutputPipeline() {
 		r.allowedBandSet,
 		r.toxicityClassifier,
 	)
+	go r.outputPipeline.run()
 	startPipelineHealthMonitor(r.ctx, r.deduplicator, &r.lastOutput, r.peerManager)
 }
 
@@ -1532,6 +1535,7 @@ func (r *clusterRuntime) waitForShutdown() {
 }
 
 func (r *clusterRuntime) shutdown() {
+	r.retireOutputPipeline()
 	// Withdraw while current local membership and the parent context still
 	// exist; Manager.Stop owns its bounded drain and worker join.
 	if r.peerManager != nil {
@@ -1554,9 +1558,6 @@ func (r *clusterRuntime) shutdown() {
 	}
 	if r.floodController != nil {
 		r.floodController.Stop()
-	}
-	if r.deduplicator != nil {
-		r.deduplicator.Stop()
 	}
 	if r.secondaryFast != nil {
 		r.secondaryFast.Stop()
@@ -1586,6 +1587,7 @@ func (r *clusterRuntime) shutdown() {
 }
 
 func (r *clusterRuntime) close() {
+	r.retireOutputPipeline()
 	// close also runs after partial startup. Idempotent network stops release
 	// listeners, sessions, and peer workers before stores and context disappear.
 	if r.peerManager != nil {

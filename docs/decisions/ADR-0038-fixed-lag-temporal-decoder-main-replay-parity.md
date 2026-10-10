@@ -110,6 +110,8 @@ Tags: resolver-primary, temporal-decoder, replay-parity, bounded-resources, dete
   - `docs/decisions/ADR-0030-shared-stabilizer-policy-parity-main-replay.md`
   - `docs/decisions/ADR-0036-resolver-confusion-tiebreak-runtime-replay-parity.md`
 - Troubleshooting Record(s): none
+- Runtime retirement refinement: [ADR-0275](ADR-0275-runtime-output-retirement.md)
+  force-selects future-due holds at actual UTC time without changing decoder gates.
 - Docs:
   - `docs/decision-log.md`
   - `docs/rbn_replay.md`

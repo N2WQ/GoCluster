@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 20a complete (04a used two commits);
-19 approved checkpoints remain; 20b is next.
+Current progress: checkpoints 00 through 20b complete (04a used two commits);
+28 of 46 approved checkpoints complete; 18 remain; 21 is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -2753,3 +2753,238 @@ oracles, cancellation/cleanup ownership, docs and final source/receipt identity.
 Record and whitespace checks passed; crawler selection was zero files, so the
 classifier's new support-critical header was reviewed manually. Maps are
 regenerated last, then the staged final diff is checked before commit.
+
+## Checkpoint 20b: production output retirement and handoff
+
+Status: complete. This design and matrix preceded implementation. Authority
+is v3 section 3 and checkpoint 20b; no new product policy is selected.
+
+Current discovery: semantic gopls references establish that the bootstrap
+`processOutputSpots` wrapper has one runtime caller, and stabilizer admission
+has the initial-delivery and delayed-retry callers. The runtime starts classifier
+workers and its output loop before network startup can fail. Primary dedup Stop
+does not close its output channel and is not idempotent, so waiting for channel
+closure or closing that channel externally is not a safe retirement mechanism.
+The output loop owns classifier consumption and temporal/FT state, while the
+stabilizer's separate release consumer currently has no join. Scheduler Stop
+alone cannot prove final fanout completion, and retries can reserve work after
+that scheduler exits. Source/callers, existing tests, ADR-0114/0274, ADR-0038,
+ADR-0148, config normalization and shutdown ordering were inspected.
+
+Selected architecture: keep a private runtime-owned output-pipeline handle,
+installed before launching its goroutine. Its stop request and completion are
+constant-size state. The same once-owned retirement helper serves signal
+shutdown and partial-startup close, stopping primary dedup exactly once without
+changing that package's exported contract. It requests and joins the output
+loop before peer/telnet/archive/grid/store dependencies stop. If startup failed
+before a pipeline exists, the helper terminally stops the constructed classifier.
+Remove the now-redundant single-caller bootstrap wrapper rather than retaining
+two startup owners. This is covered by the approved lifecycle boundary.
+
+The first retirement request starts the classifier's existing grace budget,
+even if an already received result is blocked in normal processing. One owned
+timer goroutine waits for expiry or early drain completion, invokes the existing
+terminal classifier Stop and signals its own completion. It never consumes or
+applies results. The pipeline remains the only processing consumer, checks its
+stop request before ordinary receives, and admits selected results to processing
+only within grace. Physical receive is followed by an explicit expiry check
+before ApplyResult: a select can choose ready data after its timer expires.
+An expired value is consumer-owned and discarded without spot mutation; a result
+admitted to processing remains owned through normal handoff, even after expiry.
+Expiry cancels other HTTP work but cannot revoke admitted processing. Pipeline retirement
+joins terminal classifier completion and all transferred processing. The grace
+budget is not an overall shutdown deadline, and synchronous downstream callbacks
+remain responsible for returning. No helper abandons blocked work.
+
+After classifier drain, force-retire temporal holds using actual UTC time and
+the existing decoder's force classification, then FT holds, including those
+created by late results or temporal release. Stop/clear both pipeline timers.
+Stop the stabilizer scheduler and join its release consumer before reporting
+pipeline completion. Fence terminal stabilizer admissions/retries and retire
+its still-held input/heap references and pending reservations as existing
+shutdown drops; already released envelopes continue normal final gates/handoff.
+Do not force-deliver unreleased stabilizer holds or change retry, suppression,
+overflow, secondary dedupe, queue-drop or model contracts.
+
+Design challenge disposition: waiting for dedup closure cannot work; closing
+dedup output requires a broader sender/producer join contract and is rejected.
+Global parent cancellation can destroy dependencies before grace and peer
+withdrawal, so a private pipeline handle is selected. A pipeline-specific
+context is equivalent here but adds no required ownership. A single owned timer
+and an owned AfterFunc are both viable expiry mechanisms; the timer's explicit
+completion avoids callback-cancellation bookkeeping. Sequential drain/process/
+Stop is rejected because a transferred callback can postpone cancellation beyond
+grace. This is an implementation refinement under selected v3, not a new policy.
+Design and test-strategy reviews inherited context and are not independent.
+
+Scientific timing review actually occurred in a separate non-steered context.
+That reviewer inspected committed source at 4b86648, causal timing arithmetic,
+ADR-0038 and config/replay/metric contracts without this ledger, intended design,
+diff or test expectations. Root verified its material source observations.
+Normal and forced evaluation use elapsed actual time t-t0; force ends waiting
+but retains nonempty-winner and inclusive score/margin gates. Evidence ends at
+min(t,t0+max-wait), while elapsed age is not capped to max-wait. A supplied future
+clock can contaminate age; it does not manufacture observations or necessarily
+change the winner when all stored evidence precedes actual shutdown.
+
+Representative independently derived timing vectors (UTC t0 is observation;
+scores are conditional dimensionless inputs, not decoder-score predictions):
+
+| Inputs | Expected categorical/time rule | Provenance and failure detected |
+|---|---|---|
+| Lag/max-wait 15s, actual t=t0+500ms, force, winner present, score >=0, margin >=80 | Terminal apply, cutoff t, age exactly 500ms | Causal elapsed time and inclusive selected gates; catches future-clock metric contamination |
+| Same, margin 79 or score -1 or no winner | Selected configured fallback, age 500ms | Existing product classification plus independent boundary arithmetic; force cannot manufacture confidence |
+| Lag/max-wait 15s, no force, t=t0+15s-1ns / 15s / 15s+1ns, gates pass | Defer / apply / apply; last cutoff remains 15s, age 15s+1ns | Exact lag and max-wait boundaries; catches off-by-one and age capping |
+| Lag 2s, max-wait 6s, failed gates, t=t0+6s-1ns / 6s / 6s+1ns | Defer / configured fallback / configured fallback | Max-wait boundary arithmetic, no invented success |
+| Max-wait 6s, evaluation at 7s; evidence at 6s / 6s+1ns | Endpoint eligible / later event excluded; age 7s | Independent inclusive window boundary and truthful age |
+| Actual age 500ms, artificially supplied t+24h | Truthful age 500ms; synthetic age would be 86,400,500ms | Independent arithmetic, catches existing shutdown shortcut |
+| Accepted lag/max-wait 25h, actual age 500ms, force | Terminal evaluation at actual time, although due exceeds now+24h | Accepted config domain and force meaning; catches stranded future-due holds |
+
+This establishes timing/retirement semantics, not callsign truth, calibrated
+probabilities or optimal thresholds. Independent oracle missing for those
+stronger claims: no held-out truth/calibration authority was supplied, and no
+such change or claim belongs to this patch. Decoder scoring and resolver rails
+remain unchanged.
+
+### Contract-to-test matrix, completed before implementation
+
+| Contract / failure | Stimulus or fault | Observable evidence | False-green risk | Checker / owner |
+|---|---|---|---|---|
+| Runtime owns completion; dedup output need not close | Actual runtime start then shutdown/partial close with dedup output left open | Owned stop/completion, dependency closure only afterward; repeated shared retirement safe | A synthetic closed channel hides production's open output | Permanent runtime integration and race / cluster |
+| One processing owner through grace | Independently gated CW results; stop observed before releasing blocked ordinary processing | Late received result retains classification, model and normal handoff | A second test/result receiver or ordinary select consumes the grace control | Synchronized runtime callback barriers, source priority review / cluster |
+| Processing admission remains inside grace | Selection resumes across expiry; literal before/exact/after boundaries | Expired selected value is discarded before ApplyResult or handoff; admitted processing survives expiry | Preselect check only; timer Stop still joining makes completion a stale gate | Shared ordinary/drain admission, literal time and unchanged-spot controls / cluster |
+| Cancellation boundary independent of transferred processing | Received CW-A blocks in existing grid callback; completed CW-B remains buffered; another real HTTP request stalls with an unexpired long ordinary deadline | Request canceled at grace expiry before its ordinary deadline while A/completion/resources remain blocked; A later hands off; B stays unstamped and is discarded | Sequential drain passes uncomplicated stalls; natural timeout or fixture cleanup manufactures cancellation; timer applies results or late-receives B | Real local HTTP headers/body, exact A/B ownership and coupled barriers / cluster |
+| Late FT holds retire | FT result completes during grace after prior CW barrier; long actual FT hold | Final normal FT handoff and zero groups/pending/timers after join | Flushing holds before drain loses newly created holds; ring-only check misses downstream | Gated runtime results and archive/telnet handoff / cluster |
+| Temporal force uses actual clock and future-due items | Accepted 25h lag, 500ms actual age; equal-due/order controls and failed gates | Immediate release, literal actual age/gate action and empty pending/heap | now+24h superficially flushes usual configs; expected values copied from scoring | Independent timing vectors plus controller/pipeline controls / cluster |
+| Normal downstream semantics remain | Suppressed MED duplicate and saturated bounded archive/telnet queues | Suppression/drop counters and unchanged sentinels; accepted handoff distinguished from delivery | Requiring every spot on a socket ignores intended gates/drops | Permanent delivery controls using real consumers / cluster |
+| Scheduler join includes release processing | Already released envelope blocks in existing grid callback; risky retry and long-held work | Scheduler exit alone insufficient; completion waits consumer; terminal enqueue refused, reservations/references retire | Joined scheduler hides unowned consumer; empty fixture hides queue retention | Synchronization, post-Stop controls, exact pending/channel counts and race / cluster |
+| Partial startup and cancellation cleanup | Constructed classifier before pipeline; real occupied listener failure after output startup | Same terminal owner, pending/backlog zero, actual workers and callback consumers joined | Test directly calls classifier Stop instead of production cleanup | Runtime startup-failure controls and independently released fixtures / cluster |
+
+Final post-approval test review is adequate. Its checker refinements are covered:
+repeat a retirement request while received CW-A remains blocked, without
+extending the first deadline; retain completed unreceived CW-B and require its
+unstamped discard; gate every drain receive by the actual deadline rather than
+only terminal-worker completion. Refine the classifier Stop comment so grace
+transfer and completion of transferred processing are distinct. These are
+checker/comment refinements within approved 20b, not new product policy.
+`go list -deps -test -json` confirms the cluster's production consumers and the
+toxicity client/test dependencies; the saved package inventory is
+`checkpoint-20b-dependencies.json`. No exported interface or schema changes.
+
+Post-implementation review identified a preselect scheduling window: ready data
+can win select after expiry while terminal Stop still joins. Disposition: use
+the same post-receive processing admission in ordinary and grace paths. This
+does not revoke consumer ownership under ADR-0274, which permits applying a
+received result; v3 limits grace consumption and does not promise processing
+every mechanically selected value. Already admitted A retains its normal
+handoff. Added independent literal before/exact/after deadline and expired
+selected-value controls; the real coupled fault covers admitted A/unreceived B.
+The design/test refinements are within selected 20b, not a policy change.
+
+Existing temporal/FT caps and stabilizer max-pending/input/release capacities
+remain. New lifecycle state has constant cardinality; one terminal timer worker
+per pipeline joins before completion, with no per-result goroutine or queue.
+Pending/backlog and controller/scheduler counts qualify local convergence.
+Preserve normal single-item output allocation behavior; measure existing guarded
+ownership benchmarks and a terminal-admission benchmark if fencing adds cost.
+No performance improvement or production leak claim is intended. Long-running
+load/profile evidence would be required for those claims.
+
+Select targeted runtime, temporal, FT, stabilizer and real HTTP ordinary/race
+controls; complete ordinary/race package baselines, analyzers, offline runner
+controls and cumulative ordinary/race checkout reconciliation. Read the final
+diff freshly, document durable ownership/timing and troubleshooting boundaries,
+update support routing, and regenerate maps last. Production external model,
+external cluster, socket receipt, process-wide ingress retirement and deployment
+remain outside the evidence claimed by this checkpoint.
+
+### Implementation and review corrections
+
+The runtime installs the pipeline handle before goroutine launch; normal
+shutdown and partial-startup cleanup share an idempotent completion owner.
+The pipeline's first request starts one existing grace budget and a joined
+expiry worker. Selected results cross an explicit processing-admission boundary
+before ApplyResult. Admitted processing, late temporal/FT holds and the separate
+stabilizer release consumer finish before dependent resource closure. Terminal
+stabilizer input/heap retirement releases references and each reservation; no
+blanket count reset hides lost ownership. Existing normal gates and queue drops
+remain. The single-caller bootstrap wrapper is removed; no exported API changes.
+
+Permanent controls use real runtime retirement with dedup output left open,
+independently gated CW/FT work, actual local HTTP header/body stalls, blocked
+normal callbacks, suppressed MED output, saturated archive/telnet handoffs,
+partial-startup failure, terminal retry policies, future-due temporal holds and
+stabilizer scheduler/consumer barriers. The linear HTTP fault scenario keeps
+its ownership and cancellation witnesses together; splitting its longer
+table-driven test would obscure the order that prevents false-green shutdown
+claims. Neither fixture consumes classifier Results itself.
+
+The initial compile exposed a now-unused wrapper import, which was removed.
+The first executed focused attempt exposed fixture defects: NewSpot's raw
+status is empty (logically UNKNOWN), and an ordinary loopback reservation did
+not exclude Windows production SO_REUSEADDR. Controls now initialize explicit
+UNKNOWN, and a Windows-only test reservation uses SO_EXCLUSIVEADDRUSE before
+the matching wildcard bind. The observed actual telnet startup now fails at
+that occupied listener; production binding policy is unchanged.
+
+The first crawler check identified missing entry comments in two existing
+touched files; ownership/force comments were added and the check passed.
+Lint identified two fixture inputs that every caller supplied identically.
+The fixture now fixes probable state and derives its two-candidate weighted
+total; all five selections retain the same 5,000 total. Affected ordinary/race
+controls and analyzers are rerun. These test-helper/comment refinements do not
+invalidate the completed broader production-behavior baseline.
+
+### Observed validation and boundaries
+
+| Check | Observed result |
+|---|---|
+| Final focused ordinary/race controls | Both PASS; `checkpoint-20b-focused-final.log`, `checkpoint-20b-focused-race-final.log` |
+| Complete ordinary baseline | All 70 packages passed/build-checked; `checkpoint-20b-all-packages.log` |
+| Complete race baseline | All 70 passed/build-checked, no race finding; `checkpoint-20b-race.log` |
+| Final whole-repository analyzers | Vet and Staticcheck PASS; lint zero issues; `checkpoint-20b-{vet,staticcheck,lint}-final.log` |
+| Offline controls | All 84 runner and 29 collector controls passed; `checkpoint-20b-runner-controls.log`, `checkpoint-20b-collector-controls.log` |
+| Ordinary actual checkout | `20261010-120521-8b2e52e8`: 136 PASS, zero wire/cleanup failures; 12 qualified retirement receipts |
+| Race actual checkout | `20261010-121008-5841e0dc`: 136 PASS, zero wire/cleanup failures; 12 qualified retirement receipts |
+
+Final guarded allocation measurements used one fixed spot, bounded channels,
+no stabilizer scheduler, and per-iteration reservation retirement. Five samples
+per benchmark retained these results:
+
+| Path | Before / after allocations and bytes | Before / final after nanoseconds |
+|---|---|---|
+| PrepareSpotContext | 0 allocations, 0 bytes / unchanged | 46.69-53.94 / 46.49-58.41 |
+| EmitSpotOwnership | 1 allocation, 896 bytes / unchanged | 286.1-375.9 / 203.4-467.2 |
+| Stabilizer pre-Start admission | 1 allocation, 96 bytes / unchanged | 90.96-105.2 / 99.21-118.5 |
+
+Source guards passed for each build/execution. Logs are
+`checkpoint-20b-output-before.log`, `checkpoint-20b-stabilizer-before.log` and
+`checkpoint-20b-admission-after-final.log`. The short terminal fence retains
+ordinary allocation behavior; these variable timing samples do not establish
+production latency, capacity or a speed improvement.
+
+The final actual pair, all 24 stop receipts and every current Go/module hash
+identify digest `1294fb524e8769fdc2b8277024a69618856f30bc60b73ffa87ac9a89ca04969e`.
+The current Git source inventory and all 1,134 hashes match both manifests.
+Five Python driver/support/harness/control hashes stayed unchanged across the
+pair; config identity is separately checked by the driver. Source identity
+excludes Python/docs/private config. `checkpoint-20b-identity.log` records this
+reconciliation. Wire fixtures qualify their command/consumer/archive boundary;
+production runtime retirement is established by the permanent Go controls.
+
+Support-agent impact: Required. Updated config guidance, the toxicity support
+card and symptom routing separate grace, processing ownership and downstream
+completion. Indexed ADR-0275 and TSR-0069 cross-link the classifier, temporal
+and stabilizer records without replacing their other policies. The native
+occupied-listener control follows the [Windows socket reservation contract](https://learn.microsoft.com/en-us/windows/win32/winsock/using-so-reuseaddr-and-so-exclusiveaddruse).
+The independent timing oracle and its claim limits are recorded above;
+design/test/quality reviews inherited context. Fresh final verification was
+lead-owned and directly covered the production diff, test ownership/barriers,
+literal clocks, normal gate/drop controls, raw-status and listener corrections,
+fixture simplification, source identity, support guidance and decision records.
+
+Record, crawler-entry and whitespace checks passed. Maps are regenerated last,
+then checked and the staged final diff reviewed before commit. This qualifies
+native Windows local behavior. External model/cluster behavior, durable archive
+receipt, socket receipt, deployment, process-wide ingress retirement, long-run
+production leak freedom and latency remain unclaimed.

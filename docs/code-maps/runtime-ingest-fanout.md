@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `d95fdfee711aeb29`
+- Source fingerprint: `2510d97aa5944c10`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,7 +12,7 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 25 | 63 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 26 | 72 |
 | `dxcluster/peer` | `peer` | 62 | 130 |
 | `dxcluster/spot` | `spot` | 33 | 32 |
 | `dxcluster/telnet` | `telnet` | 48 | 98 |
@@ -148,6 +148,7 @@ Source files:
 - `internal/cluster/main_runtime.go`
 - `internal/cluster/output_pipeline.go`
 - `internal/cluster/output_pipeline_delivery.go`
+- `internal/cluster/output_pipeline_retirement.go`
 - `internal/cluster/output_pipeline_stages.go`
 - `internal/cluster/path_cells.go`
 - `internal/cluster/path_report_metrics.go`
@@ -171,12 +172,15 @@ Test files:
 - `internal/cluster/human_telnet_runtime_test.go`
 - `internal/cluster/ingest_validation_test.go`
 - `internal/cluster/logging_test.go`
+- `internal/cluster/main_runtime_output_retirement_test.go`
 - `internal/cluster/main_runtime_test.go`
 - `internal/cluster/main_stats_test.go`
 - `internal/cluster/main_test.go`
 - `internal/cluster/output_pipeline_collision_test.go`
 - `internal/cluster/output_pipeline_delivery_test.go`
 - `internal/cluster/output_pipeline_dropped_log_test.go`
+- `internal/cluster/output_pipeline_grace_admission_test.go`
+- `internal/cluster/output_pipeline_http_retirement_test.go`
 - `internal/cluster/output_pipeline_ownership_bench_test.go`
 - `internal/cluster/output_pipeline_ownership_test.go`
 - `internal/cluster/output_pipeline_toxicity_test.go`
@@ -215,10 +219,16 @@ Test files:
 - `internal/cluster/peer_runtime_test.go`
 - `internal/cluster/peer_spot_admission_test.go`
 - `internal/cluster/prop_report_scheduler_test.go`
+- `internal/cluster/runtime_output_listener_other_test.go`
+- `internal/cluster/runtime_output_listener_windows_test.go`
+- `internal/cluster/runtime_output_retirement_test.go`
 - `internal/cluster/short_portable_license_test.go`
+- `internal/cluster/stabilizer_retirement_bench_test.go`
+- `internal/cluster/stabilizer_retirement_test.go`
 - `internal/cluster/stabilizer_test.go`
 - `internal/cluster/telnet_family_suppressor_bench_test.go`
 - `internal/cluster/telnet_family_suppressor_test.go`
+- `internal/cluster/temporal_retirement_test.go`
 - `internal/cluster/temporal_runtime_test.go`
 
 ### `dxcluster/peer`
@@ -646,6 +656,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0275](docs/decisions/ADR-0275-runtime-output-retirement.md) | Accepted | 2026-10-10 | output lifecycle, bounded grace, holds and downstream ownership | `path:internal/cluster, path:peer, path:telnet` |
 | [ADR-0273](docs/decisions/ADR-0273-history-comment-alias-boundary.md) | Accepted | 2026-10-10 | commands, telnet, history, aliases, literal phrases | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0272](docs/decisions/ADR-0272-mode-visibility-deltas.md) | Accepted | 2026-10-09 | filter, telnet, MODE, persistence, effective feedback | `area:telnet, path:telnet` |
 | [ADR-0271](docs/decisions/ADR-0271-shared-station-reputation.md) | Accepted | 2026-10-09 | reputation, telnet, station identity, allowance, history ownership | `area:telnet` |

@@ -1,7 +1,12 @@
+// File role: Owns bounded delayed spot scheduling and terminal admission.
+// Crawler notes: One scheduler owns the heap/timer; Stop drops held work and
+// closes released output. Pipeline retirement also joins its separate consumer.
+// Related docs: docs/decisions/ADR-0275-runtime-output-retirement.md.
 package cluster
 
 import (
 	"container/heap"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -67,13 +72,16 @@ func (h *telnetStabilizerHeap) Pop() any {
 		return nil
 	}
 	item := old[n-1]
+	old[n-1] = nil
 	*h = old[:n-1]
 	return item
 }
 
 // telnetSpotStabilizer delays risky telnet spots for a bounded duration. A
 // single scheduler goroutine owns the heap and timer to keep goroutine count
-// bounded under bursty traffic.
+// bounded under bursty traffic. The lifecycle fence orders startup and bounded
+// input publication against terminal retirement, never spanning scheduler I/O
+// or joins. Released envelopes belong to the pipeline's separate consumer.
 type telnetSpotStabilizer struct {
 	delay      time.Duration
 	maxPending int64
@@ -82,6 +90,11 @@ type telnetSpotStabilizer struct {
 	release chan *telnetStabilizerEnvelope
 	stop    chan struct{}
 	done    chan struct{}
+
+	lifecycleMu sync.Mutex
+	started     bool
+	stopped     bool
+	stopOnce    sync.Once
 
 	pending atomic.Int64
 }
@@ -110,23 +123,40 @@ func (s *telnetSpotStabilizer) Start() {
 	if s == nil {
 		return
 	}
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	if s.started || s.stopped {
+		return
+	}
+	s.started = true
 	go s.run()
 }
 
-// Stop drains the scheduler goroutine boundary by closing release after run
-// exits. It does not try to emit pending spots on shutdown because the main
-// pipeline is also stopping and correctness depends on a clean lifecycle.
+// Stop permanently fences admission and joins the scheduler once. Unreleased
+// input/heap work keeps the existing shutdown-drop disposition and retires its
+// reserved count; already released envelopes remain consumer-owned, buffered
+// in the closed release channel. The pipeline must separately join that
+// consumer before closing downstream resources.
 func (s *telnetSpotStabilizer) Stop() {
 	if s == nil {
 		return
 	}
-	select {
-	case <-s.done:
-		return
-	default:
-	}
-	close(s.stop)
-	<-s.done
+	s.stopOnce.Do(func() {
+		s.lifecycleMu.Lock()
+		s.stopped = true
+		close(s.stop)
+		started := s.started
+		s.lifecycleMu.Unlock()
+		if started {
+			<-s.done
+			return
+		}
+		// Pre-Start admission is valid, but terminal retirement must not wait
+		// for a scheduler that cannot now start.
+		s.retireInput()
+		close(s.release)
+		close(s.done)
+	})
 }
 
 // ReleaseChan exposes only released envelopes so the output pipeline remains
@@ -170,6 +200,11 @@ func (s *telnetSpotStabilizer) EnqueueWithContext(
 	if checksCompleted < 0 {
 		checksCompleted = 0
 	}
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	if s.stopped {
+		return false
+	}
 	if !s.reserveSlot() {
 		return false
 	}
@@ -186,6 +221,20 @@ func (s *telnetSpotStabilizer) EnqueueWithContext(
 	default:
 		s.pending.Add(-1)
 		return false
+	}
+}
+
+// retireInput runs only after admission is fenced and scheduler processing has
+// finished (or never started). Receive every held envelope to release its
+// references and retire its own reservation; a reset would hide mismatches.
+func (s *telnetSpotStabilizer) retireInput() {
+	for {
+		select {
+		case <-s.in:
+			s.pending.Add(-1)
+		default:
+			return
+		}
 	}
 }
 
@@ -217,6 +266,13 @@ func (s *telnetSpotStabilizer) run() {
 		timerC <-chan time.Time
 	)
 	heap.Init(&queue)
+	defer func() {
+		for i := range queue {
+			queue[i] = nil
+			s.pending.Add(-1)
+		}
+		s.retireInput()
+	}()
 
 	stopTimer := func() {
 		if timer == nil {
@@ -245,6 +301,11 @@ func (s *telnetSpotStabilizer) run() {
 	defer stopTimer()
 
 	for {
+		select {
+		case <-s.stop:
+			return
+		default:
+		}
 		if queue.Len() == 0 {
 			stopTimer()
 			timerC = nil

@@ -106,5 +106,7 @@ The stage uses these rules:
 - Related docs: `README.md`, `telnet/README.md`, `data/config/README.md`, `cloudflare/toxicity-worker/README.md`
 - Lifecycle refinement: [ADR-0274](ADR-0274-terminal-classifier-retirement.md)
   defines terminal admission, cancellation, queue retirement and result ownership.
+- Runtime completion: [ADR-0275](ADR-0275-runtime-output-retirement.md) defines
+  first-request grace and joins processing before dependent resources close.
 - Related TSRs: [TSR-0068](../troubleshooting/TSR-0068-classifier-terminal-retirement.md)
 - Supersedes / superseded by: none

@@ -21,6 +21,9 @@ comment was classified toxic.
 - Classifier Stop is terminal. Later eligible human submissions are
   `UNAVAILABLE` without new AI work. Discarding pending work during retirement
   does not mean the model returned a timeout or malformed classification.
+- Runtime shutdown bounds the classifier grace separately from overall cleanup.
+  Processing already admitted within grace retains downstream ownership until
+  normal handoff completes. Queue drops and normal filters can still suppress it.
 
 ## Must Avoid
 
@@ -35,3 +38,5 @@ comment was classified toxic.
 - `data/config/README.md`
 - `cloudflare/toxicity-worker/README.md`
 - `docs/decisions/ADR-0274-terminal-classifier-retirement.md`
+- `docs/decisions/ADR-0275-runtime-output-retirement.md`
+- `docs/troubleshooting/TSR-0069-output-pipeline-retirement.md`

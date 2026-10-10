@@ -23,7 +23,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"dxcluster/archive"
 	"dxcluster/buffer"
 	"dxcluster/config"
 	"dxcluster/cty"
@@ -1155,98 +1154,6 @@ func isStale(s *spot.Spot, policy config.SpotPolicy) bool {
 		return false
 	}
 	return time.Since(s.Time) > time.Duration(policy.MaxAgeSeconds)*time.Second
-}
-
-// processOutputSpots receives deduplicated spots and distributes them
-// Deduplicator Output  Ring Buffer  Broadcast to Clients
-// Purpose: Process deduplicated spots and distribute to ring buffer and outputs.
-// Key aspects: Applies corrections, caching, licensing, secondary dedupe, and fan-out.
-// Upstream: deduplicator output channel.
-// Downstream: grid updates, telnet broadcast, archive writer, peer publish.
-func processOutputSpots(
-	deduplicator *dedup.Deduplicator,
-	secondaryFast *dedup.SecondaryDeduper,
-	secondaryMed *dedup.SecondaryDeduper,
-	secondarySlow *dedup.SecondaryDeduper,
-	secondaryStage *atomic.Uint64,
-	modeAssigner *spot.ModeAssigner,
-	buf *buffer.RingBuffer,
-	telnet *telnet.Server,
-	peerManager *peer.Manager,
-	tracker *stats.Tracker,
-	signalResolver *spot.SignalResolver,
-	correctionCfg config.CallCorrectionConfig,
-	ctyLookup func() *cty.CTYDatabase,
-	metaCache *callMetaCache,
-	harmonicDetector *spot.HarmonicDetector,
-	harmonicCfg config.HarmonicConfig,
-	freqAvg *spot.FrequencyAverager,
-	spotPolicy config.SpotPolicy,
-	dash ui.Surface,
-	gridUpdate func(call, grid string),
-	gridLookup func(call string) (string, bool, bool),
-	gridLookupSync func(call string) (string, bool, bool),
-	unlicensedReporter func(source, role, call, deCall, dxCall, mode string, freq float64),
-	droppedCallLogger *droppedCallLogger,
-	adaptiveMinReports *spot.AdaptiveMinReports,
-	refresher *adaptiveRefresher,
-	spotterReliability spot.SpotterReliability,
-	spotterReliabilityCW spot.SpotterReliability,
-	spotterReliabilityRTTY spot.SpotterReliability,
-	confusionModel *spot.ConfusionModel,
-	recentBandStore spot.RecentSupportStore,
-	customSCPStore *spot.CustomSCPStore,
-	whoSpotsMeStore *spot.WhoSpotsMeStore,
-	broadcastKeepSSID bool,
-	archiveWriter *archive.Writer,
-	lastOutput *atomic.Int64,
-	pathPredictor *pathreliability.Predictor,
-	pathReport *pathReportMetrics,
-	allowedBands map[string]struct{},
-	toxicityClassifier *toxicity.Classifier,
-) {
-	newOutputPipeline(
-		deduplicator,
-		secondaryFast,
-		secondaryMed,
-		secondarySlow,
-		secondaryStage,
-		modeAssigner,
-		buf,
-		telnet,
-		peerManager,
-		tracker,
-		signalResolver,
-		correctionCfg,
-		ctyLookup,
-		metaCache,
-		harmonicDetector,
-		harmonicCfg,
-		freqAvg,
-		spotPolicy,
-		dash,
-		gridUpdate,
-		gridLookup,
-		gridLookupSync,
-		unlicensedReporter,
-		droppedCallLogger,
-		adaptiveMinReports,
-		refresher,
-		spotterReliability,
-		spotterReliabilityCW,
-		spotterReliabilityRTTY,
-		confusionModel,
-		recentBandStore,
-		customSCPStore,
-		whoSpotsMeStore,
-		broadcastKeepSSID,
-		archiveWriter,
-		lastOutput,
-		pathPredictor,
-		pathReport,
-		allowedBands,
-		toxicityClassifier,
-	).run()
 }
 
 func cloneSpotForTelnetStabilizer(s *spot.Spot) *spot.Spot {

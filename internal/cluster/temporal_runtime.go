@@ -1,3 +1,8 @@
+// File role: Owns bounded runtime temporal holds and their ordered release.
+// Crawler notes: The output consumer owns pending/heap state. Forced retirement
+// selects future-due holds at actual UTC time while preserving decoder gates.
+// Related docs: docs/decisions/ADR-0038-fixed-lag-temporal-decoder-main-replay-parity.md,
+// docs/decisions/ADR-0275-runtime-output-retirement.md.
 package cluster
 
 import (
@@ -78,14 +83,14 @@ func (h *runtimeTemporalHeap) Pop() any {
 	return item
 }
 
-func popRuntimeTemporalDue(h *runtimeTemporalHeap, now time.Time) []*runtimeTemporalItem {
+func popRuntimeTemporalDue(h *runtimeTemporalHeap, now time.Time, force bool) []*runtimeTemporalItem {
 	if h == nil || h.Len() == 0 {
 		return nil
 	}
 	out := make([]*runtimeTemporalItem, 0, 8)
 	for h.Len() > 0 {
 		head := (*h)[0]
-		if head == nil || head.due.After(now) {
+		if head == nil || (!force && head.due.After(now)) {
 			break
 		}
 		itemAny := heap.Pop(h)
@@ -170,7 +175,9 @@ func (c *runtimeTemporalController) Drain(now time.Time, force bool) []runtimeTe
 		return nil
 	}
 	now = now.UTC()
-	due := popRuntimeTemporalDue(&c.queue, now)
+	// Force retires future-due requests too; the decoder still receives the
+	// actual clock and keeps its existing evidence/score/fallback rules.
+	due := popRuntimeTemporalDue(&c.queue, now, force)
 	if len(due) == 0 {
 		return nil
 	}

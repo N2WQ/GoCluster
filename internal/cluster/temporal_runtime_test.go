@@ -19,7 +19,7 @@ func TestRuntimeTemporalControllerDrainRequeuesDeferredDecisionToMaxWait(t *test
 		"K1ABC",
 		runtimeTemporalPending{
 			spot:      spot.NewSpot("K1ABC", "W1XYZ", 7010.0, "CW"),
-			selection: runtimeTemporalTestSelection(key, spot.ResolverStateProbable, "K1ABC", 2500, "K1ABD", 2500, 5000),
+			selection: runtimeTemporalTestSelection(key, "K1ABC", 2500, "K1ABD", 2500),
 		},
 	)
 	if !accepted {
@@ -74,7 +74,7 @@ func TestRuntimeTemporalControllerDrainPreservesDueSequenceForEqualLag(t *testin
 			obs.subject,
 			runtimeTemporalPending{
 				spot:      spot.NewSpot(obs.call, "W1XYZ", obs.freq, "CW"),
-				selection: runtimeTemporalTestSelection(obs.key, spot.ResolverStateProbable, obs.subject, 3200, "K1ZZZ", 1800, 5000),
+				selection: runtimeTemporalTestSelection(obs.key, obs.subject, 3200, "K1ZZZ", 1800),
 			},
 		)
 		if !accepted {
@@ -117,14 +117,14 @@ func runtimeTemporalTestConfig(minMargin int) config.CallCorrectionConfig {
 	}
 }
 
+// All fixtures build a probable two-candidate selection. Its weighted total
+// is the sum of those candidates, rather than a separately tunable input.
 func runtimeTemporalTestSelection(
 	key spot.ResolverSignalKey,
-	state spot.ResolverState,
 	winner string,
 	winnerWeighted int,
 	runner string,
 	runnerWeighted int,
-	totalWeighted int,
 ) correctionflow.ResolverPrimarySelection {
 	winnerSupport := winnerWeighted / 1000
 	if winnerSupport <= 0 {
@@ -142,7 +142,7 @@ func runtimeTemporalTestSelection(
 		SnapshotOK: true,
 		Snapshot: spot.ResolverSnapshot{
 			Key:                        key,
-			State:                      state,
+			State:                      spot.ResolverStateProbable,
 			Winner:                     winner,
 			RunnerUp:                   runner,
 			WinnerSupport:              winnerSupport,
@@ -151,7 +151,7 @@ func runtimeTemporalTestSelection(
 			TotalReporters:             totalSupport,
 			WinnerWeightedSupportMilli: winnerWeighted,
 			RunnerWeightedSupportMilli: runnerWeighted,
-			TotalWeightedSupportMilli:  totalWeighted,
+			TotalWeightedSupportMilli:  winnerWeighted + runnerWeighted,
 			CandidateRanks: []spot.ResolverCandidateSupport{
 				{
 					Call:                 winner,

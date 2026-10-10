@@ -75,5 +75,7 @@ remain accepted.
 - Related docs: `docs/decision-log.md`,
   `docs/code-maps/runtime-ingest-fanout.md`
 - Related TSRs:
+- Retirement refinement: [ADR-0275](ADR-0275-runtime-output-retirement.md) joins
+  both scheduler and released fanout while preserving normal delivery gates.
 - Supersedes / superseded by: partially supersedes archive/peer side-rail
   clauses in ADR-0013, ADR-0020, ADR-0029, and ADR-0138

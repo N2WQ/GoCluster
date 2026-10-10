@@ -84,5 +84,7 @@ Its bounded grace and downstream handoff remain a separate runtime responsibilit
 - Related docs: `docs/command-fix-execution.md`, `data/config/README.md`,
   `customgpt/support-cards/toxicity-filter.md`.
 - Related TSRs: [TSR-0068](../troubleshooting/TSR-0068-classifier-terminal-retirement.md).
+- Runtime integration: [ADR-0275](ADR-0275-runtime-output-retirement.md) owns
+  first-request grace, processing admission and the downstream completion join.
 - Supersedes / superseded by: none; refines the lifecycle part of
   [ADR-0114](ADR-0114-human-comment-toxicity-classifier.md).
