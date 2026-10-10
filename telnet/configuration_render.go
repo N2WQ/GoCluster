@@ -317,8 +317,9 @@ func writeHumanDedupe(h *humanResponse, configured string, status configurationR
 	if !runtime.dedupeEnabled {
 		return h.valueRow("Dedupe", choice, "; secondary duplicate suppression disabled")
 	}
+	requested, known := parseDedupePolicyToken(configured)
 	suffix := ""
-	if configured == "" || !strings.EqualFold(configured, status.Effective.DedupePolicy) {
+	if configured == "" || !known || requested.label() != status.Effective.DedupePolicy {
 		suffix = "; effective " + status.Effective.DedupePolicy
 		if status.Effective.NearbyActive {
 			suffix += " while NEARBY is active"
@@ -327,10 +328,15 @@ func writeHumanDedupe(h *humanResponse, configured string, status configurationR
 	if err := h.valueRow("Dedupe", choice, suffix); err != nil {
 		return err
 	}
+	if configured != "" && !known {
+		if err := h.row("", "Configured choice is unrecognized"); err != nil {
+			return err
+		}
+	}
 	if status.Effective.NearbyActive && !runtime.fastEnabled {
 		return h.row("", "FAST is unavailable on this server")
 	}
-	if configured != "" && !status.Effective.NearbyActive && !strings.EqualFold(configured, status.Effective.DedupePolicy) {
+	if known && !status.Effective.NearbyActive && requested.label() != status.Effective.DedupePolicy {
 		return h.row("", "Configured choice is unavailable on this server")
 	}
 	return nil

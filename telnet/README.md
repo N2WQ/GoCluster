@@ -468,6 +468,15 @@ choices, or `DIALECT <name>` with one name to switch. Malformed SOLAR commands
 leave the schedule unchanged; a valid human command deliberately restarts its
 schedule, even if you select the same cadence.
 
+`SHOW DEDUPE` and `SHOW SETTINGS` keep your saved DEDUPE choice visible. If SLOW
+is saved but this server only enables FAST, both show SLOW with effective FAST
+and explain that SLOW is unavailable. Usable NEARBY can temporarily change the
+effective policy. If all secondary policies are disabled, the readback says
+duplicate suppression is disabled. Reading never replaces your saved choice.
+Unusual saved strings remain exact, with quotes and escapes when needed;
+when describing an effective lane, unrecognized values are identified separately
+from unavailable policies.
+
 Machine YAML preserves stored flags, false entries and defaults. Use
 `GET YAML FILTER` for exact stored rules; `DEFAULT` remains distinct from
 explicit `true` or `false` there. NEARBY reports its effective ON/OFF state

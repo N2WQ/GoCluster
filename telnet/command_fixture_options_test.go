@@ -47,6 +47,8 @@ func commandFixtureOptions(cfg *config.Config, db *cty.CTYDatabase) ServerOption
 		DefaultDedupePolicy: cfg.Dedup.DefaultPolicy,
 		NoiseModel:          cfg.PathReliability.NoiseModel(),
 		PathPredictor:       pathreliability.NewPredictor(cfg.PathReliability, cfg.PathReliability.AllowedBands),
-		DedupeFastEnabled:   true, DedupeMedEnabled: true, DedupeSlowEnabled: true,
+		DedupeFastEnabled:   cfg.Dedup.SecondaryFastWindowSeconds > 0,
+		DedupeMedEnabled:    cfg.Dedup.SecondaryMedWindowSeconds > 0,
+		DedupeSlowEnabled:   cfg.Dedup.SecondarySlowWindowSeconds > 0,
 	}
 }

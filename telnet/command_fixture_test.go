@@ -51,6 +51,7 @@ type commandFixtureReceipt struct {
 	ConsumerJoined    bool              `json:"consumer_joined"`
 	ArchiveStopped    bool              `json:"archive_stopped"`
 	ReputationEnabled bool              `json:"reputation_enabled"`
+	DedupeAvailable   map[string]bool   `json:"dedupe_available"`
 }
 
 func loadCommandFixtureInputs(t *testing.T, root string) (*config.Config, *cty.CTYDatabase) {
@@ -204,7 +205,8 @@ func TestCheckoutCommandFixture(t *testing.T) {
 	}()
 	receipt := commandFixtureReceipt{Nonce: spec.Nonce, PID: os.Getpid(), Address: listener.Addr().String(),
 		SourceDigest: spec.SourceDigest, ConfigHashes: make(map[string]string), Started: true,
-		ReputationEnabled: gate != nil}
+		ReputationEnabled: gate != nil,
+		DedupeAvailable:   map[string]bool{"FAST": server.dedupeFastEnabled, "MED": server.dedupeMedEnabled, "SLOW": server.dedupeSlowEnabled}}
 	defer func() {
 		server.Stop()
 		deadline := time.Now().Add(5 * time.Second)

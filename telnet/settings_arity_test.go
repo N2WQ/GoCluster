@@ -188,7 +188,7 @@ func TestFixedSettingsPositiveControls(t *testing.T) {
 			for _, tc := range []struct{ command, response string }{
 				{"DIALECT", "Current dialect: CC\n"},
 				{"DIALECT LIST", "Available dialects: CC, GO\n"},
-				{"SHOW DEDUPE", "Dedupe: SLOW (cqzone) (fast=on med=on slow=on)\n"},
+				{"SHOW DEDUPE", "Dedupe: SLOW (cqzone) (fast=on med=on slow=on)\r\n"},
 			} {
 				attempts := 0
 				s.commitConfigurationFn = func(*filter.PreparedUserRecord) error { attempts++; return nil }

@@ -1705,34 +1705,6 @@ func (s *Server) effectiveDedupePolicyForClient(client *Client) dedupePolicy {
 	return policy
 }
 
-func (s *Server) formatDedupeStatus(client *Client) string {
-	if client == nil {
-		return ""
-	}
-	savedPolicy := client.getDedupePolicy()
-	effectivePolicy := s.effectiveDedupePolicyForClient(client)
-	policyText := fmt.Sprintf("%s (%s)", savedPolicy.label(), dedupeKeyLabel(savedPolicy))
-	if effectivePolicy != savedPolicy {
-		policyText = fmt.Sprintf("%s; NEARBY effective %s (%s)", policyText, effectivePolicy.label(), dedupeKeyLabel(effectivePolicy))
-	}
-	if !s.dedupeFastEnabled && !s.dedupeMedEnabled && !s.dedupeSlowEnabled {
-		return fmt.Sprintf("Dedupe: %s (secondary disabled)\n", policyText)
-	}
-	fastLabel := "off"
-	if s.dedupeFastEnabled {
-		fastLabel = "on"
-	}
-	medLabel := "off"
-	if s.dedupeMedEnabled {
-		medLabel = "on"
-	}
-	slowLabel := "off"
-	if s.dedupeSlowEnabled {
-		slowLabel = "on"
-	}
-	return fmt.Sprintf("Dedupe: %s (fast=%s med=%s slow=%s)\n", policyText, fastLabel, medLabel, slowLabel)
-}
-
 func (s *Server) handleDiagCommand(client *Client, line string) (string, bool) {
 	if client == nil {
 		return "", false

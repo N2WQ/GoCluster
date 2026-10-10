@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 12 complete (04a used two commits);
-28 approved checkpoints remain; 13 is next.
+Current progress: checkpoints 00 through 13 complete (04a used two commits);
+27 approved checkpoints remain; 14 is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -1879,3 +1879,108 @@ routing explain refusals and scheduling preservation. TSR-0059 records the
 learning; no new ADR is needed for existing contract enforcement. Generated-map
 and whitespace checks complete closeout. No required check was waived; no
 full-repository race, production-load or external-cluster qualification is claimed.
+
+## Checkpoint 13: configured and effective DEDUPE readbacks
+
+Status: complete. Read-only discovery inspected current stored-version
+decoding, login preparation/publication, SHOW dispatch and its lease, machine
+validation, human formatting, preset fallback tests, runtime lane construction,
+loaded dedupe.yaml, and fixture ownership. Marked records retain exact setting
+strings. A stored SLOW can remain configured after login resolves it to FAST;
+SHOW DEDUPE currently mislabels the runtime atomic value as the saved choice.
+SHOW SETTINGS keeps the raw choice but can call a recognized padded token
+unavailable, or an unrecognized token unavailable. Ordinary empty selections use
+the server default; nonempty unknown strings retain the existing MED interpretation
+before lane availability fallback. These runtime and persistence rules do not change.
+
+Architecture: read exact configured DEDUPE under the existing full-SSID lease,
+alongside the current effective lane and usable NEARBY state. The SHOW path already
+bypasses detached human mutation and does not clone a filter merely to read one
+setting. Preserve its compact output for recognized matching policies. Use the
+existing human-response counting pass, ASCII quoting, 78-column lines and final
+65,536-byte cap for unusual values and expanded feedback. Refuse over-budget
+readback without partial output. Correct SHOW SETTINGS token recognition and
+explanation without changing the shared response or writer owners. All disabled
+lanes report disabled suppression, not an active FAST sentinel.
+
+No schema, default, saved-byte normalization, SET/LOAD applied-fallback behavior,
+machine admission, broadcast lane, diagnostic consumer, pause, queue, goroutine,
+lifecycle or retained-state change is proposed. Existing contracts and approval
+resolve behavior; no new policy or ADR is needed. The fixture will derive its
+lane flags from loaded secondary-window settings, matching production construction.
+A separate private FAST-only profile with literal marked SLOW records proves real
+login and fresh-process restoration. It adds no secondary deduper or production
+pipeline claim. Startup and retirement receipts must expose and verify loaded lane
+availability; unchanged profiles retain their shipped positive windows.
+
+Lead-owned preimplementation falsifiability matrix:
+
+| Contract | Stimulus / fault | Required evidence | False-green risk | Checker / owner |
+|---|---|---|---|---|
+| Configured versus effective | Marked SLOW, FAST-only loaded server; both dialects and a fresh child | SHOW DEDUPE and SHOW SETTINGS identify SLOW and effective FAST; GET and disk keep SLOW | Changing the setting to make the readback agree | Literal profile, exact replies, full configuration/revision/preset and immediate disk equality / telnet, runner |
+| No read effects | Repeated reads after normal login establishes revision | Zero commits; exact configured/runtime/filter/preset/revision/disk unchanged | Initializing a legacy test adapter mistaken for a read mutation | Restored initialized clients and existing lease / telnet |
+| Exact unusual tokens | Empty, mixed/padded recognized, whitespace-only and unknown values | Exact recoverable value; correct DEFAULT, unavailable or unrecognized explanation; unchanged runtime interpretation | EqualFold without existing trim, or assuming unknown means FAST | Literal runtime/wording and independent unquote controls / telnet |
+| Effective overrides | Usable/inactive NEARBY; FAST-disabled fallback; all lanes disabled | Actual effective key, NEARBY reason, disabled-suppression wording | Reporting internal FAST sentinel as active suppression | Direct existing consumer/runtime controls and human output / telnet |
+| Bounded output | Escape-expanding and long marked values, complete response boundary | ASCII/CRLF, every line at most 78 bytes, complete escapes and lossless pieces; clear refusal with no effects | Quoting the whole string or returning a partial response | Existing formatter and literal boundary/unquote tests / telnet |
+| Positive compatibility | All enabled policies; human SET unavailable SLOW; machine refusal and existing LOAD fallback | Compact output and current applied-fallback save behavior retained | Blanket refusal or changing admission semantics to enable the test | Existing and focused controls; immediate saved configuration / telnet, runner |
+
+Select focused and complete telnet/filter/commands ordinary and race suites,
+cumulative actual ordinary/race server profiles, offline oracle controls,
+complete ordinary baseline, analyzers, records, comments and maps. Fresh lead
+verification will challenge ownership and raw-string bounds directly. Earlier
+read-only delegated discovery was technical evidence shown the scope; it was
+not independent scientific evidence and did not transfer lead authority.
+
+### Review disposition
+
+The bounded technical reviewer found that automatic pause could append its
+footer after body admission. The literal 49,366-character marked choice produces
+an exactly 65,536-byte body; the existing footer would exceed the final cap.
+The formatter now reserves a conservative complete CRLF footer only when
+automatic pause would trigger. A direct send-path test executes that boundary
+and a fitting 49,200-character control, compares actual writer normalization
+with a literal CRLF expectation, and checks the complete wire and every line.
+The shared pause and writer owners remain unchanged.
+
+Review then found that the actual runner's post-terminator GET discarded its
+prefix. Leaked output after a refusal or footer could escape admission evidence.
+The runner now uses an explicit correlated barrier, rejects trailing content,
+accepts only CRLF framing and one expected echo, and counts residual framing
+against the remaining response budget. New offline controls challenge leaked
+content after both terminators, oversized blank padding, malformed framing,
+duplicate/unexpected echo and invalid readback documents. All 48 offline controls
+passed. The original telnet harness remains unchanged. A source-only follow-up
+review found no material issue in the correction; it did not execute tests.
+
+The earlier actual run `20261009-220223-3a1b918c` passed with the weaker barrier
+and is preliminary evidence only. Final ordinary and race profiles below reran
+with the corrected checker before closeout. These reviews were technical,
+shown the scope, and did not constitute independent scientific evidence.
+
+### Observed final validation
+
+| Check | Result |
+|---|---|
+| Package controls | Focused DEDUPE/owner/budget and complete filter/telnet/commands controls passed; final complete three-package race suite reran after review corrections |
+| Complete ordinary baseline | All 70 packages completed successfully on final Go state; no-test packages build-checked |
+| Runner controls | All 48 passed, including exact owners/availability, lossless value, complete final wire and trailing-prefix refusal controls |
+| Final actual checkout runs | Ordinary `20261009-220847-f4102c5a` and race `20261009-221029-4473bf4c`: all 104 required cases passed per build; 40 main, 7 reputation and 5 FAST-only DEDUPE cases per transport |
+| Transport and child ownership | Zero wire or cleanup failures; all 12 retirement receipts per build confirm clients retired, consumer joined, archive stopped and exact loaded lane availability |
+| Whole-repository analyzers | vet and Staticcheck passed; lint passed with zero issues |
+| Support and records | Troubleshooting-record and changed crawler-entry checks passed; two support-critical candidates reviewed |
+
+Both final actual builds and their children report Go/module source digest
+`3b241e050447bf7029005cfdc8ea7826c3aba4531a8a312f8e6fc5cf8c0bf6a7`.
+Python was frozen for both builds; the digest excludes Python, docs and configuration.
+Private staged configurations are separately hashed and verified in receipts.
+
+Fresh lead source, tests, direct diff and retirement-receipt verification found
+no unresolved material defect. Implementation maps to the dedicated bounded
+`telnet/dedupe_readback.go`, narrow SHOW SETTINGS recognition/reasons, permanent
+owner/quoting/send-path tests, loaded fixture lane flags and the cumulative runner.
+Support-agent impact: Required; the telnet guide and support route explain exact
+saved choices versus effective lanes. TSR-0060 preserves the failure mechanism,
+footer and barrier lessons, and checker limits. Existing runtime interpretation
+and publication contracts remain; no new ADR is warranted. Generated maps and
+whitespace checks close the slice. No production suppression-quality, external
+cluster, load, or full-repository race claim is made.

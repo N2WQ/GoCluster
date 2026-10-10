@@ -1024,6 +1024,7 @@ def profile(binary, root, source, transport):
                 f"{transport}: original filter arguments refuse before normalization",
                 f"{transport}: DXCC and logout arity preserve the original session",
                 f"{transport}: fixed settings reject tails and preserve valid values",
+                f"{transport}/0: large DEDUPE final send fits or refuses without effects",
                 f"{transport}/1: held endpoint and loaded consumers",
                 f"{transport}: preferences and archive survive fresh child",
                 f"{transport}: NOFILTER geography survives fresh child",
@@ -1040,7 +1041,8 @@ def profile(binary, root, source, transport):
                 f"{transport}: callsign patterns and matching survive fresh child",
                 f"{transport}: supported filter arguments survive fresh child",
                 f"{transport}: command arity preferences survive fresh child",
-                f"{transport}: fixed setting values survive fresh child with session reset"]
+                f"{transport}: fixed setting values survive fresh child with session reset",
+                f"{transport}/1: large DEDUPE final send survives fresh child"]
     call = "K1ABC-70001"
     observer_call, observer_configuration = "VE3ABC-70003", None
     failed_records, refused_records, compatible_records = {}, {}, {}
@@ -1460,6 +1462,8 @@ def profile(binary, root, source, transport):
                      lambda: command_arity_cases(suite, root, saved_arity))
                 case(f"{transport}: fixed settings reject tails and preserve valid values",
                      lambda: fixed_setting_cases(suite, root, saved_settings))
+                case(f"{transport}/0: large DEDUPE final send fits or refuses without effects",
+                     lambda: large_dedupe_cases(suite, root, generation))
             else:
                 def restored():
                     settings = session.get()["configuration"]["settings"]
@@ -1664,6 +1668,8 @@ def profile(binary, root, source, transport):
                                 "fresh child lost fixed settings or persisted session diagnostics")
 
                 case(f"{transport}: fixed setting values survive fresh child with session reset", restored_settings)
+                case(f"{transport}/1: large DEDUPE final send survives fresh child",
+                     lambda: large_dedupe_cases(suite, root, generation))
         finally:
             try:
                 if suite:
@@ -1687,6 +1693,211 @@ def profile(binary, root, source, transport):
                 except (OSError, ValueError) as error:
                     cleanup.append(str(error))
     report = {"transport": transport, "required": required, "results": results,
+              "wire_failures": wire, "cleanup_errors": cleanup, "children": children}
+    (root / "results.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    qualified(results, required, wire, cleanup)
+    return report
+
+
+def require_dedupe_readback(before, after, record, saved, text=None):
+    require(before["configuration"]["settings"]["dedupe_policy"] == "SLOW" and
+            after["status"]["effective"]["dedupe_policy"] == "FAST" and
+            after["configuration"] == before["configuration"] and after["revision"] == before["revision"] and
+            after["status"]["effective"] == before["status"]["effective"] and
+            after["status"]["preset"] == before["status"]["preset"] and record.read_bytes() == saved,
+            "DEDUPE readback changed or hid its configured/effective owner")
+    if text is not None:
+        expected = "Dedupe        SLOW; effective FAST\n              Configured choice is unavailable on this server"
+        require(expected in text and text.splitlines().count("Dedupe        SLOW; effective FAST") == 1,
+                "SHOW SETTINGS does not distinguish saved SLOW from effective FAST")
+
+
+def large_dedupe_reply(current, final):
+    received, raw, lines = 0, bytearray(), []
+    try:
+        current.send("SHOW DEDUPE\r\n")
+        while not lines or lines[-1] != final:
+            line = current.reader.line()
+            received += len(line)
+            raw.extend(line[:harness.MAX_FRAME - len(raw)])
+            require(received <= harness.MAX_FRAME and line.endswith(b"\r\n") and b"\r" not in line[:-2],
+                    "large DEDUPE response exceeds final wire bound or breaks CRLF")
+            text = line[:-2].decode("ascii", "strict")
+            if not lines and text in ("", "SHOW DEDUPE"):
+                continue
+            require(len(text) <= 78, "large DEDUPE response exceeds line width")
+            lines.append(text)
+    except Exception:
+        received += len(current.reader.buffer)
+        raw.extend(current.reader.buffer[:harness.MAX_FRAME - len(raw)])
+        raise
+    finally:
+        receipt = f"\n[{current.call}] SHOW DEDUPE\n".encode() + bytes(raw)
+        if received > len(raw):
+            receipt += b"\n[human receipt truncated at 65536 bytes]\n"
+        current.suite.log.write(receipt)
+        current.suite.log.flush()
+    return "\n".join(lines), dedupe_read_barrier(current, harness.MAX_FRAME - received)
+
+
+def dedupe_read_barrier(current, remaining):
+    # The correlated frame closes this response. Session.get discards its
+    # prefix, which could hide leaked content after a refusal or pause footer.
+    identifier = current.suite.identifier()
+    command = f"GET YAML FILTER SCHEMA 4 ID {identifier}"
+    current.send(command + "\r\n")
+    document, prefix = current.frame("FILTER", identifier, 4, command)
+    echoed, trailing = False, 0
+    for line in prefix.splitlines(keepends=True):
+        require(line.endswith(b"\r\n") and b"\r" not in line[:-2],
+                "large DEDUPE barrier prefix breaks CRLF")
+        if current.reader.remote_echo and not echoed and line == command.encode("ascii") + b"\r\n":
+            echoed = True
+            continue
+        require(line == b"\r\n", "large DEDUPE response has trailing content")
+        trailing += len(line)
+    require(trailing <= remaining, "large DEDUPE response exceeds final wire bound")
+    require("error" not in document and isinstance(document.get("configuration"), dict) and
+            isinstance(document.get("status"), dict) and isinstance(document.get("revision"), str) and
+            bool(document["revision"]), "large DEDUPE barrier lacks a valid readback")
+    return document
+
+
+def require_large_dedupe_output(text, value):
+    require(text.startswith('Dedupe: "') and "".join(re.findall(r'"(X+)"', text)) == value and
+            text.count("; effective MED (grid2)") == 1 and "(fast=on med=on slow=on)" in text and
+            "Configured choice is unrecognized" in text and "Type RESUME to resume now." in text and
+            text.endswith("Missed spots are not replayed."),
+            "large DEDUPE output lost exact value, runtime reason or automatic footer")
+
+
+def large_dedupe_cases(suite, root, generation):
+    users = root / "users"
+    for count, call in ((49200, "VE3ABC-70063"), (49366, "VE3ABC-70064")):
+        record = users / (call + ".yaml")
+        if generation == 0:
+            record.write_text(yaml.safe_dump(dict(configuration_version=4, dialect="go", dedupe_policy="X" * count)),
+                              encoding="utf-8")
+        current = harness.Session(suite, call)
+        before, saved = current.get("FILTER"), record.read_bytes()
+        require(before["status"]["configured"]["dedupe_policy"] == "X" * count and
+                before["status"]["effective"]["dedupe_policy"] == "MED" and
+                before["status"]["session"]["temporary_defaults"] is False,
+                "large marked record did not restore exact choice and existing MED interpretation")
+        final = "Missed spots are not replayed." if count == 49200 else "Readback failed: response exceeds 65,536 bytes."
+        text, after = large_dedupe_reply(current, final)
+        if count == 49200:
+            require_large_dedupe_output(text, "X" * count)
+        else:
+            require(text == final, "over-budget DEDUPE response partially succeeded")
+        require(after["configuration"] == before["configuration"] and after["revision"] == before["revision"] and
+                after["status"]["configured"] == before["status"]["configured"] and
+                after["status"]["effective"] == before["status"]["effective"] and
+                after["status"]["preset"] == before["status"]["preset"] and record.read_bytes() == saved,
+                "large DEDUPE success/refusal changed a preference owner")
+
+
+def dedupe_profile(binary, root, source, transport):
+    """Real marked-record login and read-only fallback on a loaded FAST-only node."""
+    prefix = transport + "/dedupe"
+    required = [f"{prefix}/0: held endpoint exposes loaded FAST-only availability",
+                f"{prefix}/0: saved SLOW readbacks preserve every preference owner",
+                f"{prefix}: applied SET fallback and machine refusal remain compatible",
+                f"{prefix}/1: held endpoint exposes loaded FAST-only availability",
+                f"{prefix}/1: saved SLOW survives fresh child without read effects"]
+    available = dict(FAST=True, MED=False, SLOW=False)
+    calls = (("go", "K1ABC-70058"), ("cc", "K1ABC-70059"))
+    users = root / "users"
+    users.mkdir()
+    for dialect, call in calls:
+        baseline = dict(configuration_version=4, dialect=dialect, dedupe_policy="SLOW",
+                        bands={"20m": True}, allbands=False, allmodes=True, allsources=True)
+        document = {**baseline, "preset": dict(name="DEDUPE13", baseline=baseline)}
+        (users / (call + ".yaml")).write_text(yaml.safe_dump(document), encoding="utf-8")
+    saved_configuration = {}
+    results, wire, cleanup, children = [], [], [], []
+    for generation in range(2):
+        child, suite = None, None
+        try:
+            child = Child(binary, root, source, dedupe_available=available)
+            children.append(child.identity)
+            suite = harness.Suite(SimpleNamespace(host=child.host, port=child.port, call="K1ABC",
+                                                  timeout=8, run_seconds=120, output=root / f"wire-{generation}"))
+
+            def identity():
+                current = harness.Session(suite, "VE3ABC-70062")
+                current.human("PAUSE 300")
+                current.human("SHOW BUILD", "Build version: fixture-" + child.nonce)
+                require(current.get("CAPABILITIES")["configuration"]["dedupe_available"] == available,
+                        "actual server does not expose the literal FAST-only profile")
+
+            suite.case(required[0 if generation == 0 else 3], identity)
+            child.check_running()
+
+            def reads():
+                for dialect, call in calls:
+                    current = harness.Session(suite, call)
+                    _, before = current.human("PAUSE 300")
+                    record = users / (call + ".yaml")
+                    saved = record.read_bytes()
+                    require(before["configuration"]["settings"]["dialect"] == dialect and
+                            before["status"]["session"]["temporary_defaults"] is False and
+                            before["status"]["preset"] == dict(associated=True, name="DEDUPE13", modified=False),
+                            "literal marked record did not restore normally")
+                    if generation:
+                        require(before["configuration"] == saved_configuration[call], "fresh child lost configured SLOW")
+                    for _ in range(2):
+                        _, after = exact_human_reply(current, "SHOW DEDUPE", "Dedupe: SLOW; effective FAST (grid2)\n"
+                                                    "        (fast=on med=off slow=off)\n"
+                                                    "        Configured choice is unavailable on this server")
+                        require_dedupe_readback(before, after, record, saved)
+                        text, after = current.human("SHOW SETTINGS")
+                        require_dedupe_readback(before, after, record, saved, text)
+                    saved_configuration[call] = before["configuration"]
+
+            suite.case(required[1 if generation == 0 else 4], reads)
+            child.check_running()
+            if generation == 0:
+                def positive():
+                    for dialect, call in (("go", "VE3ABC-70060"), ("cc", "VE3ABC-70061")):
+                        current = harness.Session(suite, call)
+                        current.human("PAUSE 300")
+                        current.human("DIALECT " + dialect)
+                        record = users / (call + ".yaml")
+                        require_setting_control(current, record, "SET DEDUPE SLOW",
+                                                "Dedupe policy set to FAST (requested SLOW disabled)", "dedupe_policy", "FAST")
+                        before, saved = current.get(), record.read_bytes()
+                        candidate = copy.deepcopy(before["configuration"])
+                        candidate["settings"]["dedupe_policy"] = "SLOW"
+                        response = current.upload("VALIDATE", "CONFIG", candidate)
+                        require("error" in response and "dedupe_policy is unavailable on this server" in response["error"]["message"],
+                                "unavailable machine selection was admitted")
+                        after = current.get()
+                        require(after["configuration"] == before["configuration"] and after["revision"] == before["revision"] and
+                                after["status"]["effective"] == before["status"]["effective"] and record.read_bytes() == saved,
+                                "machine refusal changed applied human fallback")
+
+                suite.case(required[2], positive)
+                child.check_running()
+        finally:
+            try:
+                if suite:
+                    for current in suite.sessions:
+                        try:
+                            current.close()
+                        except (OSError, ValueError, EOFError) as error:
+                            suite.cleanup_errors.append(str(error))
+                    suite.log.close()
+                    results.extend(suite.results)
+                    wire.extend(suite.wire_failures)
+                    cleanup.extend(suite.cleanup_errors)
+            finally:
+                if child:
+                    try:
+                        child.stop()
+                    except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+                        cleanup.append(str(error))
+    report = {"transport": transport, "profile": "dedupe", "required": required, "results": results,
               "wire_failures": wire, "cleanup_errors": cleanup, "children": children}
     (root / "results.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     qualified(results, required, wire, cleanup)
@@ -1851,6 +2062,8 @@ def main():
                 report["profiles"].append(profile(binary, root, source, transport))
                 reputation_root = stage(run / (transport + "-reputation"), transport, reputation_enabled=True)
                 report["profiles"].append(reputation_profile(binary, reputation_root, source, transport))
+                dedupe_root = stage(run / (transport + "-dedupe"), transport, dedupe_fast_only=True)
+                report["profiles"].append(dedupe_profile(binary, dedupe_root, source, transport))
         report["result"] = "PASS"
     except (OSError, ValueError, EOFError, TimeoutError, subprocess.TimeoutExpired, harness.yaml.YAMLError) as error:
         report["error"] = str(error)

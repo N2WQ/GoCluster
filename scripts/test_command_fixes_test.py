@@ -25,6 +25,98 @@ HISTORY_ROW = "DX de K1ABC:     14074.00  W6ABC       CW LABEL                  
 
 
 class DriverControls(unittest.TestCase):
+    def test_large_dedupe_oracle_requires_lossless_value_reason_and_footer(self):
+        text = ('Dedupe: "XX"\n        + "XX"; effective MED (grid2)\n'
+                '        (fast=on med=on slow=on)\n        Configured choice is unrecognized\n'
+                'Live spots paused for 30s after 4 output rows. Type RESUME to resume now.\nMissed spots are not replayed.')
+        driver.require_large_dedupe_output(text, "XXXX")
+        for old, new in (("; effective MED", "; effective FAST"), ('+ "XX"', '+ "X"'),
+                         ("Configured choice is unrecognized", "Configured choice is unavailable"),
+                         ("Missed spots are not replayed.", "")):
+            with self.assertRaisesRegex(ValueError, "large DEDUPE output lost"):
+                driver.require_large_dedupe_output(text.replace(old, new), "XXXX")
+
+    def test_large_dedupe_reader_checks_wire_before_correlated_get(self):
+        current = mock.Mock()
+        current.call, current.suite.log = "N0CALL-1", io.BytesIO()
+        current.suite.identifier.return_value = "BARRIER13"
+        current.reader.remote_echo = True
+        expected = dict(configuration={}, status={}, revision="r13")
+        current.frame.return_value = (expected, b"\r\nGET YAML FILTER SCHEMA 4 ID BARRIER13\r\n\r\n")
+        current.reader.buffer = b"pending"
+        current.reader.line.side_effect = [b"Dedupe: control\r\n", b"Done\r\n"]
+        text, document = driver.large_dedupe_reply(current, "Done")
+        self.assertEqual(text, "Dedupe: control\nDone")
+        current.frame.assert_called_once_with("FILTER", "BARRIER13", 4, "GET YAML FILTER SCHEMA 4 ID BARRIER13")
+        current.get.assert_not_called()
+        self.assertIs(document, expected)
+        for line in (b"bad\n", b"bad\r\r\n", b"X" * 79 + b"\r\n", b"X" * 65536 + b"\r\n"):
+            current.frame.reset_mock()
+            current.suite.log = io.BytesIO()
+            current.reader.line.side_effect = [line]
+            with self.assertRaises(ValueError):
+                driver.large_dedupe_reply(current, "Done")
+            current.frame.assert_not_called()
+            self.assertIn(line[:65536], current.suite.log.getvalue())
+
+    def test_large_dedupe_barrier_refuses_content_after_both_terminators(self):
+        current = mock.Mock()
+        current.call, current.suite.log = "N0CALL-1", io.BytesIO()
+        current.suite.identifier.return_value = "BARRIER13"
+        current.reader.remote_echo, current.reader.buffer = True, b""
+        document = dict(configuration={}, status={}, revision="r13")
+        echo = b"GET YAML FILTER SCHEMA 4 ID BARRIER13\r\n"
+        for final in ("Readback failed: response exceeds 65,536 bytes.", "Missed spots are not replayed."):
+            for prefix in (b'        + "LEAKED"\r\n', b"\r\n" * 32768, b"bad\n", b"\r\r\n", echo + echo):
+                with self.subTest(final=final, prefix=prefix[:80]):
+                    current.reader.line.side_effect = [final.encode("ascii") + b"\r\n"]
+                    current.frame.return_value = document, prefix
+                    with self.assertRaisesRegex(ValueError, "large DEDUPE"):
+                        driver.large_dedupe_reply(current, final)
+
+    def test_large_dedupe_barrier_requires_valid_document_and_expected_echo(self):
+        current = mock.Mock()
+        current.suite.identifier.return_value = "BARRIER13"
+        current.reader.remote_echo = False
+        document = dict(configuration={}, status={}, revision="r13")
+        current.frame.return_value = document, b"GET YAML FILTER SCHEMA 4 ID BARRIER13\r\n"
+        with self.assertRaisesRegex(ValueError, "trailing content"):
+            driver.dedupe_read_barrier(current, 100)
+        for bad in ({}, {**document, "revision": ""}, {**document, "error": {"message": "failed"}}):
+            current.frame.return_value = bad, b"\r\n"
+            with self.assertRaisesRegex(ValueError, "valid readback"):
+                driver.dedupe_read_barrier(current, 100)
+
+    def test_dedupe_readback_oracle_requires_saved_effective_and_unchanged_owners(self):
+        before = dict(configuration={"settings": {"dedupe_policy": "SLOW"}}, revision="r1",
+                      status=dict(effective={"dedupe_policy": "FAST"}, preset={"name": "DEDUPE13"}))
+        text = "Dedupe        SLOW; effective FAST\n              Configured choice is unavailable on this server"
+        record = mock.Mock()
+        record.read_bytes.return_value = b"dedupe_policy: SLOW\n"
+        driver.require_dedupe_readback(before, copy.deepcopy(before), record, record.read_bytes(), text)
+        for field in ("configured", "effective", "revision", "preset", "disk", "wording"):
+            value = copy.deepcopy(before)
+            record.read_bytes.return_value = b"changed" if field == "disk" else b"dedupe_policy: SLOW\n"
+            if field == "configured":
+                value["configuration"]["settings"]["dedupe_policy"] = "FAST"
+            elif field == "effective":
+                value["status"]["effective"]["dedupe_policy"] = "SLOW"
+            elif field == "revision":
+                value["revision"] = "r2"
+            elif field == "preset":
+                value["status"]["preset"] = {}
+            with self.assertRaises(ValueError):
+                driver.require_dedupe_readback(before, value, record, b"dedupe_policy: SLOW\n",
+                                              "Dedupe        FAST" if field == "wording" else text)
+
+    def test_dedupe_receipt_requires_exact_loaded_availability(self):
+        expected = dict(FAST=True, MED=False, SLOW=False)
+        support.require_dedupe_identity({"dedupe_available": expected}, expected)
+        for value in (None, {}, dict(FAST=True, MED=True, SLOW=True), dict(FAST=1, MED=0, SLOW=0),
+                      dict(FAST=True, MED=False, SLOW=False, EXTRA=False)):
+            with self.assertRaisesRegex(ValueError, "loaded dedupe availability mismatch"):
+                support.require_dedupe_identity({"dedupe_available": value}, expected)
+
     def test_setting_zero_oracle_requires_integer_representation(self):
         for field in ("path_min_observation_count", "solar_summary_minutes"):
             session, record = mock.Mock(), mock.Mock()
@@ -620,7 +712,7 @@ class DriverControls(unittest.TestCase):
                 receipt = json.dumps(dict(nonce="fixed", pid=123, started=True,
                                           binary_hash="binary", source_digest="source",
                                           config_hashes={}, address="127.0.0.1:12345",
-                                          reputation_enabled=False))
+                                          reputation_enabled=False, dedupe_available=dict(FAST=True, MED=True, SLOW=True)))
                 reads = [PermissionError("sharing publication"), receipt]
                 with mock.patch.object(support.uuid, "uuid4", return_value=mock.Mock(hex="fixed")), \
                         mock.patch.object(support.subprocess, "Popen", return_value=process), \
