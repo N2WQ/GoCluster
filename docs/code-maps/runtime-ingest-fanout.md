@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `4cc21ac1cff024b9`
+- Source fingerprint: `5e289d590f55255e`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,7 +12,7 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 26 | 73 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 26 | 78 |
 | `dxcluster/peer` | `peer` | 62 | 131 |
 | `dxcluster/spot` | `spot` | 33 | 32 |
 | `dxcluster/telnet` | `telnet` | 48 | 98 |
@@ -159,6 +159,11 @@ Source files:
 
 Test files:
 - `internal/cluster/canadian_state_test.go`
+- `internal/cluster/diagnostic_wrapper_child_windows_test.go`
+- `internal/cluster/diagnostic_wrapper_fixture_windows_test.go`
+- `internal/cluster/diagnostic_wrapper_job_windows_test.go`
+- `internal/cluster/diagnostic_wrapper_process_windows_test.go`
+- `internal/cluster/diagnostic_wrapper_windows_test.go`
 - `internal/cluster/drop_log_dedupe_test.go`
 - `internal/cluster/dropped_call_log_test.go`
 - `internal/cluster/event_file_log_test.go`

@@ -12,9 +12,9 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 27, 28b, 29 and 30 complete (04a used two commits);
-38 of 46 approved checkpoints complete; 8 remain. Checkpoints 28a and 32 await
-the user's policy selections; independent checkpoint 31 is next.
+Current progress: checkpoints 00 through 27, 28b, 29, 30 and 31 complete (04a used two commits);
+39 of 46 approved checkpoints complete; 7 remain. Checkpoints 28a and 32 await
+the user's policy selections; independent checkpoint 33 is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -4001,3 +4001,136 @@ inclusive elapsed300s/frequency<=1kHz, first-match/many-to-one and physical
 duplicate-record identities remain selected. A user choice will be checked for
 material scope/compatibility changes and any required revised approval before
 implementation. Independent checkpoints proceed; checkpoint28a remains pending.
+
+The original selected reference contract admits matching day/month rows for the
+explicit reference date and reports other dates as excluded. It does not require
+whole-file refusal or admit adjacent reference dates. Adjacent correction context
+may match those eligible reference rows; unavailable adjacent reference coverage
+is reported. The bounded inherited review corrected its overbroad whole-file
+refusal vector after root's authority check. No new date policy was selected.
+
+## Checkpoint 31: diagnostic wrapper settings and status
+
+Status: complete. Architecture and matrix preceded code under approved v3 row31.
+Current discovery inspected the wrapper, actual bootstrap/config consumers,
+config registry/validation/runtime tests, native watcher wrapper fixtures,
+Windows runner, script-header/support standards and ADR-0074. The wrapper's
+HEAP_DIAG_ADDR is ineffective: maybeStartDiagServer reads DXC_PPROF_ADDR. Positive
+loaded runtime.yaml go_runtime.gc_percent overrides initial GOGC; zero retains
+it. config.Load remains the sole source of YAML values. These are inspected
+current contracts, not new defaults or a GC performance claim.
+
+Preserve root-relative gocluster.exe, GOGC50, localhost6061, current working
+directory and normal configuration selection. Set the actual environment key,
+describe positive-YAML/zero precedence, explicitly propagate child status and
+report executable-launch failure unsuccessfully. No runtime config, production
+Go API, diagnostic server lifecycle or firewall change. Comment-based help
+states prerequisites and actual startup effects; script/support docs route it.
+
+Native fixture architecture is Windows-test-only in internal/cluster. Private
+guarded TestMain child mode observes inherited GOGC and initial actual runtime GC
+without initializing either, loads a copied seventeen-required-file fixture via
+config.Load, and calls actual applyGoRuntimeTuning. Ordinary TestMain takes the
+m.Run path. The child never starts the cluster or maybeStartDiagServer. Stable
+fixture executables are copied from the executing saved package.test.exe under
+.tmp/windows-tests/dxcluster/internal/cluster/diag-wrapper owned subdirectories;
+the real wrapper is copied into cmd beneath each root. Missing-exe control uses
+a separate directory where no executable was ever written. No binary deletion
+or process-tree cleanup is required.
+
+A fresh nonce/PID/executable receipt and parent release barrier authenticate the
+started child. Parent opens its live Windows process handle before release,
+verifies its exact image path and retains the handle to avoid PID reuse. Child
+has its own bounded watchdog because killing PowerShell alone may orphan it.
+Parent owns PowerShell Start/Wait, timeout cancellation and bounded kernel child
+wait/status/handle Close. Cleanup finishes before fixture reuse or return; any
+forced termination is a failed qualification, followed by joined cleanup of only
+that validated handle. No unowned process termination. Parent poisons GOGC123
+and a different diagnostic address, preventing inherited-value false greens.
+
+Pre-qualification source review found that a failed startup receipt could leave
+an unauthenticated child without a parent join witness. Before further fixture
+mutation, root selects a bounded test-only ownership refinement: the saved test
+executable's private supervisor joins a fresh named Windows Job Object before
+launching native PowerShell. It owns PowerShell Start/Wait and writes its actual
+status/context receipt; the parent owns supervisor Start/Wait, the job and the
+authenticated child handle. Descendants are job-owned before launch. Ordinary
+completion still confirms exact PowerShell/child statuses and child kernel join.
+The intentional stalled test cancels PowerShell inside the supervisor, preserving
+the still-live child/watchdog witness. Parent startup/authentication failure
+retires the supervisor and all owned job members before path reuse; forced job
+termination is failed qualification and requires zero active job processes. Job
+and child handles close only after actual successful release. No unknown process
+is terminated. This extends only the private Windows fixture, mirrors checkpoint00
+ownership and introduces no product-policy or production boundary change.
+
+The fixture proves environment delivery and actual GC loader/consumer precedence,
+not port6061 binding, endpoint availability, diagnostic-server retirement,
+firewall/Application Control acceptance, production memory or live-server startup.
+No external services or optional secret configuration are loaded.
+
+| Contract | Failure/boundary | Stimulus | Observable result | Level | False-green risk | Exact checker | Owner |
+|---|---|---|---|---|---|---|---|
+| Actual key/delivery | Wrong key or inheritance masks missing assignment | Actual copied wrapper; parent GOGC123/different DXC_PPROF_ADDR | Child GOGC50, initial actualGC50 and addresslocalhost6061 | Native PS child | Script-text or env-only assertion | Exact authenticated receipt + actual runtime reading | cluster Windows tests |
+| Positive YAML | Test invents effective GC | config.Load private runtime.yaml gc_percent77 | Loaded77 and actual effective77 after initial50 | Native loader/consumer | Shipped50 masks precedence | Literal loaded/initial/effective values | cluster Windows tests |
+| Zero sentinel | Zero re-defaults or resets runtime | config.Load private gc_percent0 | Loaded0 and actual effective50 | Native loader/consumer | Both controls usepositive50 | Literal zero and effective50 | cluster Windows tests |
+| Child status | -Command host supplies wrong status | Native pwsh -NoProfile -NonInteractive -File; child deliberate23 | PS23 and kernel-confirmed child23 | Native PS/process | Any nonzero or launch error passes | Same nonce/child receipt + exact statuses | cluster Windows tests |
+| Negative propagation | Checker cannot distinguish omitted exit | Remove only explicit propagation from wrapper copy | Same child23, mutated wrapper0 | Native mutation control | Mutation misses real child | Paired authenticated child/status witness | cluster Windows tests |
+| Missing executable | Stale exe or ignored invocation error | Separate never-populated exe directory | Nonzero and causal exe-path diagnostic; no child | Native PS | Old binary accidentally starts | Absence plus causal path/status | cluster Windows tests |
+| Process retirement | pwsh Wait mistaken for child join | Stalled owned child; parent cancellation after live handle/barrier | Watchdog/handle confirm child ends before reuse; forced cleanup fails test | Native lifecycle/race | Killing only PS leaves child alive | Live image authentication + kernel wait/status/Close | cluster Windows tests |
+| Startup failure ownership | Child starts without readable/authentic receipt | Job-owned supervisor/PowerShell, deliberately failed startup admission | Supervisor joined and owned job empty before paths reused; forced cleanup fails qualification | Native owner/failure control | Receipt failure skips child retirement | Fresh job identity, actual PS receipt, kernel handle and job accounting | cluster Windows tests |
+
+Bounded inherited-context read-only discovery/test challenge supplied the actual
+consumer/loader path, poisoned controls, native-File negative witness and child
+retirement ownership. Root verified/dispositioned them above. Findings-only, not
+independent runtime/profile evidence. Selected lane: native PowerShell AST and
+saved-executable focused tests/race; complete ordinary and race Go baseline for
+the new guarded TestMain/process harness; repository analyzers, fresh direct
+diff/owner review, support/record/crawler/whitespace and maps last. No parser fuzz
+or performance claim. Checkpoints28a/32 remain pending user selections.
+
+### Checkpoint31 qualification refinements
+
+The five new Windows files separate private child, stable fixture, supervisor/job,
+process retirement and contract cases. Root's source review found and repaired
+the pre-authentication owner gap before qualification. The final bounded
+read-only source review also found an unjoined supervisor could leave later
+fixture writes admitted. Root now retries that join after descendant retirement
+and fences later writes if confirmation still fails. Diagnostics read the output
+buffer only after its Wait worker is joined. The reviewer verified those repairs;
+this is source evidence, not independent empirical qualification.
+
+The first focused attempt failed with a Windows file-sharing error while three
+cases reused one executable path. Each now has its own fixed path. The second
+attempt failed opening the newly published release marker. Parent/child receipt
+polling retries only missing files and sharing violations within their existing
+context/watchdog bounds. Both failures are retained in the two focused failed
+logs and are uncredited. Initial Staticcheck/lint found a deprecated process-handle
+API and an unwrapped wait cause; both were repaired and final analyzers passed.
+
+Final native receipts observe addresslocalhost6061 and initialGC50 despite
+poisoned inheritance. Loaded77 produces effective77; loaded0 retains50. The
+actual child and PowerShell both exit23, while removing only propagation leaves
+the same child23 with PowerShell0. Stalled and rejected-startup cases require
+actual watchdog receipts and zero active job members; normal cases also require
+authenticated kernel wait/status/handle closure. Unexpected forced cleanup fails
+qualification. Failed host retirement blocks further fixture writes; private
+nonce evidence remains under ignored stable roots. No automatic removal races
+an unconfirmed owner.
+
+Native PowerShell AST, focused ordinary/race and final repository vet,
+Staticcheck/lint passed. The complete ordinary70-package baseline passed again
+on final Go code. The earlier pre-fence full ordinary pass is retained separately
+and is not the final-state baseline. Complete final race qualification passed
+all70 packages on the same final Go state. Artifact prefix: `.tmp/command-fixes/checkpoint31`;
+the native receipt summary records literal GC/status witnesses. Full suites run
+the same five native contract tests on final code, including their three GC/status
+subcases. No parser fuzz, performance, listener binding, external-service or
+current cumulative checkout-server result is claimed. Reconciliation remains35.
+
+Support impact: Required. Script help, the script guide, source map and TSR-0076
+explain actual settings, positive/zero precedence, unsuccessful outcomes and
+fixture limits. No ADR is needed: ADR-0074 already owns positive YAML application
+and the zero sentinel. Root's fresh final diff/owner/claim pass remains the
+closeout authority. Record, crawler and whitespace checks and maps complete last
+with final documentation and the explicit staged diff.

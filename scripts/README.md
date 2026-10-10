@@ -221,6 +221,31 @@ are accepted by GoCluster but rejected by the pinned receiver's narrower IP
 predicate. Use a fresh fixture/key for each positive IP case because existing
 dedupe identity excludes IP text.
 
+## Diagnostic startup wrapper
+
+After building `gocluster.exe` in the repository root, run from that root:
+
+```powershell
+pwsh -NoProfile -File ./cmd/run-with-diag.ps1
+```
+
+The wrapper launches the normal cluster with its configured services and normal
+configuration selection, including `DXC_CONFIG_PATH` when supplied. It sets
+`DXC_PPROF_ADDR=localhost:6061`, the address read by the diagnostic HTTP startup
+code. A startup request does not guarantee that the port can be bound.
+
+The wrapper sets initial `GOGC=50`. A positive `go_runtime.gc_percent` loaded from
+`runtime.yaml` overrides that value; zero retains it. The banner describes this
+precedence rather than promising a final GC setting. The wrapper propagates the
+executable's exit code and exits unsuccessfully when it cannot launch it.
+
+The Windows regression fixture copies the wrapper and an owned test executable
+to stable test paths. It checks inherited settings, the actual configuration
+loader and GC consumer, native PowerShell exit propagation and child retirement.
+It starts no cluster or diagnostic listener. See
+[TSR-0076](../docs/troubleshooting/TSR-0076-diagnostic-wrapper-settings-and-status.md)
+and checkpoint31 in the command-fix execution record for qualification and limits.
+
 ## Workflow Checkers
 
 - `measure-codex-workflow-context.ps1` reports declared Codex instruction-path
