@@ -14,7 +14,8 @@ pushes, firewall changes and workflow changes are outside this scope.
 
 Current progress: checkpoints 00 through 27, 28b, 29, 30, 31, 33 and 34a/b/c complete (04a used two commits);
 43 of 46 approved checkpoints complete; 3 remain. Checkpoints 28a and 32 await
-the user's policy selections; checkpoint 35 follows their implementation.
+the user's policy selections. Checkpoint 35's cumulative validation passed an
+interim run; its final closure follows their implementation.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -4752,3 +4753,159 @@ production manager policies and established liveness remain as scoped. Record
 consistency passed. Final staged whitespace/crawler checks and generated maps
 finish last before saving this checkpoint. The crawler has no configured
 peerpoc candidates; root manually reviews its entry/ownership comments.
+
+## Checkpoint 35: interim cumulative verification
+
+Status: interim selected lane passed; checkpoint 35 is not complete.
+The user requested running 35 before the
+policy-dependent 28a/32 changes on 2026-10-10. This changes validation order,
+not their selected contracts or the approval boundary. Keep both items pending
+and repeat their affected evidence and final reconciliation after implementation.
+No completed-checkpoint count is added by this interim pass.
+
+The starting committed checkout is `c017039` on `fix_commands`. Root inspected
+the current driver, provenance/process/retirement support, Go child fixture,
+validation guide and selected lane before execution. The existing driver owns
+fresh compilation, private held loopback endpoints/config/stores and native
+exclusive runner lock. Its real command/filter/storage/archive consumers and
+bounded manual-spot bridge are retained; it does not qualify the production
+correction/dedupe/classifier pipeline or the two unfinished analysis tools.
+
+Lead-owned test-strategy review reuses checkpoint 00's qualified failure controls
+and subsequent checkpoint matrices. No new design, policy, scientific verdict,
+production mutation or fixture seam is selected. The matrix below limits the
+interim claims; materially new defects enter their applicable approved route.
+
+| Contract | Failure/boundary | Stimulus | Observable result | Level | False-green risk | Exact checker | Owner |
+|---|---|---|---|---|---|---|---|
+| Current checkout identity | Stale executable or Go drift | Fresh ordinary/race builds, frozen Go and commit | Equal source inventories/digest/commit; expected binary/config/PID/nonce and actual held endpoint | Child/consumer | Echoed source digest alone proves compiler inputs | Driver source_manifest/build/Child plus root post-pair source comparison | runner/root |
+| Complete cumulative selection | Empty, skipped or missing semantic cases | Both transports and all main/reputation/dedupe profiles | Six profiles per mode; 54/7/7 required cases per transport, 136 total, exact ordered names and all PASS | Server/wire | One acknowledgement or successful empty launch | qualified and root report reconciliation | runner/root |
+| Command and durable effects | Live cache or disconnect hides failure | Current cumulative human/machine/filter/history/HELP/settings cases and fresh child readbacks | Canonical live state, immediate exact stored bytes, preserved refusals and restored archive/settings agree | Actual consumers | Response wording substitutes for behavior | Existing per-case assertions and transcripts | runner |
+| Wire and retirement | Framing faults, stale child or forced exit credited | Strict complete responses, STOP and child join | Zero wire/cleanup errors; correlated executed/PASS and all retirement receipts | Process/wire/race | Readiness or process exit alone proves retirement | Child.stop, profile children and stopped receipts | runner/root |
+| Runner checker reliability | Qualification/ownership controls regress | Existing offline harness and runner control suites | Named tests execute/pass; no optimized Python or external target | Offline/native process | Offline tests certify actual server | Separate offline logs before server execution | scripts |
+| Completed Go subset integration | Later tool/UI changes invalidate race baseline | Complete current 70-package race lane | All selected packages execute or documented no-test build checks; no race report | Package/race | Old commit's whole-repo race reused as current | Stable Windows runner; preserve latest current ordinary baseline | root |
+| Honest scope closure | Pending tools called fixed or entire 35 complete | Completed-item/source/test/record cross-check | 28a/32 explicitly pending; 35 interim; gaps reported with evidence | Static reconciliation | Passed suites prove omitted surfaces | Current ledger/execution and direct review | root |
+
+Selected execution is sequential: existing offline collector/runner controls,
+current checkout ordinary, current checkout race, then the complete Go race
+lane. Keep Go and HEAD fixed during the checkout pair; root verifies both
+reports against the final source inventory. Reuse the already-passed complete
+ordinary 70-package/analyzer results from 34c while their relevant source stays
+unchanged. Do not broaden or repeat that lane solely because this interim
+record is added. Do not overlap saved-executable runners. Use pinned PyYAML 6.0.3
+and disable bytecode output; leave the previously protected cache files intact.
+
+No external cluster, deployment, production-load, actual clock-change or
+long-running leak claim. Existing saved fuzz and targeted operator-tool evidence
+remain separately bounded. The interim result cannot resolve pending policy,
+qualify 28a/32 or establish final completeness of the command-fix program.
+
+### Interim disposition index
+
+A bounded read-only reconciliation checked the current ledger, execution record,
+entrypoint inventory and named test routes. Root verified the material routing
+and preservation limits against current source. This is static assistance and
+lead-owned verification, not a repeated review of every implementation or new
+independent scientific evidence. Final 35 reconciliation remains outstanding.
+
+| Inventoried surface | Current disposition and checkpoint route | Evidence route |
+|---|---|---|
+| GO/CC command ingress, settings, session controls and history | Repairs 01,03,09,11a/b,12–19; preserve selected history and session ownership contracts | Per-checkpoint matrices, HELP routing/discovery tests, current cumulative checkout driver |
+| MODE | Named visibility repair 07; taxonomy ingress 15; preserve unlisted/custom visibility | MODE pointwise/custom tests and checkout history witnesses |
+| NOFILTER | Reset repair 02 | Active-NEARBY reset tests and checkout cases |
+| NEARBY | Endpoint repair 08 and argument repair 11a | Independent endpoint/missing-grid tests and checkout cases |
+| DXCALL, DECALL | Pattern admission repair 10; retain implemented exact/all/prefix/suffix grammar | Human/machine invalid-list and matcher witnesses |
+| COMMENT | Preserve literal filtering; persistence, argument, HELP and history repairs 03/04/11a/16–18 | Existing COMMENT, machine schema and checkout round-trip/history tests |
+| BAND, SOURCE, EVENT, MINSNR, CONFIDENCE, PATH, DXGRID2, DEGRID2, DXCONT, DECONT, DXZONE, DEZONE, DXDXCC, DEDXCC, DXSTATE, DESTATE, BEACON, WWV, WCY, ANNOUNCE, SELF, TOXIC, DXBM | Preserve selected matching/transition contracts; argument and discovery repairs 11a/17/18b; EVENT taxonomy ingress 15 | Literal 29-family reverse-owner inventory in `telnet/filter_discovery_contract_test.go`; independent driver inventory; affected-family tests |
+| YAML schemas 1–4 and capability discovery; SAVE/LOAD/LIST/DELETE presets | Preserve schemas/hidden fields; storage/publication/admission repairs 04a–d; documented discovery 18 | Machine schema/comment/MINSNR, preset transaction/command and storage admission suites; exact-byte and restart driver witnesses |
+| DX admission and runtime shutdown | Repairs 05a/b,06,20a/b,21 | Reputation/frequency tests, classifier retirement and actual production pipeline tests; checkout DX/archive subset |
+| Root executable; dashboard keys | Repairs 22 and 33 | Actual-main argument/output tests and actual tcell capture tests |
+
+The filter rows name all 29 canonical families. COMMENT has a separate parser
+owner, PC93 aliases ANNOUNCE, DXBM adapts band/mode controls and NOFILTER resets;
+these are not additional families. Test routing is not an exhaustive-runtime
+correctness claim. In particular, the checkout's manual-spot bridge does not
+replace checkpoint 20b's production pipeline evidence.
+
+| Go utility inventory (22 total) | Current disposition |
+|---|---|
+| `voacap_sunspot_watch` | Repaired 23; local actual-main/output/HTTP and native wrapper evidence |
+| `rbnskewfetch` | Repaired 24; local fetch, parsing, write/report and status evidence |
+| `prop_report` | Repaired 25; output/status and optional local fallback evidence |
+| `analyze_distance3` | Repaired 26; descriptive analysis and SQL/report failure evidence |
+| `simulate_threshold` | Repaired 27; added/removed/net set and boundary evidence |
+| `analyze1c` | Repaired 28b; recognized/unknown partitions, finite/empty summaries and SQL/report evidence |
+| `inspect_decisions` | Repaired 29; classifications, samples and SQL/report evidence |
+| `investigate_reappearances` | Repaired 30; descriptive ordering/coverage and SQL/report evidence |
+| `peerpoc` | Repaired 34a/b/c; lifecycle, phase and timestamp consumer/race/fuzz evidence |
+| `analyze1a` | Pending 28a policy and implementation; current executable is not qualified as fixed |
+| `callcorr_reveng_rebuilt`, `codemap`, `ctylookup`, `h3gen`, `loadharness`, `peerdiag`, `peerprobe`, `rbn_replay`, `release_readme`, `voacap_run_sample`, `voacap_sunspot`, `voacap_ssn_forecast_watch` | Twelve preserved utilities; no speculative repairs. Existing native package tests or no-test build checks apply where included |
+
+Preservation does not mean every operator error now exits nonzero:
+`ctylookup` still logs scanner errors before returning normally. `h3gen` has
+`//go:build !windows && cgo`, so the native Windows lane cannot qualify its
+executable. Its preserved disposition retains that platform limit.
+
+| Original product-facing wrapper inventory | Current disposition |
+|---|---|
+| `cmd/run-with-diag.ps1` | Repaired 31; native authenticated child/settings/status evidence |
+| `scripts/watch-voacap-ssn.ps1` | Checkpoint 23 qualifies retained child-status propagation with local fixtures |
+| `scripts/analyze_corrections.py` | Pending 32 policy and implementation; not qualified as fixed |
+| `launch-cluster.ps1`, `scripts/run-with-profiling.ps1`, `cmd/rbn_replay/run-replay.ps1`, `cmd/rbn_replay/compare-runs.ps1`, `scripts/build-executable-pair.ps1`, `scripts/consolidate-and-build-pgo.ps1`, `scripts/create-release.ps1` | Seven preserved wrappers. This interim pass does not execute release, profile, external-network or engine workflows |
+
+The original 22 findings have checkpoint routes; F21's analyze1a work remains
+pending 28a. The Python comparison (32) remains pending independently. Original
+D01–D08 dispositions stay as approved in v3; no interim validation result
+changes them. Maintainer/qualification tooling retains its existing contracts.
+Support documentation impact: None for this evidence-only record; existing
+product/support updates remain attached to their implementation checkpoints.
+
+### Observed interim qualification (2026-10-10)
+
+Offline collector controls passed 29 tests; runner/provenance/process controls
+passed 84 tests. Their logs are `checkpoint35-interim-offline-collector.log` and
+`checkpoint35-interim-offline-runner.log` under `.tmp/command-fixes`. They are
+checker evidence, not actual-server execution evidence.
+
+Fresh checkout-server ordinary and race runs both passed all 136 required cases
+across six profiles: main 54, reputation 7 and availability/dedupe 7 for each of
+native and ziutek transports. Each mode has zero wire/cleanup errors and 12
+correlated child executions with complete graceful retirement receipts. Root
+reconciled exact case names/order, all PASS outcomes, child identities, actual
+private endpoints, executed/PASS log markers and all stopped-owner receipts.
+Artifact directories are `20261010-184029-021bd426` (ordinary) and
+`20261010-184342-181db41e` (race).
+
+The post-pair comparison found both source manifests identical to current HEAD
+`c017039095ba0313c8eab1a02d195d2e64da9a4b` and all 1215 inventoried Go/module
+files. The source digest is
+`fac9abcc21909ffcb9c1c75ac1b6d8de80fca0c9cd9774f87879e93b83273b04`.
+Ordinary/race executable hashes differ; the final saved executable matched the
+race child's recorded hash. Parent build/source checks establish provenance;
+the child's echoed digest is correlation, not independent compiler proof.
+Root's bounded reconciliation artifact is
+`checkpoint35-interim-provenance.json`. Both driver reports identify Go 1.27.1
+windows/amd64, Python 3.14.7 and pinned PyYAML 6.0.3.
+
+The complete current Windows race lane then passed: 70 unique packages, with
+53 executed test suites and 17 packages without tests build-checked. The runner
+completed successfully with no race diagnostic. Root reconciled the complete
+package inventory and compared all Go/module hashes and HEAD again after the
+lane; they still match both checkout-server builds. Artifacts are
+`checkpoint35-interim-full-race.log` and
+`checkpoint35-interim-full-race-qualification.json`. No runner overlapped.
+`analyze1a` is only build-checked in this lane; it has no behavioral tests and
+remains pending. The native lane excludes `h3gen` as described above.
+
+The current complete ordinary baseline, vet, Staticcheck and zero-issue lint
+from 34c remain applicable to unchanged Go. No new Go or script change was made
+by this interim pass. Only this execution/evidence record is saved; routine
+validation required no user action. The bounded final diff/claim review is
+lead-owned. Record consistency passed; staged whitespace and generated-map
+generation/checking finish last before saving this record.
+
+Interim outcome: the selected current-checkout lane passed, and the compact
+disposition index agrees with all 22 current utility entrypoints and the literal
+29-family inventory. This supplies completed-work evidence while 28a/32 await
+policy and implementation. Checkpoint 35's final reconciliation and the full
+command-fix program remain open; the completed count stays 43 of 46.
