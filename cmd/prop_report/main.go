@@ -1,10 +1,15 @@
+// Program prop_report publishes daily observations and optional narrative.
+// Hard generation/reporting failures reach automation; request fallback stays
+// inside Generate, which owns the existing JSON-then-Markdown partial effects.
 package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -12,6 +17,13 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Print(err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	dateFlag := flag.String("date", "", "Date to analyze (YYYY-MM-DD, defaults to today UTC)")
 	logPathFlag := flag.String("log", "", "Path to archived daily propagation log (defaults to data/logs/propagation/<DD-Mon-YYYY>.log)")
 	jsonOutFlag := flag.String("json-out", "", "Output JSON summary path (defaults to data/reports/prop-YYYY-MM-DD.json)")
@@ -27,7 +39,7 @@ func main() {
 	if *dateFlag != "" {
 		parsed, err := time.Parse("2006-01-02", *dateFlag)
 		if err != nil {
-			log.Fatalf("Invalid date %q: %v", *dateFlag, err)
+			return fmt.Errorf("invalid date %q: %w", *dateFlag, err)
 		}
 		date = parsed
 	}
@@ -47,10 +59,13 @@ func main() {
 		Logger:           log.Default(),
 	})
 	if err != nil {
-		log.Printf("prop report generation failed: %v", err)
-		return
+		return fmt.Errorf("prop report generation failed: %w", err)
 	}
 
-	fmt.Printf("Wrote JSON summary: %s\n", result.JSONPath)
-	fmt.Printf("Wrote report: %s\n", result.ReportPath)
+	_, jsonReportErr := fmt.Fprintf(os.Stdout, "Wrote JSON summary: %s\n", result.JSONPath)
+	_, reportErr := fmt.Fprintf(os.Stdout, "Wrote report: %s\n", result.ReportPath)
+	if err := errors.Join(jsonReportErr, reportErr); err != nil {
+		return fmt.Errorf("prop report output failed: %w", err)
+	}
+	return nil
 }

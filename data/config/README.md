@@ -140,6 +140,11 @@ Loader behavior:
   unsuccessfully. Pre-write failure preserves an existing output. A report
   failure can occur after the new table was written; inspect stderr and status.
 - Use `prop_report -config-dir <dir>` to point report generation at an alternate config directory. The older `-path-config` flag accepts either a directory or `path_reliability.yaml` path for compatibility.
+  Generation, JSON/Markdown writes and final success-report failures exit
+  unsuccessfully. JSON is written first and may remain after later failure.
+  `-no-llm` needs no OpenAI file. With narrative enabled, invalid optional config
+  is a hard error before output; a request failure warns and keeps the local
+  report. Inspect command status and stderr as well as any files left behind.
 
 Runtime log file names:
 - System, dropped-call, file-only event, and propagation logs keep a stable

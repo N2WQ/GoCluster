@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 24 complete (04a used two commits);
-32 of 46 approved checkpoints complete; 14 remain; 25 is next.
+Current progress: checkpoints 00 through 25 complete (04a used two commits);
+33 of 46 approved checkpoints complete; 13 remain; 26 is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -3356,7 +3356,7 @@ outside this local qualification.
 
 ## Checkpoint 25: propagation-report command status
 
-Status: implementation in progress; authority is approved v3 checkpoint 25.
+Status: complete; authority is approved v3 checkpoint 25.
 
 Discovery inspected command main, Generate's config/input/output paths, optional
 OpenAI validation and request helper, current report fixtures, runtime scheduler
@@ -3395,6 +3395,32 @@ path; inherited discovery is not independent verification. No changed scientific
 claim/model requires a new oracle. Selected lane: focused command/report suites,
 ordinary baseline, repository analyzers, support/record/whitespace checks and
 maps last. Production parser, concurrency and model behavior remain untouched.
+
+Observed qualification: focused actual-main/report suites passed, including all
+hard/fallback/partial-output controls. The first complete baseline failed at the
+existing peer observer-clock test; it is retained and uncredited. The separate
+test-only validation correction below passed race and five repetitions, then
+the complete ordinary 70-package baseline passed. During final review a new
+helper filename collision was detected: it had replaced two existing command
+parser tests. Those tests were restored unchanged and helpers moved to
+main_fixture_test.go. The final affected command/report suites passed with both
+original parser regressions included. Analyzer findings prompted only local
+lowercase-error and tagged-switch refinements; affected command and observer
+race controls reran. Final repository vet, Staticcheck and lint passed (zero
+lint issues). Logs are `checkpoint-25-focused-final-2.log`,
+`checkpoint-25-all-packages-2.log`, `observer-clock-focused-race-final.log` and
+the checkpoint's final analyzer logs. The complete baseline preceded those
+local test/diagnostic refinements; no shared behavior, parser logic, build or
+production concurrency changed to invalidate other package results.
+
+Root's fresh final verification reviewed both original regression preservation
+and new stage witnesses, output ordering, child cleanup, external-request guards
+and optional configuration/request semantics. This is lead-owned verification.
+No model calculation or durable architecture changed; no new ADR is warranted.
+Support impact is captured in the configuration guide, source map and TSR-0073.
+Record/crawler/whitespace checks and maps are completed last with staged diff
+review. Local narrative fixtures do not prove external service health or model
+calibration. The independently owned observer correction commits separately.
 
 ## Pending interpretation: checkpoint 28a
 
