@@ -70,7 +70,397 @@ def routing_help_wire(lines, query="HELP SH BUILD EXTRA", pause=False, echo=True
     return ((query + "\r\n" if echo else "") + "\r\n".join(body) + "\r\n").encode("ascii")
 
 
+def discovery_literal_reply(verb, unknown=False):
+    types = ("Types: BAND, MODE, MINSNR, SOURCE, EVENT, COMMENT, DXCALL, DECALL,\n"
+             "       CONFIDENCE, PATH, DXGRID2, DEGRID2, DXCONT, DECONT, DXZONE, DEZONE,\n"
+             "       DXDXCC, DEDXCC, DXSTATE, DESTATE, DXBM, NEARBY,\n"
+             "       BEACON, WWV, WCY, ANNOUNCE, SELF, TOXIC\n")
+    if unknown:
+        extra = "PASS also supports NOFILTER; PC93 aliases ANNOUNCE.\n" if verb == "PASS" else "PC93 aliases ANNOUNCE.\n"
+        return "Unknown filter type.\n" + types + "COMMENT uses PASS/REJECT COMMENT in either dialect.\n" + extra + "Type HELP " + verb + " for usage."
+    ending = ("PASS supports NOFILTER. Type HELP PASS for complete syntax and examples." if verb == "PASS" else
+              "Type HELP REJECT for complete syntax and examples.")
+    clear = "ALL" if verb == "PASS" else "NONE"
+    return ("Usage: " + verb + " <type> ...\n" + types + "COMMENT uses PASS/REJECT COMMENT <literal phrase>.\n"
+            "MINSNR takes modes and <integer dB|" + clear + ">.\n"
+            "NEARBY takes ON|OFF with either verb; PC93 aliases ANNOUNCE.\n" + ending)
+
+
+def discovery_help_literal(key, dialect):
+    # Deliberately distinct layout from generated HELP; literal semantic facts.
+    if key == "DX":
+        lines = ["DX - Post a spot (human entry).", "Usage: DX <freq_khz> <callsign> [comment]",
+                 "       DX <callsign> <freq_khz> [comment]", "Notes:"]
+        notes = ["Frequency is in kHz (e.g., 7001.0).", "Use plain decimal numbers; exponent notation is not accepted.",
+                 "Values in gaps between bands remain accepted.", "Rejects invalid callsigns and CTY-unknown DX when CTY is enabled.",
+                 "Requires a valid logged-in callsign.", "Logins ending TEST require a CTY-known baseline callsign.",
+                 "When enabled, station reputation admission is shared across numeric SSIDs.", "Posting admission may respond Spot rejected.",
+                 "Spot queued confirms intake; filtering and processing determine delivery.",
+                 "A missing or full input queue refuses the spot with an explicit response."]
+    elif key in ("SHOW FILTER", "SHOW/FILTER"):
+        lines = [key + " - Display current filter state.", "Usage: " + key, "       " + key + " FULL", "       " + key + " <category>"]
+        aliases = "SHOW/FILTER, SH/FILTER" if dialect == "go" else "SH/FILTER, SHOW FILTER"
+        lines += ["Aliases: " + aliases, "Notes:"]
+        notes = ["DESTATE/DXSTATE show US/Canadian registered mailing codes; empty means unknown."]
+    else:
+        if key == "OVERVIEW":
+            lines = ["GoCluster help - " + dialect.upper() + " dialect"]
+        elif key == "FILTERS":
+            lines = ["Filter reference:"]
+        elif dialect == "cc":
+            lines = cc_help_literal("SET/FILTER" if key == "PASS" else "UNSET/FILTER")
+            lines[0] = ("SET/FILTER - Allow" if key == "PASS" else "UNSET/FILTER - Block") + " filter matches (CC dialect)."
+        else:
+            lines = [key + " - " + ("Allow" if key == "PASS" else "Block") + " filter matches.", "Usage: " + key + " <type> <list>"]
+        notes = ["DXSTATE Spotted station's US/Canadian mailing code.", "DESTATE Spotter's US/Canadian mailing code."]
+        if key == "FILTERS":
+            notes += ["PASS/REJECT MODE <list> are deltas; modes not listed are unchanged.",
+                      "DXSTATE/DESTATE accept US/Canadian registered mailing codes."]
+        else:
+            notes += ["Filter categories have their own selection rules; see HELP PASS/REJECT.",
+                      "MODE preserves visibility for every mode you do not name.", "MODE changes only the modes you name."]
+            lines += (["  REJECT MODE ALL", "  PASS MODE CW,FT8"] if dialect == "go" else
+                      ["  UNSET/FILTER MODE ALL", "  SET/FILTER MODE CW,FT8"])
+    for note in notes:
+        lines += textwrap.wrap(note, width=78, initial_indent="  ", subsequent_indent="  ")
+    if key in ("FILTERS", "PASS", "REJECT"):
+        lines += ["", "US/Canada mailing codes (states, provinces, territories):"]
+        codes = ("AA AB AE AK AL AP AR AS AZ BC CA CO CT DC DE FL GA GU HI IA ID IL IN KS KY LA "
+                 "MA MB MD ME MI MN MO MP MS MT NB NC ND NE NH NJ NL NM NS NT NU NV NY OH OK ON "
+                 "OR PA PE PR QC RI SC SD SK TN TX UM UT VA VI VT WA WI WV WY YT").split()
+        lines += ["  " + ", ".join(codes[index:index + 15]) for index in range(0, len(codes), 15)]
+    while len(lines) < 10:
+        lines.append("  Independent receipt filler.")
+    return lines
+
+
 class DriverControls(unittest.TestCase):
+    def test_help_reference_unknown_value_explanations_are_not_rejection_replies(self):
+        query = "HELP FILTERS"
+        contract = driver.help_route_contract("FILTERS", "go")
+        lines = discovery_help_literal("FILTERS", "go")
+        explanations = ["Unknown state fails an explicit PASS list and passes a REJECT-only list.",
+                        "Unknown prefixes reject the whole list; canonical input requires CTY."]
+        body = [*lines, *explanations]
+        self.assertEqual(driver.decode_help_routing(routing_help_wire(body, query, pause=True), query,
+                                                   contract, 10, 30, True), (body, True))
+        for rejection in ("Unknown help topic: FILTERS", "Unknown state input", "Unknown prefixes", "Invalid configuration", "Usage: Invalid"):
+            with self.assertRaisesRegex(ValueError, "rejection feedback"):
+                driver.decode_help_routing(routing_help_wire([*body, rejection], query, pause=True), query,
+                                           contract, 10, 30, True)
+        other = discovery_help_literal("DX", "go")
+        with self.assertRaisesRegex(ValueError, "rejection feedback"):
+            driver.decode_help_routing(routing_help_wire([*other, explanations[0]], "HELP DX", pause=True), "HELP DX",
+                                       driver.help_route_contract("DX", "go"), 10, 30, True)
+
+    def test_discovery_inventory_is_literal_complete_action_specific_and_alias_qualified(self):
+        families = ("BAND MODE SOURCE EVENT COMMENT DXCALL DECALL CONFIDENCE PATH DXGRID2 DEGRID2 "
+                    "DXCONT DECONT DXZONE DEZONE DXDXCC DEDXCC DXSTATE DESTATE MINSNR BEACON WWV WCY "
+                    "ANNOUNCE SELF TOXIC NEARBY DXBM NOFILTER").split()
+        self.assertEqual(len(families), 29)
+        self.assertEqual(set(driver.DISCOVERY_FAMILIES), set(families))
+        for verb in ("PASS", "REJECT"):
+            for unknown in (False, True):
+                expected = discovery_literal_reply(verb, unknown)
+                self.assertEqual(driver.filter_discovery_reply(verb, unknown), expected)
+                driver.require_discovery_inventory(expected, verb, unknown)
+                self.assertEqual(len(expected.splitlines()), 8 if unknown else 9)
+                self.assertTrue(all(len(line) <= 78 for line in expected.splitlines()))
+                opposite = "REJECT" if verb == "PASS" else "PASS"
+                faults = [discovery_literal_reply(opposite, unknown), expected.replace("COMMENT, ", ""),
+                          expected.replace("DXBM, NEARBY", "DXBM, DXBM"), expected.replace("SELF, TOXIC", "SELF, INVENTED"),
+                          expected.replace("PC93 aliases ANNOUNCE.", "PC93 is a separate family."),
+                          expected.replace("COMMENT uses PASS/REJECT COMMENT", "COMMENT uses SET/FILTER COMMENT")]
+                for fault in faults:
+                    with self.assertRaises(ValueError):
+                        driver.require_discovery_inventory(fault, verb, unknown)
+        # Altering both the expected wording and emitted reply must still fail
+        # the separately enumerated family/alias/action boundary oracle.
+        with mock.patch.object(driver, "DISCOVERY_TYPES", driver.DISCOVERY_TYPES.replace("COMMENT, ", "")):
+            with self.assertRaisesRegex(ValueError, "filter family"):
+                driver.require_discovery_inventory(driver.filter_discovery_reply("PASS"), "PASS")
+        bad = discovery_literal_reply("REJECT", True).replace("PC93 aliases ANNOUNCE.", "NOFILTER; PC93 aliases ANNOUNCE.")
+        with mock.patch.object(driver, "filter_discovery_reply", return_value=bad):
+            with self.assertRaisesRegex(ValueError, "PASS-only NOFILTER"):
+                driver.require_discovery_inventory(bad, "REJECT", True)
+
+    def test_discovery_case_matrix_covers_both_actions_domains_and_existing_cc_forms(self):
+        for dialect in ("go", "cc"):
+            cases = driver.discovery_feedback_cases(dialect)
+            commands = {query: (reply, verb, unknown) for query, reply, verb, unknown in cases}
+            self.assertEqual(len(commands), len(cases))
+            heads = [("PASS", "PASS"), ("REJECT", "REJECT")]
+            if dialect == "cc":
+                heads += [("SET/FILTER", "PASS"), ("UNSET/FILTER", "REJECT")]
+            for head, verb in heads:
+                self.assertEqual(commands[head], (discovery_literal_reply(verb), verb, False))
+                self.assertEqual(commands[head + " INVENTED"], (discovery_literal_reply(verb, True), verb, True))
+                self.assertEqual(commands[head + " DXBM"][0], "Usage: PASS DXBM <band-codes> or REJECT DXBM <band-codes>\nType HELP PASS or HELP REJECT for usage.")
+                self.assertEqual(commands[head + " DXBM ALL"][0], "Unknown DXBM band: ALL\nSupported: 160, 80, 40, 30, 20, 17, 15, 12, 10, 6, 2 (and 1 if enabled).\nModes ignored; use REJECT MODE <mode>.")
+                for family in ("DXSTATE", "DESTATE"):
+                    self.assertEqual(commands[head + " " + family][0], "Usage: " + verb + " " + family + " <state>[,<state>...] or ALL\nUS/Canadian mailing codes include provinces and territories.\nType HELP " + verb + " for usage.")
+                    self.assertEqual(commands[head + " " + family + " CT,ZZ"][0], "Invalid state selection: ZZ")
+            self.assertEqual(commands["RESET MODE"][0], "Usage: RESET FILTER\nType HELP for usage.")
+            self.assertEqual(commands["REJECT NOFILTER"][0], "Invalid filter command. Type HELP for usage.")
+            self.assertEqual(any(query.startswith("SET/FILTER") for query in commands), dialect == "cc")
+            if dialect == "cc":
+                self.assertEqual(commands["SET/FILTER COMMENT CQ"][1:], ("PASS", True))
+                self.assertEqual(commands["UNSET/FILTER COMMENT CQ"][1:], ("REJECT", True))
+
+    def test_discovery_decoder_requires_complete_exact_printable_bounded_feedback(self):
+        query, expected = "PASS", discovery_literal_reply("PASS")
+        lines = expected.splitlines()
+        for echo in (True, False):
+            raw = routing_help_wire(lines, query, echo=echo)
+            self.assertEqual(driver.decode_discovery_reply(raw, query, expected, echo), lines)
+        faults = [routing_help_wire(discovery_literal_reply("REJECT").splitlines(), query),
+                  routing_help_wire(lines[:-1], query), routing_help_wire(lines + ["EXTRA"], query),
+                  routing_help_wire([lines[0], *lines[2:]], query), routing_help_wire([lines[0], "PASS", *lines[1:]], query),
+                  routing_help_wire(["PASS", *lines], query), routing_help_wire(lines, query, pause=True),
+                  routing_help_wire([lines[0], "X" * 79, *lines[2:]], query),
+                  routing_help_wire(lines, query).replace(b"\r\n", b"\n", 1),
+                  routing_help_wire(lines, query).replace(b"NEARBY", b"NEAR\x01Y"), b"X" * 65537]
+        for raw in faults:
+            with self.assertRaises(ValueError):
+                driver.decode_discovery_reply(raw, query, expected, True)
+        with self.assertRaises(ValueError):
+            driver.decode_discovery_reply(routing_help_wire(lines, query), query, expected, False)
+
+    def test_discovery_receipt_precedes_strict_barrier_and_preserves_bounded_failures(self):
+        class Receipt(io.BytesIO):
+            flushed = False
+
+            def flush(self):
+                self.flushed = True
+
+        query, expected = "PASS", discovery_literal_reply("PASS")
+        raw = routing_help_wire(expected.splitlines(), query)
+        command = b"GET YAML CONFIG SCHEMA 4 ID DISC18\r\n"
+        document = dict(resource="CONFIG", schema_version=4, request_id="DISC18", configuration={}, status={}, revision="r18")
+
+        def session(prefix=command):
+            current = mock.Mock()
+            current.call = "VE3ABC-70075"
+            current.reader.remote_echo, current.reader.buffer = True, b""
+            current.reader.line.side_effect = raw.splitlines(keepends=True)
+            current.suite.log, current.suite.identifier.return_value = Receipt(), "DISC18"
+            current.frame.return_value = copy.deepcopy(document), prefix
+
+            def sent(text):
+                if text.startswith("GET "):
+                    self.assertTrue(current.suite.log.flushed)
+                    self.assertTrue(current.suite.log.getvalue().endswith(raw))
+                    self.assertEqual(current.reader.line.call_count, len(raw.splitlines()))
+
+            current.send.side_effect = sent
+            return current
+
+        for prefix in (command, b"\r\n" + command, command + b"LEAK\r\n", b"LEAK\r\n" + command,
+                       command + command, b"\n" + command, command.replace(b"DISC18", b"OTHER"), b"\r\n" * 32769 + command):
+            current = session(prefix)
+            if prefix in (command, b"\r\n" + command):
+                self.assertEqual(driver.discovery_readback(current, query, expected), document)
+                current.frame.assert_called_once_with("CONFIG", "DISC18", 4, command.decode().rstrip("\r\n"))
+            else:
+                with self.assertRaises(ValueError):
+                    driver.discovery_readback(current, query, expected)
+        for field, value in (("resource", "FILTER"), ("schema_version", True), ("schema_version", "4"),
+                             ("request_id", "OTHER"), ("configuration", []), ("status", []), ("revision", ""), ("error", {})):
+            current = session()
+            current.frame.return_value[0][field] = value
+            with self.assertRaises(ValueError):
+                driver.discovery_readback(current, query, expected)
+        for error in (EOFError("incomplete"), TimeoutError("stalled"), ValueError("receive limit")):
+            current = session()
+            current.reader.line.side_effect = [raw.splitlines(keepends=True)[0], error]
+            current.reader.buffer = b"PENDING"
+            with self.assertRaises(type(error)):
+                driver.discovery_readback(current, query, expected)
+            self.assertEqual(current.send.call_count, 1)
+            current.frame.assert_not_called()
+            self.assertTrue(current.suite.log.getvalue().endswith(raw.splitlines(keepends=True)[0] + b"PENDING"))
+        for fault in (b"Unknown filter type.\r\n", b"X" * 65537):
+            current = session()
+            current.reader.line.side_effect = [fault]
+            with self.assertRaises(ValueError):
+                driver.discovery_readback(current, query, expected)
+            self.assertEqual(current.send.call_count, 1)
+            current.frame.assert_not_called()
+            if len(fault) > 65536:
+                self.assertIn(b"X" * 65536 + b"\n[filter discovery receipt truncated at 65536 bytes]\n", current.suite.log.getvalue())
+
+    def test_discovery_help_wording_requires_literals_mailing_population_and_executable_mode_recipe(self):
+        for dialect in ("go", "cc"):
+            for key in ("DX", "OVERVIEW", "FILTERS", "PASS", "REJECT", "SHOW FILTER" if dialect == "go" else "SHOW/FILTER"):
+                lines = discovery_help_literal(key, dialect)
+                topic = "" if key == "OVERVIEW" else key
+                query = ("HELP " + topic).rstrip()
+                contract = driver.help_route_contract(key, dialect)
+                decoded, paused = driver.decode_help_routing(routing_help_wire(lines, query, pause=True), query, contract, 10, 30, True)
+                self.assertTrue(paused)
+                driver.require_discovery_help(decoded, key, dialect)
+                claim = ("Spot queued guarantees delivery." if key == "DX" else
+                         "show FCC mailing-address codes" if key.startswith("SHOW") else "RESET MODE")
+                bad = [*lines, "  " + claim]
+                # Fault remains a valid complete, counted, correctly routed HELP
+                # response; only the independent semantic oracle rejects it.
+                decoded, _ = driver.decode_help_routing(routing_help_wire(bad, query, pause=True), query, contract, 10, 30, True)
+                with self.assertRaises(ValueError):
+                    driver.require_discovery_help(decoded, key, dialect)
+                if key in ("FILTERS", "PASS", "REJECT"):
+                    for fault in ("NT", "NU", "YT", "AA", "AE", "AP", "UM"):
+                        bad = [line.replace(fault + ",", "ZZ,").replace(", " + fault, ", ZZ") for line in lines]
+                        decoded, _ = driver.decode_help_routing(routing_help_wire(bad, query, pause=True), query, contract, 10, 30, True)
+                        with self.assertRaisesRegex(ValueError, "mailing codes"):
+                            driver.require_discovery_help(decoded, key, dialect)
+                    heading = "US/Canada mailing codes (states, provinces, territories):"
+                    for bad in ([*lines, heading], [*lines, "  YT"], [line for line in lines if line != heading]):
+                        with self.assertRaises(ValueError):
+                            driver.require_discovery_help(bad, key, dialect)
+                if key in ("OVERVIEW", "PASS", "REJECT"):
+                    for note in ("MODE preserves visibility", "Filter categories have their own", "DXSTATE Spotted", "DESTATE Spotter"):
+                        bad = [line for line in lines if note not in line]
+                        with self.assertRaises(ValueError):
+                            driver.require_discovery_help(bad, key, dialect)
+                    bad = [line.replace("REJECT MODE ALL", "PASS MODE ALL").replace("UNSET/FILTER MODE ALL", "SET/FILTER MODE ALL") for line in lines]
+                    with self.assertRaisesRegex(ValueError, "block-before-pass"):
+                        driver.require_discovery_help(bad, key, dialect)
+                if key == "DX":
+                    for note in ("station reputation admission", "Spot queued confirms", "Posting admission may", "Requires a valid logged", "Logins ending TEST"):
+                        with self.assertRaises(ValueError):
+                            driver.require_discovery_help([line for line in lines if note not in line], key, dialect)
+                if key.startswith("SHOW"):
+                    with self.assertRaises(ValueError):
+                        driver.require_discovery_help([line.replace("US/Canadian registered mailing", "FCC mailing-address") for line in lines], key, dialect)
+
+    def test_discovery_help_semantic_callback_logs_receipt_before_barrier_and_refuses_false_green(self):
+        query, lines = "HELP DX", discovery_help_literal("DX", "go")
+        raw = routing_help_wire(lines, query, pause=True)
+        document = dict(resource="CONFIG", schema_version=4, request_id="DISC18", configuration={}, status={}, revision="r18")
+        for corrupt in (False, True):
+            current = mock.Mock()
+            current.call, current.reader.remote_echo, current.reader.buffer = "VE3ABC-70075", True, b""
+            current.reader.line.side_effect = raw.splitlines(keepends=True)
+            current.suite.log, current.suite.identifier.return_value = io.BytesIO(), "DISC18"
+            current.frame.return_value = document, b"GET YAML CONFIG SCHEMA 4 ID DISC18\r\n"
+
+            def oracle(body):
+                self.assertEqual(body, lines)
+                self.assertEqual(current.send.call_count, 1)
+                current.frame.assert_not_called()
+                if corrupt:
+                    raise ValueError("semantic fault")
+                driver.require_discovery_help(body, "DX", "go")
+
+            if corrupt:
+                with self.assertRaisesRegex(ValueError, "semantic fault"):
+                    driver.help_routing_readback(current, "DX", driver.help_route_contract("DX", "go"), 10, 30, oracle)
+                current.frame.assert_not_called()
+                self.assertEqual(current.send.call_count, 1)
+            else:
+                self.assertEqual(driver.help_routing_readback(current, "DX", driver.help_route_contract("DX", "go"), 10, 30, oracle), (document, True))
+            self.assertTrue(current.suite.log.getvalue().endswith(raw))
+
+    def test_discovery_owners_refuse_session_runtime_revision_bytes_and_same_bytes_rewrites(self):
+        session = dict(callsign="VE3ABC-70075", diagnostic_comments="MODE", temporary_defaults=False, suppressed_spots=0,
+                       pause_active=False, pause_pending_delivery=False, pause_remaining_seconds=0)
+        before = dict(configuration=dict(filters=dict(comments=["DISCOVERY18 GO"])), revision="r18",
+                      status=dict(configured=dict(grid="FN31PR"), effective=dict(dedupe_policy="SLOW"),
+                                  preset=dict(associated=True, name="DISC18GO", modified=False), session=session,
+                                  server=dict(auto_read_pause_min_rows=10), min_snr=dict(configured_count=1), comments=dict(pass_count=1)))
+        record, library = mock.Mock(), mock.Mock()
+        record.read_bytes.return_value, library.read_bytes.return_value = b"USER BYTES", b"LIBRARY BYTES"
+        record.stat.return_value = mock.Mock(st_dev=1, st_ino=101, st_size=10, st_mtime_ns=1001)
+        library.stat.return_value = mock.Mock(st_dev=1, st_ino=102, st_size=13, st_mtime_ns=1002)
+        saved, library_saved = driver.discovery_file_receipt(record), driver.discovery_file_receipt(library)
+        driver.require_discovery_owners(before, copy.deepcopy(before), record, saved, library, library_saved)
+        long = copy.deepcopy(before)
+        long["status"]["session"].update(pause_active=True, pause_remaining_seconds=30)
+        driver.require_discovery_owners(before, long, record, saved, library, library_saved, True)
+        with self.assertRaises(ValueError):
+            driver.require_discovery_owners(before, long, record, saved, library, library_saved)
+        for owner, field, value in (("document", "configuration", {}), ("document", "revision", "changed"),
+                                    ("status", "configured", {}), ("status", "effective", {}), ("status", "preset", {}),
+                                    ("status", "server", {}), ("status", "min_snr", {}), ("status", "comments", {}),
+                                    ("session", "diagnostic_comments", "OFF"), ("session", "temporary_defaults", True),
+                                    ("session", "suppressed_spots", 1), ("session", "pause_pending_delivery", True),
+                                    ("session", "pause_active", True), ("session", "pause_remaining_seconds", 1)):
+            changed = copy.deepcopy(before)
+            target = changed if owner == "document" else changed["status"] if owner == "status" else changed["status"]["session"]
+            target[field] = value
+            with self.assertRaises(ValueError):
+                driver.require_discovery_owners(before, changed, record, saved, library, library_saved)
+        for handle in (record, library):
+            data = handle.read_bytes.return_value
+            handle.read_bytes.return_value = b"CHANGED"
+            with self.assertRaises(ValueError):
+                driver.require_discovery_owners(before, copy.deepcopy(before), record, saved, library, library_saved)
+            handle.read_bytes.return_value = data
+            for field in ("st_dev", "st_ino", "st_size", "st_mtime_ns"):
+                value = getattr(handle.stat.return_value, field)
+                setattr(handle.stat.return_value, field, value + 1)
+                with self.assertRaisesRegex(ValueError, "modification time"):
+                    driver.require_discovery_owners(before, copy.deepcopy(before), record, saved, library, library_saved)
+                setattr(handle.stat.return_value, field, value)
+        for target in ("status", "session"):
+            changed = copy.deepcopy(before)
+            fields = changed["status"] if target == "status" else changed["status"]["session"]
+            fields["invented"] = True
+            with self.assertRaisesRegex(ValueError, "status shape"):
+                driver.require_discovery_owners(before, changed, record, saved, library, library_saved)
+
+    def test_discovery_fresh_saved_baseline_must_match_full_preferences_and_named_library(self):
+        rule = dict(allow_all=True, block_all=False, allow={}, block={})
+        filters = {field: copy.deepcopy(rule) for field in ("bands", "modes", "sources", "events", "confidence", "path_classes",
+                                                           "dx_continents", "de_continents", "dx_zones", "de_zones", "dx_grid2",
+                                                           "de_grid2", "dx_dxcc", "de_dxcc", "dx_states", "de_states")}
+        filters.update(dx_callsigns=[], block_dx_callsigns=[], de_callsigns=[], block_de_callsigns=[], comments=["DISCOVERY18 CC"],
+                       block_comments=[], min_snr={"CW": 7}, nearby_enabled=False, include_beacons=False,
+                       allow_wwv=True, allow_wcy=True, allow_announce=False, allow_self=True, allow_toxic=True)
+        settings = dict(dialect="cc", grid="FN31PR", noise_class="URBAN", dedupe_policy="SLOW",
+                        path_min_observation_count=30, solar_summary_minutes=30)
+        expected = dict(settings=settings, filters=filters)
+        baseline = dict(settings, configuration_version=4, comments=["DISCOVERY18 CC"], min_snr={"CW": 7},
+                        include_beacons=False, allow_wwv=True, allow_wcy=True, allow_announce=False, allow_self=True, allow_toxic=True)
+        for stem in "bands modes sources events confidence pathclasses dxcontinents decontinents dxzones dezones dxgrid2 degrid2 dxdxcc dedxcc dxstates destates".split():
+            baseline[stem + "prefixes" if stem in ("dxgrid2", "degrid2") else stem] = {}
+            baseline["block" + stem], baseline["all" + stem], baseline["blockall" + stem] = {}, True, False
+        stored = {**baseline, "preset": dict(name="DISC18CC", baseline=copy.deepcopy(baseline))}
+        collection = dict(presets=dict(DISC18CC=copy.deepcopy(baseline)))
+        record, library = mock.Mock(), mock.Mock()
+        document = dict(configuration=expected, status=dict(effective=dict(nearby_active=False),
+                                                            preset=dict(associated=True, name="DISC18CC", modified=False)))
+
+        def assign(user=stored, presets=collection):
+            record.read_bytes.return_value = driver.yaml.safe_dump(user).encode("ascii")
+            library.read_bytes.return_value = driver.yaml.safe_dump(presets).encode("ascii")
+
+        assign()
+        driver.require_discovery_saved(document, expected, record, library, "DISC18CC")
+        for field, value in (("grid", "IO91"), ("noise_class", "QUIET"), ("dedupe_policy", "FAST"),
+                             ("path_min_observation_count", True), ("solar_summary_minutes", 0), ("comments", []), ("min_snr", {})):
+            bad = copy.deepcopy(stored)
+            bad["preset"]["baseline"][field] = value
+            changed_library = dict(presets=dict(DISC18CC=copy.deepcopy(bad["preset"]["baseline"])))
+            assign(bad, changed_library)
+            with self.assertRaises(ValueError):
+                driver.require_discovery_saved(document, expected, record, library, "DISC18CC")
+        for bad in ({**stored, "preset": None}, {**stored, "preset": dict(name="OTHER", baseline=baseline)},
+                    {**stored, "preset": dict(name="DISC18CC")}, {**stored, "grid": "IO91"}):
+            assign(bad)
+            with self.assertRaises(ValueError):
+                driver.require_discovery_saved(document, expected, record, library, "DISC18CC")
+        assign()
+        changed = copy.deepcopy(document)
+        changed["status"]["preset"]["modified"] = True
+        with self.assertRaises(ValueError):
+            driver.require_discovery_saved(changed, expected, record, library, "DISC18CC")
+        changed_library = copy.deepcopy(collection)
+        changed_library["presets"]["DISC18CC"]["comments"] = ["OTHER"]
+        assign(presets=changed_library)
+        with self.assertRaises(ValueError):
+            driver.require_discovery_saved(document, expected, record, library, "DISC18CC")
+
     def test_help_routing_short_response_requires_intended_header_usage_terminal_and_real_aliases(self):
         contract = driver.help_route_contract("SHOW BUILD", "go")
         lines = ["SHOW BUILD - Show binary build metadata.", "Usage: SHOW BUILD", "Aliases: SH BUILD", "Notes:",

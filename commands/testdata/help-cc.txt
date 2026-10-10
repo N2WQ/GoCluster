@@ -51,8 +51,8 @@ What you can filter:
   DEZONE                 Spotter's CQ zone (1-40).
   DXDXCC                 Spotted station's country prefix or ADIF number.
   DEDXCC                 Spotter's country prefix or ADIF number.
-  DXSTATE                Spotted station's US state or Canadian province code.
-  DESTATE                Spotter's US state or Canadian province code.
+  DXSTATE                Spotted station's US/Canadian mailing code.
+  DESTATE                Spotter's US/Canadian mailing code.
   DXGRID2                Spotted station's two-character grid, such as FN.
   DEGRID2                Spotter's two-character grid.
   CONFIDENCE             Callsign confidence symbols: ?, S, P, V, C, B.
@@ -99,8 +99,8 @@ A complete recipe: only 20m/40m and only CW/FT8:
   Own-call spots have special exemptions; see HELP SHOW MYDX.
 
 Filter rules to remember:
-  Allowed selections do not generally replace your existing selections.
-  Allowing moves named items to allowed; blocking moves them to blocked.
+  Filter categories have their own selection rules; see HELP PASS/REJECT.
+  MODE preserves visibility for every mode you do not name.
   Different filter categories must all match, except own-call exemptions.
   MODE changes only the modes you name.
   SET/FILTER BAND ALL allows every band; other filters still apply.

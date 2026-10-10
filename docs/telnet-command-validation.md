@@ -293,6 +293,17 @@ association and exact stored bytes stay unchanged, with fresh children proving
 saved ownership. Isolated Go taxonomy controls own fixed-shortcut overlap and
 disabled-mode vectors; this does not qualify every deployment vocabulary.
 
+Filter discovery cases check an independent 29-family inventory, action-aware
+bare/unknown replies, shared DXBM guidance and complete state usage in both
+dialects. Short feedback stays below the fixture's automatic-pause threshold;
+each response precedes a strict CONFIG barrier. Refusals preserve preferences,
+revision, runtime readbacks, preset ownership, exact bytes and file identity,
+mtime and size. Composed Go owner checks additionally prove zero commit calls;
+the actual fixture does not expose that internal count. Complete HELP receipts
+check DX intake/admission wording, all 73 mailing codes and MODE-specific rules.
+Fresh children repeat the saved-state controls. These checks do not establish
+station location, spot delivery or production behavior.
+
 Coverage grows with each approved fix. The initial fixture does not certify
 production dedupe, classifier or runtime shutdown. See the
 [execution record](command-fix-execution.md) and

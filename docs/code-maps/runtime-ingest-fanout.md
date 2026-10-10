@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `ba8707606eca6077`
+- Source fingerprint: `470177dfeca1a1d6`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -11,11 +11,11 @@
 
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
-| `dxcluster/commands` | `commands` | 9 | 18 |
+| `dxcluster/commands` | `commands` | 9 | 19 |
 | `dxcluster/internal/cluster` | `internal/cluster` | 25 | 63 |
 | `dxcluster/peer` | `peer` | 62 | 130 |
 | `dxcluster/spot` | `spot` | 33 | 32 |
-| `dxcluster/telnet` | `telnet` | 47 | 95 |
+| `dxcluster/telnet` | `telnet` | 48 | 96 |
 
 ## In-Scope Package Edges
 
@@ -115,6 +115,7 @@ Test files:
 - `commands/dxcc_history_test.go`
 - `commands/help_overview_test.go`
 - `commands/help_routing_contract_test.go`
+- `commands/help_wording_contract_test.go`
 - `commands/history_archive_test.go`
 - `commands/history_comment_alias_test.go`
 - `commands/history_selection_taxonomy_test.go`
@@ -512,6 +513,7 @@ Source files:
 - `telnet/dedupe_readback.go`
 - `telnet/events.go`
 - `telnet/filter_commands.go`
+- `telnet/filter_usage.go`
 - `telnet/history.go`
 - `telnet/history_filter.go`
 - `telnet/human_input_recovery.go`
@@ -567,6 +569,7 @@ Test files:
 - `telnet/dxcc_commands_test.go`
 - `telnet/event_reporter_test.go`
 - `telnet/filter_argument_admission_test.go`
+- `telnet/filter_discovery_contract_test.go`
 - `telnet/glyph_test.go`
 - `telnet/grid2_commands_test.go`
 - `telnet/grid_command_test.go`

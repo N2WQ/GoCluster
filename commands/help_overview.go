@@ -65,8 +65,8 @@ func filterCategoryRows() []helpRow {
 		{"DEZONE", "Spotter's CQ zone (1-40)."},
 		{"DXDXCC", "Spotted station's country prefix or ADIF number."},
 		{"DEDXCC", "Spotter's country prefix or ADIF number."},
-		{"DXSTATE", "Spotted station's US state or Canadian province code."},
-		{"DESTATE", "Spotter's US state or Canadian province code."},
+		{"DXSTATE", "Spotted station's US/Canadian mailing code."},
+		{"DESTATE", "Spotter's US/Canadian mailing code."},
 		{"DXGRID2", "Spotted station's two-character grid, such as FN."},
 		{"DEGRID2", "Spotter's two-character grid."},
 		{"CONFIDENCE", "Callsign confidence symbols: ?, S, P, V, C, B."},
@@ -129,8 +129,8 @@ func filterBasicsLines(dialect string) []string {
 	rejectEvent := filterVerb(dialect, "REJECT", "EVENT") + " EVENT ALL"
 	return []string{
 		"", "Filter rules to remember:",
-		"  Allowed selections do not generally replace your existing selections.",
-		"  Allowing moves named items to allowed; blocking moves them to blocked.",
+		"  Filter categories have their own selection rules; see HELP PASS/REJECT.",
+		"  MODE preserves visibility for every mode you do not name.",
 		"  Different filter categories must all match, except own-call exemptions.",
 		"  MODE changes only the modes you name.",
 		"  " + passBand + " allows every band; other filters still apply.",
@@ -248,7 +248,7 @@ func supportedFilterValuesLines() []string {
 		{"Filter categories:", filterListTypes()}, {"Supported modes:", filter.SupportedModes()},
 		{"Supported events:", filter.SupportedEvents()}, {"Supported bands:", spot.SupportedBandNames()},
 		{"Supported sources:", filter.SupportedSources}, {"Continents:", []string{"AF", "AN", "AS", "EU", "NA", "OC", "SA"}},
-		{"State/province mailing-address codes:", spot.StateCodes()},
+		{"US/Canada mailing codes (states, provinces, territories):", spot.StateCodes()},
 	} {
 		lines = append(lines, "", section.title)
 		lines = append(lines, wrapListLines(section.values)...)

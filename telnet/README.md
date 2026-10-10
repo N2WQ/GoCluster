@@ -101,6 +101,11 @@ Blank `NCDXF B` source-class beacon comments display `NCDXF BEACON`.
 
 The telnet layer owns the live filter parser and persistence rules.
 
+Bare PASS/REJECT and unknown types return bounded, action-aware suggestions.
+They include all 29 filter families, with NOFILTER only for PASS and PC93 as an
+ANNOUNCE alias. Special categories have their own grammar; use HELP PASS/REJECT
+for complete syntax. Shared DXBM errors recommend PASS/REJECT and REJECT MODE.
+
 CC HELP SET/FILTER and HELP UNSET/FILTER list ordinary categories separately
 from switches and special forms. Shared PASS/REJECT commands also work in CC.
 COMMENT uses those shared commands; it has no SET/UNSET alias. MINSNR takes
@@ -119,7 +124,7 @@ active. See [CC grammar troubleshooting](../docs/troubleshooting/TSR-0064-cc-hel
 - Re-enabling FT8 after rejecting it keeps previously visible CW visible.
   This also preserves visibility for custom and future modes. To select only
   named modes, use `REJECT MODE ALL` first, then `PASS MODE CW,FT8`.
-  `PASS MODE ALL` or `RESET MODE` explicitly allows every mode again.
+  `PASS MODE ALL` explicitly allows every mode again.
 - `UNKNOWN` is the MODE token for blank-mode spots; use `PASS MODE UNKNOWN` or `PASS MODE ALL` to show them again after they are hidden
 
 Path and confidence filters are operator-visible here:

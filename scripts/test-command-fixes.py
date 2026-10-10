@@ -1030,6 +1030,7 @@ def profile(binary, root, source, transport):
                 f"{transport}/0: COMMENT aliases preserve literal history and continuation",
                 f"{transport}/0: CC HELP grammar agrees with saved command outcomes",
                 f"{transport}/0: HELP routes existing aliases without preference effects",
+                f"{transport}/0: filter discovery and HELP wording preserve all owners",
                 f"{transport}/1: held endpoint and loaded consumers",
                 f"{transport}: preferences and archive survive fresh child",
                 f"{transport}: NOFILTER geography survives fresh child",
@@ -1052,7 +1053,8 @@ def profile(binary, root, source, transport):
                 f"{transport}/1: configured taxonomy underscore rules survive fresh child",
                 f"{transport}/1: COMMENT history aliases work on fresh child",
                 f"{transport}/1: CC HELP grammar and preferences survive fresh child",
-                f"{transport}/1: HELP routing and full preferences survive fresh child"]
+                f"{transport}/1: HELP routing and full preferences survive fresh child",
+                f"{transport}/1: discovery wording and full preferences survive fresh child"]
     call = "K1ABC-70001"
     observer_call, observer_configuration = "VE3ABC-70003", None
     failed_records, refused_records, compatible_records = {}, {}, {}
@@ -1070,6 +1072,7 @@ def profile(binary, root, source, transport):
     saved_history_aliases = {}
     saved_cc_grammar = {}
     saved_help_routes = {}
+    saved_discovery = {}
     label = None
     suites = []
     for generation in range(2):
@@ -1489,6 +1492,8 @@ def profile(binary, root, source, transport):
                      lambda: cc_help_grammar_cases(suite, root, generation, saved_cc_grammar))
                 case(f"{transport}/0: HELP routes existing aliases without preference effects",
                      lambda: help_routing_cases(suite, root, generation, saved_help_routes))
+                case(f"{transport}/0: filter discovery and HELP wording preserve all owners",
+                     lambda: filter_discovery_cases(suite, root, generation, saved_discovery))
             else:
                 def restored():
                     settings = session.get()["configuration"]["settings"]
@@ -1705,6 +1710,8 @@ def profile(binary, root, source, transport):
                      lambda: cc_help_grammar_cases(suite, root, generation, saved_cc_grammar))
                 case(f"{transport}/1: HELP routing and full preferences survive fresh child",
                      lambda: help_routing_cases(suite, root, generation, saved_help_routes))
+                case(f"{transport}/1: discovery wording and full preferences survive fresh child",
+                     lambda: filter_discovery_cases(suite, root, generation, saved_discovery))
         finally:
             try:
                 if suite:
@@ -2211,13 +2218,12 @@ def cc_help_grammar_cases(suite, root, generation, saved_cc_grammar):
         apply(verb + " NEARBY OFF", dict(nearby_enabled=False))
     apply("PASS COMMENT CQ", dict(comments=["CQ"]))
     apply("REJECT COMMENT QRT", dict(block_comments=["QRT"]))
-    unknown = "Unknown filter type. Use: BAND, MODE, MINSNR, SOURCE, EVENT, DXCALL, DECALL, CONFIDENCE, PATH, BEACON, WWV, WCY, ANNOUNCE, DXGRID2, DEGRID2, DXCONT, DECONT, DXZONE, DEZONE, DXDXCC, DEDXCC, DXSTATE, or DESTATE\nType HELP for usage."
     for command in ("SET/FILTER COMMENT CQ", "UNSET/FILTER COMMENT CQ", "UNSET/FILTER BAND/ON", "UNSET/FILTER BEACON/OFF"):
-        refuse(command, unknown)
+        refuse(command, filter_discovery_reply("REJECT" if command.startswith("UNSET/") else "PASS", True))
     min_inline = "Usage: PASS MINSNR <mode[,mode...]|ALL> <integer dB|ALL>\nNumeric PASS and REJECT set the same inclusive minimum.\nHuman spots and spots without SNR are exempt."
-    for command, feedback in (("SET/FILTER COMMENT/ON", unknown), ("SET/FILTER MINSNR/ON", min_inline),
+    for command, feedback in (("SET/FILTER COMMENT/ON", filter_discovery_reply("PASS", True)), ("SET/FILTER MINSNR/ON", min_inline),
                               ("SET/FILTER NEARBY/ON", "Usage: PASS NEARBY ON|OFF\nType HELP for usage."),
-                              ("SET/FILTER DXBM/ON", "Unknown DXBM band: ALL\nSupported: 160, 80, 40, 30, 20, 17, 15, 12, 10, 6, 2 (and 1 if enabled). Modes ignored; use SET/NO<MODE>.")):
+                              ("SET/FILTER DXBM/ON", DXBM_DISCOVERY_INVALID)):
         refuse(command, feedback)
     for domain in ("COMMENT", "MINSNR", "NEARBY", "DXBM"):
         # Inline normalization supplies ALL; these special owners refuse it.
@@ -2226,9 +2232,8 @@ def cc_help_grammar_cases(suite, root, generation, saved_cc_grammar):
     for command in ("UNSET/FILTER NOFILTER", "SET/FILTER NOFILTER/OFF"):
         refuse(command, "Invalid filter command. Type HELP for usage.")
     refuse("SET/FILTER NOFILTER OFF", "NOFILTER accepts no value or ALL. No changes applied.")
-    dx_error = "Unknown DXBM band: ALL\nSupported: 160, 80, 40, 30, 20, 17, 15, 12, 10, 6, 2 (and 1 if enabled). Modes ignored; use SET/NO<MODE>."
     for command in ("SET/FILTER DXBM ALL", "UNSET/FILTER DXBM ALL"):
-        refuse(command, dx_error)
+        refuse(command, DXBM_DISCOVERY_INVALID)
     for command, enabled in (("SET/FILTER DXBM 20,40", True), ("UNSET/FILTER DXBM 40", False),
                               ("SET/FILTER DXBM PASS 40", True), ("SET/FILTER DXBM REJECT 40", False),
                               ("SET/FILTER DXBM/PASS 40", True), ("SET/FILTER DXBM/REJECT 40", False)):
@@ -2249,6 +2254,10 @@ def help_route_contract(key, dialect):
     # catalog. Short replies have source-verified terminal lines; long replies
     # require their complete counted automatic-pause footer.
     contracts = {
+        "DX": ("DX - Post a spot (human entry).",
+               ("DX <freq_khz> <callsign> [comment]", "DX <callsign> <freq_khz> [comment]"), None, ()),
+        "FILTERS": ("Filter reference:", (), None, ()),
+        "OVERVIEW": ("GoCluster help - " + dialect.upper() + " dialect", (), None, ()),
         "HELP": ("HELP - Show command list or command-specific help.", ("HELP [command]",),
                  "  With a command, shows detailed usage.", ("H",)),
         "SHOW BUILD": ("SHOW BUILD - Show binary build metadata.", ("SHOW BUILD",),
@@ -2426,7 +2435,12 @@ def decode_help_routing(raw, query, contract, minimum_rows, minimum_seconds, rem
     if header.startswith("Unknown help topic: "):
         require(lines == [header, "Type HELP for available commands."], "unsupported HELP route was accepted or altered")
     else:
-        require(not any(line.startswith(("Unknown ", "Usage: Invalid", "Invalid ")) for line in lines),
+        # FILTERS explains unknown mailing codes and prefixes in unindented
+        # prose. Only these exact educational rows are exempt from rejection
+        # detection; unknown-topic/error output must still fail the receipt.
+        explanations = {"Unknown state fails an explicit PASS list and passes a REJECT-only list.",
+                        "Unknown prefixes reject the whole list; canonical input requires CTY."} if header == "Filter reference:" else set()
+        require(not any(line.startswith(("Unknown ", "Usage: Invalid", "Invalid ")) and line not in explanations for line in lines),
                 "supported HELP route contains rejection feedback")
         expected = [("Usage: " if index == 0 else "       ") + value for index, value in enumerate(usage)]
         require(lines[1:1 + len(expected)] == expected and
@@ -2447,8 +2461,8 @@ def decode_help_routing(raw, query, contract, minimum_rows, minimum_seconds, rem
     return lines, paused
 
 
-def help_routing_readback(current, topic, contract, minimum_rows, minimum_seconds):
-    query, raw, received = "HELP " + topic, bytearray(), 0
+def help_routing_readback(current, topic, contract, minimum_rows, minimum_seconds, body_oracle=None):
+    query, raw, received = ("HELP " + topic).rstrip(), bytearray(), 0
     terminal = contract[2] or "Missed spots are not replayed."
     try:
         current.send(query + "\r\n")
@@ -2466,6 +2480,8 @@ def help_routing_readback(current, topic, contract, minimum_rows, minimum_second
                 raw.extend(line[:harness.MAX_FRAME - len(raw)])
                 require(received <= harness.MAX_FRAME, "HELP routing footer exceeds its wire bound")
         body, paused = decode_help_routing(bytes(raw), query, contract, minimum_rows, minimum_seconds, current.reader.remote_echo)
+        if body_oracle is not None:
+            body_oracle(body)
     except Exception:
         received += len(current.reader.buffer)
         raw.extend(current.reader.buffer[:harness.MAX_FRAME - len(raw)])
@@ -2476,26 +2492,32 @@ def help_routing_readback(current, topic, contract, minimum_rows, minimum_second
             receipt += b"\n[HELP routing receipt truncated at 65536 bytes]\n"
         current.suite.log.write(receipt)
         current.suite.log.flush()
+    return complete_reply_config(current, received, "HELP routing"), paused
+
+
+def complete_reply_config(current, received, label):
+    # Called only after a complete response receipt has been logged/flushed.
+    # Unlike Session.get, the barrier rejects any hidden trailing human output.
     identifier = current.suite.identifier()
     command = f"GET YAML CONFIG SCHEMA 4 ID {identifier}"
     current.send(command + "\r\n")
     document, prefix = current.frame("CONFIG", identifier, 4, command)
     echoed, trailing = False, 0
     for line in prefix.splitlines(keepends=True):
-        require(line.endswith(b"\r\n") and b"\r" not in line[:-2], "HELP routing barrier breaks CRLF")
+        require(line.endswith(b"\r\n") and b"\r" not in line[:-2], label + " barrier breaks CRLF")
         if current.reader.remote_echo and not echoed and line == command.encode("ascii") + b"\r\n":
             echoed = True
             continue
-        require(line == b"\r\n", "HELP routing hides trailing response content")
+        require(line == b"\r\n", label + " hides trailing response content")
         trailing += len(line)
-    require(received + trailing <= harness.MAX_FRAME, "HELP routing final response exceeds its wire bound")
+    require(received + trailing <= harness.MAX_FRAME, label + " final response exceeds its wire bound")
     require("error" not in document and type(document.get("configuration")) is dict and
             type(document.get("status")) is dict and type(document.get("revision")) is str and document["revision"],
-            "HELP routing barrier lacks a valid configuration")
+            label + " barrier lacks a valid configuration")
     require(document.get("resource") == "CONFIG" and type(document.get("schema_version")) is int and
             document["schema_version"] == 4 and document.get("request_id") == identifier,
-            "HELP routing barrier has the wrong resource, schema or request identity")
-    return document, paused
+            label + " barrier has the wrong resource, schema or request identity")
+    return document
 
 
 def require_help_routing_state(before, after, record, saved, library, library_saved, paused):
@@ -2573,6 +2595,249 @@ def help_routing_cases(suite, root, generation, saved_help_routes):
                 "Unknown help topic: " + topic, (), "Type HELP for available commands.", ())
             after, paused = help_routing_readback(current, topic, contract, minimum_rows, minimum_seconds)
             require_help_routing_state(before, after, record, saved, library, library_saved, paused)
+
+
+DISCOVERY_FAMILIES = tuple("BAND MODE SOURCE EVENT COMMENT DXCALL DECALL CONFIDENCE PATH DXGRID2 DEGRID2 "
+                           "DXCONT DECONT DXZONE DEZONE DXDXCC DEDXCC DXSTATE DESTATE MINSNR BEACON WWV WCY "
+                           "ANNOUNCE SELF TOXIC NEARBY DXBM NOFILTER".split())
+DISCOVERY_TYPES = ("Types: BAND, MODE, MINSNR, SOURCE, EVENT, COMMENT, DXCALL, DECALL,\n"
+                   "       CONFIDENCE, PATH, DXGRID2, DEGRID2, DXCONT, DECONT, DXZONE, DEZONE,\n"
+                   "       DXDXCC, DEDXCC, DXSTATE, DESTATE, DXBM, NEARBY,\n"
+                   "       BEACON, WWV, WCY, ANNOUNCE, SELF, TOXIC\n")
+DXBM_DISCOVERY_MISSING = ("Usage: PASS DXBM <band-codes> or REJECT DXBM <band-codes>\n"
+                          "Type HELP PASS or HELP REJECT for usage.")
+DXBM_DISCOVERY_INVALID = ("Unknown DXBM band: ALL\n"
+                          "Supported: 160, 80, 40, 30, 20, 17, 15, 12, 10, 6, 2 (and 1 if enabled).\n"
+                          "Modes ignored; use REJECT MODE <mode>.")
+HELP_MAILING_CODES = tuple("AA AB AE AK AL AP AR AS AZ BC CA CO CT DC DE FL GA GU HI IA ID IL IN KS KY LA "
+                           "MA MB MD ME MI MN MO MP MS MT NB NC ND NE NH NJ NL NM NS NT NU NV NY OH OK ON "
+                           "OR PA PE PR QC RI SC SD SK TN TX UM UT VA VI VT WA WI WV WY YT".split())
+
+
+def filter_discovery_reply(verb, unknown=False):
+    require(verb in ("PASS", "REJECT"), "invalid discovery action oracle")
+    if unknown:
+        extra = "PASS also supports NOFILTER; PC93 aliases ANNOUNCE.\n" if verb == "PASS" else "PC93 aliases ANNOUNCE.\n"
+        return ("Unknown filter type.\n" + DISCOVERY_TYPES +
+                "COMMENT uses PASS/REJECT COMMENT in either dialect.\n" + extra + "Type HELP " + verb + " for usage.")
+    clear = "ALL" if verb == "PASS" else "NONE"
+    ending = ("PASS supports NOFILTER. Type HELP PASS for complete syntax and examples." if verb == "PASS" else
+              "Type HELP REJECT for complete syntax and examples.")
+    return ("Usage: " + verb + " <type> ...\n" + DISCOVERY_TYPES +
+            "COMMENT uses PASS/REJECT COMMENT <literal phrase>.\n" +
+            "MINSNR takes modes and <integer dB|" + clear + ">.\n" +
+            "NEARBY takes ON|OFF with either verb; PC93 aliases ANNOUNCE.\n" + ending)
+
+
+def require_discovery_inventory(reply, verb, unknown=False):
+    require(reply == filter_discovery_reply(verb, unknown), "discovery loses its action-specific exact feedback")
+    rows = reply.splitlines()
+    types = [name for name in re.split(r"[, ]+", " ".join(rows[1:5]).removeprefix("Types: ")) if name]
+    expected = set(DISCOVERY_FAMILIES) - {"NOFILTER"}
+    require(len(DISCOVERY_FAMILIES) == 29 and len(types) == len(expected) and set(types) == expected,
+            "discovery has a missing, duplicate or invented filter family")
+    require("PC93" not in types and "PC93 aliases ANNOUNCE." in reply and
+            (("NOFILTER" in reply) is (verb == "PASS")), "discovery loses its alias or PASS-only NOFILTER boundary")
+    require("SET/FILTER COMMENT" not in reply and "UNSET/FILTER COMMENT" not in reply and
+            "COMMENT uses PASS/REJECT COMMENT" in reply, "discovery invents a CC COMMENT alias")
+
+
+def decode_discovery_reply(raw, query, expected, remote_echo=False):
+    lines = help_routing_lines(raw, query, remote_echo)
+    require(len(lines) <= 9, "filter discovery exceeds the nine-row feedback bound")
+    while lines and lines[0] == "":
+        lines.pop(0)
+    require(lines == expected.splitlines(), "filter discovery differs from its exact action/refusal feedback")
+    return lines
+
+
+def discovery_readback(current, query, expected):
+    # These fixed replies stay below the loaded ten-row automatic-pause floor.
+    # Receive and log every known row before sending the correlated barrier.
+    wanted, raw, received, index = expected.splitlines(), bytearray(), 0, 0
+    require(0 < len(wanted) <= 9, "invalid bounded discovery reply oracle")
+    try:
+        current.send(query + "\r\n")
+        while index < len(wanted):
+            line = current.reader.line()
+            received += len(line)
+            raw.extend(line[:harness.MAX_FRAME - len(raw)])
+            require(received <= harness.MAX_FRAME and line.endswith(b"\r\n") and b"\r" not in line[:-2],
+                    "filter discovery exceeds its bound or breaks CRLF")
+            value = line[:-2].decode("ascii", "strict")
+            if index == 0 and value in ("", query.upper()):
+                continue
+            require(value == wanted[index], "filter discovery differs from its exact action/refusal feedback")
+            index += 1
+        decode_discovery_reply(bytes(raw), query, expected, current.reader.remote_echo)
+    except Exception:
+        received += len(current.reader.buffer)
+        raw.extend(current.reader.buffer[:harness.MAX_FRAME - len(raw)])
+        raise
+    finally:
+        receipt = f"\n[{current.call}] {query}\n".encode() + bytes(raw)
+        if received > len(raw):
+            receipt += b"\n[filter discovery receipt truncated at 65536 bytes]\n"
+        current.suite.log.write(receipt)
+        current.suite.log.flush()
+    return complete_reply_config(current, received, "filter discovery")
+
+
+def discovery_feedback_cases(dialect):
+    cases = []
+    heads = [("PASS", "PASS"), ("REJECT", "REJECT")]
+    if dialect == "cc":
+        heads += [("SET/FILTER", "PASS"), ("UNSET/FILTER", "REJECT")]
+    for head, verb in heads:
+        cases += [(head, filter_discovery_reply(verb), verb, False),
+                  (head + " INVENTED", filter_discovery_reply(verb, True), verb, True),
+                  (head + " DXBM", DXBM_DISCOVERY_MISSING, None, False),
+                  (head + " DXBM ALL", DXBM_DISCOVERY_INVALID, None, False)]
+        for family in ("DXSTATE", "DESTATE"):
+            usage = ("Usage: " + verb + " " + family + " <state>[,<state>...] or ALL\n"
+                     "US/Canadian mailing codes include provinces and territories.\nType HELP " + verb + " for usage.")
+            cases += [(head + " " + family, usage, None, False),
+                      (head + " " + family + " CT,ZZ", "Invalid state selection: ZZ", None, False)]
+    cases += [("RESET MODE", "Usage: RESET FILTER\nType HELP for usage.", None, False),
+              ("REJECT NOFILTER", "Invalid filter command. Type HELP for usage.", None, False)]
+    if dialect == "cc":
+        cases += [("SET/FILTER COMMENT CQ", filter_discovery_reply("PASS", True), "PASS", True),
+                  ("UNSET/FILTER COMMENT CQ", filter_discovery_reply("REJECT", True), "REJECT", True)]
+    return cases
+
+
+def require_discovery_help(lines, key, dialect):
+    # Literal observable contracts, independent of catalog construction/wrapping.
+    flat = " ".join(" ".join(lines).split())
+    if key == "DX":
+        required = ("Frequency is in kHz (e.g., 7001.0).",
+                    "Use plain decimal numbers; exponent notation is not accepted.",
+                    "Values in gaps between bands remain accepted.",
+                    "Rejects invalid callsigns and CTY-unknown DX when CTY is enabled.",
+                    "Requires a valid logged-in callsign.",
+                    "Logins ending TEST require a CTY-known baseline callsign.",
+                    "When enabled, station reputation admission is shared across numeric SSIDs.",
+                    "Posting admission may respond Spot rejected.",
+                    "Spot queued confirms intake; filtering and processing determine delivery.",
+                    "A missing or full input queue refuses the spot with an explicit response.")
+        forbidden = ("guarantees delivery", "bypasses reputation", "SSID has its own allowance", "FCC license required to post")
+    elif key in ("OVERVIEW", "PASS", "REJECT"):
+        required = ("Filter categories have their own selection rules; see HELP PASS/REJECT.",
+                    "MODE preserves visibility for every mode you do not name.", "MODE changes only the modes you name.",
+                    "DXSTATE Spotted station's US/Canadian mailing code.", "DESTATE Spotter's US/Canadian mailing code.")
+        forbidden = ("Values you do not name remain unchanged.", "Allowed selections do not generally replace your existing selections.",
+                     "List is comma or space separated; use ALL to allow all.", "List is comma or space separated; use ALL to block all.",
+                     "RESET MODE")
+        block, allow = ("REJECT MODE ALL", "PASS MODE CW,FT8") if dialect == "go" else ("UNSET/FILTER MODE ALL", "SET/FILTER MODE CW,FT8")
+        require(any(lines[index:index + 2] == ["  " + block, "  " + allow] for index in range(len(lines) - 1)),
+                "HELP loses its executable block-before-pass MODE recipe")
+    elif key == "FILTERS":
+        required = ("DXSTATE Spotted station's US/Canadian mailing code.", "DESTATE Spotter's US/Canadian mailing code.",
+                    "PASS/REJECT MODE <list> are deltas; modes not listed are unchanged.",
+                    "DXSTATE/DESTATE accept US/Canadian registered mailing codes.")
+        forbidden = ("RESET MODE", "show FCC mailing-address codes")
+    else:
+        require(key in ("SHOW FILTER", "SHOW/FILTER"), "invalid HELP wording oracle")
+        required = ("DESTATE/DXSTATE show US/Canadian registered mailing codes; empty means unknown.",)
+        forbidden = ("show FCC mailing-address codes",)
+    for phrase in required:
+        require(phrase in flat, "HELP omits an intended admission/state/MODE contract: " + phrase)
+    for phrase in forbidden:
+        require(phrase.lower() not in flat.lower(), "HELP retains an unsupported admission/state/MODE claim: " + phrase)
+    if key in ("FILTERS", "PASS", "REJECT"):
+        heading = "US/Canada mailing codes (states, provinces, territories):"
+        require(lines.count(heading) == 1, "HELP loses or duplicates the registered-mailing-code section")
+        rows = []
+        for line in lines[lines.index(heading) + 1:]:
+            if not line.strip():
+                break
+            rows.append(line)
+        codes = tuple(value for value in re.split(r"[, ]+", " ".join(rows)) if value)
+        require(len(HELP_MAILING_CODES) == 73 and codes == HELP_MAILING_CODES,
+                "HELP omits, duplicates or changes registered mailing codes")
+
+
+def discovery_file_receipt(path):
+    data, info = path.read_bytes(), path.stat()
+    return data, (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
+
+
+def require_discovery_owners(before, after, record, user_receipt, library, library_receipt, paused=None):
+    # Observed bytes/stat receipts complement the composed Go zero-save-call
+    # controls; they do not expose an actual server commit-call counter.
+    require_help_routing_state(before, after, record, user_receipt[0], library, library_receipt[0], bool(paused))
+    require(discovery_file_receipt(record) == user_receipt and discovery_file_receipt(library) == library_receipt,
+            "discovery changed durable file bytes, identity, size or modification time")
+    require(after["status"].keys() == before["status"].keys() and
+            after["status"]["session"].keys() == before["status"]["session"].keys(), "discovery changed runtime/session status shape")
+    if paused is None:
+        # Fixed feedback never enters the automatic HELP/readback pause path.
+        require_cc_typed_value(after["status"]["session"], before["status"]["session"])
+
+
+def require_discovery_saved(document, expected, record, library, name):
+    require_help_routing_saved(document, expected, record)
+    require_cc_typed_value(document["status"]["preset"], dict(associated=True, name=name, modified=False))
+    reference = stored_document(record.read_bytes()).get("preset")
+    require(type(reference) is dict and reference.get("name") == name and type(reference.get("baseline")) is dict,
+            "discovery lost its stored preset association/baseline")
+    baseline = reference["baseline"]
+    require_cc_typed_value(baseline, stored_document(library.read_bytes())["presets"][name])
+    # Reuse the independent stored-field oracle on the detached baseline too.
+    baseline_record = SimpleNamespace(read_bytes=lambda: yaml.safe_dump(baseline).encode("ascii"))
+    require_help_routing_saved(document, expected, baseline_record)
+
+
+def filter_discovery_cases(suite, root, generation, saved_discovery):
+    private = stored_document((root / "config" / "runtime.yaml").read_bytes())["telnet"]
+    minimum_rows, minimum_seconds = private["auto_read_pause_min_rows"], private["auto_read_pause_seconds"]
+    require(type(minimum_rows) is int and minimum_rows == 10 and type(minimum_seconds) is int and minimum_seconds > 0,
+            "discovery requires the unchanged fixture automatic-pause floor")
+    library = root / "users" / "presets" / ("VE3ABC".encode().hex() + ".yaml")
+    for dialect, call in (("go", "VE3ABC-70075"), ("cc", "VE3ABC-70076")):
+        record, name = root / "users" / (call + ".yaml"), "DISC18" + dialect.upper()
+        if not generation:
+            require(not record.exists(), "discovery requires a fresh unused SSID")
+        current = harness.Session(suite, call)
+        before = current.get()
+        if generation:
+            expected = saved_discovery[call]
+            require_discovery_saved(before, expected, record, library, name)
+            require(before["status"]["session"]["diagnostic_comments"] == "OFF", "fresh discovery session retained diagnostics")
+        else:
+            expected = copy.deepcopy(before["configuration"])
+            expected["settings"].update(dialect=dialect, grid="FN31PR", noise_class="URBAN", dedupe_policy="SLOW",
+                                        path_min_observation_count=30, solar_summary_minutes=30)
+            expected["filters"].update(comments=["DISCOVERY18 " + dialect.upper()], block_comments=["QRT"], min_snr={"CW": 7},
+                                       include_beacons=False, allow_announce=False)
+            response = current.upload("PUT", "CONFIG", expected, revision=before["revision"])
+            require("error" not in response, "discovery preference setup was refused")
+            before = current.get()
+            require_help_routing_saved(before, expected, record)
+            exact_human_reply(current, "SAVE PRESET " + name, "Saved preset " + name + " for VE3ABC.")
+            before = current.get()
+            require_discovery_saved(before, expected, record, library, name)
+            saved_discovery[call] = copy.deepcopy(expected)
+        require(before["configuration"]["settings"]["dialect"] == dialect and
+                before["status"]["server"]["auto_read_pause_min_rows"] == minimum_rows and
+                before["status"]["server"]["auto_read_pause_seconds"] == minimum_seconds and
+                before["status"]["session"]["pause_active"] is False, "discovery lacks its saved dialect/loaded pause prerequisites")
+        require_setting_control(current, record, "SET DIAG MODE", "Diagnostic comments: MODE", "diagnostic_comments", "MODE")
+        for query, feedback, verb, unknown in discovery_feedback_cases(dialect):
+            if verb is not None:
+                require_discovery_inventory(feedback, verb, unknown)
+            before = current.get()
+            user_receipt, library_receipt = discovery_file_receipt(record), discovery_file_receipt(library)
+            after = discovery_readback(current, query, feedback)
+            require_discovery_owners(before, after, record, user_receipt, library, library_receipt)
+        filter_topic = "SHOW FILTER" if dialect == "go" else "SHOW/FILTER"
+        for topic, key in (("DX", "DX"), ("", "OVERVIEW"), ("FILTERS", "FILTERS"),
+                           ("PASS", "PASS"), ("REJECT", "REJECT"), (filter_topic, filter_topic)):
+            before = current.get()
+            user_receipt, library_receipt = discovery_file_receipt(record), discovery_file_receipt(library)
+            after, paused = help_routing_readback(current, topic, help_route_contract(key, dialect), minimum_rows, minimum_seconds,
+                                                lambda lines: require_discovery_help(lines, key, dialect))
+            require_discovery_owners(before, after, record, user_receipt, library, library_receipt, paused)
 
 
 def require_taxonomy_rules(document, expected, record):

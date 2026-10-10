@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 18a complete (04a used two commits);
-22 approved checkpoints remain; 18b is next.
+Current progress: checkpoints 00 through 18b complete (04a used two commits);
+21 approved checkpoints remain.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -2419,3 +2419,106 @@ Fresh lead verification reviewed the production diff, all new Go/Python controls
 and final receipts. Record and whitespace checks passed. The crawler candidate
 scan selected no files; new routing headers and production entry comments were
 reviewed directly. Maps are regenerated last, followed by staged diff review.
+
+## Checkpoint 18b: accurate suggestions, categories and wording
+
+Status: complete. Current source discovery inspected all filter domains and
+COMMENT interception, shared usage/error callers, DX admission, MODE versus
+generic list transitions, the 73-code state vocabulary and affected recipes.
+A bounded inherited-context source review found no unresolved policy choice.
+MINSNR is already present in current suggestions; remaining omissions include
+COMMENT, DXBM, NEARBY, SELF, TOXIC and PASS-only NOFILTER. PC93 is an ANNOUNCE
+alias. Both dialects accept shared PASS/REJECT; REJECT NOFILTER stays invalid.
+Shared DXBM errors currently recommend CC-only syntax. Several docs invent
+RESET MODE, and the landing overview/README overgeneralize MODE visibility
+preservation to other lists. Province-only/FCC-only descriptions omit part of
+the shared US/Canadian registered-address vocabulary.
+
+Architecture: keep feedback as finite compiled text owned by telnet. Replace
+the giant mixed-grammar usage line with bounded action-aware category suggestions
+and short special-form guidance, directing full syntax/loaded values to existing
+HELP PASS/REJECT. Keep these replies below the fixture's ten-row automatic-pause
+threshold; add no owner, alias, parser or state/config change. Shared DXBM errors
+use shared PASS/REJECT and REJECT MODE guidance. HELP and docs describe actual
+DX preconditions, station-baseline admission and queued versus delivered
+outcomes without exposing reputation reasons. State wording reflects all 73
+registered mailing codes. MODE alone retains the unnamed-visibility promise;
+exclusive recipes continue to block ALL before passing selected names.
+
+Correct the unsupported RESET MODE wording in the operational MODE recipes and
+the factual command sentence of ADR-0052, ADR-0272 and TSR-0053. These are
+documentation corrections, not reversals of the accepted inference or MODE
+decisions. Scientific/model behavior, taxonomy, admission and persistence stay
+unchanged; no new ADR is required. Keep the decision history and explain the
+correction in the execution record/TSR-0066. Sync both reviewed HELP fixtures and
+README's generated block, preserving the existing 78-byte rendering contract.
+
+| Contract | Stimulus / fault | Required evidence | False-green risk | Checker / owner |
+|---|---|---|---|---|
+| Suggestions describe executable families | Independent 29-family inventory, both actions, bare classic/CC commands and unknown categories | PASS includes NOFILTER; REJECT omits it; PC93 is identified as an alias; finite bounded complete text | Catalog/helper repeats an omission or advertises an unsupported verb | Literal inventory/reverse-domain controls, composed and actual checkout / telnet, runner |
+| Errors preserve ownership | Unknown category, missing/invalid DXBM and state values in both dialects | Intended complete shared usage and zero live/revision/runtime/preset/disk changes or commits | Generic Unknown or CC-only guidance passes without checking effects | Exact literal errors and full-owner snapshots / telnet, runner |
+| Wording matches current semantics | DX HELP, state categories/values, generic versus MODE explanation and all recipe references | Real admission qualifications, 73 codes, explicit supported exclusive/opening MODE commands and no RESET MODE advertisement | Synchronized snapshots repeat a false claim | Literal assertions, actual HELP receipts and existing executable recipe/admission tests / commands, telnet |
+| Discovery stays synchronized and bounded | GO/CC overview, detailed help and README block | Reviewed fixtures, 78-byte lines, machine topics still available and no invented syntax | Updating expected fixtures alone hides broken navigation or recipes | Existing synchronization/recipe tests plus cumulative 18a routes and new wording controls / commands, runner |
+
+Select focused wording/suggestion/refusal controls, complete ordinary baseline,
+commands/telnet race, offline runner faults, cumulative ordinary/race checkout
+and analyzers. Retain 07/17/18a semantic and ownership evidence; no new parser,
+scientific or performance qualification is claimed. Update affected contributor,
+operator and support wording, record TSR-0066, then regenerate maps last.
+
+Implementation retains the existing owners and changes only their discovery
+text. Literal inventories verify all 29 families and 73 mailing codes, the
+PASS-only NOFILTER boundary, PC93 alias and MODE-specific visibility claim.
+Composed real codec/owner/storage refusals preserve full live, cursor, runtime,
+preset and exact-file ownership with zero commit attempts. Their first wording
+test incorrectly required mailing values in HELP SYMBOLS; source shows that
+topic owns the confidence/path legends, so the vector was corrected.
+
+The cumulative runner adds four required cases with full settings and detached
+preset baselines across transports and fresh children. Short replies are
+consumed exactly before a strict correlated CONFIG barrier; file receipts also
+check identity, size and modification time. Complete HELP receipts check six
+wording surfaces per dialect and their deliberate pause behavior. The initial
+actual run `20261010-093111-b20fe27c` failed two native discovery cases because
+the HELP checker treated educational Unknown-state/prefix prose as rejection
+feedback. It had zero wire/cleanup failures and both children retired. The
+checker now exempts only those two exact educational rows in Filter reference,
+with a valid-receipt control plus nested-rejection controls. The complete
+ordinary/race pair was repeated. No production change followed from that fault.
+
+Lint also identified a redundant embedded-field selector in one new test.
+Removing that selector does not change its assertion or production behavior;
+the affected discovery race tests were rerun successfully. Nine new offline
+methods include the refinement above, bringing the final runner controls to 77.
+
+| Selected evidence | Observed result |
+|---|---|
+| Focused literal wording and composed owner checks | PASS; `checkpoint-18b-focused.log` |
+| Complete ordinary baseline | All 70 packages passed, with no-test packages build-checked; `checkpoint-18b-all-packages.log` |
+| Complete affected race lane | commands and telnet passed; `checkpoint-18b-race.log` |
+| Review-fix checks | Discovery race controls passed after the test selector cleanup; `checkpoint-18b-review-targeted.log` |
+| Final offline runner controls | All 77 passed; `checkpoint-18b-runner-controls-final.log` |
+| Whole-repository analyzers | Vet and Staticcheck passed; final lint reported zero issues |
+| Ordinary actual checkout | `20261010-093426-2c442251`: all 132 cases passed, zero wire/cleanup failures; all 12 retirement receipts confirm clients retired, consumer joined and archive stopped |
+| Race actual checkout | `20261010-093724-a4070a82`: all 132 cases passed, zero wire/cleanup failures; all 12 retirement receipts confirm the same retirement boundaries |
+
+Both final builds and all 24 retirement receipts identify Go/module digest
+`06988de0c79ed21e9fb5da833ad42b939f5f499104b8ad39d4ddd782b964f761`.
+All 1,117 current source-file hashes matched the ordinary manifest. Go and
+Python stayed frozen across the final pair; saved Python hashes were unchanged
+after the race run. Private loaded config identity is checked separately; these
+source digests exclude Python, docs and config. Complete baseline evidence is
+retained before the equivalent test-only selector cleanup, with the affected
+race rerun and final lint on that correction. No production load, deployed
+server, scientific/model quality or location/delivery guarantee is claimed.
+
+Support-agent documentation impact: Required. Contributor/telnet guides, the
+validation guide and configuration support card now explain accurate discovery,
+MODE recipes, mailing codes and DX outcomes. ADR-0052 and ADR-0272 retain their
+accepted policies with dated corrections; TSR-0053's unsupported recipe is
+corrected, and indexed TSR-0066 records the wording RCA. No new durable decision
+was made. Fresh lead verification reviewed the final production and test diff,
+checker refinements, source identity and retirement receipts. Record, crawler
+and whitespace checks passed; the crawler scan selected three support-critical
+files, and the new usage header was reviewed directly. Maps are regenerated
+last, followed by the staged diff review.

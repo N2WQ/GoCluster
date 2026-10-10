@@ -45,7 +45,7 @@ func ccFilterHelpLines(verb string) []string {
 		"DXBM takes numeric band codes, not ALL. It maps codes to BAND; modes are ignored.",
 		"DXBM bands: 160, 80, 40, 30, 20, 17, 15, 12, 10, 6, 2 (1 if enabled).",
 		"DXDXCC/DEDXCC accept canonical CTY prefixes or positive ADIF numbers.",
-		"DXSTATE/DESTATE accept US state and Canadian province/territory codes.",
+		"DXSTATE/DESTATE accept US/Canadian registered mailing codes.",
 		"Unknown state fails an explicit PASS list and passes a REJECT-only list.",
 		"State and other geography filters are suspended and retained while NEARBY is enabled.",
 	})

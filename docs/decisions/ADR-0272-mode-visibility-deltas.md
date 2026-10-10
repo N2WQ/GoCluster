@@ -59,8 +59,11 @@ same deliberate setup rather than relaxed assertions.
 
 ### Operational impact
 
-REJECT MODE ALL then PASS MODE CW,FT8 selects those modes. PASS MODE ALL or
-RESET MODE opens MODE explicitly. Other categories and exemptions still apply.
+REJECT MODE ALL then PASS MODE CW,FT8 selects those modes. PASS MODE ALL opens
+MODE explicitly. Other categories and exemptions still apply.
+
+Documentation correction, 2026-10-10: the earlier opening recipe named
+unsupported RESET MODE. The MODE visibility decision remains unchanged.
 
 ## Links
 

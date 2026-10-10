@@ -62,4 +62,5 @@ an acknowledgement alone cannot demonstrate filtering or durability.
 
 Support answer: PASS/REJECT MODE changes only named modes. To build a whitelist,
 use REJECT MODE ALL first, then PASS MODE with the desired names. PASS MODE ALL
-or RESET MODE explicitly opens the MODE filter. Other categories still apply.
+explicitly opens the MODE filter. Other categories still apply. The unsupported
+RESET MODE recipe was removed during checkpoint 18b's wording reconciliation.

@@ -17,6 +17,15 @@ command/error artifact that distinguishes the next step.
 
 ## Must Include
 
+- Short filter suggestions cover all 29 families with NOFILTER only for PASS
+  and PC93 identified as an ANNOUNCE alias. COMMENT keeps shared PASS/REJECT
+  syntax; DXBM errors also recommend shared commands. Retrieve HELP PASS/REJECT
+  for complete grammar. MODE alone preserves unnamed visibility. Use REJECT
+  MODE ALL before an exclusive selection and PASS MODE ALL to open it.
+  Registered US/Canadian mailing codes include provinces and territories.
+  Spot queued confirms intake; recipient filtering and processing determine
+  delivery. See [TSR-0066](../../docs/troubleshooting/TSR-0066-command-discovery-wording.md).
+
 - HELP accepts source-verified aliases and command arguments without executing
   them: SH BUILD/OWN/DXCC/MYDX/PROP, shared CC PASS/REJECT and both-dialect slash
   filter readbacks. The longest complete head wins; unsupported names remain

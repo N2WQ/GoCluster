@@ -41,7 +41,7 @@ func newStateHandler(name string) *domainHandler {
 			return "Invalid state selection: " + strings.Join(invalid, ", ") + "\n", false
 		}
 		if !all && len(states) == 0 {
-			return fmt.Sprintf("Usage: %s %s <state>[,<state>...] (US state/Canadian province codes, or ALL)\nType HELP for usage.\n", verb, name), false
+			return fmt.Sprintf("Usage: %s %s <state>[,<state>...] or ALL\nUS/Canadian mailing codes include provinces and territories.\nType HELP %s for usage.\n", verb, name, verb), false
 		}
 		c.updateFilter(func(f *filter.Filter) {
 			if all {

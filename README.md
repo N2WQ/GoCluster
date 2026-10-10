@@ -119,10 +119,11 @@ together: allowing a band does not bypass your mode, location, or other filters.
 Use `SHOW FILTER` to confirm the result. Filter readbacks temporarily pause
 live spots. Type `RESUME` when ready, or wait for the pause to expire.
 
-`PASS` adds allowed values and removes those values from the blocked list.
-`REJECT` adds blocked values and removes those values from the allowed list.
-Values you do not name remain unchanged. In particular, `PASS MODE CW` does
-not clear previously selected modes. `ALL` applies to the named category only.
+`PASS` allows named values or phrases; `REJECT` blocks them. MODE preserves
+visibility for every mode you do not name: `PASS MODE CW` keeps previously
+visible modes visible. Other list categories can switch from allowing all
+values to a selection. Use `SHOW FILTER` to check the result. `ALL` applies to
+the named category; COMMENT treats it as a literal phrase.
 
 Each recipe below is separate. Commands within a recipe are entered in order.
 Recipes that start with `REJECT ... ALL` replace that category's selections.
@@ -179,11 +180,11 @@ use `PASS SOURCE ALL`.
 | --- | --- | --- |
 | Select DX continents | `PASS DXCONT EU,AF` | `PASS DXCONT ALL` |
 | Select DX countries/entities (**DXCC**) | `PASS DXDXCC K,VE` | `PASS DXDXCC ALL` |
-| Select US states or Canadian provinces | `PASS DXSTATE CA,TX,ON,QC` | `PASS DXSTATE ALL` |
+| Select US/Canadian mailing states, provinces or territories | `PASS DXSTATE CA,TX,ON,QC` | `PASS DXSTATE ALL` |
 | Select callsign patterns (`*` is a wildcard) | `PASS DXCALL K1*,W1AW` | `PASS DXCALL ALL` |
 | Select event families | `PASS EVENT POTA,SOTA` | `PASS EVENT ALL` |
 
-These examples add to existing selections. `DX` filters refer to the spotted
+These examples update one category at a time. `DX` filters refer to the spotted
 station; `DE` filters refer to the reporting station. Country/entity filters
 accept canonical prefixes or positive ADIF entity numbers. A prefix can cover
 several related prefixes; for example, `IT9` selects the same entity as `I`
@@ -768,8 +769,8 @@ What you can filter:
   DEZONE                 Spotter's CQ zone (1-40).
   DXDXCC                 Spotted station's country prefix or ADIF number.
   DEDXCC                 Spotter's country prefix or ADIF number.
-  DXSTATE                Spotted station's US state or Canadian province code.
-  DESTATE                Spotter's US state or Canadian province code.
+  DXSTATE                Spotted station's US/Canadian mailing code.
+  DESTATE                Spotter's US/Canadian mailing code.
   DXGRID2                Spotted station's two-character grid, such as FN.
   DEGRID2                Spotter's two-character grid.
   CONFIDENCE             Callsign confidence symbols: ?, S, P, V, C, B.
@@ -815,8 +816,8 @@ A complete recipe: only 20m/40m and only CW/FT8:
   Own-call spots have special exemptions; see HELP SHOW MYDX.
 
 Filter rules to remember:
-  Allowed selections do not generally replace your existing selections.
-  Allowing moves named items to allowed; blocking moves them to blocked.
+  Filter categories have their own selection rules; see HELP PASS/REJECT.
+  MODE preserves visibility for every mode you do not name.
   Different filter categories must all match, except own-call exemptions.
   MODE changes only the modes you name.
   PASS BAND ALL allows every band; other filters still apply.

@@ -23,7 +23,7 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 		"Human lines use at most 78 ASCII characters; exact values use escapes.",
 		"Switches show ON/OFF; REJECT takes precedence over PASS patterns.",
 		"GET YAML FILTER preserves stored flags, false entries and numeric ADIF keys.",
-		"DESTATE/DXSTATE show FCC mailing-address codes; empty means unknown.",
+		"DESTATE/DXSTATE show US/Canadian registered mailing codes; empty means unknown.",
 		"Preset (modified) means preferences differ from the applied snapshot.",
 		"These readbacks always pause live spots, even if automatic pause is disabled.",
 		"The reading interval starts after server delivery; RESUME ends it now.",

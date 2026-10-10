@@ -76,6 +76,12 @@ The runtime supports two command dialects:
 
 Dialect selection is user-visible and persisted per callsign. HELP is rendered for the active dialect, so the command list and examples change with the selected dialect.
 
+Bare PASS/REJECT and unknown categories give short, bounded guidance. The 29
+filter families include special COMMENT, MINSNR, NEARBY and DXBM forms plus
+PASS-only NOFILTER. PC93 aliases ANNOUNCE. Use HELP PASS/REJECT for each family's
+syntax and the loaded supported values. See
+[discovery wording](../docs/troubleshooting/TSR-0066-command-discovery-wording.md).
+
 ## Manual DX Admission
 
 Plain decimal frequencies are in kHz. Before admission, the effective value is
@@ -93,6 +99,11 @@ details; configured operator reputation-drop diagnostics retain the cause.
 Numeric SSIDs share the baseline station allowance while saved settings remain
 separate. See the [telnet guide](../telnet/README.md) and
 [reputation configuration](../data/config/reputation.yaml).
+
+Posting requires a valid logged-in callsign. Logins ending TEST require CTY
+metadata for their baseline callsign. An accepted queue item still undergoes
+processing and recipient filtering; `Spot queued.` does not establish delivery.
+Missing or full input queues return explicit refusals.
 
 ## Command Surface
 

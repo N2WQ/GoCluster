@@ -93,7 +93,7 @@ func TestConcreteFilterHelpEveryCategory(t *testing.T) {
 					t.Fatalf("%s HELP %s lacks a %s example", dialect, verb, category)
 				}
 			}
-			for _, want := range []string{"Supported bands:", "Supported modes:", "Supported events:", "Continents:", "State/province mailing-address codes:", "Callsign patterns:", "SOURCE takes one value", "other filters still apply"} {
+			for _, want := range []string{"Supported bands:", "Supported modes:", "Supported events:", "Continents:", "US/Canada mailing codes (states, provinces, territories):", "Callsign patterns:", "SOURCE takes one value", "other filters still apply"} {
 				if !strings.Contains(text, want) {
 					t.Fatalf("%s HELP %s lacks %q", dialect, verb, want)
 				}

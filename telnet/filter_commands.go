@@ -289,12 +289,12 @@ func (e *filterCommandEngine) execute(client *Client, cmd parsedFilterCommand) (
 		switch cmd.action {
 		case actionAllow:
 			if strings.EqualFold(cmd.domain, "DXBM") {
-				return "Unknown DXBM band. Supported: 160, 80, 40, 30, 20, 17, 15, 12, 10, 6, 2 (and 1 if enabled). Modes ignored; use SET/NO<MODE>.\n", false
+				return "Unknown DXBM band.\nSupported: 160, 80, 40, 30, 20, 17, 15, 12, 10, 6, 2 (and 1 if enabled).\nModes ignored; use REJECT MODE <mode>.\n", false
 			}
 			return unknownPassTypeMsg, false
 		case actionBlock:
 			if strings.EqualFold(cmd.domain, "DXBM") {
-				return "Unknown DXBM band. Supported: 160, 80, 40, 30, 20, 17, 15, 12, 10, 6, 2 (and 1 if enabled). Modes ignored; use SET/NO<MODE>.\n", false
+				return "Unknown DXBM band.\nSupported: 160, 80, 40, 30, 20, 17, 15, 12, 10, 6, 2 (and 1 if enabled).\nModes ignored; use REJECT MODE <mode>.\n", false
 			}
 			return unknownRejectTypeMsg, false
 		default:
@@ -1389,11 +1389,11 @@ func applyDXBMBands(c *Client, action filterAction, args []string) (string, bool
 	}
 	values := splitListValues(strings.Join(args, " "))
 	if len(values) == 0 {
-		return "Usage: SET/FILTER DXBM/PASS|REJECT <band>[,<band>...]\nType HELP for usage.\n", false
+		return "Usage: PASS DXBM <band-codes> or REJECT DXBM <band-codes>\nType HELP PASS or HELP REJECT for usage.\n", false
 	}
 	bands, invalid := normalizeDXBMBands(values)
 	if len(invalid) > 0 {
-		return fmt.Sprintf("Unknown DXBM band: %s\nSupported: 160, 80, 40, 30, 20, 17, 15, 12, 10, 6, 2 (and 1 if enabled). Modes ignored; use SET/NO<MODE>.\n", strings.Join(invalid, ", ")), false
+		return fmt.Sprintf("Unknown DXBM band: %s\nSupported: 160, 80, 40, 30, 20, 17, 15, 12, 10, 6, 2 (and 1 if enabled).\nModes ignored; use REJECT MODE <mode>.\n", strings.Join(invalid, ", ")), false
 	}
 	if len(bands) == 0 {
 		return "No valid DXBM bands provided.\n", false

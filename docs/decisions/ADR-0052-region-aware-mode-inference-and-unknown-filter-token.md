@@ -33,12 +33,17 @@ Tags: mode-inference, iaru-region, filter-contract, observability
   - `PASS/REJECT MODE UNKNOWN` is supported,
   - default mode selections include `UNKNOWN`,
   - legacy saved explicit mode allowlists are migrated at load time to include `UNKNOWN` unless the user explicitly blocks it,
-  - `PASS MODE ALL` and `RESET MODE` continue to allow blank-mode spots.
+  - `PASS MODE ALL` allows blank-mode spots.
 - Provenance is extended to distinguish `regional_cw`, `regional_voice_default`, `regional_mixed_blank`, and `regional_unknown_blank`.
 - Only trusted evidence classes remain reusable. Regional outcomes, including emitted `CW/USB/LSB`, must not seed reusable inference state.
 - Do not add IARU region as a persisted gridstore field in v1. Derive it from CTY/DXCC metadata already carried in memory/persistence.
 
+Documentation correction, 2026-10-10: the earlier opening recipe named
+unsupported `RESET MODE`. Use `PASS MODE ALL`. This corrects command guidance;
+the accepted inference and UNKNOWN policies above remain unchanged.
+
 ## Alternatives Considered
+
 1. Keep the ADR-0051 whole-band default table
    - Pros:
    - Minimal additional metadata/config surface.
