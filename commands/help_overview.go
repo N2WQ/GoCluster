@@ -227,9 +227,9 @@ func preferencesOverviewLines() []string {
 		helpRow{"SET GRID", "Set your Maidenhead grid square."}, helpRow{"SET NOISE", "Set your receiving noise environment."},
 		helpRow{"SHOW PROP", "Show an outlook to a callsign, prefix or grid."}, helpRow{"SET PATHSAMPLES", "Set the minimum observations for path estimates."},
 		helpRow{"SHOW DEDUPE", "Show duplicate-spot suppression settings."}, helpRow{"SET DEDUPE", "Choose FAST, MED or SLOW duplicate suppression."},
-		helpRow{"SET SOLAR", "Receive solar summaries or turn them off."}, helpRow{"DIALECT", "Show or switch between GO and CC command styles."})
+		helpRow{"SET SOLAR", "Set the cadence for active solar summaries."}, helpRow{"DIALECT", "Show or switch between GO and CC command styles."})
 	lines = append(lines, "", "Examples:", "  SET GRID FN31", "  SET NOISE SUBURBAN", "  SHOW PROP DL 20 CW", "  SET DEDUPE FAST")
-	return append(lines, helpRowLines(helpRow{"SET SOLAR 30", "Receive solar summaries every 30 minutes."}, helpRow{"SET SOLAR OFF", "Stop solar summaries."})...)
+	return append(lines, helpRowLines(helpRow{"SET SOLAR 30", "Receive active solar summaries every 30 minutes."}, helpRow{"SET SOLAR OFF", "Stop solar summaries."})...)
 }
 
 func filterReferenceHelpLines(dialect string) []string {

@@ -153,7 +153,7 @@ def build(race):
     return binary, before
 
 
-def stage(root, transport, *, reputation_enabled=False, dedupe_fast_only=False):
+def stage(root, transport, *, reputation_enabled=False, dedupe_fast_only=False, solar_enabled=None):
     """Copy tracked config only; disable network destinations in private copies."""
     root = plain_output(root)
     root.mkdir(parents=True, exist_ok=False)
@@ -188,6 +188,8 @@ def stage(root, transport, *, reputation_enabled=False, dedupe_fast_only=False):
                                       batch_interval_ms=25, auto_delete_corrupt_db=False)
         if name == "dedupe" and dedupe_fast_only:
             content["dedup"].update(secondary_med_window_seconds=0, secondary_slow_window_seconds=0)
+        if name == "solarweather" and solar_enabled is not None:
+            content["enabled"] = solar_enabled
         if name == "data":
             content["cty"]["file"] = str(root / "cty.plist")
             for key in ("fcc_uls", "ised"):
@@ -243,10 +245,16 @@ def require_dedupe_identity(receipt, requested):
             "fixture loaded dedupe availability mismatch")
 
 
+def require_solar_identity(receipt, requested):
+    require(type(receipt.get("solar_enabled")) is bool and receipt["solar_enabled"] is requested,
+            "fixture loaded solar availability mismatch")
+
+
 class Child:
-    def __init__(self, binary, root, source, *, reputation_enabled=False, dedupe_available=None):
+    def __init__(self, binary, root, source, *, reputation_enabled=False, dedupe_available=None, solar_enabled=True):
         self.root, self.nonce = root, uuid.uuid4().hex
         self.reputation_enabled = reputation_enabled
+        self.solar_enabled = solar_enabled
         self.dedupe_available = {"FAST": True, "MED": True, "SLOW": True} if dedupe_available is None else dedupe_available
         self.ready = root / ("ready-" + self.nonce + ".json")
         self.receipt = root / ("stopped-" + self.nonce + ".json")
@@ -287,6 +295,7 @@ class Child:
                     "fixture loaded configuration identity mismatch")
             require_reputation_identity(value, reputation_enabled)
             require_dedupe_identity(value, self.dedupe_available)
+            require_solar_identity(value, self.solar_enabled)
             host, port = value["address"].rsplit(":", 1)
             require(host == "127.0.0.1" and 0 < int(port) <= 65535, "non-loopback fixture endpoint refused")
             self.host, self.port = host, int(port)
@@ -320,6 +329,7 @@ class Child:
                     "fixture lacks graceful retirement receipt")
             require_reputation_identity(value, self.reputation_enabled)
             require_dedupe_identity(value, self.dedupe_available)
+            require_solar_identity(value, self.solar_enabled)
             text = self.log_path.read_text(encoding="utf-8", errors="replace")
             require("CHECKOUT_FIXTURE_EXECUTED " + self.nonce in text and
                     "--- PASS: TestCheckoutCommandFixture" in text, "required fixture did not execute")

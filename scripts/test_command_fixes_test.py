@@ -25,6 +25,50 @@ HISTORY_ROW = "DX de K1ABC:     14074.00  W6ABC       CW LABEL                  
 
 
 class DriverControls(unittest.TestCase):
+    def test_solar_receipt_requires_exact_loaded_availability(self):
+        for available in (False, True):
+            support.require_solar_identity({"solar_enabled": available}, available)
+            for value in (None, not available, int(available), str(available)):
+                with self.assertRaisesRegex(ValueError, "loaded solar availability mismatch"):
+                    support.require_solar_identity({"solar_enabled": value}, available)
+
+    def test_solar_oracle_requires_exact_cadence_availability_and_read_owners(self):
+        record = mock.Mock()
+        record.read_bytes.return_value = b"solar_summary_minutes: 30\n"
+        saved = record.read_bytes()
+        for available in (False, True):
+            before = dict(configuration={"settings": {"solar_summary_minutes": 30}}, revision="r14",
+                          status=dict(effective={"solar_summary_minutes": 30 if available else 0},
+                                      preset={"name": "SOLAR14"}))
+            wording = "Every 30 minutes when conditions are active" if available else "30 minutes; unavailable on this server"
+            text = "Solar         " + wording
+            driver.require_solar_readback(before, copy.deepcopy(before), record, saved, available, text)
+            for fault in ("configuration", "effective", "revision", "preset", "wording", "duplicate", "disk"):
+                after, output = copy.deepcopy(before), text
+                record.read_bytes.return_value = saved
+                if fault == "configuration":
+                    after["configuration"]["settings"]["solar_summary_minutes"] = 0
+                elif fault == "effective":
+                    after["status"]["effective"]["solar_summary_minutes"] = 0 if available else 30
+                elif fault == "revision":
+                    after["revision"] = "changed"
+                elif fault == "preset":
+                    after["status"]["preset"] = {}
+                elif fault == "wording":
+                    output = "Solar         Every 30 minutes"
+                elif fault == "duplicate":
+                    output += "\n" + text
+                else:
+                    record.read_bytes.return_value = b"changed"
+                with self.assertRaises(ValueError):
+                    driver.require_solar_readback(before, after, record, saved, available, output)
+            record.read_bytes.return_value = saved
+        for configured, effective in ((False, 0), (0.0, 0), (0, False), (0, 0.0)):
+            value = dict(configuration={"settings": {"solar_summary_minutes": configured}},
+                         status=dict(effective={"solar_summary_minutes": effective}))
+            with self.assertRaisesRegex(ValueError, "cadence mismatch"):
+                driver.require_solar_value(value, 0, False)
+
     def test_large_dedupe_oracle_requires_lossless_value_reason_and_footer(self):
         text = ('Dedupe: "XX"\n        + "XX"; effective MED (grid2)\n'
                 '        (fast=on med=on slow=on)\n        Configured choice is unrecognized\n'
@@ -712,7 +756,8 @@ class DriverControls(unittest.TestCase):
                 receipt = json.dumps(dict(nonce="fixed", pid=123, started=True,
                                           binary_hash="binary", source_digest="source",
                                           config_hashes={}, address="127.0.0.1:12345",
-                                          reputation_enabled=False, dedupe_available=dict(FAST=True, MED=True, SLOW=True)))
+                                          reputation_enabled=False, dedupe_available=dict(FAST=True, MED=True, SLOW=True),
+                                          solar_enabled=True))
                 reads = [PermissionError("sharing publication"), receipt]
                 with mock.patch.object(support.uuid, "uuid4", return_value=mock.Mock(hex="fixed")), \
                         mock.patch.object(support.subprocess, "Popen", return_value=process), \

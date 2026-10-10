@@ -96,6 +96,12 @@ func NewManager(cfg Config, logger *log.Logger) *Manager {
 	return m
 }
 
+// Enabled reports immutable feature availability, not current conditions or
+// feed freshness. An empty Summary alone cannot distinguish those states.
+func (m *Manager) Enabled() bool {
+	return m != nil && m.cfg.Enabled
+}
+
 // Start launches a single polling loop. Fetch failures stay inside the loop as
 // logs so path evaluation continues with the previous snapshot or no override.
 func (m *Manager) Start(ctx context.Context) {

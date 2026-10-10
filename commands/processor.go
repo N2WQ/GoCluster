@@ -560,6 +560,8 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 		nil,
 		[]string{
 			"Summaries are wall-clock aligned and start at the next tick.",
+			"Messages are sent only when solar conditions are active.",
+			"On disabled nodes, your cadence is saved but no messages are sent.",
 			"OFF disables summaries.",
 		},
 	)

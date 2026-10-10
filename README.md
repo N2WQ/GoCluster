@@ -99,7 +99,7 @@ will hear the station or make a contact.
 | Inspect or change repeated-spot suppression | `SHOW DEDUPE` or `SET DEDUPE FAST` |
 | See countries reporting your own call | `WHOSPOTSME 20M` |
 | Request a propagation outlook | `SHOW PROP IT9 20m FT8` (set your own grid first) |
-| Receive solar summaries | `SET SOLAR 30` (every 30 minutes); `SET SOLAR OFF` to stop |
+| Receive active solar summaries | `SET SOLAR 30` (every 30 minutes while active, on enabled nodes); `SET SOLAR OFF` to stop |
 | Disconnect | `BYE` |
 
 To post a station you have heard, use `DX <frequency_kHz> <callsign> [comment]`.
@@ -873,7 +873,7 @@ Preferences and propagation:
   SET PATHSAMPLES        Set the minimum observations for path estimates.
   SHOW DEDUPE            Show duplicate-spot suppression settings.
   SET DEDUPE             Choose FAST, MED or SLOW duplicate suppression.
-  SET SOLAR              Receive solar summaries or turn them off.
+  SET SOLAR              Set the cadence for active solar summaries.
   DIALECT                Show or switch between GO and CC command styles.
 
 Examples:
@@ -881,7 +881,7 @@ Examples:
   SET NOISE SUBURBAN
   SHOW PROP DL 20 CW
   SET DEDUPE FAST
-  SET SOLAR 30           Receive solar summaries every 30 minutes.
+  SET SOLAR 30           Receive active solar summaries every 30 minutes.
   SET SOLAR OFF          Stop solar summaries.
 
 Saving and loading presets:

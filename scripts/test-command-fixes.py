@@ -407,7 +407,7 @@ def fixed_setting_cases(suite, root, saved_settings):
             require_setting_control(current, record, "SET DEDUPE " + policy, "Dedupe policy set to " + policy, "dedupe_policy", policy)
             exact_human_reply(current, "SHOW DEDUPE", f"Dedupe: {policy} ({key}) (fast=on med=on slow=on)")
         for token, value in (("15", 15), ("30", 30), ("60", 60), ("OFF", 0), ("30", 30)):
-            feedback = "Solar summaries: OFF" if not value else f"Solar summaries: every {value} minutes"
+            feedback = "Solar summaries: OFF" if not value else f"Solar summaries: every {value} minutes when conditions are active"
             require_setting_control(current, record, "SET SOLAR " + token, feedback, "solar_summary_minutes", value)
         for token, canonical in (("OFF", "OFF"), ("DEDUPE", "DEDUPE"), ("SOURCE", "SOURCE"),
                                   ("CONF", "CONF"), ("CONFIDENCE", "CONF"), ("PATH", "PATH"), ("MODE", "MODE")):
@@ -1025,6 +1025,7 @@ def profile(binary, root, source, transport):
                 f"{transport}: DXCC and logout arity preserve the original session",
                 f"{transport}: fixed settings reject tails and preserve valid values",
                 f"{transport}/0: large DEDUPE final send fits or refuses without effects",
+                f"{transport}/0: enabled SOLAR feedback preserves cadence and read owners",
                 f"{transport}/1: held endpoint and loaded consumers",
                 f"{transport}: preferences and archive survive fresh child",
                 f"{transport}: NOFILTER geography survives fresh child",
@@ -1042,7 +1043,8 @@ def profile(binary, root, source, transport):
                 f"{transport}: supported filter arguments survive fresh child",
                 f"{transport}: command arity preferences survive fresh child",
                 f"{transport}: fixed setting values survive fresh child with session reset",
-                f"{transport}/1: large DEDUPE final send survives fresh child"]
+                f"{transport}/1: large DEDUPE final send survives fresh child",
+                f"{transport}/1: enabled SOLAR cadence survives fresh child"]
     call = "K1ABC-70001"
     observer_call, observer_configuration = "VE3ABC-70003", None
     failed_records, refused_records, compatible_records = {}, {}, {}
@@ -1055,6 +1057,7 @@ def profile(binary, root, source, transport):
     saved_arguments = {}
     saved_arity = {}
     saved_settings = {}
+    saved_solar = {}
     label = None
     suites = []
     for generation in range(2):
@@ -1464,6 +1467,8 @@ def profile(binary, root, source, transport):
                      lambda: fixed_setting_cases(suite, root, saved_settings))
                 case(f"{transport}/0: large DEDUPE final send fits or refuses without effects",
                      lambda: large_dedupe_cases(suite, root, generation))
+                case(f"{transport}/0: enabled SOLAR feedback preserves cadence and read owners",
+                     lambda: solar_cases(suite, root, True, generation, saved_solar))
             else:
                 def restored():
                     settings = session.get()["configuration"]["settings"]
@@ -1670,6 +1675,8 @@ def profile(binary, root, source, transport):
                 case(f"{transport}: fixed setting values survive fresh child with session reset", restored_settings)
                 case(f"{transport}/1: large DEDUPE final send survives fresh child",
                      lambda: large_dedupe_cases(suite, root, generation))
+                case(f"{transport}/1: enabled SOLAR cadence survives fresh child",
+                     lambda: solar_cases(suite, root, True, generation, saved_solar))
         finally:
             try:
                 if suite:
@@ -1797,14 +1804,82 @@ def large_dedupe_cases(suite, root, generation):
                 "large DEDUPE success/refusal changed a preference owner")
 
 
+def require_solar_value(document, value, available):
+    configured = document["configuration"]["settings"].get("solar_summary_minutes", 0)
+    effective = document["status"]["effective"]["solar_summary_minutes"]
+    require(type(configured) is int and configured == value and type(effective) is int and
+            effective == (value if available else 0), "SOLAR configured/effective cadence mismatch")
+
+
+def require_solar_readback(before, after, record, saved, available, text=None):
+    require_solar_value(before, 30, available)
+    require_solar_value(after, 30, available)
+    require(after["configuration"] == before["configuration"] and after["revision"] == before["revision"] and
+            after["status"]["effective"] == before["status"]["effective"] and
+            after["status"]["preset"] == before["status"]["preset"] and record.read_bytes() == saved,
+            "SOLAR read changed a preference owner")
+    if text is not None:
+        wording = "Every 30 minutes when conditions are active" if available else "30 minutes; unavailable on this server"
+        rows = [line for line in text.splitlines() if line.startswith("Solar         ")]
+        require(rows == ["Solar         " + wording], "SOLAR readback misrepresents conditional availability")
+
+
+def solar_cases(suite, root, available, generation, saved_solar):
+    # This manager has loaded availability and unobserved feeds. Fresh calm and
+    # active generation/dispatch are qualified by permanent owner/queue tests.
+    for dialect, call in (("go", "VE3ABC-70065"), ("cc", "VE3ABC-70066")):
+        current = harness.Session(suite, call)
+        current.human("PAUSE 300")
+        record = root / "users" / (call + ".yaml")
+        if generation == 0:
+            current.human("DIALECT " + dialect)
+            feedback = "Solar summaries: every 30 minutes when conditions are active" if available else \
+                       "Solar cadence: 30 minutes; unavailable on this server"
+            require_setting_control(current, record, "SET SOLAR 30", feedback, "solar_summary_minutes", 30)
+            current.human("SAVE PRESET SOLAR14", "Saved preset SOLAR14")
+            before, saved = current.get(), record.read_bytes()
+            with deny_record_replacement(record):
+                warning = "Solar summaries: every 15 minutes when conditions are active" if available else \
+                          "Solar cadence: 15 minutes; unavailable on this server"
+                text, failed = current.human("SET SOLAR 15", warning + " (warning: failed to persist:")
+                require_solar_value(failed, 15, available)
+                require(record.read_bytes() == saved and "warning: failed to persist:" in text,
+                        "SOLAR commit failure hid failure or replaced saved cadence")
+            require_setting_control(current, record, "SET SOLAR 30", feedback, "solar_summary_minutes", 30)
+            before, saved = current.get(), record.read_bytes()
+            candidate = copy.deepcopy(before["configuration"])
+            candidate["settings"]["solar_summary_minutes"] = 60
+            response = current.upload("VALIDATE", "CONFIG", candidate)
+            require("error" not in response and response["result"]["valid"] is True and
+                    response["result"]["applied"] is False and response["result"]["persisted"] is False,
+                    "SOLAR preference validation changed availability admission")
+            require_solar_readback(before, current.get(), record, saved, available)
+            response = current.upload("PUT", "CONFIG", before["configuration"], revision=before["revision"])
+            require("error" not in response, "unchanged SOLAR machine publication failed")
+            current.human("LOAD PRESET SOLAR14", "Loaded preset SOLAR14")
+        before, saved = current.get(), record.read_bytes()
+        require_solar_value(before, 30, available)
+        if generation:
+            require((before["configuration"], before["status"]["preset"]) == saved_solar[call],
+                    "fresh child lost saved SOLAR cadence or preset association")
+        for version in (1, 2, 3, 4):
+            require_solar_value(current.get("CONFIG", version), 30, available)
+        for _ in range(2):
+            text, after = current.human("SHOW SETTINGS")
+            require_solar_readback(before, after, record, saved, available, text)
+        saved_solar[call] = before["configuration"], before["status"]["preset"]
+
+
 def dedupe_profile(binary, root, source, transport):
     """Real marked-record login and read-only fallback on a loaded FAST-only node."""
     prefix = transport + "/dedupe"
     required = [f"{prefix}/0: held endpoint exposes loaded FAST-only availability",
                 f"{prefix}/0: saved SLOW readbacks preserve every preference owner",
                 f"{prefix}: applied SET fallback and machine refusal remain compatible",
+                f"{prefix}/0: disabled SOLAR keeps saved cadence and reports effective zero",
                 f"{prefix}/1: held endpoint exposes loaded FAST-only availability",
-                f"{prefix}/1: saved SLOW survives fresh child without read effects"]
+                f"{prefix}/1: saved SLOW survives fresh child without read effects",
+                f"{prefix}/1: disabled SOLAR cadence survives fresh child"]
     available = dict(FAST=True, MED=False, SLOW=False)
     calls = (("go", "K1ABC-70058"), ("cc", "K1ABC-70059"))
     users = root / "users"
@@ -1815,11 +1890,12 @@ def dedupe_profile(binary, root, source, transport):
         document = {**baseline, "preset": dict(name="DEDUPE13", baseline=baseline)}
         (users / (call + ".yaml")).write_text(yaml.safe_dump(document), encoding="utf-8")
     saved_configuration = {}
+    saved_solar = {}
     results, wire, cleanup, children = [], [], [], []
     for generation in range(2):
         child, suite = None, None
         try:
-            child = Child(binary, root, source, dedupe_available=available)
+            child = Child(binary, root, source, dedupe_available=available, solar_enabled=False)
             children.append(child.identity)
             suite = harness.Suite(SimpleNamespace(host=child.host, port=child.port, call="K1ABC",
                                                   timeout=8, run_seconds=120, output=root / f"wire-{generation}"))
@@ -1831,7 +1907,7 @@ def dedupe_profile(binary, root, source, transport):
                 require(current.get("CAPABILITIES")["configuration"]["dedupe_available"] == available,
                         "actual server does not expose the literal FAST-only profile")
 
-            suite.case(required[0 if generation == 0 else 3], identity)
+            suite.case(required[0 if generation == 0 else 4], identity)
             child.check_running()
 
             def reads():
@@ -1855,7 +1931,7 @@ def dedupe_profile(binary, root, source, transport):
                         require_dedupe_readback(before, after, record, saved, text)
                     saved_configuration[call] = before["configuration"]
 
-            suite.case(required[1 if generation == 0 else 4], reads)
+            suite.case(required[1 if generation == 0 else 5], reads)
             child.check_running()
             if generation == 0:
                 def positive():
@@ -1879,6 +1955,9 @@ def dedupe_profile(binary, root, source, transport):
 
                 suite.case(required[2], positive)
                 child.check_running()
+            suite.case(required[3 if generation == 0 else 6],
+                       lambda: solar_cases(suite, root, False, generation, saved_solar))
+            child.check_running()
         finally:
             try:
                 if suite:
@@ -2062,7 +2141,7 @@ def main():
                 report["profiles"].append(profile(binary, root, source, transport))
                 reputation_root = stage(run / (transport + "-reputation"), transport, reputation_enabled=True)
                 report["profiles"].append(reputation_profile(binary, reputation_root, source, transport))
-                dedupe_root = stage(run / (transport + "-dedupe"), transport, dedupe_fast_only=True)
+                dedupe_root = stage(run / (transport + "-dedupe"), transport, dedupe_fast_only=True, solar_enabled=False)
                 report["profiles"].append(dedupe_profile(binary, dedupe_root, source, transport))
         report["result"] = "PASS"
     except (OSError, ValueError, EOFError, TimeoutError, subprocess.TimeoutExpired, harness.yaml.YAMLError) as error:

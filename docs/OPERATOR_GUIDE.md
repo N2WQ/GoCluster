@@ -209,7 +209,9 @@ Log in with your callsign. Useful first commands:
 - `SET NOISE QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL`: set receive noise class.
 - `SET PATHSAMPLES <count|DEFAULT>`: require more path samples than the cluster default, or clear your personal override.
 - `SET DIAG OFF|DEDUPE|SOURCE|CONF|PATH|MODE`: replace spot comments with compact per-session diagnostics.
-- `SET SOLAR 15|30|60|OFF`: opt into or stop periodic solar summaries.
+- `SET SOLAR 15|30|60|OFF`: choose an aligned cadence for active solar summaries,
+  or stop them. Quiet conditions produce no tick message. Disabled nodes retain
+  the saved cadence and report effective zero without promising delivery.
 - `DIALECT`, `DIALECT LIST`, `DIALECT <go|cc>`: show or switch command dialect.
 - `SHOW FILTER`: show filter selections and restrictions.
 - `SHOW FILTER FULL` or `SHOW FILTER <category>`: show complete effective PASS/REJECT selections and ON/OFF switches.
@@ -335,7 +337,7 @@ Grid          FN31PR
 Noise         SUBURBAN
 Dedupe        SLOW; effective FAST while NEARBY is active
 Path samples  DEFAULT; stations 21, beacons 11
-Solar         Every 30 minutes
+Solar         Every 30 minutes when conditions are active
 
 Session only
 Diagnostics   Off

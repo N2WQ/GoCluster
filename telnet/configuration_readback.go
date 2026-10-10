@@ -142,12 +142,16 @@ func (s *Server) captureReadbackStatus(c, prepared *Client) configurationReadbac
 	}
 	active, suppressed := pending || remaining > 0, c.readPauseSuppressed.Load()
 	c.readPauseMu.Unlock()
+	solarMinutes := prepared.getSolarSummaryMinutes()
+	if !s.solarWeather.Enabled() {
+		solarMinutes = 0
+	}
 	status := configurationReadbackStatus{
 		Effective: readbackEffectiveStatus{
 			Dialect: string(prepared.dialect), Grid: state.grid, GridDerived: state.gridDerived,
 			NoiseClass: state.noiseClass, DedupePolicy: s.effectiveDedupePolicyForClient(prepared).label(),
 			PathMinObservationCount: max(state.pathMinObservationCount, s.pathPredictorMinObservationCount()),
-			SolarSummaryMinutes:     prepared.getSolarSummaryMinutes(), NearbyActive: prepared.nearbyFilterInEffect(),
+			SolarSummaryMinutes:     solarMinutes, NearbyActive: prepared.nearbyFilterInEffect(),
 		},
 		Session: readbackSessionStatus{
 			Callsign: c.callsign, DiagnosticComments: readbackDiagnosticName(c.getDiagMode()),

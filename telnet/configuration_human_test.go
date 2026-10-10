@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"dxcluster/filter"
 	"dxcluster/pathreliability"
+	"dxcluster/solarweather"
 	"dxcluster/spot"
 	"errors"
 	"fmt"
@@ -19,13 +20,14 @@ import (
 )
 
 const humanOverviewExample = "User          N2WQ-1\r\nPreset        CONTEST (modified)\r\n\r\nBands         Only 20m, 40m\r\nModes         CW, FT8; unknown modes hidden\r\nMin SNR       None\r\nComments      All\r\nSources       All (HUMAN, SKIMMER)\r\nEvents        POTA; block WWFF; untagged included\r\nConfidence    All\r\nPath          All\r\nDX states     Suspended by NEARBY; rules retained\r\nDE states     Suspended by NEARBY; rules retained\r\nDX geography  Suspended by NEARBY; rules retained\r\nDE geography  Suspended by NEARBY; rules retained\r\nDX calls      Only 12 patterns; 3 blocked\r\nDE calls      All\r\nNearby        On; grid FN31PR\r\nInclude       Beacons: Off | WWV: On | WCY: On | Announce: On\r\n              Self: Off | Toxic: Off\r\n\r\nDetailed selections: SHOW FILTER FULL\r\nOne category: SHOW FILTER <category>\r\n\r\nLive spots paused during delivery and for at least 30s afterward.\r\nType RESUME when ready. Missed spots are not replayed.\r\n"
-const humanSettingsExample = "User          N2WQ-1\r\nPreset        CONTEST (modified)\r\n\r\nDialect       GO\r\nGrid          FN31PR\r\nNoise         SUBURBAN\r\nDedupe        SLOW; effective FAST while NEARBY is active\r\nPath samples  DEFAULT; stations 21, beacons 11\r\nSolar         Every 30 minutes\r\n\r\nSession only\r\nDiagnostics   Off\r\nLive spots    Paused for reading; at least 30s after delivery\r\n              135 spots suppressed\r\n\r\nLive spots paused during delivery and for at least 30s afterward.\r\nType RESUME when ready. Missed spots are not replayed.\r\n"
+const humanSettingsExample = "User          N2WQ-1\r\nPreset        CONTEST (modified)\r\n\r\nDialect       GO\r\nGrid          FN31PR\r\nNoise         SUBURBAN\r\nDedupe        SLOW; effective FAST while NEARBY is active\r\nPath samples  DEFAULT; stations 21, beacons 11\r\nSolar         Every 30 minutes when conditions are active\r\n\r\nSession only\r\nDiagnostics   Off\r\nLive spots    Paused for reading; at least 30s after delivery\r\n              135 spots suppressed\r\n\r\nLive spots paused during delivery and for at least 30s afterward.\r\nType RESUME when ready. Missed spots are not replayed.\r\n"
 
 func humanExampleClient() (*Server, *Client) {
 	s, c := readbackTestClient()
 	cfg := pathreliability.DefaultConfig()
 	cfg.MinObservationCount, cfg.BeaconMinObservationCount = 21, 11
 	s.pathPredictor = pathreliability.NewPredictor(cfg, []string{"20m", "40m"})
+	s.solarWeather = solarweather.NewManager(solarweather.Config{Enabled: true}, nil)
 	s.dedupeFastEnabled, s.dedupeMedEnabled, s.dedupeSlowEnabled = true, true, true
 	c.callsign, c.grid, c.gridDerived, c.noiseClass = "N2WQ-1", "FN31PR", false, "SUBURBAN"
 	c.setDedupePolicy(dedupePolicySlow)

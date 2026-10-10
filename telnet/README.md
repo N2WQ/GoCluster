@@ -468,6 +468,12 @@ choices, or `DIALECT <name>` with one name to switch. Malformed SOLAR commands
 leave the schedule unchanged; a valid human command deliberately restarts its
 schedule, even if you select the same cadence.
 
+`SET SOLAR 15|30|60` saves the cadence for summaries at aligned UTC ticks.
+Messages are sent only while solar conditions are active. On a node where solar
+weather is disabled, the cadence stays saved, feedback says it is unavailable,
+and machine status reports an effective cadence of zero. `SHOW SETTINGS` keeps
+the configured cadence visible. `SET SOLAR OFF` stops summaries.
+
 `SHOW DEDUPE` and `SHOW SETTINGS` keep your saved DEDUPE choice visible. If SLOW
 is saved but this server only enables FAST, both show SLOW with effective FAST
 and explain that SLOW is unavailable. Usable NEARBY can temporarily change the
@@ -832,7 +838,8 @@ restrictions: disabled dedupe policies use the enabled-policy fallback, and a
 path sample override only applies above the current cluster minimum. Grid/H3
 cells and the `NEARBY` location-filter restoration snapshot are rebuilt. Stored
 `NEARBY` remains inactive with a warning when usable cells are unavailable.
-Solar summaries start at the next wall-clock-aligned tick.
+LOAD restarts the chosen SOLAR schedule at the next wall-clock-aligned tick;
+enabled nodes send summaries only when conditions are active.
 
 Successful LOAD associates the name and establishes the successfully applied
 preferences as the reference. Server adjustments are reported separately.

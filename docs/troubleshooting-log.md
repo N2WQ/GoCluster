@@ -11,6 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0061 | SOLAR Availability And Outcomes | Monitoring | 2026-10-09 | solar summaries, command feedback, saved/effective cadence | none | `docs/troubleshooting/TSR-0061-solar-availability-and-outcomes.md` |
 | TSR-0060 | DEDUPE Configured And Effective Readback | Monitoring | 2026-10-09 | telnet, DEDUPE, stored settings, effective lanes, bounded readback | none | `docs/troubleshooting/TSR-0060-dedupe-configured-effective-readback.md` |
 | TSR-0059 | Fixed Setting Argument Arity | Monitoring | 2026-10-09 | telnet settings, diagnostic mode, scheduling, argument admission | none | `docs/troubleshooting/TSR-0059-fixed-setting-argument-arity.md` |
 | TSR-0058 | DXCC Lookup And Logout Argument Arity | Monitoring | 2026-10-09 | commands, DXCC lookup, logout aliases, connection usability | none | `docs/troubleshooting/TSR-0058-dxcc-logout-arity.md` |

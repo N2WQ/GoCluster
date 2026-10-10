@@ -1766,8 +1766,10 @@ func (s *Server) stageSolarCommand(client *Client, line string) humanCommandOutc
 	var outcome humanCommandOutcome
 	if minutes == 0 {
 		outcome = humanMutation("Solar summaries: OFF\n", "Solar summaries: OFF (warning: failed to persist: %v)\n")
+	} else if !s.solarWeather.Enabled() {
+		outcome = humanMutation(fmt.Sprintf("Solar cadence: %d minutes; unavailable on this server\n", minutes), "Solar cadence: %d minutes; unavailable on this server (warning: failed to persist: %v)\n", minutes)
 	} else {
-		outcome = humanMutation(fmt.Sprintf("Solar summaries: every %d minutes\n", minutes), "Solar summaries: every %d minutes (warning: failed to persist: %v)\n", minutes)
+		outcome = humanMutation(fmt.Sprintf("Solar summaries: every %d minutes when conditions are active\n", minutes), "Solar summaries: every %d minutes when conditions are active (warning: failed to persist: %v)\n", minutes)
 	}
 	outcome.forceSolar = true
 	return outcome
@@ -2424,7 +2426,13 @@ func (s *Server) emitSolarSummaries(now time.Time) {
 	if s == nil || s.solarWeather == nil {
 		return
 	}
-	message := s.solarWeather.Summary(now)
+	s.dispatchSolarSummary(now, s.solarWeather.Summary(now))
+}
+
+// dispatchSolarSummary owns the existing per-client tick transition. An empty
+// summary consumes a due slot, so newly active conditions wait for the next
+// selected tick instead of sending immediately or replaying missed ticks.
+func (s *Server) dispatchSolarSummary(now time.Time, message string) {
 	s.clientsMutex.RLock()
 	defer s.clientsMutex.RUnlock()
 	for _, client := range s.clients {

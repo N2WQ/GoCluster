@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 13 complete (04a used two commits);
-27 approved checkpoints remain; 14 is next.
+Current progress: checkpoints 00 through 14 complete (04a used two commits);
+26 approved checkpoints remain; 15 is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -1984,3 +1984,93 @@ footer and barrier lessons, and checker limits. Existing runtime interpretation
 and publication contracts remain; no new ADR is warranted. Generated maps and
 whitespace checks close the slice. No production suppression-quality, external
 cluster, load, or full-repository race claim is made.
+
+## Checkpoint 14: SOLAR availability and conditional outcomes
+
+Status: complete. Discovery inspected the concrete manager, production
+construction, Summary/Snapshot, telnet emission and cadence ownership, detached
+publication, machine effective status, human settings, HELP, configuration and
+existing scheduling tests. Production supplies a manager only when the loaded
+solarweather feature-root enables it. An empty Summary is not an availability
+signal: enabled quiet or unobserved conditions also return empty. Due ticks
+already advance when no summary is emitted.
+
+Architecture: retain the concrete manager and its existing model-facing
+OverrideGlyph dependency. Add a read-only query of its immutable enablement;
+effective machine cadence is zero when unavailable, while configured and saved
+cadence remain exact. Human acknowledgements, settings and HELP describe
+conditional delivery on enabled nodes. Preserve OFF and deliberate human
+same-value rescheduling, existing machine publication and LOAD behavior.
+
+Extract only the current private message-dispatch loop for direct queue/deadline
+tests. Keep Summary generation, polling, model thresholds, gates and real timer
+behavior unchanged. A separate technical falsifiability investigation verified
+that an unpolled manager is not a genuine calm oracle, and that negative dispatch
+tests need a usable control queue and positive delivery. The smaller composed
+evidence design is selected: actual solarweather owner tests generate active
+and fresh calm outcomes; dispatcher tests qualify supplied-summary scheduling.
+The unchanged wrapper's connection to Summary is verified from current source.
+This does not qualify a live polling-to-wire bridge or polling-loop retirement.
+A new interface would touch the override dependency or add a second source;
+parent-context polling has no exposed join. Neither is needed for this bounded
+feedback change. The investigation was inherited-context, read-only technical
+evidence, not independent scientific review.
+
+The checkout fixture will construct the manager from its already-loaded required
+config on enabled profiles without starting fetch polling. Disabled profiles
+keep it absent, matching production construction. Startup/retirement receipts
+must verify actual availability. No runtime YAML/default/schema change, external
+HTTP, model-quality claim, new production worker, lifecycle fix or durable
+decision is proposed. Existing approval settles product policy; no new ADR is
+needed.
+
+Lead-owned preimplementation falsifiability matrix:
+
+| Contract | Stimulus / fault | Required evidence | False-green risk | Checker / owner |
+|---|---|---|---|---|
+| Availability versus choice | Nil and explicitly disabled managers; enabled but unobserved manager; 15/30/60 and OFF | Exact saved cadence, effective zero only when unavailable, conditional wording on enabled node | Clearing saved settings or using empty Summary as enablement | Immutable manager query, literal readback/response and immediate saved bytes / telnet, solarweather, runner |
+| Genuine calm and active generation | Fresh low observations, no holds; existing R3/G2 literal | Empty calm summary with both stale flags false and negative active indices; exact active message | An unpolled manager misrepresented as quiet conditions | Owner-state controls / solarweather |
+| Selected ticks | Real control queues for 15/30/60/OFF; before/exact/repeated/late literal UTC boundaries | Exact messages/counts and next future deadlines; no catch-up duplicates | Nil queue makes all negative assertions pass | Current dispatch owner and literal deadlines / telnet |
+| Empty tick consumes its slot | Empty at 12:15, active at 12:16 and 12:30 | No immediate message at 12:16; one at 12:30; exact deadline advancement | Ignoring the deadline after an empty result | Current dispatch owner / telnet |
+| Publication preservation | Valid unchanged human SET, unchanged machine update, LOAD; invalid commands | Existing rescheduling/preservation distinctions, zero effects on invalid input | Readback fix changes clock ownership | Existing publication/arity controls plus exact schedule snapshots / telnet |
+| Persistence and reads | Commit failure, both dialects, machine candidate status, repeated reads, fresh child, schemas 1–4 | Truthful warnings; configured/effective distinction; no read-induced revision/disk/deadline change | Logout save repairs missing command persistence | Immediate disk and owner comparison, isolated replacement children / telnet, runner |
+
+Select focused telnet/solarweather/commands ordinary and race controls, cumulative
+actual ordinary/race checkout profiles, offline checker faults, complete ordinary
+baseline, analyzers and final documentation/maps/diff checks. No scientific
+algorithm, model inputs or quality claims change; independent scientific review
+is not triggered by this feedback correction.
+
+### Observed final validation
+
+| Check | Result |
+|---|---|
+| Package controls | Focused telnet/solarweather/commands controls and complete filter/telnet/solarweather/commands ordinary and race suites passed |
+| Complete ordinary baseline | All 70 packages completed successfully; no-test packages build-checked; `checkpoint-14-all-packages.log` |
+| Runner controls | All 50 offline controls passed, including strict loaded availability, numeric types, conditional wording, duplicate rows and read-owner faults; `checkpoint-14-runner-controls.log` |
+| Actual checkout runs | Ordinary `20261009-224756-08cdaacd` and race `20261009-225016-dbf68a8d`: all 112 required cases passed per build; 42 main, 7 reputation and 7 disabled-SOLAR/FAST-only DEDUPE cases per transport |
+| Transport and child ownership | Zero wire or cleanup failures; all 12 retirement receipts per build confirm clients retired, consumer joined, archive stopped and loaded availability; 8 enabled and 4 disabled solar profiles |
+| Whole-repository analyzers | vet and Staticcheck passed; lint passed with zero issues |
+
+Both actual builds and all their children report Go/module source digest
+`4b72909e82b654fe7e836eadd1e6d3aad5a566ab5db40ba181504b6f38d95717`.
+Go and Python were frozen for both runs. The digest excludes Python, docs and
+configuration; private loaded configurations have separately verified hashes.
+
+Fresh lead verification reviewed the final source, supplied-summary/owner test
+boundaries, literal deadlines, direct diff, exact saved-byte checks and actual
+retirement receipts. No unresolved material defect was found. The small private
+dispatch extraction preserves the existing queue, timer and deadline owners;
+the new immutable availability query introduces no polling or retained state.
+The composed evidence does not establish live feed polling, a polling-to-wire
+bridge, solar poll-loop retirement, physical/model accuracy or production load.
+No external-cluster or full-repository race qualification is claimed.
+
+Implementation maps to `Manager.Enabled`, conditional telnet acknowledgements
+and settings, effective machine status, permanent owner/dispatcher controls,
+loaded checkout availability and the cumulative runner. Support-agent impact:
+Required; HELP/overview fixtures, README, operator/telnet guides and the support
+route were updated. TSR-0061 retains the failure mechanism and checker limits.
+The LOAD guide now describes scheduling separately from conditional delivery.
+No new ADR is warranted. Record, crawler-entry, generated-map, whitespace and
+direct staged-diff checks close the slice.

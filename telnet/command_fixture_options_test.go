@@ -6,14 +6,21 @@ import (
 	"dxcluster/config"
 	"dxcluster/cty"
 	"dxcluster/pathreliability"
+	"dxcluster/solarweather"
 )
 
 // commandFixtureOptions consumes the loaded telnet contracts. Deployment feeds,
 // reputation and solar fetching are absent in checkpoint 00; later checkpoints
 // add their own controls. The loaded, empty predictor supports PATHSAMPLES from
 // checkpoint 12 without ingestion/display or a production model-quality claim.
+// Checkpoint 14 adds the loaded solar manager without fetch polling. Its existing
+// summary timer is server-owned; enabled unobserved feeds are not a calm oracle.
 func commandFixtureOptions(cfg *config.Config, db *cty.CTYDatabase) ServerOptions {
 	c := cfg.Telnet
+	var solar *solarweather.Manager
+	if cfg.SolarWeather.Enabled {
+		solar = solarweather.NewManager(cfg.SolarWeather, nil)
+	}
 	return ServerOptions{
 		ClusterCall: cfg.Server.NodeID, WelcomeMessage: c.WelcomeMessage,
 		LoginGreeting: c.LoginGreeting, LoginPrompt: c.LoginPrompt,
@@ -47,6 +54,7 @@ func commandFixtureOptions(cfg *config.Config, db *cty.CTYDatabase) ServerOption
 		DefaultDedupePolicy: cfg.Dedup.DefaultPolicy,
 		NoiseModel:          cfg.PathReliability.NoiseModel(),
 		PathPredictor:       pathreliability.NewPredictor(cfg.PathReliability, cfg.PathReliability.AllowedBands),
+		SolarWeather:        solar,
 		DedupeFastEnabled:   cfg.Dedup.SecondaryFastWindowSeconds > 0,
 		DedupeMedEnabled:    cfg.Dedup.SecondaryMedWindowSeconds > 0,
 		DedupeSlowEnabled:   cfg.Dedup.SecondarySlowWindowSeconds > 0,

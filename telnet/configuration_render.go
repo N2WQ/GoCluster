@@ -231,7 +231,7 @@ type humanRuntimeStatus struct {
 	stationFloor, beaconFloor                  int
 	stationMinimum, beaconMinimum, userMinimum int
 	prediction                                 string
-	dedupeEnabled, fastEnabled                 bool
+	dedupeEnabled, fastEnabled, solarEnabled   bool
 }
 
 func (s *Server) captureHumanRuntime(c *Client) humanRuntimeStatus {
@@ -242,6 +242,7 @@ func (s *Server) captureHumanRuntime(c *Client) humanRuntimeStatus {
 	}
 	runtime.dedupeEnabled = s.dedupeFastEnabled || s.dedupeMedEnabled || s.dedupeSlowEnabled
 	runtime.fastEnabled = s.dedupeFastEnabled
+	runtime.solarEnabled = s.solarWeather.Enabled()
 	if s.pathPredictor != nil {
 		cfg := s.pathPredictor.Config()
 		runtime.stationFloor, runtime.beaconFloor = cfg.MinObservationCount, cfg.BeaconMinObservationCount
@@ -378,7 +379,10 @@ func writeHumanSettings(h *humanResponse, cfg filter.SettingsConfiguration, stat
 	}
 	solar := "Off"
 	if cfg.SolarSummaryMinutes != 0 {
-		solar = fmt.Sprintf("Every %d minutes", cfg.SolarSummaryMinutes)
+		solar = fmt.Sprintf("%d minutes; unavailable on this server", cfg.SolarSummaryMinutes)
+		if runtime.solarEnabled {
+			solar = fmt.Sprintf("Every %d minutes when conditions are active", cfg.SolarSummaryMinutes)
+		}
 	}
 	if err := h.row("Solar", solar); err != nil {
 		return err
