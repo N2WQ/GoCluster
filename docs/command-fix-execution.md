@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 25 complete (04a used two commits);
-33 of 46 approved checkpoints complete; 13 remain; 26 is next.
+Current progress: checkpoints 00 through 26 complete (04a used two commits);
+34 of 46 approved checkpoints complete; 12 remain; 27 is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -3474,3 +3474,105 @@ TSR-0074; no operator setting or runtime contract changed. Initial failures rema
 uncredited. The earlier timer-resolution possibility was not established; the
 asynchronous observer-clock defect is established directly from current source
 and the held-delivery control.
+
+## Checkpoint 26: descriptive distance-3 analysis
+
+Status: complete under approved v3 checkpoint 26. Design and matrix preceded code.
+
+Discovery inspected the entire analyze_distance3 command, legacy schema searches,
+neighboring threshold/analysis consumers, ADR-0023 and current support routing.
+The command treats all non-lowercase-applied outcomes as rejections, hides SQL
+failures and prints fixed optimality/calibration/stability assertions unrelated
+to input. No current producer for this legacy decisions schema was found in the
+inspected source. It remains a historical-schema consumer; synthetic databases
+qualify that reader, not production database generation. Dependency inventory is
+`checkpoint-26-dependencies.json`.
+
+Selected scientific contract is already v3's descriptive boundary. Applied and
+rejected are recognized case-only spellings; NULL/empty/other values are unknown.
+Partition counts and percentages explicitly name all selected rows as denominator.
+Applied statistics use only recognized applied rows; zero denominators are N/A.
+Logged confidence is an unvalidated stored score. Keep the six existing scalar
+gate comparisons as hypothetical scenarios with explicit base 3 reports,
+advantage 1 and score 60 plus listed extras. They do not load current settings or
+replay other correction gates. Unknown rows cannot become added rejections.
+Remove fixed scientific advice entirely. Independent accuracy/calibration oracle
+is missing; no new empirical verdict is issued. This pass is lead-owned arithmetic
+and claim verification, not independent scientific review.
+
+Architecture: keep the single command package/private APIs. Main parses its
+existing db flag; private run owns DB close and returns errors before main exits
+1. A private loader scans nullable outcomes and propagates query/scan/iteration/
+row-close errors; failed loads do not publish partial counts. A private writer
+reports loaded data and propagates output errors. Use small cohesive summary,
+sample and scenario helpers, sorted reason/raw-outcome keys and bounded samples.
+DB/input slice/maps live only for the command; map cardinality is bounded by
+selected input rows, samples by existing 10/5 limits. No runtime logger/schema,
+resolver, new flag/default, model, server state or shared utility layer changes.
+
+Hand-derived vectors: A={a,b}, R={c,d}, U={u}, gate-pass={a,c,u} gives retained
+1, removed 1, added 1, recognized pass 2, net 0, unknown pass 1. Inclusive declared
+score 65 accepts 65/66 and refuses 64 with support3/subject1. Applied scores
+10,20,90 give mean40/min10; rejected80 and unknown100 do not enter that mean.
+Counts are exact; displayed percentages/means use one decimal. Empty statistics
+are N/A. These elementary set/arithmetic definitions do not depend on the code
+being replaced and establish no accuracy, reliability or calibration.
+
+| Contract | Failure/boundary | Stimulus | Observable result | Level | False-green risk | Exact checker | Owner |
+|---|---|---|---|---|---|---|---|
+| Outcome partition | Unknown/case variants become rejected | Real SQLite case-only known labels, NULL/empty/pending/padded labels | Exact A/R/U counts and named denominator; separate raw unknowns | Actual main/report | Totals alone hide reassignment | Literal partition and breakdown checks | analyze_distance3 |
+| Input-derived statistics | Fixed or contaminated conclusions | Opposed applied-score datasets and known excluded rows | Changed literal means/minima; no fixed optimality/stability/advice | Report/main | Only banned keywords checked | Numerical vectors plus wording checks | analyze_distance3 |
+| Scalar scenarios | Unknowns rescued or lost applications omitted | Added/removed/unknown-pass vector, exact/below/above cuts | Retained/removed/added/net and unknown-pass separate; assumptions visible | Report | Test copies predicate | Independently derived memberships and inclusive vectors | analyze_distance3 |
+| Empty data | NaN/fabricated measured values | Empty historical table | Status 0, zero counts and N/A statistics/ratios | Actual main | Invalid DB merely fails | Created valid empty schema and exact output | analyze_distance3 |
+| SQL failure | Partial data becomes successful report | Missing schema/column, malformed typed cell; injected Next/Close failures | Status/error unsuccessful, no partial counts; rows retired | Main/loader | Nonzero from launch/flag error | Causal query/scan checks and test-only SQL driver witnesses | analyze_distance3 |
+| Reporting failure | Stdout error ignored | Closed child stdout or failing writer after valid input | Error/status nonzero after loader reached | Main/report | DB fails first | Paired valid DB and specific report error | analyze_distance3 |
+
+Lead-owned test challenge covers the listed false-green paths; inherited command
+discovery remains findings-only evidence. Material design forks are reduced by
+the approved private historical-command boundary; no shared abstraction is needed.
+Selected lane: focused real-SQLite/main/error-driver tests, ordinary baseline,
+analyzers, fresh Go quality/claim verification, support/decision/record/whitespace
+checks and maps last. No production parser, concurrency or hot path is changed.
+
+### Observed qualification and final verification
+
+The final focused suite passed from the stable saved executable, including seven
+actual-main child executions. Mixed input gives A3/R2/U4 out of nine selected
+rows, applied mean40/min10, separate NULL/empty/padded/pending values and
+recognized reasons. Opposed datasets change the literal statistics. Empty input
+is successful with N/A ratios/statistics. SQL failures after a valid row publish
+no partial report. Driver controls witness one query, two Next calls, one row
+close and connection retirement, with nil partial cases and retained causal
+Next/EOF-close/Scan-plus-close failures. Closed stdout fails after a paired valid
+input successfully reports its witness. Missing-path admission preserves the
+existing empty-file creation effect before a schema failure.
+
+The findings-only inherited-context Go quality/claim review identified incomplete
+sample tie ordering and default-column collation dependence. Explicit binary text
+ordering plus all selected-value ties resolve them; real SQLite reverse-insertion
+fixtures verify 10/5 caps and a NOCASE schema with sixteen literal case variants.
+The [SQLite ORDER BY rules](https://www.sqlite.org/lang_select.html#orderby)
+support the collation finding; no executed old-version reproduction is claimed.
+Review also strengthened extra-report 3/4/5 boundaries and asymmetric signed-net
+vectors. Fixture reporter totals satisfy their valid-count premise. Its bounded
+final source pass found no remaining material counterexample. Root's fresh final
+diff pass owns integration, error paths, claim wording and validation disposition.
+Neither pass is an independent empirical accuracy/calibration review.
+
+The complete ordinary 70-package baseline passed. A final test-only connector
+conversion and use of context-aware fixture SQL then reran the affected suite;
+repository vet, Staticcheck and lint all passed (zero lint issues). Those local
+fixture refinements change no production/shared behavior and do not invalidate
+other baseline packages. Logs are `checkpoint-26-focused-qualified.log`,
+`checkpoint-26-all-packages.log`, and the three `checkpoint-26-*-qualified.log`
+analyzer logs under `.tmp/command-fixes`. Earlier Staticcheck/lint attempts and
+the initial record-format failure are retained and excluded from passed evidence.
+Final record checks passed; crawler/whitespace checks and maps finish last.
+
+Support documentation impact: Required. `docs/historical-analysis.md` and the
+custom GPT source map route populations, assumptions, failures and provenance
+limits. ADR-0277 records the durable descriptive contract alongside unchanged
+pipeline replay; TSR-0075 records unsupported-claim and failure-boundary learning.
+No production schema, correction gate, parameter default, service or deployment
+behavior changed. No new cumulative checkout-server qualification is claimed for
+this standalone command checkpoint; checkpoint 35 retains final reconciliation.

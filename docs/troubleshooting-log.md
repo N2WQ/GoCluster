@@ -11,6 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0075 | Historical Analysis Claims and Failures | Monitoring | 2026-10-10 | historical decision readers, classification and report claims | ADR-0277 | `docs/troubleshooting/TSR-0075-historical-analysis-claims-and-failures.md` |
 | TSR-0074 | Producer Clock for Diagnostic Tests | Monitoring | 2026-10-10 | peer diagnostic timing tests | none | `docs/troubleshooting/TSR-0074-producer-clock-for-diagnostic-tests.md` |
 | TSR-0073 | Operator Utility Exit Outcomes | Monitoring | 2026-10-10 | operator tools, failure feedback and partial output | none | `docs/troubleshooting/TSR-0073-operator-utility-exit-outcomes.md` |
 | TSR-0072 | Sunspot Watcher Outcomes | Monitoring | 2026-10-10 | sunspot watcher, one-shot outcomes and retries | none | `docs/troubleshooting/TSR-0072-sunspot-watcher-outcomes.md` |
