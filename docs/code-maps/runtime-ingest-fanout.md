@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `5e289d590f55255e`
+- Source fingerprint: `0997e3572be857e7`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,9 +12,9 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 26 | 78 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 26 | 79 |
 | `dxcluster/peer` | `peer` | 62 | 131 |
-| `dxcluster/spot` | `spot` | 33 | 32 |
+| `dxcluster/spot` | `spot` | 34 | 37 |
 | `dxcluster/telnet` | `telnet` | 48 | 98 |
 
 ## In-Scope Package Edges
@@ -159,6 +159,7 @@ Source files:
 
 Test files:
 - `internal/cluster/canadian_state_test.go`
+- `internal/cluster/custom_scp_delivery_regression_test.go`
 - `internal/cluster/diagnostic_wrapper_child_windows_test.go`
 - `internal/cluster/diagnostic_wrapper_fixture_windows_test.go`
 - `internal/cluster/diagnostic_wrapper_job_windows_test.go`
@@ -448,6 +449,7 @@ Source files:
 - `spot/comment_parser.go`
 - `spot/confusion_model.go`
 - `spot/correction.go`
+- `spot/custom_scp_cleanup.go`
 - `spot/custom_scp_expiry.go`
 - `spot/custom_scp_spotters.go`
 - `spot/custom_scp_store.go`
@@ -485,6 +487,11 @@ Test files:
 - `spot/confusion_model_test.go`
 - `spot/correction_distance_test.go`
 - `spot/correction_family_test.go`
+- `spot/custom_scp_cleanup_helpers_test.go`
+- `spot/custom_scp_cleanup_test.go`
+- `spot/custom_scp_fixture_test.go`
+- `spot/custom_scp_lifecycle_test.go`
+- `spot/custom_scp_persistence_bench_test.go`
 - `spot/custom_scp_store_test.go`
 - `spot/dedupe_key_test.go`
 - `spot/ft_frequency_test.go`
@@ -663,6 +670,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0279](docs/decisions/ADR-0279-custom-scp-cleanup-and-database-ownership.md) | Accepted | 2026-10-10 | custom_scp, cleanup, persistence, database lifetime | `path:internal/cluster, path:spot` |
 | [ADR-0276](docs/decisions/ADR-0276-toxicity-config-zero-and-duration-admission.md) | Accepted | 2026-10-10 | toxicity, optional YAML, defaults, duration admission | `path:internal/cluster` |
 | [ADR-0275](docs/decisions/ADR-0275-runtime-output-retirement.md) | Accepted | 2026-10-10 | output lifecycle, bounded grace, holds and downstream ownership | `path:internal/cluster, path:peer, path:telnet` |
 | [ADR-0273](docs/decisions/ADR-0273-history-comment-alias-boundary.md) | Accepted | 2026-10-10 | commands, telnet, history, aliases, literal phrases | `area:commands, area:telnet, path:commands, path:telnet` |

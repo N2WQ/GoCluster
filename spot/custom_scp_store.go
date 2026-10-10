@@ -5,8 +5,11 @@
 // coupling between entries, static calls, expiry indexes, active counters, and
 // interned strings.
 // Related docs: docs/decisions/ADR-0080-custom-scp-retained-heap-layout.md,
-// docs/decisions/ADR-0143-custom-scp-support-lookup-duplicate-work-removal.md.
-// Related tests: spot/custom_scp_store_test.go, spot/bounded_store_bench_test.go.
+// docs/decisions/ADR-0143-custom-scp-support-lookup-duplicate-work-removal.md,
+// docs/decisions/ADR-0279-custom-scp-cleanup-and-database-ownership.md.
+// Cleanup ownership: spot/custom_scp_cleanup.go. Related tests:
+// spot/custom_scp_store_test.go, spot/custom_scp_cleanup_test.go,
+// spot/custom_scp_lifecycle_test.go, spot/custom_scp_persistence_bench_test.go.
 package spot
 
 import (
@@ -153,7 +156,7 @@ type customSCPDiagnostics struct {
 
 // CustomSCPStore holds runtime-learned static membership and recent-evidence
 // rails for the correction/confidence path. The store owns all maps, expiry
-// heaps, interned strings, and Pebble persistence under s.mu; delete paths must
+// heaps and interned strings under s.mu; delete paths must
 // release secondary indexes and intern refs before an observation key or static
 // call leaves the primary maps.
 type CustomSCPStore struct {
@@ -171,9 +174,21 @@ type CustomSCPStore struct {
 	diag                customSCPDiagnostics
 	interner            customSCPInterner
 
-	quit      chan struct{}
-	cleanupMu sync.Mutex
-	db        *pebble.DB
+	// Lock order is dbMu -> diskMu -> mu. A complete disk operation holds one
+	// dbMu reader, including disposal of iterators/batches. diskMu excludes live
+	// writes from cleanup's current-value check through its commit; evidence
+	// readers need only mu and can continue during cleanup disk I/O.
+	dbMu   sync.RWMutex
+	diskMu sync.Mutex
+	db     *pebble.DB
+
+	cleanupMu     sync.Mutex
+	cleanupPassMu sync.Mutex
+	quit          chan struct{}
+	cleanupDone   chan struct{}
+	closing       bool
+	closeOnce     sync.Once
+	closeErr      error
 }
 
 type customSCPInternRef struct {
@@ -302,13 +317,20 @@ func (s *CustomSCPStore) Close() error {
 	if s == nil {
 		return nil
 	}
-	s.StopCleanup()
-	if s.db == nil {
-		return nil
-	}
-	err := s.db.Close()
-	s.db = nil
-	return err
+	s.closeOnce.Do(func() {
+		s.cleanupMu.Lock()
+		s.closing = true
+		s.stopCleanupLocked()
+		s.cleanupMu.Unlock()
+		// Join the cleanup owner before waiting for all remaining disk users.
+		s.dbMu.Lock()
+		defer s.dbMu.Unlock()
+		if s.db != nil {
+			s.closeErr = s.db.Close()
+			s.db = nil
+		}
+	})
+	return s.closeErr
 }
 
 // StartCleanup starts periodic in-memory and on-disk stale-data cleanup. The
@@ -317,9 +339,14 @@ func (s *CustomSCPStore) StartCleanup() {
 	if s == nil || s.opts.CleanupInterval <= 0 {
 		return
 	}
-	startPeriodicCleanup(&s.cleanupMu, &s.quit, s.opts.CleanupInterval, func() {
-		s.cleanup(time.Now().UTC())
-	})
+	s.cleanupMu.Lock()
+	defer s.cleanupMu.Unlock()
+	if s.closing || s.quit != nil {
+		return
+	}
+	s.quit = make(chan struct{})
+	s.cleanupDone = make(chan struct{})
+	go s.runCleanup(s.quit, s.cleanupDone)
 }
 
 // StopCleanup ends the periodic cleanup owner before shutdown or tests inspect
@@ -328,12 +355,19 @@ func (s *CustomSCPStore) StopCleanup() {
 	if s == nil {
 		return
 	}
-	stopPeriodicCleanup(&s.cleanupMu, &s.quit)
+	s.cleanupMu.Lock()
+	defer s.cleanupMu.Unlock()
+	s.stopCleanupLocked()
 }
 
 // Checkpoint creates a Pebble checkpoint at dest.
 func (s *CustomSCPStore) Checkpoint(dest string) error {
-	if s == nil || s.db == nil {
+	if s == nil {
+		return errors.New("custom_scp: store not initialized")
+	}
+	s.dbMu.RLock()
+	defer s.dbMu.RUnlock()
+	if s.db == nil {
 		return errors.New("custom_scp: store not initialized")
 	}
 	if strings.TrimSpace(dest) == "" {
@@ -347,7 +381,12 @@ func (s *CustomSCPStore) Checkpoint(dest string) error {
 
 // Verify performs a bounded full scan over observation and static-membership keys.
 func (s *CustomSCPStore) Verify(ctx context.Context, maxDuration time.Duration) (int64, error) {
-	if s == nil || s.db == nil {
+	if s == nil {
+		return 0, errors.New("custom_scp: store not initialized")
+	}
+	s.dbMu.RLock()
+	defer s.dbMu.RUnlock()
+	if s.db == nil {
 		return 0, errors.New("custom_scp: store not initialized")
 	}
 	return verifyCustomSCPDB(ctx, s.db, maxDuration)
@@ -482,11 +521,17 @@ func (s *CustomSCPStore) RecordSpot(sp *Spot) {
 	if !ok {
 		key = call
 	}
+	// Cover both family keys with one lifetime reader; nested readers can
+	// deadlock when Close is waiting for the writer lock between the two keys.
+	s.dbMu.RLock()
+	defer s.dbMu.RUnlock()
+	s.diskMu.Lock()
+	defer s.diskMu.Unlock()
 	if key != "" {
-		s.recordObservation(key, band, mode, spotter, cell, sp.Report, sp.HasReport, seenAt)
+		s.recordObservationWithDiskLocked(key, band, mode, spotter, cell, sp.Report, sp.HasReport, seenAt)
 	}
 	if baseKey != "" {
-		s.recordObservation(baseKey, band, mode, spotter, cell, sp.Report, sp.HasReport, seenAt)
+		s.recordObservationWithDiskLocked(baseKey, band, mode, spotter, cell, sp.Report, sp.HasReport, seenAt)
 	}
 }
 
@@ -497,6 +542,15 @@ func (s *CustomSCPStore) recordObservation(call, band, mode, spotter string, cel
 	if s == nil {
 		return
 	}
+	s.dbMu.RLock()
+	defer s.dbMu.RUnlock()
+	s.diskMu.Lock()
+	defer s.diskMu.Unlock()
+	s.recordObservationWithDiskLocked(call, band, mode, spotter, cellRes1, report, hasReport, seenAt)
+}
+
+// Callers hold dbMu and diskMu, including for memory-only stores after Close.
+func (s *CustomSCPStore) recordObservationWithDiskLocked(call, band, mode, spotter string, cellRes1 uint16, report int, hasReport bool, seenAt time.Time) {
 	call = NormalizeCallsign(call)
 	band = NormalizeBand(band)
 	bucket, ok := customSCPBucketForMode(mode)
@@ -811,119 +865,6 @@ func (s *CustomSCPStore) snapshotForNormalizedCall(call, band, mode string, now 
 	}
 }
 
-func (s *CustomSCPStore) cleanup(now time.Time) {
-	if s == nil {
-		return
-	}
-	if now.IsZero() {
-		now = time.Now().UTC()
-	}
-	observationCutoff := s.observationHorizonCutoffUnix(now.UTC())
-	staticCutoff := s.staticHorizonCutoffUnix(now.UTC())
-
-	staleStaticCalls := make([]string, 0)
-	overflowDeletes := make([]customSCPDeleteRequest, 0)
-	s.mu.Lock()
-	for {
-		key, entry, ok := s.popDueEntryExpiryLocked(observationCutoff)
-		if !ok {
-			break
-		}
-		var removed []string
-		removedCount := s.pruneEntryLocked(entry, observationCutoff, &removed)
-		if removedCount > 0 {
-			s.diag.staleObservationsPruned += uint64(removedCount)
-			overflowDeletes = append(overflowDeletes, customSCPDeleteRequest{key: key, spotters: removed})
-		}
-		if len(entry.spotters) > s.opts.MaxSpottersPerKey {
-			var trimmed []string
-			trimmedCount := s.trimSpottersLocked(entry, &trimmed)
-			if trimmedCount > 0 {
-				s.diag.overflowObservationsPruned += uint64(trimmedCount)
-				overflowDeletes = append(overflowDeletes, customSCPDeleteRequest{key: key, spotters: trimmed})
-			}
-		}
-		if len(entry.spotters) == 0 {
-			s.deleteEntryAfterExpiryPopLocked(key)
-			continue
-		}
-		s.markEntryForCleanupLocked(key, entry)
-	}
-	for {
-		call, ok := s.popDueStaticExpiryLocked(staticCutoff)
-		if !ok {
-			break
-		}
-		if s.deleteStaticAfterExpiryPopLocked(call) {
-			s.diag.staleStaticPruned++
-			staleStaticCalls = append(staleStaticCalls, call)
-		}
-	}
-	for len(s.entries) > s.opts.MaxKeys {
-		s.evictOldestKeyLocked()
-	}
-	s.mu.Unlock()
-
-	// Best-effort disk cleanup: drop stale and overflow records so disk
-	// retention converges to the bounded in-memory view.
-	if s.db != nil {
-		iter, err := s.db.NewIter(nil)
-		if err != nil {
-			return
-		}
-		defer iter.Close()
-		batch := s.db.NewBatch()
-		defer batch.Close()
-		pending := 0
-		for _, call := range staleStaticCalls {
-			ignoreCustomSCPDiskError(batch.Delete([]byte(customSCPMetaPrefix+call), nil))
-			pending++
-		}
-		for _, req := range overflowDeletes {
-			pending += s.deleteObservationSpottersFromRequestLocked(req, batch)
-		}
-		for iter.First(); iter.Valid(); iter.Next() {
-			key := string(iter.Key())
-			switch {
-			case strings.HasPrefix(key, customSCPMetaPrefix):
-				value := iter.Value()
-				if len(value) != 8 {
-					ignoreCustomSCPDiskError(batch.Delete(iter.Key(), nil))
-					pending++
-					continue
-				}
-				seen := int64(binary.BigEndian.Uint64(value))
-				if seen < staticCutoff {
-					ignoreCustomSCPDiskError(batch.Delete(iter.Key(), nil))
-					pending++
-				}
-			case strings.HasPrefix(key, customSCPObsPrefix):
-				value := iter.Value()
-				if len(value) != 10 {
-					ignoreCustomSCPDiskError(batch.Delete(iter.Key(), nil))
-					pending++
-				} else {
-					seen := int64(binary.BigEndian.Uint64(value[:8]))
-					if seen < observationCutoff {
-						ignoreCustomSCPDiskError(batch.Delete(iter.Key(), nil))
-						pending++
-					}
-				}
-			default:
-				continue
-			}
-			if pending >= 512 {
-				ignoreCustomSCPDiskError(batch.Commit(pebble.Sync))
-				batch.Reset()
-				pending = 0
-			}
-		}
-		if pending > 0 {
-			ignoreCustomSCPDiskError(batch.Commit(pebble.Sync))
-		}
-	}
-}
-
 func (s *CustomSCPStore) loadFromDB() error {
 	if s == nil || s.db == nil {
 		return nil
@@ -1119,14 +1060,19 @@ func (s *CustomSCPStore) retainStaticCallLocked(call string, seenUnix int64) (st
 	return retained, true
 }
 
-func (s *CustomSCPStore) pruneEntryLocked(entry *customSCPEntry, cutoff int64, removed *[]string) int {
+func (s *CustomSCPStore) pruneEntryLocked(entry *customSCPEntry, cutoff int64, removed *[]string) {
+	s.pruneEntryLimitedLocked(entry, cutoff, removed, 0)
+}
+
+// limit bounds cleanup scratch; zero preserves the full live/load pruning path.
+func (s *CustomSCPStore) pruneEntryLimitedLocked(entry *customSCPEntry, cutoff int64, removed *[]string, limit int) int {
 	if entry == nil || len(entry.spotters) == 0 {
 		return 0
 	}
 	removedCount := 0
 	write := 0
 	for _, spotter := range entry.spotters {
-		if decodeCustomSCPSpotterSeenUnix(spotter.seenUnix) < cutoff {
+		if decodeCustomSCPSpotterSeenUnix(spotter.seenUnix) < cutoff && (limit <= 0 || removedCount < limit) {
 			if s.observationSpotters > 0 {
 				s.observationSpotters--
 			}
@@ -1152,11 +1098,15 @@ func (s *CustomSCPStore) pruneEntryLocked(entry *customSCPEntry, cutoff int64, r
 }
 
 func (s *CustomSCPStore) trimSpottersLocked(entry *customSCPEntry, removed *[]string) int {
+	return s.trimSpottersLimitedLocked(entry, removed, 0)
+}
+
+func (s *CustomSCPStore) trimSpottersLimitedLocked(entry *customSCPEntry, removed *[]string, limit int) int {
 	if entry == nil || len(entry.spotters) <= s.opts.MaxSpottersPerKey {
 		return 0
 	}
 	trimmed := 0
-	for len(entry.spotters) > s.opts.MaxSpottersPerKey {
+	for len(entry.spotters) > s.opts.MaxSpottersPerKey && (limit <= 0 || trimmed < limit) {
 		idx, ok := oldestCustomSCPSpotterIndex(entry)
 		if !ok {
 			break
@@ -1195,11 +1145,6 @@ func (s *CustomSCPStore) trimPendingEntryOnLoadLocked(key customSCPKey, entry *c
 		}
 	}
 	return deleted
-}
-
-type customSCPDeleteRequest struct {
-	key      customSCPKey
-	spotters []string
 }
 
 func ignoreCustomSCPDiskError(error) {
@@ -1255,10 +1200,6 @@ func (s *CustomSCPStore) deleteStaticAfterExpiryPopLocked(call string) bool {
 	delete(s.static, call)
 	s.releaseInternedStringLocked(call)
 	return true
-}
-
-func (s *CustomSCPStore) deleteObservationSpottersFromRequestLocked(req customSCPDeleteRequest, batch *pebble.Batch) int {
-	return s.deleteObservationSpottersLocked(req.key, s.entries[req.key], req.spotters, batch)
 }
 
 func (s *CustomSCPStore) deleteObservationSpotterLocked(key customSCPKey, entry *customSCPEntry, spotter string, batch *pebble.Batch) bool {

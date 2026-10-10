@@ -107,6 +107,24 @@ race execution, preparation, failure propagation, lock exclusion, and refusal
 to replace binaries through junctions. See
 [ADR-0265](../docs/decisions/ADR-0265-stable-windows-test-executables.md).
 
+## Custom SCP Storage Regression
+
+`pwsh -NoProfile -File scripts/test-customscp-regression.ps1` connects a
+deterministically scheduled cleanup refresh to raw persisted values, graceful
+reopen and actual local telnet/buffer/archive output. `-Race` compiles both
+stages with the race detector. `-Baseline` uses a producer-only overlay of
+`4d711a4`; its consumer must fail because that fixture loses refreshed history.
+Setup succeeds separately from the preservation verdict, so the consumer sees
+the actual defective database.
+
+Each run keeps its manifest and logs under a fresh
+`.tmp/customscp-regression/<run-id>/` directory. It shares the stable Windows
+test paths and lock described above and restores fixture environment variables.
+No firewall or production database changes occur. Run
+`pwsh -NoProfile -File scripts/test-test-customscp-regression.ps1` for offline
+runner failure fixtures. See the [regression runbook](../docs/runbooks/custom-scp-regression.md)
+for evidence boundaries and interpretation.
+
 ## Release Preparation
 
 `create-release.ps1` builds both binaries itself. A manual `go build` is not a

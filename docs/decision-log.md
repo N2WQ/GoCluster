@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0279 | Custom SCP Cleanup and Database Ownership | Accepted | 2026-10-10 | custom_scp, cleanup, persistence, database lifetime | none | none | `docs/decisions/ADR-0279-custom-scp-cleanup-and-database-ownership.md` |
 | ADR-0278 | Peer Probe Session Ownership | Accepted | 2026-10-10 | peerpoc, phase deadlines, origin timestamps, writer and keeper retirement | none | none | `docs/decisions/ADR-0278-peer-probe-session-ownership.md` |
 | ADR-0277 | Descriptive Historical Decision Analysis | Accepted | 2026-10-10 | historical decision readers, outcomes, scientific claims | none | none | `docs/decisions/ADR-0277-descriptive-historical-decision-analysis.md` |
 | ADR-0276 | Toxicity Configuration Zero And Duration Admission | Accepted | 2026-10-10 | toxicity, optional YAML, defaults, duration admission | none | none | `docs/decisions/ADR-0276-toxicity-config-zero-and-duration-admission.md` |
