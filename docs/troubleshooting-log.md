@@ -11,6 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0059 | Fixed Setting Argument Arity | Monitoring | 2026-10-09 | telnet settings, diagnostic mode, scheduling, argument admission | none | `docs/troubleshooting/TSR-0059-fixed-setting-argument-arity.md` |
 | TSR-0058 | DXCC Lookup And Logout Argument Arity | Monitoring | 2026-10-09 | commands, DXCC lookup, logout aliases, connection usability | none | `docs/troubleshooting/TSR-0058-dxcc-logout-arity.md` |
 | TSR-0057 | Filter Argument Tails Lost During Normalization | Monitoring | 2026-10-09 | telnet, CC aliases, flags, toggles, raw arguments | none | `docs/troubleshooting/TSR-0057-filter-argument-tail-normalization.md` |
 | TSR-0056 | Human Callsign Pattern Admission | Monitoring | 2026-10-09 | telnet, callsign filters, syntax, machine validation | none | `docs/troubleshooting/TSR-0056-human-callsign-pattern-admission.md` |

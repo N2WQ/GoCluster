@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 11b complete (04a used two commits);
-29 approved checkpoints remain; 12 is next.
+Current progress: checkpoints 00 through 12 complete (04a used two commits);
+28 approved checkpoints remain; 13 is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -1776,3 +1776,106 @@ records the failure and checker limits; no new ADR is needed for enforcement of
 existing documented usage. Generated-map and whitespace checks complete
 closeout. No required check was waived; no full-repository race, production-load
 or external-cluster qualification is claimed.
+
+## Checkpoint 12: fixed-argument settings
+
+Status: complete. Current discovery inspected actual dispatch, detached human
+coordination and publication, all setting handlers, HELP usage, diagnostic
+formatting/readback, scheduling state, existing setting tests and fixture inputs.
+DIALECT, NOISE, PATHSAMPLES, SOLAR, DIAG and SET/SHOW DEDUPE can ignore trailing
+tokens. GRID already has exact arity from 09 and remains a compatibility control.
+The approved strict-arity contract and existing documented forms resolve behavior;
+no policy choice remains. Preserve all existing valid values and dialect aliases,
+including CONFIDENCE for diagnostics.
+
+Architecture: add token-count admission in the existing handlers before value
+lookup or mutation. Persistent settings continue through the same per-login
+lease, detached candidate, resource admission, live publication and exact-byte
+save owner. DIAG remains session-only atomic state. Invalid SOLAR has no forced
+rescheduling intent; valid human SOLAR deliberately reschedules even when its
+cadence is unchanged. DEDUPE requested/effective wording remains checkpoint 13,
+SOLAR availability wording remains 14. No schema, runtime default, sentinel,
+tokenizer, queue, goroutine, lifecycle or shared-interface change is proposed.
+
+Configuration ownership: dialect, grid, noise, dedupe, sample floor and cadence
+remain schema-4 user settings. PATHSAMPLES DEFAULT remains stored zero; SOLAR OFF
+remains zero. YAML loader and machine validation are unchanged. The isolated
+fixture will construct the existing predictor from its already-loaded required
+path_reliability.yaml and its allowed bands, making successful PATHSAMPLES reach
+real dispatch. No DefaultConfig runtime fallback, observation feed, prediction
+model change or scientific-quality claim is added. Constructor inspection found
+only child-owned empty bounded store structures, with no spawned worker or
+external I/O. Display and ingestion remain absent from this fixture.
+
+Lead-owned preimplementation falsifiability matrix:
+
+| Contract | Stimulus / fault | Required evidence | False-green risk | Checker / owner |
+|---|---|---|---|---|
+| Exact setting arity | Both dialects; missing/extra tokens for every fixed setting and extra DIALECT query/LIST or SHOW DEDUPE | Exact usage before mutation; zero commits and unchanged live/configured/revision/preset/disk state | A valid first token hides an ignored tail | Existing coordinator and exact checkout reply/GET, immediate saved bytes / telnet, runner |
+| SOLAR scheduling | Different/unchanged valid cadence with an extra token; valid unchanged cadence after clock movement | Invalid commands preserve cadence and exact next deadline; valid unchanged human command advances schedule deliberately | GET reports cadence but misses deadline reset | Injected existing clock and raw next-deadline assertion / telnet |
+| Session DIAG | Every mode and CONFIDENCE alias; malformed opposite mode | Session mode unchanged on refusal, valid modes appear in status and consumer output; no durable change | Persistent configuration omits session-only state | Direct atomic/format controls and GET session status / telnet, runner |
+| Positive compatibility | Every setting, all admitted noise/diagnostic/dedupe/cadence values, dialect queries/aliases, count and DEFAULT | Correct runtime value, exact saved setting where persistent, legitimate query with zero save | Blanket rejection looks safe | Literal value and immediate disk expectations; loaded real predictor / telnet, runner |
+| Durability | Same saved settings loaded by a fresh owned child | Exact persisted configuration and effective sample floor; DIAG naturally resets | Live cache hides missing writes or persists session state | Existing two-child runner and strict readback / runner |
+
+This is localized admission on existing owners, without a design fork or new
+semantic uncertainty. Lead final verification is sufficient. Select focused and
+complete telnet/commands/filter suites with race, cumulative actual ordinary/race
+checkout tests, runner controls, complete ordinary baseline, analyzers and records.
+The new guard does not replace lexical parsing; bounded staged tail fuzz will
+challenge arbitrary rejected tails and unwanted publication/rescheduling intent.
+
+The first focused run caught an incorrect new test literal for SHOW DEDUPE's
+existing key label. Current source and output say cqzone for SLOW, rather than
+the assumed expanded key description. Correct that compatibility oracle; do not
+change production wording or preempt checkpoint 13. The failed run is retained.
+The first offline rerun also caught a missing YAML name in the new saved-value
+oracle. Reuse the already-pinned loader through the existing support module;
+no dependency installation or harness decoder change is required.
+
+Technical review disposition: no production guard or ownership defect was found.
+The reviewer identified equality-only numeric checks: Python False compares equal
+to integer zero, so a bad zero representation could be hidden by later valid
+30-value controls before restart. Require exact configured/saved scalar types,
+while preserving omitted integer fields as zero. Offline vectors admit omitted
+or literal integer zero and refuse booleans, floats, strings and nulls; this
+qualifies canonical setter output without changing legacy storage decoding.
+The review was read-only and saw scope and implementation; it is technical
+evidence, not independent scientific evidence or approval. Preliminary successful
+ordinary/race runs are retained but excluded from final stronger-checker
+qualification; rerun both after the oracle fix.
+
+The initial lint pass found three time comparisons in the new positive tests
+that require time.Time.Equal. This test-only correction preserves the scheduling
+oracle; affected focused tests passed under race afterward. It does not change
+production code or invalidate the completed package/baseline/fuzz evidence.
+Both actual builds were repeated for final, matching Go provenance.
+
+Observed final validation:
+
+| Check | Result |
+|---|---|
+| Focused and complete package controls | Fixed-setting controls and complete filter/telnet/commands ordinary and race suites passed; final test-only time-comparison correction passed focused race checks |
+| Tail fuzz | 80,229 executions in 15 seconds with two workers and seven permanent seeds; PASS |
+| Complete ordinary baseline | All 70 packages completed successfully before the final test-only comparison adjustment; no-test packages build-checked |
+| Runner controls | All 42 passed, including exact integer-zero representation and session-only diagnostic preservation |
+| Final actual checkout runs | Ordinary `20261009-214029-6e8cac45` and race `20261009-214224-a43585e0`: all 90 required cases passed per build; 38 main and 7 reputation cases per transport |
+| Transport and child ownership | Zero strict wire or cleanup failures; all eight retirement receipts per build confirm clients retired, consumer joined and archive stopped |
+| Whole-repository analyzers | vet and Staticcheck passed; final lint passed with zero issues |
+| Support and records | Troubleshooting-record and crawler-entry checks passed; one changed support-critical candidate reviewed |
+
+Both final actual builds and their children report Go/module source digest
+`cfa922e8eb948e4fe25fb41d7169d3d594992863f2b58d81ab746347444eb918`.
+Python was frozen for both; the digest does not hash Python, docs or configuration.
+Earlier successful runs with the preceding test-file digest are retained; final
+qualification above identifies the exact matching final builds.
+
+Fresh lead final source, tests, direct diff and retirement-receipt review found
+no unresolved material defect. Seven localized arity checks enforce the existing
+forms, and the existing predictor constructor supplies the loaded PATHSAMPLES
+consumer. Implementation maps to `telnet/server.go`, permanent fixed-setting
+tests, the fixture options and cumulative runner. HELP SET DIAG adds the preserved
+CONFIDENCE alias. Support-agent impact: Required; the telnet guide and support
+routing explain refusals and scheduling preservation. TSR-0059 records the
+learning; no new ADR is needed for existing contract enforcement. Generated-map
+and whitespace checks complete closeout. No required check was waived; no
+full-repository race, production-load or external-cluster qualification is claimed.

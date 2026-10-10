@@ -460,6 +460,14 @@ return usage without performing a lookup. `BYE`, `QUIT` and `EXIT` take no
 arguments. A malformed logout returns usage and leaves the connection usable;
 a valid logout sends the farewell and closes the connection.
 
+`SET GRID`, `SET NOISE`, `SET PATHSAMPLES`, `SET SOLAR`, `SET DEDUPE` and
+`SET DIAG` each take exactly one value. Extra words return usage without changing
+the setting. `CONFIDENCE` is an alias for the `CONF` diagnostic mode. `SHOW DEDUPE`
+takes no value. Use `DIALECT` to see your current choice, `DIALECT LIST` to list
+choices, or `DIALECT <name>` with one name to switch. Malformed SOLAR commands
+leave the schedule unchanged; a valid human command deliberately restarts its
+schedule, even if you select the same cadence.
+
 Machine YAML preserves stored flags, false entries and defaults. Use
 `GET YAML FILTER` for exact stored rules; `DEFAULT` remains distinct from
 explicit `true` or `false` there. NEARBY reports its effective ON/OFF state

@@ -22,7 +22,7 @@ from types import SimpleNamespace
 import uuid
 
 from command_fixture_support import (Child, ROOT, build, command, deny_record_replacement,
-                                     plain_output, require, runner_lock, stage)
+                                     plain_output, require, runner_lock, stage, yaml)
 
 spec = importlib.util.spec_from_file_location("checkout_telnet_harness", ROOT / "scripts" / "test-telnet-commands.py")
 harness = importlib.util.module_from_spec(spec)
@@ -330,6 +330,95 @@ def require_remote_logout(session, verb):
         finally:
             session.sock.close()
             session.closed = True
+
+
+def require_setting_argument_refusal(session, command, record, feedback):
+    mode = session.get()["status"]["session"]["diagnostic_comments"]
+    require_command_refusal(session, command, record, feedback)
+    require(session.get()["status"]["session"]["diagnostic_comments"] == mode,
+            "malformed setting arguments changed the session diagnostic mode")
+
+
+def require_setting_control(session, record, command, feedback, field, value):
+    before, saved = session.get(), record.read_bytes()
+    text, after = exact_human_reply(session, command, feedback)
+    require(text.strip() == feedback, "valid setting lacks exact feedback")
+    if field == "diagnostic_comments":
+        require(after["status"]["session"][field] == value and
+                after["configuration"] == before["configuration"] and after["revision"] == before["revision"] and
+                after["status"]["effective"] == before["status"]["effective"] and
+                after["status"]["preset"] == before["status"]["preset"] and record.read_bytes() == saved,
+                "diagnostic control lost session mode or changed persistent state")
+    else:
+        stored = yaml.safe_load(record.read_bytes())
+        stored_value = stored.get(field, 0) if type(value) is int else stored.get(field)
+        configured_value = after["configuration"]["settings"][field]
+        require(type(configured_value) is type(value) and configured_value == value and
+                type(stored_value) is type(value) and stored_value == value,
+                "valid setting lacks its exact configured or immediately saved value")
+        if field not in ("path_min_observation_count", "solar_summary_minutes"):
+            require(after["status"]["effective"][field] == value, "valid setting did not reach runtime state")
+    return after
+
+
+def fixed_setting_cases(suite, root, saved_settings):
+    for dialect, call in (("go", "VE3ABC-70056"), ("cc", "VE3ABC-70057")):
+        current = harness.Session(suite, call)
+        current.human("PAUSE 300")
+        current.human("DIALECT " + dialect)
+        current.human("SET NOISE RURAL")
+        current.human("SET GRID FN31")
+        current.human("SET PATHSAMPLES 30", "Path sample minimum set to 30 (cluster default 21)")
+        current.human("SET SOLAR 30")
+        current.human("SET DEDUPE FAST")
+        current.human("SET DIAG SOURCE")
+        record = root / "users" / (call + ".yaml")
+        for prefix, tails, feedback in (
+                ("DIALECT", (" GO EXTRA", " CC EXTRA", " LIST EXTRA", " UNKNOWN EXTRA"), "Usage: DIALECT [LIST|go|cc]"),
+                ("SET GRID", ("", " FN31PR EXTRA"), "Usage: SET GRID <4 or 6 character Maidenhead locator>"),
+                ("SET NOISE", ("", " URBAN EXTRA"), "Usage: SET NOISE <QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL>"),
+                ("SET PATHSAMPLES", ("", " 40 EXTRA", " DEFAULT EXTRA"), "Usage: SET PATHSAMPLES <count|DEFAULT>"),
+                ("SET SOLAR", ("", " 15 EXTRA", " 30 EXTRA", " OFF EXTRA"), "Usage: SET SOLAR <15|30|60|OFF>"),
+                ("SET DEDUPE", ("", " SLOW EXTRA"), "Usage: SET DEDUPE <FAST|MED|SLOW>"),
+                ("SHOW DEDUPE", (" EXTRA",), "Usage: SHOW DEDUPE"),
+                ("SET DIAG", ("", " OFF EXTRA", " CONFIDENCE EXTRA"), "Usage: SET DIAG <OFF|DEDUPE|SOURCE|CONF|PATH|MODE>")):
+            for tail in tails:
+                require_setting_argument_refusal(current, prefix.lower() + tail, record, feedback)
+        require(current.get()["status"]["server"]["path_min_observation_count"] == 21,
+                "loaded fixture path floor differs from literal positive control")
+        for alias in ("go", "gocluster", "classic", "default", "cc"):
+            value = "cc" if alias == "cc" else "go"
+            unchanged = current.get()["configuration"]["settings"]["dialect"] == value
+            feedback = ("Dialect already set to " if unchanged else "Dialect set to ") + value.upper()
+            require_setting_control(current, record, "DIALECT " + alias, feedback, "dialect", value)
+        exact_human_reply(current, "DIALECT", "Current dialect: CC")
+        exact_human_reply(current, "DIALECT LIST", "Available dialects: CC, GO")
+        for grid in ("FN31", "FN31PR"):
+            require_setting_control(current, record, "SET GRID " + grid, "Grid set to " + grid, "grid", grid)
+        for noise in ("QUIET", "RURAL", "SUBURBAN", "URBAN", "INDUSTRIAL"):
+            require_setting_control(current, record, "SET NOISE " + noise, "Noise class set to " + noise, "noise_class", noise)
+        for token, value, feedback in (("30", 30, "Path sample minimum set to 30 (cluster default 21)"),
+                                        ("DEFAULT", 0, "Path sample minimum reset to cluster default 21"),
+                                        ("30", 30, "Path sample minimum set to 30 (cluster default 21)")):
+            after = require_setting_control(current, record, "SET PATHSAMPLES " + token, feedback, "path_min_observation_count", value)
+            require(after["status"]["effective"]["path_min_observation_count"] == (30 if value else 21),
+                    "path sample control did not reach the runtime floor")
+        for policy, key in (("FAST", "grid2"), ("MED", "grid2"), ("SLOW", "cqzone")):
+            require_setting_control(current, record, "SET DEDUPE " + policy, "Dedupe policy set to " + policy, "dedupe_policy", policy)
+            exact_human_reply(current, "SHOW DEDUPE", f"Dedupe: {policy} ({key}) (fast=on med=on slow=on)")
+        for token, value in (("15", 15), ("30", 30), ("60", 60), ("OFF", 0), ("30", 30)):
+            feedback = "Solar summaries: OFF" if not value else f"Solar summaries: every {value} minutes"
+            require_setting_control(current, record, "SET SOLAR " + token, feedback, "solar_summary_minutes", value)
+        for token, canonical in (("OFF", "OFF"), ("DEDUPE", "DEDUPE"), ("SOURCE", "SOURCE"),
+                                  ("CONF", "CONF"), ("CONFIDENCE", "CONF"), ("PATH", "PATH"), ("MODE", "MODE")):
+            require_setting_argument_refusal(current, "SET DIAG " + token + " EXTRA", record,
+                                             "Usage: SET DIAG <OFF|DEDUPE|SOURCE|CONF|PATH|MODE>")
+            require_setting_control(current, record, "SET DIAG " + token, "Diagnostic comments: " + canonical,
+                                    "diagnostic_comments", canonical)
+        unchanged = current.get()["configuration"]["settings"]["dialect"] == dialect
+        require_setting_control(current, record, "DIALECT " + dialect,
+                                ("Dialect already set to " if unchanged else "Dialect set to ") + dialect.upper(), "dialect", dialect)
+        saved_settings[call] = current.get()["configuration"]
 
 
 def command_arity_cases(suite, root, saved_arity):
@@ -934,6 +1023,7 @@ def profile(binary, root, source, transport):
                 f"{transport}: callsign patterns admit complete lists and preserve matching",
                 f"{transport}: original filter arguments refuse before normalization",
                 f"{transport}: DXCC and logout arity preserve the original session",
+                f"{transport}: fixed settings reject tails and preserve valid values",
                 f"{transport}/1: held endpoint and loaded consumers",
                 f"{transport}: preferences and archive survive fresh child",
                 f"{transport}: NOFILTER geography survives fresh child",
@@ -949,7 +1039,8 @@ def profile(binary, root, source, transport):
                 f"{transport}: canonical GRID and active cells survive fresh child",
                 f"{transport}: callsign patterns and matching survive fresh child",
                 f"{transport}: supported filter arguments survive fresh child",
-                f"{transport}: command arity preferences survive fresh child"]
+                f"{transport}: command arity preferences survive fresh child",
+                f"{transport}: fixed setting values survive fresh child with session reset"]
     call = "K1ABC-70001"
     observer_call, observer_configuration = "VE3ABC-70003", None
     failed_records, refused_records, compatible_records = {}, {}, {}
@@ -961,6 +1052,7 @@ def profile(binary, root, source, transport):
     saved_callsigns = {}
     saved_arguments = {}
     saved_arity = {}
+    saved_settings = {}
     label = None
     suites = []
     for generation in range(2):
@@ -1366,6 +1458,8 @@ def profile(binary, root, source, transport):
                      lambda: filter_argument_cases(suite, root, label, saved_arguments))
                 case(f"{transport}: DXCC and logout arity preserve the original session",
                      lambda: command_arity_cases(suite, root, saved_arity))
+                case(f"{transport}: fixed settings reject tails and preserve valid values",
+                     lambda: fixed_setting_cases(suite, root, saved_settings))
             else:
                 def restored():
                     settings = session.get()["configuration"]["settings"]
@@ -1558,6 +1652,18 @@ def profile(binary, root, source, transport):
                         current.human("SH DXCC VE", "Canada")
 
                 case(f"{transport}: command arity preferences survive fresh child", restored_arity)
+
+                def restored_settings():
+                    require(len(saved_settings) == 2, "required fixed setting controls did not execute")
+                    for stored_call, configuration in saved_settings.items():
+                        current = harness.Session(suite, stored_call)
+                        _, document = current.human("PAUSE 300")
+                        require(document["configuration"] == configuration and
+                                document["status"]["effective"]["path_min_observation_count"] == 30 and
+                                document["status"]["session"]["diagnostic_comments"] == "OFF",
+                                "fresh child lost fixed settings or persisted session diagnostics")
+
+                case(f"{transport}: fixed setting values survive fresh child with session reset", restored_settings)
         finally:
             try:
                 if suite:

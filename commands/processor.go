@@ -499,6 +499,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"DEDUPE shows <DE-DXCC>|<DE-key>|<src>|<policy>.",
 			"SOURCE shows compact ingest provenance.",
 			"CONF shows pipeline confidence percent when available.",
+			"CONFIDENCE is also accepted for CONF; use one value without extra words.",
 			"PATH shows observation count, weight, and age.",
 			"MODE shows <mode>|<provenance>.",
 		},

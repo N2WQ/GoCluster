@@ -1435,7 +1435,10 @@ func (s *Server) stageDialectCommand(client *Client, line string) humanCommandOu
 	if len(fields) == 1 {
 		return humanHandled(fmt.Sprintf("Current dialect: %s\n", strings.ToUpper(string(client.dialect))))
 	}
-	if len(fields) == 2 && strings.EqualFold(fields[1], "LIST") {
+	if len(fields) != 2 {
+		return humanHandled("Usage: DIALECT [LIST|go|cc]\n")
+	}
+	if strings.EqualFold(fields[1], "LIST") {
 		names := s.filterEngine.availableDialectNames()
 		return humanHandled(fmt.Sprintf("Available dialects: %s\n", strings.ToUpper(strings.Join(names, ", "))))
 	}
@@ -1562,7 +1565,7 @@ func (s *Server) stagePathSettingsCommand(client *Client, line string) humanComm
 		})
 		return humanMutation(fmt.Sprintf("Grid set to %s\n", grid), "Grid set to %s (warning: failed to persist: %v)\n", grid)
 	case "NOISE":
-		if len(upper) < 3 {
+		if len(upper) != 3 {
 			return humanHandled("Usage: SET NOISE <QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL>\n")
 		}
 		class := strutil.NormalizeUpper(upper[2])
@@ -1575,7 +1578,7 @@ func (s *Server) stagePathSettingsCommand(client *Client, line string) humanComm
 		client.configuredSettings.NoiseClass = class
 		return humanMutation(fmt.Sprintf("Noise class set to %s\n", class), "Noise class set to %s (warning: failed to persist: %v)\n", class)
 	case "PATHSAMPLES":
-		if len(upper) < 3 {
+		if len(upper) != 3 {
 			return humanHandled("Usage: SET PATHSAMPLES <count|DEFAULT>\n")
 		}
 		clusterDefault, ok := s.pathMinObservationDefault()
@@ -1738,7 +1741,7 @@ func (s *Server) handleDiagCommand(client *Client, line string) (string, bool) {
 	if len(upper) < 2 || upper[0] != "SET" || upper[1] != "DIAG" {
 		return "", false
 	}
-	if len(upper) < 3 {
+	if len(upper) != 3 {
 		return diagUsage, true
 	}
 	switch upper[2] {
@@ -1775,7 +1778,7 @@ func (s *Server) stageSolarCommand(client *Client, line string) humanCommandOutc
 	if len(upper) < 2 || upper[0] != "SET" || upper[1] != "SOLAR" {
 		return humanCommandOutcome{}
 	}
-	if len(upper) < 3 {
+	if len(upper) != 3 {
 		return humanHandled("Usage: SET SOLAR <15|30|60|OFF>\n")
 	}
 	minutes, ok := parseSolarSummaryMinutes(upper[2])
@@ -1813,12 +1816,15 @@ func (s *Server) stageDedupeCommand(client *Client, line string) humanCommandOut
 		if upper[1] != "DEDUPE" {
 			return humanCommandOutcome{}
 		}
+		if len(upper) != 2 {
+			return humanHandled("Usage: SHOW DEDUPE\n")
+		}
 		return humanHandled(s.formatDedupeStatus(client))
 	case "SET":
 		if upper[1] != "DEDUPE" {
 			return humanCommandOutcome{}
 		}
-		if len(upper) < 3 {
+		if len(upper) != 3 {
 			return humanHandled("Usage: SET DEDUPE <FAST|MED|SLOW>\n")
 		}
 		requested, ok := parseDedupePolicyToken(upper[2])

@@ -5,12 +5,13 @@ import (
 
 	"dxcluster/config"
 	"dxcluster/cty"
+	"dxcluster/pathreliability"
 )
 
 // commandFixtureOptions consumes the loaded telnet contracts. Deployment feeds,
-// reputation, solar fetching and path prediction are absent in checkpoint 00;
-// their later checkpoints use separate owners rather than claiming this bridge
-// represents the complete production runtime.
+// reputation and solar fetching are absent in checkpoint 00; later checkpoints
+// add their own controls. The loaded, empty predictor supports PATHSAMPLES from
+// checkpoint 12 without ingestion/display or a production model-quality claim.
 func commandFixtureOptions(cfg *config.Config, db *cty.CTYDatabase) ServerOptions {
 	c := cfg.Telnet
 	return ServerOptions{
@@ -45,6 +46,7 @@ func commandFixtureOptions(cfg *config.Config, db *cty.CTYDatabase) ServerOption
 		CTYLookup:           func() *cty.CTYDatabase { return db },
 		DefaultDedupePolicy: cfg.Dedup.DefaultPolicy,
 		NoiseModel:          cfg.PathReliability.NoiseModel(),
+		PathPredictor:       pathreliability.NewPredictor(cfg.PathReliability, cfg.PathReliability.AllowedBands),
 		DedupeFastEnabled:   true, DedupeMedEnabled: true, DedupeSlowEnabled: true,
 	}
 }

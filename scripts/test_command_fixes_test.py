@@ -25,6 +25,80 @@ HISTORY_ROW = "DX de K1ABC:     14074.00  W6ABC       CW LABEL                  
 
 
 class DriverControls(unittest.TestCase):
+    def test_setting_zero_oracle_requires_integer_representation(self):
+        for field in ("path_min_observation_count", "solar_summary_minutes"):
+            session, record = mock.Mock(), mock.Mock()
+            session.get.return_value = {"configuration": {"settings": {field: 30}}}
+            # Go's canonical omitempty representation may omit zero; both an
+            # omitted key and a literal integer zero retain the numeric contract.
+            for wire_value, saved in ((0, b"{}\n"), (0, (field + ": 0\n").encode()),
+                                       (False, b"{}\n"), (0.0, b"{}\n"),
+                                       (0, (field + ": false\n").encode()),
+                                       (0, (field + ": 0.0\n").encode()),
+                                       (0, (field + ": '0'\n").encode()),
+                                       (0, (field + ": null\n").encode())):
+                record.read_bytes.return_value = saved
+                document = {"configuration": {"settings": {field: wire_value}}}
+                with mock.patch.object(driver, "exact_human_reply", return_value=("Zero control", document)):
+                    if type(wire_value) is int and saved in (b"{}\n", (field + ": 0\n").encode()):
+                        driver.require_setting_control(session, record, "Zero", "Zero control", field, 0)
+                    else:
+                        with self.assertRaisesRegex(ValueError, "immediately saved value"):
+                            driver.require_setting_control(session, record, "Zero", "Zero control", field, 0)
+
+    def test_setting_refusal_oracle_includes_session_only_diagnostics(self):
+        session = mock.Mock()
+        session.get.side_effect = [{"status": {"session": {"diagnostic_comments": "SOURCE"}}},
+                                   {"status": {"session": {"diagnostic_comments": "OFF"}}}]
+        with mock.patch.object(driver, "require_command_refusal") as common:
+            with self.assertRaisesRegex(ValueError, "session diagnostic mode"):
+                driver.require_setting_argument_refusal(session, "SET DIAG OFF EXTRA", mock.Mock(), "Usage")
+            common.assert_called_once()
+        session.get.side_effect = [{"status": {"session": {"diagnostic_comments": "SOURCE"}}},
+                                   {"status": {"session": {"diagnostic_comments": "SOURCE"}}}]
+        with mock.patch.object(driver, "require_command_refusal"):
+            driver.require_setting_argument_refusal(session, "SET DIAG OFF EXTRA", mock.Mock(), "Usage")
+
+    def test_setting_control_requires_live_value_and_immediate_disk(self):
+        before = dict(configuration={"settings": {"noise_class": "RURAL"}}, revision="revision-1",
+                      status=dict(effective={"noise_class": "RURAL"}, preset={"name": "control"},
+                                  session={"diagnostic_comments": "SOURCE"}))
+        after = dict(configuration={"settings": {"noise_class": "URBAN"}}, revision="revision-2",
+                     status=dict(effective={"noise_class": "URBAN"}, preset={"name": "control"},
+                                 session={"diagnostic_comments": "SOURCE"}))
+        session, record = mock.Mock(), mock.Mock()
+        for live, disk in (("URBAN", b"noise_class: URBAN\n"), ("RURAL", b"noise_class: URBAN\n"),
+                           ("URBAN", b"noise_class: RURAL\n")):
+            value = copy.deepcopy(after)
+            value["configuration"]["settings"]["noise_class"] = live
+            session.get.return_value = before
+            record.read_bytes.return_value = disk
+            with mock.patch.object(driver, "exact_human_reply", return_value=("Noise class set to URBAN", value)):
+                if live == "URBAN" and b"URBAN" in disk:
+                    driver.require_setting_control(session, record, "SET NOISE URBAN", "Noise class set to URBAN", "noise_class", "URBAN")
+                else:
+                    with self.assertRaisesRegex(ValueError, "immediately saved value"):
+                        driver.require_setting_control(session, record, "SET NOISE URBAN", "Noise class set to URBAN", "noise_class", "URBAN")
+        value = copy.deepcopy(after)
+        value["status"]["effective"]["noise_class"] = "RURAL"
+        record.read_bytes.return_value = b"noise_class: URBAN\n"
+        with mock.patch.object(driver, "exact_human_reply", return_value=("Noise class set to URBAN", value)):
+            with self.assertRaisesRegex(ValueError, "runtime state"):
+                driver.require_setting_control(session, record, "SET NOISE URBAN", "Noise class set to URBAN", "noise_class", "URBAN")
+        for channel in ("configuration", "revision", "effective", "preset", "disk", "diagnostics"):
+            value = copy.deepcopy(before)
+            value["status"]["session"]["diagnostic_comments"] = "CONF"
+            record.read_bytes.side_effect = [b"unchanged", b"changed" if channel == "disk" else b"unchanged"]
+            if channel in ("configuration", "revision"):
+                value[channel] = "changed"
+            elif channel in ("effective", "preset"):
+                value["status"][channel] = "changed"
+            elif channel == "diagnostics":
+                value["status"]["session"]["diagnostic_comments"] = "OFF"
+            with mock.patch.object(driver, "exact_human_reply", return_value=("Diagnostic comments: CONF", value)):
+                with self.assertRaisesRegex(ValueError, "changed persistent state"):
+                    driver.require_setting_control(session, record, "SET DIAG CONFIDENCE", "Diagnostic comments: CONF", "diagnostic_comments", "CONF")
+
     def test_logout_oracle_requires_remote_eof_before_local_close(self):
         session = mock.Mock()
         session.call, session.suite.log = "N0CALL-1", io.BytesIO()
