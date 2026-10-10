@@ -254,12 +254,15 @@ Bands use existing normalization (`20` and `20m` are equivalent); modes use the
 existing filter names/aliases (`PSK31` selects PSK), including `UNKNOWN` for blank
 modes. Repeated values are deduplicated. `ALL`/`NONE` are unsupported in these
 lists; omit a category to impose no additional query restriction for it.
-Empty comma fields remain ignored. A configured mode alias named `BAND` or
-`MODE` is a value at the start of the mode list or after a comma. Without a
-preceding comma, a standalone BAND/MODE starts a clause. For example, with both
+Empty comma fields remain ignored. A supported configured mode alias named
+`BAND`, `MODE` or `COMMENT` is a value at the start of the mode list or after a
+comma. Otherwise a standalone keyword starts a clause. For example, with BAND/MODE
 aliases mapped to CW, `MODE BAND` selects CW, `MODE CW,MODE,FT8` selects CW/FT8,
 and `MODE CW BAND 20` selects CW on 20m. `MODE CW MODE FT8` is a repeated clause
 and is rejected. Finish the list without a comma before starting another clause.
+With COMMENT mapped to CW, `MODE COMMENT COMMENT POTA` selects CW and the
+literal phrase POTA. Absent or hidden COMMENT aliases retain ordinary clause
+behavior; comma-embedded COMMENT remains a list value and must be supported.
 Missing commas, missing or unsupported values and repeated categories reject the
 entire command without replacing the current search. Explicit BAND/MODE
 restrictions apply even to self-spots, before counting, and narrow results within saved filters rather
@@ -268,7 +271,8 @@ NEXT retains all selections, and searches never change preferences. Only unique
 canonical band/mode names are retained in the existing connection-owned cursor;
 there is no new archive index or stored preference. See
 [ADR-0262](../docs/decisions/ADR-0262-history-band-mode-selections.md) and its
-[list grammar refinement](../docs/decisions/ADR-0263-history-list-comma-boundaries.md).
+[list grammar refinement](../docs/decisions/ADR-0263-history-list-comma-boundaries.md)
+and [COMMENT alias boundary](../docs/decisions/ADR-0273-history-comment-alias-boundary.md).
 
 Every history form applies the page's captured current time minus
 `archive.retention_seconds`; the exact cutoff is included. Select newest matching

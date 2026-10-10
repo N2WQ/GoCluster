@@ -268,6 +268,19 @@ func TestCheckoutCommandFixture(t *testing.T) {
 			spotInput <- sp
 		}
 	}
+	if spot.CanonicalModeForFilter("COMMENT") == "CW" {
+		// Two literal matches plus newer wrong-mode/wrong-spacing decoys qualify
+		// alias selection before counting, then continuation of the same query.
+		phrase := "C16" + strings.ToUpper(spec.Nonce[:8]) + ":  UP5!"
+		for i, mode := range []string{"CW", "CW", "CW", "FT8"} {
+			sp := spot.NewSpotNormalized("W6ABC", "N0XYZ", 14063+float64(i), mode)
+			sp.Comment, sp.IsHuman = phrase, true
+			if i == 2 {
+				sp.Comment = strings.ReplaceAll(phrase, ":  ", ": ")
+			}
+			spotInput <- sp
+		}
+	}
 	binary, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)

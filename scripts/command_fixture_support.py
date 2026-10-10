@@ -193,7 +193,7 @@ def stage(root, transport, *, reputation_enabled=False, dedupe_fast_only=False, 
         if name == "spot_taxonomy" and underscore_taxonomy:
             # Private checked taxonomy, not a production mode/default change.
             cw = next(mode for mode in content["modes"] if mode["name"] == "CW")
-            cw.setdefault("variants", []).append("CW_ALIAS")
+            cw.setdefault("variants", []).extend(("CW_ALIAS", "COMMENT", "BAND", "MODE"))
             content["modes"].append(dict(name="TEST_MODE", filter_visible=True))
             content["events"].append(dict(name="TEST_EVENT", filter_visible=True))
         if name == "data":

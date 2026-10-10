@@ -69,6 +69,8 @@ the custom taxonomy case; deployed behavior needs a separate live verification.
 
 ## Links
 
+- COMMENT alias/clause boundaries are refined by
+  [ADR-0273](ADR-0273-history-comment-alias-boundary.md); other decisions remain.
 - Supersedes [ADR-0262](ADR-0262-history-band-mode-selections.md) delimiter and
   keyword-boundary clauses only.
 - Root cause: [TSR-0047](../troubleshooting/TSR-0047-history-mode-alias-clause-collision.md).

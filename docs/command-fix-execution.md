@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 15 complete (04a used two commits);
-25 approved checkpoints remain; next is 16.
+Current progress: checkpoints 00 through 16 complete (04a used two commits);
+24 approved checkpoints remain; 17 is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -2158,3 +2158,95 @@ comparisons, oracle fault controls, documentation and the final receipts. The
 technical review was inherited-context, not independent scientific evidence.
 Record, crawler-entry, generated-map, whitespace and direct staged-diff checks
 close the slice; no required check is waived.
+
+## Checkpoint 16: COMMENT mode aliases and literal history clauses
+
+Status: complete. Current discovery inspected ParseHistoryCommand, the
+generic processor's raw-input handoff, BAND/MODE list parsing, the per-byte
+COMMENT prefix scanner and connection-owned history publication. Semantic
+references confirm the generic processor and telnet history owner are the
+production parser callers. ADR-0261/0263 establish literal remainder and comma
+ownership; approved v3 settles COMMENT alias precedence.
+
+Architecture: commands owns one local keyword/comma boundary transition. Use
+the same keyword-value decision in the existing typed selection parser and in
+the COMMENT cut. Expose only a borrowed ASCII-prefix predicate to telnet's
+history branch. Preserve the existing tokenizer adapters: generic strings.Fields
+for API prefix fields, restricted ASCII spaces at ingress, exact raw phrase
+slicing/ASCII-edge trimming/detachment. The predicate adds no validation, CTY
+lookup, retained state, worker, lock, cursor or archive ownership.
+
+The separate inherited-context design/falsifiability investigation found two
+currently divergent COMMENT scans. Duplicating another scanner risks drift;
+calling the full parser per input byte would add allocation and validation/CTY
+work. The shared local lexical transition is the bounded choice. Preserve
+standalone-word clause boundaries: comma-embedded COMMENT remains a list value
+and is rejected as unsupported when the alias is absent. Retain the reader's
+existing standalone NEXT guard, unrelated to this repair. No new product choice
+or independent scientific evidence is required.
+
+Lead-owned post-approval falsifiability matrix:
+
+| Contract | Stimulus / fault | Required evidence | False-green risk | Checker / owner |
+|---|---|---|---|---|
+| Supported alias is a value | COMMENT first, after comma, embedded in comma list; repeated COMMENT then real marker | Canonical CW selection; literal phrase only at actual clause | First COMMENT always cut or arbitrary punctuation enabled too early | Independent literal vectors through parser/generic/readers / commands, telnet |
+| Unsupported alias is a clause | Absent and non-filter-visible aliases, including trailing empty comma fields | Existing phrase semantics; embedded unsupported value still refused | Every COMMENT always treated as a value | Real loaded taxonomy variants and literal query expectations / commands, telnet |
+| Raw phrase remains exact | Double spaces, punctuation, repeated words, 64/65 bytes and invalid whitespace | Literal needle and matching/count-one results with decoys first | Rejoining fields silently changes spacing or count predicate | Generic processor, existing phrase goldens and real reader / commands, telnet |
+| Editing and alphabet | Erase alias/marker, then punctuation; valid second marker and next physical line | Zero premature punctuation admission; exact case/echo/recovery | Direct parser tests bypass ingress | Both codecs plus allocation and bounded fuzz controls / telnet |
+| Invalid request preserves continuation | Prior accepted query/token/position/flags/generation, reader and parser refusals, then NEXT | Zero archive calls on refusal; same detached query and exact continued matching; configuration/revision/disk unchanged | Comparing only token or accepting a fabricated page | Composed history owner and actual checkout readbacks / telnet, runner |
+| Existing grammar/ownership | BAND/MODE aliases, empty commas, NEXT and dialect/nil-filter guards | Existing controls remain green; zero allocations per borrowed prefix scan | Broad parser cleanup changes compatibility or cursor lifetime | Current parser/session controls, selected baseline/race lane / commands, telnet |
+
+Select focused controls and complete commands/telnet/filter/spot ordinary/race,
+bounded prefix/parser fuzz, cumulative actual ordinary/race profiles, offline
+oracle faults, complete ordinary baseline and analyzers. Run analyzers before
+final actual builds so test-helper cleanup cannot stale their source receipts.
+Record the durable alias/clause rule in ADR-0273 and its failure learning in
+TSR-0063; update human/history/support documentation and generated maps.
+
+Implementation follows the shared lexical transition, with no full parser at
+per-byte ingress and no change to archive/cursor/configuration ownership.
+The new commands controls cover six history spellings, loaded alias visibility,
+raw phrases, nil-filter/dialect guards, count-one decoys and zero borrowed-prefix
+allocations. Composed telnet controls cover 48 selection cases and 12 cursor
+scenarios across both codecs/dialects and three taxonomy profiles. Refusals
+preserve query contents, position, flags, token, generation, stable filter,
+configuration, preset, revision and exact disk bytes without a commit or read.
+
+The actual profiles use two matching rows behind newer wrong-mode and
+wrong-spacing decoys. First/after-comma aliases preserve the literal phrase;
+invalid reader/parser input leaves the returned NEXT usable, then the second
+match and final empty page complete the search. Every complete response is
+followed by a correlated configuration barrier. Offline row negatives retain
+valid 78-column layout so a spacing mismatch cannot pass merely by breaking
+framing. The read-only technical review found no material implementation defect;
+its documentation finding was corrected from fabricated to malformed token
+shapes. Actual NEXT and the connection owner check token validity. This review
+used inherited context; it is not independent scientific evidence.
+
+| Selected evidence | Observed result |
+|---|---|
+| Focused history/parser/reader controls | PASS; `checkpoint-16-focused.log` |
+| Complete ordinary baseline | All 70 packages passed, including build checks for no-test packages; `checkpoint-16-all-packages.log` |
+| Complete affected-package race lane | commands, telnet, filter and spot passed; `checkpoint-16-race.log` |
+| Bounded fuzz controls | Parser/prefix target: 155,640 inputs; reader target: 115,390 inputs; both passed with two workers and 15-second budgets; `checkpoint-16-fuzz.log` |
+| Offline runner faults | 55 controls passed; `checkpoint-16-runner-controls-final.log` |
+| Whole-repository analyzers | Vet and Staticcheck passed; lint passed with zero issues |
+| Ordinary actual checkout | `20261010-075603-c575e849`: 120 cases passed, zero wire/cleanup failures; all 12 retirement receipts confirm clients retired, consumer joined and archive stopped |
+| Race actual checkout | `20261010-075801-4a1a3251`: same 120 cases and cleanup outcome |
+
+Both actual builds report Go/module source digest
+`11cccfc3afbca7c3a227c03d1391839576a725f6ab5dd65e643fcdb768451cae`.
+Go/Python stayed frozen across the final pair; loaded private configurations
+have separate verified hashes. The digest excludes Python, docs and config.
+No check here establishes production load, event inference, model quality,
+external-cluster behavior or early machine-error wire framing.
+
+Support-agent documentation impact: Required. Commands/telnet history guides,
+the validation guide and configuration support card explain the actual boundary
+and preserve the returned NEXT workflow. ADR-0273 refines only ADR-0263's
+COMMENT boundary; TSR-0063 records the diverging scanners and checker limits.
+The remaining detailed HELP catalog reconciliation stays in approved 17/18.
+Fresh lead verification reviewed all touched production and new test files,
+literal failure oracles, complete response barriers and final source/retirement
+receipts. Record and crawler-entry checks passed; final generated maps and
+direct staged-diff/whitespace review close the slice before commit.

@@ -3,6 +3,8 @@
 // owned by the input reader; backspacing a prefix immediately restores that list.
 package telnet
 
+import "dxcluster/commands"
+
 func nextCommentInputWord(line []byte, start int) (word []byte, end int) {
 	for start < len(line) && line[start] == ' ' {
 		start++
@@ -38,16 +40,7 @@ func commentArgumentsStarted(line []byte) bool {
 	default:
 		return false
 	}
-	// History BAND/MODE lists can put COMMENT beyond the selector/count. This
-	// borrowed scan is bounded by the reader's byte ceiling and allocates no
-	// parser state per input byte. Invalid grammar still fails at dispatch.
-	for {
-		word, pos = nextCommentInputWord(line, pos)
-		if asciiWordEqual(word, "COMMENT") {
-			return pos < len(line)
-		}
-		if len(word) == 0 || asciiWordEqual(word, "NEXT") {
-			return false
-		}
-	}
+	// The parser owns the same keyword/comma boundary rule, so a configured
+	// COMMENT mode alias cannot prematurely enable literal punctuation here.
+	return commands.HistoryCommentClauseStarted(line[pos:])
 }

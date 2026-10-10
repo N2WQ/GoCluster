@@ -81,8 +81,9 @@ func (p *Processor) ParseHistoryCommand(line, dialect string) (HistoryCommand, b
 	// interior spaces and literal punctuation survive unchanged. NEXT is handled
 	// first: a continuation cannot replace the saved search phrase.
 	comment := ""
+	var clause historyClauseState
 	for i, arg := range args {
-		if strings.EqualFold(arg, "COMMENT") {
+		if clause.advance([]byte(arg)) {
 			comment = historyCommentRemainder(line, parts[:argStart+i+1])
 			if !filter.ValidCommentPhrase(comment) {
 				return HistoryCommand{}, true, "Invalid COMMENT phrase. Use 1-64 printable ASCII bytes.\n"

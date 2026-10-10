@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `d294c0fbc8abfbef`
+- Source fingerprint: `ea6de886f87dd608`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -11,11 +11,11 @@
 
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
-| `dxcluster/commands` | `commands` | 6 | 15 |
+| `dxcluster/commands` | `commands` | 7 | 16 |
 | `dxcluster/internal/cluster` | `internal/cluster` | 25 | 63 |
 | `dxcluster/peer` | `peer` | 62 | 130 |
 | `dxcluster/spot` | `spot` | 33 | 32 |
-| `dxcluster/telnet` | `telnet` | 47 | 92 |
+| `dxcluster/telnet` | `telnet` | 47 | 93 |
 
 ## In-Scope Package Edges
 
@@ -100,6 +100,7 @@ Source files:
 - `commands/configuration_help.go`
 - `commands/help_overview.go`
 - `commands/history.go`
+- `commands/history_clause.go`
 - `commands/history_selection.go`
 - `commands/processor.go`
 
@@ -111,6 +112,7 @@ Test files:
 - `commands/dxcc_history_test.go`
 - `commands/help_overview_test.go`
 - `commands/history_archive_test.go`
+- `commands/history_comment_alias_test.go`
 - `commands/history_selection_taxonomy_test.go`
 - `commands/history_selection_test.go`
 - `commands/history_test.go`
@@ -566,6 +568,7 @@ Test files:
 - `telnet/handshake_mode_test.go`
 - `telnet/handshake_transcript_test.go`
 - `telnet/help_recipe_test.go`
+- `telnet/history_comment_alias_test.go`
 - `telnet/history_comment_test.go`
 - `telnet/history_filter_test.go`
 - `telnet/history_fuzz_test.go`
@@ -632,6 +635,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0273](docs/decisions/ADR-0273-history-comment-alias-boundary.md) | Accepted | 2026-10-10 | commands, telnet, history, aliases, literal phrases | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0272](docs/decisions/ADR-0272-mode-visibility-deltas.md) | Accepted | 2026-10-09 | filter, telnet, MODE, persistence, effective feedback | `area:telnet, path:telnet` |
 | [ADR-0271](docs/decisions/ADR-0271-shared-station-reputation.md) | Accepted | 2026-10-09 | reputation, telnet, station identity, allowance, history ownership | `area:telnet` |
 | [ADR-0270](docs/decisions/ADR-0270-complete-storage-admission.md) | Accepted | 2026-10-09 | filter, telnet, quotas, temporary settings, SAVE ordering | `area:telnet, path:telnet` |

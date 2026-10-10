@@ -264,6 +264,15 @@ and filter behavior, not event inference or model quality. Reader controls keep
 login and recognized machine headers restricted, with literal editing, echo
 and byte-boundary checks. They do not qualify early machine-error wire framing.
 
+The same private taxonomy maps COMMENT to CW. Actual count-one history queries
+distinguish the mode alias from a later literal COMMENT clause, reject newer
+wrong-mode and wrong-spacing rows, preserve continuation after refused input,
+and continue to the second matching row. Complete CRLF pages, tokens and a
+correlated configuration barrier prevent hidden suffixes from passing. Reader
+and history-owner controls also cover absent/hidden aliases, editing and exact
+cursor/settings/disk preservation. This is local command evidence, not a
+production archive or model-quality qualification.
+
 Coverage grows with each approved fix. The initial fixture does not certify
 production dedupe, classifier or runtime shutdown. See the
 [execution record](command-fix-execution.md) and

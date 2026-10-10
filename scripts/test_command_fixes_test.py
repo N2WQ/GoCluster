@@ -25,6 +25,71 @@ HISTORY_ROW = "DX de K1ABC:     14074.00  W6ABC       CW LABEL                  
 
 
 class DriverControls(unittest.TestCase):
+    def test_history_alias_pages_require_complete_framing_and_continuation(self):
+        query = "SHOW DX 1 MODE COMMENT COMMENT LABEL"
+        token = "H1" + "A" * 32
+        footer = "Continue older history: SHOW DX NEXT " + token + "\r\n"
+        raw = (query + "\r\n" + HISTORY_ROW + "\r\n" + footer).encode()
+        self.assertEqual(driver.decode_history_alias_page(raw, query, False), ([HISTORY_ROW], token))
+        older = ("Older retained history page:\r\n" + HISTORY_ROW + "\r\n" + footer).encode()
+        self.assertEqual(driver.decode_history_alias_page(older, query, True), ([HISTORY_ROW], token))
+        self.assertEqual(driver.decode_history_alias_page(b"Older retained history page:\r\nEnd of retained history search.\r\n",
+                                                        query, True), ([], None))
+        faults = ((raw.replace(b"\r\n", b"\n"), False),
+                  (raw + b"LEAK\r\n", False), (raw + footer.encode(), False),
+                  ((query + "\r\n").encode() + raw, False),
+                  (raw.replace(token.encode(), b"H1BAD"), False),
+                  (footer.encode(), False), (b"End of retained history search.\r\n", False),
+                  (older, False), (raw, True),
+                  (b"Older retained history page:\r\nNo matching retained spots.\r\n", True),
+                  (raw.replace(footer.encode(), b"Search work limit reached; this page is incomplete.\r\n"), False),
+                  (raw[:-len(footer)], False))
+        for data, continuation in faults:
+            with self.assertRaises(ValueError):
+                driver.decode_history_alias_page(data, query, continuation)
+
+    def test_history_alias_rows_require_exact_literal_fields_and_count(self):
+        phrase = "C16LABEL:  UP5!"
+        row = HISTORY_ROW.replace("K1ABC", "N0XYZ").replace("14074.00", "14064.00")
+        row = row[:39] + ("CW " + phrase).ljust(24) + row[63:]
+        driver.require_history_alias_row([row], 14064, phrase)
+        wrong_mode = row[:39] + ("CW-X " + phrase).ljust(24) + row[63:]
+        driver.require_history_row(wrong_mode)
+        wrong_spaces = row[:39] + ("CW " + phrase.replace(":  ", ": ")).ljust(24) + row[63:]
+        driver.require_history_row(wrong_spaces)
+        for rows, frequency, value in (([], 14064, phrase), ([row, row], 14064, phrase),
+                                       ([wrong_mode], 14064, phrase), ([row], 14063, phrase),
+                                       ([row.replace("N0XYZ", "W1XYZ")], 14064, phrase),
+                                       ([wrong_spaces], 14064, phrase),
+                                       ([row], 14064, phrase + "X")):
+            with self.assertRaises(ValueError):
+                driver.require_history_alias_row(rows, frequency, value)
+
+    def test_history_alias_barrier_rejects_hidden_suffix_and_missing_readback(self):
+        query = "SHOW DX 1 MODE COMMENT COMMENT LABEL"
+        raw = (HISTORY_ROW + "\r\nEnd of retained history search.\r\n").encode()
+        command = b"GET YAML CONFIG SCHEMA 4 ID BARRIER16\r\n"
+        document = dict(configuration={}, status={}, revision="r16")
+
+        def session(prefix, readback=document):
+            current = mock.Mock()
+            current.reader.line.side_effect = raw.splitlines(keepends=True)
+            current.reader.buffer = b""
+            current.reader.remote_echo = True
+            current.suite.identifier.return_value = "BARRIER16"
+            current.suite.log = io.BytesIO()
+            current.frame.return_value = (copy.deepcopy(readback), prefix)
+            return current
+
+        self.assertEqual(driver.history_alias_page(session(command), query), ([HISTORY_ROW], None, document))
+        for prefix in (b"LEAK\r\n" + command, command + b"LEAK\r\n", command + command,
+                       b"\n" + command, b"\r\n" * 32769 + command):
+            with self.assertRaises(ValueError):
+                driver.history_alias_page(session(prefix), query)
+        for readback in (dict(error="refused"), dict(configuration={}, status={}, revision="")):
+            with self.assertRaises(ValueError):
+                driver.history_alias_page(session(command, readback), query)
+
     def test_taxonomy_rules_require_canonical_live_and_saved_names_and_booleans(self):
         expected = dict(modes=dict(allow_all=False, block_all=False, allow={"TEST_MODE": True, "CW": True}, block={}),
                         events=dict(allow_all=False, block_all=False, allow={"TEST_EVENT": True}, block={}))

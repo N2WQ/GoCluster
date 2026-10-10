@@ -1027,6 +1027,7 @@ def profile(binary, root, source, transport):
                 f"{transport}/0: large DEDUPE final send fits or refuses without effects",
                 f"{transport}/0: enabled SOLAR feedback preserves cadence and read owners",
                 f"{transport}/0: configured taxonomy underscores reach human commands and matching",
+                f"{transport}/0: COMMENT aliases preserve literal history and continuation",
                 f"{transport}/1: held endpoint and loaded consumers",
                 f"{transport}: preferences and archive survive fresh child",
                 f"{transport}: NOFILTER geography survives fresh child",
@@ -1046,7 +1047,8 @@ def profile(binary, root, source, transport):
                 f"{transport}: fixed setting values survive fresh child with session reset",
                 f"{transport}/1: large DEDUPE final send survives fresh child",
                 f"{transport}/1: enabled SOLAR cadence survives fresh child",
-                f"{transport}/1: configured taxonomy underscore rules survive fresh child"]
+                f"{transport}/1: configured taxonomy underscore rules survive fresh child",
+                f"{transport}/1: COMMENT history aliases work on fresh child"]
     call = "K1ABC-70001"
     observer_call, observer_configuration = "VE3ABC-70003", None
     failed_records, refused_records, compatible_records = {}, {}, {}
@@ -1061,6 +1063,7 @@ def profile(binary, root, source, transport):
     saved_settings = {}
     saved_solar = {}
     saved_taxonomy = {}
+    saved_history_aliases = {}
     label = None
     suites = []
     for generation in range(2):
@@ -1474,6 +1477,8 @@ def profile(binary, root, source, transport):
                      lambda: solar_cases(suite, root, True, generation, saved_solar))
                 case(f"{transport}/0: configured taxonomy underscores reach human commands and matching",
                      lambda: taxonomy_cases(suite, root, child.nonce, generation, saved_taxonomy, label))
+                case(f"{transport}/0: COMMENT aliases preserve literal history and continuation",
+                     lambda: history_alias_cases(suite, root, child.nonce, generation, saved_history_aliases))
             else:
                 def restored():
                     settings = session.get()["configuration"]["settings"]
@@ -1684,6 +1689,8 @@ def profile(binary, root, source, transport):
                      lambda: solar_cases(suite, root, True, generation, saved_solar))
                 case(f"{transport}/1: configured taxonomy underscore rules survive fresh child",
                      lambda: taxonomy_cases(suite, root, child.nonce, generation, saved_taxonomy, label))
+                case(f"{transport}/1: COMMENT history aliases work on fresh child",
+                     lambda: history_alias_cases(suite, root, child.nonce, generation, saved_history_aliases))
         finally:
             try:
                 if suite:
@@ -1809,6 +1816,136 @@ def large_dedupe_cases(suite, root, generation):
                 after["status"]["effective"] == before["status"]["effective"] and
                 after["status"]["preset"] == before["status"]["preset"] and record.read_bytes() == saved,
                 "large DEDUPE success/refusal changed a preference owner")
+
+
+def decode_history_alias_page(raw, query, older):
+    require(len(raw) <= harness.MAX_FRAME and raw.endswith(b"\r\n"), "history alias page exceeds its wire bound")
+    rows, token, echoed, heading = [], None, False, False
+    lines = raw.splitlines(keepends=True)
+    for i, line in enumerate(lines):
+        require(line.endswith(b"\r\n") and b"\r" not in line[:-2], "history alias page breaks CRLF")
+        text = line[:-2].decode("ascii", "strict")
+        require(len(text) <= 78, "history alias page exceeds line width")
+        if text == query.upper():
+            require(not echoed and not rows and not heading, "history alias page repeats or interleaves echo")
+            echoed = True
+        elif text == "Older retained history page:":
+            require(older and not heading and not rows, "history alias page has a wrong or duplicate heading")
+            heading = True
+        elif text.startswith("DX de"):
+            require_history_row(text)
+            rows.append(text)
+        elif text == "" and i < len(lines) - 1:
+            continue
+        else:
+            require(i == len(lines) - 1, "history alias page has trailing content")
+            match = re.fullmatch(r"Continue older history: SHOW DX NEXT (H1[0-9A-F]{32})", text)
+            if match:
+                require(bool(rows), "count-reached history alias page has no matching row")
+                token = match.group(1)
+            elif text == "End of retained history search.":
+                require(bool(rows) or older, "fresh empty history alias page claims prior matches")
+            else:
+                require(text == "No matching retained spots." and not rows and not older,
+                        "history alias page has no honest complete footer")
+            require(heading == older, "history alias page lost its continuation heading")
+            return rows, token
+    raise ValueError("history alias page has no footer")
+
+
+def history_alias_page(current, query, older=False):
+    received, raw = 0, bytearray()
+    try:
+        current.send(query + "\r\n")
+        while True:
+            line = current.reader.line()
+            received += len(line)
+            raw.extend(line[:harness.MAX_FRAME - len(raw)])
+            require(received <= harness.MAX_FRAME and line.endswith(b"\r\n") and b"\r" not in line[:-2],
+                    "history alias page exceeds its bound or breaks CRLF")
+            text = line[:-2].decode("ascii", "strict")
+            if text in ("End of retained history search.", "No matching retained spots.") or text.startswith("Continue older history:"):
+                break
+            require("Search work limit" not in text and "unreadable archive" not in text,
+                    "history alias coverage is incomplete")
+        rows, token = decode_history_alias_page(bytes(raw), query, older)
+    except Exception:
+        received += len(current.reader.buffer)
+        raw.extend(current.reader.buffer[:harness.MAX_FRAME - len(raw)])
+        raise
+    finally:
+        receipt = f"\n[{current.call}] {query}\n".encode() + bytes(raw)
+        if received > len(raw):
+            receipt += b"\n[history alias receipt truncated at 65536 bytes]\n"
+        current.suite.log.write(receipt)
+        current.suite.log.flush()
+    identifier = current.suite.identifier()
+    command = f"GET YAML CONFIG SCHEMA 4 ID {identifier}"
+    current.send(command + "\r\n")
+    document, prefix = current.frame("CONFIG", identifier, 4, command)
+    echoed, trailing = False, 0
+    for line in prefix.splitlines(keepends=True):
+        require(line.endswith(b"\r\n") and b"\r" not in line[:-2], "history alias barrier breaks CRLF")
+        if current.reader.remote_echo and not echoed and line == command.encode("ascii") + b"\r\n":
+            echoed = True
+            continue
+        require(line == b"\r\n", "history alias page has trailing content")
+        trailing += len(line)
+    require(received + trailing <= harness.MAX_FRAME, "history alias final response exceeds its wire bound")
+    require("error" not in document and type(document.get("configuration")) is dict and
+            type(document.get("status")) is dict and type(document.get("revision")) is str and bool(document["revision"]),
+            "history alias barrier lacks a valid configuration readback")
+    return rows, token, document
+
+
+def require_history_alias_row(rows, frequency, phrase):
+    require(len(rows) == 1 and rows[0][39:63].rstrip() == "CW " + phrase and
+            re.search(r"^DX de N0XYZ:\s+" + str(frequency) + r"\.00\s+W6ABC\s+", rows[0]),
+            "history alias row has the wrong mode, spacing, identity, frequency or count")
+    require_history_row(rows[0])
+
+
+def history_alias_cases(suite, root, nonce, generation, saved_history):
+    phrase = "C16" + nonce[:8].upper() + ":  UP5!"
+    for dialect, call, prefixes in (("go", "VE3ABC-70069", ("SHOW DX", "SH MYDX")),
+                                    ("cc", "VE3ABC-70070", ("SHOW/DX", "SH/DX", "SHOW MYDX", "SH DX"))):
+        current = harness.Session(suite, call)
+        current.human("PAUSE 300")
+        if generation == 0:
+            current.human("DIALECT " + dialect)
+        before = current.get()
+        record = root / "users" / (call + ".yaml")
+        saved = record.read_bytes()
+        if generation:
+            require((before["configuration"], before["status"]["preset"]) == saved_history[call],
+                    "fresh child lost read-only history preferences")
+
+        def unchanged(after):
+            require(after["configuration"] == before["configuration"] and after["revision"] == before["revision"] and
+                    after["status"]["effective"] == before["status"]["effective"] and
+                    after["status"]["preset"] == before["status"]["preset"] and record.read_bytes() == saved,
+                    "history alias request changed a preference owner")
+
+        for index, prefix in enumerate(prefixes):
+            values = "CW, COMMENT" if index % 2 else "COMMENT"
+            query = prefix + " W6ABC 1 MODE " + values + " COMMENT " + phrase
+            rows, token, after = history_alias_page(current, query)
+            require_history_alias_row(rows, 14064, phrase)
+            require(token is not None, "two matching alias stimuli did not produce continuation")
+            unchanged(after)
+            for invalid, expected in ((prefix + " W6ABC 1 MODE COMMENT up:5!", "Command input"),
+                                      (prefix + " W6ABC 1 MODE CW, COMMENT FT8", "separate values with commas"),
+                                      (prefix + " W6ABC 1 MODE COMMENT COMMENT", "Invalid COMMENT phrase")):
+                _, after = current.human(invalid, expected)
+                unchanged(after)
+            rows, next_token, after = history_alias_page(current, prefix + " NEXT " + token, older=True)
+            require_history_alias_row(rows, 14063, phrase)
+            require(next_token is not None and next_token != token, "successful alias continuation did not rotate its handle")
+            unchanged(after)
+            rows, end_token, after = history_alias_page(current, prefix + " NEXT " + next_token, older=True)
+            require(not rows and end_token is None, "alias continuation retained decoys or fabricated more matches")
+            unchanged(after)
+        saved_history[call] = before["configuration"], before["status"]["preset"]
 
 
 def require_taxonomy_rules(document, expected, record):

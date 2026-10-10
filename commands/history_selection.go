@@ -52,7 +52,7 @@ func parseHistorySelectionValues(domain string, args []string) ([]string, int, s
 		// list or after a comma. Otherwise the keyword starts another clause.
 		// Empty comma fields remain harmless, including before a new clause
 		// whose keyword is not a supported value in the current category.
-		if historySelectionToken(arg) && (separatorRequired || domain != "MODE" || !filter.IsSupportedMode(arg)) {
+		if historySelectionToken(arg) && !historyKeywordIsModeValue(domain, separatorRequired, arg) {
 			break
 		}
 		for i, value := range strings.Split(arg, ",") {

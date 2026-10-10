@@ -319,7 +319,7 @@ commas, use OR within each category and AND across categories. BAND and MODE may
 appear in either order, once each.
 Use the existing band names/normalization (`20` or `20m`) and filter-mode
 names/aliases, including `UNKNOWN` for blank modes. Duplicated values are
-deduplicated; empty comma fields remain ignored. Configured BAND/MODE mode
+deduplicated; empty comma fields remain ignored. Supported BAND/MODE/COMMENT mode
 aliases are values first or after a comma; otherwise standalone keywords start
 clauses. Finish a list without a comma before starting another clause. Missing
 commas, unsupported or missing values, repeated categories and BAND/MODE
@@ -330,6 +330,10 @@ preferences; NEXT retains the selected lists and phrase. The existing command
 byte limit still applies. See
 [ADR-0262](../docs/decisions/ADR-0262-history-band-mode-selections.md) and
 [ADR-0263](../docs/decisions/ADR-0263-history-list-comma-boundaries.md).
+With COMMENT mapped to CW, use `MODE COMMENT COMMENT POTA` for CW and POTA
+text. Without that supported alias, `MODE CW COMMENT POTA` keeps its ordinary
+meaning. Comma-embedded COMMENT is a list value and must be supported. See the
+[COMMENT alias boundary](../docs/decisions/ADR-0273-history-comment-alias-boundary.md).
 
 Every page applies current time minus configured archive retention, including
 the exact cutoff, and visits at most 200,000 candidates. Decode failures,

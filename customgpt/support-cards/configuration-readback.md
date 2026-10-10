@@ -40,6 +40,16 @@ command/error artifact that distinguishes the next step.
   SHOW DX/MYDX recognize canonical labels before portable callsign processing;
   numeric history arguments remain counts. SHOW DXCC details are unchanged.
 
+- History MODE keyword aliases use the loaded filter-visible vocabulary.
+  BAND/MODE/COMMENT aliases are values first or after a comma; otherwise a
+  standalone keyword starts a clause. With COMMENT mapped to CW,
+  `SHOW DX MODE COMMENT COMMENT POTA` selects CW and literal POTA text.
+  Absent/hidden aliases retain ordinary COMMENT clause behavior. A refused
+  request preserves the previous search and preferences; copy returned NEXT
+  commands. Retrieve [ADR-0273](../../docs/decisions/ADR-0273-history-comment-alias-boundary.md)
+  or [TSR-0063](../../docs/troubleshooting/TSR-0063-history-comment-alias-boundary.md)
+  for boundary and checker details; do not infer production archive/model quality.
+
 - Human SHOW FILTER uses aligned labels and wraps all passing finite selections
   by name: BAND, MODE, SOURCE, EVENT, PATH, CONFIDENCE, DX/DE continents and states.
   Explain All, None and useful explicit exclusions, including All except.
