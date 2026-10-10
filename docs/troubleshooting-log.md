@@ -11,6 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0064 | CC HELP Category Grammar | Monitoring | 2026-10-10 | commands HELP, telnet filter categories and advertised forms | none | `docs/troubleshooting/TSR-0064-cc-help-category-grammar.md` |
 | TSR-0063 | History COMMENT Alias Boundary | Monitoring | 2026-10-10 | commands, telnet reader, history selections and continuation | ADR-0273 | `docs/troubleshooting/TSR-0063-history-comment-alias-boundary.md` |
 | TSR-0062 | Taxonomy Human Input Alphabet | Monitoring | 2026-10-09 | telnet reader, configured MODE/EVENT names and aliases, input restrictions | none | `docs/troubleshooting/TSR-0062-taxonomy-human-input-alphabet.md` |
 | TSR-0061 | SOLAR Availability And Outcomes | Monitoring | 2026-10-09 | solar summaries, command feedback, saved/effective cadence | none | `docs/troubleshooting/TSR-0061-solar-availability-and-outcomes.md` |

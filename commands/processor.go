@@ -683,43 +683,8 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 		)
 		add("SH/FILTER", "SH/FILTER - Alias of SHOW/FILTER.", shFilterLines)
 
-		setFilterLines := helpEntryLines(
-			"SET/FILTER - Allow list-based filters (CC dialect).",
-			[]string{"SET/FILTER <type> <list>"},
-			nil,
-			[]string{
-				"Same semantics as PASS.",
-				"Use /ON or /OFF to allow or block all for a type.",
-				"Example: SET/FILTER BAND/ON",
-				"DXDXCC/DEDXCC accept canonical CTY prefixes or positive ADIF numbers.",
-				"DXSTATE/DESTATE accept US state and Canadian province/territory codes.",
-				"Unknown state fails an explicit PASS list and passes a REJECT-only list.",
-				"State filters are suspended and retained while NEARBY is enabled.",
-			},
-		)
-		setFilterLines = appendListSection(setFilterLines, "Types:", append([]string{"DXBM"}, filterListTypes()...))
-		setFilterLines = appendNotes(setFilterLines, []string{
-			"DXBM maps CC band codes to BAND filters.",
-		})
-		setFilterLines = appendNotes(setFilterLines, []string{
-			"DXBM bands: 160, 80, 40, 30, 20, 17, 15, 12, 10, 6, 2 (1 if enabled).",
-		})
-		add("SET/FILTER", "SET/FILTER - Allow list-based filters.", setFilterLines)
-
-		unsetFilterLines := helpEntryLines(
-			"UNSET/FILTER - Block list-based filters (CC dialect).",
-			[]string{"UNSET/FILTER <type> <list>"},
-			nil,
-			[]string{
-				"Same semantics as REJECT.",
-				"DXDXCC/DEDXCC accept canonical CTY prefixes or positive ADIF numbers.",
-				"DXSTATE/DESTATE accept US state and Canadian province/territory codes.",
-				"Unknown state fails an explicit PASS list and passes a REJECT-only list.",
-				"State filters are suspended and retained while NEARBY is enabled.",
-			},
-		)
-		unsetFilterLines = appendListSection(unsetFilterLines, "Types:", append([]string{"DXBM"}, filterListTypes()...))
-		add("UNSET/FILTER", "UNSET/FILTER - Block list-based filters.", unsetFilterLines)
+		add("SET/FILTER", "SET/FILTER - Allow filter matches.", ccFilterHelpLines("SET/FILTER"))
+		add("UNSET/FILTER", "UNSET/FILTER - Block filter matches.", ccFilterHelpLines("UNSET/FILTER"))
 
 		setNoFilterLines := helpEntryLines(
 			"SET/NOFILTER - Allow everything (CC dialect).",
@@ -1265,9 +1230,9 @@ func filterHelpLines(dialect string) []string {
 		"UNKNOWN is the MODE token for blank-mode spots.",
 		"If an item appears in both lists, block wins.",
 		"",
-		"ALL keyword (type-scoped):",
-		"PASS <type> ALL - allow everything for that type",
-		"REJECT <type> ALL - block everything for most types",
+		"ALL for ordinary list categories:",
+		"PASS <list-type> ALL - allow everything for that list category",
+		"REJECT <list-type> ALL - block everything for most list categories",
 		"REJECT EVENT ALL - block only tagged EVENT spots",
 		"COMMENT treats ALL and NONE literally; RESET FILTER COMMENT clears rules.",
 		"RESET FILTER resets all filters to configured defaults for new users.",
@@ -1300,13 +1265,12 @@ func filterHelpLines(dialect string) []string {
 		lines = append(lines,
 			"SET/NOFILTER",
 			"CC shortcuts take no extra arguments.",
-			"SET/FILTER <type> <list>",
-			"UNSET/FILTER <type> <list>",
-			"SET/FILTER <type>/ON  -> PASS <type> ALL",
-			"SET/FILTER <type>/OFF -> REJECT <type> ALL",
-			"Inline /ON and /OFF flags take no extra arguments.",
 			"SHOW/FILTER | SH/FILTER",
 		)
+		lines = append(lines, "")
+		lines = append(lines, ccFilterHelpLines("SET/FILTER")...)
+		lines = append(lines, "")
+		lines = append(lines, ccFilterHelpLines("UNSET/FILTER")...)
 	}
 	return lines
 }

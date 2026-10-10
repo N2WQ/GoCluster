@@ -17,6 +17,14 @@ command/error artifact that distinguishes the next step.
 
 ## Must Include
 
+- CC HELP groups ordinary lists, switches and special grammar. Shared
+  PASS/REJECT forms also execute in CC. COMMENT has no SET/UNSET alias; MINSNR
+  requires modes plus a minimum or the verb's clear sentinel; NEARBY follows
+  explicit ON/OFF with either verb. Only SET strips inline flags for supported
+  ordinary categories/switches, plus NOFILTER/ON. Retrieve
+  [TSR-0064](../../docs/troubleshooting/TSR-0064-cc-help-category-grammar.md)
+  and current HELP for the exact forms; do not infer all categories accept ALL.
+
 - Stored user records have separate 1 MiB raw, normalized and exact-write limits;
   configuration and baseline each use the 256 KiB standalone-preset encoding.
   Expensive alias expansion can also be refused; decoding-work units are not

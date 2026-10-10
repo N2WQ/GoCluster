@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `ea6de886f87dd608`
+- Source fingerprint: `cd2cc21954e7bbec`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -11,11 +11,11 @@
 
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
-| `dxcluster/commands` | `commands` | 7 | 16 |
+| `dxcluster/commands` | `commands` | 8 | 17 |
 | `dxcluster/internal/cluster` | `internal/cluster` | 25 | 63 |
 | `dxcluster/peer` | `peer` | 62 | 130 |
 | `dxcluster/spot` | `spot` | 33 | 32 |
-| `dxcluster/telnet` | `telnet` | 47 | 93 |
+| `dxcluster/telnet` | `telnet` | 47 | 94 |
 
 ## In-Scope Package Edges
 
@@ -96,6 +96,7 @@
 ### `dxcluster/commands`
 
 Source files:
+- `commands/cc_filter_help.go`
 - `commands/comment_help.go`
 - `commands/configuration_help.go`
 - `commands/help_overview.go`
@@ -105,6 +106,7 @@ Source files:
 - `commands/processor.go`
 
 Test files:
+- `commands/cc_filter_help_test.go`
 - `commands/command_arity_test.go`
 - `commands/comment_history_benchmark_test.go`
 - `commands/comment_history_test.go`
@@ -540,6 +542,7 @@ Test files:
 - `telnet/bulletin_dedupe_test.go`
 - `telnet/callsign_pattern_command_test.go`
 - `telnet/canadian_login_test.go`
+- `telnet/cc_filter_help_contract_test.go`
 - `telnet/command_fixture_options_test.go`
 - `telnet/command_fixture_test.go`
 - `telnet/comment_benchmark_test.go`

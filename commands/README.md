@@ -31,7 +31,15 @@ COMMENT, MINSNR and NEARBY commands retain their PASS/REJECT spellings.
 `HELP PASS` and `HELP REJECT` provide category examples, accepted values and
 exceptions. In CC, these help topics describe the supported CC list commands;
 `HELP SET/FILTER` and `HELP UNSET/FILTER` show the same detailed material.
-This help routing does not add executable GO list commands to CC.
+CC also accepts shared PASS/REJECT forms through its existing parser fallback.
+Detailed CC HELP separates ordinary list types from switches and special forms:
+SOURCE takes one value; MINSNR takes modes and a threshold or clear sentinel;
+NEARBY follows its explicit ON/OFF value with either verb. COMMENT uses shared
+PASS/REJECT, REMOVE and RESET commands, with no SET/UNSET mutation alias.
+Only SET/FILTER strips inline /ON or /OFF, for listed ordinary categories and
+switches. NOFILTER supports SET and /ON only; DXBM takes numeric band codes,
+with SET's separate PASS/REJECT variants. See
+[CC grammar troubleshooting](../docs/troubleshooting/TSR-0064-cc-help-category-grammar.md).
 
 `HELP FILTERS` contains the complete filter rules and supported-value lists.
 `HELP SYMBOLS` contains the existing confidence legend and the path legend when

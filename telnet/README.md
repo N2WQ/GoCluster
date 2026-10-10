@@ -101,6 +101,16 @@ Blank `NCDXF B` source-class beacon comments display `NCDXF BEACON`.
 
 The telnet layer owns the live filter parser and persistence rules.
 
+CC HELP SET/FILTER and HELP UNSET/FILTER list ordinary categories separately
+from switches and special forms. Shared PASS/REJECT commands also work in CC.
+COMMENT uses those shared commands; it has no SET/UNSET alias. MINSNR takes
+modes plus an integer threshold, or ALL with SET and NONE with UNSET to clear.
+NEARBY follows the explicit ON/OFF value with either CC verb. Inline /ON or
+/OFF applies only through SET/FILTER to listed ordinary categories and switches;
+NOFILTER permits only SET and /ON. DXBM takes numeric band codes, with SET's
+separate PASS/REJECT variants. Geography edits remain refused while NEARBY is
+active. See [CC grammar troubleshooting](../docs/troubleshooting/TSR-0064-cc-help-category-grammar.md).
+
 - `PASS` adds to the allow list and removes from the block list
 - `REJECT` adds to the block list and removes from the allow list
 - if a value appears in both, block wins

@@ -614,12 +614,12 @@ func TestHelpPerDialect(t *testing.T) {
 			}
 		}
 		reference := p.ProcessCommandForClient("HELP FILTERS", "N2WQ", "", nil, dialect)
-		for _, want := range []string{"List types:", "Supported bands:", "REJECT EVENT ALL"} {
+		for _, want := range []string{"Filter categories:", "Supported bands:", "REJECT EVENT ALL"} {
 			if !strings.Contains(reference, want) {
 				t.Fatalf("%s reference missing %q", dialect, want)
 			}
 		}
-		if dialect == "cc" && (!strings.Contains(text, "SHOW/DX") || !strings.Contains(text, "SET/ANN") || !strings.Contains(reference, "SET/FILTER <type>/ON")) {
+		if dialect == "cc" && (!strings.Contains(text, "SHOW/DX") || !strings.Contains(text, "SET/ANN") || !strings.Contains(reference, "SET/FILTER <list-type>/ON")) {
 			t.Fatal("CC aliases or reference missing")
 		}
 	}
@@ -1074,8 +1074,8 @@ func TestHelpEntriesCCDialect(t *testing.T) {
 		{"SET PATHSAMPLES", []string{"SET PATHSAMPLES - Set your path sample floor", "Usage: SET PATHSAMPLES <count|DEFAULT>"}},
 		{"PASS NEARBY", []string{"PASS NEARBY - Toggle nearby filtering", "Usage: PASS NEARBY ON|OFF", "least-suppressive", "available dedupe lane"}},
 		{"SHOW/FILTER", []string{"SHOW/FILTER - Display current filter state.", "Usage: SHOW/FILTER"}},
-		{"SET/FILTER", []string{"SET/FILTER - Allow list-based filters", "Example: SET/FILTER BAND/ON", "DXBM"}},
-		{"UNSET/FILTER", []string{"UNSET/FILTER - Block list-based filters", "Usage: UNSET/FILTER <type> <list>", "DXBM"}},
+		{"SET/FILTER", []string{"SET/FILTER - Allow filter matches", "Example: SET/FILTER BAND/ON", "DXBM"}},
+		{"UNSET/FILTER", []string{"UNSET/FILTER - Block filter matches", "Usage: UNSET/FILTER <list-type> <values>", "DXBM"}},
 		{"SET/NOFILTER", []string{"SET/NOFILTER - Allow everything", "Usage: SET/NOFILTER"}},
 		{"SET/ANN", []string{"SET/ANN - Enable announcements", "Alias of PASS ANNOUNCE"}},
 		{"SET/NOANN", []string{"SET/NOANN - Disable announcements", "Alias of REJECT ANNOUNCE"}},

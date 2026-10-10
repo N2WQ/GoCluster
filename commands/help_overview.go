@@ -245,7 +245,7 @@ func supportedFilterValuesLines() []string {
 		title  string
 		values []string
 	}{
-		{"List types:", filterListTypes()}, {"Supported modes:", filter.SupportedModes()},
+		{"Filter categories:", filterListTypes()}, {"Supported modes:", filter.SupportedModes()},
 		{"Supported events:", filter.SupportedEvents()}, {"Supported bands:", spot.SupportedBandNames()},
 		{"Supported sources:", filter.SupportedSources}, {"Continents:", []string{"AF", "AN", "AS", "EU", "NA", "OC", "SA"}},
 		{"State/province mailing-address codes:", spot.StateCodes()},

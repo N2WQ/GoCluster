@@ -244,9 +244,9 @@ servers. It requires no external cluster or manual server setup. Run with the
 pinned test environment:
 
 ```powershell
-.tmp/telnet-test-venv/Scripts/python.exe -m unittest discover -s scripts -p test_command_fixes_test.py
-.tmp/telnet-test-venv/Scripts/python.exe scripts/test-command-fixes.py
-.tmp/telnet-test-venv/Scripts/python.exe scripts/test-command-fixes.py --race
+.tmp/telnet-test-venv/Scripts/python.exe -B -m unittest discover -s scripts -p test_command_fixes_test.py
+.tmp/telnet-test-venv/Scripts/python.exe -B scripts/test-command-fixes.py
+.tmp/telnet-test-venv/Scripts/python.exe -B scripts/test-command-fixes.py --race
 ```
 
 The runner requires native Windows and uses the existing stable telnet test executable and exclusive
@@ -272,6 +272,16 @@ correlated configuration barrier prevent hidden suffixes from passing. Reader
 and history-owner controls also cover absent/hidden aliases, editing and exact
 cursor/settings/disk preservation. This is local command evidence, not a
 production archive or model-quality qualification.
+
+CC profiles read complete HELP SET/FILTER, HELP UNSET/FILTER and HELP FILTERS
+responses through the automatic read-pause footer, then require a correlated
+configuration barrier. Independent category and grammar assertions reject
+unsupported COMMENT aliases and blanket inline flags. Advertised commands
+check intended live settings and immediate stored rules; refused forms preserve
+configuration, revision, preset and exact stored bytes. Fresh children restore
+the accepted settings before repeating the profile. Composed Go controls cover
+all 18 ordinary CC list families and special owners; these are local checkout
+checks, not evidence about a deployed server.
 
 Coverage grows with each approved fix. The initial fixture does not certify
 production dedupe, classifier or runtime shutdown. See the

@@ -9,6 +9,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import textwrap
 import time
 import unittest
 from unittest import mock
@@ -24,7 +25,192 @@ spec.loader.exec_module(driver)
 HISTORY_ROW = "DX de K1ABC:     14074.00  W6ABC       CW LABEL                          2152Z"
 
 
+def cc_help_literal(verb):
+    # Independent grammar fixture; wording and wrapping do not copy the Go catalog.
+    clear = "ALL" if verb == "SET/FILTER" else "NONE"
+    lines = [verb + " - Contract fixture (CC dialect).",
+             "Usage: " + verb + " <list-type> <values>",
+             "       " + verb + " MINSNR <modes|ALL> <integer dB|" + clear + ">",
+             "       " + verb + " NEARBY ON|OFF", "       " + verb + " <switch> [ALL]",
+             "       " + verb + " DXBM <band-codes>"]
+    if verb == "SET/FILTER":
+        lines += ["       SET/FILTER NOFILTER [ALL]", "       SET/FILTER DXBM PASS|REJECT <band-codes>",
+                  "       SET/FILTER DXBM/PASS <band-codes>", "       SET/FILTER DXBM/REJECT <band-codes>"]
+    lines += ["Notes:"]
+    notes = ["SOURCE takes one of HUMAN, SKIMMER or ALL.",
+             "MINSNR numeric thresholds use the same inclusive minimum with either verb.",
+             "NEARBY uses the explicit ON/OFF choice with either verb.",
+             "Switches allow no value or ALL.", "COMMENT uses PASS/REJECT COMMENT <phrase>.",
+             "SET/FILTER COMMENT and UNSET/FILTER COMMENT remain unsupported.",
+             "UNSET/FILTER does not accept /ON, /OFF or NOFILTER.",
+             "DXBM requires numeric band codes, not ALL."]
+    for note in notes:
+        lines.extend(textwrap.wrap(note, width=78, initial_indent="  ", subsequent_indent="  "))
+    lines += ["CC list types:", "  BAND, MODE, SOURCE, EVENT, CONFIDENCE, PATH, DXCONT, DECONT, DXZONE, DEZONE",
+              "  DXGRID2, DEGRID2, DXDXCC, DEDXCC, DXSTATE, DESTATE, DXCALL, DECALL",
+              "Switches:", "  BEACON, WWV, WCY, ANNOUNCE, SELF, TOXIC"]
+    if verb == "SET/FILTER":
+        lines += ["Notes:", "  SET/FILTER <list-type>/ON or /OFF changes an ordinary list.",
+                  "  SET/FILTER <switch>/ON or /OFF changes a feature switch.",
+                  "  SET/FILTER NOFILTER/ON clears restrictions; NOFILTER/OFF is unsupported.",
+                  "  No inline flags for COMMENT, MINSNR, NEARBY or DXBM.", "  Flags allow no extra arguments."]
+    return lines
+
+
+def cc_help_wire(lines, query="HELP SET/FILTER", seconds=30, count=None):
+    footer = f"Live spots paused for {seconds}s after {len(lines) if count is None else count} output rows. Type RESUME to resume now."
+    return (query + "\r\n" + "\r\n".join(lines + [footer, "Missed spots are not replayed."]) + "\r\n").encode("ascii")
+
+
 class DriverControls(unittest.TestCase):
+    def test_cc_help_decoder_requires_complete_bounded_printable_response_and_count(self):
+        lines = cc_help_literal("SET/FILTER")
+        raw = cc_help_wire(lines)
+        self.assertEqual(driver.decode_cc_help(raw, "HELP SET/FILTER", 10, 30), lines)
+        for changed in (raw.replace(b"\r\n", b"\n"), raw + b"LEAK\r\n", raw[:-2],
+                        raw.replace(b"CC dialect", b"CC\x01dialect"), cc_help_wire(lines, seconds=29),
+                        cc_help_wire(lines, count=len(lines) + 1), cc_help_wire(lines, count=0),
+                        cc_help_wire(["X" * 79] + lines), cc_help_wire(["HELP SET/FILTER"] + lines),
+                        cc_help_wire(["WRONG - header"] + lines[1:]),
+                        raw.replace(b"Missed spots are not replayed.\r\n", b""), b"\r\n" * 32769 + raw):
+            with self.assertRaises(ValueError):
+                driver.decode_cc_help(changed, "HELP SET/FILTER", 10, 30)
+
+    def test_cc_help_grammar_requires_independent_categories_usage_and_flag_exceptions(self):
+        for verb in ("SET/FILTER", "UNSET/FILTER"):
+            lines = cc_help_literal(verb)
+            driver.require_cc_help_grammar(lines, verb)
+            faults = [lines + ["Usage: " + verb + " COMMENT <phrase>"],
+                      [line.replace("DXCALL, DECALL", "COMMENT, DECALL") for line in lines],
+                      [line.replace("SELF, TOXIC", "SELF, MINSNR") for line in lines],
+                      [line for line in lines if "NEARBY ON|OFF" not in line],
+                      [line.replace("<integer dB|" + ("ALL" if verb == "SET/FILTER" else "NONE") + ">", "<integer dB|BAD>") for line in lines],
+                      [line.replace("CC list types:", "Lists:") for line in lines],
+                      [line.replace("remain unsupported", "are supported") for line in lines],
+                      lines + ["  SET/FILTER <type>/ON or /OFF"]]
+            if verb == "SET/FILTER":
+                faults += [[line for line in lines if "<list-type>/ON" not in line],
+                           [line.replace("NOFILTER/OFF is unsupported", "NOFILTER/OFF is supported") for line in lines],
+                           [line for line in lines if "DXBM/REJECT <band-codes>" not in line]]
+            for fault in faults:
+                with self.assertRaises(ValueError):
+                    decoded = driver.decode_cc_help(cc_help_wire(fault, "HELP " + verb), "HELP " + verb, 10, 30)
+                    driver.require_cc_help_grammar(decoded, verb)
+        combined = ["Filter reference:"] + cc_help_literal("SET/FILTER") + cc_help_literal("UNSET/FILTER")
+        driver.require_cc_help_grammar(combined, "FILTERS")
+        raw = cc_help_wire(combined, "HELP FILTERS")
+        self.assertEqual(driver.decode_cc_help(raw, "HELP FILTERS", 10, 30), combined)
+
+    def test_cc_help_receipt_precedes_barrier_and_rejects_hidden_suffix(self):
+        query = "HELP SET/FILTER"
+        raw = cc_help_wire(cc_help_literal("SET/FILTER"), query)
+        command = b"GET YAML CONFIG SCHEMA 4 ID CC17\r\n"
+        document = dict(configuration={}, status={}, revision="r17")
+        for prefix in (command, command + b"LEAK\r\n", b"LEAK\r\n" + command,
+                       command + command, b"\n" + command, b"\r\n" * 32769 + command):
+            current = mock.Mock()
+            current.call = "VE3ABC-70071"
+            current.reader.line.side_effect = raw.splitlines(keepends=True)
+            current.reader.buffer = b""
+            current.reader.remote_echo = True
+            current.suite.identifier.return_value = "CC17"
+            current.suite.log = io.BytesIO()
+            current.frame.return_value = copy.deepcopy(document), prefix
+
+            def sent(text):
+                if text.startswith("GET "):
+                    self.assertIn(raw, current.suite.log.getvalue())
+                    self.assertEqual(current.reader.line.call_count, len(raw.splitlines()))
+
+            current.send.side_effect = sent
+            if prefix == command:
+                self.assertEqual(driver.cc_help_readback(current, "SET/FILTER", 10, 30), document)
+            else:
+                with self.assertRaises(ValueError):
+                    driver.cc_help_readback(current, "SET/FILTER", 10, 30)
+        for error in (EOFError("incomplete"), TimeoutError("stalled"), ValueError("receive buffer limit")):
+            current.reader.line.side_effect = [raw.splitlines(keepends=True)[0], error]
+            current.reader.buffer = b"PENDING"
+            current.suite.log = io.BytesIO()
+            current.send.reset_mock()
+            current.send.side_effect = None
+            current.frame.reset_mock()
+            with self.assertRaises(type(error)):
+                driver.cc_help_readback(current, "SET/FILTER", 10, 30)
+            self.assertIn(b"PENDING", current.suite.log.getvalue())
+            current.frame.assert_not_called()
+            self.assertEqual(current.send.call_count, 1)
+
+    def test_cc_command_success_requires_state_change_and_rejects_unknown(self):
+        before = dict(configuration=dict(filters={}), revision="before")
+        expected = dict(filters=dict(include_beacons=False))
+        after = dict(configuration=expected, revision="after")
+        record = mock.Mock()
+        with mock.patch.object(driver, "require_cc_saved_state") as saved:
+            driver.require_cc_success("Beacons disabled", before, after, expected, record)
+            saved.assert_called_once_with(after, expected, record)
+            for text, value, wanted in (("Unknown filter type.\nBeacons disabled", after, expected),
+                                        ("Usage: SET/FILTER BEACON", after, expected),
+                                        ("Invalid filter command", after, expected),
+                                        ("Warning: changes could not be saved", after, expected),
+                                        ("", after, expected), ("Beacons disabled", before, before["configuration"]),
+                                        ("Beacons disabled", dict(configuration=expected, revision="before"), expected)):
+                with self.assertRaises(ValueError):
+                    driver.require_cc_success(text, before, value, wanted, record)
+        for actual, wanted in ((False, 0), ({"CW": False}, {"CW": 0}), ({True: True}, {1: True}),
+                               ({"allow": {}}, {"allow": {}, "block": {}}), ([False], [0])):
+            with self.assertRaises(ValueError):
+                driver.require_cc_typed_value(actual, wanted)
+
+    def test_cc_saved_state_requires_live_and_immediate_disk_rules(self):
+        rule = dict(allow_all=True, block_all=False, allow={}, block={})
+        filters = {field: copy.deepcopy(rule) for field in ("bands", "modes", "sources", "events", "confidence", "path_classes",
+                                                           "dx_continents", "de_continents", "dx_zones", "de_zones", "dx_grid2",
+                                                           "de_grid2", "dx_dxcc", "de_dxcc", "dx_states", "de_states")}
+        filters.update(dx_callsigns=[], block_dx_callsigns=[], de_callsigns=[], block_de_callsigns=[], comments=["CQ"],
+                       block_comments=[], min_snr={"CW": -3}, nearby_enabled=False, include_beacons=False,
+                       allow_wwv=True, allow_wcy=True, allow_announce=True, allow_self=True, allow_toxic=True)
+        expected = dict(filters=filters, settings=dict(dialect="cc", grid="FN31"))
+        stored = dict(dialect="cc", grid="FN31", comments=["CQ"], min_snr={"CW": -3}, include_beacons=False,
+                      allow_wwv=True, allow_wcy=True, allow_announce=True, allow_self=True, allow_toxic=True)
+        for stem in "bands modes sources events confidence pathclasses dxcontinents decontinents dxzones dezones dxgrid2 degrid2 dxdxcc dedxcc dxstates destates".split():
+            stored[stem + "prefixes" if stem in ("dxgrid2", "degrid2") else stem] = {}
+            stored["block" + stem], stored["all" + stem], stored["blockall" + stem] = {}, True, False
+        record = mock.Mock()
+        record.read_bytes.return_value = driver.yaml.safe_dump(stored).encode()
+        document = dict(configuration=expected, status=dict(effective=dict(nearby_active=False)))
+        driver.require_cc_saved_state(document, expected, record)
+        for field, value in (("min_snr", {"CW": True}), ("include_beacons", 0), ("comments", []), ("allbands", 1), ("grid", "IO91")):
+            changed = copy.deepcopy(stored)
+            changed[field] = value
+            record.read_bytes.return_value = driver.yaml.safe_dump(changed).encode()
+            with self.assertRaises(ValueError):
+                driver.require_cc_saved_state(document, expected, record)
+        record.read_bytes.return_value = driver.yaml.safe_dump(stored).encode()
+        changed = copy.deepcopy(expected)
+        changed["filters"]["include_beacons"] = 0
+        with self.assertRaises(ValueError):
+            driver.require_cc_saved_state(dict(configuration=changed, status=document["status"]), expected, record)
+        for active in (True, 0):
+            with self.assertRaises(ValueError):
+                driver.require_cc_saved_state(dict(configuration=expected, status=dict(effective=dict(nearby_active=active))), expected, record)
+
+    def test_cc_refusal_preserves_all_preference_owners_and_exact_disk_bytes(self):
+        before = dict(configuration=dict(filters=dict(nearby_enabled=False)), revision="r17",
+                      status=dict(configured=dict(grid="FN31"), effective=dict(nearby_active=False), preset=dict(associated=False)))
+        record = mock.Mock()
+        record.read_bytes.return_value = b"EXACT STORED BYTES"
+        driver.require_cc_unchanged(before, copy.deepcopy(before), record, b"EXACT STORED BYTES")
+        for field in ("configuration", "revision", "configured", "effective", "preset"):
+            after = copy.deepcopy(before)
+            target = after if field in ("configuration", "revision") else after["status"]
+            target[field] = "changed" if field == "revision" else {"changed": True}
+            with self.assertRaises(ValueError):
+                driver.require_cc_unchanged(before, after, record, b"EXACT STORED BYTES")
+        record.read_bytes.return_value = b"REWRITTEN STORED BYTES"
+        with self.assertRaises(ValueError):
+            driver.require_cc_unchanged(before, copy.deepcopy(before), record, b"EXACT STORED BYTES")
+
     def test_history_alias_pages_require_complete_framing_and_continuation(self):
         query = "SHOW DX 1 MODE COMMENT COMMENT LABEL"
         token = "H1" + "A" * 32

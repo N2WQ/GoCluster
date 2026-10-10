@@ -1028,6 +1028,7 @@ def profile(binary, root, source, transport):
                 f"{transport}/0: enabled SOLAR feedback preserves cadence and read owners",
                 f"{transport}/0: configured taxonomy underscores reach human commands and matching",
                 f"{transport}/0: COMMENT aliases preserve literal history and continuation",
+                f"{transport}/0: CC HELP grammar agrees with saved command outcomes",
                 f"{transport}/1: held endpoint and loaded consumers",
                 f"{transport}: preferences and archive survive fresh child",
                 f"{transport}: NOFILTER geography survives fresh child",
@@ -1048,7 +1049,8 @@ def profile(binary, root, source, transport):
                 f"{transport}/1: large DEDUPE final send survives fresh child",
                 f"{transport}/1: enabled SOLAR cadence survives fresh child",
                 f"{transport}/1: configured taxonomy underscore rules survive fresh child",
-                f"{transport}/1: COMMENT history aliases work on fresh child"]
+                f"{transport}/1: COMMENT history aliases work on fresh child",
+                f"{transport}/1: CC HELP grammar and preferences survive fresh child"]
     call = "K1ABC-70001"
     observer_call, observer_configuration = "VE3ABC-70003", None
     failed_records, refused_records, compatible_records = {}, {}, {}
@@ -1064,6 +1066,7 @@ def profile(binary, root, source, transport):
     saved_solar = {}
     saved_taxonomy = {}
     saved_history_aliases = {}
+    saved_cc_grammar = {}
     label = None
     suites = []
     for generation in range(2):
@@ -1479,6 +1482,8 @@ def profile(binary, root, source, transport):
                      lambda: taxonomy_cases(suite, root, child.nonce, generation, saved_taxonomy, label))
                 case(f"{transport}/0: COMMENT aliases preserve literal history and continuation",
                      lambda: history_alias_cases(suite, root, child.nonce, generation, saved_history_aliases))
+                case(f"{transport}/0: CC HELP grammar agrees with saved command outcomes",
+                     lambda: cc_help_grammar_cases(suite, root, generation, saved_cc_grammar))
             else:
                 def restored():
                     settings = session.get()["configuration"]["settings"]
@@ -1691,6 +1696,8 @@ def profile(binary, root, source, transport):
                      lambda: taxonomy_cases(suite, root, child.nonce, generation, saved_taxonomy, label))
                 case(f"{transport}/1: COMMENT history aliases work on fresh child",
                      lambda: history_alias_cases(suite, root, child.nonce, generation, saved_history_aliases))
+                case(f"{transport}/1: CC HELP grammar and preferences survive fresh child",
+                     lambda: cc_help_grammar_cases(suite, root, generation, saved_cc_grammar))
         finally:
             try:
                 if suite:
@@ -1946,6 +1953,285 @@ def history_alias_cases(suite, root, nonce, generation, saved_history):
             require(not rows and end_token is None, "alias continuation retained decoys or fabricated more matches")
             unchanged(after)
         saved_history[call] = before["configuration"], before["status"]["preset"]
+
+
+CC_HELP_LISTS = tuple("BAND MODE SOURCE EVENT CONFIDENCE PATH DXCONT DECONT DXZONE DEZONE "
+                      "DXGRID2 DEGRID2 DXDXCC DEDXCC DXSTATE DESTATE DXCALL DECALL".split())
+CC_HELP_SWITCHES = dict(BEACON="include_beacons", WWV="allow_wwv", WCY="allow_wcy",
+                        ANNOUNCE="allow_announce", SELF="allow_self", TOXIC="allow_toxic")
+CC_HELP_RULE_FIELDS = dict(bands="bands", modes="modes", sources="sources", events="events",
+                           confidence="confidence", path_classes="pathclasses", dx_continents="dxcontinents",
+                           de_continents="decontinents", dx_zones="dxzones", de_zones="dezones",
+                           dx_grid2="dxgrid2", de_grid2="degrid2", dx_dxcc="dxdxcc", de_dxcc="dedxcc",
+                           dx_states="dxstates", de_states="destates")
+
+
+def decode_cc_help(raw, query, minimum_rows, minimum_seconds):
+    require(0 < len(raw) <= harness.MAX_FRAME and raw.endswith(b"\r\n"), "CC HELP exceeds its complete wire bound")
+    lines, echoed = [], False
+    for line in raw.splitlines(keepends=True):
+        require(line.endswith(b"\r\n") and b"\r" not in line[:-2], "CC HELP breaks CRLF")
+        value = line[:-2].decode("ascii", "strict")
+        require(len(value) <= 78 and all(32 <= ord(byte) <= 126 for byte in value), "CC HELP breaks width/ASCII")
+        if value == query.upper():
+            require(not echoed and not lines, "CC HELP duplicates or interleaves command echo")
+            echoed = True
+        else:
+            lines.append(value)
+    require(len(lines) >= 3 and lines[-1] == "Missed spots are not replayed.", "CC HELP lacks its complete pause footer")
+    footer = re.fullmatch(r"Live spots paused for ([1-9][0-9]*)s after ([1-9][0-9]*) output rows\. "
+                          r"Type RESUME to resume now\.", lines[-2])
+    require(footer is not None and int(footer[1]) >= minimum_seconds and
+            int(footer[2]) == len(lines) - 2 >= minimum_rows, "CC HELP footer misstates duration or rendered row count")
+    body = lines[:-2]
+    while body and body[0] == "":
+        body.pop(0)
+    topic = query.removeprefix("HELP ")
+    header = "Filter reference:" if topic == "FILTERS" else topic + " - "
+    matches = bool(body) and (body[0] == header if topic == "FILTERS" else body[0].startswith(header))
+    require(matches, "CC HELP has the wrong topic header")
+    return body
+
+
+def require_cc_help_grammar(lines, topic):
+    # Category/value expectations are independent of the generated catalog.
+    verbs = ("SET/FILTER", "UNSET/FILTER") if topic == "FILTERS" else (topic,)
+    for verb in verbs:
+        starts = [i for i, line in enumerate(lines) if line.startswith(verb + " - ")]
+        require(len(starts) == 1, "CC HELP lost or duplicated a command entry")
+        start = starts[0]
+        end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith(("SET/FILTER - ", "UNSET/FILTER - "))), len(lines))
+        entry = lines[start:end]
+
+        def group(title, expected):
+            require(entry.count(title) == 1, "CC HELP lost or duplicated a category group")
+            pos, names = entry.index(title) + 1, []
+            while pos < len(entry) and entry[pos].startswith("  "):
+                names.extend(value.strip() for value in entry[pos].split(","))
+                pos += 1
+            require(len(names) == len(expected) and set(names) == set(expected), "CC HELP has an incorrect category group")
+
+        group("CC list types:", CC_HELP_LISTS)
+        group("Switches:", CC_HELP_SWITCHES)
+        clear = "ALL" if verb == "SET/FILTER" else "NONE"
+        usage = {line[7:] for line in entry if line.startswith("Usage: ") or line.startswith("       " + verb)}
+        expected = {verb + " <list-type> <values>", verb + " MINSNR <modes|ALL> <integer dB|" + clear + ">",
+                    verb + " NEARBY ON|OFF", verb + " <switch> [ALL]", verb + " DXBM <band-codes>"}
+        if verb == "SET/FILTER":
+            expected.update(("SET/FILTER NOFILTER [ALL]", "SET/FILTER DXBM PASS|REJECT <band-codes>",
+                             "SET/FILTER DXBM/PASS <band-codes>", "SET/FILTER DXBM/REJECT <band-codes>"))
+        require(usage == expected, "CC HELP advertises missing or unsupported usage forms")
+        prose = " ".join(line.strip() for line in entry)
+        for rule in (r"SOURCE[^.]*\bone\b[^.]*HUMAN[^.]*SKIMMER[^.]*ALL", r"MINSNR[^.]*numeric[^.]*same[^.]*inclusive[^.]*either verb",
+                     r"NEARBY[^.]*explicit ON/OFF[^.]*either verb", r"Switches[^.]*no value or ALL",
+                     r"COMMENT[^.]*PASS/REJECT COMMENT <phrase>", r"SET/FILTER COMMENT and UNSET/FILTER COMMENT[^.]*unsupported",
+                     r"UNSET/FILTER[^.]*does not accept[^.]*/ON[^.]*/OFF[^.]*NOFILTER", r"DXBM[^.]*numeric band codes[^.]*not ALL"):
+            require(re.search(rule, prose), "CC HELP loses category-specific argument ownership")
+        require("<type>/ON" not in prose and "<type>/OFF" not in prose, "CC HELP retains blanket inline flags")
+        if verb == "SET/FILTER":
+            for rule in (r"SET/FILTER <list-type>/ON[^.]*/OFF", r"SET/FILTER <switch>/ON[^.]*/OFF",
+                         r"SET/FILTER NOFILTER/ON[^.]*clears restrictions[^.]*NOFILTER/OFF[^.]*unsupported",
+                         r"No inline flags[^.]*COMMENT[^.]*MINSNR[^.]*NEARBY[^.]*DXBM", r"Flags[^.]*no extra arguments"):
+                require(re.search(rule, prose), "CC HELP loses qualified inline flags or exceptions")
+
+
+def cc_help_readback(current, topic, minimum_rows, minimum_seconds):
+    query, raw, received = "HELP " + topic, bytearray(), 0
+    try:
+        current.send(query + "\r\n")
+        while True:
+            line = current.reader.line()
+            received += len(line)
+            raw.extend(line[:harness.MAX_FRAME - len(raw)])
+            require(received <= harness.MAX_FRAME, "CC HELP exceeds its wire bound")
+            if line == b"Missed spots are not replayed.\r\n":
+                break
+        body = decode_cc_help(bytes(raw), query, minimum_rows, minimum_seconds)
+    except Exception:
+        received += len(current.reader.buffer)
+        raw.extend(current.reader.buffer[:harness.MAX_FRAME - len(raw)])
+        raise
+    finally:
+        receipt = f"\n[{current.call}] {query}\n".encode() + bytes(raw)
+        if received > len(raw):
+            receipt += b"\n[CC HELP receipt truncated at 65536 bytes]\n"
+        current.suite.log.write(receipt)
+        current.suite.log.flush()
+    identifier = current.suite.identifier()
+    command = f"GET YAML CONFIG SCHEMA 4 ID {identifier}"
+    current.send(command + "\r\n")
+    document, prefix = current.frame("CONFIG", identifier, 4, command)
+    echo, trailing = False, 0
+    for line in prefix.splitlines(keepends=True):
+        require(line.endswith(b"\r\n") and b"\r" not in line[:-2], "CC HELP barrier breaks CRLF")
+        if current.reader.remote_echo and not echo and line == command.encode("ascii") + b"\r\n":
+            echo = True
+            continue
+        require(line == b"\r\n", "CC HELP hides trailing response content")
+        trailing += len(line)
+    require(received + trailing <= harness.MAX_FRAME, "CC HELP final response exceeds its wire bound")
+    require("error" not in document and type(document.get("configuration")) is dict and
+            type(document.get("status")) is dict and type(document.get("revision")) is str and document["revision"],
+            "CC HELP barrier lacks a valid configuration")
+    require_cc_help_grammar(body, topic)
+    return document
+
+
+def require_cc_typed_value(actual, expected):
+    require(type(actual) is type(expected), "CC command state has the wrong value type")
+    if type(expected) is dict:
+        require(actual.keys() == expected.keys(), "CC command state has missing or extra fields")
+        require({(type(key), key) for key in actual} == {(type(key), key) for key in expected}, "CC command state has the wrong key type")
+        for key in expected:
+            require_cc_typed_value(actual[key], expected[key])
+    elif type(expected) is list:
+        require(len(actual) == len(expected), "CC command state has the wrong list length")
+        for value, wanted in zip(actual, expected):
+            require_cc_typed_value(value, wanted)
+    else:
+        require(actual == expected, "CC command state differs from the intended outcome")
+
+
+def require_cc_saved_state(document, expected, record):
+    require_cc_typed_value(document["configuration"], expected)
+    saved, filters = stored_document(record.read_bytes()), expected["filters"]
+    require(document["status"]["effective"]["nearby_active"] is filters["nearby_enabled"],
+            "CC NEARBY saved choice lacks its intended effective state")
+    for field, stem in CC_HELP_RULE_FIELDS.items():
+        allow_key = stem + "prefixes" if field in ("dx_grid2", "de_grid2") else stem
+        actual = dict(allow=saved[allow_key], block=saved["block" + stem],
+                      allow_all=saved["all" + stem], block_all=saved["blockall" + stem])
+        require_cc_typed_value(actual, filters[field])
+    for field, key in dict(dx_callsigns="callsigns", block_dx_callsigns="block_callsigns",
+                           de_callsigns="decallsigns", block_de_callsigns="block_decallsigns",
+                           comments="comments", block_comments="block_comments", min_snr="min_snr",
+                           nearby_enabled="nearby_enabled", **{value: value for value in CC_HELP_SWITCHES.values()}).items():
+        default = {} if field == "min_snr" else False if field == "nearby_enabled" else "DEFAULT" if field in CC_HELP_SWITCHES.values() else []
+        require_cc_typed_value(saved.get(key, default), filters[field])
+    for field in ("dialect", "grid"):
+        require_cc_typed_value(saved.get(field, ""), expected["settings"][field])
+
+
+def require_cc_unchanged(before, after, record, saved):
+    for field in ("configuration", "revision"):
+        require_cc_typed_value(after[field], before[field])
+    for field in ("configured", "effective", "preset"):
+        require_cc_typed_value(after["status"][field], before["status"][field])
+    require(record.read_bytes() == saved, "CC refusal/readback changed durable bytes")
+
+
+def require_cc_success(text, before, after, expected, record):
+    require(text.strip() and not re.search(r"(?:^|\n)(?:Unknown\b|Invalid\b|Usage:|Unable\b|Warning:|No changes applied|Filter unavailable)", text),
+            "CC advertised command was refused or unknown")
+    require(expected != before["configuration"] and after["revision"] != before["revision"],
+            "CC advertised command has no proven state transition")
+    require_cc_saved_state(after, expected, record)
+
+
+def cc_help_grammar_cases(suite, root, generation, saved_cc_grammar):
+    call = "VE3ABC-70071"
+    record = root / "users" / (call + ".yaml")
+    if not generation:
+        require(not record.exists(), "CC grammar control requires a fresh unused SSID")
+    current = harness.Session(suite, call)
+    current.human("PAUSE 300")
+    if not generation:
+        current.human("DIALECT CC")
+    before = current.get()
+    defaults = copy.deepcopy(before["configuration"]["filters"]) if not generation else saved_cc_grammar[call][1]
+    if generation:
+        require_cc_saved_state(before, saved_cc_grammar[call][0], record)
+    private = stored_document((root / "config" / "runtime.yaml").read_bytes())["telnet"]
+    minimum_rows, minimum_seconds = private["auto_read_pause_min_rows"], private["auto_read_pause_seconds"]
+    require(type(minimum_rows) is int and minimum_rows > 0 and type(minimum_seconds) is int and minimum_seconds > 0 and
+            before["status"]["server"]["auto_read_pause_min_rows"] == minimum_rows and
+            before["status"]["server"]["auto_read_pause_seconds"] == minimum_seconds,
+            "CC HELP requires the fixture's existing loaded automatic pause")
+    for topic in ("SET/FILTER", "UNSET/FILTER", "FILTERS"):
+        saved = record.read_bytes()
+        after = cc_help_readback(current, topic, minimum_rows, minimum_seconds)
+        require_cc_unchanged(before, after, record, saved)
+
+    def apply(command, changes, settings=None):
+        prior = current.get()
+        expected = copy.deepcopy(prior["configuration"])
+        expected["filters"].update(copy.deepcopy(changes))
+        if settings:
+            expected["settings"].update(settings)
+        text, after = current.human(command)
+        require_cc_success(text, prior, after, expected, record)
+        return after
+
+    def refuse(command, feedback):
+        prior, saved = current.get(), record.read_bytes()
+        text, after = exact_human_reply(current, command, feedback)
+        require(text == feedback, "CC grammar refusal feedback differs")
+        require_cc_unchanged(prior, after, record, saved)
+
+    open_rule = dict(allow_all=True, block_all=False, allow={}, block={})
+    closed_rule = dict(allow_all=False, block_all=True, allow={}, block={})
+    unrestricted = {field: copy.deepcopy(open_rule) for field in CC_HELP_RULE_FIELDS}
+    unrestricted.update({key: True for key in CC_HELP_SWITCHES.values()})
+    unrestricted.update(dx_callsigns=[], block_dx_callsigns=[], de_callsigns=[], block_de_callsigns=[],
+                        comments=[], block_comments=[], min_snr={}, nearby_enabled=False)
+    # Ensure every advertised reset has a visible transition, including reruns.
+    apply("UNSET/FILTER BAND ALL", dict(bands=closed_rule))
+    apply("SET/FILTER NOFILTER ALL", unrestricted)
+    apply("SET/FILTER BAND 20,40", dict(bands=dict(allow_all=False, block_all=False, allow={"20m": True, "40m": True}, block={})))
+    apply("UNSET/FILTER BAND 40", dict(bands=dict(allow_all=False, block_all=False, allow={"20m": True}, block={"40m": True})))
+    apply("SET/FILTER BAND/ON", dict(bands=open_rule))
+    apply("SET/FILTER BAND/OFF", dict(bands=closed_rule))
+    apply("SET/FILTER BAND/ON", dict(bands=open_rule))
+    apply("UNSET/FILTER MODE FT8", dict(modes=dict(allow_all=True, block_all=False, allow={}, block={"FT8": True})))
+    apply("SET/FILTER MODE FT8", dict(modes=open_rule))
+    apply("UNSET/FILTER SOURCE SKIMMER", dict(sources=dict(allow_all=True, block_all=False, allow={}, block={"SKIMMER": True})))
+    apply("SET/FILTER SOURCE ALL", dict(sources=open_rule))
+    for domain, key in CC_HELP_SWITCHES.items():
+        apply("UNSET/FILTER " + domain + " ALL", {key: False})
+        apply("SET/FILTER " + domain + "/ON", {key: True})
+    for verb, threshold, clear in (("SET/FILTER", 7, "ALL"), ("UNSET/FILTER", -3, "NONE")):
+        apply(verb + " MINSNR CW " + str(threshold), dict(min_snr={"CW": threshold}))
+        wrong = "NONE" if clear == "ALL" else "ALL"
+        refusal = "Usage: " + ("PASS" if verb == "SET/FILTER" else "REJECT") + " MINSNR <mode[,mode...]|ALL> <integer dB|" + clear + ">\nNumeric PASS and REJECT set the same inclusive minimum.\nHuman spots and spots without SNR are exempt."
+        refuse(verb + " MINSNR CW " + wrong, refusal)
+        refuse(verb + " MINSNR CW 3 TAIL", refusal)
+        apply(verb + " MINSNR CW " + clear, dict(min_snr={}))
+    if before["configuration"]["settings"]["grid"] != "FN31":
+        apply("SET GRID FN31", {}, dict(grid="FN31"))
+    for verb in ("SET/FILTER", "UNSET/FILTER"):
+        apply(verb + " NEARBY ON", dict(nearby_enabled=True))
+        refuse(verb + " NEARBY ON TAIL", "Usage: PASS NEARBY ON|OFF\nType HELP for usage.")
+        apply(verb + " NEARBY OFF", dict(nearby_enabled=False))
+    apply("PASS COMMENT CQ", dict(comments=["CQ"]))
+    apply("REJECT COMMENT QRT", dict(block_comments=["QRT"]))
+    unknown = "Unknown filter type. Use: BAND, MODE, MINSNR, SOURCE, EVENT, DXCALL, DECALL, CONFIDENCE, PATH, BEACON, WWV, WCY, ANNOUNCE, DXGRID2, DEGRID2, DXCONT, DECONT, DXZONE, DEZONE, DXDXCC, DEDXCC, DXSTATE, or DESTATE\nType HELP for usage."
+    for command in ("SET/FILTER COMMENT CQ", "UNSET/FILTER COMMENT CQ", "UNSET/FILTER BAND/ON", "UNSET/FILTER BEACON/OFF"):
+        refuse(command, unknown)
+    min_inline = "Usage: PASS MINSNR <mode[,mode...]|ALL> <integer dB|ALL>\nNumeric PASS and REJECT set the same inclusive minimum.\nHuman spots and spots without SNR are exempt."
+    for command, feedback in (("SET/FILTER COMMENT/ON", unknown), ("SET/FILTER MINSNR/ON", min_inline),
+                              ("SET/FILTER NEARBY/ON", "Usage: PASS NEARBY ON|OFF\nType HELP for usage."),
+                              ("SET/FILTER DXBM/ON", "Unknown DXBM band: ALL\nSupported: 160, 80, 40, 30, 20, 17, 15, 12, 10, 6, 2 (and 1 if enabled). Modes ignored; use SET/NO<MODE>.")):
+        refuse(command, feedback)
+    for domain in ("COMMENT", "MINSNR", "NEARBY", "DXBM"):
+        # Inline normalization supplies ALL; these special owners refuse it.
+        command = "SET/FILTER " + domain + "/ON TAIL"
+        refuse(command, "Usage: SET/FILTER " + domain + "/ON\nNo changes applied.")
+    for command in ("UNSET/FILTER NOFILTER", "SET/FILTER NOFILTER/OFF"):
+        refuse(command, "Invalid filter command. Type HELP for usage.")
+    refuse("SET/FILTER NOFILTER OFF", "NOFILTER accepts no value or ALL. No changes applied.")
+    dx_error = "Unknown DXBM band: ALL\nSupported: 160, 80, 40, 30, 20, 17, 15, 12, 10, 6, 2 (and 1 if enabled). Modes ignored; use SET/NO<MODE>."
+    for command in ("SET/FILTER DXBM ALL", "UNSET/FILTER DXBM ALL"):
+        refuse(command, dx_error)
+    for command, enabled in (("SET/FILTER DXBM 20,40", True), ("UNSET/FILTER DXBM 40", False),
+                              ("SET/FILTER DXBM PASS 40", True), ("SET/FILTER DXBM REJECT 40", False),
+                              ("SET/FILTER DXBM/PASS 40", True), ("SET/FILTER DXBM/REJECT 40", False)):
+        bands = dict(allow_all=False, block_all=False, allow={"20m": True}, block={})
+        bands["allow" if enabled else "block"]["40m"] = True
+        apply(command, dict(bands=bands))
+    apply("SET/FILTER NOFILTER/ON", unrestricted)
+    apply("RESET FILTER", defaults)
+    after = apply("UNSET/FILTER BEACON", dict(include_beacons=False))
+    saved_cc_grammar[call] = copy.deepcopy(after["configuration"]), copy.deepcopy(defaults)
 
 
 def require_taxonomy_rules(document, expected, record):

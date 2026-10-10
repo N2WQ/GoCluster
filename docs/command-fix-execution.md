@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 16 complete (04a used two commits);
-24 approved checkpoints remain; 17 is next.
+Current progress: checkpoints 00 through 17 complete (04a used two commits);
+23 approved checkpoints remain; 18a is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -2250,3 +2250,81 @@ Fresh lead verification reviewed all touched production and new test files,
 literal failure oracles, complete response barriers and final source/retirement
 receipts. Record and crawler-entry checks passed; final generated maps and
 direct staged-diff/whitespace review close the slice before commit.
+
+## Checkpoint 17: category-specific CC HELP grammar
+
+Status: complete. Current discovery inspected the compiled catalog, shared
+filter reference, concrete examples, CC normalization, classic fallback,
+registered owners, argument controls, recipe consumers and ADR-0264/0258/0261/
+0272. A bounded read-only specialist enumerated actual grammar and identified
+the existing positive helper's failure to reject Unknown responses. Source
+inspection confirms that ordinary PASS/REJECT already execute through the CC
+fallback. No new parser semantics or product choice is needed.
+
+Architecture: change only compiled HELP construction and affected guides.
+Separate the 18 ordinary list types, SOURCE's single value, feature switches
+and special grammar. COMMENT has no SET/UNSET mutation alias; MINSNR needs modes
+plus threshold or the verb-specific clear sentinel; NEARBY takes explicit ON/OFF
+with either verb; NOFILTER permits only SET and /ON; DXBM uses numeric band codes
+and SET's existing PASS/REJECT variants. UNSET never strips inline /ON or /OFF.
+Use existing bounded rendering/wrapping and immutable startup vocabulary;
+add no handler, alias, state, lock, worker, configuration or persistence change.
+Retain preferred shared PASS/REJECT examples without denying accepted fallback.
+Dynamic HELP routing/suggestions remain separate approved 18a/18b checkpoints.
+
+| Contract | Stimulus / fault | Required evidence | False-green risk | Checker / owner |
+|---|---|---|---|---|
+| Advertised list types execute | Independent literal 18-family/value table and both CC verbs | Intended live state and immediate stored configuration agree | Catalog/helper omits a family or Unknown passes as success | Catalog assertions plus composed real coordinator/storage controls / commands, telnet |
+| Inline flags are category-specific | SET flags for lists/switches; all excluded special families and UNSET flags | Intended reset/delta, no argument tails; excluded forms preserve live/revision/disk and make zero commits | Blanket placeholder implies COMMENT/MINSNR/NEARBY/DXBM or UNSET support | Literal accepted/refused table and cumulative checkout / telnet, runner |
+| Special grammars retain ownership | MINSNR numeric/clear sentinels, explicit NEARBY both verbs, switches, NOFILTER, DXBM and shared COMMENT | Exact owner state and saved readback; no reversed or invented verb effects | Generic allow/block interpretation hides value-owned behavior | Existing owner controls and new composed literal cases / telnet |
+| HELP is truthful and bounded | HELP SET/FILTER, UNSET/FILTER and FILTERS in CC, unchanged GO catalog | Supported category lists exclude unsupported COMMENT aliases, qualified resets, 78-byte lines and working examples | Substring presence proves routing but not execution | Exact catalog groups, width/negative controls and actual server HELP / commands, runner |
+
+Select focused catalog/advertised-form controls, commands/telnet ordinary/race,
+offline runner faults and cumulative ordinary/race checkout profiles, complete
+ordinary baseline and analyzers. Preserve existing parser/owner tests; no new
+parser fuzz or scientific/model qualification is claimed. Record the catalog
+root cause in TSR-0064; execution contracts and ADR-0264 remain unchanged, so a
+new ADR is unnecessary. Update support and history HELP wording during the
+applicable approved catalog checkpoints, then regenerate maps last.
+
+The final catalog uses one finite category-specific constructor for both CC
+verb entries and the reference. Literal Go controls cover all 18 ordinary
+families, switches, numeric/clear MINSNR, explicit NEARBY, NOFILTER, DXBM and
+shared COMMENT. Accepted forms check the intended selected state and commit once;
+refusals preserve configuration, runtime owners, preset and exact durable bytes
+with no commit. HELP remains metadata; executable dispatch is unchanged.
+
+The cumulative profile adds four cases across transports and fresh children.
+It consumes complete bounded CRLF HELP responses and their counted pause footer
+before a correlated CONFIG barrier. Independent category/grammar assertions,
+typed live state, immediate stored rules and forced positive transitions reject
+Unknown acknowledgements, no-op false greens and hidden suffixes. Six new
+offline methods exercise these oracles. Their initial positive fixture had a
+trailing comma that introduced an empty category; the fixture was corrected,
+then the full offline suite passed. No Go result was invalidated by that fix.
+
+| Selected evidence | Observed result |
+|---|---|
+| Focused catalog and composed advertised-form/refusal controls | PASS; `checkpoint-17-focused.log` |
+| Complete ordinary baseline | All 70 packages passed, with build checks for no-test packages; `checkpoint-17-all-packages.log` |
+| Complete affected-package race lane | commands and telnet passed; `checkpoint-17-race.log` |
+| Offline runner controls | 61 passed; `checkpoint-17-runner-controls-final.log` |
+| Whole-repository analyzers | Vet and Staticcheck passed; lint reported zero issues |
+| Ordinary actual checkout | `20261010-082328-deaa45ad`: 124 cases passed, zero wire/cleanup failures; all 12 receipts confirm clients retired, consumer joined and archive stopped |
+| Race actual checkout | `20261010-082554-30100968`: same 124 cases and cleanup outcome |
+
+Both actual builds and all retirement receipts have Go/module source digest
+`dc33539dd9c322c7e70c995f8b945c8aa73b51eddfb4882445c5bc73204bffe5`.
+Go/Python stayed frozen across the pair; private loaded config hashes are
+verified separately. The source digest excludes Python, docs and config.
+No production load, model quality, external server or new parser qualification
+is claimed. Dynamic routing, suggestions and remaining wording belong to 18a/b.
+
+Support-agent documentation impact: Required. Commands/telnet guides, the
+validation guide and configuration support card describe the actual CC grammar;
+TSR-0064 records the category/owner mismatch and checker limits. Fresh lead
+verification reviewed all production and new tests, bounded response handling,
+independent literal oracles and final receipts. Record and whitespace checks
+passed. The crawler candidate scan selected no files; the new catalog header
+and existing production entry comments were reviewed directly. Maps are
+regenerated last, followed by direct staged-diff review before commit.
