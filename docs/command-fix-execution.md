@@ -12,9 +12,9 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 27, 28b and 29 complete (04a used two commits);
-37 of 46 approved checkpoints complete; 9 remain. Checkpoint 28a awaits the
-user's counting-rule selection; independent checkpoint 30 is next.
+Current progress: checkpoints 00 through 27, 28b, 29 and 30 complete (04a used two commits);
+38 of 46 approved checkpoints complete; 8 remain. Checkpoints 28a and 32 await
+the user's policy selections; independent checkpoint 31 is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -3877,3 +3877,127 @@ used an incorrect subcommand and was refused before generation; only the final
 runbook commands (`generate -all`, `check -all`) are credited.
 No runtime model/schema/configuration/concurrency or deployment behavior changed.
 Final cumulative checkout reconciliation remains checkpoint35.
+
+## Checkpoint 30: descriptive reappearance observations
+
+Status: complete. Architecture and matrix preceded code under approved v3 row30.
+Current discovery inspected the entire command, NormalizeUpper, the historical
+reader family, v3 preserved contracts, ADR-0023/0277 and repository references.
+Package inventory: `checkpoint-30-dependencies.json`. No current producer of the
+legacy schema was established. Synthetic fixtures qualify only this consumer.
+
+The approved historical recognized/unknown contract supplies case-only applied
+seeds; NULL/empty/padded/other seed outcomes are excluded. Preserve db/default,
+lookahead24 and its existing integer-to-duration conversion. Preserve every
+applied seed, the original `(start,end]` interval, and the first100 COMBINED
+follow-up rows matching either normalized subject identity across ALL outcomes.
+Follow-up winner fields are unused here. Record each identity's first frequency
+using independent identity checks: normalized equal identities may both match
+one row. No per-identity cap, early-success exit, frequency/mode association gate,
+new lookahead/frequency admission domain or analyze1a counting policy is added.
+Numerical interpretation assumes finite historical frequencies; logs remain
+unvalidated and do not establish correct identities or simultaneous operation.
+
+Architecture stays command-private. Main selects status after private run closes
+DB. The outer cursor owns applied traversal; one nested helper owns and fully
+retires each capped cursor before the next seed. Check Query/Scan/Next/Close at
+both levels, refuse all partial cases on failure, then publish via checked writer.
+Capture first frequencies with observed flags, not zero sentinels; retain no
+follow-up frequency arrays. Invocation memory contains only dual cases and one
+active nested cursor, proportional to the selected input. Preserve required
+columns and normalize through the existing helper. Ordering uses ts,id followed
+by every selected numeric/binary textual tie field, without adding a unique-ID
+schema requirement. Multiple statements do not promise one database snapshot.
+No runtime model/schema/configuration/shared framework/state/concurrency change.
+
+Lead-owned analytical vectors: first frequencies7000 and7000.499 produce a
+separation below0.5kHz;7000 and7000.500 give exactly0.5 and belong to the >=0.5
+bucket;7000.501 remains above. Later frequencies cannot replace those first
+observations, including an initial zero. These are arithmetic and conventional
+preserved boundaries, not empirical truth. Independent empirical oracle missing;
+the descriptive report issues no accuracy/calibration/legitimacy verdict.
+
+| Contract | Failure/boundary | Stimulus | Observable result | Level | False-green risk | Exact checker | Owner |
+|---|---|---|---|---|---|---|---|
+| Seed selection | Upper/mixed applied lost or unknown enters | Case-only/NULL/padded/other labels with dual follow-ups | Literal included/excluded seed IDs | SQLite/main | Lowercase-only valid fixtures | Explicit memberships and known controls | investigate_reappearances |
+| Combined cap/time | Cap becomes per-identity or edges change | One identity at row100/101; exact start/end and next second | Row100 included,101 excluded; (start,end] retained | SQLite/loader | Small or far-from-edge inputs | Literal seed membership and timed witnesses | investigate_reappearances |
+| First frequencies | Later value or zero sentinel replaces first | Repeated identities; first0 then positive; equal normalized identities | Original first values and independent matches retained | SQLite/report | Positive unique rows only | Literal frequencies and dual case identity | investigate_reappearances |
+| Deterministic ties | ts/id assumed unique | Duplicate ts,id with distinct selected text/numeric values and reversal | Identical selected first values/caps/sample order | SQLite/report | Unique-ID fixtures conceal ties | Exact capped membership/report equality | investigate_reappearances |
+| Separation/claims | Boundary/advice contradicts observations | 0.499/0.500/0.501 and no-dual/empty input | Named dual-case denominator; empty unavailable; descriptive-only limits | Arithmetic/main | Only keyword assertions | Hand-derived counts/separations and obsolete claims absent | investigate_reappearances |
+| SQL ownership | Nested failure becomes no observation | Outer/nested Query/Scan/Next/Close faults; late fault after both seen | Nil partial cases; all started cursors retired | Loader | Early success conceals late faults | Indexed stages/causes/close counters and positive control | investigate_reappearances |
+| Actual failure status | Log-and-return exits0 | Valid main then missing schema/bad selected outer/nested cell | Status1/causal error/no partial stdout | Actual main | Launch or unrelated schema failure | Exact selected stage diagnostic and positive witness | investigate_reappearances |
+| Output failure | Checked writer bypassed | Valid real DB then closed stdout/partial writer | Status1/causal write error with allowed prefix | Main/report | Loading fails before output | Paired valid output plus actual write cause | investigate_reappearances |
+
+Bounded inherited-context read-only challenge identified combined cap/all-outcome
+follow-ups, independent identity checks, first-zero retention, duplicate-ID ties
+and late nested faults. Root verified and dispositions them above. This is
+findings-only review, not empirical independence. Selected lane: focused real
+SQLite/actual-main/indexed-driver checks, complete ordinary baseline/analyzers,
+fresh Go quality/claim/diff pass, support/decision/record/whitespace and maps last.
+No production parser/race/performance trigger. Checkpoint28a remains unresolved.
+
+### Observed qualification and final verification
+
+Focused stable-executable tests and repository vet, Staticcheck and lint passed
+(zero lint issues). Thirteen actual-main children cover boundary, empty, no-dual
+and unknown-seed input; explicit1/2-hour membership; the original default DB
+and24-hour endpoint; four causal SQL errors; and paired valid/closed stdout.
+The finite7000.499/7000.500/7000.501 vector yields below1/above2 with33.3%/66.7%
+of dual cases, retaining each first frequency despite later observations.
+Valid empty/no-dual results show unavailable percentages and no invented advice.
+
+Literal SQLite controls include case-only applied seeds versus NULL/empty/
+padded/other outcomes, normalized seed identities and a follow-up winner-field
+decoy. Combined all-outcome row100 is included while101 is excluded; exactstart
+is excluded and exactend included. Default24, explicit1 and preserved0/-1-hour
+behavior are checked. Firstzero survives a later positive frequency; coincident
+normalized identities independently match one row. Reversed insertion with
+duplicate timestamp/ID and selected binary/numeric ties preserves first values
+and sample order. Twenty-one dual cases remain in counts while only20 are shown.
+
+Isolated Connector faults cover outer and second-nested Query/Scan/Next/
+EOF-close/Scan-plus-close. A prior case completes and both second identities are
+observed before the late nested fault. Every failure refuses all partial cases,
+preserves the causal error and retires started cursors/connections. A positive
+two-connection control witnesses the nested owner. Partial output preserves its
+eleven-byte prefix with the causal writer error. No production driver/factory or
+shared fixture seam changed.
+
+Logs are `checkpoint-30-focused-qualified.log`, `checkpoint-30-all-packages.log`
+and three analyzer `*-qualified.log` files in `.tmp/command-fixes`. The complete
+ordinary 70-package baseline passed on frozen final Go code. Bounded inherited-context
+source and final source/test reviews found no material remaining finding. Root's
+fresh direct pass verifies the final diff, matrix, owners, compatibility and
+claim limits; this is lead-owned evidence, not independent empirical station/
+accuracy/calibration evidence. Support impact: Required. The historical guide,
+source map and ADR-0277/TSR-0075 route capped observations and their limitations.
+Record, staged crawler and final whitespace checks passed. The crawler selected
+zero support-critical files; root reviewed the command header directly. A
+trailing execution-record blank line failed the first whitespace check and was
+removed; that attempt is uncredited. Maps regenerated and checked fresh with no
+actual map diff. Cumulative checkout
+reconciliation remains checkpoint35; it is not requalified by these CLI fixtures.
+
+### Pending interpretation for checkpoint 32
+
+Current-source discovery found two policy gaps not settled by the approved UTC
+daily-cohort wording. The old Python reader accepts timezone-naive ISO timestamps
+and discards date/offset/seconds. No producer/contract establishes what such a
+timestamp means. Refusing it as an unknown timezone and explicitly interpreting
+it as UTC produce different admission/day assignments. Root recommends a clear
+refusal, but that is not a selection. The user is the decision owner.
+
+The old reader also finds only the raw exact substring `"decision":"applied"`.
+Accepting equivalent JSON whitespace is a format correctness repair; recognizing
+case-only applied labels versus retaining lowercase-only selection changes the
+selected population. Root recommends consistency with the repaired Go readers,
+but no controlling Python authority selects this policy. NULL/empty/padded/other
+labels remain excluded under either branch. The user is the decision owner.
+
+Async questions request these two explicit choices. No checkpoint32 architecture
+or implementation is selected while they are unresolved. Existing explicit UTC
+reference date, disjoint UTC correction-day counts, adjacent matching context,
+inclusive elapsed300s/frequency<=1kHz, first-match/many-to-one and physical
+duplicate-record identities remain selected. A user choice will be checked for
+material scope/compatibility changes and any required revised approval before
+implementation. Independent checkpoints proceed; checkpoint28a remains pending.

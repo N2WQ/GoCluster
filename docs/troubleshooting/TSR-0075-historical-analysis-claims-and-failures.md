@@ -20,11 +20,13 @@ Tags: analysis, outcomes, scientific-claims, SQL, exit-status
   treated unknowns as rejections and could overflow score sums/even medians.
 - Decision inspection used inconsistent outcome predicates and ignored row
   iteration/close failures; unknowns could consume recognized-rejection caps.
+- Reappearance investigation skipped nested errors and inferred simultaneous
+  legitimate stations from capped first-frequency observations.
 - Why: hard-coded narrative and binary classification bypassed input-derived
   evidence; log-and-return main implied successful exit.
 - What fixed it: descriptive counts, separate unknowns, explicit hypothetical
   gates and checked loading/reporting with unsuccessful status on failure.
-- How we know: checkpoints 26/27/28b/29 execution matrices and qualification pair literal
+- How we know: checkpoints 26/27/28b/29/30 execution matrices and qualification pair literal
   data/set vectors with actual-main status and isolated SQL driver faults.
 - Operator/support answer: the report describes logged observations and scalar
   comparisons. It does not establish correction accuracy or optimal settings.
@@ -32,7 +34,7 @@ Tags: analysis, outcomes, scientific-claims, SQL, exit-status
 ## Triggering Request
 - Request date: 2026-10-10.
 - Request summary: implement approved v3 historical command fixes.
-- Request reference: `docs/command-fix-scope-ledger-v3.md`, checkpoints 26/27/28b/29.
+- Request reference: `docs/command-fix-scope-ledger-v3.md`, checkpoints 26/27/28b/29/30.
 
 ## Symptoms and Impact
 - Empty denominators produced non-finite percentages.
@@ -67,7 +69,7 @@ Tags: analysis, outcomes, scientific-claims, SQL, exit-status
 - Contract changes: descriptive reader claims and outcome semantics.
 
 ## Verification and Monitoring
-- Validation steps: checkpoints 26/27/28b/29 in the execution record.
+- Validation steps: checkpoints 26/27/28b/29/30 in the execution record.
 - Signals: exact partitions/means/set transitions, empty N/A and causal failures.
 - Rollback triggers: unknowns enter rejected sets, fixed advice returns, failed
   loads succeed or scores acquire unsupported scientific meaning.
@@ -80,4 +82,5 @@ Tags: analysis, outcomes, scientific-claims, SQL, exit-status
 - Commit(s): checkpoint 26 on `fix_commands`; see execution history.
 - Related ADR(s): ADR-0277; ADR-0023 remains the pipeline replay decision.
 - Related docs: `docs/historical-analysis.md`, `cmd/analyze_distance3/`,
-  `cmd/simulate_threshold/`, `cmd/analyze1c/`, `cmd/inspect_decisions/`.
+  `cmd/simulate_threshold/`, `cmd/analyze1c/`, `cmd/inspect_decisions/`,
+  `cmd/investigate_reappearances/`.

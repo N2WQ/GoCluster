@@ -157,3 +157,41 @@ the three sample lists retain at most thirty rows in total. Logged scores remain
 unvalidated, and the output establishes no correction accuracy or calibration.
 
 See [checkpoint 29 qualification](command-fix-execution.md#checkpoint-29-consistent-decision-inspection).
+
+## Reappearance observations
+
+```powershell
+go run ./cmd/investigate_reappearances -db C:\data\decisions.db -lookahead 24
+```
+
+This command selects case-only applied seeds using its original `id`, `ts`,
+`subject`, `winner`, `freq_khz`, `distance` and `winner_confidence` columns.
+NULL, empty, padded or other seed outcomes are excluded. The database and
+lookahead flags/defaults remain; lookahead retains the existing integer-to-Go
+duration conversion. Historical numbers are unvalidated, and frequency
+interpretation assumes finite values.
+
+For each seed, the command selects at most the first **100 combined follow-up
+rows** whose uppercase subject equals either normalized seed identity within
+`(seed time, seed time + lookahead]`. Follow-up outcome labels do not filter that
+population, and follow-up winner fields are unused. The cap is shared between
+identities. One identity at row 101 can therefore be missed even if it appears
+inside the requested interval.
+
+Each identity contributes its first observed frequency. Later values do not
+replace it, including an initial zero; when normalized identities coincide, one
+follow-up can satisfy both. Ordering uses timestamp, ID and every selected-value
+tie field, with binary text comparisons. No unique-ID schema rule is added.
+Samples contain at most twenty resulting dual cases. Separation below 0.5 kHz
+and at least 0.5 kHz uses the dual-case denominator; no cases gives `N/A`.
+
+The capped first-frequency method supplies logged observations. It does not
+establish station legitimacy, correction accuracy, calibration or simultaneous
+operation. Multiple SQL statements promise no single database snapshot. Every
+query, scan, iteration and close is checked, including later selected rows after
+both identities are already observed. Loading failure publishes no partial
+report and exits unsuccessfully; failed output also exits unsuccessfully.
+Invocation memory holds dual cases proportional to input and one active nested
+cursor, without retaining follow-up frequency arrays.
+
+See [checkpoint 30 qualification](command-fix-execution.md#checkpoint-30-descriptive-reappearance-observations).
