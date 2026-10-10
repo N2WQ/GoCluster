@@ -157,7 +157,7 @@ func TestProbeCancelNegotiationBehindBlockedKeeper(t *testing.T) {
 	f.send(t, "PC22^\r\n")
 	ticker := awaitProbe(f.guard, t, f.tickers.created, "keeper creation")
 	f.syncReader(t)
-	f.readerAfter(t, "PC51^N2WQ-33^SYNC^1^\r\n")
+	f.readerAfterSync(t)
 	requireProbeWrite(t, f, "PC51^SYNC^")
 	ticker.ticks <- time.Now()
 	keeper := requireProbeWrite(t, f, "PC51^N2WQ-33^N2WQ-33^1^")

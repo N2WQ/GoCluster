@@ -10,17 +10,22 @@ import (
 )
 
 type probeProtocol struct {
-	session           *probeSession
-	pc9x              bool
-	established       bool
-	sentCall          bool
-	sentPass          bool
-	initSent          bool
-	handshakeDeadline time.Time
+	session       *probeSession
+	pc9x          bool
+	established   bool
+	sentCall      bool
+	sentPass      bool
+	initSent      bool
+	phaseDeadline time.Time
 }
+
+var errProbeHandshakeTimeout = errors.New("handshake timeout")
 
 func (s *probeSession) runProtocol() error {
 	p := probeProtocol{session: s}
+	if err := p.startPhase(s.cfg.loginTimeout + s.cfg.initTimeout); err != nil {
+		return err
+	}
 	if s.cfg.autoLogin {
 		if err := p.sendLogin(); err != nil {
 			return err
@@ -29,20 +34,18 @@ func (s *probeSession) runProtocol() error {
 			return err
 		}
 	}
-	// Phase budgets are unchanged here; checkpoint 34b owns absolute budgets
-	// and moving this initial combined duration before credential writes.
-	p.handshakeDeadline = time.Now().UTC().Add(s.cfg.loginTimeout + s.cfg.initTimeout)
 	for {
-		if err := context.Cause(s.ctx); err != nil {
+		now := time.Now()
+		if err := p.admitIngress(now); err != nil {
 			return err
 		}
-		line, err := s.reader.ReadLine(time.Now().UTC().Add(s.cfg.idleTimeout))
-		// A Telnet callback may fail while ReadLine still returns buffered data.
-		// Never dispatch that line after the callback has retired the session.
-		if cause := context.Cause(s.ctx); cause != nil {
-			return cause
-		}
+		line, err := s.reader.ReadLine(p.readDeadline(now))
 		if err != nil {
+			return err
+		}
+		// Socket deadlines cannot reject already acquired or buffered input.
+		// A callback failure also forbids dispatch, even if ReadLine succeeds.
+		if err := p.admitIngress(time.Now()); err != nil {
 			return err
 		}
 		if line == "" {
@@ -52,6 +55,43 @@ func (s *probeSession) runProtocol() error {
 			return err
 		}
 	}
+}
+
+// The synchronous protocol owner alone changes phase state. time.Now/Add keep
+// monotonic elapsed budgets; protocol timestamps retain their separate UTC use.
+func (p *probeProtocol) startPhase(duration time.Duration) error {
+	p.phaseDeadline = time.Now().Add(duration)
+	return p.session.transport.SetWriteDeadline(p.phaseDeadline)
+}
+
+func (p *probeProtocol) admitIngress(now time.Time) error {
+	if err := context.Cause(p.session.ctx); err != nil {
+		return err
+	}
+	if !p.phaseDeadline.IsZero() && !now.Before(p.phaseDeadline) {
+		return errProbeHandshakeTimeout
+	}
+	return nil
+}
+
+func (p *probeProtocol) readDeadline(now time.Time) time.Time {
+	idle := now.Add(p.session.cfg.idleTimeout)
+	if !p.phaseDeadline.IsZero() && p.phaseDeadline.Before(idle) {
+		return p.phaseDeadline
+	}
+	return idle
+}
+
+func (p *probeProtocol) establish() error {
+	if p.established {
+		return nil
+	}
+	if err := p.session.transport.SetWriteDeadline(time.Time{}); err != nil {
+		return err
+	}
+	p.established = true
+	p.phaseDeadline = time.Time{}
+	return nil
 }
 
 func (p *probeProtocol) sendLogin() error {
@@ -80,11 +120,15 @@ func (p *probeProtocol) sendPassword() error {
 
 func (p *probeProtocol) initialize(pc9x bool) error {
 	p.pc9x = pc9x
+	if !p.established && !p.initSent {
+		if err := p.startPhase(p.session.cfg.initTimeout); err != nil {
+			return err
+		}
+	}
 	if err := sendInit(p.session.sendLine, p.session.timestamps, p.session.cfg, pc9x); err != nil {
 		return err
 	}
 	p.initSent = true
-	p.handshakeDeadline = time.Now().UTC().Add(p.session.cfg.initTimeout)
 	return nil
 }
 
@@ -125,16 +169,16 @@ func (p *probeProtocol) handleLine(line string) error {
 	}
 	if strings.HasPrefix(line, "PC22") {
 		log.Printf("RX %s (established)", line)
-		p.established = true
-		p.handshakeDeadline = time.Now().UTC().Add(24 * time.Hour)
+		if err := p.establish(); err != nil {
+			return err
+		}
 		p.session.startKeeper(p.pc9x)
 		return nil
 	}
 	if strings.HasPrefix(line, "PC61^") || strings.HasPrefix(line, "PC11^") {
 		log.Printf("RX spot %s", line)
 		if p.initSent && !p.established {
-			p.established = true
-			p.handshakeDeadline = time.Now().UTC().Add(24 * time.Hour)
+			return p.establish()
 		}
 		return nil
 	}
@@ -143,8 +187,5 @@ func (p *probeProtocol) handleLine(line string) error {
 		return nil
 	}
 	log.Printf("RX %s", line)
-	if time.Now().UTC().After(p.handshakeDeadline) && !p.established {
-		return errors.New("handshake timeout")
-	}
 	return nil
 }

@@ -12,9 +12,9 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 27, 28b, 29, 30, 31, 33 and 34a complete (04a used two commits);
-41 of 46 approved checkpoints complete; 5 remain. Checkpoints 28a and 32 await
-the user's policy selections; independent checkpoint 34b is next.
+Current progress: checkpoints 00 through 27, 28b, 29, 30, 31, 33 and 34a/b complete (04a used two commits);
+42 of 46 approved checkpoints complete; 4 remain. Checkpoints 28a and 32 await
+the user's policy selections; independent checkpoint 34c is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -4365,3 +4365,173 @@ entry/ownership comments manually rather than treating zero as header proof.
 Generated maps finish last with the explicit owned diff; no phase budget,
 timestamp-ordering, external-peer, firewall, production-load or long-running
 leak result is credited here. Cumulative checkout-server reconciliation remains35.
+
+## Checkpoint 34b: absolute peer phase budgets
+
+Status: complete. Architecture and matrix established before code under approved v3 row34b.
+Root inspected the current protocol, transport, actual LineReader and owned
+fixtures. Bounded read-only design and test reviewers compared mechanisms and
+challenged the selected evidence. Neither ran checks; their findings are
+chosen-contract-informed source review, not independent empirical evidence.
+Root verified and dispositions every material finding below. No new product
+policy is selected and checkpoints28a/32 remain pending.
+
+The synchronous protocol owner retains the existing initial combined duration,
+loginTimeout+initTimeout, and starts its absolute budget before automatic
+credential writes. Before phase output it installs that fixed write deadline
+through the cancellation gate. That persistent socket deadline also covers
+buffered Flush and synchronous raw Telnet replies. The first initialization
+while unestablished starts one initTimeout budget before initialization output.
+Later markers retain their compatibility responses without renewing it. Use
+time.Now values with their monotonic component for elapsed budgets; Add and
+comparisons retain it. UTC conversion remains for protocol timestamps and logs.
+
+Before each ReadLine, check cancellation and active phase expiry, and use the
+earlier of the fixed phase deadline and the existing per-ReadLine idle deadline.
+After a successful read, check cancellation and phase expiry before dispatching
+even an empty or buffered line. Preserve an actual read error rather than
+replacing it with a later clock check. Socket deadlines alone cannot reject
+bytes already acquired or retained by the reader. Every dispatch category is
+subject to the same ingress gate, including prompts, WWV and PC51 traffic.
+
+Either existing establishment path ends the phase budget and clears its write
+deadline before acquiring a keeper. A PC22 before initialization still establishes;
+a later PC18 must not reopen a phase. Spot-only establishment still owns no
+keeper/BYE, and a later first PC22 still acquires exactly one captured-mode keeper.
+Ordinary write deadline installation and zero-deadline clearing use the existing
+short gate and check context.Cause under it. They cannot undo cancellation.
+Interruption and post-join bounded BYE retain their separate underlying-socket
+operations from34a. Setter failures reach the session owner before any subsequent
+phase output or keeper acquisition.
+
+Keep established reads on the existing per-ReadLine idle contract. Keeper output
+does not set read deadlines or refresh phase/idle budgets. Established writes
+gain no new idle-timeout domain. Preserve flags, defaults, frame formats,
+compatibility responses and reconnect/backoff. A timer/watch owner was compared
+but would add replacement/disarming and expiry-versus-establishment ownership;
+buffered ingress would still need the same checks. Per-send renewal is incorrect;
+reinstalling the same fixed deadline per send is unnecessary. No new owner,
+queue, shared peer API or configuration is justified.
+
+| Contract | Failure/boundary | Stimulus | Observable result | Level | False-green risk | Exact checker | Owner |
+|---|---|---|---|---|---|---|---|
+| Initial budget | Timing begins after blocked credentials or password renews it | Distinct login/init durations; independently stalled actual login/password writes | Combined fixed deadline installed before first write; natural timeout while socket open and guard uncanceled | Transport/wire | Fixture cancellation substitutes for expiry | Deadline identity, actual producer entry/exit cause and ordered interruption | peerpoc phase tests |
+| First init budget | Init output precedes timing or uses initial duration | PC18 and each early PC16/17/19/21; block actual init frame | One initTimeout deadline precedes output and naturally expires | Protocol/transport | Ordinary handshake never blocks | Distinct durations and setter-before-Write receipts | peerpoc phase tests |
+| All ingress | Silent, partial, blank, WWV or negotiation traffic evades expiry | Bounded separate real-reader cases; drain exact raw replies; long idle budget | Reads retain fixed phase bound and retire unsuccessfully before guard | Consumer/wire | Fixture telemetry or undrained replies cause the stall | Actual read deadline trace and natural timeout before close/cancel | peerpoc phase tests |
+| Earlier idle bound | Only phase or only idle is enforced | Paired idle-shorter/phase-shorter silent and partial cases | Actual read deadline is the earlier bound | Transport | Any eventual timeout passes | Compare actual installed deadline with both recorded budgets | peerpoc phase tests |
+| No renewal | Repeated init markers extend time or timestamp exhaustion masquerades as expiry | Legacy first init, repeated PC18 and alternating early markers; drain responses | Compatibility responses remain; first init deadline unchanged | Protocol/wire | Any failure, especially rate exhaustion, passes | Fixed deadline identity plus natural retirement bound | peerpoc phase tests |
+| Buffered expiry | Acquired valid marker dispatches after budget | Park decorated Read after actual byte acquisition; release PC18/PC22/initialized spot after observed deadline; positive control before expiry | Expired input creates no init, phase clear or keeper/BYE acquisition | Actual consumer | Socket deadline alone rescues read before acquisition | Acquired-byte barrier, deadline-derived timer and absent corresponding effects | peerpoc phase tests |
+| Phase writers | Callback or acknowledgement remains blocked despite phase expiry | Independently stall credentials/init/PC51/raw parser reply | Natural Write timeout precedes interrupt/close with uncanceled guard | Real parser/transport | Explicit cancellation proves only34a | Underlying Write entry, exit error/time and ordered owner retirement | peerpoc phase tests |
+| Establishment | Stale write deadline or reopened late init phase | PC22 before init, init-to-PC22, init-to-PC11/PC61 and spot-to-PC22; later PC18/repeated PC22 | Clear before keeper; output still works after former deadline; captured mode/ownership preserved | Consumer/wire | Established boolean alone passes | Zero-set receipt, literal later output and owner counts | peerpoc phase tests |
+| Cancellation/setter failure | Future set or zero clear revives canceled I/O; failed transition proceeds | Both set/clear-versus-cancel orders; fault initial/init/clear/read setters | No ordinary setter after interruption; original error and no later phase work | Transport/race | Seeing one expired setter misses later revival | Underlying setter barriers, classified deadline trace and causal absence controls | peerpoc phase tests |
+| Established liveness | Keeper extends inbound idle or new write budget appears | Silent reader with two consumed keeper ticks; separately block established keeper/late compatibility output beyond former phase | Original inbound timeout; established blocked write retires only on deliberate cancel | Consumer/transport | Keeper failure mistaken for inbound timeout | Actual read-timeout receipt before interruption, successful wire ticks and unchanged read deadline | peerpoc phase tests |
+
+Checker refinements remain within approved scope. Read/Write exits record the
+underlying error and ordered/time evidence, so a natural timeout must precede
+interruption and owned socket close while the fixture guard is unexpired. An
+optional after-underlying-Read barrier proves acquired-data expiry. Ordinary
+write setters must be distinguished from post-join BYE in fault routing and
+receipts. Bounded producers document an event maximum below the existing128
+channel capacity, or continuously drain and join collectors; increasing buffers
+or dropping evidence cannot hide fixture-induced stalls. Temporal stimuli derive
+from observed deadlines, not arbitrary sleeps. Cleanup releases barriers and
+joins started workers on every path; cleanup Close never proves production exit.
+
+Selected falsification controls temporarily remove phase-write admission,
+post-successful-read expiry gating and fixed first-init retention separately.
+Each must fail its specific deadline/effect checker rather than a watchdog or
+launch failure; restore the exact source before final qualification. Select the
+smallest actual controls supported by the final fixture, retain any failed or
+uninformative experiment as uncredited and explain limitations. Monotonic budget
+handling also receives fresh direct source review; these tests do not certify
+behavior during actual system-clock changes.
+
+Selected lane: focused phase and34a regression tests, complete peerpoc normal/race
+and core peer ordinary checks, complete ordinary70-package baseline, repository
+vet/Staticcheck/lint, fresh Go quality/final diff review, affected tool/ADR/TSR/
+source-map documentation, records/crawler/whitespace and maps last. Core peer
+production and API remain unchanged. No external peer, firewall, production load,
+long-running leak or cross-reconnect timestamp result is claimed. Timestamp
+allocation/publication remains34c; cumulative checkout-server reconciliation35.
+
+Before test mutation, root adds the approved protocol-fuzz obligation to this
+lane. A bounded actual-handler transition fuzzer uses legacy mode and a private
+memory transport, with at most32 markers. Its independent invariants are one
+first-init budget before output, unchanged deadline on repeated compatibility
+messages, one phase clear through either establishment path with no rearming,
+and at most one keeper/BYE owner. It supplements actual-reader deadline tests;
+it cannot prove real socket timing or acquired-data gating. No copied state
+machine, new production hook or unbounded fake framework is admitted. Use the
+saved stable test executable for a separate bounded fuzz run after Go freezes.
+
+Initial complete peerpoc ordinary tests and repository vet/Staticcheck passed.
+Lint found two test-only issues: exact EOF comparison and a now-constant payload
+parameter on the synchronization-read helper. Before correction, root selects
+errors.Is for EOF and makes that helper explicitly serve its observed SYNC
+receipt, updating its existing and new callers. This changes no production
+contract, assertion, fixture owner or test threshold. Failed lint is retained
+separately and uncredited; final qualification follows the corrected tests.
+
+### Checkpoint34b falsification and final qualification
+
+The fresh bounded Go quality reviewer found no material source or checker
+defect. Root directly reviewed the phase/cancellation/first-cause call paths,
+finite fixture receipts and final helper/EOF corrections. This is lead-owned
+verification with chosen-contract-informed static assistance, not independent
+empirical evidence. Monotonic elapsed values are retained in source; actual
+system-clock changes were not experimentally induced.
+
+Three separately restored temporary controls failed on specific contract
+violations, rather than watchdog or launch failures:
+
+| Removed contract | Observed failure | Artifact suffix under `.tmp/command-fixes/checkpoint34b-` |
+|---|---|---|
+| Phase write admission | Actual credential entered with no phase deadline receipt | `missing-phase-write-negative.log` |
+| Successful-read expiry gate | Expired acquired PC22 acquired a keeper | `missing-buffered-gate-negative.log` |
+| First-init retention | Repeated marker installed additional init budgets | `renewed-init-negative.log` |
+
+After every experiment, the restored protocol SHA256 matched
+`8B3501293A1C87806D1F4FB4A31E7168A007001779730A8D013107221919137F`.
+These are falsification controls, not patched-source passes. The guard remained
+bounded and cleanup joined started owners even after the deliberate failures.
+
+Final complete peerpoc race and repository vet/Staticcheck/lint passed; lint
+reported zero issues. The stable fuzz-instrumented executable ran the actual
+transition fuzzer for15 seconds with two workers:102,219 executions,43 new
+coverage inputs, PASS. It retained the normal exit guard and used a private
+cache under `.tmp`. The ordinary runner/fuzz lane did not overlap; one exclusive
+runner lock covered each build and execution. Initial ordinary/analyzer results
+are retained separately from final corrected-test qualification, and initial
+failed lint remains uncredited.
+
+Actual transport receipts distinguish natural phase/idle timeout from later
+interruption and Close. Stalled login/password/init/ack/raw writes time out while
+the fixture parent remains healthy. Silent, partial, blank, WWV, prompt and raw
+negotiation cases retain the fixed deadline; an earlier idle budget still wins.
+Acquired PC18/PC22/PC11/PC61 bytes released after expiry create no corresponding
+publication, phase clear or keeper. Positive acquired-marker controls and actual
+EOF preservation also pass. Both establishment paths clear before later output
+or keeper acquisition; compatibility responses do not rearm the phase. Two
+consumed keeper writes leave the existing inbound deadline unchanged, and
+established blocked writes still require deliberate cancellation. Both ordinary
+write-set/clear cancellation orders and transition setter faults retain their
+causal/no-effect assertions. These receipts are local evidence, not external
+interoperability or long-running leak certification.
+
+Support impact: Required. Tool guide, ADR-0278, TSR-0077, their indices and source
+map describe the fixed budgets and preserved established liveness. The complete
+ordinary70-package final baseline and final record/crawler/whitespace/map results
+are recorded below only after their actual completion. Core peer production/API
+remain unchanged; timestamp publication34c and checkout reconciliation35 remain
+unqualified at this checkpoint.
+
+The final complete ordinary baseline passed all70 packages on frozen Go source,
+including final peerpoc and core peer suites. Packages without tests were
+build-checked. Artifact prefix: `.tmp/command-fixes/checkpoint34b-`, final logs
+`full-ordinary-qualified.log`, `peerpoc-race-qualified.log`,
+`fuzz-qualified.log` and the three analyzer `qualified.log` files. No complete
+repository race rerun or current cumulative checkout-server result is claimed.
+Root's final diff/owner/claim pass is lead-owned. Record and staged whitespace
+checks complete before maps. The crawler aid has no configured peerpoc
+candidates; entry/ownership comments receive manual review. Generated maps
+finish last against the explicitly owned diff.

@@ -27,7 +27,7 @@ func TestProbeKeeperFailuresRetireReader(t *testing.T) {
 			f.send(t, "PC22^\r\n")
 			ticker := awaitProbe(f.guard, t, f.tickers.created, "keeper creation")
 			f.syncReader(t)
-			f.readerAfter(t, "PC51^N2WQ-33^SYNC^1^\r\n")
+			f.readerAfterSync(t)
 			if fault == "timestamp" {
 				want = peer.ErrTimestampClock
 				if _, err := f.session.timestamps.NextAt(time.Now().Add(24 * time.Hour)); err != nil {

@@ -25,7 +25,20 @@ an unusable connection or failed buffered writer can prevent its delivery.
 Its failure does not replace the original session failure. A replacement
 connection starts only after the previous attempt has retired.
 
+The initial absolute handshake budget is `-login-timeout + -init-timeout`
+(75 seconds with the defaults), starting before credential writes. The first
+initialization while unestablished starts one `-init-timeout` budget (60 seconds
+by default) before its output. Repeated markers and compatibility responses do
+not restart it. Both incoming traffic and stalled outgoing phase writes are
+subject to these budgets, including Telnet negotiation replies.
+
+PC22 or a spot received after initialization ends the phase budget. Later PC18
+responses do not reopen it. `-idle-timeout` retains its existing budget for each
+line read; outgoing keepalive traffic does not extend that read deadline.
+Established writes gain no separate idle timeout. Cancellation still interrupts
+them through the owned retirement path.
+
 The [execution record](../../docs/command-fix-execution.md) distinguishes session
-ownership qualification from the separate absolute phase-budget and
-cross-reconnect timestamp checkpoints. Local fixtures do not establish
+ownership and phase-budget qualification from the separate cross-reconnect
+timestamp checkpoint. Local fixtures do not establish
 external-peer compatibility, firewall acceptance or long-running leak freedom.

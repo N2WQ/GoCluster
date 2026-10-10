@@ -164,11 +164,16 @@ func (c *probeTransport) LocalAddr() net.Addr { return c.conn.LocalAddr() }
 
 func (c *probeTransport) RemoteAddr() net.Addr { return c.conn.RemoteAddr() }
 
-// These ordinary setters are currently unused by producers. Their delegation
-// completes net.Conn; interrupt and post-join BYE deliberately use conn directly.
+// SetDeadline is unused by ordinary producers. Interrupt and post-join BYE use
+// conn directly so ordinary phase admission cannot revive canceled I/O.
 func (c *probeTransport) SetDeadline(deadline time.Time) error { return c.conn.SetDeadline(deadline) }
 
 func (c *probeTransport) SetWriteDeadline(deadline time.Time) error {
+	c.gate.Lock()
+	defer c.gate.Unlock()
+	if err := context.Cause(c.ctx); err != nil {
+		return err
+	}
 	return c.conn.SetWriteDeadline(deadline)
 }
 

@@ -25,6 +25,19 @@ EOF and other failures could return a successful command status.
   deadline gate never covers blocking I/O or worker joins. Cancellation expires
   socket deadlines without acquiring the writer mutex; setter failure closes
   the owned connection as a fallback.
+- Keep absolute phase state with the synchronous protocol owner. Start the
+  existing loginTimeout+initTimeout budget before credential writes and the
+  first unestablished initTimeout budget before initialization output. Install
+  each fixed write deadline through the cancellation gate, also covering raw
+  Telnet replies. Preserve monotonic time values for elapsed budgets.
+- Gate every read against the earlier active phase/per-ReadLine idle deadline,
+  and reject successfully acquired or buffered input after phase expiry before
+  dispatch. Preserve actual read failures. Repeated markers cannot renew the
+  init budget. Either establishment path clears the phase write deadline through
+  the same gate before keeper acquisition; later PC18 cannot reopen a phase.
+- Keep the existing established per-ReadLine idle contract. Outgoing keepalive
+  does not refresh inbound liveness, and established writes gain no new timeout
+  domain. A zero ordinary write deadline cannot undo cancellation.
 - Join the keeper and interruptor before best-effort BYE, socket retirement and
   reconnect. Only post-join BYE may restore a future write deadline; retain its
   two-second bound. Preserve the first cause and never replace a failed buffered
@@ -34,9 +47,9 @@ EOF and other failures could return a successful command status.
   ownership. Preserve existing flags, defaults, frame formats and backoff.
 - One-session failures, including EOF, exit nonzero. Deliberate local command
   cancellation exits zero; internal session cancellation is not sufficient.
-- Keep test controls private and tool-local. Checkpoints34b and34c separately
-  own absolute phase budgets and cross-reconnect timestamp publication; this
-  decision does not claim those implementation results.
+- Keep test controls private and tool-local. The execution record separately
+  qualifies34a ownership and34b phase deadlines. Checkpoint34c owns
+  cross-reconnect timestamp publication; this decision does not certify tests.
 
 ## Alternatives considered
 
@@ -45,6 +58,10 @@ EOF and other failures could return a successful command status.
    another owner without solving a necessary tool-local requirement.
 3. Join while holding the writer mutex: can deadlock the blocked producer that
    cancellation must release first.
+4. Add a phase timer/watch owner: introduces replacement, disarming and
+   expiry-versus-establishment ownership, while buffered ingress still needs
+   explicit protocol checks. Fixed connection deadlines bound phase writes
+   using the existing interrupt/retirement owners.
 
 ## Consequences
 
@@ -65,7 +82,7 @@ EOF and other failures could return a successful command status.
 
 ## Links
 
-- Related issues/PRs/commits: approved v3 checkpoint34a on `fix_commands`.
+- Related issues/PRs/commits: approved v3 checkpoints34a/b on `fix_commands`.
 - Related tests: `cmd/peerpoc` ownership, wire and actual-main fixtures.
 - Related docs: [tool guide](../../cmd/peerpoc/README.md),
   [execution record](../command-fix-execution.md).

@@ -11,7 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
-| TSR-0077 | Peer Probe Retirement | Monitoring | 2026-10-10 | peerpoc, cancellation, writer and keeper ownership | ADR-0278 | `docs/troubleshooting/TSR-0077-peer-probe-retirement.md` |
+| TSR-0077 | Peer Probe Retirement | Monitoring | 2026-10-10 | peerpoc, phase deadlines, cancellation, writer and keeper ownership | ADR-0278 | `docs/troubleshooting/TSR-0077-peer-probe-retirement.md` |
 | TSR-0076 | Diagnostic Wrapper Settings and Status | Monitoring | 2026-10-10 | diagnostic startup wrapper, GC precedence and native child status | none | `docs/troubleshooting/TSR-0076-diagnostic-wrapper-settings-and-status.md` |
 | TSR-0075 | Historical Analysis Claims and Failures | Monitoring | 2026-10-10 | historical decision readers, classification and report claims | ADR-0277 | `docs/troubleshooting/TSR-0075-historical-analysis-claims-and-failures.md` |
 | TSR-0074 | Producer Clock for Diagnostic Tests | Monitoring | 2026-10-10 | peer diagnostic timing tests | none | `docs/troubleshooting/TSR-0074-producer-clock-for-diagnostic-tests.md` |

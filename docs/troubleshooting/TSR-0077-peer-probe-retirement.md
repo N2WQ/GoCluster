@@ -4,7 +4,7 @@ Status: Monitoring
 Date Opened: 2026-10-10
 Date Resolved: n/a
 Owner: GoCluster maintainers
-Technical Area: diagnostic peer client, session ownership and unsuccessful outcomes
+Technical Area: diagnostic peer client, phase budgets, session ownership and unsuccessful outcomes
 Trigger Source: Chat request
 Led To ADR(s): ADR-0278
 Tags: peerpoc, cancellation, deadlines, keepalive, retirement
@@ -15,22 +15,25 @@ Tags: peerpoc, cancellation, deadlines, keepalive, retirement
 - Why: the process context and mutable keeper channel replaced explicit
   connection-level ownership and retirement.
 - What fixed it: one session owner, first-cause cancellation, guarded deadlines,
-  serialized writers and joined retirement before BYE and reconnect.
-- How we know: checkpoint34a in the execution record owns qualification and
+  serialized writers and joined retirement before BYE and reconnect; absolute
+  phase deadlines cover credential/init output and every input category.
+- How we know: checkpoints34a/b in the execution record own qualification and
   records any failed or incomplete checks separately.
 - Operator/support answer: inspect the first session failure; BYE is bounded
   best effort. One-session EOF is unsuccessful, while reconnect mode retries.
 
 ## Triggering Request
 - Request date: 2026-10-10.
-- Request summary: implement approved v3 peer-probe ownership checkpoint.
-- Request reference: `docs/command-fix-scope-ledger-v3.md`, checkpoint34a.
+- Request summary: implement approved v3 peer-probe ownership and phase budgets.
+- Request reference: `docs/command-fix-scope-ledger-v3.md`, checkpoints34a/b.
 
 ## Symptoms and Impact
 - A failed keeper could leave its reader apparently healthy.
 - A repeated establishment marker could create duplicate workers.
 - Stalled I/O could survive cancellation and obstruct retirement or reconnect.
 - Automation could treat an unsuccessful single attempt as success.
+- Credential/init writes could stall before timing began; repeated markers or
+  recognized traffic could evade the handshake budget.
 
 ## Hypotheses and Tests
 1. Canceling a context or closing a socket proves all workers ended.
@@ -38,19 +41,28 @@ Tags: peerpoc, cancellation, deadlines, keepalive, retirement
    - Outcome: joins are part of retirement, not inferred from cancellation.
 2. An expired deadline proves canceled I/O stays interrupted.
    - Evidence required: both setter orders and pre-canceled startup.
-   - Outcome: ordinary future read deadlines cannot revive a canceled session.
+   - Outcome: ordinary future read/write deadlines or phase clearing cannot
+     revive a canceled session.
 3. One tick yielding one frame proves one keeper exists.
    - Evidence required: ticker creation/stop and completion ownership witnesses.
    - Outcome: duplicate workers can compete for one channel and appear correct.
 4. A BYE helper call proves a BYE was delivered.
    - Evidence required: real wire receipt, failed-writer and withheld-read controls.
    - Outcome: sticky buffered-writer failure cannot be credited as delivery.
+5. Socket deadlines alone prevent an expired marker from being dispatched.
+   - Evidence required: actual bytes acquired before a delayed Read return,
+     then release after the observed phase deadline.
+   - Outcome: explicit post-successful-read gating is required for buffered input.
+6. Traffic and repeated init responses demonstrate handshake progress.
+   - Evidence required: fixed deadline identity under bounded prompts, WWV,
+     raw negotiation and repeated markers, plus naturally stalled phase writes.
+   - Outcome: phase budgets start before output and cannot be renewed by traffic.
 
 ## Findings
 - Root cause: connection-local cancellation, writer failures and worker lifetime
   lacked one complete retirement owner.
-- Phase deadline and cross-reconnect timestamp defects remain separate approved
-  checkpoints; ownership qualification does not certify them.
+- Phase deadlines are separately qualified by34b; ownership qualification alone
+  does not certify them. Cross-reconnect timestamp publication remains34c.
 
 ## Decision Linkage
 - ADR created/updated: ADR-0278.
@@ -58,7 +70,7 @@ Tags: peerpoc, cancellation, deadlines, keepalive, retirement
   one-session unsuccessful status and preserved deliberate local cancellation.
 
 ## Verification and Monitoring
-- Validation steps: checkpoint34a in `docs/command-fix-execution.md`.
+- Validation steps: checkpoints34a/b in `docs/command-fix-execution.md`.
 - Signals: causal failure, actual wire frames, ticker/worker retirement and
   next-dial ordering.
 - Rollback triggers: revived I/O, swallowed errors, duplicate keepers or an
