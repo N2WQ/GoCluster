@@ -55,12 +55,11 @@ func (s *probeSession) sendKeepalive(pc9x bool) error {
 	line := fmt.Sprintf("PC51^%s^%s^1^", s.cfg.call, s.cfg.call)
 	if pc9x {
 		var err error
-		line, err = buildPC92Keepalive(s.timestamps, s.cfg)
+		line, err = s.sendPC92(false)
 		if err != nil {
 			return err
 		}
-	}
-	if err := s.sendLine(line); err != nil {
+	} else if err := s.sendLine(line); err != nil {
 		return err
 	}
 	log.Printf("TX %s", line)

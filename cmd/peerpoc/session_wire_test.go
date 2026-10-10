@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"dxcluster/peer"
 )
 
 func TestProbeCancelStalledLineProducers(t *testing.T) {
@@ -117,17 +119,38 @@ func TestProbeShortAndPartialWritesRetainFirstCause(t *testing.T) {
 }
 
 func TestProbeRawAndBufferedLinesShareWriter(t *testing.T) {
-	f := newProbeFixture(t, fixtureProbeConfig(), nil, nil)
+	for _, pc9x := range []bool{false, true} {
+		t.Run(modeLabel(pc9x), func(t *testing.T) { probeRawAndBufferedLinesShareWriter(t, pc9x) })
+	}
+}
+
+func probeRawAndBufferedLinesShareWriter(t *testing.T, pc9x bool) {
+	t.Helper()
+	clock := newProbeTimestampClock(probeNoonUTC)
+	tickers := newFixtureProbeTickers()
+	tickers.unbuffered = true
+	f := newProbeFixtureWithTimestamp(t, fixtureProbeConfig(), nil, tickers, peer.NewTimestampGenerator(), clock.now)
+	if pc9x {
+		initializeTimestampPeer(t, f, "43200", "43200.01")
+		f.syncReader(t)
+	}
+	for len(f.conn.writeEntered) > 0 {
+		<-f.conn.writeEntered
+	}
 	f.send(t, "PC22^\r\n")
 	ticker := awaitProbe(f.guard, t, f.tickers.created, "keeper creation")
-	ticker.ticks <- time.Now()
-	keeper := requireProbeWrite(t, f, "PC51^N2WQ-33^N2WQ-33^1^")
+	consumeTimestampTick(f.guard, t, ticker)
+	keeperPrefix := "PC51^N2WQ-33^N2WQ-33^1^\r\n"
+	if pc9x {
+		keeperPrefix = literalProbePC92("43200.02", false)
+	}
+	keeper := requireProbeWrite(t, f, keeperPrefix)
 	// Enter the real reader/parser while the keeper holds the writer. The
 	// negotiation reply and buffered ping must follow the complete keeper.
 	negotiation := string([]byte{255, 251, 1}) + "PC51^N2WQ-33^AFTER^1^\r\n"
 	f.send(t, negotiation)
 	f.delivered(t, negotiation)
-	if got := f.line(t, "PC51^N2WQ-33^N2WQ-33^1^"); got != keeper {
+	if got := f.line(t, keeperPrefix); got != keeper {
 		t.Fatalf("keeper frame interleaved: %q", got)
 	}
 	raw := requireProbeWrite(t, f, string([]byte{255}))

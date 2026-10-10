@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"dxcluster/peer"
 )
 
 const probeFixtureBound = 8 * time.Second
@@ -221,6 +223,7 @@ type fixtureProbeTickers struct {
 	created     chan *fixtureProbeTicker
 	count       atomic.Int32
 	stopRelease <-chan struct{}
+	unbuffered  bool
 }
 
 func newFixtureProbeTickers() *fixtureProbeTickers {
@@ -230,6 +233,9 @@ func newFixtureProbeTickers() *fixtureProbeTickers {
 func (f *fixtureProbeTickers) newTicker(time.Duration) probeTicker {
 	t := &fixtureProbeTicker{ticks: make(chan time.Time, 1), stopEntered: make(chan struct{}),
 		stopped: make(chan struct{}), stopRelease: f.stopRelease, createdAt: time.Now()}
+	if f.unbuffered {
+		t.ticks = make(chan time.Time)
+	}
 	f.count.Add(1)
 	f.created <- t
 	return t
@@ -249,6 +255,11 @@ type probeFixture struct {
 
 func newProbeFixture(t *testing.T, cfg probeConfig, decorate func(*fixtureProbeConn), tickers *fixtureProbeTickers) *probeFixture {
 	t.Helper()
+	return newProbeFixtureWithTimestamp(t, cfg, decorate, tickers, peer.NewTimestampGenerator(), time.Now)
+}
+
+func newProbeFixtureWithTimestamp(t *testing.T, cfg probeConfig, decorate func(*fixtureProbeConn), tickers *fixtureProbeTickers, timestamps *peer.TimestampGenerator, now func() time.Time) *probeFixture {
+	t.Helper()
 	guard, endGuard := context.WithTimeout(context.Background(), probeFixtureBound)
 	ctx, cancel := context.WithCancel(guard)
 	client, remote := net.Pipe()
@@ -261,7 +272,7 @@ func newProbeFixture(t *testing.T, cfg probeConfig, decorate func(*fixtureProbeC
 	}
 	f := &probeFixture{guard: guard, cancel: cancel, conn: conn, peer: remote,
 		wire: bufio.NewReader(remote), tickers: tickers, result: make(chan error, 1), done: make(chan struct{})}
-	f.session = newProbeSession(ctx, cfg, conn, tickers.newTicker)
+	f.session = newProbeSession(ctx, cfg, conn, timestamps, now, tickers.newTicker)
 	go func() {
 		defer close(f.done)
 		f.result <- f.session.run()

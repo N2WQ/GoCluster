@@ -114,7 +114,7 @@ func TestProbeCommandExplicitLocalCancelReturnsSuccess(t *testing.T) {
 	conn := newFixtureProbeConn(client)
 	runtime := probeRuntime{dial: func(context.Context, string, string) (net.Conn, error) {
 		return conn, nil
-	}, newTicker: newProbeTicker}
+	}, newTicker: newProbeTicker, timestampNow: time.Now}
 	result := launchProbeCommand(ctx, t, fixtureProbeConfig(), runtime, func() {
 		cancel()
 		_ = remote.Close()

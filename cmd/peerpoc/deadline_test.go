@@ -118,7 +118,7 @@ func TestProbePreCanceledStartupDoesNotPublishOrReviveIO(t *testing.T) {
 	conn := newFixtureProbeConn(client)
 	cfg := fixtureProbeConfig()
 	cfg.autoLogin = true
-	session := newProbeSession(ctx, cfg, conn, newProbeTicker)
+	session := newProbeSession(ctx, cfg, conn, peer.NewTimestampGenerator(), time.Now, newProbeTicker)
 	result := make(chan error, 1)
 	done := make(chan struct{})
 	go func() { defer close(done); result <- session.run() }()

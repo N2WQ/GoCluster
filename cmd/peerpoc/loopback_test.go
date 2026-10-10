@@ -126,7 +126,7 @@ func (f *probeLoopbackFixture) runtime(expectedAddress string) probeRuntime {
 		f.owners[len(f.owners)-1].ticker = ticker
 		f.mu.Unlock()
 		return ticker
-	}}
+	}, timestampNow: time.Now}
 }
 
 func TestProbeLoopbackRecoveryAndLocalSessionCancellation(t *testing.T) {

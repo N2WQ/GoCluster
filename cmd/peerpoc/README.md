@@ -38,7 +38,19 @@ line read; outgoing keepalive traffic does not extend that read deadline.
 Established writes gain no separate idle timeout. Cancellation still interrupts
 them through the owned retirement path.
 
+PC9x timestamp state belongs to the whole command invocation and continues
+across reconnects. Each record's allocation, formatting, write and flush share
+the same writer lock as ordinary lines and Telnet replies. A partial or failed
+send may consume a timestamp; that gap is retained and the frame is not replayed.
+
+Each full UTC second permits 100 distinct values: its second-of-day integer,
+then `.01` through `.99`. Exhaustion or an unsafe clock retires the attempt;
+reconnect retains the existing backoff and timestamp state. After a backwards
+clock change, reaching the previously retained second is still refused; UTC
+must advance beyond it. The normal UTC midnight wrap is permitted. These UTC
+values are independent of the monotonic clocks used for elapsed phase budgets.
+
 The [execution record](../../docs/command-fix-execution.md) distinguishes session
-ownership and phase-budget qualification from the separate cross-reconnect
-timestamp checkpoint. Local fixtures do not establish
-external-peer compatibility, firewall acceptance or long-running leak freedom.
+ownership, phase-budget and timestamp-publication qualification. Local fixtures
+do not establish external-peer compatibility, firewall acceptance or long-running
+leak freedom.

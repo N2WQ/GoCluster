@@ -62,7 +62,7 @@ func TestProbeCommandFailuresDoNotBecomeSuccessfulChildCancellation(t *testing.T
 					return nil, want
 				}
 				return conn, nil
-			}, newTicker: tickers.newTicker}
+			}, newTicker: tickers.newTicker, timestampNow: time.Now}
 			result := launchProbeCommand(ctx, t, cfg, runtime, func() {
 				cancel()
 				_ = remote.Close()
@@ -162,7 +162,7 @@ func TestProbeRetryJoinsParkedOwnersBeforeNextDial(t *testing.T) {
 		close(nextEntered)
 		<-ctx.Done()
 		return nil, ctx.Err()
-	}, newTicker: tickers.newTicker}
+	}, newTicker: tickers.newTicker, timestampNow: time.Now}
 	cfg := fixtureProbeConfig()
 	cfg.reconnect = true
 	result := launchProbeCommand(ctx, t, cfg, runtime, func() {
@@ -258,7 +258,7 @@ func TestProbeDialFailureRecoveryAndBoundedReconnectChurn(t *testing.T) {
 		owners[len(owners)-1].ticker = ticker
 		mu.Unlock()
 		return ticker
-	}}
+	}, timestampNow: time.Now}
 	cfg := fixtureProbeConfig()
 	cfg.reconnect = true
 	cfg.backoffBase, cfg.backoffMax = 20*time.Millisecond, 20*time.Millisecond
@@ -327,7 +327,7 @@ func TestProbeCancelDuringBackoffStopsAttempts(t *testing.T) {
 			close(entered)
 		}
 		return nil, probeWireError("dial before backoff")
-	}, newTicker: newProbeTicker}
+	}, newTicker: newProbeTicker, timestampNow: time.Now}
 	cfg := fixtureProbeConfig()
 	cfg.reconnect = true
 	cfg.backoffBase, cfg.backoffMax = time.Hour, time.Hour

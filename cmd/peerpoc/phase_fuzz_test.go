@@ -7,6 +7,8 @@ import (
 	"net"
 	"testing"
 	"time"
+
+	"dxcluster/peer"
 )
 
 // This transport has no reader or clock-driven producer. The actual protocol
@@ -69,7 +71,7 @@ func FuzzProbePhaseTransitions(f *testing.F) {
 		cfg.idleTimeout = 3 * time.Hour
 		conn := newFixtureProbeConn(phaseMemoryConn{})
 		tickers := newFixtureProbeTickers()
-		session := newProbeSession(guard, cfg, conn, tickers.newTicker)
+		session := newProbeSession(guard, cfg, conn, peer.NewTimestampGenerator(), time.Now, tickers.newTicker)
 		t.Cleanup(func() {
 			defer endGuard()
 			session.cancel(context.Canceled)

@@ -26,18 +26,19 @@ type probeSession struct {
 	writer        *bufio.Writer
 	wireMu        sync.Mutex
 	timestamps    *peer.TimestampGenerator
+	timestampNow  func() time.Time
 	newTicker     func(time.Duration) probeTicker
 	interruptDone chan struct{}
 	keeperDone    chan struct{}
 	pc22Seen      bool
 }
 
-func newProbeSession(parent context.Context, cfg probeConfig, conn net.Conn, ticker func(time.Duration) probeTicker) *probeSession {
+func newProbeSession(parent context.Context, cfg probeConfig, conn net.Conn, timestamps *peer.TimestampGenerator, timestampNow func() time.Time, ticker func(time.Duration) probeTicker) *probeSession {
 	ctx, cancel := context.WithCancelCause(parent)
 	s := &probeSession{
 		cfg: cfg, ctx: ctx, cancel: cancel,
 		transport:  &probeTransport{conn: conn, ctx: ctx},
-		timestamps: peer.NewTimestampGenerator(), newTicker: ticker,
+		timestamps: timestamps, timestampNow: timestampNow, newTicker: ticker,
 		interruptDone: make(chan struct{}),
 	}
 	s.writer = bufio.NewWriter(s.transport)

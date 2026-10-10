@@ -47,9 +47,21 @@ EOF and other failures could return a successful command status.
   ownership. Preserve existing flags, defaults, frame formats and backoff.
 - One-session failures, including EOF, exit nonzero. Deliberate local command
   cancellation exits zero; internal session cancellation is not sufficient.
+- One real timestamp generator belongs to the command invocation before its
+  retry loop and is explicitly passed into each attempt. Its constant-size
+  state retains no session or transport. Joined retirement before reconnect
+  makes the existing per-session writer mutex sufficient.
+- Hold that writer mutex from cancellation admission through each PC92 record's
+  real timestamp allocation, pure formatting, write and Flush. Record/cancel a
+  timestamp or transport failure before unlocking. Keep ordinary lines and raw
+  replies on the common gate; permit keeper/init interleaving between records.
+- Retain consumed timestamps after failed or uncertain sends; permit gaps and
+  never replay or reuse. Core generator rate/unsafe-clock/midnight semantics
+  remain authoritative through retries. A private mandatory UTC clock control
+  uses production time.Now without changing monotonic phase/deadline clocks.
 - Keep test controls private and tool-local. The execution record separately
-  qualifies34a ownership and34b phase deadlines. Checkpoint34c owns
-  cross-reconnect timestamp publication; this decision does not certify tests.
+  qualifies34a ownership,34b phase deadlines and34c timestamp publication;
+  this decision does not certify tests.
 
 ## Alternatives considered
 
@@ -62,6 +74,12 @@ EOF and other failures could return a successful command status.
    expiry-versus-establishment ownership, while buffered ingress still needs
    explicit protocol checks. Fixed connection deadlines bound phase writes
    using the existing interrupt/retirement owners.
+5. Add a command-wide publication mutex: orders overlapping sessions that the
+   joined-retirement contract forbids. One retained generator with the existing
+   session writer gate meets the actual origin lifetime and wire-order contract.
+6. Lock the entire initialization exchange: removes allowed keeper/init
+   interleaving and risks nested sender locking. Each record is the required
+   allocation/publication boundary.
 
 ## Consequences
 
@@ -82,7 +100,7 @@ EOF and other failures could return a successful command status.
 
 ## Links
 
-- Related issues/PRs/commits: approved v3 checkpoints34a/b on `fix_commands`.
+- Related issues/PRs/commits: approved v3 checkpoints34a/b/c on `fix_commands`.
 - Related tests: `cmd/peerpoc` ownership, wire and actual-main fixtures.
 - Related docs: [tool guide](../../cmd/peerpoc/README.md),
   [execution record](../command-fix-execution.md).

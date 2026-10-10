@@ -125,7 +125,7 @@ func (p *probeProtocol) initialize(pc9x bool) error {
 			return err
 		}
 	}
-	if err := sendInit(p.session.sendLine, p.session.timestamps, p.session.cfg, pc9x); err != nil {
+	if err := p.session.sendInit(pc9x); err != nil {
 		return err
 	}
 	p.initSent = true
