@@ -3353,3 +3353,98 @@ write ownership remain authoritative; no ADR change is warranted. Record and
 whitespace checks passed; crawler checks, map generation/check and staged-diff
 review complete last. External feed health and cross-platform execution remain
 outside this local qualification.
+
+## Checkpoint 25: propagation-report command status
+
+Status: implementation in progress; authority is approved v3 checkpoint 25.
+
+Discovery inspected command main, Generate's config/input/output paths, optional
+OpenAI validation and request helper, current report fixtures, runtime scheduler
+caller and configuration/support guide. Semantic references identify the runtime
+scheduler and command as consumers; Generate already returns hard failures and
+the scheduler returns them. Only the command logs then returns success.
+`checkpoint-25-dependencies.json` retains the package inventory.
+
+Architecture: private run returns errors after its deferred context cleanup;
+main logs and exits 1. Preserve flags, date/default/path compatibility, generation
+algorithms and shared APIs. Both success-report writes remain attempted after
+generation; join errors without undoing either durable output. No-LLM bypasses
+optional config. Enabled missing/invalid optional config remains a hard failure
+before output. Request failure remains warning-only local-report fallback.
+JSON is written before the optional request and Markdown, so later failure may
+leave JSON. These inspected preservation contracts resolve ordering; no new
+transaction, retry or scientific policy is introduced.
+
+Actual-main children use private complete runtime config copies, fixed date/log
+and output paths, reset child flags, cleared child-only OPENAI_API_KEY and a real
+HTTP transport refusing non-loopback destinations before DNS/dial. Parent owns
+the loopback servers and joined bounded children. Fixtures exercise optional
+requests locally with synthetic credentials/responses, never external LLM calls.
+
+| Contract | Failure/boundary | Stimulus | Observable result | Level | False-green risk | Exact checker | Owner |
+|---|---|---|---|---|---|---|---|
+| Local generation | Fix suppresses success or no-LLM needs optional config | Fixed observation log, full config, missing optional config, no-LLM | Status 0, both outputs, literal date/UTC/log and hour counts | Actual main | Only status or algorithm-derived truth asserted | Decoded copied-observation fields and messages | prop_report |
+| Hard input/config failure | Logs error then exits zero | Invalid date, missing config/log or scanner-overlimit line | Status 1, causal diagnostic, neither output | Actual main | Wrong early stage fails | Valid paired input/config and branch-specific error | prop_report |
+| Output failure | Missing unsuccessful status or wrong order | File-blocked parents and directory destinations at JSON/Markdown stage | Status 1; JSON-only partial effect for late Markdown fault | Actual main | Failure occurs before intended write | Known valid input plus decoded JSON late-stage witness | prop_report |
+| Optional config | Hard failure confused with fallback | Missing/malformed/invalid/blank-key enabled optional file | Status 1 before either output/request | Actual main | Inherited real key satisfies missing-key fixture | Child-only cleared environment and specific diagnostic | prop_report |
+| Request fallback | Request failure becomes fatal | Loopback 503, malformed/no-choice/truncated response | One request, warning, status 0; local Markdown unchanged | Actual main | No request reached or fallback content drifts | Request capture plus byte comparison to no-LLM report | prop_report |
+| Narrative and reporting | Successful response or stdout failure lost | Local nonempty/empty narrative; closed child stdout | Expected suffix only for nonempty narrative; stdout failure status 1 with both saved outputs | Actual main | Files never generated | Decoded outputs and exact suffix/report-error checks | prop_report |
+
+Lead-owned detailed falsifiability review dispositions every early/late/fallback
+path; inherited discovery is not independent verification. No changed scientific
+claim/model requires a new oracle. Selected lane: focused command/report suites,
+ordinary baseline, repository analyzers, support/record/whitespace checks and
+maps last. Production parser, concurrency and model behavior remain untouched.
+
+## Pending interpretation: checkpoint 28a
+
+V3 selects complete query coverage for both identities and winner fields, but
+does not unambiguously select the counting rule for winner-field-only rows.
+Current source treats a later subject match as its observation, despite querying
+and selecting winner fields. Distinguishing example: OLD becomes NEW, followed
+by a row with subject OTHER and winner OLD. Separate subject/winner observations
+and combined either-field identity mentions have different reported outcomes.
+Neither proves correction accuracy. The user's explicit selection is pending;
+requirements-ambiguity-review applies. No 28a architecture or mutation is chosen.
+Independent approved checkpoints continue; frequency/mode gates and correction
+model redesign remain outside scope.
+
+## Checkpoint 00 validation follow-up: producer event clock
+
+The complete checkpoint 25 baseline reproduced the unchanged peer timing
+failure (98.9038 ms against 99 ms). Current source inspection established a
+checker defect: diagnostic_observer_test polls the mailbox asynchronously and
+the retry test stamped the callback with time.Now. Differences in event-delivery
+latency therefore altered its measured retry interval. The mailbox already
+captures UnixNano inside Emit; the retry begins after that emission.
+
+This is a localized test-only refinement of the approved unattended validation
+lane, with a separate rollback boundary. No production code, timer, threshold,
+workflow, runner setting or public interface changes. A private timed observer
+preserves the immutable producer timestamp; existing untimed consumers delegate
+and discard it. Original observer/ticker/mailbox cancellation and join ownership
+remain. The retry control retains its original 99 ms lower bound and all
+exponential/reset/cancellation assertions.
+
+| Contract | Failure/boundary | Stimulus | Observable result | Level | False-green risk | Exact checker | Owner |
+|---|---|---|---|---|---|---|---|
+| Timing origin | Observer delay becomes event time | Hold first callback, emit second real mailbox event, delay then resume | Second timestamp lies within literal Emit interval, before resumed delivery | Consumer/race | Plain retry repetitions happen to pass | TestConnectionObserverPreservesProducerTimestamp | peer tests |
+| Existing retry behavior | Test repair weakens timing/order checks | Real TCP failure, handshake recovery, disconnect and cancellation | Same min/base/cap/reset bounds and joined loop | Consumer/race | Threshold enlarged or production hook introduced | Unchanged assertions plus direct source diff | peer tests |
+| Untimed consumers | Delegation changes event content/ownership | Complete existing suite | Existing event witnesses remain intact | Ordinary baseline | New helper exercised alone | Full selected baseline | repository |
+
+Targeted race controls and five repeated race executions passed, followed by the
+complete ordinary 70-package baseline. A lint-only local tagged-switch refinement
+then reran the final race controls; repository vet, Staticcheck and lint passed
+(zero lint issues). Logs are `observer-clock-focused-race.log`,
+`observer-clock-repeat-race.log`, `observer-clock-focused-race-final.log`,
+`checkpoint-25-all-packages-2.log` and checkpoint 25's final analyzer logs.
+The local fixture dispatch refinement does not invalidate other baseline packages.
+Fresh direct review confirmed the unchanged retry thresholds, mailbox record
+origin and unblock-before-join cleanup. Record/whitespace checks and maps are
+completed last with the explicit staged diff. This is lead-owned oracle
+verification, not independent
+scientific evidence. Support impact is developer validation only, captured in
+TSR-0074; no operator setting or runtime contract changed. Initial failures remain
+uncredited. The earlier timer-resolution possibility was not established; the
+asynchronous observer-clock defect is established directly from current source
+and the held-delivery control.

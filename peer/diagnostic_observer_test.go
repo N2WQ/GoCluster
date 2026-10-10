@@ -12,6 +12,13 @@ import (
 // installed in any production actor; the polling observer owns its own join.
 func observeConnectionEvents(t *testing.T, m *Manager, observe func(ConnectionEvent)) {
 	t.Helper()
+	observeTimedConnectionEvents(t, m, func(event ConnectionEvent, _ time.Time) { observe(event) })
+}
+
+// The timestamp belongs to the producer's immutable mailbox record. Polling or
+// callback delay must not become the clock for retry/phase measurements.
+func observeTimedConnectionEvents(t *testing.T, m *Manager, observe func(ConnectionEvent, time.Time)) {
+	t.Helper()
 	m.diagnostics = peerdiag.New(peerdiag.Options{Enabled: true})
 	t.Cleanup(m.diagnostics.Stop)
 	stop, done := make(chan struct{}), make(chan struct{})
@@ -52,7 +59,7 @@ func observeConnectionEvents(t *testing.T, m *Manager, observe func(ConnectionEv
 						value.Reason = text
 					}
 				}
-				observe(value)
+				observe(value, time.Unix(0, event.UnixNano).UTC())
 			}
 		}
 	}()
