@@ -215,6 +215,11 @@ dialects. It remains available when automatic read pause is disabled. A new
 cannot shorten it. `SHOW HOLD` reports either pause, and `RESUME` ends it without
 replaying missed spots. Command replies and other control traffic continue.
 
+`SHOW HOLD` accepts exactly those two tokens, ignoring case and allowing
+repeated ASCII spaces. Extra arguments return usage without changing pause
+state. Its status and usage replies bypass automatic pausing. `SH HOLD` and
+slash forms are unsupported; TAB remains invalid on human telnet input.
+
 `SHOW PROP` HELP should stay aligned with the telnet formatter: the command
 shows only rows whose `REL` prediction is `HIGH`, `MEDIUM`, or `LOW`.
 

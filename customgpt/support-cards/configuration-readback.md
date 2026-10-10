@@ -121,6 +121,11 @@ command/error artifact that distinguishes the next step.
   duration. Longer pauses remain; later processed PAUSE/RESUME takes precedence.
   Pending delivery is not an already-running reading countdown; the SETTINGS
   snapshot describes the full interval that follows server delivery.
+- SHOW HOLD accepts exactly two tokens with case-insensitive ASCII-space
+  separation; extra tokens return handled usage without pause-state effects.
+  Its status and usage replies bypass automatic pause. SH HOLD and slash forms
+  remain unsupported, and TAB remains invalid human wire input. Suppression
+  counts describe eligible live traffic, not a command effect or cluster total.
 - Canonical machine reads are GET YAML FILTER/SETTINGS/CONFIG/CAPABILITIES.
   Machine success/errors have no pause-state effects or human footer. Existing
   suppressed counts may still increase from live traffic during a prior pause.

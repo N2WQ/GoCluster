@@ -1,5 +1,6 @@
 """Offline failure controls for the checkout runner; these do not qualify telnet."""
 
+import ast
 import copy
 import importlib.util
 import io
@@ -135,6 +136,291 @@ def discovery_help_literal(key, dialect):
 
 
 class DriverControls(unittest.TestCase):
+    def test_hold_matrix_and_registrations_keep_case_space_arity_and_alias_boundaries(self):
+        self.assertEqual(driver.HOLD_VALID_QUERIES, ("SHOW HOLD", "show hold", "  ShOw   HoLd  ", "SHOW    HOLD"))
+        expected = {"SHOW HOLD EXTRA": "Usage: SHOW HOLD", "show  hold  10": "Usage: SHOW HOLD",
+                    " SHOW HOLD EXTRA TAIL ": "Usage: SHOW HOLD", "SHOW HOLD ALL": "Usage: SHOW HOLD",
+                    "SH HOLD": "Unknown SHOW subcommand: HOLD", "SHOW HOLDS": "Unknown SHOW subcommand: HOLDS",
+                    "SHOW HOLDX": "Unknown SHOW subcommand: HOLDX", "SHOW HOLD/EXTRA": "Unknown SHOW subcommand: HOLD/EXTRA",
+                    "SHOW/HOLD": "Unknown command: SHOW/HOLD\nType HELP for available commands.",
+                    "SH/HOLD": "Unknown command: SH/HOLD\nType HELP for available commands.",
+                    "SHOWHOLD": "Unknown command: SHOWHOLD\nType HELP for available commands."}
+        self.assertEqual(dict(driver.HOLD_REFUSALS), expected)
+        self.assertEqual(len(driver.HOLD_REFUSALS), len(expected))
+        self.assertFalse(any("\t" in query for query in driver.HOLD_VALID_QUERIES))
+        tree = ast.parse(Path(driver.__file__).read_text(encoding="utf-8"))
+        functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+        counts = []
+        for name in ("profile", "dedupe_profile", "reputation_profile"):
+            required = next(node.value for node in functions[name].body if isinstance(node, ast.Assign) and
+                            any(isinstance(target, ast.Name) and target.id == "required" for target in node.targets))
+            self.assertIsInstance(required, ast.List)
+            counts.append(len(required.elts))
+            if name == "profile":
+                titles = ["".join(part.value for part in item.values if isinstance(part, ast.Constant))
+                          for item in required.elts if isinstance(item, ast.JoinedStr)]
+                self.assertEqual([value for value in titles if "HOLD" in value],
+                                 ["/0: HOLD controls preserve countdown counters and delivery",
+                                  "/1: HOLD preferences and delivery survive fresh child"])
+        self.assertEqual(counts, [54, 7, 7])
+        self.assertEqual(sum(counts) * 2, 136)
+        calls = [node for node in ast.walk(functions["profile"]) if isinstance(node, ast.Call) and
+                 isinstance(node.func, ast.Name) and node.func.id == "hold_command_cases"]
+        self.assertEqual(len(calls), 2)
+        for call in calls:
+            self.assertEqual([node.id for node in call.args], ["suite", "root", "generation", "saved_hold", "session"])
+
+    def test_hold_decoder_requires_complete_literal_status_counter_and_finite_seconds(self):
+        query = "  ShOw   HoLd  "
+        vectors = (("Live spots are not paused.", (False, False, 0, 0)),
+                   ("Live spots are not paused. Suppressed spots in last pause: 1.", (False, False, 0, 1)),
+                   ("Live spots paused for 15s more. Suppressed spots: 1.", (True, False, 15, 1)),
+                   ("Live spots paused while a response is being delivered. Suppressed spots: 1.", (True, True, 0, 1)))
+        for text, expected in vectors:
+            for echo in (False, True):
+                self.assertEqual(driver.decode_hold_reply(routing_help_wire([text], query.upper(), echo=echo), query, echo),
+                                 dict(zip(("pause_active", "pause_pending_delivery", "pause_remaining_seconds", "suppressed_spots"), expected)))
+        for text in ("Live spots paused for 0s more. Suppressed spots: 1.",
+                     "Live spots paused for 301s more. Suppressed spots: 1.",
+                     "Live spots paused for 1.5s more. Suppressed spots: 1.",
+                     "Live spots paused for 015s more. Suppressed spots: 1.",
+                     "Live spots paused for 15s more. Suppressed spots: -1.",
+                     "Live spots paused for 15s more. Suppressed spots: 01.",
+                     "Live spots are not paused. Suppressed spots in last pause: 0.",
+                     "Live spots were not paused.", "Usage: SHOW HOLD", "Unknown SHOW subcommand: HOLD"):
+            with self.assertRaises(ValueError):
+                driver.decode_hold_reply(routing_help_wire([text], query.upper()), query, True)
+        raw = routing_help_wire([vectors[2][0]], query.upper())
+        for bad in (raw + b"LEAK\r\n", raw + b"Missed spots are not replayed.\r\n",
+                    query.upper().encode() + b"\r\n" + raw, raw.replace(b"\r\n", b"\n"),
+                    raw.replace(b"paused", b"paus\xffd"), raw.replace(b"paused", b"paus\x00d"), b"X" * 65537 + b"\r\n"):
+            with self.assertRaises((ValueError, UnicodeDecodeError)):
+                driver.decode_hold_reply(bad, query, True)
+
+    def test_hold_complete_receipt_and_usage_precede_strict_barrier_with_failure_receipts(self):
+        class Receipt(io.BytesIO):
+            flushed = False
+
+            def flush(self):
+                self.flushed = True
+
+        query = "show  hold"
+        raw = routing_help_wire(["Live spots paused for 14s more. Suppressed spots: 1."], query.upper())
+        command = b"GET YAML CONFIG SCHEMA 4 ID HOLD19\r\n"
+        document = dict(resource="CONFIG", schema_version=4, request_id="HOLD19", configuration={}, status={}, revision="r19")
+
+        def session(prefix=command, reply=raw):
+            current = mock.Mock()
+            current.call = "VE3ABC-70077"
+            current.reader.remote_echo, current.reader.buffer = True, b""
+            current.reader.line.side_effect = reply.splitlines(keepends=True)
+            current.suite.log, current.suite.identifier.return_value = Receipt(), "HOLD19"
+            current.frame.return_value = copy.deepcopy(document), prefix
+
+            def sent(text):
+                if text.startswith("GET "):
+                    self.assertTrue(current.suite.log.flushed)
+                    self.assertTrue(current.suite.log.getvalue().endswith(reply))
+                    self.assertEqual(current.reader.line.call_count, len(reply.splitlines()))
+
+            current.send.side_effect = sent
+            return current
+
+        for prefix in (command, b"\r\n" + command, command + b"LEAK\r\n", b"LEAK\r\n" + command,
+                       command + command, b"\n" + command, command.replace(b"HOLD19", b"OTHER"), b"\r\n" * 32769 + command):
+            current = session(prefix)
+            if prefix in (command, b"\r\n" + command):
+                rendered, actual, observed = driver.hold_readback(current, query)
+                self.assertEqual(actual, document)
+                self.assertEqual(rendered["pause_remaining_seconds"], 14)
+                self.assertLessEqual(observed[0], observed[1])
+            else:
+                with self.assertRaises(ValueError):
+                    driver.hold_readback(current, query)
+        for field, value in (("resource", "FILTER"), ("schema_version", True), ("request_id", "OTHER"),
+                             ("configuration", []), ("status", []), ("revision", ""), ("error", {})):
+            current = session()
+            current.frame.return_value[0][field] = value
+            with self.assertRaises(ValueError):
+                driver.hold_readback(current, query)
+        refusal = routing_help_wire(["Usage: SHOW HOLD"], "SHOW HOLD EXTRA")
+        current = session(reply=refusal)
+        rendered, actual, _ = driver.hold_readback(current, "SHOW HOLD EXTRA", "Usage: SHOW HOLD")
+        self.assertIsNone(rendered)
+        self.assertEqual(actual, document)
+        for error in (EOFError("incomplete"), TimeoutError("stalled"), ValueError("receive limit")):
+            current = session()
+            echo = raw.splitlines(keepends=True)[0]
+            current.reader.line.side_effect, current.reader.buffer = [echo, error], b"PENDING"
+            with self.assertRaises(type(error)):
+                driver.hold_readback(current, query)
+            self.assertEqual(current.send.call_count, 1)
+            current.frame.assert_not_called()
+            self.assertTrue(current.suite.log.getvalue().endswith(echo + b"PENDING"))
+        for fault in (b"Usage: SHOW HOLD\r\n", b"X" * 65537):
+            current = session()
+            current.reader.line.side_effect = [fault]
+            with self.assertRaises(ValueError):
+                driver.hold_readback(current, query)
+            self.assertEqual(current.send.call_count, 1)
+            current.frame.assert_not_called()
+            if len(fault) > 65536:
+                self.assertIn(b"X" * 65536 + b"\n[HOLD receipt truncated at 65536 bytes]\n", current.suite.log.getvalue())
+
+    def test_hold_deadline_intersection_rejects_extension_shortening_early_expiry_and_bad_types(self):
+        state = dict(pause_active=True, pause_pending_delivery=False, pause_remaining_seconds=15, suppressed_spots=1)
+        window = driver.hold_deadline_window(None, state, (100, 100.05))
+        self.assertEqual(window, (114, 115.05))
+        window = driver.hold_deadline_window(window, state, (100.4, 100.45))
+        self.assertEqual(window, (114.4, 115.05))
+        state["pause_remaining_seconds"] = 14
+        self.assertEqual(driver.hold_deadline_window(window, state, (101.4, 101.45)), window)
+        for seconds in (15, 12):
+            with self.assertRaises(ValueError):
+                driver.hold_deadline_window(window, dict(state, pause_remaining_seconds=seconds), (101.4, 101.45))
+        inactive = dict(state, pause_active=False, pause_remaining_seconds=0)
+        with self.assertRaises(ValueError):
+            driver.hold_deadline_window(window, inactive, (103, 103.05))
+        self.assertEqual(driver.hold_deadline_window(window, inactive, (115.1, 115.2)), window)
+        for field, value in (("pause_active", 1), ("pause_pending_delivery", 0), ("pause_pending_delivery", True),
+                             ("pause_remaining_seconds", True), ("pause_remaining_seconds", 14.0),
+                             ("pause_remaining_seconds", -1), ("pause_remaining_seconds", 301),
+                             ("suppressed_spots", True), ("suppressed_spots", -1), ("suppressed_spots", "1")):
+            with self.assertRaises(ValueError):
+                driver.hold_deadline_window(window, dict(state, **{field: value}), (101.4, 101.45))
+        for observed in ((True, 101.45), (101.4, float("inf")), (float("nan"), 101.45), (101.45, 101.4), (-1, 1)):
+            with self.assertRaises(ValueError):
+                driver.hold_deadline_window(window, state, observed)
+        for invalid in ((115, 114), (float("nan"), 115), (True, 115)):
+            with self.assertRaises(ValueError):
+                driver.hold_deadline_window(invalid, inactive, (115.1, 115.2))
+
+    def test_hold_state_preserves_all_owners_counters_and_observed_deadline(self):
+        session = dict(callsign="VE3ABC-70077", diagnostic_comments="MODE", temporary_defaults=False, suppressed_spots=1,
+                       pause_active=True, pause_pending_delivery=False, pause_remaining_seconds=15)
+        before = dict(configuration=dict(filters=dict(comments=["HOLD19"])), revision="r19",
+                      status=dict(configured=dict(grid="FN31PR"), effective=dict(dedupe_policy="SLOW"),
+                                  preset=dict(associated=True, name="HOLD19GO", modified=False), session=session,
+                                  server=dict(auto_read_pause_min_rows=10), min_snr=dict(configured_count=1), comments=dict(pass_count=1)))
+        after = copy.deepcopy(before)
+        after["status"]["session"]["pause_remaining_seconds"] = 14
+        record, library = mock.Mock(), mock.Mock()
+        record.read_bytes.return_value, library.read_bytes.return_value = b"USER BYTES", b"LIBRARY BYTES"
+        record.stat.return_value = mock.Mock(st_dev=1, st_ino=101, st_size=10, st_mtime_ns=1001)
+        library.stat.return_value = mock.Mock(st_dev=1, st_ino=102, st_size=13, st_mtime_ns=1002)
+        saved, library_saved = driver.discovery_file_receipt(record), driver.discovery_file_receipt(library)
+        rendered = {field: after["status"]["session"][field] for field in
+                    ("pause_active", "pause_pending_delivery", "pause_remaining_seconds", "suppressed_spots")}
+        window, observed = (114.4, 115.05), (101.4, 101.45)
+
+        def check(actual=after, human=rendered):
+            return driver.require_hold_state(before, actual, record, saved, library, library_saved, observed, window, human)
+
+        self.assertEqual(check(), window)
+        for owner, field, value in (("document", "configuration", {}), ("document", "revision", "changed"),
+                                    ("status", "configured", {}), ("status", "effective", {}), ("status", "preset", {}),
+                                    ("status", "server", {}), ("status", "min_snr", {}), ("status", "comments", {}),
+                                    ("session", "diagnostic_comments", "OFF"), ("session", "temporary_defaults", True),
+                                    ("session", "suppressed_spots", 0), ("session", "suppressed_spots", 2),
+                                    ("session", "suppressed_spots", True), ("session", "pause_pending_delivery", True),
+                                    ("session", "pause_remaining_seconds", 15), ("session", "pause_remaining_seconds", 12),
+                                    ("session", "pause_remaining_seconds", True)):
+            changed = copy.deepcopy(after)
+            target = changed if owner == "document" else changed["status"] if owner == "status" else changed["status"]["session"]
+            target[field] = value
+            with self.assertRaises(ValueError):
+                check(changed)
+        for field, value in (("suppressed_spots", 2), ("pause_pending_delivery", True),
+                             ("pause_remaining_seconds", 15), ("pause_remaining_seconds", 13)):
+            with self.assertRaises(ValueError):
+                check(human=dict(rendered, **{field: value}))
+        for handle in (record, library):
+            data = handle.read_bytes.return_value
+            handle.read_bytes.return_value = b"CHANGED"
+            with self.assertRaises(ValueError):
+                check()
+            handle.read_bytes.return_value = data
+            value = handle.stat.return_value.st_mtime_ns
+            handle.stat.return_value.st_mtime_ns = value + 1
+            with self.assertRaises(ValueError):
+                check()
+            handle.stat.return_value.st_mtime_ns = value
+        inactive = copy.deepcopy(before)
+        inactive["status"]["session"].update(pause_active=False, pause_remaining_seconds=0)
+        self.assertIsNone(driver.require_hold_state(inactive, copy.deepcopy(inactive), record, saved, library,
+                                                   library_saved, observed, None))
+        with self.assertRaises(ValueError):
+            driver.require_hold_state(inactive, after, record, saved, library, library_saved, observed, None)
+
+    def test_hold_archive_and_live_spots_require_exact_identity_comment_and_fresh_frequency(self):
+        label = "HOLD19 TABCDEFGHGS"
+        base = HISTORY_ROW.replace("14074.00", "14177.00")
+        archived = base[:39] + ("CW " + label).ljust(24) + base[63:]
+        live = base[:39] + "CW CW|CMT".ljust(24) + base[63:]
+        driver.require_hold_spot(archived, label, 14177)
+        driver.require_hold_spot(live, "", 14177, True)
+        for row in (archived.replace("K1ABC", "K1ABX"), archived.replace("W6ABC", "W6XYZ"),
+                    archived.replace("14177.00", "14178.00"),
+                    archived[:39] + ("CW " + label + "X").ljust(24) + archived[63:]):
+            with self.assertRaises(ValueError):
+                driver.require_hold_spot(row, label, 14177)
+        for row in (live.replace("CW|CMT", "CW|SRC"), live.replace("14177.00", "14176.00"),
+                    live.replace("W6ABC", "W6XYZ"), archived, live + "X"):
+            with self.assertRaises(ValueError):
+                driver.require_hold_spot(row, "", 14177, True)
+
+    def test_hold_live_receipt_precedes_barrier_and_refuses_stale_or_unbounded_delivery(self):
+        class Receipt(io.BytesIO):
+            flushed = False
+
+            def flush(self):
+                self.flushed = True
+
+        base = HISTORY_ROW.replace("14074.00", "14178.00")
+        raw = (base[:39] + "CW CW|CMT".ljust(24) + base[63:] + "\r\n").encode("ascii")
+        command = b"GET YAML CONFIG SCHEMA 4 ID HOLD19\r\n"
+        document = dict(resource="CONFIG", schema_version=4, request_id="HOLD19", configuration={}, status={}, revision="r19")
+
+        def session(prefix=command):
+            current = mock.Mock()
+            current.call = "VE3ABC-70077"
+            current.reader.remote_echo, current.reader.buffer = True, b""
+            current.reader.line.side_effect = [raw]
+            current.suite.log, current.suite.identifier.return_value, current.suite.deadline = Receipt(), "HOLD19", float("inf")
+            current.frame.return_value = copy.deepcopy(document), prefix
+
+            def sent(text):
+                self.assertTrue(text.startswith("GET "))
+                self.assertTrue(current.suite.log.flushed)
+                self.assertTrue(current.suite.log.getvalue().endswith(raw))
+                self.assertEqual(current.reader.line.call_count, 1)
+
+            current.send.side_effect = sent
+            return current
+
+        self.assertEqual(driver.hold_live_readback(session(), 14178), document)
+        for prefix in (b"STALE\r\n" + command, command + command, b"\n" + command):
+            with self.assertRaises(ValueError):
+                driver.hold_live_readback(session(prefix), 14178)
+        for bad in (raw.replace(b"14178.00", b"14177.00"), b"Unknown command: DX\r\n", b"X" * 65537):
+            current = session()
+            current.reader.line.side_effect = [bad]
+            with self.assertRaises(ValueError):
+                driver.hold_live_readback(current, 14178)
+            current.send.assert_not_called()
+            current.frame.assert_not_called()
+            if len(bad) > 65536:
+                self.assertIn(b"X" * 65536 + b"\n[HOLD live receipt truncated at 65536 bytes]\n", current.suite.log.getvalue())
+        for error in (EOFError("incomplete"), TimeoutError("stalled"), ValueError("receive limit")):
+            current = session()
+            current.reader.line.side_effect, current.reader.buffer = [error], b"PENDING"
+            with self.assertRaises(type(error)):
+                driver.hold_live_readback(current, 14178)
+            current.send.assert_not_called()
+            current.frame.assert_not_called()
+            self.assertTrue(current.suite.log.flushed)
+            self.assertTrue(current.suite.log.getvalue().endswith(b"PENDING"))
+
     def test_help_reference_unknown_value_explanations_are_not_rejection_replies(self):
         query = "HELP FILTERS"
         contract = driver.help_route_contract("FILTERS", "go")

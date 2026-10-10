@@ -304,6 +304,18 @@ check DX intake/admission wording, all 73 mailing codes and MODE-specific rules.
 Fresh children repeat the saved-state controls. These checks do not establish
 station location, spot delivery or production behavior.
 
+SHOW HOLD cases require whole tokens, exactly two tokens, case and repeated
+ASCII spaces. Extra arguments receive complete usage; nearby heads and SH/slash
+aliases stay unsupported. Both dialects preserve full saved settings, preset
+association, revision, runtime projections and file identity/mtime/size. An
+admitted archived spot produces one actual suppressed count, then RESUME permits
+a distinct fresh live row without replay. Fresh children repeat the checks.
+Public remaining seconds round up; measured send/receive intervals constrain
+the countdown without claiming exact deadline, cutoff or epoch visibility.
+Go controls own those exact state checks, TAB refusal on both real codecs,
+threshold-one automatic-pause bypass and gated writer completion. The main
+checkout fixture retains threshold ten and does not establish bypass alone.
+
 Coverage grows with each approved fix. The initial fixture does not certify
 production dedupe, classifier or runtime shutdown. See the
 [execution record](command-fix-execution.md) and

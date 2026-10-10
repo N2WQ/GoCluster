@@ -1019,8 +1019,12 @@ Missed spots are not replayed.
 Users can type `SHOW HOLD` to see remaining pause time and the suppressed spot
 count. `RESUME` ends the pause immediately and discards any stale spot envelopes
 queued before the resume point so old spots are not replayed.
-Replies to `PAUSE`, `SHOW HOLD`, and `RESUME`, including PAUSE usage errors, do
-not trigger automatic pausing themselves.
+`SHOW HOLD` accepts exactly two tokens, ignoring case and allowing repeated
+ASCII spaces. Extra arguments return `Usage: SHOW HOLD` without changing pause
+state. `SH HOLD` and slash forms are unsupported; TAB remains invalid input.
+Replies to `PAUSE`, `SHOW HOLD`, and `RESUME`, including their handled usage
+errors, do not trigger automatic pausing themselves. Suppression counters can
+still increase independently when otherwise eligible live spots arrive.
 
 ## Grid, Noise, And Nearby
 

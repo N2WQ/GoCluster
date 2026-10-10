@@ -14,6 +14,7 @@ import contextlib
 import copy
 import importlib.util
 import json
+import math
 from pathlib import Path
 import re
 import subprocess
@@ -1031,6 +1032,7 @@ def profile(binary, root, source, transport):
                 f"{transport}/0: CC HELP grammar agrees with saved command outcomes",
                 f"{transport}/0: HELP routes existing aliases without preference effects",
                 f"{transport}/0: filter discovery and HELP wording preserve all owners",
+                f"{transport}/0: HOLD controls preserve countdown counters and delivery",
                 f"{transport}/1: held endpoint and loaded consumers",
                 f"{transport}: preferences and archive survive fresh child",
                 f"{transport}: NOFILTER geography survives fresh child",
@@ -1054,7 +1056,8 @@ def profile(binary, root, source, transport):
                 f"{transport}/1: COMMENT history aliases work on fresh child",
                 f"{transport}/1: CC HELP grammar and preferences survive fresh child",
                 f"{transport}/1: HELP routing and full preferences survive fresh child",
-                f"{transport}/1: discovery wording and full preferences survive fresh child"]
+                f"{transport}/1: discovery wording and full preferences survive fresh child",
+                f"{transport}/1: HOLD preferences and delivery survive fresh child"]
     call = "K1ABC-70001"
     observer_call, observer_configuration = "VE3ABC-70003", None
     failed_records, refused_records, compatible_records = {}, {}, {}
@@ -1073,6 +1076,7 @@ def profile(binary, root, source, transport):
     saved_cc_grammar = {}
     saved_help_routes = {}
     saved_discovery = {}
+    saved_hold = {}
     label = None
     suites = []
     for generation in range(2):
@@ -1494,6 +1498,8 @@ def profile(binary, root, source, transport):
                      lambda: help_routing_cases(suite, root, generation, saved_help_routes))
                 case(f"{transport}/0: filter discovery and HELP wording preserve all owners",
                      lambda: filter_discovery_cases(suite, root, generation, saved_discovery))
+                case(f"{transport}/0: HOLD controls preserve countdown counters and delivery",
+                     lambda: hold_command_cases(suite, root, generation, saved_hold, session))
             else:
                 def restored():
                     settings = session.get()["configuration"]["settings"]
@@ -1712,6 +1718,8 @@ def profile(binary, root, source, transport):
                      lambda: help_routing_cases(suite, root, generation, saved_help_routes))
                 case(f"{transport}/1: discovery wording and full preferences survive fresh child",
                      lambda: filter_discovery_cases(suite, root, generation, saved_discovery))
+                case(f"{transport}/1: HOLD preferences and delivery survive fresh child",
+                     lambda: hold_command_cases(suite, root, generation, saved_hold, session))
         finally:
             try:
                 if suite:
@@ -2496,7 +2504,8 @@ def help_routing_readback(current, topic, contract, minimum_rows, minimum_second
 
 
 def complete_reply_config(current, received, label):
-    # Called only after a complete response receipt has been logged/flushed.
+    # Called after a complete response receipt is logged/flushed, or with no
+    # human response pending. The frame collector retains its own receipt.
     # Unlike Session.get, the barrier rejects any hidden trailing human output.
     identifier = current.suite.identifier()
     command = f"GET YAML CONFIG SCHEMA 4 ID {identifier}"
@@ -2838,6 +2847,270 @@ def filter_discovery_cases(suite, root, generation, saved_discovery):
             after, paused = help_routing_readback(current, topic, help_route_contract(key, dialect), minimum_rows, minimum_seconds,
                                                 lambda lines: require_discovery_help(lines, key, dialect))
             require_discovery_owners(before, after, record, user_receipt, library, library_receipt, paused)
+
+
+HOLD_VALID_QUERIES = ("SHOW HOLD", "show hold", "  ShOw   HoLd  ", "SHOW    HOLD")
+HOLD_REFUSALS = (("SHOW HOLD EXTRA", "Usage: SHOW HOLD"), ("show  hold  10", "Usage: SHOW HOLD"),
+                 (" SHOW HOLD EXTRA TAIL ", "Usage: SHOW HOLD"), ("SHOW HOLD ALL", "Usage: SHOW HOLD"),
+                 ("SH HOLD", "Unknown SHOW subcommand: HOLD"), ("SHOW HOLDS", "Unknown SHOW subcommand: HOLDS"),
+                 ("SHOW HOLDX", "Unknown SHOW subcommand: HOLDX"), ("SHOW HOLD/EXTRA", "Unknown SHOW subcommand: HOLD/EXTRA"),
+                 ("SHOW/HOLD", "Unknown command: SHOW/HOLD\nType HELP for available commands."),
+                 ("SH/HOLD", "Unknown command: SH/HOLD\nType HELP for available commands."),
+                 ("SHOWHOLD", "Unknown command: SHOWHOLD\nType HELP for available commands."))
+
+
+def decode_hold_reply(raw, query, remote_echo=False):
+    lines = help_routing_lines(raw, query, remote_echo)
+    while lines and lines[0] == "":
+        lines.pop(0)
+    require(len(lines) == 1, "HOLD status has missing or extra reply rows")
+    text = lines[0]
+    if text == "Live spots are not paused.":
+        return dict(pause_active=False, pause_pending_delivery=False, pause_remaining_seconds=0, suppressed_spots=0)
+    match = re.fullmatch(r"Live spots paused for ([1-9][0-9]*)s more\. Suppressed spots: (0|[1-9][0-9]*)\.", text)
+    if match:
+        require(int(match[1]) <= 300, "HOLD status invents an excessive remaining interval")
+        return dict(pause_active=True, pause_pending_delivery=False, pause_remaining_seconds=int(match[1]), suppressed_spots=int(match[2]))
+    match = re.fullmatch(r"Live spots are not paused\. Suppressed spots in last pause: ([1-9][0-9]*)\.", text)
+    if match:
+        return dict(pause_active=False, pause_pending_delivery=False, pause_remaining_seconds=0, suppressed_spots=int(match[1]))
+    match = re.fullmatch(r"Live spots paused while a response is being delivered\. Suppressed spots: (0|[1-9][0-9]*)\.", text)
+    require(match is not None, "HOLD status differs from its complete literal grammar")
+    return dict(pause_active=True, pause_pending_delivery=True, pause_remaining_seconds=0, suppressed_spots=int(match[1]))
+
+
+def hold_readback(current, query, expected=None):
+    started = time.monotonic()
+    if expected is not None:
+        document = discovery_readback(current, query, expected)
+        return None, document, (started, time.monotonic())
+    raw, received = bytearray(), 0
+    try:
+        current.send(query + "\r\n")
+        while True:
+            line = current.reader.line()
+            received += len(line)
+            raw.extend(line[:harness.MAX_FRAME - len(raw)])
+            require(received <= harness.MAX_FRAME and line.endswith(b"\r\n") and b"\r" not in line[:-2],
+                    "HOLD status exceeds its wire bound or breaks CRLF")
+            value = line[:-2].decode("ascii", "strict")
+            if value not in ("", query.upper()):
+                break
+        status = decode_hold_reply(bytes(raw), query, current.reader.remote_echo)
+    except Exception:
+        received += len(current.reader.buffer)
+        raw.extend(current.reader.buffer[:harness.MAX_FRAME - len(raw)])
+        raise
+    finally:
+        receipt = f"\n[{current.call}] {query}\n".encode() + bytes(raw)
+        if received > len(raw):
+            receipt += b"\n[HOLD receipt truncated at 65536 bytes]\n"
+        current.suite.log.write(receipt)
+        current.suite.log.flush()
+    document = complete_reply_config(current, received, "HOLD status")
+    return status, document, (started, time.monotonic())
+
+
+def hold_snapshot(current):
+    started = time.monotonic()
+    document = complete_reply_config(current, 0, "HOLD snapshot")
+    return document, (started, time.monotonic())
+
+
+def hold_deadline_window(window, session, observation):
+    # Remaining time is ceil(seconds), not an exposed absolute deadline. Each
+    # read therefore bounds the deadline in a one-second quantization interval
+    # widened only by measured send/receive time. Exact nanos/epoch are Go proof.
+    started, finished = observation
+    require(all(type(value) in (int, float) and math.isfinite(value) for value in observation) and
+            0 <= started <= finished, "HOLD has invalid observation clock bounds")
+    active, pending, seconds, suppressed = (session[field] for field in
+                                           ("pause_active", "pause_pending_delivery", "pause_remaining_seconds", "suppressed_spots"))
+    require(type(active) is bool and type(pending) is bool and type(seconds) is int and 0 <= seconds <= 300 and
+            type(suppressed) is int and suppressed >= 0 and pending is False and (active is (seconds > 0)),
+            "HOLD readback has invalid finite pause/counter types or state")
+    if window is not None:
+        require(len(window) == 2 and all(type(value) in (int, float) and math.isfinite(value) for value in window) and
+                window[0] <= window[1], "HOLD has invalid existing deadline bounds")
+    if not active:
+        require(window is None or window[0] <= finished, "HOLD ended before its observed deadline interval")
+        return window
+    lower, upper = started + seconds - 1, finished + seconds
+    if window is not None:
+        lower, upper = max(lower, window[0]), min(upper, window[1])
+    require(lower <= upper, "HOLD extended or shortened its observed deadline")
+    return lower, upper
+
+
+def require_hold_state(before, after, record, user_receipt, library, library_receipt, observation, window, rendered=None):
+    require_cc_unchanged(before, after, record, user_receipt[0])
+    require(discovery_file_receipt(record) == user_receipt and discovery_file_receipt(library) == library_receipt,
+            "HOLD changed durable file bytes, identity, size or modification time")
+    require(before["status"].keys() == after["status"].keys(), "HOLD changed status owners")
+    for field in before["status"]:
+        if field != "session":
+            require_cc_typed_value(after["status"][field], before["status"][field])
+    previous, current = before["status"]["session"], after["status"]["session"]
+    require(previous.keys() == current.keys(), "HOLD changed session status shape")
+    for field in previous:
+        if field not in ("pause_active", "pause_remaining_seconds"):
+            require_cc_typed_value(current[field], previous[field])
+    require(type(current["pause_remaining_seconds"]) is int and
+            current["pause_remaining_seconds"] <= previous["pause_remaining_seconds"], "HOLD reset or increased its remaining interval")
+    if previous["pause_active"] is False:
+        require(current["pause_active"] is False and current["pause_remaining_seconds"] == 0, "inactive HOLD created a pause")
+    window = hold_deadline_window(window, current, observation)
+    if rendered is not None:
+        require(rendered["suppressed_spots"] == current["suppressed_spots"] and rendered["pause_pending_delivery"] is False,
+                "HOLD human status misstates the established suppression count or pending state")
+        require(current["pause_remaining_seconds"] <= rendered["pause_remaining_seconds"] <= previous["pause_remaining_seconds"],
+                "HOLD human status misstates the observed countdown")
+        window = hold_deadline_window(window, rendered, observation)
+    return window
+
+
+def require_hold_spot(row, label, frequency, live=False):
+    require_history_row(row)
+    comment = "CW CW|CMT" if live else "CW " + label
+    require(re.fullmatch(r"DX de K1ABC:\s+" + re.escape(str(frequency)) + r"\.00", row[:25]) and
+            row[27:39].rstrip() == "W6ABC" and row[39:63].rstrip() == comment,
+            "HOLD stimulus has the wrong admission identity, frequency or exact comment")
+
+
+def hold_live_readback(current, frequency):
+    # No command is pending. The first nonblank live row must be the fresh post,
+    # so a replayed paused row cannot be hidden in a later machine frame prefix.
+    current.reader.deadline = min(current.suite.deadline, time.monotonic() + 5)
+    raw, received = bytearray(), 0
+    try:
+        while True:
+            line = current.reader.line()
+            received += len(line)
+            raw.extend(line[:harness.MAX_FRAME - len(raw)])
+            require(received <= harness.MAX_FRAME and line.endswith(b"\r\n") and b"\r" not in line[:-2],
+                    "HOLD fresh delivery exceeds its wire bound or breaks CRLF")
+            value = line[:-2].decode("ascii", "strict")
+            if value:
+                require_hold_spot(value, "", frequency, True)
+                break
+    except Exception:
+        received += len(current.reader.buffer)
+        raw.extend(current.reader.buffer[:harness.MAX_FRAME - len(raw)])
+        raise
+    finally:
+        receipt = f"\n[{current.call}] HOLD fresh delivery\n".encode() + bytes(raw)
+        if received > len(raw):
+            receipt += b"\n[HOLD live receipt truncated at 65536 bytes]\n"
+        current.suite.log.write(receipt)
+        current.suite.log.flush()
+    return complete_reply_config(current, received, "HOLD fresh delivery")
+
+
+def hold_command_cases(suite, root, generation, saved_hold, poster):
+    private = stored_document((root / "config" / "runtime.yaml").read_bytes())["telnet"]
+    require(type(private["auto_read_pause_min_rows"]) is int and private["auto_read_pause_min_rows"] == 10,
+            "HOLD checkout keeps the loaded threshold ten; threshold-one bypass proof belongs to Go sessions")
+    library = root / "users" / "presets" / ("VE3ABC".encode().hex() + ".yaml")
+    for index, (dialect, call) in enumerate((("go", "VE3ABC-70077"), ("cc", "VE3ABC-70078"))):
+        record, name = root / "users" / (call + ".yaml"), "HOLD19" + dialect.upper()
+        if not generation:
+            require(not record.exists(), "HOLD requires a fresh unused SSID")
+        current = harness.Session(suite, call)
+        before, observation = hold_snapshot(current)
+        if generation:
+            expected = saved_hold[call]
+            require_discovery_saved(before, expected, record, library, name)
+        else:
+            expected = copy.deepcopy(before["configuration"])
+            expected["settings"].update(dialect=dialect, grid="FN31PR", noise_class="URBAN", dedupe_policy="SLOW",
+                                        path_min_observation_count=30, solar_summary_minutes=30)
+            expected["filters"].update({field: dict(allow_all=True, block_all=False, allow={}, block={}) for field in CC_HELP_RULE_FIELDS})
+            expected["filters"].update(dx_callsigns=[], block_dx_callsigns=[], de_callsigns=[], block_de_callsigns=[],
+                                       comments=["HOLD19"], block_comments=["QRT"], min_snr={"CW": 7}, nearby_enabled=False,
+                                       **{field: True for field in CC_HELP_SWITCHES.values()})
+            response = current.upload("PUT", "CONFIG", expected, revision=before["revision"])
+            require("error" not in response, "HOLD preference/consumer-predicate setup was refused")
+            before, observation = hold_snapshot(current)
+            require_help_routing_saved(before, expected, record)
+            discovery_readback(current, "SAVE PRESET " + name, "Saved preset " + name + " for VE3ABC.")
+            before, observation = hold_snapshot(current)
+            require_discovery_saved(before, expected, record, library, name)
+            saved_hold[call] = copy.deepcopy(expected)
+        require(before["status"]["server"]["auto_read_pause_min_rows"] == 10 and
+                before["status"]["session"]["pause_active"] is False and
+                before["status"]["session"]["suppressed_spots"] == 0 and
+                before["status"]["session"]["diagnostic_comments"] == "OFF", "HOLD fresh session has stale runtime owners")
+        require_setting_control(current, record, "SET DIAG MODE", "Diagnostic comments: MODE", "diagnostic_comments", "MODE")
+        before, observation = hold_snapshot(current)
+        user_receipt, library_receipt = discovery_file_receipt(record), discovery_file_receipt(library)
+
+        def check(query, feedback=None, window=None):
+            nonlocal before
+            rendered, after, observed = hold_readback(current, query, feedback)
+            window = require_hold_state(before, after, record, user_receipt, library, library_receipt, observed, window, rendered)
+            before = after
+            return window
+
+        for query in HOLD_VALID_QUERIES:
+            check(query)
+        for query, feedback in HOLD_REFUSALS:
+            check(query, feedback)
+        _, paused, observation = hold_readback(current, "PAUSE 15",
+                                              "Live spots paused for 15s. Type RESUME to resume now.\nMissed spots are not replayed.")
+        require_cc_unchanged(before, paused, record, user_receipt[0])
+        require(paused["status"]["session"]["pause_active"] is True and paused["status"]["session"]["suppressed_spots"] == 0,
+                "HOLD suppression requires an active finite pause with no invented counter")
+        window = hold_deadline_window(None, paused["status"]["session"], observation)
+        frequency = 14177 + generation * 4 + index * 2
+        label = "HOLD19 " + literal_archive_label(suite, dialect.upper() + "S")
+        discovery_readback(poster, f"DX {frequency} W6ABC CW {label}", "Spot queued.")
+        deadline = min(suite.deadline, time.monotonic() + 4)
+        while True:
+            rows = archive_rows(current, label)
+            actual, observation = hold_snapshot(current)
+            count = actual["status"]["session"]["suppressed_spots"]
+            require(type(count) is int and count in (0, 1), "HOLD suppression counted an uncontrolled or duplicate spot")
+            window = hold_deadline_window(window, actual["status"]["session"], observation)
+            if rows and count == 1:
+                require(len(rows) == 1, "HOLD suppression archive stimulus was duplicated")
+                require_hold_spot(rows[0], label, frequency)
+                before = actual
+                break
+            require(time.monotonic() < deadline, "HOLD admitted archive/consumer suppression predicate was not established")
+            time.sleep(.025)  # Predicate polling only; time does not establish success.
+        initial_seconds = before["status"]["session"]["pause_remaining_seconds"]
+        deadline = min(suite.deadline, time.monotonic() + 3)
+        while before["status"]["session"]["pause_remaining_seconds"] == initial_seconds:
+            require(time.monotonic() < deadline, "HOLD did not observe a real countdown before its preservation checks")
+            window = check("SHOW HOLD", window=window)
+            time.sleep(.025)
+        require(before["status"]["session"]["pause_active"] is True, "HOLD positive countdown expired before active controls")
+        for query in HOLD_VALID_QUERIES:
+            window = check(query, window=window)
+        for query, feedback in HOLD_REFUSALS:
+            window = check(query, feedback, window)
+        _, resumed, observation = hold_readback(current, "RESUME", "Live spots resumed. Suppressed spots: 1.")
+        require_cc_unchanged(before, resumed, record, user_receipt[0])
+        require(resumed["status"]["session"]["pause_active"] is False and
+                resumed["status"]["session"]["pause_pending_delivery"] is False and
+                resumed["status"]["session"]["pause_remaining_seconds"] == 0 and
+                resumed["status"]["session"]["suppressed_spots"] == 0, "HOLD RESUME did not retire the pause/counter")
+        before = resumed
+        check("show  hold")
+        fresh_label = "HOLD19 " + literal_archive_label(suite, dialect.upper() + "F")
+        discovery_readback(poster, f"DX {frequency + 1} W6ABC CW {fresh_label}", "Spot queued.")
+        after = hold_live_readback(current, frequency + 1)
+        require_discovery_owners(before, after, record, user_receipt, library, library_receipt)
+        rows = archive_rows(current, fresh_label)
+        deadline = min(suite.deadline, time.monotonic() + 4)
+        while not rows:
+            require(time.monotonic() < deadline, "HOLD fresh delivered stimulus lacks its archive identity")
+            time.sleep(.025)
+            rows = archive_rows(current, fresh_label)
+        require(len(rows) == 1, "HOLD fresh archive stimulus was duplicated")
+        require_hold_spot(rows[0], fresh_label, frequency + 1)
+        final, _ = hold_snapshot(current)
+        require_discovery_saved(final, expected, record, library, name)
 
 
 def require_taxonomy_rules(document, expected, record):

@@ -238,7 +238,7 @@ func TestReadPauseConcurrentSpotSuppression(t *testing.T) {
 }
 
 func FuzzReadPauseCommand(f *testing.F) {
-	for _, seed := range []string{"PAUSE", "pause\t60", "PAUSE +60", "PAUSE 00030", "PAUSE 1", "PAUSE 300", "PAUSE 0", "PAUSE -1", "PAUSE 301", "PAUSE 1.5", "PAUSE 9999999999999999999999", "PAUSE 60 extra", "PAUSES", "RESUME", "SHOW HOLD", "HELP PAUSE"} {
+	for _, seed := range []string{"PAUSE", "pause\t60", "PAUSE +60", "PAUSE 00030", "PAUSE 1", "PAUSE 300", "PAUSE 0", "PAUSE -1", "PAUSE 301", "PAUSE 1.5", "PAUSE 9999999999999999999999", "PAUSE 60 extra", "PAUSES", "RESUME", "SHOW HOLD", " show   hold ", "SHOW\tHOLD", "SHOW HOLD EXTRA", "SHOW HOLDS", "SH HOLD", "SHOW/HOLD", "HELP PAUSE"} {
 		f.Add(seed)
 	}
 	f.Fuzz(func(t *testing.T, line string) {
@@ -252,10 +252,12 @@ func FuzzReadPauseCommand(f *testing.F) {
 		client.readPauseUntilUnixNano.Store(deadline)
 		client.readPauseDiscardBefore.Store(deadline)
 		client.readPauseSuppressed.Store(9)
+		client.readPauseEpoch = 17
+		client.readPausePending.Store(true)
 		unchanged := func() {
-			if client.readPauseUntilUnixNano.Load() != deadline || client.readPauseDiscardBefore.Load() != deadline || client.readPauseSuppressed.Load() != 9 {
-				t.Fatalf("command changed protected pause state: %q", line)
-			}
+			assertReadbackPauseState(t, client, readbackPauseTestState{
+				until: deadline, cutoff: deadline, count: 9, epoch: 17, pending: true,
+			})
 		}
 		response, handled := server.handleReadPauseCommand(client, line)
 		upper := strings.ToUpper(strings.TrimSpace(line))
@@ -298,7 +300,17 @@ func FuzzReadPauseCommand(f *testing.F) {
 			return
 		}
 		unchanged()
-		if handled != (upper == "SHOW HOLD") || (!handled && response != "") {
+		if len(fields) >= 2 && fields[0] == "SHOW" && fields[1] == "HOLD" {
+			want := "Live spots paused for 60s more. Suppressed spots: 9.\n"
+			if len(fields) != 2 {
+				want = "Usage: SHOW HOLD\n"
+			}
+			if !handled || response != want {
+				t.Fatalf("HOLD violated its token/arity/read-only contract: %q -> %q", line, response)
+			}
+			return
+		}
+		if handled || response != "" {
 			t.Fatalf("incorrect command routing: %q -> %q, handled=%t", line, response, handled)
 		}
 	})

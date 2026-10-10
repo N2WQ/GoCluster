@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 18b complete (04a used two commits);
-21 approved checkpoints remain.
+Current progress: checkpoints 00 through 19 complete (04a used two commits);
+20 approved checkpoints remain; 20a is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -2522,3 +2522,103 @@ checker refinements, source identity and retirement receipts. Record, crawler
 and whitespace checks passed; the crawler scan selected three support-critical
 files, and the new usage header was reviewed directly. Maps are regenerated
 last, followed by the staged diff review.
+
+## Checkpoint 19: token-based SHOW HOLD and strict arity
+
+Status: complete. Root discovery and a bounded inherited-context source
+review inspected handleReadPauseCommand, its session dispatch, both real reader
+codecs, human readback interception, generic SHOW delegation, status/suppression
+owners and existing writer/handshake tests. The exact normalized-string match
+declines repeated internal spaces and extra tokens. Fallback can trigger
+automatic pausing, contrary to the dedicated control-reply path. SH HOLD and
+slash forms are unsupported. Both wire readers reject TAB; owner/API whitespace
+tolerance must not imply new TAB wire admission.
+
+Architecture: use the existing request-local fields to recognize the complete
+SHOW/HOLD token pair; require exactly two tokens and return handled Usage: SHOW
+HOLD for extra arguments. Keep current literal status rendering, PAUSE, RESUME,
+aliases and reader alphabet unchanged. Recognized valid and malformed HOLD stay
+on sendClientMessage, bypassing automatic pause. Status still uses the existing
+coherent read-only snapshot; add no state, timer, queue, synchronization,
+persistence operation, exported interface or production seam.
+
+| Contract | Stimulus / fault | Required evidence | False-green risk | Checker / owner |
+|---|---|---|---|---|
+| Whole-token recognition and arity | Case, repeated/outer ASCII spaces, extra tokens and nearby/unsupported heads in both dialects/codecs | Exact intended status or handled usage; no new aliases; TAB line rejected safely | Direct owner accepts whitespace that wire ingress rejects, or broad prefix captures unrelated commands | Literal owner table, real reader/session transcripts and independent fuzz oracle / telnet |
+| Read-only state | Inactive/retained count, finite/pending/expired/closed owners, malformed command with populated preferences/preset/history | No deadline/cutoff/epoch/pending/closed/counter, revision, cursor, settings, runtime or exact-file/commit effects | Status text succeeds after resetting a counter or rewriting the record | Full-owner snapshots, zero-call composed controls and actual saved-byte/stat receipts / telnet, runner |
+| Control replies do not pause | Successful status and one-row malformed usage with automatic threshold one | Inactive stays inactive; active deadlines/counters stay unchanged | Main fixture threshold ten hides an incorrectly generic response path | Existing real handshake/writer session with threshold one, both codecs/dialects / telnet |
+| Counters and delivery timing remain truthful | Actual enqueue/writer suppression, gated response write/flush, reading interval and expiry | Counts produced by suppression, pending status before completion and full finite interval afterward; stale spots stay discarded | Injected count alone or wall-clock sleep hides premature completion | Existing suppression owners and gated writer with bounded release/close/join cleanup / telnet |
+| Checkout and fresh state remain coherent | Four new required cumulative cases; strict complete response then CONFIG barrier | Full preferences/preset/revision and exact files survive; pause countdown only advances naturally | Acknowledgement or loose collector hides suffix/state effects | Runner, offline refusal controls, ordinary/race checkout / scripts |
+
+Run focused token/status/session/ownership tests, update the existing independent
+read-pause fuzz oracle, run bounded fuzz, complete telnet race and ordinary
+baseline, analyzers and cumulative ordinary/race checkout plus offline faults.
+The main fixture retains its existing threshold ten; threshold-one routing and
+gated delivery evidence belongs to the real Go session tests. ADR-0195,
+ADR-0243 and ADR-0246 already establish the control/status/delivery ownership;
+no durable decision changes. Update relevant contributor/operator/support
+guidance and record the recognition RCA in TSR-0067, then regenerate maps last.
+
+Test-seam disposition: the real handshake helper closes both pipe ends and
+joins handleClient before restoring global storage. The production session
+starts its writer without a test-visible completion handle, so this evidence
+does not claim directly joining that hidden writer. Closing the pipes/done
+channel retires its I/O; the writer does not own global persistence. The new
+gated test explicitly owns, releases/closes and joins its writer on all failure
+paths. This is control/parser evidence, not telnet goroutine-leak qualification;
+no production lifecycle seam or stack-polling claim is added.
+
+Implementation changes only recognition and extra-argument handling in the
+existing pause-control owner. Six new permanent tests cover literal states,
+whole tokens, reader editing/TAB refusal, full preferences/history/storage,
+threshold-one real sessions and actual gated writer completion. The first
+focused run caught a fixture assumption: changing the server dialect default
+does not select CC over restored default user settings. The real-session test
+now selects CC through DIALECT, consumes its automatic-pause reply and resumes
+before taking its initial snapshot. The corrected focused run passed.
+
+Seven new offline controls bring the runner suite to 84 methods. Four required
+checkout cases bring the cumulative total to 136 per build. Actual cases produce
+one admitted archived/suppressed spot and require a distinct fresh live row
+after RESUME. They preserve full preferences, revision, preset association and
+file bytes/stat identity across fresh children. Quantized public seconds are
+bounded by measured send/receive intervals; exact nanos, cutoff and epoch remain
+Go evidence. This fixture bridges archive and telnet consumers and does not
+qualify the complete production output pipeline.
+
+Lint found the handshake helper's old unparam suppression unused after the new
+tests exercised a second timeout value. Removing that comment does not change
+runtime or test behavior. The affected HOLD race checks were rerun and final
+lint reports zero issues. Complete baseline, full telnet race, Vet, Staticcheck
+and bounded fuzz evidence preceded only that comment removal; their behavior
+evidence remains applicable. Both actual builds use the final source.
+
+| Selected evidence | Observed result |
+|---|---|
+| Focused token, status, owner and writer checks | PASS; `checkpoint-19-focused-final.log` |
+| Independent read-pause fuzz oracle | PASS; 85,073 executions in 15 seconds; `checkpoint-19-fuzz.log` |
+| Complete ordinary baseline | All 70 packages passed, including build checks for no-test packages; `checkpoint-19-all-packages.log` |
+| Complete affected race lane | Full telnet package passed; `checkpoint-19-race.log` |
+| Final comment-cleanup checks | HOLD race controls passed; `checkpoint-19-review-targeted.log` |
+| Offline runner controls | All 84 passed; `checkpoint-19-runner-controls.log` |
+| Whole-repository analyzers | Vet and Staticcheck passed; final lint reported zero issues |
+| Ordinary actual checkout | `20261010-100701-f7436388`: all 136 cases passed, zero wire/cleanup failures; all 12 retirement receipts confirm clients retired, consumer joined and archive stopped |
+| Race actual checkout | `20261010-101031-1547e260`: all 136 cases passed, zero wire/cleanup failures; all 12 retirement receipts confirm the same retirement boundaries |
+
+Both final builds and all 24 retirement receipts identify Go/module digest
+`fedba553d6f034d4d71fe00861d174a45586c2c7f70095ec2c31c4293eaaa67b`.
+All 1,119 current Go/module file hashes matched the ordinary manifest. Go and
+Python stayed frozen across the final pair; saved Python hashes were unchanged
+after the race run. Source identity excludes Python, docs and private config;
+the driver verifies loaded config separately. No deployed server, production
+load, pipeline shutdown or goroutine-leak qualification is claimed.
+
+Support-agent documentation impact: Required. Contributor/telnet guides, the
+validation guide and configuration support card explain strict token/arity,
+unsupported aliases, TAB and state preservation. Indexed TSR-0067 records the
+recognition RCA; accepted pause ADRs retain their policies, with no new durable
+decision. Fresh lead verification directly reviewed the final production/tests,
+independent literal/fuzz controls, fixture refinements, complete reply barriers,
+source hashes and retirement receipts. Record, crawler and whitespace checks
+passed; the crawler selected one support-critical production file. Maps are
+regenerated last, followed by the staged diff review.

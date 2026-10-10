@@ -299,7 +299,6 @@ func closeHandshakeTranscriptSession(t *testing.T, clientConn net.Conn, done <-c
 	}
 }
 
-//nolint:unparam // Timeout stays explicit because transcript tests are deadline-sensitive.
 func readUntilContains(t *testing.T, conn net.Conn, want string, timeout time.Duration) string {
 	t.Helper()
 	if timeout <= 0 {

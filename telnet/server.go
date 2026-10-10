@@ -5660,17 +5660,12 @@ func (s *Server) handleReadPauseCommand(client *Client, line string) (string, bo
 		client.startReadPause(now, duration)
 		return fmt.Sprintf("Live spots paused for %ds. Type RESUME to resume now.\nMissed spots are not replayed.\n", durationCeilSeconds(duration)), true
 	}
-	switch upper {
-	case "RESUME":
-		active, suppressed := client.resumeReadPause(now)
-		if active {
-			return fmt.Sprintf("Live spots resumed. Suppressed spots: %d.\n", suppressed), true
+	// HOLD is a read-only two-token control. Recognized malformed requests
+	// stay on the control-reply path, so usage cannot create another pause.
+	if len(fields) >= 2 && fields[0] == "SHOW" && fields[1] == "HOLD" {
+		if len(fields) != 2 {
+			return "Usage: SHOW HOLD\n", true
 		}
-		if suppressed > 0 {
-			return fmt.Sprintf("Live spots were not paused. Suppressed spots in last pause: %d.\n", suppressed), true
-		}
-		return "Live spots were not paused.\n", true
-	case "SHOW HOLD":
 		active, remaining, suppressed := client.readPauseStatus(now)
 		if active {
 			if remaining == 0 {
@@ -5682,6 +5677,17 @@ func (s *Server) handleReadPauseCommand(client *Client, line string) (string, bo
 			return fmt.Sprintf("Live spots are not paused. Suppressed spots in last pause: %d.\n", suppressed), true
 		}
 		return "Live spots are not paused.\n", true
+	}
+	switch upper {
+	case "RESUME":
+		active, suppressed := client.resumeReadPause(now)
+		if active {
+			return fmt.Sprintf("Live spots resumed. Suppressed spots: %d.\n", suppressed), true
+		}
+		if suppressed > 0 {
+			return fmt.Sprintf("Live spots were not paused. Suppressed spots in last pause: %d.\n", suppressed), true
+		}
+		return "Live spots were not paused.\n", true
 	default:
 		return "", false
 	}
