@@ -1,3 +1,9 @@
+// File role: Owns bounded human-comment classification and terminal retirement.
+// Crawler notes: Admission, worker startup and Stop share one lifecycle boundary;
+// only the output consumer applies asynchronous results to spots.
+// Related docs: docs/decisions/ADR-0114-human-comment-toxicity-classifier.md,
+// docs/decisions/ADR-0274-terminal-classifier-retirement.md.
+// Related tests: classifier_lifecycle_test.go, classifier_http_retirement_test.go.
 package toxicity
 
 import (
@@ -29,6 +35,8 @@ type Result struct {
 	Decision Decision
 }
 
+// classifierClient must honor cancellation through request and body reads.
+// Classifier never abandons a client call in an unowned goroutine.
 type classifierClient interface {
 	Classify(context.Context, string) (Decision, error)
 }
@@ -42,15 +50,22 @@ type job struct {
 // synchronous local/cache decision or enqueue one job and let the output loop
 // continue processing unrelated spots.
 type Classifier struct {
-	cfg      Config
-	gate     *SafeGate
-	cache    *Cache
-	client   classifierClient
-	jobs     chan job
-	results  chan Result
-	stop     chan struct{}
-	stopOnce sync.Once
-	wg       sync.WaitGroup
+	cfg     Config
+	gate    *SafeGate
+	cache   *Cache
+	client  classifierClient
+	jobs    chan job
+	results chan Result
+	ctx     context.Context
+	cancel  context.CancelFunc
+
+	// lifecycleMu fences Add/admission/outcome commitment against terminal Stop.
+	// It never spans HTTP work, blocking result publication or worker joins.
+	lifecycleMu sync.Mutex
+	started     bool
+	stopped     bool
+	stopOnce    sync.Once
+	wg          sync.WaitGroup
 
 	pending     atomic.Int64
 	safeBypass  atomic.Uint64
@@ -67,6 +82,7 @@ func NewClassifier(cfg Config, gate *SafeGate, client classifierClient) *Classif
 	if !cfg.Enabled || cfg.Workers <= 0 || cfg.QueueSize <= 0 || client == nil {
 		return nil
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Classifier{
 		cfg:     cfg,
 		gate:    gate,
@@ -74,7 +90,8 @@ func NewClassifier(cfg Config, gate *SafeGate, client classifierClient) *Classif
 		client:  client,
 		jobs:    make(chan job, cfg.QueueSize),
 		results: make(chan Result, cfg.QueueSize),
-		stop:    make(chan struct{}),
+		ctx:     ctx,
+		cancel:  cancel,
 	}
 }
 
@@ -82,20 +99,49 @@ func (c *Classifier) Start() {
 	if c == nil {
 		return
 	}
+	c.lifecycleMu.Lock()
+	defer c.lifecycleMu.Unlock()
+	if c.started || c.stopped {
+		return
+	}
+	c.started = true
+	// Add the entire group before Stop can publish terminal state and Wait.
+	c.wg.Add(c.cfg.Workers)
 	for i := 0; i < c.cfg.Workers; i++ {
-		c.wg.Add(1)
 		go c.worker()
 	}
 }
 
+// Stop is terminal and concurrent callers wait for the same complete retirement.
+// The consumer must finish its grace/handoff ownership before invoking Stop;
+// received results remain consumer-owned, while buffered results are discarded.
 func (c *Classifier) Stop() {
 	if c == nil {
 		return
 	}
 	c.stopOnce.Do(func() {
-		close(c.stop)
+		c.lifecycleMu.Lock()
+		c.stopped = true
+		c.cancel()
+		c.lifecycleMu.Unlock()
+		c.wg.Wait()
+		// Admission is fenced and every job consumer joined. Each remaining job
+		// retires its own pending count; receiving also releases its references.
+		for len(c.jobs) > 0 {
+			<-c.jobs
+			c.pending.Add(-1)
+		}
+		// A result already received cannot be revoked. Nonblocking retirement
+		// also tolerates that transfer racing Stop; keep Results open because
+		// existing consumers use one-valued receives.
+		for {
+			select {
+			case <-c.results:
+			default:
+				return
+			}
+		}
 	})
-	c.wg.Wait()
 }
 
 func (c *Classifier) Results() <-chan Result {
@@ -109,6 +155,13 @@ func (c *Classifier) Results() <-chan Result {
 // spot immediately. It returns false only after a bounded job enqueue succeeds.
 func (c *Classifier) ClassifyOrEnqueue(s *spot.Spot, now time.Time) bool {
 	if s == nil || !s.IsHuman || spot.NormalizeToxicityStatus(string(s.ToxicityStatus)) != spot.ToxicityUnknown {
+		return true
+	}
+	c.lifecycleMu.Lock()
+	defer c.lifecycleMu.Unlock()
+	if c.stopped {
+		applyDecision(s, Decision{Status: spot.ToxicityUnavailable})
+		c.unavailable.Add(1)
 		return true
 	}
 	clean := clampCommentBytes(NormalizeComment(s.Comment), c.cfg.MaxCommentBytes)
@@ -142,7 +195,7 @@ func (c *Classifier) worker() {
 	defer c.wg.Done()
 	for {
 		select {
-		case <-c.stop:
+		case <-c.ctx.Done():
 			return
 		case j := <-c.jobs:
 			c.handleJob(j)
@@ -152,12 +205,25 @@ func (c *Classifier) worker() {
 
 func (c *Classifier) handleJob(j job) {
 	defer c.pending.Add(-1)
-	ctx, cancel := context.WithTimeout(context.Background(), c.cfg.timeout())
-	defer cancel()
+	c.lifecycleMu.Lock()
+	if c.stopped {
+		c.lifecycleMu.Unlock()
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.ctx, c.cfg.timeout())
 	c.aiCalls.Add(1)
+	c.lifecycleMu.Unlock()
+	defer cancel()
 	decision, err := c.client.Classify(ctx, j.comment)
+	c.lifecycleMu.Lock()
+	if c.stopped {
+		// Retirement has no classification outcome and cannot populate cache
+		// or masquerade as a timeout/malformed/unavailable decision.
+		c.lifecycleMu.Unlock()
+		return
+	}
 	if err != nil {
-		if ctx.Err() != nil {
+		if ctx.Err() == context.DeadlineExceeded {
 			c.timeouts.Add(1)
 		} else {
 			c.malformed.Add(1)
@@ -170,9 +236,10 @@ func (c *Classifier) handleJob(j job) {
 	if shouldCacheDecision(decision) {
 		c.cache.Put(j.comment, decision, time.Now().UTC())
 	}
+	c.lifecycleMu.Unlock()
 	select {
 	case c.results <- Result{Spot: j.spot, Decision: decision}:
-	case <-c.stop:
+	case <-c.ctx.Done():
 	}
 }
 

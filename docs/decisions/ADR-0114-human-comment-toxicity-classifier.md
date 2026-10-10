@@ -104,5 +104,7 @@ The stage uses these rules:
 - Related issues/PRs/commits: none
 - Related tests: `internal/toxicity/*_test.go`, `internal/cluster/output_pipeline_toxicity_test.go`, `filter/filter_test.go`, `telnet/server_filter_test.go`, `archive/record_test.go`, `cloudflare/toxicity-worker/test/worker.test.js`
 - Related docs: `README.md`, `telnet/README.md`, `data/config/README.md`, `cloudflare/toxicity-worker/README.md`
-- Related TSRs: none
+- Lifecycle refinement: [ADR-0274](ADR-0274-terminal-classifier-retirement.md)
+  defines terminal admission, cancellation, queue retirement and result ownership.
+- Related TSRs: [TSR-0068](../troubleshooting/TSR-0068-classifier-terminal-retirement.md)
 - Supersedes / superseded by: none

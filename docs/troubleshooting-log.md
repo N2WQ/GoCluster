@@ -11,6 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0068 | Classifier Terminal Retirement | Monitoring | 2026-10-10 | toxicity lifecycle, queued references and HTTP cancellation | ADR-0274 | `docs/troubleshooting/TSR-0068-classifier-terminal-retirement.md` |
 | TSR-0067 | SHOW HOLD Token Recognition | Monitoring | 2026-10-10 | telnet read-pause control, token parsing and status | none | `docs/troubleshooting/TSR-0067-show-hold-token-recognition.md` |
 | TSR-0066 | Command Discovery Wording | Monitoring | 2026-10-10 | filter usage, HELP, DX admission and command recipes | none | `docs/troubleshooting/TSR-0066-command-discovery-wording.md` |
 | TSR-0065 | HELP Routing And Alias Coverage | Monitoring | 2026-10-10 | commands HELP routing, telnet dispatch aliases and taxonomy | none | `docs/troubleshooting/TSR-0065-help-routing-alias-coverage.md` |

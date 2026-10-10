@@ -167,6 +167,10 @@ func TestClassifierTimeoutAndErrorFailOpen(t *testing.T) {
 		"error":   errorClient{},
 	} {
 		t.Run(name, func(t *testing.T) {
+			timeoutMS := 1000
+			if name == "timeout" {
+				timeoutMS = 1
+			}
 			classifier := NewClassifier(Config{
 				Enabled:         true,
 				Workers:         1,
@@ -174,7 +178,7 @@ func TestClassifierTimeoutAndErrorFailOpen(t *testing.T) {
 				CacheMaxEntries: 1,
 				CacheTTLSeconds: 60,
 				MaxCommentBytes: 512,
-				TimeoutMS:       1,
+				TimeoutMS:       timeoutMS,
 			}, testGate(t), client)
 			classifier.Start()
 			defer classifier.Stop()
@@ -194,15 +198,15 @@ func TestClassifierTimeoutAndErrorFailOpen(t *testing.T) {
 			if s.ToxicityStatus != spot.ToxicityUnavailable {
 				t.Fatalf("expected UNAVAILABLE, got %q", s.ToxicityStatus)
 			}
-			stats := classifier.Snapshot()
-			if stats.Unavailable != 1 {
-				t.Fatalf("expected unavailable counter, got %#v", stats)
+			classifier.Stop()
+			want := Stats{AICalls: 1, Unavailable: 1}
+			if name == "timeout" {
+				want.Timeouts = 1
+			} else {
+				want.Malformed = 1
 			}
-			if name == "timeout" && stats.Timeouts != 1 {
-				t.Fatalf("expected timeout counter, got %#v", stats)
-			}
-			if name == "error" && stats.Malformed != 1 {
-				t.Fatalf("expected malformed/error counter, got %#v", stats)
+			if stats := classifier.Snapshot(); stats != want {
+				t.Fatalf("ordinary %s outcome counters: got %#v want %#v", name, stats, want)
 			}
 		})
 	}

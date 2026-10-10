@@ -18,6 +18,9 @@ comment was classified toxic.
   health before guessing the classification.
 - Skimmer or automated-source spots may bypass human comment toxicity
   classification.
+- Classifier Stop is terminal. Later eligible human submissions are
+  `UNAVAILABLE` without new AI work. Discarding pending work during retirement
+  does not mean the model returned a timeout or malformed classification.
 
 ## Must Avoid
 
@@ -31,3 +34,4 @@ comment was classified toxic.
 - `telnet/README.md`
 - `data/config/README.md`
 - `cloudflare/toxicity-worker/README.md`
+- `docs/decisions/ADR-0274-terminal-classifier-retirement.md`

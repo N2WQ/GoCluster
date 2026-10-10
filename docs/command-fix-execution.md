@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 19 complete (04a used two commits);
-20 approved checkpoints remain; 20a is next.
+Current progress: checkpoints 00 through 20a complete (04a used two commits);
+19 approved checkpoints remain; 20b is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -2622,3 +2622,134 @@ independent literal/fuzz controls, fixture refinements, complete reply barriers,
 source hashes and retirement receipts. Record, crawler and whitespace checks
 passed; the crawler selected one support-critical production file. Maps are
 regenerated last, followed by the staged diff review.
+
+## Checkpoint 20a: terminal classifier retirement
+
+Status: complete. Current source, semantic gopls references, go list package
+and test dependencies, classifier/client/cache tests, ADR-0114 and the production
+pipeline callers establish classifier ownership. Start is unguarded; Stop joins
+without canceling Background-derived HTTP work or retiring queued/results
+references; admission has no terminal fence. Results consumers use one-valued
+receives, so the channel must remain open. A bounded inherited-context design
+and falsifiability review confirmed these gaps and the approved 20a/20b boundary.
+
+Architecture: one short classifier-owned mutex linearizes Start, admission and
+terminal publication. Start adds the complete bounded worker group once before
+releasing ownership. Constructor-owned cancellation feeds request timeouts; it
+is independent of runtime cancellation so 20b can retain its grace opportunity.
+One Stop operation marks terminal, cancels, unlocks, joins every worker and then
+solely retires queued jobs and buffered results. Concurrent Stop callers wait
+for that same complete operation. Never hold this mutex across HTTP, blocking
+result publication or joins. Keep pre-Start admission, constructor disable
+semantics, exported method signatures, channel identity and cache bounds/copies.
+
+Eligible UNKNOWN human submissions after terminal publication become synchronous
+UNAVAILABLE before safe-gate/cache checks. Non-human and already-classified
+bypasses remain. Pending counts accepted queued/in-flight/blocked-publication
+work, separately from result backlog: every path decrements its own accepted
+job exactly once, never through a blanket reset. Terminally discarded work is
+not stamped or counted as a timeout/malformed/unavailable outcome. A decision
+committed before Stop may retain normal cache/outcome counters even if its
+unconsumed result is later discarded. Post-Stop fail-open increments Unavailable
+only; existing outcome, local/cache, queue-full and AI counters stay truthful.
+Already-received results belong to the consumer; Stop cannot revoke them.
+
+Design disposition: a controller goroutine is viable but adds pre-Start control,
+acknowledgment and shutdown ownership; no selected responsibility requires it.
+Separate once guards alone cannot fence Add versus Wait. Mutex plus one terminal
+operation is the smallest supported choice; keeping a separate stop channel is
+a local choice, not a material fork. All accounting/ownership findings are
+covered below. No policy or scope change remains. Production pipeline grace and
+handoff ordering are deliberately checkpoint 20b, not a claim of this patch.
+
+| Contract | Stimulus / fault | Required evidence | False-green risk | Checker / owner |
+|---|---|---|---|---|
+| One worker group and fenced admission | Repeated/concurrent Start, Stop and unique submissions with active barriers | Active calls never exceed workers; no Add/Wait race; post-return admissions cannot enqueue/restart | Sequential starts or zero exercised workers hide duplicate groups | Permanent synchronized unit controls and race / toxicity |
+| Pre-Start behavior | Accepted queued work, later Start; Stop before Start | Normal result after Start, or exact retirement/no later AI work after terminal Stop | Tests admit only after Start | Pre-Start/terminal controls / toxicity |
+| Actual HTTP cancellation | Long ordinary timeout; header stall and first body-read barrier | Stop cancels each real request, joins workers well before ordinary timeout | Fake cancellation or unobserved headers never reaches stalled body | Local net/http integration with independent release/connection cleanup / toxicity |
+| Queue/results retirement | Full capacity-one results, blocked publisher and another queued spot | Jobs/results empty, pending/backlog zero; spots unchanged; Results still open | Pending reset or empty queues hides retained references | Publication, direct queue and open-channel controls / toxicity |
+| Outcome accounting and precedence | Natural timeout/error versus terminal cancellation; empty/routine/cached toxic/uncached post-Stop comments | Exact independent counters; no local/cache/queue/AI work after terminal admission | Any unavailable increment accepts wrong diagnosis | Counter and precedence tables / toxicity |
+| Received ownership and cache bounds | Received result retained across Stop; category mutations; cap/TTL/churn | Consumer can still apply its result; cache copies and cardinality hold | Clearing results accidentally closes channel or mutates transferred data | Result ownership and existing/new cache controls / toxicity |
+| Normal-path resource cost | Non-human, local, cache and queue-full single-item paths | No added per-comment allocations; short human-only mutex, no I/O/joins under it | Leak fix adds general queues/helpers or claims performance from code shape | Source caller-shape review and before/after guarded benchmarks / toxicity |
+
+The jobs/results queues retain at most QueueSize entries each; active workers
+are bounded by Workers. Cache keeps its existing cap/TTL and cloned decisions,
+without spot pointers. Constructor context/terminal flags are constant-size
+component state; no new registry, goroutine or metrics owner is needed. Existing
+Pending, ResultBacklog and CacheEntries observe cardinality. The production
+client must honor context cancellation; do not manufacture retirement by
+abandoning an uncooperative client in another goroutine.
+
+Select focused lifecycle/HTTP/cache tests, complete ordinary and race baselines,
+analyzers and the cumulative ordinary/race telnet checkout pair. Permanent Go
+tests extend the existing unattended Windows runner's package selection; the
+telnet fixture alone does not qualify classifier or runtime shutdown. Record
+the durable terminal contract and troubleshooting RCA, update operator/support
+guidance and maps last. Benchmarks measure normal-path overhead locally; no
+production p99, external model quality or runtime leak verdict is authorized or
+claimed. A future comparable load/profile capture would be needed for those
+claims, not for this directly tested terminal correctness contract.
+
+Implementation and targeted evidence: `internal/toxicity/classifier.go` owns the
+terminal boundary without exported API or configuration changes. Eight new unit
+controls cover pre-Start admission, no revival, bounded repeated Start, twelve
+racing lifecycle rounds, full-result blocked publication, six post-Stop
+precedence cases, received ownership and a success returned after cancellation.
+Two new cache controls verify detached category slices and 1,000 insertions with
+both indexes bounded, followed by exact lazy-TTL removal. The real HTTP table
+exercises header and first-body-read stalls with a 30-second ordinary deadline,
+one active and two queued jobs, concurrent/repeated Stop, actual cancellation,
+handler/worker joins, unchanged discarded spots and literal outcome accounting.
+Independent fixture releases/connections make failure cleanup separate from
+the success cancellation oracle. New tests retain existing queue/cache bounds.
+
+The existing natural-timeout/error test now checks the complete literal Stats
+after retirement. The error control gets its own one-second deadline instead of
+sharing the timeout control's one millisecond, so delayed scheduling cannot
+mislabel an intended immediate error. Focused ordinary checks passed, followed
+by final focused race checks after this review refinement. Complete ordinary
+and race baselines each passed all 70 packages. Vet/Staticcheck passed and lint
+reported zero issues. Final checkout reconciliation also passed below.
+
+Guarded five-sample before/after admission benchmarks passed their decision and
+cardinality checks. Non-human/local/cache/full-queue allocations stayed exactly
+0/3/6/4 allocs and 0/32/104/88 bytes per operation. Observed after CPU ranges were
+3.291-3.424 / 203.6-240.1 / 582.0-623.1 / 756.1-859.6 ns/op respectively;
+before ranges were 3.833-4.115 / 186.1-228.2 / 576.6-651.2 / 765.9-803.2.
+These local, uncontended samples qualify the allocation target and do not prove
+a CPU improvement, contended latency, production p99 or process-wide leak result.
+Logs: `checkpoint-20a-admission-before.log` and `checkpoint-20a-admission-after.log`.
+
+| Selected final evidence | Observed result |
+|---|---|
+| Focused classifier/cache/pipeline controls | Ordinary PASS (`checkpoint-20a-focused.log`); final race PASS after the natural-error review refinement (`checkpoint-20a-focused-final.log`) |
+| Complete ordinary baseline | All 70 packages passed/build-checked; `checkpoint-20a-all-packages.log` |
+| Complete race baseline | All 70 packages passed/build-checked, no race finding; `checkpoint-20a-race.log` |
+| Whole-repository analyzers | Vet and Staticcheck passed; lint zero issues; `checkpoint-20a-vet.log`, `checkpoint-20a-staticcheck.log`, `checkpoint-20a-lint.log` |
+| Offline runner controls | All 84 passed; `checkpoint-20a-runner-controls.log` |
+| Ordinary actual checkout | `20261010-104916-23f25d96`: 136 PASS, zero wire/cleanup failures; 12 qualified stop receipts |
+| Race actual checkout | `20261010-105247-7303d2de`: 136 PASS, zero wire/cleanup failures; 12 qualified stop receipts |
+
+Both actual builds and all 24 stop receipts identify Go/module digest
+`e04632017283b97e991f1b3d9c33aa228ede4ca2f7460ff1b7fc70ae63be964c`.
+All 1,124 current Go/module hashes and the current Git source inventory matched
+the final ordinary manifest. The five saved Python driver/support/harness/control
+hashes stayed unchanged across the final pair. Config identity is separately
+checked by the driver; Go source identity excludes Python/docs/private config.
+These telnet receipts qualify their fixture consumer/archive retirement, not
+the classifier or full production pipeline. Classifier evidence comes from the
+permanent Go controls and real local HTTP barriers above.
+
+Support-agent impact: Required. Config guidance, the toxicity support card and
+symptom index distinguish terminal cleanup, ordinary AI failure and post-Stop
+fail-open behavior. Indexed ADR-0274 refines ADR-0114's lifecycle only;
+TSR-0068 records the ownership RCA and local qualification. The output/runtime
+grace and downstream join defects remain 20b; neither this patch nor its tests
+claim full runtime ordering, process-wide leak freedom, external model quality
+or production latency. Design/test reviews inherited context; fresh final
+verification was lead-owned, not independent. It directly checked the production
+diff, all five new Go test/benchmark files, existing-error refinement, counter
+oracles, cancellation/cleanup ownership, docs and final source/receipt identity.
+Record and whitespace checks passed; crawler selection was zero files, so the
+classifier's new support-critical header was reviewed manually. Maps are
+regenerated last, then the staged final diff is checked before commit.

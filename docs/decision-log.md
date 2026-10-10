@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0274 | Terminal Classifier Retirement | Accepted | 2026-10-10 | toxicity lifecycle, admission, cancellation and result ownership | none | none | `docs/decisions/ADR-0274-terminal-classifier-retirement.md` |
 | ADR-0273 | History COMMENT Alias Boundary | Accepted | 2026-10-10 | commands, telnet, history, aliases, literal phrases | Refines ADR-0263 COMMENT boundary only | - | `docs/decisions/ADR-0273-history-comment-alias-boundary.md` |
 | ADR-0272 | MODE Visibility Deltas | Accepted | 2026-10-09 | filter, telnet, MODE, persistence, effective feedback | Refines ADR-0018 for MODE | - | `docs/decisions/ADR-0272-mode-visibility-deltas.md` |
 | ADR-0271 | Shared Station Reputation | Accepted | 2026-10-09 | reputation, telnet, station identity, allowance, history ownership | Refines ADR-0115 | - | `docs/decisions/ADR-0271-shared-station-reputation.md` |
