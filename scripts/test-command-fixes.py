@@ -1029,6 +1029,7 @@ def profile(binary, root, source, transport):
                 f"{transport}/0: configured taxonomy underscores reach human commands and matching",
                 f"{transport}/0: COMMENT aliases preserve literal history and continuation",
                 f"{transport}/0: CC HELP grammar agrees with saved command outcomes",
+                f"{transport}/0: HELP routes existing aliases without preference effects",
                 f"{transport}/1: held endpoint and loaded consumers",
                 f"{transport}: preferences and archive survive fresh child",
                 f"{transport}: NOFILTER geography survives fresh child",
@@ -1050,7 +1051,8 @@ def profile(binary, root, source, transport):
                 f"{transport}/1: enabled SOLAR cadence survives fresh child",
                 f"{transport}/1: configured taxonomy underscore rules survive fresh child",
                 f"{transport}/1: COMMENT history aliases work on fresh child",
-                f"{transport}/1: CC HELP grammar and preferences survive fresh child"]
+                f"{transport}/1: CC HELP grammar and preferences survive fresh child",
+                f"{transport}/1: HELP routing and full preferences survive fresh child"]
     call = "K1ABC-70001"
     observer_call, observer_configuration = "VE3ABC-70003", None
     failed_records, refused_records, compatible_records = {}, {}, {}
@@ -1067,6 +1069,7 @@ def profile(binary, root, source, transport):
     saved_taxonomy = {}
     saved_history_aliases = {}
     saved_cc_grammar = {}
+    saved_help_routes = {}
     label = None
     suites = []
     for generation in range(2):
@@ -1484,6 +1487,8 @@ def profile(binary, root, source, transport):
                      lambda: history_alias_cases(suite, root, child.nonce, generation, saved_history_aliases))
                 case(f"{transport}/0: CC HELP grammar agrees with saved command outcomes",
                      lambda: cc_help_grammar_cases(suite, root, generation, saved_cc_grammar))
+                case(f"{transport}/0: HELP routes existing aliases without preference effects",
+                     lambda: help_routing_cases(suite, root, generation, saved_help_routes))
             else:
                 def restored():
                     settings = session.get()["configuration"]["settings"]
@@ -1698,6 +1703,8 @@ def profile(binary, root, source, transport):
                      lambda: history_alias_cases(suite, root, child.nonce, generation, saved_history_aliases))
                 case(f"{transport}/1: CC HELP grammar and preferences survive fresh child",
                      lambda: cc_help_grammar_cases(suite, root, generation, saved_cc_grammar))
+                case(f"{transport}/1: HELP routing and full preferences survive fresh child",
+                     lambda: help_routing_cases(suite, root, generation, saved_help_routes))
         finally:
             try:
                 if suite:
@@ -2232,6 +2239,340 @@ def cc_help_grammar_cases(suite, root, generation, saved_cc_grammar):
     apply("RESET FILTER", defaults)
     after = apply("UNSET/FILTER BEACON", dict(include_beacons=False))
     saved_cc_grammar[call] = copy.deepcopy(after["configuration"]), copy.deepcopy(defaults)
+
+
+HELP_SHORTCUT_MODES = ("CW", "FT2", "FT4", "FT8", "RTTY")
+
+
+def help_route_contract(key, dialect):
+    # Literal dispatch-derived heads/usages, not an enumeration of the HELP
+    # catalog. Short replies have source-verified terminal lines; long replies
+    # require their complete counted automatic-pause footer.
+    contracts = {
+        "HELP": ("HELP - Show command list or command-specific help.", ("HELP [command]",),
+                 "  With a command, shows detailed usage.", ("H",)),
+        "SHOW BUILD": ("SHOW BUILD - Show binary build metadata.", ("SHOW BUILD",),
+                       "  Shows the build version, release tag, and Go version when available.", ("SH BUILD",)),
+        "SHOW OWN": ("SHOW OWN - Show your login and baseline own call.", ("SHOW OWN",),
+                     "  Numeric SSIDs are ignored for own-call features.", ("SH OWN",)),
+        "SHOW DXCC": ("SHOW DXCC - Look up DXCC/ADIF and zones.", ("SHOW DXCC <prefix|callsign>",),
+                      "  Returns other prefixes for the same country when available.", ("SH DXCC",)),
+        "SHOW PROP": ("SHOW PROP - Show point-to-point propagation outlook.",
+                      ("SHOW PROP <call|prefix|grid> [band] [mode]",),
+                      "  Only rows with REL HIGH, MEDIUM, or LOW are shown.", ("SH PROP", "SHOW/PROP", "SH/PROP")),
+        "SHOW HOLD": ("SHOW HOLD - Show read-pause status.", ("SHOW HOLD",),
+                      "  Shows remaining pause time and suppressed spot count.", ()),
+        "SHOW SETTINGS": ("SHOW SETTINGS - Display preferences and session behavior.", ("SHOW SETTINGS",),
+                          "  bytes.", ()),
+        "SHOW DEDUPE": ("SHOW DEDUPE - Show your broadcast dedupe policy.", ("SHOW DEDUPE",),
+                        "  Shows if a policy is disabled server-side.", ()),
+        "SET SOLAR": ("SET SOLAR - Opt into solar summaries.", ("SET SOLAR <15|30|60|OFF>",),
+                      "  OFF disables summaries.", ()),
+        "SET GRID": ("SET GRID - Set your grid for path reliability glyphs.", ("SET GRID <locator>",),
+                     "  When NEARBY is on, both fine and coarse grid mappings must be usable.", ()),
+        "SET NOISE": ("SET NOISE - Set your noise class for glyphs.",
+                      ("SET NOISE <QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL>",), "  Default is QUIET when unset.", ()),
+        "SET PATHSAMPLES": ("SET PATHSAMPLES - Set your path sample floor.", ("SET PATHSAMPLES <count|DEFAULT>",),
+                            "  DEFAULT clears your personal override.", ()),
+        "SET DIAG": ("SET DIAG - Select diagnostic comments.", ("SET DIAG <OFF|DEDUPE|SOURCE|CONF|PATH|MODE>",),
+                     "  MODE shows <mode>|<provenance>.", ()),
+        "SET DEDUPE": ("SET DEDUPE - Select broadcast dedupe policy.", ("SET DEDUPE <FAST|MED|SLOW>",),
+                       "  If a policy is disabled, the nearest available is chosen.", ()),
+        "DIALECT": ("DIALECT - Show or switch filter command dialect.",
+                    ("DIALECT", "DIALECT LIST", "DIALECT <go|cc>"), "  Dialect selection is persisted per callsign.", ()),
+        "BYE": ("BYE - Disconnect from the cluster.", ("BYE",), "Aliases: QUIT, EXIT", ("QUIT", "EXIT")),
+        "RESET FILTER": ("RESET FILTER - Reset filters to configured defaults.", ("RESET FILTER",),
+                         "Usage: RESET FILTER", ()),
+        "RESET FILTER COMMENT": ("RESET FILTER COMMENT - Clear comment selections.",
+                                 ("RESET FILTER COMMENT [PASS|REJECT]",),
+                                 "  RESET FILTER and PASS NOFILTER also clear all comment rules.", ()),
+        "SHOW FILTER COMMENT": ("SHOW FILTER COMMENT - Display saved comment phrases.",
+                                ("SHOW FILTER COMMENT",),
+                                "Aliases: SHOW/FILTER COMMENT, SH/FILTER COMMENT", ("SHOW/FILTER COMMENT", "SH/FILTER COMMENT")),
+        "PASS NEARBY": ("PASS NEARBY - Toggle nearby filtering.", ("PASS NEARBY ON|OFF",), None, ("REJECT NEARBY",)),
+        "VALIDATE YAML CONFIG": ("VALIDATE YAML CONFIG - Check a complete client proposal.",
+                                 ("VALIDATE YAML CONFIG",),
+                                 "  Does not change revisions, pause, diagnostics or scheduling.", ()),
+        "SET/NOFILTER": ("SET/NOFILTER - Allow everything (CC dialect).", ("SET/NOFILTER",),
+                         "  Resets filters to a fully permissive state.", ()),
+        "SET/ANN": ("SET/ANN - Enable announcements.", ("SET/ANN",), "  Alias of PASS ANNOUNCE.", ()),
+        "SET/NOANN": ("SET/NOANN - Disable announcements.", ("SET/NOANN",), "  Alias of REJECT ANNOUNCE.", ()),
+    }
+    parent_usages = (("SHOW DX [count|selector]",) if dialect == "go" else ()) + (
+        "SHOW MYDX [count|selector]", "SHOW DXCC <prefix|callsign>",
+        "SHOW PROP <call|prefix|grid> [band] [mode]", "SHOW BUILD", "SHOW OWN")
+    contracts["SHOW"] = ("SHOW - See SHOW subcommands.", parent_usages,
+                         "  Use HELP " + ("SHOW DX" if dialect == "go" else "SHOW/DX") + " for the history alias.", ("SH",))
+    for topic in ("SHOW MYDX", "SHOW DX" if dialect == "go" else "SHOW/DX"):
+        header = "Show filtered spot history." if topic == "SHOW MYDX" else "Alias of SHOW MYDX (stored history)."
+        usage = (topic + " [count]", topic + " <prefix|callsign> [count]", topic + " [count] <prefix|callsign>",
+                 topic + " NEXT <cursor>", topic + " [selector] [count] COMMENT <phrase>",
+                 topic + " [selector] [count] BAND <list> MODE <list>")
+        contracts[topic] = (topic + " - " + header, usage, None,
+                            ("SH MYDX",) if topic == "SHOW MYDX" else ("SH DX",) if dialect == "go" else ("SH/DX", "SHOW DX", "SH DX"))
+    filter_topic = "SHOW FILTER" if dialect == "go" else "SHOW/FILTER"
+    contracts[filter_topic] = (filter_topic + " - Display current filter state.",
+                              (filter_topic, filter_topic + " FULL", filter_topic + " <category>"), None,
+                              ("SHOW/FILTER", "SH/FILTER") if dialect == "go" else ("SH/FILTER", "SHOW FILTER"))
+    for verb in ("PASS", "REJECT"):
+        if dialect == "go":
+            contracts[verb] = (verb + " - " + ("Allow" if verb == "PASS" else "Block") + " filter matches.",
+                               (verb + " <type> <list>",), None, ())
+        else:
+            topic, clear = ("SET/FILTER", "ALL") if verb == "PASS" else ("UNSET/FILTER", "NONE")
+            usage = (topic + " <list-type> <values>", topic + " MINSNR <modes|ALL> <integer dB|" + clear + ">",
+                     topic + " NEARBY ON|OFF", topic + " <switch> [ALL]", topic + " DXBM <band-codes>")
+            if verb == "PASS":
+                usage += ("SET/FILTER NOFILTER [ALL]", "SET/FILTER DXBM PASS|REJECT <band-codes>",
+                          "SET/FILTER DXBM/PASS <band-codes>", "SET/FILTER DXBM/REJECT <band-codes>")
+            contracts[verb] = (topic + " - " + ("Allow" if verb == "PASS" else "Block") + " filter matches (CC dialect).",
+                               usage, None, ())
+        contracts[verb + " COMMENT"] = (verb + " COMMENT - Add a literal comment phrase.",
+                                          (verb + " COMMENT <phrase>",), None, ())
+        clear = "ALL" if verb == "PASS" else "NONE"
+        contracts[verb + " MINSNR"] = (verb + " MINSNR - Set or clear per-mode minimum SNR.",
+                                        (verb + " MINSNR <mode[,mode...]|ALL> <integer dB|" + clear + ">",), None, ())
+    for verb, summary in (("SAVE", "Save filters and preferences to a preset."), ("LIST", "List your saved presets."),
+                          ("LOAD", "Load a preset and save this SSID's defaults."), ("DELETE", "Delete a saved preset.")):
+        topic = verb + " PRESET"
+        contracts[topic] = (topic + " - " + summary, (topic + ("" if verb == "LIST" else " <name>"),), None, ())
+    for resource in ("FILTER", "SETTINGS", "CONFIG", "CAPABILITIES"):
+        topic = "GET YAML " + resource
+        contracts[topic] = (topic + " - Read " + resource.lower() + " for clients.",
+                            (topic + " [SCHEMA 2|3|4] [ID <id>]",), None, ())
+    for verb in ("PUT", "PATCH"):
+        for resource in ("FILTER", "SETTINGS", "CONFIG"):
+            topic = verb + " YAML " + resource
+            contracts[topic] = (topic + " - Write " + resource.lower() + " for clients.", (topic,), None, ())
+    for topic, action in (("SET/<MODE>", "Allow"), ("SET/NO<MODE>", "Block")):
+        contracts[topic] = (topic + " - " + action + " a mode (CC dialect).", (topic,),
+                            "  " + ", ".join(HELP_SHORTCUT_MODES), ())
+    require(key in contracts, "unknown independent HELP contract")
+    return contracts[key]
+
+
+def help_routing_topics(dialect):
+    topics = [("H", "HELP"), ("SH", "SHOW"), ("SH BUILD EXTRA", "SHOW BUILD"), ("SH OWN EXTRA", "SHOW OWN"),
+              ("SH DXCC DL EXTRA", "SHOW DXCC"), ("SH MYDX 1 MODE COMMENT", "SHOW MYDX"),
+              ("SH DX W6ABC 1", "SHOW DX" if dialect == "go" else "SHOW/DX"),
+              ("SH PROP DL 20 CW", "SHOW PROP"), ("SHOW/PROP DL 20 CW", "SHOW PROP"),
+              ("SH/PROP DL 20 CW", "SHOW PROP"), ("SHOW HOLD EXTRA", "SHOW HOLD"),
+              ("SHOW SETTINGS EXTRA", "SHOW SETTINGS"), ("SHOW DEDUPE EXTRA", "SHOW DEDUPE"),
+              ("SET SOLAR OFF EXTRA", "SET SOLAR"), ("SET GRID IO91 EXTRA", "SET GRID"),
+              ("SET NOISE QUIET EXTRA", "SET NOISE"), ("SET PATHSAMPLES DEFAULT EXTRA", "SET PATHSAMPLES"),
+              ("SET DIAG OFF EXTRA", "SET DIAG"), ("SET DEDUPE FAST EXTRA", "SET DEDUPE"),
+              ("DIALECT LIST EXTRA", "DIALECT"), ("QUIT EXTRA", "BYE"), ("EXIT EXTRA", "BYE"),
+              ("RESET FILTER EXTRA", "RESET FILTER"), ("RESET FILTER COMMENT PASS EXTRA", "RESET FILTER COMMENT"),
+              ("PASS BAND 40 EXTRA", "PASS"), ("REJECT MODE CW EXTRA", "REJECT"),
+              ("PASS COMMENT ROUTE EXTRA", "PASS COMMENT"), ("REJECT COMMENT ROUTE EXTRA", "REJECT COMMENT"),
+              ("PASS MINSNR CW 3 EXTRA", "PASS MINSNR"), ("REJECT MINSNR CW NONE EXTRA", "REJECT MINSNR"),
+              ("PASS NEARBY OFF EXTRA", "PASS NEARBY"), ("REJECT NEARBY OFF EXTRA", "PASS NEARBY")]
+    filter_topic = "SHOW FILTER" if dialect == "go" else "SHOW/FILTER"
+    topics += [(head + " FULL EXTRA", filter_topic) for head in ("SHOW FILTER", "SHOW/FILTER", "SH/FILTER")]
+    topics += [(head + " COMMENT EXTRA", "SHOW FILTER COMMENT") for head in ("SHOW FILTER", "SHOW/FILTER", "SH/FILTER")]
+    topics += [(verb + " PRESET ROUTE18 EXTRA", verb + " PRESET") for verb in ("SAVE", "LIST", "LOAD", "DELETE")]
+    topics += [("GET YAML " + resource + " SCHEMA 4 ID ROUTE18", "GET YAML " + resource)
+               for resource in ("FILTER", "SETTINGS", "CONFIG", "CAPABILITIES")]
+    topics += [(verb + " YAML " + resource + " EXTRA", verb + " YAML " + resource)
+               for verb in ("PUT", "PATCH") for resource in ("FILTER", "SETTINGS", "CONFIG")]
+    topics += [("VALIDATE YAML CONFIG EXTRA", "VALIDATE YAML CONFIG")]
+    unknown = ["SH FILTER", "SH SETTINGS", "SH DEDUPE", "SH HOLD", "SHOW/MYDX 1", "SHOW BUILDX", "SH OWNX",
+               "SHOW DXCCX DL", "GET YAML CONFIGX ID ROUTE18", "SET SOLARX 30"]
+    if dialect == "cc":
+        topics += [(head + " 1", "SHOW/DX") for head in ("SHOW/DX", "SH/DX")]
+        topics += [("SET/FILTER BAND 40", "PASS"), ("UNSET/FILTER MODE CW", "REJECT"),
+                   ("SET/NOFILTER EXTRA", "SET/NOFILTER"), ("SET/ANN EXTRA", "SET/ANN"), ("SET/NOANN EXTRA", "SET/NOANN")]
+        topics += [("SET/" + token + " EXTRA", "SET/<MODE>") for token in ("CW_ALIAS", "COMMENT", "BAND", "MODE")]
+        topics += [("SET/NO" + token + " EXTRA", "SET/NO<MODE>") for token in ("CW_ALIAS", "COMMENT")]
+        unknown += ["SET/TEST_MODE EXTRA", "SET/NOTEST_MODE EXTRA", "SET/UNLISTED EXTRA"]
+    else:
+        unknown += ["SHOW/DX 1", "SH/DX 1", "SET/CW_ALIAS EXTRA", "SET/COMMENT EXTRA"]
+    return topics + [(topic, None) for topic in unknown]
+
+
+def help_routing_lines(raw, query, remote_echo):
+    require(0 < len(raw) <= harness.MAX_FRAME and raw.endswith(b"\r\n"), "HELP routing exceeds its complete wire bound")
+    lines, echoed = [], False
+    for line in raw.splitlines(keepends=True):
+        require(line.endswith(b"\r\n") and b"\r" not in line[:-2], "HELP routing breaks CRLF")
+        value = line[:-2].decode("ascii", "strict")
+        require(len(value) <= 78 and all(32 <= ord(ch) <= 126 for ch in value), "HELP routing breaks width/ASCII")
+        if value == query.upper():
+            require(remote_echo and not echoed and not any(lines), "HELP routing duplicates or interleaves command echo")
+            echoed = True
+        else:
+            lines.append(value)
+    return lines
+
+
+def decode_help_routing(raw, query, contract, minimum_rows, minimum_seconds, remote_echo=False):
+    lines = help_routing_lines(raw, query, remote_echo)
+    paused = lines[-1] == "Missed spots are not replayed."
+    if paused:
+        require(len(lines) >= 3, "HELP routing lacks a complete pause footer")
+        footer = re.fullmatch(r"Live spots paused for ([1-9][0-9]*)s after ([1-9][0-9]*) output rows\. "
+                              r"Type RESUME to resume now\.", lines[-2])
+        require(footer is not None and int(footer[1]) >= minimum_seconds and
+                int(footer[2]) == len(lines) - 2 >= minimum_rows, "HELP routing footer misstates duration or row count")
+        lines = lines[:-2]
+    else:
+        require(len(lines) < minimum_rows, "HELP routing omits its required automatic-pause footer")
+    require(not any(line.startswith("Live spots paused for ") or line == "Missed spots are not replayed." for line in lines),
+            "HELP routing embeds a duplicate or partial footer")
+    while lines and lines[0] == "":
+        lines.pop(0)
+    header, usage, terminal, allowed_aliases = contract
+    require(lines and lines[0] == header, "HELP routing selects the wrong intended header")
+    if header.startswith("Unknown help topic: "):
+        require(lines == [header, "Type HELP for available commands."], "unsupported HELP route was accepted or altered")
+    else:
+        require(not any(line.startswith(("Unknown ", "Usage: Invalid", "Invalid ")) for line in lines),
+                "supported HELP route contains rejection feedback")
+        expected = [("Usage: " if index == 0 else "       ") + value for index, value in enumerate(usage)]
+        require(lines[1:1 + len(expected)] == expected and
+                (len(lines) == len(expected) + 1 or not lines[1 + len(expected)].startswith("       ")),
+                "HELP routing loses or broadens the intended usage")
+        aliases = []
+        for index, line in enumerate(lines):
+            if line.startswith("Aliases: "):
+                aliases.extend(value.strip() for value in line[9:].split(","))
+                index += 1
+                while index < len(lines) and lines[index].startswith("         "):
+                    aliases.extend(value.strip() for value in lines[index].split(","))
+                    index += 1
+        require(len(aliases) == len(set(aliases)) and set(aliases) == set(allowed_aliases),
+                "HELP routing loses a supported alias or advertises an unsupported alias")
+    require((terminal is None and paused) or (terminal is not None and lines[-1] == terminal),
+            "HELP routing does not contain its complete intended ending")
+    return lines, paused
+
+
+def help_routing_readback(current, topic, contract, minimum_rows, minimum_seconds):
+    query, raw, received = "HELP " + topic, bytearray(), 0
+    terminal = contract[2] or "Missed spots are not replayed."
+    try:
+        current.send(query + "\r\n")
+        while True:
+            line = current.reader.line()
+            received += len(line)
+            raw.extend(line[:harness.MAX_FRAME - len(raw)])
+            require(received <= harness.MAX_FRAME, "HELP routing exceeds its wire bound")
+            if line == terminal.encode("ascii") + b"\r\n":
+                break
+        if contract[2] is not None and len(help_routing_lines(bytes(raw), query, current.reader.remote_echo)) >= minimum_rows:
+            for _ in range(2):
+                line = current.reader.line()
+                received += len(line)
+                raw.extend(line[:harness.MAX_FRAME - len(raw)])
+                require(received <= harness.MAX_FRAME, "HELP routing footer exceeds its wire bound")
+        body, paused = decode_help_routing(bytes(raw), query, contract, minimum_rows, minimum_seconds, current.reader.remote_echo)
+    except Exception:
+        received += len(current.reader.buffer)
+        raw.extend(current.reader.buffer[:harness.MAX_FRAME - len(raw)])
+        raise
+    finally:
+        receipt = f"\n[{current.call}] {query}\n".encode() + bytes(raw)
+        if received > len(raw):
+            receipt += b"\n[HELP routing receipt truncated at 65536 bytes]\n"
+        current.suite.log.write(receipt)
+        current.suite.log.flush()
+    identifier = current.suite.identifier()
+    command = f"GET YAML CONFIG SCHEMA 4 ID {identifier}"
+    current.send(command + "\r\n")
+    document, prefix = current.frame("CONFIG", identifier, 4, command)
+    echoed, trailing = False, 0
+    for line in prefix.splitlines(keepends=True):
+        require(line.endswith(b"\r\n") and b"\r" not in line[:-2], "HELP routing barrier breaks CRLF")
+        if current.reader.remote_echo and not echoed and line == command.encode("ascii") + b"\r\n":
+            echoed = True
+            continue
+        require(line == b"\r\n", "HELP routing hides trailing response content")
+        trailing += len(line)
+    require(received + trailing <= harness.MAX_FRAME, "HELP routing final response exceeds its wire bound")
+    require("error" not in document and type(document.get("configuration")) is dict and
+            type(document.get("status")) is dict and type(document.get("revision")) is str and document["revision"],
+            "HELP routing barrier lacks a valid configuration")
+    require(document.get("resource") == "CONFIG" and type(document.get("schema_version")) is int and
+            document["schema_version"] == 4 and document.get("request_id") == identifier,
+            "HELP routing barrier has the wrong resource, schema or request identity")
+    return document, paused
+
+
+def require_help_routing_state(before, after, record, saved, library, library_saved, paused):
+    require_cc_unchanged(before, after, record, saved)
+    require(library.read_bytes() == library_saved, "HELP routing changed the shared preset library")
+    for field in ("server", "min_snr", "comments"):
+        require_cc_typed_value(after["status"].get(field), before["status"].get(field))
+    for field in ("callsign", "diagnostic_comments", "temporary_defaults", "suppressed_spots"):
+        require_cc_typed_value(after["status"]["session"][field], before["status"]["session"][field])
+    session = after["status"]["session"]
+    require(session["pause_pending_delivery"] is False and type(session["pause_active"]) is bool and
+            type(session["pause_remaining_seconds"]) is int and session["pause_remaining_seconds"] >= 0,
+            "HELP routing leaves delivery pause pending or has invalid pause state")
+    if paused:
+        require(session["pause_active"] is True and type(session["pause_remaining_seconds"]) is int and
+                session["pause_remaining_seconds"] > 0, "long HELP routing lacks its deliberate session pause")
+    elif before["status"]["session"]["pause_active"] is False:
+        require(session["pause_active"] is False, "short HELP routing unexpectedly changes the session pause")
+
+
+def require_help_routing_saved(document, expected, record):
+    require_cc_saved_state(document, expected, record)
+    saved = stored_document(record.read_bytes())
+    for field, value in expected["settings"].items():
+        require_cc_typed_value(saved.get(field, 0 if type(value) is int else ""), value)
+
+
+def help_routing_cases(suite, root, generation, saved_help_routes):
+    private = stored_document((root / "config" / "runtime.yaml").read_bytes())["telnet"]
+    minimum_rows, minimum_seconds = private["auto_read_pause_min_rows"], private["auto_read_pause_seconds"]
+    require(type(minimum_rows) is int and minimum_rows == 10 and type(minimum_seconds) is int and minimum_seconds > 0,
+            "HELP routing requires the fixture's existing loaded automatic pause")
+    taxonomy = stored_document((root / "config" / "spot_taxonomy.yaml").read_bytes())
+    cw = next(mode for mode in taxonomy["modes"] if mode["name"] == "CW")
+    shortcuts = [mode["name"] for mode in taxonomy["modes"] if mode.get("cc_shortcut") is True]
+    require(len(shortcuts) == len(HELP_SHORTCUT_MODES) and set(shortcuts) == set(HELP_SHORTCUT_MODES) and
+            all(alias in cw["variants"] for alias in ("CW_ALIAS", "COMMENT", "BAND", "MODE")) and
+            any(mode["name"] == "TEST_MODE" and mode.get("filter_visible") is True and not mode.get("cc_shortcut")
+                for mode in taxonomy["modes"]), "HELP routing lost its configured shortcut/alias prerequisites")
+    library = root / "users" / "presets" / ("VE3ABC".encode().hex() + ".yaml")
+    for dialect, call in (("go", "VE3ABC-70073"), ("cc", "VE3ABC-70074")):
+        record = root / "users" / (call + ".yaml")
+        if not generation:
+            require(not record.exists(), "HELP routing requires fresh unused SSIDs")
+        current = harness.Session(suite, call)
+        before = current.get()
+        if generation:
+            require_help_routing_saved(before, saved_help_routes[call], record)
+        else:
+            expected = copy.deepcopy(before["configuration"])
+            expected["settings"].update(dialect=dialect, grid="FN31PR", noise_class="URBAN", dedupe_policy="SLOW",
+                                        path_min_observation_count=30, solar_summary_minutes=30)
+            expected["filters"].update(comments=["ROUTE18 " + dialect.upper()], block_comments=["QRT"], min_snr={"CW": 7},
+                                       include_beacons=False, allow_announce=False)
+            response = current.upload("PUT", "CONFIG", expected, revision=before["revision"])
+            require("error" not in response, "HELP routing preference setup was refused")
+            before = current.get()
+            require_help_routing_saved(before, expected, record)
+            name = "HELP18" + dialect.upper()
+            exact_human_reply(current, "SAVE PRESET " + name, "Saved preset " + name + " for VE3ABC.")
+            before = current.get()
+            require_help_routing_saved(before, expected, record)
+            require(before["status"]["preset"] == dict(associated=True, name=name, modified=False),
+                    "HELP routing setup lacks its saved preset baseline")
+            saved_help_routes[call] = copy.deepcopy(expected)
+        require(before["configuration"]["settings"]["dialect"] == dialect and
+                before["status"]["server"]["auto_read_pause_min_rows"] == minimum_rows and
+                before["status"]["server"]["auto_read_pause_seconds"] == minimum_seconds and
+                before["status"]["preset"] == dict(associated=True, name="HELP18" + dialect.upper(), modified=False),
+                "HELP routing fresh preferences or loaded pause owner disagree")
+        require_setting_control(current, record, "SET DIAG MODE", "Diagnostic comments: MODE", "diagnostic_comments", "MODE")
+        for topic, key in help_routing_topics(dialect):
+            before, saved, library_saved = current.get(), record.read_bytes(), library.read_bytes()
+            contract = help_route_contract(key, dialect) if key else (
+                "Unknown help topic: " + topic, (), "Type HELP for available commands.", ())
+            after, paused = help_routing_readback(current, topic, contract, minimum_rows, minimum_seconds)
+            require_help_routing_state(before, after, record, saved, library, library_saved, paused)
 
 
 def require_taxonomy_rules(document, expected, record):

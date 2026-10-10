@@ -283,6 +283,16 @@ the accepted settings before repeating the profile. Composed Go controls cover
 all 18 ordinary CC list families and special owners; these are local checkout
 checks, not evidence about a deployed server.
 
+Both dialects also exercise independently inventoried HELP aliases and argument
+topics, including SH forms, settings, presets, framed YAML, shared CC fallback
+and loaded shortcut modes. Canonical headers, usage and visible aliases must
+agree; prefix collisions and unsupported heads must stay unknown. Each response
+is consumed through a source-verified terminal and its conditional pause footer
+before a strict correlated CONFIG barrier. Live configuration, revision, preset
+association and exact stored bytes stay unchanged, with fresh children proving
+saved ownership. Isolated Go taxonomy controls own fixed-shortcut overlap and
+disabled-mode vectors; this does not qualify every deployment vocabulary.
+
 Coverage grows with each approved fix. The initial fixture does not certify
 production dedupe, classifier or runtime shutdown. See the
 [execution record](command-fix-execution.md) and

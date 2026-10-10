@@ -22,6 +22,7 @@ HELP rendering and its detailed references are owned by:
 - `dedupeHelpNotes(...)`
 - `installConfigurationHelp(...)` in [`configuration_help.go`](configuration_help.go)
 - `installCommentHelp(...)` in [`comment_help.go`](comment_help.go)
+- catalog head/alias routing in [`help_routing.go`](help_routing.go)
 
 The overview groups everyday commands by task, describes every filter category,
 and gives individual filter examples and a complete BAND/MODE recipe. GO uses
@@ -48,6 +49,15 @@ still come from startup snapshots; help does not read external text files.
 
 YAML client commands are omitted only from the overview. They remain executable
 and retain command-specific help, such as `HELP GET YAML CONFIG`.
+
+HELP accepts a working command spelling with arguments, for example
+`HELP SH DX 5`, `HELP SET SOLAR 30` or `HELP GET YAML CONFIG SCHEMA 4 ID read-1`.
+It selects the longest complete command head without executing the command.
+SH BUILD/OWN/DXCC/MYDX/PROP and history aliases resolve to their own topics;
+shared PASS/REJECT topics also resolve in CC. Fixed CC shortcuts take priority
+over loaded mode aliases. Unsupported heads remain explicit unknown topics;
+HELP does not add executable aliases. See
+[routing troubleshooting](../docs/troubleshooting/TSR-0065-help-routing-alias-coverage.md).
 
 The main landing page [`../README.md`](../README.md) now includes a generated HELP block for the default `go` dialect. A test in this package checks that the README block still matches the processor output built from the shipped config files.
 
@@ -138,7 +148,8 @@ DXCC, grid and zone lists retain counts. It groups geography rules and inclusion
 switches. FULL/category show complete effective PASS/REJECT selections using
 ALL/NONE, with ON/OFF switches. GET YAML FILTER preserves stored flags, false
 entries and defaults. `SHOW/FILTER` and
-`SH/FILTER` accept the same FULL/category arguments in `cc`. `SHOW SETTINGS`
+`SH/FILTER` accept the same FULL/category arguments in both dialects.
+`SHOW SETTINGS`
 separates configured preferences and effective behavior from session status.
 Path minimums reflect active runtime state for both stations and beacons.
 Both views report the associated preset and whether preferences differ from

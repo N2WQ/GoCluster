@@ -393,8 +393,9 @@ See [ADR-0251](../docs/decisions/ADR-0251-exact-call-paged-history.md) and
 | `SHOW FILTER <category>` | Complete effective selections for one category. |
 | `SHOW SETTINGS` | Configured preferences and effective behavior, followed by session status. |
 
-`SHOW/FILTER` and `SH/FILTER` accept the same FULL/category arguments in the
-`cc` dialect. The category names are BAND, MODE, SOURCE, EVENT, CONFIDENCE,
+`SHOW/FILTER` and `SH/FILTER` accept the same FULL/category arguments in both
+dialects. Their HELP topics accept those arguments too. The category names are
+BAND, MODE, SOURCE, EVENT, CONFIDENCE,
 PATH, DXCONT, DECONT, DXZONE, DEZONE, DXGRID2, DEGRID2, DXDXCC, DEDXCC, DXSTATE,
 DESTATE, DXCALL, DECALL, BEACON, WWV, WCY, ANNOUNCE, SELF, TOXIC and NEARBY.
 CONF is an alias for CONFIDENCE, and PC93 is an alias for ANNOUNCE.

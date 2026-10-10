@@ -32,6 +32,9 @@ func installCommentHelp(catalog *helpCatalog) {
 		"Shows PASS and REJECT phrases; punctuation and internal spaces are literal.",
 		"Human readbacks use escaped exact values and bounded 78-byte lines.",
 	})
+	commentView := catalog.entries["SHOW FILTER COMMENT"]
+	commentView.lines = append(commentView.lines, wrapLabelList("Aliases:", []string{"SHOW/FILTER COMMENT", "SH/FILTER COMMENT"}, 78)...)
+	catalog.entries["SHOW FILTER COMMENT"] = commentView
 	for _, topic := range []string{"SHOW DX", "SHOW/DX", "SHOW MYDX"} {
 		entry, ok := catalog.entries[topic]
 		if !ok {

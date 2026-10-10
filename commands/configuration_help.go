@@ -6,8 +6,10 @@ import "strings"
 
 func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 	filterTopic := "SHOW FILTER"
+	filterAliases := []string{"SHOW/FILTER", "SH/FILTER"}
 	if dialect == "cc" {
 		filterTopic = "SHOW/FILTER"
+		filterAliases = []string{"SHOW FILTER", "SH/FILTER"}
 	}
 	filterNotes := []string{
 		"The overview wraps finite selections and useful explicit exclusions.",
@@ -30,7 +32,7 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 	catalog.entries[filterTopic] = helpEntry{
 		summary: filterTopic + " - Display filters and selections.",
 		lines: helpEntryLines(filterTopic+" - Display current filter state.",
-			[]string{filterTopic, filterTopic + " FULL", filterTopic + " <category>"}, nil, filterNotes),
+			[]string{filterTopic, filterTopic + " FULL", filterTopic + " <category>"}, filterAliases, filterNotes),
 	}
 	if dialect == "cc" {
 		catalog.entries["SH/FILTER"] = helpEntry{summary: "SH/FILTER - Alias of SHOW/FILTER.", lines: helpEntryLines("SH/FILTER - Display current filter state.", []string{"SH/FILTER [FULL|category]"}, []string{"SHOW/FILTER", "SHOW FILTER"}, filterNotes)}

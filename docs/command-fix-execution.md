@@ -12,8 +12,8 @@ dependent change rolls back with its dependents or in reverse dependency order.
 Routine testing requires no user action. External cluster tests, deployment,
 pushes, firewall changes and workflow changes are outside this scope.
 
-Current progress: checkpoints 00 through 17 complete (04a used two commits);
-23 approved checkpoints remain; 18a is next.
+Current progress: checkpoints 00 through 18a complete (04a used two commits);
+22 approved checkpoints remain; 18b is next.
 
 ## Checkpoint 00: unattended checkout-server fixture
 
@@ -2328,3 +2328,94 @@ independent literal oracles and final receipts. Record and whitespace checks
 passed. The crawler candidate scan selected no files; the new catalog header
 and existing production entry comments were reviewed directly. Maps are
 regenerated last, followed by direct staged-diff review before commit.
+
+## Checkpoint 18a: complete HELP routing and aliases
+
+Status: complete. A bounded read-only specialist derived command families
+from processor, history, configuration readback, filter, preset, propagation,
+machine and session dispatch independently of HELP. Lead inspection confirms
+missing SH/argument routes, CC's premature fallback return, both-dialect slash
+filter readbacks and character-prefix collisions. Loaded taxonomy already owns
+dynamic CC mode recognition; fixed shortcuts take precedence. No policy or
+executable grammar change is required. Unsupported SH FILTER/SETTINGS/DEDUPE/
+HOLD and SHOW/MYDX must remain unsupported; GO slash history remains CC-only.
+
+Architecture: keep routing metadata in the existing request-owned finite HELP
+catalog. Install only source-verified aliases, then select the longest complete
+catalog head, preserving specific COMMENT/MINSNR/NEARBY topics. Match a whole
+head or a following ASCII space, never a character prefix. Bare SHOW/SH do not
+absorb unknown subcommands. Resolve fixed CC shortcut entries before checking
+the first token against the loaded mode taxonomy. Argument tails select usage
+help without invoking command owners or duplicating their argument validation.
+No new executable alias, state, lock, worker, persistence or parser admission
+change. Repair the two crawler comments that incorrectly name SHOW/MYDX.
+
+| Contract | Stimulus / fault | Required evidence | False-green risk | Checker / owner |
+|---|---|---|---|---|
+| Executable aliases and argument topics resolve | Literal dispatch-derived heads, SH forms, settings/presets/machine tails and CC fallback in both dialects | Specific intended complete HELP entry | Catalog-derived coverage misses an absent executable alias | Independent literal routing table plus existing owner controls / commands, telnet |
+| HELP advertises only real aliases | Reverse check of alias metadata against independent executable heads | No invented SH readback or GO slash-history support | Alias lookup succeeds although owner rejects it | Literal negative/reverse controls and composed readback/setting/preset ownership / commands, telnet |
+| Longest complete head wins | DXCC vs DX, COMMENT/MINSNR vs generic list, prefix-collision and unknown SH heads | Correct narrow topic or explicit unknown help | Generic parent/character prefix hides a miss | Exact-header and collision controls / commands |
+| Loaded shortcuts retain precedence | Custom mode/alias, disabled shortcut, unknown mode, fixed shortcut overlap | Loaded eligible token gets mode usage; fixed shortcut stays fixed | Hard-coded default mode list or taxonomy overrides fixed commands | Isolated taxonomy controls and cumulative checkout / spot, commands, runner |
+| HELP has no command effects | Actual alias/topic queries separated by correlated configuration barriers | Complete responses; live/revision/preset and exact saved bytes unchanged | HELP accidentally dispatches a mutation or leaves unread output | Composed and actual checkout controls with fresh-child saved-state proof / telnet, runner |
+
+Select focused literal/owner routing controls, complete commands/telnet race,
+bounded routing fuzz, cumulative ordinary/race checkout and offline faults,
+complete ordinary baseline and analyzers. Preserve widths, landing fixtures and
+README synchronization. Category wording/suggestions remain separate 18b.
+Update affected guides/support and record routing RCA in TSR-0065; ADR-0264's
+ownership is unchanged, so no new ADR is required. Regenerate maps last.
+
+Checker refinement for actual response receipts: short HELP entries lack a protocol
+terminator. Consume a source-verified literal final line, and when the rendered
+row count reaches the configured automatic-pause threshold consume its complete
+footer, before sending CONFIG. A strict barrier rejects any hidden suffix.
+No pipelining, sleep-based completeness assumption, runtime-config change or new
+production seam is needed. Actual fixed topics and loaded aliases are separate
+vectors; isolated Go taxonomy controls own overlapping alias precedence.
+
+The final implementation replaces the duplicated normalizer with whole-head
+catalog matching and verified alias metadata. Canonical entries display the
+working aliases. Independent literal forward/reverse and visible-row controls
+guard omissions, invented spellings, prefix collisions and narrow-topic
+precedence. Composed real codec/dispatch/storage controls preserve filter
+pointers, settings, revisions, scheduling, diagnostics, cursors, archive calls
+and exact user/library bytes. Their initial mixed-case human request ID expected
+case preservation, although the existing human reader uppercases that input;
+the test expectation was corrected. Direct machine input separately retains its
+correlated lowercase ID. No production reader behavior changed.
+
+The cumulative runner adds four required cases across transports and fresh
+children. It checks full preference/preset ownership, exact intended headers,
+usage and visible aliases, unknown topics and complete bounded receipts before
+CONFIG. Seven new offline methods falsify plausible wrong headers/usages,
+unsupported aliases, malformed or hidden suffixes, incomplete pause footers,
+incorrect barriers and preference/disk effects. The literal contract tables stay
+together for source-owner comparison; they do not derive expected routes from
+the implementation being checked.
+
+| Selected evidence | Observed result |
+|---|---|
+| Focused literal/visible-alias and composed owner checks | PASS; `checkpoint-18a-focused.log` |
+| Complete ordinary baseline | All 70 packages passed, including build checks for no-test packages; `checkpoint-18a-all-packages.log` |
+| Complete affected race lane | commands and telnet passed; `checkpoint-18a-race.log` |
+| Bounded routing fuzz | 19,885 executions passed with two workers for 15 seconds; `checkpoint-18a-fuzz.log` |
+| Offline runner controls | 68 passed; `checkpoint-18a-runner-controls.log` |
+| Whole-repository analyzers | Vet and Staticcheck passed; lint reported zero issues |
+| Ordinary actual checkout | `20261010-085643-7fdc9c83`: all 128 cases passed, zero wire/cleanup failures; all 12 retirement receipts confirm clients retired, consumer joined and archive stopped |
+| Race actual checkout | `20261010-085928-c78e8564`: same 128 cases and cleanup outcome |
+
+Both builds and all retirement receipts have Go/module source digest
+`ab700aa4d721cb6d2eb1761073dea1da9dcb1fcfb7ad8210c22dddfed018a0de`.
+Go/Python stayed frozen across the pair. Loaded private config hashes are
+verified separately; the source digest excludes Python, docs and config.
+No production load, external cluster, inference/model quality or all-taxonomy
+qualification is claimed. Category wording and suggestions remain in 18b.
+
+Support-agent documentation impact: Required. Commands/telnet guides, the
+validation guide and configuration support card describe alias/argument HELP
+and its ownership limits. TSR-0065 records the routing RCA. ADR-0264 and
+ADR-0089 were inspected and remain authoritative; no durable decision changed.
+Fresh lead verification reviewed the production diff, all new Go/Python controls
+and final receipts. Record and whitespace checks passed. The crawler candidate
+scan selected no files; new routing headers and production entry comments were
+reviewed directly. Maps are regenerated last, followed by staged diff review.

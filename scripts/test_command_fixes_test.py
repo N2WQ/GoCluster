@@ -62,7 +62,262 @@ def cc_help_wire(lines, query="HELP SET/FILTER", seconds=30, count=None):
     return (query + "\r\n" + "\r\n".join(lines + [footer, "Missed spots are not replayed."]) + "\r\n").encode("ascii")
 
 
+def routing_help_wire(lines, query="HELP SH BUILD EXTRA", pause=False, echo=True, seconds=30, count=None):
+    body = list(lines)
+    if pause:
+        body += [f"Live spots paused for {seconds}s after {len(lines) if count is None else count} output rows. Type RESUME to resume now.",
+                 "Missed spots are not replayed."]
+    return ((query + "\r\n" if echo else "") + "\r\n".join(body) + "\r\n").encode("ascii")
+
+
 class DriverControls(unittest.TestCase):
+    def test_help_routing_short_response_requires_intended_header_usage_terminal_and_real_aliases(self):
+        contract = driver.help_route_contract("SHOW BUILD", "go")
+        lines = ["SHOW BUILD - Show binary build metadata.", "Usage: SHOW BUILD", "Aliases: SH BUILD", "Notes:",
+                 "  Shows the build version, release tag, and Go version when available."]
+        query = "HELP SH BUILD EXTRA"
+        for echo in (False, True):
+            raw = routing_help_wire(lines, query, echo=echo)
+            self.assertEqual(driver.decode_help_routing(raw, query, contract, 10, 30, echo), (lines, False))
+        faults = [["SHOW - See SHOW subcommands."] + lines[1:],
+                  [lines[0], "Usage: SHOW", *lines[2:]],
+                  [lines[0], lines[1], "       SHOW BUILDX", *lines[2:]],
+                  [line for line in lines if not line.startswith("Aliases:")],
+                  [*lines[:-1], "Aliases: SH BUILDX", lines[-1]],
+                  [*lines[:-1], "Unknown help topic: SH BUILD EXTRA", lines[-1]],
+                  [*lines[:-1], query, lines[-1]], [query, *lines], lines + ["TRAILING CONTENT"],
+                  [*lines[:-1], "  " + "X" * 77, lines[-1]], [*lines[:-1], "  invalid\x01note", lines[-1]],
+                  lines[:-1]]
+        for fault in faults:
+            with self.subTest(fault=fault), self.assertRaises(ValueError):
+                driver.decode_help_routing(routing_help_wire(fault, query), query, contract, 10, 30, True)
+        for raw in (routing_help_wire(lines, query).replace(b"\r\n", b"\n"),
+                    routing_help_wire(lines, query)[:-2], b"\r\n" * 32769 + routing_help_wire(lines, query)):
+            with self.assertRaises(ValueError):
+                driver.decode_help_routing(raw, query, contract, 10, 30, True)
+        with self.assertRaises(ValueError):
+            driver.decode_help_routing(routing_help_wire(lines, query), query, contract, 10, 30, False)
+        bye = ["BYE - Disconnect from the cluster.", "Usage: BYE", "Aliases: QUIT, EXIT"]
+        self.assertEqual(driver.decode_help_routing(routing_help_wire(bye, "HELP EXIT EXTRA", echo=False),
+                         "HELP EXIT EXTRA", driver.help_route_contract("BYE", "cc"), 10, 30), (bye, False))
+        with self.assertRaises(ValueError):
+            driver.decode_help_routing(routing_help_wire([*bye[:-1], "Aliases: QUIT, EXIT, SH BYE"], "HELP EXIT EXTRA", echo=False),
+                                       "HELP EXIT EXTRA", driver.help_route_contract("BYE", "cc"), 10, 30)
+
+    def test_help_routing_long_response_requires_conditional_complete_counted_pause_footer(self):
+        query = "HELP PASS BAND 40 EXTRA"
+        lines = ["PASS - Allow filter matches.", "Usage: PASS <type> <list>", "Notes:"] + ["  Literal contract note."] * 7
+        contract = driver.help_route_contract("PASS", "go")
+        raw = routing_help_wire(lines, query, pause=True)
+        self.assertEqual(driver.decode_help_routing(raw, query, contract, 10, 30, True), (lines, True))
+        for fault in (routing_help_wire(lines, query), raw.replace(b"Missed spots are not replayed.\r\n", b""),
+                      routing_help_wire(lines, query, pause=True, count=11), routing_help_wire(lines, query, pause=True, seconds=29),
+                      routing_help_wire(lines[:3], query, pause=True), raw + b"TRAILING\r\n",
+                      routing_help_wire(lines + ["Missed spots are not replayed."], query, pause=True),
+                      routing_help_wire(["REJECT - Block filter matches.", *lines[1:]], query, pause=True)):
+            with self.assertRaises(ValueError):
+                driver.decode_help_routing(fault, query, contract, 10, 30, True)
+        # Leading body blanks count as rendered rows; they do not satisfy the header.
+        blank_raw = routing_help_wire(["", *lines], query, pause=True)
+        self.assertEqual(driver.decode_help_routing(blank_raw, query, contract, 10, 30, True), (lines, True))
+
+    def test_help_routing_independent_topics_cover_source_heads_and_preserve_explicit_unknowns(self):
+        shared = {"SH", "SH BUILD EXTRA", "SH OWN EXTRA", "SH DXCC DL EXTRA", "SH MYDX 1 MODE COMMENT",
+                  "SH DX W6ABC 1", "SHOW/PROP DL 20 CW", "SH/PROP DL 20 CW", "SET SOLAR OFF EXTRA",
+                  "SAVE PRESET ROUTE18 EXTRA", "LOAD PRESET ROUTE18 EXTRA", "LIST PRESET ROUTE18 EXTRA",
+                  "DELETE PRESET ROUTE18 EXTRA", "SHOW/FILTER FULL EXTRA", "SH/FILTER COMMENT EXTRA",
+                  "VALIDATE YAML CONFIG EXTRA"}
+        negatives = {"SH FILTER", "SH SETTINGS", "SH DEDUPE", "SH HOLD", "SHOW/MYDX 1", "SHOW BUILDX",
+                     "SH OWNX", "SHOW DXCCX DL", "GET YAML CONFIGX ID ROUTE18", "SET SOLARX 30"}
+        for dialect in ("go", "cc"):
+            rows = driver.help_routing_topics(dialect)
+            topics = dict(rows)
+            self.assertEqual(len(rows), len(topics))
+            self.assertTrue(shared <= topics.keys())
+            self.assertTrue(negatives <= {topic for topic, key in rows if key is None})
+            self.assertEqual(topics["SH DXCC DL EXTRA"], "SHOW DXCC")
+            for resource in ("FILTER", "SETTINGS", "CONFIG", "CAPABILITIES"):
+                self.assertEqual(topics["GET YAML " + resource + " SCHEMA 4 ID ROUTE18"], "GET YAML " + resource)
+            for verb in ("PUT", "PATCH"):
+                for resource in ("FILTER", "SETTINGS", "CONFIG"):
+                    self.assertEqual(topics[verb + " YAML " + resource + " EXTRA"], verb + " YAML " + resource)
+            for topic in negatives:
+                query = "HELP " + topic
+                contract = ("Unknown help topic: " + topic, (), "Type HELP for available commands.", ())
+                lines = [contract[0], contract[2]]
+                self.assertEqual(driver.decode_help_routing(routing_help_wire(lines, query, echo=False), query,
+                                                           contract, 10, 30), (lines, False))
+                with self.assertRaises(ValueError):
+                    driver.decode_help_routing(routing_help_wire(["SHOW - See SHOW subcommands.", "Usage: SHOW"], query, echo=False),
+                                               query, contract, 10, 30)
+        cc = dict(driver.help_routing_topics("cc"))
+        for topic in ("SET/CW_ALIAS EXTRA", "SET/COMMENT EXTRA", "SET/BAND EXTRA", "SET/MODE EXTRA"):
+            self.assertEqual(cc[topic], "SET/<MODE>")
+        for topic in ("SET/NOCW_ALIAS EXTRA", "SET/NOCOMMENT EXTRA"):
+            self.assertEqual(cc[topic], "SET/NO<MODE>")
+        for topic in ("SET/TEST_MODE EXTRA", "SET/NOTEST_MODE EXTRA", "SET/UNLISTED EXTRA"):
+            self.assertIsNone(cc[topic])
+        for topic in ("SET/NOFILTER EXTRA", "SET/ANN EXTRA", "SET/NOANN EXTRA"):
+            self.assertEqual(cc[topic], topic.split()[0])
+        go = dict(driver.help_routing_topics("go"))
+        self.assertIsNone(go["SHOW/DX 1"])
+        self.assertIsNone(go["SH/DX 1"])
+        self.assertEqual(driver.help_route_contract("PASS", "cc")[0], "SET/FILTER - Allow filter matches (CC dialect).")
+        self.assertEqual(driver.help_route_contract("REJECT", "cc")[0], "UNSET/FILTER - Block filter matches (CC dialect).")
+
+    def test_help_routing_receipt_completes_and_flushes_before_strict_correlated_barrier(self):
+        class Receipt(io.BytesIO):
+            flushed = False
+
+            def flush(self):
+                self.flushed = True
+
+        query = "HELP SH BUILD EXTRA"
+        lines = ["SHOW BUILD - Show binary build metadata.", "Usage: SHOW BUILD", "Aliases: SH BUILD", "Notes:",
+                 "  Shows the build version, release tag, and Go version when available."]
+        raw = routing_help_wire(lines, query)
+        command = b"GET YAML CONFIG SCHEMA 4 ID HELP18\r\n"
+        document = dict(resource="CONFIG", schema_version=4, request_id="HELP18", configuration={}, status={}, revision="r18")
+        for prefix in (command, b"\r\n" + command, command + b"LEAK\r\n", b"LEAK\r\n" + command,
+                       command + command, b"\n" + command, command.replace(b"HELP18", b"OTHER"), b"\r\n" * 32769 + command):
+            current = mock.Mock()
+            current.call = "VE3ABC-70073"
+            current.reader.line.side_effect = raw.splitlines(keepends=True)
+            current.reader.buffer = b""
+            current.reader.remote_echo = True
+            current.suite.identifier.return_value = "HELP18"
+            current.suite.log = Receipt()
+            current.frame.return_value = copy.deepcopy(document), prefix
+
+            def sent(text):
+                if text.startswith("GET "):
+                    self.assertTrue(current.suite.log.flushed)
+                    self.assertTrue(current.suite.log.getvalue().endswith(raw))
+                    self.assertEqual(current.reader.line.call_count, len(raw.splitlines()))
+
+            current.send.side_effect = sent
+            if prefix in (command, b"\r\n" + command):
+                self.assertEqual(driver.help_routing_readback(current, "SH BUILD EXTRA", driver.help_route_contract("SHOW BUILD", "go"),
+                                                           10, 30), (document, False))
+                current.frame.assert_called_once_with("CONFIG", "HELP18", 4, command.decode().rstrip("\r\n"))
+            else:
+                with self.assertRaises(ValueError):
+                    driver.help_routing_readback(current, "SH BUILD EXTRA", driver.help_route_contract("SHOW BUILD", "go"), 10, 30)
+        for field, value in (("resource", "FILTER"), ("schema_version", True), ("schema_version", "4"),
+                             ("request_id", "OTHER"), ("configuration", []), ("status", []), ("revision", ""), ("error", {})):
+            current.reader.line.reset_mock()
+            current.reader.line.side_effect = raw.splitlines(keepends=True)
+            changed = copy.deepcopy(document)
+            changed[field] = value
+            current.frame.return_value = changed, command
+            with self.assertRaises(ValueError):
+                driver.help_routing_readback(current, "SH BUILD EXTRA", driver.help_route_contract("SHOW BUILD", "go"), 10, 30)
+
+    def test_help_routing_sequential_short_terminal_requires_footer_when_row_threshold_is_met(self):
+        query = "HELP SH BUILD EXTRA"
+        lines = ["SHOW BUILD - Show binary build metadata.", "Usage: SHOW BUILD", "Aliases: SH BUILD", "Notes:",
+                 *["  Independent filler note."] * 5,
+                 "  Shows the build version, release tag, and Go version when available."]
+        raw = routing_help_wire(lines, query, pause=True)
+        command = b"GET YAML CONFIG SCHEMA 4 ID HELP18\r\n"
+        document = dict(resource="CONFIG", schema_version=4, request_id="HELP18", configuration={}, status={}, revision="r18")
+        current = mock.Mock()
+        current.call = "VE3ABC-70074"
+        current.reader.line.side_effect = raw.splitlines(keepends=True)
+        current.reader.buffer = b""
+        current.reader.remote_echo = True
+        current.suite.identifier.return_value = "HELP18"
+        current.suite.log = io.BytesIO()
+        current.frame.return_value = document, command
+
+        def sent(text):
+            if text.startswith("GET "):
+                self.assertIn(raw, current.suite.log.getvalue())
+                self.assertEqual(current.reader.line.call_count, len(raw.splitlines()))
+
+        current.send.side_effect = sent
+        self.assertEqual(driver.help_routing_readback(current, "SH BUILD EXTRA", driver.help_route_contract("SHOW BUILD", "cc"), 10, 30),
+                         (document, True))
+        for error in (EOFError("incomplete"), TimeoutError("stalled"), ValueError("receive buffer limit")):
+            current.reader.line.side_effect = [raw.splitlines(keepends=True)[0], error]
+            current.reader.buffer = b"PENDING"
+            current.suite.log = io.BytesIO()
+            current.send.reset_mock()
+            current.frame.reset_mock()
+            with self.assertRaises(type(error)):
+                driver.help_routing_readback(current, "SH BUILD EXTRA", driver.help_route_contract("SHOW BUILD", "cc"), 10, 30)
+            self.assertTrue(current.suite.log.getvalue().endswith(raw.splitlines(keepends=True)[0] + b"PENDING"))
+            current.frame.assert_not_called()
+            self.assertEqual(current.send.call_count, 1)
+        current.reader.line.side_effect = [b"X" * 65537]
+        current.reader.buffer = b"UNRETURNED"
+        current.suite.log = io.BytesIO()
+        current.send.reset_mock()
+        with self.assertRaises(ValueError):
+            driver.help_routing_readback(current, "SH BUILD EXTRA", driver.help_route_contract("SHOW BUILD", "cc"), 10, 30)
+        receipt = current.suite.log.getvalue().split(b"\n", 2)[2]
+        self.assertTrue(receipt.startswith(b"X" * 65536))
+        self.assertIn(b"[HELP routing receipt truncated at 65536 bytes]", receipt)
+        self.assertNotIn(b"UNRETURNED", receipt)
+        self.assertEqual(current.send.call_count, 1)
+
+    def test_help_routing_preserves_every_preference_owner_and_only_allows_deliberate_pause(self):
+        session = dict(callsign="VE3ABC-70073", diagnostic_comments="MODE", temporary_defaults=False, suppressed_spots=0,
+                       pause_active=False, pause_pending_delivery=False, pause_remaining_seconds=0)
+        before = dict(configuration=dict(filters=dict(comments=["ROUTE18 GO"])), revision="r18",
+                      status=dict(configured=dict(grid="FN31PR"), effective=dict(dedupe_policy="SLOW"),
+                                  preset=dict(associated=True, name="HELP18GO", modified=False), session=session,
+                                  server=dict(auto_read_pause_seconds=30), min_snr=dict(configured_count=1), comments=dict(pass_count=1)))
+        record, library = mock.Mock(), mock.Mock()
+        record.read_bytes.return_value, library.read_bytes.return_value = b"USER BYTES", b"PRESET BYTES"
+        driver.require_help_routing_state(before, copy.deepcopy(before), record, b"USER BYTES", library, b"PRESET BYTES", False)
+        long = copy.deepcopy(before)
+        long["status"]["session"].update(pause_active=True, pause_remaining_seconds=30)
+        driver.require_help_routing_state(before, long, record, b"USER BYTES", library, b"PRESET BYTES", True)
+        for owner, field, value in (("document", "configuration", {}), ("document", "revision", "changed"),
+                                    ("status", "configured", {}), ("status", "effective", {}), ("status", "preset", {}),
+                                    ("status", "server", {}), ("status", "min_snr", {}), ("status", "comments", {}),
+                                    ("session", "diagnostic_comments", "OFF"), ("session", "callsign", "VE3ABC"),
+                                    ("session", "temporary_defaults", True), ("session", "suppressed_spots", 1),
+                                    ("session", "pause_pending_delivery", True), ("session", "pause_active", True),
+                                    ("session", "pause_active", 0), ("session", "pause_remaining_seconds", False)):
+            after = copy.deepcopy(before)
+            target = after if owner == "document" else after["status"] if owner == "status" else after["status"]["session"]
+            target[field] = value
+            with self.assertRaises(ValueError):
+                driver.require_help_routing_state(before, after, record, b"USER BYTES", library, b"PRESET BYTES", False)
+        with self.assertRaises(ValueError):
+            driver.require_help_routing_state(before, copy.deepcopy(before), record, b"USER BYTES", library, b"PRESET BYTES", True)
+        for handle in (record, library):
+            original = handle.read_bytes.return_value
+            handle.read_bytes.return_value = b"CHANGED"
+            with self.assertRaises(ValueError):
+                driver.require_help_routing_state(before, copy.deepcopy(before), record, b"USER BYTES", library, b"PRESET BYTES", False)
+            handle.read_bytes.return_value = original
+
+    def test_help_routing_fresh_preferences_require_every_immediately_saved_setting(self):
+        expected = dict(settings=dict(dialect="cc", grid="FN31PR", noise_class="URBAN", dedupe_policy="SLOW",
+                                      path_min_observation_count=30, solar_summary_minutes=30))
+        record = mock.Mock()
+        record.read_bytes.return_value = driver.yaml.safe_dump(expected["settings"]).encode()
+        document = dict(configuration=copy.deepcopy(expected))
+        with mock.patch.object(driver, "require_cc_saved_state") as previous:
+            driver.require_help_routing_saved(document, expected, record)
+            previous.assert_called_once_with(document, expected, record)
+            for field in expected["settings"]:
+                changed = copy.deepcopy(expected["settings"])
+                del changed[field]
+                record.read_bytes.return_value = driver.yaml.safe_dump(changed).encode()
+                with self.assertRaises(ValueError):
+                    driver.require_help_routing_saved(document, expected, record)
+            for field, value in (("path_min_observation_count", True), ("solar_summary_minutes", "30"),
+                                 ("dedupe_policy", "FAST"), ("noise_class", "QUIET")):
+                changed = copy.deepcopy(expected["settings"])
+                changed[field] = value
+                record.read_bytes.return_value = driver.yaml.safe_dump(changed).encode()
+                with self.assertRaises(ValueError):
+                    driver.require_help_routing_saved(document, expected, record)
+
     def test_cc_help_decoder_requires_complete_bounded_printable_response_and_count(self):
         lines = cc_help_literal("SET/FILTER")
         raw = cc_help_wire(lines)

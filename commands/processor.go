@@ -1,5 +1,5 @@
 // Package commands implements the minimal command processor used by telnet
-// sessions. It focuses on HELP/SHOW/DX/SHOW MYDX and defers filter manipulation
+// sessions. It focuses on HELP, SHOW DX and SHOW MYDX and defers filter manipulation
 // to the telnet package so both layers stay small and easy to reason about.
 package commands
 
@@ -192,7 +192,7 @@ func (p *Processor) ProcessCommand(cmd string) string {
 }
 
 // ProcessCommandForClient parses a command with client context for DX posting and filtered history.
-// Key aspects: Routes DX commands, SHOW/DX, and SHOW/MYDX with optional filter.
+// Key aspects: Routes DX commands, SHOW DX, and SHOW MYDX with optional filter.
 // Upstream: Telnet client command loop with callsign context.
 // Downstream: handleDX, handleHelp, handleShow.
 func (p *Processor) ProcessCommandForClient(cmd string, spotter string, spotterIP string, filterFn func(*spot.Spot) bool, dialect string) string {
@@ -279,7 +279,7 @@ func (p *Processor) ProcessCommandForClient(cmd string, spotter string, spotterI
 func (p *Processor) handleHelp(dialect string, topic string) string {
 	dialect = normalizeDialectString(dialect)
 	catalog := buildHelpCatalog(dialect, p.dedupeHelp, p.whoSpotsMeHelp)
-	normalized := normalizeHelpTopic(dialect, topic)
+	normalized := catalog.normalizeTopic(dialect, topic)
 	if normalized == "FILTERS" {
 		return strings.Join(filterReferenceHelpLines(dialect), "\n") + "\n"
 	}
@@ -334,7 +334,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 	helpLines := helpEntryLines(
 		"HELP - Show command list or command-specific help.",
 		[]string{"HELP [command]"},
-		nil,
+		[]string{"H"},
 		[]string{
 			"Without arguments, lists commands for the active dialect.",
 			"With a command, shows detailed usage.",
@@ -370,7 +370,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"SHOW MYDX [selector] [count] COMMENT <phrase>",
 			"SHOW MYDX [selector] [count] BAND <list> MODE <list>",
 		},
-		nil,
+		[]string{"SH MYDX"},
 		[]string{
 			"History is pulled from stored spots (not live buffer).",
 			"Count range is 1-250 (default 50).",
@@ -393,7 +393,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 	showDXCCLines := helpEntryLines(
 		"SHOW DXCC - Look up DXCC/ADIF and zones.",
 		[]string{"SHOW DXCC <prefix|callsign>"},
-		nil,
+		[]string{"SH DXCC"},
 		[]string{
 			"Uses the CTY database to resolve ADIF, country, and zones.",
 			"Returns other prefixes for the same country when available.",
@@ -417,7 +417,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 	showBuildLines := helpEntryLines(
 		"SHOW BUILD - Show binary build metadata.",
 		[]string{"SHOW BUILD"},
-		nil,
+		[]string{"SH BUILD"},
 		[]string{
 			"Shows the build version, release tag, and Go version when available.",
 		},
@@ -427,7 +427,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 	showOwnLines := helpEntryLines(
 		"SHOW OWN - Show your login and baseline own call.",
 		[]string{"SHOW OWN"},
-		nil,
+		[]string{"SH OWN"},
 		[]string{
 			"Numeric SSIDs are ignored for own-call features.",
 		},
@@ -542,7 +542,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 	passNearbyLines := helpEntryLines(
 		"PASS NEARBY - Toggle nearby filtering.",
 		[]string{"PASS NEARBY ON|OFF"},
-		nil,
+		[]string{"REJECT NEARBY"},
 		[]string{
 			"Requires SET GRID. Uses H3 L1 on 160/80/60m and L2 on all other bands.",
 			"While usable NEARBY is active, spot delivery uses the least-suppressive available dedupe lane.",
@@ -620,7 +620,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 		showLines := helpEntryLines(
 			"SHOW - See SHOW subcommands.",
 			[]string{"SHOW MYDX [count|selector]", "SHOW DXCC <prefix|callsign>", "SHOW PROP <call|prefix|grid> [band] [mode]", "SHOW BUILD", "SHOW OWN"},
-			nil,
+			[]string{"SH"},
 			[]string{
 				"Use HELP SHOW/DX for the history alias.",
 			},
@@ -637,7 +637,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 				"SHOW/DX [selector] [count] COMMENT <phrase>",
 				"SHOW/DX [selector] [count] BAND <list> MODE <list>",
 			},
-			[]string{"SH/DX"},
+			[]string{"SH/DX", "SHOW DX", "SH DX"},
 			[]string{
 				"Count range is 1-250 (default 50).",
 				"Full calls select exact normalized DX identities; prefixes select entities.",
@@ -795,7 +795,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 		showLines := helpEntryLines(
 			"SHOW - See SHOW subcommands.",
 			[]string{"SHOW DX [count|selector]", "SHOW MYDX [count|selector]", "SHOW DXCC <prefix|callsign>", "SHOW PROP <call|prefix|grid> [band] [mode]", "SHOW BUILD", "SHOW OWN"},
-			nil,
+			[]string{"SH"},
 			[]string{
 				"Use HELP SHOW DX for the history alias.",
 			},
@@ -945,156 +945,8 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 	installConfigurationHelp(&catalog, dialect)
 	installCommentHelp(&catalog)
 	installConcreteFilterHelp(&catalog, dialect)
+	installHelpRoutingAliases(&catalog, dialect)
 	return catalog
-}
-
-func normalizeHelpTopic(dialect string, topic string) string {
-	upper := strutil.NormalizeUpper(topic)
-	if upper == "" {
-		return ""
-	}
-	upper = strings.Join(strings.Fields(upper), " ")
-
-	switch {
-	case upper == "PASS COMMENT" || strings.HasPrefix(upper, "PASS COMMENT "):
-		return "PASS COMMENT"
-	case upper == "REJECT COMMENT" || strings.HasPrefix(upper, "REJECT COMMENT "):
-		return "REJECT COMMENT"
-	case upper == "REMOVE PASS COMMENT" || strings.HasPrefix(upper, "REMOVE PASS COMMENT "):
-		return "REMOVE PASS COMMENT"
-	case upper == "REMOVE REJECT COMMENT" || strings.HasPrefix(upper, "REMOVE REJECT COMMENT "):
-		return "REMOVE REJECT COMMENT"
-	case upper == "RESET FILTER COMMENT" || strings.HasPrefix(upper, "RESET FILTER COMMENT "):
-		return "RESET FILTER COMMENT"
-	case upper == "SHOW FILTER COMMENT" || upper == "SHOW/FILTER COMMENT" || upper == "SH/FILTER COMMENT":
-		return "SHOW FILTER COMMENT"
-	case strings.HasPrefix(upper, "PASS NEARBY"):
-		return "PASS NEARBY"
-	case strings.HasPrefix(upper, "SHOW BUILD"):
-		return "SHOW BUILD"
-	case strings.HasPrefix(upper, "SHOW OWN"):
-		return "SHOW OWN"
-	case strings.HasPrefix(upper, "SHOW PROP"):
-		return "SHOW PROP"
-	case strings.HasPrefix(upper, "SHOW/PROP"):
-		return "SHOW PROP"
-	case strings.HasPrefix(upper, "SH PROP"):
-		return "SHOW PROP"
-	case strings.HasPrefix(upper, "SH/PROP"):
-		return "SHOW PROP"
-	case strings.HasPrefix(upper, "SHOW DXCC"):
-		return "SHOW DXCC"
-	case strings.HasPrefix(upper, "WHOSPOTSME"):
-		return "WHOSPOTSME"
-	case upper == "PAUSE" || strings.HasPrefix(upper, "PAUSE "):
-		return "PAUSE"
-	case strings.HasPrefix(upper, "SHOW HOLD"):
-		return "SHOW HOLD"
-	case strings.HasPrefix(upper, "RESUME"):
-		return "RESUME"
-	case strings.HasPrefix(upper, "SHOW MYDX"):
-		return "SHOW MYDX"
-	case strings.HasPrefix(upper, "SHOW DEDUPE"):
-		return "SHOW DEDUPE"
-	case strings.HasPrefix(upper, "SET DEDUPE"):
-		return "SET DEDUPE"
-	case strings.HasPrefix(upper, "SET DIAG"):
-		return "SET DIAG"
-	case strings.HasPrefix(upper, "SET GRID"):
-		return "SET GRID"
-	case strings.HasPrefix(upper, "SET NOISE"):
-		return "SET NOISE"
-	case strings.HasPrefix(upper, "SET PATHSAMPLES"):
-		return "SET PATHSAMPLES"
-	case upper == "PASS MINSNR" || strings.HasPrefix(upper, "PASS MINSNR "):
-		return "PASS MINSNR"
-	case upper == "REJECT MINSNR" || strings.HasPrefix(upper, "REJECT MINSNR "):
-		return "REJECT MINSNR"
-	case strings.HasPrefix(upper, "RESET FILTER"):
-		return "RESET FILTER"
-	case strings.HasPrefix(upper, "DIALECT"):
-		return "DIALECT"
-	case upper == "BYE" || upper == "QUIT" || upper == "EXIT":
-		return "BYE"
-	case upper == "H":
-		return "HELP"
-	case upper == "HELP":
-		return "HELP"
-	case upper == "DX":
-		return "DX"
-	case upper == "SHOW":
-		return "SHOW"
-	case upper == "NEARBY":
-		return "PASS NEARBY"
-	}
-
-	if dialect == "cc" {
-		if strings.HasPrefix(upper, "SHOW FILTER") {
-			return "SHOW/FILTER"
-		}
-		if strings.HasPrefix(upper, "SHOW DX") || upper == "SH DX" {
-			return "SHOW/DX"
-		}
-		if strings.HasPrefix(upper, "SHOW/DX") || upper == "SH/DX" {
-			return "SHOW/DX"
-		}
-		if strings.HasPrefix(upper, "SHOW/FILTER") || upper == "SH/FILTER" {
-			return "SHOW/FILTER"
-		}
-		if strings.HasPrefix(upper, "SET/FILTER DXBM") {
-			return "SET/FILTER"
-		}
-		if strings.HasPrefix(upper, "SET/FILTER ") || upper == "SET/FILTER" {
-			return "SET/FILTER"
-		}
-		if strings.HasPrefix(upper, "UNSET/FILTER") {
-			return "UNSET/FILTER"
-		}
-		if strings.HasPrefix(upper, "SET/NOFILTER") {
-			return "SET/NOFILTER"
-		}
-		if strings.HasPrefix(upper, "SET/NO") {
-			mode := strings.TrimPrefix(upper, "SET/NO")
-			if isCCHelpMode(mode) {
-				return "SET/NO<MODE>"
-			}
-		}
-		if strings.HasPrefix(upper, "SET/") && !strings.Contains(upper, "/NO") {
-			mode := strings.TrimPrefix(upper, "SET/")
-			if isCCHelpMode(mode) {
-				return "SET/<MODE>"
-			}
-		}
-		return upper
-	}
-
-	if strings.HasPrefix(upper, "PASS ") {
-		return "PASS"
-	}
-	if upper == "PASS" {
-		return "PASS"
-	}
-	if strings.HasPrefix(upper, "REJECT ") {
-		return "REJECT"
-	}
-	if upper == "REJECT" {
-		return "REJECT"
-	}
-	if strings.HasPrefix(upper, "SHOW FILTER") {
-		return "SHOW FILTER"
-	}
-	if strings.HasPrefix(upper, "SHOW DX") {
-		return "SHOW DX"
-	}
-	if upper == "SH DX" {
-		return "SHOW DX"
-	}
-
-	return upper
-}
-
-func isCCHelpMode(mode string) bool {
-	return spot.IsCCShortcutMode(strutil.NormalizeUpper(mode))
 }
 
 func helpEntryLines(summary string, usage []string, aliases []string, notes []string) []string {
@@ -1725,7 +1577,7 @@ func (p *Processor) handleDX(fields []string, spotter string, spotterIP string) 
 }
 
 // Purpose: Route SHOW subcommands with optional filter predicate.
-// Key aspects: Supports SHOW/DX, SHOW/MYDX, and SHOW DXCC lookups.
+// Key aspects: Supports SHOW DX, SHOW MYDX, and SHOW DXCC lookups.
 // Upstream: ProcessCommandForClient (SHOW/SH).
 // Downstream: handleShowMYDX, handleShowDXCC.
 func (p *Processor) handleShow(args []string, filterFn func(*spot.Spot) bool, dialect string, spotter string) string {

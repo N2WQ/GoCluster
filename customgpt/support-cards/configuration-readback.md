@@ -17,6 +17,12 @@ command/error artifact that distinguishes the next step.
 
 ## Must Include
 
+- HELP accepts source-verified aliases and command arguments without executing
+  them: SH BUILD/OWN/DXCC/MYDX/PROP, shared CC PASS/REJECT and both-dialect slash
+  filter readbacks. The longest complete head wins; unsupported names remain
+  unknown. Fixed CC shortcuts take precedence over loaded mode aliases. See
+  [TSR-0065](../../docs/troubleshooting/TSR-0065-help-routing-alias-coverage.md).
+
 - CC HELP groups ordinary lists, switches and special grammar. Shared
   PASS/REJECT forms also execute in CC. COMMENT has no SET/UNSET alias; MINSNR
   requires modes plus a minimum or the verb's clear sentinel; NEARBY follows
