@@ -4974,3 +4974,30 @@ backend cost stability, production capacity or geographic accuracy.
 Lead final source/test review found no production change or material test gap.
 TSR-0054 and the original checkpoint 08 wording distinguish backend-specific
 history from this portable qualification. No durable decision changed.
+
+### R3 - Portable blocked-parent output assertions
+
+Only prop_report tests changed. The two regular-file-parent cases accept
+errors matching absence or ENOTDIR; ordinary absent-output checks retain
+IsNotExist. Nine literal classification controls reject nil, permission, I/O
+and invalid-argument errors. Actual-main tests verify the unchanged regular
+blocker and its original bytes, nonzero causal failure and no success stdout.
+JSON-parent failure has neither output; report-parent failure retains the
+independently parsed earlier JSON and no Markdown. Existing success,
+directory-parent, hard-input, closed-output and optional local-request controls
+remain intact. Production output order, status and fallback are unchanged.
+
+Observed native Windows complete prop_report checks passed
+(`v4-r3-targeted.log`). The full affected-package Linux suites (commands,
+telnet, filter and cmd/prop_report) passed on Go 1.27.1 with CGO_ENABLED=1 and 0
+from isolated staged tree `54bc4c13c2f373ca5418055e285b0db51c95d7f9`.
+`v4-final-linux.log` and `v4-final-linux-qualification.json` reconcile all eight
+package executions, all 23 allocation cases per mode, 380 DX ASCII cases and
+12 DX boundary cases per mode, and all ten prop_report hard outcomes/nine
+classification controls per mode. These are actual local fixtures; no external
+LLM or production service was used. Artifacts are under `.tmp/command-fixes`.
+
+Lead final review confirmed that the error allowance is limited to the intended
+two cases and that the saved JSON/status/order witnesses remain strict.
+TSR-0073 records the cross-platform assertion cause. No durable decision changed;
+existing support routing to that record remains applicable.
