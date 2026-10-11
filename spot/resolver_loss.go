@@ -45,18 +45,24 @@ func (r *SignalResolver) attachKeyGeneration(st *resolverKeyState) {
 	r.snapshots.Store(st.key, st.cell)
 }
 
-func (r *SignalResolver) retireKey(states map[ResolverSignalKey]*resolverKeyState, key ResolverSignalKey, st *resolverKeyState) {
+// idleDeadline distinguishes physical process-idle retirement from observation
+// TTL/empty cleanup. Reads never call this owner path or change its counters.
+func (r *SignalResolver) retireKey(states map[ResolverSignalKey]*resolverKeyState, key ResolverSignalKey, st *resolverKeyState, idleDeadline bool) {
+	retired := false
 	if st != nil && st.cell != nil {
-		st.cell.terminal.Store(true)
+		retired = !st.cell.terminal.Swap(true)
 		st.cell.snapshot.Store(nil)
 	} else if value, ok := r.snapshots.Load(key); ok {
 		if cell, valid := value.(*resolverSnapshotCell); valid && cell != nil {
-			cell.terminal.Store(true)
+			retired = !cell.terminal.Swap(true)
 			cell.snapshot.Store(nil)
 		}
 	}
 	delete(states, key)
 	r.snapshots.Delete(key)
+	if idleDeadline && retired {
+		r.lossIdleRetirements.Add(1)
+	}
 }
 
 func (r *SignalResolver) lookupSnapshot(key ResolverSignalKey) (ResolverSnapshot, *resolverSnapshotCell, bool) {
@@ -88,7 +94,8 @@ func (r *SignalResolver) cellCurrent(cell *resolverSnapshotCell) bool {
 	return !cell.terminal.Load()
 }
 
-func recordResolverCapLoss(st *resolverKeyState, observedAt time.Time) {
+func (r *SignalResolver) recordResolverCapLoss(st *resolverKeyState, observedAt time.Time) {
+	r.capLossDiscards.Add(1)
 	if !st.cell.lossAffected.Load() {
 		st.lossMinAt, st.lossMaxAt = observedAt, observedAt
 	} else {
@@ -118,6 +125,9 @@ func (r *SignalResolver) publishKeySnapshot(st *resolverKeyState, snapshot Resol
 	snapshot.lossMinAt, snapshot.lossMaxAt, snapshot.lossWindow = st.lossMinAt, st.lossMaxAt, st.recencyWindow
 	snapshot.ordinaryWinner, snapshot.ordinaryState = st.ordinaryWinner, st.ordinaryState
 	snapshot.EvidenceLoss = resolverSnapshotLossEligible(snapshot, now)
+	if previous := st.cell.snapshot.Load(); previous != nil && previous.EvidenceLoss && !snapshot.EvidenceLoss {
+		r.lossPublicationRecoveries.Add(1)
+	}
 	r.publishSnapshot(st.key, snapshot)
 }
 

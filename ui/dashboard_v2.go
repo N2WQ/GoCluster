@@ -44,7 +44,7 @@ const (
 	placeholderNetwork            = "[lightgray]Telnet[-]: -- clients   [lightgray]Drops[-]: Q-- C-- W--"
 	placeholderValidation         = "CTY drop: --"
 	placeholderUnlicensed         = "Unlicensed drop: --"
-	placeholderCorrected          = "Corrected: --"
+	placeholderCorrected          = "Call decisions: --"
 	placeholderHarmonics          = "Harmonics: --"
 	placeholderEvents             = "No events yet."
 	streamPanelMaxLines           = 200
@@ -216,7 +216,7 @@ func NewDashboardV2(cfg config.UIConfig, enable bool) *DashboardV2 {
 
 	d.pipelineHdr = newBoxedTextView("Overview")
 	d.pipelineQuality = newBoxedTextView("Pipeline Quality")
-	d.pipelineCorrected = newStreamPanelWithOptions("Corrected", eventBufferOpts, true)
+	d.pipelineCorrected = newStreamPanelWithOptions("Call decisions", eventBufferOpts, true)
 	d.pipelineHarmonics = newStreamPanelWithOptions("Harmonics", eventBufferOpts, true)
 	d.seedPipelinePlaceholders()
 	d.pipelineRoot = tview.NewFlex().SetDirection(tview.FlexRow).
@@ -1115,7 +1115,10 @@ SCROLLING
 PIPELINE METRICS (PLAIN ENGLISH)
   Primary Dedupe: Duplicate suppression at the main ingest gate.
   Secondary F/M/S: Broadcast dedupe output by policy (fast/med/slow).
-  Corrections/Unlicensed/Harmonics/Reputation: Cumulative totals since process start.
+  Call decisions: corrected, rejected, or retained evaluations.
+    Shares describe current support. S uses separate recognition.
+  Corrections: accepted call changes since process start.
+  Unlicensed/Harmonics/Reputation: cumulative totals since process start.
   Stabilizer Glyph:
     average stabilizer delay turns by glyph (ordered ? / S / P / V / C).
 `, accentTag, accentReset, accentTag, accentReset, accentTag, accentReset, accentTag, accentReset, accentTag, accentReset)))

@@ -77,6 +77,21 @@ cannot reuse retired generations; fresh evidence can qualify independently.
 An already accepted identity is retained during a later loss evaluation.
 See [ADR-0292](../docs/decisions/ADR-0292-resolver-cap-loss-authority.md).
 
+The dashboard's **Call decisions** pane and log fallback report evaluation
+outcomes: corrected, rejected, or retained. The named current identity gets its
+own support share and basis; unavailable loss evidence has no percentage.
+Recognition is separate and can later provide S. Events precede delivery and do
+not claim a final glyph or client receipt; suppression is explicit. Healthy
+unchanged leaders stay quiet. Accepted correction totals and confirmed temporal
+history count actual identity changes, not these evaluation events.
+
+Resolver diagnostics count discarded observation incidences, owner publication
+recoveries and physical idle retirements. Query-only expiry increments neither
+recovery nor retirement. The protected-key gauge describes readable owner
+publications, not query-age eligibility; logical idle denial can precede physical
+cleanup. See [ADR-0293](../docs/decisions/ADR-0293-correction-decision-diagnostics.md)
+for exact units.
+
 ### Numerical inputs and configured assets
 
 Reliability files preserve finite clamping to 0..1 and existing unrelated

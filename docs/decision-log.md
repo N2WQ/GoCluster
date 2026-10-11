@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0293 | Correction Decision Diagnostics | Accepted | 2026-10-11 | pipeline events, resolver metrics, replay, UI | Refines ADR-0040 stream labels and ADR-0292 diagnostics | none | `docs/decisions/ADR-0293-correction-decision-diagnostics.md` |
 | ADR-0292 | Resolver Cap-Loss Authority | Accepted | 2026-10-11 | resolver caps, immutable publication, temporal lifecycles | Refines ADR-0280/0282 authority | none | `docs/decisions/ADR-0292-resolver-cap-loss-authority.md` |
 | ADR-0291 | Correction SNR Presence And Domain | Accepted | 2026-10-11 | resolver evidence, confusion model, replay CSV | Refines ADR-0036 report metadata and model domain | none | `docs/decisions/ADR-0291-correction-snr-presence-and-domain.md` |
 | ADR-0290 | Correction Numerical Asset Integrity | Accepted | 2026-10-11 | reliability, confusion model, startup, replay | Refines numerical and configured-asset failure handling | none | `docs/decisions/ADR-0290-correction-numerical-asset-integrity.md` |

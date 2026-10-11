@@ -90,6 +90,7 @@ func (c *replayResolverStateCounts) Observe(state spot.ResolverState) {
 type replayResolverABMetrics struct {
 	Samples                           uint64                    `json:"samples"`
 	MissingSnapshot                   uint64                    `json:"missing_snapshot"`
+	EvidenceLossSelections            uint64                    `json:"evidence_loss_selections"`
 	StateCounts                       replayResolverStateCounts `json:"state_counts"`
 	ProjectedConfidenceCounts         replayConfidenceCounts    `json:"projected_confidence_counts"`
 	NeighborhoodUsed                  uint64                    `json:"neighborhood_used"`
@@ -165,8 +166,8 @@ type replayABMetrics struct {
 	Temporal             replayTemporalABMetrics           `json:"temporal"`
 }
 
-// ObserveAppliedOutput records the final glyph that replay would have emitted
-// after resolver and support-floor decisions.
+// ObserveAppliedOutput records replay's resolver-only final glyph. Historical
+// recognition may affect gates, but replay does not apply the runtime S floor.
 func (m *replayABMetrics) ObserveAppliedOutput(outcome replayConfidenceOutcome) {
 	if m == nil {
 		return
@@ -186,6 +187,9 @@ func (m *replayABMetrics) ObserveResolverSnapshot(snap spot.ResolverSnapshot, ok
 	if !ok {
 		m.Resolver.MissingSnapshot++
 		return
+	}
+	if snap.EvidenceLoss {
+		m.Resolver.EvidenceLossSelections++
 	}
 	m.Resolver.StateCounts.Observe(snap.State)
 	projected := projectedResolverConfidenceOutcome(snap)

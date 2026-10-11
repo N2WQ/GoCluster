@@ -17,8 +17,8 @@ Branch: `fix_correction_evidence`.
 | B1.5 | Complete | `4d6df11`; future static membership |
 | B2.1 | Complete | `ae2d504`; numerical/assets |
 | B2.2 | Complete | `336eda7`; SNR presence/domain |
-| B3.1 | Complete | Cap-loss authority/retirement; checkpoint below |
-| B3.2 | Pending | Diagnostic meaning |
+| B3.1 | Complete | `0042607`; cap-loss authority/retirement |
+| B3.2 | Complete | This checkpoint; diagnostic meaning |
 
 Implementation and validation advance sequentially. Full lanes use existing
 stable Windows binaries; connected CustomSCP stages share a fresh real database.
@@ -1057,3 +1057,160 @@ encoding, network format or configuration value was introduced. Maps, crawler
 comments and whitespace are checked before staging/commit. No firewall rules,
 external feeds, push or deployment changed. RF episode association, deferred
 loss populations and calibration remain outside these passing checks.
+
+## B3.2 - Diagnostic meaning and output assertions (complete)
+
+Checkpoint base is B3.1 `0042607`; its full checkpoint passed before B3.2
+implementation began. The preimplementation test-strategy review is contextual
+engineering evidence. Fixed diagnostic units are:
+
+- `CapLossDiscards`: lost observation incidences, not distinct receivers or
+  eviction operations. An evicted candidate with N retained rows adds N; an
+  evicted receiver or capacity-refused incoming receipt adds one.
+- `LossPublicationRecoveries`: owner publication transitions from protected to
+  unprotected. Query-only eligibility expiry does not increment it; neither does
+  empty-key deletion. Reactivation followed by another published recovery can
+  count another transition.
+- `LossIdleRetirements`: physical owner retirements at the process-idle deadline,
+  once per generation. Logical read denial can precede this counter.
+- `PublishedLossKeys`: readable latest owner publications marked loss. The gauge
+  excludes terminal/logically idle cells; it does not claim query-clock freshness.
+  Existing ActiveKeys can remain until physical cleanup.
+
+Reads and metric sampling never increment lifecycle counts. Existing key/cap
+pressure and accepted-correction totals keep their meanings. No registry or
+retained event provenance is added.
+
+Call events describe the correction **evaluation** phase, before later static/
+history recognition. They name corrected/rejected/retained outcomes, a fixed
+reason, the current identity's own support share and basis, and suppression
+explicitly. Recognition is separate, and the event does not claim final glyph
+or client receipt. Healthy unchanged/no-snapshot traffic stays silent. An
+actual lost-population evaluation is retained with `resolver_evidence_loss`,
+`unavailable_loss` and `--%`. An alternate B rejected while retaining A must show
+A's weighted share: literal A1000/B1850 gives A35%, not B64%. Receiver-only33%
+is a separate consumer-override control because production publishes milliweights.
+
+The existing bounded UI stream and log fallback own these strings. AppendCall
+and internal stream ownership remain; label/help say Call decisions while
+accepted Corrections totals remain distinct. Suppression is proven with a
+positive following-spot FIFO barrier and reopened absence, rather than timeout.
+Both UI and log captures synchronize reads against overlapping server logs.
+Output checks preserve original peer fields and explicit archive percentage
+absence; existing SourceType/SourceNode remain ingress metadata. No new archive,
+peer or Spot provenance/diagnostic field is invented.
+
+Behavioral RED evidence is `.tmp/b32-events-baseline-red.log` (UI and log
+fallback), `.tmp/b32-replay-ui-baseline-red.log` (replay), and
+`.tmp/b32-ui-baseline-red.log` (separately selected UI because the runner stops at
+the first failed package). Delivered identity/share/peer/archive preconditions
+passed while accepted events lacked explicit meanings and rejected/loss events
+were absent. Replay lacked appended artifact counters, its named loss-selection
+counter, and dedicated rare-loss visibility; UI still used the old placeholder
+and help. The first suppression fixture incorrectly included a comment `CW`,
+which displays alongside the mode as `CW CW`. After restoring its exact
+representable single-space comment, `.tmp/b32-suppression-baseline-red.log`
+failed only the missing event; the positive FIFO delivery assertions passed.
+
+Lead source review found that existing call-specific percentage logic can use
+receiver-count fallback when the retained call has zero weight even though the
+population's total weight is positive. Diagnostic basis follows the named call's
+actual arithmetic; the confidence rule itself is unchanged. This edge receives
+an actual delivered-output regression alongside the all-receiver-only consumer
+input. The first five-package target selected no correctionflow tests; that
+unchanged package is covered by the final full lanes rather than claiming this
+selection as behavioral evidence. Actual native PC11/PC61 writer/reader fidelity
+is separately selected in `.tmp/b32-native-peer.log`.
+
+Approved-item mapping:
+
+| Obligation | Implementation | Falsifying regression |
+| --- | --- | --- |
+| Evaluation outcome and current identity's share/basis | `internal/cluster/correction_decision_diagnostics.go`, `bootstrap.go` | `correction_decision_delivery_test.go`: actual weighted 64/35, zero-weight receiver fallback 33, unavailable retained identity, UI/log exact events |
+| Recognition, suppression and actual delivery boundaries | Existing pipeline owners and unchanged delivery | Actual cap loss with isolated static/history S, positive suppression FIFO, complete TCP/DIAG/original PC61/ring/reopened archive assertions; existing temporal acceptance/retry regressions |
+| Discards, published recovery, physical retirement and readable gauge | `spot/resolver_loss.go`, `signal_resolver.go` | `resolver_loss_metrics_test.go`: shared receivers versus incidences, refusal fixtures, query reads, recovery/reactivation, logical/physical retirement and legitimate cleanup |
+| Operator and replay observability | Live summaries, replay runbook/interval/AB artifacts | `correction_decision_cost_summary_test.go`, `cmd/rbn_replay/resolver_diagnostics_test.go`: actual owner stimulus, rare rank-three loss, serialized literal fields/deltas/totals and actual runbook sample |
+| UI meaning and quiet ordinary traffic | Existing bounded `AppendCall` pane, title/placeholder/help | `ui/call_decisions_test.go`: bounded consumer and actual seed/help without terminal startup; actual silent consumer allocation test/benchmark |
+
+Support-agent docs impact is Required. Confidence documentation/card, UI guide
+and replay artifact notes now explain phase, identity attribution, recognition,
+counter units and unchanged network/archive limits. ADR-0293 records the durable
+diagnostic contract. Local smoke and retrieval-only SA-006 pass; their report is
+`.tmp/support-agent-evals/20261011-134459-270-89acc891`. This does not establish
+deployed support-agent behavior or answer quality.
+
+Initial lint reported the existing replay summary helper's limit as always two.
+The rare-loss oracle now independently verifies all three ranked reasons before
+the existing display cutoff, with literal counts. No production summary behavior
+changed for this correction; final lint reports zero issues. Full ordinary
+execution includes this refinement and all final test files.
+
+The isolated actual correction consumer measured healthy unchanged evaluations
+at 482.4/442.2 ns and missing snapshots at 252.7/265.4 ns, all 0 B/op and zero
+allocations; neither path logs. These cached literal consumer inputs exclude
+live lookup, pipeline and network work. Raw/all-fresh eligible resolver reads
+and duplicate owner-admitted activity also remain zero-allocation. Actual full
+controls measured 4,719/4,472 ns at 2x4 with 1,520 B and 18 allocations, and
+299,508/334,017 ns at 16x64 with 82,744 B and 77 allocations. Every timed full
+control requires a real eviction. Allocation counts match B3.1's recorded
+contracts; timing samples are not a simultaneous baseline comparison or a
+performance improvement/production capacity claim. Evidence is
+`.tmp/b32-bench-final.log`, direct saved executables through the ignored serial
+runner `.tmp/b32-bench.ps1` (two 500ms samples).
+
+Fresh contextual Go-quality review found no material production issue. Its
+nonblocking coverage observation is retained accurately: CTY suppression has an
+exact new-event/FIFO oracle; invalid-base rejection/suppression has existing
+delivery/history coverage and source verification of the fixed reason/flag,
+without a new exact event assertion. This review is engineering evidence, not
+independent scientific evidence. No new model rule, persisted schema, network
+format, registry, worker, timer or configuration value is added.
+
+Final observed validation:
+
+| Check | Scope/result | Evidence |
+| --- | --- | --- |
+| New diagnostics and actual output | Five-package target plus final cluster tests; pass, with the unchanged flow selection gap disclosed above | `.tmp/b32-targeted.log`, `.tmp/b32-cluster-final-targeted.log` |
+| Existing attribution, temporal acceptance/retries and original peer payload | Actual delivery/accounting plus native PC11/PC61 formatter/writer/reader; pass | `.tmp/b32-attribution-temporal-peer.log`, `.tmp/b32-native-peer.log` |
+| Full ordinary | All 70 packages; exit 0 | `.tmp/b32-ordinary-final.log` |
+| Full race | All 70 packages; exit 0, no race report | `.tmp/b32-race-final.log` |
+| Vet, Staticcheck, lint | All packages; exit 0, final lint zero issues | `.tmp/b32-vet-final.log`, `.tmp/b32-staticcheck-final.log`, `.tmp/b32-lint-final.log` |
+| Connected real-database handoff | Ordinary and race producer/consumer pass | `.tmp/b32-connected-ordinary-final.log`, `.tmp/b32-connected-race-final.log` |
+| Bounded consumer/lookup/control costs | Correctness guards and two 500ms samples pass | `.tmp/b32-bench-final.log` |
+| Support smoke and confidence retrieval | Pass; SA-006 retrieval-only | `.tmp/b32-support-smoke.log`, `.tmp/b32-support-eval.log` |
+
+Full commands were `scripts/test-windows.ps1` and that same runner `-Race`,
+using the existing native GCC path. Connected handoff commands were
+`scripts/test-customscp-regression.ps1` and `-Race`, with IDs
+`80266f73eea448aa8456382c4476a882` (ordinary) and
+`476db9c0c27d4081be94b6618eb7d56b` (race). Both independently verify persisted
+bytes before decoding, reopened qualification, and delivered output against the
+producer's actual database. No result cache or separate consumer fixture replaces
+this connected evidence.
+
+Code-map generation/check, crawler comments and staged whitespace pass. The
+crawler initially identified a missing file-purpose comment in replay
+`intervals.go`; the comment-only correction does not invalidate behavior checks
+and is included in the race replay build. All 22 local Markdown link targets in
+the affected guides/ADR/card exist; this is a local-target check, not external
+link or terminal-rendering validation. UI regressions exercise actual bounded
+widgets, seed and help without starting a terminal or scheduler; constructor
+title attribution is source-verified.
+
+Fresh lead verification confirms the final diff stays inside B3.2 and every
+required check has passed. Each of B0, B1.1-B1.5, B2.1-B2.2 and B3.1-B3.2 reached
+its full checkpoint before the next implementation began. New cohesive files
+remain below the 500-line review target; existing established larger owners
+retain their responsibilities. The patches are committed locally on
+`fix_correction_evidence`. No firewall rule/preparation, new listening executable
+path, external live-cluster test, push, merge or deployment was performed.
+
+Independent non-steered freshness and numerical reviews actually occurred during
+the approved batch execution, as recorded in their checkpoints. Contextual
+engineering reviews are separately identified. These results establish the
+approved evidence-accounting, eligibility, ownership, numerical and diagnostic
+contracts; they do not establish calibrated correctness probabilities, field
+accuracy or common RF-episode association. Wider association, geographic origin,
+historical-replay clock redesign, model tuning/calibration, family delivery
+suppression, queue-full/whole-key/FT loss, and cross-restart loss protection remain
+deferred as declared in the approved ledger.

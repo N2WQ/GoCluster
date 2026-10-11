@@ -1,5 +1,11 @@
 # Dashboard keyboard controls
 
+The Pipeline page's **Call decisions** pane shows corrected, rejected and retained
+evaluations. A share describes support for its named current call; static/history
+recognition is separate. Events precede delivery and do not claim a final glyph
+or client receipt. **Corrections** counts accepted identity changes since process
+start. See [diagnostic meanings](../docs/decisions/ADR-0293-correction-decision-diagnostics.md).
+
 The V2 console dashboard accepts uppercase and lowercase navigation letters.
 
 | Key | Action |

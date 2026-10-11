@@ -105,6 +105,7 @@ Legacy comparison artifacts were removed from replay artifacts. Removed fields i
 - `output.confidence_counts`
 - `resolver.state_counts`
 - `resolver.projected_confidence_counts`
+- `resolver.evidence_loss_selections`
 - `resolver.neighborhood_*`
 - `resolver.recent_plus1_*`
 - `resolver.bayes_report_*`
@@ -129,6 +130,20 @@ without claiming network receipt. The legacy latency field measures terminal
 decision latency, including rejected proposals. Force retirement selects every
 pending hold at the existing EOF clock, even when its deadline lies later.
 Fresh evidence in the existing key/window does not establish a common RF episode.
+
+Existing interval and threshold-hit CSVs append `dCapLossDiscards`,
+`dLossPublicationRecoveries`, `dLossIdleRetirements`, and `PublishedLossKeys`;
+previous columns retain their order. The first three are interval deltas; the
+last is the interval's final readable protected-publication gauge. `gates.json`
+`overall` contains cumulative final-sample `cap_loss_discards`,
+`loss_publication_recoveries`, `loss_idle_retirements`, and final
+`published_loss_keys`. Query-only expiry does not increment owner counters.
+The runbook includes these meanings and a dedicated `evidence_loss` rejection
+count outside its top-two reason summary. `evidence_loss_selections` counts
+protected resolver selections, not corrections or unique delivered spots.
+See [exact diagnostic units](decisions/ADR-0293-correction-decision-diagnostics.md).
+Replay does not apply the runtime S recognition floor or add per-row support
+percentages.
 
 `stability` now represents resolver-applied winner follow-on stability for the emitted output path.
 

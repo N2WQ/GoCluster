@@ -148,6 +148,12 @@ type SignalResolverMetrics struct {
 	EvictedReporters      uint64
 	HighWaterCandidates   uint64
 	HighWaterReporters    uint64
+	// CapLossDiscards counts discarded observation incidences, not keys/candidates.
+	CapLossDiscards uint64
+	// LossPublicationRecoveries counts owner publications changing loss true to false.
+	LossPublicationRecoveries uint64
+	// LossIdleRetirements counts physical owner retirement at the process-idle deadline.
+	LossIdleRetirements uint64
 
 	StateConfident uint64
 	StateProbable  uint64
@@ -156,6 +162,9 @@ type SignalResolverMetrics struct {
 	// PublishedReceiverRecords counts incidences in latest generations, excluding
 	// older snapshots still held by readers. Temporal retention is compacted.
 	PublishedReceiverRecords int
+	// PublishedLossKeys counts readable latest owner publications with EvidenceLoss.
+	// Query-only evidence expiry does not alter this gauge; process-idle denial does.
+	PublishedLossKeys int
 }
 
 // SignalResolverConfig controls bounded resolver behavior.
@@ -212,19 +221,22 @@ type SignalResolver struct {
 
 	activeKeys atomic.Int64
 
-	accepted              atomic.Uint64
-	processed             atomic.Uint64
-	dropQueueFull         atomic.Uint64
-	dropMaxKeys           atomic.Uint64
-	dropMaxCandidates     atomic.Uint64
-	dropMaxReporters      atomic.Uint64
-	dropReliability       atomic.Uint64
-	capPressureCandidates atomic.Uint64
-	capPressureReporters  atomic.Uint64
-	evictedCandidates     atomic.Uint64
-	evictedReporters      atomic.Uint64
-	highWaterCandidates   atomic.Uint64
-	highWaterReporters    atomic.Uint64
+	accepted                  atomic.Uint64
+	processed                 atomic.Uint64
+	dropQueueFull             atomic.Uint64
+	dropMaxKeys               atomic.Uint64
+	dropMaxCandidates         atomic.Uint64
+	dropMaxReporters          atomic.Uint64
+	dropReliability           atomic.Uint64
+	capPressureCandidates     atomic.Uint64
+	capPressureReporters      atomic.Uint64
+	evictedCandidates         atomic.Uint64
+	evictedReporters          atomic.Uint64
+	highWaterCandidates       atomic.Uint64
+	highWaterReporters        atomic.Uint64
+	capLossDiscards           atomic.Uint64
+	lossPublicationRecoveries atomic.Uint64
+	lossIdleRetirements       atomic.Uint64
 }
 
 type resolverCandidate struct {
@@ -367,19 +379,22 @@ func (r *SignalResolver) MetricsSnapshot() SignalResolverMetrics {
 		ActiveKeys: int(r.activeKeys.Load()),
 		QueueDepth: len(r.input),
 
-		Accepted:              r.accepted.Load(),
-		Processed:             r.processed.Load(),
-		DropQueueFull:         r.dropQueueFull.Load(),
-		DropMaxKeys:           r.dropMaxKeys.Load(),
-		DropMaxCandidates:     r.dropMaxCandidates.Load(),
-		DropMaxReporters:      r.dropMaxReporters.Load(),
-		DropReliability:       r.dropReliability.Load(),
-		CapPressureCandidates: r.capPressureCandidates.Load(),
-		CapPressureReporters:  r.capPressureReporters.Load(),
-		EvictedCandidates:     r.evictedCandidates.Load(),
-		EvictedReporters:      r.evictedReporters.Load(),
-		HighWaterCandidates:   r.highWaterCandidates.Load(),
-		HighWaterReporters:    r.highWaterReporters.Load(),
+		Accepted:                  r.accepted.Load(),
+		Processed:                 r.processed.Load(),
+		DropQueueFull:             r.dropQueueFull.Load(),
+		DropMaxKeys:               r.dropMaxKeys.Load(),
+		DropMaxCandidates:         r.dropMaxCandidates.Load(),
+		DropMaxReporters:          r.dropMaxReporters.Load(),
+		DropReliability:           r.dropReliability.Load(),
+		CapPressureCandidates:     r.capPressureCandidates.Load(),
+		CapPressureReporters:      r.capPressureReporters.Load(),
+		EvictedCandidates:         r.evictedCandidates.Load(),
+		EvictedReporters:          r.evictedReporters.Load(),
+		HighWaterCandidates:       r.highWaterCandidates.Load(),
+		HighWaterReporters:        r.highWaterReporters.Load(),
+		CapLossDiscards:           r.capLossDiscards.Load(),
+		LossPublicationRecoveries: r.lossPublicationRecoveries.Load(),
+		LossIdleRetirements:       r.lossIdleRetirements.Load(),
 	}
 	r.snapshots.Range(func(_, value any) bool {
 		cell, ok := value.(*resolverSnapshotCell)
@@ -391,6 +406,9 @@ func (r *SignalResolver) MetricsSnapshot() SignalResolverMetrics {
 			return true
 		}
 		metrics.PublishedReceiverRecords += snap.ReceiverEvidence().Len()
+		if snap.EvidenceLoss && r.cellCurrent(cell) {
+			metrics.PublishedLossKeys++
+		}
 		switch snap.State {
 		case ResolverStateConfident:
 			metrics.StateConfident++
@@ -469,7 +487,7 @@ func (r *SignalResolver) applyEvidence(states map[ResolverSignalKey]*resolverKey
 		}
 		r.attachKeyGeneration(st)
 		if r.cellIdleExpired(st.cell, r.processElapsed()) {
-			r.retireKey(states, ev.Key, st)
+			r.retireKey(states, ev.Key, st, true)
 			continue
 		}
 		windowChanged, capDiscard := false, false
@@ -494,14 +512,14 @@ func (r *SignalResolver) applyEvidence(states map[ResolverSignalKey]*resolverKey
 				evictCall, ok := chooseResolverCandidateEviction(st.candidates)
 				if !ok {
 					r.dropMaxCandidates.Add(1)
-					recordResolverCapLoss(st, ev.ObservedAt)
+					r.recordResolverCapLoss(st, ev.ObservedAt)
 					r.publishLossControl(st, ev.ObservedAt)
 					r.activeKeys.Store(int64(len(states)))
 					return
 				}
 				if victim := st.candidates[evictCall]; victim != nil {
 					for _, observation := range victim.reporters {
-						recordResolverCapLoss(st, observation.observedAt)
+						r.recordResolverCapLoss(st, observation.observedAt)
 						capDiscard = true
 					}
 				}
@@ -521,12 +539,12 @@ func (r *SignalResolver) applyEvidence(states map[ResolverSignalKey]*resolverKey
 			evictReporter, ok := chooseResolverReporterEviction(candidate.reporters)
 			if !ok {
 				r.dropMaxReporters.Add(1)
-				recordResolverCapLoss(st, ev.ObservedAt)
+				r.recordResolverCapLoss(st, ev.ObservedAt)
 				r.publishLossControl(st, ev.ObservedAt)
 				r.activeKeys.Store(int64(len(states)))
 				return
 			}
-			recordResolverCapLoss(st, candidate.reporters[evictReporter].observedAt)
+			r.recordResolverCapLoss(st, candidate.reporters[evictReporter].observedAt)
 			capDiscard = true
 			removeResolverReporter(st, candidate, evictReporter)
 			r.evictedReporters.Add(1)
@@ -536,7 +554,7 @@ func (r *SignalResolver) applyEvidence(states map[ResolverSignalKey]*resolverKey
 		// A fresh retry has no prior cap loss, so this loop can retire at most once.
 		admittedAt := r.processElapsed()
 		if r.cellIdleExpired(st.cell, admittedAt) {
-			r.retireKey(states, ev.Key, st)
+			r.retireKey(states, ev.Key, st, true)
 			continue
 		}
 		st.cell.activity.Store(int64(admittedAt))
@@ -569,24 +587,24 @@ func (r *SignalResolver) applyEvidence(states map[ResolverSignalKey]*resolverKey
 func (r *SignalResolver) sweep(states map[ResolverSignalKey]*resolverKeyState, now time.Time) {
 	for key, st := range states {
 		if st == nil {
-			r.retireKey(states, key, st)
+			r.retireKey(states, key, st, false)
 			continue
 		}
 		if r.cellIdleExpired(st.cell, r.processElapsed()) {
-			r.retireKey(states, key, st)
+			r.retireKey(states, key, st, true)
 			continue
 		}
 		loss := ResolverSnapshot{lossMinAt: st.lossMinAt, lossMaxAt: st.lossMaxAt, lossWindow: st.recencyWindow}
 		lossActive := resolverSnapshotLossEligible(loss, now)
 
 		if !lossActive && now.Sub(st.lastSeen) > r.cfg.InactiveTTL {
-			r.retireKey(states, key, st)
+			r.retireKey(states, key, st, false)
 			continue
 		}
 
 		r.pruneKeyState(st, now)
 		if len(st.candidates) == 0 && !lossActive {
-			r.retireKey(states, key, st)
+			r.retireKey(states, key, st, false)
 			continue
 		}
 

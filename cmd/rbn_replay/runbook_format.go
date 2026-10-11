@@ -1,3 +1,5 @@
+// File role: Formats fixed replay correction/pressure counters for runbook logs.
+// Loss publication/retirement counters describe owner work, not query freshness.
 package main
 
 import (
@@ -13,7 +15,7 @@ import (
 
 func formatResolverSummaryFromMetrics(metrics spot.SignalResolverMetrics) string {
 	return fmt.Sprintf(
-		"Resolver: %s (C) / %s (P) / %s (U) / %s (S) | q=%d drop %s (Q) / %s (K) / %s (C) / %s (R) | pressure %s (C) / %s (R) evict %s (C) / %s (R) hw %s (C) / %s (R)",
+		"Resolver: %s (C) / %s (P) / %s (U) / %s (S) | q=%d drop %s (Q) / %s (K) / %s (C) / %s (R) | pressure %s (C) / %s (R) evict %s (C) / %s (R) hw %s (C) / %s (R) | loss discards %s publication recoveries %s idle retirements %s published keys %s",
 		humanize.Comma(int64(metrics.StateConfident)),
 		humanize.Comma(int64(metrics.StateProbable)),
 		humanize.Comma(int64(metrics.StateUncertain)),
@@ -29,6 +31,10 @@ func formatResolverSummaryFromMetrics(metrics spot.SignalResolverMetrics) string
 		humanize.Comma(int64(metrics.EvictedReporters)),
 		humanize.Comma(int64(metrics.HighWaterCandidates)),
 		humanize.Comma(int64(metrics.HighWaterReporters)),
+		humanize.Comma(int64(metrics.CapLossDiscards)),
+		humanize.Comma(int64(metrics.LossPublicationRecoveries)),
+		humanize.Comma(int64(metrics.LossIdleRetirements)),
+		humanize.Comma(int64(metrics.PublishedLossKeys)),
 	)
 }
 
@@ -40,10 +46,11 @@ func formatCorrectionDecisionSummary(tracker *stats.Tracker) string {
 	applied := tracker.CorrectionDecisionApplied()
 	rejected := tracker.CorrectionDecisionRejected()
 	fallback := tracker.CorrectionFallbackApplied()
-	reasons := formatTopCounterSummary(tracker.CorrectionDecisionReasons(), 2)
+	rejectionCounts := tracker.CorrectionDecisionReasons()
+	reasons := formatTopCounterSummary(rejectionCounts, 2)
 	appliedReasons := formatTopCounterSummary(tracker.CorrectionDecisionAppliedReasons(), 2)
 	paths := formatTopCounterSummary(tracker.CorrectionDecisionPaths(), 2)
-	return fmt.Sprintf("CorrGate: %s (T) / %s (A) / %s (R) / %s (FB) [rej:%s ap:%s] [%s]",
+	return fmt.Sprintf("CorrGate: %s (T) / %s (A) / %s (R) / %s (FB) [rej:%s ap:%s] [%s] evidence_loss:%s",
 		humanize.Comma(int64(total)),
 		humanize.Comma(int64(applied)),
 		humanize.Comma(int64(rejected)),
@@ -51,6 +58,7 @@ func formatCorrectionDecisionSummary(tracker *stats.Tracker) string {
 		reasons,
 		appliedReasons,
 		paths,
+		humanize.Comma(int64(rejectionCounts["resolver_evidence_loss"])),
 	)
 }
 

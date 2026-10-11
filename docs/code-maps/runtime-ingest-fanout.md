@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `244dee53a47d3dd6`
+- Source fingerprint: `59991c799684e1dd`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,9 +12,9 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 28 | 103 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 29 | 106 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
-| `dxcluster/spot` | `spot` | 38 | 52 |
+| `dxcluster/spot` | `spot` | 38 | 53 |
 | `dxcluster/telnet` | `telnet` | 48 | 99 |
 
 ## In-Scope Package Edges
@@ -134,6 +134,7 @@ Source files:
 - `internal/cluster/adaptive_refresher.go`
 - `internal/cluster/bootstrap.go`
 - `internal/cluster/call_meta_cache.go`
+- `internal/cluster/correction_decision_diagnostics.go`
 - `internal/cluster/cty_filters.go`
 - `internal/cluster/drop_log_dedupe.go`
 - `internal/cluster/dropped_call_log.go`
@@ -165,6 +166,9 @@ Test files:
 - `internal/cluster/confidence_attribution_controls_test.go`
 - `internal/cluster/confidence_attribution_delivery_test.go`
 - `internal/cluster/correction_ambiguity_delivery_test.go`
+- `internal/cluster/correction_decision_cost_summary_test.go`
+- `internal/cluster/correction_decision_delivery_helpers_test.go`
+- `internal/cluster/correction_decision_delivery_test.go`
 - `internal/cluster/correction_evidence_delivery_test.go`
 - `internal/cluster/correction_loss_delivery_test.go`
 - `internal/cluster/correction_numeric_delivery_test.go`
@@ -548,6 +552,7 @@ Test files:
 - `spot/resolver_loss_concurrency_test.go`
 - `spot/resolver_loss_control_test.go`
 - `spot/resolver_loss_lifecycle_test.go`
+- `spot/resolver_loss_metrics_test.go`
 - `spot/resolver_loss_test.go`
 - `spot/resolver_snr_presence_test.go`
 - `spot/self_spot_test.go`

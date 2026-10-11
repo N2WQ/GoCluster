@@ -463,10 +463,11 @@ func formatCorrectionDecisionSummary(tracker *stats.Tracker) string {
 	applied := tracker.CorrectionDecisionApplied()
 	rejected := tracker.CorrectionDecisionRejected()
 	fallback := tracker.CorrectionFallbackApplied()
-	reasons := formatTopCounterSummary(tracker.CorrectionDecisionReasons(), 2)
+	reasonCounts := tracker.CorrectionDecisionReasons()
+	reasons := formatTopCounterSummary(reasonCounts, 2)
 	appliedReasons := formatTopCounterSummary(tracker.CorrectionDecisionAppliedReasons(), 2)
 	paths := formatTopCounterSummary(tracker.CorrectionDecisionPaths(), 2)
-	return fmt.Sprintf("CorrGate: %s (T) / %s (A) / %s (R) / %s (FB) [rej:%s ap:%s] [%s]",
+	return fmt.Sprintf("CorrGate: %s (T) / %s (A) / %s (R) / %s (FB) [rej:%s ap:%s] [%s] loss=%s",
 		humanize.Comma(int64(total)),
 		humanize.Comma(int64(applied)),
 		humanize.Comma(int64(rejected)),
@@ -474,6 +475,7 @@ func formatCorrectionDecisionSummary(tracker *stats.Tracker) string {
 		reasons,
 		appliedReasons,
 		paths,
+		humanize.Comma(int64(reasonCounts["resolver_evidence_loss"])),
 	)
 }
 
@@ -572,13 +574,17 @@ func formatResolverPressureSummary(resolver *spot.SignalResolver) string {
 	}
 	metrics := resolver.MetricsSnapshot()
 	return fmt.Sprintf(
-		"Resolver Pressure: %s (C) / %s (R) evict %s (C) / %s (R) hw %s (C) / %s (R)",
+		"Resolver Pressure: %s (C) / %s (R) evict %s (C) / %s (R) hw %s (C) / %s (R) | loss rows=%s protected=%d recover=%s idle-retire=%s",
 		humanize.Comma(int64(metrics.CapPressureCandidates)),
 		humanize.Comma(int64(metrics.CapPressureReporters)),
 		humanize.Comma(int64(metrics.EvictedCandidates)),
 		humanize.Comma(int64(metrics.EvictedReporters)),
 		humanize.Comma(int64(metrics.HighWaterCandidates)),
 		humanize.Comma(int64(metrics.HighWaterReporters)),
+		humanize.Comma(int64(metrics.CapLossDiscards)),
+		metrics.PublishedLossKeys,
+		humanize.Comma(int64(metrics.LossPublicationRecoveries)),
+		humanize.Comma(int64(metrics.LossIdleRetirements)),
 	)
 }
 
@@ -2146,7 +2152,15 @@ func maybeApplyResolverCorrectionWithSelectionOverride(
 		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionNoSnapshot, 0)
 		return false
 	}
+	// This event describes this evaluation, before later recognition/delivery.
+	// Keep ordinary traffic quiet and format only a loss or alternate decision.
+	decisionReason, proposedCall := "", ""
+	decisionSuppressed := false
+	defer func() {
+		emitResolverDecision(dash, spotEntry, snapshot, preCorrectionCall, proposedCall, decisionReason, decisionSuppressed)
+	}()
 	if snapshot.EvidenceLoss {
+		decisionReason = "resolver_evidence_loss"
 		observeResolverPrimaryDecision(tracker, "rejected", "resolver_evidence_loss", 0)
 		return false
 	}
@@ -2177,6 +2191,7 @@ func maybeApplyResolverCorrectionWithSelectionOverride(
 		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionSameCall, 1)
 		return false
 	}
+	proposedCall = winnerCall
 
 	subjectSupport := correctionflow.ResolverSupportForCall(snapshot, preCorrectionCall)
 	winnerSupport := correctionflow.ResolverSupportForCall(snapshot, winnerCall)
@@ -2230,16 +2245,16 @@ func maybeApplyResolverCorrectionWithSelectionOverride(
 		} else if plusReason, ok := resolverRecentPlus1DecisionReason(gate); ok {
 			reason = plusReason
 		}
+		decisionReason = reason
 		observeResolverPrimaryDecision(tracker, "rejected", reason, 1)
 		return false
 	}
 
-	correctionMsg := formatCallCorrectedMessage(preCorrectionCall, winnerCall, spotEntry.Frequency, winnerSupport, winnerConfidence)
 	if shouldRejectCTYCall(winnerCall) {
-		log.Printf("Resolver correction rejected (invalid base call): suggested %s at %.1f kHz", winnerCall, spotEntry.Frequency)
+		decisionReason = resolverDecisionInvalidBaseCall
 		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionInvalidBaseCall, 1)
 		if strings.EqualFold(cfg.InvalidAction, "suppress") {
-			log.Printf("Resolver correction suppression engaged: dropping spot from %s at %.1f kHz", preCorrectionCall, spotEntry.Frequency)
+			decisionSuppressed = true
 			return true
 		}
 		spotEntry.Confidence = "B"
@@ -2248,11 +2263,6 @@ func maybeApplyResolverCorrectionWithSelectionOverride(
 
 	if ctyDB != nil {
 		if info := effectivePrefixInfo(ctyDB, metaCache, winnerCall); info != nil {
-			if dash != nil {
-				dash.AppendCall(correctionMsg)
-			} else {
-				log.Println(correctionMsg)
-			}
 			spotEntry.DXCall = winnerCall
 			spotEntry.DXCallNorm = winnerCall
 			temporalResult.confirm(preCorrectionCall, winnerCall)
@@ -2263,12 +2273,13 @@ func maybeApplyResolverCorrectionWithSelectionOverride(
 				tracker.IncrementCallCorrections()
 			}
 			appliedReason := resolverAppliedDecisionReason(gate, selection)
+			decisionReason = appliedReason
 			observeResolverPrimaryDecision(tracker, "applied", appliedReason, 1)
 		} else {
-			log.Printf("Resolver correction rejected (CTY miss): suggested %s at %.1f kHz", winnerCall, spotEntry.Frequency)
+			decisionReason = resolverDecisionCTYMiss
 			observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionCTYMiss, 1)
 			if strings.EqualFold(cfg.InvalidAction, "suppress") {
-				log.Printf("Resolver correction suppression engaged: dropping spot from %s at %.1f kHz", preCorrectionCall, spotEntry.Frequency)
+				decisionSuppressed = true
 				return true
 			}
 			spotEntry.Confidence = "B"
@@ -2276,11 +2287,6 @@ func maybeApplyResolverCorrectionWithSelectionOverride(
 		return false
 	}
 
-	if dash != nil {
-		dash.AppendCall(correctionMsg)
-	} else {
-		log.Println(correctionMsg)
-	}
 	spotEntry.DXCall = winnerCall
 	spotEntry.DXCallNorm = winnerCall
 	temporalResult.confirm(preCorrectionCall, winnerCall)
@@ -2291,6 +2297,7 @@ func maybeApplyResolverCorrectionWithSelectionOverride(
 		tracker.IncrementCallCorrections()
 	}
 	appliedReason := resolverAppliedDecisionReason(gate, selection)
+	decisionReason = appliedReason
 	observeResolverPrimaryDecision(tracker, "applied", appliedReason, 1)
 	return false
 }

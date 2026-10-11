@@ -1,3 +1,5 @@
+// File role: Serializes interval pressure and loss diagnostics into the existing
+// replay CSV/JSON artifacts, keeping owner counters separate from query expiry.
 package main
 
 import (
@@ -40,6 +42,11 @@ type intervalRow struct {
 	DEPTH           int
 	QueueDepthRatio float64
 	SplitSharePct   float64
+
+	DCapLossDiscards           int64
+	DLossPublicationRecoveries int64
+	DLossIdleRetirements       int64
+	PublishedLossKeys          int
 }
 
 // gatesSummary captures the replay go/no-go evidence: resolver pressure,
@@ -58,6 +65,12 @@ type gatesSummary struct {
 		StateSplit        uint64                 `json:"state_split"`
 		Stability         replayStabilitySummary `json:"stability"`
 		ABMetrics         replayABMetrics        `json:"ab_metrics"`
+		// Lifecycle counters are cumulative final owner samples. The gauge
+		// reflects readable latest publications, without query-time projection.
+		CapLossDiscards           uint64 `json:"cap_loss_discards"`
+		LossPublicationRecoveries uint64 `json:"loss_publication_recoveries"`
+		LossIdleRetirements       uint64 `json:"loss_idle_retirements"`
+		PublishedLossKeys         int    `json:"published_loss_keys"`
 	} `json:"overall"`
 
 	ThresholdHits struct {
@@ -69,6 +82,13 @@ type gatesSummary struct {
 // deltas and threshold hits so profiling can identify when pressure happened,
 // not just the final totals.
 func computeIntervalsAndGates(samples []resolverSample, queueSize int) (intervals []intervalRow, hits []intervalRow, gates gatesSummary) {
+	if len(samples) > 0 {
+		last := samples[len(samples)-1].Metrics
+		gates.Overall.CapLossDiscards = last.CapLossDiscards
+		gates.Overall.LossPublicationRecoveries = last.LossPublicationRecoveries
+		gates.Overall.LossIdleRetirements = last.LossIdleRetirements
+		gates.Overall.PublishedLossKeys = last.PublishedLossKeys
+	}
 	if len(samples) < 2 {
 		return nil, nil, gates
 	}
@@ -111,24 +131,28 @@ func computeIntervalsAndGates(samples []resolverSample, queueSize int) (interval
 		}
 
 		row := intervalRow{
-			T0:              a.TS.UTC().Format("2006-01-02 15:04:05"),
-			T1:              b.TS.UTC().Format("2006-01-02 15:04:05"),
-			Minutes:         b.TS.Sub(a.TS).Minutes(),
-			DStateConfident: dStateConfident,
-			DStateProbable:  dStateProbable,
-			DStateUncertain: dStateUncertain,
-			DStateSplit:     dStateSplit,
-			DQ:              dQ,
-			DK:              dK,
-			DCcap:           dCcap,
-			DR:              dR,
-			DPC:             dPC,
-			DPR:             dPR,
-			DEC:             dEC,
-			DER:             dER,
-			DEPTH:           b.Metrics.QueueDepth,
-			QueueDepthRatio: queueRatio,
-			SplitSharePct:   splitSharePct,
+			T0:                         a.TS.UTC().Format("2006-01-02 15:04:05"),
+			T1:                         b.TS.UTC().Format("2006-01-02 15:04:05"),
+			Minutes:                    b.TS.Sub(a.TS).Minutes(),
+			DStateConfident:            dStateConfident,
+			DStateProbable:             dStateProbable,
+			DStateUncertain:            dStateUncertain,
+			DStateSplit:                dStateSplit,
+			DQ:                         dQ,
+			DK:                         dK,
+			DCcap:                      dCcap,
+			DR:                         dR,
+			DPC:                        dPC,
+			DPR:                        dPR,
+			DEC:                        dEC,
+			DER:                        dER,
+			DEPTH:                      b.Metrics.QueueDepth,
+			QueueDepthRatio:            queueRatio,
+			SplitSharePct:              splitSharePct,
+			DCapLossDiscards:           int64(b.Metrics.CapLossDiscards) - int64(a.Metrics.CapLossDiscards),
+			DLossPublicationRecoveries: int64(b.Metrics.LossPublicationRecoveries) - int64(a.Metrics.LossPublicationRecoveries),
+			DLossIdleRetirements:       int64(b.Metrics.LossIdleRetirements) - int64(a.Metrics.LossIdleRetirements),
+			PublishedLossKeys:          b.Metrics.PublishedLossKeys,
 		}
 		intervals = append(intervals, row)
 
@@ -192,6 +216,7 @@ func writeIntervalsCSV(path string, rows []intervalRow) error {
 		"dQ", "dK", "dCcap", "dR",
 		"dPC", "dPR", "dEC", "dER",
 		"DEPTH", "QueueDepthRatio", "SplitSharePct",
+		"dCapLossDiscards", "dLossPublicationRecoveries", "dLossIdleRetirements", "PublishedLossKeys",
 	}); err != nil {
 		return err
 	}
@@ -216,6 +241,10 @@ func writeIntervalsCSV(path string, rows []intervalRow) error {
 			strconv.Itoa(r.DEPTH),
 			fmt.Sprintf("%.6f", r.QueueDepthRatio),
 			fmt.Sprintf("%.3f", r.SplitSharePct),
+			strconv.FormatInt(r.DCapLossDiscards, 10),
+			strconv.FormatInt(r.DLossPublicationRecoveries, 10),
+			strconv.FormatInt(r.DLossIdleRetirements, 10),
+			strconv.Itoa(r.PublishedLossKeys),
 		}); err != nil {
 			return err
 		}

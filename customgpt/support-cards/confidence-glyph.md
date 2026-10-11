@@ -47,6 +47,14 @@ not infer meanings from other cluster software.
   A later evaluation preserves an already accepted identity; retired temporal
   proposals cannot override fresh evidence. Queue-full/whole-key/FT loss and
   cross-restart protection remain outside this repair.
+- The dashboard's Call decisions pane reports corrected, rejected and retained
+  evaluations, not unique deliveries or accepted-correction totals. Its named
+  current identity gets the support share/basis; recognition is separate. Events
+  precede delivery and do not claim its final glyph. Query-only expiry is not a
+  published recovery, and logical idle denial can precede physical retirement.
+  Peer spots retain original fields; archived identity/glyph do not gain a
+  support percentage or new provenance. See
+  [diagnostic units](../../docs/decisions/ADR-0293-correction-decision-diagnostics.md).
 - FT2/FT4/FT8 bursts end at the earlier quiet-gap/hard deadline. Equality and
   later arrivals start a new burst and cannot raise an expired burst's glyph.
   Existing recent-band/static S floors remain; FT glyphs have no resolver percentage.
