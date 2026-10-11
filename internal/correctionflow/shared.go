@@ -666,6 +666,14 @@ func ResolveRuntimeSettings(cfg config.CallCorrectionConfig, spotEntry *spot.Spo
 // Ownership: this is a pure mapper; it does not mutate shared state.
 func BuildCorrectionSettings(in BuildSettingsInput) spot.CorrectionSettings {
 	cfg := in.Cfg
+	minUnique := cfg.RecentBandRecordMinUniqueSpotters
+	if cfg.CustomSCP.Enabled {
+		minUnique = max(minUnique, cfg.CustomSCP.ResolverMinUniqueSpotters)
+	}
+	plus1MinUnique := cfg.ResolverRecentPlus1MinUniqueWinner
+	if cfg.CustomSCP.Enabled {
+		plus1MinUnique = max(plus1MinUnique, minUnique)
+	}
 	return spot.CorrectionSettings{
 		MinConsensusReports: in.MinReports,
 		FamilyPolicy: spot.CorrectionFamilyPolicy{
@@ -685,21 +693,25 @@ func BuildCorrectionSettings(in BuildSettingsInput) spot.CorrectionSettings {
 			RequireCandidateValidated: cfg.FamilyPolicy.Truncation.RelaxAdvantage.RequireCandidateValidated,
 			RequireSubjectUnvalidated: cfg.FamilyPolicy.Truncation.RelaxAdvantage.RequireSubjectUnvalidated,
 		},
-		MinConfidencePercent:                    cfg.MinConfidencePercent,
-		MaxEditDistance:                         cfg.MaxEditDistance,
-		RecencyWindow:                           in.Window,
-		DistanceModelCW:                         cfg.DistanceModelCW,
-		DistanceModelRTTY:                       cfg.DistanceModelRTTY,
-		Distance3ExtraReports:                   cfg.Distance3ExtraReports,
-		Distance3ExtraAdvantage:                 cfg.Distance3ExtraAdvantage,
-		Distance3ExtraConfidence:                cfg.Distance3ExtraConfidence,
-		FreqGuardMinSeparationKHz:               cfg.FreqGuardMinSeparationKHz,
-		FreqGuardRunnerUpRatio:                  cfg.FreqGuardRunnerUpRatio,
-		FrequencyToleranceHz:                    in.FreqToleranceHz,
-		RecentBandRecordMinUniqueSpotters:       cfg.RecentBandRecordMinUniqueSpotters,
-		RecentBandStore:                         in.RecentBandStore,
+		MinConfidencePercent:              cfg.MinConfidencePercent,
+		MaxEditDistance:                   cfg.MaxEditDistance,
+		RecencyWindow:                     in.Window,
+		DistanceModelCW:                   cfg.DistanceModelCW,
+		DistanceModelRTTY:                 cfg.DistanceModelRTTY,
+		Distance3ExtraReports:             cfg.Distance3ExtraReports,
+		Distance3ExtraAdvantage:           cfg.Distance3ExtraAdvantage,
+		Distance3ExtraConfidence:          cfg.Distance3ExtraConfidence,
+		FreqGuardMinSeparationKHz:         cfg.FreqGuardMinSeparationKHz,
+		FreqGuardRunnerUpRatio:            cfg.FreqGuardRunnerUpRatio,
+		FrequencyToleranceHz:              in.FreqToleranceHz,
+		RecentBandRecordMinUniqueSpotters: minUnique,
+		RecentBandStore:                   in.RecentBandStore,
+		RecentBandCustomSCPEnabled:        cfg.CustomSCP.Enabled,
+		RecentBandCustomSCPRequirements: spot.CustomSCPRequirements{
+			MinScore: cfg.CustomSCP.ResolverMinScore, MinH3Cells: cfg.CustomSCP.ResolverMinUniqueH3Cells,
+		},
 		ResolverRecentPlus1Enabled:              cfg.ResolverRecentPlus1Enabled,
-		ResolverRecentPlus1MinUniqueWinner:      cfg.ResolverRecentPlus1MinUniqueWinner,
+		ResolverRecentPlus1MinUniqueWinner:      plus1MinUnique,
 		ResolverRecentPlus1RequireSubjectWeaker: cfg.ResolverRecentPlus1RequireSubjectWeaker,
 		ResolverRecentPlus1MaxDistance:          cfg.ResolverRecentPlus1MaxDistance,
 		ResolverRecentPlus1AllowTruncation:      cfg.ResolverRecentPlus1AllowTruncation,

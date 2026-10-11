@@ -149,7 +149,7 @@ call_correction:
 
   recent_band_bonus_enabled: false           # Enable recent-on-band validation cache (same call+band+mode)
   recent_band_window_seconds: 43200         # Look-back window for recent-on-band admission (12h)
-  recent_band_record_min_unique_spotters: 3 # Distinct spotters needed to admit call into recent-on-band
+  recent_band_record_min_unique_spotters: 3 # Shared recent-support minimum; each consumer also applies its own gates
 
   # ---------------------------------------------------------------------------
   # 7) FT corroboration (FT2/FT4/FT8 only)
@@ -175,10 +175,10 @@ call_correction:
     static_horizon_days: 395         # Long-term static-support horizon
     min_snr_db_cw: 4                 # Minimum CW SNR admitted to support store
     min_snr_db_rtty: 3               # Minimum RTTY SNR admitted to support store
-    resolver_min_score: 5            # Score required for resolver support
+    resolver_min_score: 5            # Each resolver receiver must meet this age score
     resolver_min_unique_spotters: 4  # Unique spotters required for resolver support
     resolver_min_unique_h3_cells: 2  # Geographic spread required for resolver support
-    stabilizer_min_score: 5          # Score required for stabilizer recent support
+    stabilizer_min_score: 5          # Stabilizer-only age score; does not raise resolver/FT requirements
     stabilizer_min_unique_spotters: 3 # Unique spotters required for stabilizer support
     stabilizer_min_unique_h3_cells: 2 # Geographic spread required for stabilizer support
     s_floor_min_score: 3             # Score required to promote ? to S

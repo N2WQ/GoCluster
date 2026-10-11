@@ -99,6 +99,10 @@ type CorrectionSettings struct {
 
 	RecentBandRecordMinUniqueSpotters int
 	RecentBandStore                   RecentSupportStore
+	// Custom history requirements belong to this resolver consumer. Legacy stores
+	// and direct settings without this opt-in retain their existing query contract.
+	RecentBandCustomSCPEnabled      bool
+	RecentBandCustomSCPRequirements CustomSCPRequirements
 
 	ResolverRecentPlus1Enabled              bool
 	ResolverRecentPlus1MinUniqueWinner      int
@@ -456,6 +460,10 @@ func resolverCallValidated(identity correctionCallIdentity, displayCall, subject
 	return resolverCallRecentSupport(identity, displayCall, subjectBand, subjectMode, cfg, now) >= minUnique
 }
 
+type customSCPRequirementCounter interface {
+	RecentSupportCountWithRequirements(call, band, mode string, requirements CustomSCPRequirements, now time.Time) int
+}
+
 func resolverCallRecentSupport(identity correctionCallIdentity, displayCall, subjectBand, subjectMode string, cfg CorrectionSettings, now time.Time) int {
 	if cfg.RecentBandStore == nil {
 		return 0
@@ -473,7 +481,12 @@ func resolverCallRecentSupport(identity correctionCallIdentity, displayCall, sub
 			continue
 		}
 		seenCalls[upper] = struct{}{}
-		support := cfg.RecentBandStore.RecentSupportCount(upper, subjectBand, subjectMode, now)
+		var support int
+		if queries, ok := cfg.RecentBandStore.(customSCPRequirementCounter); ok && cfg.RecentBandCustomSCPEnabled {
+			support = queries.RecentSupportCountWithRequirements(upper, subjectBand, subjectMode, cfg.RecentBandCustomSCPRequirements, now)
+		} else {
+			support = cfg.RecentBandStore.RecentSupportCount(upper, subjectBand, subjectMode, now)
+		}
 		if support > maxSupport {
 			maxSupport = support
 		}

@@ -288,3 +288,122 @@ were regenerated and `go run ./cmd/codemap check -all` passed; the support check
 passed again after generation. Staged whitespace review passes. This establishes
 the selected historical accounting repair, not field accuracy or episode
 association. The next patch may begin after the local B1.1 checkpoint commit.
+
+## B1.2 - Consumer-specific history requirements (complete)
+
+Current-source discovery identified shared score/cell maxima in runtime and
+replay construction, and a loader rewrite that raises the common receiver
+minimum from the stabilizer minimum. The latter also reaches resolver validation
+and the independent FT recent floor. Replay omitted the configured static horizon.
+CLI gopls references/implementations for RecentSupportStore confirmed the two
+implementations and runtime/replay/correctionflow/spot callers; current rg/source
+reads verified the consumer edges. The connector's stale line locations were
+not used as current source evidence.
+
+Design/test review disposition: use explicit scalar score/cell query requirements
+on the single canonical store, preserving raw and normalized query paths. Avoid
+interface views with extra lifecycle/stat forwarding. Recording, stats, cleanup,
+checkpoint/integrity and shutdown retain the existing canonical pointer.
+Receiver counts remain partial evidence even below a consumer's receiver minimum:
+the Bayesian prior and diagnostics consume those counts. Erasing a 3-receiver
+subject below a minimum of 4 would change a 4:3 prior to 4:0. Enforce receiver
+minima at qualification gates instead. Resolver/stabilizer base minima are the
+maximum of their own custom minimum and the unraised common minimum. Plus1 and
+edit-neighbor rails additionally apply their own receiver thresholds. Dedicated
+custom S-floor thresholds remain separate; FT retains the unraised common minimum.
+Preserve the existing resolver-local plus1 loader normalization, including its
+default ordering; remove only the cross-consumer stabilizer rewrite.
+
+The postapproval falsifiability review requires unequal score, cells and receivers
+as separate dimensions, reversed query order, literal partial-count diagnostics,
+actual config.Load, runtime/replay construction, canonical recording/ownership,
+and actual delivered stabilizer/floor results with positive FIFO barriers.
+No additional scientific claim or product-policy choice is introduced. The
+earlier non-steered freshness oracle applies; this engineering review is not a
+new independent scientific assessment. Capacity coercion/family selection/future
+static eligibility remain for their subsequent approved patches.
+
+Implementation keeps the RecentSupportStore lifecycle interface unchanged and
+adds optional scalar requirement queries to the canonical Custom SCP store.
+Runtime and replay default core queries now use resolver requirements; stabilizer
+queries pass their own requirements without changing options or ownership.
+Replay supplies StaticHorizonDays. The three-line stabilizer-to-common loader
+rewrite is removed; resolver-local plus1 normalization remains.
+
+The defective-source overlay at `290674d` fails the final delivery fixture
+behaviorally: a permissive stabilizer is wrongly held by stricter core score/cell
+settings, while a stricter stabilizer receiver gate is bypassed. Normal/DIAG TCP,
+original PC61, ring and reopened archive disagree with the independently selected
+consumer outcome. A published 2-versus-1 minority P spot supplies the positive
+FIFO barrier without recording new historical V evidence. An actual config.Load
+FT fixture separately reproduces stabilizer count 5 changing common minimum 2
+and delivered S to ?. The old replay constructor overlay reproduces both stricter
+core coupling and omitted nondefault 90-day static-horizon wiring.
+
+Initial delivery probes used an invalid barrier: enabled correction erased a
+preassigned P, and a proposed 1-versus-1 barrier was uncertain after resolver
+sanitization. Those timeouts/precondition failures are fixture defects, not
+delivered behavioral evidence. The corrected final baseline runs have no such
+failure. Initial analyzers found the now-unused maxInt helper and an always-two
+test parameter; both were removed without changing behavior. The changed-file
+crawler checker caught the missing shared-interface entry comment, now added.
+
+Two context-influenced engineering reviewers found no material implementation
+defect and verified the consumer boundaries. Their README capacity qualification
+finding was corrected; boolean capacity coercion still belongs to B1.4. These
+reviews are not independent scientific evidence. Final lead-owned diff inspection
+verified scalar query ownership, partial dissent counts, recording/cleanup owner
+identity, loaded minima and replay horizon wiring against current source.
+
+Ordinary 200ms benchmarks on the i9-10900 Windows/amd64 host measure the explicit
+normalized four/eight-receiver query at 331.9/344.8 ns, both 0 B and 0 allocations.
+The complete Custom SCP edit-neighbor EvaluateStabilizerDelay case measures
+34,729 ns, 763 B and 143 allocations; the existing legacy-store edit-neighbor
+benchmark measures 33,714 ns, 2296 B and 287 allocations. These are different
+store fixtures, not matched before/after evidence. The scalar query preserves
+its zero-allocation contract; no zero-allocation claim applies to the full
+variant scan, and no production capacity or latency improvement is claimed.
+
+| Approved obligation | Implementation / regression evidence |
+| --- | --- |
+| Separate score/cell/receiver gates | Scalar CustomSCPRequirements queries, BuildCorrectionSettings and stabilizer query routing; B12 unit, flow and actual loaded-config tests |
+| One recording/lifecycle owner | Runtime/replay constructor tests, concrete admission, stats, StopCleanup/Close/reopen and connected handoff |
+| No query-order mutation or erased partial dissent | Alternating raw/normalized queries, unchanged options/entry owner/row bytes/stats; literal 4:3 Bayesian diagnostics |
+| Independent common, floor and FT minima | Loader removes only stabilizer rewrite; actual loaded FT floor remains S under stabilizer counts 2 and 5 |
+| Runtime/replay delivered behavior | Independent score/cell/count stabilizer fixtures, positive minority-P FIFO barrier, normal/DIAG TCP, original PC61, ring/reopened archive; replay 90/395-day static horizon controls |
+| Bounded lookup cost | Explicit normalized query benchmark is zero-allocation; complete edit-neighbor measurement reported separately |
+
+| Check | Command / scope | Observed result |
+| --- | --- | --- |
+| Config / flow baseline | Exact prepatch source overlay; separate loaded-config and flow invocations | Exit 1 on consumer coupling and gate outcomes |
+| Delivered baseline | Final corrected stabilizer fixture overlay at 290674d; actual loaded FT fixture | Exit 1 on actual delivery; invalid early barrier attempts excluded from proof |
+| Replay constructor baseline | Old runner constructor only, with current query APIs | Exit 1 on core coupling and omitted 90-day horizon; not described as full prepatch source |
+| Final targeted | `scripts/test-windows.ps1 -Packages @('./spot','./internal/correctionflow','./internal/cluster') -Run '^(TestB12\|TestCustomSCPConsumer)' -Timeout 180s`; cluster/replay targeted invocation | Exit 0 |
+| Full ordinary | `scripts/test-windows.ps1 -Timeout 300s` | Exit 0; 70 packages including no-test build checks |
+| Full race | `scripts/test-windows.ps1 -Race -Timeout 600s` | Exit 0; 70 packages, zero race reports |
+| Analyzers | `go vet ./...`; `staticcheck ./...`; `golangci-lint run ./... --config=.golangci.yaml` | Each final invocation exit 0; lint 0 issues |
+| Connected history delivery | `scripts/test-customscp-regression.ps1`, then `-Race` | Both exit 0; real producer DB handoff, reopen and TCP delivery |
+| Comments / YAML / support | Changed-only crawler checker, comment-only YAML rigor, support checker, affected SA-006 eval | Exit 0; eval is retrieval-only |
+
+Ordinary completion preceded removal of the unused helper and equivalent test
+fixture parameter. The affected final targeted run and complete final race lane
+were rebuilt afterward; these changes cannot invalidate unrelated ordinary
+behavior. Final analyzers ran after the fixes. No parser/protocol surface was
+added, so new fuzzing was not selected.
+
+Logs: `.tmp/b12-full.log`, `b12-race.log`, `b12-final-targeted.log`,
+`b12-delivery-replay-targeted.log`, `b12-config-flow-baseline-red.log`,
+`b12-flow-baseline-red.log`, `b12-delivery-baseline-final-red.log`,
+`b12-ft-baseline-red.log`, `b12-replay-constructor-baseline-red.log`,
+`b12-vet.log`, `b12-staticcheck.log`, `b12-lint.log`, `b12-comments.log`,
+`b12-yaml.log`, `b12-support.log`, `b12-support-eval.log`,
+`b12-spot-bench.log`, `b12-flow-bench.log`, `b12-customscp.log`,
+`b12-customscp-race.log`. Repaired handoffs:
+`2b88037e06e54dad8f38f32f609aa72a` ordinary and
+`ae5b0781e68d4cc5a350762f230bb04e` race.
+
+Support documentation impact is required and addressed in the confidence card,
+spot README, comment-only pipeline guidance and ADR-0286. The final maps/check,
+staged crawler/whitespace checks and fresh lead-owned closeout review precede
+the local checkpoint commit. No firewall policy or listening executable path
+changed; no push, merge, deployment or external live-feed test occurred.

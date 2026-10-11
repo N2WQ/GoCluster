@@ -358,17 +358,10 @@ func (r *replayRunner) openRecentBandStore() error {
 		if err := os.RemoveAll(replayCustomSCPPath); err != nil {
 			return fmt.Errorf("remove replay custom SCP path %s: %w", replayCustomSCPPath, err)
 		}
-		coreMinScore := cfg.CallCorrection.CustomSCP.ResolverMinScore
-		if cfg.CallCorrection.CustomSCP.StabilizerMinScore > coreMinScore {
-			coreMinScore = cfg.CallCorrection.CustomSCP.StabilizerMinScore
-		}
-		coreMinH3Cells := cfg.CallCorrection.CustomSCP.ResolverMinUniqueH3Cells
-		if cfg.CallCorrection.CustomSCP.StabilizerMinUniqueH3Cells > coreMinH3Cells {
-			coreMinH3Cells = cfg.CallCorrection.CustomSCP.StabilizerMinUniqueH3Cells
-		}
 		customOpts := spot.CustomSCPOptions{
 			Path:                   replayCustomSCPPath,
 			HorizonDays:            cfg.CallCorrection.CustomSCP.HistoryHorizonDays,
+			StaticHorizonDays:      cfg.CallCorrection.CustomSCP.StaticHorizonDays,
 			MaxKeys:                cfg.CallCorrection.CustomSCP.MaxKeys,
 			MaxSpottersPerKey:      cfg.CallCorrection.CustomSCP.MaxSpottersPerKey,
 			CleanupInterval:        time.Duration(cfg.CallCorrection.CustomSCP.CleanupIntervalSeconds) * time.Second,
@@ -377,8 +370,8 @@ func (r *replayRunner) openRecentBandStore() error {
 			MemTableSizeBytes:      uint64(cfg.CallCorrection.CustomSCP.MemTableSizeMB) << 20,
 			L0CompactionThreshold:  cfg.CallCorrection.CustomSCP.L0CompactionThreshold,
 			L0StopWritesThreshold:  cfg.CallCorrection.CustomSCP.L0StopWritesThreshold,
-			CoreMinScore:           coreMinScore,
-			CoreMinH3Cells:         coreMinH3Cells,
+			CoreMinScore:           cfg.CallCorrection.CustomSCP.ResolverMinScore,
+			CoreMinH3Cells:         cfg.CallCorrection.CustomSCP.ResolverMinUniqueH3Cells,
 			SFloorMinScore:         cfg.CallCorrection.CustomSCP.SFloorMinScore,
 			SFloorExactMinH3Cells:  cfg.CallCorrection.CustomSCP.SFloorMinUniqueH3CellsExact,
 			SFloorFamilyMinH3Cells: cfg.CallCorrection.CustomSCP.SFloorMinUniqueH3CellsFamily,

@@ -368,3 +368,164 @@ func TestB11CustomSCPNormalizedOwnedInputConcurrentReaders(t *testing.T) {
 	}
 	assertCustomSCPCleanupCoupling(t, store)
 }
+
+func TestB12CustomSCPConsumerRequirementsDoNotRewriteHistory(t *testing.T) {
+	store := newCustomSCPFreshnessStore(t, CustomSCPOptions{CoreMinScore: 5, CoreMinH3Cells: 2})
+	now := time.Now().UTC().Truncate(time.Second)
+	key := customSCPKey{call: "K1REQ", band: "20m", bucket: "cw"}
+	rows := []struct {
+		receiver string
+		seen     int64
+		cell     uint16
+	}{
+		{"N0AAA", now.Add(-time.Minute).Unix(), 101},
+		{"N0BBB", now.Add(-20 * 24 * time.Hour).Unix(), 202},
+		{"N0CCC", now.Add(-20 * 24 * time.Hour).Unix(), 202},
+	}
+	for _, row := range rows {
+		store.recordObservation(key.call, key.band, "CW", row.receiver, row.cell, 0, false, time.Unix(row.seen, 0))
+		requireCustomSCPCleanupRaw(t, store, observationKeyString(key, row.receiver), customSCPCleanupObservationBytes(row.seen, row.cell))
+	}
+	beforeStats, beforeOptions := store.StatsSnapshot(), store.opts
+	store.mu.RLock()
+	beforeEntry := store.entries[key]
+	beforeRows := append([]customSCPSpotterEntry(nil), beforeEntry.spotters...)
+	store.mu.RUnlock()
+	if got := store.RecentSupportCount(key.call, key.band, "CW", now); got != 0 {
+		t.Fatalf("default core two-cell gate must remain independent of explicit queries: %d", got)
+	}
+	queries := []struct {
+		name      string
+		req       CustomSCPRequirements
+		wantCount int
+		minUnique int
+		wantBool  bool
+	}{
+		{"resolver_partial_count", CustomSCPRequirements{MinScore: 5, MinH3Cells: 1}, 1, 2, false},
+		{"resolver_one_receiver", CustomSCPRequirements{MinScore: 5, MinH3Cells: 1}, 1, 1, true},
+		{"stabilizer_later_tier", CustomSCPRequirements{MinScore: 3, MinH3Cells: 2}, 3, 3, true},
+		{"stabilizer_receiver_gate", CustomSCPRequirements{MinScore: 3, MinH3Cells: 2}, 3, 4, false},
+		{"eligible_cell_gate", CustomSCPRequirements{MinScore: 5, MinH3Cells: 2}, 0, 1, false},
+		{"unattainable_score", CustomSCPRequirements{MinScore: 11, MinH3Cells: 1}, 0, 1, false},
+		{"insufficient_cells", CustomSCPRequirements{MinScore: 1, MinH3Cells: 3}, 0, 1, false},
+	}
+	// Strict and loose consumers repeatedly alternate in both orders. A query
+	// must not install its requirements into the canonical store or its rows.
+	for pass := 0; pass < 2; pass++ {
+		for i := range queries {
+			index := i
+			if pass == 1 {
+				index = len(queries) - 1 - i
+			}
+			query := queries[index]
+			if got := store.RecentSupportCountWithRequirements(" k1req ", key.band, "CW", query.req, now); got != query.wantCount {
+				t.Errorf("pass=%d %s raw count=%d want %d", pass, query.name, got, query.wantCount)
+			}
+			if got := store.RecentSupportCountNormalizedWithRequirements(key.call, key.band, "CW", query.req, now); got != query.wantCount {
+				t.Errorf("pass=%d %s normalized count=%d want %d", pass, query.name, got, query.wantCount)
+			}
+			if got := store.HasRecentSupportWithRequirements(key.call, key.band, "CW", query.minUnique, query.req, now); got != query.wantBool {
+				t.Errorf("pass=%d %s receiver qualification=%t want %t", pass, query.name, got, query.wantBool)
+			}
+		}
+	}
+	if store.opts != beforeOptions || store.StatsSnapshot() != beforeStats {
+		t.Fatal("consumer queries changed store requirements or canonical retained-state statistics")
+	}
+	store.mu.RLock()
+	entry := store.entries[key]
+	unchanged := entry == beforeEntry && len(entry.spotters) == len(beforeRows)
+	if unchanged {
+		for i := range beforeRows {
+			unchanged = unchanged && entry.spotters[i] == beforeRows[i]
+		}
+	}
+	store.mu.RUnlock()
+	if !unchanged {
+		t.Fatal("consumer queries replaced the canonical entry or changed retained observations")
+	}
+	for _, row := range rows {
+		requireCustomSCPCleanupRaw(t, store, observationKeyString(key, row.receiver), customSCPCleanupObservationBytes(row.seen, row.cell))
+	}
+	requireCustomSCPCleanupRaw(t, store, customSCPMetaPrefix+key.call, customSCPCleanupStaticBytes(rows[0].seen))
+	assertCustomSCPCleanupCoupling(t, store)
+}
+
+func TestB12CustomSCPRequirementsNormalizedSkipsNormalizeCache(t *testing.T) {
+	originalCache := normalizeCallCache
+	t.Cleanup(func() { normalizeCallCache = originalCache })
+	store := newCustomSCPFreshnessStore(t, CustomSCPOptions{})
+	now := time.Now().UTC().Truncate(time.Second)
+	store.recordObservation("K1FAST", "20m", "CW", "N0AAA", 101, 0, false, now.Add(-time.Minute))
+	normalizeCallCache = NewCallCache(16, time.Hour)
+	req := CustomSCPRequirements{MinScore: 5, MinH3Cells: 1}
+	if got := store.RecentSupportCountNormalizedWithRequirements("K1FAST", "20m", "CW", req, now); got != 1 {
+		t.Fatalf("normalized requirement query must retain the eligible partial count: %d", got)
+	}
+	if _, cached := normalizeCallCache.Get("K1FAST"); cached {
+		t.Fatal("normalized requirement query populated the callsign cache")
+	}
+	if got := store.RecentSupportCountWithRequirements("K1FAST", "20m", "CW", req, now); got != 1 {
+		t.Fatalf("raw requirement query disagreed with normalized query: %d", got)
+	}
+	if _, cached := normalizeCallCache.Get("K1FAST"); !cached {
+		t.Fatal("raw requirement query stopped using callsign normalization")
+	}
+}
+
+func TestB12CustomSCPRequirementsPreserveExistingCoreCountAndCapCoercion(t *testing.T) {
+	store := newCustomSCPFreshnessStore(t, CustomSCPOptions{MaxSpottersPerKey: 1})
+	now := time.Now().UTC().Truncate(time.Second)
+	store.recordObservation("K1CAP", "20m", "CW", "N0AAA", 101, 0, false, now.Add(-time.Minute))
+	req := CustomSCPRequirements{MinScore: 5, MinH3Cells: 1}
+	if store.RecentSupportCount("K1CAP", "20m", "CW", now) != 1 ||
+		store.RecentSupportCountWithRequirements("K1CAP", "20m", "CW", req, now) != 1 {
+		t.Fatal("count compatibility must retain one eligible receiver below the default unique minimum")
+	}
+	// The separate B1.4 patch changes impossible-query behavior. B1.2 keeps
+	// today's boolean coercion to the configured receiver cap.
+	if !store.HasRecentSupport("K1CAP", "20m", "CW", 2, now) ||
+		!store.HasRecentSupportWithRequirements("K1CAP", "20m", "CW", 2, req, now) {
+		t.Fatal("consumer-specific lookup changed the existing receiver-cap coercion")
+	}
+}
+
+func BenchmarkB12CustomSCPRequirementsNormalized(b *testing.B) {
+	for _, query := range []struct {
+		name string
+		req  CustomSCPRequirements
+		want int
+	}{
+		{"score5_four_receivers", CustomSCPRequirements{MinScore: 5, MinH3Cells: 1}, 4},
+		{"score3_eight_receivers", CustomSCPRequirements{MinScore: 3, MinH3Cells: 5}, 8},
+	} {
+		b.Run(query.name, func(b *testing.B) {
+			now := time.Now().UTC().Truncate(time.Second)
+			entry := &customSCPEntry{spotters: makeCustomSCPSpotters(8)}
+			for i := 0; i < 8; i++ {
+				seen := now.Add(-time.Duration(i) * time.Second)
+				if i >= 4 {
+					seen = seen.Add(-20 * 24 * time.Hour)
+				}
+				entryUpsertSpotter(entry, fmt.Sprintf("N%03d", i), customSCPSpotterObs{seenUnix: seen.Unix(), cellRes1: uint16(100 + i)}, 8)
+			}
+			store := &CustomSCPStore{
+				opts:                sanitizeCustomSCPOptions(CustomSCPOptions{CoreMinScore: 10, CoreMinH3Cells: 4}),
+				entries:             make(map[customSCPKey]*customSCPEntry, 1),
+				entryExpiry:         newCustomSCPEntryExpiryQueue(1),
+				observationSpotters: 8,
+			}
+			store.mu.Lock()
+			key := retainCustomSCPTestEntryLocked(store, customSCPKey{call: "K1BENCH", band: "20m", bucket: "cw"}, entry)
+			store.markEntryForCleanupLocked(key, entry)
+			store.mu.Unlock()
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if got := store.RecentSupportCountNormalizedWithRequirements("K1BENCH", "20m", "CW", query.req, now); got != query.want {
+					b.Fatalf("explicit normalized requirements count=%d want %d", got, query.want)
+				}
+			}
+		})
+	}
+}

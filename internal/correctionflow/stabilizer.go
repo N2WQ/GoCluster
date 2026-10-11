@@ -87,6 +87,14 @@ func EvaluateStabilizerDelay(
 	if minUnique <= 0 {
 		minUnique = 2
 	}
+	query := recentSupportQuery{store: store}
+	if cfg.CustomSCP.Enabled {
+		minUnique = max(minUnique, cfg.CustomSCP.StabilizerMinUniqueSpotters)
+		query.custom = true
+		query.requirements = spot.CustomSCPRequirements{
+			MinScore: cfg.CustomSCP.StabilizerMinScore, MinH3Cells: cfg.CustomSCP.StabilizerMinUniqueH3Cells,
+		}
+	}
 	glyph := stabilizerConfidenceGlyph(s.Confidence)
 	if !stabilizerDelayEligibleGlyph(glyph) {
 		return decision
@@ -118,7 +126,10 @@ func EvaluateStabilizerDelay(
 		if minSpotters <= 0 {
 			minSpotters = minUnique
 		}
-		if hasRecentSupportForEditNeighbor(store, call, band, mode, minSpotters, now) {
+		if cfg.CustomSCP.Enabled {
+			minSpotters = max(minSpotters, minUnique)
+		}
+		if hasRecentSupportForEditNeighborQuery(query, call, band, mode, minSpotters, now) {
 			decision.ShouldDelay = true
 			decision.Reason = StabilizerDelayReasonEditNeighbor
 			decision.MaxChecks = normalizeStabilizerChecks(cfg.StabilizerEditNeighborMaxChecks, decision.MaxChecks)
@@ -126,7 +137,7 @@ func EvaluateStabilizerDelay(
 		}
 	}
 
-	if !HasRecentSupportForCallFamily(store, call, band, mode, minUnique, now) {
+	if !hasRecentSupportForCallFamilyQuery(query, call, band, mode, minUnique, now) {
 		decision.ShouldDelay = true
 		decision.Reason = StabilizerDelayReasonUnknownOrNonRecent
 		return decision
@@ -160,17 +171,21 @@ func StabilizerReleaseReason(decision StabilizerDelayDecision, prior string) str
 
 // HasRecentSupportForCallFamily checks recent support across family identities.
 func HasRecentSupportForCallFamily(store spot.RecentSupportStore, call, band, mode string, minUnique int, now time.Time) bool {
-	if store == nil {
+	return hasRecentSupportForCallFamilyQuery(recentSupportQuery{store: store}, call, band, mode, minUnique, now)
+}
+
+func hasRecentSupportForCallFamilyQuery(query recentSupportQuery, call, band, mode string, minUnique int, now time.Time) bool {
+	if query.store == nil {
 		return false
 	}
 	key, baseKey, ok := spot.CorrectionFamilyKeyPair(call)
 	if !ok {
-		return store.HasRecentSupport(call, band, mode, minUnique, now)
+		return query.has(call, band, mode, minUnique, now)
 	}
-	if store.HasRecentSupport(key, band, mode, minUnique, now) {
+	if query.has(key, band, mode, minUnique, now) {
 		return true
 	}
-	return baseKey != "" && store.HasRecentSupport(baseKey, band, mode, minUnique, now)
+	return baseKey != "" && query.has(baseKey, band, mode, minUnique, now)
 }
 
 func normalizeStabilizerChecks(preferred int, fallback int) int {
@@ -195,16 +210,20 @@ func stabilizerCallConfidencePercent(s *spot.Spot, snapshot spot.ResolverSnapsho
 }
 
 func hasRecentSupportForEditNeighbor(store spot.RecentSupportStore, call, band, mode string, minUnique int, now time.Time) bool {
-	if store == nil {
+	return hasRecentSupportForEditNeighborQuery(recentSupportQuery{store: store}, call, band, mode, minUnique, now)
+}
+
+func hasRecentSupportForEditNeighborQuery(query recentSupportQuery, call, band, mode string, minUnique int, now time.Time) bool {
+	if query.store == nil {
 		return false
 	}
 	if minUnique <= 0 {
 		minUnique = 2
 	}
-	ownSupport := maxRecentSupportForCallFamily(store, call, band, mode, now)
+	ownSupport := maxRecentSupportForCallFamily(query, call, band, mode, now)
 	found := false
 	ForEachEditDistanceOneSubstitutionVariant(call, func(variant string) bool {
-		support := recentSupportCountForNormalizedCall(store, variant, band, mode, now)
+		support := query.normalizedCount(variant, band, mode, now)
 		if support < minUnique {
 			return true
 		}
@@ -217,8 +236,8 @@ func hasRecentSupportForEditNeighbor(store spot.RecentSupportStore, call, band, 
 	return found
 }
 
-func maxRecentSupportForCallFamily(store spot.RecentSupportStore, call, band, mode string, now time.Time) int {
-	if store == nil {
+func maxRecentSupportForCallFamily(query recentSupportQuery, call, band, mode string, now time.Time) int {
+	if query.store == nil {
 		return 0
 	}
 	maxSupport := 0
@@ -227,28 +246,18 @@ func maxRecentSupportForCallFamily(store spot.RecentSupportStore, call, band, mo
 		return 0
 	}
 	if strings.TrimSpace(key) != "" {
-		support := recentSupportCountForNormalizedCall(store, key, band, mode, now)
+		support := query.normalizedCount(key, band, mode, now)
 		if support > maxSupport {
 			maxSupport = support
 		}
 	}
 	if baseKey != "" {
-		support := recentSupportCountForNormalizedCall(store, baseKey, band, mode, now)
+		support := query.normalizedCount(baseKey, band, mode, now)
 		if support > maxSupport {
 			maxSupport = support
 		}
 	}
 	return maxSupport
-}
-
-func recentSupportCountForNormalizedCall(store spot.RecentSupportStore, call, band, mode string, now time.Time) int {
-	if store == nil {
-		return 0
-	}
-	if normalized, ok := store.(normalizedRecentSupportCounter); ok {
-		return normalized.RecentSupportCountNormalized(call, band, mode, now)
-	}
-	return store.RecentSupportCount(call, band, mode, now)
 }
 
 func stabilizerConfidenceGlyph(confidence string) string {

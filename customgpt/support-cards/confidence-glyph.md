@@ -38,6 +38,12 @@ not infer meanings from other cluster software.
   not future at the query's stored second. Geographic cells count only from
   those qualifying observations. A fresh receiver does not refresh older
   receiver/cell evidence.
+- Resolver and stabilizer use separate age-score/cell requirements on one
+  canonical history store. Receiver qualification applies the consumer minimum
+  alongside the common minimum; plus1/edit-neighbor add their own rails. Partial
+  eligible counts remain visible in Bayesian diagnostics. Stabilizer settings
+  do not silently raise resolver or FT requirements. The custom S floor retains
+  its dedicated thresholds.
 - Retained observations and currently qualifying historical support are different
   populations. Score/future filtering does not delete within-horizon history;
   existing horizon pruning and cleanup remain. Retained counts alone do not prove

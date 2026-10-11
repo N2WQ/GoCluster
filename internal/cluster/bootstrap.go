@@ -84,13 +84,6 @@ const (
 
 var ingestForwardDropLogInterval = 30 * time.Second
 
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 type BuildInfo struct {
 	Version    string
 	ReleaseTag string

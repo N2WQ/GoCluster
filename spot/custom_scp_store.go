@@ -8,6 +8,7 @@
 // docs/decisions/ADR-0143-custom-scp-support-lookup-duplicate-work-removal.md,
 // docs/decisions/ADR-0279-custom-scp-cleanup-and-database-ownership.md,
 // docs/decisions/ADR-0285-individual-historical-receiver-freshness.md.
+// Consumer query requirements: docs/decisions/ADR-0286-consumer-specific-historical-requirements.md.
 // Cleanup ownership: spot/custom_scp_cleanup.go. Related tests:
 // spot/custom_scp_store_test.go, spot/custom_scp_cleanup_test.go,
 // spot/custom_scp_lifecycle_test.go, spot/custom_scp_persistence_bench_test.go.
@@ -743,6 +744,36 @@ func (s *CustomSCPStore) RecentSupportCountNormalized(call, band, mode string, n
 		return 0
 	}
 	return snapshot.uniqueSpotters
+}
+
+// RecentSupportCountWithRequirements counts eligible historical receivers under
+// one consumer's score/cell gates. It preserves partial counts below receiver
+// qualification minima for Bayesian prior accounting and diagnostics.
+func (s *CustomSCPStore) RecentSupportCountWithRequirements(call, band, mode string, requirements CustomSCPRequirements, now time.Time) int {
+	snapshot := s.snapshotFor(call, band, mode, now, requirements.MinScore)
+	if snapshot.score < requirements.MinScore || snapshot.uniqueCells < requirements.MinH3Cells {
+		return 0
+	}
+	return snapshot.uniqueSpotters
+}
+
+// RecentSupportCountNormalizedWithRequirements avoids normalization-cache entries
+// for synthetic probes already owned as correction-normalized call keys.
+func (s *CustomSCPStore) RecentSupportCountNormalizedWithRequirements(call, band, mode string, requirements CustomSCPRequirements, now time.Time) int {
+	snapshot := s.snapshotForNormalizedCall(call, band, mode, now, requirements.MinScore)
+	if snapshot.score < requirements.MinScore || snapshot.uniqueCells < requirements.MinH3Cells {
+		return 0
+	}
+	return snapshot.uniqueSpotters
+}
+
+// HasRecentSupportWithRequirements applies the receiver qualification gate after
+// score/cell eligibility. Capacity normalization retains its existing contract.
+func (s *CustomSCPStore) HasRecentSupportWithRequirements(call, band, mode string, minUnique int, requirements CustomSCPRequirements, now time.Time) bool {
+	if s == nil {
+		return false
+	}
+	return s.RecentSupportCountWithRequirements(call, band, mode, requirements, now) >= normalizeMinUnique(minUnique, s.opts.MaxSpottersPerKey)
 }
 
 // HasSFloorSupportExact reports exact-call support for S-floor promotion.

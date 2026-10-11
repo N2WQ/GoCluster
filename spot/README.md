@@ -160,6 +160,21 @@ Local non-test `DX` self-spots are treated as operator-authoritative in the live
 
 ### Historical receiver freshness
 
+Resolver and stabilizer queries use their own `custom_scp` age-score and H3
+cell minima against one canonical store. Each receiver qualification gate also
+uses the greater of its consumer's receiver minimum and
+`recent_band_record_min_unique_spotters`; the plus1 and edit-neighbor rails
+add their own minima. Tightening the stabilizer does not raise resolver or FT
+requirements. Partial counts remain visible to the Bayesian prior and diagnostics;
+qualification gates still check their effective receiver minimum. Boolean store
+queries retain the existing capacity normalization until the separate capacity
+validation repair; this patch does not yet reject impossible configured minima.
+
+The custom S floor uses its dedicated exact/family thresholds. The independent
+FT recent floor uses the common receiver minimum without inheriting stabilizer
+settings. Replay supplies both configured observation and static horizons;
+its historical clock behavior remains unchanged.
+
 Custom SCP keeps each receiver's newest observation for its call, band and mode
 bucket. Historical support counts that receiver only when its own observation is
 within `history_horizon_days`, is not later than the query clock and meets the

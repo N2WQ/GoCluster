@@ -2175,9 +2175,6 @@ func normalizeCallCorrectionCoreConfig(cfg *Config) {
 		if cfg.CallCorrection.ResolverRecentPlus1MinUniqueWinner < cfg.CallCorrection.CustomSCP.ResolverMinUniqueSpotters {
 			cfg.CallCorrection.ResolverRecentPlus1MinUniqueWinner = cfg.CallCorrection.CustomSCP.ResolverMinUniqueSpotters
 		}
-		if cfg.CallCorrection.RecentBandRecordMinUniqueSpotters < cfg.CallCorrection.CustomSCP.StabilizerMinUniqueSpotters {
-			cfg.CallCorrection.RecentBandRecordMinUniqueSpotters = cfg.CallCorrection.CustomSCP.StabilizerMinUniqueSpotters
-		}
 	}
 	if cfg.CallCorrection.StabilizerDelaySeconds <= 0 {
 		cfg.CallCorrection.StabilizerDelaySeconds = 5
