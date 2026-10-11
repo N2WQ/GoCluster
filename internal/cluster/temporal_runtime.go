@@ -148,6 +148,7 @@ func (c *runtimeTemporalController) Observe(
 	}
 	id := c.nextID
 	c.nextID++
+	pending.selection.Snapshot = pending.selection.Snapshot.Compact()
 	accepted, reason := c.decoder.Observe(correctionflow.TemporalObservation{
 		ID:          id,
 		ObservedAt:  observedAt,

@@ -16,6 +16,11 @@ not infer meanings from other cluster software.
 - For `P`, say it is a confidence glyph, not an external-cluster field or a
   probability.
 - If the user asks about current HELP output, retrieve `commands/README.md`.
+- Resolver evidence percentages measure a candidate's distinct receiver support
+  share, using reliability weights when available. Repeated neighborhood
+  buckets do not add receivers; losing candidates still contribute dissent.
+- Support shares are not calibrated probabilities. Current key/window evidence
+  does not establish that receivers heard the same transmission episode.
 
 ## Must Avoid
 

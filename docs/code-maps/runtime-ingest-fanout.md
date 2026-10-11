@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `57f177987340faf5`
+- Source fingerprint: `7fd74852b7f5c517`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,9 +12,9 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 26 | 80 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 26 | 81 |
 | `dxcluster/peer` | `peer` | 62 | 131 |
-| `dxcluster/spot` | `spot` | 34 | 37 |
+| `dxcluster/spot` | `spot` | 35 | 38 |
 | `dxcluster/telnet` | `telnet` | 48 | 99 |
 
 ## In-Scope Package Edges
@@ -160,6 +160,7 @@ Source files:
 Test files:
 - `internal/cluster/archive_fanout_delivery_test.go`
 - `internal/cluster/canadian_state_test.go`
+- `internal/cluster/correction_evidence_delivery_test.go`
 - `internal/cluster/custom_scp_delivery_regression_test.go`
 - `internal/cluster/diagnostic_wrapper_child_windows_test.go`
 - `internal/cluster/diagnostic_wrapper_fixture_windows_test.go`
@@ -467,6 +468,7 @@ Source files:
 - `spot/recent_band.go`
 - `spot/recent_support_store.go`
 - `spot/reliability.go`
+- `spot/resolver_evidence.go`
 - `spot/self_spot.go`
 - `spot/signal_resolver.go`
 - `spot/signal_resolver_driver.go`
@@ -504,6 +506,7 @@ Test files:
 - `spot/mode_infer_test.go`
 - `spot/mode_region_test.go`
 - `spot/recent_band_test.go`
+- `spot/resolver_evidence_test.go`
 - `spot/self_spot_test.go`
 - `spot/signal_resolver_bench_test.go`
 - `spot/signal_resolver_driver_test.go`
@@ -673,6 +676,7 @@ Test files:
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
 | [ADR-0281](docs/decisions/ADR-0281-archive-worker-private-normalization.md) | Accepted | 2026-10-10 | archive, immutable fanout, normalization | `path:internal/cluster` |
+| [ADR-0280](docs/decisions/ADR-0280-resolver-receiver-evidence-ownership.md) | Accepted | 2026-10-10 | resolver, receiver union, immutable publication | `path:internal/cluster, path:spot` |
 | [ADR-0279](docs/decisions/ADR-0279-custom-scp-cleanup-and-database-ownership.md) | Accepted | 2026-10-10 | custom_scp, cleanup, persistence, database lifetime | `path:internal/cluster, path:spot` |
 | [ADR-0276](docs/decisions/ADR-0276-toxicity-config-zero-and-duration-admission.md) | Accepted | 2026-10-10 | toxicity, optional YAML, defaults, duration admission | `path:internal/cluster` |
 | [ADR-0275](docs/decisions/ADR-0275-runtime-output-retirement.md) | Accepted | 2026-10-10 | output lifecycle, bounded grace, holds and downstream ownership | `path:internal/cluster, path:peer, path:telnet` |

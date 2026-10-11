@@ -1,0 +1,387 @@
+//go:build !qualification
+
+// File role: Connects retained resolver evidence to actual TCP/peer output,
+// sealed buffer storage, and reopened archive rows. Literal receiver sets and
+// wire fields make bucket repetition and discarded dissent observable.
+package cluster
+
+import (
+	"bufio"
+	"fmt"
+	"io"
+	"net"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"dxcluster/archive"
+	"dxcluster/buffer"
+	"dxcluster/config"
+	"dxcluster/internal/correctionflow"
+	"dxcluster/peer"
+	"dxcluster/spot"
+	"dxcluster/stats"
+	"dxcluster/telnet"
+)
+
+type correctionEvidenceDeliveryCase struct {
+	name, subject, dissent, wantCall, wantGlyph string
+	third                                       string
+	weights                                     spot.SpotterReliability
+	aReceivers                                  []string
+	minReports, wantPercent, wantWinnerWeight   int
+	wantTotalWeight                             int
+	wantCorrections                             uint64
+}
+
+func TestCallCorrectionMethodDeliveredAccounting(t *testing.T) {
+	t.Chdir(t.TempDir()) // Login and diagnostic settings remain fixture-owned.
+	previousLayout := spot.CurrentDXClusterLayout()
+	if err := spot.SetDXClusterLineLength(78); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := spot.SetDXClusterLineLength(previousLayout.LineLength); err != nil {
+			t.Error(err)
+		}
+	})
+	weights := spot.SpotterReliability{"N0AAA": 0.900, "N0BBB": 0.950, "N0CCC": 1.000}
+	pair := []string{"N0AAA", "N0BBB"}
+	cases := []correctionEvidenceDeliveryCase{
+		{
+			name: "duplicate_receivers_do_not_authorize_correction", subject: "K1ABD", dissent: "K1ABD",
+			aReceivers: pair, minReports: 3, wantCall: "K1ABD", wantGlyph: "P", wantPercent: 33,
+			wantWinnerWeight: 2000, wantTotalWeight: 3000,
+		},
+		{
+			name: "retained_call_uses_its_unequal_weight_share", subject: "K1ABD", dissent: "K1ABD", weights: weights,
+			aReceivers: pair, minReports: 3, wantCall: "K1ABD", wantGlyph: "P", wantPercent: 35,
+			wantWinnerWeight: 1850, wantTotalWeight: 2850,
+		},
+		{
+			name: "losing_candidate_remains_in_denominator", subject: "K1ABC", dissent: "K1ABD",
+			aReceivers: pair, minReports: 1, wantCall: "K1ABC", wantGlyph: "V", wantPercent: 66,
+			wantWinnerWeight: 2000, wantTotalWeight: 3000,
+		},
+		{
+			name: "ineligible_replacement_dissent_keeps_its_weight", subject: "K1ABC", dissent: "DL9ZZZ", weights: weights,
+			aReceivers: pair, minReports: 1, wantCall: "K1ABC", wantGlyph: "V", wantPercent: 64,
+			wantWinnerWeight: 1850, wantTotalWeight: 2850,
+		},
+		{
+			name: "third_candidate_keeps_weight", subject: "K1ABC", dissent: "K1ABD", third: "DL9ZZZ", weights: weights,
+			aReceivers: pair, minReports: 1, wantCall: "K1ABC", wantGlyph: "P", wantPercent: 48,
+			wantWinnerWeight: 1850, wantTotalWeight: 3850,
+		},
+		{
+			name: "genuine_third_receiver_authorizes_correction", subject: "K1ABD", dissent: "K1ABD",
+			aReceivers: []string{"N0AAA", "N0BBB", "N0DDD"}, minReports: 3,
+			wantCall: "K1ABC", wantGlyph: "C", wantPercent: 75,
+			wantWinnerWeight: 3000, wantTotalWeight: 4000, wantCorrections: 1,
+		},
+	}
+	for _, tc := range cases {
+		for _, buckets := range []int{1, 2} {
+			t.Run(fmt.Sprintf("%s/buckets=%d", tc.name, buckets), func(t *testing.T) {
+				checkCorrectionEvidenceDelivery(t, tc, buckets)
+			})
+		}
+	}
+}
+
+func TestRuntimeTemporalPendingCompaction(t *testing.T) {
+	at := time.Now().UTC()
+	resolver, key := correctionEvidenceResolver(t, correctionEvidenceDeliveryCase{
+		aReceivers: []string{"N0AAA", "N0BBB"}, dissent: "K1ABD",
+	}, 1, at)
+	snapshot, _ := resolver.Lookup(key)
+	if snapshot.ReceiverEvidence().Len() != 3 {
+		t.Fatal("missing receiver payload")
+	}
+	controller := newRuntimeTemporalController(runtimeTemporalTestConfig(0))
+	ok, id, reason := controller.Observe(at, key, "K1ABD", runtimeTemporalPending{
+		selection: correctionflow.ResolverPrimarySelection{Snapshot: snapshot, SnapshotOK: true},
+	})
+	if !ok {
+		t.Fatalf("Observe rejected: %s", reason)
+	}
+	saved := controller.pending[id].selection.Snapshot
+	if saved.ReceiverEvidence() != nil || len(saved.CandidateRanks) != 2 || saved.TotalReporters != 3 {
+		t.Fatal("runtime pending did not compact evidence")
+	}
+}
+
+func checkCorrectionEvidenceDelivery(t *testing.T, tc correctionEvidenceDeliveryCase, buckets int) {
+	t.Helper()
+	cfg := config.CallCorrectionConfig{
+		Enabled: true, RecencySeconds: 120, MaxEditDistance: 6, MinConsensusReports: tc.minReports,
+		MinAdvantage: 0, MinConfidencePercent: 0, FrequencyToleranceHz: 500,
+		DistanceModelCW: "morse", DistanceModelRTTY: "baudot", InvalidAction: "broadcast",
+		FreqGuardRunnerUpRatio: 0.6, ResolverNeighborhoodEnabled: true,
+		ResolverNeighborhoodBucketRadius: 1, ResolverNeighborhoodMaxDistance: 1,
+	}
+	if tc.dissent == "DL9ZZZ" && spot.CallDistance("K1ABC", tc.dissent, "CW", "morse", "baudot") <= cfg.ResolverNeighborhoodMaxDistance {
+		t.Fatal("unrelated dissent fixture unexpectedly qualifies as a replacement")
+	}
+	ring := buffer.NewRingBuffer(4)
+	archiveCfg := config.ArchiveConfig{
+		DBPath: filepath.Join(t.TempDir(), "archive"), QueueSize: 4, BatchSize: 1, BatchIntervalMS: 1,
+	}
+	writer, err := archive.NewWriter(archiveCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer.Start()
+	t.Cleanup(writer.Stop)
+	port := runtimeQualificationPort(t)
+	srv := telnet.NewServer(telnet.ServerOptions{
+		Port: port, LoginPrompt: "login: ", LoginGreeting: "ACCOUNTING_READY\n",
+		MaxConnections: 4, BroadcastWorkers: 1, BroadcastQueue: 4, WorkerQueue: 4, ClientBuffer: 8,
+		BroadcastBatchIntervalSet: true,
+	}, nil)
+	if err := srv.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(srv.Stop)
+	// Login helper cleanup closes sockets first. Join their unregister/profile
+	// writes before this fixture's working directory is restored, including on
+	// failed delivery assertions; Server.Stop alone does not join the handlers.
+	t.Cleanup(func() {
+		deadline := time.Now().Add(3 * time.Second)
+		for len(srv.ListClientCallsigns()) != 0 {
+			if time.Now().After(deadline) {
+				t.Error("accounting clients did not retire")
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+	})
+	normalConn, normalReader := correctionEvidenceLogin(t, port, "DL1ABC", "OFF")
+	diagConn, diagReader := correctionEvidenceLogin(t, port, "DL2ABC", "CONF")
+	manager, recipient := correctionEvidencePeer(t)
+	at := time.Now().UTC().Truncate(time.Second)
+	resolver, key := correctionEvidenceResolver(t, tc, buckets, at)
+	selection := correctionflow.SelectResolverPrimarySnapshotForCall(resolver, key, cfg, tc.subject)
+	snapshot := selection.Snapshot
+	wantTotal := len(tc.aReceivers) + 1
+	if tc.third != "" {
+		wantTotal++
+	}
+	if !selection.SnapshotOK || snapshot.Winner != "K1ABC" || snapshot.WinnerSupport != len(tc.aReceivers) ||
+		snapshot.TotalReporters != wantTotal || snapshot.WinnerWeightedSupportMilli != tc.wantWinnerWeight ||
+		snapshot.TotalWeightedSupportMilli != tc.wantTotalWeight {
+		t.Errorf("published evidence accounting: available=%t winner=%q support=%d total=%d weighted=%d/%d; want A support=%d total=%d weighted=%d/%d",
+			selection.SnapshotOK, snapshot.Winner, snapshot.WinnerSupport, snapshot.TotalReporters,
+			snapshot.WinnerWeightedSupportMilli, snapshot.TotalWeightedSupportMilli,
+			len(tc.aReceivers), wantTotal, tc.wantWinnerWeight, tc.wantTotalWeight)
+	}
+	tracker := stats.NewTracker()
+	pipeline := newDeliveryTestPipeline(ring, writer, srv)
+	pipeline.signalResolver, pipeline.correctionCfg = resolver, cfg
+	pipeline.spotterReliability, pipeline.tracker, pipeline.peerManager = tc.weights, tracker, manager
+	s := newDeliveryTestSpot(tc.subject, "N0AAA", at)
+	s.SourceType = spot.SourceManual // Non-self local input is eligible for peer publication.
+	// The driver owns publication and is not concurrent with the output stage.
+	// Its live enqueue uses an already-seeded receiver; this test deliberately
+	// evaluates the latest published evidence without inventing an ingest barrier.
+	pipeline.processSpotBody(s, nil)
+	if got := tracker.CallCorrections(); got != tc.wantCorrections {
+		t.Errorf("accepted corrections=%d want %d", got, tc.wantCorrections)
+	}
+	if tc.subject != "K1ABC" && tc.wantCorrections == 0 && tracker.CorrectionDecisionReasons()["resolver_gate_min_reports"] != 1 {
+		t.Errorf("duplicate population must reject specifically at min_reports: %v", tracker.CorrectionDecisionReasons())
+	}
+	for _, dst := range []struct {
+		name    string
+		conn    net.Conn
+		reader  *bufio.Reader
+		comment string
+	}{
+		{"normal TCP", normalConn, normalReader, "CW"},
+		{"DIAG TCP", diagConn, diagReader, fmt.Sprintf("CW %d%%", tc.wantPercent)},
+	} {
+		got := correctionEvidenceReadDX(t, dst.conn, dst.reader)
+		want := correctionEvidenceWire(tc.wantCall, tc.wantGlyph, dst.comment, at)
+		if got != want {
+			t.Errorf("%s received output:\n got %q\nwant %q", dst.name, got, want)
+		}
+	}
+	frame := peerAdmissionReadSpot(t, recipient)
+	fields := strings.Split(frame, "^")
+	if len(fields) < 9 {
+		t.Errorf("received peer frame lacks delivered fields: %q", frame)
+	} else {
+		freq, parseErr := strconv.ParseFloat(fields[1], 64)
+		if fields[0] != "PC61" || parseErr != nil || freq != 14020 || fields[2] != tc.wantCall ||
+			fields[3] != at.Format("02-Jan-2006") || fields[4] != at.Format("1504Z") || fields[6] != "N0AAA" || fields[7] != "N0CALL-1" {
+			t.Errorf("received peer identity/frequency/date/DE/origin mismatch: %q", frame)
+		}
+	}
+	recent := ring.GetRecent(2)
+	if len(recent) != 1 {
+		t.Errorf("buffered output count=%d want 1", len(recent))
+	} else {
+		correctionEvidenceAssertSpot(t, "sealed ring", recent[0], tc, at, true)
+		if recent[0].SnapshotForAsync() != recent[0] {
+			t.Error("buffered output was not sealed before async fanout")
+		}
+	}
+	// Stop joins archive insertion and flushes its queued work. Reopening proves
+	// persistence independently of the live queue or writer's in-process reads.
+	writer.Stop()
+	reopened, err := archive.NewWriter(archiveCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(reopened.Stop)
+	rows, err := reopened.Recent(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Errorf("reopened archive rows=%d want 1", len(rows))
+	} else {
+		correctionEvidenceAssertSpot(t, "reopened archive", rows[0], tc, at, false)
+	}
+}
+
+func correctionEvidenceResolver(t *testing.T, tc correctionEvidenceDeliveryCase, buckets int, at time.Time) (*spot.SignalResolver, spot.ResolverSignalKey) {
+	t.Helper()
+	resolver := spot.NewSignalResolver(spot.SignalResolverConfig{
+		QueueSize: 32, MaxActiveKeys: 4, MaxCandidatesPerKey: 4, MaxReportersPerCand: 8,
+		InactiveTTL: 5 * time.Minute, EvalMinInterval: time.Millisecond, SweepInterval: time.Millisecond,
+		HysteresisWindows: 1, FreqGuardRunnerUpRatio: 0.6, MaxEditDistance: 3,
+		DistanceModelCW: "morse", DistanceModelRTTY: "baudot", SpotterReliability: tc.weights,
+	})
+	driver, err := spot.NewSignalResolverDriver(resolver)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := spot.NewResolverSignalKey(14020, "20m", "CW", 500)
+	for i := 0; i < buckets; i++ {
+		frequency := 14020 + float64(i)*0.5
+		neighborKey := spot.NewResolverSignalKey(frequency, "20m", "CW", 500)
+		receivers := append(append([]string(nil), tc.aReceivers...), "N0CCC")
+		if tc.third != "" {
+			receivers = append(receivers, "N0EEE")
+		}
+		for _, receiver := range receivers {
+			call := "K1ABC"
+			if receiver == "N0CCC" {
+				call = tc.dissent
+			}
+			if receiver == "N0EEE" {
+				call = tc.third
+			}
+			if !resolver.Enqueue(spot.ResolverEvidence{
+				ObservedAt: at, Key: neighborKey, DXCall: call, Spotter: receiver,
+				FrequencyKHz: frequency, RecencyWindow: 2 * time.Minute,
+			}) {
+				t.Fatal("receiver evidence was not admitted")
+			}
+		}
+	}
+	wantPerBucket := len(tc.aReceivers) + 1
+	if tc.third != "" {
+		wantPerBucket++
+	}
+	if got, want := driver.Drain(), buckets*wantPerBucket; got != want {
+		t.Fatalf("processed receiver evidence=%d want %d", got, want)
+	}
+	// The first report schedules the next evaluation; advance beyond that
+	// interval so every seeded membership is in the immutable publication.
+	driver.Sweep(at.Add(2 * time.Millisecond))
+	return resolver, key
+}
+
+func correctionEvidenceLogin(t *testing.T, port int, call, diag string) (net.Conn, *bufio.Reader) {
+	t.Helper()
+	conn, reader := runtimeQualificationLogin(t, fmt.Sprintf("127.0.0.1:%d", port), "", call)
+	if err := conn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 16; i++ {
+		line := customSCPDeliveryReadLine(t, reader)
+		if strings.Contains(line, "ACCOUNTING_READY") {
+			if _, err := io.WriteString(conn, "SET DIAG "+diag+"\r\n"); err != nil {
+				t.Fatal(err)
+			}
+			for j := 0; j < 16; j++ {
+				if strings.Contains(customSCPDeliveryReadLine(t, reader), "Diagnostic comments: "+diag) {
+					return conn, reader
+				}
+			}
+			t.Fatal("diagnostic command acknowledgement exceeded fixture bound")
+		}
+	}
+	t.Fatal("login greeting exceeded fixture bound")
+	return nil, nil
+}
+
+func correctionEvidencePeer(t *testing.T) (*peer.Manager, *peerAdmissionSocket) {
+	t.Helper()
+	cfg := peerRuntimeTestConfig().Peering
+	cfg.MaxPeers, cfg.ListenPort, cfg.ForwardSpots = 1, runtimeQualificationPort(t), true
+	cfg.TelnetTransport = config.TelnetTransportNative
+	cfg.Timeouts = config.PeeringTimeouts{LoginSeconds: 5, InitSeconds: 5, IdleSeconds: 30}
+	cfg.Peers = []config.PeeringPeer{{
+		Enabled: true, Direction: config.PeeringPeerDirectionInbound,
+		Family: config.PeeringPeerFamilyDXSpider, RemoteCallsign: "N2DST", PreferPC9x: true,
+	}}
+	manager, err := peer.NewManager(cfg, cfg.LocalCallsign, make(chan *spot.Spot, 1), 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(manager.Stop)
+	if err := manager.SetBuildIdentity("test", "", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	manager.SetMembershipProvider(func() peer.LocalMembership { return peer.LocalMembership{Complete: true} })
+	if err := manager.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	recipient := peerAdmissionLogin(t, fmt.Sprintf("127.0.0.1:%d", cfg.ListenPort), "N2DST", true)
+	peerAdmissionSendAndAck(t, recipient, "") // Registration completed before publication.
+	return manager, recipient
+}
+
+func correctionEvidenceReadDX(t *testing.T, conn net.Conn, reader *bufio.Reader) string {
+	t.Helper()
+	if err := conn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 16; i++ {
+		line := customSCPDeliveryReadLine(t, reader)
+		if start := strings.Index(line, "DX de "); start >= 0 {
+			return line[start:] // A login/command prompt can precede the DX prefix.
+		}
+	}
+	t.Fatal("positive DX receipt exceeded fixture bound")
+	return ""
+}
+
+func correctionEvidenceAssertSpot(t *testing.T, destination string, s *spot.Spot, tc correctionEvidenceDeliveryCase, at time.Time, percentage bool) {
+	t.Helper()
+	if s == nil || s.DXCallNorm != tc.wantCall || s.DECallNorm != "N0AAA" || s.Frequency != 14020 ||
+		s.ModeNorm != "CW" || s.Confidence != tc.wantGlyph || !s.Time.Equal(at) {
+		t.Errorf("%s delivered fields=%+v want call=%s DE=N0AAA frequency=14020 mode=CW glyph=%s time=%s",
+			destination, s, tc.wantCall, tc.wantGlyph, at.Format(time.RFC3339))
+	}
+	if percentage && s != nil && (!s.ConfidencePercentOK || s.ConfidencePercent != tc.wantPercent) {
+		t.Errorf("%s percentage=%d available=%t want %d%%", destination, s.ConfidencePercent, s.ConfidencePercentOK, tc.wantPercent)
+	}
+}
+
+// Build the wire oracle from documented 78-column positions, without calling
+// the production formatter or deriving expectations from the emitted object.
+func correctionEvidenceWire(call, glyph, comment string, at time.Time) string {
+	line := []byte(strings.Repeat(" ", 78))
+	copy(line, "DX de N0AAA:     14020.00")
+	copy(line[27:], call)
+	copy(line[39:], comment)
+	line[71] = glyph[0]
+	copy(line[73:], at.Format("1504Z"))
+	return string(line) + "\r\n"
+}

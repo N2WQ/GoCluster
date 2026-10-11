@@ -12,6 +12,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
 | TSR-0080 | Archive Shared Snapshot Normalization | Monitoring | 2026-10-10 | archive, spot, final fanout, peer | ADR-0281 | `docs/troubleshooting/TSR-0080-archive-shared-snapshot-normalization.md` |
+| TSR-0079 | Resolver Receiver Accounting | Monitoring | 2026-10-10 | resolver, receiver union, delivered confidence | ADR-0280 | `docs/troubleshooting/TSR-0079-resolver-receiver-accounting.md` |
 | TSR-0078 | Custom SCP Stale Deletion and Close | Resolved | 2026-10-10 | custom_scp, cleanup, persistence, shutdown | ADR-0279 | `docs/troubleshooting/TSR-0078-custom-scp-stale-deletion-and-close.md` |
 | TSR-0077 | Peer Probe Retirement | Monitoring | 2026-10-10 | peerpoc, phase deadlines, timestamps, writer and keeper ownership | ADR-0278 | `docs/troubleshooting/TSR-0077-peer-probe-retirement.md` |
 | TSR-0076 | Diagnostic Wrapper Settings and Status | Monitoring | 2026-10-10 | diagnostic startup wrapper, GC precedence and native child status | none | `docs/troubleshooting/TSR-0076-diagnostic-wrapper-settings-and-status.md` |

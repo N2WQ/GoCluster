@@ -111,6 +111,7 @@ type ResolverSnapshot struct {
 	RunnerWeightedSupportMilli int
 	TotalWeightedSupportMilli  int
 	CandidateRanks             []ResolverCandidateSupport
+	receiverEvidence           *ResolverEvidenceView
 }
 
 // ResolverCandidateSupport captures one candidate support tally from the latest
@@ -144,6 +145,9 @@ type SignalResolverMetrics struct {
 	StateProbable  uint64
 	StateUncertain uint64
 	StateSplit     uint64
+	// PublishedReceiverRecords counts incidences in latest generations, excluding
+	// older snapshots still held by readers. Temporal retention is compacted.
+	PublishedReceiverRecords int
 }
 
 // SignalResolverConfig controls bounded resolver behavior.
@@ -215,7 +219,7 @@ type resolverCandidate struct {
 	lastSeen    time.Time
 	lastReport  int
 	lastFreqKHz float64
-	reporters   map[string]time.Time
+	reporters   map[string]resolverReporterObservation
 	identity    correctionCallIdentity
 	callRunes   []rune
 }
@@ -238,9 +242,11 @@ type resolverKeyState struct {
 	pendingWinner string
 	pendingWins   int
 
-	rankedScratch           []rankedResolverCandidate
-	candidateRanksScratch   []ResolverCandidateSupport
-	publishedCandidateRanks []ResolverCandidateSupport
+	rankedScratch             []rankedResolverCandidate
+	candidateRanksScratch     []ResolverCandidateSupport
+	publishedCandidateRanks   []ResolverCandidateSupport
+	publishedReceiverEvidence *ResolverEvidenceView
+	receiverEvidenceDirty     bool
 }
 
 type rankedResolverCandidate struct {
@@ -251,7 +257,7 @@ type rankedResolverCandidate struct {
 	lastSeen             time.Time
 	lastReport           int
 	lastFreqKHz          float64
-	reporters            map[string]time.Time
+	reporters            map[string]resolverReporterObservation
 	identity             correctionCallIdentity
 	callRunes            []rune
 }
@@ -366,6 +372,7 @@ func (r *SignalResolver) MetricsSnapshot() SignalResolverMetrics {
 		if snap == nil {
 			return true
 		}
+		metrics.PublishedReceiverRecords += snap.ReceiverEvidence().Len()
 		switch snap.State {
 		case ResolverStateConfident:
 			metrics.StateConfident++
@@ -443,9 +450,14 @@ func (r *SignalResolver) applyEvidence(states map[ResolverSignalKey]*resolverKey
 	}
 
 	if ev.RecencyWindow > 0 {
+		if st.recencyWindow != ev.RecencyWindow {
+			st.receiverEvidenceDirty = true
+		}
 		st.recencyWindow = ev.RecencyWindow
 	}
-	st.lastSeen = ev.ObservedAt
+	if ev.ObservedAt.After(st.lastSeen) {
+		st.lastSeen = ev.ObservedAt
+	}
 
 	r.pruneKeyState(st, ev.ObservedAt)
 
@@ -463,17 +475,13 @@ func (r *SignalResolver) applyEvidence(states map[ResolverSignalKey]*resolverKey
 			r.evictedCandidates.Add(1)
 		}
 		candidate = &resolverCandidate{
-			reporters: make(map[string]time.Time, r.cfg.MaxReportersPerCand),
+			reporters: make(map[string]resolverReporterObservation, r.cfg.MaxReportersPerCand),
 			identity:  normalizeCorrectionCallIdentity(ev.DXCall),
 			callRunes: []rune(ev.DXCall),
 		}
 		st.candidates[ev.DXCall] = candidate
 	}
 	updateAtomicMax(&r.highWaterCandidates, uint64(len(st.candidates)))
-	candidate.lastSeen = ev.ObservedAt
-	candidate.lastReport = ev.Report
-	candidate.lastFreqKHz = ev.FrequencyKHz
-
 	if _, exists := candidate.reporters[ev.Spotter]; !exists && len(candidate.reporters) >= r.cfg.MaxReportersPerCand {
 		r.capPressureReporters.Add(1)
 		evictReporter, ok := chooseResolverReporterEviction(candidate.reporters)
@@ -485,7 +493,12 @@ func (r *SignalResolver) applyEvidence(states map[ResolverSignalKey]*resolverKey
 		removeResolverReporter(st, candidate, evictReporter)
 		r.evictedReporters.Add(1)
 	}
-	upsertResolverReporter(st, candidate, ev.Spotter, ev.ObservedAt, reporterWeightMilli)
+	if !ev.ObservedAt.Before(candidate.lastSeen) {
+		candidate.lastSeen = ev.ObservedAt
+		candidate.lastReport = ev.Report
+		candidate.lastFreqKHz = ev.FrequencyKHz
+	}
+	upsertResolverReporter(st, candidate, ev.Spotter, ev.ObservedAt, ev.FrequencyKHz, reporterWeightMilli)
 	updateAtomicMax(&r.highWaterReporters, uint64(len(candidate.reporters)))
 
 	st.dirty = true
@@ -530,17 +543,31 @@ func (r *SignalResolver) sweep(states map[ResolverSignalKey]*resolverKeyState, n
 	r.activeKeys.Store(int64(len(states)))
 }
 
-func upsertResolverReporter(st *resolverKeyState, candidate *resolverCandidate, reporter string, seenAt time.Time, reporterWeightMilli int) {
+func upsertResolverReporter(st *resolverKeyState, candidate *resolverCandidate, reporter string, seenAt time.Time, frequencyKHz float64, reporterWeightMilli int) {
 	if st == nil || candidate == nil || reporter == "" {
 		return
 	}
 	if candidate.reporters == nil {
-		candidate.reporters = make(map[string]time.Time, 1)
+		candidate.reporters = make(map[string]resolverReporterObservation, 1)
 	}
 	if st.reporterRefs == nil {
 		st.reporterRefs = make(map[string]resolverReporterRef, 1)
 	}
-	if _, exists := candidate.reporters[reporter]; !exists {
+	previous, exists := candidate.reporters[reporter]
+	if exists {
+		if seenAt.Before(previous.observedAt) {
+			return
+		}
+		if seenAt.Equal(previous.observedAt) {
+			if frequencyKHz != previous.frequencyKHz && !previous.frequencyConflict {
+				previous.frequencyConflict = true
+				previous.frequencyKHz = 0 // No invented frequency for an unresolved tie.
+				candidate.reporters[reporter] = previous
+				st.receiverEvidenceDirty = true
+			}
+			return
+		}
+	} else {
 		ref, exists := st.reporterRefs[reporter]
 		if !exists {
 			st.reporterRefs[reporter] = resolverReporterRef{
@@ -552,7 +579,8 @@ func upsertResolverReporter(st *resolverKeyState, candidate *resolverCandidate, 
 			st.reporterRefs[reporter] = ref
 		}
 	}
-	candidate.reporters[reporter] = seenAt
+	candidate.reporters[reporter] = resolverReporterObservation{observedAt: seenAt, frequencyKHz: frequencyKHz}
+	st.receiverEvidenceDirty = true
 }
 
 func removeResolverReporter(st *resolverKeyState, candidate *resolverCandidate, reporter string) {
@@ -566,6 +594,14 @@ func removeResolverReporter(st *resolverKeyState, candidate *resolverCandidate, 
 		return
 	}
 	delete(candidate.reporters, reporter)
+	st.receiverEvidenceDirty = true
+	// Ranking/eviction use the newest retained observation, never a removed row.
+	candidate.lastSeen = time.Time{}
+	for _, observation := range candidate.reporters {
+		if observation.observedAt.After(candidate.lastSeen) {
+			candidate.lastSeen = observation.observedAt
+		}
+	}
 	if st.reporterRefs == nil {
 		return
 	}
@@ -592,6 +628,7 @@ func removeResolverCandidate(st *resolverKeyState, call string) {
 		}
 	}
 	delete(st.candidates, call)
+	st.receiverEvidenceDirty = true
 	invalidateResolverWinnerState(st, call)
 }
 
@@ -609,8 +646,8 @@ func (r *SignalResolver) pruneKeyState(st *resolverKeyState, now time.Time) {
 			removeResolverCandidate(st, call)
 			continue
 		}
-		for reporter, seenAt := range candidate.reporters {
-			if seenAt.Before(cutoff) {
+		for reporter, observation := range candidate.reporters {
+			if observation.observedAt.Before(cutoff) {
 				removeResolverReporter(st, candidate, reporter)
 			}
 		}
@@ -682,14 +719,16 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 	}
 
 	snapshot := ResolverSnapshot{
-		Key:         st.key,
-		EvaluatedAt: now,
-		State:       ResolverStateUncertain,
+		Key:              st.key,
+		EvaluatedAt:      now,
+		State:            ResolverStateUncertain,
+		receiverEvidence: publishedResolverEvidence(st),
 	}
 	if len(ranked) == 0 {
 		st.stableWinner = ""
 		st.pendingWinner = ""
 		st.pendingWins = 0
+		clear(ranked)
 		st.rankedScratch = ranked[:0]
 		r.publishSnapshot(st.key, snapshot)
 		return
@@ -791,6 +830,7 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 		snapshot.RunnerWeightedSupportMilli = runner.weightedSupportMilli
 		snapshot.TotalWeightedSupportMilli = totalWeightedSupportMilli
 		snapshot.CandidateRanks = candidateRanks
+		clear(ranked)
 		st.rankedScratch = ranked[:0]
 		r.publishSnapshot(st.key, snapshot)
 		return
@@ -852,6 +892,7 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 	snapshot.RunnerWeightedSupportMilli = runnerWeightedSupportMilli
 	snapshot.TotalWeightedSupportMilli = totalWeightedSupportMilli
 	snapshot.CandidateRanks = candidateRanks
+	clear(ranked)
 	st.rankedScratch = ranked[:0]
 	r.publishSnapshot(st.key, snapshot)
 }
@@ -1119,7 +1160,7 @@ func runnerForResolverCall(candidates []rankedResolverCandidate, winner string) 
 	return "", 0, 0
 }
 
-func timedReporterSetOverlapCount(left, right map[string]time.Time) int {
+func timedReporterSetOverlapCount(left, right map[string]resolverReporterObservation) int {
 	if len(left) == 0 || len(right) == 0 {
 		return 0
 	}
@@ -1165,7 +1206,7 @@ func chooseResolverCandidateEviction(candidates map[string]*resolverCandidate) (
 	return selectedCall, initialized
 }
 
-func chooseResolverReporterEviction(reporters map[string]time.Time) (string, bool) {
+func chooseResolverReporterEviction(reporters map[string]resolverReporterObservation) (string, bool) {
 	if len(reporters) == 0 {
 		return "", false
 	}
@@ -1174,7 +1215,8 @@ func chooseResolverReporterEviction(reporters map[string]time.Time) (string, boo
 		selectedSeenAt   time.Time
 		initialized      bool
 	)
-	for reporter, seenAt := range reporters {
+	for reporter, observation := range reporters {
+		seenAt := observation.observedAt
 		if !initialized ||
 			seenAt.Before(selectedSeenAt) ||
 			(seenAt.Equal(selectedSeenAt) && reporter < selectedReporter) {

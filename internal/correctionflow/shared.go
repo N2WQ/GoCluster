@@ -35,6 +35,10 @@ type ResolverPrimarySelection struct {
 	WinnerOverride    bool
 	NeighborhoodSplit bool
 	CandidateCount    int
+	// replacementCalls is immutable selection-local eligibility. Nil keeps exact
+	// snapshot behavior; synthesized neighborhoods constrain replacements while
+	// CandidateRanks still carry every admitted dissenting receiver's tally.
+	replacementCalls []string
 	// NeighborhoodExcluded* count neighborhood winner candidates excluded from
 	// competition due to comparability rails.
 	NeighborhoodExcludedUnrelated int
@@ -211,16 +215,8 @@ func SelectResolverPrimarySnapshotForCall(resolver *spot.SignalResolver, key spo
 		radius = 2
 	}
 
-	type aggregate struct {
-		call     string
-		support  int
-		weighted int
-		best     spot.ResolverSnapshot
-	}
-
-	aggregates := make(map[string]*aggregate, (radius*2)+1)
-	totalSupport := 0
-	totalWeighted := 0
+	aggregates := make(map[string]*neighborhoodCandidate, (radius*2)+1)
+	receivers := make(map[string]int)
 	for offset := -radius; offset <= radius; offset++ {
 		neighborKey := key
 		neighborKey.Bucket += int64(offset)
@@ -260,19 +256,7 @@ func SelectResolverPrimarySnapshotForCall(resolver *spot.SignalResolver, key spo
 			}
 			continue
 		}
-		totalSupport += support
-		totalWeighted += weighted
-
-		group := aggregates[winner]
-		if group == nil {
-			group = &aggregate{call: winner, best: snap}
-			aggregates[winner] = group
-		}
-		group.support += support
-		group.weighted += weighted
-		if resolverSnapshotBeats(snap, group.best) {
-			group.best = snap
-		}
+		addNeighborhoodEvidence(aggregates, receivers, snap)
 	}
 
 	if !selection.UsedNeighborhood && exactOK {
@@ -285,12 +269,20 @@ func SelectResolverPrimarySnapshotForCall(resolver *spot.SignalResolver, key spo
 		return ResolverPrimarySelection{}
 	}
 
-	ranked := make([]aggregate, 0, len(aggregates))
+	ranked := make([]neighborhoodCandidate, 0, len(aggregates))
+	allCandidates := make([]spot.ResolverCandidateSupport, 0, len(aggregates))
 	for _, group := range aggregates {
 		if group == nil {
 			continue
 		}
-		ranked = append(ranked, *group)
+		allCandidates = append(allCandidates, spot.ResolverCandidateSupport{Call: group.call,
+			Support: group.support, WeightedSupportMilli: group.weighted})
+		if comparable, _ := resolverNeighborhoodComparable(anchor, group.call, key.Mode, cfg); comparable {
+			ranked = append(ranked, *group)
+		}
+	}
+	if len(ranked) == 0 {
+		return selection
 	}
 	sort.Slice(ranked, func(i, j int) bool {
 		if ranked[i].weighted != ranked[j].weighted {
@@ -306,31 +298,37 @@ func SelectResolverPrimarySnapshotForCall(resolver *spot.SignalResolver, key spo
 		}
 		return ranked[i].call < ranked[j].call
 	})
-	selection.CandidateCount = len(ranked)
+	selection.CandidateCount = len(allCandidates)
+	selection.replacementCalls = make([]string, 0, len(ranked))
+	for i := range ranked {
+		selection.replacementCalls = append(selection.replacementCalls, ranked[i].call)
+	}
 	top := ranked[0]
 
-	synth := top.best
+	// Synthesized tallies cover several buckets, so never label one bucket's
+	// receiver view as their provenance. Fresh selection rereads publications.
+	synth := top.best.Compact()
 	synth.Key = key
 	synth.Winner = top.call
 	synth.WinnerSupport = top.support
 	synth.WinnerWeightedSupportMilli = top.weighted
-	if totalSupport > 0 {
-		synth.TotalReporters = totalSupport
+	synth.TotalReporters = len(receivers)
+	synth.TotalWeightedSupportMilli = 0
+	for _, weight := range receivers {
+		synth.TotalWeightedSupportMilli += weight
 	}
-	if totalWeighted > 0 {
-		synth.TotalWeightedSupportMilli = totalWeighted
-	}
-
-	candidateRanks := make([]spot.ResolverCandidateSupport, 0, len(ranked))
-	for i := range ranked {
-		candidate := &ranked[i]
-		candidateRanks = append(candidateRanks, spot.ResolverCandidateSupport{
-			Call:                 candidate.call,
-			Support:              candidate.support,
-			WeightedSupportMilli: candidate.weighted,
-		})
-	}
-	synth.CandidateRanks = candidateRanks
+	synth.State = classifyTemporalSnapshotState(synth)
+	sort.Slice(allCandidates, func(i, j int) bool {
+		left, right := allCandidates[i], allCandidates[j]
+		if left.WeightedSupportMilli != right.WeightedSupportMilli {
+			return left.WeightedSupportMilli > right.WeightedSupportMilli
+		}
+		if left.Support != right.Support {
+			return left.Support > right.Support
+		}
+		return left.Call < right.Call
+	})
+	synth.CandidateRanks = allCandidates
 
 	if len(ranked) > 1 {
 		runner := ranked[1]
@@ -391,6 +389,7 @@ func SelectResolverPrimarySnapshotForCall(resolver *spot.SignalResolver, key spo
 				}
 				selection.Snapshot = exact
 				selection.SnapshotOK = exactOK
+				selection.replacementCalls = nil
 				selection.WinnerOverride = false
 				return selection
 			}

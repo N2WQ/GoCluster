@@ -561,6 +561,7 @@ func (r *replayRunner) maybeHoldTemporal(
 
 	id := r.temporalNextID
 	r.temporalNextID++
+	selection.Snapshot = selection.Snapshot.Compact()
 	accepted, reason := r.temporalDecoder.Observe(correctionflow.TemporalObservation{
 		ID:          id,
 		ObservedAt:  now,

@@ -33,10 +33,10 @@ func BenchmarkSignalResolverEvaluate(b *testing.B) {
 	now := time.Now().UTC()
 	for candidateIdx := 0; candidateIdx < 8; candidateIdx++ {
 		call := fmt.Sprintf("DL6L%c", 'A'+candidateIdx)
-		reporters := make(map[string]time.Time, 32)
+		reporters := make(map[string]resolverReporterObservation, 32)
 		for reporterIdx := 0; reporterIdx < 32; reporterIdx++ {
 			reporter := fmt.Sprintf("K1%03d", candidateIdx*100+reporterIdx)
-			reporters[reporter] = now
+			reporters[reporter] = resolverReporterObservation{observedAt: now}
 			st.reporterRefs[reporter] = resolverReporterRef{
 				refCount:    1,
 				weightMilli: resolverReliabilityScale,
@@ -92,8 +92,8 @@ func BenchmarkSignalResolverEvaluateConfusionTie(b *testing.B) {
 			lastSeen:    now,
 			lastReport:  10,
 			lastFreqKHz: 7010.0,
-			reporters: map[string]time.Time{
-				reporter: now,
+			reporters: map[string]resolverReporterObservation{
+				reporter: {observedAt: now},
 			},
 			identity:  normalizeCorrectionCallIdentity(call),
 			callRunes: []rune(call),

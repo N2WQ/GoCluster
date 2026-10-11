@@ -38,6 +38,20 @@ Contested resolver states are intentionally conservative:
 - `split` or `uncertain` become `?` for one-reporter cases
 - `split` or `uncertain` become `P` for multi-reporter cases
 
+Support counts distinct eligible receivers. Neighborhood selection admits
+comparable winning buckets, then keeps every candidate's receiver evidence in
+those buckets, including dissent that is ineligible as a replacement. Repeated
+receivers count once in the total and once for each candidate they support.
+Overlapping candidate shares can therefore sum to more than 100%. Weights
+900 and 950 supporting A against weight 1000 supporting B give A a displayed
+64% share, regardless of repeated buckets.
+
+These percentages describe retained receiver support, not calibrated correctness
+probabilities. Eligibility uses the existing key and recency window; it does not
+prove that all reports belong to the original transmission episode. Resolver
+receiver evidence is published immutably; temporal scoring retains compact
+tallies. See [ADR-0280](../docs/decisions/ADR-0280-resolver-receiver-evidence-ownership.md).
+
 ### The `S` floor
 
 `S` is not produced by `FormatConfidence`.

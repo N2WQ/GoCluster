@@ -215,6 +215,7 @@ func (d *TemporalDecoder) Observe(obs TemporalObservation) (bool, string) {
 		}
 		d.keyStates[key] = st
 	}
+	obs.Selection.Snapshot = obs.Selection.Snapshot.Compact()
 	st.events = append(st.events, temporalEvent{
 		id:         obs.ID,
 		observedAt: observedAt,
@@ -363,6 +364,7 @@ func (d *TemporalDecoder) trimKeyEventsLocked(key spot.ResolverSignalKey, st *te
 	}
 	for len(st.events) > maxEvents {
 		ev := st.events[0]
+		st.events[0] = temporalEvent{} // Release references in the retired prefix.
 		st.events = st.events[1:]
 		if req, ok := d.requests[ev.id]; ok {
 			req.evicted = true
@@ -561,10 +563,15 @@ func (d *TemporalDecoder) candidatesForEvent(event temporalEvent, fallbackSubjec
 	}
 
 	if event.selection.SnapshotOK {
-		for idx, candidate := range event.selection.Snapshot.CandidateRanks {
-			if idx >= d.cfg.MaxObsCandidates {
+		admitted := 0
+		for _, candidate := range event.selection.Snapshot.CandidateRanks {
+			if !event.selection.allowsReplacement(candidate.Call) {
+				continue
+			}
+			if admitted >= d.cfg.MaxObsCandidates {
 				break
 			}
+			admitted++
 			appendStoredCall(candidate.Call)
 		}
 		appendStoredCall(event.selection.Snapshot.Winner)

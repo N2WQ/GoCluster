@@ -268,11 +268,11 @@ func TestSignalResolverCandidateRemovalInvalidatesWinnerState(t *testing.T) {
 		candidates: map[string]*resolverCandidate{
 			"OLD": {
 				lastSeen:  now,
-				reporters: map[string]time.Time{"K1AAA": now},
+				reporters: map[string]resolverReporterObservation{"K1AAA": {observedAt: now}},
 			},
 			"NEW": {
 				lastSeen:  now,
-				reporters: map[string]time.Time{"K1AAB": now},
+				reporters: map[string]resolverReporterObservation{"K1AAB": {observedAt: now}},
 			},
 		},
 		reporterRefs: map[string]resolverReporterRef{
@@ -355,14 +355,14 @@ func TestSignalResolverStaleStableWinnerFallbackRepairsState(t *testing.T) {
 			"TOP": {
 				lastSeen:    now,
 				lastFreqKHz: 7010.0,
-				reporters:   map[string]time.Time{"K1AAA": now, "K1AAB": now},
+				reporters:   map[string]resolverReporterObservation{"K1AAA": {observedAt: now}, "K1AAB": {observedAt: now}},
 				identity:    normalizeCorrectionCallIdentity("TOP"),
 				callRunes:   []rune("TOP"),
 			},
 			"RUN": {
 				lastSeen:    now.Add(-time.Millisecond),
 				lastFreqKHz: 7010.1,
-				reporters:   map[string]time.Time{"K1AAC": now},
+				reporters:   map[string]resolverReporterObservation{"K1AAC": {observedAt: now}},
 				identity:    normalizeCorrectionCallIdentity("RUN"),
 				callRunes:   []rune("RUN"),
 			},
@@ -600,21 +600,21 @@ func TestChooseResolverCandidateEvictionDeterministic(t *testing.T) {
 	candidates := map[string]*resolverCandidate{
 		"DL6LD": {
 			lastSeen: base,
-			reporters: map[string]time.Time{
-				"K1AAA": base,
+			reporters: map[string]resolverReporterObservation{
+				"K1AAA": {observedAt: base},
 			},
 		},
 		"DL6LN": {
 			lastSeen: base.Add(10 * time.Second),
-			reporters: map[string]time.Time{
-				"K1AAB": base,
+			reporters: map[string]resolverReporterObservation{
+				"K1AAB": {observedAt: base},
 			},
 		},
 		"DL6LZ": {
 			lastSeen: base.Add(10 * time.Second),
-			reporters: map[string]time.Time{
-				"K1AAC": base,
-				"K1AAD": base,
+			reporters: map[string]resolverReporterObservation{
+				"K1AAC": {observedAt: base},
+				"K1AAD": {observedAt: base},
 			},
 		},
 	}
@@ -628,8 +628,8 @@ func TestChooseResolverCandidateEvictionDeterministic(t *testing.T) {
 
 	// Tie on support and time should break lexicographically.
 	candidates = map[string]*resolverCandidate{
-		"ZZ1ZZ": {lastSeen: base, reporters: map[string]time.Time{"K1AAA": base}},
-		"AA1AA": {lastSeen: base, reporters: map[string]time.Time{"K1AAB": base}},
+		"ZZ1ZZ": {lastSeen: base, reporters: map[string]resolverReporterObservation{"K1AAA": {observedAt: base}}},
+		"AA1AA": {lastSeen: base, reporters: map[string]resolverReporterObservation{"K1AAB": {observedAt: base}}},
 	}
 	evict, ok = chooseResolverCandidateEviction(candidates)
 	if !ok {
@@ -642,10 +642,10 @@ func TestChooseResolverCandidateEvictionDeterministic(t *testing.T) {
 
 func TestChooseResolverReporterEvictionDeterministic(t *testing.T) {
 	base := time.Date(2026, 2, 23, 20, 0, 0, 0, time.UTC)
-	reporters := map[string]time.Time{
-		"K1AAB": base.Add(3 * time.Second),
-		"K1AAA": base,
-		"K1AAZ": base,
+	reporters := map[string]resolverReporterObservation{
+		"K1AAB": {observedAt: base.Add(3 * time.Second)},
+		"K1AAA": {observedAt: base},
+		"K1AAZ": {observedAt: base},
 	}
 	evict, ok := chooseResolverReporterEviction(reporters)
 	if !ok {
