@@ -410,6 +410,10 @@ func (w *Writer) flush(batch []*spot.Spot) {
 		if s == nil {
 			continue
 		}
+		// Fanout shares this immutable snapshot with peer/telnet/ring readers.
+		// Normalize only worker-private scratch, retaining the existing raw-input
+		// and populated-cache encoding contract without copying formatting locks.
+		s = s.Clone()
 		s.EnsureNormalized()
 		key := spotKeyBytes(normalizeUnixNano(s.Time), w.nextSeq())
 		val := encodeRecord(s)

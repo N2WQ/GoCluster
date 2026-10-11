@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `9d0afce1d7508533`
+- Source fingerprint: `57f177987340faf5`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,7 +12,7 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 26 | 79 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 26 | 80 |
 | `dxcluster/peer` | `peer` | 62 | 131 |
 | `dxcluster/spot` | `spot` | 34 | 37 |
 | `dxcluster/telnet` | `telnet` | 48 | 99 |
@@ -158,6 +158,7 @@ Source files:
 - `internal/cluster/temporal_runtime.go`
 
 Test files:
+- `internal/cluster/archive_fanout_delivery_test.go`
 - `internal/cluster/canadian_state_test.go`
 - `internal/cluster/custom_scp_delivery_regression_test.go`
 - `internal/cluster/diagnostic_wrapper_child_windows_test.go`
@@ -671,6 +672,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0281](docs/decisions/ADR-0281-archive-worker-private-normalization.md) | Accepted | 2026-10-10 | archive, immutable fanout, normalization | `path:internal/cluster` |
 | [ADR-0279](docs/decisions/ADR-0279-custom-scp-cleanup-and-database-ownership.md) | Accepted | 2026-10-10 | custom_scp, cleanup, persistence, database lifetime | `path:internal/cluster, path:spot` |
 | [ADR-0276](docs/decisions/ADR-0276-toxicity-config-zero-and-duration-admission.md) | Accepted | 2026-10-10 | toxicity, optional YAML, defaults, duration admission | `path:internal/cluster` |
 | [ADR-0275](docs/decisions/ADR-0275-runtime-output-retirement.md) | Accepted | 2026-10-10 | output lifecycle, bounded grace, holds and downstream ownership | `path:internal/cluster, path:peer, path:telnet` |

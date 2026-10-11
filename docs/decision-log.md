@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0281 | Archive Worker Private Normalization | Accepted | 2026-10-10 | archive, immutable fanout, normalization | Refines ADR-0148/0275 worker ownership | none | `docs/decisions/ADR-0281-archive-worker-private-normalization.md` |
 | ADR-0279 | Custom SCP Cleanup and Database Ownership | Accepted | 2026-10-10 | custom_scp, cleanup, persistence, database lifetime | none | none | `docs/decisions/ADR-0279-custom-scp-cleanup-and-database-ownership.md` |
 | ADR-0278 | Peer Probe Session Ownership | Accepted | 2026-10-10 | peerpoc, phase deadlines, origin timestamps, writer and keeper retirement | none | none | `docs/decisions/ADR-0278-peer-probe-session-ownership.md` |
 | ADR-0277 | Descriptive Historical Decision Analysis | Accepted | 2026-10-10 | historical decision readers, outcomes, scientific claims | none | none | `docs/decisions/ADR-0277-descriptive-historical-decision-analysis.md` |
